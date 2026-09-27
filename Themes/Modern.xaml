@@ -98,12 +98,10 @@
          文本
          ============================================================ -->
     <Style TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
     </Style>
     <Style TargetType="Label">
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
         <Setter Property="Padding" Value="0"/>
     </Style>

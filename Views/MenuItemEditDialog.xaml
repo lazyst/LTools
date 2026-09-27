@@ -6,7 +6,8 @@
         Width="420" ResizeMode="NoResize" SizeToContent="Height"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         WindowStyle="None"
-        Background="{StaticResource BgBrush}" FontFamily="{StaticResource UiFont}" FontSize="13">
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -52,12 +53,12 @@
             </Button>
 
             <TextBlock Grid.Row="2" Grid.Column="0" Text="终端" Style="{StaticResource SectionLabel}" Margin="0,7"/>
-            <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,4">
+            <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,4">
                 <ComboBox x:Name="TerminalCombo" SelectionChanged="Terminal_Changed"/>
                 <TextBlock x:Name="TerminalDesc" Style="{StaticResource HintLabel}" Margin="0,4,0,0" TextWrapping="Wrap"/>
             </StackPanel>
             <CheckBox Grid.Row="2" Grid.Column="2" x:Name="KeepWindowCheck" Content="保持窗口"
-                      VerticalAlignment="Top" Margin="8,6,0,0"
+                      VerticalAlignment="Top" Margin="12,8,0,0"
                       Checked="UpdatePreview" Unchecked="UpdatePreview"/>
 
             <TextBlock Grid.Row="3" Grid.Column="0" Text="工作目录" Style="{StaticResource SectionLabel}" Margin="0,7"/>
