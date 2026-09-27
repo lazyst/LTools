@@ -7,7 +7,7 @@
         MinWidth="640" MinHeight="420"
         Topmost="True" ShowInTaskbar="True" ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen"
-        WindowStyle="None"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="13">
     <shell:WindowChrome.WindowChrome>

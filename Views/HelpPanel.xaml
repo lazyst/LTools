@@ -4,7 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:controls="clr-namespace:CapsLockPro.Views.Controls"
         Title="CapsLock++ 热键速查" Width="540" Height="540"
-        WindowStyle="None" Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
+        WindowStyle="None" Style="{StaticResource ModernWindow}" Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="13"

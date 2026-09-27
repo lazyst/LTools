@@ -5,7 +5,7 @@
         xmlns:controls="clr-namespace:CapsLockPro.Views.Controls"
         Width="420" ResizeMode="NoResize" SizeToContent="Height"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        WindowStyle="None"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="13">
     <shell:WindowChrome.WindowChrome>

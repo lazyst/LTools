@@ -6,7 +6,7 @@
         Title="速记" Width="780" Height="540" MinWidth="560" MinHeight="380"
         Topmost="True" ShowInTaskbar="True" ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen"
-        WindowStyle="None"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="13"
         KeyDown="Window_KeyDown" Closing="Window_Closing">
@@ -98,14 +98,24 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <TextBox Grid.Row="0" x:Name="TitleBox" FontSize="15" FontWeight="SemiBold"
-                         BorderThickness="0" Padding="0,2" Background="Transparent"
-                         TextChanged="TitleBox_TextChanged"/>
+                <Grid Grid.Row="0">
+                    <TextBox x:Name="TitleBox" FontSize="15" FontWeight="SemiBold"
+                             BorderThickness="0" Padding="0,2" Background="Transparent"
+                             TextChanged="TitleBox_TextChanged"/>
+                    <TextBlock x:Name="TitlePlaceholder" Text="标题" IsHitTestVisible="False"
+                               Foreground="{StaticResource HintTextBrush}" FontSize="15"
+                               FontWeight="SemiBold" VerticalAlignment="Top" Margin="0,4,0,0"/>
+                </Grid>
                 <Border Grid.Row="1" Height="1" Background="{StaticResource BorderBrush}" Margin="0,8"/>
-                <TextBox Grid.Row="2" x:Name="BodyBox" AcceptsReturn="True" AcceptsTab="True"
-                         VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"
-                         VerticalContentAlignment="Top" BorderThickness="0" Background="Transparent"
-                         Padding="0,4" TextChanged="BodyBox_TextChanged"/>
+                <Grid Grid.Row="2">
+                    <TextBox x:Name="BodyBox" AcceptsReturn="True" AcceptsTab="True"
+                             VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"
+                             VerticalContentAlignment="Top" BorderThickness="0" Background="Transparent"
+                             Padding="0,4" TextChanged="BodyBox_TextChanged"/>
+                    <TextBlock x:Name="BodyPlaceholder" Text="正文" IsHitTestVisible="False"
+                               Foreground="{StaticResource HintTextBrush}"
+                               VerticalAlignment="Top" Margin="0,6,0,0"/>
+                </Grid>
             </Grid>
         </Grid>
 

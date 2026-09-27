@@ -827,4 +827,29 @@
         <Setter Property="Padding" Value="12,10"/>
     </Style>
 
+    <!-- ============================================================
+         自定义标题栏窗口（配合 WindowChrome）：
+         用模板套一圈 1px 细线边框，弥补 WindowStyle=None 去掉系统边框后的"无边界感"
+         ============================================================ -->
+    <Style x:Key="ModernWindow" TargetType="Window">
+        <Setter Property="Background" Value="{StaticResource BgBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Window">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{StaticResource BorderStrongBrush}"
+                            BorderThickness="1">
+                        <AdornerDecorator>
+                            <ContentPresenter/>
+                        </AdornerDecorator>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>
