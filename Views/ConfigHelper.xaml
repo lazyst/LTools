@@ -1,76 +1,91 @@
 <Window x:Class="CapsLockPro.Views.ConfigHelperWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:CapsLockPro.Views.Controls"
         Title="设置" Width="760" Height="540"
         MinWidth="640" MinHeight="420"
         Topmost="True" ShowInTaskbar="True" ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource BgBrush}" FontFamily="{StaticResource UiFont}">
-    <Grid Margin="12">
+        WindowStyle="None"
+        Background="{StaticResource BgBrush}" FontFamily="{StaticResource UiFont}" FontSize="13">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="36"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 卡片区 -->
-        <Grid Grid.Row="0">
+        <!-- 标题栏 -->
+        <controls:TitleBar Grid.Row="0"/>
+
+        <!-- 主内容：左列(菜单组) + 分隔条 + 右列(菜单项) -->
+        <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220" MinWidth="180"/>
+                <ColumnDefinition Width="240" MinWidth="180"/>
                 <ColumnDefinition Width="6"/>
                 <ColumnDefinition Width="*" MinWidth="300"/>
             </Grid.ColumnDefinitions>
 
-            <!-- 左卡片：菜单组 -->
-            <Border Grid.Column="0" Style="{StaticResource Card}" Padding="10">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <DockPanel Grid.Row="0" Margin="0,0,0,8">
-                        <TextBlock DockPanel.Dock="Top" Text="菜单组" FontWeight="Medium" Margin="0,0,0,8"/>
-                        <ListBox x:Name="GroupList" SelectionChanged="GroupList_SelectedIndexChanged"/>
-                    </DockPanel>
-                    <StackPanel Grid.Row="1" Orientation="Horizontal">
-                        <Button Style="{StaticResource Btn}" Content="编辑" Click="EditGroup_Click" Margin="0,0,4,0"/>
-                        <Button Style="{StaticResource BtnDanger}" Content="删除" Click="DeleteGroup_Click"/>
-                    </StackPanel>
-                </Grid>
-            </Border>
+            <!-- 左：菜单组 -->
+            <Grid Grid.Column="0" Margin="14,12,0,12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="菜单组" Margin="4,0,0,8"/>
+                <ListBox Grid.Row="1" x:Name="GroupList" SelectionChanged="GroupList_SelectionChanged"/>
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="2,8,2,0">
+                    <Button Style="{StaticResource BtnGhost}" Content="重命名" Click="EditGroup_Click"/>
+                    <Button Style="{StaticResource BtnGhostDanger}" Content="删除" Click="DeleteGroup_Click" Margin="6,0,0,0"/>
+                </StackPanel>
+            </Grid>
 
-            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
-                          Background="Transparent" ShowsPreview="True"/>
+            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
 
-            <!-- 右卡片：菜单项 -->
-            <Border Grid.Column="2" Style="{StaticResource Card}" Padding="10">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="菜单项" FontWeight="Medium" Margin="0,0,0,8"/>
-                    <ListBox Grid.Row="1" x:Name="ItemList" SelectionChanged="ItemList_SelectedIndexChanged" MouseDoubleClick="ItemList_MouseDoubleClick"/>
-                    <!-- 操作工具条 -->
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
-                        <Button Style="{StaticResource Btn}" Content="添加" Click="AddItem_Click" Margin="0,0,4,0"/>
-                        <Button Style="{StaticResource Btn}" Content="编辑" Click="EditItem_Click" Margin="0,0,4,0"/>
-                        <Button Style="{StaticResource BtnDanger}" Content="删除" Click="DeleteItem_Click" Margin="0,0,8,0"/>
-                        <Button Style="{StaticResource Btn}" Content="上移" Click="MoveUp_Click" Margin="0,0,4,0"/>
-                        <Button Style="{StaticResource Btn}" Content="下移" Click="MoveDown_Click"/>
-                    </StackPanel>
-                </Grid>
-            </Border>
+            <!-- 右：菜单项 -->
+            <Grid Grid.Column="2" Margin="0,12,14,12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="菜单项" Margin="4,0,0,8"/>
+                <ListBox Grid.Row="1" x:Name="ItemList"
+                         SelectionChanged="ItemList_SelectionChanged"
+                         MouseDoubleClick="ItemList_MouseDoubleClick"/>
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="2,8,2,0">
+                    <Button Style="{StaticResource BtnGhost}" Content="添加" Click="AddItem_Click"/>
+                    <Button Style="{StaticResource BtnGhost}" Content="编辑" Click="EditItem_Click" Margin="6,0,0,0"/>
+                    <Button Style="{StaticResource BtnGhostDanger}" Content="删除" Click="DeleteItem_Click" Margin="6,0,0,0"/>
+                    <TextBlock Width="8"/>
+                    <Button Style="{StaticResource BtnGhost}" Content="上移" Click="MoveUp_Click"/>
+                    <Button Style="{StaticResource BtnGhost}" Content="下移" Click="MoveDown_Click" Margin="6,0,0,0"/>
+                </StackPanel>
+            </Grid>
         </Grid>
 
-        <!-- 底部 -->
-        <DockPanel Grid.Row="1" LastChildFill="False">
-            <CheckBox DockPanel.Dock="Left" x:Name="AutoStartBox" Content="开机自启" VerticalAlignment="Center" Margin="0,12,8,0" Checked="AutoStartBox_Changed" Unchecked="AutoStartBox_Changed"/>
-            <Button DockPanel.Dock="Left" Style="{StaticResource Btn}" Content="终端路径..." Click="TerminalPaths_Click" Margin="0,12,8,0"/>
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                <Button Style="{StaticResource Btn}" Content="重新加载配置" Click="Reload_Click" Margin="0,0,8,0"/>
-                <Button Style="{StaticResource BtnPrimary}" Content="保存配置" Click="Save_Click"/>
-            </StackPanel>
-        </DockPanel>
+        <!-- 底部操作栏 -->
+        <Border Grid.Row="2" Background="{StaticResource SurfaceAltBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                Padding="14,9">
+            <DockPanel LastChildFill="False">
+                <CheckBox DockPanel.Dock="Left" x:Name="AutoStartBox" Content="开机自启"
+                          VerticalAlignment="Center"
+                          Checked="AutoStartBox_Changed" Unchecked="AutoStartBox_Changed"/>
+                <Button DockPanel.Dock="Left" Style="{StaticResource BtnGhost}" Content="终端路径..."
+                        Click="TerminalPaths_Click" Margin="12,0,0,0"/>
+                <TextBlock DockPanel.Dock="Right" x:Name="StatusText" Style="{StaticResource HintLabel}"
+                           VerticalAlignment="Center" Margin="10,0,0,0"/>
+                <Button DockPanel.Dock="Right" Style="{StaticResource BtnGhost}" Content="重新加载"
+                        Click="Reload_Click"/>
+            </DockPanel>
+        </Border>
     </Grid>
 </Window>

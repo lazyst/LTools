@@ -8,10 +8,10 @@
         Background="Transparent" FontFamily="{StaticResource UiFont}"
         KeyDown="Window_KeyDown" Deactivated="Window_Deactivated">
     <Border x:Name="Card" Background="{StaticResource SurfaceBrush}"
-            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12"
+            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8"
             Margin="10">
         <Border.Effect>
-            <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.25" Color="#000000"/>
+            <DropShadowEffect BlurRadius="20" ShadowDepth="3" Opacity="0.14" Color="#000000"/>
         </Border.Effect>
         <Grid>
             <Grid.RowDefinitions>
@@ -20,20 +20,20 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- 标题（AHK h45 / s13 bold ≈ 17px） -->
+            <!-- 标题 -->
             <StackPanel Grid.Row="0">
-                <TextBlock x:Name="TitleText" FontWeight="Bold" FontSize="17"
+                <TextBlock x:Name="TitleText" FontWeight="SemiBold" FontSize="15"
                            Foreground="{StaticResource TextBrush}"
                            HorizontalAlignment="Center" Margin="0,14,0,12"/>
-                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"/>
+                <Border Background="{StaticResource BorderBrush}" Height="1"/>
             </StackPanel>
 
-            <!-- 菜单项（AHK leftMargin/rightMargin=15, btnHeight=42, btnGap=6, numberWidth=30） -->
-            <StackPanel Grid.Row="1" x:Name="ItemsHost" Margin="15,4,15,4"/>
+            <!-- 菜单项 -->
+            <StackPanel Grid.Row="1" x:Name="ItemsHost" Margin="12,6,12,6"/>
 
-            <!-- 关闭（AHK h36） -->
-            <StackPanel Grid.Row="2" Margin="15,4,15,12">
-                <Button Style="{StaticResource Btn}" Content="关闭 (Esc)" MinHeight="36"
+            <!-- 关闭 -->
+            <StackPanel Grid.Row="2" Margin="12,6,12,12">
+                <Button Style="{StaticResource BtnGhost}" Content="关闭 (Esc)" MinHeight="34"
                         HorizontalAlignment="Stretch" Click="Close_Click"/>
             </StackPanel>
         </Grid>

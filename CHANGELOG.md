@@ -2,6 +2,34 @@
 
 所有项目的重要更改都将记录在此文件中。
 
+## \[v2.1.0\] - 2026-09-27
+
+### 🎨 视觉与交互重构
+
+全局视觉风格重做，去除「AI 工具味」，转向中性灰黑克制配色（Zinc 系），更精致、简洁、清新。
+
+- **配色重构（`Themes/Modern.xaml`）**：背景 `#FAFAFA`、文字 `#18181B`、边框 `#E4E4E7`；主操作按钮改为黑底白字（`#18181B`），不再使用 Tailwind 蓝；危险按钮改为透明底红字红边；选中态用浅灰底（`#F4F4F5`）而非蓝色高亮。
+- **控件模板补全**：自定义 TextBox（聚焦变深灰边框）、ComboBox（自定义下拉 + 圆角弹层）、CheckBox（黑底勾选）、ListBox/ListViewItem（圆角选中态）、DataGrid、细窄 ScrollBar、暗色 ToolTip、ContextMenu/MenuItem、带细线的 GridSplitter。
+- **统一圆角与字号**：按钮 5px、卡片 8px；正文 13px、辅助 12px，移除隐式 `TextBlock.FontSize` 以恢复容器字号继承。
+- **自定义标题栏（`Views/Controls/TitleBar`）**：所有窗口改用 `WindowStyle="None"` + `WindowChrome`，统一自绘标题栏（拖动 / 最小化 / 最大化 / 关闭），关闭按钮悬停变红。标题文字绑定窗口 `Title`。
+- **最大化修正（`WindowChromeHelper`）**：挂钩 `WM_GETMINMAXINFO` 钳制到当前显示器工作区，避免最大化时内容溢出；对话框禁止双击标题栏最大化。
+
+### ✨ 新增
+
+- **设置实时自动保存**：菜单组/菜单项的增删改后防抖 800ms 自动写回 JSON，移除「保存配置」按钮，底部状态栏显示「保存中… / 已自动保存」；关闭窗口前冲刷未落盘改动。
+- **速记未保存保护**：切换笔记或关闭窗口时若有未保存改动，弹「保存 / 不保存 / 取消」三选对话框（`ConfirmDialog.ConfirmDiscard`），防止误丢。
+
+### 🔧 改进
+
+- **设置面板性能**：列表改用 `ObservableCollection` 绑定替代全量 `Clear+Add`，移除 `_suppressGroupSelection` / `_itemDisplayToIndex` 等手动状态维护。
+- **速记窗口重构**：去掉行号 gutter 与 GridView，改用自定义列表项模板（标题 + 缩短为 `M/d HH:mm` 的时间）；左栏精简为分类下拉（右键管理分类）+ 搜索占位符 + 新建；空列表显示「暂无速记」引导；右侧标题与正文以细线分隔的无边内联编辑器呈现。
+- **设置/速记布局**：双列改用 GridSplitter 细线分隔取代双卡片边框，减少视觉噪音。
+- **菜单弹出**：卡片圆角 8、阴影更柔、标题字号降、菜单项改用幽灵按钮、按钮高度 42→36。
+- **帮助面板**：Accent 蓝色标题栏改为中性灰，统一自定义标题栏风格。
+- **对话框统一**：InputDialog / ConfirmDialog / MenuItemEditDialog / TerminalPathsDialog 均改用自定义标题栏与统一样式；TerminalPathsDialog 去掉冗余「关闭」按钮。
+
+---
+
 ## \[v2.0.5\] - 2026-09-15
 
 ### 🐛 修复

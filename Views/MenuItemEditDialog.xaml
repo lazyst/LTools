@@ -1,63 +1,81 @@
 <Window x:Class="CapsLockPro.Views.MenuItemEditDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="菜单项" Width="400" ResizeMode="NoResize" SizeToContent="Height"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:CapsLockPro.Views.Controls"
+        Width="420" ResizeMode="NoResize" SizeToContent="Height"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        Background="{StaticResource BgBrush}" FontFamily="{StaticResource UiFont}">
-    <Grid Margin="14">
+        WindowStyle="None"
+        Background="{StaticResource BgBrush}" FontFamily="{StaticResource UiFont}" FontSize="13">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="36"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="80"/>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
 
-        <TextBlock Grid.Row="0" Grid.Column="0" Text="名称:" VerticalAlignment="Center" Margin="0,6"/>
-        <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" x:Name="NameBox" Margin="0,4" MinHeight="30" TextChanged="UpdatePreview"/>
+        <controls:TitleBar Grid.Row="0" ShowMinimize="False" ShowMaximize="False"/>
 
-        <TextBlock Grid.Row="1" Grid.Column="0" Text="命令:" VerticalAlignment="Center" Margin="0,6"/>
-        <TextBox Grid.Row="1" Grid.Column="1" x:Name="CmdBox" Margin="0,4" MinHeight="30" TextChanged="UpdatePreview"/>
-        <Button Grid.Row="1" Grid.Column="2" x:Name="PickFileBtn" Style="{StaticResource Btn}" Content="选择..."
-                VerticalAlignment="Center" Margin="8,0,0,0" Click="PickFile_Click"
-                ToolTip="选择要执行的文件或文件夹" Visibility="Collapsed">
-            <Button.ContextMenu>
-                <ContextMenu>
-                    <MenuItem Header="选择文件..." Click="PickFile_MenuClick" Tag="file"/>
-                    <MenuItem Header="选择文件夹..." Click="PickFile_MenuClick" Tag="folder"/>
-                </ContextMenu>
-            </Button.ContextMenu>
-        </Button>
+        <Grid Grid.Row="1" Margin="20,16,20,18">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="72"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
-        <TextBlock Grid.Row="2" Grid.Column="0" Text="终端:" VerticalAlignment="Center" Margin="0,6"/>
-        <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,4">
-            <ComboBox x:Name="TerminalCombo" MinHeight="30"
-                      SelectionChanged="Terminal_Changed"/>
-            <TextBlock x:Name="TerminalDesc" FontSize="11" Foreground="#888" Margin="0,2,0,0" TextWrapping="Wrap"/>
-        </StackPanel>
-        <CheckBox Grid.Row="2" Grid.Column="2" x:Name="KeepWindowCheck" Content="保持窗口"
-                  VerticalAlignment="Center" Margin="8,0,0,0" Checked="UpdatePreview" Unchecked="UpdatePreview"/>
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="名称" Style="{StaticResource SectionLabel}" Margin="0,7"/>
+            <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" x:Name="NameBox" Margin="0,4" TextChanged="UpdatePreview"/>
 
-        <TextBlock Grid.Row="3" Grid.Column="0" Text="工作目录:" VerticalAlignment="Center" Margin="0,6"/>
-        <TextBox Grid.Row="3" Grid.Column="1" x:Name="WorkdirBox" Margin="0,4" MinHeight="30"
-                  ToolTip="留空默认桌面" TextChanged="UpdatePreview"/>
-        <Button Grid.Row="3" Grid.Column="2" Style="{StaticResource Btn}" Content="选择..."
-                VerticalAlignment="Center" Margin="8,0,0,0" Click="BrowseWorkdir_Click"
-                ToolTip="从文件管理器选择工作目录"/>
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="命令" Style="{StaticResource SectionLabel}" Margin="0,7"/>
+            <TextBox Grid.Row="1" Grid.Column="1" x:Name="CmdBox" Margin="0,4" TextChanged="UpdatePreview"/>
+            <Button Grid.Row="1" Grid.Column="2" x:Name="PickFileBtn" Style="{StaticResource BtnGhost}"
+                    Content="选择…" VerticalAlignment="Center" Margin="8,0,0,0" Click="PickFile_Click"
+                    ToolTip="选择要执行的文件或文件夹" Visibility="Collapsed">
+                <Button.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="选择文件..." Click="PickFile_MenuClick" Tag="file"/>
+                        <MenuItem Header="选择文件夹..." Click="PickFile_MenuClick" Tag="folder"/>
+                    </ContextMenu>
+                </Button.ContextMenu>
+            </Button>
 
-        <TextBlock Grid.Row="4" Grid.Column="0" Text="启动命令:" VerticalAlignment="Center" Margin="0,6"/>
-        <TextBox Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" x:Name="PreviewBox" Margin="0,4" MinHeight="30" IsReadOnly="True"
-                  ToolTip="终端路由器实际将执行的命令"/>
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="终端" Style="{StaticResource SectionLabel}" Margin="0,7"/>
+            <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,4">
+                <ComboBox x:Name="TerminalCombo" SelectionChanged="Terminal_Changed"/>
+                <TextBlock x:Name="TerminalDesc" Style="{StaticResource HintLabel}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+            <CheckBox Grid.Row="2" Grid.Column="2" x:Name="KeepWindowCheck" Content="保持窗口"
+                      VerticalAlignment="Top" Margin="8,6,0,0"
+                      Checked="UpdatePreview" Unchecked="UpdatePreview"/>
 
-        <StackPanel Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button Style="{StaticResource BtnPrimary}" Content="确定" MinWidth="80" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click"/>
-            <Button Style="{StaticResource Btn}" Content="取消" MinWidth="80" IsCancel="True"/>
-        </StackPanel>
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="工作目录" Style="{StaticResource SectionLabel}" Margin="0,7"/>
+            <TextBox Grid.Row="3" Grid.Column="1" x:Name="WorkdirBox" Margin="0,4"
+                      ToolTip="留空默认桌面" TextChanged="UpdatePreview"/>
+            <Button Grid.Row="3" Grid.Column="2" Style="{StaticResource BtnGhost}" Content="选择…"
+                    VerticalAlignment="Center" Margin="8,0,0,0" Click="BrowseWorkdir_Click"
+                    ToolTip="从文件管理器选择工作目录"/>
+
+            <TextBlock Grid.Row="4" Grid.Column="0" Text="预览" Style="{StaticResource SectionLabel}" Margin="0,7"/>
+            <TextBox Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" x:Name="PreviewBox" Margin="0,4"
+                      IsReadOnly="True" ToolTip="终端路由器实际将执行的命令"/>
+
+            <StackPanel Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal"
+                        HorizontalAlignment="Right" Margin="0,14,0,0">
+                <Button Style="{StaticResource BtnGhost}" Content="取消" MinWidth="78" Margin="0,0,8,0" IsCancel="True"/>
+                <Button Style="{StaticResource BtnPrimary}" Content="确定" MinWidth="78" IsDefault="True" Click="Ok_Click"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>

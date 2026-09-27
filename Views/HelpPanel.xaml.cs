@@ -26,6 +26,4 @@ public partial class HelpPanelWindow : Window
         _isClosing = true;
         try { Close(); } catch { /* 静默 */ }
     }
-
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }

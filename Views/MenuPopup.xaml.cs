@@ -45,9 +45,9 @@ public partial class MenuPopupWindow : Window
 
             var btn = new Button
             {
-                Style = (Style)FindResource("Btn"),
+                Style = (Style)FindResource("BtnGhost"),
                 Content = itemNames[i],
-                MinHeight = 42,
+                MinHeight = 36,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Left,
             };

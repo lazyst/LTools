@@ -7,7 +7,7 @@
         ShowInTaskbar="False" ResizeMode="NoResize" Focusable="False"
         WindowStartupLocation="Manual"
         Background="Transparent" ShowActivated="False">
-    <Border Background="#1E1F2D" CornerRadius="6" Padding="12,7"
+    <Border Background="#18181B" CornerRadius="6" Padding="12,7"
             BorderBrush="#00000000" BorderThickness="0" MaxWidth="380">
         <TextBlock x:Name="TipText" Foreground="White" FontSize="13"
                    FontFamily="{StaticResource UiFont}" TextWrapping="Wrap"/>
