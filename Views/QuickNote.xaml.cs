@@ -124,22 +124,52 @@ public partial class QuickNoteWindow : Window
         NewNote();
     }
 
-    private void Save_Click(object sender, RoutedEventArgs e) => SaveCurrent();
+    /// <summary>删除列表中选中的速记（右键菜单 / Ctrl+Del）。删除的是列表条目，
+    /// 只有恰好是正在编辑的笔记时才清空编辑区。</summary>
+    private void DeleteNote_Click(object sender, RoutedEventArgs e) => DeleteSelectedNote();
 
-    private void Delete_Click(object sender, RoutedEventArgs e)
+    private void DeleteSelectedNote()
     {
-        if (_current == null || _current.IsNew)
+        var row = NoteList.SelectedItem as NoteRow;
+        if (row == null)
         {
-            ConfirmDialog.Info(this, "删除速记", "当前是新建未保存内容，没有可删除的速记");
+            ConfirmDialog.Info(this, "删除速记", "请先在列表中选中要删除的速记");
             return;
         }
-        var name = Path.GetFileName(_current.Path);
-        if (!ConfirmDialog.Confirm(this, "删除速记", "确认删除「" + name + "」？此操作不可撤销。", danger: true)) return;
-        _repo.Delete(_current.Path);
+
+        bool isCurrent = _current != null
+            && string.Equals(_current.Path, row.Path, StringComparison.OrdinalIgnoreCase);
+
+        string path = row.Path;
+        if (isCurrent)
+        {
+            // 新建未保存：磁盘上没有对应文件
+            if (_current!.IsNew)
+            {
+                ConfirmDialog.Info(this, "删除速记", "当前是新建未保存内容，没有可删除的速记");
+                return;
+            }
+            // 已保存但有未落盘改动：先保存/丢弃/取消，避免静默丢失修改
+            if (_dirty)
+            {
+                if (!EnsureSavedOrDiscarded()) return;
+                // 保存后路径可能变更（新建、改名或改分类），要按最终路径删除
+                path = _current?.Path ?? row.Path;
+            }
+        }
+
+        var name = Path.GetFileName(path);
+        if (!ConfirmDialog.Confirm(this, "删除速记", "确认删除「" + name + "」？此操作不可撤销。", danger: true))
+            return;
+
+        _repo.Delete(path);
         TrayService.Notify("已删除「" + name + "」");
-        _current = null;
-        _dirty = false;
-        NewNote();
+        if (isCurrent)
+        {
+            _current = null;
+            _dirty = false;
+            NewNote();
+        }
         ReloadList();
     }
 
@@ -156,6 +186,15 @@ public partial class QuickNoteWindow : Window
         var entry = _repo.Load(row.Path);
         if (entry == null) { ReloadList(); return; }
         LoadEntry(entry);
+    }
+
+    /// <summary>右键列表项：先确定性选中命中项，再弹出右键菜单。
+    /// WPF 的 ListBox 默认只在左键下选中，右键不保证更新 SelectedItem；
+    /// 若不处理，菜单的「删除」可能作用于陈旧选中项而误删。</summary>
+    private void NoteList_RightClick(object sender, MouseButtonEventArgs e)
+    {
+        var item = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+        if (item?.DataContext is NoteRow) NoteList.SelectedItem = item.DataContext;
     }
 
     private void LoadEntry(NoteEntry entry)
@@ -358,10 +397,23 @@ public partial class QuickNoteWindow : Window
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
         {
-            SaveCurrent();
-            e.Handled = true;
+            if (e.Key == Key.S)
+            {
+                SaveCurrent();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Delete && !IsTextCaretFocused())
+            {
+                // 焦点在标题/正文时 Ctrl+Del 留给编辑（删到文末），不触发删除速记
+                DeleteSelectedNote();
+                e.Handled = true;
+            }
         }
     }
+
+    /// <summary>焦点是否落在标题或正文编辑框（有光标可输入的文本控件）。</summary>
+    private static bool IsTextCaretFocused() => Keyboard.FocusedElement is TextBox;
+
 }
