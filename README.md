@@ -74,12 +74,6 @@ dotnet publish -c Release -r win-x64 --self-contained false
   - 普通文本 → Bing 搜索
   - 无选中 → 不执行
 
-### 3.4 翻译助手
-
-- **CapsLock+T**：打开翻译助手窗口
-  - 内嵌 WebView2 浏览器，自动填入翻译指令
-  - 可直接粘贴文本或图片进行翻译
-
 ## 4. 文本编辑增强
 
 ### 4.1 光标移动

@@ -9,7 +9,6 @@ namespace CapsLockPro.Features;
 /// 无边框置顶工具窗口 + 只读滚动文本展示热键速查表（9 分类）；
 /// Esc / 失焦 / 再次按 CapsLock+`` ` `` 关闭。
 /// </summary>
-/// <remarks>翻译助手(CapsLock+T)按用户决定不复刻。</remarks>
 internal static class HelpPanel
 {
     private static HelpPanelWindow? _window;
