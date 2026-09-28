@@ -395,10 +395,9 @@ public partial class ConfigHelperWindow : Window
                 Style = (Style)FindResource("BtnGhostDanger"),
                 Content = "删除页",
                 MinWidth = 64,
-                Tag = pi,
             };
             delBtn.SetValue(Grid.ColumnProperty, 1);
-            delBtn.Click += DeletePage_Click;
+            delBtn.Click += (_, _) => DeletePage(pi);
             header.Children.Add(delBtn);
             sp.Children.Add(header);
 
@@ -424,7 +423,6 @@ public partial class ConfigHelperWindow : Window
             Style = (Style)FindResource("BtnGhost"),
             Margin = new Thickness(2),
             MinHeight = 78,
-            Tag = (pageIdx, slotIdx),
             Cursor = Cursors.Hand,
         };
         var content = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
@@ -489,16 +487,14 @@ public partial class ConfigHelperWindow : Window
         MarkSuperDirty();
     }
 
-    private void DeletePage_Click(object sender, RoutedEventArgs e)
+    private void DeletePage(int pi)
     {
-        if (sender is Button b && b.Tag is int pi && pi >= 0 && pi < _superPages.Count)
-        {
-            if (!ConfirmDialog.Confirm(this, "删除页", $"确定删除第 {pi + 1} 页吗？", danger: true)) return;
-            _superPages.RemoveAt(pi);
-            _superDirty = true;
-            BuildSuperPagesUI();
-            MarkSuperDirty();
-        }
+        if (pi < 0 || pi >= _superPages.Count) return;
+        if (!ConfirmDialog.Confirm(this, "删除页", $"确定删除第 {pi + 1} 页吗？", danger: true)) return;
+        _superPages.RemoveAt(pi);
+        _superDirty = true;
+        BuildSuperPagesUI();
+        MarkSuperDirty();
     }
 
     private void ThresholdSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

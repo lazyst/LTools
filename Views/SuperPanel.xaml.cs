@@ -119,7 +119,6 @@ public partial class SuperPanelWindow : Window
             Style = (Style)FindResource("BtnGhost"),
             Margin = new Thickness(3),
             MinHeight = 82,
-            Tag = slot,
             Cursor = Cursors.Hand,
             Background = (Brush)FindResource("SurfaceAltBrush"),
             BorderBrush = (Brush)FindResource("BorderBrush"),
