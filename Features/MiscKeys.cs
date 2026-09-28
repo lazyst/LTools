@@ -39,8 +39,9 @@ internal static class MiscKeys
     /// 切换 Win11 原生放大镜（对应 AHK Tab:: 放大镜）。
     /// 已开则关闭；未开则发 Win+= 打开，1s 后最小化放大镜控制窗口。
     /// 在后台线程执行（含 1s Sleep，避免阻塞钩子）。
+    /// <see cref="InternalActionRegistry"/> 的 <c>magnifier.toggle</c> 直接复用本方法。
     /// </summary>
-    private static void ToggleMagnifier() => Task.Run(() =>
+    internal static void ToggleMagnifier() => Task.Run(() =>
     {
         try
         {

@@ -262,7 +262,7 @@ ActionExecutor.Run(ActionDto action)
 
 ## 11. 实施计划
 
-> **总体进度：0 / 5 阶段**
+> **总体进度：1 / 5 阶段**
 >
 > 标记约定：`- [ ]` 未开始 · `- [x]` 完成。每个阶段结束须满足该阶段「验收标准」且 `dotnet build` **0 错 0 警**方可进入下一阶段。每阶段独立可运行、可测。
 
@@ -270,19 +270,19 @@ ActionExecutor.Run(ActionDto action)
 
 **目标**：让「一个动作能跑起来」，无 UI。
 
-- [ ] 定义动作类型模型（`Features/ActionTypes.cs`）：`ActionType` 枚举、`ActionDto`、`StepDto`，字段见 §2/§3/§4。
-- [ ] 实现 `IconCatalog`：精选 ~40 个 Segoe MDL2 Assets 字形，名称→码点映射（§3.1）。
-- [ ] 实现 `InternalActionRegistry`：注册 6 个内部命令（§7）；`windowPin` 等需坐标的命令接受坐标参数。
-- [ ] 实现 `ActionExecutor.Run(ActionDto)`：按 Type 分发（§8）；复用 `TerminalLauncher`；composite 顺序执行（Delay / OnFail / 防环）。
-- [ ] 执行 spawn 后台线程；失败统一 `CrashLog.Write`（含动作名 / 步骤序号 / 异常）。
-- [ ] 临时验证入口（`--smoke=action` 启动参数或临时热键），覆盖 runCommand / openUrl / internal / composite 四类，交付前移除。
+- [x] 定义动作类型模型（`Features/ActionTypes.cs`）：`ActionType` 枚举、`ActionDto`、`StepDto`，字段见 §2/§3/§4。
+- [x] 实现 `IconCatalog`：精选 ~40 个 Segoe MDL2 Assets 字形，名称→码点映射（§3.1）。
+- [x] 实现 `InternalActionRegistry`：注册 6 个内部命令（§7）；`windowPin` 等需坐标的命令接受坐标参数。
+- [x] 实现 `ActionExecutor.Run(ActionDto)`：按 Type 分发（§8）；复用 `TerminalLauncher`；composite 顺序执行（Delay / OnFail / 防环）。
+- [x] 执行 spawn 后台线程；失败统一 `CrashLog.Write`（含动作名 / 步骤序号 / 异常）。
+- [x] 临时验证入口（`--smoke=action` 启动参数或临时热键），覆盖 runCommand / openUrl / internal / composite 四类，交付前移除。
 
 **验收标准**
-- [ ] 四类动作均能执行：runCommand（终端路由）、openUrl（默认浏览器）、internal（如速记 toggle）、composite（两步 + 延迟）。
-- [ ] 组合防环：A→B→A 时中止并写 CrashLog，不无限递归。
-- [ ] 失败步骤写入 CrashLog（动作名 / 序号 / 异常）。
-- [ ] 执行均在后台线程，钩子回调路径不阻塞（>300ms 约束）。
-- [ ] `dotnet build` 0 错 0 警。
+- [x] 四类动作均能执行：runCommand（终端路由）、openUrl（默认浏览器）、internal（如速记 toggle）、composite（两步 + 延迟）。
+- [x] 组合防环：A→B→A 时中止并写 CrashLog，不无限递归。
+- [x] 失败步骤写入 CrashLog（动作名 / 序号 / 异常）。
+- [x] 执行均在后台线程，钩子回调路径不阻塞（>300ms 约束）。
+- [x] `dotnet build` 0 错 0 警。
 
 ---
 

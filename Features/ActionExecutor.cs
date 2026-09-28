@@ -1,0 +1,310 @@
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+using CapsLockPro.Core;
+using CapsLockPro.Native;
+
+namespace CapsLockPro.Features;
+
+/// <summary>
+/// 统一动作执行引擎（对应计划 §8）。按 <see cref="ActionType"/> 分发：
+/// <list type="bullet">
+/// <item>launchApp → <see cref="Process.Start"/>(target, args, workdir)</item>
+/// <item>openFile / openFolder / openUrl → ShellExecute（默认程序打开）</item>
+/// <item>runCommand → 复用 <see cref="TerminalLauncher"/> 终端路由；direct 走 ShellExecute</item>
+/// <item>internal → <see cref="InternalActionRegistry"/> 分发（dispatch 到 UI 线程执行）</item>
+/// <item>composite → 顺序执行 <see cref="StepDto"/>（延迟 / 失败策略 / 防环）</item>
+/// </list>
+/// </summary>
+/// <remarks>
+/// 线程模型：<see cref="Run"/> 一律 spawn 到后台线程（钩子回调不得阻塞 &gt;300ms）；
+/// internal 动作触碰 WPF 窗口，在后台线程内用 <see cref="System.Windows.Threading.Dispatcher.Invoke"/>
+/// 同步投递到 UI 线程执行——同步等待保证 composite 步骤严格顺序、Delay 语义成立，
+/// 且步骤失败能上抛给 <see cref="OnFailStrategy"/> 处理。
+/// 失败由调用方统一经 <see cref="CrashLog.Write"/> 记录（含动作名 / 步骤序号 / 异常）。
+/// </remarks>
+internal static class ActionExecutor
+{
+    /// <summary>执行动作（后台线程，不阻塞调用方）。光标坐标默认取当前位置。</summary>
+    public static void Run(ActionDto action) => Run(action, 0, 0);
+
+    /// <summary>
+    /// 执行动作（spawn 后台线程，不阻塞调用方）。cursorX/cursorY 为面板唤起时记录的光标坐标
+    /// （0=取当前光标位置，供 <c>windowPin.toggle</c> 等需坐标的内部命令使用）。
+    /// </summary>
+    public static void Run(ActionDto action, int cursorX, int cursorY)
+    {
+        Task.Run(() =>
+        {
+            try { Execute(action, cursorX, cursorY, new HashSet<string>()); }
+            catch (Exception ex) { CrashLog.Write($"ActionExecutor[{action.Name}]", ex); }
+        });
+    }
+
+    // —— 同步执行（已位于后台线程，或被 composite 步骤调用）——
+    // 失败一律上抛（不在此吞掉），由 Run 顶层 / composite 步骤各自的 catch 记录并按 OnFail 决策。
+
+    private static void Execute(ActionDto action, int cursorX, int cursorY, HashSet<string> compositeStack)
+    {
+        switch (action.Type)
+        {
+            case ActionType.launchApp:
+                LaunchApp(action);
+                break;
+            case ActionType.openFile:
+            case ActionType.openFolder:
+            case ActionType.openUrl:
+                ShellExecute(action);
+                break;
+            case ActionType.runCommand:
+                RunCommand(action);
+                break;
+            case ActionType.@internal:
+                DispatchInternal(action, cursorX, cursorY);
+                break;
+            case ActionType.composite:
+                RunComposite(action, cursorX, cursorY, compositeStack);
+                break;
+            default:
+                throw new InvalidOperationException($"未知动作类型: {action.Type}");
+        }
+    }
+
+    // —— launchApp ——
+    private static void LaunchApp(ActionDto a)
+    {
+        if (string.IsNullOrWhiteSpace(a.Target))
+            throw new InvalidOperationException($"launchApp 缺少 Target: {a.Name}");
+        Process.Start(BuildPsi(a.Target!, a.Args, a.Workdir));
+    }
+
+    // —— openFile / openFolder / openUrl（ShellExecute 走默认程序）——
+    private static void ShellExecute(ActionDto a)
+    {
+        string? target = a.Type switch
+        {
+            ActionType.openFile => a.Path,
+            ActionType.openFolder => a.Path,
+            ActionType.openUrl => a.Url,
+            _ => null,
+        };
+        if (string.IsNullOrWhiteSpace(target))
+            throw new InvalidOperationException($"{a.Type} 缺少路径/URL: {a.Name}");
+        Process.Start(new ProcessStartInfo(target!) { UseShellExecute = true });
+    }
+
+    // —— runCommand（复用 TerminalLauncher 终端路由）——
+    private static void RunCommand(ActionDto a)
+    {
+        string cmd = a.Cmd ?? "";
+        string terminal = a.Terminal ?? "direct";
+        bool keepWindow = a.KeepWindow ?? false;
+        string workdir = a.Workdir ?? "";
+
+        // direct / 空 terminal：走 ShellExecute（TerminalLauncher 的 direct 分支为 no-op）
+        if (terminal == "direct" || terminal.Length == 0)
+        {
+            if (string.IsNullOrWhiteSpace(cmd))
+                throw new InvalidOperationException($"runCommand 缺少 Cmd: {a.Name}");
+            RunDirect(cmd, workdir);
+            return;
+        }
+
+        var r = TerminalLauncher.TryBuildLaunch(terminal, keepWindow, cmd, workdir);
+        if (!r.Ok)
+        {
+            if (r.Error == null) return; // 空命令仅开 shell 无 exe 时的 no-op
+            TrayService.Notify(r.Error); // 替代原 MenuSystem 的模态提示，不阻塞动作路径
+            throw new InvalidOperationException(r.Error);
+        }
+        Process.Start(BuildPsi(r.Exe!, r.Args, r.Workdir));
+    }
+
+    /// <summary>direct 终端：拆 exe+args 启动，失败回退 ShellExecute（URL/文档/含空格非可执行首段）。</summary>
+    private static void RunDirect(string cmd, string workdir)
+    {
+        string wd = string.IsNullOrWhiteSpace(workdir)
+            ? Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+            : workdir.Trim();
+        try
+        {
+            TrySplitCommandLine(cmd, out string exe, out string args);
+            Process.Start(BuildPsi(exe, args, wd));
+        }
+        catch
+        {
+            // 回退：ShellExecute 处理 URL/文档等非可执行目标（回退再失败则上抛）
+            Process.Start(new ProcessStartInfo(cmd) { UseShellExecute = true, WorkingDirectory = wd });
+        }
+    }
+
+    /// <summary>构造 ProcessStartInfo（工作目录仅在存在时设置）。</summary>
+    private static ProcessStartInfo BuildPsi(string exe, string? args, string? workdir)
+    {
+        var psi = new ProcessStartInfo(exe)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = false,
+        };
+        if (!string.IsNullOrEmpty(args)) psi.Arguments = args;
+        if (!string.IsNullOrEmpty(workdir) && Directory.Exists(workdir))
+            psi.WorkingDirectory = workdir;
+        return psi;
+    }
+
+    /// <summary>命令行拆分：首段（带引号或到空格）为 exe，其余为参数。</summary>
+    private static bool TrySplitCommandLine(string cmd, out string exe, out string args)
+    {
+        cmd = cmd.Trim();
+        exe = ""; args = "";
+        if (cmd.Length == 0) return false;
+        if (cmd[0] == '"')
+        {
+            int end = cmd.IndexOf('"', 1);
+            if (end < 0) { exe = cmd[1..]; return true; }
+            exe = cmd[1..end];
+            args = cmd[(end + 1)..].Trim();
+            return true;
+        }
+        int sp = cmd.IndexOf(' ');
+        if (sp < 0) { exe = cmd; return true; }
+        exe = cmd[..sp];
+        args = cmd[(sp + 1)..].Trim();
+        return true;
+    }
+
+    // —— internal（内部命令分发到 UI 线程，同步等待）——
+    private static void DispatchInternal(ActionDto a, int cursorX, int cursorY)
+    {
+        if (string.IsNullOrWhiteSpace(a.Command))
+            throw new InvalidOperationException($"internal 缺少 Command: {a.Name}");
+        if (!InternalActionRegistry.TryGet(a.Command!, out var handler) || handler == null)
+            throw new InvalidOperationException($"未注册的内部命令: {a.Command}");
+
+        // 光标坐标为 0 时取当前位置（面板唤起时记录的坐标优先）
+        int x = cursorX, y = cursorY;
+        if (x == 0 && y == 0 && Win32.GetCursorPos(out var pt))
+        {
+            x = pt.X; y = pt.Y;
+        }
+
+        // internal 动作触碰 WPF 窗口（QuickNote/Config/HelpPanel 等）：同步 dispatch 到 UI 线程。
+        // 同步（Invoke 而非 BeginInvoke）保证 composite 步骤严格顺序、Delay 语义成立，
+        // 且步骤内异常能上抛给调用方按 OnFail 处理。
+        var disp = Application.Current?.Dispatcher;
+        if (disp == null) { handler(x, y); return; }
+        disp.Invoke(new Action(() => handler(x, y)));
+    }
+
+    // —— composite（顺序执行步骤，防环）——
+    private static void RunComposite(ActionDto a, int cursorX, int cursorY, HashSet<string> compositeStack)
+    {
+        if (a.Steps.Count == 0) return;
+
+        // 防环：正在执行的 composite Id 栈，遇重复立即中止
+        if (compositeStack.Contains(a.Id))
+        {
+            CrashLog.Write("ActionExecutor",
+                new InvalidOperationException($"组合动作循环引用，已中止: {a.Id} ({a.Name})"));
+            return;
+        }
+        compositeStack.Add(a.Id);
+
+        for (int i = 0; i < a.Steps.Count; i++)
+        {
+            var step = a.Steps[i];
+            if (step.DelayMs > 0)
+                Thread.Sleep(step.DelayMs);
+
+            var stepAction = ActionRegistry.FindById(step.ActionId);
+            if (stepAction == null)
+            {
+                CrashLog.Write($"ActionExecutor[{a.Name}].Step{i + 1}",
+                    new InvalidOperationException($"步骤引用的动作不存在: {step.ActionId}"));
+                if (OnFailOf(step, a) == OnFailStrategy.abort) break;
+                continue;
+            }
+
+            try
+            {
+                Execute(stepAction, cursorX, cursorY, compositeStack);
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write($"ActionExecutor[{a.Name}].Step{i + 1}({stepAction.Name})", ex);
+                if (OnFailOf(step, a) == OnFailStrategy.abort) break;
+            }
+        }
+
+        compositeStack.Remove(a.Id);
+    }
+
+    /// <summary>解析步骤失败策略：步骤显式值 &gt; 组合级默认 &gt; continue（§4）。</summary>
+    private static OnFailStrategy OnFailOf(StepDto step, ActionDto composite) =>
+        step.OnFail ?? composite.CompositeOnFail ?? OnFailStrategy.@continue;
+
+    // —— 临时冒烟测试（--smoke=action，交付前移除）——
+
+    /// <summary>
+    /// 临时验证入口：覆盖 runCommand / openUrl / internal / composite 四类 + 防环测试。
+    /// 通过 <c>--smoke=action</c> 启动参数触发。交付前移除。
+    /// 依赖 <see cref="InternalActionRegistry.RegisterDefaults"/>（App.OnStartup 已调用）。
+    /// </summary>
+    internal static void SmokeTest()
+    {
+        var url = new ActionDto
+        {
+            Id = "s_url", Name = "冒烟:打开网址", Type = ActionType.openUrl,
+            Url = "https://example.com", Icon = "globe",
+        };
+        var cmd = new ActionDto
+        {
+            Id = "s_cmd", Name = "冒烟:运行命令", Type = ActionType.runCommand,
+            Cmd = "echo CapsLock-Pro smoke test OK", Terminal = "pwsh7", KeepWindow = true,
+            Icon = "terminal",
+        };
+        var note = new ActionDto
+        {
+            Id = "s_note", Name = "冒烟:速记开关", Type = ActionType.@internal,
+            Command = "quickNote.toggle", Icon = "note",
+        };
+        var combo = new ActionDto
+        {
+            Id = "s_combo", Name = "冒烟:组合(网址+速记)", Type = ActionType.composite,
+            Icon = "composite",
+            Steps = new()
+            {
+                new() { ActionId = "s_url", DelayMs = 0, OnFail = OnFailStrategy.abort },
+                new() { ActionId = "s_note", DelayMs = 800, OnFail = OnFailStrategy.@continue },
+            },
+        };
+        var selfRef = new ActionDto
+        {
+            Id = "s_cycle", Name = "冒烟:自环检测", Type = ActionType.composite,
+            Steps = new() { new() { ActionId = "s_cycle", DelayMs = 0, OnFail = OnFailStrategy.@continue } },
+        };
+
+        ActionRegistry.Clear();
+        ActionRegistry.RegisterAll(new[] { url, cmd, note, combo, selfRef });
+
+        TrayService.Notify("冒烟测试开始：依次执行 openUrl / runCommand / internal / composite / 防环");
+
+        // 后台顺序执行（不阻塞启动）
+        Task.Run(() =>
+        {
+            Thread.Sleep(1500);
+            Run(url);                          // openUrl → 浏览器
+            Thread.Sleep(1500);
+            Run(cmd);                          // runCommand → pwsh 窗口
+            Thread.Sleep(1500);
+            Run(note);                         // internal → 速记窗口开关
+            Thread.Sleep(2000);
+            Run(combo);                        // composite → 网址 + 速记（延迟 800ms）
+            Thread.Sleep(1500);
+            Run(selfRef);                      // 防环 → 应中止并写 CrashLog
+            Thread.Sleep(500);
+            TrayService.Notify("冒烟测试完成（查看 crash.log 确认防环日志）");
+        });
+    }
+}
