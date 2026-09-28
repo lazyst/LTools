@@ -10,6 +10,8 @@ namespace CapsLockPro.Config;
 /// 取代旧的 CapsLock++.ini：菜单/终端路径/鼠标速度统一为一个 JSON 对象，
 /// 任何部分修改都「读-改-写」整个文件（配置小、无并发保存，比 ini 逐字段多次全文件 I/O 更优）。
 /// 配置只由应用自身修改（设置面板/快捷键），不面向用户手改。
+/// 发布包只携带 CapsLock++.example.json；用户首次改动保存后才在同目录生成
+/// CapsLock++.json，故升级解压不会覆盖用户已有配置。
 /// </summary>
 public sealed class MenuGroupDto
 {
@@ -47,13 +49,39 @@ public sealed class AppConfig
 
     public static AppConfig Load(string path)
     {
-        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return new AppConfig();
-        try
+        if (!string.IsNullOrEmpty(path) && File.Exists(path))
         {
-            var cfg = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(path, Encoding.UTF8));
-            return cfg ?? new AppConfig();
+            try
+            {
+                var cfg = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(path, Encoding.UTF8));
+                return cfg ?? new AppConfig();
+            }
+            catch { return new AppConfig(); }
         }
-        catch { return new AppConfig(); }
+
+        // 用户配置缺失：回退读同目录示例作为默认模板。
+        // 发布包只携带 CapsLock++.example.json（不携带 CapsLock++.json），
+        // 用户首次保存才在同目录生成 CapsLock++.json，升级解压不会覆盖已有配置。
+        var example = FindExample(path);
+        if (example != null)
+        {
+            try
+            {
+                var cfg = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(example, Encoding.UTF8));
+                if (cfg != null) return cfg;
+            }
+            catch { /* 示例不可读则用内置默认 */ }
+        }
+        return new AppConfig();
+    }
+
+    private static string? FindExample(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+        var dir = Path.GetDirectoryName(path);
+        if (string.IsNullOrEmpty(dir)) return null;
+        var example = Path.Combine(dir, "CapsLock++.example.json");
+        return File.Exists(example) ? example : null;
     }
 
     public void Save(string path)

@@ -35,11 +35,11 @@
       <Link>Icon\CapsLock++.ico</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <!-- 用户私有配置 CapsLock++.json 已加入 .gitignore，仓库不携带；CI/发布一律用示例作为默认配置。
-         仅 Release（含 publish）把示例复制为输出目录的 CapsLock++.json；Debug 不复制，
-         以免覆盖本地开发用的真实配置（ConfigLocator 在 Debug 下回退读取仓库根）。 -->
-    <Content Include="CapsLock++.example.json" Condition="'$(Configuration)' == 'Release'">
-      <Link>CapsLock++.json</Link>
+    <!-- 只随包分发示例配置 CapsLock++.example.json，绝不生成 CapsLock++.json——
+         否则用户用新版 zip 解压覆盖旧版时会把已有的用户配置冲掉。
+         运行时若 CapsLock++.json 缺失，AppConfig.Load 回退读同目录示例作为默认值，
+         首次保存才在同目录生成 CapsLock++.json（见 Core/ConfigLocator + Config/AppConfig）。 -->
+    <Content Include="CapsLock++.example.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
