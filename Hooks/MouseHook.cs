@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Windows.Threading;
 using CapsLockPro.Core;
 using CapsLockPro.Features;
 using CapsLockPro.Native;
@@ -22,6 +23,10 @@ internal static class MouseHook
     private static IntPtr _handle = IntPtr.Zero;
     private static Win32.LowLevelKeyboardProc? _proc; // 签名与 LowLevelMouseProc 兼容
     private static GCHandle _procHandle;
+
+    // —— 裸右键长按唤起超级面板（阶段 5，计划 §5.1）——
+    private static DispatcherTimer? _superPanelTimer;
+    private static bool _suppressRButtonUp;     // 计时器触发后置位：吞掉随后的右键 up 阻止原生菜单
 
     public static void Install()
     {
@@ -65,13 +70,28 @@ internal static class MouseHook
 
                 case Win32.WmRbuttondown:
                 case Win32.WmRbuttonup:
-                    // CapsLock+右键整组吞掉（down+up），否则 WM_RBUTTONUP 仍会合成 WM_CONTEXTMENU
-                    // 弹出原生右键菜单。AHK 原版 RButton:: 默认吞 down+up。
+                    // 优先级（§5.2）：CapsLock 按下 → 走窗口置顶，整组吞掉（down+up），否则
+                    // WM_RBUTTONUP 仍会合成 WM_CONTEXTMENU 弹出原生菜单。AHK 原版 RButton:: 吞 down+up。
                     if (AppState.IsToolEnabled && AppState.IsCapsLockDown)
                     {
                         if ((int)wParam == Win32.WmRbuttondown)
                             WindowPin.ToggleAtCursor(ms.Pt.X, ms.Pt.Y);
                         return (IntPtr)1; // 吞掉
+                    }
+                    // 长按手势的收尾：计时器已触发（面板已/即将打开）→ 吞掉右键 up 阻止原生菜单。
+                    // 必须先于下面的“面板未打开”判断——面板可能在 up 到达前已由 BeginInvoke 创建，
+                    // 此时 SuperPanel.IsOpen 已为真，若先判 IsOpen 会漏吞 up 导致原生菜单泄漏。
+                    if (_suppressRButtonUp && (int)wParam == Win32.WmRbuttonup)
+                    {
+                        _suppressRButtonUp = false;
+                        return (IntPtr)1; // 吞掉 up
+                    }
+                    // 裸右键长按检测（§5.1）：超级面板开关开 且 面板未打开时启动计时；
+                    // 短按（up 先于计时器）→ 停表放行，原生右键菜单不受任何干预。
+                    if (AppState.IsSuperPanelEnabled && !SuperPanel.IsOpen)
+                    {
+                        if ((int)wParam == Win32.WmRbuttondown) StartSuperPanelGesture();
+                        else CancelSuperPanelGesture();
                     }
                     break;
 
@@ -114,6 +134,46 @@ internal static class MouseHook
         }
         return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
     }
+
+    // —— 裸右键长按手势（阶段 5，计划 §5.1）——
+    // 短按（up 先于计时器）→ 停表放行，原生右键菜单不受干预；
+    // 长按（计时器先触发）→ 光标处弹面板 + 标记吞掉随后的右键 up（阻止原生菜单）。
+    // 计时器在主线程 Dispatcher 上跑（钩子回调亦在主线程派发），Tick 内调 SuperPanel.Show() 非阻塞。
+
+    /// <summary>右键 down 启动长按计时（放行 down，不干预短按）。每次 down 重置计时与间隔。</summary>
+    private static void StartSuperPanelGesture()
+    {
+        var t = _superPanelTimer;
+        if (t == null)
+        {
+            t = new DispatcherTimer(DispatcherPriority.Normal, Application.Current.Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(ClampThreshold(AppState.SuperPanelThresholdMs))
+            };
+            t.Tick += OnSuperPanelTimerTick;
+            _superPanelTimer = t;
+        }
+        else
+        {
+            t.Stop();
+            t.Interval = TimeSpan.FromMilliseconds(ClampThreshold(AppState.SuperPanelThresholdMs));
+        }
+        t.Start();
+    }
+
+    /// <summary>短按收尾：停表放行，原生右键菜单照常弹出。</summary>
+    private static void CancelSuperPanelGesture() => _superPanelTimer?.Stop();
+
+    /// <summary>长按成立：光标处弹面板，并标记吞掉随后的右键 up 阻止原生菜单。</summary>
+    private static void OnSuperPanelTimerTick(object? sender, EventArgs e)
+    {
+        _superPanelTimer?.Stop();
+        _suppressRButtonUp = true;
+        SuperPanel.Show();
+    }
+
+    /// <summary>阈值夹到合法区间（100–800ms），防止异常配置导致计时异常。</summary>
+    private static int ClampThreshold(int ms) => ms < 100 ? 100 : (ms > 800 ? 800 : ms);
 
     // —— 资源管理器重命名（对应 lib/Workspace.ahk：LButton / PerformClick / LButtonRenamer）——
 

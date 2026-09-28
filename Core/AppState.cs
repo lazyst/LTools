@@ -32,6 +32,9 @@ internal static class AppState
     /// <summary>超级面板是否启用（与 <see cref="IsToolEnabled"/> 相互独立）。</summary>
     public static volatile bool IsSuperPanelEnabled = true;
 
+    /// <summary>超级面板长按阈值（ms，可调 100–800）。裸右键按住超过此值弹面板（计划 §5.1，阶段 5）。</summary>
+    public static volatile int SuperPanelThresholdMs = 250;
+
     /// <summary>调试提示开关（Ctrl+Alt+I）。</summary>
     public static bool ShowDebugTooltips;
 

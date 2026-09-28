@@ -13,7 +13,7 @@ namespace CapsLockPro.Features;
 /// 以及槽位数据的磁盘读写（经 <see cref="ConfigIO"/> 串行落盘）。
 /// </summary>
 /// <remarks>
-/// 键盘热键唤起（阶段 4：CapsLock+T）与未来的鼠标长按手势（阶段 5）都调 <see cref="Toggle"/> / <see cref="Show"/>。
+/// 键盘备用热键（`CapsLock+T`）与鼠标长按右键手势（阶段 5）都调 <see cref="Toggle"/> / <see cref="Show"/>。
 /// 唤起瞬间用 <see cref="Win32.GetCursorPos"/> 记录光标物理坐标，供 <c>windowPin.toggle</c> 等需坐标的
 /// 内部命令使用（见计划 §7）。槽位数据来自 <see cref="AppConfig.SuperPanelConfig.Pages"/>。
 /// </remarks>

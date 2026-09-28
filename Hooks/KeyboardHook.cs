@@ -120,7 +120,7 @@ internal static class KeyboardHook
                 AppState.OtherKeyPressed = true;
                 if (kb.Vk == Win32.VkSpace) { MouseMode.Enter(); return (IntPtr)1; }
 
-                // 阶段4：超级面板临时热键（CapsLock+T），阶段5 接入手势后保留或移除
+                // 超级面板备用热键（CapsLock+T）：阶段5 已接入长按右键手势，此热键保留为备用入口
                 if (vk == 'T' && AppState.IsSuperPanelEnabled)
                 {
                     SuperPanel.Toggle();

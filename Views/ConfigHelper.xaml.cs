@@ -360,6 +360,7 @@ public partial class ConfigHelperWindow : Window
         SuperPanelBox2.IsChecked = AppState.IsSuperPanelEnabled;
         ThresholdSlider.Value = cfg.SuperPanel.LongPressThresholdMs;
         ThresholdText.Text = $"{(int)ThresholdSlider.Value} ms";
+        AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;   // 与运行态同步（防外部改配置漂移）
         _initializing = false;
 
         BuildSuperPagesUI();
@@ -505,6 +506,7 @@ public partial class ConfigHelperWindow : Window
         if (_initializing) return;
         int v = (int)ThresholdSlider.Value;
         ThresholdText.Text = $"{v} ms";
+        AppState.SuperPanelThresholdMs = v;   // 立即生效（手势读运行态值，不等防抖落盘）
         _superDirty = true;
         MarkSuperDirty();
     }

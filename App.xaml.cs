@@ -63,6 +63,7 @@ public partial class App : Application
         AppState.MouseModeSpeed = cfg.MouseModeSpeed;
         AppState.IsToolEnabled = cfg.CapsLockEnabled;
         AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
+        AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
         ConfigStore.Initialize(cfgPath);
         QuickNote.Initialize(cfgPath);
         ConfigHelper.Initialize(cfgPath);
