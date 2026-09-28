@@ -262,7 +262,7 @@ ActionExecutor.Run(ActionDto action)
 
 ## 11. 实施计划
 
-> **总体进度：1 / 5 阶段**
+> **总体进度：2 / 5 阶段**
 >
 > 标记约定：`- [ ]` 未开始 · `- [x]` 完成。每个阶段结束须满足该阶段「验收标准」且 `dotnet build` **0 错 0 警**方可进入下一阶段。每阶段独立可运行、可测。
 
@@ -290,18 +290,18 @@ ActionExecutor.Run(ActionDto action)
 
 **目标**：菜单端到端按新 schema 运行——项为动作引用、执行走 ActionExecutor。
 
-- [ ] 重写 `AppConfig`：新增 `Actions: List<ActionDto>`、`SuperPanel: SuperPanelConfig`（Enabled / LongPressThresholdMs / Pages）；`MenuGroups` 的 Items 改为 `List<string>`（动作 Id）；移除旧 `MenuItemDto` 的 Cmd/Terminal/KeepWindow/Workdir。
-- [ ] 重写 `CapsLock++.example.json`：新 schema，含若干默认动作 + 示例超级面板页 + 菜单组引用。
-- [ ] `MenuSystem.Load` 改为按 Id 从 `Actions` 解析菜单项；`MenuSystem.SaveToConfig` 改为写动作引用。
-- [ ] 菜单项执行改调 `ActionExecutor.Run`（替代旧 TerminalLauncher 直调）；空组仍发 `(` / `)`。
-- [ ] 验证 `ConfigLocator` 惰性物化 + example 回退仍生效（§9）。
-- [ ] 删除开发机旧 `CapsLock++.json`（schema 不兼容，会回退 example）。
+- [x] 重写 `AppConfig`：新增 `Actions: List<ActionDto>`、`SuperPanel: SuperPanelConfig`（Enabled / LongPressThresholdMs / Pages）；`MenuGroups` 的 Items 改为 `List<string>`（动作 Id）；移除旧 `MenuItemDto` 的 Cmd/Terminal/KeepWindow/Workdir。
+- [x] 重写 `CapsLock++.example.json`：新 schema，含若干默认动作 + 示例超级面板页 + 菜单组引用。
+- [x] `MenuSystem.Load` 改为按 Id 从 `Actions` 解析菜单项；`MenuSystem.SaveToConfig` 改为写动作引用。
+- [x] 菜单项执行改调 `ActionExecutor.Run`（替代旧 TerminalLauncher 直调）；空组仍发 `(` / `)`。
+- [x] 验证 `ConfigLocator` 惰性物化 + example 回退仍生效（§9）。
+- [x] 删除开发机旧 `CapsLock++.json`（schema 不兼容，会回退 example）。
 
 **验收标准**
-- [ ] 启动加载 example 配置无异常；CapsLock+1~0 菜单按动作引用显示并执行。
-- [ ] 菜单项可为任意动作类型（含 composite）。
-- [ ] 旧 schema 的 `CapsLock++.json` 加载时回退 example，不崩溃。
-- [ ] `dotnet build` 0 错 0 警。
+- [x] 启动加载 example 配置无异常；CapsLock+1~0 菜单按动作引用显示并执行。
+- [x] 菜单项可为任意动作类型（含 composite）。
+- [x] 旧 schema 的 `CapsLock++.json` 加载时回退 example，不崩溃。
+- [x] `dotnet build` 0 错 0 警。
 
 ---
 

@@ -27,6 +27,13 @@ internal static class ActionRegistry
     public static ActionDto? FindById(string id) =>
         _byId.TryGetValue(id, out var a) ? a : null;
 
+    /// <summary>按 Id 取显示名；动作不存在时显示占位「(id)」。供菜单 / 设置面板共用。</summary>
+    public static string DisplayName(string id)
+    {
+        var a = FindById(id);
+        return a != null ? a.Name : $"({id})";
+    }
+
     /// <summary>全部已注册动作（供编辑器列表展示）。</summary>
     public static IReadOnlyCollection<ActionDto> All => _byId.Values;
 }

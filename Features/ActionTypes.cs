@@ -111,8 +111,8 @@ public sealed class ActionDto
 
     // —— composite ——
 
-    /// <summary>composite: 有序步骤列表。</summary>
-    public List<StepDto> Steps { get; set; } = new();
+    /// <summary>composite: 有序步骤列表（nullable 以便 JSON 省略非 composite 动作的空列表）。</summary>
+    public List<StepDto>? Steps { get; set; }
 
     /// <summary>
     /// composite: 组合级默认失败策略（对应 §4「组合可有整体默认」）。

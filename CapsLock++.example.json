@@ -1,36 +1,95 @@
 {
+  "Actions": [
+    {
+      "Id": "a1",
+      "Name": "ipconfig",
+      "Type": "runCommand",
+      "Cmd": "ipconfig /all",
+      "Terminal": "pwsh7",
+      "KeepWindow": true
+    },
+    {
+      "Id": "a2",
+      "Name": "ping",
+      "Type": "runCommand",
+      "Cmd": "ping 8.8.8.8",
+      "Terminal": "pwsh7",
+      "KeepWindow": true
+    },
+    {
+      "Id": "a3",
+      "Name": "浏览器",
+      "Type": "openUrl",
+      "Url": "https://example.com",
+      "Icon": "globe"
+    },
+    {
+      "Id": "a4",
+      "Name": "速记",
+      "Type": "internal",
+      "Command": "quickNote.toggle",
+      "Icon": "note"
+    },
+    {
+      "Id": "a5",
+      "Name": "帮助面板",
+      "Type": "internal",
+      "Command": "helpPanel.toggle",
+      "Icon": "help"
+    },
+    {
+      "Id": "c1",
+      "Name": "查IP并打开浏览器",
+      "Type": "composite",
+      "Icon": "composite",
+      "Steps": [
+        {
+          "ActionId": "a1",
+          "DelayMs": 0,
+          "OnFail": "abort"
+        },
+        {
+          "ActionId": "a3",
+          "DelayMs": 300,
+          "OnFail": "continue"
+        }
+      ]
+    }
+  ],
+  "SuperPanel": {
+    "Enabled": true,
+    "LongPressThresholdMs": 250,
+    "Pages": [
+      [
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+        "c1",
+        null,
+        null,
+        null
+      ]
+    ]
+  },
   "MenuGroups": [
     {
       "Enabled": true,
       "Name": "命令",
       "Items": [
-        {
-          "Name": "ipconfig",
-          "Cmd": "ipconfig /all",
-          "Terminal": "pwsh7",
-          "KeepWindow": true,
-          "Workdir": ""
-        },
-        {
-          "Name": "ping",
-          "Cmd": "ping 8.8.8.8",
-          "Terminal": "pwsh7",
-          "KeepWindow": true,
-          "Workdir": ""
-        }
+        "a1",
+        "a2",
+        "c1"
       ]
     },
     {
       "Enabled": true,
-      "Name": "程序",
+      "Name": "工具",
       "Items": [
-        {
-          "Name": "浏览器",
-          "Cmd": "https://example.com",
-          "Terminal": "direct",
-          "KeepWindow": false,
-          "Workdir": ""
-        }
+        "a3",
+        "a4",
+        "a5"
       ]
     },
     null,

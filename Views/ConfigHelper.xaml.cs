@@ -78,7 +78,10 @@ public partial class ConfigHelperWindow : Window
         if (g != null)
         {
             for (int i = 0; i < g.Items.Count; i++)
-                _items.Add($"{i + 1}. {g.Items[i].Name}");
+            {
+                string id = g.Items[i];
+                _items.Add($"{i + 1}. {ActionRegistry.DisplayName(id)}");
+            }
         }
         if (sel >= 0 && sel < _items.Count) ItemList.SelectedIndex = sel;
         _loadingList = false;
@@ -135,9 +138,9 @@ public partial class ConfigHelperWindow : Window
             PopulateGroupList();
             GroupList.SelectedIndex = slot - 1;
         }
-        var dlg = MenuItemEditDialog.ShowDialog(this, "添加菜单项", "", "", "direct", false, "");
-        if (dlg == null) return;
-        MenuSystem.AddItem(SelectedSlot, dlg.ItemName, dlg.Cmd, dlg.Terminal, dlg.KeepWindow, dlg.Workdir);
+        string? actionId = MenuItemEditDialog.PickAction(this, "添加菜单项", null);
+        if (actionId == null) return;
+        MenuSystem.AddItem(SelectedSlot, actionId);
         PopulateItemList();
         var g2 = MenuSystem.GetGroup(SelectedSlot);
         if (g2 != null) ItemList.SelectedIndex = g2.Items.Count - 1;
@@ -149,10 +152,10 @@ public partial class ConfigHelperWindow : Window
         var g = MenuSystem.GetGroup(SelectedSlot);
         int idx = ItemList.SelectedIndex;
         if (g == null || idx < 0 || idx >= g.Items.Count) return;
-        var item = g.Items[idx];
-        var dlg = MenuItemEditDialog.ShowDialog(this, "编辑菜单项", item.Name, item.Cmd, item.Terminal, item.KeepWindow, item.Workdir);
-        if (dlg == null) return;
-        MenuSystem.EditItem(SelectedSlot, idx, dlg.ItemName, dlg.Cmd, dlg.Terminal, dlg.KeepWindow, dlg.Workdir);
+        string currentId = g.Items[idx];
+        string? actionId = MenuItemEditDialog.PickAction(this, "编辑菜单项", currentId);
+        if (actionId == null) return;
+        MenuSystem.EditItem(SelectedSlot, idx, actionId);
         PopulateItemList();
         ItemList.SelectedIndex = idx;
         MarkDirty();

@@ -200,7 +200,7 @@ internal static class ActionExecutor
     // —— composite（顺序执行步骤，防环）——
     private static void RunComposite(ActionDto a, int cursorX, int cursorY, HashSet<string> compositeStack)
     {
-        if (a.Steps.Count == 0) return;
+        if (a.Steps == null || a.Steps.Count == 0) return;
 
         // 防环：正在执行的 composite Id 栈，遇重复立即中止
         if (compositeStack.Contains(a.Id))
