@@ -55,7 +55,7 @@ public partial class SuperPanelWindow : Window
 
     // —— 定位（仿 MouseTipWindow.PlaceNearCursor：物理像素→DIP 换算 + 工作区避让）——
 
-    /// <summary>把面板放在光标右下角，避开屏幕边缘。px/py 为屏幕物理像素。</summary>
+    /// <summary>把面板「可见边框」紧贴光标（形如右键菜单），避开屏幕边缘。px/py 为屏幕物理像素。</summary>
     public void PlaceAtCursor(int px, int py)
     {
         double m11 = 1.0, m22 = 1.0;
@@ -70,19 +70,24 @@ public partial class SuperPanelWindow : Window
         double w = ActualWidth > 0 ? ActualWidth : 384;
         double h = ActualHeight > 0 ? ActualHeight : 360;
 
-        const double gap = 16;
-        double x = cx + gap, y = cy + gap;
+        // XAML 里 Border 有 10px Margin（阴影留白），窗口外框比可见边框大一圈。
+        // 按「可见边框」定位才能紧贴光标：可见边框左上角 = 光标 + gap。
+        const double margin = 10;   // 与 Views/SuperPanel.xaml 的 Border.Margin 一致
+        const double gap = 2;       // 光标到可见边框的间距（略入面板，便于立即移到首格）
+        double visW = w - 2 * margin, visH = h - 2 * margin;
 
+        double visX = cx + gap, visY = cy + gap;
         var screen = GetScreenBounds(px, py);
         double sLeft = screen.Left * m11, sTop = screen.Top * m22;
         double sRight = screen.Right * m11, sBottom = screen.Bottom * m22;
-        if (x + w > sRight - 8) x = cx - w - gap;
-        if (x < sLeft + 8) x = sLeft + 8;
-        if (y + h > sBottom - 8) y = cy - h - gap;
-        if (y < sTop + 8) y = sTop + 8;
+        // 右/下溢出 → 翻到光标左/上方（可见边框的右/下边对齐光标）
+        if (visX + visW > sRight - 8) visX = cx - gap - visW;
+        if (visX < sLeft + margin) visX = sLeft + margin;   // 连同阴影留白不越出工作区
+        if (visY + visH > sBottom - 8) visY = cy - gap - visH;
+        if (visY < sTop + margin) visY = sTop + margin;
 
-        Left = x;
-        Top = y;
+        Left = visX - margin;   // 窗口外框 = 可见边框 - margin
+        Top = visY - margin;
     }
 
     private static (double Left, double Top, double Right, double Bottom) GetScreenBounds(int x, int y)

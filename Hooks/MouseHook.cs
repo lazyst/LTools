@@ -78,20 +78,31 @@ internal static class MouseHook
                             WindowPin.ToggleAtCursor(ms.Pt.X, ms.Pt.Y);
                         return (IntPtr)1; // 吞掉
                     }
-                    // 长按手势的收尾：计时器已触发（面板已/即将打开）→ 吞掉右键 up 阻止原生菜单。
-                    // 必须先于下面的“面板未打开”判断——面板可能在 up 到达前已由 BeginInvoke 创建，
-                    // 此时 SuperPanel.IsOpen 已为真，若先判 IsOpen 会漏吞 up 导致原生菜单泄漏。
+                    // 长按收尾：计时器已触发 → 吞掉随后的 up 阻止原生菜单。
+                    // 必须先于「面板未打开」判断——面板可能已由 Show() 的 BeginInvoke 在 up 到达前创建，
+                    // 此时 IsOpen=true，若把该判断挪进下面分支会漏吞 up 致原生菜单泄漏。
                     if (_suppressRButtonUp && (int)wParam == Win32.WmRbuttonup)
                     {
                         _suppressRButtonUp = false;
-                        return (IntPtr)1; // 吞掉 up
+                        return (IntPtr)1; // 吞掉 up（不注入）
                     }
-                    // 裸右键长按检测（§5.1）：超级面板开关开 且 面板未打开时启动计时；
-                    // 短按（up 先于计时器）→ 停表放行，原生右键菜单不受任何干预。
+                    // 裸右键长按手势（§5.1）：开关开 且 面板未打开时，整组吞掉 down/up。
+                    // 必须吞 down（而非放行）——若放行 down 却吞 up，目标窗口会收到 down 收不到 up，
+                    // 鼠标捕获不释放致右键「卡住」（须再点一次右键才解除）。
+                    // 短按（up 先于计时器）→ 停表 + 注入一次原生右键 down+up 还原菜单；
+                    // 注入事件带 LLMHF_INJECTED，被本钩子开头忽略，不会递归。
                     if (AppState.IsSuperPanelEnabled && !SuperPanel.IsOpen)
                     {
-                        if ((int)wParam == Win32.WmRbuttondown) StartSuperPanelGesture();
-                        else CancelSuperPanelGesture();
+                        if ((int)wParam == Win32.WmRbuttondown)
+                        {
+                            StartSuperPanelGesture();       // 吞 down，启动计时
+                        }
+                        else
+                        {
+                            CancelSuperPanelGesture();      // 短按：停表
+                            InjectRightClick();             // 还原原生右键菜单
+                        }
+                        return (IntPtr)1; // down 与 up 都吞
                     }
                     break;
 
@@ -174,6 +185,14 @@ internal static class MouseHook
 
     /// <summary>阈值夹到合法区间（100–800ms），防止异常配置导致计时异常。</summary>
     private static int ClampThreshold(int ms) => ms < 100 ? 100 : (ms > 800 ? 800 : ms);
+
+    /// <summary>注入一次右键 down+up（mouse_event），还原被吞掉的短按原生右键菜单。
+    /// 注入事件带 <see cref="Win32.LlmhfInjected"/>，被本钩子开头忽略，不会递归；位置取当前光标。</summary>
+    private static void InjectRightClick()
+    {
+        Win32.mouse_event(Win32.MouseeventfRightdown, 0, 0, 0, IntPtr.Zero);
+        Win32.mouse_event(Win32.MouseeventfRightup, 0, 0, 0, IntPtr.Zero);
+    }
 
     // —— 资源管理器重命名（对应 lib/Workspace.ahk：LButton / PerformClick / LButtonRenamer）——
 
