@@ -76,6 +76,14 @@ internal static class MouseHook
                     break;
 
                 case Win32.WmLbuttondown:
+                    // 超级面板打开时：点击面板外部 → 关闭面板并放行点击（坐标判定，与 MenuPopup/HelpPanel
+                    // 同思路；右键菜单/对话框打开期间 IsInteracting，不介入，避免误关）。
+                    if (SuperPanel.IsOpen && !SuperPanel.IsInteracting
+                        && !SuperPanel.PointInWindowRect(ms.Pt.X, ms.Pt.Y))
+                    {
+                        SuperPanel.Close();
+                        break; // 不吞点击：放行给光标下窗口
+                    }
                     // 菜单打开时：点击面板外部 → 关闭菜单并放行点击（与 HelpPanel 同思路，
                     // 用坐标判定确定性关闭，不依赖 Deactivated/前台状态，避免切换组后与
                     // 旧窗口淡出动画的激活竞态导致点击外部不触发关闭）。点击放行给下层窗口。
@@ -93,7 +101,8 @@ internal static class MouseHook
                         HelpPanel.Close();
                         break; // 不吞点击：放行给光标下窗口
                     }
-                    if (AppState.IsToolEnabled && AppState.IsCapsLockDown)
+                    if (AppState.IsToolEnabled && AppState.IsCapsLockDown
+                        && !MenuSystem.IsMenuOpen && !HelpPanel.IsOpen && !SuperPanel.IsOpen)
                     {
                         // 吞掉左键，异步执行点击+重命名（对应 lib/Workspace.ahk LButton 热键）
                         AppState.OtherKeyPressed = true;

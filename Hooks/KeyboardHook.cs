@@ -88,6 +88,18 @@ internal static class KeyboardHook
                 }
             }
 
+            // 超级面板打开期间：1~9 选格 / Esc 关面板（钩子路由，不依赖窗口焦点；
+            // 右键菜单 / 对话框打开时 IsInteracting 为 true，交回 WPF/对话框处理，不吞键）
+            if (isDown && SuperPanel.IsOpen && !SuperPanel.IsInteracting)
+            {
+                if (SuperPanel.HandleKey(vk, isDown))
+                {
+                    AppState.OtherKeyPressed = true;
+                    MarkSwallowed(vk);
+                    return (IntPtr)1;
+                }
+            }
+
             // 已吞键的 keyup：一并吞掉，保持事件平衡（防止被吞的 keydown 配对走漏）
             if (isUp && AppState.SwallowedVks.Contains((int)vk))
             {
@@ -107,6 +119,14 @@ internal static class KeyboardHook
             {
                 AppState.OtherKeyPressed = true;
                 if (kb.Vk == Win32.VkSpace) { MouseMode.Enter(); return (IntPtr)1; }
+
+                // 阶段4：超级面板临时热键（CapsLock+T），阶段5 接入手势后保留或移除
+                if (vk == 'T' && AppState.IsSuperPanelEnabled)
+                {
+                    SuperPanel.Toggle();
+                    MarkSwallowed(vk);
+                    return (IntPtr)1;
+                }
 
                 // 阶段4：帮助面板（SC029 扫描码，布局无关）+ 菜单系统（CapsLock+1~0）
                 if (kb.Scan == 0x29) { HelpPanel.Toggle(); MarkSwallowed(vk); return (IntPtr)1; }

@@ -54,8 +54,13 @@ internal static class ConfigStore
         MenuSystem.ReplaceAction(action);
     }
 
-    /// <summary>从清单删除动作（同时清掉所有菜单项引用）。</summary>
-    public static bool RemoveAction(string id) => MenuSystem.RemoveAction(id);
+    /// <summary>从清单删除动作（同时清掉菜单项 / 组合步骤 / 超级面板槽位三处引用）。</summary>
+    public static bool RemoveAction(string id)
+    {
+        if (!MenuSystem.RemoveAction(id)) return false;   // 清清单 + 菜单项 + 组合步骤（内存）
+        SuperPanel.RemoveActionReferences(id);            // 清超级面板槽位（落盘）
+        return true;
+    }
 
     /// <summary>复制动作（新 Id + 名称追加「副本」）。</summary>
     public static ActionDto? DuplicateAction(string id)
