@@ -28,6 +28,9 @@ internal static class MouseHook
     private static DispatcherTimer? _superPanelTimer;
     private static bool _suppressRButtonUp;     // 计时器触发后置位：吞掉随后的右键 up 阻止原生菜单
 
+    /// <summary>本类注入鼠标事件的 dwExtraInfo 魔法标记；钩子开头据此跳过，杜绝注入回流递归。</summary>
+    private static readonly IntPtr InjectedTag = (IntPtr)0x1234ABCD;
+
     public static void Install()
     {
         if (_handle != IntPtr.Zero) return;
@@ -56,8 +59,9 @@ internal static class MouseHook
         {
             var ms = Marshal.PtrToStructure<Win32.Msllhookstruct>(lParam);
 
-            // 忽略注入事件（防递归：本类注入的左键点击不重新触发重命名）
-            if ((ms.Flags & Win32.LlmhfInjected) != 0)
+            // 忽略注入事件（防递归：本类注入的左/右键点击不重新触发逻辑）。
+            // 除 LLMHF_INJECTED 外，再用 dwExtraInfo 魔法标记兜底——双保险杜绝注入回流本钩子。
+            if ((ms.Flags & Win32.LlmhfInjected) != 0 || ms.ExtraInfo == InjectedTag)
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
 
             switch ((int)wParam)
@@ -187,11 +191,22 @@ internal static class MouseHook
     private static int ClampThreshold(int ms) => ms < 100 ? 100 : (ms > 800 ? 800 : ms);
 
     /// <summary>注入一次右键 down+up（mouse_event），还原被吞掉的短按原生右键菜单。
-    /// 注入事件带 <see cref="Win32.LlmhfInjected"/>，被本钩子开头忽略，不会递归；位置取当前光标。</summary>
+    /// **必须在后台线程执行**——在 WH_MOUSE_LL 钩子回调内同步注入时，注入事件需经同一钩子线程处理，
+    /// 而该线程正阻塞在回调里 → 互相等待，致系统鼠标卡死（钩子不返回，数秒后由系统超时移除才恢复）。
+    /// 注入事件带 <see cref="Win32.LlmhfInjected"/> + <see cref="InjectedTag"/>，被本钩子开头忽略，不会递归；
+    /// 位置取当前光标。</summary>
     private static void InjectRightClick()
     {
-        Win32.mouse_event(Win32.MouseeventfRightdown, 0, 0, 0, IntPtr.Zero);
-        Win32.mouse_event(Win32.MouseeventfRightup, 0, 0, 0, IntPtr.Zero);
+        var t = new Thread(() =>
+        {
+            try
+            {
+                Win32.mouse_event(Win32.MouseeventfRightdown, 0, 0, 0, InjectedTag);
+                Win32.mouse_event(Win32.MouseeventfRightup, 0, 0, 0, InjectedTag);
+            }
+            catch { /* 静默降级 */ }
+        }) { IsBackground = true };
+        t.Start();
     }
 
     // —— 资源管理器重命名（对应 lib/Workspace.ahk：LButton / PerformClick / LButtonRenamer）——

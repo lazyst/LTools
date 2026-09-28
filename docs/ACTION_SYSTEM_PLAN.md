@@ -411,6 +411,7 @@ ActionExecutor.Run(ActionDto action)
 - ✅ 保留阶段 4 的 `CapsLock+T` 为**备用入口**（本阶段不随手势接入而移除）。
 - ✅ **实测修正**（重新定义短按语义）：裸右键改为**整组吞 down/up**，短按**注入一次原生右键（down+up）**还原菜单。原「放行 down + 吞 up」会让目标窗口收到 down 收不到 up、鼠标捕获不释放 → 右键「卡住」（须再点一次右键才解除）。注入事件带 `LLMHF_INJECTED`，被本钩子忽略，不递归。
 - ✅ **实测修正**（面板定位）：`SuperPanelWindow.PlaceAtCursor` 改按「**可见边框**」贴合光标（gap=2），而非窗口外框。原 `gap=16` + XAML `Border.Margin=10` 使可见边框距光标 ~32px（125% 缩放下），观感不紧贴。
+- ✅ **实测修正**（致命坑）：短按注入的 `mouse_event` **必须在后台线程执行**——同步在 `WH_MOUSE_LL` 钩子回调内注入，注入事件需经同一钩子线程处理而该线程正阻塞在回调里 → 互相等待 → **系统鼠标卡死、进程不可结束**（须提权或重启）。注入事件额外带 `dwExtraInfo` 魔法标记（`InjectedTag`），钩子开头据此跳过（与 `LLMHF_INJECTED` 双保险，杜绝注入回流递归）。对齐既有 `DoLeftClick`（后台线程注入）模式。
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。
