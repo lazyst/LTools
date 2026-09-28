@@ -53,6 +53,12 @@ public sealed class AppConfig
     /// <summary>鼠标模式速度 1..20。</summary>
     public int MouseModeSpeed { get; set; } = 1;
 
+    /// <summary>
+    /// CapsLock 键功能总开关（CapsLock+Esc 手势 / CapsLock+数字菜单 / 鼠标模式等）。
+    /// 与 <see cref="SuperPanel.Enabled"/> 相互独立，均可在设置「通用」页或托盘菜单切换。
+    /// </summary>
+    public bool CapsLockEnabled { get; set; } = true;
+
     private static readonly JsonSerializerOptions Opt = new()
     {
         WriteIndented = true,

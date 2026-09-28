@@ -26,8 +26,11 @@ internal static class AppState
     public static bool CapsLockEscPressed;
 
     // —— 工具总开关 ——
-    /// <summary>CapsLock++ 是否启用（CapsLock+Esc 切换）。</summary>
+    /// <summary>CapsLock 键功能是否启用（CapsLock+Esc 手势切换；也可在设置「通用」页 / 托盘菜单切换）。</summary>
     public static volatile bool IsToolEnabled = true;
+
+    /// <summary>超级面板是否启用（与 <see cref="IsToolEnabled"/> 相互独立）。</summary>
+    public static volatile bool IsSuperPanelEnabled = true;
 
     /// <summary>调试提示开关（Ctrl+Alt+I）。</summary>
     public static bool ShowDebugTooltips;

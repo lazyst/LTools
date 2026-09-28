@@ -1,0 +1,178 @@
+<Window x:Class="CapsLockPro.Views.ActionEditorDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:CapsLockPro.Views.Controls"
+        Title="动作" Width="720" Height="560"
+        MinWidth="620" MinHeight="480"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="36"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <controls:TitleBar Grid.Row="0" x:Name="TitleBar" ShowMinimize="False" ShowMaximize="False"/>
+
+        <!-- 主体 -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="20,16,20,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>   <!-- 名称 + 类型 -->
+                    <RowDefinition Height="Auto"/>   <!-- 类型特定字段 -->
+                    <RowDefinition Height="Auto"/>   <!-- 图标 -->
+                </Grid.RowDefinitions>
+
+                <!-- 名称 + 类型 -->
+                <Grid Grid.Row="0" Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="160"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid Grid.Column="0" Margin="0,0,12,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="名称" Margin="0,0,0,4"/>
+                        <TextBox Grid.Row="1" x:Name="NameBox" MinHeight="32"/>
+                    </Grid>
+                    <Grid Grid.Column="1">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="类型" Margin="0,0,0,4"/>
+                        <ComboBox Grid.Row="1" x:Name="TypeCombo" MinHeight="32" SelectionChanged="TypeCombo_SelectionChanged"/>
+                    </Grid>
+                </Grid>
+
+                <!-- 类型特定字段：同层叠加，按类型切换可见性 -->
+                <StackPanel Grid.Row="1" x:Name="FieldsPanel" Margin="0,0,0,14">
+                    <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="6" Padding="14,12"
+                            MinHeight="120">
+
+                        <Grid>
+                            <!-- launchApp -->
+                            <StackPanel x:Name="F_LaunchApp">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="程序路径" Margin="0,0,0,4"/>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" x:Name="TargetBox" MinHeight="30" Margin="0,0,8,0"/>
+                                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72" Click="BrowseTarget_Click"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="参数（可选）" Margin="0,0,0,4"/>
+                                <TextBox x:Name="ArgsBox" MinHeight="30" Margin="0,0,0,10"/>
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="工作目录（可选）" Margin="0,0,0,4"/>
+                                <TextBox x:Name="LaunchWorkdirBox" MinHeight="30"/>
+                            </StackPanel>
+
+                            <!-- openFile -->
+                            <StackPanel x:Name="F_OpenFile">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="文件路径" Margin="0,0,0,4"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" x:Name="FileBox" MinHeight="30" Margin="0,0,8,0"/>
+                                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72" Click="BrowseFile_Click"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- openFolder -->
+                            <StackPanel x:Name="F_OpenFolder">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="文件夹路径" Margin="0,0,0,4"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" x:Name="FolderBox" MinHeight="30" Margin="0,0,8,0"/>
+                                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72" Click="BrowseFolder_Click"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- openUrl -->
+                            <StackPanel x:Name="F_OpenUrl">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="网址" Margin="0,0,0,4"/>
+                                <TextBox x:Name="UrlBox" MinHeight="30"/>
+                            </StackPanel>
+
+                            <!-- runCommand -->
+                            <StackPanel x:Name="F_RunCommand">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="命令" Margin="0,0,0,4"/>
+                                <TextBox x:Name="CmdBox" MinHeight="30" Margin="0,0,0,10"/>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                        <TextBlock Style="{StaticResource SectionLabel}" Text="终端" Margin="0,0,0,4"/>
+                                        <ComboBox x:Name="TerminalCombo" MinHeight="30"/>
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" x:Name="KeepWindowBox" Content="保持窗口"
+                                              VerticalAlignment="Bottom" Margin="0,0,0,4"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="工作目录（可选）" Margin="0,0,0,4"/>
+                                <TextBox x:Name="CmdWorkdirBox" MinHeight="30"/>
+                            </StackPanel>
+
+                            <!-- internal -->
+                            <StackPanel x:Name="F_Internal">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="内部命令" Margin="0,0,0,4"/>
+                                <ComboBox x:Name="CommandCombo" MinHeight="30"/>
+                            </StackPanel>
+
+                            <!-- composite -->
+                            <StackPanel x:Name="F_Composite">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="组合步骤" Margin="0,0,0,10"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="StepsEditBtn" Style="{StaticResource BtnPrimary}"
+                                            Content="编辑步骤…" MinWidth="110" Click="StepsEdit_Click"/>
+                                    <TextBlock x:Name="StepsSummary" Style="{StaticResource HintLabel}"
+                                               VerticalAlignment="Center" Margin="12,0,0,0"/>
+                                </StackPanel>
+                                <CheckBox x:Name="CompositeAbortBox" Content="任一步失败即中止（默认继续）" Margin="0,12,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <!-- 图标 -->
+                <Grid Grid.Row="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="图标" Margin="0,0,0,6"/>
+                    <controls:IconPicker Grid.Row="1" x:Name="IconPicker"/>
+                </Grid>
+            </Grid>
+        </ScrollViewer>
+
+        <!-- 底部按钮 -->
+        <Border Grid.Row="2" Background="{StaticResource SurfaceAltBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,10"
+                Margin="0,12,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Style="{StaticResource BtnGhost}" Content="取消" MinWidth="84" Margin="0,0,8,0" IsCancel="True"/>
+                <Button Style="{StaticResource BtnPrimary}" Content="确定" MinWidth="84" IsDefault="True" Click="Ok_Click"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

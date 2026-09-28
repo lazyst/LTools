@@ -33,6 +33,23 @@ public enum OnFailStrategy
     abort,
 }
 
+/// <summary>动作类型的中文显示名（UI 共用）。</summary>
+public static class ActionTypeLabel
+{
+    /// <summary>取得中文类型名。</summary>
+    public static string Of(ActionType t) => t switch
+    {
+        ActionType.launchApp => "启动软件",
+        ActionType.openFile => "打开文件",
+        ActionType.openFolder => "打开文件夹",
+        ActionType.openUrl => "打开网址",
+        ActionType.runCommand => "运行命令",
+        ActionType.@internal => "内部动作",
+        ActionType.composite => "组合动作",
+        _ => t.ToString(),
+    };
+}
+
 /// <summary>组合动作的单步（引用另一个动作 Id，对应计划 §4）。</summary>
 public sealed class StepDto
 {

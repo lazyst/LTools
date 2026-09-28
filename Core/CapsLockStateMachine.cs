@@ -96,9 +96,8 @@ internal static class CapsLockStateMachine
                 // —— 禁用态 keyup ——
                 if (AppState.CapsLockEscPressed && duration >= ClickThresholdMs)
                 {
-                    // CapsLock+Esc 长按 → 重新启用
-                    AppState.IsToolEnabled = true;
-                    ShowTooltip("CapsLock++ 已启用");
+                    // CapsLock+Esc 长按 → 重新启用（落盘，重启不恢复旧状态）
+                    Settings.SetCapsLockEnabled(true);
                     swallow = true; // 吞掉 keyup（禁用手势已处理）
                 }
                 else if (!AppState.CapsLockEscPressed && duration < ClickThresholdMs)
@@ -126,9 +125,8 @@ internal static class CapsLockStateMachine
 
             if (AppState.CapsLockEscPressed && !AppState.OtherKeyPressed)
             {
-                // CapsLock+Esc → 禁用
-                AppState.IsToolEnabled = false;
-                ShowTooltip("CapsLock++ 已禁用");
+                // CapsLock+Esc → 禁用（立即生效并落盘，重启不恢复）
+                Settings.SetCapsLockEnabled(false);
                 ResetEscOther();
                 return true;
             }

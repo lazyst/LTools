@@ -61,7 +61,9 @@ public partial class App : Application
         var cfgPath = ConfigLocator.FindPath();
         var cfg = AppConfig.Load(cfgPath);
         AppState.MouseModeSpeed = cfg.MouseModeSpeed;
-        MenuSystem.Load(cfgPath);
+        AppState.IsToolEnabled = cfg.CapsLockEnabled;
+        AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
+        ConfigStore.Initialize(cfgPath);
         QuickNote.Initialize(cfgPath);
         ConfigHelper.Initialize(cfgPath);
 
@@ -82,6 +84,9 @@ public partial class App : Application
         menu.Items.Add(NewItem("帮助面板 (CapsLock+`)", () => HelpPanel.Toggle()));
         menu.Items.Add(NewItem("速记 (CapsLock+N)", () => QuickNote.Toggle()));
         menu.Items.Add(NewItem("设置 (CapsLock+\\)", () => ConfigHelper.Toggle()));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(NewItem("工具开关", () => Settings.ToggleCapsLock()));
+        menu.Items.Add(NewItem("超级面板开关", () => Settings.ToggleSuperPanel()));
         menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("退出 CapsLock++", ExitApplication));
 

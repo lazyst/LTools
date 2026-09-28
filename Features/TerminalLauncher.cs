@@ -28,11 +28,11 @@ internal static class TerminalLauncher
     public static void SaveGitBashPath(string path)
     {
         _gitBashOverride = string.IsNullOrWhiteSpace(path) ? null : path.Trim();
-        var cfgPath = ConfigLocator.FindPath();
-        var cfg = AppConfig.Load(cfgPath);
-        if (_gitBashOverride == null) cfg.TerminalPaths.Remove("gitbash");
-        else cfg.TerminalPaths["gitbash"] = _gitBashOverride;
-        cfg.Save(cfgPath);
+        ConfigIO.Modify(cfg =>
+        {
+            if (_gitBashOverride == null) cfg.TerminalPaths.Remove("gitbash");
+            else cfg.TerminalPaths["gitbash"] = _gitBashOverride;
+        });
     }
 
     /// <summary>当前 Git Bash 路径（配置或探测；探测不到返回 null）。</summary>

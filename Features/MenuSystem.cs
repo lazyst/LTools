@@ -221,6 +221,33 @@ internal static class MenuSystem
         return true;
     }
 
+    // —— 动作清单 CRUD（由 Views.ConfigHelperWindow 的「动作管理」页调用，阶段 3）——
+
+    /// <summary>取得指定动作。</summary>
+    public static ActionDto? FindAction(string id) => ActionRegistry.FindById(id);
+
+    /// <summary>新增动作到全局清单。</summary>
+    public static void AddAction(ActionDto action) => ActionRegistry.Register(action);
+
+    /// <summary>替换全局清单中 Id 相同的动作。</summary>
+    public static void ReplaceAction(ActionDto action) => ActionRegistry.Register(action);
+
+    /// <summary>从全局清单删除动作（返回是否确实删除）。同时清掉菜单项引用。</summary>
+    public static bool RemoveAction(string id)
+    {
+        if (!ActionRegistry.Remove(id)) return false;
+        foreach (var g in _groups)
+        {
+            if (g == null) continue;
+            while (g.Items.Remove(id)) { } // 清掉引用，避免出现指向空 Id 的菜单项
+        }
+        // 同步清掉其它组合动作中对该动作的步骤引用，否则这些组合保存时会被
+        // 「步骤引用的动作不存在」卡住无法编辑
+        foreach (var a in ActionRegistry.All)
+            a.Steps?.RemoveAll(s => s.ActionId == id);
+        return true;
+    }
+
     /// <summary>从 JSON 重新加载全部组 + 动作清单（关闭已开菜单）。</summary>
     public static void ReloadFromConfig(string? configPath)
     {
@@ -229,14 +256,21 @@ internal static class MenuSystem
         Load(configPath);
     }
 
-    /// <summary>将当前 10 个组写回 JSON（读现有配置→替换菜单部分→整体写回，保留动作/终端等其它配置）。</summary>
+    /// <summary>将当前 10 个组 + 全局动作清单写回 JSON（读现有配置→整体写回，保留终端等其它配置）。
+    /// 动作清单必须一起保存，否则新建动作会在下次 Load 时被旧磁盘数据冲掉。</summary>
     public static void SaveToConfig(string configPath)
     {
-        var cfg = AppConfig.Load(configPath);
-        cfg.MenuGroups = new List<MenuGroupDto?>();
+        // 先在内存中生成快照（UI 线程），再经 ConfigIO 串行写盘
+        var groups = new List<MenuGroupDto?>();
         for (int i = 1; i <= MaxGroups; i++)
-            cfg.MenuGroups.Add(ToDto(_groups[i]));
-        cfg.Save(configPath);
+            groups.Add(ToDto(_groups[i]));
+        // 按 Id 排序，避免字典枚举顺序造成配置文件无谓变动
+        var actions = new List<ActionDto>(ActionRegistry.All.OrderBy(a => a.Id, StringComparer.Ordinal));
+        ConfigIO.Modify(configPath, cfg =>
+        {
+            cfg.MenuGroups = groups;
+            cfg.Actions = actions;
+        });
     }
 
     private static MenuGroupDto? ToDto(MenuGroup? g)

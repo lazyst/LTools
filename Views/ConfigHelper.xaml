@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:controls="clr-namespace:CapsLockPro.Views.Controls"
-        Title="设置" Width="760" Height="540"
-        MinWidth="640" MinHeight="420"
+        Title="设置" Width="980" Height="620"
+        MinWidth="820" MinHeight="500"
         Topmost="True" ShowInTaskbar="True" ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
@@ -15,6 +15,72 @@
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
+    <Window.Resources>
+        <!-- 导航项：整行可点、悬停浅灰、选中强调 -->
+        <Style x:Key="NavRow" TargetType="RadioButton">
+            <Setter Property="GroupName" Value="nav"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="bd" Background="Transparent" Padding="16,0">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{StaticResource HoverBgBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{StaticResource SelectedBgBrush}"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 字段标签 -->
+        <Style x:Key="RowLabel" TargetType="TextBlock" BasedOn="{StaticResource SectionLabel}">
+            <Setter Property="Width" Value="120"/>
+            <Setter Property="Margin" Value="0,0,12,0"/>
+        </Style>
+
+        <!-- 卡片容器 -->
+        <Style x:Key="CardBox" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="14,12"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+
+        <!-- 动作列表项：图标 + 名称 + 类型 -->
+        <DataTemplate x:Key="ActionRowTemplate">
+            <Grid Margin="0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="30"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{Binding Glyph}" FontFamily="Segoe MDL2 Assets"
+                           FontSize="16" VerticalAlignment="Center"
+                           Foreground="{StaticResource SecondaryTextBrush}"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding Summary}" Style="{StaticResource HintLabel}"
+                               TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+                <TextBlock Grid.Column="2" Text="{Binding TypeLabel}" VerticalAlignment="Center"
+                           Style="{StaticResource HintLabel}" Margin="10,0,0,0"/>
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="36"/>
@@ -22,53 +88,220 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 标题栏 -->
         <controls:TitleBar Grid.Row="0"/>
 
-        <!-- 主内容：左列(菜单组) + 分隔条 + 右列(菜单项) -->
+        <!-- 主体：左导航 + 右内容 -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="240" MinWidth="180"/>
-                <ColumnDefinition Width="6"/>
-                <ColumnDefinition Width="*" MinWidth="300"/>
+                <ColumnDefinition Width="170"/>
+                <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- 左：菜单组 -->
-            <Grid Grid.Column="0" Margin="14,12,0,12">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="菜单组" Margin="4,0,0,8"/>
-                <ListBox Grid.Row="1" x:Name="GroupList" SelectionChanged="GroupList_SelectionChanged"/>
-                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="2,8,2,0">
-                    <Button Style="{StaticResource BtnGhost}" Content="重命名" Click="EditGroup_Click"/>
-                    <Button Style="{StaticResource BtnGhostDanger}" Content="删除" Click="DeleteGroup_Click" Margin="6,0,0,0"/>
+            <!-- 左导航 -->
+            <Border Grid.Column="0" Background="{StaticResource SurfaceAltBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+                <StackPanel Margin="0,8">
+                    <RadioButton Style="{StaticResource NavRow}" Content="通用"
+                                 Checked="Nav_Changed" Tag="general"/>
+                    <RadioButton x:Name="NavActions" Style="{StaticResource NavRow}" Content="动作管理"
+                                 Checked="Nav_Changed" Tag="actions"/>
+                    <RadioButton Style="{StaticResource NavRow}" Content="菜单组"
+                                 Checked="Nav_Changed" Tag="menus"/>
+                    <RadioButton Style="{StaticResource NavRow}" Content="超级面板"
+                                 Checked="Nav_Changed" Tag="superpanel"/>
+                    <RadioButton Style="{StaticResource NavRow}" Content="终端路径"
+                                 Checked="Nav_Changed" Tag="terminals"/>
                 </StackPanel>
-            </Grid>
+            </Border>
 
-            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+            <!-- 右内容：所有页面同层，按导航切换可见性 -->
+            <Grid Grid.Column="1">
+                <!-- ============ 通用 ============ -->
+                <ScrollViewer x:Name="Page_General" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="工具开关" Margin="0,0,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <CheckBox x:Name="CapsLockEnabledBox" Content="启用 CapsLock 键功能"
+                                          Checked="CapsLockEnabledBox_Changed" Unchecked="CapsLockEnabledBox_Changed"/>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,12"
+                                           Text="CapsLock 作为修饰键：CapsLock+数字菜单、鼠标模式、vim 编辑等。关闭后 CapsLock 恢复原生大小写切换（CapsLock+Esc 手势亦可切换）。"
+                                           TextWrapping="Wrap"/>
+                                <CheckBox x:Name="SuperPanelEnabledBox" Content="启用超级面板"
+                                          Checked="SuperPanelEnabledBox_Changed" Unchecked="SuperPanelEnabledBox_Changed"/>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,0"
+                                           Text="按住右键（长按）唤起 3×3 动作面板。与上面的 CapsLock 开关相互独立。"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
 
-            <!-- 右：菜单项 -->
-            <Grid Grid.Column="2" Margin="0,12,14,12">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="菜单项" Margin="4,0,0,8"/>
-                <ListBox Grid.Row="1" x:Name="ItemList"
-                         SelectionChanged="ItemList_SelectionChanged"
-                         MouseDoubleClick="ItemList_MouseDoubleClick"/>
-                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="2,8,2,0">
-                    <Button Style="{StaticResource BtnGhost}" Content="添加" Click="AddItem_Click"/>
-                    <Button Style="{StaticResource BtnGhost}" Content="编辑" Click="EditItem_Click" Margin="6,0,0,0"/>
-                    <Button Style="{StaticResource BtnGhostDanger}" Content="删除" Click="DeleteItem_Click" Margin="6,0,0,0"/>
-                    <TextBlock Width="8"/>
-                    <Button Style="{StaticResource BtnGhost}" Content="上移" Click="MoveUp_Click"/>
-                    <Button Style="{StaticResource BtnGhost}" Content="下移" Click="MoveDown_Click" Margin="6,0,0,0"/>
-                </StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="开机自启" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <CheckBox x:Name="AutoStartBox" Content="开机自动启动（任务计划，静默提权）"
+                                          Checked="AutoStartBox_Changed" Unchecked="AutoStartBox_Changed"/>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,0"
+                                           Text="通过任务计划程序创建 ONLOGON / 最高权限任务，开机无 UAC 弹窗。"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ 动作管理 ============ -->
+                <Grid x:Name="Page_Actions" Visibility="Collapsed" Margin="20,14,20,14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="全局动作清单"
+                               Margin="0,0,0,8"/>
+                    <ListBox Grid.Row="1" x:Name="ActionList"
+                             ItemTemplate="{StaticResource ActionRowTemplate}"
+                             SelectionChanged="ActionList_SelectionChanged"
+                             MouseDoubleClick="ActionList_MouseDoubleClick"/>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Style="{StaticResource BtnPrimary}" Content="新建动作…" MinWidth="104"
+                                Click="NewAction_Click"/>
+                        <Button Style="{StaticResource BtnGhost}" Content="编辑" MinWidth="64"
+                                Margin="8,0,0,0" Click="EditAction_Click"/>
+                        <Button Style="{StaticResource BtnGhost}" Content="复制" MinWidth="64"
+                                Margin="6,0,0,0" Click="DuplicateAction_Click"/>
+                        <Button Style="{StaticResource BtnGhostDanger}" Content="删除" MinWidth="64"
+                                Margin="6,0,0,0" Click="DeleteAction_Click"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- ============ 菜单组 ============ -->
+                <Grid x:Name="Page_Menus" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="230" MinWidth="180"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="*" MinWidth="260"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Grid Grid.Column="0" Margin="20,14,0,14">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="菜单组（CapsLock+1~0）"
+                                   Margin="0,0,0,8"/>
+                        <ListBox Grid.Row="1" x:Name="GroupList"
+                                 SelectionChanged="GroupList_SelectionChanged"/>
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Style="{StaticResource BtnGhost}" Content="重命名" Click="EditGroup_Click"/>
+                            <Button Style="{StaticResource BtnGhostDanger}" Content="删除" Margin="6,0,0,0"
+                                    Click="DeleteGroup_Click"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Stretch"/>
+
+                    <Grid Grid.Column="2" Margin="0,14,20,14">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="菜单项"
+                                   Margin="0,0,0,8"/>
+                        <ListBox Grid.Row="1" x:Name="ItemList"
+                                 SelectionChanged="ItemList_SelectionChanged"
+                                 MouseDoubleClick="ItemList_MouseDoubleClick"/>
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Style="{StaticResource BtnGhost}" Content="从动作池添加…" Click="AddItem_Click"/>
+                            <Button Style="{StaticResource BtnGhost}" Content="修改" Margin="6,0,0,0" Click="EditItem_Click"/>
+                            <Button Style="{StaticResource BtnGhostDanger}" Content="删除" Margin="6,0,0,0" Click="DeleteItem_Click"/>
+                            <TextBlock Width="10"/>
+                            <Button Style="{StaticResource BtnGhost}" Content="上移" Click="MoveUp_Click"/>
+                            <Button Style="{StaticResource BtnGhost}" Content="下移" Margin="6,0,0,0" Click="MoveDown_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+
+                <!-- ============ 超级面板 ============ -->
+                <ScrollViewer x:Name="Page_SuperPanel" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <CheckBox x:Name="SuperPanelBox2" Content="启用超级面板"
+                                          Checked="SuperPanelEnabledBox_Changed" Unchecked="SuperPanelEnabledBox_Changed"/>
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="长按阈值" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                    <Slider Grid.Column="1" x:Name="ThresholdSlider" Minimum="100" Maximum="800"
+                                            TickFrequency="50" IsSnapToTickEnabled="True"
+                                            VerticalAlignment="Center"
+                                            ValueChanged="ThresholdSlider_ValueChanged"/>
+                                    <TextBlock Grid.Column="2" x:Name="ThresholdText" Style="{StaticResource HintLabel}"
+                                               VerticalAlignment="Center" Margin="12,0,0,0" Width="70"
+                                               Text="250 ms"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="页与槽位"
+                                       VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Button Style="{StaticResource BtnGhost}" Content="+ 添加页" Click="AddPage_Click"/>
+                            </StackPanel>
+                        </Grid>
+                        <StackPanel x:Name="SuperPagesPanel"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ 终端路径 ============ -->
+                <ScrollViewer x:Name="Page_Terminals" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="终端探测状态" Margin="0,0,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <DataGrid x:Name="PathsGrid" Height="180"
+                                      AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                                      CanUserSortColumns="False" CanUserResizeColumns="False" CanUserResizeRows="False"
+                                      IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                                      SelectionMode="Single" SelectionUnit="FullRow">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="终端" Binding="{Binding Label}" Width="140"/>
+                                    <DataGridTextColumn Header="解析路径" Binding="{Binding Path}" Width="*"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="Git Bash 路径覆盖" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" x:Name="GitBashBox" MinHeight="30" Margin="0,0,8,0"
+                                         ToolTip="留空则自动探测常见安装位置"/>
+                                <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…"
+                                        MinWidth="72" Margin="0,0,8,0" Click="BrowseGitBash_Click"/>
+                                <Button Grid.Column="2" Style="{StaticResource BtnPrimary}" Content="保存"
+                                        MinWidth="72" Click="SaveGitBash_Click"/>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
             </Grid>
         </Grid>
 
@@ -77,13 +310,8 @@
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
                 Padding="14,9">
             <DockPanel LastChildFill="False">
-                <CheckBox DockPanel.Dock="Left" x:Name="AutoStartBox" Content="开机自启"
-                          VerticalAlignment="Center"
-                          Checked="AutoStartBox_Changed" Unchecked="AutoStartBox_Changed"/>
-                <Button DockPanel.Dock="Left" Style="{StaticResource BtnGhost}" Content="终端路径..."
-                        Click="TerminalPaths_Click" Margin="12,0,0,0"/>
-                <TextBlock DockPanel.Dock="Right" x:Name="StatusText" Style="{StaticResource HintLabel}"
-                           VerticalAlignment="Center" Margin="10,0,0,0"/>
+                <TextBlock DockPanel.Dock="Left" x:Name="StatusText" Style="{StaticResource HintLabel}"
+                           VerticalAlignment="Center"/>
                 <Button DockPanel.Dock="Right" Style="{StaticResource BtnGhost}" Content="重新加载"
                         Click="Reload_Click"/>
             </DockPanel>

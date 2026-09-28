@@ -36,4 +36,18 @@ internal static class ActionRegistry
 
     /// <summary>全部已注册动作（供编辑器列表展示）。</summary>
     public static IReadOnlyCollection<ActionDto> All => _byId.Values;
+
+    /// <summary>从清单移除；返回是否确实存在并移除。</summary>
+    public static bool Remove(string id) => _byId.Remove(id);
+
+    /// <summary>生成不与现有 Id 冲突的新 Id（a1, a2, ...）。</summary>
+    public static string NextId()
+    {
+        int max = 0;
+        foreach (var k in _byId.Keys)
+        {
+            if (k.Length > 1 && k[0] == 'a' && int.TryParse(k[1..], out var n) && n > max) max = n;
+        }
+        return "a" + (max + 1);
+    }
 }
