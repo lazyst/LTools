@@ -8,6 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- 管理员清单（requireAdministrator），双击即提权 -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- exe 嵌入图标 -->
+    <ApplicationIcon>Icon\CapsLock++.ico</ApplicationIcon>
     <AssemblyVersion>0.1.0.0</AssemblyVersion>
     <RootNamespace>CapsLockPro</RootNamespace>
   </PropertyGroup>
