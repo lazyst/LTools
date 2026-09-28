@@ -93,7 +93,7 @@ internal static class SuperPanel
         if (vk == Win32.VkEscape) { w.RequestEscape(); return true; }
         if (vk >= '1' && vk <= '9')
         {
-            if (w.ExecuteSlot(vk - '1')) Close();
+            w.ExecuteSlot(vk - '1');   // 非空时内部已关面板
             return true;
         }
         return false;

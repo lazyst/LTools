@@ -412,6 +412,10 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **实测修正**（重新定义短按语义）：裸右键改为**整组吞 down/up**，短按**注入一次原生右键（down+up）**还原菜单。原「放行 down + 吞 up」会让目标窗口收到 down 收不到 up、鼠标捕获不释放 → 右键「卡住」（须再点一次右键才解除）。注入事件带 `LLMHF_INJECTED`，被本钩子忽略，不递归。
 - ✅ **实测修正**（面板定位）：`SuperPanelWindow.PlaceAtCursor` 改按「**可见边框**」贴合光标（gap=2），而非窗口外框。原 `gap=16` + XAML `Border.Margin=10` 使可见边框距光标 ~32px（125% 缩放下），观感不紧贴。
 - ✅ **实测修正**（致命坑）：短按注入的 `mouse_event` **必须在后台线程执行**——同步在 `WH_MOUSE_LL` 钩子回调内注入，注入事件需经同一钩子线程处理而该线程正阻塞在回调里 → 互相等待 → **系统鼠标卡死、进程不可结束**（须提权或重启）。注入事件额外带 `dwExtraInfo` 魔法标记（`InjectedTag`），钩子开头据此跳过（与 `LLMHF_INJECTED` 双保险，杜绝注入回流递归）。对齐既有 `DoLeftClick`（后台线程注入）模式。
+- ✅ **实测修正**（格子悬停无高亮）：格子底色 `SurfaceAlt`(#F4F4F5) 与 `BtnTemplate` 悬停色 `HoverBg`(#F4F4F5) **同色**→悬停无视觉变化。改在格子按钮显式设 `Tag=BorderStrongBrush`(#D4D4D8) 作悬停色（`Tag` 在模板里被当悬停画刷用），悬停可见。**注意**：`Tag` 只能放画刷，放非画刷值（如数据）会致背景失效→命中翻转→光标闪烁。
+- ✅ **实测修正**（格子执行动作后面板不关）：`ExecuteSlot` 改为**内部先 `SuperPanel.Close()` 再 `ActionExecutor.Run`**（避免动作窗口被置顶面板遮挡），调用者（`btn.Click`/`HandleKey`/`Window_KeyDown`）不再判返回值关面板。原按钮 Click 忽略了返回值→执行后不关。
+- ✅ **实测修正**（右键菜单项点击无反应）：菜单项 `Click` 内同步 `ShowDialog` 会与**菜单正在关闭的过程冲突**（`ShowDialog` 可能不显示）——ConfigHelper 走按钮触发故正常。改用 `Defer(=>Dispatcher.InvokeAsync)` 把动作推迟到菜单关闭后执行，覆盖新建/编辑/复制/删除/移动全部菜单项。
+- ✅ **实测修正**（新建动作对话框类型字段全隐藏）：`ShowFields` 原遍历 `FieldsPanel.Children` 折叠——而 `FieldsPanel`(StackPanel) 的**唯一直接子级是外层 `Border`**，折叠它会把整块字段区隐藏（7 个 `F_*` 面板在 `Border`→`Grid` 内）。改遍历 `_fieldsByType.Values` 只切换单个类型面板可见性。此 bug 致用户选"打开网址"却看不到网址输入框、确定时报"请输入网址"。
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

@@ -75,10 +75,6 @@ public partial class ActionEditorDialog : Window
         NameBox.Text = _draft.Name;
         _steps = _draft.Steps != null ? new List<StepDto>(_draft.Steps) : new List<StepDto>();
 
-        // 字段控件置为隐藏，再由 ShowFields 决定可见
-        foreach (var p in FieldsPanel.Children)
-            ((UIElement)p).Visibility = Visibility.Collapsed;
-
         // 类型选择
         int ti = IndexOf(_draft.Type);
         TypeCombo.SelectedIndex = ti >= 0 ? ti : 0;
@@ -110,10 +106,13 @@ public partial class ActionEditorDialog : Window
 
     private void ShowFields(ActionType t)
     {
-        foreach (var p in FieldsPanel.Children)
-            ((UIElement)p).Visibility = Visibility.Collapsed;
-        if (_fieldsByType.TryGetValue(t, out var fe))
-            fe.Visibility = Visibility.Visible;
+        // 只切换「类型面板自身」的可见性。注意：FieldsPanel 的唯一直接子级是外层 Border，
+        // 折叠它会连整块字段区一起隐藏（各 F_* 面板在该 Border 内的 Grid 里）——故必须遍历
+        // _fieldsByType.Values，而不是 FieldsPanel.Children。
+        foreach (var fe in _fieldsByType.Values)
+            fe.Visibility = Visibility.Collapsed;
+        if (_fieldsByType.TryGetValue(t, out var selected))
+            selected.Visibility = Visibility.Visible;
         else
             F_Composite.Visibility = Visibility.Visible;
     }

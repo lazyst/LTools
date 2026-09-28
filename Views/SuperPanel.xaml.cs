@@ -121,6 +121,9 @@ public partial class SuperPanelWindow : Window
             MinHeight = 82,
             Cursor = Cursors.Hand,
             Background = (Brush)FindResource("SurfaceAltBrush"),
+            // BtnTemplate 把 Tag 当「悬停背景画刷」用。格子底色 SurfaceAlt(#F4F4F5) 与默认
+            // 悬停色 HoverBg(#F4F4F5) 同色→悬停无变化，故显式指定更深的 BorderStrong 作悬停色。
+            Tag = (Brush)FindResource("BorderStrongBrush"),
             BorderBrush = (Brush)FindResource("BorderBrush"),
             BorderThickness = new Thickness(1),
         };
@@ -148,7 +151,7 @@ public partial class SuperPanelWindow : Window
         });
         btn.Content = content;
 
-        btn.Click += (_, _) => ExecuteSlot(slot);
+        btn.Click += (_, _) => Defer(() => ExecuteSlot(slot));
         // 右键菜单：非空 → 编辑/删除/复制/移动；空 → §5.5 新建菜单
         var menu = a != null ? BuildFilledMenu(slot) : BuildEmptyMenu(slot);
         TrackInteract(menu);
@@ -158,16 +161,16 @@ public partial class SuperPanelWindow : Window
 
     // —— 交互（左键 / 1~9）——
 
-    /// <summary>选中/点击某格。返回 true 表示应关闭面板（执行了动作）。</summary>
-    internal bool ExecuteSlot(int slot)
+    /// <summary>选中/点击某格。非空→先关面板再执行动作（避免动作窗口被置顶面板遮挡）。</summary>
+    internal void ExecuteSlot(int slot)
     {
-        if (slot < 0 || slot >= 9) return false;
+        if (slot < 0 || slot >= 9) return;
 
         // 移动模式：点击目标格完成移动
         if (_movePage != null)
         {
             CompleteMove(slot);
-            return false;
+            return;
         }
 
         string? id = CurrentPage[slot];
@@ -175,19 +178,20 @@ public partial class SuperPanelWindow : Window
         {
             // 空格：弹出 §5.5 菜单（无窗口焦点时用代码弹出）
             ShowMenu(BuildEmptyMenu(slot), slot);
-            return false;
+            return;
         }
 
         var action = ActionRegistry.FindById(id);
         if (action == null)
         {
             ConfirmDialog.Info(this, "超级面板", $"槽位引用的动作不存在：{id}");
-            return false;
+            return;
         }
 
-        // 用唤起瞬间的光标坐标（windowPin.toggle 等内部命令依赖它）
+        // 先关面板（避免动作窗口被置顶面板遮挡），再用唤起瞬间的光标坐标执行
+        // （windowPin.toggle 等内部命令依赖该坐标）。
+        SuperPanel.Close();
         ActionExecutor.Run(action, _invokeX, _invokeY);
-        return true;
     }
 
     /// <summary>Esc 处理：移动模式→取消移动；否则关闭面板。</summary>
@@ -238,13 +242,13 @@ public partial class SuperPanelWindow : Window
     {
         var menu = new ContextMenu();
         var miEdit = new MenuItem { Header = "编辑…" };
-        miEdit.Click += (_, _) => EditAt(slot);
+        miEdit.Click += (_, _) => Defer(() => EditAt(slot));
         var miCopy = new MenuItem { Header = "复制" };
-        miCopy.Click += (_, _) => DuplicateAt(slot);
+        miCopy.Click += (_, _) => Defer(() => DuplicateAt(slot));
         var miMove = new MenuItem { Header = "移动到其他格子…" };
-        miMove.Click += (_, _) => StartMove(slot);
+        miMove.Click += (_, _) => Defer(() => StartMove(slot));
         var miDel = new MenuItem { Header = "删除" };
-        miDel.Click += (_, _) => DeleteAt(slot);
+        miDel.Click += (_, _) => Defer(() => DeleteAt(slot));
         menu.Items.Add(miEdit);
         menu.Items.Add(miCopy);
         menu.Items.Add(miMove);
@@ -259,9 +263,9 @@ public partial class SuperPanelWindow : Window
 
         var miNew = new MenuItem { Header = "新建" };
         var miAction = new MenuItem { Header = "动作…" };
-        miAction.Click += (_, _) => NewActionAt(slot, null);
+        miAction.Click += (_, _) => Defer(() => NewActionAt(slot, null));
         var miComposite = new MenuItem { Header = "组合动作…" };
-        miComposite.Click += (_, _) => NewActionAt(slot, ActionType.composite);
+        miComposite.Click += (_, _) => Defer(() => NewActionAt(slot, ActionType.composite));
         miNew.Items.Add(miAction);
         miNew.Items.Add(miComposite);
         menu.Items.Add(miNew);
@@ -278,7 +282,7 @@ public partial class SuperPanelWindow : Window
         {
             var mi = new MenuItem { Header = label };
             var t = type;
-            mi.Click += (_, _) => NewActionAt(slot, t);
+            mi.Click += (_, _) => Defer(() => NewActionAt(slot, t));
             miQuick.Items.Add(mi);
         }
         menu.Items.Add(miQuick);
@@ -298,6 +302,10 @@ public partial class SuperPanelWindow : Window
         menu.Opened += (_, _) => _interactCount++;
         menu.Closed += (_, _) => { if (_interactCount > 0) _interactCount--; };
     }
+
+    /// <summary>把动作推迟到下一 Dispatcher 周期——右键菜单项 Click 内同步打开模态对话框，
+    /// 会与菜单正在关闭的过程冲突（ShowDialog 可能不显示），故须延后执行。</summary>
+    private void Defer(Action action) => Dispatcher.InvokeAsync(action);
 
     // —— 槽位 CRUD（全部经 ConfigIO 落盘）——
 
@@ -461,7 +469,7 @@ public partial class SuperPanelWindow : Window
         };
         if (idx >= 1)
         {
-            if (ExecuteSlot(idx - 1)) SuperPanel.Close();
+            ExecuteSlot(idx - 1);   // 非空时内部已关面板
             e.Handled = true;
         }
     }
