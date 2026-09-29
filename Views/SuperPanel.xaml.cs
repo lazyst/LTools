@@ -120,10 +120,9 @@ public partial class SuperPanelWindow : Window
             Margin = new Thickness(3),
             MinHeight = 82,
             Cursor = Cursors.Hand,
-            Background = (Brush)FindResource("SurfaceAltBrush"),
-            // BtnTemplate 把 Tag 当「悬停背景画刷」用。格子底色 SurfaceAlt(#F4F4F5) 与默认
-            // 悬停色 HoverBg(#F4F4F5) 同色→悬停无变化，故显式指定更深的 BorderStrong 作悬停色。
-            Tag = (Brush)FindResource("BorderStrongBrush"),
+            // 不覆盖 Background/Tag：与设置页槽位（BuildSlotButton）一致——透明底 + 默认悬停
+            // HoverBg(#F4F4F5)。原覆盖 SurfaceAlt(#F4F4F5) 与默认悬停同色→悬停无变化；
+            // 改深色悬停又太暗。保留边框仅作 3×3 格子的视觉分隔。
             BorderBrush = (Brush)FindResource("BorderBrush"),
             BorderThickness = new Thickness(1),
         };
@@ -261,37 +260,32 @@ public partial class SuperPanelWindow : Window
     {
         var menu = new ContextMenu();
 
-        var miNew = new MenuItem { Header = "新建" };
-        var miAction = new MenuItem { Header = "动作…" };
-        miAction.Click += (_, _) => Defer(() => NewActionAt(slot, null));
-        var miComposite = new MenuItem { Header = "组合动作…" };
-        miComposite.Click += (_, _) => Defer(() => NewActionAt(slot, ActionType.composite));
-        miNew.Items.Add(miAction);
-        miNew.Items.Add(miComposite);
-        menu.Items.Add(miNew);
-
-        var miQuick = new MenuItem { Header = "快捷新建" };
-        foreach (var (label, type) in new[]
+        // 计划 §5.5 原为「新建 / 快捷新建」两层子菜单；实测子菜单标题的展开（点击/悬停）不可靠，
+        // 故扁平化为单层——与已填格子菜单同为直选项，点哪项都直接开对应的新建对话框。
+        void Add(string header, ActionType? type)
         {
-            ("启动软件", ActionType.launchApp),
-            ("打开文件", ActionType.openFile),
-            ("打开文件夹", ActionType.openFolder),
-            ("运行命令", ActionType.runCommand),
-            ("打开网址", ActionType.openUrl),
-        })
-        {
-            var mi = new MenuItem { Header = label };
-            var t = type;
-            mi.Click += (_, _) => Defer(() => NewActionAt(slot, t));
-            miQuick.Items.Add(mi);
+            var mi = new MenuItem { Header = header };
+            mi.Click += (_, _) => Defer(() => NewActionAt(slot, type));
+            menu.Items.Add(mi);
         }
-        menu.Items.Add(miQuick);
+
+        Add("新建动作…", null);
+        Add("新建组合动作…", ActionType.composite);
+        menu.Items.Add(new Separator());
+        Add("新建 · 启动软件", ActionType.launchApp);
+        Add("新建 · 打开文件", ActionType.openFile);
+        Add("新建 · 打开文件夹", ActionType.openFolder);
+        Add("新建 · 运行命令", ActionType.runCommand);
+        Add("新建 · 打开网址", ActionType.openUrl);
         return menu;
     }
 
     /// <summary>在指定格子上弹出菜单（左键点空格走此路径；右键由 ContextMenu 自动弹出）。</summary>
     private void ShowMenu(ContextMenu menu, int slot)
     {
+        // 关键：该菜单未挂到按钮的 ContextMenu，须手动计入 IsInteracting，否则钩子在点菜单项时
+        // 判定为「点面板外」→ 关面板 → 菜单（作为面板的弹出子窗）随之销毁 → 菜单项点击落空。
+        TrackInteract(menu);
         menu.PlacementTarget = CellsHost.Children[slot] as UIElement;
         menu.Placement = PlacementMode.Center;
         menu.IsOpen = true;
