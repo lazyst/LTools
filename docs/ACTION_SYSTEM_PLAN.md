@@ -785,5 +785,11 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **键盘选格保持 1-9**（前 9 格快捷键，10–16 鼠标点）——不引入 0/-/= 等怪异映射，提示文案「1-9 选格」语义不变。
 - ✅ **冒烟**：`NormalizePage` 9→16 行映射逐位断言 ✓、幂等 ✓、窗口 `Children.Count==16` ✓（与菜单抑制合并冒烟共 7 项全过）。
 
+### 交付后 UX 优化（用户需求：唤起时光标居中 + 循环翻页）
+
+- ✅ **唤起定位 = 光标落在 4×4 格子区正中**（`PlaceAtCursor` 重写）：`窗口位置 = 光标DIP − CellsHost.TranslatePoint(格子中心)`——用实测中心而非硬编码标题栏/页脚尺寸；贴角/贴边唤起时改为把窗口外框整体夹回工作区（`[sLeft, sRight-w]`），**贴边时不再保证居中**是不出屏的必然取舍。原「可见边框紧贴光标 + 右/下溢出翻转」策略随需求废弃（gap/翻转逻辑删除）。
+- ✅ **循环翻页**：`GoPage` 边界 `n<0||n>=Count return` → 取模环回（`((n % Count) + Count) % Count`，delta 可为负）；仅 1 页原地不动。`UpdatePageHover` 去掉 `_pageIdx>0 / <Count-1` 限制（`Count>1` 即可悬停翻页）——首页悬停 ‹、末页悬停 › 均可环回。按钮/滚轮/悬停三入口共用 `GoPage`，改一处全覆盖；无键盘翻页键。`LastPage` 持久化值域不变。
+- ✅ **冒烟 5 项全过**（真实唤起 + 反射调 `GoPage`）：屏幕中心唤起后 `CellsHost.PointToScreen(中心)` 与光标偏差 `(0.0,0.0)px` ✓；`SetCursorPos(3,3)` 贴角唤起 → 窗口 `L=0,T=0` 夹回工作区 ✓；`pageIdx=0 → GoPage(-1) → Count-1` ✓、`GoPage(1) → 0` ✓（2 页）。冒烟前后恢复用户 `LastPage` 原值（`Finish` 收尾先恢复再落结果文件——最初放 `finally` 会早于面板 Close 执行，已纠正）。
+
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

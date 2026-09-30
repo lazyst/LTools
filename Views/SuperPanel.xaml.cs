@@ -86,7 +86,10 @@ public partial class SuperPanelWindow : Window
 
     // —— 定位（仿 MouseTipWindow.PlaceNearCursor：物理像素→DIP 换算 + 工作区避让）——
 
-    /// <summary>把面板「可见边框」紧贴光标（形如右键菜单），避开屏幕边缘。px/py 为屏幕物理像素。</summary>
+    /// <summary>
+    /// 唤起定位：光标落在 4×4 格子区正中（需求），越界时把窗口夹回工作区。
+    /// px/py 为唤起瞬间的屏幕物理坐标。
+    /// </summary>
     public void PlaceAtCursor(int px, int py)
     {
         double m11 = 1.0, m22 = 1.0;
@@ -98,27 +101,30 @@ public partial class SuperPanelWindow : Window
         }
 
         double cx = px * m11, cy = py * m22;   // 光标 DIP
-        double w = ActualWidth > 0 ? ActualWidth : 310;
-        double h = ActualHeight > 0 ? ActualHeight : 382;
+        double w = ActualWidth > 0 ? ActualWidth : 406;
+        double h = ActualHeight > 0 ? ActualHeight : 478;
 
-        // XAML 里 Border 有 10px Margin（阴影留白），窗口外框比可见边框大一圈。
-        // 按「可见边框」定位才能紧贴光标：可见边框左上角 = 光标 + gap。
-        const double margin = 10;   // 与 Views/SuperPanel.xaml 的 Border.Margin 一致
-        const double gap = 2;       // 光标到可见边框的间距（略入面板，便于立即移到首格）
-        double visW = w - 2 * margin, visH = h - 2 * margin;
+        // 窗口位置 = 光标 − 格子中心相对窗口的偏移（Loaded 时布局已完成，
+        // TranslatePoint 直接取 CellsHost 实测中心，不硬编码标题栏/页脚尺寸）。
+        Point center = CellsHost.ActualWidth > 0
+            ? CellsHost.TranslatePoint(
+                  new Point(CellsHost.ActualWidth / 2, CellsHost.ActualHeight / 2), this)
+            : new Point(w / 2, h / 2);   // 兜底（理论上 Loaded 时布局已就绪）
+        double left = cx - center.X;
+        double top = cy - center.Y;
 
-        double visX = cx + gap, visY = cy + gap;
+        // 屏幕边缘夹回：窗口外框（含 10px 阴影留白）完整保持在工作区内。
+        // 贴边唤起时光标不再居中，这是让面板不出屏的必然取舍。
         var screen = GetScreenBounds(px, py);
         double sLeft = screen.Left * m11, sTop = screen.Top * m22;
         double sRight = screen.Right * m11, sBottom = screen.Bottom * m22;
-        // 右/下溢出 → 翻到光标左/上方（可见边框的右/下边对齐光标）
-        if (visX + visW > sRight - 8) visX = cx - gap - visW;
-        if (visX < sLeft + margin) visX = sLeft + margin;   // 连同阴影留白不越出工作区
-        if (visY + visH > sBottom - 8) visY = cy - gap - visH;
-        if (visY < sTop + margin) visY = sTop + margin;
+        if (left < sLeft) left = sLeft;
+        else if (left + w > sRight) left = Math.Max(sLeft, sRight - w);
+        if (top < sTop) top = sTop;
+        else if (top + h > sBottom) top = Math.Max(sTop, sBottom - h);
 
-        Left = visX - margin;   // 窗口外框 = 可见边框 - margin
-        Top = visY - margin;
+        Left = left;
+        Top = top;
     }
 
     private static (double Left, double Top, double Right, double Bottom) GetScreenBounds(int x, int y)
@@ -231,11 +237,12 @@ public partial class SuperPanelWindow : Window
     private void Prev_Click(object sender, RoutedEventArgs e) => GoPage(-1);
     private void Next_Click(object sender, RoutedEventArgs e) => GoPage(1);
 
-    /// <summary>翻页（‹/› 按钮、滚轮、拖到 ‹/› 悬停）。带横滑过渡动画（§5.3）。</summary>
+    /// <summary>翻页（‹/› 按钮、滚轮、拖到 ‹/› 悬停）。**循环翻页**：末页再往后回到首页、首页再往前到末页。
+    /// 带横滑过渡动画（§5.3）；仅 1 页时原地不动。</summary>
     private void GoPage(int delta)
     {
-        int n = _pageIdx + delta;
-        if (n < 0 || n >= _pages.Count) return;
+        if (_pages.Count <= 1) return;
+        int n = ((_pageIdx + delta) % _pages.Count + _pages.Count) % _pages.Count;   // 环回
         _pageIdx = n;
 
         // 拖动中（跨页悬停翻页）只做瞬时切换：幽灵由 UpdateGhost 跟随光标，
@@ -659,8 +666,9 @@ public partial class SuperPanelWindow : Window
     private void UpdatePageHover(Point windowPos)
     {
         int dir = 0;
-        if (IsOver(windowPos, PrevBtn) && _pageIdx > 0) dir = -1;
-        else if (IsOver(windowPos, NextBtn) && _pageIdx < _pages.Count - 1) dir = 1;
+        // 循环翻页：首页悬停 ‹、末页悬停 › 同样可翻（仅 1 页时不翻）
+        if (_pages.Count > 1 && IsOver(windowPos, PrevBtn)) dir = -1;
+        else if (_pages.Count > 1 && IsOver(windowPos, NextBtn)) dir = 1;
 
         if (dir == 0) { StopPageHover(); return; }
         if (_pageHoverDir != dir || _pageHoverTimer?.IsEnabled != true)
