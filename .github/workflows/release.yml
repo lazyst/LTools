@@ -15,7 +15,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       # 独立部署：内嵌 .NET 运行时，用户免装 .NET 即可运行
       - name: Publish self-contained

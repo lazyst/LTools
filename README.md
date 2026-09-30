@@ -13,7 +13,7 @@ v2.0.0 起由原 AutoHotkey v2 脚本重构为 **C# / .NET 8 / WPF** 桌面程�
 
 ### 依赖
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)（Windows）
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)（Windows）
 - Windows 10/11（托盘、全局钩子、WPF）
 
 ### 构建
@@ -28,7 +28,7 @@ dotnet build -c Release
 dotnet publish -c Release -r win-x64 --self-contained false
 ```
 
-输出位于 `bin/Debug/net8.0-windows/CapsLockPro.exe`（或 `Release`）。双击即提权运行（`app.manifest` 已配置 `requireAdministrator`）。
+输出位于 `bin/Debug/net10.0-windows/CapsLockPro.exe`（或 `Release`）。双击即提权运行（`app.manifest` 已配置 `requireAdministrator`）。
 
 > 全局键盘/鼠标钩子需管理员权限，故发布版带提权清单。开发调试时可用 `-p:NoWin32Manifest=true` 免提权快速启动。
 

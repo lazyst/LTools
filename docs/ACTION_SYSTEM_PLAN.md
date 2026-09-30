@@ -791,5 +791,18 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **循环翻页**：`GoPage` 边界 `n<0||n>=Count return` → 取模环回（`((n % Count) + Count) % Count`，delta 可为负）；仅 1 页原地不动。`UpdatePageHover` 去掉 `_pageIdx>0 / <Count-1` 限制（`Count>1` 即可悬停翻页）——首页悬停 ‹、末页悬停 › 均可环回。按钮/滚轮/悬停三入口共用 `GoPage`，改一处全覆盖；无键盘翻页键。`LastPage` 持久化值域不变。
 - ✅ **冒烟 5 项全过**（真实唤起 + 反射调 `GoPage`）：屏幕中心唤起后 `CellsHost.PointToScreen(中心)` 与光标偏差 `(0.0,0.0)px` ✓；`SetCursorPos(3,3)` 贴角唤起 → 窗口 `L=0,T=0` 夹回工作区 ✓；`pageIdx=0 → GoPage(-1) → Count-1` ✓、`GoPage(1) → 0` ✓（2 页）。冒烟前后恢复用户 `LastPage` 原值（`Finish` 收尾先恢复再落结果文件——最初放 `finally` 会早于面板 Close 执行，已纠正）。
 
+### 平台升级（.NET 8 → .NET 10）
+
+- ✅ **动机**：用户要求升到 .NET 10 并尽量用最新 WPF。.NET 10 为 LTS（2025-11 发布）。
+- ✅ **SDK 安装**：本机原只有 8.0.4xx，经 `winget install Microsoft.DotNet.SDK.10` 装 **10.0.401**。项目根已有 `global.json`（pin 8.0.425 + `rollForward: latestFeature`）——**必须同步升为 `10.0.401` + `latestFeature`**，否则 muxer 继续选 8.x 构建（NETSDK1045）。保留显式 pin 风格：锁 10.0 主线、允许 10.0.x 内自动升级（CI `setup-dotnet 10.0.x` 与之兼容）。
+- ✅ **csproj**：`net8.0-windows` → **`net10.0-windows`**；`H.NotifyIcon.Wpf` `2.1.4` → **`2.4.1`**（2.4.1 正式版原生 `net10.0-windows7.0` 目标，2.1.4 是 net8 目标）。
+- ✅ **CI**：`build.yml` / `release.yml` 的 `dotnet-version` `8.0.x` → **`10.0.x`**。`release.yml` 的 self-contained publish 不变（用户仍免装运行时，只是内嵌 10 运行时）。
+- ✅ **文档**：AGENTS.md（首段框架描述、输出路径 `net10.0-windows`、OpenFolderDialog 去掉易误导的「.NET 8」版本号——该 API 是 .NET 8 引入、现运行于 .NET 10）；README（SDK 要求 → .NET 10、输出路径）。CHANGELOG / WPF_MIGRATION_PLAN 为历史记录不改。
+- ✅ **WPF .NET 10 新能力**：XAML `RowDefinitions="Auto,*,Auto"` 简写语法、性能优化（XAML 解析/字体/输入）、Fluent 主题改进——项目自定义 `Themes/Modern.xaml` 不套 Fluent；新 Grid 简写可在后续迭代逐步采用（本次不动存量 XAML，控制升级风险）。
+- ⚠️ **.NET 10 WPF 剪贴板 obsolete**：只影响 `BinaryFormatter` 系列序列化 API；`NativeClipboard` 走纯 Win32 层（`OleGetClipboard` + `CF_UNICODETEXT`）不涉及 ✓。
+- ⚠️ **`NETSDK1194`**（sln + `-o` 警告）：既有老警告（.NET 7.0.200+ 就有），CI 命令未变，exit 0 不阻塞；`build -p:NoWin32Manifest=true` 门槛仍 0/0。
+- ✅ **发布验证**：本地 `dotnet publish -c Release -r win-x64 --self-contained true` 成功（242 dll + exe）；`.gitignore` 补 `publish/`（首次本地发布发现未忽略）。
+- ✅ **冒烟 7 项全过**（net10 运行时）：键盘/鼠标钩子句柄非零 ✓、托盘创建 ✓、超级面板窗口创建+16 格 ✓、设置窗开/关 ✓、帮助面板开/关 ✓、残留窗口仅 MouseTipWindow（启动提示，正常）。首轮脚本三处自身缺陷（`Show()` 异步创建读太早、`Toggle` 计数被 Hide 复用语义污染、base 计数被先开的窗口污染）——改类型名 + `IsVisible` 断言后全过。
+
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

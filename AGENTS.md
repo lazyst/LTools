@@ -1,6 +1,6 @@
 # AGENTS.md
 
-CapsLock-Pro：Windows 桌面工具，把 CapsLock 重映射为 vim 式修饰键。C# / .NET 8 / WPF 单项目单解决方案，**无测试项目**。
+CapsLock-Pro：Windows 桌面工具，把 CapsLock 重映射为 vim 式修饰键。C# / .NET 10 / WPF 单项目单解决方案，**无测试项目**。
 
 ## 构建
 
@@ -15,7 +15,7 @@ dotnet build -c Release
 dotnet publish -c Release -r win-x64 --self-contained true -o publish
 ```
 
-- 输出：`bin/Debug/net8.0-windows/CapsLockPro.exe`
+- 输出：`bin/Debug/net10.0-windows/CapsLockPro.exe`
 - 全局钩子需管理员权限；Debug 加 `-p:NoWin32Manifest=true` 免提权调试
 - 构建必须 **0 错 0 警**
 - 无测试项目，不要找 `dotnet test`
@@ -57,7 +57,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 ## WPF 约定
 
 - `GlobalUsings.cs` 已把 `Button`/`Key`/`MessageBox` 等同名类型统一到 WPF 命名空间——不要引用 WinForms 类型
-- 文件夹选择用 .NET 8 WPF 原生 `Microsoft.Win32.OpenFolderDialog`，不引用 WinForms
+- 文件夹选择用 WPF 原生 `Microsoft.Win32.OpenFolderDialog`，不引用 WinForms
 - 唯一第三方依赖：`H.NotifyIcon.Wpf`（托盘图标）
 
 ## 其他

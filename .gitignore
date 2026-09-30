@@ -40,3 +40,6 @@ CapsLockPro-*.zip
 
 # 用户本地配置（仅保留示例 CapsLock++.example.json）
 CapsLock++.json
+
+publish/
+
