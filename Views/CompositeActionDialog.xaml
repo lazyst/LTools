@@ -17,11 +17,37 @@
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
-        <!-- 步骤行模板（两行）：上行 = 身份 + 操作，下行 = 执行参数。
-             不能单行：把手/序号/徽标/延迟/失败策略/按钮的 Auto 列总和约 378px，
-             而中栏最小可用仅约 256px（默认 940 宽时也已贴边）；Grid 的 Auto 列不会收缩，
-             溢出从最右侧开始裁 → 删除按钮最先消失。拆两行后上行固定件仅约 172px，
-             编辑/删除恒可见；下行参数独占整行宽度，仍可行内编辑。 -->
+        <controls:WidthAtLeastConverter x:Key="WidthAtLeast"/>
+        <!-- 步骤行模板（宽度响应式）：
+             · ListBox 够宽（≥520px）→ 单行：把手/序号/徽标/名称(*)/参数/编辑/删除，
+               名称吃掉全部剩余空间，随窗口拉宽而变长；
+             · 不够 → 参数下沉到第二行，上行只剩 172px 固定件 → 编辑/删除按钮恒可见。
+             必须响应式：单行时 Auto 列总和约 378px > 中栏最小可用 256px，
+             而 Grid 的 Auto 列不收缩，溢出从最右侧裁 → 删除按钮最先消失。
+             两份参数区共用同一份 XAML（ContentPresenter + ParamsTemplate），同 DataContext
+             双向绑定天然同步；切换只改 Visibility（触发器见模板底部）。 -->
+        <DataTemplate x:Key="ParamsTemplate">
+            <StackPanel Orientation="Horizontal">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0">
+                    <TextBlock Text="⏱" VerticalAlignment="Center"
+                               Foreground="{StaticResource HintTextBrush}" FontSize="13"/>
+                    <TextBox Width="46" MinHeight="26" Margin="4,0,0,0"
+                             Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}"
+                             PreviewTextInput="Delay_PreviewTextInput"/>
+                    <TextBlock Text="ms" VerticalAlignment="Center"
+                               Foreground="{StaticResource HintTextBrush}" FontSize="11" Margin="2,0,0,0"/>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="失败" VerticalAlignment="Center"
+                               Foreground="{StaticResource HintTextBrush}" FontSize="11" Margin="0,0,4,0"/>
+                    <ComboBox MinWidth="78" MinHeight="28"
+                              ItemsSource="{Binding StrategyOptions}"
+                              SelectedIndex="{Binding OnFailIndex}"/>
+                </StackPanel>
+            </StackPanel>
+        </DataTemplate>
+
         <DataTemplate x:Key="StepRowTemplate">
             <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
@@ -32,8 +58,8 @@
                         <ColumnDefinition Width="*"/>       <!-- 内容区 -->
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>      <!-- 身份 + 操作 -->
-                        <RowDefinition Height="Auto"/>      <!-- 执行参数 -->
+                        <RowDefinition Height="Auto"/>      <!-- 身份 + 操作（+ 宽时的参数） -->
+                        <RowDefinition Height="Auto"/>      <!-- 窄时的参数 -->
                     </Grid.RowDefinitions>
 
                     <!-- 把手（跨两行，可拖整行） -->
@@ -45,12 +71,13 @@
                                    Foreground="{StaticResource HintTextBrush}" FontSize="14"/>
                     </Border>
 
-                    <!-- 上行：序号 | 类型徽标 | 名称（截断）| 编辑 | 删除 -->
+                    <!-- 上行：序号 | 类型徽标 | 名称（截断）| 参数（宽时）| 编辑 | 删除 -->
                     <Grid Grid.Column="1" Grid.Row="0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>    <!-- 序号 -->
                             <ColumnDefinition Width="Auto"/>    <!-- 类型徽标 -->
                             <ColumnDefinition Width="*"/>       <!-- 名称（截断） -->
+                            <ColumnDefinition Width="Auto"/>    <!-- 参数（宽时） -->
                             <ColumnDefinition Width="30"/>      <!-- 编辑 -->
                             <ColumnDefinition Width="30"/>      <!-- 删除 -->
                         </Grid.ColumnDefinitions>
@@ -66,38 +93,36 @@
                         <TextBlock Grid.Column="2" Text="{Binding ActionName}" FontWeight="SemiBold"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
 
+                        <ContentPresenter Grid.Column="3" x:Name="ParamsInline"
+                                          Content="{Binding}" ContentTemplate="{StaticResource ParamsTemplate}"
+                                          Visibility="Collapsed" VerticalAlignment="Center" Margin="8,0,0,0"/>
+
                         <!-- 编辑 / 删除（Padding=0：图标在 30px 按钮里完整居中，不被 Btn 的 10,4 内边距挤压） -->
-                        <Button Grid.Column="3" Style="{StaticResource BtnGhost}" Content="✎"
+                        <Button Grid.Column="4" Style="{StaticResource BtnGhost}" Content="✎"
                                 Padding="0" Width="30" Height="30" VerticalAlignment="Center"
                                 ToolTip="编辑本步（双击行亦可）" Click="EditStep_Click"/>
-                        <Button Grid.Column="4" Style="{StaticResource BtnGhost}" Content="✕"
+                        <Button Grid.Column="5" Style="{StaticResource BtnGhost}" Content="✕"
                                 Padding="0" Width="30" Height="30" VerticalAlignment="Center"
                                 ToolTip="删除步骤" Click="Delete_Click"/>
                     </Grid>
 
-                    <!-- 下行：延迟 + 失败策略（独占整行宽度，不再与名称争空间） -->
-                    <StackPanel Grid.Column="1" Grid.Row="1" Orientation="Horizontal"
-                                VerticalAlignment="Center" Margin="0,5,0,0">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0">
-                            <TextBlock Text="⏱" VerticalAlignment="Center"
-                                       Foreground="{StaticResource HintTextBrush}" FontSize="13"/>
-                            <TextBox Width="46" MinHeight="26" Margin="4,0,0,0"
-                                     Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}"
-                                     PreviewTextInput="Delay_PreviewTextInput"/>
-                            <TextBlock Text="ms" VerticalAlignment="Center"
-                                       Foreground="{StaticResource HintTextBrush}" FontSize="11" Margin="2,0,0,0"/>
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="失败" VerticalAlignment="Center"
-                                       Foreground="{StaticResource HintTextBrush}" FontSize="11" Margin="0,0,4,0"/>
-                            <ComboBox MinWidth="78" MinHeight="28"
-                                      ItemsSource="{Binding StrategyOptions}"
-                                      SelectedIndex="{Binding OnFailIndex}"/>
-                        </StackPanel>
-                    </StackPanel>
+                    <!-- 下行：窄时的参数（独占整行宽度，不与名称争空间） -->
+                    <ContentPresenter Grid.Column="1" Grid.Row="1" x:Name="ParamsBelow"
+                                      Content="{Binding}" ContentTemplate="{StaticResource ParamsTemplate}"
+                                      VerticalAlignment="Center" Margin="0,5,0,0"/>
                 </Grid>
             </Border>
+
+            <!-- 宽度够 → 单行（参数上移，名称拉长）；不够 → 两行（按钮常驻） -->
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=ListBox},
+                                               Path=ActualWidth,
+                                               Converter={StaticResource WidthAtLeast}, ConverterParameter=520}"
+                             Value="True">
+                    <Setter TargetName="ParamsInline" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="ParamsBelow" Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
         </DataTemplate>
     </Window.Resources>
 
@@ -143,15 +168,19 @@
                                 HorizontalAlignment="Right" Click="ToNormal_Click"
                                 ToolTip="关闭本窗口并新建一个普通动作（不带数据跳转）"/>
                     </Grid>
+                    <!-- EmptyHint 必须排在 ListBox 之前：DockPanel 只有最后一个子元素才
+                         LastChildFill 填满剩余。否则 ListBox 落到默认 Dock="Left"，宽度变成
+                         内容自然宽（且被可用宽 clamp）→ 窄窗口时右侧删除按钮被裁、
+                         宽窗口时行宽固定不随窗口拉宽（实测 ListBox 只有 460px / 中间列 880px）。 -->
+                    <TextBlock x:Name="EmptyHint" DockPanel.Dock="Bottom"
+                               Style="{StaticResource HintLabel}"
+                               Text="（无步骤）从左侧双击或拖入动作" Margin="0,6,0,0"/>
                     <ListBox x:Name="StepsList" HorizontalContentAlignment="Stretch"
                              BorderThickness="0" Background="Transparent"
                              ItemTemplate="{StaticResource StepRowTemplate}"
                              AllowDrop="True"
                              DragOver="StepsList_DragOver" Drop="StepsList_Drop"
                              MouseDoubleClick="StepsList_DoubleClick"/>
-                    <TextBlock x:Name="EmptyHint" DockPanel.Dock="Bottom"
-                               Style="{StaticResource HintLabel}"
-                               Text="（无步骤）从左侧双击或拖入动作" Margin="0,6,0,0"/>
                 </DockPanel>
             </Border>
 
