@@ -862,6 +862,7 @@ public partial class ConfigHelperWindow : Window
             ActionType.openUrl => a.Url ?? "",
             ActionType.runCommand => string.IsNullOrEmpty(a.Cmd) ? "" : $"{a.Cmd}",
             ActionType.sendText => BriefText(a.Text),
+            ActionType.sendKeys => a.Items != null ? $"{a.Items.Count} 条输入" : "",
             ActionType.@internal => a.Command ?? "",
             ActionType.composite => a.Steps != null ? $"{a.Steps.Count} 个步骤" : "",
             _ => "",

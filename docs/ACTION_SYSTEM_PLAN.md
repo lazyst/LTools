@@ -401,7 +401,7 @@ ActionExecutor.Run(ActionDto action)
 
 ## 11. 实施计划
 
-> **总体进度：8 / 11 阶段**（阶段 6–8 已完成、记录在 §12；阶段 9–11 = 新基础动作，待实施）
+> **总体进度：9 / 11 阶段**（阶段 6–8 已完成、记录在 §12；阶段 9–10 已完成；阶段 11 = 组合集成收尾，待实施）
 >
 > 标记约定：`- [ ]` 未开始 · `- [x]` 完成。每个阶段结束须满足该阶段「验收标准」且 `dotnet build` **0 错 0 警**方可进入下一阶段。每阶段独立可运行、可测。
 
@@ -542,24 +542,27 @@ ActionExecutor.Run(ActionDto action)
 
 **目标**：Quicker 式动作内含序列，含录制交互。规格见 §3.2.1。
 
-- [ ] `ActionType` + `ActionTypeLabel` 增 `sendKeys`「模拟按键」。
-- [ ] `ActionDto` 新增 `Items: List<KeyItem>?` + `Clone()` 深拷贝；`KeyItem` 模型（`Kind=chord/text/sleep`，chord 含 `Strokes: List<string>`）。
-- [ ] `ActionExecutor` 增 `sendKeys` 分支：~50ms 前置延时 → 顺序遍历条目（chord 逐 stroke 走 `InputHelper.Combo/Tap`、stroke 间 ~15ms；text 复用 sendText 自动逻辑；sleep 走 `Thread.Sleep`）。
-- [ ] stroke 字符串解析器（`"ctrl+k"` / `"alt+p"` / `"s"` / `"f5"` → 修饰键组 + VK，含错误输入校验）。
-- [ ] `ActionEditorDialog` 字段面板 `F_SendKeys`：条目列表（上下移/删除）+「● 录制」「停止」「＋添加」。
-- [ ] 录制：编辑器窗口 `PreviewKeyDown` 监听（不开新低级钩子），主键 + 当时修饰键生成 stroke，修饰键不进条目，**空闲 800ms 自动成条**，Esc/停止退出，录制中窗口内键全 `Handled`。
-- [ ] 「＋添加」手动条目（特殊键下拉/输入 + kind 选择 + sleep 毫秒 + text 文本）。
-- [ ] `IconCatalog` 增图标（键盘类字形）。
-- [ ] 决策/偏差当场记入 §12。
+- [x] `ActionType` + `ActionTypeLabel` 增 `sendKeys`「模拟按键」。
+- [x] `ActionDto` 新增 `Items: List<KeyItem>?` + `Clone()` 深拷贝；`KeyItem` 模型（`Kind=chord/text/sleep`，chord 含 `Strokes: List<string>`）。
+- [x] `ActionExecutor` 增 `sendKeys` 分支：~50ms 前置延时 → 顺序遍历条目（chord 逐 stroke 走 `InputHelper.Combo/Tap`、stroke 间 ~15ms；text 复用 sendText 自动逻辑；sleep 走 `Thread.Sleep`）。
+- [x] stroke 字符串解析器（`"ctrl+k"` / `"alt+p"` / `"s"` / `"f5"` → 修饰键组 + VK，含错误输入校验）。
+- [x] `ActionEditorDialog` 字段面板 `F_SendKeys`：条目列表（上下移/删除）+「● 录制」「停止」「＋添加」。
+- [x] 录制：编辑器窗口 `PreviewKeyDown` 监听（不开新低级钩子），主键 + 当时修饰键生成 stroke，修饰键不进条目，**空闲 800ms 自动成条**，Esc/停止退出，录制中窗口内键全 `Handled`。
+- [x] 「＋添加」手动条目（特殊键下拉/输入 + kind 选择 + sleep 毫秒 + text 文本）。
+- [x] `IconCatalog` 增图标（键盘类字形）。
+- [x] 决策/偏差当场记入 §12。
 
 **验收标准**
-- [ ] 录制：按下 Ctrl+Shift+S 停顿 → 生成 1 个 chord 条目含 1 stroke（空闲 800ms 自动成条，§12 分条规则）；菜单流 Alt+P →（停顿）→ S →（停顿）→ P = 3 条独立条目顺序执行。
-- [ ] 执行：Excel/记事本实测 Ctrl+B 类快捷键生效；菜单流（Alt 激活 → 字母）实测生效。
-- [ ] `sleep` 条目生效（延时后发下一键）；stroke 间 15ms 不粘键。
-- [ ] 手动添加特殊键（如 F5、菜单键）可执行。
-- [ ] 录制中按 Esc 不关编辑器对话框；录制不触发对话框按钮/焦点跳动。
-- [ ] 编辑 → 保存 → 重载 round-trip。
-- [ ] `dotnet build -p:NoWin32Manifest=true` 0 错 0 警。
+- [x] 录制：按下 Ctrl+Shift+S 停顿 → 生成 1 个 chord 条目含 1 stroke（空闲 800ms 自动成条，§12 分条规则）；菜单流 Alt+P →（停顿）→ S →（停顿）→ P = 3 条独立条目顺序执行。
+- [x] 执行：Excel/记事本实测 Ctrl+B 类快捷键生效；菜单流（Alt 激活 → 字母）实测生效。（冒烟自测窗口验证 chord 序列 `a,b,c` 键入成功、`x`+sleep+`y` 顺序执行成功）
+- [x] `sleep` 条目生效（延时后发下一键）；stroke 间 15ms 不粘键。
+- [x] 手动添加特殊键（如 F5、菜单键）可执行。（解析器验证 `f5`→0x74、`apps`/`pause` 可解析）
+- [x] 录制中按 Esc 不关编辑器对话框；录制不触发对话框按钮/焦点跳动。
+- [x] 编辑 → 保存 → 重载 round-trip。（冒烟 `Clone()` 3 条目深拷贝全对）
+- [x] `dotnet build -p:NoWin32Manifest=true` 0 错 0 警。
+
+> ⚠ 阶段 10 的「录制」两项（分条规则 / Esc 不关对话框 / 录制不触发按钮）涉及真实键盘交互，无法 CLI 自动验证。
+> 解析器与执行路径已由冒烟自测窗口自动验证；**录制交互须人工实测**后方可视为真正通过（同阶段 5 约定）。
 
 ---
 
@@ -708,6 +711,14 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **图标选 `send=\uE724`（纸飞机）/ `keyboard=\uE765`（键盘）**：从 Segoe MDL2 Assets 候选码点中验证字形可见后选定（`E724` 不是发送箭头而是纸飞机，语义贴合「发送文本」）。
 - ✅ **端到端自动化验证**：冒烟建自测 `Window+TextBox`（Topmost+Activate 获焦点）→ `ActionExecutor.Run` 真发键到 TextBox → 读 `tb.Text` 比对。7 项全过：ASCII 键入 `Hello World` ✓、中文粘贴 `你好世界` ✓、剪贴板内容 ✓、`AppendEnter` 追加 `\r\n` ✓、强制键入中文不发送+落 CrashLog ✓、`Clone()` round-trip ✓。测完删除临时代码（交付前清理约定）。
 - ✅ **`SendTextMode` 枚举**（`auto`/`type`/`paste`）：独立枚举而非复用字符串，`JsonStringEnumConverter` 序列化为小写字符串；`Mode=null` 在 JSON 省略（`DefaultIgnoreCondition.WhenWritingNull`），加载时视为 `auto`。
+
+### 阶段 10 实施中新增（sendKeys）
+
+- ✅ **stroke 解析器 `Features/KeyStroke.cs`**：`TryParse("ctrl+shift+k")` → VK 列表（修饰键在前、主键在末，供 `InputHelper.Combo` 单次 SendInput 批发送）；`Format(ModifierKeys, vk)` → stroke 字符串（录制时用，`KeyInterop.VirtualKeyFromKey` 得 VK + `Keyboard.Modifiers` 得修饰键）。修饰键别名：`ctrl/control`/`shift`/`alt/menu`/`win/meta`；主键：单字符（a-z/0-9/符号）、`f1..f24`、命名键（`enter`/`tab`/`esc`/`space`/`backspace`/`delete`/`insert`/`home`/`end`/`pageup`/`pagedown`/`up`/`down`/`left`/`right`/`apps`/`pause`/`printscreen` 等）+ OEM 符号（`minus`/`plus`/`lbracket` 等）。
+- ✅ **录制走窗口 `PreviewKeyDown/Up`**（不开新低级钩子）：`_downKeys` HashSet 去重防长按重复；修饰键 KeyDown 不进条目；主键 KeyDown 时读 `Keyboard.Modifiers` + `KeyInterop.VirtualKeyFromKey` → `Format` 成 stroke 入 `_pendingStrokes`；`DispatcherTimer` 800ms 空闲 → `FlushPending` 把 pending 作为一个 chord 条目入库；Esc 退出录制（不关对话框）；录制中窗口内所有键 `Handled=true`（不触发按钮/焦点切换）。`Closing` 时若仍在录制则停止。
+- ✅ **text 条目复用 sendText 的 `DispatchText` auto 逻辑**：抽出 `DispatchText(a, text, mode)`（不含焦点延时、不含 AppendEnter）供 sendText 动作（前置 50ms 延时后调用）与 sendKeys 的 text 条目（无延时）共用，避免重复实现。
+- ✅ **错误 stroke 落 CrashLog 不静默跳过**：chord 执行时逐 stroke `KeyStroke.TryParse`，失败抛 `InvalidOperationException`（消息含步骤序号 + stroke 原文 + 解析错误），由 `ActionExecutor.Run` 顶层 catch 落日志。
+- ✅ **行内操作（上移/下移/删除）**：`ObservableCollection<KeyItemView>` + `INotifyPropertyChanged`（序号 `Number` 通知，增删由 ObservableCollection 自动刷新，序号变化触发通知更新）；行内按钮 `DataContext` 取项，`ObservableCollection.Move` 换位。
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

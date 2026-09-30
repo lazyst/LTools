@@ -1,6 +1,11 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Threading;
 using CapsLockPro.Features;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using OpenFolderDialog = Microsoft.Win32.OpenFolderDialog;
@@ -22,6 +27,13 @@ public partial class ActionEditorDialog : Window
 
     private readonly Dictionary<ActionType, FrameworkElement> _fieldsByType = new();
 
+    // —— sendKeys 序列编辑状态 ——
+    private readonly ObservableCollection<KeyItemView> _keyItems = new();
+    private bool _recording;
+    private readonly List<string> _pendingStrokes = new();
+    private readonly HashSet<Key> _downKeys = new();
+    private DispatcherTimer? _idleTimer;
+
     public ActionEditorDialog(string title, ActionDto? existing, bool allowComposite = true)
     {
         InitializeComponent();
@@ -34,6 +46,7 @@ public partial class ActionEditorDialog : Window
         _fieldsByType[ActionType.openUrl] = F_OpenUrl;
         _fieldsByType[ActionType.runCommand] = F_RunCommand;
         _fieldsByType[ActionType.sendText] = F_SendText;
+        _fieldsByType[ActionType.sendKeys] = F_SendKeys;
         _fieldsByType[ActionType.@internal] = F_Internal;
 
         // 类型下拉：allowComposite=false（编辑组合步骤时）不含「组合动作」项，从源头禁嵌套；
@@ -46,6 +59,7 @@ public partial class ActionEditorDialog : Window
             new("打开网址", ActionType.openUrl),
             new("运行命令", ActionType.runCommand),
             new("发送文本", ActionType.sendText),
+            new("模拟按键", ActionType.sendKeys),
             new("内部动作", ActionType.@internal),
         };
         if (allowComposite) types.Add(new("组合动作 ▸", ActionType.composite));
@@ -59,9 +73,15 @@ public partial class ActionEditorDialog : Window
         foreach (var c in InternalActionRegistry.Commands)
             CommandCombo.Items.Add(new ComboItem(FormatCommand(c), c));
 
+        // sendKeys 序列编辑：列表绑定 + 空闲成条计时器
+        KeysList.ItemsSource = _keyItems;
+        _idleTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
+        _idleTimer.Tick += (_, _) => { _idleTimer.Stop(); FlushPending(); };
+
         LoadDraft();
         _ready = true;
         Loaded += (_, _) => NameBox.Focus();
+        Closing += (_, _) => { if (_recording) StopRecording(); };
     }
 
     /// <summary>返回值；取消时为 null。</summary>
@@ -106,6 +126,12 @@ public partial class ActionEditorDialog : Window
             _ => 0,
         };
         AppendEnterBox.IsChecked = _draft.AppendEnter ?? false;
+
+        // sendKeys Items 载入序列列表
+        _keyItems.Clear();
+        if (_draft.Items != null)
+            foreach (var m in _draft.Items) _keyItems.Add(WrapKeyItem(m));
+        RefreshKeyNumbers();
 
         TerminalCombo.SelectedIndex = IndexOfTerminal(_draft.Terminal ?? "direct");
         CommandCombo.SelectedIndex = IndexOfCommand(_draft.Command ?? "");
@@ -193,6 +219,7 @@ public partial class ActionEditorDialog : Window
         _draft.Cmd = null; _draft.Terminal = null; _draft.KeepWindow = null;
         _draft.Command = null; _draft.Steps = null; _draft.CompositeOnFail = null;
         _draft.Text = null; _draft.Mode = null; _draft.AppendEnter = null;
+        _draft.Items = null;
 
         switch (type)
         {
@@ -235,11 +262,192 @@ public partial class ActionEditorDialog : Window
                 };
                 _draft.AppendEnter = AppendEnterBox.IsChecked == true;
                 break;
+            case ActionType.sendKeys:
+                if (_keyItems.Count == 0) { ConfirmDialog.Info(this, "动作", "请至少添加一条输入条目。"); return; }
+                if (_recording) StopRecording();
+                var items = new List<KeyItem>();
+                foreach (var v in _keyItems) items.Add(v.Model);
+                _draft.Items = items;
+                break;
         }
 
         _draft.Icon = IconPicker.SelectedIcon ?? IconCatalog.Default;
         Result = _draft;
         DialogResult = true;
+    }
+
+    private static KeyItemView WrapKeyItem(KeyItem m) => new(m);
+
+    // —— sendKeys 序列编辑：录制 / 手动添加 / 列表操作 ——
+
+    private static string DescribeKeyItem(KeyItem m) => m.Kind switch
+    {
+        KeyItemKind.chord => "组合键  " + (m.Strokes != null && m.Strokes.Count > 0 ? string.Join(", ", m.Strokes) : "(空)"),
+        KeyItemKind.text => "文本  " + BriefKeyText(m.Text),
+        KeyItemKind.sleep => $"延时  {m.Ms}ms",
+        _ => "",
+    };
+
+    private static string BriefKeyText(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return "(空)";
+        var s = text!.Replace("\r", "\\r").Replace("\n", "\\n");
+        return s.Length > 30 ? s[..30] + "…" : s;
+    }
+
+    /// <summary>刷新列表序号（ObservableCollection 已处理增删，这里只更新序号显示）。</summary>
+    private void RefreshKeyNumbers()
+    {
+        for (int i = 0; i < _keyItems.Count; i++)
+            _keyItems[i].Number = $"{i + 1}.";
+    }
+
+    private void Record_Click(object sender, RoutedEventArgs e)
+    {
+        if (_recording) StopRecording();
+        else StartRecording();
+    }
+
+    private void StartRecording()
+    {
+        _recording = true;
+        _pendingStrokes.Clear();
+        _downKeys.Clear();
+        RecordBtn.Content = "■ 停止录制";
+        RecordHint.Text = "正在录制…（空闲 800ms 成条，Esc 停止）";
+        // 焦点收归窗口：录制监听挂在窗口 PreviewKeyDown 上，焦点须在对话框内
+        Focus();
+        Keyboard.Focus(this);
+    }
+
+    private void StopRecording()
+    {
+        _recording = false;
+        _idleTimer?.Stop();
+        FlushPending();
+        _downKeys.Clear();
+        RecordBtn.Content = "● 开始录制";
+        RecordHint.Text = "";
+    }
+
+    /// <summary>把累积的 pending strokes 作为一个 chord 条目入库（空闲成条 / 停止时调用）。</summary>
+    private void FlushPending()
+    {
+        if (_pendingStrokes.Count == 0) return;
+        _keyItems.Add(new KeyItemView(new KeyItem
+        {
+            Kind = KeyItemKind.chord,
+            Strokes = new List<string>(_pendingStrokes),
+        }));
+        _pendingStrokes.Clear();
+        RefreshKeyNumbers();
+    }
+
+    private static bool IsModifierKey(Key k) => k is
+        Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift
+        or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin;
+
+    // 录制监听：挂在窗口（模态对话框有焦点），不开新的低级钩子（§3.2.1）
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!_recording) return;
+        e.Handled = true;   // 录制中吞掉所有键，不触发对话框按钮 / 焦点切换
+
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key == Key.Escape) { StopRecording(); return; }
+
+        // 去重：长按重复触发的 KeyDown 只算第一次
+        if (!_downKeys.Add(key)) return;
+
+        if (IsModifierKey(key)) return;   // 修饰键不进条目
+
+        int vk = KeyInterop.VirtualKeyFromKey(key);
+        if (vk == 0) return;
+
+        _pendingStrokes.Add(KeyStroke.Format(Keyboard.Modifiers, vk));
+        _idleTimer?.Stop();
+        _idleTimer?.Start();   // 空闲 800ms → 成条
+    }
+
+    private void Window_PreviewKeyUp(object sender, KeyEventArgs e)
+    {
+        if (!_recording) return;
+        e.Handled = true;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        _downKeys.Remove(key);
+    }
+
+    // —— 手动添加 ——
+
+    private void AddChord_Click(object sender, RoutedEventArgs e)
+    {
+        var (ok, val) = InputDialog.Show(this, "添加组合键",
+            "输入按键（修饰键+主键，如 ctrl+k、alt+p、f5、enter；多个用逗号/空格分隔）", "ctrl+");
+        if (!ok || string.IsNullOrWhiteSpace(val)) return;
+
+        var strokes = val.Split(new[] { ',', ' ' },
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        if (strokes.Count == 0) return;
+        foreach (var s in strokes)
+        {
+            if (!KeyStroke.TryParse(s, out _, out var err))
+            {
+                ConfirmDialog.Info(this, "动作", $"按键 \"{s}\" 无效：{err}");
+                return;
+            }
+        }
+        _keyItems.Add(new KeyItemView(new KeyItem { Kind = KeyItemKind.chord, Strokes = strokes }));
+        RefreshKeyNumbers();
+    }
+
+    private void AddText_Click(object sender, RoutedEventArgs e)
+    {
+        var (ok, val) = InputDialog.Show(this, "添加文本",
+            "输入要发送的文本（短文本；含中文/超长时自动剪贴板粘贴）", "");
+        if (!ok || val.Length == 0) return;
+        _keyItems.Add(new KeyItemView(new KeyItem { Kind = KeyItemKind.text, Text = val }));
+        RefreshKeyNumbers();
+    }
+
+    private void AddSleep_Click(object sender, RoutedEventArgs e)
+    {
+        var (ok, val) = InputDialog.Show(this, "添加延时", "延时毫秒数（如 100）", "100");
+        if (!ok || !int.TryParse(val.Trim(), out var ms) || ms <= 0)
+        {
+            if (ok) ConfirmDialog.Info(this, "动作", "请输入大于 0 的毫秒数。");
+            return;
+        }
+        _keyItems.Add(new KeyItemView(new KeyItem { Kind = KeyItemKind.sleep, Ms = ms }));
+        RefreshKeyNumbers();
+    }
+
+    // —— 列表行内操作（上移 / 下移 / 删除）——
+
+    private void KeyUp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is KeyItemView v)
+        {
+            int i = _keyItems.IndexOf(v);
+            if (i > 0) { _keyItems.Move(i, i - 1); RefreshKeyNumbers(); }
+        }
+    }
+
+    private void KeyDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is KeyItemView v)
+        {
+            int i = _keyItems.IndexOf(v);
+            if (i >= 0 && i < _keyItems.Count - 1) { _keyItems.Move(i, i + 1); RefreshKeyNumbers(); }
+        }
+    }
+
+    private void KeyDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is KeyItemView v)
+        {
+            _keyItems.Remove(v);
+            RefreshKeyNumbers();
+        }
     }
 
     // —— 辅助 ——
@@ -249,6 +457,7 @@ public partial class ActionEditorDialog : Window
         Target = a.Target, Args = a.Args, Workdir = a.Workdir, Path = a.Path, Url = a.Url,
         Cmd = a.Cmd, Terminal = a.Terminal, KeepWindow = a.KeepWindow, Command = a.Command,
         Text = a.Text, Mode = a.Mode, AppendEnter = a.AppendEnter,
+        Items = a.Items?.ConvertAll(i => i.Clone()),
         CompositeOnFail = a.CompositeOnFail,
         Steps = a.Steps != null ? new List<StepDto>(a.Steps) : null,
     };
@@ -256,7 +465,8 @@ public partial class ActionEditorDialog : Window
     private static int IndexOf(ActionType t)
     {
         var list = new[] { ActionType.launchApp, ActionType.openFile, ActionType.openFolder, ActionType.openUrl,
-                          ActionType.runCommand, ActionType.sendText, ActionType.@internal, ActionType.composite };
+                          ActionType.runCommand, ActionType.sendText, ActionType.sendKeys,
+                          ActionType.@internal, ActionType.composite };
         for (int i = 0; i < list.Length; i++) if (list[i] == t) return i;
         return 0;
     }
@@ -294,4 +504,26 @@ public partial class ActionEditorDialog : Window
 
     private sealed record TypeItem(string Label, ActionType Type) { public override string ToString() => Label; }
     private sealed record ComboItem(string Label, string Value) { public override string ToString() => Label; }
+
+    /// <summary>序列列表的行视图（序号 + 描述，供 ListBox 绑定）。</summary>
+    private sealed class KeyItemView : INotifyPropertyChanged
+    {
+        public KeyItem Model { get; }
+
+        private string _number = "";
+        public string Number { get => _number; set { if (_number != value) { _number = value; OnPn(); } } }
+
+        private string _desc;
+        public string Desc { get => _desc; set { if (_desc != value) { _desc = value; OnPn(); } } }
+
+        public KeyItemView(KeyItem m)
+        {
+            Model = m;
+            _desc = DescribeKeyItem(m);
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        private void OnPn([CallerMemberName] string? n = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
+    }
 }

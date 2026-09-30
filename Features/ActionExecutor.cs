@@ -14,6 +14,7 @@ namespace CapsLockPro.Features;
 /// <item>openFile / openFolder / openUrl → ShellExecute（默认程序打开）</item>
 /// <item>runCommand → 复用 <see cref="TerminalLauncher"/> 终端路由；direct 走 ShellExecute</item>
 /// <item>sendText → 50ms 焦点延时后按 <see cref="SendTextMode"/> 分发（键入 / 剪贴板粘贴，§3.2.2）</item>
+/// <item>sendKeys → 50ms 焦点延时后顺序遍历条目（chord 逐 stroke Combo、stroke 间 15ms；text 复用 sendText auto；sleep 等待，§3.2.1）</item>
 /// <item>internal → <see cref="InternalActionRegistry"/> 分发（dispatch 到 UI 线程执行）</item>
 /// <item>composite → 顺序执行 <see cref="StepDto"/>（延迟 / 失败策略）；步骤内嵌 <see cref="ActionDto"/> 快照，**不支持嵌套**</item>
 /// </list>
@@ -63,6 +64,9 @@ internal static class ActionExecutor
                 break;
             case ActionType.sendText:
                 SendText(action);
+                break;
+            case ActionType.sendKeys:
+                SendKeys(action);
                 break;
             case ActionType.@internal:
                 DispatchInternal(action, cursorX, cursorY);
@@ -188,8 +192,18 @@ internal static class ActionExecutor
         // 焦点延时（§12）：面板/菜单关闭 → 目标窗口焦点切回有时间差，立即发键可能丢焦点。
         Thread.Sleep(50);
 
-        // auto → 按内容判定；type / paste → 强制
-        var mode = a.Mode ?? SendTextMode.auto;
+        DispatchText(a, text, a.Mode ?? SendTextMode.auto);
+
+        if (a.AppendEnter == true)
+            InputHelper.Tap((ushort)Win32.VkReturn);
+    }
+
+    /// <summary>
+    /// 按 <paramref name="mode"/> 发送文本（不含焦点延时、不含 AppendEnter）。
+    /// 供 sendText 动作（前置延时后调用）与 sendKeys 的 text 条目（无延时）共用。
+    /// </summary>
+    private static void DispatchText(ActionDto a, string text, SendTextMode mode)
+    {
         if (mode == SendTextMode.auto)
             mode = NeedPaste(text) ? SendTextMode.paste : SendTextMode.type;
 
@@ -204,9 +218,6 @@ internal static class ActionExecutor
         {
             TypeText(a, text);
         }
-
-        if (a.AppendEnter == true)
-            InputHelper.Tap((ushort)Win32.VkReturn);
     }
 
     /// <summary>auto 判定：超 100 字符 / 含非 ASCII / 含换行 → 剪贴板粘贴（§3.2.2）。</summary>
@@ -244,6 +255,44 @@ internal static class ActionExecutor
             else if (ch == '\n') InputHelper.Tap((ushort)Win32.VkReturn);
             else if (ch == '\t') InputHelper.Tap((ushort)Win32.VkTab);
             else InputHelper.SendChar(ch);
+        }
+    }
+
+    // —— sendKeys（模拟按键，§3.2.1）——
+    private static void SendKeys(ActionDto a)
+    {
+        if (a.Items == null || a.Items.Count == 0)
+            throw new InvalidOperationException($"sendKeys 缺少 Items: {a.Name}");
+
+        // 焦点延时（§12，与 sendText 一致）
+        Thread.Sleep(50);
+
+        for (int i = 0; i < a.Items.Count; i++)
+        {
+            var item = a.Items[i];
+            switch (item.Kind)
+            {
+                case KeyItemKind.chord:
+                    if (item.Strokes == null || item.Strokes.Count == 0) break;
+                    for (int s = 0; s < item.Strokes.Count; s++)
+                    {
+                        // stroke 间固定 ~15ms（菜单流需应用响应时间；更大间隔用 sleep 条目）
+                        if (s > 0) Thread.Sleep(15);
+                        if (!KeyStroke.TryParse(item.Strokes[s], out var vks, out var err))
+                            throw new InvalidOperationException(
+                                $"sendKeys 步骤{i + 1} 无法解析按键 \"{item.Strokes[s]}\": {err}");
+                        InputHelper.Combo(vks.ToArray());
+                    }
+                    break;
+                case KeyItemKind.text:
+                    // 内联短文本条目：复用 sendText 的 auto 逻辑（不延时、不追加回车）
+                    var t = item.Text ?? "";
+                    if (t.Length > 0) DispatchText(a, t, SendTextMode.auto);
+                    break;
+                case KeyItemKind.sleep:
+                    if (item.Ms > 0) Thread.Sleep(item.Ms);
+                    break;
+            }
         }
     }
 

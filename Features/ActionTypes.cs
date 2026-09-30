@@ -20,6 +20,7 @@ public enum ActionType
     openUrl,
     runCommand,
     sendText,
+    sendKeys,
     @internal,
     composite,
 }
@@ -49,6 +50,45 @@ public enum OnFailStrategy
     abort,
 }
 
+/// <summary>sendKeys 序列条目类型（§3.2.1）。</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum KeyItemKind
+{
+    /// <summary>组合键 / 按键序列（按住修饰键依次发主键，如 ctrl+k、alt+p）。</summary>
+    chord,
+
+    /// <summary>内联短文本条目（表单填充中一格；执行复用 sendText 的 auto 逻辑）。</summary>
+    text,
+
+    /// <summary>延时等待（毫秒）。</summary>
+    sleep,
+}
+
+/// <summary>sendKeys 动作内的一条输入条目（§3.2.1）。</summary>
+public sealed class KeyItem
+{
+    /// <summary>条目类型。</summary>
+    public KeyItemKind Kind { get; set; }
+
+    /// <summary>chord: 按键序列，每项形如 "ctrl+k"、"alt+p"、"s"、"f5"（修饰键组+主键，或无修饰单键）。</summary>
+    public List<string>? Strokes { get; set; }
+
+    /// <summary>text: 内联短文本。</summary>
+    public string? Text { get; set; }
+
+    /// <summary>sleep: 毫秒数。</summary>
+    public int Ms { get; set; }
+
+    /// <summary>深拷贝。</summary>
+    public KeyItem Clone() => new()
+    {
+        Kind = Kind,
+        Strokes = Strokes != null ? new List<string>(Strokes) : null,
+        Text = Text,
+        Ms = Ms,
+    };
+}
+
 /// <summary>动作类型的中文显示名（UI 共用）。</summary>
 public static class ActionTypeLabel
 {
@@ -61,6 +101,7 @@ public static class ActionTypeLabel
         ActionType.openUrl => "打开网址",
         ActionType.runCommand => "运行命令",
         ActionType.sendText => "发送文本",
+        ActionType.sendKeys => "模拟按键",
         ActionType.@internal => "内部动作",
         ActionType.composite => "组合动作",
         _ => t.ToString(),
@@ -159,6 +200,11 @@ public sealed class ActionDto
     /// <summary>sendText: 文本发送后是否在末尾追加一次回车。</summary>
     public bool? AppendEnter { get; set; }
 
+    // —— sendKeys（§3.2.1）——
+
+    /// <summary>sendKeys: 有序输入条目列表（chord / text / sleep 三种）。</summary>
+    public List<KeyItem>? Items { get; set; }
+
     // —— composite ——
 
     /// <summary>composite: 有序步骤列表（nullable 以便 JSON 省略非 composite 动作的空列表）。</summary>
@@ -177,6 +223,7 @@ public sealed class ActionDto
         Target = Target, Args = Args, Workdir = Workdir, Path = Path, Url = Url,
         Cmd = Cmd, Terminal = Terminal, KeepWindow = KeepWindow, Command = Command,
         Text = Text, Mode = Mode, AppendEnter = AppendEnter,
+        Items = Items?.Select(i => i.Clone()).ToList(),
         CompositeOnFail = CompositeOnFail,
         Steps = Steps?.Select(s => new StepDto { Action = s.Action.Clone(), DelayMs = s.DelayMs, OnFail = s.OnFail }).ToList(),
     };

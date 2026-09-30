@@ -8,7 +8,8 @@
         WindowStartupLocation="CenterScreen" ShowInTaskbar="False"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
-        FontFamily="{StaticResource UiFont}" FontSize="13">
+        FontFamily="{StaticResource UiFont}" FontSize="13"
+        PreviewKeyDown="Window_PreviewKeyDown" PreviewKeyUp="Window_PreviewKeyUp">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -171,6 +172,66 @@
                                               VerticalAlignment="Bottom" Margin="0,0,0,4"
                                               ToolTip="发送完文本后再发一次回车（聊天软件中用于直接发出）"/>
                                 </Grid>
+                            </StackPanel>
+
+                            <!-- sendKeys（模拟按键） -->
+                            <StackPanel x:Name="F_SendKeys">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="输入序列" Margin="0,0,0,4"/>
+                                <TextBlock Text="录制：按下快捷键自动记录，空闲 800ms 成条；Esc 停止。"
+                                           Foreground="{StaticResource HintTextBrush}" FontSize="11" Margin="0,0,0,8"/>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" x:Name="RecordBtn" Style="{StaticResource BtnGhost}"
+                                            Content="● 开始录制" MinWidth="100" MinHeight="30" Margin="0,0,6,0"
+                                            Click="Record_Click"/>
+                                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="＋ 组合键"
+                                            MinHeight="30" Margin="0,0,6,0" Click="AddChord_Click"/>
+                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="＋ 文本"
+                                            MinHeight="30" Margin="0,0,6,0" Click="AddText_Click"/>
+                                    <Button Grid.Column="3" Style="{StaticResource BtnGhost}" Content="＋ 延时"
+                                            MinHeight="30" Click="AddSleep_Click"/>
+                                    <TextBlock Grid.Column="4" x:Name="RecordHint" VerticalAlignment="Center"
+                                               Margin="12,0,0,0" Foreground="{StaticResource HintTextBrush}"
+                                               FontSize="11" Text=""/>
+                                </Grid>
+                                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4"
+                                        MinHeight="80" MaxHeight="180">
+                                    <ListBox x:Name="KeysList" BorderThickness="0" Background="Transparent">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,1">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding Number}" Margin="2,0,8,0"
+                                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                                               VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Desc}"
+                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="↑"
+                                                            Padding="0" Width="24" Height="24" Margin="2,0"
+                                                            Click="KeyUp_Click" ToolTip="上移"/>
+                                                    <Button Grid.Column="3" Style="{StaticResource BtnGhost}" Content="↓"
+                                                            Padding="0" Width="24" Height="24" Margin="2,0"
+                                                            Click="KeyDown_Click" ToolTip="下移"/>
+                                                    <Button Grid.Column="4" Style="{StaticResource BtnGhost}" Content="✕"
+                                                            Padding="0" Width="24" Height="24" Margin="2,0"
+                                                            Click="KeyDelete_Click" ToolTip="删除"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Border>
                             </StackPanel>
 
                             <!-- internal -->
