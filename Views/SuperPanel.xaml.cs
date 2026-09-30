@@ -566,9 +566,17 @@ public partial class SuperPanelWindow : Window
             // 交换：源页源格 ↔ 当前页目标格（目标无效或同位→取消）
             if (target >= 0 && target < 16 && !(sp == _pageIdx && ss == target))
             {
+                bool samePage = sp == _pageIdx;
                 (_pages[sp][ss], _pages[_pageIdx][target]) = (_pages[_pageIdx][target], _pages[sp][ss]);
                 SuperPanel.SavePages(_pages);
                 Rebuild();
+                // 同页交换：两格内容从对方位置滑入（跨页交换目标格不在同 visual tree，跳过动画）
+                if (samePage && ss < CellsHost.Children.Count && target < CellsHost.Children.Count
+                    && CellsHost.Children[ss] is FrameworkElement a
+                    && CellsHost.Children[target] is FrameworkElement b)
+                {
+                    Views.Controls.DragFx.AnimateSwap(a, b, this);
+                }
             }
         }
         else
@@ -595,6 +603,8 @@ public partial class SuperPanelWindow : Window
 
     // —— 拖动视觉 ——
 
+    private Button? _ghostSrcButton;   // 拖动源格（半透明占位，EndDragVisuals 恢复）
+
     private void ShowGhost(int page, int slot)
     {
         string? id = _pages[page][slot];
@@ -603,6 +613,13 @@ public partial class SuperPanelWindow : Window
         GhostName.Text = a != null ? a.Name : "（空）";
         DragGhost.Visibility = Visibility.Visible;
         Mouse.OverrideCursor = Cursors.SizeAll;
+        // 源半透明占位（同页：跨页时源格不在当前 visual tree，无需设）
+        if (page == _pageIdx && slot >= 0 && slot < CellsHost.Children.Count
+            && CellsHost.Children[slot] is Button b)
+        {
+            b.Opacity = 0.35;
+            _ghostSrcButton = b;
+        }
     }
 
     private void UpdateGhost(Point windowPos)
@@ -618,6 +635,7 @@ public partial class SuperPanelWindow : Window
     {
         DragGhost.Visibility = Visibility.Collapsed;
         Mouse.OverrideCursor = null;
+        if (_ghostSrcButton != null) { _ghostSrcButton.Opacity = 1; _ghostSrcButton = null; }
         SetHoverSlot(-1);
         StopPageHover();
     }

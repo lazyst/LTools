@@ -379,17 +379,57 @@ public partial class ConfigHelperWindow : Window
         MarkDirty();
     }
 
-    // —— 菜单组 / 菜单项拖动重排（WPF DragDrop，阈值触发避免与单击/双击冲突）——
+    // —— 菜单组 / 菜单项拖动重排（窗口级鼠标跟踪 + 幽灵跟随 + 源占位 + 目标指示 + 位移动画，§12）——
+    // 不走 OLE DoDragDrop（系统 drag image 与自绘幽灵叠加）；节奏与超级面板/组合步骤一致。
     private Point _menuDragOrigin;
-    private int _groupDragFrom = -1;   // 组拖动源 index（0-based，对应 1..10 槽）
-    private int _itemDragFrom = -1;    // 项拖动源 index
+    private bool _menuDragging;
+    private int _groupDragFrom = -1;              // 组拖动源 index（0-based，对应 1..10 槽）
+    private int _itemDragFrom = -1;               // 项拖动源 index
+    private ListBoxItem? _menuDragSrcItem;        // 源行（半透明占位）
+    private int _groupHover = -1;                 // 组拖动目标行（高亮）
 
-    /// <summary>visual tree 上溯找最近的 <typeparamref/> 祖先（命中 ListBoxItem 用）。</summary>
+    /// <summary>visual tree 上溯找最近的 <typeparamref name="T"/> 祖先（命中 ListBoxItem 用）。</summary>
     private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
     {
         while (d != null && d is not T) d = VisualTreeHelper.GetParent(d);
         return d as T;
     }
+
+    private void BeginMenuDrag(ListBox list, int index, string ghostText)
+    {
+        _menuDragging = true;
+        list.CaptureMouse();
+        ListGhostText.Text = ghostText;
+        ListGhost.Visibility = Visibility.Visible;
+        Mouse.OverrideCursor = Cursors.SizeAll;
+        if (list.ItemContainerGenerator.ContainerFromIndex(index) is ListBoxItem c)
+        {
+            c.Opacity = 0.35;
+            _menuDragSrcItem = c;
+        }
+    }
+
+    private void UpdateListGhost(Point windowPos)
+    {
+        var rel = TranslatePoint(windowPos, GhostLayer);
+        double w = ListGhost.ActualWidth > 0 ? ListGhost.ActualWidth : ListGhost.MinWidth;
+        double h = ListGhost.ActualHeight > 0 ? ListGhost.ActualHeight : 30;
+        Canvas.SetLeft(ListGhost, rel.X - w / 2);
+        Canvas.SetTop(ListGhost, rel.Y - h / 2);
+    }
+
+    private void EndMenuDrag()
+    {
+        if (!_menuDragging) return;
+        ListGhost.Visibility = Visibility.Collapsed;
+        Mouse.OverrideCursor = null;
+        if (_menuDragSrcItem != null) { _menuDragSrcItem.Opacity = 1; _menuDragSrcItem = null; }
+        ClearGroupHover();
+        InsertLine.Visibility = Visibility.Collapsed;
+        _menuDragging = false;
+    }
+
+    // —— 组拖动（交换语义；目标行高亮，不用插入线）——
 
     private void GroupList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -398,38 +438,44 @@ public partial class ConfigHelperWindow : Window
         int idx = GroupList.ItemContainerGenerator.IndexFromContainer(lbi);
         if (idx < 0 || MenuSystem.GetGroup(idx + 1) == null) return;   // 空槽不参与拖动
         _groupDragFrom = idx;
-        _menuDragOrigin = e.GetPosition(null);
+        _menuDragOrigin = e.GetPosition(this);
     }
 
     private void GroupList_PreviewMouseMove(object sender, MouseEventArgs e)
     {
         if (_groupDragFrom < 0 || e.LeftButton != MouseButtonState.Pressed) { _groupDragFrom = -1; return; }
-        var pos = e.GetPosition(null);
-        if (Math.Abs(pos.X - _menuDragOrigin.X) < SystemParameters.MinimumHorizontalDragDistance
-            && Math.Abs(pos.Y - _menuDragOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-        int from = _groupDragFrom;
-        _groupDragFrom = -1;
-        DragDrop.DoDragDrop(GroupList, from, DragDropEffects.Move);
-    }
-
-    private void GroupList_DragOver(object sender, DragEventArgs e)
-    {
-        e.Effects = e.Data.GetDataPresent(typeof(int)) ? DragDropEffects.Move : DragDropEffects.None;
+        var pos = e.GetPosition(this);
+        if (!_menuDragging)
+        {
+            if (Math.Abs(pos.X - _menuDragOrigin.X) < SystemParameters.MinimumHorizontalDragDistance
+                && Math.Abs(pos.Y - _menuDragOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            BeginMenuDrag(GroupList, _groupDragFrom, MenuSystem.GetGroup(_groupDragFrom + 1)?.Name ?? "");
+        }
+        UpdateListGhost(pos);
+        HighlightGroupTarget(HitTestRow(GroupList, pos));
         e.Handled = true;
     }
 
-    private void GroupList_Drop(object sender, DragEventArgs e)
+    private void GroupList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (!e.Data.GetDataPresent(typeof(int))) return;
-        int from = (int)e.Data.GetData(typeof(int))!;
-        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not { } lbi) return;
-        int to = GroupList.ItemContainerGenerator.IndexFromContainer(lbi);
+        if (!_menuDragging || _groupDragFrom < 0) { _groupDragFrom = -1; return; }
+        int from = _groupDragFrom;
+        int to = HitTestRow(GroupList, e.GetPosition(this));
+        GroupList.ReleaseMouseCapture();
+        EndMenuDrag();
+        _groupDragFrom = -1;
         if (to < 0 || to == from) return;
+        var old = Views.Controls.DragFx.CaptureByIndex(GroupList);
         if (!MenuSystem.SwapGroups(from + 1, to + 1)) return;
         PopulateGroupList();
         GroupList.SelectedIndex = to;
+        Views.Controls.DragFx.AnimateReorderByIndex(GroupList, old,
+            i => Views.Controls.DragFx.OldIndexOfSwap(i, from, to));
         MarkDirty();
+        e.Handled = true;
     }
+
+    // —— 项拖动（插入语义；目标位置插入线）——
 
     private void ItemList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -439,37 +485,111 @@ public partial class ConfigHelperWindow : Window
         int idx = ItemList.ItemContainerGenerator.IndexFromContainer(lbi);
         if (idx < 0) return;
         _itemDragFrom = idx;
-        _menuDragOrigin = e.GetPosition(null);
+        _menuDragOrigin = e.GetPosition(this);
     }
 
     private void ItemList_PreviewMouseMove(object sender, MouseEventArgs e)
     {
         if (_itemDragFrom < 0 || e.LeftButton != MouseButtonState.Pressed) { _itemDragFrom = -1; return; }
-        var pos = e.GetPosition(null);
-        if (Math.Abs(pos.X - _menuDragOrigin.X) < SystemParameters.MinimumHorizontalDragDistance
-            && Math.Abs(pos.Y - _menuDragOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-        int from = _itemDragFrom;
-        _itemDragFrom = -1;
-        DragDrop.DoDragDrop(ItemList, from, DragDropEffects.Move);
-    }
-
-    private void ItemList_DragOver(object sender, DragEventArgs e)
-    {
-        e.Effects = e.Data.GetDataPresent(typeof(int)) ? DragDropEffects.Move : DragDropEffects.None;
+        var pos = e.GetPosition(this);
+        if (!_menuDragging)
+        {
+            if (Math.Abs(pos.X - _menuDragOrigin.X) < SystemParameters.MinimumHorizontalDragDistance
+                && Math.Abs(pos.Y - _menuDragOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            var g = MenuSystem.GetGroup(SelectedSlot);
+            BeginMenuDrag(ItemList, _itemDragFrom,
+                g != null && _itemDragFrom < g.Items.Count ? ActionRegistry.DisplayName(g.Items[_itemDragFrom]) : "");
+        }
+        UpdateListGhost(pos);
+        PositionItemInsertLine(e);
         e.Handled = true;
     }
 
-    private void ItemList_Drop(object sender, DragEventArgs e)
+    private void ItemList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (!e.Data.GetDataPresent(typeof(int))) return;
-        int from = (int)e.Data.GetData(typeof(int))!;
-        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not { } lbi) return;
-        int to = ItemList.ItemContainerGenerator.IndexFromContainer(lbi);
-        if (to < 0 || to == from) return;
+        if (!_menuDragging || _itemDragFrom < 0) { _itemDragFrom = -1; return; }
+        int from = _itemDragFrom;
+        int insertAt = ItemInsertAt(e);        // 0..Count（基于移动前）
+        ItemList.ReleaseMouseCapture();
+        EndMenuDrag();
+        _itemDragFrom = -1;
+        if (insertAt < 0) return;
+        int to = insertAt > from ? insertAt - 1 : insertAt;   // 移除源后索引前移
+        if (to == from) return;
+        var old = Views.Controls.DragFx.CaptureByIndex(ItemList);
         if (!MenuSystem.MoveItemTo(SelectedSlot, from, to)) return;
         PopulateItemList();
         ItemList.SelectedIndex = to;
+        Views.Controls.DragFx.AnimateReorderByIndex(ItemList, old,
+            i => Views.Controls.DragFx.OldIndexOfMove(i, from, to));
         MarkDirty();
+        e.Handled = true;
+    }
+
+    // —— 菜单拖动命中 / 指示 ——
+
+    /// <summary>光标命中的 ListBox 行 index；列表外或未命中行返回 -1。</summary>
+    private int HitTestRow(ListBox list, Point windowPos)
+    {
+        var rel = TranslatePoint(windowPos, list);
+        if (rel.X < 0 || rel.Y < 0 || rel.X > list.ActualWidth || rel.Y > list.ActualHeight) return -1;
+        if (list.InputHitTest(rel) is not DependencyObject d) return -1;
+        var lbi = FindAncestor<ListBoxItem>(d);
+        return lbi != null ? list.ItemContainerGenerator.IndexFromContainer(lbi) : -1;
+    }
+
+    /// <summary>组拖动目标行高亮（交换语义）。</summary>
+    private void HighlightGroupTarget(int idx)
+    {
+        if (idx == _groupHover) return;
+        ClearGroupHover();
+        _groupHover = idx;
+        if (idx >= 0 && GroupList.ItemContainerGenerator.ContainerFromIndex(idx) is ListBoxItem lbi)
+            lbi.Background = (Brush)FindResource("SurfaceAltBrush");
+    }
+
+    private void ClearGroupHover()
+    {
+        if (_groupHover >= 0 && GroupList.ItemContainerGenerator.ContainerFromIndex(_groupHover) is ListBoxItem lbi)
+            lbi.ClearValue(BackgroundProperty);
+        _groupHover = -1;
+    }
+
+    /// <summary>项拖动的插入位置（0..Count）：命中行上/下半；列表内空白 → 末尾；列表外 → -1。</summary>
+    private int ItemInsertAt(MouseEventArgs e)
+    {
+        var rel = e.GetPosition(ItemList);
+        if (rel.X < 0 || rel.Y < 0 || rel.X > ItemList.ActualWidth || rel.Y > ItemList.ActualHeight)
+            return -1;
+        int n = MenuSystem.GetGroup(SelectedSlot)?.Items.Count ?? 0;
+        if (ItemList.InputHitTest(rel) is DependencyObject d)
+        {
+            var lbi = FindAncestor<ListBoxItem>(d);
+            if (lbi != null)
+            {
+                int i = ItemList.ItemContainerGenerator.IndexFromContainer(lbi);
+                if (i >= 0) return e.GetPosition(lbi).Y < lbi.ActualHeight / 2 ? i : i + 1;
+            }
+        }
+        return n;   // 列表内空白 → 末尾
+    }
+
+    /// <summary>把插入线定位到光标所停留行的上/下边缘。</summary>
+    private void PositionItemInsertLine(MouseEventArgs e)
+    {
+        var rel = e.GetPosition(ItemList);
+        if (rel.X < 0 || rel.Y < 0 || rel.X > ItemList.ActualWidth || rel.Y > ItemList.ActualHeight)
+        { InsertLine.Visibility = Visibility.Collapsed; return; }
+        if (ItemList.InputHitTest(rel) is not DependencyObject d) { InsertLine.Visibility = Visibility.Collapsed; return; }
+        var lbi = FindAncestor<ListBoxItem>(d);
+        if (lbi == null) { InsertLine.Visibility = Visibility.Collapsed; return; }
+        bool after = e.GetPosition(lbi).Y >= lbi.ActualHeight / 2;
+        var p = lbi.TransformToAncestor(GhostLayer).Transform(
+            new Point(0, after ? lbi.ActualHeight : 0));
+        Canvas.SetLeft(InsertLine, p.X);
+        Canvas.SetTop(InsertLine, p.Y - 1.5);
+        InsertLine.Width = lbi.ActualWidth > 0 ? lbi.ActualWidth : ItemList.ActualWidth;
+        InsertLine.Visibility = Visibility.Visible;
     }
 
     // ============ 超级面板 ============
@@ -690,10 +810,19 @@ public partial class ConfigHelperWindow : Window
             // 交换：源格 ↔ 目标格（目标无效或同位→取消）
             if (dp >= 0 && ds >= 0 && !(dp == sp && ds == ss))
             {
+                bool samePage = dp == sp;
                 (_superPages[sp][ss], _superPages[dp][ds]) = (_superPages[dp][ds], _superPages[sp][ss]);
                 _superDirty = true;
                 BuildSuperPagesUI();
                 MarkSuperDirty();
+                // 同页交换：两格内容从对方位置滑入（跨页=跨卡片，跳过动画）
+                if (samePage)
+                {
+                    var a = GetSlotButton(sp, ss);
+                    var b = GetSlotButton(dp, ds);
+                    if (a != null && b != null)
+                        Views.Controls.DragFx.AnimateSwap(a, b, this);
+                }
             }
         }
         else
@@ -793,6 +922,8 @@ public partial class ConfigHelperWindow : Window
 
     // —— 幽灵 ——
 
+    private Button? _slotGhostSrc;   // 拖动源槽位（半透明占位，EndSlotDragVisuals 恢复）
+
     private void ShowSlotGhost(int page, int slot)
     {
         string? id = _superPages[page][slot];
@@ -801,6 +932,8 @@ public partial class ConfigHelperWindow : Window
         GhostName.Text = a != null ? a.Name : "(空)";
         DragGhost.Visibility = Visibility.Visible;
         Mouse.OverrideCursor = Cursors.SizeAll;
+        // 源半透明占位
+        if (GetSlotButton(page, slot) is Button b) { b.Opacity = 0.35; _slotGhostSrc = b; }
     }
 
     private void UpdateSlotGhost(Point windowPos)
@@ -816,6 +949,7 @@ public partial class ConfigHelperWindow : Window
     {
         DragGhost.Visibility = Visibility.Collapsed;
         Mouse.OverrideCursor = null;
+        if (_slotGhostSrc != null) { _slotGhostSrc.Opacity = 1; _slotGhostSrc = null; }
         SetHover((-1, -1));
     }
 

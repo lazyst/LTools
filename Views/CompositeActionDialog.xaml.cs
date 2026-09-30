@@ -284,6 +284,7 @@ public partial class CompositeActionDialog : Window
     private Point _gripOrigin;                // 按下坐标（进入拖动态的阈值判定）
     private bool _gripDragging;               // 是否已进入拖动态
     private FrameworkElement? _gripSource;    // 把手元素（鼠标捕获载体）
+    private ListBoxItem? _gripSrcContainer;   // 源行（半透明占位）
 
     private void Grip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -327,7 +328,23 @@ public partial class CompositeActionDialog : Window
         }
 
         UpdateGhost(pos);
-        StepsList.SelectedIndex = GripHoverRow(e);   // 目标行高亮（-1 = 列表外）
+        // 插入指示线（替代原 SelectedIndex 高亮——选中态会干扰点击，插入线更直观）
+        PositionInsertLine(e);
+    }
+
+    /// <summary>把插入线定位到光标所停留行的上/下边缘（上半=该行前，下半=该行后）。</summary>
+    private void PositionInsertLine(MouseEventArgs e)
+    {
+        int hover = GripHoverRow(e);
+        if (hover < 0) { InsertLine.Visibility = Visibility.Collapsed; return; }
+        var c = StepsList.ItemContainerGenerator.ContainerFromIndex(hover) as FrameworkElement;
+        if (c == null) { InsertLine.Visibility = Visibility.Collapsed; return; }
+        bool after = GripInsertAt(e, hover) > hover;
+        var p = c.TransformToAncestor(GhostLayer).Transform(new Point(0, after ? c.ActualHeight : 0));
+        Canvas.SetLeft(InsertLine, p.X);
+        Canvas.SetTop(InsertLine, p.Y - 1.5);
+        InsertLine.Width = c.ActualWidth > 0 ? c.ActualWidth : StepsList.ActualWidth;
+        InsertLine.Visibility = Visibility.Visible;
     }
 
     private void ShowGhost(int index)
@@ -338,6 +355,12 @@ public partial class CompositeActionDialog : Window
             ? ActionTypeLabel.Of(step.Action.Type) : step.Action.Name;   // 空名回退类型名（§12 步骤名可空）
         DragGhost.Visibility = Visibility.Visible;
         Mouse.OverrideCursor = Cursors.SizeAll;
+        // 源行半透明占位
+        if (StepsList.ItemContainerGenerator.ContainerFromIndex(index) is ListBoxItem c)
+        {
+            c.Opacity = 0.35;
+            _gripSrcContainer = c;
+        }
     }
 
     private void UpdateGhost(Point windowPos)
@@ -359,6 +382,8 @@ public partial class CompositeActionDialog : Window
         if (!wasDragging) return;      // 只是点了下把手（未拖动）：不碰光标与幽灵
         DragGhost.Visibility = Visibility.Collapsed;
         Mouse.OverrideCursor = null;
+        if (_gripSrcContainer != null) { _gripSrcContainer.Opacity = 1; _gripSrcContainer = null; }
+        InsertLine.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>拖动中的目标行：先按坐标判定是否落在列表视口内（列表外 → -1），
@@ -397,10 +422,13 @@ public partial class CompositeActionDialog : Window
         if (insertAt < 0 || insertAt > _steps.Count) return;
         int target = insertAt > src ? insertAt - 1 : insertAt;   // 移除源后索引前移
         if (target == src) return;
+        var old = Views.Controls.DragFx.CaptureByIndex(StepsList);
         var moved = _steps[src];
         _steps.RemoveAt(src);
         _steps.Insert(Math.Clamp(target, 0, _steps.Count), moved);
         ReloadRows();
+        Views.Controls.DragFx.AnimateReorderByIndex(StepsList, old,
+            i => Views.Controls.DragFx.OldIndexOfMove(i, src, target));
         StepsList.SelectedIndex = Math.Clamp(target, 0, _steps.Count - 1);
     }
 

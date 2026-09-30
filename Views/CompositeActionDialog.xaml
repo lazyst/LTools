@@ -232,6 +232,9 @@
                                MaxWidth="260" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
             </Border>
+            <!-- 插入指示线（拖动排序的目标位置，§12） -->
+            <Border x:Name="InsertLine" Height="3" CornerRadius="1.5"
+                    Background="{StaticResource PrimaryBrush}" Visibility="Collapsed"/>
         </Canvas>
     </Grid>
 </Window>

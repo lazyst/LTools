@@ -814,5 +814,21 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **需求3：动作管理页加「新建组合动作…」入口**——`NewCompositeAction_Click`：传 `composite` 草稿（`Id=""`）→ `ActionEditor.Show` 走 `CompositeActionDialog` 新建模式（与超级面板槽位的「新建组合动作」同一分发路径）；`ConfigStore.AddAction` 自动补 Id 入库。XAML 在「新建动作…」旁加 `BtnGhost` 按钮。
 - ✅ **冒烟 6 项全过**（真实设置窗 + 反射驱动 + 内存 Reload 还原）：GroupList/ItemList `AllowDrop=True` ✓；`SwapGroups(1,2)` 交换「命令↔工具」生效 ✓；`MoveItemTo(1,0,2)` `[a3,a4,a5,i3]→[a4,a5,a3,i3]` ✓；`ConfigStore.AddAction(composite)` 自动补 Id（a8）入 Registry ✓；「新建组合动作…」按钮找到 ✓；反射 `NewCompositeAction_Click` 驱动模态打开 `CompositeActionDialog` + 排队 `Close` 取消（`BeginInvoke Background` 在模态泵送中执行）✓ 不入库。冒烟结束 `ConfigStore.Reload()` 还原 MenuSystem/ActionRegistry 内存态（冒烟的组交换/项重排/加动作都未落盘——全程未调 `Save`/`MarkDirty`；仅导航切换可能存 `LastNavPage`，无害）。
 
+### 交付后 UX 优化（用户需求：按钮样式统一 + 全部拖动排序的幽灵/占位/动画）
+
+- ✅ **需求1：动作管理页「新建组合动作…」按钮样式对齐「新建动作…」**——`BtnGhost` → `BtnPrimary`（XAML 一行）。
+- ✅ **需求2：所有拖动排序统一为「幽灵跟随 + 源占位 + 目标指示 + 松手位移动画」**（用户确认动画形态=松手后滑动到位、占位形态=源半透明+目标插入线）。新增共享 `Views/Controls/DragFx.cs`：
+  - `CaptureByIndex` / `AnimateReorderByIndex`（ListBox 项让位动画，160ms CubicEase 缓出）；
+  - `AnimateSwap`（格子交换：两格内容从对方位置滑入）；`Slide`（单元素滑回）。
+  - **位置匹配用「新索引→旧索引」映射**（`OldIndexOfMove` / `OldIndexOfSwap`），不用对象身份——菜单项列表显示文本含序号（`$"{i+1}. {name}"`）重排后整体重建字符串，身份型匹配必失效（踩坑记录）。
+- ✅ **5 个场景全覆盖**：
+  1. **超级面板格子**（SuperPanel）：`ShowGhost` 设源格 `Opacity=0.35`，`EndDragVisuals` 恢复；同页交换后 `AnimateSwap(新源格, 新目标格)`（跨页交换目标格不在同 visual tree，跳过动画）。
+  2. **设置页超级面板槽位**（ConfigHelper）：同上（源半透明 + 同页 `AnimateSwap`）。
+  3. **组合动作步骤列表**（CompositeActionDialog）：源行半透明；**新增插入指示线**（`InsertLine` 替换原 `SelectedIndex` 目标高亮——选中态会干扰点击且非「插入」语义）；`ApplyReorder` 加 `AnimateReorderByIndex`。
+  4. **设置页菜单组**（GroupList）：**从 OLE `DoDragDrop` 改为窗口级鼠标跟踪**（系统 drag image 与自绘幽灵叠加）——幽灵跟随（设置窗新增横排 `ListGhost`）+ 源行半透明 + 目标行高亮（交换语义用背景高亮，不用插入线）+ 交换位移动画。
+  5. **设置页菜单项**（ItemList）：同 4，但用**插入线**（插入语义）+ `MoveItemTo` 位移动画。
+- ✅ **要点**：ListBox 场景拖动用 ListBox 自身 `PreviewMouseMove/PreviewMouseLeftButtonUp` + `CaptureMouse`（不碰窗口级槽位 handlers，隔离干净）；`down` 不 `Handled` 保留 ListBox 正常选中，超拖动阈值才进拖动态；设置窗 `GhostLayer` 加 `ListGhost`（横排）+ `InsertLine`，组合窗加 `InsertLine`。
+- ✅ **冒烟 4 项全过**：菜单页 `ListGhost`/`InsertLine` 存在 + `AllowDrop=False`（DoDragDrop 已移除）✓；`DragFx` 交换 API 在真实 GroupList 跑通 ✓；「新建组合动作…」按钮存在 ✓；面板格 `AnimateSwap` 跑通 ✓；内存经 `ConfigStore.Reload` 还原。
+
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。
