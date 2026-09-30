@@ -754,5 +754,12 @@ ActionExecutor.Run(ActionDto action)
 - ⚠️ **手动添加改为单 stroke 入库**：移除原「逗号/空格分隔多 stroke」的裸输入能力（连招用录制或多次添加；已存多 stroke 动作的执行不受影响）。数据结构 `KeyItem.Strokes` 列表不变。
 - ✅ **冒烟 7 项全过**（程序化驱动对话框走真实事件）：只勾修饰键 → `ctrl+` 友好提示+确定禁用 ✓、点 Enter → `ctrl+enter` 校验通过 ✓、手动编辑 `alt+p` → 复选反向同步 ✓、点 F5 与 Alt 组合 → `alt+f5` ✓、`bogus+k` 红字+禁用 ✓、`ctrl+k` 后点 ↑ → `ctrl+up`（箭头映射+修饰保留）✓、确定 → `DialogResult=true` 且 `Stroke='ctrl+up'` ✓。首轮 s1 暴露「只勾修饰键成 `ctrl` 报未知按键」缺陷，补 `+` 占位后复测通过。
 
+### 交付后 UX 优化（用户反馈：超级面板不记住上次页）
+
+- ✅ **记忆页 = `SuperPanelConfig.LastPage`**（0-based，运行时自动管理，不进 example.json——非用户手改字段）。**跨重启持久化**（存配置而非内存静态量）。
+- ✅ **读**：`SuperPanel.Show()` → `LoadLastPage(pages.Count)` clamp 到 `[0, pages.Count-1]`（页数减少/越界不崩）→ 传 `SuperPanelWindow` 构造设 `_pageIdx`。
+- ✅ **写**：窗口 `Closed` 事件统一回写（Esc / 点外 / 执行动作后自关 / `Close()` 所有关闭路径都汇于 Closed；`Close()` 先置 `_window=null` 的路径用 `if (_window == win)` 守卫）。**值未变不落盘**（打开/关闭零写放大）；写失败静默不阻塞关闭。窗口暴露 `internal int PageIdx` 供回写。
+- ✅ **冒烟 6 项全过**（含配置恢复，不污染用户文件）：round-trip `SaveLastPage(1)→LoadLastPage=1` ✓、构造起始页 1 ✓、构造越界 99→clamp ✓、`Show` 预置越界 5→窗口起始 clamp ✓、`Close` 后磁盘 `LastPage==窗口页` ✓、恢复原值 ✓。
+
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

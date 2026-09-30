@@ -34,6 +34,9 @@ public sealed class SuperPanelConfig
 
     /// <summary>每页 9 槽，元素为动作 Id 或 null（空格）。</summary>
     public List<List<string?>> Pages { get; set; } = new();
+
+    /// <summary>上次关闭时的页下标（0-based，运行时自动记忆，下次唤起停在该页）。</summary>
+    public int LastPage { get; set; } = 0;
 }
 
 public sealed class AppConfig

@@ -66,10 +66,16 @@ internal static class SuperPanel
         {
             if (_window != null) return;   // 期间可能已打开/关闭
             var pages = LoadPages();
-            _window = new SuperPanelWindow(pages, _invokeX, _invokeY);
-            _window.Closed += (_, _) => _window = null;
-            _window.Show();
-            _window.Activate();
+            int startPage = LoadLastPage(pages.Count);   // 记住上次关闭页（clamp 到有效范围）
+            var win = new SuperPanelWindow(pages, _invokeX, _invokeY, startPage);
+            win.Closed += (_, _) =>
+            {
+                SaveLastPage(win.PageIdx);   // 关闭时回写（各关闭路径统一走 Closed）
+                if (_window == win) _window = null;
+            };
+            _window = win;
+            win.Show();
+            win.Activate();
         }));
     }
 
@@ -124,6 +130,28 @@ internal static class SuperPanel
         {
             cfg.SuperPanel.Pages = pages.Select(p => new List<string?>(p)).ToList();
         });
+    }
+
+    /// <summary>读上次关闭时的页下标（clamp 到 [0, pageCount-1]，防页数减少后越界）。</summary>
+    internal static int LoadLastPage(int pageCount)
+    {
+        var cfg = AppConfig.Load(ResolveConfigPath());
+        int p = cfg.SuperPanel.LastPage;
+        if (p < 0) p = 0;
+        if (p >= pageCount) p = pageCount - 1;
+        return p;
+    }
+
+    /// <summary>面板关闭时回写当前页下标（值未变不落盘；失败静默，不影响关闭流程）。</summary>
+    internal static void SaveLastPage(int pageIdx)
+    {
+        try
+        {
+            var path = ResolveConfigPath();
+            if (AppConfig.Load(path).SuperPanel.LastPage == pageIdx) return;   // 未变不写
+            ConfigIO.Modify(path, cfg => cfg.SuperPanel.LastPage = pageIdx);
+        }
+        catch { /* 静默：记忆页失败不阻塞面板关闭 */ }
     }
 
     /// <summary>删除动作引用：把所有页槽位中指向该 Id 的清成 null（落盘）。</summary>

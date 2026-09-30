@@ -40,13 +40,16 @@ public partial class SuperPanelWindow : Window
     private int _pageHoverDir;                  // 悬停方向：-1=‹，+1=›
     private int _pageAnimToken;                 // 翻页动画令牌（新一轮打断上一轮时自增，作废其完成回调）
 
-    internal SuperPanelWindow(List<List<string?>> pages, int invokeX, int invokeY)
+    internal SuperPanelWindow(List<List<string?>> pages, int invokeX, int invokeY, int startPage = 0)
     {
         InitializeComponent();
         _pages = pages;
         _invokeX = invokeX;
         _invokeY = invokeY;
         if (_pages.Count == 0) _pages.Add(new List<string?>(new string?[9]));
+
+        // 上次关闭页（记忆页，§12）：clamp 到有效范围
+        _pageIdx = Math.Clamp(startPage, 0, _pages.Count - 1);
 
         Rebuild();
         UpdateHeader();
@@ -70,6 +73,9 @@ public partial class SuperPanelWindow : Window
 
     /// <summary>供 <see cref="SuperPanel"/> 判断是否有右键菜单 / 对话框正打开（打开时钩子不介入）。</summary>
     internal int InteractCount => _interactCount;
+
+    /// <summary>当前页下标（供关闭时回写 <c>LastPage</c> 记忆页）。</summary>
+    internal int PageIdx => _pageIdx;
 
     private List<string?> CurrentPage => _pages[_pageIdx];
 
