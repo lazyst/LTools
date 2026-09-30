@@ -33,6 +33,7 @@ public partial class ActionEditorDialog : Window
         _fieldsByType[ActionType.openFolder] = F_OpenFolder;
         _fieldsByType[ActionType.openUrl] = F_OpenUrl;
         _fieldsByType[ActionType.runCommand] = F_RunCommand;
+        _fieldsByType[ActionType.sendText] = F_SendText;
         _fieldsByType[ActionType.@internal] = F_Internal;
 
         // 类型下拉：allowComposite=false（编辑组合步骤时）不含「组合动作」项，从源头禁嵌套；
@@ -44,6 +45,7 @@ public partial class ActionEditorDialog : Window
             new("打开文件夹", ActionType.openFolder),
             new("打开网址", ActionType.openUrl),
             new("运行命令", ActionType.runCommand),
+            new("发送文本", ActionType.sendText),
             new("内部动作", ActionType.@internal),
         };
         if (allowComposite) types.Add(new("组合动作 ▸", ActionType.composite));
@@ -95,6 +97,15 @@ public partial class ActionEditorDialog : Window
         CmdBox.Text = _draft.Cmd ?? "";
         CmdWorkdirBox.Text = _draft.Workdir ?? "";
         KeepWindowBox.IsChecked = _draft.KeepWindow ?? false;
+
+        SendTextBox.Text = _draft.Text ?? "";
+        SendModeCombo.SelectedIndex = (_draft.Mode ?? SendTextMode.auto) switch
+        {
+            SendTextMode.type => 1,
+            SendTextMode.paste => 2,
+            _ => 0,
+        };
+        AppendEnterBox.IsChecked = _draft.AppendEnter ?? false;
 
         TerminalCombo.SelectedIndex = IndexOfTerminal(_draft.Terminal ?? "direct");
         CommandCombo.SelectedIndex = IndexOfCommand(_draft.Command ?? "");
@@ -181,6 +192,7 @@ public partial class ActionEditorDialog : Window
         _draft.Target = null; _draft.Args = null; _draft.Path = null; _draft.Url = null;
         _draft.Cmd = null; _draft.Terminal = null; _draft.KeepWindow = null;
         _draft.Command = null; _draft.Steps = null; _draft.CompositeOnFail = null;
+        _draft.Text = null; _draft.Mode = null; _draft.AppendEnter = null;
 
         switch (type)
         {
@@ -212,6 +224,17 @@ public partial class ActionEditorDialog : Window
                 if (CommandCombo.SelectedItem is not ComboItem ci) { ConfirmDialog.Info(this, "动作", "请选择内部命令。"); return; }
                 _draft.Command = ci.Value;
                 break;
+            case ActionType.sendText:
+                if (SendTextBox.Text.Length == 0) { ConfirmDialog.Info(this, "动作", "请输入要发送的文本。"); return; }
+                _draft.Text = SendTextBox.Text;
+                _draft.Mode = SendModeCombo.SelectedIndex switch
+                {
+                    1 => SendTextMode.type,
+                    2 => SendTextMode.paste,
+                    _ => (SendTextMode?)null,   // auto 存 null（JSON 省略，默认值）
+                };
+                _draft.AppendEnter = AppendEnterBox.IsChecked == true;
+                break;
         }
 
         _draft.Icon = IconPicker.SelectedIcon ?? IconCatalog.Default;
@@ -225,6 +248,7 @@ public partial class ActionEditorDialog : Window
         Id = a.Id, Name = a.Name, Icon = a.Icon, Type = a.Type,
         Target = a.Target, Args = a.Args, Workdir = a.Workdir, Path = a.Path, Url = a.Url,
         Cmd = a.Cmd, Terminal = a.Terminal, KeepWindow = a.KeepWindow, Command = a.Command,
+        Text = a.Text, Mode = a.Mode, AppendEnter = a.AppendEnter,
         CompositeOnFail = a.CompositeOnFail,
         Steps = a.Steps != null ? new List<StepDto>(a.Steps) : null,
     };
@@ -232,7 +256,7 @@ public partial class ActionEditorDialog : Window
     private static int IndexOf(ActionType t)
     {
         var list = new[] { ActionType.launchApp, ActionType.openFile, ActionType.openFolder, ActionType.openUrl,
-                          ActionType.runCommand, ActionType.@internal, ActionType.composite };
+                          ActionType.runCommand, ActionType.sendText, ActionType.@internal, ActionType.composite };
         for (int i = 0; i < list.Length; i++) if (list[i] == t) return i;
         return 0;
     }

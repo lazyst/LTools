@@ -25,6 +25,8 @@ internal static class IconCatalog
         ["help"]       = "\uE897",  // 帮助
         ["settings"]   = "\uE713",  // 设置齿轮
         ["composite"]  = "\uE72C",  // 刷新/流程
+        ["send"]       = "\uE724",  // 纸飞机（发送文本）
+        ["keyboard"]   = "\uE765",  // 键盘（模拟按键）
 
         // —— 通用导航 ——
         ["home"]       = "\uE80F",

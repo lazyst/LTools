@@ -148,6 +148,31 @@
                                 </Grid>
                             </StackPanel>
 
+                            <!-- sendText -->
+                            <StackPanel x:Name="F_SendText">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="要发送的文本" Margin="0,0,0,4"/>
+                                <TextBox x:Name="SendTextBox" MinHeight="96" MaxHeight="200"
+                                         AcceptsReturn="True" TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"/>
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                        <TextBlock Style="{StaticResource SectionLabel}" Text="发送方式" Margin="0,0,0,4"/>
+                                        <ComboBox x:Name="SendModeCombo" MinHeight="30">
+                                            <ComboBoxItem Content="自动（短 ASCII 键入，中文/超长自动粘贴）" Tag="auto"/>
+                                            <ComboBoxItem Content="始终键入（仅当前键盘布局可映射字符）" Tag="type"/>
+                                            <ComboBoxItem Content="始终剪贴板粘贴（覆盖剪贴板）" Tag="paste"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" x:Name="AppendEnterBox" Content="末尾添加回车"
+                                              VerticalAlignment="Bottom" Margin="0,0,0,4"
+                                              ToolTip="发送完文本后再发一次回车（聊天软件中用于直接发出）"/>
+                                </Grid>
+                            </StackPanel>
+
                             <!-- internal -->
                             <StackPanel x:Name="F_Internal">
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="内部命令" Margin="0,0,0,4"/>

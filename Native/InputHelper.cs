@@ -158,6 +158,12 @@ internal static class InputHelper
         if (shift) Up(0xA0);
     }
 
+    /// <summary>
+    /// 字符能否用键入方式发送（<c>VkKeyScanW</c> 对当前键盘布局可映射）。
+    /// 中文 / emoji / 布局外字符返回 false——键入式只能打可映射字符，须回退剪贴板（§3.2.2）。
+    /// </summary>
+    public static bool CanType(char ch) => (short)VkKeyScanW(ch) != -1;
+
     /// <summary>发送文本字符串（逐字符 SendChar，对应 AHK SendText）。</summary>
     public static void SendText(string text)
     {

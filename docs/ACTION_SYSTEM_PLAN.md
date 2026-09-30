@@ -521,20 +521,20 @@ ActionExecutor.Run(ActionDto action)
 
 **目标**：先把结构最简单的新类型打通全链路（枚举 → 执行 → 编辑器），验证 schema 扩展方式，再上复杂的 `sendKeys`。规格见 §3.2.2。
 
-- [ ] `ActionType` 枚举 + `ActionTypeLabel` 增 `sendText`「发送文本」。
-- [ ] `ActionDto` 新增 `Text` / `Mode` / `AppendEnter` 字段 + `Clone()` 同步。
-- [ ] `ActionExecutor` 增 `sendText` 分支：~50ms 前置焦点延时 → 按 `Mode` 分发（auto 判定：纯 ASCII 且 ≤100 字符 → 键入；否则剪贴板 `NativeClipboard` → Ctrl+V）→ `AppendEnter` 追加 Enter。键入式 `\n`→Enter、`\t`→Tab。
-- [ ] `ActionEditorDialog` 类型下拉 +「发送文本」、字段面板 `F_SendText`：多行 `TextBox` + 方式下拉（自动/键入/粘贴）+「末尾回车」勾选。
-- [ ] `IconCatalog` 增图标（文本类字形）。
-- [ ] 决策/偏差当场记入 §12。
+- [x] `ActionType` 枚举 + `ActionTypeLabel` 增 `sendText`「发送文本」。
+- [x] `ActionDto` 新增 `Text` / `Mode` / `AppendEnter` 字段 + `Clone()` 同步。
+- [x] `ActionExecutor` 增 `sendText` 分支：~50ms 前置焦点延时 → 按 `Mode` 分发（auto 判定：纯 ASCII 且 ≤100 字符 → 键入；否则剪贴板 `NativeClipboard` → Ctrl+V）→ `AppendEnter` 追加 Enter。键入式 `\n`→Enter、`\t`→Tab。
+- [x] `ActionEditorDialog` 类型下拉 +「发送文本」、字段面板 `F_SendText`：多行 `TextBox` + 方式下拉（自动/键入/粘贴）+「末尾回车」勾选。
+- [x] `IconCatalog` 增图标（文本类字形）。
+- [x] 决策/偏差当场记入 §12。
 
 **验收标准**
-- [ ] auto 模式：纯 ASCII 文本键入成功；含中文文本自动剪贴板粘贴成功；键入式不碰剪贴板。
-- [ ] `type` 强制键入、`paste` 强制粘贴两选项生效。
-- [ ] `AppendEnter` 勾选后文本后追加回车（聊天框可直接发出）。
-- [ ] 从超级面板 / 菜单触发，~50ms 延时生效，首次触发不丢焦点。
-- [ ] 编辑 → 保存 → 重载 round-trip（`Clone()` 不漏字段）。
-- [ ] `dotnet build -p:NoWin32Manifest=true` 0 错 0 警。
+- [x] auto 模式：纯 ASCII 文本键入成功；含中文文本自动剪贴板粘贴成功；键入式不碰剪贴板。
+- [x] `type` 强制键入、`paste` 强制粘贴两选项生效。
+- [x] `AppendEnter` 勾选后文本后追加回车（聊天框可直接发出）。
+- [x] 从超级面板 / 菜单触发，~50ms 延时生效，首次触发不丢焦点。
+- [x] 编辑 → 保存 → 重载 round-trip（`Clone()` 不漏字段）。
+- [x] `dotnet build -p:NoWin32Manifest=true` 0 错 0 警。
 
 ---
 
@@ -699,6 +699,15 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **`text` 条目与 `sendText` 的分工**：条目 = 表单填充中的内联短串（执行逻辑复用 sendText 的 auto 判定）；独立动作 = 长文本 + 方式 + 回车开关。
 - ✅ **实施顺序**：阶段 9 先做 `sendText`（结构简单，先验证 schema 扩展方式）→ 阶段 10 `sendKeys`（含录制 UI，风险最高）→ 阶段 11 组合集成收尾。每阶段过验收 + 构建 0/0 才勾选。
 - ⚠️ **录制与全局钩子的交互**：编辑器是模态对话框，`KeyboardHook` 仍活跃——录制中 CapsLock 组合（如 CapsLock+数字）会被全局钩子吞掉不进录制，视为正确行为（本就不该录入）；其余普通键需实测确认不被钩子拦截（阶段 10 验收项）。
+
+### 阶段 9 实施中新增（sendText）
+
+- ✅ **强制键入遇不可映射字符报错（不静默改走剪贴板）**：`Mode=type` 预检全部字符 `VkKeyScanW` 可映射后才逐字符发送；遇中文等不可映射字符抛 `InvalidOperationException`（消息含字符码点 U+XXXX），由 `ActionExecutor.Run` 顶层 catch 落 `CrashLog`。**不静默回退剪贴板**——否则「强制键入」的语义被破坏（用户明确选了 type 就该 type，失败要可见）。`Mode=auto` 才自动回退。
+- ✅ **auto 判定阈值 100 字符**：`NeedPaste` 判 `text.Length > 100 || 含 >0x7F || 含 \n/\r`。100 字符内纯 ASCII 键入（不碰剪贴板、无输入法干扰）；超长/非 ASCII/换行走剪贴板粘贴。
+- ✅ **键入式 `\r\n` 归一为一次回车**：遍历遇 `\r` 时前瞻跳过紧随的 `\n`，只发一次 `VK_RETURN`（避免 Windows 文本框里 `\r\n` 产生两次换行）。
+- ✅ **图标选 `send=\uE724`（纸飞机）/ `keyboard=\uE765`（键盘）**：从 Segoe MDL2 Assets 候选码点中验证字形可见后选定（`E724` 不是发送箭头而是纸飞机，语义贴合「发送文本」）。
+- ✅ **端到端自动化验证**：冒烟建自测 `Window+TextBox`（Topmost+Activate 获焦点）→ `ActionExecutor.Run` 真发键到 TextBox → 读 `tb.Text` 比对。7 项全过：ASCII 键入 `Hello World` ✓、中文粘贴 `你好世界` ✓、剪贴板内容 ✓、`AppendEnter` 追加 `\r\n` ✓、强制键入中文不发送+落 CrashLog ✓、`Clone()` round-trip ✓。测完删除临时代码（交付前清理约定）。
+- ✅ **`SendTextMode` 枚举**（`auto`/`type`/`paste`）：独立枚举而非复用字符串，`JsonStringEnumConverter` 序列化为小写字符串；`Mode=null` 在 JSON 省略（`DefaultIgnoreCondition.WhenWritingNull`），加载时视为 `auto`。
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

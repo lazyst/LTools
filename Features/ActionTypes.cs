@@ -19,8 +19,23 @@ public enum ActionType
     openFolder,
     openUrl,
     runCommand,
+    sendText,
     @internal,
     composite,
+}
+
+/// <summary>sendText 发送方式（§3.2.2）。</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum SendTextMode
+{
+    /// <summary>自动：纯 ASCII 且 ≤100 字符 → 键入；否则剪贴板粘贴（默认）。</summary>
+    auto,
+
+    /// <summary>强制模拟键入（非 ASCII 字符无法用 VkKeyScanW 映射，执行时预检报错，不静默粘贴）。</summary>
+    type,
+
+    /// <summary>强制剪贴板粘贴（写剪贴板 → Ctrl+V，不恢复原剪贴板）。</summary>
+    paste,
 }
 
 /// <summary>组合步骤失败策略（对应计划 §4）。</summary>
@@ -45,6 +60,7 @@ public static class ActionTypeLabel
         ActionType.openFolder => "打开文件夹",
         ActionType.openUrl => "打开网址",
         ActionType.runCommand => "运行命令",
+        ActionType.sendText => "发送文本",
         ActionType.@internal => "内部动作",
         ActionType.composite => "组合动作",
         _ => t.ToString(),
@@ -132,6 +148,17 @@ public sealed class ActionDto
     /// <summary>internal: 内部命令键（如 "quickNote.toggle"，见 <see cref="InternalActionRegistry"/>）。</summary>
     public string? Command { get; set; }
 
+    // —— sendText（§3.2.2）——
+
+    /// <summary>sendText: 要发送的多行文本。</summary>
+    public string? Text { get; set; }
+
+    /// <summary>sendText: 发送方式，null 视为 <see cref="SendTextMode.auto"/>。</summary>
+    public SendTextMode? Mode { get; set; }
+
+    /// <summary>sendText: 文本发送后是否在末尾追加一次回车。</summary>
+    public bool? AppendEnter { get; set; }
+
     // —— composite ——
 
     /// <summary>composite: 有序步骤列表（nullable 以便 JSON 省略非 composite 动作的空列表）。</summary>
@@ -149,6 +176,7 @@ public sealed class ActionDto
         Id = Id, Name = Name, Icon = Icon, Type = Type,
         Target = Target, Args = Args, Workdir = Workdir, Path = Path, Url = Url,
         Cmd = Cmd, Terminal = Terminal, KeepWindow = KeepWindow, Command = Command,
+        Text = Text, Mode = Mode, AppendEnter = AppendEnter,
         CompositeOnFail = CompositeOnFail,
         Steps = Steps?.Select(s => new StepDto { Action = s.Action.Clone(), DelayMs = s.DelayMs, OnFail = s.OnFail }).ToList(),
     };

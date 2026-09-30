@@ -13,6 +13,7 @@ namespace CapsLockPro.Features;
 /// <item>launchApp → <see cref="Process.Start"/>(target, args, workdir)</item>
 /// <item>openFile / openFolder / openUrl → ShellExecute（默认程序打开）</item>
 /// <item>runCommand → 复用 <see cref="TerminalLauncher"/> 终端路由；direct 走 ShellExecute</item>
+/// <item>sendText → 50ms 焦点延时后按 <see cref="SendTextMode"/> 分发（键入 / 剪贴板粘贴，§3.2.2）</item>
 /// <item>internal → <see cref="InternalActionRegistry"/> 分发（dispatch 到 UI 线程执行）</item>
 /// <item>composite → 顺序执行 <see cref="StepDto"/>（延迟 / 失败策略）；步骤内嵌 <see cref="ActionDto"/> 快照，**不支持嵌套**</item>
 /// </list>
@@ -59,6 +60,9 @@ internal static class ActionExecutor
                 break;
             case ActionType.runCommand:
                 RunCommand(action);
+                break;
+            case ActionType.sendText:
+                SendText(action);
                 break;
             case ActionType.@internal:
                 DispatchInternal(action, cursorX, cursorY);
@@ -172,6 +176,75 @@ internal static class ActionExecutor
         exe = cmd[..sp];
         args = cmd[(sp + 1)..].Trim();
         return true;
+    }
+
+    // —— sendText（发送文本，§3.2.2）——
+    private static void SendText(ActionDto a)
+    {
+        string text = a.Text ?? "";
+        if (text.Length == 0)
+            throw new InvalidOperationException($"sendText 缺少 Text: {a.Name}");
+
+        // 焦点延时（§12）：面板/菜单关闭 → 目标窗口焦点切回有时间差，立即发键可能丢焦点。
+        Thread.Sleep(50);
+
+        // auto → 按内容判定；type / paste → 强制
+        var mode = a.Mode ?? SendTextMode.auto;
+        if (mode == SendTextMode.auto)
+            mode = NeedPaste(text) ? SendTextMode.paste : SendTextMode.type;
+
+        if (mode == SendTextMode.paste)
+        {
+            // 不恢复原剪贴板（§12，与 Quicker 一致）
+            if (!NativeClipboard.SetText(text))
+                throw new InvalidOperationException($"sendText 写剪贴板失败: {a.Name}");
+            InputHelper.Combo((ushort)Win32.VkControl, (ushort)'V');
+        }
+        else
+        {
+            TypeText(a, text);
+        }
+
+        if (a.AppendEnter == true)
+            InputHelper.Tap((ushort)Win32.VkReturn);
+    }
+
+    /// <summary>auto 判定：超 100 字符 / 含非 ASCII / 含换行 → 剪贴板粘贴（§3.2.2）。</summary>
+    private static bool NeedPaste(string text)
+    {
+        if (text.Length > 100) return true;
+        foreach (var ch in text)
+            if (ch > 0x7F || ch == '\n' || ch == '\r') return true;
+        return false;
+    }
+
+    /// <summary>
+    /// 键入式发送：预检全部字符可映射后逐字符发送；遇 <c>\n</c>/<c>\r\n</c> 转 Enter、<c>\t</c> 转 Tab。
+    /// 强制 type 模式遇不可映射字符（中文等）**报错而非静默改走剪贴板**——不违背「强制键入」语义（§12）。
+    /// </summary>
+    private static void TypeText(ActionDto a, string text)
+    {
+        for (int i = 0; i < text.Length; i++)
+        {
+            char ch = text[i];
+            if (ch == '\n' || ch == '\r' || ch == '\t') continue;
+            if (!InputHelper.CanType(ch))
+                throw new InvalidOperationException(
+                    $"sendText 键入方式无法映射字符 U+{(int)ch:X4}（非当前键盘布局字符），请改用「自动」或「粘贴」模式: {a.Name}");
+        }
+
+        for (int i = 0; i < text.Length; i++)
+        {
+            char ch = text[i];
+            if (ch == '\r')
+            {
+                if (i + 1 < text.Length && text[i + 1] == '\n') i++;  // \r\n 算一次回车
+                InputHelper.Tap((ushort)Win32.VkReturn);
+            }
+            else if (ch == '\n') InputHelper.Tap((ushort)Win32.VkReturn);
+            else if (ch == '\t') InputHelper.Tap((ushort)Win32.VkTab);
+            else InputHelper.SendChar(ch);
+        }
     }
 
     // —— internal（内部命令分发到 UI 线程，同步等待）——

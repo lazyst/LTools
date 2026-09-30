@@ -861,10 +861,19 @@ public partial class ConfigHelperWindow : Window
             ActionType.openFile or ActionType.openFolder => a.Path ?? "",
             ActionType.openUrl => a.Url ?? "",
             ActionType.runCommand => string.IsNullOrEmpty(a.Cmd) ? "" : $"{a.Cmd}",
+            ActionType.sendText => BriefText(a.Text),
             ActionType.@internal => a.Command ?? "",
             ActionType.composite => a.Steps != null ? $"{a.Steps.Count} 个步骤" : "",
             _ => "",
         };
+
+        /// <summary>文本摘要：首行截断（超长加省略号），供动作列表 Summary 列。</summary>
+        private static string BriefText(string? text)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            var oneLine = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n')[0];
+            return oneLine.Length > 40 ? oneLine[..40] + "…" : oneLine;
+        }
     }
 
     private sealed record PathRow(string Label, string Path);
