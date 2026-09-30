@@ -131,7 +131,7 @@
                                 <CheckBox x:Name="SuperPanelEnabledBox" Content="启用超级面板"
                                           Checked="SuperPanelEnabledBox_Changed" Unchecked="SuperPanelEnabledBox_Changed"/>
                                 <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,0"
-                                           Text="按住右键（长按）唤起 3×3 动作面板。与上面的 CapsLock 开关相互独立。"
+                                           Text="按住右键（长按）唤起 4×4 动作面板。与上面的 CapsLock 开关相互独立。"
                                            TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>

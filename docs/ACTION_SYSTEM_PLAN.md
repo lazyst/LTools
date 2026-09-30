@@ -769,5 +769,21 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **组合动作本身的名称保持必填**（`CompositeActionDialog.Ok_Click`「名称不能为空」不动）——它是格子/菜单里的展示名；只有**步骤**名放开。
 - ✅ **冒烟 3 项全过**：默认场景 `NameHint=Collapsed` ✓、步骤场景 `NameHint=Visible` ✓、空名 + openUrl 确定 → `Result.Name==""` 入库成功（原会被拦截）✓。
 
+### 交付后 UX 优化（用户反馈：菜单开着点其他格子会直接触发）
+
+- 🐛 **痛点**：面板格子弹出的二级菜单（空格左键新建菜单 / 格子右键菜单）开着时，点击面板其他格子 → 菜单关闭**且点击穿透直接触发**该格子；预期是**只关菜单**。
+- ✅ **方案 = 窗口级 `PreviewMouseLeftButtonDown` 抑制**（`OnWindowMouseDown`，隧道先于格子 `OnCellDown` 收到）：菜单在场（`_openMenu != null`）时收到左键必在菜单外（菜单是独立 popup hwnd，其内点击不路由到本窗口）→ 关菜单 + **仅落在格子区**（`IsInCells` visual tree 上溯）时 `e.Handled=true` 吞掉；标题栏 ✕ / 页脚不吞（只点一次生效）。吞 down 后 `OnDragUp` 因 `_dragSrcPage==null` 安全 no-op，**无需吞配对 up**。
+- ⚠️ **时序踩坑（冒烟实测发现）**：`ContextMenu` 关闭时 **`IsOpen` 先置 false、`Closed` 事件异步派发**——最初用 `IsOpen==true` 为判据恰在该窗口期读空放行（穿透复现）；曾尝试「点外关闭记时间戳 + 800ms 时间窗兜底」又被**异步 Closed 把已消费的时间戳设回**，导致下一次正常点击在窗口边缘被误吞。**最终删除时间窗机制**：down 到达时 `Closed` 必未派发 → `_openMenu` 必在场 → 主判据 `_openMenu != null` 单独充分。`TrackInteract` 相应精简为只维护 `_openMenu` 与 `_interactCount`。
+- ✅ **状态自清**：handler 先置 `_openMenu=null` 再关菜单（防自身触发的 Closed 重复动状态）；面板窗口销毁即状态销毁，无跨会话残留。
+- ✅ **冒烟（真实输入 `SetCursorPos`+`mouse_event` 注入，钩子对 `LLMHF_INJECTED` 直接放行不干预）5 项全过**：右键 slot0 菜单开 `interact=1` ✓ → 左键 slot15 **被抑制**（`interact=0, openMenu=null`，菜单关且未弹新菜单）✓ → 第二次点 slot15 正常弹菜单 `interact=1`（抑制不粘连）✓。
+
+### 交付后 UX 优化（用户需求：超级面板改 4×4）
+
+- ✅ **规格 3×3 → 4×4**（每页 16 槽）：`SuperPanel.xaml` 窗口宽 310→406（`406-22=384 /4=96`，格子保持 96×96 正方视觉不变），`UniformGrid Rows/Columns 4/4`；`Rebuild/ExecuteSlot/拖动 target/空页` 的 9→16；命中测试 `HitTestSlot` 基于 `Children.IndexOf` 自适应无硬编码。
+- ✅ **数据迁移 = `Features.SuperPanel.NormalizePage` 纯函数**（`LoadPages` 与设置页 `PopulateSuperPanel` 共用，单一实现）：`≤9 项 = 旧 3×3 数据 → 按行映射` `page[r*4+c] = src[r*3+c]`（保持每行视觉结构，右列与末行补空）；`>9 项 → 平移前 16 截断`；**幂等**（16 项再走不变）。设置页 `AddPage/BuildSuperPagesUI` 同步 4×4/16 槽。
+- ✅ **`example.json` Pages 直接写 16 项**（平移前放，新用户不吃「行映射空洞」布局）。
+- ✅ **键盘选格保持 1-9**（前 9 格快捷键，10–16 鼠标点）——不引入 0/-/= 等怪异映射，提示文案「1-9 选格」语义不变。
+- ✅ **冒烟**：`NormalizePage` 9→16 行映射逐位断言 ✓、幂等 ✓、窗口 `Children.Count==16` ✓（与菜单抑制合并冒烟共 7 项全过）。
+
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

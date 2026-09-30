@@ -107,19 +107,43 @@ internal static class SuperPanel
 
     // —— 配置读写（经 ConfigIO 串行化，避免与设置窗口防抖保存互相覆盖）——
 
-    /// <summary>从磁盘加载超级面板页（每页补齐到 9 槽）；无页时返回单页空占位。</summary>
+    /// <summary>
+    /// 把磁盘页规整为 4×4（16 槽，§12 需求「一页 4×4」）。
+    /// <list type="bullet">
+    /// <item>≤9 项 = 旧 3×3 数据 → 按行映射到前 3 列（保持每行视觉结构，右列与末行补空）；</item>
+    /// <item>&gt;9 项（已是 16 或手工长度）→ 平移到前 N 格并截断到 16。</item>
+    /// </list>
+    /// 幂等：16 项再走此函数结果不变。
+    /// </summary>
+    internal static List<string?> NormalizePage(IReadOnlyList<string?> p)
+    {
+        var page = new List<string?>(16);
+        for (int i = 0; i < 16; i++) page.Add(null);
+        if (p.Count <= 9)
+        {
+            for (int r = 0; r < 3; r++)
+                for (int c = 0; c < 3; c++)
+                {
+                    int si = r * 3 + c;
+                    page[r * 4 + c] = si < p.Count ? p[si] : null;
+                }
+        }
+        else
+        {
+            for (int i = 0; i < 16 && i < p.Count; i++) page[i] = p[i];
+        }
+        return page;
+    }
+
+    /// <summary>从磁盘加载超级面板页（每页规整为 16 槽 4×4）；无页时返回单页空占位。</summary>
     internal static List<List<string?>> LoadPages()
     {
         var path = ResolveConfigPath();
         var cfg = AppConfig.Load(path);
         var pages = new List<List<string?>>();
         foreach (var p in cfg.SuperPanel.Pages)
-        {
-            var page = new List<string?>(9);
-            for (int i = 0; i < 9; i++) page.Add(i < p.Count ? p[i] : null);
-            pages.Add(page);
-        }
-        if (pages.Count == 0) pages.Add(new List<string?>(new string?[9]));
+            pages.Add(NormalizePage(p));
+        if (pages.Count == 0) pages.Add(NormalizePage(new List<string?>()));
         return pages;
     }
 

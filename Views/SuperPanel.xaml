@@ -1,7 +1,7 @@
 <Window x:Class="CapsLockPro.Views.SuperPanelWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="超级面板" Width="310" SizeToContent="Height"
+        Title="超级面板" Width="406" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Topmost="True"
         ShowInTaskbar="False" ResizeMode="NoResize"
         WindowStartupLocation="Manual"
@@ -31,12 +31,12 @@
                         Click="Close_Click" ToolTip="关闭 (Esc)"/>
             </Grid>
 
-            <!-- 3×3 格子（无间隙，紧贴标题栏/页脚；§5.3 紧凑布局）
+            <!-- 4×4 格子（无间隙，紧贴标题栏/页脚；§5.3 紧凑布局）
                  外层 Grid ClipToBounds：翻页动画（§5.3）两页同时横滑时裁到本行，
                  避免滑出的格子盖住标题栏 / 页脚。PageFxHost 放「旧页截图」，在格子之下。 -->
             <Grid Grid.Row="1" ClipToBounds="True">
                 <Grid x:Name="PageFxHost" IsHitTestVisible="False"/>
-                <UniformGrid x:Name="CellsHost" Rows="3" Columns="3" Margin="0"/>
+                <UniformGrid x:Name="CellsHost" Rows="4" Columns="4" Margin="0"/>
             </Grid>
 
             <!-- 页脚：提示 + 翻页 + 页数指示 -->

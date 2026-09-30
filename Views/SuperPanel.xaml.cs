@@ -14,7 +14,7 @@ using CapsLockPro.Features;
 namespace CapsLockPro.Views;
 
 /// <summary>
-/// 超级面板窗口（计划 §5）。3×3 格子；左键单击空格弹新建菜单 / 非空执行动作，左键按住拖动重排（§5.6，交换语义，支持跨页）；
+/// 超级面板窗口（计划 §5）。4×4 格子；左键单击空格弹新建菜单 / 非空执行动作，左键按住拖动重排（§5.6，交换语义，支持跨页）；
 /// 右键编辑 / 删除 / 复制；滚轮翻页 + 1~9 选格 + Esc / 点外部关闭。
 /// 由 <see cref="SuperPanel"/> 控制器创建，槽位改动经 <c>SuperPanel.SavePages</c>（ConfigIO）落盘。
 /// </summary>
@@ -29,6 +29,9 @@ public partial class SuperPanelWindow : Window
 
     private int _pageIdx;
     private int _interactCount;                 // >0 时（右键菜单/对话框打开）钩子不拦截外部点击与 Esc
+
+    // —— 菜单外点击抑制（需求：菜单开着时点面板其他格子应只关菜单，不触发）——
+    private ContextMenu? _openMenu;             // 当前打开的菜单（Opened/Closed 时更新）
 
     // —— 拖动重排（§5.6）——
     private int? _dragSrcPage;                  // 拖动源页（左键按下时记录）
@@ -46,7 +49,7 @@ public partial class SuperPanelWindow : Window
         _pages = pages;
         _invokeX = invokeX;
         _invokeY = invokeY;
-        if (_pages.Count == 0) _pages.Add(new List<string?>(new string?[9]));
+        if (_pages.Count == 0) _pages.Add(new List<string?>(new string?[16]));
 
         // 上次关闭页（记忆页，§12）：clamp 到有效范围
         _pageIdx = Math.Clamp(startPage, 0, _pages.Count - 1);
@@ -64,6 +67,8 @@ public partial class SuperPanelWindow : Window
         // 拖动重排（§5.6）：窗口级接管鼠标移动/释放（捕获后拖出面板也能收到）
         PreviewMouseMove += OnDragMove;
         PreviewMouseLeftButtonUp += OnDragUp;
+        // 菜单外点击抑制：窗口级隧道先于格子 OnCellDown 收到 down（需求：点其他格子只关菜单）
+        PreviewMouseLeftButtonDown += OnWindowMouseDown;
         _pageHoverTimer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(450)
@@ -133,7 +138,7 @@ public partial class SuperPanelWindow : Window
         CancelPageFx();      // 内容变更（拖动交换 / CRUD）后确保无翻页动画残留
         _hoverSlot = -1;     // 子元素已清空，悬停引用失效
         CellsHost.Children.Clear();
-        for (int slot = 0; slot < 9; slot++)
+        for (int slot = 0; slot < 16; slot++)   // 4×4（§12）
             CellsHost.Children.Add(BuildCell(slot));
     }
 
@@ -146,11 +151,11 @@ public partial class SuperPanelWindow : Window
         {
             Style = (Style)FindResource("BtnGhost"),
             Margin = new Thickness(0),     // 格子无间隙（§5.3 紧凑）
-            Height = 96,                    // 正方形：面板宽 310 → 列宽 (310-22)/3=96
+            Height = 96,                    // 正方形：面板宽 406 → 列宽 (406-22)/4=96
             Cursor = Cursors.Hand,
             // 不覆盖 Background/Tag：与设置页槽位（BuildSlotButton）一致——透明底 + 默认悬停
             // HoverBg(#F4F4F5)。原覆盖 SurfaceAlt(#F4F4F5) 与默认悬停同色→悬停无变化；
-            // 改深色悬停又太暗。保留边框仅作 3×3 格子的视觉分隔。
+            // 改深色悬停又太暗。保留边框仅作 4×4 格子的视觉分隔。
             BorderBrush = (Brush)FindResource("BorderBrush"),
             BorderThickness = new Thickness(1),
         };
@@ -191,7 +196,7 @@ public partial class SuperPanelWindow : Window
     /// <summary>选中/点击某格。非空→先关面板再执行动作（避免动作窗口被置顶面板遮挡）。</summary>
     internal void ExecuteSlot(int slot)
     {
-        if (slot < 0 || slot >= 9) return;
+        if (slot < 0 || slot >= 16) return;
 
         string? id = CurrentPage[slot];
         if (id == null)
@@ -378,10 +383,53 @@ public partial class SuperPanelWindow : Window
         menu.IsOpen = true;
     }
 
+    /// <summary>
+    /// 跟踪菜单开合：计入 <c>_interactCount</c>（钩子不关面板），记录当前打开的菜单
+    /// 供 <see cref="OnWindowMouseDown"/> 判定点击是否在菜单外。
+    /// </summary>
     private void TrackInteract(ContextMenu menu)
     {
-        menu.Opened += (_, _) => _interactCount++;
-        menu.Closed += (_, _) => { if (_interactCount > 0) _interactCount--; };
+        menu.Opened += (_, _) => { _openMenu = menu; _interactCount++; };
+        menu.Closed += (_, _) =>
+        {
+            if (_openMenu == menu) _openMenu = null;
+            if (_interactCount > 0) _interactCount--;
+        };
+    }
+
+    /// <summary>
+    /// 窗口级鼠标 down（隧道，先于格子 <c>OnCellDown</c>）：菜单在场时收到的左键必在菜单外
+    /// （菜单是独立 popup hwnd，其内点击不路由到本窗口）→ 只关菜单，落在格子区的本次点击
+    /// 吞掉不触发；标题栏/页脚不吞（✕ 只点一次即生效）。
+    /// <para><b>时序依据（冒烟实测）</b>：<c>ContextMenu</c> 关闭时 <c>IsOpen</c> 先置 false、
+    /// <c>Closed</c> 事件<b>异步</b>派发——故判据只能用 <c>_openMenu != null</c>（状态对象在场，
+    /// 覆盖「仍开着 / IsOpen 已 false 未派发」两个窗口期），<c>不能</c>看 <c>IsOpen</c>；
+    /// 也无需时间窗兜底（down 到达时 Closed 必未派发 → <c>_openMenu</c> 必在场）。</para>
+    /// 吞 down 后 <c>OnDragUp</c> 因 <c>_dragSrcPage==null</c> 安全 no-op，无需吞配对 up。
+    /// </summary>
+    private void OnWindowMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_openMenu == null) return;          // 无菜单在场：不干预
+        var m = _openMenu;
+        _openMenu = null;                       // 先自清：下面 IsOpen=false 触发的 Closed 不再重复动状态
+        if (m.IsOpen) m.IsOpen = false;         // 尚未关闭则关（Closed → interact--）
+        if (IsInCells(e.OriginalSource)) e.Handled = true;
+    }
+
+    /// <summary>visual tree 上溯判断某元素是否落在格子区（CellsHost 子树内）。</summary>
+    private bool IsInCells(object? source)
+    {
+        DependencyObject? d = source as DependencyObject;
+        while (d != null)
+        {
+            if (ReferenceEquals(d, CellsHost)) return true;
+            // GetParent 对 ContentElement 等非 Visual 会抛异常，分别处理
+            if (d is System.Windows.Media.Visual || d is System.Windows.Media.Media3D.Visual3D)
+                d = System.Windows.Media.VisualTreeHelper.GetParent(d);
+            else if (d is FrameworkElement fe) d = fe.Parent;
+            else return false;
+        }
+        return false;
     }
 
     /// <summary>把动作推迟到下一 Dispatcher 周期——右键菜单项 Click 内同步打开模态对话框，
@@ -509,7 +557,7 @@ public partial class SuperPanelWindow : Window
         if (wasDrag)
         {
             // 交换：源页源格 ↔ 当前页目标格（目标无效或同位→取消）
-            if (target >= 0 && target < 9 && !(sp == _pageIdx && ss == target))
+            if (target >= 0 && target < 16 && !(sp == _pageIdx && ss == target))
             {
                 (_pages[sp][ss], _pages[_pageIdx][target]) = (_pages[_pageIdx][target], _pages[sp][ss]);
                 SuperPanel.SavePages(_pages);

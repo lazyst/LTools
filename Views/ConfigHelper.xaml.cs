@@ -369,14 +369,10 @@ public partial class ConfigHelperWindow : Window
     private void PopulateSuperPanel()
     {
         var cfg = AppConfig.Load(ConfigPath);
-        // 内存编辑态：从配置克隆（每页补齐到 9 槽）
+        // 内存编辑态：从配置克隆（每页规整为 16 槽 4×4，旧 3×3 数据行映射）
         _superPages.Clear();
         foreach (var p in cfg.SuperPanel.Pages)
-        {
-            var page = new List<string?>(9);
-            for (int i = 0; i < 9; i++) page.Add(i < p.Count ? p[i] : null);
-            _superPages.Add(page);
-        }
+            _superPages.Add(Features.SuperPanel.NormalizePage(p));
         _superDirty = false;
 
         _initializing = true;
@@ -428,9 +424,9 @@ public partial class ConfigHelperWindow : Window
             header.Children.Add(delBtn);
             sp.Children.Add(header);
 
-            // 3×3 网格
-            var grid = new UniformGrid { Rows = 3, Columns = 3, Margin = new Thickness(0, 10, 0, 0) };
-            for (int si = 0; si < 9; si++)
+            // 4×4 网格
+            var grid = new UniformGrid { Rows = 4, Columns = 4, Margin = new Thickness(0, 10, 0, 0) };
+            for (int si = 0; si < 16; si++)
             {
                 var cell = BuildSlotButton(pageIdx, si);
                 grid.Children.Add(cell);
@@ -618,7 +614,7 @@ public partial class ConfigHelperWindow : Window
 
     // —— 命中测试 / 目标高亮 ——
 
-    /// <summary>遍历所有页卡片的 3×3 网格，找光标下的槽位（page, slot）；无则 (-1,-1)。</summary>
+    /// <summary>遍历所有页卡片的 4×4 网格，找光标下的槽位（page, slot）；无则 (-1,-1)。</summary>
     private (int page, int slot) HitTestSlot(Point windowPos)
     {
         for (int pi = 0; pi < SuperPagesPanel.Children.Count; pi++)
@@ -718,8 +714,8 @@ public partial class ConfigHelperWindow : Window
 
     private void AddPage_Click(object sender, RoutedEventArgs e)
     {
-        var page = new List<string?>(9);
-        for (int i = 0; i < 9; i++) page.Add(null);
+        var page = new List<string?>(16);
+        for (int i = 0; i < 16; i++) page.Add(null);
         _superPages.Add(page);
         _superDirty = true;
         BuildSuperPagesUI();
