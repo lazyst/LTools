@@ -433,6 +433,7 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **实测修正**（悬停色改为对齐设置页）：前一版把格子悬停色设为 `BorderStrong`(#D4D4D8) 视觉**过暗**。改与设置页槽位（`BuildSlotButton`）完全一致——**不覆盖 `Background`/`Tag`**，回到 `BtnGhost` 默认（透明底 + 悬停 `HoverBg` #F4F4F5），仅保留边框作 3×3 视觉分隔。
 - ✅ **实测修正**（`ShowMenu` 漏 `TrackInteract`）：左键点空格弹出的菜单未挂按钮 `ContextMenu`，原 `ShowMenu` 未调 `TrackInteract` → `IsInteracting=false` → 钩子在点菜单项时判为"点面板外"→关面板→菜单（面板的弹出子窗）随之销毁、点击落空。现 `ShowMenu` 内补 `TrackInteract`。
 - ✅ **实测修正**（§5.5 子菜单扁平化）：WPF 子菜单标题展开（点击/悬停）在本面板中不可靠，用户直接点两层标题无反应。改**单层直选**（见 §5.5），与已填格子菜单同结构，点哪项都直接开新建对话框。
+- ✅ **实测修正**（"删除页"无反应）：设置页 `BuildSuperPagesUI` 用 `for (int pi...)` 构建，`delBtn.Click += (_,_) => DeletePage(pi)` 闭包捕获的是**同一个 `for` 循环变量**——循环结束后 `pi == _superPages.Count`，所有删除按钮都传越界值，被 `DeletePage` 的边界检查静默 `return`。改循环体内 `int pageIdx = pi;` 局部副本隔离。（`foreach` 自 C# 5 起每次迭代为新变量，无此坑；`BuildSlotButton` 用方法参数，安全。）
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

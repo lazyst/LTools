@@ -371,6 +371,8 @@ public partial class ConfigHelperWindow : Window
         SuperPagesPanel.Children.Clear();
         for (int pi = 0; pi < _superPages.Count; pi++)
         {
+            int pageIdx = pi;   // for 循环变量在闭包里共享同一引用——循环结束后 pi==Count，
+                                // 所有「删除页」闭包都会传越界值。须局部副本隔离。
             var card = new Border
             {
                 Style = (Style)FindResource("CardBox"),
@@ -384,7 +386,7 @@ public partial class ConfigHelperWindow : Window
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var title = new TextBlock
             {
-                Text = $"第 {pi + 1} 页",
+                Text = $"第 {pageIdx + 1} 页",
                 Style = (Style)FindResource("SectionLabel"),
                 VerticalAlignment = VerticalAlignment.Center,
             };
@@ -397,7 +399,7 @@ public partial class ConfigHelperWindow : Window
                 MinWidth = 64,
             };
             delBtn.SetValue(Grid.ColumnProperty, 1);
-            delBtn.Click += (_, _) => DeletePage(pi);
+            delBtn.Click += (_, _) => DeletePage(pageIdx);
             header.Children.Add(delBtn);
             sp.Children.Add(header);
 
@@ -405,7 +407,7 @@ public partial class ConfigHelperWindow : Window
             var grid = new UniformGrid { Rows = 3, Columns = 3, Margin = new Thickness(0, 10, 0, 0) };
             for (int si = 0; si < 9; si++)
             {
-                var cell = BuildSlotButton(pi, si);
+                var cell = BuildSlotButton(pageIdx, si);
                 grid.Children.Add(cell);
             }
             sp.Children.Add(grid);
