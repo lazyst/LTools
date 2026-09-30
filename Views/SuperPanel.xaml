@@ -51,6 +51,22 @@
                             FontSize="16" Click="Next_Click" ToolTip="下一页"/>
                 </StackPanel>
             </Grid>
+
+            <!-- 拖动幽灵层（覆盖全窗口，不挡鼠标；§5.6） -->
+            <Canvas x:Name="GhostLayer" Grid.RowSpan="3" IsHitTestVisible="False">
+                <Border x:Name="DragGhost" Visibility="Collapsed"
+                        Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource PrimaryBrush}"
+                        BorderThickness="2" CornerRadius="6" Padding="8,4" Opacity="0.92"
+                        Width="118" Height="78">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock x:Name="GhostIcon" FontFamily="Segoe MDL2 Assets" FontSize="20"
+                                   HorizontalAlignment="Center" Foreground="{StaticResource TextBrush}"/>
+                        <TextBlock x:Name="GhostName" Margin="0,3,0,0" FontSize="11"
+                                   HorizontalAlignment="Center" Foreground="{StaticResource TextBrush}"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="104"/>
+                    </StackPanel>
+                </Border>
+            </Canvas>
         </Grid>
     </Border>
 </Window>

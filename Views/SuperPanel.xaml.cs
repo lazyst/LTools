@@ -6,13 +6,14 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using CapsLockPro.Features;
 
 namespace CapsLockPro.Views;
 
 /// <summary>
-/// 超级面板窗口（计划 §5）。3×3 格子；左键非空执行 / 空弹新建菜单；右键非空编辑/删除/复制/移动、
-/// 空弹 <see cref="ActionType"/> 新建菜单；滚轮翻页 + 1~9 选格 + Esc / 点外部关闭。
+/// 超级面板窗口（计划 §5）。3×3 格子；左键单击空格弹新建菜单 / 非空执行动作，左键按住拖动重排（§5.6，交换语义，支持跨页）；
+/// 右键编辑 / 删除 / 复制；滚轮翻页 + 1~9 选格 + Esc / 点外部关闭。
 /// 由 <see cref="SuperPanel"/> 控制器创建，槽位改动经 <c>SuperPanel.SavePages</c>（ConfigIO）落盘。
 /// </summary>
 public partial class SuperPanelWindow : Window
@@ -26,8 +27,15 @@ public partial class SuperPanelWindow : Window
 
     private int _pageIdx;
     private int _interactCount;                 // >0 时（右键菜单/对话框打开）钩子不拦截外部点击与 Esc
-    private int? _movePage;                     // 移动模式：源页
-    private int? _moveSlot;                     // 移动模式：源格
+
+    // —— 拖动重排（§5.6）——
+    private int? _dragSrcPage;                  // 拖动源页（左键按下时记录）
+    private int? _dragSrcSlot;                  // 拖动源格
+    private Point _dragOrigin;                  // 按下时的鼠标位置（阈值判定用）
+    private bool _dragging;                     // 是否已进入拖动态（位移超阈值）
+    private int _hoverSlot = -1;                // 拖动中悬停的目标格（-1=无）
+    private DispatcherTimer? _pageHoverTimer;   // ‹/› 悬停翻页计时
+    private int _pageHoverDir;                  // 悬停方向：-1=‹，+1=›
 
     internal SuperPanelWindow(List<List<string?>> pages, int invokeX, int invokeY)
     {
@@ -46,6 +54,15 @@ public partial class SuperPanelWindow : Window
 
         // ActualWidth/Height 在加载后才可靠，此时再定位到光标处
         Loaded += (_, _) => PlaceAtCursor(_invokeX, _invokeY);
+
+        // 拖动重排（§5.6）：窗口级接管鼠标移动/释放（捕获后拖出面板也能收到）
+        PreviewMouseMove += OnDragMove;
+        PreviewMouseLeftButtonUp += OnDragUp;
+        _pageHoverTimer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(450)
+        };
+        _pageHoverTimer.Tick += (_, _) => GoPage(_pageHoverDir);   // 悬停翻页，可连续翻
     }
 
     /// <summary>供 <see cref="SuperPanel"/> 判断是否有右键菜单 / 对话框正打开（打开时钩子不介入）。</summary>
@@ -104,6 +121,7 @@ public partial class SuperPanelWindow : Window
 
     private void Rebuild()
     {
+        _hoverSlot = -1;   // 子元素已清空，悬停引用失效
         CellsHost.Children.Clear();
         for (int slot = 0; slot < 9; slot++)
             CellsHost.Children.Add(BuildCell(slot));
@@ -150,7 +168,7 @@ public partial class SuperPanelWindow : Window
         });
         btn.Content = content;
 
-        btn.Click += (_, _) => Defer(() => ExecuteSlot(slot));
+        btn.PreviewMouseLeftButtonDown += (_, e) => OnCellDown(slot, e);
         // 右键菜单：非空 → 编辑/删除/复制/移动；空 → §5.5 新建菜单
         var menu = a != null ? BuildFilledMenu(slot) : BuildEmptyMenu(slot);
         TrackInteract(menu);
@@ -164,13 +182,6 @@ public partial class SuperPanelWindow : Window
     internal void ExecuteSlot(int slot)
     {
         if (slot < 0 || slot >= 9) return;
-
-        // 移动模式：点击目标格完成移动
-        if (_movePage != null)
-        {
-            CompleteMove(slot);
-            return;
-        }
 
         string? id = CurrentPage[slot];
         if (id == null)
@@ -193,10 +204,10 @@ public partial class SuperPanelWindow : Window
         ActionExecutor.Run(action, _invokeX, _invokeY);
     }
 
-    /// <summary>Esc 处理：移动模式→取消移动；否则关闭面板。</summary>
+    /// <summary>Esc 处理：拖动中→取消拖动；否则关闭面板。</summary>
     internal void RequestEscape()
     {
-        if (_movePage != null) { CancelMove(); return; }
+        if (_dragging || _dragSrcPage != null) { CancelDrag(); return; }
         SuperPanel.Close();
     }
 
@@ -216,6 +227,7 @@ public partial class SuperPanelWindow : Window
 
     private void Window_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
+        if (_dragging) { e.Handled = true; return; }   // 拖动中不滚轮翻页，避免干扰跨页悬停
         GoPage(e.Delta < 0 ? 1 : -1);
         e.Handled = true;
     }
@@ -223,16 +235,10 @@ public partial class SuperPanelWindow : Window
     private void UpdateHeader()
     {
         PageIndicator.Text = $"{_pageIdx + 1}/{_pages.Count}";
-        if (_movePage != null)
-        {
-            TitleText.Text = "超级面板 · 移动";
-            HintText.Text = "点击目标格子完成移动 · Esc 取消";
-        }
-        else
-        {
-            TitleText.Text = "超级面板";
-            HintText.Text = "1-9 选格 · 滚轮翻页 · Esc 关闭";
-        }
+        TitleText.Text = "超级面板";
+        HintText.Text = _dragging
+            ? "拖到目标格交换 · 拖到 ‹/› 翻页 · Esc 取消"
+            : "1-9 选格 · 滚轮翻页 · Esc 关闭";
     }
 
     // —— 右键菜单（§5.4 / §5.5）——
@@ -244,13 +250,10 @@ public partial class SuperPanelWindow : Window
         miEdit.Click += (_, _) => Defer(() => EditAt(slot));
         var miCopy = new MenuItem { Header = "复制" };
         miCopy.Click += (_, _) => Defer(() => DuplicateAt(slot));
-        var miMove = new MenuItem { Header = "移动到其他格子…" };
-        miMove.Click += (_, _) => Defer(() => StartMove(slot));
         var miDel = new MenuItem { Header = "删除" };
         miDel.Click += (_, _) => Defer(() => DeleteAt(slot));
         menu.Items.Add(miEdit);
         menu.Items.Add(miCopy);
-        menu.Items.Add(miMove);
         menu.Items.Add(new Separator());
         menu.Items.Add(miDel);
         return menu;
@@ -374,36 +377,178 @@ public partial class SuperPanelWindow : Window
         UpdateHeader();
     }
 
-    // —— 移动模式 ——
+    // —— 拖动重排（§5.6）——
 
-    private void StartMove(int slot)
+    private void OnCellDown(int slot, MouseButtonEventArgs e)
     {
-        if (CurrentPage[slot] == null) return;
-        _movePage = _pageIdx;
-        _moveSlot = slot;
+        if (e.ChangedButton != MouseButton.Left) return;
+        _dragSrcPage = _pageIdx;
+        _dragSrcSlot = slot;
+        _dragOrigin = e.GetPosition(this);
+        _dragging = false;
+        CaptureMouse();          // 捕获到窗口：拖出面板后 PreviewMouseMove/Up 仍路由到本窗口
+        e.Handled = true;        // 吞掉 Button.Click——点击/拖动由释放时位移判定
+    }
+
+    private void OnDragMove(object sender, MouseEventArgs e)
+    {
+        if (_dragSrcPage is not int srcPage || _dragSrcSlot is not int srcSlot) return;
+        var pos = e.GetPosition(this);
+
+        if (!_dragging)
+        {
+            double dx = Math.Abs(pos.X - _dragOrigin.X);
+            double dy = Math.Abs(pos.Y - _dragOrigin.Y);
+            if (dx <= SystemParameters.MinimumHorizontalDragDistance
+                && dy <= SystemParameters.MinimumVerticalDragDistance) return;
+            _dragging = true;
+            ShowGhost(srcPage, srcSlot);
+            UpdateHeader();
+        }
+
+        UpdateGhost(pos);
+        SetHoverSlot(HitTestSlot(pos));
+        UpdatePageHover(pos);
+        e.Handled = true;
+    }
+
+    private void OnDragUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left
+            || _dragSrcPage is not int sp || _dragSrcSlot is not int ss) return;
+        ReleaseMouseCapture();
+
+        bool wasDrag = _dragging;
+        int target = _hoverSlot;
+        EndDragVisuals();
+
+        if (wasDrag)
+        {
+            // 交换：源页源格 ↔ 当前页目标格（目标无效或同位→取消）
+            if (target >= 0 && target < 9 && !(sp == _pageIdx && ss == target))
+            {
+                (_pages[sp][ss], _pages[_pageIdx][target]) = (_pages[_pageIdx][target], _pages[sp][ss]);
+                SuperPanel.SavePages(_pages);
+                Rebuild();
+            }
+        }
+        else
+        {
+            // 位移未超阈值→视为单击：执行原语义（空格弹菜单/非空执行）
+            Defer(() => ExecuteSlot(ss));
+        }
+        _dragSrcPage = null;
+        _dragSrcSlot = null;
+        _dragging = false;
+        UpdateHeader();
+        e.Handled = true;
+    }
+
+    private void CancelDrag()
+    {
+        ReleaseMouseCapture();
+        EndDragVisuals();
+        _dragSrcPage = null;
+        _dragSrcSlot = null;
+        _dragging = false;
         UpdateHeader();
     }
 
-    private void CompleteMove(int targetSlot)
-    {
-        int sp = _movePage!.Value, ss = _moveSlot!.Value;
-        var srcPage = _pages[sp];
-        var dstPage = _pages[_pageIdx];
-        if (sp == _pageIdx && ss == targetSlot) { CancelMove(); return; }
+    // —— 拖动视觉 ——
 
-        (srcPage[ss], dstPage[targetSlot]) = (dstPage[targetSlot], srcPage[ss]);
-        _movePage = null;
-        _moveSlot = null;
-        SuperPanel.SavePages(_pages);
-        Rebuild();
-        UpdateHeader();
+    private void ShowGhost(int page, int slot)
+    {
+        string? id = _pages[page][slot];
+        var a = id != null ? ActionRegistry.FindById(id) : null;
+        GhostIcon.Text = a != null ? IconCatalog.GetGlyph(a.Icon) : "\uE710";
+        GhostName.Text = a != null ? a.Name : "（空）";
+        DragGhost.Visibility = Visibility.Visible;
+        Mouse.OverrideCursor = Cursors.SizeAll;
     }
 
-    private void CancelMove()
+    private void UpdateGhost(Point windowPos)
     {
-        _movePage = null;
-        _moveSlot = null;
-        UpdateHeader();
+        var rel = TranslatePoint(windowPos, GhostLayer);   // 窗口坐标→Canvas 坐标
+        double w = DragGhost.ActualWidth > 0 ? DragGhost.ActualWidth : DragGhost.Width;
+        double h = DragGhost.ActualHeight > 0 ? DragGhost.ActualHeight : DragGhost.Height;
+        Canvas.SetLeft(DragGhost, rel.X - w / 2);
+        Canvas.SetTop(DragGhost, rel.Y - h / 2);
+    }
+
+    private void EndDragVisuals()
+    {
+        DragGhost.Visibility = Visibility.Collapsed;
+        Mouse.OverrideCursor = null;
+        SetHoverSlot(-1);
+        StopPageHover();
+    }
+
+    // —— 命中测试 / 目标高亮 ——
+
+    private int HitTestSlot(Point windowPos)
+    {
+        var rel = TranslatePoint(windowPos, CellsHost);
+        if (rel.X < 0 || rel.Y < 0 || rel.X > CellsHost.ActualWidth || rel.Y > CellsHost.ActualHeight)
+            return -1;
+        if (CellsHost.InputHitTest(rel) is not DependencyObject hit) return -1;
+        DependencyObject? d = hit;
+        while (d != null && d != CellsHost)
+        {
+            if (d is Button b) return CellsHost.Children.IndexOf(b);
+            d = VisualTreeHelper.GetParent(d);
+        }
+        return -1;
+    }
+
+    private void SetHoverSlot(int slot)
+    {
+        if (slot == _hoverSlot) return;
+        if (_hoverSlot >= 0 && _hoverSlot < CellsHost.Children.Count)
+            ClearHover((Button)CellsHost.Children[_hoverSlot]);
+        _hoverSlot = slot;
+        if (slot >= 0 && slot < CellsHost.Children.Count)
+            ApplyHover((Button)CellsHost.Children[slot]);
+    }
+
+    private void ApplyHover(Button b)
+    {
+        b.BorderBrush = (Brush)FindResource("PrimaryBrush");
+        b.BorderThickness = new Thickness(2);
+    }
+
+    private void ClearHover(Button b)
+    {
+        b.BorderBrush = (Brush)FindResource("BorderBrush");
+        b.BorderThickness = new Thickness(1);
+    }
+
+    // —— 跨页：拖到 ‹/› 悬停翻页 ——
+
+    private void UpdatePageHover(Point windowPos)
+    {
+        int dir = 0;
+        if (IsOver(windowPos, PrevBtn) && _pageIdx > 0) dir = -1;
+        else if (IsOver(windowPos, NextBtn) && _pageIdx < _pages.Count - 1) dir = 1;
+
+        if (dir == 0) { StopPageHover(); return; }
+        if (_pageHoverDir != dir || _pageHoverTimer?.IsEnabled != true)
+        {
+            _pageHoverDir = dir;
+            _pageHoverTimer!.Stop();
+            _pageHoverTimer.Start();   // 悬停 ~0.45s 后翻页（Tick 内 GoPage，可连续翻）
+        }
+    }
+
+    private void StopPageHover()
+    {
+        if (_pageHoverTimer?.IsEnabled == true) _pageHoverTimer.Stop();
+    }
+
+    private bool IsOver(Point windowPos, FrameworkElement el)
+    {
+        if (el.ActualWidth <= 0) return false;
+        var rel = TranslatePoint(windowPos, el);
+        return rel.X >= 0 && rel.Y >= 0 && rel.X <= el.ActualWidth && rel.Y <= el.ActualHeight;
     }
 
     // —— 辅助 ——
