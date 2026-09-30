@@ -52,18 +52,14 @@
             <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                     Margin="0,2" Padding="8,6">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="18"/>      <!-- 把手 -->
-                        <ColumnDefinition Width="*"/>       <!-- 内容区 -->
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>      <!-- 身份 + 操作（+ 宽时的参数） -->
-                        <RowDefinition Height="Auto"/>      <!-- 窄时的参数 -->
-                    </Grid.RowDefinitions>
-
-                    <!-- 把手（跨两行，可拖整行） -->
-                    <Border Grid.Column="0" Grid.Row="0" Grid.RowSpan="2"
+                <!-- 卡片内容 = 左停靠把手 + 右侧两行 Grid。
+                     禁止改回 Grid.RowSpan 让把手跨两行：跨行 Auto 行会把手的
+                     DesiredSize 分摊进 Row1，ParamsBelow 折叠后仍残留 9.3px
+                     （把手 ≡ 高度的一半）→ 单行态内容偏上不居中。
+                     实测对照：RowSpan=2 → Grid 39.3 / 卡片 53.3；Dock 停靠 → 30 / 44。 -->
+                <DockPanel LastChildFill="True">
+                    <!-- 把手（停靠左侧、自动拉伸到整行高，可拖整行） -->
+                    <Border DockPanel.Dock="Left" Width="18"
                             Cursor="SizeAll" Background="Transparent"
                             VerticalAlignment="Stretch" ToolTip="拖拽排序"
                             PreviewMouseLeftButtonDown="Grip_PreviewMouseLeftButtonDown">
@@ -71,46 +67,53 @@
                                    Foreground="{StaticResource HintTextBrush}" FontSize="14"/>
                     </Border>
 
-                    <!-- 上行：序号 | 类型徽标 | 名称（截断）| 参数（宽时）| 编辑 | 删除 -->
-                    <Grid Grid.Column="1" Grid.Row="0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>    <!-- 序号 -->
-                            <ColumnDefinition Width="Auto"/>    <!-- 类型徽标 -->
-                            <ColumnDefinition Width="*"/>       <!-- 名称（截断） -->
-                            <ColumnDefinition Width="Auto"/>    <!-- 参数（宽时） -->
-                            <ColumnDefinition Width="30"/>      <!-- 编辑 -->
-                            <ColumnDefinition Width="30"/>      <!-- 删除 -->
-                        </Grid.ColumnDefinitions>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>      <!-- 身份 + 操作（+ 宽时的参数） -->
+                            <RowDefinition Height="Auto"/>      <!-- 窄时的参数 -->
+                        </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Column="0" Text="{Binding Number}" FontWeight="SemiBold"
-                                   Foreground="{StaticResource SecondaryTextBrush}"
-                                   VerticalAlignment="Center" Margin="4,0,8,0"/>
-                        <Border Grid.Column="1" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3"
-                                Padding="6,2" Margin="0,0,8,0" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding TypeBadge}" FontSize="11"
-                                       Foreground="{StaticResource SecondaryTextBrush}"/>
-                        </Border>
-                        <TextBlock Grid.Column="2" Text="{Binding ActionName}" FontWeight="SemiBold"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        <!-- 上行：序号 | 类型徽标 | 名称（截断）| 参数（宽时）| 编辑 | 删除 -->
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>    <!-- 序号 -->
+                                <ColumnDefinition Width="Auto"/>    <!-- 类型徽标 -->
+                                <ColumnDefinition Width="*"/>       <!-- 名称（截断） -->
+                                <ColumnDefinition Width="Auto"/>    <!-- 参数（宽时） -->
+                                <ColumnDefinition Width="30"/>      <!-- 编辑 -->
+                                <ColumnDefinition Width="30"/>      <!-- 删除 -->
+                            </Grid.ColumnDefinitions>
 
-                        <ContentPresenter Grid.Column="3" x:Name="ParamsInline"
+                            <TextBlock Grid.Column="0" Text="{Binding Number}" FontWeight="SemiBold"
+                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                       VerticalAlignment="Center" Margin="4,0,8,0"/>
+                            <Border Grid.Column="1" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3"
+                                    Padding="6,2" Margin="0,0,8,0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding TypeBadge}" FontSize="11"
+                                           Foreground="{StaticResource SecondaryTextBrush}"/>
+                            </Border>
+                            <TextBlock Grid.Column="2" Text="{Binding ActionName}" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+                            <ContentPresenter Grid.Column="3" x:Name="ParamsInline"
+                                              Content="{Binding}" ContentTemplate="{StaticResource ParamsTemplate}"
+                                              Visibility="Collapsed" VerticalAlignment="Center" Margin="8,0,0,0"/>
+
+                            <!-- 编辑 / 删除（Padding=0：图标在 30px 按钮里完整居中，不被 Btn 的 10,4 内边距挤压） -->
+                            <Button Grid.Column="4" Style="{StaticResource BtnGhost}" Content="✎"
+                                    Padding="0" Width="30" Height="30" VerticalAlignment="Center"
+                                    ToolTip="编辑本步（双击行亦可）" Click="EditStep_Click"/>
+                            <Button Grid.Column="5" Style="{StaticResource BtnGhost}" Content="✕"
+                                    Padding="0" Width="30" Height="30" VerticalAlignment="Center"
+                                    ToolTip="删除步骤" Click="Delete_Click"/>
+                        </Grid>
+
+                        <!-- 下行：窄时的参数（独占整行宽度，不与名称争空间） -->
+                        <ContentPresenter Grid.Row="1" x:Name="ParamsBelow"
                                           Content="{Binding}" ContentTemplate="{StaticResource ParamsTemplate}"
-                                          Visibility="Collapsed" VerticalAlignment="Center" Margin="8,0,0,0"/>
-
-                        <!-- 编辑 / 删除（Padding=0：图标在 30px 按钮里完整居中，不被 Btn 的 10,4 内边距挤压） -->
-                        <Button Grid.Column="4" Style="{StaticResource BtnGhost}" Content="✎"
-                                Padding="0" Width="30" Height="30" VerticalAlignment="Center"
-                                ToolTip="编辑本步（双击行亦可）" Click="EditStep_Click"/>
-                        <Button Grid.Column="5" Style="{StaticResource BtnGhost}" Content="✕"
-                                Padding="0" Width="30" Height="30" VerticalAlignment="Center"
-                                ToolTip="删除步骤" Click="Delete_Click"/>
+                                          VerticalAlignment="Center" Margin="0,5,0,0"/>
                     </Grid>
-
-                    <!-- 下行：窄时的参数（独占整行宽度，不与名称争空间） -->
-                    <ContentPresenter Grid.Column="1" Grid.Row="1" x:Name="ParamsBelow"
-                                      Content="{Binding}" ContentTemplate="{StaticResource ParamsTemplate}"
-                                      VerticalAlignment="Center" Margin="0,5,0,0"/>
-                </Grid>
+                </DockPanel>
             </Border>
 
             <!-- 宽度够 → 单行（参数上移，名称拉长）；不够 → 两行（按钮常驻） -->
