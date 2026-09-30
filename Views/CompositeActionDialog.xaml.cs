@@ -61,7 +61,23 @@ public partial class CompositeActionDialog : Window
         string q = (SearchBox.Text ?? "").Trim();
         SourceList.Children.Clear();
 
-        // 内部动作（6 个内置命令）→ 内联 internal 快照
+        // 基础动作（6 种动作类型）→ 双击/拖入开预置类型的编辑器（§12）
+        var basicDefs = new (ActionType Type, string Icon, string Label)[]
+        {
+            (ActionType.launchApp, "app", "启动软件"),
+            (ActionType.openFile, "file", "打开文件"),
+            (ActionType.openFolder, "folder", "打开文件夹"),
+            (ActionType.openUrl, "globe", "打开网址"),
+            (ActionType.runCommand, "terminal", "运行命令"),
+            (ActionType.@internal, "settings", "内部动作"),
+        };
+        var basics = basicDefs
+            .Select(b => new LeftItem { Label = b.Label, Glyph = IconCatalog.GetGlyph(b.Icon), BasicType = b.Type })
+            .Where(i => q.Length == 0 || i.Label.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        AddGroup("基础动作", basics);
+
+        // 内部动作（6 个内置命令）→ 内联 internal 快照（无需开编辑器）
         var internals = InternalActionRegistry.Commands
             .OrderBy(c => c, StringComparer.Ordinal)
             .Select(c => new LeftItem { Label = ActionEditorDialog.FormatCommand(c), Glyph = "\uE756", InternalCommand = c })
@@ -78,7 +94,7 @@ public partial class CompositeActionDialog : Window
             .ToList();
         AddGroup("动作池", pool);
 
-        if (internals.Count == 0 && pool.Count == 0)
+        if (basics.Count == 0 && internals.Count == 0 && pool.Count == 0)
             SourceList.Children.Add(new TextBlock
             {
                 Text = "（无匹配）",
@@ -151,32 +167,16 @@ public partial class CompositeActionDialog : Window
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => BuildSourceList();
 
-    private void NewStep_Click(object sender, RoutedEventArgs e)
-    {
-        var dto = ActionEditorDialog.Show(this, "新建步骤", null, allowComposite: false);
-        if (dto == null) return;
-        var a = dto.Clone();
-        a.Id = "";                                              // 内嵌快照不占动作池 Id
-        if (a.Type == ActionType.composite) a.Type = ActionType.runCommand;   // 防御：禁止嵌套
-        _steps.Add(new StepDto { Action = a });
-        ReloadRows();
-        StepsList.SelectedIndex = _steps.Count - 1;
-    }
+    private void AppendStep(LeftItem item) => AddFromLeft(item, atIndex: null);
 
-    private void AppendStep(LeftItem item)
+    /// <summary>把左栏项变成步骤并插入指定位置（null=追加）。基础动作类型会开预置类型的编辑器。</summary>
+    private void AddFromLeft(LeftItem item, int? atIndex)
     {
-        var step = MakeStep(item);
-        if (step == null) return;
-        _steps.Add(step);
-        ReloadRows();
-        StepsList.SelectedIndex = _steps.Count - 1;
-    }
+        StepDto? step = null;
 
-    /// <summary>左栏项 → 步骤（深拷贝池动作 / 构造内联内部动作）。</summary>
-    private static StepDto? MakeStep(LeftItem item)
-    {
         if (item.InternalCommand != null)
-            return new StepDto
+        {
+            step = new StepDto
             {
                 Action = new ActionDto
                 {
@@ -186,15 +186,33 @@ public partial class CompositeActionDialog : Window
                     Icon = IconCatalog.Default,
                 },
             };
-        if (item.PoolActionId != null)
+        }
+        else if (item.PoolActionId != null)
         {
             var a = ActionRegistry.FindById(item.PoolActionId);
-            if (a == null || a.Type == ActionType.composite) return null;
-            var copy = a.Clone();
-            copy.Id = "";
-            return new StepDto { Action = copy };
+            if (a != null && a.Type != ActionType.composite)
+            {
+                var copy = a.Clone();
+                copy.Id = "";
+                step = new StepDto { Action = copy };
+            }
         }
-        return null;
+        else if (item.BasicType != null)
+        {
+            // 双击/拖入均开编辑器（类型已预置），填完字段后作为内嵌步骤
+            var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = item.BasicType.Value };
+            var dto = ActionEditorDialog.Show(this, "新建步骤", draft, allowComposite: false);
+            if (dto == null || dto.Type == ActionType.composite) return;   // 取消 / 防御
+            var c = dto.Clone();
+            c.Id = "";
+            step = new StepDto { Action = c };
+        }
+
+        if (step == null) return;
+        int idx = Math.Clamp(atIndex ?? _steps.Count, 0, _steps.Count);
+        _steps.Insert(idx, step);
+        ReloadRows();
+        StepsList.SelectedIndex = Math.Clamp(idx, 0, _steps.Count - 1);
     }
 
     // ============ 中间：步骤编排 ============
@@ -280,14 +298,8 @@ public partial class CompositeActionDialog : Window
         // 左栏项 → 插入步骤
         if (_dragLeftItem != null)
         {
-            var step = MakeStep(_dragLeftItem);
-            if (step != null)
-            {
-                int to = Math.Clamp(DropIndex(e), 0, _steps.Count);
-                _steps.Insert(to, step);
-                ReloadRows();
-                StepsList.SelectedIndex = to;
-            }
+            int to = Math.Clamp(DropIndex(e), 0, _steps.Count);
+            AddFromLeft(_dragLeftItem, to);
             e.Handled = true;
             return;
         }
@@ -367,8 +379,9 @@ public partial class CompositeActionDialog : Window
     {
         public string Label { get; set; } = "";
         public string Glyph { get; set; } = "";
-        public string? InternalCommand { get; set; }
-        public string? PoolActionId { get; set; }
+        public string? InternalCommand { get; set; }   // 内部动作组：6 个内置命令
+        public string? PoolActionId { get; set; }       // 动作池组：复用（深拷贝）
+        public ActionType? BasicType { get; set; }       // 基础动作组：动作类型（需开编辑器填字段）
     }
 
     /// <summary>步骤行展示模型；属性直接读写底层 <see cref="StepDto"/>，绑定编辑即落回数据。</summary>

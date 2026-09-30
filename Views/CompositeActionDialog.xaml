@@ -16,32 +16,47 @@
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
-        <!-- 步骤行模板 -->
+        <!-- 步骤行模板（Grid 列布局：名称列 *，窄时只压缩名称，右侧按钮不溢出被裁） -->
         <DataTemplate x:Key="StepRowTemplate">
             <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                     Margin="0,2" Padding="8,6">
-                <DockPanel>
-                    <!-- 删除 -->
-                    <Button DockPanel.Dock="Right" Style="{StaticResource BtnGhost}" Content="✕"
-                            Width="26" Height="26" VerticalAlignment="Center"
-                            ToolTip="删除步骤" Click="Delete_Click"/>
-                    <!-- 编辑 -->
-                    <Button DockPanel.Dock="Right" Style="{StaticResource BtnGhost}" Content="✎"
-                            Width="26" Height="26" Margin="0,0,4,0" VerticalAlignment="Center"
-                            ToolTip="编辑本步（双击行亦可）" Click="EditStep_Click"/>
-                    <!-- 失败策略 -->
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
-                                VerticalAlignment="Center" Margin="0,0,8,0">
-                        <TextBlock Text="失败" VerticalAlignment="Center"
-                                   Foreground="{StaticResource HintTextBrush}" FontSize="11" Margin="0,0,4,0"/>
-                        <ComboBox MinWidth="78" MinHeight="28"
-                                  ItemsSource="{Binding StrategyOptions}"
-                                  SelectedIndex="{Binding OnFailIndex}"/>
-                    </StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="18"/>      <!-- 把手 -->
+                        <ColumnDefinition Width="Auto"/>    <!-- 序号 -->
+                        <ColumnDefinition Width="Auto"/>    <!-- 类型徽标 -->
+                        <ColumnDefinition Width="*"/>       <!-- 名称（截断） -->
+                        <ColumnDefinition Width="Auto"/>    <!-- 延迟 -->
+                        <ColumnDefinition Width="Auto"/>    <!-- 失败策略 -->
+                        <ColumnDefinition Width="30"/>      <!-- 编辑 -->
+                        <ColumnDefinition Width="30"/>      <!-- 删除 -->
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 把手 -->
+                    <Border Grid.Column="0" Cursor="SizeAll" Background="Transparent"
+                            VerticalAlignment="Stretch" ToolTip="拖拽排序"
+                            PreviewMouseLeftButtonDown="Grip_PreviewMouseLeftButtonDown">
+                        <TextBlock Text="≡" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="{StaticResource HintTextBrush}" FontSize="14"/>
+                    </Border>
+
+                    <!-- 序号 -->
+                    <TextBlock Grid.Column="1" Text="{Binding Number}" FontWeight="SemiBold"
+                               Foreground="{StaticResource SecondaryTextBrush}"
+                               VerticalAlignment="Center" Margin="4,0,8,0"/>
+                    <!-- 类型徽标 -->
+                    <Border Grid.Column="2" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3"
+                            Padding="6,2" Margin="0,0,8,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding TypeBadge}" FontSize="11"
+                                   Foreground="{StaticResource SecondaryTextBrush}"/>
+                    </Border>
+                    <!-- 名称（截断） -->
+                    <TextBlock Grid.Column="3" Text="{Binding ActionName}" FontWeight="SemiBold"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
                     <!-- 延迟 -->
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
-                                VerticalAlignment="Center" Margin="0,0,8,0">
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
                         <TextBlock Text="⏱" VerticalAlignment="Center"
                                    Foreground="{StaticResource HintTextBrush}" FontSize="13"/>
                         <TextBox Width="46" MinHeight="26" Margin="4,0,0,0"
@@ -50,29 +65,24 @@
                         <TextBlock Text="ms" VerticalAlignment="Center"
                                    Foreground="{StaticResource HintTextBrush}" FontSize="11" Margin="2,0,0,0"/>
                     </StackPanel>
-                    <!-- 拖拽把手 -->
-                    <Border DockPanel.Dock="Left" Width="18" Cursor="SizeAll"
-                            Background="Transparent" VerticalAlignment="Stretch"
-                            ToolTip="拖拽排序"
-                            PreviewMouseLeftButtonDown="Grip_PreviewMouseLeftButtonDown">
-                        <TextBlock Text="≡" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Foreground="{StaticResource HintTextBrush}" FontSize="14"/>
-                    </Border>
-                    <!-- 序号 + 类型徽标 + 名称 -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Number}" FontWeight="SemiBold"
-                                   Foreground="{StaticResource SecondaryTextBrush}"
-                                   VerticalAlignment="Center" Margin="6,0,8,0"/>
-                        <Border Background="{StaticResource SurfaceAltBrush}" CornerRadius="3"
-                                Padding="6,2" Margin="0,0,8,0" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding TypeBadge}" FontSize="11"
-                                       Foreground="{StaticResource SecondaryTextBrush}"/>
-                        </Border>
-                        <TextBlock Text="{Binding ActionName}" FontWeight="SemiBold"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                   MaxWidth="220"/>
+
+                    <!-- 失败策略 -->
+                    <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+                        <TextBlock Text="失败" VerticalAlignment="Center"
+                                   Foreground="{StaticResource HintTextBrush}" FontSize="11" Margin="0,0,4,0"/>
+                        <ComboBox MinWidth="78" MinHeight="28"
+                                  ItemsSource="{Binding StrategyOptions}"
+                                  SelectedIndex="{Binding OnFailIndex}"/>
                     </StackPanel>
-                </DockPanel>
+
+                    <!-- 编辑 / 删除（Padding=0：图标在 30px 按钮里完整居中，不被 Btn 的 10,4 内边距挤压） -->
+                    <Button Grid.Column="6" Style="{StaticResource BtnGhost}" Content="✎"
+                            Padding="0" Width="30" Height="30" VerticalAlignment="Center"
+                            ToolTip="编辑本步（双击行亦可）" Click="EditStep_Click"/>
+                    <Button Grid.Column="7" Style="{StaticResource BtnGhost}" Content="✕"
+                            Padding="0" Width="30" Height="30" VerticalAlignment="Center"
+                            ToolTip="删除步骤" Click="Delete_Click"/>
+                </Grid>
             </Border>
         </DataTemplate>
     </Window.Resources>
@@ -104,9 +114,6 @@
                                Text="双击或拖入中间区加入步骤" Margin="12,0,12,6"/>
                     <TextBox DockPanel.Dock="Top" x:Name="SearchBox" Margin="12,0,12,8"
                              MinHeight="30" TextChanged="SearchBox_TextChanged"/>
-                    <Button DockPanel.Dock="Top" x:Name="NewStepBtn"
-                            Style="{StaticResource BtnPrimary}" Content="＋ 新建步骤…"
-                            Margin="12,0,12,8" MinHeight="30" Click="NewStep_Click"/>
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="SourceList"/>
                     </ScrollViewer>

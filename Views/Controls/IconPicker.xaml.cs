@@ -66,12 +66,11 @@ public partial class IconPicker : UserControl
             _cells.Add(rb);
         }
 
-        // 4 行 x 10 列，末尾补空占位格保持整齐
-        var grid = new UniformGrid { Rows = (_names.Count + 9) / 10, Columns = 10 };
-        foreach (var c in _cells) grid.Children.Add(c);
-        for (int i = _cells.Count; i < grid.Rows * grid.Columns; i++)
-            grid.Children.Add(new Border { Width = 34, Height = 34, Margin = new Thickness(1) });
-        GridPanel.Child = grid;
+        // WrapPanel 按可用宽度自动换行：窄容器（如组合动作窗口右栏 ~244px）多排几行，
+        // 不再用固定 10 列 UniformGrid——后者在窄容器里会把 34px 格子塞进 ~24px 槽导致相邻重叠。
+        var panel = new WrapPanel { Orientation = Orientation.Horizontal };
+        foreach (var c in _cells) panel.Children.Add(c);
+        GridPanel.Child = panel;
     }
 
     private void Clear_Click(object sender, RoutedEventArgs e) => SelectedIcon = null;

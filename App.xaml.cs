@@ -82,10 +82,13 @@ public partial class App : Application
         menu.Items.Add(NewItem("速记 (CapsLock+N)", () => QuickNote.Toggle()));
         menu.Items.Add(NewItem("设置 (CapsLock+\\)", () => ConfigHelper.Toggle()));
         menu.Items.Add(new Separator());
-        menu.Items.Add(NewItem("工具开关", () => Settings.ToggleCapsLock()));
-        menu.Items.Add(NewItem("超级面板开关", () => Settings.ToggleSuperPanel()));
+        menu.Items.Add(NewItem("启用 CapsLock 增强", Settings.ToggleCapsLock, () => AppState.IsToolEnabled));
+        menu.Items.Add(NewItem("启用超级面板", Settings.ToggleSuperPanel, () => AppState.IsSuperPanelEnabled));
         menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("退出 CapsLock++", ExitApplication));
+
+        // 状态点每次打开菜单时刷新：状态可能经 CapsLock+Esc 手势或设置页更改，托盘菜单要跟随
+        menu.Opened += (_, _) => RefreshStatusDots();
 
         _tray = new TaskbarIcon
         {
@@ -96,11 +99,60 @@ public partial class App : Application
         _tray.ForceCreate();
     }
 
-    private static MenuItem NewItem(string header, Action onClick)
+    /// <summary>
+    /// 托盘菜单项：标题左侧统一留出状态点列（做法同系统菜单的勾选列，保证各行文字对齐）。
+    /// <paramref name="isOn"/> 非空即开关项：启用 → 该列显示绿色状态点（SuccessColor #16A34A），
+    /// 禁用 → 列保留但不显示圆点，文字不因开关状态左右跳动。
+    /// 注意：本项目 MenuItem 模板只呈现 Header 不呈现 Icon，故状态点必须放进 Header。
+    /// </summary>
+    private MenuItem NewItem(string header, Action onClick, Func<bool>? isOn = null)
     {
-        var mi = new MenuItem { Header = header };
-        mi.Click += (_, _) => onClick();
+        var dot = new System.Windows.Shapes.Ellipse
+        {
+            Width = StatusDotSize,
+            Height = StatusDotSize,
+            Margin = new Thickness(0, 0, StatusDotGap, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Fill = System.Windows.Media.Brushes.Transparent,
+        };
+        var headerRow = new StackPanel { Orientation = Orientation.Horizontal };
+        headerRow.Children.Add(dot);
+        headerRow.Children.Add(new TextBlock
+        {
+            Text = header,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        var mi = new MenuItem { Header = headerRow };
+        mi.Click += (_, _) =>
+        {
+            onClick();
+            RefreshStatusDots();
+        };
+        if (isOn != null)
+            _statusDots.Add((dot, isOn));
         return mi;
+    }
+
+    /// <summary>按各开关的当前状态刷新状态点（打开菜单时 + 点击菜单项后调用）。</summary>
+    private void RefreshStatusDots()
+    {
+        foreach (var (dot, isOn) in _statusDots)
+            dot.Fill = isOn() ? EnabledDotBrush : System.Windows.Media.Brushes.Transparent;
+    }
+
+    private const double StatusDotSize = 9;
+    private const double StatusDotGap = 7;
+    private readonly List<(System.Windows.Shapes.Ellipse Dot, Func<bool> IsOn)> _statusDots = new();
+    private static readonly System.Windows.Media.Brush EnabledDotBrush = CreateEnabledDotBrush();
+
+    private static System.Windows.Media.Brush CreateEnabledDotBrush()
+    {
+        // 与 Themes/Modern.xaml 的 SuccessColor (#16A34A) 保持一致
+        var brush = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(0x16, 0xA3, 0x4A));
+        brush.Freeze();
+        return brush;
     }
 
     private static System.Windows.Media.ImageSource? LoadIconSource()
