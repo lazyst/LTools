@@ -43,9 +43,14 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>   <!-- 名称可空提示（仅步骤场景显示） -->
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="名称" Margin="0,0,0,4"/>
                         <TextBox Grid.Row="1" x:Name="NameBox" MinHeight="32"/>
+                        <TextBlock Grid.Row="2" x:Name="NameHint" FontSize="11" Margin="0,4,0,0"
+                                   Visibility="Collapsed"
+                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                   Text="名称可留空：步骤行将显示类型名"/>
                     </Grid>
                     <Grid Grid.Column="1">
                         <Grid.RowDefinitions>

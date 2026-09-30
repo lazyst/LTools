@@ -27,6 +27,9 @@ public partial class ActionEditorDialog : Window
 
     private readonly Dictionary<ActionType, FrameworkElement> _fieldsByType = new();
 
+    /// <summary>名称是否必填（组合步骤场景为 false，名称可留空）。</summary>
+    private readonly bool _requireName;
+
     // —— sendKeys 序列编辑状态 ——
     private readonly ObservableCollection<KeyItemView> _keyItems = new();
     private bool _recording;
@@ -34,10 +37,11 @@ public partial class ActionEditorDialog : Window
     private readonly HashSet<Key> _downKeys = new();
     private DispatcherTimer? _idleTimer;
 
-    public ActionEditorDialog(string title, ActionDto? existing, bool allowComposite = true)
+    public ActionEditorDialog(string title, ActionDto? existing, bool allowComposite = true, bool requireName = true)
     {
         InitializeComponent();
         _draft = existing != null ? Clone(existing) : new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default };
+        _requireName = requireName;
         if (!string.IsNullOrEmpty(title)) Title = title;
 
         _fieldsByType[ActionType.launchApp] = F_LaunchApp;
@@ -92,9 +96,10 @@ public partial class ActionEditorDialog : Window
         => Show(owner, title, existing, allowComposite: true);
 
     /// <summary>同 <see cref="Show(Window, string, ActionDto?)"/>，可禁用「组合动作」类型项（编辑组合步骤时用）。</summary>
-    public static ActionDto? Show(Window owner, string title, ActionDto? existing, bool allowComposite)
+    /// <param name="requireName">名称是否必填；false = 组合步骤场景（名称可留空，步骤行显示类型名）。</param>
+    public static ActionDto? Show(Window owner, string title, ActionDto? existing, bool allowComposite, bool requireName = true)
     {
-        var dlg = new ActionEditorDialog(title, existing, allowComposite) { Owner = owner };
+        var dlg = new ActionEditorDialog(title, existing, allowComposite, requireName) { Owner = owner };
         dlg.ShowDialog();
         return dlg.Result;
     }
@@ -103,6 +108,7 @@ public partial class ActionEditorDialog : Window
     private void LoadDraft()
     {
         NameBox.Text = _draft.Name;
+        NameHint.Visibility = _requireName ? Visibility.Collapsed : Visibility.Visible;
 
         // 类型选择
         int ti = IndexOf(_draft.Type);
@@ -203,7 +209,7 @@ public partial class ActionEditorDialog : Window
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
         var name = NameBox.Text.Trim();
-        if (name.Length == 0)
+        if (_requireName && name.Length == 0)
         {
             ConfirmDialog.Info(this, "动作", "名称不能为空。");
             NameBox.Focus();

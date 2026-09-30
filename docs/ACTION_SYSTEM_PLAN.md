@@ -761,5 +761,13 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **写**：窗口 `Closed` 事件统一回写（Esc / 点外 / 执行动作后自关 / `Close()` 所有关闭路径都汇于 Closed；`Close()` 先置 `_window=null` 的路径用 `if (_window == win)` 守卫）。**值未变不落盘**（打开/关闭零写放大）；写失败静默不阻塞关闭。窗口暴露 `internal int PageIdx` 供回写。
 - ✅ **冒烟 6 项全过**（含配置恢复，不污染用户文件）：round-trip `SaveLastPage(1)→LoadLastPage=1` ✓、构造起始页 1 ✓、构造越界 99→clamp ✓、`Show` 预置越界 5→窗口起始 clamp ✓、`Close` 后磁盘 `LastPage==窗口页` ✓、恢复原值 ✓。
 
+### 交付后 UX 优化（用户反馈：组合步骤名称改为非必填）
+
+- ✅ **`ActionEditorDialog` 加 `requireName` 参数**（默认 `true`）：`Show(..., allowComposite, requireName = true)` + 构造透传；`Ok_Click` 的空名拦截改为 `_requireName && name.Length == 0`。**仅组合步骤场景传 `false`**（`CompositeActionDialog` 新建步骤/编辑步骤两处），普通动作（面板/菜单/动作池/设置）保持必填——名称是菜单项与格子的展示文本，不能空。
+- ✅ **步骤场景名称框下显示提示**「名称可留空：步骤行将显示类型名」（`NameHint`，`Visibility` 按 `_requireName` 控制，普通场景隐藏）。
+- ✅ **空名步骤行回退类型名**：`StepRow.ActionName` 与拖动幽灵 `GhostName` 的「（未命名）」→ `ActionTypeLabel.Of(type)`（如「打开网址」）——比占位符表意，与灰底类型徽标（小灰字）视觉层次分明。
+- ✅ **组合动作本身的名称保持必填**（`CompositeActionDialog.Ok_Click`「名称不能为空」不动）——它是格子/菜单里的展示名；只有**步骤**名放开。
+- ✅ **冒烟 3 项全过**：默认场景 `NameHint=Collapsed` ✓、步骤场景 `NameHint=Visible` ✓、空名 + openUrl 确定 → `Result.Name==""` 入库成功（原会被拦截）✓。
+
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

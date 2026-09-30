@@ -211,7 +211,7 @@ public partial class CompositeActionDialog : Window
         {
             // 双击/拖入均开编辑器（类型已预置），填完字段后作为内嵌步骤
             var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = item.BasicType.Value };
-            var dto = ActionEditorDialog.Show(this, "新建步骤", draft, allowComposite: false);
+            var dto = ActionEditorDialog.Show(this, "新建步骤", draft, allowComposite: false, requireName: false);
             if (dto == null || dto.Type == ActionType.composite) return;   // 取消 / 防御
             var c = dto.Clone();
             c.Id = "";
@@ -253,7 +253,7 @@ public partial class CompositeActionDialog : Window
 
     private void EditStep(StepRow row)
     {
-        var dto = ActionEditorDialog.Show(this, "编辑步骤", row.Step.Action, allowComposite: false);
+        var dto = ActionEditorDialog.Show(this, "编辑步骤", row.Step.Action, allowComposite: false, requireName: false);
         if (dto == null || dto.Type == ActionType.composite) return;
         var a = dto.Clone();
         a.Id = "";
@@ -334,7 +334,8 @@ public partial class CompositeActionDialog : Window
     {
         var step = _steps[index];
         GhostBadge.Text = $"{index + 1}. {ActionTypeLabel.Of(step.Action.Type)}";
-        GhostName.Text = string.IsNullOrWhiteSpace(step.Action.Name) ? "（未命名）" : step.Action.Name;
+        GhostName.Text = string.IsNullOrWhiteSpace(step.Action.Name)
+            ? ActionTypeLabel.Of(step.Action.Type) : step.Action.Name;   // 空名回退类型名（§12 步骤名可空）
         DragGhost.Visibility = Visibility.Visible;
         Mouse.OverrideCursor = Cursors.SizeAll;
     }
@@ -492,7 +493,9 @@ public partial class CompositeActionDialog : Window
             Number = index + 1;
             StrategyOptions = strategies;
             TypeBadge = ActionTypeLabel.Of(step.Action.Type);
-            ActionName = string.IsNullOrEmpty(step.Action.Name) ? "（未命名）" : step.Action.Name;
+            // 空名回退类型名（名称非必填，§12）：比「（未命名）」更表意，与灰底类型徽标层次分明
+            ActionName = string.IsNullOrEmpty(step.Action.Name)
+                ? ActionTypeLabel.Of(step.Action.Type) : step.Action.Name;
         }
         public int Number { get; }
         public string TypeBadge { get; }
