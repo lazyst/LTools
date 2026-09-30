@@ -221,6 +221,30 @@ internal static class MenuSystem
         return true;
     }
 
+    /// <summary>交换两个菜单组槽位的内容（设置页拖动重排用）；越界或同槽返回 false。</summary>
+    /// <remarks>槽位是固定 1..10 数组；交换 = 把源组移到目标槽（目标有组则互换），其余槽位不动。</remarks>
+    public static bool SwapGroups(int a, int b)
+    {
+        if (a == b || a < 1 || a > MaxGroups || b < 1 || b > MaxGroups) return false;
+        (_groups[a], _groups[b]) = (_groups[b], _groups[a]);
+        return true;
+    }
+
+    /// <summary>把项从 from 拔出插入到 to（设置页拖动重排用）；返回是否实际移动。</summary>
+    public static bool MoveItemTo(int groupIndex, int from, int to)
+    {
+        var g = GetGroup(groupIndex);
+        if (g == null) return false;
+        int n = g.Items.Count;
+        if (from < 0 || from >= n) return false;
+        to = Math.Clamp(to, 0, n - 1);
+        if (to == from) return false;
+        string id = g.Items[from];
+        g.Items.RemoveAt(from);
+        g.Items.Insert(to, id);
+        return true;
+    }
+
     // —— 动作清单 CRUD（由 Views.ConfigHelperWindow 的「动作管理」页调用，阶段 3）——
 
     /// <summary>取得指定动作。</summary>

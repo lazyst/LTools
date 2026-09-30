@@ -17,7 +17,7 @@ using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 namespace CapsLockPro.Views;
 
 /// <summary>
-/// 设置 GUI（阶段 3 重构为左导航 + 多页面）。页面：通用 / 动作管理 / 菜单组 / 超级面板 / 终端路径。
+/// 设置 GUI（阶段 3 重构为左导航 + 多页面）。页面：通用 / 动作管理 / CapsLock快捷菜单 / 超级面板 / 终端路径。
 /// 沿用 v2.1.0 防抖自动保存（800ms），扩展到动作 / 菜单 / 超级面板编辑。
 /// 两个全局开关（CapsLock 键功能 / 超级面板）即时落盘，重启不丢失。
 /// </summary>
@@ -188,6 +188,20 @@ public partial class ConfigHelperWindow : Window
         MarkDirty();
     }
 
+    /// <summary>新建组合动作（动作管理页入口，与超级面板槽位的「新建组合动作」一致走 ActionEditor 分发）。</summary>
+    private void NewCompositeAction_Click(object sender, RoutedEventArgs e)
+    {
+        // 传 composite 草稿（Id 空）→ ActionEditor.Show 走 CompositeActionDialog 新建模式
+        var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = ActionType.composite };
+        var dto = ActionEditor.Show(this, "新建组合动作", draft);
+        if (dto == null) return;
+        ConfigStore.AddAction(dto);
+        PopulateActions();
+        for (int i = 0; i < _actionRows.Count; i++)
+            if (_actionRows[i].Id == dto.Id) { ActionList.SelectedIndex = i; break; }
+        MarkDirty();
+    }
+
     private void EditAction_Click(object sender, RoutedEventArgs e)
     {
         var cur = SelectedAction();
@@ -230,7 +244,7 @@ public partial class ConfigHelperWindow : Window
         MarkDirty();
     }
 
-    // ============ 菜单组 ============
+    // ============ CapsLock快捷菜单 ============
     private int SelectedSlot => GroupList.SelectedIndex + 1;
 
     private void PopulateGroupList()
@@ -362,6 +376,99 @@ public partial class ConfigHelperWindow : Window
         if (!MenuSystem.MoveMenuItem(SelectedSlot, idx, delta)) return;
         PopulateItemList();
         ItemList.SelectedIndex = idx + delta;
+        MarkDirty();
+    }
+
+    // —— 菜单组 / 菜单项拖动重排（WPF DragDrop，阈值触发避免与单击/双击冲突）——
+    private Point _menuDragOrigin;
+    private int _groupDragFrom = -1;   // 组拖动源 index（0-based，对应 1..10 槽）
+    private int _itemDragFrom = -1;    // 项拖动源 index
+
+    /// <summary>visual tree 上溯找最近的 <typeparamref/> 祖先（命中 ListBoxItem 用）。</summary>
+    private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
+    {
+        while (d != null && d is not T) d = VisualTreeHelper.GetParent(d);
+        return d as T;
+    }
+
+    private void GroupList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _groupDragFrom = -1;
+        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not { } lbi) return;
+        int idx = GroupList.ItemContainerGenerator.IndexFromContainer(lbi);
+        if (idx < 0 || MenuSystem.GetGroup(idx + 1) == null) return;   // 空槽不参与拖动
+        _groupDragFrom = idx;
+        _menuDragOrigin = e.GetPosition(null);
+    }
+
+    private void GroupList_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_groupDragFrom < 0 || e.LeftButton != MouseButtonState.Pressed) { _groupDragFrom = -1; return; }
+        var pos = e.GetPosition(null);
+        if (Math.Abs(pos.X - _menuDragOrigin.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(pos.Y - _menuDragOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        int from = _groupDragFrom;
+        _groupDragFrom = -1;
+        DragDrop.DoDragDrop(GroupList, from, DragDropEffects.Move);
+    }
+
+    private void GroupList_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(typeof(int)) ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void GroupList_Drop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(int))) return;
+        int from = (int)e.Data.GetData(typeof(int))!;
+        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not { } lbi) return;
+        int to = GroupList.ItemContainerGenerator.IndexFromContainer(lbi);
+        if (to < 0 || to == from) return;
+        if (!MenuSystem.SwapGroups(from + 1, to + 1)) return;
+        PopulateGroupList();
+        GroupList.SelectedIndex = to;
+        MarkDirty();
+    }
+
+    private void ItemList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _itemDragFrom = -1;
+        if (MenuSystem.GetGroup(SelectedSlot) == null) return;
+        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not { } lbi) return;
+        int idx = ItemList.ItemContainerGenerator.IndexFromContainer(lbi);
+        if (idx < 0) return;
+        _itemDragFrom = idx;
+        _menuDragOrigin = e.GetPosition(null);
+    }
+
+    private void ItemList_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_itemDragFrom < 0 || e.LeftButton != MouseButtonState.Pressed) { _itemDragFrom = -1; return; }
+        var pos = e.GetPosition(null);
+        if (Math.Abs(pos.X - _menuDragOrigin.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(pos.Y - _menuDragOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        int from = _itemDragFrom;
+        _itemDragFrom = -1;
+        DragDrop.DoDragDrop(ItemList, from, DragDropEffects.Move);
+    }
+
+    private void ItemList_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(typeof(int)) ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void ItemList_Drop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(int))) return;
+        int from = (int)e.Data.GetData(typeof(int))!;
+        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not { } lbi) return;
+        int to = ItemList.ItemContainerGenerator.IndexFromContainer(lbi);
+        if (to < 0 || to == from) return;
+        if (!MenuSystem.MoveItemTo(SelectedSlot, from, to)) return;
+        PopulateItemList();
+        ItemList.SelectedIndex = to;
         MarkDirty();
     }
 

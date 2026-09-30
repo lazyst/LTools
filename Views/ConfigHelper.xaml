@@ -105,7 +105,7 @@
                                  Checked="Nav_Changed" Tag="general"/>
                     <RadioButton x:Name="NavActions" Style="{StaticResource NavRow}" Content="动作管理"
                                  Checked="Nav_Changed" Tag="actions"/>
-                    <RadioButton Style="{StaticResource NavRow}" Content="菜单组"
+                    <RadioButton Style="{StaticResource NavRow}" Content="CapsLock快捷菜单"
                                  Checked="Nav_Changed" Tag="menus"/>
                     <RadioButton Style="{StaticResource NavRow}" Content="超级面板"
                                  Checked="Nav_Changed" Tag="superpanel"/>
@@ -165,6 +165,8 @@
                     <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
                         <Button Style="{StaticResource BtnPrimary}" Content="新建动作…" MinWidth="104"
                                 Click="NewAction_Click"/>
+                        <Button Style="{StaticResource BtnGhost}" Content="新建组合动作…" MinWidth="104"
+                                Margin="8,0,0,0" Click="NewCompositeAction_Click"/>
                         <Button Style="{StaticResource BtnGhost}" Content="编辑" MinWidth="64"
                                 Margin="8,0,0,0" Click="EditAction_Click"/>
                         <Button Style="{StaticResource BtnGhost}" Content="复制" MinWidth="64"
@@ -174,7 +176,7 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- ============ 菜单组 ============ -->
+                <!-- ============ CapsLock快捷菜单 ============ -->
                 <Grid x:Name="Page_Menus" Visibility="Collapsed">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="230" MinWidth="180"/>
@@ -188,10 +190,13 @@
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="菜单组（CapsLock+1~0）"
+                        <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="CapsLock快捷菜单（CapsLock+1~0）"
                                    Margin="0,0,0,8"/>
-                        <ListBox Grid.Row="1" x:Name="GroupList"
-                                 SelectionChanged="GroupList_SelectionChanged"/>
+                        <ListBox Grid.Row="1" x:Name="GroupList" AllowDrop="True"
+                                 SelectionChanged="GroupList_SelectionChanged"
+                                 PreviewMouseLeftButtonDown="GroupList_PreviewMouseLeftButtonDown"
+                                 PreviewMouseMove="GroupList_PreviewMouseMove"
+                                 DragOver="GroupList_DragOver" Drop="GroupList_Drop"/>
                         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Style="{StaticResource BtnGhost}" Content="重命名" Click="EditGroup_Click"/>
                             <Button Style="{StaticResource BtnGhostDanger}" Content="删除" Margin="6,0,0,0"
@@ -210,9 +215,12 @@
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="菜单项"
                                    Margin="0,0,0,8"/>
-                        <ListBox Grid.Row="1" x:Name="ItemList"
+                        <ListBox Grid.Row="1" x:Name="ItemList" AllowDrop="True"
                                  SelectionChanged="ItemList_SelectionChanged"
-                                 MouseDoubleClick="ItemList_MouseDoubleClick"/>
+                                 MouseDoubleClick="ItemList_MouseDoubleClick"
+                                 PreviewMouseLeftButtonDown="ItemList_PreviewMouseLeftButtonDown"
+                                 PreviewMouseMove="ItemList_PreviewMouseMove"
+                                 DragOver="ItemList_DragOver" Drop="ItemList_Drop"/>
                         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Style="{StaticResource BtnGhost}" Content="从动作池添加…" Click="AddItem_Click"/>
                             <Button Style="{StaticResource BtnGhost}" Content="修改" Margin="6,0,0,0" Click="EditItem_Click"/>

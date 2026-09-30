@@ -804,5 +804,15 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **发布验证**：本地 `dotnet publish -c Release -r win-x64 --self-contained true` 成功（242 dll + exe）；`.gitignore` 补 `publish/`（首次本地发布发现未忽略）。
 - ✅ **冒烟 7 项全过**（net10 运行时）：键盘/鼠标钩子句柄非零 ✓、托盘创建 ✓、超级面板窗口创建+16 格 ✓、设置窗开/关 ✓、帮助面板开/关 ✓、残留窗口仅 MouseTipWindow（启动提示，正常）。首轮脚本三处自身缺陷（`Show()` 异步创建读太早、`Toggle` 计数被 Hide 复用语义污染、base 计数被先开的窗口污染）——改类型名 + `IsVisible` 断言后全过。
 
+### 交付后 UX 优化（用户需求：菜单组改名 + 拖动排序 + 组合动作入口）
+
+- ✅ **需求1：设置页「菜单组」改名「CapsLock快捷菜单」**——侧导航 `Content` 与左栏 `SectionLabel` 文案改；ConfigHelper.xaml.cs 注释/类文档同步。「菜单项」标签保持（组内项的通用词，上下文清楚）。HelpPanel 的「打开菜单组 1~10」是功能描述、保持（聚焦设置页改名，不动帮助文案）。
+- ✅ **需求2：菜单组与菜单项拖动重排**（WPF `DragDrop`，阈值触发避免与单击/双击冲突）：
+  - **菜单组 = 交换语义**：`MenuSystem.SwapGroups(a, b)`（新增）——槽位固定 1..10 数组，拖动 = 把源组放到目标槽（目标有组则互换，空槽则移位），其余槽位不动。空组（槽位为 null）禁止拖（无内容）。
+  - **菜单项 = 插入语义**：`MenuSystem.MoveItemTo(group, from, to)`（新增）——拔出源项插入目标位置。原 `MoveMenuItem(delta)` 保留（上移/下移按钮仍用）。
+  - 设置页 `GroupList`/`ItemList` 各挂 `PreviewMouseLeftButtonDown`（hit-test `ListBoxItem` 记源 index）+ `PreviewMouseMove`（超 `MinimumHorizontalDragDistance`/`MinimumVerticalDragDistance` 阈值 → `DragDrop.DoDragDrop` 传 `int` 源索引）+ `DragOver`（设 `Move` 效果）+ `Drop`（算目标 `IndexFromContainer` → 调 API → Populate 刷新 + 选中目标 + `MarkDirty`）。`AllowDrop="True"` 在 XAML 设。`FindAncestor<T>` helper 上溯 visual tree 找 `ListBoxItem`。原「上移/下移」按钮保留（项场景，互补拖动）。
+- ✅ **需求3：动作管理页加「新建组合动作…」入口**——`NewCompositeAction_Click`：传 `composite` 草稿（`Id=""`）→ `ActionEditor.Show` 走 `CompositeActionDialog` 新建模式（与超级面板槽位的「新建组合动作」同一分发路径）；`ConfigStore.AddAction` 自动补 Id 入库。XAML 在「新建动作…」旁加 `BtnGhost` 按钮。
+- ✅ **冒烟 6 项全过**（真实设置窗 + 反射驱动 + 内存 Reload 还原）：GroupList/ItemList `AllowDrop=True` ✓；`SwapGroups(1,2)` 交换「命令↔工具」生效 ✓；`MoveItemTo(1,0,2)` `[a3,a4,a5,i3]→[a4,a5,a3,i3]` ✓；`ConfigStore.AddAction(composite)` 自动补 Id（a8）入 Registry ✓；「新建组合动作…」按钮找到 ✓；反射 `NewCompositeAction_Click` 驱动模态打开 `CompositeActionDialog` + 排队 `Close` 取消（`BeginInvoke Background` 在模态泵送中执行）✓ 不入库。冒烟结束 `ConfigStore.Reload()` 还原 MenuSystem/ActionRegistry 内存态（冒烟的组交换/项重排/加动作都未落盘——全程未调 `Save`/`MarkDirty`；仅导航切换可能存 `LastNavPage`，无害）。
+
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。
