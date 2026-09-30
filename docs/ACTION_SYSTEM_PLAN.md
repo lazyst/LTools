@@ -1,6 +1,6 @@
 # CapsLock-Pro 动作系统设计计划
 
-> **状态**：设计已定稿，进入实施。§12 为决策汇总；§11 为分阶段实施计划（`- [ ]` 可标记进度，每阶段附验收标准）。
+> **状态**：原动作系统（阶段 1–8）已实施完毕；**新增阶段 9–11（基础动作：模拟按键 + 发送文本）已评审、实施中**——规格 §3.2、计划与进度 §11、决策 §12。§12 为决策汇总；§11 为分阶段实施计划（`- [ ]` 可标记进度，每阶段附验收标准）。
 >
 > 背景：引入统一 **Action** 抽象，让「超级面板」（裸右键长按）与「CapsLock+数字菜单」共用一个全局动作池。参考 Quicker 的面板/动作模型，但精简为个人工具所需的范围。
 
@@ -51,7 +51,11 @@ ActionDto {
 | `runCommand` | `Cmd`, `Terminal`, `KeepWindow`, `Workdir` | 复用现有 `TerminalLauncher.TryBuildLaunch` |
 | `internal` | `Command`(枚举) | 内部注册表分发（见 §7） |
 | `composite` | `Steps[]`（见 §4） | 顺序执行各步 |
+| `sendKeys` 🟨 | `Items[]`（chord/text/sleep 序列，见 §3.2） | 逐条目 SendInput；前置 ~50ms 焦点延时 |
+| `sendText` 🟨 | `Text`, `Mode`, `AppendEnter`（见 §3.2） | 键入式 或 剪贴板粘贴 |
 
+> 🟨 = 阶段 9–11 待实施（规格 §3.2，计划 §11）。
+>
 > **执行层洞察**：`launchApp`/`openFile`/`openFolder`/`openUrl` 本质都是 `Terminal=direct`（ShellExecute）的特例——现有 `TerminalLauncher` 的 `direct` 分支已能处理。只有 `runCommand` 才需要终端路由。故执行引擎基本就绪，主要工作是类型模型 + 编辑器 + 面板 UI。
 
 ### 3.1 内置图标 ✅
@@ -59,6 +63,67 @@ ActionDto {
 - v1 **提供一组内置图标**供选择（不是让用户自备图标文件）——编辑器里以图标网格展示，动作存图标 Id。
 - 实现：用 Windows 自带的 **Segoe MDL2 Assets** 字体（Win10/11 均可用），内置一个「名称 → 字形码点」的 `IconCatalog`（如 `settings` → `\uE713`），格子按名称取字形渲染。
 - 无需打包图标资源文件；后续若要更丰富可改用 Segoe Fluent Icons（Win11）。
+
+### 3.2 新基础动作：模拟按键 `sendKeys` + 发送文本 `sendText` 🟨
+
+> 灵感来自 Quicker 基础动作（[模拟按键](https://getquicker.net/KC/Manual/Doc/keyboard-input) / [发送文本](https://getquicker.net/KC/Manual/Doc/send-text)）。需求已与用户逐项评审（§12「阶段 9–11 需求评审」）。
+
+#### 3.2.1 `sendKeys`（模拟按键）——Quicker 式动作内含序列
+
+一个动作 = **有序输入条目列表**（`ActionDto.Items`），条目三选一：
+
+```
+KeyItem {
+  Kind : "chord" | "text" | "sleep"
+  // chord：按键序列，按住修饰键依次发主键（表达 Ctrl+K,D / 菜单流 Alt+P → S → P）
+  Strokes : List<string>     // 每 stroke = "ctrl+k"、"alt+p"、"s"、"f5" 等（修饰键组+主键，或无修饰单键）
+  // text：内联短文本条目（表单填充中一格）；执行复用 sendText 的自动逻辑（§3.2.2）
+  Text    : string
+  // sleep：延时等待
+  Ms      : int
+}
+```
+
+- **录入 = 录制 + 手动添加**：
+  - 「● 开始录制」→ 监听键盘，边按边进列表。**实现走编辑器窗口 `PreviewKeyDown`**（模态窗口有焦点），**不开新低级钩子**——不碰「钩子回调」红线。
+  - 修饰键 KeyDown 不产生条目；主键 KeyDown 结合当时修饰键状态生成一个 stroke。
+  - **空闲 800ms** → 当前条目自动完成入库，继续监听（可连录多条）；「停止录制」或 **Esc** 退出。
+  - 录制模式下窗口内所有键 `Handled=true`（不触发对话框按钮/焦点切换）。
+  - 「＋ 添加」手动补特殊键（F13、菜单键 `VK_APPS`、`Pause` 等录制不到或会误触发的键）。
+  - 录制时 CapsLock 组合仍被全局钩子吞掉不进录制——本来也不该录入，视为正确行为（§12）。
+- **执行**（`ActionExecutor`，后台线程内，合规）：
+  - 每 stroke 用 `InputHelper.Combo` / `Tap`（扫描码、单次 SendInput 批）。
+  - **stroke 间固定 ~15ms**（菜单流需应用响应时间；更大间隔用 `sleep` 条目）。
+  - `text` 条目复用 `sendText` 自动逻辑；`sleep` = `Thread.Sleep`。
+  - **动作开头内置 ~50ms 焦点延时**（面板/菜单关闭 → 目标窗口焦点切回有竞态，见 §12）。
+
+#### 3.2.2 `sendText`（发送文本）
+
+`ActionDto` 新增字段：
+
+| 字段 | 说明 |
+|---|---|
+| `Text` | 多行文本内容 |
+| `Mode` | `"auto"`（默认）/ `"type"`（强制键入）/ `"paste"`（强制剪贴板粘贴） |
+| `AppendEnter` | 末尾追加回车（Quicker「在末尾添加回车」，聊天软件直接发出） |
+
+**auto 逻辑**：纯 ASCII 且 ≤100 字符 → **键入式**（`InputHelper.SendText`，不碰剪贴板）；含中文 / emoji / `\n` 换行 / 超长 → **剪贴板粘贴**（写剪贴板 → Ctrl+V）。
+
+- **技术约束**：`VkKeyScanW` 对非 ASCII 返回 -1 → 键入式只能打 ASCII，故中文必须回退剪贴板（项目已有 `NativeClipboard`）。
+- **不恢复原剪贴板**（与 Quicker 一致：恢复有异步粘贴时序问题，且多两次剪贴板操作）。
+- 键入式遇 `\n` 转 Enter、`\t` 转 Tab。
+- 同样内置 ~50ms 焦点延时。
+
+#### 3.2.3 集成点清单
+
+| 位置 | 改动 |
+|---|---|
+| `ActionType` 枚举 + `ActionTypeLabel` | `sendKeys`「模拟按键」、`sendText`「发送文本」 |
+| `ActionDto` | 新增 `Items` / `Text` / `Mode` / `AppendEnter` + `Clone()` 同步 |
+| `ActionExecutor` | 两个分发分支（后台线程内执行） |
+| `ActionEditorDialog` | 类型下拉 +2、字段面板 +2（`sendKeys` 含序列列表 + 录制条） |
+| `CompositeActionDialog` | 左栏「基础动作」组 6→8 种 |
+| `IconCatalog` | 两个新图标（如 `⌨` / 文档字形） |
 
 ---
 
@@ -336,7 +401,7 @@ ActionExecutor.Run(ActionDto action)
 
 ## 11. 实施计划
 
-> **总体进度：5 / 5 阶段**
+> **总体进度：8 / 11 阶段**（阶段 6–8 已完成、记录在 §12；阶段 9–11 = 新基础动作，待实施）
 >
 > 标记约定：`- [ ]` 未开始 · `- [x]` 完成。每个阶段结束须满足该阶段「验收标准」且 `dotnet build` **0 错 0 警**方可进入下一阶段。每阶段独立可运行、可测。
 
@@ -452,6 +517,71 @@ ActionExecutor.Run(ActionDto action)
 
 ---
 
+### 阶段 9 — `sendText` 发送文本（数据 + 执行 + 编辑器）
+
+**目标**：先把结构最简单的新类型打通全链路（枚举 → 执行 → 编辑器），验证 schema 扩展方式，再上复杂的 `sendKeys`。规格见 §3.2.2。
+
+- [ ] `ActionType` 枚举 + `ActionTypeLabel` 增 `sendText`「发送文本」。
+- [ ] `ActionDto` 新增 `Text` / `Mode` / `AppendEnter` 字段 + `Clone()` 同步。
+- [ ] `ActionExecutor` 增 `sendText` 分支：~50ms 前置焦点延时 → 按 `Mode` 分发（auto 判定：纯 ASCII 且 ≤100 字符 → 键入；否则剪贴板 `NativeClipboard` → Ctrl+V）→ `AppendEnter` 追加 Enter。键入式 `\n`→Enter、`\t`→Tab。
+- [ ] `ActionEditorDialog` 类型下拉 +「发送文本」、字段面板 `F_SendText`：多行 `TextBox` + 方式下拉（自动/键入/粘贴）+「末尾回车」勾选。
+- [ ] `IconCatalog` 增图标（文本类字形）。
+- [ ] 决策/偏差当场记入 §12。
+
+**验收标准**
+- [ ] auto 模式：纯 ASCII 文本键入成功；含中文文本自动剪贴板粘贴成功；键入式不碰剪贴板。
+- [ ] `type` 强制键入、`paste` 强制粘贴两选项生效。
+- [ ] `AppendEnter` 勾选后文本后追加回车（聊天框可直接发出）。
+- [ ] 从超级面板 / 菜单触发，~50ms 延时生效，首次触发不丢焦点。
+- [ ] 编辑 → 保存 → 重载 round-trip（`Clone()` 不漏字段）。
+- [ ] `dotnet build -p:NoWin32Manifest=true` 0 错 0 警。
+
+---
+
+### 阶段 10 — `sendKeys` 模拟按键（数据 + 执行 + 序列编辑 UI + 录制）
+
+**目标**：Quicker 式动作内含序列，含录制交互。规格见 §3.2.1。
+
+- [ ] `ActionType` + `ActionTypeLabel` 增 `sendKeys`「模拟按键」。
+- [ ] `ActionDto` 新增 `Items: List<KeyItem>?` + `Clone()` 深拷贝；`KeyItem` 模型（`Kind=chord/text/sleep`，chord 含 `Strokes: List<string>`）。
+- [ ] `ActionExecutor` 增 `sendKeys` 分支：~50ms 前置延时 → 顺序遍历条目（chord 逐 stroke 走 `InputHelper.Combo/Tap`、stroke 间 ~15ms；text 复用 sendText 自动逻辑；sleep 走 `Thread.Sleep`）。
+- [ ] stroke 字符串解析器（`"ctrl+k"` / `"alt+p"` / `"s"` / `"f5"` → 修饰键组 + VK，含错误输入校验）。
+- [ ] `ActionEditorDialog` 字段面板 `F_SendKeys`：条目列表（上下移/删除）+「● 录制」「停止」「＋添加」。
+- [ ] 录制：编辑器窗口 `PreviewKeyDown` 监听（不开新低级钩子），主键 + 当时修饰键生成 stroke，修饰键不进条目，**空闲 800ms 自动成条**，Esc/停止退出，录制中窗口内键全 `Handled`。
+- [ ] 「＋添加」手动条目（特殊键下拉/输入 + kind 选择 + sleep 毫秒 + text 文本）。
+- [ ] `IconCatalog` 增图标（键盘类字形）。
+- [ ] 决策/偏差当场记入 §12。
+
+**验收标准**
+- [ ] 录制：按下 Ctrl+Shift+S 停顿 → 生成 1 个 chord 条目含 1 stroke（空闲 800ms 自动成条，§12 分条规则）；菜单流 Alt+P →（停顿）→ S →（停顿）→ P = 3 条独立条目顺序执行。
+- [ ] 执行：Excel/记事本实测 Ctrl+B 类快捷键生效；菜单流（Alt 激活 → 字母）实测生效。
+- [ ] `sleep` 条目生效（延时后发下一键）；stroke 间 15ms 不粘键。
+- [ ] 手动添加特殊键（如 F5、菜单键）可执行。
+- [ ] 录制中按 Esc 不关编辑器对话框；录制不触发对话框按钮/焦点跳动。
+- [ ] 编辑 → 保存 → 重载 round-trip。
+- [ ] `dotnet build -p:NoWin32Manifest=true` 0 错 0 警。
+
+---
+
+### 阶段 11 — 组合集成 + 收尾
+
+**目标**：两类型融入组合动作与全部入口，完成交付清理。
+
+- [ ] `CompositeActionDialog` 左栏「基础动作」组 6→8 种（`sendKeys` / `sendText`，双击/拖入开预置类型编辑器，同现有基础动作逻辑）。
+- [ ] 组合步骤内 `sendKeys`/`sendText` 深拷贝快照验证（`Clone()` 含 `Items` 递归）。
+- [ ] 步骤行 `TypeBadge`、图标网格新图标在格子/菜单/编辑器三处显示正常。
+- [ ] 全链路走查：超级面板 / CapsLock+数字菜单 / 菜单组 / 组合步骤四入口均可触发两类型。
+- [ ] 更新 `CapsLock++.example.json`（如需示例动作）；`docs/ACTION_SYSTEM_PLAN.md` 全部勾选补齐。
+
+**验收标准**
+- [ ] 组合动作示例：「打开网址 → sleep → sendKeys 选中地址栏 → sendText 填入 → Enter」整链成功。
+- [ ] 基础动作组出现 8 种，新类型可从组合窗口创建并作为步骤执行。
+- [ ] 四入口触发实测通过；深拷贝后改原动作不影响已嵌步骤。
+- [ ] `dotnet build -p:NoWin32Manifest=true` 0 错 0 警。
+- [ ] 无临时验证入口残留（交付前清理约定）。
+
+---
+
 ## 12. 决策汇总
 
 ### 已定
@@ -552,6 +682,23 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **中间步骤**：把手拖拽排序；双击就地编辑（只改本步快照，无需"影响所有引用处"确认）；行内编辑延迟（数字）与失败策略（下拉）。
 - ✅ **JSON schema 变**：`Step.ActionId` → `Step.Action`（对象）。旧 `ActionId` 形式的组合步骤**不迁移**（动作系统未发布，按既定"无需兼容旧 schema"）。
 - 🗑️ 废弃 `CompositeEditorDialog`（能力并入 `CompositeActionDialog`）；`ActionPoolPicker` 不再参与组合步骤选择；移除临时 `ActionExecutor.SmokeTest()` + `--smoke=action` 入口（顺带完成交付前清理）。
+
+### 阶段 9–11 需求评审（新基础动作：模拟按键 `sendKeys` + 发送文本 `sendText`）
+
+> 灵感来源：Quicker [模拟按键](https://getquicker.net/KC/Manual/Doc/keyboard-input) / [发送文本](https://getquicker.net/KC/Manual/Doc/send-text) 文档。规格见 §3.2，任务与验收见 §11 阶段 9–11。以下 4 项经用户逐项确认（均选推荐项）：
+
+- ✅ **结构 = Quicker 式动作内含序列**（非「单组组合键靠组合动作串联」）：`sendKeys` 内部是有序条目列表（chord / text / sleep 三种），紧凑、原子性好，也可作为组合动作单步嵌入。代价是需要序列编辑 UI。
+- ✅ **序列录入 = 录制 + 手动添加**：录制实现走**编辑器窗口 `PreviewKeyDown`**（模态窗口有焦点），**不开新的低级钩子**——不碰「钩子回调」红线；「＋添加」补特殊键（F13、`VK_APPS`、`Pause` 等）。
+- ✅ **`sendText` 发送方式 = 自动模式 + 可覆盖**：`auto` 默认（纯 ASCII ≤100 字符 → 键入不碰剪贴板；含中文/emoji/`\n`/超长 → 剪贴板粘贴）；可强制 `type` / `paste`；带「末尾回车」开关。**不恢复原剪贴板**（与 Quicker 一致：避免异步粘贴时序问题，且多两次剪贴板操作）。
+- ✅ **触发焦点竞态 = 内置固定小延时**：`sendKeys` / `sendText` 执行前固定 ~50ms（面板/菜单关闭→目标窗口焦点切回有时间差，立即发键会丢焦点）。统一内置、用户无感知；与组合步骤 `DelayMs` 叠加无害。
+
+实施中的补充定稿（评审时已拍板，实现按此验收）：
+
+- ✅ **录制分条规则**：空闲 800ms 把**当前条目自动成条入库**并继续监听——即「Ctrl+Shift+S」按完停顿 = 1 条 1 stroke；菜单流 Alt+P →（停顿）→ S →（停顿）→ P = 3 条独立 chord 条目，顺序执行。「停止/Esc」仅退出监听，不再分条。
+- ✅ **stroke 间延时 ~15ms**（chord 内多个 stroke 连发时的最小间隔，菜单/对话框需响应时间）；更大间隔用 `sleep` 条目表达。
+- ✅ **`text` 条目与 `sendText` 的分工**：条目 = 表单填充中的内联短串（执行逻辑复用 sendText 的 auto 判定）；独立动作 = 长文本 + 方式 + 回车开关。
+- ✅ **实施顺序**：阶段 9 先做 `sendText`（结构简单，先验证 schema 扩展方式）→ 阶段 10 `sendKeys`（含录制 UI，风险最高）→ 阶段 11 组合集成收尾。每阶段过验收 + 构建 0/0 才勾选。
+- ⚠️ **录制与全局钩子的交互**：编辑器是模态对话框，`KeyboardHook` 仍活跃——录制中 CapsLock 组合（如 CapsLock+数字）会被全局钩子吞掉不进录制，视为正确行为（本就不该录入）；其余普通键需实测确认不被钩子拦截（阶段 10 验收项）。
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。
