@@ -59,7 +59,15 @@ public partial class ConfigHelperWindow : Window
         PopulateTerminals();
 
         _pagesReady = true;
-        NavActions.IsChecked = true;   // 默认页：动作管理
+        // 恢复上次导航页（§10.x）：存于 AppConfig.LastNavPage，默认「动作管理」
+        string lastNav = ConfigStore.LoadConfig().LastNavPage;
+        if (string.IsNullOrEmpty(lastNav)) lastNav = "actions";
+        bool navMatched = false;
+        foreach (var rb in NavList.Children.OfType<RadioButton>())
+        {
+            if (rb.Tag is string t && t == lastNav) { rb.IsChecked = true; navMatched = true; break; }
+        }
+        if (!navMatched) NavActions.IsChecked = true;
 
         // 初始化完成后再响应用户操作
         Loaded += async (_, _) =>
@@ -103,6 +111,8 @@ public partial class ConfigHelperWindow : Window
         Page_SuperPanel.Visibility = tag == "superpanel" ? Visibility.Visible : Visibility.Collapsed;
         Page_Terminals.Visibility = tag == "terminals" ? Visibility.Visible : Visibility.Collapsed;
         if (tag == "terminals") PopulateTerminals();
+        // 记忆当前导航页，下次打开恢复（ConfigIO 读改写：只动 LastNavPage，余字段不动）
+        ConfigIO.Modify(ConfigPath, cfg => cfg.LastNavPage = tag);
         if (tag == "actions") PopulateActions();
         if (tag == "menus") PopulateGroupList();
         if (tag == "superpanel") PopulateSuperPanel();
@@ -461,15 +471,11 @@ public partial class ConfigHelperWindow : Window
         });
         btn.Content = content;
 
-        // 右键菜单：清除 / 选择动作
-        var menu = new ContextMenu();
-        var miPick = new MenuItem { Header = "选择动作…" };
-        miPick.Click += (_, _) => PickSlotAction(pageIdx, slotIdx);
-        var miClear = new MenuItem { Header = "清除" };
-        miClear.Click += (_, _) => ClearSlot(pageIdx, slotIdx);
-        menu.Items.Add(miPick);
-        menu.Items.Add(miClear);
-        btn.ContextMenu = menu;
+        // 右键菜单（共享菜单 §5.5/§5.6 统一）：新建/快捷新建/从动作池选择/清除
+        btn.ContextMenu = SlotMenu.BuildAddMenu(this, slotIdx,
+            (s, t) => NewActionAt(pageIdx, s, t),
+            s => PickSlotAction(pageIdx, s),
+            string.IsNullOrEmpty(id) ? null : new Action<int>(s => ClearSlot(pageIdx, s)));
         btn.PreviewMouseLeftButtonDown += (_, e) => OnSlotDown(pageIdx, slotIdx, e);
         return btn;
     }
@@ -492,6 +498,44 @@ public partial class ConfigHelperWindow : Window
         _superDirty = true;
         BuildSuperPagesUI();
         MarkSuperDirty();
+    }
+
+    /// <summary>新建动作并直接放入指定槽位（共享菜单的「新建/快捷新建」入口）。</summary>
+    private void NewActionAt(int pageIdx, int slotIdx, ActionType? presetType)
+    {
+        ActionDto? dto;
+        if (presetType == null)
+            dto = ActionEditorDialog.Show(this, "新建动作", null);
+        else
+        {
+            string title = presetType == ActionType.composite ? "新建组合动作" : "新建动作";
+            var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = presetType.Value };
+            dto = ActionEditorDialog.Show(this, title, draft);
+        }
+        if (dto == null) return;
+
+        ConfigStore.AddAction(dto);
+        _superPages[pageIdx][slotIdx] = dto.Id;
+        _superDirty = true;
+        PopulateActions();      // 动作管理列表同步刷新
+        BuildSuperPagesUI();
+        MarkSuperDirty();
+    }
+
+    /// <summary>在指定格子中心弹出共享添加菜单（左键短击走此路径，与面板空格一致）。</summary>
+    private void ShowSlotMenu(int pageIdx, int slotIdx)
+    {
+        bool hasAction = !string.IsNullOrEmpty(_superPages[pageIdx][slotIdx]);
+        var menu = SlotMenu.BuildAddMenu(this, slotIdx,
+            (s, t) => NewActionAt(pageIdx, s, t),
+            s => PickSlotAction(pageIdx, s),
+            hasAction ? new Action<int>(s => ClearSlot(pageIdx, s)) : null);
+        if (GetSlotButton(pageIdx, slotIdx) is UIElement target)
+        {
+            menu.PlacementTarget = target;
+            menu.Placement = PlacementMode.Center;
+            menu.IsOpen = true;
+        }
     }
 
     // —— 槽位拖动重排（交换语义，跨卡片=跨页；与面板 §5.6 同思路）——
@@ -551,8 +595,8 @@ public partial class ConfigHelperWindow : Window
         }
         else
         {
-            // 位移未超阈值→视为单击：打开动作选择器（原语义）
-            Defer(() => PickSlotAction(sp, ss));
+            // 位移未超阈值→视为单击：弹出共享添加菜单（与面板空格左键一致）
+            Defer(() => ShowSlotMenu(sp, ss));
         }
         _dragSrcPage = -1;
         _dragSrcSlot = -1;

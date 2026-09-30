@@ -84,8 +84,8 @@ public partial class SuperPanelWindow : Window
         }
 
         double cx = px * m11, cy = py * m22;   // 光标 DIP
-        double w = ActualWidth > 0 ? ActualWidth : 384;
-        double h = ActualHeight > 0 ? ActualHeight : 360;
+        double w = ActualWidth > 0 ? ActualWidth : 310;
+        double h = ActualHeight > 0 ? ActualHeight : 382;
 
         // XAML 里 Border 有 10px Margin（阴影留白），窗口外框比可见边框大一圈。
         // 按「可见边框」定位才能紧贴光标：可见边框左上角 = 光标 + gap。
@@ -135,8 +135,8 @@ public partial class SuperPanelWindow : Window
         var btn = new Button
         {
             Style = (Style)FindResource("BtnGhost"),
-            Margin = new Thickness(3),
-            MinHeight = 82,
+            Margin = new Thickness(0),     // 格子无间隙（§5.3 紧凑）
+            Height = 96,                    // 正方形：面板宽 310 → 列宽 (310-22)/3=96
             Cursor = Cursors.Hand,
             // 不覆盖 Background/Tag：与设置页槽位（BuildSlotButton）一致——透明底 + 默认悬停
             // HoverBg(#F4F4F5)。原覆盖 SurfaceAlt(#F4F4F5) 与默认悬停同色→悬停无变化；
@@ -260,27 +260,16 @@ public partial class SuperPanelWindow : Window
     }
 
     private ContextMenu BuildEmptyMenu(int slot)
+        => SlotMenu.BuildAddMenu(this, slot, NewActionAt, PickExistingAt, onClear: null);
+
+    /// <summary>从动作池选已有动作放入本槽（补上面板此前缺失的「复用已有动作」能力）。</summary>
+    private void PickExistingAt(int slot)
     {
-        var menu = new ContextMenu();
-
-        // 计划 §5.5 原为「新建 / 快捷新建」两层子菜单；实测子菜单标题的展开（点击/悬停）不可靠，
-        // 故扁平化为单层——与已填格子菜单同为直选项，点哪项都直接开对应的新建对话框。
-        void Add(string header, ActionType? type)
-        {
-            var mi = new MenuItem { Header = header };
-            mi.Click += (_, _) => Defer(() => NewActionAt(slot, type));
-            menu.Items.Add(mi);
-        }
-
-        Add("新建动作…", null);
-        Add("新建组合动作…", ActionType.composite);
-        menu.Items.Add(new Separator());
-        Add("新建 · 启动软件", ActionType.launchApp);
-        Add("新建 · 打开文件", ActionType.openFile);
-        Add("新建 · 打开文件夹", ActionType.openFolder);
-        Add("新建 · 运行命令", ActionType.runCommand);
-        Add("新建 · 打开网址", ActionType.openUrl);
-        return menu;
+        var picker = new ActionPoolPicker(this, "超级面板槽位 — 选择动作", CurrentPage[slot]) { Owner = this };
+        RunDialog(() => { picker.ShowDialog(); });
+        if (picker.Result == null) return;
+        SetSlot(slot, picker.Result);
+        Rebuild();
     }
 
     /// <summary>在指定格子上弹出菜单（左键点空格走此路径；右键由 ContextMenu 自动弹出）。</summary>

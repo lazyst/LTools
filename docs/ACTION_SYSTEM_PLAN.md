@@ -146,7 +146,14 @@ Step {
 新建 · 打开文件夹
 新建 · 运行命令
 新建 · 打开网址
+─────────
+从动作池选择…      ← 复用已有动作（原本面板缺此能力，须去设置页）
+清除（仅非空槽位）
 ```
+
+**统一实现**：上表结构由 `Features/SlotMenu.BuildAddMenu` 构建，面板空格菜单与设置面板
+「超级面板」配置页格子菜单（左键弹出 + 右键 ContextMenu）**共用同一方法**，保证两处
+「添加动作」交互完全一致。菜单项 Click 统一经 `owner.Dispatcher.InvokeAsync` 推迟到菜单关闭后执行。
 
 ### 5.6 格子拖动重排 ✅（需求已定）
 
@@ -473,6 +480,12 @@ ActionExecutor.Run(ActionDto action)
 - ✅ 视觉：拖动态被拖格内容**半透明跟随光标**（窗口级 overlay + `RenderTransform`）；悬停目标格 `Primary` 色加粗边框；`‹`/`›` 上时提示"将翻页"。
 - ✅ 取消：拖出面板松手 = 取消（捕获确保 `PreviewMouseLeftButtonUp` 仍路由到窗口）；Esc 取消拖动（不关面板，先于 `RequestEscape` 的关面板）。
 - ⛔ **移除**移动模式代码：`StartMove`/`CompleteMove`/`CancelMove`/`_movePage`/`_moveSlot`、右键"移动到其他格子…"菜单项、`ExecuteSlot`/`RequestEscape`/`UpdateHeader` 中的移动模式分支。
+
+### 阶段 7 优化（紧凑布局 / 共享菜单 / 导航记忆）
+- ✅ **面板紧凑布局**：格子改**正方形**（`Height=96`；面板宽 384→**310**，列宽 = (310−2×10−2×1)/3 = 96）；格子间**无间隙**（`Margin 3→0`）、格子区与标题栏/页脚**无间隙**（`CellsHost Margin 8→0`）。标题栏(34)/页脚(38)/`Border.Margin`(10 阴影) 不变。相邻格子边框相接成 2px 分隔线（可接受）。
+- ✅ **添加动作菜单统一（共享 `Features/SlotMenu.BuildAddMenu`）**：面板空格菜单与设置页「超级面板」格子菜单（左键短击弹出 + 右键 ContextMenu）**共用同一结构**——新建动作…/新建组合动作…/快捷新建 5 类/**从动作池选择…**/清除（仅非空）。**附带补强**：面板空格原本**只能新建、不能复用已有动作**（唯一途径是去设置页），现两处都能从池选。菜单项 Click 统一 `owner.Dispatcher.InvokeAsync` 推迟（避免 ShowDialog 与菜单关闭冲突）。
+- ✅ 设置页槽位左键短击由「直接开 `ActionPoolPicker`」改为**弹共享菜单**（与面板空格左键一致）；设置页新增 `NewActionAt(page,slot,type)`（新建后 `ConfigStore.AddAction` + 落槽 + `PopulateActions`/`BuildSuperPagesUI` + `MarkSuperDirty`）。设置页无低级钩子点外关窗，故菜单无需 `TrackInteract`。
+- ✅ **导航页记忆**：`AppConfig.LastNavPage`（默认 `"actions"`）——`ConfigHelper` 打开时遍历 `NavList` 按 `Tag` 恢复（未匹配回退「动作管理」）；`Nav_Changed` 末尾 `ConfigIO.Modify` 落盘。切换页前仍先 flush 防抖，故写盘读到的是最新状态。
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

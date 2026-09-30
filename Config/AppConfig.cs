@@ -59,6 +59,9 @@ public sealed class AppConfig
     /// </summary>
     public bool CapsLockEnabled { get; set; } = true;
 
+    /// <summary>设置窗口上次所在的导航页（general/actions/menus/superpanel/terminals），下次打开恢复。</summary>
+    public string LastNavPage { get; set; } = "actions";
+
     private static readonly JsonSerializerOptions Opt = new()
     {
         WriteIndented = true,

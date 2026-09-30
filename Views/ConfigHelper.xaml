@@ -100,7 +100,7 @@
             <!-- 左导航 -->
             <Border Grid.Column="0" Background="{StaticResource SurfaceAltBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
-                <StackPanel Margin="0,8">
+                <StackPanel x:Name="NavList" Margin="0,8">
                     <RadioButton Style="{StaticResource NavRow}" Content="通用"
                                  Checked="Nav_Changed" Tag="general"/>
                     <RadioButton x:Name="NavActions" Style="{StaticResource NavRow}" Content="动作管理"
