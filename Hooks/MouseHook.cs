@@ -27,6 +27,7 @@ internal static class MouseHook
     // —— 裸右键长按唤起超级面板（阶段 5，计划 §5.1）——
     private static DispatcherTimer? _superPanelTimer;
     private static bool _suppressRButtonUp;     // 计时器触发后置位：吞掉随后的右键 up 阻止原生菜单
+    private static bool _rightCloseUpPending;   // 「右键点外关闭」吞掉 down 后置位：配套 up 也必须吞
 
     /// <summary>本类注入鼠标事件的 dwExtraInfo 魔法标记；钩子开头据此跳过，杜绝注入回流递归。</summary>
     private static readonly IntPtr InjectedTag = (IntPtr)0x1234ABCD;
@@ -89,6 +90,40 @@ internal static class MouseHook
                     {
                         _suppressRButtonUp = false;
                         return (IntPtr)1; // 吞掉 up（不注入）
+                    }
+                    // 点外关闭——右键版（三处覆盖式弹层：超级面板 / 菜单组 / 帮助面板）。
+                    // 与左键分支同样只在面板外部触发（右键菜单/对话框打开期间 SuperPanel.IsInteracting 不介入）。
+                    // 语义（用户已定）：关掉弹层，且这一下右键**整组吞掉**、不作用到下层（不弹原生菜单）。
+                    //
+                    // ⚠️ down/up 必须同进同出：若放行 down 却吞 up，目标窗口收不到配对的 up，
+                    //    鼠标捕获不释放 → 右键永久「卡住」（须再点一次右键才解除）。
+                    // ⚠️ 关闭面板后 `!SuperPanel.IsOpen` 会变 true，故此处必须 return 提前退出，
+                    //    绝不能落到下面的长按手势分支——否则 up 会被吞 + 注入，重新制造上述卡键。
+                    if ((int)wParam == Win32.WmRbuttonup && _rightCloseUpPending)
+                    {
+                        _rightCloseUpPending = false;
+                        return (IntPtr)1; // 吞掉配套 up（成对）
+                    }
+                    if ((int)wParam == Win32.WmRbuttondown)
+                    {
+                        _rightCloseUpPending = false;   // 兜底：上个 up 若丢失，清残留避免误吞
+
+                        bool overSuper = SuperPanel.IsOpen && !SuperPanel.IsInteracting
+                                         && !SuperPanel.PointInWindowRect(ms.Pt.X, ms.Pt.Y);
+                        bool overMenu = MenuSystem.IsMenuOpen
+                                        && !MenuSystem.PointInMenuRect(ms.Pt.X, ms.Pt.Y);
+                        bool overHelp = HelpPanel.IsOpen
+                                        && !HelpPanel.PointInWindowRect(ms.Pt.X, ms.Pt.Y);
+
+                        if (overSuper || overMenu || overHelp)
+                        {
+                            if (overSuper) { CancelSuperPanelGesture(); SuperPanel.Close(); }  // 优先级同左键分支
+                            else if (overMenu) MenuSystem.CloseCurrent();
+                            else HelpPanel.Close();
+
+                            _rightCloseUpPending = true;
+                            return (IntPtr)1; // 吞 down，并提前退出（不进长按手势分支）
+                        }
                     }
                     // 裸右键长按手势（§5.1）：开关开 且 面板未打开时，整组吞掉 down/up。
                     // 必须吞 down（而非放行）——若放行 down 却吞 up，目标窗口会收到 down 收不到 up，
