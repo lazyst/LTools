@@ -150,6 +150,18 @@ public partial class ActionEditorDialog : Window
         if (d.ShowDialog(this) == true) FolderBox.Text = d.FolderName;
     }
 
+    private void BrowseLaunchWorkdir_Click(object sender, RoutedEventArgs e) => BrowseWorkdir(LaunchWorkdirBox);
+
+    private void BrowseCmdWorkdir_Click(object sender, RoutedEventArgs e) => BrowseWorkdir(CmdWorkdirBox);
+
+    /// <summary>选工作目录：调文件资源管理器（.NET 8 原生 <see cref="OpenFolderDialog"/>）并回填指定框。</summary>
+    private void BrowseWorkdir(TextBox box)
+    {
+        var d = new OpenFolderDialog { Title = "选择工作目录" };
+        if (!string.IsNullOrEmpty(box.Text)) d.InitialDirectory = SafeDir(box.Text);
+        if (d.ShowDialog(this) == true) box.Text = d.FolderName;
+    }
+
     // —— 确定 ——
     private void Ok_Click(object sender, RoutedEventArgs e)
     {

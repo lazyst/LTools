@@ -152,6 +152,14 @@ public partial class CompositeActionDialog : Window
 
     private void Window_PreviewMouseMove(object sender, MouseEventArgs e)
     {
+        // 把手排序：按下即记录，位移超阈值进入拖动（幽灵跟随 + 目标行高亮）
+        if (_gripIdx != null)
+        {
+            GripDragTick(e);
+            if (_gripDragging) e.Handled = true;
+            return;
+        }
+
         if (_leftDragCandidate == null || e.LeftButton != MouseButtonState.Pressed) return;
         var p = e.GetPosition(this);
         if (Math.Abs(p.X - _leftDragOrigin.X) < SystemParameters.MinimumHorizontalDragDistance &&
@@ -266,7 +274,14 @@ public partial class CompositeActionDialog : Window
     private void Delay_PreviewTextInput(object sender, TextCompositionEventArgs e)
         => e.Handled = !e.Text.All(char.IsDigit);
 
-    // —— 拖拽（左栏项拖入 = 插入；把手拖动 = 排序）——
+    // —— 拖拽（左栏项拖入 = 插入；把手拖动 = 排序，幽灵跟随，§12）——
+    // 把手排序走窗口级鼠标跟踪，而非 OLE DoDragDrop：避免系统 drag image 与幽灵叠加，
+    // 节奏与超级面板 §5.6 一致——拖动中只跟幽灵 + 高亮目标行，释放时才重排。
+
+    private int? _gripIdx;                    // 把手按下时记录的源步骤索引
+    private Point _gripOrigin;                // 按下坐标（进入拖动态的阈值判定）
+    private bool _gripDragging;               // 是否已进入拖动态
+    private FrameworkElement? _gripSource;    // 把手元素（鼠标捕获载体）
 
     private void Grip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -274,23 +289,122 @@ public partial class CompositeActionDialog : Window
         int idx = _steps.IndexOf(row.Step);
         if (idx < 0) return;
         StepsList.SelectedIndex = idx;
-        try
-        {
-            var data = new DataObject(DataFormats.UnicodeText, idx.ToString());
-            DragDrop.DoDragDrop(fe, data, DragDropEffects.Move);
-        }
-        catch { /* 拖拽取消静默 */ }
+        _gripSource = fe;
+        _gripIdx = idx;
+        _gripOrigin = e.GetPosition(this);
+        _gripDragging = false;
+        fe.CaptureMouse();      // 捕获：拖出窗口仍能收到移动 / 释放
+        e.Handled = true;       // 吞掉，别让 ListBox 抢走选中 / 滚动
     }
 
+    private void Window_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_gripIdx is not int src || !_gripDragging) { EndReorderDrag(); return; }
+
+        int hover = GripHoverRow(e);
+        int insertAt = hover >= 0 ? GripInsertAt(e, hover) : -1;
+        EndReorderDrag();
+        StepsList.SelectedIndex = src;      // 先回落到源行（重排成功时会再改）
+        if (insertAt >= 0) ApplyReorder(src, insertAt);
+        e.Handled = true;
+    }
+
+    /// <summary>位移超阈值 → 显示幽灵跟随光标；目标行高亮。不在这里重排（见 <see cref="ApplyReorder"/>）。</summary>
+    private void GripDragTick(MouseEventArgs e)
+    {
+        if (_gripIdx is not int idx) return;
+        if (e.LeftButton != MouseButtonState.Pressed) { EndReorderDrag(); return; }
+
+        var pos = e.GetPosition(this);
+        if (!_gripDragging)
+        {
+            if (Math.Abs(pos.X - _gripOrigin.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(pos.Y - _gripOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            _gripDragging = true;
+            ShowGhost(idx);
+        }
+
+        UpdateGhost(pos);
+        StepsList.SelectedIndex = GripHoverRow(e);   // 目标行高亮（-1 = 列表外）
+    }
+
+    private void ShowGhost(int index)
+    {
+        var step = _steps[index];
+        GhostBadge.Text = $"{index + 1}. {ActionTypeLabel.Of(step.Action.Type)}";
+        GhostName.Text = string.IsNullOrWhiteSpace(step.Action.Name) ? "（未命名）" : step.Action.Name;
+        DragGhost.Visibility = Visibility.Visible;
+        Mouse.OverrideCursor = Cursors.SizeAll;
+    }
+
+    private void UpdateGhost(Point windowPos)
+    {
+        var rel = TranslatePoint(windowPos, GhostLayer);   // 窗口坐标 → Canvas 坐标
+        double w = DragGhost.ActualWidth > 0 ? DragGhost.ActualWidth : DragGhost.MinWidth;
+        double h = DragGhost.ActualHeight > 0 ? DragGhost.ActualHeight : 34;
+        Canvas.SetLeft(DragGhost, rel.X - w / 2);
+        Canvas.SetTop(DragGhost, rel.Y - h / 2);
+    }
+
+    private void EndReorderDrag()
+    {
+        bool wasDragging = _gripDragging;
+        _gripSource?.ReleaseMouseCapture();
+        _gripSource = null;
+        _gripIdx = null;
+        _gripDragging = false;
+        if (!wasDragging) return;      // 只是点了下把手（未拖动）：不碰光标与幽灵
+        DragGhost.Visibility = Visibility.Collapsed;
+        Mouse.OverrideCursor = null;
+    }
+
+    /// <summary>拖动中的目标行：先按坐标判定是否落在列表视口内（列表外 → -1），
+    /// 再找命中的行；命中列表内但没落在行上（项间空隙 / ItemsPanel）→ 末行。</summary>
+    private int GripHoverRow(MouseEventArgs e)
+    {
+        var p = e.GetPosition(StepsList);
+        if (p.X < 0 || p.Y < 0 || p.X > StepsList.ActualWidth || p.Y > StepsList.ActualHeight)
+            return -1;                       // 列表外（左栏 / 右栏 / 视口之外）
+
+        if (StepsList.InputHitTest(p) is DependencyObject d)
+        {
+            var container = ItemsControl.ContainerFromElement(StepsList, d) as ListBoxItem;
+            if (container != null)
+            {
+                int i = StepsList.ItemContainerGenerator.IndexFromContainer(container);
+                if (i >= 0) return i;
+            }
+        }
+        return _steps.Count - 1;             // 列表内但未命中行 → 末行（下半即追加到末尾）
+    }
+
+    /// <summary>命中行 → 插入位置（0.._steps.Count）：上半 = 该行之前，下半 = 该行之后。
+    /// 必须区分上下半：只按行索引时，拖到紧邻的下一行会被算作「原位」而毫无反馈。</summary>
+    private int GripInsertAt(MouseEventArgs e, int hover)
+    {
+        var container = StepsList.ItemContainerGenerator.ContainerFromIndex(hover) as ListBoxItem;
+        if (container == null) return hover;
+        return e.GetPosition(container).Y < container.ActualHeight / 2 ? hover : hover + 1;
+    }
+
+    /// <summary>释放：把源步骤移到插入位置（<paramref name="insertAt"/> 基于移动前的列表）。</summary>
+    private void ApplyReorder(int src, int insertAt)
+    {
+        if (src < 0 || src >= _steps.Count) return;
+        if (insertAt < 0 || insertAt > _steps.Count) return;
+        int target = insertAt > src ? insertAt - 1 : insertAt;   // 移除源后索引前移
+        if (target == src) return;
+        var moved = _steps[src];
+        _steps.RemoveAt(src);
+        _steps.Insert(Math.Clamp(target, 0, _steps.Count), moved);
+        ReloadRows();
+        StepsList.SelectedIndex = Math.Clamp(target, 0, _steps.Count - 1);
+    }
+
+    /// <summary>OLE 拖放只剩「左栏项拖入」一路——把手排序已改走窗口级鼠标跟踪（<see cref="GripDragTick"/>）。</summary>
     private void StepsList_DragOver(object sender, DragEventArgs e)
     {
-        if (_dragLeftItem != null) { e.Effects = DragDropEffects.Copy; e.Handled = true; return; }
-        if (e.Data.GetDataPresent(DataFormats.UnicodeText) &&
-            int.TryParse(e.Data.GetData(DataFormats.UnicodeText) as string, out _))
-        {
-            e.Effects = DragDropEffects.Move;
-            e.Handled = true;
-        }
+        if (_dragLeftItem != null) { e.Effects = DragDropEffects.Copy; e.Handled = true; }
     }
 
     private void StepsList_Drop(object sender, DragEventArgs e)
@@ -300,23 +414,6 @@ public partial class CompositeActionDialog : Window
         {
             int to = Math.Clamp(DropIndex(e), 0, _steps.Count);
             AddFromLeft(_dragLeftItem, to);
-            e.Handled = true;
-            return;
-        }
-
-        // 把手排序
-        if (e.Data.GetDataPresent(DataFormats.UnicodeText) &&
-            e.Data.GetData(DataFormats.UnicodeText) is string text && int.TryParse(text, out int from))
-        {
-            if (from < 0 || from >= _steps.Count) return;
-            int to = DropIndex(e);
-            if (to < 0 || to == from) { e.Handled = true; return; }
-            var moved = _steps[from];
-            _steps.RemoveAt(from);
-            if (to > from) to--;   // 移除后索引前移
-            _steps.Insert(Math.Clamp(to, 0, _steps.Count), moved);
-            ReloadRows();
-            StepsList.SelectedIndex = to;
             e.Handled = true;
         }
     }

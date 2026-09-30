@@ -5,7 +5,7 @@
         xmlns:controls="clr-namespace:CapsLockPro.Views.Controls"
         Title="动作" Width="720" Height="560"
         MinWidth="620" MinHeight="480"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="False"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="13">
@@ -77,7 +77,15 @@
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="参数（可选）" Margin="0,0,0,4"/>
                                 <TextBox x:Name="ArgsBox" MinHeight="30" Margin="0,0,0,10"/>
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="工作目录（可选）" Margin="0,0,0,4"/>
-                                <TextBox x:Name="LaunchWorkdirBox" MinHeight="30"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" x:Name="LaunchWorkdirBox" MinHeight="30" Margin="0,0,8,0"/>
+                                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72"
+                                            Click="BrowseLaunchWorkdir_Click" ToolTip="用文件资源管理器选择工作目录"/>
+                                </Grid>
                             </StackPanel>
 
                             <!-- openFile -->
@@ -129,7 +137,15 @@
                                               VerticalAlignment="Bottom" Margin="0,0,0,4"/>
                                 </Grid>
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="工作目录（可选）" Margin="0,0,0,4"/>
-                                <TextBox x:Name="CmdWorkdirBox" MinHeight="30"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" x:Name="CmdWorkdirBox" MinHeight="30" Margin="0,0,8,0"/>
+                                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72"
+                                            Click="BrowseCmdWorkdir_Click" ToolTip="用文件资源管理器选择工作目录"/>
+                                </Grid>
                             </StackPanel>
 
                             <!-- internal -->

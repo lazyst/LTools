@@ -534,6 +534,13 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **步骤行改 `Grid` 列布局（修图标裁剪）**：原 `DockPanel` 右侧停靠的 ✎/✕ 在窗口偏窄时溢出右边界被裁剪（只显示左半）；且 `BtnGhost` 继承 `Btn` 的 `Padding="10,4"`，把 `Width=26` 的内容区挤到 6px。改为 `Grid`：名称列 `*`（窄时只压缩名称并截断），延迟 / 失败策略 / 编辑 / 删除为 `Auto` 或固定列，**永不溢出**；图标按钮显式 `Padding="0"`。
 - ✅ **`IconPicker` `UniformGrid` → `WrapPanel`（修图标重叠）**：固定 10 列 × 36px = 360px，塞进组合窗口右栏 ~244px 容器时，每个 34px 格子被压进 ~24px 槽 → **相邻格子互相覆盖**。`WrapPanel` 按可用宽度自动换行（窄容器多排几行），两种窗口尺寸都适配。
 - ✅ **托盘菜单改名 + 状态点**：「工具开关」→「启用 CapsLock 增强」、「超级面板开关」→「启用超级面板」；启用时左侧显示绿色状态点（`#16A34A` = `SuccessColor`），禁用不显示。⚠️ **本项目 `MenuItem` 模板（`Themes/Modern.xaml`）只呈现 `Header`、不呈现 `Icon`**，`mi.Icon = <Ellipse>` 完全不可见 → 状态点必须放进 `Header`（`StackPanel[Ellipse + TextBlock]`）。所有菜单项统一留出状态点列（做法同系统菜单的勾选列），使开关切换时文字不左右跳动；每次菜单 `Opened` 刷新（状态可能经 CapsLock+Esc 手势或设置页更改）。
+- ✅ **编辑窗口一律 `CenterScreen`**（`ActionEditorDialog` / `CompositeActionDialog`）：原为 `CenterOwner`，从超级面板（`WindowStartupLocation="Manual"`、跟随唤起光标）新建动作时会以**面板**为中心 → 不在屏幕中央。**保留 `Owner`**（Z 序 / 模态 / 关闭联动），只改 `WindowStartupLocation`——`Owner` 与启动位置相互独立。
+- ✅ **工作目录配「浏览…」按钮**：`launchApp` 与 `runCommand` 的「工作目录（可选）」原只有文本框。改为 `[* | 浏览…]` 两列，走 .NET 8 原生 `OpenFolderDialog`（与 `openFolder` 同款资源管理器 UI），初值经 `SafeDir` 复用已有路径。共用 `BrowseWorkdir(TextBox)`，两个 handler 只是选框不同。
+- ✅ **把手排序改为「窗口级鼠标跟踪 + 幽灵跟随」（弃 OLE `DoDragDrop`）**：
+  - 弃 OLE 拖放的原因：系统 drag image 会与幽灵**叠加**。改 `CaptureMouse` + 窗口级 `PreviewMouseMove/Up`，节奏与超级面板 §5.6 一致——**拖动中只跟幽灵 + 高亮目标行，释放才重排**（不实时重排：源行持续位移会与幽灵打架、且命中目标反复漂移导致抖动）。
+  - **插入位置语义**：命中行按**上下半**判定插入位置（上半=插到该行之前，下半=之后）。**必须区分上下半**——只按行索引时，拖到紧邻的下一行会被算作「原位」而毫无反馈。
+  - 列表外松开 = 取消（不移动）；列表内空白/视口下方 = 追加到末尾；命中目标行靠坐标边界判定（项间 1px 空隙命中 `ItemsPanel` 时不能误判为列表外）。
+  - OLE `DragOver`/`Drop` 自此**只剩「左栏项拖入」一路**；拖动中 `SelectedIndex` 跟随目标行（复用 `ListBoxItem` 的 `SelectedBgBrush` 作高亮）。
 - ✅ **中间步骤**：把手拖拽排序；双击就地编辑（只改本步快照，无需"影响所有引用处"确认）；行内编辑延迟（数字）与失败策略（下拉）。
 - ✅ **JSON schema 变**：`Step.ActionId` → `Step.Action`（对象）。旧 `ActionId` 形式的组合步骤**不迁移**（动作系统未发布，按既定"无需兼容旧 schema"）。
 - 🗑️ 废弃 `CompositeEditorDialog`（能力并入 `CompositeActionDialog`）；`ActionPoolPicker` 不再参与组合步骤选择；移除临时 `ActionExecutor.SmokeTest()` + `--smoke=action` 入口（顺带完成交付前清理）。
