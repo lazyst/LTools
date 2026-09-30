@@ -1,0 +1,90 @@
+<Window x:Class="CapsLockPro.Views.ChordPickerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:CapsLockPro.Views.Controls"
+        Title="添加组合键" Width="470" ResizeMode="NoResize" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="36"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <controls:TitleBar Grid.Row="0" ShowMinimize="False" ShowMaximize="False"/>
+
+        <Grid Grid.Row="1" Margin="20,14,20,18">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>   <!-- 预览 -->
+                <RowDefinition Height="Auto"/>   <!-- 修饰键 -->
+                <RowDefinition Height="Auto"/>   <!-- 特殊键表格 -->
+                <RowDefinition Height="Auto"/>   <!-- 提示 -->
+                <RowDefinition Height="Auto"/>   <!-- 页脚 -->
+            </Grid.RowDefinitions>
+
+            <!-- 预览：可编辑 + 实时校验 -->
+            <StackPanel Grid.Row="0">
+                <TextBlock Style="{StaticResource SectionLabel}" Text="预览" Margin="0,0,0,4"/>
+                <TextBox x:Name="PreviewBox" MinHeight="32" TextChanged="PreviewBox_TextChanged"/>
+                <TextBlock x:Name="ErrText" FontSize="11" Margin="0,4,0,0"
+                           Text="请选择或输入按键"
+                           Foreground="{StaticResource SecondaryTextBrush}"/>
+            </StackPanel>
+
+            <!-- 修饰键：与预览双向同步 -->
+            <StackPanel Grid.Row="1" Margin="0,12,0,0">
+                <TextBlock Style="{StaticResource SectionLabel}" Text="修饰键" Margin="0,0,0,6"/>
+                <StackPanel Orientation="Horizontal">
+                    <CheckBox x:Name="CtrlBox" Content="Ctrl" Margin="0,0,14,0"
+                              Checked="Mod_Changed" Unchecked="Mod_Changed"/>
+                    <CheckBox x:Name="ShiftBox" Content="Shift" Margin="0,0,14,0"
+                              Checked="Mod_Changed" Unchecked="Mod_Changed"/>
+                    <CheckBox x:Name="AltBox" Content="Alt" Margin="0,0,14,0"
+                              Checked="Mod_Changed" Unchecked="Mod_Changed"/>
+                    <CheckBox x:Name="WinBox" Content="Win"
+                              Checked="Mod_Changed" Unchecked="Mod_Changed"/>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- 特殊键表格：点击填入预览（按钮键名走闭包，不用 Tag——Btn 的 Tag 是悬停画刷） -->
+            <StackPanel Grid.Row="2" Margin="0,12,0,0">
+                <TextBlock Style="{StaticResource SectionLabel}" Text="特殊键（点击填入预览）" Margin="0,0,0,6"/>
+
+                <TextBlock Text="编辑" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,4"/>
+                <WrapPanel x:Name="EditRow"/>
+
+                <TextBlock Text="导航" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,2,0,4"/>
+                <WrapPanel x:Name="NavRow"/>
+
+                <TextBlock Text="功能键" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,2,0,4"/>
+                <WrapPanel x:Name="FRow"/>
+                <CheckBox x:Name="F13Box" Content="展开 F13–F24" Margin="0,4,0,0"
+                          Checked="F13Box_Changed" Unchecked="F13Box_Changed"/>
+                <WrapPanel x:Name="F13Row" Margin="0,4,0,0" Visibility="Collapsed"/>
+
+                <TextBlock Text="符号" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,8,0,4"/>
+                <WrapPanel x:Name="SymRow"/>
+            </StackPanel>
+
+            <!-- 提示 -->
+            <TextBlock Grid.Row="3" Style="{StaticResource HintLabel}" Margin="0,12,0,0"
+                       Text="字母 / 数字直接在预览框输入（如 k、5）；也可先勾修饰键再点按键"/>
+
+            <!-- 页脚 -->
+            <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button Style="{StaticResource BtnGhost}" Content="取消" MinWidth="78"
+                        Margin="0,0,8,0" IsCancel="True"/>
+                <Button Style="{StaticResource BtnPrimary}" x:Name="OkBtn" Content="确定" MinWidth="78"
+                        IsDefault="True" IsEnabled="False" Click="Ok_Click"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

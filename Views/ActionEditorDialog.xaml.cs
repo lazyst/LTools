@@ -381,22 +381,16 @@ public partial class ActionEditorDialog : Window
 
     private void AddChord_Click(object sender, RoutedEventArgs e)
     {
-        var (ok, val) = InputDialog.Show(this, "添加组合键",
-            "输入按键（修饰键+主键，如 ctrl+k、alt+p、f5、enter；多个用逗号/空格分隔）", "ctrl+");
-        if (!ok || string.IsNullOrWhiteSpace(val)) return;
+        // 可视化选键对话框（§12 交付后 UX 优化）：修饰键复选 + 特殊键表格 + 实时校验，
+        // 替代原裸文本框；确定后入库单条 stroke（数据层不变）。
+        var dlg = new ChordPickerDialog { Owner = this };
+        if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Stroke)) return;
 
-        var strokes = val.Split(new[] { ',', ' ' },
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
-        if (strokes.Count == 0) return;
-        foreach (var s in strokes)
+        _keyItems.Add(new KeyItemView(new KeyItem
         {
-            if (!KeyStroke.TryParse(s, out _, out var err))
-            {
-                ConfirmDialog.Info(this, "动作", $"按键 \"{s}\" 无效：{err}");
-                return;
-            }
-        }
-        _keyItems.Add(new KeyItemView(new KeyItem { Kind = KeyItemKind.chord, Strokes = strokes }));
+            Kind = KeyItemKind.chord,
+            Strokes = new List<string> { dlg.Stroke },
+        }));
         RefreshKeyNumbers();
     }
 
