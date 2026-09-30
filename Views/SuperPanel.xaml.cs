@@ -252,7 +252,19 @@ public partial class SuperPanelWindow : Window
                 96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
             bmp.Render(CellsHost);
             bmp.Freeze();
-            return new Image { Source = bmp, Stretch = Stretch.Fill };   // 由 Grid 拉伸到格子区大小
+            // 显式尺寸是关键：窗口 SizeToContent=Height ⇒ 测量链上「高度约束 = 无穷大」，
+            // 而 Image 的 Stretch=Fill 语义是「填满约束」→ 会回报无穷高并沿
+            // Image → PageFxHost → 格子区 Grid → 面板把高度撑爆（宽度受 Width=310 约束故只有高度变高）。
+            // 指定 Width/Height 后期望尺寸与约束无关，且与格子区等大、竖缝严格对齐。
+            return new Image
+            {
+                Source = bmp,
+                Width = w,
+                Height = h,
+                Stretch = Stretch.Fill,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+            };
         }
         catch { return null; }   // 截图失败 → 退化为无动画翻页，绝不影响翻页本身
     }

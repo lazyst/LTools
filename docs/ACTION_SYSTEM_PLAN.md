@@ -120,6 +120,11 @@ Step {
     两页横滑会与幽灵叠加；此时退化为原「瞬时切换」。
   - **打断安全**：`_pageAnimToken` 令牌——新一轮 `SnapshotCells()` 先 `CancelPageFx()`（重置回静止再截图），
     作废上一轮 `Completed` 回调；截图异常/尺寸未就绪 → 返回 null → **退化为无动画翻页**，绝不影响翻页本身。
+  - ⚠️ **截图 `Image` 必须显式 `Width/Height`**：面板是 `SizeToContent="Height"`，测量链上**高度约束为无穷大**
+    （宽度被 `Width=310` 约束），而 `Stretch=Fill` 的语义是「填满约束」→ 回报**无穷高**，
+    沿 `Image → PageFxHost → 格子区 Grid → 面板` 把高度撑爆（表现为**翻页动画期间面板突然变得很高**）。
+    指定显式尺寸后期望尺寸与约束无关，且与格子区等大、竖缝严格对齐。**同理：此窗口内新增的任何
+    `Stretch` 类元素（Fill/Uniform）都须给定显式尺寸，否则会按无穷约束撑高。**
 
 ### 5.4 格子交互 ✅（按推荐做法）
 
@@ -502,6 +507,7 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **风格 = 整块横滑（截图法）**：旧页 `RenderTargetBitmap` 截图滑出 + 新页滑入，**同 Duration 同 Easing** 保证竖缝严格相邻无重叠。备选的「仅新页滑入」（不截图）被淘汰——旧页瞬时消失与新页滑入会有跳变。
 - ✅ **拖动中不播动画**（跨页悬停翻页退化为瞬时切换），避免与拖动幽灵叠加；`Rebuild`（交换/CRUD）也不播并顺带取消在跑动画。
 - ✅ **令牌打断 + 失败降级**：`_pageAnimToken` 作废被打断轮次的 `Completed`；截图 `catch` 返回 null → 无动画翻页。动画时长 200ms 定为**快速滑动**（>300ms 会拖慢连续滚轮的响应感），沿用面板开场淡入的 120ms 量级风格。
+- 🐛 **实测修正**（翻页动画期间面板高度暴涨）：截图 `Image` 用 `Stretch=Fill` 且未给尺寸，而面板 `SizeToContent="Height"` 令**高度测量约束为无穷大** → `Fill` 回报无穷高 → 沿 `Image→PageFxHost→格子区→面板` 撑高（宽度受 `Width=310` 约束，故**只有高度变高**）。改为显式 `Width/Height`（= 格子区实际尺寸）+ `Left/Top` 对齐。教训：**该窗口内任何 `Stretch` 类元素必须给显式尺寸**。
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。
