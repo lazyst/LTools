@@ -176,6 +176,8 @@ Step {
 
 **钩子**：拖动是面板内左键操作，按下发生在面板内 → 点外关闭不触发；拖动中鼠标移出面板，捕获仍路由到窗口，LBUTTONUP 在面板外也能收到 → 取消。无需额外门控钩子。
 
+**设置页对等**：设置面板「超级面板」配置页（`ConfigHelper.BuildSuperPagesUI`）同样支持槽位拖动交换——多页卡片纵向排列，`HitTestSlot` 遍历所有卡片的 3×3 网格命中目标（跨卡片=跨页，无需翻页悬停）；幽灵/高亮/阈值/取消同面板；交换改 `_superPages` 内存态 + `MarkSuperDirty`（800ms 防抖落盘）+ `BuildSuperPagesUI` 刷新。原 `btn.Click→PickSlotAction` 改 `PreviewMouseLeftButtonDown`（吞 Click）+ 释放时位移判定。
+
 ---
 
 ## 6. CapsLock+数字菜单改造

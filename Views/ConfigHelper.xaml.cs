@@ -33,6 +33,12 @@ public partial class ConfigHelperWindow : Window
     private bool _superDirty;            // 超级面板有未保存改动
     private bool _pagesReady;            // 页面全部构建完成前抑制导航切换
 
+    // —— 超级面板槽位拖动（设置页内，交换语义，跨卡片=跨页）——
+    private int _dragSrcPage = -1, _dragSrcSlot = -1;
+    private Point _dragOrigin;
+    private bool _dragging;
+    private (int page, int slot) _hover = (-1, -1);
+
     public ConfigHelperWindow(string configPath)
     {
         InitializeComponent();
@@ -70,6 +76,14 @@ public partial class ConfigHelperWindow : Window
         Closed += (_, _) =>
         {
             if (_saveDebounce.IsEnabled) { _saveDebounce.Stop(); SaveNow(); }
+        };
+
+        // 超级面板槽位拖动（窗口级接管，捕获后拖出窗口也能收到 Up）
+        PreviewMouseMove += OnSlotDragMove;
+        PreviewMouseLeftButtonUp += OnSlotDragUp;
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Escape && _dragging) { CancelSlotDrag(); e.Handled = true; }
         };
     }
 
@@ -368,6 +382,7 @@ public partial class ConfigHelperWindow : Window
 
     private void BuildSuperPagesUI()
     {
+        _hover = (-1, -1);   // 子元素已清空，悬停引用失效
         SuperPagesPanel.Children.Clear();
         for (int pi = 0; pi < _superPages.Count; pi++)
         {
@@ -455,7 +470,7 @@ public partial class ConfigHelperWindow : Window
         menu.Items.Add(miPick);
         menu.Items.Add(miClear);
         btn.ContextMenu = menu;
-        btn.Click += (_, _) => PickSlotAction(pageIdx, slotIdx);
+        btn.PreviewMouseLeftButtonDown += (_, e) => OnSlotDown(pageIdx, slotIdx, e);
         return btn;
     }
 
@@ -477,6 +492,184 @@ public partial class ConfigHelperWindow : Window
         _superDirty = true;
         BuildSuperPagesUI();
         MarkSuperDirty();
+    }
+
+    // —— 槽位拖动重排（交换语义，跨卡片=跨页；与面板 §5.6 同思路）——
+
+    private void OnSlotDown(int page, int slot, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        _dragSrcPage = page;
+        _dragSrcSlot = slot;
+        _dragOrigin = e.GetPosition(this);
+        _dragging = false;
+        CaptureMouse();          // 捕获到窗口：拖出窗口后 PreviewMouseMove/Up 仍路由到本窗口
+        e.Handled = true;        // 吞掉 Button.Click——点击/拖动由释放时位移判定
+    }
+
+    private void OnSlotDragMove(object sender, MouseEventArgs e)
+    {
+        if (_dragSrcPage < 0) return;
+        var pos = e.GetPosition(this);
+
+        if (!_dragging)
+        {
+            double dx = Math.Abs(pos.X - _dragOrigin.X);
+            double dy = Math.Abs(pos.Y - _dragOrigin.Y);
+            if (dx <= SystemParameters.MinimumHorizontalDragDistance
+                && dy <= SystemParameters.MinimumVerticalDragDistance) return;
+            _dragging = true;
+            ShowSlotGhost(_dragSrcPage, _dragSrcSlot);
+        }
+
+        UpdateSlotGhost(pos);
+        SetHover(HitTestSlot(pos));
+        e.Handled = true;
+    }
+
+    private void OnSlotDragUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left || _dragSrcPage < 0) return;
+        ReleaseMouseCapture();
+
+        int sp = _dragSrcPage, ss = _dragSrcSlot;
+        var target = _hover;
+        bool wasDrag = _dragging;
+        EndSlotDragVisuals();
+
+        if (wasDrag)
+        {
+            int dp = target.page, ds = target.slot;
+            // 交换：源格 ↔ 目标格（目标无效或同位→取消）
+            if (dp >= 0 && ds >= 0 && !(dp == sp && ds == ss))
+            {
+                (_superPages[sp][ss], _superPages[dp][ds]) = (_superPages[dp][ds], _superPages[sp][ss]);
+                _superDirty = true;
+                BuildSuperPagesUI();
+                MarkSuperDirty();
+            }
+        }
+        else
+        {
+            // 位移未超阈值→视为单击：打开动作选择器（原语义）
+            Defer(() => PickSlotAction(sp, ss));
+        }
+        _dragSrcPage = -1;
+        _dragSrcSlot = -1;
+        _dragging = false;
+        e.Handled = true;
+    }
+
+    private void CancelSlotDrag()
+    {
+        if (_dragSrcPage < 0) return;
+        ReleaseMouseCapture();
+        EndSlotDragVisuals();
+        _dragSrcPage = -1;
+        _dragSrcSlot = -1;
+        _dragging = false;
+    }
+
+    private void Defer(Action action) => Dispatcher.InvokeAsync(action);
+
+    // —— 命中测试 / 目标高亮 ——
+
+    /// <summary>遍历所有页卡片的 3×3 网格，找光标下的槽位（page, slot）；无则 (-1,-1)。</summary>
+    private (int page, int slot) HitTestSlot(Point windowPos)
+    {
+        for (int pi = 0; pi < SuperPagesPanel.Children.Count; pi++)
+        {
+            if (SuperPagesPanel.Children[pi] is not Border card) continue;
+            var grid = FindSlotGrid(card);
+            if (grid == null) continue;
+            var rel = TranslatePoint(windowPos, grid);
+            if (rel.X < 0 || rel.Y < 0 || rel.X > grid.ActualWidth || rel.Y > grid.ActualHeight) continue;
+            var hit = grid.InputHitTest(rel) as DependencyObject;
+            if (hit == null) continue;
+            DependencyObject? d = hit;
+            while (d != null && d != grid)
+            {
+                if (d is Button b)
+                {
+                    int si = grid.Children.IndexOf(b);
+                    if (si >= 0) return (pi, si);
+                }
+                d = VisualTreeHelper.GetParent(d);
+            }
+        }
+        return (-1, -1);
+    }
+
+    private static UniformGrid? FindSlotGrid(Border card)
+    {
+        if (card.Child is not StackPanel sp) return null;
+        foreach (var c in sp.Children) if (c is UniformGrid g) return g;
+        return null;
+    }
+
+    private Button? GetSlotButton(int page, int slot)
+    {
+        if (page < 0 || page >= SuperPagesPanel.Children.Count) return null;
+        if (SuperPagesPanel.Children[page] is not Border card) return null;
+        var grid = FindSlotGrid(card);
+        if (grid == null || slot < 0 || slot >= grid.Children.Count) return null;
+        return grid.Children[slot] as Button;
+    }
+
+    private void SetHover((int page, int slot) h)
+    {
+        if (h == _hover) return;
+        ClearHoverSlot(_hover);
+        _hover = h;
+        ApplyHoverSlot(_hover);
+    }
+
+    private void ApplyHoverSlot((int page, int slot) h)
+    {
+        if (h.page < 0) return;
+        if (GetSlotButton(h.page, h.slot) is Button b)
+        {
+            b.BorderBrush = (Brush)FindResource("PrimaryBrush");
+            b.BorderThickness = new Thickness(2);
+        }
+    }
+
+    private void ClearHoverSlot((int page, int slot) h)
+    {
+        if (h.page < 0) return;
+        if (GetSlotButton(h.page, h.slot) is Button b)
+        {
+            b.ClearValue(BorderBrushProperty);     // 还原 BtnGhost 默认（透明边框）
+            b.ClearValue(BorderThicknessProperty);
+        }
+    }
+
+    // —— 幽灵 ——
+
+    private void ShowSlotGhost(int page, int slot)
+    {
+        string? id = _superPages[page][slot];
+        var a = id != null ? ActionRegistry.FindById(id) : null;
+        GhostIcon.Text = a != null ? IconCatalog.GetGlyph(a.Icon) : "\uE710";
+        GhostName.Text = a != null ? a.Name : "(空)";
+        DragGhost.Visibility = Visibility.Visible;
+        Mouse.OverrideCursor = Cursors.SizeAll;
+    }
+
+    private void UpdateSlotGhost(Point windowPos)
+    {
+        var rel = TranslatePoint(windowPos, GhostLayer);
+        double w = DragGhost.ActualWidth > 0 ? DragGhost.ActualWidth : DragGhost.Width;
+        double h = DragGhost.ActualHeight > 0 ? DragGhost.ActualHeight : DragGhost.Height;
+        Canvas.SetLeft(DragGhost, rel.X - w / 2);
+        Canvas.SetTop(DragGhost, rel.Y - h / 2);
+    }
+
+    private void EndSlotDragVisuals()
+    {
+        DragGhost.Visibility = Visibility.Collapsed;
+        Mouse.OverrideCursor = null;
+        SetHover((-1, -1));
     }
 
     private void AddPage_Click(object sender, RoutedEventArgs e)
