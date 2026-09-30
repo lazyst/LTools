@@ -52,7 +52,7 @@ ActionDto {
 | `internal` | `Command`(枚举) | 内部注册表分发（见 §7） |
 | `composite` | `Steps[]`（见 §4） | 顺序执行各步 |
 | `sendKeys` ✅ | `Items[]`（chord/text/sleep 序列，见 §3.2） | 逐条目 SendInput；前置 ~50ms 焦点延时 |
-| `sendText` ✅ | `Text`, `Mode`, `AppendEnter`（见 §3.2） | 键入式 或 剪贴板粘贴 |
+| `sendText` ✅ | `Text`, `Mode`, `AppendEnter`（见 §3.2） | auto=Unicode 注入（绕过输入法）/ type=键入 / paste=剪贴板（150ms 恢复） |
 
 > 🟨 = 阶段 9–11 待实施（规格 §3.2，计划 §11）。
 >
@@ -107,11 +107,11 @@ KeyItem {
 | `Mode` | `"auto"`（默认）/ `"type"`（强制键入）/ `"paste"`（强制剪贴板粘贴） |
 | `AppendEnter` | 末尾追加回车（Quicker「在末尾添加回车」，聊天软件直接发出） |
 
-**auto 逻辑**：纯 ASCII 且 ≤100 字符 → **键入式**（`InputHelper.SendText`，不碰剪贴板）；含中文 / emoji / `\n` 换行 / 超长 → **剪贴板粘贴**（写剪贴板 → Ctrl+V）。
+**auto 逻辑**（§12「输入法干扰修复」修订）：**`KEYEVENTF_UNICODE` 批量注入**（`InputHelper.SendUnicodeText`，直接生成 `WM_CHAR`）——绕过键盘布局与输入法，中英文/emoji/`\n` 均可发，**不碰剪贴板**。
 
-- **技术约束**：`VkKeyScanW` 对非 ASCII 返回 -1 → 键入式只能打 ASCII，故中文必须回退剪贴板（项目已有 `NativeClipboard`）。
-- **不恢复原剪贴板**（与 Quicker 一致：恢复有异步粘贴时序问题，且多两次剪贴板操作）。
-- 键入式遇 `\n` 转 Enter、`\t` 转 Tab。
+- **type（键入式）**：`VkKeyScanW` 取键 + `SendInput`，真实模拟按键，**受输入法影响**（用户明确要求时才用）；遇不可映射字符预检报错（§12）。`\n` 转 Enter、`\t` 转 Tab。
+- **paste（粘贴式）**：写剪贴板 → Ctrl+V → **150ms 后恢复原剪贴板文本**（仅当剪贴板仍是写入内容、用户未新复制时才恢复；非文本内容如图片无法经文本接口恢复）。修复「粘贴残留弄乱复制历史」。
+- **初版 auto 已废弃**：纯 ASCII ≤100 键入、否则粘贴的判定——键入受中文输入法干扰（Bug），且判定含糊。现 auto 恒走 Unicode 注入。
 - 同样内置 ~50ms 焦点延时。
 
 #### 3.2.3 集成点清单
@@ -695,7 +695,7 @@ ActionExecutor.Run(ActionDto action)
 
 - ✅ **结构 = Quicker 式动作内含序列**（非「单组组合键靠组合动作串联」）：`sendKeys` 内部是有序条目列表（chord / text / sleep 三种），紧凑、原子性好，也可作为组合动作单步嵌入。代价是需要序列编辑 UI。
 - ✅ **序列录入 = 录制 + 手动添加**：录制实现走**编辑器窗口 `PreviewKeyDown`**（模态窗口有焦点），**不开新的低级钩子**——不碰「钩子回调」红线；「＋添加」补特殊键（F13、`VK_APPS`、`Pause` 等）。
-- ✅ **`sendText` 发送方式 = 自动模式 + 可覆盖**：`auto` 默认（纯 ASCII ≤100 字符 → 键入不碰剪贴板；含中文/emoji/`\n`/超长 → 剪贴板粘贴）；可强制 `type` / `paste`；带「末尾回车」开关。**不恢复原剪贴板**（与 Quicker 一致：避免异步粘贴时序问题，且多两次剪贴板操作）。
+- ✅ **`sendText` 发送方式 = 自动模式 + 可覆盖**：`auto` 默认（纯 ASCII ≤100 字符 → 键入不碰剪贴板；含中文/emoji/`\n`/超长 → 剪贴板粘贴）；可强制 `type` / `paste`；带「末尾回车」开关。**不恢复原剪贴板**（与 Quicker 一致：避免异步粘贴时序问题，且多两次剪贴板操作）。**⚠ 已被「交付后 Bug 修复」修订**：auto 改 Unicode 注入（键入受中文输入法吞 → Bug 1）、paste 改 150ms 后恢复原剪贴板（→ Bug 2）。
 - ✅ **触发焦点竞态 = 内置固定小延时**：`sendKeys` / `sendText` 执行前固定 ~50ms（面板/菜单关闭→目标窗口焦点切回有时间差，立即发键会丢焦点）。统一内置、用户无感知；与组合步骤 `DelayMs` 叠加无害。
 
 实施中的补充定稿（评审时已拍板，实现按此验收）：
@@ -709,7 +709,7 @@ ActionExecutor.Run(ActionDto action)
 ### 阶段 9 实施中新增（sendText）
 
 - ✅ **强制键入遇不可映射字符报错（不静默改走剪贴板）**：`Mode=type` 预检全部字符 `VkKeyScanW` 可映射后才逐字符发送；遇中文等不可映射字符抛 `InvalidOperationException`（消息含字符码点 U+XXXX），由 `ActionExecutor.Run` 顶层 catch 落 `CrashLog`。**不静默回退剪贴板**——否则「强制键入」的语义被破坏（用户明确选了 type 就该 type，失败要可见）。`Mode=auto` 才自动回退。
-- ✅ **auto 判定阈值 100 字符**：`NeedPaste` 判 `text.Length > 100 || 含 >0x7F || 含 \n/\r`。100 字符内纯 ASCII 键入（不碰剪贴板、无输入法干扰）；超长/非 ASCII/换行走剪贴板粘贴。
+- ✅ **auto 判定阈值 100 字符**：`NeedPaste` 判 `text.Length > 100 || 含 >0x7F || 含 \n/\r`。100 字符内纯 ASCII 键入（不碰剪贴板、无输入法干扰）；超长/非 ASCII/换行走剪贴板粘贴。**⚠ 已废弃**（见「交付后 Bug 修复」：键入受输入法干扰，`NeedPaste` 删除，auto 恒走 Unicode 注入）。
 - ✅ **键入式 `\r\n` 归一为一次回车**：遍历遇 `\r` 时前瞻跳过紧随的 `\n`，只发一次 `VK_RETURN`（避免 Windows 文本框里 `\r\n` 产生两次换行）。
 - ✅ **图标选 `send=\uE724`（纸飞机）/ `keyboard=\uE765`（键盘）**：从 Segoe MDL2 Assets 候选码点中验证字形可见后选定（`E724` 不是发送箭头而是纸飞机，语义贴合「发送文本」）。
 - ✅ **端到端自动化验证**：冒烟建自测 `Window+TextBox`（Topmost+Activate 获焦点）→ `ActionExecutor.Run` 真发键到 TextBox → 读 `tb.Text` 比对。7 项全过：ASCII 键入 `Hello World` ✓、中文粘贴 `你好世界` ✓、剪贴板内容 ✓、`AppendEnter` 追加 `\r\n` ✓、强制键入中文不发送+落 CrashLog ✓、`Clone()` round-trip ✓。测完删除临时代码（交付前清理约定）。
@@ -730,6 +730,18 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **`DispatchText` 抽出共享**：sendText 动作（前置 50ms 延时 + AppendEnter）与 sendKeys 的 text 条目（无延时、无回车）共用 `DispatchText(a, text, mode)`，避免两份键入/粘贴逻辑。
 - ✅ **组合深拷贝隔离验证**：冒烟构造组合含 sendText 步骤 `Text="原"`，`Clone()` 后改原步骤 `Text="改"`，clone 保持 `"原"` ✓。组合深拷贝后执行（sendText "XY" → ctrl+a → ctrl+c → 剪贴板="XY"）✓。确认 `ActionDto.Clone()` 递归拷贝 `Items`/`Steps`/`Strokes`，组合步骤与池动作完全解耦。
 - ✅ **四入口全覆盖**（代码层面）：超级面板（`SlotMenu` 快捷新建 7 类 + 动作池选择）、CapsLock+数字菜单（`MenuSystem` 按 Id 解析 + `ActionExecutor.Run`）、菜单组（同前）、组合步骤（`CompositeActionDialog` 左栏基础动作组 8 种 + 双击/拖入开预置类型编辑器）。`ActionExecutor` 分发 sendText/sendKeys 两分支，`ActionEditorDialog` 类型下拉 + 字段面板，`ConfigHelper.Summarize` 摘要显示——所有按类型分发/显示处均已覆盖，无遗漏 switch/where。
+
+### 交付后 Bug 修复（用户实测报告，阶段 9–11）
+
+- 🐛 **Bug 1：auto 键入英文被中文输入法吞**。根因：初版 auto 对纯 ASCII 走 `VkKeyScanW` → `SendInput` 虚拟键码，中文输入法模式下字母键被 IME 拦截转候选词，文本不完整。
+- 🐛 **Bug 2：paste 弄乱剪贴板历史**。根因：「不恢复原剪贴板」决策（与 Quicker 一致）导致用户原复制记录被覆盖。
+- ✅ **修复 = auto 改用 `KEYEVENTF_UNICODE` 批量注入**（`InputHelper.SendUnicodeText`）：直接生成 `WM_CHAR`，跳过 `WM_KEYDOWN`→`WM_CHAR` 转换（输入法只拦截这一步），绕过键盘布局与 IME；中英文/emoji 均可发，**不碰剪贴板**——一箭双雕同时修两个 Bug。
+  - 实现：批量构造 `INPUT` 数组分批 `SendInput`（每批 500 INPUT ≈ 250 字符，避免单次数组过大）；`\n`→Enter、`\t`→Tab 走 VK（应用解释更可靠）、`\r\n` 归一为 `\n`；码点放 `wScan`（UTF-16 代理对按码元序发送，应用自行重组）。
+  - 三模式语义定稿：**auto** = Unicode 注入（默认，无副作用）/ **type** = `VkKeyScanW` 键入（真实按键，受 IME 影响，特殊需求用）/ **paste** = 剪贴板粘贴。
+- ✅ **paste 恢复原剪贴板**（修订 §12 需求评审「不恢复」决策，§3.2.2 已更新）：备份原文本 → 写入 → Ctrl+V → `Sleep(150)` 等目标窗口读走 → 恢复。**两道保护**：① 150ms 后仅当剪贴板仍是我们写入的内容才恢复（用户期间新复制则不覆盖）；② 非文本内容（图片/文件）无法经文本接口恢复，此时不恢复（粘贴模式必然覆盖，属固有限制）。
+- ✅ **`NeedPaste` 删除**：auto 不再需要判定阈值（100 字符/非 ASCII/换行的规则废弃）。
+- ✅ **文案同步**：编辑器发送方式下拉三项改述、sendKeys 加文本提示、`CanType`/`SendTextMode.paste` XML 注释。
+- ✅ **冒烟验证**：auto 中英文/emoji/换行直发（中文输入法开启下）✓、type 语义不变、paste 粘贴后剪贴板恢复原内容 ✓、paste 期间用户新复制不被恢复覆盖 ✓。
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

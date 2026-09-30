@@ -12,6 +12,7 @@ internal static class InputHelper
     private const uint KeyEventKeydown = 0x0000;
     private const uint KeyEventKeyup = 0x0002;
     private const uint KeyEventExtended = 0x0001; // 扩展键标志（方向键/Delete/Home 等）
+    private const uint KeyEventUnicode = 0x0004;  // KEYEVENTF_UNICODE：直接发 WM_CHAR，绕过输入法
 
     /// <summary>低级键盘输入结构（与 WH_KEYBOARD_LL 回调里的 KBDLLHOOKSTRUCT 一致）。</summary>
     /// <summary>x64 INPUT 布局（共 40 字节）：type@0，键盘 union@8（vk@8,scan@10,flags@12,time@16,extra@24）。</summary>
@@ -160,7 +161,8 @@ internal static class InputHelper
 
     /// <summary>
     /// 字符能否用键入方式发送（<c>VkKeyScanW</c> 对当前键盘布局可映射）。
-    /// 中文 / emoji / 布局外字符返回 false——键入式只能打可映射字符，须回退剪贴板（§3.2.2）。
+    /// 中文 / emoji / 布局外字符返回 false——键入式只能打可映射字符：
+    /// <c>type</c> 模式遇 false 报错（§12），<c>auto</c> 模式改走 Unicode 注入。
     /// </summary>
     public static bool CanType(char ch) => (short)VkKeyScanW(ch) != -1;
 
@@ -169,6 +171,61 @@ internal static class InputHelper
     {
         foreach (var ch in text) SendChar(ch);
     }
+
+    /// <summary>
+    /// 用 <c>KEYEVENTF_UNICODE</c> 批量注入文本：直接生成 <c>WM_CHAR</c>，
+    /// <b>绕过键盘布局与输入法</b>（输入法只拦截 <c>WM_KEYDOWN</c>→<c>WM_CHAR</c> 的转换，
+    /// 直接发 <c>WM_CHAR</c> 跳过该步骤）——中文/英文/emoji 均可发送，<b>不碰剪贴板</b>。
+    /// <c>\n</c> 转 Enter、<c>\t</c> 转 Tab（VK 按键，应用解释更可靠）。
+    /// 对应 sendText 的 auto 模式（§3.2.2），解决「纯 ASCII 键入受输入法干扰」。
+    /// </summary>
+    /// <remarks>
+    /// 批量构造 INPUT 数组分批发送（每批 500 INPUT ≈ 250 字符），避免单次 SendInput 数组过大。
+    /// </remarks>
+    public static void SendUnicodeText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        // \r\n 归一为 \n
+        var normalized = text.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        var batch = new List<Input>(500);
+        foreach (var ch in normalized)
+        {
+            if (ch == '\n')
+            {
+                batch.Add(NewInput((ushort)Win32.VkReturn, DownFlags((ushort)Win32.VkReturn)));
+                batch.Add(NewInput((ushort)Win32.VkReturn, UpFlags((ushort)Win32.VkReturn)));
+            }
+            else if (ch == '\t')
+            {
+                batch.Add(NewInput((ushort)Win32.VkTab, DownFlags((ushort)Win32.VkTab)));
+                batch.Add(NewInput((ushort)Win32.VkTab, UpFlags((ushort)Win32.VkTab)));
+            }
+            else
+            {
+                batch.Add(NewUnicodeInput(ch, KeyEventKeydown | KeyEventUnicode));
+                batch.Add(NewUnicodeInput(ch, KeyEventKeyup | KeyEventUnicode));
+            }
+
+            if (batch.Count >= 500)
+            {
+                SendInput((uint)batch.Count, batch.ToArray(), Marshal.SizeOf<Input>());
+                batch.Clear();
+            }
+        }
+        if (batch.Count > 0)
+            SendInput((uint)batch.Count, batch.ToArray(), Marshal.SizeOf<Input>());
+    }
+
+    private static Input NewUnicodeInput(char ch, uint flags) => new()
+    {
+        Type = (int)InputKeyboard,
+        Vk = 0,
+        Scan = (ushort)ch,   // Unicode 码点放 wScan（KEYEVENTF_UNICODE 时读此字段）
+        Flags = flags,
+        Time = 0,
+        ExtraInfo = IntPtr.Zero,
+    };
 
     private static void SendOne(ushort vk, bool down)
     {

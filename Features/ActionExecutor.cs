@@ -13,7 +13,7 @@ namespace CapsLockPro.Features;
 /// <item>launchApp → <see cref="Process.Start"/>(target, args, workdir)</item>
 /// <item>openFile / openFolder / openUrl → ShellExecute（默认程序打开）</item>
 /// <item>runCommand → 复用 <see cref="TerminalLauncher"/> 终端路由；direct 走 ShellExecute</item>
-/// <item>sendText → 50ms 焦点延时后按 <see cref="SendTextMode"/> 分发（键入 / 剪贴板粘贴，§3.2.2）</item>
+/// <item>sendText → 50ms 焦点延时后按 <see cref="SendTextMode"/> 分发（auto=Unicode 注入 / type=键入 / paste=剪贴板粘贴，§3.2.2）</item>
 /// <item>sendKeys → 50ms 焦点延时后顺序遍历条目（chord 逐 stroke Combo、stroke 间 15ms；text 复用 sendText auto；sleep 等待，§3.2.1）</item>
 /// <item>internal → <see cref="InternalActionRegistry"/> 分发（dispatch 到 UI 线程执行）</item>
 /// <item>composite → 顺序执行 <see cref="StepDto"/>（延迟 / 失败策略）；步骤内嵌 <see cref="ActionDto"/> 快照，**不支持嵌套**</item>
@@ -202,31 +202,38 @@ internal static class ActionExecutor
     /// 按 <paramref name="mode"/> 发送文本（不含焦点延时、不含 AppendEnter）。
     /// 供 sendText 动作（前置延时后调用）与 sendKeys 的 text 条目（无延时）共用。
     /// </summary>
+    /// <remarks>
+    /// 三模式语义（§12「输入法干扰修复」修订）：
+    /// <list type="bullet">
+    /// <item><b>auto（默认）</b>：<c>KEYEVENTF_UNICODE</c> 批量注入——绕过键盘布局与输入法，
+    /// 中英文/emoji 均可发，<b>不碰剪贴板</b>（修复「纯 ASCII 键入被中文输入法吞」+「剪贴板残留历史」）。</item>
+    /// <item><b>type</b>：<c>VkKeyScanW</c> 键入——真实模拟按键，受输入法影响（用户明确要求时才用）。</item>
+    /// <item><b>paste</b>：剪贴板粘贴 + 150ms 后恢复原剪贴板（仅文本格式可恢复）。</item>
+    /// </list>
+    /// </remarks>
     private static void DispatchText(ActionDto a, string text, SendTextMode mode)
     {
-        if (mode == SendTextMode.auto)
-            mode = NeedPaste(text) ? SendTextMode.paste : SendTextMode.type;
-
         if (mode == SendTextMode.paste)
         {
-            // 不恢复原剪贴板（§12，与 Quicker 一致）
+            // 先备份原剪贴板文本（非文本内容如图片无法经文本接口恢复——粘贴模式必然覆盖）。
+            bool hadOld = NativeClipboard.TryGetText(out var oldText);
             if (!NativeClipboard.SetText(text))
                 throw new InvalidOperationException($"sendText 写剪贴板失败: {a.Name}");
             InputHelper.Combo((ushort)Win32.VkControl, (ushort)'V');
+            // 等目标窗口读走剪贴板再恢复，否则粘到原内容；150ms 对前台应用足够。
+            Thread.Sleep(150);
+            // 仅当剪贴板仍是我们写入的文本（用户未在此期间复制新内容）才恢复，避免覆盖新复制。
+            if (hadOld && NativeClipboard.TryGetText(out var now) && now == text)
+                NativeClipboard.SetText(oldText);
         }
-        else
+        else if (mode == SendTextMode.type)
         {
             TypeText(a, text);
         }
-    }
-
-    /// <summary>auto 判定：超 100 字符 / 含非 ASCII / 含换行 → 剪贴板粘贴（§3.2.2）。</summary>
-    private static bool NeedPaste(string text)
-    {
-        if (text.Length > 100) return true;
-        foreach (var ch in text)
-            if (ch > 0x7F || ch == '\n' || ch == '\r') return true;
-        return false;
+        else // auto（默认）
+        {
+            InputHelper.SendUnicodeText(text);
+        }
     }
 
     /// <summary>

@@ -35,7 +35,7 @@ public enum SendTextMode
     /// <summary>强制模拟键入（非 ASCII 字符无法用 VkKeyScanW 映射，执行时预检报错，不静默粘贴）。</summary>
     type,
 
-    /// <summary>强制剪贴板粘贴（写剪贴板 → Ctrl+V，不恢复原剪贴板）。</summary>
+    /// <summary>强制剪贴板粘贴（写剪贴板 → Ctrl+V → 150ms 后恢复原剪贴板文本，§12 修订）。</summary>
     paste,
 }
 

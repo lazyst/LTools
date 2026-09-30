@@ -163,9 +163,9 @@
                                     <StackPanel Grid.Column="0" Margin="0,0,12,0">
                                         <TextBlock Style="{StaticResource SectionLabel}" Text="发送方式" Margin="0,0,0,4"/>
                                         <ComboBox x:Name="SendModeCombo" MinHeight="30">
-                                            <ComboBoxItem Content="自动（短 ASCII 键入，中文/超长自动粘贴）" Tag="auto"/>
-                                            <ComboBoxItem Content="始终键入（仅当前键盘布局可映射字符）" Tag="type"/>
-                                            <ComboBoxItem Content="始终剪贴板粘贴（覆盖剪贴板）" Tag="paste"/>
+                                            <ComboBoxItem Content="自动（Unicode 注入：不受输入法影响，不碰剪贴板）" Tag="auto"/>
+                                            <ComboBoxItem Content="始终键入（真实按键，受输入法影响；仅布局可映射字符）" Tag="type"/>
+                                            <ComboBoxItem Content="始终剪贴板粘贴（临时覆盖，150ms 后恢复原内容）" Tag="paste"/>
                                         </ComboBox>
                                     </StackPanel>
                                     <CheckBox Grid.Column="1" x:Name="AppendEnterBox" Content="末尾添加回车"

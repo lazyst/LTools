@@ -403,7 +403,7 @@ public partial class ActionEditorDialog : Window
     private void AddText_Click(object sender, RoutedEventArgs e)
     {
         var (ok, val) = InputDialog.Show(this, "添加文本",
-            "输入要发送的文本（短文本；含中文/超长时自动剪贴板粘贴）", "");
+            "输入要发送的文本（自动 Unicode 注入，中英文/emoji 均可，不碰剪贴板）", "");
         if (!ok || val.Length == 0) return;
         _keyItems.Add(new KeyItemView(new KeyItem { Kind = KeyItemKind.text, Text = val }));
         RefreshKeyNumbers();
