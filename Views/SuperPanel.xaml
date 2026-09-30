@@ -31,8 +31,13 @@
                         Click="Close_Click" ToolTip="关闭 (Esc)"/>
             </Grid>
 
-            <!-- 3×3 格子（无间隙，紧贴标题栏/页脚；§5.3 紧凑布局） -->
-            <UniformGrid x:Name="CellsHost" Grid.Row="1" Rows="3" Columns="3" Margin="0"/>
+            <!-- 3×3 格子（无间隙，紧贴标题栏/页脚；§5.3 紧凑布局）
+                 外层 Grid ClipToBounds：翻页动画（§5.3）两页同时横滑时裁到本行，
+                 避免滑出的格子盖住标题栏 / 页脚。PageFxHost 放「旧页截图」，在格子之下。 -->
+            <Grid Grid.Row="1" ClipToBounds="True">
+                <Grid x:Name="PageFxHost" IsHitTestVisible="False"/>
+                <UniformGrid x:Name="CellsHost" Rows="3" Columns="3" Margin="0"/>
+            </Grid>
 
             <!-- 页脚：提示 + 翻页 + 页数指示 -->
             <Grid Grid.Row="2" Height="38" Background="{StaticResource SurfaceAltBrush}">

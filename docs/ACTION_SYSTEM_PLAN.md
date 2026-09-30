@@ -109,6 +109,17 @@ Step {
 - 每页 **3×3 = 9 格**，**支持多页**。
 - **滚轮翻页**（对齐 Quicker）；**1~9 键**选中本页对应格；Esc/点外部关闭。
 - **常驻页数指示**：面板上始终显示「当前页/总页数」（如 `1/3`）。
+- **翻页过渡动画**：旧页截图与新页**同速同曲线**横滑（`QuadraticEase.EaseOut`，200ms），
+  两者几何上严格相邻（同一条竖缝扫过，**无重叠**），观感为整块 3×3 向左/右推出。
+  `delta>0`（下一页）= 新页自右滑入、旧页向左滑出，`delta<0` 反之，方向与滚轮一致。
+  - 实现：格子区外包一层 `ClipToBounds=True` 的 Grid（含 `PageFxHost` 旧页截图层，**位于 CellsHost 之下**），
+    `RenderTargetBitmap.Render(CellsHost)` 截旧页（按 DPI 换算像素），旧/新页各挂 `TranslateTransform`。
+  - **动画只挂在 `GoPage`**（滚轮 / `‹`/`›` 拖动悬停翻页同走此路径）；`Rebuild`（拖动交换 / CRUD）**不播动画**，
+    且 `Rebuild` 内先 `CancelPageFx()` 保证无残留。
+  - **拖动中翻页不播动画**（`_dragging` / `_dragSrcPage != null`）：幽灵由 `UpdateGhost` 跟随光标，
+    两页横滑会与幽灵叠加；此时退化为原「瞬时切换」。
+  - **打断安全**：`_pageAnimToken` 令牌——新一轮 `SnapshotCells()` 先 `CancelPageFx()`（重置回静止再截图），
+    作废上一轮 `Completed` 回调；截图异常/尺寸未就绪 → 返回 null → **退化为无动画翻页**，绝不影响翻页本身。
 
 ### 5.4 格子交互 ✅（按推荐做法）
 
@@ -486,6 +497,11 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **添加动作菜单统一（共享 `Features/SlotMenu.BuildAddMenu`）**：面板空格菜单与设置页「超级面板」格子菜单（左键短击弹出 + 右键 ContextMenu）**共用同一结构**——新建动作…/新建组合动作…/快捷新建 5 类/**从动作池选择…**/清除（仅非空）。**附带补强**：面板空格原本**只能新建、不能复用已有动作**（唯一途径是去设置页），现两处都能从池选。菜单项 Click 统一 `owner.Dispatcher.InvokeAsync` 推迟（避免 ShowDialog 与菜单关闭冲突）。
 - ✅ 设置页槽位左键短击由「直接开 `ActionPoolPicker`」改为**弹共享菜单**（与面板空格左键一致）；设置页新增 `NewActionAt(page,slot,type)`（新建后 `ConfigStore.AddAction` + 落槽 + `PopulateActions`/`BuildSuperPagesUI` + `MarkSuperDirty`）。设置页无低级钩子点外关窗，故菜单无需 `TrackInteract`。
 - ✅ **导航页记忆**：`AppConfig.LastNavPage`（默认 `"actions"`）——`ConfigHelper` 打开时遍历 `NavList` 按 `Tag` 恢复（未匹配回退「动作管理」）；`Nav_Changed` 末尾 `ConfigIO.Modify` 落盘。切换页前仍先 flush 防抖，故写盘读到的是最新状态。
+
+### 翻页过渡动画（§5.3）
+- ✅ **风格 = 整块横滑（截图法）**：旧页 `RenderTargetBitmap` 截图滑出 + 新页滑入，**同 Duration 同 Easing** 保证竖缝严格相邻无重叠。备选的「仅新页滑入」（不截图）被淘汰——旧页瞬时消失与新页滑入会有跳变。
+- ✅ **拖动中不播动画**（跨页悬停翻页退化为瞬时切换），避免与拖动幽灵叠加；`Rebuild`（交换/CRUD）也不播并顺带取消在跑动画。
+- ✅ **令牌打断 + 失败降级**：`_pageAnimToken` 作废被打断轮次的 `Completed`；截图 `catch` 返回 null → 无动画翻页。动画时长 200ms 定为**快速滑动**（>300ms 会拖慢连续滚轮的响应感），沿用面板开场淡入的 120ms 量级风格。
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

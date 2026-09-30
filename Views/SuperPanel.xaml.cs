@@ -6,6 +6,8 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using CapsLockPro.Features;
 
@@ -36,6 +38,7 @@ public partial class SuperPanelWindow : Window
     private int _hoverSlot = -1;                // 拖动中悬停的目标格（-1=无）
     private DispatcherTimer? _pageHoverTimer;   // ‹/› 悬停翻页计时
     private int _pageHoverDir;                  // 悬停方向：-1=‹，+1=›
+    private int _pageAnimToken;                 // 翻页动画令牌（新一轮打断上一轮时自增，作废其完成回调）
 
     internal SuperPanelWindow(List<List<string?>> pages, int invokeX, int invokeY)
     {
@@ -121,7 +124,8 @@ public partial class SuperPanelWindow : Window
 
     private void Rebuild()
     {
-        _hoverSlot = -1;   // 子元素已清空，悬停引用失效
+        CancelPageFx();      // 内容变更（拖动交换 / CRUD）后确保无翻页动画残留
+        _hoverSlot = -1;     // 子元素已清空，悬停引用失效
         CellsHost.Children.Clear();
         for (int slot = 0; slot < 9; slot++)
             CellsHost.Children.Add(BuildCell(slot));
@@ -216,13 +220,86 @@ public partial class SuperPanelWindow : Window
     private void Prev_Click(object sender, RoutedEventArgs e) => GoPage(-1);
     private void Next_Click(object sender, RoutedEventArgs e) => GoPage(1);
 
+    /// <summary>翻页（‹/› 按钮、滚轮、拖到 ‹/› 悬停）。带横滑过渡动画（§5.3）。</summary>
     private void GoPage(int delta)
     {
         int n = _pageIdx + delta;
         if (n < 0 || n >= _pages.Count) return;
         _pageIdx = n;
+
+        // 拖动中（跨页悬停翻页）只做瞬时切换：幽灵由 UpdateGhost 跟随光标，
+        // 两页横滑会与幽灵叠加；刚创建 / 未加载时也无法截图。
+        bool animate = !_dragging && _dragSrcPage == null && IsLoaded;
+        var old = animate ? SnapshotCells() : null;   // 内部先打断上一轮，截到的是静止状态
+        if (!animate) CancelPageFx();
+
         Rebuild();
         UpdateHeader();
+        if (old != null) AnimatePageTurn(old, delta);
+    }
+
+    /// <summary>截当前格子区为位图（旧页）。</summary>
+    private Image? SnapshotCells()
+    {
+        CancelPageFx();                      // 打断上一轮动画 → 上一新页已静止，截图即完整旧页
+        double w = CellsHost.ActualWidth, h = CellsHost.ActualHeight;
+        if (w < 1 || h < 1) return null;
+        try
+        {
+            var dpi = VisualTreeHelper.GetDpi(this);
+            var bmp = new RenderTargetBitmap(
+                (int)Math.Ceiling(w * dpi.DpiScaleX), (int)Math.Ceiling(h * dpi.DpiScaleY),
+                96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
+            bmp.Render(CellsHost);
+            bmp.Freeze();
+            return new Image { Source = bmp, Stretch = Stretch.Fill };   // 由 Grid 拉伸到格子区大小
+        }
+        catch { return null; }   // 截图失败 → 退化为无动画翻页，绝不影响翻页本身
+    }
+
+    /// <summary>
+    /// 翻页过渡：旧页（截图）与新页**同速同曲线**横滑，两者严格相邻（同一条竖缝扫过），无重叠。
+    /// delta&gt;0 = 新页自右滑入、旧页向左滑出；delta&lt;0 反之。
+    /// </summary>
+    private void AnimatePageTurn(Image old, int dir)
+    {
+        int token = ++_pageAnimToken;
+        double w = CellsHost.ActualWidth;
+        if (w < 1) return;
+
+        var dur = TimeSpan.FromMilliseconds(200);
+        var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+
+        PageFxHost.Children.Clear();
+        PageFxHost.Children.Add(old);        // 旧页截图在下层，与新页无缝衔接
+
+        var oldT = new TranslateTransform();
+        old.RenderTransform = oldT;
+        var oldAnim = new DoubleAnimation(0, -dir * w, dur) { EasingFunction = ease };
+        oldT.BeginAnimation(TranslateTransform.XProperty, oldAnim);
+
+        var newT = new TranslateTransform(dir * w, 0);
+        CellsHost.RenderTransform = newT;
+        var newAnim = new DoubleAnimation(dir * w, 0, dur) { EasingFunction = ease };
+        newAnim.Completed += (_, _) => EndPageFx(token);   // 被打断时 token 不匹配，交由打断方收尾
+        newT.BeginAnimation(TranslateTransform.XProperty, newAnim);
+    }
+
+    /// <summary>翻页动画收尾：清截图、还原变换，回到静态。</summary>
+    private void EndPageFx(int token)
+    {
+        if (token != _pageAnimToken) return;
+        CancelPageFx();
+    }
+
+    /// <summary>终止翻页动画并还原静止状态（新一轮翻页开始 / 收尾 / 窗口销毁时调用）。</summary>
+    private void CancelPageFx()
+    {
+        _pageAnimToken++;                    // 作废在跑动画的完成回调
+        PageFxHost.Children.Clear();
+        if (CellsHost.RenderTransform is TranslateTransform t)
+            t.BeginAnimation(TranslateTransform.XProperty, null);
+        CellsHost.RenderTransform = null;
     }
 
     private void Window_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
