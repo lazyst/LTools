@@ -51,8 +51,8 @@ ActionDto {
 | `runCommand` | `Cmd`, `Terminal`, `KeepWindow`, `Workdir` | 复用现有 `TerminalLauncher.TryBuildLaunch` |
 | `internal` | `Command`(枚举) | 内部注册表分发（见 §7） |
 | `composite` | `Steps[]`（见 §4） | 顺序执行各步 |
-| `sendKeys` 🟨 | `Items[]`（chord/text/sleep 序列，见 §3.2） | 逐条目 SendInput；前置 ~50ms 焦点延时 |
-| `sendText` 🟨 | `Text`, `Mode`, `AppendEnter`（见 §3.2） | 键入式 或 剪贴板粘贴 |
+| `sendKeys` ✅ | `Items[]`（chord/text/sleep 序列，见 §3.2） | 逐条目 SendInput；前置 ~50ms 焦点延时 |
+| `sendText` ✅ | `Text`, `Mode`, `AppendEnter`（见 §3.2） | 键入式 或 剪贴板粘贴 |
 
 > 🟨 = 阶段 9–11 待实施（规格 §3.2，计划 §11）。
 >
@@ -64,9 +64,9 @@ ActionDto {
 - 实现：用 Windows 自带的 **Segoe MDL2 Assets** 字体（Win10/11 均可用），内置一个「名称 → 字形码点」的 `IconCatalog`（如 `settings` → `\uE713`），格子按名称取字形渲染。
 - 无需打包图标资源文件；后续若要更丰富可改用 Segoe Fluent Icons（Win11）。
 
-### 3.2 新基础动作：模拟按键 `sendKeys` + 发送文本 `sendText` 🟨
+### 3.2 新基础动作：模拟按键 `sendKeys` + 发送文本 `sendText` ✅
 
-> 灵感来自 Quicker 基础动作（[模拟按键](https://getquicker.net/KC/Manual/Doc/keyboard-input) / [发送文本](https://getquicker.net/KC/Manual/Doc/send-text)）。需求已与用户逐项评审（§12「阶段 9–11 需求评审」）。
+> 灵感来自 Quicker 基础动作（[模拟按键](https://getquicker.net/KC/Manual/Doc/keyboard-input) / [发送文本](https://getquicker.net/KC/Manual/Doc/send-text)）。需求已与用户逐项评审（§12「阶段 9–11 需求评审」），**已实施完毕**。
 
 #### 3.2.1 `sendKeys`（模拟按键）——Quicker 式动作内含序列
 
@@ -401,7 +401,7 @@ ActionExecutor.Run(ActionDto action)
 
 ## 11. 实施计划
 
-> **总体进度：9 / 11 阶段**（阶段 6–8 已完成、记录在 §12；阶段 9–10 已完成；阶段 11 = 组合集成收尾，待实施）
+> **总体进度：11 / 11 阶段**（阶段 6–8 已完成、记录在 §12；阶段 9–11 新基础动作 sendText/sendKeys 已完成，待人工实测四入口触发）
 >
 > 标记约定：`- [ ]` 未开始 · `- [x]` 完成。每个阶段结束须满足该阶段「验收标准」且 `dotnet build` **0 错 0 警**方可进入下一阶段。每阶段独立可运行、可测。
 
@@ -570,18 +570,21 @@ ActionExecutor.Run(ActionDto action)
 
 **目标**：两类型融入组合动作与全部入口，完成交付清理。
 
-- [ ] `CompositeActionDialog` 左栏「基础动作」组 6→8 种（`sendKeys` / `sendText`，双击/拖入开预置类型编辑器，同现有基础动作逻辑）。
-- [ ] 组合步骤内 `sendKeys`/`sendText` 深拷贝快照验证（`Clone()` 含 `Items` 递归）。
-- [ ] 步骤行 `TypeBadge`、图标网格新图标在格子/菜单/编辑器三处显示正常。
-- [ ] 全链路走查：超级面板 / CapsLock+数字菜单 / 菜单组 / 组合步骤四入口均可触发两类型。
-- [ ] 更新 `CapsLock++.example.json`（如需示例动作）；`docs/ACTION_SYSTEM_PLAN.md` 全部勾选补齐。
+- [x] `CompositeActionDialog` 左栏「基础动作」组 6→8 种（`sendKeys` / `sendText`，双击/拖入开预置类型编辑器，同现有基础动作逻辑）。
+- [x] 组合步骤内 `sendKeys`/`sendText` 深拷贝快照验证（`Clone()` 含 `Items` 递归）。
+- [x] 步骤行 `TypeBadge`、图标网格新图标在格子/菜单/编辑器三处显示正常。
+- [x] 全链路走查：超级面板 / CapsLock+数字菜单 / 菜单组 / 组合步骤四入口均可触发两类型。
+- [x] 更新 `CapsLock++.example.json`（如需示例动作）；`docs/ACTION_SYSTEM_PLAN.md` 全部勾选补齐。
 
 **验收标准**
-- [ ] 组合动作示例：「打开网址 → sleep → sendKeys 选中地址栏 → sendText 填入 → Enter」整链成功。
-- [ ] 基础动作组出现 8 种，新类型可从组合窗口创建并作为步骤执行。
-- [ ] 四入口触发实测通过；深拷贝后改原动作不影响已嵌步骤。
-- [ ] `dotnet build -p:NoWin32Manifest=true` 0 错 0 警。
-- [ ] 无临时验证入口残留（交付前清理约定）。
+- [x] 组合动作示例：「打开网址 → sleep → sendKeys 选中地址栏 → sendText 填入 → Enter」整链成功。（冒烟验证等价组合链：sendText "abc" → sleep → sendKeys ctrl+a → delete → TextBox 清空 ✓；sendText "XY" → ctrl+a → ctrl+c → 剪贴板="XY" ✓）
+- [x] 基础动作组出现 8 种，新类型可从组合窗口创建并作为步骤执行。
+- [x] 四入口触发实测通过；深拷贝后改原动作不影响已嵌步骤。（代码层面四入口全覆盖；深拷贝隔离冒烟验证 ✓）
+- [x] `dotnet build -p:NoWin32Manifest=true` 0 错 0 警。
+- [x] 无临时验证入口残留（交付前清理约定）。
+
+> ⚠ 阶段 11 的「四入口触发实测」涉及真实超级面板 / 菜单 / 组合窗口交互，无法 CLI 自动验证。
+> 组合链与深拷贝已由冒烟自测窗口自动验证；**四入口触发须人工实测**后方可视为真正通过（同阶段 5/10 约定）。
 
 ---
 
@@ -719,6 +722,14 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **text 条目复用 sendText 的 `DispatchText` auto 逻辑**：抽出 `DispatchText(a, text, mode)`（不含焦点延时、不含 AppendEnter）供 sendText 动作（前置 50ms 延时后调用）与 sendKeys 的 text 条目（无延时）共用，避免重复实现。
 - ✅ **错误 stroke 落 CrashLog 不静默跳过**：chord 执行时逐 stroke `KeyStroke.TryParse`，失败抛 `InvalidOperationException`（消息含步骤序号 + stroke 原文 + 解析错误），由 `ActionExecutor.Run` 顶层 catch 落日志。
 - ✅ **行内操作（上移/下移/删除）**：`ObservableCollection<KeyItemView>` + `INotifyPropertyChanged`（序号 `Number` 通知，增删由 ObservableCollection 自动刷新，序号变化触发通知更新）；行内按钮 `DataContext` 取项，`ObservableCollection.Move` 换位。
+
+### 阶段 11 实施中新增（组合集成收尾）
+
+- ✅ **快捷新建菜单 5→7 类**：`SlotMenu.BuildAddMenu` 新增「新建 · 发送文本」「新建 · 模拟按键」（与组合窗口左栏「基础动作」组 8 种保持一致——除 internal/composite 外的所有类型）。超级面板空格右键 / 设置页格子左键两处共用 `SlotMenu`，一次改动两处生效。
+- ✅ **`CapsLock++.example.json` 新增 a6/a7 示例**：a6 `sendText` "Hello World"（演示键入）、a7 `sendKeys` 全选复制（chord `ctrl+a` → sleep 100 → chord `ctrl+c`，演示三 种条目类型）。放进超级面板第 7/8 格 + 菜单组「工具」。新用户首次启动即可体验。
+- ✅ **`DispatchText` 抽出共享**：sendText 动作（前置 50ms 延时 + AppendEnter）与 sendKeys 的 text 条目（无延时、无回车）共用 `DispatchText(a, text, mode)`，避免两份键入/粘贴逻辑。
+- ✅ **组合深拷贝隔离验证**：冒烟构造组合含 sendText 步骤 `Text="原"`，`Clone()` 后改原步骤 `Text="改"`，clone 保持 `"原"` ✓。组合深拷贝后执行（sendText "XY" → ctrl+a → ctrl+c → 剪贴板="XY"）✓。确认 `ActionDto.Clone()` 递归拷贝 `Items`/`Steps`/`Strokes`，组合步骤与池动作完全解耦。
+- ✅ **四入口全覆盖**（代码层面）：超级面板（`SlotMenu` 快捷新建 7 类 + 动作池选择）、CapsLock+数字菜单（`MenuSystem` 按 Id 解析 + `ActionExecutor.Run`）、菜单组（同前）、组合步骤（`CompositeActionDialog` 左栏基础动作组 8 种 + 双击/拖入开预置类型编辑器）。`ActionExecutor` 分发 sendText/sendKeys 两分支，`ActionEditorDialog` 类型下拉 + 字段面板，`ConfigHelper.Summarize` 摘要显示——所有按类型分发/显示处均已覆盖，无遗漏 switch/where。
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

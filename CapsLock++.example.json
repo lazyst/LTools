@@ -38,6 +38,24 @@
       "Icon": "help"
     },
     {
+      "Id": "a6",
+      "Name": "输入问候",
+      "Type": "sendText",
+      "Text": "Hello World",
+      "Icon": "send"
+    },
+    {
+      "Id": "a7",
+      "Name": "全选复制",
+      "Type": "sendKeys",
+      "Icon": "keyboard",
+      "Items": [
+        { "Kind": "chord", "Strokes": [ "ctrl+a" ] },
+        { "Kind": "sleep", "Ms": 100 },
+        { "Kind": "chord", "Strokes": [ "ctrl+c" ] }
+      ]
+    },
+    {
       "Id": "c1",
       "Name": "查IP并打开浏览器",
       "Type": "composite",
@@ -80,8 +98,8 @@
         "a4",
         "a5",
         "c1",
-        null,
-        null,
+        "a6",
+        "a7",
         null
       ]
     ]
@@ -102,7 +120,9 @@
       "Items": [
         "a3",
         "a4",
-        "a5"
+        "a5",
+        "a6",
+        "a7"
       ]
     },
     null,

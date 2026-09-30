@@ -61,7 +61,7 @@ public partial class CompositeActionDialog : Window
         string q = (SearchBox.Text ?? "").Trim();
         SourceList.Children.Clear();
 
-        // 基础动作（6 种动作类型）→ 双击/拖入开预置类型的编辑器（§12）
+        // 基础动作（8 种动作类型）→ 双击/拖入开预置类型的编辑器（§12）
         var basicDefs = new (ActionType Type, string Icon, string Label)[]
         {
             (ActionType.launchApp, "app", "启动软件"),
@@ -69,6 +69,8 @@ public partial class CompositeActionDialog : Window
             (ActionType.openFolder, "folder", "打开文件夹"),
             (ActionType.openUrl, "globe", "打开网址"),
             (ActionType.runCommand, "terminal", "运行命令"),
+            (ActionType.sendText, "send", "发送文本"),
+            (ActionType.sendKeys, "keyboard", "模拟按键"),
             (ActionType.@internal, "settings", "内部动作"),
         };
         var basics = basicDefs
