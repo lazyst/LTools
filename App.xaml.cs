@@ -71,10 +71,6 @@ public partial class App : Application
         // —— 内部动作注册（动作系统 §7）——
         InternalActionRegistry.RegisterDefaults();
 
-        // —— 临时冒烟测试入口（--smoke=action，交付前移除）——
-        if (e.Args.Contains("--smoke=action"))
-            ActionExecutor.SmokeTest();
-
         // —— 启动提示：鼠标旁显示“CapsLockPro 已启动”（复用 MouseTip，1.8s 后自动隐藏）——
         MouseTip.Show("CapsLockPro 已启动");
     }

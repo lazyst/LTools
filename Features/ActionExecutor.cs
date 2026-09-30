@@ -14,7 +14,7 @@ namespace CapsLockPro.Features;
 /// <item>openFile / openFolder / openUrl → ShellExecute（默认程序打开）</item>
 /// <item>runCommand → 复用 <see cref="TerminalLauncher"/> 终端路由；direct 走 ShellExecute</item>
 /// <item>internal → <see cref="InternalActionRegistry"/> 分发（dispatch 到 UI 线程执行）</item>
-/// <item>composite → 顺序执行 <see cref="StepDto"/>（延迟 / 失败策略 / 防环）</item>
+/// <item>composite → 顺序执行 <see cref="StepDto"/>（延迟 / 失败策略）；步骤内嵌 <see cref="ActionDto"/> 快照，**不支持嵌套**</item>
 /// </list>
 /// </summary>
 /// <remarks>
@@ -37,7 +37,7 @@ internal static class ActionExecutor
     {
         Task.Run(() =>
         {
-            try { Execute(action, cursorX, cursorY, new HashSet<string>()); }
+            try { Execute(action, cursorX, cursorY); }
             catch (Exception ex) { CrashLog.Write($"ActionExecutor[{action.Name}]", ex); }
         });
     }
@@ -45,7 +45,7 @@ internal static class ActionExecutor
     // —— 同步执行（已位于后台线程，或被 composite 步骤调用）——
     // 失败一律上抛（不在此吞掉），由 Run 顶层 / composite 步骤各自的 catch 记录并按 OnFail 决策。
 
-    private static void Execute(ActionDto action, int cursorX, int cursorY, HashSet<string> compositeStack)
+    private static void Execute(ActionDto action, int cursorX, int cursorY)
     {
         switch (action.Type)
         {
@@ -64,7 +64,7 @@ internal static class ActionExecutor
                 DispatchInternal(action, cursorX, cursorY);
                 break;
             case ActionType.composite:
-                RunComposite(action, cursorX, cursorY, compositeStack);
+                RunComposite(action, cursorX, cursorY);
                 break;
             default:
                 throw new InvalidOperationException($"未知动作类型: {action.Type}");
@@ -197,19 +197,10 @@ internal static class ActionExecutor
         disp.Invoke(new Action(() => handler(x, y)));
     }
 
-    // —— composite（顺序执行步骤，防环）——
-    private static void RunComposite(ActionDto a, int cursorX, int cursorY, HashSet<string> compositeStack)
+    // —— composite（顺序执行步骤；步骤内嵌快照，不支持嵌套）——
+    private static void RunComposite(ActionDto a, int cursorX, int cursorY)
     {
         if (a.Steps == null || a.Steps.Count == 0) return;
-
-        // 防环：正在执行的 composite Id 栈，遇重复立即中止
-        if (compositeStack.Contains(a.Id))
-        {
-            CrashLog.Write("ActionExecutor",
-                new InvalidOperationException($"组合动作循环引用，已中止: {a.Id} ({a.Name})"));
-            return;
-        }
-        compositeStack.Add(a.Id);
 
         for (int i = 0; i < a.Steps.Count; i++)
         {
@@ -217,18 +208,19 @@ internal static class ActionExecutor
             if (step.DelayMs > 0)
                 Thread.Sleep(step.DelayMs);
 
-            var stepAction = ActionRegistry.FindById(step.ActionId);
-            if (stepAction == null)
+            var stepAction = step.Action;
+            // 嵌套守卫：编辑器已禁止组合步骤内嵌组合，此处对畸形配置兜底（跳过 + 记日志，不崩）。
+            if (stepAction == null || stepAction.Type == ActionType.composite)
             {
                 CrashLog.Write($"ActionExecutor[{a.Name}].Step{i + 1}",
-                    new InvalidOperationException($"步骤引用的动作不存在: {step.ActionId}"));
+                    new InvalidOperationException("组合动作不支持嵌套组合步骤"));
                 if (OnFailOf(step, a) == OnFailStrategy.abort) break;
                 continue;
             }
 
             try
             {
-                Execute(stepAction, cursorX, cursorY, compositeStack);
+                Execute(stepAction, cursorX, cursorY);
             }
             catch (Exception ex)
             {
@@ -236,75 +228,9 @@ internal static class ActionExecutor
                 if (OnFailOf(step, a) == OnFailStrategy.abort) break;
             }
         }
-
-        compositeStack.Remove(a.Id);
     }
 
     /// <summary>解析步骤失败策略：步骤显式值 &gt; 组合级默认 &gt; continue（§4）。</summary>
     private static OnFailStrategy OnFailOf(StepDto step, ActionDto composite) =>
         step.OnFail ?? composite.CompositeOnFail ?? OnFailStrategy.@continue;
-
-    // —— 临时冒烟测试（--smoke=action，交付前移除）——
-
-    /// <summary>
-    /// 临时验证入口：覆盖 runCommand / openUrl / internal / composite 四类 + 防环测试。
-    /// 通过 <c>--smoke=action</c> 启动参数触发。交付前移除。
-    /// 依赖 <see cref="InternalActionRegistry.RegisterDefaults"/>（App.OnStartup 已调用）。
-    /// </summary>
-    internal static void SmokeTest()
-    {
-        var url = new ActionDto
-        {
-            Id = "s_url", Name = "冒烟:打开网址", Type = ActionType.openUrl,
-            Url = "https://example.com", Icon = "globe",
-        };
-        var cmd = new ActionDto
-        {
-            Id = "s_cmd", Name = "冒烟:运行命令", Type = ActionType.runCommand,
-            Cmd = "echo CapsLock-Pro smoke test OK", Terminal = "pwsh7", KeepWindow = true,
-            Icon = "terminal",
-        };
-        var note = new ActionDto
-        {
-            Id = "s_note", Name = "冒烟:速记开关", Type = ActionType.@internal,
-            Command = "quickNote.toggle", Icon = "note",
-        };
-        var combo = new ActionDto
-        {
-            Id = "s_combo", Name = "冒烟:组合(网址+速记)", Type = ActionType.composite,
-            Icon = "composite",
-            Steps = new()
-            {
-                new() { ActionId = "s_url", DelayMs = 0, OnFail = OnFailStrategy.abort },
-                new() { ActionId = "s_note", DelayMs = 800, OnFail = OnFailStrategy.@continue },
-            },
-        };
-        var selfRef = new ActionDto
-        {
-            Id = "s_cycle", Name = "冒烟:自环检测", Type = ActionType.composite,
-            Steps = new() { new() { ActionId = "s_cycle", DelayMs = 0, OnFail = OnFailStrategy.@continue } },
-        };
-
-        ActionRegistry.Clear();
-        ActionRegistry.RegisterAll(new[] { url, cmd, note, combo, selfRef });
-
-        TrayService.Notify("冒烟测试开始：依次执行 openUrl / runCommand / internal / composite / 防环");
-
-        // 后台顺序执行（不阻塞启动）
-        Task.Run(() =>
-        {
-            Thread.Sleep(1500);
-            Run(url);                          // openUrl → 浏览器
-            Thread.Sleep(1500);
-            Run(cmd);                          // runCommand → pwsh 窗口
-            Thread.Sleep(1500);
-            Run(note);                         // internal → 速记窗口开关
-            Thread.Sleep(2000);
-            Run(combo);                        // composite → 网址 + 速记（延迟 800ms）
-            Thread.Sleep(1500);
-            Run(selfRef);                      // 防环 → 应中止并写 CrashLog
-            Thread.Sleep(500);
-            TrayService.Notify("冒烟测试完成（查看 crash.log 确认防环日志）");
-        });
-    }
 }

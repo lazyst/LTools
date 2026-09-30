@@ -64,12 +64,12 @@ ActionDto {
 
 ## 4. 组合动作 ✅
 
-`composite` = 有序步骤列表，每步引用一个动作（可为另一个组合）。
+`composite` = 有序步骤列表，每步**内嵌一个动作快照**（深拷贝，与动作池解耦）。
 
 ```
 Step {
-  ActionId : string       // 引用动作 Id（可引用另一个 composite）
-  DelayMs  : int = 0      // 执行本步前等待的毫秒数
+  Action   : ActionDto       // 内嵌动作快照（禁止为 composite，组合不支持嵌套）
+  DelayMs  : int = 0         // 执行本步前等待的毫秒数
   OnFail   : "continue" | "abort"   // 本步失败后的策略
 }
 ```
@@ -78,7 +78,8 @@ Step {
 - ✅ 步骤间**可设延迟**（`DelayMs`，执行该步前等待）。
 - ✅ 失败**记录日志**（写入 `CrashLog`，含动作名/步骤序号/异常），用户可在日志中看到哪一步失败。
 - ✅ **用户可选择**失败后策略：继续 or 中止——`OnFail` 为**每步**可配（默认 `continue`），组合可有整体默认。
-- ✅ 步骤**可引用另一个组合动作**，执行时递归展开；**防环**：执行链路维护「正在执行的 composite Id 栈」，遇重复 Id 立即中止并记日志。
+- ✅ **动作解耦（§12）**：步骤**内嵌动作快照**（`Step.Action`），不再以 `ActionId` 引用动作池。复用已有动作 = 复制那一刻的快照；编辑/删除池动作**不影响**已复制的步骤，删池动作**不破坏**组合。每步是私有副本，编辑只影响本步。
+- ⛔ **禁止嵌套**：步骤内嵌动作**不得为 composite**（编辑器左栏排除组合动作、＋新建步骤不含组合类型；执行器对畸形配置跳过 + 记日志）。删除原「防环」整套（`compositeStack` 三层传递），无嵌套即无环。
 
 ❓ 待确认：组合动作执行是否在后台线程（避免阻塞钩子 >300ms）？——建议是，与现有动作执行一致。
 
@@ -249,7 +250,7 @@ ActionExecutor.Run(ActionDto action)
     → launchApp/openFile/openFolder/openUrl: 走 TerminalLauncher(direct) 或直接 Process.Start/ShellExecute
     → runCommand: TerminalLauncher.TryBuildLaunch(...)
     → internal: InternalActionRegistry[command].Invoke()
-    → composite: 顺序执行 Steps（Delay、OnFail、防环）
+    → composite: 顺序执行 Steps（Delay、OnFail；步骤内嵌快照，禁嵌套）
 ```
 
 - 所有执行 **spawn 到后台线程**（钩子回调不得阻塞 >300ms）。
@@ -304,11 +305,16 @@ ActionExecutor.Run(ActionDto action)
 
 ### 10.1 编辑器组件
 
-两处共用同一套编辑组件（`Views/`）：
+**两个独立窗口**（`Views/`），由统一分发入口 `ActionEditor.Show(owner, title, dto)` 按 `dto.Type` 选择：
 
-- **ActionEditorDialog**：类型选择（下拉）+ 类型特定字段 + 名称 + **图标选择器（内置图标网格，见 §3.1）**。所有动作类型共用一个对话框，按 Type 切换可见字段。
-- **CompositeEditorDialog**：步骤列表（引用动作 Id + DelayMs + OnFail）+ 拖拽排序 + 增删。独立于 ActionEditor。
-- 设置面板与超级面板右键菜单都调这两个对话框，不各自实现。
+- **ActionEditorDialog**（普通动作）：类型下拉（6 类，含「组合动作 ▸」跳转项）+ 类型特定字段 + 名称 + 图标选择器。编辑组合步骤时传 `allowComposite:false`（不含跳转项，从源头禁嵌套）。
+- **CompositeActionDialog**（组合动作）：三栏布局——
+  - **左**「动作来源」：内部动作（6 内置命令，内联 internal 快照）+ 动作池（**排除组合动作**，深拷贝快照）+ 「＋新建步骤…」+ 搜索框。**双击追加 / 拖入中间区插入**。
+  - **中**「步骤编排」：步骤列表（类型徽标 + 名称 + 延迟 + 失败策略 + 把手拖拽排序 + 删除）；**双击就地编辑**（只改本步快照）。
+  - **右**「组合属性」：名称 + 图标 + 「任一步失败即中止」。
+- **两窗口可互相跳转（不带数据）**：普通编辑器选「组合动作 ▸」→ 关闭并以新草稿开组合窗口；组合窗口点「改为普通动作…」→ 反向。由 `ActionEditor.Show` 的 while 循环承载（跳转标志置位即换一种编辑器再开一轮，结果透传给最初调用方）。
+- 所有调用点（设置页 / 超级面板 / 动作池选择器）一律走 `ActionEditor.Show`，无需自行判断类型。
+- 已废弃 `CompositeEditorDialog`（能力并入 `CompositeActionDialog`）。
 
 ### 10.2 设置面板重构
 
@@ -341,13 +347,13 @@ ActionExecutor.Run(ActionDto action)
 - [x] 定义动作类型模型（`Features/ActionTypes.cs`）：`ActionType` 枚举、`ActionDto`、`StepDto`，字段见 §2/§3/§4。
 - [x] 实现 `IconCatalog`：精选 ~40 个 Segoe MDL2 Assets 字形，名称→码点映射（§3.1）。
 - [x] 实现 `InternalActionRegistry`：注册 6 个内部命令（§7）；`windowPin` 等需坐标的命令接受坐标参数。
-- [x] 实现 `ActionExecutor.Run(ActionDto)`：按 Type 分发（§8）；复用 `TerminalLauncher`；composite 顺序执行（Delay / OnFail / 防环）。
+- [x] 实现 `ActionExecutor.Run(ActionDto)`：按 Type 分发（§8）；复用 `TerminalLauncher`；composite 顺序执行（Delay / OnFail；步骤内嵌快照，禁嵌套）。
 - [x] 执行 spawn 后台线程；失败统一 `CrashLog.Write`（含动作名 / 步骤序号 / 异常）。
 - [x] 临时验证入口（`--smoke=action` 启动参数或临时热键），覆盖 runCommand / openUrl / internal / composite 四类，交付前移除。
 
 **验收标准**
 - [x] 四类动作均能执行：runCommand（终端路由）、openUrl（默认浏览器）、internal（如速记 toggle）、composite（两步 + 延迟）。
-- [x] 组合防环：A→B→A 时中止并写 CrashLog，不无限递归。
+- [x] ~~组合防环：A→B→A 时中止并写 CrashLog，不无限递归。~~ → 已禁止嵌套，防环整套删除（§4/§12）。
 - [x] 失败步骤写入 CrashLog（动作名 / 序号 / 异常）。
 - [x] 执行均在后台线程，钩子回调路径不阻塞（>300ms 约束）。
 - [x] `dotnet build` 0 错 0 警。
@@ -380,7 +386,7 @@ ActionExecutor.Run(ActionDto action)
 - [x] 设置窗口（`Views/ConfigHelper.xaml`）改为左侧导航 + 右侧主页面（§10.2）；迁移现有终端路径页（速记路径页经讨论确认跳过：v2.1.0 并无此页，目录固定为配置目录/速记/）。
 - [x] 新增「动作管理」页：全局动作清单，增 / 编辑 / 复制 / 删除。
 - [x] 实现 `ActionEditorDialog`：类型选择 + 类型特定字段 + 名称 + 图标选择器（§10.1）。
-- [x] 实现 `CompositeEditorDialog`：步骤列表（引用动作 + DelayMs + OnFail）+ 拖拽排序 + 增删。
+- [x] ~~实现 `CompositeEditorDialog`：步骤列表（引用动作 + DelayMs + OnFail）+ 拖拽排序 + 增删。~~ → 已被 `CompositeActionDialog` 取代（§12 动作解耦）。
 - [x] 「菜单组」页改为从动作池选引用（替代旧内联字段编辑），复用新 `ActionPoolPicker`。
 - [x] 新增「通用」页：CapsLock 键功能开关 + 超级面板开关（两个独立开关，均持久化并即时落盘）+ 开机自启；工具开关从内部动作移入（§7，内部动作本就不含 `tool.toggle`）。
 - [x] 「超级面板」配置页：开关、阈值滑块、多页×9 槽（每槽选动作引用）。
@@ -516,6 +522,17 @@ ActionExecutor.Run(ActionDto action)
 - ⛔ **绝不能「放行 down + 吞 up」**：目标窗口收不到配对 `up` → 鼠标捕获不释放 → **右键永久卡住**（§5.1 已记录的坑）。
 - ⛔ **关闭后必须 `return` 提前退出，不得落进长按手势分支**：面板刚被关掉 → `!SuperPanel.IsOpen` 变 `true` → 若继续执行手势分支，`up` 会被吞 + `InjectRightClick()` 注入，重新制造上述卡键。这是本次改动最隐蔽的陷阱。
 - ✅ 保留：`CapsLock+右键`（窗口置顶）优先级最高不受影响；`SuperPanel.IsInteracting`（右键菜单/对话框打开）期间不介入；面板**内部**右键仍照常放行（弹格子菜单）；面板关闭时顺带 `CancelSuperPanelGesture()` 防御停表。
+
+### 阶段 8 — 动作解耦 + 组合动作专属编辑窗口
+- ✅ **动作与组合动作解耦**：`StepDto` 由 `ActionId`（引用）改为 `Action`（**内嵌深拷贝快照**）。复用已有动作 = 复制那一刻的快照；改/删池动作**不影响**已复制的步骤；每步是私有副本，编辑只影响本步。
+- ⛔ **禁止组合嵌套**：步骤内嵌动作**不得为 composite**。左栏动作池排除组合动作、「＋新建步骤」类型不含组合（`allowComposite:false`）；执行器对畸形配置跳过 + 记日志（不崩）。**删除原防环整套**（`compositeStack` 三层传递 + `s_cycle` 冒烟测试）——无嵌套即无环。
+- ✅ **两窗口分工**：`ActionEditorDialog`（普通动作，6 类字段 + 名称 + 图标）vs `CompositeActionDialog`（组合，三栏：左动作来源 / 中步骤编排 / 右组合属性）。
+- ✅ **统一分发 `ActionEditor.Show`**：按 `dto.Type` 选窗口，**所有调用点一行不改**（设置页 / 面板 / 动作池选择器 / 槽位菜单）。
+- ✅ **两窗口可互相跳转（不带数据）**：普通编辑器类型下拉「组合动作 ▸」、组合窗口「改为普通动作…」→ 关闭当前、以新草稿开另一窗口，结果透传给最初调用方。由 `ActionEditor.Show` 的 while 循环承载。
+- ✅ **左栏交互**：双击 = 追加；拖到中间区 = 插入（阈值触发，与双击不冲突）；动作池组排除组合；含搜索框；「＋新建步骤…」可就地新建一个内嵌动作（不进池）。
+- ✅ **中间步骤**：把手拖拽排序；双击就地编辑（只改本步快照，无需"影响所有引用处"确认）；行内编辑延迟（数字）与失败策略（下拉）。
+- ✅ **JSON schema 变**：`Step.ActionId` → `Step.Action`（对象）。旧 `ActionId` 形式的组合步骤**不迁移**（动作系统未发布，按既定"无需兼容旧 schema"）。
+- 🗑️ 废弃 `CompositeEditorDialog`（能力并入 `CompositeActionDialog`）；`ActionPoolPicker` 不再参与组合步骤选择；移除临时 `ActionExecutor.SmokeTest()` + `--smoke=action` 入口（顺带完成交付前清理）。
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

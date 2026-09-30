@@ -389,10 +389,10 @@ public partial class SuperPanelWindow : Window
         var dto = RunDialog(() =>
         {
             if (presetType == null)
-                return ActionEditorDialog.Show(this, "新建动作", null);
+                return ActionEditor.Show(this, "新建动作", null);
             string title = presetType == ActionType.composite ? "新建组合动作" : "新建动作";
             var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = presetType.Value };
-            return ActionEditorDialog.Show(this, title, draft);
+            return ActionEditor.Show(this, title, draft);
         });
         if (dto == null) return;
 
@@ -409,7 +409,7 @@ public partial class SuperPanelWindow : Window
         var cur = ActionRegistry.FindById(id);
         if (cur == null) return;
 
-        var dto = RunDialog(() => ActionEditorDialog.Show(this, "编辑动作", cur));
+        var dto = RunDialog(() => ActionEditor.Show(this, "编辑动作", cur));
         if (dto == null) return;
         dto.Id = cur.Id;   // 编辑不换 Id
         ConfigStore.UpdateAction(dto);

@@ -1,0 +1,167 @@
+<Window x:Class="CapsLockPro.Views.CompositeActionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:CapsLockPro.Views.Controls"
+        Title="组合动作" Width="940" Height="660"
+        MinWidth="780" MinHeight="540"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13"
+        PreviewMouseMove="Window_PreviewMouseMove">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <!-- 步骤行模板 -->
+        <DataTemplate x:Key="StepRowTemplate">
+            <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    Margin="0,2" Padding="8,6">
+                <DockPanel>
+                    <!-- 删除 -->
+                    <Button DockPanel.Dock="Right" Style="{StaticResource BtnGhost}" Content="✕"
+                            Width="26" Height="26" VerticalAlignment="Center"
+                            ToolTip="删除步骤" Click="Delete_Click"/>
+                    <!-- 编辑 -->
+                    <Button DockPanel.Dock="Right" Style="{StaticResource BtnGhost}" Content="✎"
+                            Width="26" Height="26" Margin="0,0,4,0" VerticalAlignment="Center"
+                            ToolTip="编辑本步（双击行亦可）" Click="EditStep_Click"/>
+                    <!-- 失败策略 -->
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                VerticalAlignment="Center" Margin="0,0,8,0">
+                        <TextBlock Text="失败" VerticalAlignment="Center"
+                                   Foreground="{StaticResource HintTextBrush}" FontSize="11" Margin="0,0,4,0"/>
+                        <ComboBox MinWidth="78" MinHeight="28"
+                                  ItemsSource="{Binding StrategyOptions}"
+                                  SelectedIndex="{Binding OnFailIndex}"/>
+                    </StackPanel>
+                    <!-- 延迟 -->
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                VerticalAlignment="Center" Margin="0,0,8,0">
+                        <TextBlock Text="⏱" VerticalAlignment="Center"
+                                   Foreground="{StaticResource HintTextBrush}" FontSize="13"/>
+                        <TextBox Width="46" MinHeight="26" Margin="4,0,0,0"
+                                 Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}"
+                                 PreviewTextInput="Delay_PreviewTextInput"/>
+                        <TextBlock Text="ms" VerticalAlignment="Center"
+                                   Foreground="{StaticResource HintTextBrush}" FontSize="11" Margin="2,0,0,0"/>
+                    </StackPanel>
+                    <!-- 拖拽把手 -->
+                    <Border DockPanel.Dock="Left" Width="18" Cursor="SizeAll"
+                            Background="Transparent" VerticalAlignment="Stretch"
+                            ToolTip="拖拽排序"
+                            PreviewMouseLeftButtonDown="Grip_PreviewMouseLeftButtonDown">
+                        <TextBlock Text="≡" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="{StaticResource HintTextBrush}" FontSize="14"/>
+                    </Border>
+                    <!-- 序号 + 类型徽标 + 名称 -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Number}" FontWeight="SemiBold"
+                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                   VerticalAlignment="Center" Margin="6,0,8,0"/>
+                        <Border Background="{StaticResource SurfaceAltBrush}" CornerRadius="3"
+                                Padding="6,2" Margin="0,0,8,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding TypeBadge}" FontSize="11"
+                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                        </Border>
+                        <TextBlock Text="{Binding ActionName}" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   MaxWidth="220"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="36"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <controls:TitleBar Grid.Row="0" x:Name="TitleBar" ShowMinimize="False" ShowMaximize="False"/>
+
+        <!-- 三栏正文 -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="240" MinWidth="200"/>
+                <ColumnDefinition Width="*" MinWidth="300"/>
+                <ColumnDefinition Width="280" MinWidth="240"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ============ 左：动作来源 ============ -->
+            <Border Grid.Column="0" Background="{StaticResource SurfaceAltBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+                <DockPanel Margin="0,8,0,8">
+                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionLabel}"
+                               Text="动作来源" Margin="12,0,0,6"/>
+                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintLabel}"
+                               Text="双击或拖入中间区加入步骤" Margin="12,0,12,6"/>
+                    <TextBox DockPanel.Dock="Top" x:Name="SearchBox" Margin="12,0,12,8"
+                             MinHeight="30" TextChanged="SearchBox_TextChanged"/>
+                    <Button DockPanel.Dock="Top" x:Name="NewStepBtn"
+                            Style="{StaticResource BtnPrimary}" Content="＋ 新建步骤…"
+                            Margin="12,0,12,8" MinHeight="30" Click="NewStep_Click"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="SourceList"/>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- ============ 中：步骤编排 ============ -->
+            <Border Grid.Column="1" Background="{StaticResource SurfaceBrush}">
+                <DockPanel Margin="12,8,12,8">
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="步骤"/>
+                        <Button Style="{StaticResource BtnGhost}" Content="改为普通动作…"
+                                HorizontalAlignment="Right" Click="ToNormal_Click"
+                                ToolTip="关闭本窗口并新建一个普通动作（不带数据跳转）"/>
+                    </Grid>
+                    <ListBox x:Name="StepsList" HorizontalContentAlignment="Stretch"
+                             BorderThickness="0" Background="Transparent"
+                             ItemTemplate="{StaticResource StepRowTemplate}"
+                             AllowDrop="True"
+                             DragOver="StepsList_DragOver" Drop="StepsList_Drop"
+                             MouseDoubleClick="StepsList_DoubleClick"/>
+                    <TextBlock x:Name="EmptyHint" DockPanel.Dock="Bottom"
+                               Style="{StaticResource HintLabel}"
+                               Text="（无步骤）从左侧双击或拖入动作" Margin="0,6,0,0"/>
+                </DockPanel>
+            </Border>
+
+            <!-- ============ 右：组合属性 ============ -->
+            <Border Grid.Column="2" Background="{StaticResource SurfaceAltBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,8,12,8">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="名称" Margin="0,0,0,4"/>
+                        <TextBox x:Name="NameBox" MinHeight="32" Margin="0,0,0,14"/>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="图标" Margin="0,0,0,6"/>
+                        <controls:IconPicker x:Name="IconPicker" Margin="0,0,0,14"/>
+
+                        <CheckBox x:Name="AbortBox"
+                                  Content="任一步失败即中止（默认继续）"
+                                  Margin="0,8,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- 底部按钮 -->
+        <Border Grid.Row="2" Background="{StaticResource SurfaceAltBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,8">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Style="{StaticResource BtnGhost}" Content="取消"
+                        Width="92" MinHeight="32" Margin="0,0,8,0" Click="Cancel_Click"/>
+                <Button Style="{StaticResource BtnPrimary}" Content="确定"
+                        Width="92" MinHeight="32" Click="Ok_Click"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

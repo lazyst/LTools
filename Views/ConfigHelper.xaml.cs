@@ -178,7 +178,7 @@ public partial class ConfigHelperWindow : Window
 
     private void NewAction_Click(object sender, RoutedEventArgs e)
     {
-        var dto = ActionEditorDialog.Show(this, "新建动作", null);
+        var dto = ActionEditor.Show(this, "新建动作", null);
         if (dto == null) return;
         ConfigStore.AddAction(dto);
         PopulateActions();
@@ -192,7 +192,7 @@ public partial class ConfigHelperWindow : Window
     {
         var cur = SelectedAction();
         if (cur == null) return;
-        var dto = ActionEditorDialog.Show(this, "编辑动作", cur);
+        var dto = ActionEditor.Show(this, "编辑动作", cur);
         if (dto == null) return;
         dto.Id = cur.Id;   // 保留原 Id（编辑不换 Id）
         ConfigStore.UpdateAction(dto);
@@ -505,12 +505,12 @@ public partial class ConfigHelperWindow : Window
     {
         ActionDto? dto;
         if (presetType == null)
-            dto = ActionEditorDialog.Show(this, "新建动作", null);
+            dto = ActionEditor.Show(this, "新建动作", null);
         else
         {
             string title = presetType == ActionType.composite ? "新建组合动作" : "新建动作";
             var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = presetType.Value };
-            dto = ActionEditorDialog.Show(this, title, draft);
+            dto = ActionEditor.Show(this, title, draft);
         }
         if (dto == null) return;
 

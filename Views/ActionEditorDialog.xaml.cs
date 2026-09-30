@@ -8,18 +8,21 @@ using OpenFolderDialog = Microsoft.Win32.OpenFolderDialog;
 namespace CapsLockPro.Views;
 
 /// <summary>
-/// 动作编辑对话框（计划 §10.1）：类型下拉 + 类型特定字段 + 名称 + 内置图标网格选择器。
-/// 新建与编辑共用一个对话框；composite 类型打开 <see cref="CompositeEditorDialog"/> 编步骤。
+/// 普通动作编辑对话框（计划 §10.1）：类型下拉（6 类，含「组合动作 ▸」跳转项）+ 类型特定字段 + 名称 + 图标。
+/// 组合动作用独立窗口 <see cref="CompositeActionDialog"/>；选「组合动作 ▸」即跳转（见 <see cref="ActionEditor"/>）。
+/// 编辑组合步骤时以 <c>allowComposite:false</c> 构造，从源头禁嵌套。
 /// </summary>
 public partial class ActionEditorDialog : Window
 {
     private ActionDto _draft;
-    private List<StepDto> _steps = new();
     private bool _ready;   // 初始载入期间抑制事件副作用
+
+    /// <summary>用户把类型切到「组合动作」→ 改开组合编辑器（不带数据跳转，§10.1）。</summary>
+    public bool JumpToComposite { get; private set; }
 
     private readonly Dictionary<ActionType, FrameworkElement> _fieldsByType = new();
 
-    public ActionEditorDialog(string title, ActionDto? existing)
+    public ActionEditorDialog(string title, ActionDto? existing, bool allowComposite = true)
     {
         InitializeComponent();
         _draft = existing != null ? Clone(existing) : new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default };
@@ -31,10 +34,10 @@ public partial class ActionEditorDialog : Window
         _fieldsByType[ActionType.openUrl] = F_OpenUrl;
         _fieldsByType[ActionType.runCommand] = F_RunCommand;
         _fieldsByType[ActionType.@internal] = F_Internal;
-        _fieldsByType[ActionType.composite] = F_Composite;
 
-        // 类型下拉
-        TypeCombo.ItemsSource = new List<TypeItem>
+        // 类型下拉：allowComposite=false（编辑组合步骤时）不含「组合动作」项，从源头禁嵌套；
+        // 含该项时选中即跳转到组合动作编辑器（§10.1）。
+        var types = new List<TypeItem>
         {
             new("启动软件", ActionType.launchApp),
             new("打开文件", ActionType.openFile),
@@ -42,8 +45,9 @@ public partial class ActionEditorDialog : Window
             new("打开网址", ActionType.openUrl),
             new("运行命令", ActionType.runCommand),
             new("内部动作", ActionType.@internal),
-            new("组合动作", ActionType.composite),
         };
+        if (allowComposite) types.Add(new("组合动作 ▸", ActionType.composite));
+        TypeCombo.ItemsSource = types;
 
         // 终端下拉（与 runCommand 字段一致）
         foreach (var t in new[] { "direct", "pwsh7", "pwsh5", "cmd", "gitbash", "wslbash", "wt" })
@@ -63,8 +67,12 @@ public partial class ActionEditorDialog : Window
 
     /// <summary>弹出模态编辑器。返回编辑后的动作；取消返回 null。</summary>
     public static ActionDto? Show(Window owner, string title, ActionDto? existing)
+        => Show(owner, title, existing, allowComposite: true);
+
+    /// <summary>同 <see cref="Show(Window, string, ActionDto?)"/>，可禁用「组合动作」类型项（编辑组合步骤时用）。</summary>
+    public static ActionDto? Show(Window owner, string title, ActionDto? existing, bool allowComposite)
     {
-        var dlg = new ActionEditorDialog(title, existing) { Owner = owner };
+        var dlg = new ActionEditorDialog(title, existing, allowComposite) { Owner = owner };
         dlg.ShowDialog();
         return dlg.Result;
     }
@@ -73,11 +81,10 @@ public partial class ActionEditorDialog : Window
     private void LoadDraft()
     {
         NameBox.Text = _draft.Name;
-        _steps = _draft.Steps != null ? new List<StepDto>(_draft.Steps) : new List<StepDto>();
 
         // 类型选择
         int ti = IndexOf(_draft.Type);
-        TypeCombo.SelectedIndex = ti >= 0 ? ti : 0;
+        TypeCombo.SelectedIndex = ti >= 0 && ti < TypeCombo.Items.Count ? ti : 0;
 
         TargetBox.Text = _draft.Target ?? "";
         ArgsBox.Text = _draft.Args ?? "";
@@ -88,20 +95,26 @@ public partial class ActionEditorDialog : Window
         CmdBox.Text = _draft.Cmd ?? "";
         CmdWorkdirBox.Text = _draft.Workdir ?? "";
         KeepWindowBox.IsChecked = _draft.KeepWindow ?? false;
-        CompositeAbortBox.IsChecked = _draft.CompositeOnFail == OnFailStrategy.abort;
 
         TerminalCombo.SelectedIndex = IndexOfTerminal(_draft.Terminal ?? "direct");
         CommandCombo.SelectedIndex = IndexOfCommand(_draft.Command ?? "");
 
         IconPicker.SelectedIcon = _draft.Icon;
-        UpdateStepsSummary();
         ShowFields(_draft.Type);
     }
 
     private void TypeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_ready) return;
-        if (TypeCombo.SelectedItem is TypeItem t) ShowFields(t.Type);
+        if (TypeCombo.SelectedItem is not TypeItem t) return;
+        // 选「组合动作」→ 跳转到组合动作编辑器（不带数据），由 ActionEditor 循环改开
+        if (t.Type == ActionType.composite)
+        {
+            JumpToComposite = true;
+            DialogResult = false;
+            return;
+        }
+        ShowFields(t.Type);
     }
 
     private void ShowFields(ActionType t)
@@ -113,27 +126,6 @@ public partial class ActionEditorDialog : Window
             fe.Visibility = Visibility.Collapsed;
         if (_fieldsByType.TryGetValue(t, out var selected))
             selected.Visibility = Visibility.Visible;
-        else
-            F_Composite.Visibility = Visibility.Visible;
-    }
-
-    // —— 组合步骤 ——
-    private void StepsEdit_Click(object sender, RoutedEventArgs e)
-    {
-        var dlg = new CompositeEditorDialog(this) { Owner = this };
-        dlg.Steps = _steps;
-        if (dlg.ShowDialog() == true) _steps = dlg.Steps;
-        UpdateStepsSummary();
-    }
-
-    private void UpdateStepsSummary()
-    {
-        if (_steps.Count == 0)
-        {
-            StepsSummary.Text = "（无步骤）";
-            return;
-        }
-        StepsSummary.Text = $"{_steps.Count} 个步骤";
     }
 
     // —— 浏览 ——
@@ -208,11 +200,6 @@ public partial class ActionEditorDialog : Window
                 if (CommandCombo.SelectedItem is not ComboItem ci) { ConfirmDialog.Info(this, "动作", "请选择内部命令。"); return; }
                 _draft.Command = ci.Value;
                 break;
-            case ActionType.composite:
-                if (_steps.Count == 0) { ConfirmDialog.Info(this, "动作", "组合动作至少需要一个步骤。"); return; }
-                _draft.Steps = _steps;
-                _draft.CompositeOnFail = CompositeAbortBox.IsChecked == true ? OnFailStrategy.abort : null;
-                break;
         }
 
         _draft.Icon = IconPicker.SelectedIcon ?? IconCatalog.Default;
@@ -252,7 +239,7 @@ public partial class ActionEditorDialog : Window
         return 0;
     }
 
-    private static string FormatCommand(string c) => c switch
+    internal static string FormatCommand(string c) => c switch
     {
         "quickNote.toggle" => "速记（打开/关闭）",
         "quickSearch.run" => "快速搜索选中文本",

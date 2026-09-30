@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Serialization;
 
 namespace CapsLockPro.Features;
@@ -50,11 +51,16 @@ public static class ActionTypeLabel
     };
 }
 
-/// <summary>组合动作的单步（引用另一个动作 Id，对应计划 §4）。</summary>
+/// <summary>组合动作的单步（对应计划 §4）。</summary>
+/// <remarks>
+/// 步骤**内嵌**一个 <see cref="Action"/>（深拷贝快照），不再以 <c>ActionId</c> 引用动作池——
+/// 组合动作与动作池**解耦**：编辑/删除池动作不影响已复制的步骤（§12「动作解耦」决策）。
+/// <c>Action</c> 禁止为 <see cref="ActionType.composite"/>（组合不支持嵌套，编辑器与执行器双侧拦）。
+/// </remarks>
 public sealed class StepDto
 {
-    /// <summary>引用的动作 Id（可为另一个 composite）。</summary>
-    public string ActionId { get; set; } = "";
+    /// <summary>本步骤内嵌的动作快照。</summary>
+    public ActionDto Action { get; set; } = new();
 
     /// <summary>执行本步前等待的毫秒数（默认 0）。</summary>
     public int DelayMs { get; set; }
@@ -136,4 +142,14 @@ public sealed class ActionDto
     /// 步骤未显式设置 <see cref="StepDto.OnFail"/> 时使用此值；也为 null 则视为 continue。
     /// </summary>
     public OnFailStrategy? CompositeOnFail { get; set; }
+
+    /// <summary>深拷贝（含 Steps 递归）；用于把动作池动作复制成组合步骤的独立快照（§12 动作解耦）。</summary>
+    public ActionDto Clone() => new()
+    {
+        Id = Id, Name = Name, Icon = Icon, Type = Type,
+        Target = Target, Args = Args, Workdir = Workdir, Path = Path, Url = Url,
+        Cmd = Cmd, Terminal = Terminal, KeepWindow = KeepWindow, Command = Command,
+        CompositeOnFail = CompositeOnFail,
+        Steps = Steps?.Select(s => new StepDto { Action = s.Action.Clone(), DelayMs = s.DelayMs, OnFail = s.OnFail }).ToList(),
+    };
 }

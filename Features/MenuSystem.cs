@@ -239,12 +239,10 @@ internal static class MenuSystem
         foreach (var g in _groups)
         {
             if (g == null) continue;
-            while (g.Items.Remove(id)) { } // 清掉引用，避免出现指向空 Id 的菜单项
+            while (g.Items.Remove(id)) { } // 清掉菜单项引用，避免出现指向空 Id 的菜单项
         }
-        // 同步清掉其它组合动作中对该动作的步骤引用，否则这些组合保存时会被
-        // 「步骤引用的动作不存在」卡住无法编辑
-        foreach (var a in ActionRegistry.All)
-            a.Steps?.RemoveAll(s => s.ActionId == id);
+        // 组合动作已与动作池解耦（§12）：步骤内嵌快照，不再以 ActionId 引用池动作，
+        // 故删除池动作无需清理组合步骤。
         return true;
     }
 

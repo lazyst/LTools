@@ -44,12 +44,25 @@
       "Icon": "composite",
       "Steps": [
         {
-          "ActionId": "a1",
+          "Action": {
+            "Id": "",
+            "Name": "ipconfig",
+            "Type": "runCommand",
+            "Cmd": "ipconfig /all",
+            "Terminal": "pwsh7",
+            "KeepWindow": true
+          },
           "DelayMs": 0,
           "OnFail": "abort"
         },
         {
-          "ActionId": "a3",
+          "Action": {
+            "Id": "",
+            "Name": "浏览器",
+            "Type": "openUrl",
+            "Url": "https://example.com",
+            "Icon": "globe"
+          },
           "DelayMs": 300,
           "OnFail": "continue"
         }

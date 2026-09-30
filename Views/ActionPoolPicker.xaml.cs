@@ -136,12 +136,11 @@ public partial class ActionPoolPicker : Window
     // —— 新建动作 ——
     private void New_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new ActionEditorDialog("新建动作", null) { Owner = this };
-        dlg.ShowDialog();
-        if (dlg.Result == null) return;
-        ConfigStore.AddAction(dlg.Result);
+        var dto = ActionEditor.Show(this, "新建动作", null);   // 池内新建可建组合（分发器自动开对应窗口）
+        if (dto == null) return;
+        ConfigStore.AddAction(dto);
         ConfigStore.Save();
-        Result = dlg.Result.Id;
+        Result = dto.Id;
         BuildCells(null);
         Highlight(_cells.FirstOrDefault(c => c.Id == Result));
     }

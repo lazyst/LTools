@@ -138,17 +138,8 @@
                                 <ComboBox x:Name="CommandCombo" MinHeight="30"/>
                             </StackPanel>
 
-                            <!-- composite -->
-                            <StackPanel x:Name="F_Composite">
-                                <TextBlock Style="{StaticResource SectionLabel}" Text="组合步骤" Margin="0,0,0,10"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <Button x:Name="StepsEditBtn" Style="{StaticResource BtnPrimary}"
-                                            Content="编辑步骤…" MinWidth="110" Click="StepsEdit_Click"/>
-                                    <TextBlock x:Name="StepsSummary" Style="{StaticResource HintLabel}"
-                                               VerticalAlignment="Center" Margin="12,0,0,0"/>
-                                </StackPanel>
-                                <CheckBox x:Name="CompositeAbortBox" Content="任一步失败即中止（默认继续）" Margin="0,12,0,0"/>
-                            </StackPanel>
+                            <!-- 注：组合动作已改用独立窗口（CompositeActionDialog），
+                                 类型下拉选「组合动作 ▸」即跳转，故本窗口不再有 composite 字段区。 -->
                         </Grid>
                     </Border>
                 </StackPanel>
