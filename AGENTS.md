@@ -64,4 +64,5 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 
 - `速记/`（速记文件）和 `logs/` 运行时生成，已 gitignore
 - `-p:EnableUia=true`：可选启用 UIAutomationClient COM 互操作（UIA/MSAA 功能）
-- `app.manifest`：`requireAdministrator` + 声明 Win10/11 兼容
+- `app.manifest`：`requireAdministrator` + 声明 Win10/11 兼容 + `PerMonitorV2` DPI 感知
+- **DPI 感知双轨**：Release 由 `app.manifest` 在进程创建时设 PerMonitorV2；Debug 用 `-p:NoWin32Manifest=true` 剥了清单（免 UAC），改由 `Core/DpiInitializer.cs` 的 `[ModuleInitializer]` 在 Main 前、WPF 加载前 `SetProcessDpiAwarenessContext(-4)` 补设。修「全屏游戏切分辨率后托盘右键菜单错位」。

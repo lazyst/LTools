@@ -872,5 +872,13 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **冒烟**：迁移前 legacy 哈希 `61923C…`（1890B）→ 启动后 `LTools.json` 哈希**完全一致**、`CapsLock++.json` 消失 ✓；`FindPath` / `ConfigStore.ConfigPath` 均指新路径、reload ok ✓；trayTip=`LTools` ✓；互斥体=`Global\LTools_SingleInstance` ✓；进程自行退出 ✓；临时代码 0 残留，构建 0 错 0 警。
 - ⚠️ **gitee 镜像**（`gitee.com/lazyst/cpaslock-pro`，其 URL 本就拼错为 cpaslock）需在 Gitee 网页手动改名，本地无其授权；origin 已切到 `github.com/lazyst/LTools`。
 
+### 托盘右键菜单错位修复（PerMonitorV2 DPI 感知）
+
+- ✅ **问题**：打游戏（LoL 全屏）后切回，托盘右键菜单不贴鼠标；重启恢复。
+- ✅ **根因**：`app.manifest` 无 DPI 感知声明，进程以 **System DPI Aware** 运行（实测进程感知=1，系统缩放 125%），不处理 per-monitor DPI 变化（`WM_DPICHANGED`）；全屏游戏切显示环境后 H.NotifyIcon 的 Win32 物理像素光标坐标→WPF 设备无关像素换算比例陈旧→菜单偏移。重启重读 DPI 即恢复。
+- ✅ **修复（manifest + 程序化双轨，Debug/Release 都覆盖）**：①`app.manifest` 加 `dpiAwareness=PerMonitorV2,PerMonitor`（Release 进程创建即生效）；②`Core/DpiInitializer.cs` 用 `[ModuleInitializer]` 在 Main 前、WPF（PresentationCore）加载前 `SetProcessDpiAwarenessContext(-4)` 抢设 PerMonitorV2——覆盖 Debug（`-p:NoWin32Manifest=true` 剥了清单免 UAC）。Release 经 manifest 已设则该调用为幂等 no-op（返回 false、无副作用）。
+- ✅ **验证**：实测 Debug 进程 DPI 感知 **1(System)→2(PerMonitor)**；Release exe 含 `dpiAware`/`PerMonitorV2`（manifest 嵌入合法，Release 构建 0 错 0 警）；主屏 125% 外观不变（System 与 PerMonitorV2 在主屏布局一致），差别仅跨显示器 / DPI 变化时按当前屏正确重算。已核对 `WindowChromeHelper` 的 `WM_GETMINMAXINFO` 钳制用 `GetMonitorInfo` 物理像素、与 PerMonitorV2 兼容。
+- ⚠️ **不可当场复现**：用户重启后已正常，无法当场验证错位消失；机制证据链强（System Aware + 125% + 无声明 + 游戏后错位 + 重启恢复），待用户后续游戏后实测确认。
+
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

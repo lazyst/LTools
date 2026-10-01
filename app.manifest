@@ -15,4 +15,13 @@
       <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
     </application>
   </compatibility>
+
+  <!-- DPI 感知：PerMonitorV2——全屏游戏切分辨率/换显示器后坐标不陈旧（修托盘右键菜单错位）。
+       Debug 构建用 -p:NoWin32Manifest=true 剥掉本清单（免 UAC），改由 Core/DpiInitializer 的模块初始化器补设。 -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2,PerMonitor</dpiAwareness>
+    </windowsSettings>
+  </application>
 </assembly>
