@@ -1,8 +1,8 @@
 using System.Windows;
 using System.Windows.Threading;
-using CapsLockPro.Views;
+using LTools.Views;
 
-namespace CapsLockPro.Core;
+namespace LTools.Core;
 
 /// <summary>
 /// 跟随鼠标的提示文本框（替代系统托盘气球，对应原版 AHK <c>ToolTip</c> + <c>SetTimer(() =&gt; ToolTip(), -N)</c>）。

@@ -1,7 +1,7 @@
-using CapsLockPro.Features;
-using CapsLockPro.Native;
+using LTools.Features;
+using LTools.Native;
 
-namespace CapsLockPro.Core;
+namespace LTools.Core;
 
 /// <summary>
 /// CapsLock 状态机（对应原版 lib/CapsLockHandler.ahk）。

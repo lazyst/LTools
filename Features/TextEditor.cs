@@ -1,7 +1,7 @@
-using CapsLockPro.Core;
-using CapsLockPro.Native;
+using LTools.Core;
+using LTools.Native;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// vim 风格文本编辑（对应原版 lib/TextEdit.ahk）。

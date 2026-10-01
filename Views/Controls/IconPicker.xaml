@@ -1,4 +1,4 @@
-<UserControl x:Class="CapsLockPro.Views.Controls.IconPicker"
+<UserControl x:Class="LTools.Views.Controls.IconPicker"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              FontFamily="{StaticResource UiFont}">

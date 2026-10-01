@@ -1,6 +1,6 @@
 using System.IO;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>速记单条值对象（标题存于文件名、正文存于文件内容、分类=子目录）。由 <see cref="NoteRepository"/> 读写。</summary>
 internal sealed class NoteEntry

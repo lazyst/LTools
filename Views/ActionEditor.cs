@@ -1,7 +1,7 @@
 using System.Windows;
-using CapsLockPro.Features;
+using LTools.Features;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>
 /// 动作编辑统一分发（§10.1）：按 <see cref="ActionDto.Type"/> 选择普通编辑器

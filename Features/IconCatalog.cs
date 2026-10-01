@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 内置图标目录（对应计划 §3.1）。使用 Windows 自带 Segoe MDL2 Assets 字体

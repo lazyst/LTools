@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
-using CapsLockPro.Native;
+using LTools.Native;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 光标位置获取（对应原版 lib/CaretPos.ahk 的 <c>GetCaretPosition</c>）。

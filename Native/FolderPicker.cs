@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace CapsLockPro.Native;
+namespace LTools.Native;
 
 /// <summary>
 /// 文件夹选择对话框，封装 .NET 8 WPF 原生 <c>Microsoft.Win32.OpenFolderDialog</c>。

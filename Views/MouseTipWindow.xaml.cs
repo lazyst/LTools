@@ -1,9 +1,9 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
-using CapsLockPro.Native;
+using LTools.Native;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>跟随鼠标右下角的轻量提示文本框（替代系统托盘气球）。
 /// 无边框置顶 + 半透明圆角深色背景；按光标位置自动避开屏幕边缘。</summary>

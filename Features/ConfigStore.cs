@@ -1,8 +1,8 @@
 using System.Collections.Generic;
-using CapsLockPro.Config;
-using CapsLockPro.Core;
+using LTools.Config;
+using LTools.Core;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 设置面板的统一配置读写入口（阶段 3）：所有管理页（动作 / 菜单组 / 超级面板 / 终端路径）

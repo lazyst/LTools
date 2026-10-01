@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 内部动作注册表（对应计划 §7）。<see cref="ActionType.@internal"/> 类型动作的

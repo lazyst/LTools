@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace CapsLockPro.Native;
+namespace LTools.Native;
 
 /// <summary>
 /// SendInput 封装（对应 AHK 的 Send/SendInput）。

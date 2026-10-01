@@ -2,10 +2,10 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using CapsLockPro.Core;
-using CapsLockPro.Native;
+using LTools.Core;
+using LTools.Native;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 统一动作执行引擎（对应计划 §8）。按 <see cref="ActionType"/> 分发：

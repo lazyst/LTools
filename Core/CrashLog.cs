@@ -1,15 +1,15 @@
 using System.IO;
 
-namespace CapsLockPro.Core;
+namespace LTools.Core;
 
 /// <summary>
-/// 崩溃日志（追加写到 %TEMP%\CapsLockPro-crash.log）。
+/// 崩溃日志（追加写到 %TEMP%\LTools-crash.log）。
 /// 用于常驻输入工具：吞掉单次未捕获异常时不静默丢失，留栈迹供溯源。
 /// </summary>
 internal static class CrashLog
 {
     private static readonly string Path =
-        System.IO.Path.Combine(System.IO.Path.GetTempPath(), "CapsLockPro-crash.log");
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), "LTools-crash.log");
 
     /// <summary>追加一条异常记录。自身永不抛出。</summary>
     public static void Write(string context, System.Exception ex)

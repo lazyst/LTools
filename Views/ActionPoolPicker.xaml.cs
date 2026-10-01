@@ -4,9 +4,9 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using CapsLockPro.Features;
+using LTools.Features;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>
 /// 动作池选择器（阶段 3）：卡片网格浏览全局动作清单，搜索筛选，

@@ -1,8 +1,8 @@
 using System.Text;
-using CapsLockPro.Native;
-using CapsLockPro.Views;
+using LTools.Native;
+using LTools.Views;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 帮助面板（对应原版 lib/ui/HelpPanel.ahk）。CapsLock+`` ` ``（扫描码 SC029）切换。
@@ -67,7 +67,7 @@ internal static class HelpPanel
         {
             ("CapsLock (单击, <0.3s)", "发送 Esc"),
             ("CapsLock (长按, >=0.3s)", "犹豫操作，无动作"),
-            ("CapsLock + Esc", "禁用 / 启用 CapsLock++"),
+            ("CapsLock + Esc", "禁用 / 启用 LTools"),
             ("Ctrl + CapsLock", "手动切换大写锁定状态"),
             ("Ctrl + Alt + I", "显示调试信息"),
         }),

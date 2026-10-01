@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using CapsLockPro.Config;
-using CapsLockPro.Core;
-using CapsLockPro.Native;
-using CapsLockPro.Views;
+using LTools.Config;
+using LTools.Core;
+using LTools.Native;
+using LTools.Views;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 快捷菜单系统（对应原版 lib/MenuSystem.ahk + lib/ui/MenuUI.ahk）。

@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Input;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 按键 stroke 解析与格式化（§3.2.1）。

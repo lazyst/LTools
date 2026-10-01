@@ -9,9 +9,11 @@
     <!-- 管理员清单（requireAdministrator），双击即提权 -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- exe 嵌入图标 -->
-    <ApplicationIcon>Icon\CapsLock++.ico</ApplicationIcon>
-    <AssemblyVersion>0.1.0.0</AssemblyVersion>
-    <RootNamespace>CapsLockPro</RootNamespace>
+    <ApplicationIcon>Icon\LTools.ico</ApplicationIcon>
+    <Version>2.2.0</Version>
+    <AssemblyVersion>2.2.0.0</AssemblyVersion>
+    <AssemblyName>LTools</AssemblyName>
+    <RootNamespace>LTools</RootNamespace>
   </PropertyGroup>
 
   <!-- 阶段6 UIA / MSAA 用的 COM 互操作程序集（按需启用：-p:EnableUia=true） -->
@@ -31,15 +33,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Icon\CapsLock++.ico">
-      <Link>Icon\CapsLock++.ico</Link>
+    <Content Include="Icon\LTools.ico">
+      <Link>Icon\LTools.ico</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <!-- 只随包分发示例配置 CapsLock++.example.json，绝不生成 CapsLock++.json——
+    <!-- 只随包分发示例配置 LTools.example.json，绝不生成 LTools.json——
          否则用户用新版 zip 解压覆盖旧版时会把已有的用户配置冲掉。
-         运行时若 CapsLock++.json 缺失，AppConfig.Load 回退读同目录示例作为默认值，
-         首次保存才在同目录生成 CapsLock++.json（见 Core/ConfigLocator + Config/AppConfig）。 -->
-    <Content Include="CapsLock++.example.json">
+         运行时若 LTools.json 缺失，AppConfig.Load 回退读同目录示例作为默认值，
+         首次保存才在同目录生成 LTools.json（见 Core/ConfigLocator + Config/AppConfig）。 -->
+    <Content Include="LTools.example.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

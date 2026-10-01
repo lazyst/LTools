@@ -9,9 +9,9 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using CapsLockPro.Features;
+using LTools.Features;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>
 /// 超级面板窗口（计划 §5）。4×4 格子；左键单击空格弹新建菜单 / 非空执行动作，左键按住拖动重排（§5.6，交换语义，支持跨页）；

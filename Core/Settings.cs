@@ -1,7 +1,7 @@
-using CapsLockPro.Config;
-using CapsLockPro.Features;
+using LTools.Config;
+using LTools.Features;
 
-namespace CapsLockPro.Core;
+namespace LTools.Core;
 
 /// <summary>
 /// 两个全局开关（CapsLock 键功能 / 超级面板）的统一切换入口。

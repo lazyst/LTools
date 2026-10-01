@@ -1,9 +1,9 @@
 using System.Runtime.InteropServices;
-using CapsLockPro.Core;
-using CapsLockPro.Features;
-using CapsLockPro.Native;
+using LTools.Core;
+using LTools.Features;
+using LTools.Native;
 
-namespace CapsLockPro.Hooks;
+namespace LTools.Hooks;
 
 /// <summary>
 /// 低级键盘钩子（WH_KEYBOARD_LL）。在主线程安装，由 <see cref="Application.Run"/> 消息循环泵送。

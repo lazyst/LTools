@@ -1,7 +1,7 @@
-using CapsLockPro.Core;
-using CapsLockPro.Native;
+using LTools.Core;
+using LTools.Native;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 屏幕底部滚轮调音量（对应原版 lib/VolumeControl.ahk）。

@@ -1,12 +1,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
-using CapsLockPro.Config;
-using CapsLockPro.Core;
-using CapsLockPro.Native;
-using CapsLockPro.Views;
+using LTools.Config;
+using LTools.Core;
+using LTools.Native;
+using LTools.Views;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 超级面板控制器（计划 §5）。管理面板窗口的生命周期、唤起瞬间的光标坐标、

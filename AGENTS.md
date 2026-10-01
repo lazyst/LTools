@@ -1,6 +1,6 @@
 # AGENTS.md
 
-CapsLock-Pro：Windows 桌面工具，把 CapsLock 重映射为 vim 式修饰键。C# / .NET 10 / WPF 单项目单解决方案，**无测试项目**。
+LTools（原 CapsLock-Pro / CapsLock++）：Windows 桌面工具，把 CapsLock 重映射为 vim 式修饰键。C# / .NET 10 / WPF 单项目单解决方案，**无测试项目**。
 
 ## 构建
 
@@ -15,7 +15,7 @@ dotnet build -c Release
 dotnet publish -c Release -r win-x64 --self-contained true -o publish
 ```
 
-- 输出：`bin/Debug/net10.0-windows/CapsLockPro.exe`
+- 输出：`bin/Debug/net10.0-windows/LTools.exe`
 - 全局钩子需管理员权限；Debug 加 `-p:NoWin32Manifest=true` 免提权调试
 - 构建必须 **0 错 0 警**
 - 无测试项目，不要找 `dotnet test`
@@ -49,9 +49,9 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 
 ## 配置
 
-- `CapsLock++.json`（gitignored）— 用户配置，由应用自身读写（设置面板/快捷键），不面向手改；首次保存才生成，升级解压不会覆盖
-- `CapsLock++.example.json`（已提交）— 默认模板，随包分发；`AppConfig.Load` 在用户配置缺失时回退读同目录示例（故发布包只带示例、不带实际配置，避免覆盖用户配置）
-- `ConfigLocator.FindPath()`：dev（仓库根含 `CapsLockPro.csproj`）落仓库根，prod 落 exe 同级。首启自动从旧 `CapsLock++.ini` 迁移（改名为 `.migrated`）
+- `LTools.json`（gitignored）— 用户配置，由应用自身读写（设置面板/快捷键），不面向手改；首次保存才生成，升级解压不会覆盖
+- `LTools.example.json`（已提交）— 默认模板，随包分发；`AppConfig.Load` 在用户配置缺失时回退读同目录示例（故发布包只带示例、不带实际配置，避免覆盖用户配置）
+- `ConfigLocator.FindPath()`：dev（仓库根含 `LTools.csproj`）落仓库根，prod 落 exe 同级。首启自动迁移旧配置：`CapsLock++.json` 同目录改名 `LTools.json`；更旧的 `CapsLock++.ini` 读入后改名 `.migrated` 备份
 - 配置格式为 JSON（`MenuGroups[10]`、`TerminalPaths`、`MouseModeSpeed`，见 `Config/AppConfig.cs`），**非旧的 INI 分节格式**——README §9 仍描述 INI schema，已过时，以代码为准
 
 ## WPF 约定

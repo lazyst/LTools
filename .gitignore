@@ -36,10 +36,12 @@ bin/
 obj/
 
 # 发布产物（本地构建）
-CapsLockPro-*.zip
+LTools-*.zip
+CapsLockPro-*.zip   # 改名前旧产物
 
-# 用户本地配置（仅保留示例 CapsLock++.example.json）
-CapsLock++.json
+# 用户本地配置（仅保留示例 LTools.example.json）
+LTools.json
+CapsLock++.json   # 改名前旧配置
 
 publish/
 

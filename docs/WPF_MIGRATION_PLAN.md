@@ -1,4 +1,4 @@
-# CapsLock-Pro UI 层迁移计划：WinForms → WPF
+# LTools UI 层迁移计划：WinForms → WPF
 
 > **分支**：`csharp-refactor`　**目标框架**：.NET 8 (`net8.0-windows`)　**当前**：`UseWindowsForms=true`
 >

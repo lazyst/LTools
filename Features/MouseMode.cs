@@ -1,9 +1,9 @@
 using System.Windows.Threading;
-using CapsLockPro.Config;
-using CapsLockPro.Core;
-using CapsLockPro.Native;
+using LTools.Config;
+using LTools.Core;
+using LTools.Native;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 鼠标模式（对应原版 lib/MouseControl.ahk）。

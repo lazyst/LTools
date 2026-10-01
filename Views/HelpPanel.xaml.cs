@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>帮助面板窗口（无边框置顶 + 只读滚动文本）。Esc / 失焦 / 关闭按钮 关闭。</summary>
 public partial class HelpPanelWindow : Window

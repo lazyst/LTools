@@ -4,9 +4,9 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using CapsLockPro.Features;
+using LTools.Features;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>
 /// 组合键可视化选键对话框（交付后 UX 优化，§12）。

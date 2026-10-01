@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text;
-using CapsLockPro.Config;
-using CapsLockPro.Core;
+using LTools.Config;
+using LTools.Core;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>终端路由器：把「终端 + keepWindow + 命令 + workdir」解析成 <see cref="ProcessStartInfo"/>
 /// （对应原版 lib/Utils.ahk BuildCommandString 的执行侧，但终端信息不再 bake 进命令串）。

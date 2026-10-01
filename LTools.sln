@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CapsLockPro", "CapsLockPro.csproj", "{EF73EFB5-386D-4F4D-AA3C-3CCC8979AC95}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LTools", "LTools.csproj", "{EF73EFB5-386D-4F4D-AA3C-3CCC8979AC95}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

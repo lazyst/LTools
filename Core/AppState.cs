@@ -1,4 +1,4 @@
-namespace CapsLockPro.Core;
+namespace LTools.Core;
 
 /// <summary>
 /// 全局应用状态（对应原版 lib/Globals.ahk 的全局变量）。

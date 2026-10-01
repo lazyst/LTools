@@ -1,6 +1,6 @@
 using System.Windows;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>通用确认/提示对话框（替代原生 MessageBox）。危险动作用红按钮；
 /// 速记保存场景支持「保存 / 不保存 / 取消」三选。</summary>

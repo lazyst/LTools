@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 全局动作清单（对应计划 §2）。超级面板格子、CapsLock+数字菜单项、组合步骤

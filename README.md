@@ -1,7 +1,8 @@
-# CapsLock-Pro
+# LTools
 
+> ✏️ **v2.2.0 起应用改名 LTools**（原 CapsLock++ / CapsLock-Pro），详见 CHANGELOG
 > 📋 **版本历史**：查看 [CHANGELOG.md](CHANGELOG.md) 了解详细更新记录
-> 📦 **v2.0.0**：C# / .NET 8 / WPF 重构版。AHK 原版已归档至 [`ahk-legacy`](https://github.com/lazyst/CapsLock-Pro/tree/ahk-legacy) 分支。
+> 📦 **v2.0.0**：C# / .NET 8 / WPF 重构版。AHK 原版已归档至 [`ahk-legacy`](https://github.com/lazyst/LTools/tree/ahk-legacy) 分支。
 
 ## 0. 前言
 
@@ -28,7 +29,7 @@ dotnet build -c Release
 dotnet publish -c Release -r win-x64 --self-contained false
 ```
 
-输出位于 `bin/Debug/net10.0-windows/CapsLockPro.exe`（或 `Release`）。双击即提权运行（`app.manifest` 已配置 `requireAdministrator`）。
+输出位于 `bin/Debug/net10.0-windows/LTools.exe`（或 `Release`）。双击即提权运行（`app.manifest` 已配置 `requireAdministrator`）。
 
 > 全局键盘/鼠标钩子需管理员权限，故发布版带提权清单。开发调试时可用 `-p:NoWin32Manifest=true` 免提权快速启动。
 
@@ -227,7 +228,7 @@ dotnet publish -c Release -r win-x64 --self-contained false
 
 ## 9. 自定义指南
 
-所有配置在程序目录下的 `CapsLock++.json` 文件中。可用设置（**CapsLock+\**）图形化编辑，保存后自动生效。
+所有配置在程序目录下的 `LTools.json` 文件中。可用设置（**CapsLock+\**）图形化编辑，保存后自动生效。
 
 ### 9.1 速记功能配置
 
@@ -249,7 +250,7 @@ dotnet publish -c Release -r win-x64 --self-contained false
 
 **CapsLock+\** 打开设置（内置 WPF 窗口）：
 
-- **重新加载**：从 `CapsLock++.json` 重新载入配置
+- **重新加载**：从 `LTools.json` 重新载入配置
 - **保存配置**：保存修改回 INI 并自动应用
 - 速记路径页：编辑速记关键词与保存路径
 - 菜单配置页：管理 10 个菜单组及菜单项（组名、启用/禁用、项增删、双击编辑名称与命令）

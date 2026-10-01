@@ -1,4 +1,4 @@
-# CapsLock-Pro 动作系统设计计划
+# LTools 动作系统设计计划
 
 > **状态**：原动作系统（阶段 1–8）已实施完毕；**新增阶段 9–11（基础动作：模拟按键 + 发送文本）已评审、实施中**——规格 §3.2、计划与进度 §11、决策 §12。§12 为决策汇总；§11 为分阶段实施计划（`- [ ]` 可标记进度，每阶段附验收标准）。
 >
@@ -326,7 +326,7 @@ ActionExecutor.Run(ActionDto action)
 
 ## 9. 配置 schema ✅（全新，不兼容旧配置）
 
-**无需迁移旧配置**（个人工具，旧 `CapsLock++.json` 直接废弃）。沿用上次的**惰性物化**：example 只放默认动作，用户首次保存才生成 `CapsLock++.json`。
+**无需迁移旧配置**（个人工具，旧 `LTools.json` 直接废弃）。沿用上次的**惰性物化**：example 只放默认动作，用户首次保存才生成 `LTools.json`。
 
 ```jsonc
 {
@@ -362,7 +362,7 @@ ActionExecutor.Run(ActionDto action)
 - `Actions`：全局动作清单（含组合）。
 - `SuperPanel.Pages`：每页 9 槽，元素为动作 Id 或 `null`。
 - `MenuGroups[10]`：每组 `Items` 改为动作 Id 列表（不再内联 Cmd/Terminal）。
-- 旧 `CapsLock++.json`（开发机上的）加载时因 schema 不匹配会回退读 example——开发时请手动删除旧文件。
+- 旧 `LTools.json`（开发机上的）加载时因 schema 不匹配会回退读 example——开发时请手动删除旧文件。
 
 ---
 
@@ -392,7 +392,7 @@ ActionExecutor.Run(ActionDto action)
 | 超级面板 | 开关、长按阈值、多页×9 槽，每槽选动作引用 |
 | 终端路径 | 现有，保留 |
 | 速记路径 | 现有，保留 |
-| 通用 | **工具开关（CapsLock++ 启用/禁用，原 CapsLock+Esc）**、开机自启等 |
+| 通用 | **工具开关（LTools 启用/禁用，原 CapsLock+Esc）**、开机自启等 |
 
 - **工具开关**从「内部动作」移入设置面板「通用」页（不再可绑格子）；`CapsLock+Esc` 手势仍保留。
 - 沿用 v2.1.0 的防抖自动保存，扩展到动作/面板编辑。
@@ -430,16 +430,16 @@ ActionExecutor.Run(ActionDto action)
 **目标**：菜单端到端按新 schema 运行——项为动作引用、执行走 ActionExecutor。
 
 - [x] 重写 `AppConfig`：新增 `Actions: List<ActionDto>`、`SuperPanel: SuperPanelConfig`（Enabled / LongPressThresholdMs / Pages）；`MenuGroups` 的 Items 改为 `List<string>`（动作 Id）；移除旧 `MenuItemDto` 的 Cmd/Terminal/KeepWindow/Workdir。
-- [x] 重写 `CapsLock++.example.json`：新 schema，含若干默认动作 + 示例超级面板页 + 菜单组引用。
+- [x] 重写 `LTools.example.json`：新 schema，含若干默认动作 + 示例超级面板页 + 菜单组引用。
 - [x] `MenuSystem.Load` 改为按 Id 从 `Actions` 解析菜单项；`MenuSystem.SaveToConfig` 改为写动作引用。
 - [x] 菜单项执行改调 `ActionExecutor.Run`（替代旧 TerminalLauncher 直调）；空组仍发 `(` / `)`。
 - [x] 验证 `ConfigLocator` 惰性物化 + example 回退仍生效（§9）。
-- [x] 删除开发机旧 `CapsLock++.json`（schema 不兼容，会回退 example）。
+- [x] 删除开发机旧 `LTools.json`（schema 不兼容，会回退 example）。
 
 **验收标准**
 - [x] 启动加载 example 配置无异常；CapsLock+1~0 菜单按动作引用显示并执行。
 - [x] 菜单项可为任意动作类型（含 composite）。
-- [x] 旧 schema 的 `CapsLock++.json` 加载时回退 example，不崩溃。
+- [x] 旧 schema 的 `LTools.json` 加载时回退 example，不崩溃。
 - [x] `dotnet build` 0 错 0 警。
 
 ---
@@ -459,7 +459,7 @@ ActionExecutor.Run(ActionDto action)
 
 **验收标准**
 - [x] 设置面板左导航可在 5 页间切换（通用 / 动作管理 / 菜单组 / 超级面板 / 终端路径；6 页中的「速记路径」经讨论跳过）。
-- [x] 能新建 / 编辑 / 删除 7 种动作类型（含 composite）；保存后写回 `CapsLock++.json`。
+- [x] 能新建 / 编辑 / 删除 7 种动作类型（含 composite）；保存后写回 `LTools.json`。
 - [x] 菜单组页能从动作池选引用并保存。
 - [x] 超级面板配置页能编辑页 / 槽 / 阈值 / 开关。
 - [x] 工具开关在「通用」页可切换，`CapsLock+Esc` 手势仍生效（`Core/Settings.SetCapsLockEnabled` 统一落盘）。
@@ -574,7 +574,7 @@ ActionExecutor.Run(ActionDto action)
 - [x] 组合步骤内 `sendKeys`/`sendText` 深拷贝快照验证（`Clone()` 含 `Items` 递归）。
 - [x] 步骤行 `TypeBadge`、图标网格新图标在格子/菜单/编辑器三处显示正常。
 - [x] 全链路走查：超级面板 / CapsLock+数字菜单 / 菜单组 / 组合步骤四入口均可触发两类型。
-- [x] 更新 `CapsLock++.example.json`（如需示例动作）；`docs/ACTION_SYSTEM_PLAN.md` 全部勾选补齐。
+- [x] 更新 `LTools.example.json`（如需示例动作）；`docs/ACTION_SYSTEM_PLAN.md` 全部勾选补齐。
 
 **验收标准**
 - [x] 组合动作示例：「打开网址 → sleep → sendKeys 选中地址栏 → sendText 填入 → Enter」整链成功。（冒烟验证等价组合链：sendText "abc" → sleep → sendKeys ctrl+a → delete → TextBox 清空 ✓；sendText "XY" → ctrl+a → ctrl+c → 剪贴板="XY" ✓）
@@ -726,7 +726,7 @@ ActionExecutor.Run(ActionDto action)
 ### 阶段 11 实施中新增（组合集成收尾）
 
 - ✅ **快捷新建菜单 5→7 类**：`SlotMenu.BuildAddMenu` 新增「新建 · 发送文本」「新建 · 模拟按键」（与组合窗口左栏「基础动作」组 8 种保持一致——除 internal/composite 外的所有类型）。超级面板空格右键 / 设置页格子左键两处共用 `SlotMenu`，一次改动两处生效。
-- ✅ **`CapsLock++.example.json` 新增 a6/a7 示例**：a6 `sendText` "Hello World"（演示键入）、a7 `sendKeys` 全选复制（chord `ctrl+a` → sleep 100 → chord `ctrl+c`，演示三 种条目类型）。放进超级面板第 7/8 格 + 菜单组「工具」。新用户首次启动即可体验。
+- ✅ **`LTools.example.json` 新增 a6/a7 示例**：a6 `sendText` "Hello World"（演示键入）、a7 `sendKeys` 全选复制（chord `ctrl+a` → sleep 100 → chord `ctrl+c`，演示三 种条目类型）。放进超级面板第 7/8 格 + 菜单组「工具」。新用户首次启动即可体验。
 - ✅ **`DispatchText` 抽出共享**：sendText 动作（前置 50ms 延时 + AppendEnter）与 sendKeys 的 text 条目（无延时、无回车）共用 `DispatchText(a, text, mode)`，避免两份键入/粘贴逻辑。
 - ✅ **组合深拷贝隔离验证**：冒烟构造组合含 sendText 步骤 `Text="原"`，`Clone()` 后改原步骤 `Text="改"`，clone 保持 `"原"` ✓。组合深拷贝后执行（sendText "XY" → ctrl+a → ctrl+c → 剪贴板="XY"）✓。确认 `ActionDto.Clone()` 递归拷贝 `Items`/`Steps`/`Strokes`，组合步骤与池动作完全解耦。
 - ✅ **四入口全覆盖**（代码层面）：超级面板（`SlotMenu` 快捷新建 7 类 + 动作池选择）、CapsLock+数字菜单（`MenuSystem` 按 Id 解析 + `ActionExecutor.Run`）、菜单组（同前）、组合步骤（`CompositeActionDialog` 左栏基础动作组 8 种 + 双击/拖入开预置类型编辑器）。`ActionExecutor` 分发 sendText/sendKeys 两分支，`ActionEditorDialog` 类型下拉 + 字段面板，`ConfigHelper.Summarize` 摘要显示——所有按类型分发/显示处均已覆盖，无遗漏 switch/where。
@@ -861,6 +861,16 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **实现**：`NoteRow` 加 `CategoryTagVis: Visibility` 字段；模板标题行右侧加**分类标签**（`SurfaceAltBrush` 药丸、11px、`MaxWidth=80` 防长名溢出、`HintTextBrush`），`Visibility="{Binding CategoryTagVis}"` 绑定显隐。
 - ✅ **显隐策略**：`ReloadList` 里 `showCat = cat == null`——**仅「全部」视图跨分类显示标签**（此时才知道每行属于哪个分类）；**单分类视图隐藏**（每行分类相同、下拉框已显示当前分类，重复即冗余，仿 Apple Notes「所有备忘录」才显示文件夹）。
 - ✅ **冒烟 3/3**：「全部」视图 → `冒烟分类X` 行 `tagVisible=True` ✓；单分类 `冒烟分类X` 视图 → `tagHidden=True` ✓；测试分类已清理。构建 0 错 0 警，App.xaml.cs 无临时残留。
+
+### 应用改名 LTools + 发布 v2.2.0
+
+- ✅ **决策（用户拍板）**：应用名 / 仓库名全量改为 **LTools**——「加了这些功能之后，应用名称已经不适合了」；版本号 **2.2.0**（v2.1.0 已于 2026-09-28 发布，tag 与 zip 资产均存在无法复用；按 CHANGELOG 版本说明取次版本号=新功能添加）。
+- ✅ **改名范围（用户选「全量重命名含命名空间」）**：GitHub 仓库 `CapsLock-Pro` → `LTools`（`gh repo rename`，旧地址自动跳转）；应用显示名（托盘 ToolTip / 启动提示「LTools 已启动」/ 退出菜单 / 帮助面板标题）；`AssemblyName` → `LTools.exe`；C# 根命名空间 `CapsLockPro` → `LTools`（RootNamespace、全部 namespace/using、XAML `x:Class` 与 `clr-namespace`、sln/csproj 文件名）；图标 `Icon/CapsLock++.ico` → `Icon/LTools.ico`；示例配置 `CapsLock++.example.json` → `LTools.example.json`；互斥体 `Global\LTools_SingleInstance`；崩溃日志 `LTools-crash.log`；自启计划任务名 `LTools`；发布物 `LTools-v2.2.0-win-x64.zip`（release.yml staging 目录同改）。
+- ✅ **键名与应用名严格区分**：只替换三个应用身份 token（`CapsLockPro` / `CapsLock++` / `CapsLockPlusPlus`），**裸 `CapsLock` 一律保留**（CapsLock 键、热键 `CapsLock+N`、`CapsLockIsDown` / `CapsLockStateMachine` 等键相关标识符）；CHANGELOG 历史条目不改（当时发布物确为旧名）。
+- ✅ **配置迁移**：`ConfigLocator.FindPath` 新增遗留 JSON 迁移——`LTools.json` 缺失而 `CapsLock++.json` 存在 → 同目录 `File.Move` 改名（内容不动），失败跳过继续回退；旧 `CapsLock++.ini` 迁移链**保留字面量**（v1.x 文件真实名不可改）；`AppConfig.FindExample` 改读 `LTools.example.json`；`.gitignore` 新旧两套名都忽略；`AssemblyVersion` 顺手从从未维护的 `0.1.0.0` 提到 `2.2.0.0`。
+- ✅ **计划任务清理**：任务名改 `LTools` 后旧任务 `/tr` 指向已不存在的旧 exe——`AutoStartService.IsEnabled` 首次调用一次性删除遗留 `CapsLockPro` 任务（`_legacyCleaned` 防重复，删除失败静默）。
+- ✅ **冒烟**：迁移前 legacy 哈希 `61923C…`（1890B）→ 启动后 `LTools.json` 哈希**完全一致**、`CapsLock++.json` 消失 ✓；`FindPath` / `ConfigStore.ConfigPath` 均指新路径、reload ok ✓；trayTip=`LTools` ✓；互斥体=`Global\LTools_SingleInstance` ✓；进程自行退出 ✓；临时代码 0 残留，构建 0 错 0 警。
+- ⚠️ **gitee 镜像**（`gitee.com/lazyst/cpaslock-pro`，其 URL 本就拼错为 cpaslock）需在 Gitee 网页手动改名，本地无其授权；origin 已切到 `github.com/lazyst/LTools`。
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

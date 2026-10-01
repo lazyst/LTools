@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Windows.Data;
 
-namespace CapsLockPro.Views.Controls;
+namespace LTools.Views.Controls;
 
 /// <summary>
 /// 值（宽度）≥ ConverterParameter 时返回 true。用于按容器宽度切换布局形态。

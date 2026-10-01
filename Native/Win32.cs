@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace CapsLockPro.Native;
+namespace LTools.Native;
 
 /// <summary>
 /// 常用 Win32 P/Invoke 声明：键盘/鼠标状态查询、光标、窗口、模块、钩子结构。

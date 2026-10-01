@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>WindowChrome 辅助：修正最大化时窗口内容溢出屏幕（WM_GETMINMAXINFO 钳制到当前显示器工作区）。</summary>
 internal static class WindowChromeHelper

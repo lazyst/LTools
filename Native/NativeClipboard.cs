@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace CapsLockPro.Native;
+namespace LTools.Native;
 
 /// <summary>
 /// 原始 Win32 剪贴板读写（CF_UNICODETEXT）。

@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using Clipboard = System.Windows.Clipboard;
 using IDataObject = System.Windows.IDataObject;
-using CapsLockPro.Core;
-using CapsLockPro.Native;
+using LTools.Core;
+using LTools.Native;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 智能搜索（对应原版 lib/QuickNote.ahk 的 QuickSearch）。

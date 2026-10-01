@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace CapsLockPro.Config;
+namespace LTools.Config;
 
 /// <summary>
 /// 轻量 INI 读写（对应原版 Utils.ahk 的 IniRead/IniWrite）。

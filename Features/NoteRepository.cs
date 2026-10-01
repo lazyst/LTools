@@ -2,9 +2,9 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
-using CapsLockPro.Core;
+using LTools.Core;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 速记数据层（深模块）：隔离所有文件 IO。每条速记 = <c>速记/&lt;分类&gt;/&lt;yyyy-MM-dd&gt; &lt;标题&gt;.txt</c>；

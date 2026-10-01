@@ -5,7 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 
-namespace CapsLockPro.Views.Controls;
+namespace LTools.Views.Controls;
 
 /// <summary>
 /// 拖动排序视觉辅助（§12「所有拖动排序都要有幽灵跟随、占位、丝滑动画过渡」）：

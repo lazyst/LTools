@@ -3,16 +3,16 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using CapsLockPro.Features;
+using LTools.Features;
 
-namespace CapsLockPro.Config;
+namespace LTools.Config;
 
 /// <summary>
-/// 应用配置（CapsLock++.json）强类型模型 + System.Text.Json 读写。
+/// 应用配置（LTools.json）强类型模型 + System.Text.Json 读写。
 /// 动作系统 schema（计划 §9）：全局动作清单 <see cref="Actions"/> + 超级面板 <see cref="SuperPanel"/> +
 /// 菜单组 <see cref="MenuGroups"/>（项为动作 Id 引用）。无需兼容旧 schema（旧 json 废弃）。
-/// 发布包只携带 CapsLock++.example.json；用户首次改动保存后才在同目录生成
-/// CapsLock++.json，升级解压不会覆盖用户配置。
+/// 发布包只携带 LTools.example.json；用户首次改动保存后才在同目录生成
+/// LTools.json，升级解压不会覆盖用户配置。
 /// </summary>
 public sealed class MenuGroupDto
 {
@@ -98,8 +98,8 @@ public sealed class AppConfig
     private static AppConfig LoadExample(string? path)
     {
         // 用户配置缺失或不可读：回退读同目录示例作为默认模板。
-        // 发布包只携带 CapsLock++.example.json（不携带 CapsLock++.json），
-        // 用户首次保存才在同目录生成 CapsLock++.json，升级解压不会覆盖已有配置。
+        // 发布包只携带 LTools.example.json（不携带 LTools.json），
+        // 用户首次保存才在同目录生成 LTools.json，升级解压不会覆盖已有配置。
         var example = FindExample(path);
         if (example != null)
         {
@@ -117,7 +117,7 @@ public sealed class AppConfig
         if (string.IsNullOrEmpty(path)) return null;
         var dir = Path.GetDirectoryName(path);
         if (string.IsNullOrEmpty(dir)) return null;
-        var example = Path.Combine(dir, "CapsLock++.example.json");
+        var example = Path.Combine(dir, "LTools.example.json");
         return File.Exists(example) ? example : null;
     }
 

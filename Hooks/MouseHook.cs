@@ -1,11 +1,11 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Threading;
-using CapsLockPro.Core;
-using CapsLockPro.Features;
-using CapsLockPro.Native;
+using LTools.Core;
+using LTools.Features;
+using LTools.Native;
 
-namespace CapsLockPro.Hooks;
+namespace LTools.Hooks;
 
 /// <summary>
 /// 低级鼠标钩子（WH_MOUSE_LL）。在主线程安装，消息循环泵送。

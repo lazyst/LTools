@@ -1,6 +1,6 @@
 using System.Windows;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>通用单行输入对话框（对应 AHK InputBox）。模态。</summary>
 public partial class InputDialog : Window

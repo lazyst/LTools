@@ -1,8 +1,8 @@
 using System.Threading.Tasks;
-using CapsLockPro.Core;
-using CapsLockPro.Native;
+using LTools.Core;
+using LTools.Native;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 杂项热键（对应原版 lib/QuickNote.ahk 前半的 #HotIf 块）。

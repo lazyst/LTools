@@ -6,9 +6,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using CapsLockPro.Features;
+using LTools.Features;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>
 /// 组合动作编辑器（计划 §10.1）：左「动作来源」（内部动作 / 动作池，双击或拖入）·

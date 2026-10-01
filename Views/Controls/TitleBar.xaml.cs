@@ -2,7 +2,7 @@ using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
 
-namespace CapsLockPro.Views.Controls;
+namespace LTools.Views.Controls;
 
 /// <summary>可复用自定义标题栏。配合 <c>WindowChrome</c> 使用：标题区可拖动、双击最大化；
 /// 右侧最小化/最大化/关闭按钮。按钮通过 <c>WindowChrome.IsHitTestVisibleInChrome</c> 接收点击。</summary>

@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 动作类型枚举（对应计划 §3 动作类型表）。JSON 中以小写字符串存储。

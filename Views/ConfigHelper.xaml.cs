@@ -8,13 +8,13 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using CapsLockPro.Config;
-using CapsLockPro.Core;
-using CapsLockPro.Features;
-using CapsLockPro.Views.Controls;
+using LTools.Config;
+using LTools.Core;
+using LTools.Features;
+using LTools.Views.Controls;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>
 /// 设置 GUI（阶段 3 重构为左导航 + 多页面）。页面：通用 / 动作管理 / CapsLock快捷菜单 / 超级面板 / 终端路径。

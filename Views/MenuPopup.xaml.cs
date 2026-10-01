@@ -3,9 +3,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Animation;
-using CapsLockPro.Features;
+using LTools.Features;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>菜单弹出窗口（对应 lib/ui/MenuUI.ahk CreateMenuGUI）。
 /// 无边框置顶；标题 + 序号按钮列表 + 关闭；Esc/点击外部/选号 关闭。</summary>

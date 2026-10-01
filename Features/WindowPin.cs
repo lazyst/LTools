@@ -1,8 +1,8 @@
 using System.Runtime.InteropServices;
-using CapsLockPro.Core;
-using CapsLockPro.Native;
+using LTools.Core;
+using LTools.Native;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 窗口置顶（对应原版 lib/WindowPin.ahk）。CapsLock+右键 切换光标下窗口置顶/取消。

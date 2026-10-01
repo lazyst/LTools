@@ -4,10 +4,10 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using CapsLockPro.Core;
-using CapsLockPro.Features;
+using LTools.Core;
+using LTools.Features;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>速记 GUI（双列：左列表 + 右编辑区）。数据层见 <see cref="NoteRepository"/>。
 /// 保留手动 Ctrl+S 保存；切换笔记 / 关闭窗口时若有未保存改动则提示。</summary>

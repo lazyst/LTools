@@ -1,10 +1,10 @@
 using System.IO;
 using System.Text.RegularExpressions;
-using CapsLockPro.Config;
-using CapsLockPro.Core;
-using CapsLockPro.Views;
+using LTools.Config;
+using LTools.Core;
+using LTools.Views;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 速记协调器（对应原版 lib/QuickNote.ahk，重构后数据模型：每条速记=独立文件，分类=子目录）。

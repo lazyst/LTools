@@ -6,11 +6,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
-using CapsLockPro.Features;
+using LTools.Features;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using OpenFolderDialog = Microsoft.Win32.OpenFolderDialog;
 
-namespace CapsLockPro.Views;
+namespace LTools.Views;
 
 /// <summary>
 /// 普通动作编辑对话框（计划 §10.1）：类型下拉（6 类，含「组合动作 ▸」跳转项）+ 类型特定字段 + 名称 + 图标。

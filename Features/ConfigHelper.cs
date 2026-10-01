@@ -1,6 +1,6 @@
-using CapsLockPro.Views;
+using LTools.Views;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 设置（对应原版 lib/ConfigHelper.ahk）。CapsLock+\ 切换配置窗口；

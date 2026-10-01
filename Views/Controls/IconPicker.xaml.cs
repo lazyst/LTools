@@ -2,9 +2,9 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using CapsLockPro.Features;
+using LTools.Features;
 
-namespace CapsLockPro.Views.Controls;
+namespace LTools.Views.Controls;
 
 /// <summary>
 /// 内置图标网格选择器（计划 §3.1 / §10.1）：40 个 Segoe MDL2 字形铺成网格，

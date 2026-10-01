@@ -1,9 +1,9 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
-using CapsLockPro.Config;
+using LTools.Config;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 超级面板槽位「添加动作」共享菜单（计划 §5.5/§5.6 统一）：

@@ -24,18 +24,18 @@ jobs:
       - name: Pack zip
         shell: pwsh
         run: |
-          # zip 内顶层为 CapsLockPro/ 目录，用户解压即得此目录
-          New-Item -ItemType Directory -Path staging/CapsLockPro -Force | Out-Null
-          Copy-Item publish/* staging/CapsLockPro/ -Recurse
-          $ver = ${env:GITHUB_REF_NAME}   # 如 v2.0.0
-          Compress-Archive -Path staging/CapsLockPro -DestinationPath "CapsLockPro-$ver-win-x64.zip" -CompressionLevel Optimal
-          Write-Host "Built CapsLockPro-$ver-win-x64.zip"
-          Get-Item "CapsLockPro-$ver-win-x64.zip" | Format-List Name,Length
+          # zip 内顶层为 LTools/ 目录，用户解压即得此目录
+          New-Item -ItemType Directory -Path staging/LTools -Force | Out-Null
+          Copy-Item publish/* staging/LTools/ -Recurse
+          $ver = ${env:GITHUB_REF_NAME}   # 如 v2.2.0
+          Compress-Archive -Path staging/LTools -DestinationPath "LTools-$ver-win-x64.zip" -CompressionLevel Optimal
+          Write-Host "Built LTools-$ver-win-x64.zip"
+          Get-Item "LTools-$ver-win-x64.zip" | Format-List Name,Length
 
       - name: Create/Update release & upload asset
         uses: softprops/action-gh-release@v2
         with:
-          files: CapsLockPro-${{ github.ref_name }}-win-x64.zip
+          files: LTools-${{ github.ref_name }}-win-x64.zip
           generate_release_notes: true   # 自动从 commits 生成 release notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

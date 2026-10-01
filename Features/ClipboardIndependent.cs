@@ -1,9 +1,9 @@
 using Clipboard = System.Windows.Clipboard;
 using IDataObject = System.Windows.IDataObject;
-using CapsLockPro.Core;
-using CapsLockPro.Native;
+using LTools.Core;
+using LTools.Native;
 
-namespace CapsLockPro.Features;
+namespace LTools.Features;
 
 /// <summary>
 /// 独立剪贴板（对应原版 lib/TextEdit.ahk 的 x/c/v 实现）。

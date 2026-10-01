@@ -4,13 +4,13 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
-using CapsLockPro.Config;
-using CapsLockPro.Core;
-using CapsLockPro.Features;
-using CapsLockPro.Hooks;
+using LTools.Config;
+using LTools.Core;
+using LTools.Features;
+using LTools.Hooks;
 using H.NotifyIcon;
 
-namespace CapsLockPro;
+namespace LTools;
 
 /// <summary>
 /// WPF 应用入口（替代旧 WinForms <c>TrayAppContext</c>）。
@@ -19,7 +19,7 @@ namespace CapsLockPro;
 /// </summary>
 public partial class App : Application
 {
-    private const string SingleInstanceMutexName = @"Global\CapsLockPlusPlus_SingleInstance";
+    private const string SingleInstanceMutexName = @"Global\LTools_SingleInstance";
     private static Mutex? _singleInstanceMutex;
 
     private TaskbarIcon? _tray;
@@ -71,8 +71,8 @@ public partial class App : Application
         // —— 内部动作注册（动作系统 §7）——
         InternalActionRegistry.RegisterDefaults();
 
-        // —— 启动提示：鼠标旁显示“CapsLockPro 已启动”（复用 MouseTip，1.8s 后自动隐藏）——
-        MouseTip.Show("CapsLockPro 已启动");
+        // —— 启动提示：鼠标旁显示“LTools 已启动”（复用 MouseTip，1.8s 后自动隐藏）——
+        MouseTip.Show("LTools 已启动");
     }
 
     private void BuildTray()
@@ -85,14 +85,14 @@ public partial class App : Application
         menu.Items.Add(NewItem("启用 CapsLock 增强", Settings.ToggleCapsLock, () => AppState.IsToolEnabled));
         menu.Items.Add(NewItem("启用超级面板", Settings.ToggleSuperPanel, () => AppState.IsSuperPanelEnabled));
         menu.Items.Add(new Separator());
-        menu.Items.Add(NewItem("退出 CapsLock++", ExitApplication));
+        menu.Items.Add(NewItem("退出 LTools", ExitApplication));
 
         // 状态点每次打开菜单时刷新：状态可能经 CapsLock+Esc 手势或设置页更改，托盘菜单要跟随
         menu.Opened += (_, _) => RefreshStatusDots();
 
         _tray = new TaskbarIcon
         {
-            ToolTipText = "CapsLock++",
+            ToolTipText = "LTools",
             IconSource = LoadIconSource(),
             ContextMenu = menu,
         };
@@ -159,9 +159,9 @@ public partial class App : Application
     {
         var candidates = new[]
         {
-            Path.Combine(AppContext.BaseDirectory, "Icon", "CapsLock++.ico"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Icon", "CapsLock++.ico"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Icon", "CapsLock++.ico"),
+            Path.Combine(AppContext.BaseDirectory, "Icon", "LTools.ico"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Icon", "LTools.ico"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Icon", "LTools.ico"),
         };
         foreach (var p in candidates)
         {
