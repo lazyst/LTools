@@ -2,6 +2,12 @@
 
 所有项目的重要更改都将记录在此文件中。
 
+## \[v2.2.1\] - 2026-10-01
+
+### 🐛 修复
+
+- **托盘右键菜单错位**：全屏游戏（如英雄联盟）切回后，托盘右键菜单不贴鼠标、重启恢复。根因：`app.manifest` 此前无 DPI 感知声明，进程以 System DPI Aware 运行、不处理 per-monitor DPI 变化，全屏游戏切显示环境后 H.NotifyIcon 的物理像素光标坐标→WPF 设备无关像素换算比例陈旧。修复：manifest 加 `PerMonitorV2` DPI 感知（Release 进程创建即生效）；Debug（`-p:NoWin32Manifest=true` 剥了清单）改由 `Core/DpiInitializer` 的 `[ModuleInitializer]` 在 Main 前、WPF 加载前 `SetProcessDpiAwarenessContext` 补设。主屏 125% 外观不变，差别仅跨显示器 / DPI 变化时按当前屏正确重算。
+
 ## \[v2.2.0\] - 2026-10-01
 
 ### ✏️ 应用改名 LTools
