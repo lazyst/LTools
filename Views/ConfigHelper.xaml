@@ -9,7 +9,7 @@
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
-        FontFamily="{StaticResource UiFont}" FontSize="13">
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -334,7 +334,7 @@
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                     <TextBlock x:Name="GhostIcon" FontFamily="Segoe MDL2 Assets" FontSize="20"
                                HorizontalAlignment="Center" Foreground="{StaticResource TextBrush}"/>
-                    <TextBlock x:Name="GhostName" Margin="0,3,0,0" FontSize="11"
+                    <TextBlock x:Name="GhostName" Margin="0,3,0,0" FontSize="{StaticResource FontSizeHint}"
                                HorizontalAlignment="Center" Foreground="{StaticResource TextBrush}"
                                TextTrimming="CharacterEllipsis" MaxWidth="104"/>
                 </StackPanel>
@@ -344,7 +344,7 @@
                     Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource PrimaryBrush}"
                     BorderThickness="2" CornerRadius="6" Padding="10,5" Opacity="0.92"
                     MinWidth="140" MaxWidth="300">
-                <TextBlock x:Name="ListGhostText" FontWeight="SemiBold" FontSize="12"
+                <TextBlock x:Name="ListGhostText" FontWeight="SemiBold" FontSize="{StaticResource FontSizeSecondary}"
                            Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                            MaxWidth="280" TextTrimming="CharacterEllipsis"/>
             </Border>

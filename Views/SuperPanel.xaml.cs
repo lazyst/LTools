@@ -57,9 +57,8 @@ public partial class SuperPanelWindow : Window
         Rebuild();
         UpdateHeader();
 
-        // 无边框透明置顶窗口：淡入（对齐 MenuPopup）
-        Opacity = 0;
-        BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120)));
+        // 不做 Opacity 淡入：不透明窗口上 Opacity<1 会触发 WS_EX_LAYERED（分层窗禁用
+        // ClearType），与本次「恢复 ClearType」相悖。面板直接显示，文本始终逐子像素渲染。
 
         // ActualWidth/Height 在加载后才可靠，此时再定位到光标处
         Loaded += (_, _) => PlaceAtCursor(_invokeX, _invokeY);
@@ -109,8 +108,8 @@ public partial class SuperPanelWindow : Window
         }
 
         double cx = px * m11, cy = py * m22;   // 光标 DIP
-        double w = ActualWidth > 0 ? ActualWidth : 406;
-        double h = ActualHeight > 0 ? ActualHeight : 478;
+        double w = ActualWidth > 0 ? ActualWidth : 386;
+        double h = ActualHeight > 0 ? ActualHeight : 458;
 
         // 窗口位置 = 光标 − 格子中心相对窗口的偏移（Loaded 时布局已完成，
         // TranslatePoint 直接取 CellsHost 实测中心，不硬编码标题栏/页脚尺寸）。
@@ -121,7 +120,7 @@ public partial class SuperPanelWindow : Window
         double left = cx - center.X;
         double top = cy - center.Y;
 
-        // 屏幕边缘夹回：窗口外框（含 10px 阴影留白）完整保持在工作区内。
+        // 屏幕边缘夹回：窗口外框完整保持在工作区内（无阴影留白，窗口即卡片）。
         // 贴边唤起时光标不再居中，这是让面板不出屏的必然取舍。
         var screen = GetScreenBounds(px, py);
         double sLeft = screen.Left * m11, sTop = screen.Top * m22;
@@ -165,7 +164,7 @@ public partial class SuperPanelWindow : Window
         {
             Style = (Style)FindResource("BtnGhost"),
             Margin = new Thickness(0),     // 格子无间隙（§5.3 紧凑）
-            Height = 96,                    // 正方形：面板宽 406 → 列宽 (406-22)/4=96
+            Height = 96,                    // 正方形：面板宽 386 → 列宽 (386-2)/4=96
             Cursor = Cursors.Hand,
             // 不覆盖 Background/Tag：与设置页槽位（BuildSlotButton）一致——透明底 + 默认悬停
             // HoverBg(#F4F4F5)。原覆盖 SurfaceAlt(#F4F4F5) 与默认悬停同色→悬停无变化；

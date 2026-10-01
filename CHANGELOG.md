@@ -2,6 +2,17 @@
 
 所有项目的重要更改都将记录在此文件中。
 
+## \[v2.2.2\] - 2026-10-02
+
+### 🐛 修复
+
+- **超级面板 / 菜单弹窗文字发糊**：`SuperPanel` 与 `MenuPopup` 原用 `AllowsTransparency="True"`（透明窗口），WPF 对透明窗强制灰度抗锯齿、禁用 ClearType，再叠加 `DropShadowEffect` 软件渲染与亚像素错位，小字号下肉眼发糊。改为不透明 `WindowStyle="None"` 窗口（与本应用所有对话框一致），移除 `DropShadowEffect` 与 `Opacity` 淡入（淡入会触发 `WS_EX_LAYERED` 分层窗、再禁 ClearType），加 `UseLayoutRounding` + `SnapsToDevicePixels`；ClearType 恢复、硬件加速文本渲染回归。圆角改由卡片 `Border CornerRadius` 在同色底上自绘（白底圆角描边），无阴影留白故窗口宽度同步收窄（面板 406→386、菜单 300→280，格子 / 内容尺寸不变）。`MouseTipWindow`（单行深色提示）保留透明圆角不动。
+- **快捷菜单关闭黑屏闪一下**：`MenuPopup` 关闭走 `Opacity` 淡出，不透明窗口上 `Opacity<1` 会把窗口临时变成 `WS_EX_LAYERED` 分层窗，而 DWM 销毁分层窗口时会短暂闪烁——与本应用 v1.4.3 AHK 版「菜单关闭闪烁修复」同一根因（彼时以 `WinHide` 规避，WPF 移植版未移植该步）。移除淡出 `Opacity` 动画，窗口全程不透明、非分层，销毁无黑闪。
+
+### 🎨 界面
+
+- **全局字号调大 +1 并集中为资源**：正文 13→**14**（对齐 Windows 11 Fluent / WinUI 3 标准 body）、次要 12→**13**、提示 11→**12**、标题 15→**16**，全应用统一（超级面板 / 快捷菜单 / 设置 / 帮助面板 / 速记 / 各对话框）。字号提为 `Modern.xaml` 的 `FontSizeBody` / `FontSizeSecondary` / `FontSizeHint` / `FontSizeTitle` 四个资源，此后调整只需改这四行。此前 `SuperPanel` / `MenuPopup` 的 Window 未设字号、文字继承 WPF 默认 12（比别处小一号），一并修正。字号为 DIP，随 PerMonitorV2 系统缩放自动放大，无需额外适配。
+
 ## \[v2.2.1\] - 2026-10-01
 
 ### 🐛 修复

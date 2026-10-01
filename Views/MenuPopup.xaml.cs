@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media.Animation;
 using LTools.Features;
 
 namespace LTools.Views;
@@ -58,26 +57,10 @@ public partial class MenuPopupWindow : Window
             ItemsHost.Children.Add(row);
         }
 
-        // 淑入动画（对应 AHK FadeInWindow 150ms）
-        Opacity = 0;
-        Loaded += (_, _) =>
-            BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)));
-    }
-
-    // 淡出动画（对应 AHK FadeOutWindow 100ms）：关闭时先淡出再真实销毁
-    private bool _fading;
-    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
-    {
-        if (!_fading)
-        {
-            _fading = true;
-            e.Cancel = true;
-            var anim = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(100));
-            anim.Completed += (_, _) => Close();
-            BeginAnimation(OpacityProperty, anim);
-            return;
-        }
-        base.OnClosing(e);
+        // 不做 Opacity 淡入/淡出：不透明窗口上 Opacity<1 会触发 WS_EX_LAYERED（分层窗），
+        // 而 DWM 销毁分层窗口时会短暂闪烁（见 CHANGELOG v1.4.3「菜单关闭闪烁修复」——彼时以
+        // WinHide 规避，WPF 版未移植）。故菜单打开/关闭均无 Opacity 动画，窗口全程不透明、
+        // 非分层 → ClearType 正常、关闭无黑闪（与 SuperPanel 即关即毁一致）。
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
@@ -115,7 +98,7 @@ public partial class MenuPopupWindow : Window
     private void Window_Deactivated(object sender, EventArgs e)
     {
         if (_isClosing) return;
-        // 旧窗口淡出动画期间，新窗口已接管 _current；忽略旧窗口的 Deactivated，避免误关新菜单
+        // 切换菜单组时旧窗口失活、新窗口已接管 _current；忽略旧窗口的 Deactivated，避免误关新菜单
         if (sender is System.Windows.Window w && !MenuSystem.IsCurrentWindow(w)) return;
         _isClosing = true;
         try { MenuSystem.CloseCurrent(); } catch { /* 静默 */ }

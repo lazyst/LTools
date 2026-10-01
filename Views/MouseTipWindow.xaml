@@ -9,7 +9,7 @@
         Background="Transparent" ShowActivated="False">
     <Border Background="#18181B" CornerRadius="6" Padding="12,7"
             BorderBrush="#00000000" BorderThickness="0" MaxWidth="380">
-        <TextBlock x:Name="TipText" Foreground="White" FontSize="13"
+        <TextBlock x:Name="TipText" Foreground="White" FontSize="{StaticResource FontSizeBody}"
                    FontFamily="{StaticResource UiFont}" TextWrapping="Wrap"/>
     </Border>
 </Window>

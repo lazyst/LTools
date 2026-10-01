@@ -8,7 +8,7 @@
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
-        FontFamily="{StaticResource UiFont}" FontSize="13"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
         KeyDown="Window_KeyDown" Closing="Window_Closing">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
@@ -65,7 +65,7 @@
                 <Grid Grid.Row="1" Margin="0,8,0,8">
                     <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged" Padding="8,5"/>
                     <TextBlock x:Name="SearchPlaceholder" Text="搜索…" IsHitTestVisible="False"
-                               Foreground="{StaticResource HintTextBrush}" FontSize="13"
+                               Foreground="{StaticResource HintTextBrush}" FontSize="{StaticResource FontSizeBody}"
                                VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0"/>
                 </Grid>
 
@@ -93,7 +93,7 @@
                                         <Border Grid.Column="1" Background="{StaticResource SurfaceAltBrush}"
                                                 CornerRadius="3" Padding="5,1" Margin="6,0,0,0"
                                                 Visibility="{Binding CategoryTagVis}">
-                                            <TextBlock Text="{Binding Category}" FontSize="11"
+                                            <TextBlock Text="{Binding Category}" FontSize="{StaticResource FontSizeHint}"
                                                        Foreground="{StaticResource HintTextBrush}"
                                                        TextTrimming="CharacterEllipsis" MaxWidth="80"/>
                                         </Border>
@@ -120,11 +120,11 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <Grid Grid.Row="0">
-                    <TextBox x:Name="TitleBox" FontSize="15" FontWeight="SemiBold"
+                    <TextBox x:Name="TitleBox" FontSize="{StaticResource FontSizeTitle}" FontWeight="SemiBold"
                              BorderThickness="0" Padding="0,2" Background="Transparent"
                              TextChanged="TitleBox_TextChanged"/>
                     <TextBlock x:Name="TitlePlaceholder" Text="标题" IsHitTestVisible="False"
-                               Foreground="{StaticResource HintTextBrush}" FontSize="15"
+                               Foreground="{StaticResource HintTextBrush}" FontSize="{StaticResource FontSizeTitle}"
                                FontWeight="SemiBold" VerticalAlignment="Top" Margin="0,4,0,0"/>
                 </Grid>
                 <Border Grid.Row="1" Height="1" Background="{StaticResource BorderBrush}" Margin="0,8"/>

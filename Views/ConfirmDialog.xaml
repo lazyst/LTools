@@ -7,7 +7,7 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
-        FontFamily="{StaticResource UiFont}" FontSize="13">
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -28,7 +28,7 @@
             </Grid.RowDefinitions>
 
             <!-- 消息 -->
-            <TextBlock Grid.Row="0" x:Name="MessageText" Text="" FontSize="13"
+            <TextBlock Grid.Row="0" x:Name="MessageText" Text="" FontSize="{StaticResource FontSizeBody}"
                        TextWrapping="Wrap" Foreground="{StaticResource TextBrush}" Margin="0,0,0,16"/>
 
             <!-- 按钮 -->

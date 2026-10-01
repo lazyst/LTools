@@ -89,7 +89,7 @@ internal static class MenuSystem
         if (g == null) return;
         _currentGroup = groupIndex;
         // 延迟到下一 Dispatcher 周期再创建并显示窗口：
-        // 让上一组菜单的淡出/失焦先完成，并显式 Activate 使其成为前台窗口，
+        // 让上一组菜单的关闭/失焦先完成，并显式 Activate 使其成为前台窗口，
         // 避免切换组后新菜单因前台权限/时序竞争未能激活，导致点击外部不触发
         // Deactivated 而关不掉（与 HelpPanel 同一类激活竞态，见 Features/HelpPanel.cs）。
         System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() =>

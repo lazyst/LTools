@@ -7,7 +7,7 @@
         WindowStyle="None" Style="{StaticResource ModernWindow}" Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
-        FontFamily="{StaticResource UiFont}" FontSize="13"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
         KeyDown="Window_KeyDown" Deactivated="Window_Deactivated">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
@@ -24,7 +24,7 @@
 
         <ScrollViewer Grid.Row="1" Margin="14,10,14,14"
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-            <TextBlock x:Name="ContentText" FontFamily="{StaticResource MonoFont}" FontSize="13"
+            <TextBlock x:Name="ContentText" FontFamily="{StaticResource MonoFont}" FontSize="{StaticResource FontSizeBody}"
                        Foreground="{StaticResource TextBrush}" TextWrapping="NoWrap"/>
         </ScrollViewer>
     </Grid>

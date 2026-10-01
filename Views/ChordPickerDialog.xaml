@@ -7,7 +7,7 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
-        FontFamily="{StaticResource UiFont}" FontSize="13">
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -34,7 +34,7 @@
             <StackPanel Grid.Row="0">
                 <TextBlock Style="{StaticResource SectionLabel}" Text="预览" Margin="0,0,0,4"/>
                 <TextBox x:Name="PreviewBox" MinHeight="32" TextChanged="PreviewBox_TextChanged"/>
-                <TextBlock x:Name="ErrText" FontSize="11" Margin="0,4,0,0"
+                <TextBlock x:Name="ErrText" FontSize="{StaticResource FontSizeHint}" Margin="0,4,0,0"
                            Text="请选择或输入按键"
                            Foreground="{StaticResource SecondaryTextBrush}"/>
             </StackPanel>
@@ -58,19 +58,19 @@
             <StackPanel Grid.Row="2" Margin="0,12,0,0">
                 <TextBlock Style="{StaticResource SectionLabel}" Text="特殊键（点击填入预览）" Margin="0,0,0,6"/>
 
-                <TextBlock Text="编辑" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,4"/>
+                <TextBlock Text="编辑" FontSize="{StaticResource FontSizeHint}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,4"/>
                 <WrapPanel x:Name="EditRow"/>
 
-                <TextBlock Text="导航" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,2,0,4"/>
+                <TextBlock Text="导航" FontSize="{StaticResource FontSizeHint}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,2,0,4"/>
                 <WrapPanel x:Name="NavRow"/>
 
-                <TextBlock Text="功能键" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,2,0,4"/>
+                <TextBlock Text="功能键" FontSize="{StaticResource FontSizeHint}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,2,0,4"/>
                 <WrapPanel x:Name="FRow"/>
                 <CheckBox x:Name="F13Box" Content="展开 F13–F24" Margin="0,4,0,0"
                           Checked="F13Box_Changed" Unchecked="F13Box_Changed"/>
                 <WrapPanel x:Name="F13Row" Margin="0,4,0,0" Visibility="Collapsed"/>
 
-                <TextBlock Text="符号" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,8,0,4"/>
+                <TextBlock Text="符号" FontSize="{StaticResource FontSizeHint}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,8,0,4"/>
                 <WrapPanel x:Name="SymRow"/>
             </StackPanel>
 

@@ -8,7 +8,7 @@
         WindowStartupLocation="CenterScreen" ShowInTaskbar="False"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
-        FontFamily="{StaticResource UiFont}" FontSize="13"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
         PreviewKeyDown="Window_PreviewKeyDown" PreviewKeyUp="Window_PreviewKeyUp">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
@@ -47,7 +47,7 @@
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="名称" Margin="0,0,0,4"/>
                         <TextBox Grid.Row="1" x:Name="NameBox" MinHeight="32"/>
-                        <TextBlock Grid.Row="2" x:Name="NameHint" FontSize="11" Margin="0,4,0,0"
+                        <TextBlock Grid.Row="2" x:Name="NameHint" FontSize="{StaticResource FontSizeHint}" Margin="0,4,0,0"
                                    Visibility="Collapsed"
                                    Foreground="{StaticResource SecondaryTextBrush}"
                                    Text="名称可留空：步骤行将显示类型名"/>
@@ -183,7 +183,7 @@
                             <StackPanel x:Name="F_SendKeys">
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="输入序列" Margin="0,0,0,4"/>
                                 <TextBlock Text="录制：按下快捷键自动记录，空闲 800ms 成条；Esc 停止。"
-                                           Foreground="{StaticResource HintTextBrush}" FontSize="11" Margin="0,0,0,8"/>
+                                           Foreground="{StaticResource HintTextBrush}" FontSize="{StaticResource FontSizeHint}" Margin="0,0,0,8"/>
                                 <Grid Margin="0,0,0,8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
@@ -203,7 +203,7 @@
                                             MinHeight="30" Click="AddSleep_Click"/>
                                     <TextBlock Grid.Column="4" x:Name="RecordHint" VerticalAlignment="Center"
                                                Margin="12,0,0,0" Foreground="{StaticResource HintTextBrush}"
-                                               FontSize="11" Text=""/>
+                                               FontSize="{StaticResource FontSizeHint}" Text=""/>
                                 </Grid>
                                 <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4"
                                         MinHeight="80" MaxHeight="180">
