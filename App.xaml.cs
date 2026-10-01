@@ -51,13 +51,11 @@ public partial class App : Application
         _watchdog.Tick += (_, _) => CapsLockStateMachine.WatchdogTick();
         _watchdog.Start();
 
-        // —— 钩子（主线程安装，Dispatcher 泵送）——
-        try { KeyboardHook.Install(); }
-        catch (Win32Exception ex) { CrashLog.Write("KeyboardHookInstall", ex); }
-        try { MouseHook.Install(); }
-        catch (Win32Exception ex) { CrashLog.Write("MouseHookInstall", ex); }
-
-        // —— 加载配置 ——
+        // —— 加载配置 + 初始化各模块（重活，须在装钩子之前完成）——
+        // 低级鼠标/键盘钩子靠本线程泵消息才会被调用；OnStartup 在 Dispatcher 开始泵消息之前同步执行，
+        // 若先装钩子再做下面的重活（JSON 解析 / 动作注册 / 速记文件迁移 / 弹提示窗），主线程不泵消息 →
+        // 鼠标事件挂起 → 启动瞬间鼠标卡顿。故重活前置、钩子最后装：装完即返回，Dispatcher 立即泵消息，
+        // 钩子回调第一时间被服务。顺带也保证 AppState / 动作清单在钩子首次回调前已就绪。
         var cfgPath = ConfigLocator.FindPath();
         var cfg = AppConfig.Load(cfgPath);
         AppState.MouseModeSpeed = cfg.MouseModeSpeed;
@@ -71,8 +69,17 @@ public partial class App : Application
         // —— 内部动作注册（动作系统 §7）——
         InternalActionRegistry.RegisterDefaults();
 
-        // —— 启动提示：鼠标旁显示“LTools 已启动”（复用 MouseTip，1.8s 后自动隐藏）——
+        // —— 启动提示：在无钩子阶段同步显示——首个 WPF 窗口的首帧会初始化渲染栈（D3D 等），
+        //    耗时落在此处，不阻塞任何钩子回调。 ——
         MouseTip.Show("LTools 已启动");
+
+        // —— 钩子：先预热回调 JIT（把首次 JIT 编译提前到无钩子阶段），再安装 ——
+        KeyboardHook.WarmUp();
+        MouseHook.WarmUp();
+        try { KeyboardHook.Install(); }
+        catch (Win32Exception ex) { CrashLog.Write("KeyboardHookInstall", ex); }
+        try { MouseHook.Install(); }
+        catch (Win32Exception ex) { CrashLog.Write("MouseHookInstall", ex); }
     }
 
     private void BuildTray()

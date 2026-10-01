@@ -54,6 +54,11 @@ internal static class MouseHook
         _proc = null;
     }
 
+    /// <summary>预热回调 JIT：以非动作 nCode 调用一次（JIT 在方法首次调用时编译整个方法体），
+    /// 把「首个真实鼠标事件触发回调 JIT」的一次性停顿提前到无钩子阶段。
+    /// nCode&lt;0 时回调直接放行，无副作用（CallNextHookEx 的 hhk 参数被系统忽略）。</summary>
+    public static void WarmUp() => HookCallback(-1, IntPtr.Zero, IntPtr.Zero);
+
     private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode == Win32.HcAction)

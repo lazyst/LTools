@@ -4,7 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:controls="clr-namespace:LTools.Views.Controls"
         Width="760" Height="540" MinWidth="620" MinHeight="420"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="False"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
