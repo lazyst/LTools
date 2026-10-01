@@ -23,7 +23,8 @@ public partial class QuickNoteWindow : Window
     private readonly DispatcherTimer _searchDebounce;
 
     // 列表行（供绑定；NoteEntry 的 Mtime 是 DateTime 不便直接显示）
-    private record NoteRow(string Title, string MtimeText, string Path, string Category, DateTime Mtime, string Body);
+    private record NoteRow(string Title, string MtimeText, string Path, string Category, DateTime Mtime, string Body,
+        Visibility CategoryTagVis);
 
     internal QuickNoteWindow(NoteRepository repo)
     {
@@ -234,11 +235,14 @@ public partial class QuickNoteWindow : Window
     {
         string? cat = CategoryBox.SelectedItem as string;
         if (string.IsNullOrEmpty(cat) || cat == NoteRepository.AllCategories) cat = null;
+        // 「全部」视图跨分类：每行显示分类标签；单分类视图里每行分类相同，隐藏避免冗余
+        bool showCat = cat == null;
         var entries = _repo.List(cat, _filter);
         var rows = entries.Select(e => new NoteRow(
             string.IsNullOrEmpty(e.Title) ? Path.GetFileNameWithoutExtension(e.Path) : e.Title,
             e.Mtime.ToString("M/d HH:mm"),
-            e.Path, e.Category, e.Mtime, e.Body)).ToList();
+            e.Path, e.Category, e.Mtime, e.Body,
+            showCat ? Visibility.Visible : Visibility.Collapsed)).ToList();
         string? keep = _current?.Path;
         NoteList.ItemsSource = rows;
         EmptyHint.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;

@@ -855,5 +855,12 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **修复**：抽出 `CreateCategory(string cat)`（`NewCategory_Click` 仅取模态输入名后转调），流程 = `EnsureCategory` → `EnsureSavedOrDiscarded`（与切换笔记同一未保存保护，防静默丢改动）→ `PopulateCategoryBox(cat)` → **`NewNote()`**（清空右侧为新建态，不显示旧分类笔记）→ **`ReloadList()`**（左栏切到新分类的空列表）→ 提示。
 - ✅ **冒烟**：建源分类+一条笔记并装入编辑区（复现前置）→ 调 `CreateCategory("目标")` → 断言下拉框=目标、**列表 0 条**、**编辑区清空**、`_current=null` `ok=True`；测试分类已清理。构建 0 错 0 警，App.xaml.cs 无临时残留。
 
+### 交付后 UX 优化（速记：列表项显示所属分类）
+
+- ✅ **需求**：速记列表每一项显示这条速记属于哪个分类。
+- ✅ **实现**：`NoteRow` 加 `CategoryTagVis: Visibility` 字段；模板标题行右侧加**分类标签**（`SurfaceAltBrush` 药丸、11px、`MaxWidth=80` 防长名溢出、`HintTextBrush`），`Visibility="{Binding CategoryTagVis}"` 绑定显隐。
+- ✅ **显隐策略**：`ReloadList` 里 `showCat = cat == null`——**仅「全部」视图跨分类显示标签**（此时才知道每行属于哪个分类）；**单分类视图隐藏**（每行分类相同、下拉框已显示当前分类，重复即冗余，仿 Apple Notes「所有备忘录」才显示文件夹）。
+- ✅ **冒烟 3/3**：「全部」视图 → `冒烟分类X` 行 `tagVisible=True` ✓；单分类 `冒烟分类X` 视图 → `tagHidden=True` ✓；测试分类已清理。构建 0 错 0 警，App.xaml.cs 无临时残留。
+
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。
