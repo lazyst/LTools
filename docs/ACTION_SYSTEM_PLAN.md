@@ -848,5 +848,12 @@ ActionExecutor.Run(ActionDto action)
 
 - ✅ **冒烟 4/4**：MouseTip 复用计时器创建 ✓；MouseMode 调速后台落盘生效（before=7 after=8）✓；故意抛未观测 Task 异常后**进程仍存活**（AppDomain/TaskScheduler 兜底）✓；进程 Responding=True。构建 0 错 0 警，App.xaml.cs 无临时残留。
 
+### 交付后 Bug 修复（速记：新建分类后列表/编辑区不联动）
+
+- ✅ **问题**：新建分类后下拉框切到新分类，但**左栏仍显示原分类的速记列表**、**右侧仍打开着旧速记**。
+- ✅ **根因**：`QuickNoteWindow.NewCategory_Click` 只调 `PopulateCategoryBox(...)`，而后者用 `_loading=true` **抑制了 `CategoryBox_SelectionChanged`**（该 handler 才是常规的 `ReloadList()` 触发点）→ 新分类选中不刷新列表；且完全没动右侧编辑区。对比 `RenameCategory_Click`/`DeleteCategory_Click` 都显式补了 `ReloadList()`，只有新建分类漏了。
+- ✅ **修复**：抽出 `CreateCategory(string cat)`（`NewCategory_Click` 仅取模态输入名后转调），流程 = `EnsureCategory` → `EnsureSavedOrDiscarded`（与切换笔记同一未保存保护，防静默丢改动）→ `PopulateCategoryBox(cat)` → **`NewNote()`**（清空右侧为新建态，不显示旧分类笔记）→ **`ReloadList()`**（左栏切到新分类的空列表）→ 提示。
+- ✅ **冒烟**：建源分类+一条笔记并装入编辑区（复现前置）→ 调 `CreateCategory("目标")` → 断言下拉框=目标、**列表 0 条**、**编辑区清空**、`_current=null` `ok=True`；测试分类已清理。构建 0 错 0 警，App.xaml.cs 无临时残留。
+
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

@@ -63,8 +63,25 @@ public partial class QuickNoteWindow : Window
     {
         var (ok, name) = InputDialog.Show(this, "新建分类", "输入分类名:");
         if (!ok || string.IsNullOrWhiteSpace(name)) return;
-        _repo.EnsureCategory(name.Trim());
-        PopulateCategoryBox(name.Trim());
+        CreateCategory(name.Trim());
+    }
+
+    /// <summary>新建分类并切到该分类视图：左栏刷新为新分类的（空）列表、右侧清为新建态。</summary>
+    /// <remarks>
+    /// 必须显式 <see cref="ReloadList"/> + <see cref="NewNote"/>：<see cref="PopulateCategoryBox"/>
+    /// 以 <c>_loading=true</c> 抑制了 <c>CategoryBox_SelectionChanged</c>（该 handler 才是常规的
+    /// ReloadList 触发点），故新建分类不会自动刷新——旧分类的列表与已打开的旧笔记会残留。
+    /// 切视图前先经 <see cref="EnsureSavedOrDiscarded"/> 防止未保存改动被静默丢弃。
+    /// </remarks>
+    private void CreateCategory(string cat)
+    {
+        if (string.IsNullOrWhiteSpace(cat)) return;
+        _repo.EnsureCategory(cat);
+        if (!EnsureSavedOrDiscarded()) return;   // 用户取消：保留当前视图与编辑内容
+        PopulateCategoryBox(cat);
+        NewNote();                                // 清空右侧：新分类尚无笔记，不显示旧分类的笔记
+        ReloadList();                             // 左栏切到新分类（空列表）
+        TrayService.Notify("已新建分类「" + cat + "」");
     }
 
     private void RenameCategory_Click(object sender, RoutedEventArgs e)
