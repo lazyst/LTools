@@ -830,5 +830,23 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **要点**：ListBox 场景拖动用 ListBox 自身 `PreviewMouseMove/PreviewMouseLeftButtonUp` + `CaptureMouse`（不碰窗口级槽位 handlers，隔离干净）；`down` 不 `Handled` 保留 ListBox 正常选中，超拖动阈值才进拖动态；设置窗 `GhostLayer` 加 `ListGhost`（横排）+ `InsertLine`，组合窗加 `InsertLine`。
 - ✅ **冒烟 4 项全过**：菜单页 `ListGhost`/`InsertLine` 存在 + `AllowDrop=False`（DoDragDrop 已移除）✓；`DragFx` 交换 API 在真实 GroupList 跑通 ✓；「新建组合动作…」按钮存在 ✓；面板格 `AnimateSwap` 跑通 ✓；内存经 `ConfigStore.Reload` 还原。
 
+### 收尾：稳定性与性能全面加固
+
+**稳定性（降低崩溃概率）**
+
+- ✅ **两个低级钩子回调体加 try/catch**（`KeyboardHook`/`MouseHook` 的 `HookCallback`）——这是最高危路径：回调内任何功能模块抛异常都会外泄，**中断 `CallNextHookEx` 链致按键/鼠标事件被吞或丢失**，且可能让已吞键状态失衡（keydown 标记已吞、keyup 回调因异常未执行）。现 catch 后经 `CrashLog.Write` 记录并 `return CallNextHookEx`（放行事件），异常不再外泄。`DispatcherUnhandledException` 虽能兜住 UI 线程异常，但钩子链的中间状态已被破坏——try/catch 在源头杜绝。
+- ✅ **`MouseMode.SaveSpeed` 改后台落盘**——原实现经 `OnKey`（CapsLock+Q/A 调速）在**钩子回调路径同步读写磁盘**（`AppConfig.Load`+`Save`），磁盘负载下可能 >300ms → **系统摘钩子**（CapsLock 失效到重启）。改 `Task.Run` + `ConfigIO.Modify`（与 `Settings.SaveBool` 同款），内存态 `MouseModeSpeed` 仍在 `AdjustSpeed` 同步改完。
+- ✅ **App 加后台线程异常兜底**——`DispatcherUnhandledException` 只管 UI 线程；后台线程（剪贴板/动作执行/注入）裸异常会经 `AppDomain.UnhandledException` **终止进程**。新增 `AppDomain.CurrentDomain.UnhandledException`（记录栈迹）+ `TaskScheduler.UnobservedTaskException`（记录 + `SetObserved`）。
+- ✅ **`SuperPanelWindow.OnClosed` 停悬停翻页计时器**——`_pageHoverTimer` 的 Tick 闭包持有窗口引用，关闭后仍会 Tick 调用 `GoPage` 操作**已拆解的视觉树**（可能抛 + 阻止窗口回收）。`OnClosed` 内 `Stop`。
+
+**性能（更流畅）**
+
+- ✅ **`AppState.SwallowedVks`：`ArrayList` → `HashSet<int>`**——钩子回调对每次 keyup 做 `Contains`/`Remove`，`ArrayList` 为 O(n) 且每次 int→object **装箱**；`HashSet<int>` O(1) 且无装箱。热路径零成本。
+- ✅ **`MouseTip` 复用单个 `DispatcherTimer`**——原每次提示都 `new DispatcherTimer` + 挂 Tick 委托，通知频繁时无谓 GC；改为静态 `Timer` 属性懒创建一次，复用。
+
+**已评估、未改（记录取舍）**：①`InputHelper.Tap/SendOne` 每次分配 `new Input[]`——可用 `[ThreadStatic]` 缓冲复用，但收益（Gen0 小数组）不抵触碰最底层输入原语的风险，暂缓；②`MouseHook` 对每次鼠标移动 `Marshal.PtrToStructure<Msllhookstruct>`——结构体拷贝极廉价且 LL 钩子由消息泵限速，非热路径，不改；③`Volume.OnWheel` 在钩子内同步 `SendInput`——媒体键注入 <1ms 非 >300ms 阻塞，不改（原 AHK 亦内联）。
+
+- ✅ **冒烟 4/4**：MouseTip 复用计时器创建 ✓；MouseMode 调速后台落盘生效（before=7 after=8）✓；故意抛未观测 Task 异常后**进程仍存活**（AppDomain/TaskScheduler 兜底）✓；进程 Responding=True。构建 0 错 0 警，App.xaml.cs 无临时残留。
+
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

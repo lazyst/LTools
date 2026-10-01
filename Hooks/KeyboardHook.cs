@@ -51,6 +51,10 @@ internal static class KeyboardHook
     {
         if (nCode == Win32.HcAction)
         {
+            // 钩子回调内任何异常都不得外泄：外泄会中断 CallNextHookEx 链、致按键被吞/丢失，
+            // 且可能让已吞键状态失衡（keydown 已标记吞、keyup 回调却因异常未执行）。记录后放行。
+            try
+            {
             var kb = Marshal.PtrToStructure<Win32.Kbdllhookstruct>(lParam);
             ushort vk = (ushort)kb.Vk;
             var msg = (int)wParam;
@@ -149,6 +153,11 @@ internal static class KeyboardHook
                     MarkSwallowed(vk);
                     return (IntPtr)1;
                 }
+            }
+            }
+            catch (System.Exception ex)
+            {
+                CrashLog.Write("KeyboardHook", ex);
             }
         }
         return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);

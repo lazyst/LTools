@@ -136,10 +136,15 @@ internal static class MouseMode
 
     private static void SaveSpeed()
     {
-        var cfgPath = ConfigLocator.FindPath();
-        var cfg = AppConfig.Load(cfgPath);
-        cfg.MouseModeSpeed = AppState.MouseModeSpeed;
-        cfg.Save(cfgPath);
+        // 落盘放后台线程：SaveSpeed 经 OnKey 在钩子回调路径上被调用（CapsLock+Q/A 调速），
+        // 钩子回调不得阻塞（磁盘 IO 在负载下可能 >300ms，系统会卸载钩子）；
+        // 内存态 AppState.MouseModeSpeed 已在 AdjustSpeed 同步改完。读-改-写经 ConfigIO 串行化。
+        int speed = AppState.MouseModeSpeed;
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try { ConfigIO.Modify(cfg => cfg.MouseModeSpeed = speed); }
+            catch (System.Exception ex) { CrashLog.Write("MouseMode.SaveSpeed", ex); }
+        });
     }
 
     // —— 点击 / 拖动 ——

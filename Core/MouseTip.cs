@@ -14,6 +14,20 @@ internal static class MouseTip
     private static MouseTipWindow? _window;
     private static DispatcherTimer? _timer;
 
+    /// <summary>复用的隐藏计时器：只在首次创建时挂 Tick，避免每次提示都新建 DispatcherTimer + 委托。</summary>
+    private static DispatcherTimer Timer => _timer ??= CreateTimer();
+
+    private static DispatcherTimer CreateTimer()
+    {
+        var t = new DispatcherTimer();
+        t.Tick += (_, _) =>
+        {
+            t.Stop();
+            try { _window?.Hide(); } catch { /* 静默 */ }
+        };
+        return t;
+    }
+
     /// <summary>显示提示文本（支持 \n 换行）。</summary>
     public static void Show(string text, int durationMs = DefaultDurationMs)
     {
@@ -27,7 +41,7 @@ internal static class MouseTip
 
     private static void ShowCore(string text, int durationMs)
     {
-        _timer?.Stop();
+        Timer.Stop();
 
         _window ??= new MouseTipWindow();
         _window.SetText(text);
@@ -38,12 +52,7 @@ internal static class MouseTip
         _window.Show();
         _window.PlaceNearCursor();
 
-        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(durationMs) };
-        _timer.Tick += (_, _) =>
-        {
-            _timer?.Stop();
-            try { _window?.Hide(); } catch { /* 静默 */ }
-        };
-        _timer.Start();
+        Timer.Interval = TimeSpan.FromMilliseconds(durationMs);
+        Timer.Start();
     }
 }

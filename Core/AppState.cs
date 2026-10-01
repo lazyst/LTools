@@ -1,5 +1,3 @@
-using System.Collections;
-
 namespace CapsLockPro.Core;
 
 /// <summary>
@@ -39,7 +37,9 @@ internal static class AppState
     public static bool ShowDebugTooltips;
 
     // —— 已吞键集合：CapsLock+组合键被吞后，其 keyup 也要吞，保持事件平衡 ——
-    public static readonly ArrayList SwallowedVks = new();
+    // HashSet<int>：钩子回调对每次 keyup 做 Contains/Remove，O(1) 且无 int 装箱；
+    // 旧 ArrayList 为 O(n) 且每次装箱（虽集合通常很小，热路径零成本更好）。
+    public static readonly HashSet<int> SwallowedVks = new();
 
     // —— 独立剪贴板 ——
     /// <summary>独立剪贴板私有内容（CapsLock+X/C 存入，CapsLock+V 粘贴）。</summary>

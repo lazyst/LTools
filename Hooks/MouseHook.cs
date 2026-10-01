@@ -58,6 +58,10 @@ internal static class MouseHook
     {
         if (nCode == Win32.HcAction)
         {
+            // 钩子回调内任何异常都不得外泄（同 KeyboardHook）：外泄中断 CallNextHookEx 链，
+            // 致鼠标事件被吞/丢失、长按手势/点外关闭状态失衡。记录后放行。
+            try
+            {
             var ms = Marshal.PtrToStructure<Win32.Msllhookstruct>(lParam);
 
             // 忽略注入事件（防递归：本类注入的左/右键点击不重新触发逻辑）。
@@ -180,6 +184,11 @@ internal static class MouseHook
                         return (IntPtr)1;
                     }
                     break;
+            }
+            }
+            catch (System.Exception ex)
+            {
+                CrashLog.Write("MouseHook", ex);
             }
         }
         return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);

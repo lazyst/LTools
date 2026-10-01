@@ -82,6 +82,14 @@ public partial class SuperPanelWindow : Window
     /// <summary>当前页下标（供关闭时回写 <c>LastPage</c> 记忆页）。</summary>
     internal int PageIdx => _pageIdx;
 
+    /// <summary>关闭时停掉悬停翻页计时器：其 Tick 闭包持有本窗口引用，
+    /// 且关闭后仍会 Tick 调用 GoPage 操作已拆解的视觉树。</summary>
+    protected override void OnClosed(EventArgs e)
+    {
+        _pageHoverTimer?.Stop();
+        base.OnClosed(e);
+    }
+
     private List<string?> CurrentPage => _pages[_pageIdx];
 
     // —— 定位（仿 MouseTipWindow.PlaceNearCursor：物理像素→DIP 换算 + 工作区避让）——
