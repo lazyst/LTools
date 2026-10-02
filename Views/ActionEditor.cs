@@ -26,14 +26,14 @@ internal static class ActionEditor
         {
             if (wantComposite)
             {
-                var dlg = new CompositeActionDialog(t, existing) { Owner = owner };
+                var dlg = new CompositeActionDialog(t, existing) { Owner = owner, Topmost = owner.Topmost };
                 dlg.ShowDialog();
                 if (dlg.JumpToNormal) { wantComposite = false; existing = null; t = "新建动作"; continue; }
                 return dlg.Result;
             }
             else
             {
-                var dlg = new ActionEditorDialog(t, existing) { Owner = owner };
+                var dlg = new ActionEditorDialog(t, existing) { Owner = owner, Topmost = owner.Topmost };
                 dlg.ShowDialog();
                 if (dlg.JumpToComposite) { wantComposite = true; existing = null; t = "新建组合动作"; continue; }
                 return dlg.Result;

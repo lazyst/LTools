@@ -29,10 +29,13 @@ public partial class ChordPickerDialog : Window
     /// <summary>同步锁：程序内改控件值时跳过事件回调，防递归。</summary>
     private bool _sync;
 
-    public ChordPickerDialog()
+    public ChordPickerDialog(string? initialStroke = null)
     {
         InitializeComponent();
         BuildKeyButtons();
+        // 编辑场景预填已有 stroke：赋值触发 PreviewBox_TextChanged 自动同步修饰键/主键与校验
+        if (!string.IsNullOrWhiteSpace(initialStroke))
+            PreviewBox.Text = initialStroke.Trim();
     }
 
     // —— 表格按钮定义：显示名 → stroke 主键名（箭头特殊映射）——

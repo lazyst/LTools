@@ -9,7 +9,9 @@
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
-        PreviewKeyDown="Window_PreviewKeyDown" PreviewKeyUp="Window_PreviewKeyUp">
+        PreviewKeyDown="Window_PreviewKeyDown" PreviewKeyUp="Window_PreviewKeyUp"
+        PreviewMouseMove="Window_PreviewMouseMove"
+        PreviewMouseLeftButtonUp="Window_PreviewMouseLeftButtonUp">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -207,28 +209,34 @@
                                 </Grid>
                                 <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4"
                                         MinHeight="80" MaxHeight="180">
-                                    <ListBox x:Name="KeysList" BorderThickness="0" Background="Transparent">
+                                    <ListBox x:Name="KeysList" BorderThickness="0" Background="Transparent"
+                                             HorizontalContentAlignment="Stretch"
+                                             MouseDoubleClick="KeysList_DoubleClick">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
                                                 <Grid Margin="0,1">
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>    <!-- 把手 -->
+                                                        <ColumnDefinition Width="Auto"/>    <!-- 序号 -->
+                                                        <ColumnDefinition Width="*"/>       <!-- 描述 -->
+                                                        <ColumnDefinition Width="Auto"/>    <!-- 编辑 -->
+                                                        <ColumnDefinition Width="Auto"/>    <!-- 删除 -->
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Grid.Column="0" Text="{Binding Number}" Margin="2,0,8,0"
+                                                    <Border Grid.Column="0" Width="18" Cursor="SizeAll" Background="Transparent"
+                                                            VerticalAlignment="Stretch" ToolTip="拖拽排序"
+                                                            PreviewMouseLeftButtonDown="Grip_PreviewMouseLeftButtonDown">
+                                                        <TextBlock Text="≡" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                   Foreground="{StaticResource HintTextBrush}"
+                                                                   FontSize="{StaticResource FontSizeBody}"/>
+                                                    </Border>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Number}" Margin="2,0,8,0"
                                                                Foreground="{StaticResource SecondaryTextBrush}"
                                                                VerticalAlignment="Center"/>
-                                                    <TextBlock Grid.Column="1" Text="{Binding Desc}"
+                                                    <TextBlock Grid.Column="2" Text="{Binding Desc}"
                                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="↑"
+                                                    <Button Grid.Column="3" Style="{StaticResource BtnGhost}" Content="✎"
                                                             Padding="0" Width="24" Height="24" Margin="2,0"
-                                                            Click="KeyUp_Click" ToolTip="上移"/>
-                                                    <Button Grid.Column="3" Style="{StaticResource BtnGhost}" Content="↓"
-                                                            Padding="0" Width="24" Height="24" Margin="2,0"
-                                                            Click="KeyDown_Click" ToolTip="下移"/>
+                                                            Click="KeyEdit_Click" ToolTip="编辑（双击行亦可）"/>
                                                     <Button Grid.Column="4" Style="{StaticResource BtnGhost}" Content="✕"
                                                             Padding="0" Width="24" Height="24" Margin="2,0"
                                                             Click="KeyDelete_Click" ToolTip="删除"/>
@@ -272,5 +280,24 @@
                 <Button Style="{StaticResource BtnPrimary}" Content="确定" MinWidth="84" IsDefault="True" Click="Ok_Click"/>
             </StackPanel>
         </Border>
+
+        <!-- 拖动排序幽灵层（覆盖全窗口，不挡鼠标；与组合动作编辑器同款视觉） -->
+        <Canvas x:Name="GhostLayer" Grid.RowSpan="3" IsHitTestVisible="False">
+            <Border x:Name="DragGhost" Visibility="Collapsed"
+                    Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource PrimaryBrush}"
+                    BorderThickness="2" CornerRadius="6" Padding="10,6" Opacity="0.92"
+                    MinWidth="180" MaxWidth="320">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="GhostBadge" FontSize="{StaticResource FontSizeHint}"
+                               Foreground="{StaticResource SecondaryTextBrush}"
+                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="GhostName" FontWeight="SemiBold" FontSize="{StaticResource FontSizeSecondary}"
+                               Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
+                               MaxWidth="260" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+            </Border>
+            <Border x:Name="InsertLine" Height="3" CornerRadius="1.5"
+                    Background="{StaticResource PrimaryBrush}" Visibility="Collapsed"/>
+        </Canvas>
     </Grid>
 </Window>

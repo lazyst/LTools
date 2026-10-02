@@ -20,7 +20,7 @@ namespace LTools.Views;
 /// </summary>
 public partial class SuperPanelWindow : Window
 {
-    /// <summary>当前编辑中的页（每页 9 槽，元素为动作 Id 或 null）。</summary>
+    /// <summary>当前编辑中的页（每页 16 槽 4×4，元素为动作 Id 或 null）。</summary>
     private readonly List<List<string?>> _pages;
 
     /// <summary>唤起瞬间的光标物理坐标（供 windowPin.toggle 等需坐标的内部动作使用）。</summary>
@@ -724,30 +724,23 @@ public partial class SuperPanelWindow : Window
         SuperPanel.SavePages(_pages);
     }
 
-    /// <summary>会话/对话框期间挂起 Topmost 并禁止钩子介入（否则点击对话框会被判为“点外部”而关面板）。</summary>
+    /// <summary>会话/对话框期间禁止钩子介入（否则点击对话框会被判为“点外部”而关面板）。
+    /// 不再撤下面板 Topmost：对话框自身继承 Owner 的 Topmost（见各 Show 助手 / ActionPoolPicker 构造），
+    /// 既盖住面板、也盖住同时开着的其它 Topmost 窗口（如设置）——否则面板一撤 Topmost，
+    /// 对话框会被仍置顶的设置窗口盖住、且设置又被模态禁用 → 死锁。</summary>
     private void RunDialog(Action fn)
     {
-        Topmost = false;
         _interactCount++;
         try { fn(); }
-        finally
-        {
-            if (_interactCount > 0) _interactCount--;
-            Topmost = true;
-        }
+        finally { if (_interactCount > 0) _interactCount--; }
     }
 
-    /// <summary>会话/对话框期间挂起 Topmost 并禁止钩子介入，并返回对话框结果。</summary>
+    /// <summary>会话/对话框期间禁止钩子介入（同 <see cref="RunDialog(Action)"/>），并返回对话框结果。</summary>
     private T RunDialog<T>(Func<T> fn)
     {
-        Topmost = false;
         _interactCount++;
         try { return fn(); }
-        finally
-        {
-            if (_interactCount > 0) _interactCount--;
-            Topmost = true;
-        }
+        finally { if (_interactCount > 0) _interactCount--; }
     }
 
     // —— 窗口事件 ——

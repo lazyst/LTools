@@ -1,10 +1,12 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using LTools.Features;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
@@ -99,7 +101,7 @@ public partial class ActionEditorDialog : Window
     /// <param name="requireName">名称是否必填；false = 组合步骤场景（名称可留空，步骤行显示类型名）。</param>
     public static ActionDto? Show(Window owner, string title, ActionDto? existing, bool allowComposite, bool requireName = true)
     {
-        var dlg = new ActionEditorDialog(title, existing, allowComposite, requireName) { Owner = owner };
+        var dlg = new ActionEditorDialog(title, existing, allowComposite, requireName) { Owner = owner, Topmost = owner.Topmost };
         dlg.ShowDialog();
         return dlg.Result;
     }
@@ -389,7 +391,7 @@ public partial class ActionEditorDialog : Window
     {
         // 可视化选键对话框（§12 交付后 UX 优化）：修饰键复选 + 特殊键表格 + 实时校验，
         // 替代原裸文本框；确定后入库单条 stroke（数据层不变）。
-        var dlg = new ChordPickerDialog { Owner = this };
+        var dlg = new ChordPickerDialog { Owner = this, Topmost = this.Topmost };
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Stroke)) return;
 
         _keyItems.Add(new KeyItemView(new KeyItem
@@ -421,25 +423,7 @@ public partial class ActionEditorDialog : Window
         RefreshKeyNumbers();
     }
 
-    // —— 列表行内操作（上移 / 下移 / 删除）——
-
-    private void KeyUp_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement fe && fe.DataContext is KeyItemView v)
-        {
-            int i = _keyItems.IndexOf(v);
-            if (i > 0) { _keyItems.Move(i, i - 1); RefreshKeyNumbers(); }
-        }
-    }
-
-    private void KeyDown_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement fe && fe.DataContext is KeyItemView v)
-        {
-            int i = _keyItems.IndexOf(v);
-            if (i >= 0 && i < _keyItems.Count - 1) { _keyItems.Move(i, i + 1); RefreshKeyNumbers(); }
-        }
-    }
+    // —— 列表行内操作（编辑 / 删除）——
 
     private void KeyDelete_Click(object sender, RoutedEventArgs e)
     {
@@ -450,7 +434,237 @@ public partial class ActionEditorDialog : Window
         }
     }
 
+    private void KeyEdit_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is KeyItemView v) EditKeyItem(v);
+    }
+
+    private void KeysList_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (IsInteractive(e.OriginalSource)) return;   // 别把按钮的双击当成编辑行
+        if (KeysList.SelectedItem is KeyItemView v) EditKeyItem(v);
+    }
+
+    /// <summary>双击 / ✎ 编辑一条输入条目：chord→选键或文本编辑，text→文本，sleep→延时。</summary>
+    private void EditKeyItem(KeyItemView v)
+    {
+        var m = v.Model;
+        switch (m.Kind)
+        {
+            case KeyItemKind.chord:
+                var strokes = m.Strokes;
+                // 多 stroke（录制产生的连续按键序列）→ 文本编辑（逗号分隔，逐条校验）；
+                // 单 stroke → 可视化选键对话框（与「＋ 组合键」一致）
+                if (strokes != null && strokes.Count > 1)
+                {
+                    var (ok, val) = InputDialog.Show(this, "编辑按键序列",
+                        "按键以逗号分隔（如 ctrl+a, s, f5）", string.Join(", ", strokes));
+                    if (!ok) return;
+                    var segs = val.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (segs.Length == 0) { ConfirmDialog.Info(this, "模拟按键", "请至少输入一个按键。"); return; }
+                    for (int i = 0; i < segs.Length; i++)
+                        if (!KeyStroke.TryParse(segs[i], out _, out var err))
+                        { ConfirmDialog.Info(this, "模拟按键", $"第 {i + 1} 个按键无效：{err}"); return; }
+                    m.Strokes = segs.ToList();
+                }
+                else
+                {
+                    string pre = strokes != null && strokes.Count == 1 ? strokes[0] : "";
+                    var dlg = new ChordPickerDialog(pre) { Owner = this, Topmost = this.Topmost };
+                    dlg.Title = "编辑组合键";
+                    if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Stroke)) return;
+                    m.Strokes = new List<string> { dlg.Stroke };
+                }
+                break;
+            case KeyItemKind.text:
+                var (okT, valT) = InputDialog.Show(this, "编辑文本",
+                    "输入要发送的文本（自动 Unicode 注入，中英文/emoji 均可，不碰剪贴板）", m.Text ?? "");
+                if (!okT || valT.Length == 0) return;
+                m.Text = valT;
+                break;
+            case KeyItemKind.sleep:
+                var (okS, valS) = InputDialog.Show(this, "编辑延时", "延时毫秒数（如 100）", m.Ms.ToString());
+                if (!okS || !int.TryParse(valS.Trim(), out var ms) || ms <= 0)
+                { if (okS) ConfirmDialog.Info(this, "模拟按键", "请输入大于 0 的毫秒数。"); return; }
+                m.Ms = ms;
+                break;
+            default:
+                return;
+        }
+        v.Desc = DescribeKeyItem(m);
+    }
+
+    // —— sendKeys 序列拖拽排序（把手拖动，幽灵跟随 + 插入线，与组合动作编辑器同款）——
+    // 走窗口级鼠标跟踪而非 OLE DoDragDrop：拖动中只跟幽灵 + 插入指示线，释放时才重排
+    // （与超级面板 §5.6 / 组合动作编辑器节奏一致）。
+    private int? _keyGripIdx;                   // 把手按下时记录的源条目索引
+    private Point _keyGripOrigin;               // 按下坐标（进入拖动态的阈值判定）
+    private bool _keyGripDragging;              // 是否已进入拖动态
+    private FrameworkElement? _keyGripSource;   // 把手元素（鼠标捕获载体）
+    private ListBoxItem? _keyGripSrcContainer;  // 源行（半透明占位）
+
+    private void Grip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not KeyItemView v) return;
+        int idx = _keyItems.IndexOf(v);
+        if (idx < 0) return;
+        KeysList.SelectedIndex = idx;
+        _keyGripSource = fe;
+        _keyGripIdx = idx;
+        _keyGripOrigin = e.GetPosition(this);
+        _keyGripDragging = false;
+        fe.CaptureMouse();      // 捕获：拖出窗口仍能收到移动 / 释放
+        e.Handled = true;       // 吞掉，别让 ListBox 抢走选中
+    }
+
+    private void Window_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_keyGripIdx == null) return;
+        KeyGripDragTick(e);
+        if (_keyGripDragging) e.Handled = true;
+    }
+
+    private void Window_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_keyGripIdx is not int src || !_keyGripDragging) { EndKeyReorderDrag(); return; }
+
+        int hover = KeyGripHoverRow(e);
+        int insertAt = hover >= 0 ? KeyGripInsertAt(e, hover) : -1;
+        EndKeyReorderDrag();
+        KeysList.SelectedIndex = src;      // 先回落到源行（重排成功时会再改）
+        if (insertAt >= 0) ApplyKeyReorder(src, insertAt);
+        e.Handled = true;
+    }
+
+    /// <summary>位移超阈值 → 显示幽灵跟随光标；目标行高亮。不在这里重排（见 <see cref="ApplyKeyReorder"/>）。</summary>
+    private void KeyGripDragTick(MouseEventArgs e)
+    {
+        if (_keyGripIdx is not int idx) return;
+        if (e.LeftButton != MouseButtonState.Pressed) { EndKeyReorderDrag(); return; }
+
+        var pos = e.GetPosition(this);
+        if (!_keyGripDragging)
+        {
+            if (Math.Abs(pos.X - _keyGripOrigin.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(pos.Y - _keyGripOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            _keyGripDragging = true;
+            ShowKeyGhost(idx);
+        }
+
+        UpdateKeyGhost(pos);
+        PositionKeyInsertLine(e);
+    }
+
+    /// <summary>把插入线定位到光标所停留行的上/下边缘（上半=该行前，下半=该行后）。</summary>
+    private void PositionKeyInsertLine(MouseEventArgs e)
+    {
+        int hover = KeyGripHoverRow(e);
+        if (hover < 0) { InsertLine.Visibility = Visibility.Collapsed; return; }
+        var c = KeysList.ItemContainerGenerator.ContainerFromIndex(hover) as FrameworkElement;
+        if (c == null) { InsertLine.Visibility = Visibility.Collapsed; return; }
+        bool after = KeyGripInsertAt(e, hover) > hover;
+        var p = c.TransformToAncestor(GhostLayer).Transform(new Point(0, after ? c.ActualHeight : 0));
+        Canvas.SetLeft(InsertLine, p.X);
+        Canvas.SetTop(InsertLine, p.Y - 1.5);
+        InsertLine.Width = c.ActualWidth > 0 ? c.ActualWidth : KeysList.ActualWidth;
+        InsertLine.Visibility = Visibility.Visible;
+    }
+
+    private void ShowKeyGhost(int index)
+    {
+        var v = _keyItems[index];
+        GhostBadge.Text = $"{index + 1}.";
+        GhostName.Text = v.Desc;
+        DragGhost.Visibility = Visibility.Visible;
+        Mouse.OverrideCursor = Cursors.SizeAll;
+        // 源行半透明占位
+        if (KeysList.ItemContainerGenerator.ContainerFromIndex(index) is ListBoxItem c)
+        {
+            c.Opacity = 0.35;
+            _keyGripSrcContainer = c;
+        }
+    }
+
+    private void UpdateKeyGhost(Point windowPos)
+    {
+        var rel = TranslatePoint(windowPos, GhostLayer);   // 窗口坐标 → Canvas 坐标
+        double w = DragGhost.ActualWidth > 0 ? DragGhost.ActualWidth : DragGhost.MinWidth;
+        double h = DragGhost.ActualHeight > 0 ? DragGhost.ActualHeight : 34;
+        Canvas.SetLeft(DragGhost, rel.X - w / 2);
+        Canvas.SetTop(DragGhost, rel.Y - h / 2);
+    }
+
+    private void EndKeyReorderDrag()
+    {
+        bool wasDragging = _keyGripDragging;
+        _keyGripSource?.ReleaseMouseCapture();
+        _keyGripSource = null;
+        _keyGripIdx = null;
+        _keyGripDragging = false;
+        if (!wasDragging) return;      // 只是点了下把手（未拖动）：不碰光标与幽灵
+        DragGhost.Visibility = Visibility.Collapsed;
+        Mouse.OverrideCursor = null;
+        if (_keyGripSrcContainer != null) { _keyGripSrcContainer.Opacity = 1; _keyGripSrcContainer = null; }
+        InsertLine.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>拖动中的目标行：先按坐标判定是否落在列表视口内（列表外 → -1），
+    /// 再找命中的行；命中列表内但没落在行上（项间空隙 / ItemsPanel）→ 末行。</summary>
+    private int KeyGripHoverRow(MouseEventArgs e)
+    {
+        var p = e.GetPosition(KeysList);
+        if (p.X < 0 || p.Y < 0 || p.X > KeysList.ActualWidth || p.Y > KeysList.ActualHeight)
+            return -1;                       // 列表外
+
+        if (KeysList.InputHitTest(p) is DependencyObject d)
+        {
+            var container = ItemsControl.ContainerFromElement(KeysList, d) as ListBoxItem;
+            if (container != null)
+            {
+                int i = KeysList.ItemContainerGenerator.IndexFromContainer(container);
+                if (i >= 0) return i;
+            }
+        }
+        return _keyItems.Count - 1;          // 列表内但未命中行 → 末行（下半即追加到末尾）
+    }
+
+    /// <summary>命中行 → 插入位置（0.._keyItems.Count）：上半 = 该行之前，下半 = 该行之后。</summary>
+    private int KeyGripInsertAt(MouseEventArgs e, int hover)
+    {
+        var container = KeysList.ItemContainerGenerator.ContainerFromIndex(hover) as ListBoxItem;
+        if (container == null) return hover;
+        return e.GetPosition(container).Y < container.ActualHeight / 2 ? hover : hover + 1;
+    }
+
+    /// <summary>释放：把源条目移到插入位置（<paramref name="insertAt"/> 基于移动前的列表）。</summary>
+    private void ApplyKeyReorder(int src, int insertAt)
+    {
+        if (src < 0 || src >= _keyItems.Count) return;
+        if (insertAt < 0 || insertAt > _keyItems.Count) return;
+        int target = insertAt > src ? insertAt - 1 : insertAt;   // 移除源后索引前移
+        if (target == src) return;
+        var old = Views.Controls.DragFx.CaptureByIndex(KeysList);
+        _keyItems.Move(src, target);
+        RefreshKeyNumbers();
+        Views.Controls.DragFx.AnimateReorderByIndex(KeysList, old,
+            i => Views.Controls.DragFx.OldIndexOfMove(i, src, target));
+        KeysList.SelectedIndex = Math.Clamp(target, 0, _keyItems.Count - 1);
+    }
+
     // —— 辅助 ——
+
+    /// <summary>原始命中的元素是否落在交互控件（TextBox/ComboBox/Button）内——避免双击按钮误触行编辑。</summary>
+    private static bool IsInteractive(object? src)
+    {
+        var d = src as DependencyObject;
+        while (d != null)
+        {
+            if (d is TextBox || d is ComboBox || d is Button) return true;
+            d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : null;
+        }
+        return false;
+    }
+
     private static ActionDto Clone(ActionDto a) => new()
     {
         Id = a.Id, Name = a.Name, Icon = a.Icon, Type = a.Type,

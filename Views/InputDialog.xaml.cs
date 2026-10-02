@@ -23,7 +23,7 @@ public partial class InputDialog : Window
     public static (bool ok, string value) Show(Window? owner, string title, string prompt, string defaultValue = "")
     {
         var dlg = new InputDialog(title, prompt, defaultValue);
-        if (owner != null) dlg.Owner = owner;
+        if (owner != null) { dlg.Owner = owner; dlg.Topmost = owner.Topmost; }
         dlg.ShowDialog();
         return (dlg._ok, dlg.Value);
     }

@@ -43,7 +43,7 @@ public partial class ConfirmDialog : Window
     public static bool Confirm(Window? owner, string title, string message, bool danger = false)
     {
         var dlg = new ConfirmDialog(title, message, danger, false, false);
-        if (owner != null) dlg.Owner = owner;
+        if (owner != null) { dlg.Owner = owner; dlg.Topmost = owner.Topmost; }
         dlg.ShowDialog();
         return dlg._ok;
     }
@@ -52,7 +52,7 @@ public partial class ConfirmDialog : Window
     public static void Info(Window? owner, string title, string message)
     {
         var dlg = new ConfirmDialog(title, message, false, true, false);
-        if (owner != null) dlg.Owner = owner;
+        if (owner != null) { dlg.Owner = owner; dlg.Topmost = owner.Topmost; }
         dlg.ShowDialog();
     }
 
@@ -60,7 +60,7 @@ public partial class ConfirmDialog : Window
     public static SaveConfirmResult ConfirmDiscard(Window? owner, string title, string message)
     {
         var dlg = new ConfirmDialog(title, message, false, false, true);
-        if (owner != null) dlg.Owner = owner;
+        if (owner != null) { dlg.Owner = owner; dlg.Topmost = owner.Topmost; }
         dlg.ShowDialog();
         if (dlg._ok) return SaveConfirmResult.Save;
         if (dlg._discard) return SaveConfirmResult.Discard;

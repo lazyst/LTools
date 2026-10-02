@@ -5,7 +5,7 @@
         xmlns:controls="clr-namespace:LTools.Views.Controls"
         Title="设置" Width="980" Height="620"
         MinWidth="820" MinHeight="500"
-        Topmost="True" ShowInTaskbar="True" ResizeMode="CanResize"
+        ShowInTaskbar="True" ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
@@ -59,12 +59,13 @@
             <Setter Property="Margin" Value="0,0,0,12"/>
         </Style>
 
-        <!-- 动作列表项：图标 + 名称 + 类型 -->
+        <!-- 动作列表项：图标 + 名称 + 类型 + hover 删除 -->
         <DataTemplate x:Key="ActionRowTemplate">
             <Grid Margin="0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="30"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="{Binding Glyph}" FontFamily="Segoe MDL2 Assets"
@@ -77,7 +78,56 @@
                 </StackPanel>
                 <TextBlock Grid.Column="2" Text="{Binding TypeLabel}" VerticalAlignment="Center"
                            Style="{StaticResource HintLabel}" Margin="10,0,0,0"/>
+                <Button Grid.Column="3" x:Name="DelBtn" Style="{StaticResource BtnGhostDanger}" Content="✕"
+                        Padding="0" Width="24" Height="24" Margin="6,0,0,0"
+                        VerticalAlignment="Center" ToolTip="删除"
+                        Click="ActionRowDelete_Click" Visibility="Hidden"/>
             </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=ListBoxItem}, Path=IsMouseOver}" Value="True">
+                    <Setter TargetName="DelBtn" Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- 菜单组列表项：名称 + hover 删除 -->
+        <DataTemplate x:Key="GroupRowTemplate">
+            <Grid Margin="0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <Button Grid.Column="1" x:Name="DelBtn" Style="{StaticResource BtnGhostDanger}" Content="✕"
+                        Padding="0" Width="24" Height="24" Margin="6,0,0,0"
+                        VerticalAlignment="Center" ToolTip="删除"
+                        Click="GroupRowDelete_Click" Visibility="Hidden"/>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=ListBoxItem}, Path=IsMouseOver}" Value="True">
+                    <Setter TargetName="DelBtn" Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- 菜单项列表项：名称 + hover 删除 -->
+        <DataTemplate x:Key="ItemRowTemplate">
+            <Grid Margin="0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <Button Grid.Column="1" x:Name="DelBtn" Style="{StaticResource BtnGhostDanger}" Content="✕"
+                        Padding="0" Width="24" Height="24" Margin="6,0,0,0"
+                        VerticalAlignment="Center" ToolTip="删除"
+                        Click="ItemRowDelete_Click" Visibility="Hidden"/>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=ListBoxItem}, Path=IsMouseOver}" Value="True">
+                    <Setter TargetName="DelBtn" Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
         </DataTemplate>
     </Window.Resources>
 
@@ -171,8 +221,6 @@
                                 Margin="8,0,0,0" Click="EditAction_Click"/>
                         <Button Style="{StaticResource BtnGhost}" Content="复制" MinWidth="64"
                                 Margin="6,0,0,0" Click="DuplicateAction_Click"/>
-                        <Button Style="{StaticResource BtnGhostDanger}" Content="删除" MinWidth="64"
-                                Margin="6,0,0,0" Click="DeleteAction_Click"/>
                     </StackPanel>
                 </Grid>
 
@@ -193,14 +241,13 @@
                         <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="CapsLock快捷菜单（CapsLock+1~0）"
                                    Margin="0,0,0,8"/>
                         <ListBox Grid.Row="1" x:Name="GroupList"
+                                 ItemTemplate="{StaticResource GroupRowTemplate}"
                                  SelectionChanged="GroupList_SelectionChanged"
                                  PreviewMouseLeftButtonDown="GroupList_PreviewMouseLeftButtonDown"
                                  PreviewMouseMove="GroupList_PreviewMouseMove"
                                  PreviewMouseLeftButtonUp="GroupList_PreviewMouseLeftButtonUp"/>
                         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Style="{StaticResource BtnGhost}" Content="重命名" Click="EditGroup_Click"/>
-                            <Button Style="{StaticResource BtnGhostDanger}" Content="删除" Margin="6,0,0,0"
-                                    Click="DeleteGroup_Click"/>
                         </StackPanel>
                     </Grid>
 
@@ -216,6 +263,7 @@
                         <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="菜单项"
                                    Margin="0,0,0,8"/>
                         <ListBox Grid.Row="1" x:Name="ItemList"
+                                 ItemTemplate="{StaticResource ItemRowTemplate}"
                                  SelectionChanged="ItemList_SelectionChanged"
                                  MouseDoubleClick="ItemList_MouseDoubleClick"
                                  PreviewMouseLeftButtonDown="ItemList_PreviewMouseLeftButtonDown"
@@ -223,11 +271,13 @@
                                  PreviewMouseLeftButtonUp="ItemList_PreviewMouseLeftButtonUp"/>
                         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Style="{StaticResource BtnGhost}" Content="从动作池添加…" Click="AddItem_Click"/>
+                            <Button Style="{StaticResource BtnPrimary}" Content="新建动作…" MinWidth="84"
+                                    Margin="6,0,0,0" Click="NewActionFromMenu_Click"
+                                    ToolTip="新建一个动作并加入本菜单组"/>
+                            <Button Style="{StaticResource BtnPrimary}" Content="新建组合动作…" MinWidth="104"
+                                    Margin="6,0,0,0" Click="NewCompositeFromMenu_Click"
+                                    ToolTip="新建一个组合动作并加入本菜单组"/>
                             <Button Style="{StaticResource BtnGhost}" Content="修改" Margin="6,0,0,0" Click="EditItem_Click"/>
-                            <Button Style="{StaticResource BtnGhostDanger}" Content="删除" Margin="6,0,0,0" Click="DeleteItem_Click"/>
-                            <TextBlock Width="10"/>
-                            <Button Style="{StaticResource BtnGhost}" Content="上移" Click="MoveUp_Click"/>
-                            <Button Style="{StaticResource BtnGhost}" Content="下移" Margin="6,0,0,0" Click="MoveDown_Click"/>
                         </StackPanel>
                     </Grid>
                 </Grid>

@@ -168,6 +168,7 @@ public partial class ConfigHelperWindow : Window
 
     private void ActionList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点 ✕ 不触发编辑
         if (ActionList.SelectedIndex >= 0) EditAction_Click(sender, e);
     }
 
@@ -226,20 +227,28 @@ public partial class ConfigHelperWindow : Window
         MarkDirty();
     }
 
-    private void DeleteAction_Click(object sender, RoutedEventArgs e)
+    /// <summary>行内 hover ✕：删除该行动作（单条）。</summary>
+    private void ActionRowDelete_Click(object sender, RoutedEventArgs e)
     {
-        var cur = SelectedAction();
-        if (cur == null) return;
-        if (!ConfirmDialog.Confirm(this, "删除动作", $"确定删除「{cur.Name}」吗？\n引用此动作的菜单项 / 超级面板槽位也会被清除。",
+        if (sender is Button b && b.DataContext is ActionRow row)
+            DeleteAction(row.Id);
+    }
+
+    /// <summary>删除动作：确认后落盘，并清理菜单项 / 超级面板槽位中的引用。</summary>
+    private void DeleteAction(string id)
+    {
+        if (!ConfirmDialog.Confirm(this, "删除动作",
+            $"确定删除「{ActionRegistry.DisplayName(id)}」吗？\n引用此动作的菜单项 / 超级面板槽位也会被清除。",
             danger: true)) return;
-        ConfigStore.RemoveAction(cur.Id);
+
+        ConfigStore.RemoveAction(id);
         PopulateActions();
         PopulateGroupList();
         // 清掉超级面板槽位中对该动作的引用
         bool pruned = false;
         foreach (var p in _superPages)
             for (int i = 0; i < p.Count; i++)
-                if (p[i] == cur.Id) { p[i] = null; pruned = true; }
+                if (p[i] == id) { p[i] = null; pruned = true; }
         if (pruned) { _superDirty = true; BuildSuperPagesUI(); }
         MarkDirty();
     }
@@ -288,6 +297,7 @@ public partial class ConfigHelperWindow : Window
 
     private void ItemList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点 ✕ 不触发修改
         if (ItemList.SelectedIndex >= 0) EditItem_Click(sender, e);
     }
 
@@ -312,25 +322,34 @@ public partial class ConfigHelperWindow : Window
         MarkDirty();
     }
 
-    private void DeleteGroup_Click(object sender, RoutedEventArgs e)
+    /// <summary>行内 hover ✕：删除该菜单组（单条）。</summary>
+    private void GroupRowDelete_Click(object sender, RoutedEventArgs e)
     {
-        if (MenuSystem.GetGroup(SelectedSlot) == null) return;
+        if (sender is not Button b) return;
+        int idx = RowIndex(GroupList, b);
+        if (idx < 0) return;
+        int slot = idx + 1;
+        if (MenuSystem.GetGroup(slot) == null) return;
         if (!ConfirmDialog.Confirm(this, "删除菜单组", "确定要删除选中的菜单组吗？", danger: true)) return;
-        MenuSystem.DeleteGroup(SelectedSlot);
+        MenuSystem.DeleteGroup(slot);
         PopulateGroupList();
         MarkDirty();
     }
 
+    /// <summary>编辑菜单项前确保有菜单组：当前槽为空则新建「新组」并选中。</summary>
+    private bool EnsureGroupForEdit()
+    {
+        if (MenuSystem.GetGroup(SelectedSlot) != null) return true;
+        int slot = MenuSystem.AddGroup("新组");
+        if (slot < 0) { ConfirmDialog.Info(this, "设置", "菜单组已满（最多10组）"); return false; }
+        PopulateGroupList();
+        GroupList.SelectedIndex = slot - 1;
+        return true;
+    }
+
     private void AddItem_Click(object sender, RoutedEventArgs e)
     {
-        var g = MenuSystem.GetGroup(SelectedSlot);
-        if (g == null)
-        {
-            int slot = MenuSystem.AddGroup("新组");
-            if (slot < 0) { ConfirmDialog.Info(this, "设置", "菜单组已满（最多10组）"); return; }
-            PopulateGroupList();
-            GroupList.SelectedIndex = slot - 1;
-        }
+        if (!EnsureGroupForEdit()) return;
         var picker = new ActionPoolPicker(this, "添加菜单项 — 选择动作") { Owner = this };
         picker.ShowDialog();
         if (picker.Result == null) return;
@@ -338,6 +357,37 @@ public partial class ConfigHelperWindow : Window
         PopulateItemList();
         var g2 = MenuSystem.GetGroup(SelectedSlot);
         if (g2 != null) ItemList.SelectedIndex = g2.Items.Count - 1;
+        MarkDirty();
+    }
+
+    /// <summary>在菜单页新建一个动作并加入当前菜单组（无组则先建组）。</summary>
+    private void NewActionFromMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureGroupForEdit()) return;
+        var dto = ActionEditor.Show(this, "新建动作", null);
+        if (dto == null) return;
+        ConfigStore.AddAction(dto);
+        MenuSystem.AddItem(SelectedSlot, dto.Id);
+        PopulateActions();          // 动作池新增了动作，刷新动作管理列表
+        PopulateItemList();
+        var g = MenuSystem.GetGroup(SelectedSlot);
+        if (g != null) ItemList.SelectedIndex = g.Items.Count - 1;
+        MarkDirty();
+    }
+
+    /// <summary>在菜单页新建一个组合动作并加入当前菜单组。</summary>
+    private void NewCompositeFromMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureGroupForEdit()) return;
+        var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = ActionType.composite };
+        var dto = ActionEditor.Show(this, "新建组合动作", draft);
+        if (dto == null) return;
+        ConfigStore.AddAction(dto);
+        MenuSystem.AddItem(SelectedSlot, dto.Id);
+        PopulateActions();
+        PopulateItemList();
+        var g = MenuSystem.GetGroup(SelectedSlot);
+        if (g != null) ItemList.SelectedIndex = g.Items.Count - 1;
         MarkDirty();
     }
 
@@ -356,26 +406,16 @@ public partial class ConfigHelperWindow : Window
         MarkDirty();
     }
 
-    private void DeleteItem_Click(object sender, RoutedEventArgs e)
+    /// <summary>行内 hover ✕：删除该菜单项（单条）。</summary>
+    private void ItemRowDelete_Click(object sender, RoutedEventArgs e)
     {
-        int idx = ItemList.SelectedIndex;
-        if (MenuSystem.GetGroup(SelectedSlot) == null || idx < 0) return;
+        if (MenuSystem.GetGroup(SelectedSlot) == null) return;
+        if (sender is not Button b) return;
+        int idx = RowIndex(ItemList, b);
+        if (idx < 0) return;
         MenuSystem.DeleteItem(SelectedSlot, idx);
         PopulateItemList();
         if (_items.Count > 0) ItemList.SelectedIndex = Math.Min(idx, _items.Count - 1);
-        MarkDirty();
-    }
-
-    private void MoveUp_Click(object sender, RoutedEventArgs e) => MoveItem(-1);
-    private void MoveDown_Click(object sender, RoutedEventArgs e) => MoveItem(1);
-
-    private void MoveItem(int delta)
-    {
-        int idx = ItemList.SelectedIndex;
-        if (MenuSystem.GetGroup(SelectedSlot) == null || idx < 0) return;
-        if (!MenuSystem.MoveMenuItem(SelectedSlot, idx, delta)) return;
-        PopulateItemList();
-        ItemList.SelectedIndex = idx + delta;
         MarkDirty();
     }
 
@@ -393,6 +433,13 @@ public partial class ConfigHelperWindow : Window
     {
         while (d != null && d is not T) d = VisualTreeHelper.GetParent(d);
         return d as T;
+    }
+
+    /// <summary>按钮所在行的索引（供行内 ✕ 删除定位行）。</summary>
+    private static int RowIndex(ListBox list, DependencyObject src)
+    {
+        var lbi = FindAncestor<ListBoxItem>(src);
+        return lbi != null ? list.ItemContainerGenerator.IndexFromContainer(lbi) : -1;
     }
 
     private void BeginMenuDrag(ListBox list, int index, string ghostText)
@@ -434,6 +481,7 @@ public partial class ConfigHelperWindow : Window
     private void GroupList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _groupDragFrom = -1;
+        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点 ✕ 不启动拖动
         if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not { } lbi) return;
         int idx = GroupList.ItemContainerGenerator.IndexFromContainer(lbi);
         if (idx < 0 || MenuSystem.GetGroup(idx + 1) == null) return;   // 空槽不参与拖动
@@ -480,6 +528,7 @@ public partial class ConfigHelperWindow : Window
     private void ItemList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _itemDragFrom = -1;
+        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点 ✕ 不启动拖动
         if (MenuSystem.GetGroup(SelectedSlot) == null) return;
         if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not { } lbi) return;
         int idx = ItemList.ItemContainerGenerator.IndexFromContainer(lbi);

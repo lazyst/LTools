@@ -6,85 +6,29 @@
       "Type": "runCommand",
       "Cmd": "ipconfig /all",
       "Terminal": "pwsh7",
-      "KeepWindow": true
+      "KeepWindow": true,
+      "Icon": "terminal"
     },
     {
       "Id": "a2",
-      "Name": "ping",
-      "Type": "runCommand",
-      "Cmd": "ping 8.8.8.8",
-      "Terminal": "pwsh7",
-      "KeepWindow": true
+      "Name": "设置",
+      "Type": "internal",
+      "Command": "settings.toggle",
+      "Icon": "settings"
     },
     {
       "Id": "a3",
-      "Name": "浏览器",
-      "Type": "openUrl",
-      "Url": "https://example.com",
-      "Icon": "globe"
-    },
-    {
-      "Id": "a4",
       "Name": "速记",
       "Type": "internal",
       "Command": "quickNote.toggle",
       "Icon": "note"
     },
     {
-      "Id": "a5",
+      "Id": "a4",
       "Name": "帮助面板",
       "Type": "internal",
       "Command": "helpPanel.toggle",
       "Icon": "help"
-    },
-    {
-      "Id": "a6",
-      "Name": "输入问候",
-      "Type": "sendText",
-      "Text": "Hello World",
-      "Icon": "send"
-    },
-    {
-      "Id": "a7",
-      "Name": "全选复制",
-      "Type": "sendKeys",
-      "Icon": "keyboard",
-      "Items": [
-        { "Kind": "chord", "Strokes": [ "ctrl+a" ] },
-        { "Kind": "sleep", "Ms": 100 },
-        { "Kind": "chord", "Strokes": [ "ctrl+c" ] }
-      ]
-    },
-    {
-      "Id": "c1",
-      "Name": "查IP并打开浏览器",
-      "Type": "composite",
-      "Icon": "composite",
-      "Steps": [
-        {
-          "Action": {
-            "Id": "",
-            "Name": "ipconfig",
-            "Type": "runCommand",
-            "Cmd": "ipconfig /all",
-            "Terminal": "pwsh7",
-            "KeepWindow": true
-          },
-          "DelayMs": 0,
-          "OnFail": "abort"
-        },
-        {
-          "Action": {
-            "Id": "",
-            "Name": "浏览器",
-            "Type": "openUrl",
-            "Url": "https://example.com",
-            "Icon": "globe"
-          },
-          "DelayMs": 300,
-          "OnFail": "continue"
-        }
-      ]
     }
   ],
   "SuperPanel": {
@@ -96,10 +40,10 @@
         "a2",
         "a3",
         "a4",
-        "a5",
-        "c1",
-        "a6",
-        "a7",
+        null,
+        null,
+        null,
+        null,
         null,
         null,
         null,
@@ -114,24 +58,15 @@
   "MenuGroups": [
     {
       "Enabled": true,
-      "Name": "命令",
+      "Name": "常用",
       "Items": [
         "a1",
         "a2",
-        "c1"
-      ]
-    },
-    {
-      "Enabled": true,
-      "Name": "工具",
-      "Items": [
         "a3",
-        "a4",
-        "a5",
-        "a6",
-        "a7"
+        "a4"
       ]
     },
+    null,
     null,
     null,
     null,
