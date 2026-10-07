@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using LTools.Core;
 using LTools.Features;
 
 namespace LTools.Config;
@@ -76,8 +77,15 @@ public sealed class AppConfig
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    /// <summary>读失败（含被占用 / 共享冲突）时的重试次数与间隔——开机自启瞬间配置常被 AV / 索引器短暂占用。</summary>
+    private const int ReadRetries = 15;
+    private const int ReadRetryDelayMs = 200;
+
     /// <summary>
-    /// 加载配置：优先读用户 json；不存在或反序列化失败（旧 schema 不兼容）时回退读同目录示例。
+    /// 加载配置：优先读用户 json；**不存在**时才回退读同目录示例作为默认模板。
+    /// 用户配置已存在但读取失败（被占用等瞬时 IO 错误）时退避重试，绝不静默使用示例默认值——
+    /// 否则开机自启瞬间的一次短暂占用就会让用户的全部设置"消失"（内存变默认值、界面显示默认），
+    /// 且随后的保存还会用默认值覆盖真配置。仅当重试后仍不可读 / 内容损坏时，备份现场再回退示例。
     /// </summary>
     public static AppConfig Load(string path)
     {
@@ -85,14 +93,43 @@ public sealed class AppConfig
         {
             try
             {
-                return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(path, Encoding.UTF8)) ?? new AppConfig();
+                return ReadWithRetry(path);
             }
-            catch
+            catch (Exception ex)
             {
-                // 旧 schema 反序列化失败 → 回退 example（不崩溃）
+                // 仍不可读 / 内容损坏：记录 + 备份现场，再回退示例（不静默丢弃用户配置）
+                CrashLog.Write("AppConfigLoad", ex);
+                TryBackupUnreadable(path);
             }
         }
         return LoadExample(path);
+    }
+
+    /// <summary>读取并反序列化；对瞬时 IO 错误（被占用 / 共享冲突 / 权限）做固定间隔退避重试。</summary>
+    private static AppConfig ReadWithRetry(string path)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(path, Encoding.UTF8)) ?? new AppConfig();
+            }
+            catch (Exception ex) when (IsTransient(ex) && attempt < ReadRetries)
+            {
+                Thread.Sleep(ReadRetryDelayMs);
+            }
+        }
+    }
+
+    /// <summary>瞬时 IO 错误：被占用 / 共享冲突 / 权限不足（区别于内容损坏的 JsonException）。</summary>
+    private static bool IsTransient(Exception ex) => ex is IOException or UnauthorizedAccessException;
+
+    /// <summary>把不可读 / 损坏的用户配置复制为 <c>.bad-时间戳</c> 备份（复制失败则忽略）。
+    /// 用复制而非改名：保留原文件，万一应用随后用默认值覆盖，备份仍可恢复。</summary>
+    private static void TryBackupUnreadable(string path)
+    {
+        try { File.Copy(path, $"{path}.bad-{DateTime.Now:yyyyMMddHHmmss}", overwrite: false); }
+        catch { /* 忽略 */ }
     }
 
     private static AppConfig LoadExample(string? path)
