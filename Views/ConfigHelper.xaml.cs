@@ -297,8 +297,9 @@ public partial class ConfigHelperWindow : Window
 
     private void ItemList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点 ✕ 不触发修改
-        if (ItemList.SelectedIndex >= 0) EditItem_Click(sender, e);
+        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点 ✕ 不触发
+        // 双击菜单项 → 编辑该菜单项所引用的动作本身（而非换一个动作引用，那是「修改」按钮的职责）
+        if (ItemList.SelectedIndex >= 0) EditItemAction_Click(sender, e);
     }
 
     private void EditGroup_Click(object sender, RoutedEventArgs e)
@@ -402,6 +403,25 @@ public partial class ConfigHelperWindow : Window
         if (picker.Result == null) return;
         MenuSystem.EditItem(SelectedSlot, idx, picker.Result);
         PopulateItemList();
+        ItemList.SelectedIndex = idx;
+        MarkDirty();
+    }
+
+    /// <summary>双击菜单项 → 编辑该菜单项所引用的动作本身（打开动作编辑窗口），
+    /// 而非「修改菜单项」换一个动作引用（那是 <see cref="EditItem_Click"/> 的职责）。
+    /// 引用的动作已被删（引用悬空）时回退到 <see cref="EditItem_Click"/> 重新选一个。</summary>
+    private void EditItemAction_Click(object sender, RoutedEventArgs e)
+    {
+        var g = MenuSystem.GetGroup(SelectedSlot);
+        int idx = ItemList.SelectedIndex;
+        if (g == null || idx < 0 || idx >= g.Items.Count) return;
+        var cur = ActionRegistry.FindById(g.Items[idx]);
+        if (cur == null) { EditItem_Click(sender, e); return; }   // 引用悬空 → 回退换选
+        var dto = ActionEditor.Show(this, "编辑动作", cur);
+        if (dto == null) return;
+        dto.Id = cur.Id;   // 保留原 Id（编辑不换 Id，与 EditAction_Click 一致）
+        ConfigStore.UpdateAction(dto);
+        PopulateItemList();          // 动作名 / 图标可能改了，刷新菜单项显示
         ItemList.SelectedIndex = idx;
         MarkDirty();
     }

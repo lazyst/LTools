@@ -38,7 +38,7 @@
 
         <!-- 动作网格 -->
         <ScrollViewer Grid.Row="2" Margin="20,12,20,0" VerticalScrollBarVisibility="Auto">
-            <WrapPanel x:Name="ActionPanel"/>
+            <controls:StretchWrapPanel x:Name="ActionPanel"/>
         </ScrollViewer>
 
         <!-- 底部 -->

@@ -2,6 +2,20 @@
 
 所有项目的重要更改都将记录在此文件中。
 
+## [v2.2.6] - 2026-10-13
+
+### 🐛 修复
+
+- **长时间空闲后右键托盘图标鼠标卡顿**：托盘图标创建时 `_tray.ForceCreate()` 吃下了 `H.NotifyIcon` 的默认参数 `enablesEfficiencyMode: true`，把整个进程设为 IDLE 优先级 + EcoQoS（始终降频 / 调度到能效核）。本应用是全局低级键鼠钩子工具，实时响应是核心——进程被降级后，长时间空闲再右键托盘时，钩子回调吞右键 → 起线程注入 → UI 线程泵送注入事件 → H.NotifyIcon 同步弹 WPF ContextMenu（建 Popup HWND / 测量 / 排版 / 渲染）整条链路全在 IDLE 优先级 + 降频 CPU 上跑，消息泵停滞 → 鼠标光标可见卡顿，进程被唤醒后才恢复。修复：`ForceCreate(enablesEfficiencyMode: false)` 显式关闭 Efficiency Mode，进程维持 Normal 优先级（实测 BasePriority 由 4 回到 8）。
+
+### 🎨 界面
+
+- **动作池选择器卡片网格右侧空隙**：`ActionPoolPicker` 的动作卡片用 `WrapPanel` + 固定宽卡片（98 + 6 边距 = 104 DIP），内容区 720 DIP 只放得下 6 张（624），右侧空出近一张卡宽（96 DIP）。新增 `Views/Controls/StretchWrapPanel`：按自然宽度贪心分行 → 取各行最大卡片数为列数 → 所有卡片统一槽宽 `行宽 / 列数`，使最满那行恰好填满整行、卡片尺寸各行一致；窗口缩放或出现滚动条时按实际宽度自动重排。`WrapPanel` 换成它，满行不再留右侧空隙，末行未填满时保持左对齐。
+
+### ✨ 新增
+
+- **菜单项双击直接编辑动作**：设置页「CapsLock 快捷菜单」的菜单项列表，双击行原调 `EditItem_Click`（打开动作池选择器换一个动作引用），现改为调新增的 `EditItemAction_Click`——直接打开动作编辑窗口编辑该菜单项所引用的动作本身，路径与动作管理页「编辑」按钮一致（保留原 Id、`ConfigStore.UpdateAction` 更新、`MarkDirty` 落盘）。「修改」按钮职责不变（换动作引用）；引用悬空（动作已被删）时回退到「修改」重新选一个。
+
 ## \[v2.2.5\] - 2026-10-07
 
 ### 🐛 修复

@@ -103,7 +103,11 @@ public partial class App : Application
             IconSource = LoadIconSource(),
             ContextMenu = menu,
         };
-        _tray.ForceCreate();
+        // ⚠️ 必须显式传 false：ForceCreate 的 enablesEfficiencyMode 默认 true，
+        // 会把整个进程设为 IDLE 优先级 + EcoQoS（降频/调度到能效核）。
+        // 本应用是全局低级键鼠钩子工具，实时性就是生命线——进程被降级后，长时间空闲再右键托盘图标时，
+        // 钩子回调/注入/菜单渲染全在 IDLE 优先级 + 降频 CPU 上跑，消息泵被拖慢 → 鼠标可见卡顿。
+        _tray.ForceCreate(enablesEfficiencyMode: false);
     }
 
     /// <summary>
