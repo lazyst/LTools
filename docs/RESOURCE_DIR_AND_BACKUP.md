@@ -171,10 +171,10 @@ resources/...        （含时）
 | 导入文件非本格式 zip | 校验失败 → 提示「不是有效的 LTools 备份」 |
 | `formatVersion` > 1 | 提示「备份来自更新版本，请升级 LTools 后导入」 |
 | 解压条目路径越界（zip slip） | `ExtractToDirectory` 抛 → 捕获并提示损坏 |
-| 配置写失败（被占用） | 复用 `AppConfig.Save` 现有重试；仍失败回滚 `.bak` |
-| 跨卷移动 | `CopyTo` + `Delete`，非 `Directory.Move` |
-| `resources/` 与 `速记/` 同名 `.bak` 已存在 | `.bak-<ts>-<短GUID>` 加后缀避免冲突 |
-| 备份体积过大 | 导出 > 50MB 确认；导入 > 100MB 确认 |
+| 配置写失败（被占用 / 共享冲突） | `File.Copy` 失败即抛出 → 触发回滚恢复 `.bak`，并向用户报错（未做重试，复用 `AppConfig.Load` 的重试仅作用于读取侧） |
+| 跨卷移动 | `CopyDir`（递归 `File.Copy`）而非 `Directory.Move`，兼容 `%TEMP%` 与 `DataRoot` 不同卷 |
+| `resources/` 与 `速记/` 同名 `.bak` 已存在 | `.bak-<ts>` 后追加 `-<n>` 序号避免冲突 |
+| 备份体积过大 | 仅导出 > 50 MB 时弹确认；导入不设硬阈值（由警告文案 + 可执行文件清单提示） |
 
 ---
 
@@ -184,7 +184,7 @@ resources/...        （含时）
 |---|---|
 | `Core/AppPaths.cs` | 改：新增 `DataRoot` / `ResourceDir` / `RepoRoot` / `IsDevLayout`；`DefaultWorkdir` 用 `DataRoot` |
 | `Core/ConfigLocator.cs` | 改：`RepoRoot` / `IsDevLayout` 委托 `AppPaths`，删重复 |
-| `Core/BackupService.cs` | 新：`ExportAsync` / `ImportAsync` + 清单 + 安全扫描 + 回滚 |
+| `Core/BackupService.cs` | 新：`Export` / `Inspect` / `Import` / `Cleanup` + 清单 + 安全扫描 + 回滚 |
 | `Core/ResourceDir.cs` | 新：`Ensure()` / `OpenInExplorer()` |
 | `Views/ConfigHelper.xaml` + `.cs` | 改：新增「备份与恢复」导航页 |
 | `Views/ActionEditorDialog.xaml` + `.cs` | 改：「打开资源目录」按钮 + hint |
@@ -219,7 +219,54 @@ resources/...        （含时）
 
 ---
 
-## 13. 开放问题
+## 13. 测试用例
+
+> 编号约定：`R*` = 资源目录 / 目录路由，`E*` = 导出，`I*` = 导入，`G*` = 通用 / 构建。预期均为手测可观察结果。
+
+| 编号 | 场景 | 前置 / 步骤 | 预期 |
+|---|---|---|---|
+| R01 | dev 下数据根 | dev 构建运行 | `DataRoot` = 仓库根；`resources\` 出现并含 `README.txt`；动作留空工作目录时 cwd = 仓库根 |
+| R02 | prod 下数据根 | 发布包解压后运行 | `DataRoot` = exe 同级；`resources\` 首启生成；`README.txt` 写入 |
+| R03 | 资源目录首启创建 | 删除 `resources\` 后启动 | 自动重建目录 + `README.txt`；不抛异常 |
+| R04 | README 不覆盖 | 已有自定义 `README.txt` 再启动 | 文件内容保持不变 |
+| R05 | 打开资源目录按钮 | 动作编辑器点「资源目录」 | 资源管理器打开 `resources\`（不存在则先创建） |
+| R06 | 相对路径执行脚本 | `resources\test.ps1` 输出一行；`runCommand` 命令填 `resources\test.ps1`、工作目录留空 | 脚本执行，输出可见（`direct` 或带终端） |
+| R07 | launchApp 默认工作目录 | `launchApp` 不填工作目录、Target 用相对路径脚本 | 在 `DataRoot` 下解析执行 |
+| E01 | 导出默认全选 | 勾选资源目录 + 速记 → 导出 | `.ltbak` 内含 `manifest.json` + `LTools.json` + `resources/` + `速记/` |
+| E02 | 导出取消资源目录 | 取消勾选资源目录 → 导出 | 包内无 `resources/`；`manifest.includes` 不含 `resources` |
+| E03 | 导出取消速记 | 取消勾选速记 → 导出 | 包内无 `速记/`；`includes` 不含 `notes` |
+| E04 | 导出跳过旧备份 | `resources\` 下放 `foo.bak-20260101` 文件 → 导出 | 该文件不进入包 |
+| E05 | 导出体积确认 | 制造 > 50 MB 资源后导出 | 弹「约 N MB，确定导出」确认；取消则不生成文件 |
+| E06 | 导出覆盖已有文件 | 选已存在的 `.ltbak` 路径导出 | 旧文件被替换，无残留 `.part` |
+| E07 | 导出过程禁用按钮 | 导出进行中再点「导出…」 | 不响应（`_backupBusy`） |
+| I01 | 导入整体替换 | 导入全选备份 | 配置 / 资源目录 / 速记均被替换；各留 `*.bak-<ts>`；菜单 / 动作 / 超级面板列表刷新 |
+| I02 | 导入含可执行文件 | 备份 `resources\` 含 `.ps1/.exe` 且配置引用 → 导入 | 弹警告，显示可执行文件数 + 引用动作清单；确认后替换 |
+| I03 | 导入无可执行文件 | 备份无可执行文件 → 导入 | 警告显示「0 个可执行文件」；仍需确认 |
+| I04 | 导入取消 | 警告框点取消 | 现有数据零改动；临时目录被清理 |
+| I05 | 导入备份不含速记 | 备份 `includes` 无 `notes` → 导入 | 速记目录保持原样，不改名也不留 `.bak` |
+| I06 | 非备份 zip | 导入任意 zip（无 `manifest.json`） | 报「不是有效的 LTools 备份」；不动现有数据 |
+| I07 | 备份来自更新版本 | `manifest.formatVersion=2` | 报「请升级 LTools 后再导入」；不动现有数据 |
+| I08 | 配置损坏 | `LTools.json` 内容非法 JSON → 导入 | 报「LTools.json 无法解析：…」；不动现有数据 |
+| I09 | zip slip 越界条目 | 构造含 `..\evil` 条目的 zip → 导入 | 解压抛异常 → 友好报错；不动现有数据 |
+| I10 | 同秒重复导入 | 同一秒内两次导入 | 第二次 `.bak-<ts>-1`，不覆盖第一次的 `.bak` |
+| I11 | 导入失败回滚 | 导入资源目录时人为占用目标 → 失败 | 已写入的配置回滚为原文件；资源目录恢复；报错且无数据丢失 |
+| I12 | 导入后导航恢复 | 在「备份与恢复」页导入 → 关闭设置 → 重开 | 停留在「备份与恢复」页（`LastNavPage=backup`） |
+| G01 | 往返一致性 | 导出 → 删除三项 → 导入 | 配置 / 资源目录 / 速记内容与导出前一致（除 `.bak`） |
+| G02 | 构建 | `dotnet build -p:NoWin32Manifest=true` | 0 错 0 警 |
+| G03 | README 发布不含 | 检查发布 zip | 不含 `resources\`（首启生成） |
+
+> zip slip 用例可这样构造（PowerShell，仅在测试机执行）：
+> ```powershell
+> $z = "$env:TEMP\slip.zip"; Remove-Item $z -ErrorAction Ignore
+> Add-Type -AssemblyName System.IO.Compression.FileSystem
+> $a = [System.IO.Compression.ZipFile]::Open($z,'Create')
+> $e = $a.CreateEntry("../evil.txt"); (New-Object IO.StreamWriter $e.Open()).WriteLine("x"); $a.Dispose()
+> ```
+> 然后用「导入…」选 `$z`，预期 I09。
+
+---
+
+## 14. 开放问题
 
 - `README.txt` 措辞与是否英文双语（当前仅中文用户，单中文即可）。
 - 是否在导出时排除 `resources/.bak-*` / `速记/.bak-*`（草案：排除，避免备份里嵌套旧备份）。
