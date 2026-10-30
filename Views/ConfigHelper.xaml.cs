@@ -8,16 +8,19 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using System.Text;
+using System.Threading.Tasks;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features;
 using LTools.Views.Controls;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 
 namespace LTools.Views;
 
 /// <summary>
-/// 设置 GUI（阶段 3 重构为左导航 + 多页面）。页面：通用 / 动作管理 / CapsLock快捷菜单 / 超级面板 / 终端路径。
+/// 设置 GUI（阶段 3 重构为左导航 + 多页面）。页面：通用 / 动作管理 / CapsLock快捷菜单 / 超级面板 / 终端路径 / 备份与恢复。
 /// 沿用 v2.1.0 防抖自动保存（800ms），扩展到动作 / 菜单 / 超级面板编辑。
 /// 两个全局开关（CapsLock 键功能 / 超级面板）即时落盘，重启不丢失。
 /// </summary>
@@ -32,6 +35,7 @@ public partial class ConfigHelperWindow : Window
     private bool _loadingList;           // 列表重建期间抑制选择事件
     private bool _superDirty;            // 超级面板有未保存改动
     private bool _pagesReady;            // 页面全部构建完成前抑制导航切换
+    private bool _backupBusy;            // 备份 / 导入进行中，禁用重复点击
 
     // —— 超级面板槽位拖动（设置页内，交换语义，跨卡片=跨页）——
     private int _dragSrcPage = -1, _dragSrcSlot = -1;
@@ -110,6 +114,7 @@ public partial class ConfigHelperWindow : Window
         Page_Menus.Visibility = tag == "menus" ? Visibility.Visible : Visibility.Collapsed;
         Page_SuperPanel.Visibility = tag == "superpanel" ? Visibility.Visible : Visibility.Collapsed;
         Page_Terminals.Visibility = tag == "terminals" ? Visibility.Visible : Visibility.Collapsed;
+        Page_Backup.Visibility = tag == "backup" ? Visibility.Visible : Visibility.Collapsed;
         if (tag == "terminals") PopulateTerminals();
         // 记忆当前导航页，下次打开恢复（ConfigIO 读改写：只动 LastNavPage，余字段不动）
         ConfigIO.Modify(ConfigPath, cfg => cfg.LastNavPage = tag);
@@ -1099,6 +1104,103 @@ public partial class ConfigHelperWindow : Window
         PopulateTerminals();
         TrayService.Notify("终端路径已保存");
         ShowStatus("终端路径已保存", ok: true);
+    }
+
+    // ============ 备份 / 恢复 ============
+    private async void BackupExport_Click(object sender, RoutedEventArgs e)
+    {
+        if (_backupBusy) return;
+        bool res = BackupIncludeResourcesBox.IsChecked == true;
+        bool notes = BackupIncludeNotesBox.IsChecked == true;
+
+        var dlg = new SaveFileDialog
+        {
+            Filter = "LTools 备份 (*.ltbak)|*.ltbak",
+            FileName = $"LTools-backup-{DateTime.Now:yyyyMMdd-HHmmss}",
+            Title = "导出备份",
+        };
+        if (dlg.ShowDialog(this) != true) return;
+
+        long size;
+        try { size = await Task.Run(() => BackupService.EstimateSize(res, notes)); }
+        catch (Exception ex)
+        {
+            ShowStatus("导出失败", ok: false);
+            ConfirmDialog.Info(this, "备份", "导出失败: " + ex.Message);
+            return;
+        }
+        if (size > BackupService.ExportWarnBytes
+            && !ConfirmDialog.Confirm(this, "导出", $"备份约 {size / 1024.0 / 1024.0:F1} MB，确定导出吗？", danger: true))
+            return;
+
+        _backupBusy = true;
+        BackupStatusText.Text = "正在导出…";
+        try
+        {
+            await Task.Run(() => BackupService.Export(dlg.FileName, res, notes));
+            ShowStatus($"已导出到 {dlg.FileName}", ok: true);
+            BackupStatusText.Text = "已导出：" + dlg.FileName;
+        }
+        catch (Exception ex)
+        {
+            ShowStatus("导出失败", ok: false);
+            BackupStatusText.Text = "导出失败";
+            ConfirmDialog.Info(this, "备份", "导出失败: " + ex.Message);
+        }
+        finally { _backupBusy = false; }
+    }
+
+    private async void BackupImport_Click(object sender, RoutedEventArgs e)
+    {
+        if (_backupBusy) return;
+        var ofd = new OpenFileDialog
+        {
+            Filter = "LTools 备份 (*.ltbak)|*.ltbak",
+            Title = "导入备份",
+        };
+        if (ofd.ShowDialog(this) != true) return;
+
+        _backupBusy = true;
+        BackupStatusText.Text = "正在读取备份…";
+        BackupService.ImportPreview? preview = null;
+        try
+        {
+            preview = await Task.Run(() => BackupService.Inspect(ofd.FileName));
+
+            var msg = new StringBuilder();
+            msg.AppendLine($"备份包含 {preview.ExecutableCount} 个可执行文件，并将替换当前配置。");
+            if (preview.ExecutableCount > 0)
+            {
+                msg.AppendLine("导入后以下动作可能以管理员权限执行其中脚本：");
+                if (preview.ResourceActionRefs.Count == 0)
+                    msg.AppendLine("  （未发现引用 resources 的动作）");
+                else
+                    foreach (var r in preview.ResourceActionRefs) msg.AppendLine("  • " + r);
+            }
+            msg.Append("仅导入来源可信的备份。继续？");
+            if (!ConfirmDialog.Confirm(this, "导入备份", msg.ToString(), danger: preview.ExecutableCount > 0))
+                return;
+
+            BackupStatusText.Text = "正在导入…";
+            await Task.Run(() => BackupService.Import(preview));
+            ConfigStore.Reload();
+            PopulateActions();
+            PopulateGroupList();
+            PopulateSuperPanel();
+            ShowStatus("导入完成", ok: true);
+            BackupStatusText.Text = "导入完成（旧数据已备份为 .bak-时间戳）";
+        }
+        catch (Exception ex)
+        {
+            ShowStatus("导入失败", ok: false);
+            BackupStatusText.Text = "导入失败";
+            ConfirmDialog.Info(this, "备份", "导入失败: " + ex.Message);
+        }
+        finally
+        {
+            BackupService.Cleanup(preview);
+            _backupBusy = false;
+        }
     }
 
     // ============ 重新加载 / 自动保存 ============

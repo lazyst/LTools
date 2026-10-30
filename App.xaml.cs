@@ -65,6 +65,7 @@ public partial class App : Application
         ConfigStore.Initialize(cfgPath);
         QuickNote.Initialize(cfgPath);
         ConfigHelper.Initialize(cfgPath);
+        ResourceDir.Ensure();
 
         // —— 内部动作注册（动作系统 §7）——
         InternalActionRegistry.RegisterDefaults();

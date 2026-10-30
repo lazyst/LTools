@@ -161,6 +161,8 @@
                                  Checked="Nav_Changed" Tag="superpanel"/>
                     <RadioButton Style="{StaticResource NavRow}" Content="终端路径"
                                  Checked="Nav_Changed" Tag="terminals"/>
+                    <RadioButton Style="{StaticResource NavRow}" Content="备份与恢复"
+                                 Checked="Nav_Changed" Tag="backup"/>
                 </StackPanel>
             </Border>
 
@@ -358,6 +360,47 @@
                                         MinWidth="72" Click="SaveGitBash_Click"/>
                             </Grid>
                         </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ 备份与恢复 ============ -->
+                <ScrollViewer x:Name="Page_Backup" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="导出" Margin="0,0,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <CheckBox x:Name="BackupIncludeResourcesBox"
+                                          Content="资源目录（resources）" IsChecked="True"
+                                          Margin="0,0,0,6"/>
+                                <CheckBox x:Name="BackupIncludeNotesBox"
+                                          Content="速记" IsChecked="True"
+                                          Margin="0,0,0,8"/>
+                                <TextBlock Style="{StaticResource HintLabel}"
+                                           Text="配置（LTools.json）始终包含。"
+                                           Margin="0,0,0,8"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Style="{StaticResource BtnPrimary}" Content="导出…"
+                                            MinWidth="104" Click="BackupExport_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="导入" Margin="0,12,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                                           Text="导入会整体替换当前配置与所选目录（旧数据自动备份为 .bak-时间戳）。备份含可执行文件，导入后可能以管理员权限执行——仅导入来源可信的备份。"
+                                           Margin="0,0,0,8"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Style="{StaticResource BtnPrimary}" Content="导入…"
+                                            MinWidth="104" Click="BackupImport_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock x:Name="BackupStatusText" Style="{StaticResource HintLabel}"
+                                   Text="" Margin="0,12,0,0"/>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>

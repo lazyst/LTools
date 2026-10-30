@@ -63,10 +63,8 @@ internal static class ConfigLocator
         return IsDevLayout ? devPath : prodPath;
     }
 
-    /// <summary>仓库根 = exe 目录上溯 3 级（bin/&lt;Config&gt;/net10.0-windows/）。</summary>
-    private static string RepoRoot =>
-        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
+    /// <summary>仓库根（同 <see cref="AppPaths.RepoRoot"/>，统一在此委派）。</summary>
+    private static string RepoRoot => AppPaths.RepoRoot;
 
-    private static bool IsDevLayout =>
-        File.Exists(Path.Combine(RepoRoot, "LTools.csproj"));
+    private static bool IsDevLayout => AppPaths.IsDevLayout;
 }

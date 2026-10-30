@@ -89,11 +89,17 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBox Grid.Column="0" x:Name="LaunchWorkdirBox" MinHeight="30" Margin="0,0,8,0"/>
-                                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72"
+                                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72" Margin="0,0,8,0"
                                             Click="BrowseLaunchWorkdir_Click" ToolTip="用文件资源管理器选择工作目录"/>
+                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="资源目录" MinWidth="80"
+                                            Click="OpenResourceDir_Click" ToolTip="打开 resources\（脚本建议放这里，可用相对路径）"/>
                                 </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}"
+                                           Text="提示：脚本建议放 resources\，工作目录留空即可用相对路径"
+                                           Margin="0,4,0,0"/>
                             </StackPanel>
 
                             <!-- openFile -->
@@ -149,11 +155,17 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBox Grid.Column="0" x:Name="CmdWorkdirBox" MinHeight="30" Margin="0,0,8,0"/>
-                                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72"
+                                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72" Margin="0,0,8,0"
                                             Click="BrowseCmdWorkdir_Click" ToolTip="用文件资源管理器选择工作目录"/>
+                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="资源目录" MinWidth="80"
+                                            Click="OpenResourceDir_Click" ToolTip="打开 resources\（脚本建议放这里，可用相对路径）"/>
                                 </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}"
+                                           Text="提示：脚本建议放 resources\，工作目录留空即可用相对路径"
+                                           Margin="0,4,0,0"/>
                             </StackPanel>
 
                             <!-- sendText -->

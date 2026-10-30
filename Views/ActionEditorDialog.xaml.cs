@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using LTools.Core;
 using LTools.Features;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using OpenFolderDialog = Microsoft.Win32.OpenFolderDialog;
@@ -198,6 +199,9 @@ public partial class ActionEditorDialog : Window
     private void BrowseLaunchWorkdir_Click(object sender, RoutedEventArgs e) => BrowseWorkdir(LaunchWorkdirBox);
 
     private void BrowseCmdWorkdir_Click(object sender, RoutedEventArgs e) => BrowseWorkdir(CmdWorkdirBox);
+
+    /// <summary>在资源管理器中打开资源目录（脚本建议放这里，可用相对路径）。</summary>
+    private void OpenResourceDir_Click(object sender, RoutedEventArgs e) => ResourceDir.OpenInExplorer();
 
     /// <summary>选工作目录：调文件资源管理器（.NET 8 原生 <see cref="OpenFolderDialog"/>）并回填指定框。</summary>
     private void BrowseWorkdir(TextBox box)
