@@ -2,6 +2,12 @@
 
 所有项目的重要更改都将记录在此文件中。
 
+## [未发布]
+
+### 🐛 修复
+
+- **笔记本离开后 LTools 无声退出（非崩溃）**：开机自启任务由 `AutoStartService.Enable` 用 `schtasks /create /sc ONLOGON /rl HIGHEST` 创建，而该命令默认勾选「仅交流电源启动」+「切换到电池即停止」（`DisallowStartIfOnBatteries` / `StopIfGoingOnBatteries`）。笔记本只要瞬间掉一次交流电，任务计划程序就终止常驻进程，且登录触发器不会自动重启——表现为离开几小时回来后托盘图标消失、超级面板 / 快捷键全部失效，但无任何崩溃日志（任务返回码 `0x8007042B` / Win32 1067「进程意外终止」）。修复：`Enable` 改用任务 XML 注册（`/create /xml`），显式关闭两项电池条件，并把 `ExecutionTimeLimit` 设为 `PT0S`（默认 72h 同样会杀常驻进程）。
+
 ## [v2.2.6] - 2026-10-13
 
 ### 🐛 修复
