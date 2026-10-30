@@ -160,7 +160,7 @@ public sealed class ActionDto
     /// <summary>launchApp: 命令行参数（可选）。</summary>
     public string? Args { get; set; }
 
-    /// <summary>launchApp / runCommand: 工作目录（空则默认桌面）。</summary>
+    /// <summary>launchApp / runCommand: 工作目录（空则默认应用目录）。</summary>
     public string? Workdir { get; set; }
 
     // —— openFile / openFolder ——

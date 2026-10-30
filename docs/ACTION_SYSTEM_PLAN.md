@@ -57,6 +57,8 @@ ActionDto {
 > 🟨 = 阶段 9–11 待实施（规格 §3.2，计划 §11）。
 >
 > **执行层洞察**：`launchApp`/`openFile`/`openFolder`/`openUrl` 本质都是 `Terminal=direct`（ShellExecute）的特例——现有 `TerminalLauncher` 的 `direct` 分支已能处理。只有 `runCommand` 才需要终端路由。故执行引擎基本就绪，主要工作是类型模型 + 编辑器 + 面板 UI。
+>
+> **工作目录默认**：`launchApp` / `runCommand` 未填 `Workdir` 时默认 `LTools.exe` 所在目录（`AppPaths.DefaultWorkdir()`，目录不可用时回退桌面），两功能一致——执行相对路径脚本更可控，且开机自启时不再继承 `System32`。
 
 ### 3.1 内置图标 ✅
 

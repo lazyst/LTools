@@ -84,7 +84,7 @@
                                 </Grid>
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="参数（可选）" Margin="0,0,0,4"/>
                                 <TextBox x:Name="ArgsBox" MinHeight="30" Margin="0,0,0,10"/>
-                                <TextBlock Style="{StaticResource SectionLabel}" Text="工作目录（可选）" Margin="0,0,0,4"/>
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="工作目录（可选，留空 = LTools 所在目录）" Margin="0,0,0,4"/>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -144,7 +144,7 @@
                                     <CheckBox Grid.Column="1" x:Name="KeepWindowBox" Content="保持窗口"
                                               VerticalAlignment="Bottom" Margin="0,0,0,4"/>
                                 </Grid>
-                                <TextBlock Style="{StaticResource SectionLabel}" Text="工作目录（可选）" Margin="0,0,0,4"/>
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="工作目录（可选，留空 = LTools 所在目录）" Margin="0,0,0,4"/>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>

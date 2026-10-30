@@ -10,7 +10,7 @@ namespace LTools.Features;
 /// （对应原版 lib/Utils.ahk BuildCommandString 的执行侧，但终端信息不再 bake 进命令串）。
 /// 路径探测：pwsh7/gitbash 探测常见安装位置 + PATH；pwsh5/cmd/wsl 走系统目录；
 /// 缺失 shell → 返回错误（由调用方弹 MessageBox + 记日志）；wt 缺失 → 降级到 shell 自身控制台窗口。
-/// workdir 为空默认桌面（对齐 AHK RunCommand）。钩子回调在 UI 线程，执行 spawn 到后台线程。</summary>
+/// workdir 为空默认应用目录（见 <see cref="AppPaths.DefaultWorkdir"/>）。钩子回调在 UI 线程，执行 spawn 到后台线程。</summary>
 internal static class TerminalLauncher
 {
     private static string? _gitBashOverride; // 配置中的 git bash 路径；空=自动探测
@@ -68,7 +68,7 @@ internal static class TerminalLauncher
     public static LaunchResult TryBuildLaunch(string terminal, bool keepWindow, string cmd, string workdir)
     {
         string workdir2 = string.IsNullOrWhiteSpace(workdir)
-            ? Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+            ? AppPaths.DefaultWorkdir()
             : workdir.Trim();
 
         if (terminal == "direct" || terminal.Length == 0)

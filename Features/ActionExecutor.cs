@@ -84,7 +84,8 @@ internal static class ActionExecutor
     {
         if (string.IsNullOrWhiteSpace(a.Target))
             throw new InvalidOperationException($"launchApp 缺少 Target: {a.Name}");
-        Process.Start(BuildPsi(a.Target!, a.Args, a.Workdir));
+        string wd = string.IsNullOrWhiteSpace(a.Workdir) ? AppPaths.DefaultWorkdir() : a.Workdir;
+        Process.Start(BuildPsi(a.Target!, a.Args, wd));
     }
 
     // —— openFile / openFolder / openUrl（ShellExecute 走默认程序）——
@@ -133,7 +134,7 @@ internal static class ActionExecutor
     private static void RunDirect(string cmd, string workdir)
     {
         string wd = string.IsNullOrWhiteSpace(workdir)
-            ? Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+            ? AppPaths.DefaultWorkdir()
             : workdir.Trim();
         try
         {
