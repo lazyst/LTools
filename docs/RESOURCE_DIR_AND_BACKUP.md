@@ -47,7 +47,7 @@ public static string DefaultWorkdir() => Directory.Exists(DataRoot) ? DataRoot
 
 - `ConfigLocator` 的 `RepoRoot` / `IsDevLayout` 改为委托 `AppPaths`，删除重复。
 - `DefaultWorkdir` 由 `AppDirectory` 改为 `DataRoot`（行为变化：dev 下默认工作目录由 `bin/Debug` 变仓库根——已与用户确认）。
-- `ResolveWorkdir` / `ResolveInWorkdir`（见 §8）统一解析相对路径与相对工作目录。
+- `ResolveWorkdir` / `ResolveTarget` / `ToRelativeIfUnderDataRoot`（见 §8）统一解析相对路径、相对工作目录，并把数据根下的绝对路径自动转成相对路径。
 - **终端经 Windows Terminal（`wt.exe`）包装时，新标签页不继承 `ProcessStartInfo.WorkingDirectory`**（用 profile 默认目录）。故 `TerminalLauncher` 的 wt 分支一律用 `new-tab --startingDirectory "<解析后的工作目录>"`，含工作目录留空时（此时为 `DefaultWorkdir`），否则 `pwd` 会显示 PowerShell profile 默认目录而非默认工作目录。
 - `速记/` 路径：`QuickNote.ComputeDefaultDir` 已是「配置文件所在目录 + 速记」，与 `DataRoot` 一致，无需改。
 
@@ -163,7 +163,8 @@ resources/...        （含时）
 - 「工作目录」标签 + 行旁新增「打开资源目录」按钮：资源管理器打开 `AppPaths.ResourceDir`（不存在先 `EnsureResourceDir`）。
 - `launchApp` / `runCommand` 两处下方加 hint `TextBlock`：「提示：脚本建议放 `resources\`，工作目录留空即可用相对路径」。
 - 不新增宏（`${app}` 等）：默认工作目录已是 `DataRoot`，相对路径足够。
-- 相对路径解析（`AppPaths.ResolveInWorkdir` / `ResolveWorkdir`）：工作目录里**确实存在**该文件才解析成绝对路径，否则原样交出（裸文件名继续走 PATH、URL / 文档交给 ShellExecute 回退）。不依赖目标里有没有 `\` / `/`——`foo.bat`、`resources\foo.bat`、`resources/foo.bat` 一视同仁；相对工作目录（如填 `resources`）也按数据根解析。规避 CreateProcess 解析相对 exe 用父进程 CWD 而非 `WorkingDirectory` 的坑。Git Bash / WSL 下反斜杠会被 bash 当转义符，命令里请用 `resources/foo.ps1`。
+- 相对路径解析（`AppPaths.ResolveWorkdir` / `ResolveTarget`）：工作目录留空→默认数据根；相对工作目录（如填 `resources`）按数据根解析。`ResolveTarget` 依次按**数据根**、**工作目录**查找，任一存在即返回绝对路径，否则原样交出（裸文件名继续走 PATH、URL / 文档交给 ShellExecute 回退）。不依赖目标里有没有 `\` / `/`——`foo.bat`、`resources\foo.bat`、`resources/foo.bat` 一视同仁。规避 CreateProcess 解析相对 exe 用父进程 CWD 而非 `WorkingDirectory` 的坑。Git Bash / WSL 下反斜杠会被 bash 当转义符，命令里请用 `resources/foo.ps1`。
+- **可移植路径（`AppPaths.ToRelativeIfUnderDataRoot`）**：「启动程序」的程序路径与「工作目录」在**浏览选择**或**保存**时，若指向数据根之下就自动转成相对路径（相对数据根）；数据根本身 → 空（默认工作目录）。这样动作在备份换机 / 改换安装目录导入后仍能工作。数据根之外的绝对路径原样保留；已是相对路径的原样保留。
 
 ---
 
@@ -257,14 +258,16 @@ fsutil file createnew resources\大文件.bin 62914560
 | R05 | 相对路径运行脚本 | 已执行 13.2 生成 `resources\test.ps1` | ① 新建「运行命令」动作，命令填 `resources\test.ps1`，终端选 PowerShell 7，勾「保持窗口」，工作目录留空　② 保存并执行 | 终端窗口输出 `hello-ltools`；再执行 `pwd`，显示的路径是程序目录 |
 | R06 | 启动程序也用默认目录 | 已执行 13.2 生成 `resources\dir.bat` | ① 新建「启动程序」动作，程序路径填 `resources\dir.bat`，工作目录留空　② 执行 | 窗口打印的当前路径是程序目录（不是桌面，也不是 `C:\Windows\System32`） |
 | R07 | 留空时终端开在默认目录（回归） | 已安装 Windows Terminal | ① 新建「运行命令」动作，命令填 `pwd`，终端选 PowerShell 7，勾「保持窗口」，工作目录留空　② 执行 | 终端一打开 `pwd` 就输出程序目录；**不能**是 `C:\Users\<你>` 或 PowerShell 安装目录 |
+| R08 | 浏览选数据根下路径存为相对 | `resources\dir.bat` 存在 | ① 新建「启动程序」，「程序路径」点「浏览…」选 `resources\dir.bat`，「工作目录」点「浏览…」选 `resources` ② 确定 | 程序路径框显示 `resources\dir.bat`；工作目录框显示 `resources`（都不是绝对路径）；保存后配置里同样是相对值 |
+| R09 | 旧绝对路径编辑时转相对 | 旧动作的程序路径 / 工作目录是数据根下的绝对路径 | ① 打开该动作编辑器 | 框里显示的是相对路径（如 `resources\foo.exe`、`resources`）；点确定保存后配置里也是相对值 |
 | E01 | 默认导出包含三项 | `resources\test.ps1` 存在；速记里至少有一条 | ① 设置 → 备份与恢复（两个勾选框默认已勾）　② 点「导出…」，保存为桌面 `test-全量.ltbak` | 文件生成；用压缩软件打开可看到 `manifest.json`、`LTools.json`、`resources` 文件夹、`速记` 文件夹 |
 | E02 | 只导出配置 | — | ① 取消勾选「资源目录」「速记」　② 导出为 `仅配置.ltbak` | 包内只有 `manifest.json` 与 `LTools.json`，没有 `resources` 和 `速记` |
 | E03 | 旧备份文件不进包 | `resources\old.bak-20260101.txt` 存在 | ① 勾选资源目录，导出全量 | 包内看不到 `old.bak-20260101.txt` |
-| E04 | 大文件导出提醒 | `resources\大文件.bin`（约 60 MB）存在 | ① 导出全量　② 先点「取消」，再重复一次并点「确定」 | 弹出确认「备份约 60.x MB，确定导出吗？」；取消后不生成文件；确定后生成 |
+| E04 | 大文件导出提醒 | `resources\大文件.bin`（约 60 MB）存在 | ① 导出全量　② 先点「取消」，再重复一次并点「确定」 | 弹出确认「备份约 60.x MB，确定导出吗？」，确认按钮为「确认导出」（不是「确认删除」）；取消后不生成文件；确定后生成 |
 | E05 | 覆盖已有备份 | 目标路径已存在同名 `.ltbak` | ① 导出到该路径并确认覆盖 | 文件内容更新，无报错；目标文件夹内没有 `.part` 之类残留文件 |
 | E06 | 导出中不能重复点击 | 使用大文件以便耗时 | ① 点「导出…」选好路径，趁进度未完成再点一次「导出…」 | 第二次点击无反应；完成后状态只显示一次「已导出：…」 |
 | I01 | 全量恢复 | 先用 E01 导出 `test-全量.ltbak` | ① 删除 `resources\test.ps1`　② 在设置里新建一个动作（制造差异）　③ 删除一条速记　④ 导入 `test-全量.ltbak` 并点「确定」 | 脚本文件恢复；多建的动作消失；被删速记恢复；程序目录出现 `LTools.json.bak-…`、`resources.bak-…`、`速记.bak-…` 三份；设置中的列表立即刷新 |
-| I02 | 可执行文件安全警告 | `resources\演示.exe` 与 `test.ps1` 存在，且有动作的命令包含 `resources\test.ps1` | ① 导出全量　② 导入该备份 | 弹窗标题「导入备份」，正文写明「2 个可执行文件」，并列出该动作的名称与命令片段 |
+| I02 | 可执行文件安全警告 | `resources\演示.exe` 与 `test.ps1` 存在，且有动作的命令包含 `resources\test.ps1` | ① 导出全量　② 导入该备份 | 弹窗标题「导入备份」，正文写明「2 个可执行文件」并列出该动作的名称与命令片段；确认按钮为「确认导入」 |
 | I03 | 取消导入不改数据 | 任意有效备份 | ① 导入，在警告框点「取消」 | 配置、`resources`、`速记` 均无变化；程序目录没有新增 `.bak`；`%TEMP%` 下没有 `ltools-import-` 开头的残留目录 |
 | I04 | 备份不含速记时不碰速记 | 使用 E02 的 `仅配置.ltbak` | ① 导入并确定 | 速记内容保持原样，没有出现 `速记.bak-…` |
 | I05 | 普通压缩包被拒绝 | — | ① 把任意 `.zip` 或文本文件改名为 `x.ltbak`　② 导入 | 提示「不是有效的 LTools 备份…」；现有数据不变 |
@@ -276,6 +279,7 @@ fsutil file createnew resources\大文件.bin 62914560
 | G01 | 备份往返一致 | 已执行 13.2 | ① 导出全量　② 记录 `test.ps1` 内容、速记条数、动作数量　③ 删除部分数据　④ 导入　⑤ 复核 | 三项均与记录一致（`.bak` 文件不计入） |
 | G02 | 发布包不含用户数据 | 发布 zip | ① 解压查看 | 没有 `resources` 文件夹，也没有 `LTools.json`（首次启动才生成） |
 | G03 | 设置页记忆 | — | ① 停在「备份与恢复」页　② 关闭设置　③ 用 `CapsLock + \` 重新打开 | 仍停在「备份与恢复」页 |
+| G04 | 换机导入后相对路径动作仍可用 | 用 R08 的相对路径动作做全量备份 | ① 在另一台机器（或把程序目录整体挪到新路径）导入　② 执行该「启动程序」/「运行命令」动作 | 动作在新环境找到脚本 / 程序（相对路径解析到新程序目录），不因旧机器的绝对路径失败 |
 
 ### 13.4 生成恶意路径样本
 

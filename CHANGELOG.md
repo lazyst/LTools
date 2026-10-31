@@ -14,12 +14,14 @@
 - **`launchApp` 相对路径启动失败**：Windows 的 CreateProcess 解析相对路径可执行文件时用的是**父进程当前目录**，不是 `ProcessStartInfo.WorkingDirectory`（实测验证）。因此「启动程序」动作填 `resources\foo.exe` 在 LTools 自身 CWD 不是程序目录时（如开机自启 = `System32`）会报「找不到文件」。修复：`launchApp` 启动时把相对 Target 按工作目录解析成绝对路径；`runCommand` 的 direct 模式同样先解析相对 exe，不再依赖「异常后回退 ShellExecute」碰运气。裸文件名（如 `notepad.exe`）仍走 PATH。
 - **动作相对路径解析不再依赖斜杠**：原按「Target 是否含 `\` / `/`」决定要不要解析，导致不带分隔符的 `foo.bat`（明明在工作目录里）被当成 PATH 命令而失败。改为「工作目录里**存在**该文件就解析」，`foo.bat`、`resources\foo.bat`、`resources/foo.bat` 一视同仁；相对工作目录（如填 `resources`）也按数据根解析成绝对路径。Git Bash / WSL 提示用 `resources/foo.ps1`（反斜杠会被 bash 当转义符）。
 - **工作目录留空时终端落到 PowerShell 默认目录**：`runCommand` 选 PowerShell 7 等终端时统一经 `wt.exe`（Windows Terminal）包装，而 wt 新标签页**不继承** `ProcessStartInfo.WorkingDirectory`，工作目录留空的 wt 分支又没传 `--startingDirectory`，于是 `pwd` 显示 wt profile 默认目录而非默认工作目录。修复：wt 分支一律 `new-tab --startingDirectory "<解析后的工作目录>"`（含留空时的默认值），目录里的 `;` 一并转义。
+- **导出 / 导入确认框按钮文案**：`ConfirmDialog` 的 danger 确认固定显示「确认删除」，导致导出大文件确认、导入警告都显示「确认删除」。修复：`Confirm` 增加 `okText`，导出为「确认导出」、导入为「确认导入」；删除类仍为「确认删除」，非 danger 默认「确认」。
 - **笔记本离开后 LTools 无声退出（非崩溃）**：开机自启任务由 `AutoStartService.Enable` 用 `schtasks /create /sc ONLOGON /rl HIGHEST` 创建，而该命令默认勾选「仅交流电源启动」+「切换到电池即停止」（`DisallowStartIfOnBatteries` / `StopIfGoingOnBatteries`）。笔记本只要瞬间掉一次交流电，任务计划程序就终止常驻进程，且登录触发器不会自动重启——表现为离开几小时回来后托盘图标消失、超级面板 / 快捷键全部失效，但无任何崩溃日志（任务返回码 `0x8007042B` / Win32 1067「进程意外终止」）。修复：`Enable` 改用任务 XML 注册（`/create /xml`），显式关闭两项电池条件，并把 `ExecutionTimeLimit` 设为 `PT0S`（默认 72h 同样会杀常驻进程）。
 
 ### 🔧 调整
 
 - **「启动软件」改名「启动程序」**：动作类型显示名（动作编辑器类型下拉、组合动作左栏、超级面板 / 菜单槽位「新建」入口、帮助面板）统一为「启动程序」，与实际语义一致。
 - **动作工作目录默认改为应用所在目录**：`runCommand` / `launchApp` 不填工作目录时，原默认桌面（`launchApp` 甚至不设、继承 LTools 进程 CWD——开机自启时是 `System32`，不可预期）。现统一走 `AppPaths.DefaultWorkdir()`：默认 `LTools.exe` 所在目录（目录不可用时回退桌面），相对路径执行脚本更可控、两功能默认一致；动作编辑器「工作目录」标签注明「留空 = LTools 所在目录」。
+- **动作路径可移植（相对路径自动转换）**：「启动程序」的程序路径与「工作目录」在浏览或保存时，若指向数据根（`resources` / `速记` 等）之下的路径，自动转成相对路径；执行时依次按数据根、工作目录解析。这样备份换机 / 改换安装目录导入后，引用资源目录的动作照常工作；相对工作目录（如填 `resources`）也可直接填写。数据根之外的绝对路径保持原样。
 
 ## [v2.2.6] - 2026-10-13
 

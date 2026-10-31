@@ -117,14 +117,14 @@ public partial class ActionEditorDialog : Window
         int ti = IndexOf(_draft.Type);
         TypeCombo.SelectedIndex = ti >= 0 && ti < TypeCombo.Items.Count ? ti : 0;
 
-        TargetBox.Text = _draft.Target ?? "";
+        TargetBox.Text = AppPaths.ToRelativeIfUnderDataRoot(_draft.Target ?? "");
         ArgsBox.Text = _draft.Args ?? "";
-        LaunchWorkdirBox.Text = _draft.Workdir ?? "";
+        LaunchWorkdirBox.Text = AppPaths.ToRelativeIfUnderDataRoot(_draft.Workdir ?? "");
         FileBox.Text = _draft.Path ?? "";
         FolderBox.Text = _draft.Path ?? "";
         UrlBox.Text = _draft.Url ?? "";
         CmdBox.Text = _draft.Cmd ?? "";
-        CmdWorkdirBox.Text = _draft.Workdir ?? "";
+        CmdWorkdirBox.Text = AppPaths.ToRelativeIfUnderDataRoot(_draft.Workdir ?? "");
         KeepWindowBox.IsChecked = _draft.KeepWindow ?? false;
 
         SendTextBox.Text = _draft.Text ?? "";
@@ -179,7 +179,7 @@ public partial class ActionEditorDialog : Window
     {
         var ofd = new OpenFileDialog { Filter = "可执行文件 (*.exe)|*.exe|所有文件 (*.*)|*.*", Title = "选择程序" };
         if (!string.IsNullOrEmpty(TargetBox.Text)) ofd.InitialDirectory = SafeDir(TargetBox.Text);
-        if (ofd.ShowDialog(this) == true) TargetBox.Text = ofd.FileName;
+        if (ofd.ShowDialog(this) == true) TargetBox.Text = AppPaths.ToRelativeIfUnderDataRoot(ofd.FileName);
     }
 
     private void BrowseFile_Click(object sender, RoutedEventArgs e)
@@ -203,12 +203,13 @@ public partial class ActionEditorDialog : Window
     /// <summary>在资源管理器中打开资源目录（脚本建议放这里，可用相对路径）。</summary>
     private void OpenResourceDir_Click(object sender, RoutedEventArgs e) => ResourceDir.OpenInExplorer();
 
-    /// <summary>选工作目录：调文件资源管理器（.NET 8 原生 <see cref="OpenFolderDialog"/>）并回填指定框。</summary>
+    /// <summary>选工作目录：调文件资源管理器（.NET 8 原生 <see cref="OpenFolderDialog"/>）并回填指定框。
+    /// 选到数据根下的目录时回填相对路径（备份换机后仍可用）。</summary>
     private void BrowseWorkdir(TextBox box)
     {
         var d = new OpenFolderDialog { Title = "选择工作目录" };
         if (!string.IsNullOrEmpty(box.Text)) d.InitialDirectory = SafeDir(box.Text);
-        if (d.ShowDialog(this) == true) box.Text = d.FolderName;
+        if (d.ShowDialog(this) == true) box.Text = AppPaths.ToRelativeIfUnderDataRoot(d.FolderName);
     }
 
     // —— 确定 ——
@@ -237,9 +238,9 @@ public partial class ActionEditorDialog : Window
         {
             case ActionType.launchApp:
                 if (string.IsNullOrWhiteSpace(TargetBox.Text)) { ConfirmDialog.Info(this, "动作", "请填写程序路径。"); return; }
-                _draft.Target = TargetBox.Text.Trim();
+                _draft.Target = AppPaths.ToRelativeIfUnderDataRoot(TargetBox.Text.Trim());
                 _draft.Args = ArgsBox.Text.Trim();
-                _draft.Workdir = LaunchWorkdirBox.Text.Trim();
+                _draft.Workdir = AppPaths.ToRelativeIfUnderDataRoot(LaunchWorkdirBox.Text.Trim());
                 break;
             case ActionType.openFile:
                 if (string.IsNullOrWhiteSpace(FileBox.Text)) { ConfirmDialog.Info(this, "动作", "请填写文件路径。"); return; }
@@ -257,7 +258,7 @@ public partial class ActionEditorDialog : Window
                 _draft.Cmd = CmdBox.Text.Trim();
                 _draft.Terminal = TerminalCombo.SelectedItem is ComboItem ti ? ti.Value : "direct";
                 _draft.KeepWindow = KeepWindowBox.IsChecked == true;
-                _draft.Workdir = CmdWorkdirBox.Text.Trim();
+                _draft.Workdir = AppPaths.ToRelativeIfUnderDataRoot(CmdWorkdirBox.Text.Trim());
                 break;
             case ActionType.@internal:
                 if (CommandCombo.SelectedItem is not ComboItem ci) { ConfirmDialog.Info(this, "动作", "请选择内部命令。"); return; }
@@ -716,7 +717,16 @@ public partial class ActionEditorDialog : Window
 
     private static string SafeDir(string path)
     {
-        try { var d = System.IO.Path.GetDirectoryName(path?.Trim()); return string.IsNullOrEmpty(d) ? "" : d; }
+        try
+        {
+            string p = path?.Trim() ?? "";
+            if (string.IsNullOrEmpty(p)) return "";
+            // 相对路径（如 resources\foo.bat / resources）按数据根解析成绝对路径，再取目录
+            if (!System.IO.Path.IsPathRooted(p))
+                p = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppPaths.DataRoot, p));
+            var d = System.IO.Path.GetDirectoryName(p);
+            return string.IsNullOrEmpty(d) ? "" : d;
+        }
         catch { return ""; }
     }
 

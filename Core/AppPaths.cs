@@ -53,18 +53,43 @@ internal static class AppPaths
     }
 
     /// <summary>
-    /// 解析相对目标：绝对路径原样；相对路径按工作目录解析，**该文件确实存在**才返回绝对路径，
-    /// 否则原样返回（裸文件名继续走 PATH，URL / 文档交给 ShellExecute 回退）。
+    /// 解析相对目标：绝对路径原样；相对路径先按**数据根**解析（动作里自动转换出来的相对路径即相对数据根），
+    /// 再按工作目录解析，任一存在则返回绝对路径，否则原样返回（裸文件名继续走 PATH，URL / 文档交给 ShellExecute 回退）。
     /// 不依赖目标里有没有 <c>\</c> / <c>/</c>——<c>foo.bat</c> 与 <c>resources/foo.bat</c> 一视同仁。
     /// </summary>
-    public static string ResolveInWorkdir(string target, string workdir)
+    public static string ResolveTarget(string target, string workdir)
     {
         if (string.IsNullOrEmpty(target) || Path.IsPathRooted(target)) return target;
         try
         {
-            string candidate = Path.GetFullPath(Path.Combine(workdir, target));
-            return File.Exists(candidate) ? candidate : target;
+            foreach (string baseDir in new[] { DataRoot, workdir })
+            {
+                if (string.IsNullOrEmpty(baseDir)) continue;
+                string candidate = Path.GetFullPath(Path.Combine(baseDir, target));
+                if (File.Exists(candidate)) return candidate;
+            }
         }
-        catch { return target; }
+        catch { /* 非法路径字符等，原样返回 */ }
+        return target;
+    }
+
+    /// <summary>
+    /// 把数据根下的**绝对**路径转成相对路径（相对数据根）：浏览 / 保存动作时自动调用，
+    /// 让「启动程序」的路径与「工作目录」在备份换机后仍可用。相对路径与数据根之外的路径原样保留；
+    /// 恰好是数据根本身 → 空串（= 默认工作目录）。
+    /// </summary>
+    public static string ToRelativeIfUnderDataRoot(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return path;
+        string p = path.Trim();
+        if (!Path.IsPathRooted(p)) return p;   // 已是相对路径，原样保留
+        string full;
+        try { full = Path.GetFullPath(p); }
+        catch { return p; }
+        string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(DataRoot));
+        if (full.Equals(root, StringComparison.OrdinalIgnoreCase)) return "";
+        string prefix = root + Path.DirectorySeparatorChar;
+        if (!full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return p;
+        return Path.GetRelativePath(root, full);
     }
 }

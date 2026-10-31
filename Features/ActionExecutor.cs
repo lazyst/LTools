@@ -85,9 +85,9 @@ internal static class ActionExecutor
         if (string.IsNullOrWhiteSpace(a.Target))
             throw new InvalidOperationException($"launchApp 缺少 Target: {a.Name}");
         string wd = AppPaths.ResolveWorkdir(a.Workdir);
-        // CreateProcess 解析相对 exe 用的是父进程 CWD，不是 WorkingDirectory；先按工作目录解析成绝对路径，
+        // CreateProcess 解析相对 exe 用的是父进程 CWD，不是 WorkingDirectory；先按数据根 / 工作目录解析成绝对路径，
         // 否则 `resources\foo.exe` 在 LTools 自身 CWD 不是数据根时（如开机自启 = System32）会找不到文件。
-        string target = AppPaths.ResolveInWorkdir(a.Target!, wd);
+        string target = AppPaths.ResolveTarget(a.Target!, wd);
         Process.Start(BuildPsi(target, a.Args, wd));
     }
 
@@ -140,7 +140,7 @@ internal static class ActionExecutor
         try
         {
             TrySplitCommandLine(cmd, out string exe, out string args);
-            Process.Start(BuildPsi(AppPaths.ResolveInWorkdir(exe, wd), args, wd));
+            Process.Start(BuildPsi(AppPaths.ResolveTarget(exe, wd), args, wd));
         }
         catch
         {

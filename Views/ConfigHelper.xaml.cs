@@ -1130,7 +1130,7 @@ public partial class ConfigHelperWindow : Window
             return;
         }
         if (size > BackupService.ExportWarnBytes
-            && !ConfirmDialog.Confirm(this, "导出", $"备份约 {size / 1024.0 / 1024.0:F1} MB，确定导出吗？", danger: true))
+            && !ConfirmDialog.Confirm(this, "导出", $"备份约 {size / 1024.0 / 1024.0:F1} MB，确定导出吗？", okText: "确认导出"))
             return;
 
         _backupBusy = true;
@@ -1178,7 +1178,7 @@ public partial class ConfigHelperWindow : Window
                     foreach (var r in preview.ResourceActionRefs) msg.AppendLine("  • " + r);
             }
             msg.Append("仅导入来源可信的备份。继续？");
-            if (!ConfirmDialog.Confirm(this, "导入备份", msg.ToString(), danger: preview.ExecutableCount > 0))
+            if (!ConfirmDialog.Confirm(this, "导入备份", msg.ToString(), danger: preview.ExecutableCount > 0, okText: "确认导入"))
                 return;
 
             BackupStatusText.Text = "正在导入…";
