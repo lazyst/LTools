@@ -33,4 +33,38 @@ internal static class AppPaths
     public static string DefaultWorkdir() => Directory.Exists(DataRoot)
         ? DataRoot
         : Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+
+    /// <summary>
+    /// 解析动作的工作目录：空 → <see cref="DefaultWorkdir"/>；绝对路径原样；
+    /// 相对路径（如 <c>resources</c>、<c>resources/sub</c>）先按数据根解析，存在则用绝对路径。
+    /// 斜杠 / 反斜杠均可（<see cref="Path.GetFullPath"/> 统一为系统分隔符）。
+    /// </summary>
+    public static string ResolveWorkdir(string? workdir)
+    {
+        if (string.IsNullOrWhiteSpace(workdir)) return DefaultWorkdir();
+        string w = workdir.Trim();
+        if (Path.IsPathRooted(w)) return w;
+        try
+        {
+            string candidate = Path.GetFullPath(Path.Combine(DataRoot, w));
+            return Directory.Exists(candidate) ? candidate : w;
+        }
+        catch { return w; }
+    }
+
+    /// <summary>
+    /// 解析相对目标：绝对路径原样；相对路径按工作目录解析，**该文件确实存在**才返回绝对路径，
+    /// 否则原样返回（裸文件名继续走 PATH，URL / 文档交给 ShellExecute 回退）。
+    /// 不依赖目标里有没有 <c>\</c> / <c>/</c>——<c>foo.bat</c> 与 <c>resources/foo.bat</c> 一视同仁。
+    /// </summary>
+    public static string ResolveInWorkdir(string target, string workdir)
+    {
+        if (string.IsNullOrEmpty(target) || Path.IsPathRooted(target)) return target;
+        try
+        {
+            string candidate = Path.GetFullPath(Path.Combine(workdir, target));
+            return File.Exists(candidate) ? candidate : target;
+        }
+        catch { return target; }
+    }
 }

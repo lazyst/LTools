@@ -161,7 +161,7 @@ resources/...        （含时）
 - 「工作目录」标签 + 行旁新增「打开资源目录」按钮：资源管理器打开 `AppPaths.ResourceDir`（不存在先 `EnsureResourceDir`）。
 - `launchApp` / `runCommand` 两处下方加 hint `TextBlock`：「提示：脚本建议放 `resources\`，工作目录留空即可用相对路径」。
 - 不新增宏（`${app}` 等）：默认工作目录已是 `DataRoot`，相对路径足够。
-- `launchApp` 的 Target 与 `runCommand` direct 的 exe 会按工作目录解析成绝对路径再启动：CreateProcess 解析相对路径可执行文件用的是**父进程 CWD**，不是 `WorkingDirectory`（实测），不解析则 `resources\foo.exe` 会时好时坏。裸文件名（无 `\` / `/`，如 `notepad.exe`）仍走 PATH。
+- 相对路径解析（`AppPaths.ResolveInWorkdir` / `ResolveWorkdir`）：工作目录里**确实存在**该文件才解析成绝对路径，否则原样交出（裸文件名继续走 PATH、URL / 文档交给 ShellExecute 回退）。不依赖目标里有没有 `\` / `/`——`foo.bat`、`resources\foo.bat`、`resources/foo.bat` 一视同仁；相对工作目录（如填 `resources`）也按数据根解析。规避 CreateProcess 解析相对 exe 用父进程 CWD 而非 `WorkingDirectory` 的坑。Git Bash / WSL 下反斜杠会被 bash 当转义符，命令里请用 `resources/foo.ps1`。
 
 ---
 
