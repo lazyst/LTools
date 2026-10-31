@@ -60,10 +60,12 @@ internal static class AppPaths
     public static string ResolveTarget(string target, string workdir)
         => ResolvePath(target, workdir, allowDirectory: false);
 
-    /// <summary>同 <see cref="ResolveTarget"/>，但命中项也可以是**目录**（openFolder 用）。</summary>
+    /// <summary>同 <see cref="ResolveTarget"/>，但命中项也可以是**目录**（openFolder 用）。
+    /// <paramref name="target"/> 为 null / 空时返回空串（调用方按空值报「缺少路径」）。</summary>
     public static string ResolvePath(string? target, string workdir, bool allowDirectory)
     {
-        if (string.IsNullOrEmpty(target) || Path.IsPathRooted(target)) return target;
+        if (string.IsNullOrEmpty(target)) return "";
+        if (Path.IsPathRooted(target)) return target;
         try
         {
             foreach (string baseDir in new[] { DataRoot, workdir })
