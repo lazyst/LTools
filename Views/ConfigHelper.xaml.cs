@@ -1110,6 +1110,8 @@ public partial class ConfigHelperWindow : Window
     private async void BackupExport_Click(object sender, RoutedEventArgs e)
     {
         if (_backupBusy) return;
+        // 先落盘未保存的编辑，保证导出的是用户当前所见配置
+        if (_saveDebounce.IsEnabled) { _saveDebounce.Stop(); SaveNow(); }
         bool res = BackupIncludeResourcesBox.IsChecked == true;
         bool notes = BackupIncludeNotesBox.IsChecked == true;
 
@@ -1153,6 +1155,8 @@ public partial class ConfigHelperWindow : Window
     private async void BackupImport_Click(object sender, RoutedEventArgs e)
     {
         if (_backupBusy) return;
+        // 先落盘未保存的编辑，避免导入后又被防抖保存覆盖回去
+        if (_saveDebounce.IsEnabled) { _saveDebounce.Stop(); SaveNow(); }
         var ofd = new OpenFileDialog
         {
             Filter = "LTools 备份 (*.ltbak)|*.ltbak",
@@ -1178,7 +1182,7 @@ public partial class ConfigHelperWindow : Window
                     foreach (var r in preview.ResourceActionRefs) msg.AppendLine("  • " + r);
             }
             msg.Append("仅导入来源可信的备份。继续？");
-            if (!ConfirmDialog.Confirm(this, "导入备份", msg.ToString(), danger: preview.ExecutableCount > 0, okText: "确认导入"))
+            if (!ConfirmDialog.Confirm(this, "导入备份", msg.ToString(), okText: "确认导入"))
                 return;
 
             BackupStatusText.Text = "正在导入…";
@@ -1187,6 +1191,19 @@ public partial class ConfigHelperWindow : Window
             PopulateActions();
             PopulateGroupList();
             PopulateSuperPanel();
+            // 重置超级面板脏标记（否则旧的内存编辑态会覆盖刚导入的配置）
+            _superDirty = false;
+            // 全局开关 / 鼠标速度在 AppState，启动时从配置读取；导入新配置后重新应用，避免要重启才生效
+            var cfg = ConfigStore.LoadConfig();
+            AppState.IsToolEnabled = cfg.CapsLockEnabled;
+            AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
+            AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
+            AppState.MouseModeSpeed = cfg.MouseModeSpeed;
+            _initializing = true;
+            CapsLockEnabledBox.IsChecked = AppState.IsToolEnabled;
+            SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
+            SuperPanelBox2.IsChecked = AppState.IsSuperPanelEnabled;
+            _initializing = false;
             ShowStatus("导入完成", ok: true);
             BackupStatusText.Text = "导入完成（旧数据已备份为 .bak-时间戳）";
         }

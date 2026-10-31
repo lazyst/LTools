@@ -120,8 +120,8 @@ public partial class ActionEditorDialog : Window
         TargetBox.Text = AppPaths.ToRelativeIfUnderDataRoot(_draft.Target ?? "");
         ArgsBox.Text = _draft.Args ?? "";
         LaunchWorkdirBox.Text = AppPaths.ToRelativeIfUnderDataRoot(_draft.Workdir ?? "");
-        FileBox.Text = _draft.Path ?? "";
-        FolderBox.Text = _draft.Path ?? "";
+        FileBox.Text = AppPaths.ToRelativeIfUnderDataRoot(_draft.Path ?? "");
+        FolderBox.Text = AppPaths.ToRelativeIfUnderDataRoot(_draft.Path ?? "");
         UrlBox.Text = _draft.Url ?? "";
         CmdBox.Text = _draft.Cmd ?? "";
         CmdWorkdirBox.Text = AppPaths.ToRelativeIfUnderDataRoot(_draft.Workdir ?? "");
@@ -186,14 +186,14 @@ public partial class ActionEditorDialog : Window
     {
         var ofd = new OpenFileDialog { Filter = "所有文件 (*.*)|*.*", Title = "选择文件" };
         if (!string.IsNullOrEmpty(FileBox.Text)) ofd.InitialDirectory = SafeDir(FileBox.Text);
-        if (ofd.ShowDialog(this) == true) FileBox.Text = ofd.FileName;
+        if (ofd.ShowDialog(this) == true) FileBox.Text = AppPaths.ToRelativeIfUnderDataRoot(ofd.FileName);
     }
 
     private void BrowseFolder_Click(object sender, RoutedEventArgs e)
     {
         var d = new OpenFolderDialog { Title = "选择文件夹" };
         if (!string.IsNullOrEmpty(FolderBox.Text)) d.InitialDirectory = SafeDir(FolderBox.Text);
-        if (d.ShowDialog(this) == true) FolderBox.Text = d.FolderName;
+        if (d.ShowDialog(this) == true) FolderBox.Text = AppPaths.ToRelativeIfUnderDataRoot(d.FolderName);
     }
 
     private void BrowseLaunchWorkdir_Click(object sender, RoutedEventArgs e) => BrowseWorkdir(LaunchWorkdirBox);
@@ -244,11 +244,11 @@ public partial class ActionEditorDialog : Window
                 break;
             case ActionType.openFile:
                 if (string.IsNullOrWhiteSpace(FileBox.Text)) { ConfirmDialog.Info(this, "动作", "请填写文件路径。"); return; }
-                _draft.Path = FileBox.Text.Trim();
+                _draft.Path = AppPaths.ToRelativeIfUnderDataRoot(FileBox.Text.Trim());
                 break;
             case ActionType.openFolder:
                 if (string.IsNullOrWhiteSpace(FolderBox.Text)) { ConfirmDialog.Info(this, "动作", "请填写文件夹路径。"); return; }
-                _draft.Path = FolderBox.Text.Trim();
+                _draft.Path = AppPaths.ToRelativeIfUnderDataRoot(FolderBox.Text.Trim());
                 break;
             case ActionType.openUrl:
                 if (string.IsNullOrWhiteSpace(UrlBox.Text)) { ConfirmDialog.Info(this, "动作", "请填写网址。"); return; }

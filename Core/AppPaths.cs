@@ -58,6 +58,10 @@ internal static class AppPaths
     /// 不依赖目标里有没有 <c>\</c> / <c>/</c>——<c>foo.bat</c> 与 <c>resources/foo.bat</c> 一视同仁。
     /// </summary>
     public static string ResolveTarget(string target, string workdir)
+        => ResolvePath(target, workdir, allowDirectory: false);
+
+    /// <summary>同 <see cref="ResolveTarget"/>，但命中项也可以是**目录**（openFolder 用）。</summary>
+    public static string ResolvePath(string? target, string workdir, bool allowDirectory)
     {
         if (string.IsNullOrEmpty(target) || Path.IsPathRooted(target)) return target;
         try
@@ -66,7 +70,8 @@ internal static class AppPaths
             {
                 if (string.IsNullOrEmpty(baseDir)) continue;
                 string candidate = Path.GetFullPath(Path.Combine(baseDir, target));
-                if (File.Exists(candidate)) return candidate;
+                if (File.Exists(candidate) || (allowDirectory && Directory.Exists(candidate)))
+                    return candidate;
             }
         }
         catch { /* 非法路径字符等，原样返回 */ }

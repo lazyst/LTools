@@ -100,7 +100,13 @@ internal static class BackupService
         {
             using (var zip = ZipFile.Open(tmp, ZipArchiveMode.Create))
             {
-                AddFile(zip, ConfigLocator.FindPath(), "LTools.json");
+                // 配置必须总是写入：manifest 已声明包含 config，若用户从未保存过（LTools.json 尚未生成），
+                // AddFile 会静默跳过，导致备份「声称含配置、实际没有」，导入时又跳过替换配置。
+                // 此处回退读同目录示例 / 内置默认，与应用此刻的内存态一致。
+                string cfgPath = ConfigLocator.FindPath();
+                if (File.Exists(cfgPath)) AddFile(zip, cfgPath, "LTools.json");
+                else AddText(zip, "LTools.json",
+                    JsonSerializer.Serialize(AppConfig.Load(cfgPath), ConfigOpt));
                 if (includeResources) AddDir(zip, AppPaths.ResourceDir, "resources");
                 if (includeNotes) AddDir(zip, AppPaths.NotesDir, "速记");
                 AddText(zip, "manifest.json", BuildManifest(includeResources, includeNotes));
@@ -145,17 +151,17 @@ internal static class BackupService
                 catch (Exception ex) { throw new InvalidDataException("LTools.json 无法解析：" + ex.Message); }
             }
 
-            bool hasResources = manifest.Includes.Contains("resources", StringComparer.OrdinalIgnoreCase)
-                && Directory.Exists(Path.Combine(staging, "resources"));
-            bool hasNotes = manifest.Includes.Contains("notes", StringComparer.OrdinalIgnoreCase)
-                && Directory.Exists(Path.Combine(staging, "速记"));
+            // includes 以 manifest 为准：即使目录为空（zip 无文件条目），导入也要整体替换成空目录
+            var includes = manifest.Includes ?? new List<string>();
+            bool hasResources = includes.Contains("resources", StringComparer.OrdinalIgnoreCase);
+            bool hasNotes = includes.Contains("notes", StringComparer.OrdinalIgnoreCase);
 
             var refs = new List<string>();
             int execCount = 0;
             if (File.Exists(cfgPath))
             {
                 var cfg = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(cfgPath, Encoding.UTF8), ConfigOpt) ?? new AppConfig();
-                foreach (var a in cfg.Actions)
+                foreach (var a in cfg.Actions ?? new List<ActionDto>())
                 {
                     string? s = a.Type is ActionType.launchApp ? a.Target
                         : a.Type is ActionType.runCommand ? a.Cmd : null;
@@ -176,7 +182,7 @@ internal static class BackupService
                 {
                     AppVersion = manifest.AppVersion,
                     CreatedAt = manifest.CreatedAt,
-                    Includes = manifest.Includes,
+                    Includes = includes,
                     HasResources = hasResources,
                     HasNotes = hasNotes,
                 },
@@ -217,21 +223,13 @@ internal static class BackupService
                 File.Copy(stagedCfg, cfgPath, overwrite: true);
             }
 
-            // 2) 资源目录
+            // 2) 资源目录（includes 以 manifest 为准；备份里目录缺失 = 备份是空目录，替换为空）
             if (preview.IncludeResources)
-            {
-                string stagedRes = Path.Combine(preview.StagingDir, "resources");
-                if (Directory.Exists(stagedRes))
-                    ReplaceDir(stagedRes, AppPaths.ResourceDir, ts, restores);
-            }
+                ReplaceDir(Path.Combine(preview.StagingDir, "resources"), AppPaths.ResourceDir, ts, restores);
 
             // 3) 速记
             if (preview.IncludeNotes)
-            {
-                string stagedNotes = Path.Combine(preview.StagingDir, "速记");
-                if (Directory.Exists(stagedNotes))
-                    ReplaceDir(stagedNotes, AppPaths.NotesDir, ts, restores);
-            }
+                ReplaceDir(Path.Combine(preview.StagingDir, "速记"), AppPaths.NotesDir, ts, restores);
         }
         catch
         {
@@ -307,7 +305,8 @@ internal static class BackupService
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
 
-    /// <summary>替换目录：现有 dest 改名 .bak，再把 src 拷贝到 dest（用拷贝而非 Move，兼容跨卷）。</summary>
+    /// <summary>替换目录：现有 dest 改名 .bak，再把 src 拷贝到 dest（用拷贝而非 Move，兼容跨卷）。
+    /// src 不存在（空备份）时 dest 替换为空目录。</summary>
     private static void ReplaceDir(string src, string dest, string ts,
         List<(string dest, string? backup, bool isDir)> restores)
     {
@@ -318,7 +317,8 @@ internal static class BackupService
             Directory.Move(dest, backup); // 同卷改名，原子
         }
         restores.Add((dest, backup, true));
-        CopyDir(src, dest);
+        if (Directory.Exists(src)) CopyDir(src, dest);
+        else Directory.CreateDirectory(dest);
     }
 
     private static string? BackupFile(string path, string ts)

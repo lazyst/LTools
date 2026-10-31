@@ -94,16 +94,21 @@ internal static class ActionExecutor
     // —— openFile / openFolder / openUrl（ShellExecute 走默认程序）——
     private static void ShellExecute(ActionDto a)
     {
+        string wd = AppPaths.ResolveWorkdir(a.Workdir);
         string? target = a.Type switch
         {
-            ActionType.openFile => a.Path,
-            ActionType.openFolder => a.Path,
+            // openFile/openFolder：相对路径解析到数据根 / 工作目录（开机自启时 CWD=System32，否则相对文件会找不到）
+            ActionType.openFile => AppPaths.ResolvePath(a.Path, wd, allowDirectory: false),
+            ActionType.openFolder => AppPaths.ResolvePath(a.Path, wd, allowDirectory: true),
             ActionType.openUrl => a.Url,
             _ => null,
         };
         if (string.IsNullOrWhiteSpace(target))
             throw new InvalidOperationException($"{a.Type} 缺少路径/URL: {a.Name}");
-        Process.Start(new ProcessStartInfo(target!) { UseShellExecute = true });
+        var psi = new ProcessStartInfo(target!) { UseShellExecute = true };
+        if (a.Type != ActionType.openUrl && !string.IsNullOrEmpty(wd) && Directory.Exists(wd))
+            psi.WorkingDirectory = wd;
+        Process.Start(psi);
     }
 
     // —— runCommand（复用 TerminalLauncher 终端路由）——
