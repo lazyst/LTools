@@ -47,6 +47,8 @@ public static string DefaultWorkdir() => Directory.Exists(DataRoot) ? DataRoot
 
 - `ConfigLocator` 的 `RepoRoot` / `IsDevLayout` 改为委托 `AppPaths`，删除重复。
 - `DefaultWorkdir` 由 `AppDirectory` 改为 `DataRoot`（行为变化：dev 下默认工作目录由 `bin/Debug` 变仓库根——已与用户确认）。
+- `ResolveWorkdir` / `ResolveInWorkdir`（见 §8）统一解析相对路径与相对工作目录。
+- **终端经 Windows Terminal（`wt.exe`）包装时，新标签页不继承 `ProcessStartInfo.WorkingDirectory`**（用 profile 默认目录）。故 `TerminalLauncher` 的 wt 分支一律用 `new-tab --startingDirectory "<解析后的工作目录>"`，含工作目录留空时（此时为 `DefaultWorkdir`），否则 `pwd` 会显示 PowerShell profile 默认目录而非默认工作目录。
 - `速记/` 路径：`QuickNote.ComputeDefaultDir` 已是「配置文件所在目录 + 速记」，与 `DataRoot` 一致，无需改。
 
 ---
@@ -251,9 +253,10 @@ fsutil file createnew resources\大文件.bin 62914560
 | R01 | 首次启动生成资源目录 | 程序目录下没有 `resources` 文件夹 | ① 启动 LTools　② 打开程序目录查看 | 自动出现 `resources` 文件夹，内含 `README.txt`；用记事本打开中文显示正常 |
 | R02 | 不覆盖用户已有的说明文件 | 在 `resources\README.txt` 末尾加一行「自测标记」 | ① 退出 LTools　② 重新启动 | 「自测标记」仍在，文件未被重置 |
 | R03 | 打开资源目录按钮 | 已启动 LTools，存在任意「运行命令」动作（没有就先新建一个） | ① 设置 → 动作管理 → 编辑该动作　② 在工作目录一行点「资源目录」 | 资源管理器打开，地址栏为「程序目录\resources」 |
-| R04 | 工作目录提示文字 | — | ① 打开「运行命令」动作编辑器 | 标签显示「工作目录（可选，留空 = LTools 所在目录）」；下方显示「提示：脚本建议放 resources\，工作目录留空即可用相对路径」 |
+| R04 | 工作目录提示文字 | — | ① 打开「运行命令」动作编辑器 | 标签显示「工作目录（可选，留空 = LTools 所在目录）」；下方显示「提示：脚本建议放 resources\（Git Bash / WSL 请用 resources/）；工作目录留空即可用相对路径」 |
 | R05 | 相对路径运行脚本 | 已执行 13.2 生成 `resources\test.ps1` | ① 新建「运行命令」动作，命令填 `resources\test.ps1`，终端选 PowerShell 7，勾「保持窗口」，工作目录留空　② 保存并执行 | 终端窗口输出 `hello-ltools`；再执行 `pwd`，显示的路径是程序目录 |
 | R06 | 启动程序也用默认目录 | 已执行 13.2 生成 `resources\dir.bat` | ① 新建「启动程序」动作，程序路径填 `resources\dir.bat`，工作目录留空　② 执行 | 窗口打印的当前路径是程序目录（不是桌面，也不是 `C:\Windows\System32`） |
+| R07 | 留空时终端开在默认目录（回归） | 已安装 Windows Terminal | ① 新建「运行命令」动作，命令填 `pwd`，终端选 PowerShell 7，勾「保持窗口」，工作目录留空　② 执行 | 终端一打开 `pwd` 就输出程序目录；**不能**是 `C:\Users\<你>` 或 PowerShell 安装目录 |
 | E01 | 默认导出包含三项 | `resources\test.ps1` 存在；速记里至少有一条 | ① 设置 → 备份与恢复（两个勾选框默认已勾）　② 点「导出…」，保存为桌面 `test-全量.ltbak` | 文件生成；用压缩软件打开可看到 `manifest.json`、`LTools.json`、`resources` 文件夹、`速记` 文件夹 |
 | E02 | 只导出配置 | — | ① 取消勾选「资源目录」「速记」　② 导出为 `仅配置.ltbak` | 包内只有 `manifest.json` 与 `LTools.json`，没有 `resources` 和 `速记` |
 | E03 | 旧备份文件不进包 | `resources\old.bak-20260101.txt` 存在 | ① 勾选资源目录，导出全量 | 包内看不到 `old.bak-20260101.txt` |
