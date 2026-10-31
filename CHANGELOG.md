@@ -11,10 +11,12 @@
 
 ### 🐛 修复
 
+- **`launchApp` 相对路径启动失败**：Windows 的 CreateProcess 解析相对路径可执行文件时用的是**父进程当前目录**，不是 `ProcessStartInfo.WorkingDirectory`（实测验证）。因此「启动程序」动作填 `resources\foo.exe` 在 LTools 自身 CWD 不是程序目录时（如开机自启 = `System32`）会报「找不到文件」。修复：`launchApp` 启动失败时把含路径分隔符的相对 Target 按工作目录解析成绝对路径再重试；`runCommand` 的 direct 模式同样先解析相对 exe，不再依赖「异常后回退 ShellExecute」碰运气。裸文件名（如 `notepad.exe`）仍走 PATH。
 - **笔记本离开后 LTools 无声退出（非崩溃）**：开机自启任务由 `AutoStartService.Enable` 用 `schtasks /create /sc ONLOGON /rl HIGHEST` 创建，而该命令默认勾选「仅交流电源启动」+「切换到电池即停止」（`DisallowStartIfOnBatteries` / `StopIfGoingOnBatteries`）。笔记本只要瞬间掉一次交流电，任务计划程序就终止常驻进程，且登录触发器不会自动重启——表现为离开几小时回来后托盘图标消失、超级面板 / 快捷键全部失效，但无任何崩溃日志（任务返回码 `0x8007042B` / Win32 1067「进程意外终止」）。修复：`Enable` 改用任务 XML 注册（`/create /xml`），显式关闭两项电池条件，并把 `ExecutionTimeLimit` 设为 `PT0S`（默认 72h 同样会杀常驻进程）。
 
 ### 🔧 调整
 
+- **「启动软件」改名「启动程序」**：动作类型显示名（动作编辑器类型下拉、组合动作左栏、超级面板 / 菜单槽位「新建」入口、帮助面板）统一为「启动程序」，与实际语义一致。
 - **动作工作目录默认改为应用所在目录**：`runCommand` / `launchApp` 不填工作目录时，原默认桌面（`launchApp` 甚至不设、继承 LTools 进程 CWD——开机自启时是 `System32`，不可预期）。现统一走 `AppPaths.DefaultWorkdir()`：默认 `LTools.exe` 所在目录（目录不可用时回退桌面），相对路径执行脚本更可控、两功能默认一致；动作编辑器「工作目录」标签注明「留空 = LTools 所在目录」。
 
 ## [v2.2.6] - 2026-10-13

@@ -85,7 +85,18 @@ internal static class ActionExecutor
         if (string.IsNullOrWhiteSpace(a.Target))
             throw new InvalidOperationException($"launchApp 缺少 Target: {a.Name}");
         string wd = string.IsNullOrWhiteSpace(a.Workdir) ? AppPaths.DefaultWorkdir() : a.Workdir;
-        Process.Start(BuildPsi(a.Target!, a.Args, wd));
+        try
+        {
+            Process.Start(BuildPsi(a.Target!, a.Args, wd));
+        }
+        catch when (!Path.IsPathRooted(a.Target!) && HasPathSeparator(a.Target!))
+        {
+            // CreateProcess 解析相对路径可执行文件时用的是父进程当前目录，不是 psi.WorkingDirectory
+            // （实测）。失败时把相对 Target 按工作目录解析成绝对路径再启动，否则 `resources\foo.exe` 跑不起来。
+            string abs = Path.GetFullPath(Path.Combine(wd, a.Target!));
+            if (!File.Exists(abs)) throw;
+            Process.Start(BuildPsi(abs, a.Args, wd));
+        }
     }
 
     // —— openFile / openFolder / openUrl（ShellExecute 走默认程序）——
@@ -139,7 +150,7 @@ internal static class ActionExecutor
         try
         {
             TrySplitCommandLine(cmd, out string exe, out string args);
-            Process.Start(BuildPsi(exe, args, wd));
+            Process.Start(BuildPsi(ResolveRelativeExe(exe, wd), args, wd));
         }
         catch
         {
@@ -147,6 +158,20 @@ internal static class ActionExecutor
             Process.Start(new ProcessStartInfo(cmd) { UseShellExecute = true, WorkingDirectory = wd });
         }
     }
+
+    /// <summary>
+    /// 相对路径 exe 按工作目录解析成绝对路径（CreateProcess 否则按父进程 CWD 解析，见 LaunchApp）；
+    /// 裸文件名（无分隔符，如 notepad.exe）原样返回以走 PATH；解析后不存在也原样返回，交给后续回退。
+    /// </summary>
+    private static string ResolveRelativeExe(string exe, string wd)
+    {
+        if (string.IsNullOrEmpty(exe) || Path.IsPathRooted(exe) || !HasPathSeparator(exe))
+            return exe;
+        string abs = Path.GetFullPath(Path.Combine(wd, exe));
+        return File.Exists(abs) ? abs : exe;
+    }
+
+    private static bool HasPathSeparator(string s) => s.IndexOfAny(['\\', '/']) >= 0;
 
     /// <summary>构造 ProcessStartInfo（工作目录仅在存在时设置）。</summary>
     private static ProcessStartInfo BuildPsi(string exe, string? args, string? workdir)

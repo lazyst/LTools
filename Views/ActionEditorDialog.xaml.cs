@@ -60,7 +60,7 @@ public partial class ActionEditorDialog : Window
         // 含该项时选中即跳转到组合动作编辑器（§10.1）。
         var types = new List<TypeItem>
         {
-            new("启动软件", ActionType.launchApp),
+            new("启动程序", ActionType.launchApp),
             new("打开文件", ActionType.openFile),
             new("打开文件夹", ActionType.openFolder),
             new("打开网址", ActionType.openUrl),

@@ -64,7 +64,7 @@ public partial class CompositeActionDialog : Window
         // 基础动作（8 种动作类型）→ 双击/拖入开预置类型的编辑器（§12）
         var basicDefs = new (ActionType Type, string Icon, string Label)[]
         {
-            (ActionType.launchApp, "app", "启动软件"),
+            (ActionType.launchApp, "app", "启动程序"),
             (ActionType.openFile, "file", "打开文件"),
             (ActionType.openFolder, "folder", "打开文件夹"),
             (ActionType.openUrl, "globe", "打开网址"),

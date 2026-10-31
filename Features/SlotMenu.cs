@@ -38,7 +38,7 @@ public static class SlotMenu
         Add("新建动作…", () => onNew(slot, null));
         Add("新建组合动作…", () => onNew(slot, ActionType.composite));
         menu.Items.Add(new Separator());
-        Add("新建 · 启动软件", () => onNew(slot, ActionType.launchApp));
+        Add("新建 · 启动程序", () => onNew(slot, ActionType.launchApp));
         Add("新建 · 打开文件", () => onNew(slot, ActionType.openFile));
         Add("新建 · 打开文件夹", () => onNew(slot, ActionType.openFolder));
         Add("新建 · 运行命令", () => onNew(slot, ActionType.runCommand));

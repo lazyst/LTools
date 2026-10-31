@@ -95,7 +95,7 @@ public static class ActionTypeLabel
     /// <summary>取得中文类型名。</summary>
     public static string Of(ActionType t) => t switch
     {
-        ActionType.launchApp => "启动软件",
+        ActionType.launchApp => "启动程序",
         ActionType.openFile => "打开文件",
         ActionType.openFolder => "打开文件夹",
         ActionType.openUrl => "打开网址",
