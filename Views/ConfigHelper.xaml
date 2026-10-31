@@ -323,6 +323,10 @@
                             </StackPanel>
                         </Grid>
                         <StackPanel x:Name="SuperPagesPanel"/>
+
+                        <TextBlock Style="{StaticResource HintLabel}" Margin="0,4,0,0"
+                                   TextWrapping="Wrap"
+                                   Text="提示：点空格新建动作，点有动作的格子直接编辑它；右键格子可复制 / 换绑 / 清除（清除只是移出格子，不删除动作）；拖动格子可与另一格交换位置。"/>
                     </StackPanel>
                 </ScrollViewer>
 

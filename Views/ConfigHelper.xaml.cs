@@ -768,11 +768,8 @@ public partial class ConfigHelperWindow : Window
         });
         btn.Content = content;
 
-        // 右键菜单（共享菜单 §5.5/§5.6 统一）：新建/快捷新建/从动作池选择/清除
-        btn.ContextMenu = SlotMenu.BuildAddMenu(this, slotIdx,
-            (s, t) => NewActionAt(pageIdx, s, t),
-            s => PickSlotAction(pageIdx, s),
-            string.IsNullOrEmpty(id) ? null : new Action<int>(s => ClearSlot(pageIdx, s)));
+        // 右键菜单：空格子 = 共享「添加动作」菜单；有动作的格子 = 编辑 / 复制 / 换绑 / 清除
+        btn.ContextMenu = BuildSlotMenu(pageIdx, slotIdx);
         btn.PreviewMouseLeftButtonDown += (_, e) => OnSlotDown(pageIdx, slotIdx, e);
         return btn;
     }
@@ -817,6 +814,75 @@ public partial class ConfigHelperWindow : Window
         PopulateActions();      // 动作管理列表同步刷新
         BuildSuperPagesUI();
         MarkSuperDirty();
+    }
+
+    /// <summary>编辑槽位引用的动作：走与「动作管理」页编辑同一条路径（Id 不变、原地更新），
+    /// 改名 / 改图标后动作列表与本页格子同步刷新。引用悬空（动作已被删）时退化为添加菜单。</summary>
+    private void EditSlotAction(int pageIdx, int slotIdx)
+    {
+        string? id = _superPages[pageIdx][slotIdx];
+        var cur = id != null ? ActionRegistry.FindById(id) : null;
+        if (cur == null) { ShowSlotMenu(pageIdx, slotIdx); return; }
+
+        var dto = ActionEditor.Show(this, "编辑动作", cur);
+        if (dto == null) return;
+        dto.Id = cur.Id;           // 编辑不换 Id（与 EditAction_Click 一致）
+        ConfigStore.UpdateAction(dto);
+        PopulateActions();         // 动作管理列表同步刷新
+        BuildSuperPagesUI();       // 本页格子的名称 / 图标同步
+        MarkDirty();
+    }
+
+    /// <summary>复制槽位动作：副本进动作池，并放进本页第一个空格子；本页已满则只入池并提示。</summary>
+    private void DuplicateSlot(int pageIdx, int slotIdx)
+    {
+        string? id = _superPages[pageIdx][slotIdx];
+        if (id == null) return;
+        var copy = ConfigStore.DuplicateAction(id);
+        if (copy == null) return;
+
+        int empty = _superPages[pageIdx].FindIndex(x => string.IsNullOrEmpty(x));
+        if (empty < 0)
+        {
+            PopulateActions();
+            MarkDirty();
+            ConfirmDialog.Info(this, "超级面板", "本页已满，副本已加入动作池（可在空格子里选择它）。");
+            return;
+        }
+        _superPages[pageIdx][empty] = copy.Id;
+        _superDirty = true;
+        PopulateActions();
+        BuildSuperPagesUI();
+        MarkSuperDirty();
+    }
+
+    /// <summary>槽位的右键菜单：空格子沿用共享「添加动作」菜单（新建 / 快捷新建 / 从动作池选择）；
+    /// 有动作的格子给「编辑… / 复制 / 换绑 / 清除」——「清除」只把动作移出格子，不删除动作本身
+    /// （与超级面板里长按菜单的「删除」语义不同，设置页删动作请到「动作管理」页）。</summary>
+    private ContextMenu BuildSlotMenu(int pageIdx, int slotIdx)
+    {
+        if (string.IsNullOrEmpty(_superPages[pageIdx][slotIdx]))
+            return SlotMenu.BuildAddMenu(this, slotIdx,
+                (s, t) => NewActionAt(pageIdx, s, t),
+                s => PickSlotAction(pageIdx, s),
+                onClear: null);
+
+        var menu = new ContextMenu();
+
+        // 菜单项 Click 内同步开模态对话框会与「菜单正在关闭」冲突（见 SlotMenu），统一推迟一帧
+        void Add(string header, Action invoke)
+        {
+            var mi = new MenuItem { Header = header };
+            mi.Click += (_, _) => Defer(invoke);
+            menu.Items.Add(mi);
+        }
+
+        Add("编辑…", () => EditSlotAction(pageIdx, slotIdx));
+        Add("复制", () => DuplicateSlot(pageIdx, slotIdx));
+        menu.Items.Add(new Separator());
+        Add("从动作池选择…（换绑）", () => PickSlotAction(pageIdx, slotIdx));
+        Add("清除", () => ClearSlot(pageIdx, slotIdx));
+        return menu;
     }
 
     /// <summary>在指定格子中心弹出共享添加菜单（左键短击走此路径，与面板空格一致）。</summary>
@@ -901,8 +967,13 @@ public partial class ConfigHelperWindow : Window
         }
         else
         {
-            // 位移未超阈值→视为单击：弹出共享添加菜单（与面板空格左键一致）
-            Defer(() => ShowSlotMenu(sp, ss));
+            // 位移未超阈值→视为单击：有动作的格子直接编辑该动作；空格子弹出共享添加菜单。
+            // （原先无论有没有动作都弹「添加」菜单，想改已配好的格子无从下手）
+            Defer(() =>
+            {
+                if (string.IsNullOrEmpty(_superPages[sp][ss])) ShowSlotMenu(sp, ss);
+                else EditSlotAction(sp, ss);
+            });
         }
         _dragSrcPage = -1;
         _dragSrcSlot = -1;
