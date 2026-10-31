@@ -221,48 +221,77 @@ resources/...        （含时）
 
 ## 13. 测试用例
 
-> 编号约定：`R*` = 资源目录 / 目录路由，`E*` = 导出，`I*` = 导入，`G*` = 通用 / 构建。预期均为手测可观察结果。
+### 13.1 测试准备
 
-| 编号 | 场景 | 前置 / 步骤 | 预期 |
-|---|---|---|---|
-| R01 | dev 下数据根 | dev 构建运行 | `DataRoot` = 仓库根；`resources\` 出现并含 `README.txt`；动作留空工作目录时 cwd = 仓库根 |
-| R02 | prod 下数据根 | 发布包解压后运行 | `DataRoot` = exe 同级；`resources\` 首启生成；`README.txt` 写入 |
-| R03 | 资源目录首启创建 | 删除 `resources\` 后启动 | 自动重建目录 + `README.txt`；不抛异常 |
-| R04 | README 不覆盖 | 已有自定义 `README.txt` 再启动 | 文件内容保持不变 |
-| R05 | 打开资源目录按钮 | 动作编辑器点「资源目录」 | 资源管理器打开 `resources\`（不存在则先创建） |
-| R06 | 相对路径执行脚本 | `resources\test.ps1` 输出一行；`runCommand` 命令填 `resources\test.ps1`、工作目录留空 | 脚本执行，输出可见（`direct` 或带终端） |
-| R07 | launchApp 默认工作目录 | `launchApp` 不填工作目录、Target 用相对路径脚本 | 在 `DataRoot` 下解析执行 |
-| E01 | 导出默认全选 | 勾选资源目录 + 速记 → 导出 | `.ltbak` 内含 `manifest.json` + `LTools.json` + `resources/` + `速记/` |
-| E02 | 导出取消资源目录 | 取消勾选资源目录 → 导出 | 包内无 `resources/`；`manifest.includes` 不含 `resources` |
-| E03 | 导出取消速记 | 取消勾选速记 → 导出 | 包内无 `速记/`；`includes` 不含 `notes` |
-| E04 | 导出跳过旧备份 | `resources\` 下放 `foo.bak-20260101` 文件 → 导出 | 该文件不进入包 |
-| E05 | 导出体积确认 | 制造 > 50 MB 资源后导出 | 弹「约 N MB，确定导出」确认；取消则不生成文件 |
-| E06 | 导出覆盖已有文件 | 选已存在的 `.ltbak` 路径导出 | 旧文件被替换，无残留 `.part` |
-| E07 | 导出过程禁用按钮 | 导出进行中再点「导出…」 | 不响应（`_backupBusy`） |
-| I01 | 导入整体替换 | 导入全选备份 | 配置 / 资源目录 / 速记均被替换；各留 `*.bak-<ts>`；菜单 / 动作 / 超级面板列表刷新 |
-| I02 | 导入含可执行文件 | 备份 `resources\` 含 `.ps1/.exe` 且配置引用 → 导入 | 弹警告，显示可执行文件数 + 引用动作清单；确认后替换 |
-| I03 | 导入无可执行文件 | 备份无可执行文件 → 导入 | 警告显示「0 个可执行文件」；仍需确认 |
-| I04 | 导入取消 | 警告框点取消 | 现有数据零改动；临时目录被清理 |
-| I05 | 导入备份不含速记 | 备份 `includes` 无 `notes` → 导入 | 速记目录保持原样，不改名也不留 `.bak` |
-| I06 | 非备份 zip | 导入任意 zip（无 `manifest.json`） | 报「不是有效的 LTools 备份」；不动现有数据 |
-| I07 | 备份来自更新版本 | `manifest.formatVersion=2` | 报「请升级 LTools 后再导入」；不动现有数据 |
-| I08 | 配置损坏 | `LTools.json` 内容非法 JSON → 导入 | 报「LTools.json 无法解析：…」；不动现有数据 |
-| I09 | zip slip 越界条目 | 构造含 `..\evil` 条目的 zip → 导入 | 解压抛异常 → 友好报错；不动现有数据 |
-| I10 | 同秒重复导入 | 同一秒内两次导入 | 第二次 `.bak-<ts>-1`，不覆盖第一次的 `.bak` |
-| I11 | 导入失败回滚 | 导入资源目录时人为占用目标 → 失败 | 已写入的配置回滚为原文件；资源目录恢复；报错且无数据丢失 |
-| I12 | 导入后导航恢复 | 在「备份与恢复」页导入 → 关闭设置 → 重开 | 停留在「备份与恢复」页（`LastNavPage=backup`） |
-| G01 | 往返一致性 | 导出 → 删除三项 → 导入 | 配置 / 资源目录 / 速记内容与导出前一致（除 `.bak`） |
-| G02 | 构建 | `dotnet build -p:NoWin32Manifest=true` | 0 错 0 警 |
-| G03 | README 发布不含 | 检查发布 zip | 不含 `resources\`（首启生成） |
+- **被测版本**：仓库构建的开发版（数据目录 = 仓库根）或发布包（数据目录 = `LTools.exe` 所在文件夹）。下文统一称数据目录为「**程序目录**」。
+- **打开设置**：`CapsLock + \`。
+- **重要**：每个会改动数据的用例执行前，先整体复制一份程序目录到别处（或用产品「导出」做一份备份），测完可就地还原。
+- 术语：`LTools.json` = 配置文件；`resources` = 资源目录；`速记` = 速记目录；`.ltbak` = 备份文件。
 
-> zip slip 用例可这样构造（PowerShell，仅在测试机执行）：
-> ```powershell
-> $z = "$env:TEMP\slip.zip"; Remove-Item $z -ErrorAction Ignore
-> Add-Type -AssemblyName System.IO.Compression.FileSystem
-> $a = [System.IO.Compression.ZipFile]::Open($z,'Create')
-> $e = $a.CreateEntry("../evil.txt"); (New-Object IO.StreamWriter $e.Open()).WriteLine("x"); $a.Dispose()
-> ```
-> 然后用「导入…」选 `$z`，预期 I09。
+### 13.2 生成测试样本
+
+在**程序目录**打开 PowerShell，执行：
+
+```powershell
+New-Item -ItemType Directory -Force resources | Out-Null
+Set-Content -Encoding UTF8 resources\test.ps1 "Write-Output 'hello-ltools'"
+New-Item -ItemType File -Force resources\演示.exe | Out-Null
+Set-Content resources\old.bak-20260101.txt "旧备份，不应进入包"
+Set-Content resources\dir.bat "echo %CD% & pause"
+fsutil file createnew resources\大文件.bin 62914560
+```
+
+> `演示.exe` 是空文件，仅用于让安全警告统计可执行文件数量，不会被执行。
+
+### 13.3 用例表
+
+| 编号 | 用例名称 | 前置条件 | 操作步骤 | 预期结果 |
+|---|---|---|---|---|
+| R01 | 首次启动生成资源目录 | 程序目录下没有 `resources` 文件夹 | ① 启动 LTools　② 打开程序目录查看 | 自动出现 `resources` 文件夹，内含 `README.txt`；用记事本打开中文显示正常 |
+| R02 | 不覆盖用户已有的说明文件 | 在 `resources\README.txt` 末尾加一行「自测标记」 | ① 退出 LTools　② 重新启动 | 「自测标记」仍在，文件未被重置 |
+| R03 | 打开资源目录按钮 | 已启动 LTools，存在任意「运行命令」动作（没有就先新建一个） | ① 设置 → 动作管理 → 编辑该动作　② 在工作目录一行点「资源目录」 | 资源管理器打开，地址栏为「程序目录\resources」 |
+| R04 | 工作目录提示文字 | — | ① 打开「运行命令」动作编辑器 | 标签显示「工作目录（可选，留空 = LTools 所在目录）」；下方显示「提示：脚本建议放 resources\，工作目录留空即可用相对路径」 |
+| R05 | 相对路径运行脚本 | 已执行 13.2 生成 `resources\test.ps1` | ① 新建「运行命令」动作，命令填 `resources\test.ps1`，终端选 PowerShell 7，勾「保持窗口」，工作目录留空　② 保存并执行 | 终端窗口输出 `hello-ltools`；再执行 `pwd`，显示的路径是程序目录 |
+| R06 | 启动程序也用默认目录 | 已执行 13.2 生成 `resources\dir.bat` | ① 新建「启动程序」动作，程序路径填 `resources\dir.bat`，工作目录留空　② 执行 | 窗口打印的当前路径是程序目录（不是桌面，也不是 `C:\Windows\System32`） |
+| E01 | 默认导出包含三项 | `resources\test.ps1` 存在；速记里至少有一条 | ① 设置 → 备份与恢复（两个勾选框默认已勾）　② 点「导出…」，保存为桌面 `test-全量.ltbak` | 文件生成；用压缩软件打开可看到 `manifest.json`、`LTools.json`、`resources` 文件夹、`速记` 文件夹 |
+| E02 | 只导出配置 | — | ① 取消勾选「资源目录」「速记」　② 导出为 `仅配置.ltbak` | 包内只有 `manifest.json` 与 `LTools.json`，没有 `resources` 和 `速记` |
+| E03 | 旧备份文件不进包 | `resources\old.bak-20260101.txt` 存在 | ① 勾选资源目录，导出全量 | 包内看不到 `old.bak-20260101.txt` |
+| E04 | 大文件导出提醒 | `resources\大文件.bin`（约 60 MB）存在 | ① 导出全量　② 先点「取消」，再重复一次并点「确定」 | 弹出确认「备份约 60.x MB，确定导出吗？」；取消后不生成文件；确定后生成 |
+| E05 | 覆盖已有备份 | 目标路径已存在同名 `.ltbak` | ① 导出到该路径并确认覆盖 | 文件内容更新，无报错；目标文件夹内没有 `.part` 之类残留文件 |
+| E06 | 导出中不能重复点击 | 使用大文件以便耗时 | ① 点「导出…」选好路径，趁进度未完成再点一次「导出…」 | 第二次点击无反应；完成后状态只显示一次「已导出：…」 |
+| I01 | 全量恢复 | 先用 E01 导出 `test-全量.ltbak` | ① 删除 `resources\test.ps1`　② 在设置里新建一个动作（制造差异）　③ 删除一条速记　④ 导入 `test-全量.ltbak` 并点「确定」 | 脚本文件恢复；多建的动作消失；被删速记恢复；程序目录出现 `LTools.json.bak-…`、`resources.bak-…`、`速记.bak-…` 三份；设置中的列表立即刷新 |
+| I02 | 可执行文件安全警告 | `resources\演示.exe` 与 `test.ps1` 存在，且有动作的命令包含 `resources\test.ps1` | ① 导出全量　② 导入该备份 | 弹窗标题「导入备份」，正文写明「2 个可执行文件」，并列出该动作的名称与命令片段 |
+| I03 | 取消导入不改数据 | 任意有效备份 | ① 导入，在警告框点「取消」 | 配置、`resources`、`速记` 均无变化；程序目录没有新增 `.bak`；`%TEMP%` 下没有 `ltools-import-` 开头的残留目录 |
+| I04 | 备份不含速记时不碰速记 | 使用 E02 的 `仅配置.ltbak` | ① 导入并确定 | 速记内容保持原样，没有出现 `速记.bak-…` |
+| I05 | 普通压缩包被拒绝 | — | ① 把任意 `.zip` 或文本文件改名为 `x.ltbak`　② 导入 | 提示「不是有效的 LTools 备份…」；现有数据不变 |
+| I06 | 更新版本的备份被拒绝 | 一个有效备份 | ① 用压缩软件打开备份，把 `manifest.json` 中 `"formatVersion": 1` 改为 `2`　② 重新打包为 `.ltbak`　③ 导入 | 提示「备份来自更新版本，请升级 LTools 后再导入」；数据不变 |
+| I07 | 配置损坏被拒绝 | 一个有效备份 | ① 解压后把 `LTools.json` 内容改为 `{ 坏`　② 重新打包　③ 导入 | 提示「LTools.json 无法解析：…」；数据不变 |
+| I08 | 恶意路径条目被拒绝 | 按 13.4 生成 `slip.ltbak` | ① 导入 `slip.ltbak` | 提示「导入失败」；`evil.txt` 没有出现在程序目录或其上一级；现有数据不变 |
+| I09 | 连续导入两次 | 同一有效备份 | ① 连续导入两次 | 第二次产生的备份名形如 `LTools.json.bak-…-1`；第一次的 `.bak` 仍在 |
+| I10 | 导入失败自动恢复（选测） | 需开发协助制造写入失败 | ① 导入全量备份，在资源目录写入阶段人为制造占用 / 失败 | 提示「导入失败」；配置恢复为导入前内容；资源目录与速记未停留在半替换状态 |
+| G01 | 备份往返一致 | 已执行 13.2 | ① 导出全量　② 记录 `test.ps1` 内容、速记条数、动作数量　③ 删除部分数据　④ 导入　⑤ 复核 | 三项均与记录一致（`.bak` 文件不计入） |
+| G02 | 发布包不含用户数据 | 发布 zip | ① 解压查看 | 没有 `resources` 文件夹，也没有 `LTools.json`（首次启动才生成） |
+| G03 | 设置页记忆 | — | ① 停在「备份与恢复」页　② 关闭设置　③ 用 `CapsLock + \` 重新打开 | 仍停在「备份与恢复」页 |
+
+### 13.4 生成恶意路径样本
+
+在 PowerShell 执行（输出到桌面）：
+
+```powershell
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$out = "$env:USERPROFILE\Desktop\slip.ltbak"
+Remove-Item $out -ErrorAction Ignore
+$zip = [System.IO.Compression.ZipFile]::Open($out, 'Create')
+$m = $zip.CreateEntry('manifest.json')
+$w = New-Object System.IO.StreamWriter($m.Open())
+$w.Write('{"format":"ltools-backup","formatVersion":1,"appVersion":"test","createdAt":"2026-01-01T00:00:00","includes":["config"]}')
+$w.Close()
+$e = $zip.CreateEntry('../evil.txt')
+$w2 = New-Object System.IO.StreamWriter($e.Open())
+$w2.Write('x')
+$w2.Close()
+$zip.Dispose()
+```
 
 ---
 
