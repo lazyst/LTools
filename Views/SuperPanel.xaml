@@ -22,14 +22,23 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- 标题栏 -->
-            <Grid Grid.Row="0" Height="34" Background="{StaticResource SurfaceAltBrush}">
+            <!-- 标题栏：整条可拖动窗口（按钮自身会吞掉按下事件，不会误触发拖动） -->
+            <Grid Grid.Row="0" Height="34" Background="{StaticResource SurfaceAltBrush}"
+                  Cursor="SizeAll" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <TextBlock x:Name="TitleText" Text="超级面板" FontWeight="SemiBold" FontSize="{StaticResource FontSizeBody}"
                            Foreground="{StaticResource TextBrush}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                <Button x:Name="CloseBtn" Style="{StaticResource BtnGhost}" Content="✕"
-                        Width="34" Height="28" HorizontalAlignment="Right" Margin="0,0,3,0"
-                        Click="Close_Click" ToolTip="关闭 (Esc)"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,3,0">
+                    <Button x:Name="PinBtn" Style="{StaticResource BtnGhost}"
+                            Width="30" Height="28" Padding="0"
+                            Click="Pin_Click" ToolTip="钉住：点击外部不关闭">
+                        <TextBlock x:Name="PinIcon" Text="&#xE840;"
+                                   FontFamily="Segoe MDL2 Assets" FontSize="16"/>
+                    </Button>
+                    <Button x:Name="CloseBtn" Style="{StaticResource BtnGhost}" Content="✕"
+                            Width="34" Height="28" Margin="2,0,0,0"
+                            Click="Close_Click" ToolTip="关闭 (Esc)"/>
+                </StackPanel>
             </Grid>
 
             <!-- 4×4 格子（无间隙，紧贴标题栏/页脚；§5.3 紧凑布局）

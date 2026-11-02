@@ -118,6 +118,7 @@ internal static class MouseHook
                         _rightCloseUpPending = false;   // 兜底：上个 up 若丢失，清残留避免误吞
 
                         bool overSuper = SuperPanel.IsOpen && !SuperPanel.IsInteracting
+                                         && !SuperPanel.IsPinned
                                          && !SuperPanel.PointInWindowRect(ms.Pt.X, ms.Pt.Y);
                         bool overMenu = MenuSystem.IsMenuOpen
                                         && !MenuSystem.PointInMenuRect(ms.Pt.X, ms.Pt.Y);
@@ -157,7 +158,7 @@ internal static class MouseHook
                 case Win32.WmLbuttondown:
                     // 超级面板打开时：点击面板外部 → 关闭面板并放行点击（坐标判定，与 MenuPopup/HelpPanel
                     // 同思路；右键菜单/对话框打开期间 IsInteracting，不介入，避免误关）。
-                    if (SuperPanel.IsOpen && !SuperPanel.IsInteracting
+                    if (SuperPanel.IsOpen && !SuperPanel.IsInteracting && !SuperPanel.IsPinned
                         && !SuperPanel.PointInWindowRect(ms.Pt.X, ms.Pt.Y))
                     {
                         SuperPanel.Close();

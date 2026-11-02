@@ -34,6 +34,9 @@ internal static class SuperPanel
     /// <summary>是否有右键菜单 / 对话框正打开——钩子据此决定是否拦截外部点击 / Esc。</summary>
     public static bool IsInteracting => _window?.InteractCount > 0;
 
+    /// <summary>面板是否已钉住——钉住时点击外部不关闭（钩子不介入外部点击）。</summary>
+    public static bool IsPinned => _window?.IsPinned == true;
+
     /// <summary>屏幕物理坐标点是否落在面板窗口矩形内（供鼠标钩子判定“点击外部”）。</summary>
     public static bool PointInWindowRect(int x, int y)
     {
@@ -95,6 +98,11 @@ internal static class SuperPanel
         if (!IsOpen || !isDown || IsInteracting) return false;
         var w = _window;
         if (w == null) return false;
+
+        // 钉住后面板会长期停留：用户点外部切到别的窗口工作时，键盘应归前台窗口，
+        // 不能继续全局吞掉 1~9 / Esc（否则在别处打字会误触格子）。面板自身有焦点时
+        // 仍由窗口 KeyDown 正常处理。
+        if (w.IsPinned && !w.IsActive) return false;
 
         if (vk == Win32.VkEscape) { w.RequestEscape(); return true; }
         if (vk >= '1' && vk <= '9')

@@ -16,6 +16,7 @@ namespace LTools.Views;
 /// <summary>
 /// 超级面板窗口（计划 §5）。4×4 格子；左键单击空格弹新建菜单 / 非空执行动作，左键按住拖动重排（§5.6，交换语义，支持跨页）；
 /// 右键编辑 / 删除 / 复制；滚轮翻页 + 1~9 选格 + Esc / 点外部关闭。
+/// 标题栏可拖动窗口；标题栏「钉住」按钮开启后点外部不再关闭（Esc / ✕ 仍可关）。
 /// 由 <see cref="SuperPanel"/> 控制器创建，槽位改动经 <c>SuperPanel.SavePages</c>（ConfigIO）落盘。
 /// </summary>
 public partial class SuperPanelWindow : Window
@@ -29,6 +30,7 @@ public partial class SuperPanelWindow : Window
 
     private int _pageIdx;
     private int _interactCount;                 // >0 时（右键菜单/对话框打开）钩子不拦截外部点击与 Esc
+    private bool _pinned;                       // 钉住：点外部不关闭（钩子据此放行外部点击）
 
     // —— 菜单外点击抑制（需求：菜单开着时点面板其他格子应只关菜单，不触发）——
     private ContextMenu? _openMenu;             // 当前打开的菜单（Opened/Closed 时更新）
@@ -56,6 +58,7 @@ public partial class SuperPanelWindow : Window
 
         Rebuild();
         UpdateHeader();
+        SetPinned(false);   // 初始化钉子按钮外观 / 提示（钉住状态不跨窗口保留）
 
         // 不做 Opacity 淡入：不透明窗口上 Opacity<1 会触发 WS_EX_LAYERED（分层窗禁用
         // ClearType），与本次「恢复 ClearType」相悖。面板直接显示，文本始终逐子像素渲染。
@@ -80,6 +83,9 @@ public partial class SuperPanelWindow : Window
 
     /// <summary>当前页下标（供关闭时回写 <c>LastPage</c> 记忆页）。</summary>
     internal int PageIdx => _pageIdx;
+
+    /// <summary>是否已钉住（点外部不关闭）。供鼠标钩子判定是否介入外部点击。</summary>
+    internal bool IsPinned => _pinned;
 
     /// <summary>关闭时停掉悬停翻页计时器：其 Tick 闭包持有本窗口引用，
     /// 且关闭后仍会 Tick 调用 GoPage 操作已拆解的视觉树。</summary>
@@ -352,7 +358,9 @@ public partial class SuperPanelWindow : Window
         TitleText.Text = "超级面板";
         HintText.Text = _dragging
             ? "拖到目标格交换 · 拖到 ‹/› 翻页 · Esc 取消"
-            : "1-9 选格 · 滚轮翻页 · Esc 关闭";
+            : _pinned
+                ? "已钉住 · 点击外部不关闭 · Esc 关闭"
+                : "1-9 选格 · 滚轮翻页 · Esc 关闭";
     }
 
     // —— 右键菜单（§5.4 / §5.5）——
@@ -744,6 +752,33 @@ public partial class SuperPanelWindow : Window
     }
 
     // —— 窗口事件 ——
+
+    /// <summary>标题栏拖动窗口。钉子 / 关闭按钮会自行吞掉按下事件，不会走到这里。</summary>
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        try
+        {
+            DragMove();   // 进入系统拖动循环；拖出工作区也由系统负责
+        }
+        catch (InvalidOperationException)
+        {
+            // 极快点击：按下时鼠标已抬起，DragMove 会抛异常。当作普通点击忽略。
+        }
+        e.Handled = true;
+    }
+
+    private void Pin_Click(object sender, RoutedEventArgs e) => SetPinned(!_pinned);
+
+    /// <summary>切换钉住状态：更新钉子图标 / 配色与页脚提示。钉住后鼠标钩子不再把外部点击当作关闭信号。</summary>
+    private void SetPinned(bool pinned)
+    {
+        _pinned = pinned;
+        PinIcon.Text = pinned ? "\uE842" : "\uE840";   // PinnedFill（实心钉）/ Pinned（空心钉）
+        PinBtn.Foreground = (Brush)FindResource(pinned ? "PrimaryBrush" : "SecondaryTextBrush");
+        PinBtn.ToolTip = pinned ? "取消钉住（当前：点击外部不关闭）" : "钉住：点击外部不关闭";
+        UpdateHeader();
+    }
 
     private void Close_Click(object sender, RoutedEventArgs e) => SuperPanel.Close();
 
