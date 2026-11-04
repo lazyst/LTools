@@ -280,6 +280,7 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="x" VerticalAlignment="Center"
                                                Foreground="{StaticResource HintTextBrush}"/>
@@ -287,6 +288,10 @@
                                     <TextBlock Grid.Column="2" Text="y" VerticalAlignment="Center"
                                                Foreground="{StaticResource HintTextBrush}"/>
                                     <TextBox Grid.Column="3" x:Name="MouseYBox" MinHeight="30" Margin="6,0,0,0"/>
+                                    <Button Grid.Column="4" Style="{StaticResource BtnGhost}" Content="⌖ 拾取"
+                                            MinHeight="30" Padding="10,4" Margin="8,0,0,0"
+                                            Click="MousePick_Click"
+                                            ToolTip="隐藏窗口后在屏幕上单击取坐标"/>
                                 </Grid>
 
                                 <StackPanel x:Name="MouseWheelPanel" Orientation="Horizontal" Margin="0,10,0,0"
@@ -299,7 +304,7 @@
                                 </StackPanel>
 
                                 <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,8,0,0"
-                                           Text="坐标可用 ${变量}；先「设置变量 · 屏幕图像」再用 ${m.x} / ${m.y} 点击识别到的位置。"/>
+                                           Text="坐标留空 = 当前光标位置（滚轮可直接不填）。也可写 ${变量}：先用「设置变量 · 截图找图」拿到位置，再用 ${m.x} / ${m.y} 点击。"/>
                             </StackPanel>
 
                             <!-- macro（键鼠宏）：一宏一动作，只能当场录制，不再选宏文件。

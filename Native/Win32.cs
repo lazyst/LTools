@@ -42,6 +42,31 @@ internal static class Win32
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out Rect lpRect);
 
+    [DllImport("user32.dll")]
+    public static extern IntPtr MonitorFromPoint(Point pt, uint dwFlags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
+
+    /// <summary>显示器有效 DPI（Shcore；Win8.1+）。失败返回非 0。</summary>
+    [DllImport("shcore.dll")]
+    public static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    /// <summary>MonitorFromPoint：取最近的显示器（坐标不在任何显示器内时也不返回空）。</summary>
+    public const uint MonitorDefaultToNearest = 2;
+
+    /// <summary>GetDpiForMonitor 的 MDT_EFFECTIVE_DPI。</summary>
+    public const int MdtEffectiveDpi = 0;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MonitorInfo
+    {
+        public int cbSize;
+        public Rect rcMonitor;   // 物理像素
+        public Rect rcWork;
+        public uint dwFlags;
+    }
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
 

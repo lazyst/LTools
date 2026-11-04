@@ -2,10 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using LTools.Features;
+using LTools.Views;
 using Microsoft.Win32;
 
 namespace LTools.Views.Controls;
@@ -36,15 +39,15 @@ public partial class ProbeEditor : UserControl
 
         KindCombo.ItemsSource = new List<KindItem>
         {
-            new("文本 / 模板", ProbeKind.text),
+            new("固定文本", ProbeKind.text),
             new("变量", ProbeKind.variable),
             new("选中文本", ProbeKind.selection),
             new("剪贴板", ProbeKind.clipboard),
             new("光标位置", ProbeKind.cursor),
             new("日期时间", ProbeKind.datetime),
             new("询问用户", ProbeKind.user),
-            new("屏幕图像", ProbeKind.image),
-            new("屏幕颜色", ProbeKind.color),
+            new("截图找图", ProbeKind.image),
+            new("屏幕取色", ProbeKind.color),
             new("窗口", ProbeKind.window),
             new("进程", ProbeKind.process),
         };
@@ -60,6 +63,7 @@ public partial class ProbeEditor : UserControl
 
         _ready = true;
         ShowPanel();
+        LoadThumbnail();
     }
 
     /// <summary>载入取值器。</summary>
@@ -98,6 +102,7 @@ public partial class ProbeEditor : UserControl
         _ready = true;
         ShowPanel();
         UpdateColorPreview();
+        LoadThumbnail();
     }
 
     /// <summary>读出取值器；失败返回 false 并给出可读原因。</summary>
@@ -229,9 +234,25 @@ public partial class ProbeEditor : UserControl
 
         foreach (var p in panels.Values) p.Visibility = Visibility.Collapsed;
         if (panels.TryGetValue(kind, out var selected)) selected.Visibility = Visibility.Visible;
-        RectPanel.Visibility = kind == ProbeKind.image &&
-                               (RegionCombo.SelectedItem as RegionItem)?.Region == ImageRegion.rect
-            ? Visibility.Visible : Visibility.Collapsed;
+
+        bool rect = kind == ProbeKind.image &&
+                    (RegionCombo.SelectedItem as RegionItem)?.Region == ImageRegion.rect;
+        RectPanel.Visibility = rect ? Visibility.Visible : Visibility.Collapsed;
+        RegionHint.Visibility = rect ? Visibility.Visible : Visibility.Collapsed;
+
+        // 「询问用户」必须真的跑流程才能测，其他取值方式都可以就地试。
+        TestBar.Visibility = kind == ProbeKind.user ? Visibility.Collapsed : Visibility.Visible;
+        TestHint.Text = kind switch
+        {
+            ProbeKind.selection => "会向前台应用发送 Ctrl+C 并还原剪贴板（窗口会短暂隐藏）",
+            ProbeKind.clipboard => "读取当前剪贴板内容",
+            ProbeKind.image => $"用当前屏幕找一次（最多等 {ProbeTest.MaxWaitMs / 1000} 秒，窗口会短暂隐藏）",
+            ProbeKind.color => "读取该点当前颜色（窗口会短暂隐藏）",
+            ProbeKind.window or ProbeKind.process => "检查当前系统状态",
+            _ => "按现在的设置立即求值一次",
+        };
+        TestResult.Visibility = Visibility.Collapsed;
+        TestResult.Text = "";
     }
 
     private void Region_Changed(object sender, SelectionChangedEventArgs e)
@@ -240,7 +261,7 @@ public partial class ProbeEditor : UserControl
         ShowPanel();
     }
 
-    // —— 图像 / 颜色 ——
+    // —— 图像 ——
 
     private void BrowseImage_Click(object sender, RoutedEventArgs e)
     {
@@ -253,6 +274,216 @@ public partial class ProbeEditor : UserControl
 
         ImageLibrary.EnsureDir();
         ImagePathBox.Text = ImageLibrary.ToStoredPath(dlg.FileName);
+    }
+
+    /// <summary>框选截图：截下来的就是模板，同时把搜索区域收紧到框内。</summary>
+    private void CaptureShot_Click(object sender, RoutedEventArgs e)
+    {
+        var window = Window.GetWindow(this);
+        if (!ScreenPicker.TryPickRegion(window, out var area, out var image)) return;
+
+        try
+        {
+            string path = SaveShot(image);
+            _ready = false;
+            ImagePathBox.Text = ImageLibrary.ToStoredPath(path);
+            SelectRegion(ImageRegion.rect);
+            SetRect(area.X, area.Y, area.Width, area.Height);
+            _ready = true;
+
+            ShowPanel();
+            LoadThumbnail();
+            ShowTest($"已保存 {Path.GetFileName(path)}（{image.PixelWidth} × {image.PixelHeight}）· 搜索区域已设为该框", true);
+        }
+        catch (Exception ex)
+        {
+            ConfirmDialog.Info(window, "框选截图", "保存模板图失败：" + ex.Message);
+        }
+    }
+
+    private void PreviewImage_Click(object sender, RoutedEventArgs e)
+    {
+        string path = ImageLibrary.Resolve(ImagePathBox.Text);
+        if (!File.Exists(path))
+        {
+            ShowTest("没有可预览的图片。", false);
+            return;
+        }
+
+        try
+        {
+            var win = new ImagePreviewWindow(LoadBitmap(path), Path.GetFileName(path))
+            {
+                Owner = Window.GetWindow(this),
+            };
+            win.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            ShowTest("预览失败：" + ex.Message, false);
+        }
+    }
+
+    /// <summary>只框搜索区域，不动模板图。</summary>
+    private void PickRegion_Click(object sender, RoutedEventArgs e)
+    {
+        var window = Window.GetWindow(this);
+        if (!ScreenPicker.TryPickRegion(window, out var area, out _)) return;
+
+        _ready = false;
+        SelectRegion(ImageRegion.rect);
+        SetRect(area.X, area.Y, area.Width, area.Height);
+        _ready = true;
+        ShowPanel();
+        ShowTest($"搜索区域：{area.X}, {area.Y} · {area.Width} × {area.Height}", true);
+    }
+
+    private void ImagePath_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (!_ready) return;
+        LoadThumbnail();
+    }
+
+    private void LoadThumbnail()
+    {
+        if (ImageThumb == null) return;
+
+        string text = (ImagePathBox.Text ?? "").Trim();
+        if (text.Length == 0)
+        {
+            SetThumb(null, "无图", "还没有模板图，点「框选截图」直接在屏幕上截取。");
+            return;
+        }
+
+        string path = ImageLibrary.Resolve(text);
+        if (!File.Exists(path))
+        {
+            SetThumb(null, "找不到", "文件不存在：" + text);
+            return;
+        }
+
+        try
+        {
+            var bmp = LoadBitmap(path);
+            SetThumb(bmp, "", $"{bmp.PixelWidth} × {bmp.PixelHeight} px · {Path.GetFileName(path)}");
+        }
+        catch (Exception ex)
+        {
+            SetThumb(null, "无法读取", "图片读取失败：" + ex.Message);
+        }
+    }
+
+    private void SetThumb(BitmapSource? image, string placeholder, string hint)
+    {
+        ImageThumb.Source = image;
+        ImageThumbHint.Text = placeholder;
+        ImageThumbHint.Visibility = image == null ? Visibility.Visible : Visibility.Collapsed;
+        ImageFileHint.Text = hint;
+        PreviewImageBtn.IsEnabled = image != null;
+    }
+
+    private static BitmapImage LoadBitmap(string path)
+    {
+        var bmp = new BitmapImage();
+        bmp.BeginInit();
+        bmp.CacheOption = BitmapCacheOption.OnLoad;
+        bmp.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+        bmp.UriSource = new Uri(Path.GetFullPath(path));
+        bmp.EndInit();
+        bmp.Freeze();
+        return bmp;
+    }
+
+    /// <summary>模板图存到 resources/images，文件名带时间戳；重名自动加序号。</summary>
+    private static string SaveShot(BitmapSource image)
+    {
+        ImageLibrary.EnsureDir();
+        string stem = $"shot-{DateTime.Now:yyyyMMdd-HHmmss}";
+        string path = Path.Combine(ImageLibrary.Dir, stem + ".png");
+        for (int n = 2; File.Exists(path); n++)
+            path = Path.Combine(ImageLibrary.Dir, $"{stem}-{n}.png");
+
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(image));
+        using var fs = File.Create(path);
+        encoder.Save(fs);
+        return path;
+    }
+
+    private void SetRect(int x, int y, int w, int h)
+    {
+        RectXBox.Text = x.ToString(CultureInfo.InvariantCulture);
+        RectYBox.Text = y.ToString(CultureInfo.InvariantCulture);
+        RectWBox.Text = w.ToString(CultureInfo.InvariantCulture);
+        RectHBox.Text = h.ToString(CultureInfo.InvariantCulture);
+    }
+
+    // —— 颜色 ——
+
+    private void PickColorPoint_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ScreenPicker.TryPickPoint(Window.GetWindow(this), out int x, out int y, out string hex)) return;
+
+        ColorXBox.Text = x.ToString(CultureInfo.InvariantCulture);
+        ColorYBox.Text = y.ToString(CultureInfo.InvariantCulture);
+
+        // 条件里取点几乎总是想「就是这个颜色」：顺手填目标色，要改再改。
+        if (ShowColorTarget) ColorHexBox.Text = hex;
+
+        ShowTest($"已取点 {x}, {y} · {hex}", true);
+    }
+
+    // —— 就地测试 ——
+
+    private async void Test_Click(object sender, RoutedEventArgs e)
+    {
+        string? error = TryReadCore(out var probe);
+        if (error != null)
+        {
+            ShowTest("请先修正：" + error, false);
+            return;
+        }
+        if (probe.Kind == ProbeKind.user) return;
+
+        // 看屏幕 / 取前台选区时，LTools 自己的窗口必须让开，否则搜到的是自己。
+        bool hide = probe.Kind is ProbeKind.image or ProbeKind.color or ProbeKind.cursor
+            or ProbeKind.window or ProbeKind.selection;
+
+        TestBtn.IsEnabled = false;
+        ShowTest("测试中…", null);
+
+        Action? restore = null;
+        try
+        {
+            if (hide)
+            {
+                restore = TransientHide.HideAll(Window.GetWindow(this));
+                await Task.Delay(180);
+            }
+            string result = await Task.Run(() => ProbeTest.Run(probe));
+            ShowTest(result, true);
+        }
+        catch (Exception ex)
+        {
+            ShowTest("测试失败：" + ex.Message, false);
+        }
+        finally
+        {
+            restore?.Invoke();
+            TestBtn.IsEnabled = true;
+        }
+    }
+
+    private void ShowTest(string text, bool? ok)
+    {
+        TestResult.Text = text;
+        TestResult.Visibility = Visibility.Visible;
+        TestResult.Foreground = ok switch
+        {
+            true => (Brush)FindResource("TextBrush"),
+            false => (Brush)FindResource("DangerBrush"),
+            null => (Brush)FindResource("SecondaryTextBrush"),
+        };
     }
 
     private void ColorHex_Changed(object sender, TextChangedEventArgs e) => UpdateColorPreview();

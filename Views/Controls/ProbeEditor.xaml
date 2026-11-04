@@ -56,24 +56,60 @@
 
         <!-- 图像 -->
         <StackPanel x:Name="P_Image" Visibility="Collapsed" Margin="0,8,0,0">
-            <TextBlock Style="{StaticResource HintLabel}" Text="模板图片（相对 resources/images，也可填绝对路径）"/>
-            <Grid Margin="0,4,0,0">
+            <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <TextBox x:Name="ImagePathBox" MinHeight="32"/>
-                <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…"
-                        MinHeight="32" Margin="6,0,0,0" Padding="10,4" Click="BrowseImage_Click"/>
+                <Border Width="100" Height="60" CornerRadius="4" ClipToBounds="True"
+                        Background="{StaticResource SurfaceAltBrush}"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                    <Grid>
+                        <TextBlock x:Name="ImageThumbHint" Text="无图" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource HintTextBrush}"/>
+                        <Image x:Name="ImageThumb" Stretch="UniformToFill"
+                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                    </Grid>
+                </Border>
+                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                    <WrapPanel Orientation="Horizontal">
+                        <Button x:Name="CaptureShotBtn" Style="{StaticResource BtnPrimary}" Content="▣ 框选截图"
+                                MinHeight="30" Padding="10,4" Click="CaptureShot_Click"
+                                ToolTip="隐藏 LTools → 冻结屏幕 → 拖个框，松手即存为模板图"/>
+                        <Button Style="{StaticResource BtnGhost}" Content="换图…" Margin="6,0,0,0"
+                                MinHeight="30" Padding="10,4" Click="BrowseImage_Click"/>
+                        <Button x:Name="PreviewImageBtn" Style="{StaticResource BtnGhost}" Content="预览"
+                                Margin="6,0,0,0" MinHeight="30" Padding="10,4" Click="PreviewImage_Click"/>
+                    </WrapPanel>
+                    <TextBlock x:Name="ImageFileHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                               Margin="0,4,0,0"/>
+                </StackPanel>
             </Grid>
+
+            <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="模板文件" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                <TextBox x:Name="ImagePathBox" Grid.Column="1" MinHeight="30" Margin="8,0,0,0"
+                         TextChanged="ImagePath_Changed"
+                         ToolTip="相对 resources/images，也可填绝对路径"/>
+            </Grid>
+
             <Grid Margin="0,6,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="搜索区域" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
-                <ComboBox x:Name="RegionCombo" Grid.Column="1" MinHeight="30" Margin="8,0,0,0"
+                <ComboBox x:Name="RegionCombo" Grid.Column="1" MinHeight="30" Margin="8,0,8,0"
                           SelectionChanged="Region_Changed"/>
+                <Button x:Name="PickRegionBtn" Grid.Column="2" Style="{StaticResource BtnGhost}"
+                        Content="框选区域…" MinHeight="30" Padding="10,4" Click="PickRegion_Click"
+                        ToolTip="在屏幕上框出一块，自动填入 x / y / w / h"/>
             </Grid>
             <StackPanel x:Name="RectPanel" Orientation="Horizontal" Margin="0,6,0,0" Visibility="Collapsed">
                 <TextBlock Text="x" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
@@ -85,6 +121,9 @@
                 <TextBlock Text="h" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
                 <TextBox x:Name="RectHBox" Width="58" MinHeight="30" Margin="4,0,0,0"/>
             </StackPanel>
+            <TextBlock x:Name="RegionHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                       Margin="0,4,0,0" Visibility="Collapsed"
+                       Text="只在框内查找（更快更准）；目标位置会变就改成「前台窗口」。"/>
             <Grid Margin="0,6,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -94,7 +133,8 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="等待" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
-                <TextBox x:Name="ImageTimeoutBox" Grid.Column="1" Width="64" MinHeight="30" Margin="6,0,4,0"/>
+                <TextBox x:Name="ImageTimeoutBox" Grid.Column="1" Width="64" MinHeight="30" Margin="6,0,4,0"
+                         ToolTip="最长等待时间；0 = 只找一次"/>
                 <TextBlock Grid.Column="2" Text="ms · 间隔" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
                 <TextBox x:Name="ImageIntervalBox" Grid.Column="3" Width="64" MinHeight="30" Margin="6,0,4,0"/>
                 <TextBlock Grid.Column="4" Text="ms" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}" Margin="2,0,0,0"/>
@@ -115,9 +155,12 @@
             <TextBlock Style="{StaticResource HintLabel}" Text="读取屏幕某点的颜色；坐标支持 ${变量}"/>
             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                 <TextBlock Text="x" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
-                <TextBox x:Name="ColorXBox" Width="70" MinHeight="30" Margin="4,0,10,0"/>
+                <TextBox x:Name="ColorXBox" Width="64" MinHeight="30" Margin="4,0,10,0"/>
                 <TextBlock Text="y" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
-                <TextBox x:Name="ColorYBox" Width="70" MinHeight="30" Margin="4,0,0,0"/>
+                <TextBox x:Name="ColorYBox" Width="64" MinHeight="30" Margin="4,0,0,0"/>
+                <Button x:Name="PickPointBtn" Style="{StaticResource BtnGhost}" Content="⌖ 吸管取点"
+                        MinHeight="30" Padding="10,4" Margin="10,0,0,0" Click="PickColorPoint_Click"
+                        ToolTip="隐藏窗口后在屏幕上单击：取坐标，条件里同时填入目标色"/>
             </StackPanel>
             <StackPanel x:Name="ColorTargetPanel" Orientation="Horizontal" Margin="0,6,0,0">
                 <TextBlock Text="目标色" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
@@ -126,6 +169,8 @@
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"/>
                 <TextBlock Text="容差" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}" Margin="10,0,4,0"/>
                 <TextBox x:Name="ColorToleranceBox" Width="52" MinHeight="30"/>
+                <TextBlock Text="（容差 0 = 必须完全相同）" VerticalAlignment="Center" Margin="6,0,0,0"
+                           Style="{StaticResource HintLabel}"/>
             </StackPanel>
         </StackPanel>
 
@@ -141,5 +186,23 @@
             <TextBlock Style="{StaticResource HintLabel}" Text="进程名（不含 .exe），例如 chrome"/>
             <TextBox x:Name="ProcessNameBox" MinHeight="32" Margin="0,4,0,0"/>
         </StackPanel>
+
+        <!-- 就地测试：用当前屏幕 / 剪贴板求值一次，不改流程 -->
+        <Border x:Name="TestBar" Margin="0,12,0,0" Padding="10,8" CornerRadius="4"
+                Background="{StaticResource SurfaceAltBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="TestBtn" Style="{StaticResource BtnGhost}" Content="▶ 测试这个取值"
+                            MinHeight="30" Padding="10,4" Click="Test_Click"/>
+                    <TextBlock x:Name="TestHint" Style="{StaticResource HintLabel}" VerticalAlignment="Center"
+                               Margin="8,0,0,0" TextWrapping="Wrap"
+                               Text="按现在的设置立即求值一次（测试期间窗口会短暂隐藏）"/>
+                </StackPanel>
+                <TextBlock x:Name="TestResult" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed"
+                           FontFamily="Consolas" FontSize="{StaticResource FontSizeHint}"
+                           Foreground="{StaticResource SecondaryTextBrush}"/>
+            </StackPanel>
+        </Border>
     </StackPanel>
 </UserControl>

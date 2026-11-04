@@ -932,13 +932,18 @@ public partial class ActionEditorDialog : Window
                 _draft.Items = items;
                 break;
             case ActionType.mouse:
-                if (string.IsNullOrWhiteSpace(MouseXBox.Text) || string.IsNullOrWhiteSpace(MouseYBox.Text))
+            {
+                string mx = MouseXBox.Text.Trim();
+                string my = MouseYBox.Text.Trim();
+                bool hasX = mx.Length > 0;
+                bool hasY = my.Length > 0;
+                if (hasX != hasY)
                 {
-                    ConfirmDialog.Info(this, "动作", "请填写鼠标目标坐标（可写 ${变量}）。");
+                    ConfirmDialog.Info(this, "动作", "x 和 y 要一起填；两个都留空表示用当前光标位置。");
                     return;
                 }
-                _draft.X = MouseXBox.Text.Trim();
-                _draft.Y = MouseYBox.Text.Trim();
+                _draft.X = hasX ? mx : null;
+                _draft.Y = hasY ? my : null;
                 _draft.MouseAction = MouseActionCombo.SelectedIndex switch
                 {
                     1 => MouseActionKind.doubleClick,
@@ -961,6 +966,7 @@ public partial class ActionEditorDialog : Window
                     _draft.WheelDelta = wheel;
                 }
                 break;
+            }
             case ActionType.macro:
                 if (string.IsNullOrEmpty(_macroId))
                 {
@@ -988,6 +994,14 @@ public partial class ActionEditorDialog : Window
         MouseWheelPanel.Visibility = MouseActionCombo.SelectedIndex is 5 or 6
             ? Visibility.Visible
             : Visibility.Collapsed;
+    }
+
+    /// <summary>在屏幕上点一下，把物理像素坐标填进来（避免手算 DPI 缩放）。</summary>
+    private void MousePick_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ScreenPicker.TryPickPoint(this, out int x, out int y, out _)) return;
+        MouseXBox.Text = x.ToString(CultureInfo.InvariantCulture);
+        MouseYBox.Text = y.ToString(CultureInfo.InvariantCulture);
     }
 
     private static KeyItemView WrapKeyItem(KeyItem m) => new(m);

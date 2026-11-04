@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using LTools.Core;
@@ -363,11 +364,19 @@ internal static class ActionExecutor
 
     private static void Mouse(ActionDto a)
     {
-        if (!int.TryParse(a.X?.Trim(), out int x) || !int.TryParse(a.Y?.Trim(), out int y))
-            throw new InvalidOperationException($"mouse 坐标无效: X={a.X}, Y={a.Y} ({a.Name})");
+        string sx = a.X?.Trim() ?? "";
+        string sy = a.Y?.Trim() ?? "";
 
-        InputHelper.MoveToScreen(x, y, MouseTag);
-        Thread.Sleep(10);   // 让光标位置先落定，再发按键
+        // 坐标可以留空 = 用当前光标位置（滚轮动作最常用）。填了就必须是整数（模板在流程里已展开）。
+        if (sx.Length > 0 || sy.Length > 0)
+        {
+            if (!int.TryParse(sx, NumberStyles.Integer, CultureInfo.InvariantCulture, out int x) ||
+                !int.TryParse(sy, NumberStyles.Integer, CultureInfo.InvariantCulture, out int y))
+                throw new InvalidOperationException($"mouse 坐标无效: X={a.X}, Y={a.Y} ({a.Name})");
+
+            InputHelper.MoveToScreen(x, y, MouseTag);
+            Thread.Sleep(10);   // 让光标位置先落定，再发按键
+        }
 
         int wheel = Math.Clamp(a.WheelDelta ?? 120, 1, 12_000);
         switch (a.MouseAction ?? MouseActionKind.click)
