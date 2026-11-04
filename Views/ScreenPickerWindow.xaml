@@ -6,6 +6,10 @@
         Background="#0B0B0E" Cursor="Cross" UseLayoutRounding="True"
         SnapsToDevicePixels="True" Focusable="True"
         PreviewKeyDown="Window_KeyDown"
+        PreviewMouseMove="Window_MouseMove"
+        PreviewMouseLeftButtonDown="Window_MouseDown"
+        PreviewMouseLeftButtonUp="Window_MouseUp"
+        PreviewMouseRightButtonDown="Window_Cancel"
         Loaded="Window_Loaded">
     <!-- 冻结画面 + 取点 / 框选。窗口正好盖住光标所在的显示器，
          所有坐标最终换算成「显示器物理像素 + 左上角偏移」，与截图 / 鼠标注入同一坐标系。
@@ -49,11 +53,7 @@
     <Grid x:Name="Root" Background="#0B0B0E" ClipToBounds="True">
         <Image x:Name="Shot" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality"/>
 
-        <Canvas x:Name="Layer" Background="Transparent" ClipToBounds="True"
-                MouseMove="Layer_MouseMove"
-                MouseLeftButtonDown="Layer_MouseDown"
-                MouseLeftButtonUp="Layer_MouseUp"
-                MouseRightButtonDown="Window_Cancel">
+        <Canvas x:Name="Layer" Background="Transparent" ClipToBounds="True">
             <!-- 框选 / 未选时压暗整体（EvenOdd 挖洞） -->
             <Path x:Name="DimPath" Fill="#99000000" IsHitTestVisible="False"/>
 

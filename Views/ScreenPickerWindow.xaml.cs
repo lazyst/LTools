@@ -205,10 +205,16 @@ public partial class ScreenPickerWindow : Window
     }
 
     // ============ 鼠标 ============
+    //
+    // 全部用窗口级 Preview 事件：鼠标按下后 WPF 会把捕获挂到窗口上（Mouse.Captured == 本窗口），
+    // 之后的 MouseMove 只路由到窗口，挂在 Canvas 上的 MouseMove 收不到——框选会「按下就卡住」。
 
-    private void Layer_MouseDown(object sender, MouseButtonEventArgs e)
+    private void Window_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
+
+        // 底部确认栏是普通按钮：点它不能当成开始框选。
+        if (IsOnActionBar(e.OriginalSource as DependencyObject)) return;
 
         Point p = Clamp(e.GetPosition(Layer));
 
@@ -250,7 +256,7 @@ public partial class ScreenPickerWindow : Window
         e.Handled = true;
     }
 
-    private void Layer_MouseMove(object sender, MouseEventArgs e)
+    private void Window_MouseMove(object sender, MouseEventArgs e)
     {
         Point p = Clamp(e.GetPosition(Layer));
 
@@ -279,7 +285,7 @@ public partial class ScreenPickerWindow : Window
         e.Handled = true;
     }
 
-    private void Layer_MouseUp(object sender, MouseButtonEventArgs e)
+    private void Window_MouseUp(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left || _drag == DragMode.None) return;
 
@@ -301,6 +307,20 @@ public partial class ScreenPickerWindow : Window
     private void Confirm_Click(object sender, RoutedEventArgs e)
     {
         if (IsValid(_sel)) ConfirmRegion(_sel!.Value);
+    }
+
+    /// <summary>事件源是否来自底部确认栏（按钮 / 它的父 Border）。</summary>
+    private bool IsOnActionBar(DependencyObject? source)
+    {
+        while (source != null)
+        {
+            if (ReferenceEquals(source, ActionBar)) return true;
+            if (source is Button) return true;
+            source = source is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(source)
+                : LogicalTreeHelper.GetParent(source);
+        }
+        return false;
     }
 
     // ============ 取点 ============
@@ -371,6 +391,7 @@ public partial class ScreenPickerWindow : Window
             foreach (var grip in _grips) grip.Visibility = Visibility.Collapsed;
             InfoBox.Visibility = Visibility.Collapsed;
             ConfirmBtn.IsEnabled = false;
+            ActionBar.Visibility = Visibility.Collapsed;   // 没选区时不挡任何拖动（提示在顶部不拦鼠标）
             ActionHint.Text = "拖动框选要匹配的区域";
             HintText.Text = "拖动框选范围 · 右键 / Esc 取消";
             return;
@@ -389,9 +410,16 @@ public partial class ScreenPickerWindow : Window
         Selection.Height = s.Height;
 
         bool valid = IsValid(s);
+        bool showBar = valid && _drag == DragMode.None;   // 拖动过程中先别跳出来，松手后再给按钮
         PositionGrips(s, valid);
-        ConfirmBtn.IsEnabled = valid && _drag == DragMode.None;
+        ConfirmBtn.IsEnabled = showBar;
+        ActionBar.Visibility = showBar ? Visibility.Visible : Visibility.Collapsed;
         ActionHint.Text = valid ? "可拖边 / 角微调，方向键逐像素" : "继续拖大一点";
+
+        // 选区靠下时把确认栏挪到顶部，别挡住正在调的边。
+        bool nearBottom = s.Bottom > ActualHeight * 0.72 && ActualHeight > 220;
+        ActionBar.VerticalAlignment = nearBottom ? VerticalAlignment.Top : VerticalAlignment.Bottom;
+        ActionBar.Margin = nearBottom ? new Thickness(0, 78, 0, 0) : new Thickness(0, 0, 0, 38);
 
         ShowSizeInfo(s);
         HintText.Text = "拖边框 / 角微调 · 方向键 1px（Shift 10px）· 双击 / Enter 确定";
