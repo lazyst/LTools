@@ -259,6 +259,25 @@
                                 </Border>
                             </StackPanel>
 
+                            <!-- macro（键鼠宏）：一宏一动作，只能当场录制，不再选宏文件 -->
+                            <StackPanel x:Name="F_Macro">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="键鼠宏" Margin="0,0,0,4"/>
+                                <TextBlock x:Name="MacroInfoText" Style="{StaticResource HintLabel}"
+                                           TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="MacroRecordBtn" Style="{StaticResource BtnPrimary}"
+                                            Content="● 录制新宏" MinWidth="110" MinHeight="30"
+                                            Click="MacroRecord_Click"/>
+                                    <TextBlock x:Name="MacroRecordHint" Style="{StaticResource HintLabel}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0"
+                                               Text="点击后本窗口自动最小化并立即开录，按录制热键停止并自动保存"/>
+                                </StackPanel>
+
+                                <TextBlock x:Name="MacroHint" Style="{StaticResource HintLabel}" Margin="0,8,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+
                             <!-- internal -->
                             <StackPanel x:Name="F_Internal">
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="内部命令" Margin="0,0,0,4"/>

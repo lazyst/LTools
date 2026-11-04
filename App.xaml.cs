@@ -24,6 +24,8 @@ public partial class App : Application
 
     private TaskbarIcon? _tray;
     private DispatcherTimer? _watchdog;
+    private MenuItem? _macroMenuItem;      // 托盘「开始 / 停止录制宏」：标题随录制状态变化
+    private TextBlock? _macroMenuItemText;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -36,6 +38,12 @@ public partial class App : Application
         _singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out bool createdNew);
         if (!createdNew)
         {
+            // 常见误用：已经有一个 LTools 在跑（比如改了新版本直接双击），单实例互斥体会让
+            // 本次启动静默退出——用户会以为在测新版本，其实测的是旧进程。必须提示。
+            MessageBox.Show(
+                "LTools 已经在运行，本次启动已退出。\n\n" +
+                "如果要换用新构建：请先从托盘菜单「退出 LTools」，再重新启动。",
+                "LTools", MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown(0);
             return;
         }
@@ -66,9 +74,19 @@ public partial class App : Application
         QuickNote.Initialize(cfgPath);
         ConfigHelper.Initialize(cfgPath);
         ResourceDir.Ensure();
+        MacroSettings.Load(cfg);
+        MacroStore.Ensure();
+        // 元数据自愈放后台：宏文件可能在别处被增删，扫描不阻塞启动。
+        _ = Task.Run(MacroStore.Reconcile);
+        // 录制即生成动作：全局热键 / 托盘 / 设置页录完的宏，自动进动作池（动作编辑器内录制除外）。
+        MacroRecorder.MacroSaved += OnMacroSaved;
+
+        // 停止录制的兜底热键：消息窗口必须在钩子安装前建好（注册时不能再建窗口）。
+        MacroHotkey.Initialize();
 
         // —— 内部动作注册（动作系统 §7）——
         InternalActionRegistry.RegisterDefaults();
+        RemoveObsoleteMacroActions();
 
         // —— 启动提示：在无钩子阶段同步显示——首个 WPF 窗口的首帧会初始化渲染栈（D3D 等），
         //    耗时落在此处，不阻塞任何钩子回调。 ——
@@ -90,13 +108,17 @@ public partial class App : Application
         menu.Items.Add(NewItem("速记 (CapsLock+N)", () => QuickNote.Toggle()));
         menu.Items.Add(NewItem("设置 (CapsLock+\\)", () => ConfigHelper.Toggle()));
         menu.Items.Add(new Separator());
+        _macroMenuItem = NewItem("开始 / 停止录制宏", () => MacroRecorder.Toggle());
+        _macroMenuItemText = (TextBlock)((StackPanel)_macroMenuItem.Header).Children[1];
+        menu.Items.Add(NewItem("宏管理…", () => ConfigHelper.OpenMacroPage()));
+        menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("启用 CapsLock 增强", Settings.ToggleCapsLock, () => AppState.IsToolEnabled));
         menu.Items.Add(NewItem("启用超级面板", Settings.ToggleSuperPanel, () => AppState.IsSuperPanelEnabled));
         menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("退出 LTools", ExitApplication));
 
         // 状态点每次打开菜单时刷新：状态可能经 CapsLock+Esc 手势或设置页更改，托盘菜单要跟随
-        menu.Opened += (_, _) => RefreshStatusDots();
+        menu.Opened += (_, _) => { RefreshStatusDots(); RefreshMacroMenuItem(); };
 
         _tray = new TaskbarIcon
         {
@@ -153,6 +175,17 @@ public partial class App : Application
             dot.Fill = isOn() ? EnabledDotBrush : System.Windows.Media.Brushes.Transparent;
     }
 
+    /// <summary>
+    /// 托盘宏菜单标题跟随录制状态：录制中显示「■ 停止录制宏（热键）」，让托盘始终是一个可用的停止入口。
+    /// </summary>
+    private void RefreshMacroMenuItem()
+    {
+        if (_macroMenuItemText == null) return;
+        _macroMenuItemText.Text = MacroRecorder.IsRecording
+            ? $"■ 停止录制宏（{MacroSettings.RecordHotkeyDisplay}）"
+            : "开始 / 停止录制宏";
+    }
+
     private const double StatusDotSize = 9;
     private const double StatusDotGap = 7;
     private readonly List<(System.Windows.Shapes.Ellipse Dot, Func<bool> IsOn)> _statusDots = new();
@@ -165,6 +198,64 @@ public partial class App : Application
             System.Windows.Media.Color.FromRgb(0x16, 0xA3, 0x4A));
         brush.Freeze();
         return brush;
+    }
+
+    /// <summary>
+    /// 宏保存完成（后台线程）：非动作编辑器发起的录制要在动作池生成同名宏动作。
+    /// <c>ConfigStore</c> / <c>ActionRegistry</c> 非线程安全，必须回到 UI 线程。
+    /// </summary>
+    private static void OnMacroSaved(string id, bool autoCreate)
+    {
+        if (!autoCreate) return;
+        Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            try { EnsureMacroAction(id); }
+            catch (Exception ex) { CrashLog.Write("App.EnsureMacroAction", ex); }
+        });
+    }
+
+    /// <summary>为宏生成动作（已存在则跳过），实现「一个键鼠宏就是一个动作」。</summary>
+    private static void EnsureMacroAction(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return;
+        if (ActionRegistry.All.Any(a => a.Type == ActionType.macro && a.MacroId == id)) return;
+
+        var meta = MacroStore.List().FirstOrDefault(m => m.Id == id);
+        string name = string.IsNullOrWhiteSpace(meta?.Name) ? "宏 " + id : meta!.Name;
+        ConfigStore.AddAction(new ActionDto
+        {
+            Name = name,
+            Type = ActionType.macro,
+            MacroId = id,
+            Icon = "record",
+        });
+        ConfigStore.Save();
+    }
+
+    /// <summary>
+    /// 旧配置迁移：v2.3.3 起移除内部动作「回放上次宏」（<c>macro.playLast</c>）。
+    /// 老用户的默认动作 / 菜单 / 超级面板引用一并清掉，避免留下点了没反应的死项。
+    /// </summary>
+    private static void RemoveObsoleteMacroActions()
+    {
+        var stale = ActionRegistry.All
+            .Where(a => a.Type == ActionType.@internal && a.Command == "macro.playLast")
+            .Select(a => a.Id)
+            .ToList();
+
+        // 组合步骤是内嵌快照，删动作不会自动清；单独扫一遍，把旧「回放上次宏」步骤移除。
+        bool stepChanged = false;
+        foreach (var a in ActionRegistry.All)
+        {
+            if (a.Steps == null) continue;
+            stepChanged |= a.Steps.RemoveAll(s =>
+                s.Action.Type == ActionType.@internal && s.Action.Command == "macro.playLast") > 0;
+        }
+
+        if (stale.Count == 0 && !stepChanged) return;
+
+        foreach (string id in stale) ConfigStore.RemoveAction(id);
+        ConfigStore.Save();
     }
 
     private static System.Windows.Media.ImageSource? LoadIconSource()

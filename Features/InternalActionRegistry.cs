@@ -17,7 +17,7 @@ internal static class InternalActionRegistry
     /// <summary>命令键 → 入口委托（参数为光标坐标）。</summary>
     private static readonly Dictionary<string, Action<int, int>> _actions = new();
 
-    /// <summary>注册 v1 的 6 个内部命令（由 App.OnStartup 调用一次）。</summary>
+    /// <summary>注册内置内部命令（由 App.OnStartup 调用一次）。</summary>
     public static void RegisterDefaults()
     {
         Register("quickNote.toggle", (_, _) => QuickNote.Toggle());
@@ -26,6 +26,8 @@ internal static class InternalActionRegistry
         Register("windowPin.toggle", (x, y) => WindowPin.ToggleAtCursor(x, y));
         Register("helpPanel.toggle", (_, _) => HelpPanel.Toggle());
         Register("settings.toggle", (_, _) => ConfigHelper.Toggle());
+        Register("macro.recordToggle", (_, _) => MacroRecorder.Toggle());
+        Register("macro.manage", (_, _) => ConfigHelper.OpenMacroPage());
     }
 
     /// <summary>注册/覆盖一个内部命令。</summary>

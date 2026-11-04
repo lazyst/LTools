@@ -29,6 +29,20 @@
       "Type": "internal",
       "Command": "helpPanel.toggle",
       "Icon": "help"
+    },
+    {
+      "Id": "a5",
+      "Name": "录制宏",
+      "Type": "internal",
+      "Command": "macro.recordToggle",
+      "Icon": "record"
+    },
+    {
+      "Id": "a7",
+      "Name": "宏管理",
+      "Type": "internal",
+      "Command": "macro.manage",
+      "Icon": "keyboard"
     }
   ],
   "SuperPanel": {
@@ -40,8 +54,8 @@
         "a2",
         "a3",
         "a4",
-        null,
-        null,
+        "a5",
+        "a7",
         null,
         null,
         null,
@@ -63,7 +77,9 @@
         "a1",
         "a2",
         "a3",
-        "a4"
+        "a4",
+        "a5",
+        "a7"
       ]
     },
     null,
@@ -77,5 +93,17 @@
     null
   ],
   "TerminalPaths": {},
-  "MouseModeSpeed": 7
+  "MouseModeSpeed": 7,
+  "Macros": {
+    "Enabled": true,
+    "RecordHotkey": "ctrl+f2",
+    "CountdownMs": 0,
+    "MouseSampleMs": 8,
+    "MouseSamplePx": 1,
+    "MaxEvents": 200000,
+    "DefaultSpeed": 1.0,
+    "Loops": 1,
+    "LastMacroId": null,
+    "Items": []
+  }
 }

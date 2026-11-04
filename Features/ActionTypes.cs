@@ -21,6 +21,7 @@ public enum ActionType
     runCommand,
     sendText,
     sendKeys,
+    macro,
     @internal,
     composite,
 }
@@ -102,6 +103,7 @@ public static class ActionTypeLabel
         ActionType.runCommand => "运行命令",
         ActionType.sendText => "发送文本",
         ActionType.sendKeys => "模拟按键",
+        ActionType.macro => "键鼠宏",
         ActionType.@internal => "内部动作",
         ActionType.composite => "组合动作",
         _ => t.ToString(),
@@ -205,6 +207,11 @@ public sealed class ActionDto
     /// <summary>sendKeys: 有序输入条目列表（chord / text / sleep 三种）。</summary>
     public List<KeyItem>? Items { get; set; }
 
+    // —— macro（录制宏）——
+
+    /// <summary>macro: 宏 Id（事件本体存 <c>macros/&lt;id&gt;.json</c>）。</summary>
+    public string? MacroId { get; set; }
+
     // —— composite ——
 
     /// <summary>composite: 有序步骤列表（nullable 以便 JSON 省略非 composite 动作的空列表）。</summary>
@@ -224,6 +231,7 @@ public sealed class ActionDto
         Cmd = Cmd, Terminal = Terminal, KeepWindow = KeepWindow, Command = Command,
         Text = Text, Mode = Mode, AppendEnter = AppendEnter,
         Items = Items?.Select(i => i.Clone()).ToList(),
+        MacroId = MacroId,
         CompositeOnFail = CompositeOnFail,
         Steps = Steps?.Select(s => new StepDto { Action = s.Action.Clone(), DelayMs = s.DelayMs, OnFail = s.OnFail }).ToList(),
     };

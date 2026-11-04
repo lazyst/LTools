@@ -40,6 +40,40 @@ public sealed class SuperPanelConfig
     public int LastPage { get; set; } = 0;
 }
 
+/// <summary>键鼠宏录制配置（见 <c>Features/MacroRecorder.cs</c>）。</summary>
+public sealed class MacroConfig
+{
+    /// <summary>总开关：关闭后录制热键完全不介入。</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>停止录制热键（如 <c>ctrl+f2</c>，仅在键鼠宏动作编辑窗口内生效）。</summary>
+    public string RecordHotkey { get; set; } = "ctrl+f2";
+
+    /// <summary>回放前倒计时（ms，0 = 立即回放）。</summary>
+    public int CountdownMs { get; set; } = 0;
+
+    /// <summary>鼠标移动最小采样间隔（ms）。</summary>
+    public int MouseSampleMs { get; set; } = 8;
+
+    /// <summary>鼠标移动最小位移（px）。</summary>
+    public int MouseSamplePx { get; set; } = 1;
+
+    /// <summary>单个宏最大事件数。</summary>
+    public int MaxEvents { get; set; } = 200_000;
+
+    /// <summary>默认回放速度倍率。</summary>
+    public double DefaultSpeed { get; set; } = 1.0;
+
+    /// <summary>回放循环次数（1 = 只回放一次，1–99）。</summary>
+    public int Loops { get; set; } = 1;
+
+    /// <summary>上次录制的宏 Id。</summary>
+    public string? LastMacroId { get; set; }
+
+    /// <summary>宏元数据清单（事件本体在 <c>macros/&lt;id&gt;.json</c>）。</summary>
+    public List<MacroMeta> Items { get; set; } = new();
+}
+
 public sealed class AppConfig
 {
     /// <summary>菜单组（长度固定 10，下标 0..9 对应 CapsLock+1~0；null=空组）。</summary>
@@ -50,6 +84,9 @@ public sealed class AppConfig
 
     /// <summary>超级面板配置。</summary>
     public SuperPanelConfig SuperPanel { get; set; } = new();
+
+    /// <summary>键鼠宏录制配置。</summary>
+    public MacroConfig Macros { get; set; } = new();
 
     /// <summary>终端路径覆盖（如 gitbash）。</summary>
     public Dictionary<string, string> TerminalPaths { get; set; } = new();
@@ -63,8 +100,11 @@ public sealed class AppConfig
     /// </summary>
     public bool CapsLockEnabled { get; set; } = true;
 
-    /// <summary>设置窗口上次所在的导航页（general/actions/menus/superpanel/terminals/backup），下次打开恢复。</summary>
+    /// <summary>设置窗口上次所在的导航页（general/actions/menus/superpanel/terminals/macro/backup），下次打开恢复。</summary>
     public string LastNavPage { get; set; } = "actions";
+
+    /// <summary>组合动作编辑器左栏已折叠的分组 key（basic / internal / pool），下次打开恢复。</summary>
+    public List<string> CompositeCollapsedGroups { get; set; } = new();
 
     private static readonly JsonSerializerOptions Opt = new()
     {

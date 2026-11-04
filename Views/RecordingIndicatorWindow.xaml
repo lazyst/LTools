@@ -1,0 +1,20 @@
+<Window x:Class="LTools.Views.RecordingIndicatorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="LTools Recording"
+        SizeToContent="WidthAndHeight"
+        WindowStyle="None" AllowsTransparency="True" Topmost="True"
+        ShowInTaskbar="False" ShowActivated="False" Focusable="False"
+        ResizeMode="NoResize" WindowStartupLocation="Manual"
+        Background="Transparent">
+    <Border Background="#D918181B" CornerRadius="14" Padding="14,7">
+        <StackPanel Orientation="Horizontal">
+            <Ellipse x:Name="Dot" Width="8" Height="8" Fill="#EF4444"
+                     Margin="0,0,8,0" VerticalAlignment="Center"/>
+            <TextBlock x:Name="IndicatorText" Foreground="White"
+                       FontFamily="{StaticResource UiFont}"
+                       FontSize="{StaticResource FontSizeSecondary}"
+                       VerticalAlignment="Center"/>
+        </StackPanel>
+    </Border>
+</Window>

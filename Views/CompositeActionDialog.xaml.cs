@@ -6,6 +6,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using LTools.Config;
+using LTools.Core;
 using LTools.Features;
 
 namespace LTools.Views;
@@ -16,7 +18,9 @@ namespace LTools.Views;
 /// </summary>
 /// <remarks>
 /// 步骤**内嵌动作快照**（与动作池解耦，见 §12）：加入步骤即深拷贝，改池动作不影响已加步骤；
+/// 宏步骤是例外——只存 <see cref="ActionDto.MacroId"/> 引用，事件本体留在 <c>macros/</c>（随备份一起走）。
 /// **禁止嵌套组合**（左栏动作池已排除组合动作，＋新建步骤类型也不含组合）。
+/// 左栏分组（基础动作 / 内部动作 / 动作池）可折叠，状态存 <c>LTools.json</c>。
 /// 用户点「改为普通动作…」置 <see cref="JumpToNormal"/>，由 <see cref="ActionEditor"/> 改开普通编辑器（不带数据）。
 /// </remarks>
 public partial class CompositeActionDialog : Window
@@ -24,6 +28,10 @@ public partial class CompositeActionDialog : Window
     private readonly ActionDto _draft;
     private readonly List<StepDto> _steps;
     private readonly ObservableCollection<StepRow> _rows = new();
+
+    // 左栏分组折叠状态（写回 LTools.json，下次打开保持）与当前搜索词。
+    private readonly HashSet<string> _collapsed;
+    private string _query = "";
 
     // 左栏拖拽（阈值触发，避免与双击冲突）
     private LeftItem? _leftDragCandidate;
@@ -38,6 +46,9 @@ public partial class CompositeActionDialog : Window
             : new ActionDto { Type = ActionType.composite, Icon = IconCatalog.Default };
         if (!string.IsNullOrEmpty(title)) Title = title;
         _steps = _draft.Steps != null ? new List<StepDto>(_draft.Steps) : new List<StepDto>();
+        _collapsed = new HashSet<string>(
+            ConfigStore.LoadConfig().CompositeCollapsedGroups ?? new List<string>(),
+            StringComparer.Ordinal);
 
         NameBox.Text = _draft.Name;
         IconPicker.SelectedIcon = _draft.Icon;
@@ -58,10 +69,10 @@ public partial class CompositeActionDialog : Window
 
     private void BuildSourceList()
     {
-        string q = (SearchBox.Text ?? "").Trim();
+        _query = (SearchBox.Text ?? "").Trim();
         SourceList.Children.Clear();
 
-        // 基础动作（8 种动作类型）→ 双击/拖入开预置类型的编辑器（§12）
+        // 基础动作（9 种动作类型）→ 双击/拖入开预置类型的编辑器（§12）
         var basicDefs = new (ActionType Type, string Icon, string Label)[]
         {
             (ActionType.launchApp, "app", "启动程序"),
@@ -71,32 +82,33 @@ public partial class CompositeActionDialog : Window
             (ActionType.runCommand, "terminal", "运行命令"),
             (ActionType.sendText, "send", "发送文本"),
             (ActionType.sendKeys, "keyboard", "模拟按键"),
+            (ActionType.macro, "record", "键鼠宏"),
             (ActionType.@internal, "settings", "内部动作"),
         };
         var basics = basicDefs
             .Select(b => new LeftItem { Label = b.Label, Glyph = IconCatalog.GetGlyph(b.Icon), BasicType = b.Type })
-            .Where(i => q.Length == 0 || i.Label.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .Where(Match)
             .ToList();
-        AddGroup("基础动作", basics);
+        AddGroup("basic", "基础动作", basics);
 
-        // 内部动作（6 个内置命令）→ 内联 internal 快照（无需开编辑器）
+        // 内部动作（内置命令）→ 内联 internal 快照（无需开编辑器）
         var internals = InternalActionRegistry.Commands
             .OrderBy(c => c, StringComparer.Ordinal)
             .Select(c => new LeftItem { Label = ActionEditorDialog.FormatCommand(c), Glyph = "\uE756", InternalCommand = c })
-            .Where(i => q.Length == 0 || i.Label.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .Where(Match)
             .ToList();
-        AddGroup("内部动作", internals);
+        AddGroup("internal", "内部动作", internals);
 
         // 动作池（排除组合动作，避免嵌套）→ 深拷贝快照
         var pool = ActionRegistry.All
             .Where(a => a.Type != ActionType.composite)
             .OrderBy(a => a.Name, StringComparer.CurrentCulture)
             .Select(a => new LeftItem { Label = a.Name, Glyph = IconCatalog.GetGlyph(a.Icon), PoolActionId = a.Id })
-            .Where(i => q.Length == 0 || i.Label.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .Where(Match)
             .ToList();
-        AddGroup("动作池", pool);
+        AddGroup("pool", "动作池", pool);
 
-        if (basics.Count == 0 && internals.Count == 0 && pool.Count == 0)
+        if (SourceList.Children.Count == 0)
             SourceList.Children.Add(new TextBlock
             {
                 Text = "（无匹配）",
@@ -105,16 +117,107 @@ public partial class CompositeActionDialog : Window
             });
     }
 
-    private void AddGroup(string title, List<LeftItem> items)
+    private bool Match(LeftItem i) =>
+        _query.Length == 0 || i.Label.Contains(_query, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 加一个可折叠分组：标题按钮（▾/▸ + 名称 + 数量）+ 内容面板。
+    /// 折叠状态写回 <c>LTools.json</c> 的 <c>CompositeCollapsedGroups</c>，下次打开保持；
+    /// 搜索时强制展开（否则搜到的东西藏在折叠组里），但不改变已保存的折叠状态。
+    /// </summary>
+    private void AddGroup(string key, string title, List<LeftItem> items, string? emptyHint = null)
     {
-        if (items.Count == 0) return;
-        SourceList.Children.Add(new TextBlock
+        if (items.Count == 0 && (emptyHint == null || _query.Length > 0)) return;
+
+        bool expanded = _query.Length > 0 || !_collapsed.Contains(key);
+
+        var panel = new StackPanel
+        {
+            Visibility = expanded ? Visibility.Visible : Visibility.Collapsed,
+        };
+        foreach (var it in items) panel.Children.Add(BuildLeftButton(it));
+        if (items.Count == 0 && emptyHint != null)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = emptyHint,
+                Style = (Style)FindResource("HintLabel"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(22, 2, 12, 6),
+            });
+        }
+
+        var chevron = new TextBlock
+        {
+            Text = expanded ? "▾" : "▸",
+            FontSize = 10,
+            Width = 14,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (Brush)FindResource("HintTextBrush"),
+        };
+        var content = new StackPanel { Orientation = Orientation.Horizontal };
+        content.Children.Add(chevron);
+        content.Children.Add(new TextBlock
         {
             Text = title,
             Style = (Style)FindResource("SectionLabel"),
-            Margin = new Thickness(12, 10, 0, 4),
         });
-        foreach (var it in items) SourceList.Children.Add(BuildLeftButton(it));
+        if (items.Count > 0)
+        {
+            content.Children.Add(new TextBlock
+            {
+                Text = items.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Style = (Style)FindResource("HintLabel"),
+                Margin = new Thickness(6, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+        }
+
+        var header = new Button
+        {
+            Style = (Style)FindResource("BtnGhost"),
+            Content = content,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(6, 6, 6, 0),
+            Padding = new Thickness(6, 4, 6, 4),
+            Cursor = Cursors.Hand,
+            ToolTip = expanded ? "点击折叠" : "点击展开",
+        };
+        header.Click += (_, _) =>
+        {
+            bool nowExpanded = panel.Visibility != Visibility.Visible;
+            panel.Visibility = nowExpanded ? Visibility.Visible : Visibility.Collapsed;
+            chevron.Text = nowExpanded ? "▾" : "▸";
+            header.ToolTip = nowExpanded ? "点击折叠" : "点击展开";
+            PersistCollapsed(key, !nowExpanded);
+        };
+
+        SourceList.Children.Add(header);
+        SourceList.Children.Add(panel);
+    }
+
+    /// <summary>把分组折叠状态写回配置（与设置窗口的防抖保存共用 ConfigIO 串行化，不会互相覆盖）。</summary>
+    private void PersistCollapsed(string key, bool collapsed)
+    {
+        if (collapsed) _collapsed.Add(key);
+        else _collapsed.Remove(key);
+
+        try
+        {
+            string path = string.IsNullOrEmpty(ConfigStore.ConfigPath)
+                ? ConfigLocator.FindPath()
+                : ConfigStore.ConfigPath;
+            ConfigIO.Modify(path, cfg =>
+            {
+                var list = cfg.CompositeCollapsedGroups ??= new List<string>();
+                list.RemoveAll(k => string.Equals(k, key, StringComparison.Ordinal));
+                if (collapsed) list.Add(key);
+            });
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("CompositeActionDialog.PersistCollapsed", ex);
+        }
     }
 
     private Button BuildLeftButton(LeftItem item)
@@ -142,6 +245,7 @@ public partial class CompositeActionDialog : Window
             Margin = new Thickness(8, 1, 8, 1),
             MinHeight = 30,
             Cursor = Cursors.Hand,
+            ToolTip = item.ToolTip,
         };
         btn.PreviewMouseLeftButtonDown += (_, e) =>
         {
@@ -213,6 +317,7 @@ public partial class CompositeActionDialog : Window
             var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = item.BasicType.Value };
             var dto = ActionEditorDialog.Show(this, "新建步骤", draft, allowComposite: false, requireName: false);
             if (dto == null || dto.Type == ActionType.composite) return;   // 取消 / 防御
+            BuildSourceList();   // 编辑期间可能录了新宏，刷新左栏动作池
             var c = dto.Clone();
             c.Id = "";
             step = new StepDto { Action = c };
@@ -235,8 +340,9 @@ public partial class CompositeActionDialog : Window
             new("继续下一步", null),
             new("中止组合", OnFailStrategy.abort),
         };
+        var macroNames = MacroStore.NameMap();
         for (int i = 0; i < _steps.Count; i++)
-            _rows.Add(new StepRow(_steps[i], i, strategies));
+            _rows.Add(new StepRow(_steps[i], i, strategies, macroNames));
         EmptyHint.Visibility = _steps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -260,6 +366,7 @@ public partial class CompositeActionDialog : Window
         row.Step.Action = a;
         int idx = _steps.IndexOf(row.Step);
         ReloadRows();
+        BuildSourceList();   // 编辑期间可能录了新宏，刷新左栏动作池
         if (idx >= 0 && idx < _rows.Count) StepsList.SelectedIndex = idx;
     }
 
@@ -507,7 +614,8 @@ public partial class CompositeActionDialog : Window
     {
         public string Label { get; set; } = "";
         public string Glyph { get; set; } = "";
-        public string? InternalCommand { get; set; }   // 内部动作组：6 个内置命令
+        public string? ToolTip { get; set; }
+        public string? InternalCommand { get; set; }   // 内部动作组：内置命令
         public string? PoolActionId { get; set; }       // 动作池组：复用（深拷贝）
         public ActionType? BasicType { get; set; }       // 基础动作组：动作类型（需开编辑器填字段）
     }
@@ -515,7 +623,8 @@ public partial class CompositeActionDialog : Window
     /// <summary>步骤行展示模型；属性直接读写底层 <see cref="StepDto"/>，绑定编辑即落回数据。</summary>
     private sealed class StepRow
     {
-        public StepRow(StepDto step, int index, IReadOnlyList<StrategyItem> strategies)
+        public StepRow(StepDto step, int index, IReadOnlyList<StrategyItem> strategies,
+                       IReadOnlyDictionary<string, string>? macroNames = null)
         {
             Step = step;
             Number = index + 1;
@@ -524,6 +633,21 @@ public partial class CompositeActionDialog : Window
             // 空名回退类型名（名称非必填，§12）：比「（未命名）」更表意，与灰底类型徽标层次分明
             ActionName = string.IsNullOrEmpty(step.Action.Name)
                 ? ActionTypeLabel.Of(step.Action.Type) : step.Action.Name;
+
+            // 宏步骤按 Id 引用事件文件：显示宏的当前名称；文件缺失时明确标出，避免回放时才报错。
+            if (step.Action.Type == ActionType.macro)
+            {
+                string id = step.Action.MacroId ?? "";
+                if (MacroStore.Exists(id) &&
+                    macroNames != null && macroNames.TryGetValue(id, out var current))
+                {
+                    ActionName = current;
+                }
+                else
+                {
+                    ActionName += "（宏文件缺失）";
+                }
+            }
         }
         public int Number { get; }
         public string TypeBadge { get; }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -36,6 +37,9 @@ public partial class ConfigHelperWindow : Window
     private bool _superDirty;            // 超级面板有未保存改动
     private bool _pagesReady;            // 页面全部构建完成前抑制导航切换
     private bool _backupBusy;            // 备份 / 导入进行中，禁用重复点击
+    private readonly DispatcherTimer _macroUiTimer;
+    private bool _wasRecording;
+    private bool _wasPlaying;
 
     // —— 超级面板槽位拖动（设置页内，交换语义，跨卡片=跨页）——
     private int _dragSrcPage = -1, _dragSrcSlot = -1;
@@ -61,6 +65,14 @@ public partial class ConfigHelperWindow : Window
         PopulateGroupList();
         PopulateSuperPanel();
         PopulateTerminals();
+        PopulateMacroSettings();
+        PopulateMacros();
+
+        // 录制 / 回放可能由热键或托盘触发，设置页定时同步按钮状态。
+        _macroUiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+        _macroUiTimer.Tick += (_, _) => SyncMacroButtons();
+        _macroUiTimer.Start();
+        Closed += (_, _) => _macroUiTimer.Stop();
 
         _pagesReady = true;
         // 恢复上次导航页（§10.x）：存于 AppConfig.LastNavPage，默认「动作管理」
@@ -109,11 +121,29 @@ public partial class ConfigHelperWindow : Window
         if (sender is not RadioButton rb || rb.Tag is not string tag) return;
         // 切换页前先落盘未保存改动，避免重建列表时丢弃（如超级面板 800ms 防抖内的编辑）
         if (_saveDebounce.IsEnabled) { _saveDebounce.Stop(); SaveNow(); }
+        ApplyNavPage(tag);
+    }
+
+    /// <summary>切到指定页（供托盘 / 内部动作「宏管理…」外部调用）。</summary>
+    public void SelectPage(string tag)
+    {
+        foreach (var rb in NavList.Children.OfType<RadioButton>())
+        {
+            if (rb.Tag is not string t || t != tag) continue;
+            if (rb.IsChecked == true) ApplyNavPage(tag);   // 已在该页：Checked 不触发，手动刷新
+            else rb.IsChecked = true;                       // 触发 Nav_Changed
+            return;
+        }
+    }
+
+    private void ApplyNavPage(string tag)
+    {
         Page_General.Visibility = tag == "general" ? Visibility.Visible : Visibility.Collapsed;
         Page_Actions.Visibility = tag == "actions" ? Visibility.Visible : Visibility.Collapsed;
         Page_Menus.Visibility = tag == "menus" ? Visibility.Visible : Visibility.Collapsed;
         Page_SuperPanel.Visibility = tag == "superpanel" ? Visibility.Visible : Visibility.Collapsed;
         Page_Terminals.Visibility = tag == "terminals" ? Visibility.Visible : Visibility.Collapsed;
+        Page_Macro.Visibility = tag == "macro" ? Visibility.Visible : Visibility.Collapsed;
         Page_Backup.Visibility = tag == "backup" ? Visibility.Visible : Visibility.Collapsed;
         if (tag == "terminals") PopulateTerminals();
         // 记忆当前导航页，下次打开恢复（ConfigIO 读改写：只动 LastNavPage，余字段不动）
@@ -121,6 +151,7 @@ public partial class ConfigHelperWindow : Window
         if (tag == "actions") PopulateActions();
         if (tag == "menus") PopulateGroupList();
         if (tag == "superpanel") PopulateSuperPanel();
+        if (tag == "macro") PopulateMacros();
     }
 
     // ============ 通用：开关 ============
@@ -161,10 +192,11 @@ public partial class ConfigHelperWindow : Window
     private void PopulateActions()
     {
         int sel = ActionList.SelectedIndex;
+        var macroNames = MacroStore.NameMap();
         _loadingList = true;
         _actionRows.Clear();
         foreach (var a in ActionRegistry.All.OrderBy(x => x.Id))
-            _actionRows.Add(new ActionRow(a));
+            _actionRows.Add(new ActionRow(a, macroNames));
         _loadingList = false;
         if (sel >= 0 && sel < _actionRows.Count) ActionList.SelectedIndex = sel;
     }
@@ -1147,6 +1179,252 @@ public partial class ConfigHelperWindow : Window
         _superDirty = false;
     }
 
+    // ============ 键鼠录制 ============
+    private void PopulateMacroSettings()
+    {
+        var m = ConfigStore.LoadConfig().Macros ?? new MacroConfig();
+        MacroEnabledBox.IsChecked = m.Enabled;
+        MacroRecordHotkeyBox.Text = m.RecordHotkey;
+        MacroCountdownBox.Text = m.CountdownMs.ToString(CultureInfo.InvariantCulture);
+        MacroSampleMsBox.Text = m.MouseSampleMs.ToString(CultureInfo.InvariantCulture);
+        MacroSamplePxBox.Text = m.MouseSamplePx.ToString(CultureInfo.InvariantCulture);
+        MacroSpeedBox.Text = m.DefaultSpeed.ToString("0.##", CultureInfo.InvariantCulture);
+        MacroLoopsBox.Text = m.Loops.ToString(CultureInfo.InvariantCulture);
+        MacroHotkeyHint.Text = $"当前生效：{MacroSettings.RecordHotkeyDisplay}（仅在键鼠宏动作编辑窗口录制时生效）";
+    }
+
+    private void PopulateMacros()
+    {
+        string? selected = (MacroList.SelectedItem as MacroMeta)?.Id;
+        // 自愈：手动删 / 拷宏文件、导入旧备份后，让元数据与 macros/ 目录对齐。
+        MacroStore.Reconcile();
+        var list = MacroStore.List();
+        MacroList.ItemsSource = list;
+        if (!string.IsNullOrEmpty(selected))
+            MacroList.SelectedItem = list.FirstOrDefault(m => m.Id == selected);
+    }
+
+    private void SaveMacroSettings_Click(object sender, RoutedEventArgs e)
+    {
+        string record = MacroRecordHotkeyBox.Text.Trim();
+
+        if (!MacroSettings.TryParseHotkey(record, out _, out _, out var err))
+        {
+            ConfirmDialog.Info(this, "键鼠录制", "键鼠宏录制热键无法解析: " + err);
+            return;
+        }
+        if (!TryReadInt(MacroCountdownBox, 0, 10_000, "回放倒计时（ms）", out int countdown)) return;
+        if (!TryReadInt(MacroSampleMsBox, 0, 100, "鼠标采样间隔（ms）", out int sampleMs)) return;
+        if (!TryReadInt(MacroSamplePxBox, 0, 20, "鼠标最小位移（px）", out int samplePx)) return;
+        if (!double.TryParse(MacroSpeedBox.Text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double speed)
+            || speed < 0.1 || speed > 5.0)
+        {
+            ConfirmDialog.Info(this, "键鼠录制", "默认回放速度需为 0.1–5 之间的数字。");
+            return;
+        }
+        if (!TryReadInt(MacroLoopsBox, 1, 99, "回放循环次数", out int loops)) return;
+
+        bool enabled = MacroEnabledBox.IsChecked == true;
+        ConfigIO.Modify(ConfigPath, cfg =>
+        {
+            var m = cfg.Macros ??= new MacroConfig();
+            m.Enabled = enabled;
+            m.RecordHotkey = record;
+            m.CountdownMs = countdown;
+            m.MouseSampleMs = sampleMs;
+            m.MouseSamplePx = samplePx;
+            m.DefaultSpeed = speed;
+            m.Loops = loops;
+        });
+        MacroSettings.Load(ConfigStore.LoadConfig());
+        MacroHotkeyHint.Text = $"当前生效：{MacroSettings.RecordHotkeyDisplay}（仅在键鼠宏动作编辑窗口录制时生效）";
+        ShowStatus("宏设置已保存", ok: true);
+    }
+
+    // —— 热键可视化选择（复用组合键选键器）——
+    private void MacroRecordHotkeyPick_Click(object sender, RoutedEventArgs e) =>
+        PickMacroHotkey(MacroRecordHotkeyBox, "键鼠宏录制热键");
+
+    private void PickMacroHotkey(TextBox box, string label)
+    {
+        var dlg = new ChordPickerDialog(box.Text.Trim()) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+
+        if (!MacroSettings.TryParseHotkey(dlg.Stroke, out _, out _, out var err))
+        {
+            ConfirmDialog.Info(this, "键鼠录制", $"{label}不可用：{err}");
+            return;
+        }
+        box.Text = dlg.Stroke;
+    }
+
+    /// <summary>设置选中宏的专属回放速度（留空 = 跟随全局默认）。</summary>
+    private void MacroSpeed_Click(object sender, RoutedEventArgs e)
+    {
+        if (MacroList.SelectedItem is not MacroMeta m)
+        {
+            ConfirmDialog.Info(this, "键鼠录制", "请先在列表中选择一个宏。");
+            return;
+        }
+
+        double current = m.Speed > 0 ? m.Speed : MacroSettings.DefaultSpeed;
+        var (ok, text) = InputDialog.Show(this, "回放速度",
+            $"「{m.Name}」的回放速度倍率（0.1–5，留空 = 跟随默认 {MacroSettings.DefaultSpeed:0.##}×）：",
+            current.ToString("0.##", CultureInfo.InvariantCulture));
+        if (!ok) return;
+
+        text = text.Trim();
+        double speed = 0;
+        if (text.Length > 0)
+        {
+            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out speed)
+                || speed < 0.1 || speed > 5.0)
+            {
+                ConfirmDialog.Info(this, "键鼠录制", "回放速度需为 0.1–5 之间的数字，留空表示跟随默认。");
+                return;
+            }
+        }
+
+        MacroStore.SetSpeed(m.Id, speed);
+        PopulateMacros();
+        ShowStatus(speed > 0 ? $"「{m.Name}」回放速度设为 {speed:0.##}×" : $"「{m.Name}」改为跟随默认速度", ok: true);
+    }
+
+    private bool TryReadInt(TextBox box, int min, int max, string label, out int value)
+    {
+        if (!int.TryParse(box.Text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value)
+            || value < min || value > max)
+        {
+            ConfirmDialog.Info(this, "键鼠录制", $"{label}需为 {min}–{max} 的整数。");
+            value = min;
+            return false;
+        }
+        return true;
+    }
+
+    private void MacroRecord_Click(object sender, RoutedEventArgs e)
+    {
+        if (MacroRecorder.IsRecording)
+        {
+            MacroRecorder.StopFromUi();
+            ShowStatus(MacroRecorder.IsRecording
+                ? "刚开录：已忽略这次停止（继续录制中），请稍后再点一次"
+                : "已停止录制", ok: !MacroRecorder.IsRecording);
+        }
+        else if (!MacroSettings.Enabled)
+        {
+            ShowStatus("宏功能已关闭：请勾选上方「启用宏热键与回放」", ok: false);
+        }
+        else if (MacroPlayer.IsPlaying)
+        {
+            ShowStatus("宏正在回放，请先停止回放再录制", ok: false);
+        }
+        else
+        {
+            MacroRecorder.Start();
+            if (MacroRecorder.IsRecording)
+                ShowStatus($"已开始录制：按 {MacroSettings.RecordHotkeyDisplay} 或再点「停止录制」结束", ok: true);
+        }
+        SyncMacroButtons();
+    }
+
+    private void MacroPlay_Click(object sender, RoutedEventArgs e)
+    {
+        if (MacroPlayer.IsPlaying)
+        {
+            MacroPlayer.Stop();
+        }
+        else if (MacroList.SelectedItem is MacroMeta m)
+        {
+            MacroPlayer.PlayAsync(m.Id);
+        }
+        else
+        {
+            ConfirmDialog.Info(this, "键鼠录制", "请先在列表中选择一个宏。");
+        }
+        SyncMacroButtons();
+    }
+
+    private void MacroList_MouseDoubleClick(object sender, MouseButtonEventArgs e) => MacroRename_Click(sender, e);
+
+    private void MacroRename_Click(object sender, RoutedEventArgs e)
+    {
+        if (MacroList.SelectedItem is not MacroMeta m)
+        {
+            ConfirmDialog.Info(this, "键鼠录制", "请先在列表中选择一个宏。");
+            return;
+        }
+        var (ok, name) = InputDialog.Show(this, "重命名宏", "输入新名称:", m.Name);
+        if (!ok || string.IsNullOrWhiteSpace(name)) return;
+        MacroStore.Rename(m.Id, name.Trim());
+        PopulateMacros();
+        ShowStatus("宏已改名", ok: true);
+    }
+
+    private void MacroDuplicate_Click(object sender, RoutedEventArgs e)
+    {
+        if (MacroList.SelectedItem is not MacroMeta m)
+        {
+            ConfirmDialog.Info(this, "键鼠录制", "请先在列表中选择一个宏。");
+            return;
+        }
+        var copy = MacroStore.Duplicate(m.Id);
+        if (copy == null)
+        {
+            ConfirmDialog.Info(this, "键鼠录制", "复制失败：宏文件不存在或读取失败。");
+            return;
+        }
+        PopulateMacros();
+        MacroList.SelectedItem = (MacroList.ItemsSource as IEnumerable<MacroMeta>)?.FirstOrDefault(x => x.Id == copy.Id);
+        ShowStatus("宏已复制", ok: true);
+    }
+
+    private void MacroDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (MacroList.SelectedItem is not MacroMeta m)
+        {
+            ConfirmDialog.Info(this, "键鼠录制", "请先在列表中选择一个宏。");
+            return;
+        }
+        if (!ConfirmDialog.Confirm(this, "删除宏", $"确定删除「{m.Name}」？此操作不可撤销。", danger: true))
+            return;
+        MacroStore.Delete(m.Id);
+        PopulateMacros();
+        ShowStatus("宏已删除", ok: true);
+    }
+
+    private void MacroRefresh_Click(object sender, RoutedEventArgs e)
+    {
+        PopulateMacros();
+        ShowStatus("宏列表已刷新", ok: true);
+    }
+
+    /// <summary>录制停止后事件文件由后台线程落盘，稍等再刷新列表。</summary>
+    private async void RefreshMacrosLater()
+    {
+        await Task.Delay(1200);
+        PopulateMacros();
+    }
+
+    /// <summary>同步录制 / 回放按钮状态（热键或托盘也可能改变状态）。</summary>
+    private void SyncMacroButtons()
+    {
+        bool rec = MacroRecorder.IsRecording;
+        bool playing = MacroPlayer.IsPlaying;
+
+        if (rec != _wasRecording)
+        {
+            _wasRecording = rec;
+            MacroRecordBtn.Content = rec ? "停止录制" : "开始录制";
+            if (!rec) RefreshMacrosLater();
+        }
+        if (playing != _wasPlaying)
+        {
+            _wasPlaying = playing;
+            MacroPlayBtn.Content = playing ? "停止回放" : "回放";
+        }
+    }
+
     // ============ 终端路径 ============
     private void PopulateTerminals()
     {
@@ -1270,6 +1548,10 @@ public partial class ConfigHelperWindow : Window
             AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
             AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
             AppState.MouseModeSpeed = cfg.MouseModeSpeed;
+            MacroSettings.Load(cfg);
+            MacroStore.Ensure();
+            PopulateMacroSettings();
+            PopulateMacros();
             _initializing = true;
             CapsLockEnabledBox.IsChecked = AppState.IsToolEnabled;
             SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
@@ -1296,9 +1578,12 @@ public partial class ConfigHelperWindow : Window
     {
         _saveDebounce.Stop();
         ConfigStore.Reload();
+        MacroSettings.Load(ConfigStore.LoadConfig());
         PopulateActions();
         PopulateGroupList();
         PopulateSuperPanel();
+        PopulateMacroSettings();
+        PopulateMacros();
         ShowStatus("已重新加载", ok: true);
     }
 
@@ -1337,13 +1622,13 @@ public partial class ConfigHelperWindow : Window
     /// <summary>动作列表展示模型。</summary>
     public sealed class ActionRow
     {
-        public ActionRow(ActionDto a)
+        public ActionRow(ActionDto a, IReadOnlyDictionary<string, string>? macroNames = null)
         {
             Id = a.Id;
             Name = a.Name;
             TypeLabel = ActionTypeLabel.Of(a.Type);
             Glyph = IconCatalog.GetGlyph(a.Icon);
-            Summary = Summarize(a);
+            Summary = Summarize(a, macroNames);
         }
         public string Id { get; }
         public string Name { get; }
@@ -1351,7 +1636,7 @@ public partial class ConfigHelperWindow : Window
         public string Glyph { get; }
         public string Summary { get; }
 
-        private static string Summarize(ActionDto a) => a.Type switch
+        private static string Summarize(ActionDto a, IReadOnlyDictionary<string, string>? macroNames) => a.Type switch
         {
             ActionType.launchApp => a.Target ?? "",
             ActionType.openFile or ActionType.openFolder => a.Path ?? "",
@@ -1359,10 +1644,18 @@ public partial class ConfigHelperWindow : Window
             ActionType.runCommand => string.IsNullOrEmpty(a.Cmd) ? "" : $"{a.Cmd}",
             ActionType.sendText => BriefText(a.Text),
             ActionType.sendKeys => a.Items != null ? $"{a.Items.Count} 条输入" : "",
+            ActionType.macro => MacroLabel(a.MacroId, macroNames),
             ActionType.@internal => a.Command ?? "",
             ActionType.composite => a.Steps != null ? $"{a.Steps.Count} 个步骤" : "",
             _ => "",
         };
+
+        private static string MacroLabel(string? id, IReadOnlyDictionary<string, string>? names)
+        {
+            if (string.IsNullOrWhiteSpace(id)) return "（未选择宏）";
+            if (names != null && names.TryGetValue(id!, out var name)) return name;
+            return id!;
+        }
 
         /// <summary>文本摘要：首行截断（超长加省略号），供动作列表 Summary 列。</summary>
         private static string BriefText(string? text)

@@ -25,6 +25,15 @@ internal static class Win32
     public static extern bool SetCursorPos(int x, int y);
 
     [DllImport("user32.dll")]
+    public static extern int GetSystemMetrics(int nIndex);
+
+    // GetSystemMetrics 索引（虚拟桌面 = 所有显示器合并后的矩形，可能含负坐标）
+    public const int SmXVirtualscreen = 76;
+    public const int SmYVirtualscreen = 77;
+    public const int SmCxVirtualscreen = 78;
+    public const int SmCyVirtualscreen = 79;
+
+    [DllImport("user32.dll")]
     public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr dwExtraInfo);
 
     [DllImport("user32.dll")]
@@ -49,13 +58,52 @@ internal static class Win32
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    public static extern IntPtr GetActiveWindow();
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr SetActiveWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr lpdwProcessId);
+
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     public static extern bool ClientToScreen(IntPtr hWnd, ref Point lpPoint);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
     [DllImport("user32.dll")]
     public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+
+    // SetWindowPos 标志（HWND_TOP = IntPtr.Zero）
+    public const uint SwpNosize = 0x0001;
+    public const uint SwpNomove = 0x0002;
+    public const uint SwpNoactivate = 0x0010;
+    public const uint SwpShowwindow = 0x0040;
+
+    /// <summary>SetWindowPos 的 HWND_TOPMOST。</summary>
+    public static readonly IntPtr HwndTopmost = new(-1);
 
     [DllImport("user32.dll")]
     public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
@@ -177,27 +225,48 @@ internal static class Win32
     }
 
     // KBDLLHOOKSTRUCT.Flags 位
+    public const uint LlkhfExtended = 0x01;   // 扩展键（右 Ctrl/Alt、小键盘 Enter 等）
     public const uint LlkhfInjected = 0x10;
 
     // MSLLHOOKSTRUCT.Flags 位（注意与键盘不同：LLMHF_INJECTED=0x01，非 0x10）
     public const uint LlmhfInjected = 0x01;
 
     // 鼠标消息
+    public const int WmMousemove = 0x0200;
     public const int WmLbuttondown = 0x0201;
+    public const int WmLbuttonup = 0x0202;
     public const int WmRbuttondown = 0x0204;
     public const int WmRbuttonup = 0x0205;
+    public const int WmMbuttondown = 0x0207;
+    public const int WmMbuttonup = 0x0208;
     public const int WmMousewheel = 0x020A;
+    public const int WmXbuttondown = 0x020B;
+    public const int WmXbuttonup = 0x020C;
+    public const int WmMousehwheel = 0x020E;
 
     // mouse_event 标志
+    public const uint MouseeventfMove = 0x0001;
     public const uint MouseeventfLeftdown = 0x0002;
     public const uint MouseeventfLeftup = 0x0004;
     public const uint MouseeventfRightdown = 0x0008;
     public const uint MouseeventfRightup = 0x0010;
+    public const uint MouseeventfMiddledown = 0x0020;
+    public const uint MouseeventfMiddleup = 0x0040;
+    public const uint MouseeventfXdown = 0x0080;
+    public const uint MouseeventfXup = 0x0100;
     public const uint MouseeventfWheel = 0x0800;
     public const uint MouseeventfHwheel = 0x01000;
+    public const uint MouseeventfVirtualdesk = 0x4000;
+    public const uint MouseeventfAbsolute = 0x8000;
+    public const uint MouseeventfMoveNocoalesce = 0x2000;   // SendInput 专用：不合并相邻移动
     public const uint WheelDelta = 120;
+
+    // XBUTTON（WM_XBUTTONDOWN/UP 的 MouseData 高 16 位）
+    public const int Xbutton1 = 0x0001;
+    public const int Xbutton2 = 0x0002;
 
     // ShowWindow 命令
     public const int SwMinimize = 6;
+    public const int SwRestore = 9;
     public const uint WmClose = 0x0010;
 }

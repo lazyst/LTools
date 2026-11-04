@@ -68,6 +68,9 @@ internal static class ActionExecutor
             case ActionType.sendKeys:
                 SendKeys(action);
                 break;
+            case ActionType.macro:
+                PlayMacro(action);
+                break;
             case ActionType.@internal:
                 DispatchInternal(action, cursorX, cursorY);
                 break;
@@ -308,6 +311,18 @@ internal static class ActionExecutor
                     break;
             }
         }
+    }
+
+    // —— macro（回放录制的键鼠宏）——
+    private static void PlayMacro(ActionDto a)
+    {
+        if (string.IsNullOrWhiteSpace(a.MacroId))
+            throw new InvalidOperationException($"macro 缺少 MacroId: {a.Name}");
+
+        var macro = MacroStore.Load(a.MacroId!)
+            ?? throw new InvalidOperationException($"宏不存在: {a.MacroId}");
+
+        MacroPlayer.PlaySync(macro, MacroPlayer.EffectiveSpeed(macro.Id));
     }
 
     // —— internal（内部命令分发到 UI 线程，同步等待）——

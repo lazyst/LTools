@@ -37,6 +37,53 @@ internal static class SuperPanel
     /// <summary>面板是否已钉住——钉住时点击外部不关闭（钩子不介入外部点击）。</summary>
     public static bool IsPinned => _window?.IsPinned == true;
 
+    /// <summary>面板上是否开着可见的子对话框（<c>Owner = 面板</c>，如从面板新建的动作编辑器）。</summary>
+    public static bool HasOpenDialog
+    {
+        get
+        {
+            var w = _window;
+            if (w == null) return false;
+            var windows = Application.Current?.Windows;
+            if (windows == null) return false;
+            foreach (Window x in windows)
+                if (!ReferenceEquals(x, w) && ReferenceEquals(x.Owner, w) && x.IsVisible) return true;
+            return false;
+        }
+    }
+
+    private static bool _hiddenForRecording;
+
+    /// <summary>
+    /// 开始键鼠录制前让开屏幕：面板是 Topmost，留在屏幕上会挡住目标窗口并吃掉点击。
+    /// 注意<b>不能</b>直接 <see cref="Close"/>——面板上有对话框（动作编辑器 <c>Owner = 面板</c>）时，
+    /// 关闭 owner 会连带销毁对话框，表现为「点录制后编辑窗口直接消失」。此时改为临时隐藏，
+    /// 录制结束（<see cref="RestoreAfterRecording"/>）再显示回来。
+    /// </summary>
+    public static void HideForRecording()
+    {
+        var w = _window;
+        if (w == null) return;
+        if (!HasOpenDialog)
+        {
+            Close();   // 没有对话框：照旧关闭，下次唤起重新建窗
+            return;
+        }
+        if (_hiddenForRecording) return;
+        _hiddenForRecording = true;
+        try { w.Hide(); } catch { /* 静默：隐藏失败不影响录制 */ }
+    }
+
+    /// <summary>录制结束：恢复被 <see cref="HideForRecording"/> 临时隐藏的面板。</summary>
+    public static void RestoreAfterRecording()
+    {
+        if (!_hiddenForRecording) return;
+        _hiddenForRecording = false;
+        var w = _window;
+        if (w == null) return;
+        try { w.Show(); } catch { /* 静默：恢复失败不影响编辑 */ }
+    }
+
     /// <summary>屏幕物理坐标点是否落在面板窗口矩形内（供鼠标钩子判定“点击外部”）。</summary>
     public static bool PointInWindowRect(int x, int y)
     {
@@ -77,6 +124,7 @@ internal static class SuperPanel
                 if (_window == win) _window = null;
             };
             _window = win;
+            _hiddenForRecording = false;
             win.Show();
             win.Activate();
         }));
@@ -88,6 +136,7 @@ internal static class SuperPanel
         var w = _window;
         if (w == null) return;
         _window = null;
+        _hiddenForRecording = false;
         try { w.Close(); } catch { /* 静默 */ }
     }
 

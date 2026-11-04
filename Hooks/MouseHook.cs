@@ -74,6 +74,14 @@ internal static class MouseHook
             if ((ms.Flags & Win32.LlmhfInjected) != 0 || ms.ExtraInfo == InjectedTag)
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
 
+            // 录制透明模式：只观察并放行，跳过音量 / 超级面板 / 窗口置顶 / 资源管理器重命名
+            // 等全部 LTools 鼠标功能——保证「录到的鼠标事件 = 目标应用实际收到的」。
+            if (MacroRecorder.IsRecording)
+            {
+                MacroRecorder.ObserveMouse((int)wParam, ms.Pt.X, ms.Pt.Y, (int)ms.MouseData, ms.Time);
+                return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
+            }
+
             switch ((int)wParam)
             {
                 case Win32.WmMousewheel:
@@ -228,6 +236,14 @@ internal static class MouseHook
 
     /// <summary>短按收尾：停表放行，原生右键菜单照常弹出。</summary>
     private static void CancelSuperPanelGesture() => _superPanelTimer?.Stop();
+
+    /// <summary>清除右键长按手势的待处理状态（进入宏录制透明模式前调用，避免残留标志误吞后续 up）。</summary>
+    public static void CancelPendingGesture()
+    {
+        _superPanelTimer?.Stop();
+        _suppressRButtonUp = false;
+        _rightCloseUpPending = false;
+    }
 
     /// <summary>长按成立：光标处弹面板，并标记吞掉随后的右键 up 阻止原生菜单。</summary>
     private static void OnSuperPanelTimerTick(object? sender, EventArgs e)

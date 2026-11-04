@@ -52,7 +52,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - `LTools.json`（gitignored）— 用户配置，由应用自身读写（设置面板/快捷键），不面向手改；首次保存才生成，升级解压不会覆盖
 - `LTools.example.json`（已提交）— 默认模板，随包分发；`AppConfig.Load` 在用户配置缺失时回退读同目录示例（故发布包只带示例、不带实际配置，避免覆盖用户配置）
 - `ConfigLocator.FindPath()`：dev（仓库根含 `LTools.csproj`）落仓库根，prod 落 exe 同级。首启自动迁移旧配置：`CapsLock++.json` 同目录改名 `LTools.json`；更旧的 `CapsLock++.ini` 读入后改名 `.migrated` 备份
-- 配置格式为 JSON（`MenuGroups[10]`、`TerminalPaths`、`MouseModeSpeed`，见 `Config/AppConfig.cs`），**非旧的 INI 分节格式**——README §9 仍描述 INI schema，已过时，以代码为准
+- 配置格式为 JSON（`MenuGroups[10]`、`TerminalPaths`、`MouseModeSpeed`、`Macros`，见 `Config/AppConfig.cs`），**非旧的 INI 分节格式**——README §10 仍部分描述 INI schema，已过时，以代码为准
 
 ## WPF 约定
 

@@ -72,6 +72,32 @@ internal static class KeyboardHook
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
             }
 
+            // 宏录制热键优先（注入事件已在上方过滤，不会自触发）。
+            if (MacroRecorder.HandleHotkey(vk, isDown, isUp, kb.Time))
+                return (IntPtr)1;
+
+            // 录制透明模式：CapsLock 不录入、不生效；其余键只观察后原样放行，
+            // 跳过 CapsLock 状态机 / 菜单 / 鼠标模式 / vim 编辑等全部 LTools 键盘功能。
+            // CapsLock 需单独处理：录制中吞掉；若录制在按住时结束，随后的 keyup 也补吞，
+            // 避免「down 被吞、up 放行」造成系统按键状态失衡。
+            if (vk == Win32.VkCapital && MacroRecorder.ShouldHandleCapsLock)
+            {
+                bool capsSwallow = MacroRecorder.HandleCapsLock(isDown);
+                if (capsSwallow)
+                {
+                    if (isDown) MarkSwallowed(vk);
+                    else AppState.SwallowedVks.Remove(vk);
+                    return (IntPtr)1;
+                }
+                return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
+            }
+
+            if (MacroRecorder.IsRecording)
+            {
+                MacroRecorder.ObserveKey(vk, isDown, kb.Time, kb.Flags);
+                return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
+            }
+
             // 分发到状态机/功能模块（阶段1+ 实现）
             if (CapsLockStateMachine.TryHandle(vk, isDown, isUp, out bool swallow))
             {

@@ -67,25 +67,12 @@ internal static class ConfigStore
     {
         var src = MenuSystem.FindAction(id);
         if (src == null) return null;
-        var copy = new ActionDto
-        {
-            Id = ActionRegistry.NextId(),
-            Name = src.Name + " 副本",
-            Type = src.Type,
-            Icon = string.IsNullOrEmpty(src.Icon) ? IconCatalog.Default : src.Icon,
-            Target = src.Target,
-            Args = src.Args,
-            Workdir = src.Workdir,
-            Path = src.Path,
-            Url = src.Url,
-            Cmd = src.Cmd,
-            Terminal = src.Terminal,
-            KeepWindow = src.KeepWindow,
-            Command = src.Command,
-            CompositeOnFail = src.CompositeOnFail,
-            // 组合步骤引用其它动作 Id，可安全共享
-            Steps = src.Steps != null ? new List<StepDto>(src.Steps) : null,
-        };
+        // 用 Clone 深拷贝全部字段（含 Text / Mode / AppendEnter / Items / MacroId），
+        // 避免新增字段时这里漏抄导致复制出的动作丢配置。
+        var copy = src.Clone();
+        copy.Id = ActionRegistry.NextId();
+        copy.Name = src.Name + " 副本";
+        if (string.IsNullOrEmpty(copy.Icon)) copy.Icon = IconCatalog.Default;
         MenuSystem.AddAction(copy);
         return copy;
     }

@@ -30,6 +30,22 @@ internal static class InputHelper
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, Input[] pInputs, int cbSize);
 
+    /// <summary>x64 MOUSEINPUT 布局（共 40 字节）：type@0，dx@8，dy@12，mouseData@16，flags@20，time@24，extra@32。</summary>
+    [StructLayout(LayoutKind.Explicit, Size = 40)]
+    private struct MouseInput
+    {
+        [FieldOffset(0)] public int Type;
+        [FieldOffset(8)] public int Dx;
+        [FieldOffset(12)] public int Dy;
+        [FieldOffset(16)] public uint MouseData;
+        [FieldOffset(20)] public uint Flags;
+        [FieldOffset(24)] public uint Time;
+        [FieldOffset(32)] public IntPtr ExtraInfo;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint nInputs, MouseInput[] pInputs, int cbSize);
+
     [DllImport("user32.dll")]
     private static extern ushort VkKeyScanW(char ch);
 
@@ -59,6 +75,12 @@ internal static class InputHelper
     {
         SendOne(vk, down: false);
     }
+
+    /// <summary>按下虚拟键，并显式指定是否扩展键（宏回放用录制到的 LLKHF_EXTENDED 标志）。</summary>
+    public static void DownEx(ushort vk, bool extended) => SendOne(vk, down: true, extended);
+
+    /// <summary>释放虚拟键，并显式指定是否扩展键。</summary>
+    public static void UpEx(ushort vk, bool extended) => SendOne(vk, down: false, extended);
 
     /// <summary>发送和弦组合键（如 Ctrl+C、Ctrl+Shift+End）：依次 down 各键，再逆序 up。
     /// <b>单次</b> SendInput 发送全部事件，避免多次独立调用间修饰键状态交错（对应 AHK 的和弦 Send）。</summary>
@@ -217,6 +239,45 @@ internal static class InputHelper
             SendInput((uint)batch.Count, batch.ToArray(), Marshal.SizeOf<Input>());
     }
 
+    /// <summary>
+    /// 把光标绝对移动到虚拟桌面坐标 (x, y)。
+    /// 走 <c>SendInput</c> + <c>MOUSEEVENTF_MOVE|ABSOLUTE|VIRTUALDESK</c>：
+    /// 1) 支持多显示器 / 负坐标；2) 移动是注入事件，钩子能识别 <c>LLMHF_INJECTED</c>，
+    /// 不会触发 LTools 自己的鼠标手势或再次录制；3) <c>NOCOALESCE</c> 防止系统合并相邻移动导致轨迹抖动。
+    /// </summary>
+    /// <param name="x">目标屏幕 X（虚拟桌面坐标）。</param>
+    /// <param name="y">目标屏幕 Y（虚拟桌面坐标）。</param>
+    /// <param name="left">虚拟桌面左边界（<c>SM_XVIRTUALSCREEN</c>）。</param>
+    /// <param name="top">虚拟桌面上边界（<c>SM_YVIRTUALSCREEN</c>）。</param>
+    /// <param name="width">虚拟桌面宽度（<c>SM_CXVIRTUALSCREEN</c>）。</param>
+    /// <param name="height">虚拟桌面高度（<c>SM_CYVIRTUALSCREEN</c>）。</param>
+    /// <param name="extraInfo">额外标记（回放器用自己的标记，便于排查注入事件）。</param>
+    public static void MoveAbsolute(int x, int y, int left, int top, int width, int height, IntPtr extraInfo = default)
+    {
+        if (width <= 1 || height <= 1) return;
+
+        // 绝对移动使用 0..65535 归一化坐标，按像素中心取整（width-1 为最大有效像素）。
+        int dx = (int)Math.Round(Normalize(x - left, width - 1));
+        int dy = (int)Math.Round(Normalize(y - top, height - 1));
+
+        var buf = new[]
+        {
+            new MouseInput
+            {
+                Type = 0,   // INPUT_MOUSE
+                Dx = Math.Clamp(dx, 0, 65535),
+                Dy = Math.Clamp(dy, 0, 65535),
+                Flags = Win32.MouseeventfMove | Win32.MouseeventfAbsolute |
+                        Win32.MouseeventfVirtualdesk | Win32.MouseeventfMoveNocoalesce,
+                ExtraInfo = extraInfo,
+            },
+        };
+        SendInput(1, buf, Marshal.SizeOf<MouseInput>());
+    }
+
+    private static double Normalize(int offset, int span)
+        => span <= 0 ? 0 : offset * 65535.0 / span;
+
     private static Input NewUnicodeInput(char ch, uint flags) => new()
     {
         Type = (int)InputKeyboard,
@@ -228,9 +289,12 @@ internal static class InputHelper
     };
 
     private static void SendOne(ushort vk, bool down)
+        => SendOne(vk, down, IsExtendedKey(vk));
+
+    private static void SendOne(ushort vk, bool down, bool extended)
     {
         uint flags = (down ? KeyEventKeydown : KeyEventKeyup);
-        if (IsExtendedKey(vk)) flags |= KeyEventExtended;
+        if (extended) flags |= KeyEventExtended;
         var input = NewInput(vk, flags);
         var buf = new[] { input };
         SendInput(1, buf, Marshal.SizeOf<Input>());

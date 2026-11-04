@@ -11,7 +11,7 @@ namespace LTools.Core;
 
 /// <summary>
 /// 配置备份（导出 / 导入 .ltbak）：一个 zip 同时打包 <c>LTools.json</c> + 用户资源目录
-/// <c>resources/</c> + 速记目录 <c>速记/</c>。
+/// <c>resources/</c> + 速记目录 <c>速记/</c> + 宏事件目录 <c>macros/</c>。
 /// 导入为整体替换（仅替换备份包含的项），旧数据先改名为 <c>.bak-时间戳</c>；
 /// 导入前由 <see cref="Inspect"/> 扫描可执行文件并列出引用 <c>resources</c> 的动作，
 /// 交给调用方弹警告——导入备份等于可能以管理员权限运行外来脚本。
@@ -67,6 +67,7 @@ internal static class BackupService
         public List<string> Includes { get; init; } = new();
         public bool HasResources { get; init; }
         public bool HasNotes { get; init; }
+        public bool HasMacros { get; init; }
     }
 
     /// <summary>导入预检结果：解压到临时目录后的扫描信息；调用方确认后由 <see cref="Import"/> 执行替换。</summary>
@@ -76,6 +77,7 @@ internal static class BackupService
         public BackupManifestInfo Manifest { get; init; } = new();
         public bool IncludeResources { get; init; }
         public bool IncludeNotes { get; init; }
+        public bool IncludeMacros { get; init; }
         public int ExecutableCount { get; init; }
         public List<string> ResourceActionRefs { get; init; } = new(); // "名称 — 片段"
         public long SizeBytes { get; init; }
@@ -89,6 +91,7 @@ internal static class BackupService
         long total = FileSize(ConfigLocator.FindPath());
         if (includeResources) total += DirSize(AppPaths.ResourceDir);
         if (includeNotes) total += DirSize(AppPaths.NotesDir);
+        total += DirSize(MacroStore.Dir);
         return total;
     }
 
@@ -109,7 +112,10 @@ internal static class BackupService
                     JsonSerializer.Serialize(AppConfig.Load(cfgPath), ConfigOpt));
                 if (includeResources) AddDir(zip, AppPaths.ResourceDir, "resources");
                 if (includeNotes) AddDir(zip, AppPaths.NotesDir, "速记");
-                AddText(zip, "manifest.json", BuildManifest(includeResources, includeNotes));
+                // 宏事件文件：存在才打包，旧备份不含 macros 时导入不会清空现有宏。
+                bool includeMacros = Directory.Exists(MacroStore.Dir);
+                if (includeMacros) AddDir(zip, MacroStore.Dir, "macros");
+                AddText(zip, "manifest.json", BuildManifest(includeResources, includeNotes, includeMacros));
             }
             if (File.Exists(destPath)) File.Delete(destPath);
             File.Move(tmp, destPath);
@@ -155,6 +161,7 @@ internal static class BackupService
             var includes = manifest.Includes ?? new List<string>();
             bool hasResources = includes.Contains("resources", StringComparer.OrdinalIgnoreCase);
             bool hasNotes = includes.Contains("notes", StringComparer.OrdinalIgnoreCase);
+            bool hasMacros = includes.Contains("macros", StringComparer.OrdinalIgnoreCase);
 
             var refs = new List<string>();
             int execCount = 0;
@@ -185,9 +192,11 @@ internal static class BackupService
                     Includes = includes,
                     HasResources = hasResources,
                     HasNotes = hasNotes,
+                    HasMacros = hasMacros,
                 },
                 IncludeResources = hasResources,
                 IncludeNotes = hasNotes,
+                IncludeMacros = hasMacros,
                 ExecutableCount = execCount,
                 ResourceActionRefs = refs,
                 SizeBytes = DirSize(staging),
@@ -230,6 +239,10 @@ internal static class BackupService
             // 3) 速记
             if (preview.IncludeNotes)
                 ReplaceDir(Path.Combine(preview.StagingDir, "速记"), AppPaths.NotesDir, ts, restores);
+
+            // 4) 宏事件文件
+            if (preview.IncludeMacros)
+                ReplaceDir(Path.Combine(preview.StagingDir, "macros"), MacroStore.Dir, ts, restores);
         }
         catch
         {
@@ -248,11 +261,12 @@ internal static class BackupService
 
     // ============ 内部 ============
 
-    private static string BuildManifest(bool includeResources, bool includeNotes)
+    private static string BuildManifest(bool includeResources, bool includeNotes, bool includeMacros)
     {
         var includes = new List<string> { "config" };
         if (includeResources) includes.Add("resources");
         if (includeNotes) includes.Add("notes");
+        if (includeMacros) includes.Add("macros");
         var m = new Manifest
         {
             Format = FormatId,
@@ -288,9 +302,10 @@ internal static class BackupService
         }
     }
 
-    /// <summary>跳过 .bak- 命名（避免把旧备份嵌进新备份）。</summary>
+    /// <summary>跳过 .bak- 命名（避免把旧备份嵌进新备份）与写了一半的 .tmp。</summary>
     private static bool ShouldSkip(string name)
-        => name.Contains(".bak-", StringComparison.OrdinalIgnoreCase);
+        => name.Contains(".bak-", StringComparison.OrdinalIgnoreCase)
+           || name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase);
 
     private static long FileSize(string path) => File.Exists(path) ? new FileInfo(path).Length : 0;
 

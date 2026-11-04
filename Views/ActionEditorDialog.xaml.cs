@@ -6,17 +6,19 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using LTools.Core;
 using LTools.Features;
+using LTools.Native;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using OpenFolderDialog = Microsoft.Win32.OpenFolderDialog;
 
 namespace LTools.Views;
 
 /// <summary>
-/// 普通动作编辑对话框（计划 §10.1）：类型下拉（6 类，含「组合动作 ▸」跳转项）+ 类型特定字段 + 名称 + 图标。
+/// 普通动作编辑对话框（计划 §10.1）：类型下拉（含「组合动作 ▸」跳转项）+ 类型特定字段 + 名称 + 图标。
 /// 组合动作用独立窗口 <see cref="CompositeActionDialog"/>；选「组合动作 ▸」即跳转（见 <see cref="ActionEditor"/>）。
 /// 编辑组合步骤时以 <c>allowComposite:false</c> 构造，从源头禁嵌套。
 /// </summary>
@@ -40,7 +42,15 @@ public partial class ActionEditorDialog : Window
     private readonly HashSet<Key> _downKeys = new();
     private DispatcherTimer? _idleTimer;
 
-    public ActionEditorDialog(string title, ActionDto? existing, bool allowComposite = true, bool requireName = true)
+    // —— 宏录制状态 ——
+    private bool _macroMinimized;    // 因宏录制而最小化了本窗口（停止后恢复）
+    private bool _macroRecording;    // 本次录制由本窗口发起（保存后回填 MacroId）
+    private bool _macroSessionActive; // 当前类型为「键鼠宏」，录制热键在此窗口内生效
+    private string? _macroId;        // 当前动作绑定的宏 Id（null = 尚未录制）
+    private bool _macroTopmostPinned; // 恢复时抢不到前台，临时置顶保证用户看得见
+    private bool _macroTopmostBefore; // 临时置顶前的 Topmost 值
+
+    public ActionEditorDialog(string title, ActionDto? existing, bool allowComposite = true, bool requireName = true, bool allowMacro = true)
     {
         InitializeComponent();
         _draft = existing != null ? Clone(existing) : new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default };
@@ -54,6 +64,7 @@ public partial class ActionEditorDialog : Window
         _fieldsByType[ActionType.runCommand] = F_RunCommand;
         _fieldsByType[ActionType.sendText] = F_SendText;
         _fieldsByType[ActionType.sendKeys] = F_SendKeys;
+        _fieldsByType[ActionType.macro] = F_Macro;
         _fieldsByType[ActionType.@internal] = F_Internal;
 
         // 类型下拉：allowComposite=false（编辑组合步骤时）不含「组合动作」项，从源头禁嵌套；
@@ -67,8 +78,11 @@ public partial class ActionEditorDialog : Window
             new("运行命令", ActionType.runCommand),
             new("发送文本", ActionType.sendText),
             new("模拟按键", ActionType.sendKeys),
+            // 宏按 Id 引用事件文件：组合步骤已支持宏步骤（引用 macros/ 下的文件，备份一起走）。
             new("内部动作", ActionType.@internal),
         };
+        if (allowMacro || _draft.Type == ActionType.macro)
+            types.Insert(types.Count - 1, new("键鼠宏", ActionType.macro));
         if (allowComposite) types.Add(new("组合动作 ▸", ActionType.composite));
         TypeCombo.ItemsSource = types;
 
@@ -88,7 +102,32 @@ public partial class ActionEditorDialog : Window
         LoadDraft();
         _ready = true;
         Loaded += (_, _) => NameBox.Focus();
+        // 真正拿到前台后再撤销「临时置顶」（恢复录制窗口时的兜底），避免置顶瞬间的伪激活把它撤掉；
+        // 用户点窗口（或键盘激活）即视为已回前台，立刻撤销。
+        Activated += (_, _) => ReleaseTopmostPin();
+        PreviewMouseDown += (_, _) => ReleaseTopmostPin(force: true);
         Closing += (_, _) => { if (_recording) StopRecording(); };
+
+        // 宏录制：录完自动回填 MacroId；录制期间最小化本窗口，避免把窗口操作录进宏。
+        // 录制热键只在「键鼠宏」类型面板打开期间生效（不是全局热键）。
+        MacroRecorder.RecordingStarted += MacroRecorder_RecordingStarted;
+        MacroRecorder.RecordingStopped += MacroRecorder_RecordingStopped;
+        MacroRecorder.MacroSaved += MacroRecorder_MacroSaved;
+        Closed += (_, _) =>
+        {
+            // 关闭时仍在录制（例如被外部误关）：留痕，方便从日志看出「窗口为什么消失」。
+            if (_macroMinimized || MacroRecorder.IsEditorRecording)
+                MacroRecorder.Trace($"editor:closed minimized={_macroMinimized} " +
+                                    $"rec={MacroRecorder.IsRecording} editorRec={MacroRecorder.IsEditorRecording}");
+            MacroRecorder.RecordingStarted -= MacroRecorder_RecordingStarted;
+            MacroRecorder.RecordingStopped -= MacroRecorder_RecordingStopped;
+            MacroRecorder.MacroSaved -= MacroRecorder_MacroSaved;
+            if (_macroSessionActive)
+            {
+                _macroSessionActive = false;
+                MacroRecorder.ExitEditorSession();
+            }
+        };
     }
 
     /// <summary>返回值；取消时为 null。</summary>
@@ -100,9 +139,10 @@ public partial class ActionEditorDialog : Window
 
     /// <summary>同 <see cref="Show(Window, string, ActionDto?)"/>，可禁用「组合动作」类型项（编辑组合步骤时用）。</summary>
     /// <param name="requireName">名称是否必填；false = 组合步骤场景（名称可留空，步骤行显示类型名）。</param>
-    public static ActionDto? Show(Window owner, string title, ActionDto? existing, bool allowComposite, bool requireName = true)
+    /// <param name="allowMacro">是否允许选「键鼠宏」；默认提供，特殊场景可关闭。</param>
+    public static ActionDto? Show(Window owner, string title, ActionDto? existing, bool allowComposite, bool requireName = true, bool allowMacro = true)
     {
-        var dlg = new ActionEditorDialog(title, existing, allowComposite, requireName) { Owner = owner, Topmost = owner.Topmost };
+        var dlg = new ActionEditorDialog(title, existing, allowComposite, requireName, allowMacro) { Owner = owner, Topmost = owner.Topmost };
         dlg.ShowDialog();
         return dlg.Result;
     }
@@ -144,6 +184,8 @@ public partial class ActionEditorDialog : Window
 
         TerminalCombo.SelectedIndex = IndexOfTerminal(_draft.Terminal ?? "direct");
         CommandCombo.SelectedIndex = IndexOfCommand(_draft.Command ?? "");
+        _macroId = _draft.MacroId;
+        RefreshMacroPanel();
 
         IconPicker.SelectedIcon = _draft.Icon;
         ShowFields(_draft.Type);
@@ -172,6 +214,268 @@ public partial class ActionEditorDialog : Window
             fe.Visibility = Visibility.Collapsed;
         if (_fieldsByType.TryGetValue(t, out var selected))
             selected.Visibility = Visibility.Visible;
+        if (t == ActionType.macro) RefreshMacroPanel();
+        SyncMacroSession(t == ActionType.macro);
+    }
+
+    /// <summary>只在「键鼠宏」类型下启用录制热键会话；切到其它类型立即失效。</summary>
+    private void SyncMacroSession(bool active)
+    {
+        if (active == _macroSessionActive) return;
+        _macroSessionActive = active;
+        if (active) MacroRecorder.EnterEditorSession();
+        else MacroRecorder.ExitEditorSession();
+    }
+
+    // —— macro（键鼠宏）——
+    /// <summary>刷新宏面板：未绑定显示录制入口，已绑定显示宏信息 + 重新录制。</summary>
+    private void RefreshMacroPanel()
+    {
+        MacroRecordHint.Text = $"点击后本窗口自动最小化并立即开录，按 {MacroSettings.RecordHotkeyDisplay} 停止并自动保存";
+
+        if (string.IsNullOrEmpty(_macroId))
+        {
+            MacroRecordBtn.Content = "● 录制新宏";
+            MacroInfoText.Text = "一个键鼠宏就是一个动作：点上方按钮当场录制，停止后自动保存并绑定到本动作。";
+            MacroRecorder.UpdateEditorTarget(null, null);
+            return;
+        }
+
+        var meta = MacroStore.List().FirstOrDefault(m => m.Id == _macroId);
+        if (meta == null)
+        {
+            MacroRecordBtn.Content = "● 重新录制（覆盖）";
+            MacroInfoText.Text = $"当前宏文件缺失（{_macroId}）。重新录制会用同一 Id 覆盖它。";
+            MacroRecorder.UpdateEditorTarget(_macroId, null);
+            return;
+        }
+
+        MacroRecordBtn.Content = "● 重新录制（覆盖此宏）";
+        MacroInfoText.Text = $"当前宏：{meta.Name} · {meta.DurationText} · {meta.EventCount:N0} 个事件";
+        MacroRecorder.UpdateEditorTarget(_macroId, meta.Name);
+    }
+
+    /// <summary>「录制新宏 / 重新录制」：最小化本窗口后立即开录，按录制热键停止时自动保存并绑定。</summary>
+    private void MacroRecord_Click(object sender, RoutedEventArgs e)
+    {
+        if (_recording) StopRecording();   // 先收尾「模拟按键」的窗口内录制，避免两套录制状态叠加
+
+        if (MacroRecorder.IsRecording)
+        {
+            if (MacroRecorder.IsEditorRecording)
+            {
+                MacroRecorder.Stop();   // 本窗口发起的录制：再点一次＝停止
+            }
+            else
+            {
+                // 录制来自托盘 / 设置页：不要在这里悄悄停掉别人的录制，给个明确提示。
+                MacroHint.Text = $"已有录制在进行中（{MacroRecorder.EventCount} 个事件）。"
+                                 + $"按 {MacroSettings.RecordHotkeyDisplay} 或托盘「停止录制宏」结束后再录新的。";
+            }
+            return;
+        }
+        if (!MacroSettings.Enabled)
+        {
+            ConfirmDialog.Info(this, "键鼠宏", "宏功能已关闭：请到 设置 →「键鼠录制」勾选「启用宏热键与回放」。");
+            return;
+        }
+        if (MacroPlayer.IsPlaying)
+        {
+            ConfirmDialog.Info(this, "键鼠宏", "宏正在回放，请先停止回放再录制。");
+            return;
+        }
+
+        // 重新录制时沿用原宏名（覆盖事件、不改名）；新建则让 MacroRecorder 用时间戳名。
+        string? name = null;
+        if (!string.IsNullOrEmpty(_macroId))
+            name = MacroStore.List().FirstOrDefault(m => m.Id == _macroId)?.Name;
+
+        // 注意：不能 Hide()——对 ShowDialog 打开的模态窗口调用 Hide 会结束模态循环、让编辑器提前返回。
+        // 最小化既能腾开屏幕（按键不会落进窗口），又保持模态与窗口状态。按钮这一下已处理完，不会漏进宏。
+        _macroRecording = true;
+        _macroMinimized = true;
+        WindowState = WindowState.Minimized;
+        MacroRecorder.Trace($"editor:minimize state={WindowState} vis={IsVisible}");
+        MacroRecorder.StartInto(_macroId, name);
+        if (!MacroRecorder.IsRecording)
+        {
+            // 被其他条件拒绝（理论上不会）：把窗口恢复出来，避免卡在最小化状态。
+            _macroRecording = false;
+            RestoreAfterMacroRecording();
+        }
+    }
+
+    private void MacroRecorder_RecordingStarted()
+    {
+        // 只有本编辑器（宏动作面板）发起的录制才介入；托盘 / 设置页的录制不打断当前编辑。
+        if (!MacroRecorder.IsEditorRecording) return;
+
+        _macroRecording = true;
+        MacroRecordBtn.Content = "■ 录制中…（" + MacroSettings.RecordHotkeyDisplay + " 停止）";
+
+        // 本方法可能在钩子回调里被同步调用：绝不能在这里最小化窗口——窗口操作会占住
+        // 钩子回调，超时后系统会摘掉钩子，录制热键随之失灵（表现为「按了停不下来」）。
+        // 收窗口统一推到消息泵之后再执行。
+        if (_macroMinimized || WindowState == WindowState.Minimized) return;
+        _macroMinimized = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Send, () =>
+        {
+            // 极短录制 / 刚开录就按了停止：已经不在录制就别再最小化。
+            if (!_macroRecording || !MacroRecorder.IsRecording) return;
+            WindowState = WindowState.Minimized;
+        });
+    }
+
+    private void MacroRecorder_RecordingStopped()
+    {
+        MacroRecorder.Trace($"editor:stopped-ui minimized={_macroMinimized} state={WindowState} vis={IsVisible}");
+        // 停止可能发生在钩子回调里：恢复窗口放到消息泵之后。
+        Dispatcher.BeginInvoke(() =>
+        {
+            // 兜底：不只看 _macroMinimized，只要窗口确实还是最小化 / 不可见就恢复，
+            // 避免标志位某种时序下不同步，把编辑器永久留在最小化状态。
+            if (!_macroMinimized && WindowState != WindowState.Minimized && IsVisible)
+                return;
+            RestoreAfterMacroRecording();
+
+            // 兜底：个别情况下前台锁 / 窗口状态同步会让第一次恢复不生效，
+            // 空闲时若仍是最小化 / 不可见，再恢复一次。
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+            {
+                if (WindowState == WindowState.Minimized || !IsVisible)
+                    RestoreAfterMacroRecording();
+            });
+
+            if (_macroRecording && MacroRecorder.EventCount == 0)
+            {
+                _macroRecording = false;   // 没内容就不会有 MacroSaved 事件
+                RefreshMacroPanel();
+                MacroHint.Text = "没有录制到内容（未保存）。点按钮重试。";
+                return;
+            }
+            RefreshMacroPanel();
+        });
+    }
+
+    private void RestoreAfterMacroRecording()
+    {
+        _macroMinimized = false;
+        try
+        {
+            if (!IsVisible) Show();
+
+            // 录制期间用户切到了别的应用，Activate() / SetForegroundWindow 常被 Windows
+            // 前台锁拦住；本窗口是 ShowDialog 打开且 ShowInTaskbar=False，恢复失败用户就
+            // 再也找不回来（表现为「录完窗口不回来，没法完成新建动作」）。
+            // 因此：Win32 恢复 → 同步 WPF 状态 → AttachThreadInput 抢前台；
+            // 仍抢不到就临时置顶（一定看得见），等用户点进来 / 真拿到前台再撤掉置顶。
+            var hwnd = new WindowInteropHelper(this).Handle;
+            bool shown = false;
+            if (hwnd != IntPtr.Zero)
+                shown = Win32.ShowWindowAsync(hwnd, Win32.SwRestore);
+
+            WindowState = WindowState.Normal;
+
+            if (hwnd != IntPtr.Zero)
+            {
+                Win32.SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                    Win32.SwpNomove | Win32.SwpNosize | Win32.SwpShowwindow);
+                BringToForeground(hwnd);
+            }
+            else
+            {
+                Activate();
+            }
+
+            bool foreground = hwnd != IntPtr.Zero && Win32.GetForegroundWindow() == hwnd;
+            if (!foreground && hwnd != IntPtr.Zero)
+            {
+                PinTopmostForVisibility();
+                // WPF 的 Topmost 有时不会立刻改 Z 序（后台进程 + 前台锁），显式抬到最上层。
+                Win32.ShowWindowAsync(hwnd, Win32.SwRestore);
+                Win32.SetWindowPos(hwnd, Win32.HwndTopmost, 0, 0, 0, 0,
+                    Win32.SwpNomove | Win32.SwpNosize | Win32.SwpNoactivate | Win32.SwpShowwindow);
+                BringToForeground(hwnd);
+                foreground = Win32.GetForegroundWindow() == hwnd;
+            }
+
+            Focus();
+            MacroRecordBtn.Focus();
+
+            MacroRecorder.Trace($"editor:restored shown={shown} state={WindowState} vis={IsVisible} " +
+                                $"active={IsActive} fg={Win32.GetForegroundWindow()} hwnd={hwnd} " +
+                                $"foreground={foreground} pinned={_macroTopmostPinned}");
+        }
+        catch (Exception ex)
+        {
+            // 窗口正在关闭等极端情况：最少保证不把编辑器留在最小化状态。
+            CrashLog.Write("ActionEditorDialog.RestoreAfterRecording", ex);
+        }
+    }
+
+    /// <summary>
+    /// 把窗口抬到前台。前台锁会拒绝后台进程的 <c>SetForegroundWindow</c>，
+    /// 先与当前前台窗口共享输入队列（<c>AttachThreadInput</c>）即可解除限制。
+    /// </summary>
+    private static void BringToForeground(IntPtr hwnd)
+    {
+        IntPtr fg = Win32.GetForegroundWindow();
+        uint fgThread = fg == IntPtr.Zero ? 0 : Win32.GetWindowThreadProcessId(fg, IntPtr.Zero);
+        uint myThread = Win32.GetCurrentThreadId();
+        bool attached = fgThread != 0 && fgThread != myThread
+                        && Win32.AttachThreadInput(myThread, fgThread, true);
+        try
+        {
+            Win32.BringWindowToTop(hwnd);
+            Win32.SetForegroundWindow(hwnd);
+            Win32.SetActiveWindow(hwnd);
+        }
+        finally
+        {
+            if (attached) Win32.AttachThreadInput(myThread, fgThread, false);
+        }
+    }
+
+    /// <summary>临时置顶：抢不到前台时至少保证窗口「弹回来」能被看见。</summary>
+    private void PinTopmostForVisibility()
+    {
+        if (_macroTopmostPinned) return;
+        _macroTopmostPinned = true;
+        _macroTopmostBefore = Topmost;
+        Topmost = true;
+    }
+
+    /// <summary>窗口真正成为前台窗口后撤销临时置顶。</summary>
+    private void ReleaseTopmostPin(bool force = false)
+    {
+        if (!_macroTopmostPinned) return;
+        var hwnd = new WindowInteropHelper(this).Handle;
+        // force = 用户已经点了本窗口：点击本身即证明它已回到前台，不必再等前台窗口同步。
+        if (!force && (hwnd == IntPtr.Zero || Win32.GetForegroundWindow() != hwnd)) return;
+        _macroTopmostPinned = false;
+        Topmost = _macroTopmostBefore;
+        MacroRecorder.Trace("editor:topmost-unpinned");
+    }
+
+    private void MacroRecorder_MacroSaved(string id, bool autoCreate)
+    {
+        // 只有本窗口发起的录制才回填；热键录的宏由 App 自动建动作，不劫持当前编辑。
+        if (!_macroRecording) return;
+        _macroRecording = false;
+
+        // 保存完成在后台线程；回 UI 线程刷新面板并绑定 MacroId。
+        Dispatcher.BeginInvoke(() =>
+        {
+            // 兜底：保存事件到了但窗口还最小化（停止事件的恢复没生效），这里再拉回来一次。
+            if (WindowState == WindowState.Minimized || !IsVisible)
+                RestoreAfterMacroRecording();
+
+            _macroId = id;
+            var meta = MacroStore.List().FirstOrDefault(m => m.Id == id);
+            if (NameBox.Text.Trim().Length == 0 && meta != null) NameBox.Text = meta.Name;
+            RefreshMacroPanel();
+            MacroHint.Text = meta == null ? "宏已保存并绑定。" : $"宏已保存并绑定：{meta.Name}";
+        });
     }
 
     // —— 浏览 ——
@@ -232,7 +536,7 @@ public partial class ActionEditorDialog : Window
         _draft.Cmd = null; _draft.Terminal = null; _draft.KeepWindow = null;
         _draft.Command = null; _draft.Steps = null; _draft.CompositeOnFail = null;
         _draft.Text = null; _draft.Mode = null; _draft.AppendEnter = null;
-        _draft.Items = null;
+        _draft.Items = null; _draft.MacroId = null;
 
         switch (type)
         {
@@ -281,6 +585,14 @@ public partial class ActionEditorDialog : Window
                 var items = new List<KeyItem>();
                 foreach (var v in _keyItems) items.Add(v.Model);
                 _draft.Items = items;
+                break;
+            case ActionType.macro:
+                if (string.IsNullOrEmpty(_macroId))
+                {
+                    ConfirmDialog.Info(this, "动作", "请先点「● 录制新宏」完成一次录制。");
+                    return;
+                }
+                _draft.MacroId = _macroId;
                 break;
         }
 
@@ -677,16 +989,15 @@ public partial class ActionEditorDialog : Window
         Cmd = a.Cmd, Terminal = a.Terminal, KeepWindow = a.KeepWindow, Command = a.Command,
         Text = a.Text, Mode = a.Mode, AppendEnter = a.AppendEnter,
         Items = a.Items?.ConvertAll(i => i.Clone()),
+        MacroId = a.MacroId,
         CompositeOnFail = a.CompositeOnFail,
         Steps = a.Steps != null ? new List<StepDto>(a.Steps) : null,
     };
 
-    private static int IndexOf(ActionType t)
+    private int IndexOf(ActionType t)
     {
-        var list = new[] { ActionType.launchApp, ActionType.openFile, ActionType.openFolder, ActionType.openUrl,
-                          ActionType.runCommand, ActionType.sendText, ActionType.sendKeys,
-                          ActionType.@internal, ActionType.composite };
-        for (int i = 0; i < list.Length; i++) if (list[i] == t) return i;
+        for (int i = 0; i < TypeCombo.Items.Count; i++)
+            if (TypeCombo.Items[i] is TypeItem item && item.Type == t) return i;
         return 0;
     }
 
@@ -712,6 +1023,8 @@ public partial class ActionEditorDialog : Window
         "windowPin.toggle" => "置顶当前窗口",
         "helpPanel.toggle" => "帮助面板",
         "settings.toggle" => "设置面板",
+        "macro.recordToggle" => "开始 / 停止录制宏",
+        "macro.manage" => "打开宏管理页",
         _ => c,
     };
 
