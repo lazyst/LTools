@@ -10,8 +10,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- exe 嵌入图标 -->
     <ApplicationIcon>Icon\LTools.ico</ApplicationIcon>
-    <Version>2.3.3</Version>
-    <AssemblyVersion>2.3.3.0</AssemblyVersion>
+    <Version>2.4.0</Version>
+    <AssemblyVersion>2.4.0.0</AssemblyVersion>
     <AssemblyName>LTools</AssemblyName>
     <RootNamespace>LTools</RootNamespace>
   </PropertyGroup>
@@ -30,6 +30,9 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="H.NotifyIcon.Wpf" Version="2.4.1" />
+    <!-- 图像识别：OpenCV 的 .NET 绑定（模板匹配 / 缩放）。native 包只含 win-x64。 -->
+    <PackageReference Include="OpenCvSharp4" Version="4.13.0.20260627" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20260627" />
   </ItemGroup>
 
   <ItemGroup>

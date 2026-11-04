@@ -239,6 +239,16 @@ internal static class InputHelper
             SendInput((uint)batch.Count, batch.ToArray(), Marshal.SizeOf<Input>());
     }
 
+    /// <summary>移动到屏幕坐标（自动取虚拟桌面边界，供鼠标动作复用）。</summary>
+    public static void MoveToScreen(int x, int y, IntPtr extraInfo = default)
+    {
+        int left = Win32.GetSystemMetrics(Win32.SmXVirtualscreen);
+        int top = Win32.GetSystemMetrics(Win32.SmYVirtualscreen);
+        int width = Win32.GetSystemMetrics(Win32.SmCxVirtualscreen);
+        int height = Win32.GetSystemMetrics(Win32.SmCyVirtualscreen);
+        MoveAbsolute(x, y, left, top, width, height, extraInfo);
+    }
+
     /// <summary>
     /// 把光标绝对移动到虚拟桌面坐标 (x, y)。
     /// 走 <c>SendInput</c> + <c>MOUSEEVENTF_MOVE|ABSOLUTE|VIRTUALDESK</c>：

@@ -21,9 +21,36 @@ public enum ActionType
     runCommand,
     sendText,
     sendKeys,
+    mouse,
     macro,
     @internal,
     composite,
+}
+
+/// <summary>鼠标动作的子类型（<see cref="ActionType.mouse"/>）。</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum MouseActionKind
+{
+    /// <summary>左键单击。</summary>
+    click,
+
+    /// <summary>左键双击。</summary>
+    doubleClick,
+
+    /// <summary>右键单击。</summary>
+    rightClick,
+
+    /// <summary>中键单击。</summary>
+    middleClick,
+
+    /// <summary>只移动光标，不点击。</summary>
+    move,
+
+    /// <summary>滚轮向上（<see cref="ActionDto.WheelDelta"/> 个刻度，默认 120）。</summary>
+    wheelUp,
+
+    /// <summary>滚轮向下。</summary>
+    wheelDown,
 }
 
 /// <summary>sendText 发送方式（§3.2.2）。</summary>
@@ -103,6 +130,7 @@ public static class ActionTypeLabel
         ActionType.runCommand => "运行命令",
         ActionType.sendText => "发送文本",
         ActionType.sendKeys => "模拟按键",
+        ActionType.mouse => "鼠标操作",
         ActionType.macro => "键鼠宏",
         ActionType.@internal => "内部动作",
         ActionType.composite => "组合动作",
@@ -207,6 +235,20 @@ public sealed class ActionDto
     /// <summary>sendKeys: 有序输入条目列表（chord / text / sleep 三种）。</summary>
     public List<KeyItem>? Items { get; set; }
 
+    // —— mouse（鼠标操作）——
+
+    /// <summary>mouse: 目标 X 坐标（支持 ${变量} 模板）。</summary>
+    public string? X { get; set; }
+
+    /// <summary>mouse: 目标 Y 坐标（支持 ${变量} 模板）。</summary>
+    public string? Y { get; set; }
+
+    /// <summary>mouse: 鼠标动作，null 视为单击。</summary>
+    public MouseActionKind? MouseAction { get; set; }
+
+    /// <summary>mouse: 滚轮刻度（默认 120）。</summary>
+    public int? WheelDelta { get; set; }
+
     // —— macro（录制宏）——
 
     /// <summary>macro: 宏 Id（事件本体存 <c>macros/&lt;id&gt;.json</c>）。</summary>
@@ -223,7 +265,13 @@ public sealed class ActionDto
     /// </summary>
     public OnFailStrategy? CompositeOnFail { get; set; }
 
-    /// <summary>深拷贝（含 Steps 递归）；用于把动作池动作复制成组合步骤的独立快照（§12 动作解耦）。</summary>
+    /// <summary>
+    /// composite: 自动化流程（嵌套块）。旧配置只有 <see cref="Steps"/> 时由
+    /// <see cref="FlowMigration"/> 在加载 / 执行 / 编辑时迁移，保存后写 <see cref="Flow"/> 并清空 Steps。
+    /// </summary>
+    public List<FlowNode>? Flow { get; set; }
+
+    /// <summary>深拷贝（含 Steps / Flow 递归）；用于把动作池动作复制成组合步骤的独立快照（§12 动作解耦）。</summary>
     public ActionDto Clone() => new()
     {
         Id = Id, Name = Name, Icon = Icon, Type = Type,
@@ -231,8 +279,10 @@ public sealed class ActionDto
         Cmd = Cmd, Terminal = Terminal, KeepWindow = KeepWindow, Command = Command,
         Text = Text, Mode = Mode, AppendEnter = AppendEnter,
         Items = Items?.Select(i => i.Clone()).ToList(),
+        X = X, Y = Y, MouseAction = MouseAction, WheelDelta = WheelDelta,
         MacroId = MacroId,
         CompositeOnFail = CompositeOnFail,
         Steps = Steps?.Select(s => new StepDto { Action = s.Action.Clone(), DelayMs = s.DelayMs, OnFail = s.OnFail }).ToList(),
+        Flow = Flow != null ? FlowNode.CloneList(Flow) : null,
     };
 }

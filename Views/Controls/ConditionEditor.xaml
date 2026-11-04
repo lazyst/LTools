@@ -1,0 +1,23 @@
+<UserControl x:Class="LTools.Views.Controls.ConditionEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LTools.Views.Controls"
+             FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
+    <StackPanel>
+        <controls:ProbeEditor x:Name="Probe"/>
+
+        <TextBlock Style="{StaticResource SectionLabel}" Text="判断" Margin="0,14,0,4"/>
+        <ComboBox x:Name="OpCombo" MinHeight="32" SelectionChanged="Op_Changed"/>
+
+        <StackPanel x:Name="OperandPanel" Margin="0,8,0,0">
+            <TextBlock x:Name="OperandLabel" Style="{StaticResource HintLabel}"/>
+            <TextBox x:Name="OperandBox" MinHeight="32" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <CheckBox x:Name="NegateBox" Content="取反（条件不成立时才执行）" Margin="0,10,0,0"/>
+
+        <TextBlock Style="{StaticResource HintLabel}"
+                   Text="把取值结果存入变量（可选；图像结果含 found / x / y / score）" Margin="0,12,0,4"/>
+        <TextBox x:Name="BindBox" MinHeight="32"/>
+    </StackPanel>
+</UserControl>

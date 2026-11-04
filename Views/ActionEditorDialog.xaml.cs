@@ -73,6 +73,7 @@ public partial class ActionEditorDialog : Window
         _fieldsByType[ActionType.runCommand] = F_RunCommand;
         _fieldsByType[ActionType.sendText] = F_SendText;
         _fieldsByType[ActionType.sendKeys] = F_SendKeys;
+        _fieldsByType[ActionType.mouse] = F_Mouse;
         _fieldsByType[ActionType.macro] = F_Macro;
         _fieldsByType[ActionType.@internal] = F_Internal;
 
@@ -87,6 +88,7 @@ public partial class ActionEditorDialog : Window
             new("运行命令", ActionType.runCommand),
             new("发送文本", ActionType.sendText),
             new("模拟按键", ActionType.sendKeys),
+            new("鼠标操作", ActionType.mouse),
             // 宏按 Id 引用事件文件：组合步骤已支持宏步骤（引用 macros/ 下的文件，备份一起走）。
             new("内部动作", ActionType.@internal),
         };
@@ -206,6 +208,22 @@ public partial class ActionEditorDialog : Window
         if (_draft.Items != null)
             foreach (var m in _draft.Items) _keyItems.Add(WrapKeyItem(m));
         RefreshKeyNumbers();
+
+        // mouse
+        MouseActionCombo.SelectedIndex = (_draft.MouseAction ?? MouseActionKind.click) switch
+        {
+            MouseActionKind.doubleClick => 1,
+            MouseActionKind.rightClick => 2,
+            MouseActionKind.middleClick => 3,
+            MouseActionKind.move => 4,
+            MouseActionKind.wheelUp => 5,
+            MouseActionKind.wheelDown => 6,
+            _ => 0,
+        };
+        MouseXBox.Text = _draft.X ?? "";
+        MouseYBox.Text = _draft.Y ?? "";
+        MouseWheelBox.Text = (_draft.WheelDelta ?? 120).ToString(CultureInfo.InvariantCulture);
+        UpdateMouseWheelPanel();
 
         TerminalCombo.SelectedIndex = IndexOfTerminal(_draft.Terminal ?? "direct");
         CommandCombo.SelectedIndex = IndexOfCommand(_draft.Command ?? "");
@@ -860,8 +878,9 @@ public partial class ActionEditorDialog : Window
         // 清掉不相关类型字段，避免残留脏数据
         _draft.Target = null; _draft.Args = null; _draft.Path = null; _draft.Url = null;
         _draft.Cmd = null; _draft.Terminal = null; _draft.KeepWindow = null;
-        _draft.Command = null; _draft.Steps = null; _draft.CompositeOnFail = null;
+        _draft.Command = null; _draft.Steps = null; _draft.Flow = null; _draft.CompositeOnFail = null;
         _draft.Text = null; _draft.Mode = null; _draft.AppendEnter = null;
+        _draft.X = null; _draft.Y = null; _draft.MouseAction = null; _draft.WheelDelta = null;
         _draft.Items = null; _draft.MacroId = null;
 
         switch (type)
@@ -912,6 +931,36 @@ public partial class ActionEditorDialog : Window
                 foreach (var v in _keyItems) items.Add(v.Model);
                 _draft.Items = items;
                 break;
+            case ActionType.mouse:
+                if (string.IsNullOrWhiteSpace(MouseXBox.Text) || string.IsNullOrWhiteSpace(MouseYBox.Text))
+                {
+                    ConfirmDialog.Info(this, "动作", "请填写鼠标目标坐标（可写 ${变量}）。");
+                    return;
+                }
+                _draft.X = MouseXBox.Text.Trim();
+                _draft.Y = MouseYBox.Text.Trim();
+                _draft.MouseAction = MouseActionCombo.SelectedIndex switch
+                {
+                    1 => MouseActionKind.doubleClick,
+                    2 => MouseActionKind.rightClick,
+                    3 => MouseActionKind.middleClick,
+                    4 => MouseActionKind.move,
+                    5 => MouseActionKind.wheelUp,
+                    6 => MouseActionKind.wheelDown,
+                    _ => MouseActionKind.click,
+                };
+                if (_draft.MouseAction is MouseActionKind.wheelUp or MouseActionKind.wheelDown)
+                {
+                    if (!int.TryParse(MouseWheelBox.Text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int wheel) ||
+                        wheel < 1 || wheel > 12_000)
+                    {
+                        ConfirmDialog.Info(this, "动作", "滚动刻度必须是 1–12000 的整数。");
+                        MouseWheelBox.Focus();
+                        return;
+                    }
+                    _draft.WheelDelta = wheel;
+                }
+                break;
             case ActionType.macro:
                 if (string.IsNullOrEmpty(_macroId))
                 {
@@ -927,6 +976,18 @@ public partial class ActionEditorDialog : Window
         _draft.Icon = IconPicker.SelectedIcon ?? IconCatalog.Default;
         Result = _draft;
         DialogResult = true;
+    }
+
+    // —— mouse ——
+
+    private void MouseAction_Changed(object sender, SelectionChangedEventArgs e) => UpdateMouseWheelPanel();
+
+    private void UpdateMouseWheelPanel()
+    {
+        if (MouseWheelPanel == null) return;
+        MouseWheelPanel.Visibility = MouseActionCombo.SelectedIndex is 5 or 6
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private static KeyItemView WrapKeyItem(KeyItem m) => new(m);
@@ -1318,9 +1379,11 @@ public partial class ActionEditorDialog : Window
         Cmd = a.Cmd, Terminal = a.Terminal, KeepWindow = a.KeepWindow, Command = a.Command,
         Text = a.Text, Mode = a.Mode, AppendEnter = a.AppendEnter,
         Items = a.Items?.ConvertAll(i => i.Clone()),
+        X = a.X, Y = a.Y, MouseAction = a.MouseAction, WheelDelta = a.WheelDelta,
         MacroId = a.MacroId,
         CompositeOnFail = a.CompositeOnFail,
         Steps = a.Steps != null ? new List<StepDto>(a.Steps) : null,
+        Flow = a.Flow != null ? FlowNode.CloneList(a.Flow) : null,
     };
 
     private int IndexOf(ActionType t)

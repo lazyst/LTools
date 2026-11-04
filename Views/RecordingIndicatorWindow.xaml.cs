@@ -24,6 +24,7 @@ public partial class RecordingIndicatorWindow : Window
 
     private static RecordingIndicatorWindow? _window;
     private static DispatcherTimer? _timer;
+    private static bool _automation;
 
     public RecordingIndicatorWindow()
     {
@@ -34,6 +35,7 @@ public partial class RecordingIndicatorWindow : Window
     /// <summary>显示录制中指示器（由 <see cref="MacroRecorder"/> 调用）。</summary>
     public static void ShowIndicator()
     {
+        _automation = false;
         var w = EnsureWindow();
         w.Dot.Visibility = Visibility.Visible;
         w.UpdateRecordingText();
@@ -46,11 +48,57 @@ public partial class RecordingIndicatorWindow : Window
     /// <summary>显示回放倒计时（如「3 秒后回放…」）。</summary>
     public static void ShowCountdown(string text)
     {
+        _automation = false;
         var w = EnsureWindow();
         w.Dot.Visibility = Visibility.Collapsed;
         w.IndicatorText.Text = $"{text} 秒后回放…";
         w.ShowPill();
         _timer?.Stop();
+    }
+
+    /// <summary>显示自动化运行状态（步骤号 + 停止热键）。可高频调用，已显示时只更新文本并重新居中。</summary>
+    public static void ShowAutomation(string text)
+    {
+        // 流程在后台线程运行：窗口创建 / 更新必须回 UI 线程。
+        var app = Application.Current;
+        if (app == null) return;
+        if (!app.Dispatcher.CheckAccess())
+        {
+            app.Dispatcher.BeginInvoke(() => ShowAutomation(text));
+            return;
+        }
+
+        _automation = true;
+        var w = EnsureWindow();
+        w.Dot.Visibility = Visibility.Collapsed;
+        w.IndicatorText.Text = text;
+        if (!w.IsVisible)
+        {
+            w.ShowPill();
+        }
+        else
+        {
+            w.UpdateLayout();
+            var wa = SystemParameters.WorkArea;
+            w.Left = wa.Left + (wa.Width - w.ActualWidth) / 2;
+        }
+        _timer?.Stop();
+    }
+
+    /// <summary>隐藏自动化指示器（只隐藏自己这个态，避免误关录制 / 倒计时）。</summary>
+    public static void HideAutomation()
+    {
+        var app = Application.Current;
+        if (app == null) return;
+        if (!app.Dispatcher.CheckAccess())
+        {
+            app.Dispatcher.BeginInvoke(() => HideAutomation());
+            return;
+        }
+
+        if (!_automation) return;
+        _automation = false;
+        HideIndicator();
     }
 
     /// <summary>隐藏指示器。</summary>

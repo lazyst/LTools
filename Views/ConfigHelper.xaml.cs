@@ -1369,9 +1369,33 @@ public partial class ConfigHelperWindow : Window
             ActionType.sendKeys => a.Items != null ? $"{a.Items.Count} 条输入" : "",
             ActionType.macro => MacroLabel(a.MacroId, macroNames),
             ActionType.@internal => a.Command ?? "",
-            ActionType.composite => a.Steps != null ? $"{a.Steps.Count} 个步骤" : "",
+            ActionType.composite => CompositeSummary(a),
             _ => "",
         };
+
+        /// <summary>组合动作摘要：统计含嵌套在内的节点数（旧 Steps 也能显示）。</summary>
+        private static string CompositeSummary(ActionDto a)
+        {
+            if (a.Flow == null && a.Steps == null) return "";
+            int count = CountNodes(FlowMigration.Ensure(a));
+            return count > 0 ? $"{count} 个步骤" : "";
+        }
+
+        private static int CountNodes(List<FlowNode> nodes)
+        {
+            int count = 0;
+            foreach (var n in nodes)
+            {
+                count++;
+                if (n.If != null)
+                {
+                    count += CountNodes(n.If.Then);
+                    if (n.If.Else != null) count += CountNodes(n.If.Else);
+                }
+                if (n.Loop != null) count += CountNodes(n.Loop.Body);
+            }
+            return count;
+        }
 
         private static string MacroLabel(string? id, IReadOnlyDictionary<string, string>? names)
         {

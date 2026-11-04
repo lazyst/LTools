@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -10,26 +11,31 @@ using LTools.Config;
 using LTools.Core;
 using LTools.Features;
 using LTools.Views.Controls;
+using Condition = LTools.Features.Condition;
 
 namespace LTools.Views;
 
 /// <summary>
-/// 组合动作编辑器（计划 §10.1）：左「动作来源」（内部动作 / 动作池，双击或拖入）·
-/// 中「步骤编排」（拖拽排序 / 双击就地编辑 / 延迟 / 失败策略）· 右「组合属性」（名称 / 图标 / 失败策略）。
+/// 组合动作编辑器（计划 §10.1）：左「动作来源」· 中「流程编排」· 右「组合属性」。
 /// </summary>
 /// <remarks>
+/// <para>
+/// 流程是**嵌套块**：<c>如果</c> / <c>循环</c> 带子步骤，缩进表示层级；标记行
+/// 「否则 / 结束如果 / 结束循环」用于定位插入点，本身不是数据。
+/// 不提供 goto——重复执行用循环 + 跳出 / 继续表达。
+/// </para>
+/// <para>
 /// 步骤**内嵌动作快照**（与动作池解耦，见 §12）：加入步骤即深拷贝，改池动作不影响已加步骤；
-/// 宏步骤是例外——只存 <see cref="ActionDto.MacroId"/> 引用，事件本体留在 <c>macros/</c>（随备份一起走）。
-/// **禁止嵌套组合**（左栏动作池已排除组合动作，＋新建步骤类型也不含组合）。
-/// 左栏分组（基础动作 / 内部动作 / 动作池）可折叠，状态存 <c>LTools.json</c>。
-/// 用户点标题栏「普通动作 / 组合动作」切换里的另一段时置 <see cref="JumpToNormal"/>，
-/// 由 <see cref="ActionEditor"/> 改开普通编辑器（不带数据）。
+/// 宏步骤只存 <see cref="ActionDto.MacroId"/> 引用，事件本体留在 <c>macros/</c>（随备份一起走）。
+/// 禁止嵌套组合（左栏动作池已排除组合动作，＋新建步骤类型也不含组合）。
+/// </para>
+/// <para>旧配置的 <see cref="ActionDto.Steps"/> 由 <see cref="FlowMigration"/> 打开时迁移，保存后写 Flow 并清空 Steps。</para>
 /// </remarks>
 public partial class CompositeActionDialog : Window
 {
     private readonly ActionDto _draft;
-    private readonly List<StepDto> _steps;
-    private readonly ObservableCollection<StepRow> _rows = new();
+    private readonly List<FlowNode> _flow;
+    private readonly ObservableCollection<FlowRow> _rows = new();
     private readonly ActionKindSwitch _kindSwitch = new();
 
     // 左栏分组折叠状态（写回 LTools.json，下次打开保持）与当前搜索词。
@@ -48,7 +54,7 @@ public partial class CompositeActionDialog : Window
             ? existing.Clone()
             : new ActionDto { Type = ActionType.composite, Icon = IconCatalog.Default };
         if (!string.IsNullOrEmpty(title)) Title = title;
-        _steps = _draft.Steps != null ? new List<StepDto>(_draft.Steps) : new List<StepDto>();
+        _flow = FlowMigration.Ensure(_draft);
         _collapsed = new HashSet<string>(
             ConfigStore.LoadConfig().CompositeCollapsedGroups ?? new List<string>(),
             StringComparer.Ordinal);
@@ -60,7 +66,7 @@ public partial class CompositeActionDialog : Window
         _kindSwitch.IsComposite = true;
         _kindSwitch.SelectionChanged += KindSwitch_SelectionChanged;
         TitleBar.ExtraContent = _kindSwitch;
-        StepsList.ItemsSource = _rows;
+        FlowList.ItemsSource = _rows;
         ReloadRows();
         BuildSourceList();
         Loaded += (_, _) => NameBox.Focus();
@@ -79,7 +85,7 @@ public partial class CompositeActionDialog : Window
         _query = (SearchBox.Text ?? "").Trim();
         SourceList.Children.Clear();
 
-        // 基础动作（9 种动作类型）→ 双击/拖入开预置类型的编辑器（§12）
+        // 基础动作（10 种动作类型）→ 双击/拖入开预置类型的编辑器（§12）
         var basicDefs = new (ActionType Type, string Icon, string Label)[]
         {
             (ActionType.launchApp, "app", "启动程序"),
@@ -89,6 +95,7 @@ public partial class CompositeActionDialog : Window
             (ActionType.runCommand, "terminal", "运行命令"),
             (ActionType.sendText, "send", "发送文本"),
             (ActionType.sendKeys, "keyboard", "模拟按键"),
+            (ActionType.mouse, "mouse", "鼠标操作"),
             (ActionType.macro, "record", "键鼠宏"),
             (ActionType.@internal, "settings", "内部动作"),
         };
@@ -97,6 +104,22 @@ public partial class CompositeActionDialog : Window
             .Where(Match)
             .ToList();
         AddGroup("basic", "基础动作", basics);
+
+        // 流程控制（嵌套块）→ set/if/loop 先开参数对话框；break/continue/stop 直接加入
+        var flowDefs = new (FlowNodeKind Kind, string Icon, string Label)[]
+        {
+            (FlowNodeKind.set, "edit", "设置变量"),
+            (FlowNodeKind.@if, "help", "如果"),
+            (FlowNodeKind.loop, "refresh", "循环"),
+            (FlowNodeKind.@break, "back", "跳出循环"),
+            (FlowNodeKind.@continue, "forward", "进入下一次循环"),
+            (FlowNodeKind.stop, "stop", "停止流程"),
+        };
+        var flowItems = flowDefs
+            .Select(f => new LeftItem { Label = f.Label, Glyph = IconCatalog.GetGlyph(f.Icon), FlowKind = f.Kind })
+            .Where(Match)
+            .ToList();
+        AddGroup("flow", "流程", flowItems);
 
         // 内部动作（内置命令）→ 内联 internal 快照（无需开编辑器）
         var internals = InternalActionRegistry.Commands
@@ -173,7 +196,7 @@ public partial class CompositeActionDialog : Window
         {
             content.Children.Add(new TextBlock
             {
-                Text = items.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Text = items.Count.ToString(CultureInfo.InvariantCulture),
                 Style = (Style)FindResource("HintLabel"),
                 Margin = new Thickness(6, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center,
@@ -256,7 +279,7 @@ public partial class CompositeActionDialog : Window
         };
         btn.PreviewMouseLeftButtonDown += (_, e) =>
         {
-            if (e.ClickCount >= 2) { AppendStep(item); _leftDragCandidate = null; return; }
+            if (e.ClickCount >= 2) { AddFromLeft(item, CurrentInsertTarget()); _leftDragCandidate = null; return; }
             _leftDragCandidate = item;
             _leftDragOrigin = e.GetPosition(this);
         };
@@ -288,25 +311,20 @@ public partial class CompositeActionDialog : Window
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => BuildSourceList();
 
-    private void AppendStep(LeftItem item) => AddFromLeft(item, atIndex: null);
-
-    /// <summary>把左栏项变成步骤并插入指定位置（null=追加）。基础动作类型会开预置类型的编辑器。</summary>
-    private void AddFromLeft(LeftItem item, int? atIndex)
+    /// <summary>把左栏项变成流程节点并插入指定位置。</summary>
+    private void AddFromLeft(LeftItem item, (List<FlowNode> Container, int Index) target)
     {
-        StepDto? step = null;
+        FlowNode? node = null;
 
         if (item.InternalCommand != null)
         {
-            step = new StepDto
+            node = ActionNode(new ActionDto
             {
-                Action = new ActionDto
-                {
-                    Type = ActionType.@internal,
-                    Command = item.InternalCommand,
-                    Name = item.Label,
-                    Icon = IconCatalog.Default,
-                },
-            };
+                Type = ActionType.@internal,
+                Command = item.InternalCommand,
+                Name = item.Label,
+                Icon = IconCatalog.Default,
+            });
         }
         else if (item.PoolActionId != null)
         {
@@ -315,7 +333,7 @@ public partial class CompositeActionDialog : Window
             {
                 var copy = a.Clone();
                 copy.Id = "";
-                step = new StepDto { Action = copy };
+                node = ActionNode(copy);
             }
         }
         else if (item.BasicType != null)
@@ -323,23 +341,102 @@ public partial class CompositeActionDialog : Window
             // 双击/拖入均开编辑器（类型已预置），填完字段后作为内嵌步骤
             var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = item.BasicType.Value };
             var dto = ActionEditorDialog.Show(this, "新建步骤", draft, allowComposite: false, requireName: false);
-            if (dto == null || dto.Type == ActionType.composite) return;   // 取消 / 防御
             BuildSourceList();   // 编辑期间可能录了新宏，刷新左栏动作池
+            if (dto == null || dto.Type == ActionType.composite) return;   // 取消 / 防御
             var c = dto.Clone();
             c.Id = "";
-            step = new StepDto { Action = c };
+            node = ActionNode(c);
+        }
+        else if (item.FlowKind != null)
+        {
+            node = BuildFlowNode(item.FlowKind.Value);
+            if (node == null) return;   // 取消对话框
         }
 
-        if (step == null) return;
-        int idx = Math.Clamp(atIndex ?? _steps.Count, 0, _steps.Count);
-        _steps.Insert(idx, step);
-        ReloadRows();
-        StepsList.SelectedIndex = Math.Clamp(idx, 0, _steps.Count - 1);
+        if (node == null) return;
+        InsertNode(target, node);
     }
 
-    // ============ 中间：步骤编排 ============
+    private static FlowNode ActionNode(ActionDto action) =>
+        new() { Kind = FlowNodeKind.action, Action = action };
 
-    private void ReloadRows()
+    /// <summary>构造流程节点；set/if/loop 先弹参数编辑器，取消返回 null。</summary>
+    private FlowNode? BuildFlowNode(FlowNodeKind kind)
+    {
+        FlowNode node = kind switch
+        {
+            FlowNodeKind.set => new FlowNode
+            {
+                Kind = FlowNodeKind.set,
+                Set = new SetNode { Var = "", Probe = new Probe { Kind = ProbeKind.text } },
+            },
+            FlowNodeKind.@if => new FlowNode
+            {
+                Kind = FlowNodeKind.@if,
+                If = new IfNode
+                {
+                    Condition = new Condition
+                    {
+                        Probe = new Probe { Kind = ProbeKind.text },
+                        Op = CompareOp.contains,
+                    },
+                },
+            },
+            FlowNodeKind.loop => new FlowNode
+            {
+                Kind = FlowNodeKind.loop,
+                Loop = new LoopNode { Mode = LoopMode.count, Count = 3 },
+            },
+            _ => new FlowNode { Kind = kind },
+        };
+
+        if (kind is FlowNodeKind.set or FlowNodeKind.@if or FlowNodeKind.loop)
+        {
+            var dlg = new FlowNodeDialog(node) { Owner = this, Topmost = Topmost };
+            if (dlg.ShowDialog() != true || dlg.Result == null) return null;
+            return dlg.Result;
+        }
+        return node;
+    }
+
+    private void InsertNode((List<FlowNode> Container, int Index) target, FlowNode node)
+    {
+        int idx = Math.Clamp(target.Index, 0, target.Container.Count);
+        target.Container.Insert(idx, node);
+        ReloadRows(node);
+        BuildSourceList();   // 编辑期间可能录了新宏，刷新左栏动作池
+    }
+
+    /// <summary>当前选中行的插入位置；无选中 → 根层末尾。</summary>
+    private (List<FlowNode> Container, int Index) CurrentInsertTarget()
+    {
+        var row = FlowList.SelectedItem as FlowRow;
+        if (row == null) return (_flow, _flow.Count);
+
+        switch (row.Kind)
+        {
+            case RowKind.Node:
+                if (row.Node!.Kind == FlowNodeKind.@if)
+                    return (EnsureThen(row.Node), 0);
+                if (row.Node.Kind == FlowNodeKind.loop)
+                    return (EnsureBody(row.Node), 0);
+                return (row.Container, row.Index + 1);
+
+            case RowKind.ElseMarker:
+                return (EnsureElse(row.Owner!), 0);
+
+            case RowKind.EndIf:
+            case RowKind.EndLoop:
+                return (row.Container, row.Index + 1);
+
+            default:
+                return (_flow, _flow.Count);
+        }
+    }
+
+    // ============ 中间：流程编排 ============
+
+    private void ReloadRows(FlowNode? select = null)
     {
         _rows.Clear();
         var strategies = new List<StrategyItem>
@@ -348,53 +445,134 @@ public partial class CompositeActionDialog : Window
             new("中止组合", OnFailStrategy.abort),
         };
         var macroNames = MacroStore.NameMap();
-        for (int i = 0; i < _steps.Count; i++)
-            _rows.Add(new StepRow(_steps[i], i, strategies, macroNames));
-        EmptyHint.Visibility = _steps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        int number = 0;
+        BuildRows(_flow, depth: 0, strategies, macroNames, ref number);
+
+        EmptyHint.Visibility = _rows.Any(r => !r.IsMarker) ? Visibility.Collapsed : Visibility.Visible;
+
+        if (select != null)
+        {
+            var target = _rows.FirstOrDefault(r => ReferenceEquals(r.Node, select));
+            if (target != null) FlowList.SelectedItem = target;
+        }
     }
 
-    private void StepsList_DoubleClick(object sender, MouseButtonEventArgs e)
+    private void BuildRows(List<FlowNode> nodes, int depth,
+                           IReadOnlyList<StrategyItem> strategies,
+                           IReadOnlyDictionary<string, string> macroNames,
+                           ref int number)
+    {
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            FlowNode n = nodes[i];
+            number++;
+            _rows.Add(new FlowRow(RowKind.Node, n, nodes, i, depth, owner: null,
+                number.ToString(CultureInfo.InvariantCulture) + ".",
+                FlowText.Badge(n), TitleOf(n, macroNames), strategies));
+
+            if (n.Kind == FlowNodeKind.@if && n.If != null)
+            {
+                BuildRows(n.If.Then, depth + 1, strategies, macroNames, ref number);
+
+                // 「否则」始终显示：它既是 Else 的入口，也是 Then 的边界（插入点在它之前 = Then 末尾）。
+                _rows.Add(new FlowRow(RowKind.ElseMarker, null, nodes, i, depth, n,
+                    "", "", "否则", strategies));
+                if (n.If.Else != null)
+                    BuildRows(n.If.Else, depth + 1, strategies, macroNames, ref number);
+
+                _rows.Add(new FlowRow(RowKind.EndIf, null, nodes, i, depth, n,
+                    "", "", "结束如果", strategies));
+            }
+            else if (n.Kind == FlowNodeKind.loop && n.Loop != null)
+            {
+                BuildRows(n.Loop.Body, depth + 1, strategies, macroNames, ref number);
+                _rows.Add(new FlowRow(RowKind.EndLoop, null, nodes, i, depth, n,
+                    "", "", "结束循环", strategies));
+            }
+        }
+    }
+
+    private static string TitleOf(FlowNode n, IReadOnlyDictionary<string, string> macroNames)
+    {
+        if (n.Kind == FlowNodeKind.action && n.Action?.Type == ActionType.macro)
+        {
+            string id = n.Action.MacroId ?? "";
+            if (MacroStore.Exists(id) && macroNames.TryGetValue(id, out var name))
+                return "键鼠宏：" + name;
+            return "键鼠宏（宏文件缺失）";
+        }
+        return FlowText.Summary(n);
+    }
+
+    private void FlowList_DoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (IsInteractive(e.OriginalSource)) return;   // 别把延迟框/下拉的双击当成编辑行
-        if (StepsList.SelectedItem is StepRow row) EditStep(row);
+        if (FlowList.SelectedItem is FlowRow row) EditRow(row);
     }
 
-    private void EditStep_Click(object sender, RoutedEventArgs e)
+    private void EditRow_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button b && b.DataContext is StepRow row) EditStep(row);
+        if (sender is Button b && b.DataContext is FlowRow row) EditRow(row);
     }
 
-    private void EditStep(StepRow row)
+    private void EditRow(FlowRow row)
     {
-        var dto = ActionEditorDialog.Show(this, "编辑步骤", row.Step.Action, allowComposite: false, requireName: false);
-        if (dto == null || dto.Type == ActionType.composite) return;
-        var a = dto.Clone();
-        a.Id = "";
-        row.Step.Action = a;
-        int idx = _steps.IndexOf(row.Step);
-        ReloadRows();
-        BuildSourceList();   // 编辑期间可能录了新宏，刷新左栏动作池
-        if (idx >= 0 && idx < _rows.Count) StepsList.SelectedIndex = idx;
+        if (row.IsMarker || row.Node == null) return;
+
+        if (row.Node.Kind == FlowNodeKind.action)
+        {
+            if (row.Node.Action == null) return;
+            var dto = ActionEditorDialog.Show(this, "编辑步骤", row.Node.Action, allowComposite: false, requireName: false);
+            if (dto == null || dto.Type == ActionType.composite) return;
+            var a = dto.Clone();
+            a.Id = "";
+            row.Node.Action = a;
+            ReloadRows(row.Node);
+            BuildSourceList();   // 编辑期间可能录了新宏，刷新左栏动作池
+            return;
+        }
+
+        if (row.Node.Kind is FlowNodeKind.set or FlowNodeKind.@if or FlowNodeKind.loop)
+        {
+            var dlg = new FlowNodeDialog(row.Node) { Owner = this, Topmost = Topmost };
+            if (dlg.ShowDialog() != true || dlg.Result == null) return;
+
+            int idx = row.Container.IndexOf(row.Node);
+            if (idx < 0) return;
+            row.Container[idx] = dlg.Result;
+            ReloadRows(dlg.Result);
+        }
     }
 
     private void Delete_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button b || b.DataContext is not StepRow row) return;
-        int idx = _steps.IndexOf(row.Step);
+        if (sender is not Button b || b.DataContext is not FlowRow row) return;
+        if (row.IsMarker || row.Node == null) return;
+
+        bool hasChildren = row.Node.Kind switch
+        {
+            FlowNodeKind.@if => row.Node.If != null &&
+                (row.Node.If.Then.Count > 0 || (row.Node.If.Else?.Count ?? 0) > 0),
+            FlowNodeKind.loop => (row.Node.Loop?.Body.Count ?? 0) > 0,
+            _ => false,
+        };
+        if (hasChildren &&
+            !ConfirmDialog.Confirm(this, "删除步骤", "该步骤带有子步骤，删除后一并移除。确定？", danger: true))
+            return;
+
+        int idx = row.Container.IndexOf(row.Node);
         if (idx < 0) return;
-        _steps.RemoveAt(idx);
+        row.Container.RemoveAt(idx);
         ReloadRows();
-        if (_steps.Count > 0) StepsList.SelectedIndex = Math.Min(idx, _steps.Count - 1);
     }
 
     private void Delay_PreviewTextInput(object sender, TextCompositionEventArgs e)
         => e.Handled = !e.Text.All(char.IsDigit);
 
-    // —— 拖拽（左栏项拖入 = 插入；把手拖动 = 排序，幽灵跟随，§12）——
-    // 把手排序走窗口级鼠标跟踪，而非 OLE DoDragDrop：避免系统 drag image 与幽灵叠加，
-    // 节奏与超级面板 §5.6 一致——拖动中只跟幽灵 + 高亮目标行，释放时才重排。
+    // —— 拖拽（左栏项拖入 = 插入；把手拖动 = 移动，幽灵跟随，§12）——
+    // 把手排序走窗口级鼠标跟踪，而非 OLE DoDragDrop：避免系统 drag image 与幽灵叠加。
 
-    private int? _gripIdx;                    // 把手按下时记录的源步骤索引
+    private int? _gripIdx;                    // 把手按下时记录的行索引
     private Point _gripOrigin;                // 按下坐标（进入拖动态的阈值判定）
     private bool _gripDragging;               // 是否已进入拖动态
     private FrameworkElement? _gripSource;    // 把手元素（鼠标捕获载体）
@@ -402,10 +580,11 @@ public partial class CompositeActionDialog : Window
 
     private void Grip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not FrameworkElement fe || fe.DataContext is not StepRow row) return;
-        int idx = _steps.IndexOf(row.Step);
+        if (sender is not FrameworkElement fe || fe.DataContext is not FlowRow row) return;
+        if (row.IsMarker) return;
+        int idx = _rows.IndexOf(row);
         if (idx < 0) return;
-        StepsList.SelectedIndex = idx;
+        FlowList.SelectedIndex = idx;
         _gripSource = fe;
         _gripIdx = idx;
         _gripOrigin = e.GetPosition(this);
@@ -421,7 +600,6 @@ public partial class CompositeActionDialog : Window
         int hover = GripHoverRow(e);
         int insertAt = hover >= 0 ? GripInsertAt(e, hover) : -1;
         EndReorderDrag();
-        StepsList.SelectedIndex = src;      // 先回落到源行（重排成功时会再改）
         if (insertAt >= 0) ApplyReorder(src, insertAt);
         e.Handled = true;
     }
@@ -442,7 +620,6 @@ public partial class CompositeActionDialog : Window
         }
 
         UpdateGhost(pos);
-        // 插入指示线（替代原 SelectedIndex 高亮——选中态会干扰点击，插入线更直观）
         PositionInsertLine(e);
     }
 
@@ -451,26 +628,24 @@ public partial class CompositeActionDialog : Window
     {
         int hover = GripHoverRow(e);
         if (hover < 0) { InsertLine.Visibility = Visibility.Collapsed; return; }
-        var c = StepsList.ItemContainerGenerator.ContainerFromIndex(hover) as FrameworkElement;
+        var c = FlowList.ItemContainerGenerator.ContainerFromIndex(hover) as FrameworkElement;
         if (c == null) { InsertLine.Visibility = Visibility.Collapsed; return; }
         bool after = GripInsertAt(e, hover) > hover;
         var p = c.TransformToAncestor(GhostLayer).Transform(new Point(0, after ? c.ActualHeight : 0));
         Canvas.SetLeft(InsertLine, p.X);
         Canvas.SetTop(InsertLine, p.Y - 1.5);
-        InsertLine.Width = c.ActualWidth > 0 ? c.ActualWidth : StepsList.ActualWidth;
+        InsertLine.Width = c.ActualWidth > 0 ? c.ActualWidth : FlowList.ActualWidth;
         InsertLine.Visibility = Visibility.Visible;
     }
 
     private void ShowGhost(int index)
     {
-        var step = _steps[index];
-        GhostBadge.Text = $"{index + 1}. {ActionTypeLabel.Of(step.Action.Type)}";
-        GhostName.Text = string.IsNullOrWhiteSpace(step.Action.Name)
-            ? ActionTypeLabel.Of(step.Action.Type) : step.Action.Name;   // 空名回退类型名（§12 步骤名可空）
+        var row = _rows[index];
+        GhostBadge.Text = row.Badge;
+        GhostName.Text = row.Title;
         DragGhost.Visibility = Visibility.Visible;
         Mouse.OverrideCursor = Cursors.SizeAll;
-        // 源行半透明占位
-        if (StepsList.ItemContainerGenerator.ContainerFromIndex(index) is ListBoxItem c)
+        if (FlowList.ItemContainerGenerator.ContainerFromIndex(index) is ListBoxItem c)
         {
             c.Opacity = 0.35;
             _gripSrcContainer = c;
@@ -504,78 +679,153 @@ public partial class CompositeActionDialog : Window
     /// 再找命中的行；命中列表内但没落在行上（项间空隙 / ItemsPanel）→ 末行。</summary>
     private int GripHoverRow(MouseEventArgs e)
     {
-        var p = e.GetPosition(StepsList);
-        if (p.X < 0 || p.Y < 0 || p.X > StepsList.ActualWidth || p.Y > StepsList.ActualHeight)
+        var p = e.GetPosition(FlowList);
+        if (p.X < 0 || p.Y < 0 || p.X > FlowList.ActualWidth || p.Y > FlowList.ActualHeight)
             return -1;                       // 列表外（左栏 / 右栏 / 视口之外）
 
-        if (StepsList.InputHitTest(p) is DependencyObject d)
+        if (FlowList.InputHitTest(p) is DependencyObject d)
         {
-            var container = ItemsControl.ContainerFromElement(StepsList, d) as ListBoxItem;
+            var container = ItemsControl.ContainerFromElement(FlowList, d) as ListBoxItem;
             if (container != null)
             {
-                int i = StepsList.ItemContainerGenerator.IndexFromContainer(container);
+                int i = FlowList.ItemContainerGenerator.IndexFromContainer(container);
                 if (i >= 0) return i;
             }
         }
-        return _steps.Count - 1;             // 列表内但未命中行 → 末行（下半即追加到末尾）
+        return _rows.Count - 1;             // 列表内但未命中行 → 末行（下半即追加到末尾）
     }
 
-    /// <summary>命中行 → 插入位置（0.._steps.Count）：上半 = 该行之前，下半 = 该行之后。
-    /// 必须区分上下半：只按行索引时，拖到紧邻的下一行会被算作「原位」而毫无反馈。</summary>
+    /// <summary>命中行 → 插入位置（0.._rows.Count）：上半 = 该行之前，下半 = 该行之后。</summary>
     private int GripInsertAt(MouseEventArgs e, int hover)
     {
-        var container = StepsList.ItemContainerGenerator.ContainerFromIndex(hover) as ListBoxItem;
+        var container = FlowList.ItemContainerGenerator.ContainerFromIndex(hover) as ListBoxItem;
         if (container == null) return hover;
         return e.GetPosition(container).Y < container.ActualHeight / 2 ? hover : hover + 1;
     }
 
-    /// <summary>释放：把源步骤移到插入位置（<paramref name="insertAt"/> 基于移动前的列表）。</summary>
-    private void ApplyReorder(int src, int insertAt)
+    /// <summary>释放：把源节点移到插入位置。</summary>
+    private void ApplyReorder(int srcRow, int insertAtFlat)
     {
-        if (src < 0 || src >= _steps.Count) return;
-        if (insertAt < 0 || insertAt > _steps.Count) return;
-        int target = insertAt > src ? insertAt - 1 : insertAt;   // 移除源后索引前移
-        if (target == src) return;
-        var old = Views.Controls.DragFx.CaptureByIndex(StepsList);
-        var moved = _steps[src];
-        _steps.RemoveAt(src);
-        _steps.Insert(Math.Clamp(target, 0, _steps.Count), moved);
-        ReloadRows();
-        Views.Controls.DragFx.AnimateReorderByIndex(StepsList, old,
-            i => Views.Controls.DragFx.OldIndexOfMove(i, src, target));
-        StepsList.SelectedIndex = Math.Clamp(target, 0, _steps.Count - 1);
+        if (srcRow < 0 || srcRow >= _rows.Count) return;
+        var src = _rows[srcRow];
+        if (src.IsMarker || src.Node == null) return;
+
+        var dest = ResolveFlatInsert(insertAtFlat);
+        // 不能把节点拖进自己的子树。
+        if (ContainsContainer(src.Node, dest.Container)) return;
+
+        int srcIdx = src.Container.IndexOf(src.Node);
+        if (srcIdx < 0) return;
+
+        int destIdx = dest.Index;
+        if (ReferenceEquals(src.Container, dest.Container) && destIdx > srcIdx) destIdx--;
+
+        src.Container.RemoveAt(srcIdx);
+        destIdx = Math.Clamp(destIdx, 0, dest.Container.Count);
+        dest.Container.Insert(destIdx, src.Node);
+        ReloadRows(src.Node);
+    }
+
+    /// <summary>把「第 flat 行之前」解析为真实的（容器, 下标）。</summary>
+    private (List<FlowNode> Container, int Index) ResolveFlatInsert(int flat)
+    {
+        if (flat <= 0) return (_flow, 0);
+        if (flat >= _rows.Count) return (_flow, _flow.Count);
+
+        var row = _rows[flat];
+        switch (row.Kind)
+        {
+            case RowKind.Node:
+                return (row.Container, row.Index);
+
+            case RowKind.ElseMarker:
+                // 「否则」之前 = Then 块末尾。
+                return (EnsureThen(row.Owner!), row.Owner!.If!.Then.Count);
+
+            case RowKind.EndIf:
+                // 「结束如果」之前 = Else 块末尾（Else 未显示内容时即其起点）。
+                return (EnsureElse(row.Owner!), row.Owner!.If!.Else!.Count);
+
+            case RowKind.EndLoop:
+                return (EnsureBody(row.Owner!), row.Owner!.Loop!.Body.Count);
+
+            default:
+                return (_flow, _flow.Count);
+        }
+    }
+
+    /// <summary>节点子树里是否包含指定容器（禁止拖入自身内部）。</summary>
+    private static bool ContainsContainer(FlowNode node, List<FlowNode> container)
+    {
+        if (node.Kind == FlowNodeKind.@if && node.If != null)
+        {
+            if (ReferenceEquals(node.If.Then, container)) return true;
+            if (node.If.Else != null && ReferenceEquals(node.If.Else, container)) return true;
+            foreach (var child in node.If.Then)
+                if (ContainsContainer(child, container)) return true;
+            if (node.If.Else != null)
+                foreach (var child in node.If.Else)
+                    if (ContainsContainer(child, container)) return true;
+        }
+        else if (node.Kind == FlowNodeKind.loop && node.Loop != null)
+        {
+            if (ReferenceEquals(node.Loop.Body, container)) return true;
+            foreach (var child in node.Loop.Body)
+                if (ContainsContainer(child, container)) return true;
+        }
+        return false;
+    }
+
+    private static List<FlowNode> EnsureThen(FlowNode ifNode)
+    {
+        ifNode.If ??= new IfNode();
+        return ifNode.If.Then;
+    }
+
+    private static List<FlowNode> EnsureElse(FlowNode ifNode)
+    {
+        ifNode.If ??= new IfNode();
+        return ifNode.If.Else ??= new List<FlowNode>();
+    }
+
+    private static List<FlowNode> EnsureBody(FlowNode loopNode)
+    {
+        loopNode.Loop ??= new LoopNode();
+        return loopNode.Loop.Body;
     }
 
     /// <summary>OLE 拖放只剩「左栏项拖入」一路——把手排序已改走窗口级鼠标跟踪（<see cref="GripDragTick"/>）。</summary>
-    private void StepsList_DragOver(object sender, DragEventArgs e)
+    private void FlowList_DragOver(object sender, DragEventArgs e)
     {
         if (_dragLeftItem != null) { e.Effects = DragDropEffects.Copy; e.Handled = true; }
     }
 
-    private void StepsList_Drop(object sender, DragEventArgs e)
+    private void FlowList_Drop(object sender, DragEventArgs e)
     {
-        // 左栏项 → 插入步骤
         if (_dragLeftItem != null)
         {
-            int to = Math.Clamp(DropIndex(e), 0, _steps.Count);
-            AddFromLeft(_dragLeftItem, to);
+            AddFromLeft(_dragLeftItem, DropTarget(e));
             e.Handled = true;
         }
     }
 
-    /// <summary>落点索引：命中行 → 该行索引；空白/末尾 → 追加到末尾。</summary>
-    private int DropIndex(DragEventArgs e)
+    /// <summary>落点：命中行的上/下半 → 该行前 / 后；空白 → 根层末尾。</summary>
+    private (List<FlowNode> Container, int Index) DropTarget(DragEventArgs e)
     {
         if (e.OriginalSource is DependencyObject hit)
         {
-            var container = ItemsControl.ContainerFromElement(StepsList, hit) as ListBoxItem;
+            var container = ItemsControl.ContainerFromElement(FlowList, hit) as ListBoxItem;
             if (container != null)
             {
-                int i = StepsList.ItemContainerGenerator.IndexFromContainer(container);
-                if (i >= 0) return i;
+                int i = FlowList.ItemContainerGenerator.IndexFromContainer(container);
+                if (i >= 0)
+                {
+                    bool after = e.GetPosition(container).Y >= container.ActualHeight / 2;
+                    return ResolveFlatInsert(after ? i + 1 : i);
+                }
             }
         }
-        return _steps.Count;
+        return (_flow, _flow.Count);
     }
 
     // ============ 右栏 / 底部 ============
@@ -584,15 +834,70 @@ public partial class CompositeActionDialog : Window
     {
         var name = NameBox.Text.Trim();
         if (name.Length == 0) { ConfirmDialog.Info(this, "组合动作", "名称不能为空。"); NameBox.Focus(); return; }
-        if (_steps.Count == 0) { ConfirmDialog.Info(this, "组合动作", "组合动作至少需要一个步骤。"); return; }
+        if (!_rows.Any(r => !r.IsMarker))
+        {
+            ConfirmDialog.Info(this, "组合动作", "组合动作至少需要一个步骤。");
+            return;
+        }
+
+        if (FindMisplacedLoopControl(_flow, inLoop: false) is string bad)
+        {
+            ConfirmDialog.Info(this, "组合动作", $"「{bad}」只能放在循环体内。");
+            return;
+        }
+
+        PruneEmptyElse(_flow);
 
         _draft.Name = name;
         _draft.Type = ActionType.composite;
         _draft.Icon = IconPicker.SelectedIcon ?? IconCatalog.Default;
-        _draft.Steps = _steps;
+        _draft.Flow = _flow;
+        _draft.Steps = null;                 // 已迁移到 Flow，避免两套数据并存
         _draft.CompositeOnFail = AbortBox.IsChecked == true ? OnFailStrategy.abort : null;
         Result = _draft;
         DialogResult = true;
+    }
+
+    /// <summary>找出不在循环体内的跳出 / 继续（编辑器拦住，避免运行到根层才发现无效）。</summary>
+    private static string? FindMisplacedLoopControl(List<FlowNode> nodes, bool inLoop)
+    {
+        foreach (var n in nodes)
+        {
+            if (!inLoop && n.Kind is FlowNodeKind.@break or FlowNodeKind.@continue)
+                return FlowText.Badge(n);
+
+            if (n.Kind == FlowNodeKind.@if && n.If != null)
+            {
+                if (FindMisplacedLoopControl(n.If.Then, inLoop) is string t) return t;
+                if (n.If.Else != null && FindMisplacedLoopControl(n.If.Else, inLoop) is string f) return f;
+            }
+            else if (n.Kind == FlowNodeKind.loop && n.Loop != null)
+            {
+                if (FindMisplacedLoopControl(n.Loop.Body, true) is string b) return b;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>空的 Else 分支落盘时去掉，保持配置干净。</summary>
+    private static void PruneEmptyElse(List<FlowNode> nodes)
+    {
+        foreach (var n in nodes)
+        {
+            if (n.Kind == FlowNodeKind.@if && n.If != null)
+            {
+                PruneEmptyElse(n.If.Then);
+                if (n.If.Else != null)
+                {
+                    PruneEmptyElse(n.If.Else);
+                    if (n.If.Else.Count == 0) n.If.Else = null;
+                }
+            }
+            else if (n.Kind == FlowNodeKind.loop && n.Loop != null)
+            {
+                PruneEmptyElse(n.Loop.Body);
+            }
+        }
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
@@ -627,47 +932,67 @@ public partial class CompositeActionDialog : Window
         public string? InternalCommand { get; set; }   // 内部动作组：内置命令
         public string? PoolActionId { get; set; }       // 动作池组：复用（深拷贝）
         public ActionType? BasicType { get; set; }       // 基础动作组：动作类型（需开编辑器填字段）
+        public FlowNodeKind? FlowKind { get; set; }      // 流程组：控制节点
     }
 
-    /// <summary>步骤行展示模型；属性直接读写底层 <see cref="StepDto"/>，绑定编辑即落回数据。</summary>
-    private sealed class StepRow
+    private enum RowKind
     {
-        public StepRow(StepDto step, int index, IReadOnlyList<StrategyItem> strategies,
-                       IReadOnlyDictionary<string, string>? macroNames = null)
-        {
-            Step = step;
-            Number = index + 1;
-            StrategyOptions = strategies;
-            TypeBadge = ActionTypeLabel.Of(step.Action.Type);
-            // 空名回退类型名（名称非必填，§12）：比「（未命名）」更表意，与灰底类型徽标层次分明
-            ActionName = string.IsNullOrEmpty(step.Action.Name)
-                ? ActionTypeLabel.Of(step.Action.Type) : step.Action.Name;
+        Node,
+        ElseMarker,
+        EndIf,
+        EndLoop,
+    }
 
-            // 宏步骤按 Id 引用事件文件：显示宏的当前名称；文件缺失时明确标出，避免回放时才报错。
-            if (step.Action.Type == ActionType.macro)
-            {
-                string id = step.Action.MacroId ?? "";
-                if (MacroStore.Exists(id) &&
-                    macroNames != null && macroNames.TryGetValue(id, out var current))
-                {
-                    ActionName = current;
-                }
-                else
-                {
-                    ActionName += "（宏文件缺失）";
-                }
-            }
+    /// <summary>流程行展示模型；node 行的属性直接读写底层 <see cref="FlowNode"/>，绑定编辑即落回数据。</summary>
+    private sealed class FlowRow
+    {
+        public FlowRow(RowKind kind, FlowNode? node, List<FlowNode> container, int index, int depth,
+                       FlowNode? owner, string number, string badge, string title,
+                       IReadOnlyList<StrategyItem> strategies)
+        {
+            Kind = kind;
+            Node = node;
+            Container = container;
+            Index = index;
+            Depth = depth;
+            Owner = owner;
+            Number = number;
+            Badge = badge;
+            Title = title;
+            StrategyOptions = strategies;
         }
-        public int Number { get; }
-        public string TypeBadge { get; }
-        public string ActionName { get; }
+
+        public RowKind Kind { get; }
+        public FlowNode? Node { get; }
+        public List<FlowNode> Container { get; }
+        public int Index { get; }
+        public int Depth { get; }
+        public FlowNode? Owner { get; }
+        public string Number { get; }
+        public string Badge { get; }
+        public string Title { get; }
         public IReadOnlyList<StrategyItem> StrategyOptions { get; }
-        public StepDto Step { get; }
-        public int DelayMs { get => Step.DelayMs; set => Step.DelayMs = value; }
+
+        public bool IsMarker => Kind != RowKind.Node;
+
+        /// <summary>有可编辑参数（动作 / 设置 / 如果 / 循环）；跳出、继续、停止只有语义。</summary>
+        public bool CanEdit => !IsMarker && Node != null &&
+            Node.Kind is FlowNodeKind.action or FlowNodeKind.set
+                or FlowNodeKind.@if or FlowNodeKind.loop;
+
+        /// <summary>缩进：每层 18px。</summary>
+        public Thickness IndentMargin => new(Depth * 18.0, 2, 0, 2);
+
+        public int DelayMs
+        {
+            get => Node?.DelayMs ?? 0;
+            set { if (Node != null) Node.DelayMs = value; }
+        }
+
         public int OnFailIndex
         {
-            get => Step.OnFail == OnFailStrategy.abort ? 1 : 0;
-            set => Step.OnFail = value == 1 ? OnFailStrategy.abort : null;
+            get => Node?.OnFail == OnFailStrategy.abort ? 1 : 0;
+            set { if (Node != null) Node.OnFail = value == 1 ? OnFailStrategy.abort : null; }
         }
     }
 

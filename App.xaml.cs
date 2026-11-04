@@ -258,8 +258,33 @@ public partial class App : Application
         bool stepChanged = false;
         foreach (var a in ActionRegistry.All)
         {
-            if (a.Steps == null) continue;
-            stepChanged |= a.Steps.RemoveAll(s => IsObsolete(s.Action, obsolete)) > 0;
+            if (a.Type != ActionType.composite) continue;
+            if (a.Steps != null)
+                stepChanged |= a.Steps.RemoveAll(s => IsObsolete(s.Action, obsolete)) > 0;
+            if (a.Flow != null)
+                stepChanged |= RemoveObsoleteNodes(a.Flow, obsolete);
+        }
+
+        static bool RemoveObsoleteNodes(List<FlowNode> nodes, string[] commands)
+        {
+            bool changed = false;
+            for (int i = nodes.Count - 1; i >= 0; i--)
+            {
+                var n = nodes[i];
+                if (n.Action != null && IsObsolete(n.Action, commands))
+                {
+                    nodes.RemoveAt(i);
+                    changed = true;
+                    continue;
+                }
+                if (n.If != null)
+                {
+                    changed |= RemoveObsoleteNodes(n.If.Then, commands);
+                    if (n.If.Else != null) changed |= RemoveObsoleteNodes(n.If.Else, commands);
+                }
+                if (n.Loop != null) changed |= RemoveObsoleteNodes(n.Loop.Body, commands);
+            }
+            return changed;
         }
 
         if (stale.Count == 0 && !stepChanged) return;

@@ -259,6 +259,49 @@
                                 </Border>
                             </StackPanel>
 
+                            <!-- mouse（鼠标操作） -->
+                            <StackPanel x:Name="F_Mouse">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="鼠标动作" Margin="0,0,0,4"/>
+                                <ComboBox x:Name="MouseActionCombo" MinHeight="30" Margin="0,0,0,10"
+                                          SelectionChanged="MouseAction_Changed">
+                                    <ComboBoxItem Content="左键单击"/>
+                                    <ComboBoxItem Content="左键双击"/>
+                                    <ComboBoxItem Content="右键单击"/>
+                                    <ComboBoxItem Content="中键单击"/>
+                                    <ComboBoxItem Content="只移动光标"/>
+                                    <ComboBoxItem Content="滚轮向上"/>
+                                    <ComboBoxItem Content="滚轮向下"/>
+                                </ComboBox>
+
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="屏幕坐标（虚拟桌面像素）" Margin="0,0,0,4"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="x" VerticalAlignment="Center"
+                                               Foreground="{StaticResource HintTextBrush}"/>
+                                    <TextBox Grid.Column="1" x:Name="MouseXBox" MinHeight="30" Margin="6,0,12,0"/>
+                                    <TextBlock Grid.Column="2" Text="y" VerticalAlignment="Center"
+                                               Foreground="{StaticResource HintTextBrush}"/>
+                                    <TextBox Grid.Column="3" x:Name="MouseYBox" MinHeight="30" Margin="6,0,0,0"/>
+                                </Grid>
+
+                                <StackPanel x:Name="MouseWheelPanel" Orientation="Horizontal" Margin="0,10,0,0"
+                                            Visibility="Collapsed">
+                                    <TextBlock Text="滚动刻度" VerticalAlignment="Center"
+                                               Foreground="{StaticResource HintTextBrush}"/>
+                                    <TextBox x:Name="MouseWheelBox" Width="72" MinHeight="30" Margin="8,0,4,0"/>
+                                    <TextBlock Text="（120 = 一格）" VerticalAlignment="Center"
+                                               Foreground="{StaticResource HintTextBrush}"/>
+                                </StackPanel>
+
+                                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Text="坐标可用 ${变量}；先「设置变量 · 屏幕图像」再用 ${m.x} / ${m.y} 点击识别到的位置。"/>
+                            </StackPanel>
+
                             <!-- macro（键鼠宏）：一宏一动作，只能当场录制，不再选宏文件。
                                  回放参数按宏独立（速度 / 循环 / 倒计时），录制的全局参数也在同一面板编辑：
                                  设置页不再有「键鼠录制」页，宏也不再需要手工管理文件。 -->

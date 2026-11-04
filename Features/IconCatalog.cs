@@ -27,6 +27,7 @@ internal static class IconCatalog
         ["composite"]  = "\uE72C",  // 刷新/流程
         ["send"]       = "\uE724",  // 纸飞机（发送文本）
         ["keyboard"]   = "\uE765",  // 键盘（模拟按键）
+        ["mouse"]      = "\uE962",  // 鼠标（鼠标操作）
         ["record"]     = "\uE7C8",  // 录制
         ["play"]       = "\uE768",  // 播放
         ["pause"]      = "\uE769",  // 暂停

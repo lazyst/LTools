@@ -212,10 +212,26 @@ internal static class MacroStore
             var live = new HashSet<string>(StringComparer.Ordinal);
             foreach (var a in ActionRegistry.All) CollectRefs(a);
 
+            void CollectNode(FlowNode n)
+            {
+                if (n.Action != null) CollectRefs(n.Action);
+                if (n.If != null)
+                {
+                    foreach (var c in n.If.Then) CollectNode(c);
+                    if (n.If.Else != null)
+                        foreach (var c in n.If.Else) CollectNode(c);
+                }
+                if (n.Loop != null)
+                    foreach (var c in n.Loop.Body) CollectNode(c);
+            }
+
             void CollectRefs(ActionDto a)
             {
                 if (a.Type == ActionType.macro && !string.IsNullOrWhiteSpace(a.MacroId))
                     live.Add(a.MacroId!);
+                // 新流程（含旧 Steps 迁移）与残留 Steps 都算引用，避免误删仍被使用的宏文件。
+                if (a.Type == ActionType.composite)
+                    foreach (var n in FlowMigration.Ensure(a)) CollectNode(n);
                 if (a.Steps == null) return;
                 foreach (var s in a.Steps) CollectRefs(s.Action);
             }

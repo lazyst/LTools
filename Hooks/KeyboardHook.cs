@@ -72,10 +72,26 @@ internal static class KeyboardHook
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
             }
 
-            // 宏回放期间按配置的停止热键停止（热键注册失败时的兜底；成对吞掉 keydown / keyup）。
+            // 自动化 / 宏回放期间按配置的停止热键停止（热键注册失败时的兜底；成对吞掉 keydown / keyup）。
             // 放在录入拦截之前：即使正在录入热键，也保留这个安全出口。
-            if (MacroPlayer.HandleStopHotkey(vk, isDown, isUp))
+            if (FlowRunner.IsRunning
+                    ? FlowRunner.HandleStopHotkey(vk, isDown, isUp)
+                    : MacroPlayer.HandleStopHotkey(vk, isDown, isUp))
                 return (IntPtr)1;
+
+            // 自动化运行期间：屏蔽 LTools 的全部 CapsLock 手势 / 菜单 / 面板 / vim 热键。
+            // 普通物理按键照常放行（用户仍可在目标应用里输入），CapsLock 本体吞掉，
+            // 避免切换大小写或让状态机进入按下态。停止热键已在上方优先处理。
+            if (FlowRunner.IsRunning)
+            {
+                if (isUp && AppState.SwallowedVks.Remove((int)vk)) return (IntPtr)1;
+                if (vk == Win32.VkCapital)
+                {
+                    if (isDown) MarkSwallowed(vk);
+                    return (IntPtr)1;
+                }
+                return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
+            }
 
             // 热键录入期间：按键交给焦点对话框自己处理，LTools 的全局热键 / CapsLock 状态机让路，
             // 避免「录入 Ctrl+F2 时反而启动了宏录制」。CapsLock 仍吞掉，防止误切大小写。

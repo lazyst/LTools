@@ -28,7 +28,13 @@ internal static class MacroHotkey
     private const uint ModWin = 0x0008;
     private const uint ModNoRepeat = 0x4000;
 
-    private static HwndSource? _source;
+    private static volatile HwndSource? _source;
+
+    // 停止回放热键的引用计数：自动化流程注册后，流程内的宏步骤也会注册 / 注销，
+    // 简单「后注册者注销」会把流程剩余部分的停止出口提前拆掉。
+    private static readonly object _playbackStopLock = new();
+    private static int _playbackStopRefs;
+    private static bool _playbackStopRegistered;
 
     /// <summary>开始录制后调用：把当前录制热键注册到系统。失败（被别的程序占用等）不影响钩子路径。</summary>
     public static void Register()
@@ -75,33 +81,51 @@ internal static class MacroHotkey
     /// <returns>注册是否成功；失败（被其他程序占用）时回放仍可依赖键盘钩子停止，不阻止回放启动。</returns>
     public static bool RegisterPlaybackStop()
     {
-        try
+        lock (_playbackStopLock)
         {
-            if (_source == null) return false;
-            UnregisterPlaybackStop();
-            ushort vk = MacroSettings.PlaybackStopVk;
-            if (vk == 0) return false;
-            uint mods = ToModFlags(MacroSettings.PlaybackStopModifiers) | ModNoRepeat;
-            // 被其他程序占用时返回 false 即可：调用方会依赖键盘钩子停止，不写崩溃日志。
-            return Win32.RegisterHotKey(_source.Handle, HotkeyIdPlayback, mods, vk);
-        }
-        catch (Exception ex)
-        {
-            CrashLog.Write("MacroHotkey.RegisterPlaybackStop", ex);
-            return false;
+            _playbackStopRefs++;
+            if (_playbackStopRefs > 1) return _playbackStopRegistered;
+
+            try
+            {
+                if (_source == null) return false;
+                ushort vk = MacroSettings.PlaybackStopVk;
+                if (vk == 0) return false;
+                uint mods = ToModFlags(MacroSettings.PlaybackStopModifiers) | ModNoRepeat;
+                // 被其他程序占用时返回 false 即可：调用方会依赖键盘钩子停止，不写崩溃日志。
+                _playbackStopRegistered = Win32.RegisterHotKey(_source.Handle, HotkeyIdPlayback, mods, vk);
+                return _playbackStopRegistered;
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write("MacroHotkey.RegisterPlaybackStop", ex);
+                return false;
+            }
         }
     }
 
-    /// <summary>回放结束（正常 / 停止 / 异常）后释放停止热键。</summary>
+    /// <summary>回放 / 流程结束（正常 / 停止 / 异常）后释放停止热键；按引用计数，最后一个使用者负责注销。</summary>
     public static void UnregisterPlaybackStop()
     {
-        try
+        lock (_playbackStopLock)
         {
-            if (_source != null) Win32.UnregisterHotKey(_source.Handle, HotkeyIdPlayback);
-        }
-        catch (Exception ex)
-        {
-            CrashLog.Write("MacroHotkey.UnregisterPlaybackStop", ex);
+            if (_playbackStopRefs <= 0) return;
+            _playbackStopRefs--;
+            if (_playbackStopRefs > 0) return;
+
+            try
+            {
+                if (_source != null && _playbackStopRegistered)
+                    Win32.UnregisterHotKey(_source.Handle, HotkeyIdPlayback);
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write("MacroHotkey.UnregisterPlaybackStop", ex);
+            }
+            finally
+            {
+                _playbackStopRegistered = false;
+            }
         }
     }
 
@@ -133,7 +157,9 @@ internal static class MacroHotkey
         if (msg == WmHotkey && wParam.ToInt32() == HotkeyIdPlayback)
         {
             handled = true;
-            if (MacroPlayer.IsPlaying) MacroPlayer.Stop();
+            // 流程内的宏停止热键由流程接管：停止整个流程（并连带停止正在回放的宏）。
+            if (FlowRunner.IsRunning) FlowRunner.Stop();
+            else if (MacroPlayer.IsPlaying) MacroPlayer.Stop();
             return IntPtr.Zero;
         }
 

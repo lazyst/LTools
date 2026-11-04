@@ -16,7 +16,8 @@ namespace LTools.Features;
 /// <item>sendText → 50ms 焦点延时后按 <see cref="SendTextMode"/> 分发（auto=Unicode 注入 / type=键入 / paste=剪贴板粘贴，§3.2.2）</item>
 /// <item>sendKeys → 50ms 焦点延时后顺序遍历条目（chord 逐 stroke Combo、stroke 间 15ms；text 复用 sendText auto；sleep 等待，§3.2.1）</item>
 /// <item>internal → <see cref="InternalActionRegistry"/> 分发（dispatch 到 UI 线程执行）</item>
-/// <item>composite → 顺序执行 <see cref="StepDto"/>（延迟 / 失败策略）；步骤内嵌 <see cref="ActionDto"/> 快照，**不支持嵌套**</item>
+/// <item>mouse → 绝对移动 + 点击 / 双击 / 滚轮（坐标支持运行期模板）</item>
+/// <item>composite → 交给 <see cref="FlowRunner"/> 解释执行嵌套流程；节点内嵌 <see cref="ActionDto"/> 快照，**不支持嵌套流程**</item>
 /// </list>
 /// </summary>
 /// <remarks>
@@ -37,6 +38,10 @@ internal static class ActionExecutor
     /// </summary>
     public static void Run(ActionDto action, int cursorX, int cursorY)
     {
+        // 从 CapsLock 菜单启动时 CapsLock 仍可能处于按下态；流程运行期间钩子会屏蔽 CapsLock，
+        // 若不在启动前清掉，状态机可能一直认为它按着（见 FlowRunner.PrepareToRun）。
+        if (action.Type == ActionType.composite) FlowRunner.PrepareToRun();
+
         Task.Run(() =>
         {
             try { Execute(action, cursorX, cursorY); }
@@ -44,10 +49,10 @@ internal static class ActionExecutor
         });
     }
 
-    // —— 同步执行（已位于后台线程，或被 composite 步骤调用）——
-    // 失败一律上抛（不在此吞掉），由 Run 顶层 / composite 步骤各自的 catch 记录并按 OnFail 决策。
+    // —— 同步执行（已位于后台线程，或被流程节点调用）——
+    // 失败一律上抛（不在此吞掉），由 Run 顶层 / FlowRunner 的每个节点 catch 记录并按 OnFail 决策。
 
-    private static void Execute(ActionDto action, int cursorX, int cursorY)
+    internal static void Execute(ActionDto action, int cursorX, int cursorY)
     {
         switch (action.Type)
         {
@@ -68,6 +73,9 @@ internal static class ActionExecutor
             case ActionType.sendKeys:
                 SendKeys(action);
                 break;
+            case ActionType.mouse:
+                Mouse(action);
+                break;
             case ActionType.macro:
                 PlayMacro(action);
                 break;
@@ -75,7 +83,7 @@ internal static class ActionExecutor
                 DispatchInternal(action, cursorX, cursorY);
                 break;
             case ActionType.composite:
-                RunComposite(action, cursorX, cursorY);
+                FlowRunner.RunAction(action, cursorX, cursorY);
                 break;
             default:
                 throw new InvalidOperationException($"未知动作类型: {action.Type}");
@@ -348,40 +356,63 @@ internal static class ActionExecutor
         disp.Invoke(new Action(() => handler(x, y)));
     }
 
-    // —— composite（顺序执行步骤；步骤内嵌快照，不支持嵌套）——
-    private static void RunComposite(ActionDto a, int cursorX, int cursorY)
+    // —— mouse（鼠标操作）——
+
+    /// <summary>本类注入鼠标事件的标记（与宏回放一致，便于排查）。</summary>
+    private static readonly IntPtr MouseTag = (IntPtr)0x1234ABCD;
+
+    private static void Mouse(ActionDto a)
     {
-        if (a.Steps == null || a.Steps.Count == 0) return;
+        if (!int.TryParse(a.X?.Trim(), out int x) || !int.TryParse(a.Y?.Trim(), out int y))
+            throw new InvalidOperationException($"mouse 坐标无效: X={a.X}, Y={a.Y} ({a.Name})");
 
-        for (int i = 0; i < a.Steps.Count; i++)
+        InputHelper.MoveToScreen(x, y, MouseTag);
+        Thread.Sleep(10);   // 让光标位置先落定，再发按键
+
+        int wheel = Math.Clamp(a.WheelDelta ?? 120, 1, 12_000);
+        switch (a.MouseAction ?? MouseActionKind.click)
         {
-            var step = a.Steps[i];
-            if (step.DelayMs > 0)
-                Thread.Sleep(step.DelayMs);
-
-            var stepAction = step.Action;
-            // 嵌套守卫：编辑器已禁止组合步骤内嵌组合，此处对畸形配置兜底（跳过 + 记日志，不崩）。
-            if (stepAction == null || stepAction.Type == ActionType.composite)
-            {
-                CrashLog.Write($"ActionExecutor[{a.Name}].Step{i + 1}",
-                    new InvalidOperationException("组合动作不支持嵌套组合步骤"));
-                if (OnFailOf(step, a) == OnFailStrategy.abort) break;
-                continue;
-            }
-
-            try
-            {
-                Execute(stepAction, cursorX, cursorY);
-            }
-            catch (Exception ex)
-            {
-                CrashLog.Write($"ActionExecutor[{a.Name}].Step{i + 1}({stepAction.Name})", ex);
-                if (OnFailOf(step, a) == OnFailStrategy.abort) break;
-            }
+            case MouseActionKind.click:
+                ClickButton(1);
+                break;
+            case MouseActionKind.doubleClick:
+                ClickButton(1);
+                Thread.Sleep(60);
+                ClickButton(1);
+                break;
+            case MouseActionKind.rightClick:
+                ClickButton(2);
+                break;
+            case MouseActionKind.middleClick:
+                ClickButton(3);
+                break;
+            case MouseActionKind.move:
+                break;
+            case MouseActionKind.wheelUp:
+                Win32.mouse_event(Win32.MouseeventfWheel, 0, 0, (uint)wheel, MouseTag);
+                break;
+            case MouseActionKind.wheelDown:
+                Win32.mouse_event(Win32.MouseeventfWheel, 0, 0, unchecked((uint)-wheel), MouseTag);
+                break;
         }
     }
 
-    /// <summary>解析步骤失败策略：步骤显式值 &gt; 组合级默认 &gt; continue（§4）。</summary>
-    private static OnFailStrategy OnFailOf(StepDto step, ActionDto composite) =>
-        step.OnFail ?? composite.CompositeOnFail ?? OnFailStrategy.@continue;
+    /// <summary>按下并释放一个鼠标键（1=左 2=右 3=中）。</summary>
+    private static void ClickButton(int button)
+    {
+        uint down = button switch
+        {
+            2 => Win32.MouseeventfRightdown,
+            3 => Win32.MouseeventfMiddledown,
+            _ => Win32.MouseeventfLeftdown,
+        };
+        uint up = button switch
+        {
+            2 => Win32.MouseeventfRightup,
+            3 => Win32.MouseeventfMiddleup,
+            _ => Win32.MouseeventfLeftup,
+        };
+        Win32.mouse_event(down, 0, 0, 0, MouseTag);
+        Win32.mouse_event(up, 0, 0, 0, MouseTag);
+    }
 }
