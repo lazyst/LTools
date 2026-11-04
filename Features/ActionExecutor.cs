@@ -322,7 +322,7 @@ internal static class ActionExecutor
         var macro = MacroStore.Load(a.MacroId!)
             ?? throw new InvalidOperationException($"宏不存在: {a.MacroId}");
 
-        MacroPlayer.PlaySync(macro, MacroPlayer.EffectiveSpeed(macro.Id));
+        MacroPlayer.PlaySync(macro);
     }
 
     // —— internal（内部命令分发到 UI 线程，同步等待）——

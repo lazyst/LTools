@@ -167,9 +167,6 @@
                 <DockPanel Margin="12,8,12,8">
                     <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
                         <TextBlock Style="{StaticResource SectionLabel}" Text="步骤"/>
-                        <Button Style="{StaticResource BtnGhost}" Content="改为普通动作…"
-                                HorizontalAlignment="Right" Click="ToNormal_Click"
-                                ToolTip="关闭本窗口并新建一个普通动作（不带数据跳转）"/>
                     </Grid>
                     <!-- EmptyHint 必须排在 ListBox 之前：DockPanel 只有最后一个子元素才
                          LastChildFill 填满剩余。否则 ListBox 落到默认 Dock="Left"，宽度变成

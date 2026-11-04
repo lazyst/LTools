@@ -130,22 +130,6 @@
             </DataTemplate.Triggers>
         </DataTemplate>
 
-        <!-- 宏列表项：名称 + 时长 / 事件数 / 大小 -->
-        <DataTemplate x:Key="MacroRowTemplate">
-            <Grid Margin="0,5">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="24"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="&#xE765;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                           VerticalAlignment="Center" Foreground="{StaticResource SecondaryTextBrush}"/>
-                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Text="{Binding Summary}" Style="{StaticResource HintLabel}"
-                               TextTrimming="CharacterEllipsis"/>
-                </StackPanel>
-            </Grid>
-        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -178,8 +162,6 @@
                                  Checked="Nav_Changed" Tag="superpanel"/>
                     <RadioButton Style="{StaticResource NavRow}" Content="终端路径"
                                  Checked="Nav_Changed" Tag="terminals"/>
-                    <RadioButton Style="{StaticResource NavRow}" Content="键鼠录制"
-                                 Checked="Nav_Changed" Tag="macro"/>
                     <RadioButton Style="{StaticResource NavRow}" Content="备份与恢复"
                                  Checked="Nav_Changed" Tag="backup"/>
                 </StackPanel>
@@ -383,131 +365,6 @@
                                         MinWidth="72" Click="SaveGitBash_Click"/>
                             </Grid>
                         </Border>
-                    </StackPanel>
-                </ScrollViewer>
-
-                <!-- ============ 键鼠录制 ============ -->
-                <ScrollViewer x:Name="Page_Macro" VerticalScrollBarVisibility="Auto"
-                              Visibility="Collapsed" Padding="20,14,20,14">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="热键与回放" Margin="0,0,0,8"/>
-                        <Border Style="{StaticResource CardBox}">
-                            <StackPanel>
-                                <CheckBox x:Name="MacroEnabledBox" Content="启用宏热键与回放"
-                                          Margin="0,0,0,10"/>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="130"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Style="{StaticResource HintLabel}"
-                                               Text="键鼠宏录制热键" VerticalAlignment="Center"/>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                        <TextBox x:Name="MacroRecordHotkeyBox" MinHeight="30" Width="200"/>
-                                        <Button Style="{StaticResource BtnGhost}" Content="选择…"
-                                                MinWidth="64" Margin="6,0,0,0"
-                                                Click="MacroRecordHotkeyPick_Click"/>
-                                    </StackPanel>
-                                </Grid>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="130"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Style="{StaticResource HintLabel}"
-                                               Text="回放倒计时" VerticalAlignment="Center"/>
-                                    <TextBox Grid.Column="1" x:Name="MacroCountdownBox" MinHeight="30" Width="80"/>
-                                    <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
-                                               Text="ms（0 = 立即回放）" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                </Grid>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="130"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Style="{StaticResource HintLabel}"
-                                               Text="鼠标采样间隔" VerticalAlignment="Center"/>
-                                    <TextBox Grid.Column="1" x:Name="MacroSampleMsBox" MinHeight="30" Width="80"/>
-                                    <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
-                                               Text="ms（0 = 不按时间抽稀；越小越精细、宏越大）"
-                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                </Grid>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="130"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Style="{StaticResource HintLabel}"
-                                               Text="鼠标最小位移" VerticalAlignment="Center"/>
-                                    <TextBox Grid.Column="1" x:Name="MacroSamplePxBox" MinHeight="30" Width="80"/>
-                                    <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
-                                               Text="px（0 = 不按距离抽稀）" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                </Grid>
-                                <Grid Margin="0,0,0,10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="130"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Style="{StaticResource HintLabel}"
-                                               Text="默认回放速度" VerticalAlignment="Center"/>
-                                    <TextBox Grid.Column="1" x:Name="MacroSpeedBox" MinHeight="30" Width="80"/>
-                                    <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
-                                               Text="倍（1 = 原速）" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                </Grid>
-                                <Grid Margin="0,0,0,10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="130"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Style="{StaticResource HintLabel}"
-                                               Text="回放循环次数" VerticalAlignment="Center"/>
-                                    <TextBox Grid.Column="1" x:Name="MacroLoopsBox" MinHeight="30" Width="80"/>
-                                    <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
-                                               Text="次（1 = 只回放一次，最多 99）" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                </Grid>
-                                <StackPanel Orientation="Horizontal">
-                                    <Button Style="{StaticResource BtnPrimary}" Content="保存设置"
-                                            MinWidth="88" Click="SaveMacroSettings_Click"/>
-                                    <TextBlock x:Name="MacroHotkeyHint" Style="{StaticResource HintLabel}"
-                                               Margin="12,0,0,0" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <Grid Margin="0,4,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="已录制宏"
-                                       VerticalAlignment="Center"/>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                <Button x:Name="MacroRecordBtn" Style="{StaticResource BtnPrimary}"
-                                        Content="开始录制" MinWidth="96" Click="MacroRecord_Click"/>
-                                <Button x:Name="MacroPlayBtn" Style="{StaticResource BtnGhost}"
-                                        Content="回放" MinWidth="64" Margin="6,0,0,0" Click="MacroPlay_Click"/>
-                                <Button Style="{StaticResource BtnGhost}" Content="改名"
-                                        MinWidth="64" Margin="6,0,0,0" Click="MacroRename_Click"/>
-                                <Button Style="{StaticResource BtnGhost}" Content="复制"
-                                        MinWidth="64" Margin="6,0,0,0" Click="MacroDuplicate_Click"/>
-                                <Button Style="{StaticResource BtnGhostDanger}" Content="删除"
-                                        MinWidth="64" Margin="6,0,0,0" Click="MacroDelete_Click"/>
-                                <Button Style="{StaticResource BtnGhost}" Content="刷新"
-                                        MinWidth="64" Margin="6,0,0,0" Click="MacroRefresh_Click"/>
-                                <Button Style="{StaticResource BtnGhost}" Content="速度…"
-                                        MinWidth="64" Margin="6,0,0,0" Click="MacroSpeed_Click"/>
-                            </StackPanel>
-                        </Grid>
-                        <ListBox x:Name="MacroList" Height="220"
-                                 ItemTemplate="{StaticResource MacroRowTemplate}"
-                                 MouseDoubleClick="MacroList_MouseDoubleClick"/>
-                        <TextBlock Style="{StaticResource HintLabel}" Margin="0,8,0,0" TextWrapping="Wrap"
-                                   Text="录制时 LTools 进入透明模式：CapsLock 增强、快捷菜单、超级面板、鼠标手势等全部暂停，录到的输入即目标应用实际收到的输入。停止会自动保存并命名为「录制 MM-dd HH:mm:ss」，可在此改名。"/>
                     </StackPanel>
                 </ScrollViewer>
 

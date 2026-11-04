@@ -53,6 +53,7 @@ ActionDto {
 | `composite` | `Steps[]`（见 §4） | 顺序执行各步 |
 | `sendKeys` ✅ | `Items[]`（chord/text/sleep 序列，见 §3.2） | 逐条目 SendInput；前置 ~50ms 焦点延时 |
 | `sendText` ✅ | `Text`, `Mode`, `AppendEnter`（见 §3.2） | auto=Unicode 注入（绕过输入法）/ type=键入 / paste=剪贴板（150ms 恢复） |
+| `macro` ✅（v2.3.3） | `MacroId` | 载入 `macros/<id>.json` 事件序列，按录制时序回放（见 §12 阶段 12） |
 
 > 🟨 = 阶段 9–11 待实施（规格 §3.2，计划 §11）。
 >
@@ -242,6 +243,9 @@ Step {
 新建 · 打开文件夹
 新建 · 运行命令
 新建 · 打开网址
+新建 · 发送文本
+新建 · 模拟按键
+新建 · 键鼠宏（录制 / 回放）
 ─────────
 从动作池选择…      ← 复用已有动作（原本面板缺此能力，须去设置页）
 清除（仅非空槽位）
@@ -308,8 +312,11 @@ v1 可绑定的内部命令（基于当前已有功能）：
 | `quickSearch.run` | 快速搜索选中文本 | CapsLock+Q |
 | `magnifier.toggle` | 放大镜开/关 | CapsLock+Tab |
 | `windowPin.toggle` | 置顶/取消置顶窗口（用**唤起面板时的光标位置**） | CapsLock+右键 |
-| `helpPanel.toggle` | 帮助面板 | CapsLock+\` |
-| `settings.toggle` | 设置 | CapsLock+\ |
+
+> v2.3.3 起，`helpPanel.toggle`（帮助面板）、`settings.toggle`（设置）、`macro.recordToggle`（录制宏）、
+> `macro.manage`（宏管理）**不再作为内部动作**：前两者是全局入口（CapsLock+` / CapsLock+\ / 托盘 /
+> 超级面板标题栏齿轮），后两者是创作 / 管理会话（托盘 / 动作编辑器 / 组合动作左栏；宏管理入口已彻底移除），
+> 都不是「执行一次就产生效果」的可绑操作。旧配置中的同名动作会在启动时被迁移清理。
 
 > `mouseMode`（上下文进入型）、`tool.toggle`（移入设置面板，见 §10.2）、独立剪贴板（不作为可绑动作）v1 不纳入。
 > `fileRename`/`volume`/`symbolJump` 是上下文触发型，不适合绑格子，v1 不纳入。
@@ -739,7 +746,7 @@ ActionExecutor.Run(ActionDto action)
 
 ### 阶段 11 实施中新增（组合集成收尾）
 
-- ✅ **快捷新建菜单 5→7 类**：`SlotMenu.BuildAddMenu` 新增「新建 · 发送文本」「新建 · 模拟按键」（与组合窗口左栏「基础动作」组 8 种保持一致——除 internal/composite 外的所有类型）。超级面板空格右键 / 设置页格子左键两处共用 `SlotMenu`，一次改动两处生效。
+- ✅ **快捷新建菜单 5→7 类**：`SlotMenu.BuildAddMenu` 新增「新建 · 发送文本」「新建 · 模拟按键」（与组合窗口左栏「基础动作」组 8 种保持一致——除 internal/composite 外的所有类型）。超级面板空格右键 / 设置页格子左键两处共用 `SlotMenu`，一次改动两处生效。（v2.3.3 起再新增「新建 · 键鼠宏（录制 / 回放）」，快捷新建共 8 类。）
 - ✅ **`LTools.example.json` 新增 a6/a7 示例**：a6 `sendText` "Hello World"（演示键入）、a7 `sendKeys` 全选复制（chord `ctrl+a` → sleep 100 → chord `ctrl+c`，演示三 种条目类型）。放进超级面板第 7/8 格 + 菜单组「工具」。新用户首次启动即可体验。
 - ✅ **`DispatchText` 抽出共享**：sendText 动作（前置 50ms 延时 + AppendEnter）与 sendKeys 的 text 条目（无延时、无回车）共用 `DispatchText(a, text, mode)`，避免两份键入/粘贴逻辑。
 - ✅ **组合深拷贝隔离验证**：冒烟构造组合含 sendText 步骤 `Text="原"`，`Clone()` 后改原步骤 `Text="改"`，clone 保持 `"原"` ✓。组合深拷贝后执行（sendText "XY" → ctrl+a → ctrl+c → 剪贴板="XY"）✓。确认 `ActionDto.Clone()` 递归拷贝 `Items`/`Steps`/`Strokes`，组合步骤与池动作完全解耦。
@@ -893,6 +900,18 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **修复（manifest + 程序化双轨，Debug/Release 都覆盖）**：①`app.manifest` 加 `dpiAwareness=PerMonitorV2,PerMonitor`（Release 进程创建即生效）；②`Core/DpiInitializer.cs` 用 `[ModuleInitializer]` 在 Main 前、WPF（PresentationCore）加载前 `SetProcessDpiAwarenessContext(-4)` 抢设 PerMonitorV2——覆盖 Debug（`-p:NoWin32Manifest=true` 剥了清单免 UAC）。Release 经 manifest 已设则该调用为幂等 no-op（返回 false、无副作用）。
 - ✅ **验证**：实测 Debug 进程 DPI 感知 **1(System)→2(PerMonitor)**；Release exe 含 `dpiAware`/`PerMonitorV2`（manifest 嵌入合法，Release 构建 0 错 0 警）；主屏 125% 外观不变（System 与 PerMonitorV2 在主屏布局一致），差别仅跨显示器 / DPI 变化时按当前屏正确重算。已核对 `WindowChromeHelper` 的 `WM_GETMINMAXINFO` 钳制用 `GetMonitorInfo` 物理像素、与 PerMonitorV2 兼容。
 - ⚠️ **不可当场复现**：用户重启后已正常，无法当场验证错位消失；机制证据链强（System Aware + 125% + 无声明 + 游戏后错位 + 重启恢复），待用户后续游戏后实测确认。
+
+### 阶段 12：键鼠宏录制 / 回放（v2.3.3）
+
+- ✅ **动作类型 `macro`**：一个键鼠宏就是一个动作，只存 `MacroId`；事件本体在数据根 `macros/<id>.json`，元数据（名称 / 时长 / 事件数 / 回放参数）在 `LTools.json` 的 `Macros.Items`。删除宏动作会删除对应宏文件；启动时回收不被任何动作或组合步骤引用的孤儿宏与失效元数据。
+- ✅ **录制**：入口在「键鼠宏」动作编辑面板（`MacroRecorder.EnterEditorSession`）、托盘和组合动作左栏。开始录制无倒计时 / 确认框，窗口最小化后立即开录；停止后自动保存为 `录制 MM-dd HH:mm:ss`（重新录制沿用原宏名）并绑定 / 恢复编辑器。录制期间 LTools 进入透明模式（CapsLock 增强、菜单、超级面板、滚轮音量等暂停），事件带真实时序，鼠标移动按 `MouseSampleMs` / `MouseSamplePx` 抽稀。
+- ✅ **回放**：`MacroPlayer` 在后台线程按时间戳注入，支持速度倍率、1–99 次或无限循环、回放前倒计时；结束强制释放所有按键与鼠标键。鼠标移动用 `SendInput` 绝对坐标（虚拟桌面），换分辨率 / 显示器布局按录制时的桌面尺寸缩放。每轮补足末尾静默后再开始下一轮。
+- ✅ **可配置热键（录制式录入）**：`HotkeyCapture` 接管输入框，按下组合键即录入（Esc 取消、Tab 结束），有效组合立即写盘并生效；保留「手动选择…」兜底。存储统一 canonical 小写（`ctrl+f4`），显示格式化（`Ctrl+F4`）。无修饰键只允许不产生字符的键（F1–F24、Pause、PrintScreen、ScrollLock、Insert、Home、End、PageUp/PageDown），字母 / 数字 / 空格 / 方向键拒绝；裸键只在没有任何修饰键按下时匹配。面板提供「恢复默认」一键恢复 `Ctrl+F2` / `Ctrl+F3`。
+- ✅ **停止一定可用**：录制 / 回放开始时把热键临时注册到系统、结束立即注销；即使低级钩子被摘掉也能停。回放停止热键被其他程序占用时，注册失败不阻止回放，键盘钩子会先一步吞掉该组合键并停止宏。
+- ✅ **试放本宏**：宏动作面板新增「▶ 试放本宏」，用面板当前的速度 / 循环 / 倒计时回放（不要求先保存动作），不修改宏与参数；试放期间编辑器最小化、临时让开超级面板 / 菜单 / 帮助浮层，结束后恢复。无倒计时时额外等 300ms，避免开头按键落回正在最小化的编辑器。
+- ✅ **最小化残影修复**：自定义窗口（`WindowStyle=None` + `WindowChrome`）且 `ShowInTaskbar=False` 时，最小化会在屏幕左下角留下 DWM 快照。`MinimizeForMacro()` 在最小化前临时 `ShowInTaskbar=true` 提供任务栏落点，`RestoreEditorAfterMinimize()` 恢复窗口后再撤掉。**不能改用 `Hide()`**：实测对 `ShowDialog` 打开的模态编辑器调用 `Hide()` 会让 `ShowDialog()` 立刻返回 `false`，编辑器提前结束。
+- ✅ **组合动作**：左栏「基础动作 → 键鼠宏」当场录制并作为步骤（只存宏 Id）；左栏分组可折叠并记忆。组合步骤的宏文件缺失时在行内标记。
+- ✅ **入口收敛**：移除「录制宏」「宏管理」「回放上次宏」「设置」「帮助面板」等不可绑定的内部动作及旧配置引用；宏管理页彻底移除，设置页不再有「键鼠录制」页。超级面板空格添加菜单新增「新建 · 键鼠宏（录制 / 回放）」。
 
 ### 实现提醒（非决策）
 - 面板激活与焦点：需 Esc/数字键则面板须取键盘焦点；长按后激活可能与前台应用竞态——现有 `MenuPopup`/`HelpPanel` 已用 `BeginInvoke + Activate` 处理同类竞态，复用即可。

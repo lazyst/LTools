@@ -46,10 +46,13 @@ public sealed class MacroConfig
     /// <summary>总开关：关闭后录制热键完全不介入。</summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>停止录制热键（如 <c>ctrl+f2</c>，仅在键鼠宏动作编辑窗口内生效）。</summary>
+    /// <summary>停止录制热键（如 <c>ctrl+f2</c>，仅在录制期间临时注册）。</summary>
     public string RecordHotkey { get; set; } = "ctrl+f2";
 
-    /// <summary>回放前倒计时（ms，0 = 立即回放）。</summary>
+    /// <summary>停止宏回放热键（如 <c>ctrl+f3</c>，仅在回放期间注册）。</summary>
+    public string PlaybackStopHotkey { get; set; } = "ctrl+f3";
+
+    /// <summary>回放前倒计时的全局默认值（ms，0 = 立即回放；宏可单独覆盖）。</summary>
     public int CountdownMs { get; set; } = 0;
 
     /// <summary>鼠标移动最小采样间隔（ms）。</summary>
@@ -61,10 +64,10 @@ public sealed class MacroConfig
     /// <summary>单个宏最大事件数。</summary>
     public int MaxEvents { get; set; } = 200_000;
 
-    /// <summary>默认回放速度倍率。</summary>
+    /// <summary>回放速度倍率的全局默认值（宏可单独覆盖）。</summary>
     public double DefaultSpeed { get; set; } = 1.0;
 
-    /// <summary>回放循环次数（1 = 只回放一次，1–99）。</summary>
+    /// <summary>回放循环次数的全局默认值（1 = 只回放一次，1–99；宏可单独覆盖或设为无限）。</summary>
     public int Loops { get; set; } = 1;
 
     /// <summary>上次录制的宏 Id。</summary>

@@ -72,7 +72,21 @@ internal static class KeyboardHook
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
             }
 
-            // 宏录制热键优先（注入事件已在上方过滤，不会自触发）。
+            // 宏回放期间按配置的停止热键停止（热键注册失败时的兜底；成对吞掉 keydown / keyup）。
+            // 放在录入拦截之前：即使正在录入热键，也保留这个安全出口。
+            if (MacroPlayer.HandleStopHotkey(vk, isDown, isUp))
+                return (IntPtr)1;
+
+            // 热键录入期间：按键交给焦点对话框自己处理，LTools 的全局热键 / CapsLock 状态机让路，
+            // 避免「录入 Ctrl+F2 时反而启动了宏录制」。CapsLock 仍吞掉，防止误切大小写。
+            if (HotkeyCapture.IsCapturing)
+            {
+                return vk == Win32.VkCapital
+                    ? (IntPtr)1
+                    : Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
+            }
+
+            // 宏录制热键（注入事件已在上方过滤，不会自触发）。
             if (MacroRecorder.HandleHotkey(vk, isDown, isUp, kb.Time))
                 return (IntPtr)1;
 

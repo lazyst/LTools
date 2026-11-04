@@ -9,6 +9,7 @@ using System.Windows.Media;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features;
+using LTools.Views.Controls;
 
 namespace LTools.Views;
 
@@ -21,13 +22,15 @@ namespace LTools.Views;
 /// 宏步骤是例外——只存 <see cref="ActionDto.MacroId"/> 引用，事件本体留在 <c>macros/</c>（随备份一起走）。
 /// **禁止嵌套组合**（左栏动作池已排除组合动作，＋新建步骤类型也不含组合）。
 /// 左栏分组（基础动作 / 内部动作 / 动作池）可折叠，状态存 <c>LTools.json</c>。
-/// 用户点「改为普通动作…」置 <see cref="JumpToNormal"/>，由 <see cref="ActionEditor"/> 改开普通编辑器（不带数据）。
+/// 用户点标题栏「普通动作 / 组合动作」切换里的另一段时置 <see cref="JumpToNormal"/>，
+/// 由 <see cref="ActionEditor"/> 改开普通编辑器（不带数据）。
 /// </remarks>
 public partial class CompositeActionDialog : Window
 {
     private readonly ActionDto _draft;
     private readonly List<StepDto> _steps;
     private readonly ObservableCollection<StepRow> _rows = new();
+    private readonly ActionKindSwitch _kindSwitch = new();
 
     // 左栏分组折叠状态（写回 LTools.json，下次打开保持）与当前搜索词。
     private readonly HashSet<string> _collapsed;
@@ -53,6 +56,10 @@ public partial class CompositeActionDialog : Window
         NameBox.Text = _draft.Name;
         IconPicker.SelectedIcon = _draft.Icon;
         AbortBox.IsChecked = _draft.CompositeOnFail == OnFailStrategy.abort;
+        // 标题栏的类型切换：本窗口固定「组合动作」，用户点「普通动作」即跳回普通编辑器。
+        _kindSwitch.IsComposite = true;
+        _kindSwitch.SelectionChanged += KindSwitch_SelectionChanged;
+        TitleBar.ExtraContent = _kindSwitch;
         StepsList.ItemsSource = _rows;
         ReloadRows();
         BuildSourceList();
@@ -590,8 +597,10 @@ public partial class CompositeActionDialog : Window
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
-    private void ToNormal_Click(object sender, RoutedEventArgs e)
+    /// <summary>标题栏切到「普通动作」：置跳转标志，由 <see cref="ActionEditor"/> 改开普通编辑器（不带数据）。</summary>
+    private void KindSwitch_SelectionChanged(object? sender, EventArgs e)
     {
+        if (_kindSwitch.IsComposite) return;   // 点在本段（组合动作）上：无动作
         JumpToNormal = true;
         DialogResult = false;
     }

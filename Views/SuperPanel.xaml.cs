@@ -770,6 +770,16 @@ public partial class SuperPanelWindow : Window
 
     private void Pin_Click(object sender, RoutedEventArgs e) => SetPinned(!_pinned);
 
+    /// <summary>
+    /// 标题栏齿轮：打开设置。先关面板再开窗口——面板是 Topmost，留着会盖住设置窗口
+    /// （与格子执行动作「先关面板、再执行」同一做法）。
+    /// </summary>
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        SuperPanel.Close();
+        ConfigHelper.Toggle();
+    }
+
     /// <summary>切换钉住状态：更新钉子图标 / 配色与页脚提示。钉住后鼠标钩子不再把外部点击当作关闭信号。</summary>
     private void SetPinned(bool pinned)
     {

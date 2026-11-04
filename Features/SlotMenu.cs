@@ -9,7 +9,7 @@ namespace LTools.Features;
 /// 超级面板槽位「添加动作」共享菜单（计划 §5.5/§5.6 统一）：
 /// 面板空格右键 / 设置页格子左键（弹出）与右键（ContextMenu）共用同一结构，
 /// 保证两处「添加动作」的交互完全一致：
-/// 新建动作… / 新建组合动作… / 快捷新建（7 类） / 从动作池选择… / 清除（可选，仅非空槽位）。
+/// 新建动作… / 新建组合动作… / 快捷新建（8 类） / 从动作池选择… / 清除（可选，仅非空槽位）。
 /// </summary>
 public static class SlotMenu
 {
@@ -34,7 +34,7 @@ public static class SlotMenu
             menu.Items.Add(mi);
         }
 
-        // 快捷新建（7 类，不含 internal/composite）+ 新建动作…（弹完整类型选择器）
+        // 快捷新建（8 类，不含 internal/composite）+ 新建动作…（弹完整类型选择器）
         Add("新建动作…", () => onNew(slot, null));
         Add("新建组合动作…", () => onNew(slot, ActionType.composite));
         menu.Items.Add(new Separator());
@@ -45,6 +45,7 @@ public static class SlotMenu
         Add("新建 · 打开网址", () => onNew(slot, ActionType.openUrl));
         Add("新建 · 发送文本", () => onNew(slot, ActionType.sendText));
         Add("新建 · 模拟按键", () => onNew(slot, ActionType.sendKeys));
+        Add("新建 · 键鼠宏（录制 / 回放）", () => onNew(slot, ActionType.macro));
         menu.Items.Add(new Separator());
         Add("从动作池选择…", () => onPickExisting(slot));
         if (onClear != null) Add("清除", () => onClear(slot));

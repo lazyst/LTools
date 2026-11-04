@@ -12,7 +12,7 @@ namespace LTools.Views;
 /// 录制时显示红点 + 时长 + 事件数；回放倒计时时显示剩余秒数。
 /// </summary>
 /// <remarks>
-/// 不提供可点击按钮：停止录制用编辑器内的限定热键（托盘 / 设置页发起的录制用原入口停止），
+/// 不提供可点击按钮：停止录制用编辑器内的限定热键（托盘发起的录制用托盘菜单停止），
 /// 避免按钮点击本身被录进宏。窗口通过 <c>WS_EX_TRANSPARENT</c> 让鼠标事件穿透到下层应用。
 /// </remarks>
 public partial class RecordingIndicatorWindow : Window

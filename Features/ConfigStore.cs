@@ -59,6 +59,11 @@ internal static class ConfigStore
     {
         if (!MenuSystem.RemoveAction(id)) return false;   // 清清单 + 菜单项 + 组合步骤（内存）
         SuperPanel.RemoveActionReferences(id);            // 清超级面板槽位（落盘）
+        // 先把动作删除落盘，再回收宏文件：避免中途崩溃留下「动作还在、宏文件已删」的悬空引用。
+        Save();
+        // 一宏一动作：动作删除后按引用回收宏文件（仍被组合步骤引用的宏会保留）。
+        // 对非宏动作也执行一次，顺手清掉被删组合动作带走的宏步骤文件。
+        MacroStore.CollectGarbage();
         return true;
     }
 

@@ -259,7 +259,9 @@
                                 </Border>
                             </StackPanel>
 
-                            <!-- macro（键鼠宏）：一宏一动作，只能当场录制，不再选宏文件 -->
+                            <!-- macro（键鼠宏）：一宏一动作，只能当场录制，不再选宏文件。
+                                 回放参数按宏独立（速度 / 循环 / 倒计时），录制的全局参数也在同一面板编辑：
+                                 设置页不再有「键鼠录制」页，宏也不再需要手工管理文件。 -->
                             <StackPanel x:Name="F_Macro">
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="键鼠宏" Margin="0,0,0,4"/>
                                 <TextBlock x:Name="MacroInfoText" Style="{StaticResource HintLabel}"
@@ -276,6 +278,116 @@
 
                                 <TextBlock x:Name="MacroHint" Style="{StaticResource HintLabel}" Margin="0,8,0,0"
                                            TextWrapping="Wrap"/>
+
+                                <DockPanel Margin="0,14,0,6">
+                                    <Button x:Name="MacroPreviewBtn" DockPanel.Dock="Right"
+                                            Style="{StaticResource BtnGhost}"
+                                            Content="▶ 试放本宏" MinHeight="24" Padding="10,2"
+                                            VerticalAlignment="Center" Click="MacroPreview_Click"
+                                            ToolTip="用当前速度 / 循环 / 倒计时试放一次；不保存动作，也不会修改宏"/>
+                                    <TextBlock Style="{StaticResource SectionLabel}" Text="回放（本宏）"/>
+                                </DockPanel>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="86"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource HintLabel}"
+                                               Text="速度" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="MacroSpeedBox" MinHeight="28" Width="70"/>
+                                    <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
+                                               Text="倍（0.1–5，1 = 原速）" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="86"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource HintLabel}"
+                                               Text="循环" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="MacroLoopsBox" MinHeight="28" Width="70"/>
+                                    <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
+                                               Text="次" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                    <CheckBox Grid.Column="3" x:Name="MacroInfiniteBox" Content="无限"
+                                              VerticalAlignment="Center" Margin="12,0,0,0"
+                                              Checked="MacroInfinite_Changed" Unchecked="MacroInfinite_Changed"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="86"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource HintLabel}"
+                                               Text="倒计时" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="MacroCountdownBox" MinHeight="28" Width="70"/>
+                                    <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
+                                               Text="ms（0 = 立即回放）" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </Grid>
+                                <TextBlock x:Name="MacroPlaybackHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"/>
+
+                                <DockPanel Margin="0,14,0,6">
+                                    <Button x:Name="MacroResetHotkeyBtn" DockPanel.Dock="Right"
+                                            Style="{StaticResource BtnGhost}"
+                                            Content="恢复默认" MinHeight="24" Padding="10,2"
+                                            VerticalAlignment="Center" Click="MacroHotkeyReset_Click"/>
+                                    <TextBlock Style="{StaticResource SectionLabel}"
+                                               Text="全局（录制 / 停止回放）"/>
+                                </DockPanel>
+                                <CheckBox x:Name="MacroEnabledBox" Content="启用宏录制与回放" Margin="0,0,0,8"/>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="86"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource HintLabel}"
+                                               Text="录制热键" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="MacroRecordHotkeyBox" MinHeight="28" Width="180"/>
+                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="手动选择…"
+                                            MinWidth="80" Margin="6,0,0,0" Click="MacroRecordHotkeyPick_Click"/>
+                                    <TextBlock Grid.Column="3" Style="{StaticResource HintLabel}"
+                                               Text="仅在键鼠宏编辑窗口录制时生效" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="86"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource HintLabel}"
+                                               Text="停止回放" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="MacroStopHotkeyBox" MinHeight="28" Width="180"/>
+                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="手动选择…"
+                                            MinWidth="80" Margin="6,0,0,0" Click="MacroStopHotkeyPick_Click"/>
+                                    <TextBlock Grid.Column="3" Style="{StaticResource HintLabel}"
+                                               Text="仅回放期间注册 / 生效" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="86"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource HintLabel}"
+                                               Text="鼠标采样" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="MacroSampleMsBox" MinHeight="28" Width="60"/>
+                                    <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
+                                               Text="ms 间隔 ·" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                    <TextBox Grid.Column="3" x:Name="MacroSamplePxBox" MinHeight="28" Width="60" Margin="8,0,0,0"/>
+                                    <TextBlock Grid.Column="4" Style="{StaticResource HintLabel}"
+                                               Text="px 位移（0 = 不抽稀；越小越精细、宏越大）"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </Grid>
+                                <TextBlock x:Name="MacroHotkeyHint" Style="{StaticResource HintLabel}"
+                                           TextWrapping="Wrap" Margin="0,2,0,0"/>
                             </StackPanel>
 
                             <!-- internal -->

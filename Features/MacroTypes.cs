@@ -75,8 +75,8 @@ public sealed class MacroDto
 }
 
 /// <summary>
-/// 宏的元数据（存于 <c>LTools.json</c> 的 <c>Macros.Items</c>），供设置页列表展示，
-/// 避免每次打开列表都读取体积较大的事件文件。
+/// 宏的元数据（存于 <c>LTools.json</c> 的 <c>Macros.Items</c>），供动作编辑器显示宏信息与回放参数，
+/// 避免每次打开都读取体积较大的事件文件。
 /// </summary>
 public sealed class MacroMeta
 {
@@ -90,21 +90,15 @@ public sealed class MacroMeta
     /// <summary>该宏的回放速度倍率；0 = 跟随全局默认速度。</summary>
     public double Speed { get; set; }
 
+    /// <summary>回放循环次数：null / 0 = 跟随全局默认；-1 = 无限循环；1–99 = 次数。</summary>
+    public int? Loops { get; set; }
+
+    /// <summary>回放前倒计时（ms）：null = 跟随全局默认。</summary>
+    public int? CountdownMs { get; set; }
+
     /// <summary>时长显示文本（仅 UI 使用，不落盘）。</summary>
     [JsonIgnore]
     public string DurationText => DurationMs < 1000
         ? $"{DurationMs} ms"
         : $"{DurationMs / 1000.0:0.0} 秒";
-
-    /// <summary>列表副标题：时长 · 事件数 · 大小 ·（可选）专属速度（仅 UI 使用，不落盘）。</summary>
-    [JsonIgnore]
-    public string Summary
-    {
-        get
-        {
-            string s = $"{DurationText} · {EventCount:N0} 事件 · {SizeBytes / 1024.0:0.#} KB";
-            if (Speed > 0) s += $" · {Speed:0.##}×";
-            return s;
-        }
-    }
 }

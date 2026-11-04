@@ -10,39 +10,11 @@
       "Icon": "terminal"
     },
     {
-      "Id": "a2",
-      "Name": "设置",
-      "Type": "internal",
-      "Command": "settings.toggle",
-      "Icon": "settings"
-    },
-    {
       "Id": "a3",
       "Name": "速记",
       "Type": "internal",
       "Command": "quickNote.toggle",
       "Icon": "note"
-    },
-    {
-      "Id": "a4",
-      "Name": "帮助面板",
-      "Type": "internal",
-      "Command": "helpPanel.toggle",
-      "Icon": "help"
-    },
-    {
-      "Id": "a5",
-      "Name": "录制宏",
-      "Type": "internal",
-      "Command": "macro.recordToggle",
-      "Icon": "record"
-    },
-    {
-      "Id": "a7",
-      "Name": "宏管理",
-      "Type": "internal",
-      "Command": "macro.manage",
-      "Icon": "keyboard"
     }
   ],
   "SuperPanel": {
@@ -51,11 +23,11 @@
     "Pages": [
       [
         "a1",
-        "a2",
         "a3",
-        "a4",
-        "a5",
-        "a7",
+        null,
+        null,
+        null,
+        null,
         null,
         null,
         null,
@@ -75,11 +47,7 @@
       "Name": "常用",
       "Items": [
         "a1",
-        "a2",
-        "a3",
-        "a4",
-        "a5",
-        "a7"
+        "a3"
       ]
     },
     null,
@@ -97,6 +65,7 @@
   "Macros": {
     "Enabled": true,
     "RecordHotkey": "ctrl+f2",
+    "PlaybackStopHotkey": "ctrl+f3",
     "CountdownMs": 0,
     "MouseSampleMs": 8,
     "MouseSamplePx": 1,

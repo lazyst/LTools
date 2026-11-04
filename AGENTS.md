@@ -34,7 +34,8 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - `Native/` — Win32 调用、InputHelper、NativeClipboard、FolderPicker
 - `Core/` — AppState(全局状态)、CapsLockStateMachine、ConfigLocator、TrayService、CrashLog
 - `Features/` — 功能模块（TextEditor、MouseMode、MenuSystem、QuickNote 等），非 UI 逻辑
-- `Views/` — WPF 窗体（XAML + code-behind）
+  - 键鼠宏：`MacroRecorder`（录制）/ `MacroPlayer`（回放）/ `MacroStore`（`macros/*.json` 事件 + `Macros.Items` 元数据）/ `MacroSettings`（热键与全局参数）/ `MacroHotkey`（录制 / 回放期间的系统热键）/ `HotkeyCapture`（录制式热键录入）
+- `Views/` — WPF 窗体（XAML + code-behind）；`Views/Controls/` 为共用控件（`TitleBar`、`ActionKindSwitch` 等）
 - `Themes/Modern.xaml` — ResourceDictionary 配色与控件样式
 - `Config/` — AppConfig(JSON 模型)、IniFile(仅旧 ini 迁移用)
 
@@ -52,7 +53,8 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - `LTools.json`（gitignored）— 用户配置，由应用自身读写（设置面板/快捷键），不面向手改；首次保存才生成，升级解压不会覆盖
 - `LTools.example.json`（已提交）— 默认模板，随包分发；`AppConfig.Load` 在用户配置缺失时回退读同目录示例（故发布包只带示例、不带实际配置，避免覆盖用户配置）
 - `ConfigLocator.FindPath()`：dev（仓库根含 `LTools.csproj`）落仓库根，prod 落 exe 同级。首启自动迁移旧配置：`CapsLock++.json` 同目录改名 `LTools.json`；更旧的 `CapsLock++.ini` 读入后改名 `.migrated` 备份
-- 配置格式为 JSON（`MenuGroups[10]`、`TerminalPaths`、`MouseModeSpeed`、`Macros`，见 `Config/AppConfig.cs`），**非旧的 INI 分节格式**——README §10 仍部分描述 INI schema，已过时，以代码为准
+- 配置格式为 JSON（`Actions`、`SuperPanel`、`MenuGroups[10]`、`Macros`、`TerminalPaths`、`MouseModeSpeed`，见 `Config/AppConfig.cs`），**非旧的 INI 分节格式**；README §10 已同步为 JSON 字段说明，手改时以代码为准
+- 宏事件存 `<数据根>/macros/<id>.json`（已 gitignore），元数据在 `LTools.json` 的 `Macros.Items`；**一个宏 = 一个 `macro` 动作**，删动作即删宏文件，启动回收孤儿宏
 
 ## WPF 约定
 

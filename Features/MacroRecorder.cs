@@ -17,7 +17,7 @@ namespace LTools.Features;
 /// </summary>
 /// <remarks>
 /// 线程模型：钩子回调在主 UI 线程，录制状态与事件列表也只在 UI 线程读写
-/// （起始 / 停止由动作编辑器、托盘或设置页触发，同样在 UI 线程），故热路径无需加锁。
+/// （起始 / 停止由动作编辑器或托盘触发，同样在 UI 线程），故热路径无需加锁。
 /// 停止时在 UI 线程做一次不可变快照，落盘交给后台线程。
 /// 录制热键只在「键鼠宏」动作编辑窗口打开期间生效，不是全局热键。
 /// </remarks>
@@ -122,7 +122,7 @@ internal static class MacroRecorder
     /// <summary>录制已进行的毫秒数（供指示器显示）。</summary>
     public static int ElapsedMs => _recording ? (int)_clock.ElapsedMilliseconds : _lastEventMs;
 
-    /// <summary>切换录制（托盘 / 内部动作入口）。</summary>
+    /// <summary>切换录制（托盘入口）。</summary>
     public static void Toggle() => Toggle(0);
 
     /// <summary>切换录制；<paramref name="rawTime"/> 为钩子事件时间（0 = 取当前系统 tick）。</summary>
@@ -278,19 +278,6 @@ internal static class MacroRecorder
     }
 
     /// <summary>
-    /// 设置页「停止录制」按钮：先剔除按钮自身造成的最近鼠标点击，再停止。
-    /// 否则点击按钮这一下会被录进宏，回放时在同样的屏幕位置多点一次。
-    /// </summary>
-    public static void StopFromUi()
-    {
-        if (!_recording) return;
-        int cutoff = _lastEventMs - 250;
-        _events.RemoveAll(e => e.TimeMs >= cutoff &&
-            (e.Kind == MacroEventKind.MouseDown || e.Kind == MacroEventKind.MouseUp));
-        Stop();
-    }
-
-    /// <summary>
     /// 钩子回调内调用：识别录制热键。命中返回 true（吞掉该键），未命中返回 false。
     /// 「停止」不受编辑器会话限制——只要正在录制就能停；「开始」只在键鼠宏动作编辑窗口内生效。
     /// </summary>
@@ -435,26 +422,7 @@ internal static class MacroRecorder
     }
 
     private static bool ModifiersDown(ushort[] modifiers)
-    {
-        foreach (var m in modifiers)
-            if (!IsKeyDown(m)) return false;
-        return true;
-    }
-
-    /// <summary>
-    /// 修饰键按「左右任一侧」判断：配置里写 <c>ctrl</c>（解析为 VK_LCONTROL）时，
-    /// 右手 Ctrl 也应算命中——GetAsyncKeyState 区分左右，单查左侧会让右 Ctrl 热键失灵。
-    /// </summary>
-    private static bool IsKeyDown(ushort vk) => vk switch
-    {
-        0x11 or 0xA2 or 0xA3 => Down(0xA2) || Down(0xA3) || Down(0x11),   // Ctrl
-        0x10 or 0xA0 or 0xA1 => Down(0xA0) || Down(0xA1) || Down(0x10),   // Shift
-        0x12 or 0xA4 or 0xA5 => Down(0xA4) || Down(0xA5) || Down(0x12),   // Alt
-        0x5B or 0x5C => Down(0x5B) || Down(0x5C),                          // Win
-        _ => Down(vk),
-    };
-
-    private static bool Down(int vk) => (Win32.GetAsyncKeyState(vk) & 0x8000) != 0;
+        => MacroSettings.AreModifiersDown(modifiers);
 
     /// <summary>
     /// 录制生命周期跟踪：写 <c>%TEMP%\LTools-macro.log</c>（后台线程写，绝不占用钩子回调）。

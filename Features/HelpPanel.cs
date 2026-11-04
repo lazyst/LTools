@@ -61,7 +61,7 @@ internal static class HelpPanel
 
     // —— 热键速查表（对应 BuildHelpText）——
 
-    private static readonly (string Name, (string Key, string Desc)[] Items)[] Categories =
+    private static (string Name, (string Key, string Desc)[] Items)[] BuildCategories() => new[]
     {
         ("基本功能", new[]
         {
@@ -155,11 +155,12 @@ internal static class HelpPanel
             ("CapsLock + \\", "设置"),
             ("CapsLock + `", "帮助面板 (本窗口)"),
         }),
-        ("键鼠宏（热键可在设置中修改）", new[]
+        ("键鼠宏（参数在宏动作编辑面板设置）", new[]
         {
-            ("Ctrl + F2", "停止录制（开始录制仅在键鼠宏编辑器内）"),
+            (MacroSettings.RecordHotkeyDisplay, "停止录制（录制期间临时注册；开始录制用面板按钮 / 托盘；可配置）"),
+            (MacroSettings.PlaybackStopHotkeyDisplay, "停止回放（可配置；仅回放期间生效）"),
             ("动作管理 → 键鼠宏", "把宏绑到快捷菜单 / 超级面板"),
-            ("设置 → 键鼠录制", "宏列表 / 改名 / 回放 / 速度 / 热键设置"),
+            ("宏动作编辑面板", "速度 / 循环（可无限）/ 倒计时；热键点击后直接按组合键录入（也可只用 F1–F24、Pause、PrintScreen 等非打字键），可一键恢复默认；「▶ 试放本宏」立即预览"),
         }),
     };
 
@@ -170,7 +171,7 @@ internal static class HelpPanel
         const string sep = "  ";
         var sb = new StringBuilder();
 
-        foreach (var cat in Categories)
+        foreach (var cat in BuildCategories())
         {
             string title = "  " + cat.Name + "  ";
             int totalPad = 68 - DisplayWidth(title);

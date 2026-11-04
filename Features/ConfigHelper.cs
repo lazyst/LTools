@@ -1,4 +1,3 @@
-using System.Windows;
 using LTools.Views;
 
 namespace LTools.Features;
@@ -27,23 +26,5 @@ internal static class ConfigHelper
         _window = new ConfigHelperWindow(_configPath ?? "");
         _window.Closed += (_, _) => _window = null;
         _window.Show();
-    }
-
-    /// <summary>打开设置并切到「键鼠录制」页（托盘 / 内部动作入口）。</summary>
-    public static void OpenMacroPage()
-    {
-        if (_window == null)
-        {
-            _window = new ConfigHelperWindow(_configPath ?? "");
-            _window.Closed += (_, _) => _window = null;
-            _window.Show();
-        }
-        else
-        {
-            if (_window.WindowState == WindowState.Minimized)
-                _window.WindowState = WindowState.Normal;
-            _window.Activate();
-        }
-        _window.SelectPage("macro");
     }
 }

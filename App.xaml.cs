@@ -76,9 +76,7 @@ public partial class App : Application
         ResourceDir.Ensure();
         MacroSettings.Load(cfg);
         MacroStore.Ensure();
-        // 元数据自愈放后台：宏文件可能在别处被增删，扫描不阻塞启动。
-        _ = Task.Run(MacroStore.Reconcile);
-        // 录制即生成动作：全局热键 / 托盘 / 设置页录完的宏，自动进动作池（动作编辑器内录制除外）。
+        // 录制即生成动作：托盘等入口录完的宏，自动进动作池（动作编辑器内录制除外）。
         MacroRecorder.MacroSaved += OnMacroSaved;
 
         // 停止录制的兜底热键：消息窗口必须在钩子安装前建好（注册时不能再建窗口）。
@@ -86,7 +84,10 @@ public partial class App : Application
 
         // —— 内部动作注册（动作系统 §7）——
         InternalActionRegistry.RegisterDefaults();
-        RemoveObsoleteMacroActions();
+        RemoveObsoleteActions();
+
+        // 一宏一动作：回收不再被任何动作 / 组合步骤引用的宏文件（含旧版本遗留的孤儿文件）。
+        MacroStore.CollectGarbage();
 
         // —— 启动提示：在无钩子阶段同步显示——首个 WPF 窗口的首帧会初始化渲染栈（D3D 等），
         //    耗时落在此处，不阻塞任何钩子回调。 ——
@@ -110,7 +111,6 @@ public partial class App : Application
         menu.Items.Add(new Separator());
         _macroMenuItem = NewItem("开始 / 停止录制宏", () => MacroRecorder.Toggle());
         _macroMenuItemText = (TextBlock)((StackPanel)_macroMenuItem.Header).Children[1];
-        menu.Items.Add(NewItem("宏管理…", () => ConfigHelper.OpenMacroPage()));
         menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("启用 CapsLock 增强", Settings.ToggleCapsLock, () => AppState.IsToolEnabled));
         menu.Items.Add(NewItem("启用超级面板", Settings.ToggleSuperPanel, () => AppState.IsSuperPanelEnabled));
@@ -220,7 +220,7 @@ public partial class App : Application
         if (string.IsNullOrWhiteSpace(id)) return;
         if (ActionRegistry.All.Any(a => a.Type == ActionType.macro && a.MacroId == id)) return;
 
-        var meta = MacroStore.List().FirstOrDefault(m => m.Id == id);
+        var meta = MacroStore.MetaOf(id);
         string name = string.IsNullOrWhiteSpace(meta?.Name) ? "宏 " + id : meta!.Name;
         ConfigStore.AddAction(new ActionDto
         {
@@ -233,23 +233,33 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// 旧配置迁移：v2.3.3 起移除内部动作「回放上次宏」（<c>macro.playLast</c>）。
-    /// 老用户的默认动作 / 菜单 / 超级面板引用一并清掉，避免留下点了没反应的死项。
+    /// 旧配置迁移：删除已取消动作化的内置动作，并清理菜单 / 超级面板 / 组合步骤里的引用，
+    /// 避免留下点了没反应的死项。
+    /// <list type="bullet">
+    /// <item>v2.3.3：<c>macro.playLast</c>（回放上次宏）→ 由「键鼠宏」动作取代。</item>
+    /// <item>v2.3.3：<c>settings.toggle</c>（设置）、<c>helpPanel.toggle</c>（帮助面板）→ 改为纯入口
+    /// （CapsLock+\ / CapsLock+` / 托盘 / 超级面板标题栏齿轮），不再作为动作出现在动作池里。</item>
+    /// <item>v2.3.3：<c>macro.recordToggle</c>（录制宏）、<c>macro.manage</c>（宏管理）→ 属于创作 / 管理入口
+    /// （托盘 / 动作编辑器 / 组合动作左栏；宏管理入口已彻底移除），不是可重复执行的动作。</item>
+    /// </list>
     /// </summary>
-    private static void RemoveObsoleteMacroActions()
+    private static void RemoveObsoleteActions()
     {
+        string[] obsolete = ["macro.playLast", "settings.toggle", "helpPanel.toggle", "macro.recordToggle", "macro.manage"];
+        static bool IsObsolete(ActionDto a, string[] commands) =>
+            a.Type == ActionType.@internal && a.Command != null && commands.Contains(a.Command);
+
         var stale = ActionRegistry.All
-            .Where(a => a.Type == ActionType.@internal && a.Command == "macro.playLast")
+            .Where(a => IsObsolete(a, obsolete))
             .Select(a => a.Id)
             .ToList();
 
-        // 组合步骤是内嵌快照，删动作不会自动清；单独扫一遍，把旧「回放上次宏」步骤移除。
+        // 组合步骤是内嵌快照，删动作不会自动清；单独扫一遍，把过期步骤移除。
         bool stepChanged = false;
         foreach (var a in ActionRegistry.All)
         {
             if (a.Steps == null) continue;
-            stepChanged |= a.Steps.RemoveAll(s =>
-                s.Action.Type == ActionType.@internal && s.Action.Command == "macro.playLast") > 0;
+            stepChanged |= a.Steps.RemoveAll(s => IsObsolete(s.Action, obsolete)) > 0;
         }
 
         if (stale.Count == 0 && !stepChanged) return;

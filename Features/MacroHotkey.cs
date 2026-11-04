@@ -7,19 +7,21 @@ using LTools.Native;
 namespace LTools.Features;
 
 /// <summary>
-/// 录制期间用 <c>RegisterHotKey</c> 注册的「停止录制」热键，作为低级钩子之外的兜底通道。
+/// 宏相关的系统热键：录制期间注册「停止录制」热键，回放期间注册「停止回放」热键
+/// （两者都可在宏动作编辑面板配置），作为低级钩子之外的兜底通道。
 /// </summary>
 /// <remarks>
 /// 为什么不只用钩子：钩子由我们自己解析 VK 与修饰键状态，一旦钩子被系统摘掉、
 /// 或修饰键判定出现偏差（左右 Ctrl / 现场状态），热键就会「按了没反应」——录制中尤其致命，
 /// 因为录制一旦停不下来，用户只能强退。这里在录制开始 / 结束时注册 / 注销系统热键：
 /// 由系统做匹配与吞键，只要进程还活着就能停。
-/// 只在**录制期间**注册，所以不会长期抢占别人的 Ctrl+F2。
+/// 只在**录制 / 回放期间**注册，结束立即注销，所以不会长期抢占别人的组合键。
 /// </remarks>
 internal static class MacroHotkey
 {
     private const int WmHotkey = 0x0312;
     private const int HotkeyId = 0x4C54;          // 'LT'
+    private const int HotkeyIdPlayback = 0x4C55;  // 'LU'：停止宏回放
     private const uint ModAlt = 0x0001;
     private const uint ModControl = 0x0002;
     private const uint ModShift = 0x0004;
@@ -67,6 +69,42 @@ internal static class MacroHotkey
         }
     }
 
+    /// <summary>
+    /// 回放开始前注册「停止回放」热键（宏面板可配置，默认 Ctrl+F3）。只在回放期间占用，结束立即释放。
+    /// </summary>
+    /// <returns>注册是否成功；失败（被其他程序占用）时回放仍可依赖键盘钩子停止，不阻止回放启动。</returns>
+    public static bool RegisterPlaybackStop()
+    {
+        try
+        {
+            if (_source == null) return false;
+            UnregisterPlaybackStop();
+            ushort vk = MacroSettings.PlaybackStopVk;
+            if (vk == 0) return false;
+            uint mods = ToModFlags(MacroSettings.PlaybackStopModifiers) | ModNoRepeat;
+            // 被其他程序占用时返回 false 即可：调用方会依赖键盘钩子停止，不写崩溃日志。
+            return Win32.RegisterHotKey(_source.Handle, HotkeyIdPlayback, mods, vk);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("MacroHotkey.RegisterPlaybackStop", ex);
+            return false;
+        }
+    }
+
+    /// <summary>回放结束（正常 / 停止 / 异常）后释放停止热键。</summary>
+    public static void UnregisterPlaybackStop()
+    {
+        try
+        {
+            if (_source != null) Win32.UnregisterHotKey(_source.Handle, HotkeyIdPlayback);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("MacroHotkey.UnregisterPlaybackStop", ex);
+        }
+    }
+
     /// <summary>启动时调用（UI 线程）：创建接收 WM_HOTKEY 的消息窗口。</summary>
     public static void Initialize()
     {
@@ -92,6 +130,13 @@ internal static class MacroHotkey
 
     private static IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == WmHotkey && wParam.ToInt32() == HotkeyIdPlayback)
+        {
+            handled = true;
+            if (MacroPlayer.IsPlaying) MacroPlayer.Stop();
+            return IntPtr.Zero;
+        }
+
         if (msg == WmHotkey && wParam.ToInt32() == HotkeyId)
         {
             handled = true;

@@ -5,10 +5,14 @@
              x:Name="Root"
              Height="36">
     <Grid Background="Transparent">
-        <!-- 标题 -->
-        <TextBlock x:Name="TitleText"
-                   Margin="14,0,0,0" VerticalAlignment="Center"
-                   Style="{StaticResource TitleBarText}"/>
+        <!-- 标题 + 可选扩展内容（如「普通动作 / 组合动作」切换）。
+             扩展内容要设 IsHitTestVisibleInChrome，否则点击会被 WindowChrome 当成拖拽标题栏。 -->
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+            <TextBlock x:Name="TitleText" VerticalAlignment="Center"
+                       Style="{StaticResource TitleBarText}"/>
+            <ContentPresenter x:Name="ExtraHost" Margin="14,0,0,0" VerticalAlignment="Center"
+                              shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+        </StackPanel>
         <!-- 右侧窗口按钮 -->
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                     shell:WindowChrome.IsHitTestVisibleInChrome="True">

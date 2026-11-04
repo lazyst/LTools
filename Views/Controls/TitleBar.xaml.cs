@@ -23,8 +23,15 @@ public partial class TitleBar
         new PropertyMetadata(true, (d, _) => ((TitleBar)d).MaximizeButton.Visibility =
             ((TitleBar)d).ShowMaximize ? Visibility.Visible : Visibility.Collapsed));
 
+    public static readonly DependencyProperty ExtraContentProperty = DependencyProperty.Register(
+        nameof(ExtraContent), typeof(object), typeof(TitleBar),
+        new PropertyMetadata(null, (d, e) => ((TitleBar)d).ExtraHost.Content = e.NewValue));
+
     public bool ShowMinimize { get => (bool)GetValue(ShowMinimizeProperty); set => SetValue(ShowMinimizeProperty, value); }
     public bool ShowMaximize { get => (bool)GetValue(ShowMaximizeProperty); set => SetValue(ShowMaximizeProperty, value); }
+
+    /// <summary>标题右侧的可选内容（如「普通动作 / 组合动作」切换）。默认为空，不影响其他窗口。</summary>
+    public object? ExtraContent { get => GetValue(ExtraContentProperty); set => SetValue(ExtraContentProperty, value); }
 
     public TitleBar()
     {

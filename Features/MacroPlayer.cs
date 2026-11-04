@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 using LTools.Core;
 using LTools.Native;
@@ -12,7 +11,8 @@ namespace LTools.Features;
 
 /// <summary>
 /// 宏回放器。按事件时间戳在后台线程逐条注入键盘 / 鼠标事件；
-/// 可被设置页的「停止回放」按钮取消，结束时强制释放所有按下未松开的键与鼠标键。
+/// 回放期间按配置的停止热键（<see cref="MacroSettings.PlaybackStopHotkeyDisplay"/>，或键盘钩子兜底）可随时停止，
+/// 结束时强制释放所有按下未松开的键与鼠标键。
 /// </summary>
 /// <remarks>
 /// 线程模型：回放线程是普通后台线程，绝不在钩子回调里 Sleep / 注入。
@@ -27,55 +27,54 @@ internal static class MacroPlayer
     private static readonly ManualResetEventSlim _wake = new(false);
     private static volatile bool _stop;
     private static int _playing;
+    private static bool _stopKeySwallowed;   // 停止热键的 keydown 已吞，配套 keyup 也要吞
 
     public static bool IsPlaying => _playing != 0;
 
-    /// <summary>按 Id 异步回放（不阻塞调用方）。</summary>
-    public static void PlayAsync(string id)
-    {
-        if (Interlocked.Exchange(ref _playing, 1) != 0) return;
-
-        _stop = false;
-        _wake.Reset();
-
-        Task.Run(() =>
-        {
-            try
-            {
-                var macro = MacroStore.Load(id);
-                if (macro == null)
-                {
-                    _playing = 0;
-                    TrayService.Notify("宏不存在或读取失败");
-                    return;
-                }
-                PlayCore(macro, EffectiveSpeed(macro.Id));
-            }
-            catch (Exception ex)
-            {
-                _playing = 0;
-                CrashLog.Write("MacroPlayer.PlayAsync", ex);
-                TrayService.Notify("宏回放失败，详见崩溃日志");
-            }
-        });
-    }
-
     /// <summary>同步回放（供 <see cref="ActionExecutor"/> 在后台线程按步骤顺序调用）。</summary>
-    public static void PlaySync(MacroDto macro, double speed = 1.0)
+    public static void PlaySync(MacroDto macro) => PlaySync(macro, MacroStore.PlaybackOf(macro.Id));
+
+    /// <summary>
+    /// 同步回放并使用调用方给出的回放参数（供动作编辑器「试放」：界面上的速度 / 循环 /
+    /// 倒计时可能尚未保存，不能从元数据读取）。仍会注册停止热键并支持中途停止。
+    /// </summary>
+    public static void PlaySync(MacroDto macro, MacroStore.MacroPlayback options)
     {
         if (Interlocked.Exchange(ref _playing, 1) != 0)
             throw new InvalidOperationException("已有宏正在回放");
 
         _stop = false;
+        _stopKeySwallowed = false;
         _wake.Reset();
-        PlayCore(macro, speed);
+
+        try
+        {
+            RegisterStopHotkey(options);
+            if (options.Loops < 0)
+                NotifySafe($"宏「{macro.Name}」无限循环中，按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止");
+            PlayCore(macro, options);
+        }
+        catch
+        {
+            _playing = 0;
+            throw;
+        }
+        finally
+        {
+            MacroHotkey.UnregisterPlaybackStop();
+        }
     }
 
-    /// <summary>某个宏实际使用的回放速度：专属速度优先，否则用全局默认。</summary>
-    public static double EffectiveSpeed(string? macroId)
+    /// <summary>
+    /// 回放开始前注册系统停止热键；被其他程序占用时不影响回放——
+    /// 键盘钩子的 <see cref="HandleStopHotkey"/> 仍会先一步吞掉该组合键并停止宏。
+    /// 无限循环时额外提示一次，避免用户以为「按了没反应」。
+    /// </summary>
+    private static void RegisterStopHotkey(MacroStore.MacroPlayback options)
     {
-        double speed = string.IsNullOrEmpty(macroId) ? 0 : MacroStore.SpeedOf(macroId);
-        return speed > 0 ? speed : MacroSettings.DefaultSpeed;
+        if (!MacroHotkey.RegisterPlaybackStop() && options.Loops < 0)
+            NotifySafe($"系统热键 {MacroSettings.PlaybackStopHotkeyDisplay} 被其他程序占用；"
+                       + "LTools 键盘钩子仍会在按下该组合键时停止宏。");
     }
 
     /// <summary>请求停止回放；回放线程会在下一个等待点退出并释放按键。</summary>
@@ -85,20 +84,44 @@ internal static class MacroPlayer
         _wake.Set();
     }
 
-    private static void PlayCore(MacroDto macro, double speed)
+    /// <summary>
+    /// 键盘钩子里的停止回放兜底（热键注册被占用时仍能停）：配置的停止热键 keydown 停止回放，
+    /// 并吞掉配对的 keyup，避免目标应用收到半截组合键。
+    /// </summary>
+    public static bool HandleStopHotkey(ushort vk, bool isDown, bool isUp)
+    {
+        if (vk != MacroSettings.PlaybackStopVk) return false;
+
+        if (isUp)
+        {
+            if (!_stopKeySwallowed) return false;
+            _stopKeySwallowed = false;
+            return true;
+        }
+        if (!isDown || !IsPlaying) return false;
+        if (!MacroSettings.AreModifiersDown(MacroSettings.PlaybackStopModifiers)) return false;
+
+        _stopKeySwallowed = true;
+        Stop();
+        return true;
+    }
+
+    private static void PlayCore(MacroDto macro, MacroStore.MacroPlayback options)
     {
         var keys = new Dictionary<ushort, bool>();
         var buttons = new HashSet<int>();
         var map = ScreenMap.For(macro);
+        double speed = Math.Max(0.1, options.Speed);
 
         try
         {
-            if (MacroSettings.PlaybackCountdownMs > 0)
-                Countdown(MacroSettings.PlaybackCountdownMs);
+            if (options.CountdownMs > 0)
+                Countdown(options.CountdownMs);
 
             var sw = Stopwatch.StartNew();
             var events = macro.Events ?? new List<MacroEvent>();
-            int loops = Math.Clamp(MacroSettings.PlayLoops, 1, 99);
+            bool infinite = options.Loops < 0;
+            int loops = infinite ? int.MaxValue : Math.Clamp(options.Loops, 1, 99);
 
             for (int lap = 0; lap < loops && !_stop; lap++)
             {
@@ -107,7 +130,7 @@ internal static class MacroPlayer
 
                 foreach (var e in events)
                 {
-                    int target = (int)(e.TimeMs / Math.Max(0.1, speed));
+                    int target = (int)(e.TimeMs / speed);
                     if (!WaitUntil(sw, target)) break;
 
                     // Stop 可能在等待返回后、注入前到达。
@@ -118,7 +141,8 @@ internal static class MacroPlayer
                 if (events.Count == 0) break;
 
                 // 每轮之间补足录制时长里末尾的静默（DurationMs 可能大于最后一个事件的时间）。
-                if (lap < loops - 1 && !WaitUntil(sw, (int)(macro.DurationMs / Math.Max(0.1, speed)))) break;
+                // 无限循环每轮都要补，保持节奏一致。
+                if ((infinite || lap < loops - 1) && !WaitUntil(sw, (int)(macro.DurationMs / speed))) break;
             }
         }
         finally
@@ -132,6 +156,14 @@ internal static class MacroPlayer
             _playing = 0;
             _wake.Reset();
         }
+    }
+
+    /// <summary>后台线程提示（MouseTip 必须在 UI 线程创建窗口）。</summary>
+    private static void NotifySafe(string message)
+    {
+        var app = Application.Current;
+        if (app == null) return;
+        app.Dispatcher.BeginInvoke(() => TrayService.Notify(message));
     }
 
     /// <summary>等到相对开始时间的 targetMs；可被 <see cref="Stop"/> 立即唤醒。</summary>

@@ -12,8 +12,8 @@ namespace LTools.Features;
 
 /// <summary>
 /// 宏文件存储：事件序列存 <c>&lt;数据根&gt;/macros/&lt;id&gt;.json</c>，
-/// 元数据（名称 / 时长 / 事件数 / 大小）存 <c>LTools.json</c> 的 <c>Macros.Items</c>，
-/// 设置页列表只读元数据，不必每次解析大文件。
+/// 元数据（名称 / 时长 / 事件数 / 大小 / 回放参数）存 <c>LTools.json</c> 的 <c>Macros.Items</c>，
+/// 动作编辑器只读元数据，不必每次解析大文件。
 /// </summary>
 /// <remarks>
 /// 事件文件用紧凑 JSON（短字段名、不缩进）；写入走「临时文件 → 覆盖移动」，
@@ -119,20 +119,19 @@ internal static class MacroStore
         MacroSettings.Load(AppConfig.Load(cfgPath));
     }
 
-    /// <summary>全部宏元数据（按更新时间倒序）。</summary>
-    public static IReadOnlyList<MacroMeta> List()
+    /// <summary>某个宏的元数据；不存在返回 null。</summary>
+    public static MacroMeta? MetaOf(string id)
     {
+        if (string.IsNullOrWhiteSpace(id)) return null;
         try
         {
-            var cfg = AppConfig.Load(CurrentConfigPath());
-            return (cfg.Macros?.Items ?? new List<MacroMeta>())
-                .OrderByDescending(m => m.UpdatedAt)
-                .ToList();
+            return AppConfig.Load(CurrentConfigPath()).Macros?.Items?
+                .FirstOrDefault(m => m.Id == id);
         }
         catch (Exception ex)
         {
-            CrashLog.Write("MacroStore.List", ex);
-            return Array.Empty<MacroMeta>();
+            CrashLog.Write("MacroStore.MetaOf", ex);
+            return null;
         }
     }
 
@@ -156,216 +155,107 @@ internal static class MacroStore
         }
     }
 
-    /// <summary>删除宏文件、元数据，以及引用它的宏动作（一宏一动作）。</summary>
-    public static void Delete(string id)
+    // ============ 回放参数（每宏独立，缺省回退全局） ============
+
+    /// <summary>某个宏实际生效的回放参数；<see cref="Loops"/> = -1 表示无限循环。</summary>
+    public readonly record struct MacroPlayback(double Speed, int Loops, int CountdownMs);
+
+    /// <summary>
+    /// 解析某宏的回放参数：元数据里的专属值优先，缺失时回退 <see cref="MacroSettings"/> 的全局默认。
+    /// </summary>
+    public static MacroPlayback PlaybackOf(string? macroId)
     {
-        if (string.IsNullOrWhiteSpace(id)) return;
-
-        try
-        {
-            string path = PathOf(id);
-            if (File.Exists(path)) File.Delete(path);
-        }
-        catch (Exception ex)
-        {
-            CrashLog.Write("MacroStore.Delete", ex);
-        }
-
-        string cfgPath = CurrentConfigPath();
-        ConfigIO.Modify(cfgPath, cfg =>
-        {
-            cfg.Macros ??= new MacroConfig();
-            cfg.Macros.Items ??= new List<MacroMeta>();
-            cfg.Macros.Items.RemoveAll(m => m.Id == id);
-            if (cfg.Macros.LastMacroId == id) cfg.Macros.LastMacroId = null;
-        });
-        MacroSettings.Load(AppConfig.Load(cfgPath));
-
-        // 一宏一动作：连带删除引用该宏的动作，避免动作池 / 菜单 / 超级面板留下死链。
-        var actionIds = ActionRegistry.All
-            .Where(a => a.Type == ActionType.macro && a.MacroId == id)
-            .Select(a => a.Id)
-            .ToList();
-        if (actionIds.Count > 0)
-        {
-            foreach (string actionId in actionIds) ConfigStore.RemoveAction(actionId);
-            ConfigStore.Save();
-        }
+        var meta = MetaOf(macroId ?? "");
+        double speed = meta is { Speed: > 0 } ? Math.Clamp(meta.Speed, 0.1, 5.0) : MacroSettings.DefaultSpeed;
+        int loops = meta?.Loops is int l && l != 0
+            ? (l < 0 ? -1 : Math.Clamp(l, 1, 99))
+            : Math.Clamp(MacroSettings.PlayLoops, 1, 99);
+        int countdown = meta?.CountdownMs is int c && c >= 0
+            ? Math.Clamp(c, 0, 10_000)
+            : MacroSettings.PlaybackCountdownMs;
+        return new MacroPlayback(speed, loops, countdown);
     }
 
     /// <summary>
-    /// 重命名宏（只改显示名，Id 不变）。若动作池里仍有沿用旧名、且引用该宏的动作，
-    /// 一并改成新名（用户自定义过动作名则保持不动）。
+    /// 保存某个宏的回放参数（速度 / 循环 / 倒计时）与显示名；<paramref name="loops"/> = -1 表示无限循环，
+    /// <paramref name="name"/> 为 null 表示不改名。
     /// </summary>
-    public static MacroDto? Rename(string id, string name)
-    {
-        var macro = Load(id);
-        if (macro == null) return null;
-        string oldName = macro.Name;
-        macro.Name = string.IsNullOrWhiteSpace(name) ? macro.Name : name.Trim();
-        Save(macro);
-
-        if (!string.Equals(oldName, macro.Name, StringComparison.Ordinal))
-        {
-            var actions = ActionRegistry.All
-                .Where(a => a.Type == ActionType.macro && a.MacroId == id &&
-                            string.Equals(a.Name, oldName, StringComparison.Ordinal))
-                .ToList();
-            if (actions.Count > 0)
-            {
-                foreach (var a in actions) a.Name = macro.Name;
-                ConfigStore.Save();
-            }
-        }
-        return macro;
-    }
-
-    /// <summary>复制宏（新 Id + 名称追加「副本」）。</summary>
-    public static MacroDto? Duplicate(string id)
-    {
-        var src = Load(id);
-        if (src == null) return null;
-
-        var copy = new MacroDto
-        {
-            Id = NewId(),
-            Name = src.Name + " 副本",
-            CreatedAt = DateTime.Now.ToString("O"),
-            DurationMs = src.DurationMs,
-            DesktopLeft = src.DesktopLeft,
-            DesktopTop = src.DesktopTop,
-            DesktopWidth = src.DesktopWidth,
-            DesktopHeight = src.DesktopHeight,
-            Events = src.Events != null ? new List<MacroEvent>(src.Events) : new List<MacroEvent>(),
-        };
-        Save(copy);
-
-        // 专属速度存在元数据里，Save 不写它，复制后单独带上。
-        double speed = SpeedOf(id);
-        if (speed > 0) SetSpeed(copy.Id, speed);
-
-        // 一宏一动作：副本也生成同名宏动作，否则这份宏在动作系统里无法使用。
-        ConfigStore.AddAction(new ActionDto
-        {
-            Name = copy.Name,
-            Type = ActionType.macro,
-            MacroId = copy.Id,
-            Icon = "record",
-        });
-        ConfigStore.Save();
-        return copy;
-    }
-
-    // ============ 专属回放速度 ============
-
-    /// <summary>取某个宏的专属回放速度；0 表示未设置（跟随全局默认）。</summary>
-    public static double SpeedOf(string id)
-    {
-        if (string.IsNullOrWhiteSpace(id)) return 0;
-        try
-        {
-            var item = AppConfig.Load(CurrentConfigPath()).Macros?.Items?.FirstOrDefault(m => m.Id == id);
-            return item == null ? 0 : Math.Clamp(item.Speed, 0, 5.0);
-        }
-        catch (Exception ex)
-        {
-            CrashLog.Write("MacroStore.SpeedOf", ex);
-            return 0;
-        }
-    }
-
-    /// <summary>设置某个宏的专属回放速度（0 = 跟随全局默认）。</summary>
-    public static void SetSpeed(string id, double speed)
+    public static void SavePlaybackSettings(string id, string? name, double speed, int loops, int countdownMs)
     {
         if (string.IsNullOrWhiteSpace(id)) return;
-        double v = speed < 0.1 ? 0 : Math.Clamp(speed, 0.1, 5.0);
+        double s = Math.Clamp(speed, 0.1, 5.0);
+        int l = loops < 0 ? -1 : Math.Clamp(loops, 1, 99);
+        int c = Math.Clamp(countdownMs, 0, 10_000);
 
-        string cfgPath = CurrentConfigPath();
-        ConfigIO.Modify(cfgPath, cfg =>
+        ConfigIO.Modify(CurrentConfigPath(), cfg =>
         {
             var item = cfg.Macros?.Items?.FirstOrDefault(m => m.Id == id);
-            if (item != null) item.Speed = v;
+            if (item == null) return;
+            item.Speed = s;
+            item.Loops = l;
+            item.CountdownMs = c;
+            if (!string.IsNullOrWhiteSpace(name)) item.Name = name.Trim();
         });
-        MacroSettings.Load(AppConfig.Load(cfgPath));
     }
 
-    // ============ 元数据自愈 ============
+    // ============ 引用回收 ============
 
     /// <summary>
-    /// 让 <c>Macros.Items</c> 与 <c>macros/</c> 目录重新对齐：
-    /// 删掉指向已不存在文件的条目、为落单的宏文件补元数据、纠正过期的大小、清掉失效的 <c>LastMacroId</c>。
+    /// 按引用回收宏文件：删除「不被任何键鼠宏动作 / 组合步骤引用」的 <c>macros/*.json</c> 与元数据。
+    /// 一宏一动作——删除宏动作后它的宏文件自动消失，用户不需要（也没有入口）手工管理宏文件。
     /// </summary>
-    /// <returns>修正的条目数；0 表示无需改动（此时不会写配置文件）。</returns>
-    /// <remarks>
-    /// 触发场景：手动删 / 拷宏文件、从旧备份导入、直接改 <c>LTools.json</c>。
-    /// 无宏文件且无元数据时直接返回，避免首次启动仅因自愈就生成 <c>LTools.json</c>。
-    /// </remarks>
-    public static int Reconcile()
+    /// <returns>删除的宏文件数。</returns>
+    public static int CollectGarbage()
     {
         try
         {
+            var live = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var a in ActionRegistry.All) CollectRefs(a);
+
+            void CollectRefs(ActionDto a)
+            {
+                if (a.Type == ActionType.macro && !string.IsNullOrWhiteSpace(a.MacroId))
+                    live.Add(a.MacroId!);
+                if (a.Steps == null) return;
+                foreach (var s in a.Steps) CollectRefs(s.Action);
+            }
+
             Ensure();
-            var byId = new Dictionary<string, string>(StringComparer.Ordinal);
+            int removed = 0;
             foreach (var file in Directory.GetFiles(Dir, "*.json"))
             {
                 string id = Path.GetFileNameWithoutExtension(file);
-                if (!string.IsNullOrEmpty(id)) byId[id] = file;
+                if (string.IsNullOrEmpty(id) || live.Contains(id)) continue;
+                try { File.Delete(file); removed++; }
+                catch (Exception ex) { CrashLog.Write("MacroStore.CollectGarbage", ex); }
+            }
+            // 写盘中断留下的临时文件一并清掉。
+            foreach (var tmp in Directory.GetFiles(Dir, "*.json.tmp"))
+            {
+                try { File.Delete(tmp); } catch { /* 忽略 */ }
             }
 
             string cfgPath = CurrentConfigPath();
             var cfg = AppConfig.Load(cfgPath);
             var items = cfg.Macros?.Items ?? new List<MacroMeta>();
-            if (byId.Count == 0 && items.Count == 0) return 0;
+            bool hasDeadMeta = items.Any(m => string.IsNullOrEmpty(m.Id) || !live.Contains(m.Id));
+            bool lastDead = !string.IsNullOrEmpty(cfg.Macros?.LastMacroId) &&
+                            !live.Contains(cfg.Macros!.LastMacroId!);
+            if (!hasDeadMeta && !lastDead) return removed;
 
-            var staleIds = items
-                .Where(m => string.IsNullOrEmpty(m.Id) || !byId.ContainsKey(m.Id))
-                .Select(m => m.Id)
-                .ToHashSet(StringComparer.Ordinal);
-
-            var additions = new List<MacroMeta>();
-            foreach (var (id, path) in byId)
-            {
-                if (items.Any(m => m.Id == id)) continue;
-                var macro = Load(id);
-                if (macro == null) continue;   // 损坏文件不登记，交由用户手动处理
-                additions.Add(new MacroMeta
-                {
-                    Id = id,
-                    Name = string.IsNullOrWhiteSpace(macro.Name) ? id : macro.Name,
-                    DurationMs = macro.DurationMs,
-                    EventCount = macro.Events?.Count ?? 0,
-                    SizeBytes = SafeLength(path),
-                    UpdatedAt = SafeWriteTime(path),
-                });
-            }
-
-            bool sizeDirty = items.Any(m =>
-                !string.IsNullOrEmpty(m.Id) && byId.TryGetValue(m.Id, out var p) && SafeLength(p) != m.SizeBytes);
-            string? last = cfg.Macros?.LastMacroId;
-            bool lastDirty = !string.IsNullOrEmpty(last) && !byId.ContainsKey(last!);
-
-            if (additions.Count == 0 && staleIds.Count == 0 && !sizeDirty && !lastDirty) return 0;
-
-            int changed = additions.Count + staleIds.Count;
             ConfigIO.Modify(cfgPath, c =>
             {
                 c.Macros ??= new MacroConfig();
-                var list = c.Macros.Items ??= new List<MacroMeta>();
-                list.RemoveAll(m => string.IsNullOrEmpty(m.Id) || !byId.ContainsKey(m.Id));
-                foreach (var add in additions) list.Add(add);
-                foreach (var meta in list)
-                {
-                    if (byId.TryGetValue(meta.Id, out var p)) meta.SizeBytes = SafeLength(p);
-                }
-                if (!string.IsNullOrEmpty(c.Macros.LastMacroId) && !byId.ContainsKey(c.Macros.LastMacroId))
+                c.Macros.Items ??= new List<MacroMeta>();
+                c.Macros.Items.RemoveAll(m => string.IsNullOrEmpty(m.Id) || !live.Contains(m.Id));
+                if (!string.IsNullOrEmpty(c.Macros.LastMacroId) && !live.Contains(c.Macros.LastMacroId))
                     c.Macros.LastMacroId = null;
             });
-            MacroSettings.Load(AppConfig.Load(cfgPath));
-            return changed;
+            return removed;
         }
         catch (Exception ex)
         {
-            CrashLog.Write("MacroStore.Reconcile", ex);
+            CrashLog.Write("MacroStore.CollectGarbage", ex);
             return 0;
         }
     }
@@ -412,16 +302,6 @@ internal static class MacroStore
 
         w.WriteEndObject();
         w.Flush();
-    }
-
-    private static long SafeLength(string path)
-    {
-        try { return new FileInfo(path).Length; } catch { return 0; }
-    }
-
-    private static string SafeWriteTime(string path)
-    {
-        try { return File.GetLastWriteTime(path).ToString("yyyy-MM-dd HH:mm:ss"); } catch { return ""; }
     }
 
     private static string CurrentConfigPath() =>
