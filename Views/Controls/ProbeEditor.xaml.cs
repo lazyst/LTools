@@ -245,10 +245,10 @@ public partial class ProbeEditor : UserControl
         TestBar.Visibility = kind == ProbeKind.user ? Visibility.Collapsed : Visibility.Visible;
         TestHint.Text = kind switch
         {
-            ProbeKind.selection => "会向前台应用发送 Ctrl+C 并还原剪贴板（窗口会短暂隐藏）",
+            ProbeKind.selection => "会向前台应用发送 Ctrl+C 并还原剪贴板（窗口会短暂最小化）",
             ProbeKind.clipboard => "读取当前剪贴板内容",
-            ProbeKind.image => $"用当前屏幕找一次（最多等 {ProbeTest.MaxWaitMs / 1000} 秒，窗口会短暂隐藏）",
-            ProbeKind.color => "读取该点当前颜色（窗口会短暂隐藏）",
+            ProbeKind.image => $"用当前屏幕找一次（最多等 {ProbeTest.MaxWaitMs / 1000} 秒，窗口会短暂最小化）",
+            ProbeKind.color => "读取该点当前颜色（窗口会短暂最小化）",
             ProbeKind.window or ProbeKind.process => "检查当前系统状态",
             _ => "按现在的设置立即求值一次",
         };
@@ -461,8 +461,8 @@ public partial class ProbeEditor : UserControl
         {
             if (hide)
             {
-                restore = TransientHide.HideAll(Window.GetWindow(this));
-                await Task.Delay(180);
+                restore = TransientMinimize.MinimizeAll(Window.GetWindow(this));
+                await Task.Delay(TransientMinimize.SettleMs);
             }
             string result = await Task.Run(() => ProbeTest.Run(probe));
             ShowTest(result, true);

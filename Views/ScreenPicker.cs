@@ -11,12 +11,13 @@ using LTools.Native;
 namespace LTools.Views;
 
 /// <summary>
-/// 屏幕取点的入口：先把 LTools 自己的窗口藏起来、拍下光标所在显示器，
+/// 屏幕取点的入口：先把 LTools 自己的窗口最小化、拍下光标所在显示器，
 /// 再弹 <see cref="ScreenPickerWindow"/> 让用户框选 / 单击。
 /// </summary>
 /// <remarks>
-/// 截图 / 框选期间本进程的窗口全部隐藏，所以模板图与取色结果都不含 LTools 自己；
+/// 截图 / 框选期间本进程的窗口全部最小化，所以模板图与取色结果都不含 LTools 自己；
 /// 结束后原样恢复（模态对话框重新显示并回到前台）。
+/// 注意用最小化而非 Hide——Hide 会结束 ShowDialog 的模态循环，见 <see cref="TransientMinimize"/>。
 /// </remarks>
 internal static class ScreenPicker
 {
@@ -26,10 +27,10 @@ internal static class ScreenPicker
         area = default;
         image = null!;
 
-        var restore = TransientHide.HideAll(owner);
+        var restore = TransientMinimize.MinimizeAll(owner);
         try
         {
-            Thread.Sleep(160);   // 等 DWM 把「窗口已隐藏」的桌面画出来
+            Thread.Sleep(TransientMinimize.SettleMs);   // 等最小化动画结束、桌面重绘完
             var monitor = MonitorUnderCursor();
             using var bmp = ScreenCapture.Capture(monitor.X, monitor.Y, monitor.Width, monitor.Height);
             var shot = ToBitmapSource(bmp);
@@ -60,10 +61,10 @@ internal static class ScreenPicker
         x = y = 0;
         hex = "";
 
-        var restore = TransientHide.HideAll(owner);
+        var restore = TransientMinimize.MinimizeAll(owner);
         try
         {
-            Thread.Sleep(160);
+            Thread.Sleep(TransientMinimize.SettleMs);
             var monitor = MonitorUnderCursor();
             using var bmp = ScreenCapture.Capture(monitor.X, monitor.Y, monitor.Width, monitor.Height);
             var shot = ToBitmapSource(bmp);

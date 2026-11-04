@@ -291,7 +291,7 @@
                                     <Button Grid.Column="4" Style="{StaticResource BtnGhost}" Content="⌖ 拾取"
                                             MinHeight="30" Padding="10,4" Margin="8,0,0,0"
                                             Click="MousePick_Click"
-                                            ToolTip="隐藏窗口后在屏幕上单击取坐标"/>
+                                            ToolTip="最小化窗口后在屏幕上单击取坐标"/>
                                 </Grid>
 
                                 <StackPanel x:Name="MouseWheelPanel" Orientation="Horizontal" Margin="0,10,0,0"

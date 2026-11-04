@@ -77,7 +77,7 @@
                     <WrapPanel Orientation="Horizontal">
                         <Button x:Name="CaptureShotBtn" Style="{StaticResource BtnPrimary}" Content="▣ 框选截图"
                                 MinHeight="30" Padding="10,4" Click="CaptureShot_Click"
-                                ToolTip="隐藏 LTools → 冻结屏幕 → 拖个框，松手即存为模板图"/>
+                                ToolTip="最小化 LTools → 冻结屏幕 → 拖个框，微调后确认即存为模板图"/>
                         <Button Style="{StaticResource BtnGhost}" Content="换图…" Margin="6,0,0,0"
                                 MinHeight="30" Padding="10,4" Click="BrowseImage_Click"/>
                         <Button x:Name="PreviewImageBtn" Style="{StaticResource BtnGhost}" Content="预览"
@@ -161,7 +161,7 @@
                 <TextBox x:Name="ColorYBox" Width="64" MinHeight="30" Margin="4,0,0,0"/>
                 <Button x:Name="PickPointBtn" Style="{StaticResource BtnGhost}" Content="⌖ 吸管取点"
                         MinHeight="30" Padding="10,4" Margin="10,0,0,0" Click="PickColorPoint_Click"
-                        ToolTip="隐藏窗口后在屏幕上单击：取坐标，条件里同时填入目标色"/>
+                        ToolTip="最小化窗口后在屏幕上单击：取坐标，条件里同时填入目标色"/>
             </StackPanel>
             <StackPanel x:Name="ColorTargetPanel" Orientation="Horizontal" Margin="0,6,0,0">
                 <TextBlock Text="目标色" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
@@ -198,7 +198,7 @@
                             MinHeight="30" Padding="10,4" Click="Test_Click"/>
                     <TextBlock x:Name="TestHint" Style="{StaticResource HintLabel}" VerticalAlignment="Center"
                                Margin="8,0,0,0" TextWrapping="Wrap"
-                               Text="按现在的设置立即求值一次（测试期间窗口会短暂隐藏）"/>
+                               Text="按现在的设置立即求值一次（测试期间窗口会短暂最小化）"/>
                 </StackPanel>
                 <TextBlock x:Name="TestResult" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed"
                            FontFamily="Consolas" FontSize="{StaticResource FontSizeHint}"
