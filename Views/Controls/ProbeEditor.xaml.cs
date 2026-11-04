@@ -5,6 +5,7 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using LTools.Features;
@@ -301,6 +302,9 @@ public partial class ProbeEditor : UserControl
         }
     }
 
+    /// <summary>预览是非模态的：重复点预览复用同一个窗口，不会叠出一堆。</summary>
+    private ImagePreviewWindow? _preview;
+
     private void PreviewImage_Click(object sender, RoutedEventArgs e)
     {
         string path = ImageLibrary.Resolve(ImagePathBox.Text);
@@ -310,19 +314,43 @@ public partial class ProbeEditor : UserControl
             return;
         }
 
+        BitmapSource image;
         try
         {
-            var win = new ImagePreviewWindow(LoadBitmap(path), Path.GetFileName(path))
-            {
-                Owner = Window.GetWindow(this),
-            };
-            win.ShowDialog();
+            image = LoadBitmap(path);
         }
         catch (Exception ex)
         {
             ShowTest("预览失败：" + ex.Message, false);
+            return;
         }
+
+        string name = Path.GetFileName(path);
+
+        // 复用已有预览：只换图，不新开窗口。
+        if (_preview is { IsLoaded: true })
+        {
+            _preview.SetContent(image, name);
+            _preview.Activate();
+            return;
+        }
+
+        var owner = Window.GetWindow(this);
+
+        // 关键：Show 而不是 ShowDialog，且继承 owner 的 Topmost。
+        // 组合动作编辑器经常是 Topmost（从超级面板打开），模态子窗口会被它压住并让编辑器变灰，
+        // 看起来就像「编辑窗口没了」。
+        _preview = new ImagePreviewWindow(image, name)
+        {
+            Owner = owner,
+            Topmost = owner?.Topmost ?? false,
+            ShowInTaskbar = false,
+        };
+        _preview.Closed += (_, _) => _preview = null;
+        _preview.Show();
     }
+
+    private void Thumb_Click(object sender, MouseButtonEventArgs e) => PreviewImage_Click(sender, e);
 
     /// <summary>只框搜索区域，不动模板图。</summary>
     private void PickRegion_Click(object sender, RoutedEventArgs e)
@@ -365,7 +393,7 @@ public partial class ProbeEditor : UserControl
         try
         {
             var bmp = LoadBitmap(path);
-            SetThumb(bmp, "", $"{bmp.PixelWidth} × {bmp.PixelHeight} px · {Path.GetFileName(path)}");
+            SetThumb(bmp, "", $"{bmp.PixelWidth} × {bmp.PixelHeight} px · {Path.GetFileName(path)} · 点击缩略图可预览");
         }
         catch (Exception ex)
         {

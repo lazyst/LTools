@@ -5,19 +5,56 @@
         ShowInTaskbar="False" Topmost="True" WindowStartupLocation="Manual"
         Background="#0B0B0E" Cursor="Cross" UseLayoutRounding="True"
         SnapsToDevicePixels="True" Focusable="True"
-        PreviewMouseMove="Window_MouseMove"
-        PreviewMouseLeftButtonDown="Window_MouseDown"
-        PreviewMouseLeftButtonUp="Window_MouseUp"
-        PreviewMouseRightButtonDown="Window_Cancel"
         PreviewKeyDown="Window_KeyDown"
         Loaded="Window_Loaded">
     <!-- 冻结画面 + 取点 / 框选。窗口正好盖住光标所在的显示器，
-         所有坐标最终换算成「显示器物理像素 + 左上角偏移」，与截图 / 鼠标注入同一坐标系。 -->
+         所有坐标最终换算成「显示器物理像素 + 左上角偏移」，与截图 / 鼠标注入同一坐标系。
+         框选松手后不直接确定：可以拖边角微调，再按「使用这块区域」/ Enter / 双击确认。 -->
+    <Window.Resources>
+        <Style x:Key="PickBtn" TargetType="Button">
+            <Setter Property="Foreground" Value="#18181B"/>
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="5"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E4E4E7"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#D4D4D8"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#3F3F46"/>
+                                <Setter Property="Foreground" Value="#A1A1AA"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="PickBtnGhost" TargetType="Button" BasedOn="{StaticResource PickBtn}">
+            <Setter Property="Background" Value="#33FFFFFF"/>
+            <Setter Property="Foreground" Value="#F4F4F5"/>
+        </Style>
+    </Window.Resources>
+
     <Grid x:Name="Root" Background="#0B0B0E" ClipToBounds="True">
         <Image x:Name="Shot" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality"/>
 
-        <Canvas x:Name="Layer" ClipToBounds="True">
-            <!-- 框选时压暗选区以外的部分（EvenOdd 挖洞） -->
+        <Canvas x:Name="Layer" Background="Transparent" ClipToBounds="True"
+                MouseMove="Layer_MouseMove"
+                MouseLeftButtonDown="Layer_MouseDown"
+                MouseLeftButtonUp="Layer_MouseUp"
+                MouseRightButtonDown="Window_Cancel">
+            <!-- 框选 / 未选时压暗整体（EvenOdd 挖洞） -->
             <Path x:Name="DimPath" Fill="#99000000" IsHitTestVisible="False"/>
 
             <Rectangle x:Name="Selection" Stroke="#FFFFFF" StrokeThickness="1.5"
@@ -28,7 +65,7 @@
             <Line x:Name="CrossV" Stroke="#E6FFFFFF" StrokeThickness="1"
                   Visibility="Collapsed" IsHitTestVisible="False"/>
 
-            <!-- 放大镜：8 倍，中心十字 -->
+            <!-- 放大镜：8 倍，中心十字（只在取点时显示） -->
             <Border x:Name="MagBox" Width="132" Height="132" CornerRadius="6"
                     BorderBrush="#FFFFFF" BorderThickness="2" Background="#0B0B0E"
                     Visibility="Collapsed" IsHitTestVisible="False">
@@ -53,5 +90,19 @@
                 <TextBlock x:Name="HintText" Foreground="#E4E4E7" FontSize="13"/>
             </Border>
         </Canvas>
+
+        <!-- 确认栏（框选后出现） -->
+        <Border x:Name="ActionBar" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                Margin="0,0,0,38" Background="#E6101014" CornerRadius="8" Padding="12,9"
+                Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="ActionHint" Foreground="#E4E4E7" VerticalAlignment="Center"
+                           Margin="2,0,14,0" FontSize="13"/>
+                <Button x:Name="ConfirmBtn" Style="{StaticResource PickBtn}" Content="✓ 使用这块区域"
+                        IsEnabled="False" Click="Confirm_Click"/>
+                <Button Style="{StaticResource PickBtnGhost}" Content="取消" Margin="8,0,0,0"
+                        Click="Cancel_Click"/>
+            </StackPanel>
+        </Border>
     </Grid>
 </Window>

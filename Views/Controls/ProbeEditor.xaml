@@ -63,7 +63,8 @@
                 </Grid.ColumnDefinitions>
                 <Border Width="100" Height="60" CornerRadius="4" ClipToBounds="True"
                         Background="{StaticResource SurfaceAltBrush}"
-                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                        Cursor="Hand" ToolTip="点击预览这张模板图" MouseLeftButtonUp="Thumb_Click">
                     <Grid>
                         <TextBlock x:Name="ImageThumbHint" Text="无图" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"

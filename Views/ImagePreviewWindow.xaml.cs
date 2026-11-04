@@ -8,11 +8,21 @@ namespace LTools.Views;
 /// <summary>
 /// 模板图预览（无边框，点击任意处或 Esc 关闭）。只在编辑器里用来确认「截的是不是这块」。
 /// </summary>
+/// <remarks>
+/// 由编辑器用 <see cref="Window.Show"/> 非模态打开：预览只是看一眼，不能把正在编辑的
+/// 组合动作窗口禁用掉（否则看起来像编辑窗口消失了）。
+/// </remarks>
 public partial class ImagePreviewWindow : Window
 {
     public ImagePreviewWindow(BitmapSource image, string caption)
     {
         InitializeComponent();
+        SetContent(image, caption);
+    }
+
+    /// <summary>换一张图（重复点预览时复用同一个窗口，不再叠一层）。</summary>
+    public void SetContent(BitmapSource image, string caption)
+    {
         Preview.Source = image;
         Caption.Text = caption + "　·　点击任意处或按 Esc 关闭";
 
