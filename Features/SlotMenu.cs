@@ -34,7 +34,7 @@ public static class SlotMenu
             menu.Items.Add(mi);
         }
 
-        // 快捷新建（12 类，不含 internal/composite）+ 新建动作…（弹完整类型选择器）
+        // 快捷新建（14 类，不含 internal/composite）+ 新建动作…（弹完整类型选择器）
         Add("新建动作…", () => onNew(slot, null));
         Add("新建组合动作…", () => onNew(slot, ActionType.composite));
         menu.Items.Add(new Separator());
@@ -46,6 +46,7 @@ public static class SlotMenu
         Add("新建 · 发送文本", () => onNew(slot, ActionType.sendText));
         Add("新建 · 写入剪贴板", () => onNew(slot, ActionType.setClipboard));
         Add("新建 · 提示弹窗", () => onNew(slot, ActionType.toast));
+        Add("新建 · 写速记", () => onNew(slot, ActionType.quickNote));
         Add("新建 · 模拟按键", () => onNew(slot, ActionType.sendKeys));
         Add("新建 · 窗口操作", () => onNew(slot, ActionType.window));
         Add("新建 · 文字点击", () => onNew(slot, ActionType.clickText));

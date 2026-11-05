@@ -58,13 +58,21 @@ internal static class ProbeEvaluator
                 return ScreenshotProbe.Run(probe, ctx);
 
             case ProbeKind.image:
-                return ImageProbe.Run(probe, ctx);
+            {
+                // 模板图路径也支持 ${变量}（例如把上一次运行存的图片名存进变量）
+                var imageProbe = probe.Clone();
+                imageProbe.Image = Template.Render(probe.Image ?? "", ctx);
+                return ImageProbe.Run(imageProbe, ctx);
+            }
 
             case ProbeKind.ocr:
                 return OcrProbe.Run(probe, ctx);
 
             case ProbeKind.textSearch:
                 return TextLocator.Run(probe, ctx);
+
+            case ProbeKind.note:
+                return NoteActions.Read(probe, ctx);
 
             case ProbeKind.color:
             {

@@ -18,6 +18,7 @@ namespace LTools.Features;
 /// <item>sendText → 50ms 焦点延时后按 <see cref="SendTextMode"/> 分发（auto=Unicode 注入 / type=键入 / paste=剪贴板粘贴，§3.2.2）</item>
 /// <item>setClipboard → 把文本（可含运行期模板）写进系统剪贴板，不发送、不按键</item>
 /// <item>toast → 右下角提示卡片，投递到 UI 线程即返回（不阻塞后续步骤、不抢焦点）</item>
+/// <item>quickNote → 把正文存进速记（<see cref="NoteActions"/>，与 CapsLock+N 同一个目录）</item>
 /// <item>window → <see cref="WindowAction"/>：切到前台 / 最大化 / 最小化 / 还原 / 调整大小（按标题匹配窗口，读回真实状态）</item>
 /// <item>sendKeys → 50ms 焦点延时后顺序遍历条目（chord 逐 stroke Combo、stroke 间 15ms；text 复用 sendText auto；sleep 等待，§3.2.1）</item>
 /// <item>internal → <see cref="InternalActionRegistry"/> 分发（dispatch 到 UI 线程执行）</item>
@@ -101,6 +102,9 @@ internal static class ActionExecutor
                 break;
             case ActionType.toast:
                 ShowToast(action);
+                break;
+            case ActionType.quickNote:
+                result = NoteActions.Write(action);
                 break;
             case ActionType.window:
                 result = WindowAction.Run(action);

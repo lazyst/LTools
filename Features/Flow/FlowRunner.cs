@@ -219,8 +219,20 @@ internal static class FlowRunner
                 var set = node.Set ?? throw new FlowException("赋值节点为空");
                 if (string.IsNullOrWhiteSpace(set.Var)) throw new FlowException("赋值节点缺少变量名");
                 string setVar = set.Var.Trim();
-                AppLog.Debug("Flow", $"设置变量「{setVar}」");
-                ctx.Vars[setVar] = ProbeEvaluator.Evaluate(set.Probe, ctx);
+                var value = ProbeEvaluator.Evaluate(set.Probe, ctx);
+                if (set.Append)
+                {
+                    // a += ...：右值先按正常方式求值（所以「a += ${a}」就是复制一份自己），
+                    // 再拼到旧文本后面；变量还不存在时当作空串。结果一律是纯文本。
+                    string old = ctx.Vars.TryGetValue(setVar, out var previous) ? previous.Text : "";
+                    value = VarValue.FromText(old + value.Text);
+                    AppLog.Debug("Flow", $"追加变量「{setVar}」（{value.Text.Length} 字符）");
+                }
+                else
+                {
+                    AppLog.Debug("Flow", $"设置变量「{setVar}」");
+                }
+                ctx.Vars[setVar] = value;
                 return Signal.none;
             }
 

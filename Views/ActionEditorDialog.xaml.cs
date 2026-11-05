@@ -86,6 +86,7 @@ public partial class ActionEditorDialog : Window
         _fieldsByType[ActionType.sendText] = F_SendText;
         _fieldsByType[ActionType.setClipboard] = F_SetClipboard;
         _fieldsByType[ActionType.toast] = F_Toast;
+        _fieldsByType[ActionType.quickNote] = F_QuickNote;
         _fieldsByType[ActionType.sendKeys] = F_SendKeys;
         _fieldsByType[ActionType.mouse] = F_Mouse;
         _fieldsByType[ActionType.window] = F_Window;
@@ -106,6 +107,7 @@ public partial class ActionEditorDialog : Window
             new("发送文本", ActionType.sendText),
             new("写入剪贴板", ActionType.setClipboard),
             new("提示弹窗", ActionType.toast),
+            new("写速记", ActionType.quickNote),
             new("模拟按键", ActionType.sendKeys),
             new("鼠标操作", ActionType.mouse),
             new("窗口操作", ActionType.window),
@@ -117,6 +119,17 @@ public partial class ActionEditorDialog : Window
         if (allowMacro || _draft.Type == ActionType.macro)
             types.Insert(types.Count - 1, new("键鼠宏", ActionType.macro));
         TypeCombo.ItemsSource = types;
+
+        // 写速记：分类下拉列出磁盘上已有的分类（仍可编辑，直接输入新分类）
+        try
+        {
+            foreach (string category in new NoteRepository(AppPaths.NotesDir).Categories())
+                NoteCategoryCombo.Items.Add(category);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("速记", "读取速记分类失败：" + ex.Message);
+        }
 
         // 步骤编辑器（allowComposite=false）不允许嵌套组合，整块隐藏切换入口。
         if (allowComposite)
@@ -232,6 +245,11 @@ public partial class ActionEditorDialog : Window
             _ => 0,
         };
         AppendEnterBox.IsChecked = _draft.AppendEnter ?? false;
+
+        // quickNote
+        NoteTitleBox.Text = _draft.NoteTitle ?? "";
+        NoteBodyBox.Text = _draft.Text ?? "";
+        NoteCategoryCombo.Text = _draft.NoteCategory ?? "";
 
         // sendKeys Items 载入序列列表
         _keyItems.Clear();
@@ -1078,6 +1096,7 @@ public partial class ActionEditorDialog : Window
         _draft.Cmd = null; _draft.Terminal = null; _draft.KeepWindow = null;
         _draft.Command = null; _draft.Steps = null; _draft.Flow = null; _draft.CompositeOnFail = null;
         _draft.Text = null; _draft.Mode = null; _draft.AppendEnter = null; _draft.DurationMs = null;
+        _draft.NoteTitle = null; _draft.NoteCategory = null;
         _draft.X = null; _draft.Y = null; _draft.MouseAction = null; _draft.WheelDelta = null;
         _draft.Items = null; _draft.MacroId = null;
         _draft.WindowTitle = null; _draft.WindowClass = null; _draft.WindowOp = null; _draft.WindowRect = null;
@@ -1139,6 +1158,19 @@ public partial class ActionEditorDialog : Window
                 if (!TryReadToastDuration(out int durationMs)) { ToastDurationBox.Focus(); return; }
                 _draft.Text = ToastTextBox.Text;
                 _draft.DurationMs = durationMs;
+                break;
+            }
+            case ActionType.quickNote:
+            {
+                if (NoteBodyBox.Text.Trim().Length == 0)
+                {
+                    ConfirmDialog.Info(this, "写速记", "请输入速记正文。");
+                    NoteBodyBox.Focus();
+                    return;
+                }
+                _draft.Text = NoteBodyBox.Text;
+                _draft.NoteTitle = NoteTitleBox.Text.Trim();
+                _draft.NoteCategory = NoteCategoryCombo.Text.Trim();
                 break;
             }
             case ActionType.sendKeys:
@@ -1983,6 +2015,7 @@ public partial class ActionEditorDialog : Window
         Target = a.Target, Args = a.Args, Workdir = a.Workdir, Path = a.Path, Url = a.Url,
         Cmd = a.Cmd, Terminal = a.Terminal, KeepWindow = a.KeepWindow, Command = a.Command,
         Text = a.Text, Mode = a.Mode, AppendEnter = a.AppendEnter, DurationMs = a.DurationMs,
+        NoteTitle = a.NoteTitle, NoteCategory = a.NoteCategory,
         WindowTitle = a.WindowTitle, WindowClass = a.WindowClass, WindowOp = a.WindowOp,
         WindowRect = a.WindowRect != null ? (int[])a.WindowRect.Clone() : null,
         Region = a.Region, Rect = a.Rect != null ? (int[])a.Rect.Clone() : null,

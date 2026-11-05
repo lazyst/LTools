@@ -43,6 +43,12 @@ public sealed class VarValue
     /// <summary>错误输出（运行命令的 stderr；无则空）。</summary>
     public string Error { get; init; } = "";
 
+    /// <summary>速记标题（读速记 / 写速记的结果）。</summary>
+    public string Title { get; init; } = "";
+
+    /// <summary>速记时间（yyyy-MM-dd HH:mm:ss）。</summary>
+    public string Time { get; init; } = "";
+
     /// <summary>由文本构造。</summary>
     public static VarValue FromText(string? text) => new() { Text = text ?? "" };
 
@@ -104,9 +110,11 @@ public sealed class VarValue
         "file" or "path" => File.Length > 0 ? File : null,
         "found" or "flag" => Flag?.ToString().ToLowerInvariant(),
         "score" => Score?.ToString("0.###", CultureInfo.InvariantCulture),
-        "number" or "exit" or "code" => Number?.ToString("0.####", CultureInfo.InvariantCulture),
+        "number" or "exit" or "code" or "count" => Number?.ToString("0.####", CultureInfo.InvariantCulture),
         "text" or "out" => Text,
         "err" or "error" or "stderr" => Error,
+        "title" => Title,
+        "time" => Time,
         _ => null,
     };
 }

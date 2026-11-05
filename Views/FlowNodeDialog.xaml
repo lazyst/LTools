@@ -34,9 +34,16 @@
                     <!-- 设置变量 -->
                     <StackPanel x:Name="SetSection" Visibility="Collapsed">
                         <TextBlock Style="{StaticResource SectionLabel}" Text="变量名" Margin="0,0,0,4"/>
-                        <TextBox x:Name="VarBox" MinHeight="32" Margin="0,0,0,4"/>
-                        <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,0,0,14"
-                                   Text="变量名可以用中文，例如「名称」；之后在下面要写文本的输入框里用 ${名称} 引用（每个这样的输入框右侧都有「插入变量」按钮）。"/>
+                        <TextBox x:Name="VarBox" MinHeight="32" Margin="0,0,0,4" TextChanged="VarBox_TextChanged"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                            <RadioButton x:Name="SetOverwriteRadio" Content="覆盖" GroupName="SetMode"
+                                         VerticalAlignment="Center" IsChecked="True" Checked="SetMode_Changed"/>
+                            <RadioButton x:Name="SetAppendRadio" Content="追加（a += …）" GroupName="SetMode"
+                                         VerticalAlignment="Center" Margin="18,0,0,0" Checked="SetMode_Changed"
+                                         ToolTip="新值接在变量原来的文本后面；同名变量可以反复赋值"/>
+                        </StackPanel>
+                        <TextBlock x:Name="SetVarHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                                   Margin="0,4,0,14"/>
                         <controls:ProbeEditor x:Name="SetProbe"/>
                     </StackPanel>
 

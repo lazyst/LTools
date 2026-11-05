@@ -64,6 +64,7 @@ public partial class ProbeEditor : UserControl
             new("截图找图", ProbeKind.image),
             new("文字识别", ProbeKind.ocr),
             new("找文字（区域 + 坐标）", ProbeKind.textSearch),
+            new("读速记（分类 + 关键字）", ProbeKind.note),
             new("屏幕取色", ProbeKind.color),
             new("窗口", ProbeKind.window),
             new("进程", ProbeKind.process),
@@ -78,6 +79,18 @@ public partial class ProbeEditor : UserControl
             new("固定区域", ImageRegion.rect),
         };
         RegionCombo.SelectedIndex = 0;
+
+        // 读速记：分类下拉列出磁盘上已有的分类（可编辑，直接输入新分类）
+        try
+        {
+            NoteCategoryCombo.Items.Add(NoteRepository.AllCategories);
+            foreach (string category in new NoteRepository(AppPaths.NotesDir).Categories())
+                NoteCategoryCombo.Items.Add(category);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("速记", "读取速记分类失败：" + ex.Message);
+        }
 
         OcrEngineCombo.ItemsSource = new List<OcrEngineItem>
         {
@@ -125,6 +138,8 @@ public partial class ProbeEditor : UserControl
         TextSearchTimeoutBox.Text = Math.Clamp(probe.TimeoutMs, 0, 600_000).ToString(CultureInfo.InvariantCulture);
         TextSearchIntervalBox.Text = (probe.IntervalMs > 0 ? probe.IntervalMs : TextLocator.DefaultIntervalMs)
             .ToString(CultureInfo.InvariantCulture);
+        NoteCategoryCombo.Text = probe.NoteCategory ?? "";
+        NoteKeywordBox.Text = probe.Text ?? "";
         // 已有 OCR 步骤保留自己的引擎；新建步骤沿用上次的选择（默认 PP-OCRv6 快速）
         SelectOcrEngine(probe.Kind is ProbeKind.ocr or ProbeKind.textSearch ? probe.OcrEngine : OcrEnginePreference.DefaultForNewProbe);
         RectXBox.Text = probe.Rect is { Length: >= 4 } r ? r[0].ToString(CultureInfo.InvariantCulture) : "0";
@@ -263,6 +278,11 @@ public partial class ProbeEditor : UserControl
                 break;
             }
 
+            case ProbeKind.note:
+                probe.NoteCategory = NoteCategoryCombo.Text.Trim();
+                probe.Text = NoteKeywordBox.Text.Trim();
+                break;
+
             case ProbeKind.color:
             {
                 probe.X = ColorXBox.Text.Trim();
@@ -341,6 +361,7 @@ public partial class ProbeEditor : UserControl
             [ProbeKind.image] = P_Image,
             [ProbeKind.ocr] = P_Ocr,
             [ProbeKind.textSearch] = P_TextSearch,
+            [ProbeKind.note] = P_Note,
             [ProbeKind.color] = P_Color,
             [ProbeKind.window] = P_Window,
             [ProbeKind.process] = P_Process,
@@ -388,6 +409,7 @@ public partial class ProbeEditor : UserControl
             ProbeKind.image => $"用当前屏幕找一次（最多等 {ProbeTest.MaxWaitMs / 1000} 秒，窗口会短暂最小化）",
             ProbeKind.ocr => "识别图片变量里的图片（编辑时变量通常还没有值，跑流程才有）",
             ProbeKind.textSearch => $"在当前屏幕上找一次（最多等 {ProbeTest.MaxWaitMs / 1000} 秒，窗口会短暂最小化）",
+            ProbeKind.note => "读取速记目录里最近修改的一条（编辑时就能测）",
             ProbeKind.screenshot => "按当前方式截一张图（窗口会短暂最小化）",
             ProbeKind.color => "读取该点当前颜色（窗口会短暂最小化）",
             ProbeKind.window or ProbeKind.process => "检查当前系统状态",

@@ -23,6 +23,9 @@ internal static class ActionMaterializer
         a.Url = Template.RenderOpt(a.Url, ctx);
         a.Cmd = Template.RenderOpt(a.Cmd, ctx);
         a.Text = Template.RenderOpt(a.Text, ctx);
+        a.NoteTitle = Template.RenderOpt(a.NoteTitle, ctx);
+        a.NoteCategory = Template.RenderOpt(a.NoteCategory, ctx);
+        a.Image = Template.RenderOpt(a.Image, ctx);
         a.X = Template.RenderOpt(a.X, ctx);
         a.Y = Template.RenderOpt(a.Y, ctx);
         a.WindowTitle = Template.RenderOpt(a.WindowTitle, ctx);

@@ -108,6 +108,7 @@ public partial class CompositeActionDialog : Window
             (ActionType.sendText, "send", "发送文本"),
             (ActionType.setClipboard, "paste", "写入剪贴板"),
             (ActionType.toast, "message", "提示弹窗"),
+            (ActionType.quickNote, "note", "写速记"),
             (ActionType.sendKeys, "keyboard", "模拟按键"),
             (ActionType.mouse, "mouse", "鼠标操作"),
             (ActionType.window, "window", "窗口操作"),
@@ -123,17 +124,24 @@ public partial class CompositeActionDialog : Window
         AddGroup("basic", "基础动作", basics);
 
         // 流程控制（嵌套块）→ set/if/loop 先开参数对话框；break/continue/stop 直接加入
-        var flowDefs = new (FlowNodeKind Kind, string Icon, string Label)[]
+        var flowDefs = new (FlowNodeKind Kind, string Icon, string Label, bool Append)[]
         {
-            (FlowNodeKind.set, "edit", "设置变量"),
-            (FlowNodeKind.@if, "help", "如果"),
-            (FlowNodeKind.loop, "refresh", "循环"),
-            (FlowNodeKind.@break, "back", "跳出循环"),
-            (FlowNodeKind.@continue, "forward", "进入下一次循环"),
-            (FlowNodeKind.stop, "stop", "停止流程"),
+            (FlowNodeKind.set, "edit", "设置变量", false),
+            (FlowNodeKind.set, "edit", "追加到变量（a += …）", true),
+            (FlowNodeKind.@if, "help", "如果", false),
+            (FlowNodeKind.loop, "refresh", "循环", false),
+            (FlowNodeKind.@break, "back", "跳出循环", false),
+            (FlowNodeKind.@continue, "forward", "进入下一次循环", false),
+            (FlowNodeKind.stop, "stop", "停止流程", false),
         };
         var flowItems = flowDefs
-            .Select(f => new LeftItem { Label = f.Label, Glyph = IconCatalog.GetGlyph(f.Icon), FlowKind = f.Kind })
+            .Select(f => new LeftItem
+            {
+                Label = f.Label,
+                Glyph = IconCatalog.GetGlyph(f.Icon),
+                FlowKind = f.Kind,
+                Append = f.Append,
+            })
             .Where(Match)
             .ToList();
         AddGroup("flow", "流程", flowItems);
@@ -152,6 +160,7 @@ public partial class CompositeActionDialog : Window
             ("找文字", ProbeKind.textSearch, "文字位置", "search", "在屏幕区域里找一段文字：${变量} = 命中的文字、.x / .y = 位置、.found = 是否找到；只查找，不点击"),
             ("截图找图", ProbeKind.image, "图片位置", "image", "在屏幕上找模板图：${变量} = x,y、.score = 相似度、.found = 是否找到；配合「鼠标操作」即可点击，只判断也可以"),
             ("日期时间", ProbeKind.datetime, "日期时间", "clock", "记录当前日期时间（可设置格式）"),
+            ("读速记", ProbeKind.note, "速记", "note", "从速记里取最近修改的一条：${变量} = 正文、.title / .time / .path / .count（匹配条数）；可先按分类 / 关键字筛选"),
             ("上一步的错误", ProbeKind.lastError, "错误", "help", "读取上一步被「继续下一步」吞掉的错误"),
         };
         var values = valueDefs
@@ -398,7 +407,7 @@ public partial class CompositeActionDialog : Window
         }
         else if (item.FlowKind != null)
         {
-            node = BuildFlowNode(item.FlowKind.Value);
+            node = BuildFlowNode(item.FlowKind.Value, item.Append);
             if (node == null) return;   // 取消对话框
         }
         else if (item.ValueProbe != null)
@@ -433,14 +442,14 @@ public partial class CompositeActionDialog : Window
         new() { Kind = FlowNodeKind.action, Action = action };
 
     /// <summary>构造流程节点；set/if/loop 先弹参数编辑器，取消返回 null。</summary>
-    private FlowNode? BuildFlowNode(FlowNodeKind kind)
+    private FlowNode? BuildFlowNode(FlowNodeKind kind, bool append = false)
     {
         FlowNode node = kind switch
         {
             FlowNodeKind.set => new FlowNode
             {
                 Kind = FlowNodeKind.set,
-                Set = new SetNode { Var = "", Probe = new Probe { Kind = ProbeKind.text } },
+                Set = new SetNode { Var = "", Probe = new Probe { Kind = ProbeKind.text }, Append = append },
             },
             FlowNodeKind.@if => new FlowNode
             {
@@ -1078,6 +1087,7 @@ public partial class CompositeActionDialog : Window
         public string? PoolActionId { get; set; }       // 动作池组：复用（深拷贝）
         public ActionType? BasicType { get; set; }       // 基础动作组：动作类型（需开编辑器填字段）
         public FlowNodeKind? FlowKind { get; set; }      // 流程组：控制节点
+        public bool Append { get; set; }                 // 流程组：「追加到变量」用 += 语义
         public ProbeKind? ValueProbe { get; set; }       // 取值组：预设取值器的「设置变量」
         public string? DefaultVar { get; set; }          // 取值组：建议的变量名
     }

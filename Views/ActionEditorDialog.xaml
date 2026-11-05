@@ -233,6 +233,22 @@
                                            Text="右下角弹出，不打断流程：下一步立刻继续。卡片不抢焦点——自动化正在往别的窗口打字时，提示出现也不会把输入带偏。标题用动作名称（可留空）。"/>
                             </StackPanel>
 
+                            <!-- quickNote（写速记） -->
+                            <StackPanel x:Name="F_QuickNote">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="标题（可选）" Margin="0,0,0,4"/>
+                                <controls:VariableTextBox x:Name="NoteTitleBox" MinHeight="30"
+                                                          ToolTip="留空则用正文第一行作标题；支持 ${变量}"/>
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="分类（可选）" Margin="0,10,0,4"/>
+                                <ComboBox x:Name="NoteCategoryCombo" IsEditable="True" MinHeight="30"
+                                          ToolTip="选一个已有分类，或直接输入新分类；留空 = 未分类"/>
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="正文" Margin="0,10,0,4"/>
+                                <controls:VariableTextBox x:Name="NoteBodyBox" MinHeight="96" MaxHeight="220"
+                                                          AcceptsReturn="True" TextWrapping="Wrap"
+                                                          VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"/>
+                                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                           Text="正文和标题都支持 ${变量}（例如把剪贴板、选中文本或上一步的结果存进速记）。分类不存在会自动创建；写进去的速记可以在 CapsLock+N 里看到，也可以用「读速记」取值器取回来。"/>
+                            </StackPanel>
+
                             <!-- sendKeys（模拟按键） -->
                             <StackPanel x:Name="F_SendKeys">
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="输入序列" Margin="0,0,0,4"/>

@@ -60,6 +60,11 @@ internal static class ProbeTest
                     ? $"找到「{value.Text}」· 位置 {value.X}, {value.Y}"
                     : "没找到（结果 found = false，不是错误）";
 
+            case ProbeKind.note:
+                return value.Flag == true
+                    ? $"最新速记「{value.Title}」· {value.Time}（共 {value.Number ?? 0:0} 条）：{Brief(value.Text)}"
+                    : "没有匹配的速记（found = false，不是错误）";
+
             case ProbeKind.window:
                 return value.Flag == true ? $"窗口存在：{Brief(value.Text)}" : "窗口不存在";
 

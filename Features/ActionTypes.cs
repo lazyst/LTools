@@ -25,6 +25,9 @@ public enum ActionType
     /// <summary>提示弹窗：把一段文字用置顶提示卡显示出来，**不阻塞**后续步骤。</summary>
     toast,
 
+    /// <summary>写速记：把一段文字存进速记（<see cref="NoteRepository"/>，与 CapsLock+N 同一个目录）。</summary>
+    quickNote,
+
     /// <summary>窗口操作：切到前台 / 最大化 / 最小化 / 还原 / 调整到指定大小。</summary>
     window,
 
@@ -165,6 +168,7 @@ public static class ActionTypeLabel
         ActionType.sendText => "发送文本",
         ActionType.setClipboard => "写入剪贴板",
         ActionType.toast => "提示弹窗",
+        ActionType.quickNote => "写速记",
         ActionType.window => "窗口操作",
         ActionType.clickText => "文字点击",
         ActionType.imageClick => "图片点击",
@@ -300,6 +304,14 @@ public sealed class ActionDto
     /// <summary>toast: 停留时长（ms，null = 4000；0 = 不自动关闭，点一下关掉）。</summary>
     public int? DurationMs { get; set; }
 
+    // —— quickNote（写速记）——
+
+    /// <summary>quickNote: 标题（支持 ${变量}；留空则用正文第一行）。</summary>
+    public string? NoteTitle { get; set; }
+
+    /// <summary>quickNote: 分类（支持 ${变量}；留空 = 未分类；不存在时自动创建）。</summary>
+    public string? NoteCategory { get; set; }
+
     // —— window（窗口操作）——
 
     /// <summary>window: 目标窗口标题包含的文本（空 = 不按标题过滤，支持 ${变量}）。</summary>
@@ -395,6 +407,7 @@ public sealed class ActionDto
         Target = Target, Args = Args, Workdir = Workdir, Path = Path, Url = Url,
         Cmd = Cmd, Terminal = Terminal, KeepWindow = KeepWindow, Command = Command,
         Text = Text, Mode = Mode, AppendEnter = AppendEnter, DurationMs = DurationMs,
+        NoteTitle = NoteTitle, NoteCategory = NoteCategory,
         WindowTitle = WindowTitle, WindowClass = WindowClass, WindowOp = WindowOp,
         WindowRect = WindowRect != null ? (int[])WindowRect.Clone() : null,
         Region = Region, Rect = Rect != null ? (int[])Rect.Clone() : null,

@@ -26,6 +26,9 @@ public partial class FlowNodeDialog : Window
     /// <summary>本节点原有下标变量名（重名提示时排除自己，否则每次打开都报警）。</summary>
     private readonly string _ownIndexVar;
 
+    /// <summary>本节点原来的变量名（「设置变量」提示时排除自己，免得把「第一次赋值」说成「覆盖旧值」）。</summary>
+    private readonly string _ownVar;
+
     /// <summary>确定后的新节点（取消时为 null）。</summary>
     public FlowNode? Result { get; private set; }
 
@@ -38,6 +41,7 @@ public partial class FlowNodeDialog : Window
         var infos = customVariables?.ToList() ?? new List<VariableInfo>();
         _otherVariables = new HashSet<string>(infos.Select(v => v.Name), StringComparer.OrdinalIgnoreCase);
         _ownIndexVar = _node.Loop?.IndexVar?.Trim() ?? "";
+        _ownVar = _node.Set?.Var?.Trim() ?? "";
         VariableSource.SetNames(this, FlowVariables.ExpandPaths(infos));
 
         switch (_node.Kind)
@@ -46,8 +50,10 @@ public partial class FlowNodeDialog : Window
                 Title = "设置变量";
                 SetSection.Visibility = Visibility.Visible;
                 VarBox.Text = _node.Set?.Var ?? "";
+                SetAppendRadio.IsChecked = _node.Set?.Append == true;
                 SetProbe.ShowColorTarget = false;
                 SetProbe.Load(_node.Set?.Probe ?? new Probe { Kind = ProbeKind.text });
+                UpdateSetHint();
                 Loaded += (_, _) => VarBox.Focus();
                 break;
 
@@ -126,6 +132,55 @@ public partial class FlowNodeDialog : Window
             LoopIndexWarn.Text = $"流程里已有变量「{name}」，循环会覆盖它的值（结束后保留最后一次下标）。";
     }
 
+    // —— 设置变量 ——
+
+    private void VarBox_TextChanged(object sender, TextChangedEventArgs e) => UpdateSetHint();
+
+    private void SetMode_Changed(object sender, RoutedEventArgs e)
+    {
+        if (SetVarHint == null) return;   // 初始化期间字段尚未就绪
+        UpdateSetHint();
+    }
+
+    /// <summary>
+    /// 名字提示：明确告诉用户「同名变量可以重新赋值」——覆盖会说会盖掉旧值，
+    /// 追加会说会接在旧文本后面，避免以为变量只能创建一次。
+    /// </summary>
+    private void UpdateSetHint()
+    {
+        if (SetVarHint == null || VarBox == null) return;
+
+        string name = VarBox.Text.Trim();
+        bool append = SetAppendRadio?.IsChecked == true;
+
+        if (name.Length == 0)
+        {
+            SetVarHint.Text = "变量名可以用中文，例如「名称」；之后用 ${名称} 引用。同名变量可以反复赋值，选「追加」就是 a += 右值。";
+            return;
+        }
+        if (!IsValidVariableName(name))
+        {
+            SetVarHint.Text = "变量名不能包含空格、小数点、$ 或 { }（点用于取属性，如 ${变量.x}）。";
+            return;
+        }
+
+        // 其它节点里的同名变量（排除本节点自己：编辑一个首次赋值的节点时不该说「覆盖旧值」）
+        bool exists = _otherVariables.Contains(name)
+                      && !string.Equals(name, _ownVar, StringComparison.OrdinalIgnoreCase);
+        if (append)
+        {
+            SetVarHint.Text = exists
+                ? $"流程里已有「{name}」：它在这一步之前有值时，新值会接在后面（相当于 {name} += 右值）；没有值就当作空串。"
+                : $"「{name}」还不存在：追加会从空串开始，结果就是右值本身。";
+        }
+        else
+        {
+            SetVarHint.Text = exists
+                ? $"流程里已有「{name}」：这次赋值会覆盖它在这一步之前的值（同名变量可以反复赋值；要接在后面就选「追加」）。"
+                : $"将创建新变量「{name}」；之后可以用 ${name} 引用。";
+        }
+    }
+
     /// <summary>变量名不能带空白、属性分隔符或模板符号，否则 ${名字} 无法解析或会和属性混淆。</summary>
     private static bool IsValidVariableName(string name)
     {
@@ -153,7 +208,18 @@ public partial class FlowNodeDialog : Window
                     ConfirmDialog.Info(this, "设置变量", error);
                     return;
                 }
-                _node.Set = new SetNode { Var = name, Probe = probe };
+                if (!IsValidVariableName(name))
+                {
+                    ConfirmDialog.Info(this, "设置变量", "变量名不能包含空格、小数点、$ 或 { }（点用于取属性，如 ${变量.x}）。");
+                    VarBox.Focus();
+                    return;
+                }
+                _node.Set = new SetNode
+                {
+                    Var = name,
+                    Probe = probe,
+                    Append = SetAppendRadio.IsChecked == true,
+                };
                 break;
             }
 

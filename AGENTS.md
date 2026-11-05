@@ -76,6 +76,8 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - 「截图」取值（`Features/Flow/ScreenshotProbe.cs`）：交互框选复用 `ScreenPicker` 的框选 / 吸附；前台窗口 / 整个屏幕 / 固定区域直接 `ScreenCapture.Capture`，其中前台窗口用 `WindowFinder.GetVisibleBounds`（DWM 可见范围，不含阴影边距），固定区域支持 `${变量}` 解析成 `x,y,w,h`。裁下来的 png 走 `ImageLibrary.SaveGenerated`（`BitmapSource` 与 `Bitmap` 两个重载）存进 `resources\images\`，因此和模板截图共用按引用回收，不需要单独清理。**运行期截图的生命周期**：它是「截图」这一步的输出，本次运行内后面还要用（`.file` 给「文字识别」/「打开文件」/ 剪贴板），所以**不在步骤结束时删**，也不在运行结束时删（外部程序可能刚拿到路径）；由 `FlowRunner.RunAction` 在**下一次运行开始时**调 `CollectGarbage(DateTime.Now)` 清掉上一次的，界线用开始时间保证本次新截的不被误删。编辑器「▶ 测试」试截的图用 `ImageLibrary.DeleteGenerated` 测完即删
 - **截图与识字是两步，别再合回去**：`Features/Flow/OcrProbe.cs` 只读图片（`Probe.OcrImage`：`${截图}` 取它的 `file`，或 `${截图.file}` / 文件路径），**不自己截屏**；要识别某个区域就先用「截图」取图。旧版「截图 OCR」（自带前台窗口 / 整个屏幕 / 固定区域）已不兼容，运行时提示缺图片
 - OCR 双引擎：「文字识别」默认 `PP-OCRv6 快速`（内置在 `Assets/Ocr/ppocrv6`）；可切 `Windows.Media.Ocr`（最快、最省内存）。选择记在 `LTools.json` 的 `lastOcrEngine`，见 `Features/OcrEnginePreference.cs`。`Features/Flow/PaddleOcr.cs` 是 PP-OCRv6 推理（small 下载到数据根 `ocr-models/`，见 `OcrModelStore`）。RapidOcrNet 的包内 targets 会把自带的 v5 模型拷进输出目录，csproj 里有 target 在构建 / 发布后清理
+- **写速记 / 读速记（`Features/NoteActions.cs`）**：动作类型 `quickNote` 与取值器 `ProbeKind.note` 都复用 `NoteRepository` + `AppPaths.NotesDir`，目录与 CapsLock+N 完全一致；分类为空 = 未分类，`Save` 会自动建目录。**速记是用户资产，不接 `ImageLibrary` 的按引用回收**（只有用户在速记窗口里删才会消失）。读速记取「最近修改的一条」，没匹配只是 `found = false` / `count = 0`，不是错误；结果属性 `.title` / `.time` / `.path` / `.count` 在 `VarValue.Property` 与 `FlowVariables.ProbeProperties` 两处同步维护
+- **变量重新赋值 / 追加（`SetNode.Append`）**：同名变量本来就允许反复赋值（运行时直接覆盖 `ctx.Vars`）；`Append = true` 时把右值文本接在旧值后面（变量不存在当空串），右值先求值再拼接，所以 `a += ${a}` 是复制自己。追加后一律退化为纯文本；`FlowNodeDialog` 的「覆盖 / 追加」单选、步骤摘要的 `=` / `+=`、`SetNode.Clone` 三处要一起改
 
 ## 其他
 

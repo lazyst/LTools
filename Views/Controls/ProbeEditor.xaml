@@ -173,6 +173,20 @@
                        Text="结果怎么用：${变量} 是实际命中的文字；${变量.x} / ${变量.y} 是命中位置（虚拟桌面物理像素，可直接填进「鼠标操作」）；${变量.found} 是 true / false。没找到时 ${变量} 为空、坐标不存在。"/>
         </StackPanel>
 
+        <!-- 读速记：按分类 / 关键字取最近修改的一条 -->
+        <StackPanel x:Name="P_Note" Visibility="Collapsed" Margin="0,8,0,0">
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                       Text="从速记（CapsLock+N 里的笔记）里取最近修改的一条。分类留空或选「全部」就是所有分类；关键字匹配标题或正文。没匹配到不是错误：found = false、count = 0。"/>
+            <TextBlock Text="分类（留空 = 全部）" Foreground="{StaticResource HintTextBrush}" Margin="0,8,0,0"/>
+            <ComboBox x:Name="NoteCategoryCombo" IsEditable="True" MinHeight="30" Margin="0,4,0,0"
+                      ToolTip="可以选已有分类，也可以直接输入新分类名；支持 ${变量}"/>
+            <TextBlock Text="关键字（可选）" Foreground="{StaticResource HintTextBrush}" Margin="0,8,0,0"/>
+            <controls:VariableTextBox x:Name="NoteKeywordBox" MinHeight="30" Margin="0,4,0,0"
+                                      ToolTip="匹配标题或正文（包含即可，忽略大小写）；支持 ${变量}"/>
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
+                       Text="结果怎么用：${变量} = 正文；${变量.title} / ${变量.time} 是标题与时间；${变量.path} 是文件路径；${变量.count} 是匹配到的条数；${变量.found} 是 true / false。"/>
+        </StackPanel>
+
         <!-- OCR 引擎：文字识别与找文字共用（缺模型时先在这里下载） -->
         <StackPanel x:Name="OcrEngineSection" Visibility="Collapsed" Margin="0,8,0,0">
             <StackPanel Orientation="Horizontal">

@@ -93,6 +93,9 @@ public enum ProbeKind
     /// <summary>屏幕像素颜色。</summary>
     color,
 
+    /// <summary>读速记：按分类 / 关键字取最近修改的一条（见 <see cref="NoteRepository"/>）。</summary>
+    note,
+
     /// <summary>窗口状态（存在 / 在前台）。</summary>
     window,
 
@@ -186,8 +189,11 @@ public sealed class Probe
     /// <summary>text: 字面文本（支持 ${} 模板）；textSearch: 要找的文字（同样支持 ${} 模板）。</summary>
     public string? Text { get; set; }
 
-    /// <summary>variable: 变量名（支持 a.b 取属性）。</summary>
+    /// <summary>变量名（支持 a.b 取属性）。</summary>
     public string? Name { get; set; }
+
+    /// <summary>note: 分类（空 / 全部 = 所有分类；支持 ${} 模板）。</summary>
+    public string? NoteCategory { get; set; }
 
     /// <summary>datetime: .NET 日期格式（默认 yyyy-MM-dd HH:mm:ss）。</summary>
     public string? Format { get; set; }
@@ -268,6 +274,7 @@ public sealed class Probe
         Kind = Kind,
         Text = Text,
         Name = Name,
+        NoteCategory = NoteCategory,
         Format = Format,
         Prompt = Prompt,
         Default = Default,
@@ -322,6 +329,10 @@ public sealed class Condition
 }
 
 /// <summary>变量赋值节点。</summary>
+/// <remarks>
+/// 同名变量可以反复赋值（后一次覆盖前一次）。<see cref="Append"/> 为 true 时改成追加：
+/// 新值接在变量原来的文本后面（变量还不存在就当作空串），相当于 <c>a += ...</c>。
+/// </remarks>
 public sealed class SetNode
 {
     /// <summary>目标变量名。</summary>
@@ -330,8 +341,15 @@ public sealed class SetNode
     /// <summary>右值。</summary>
     public Probe Probe { get; set; } = new();
 
+    /// <summary>
+    /// true = 追加到变量末尾（<c>a += 右值</c>）；false / 省略 = 覆盖。
+    /// 追加后一律是纯文本（数字 / 坐标等结构化属性不再保留）。
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Append { get; set; }
+
     /// <summary>深拷贝。</summary>
-    public SetNode Clone() => new() { Var = Var, Probe = Probe.Clone() };
+    public SetNode Clone() => new() { Var = Var, Probe = Probe.Clone(), Append = Append };
 }
 
 /// <summary>条件分支节点。</summary>
@@ -435,7 +453,7 @@ public static class FlowText
     public static string Summary(FlowNode n) => n.Kind switch
     {
         FlowNodeKind.action => ActionLabel(n.Action) + OutputSuffix(n.Action),
-        FlowNodeKind.set => $"{n.Set?.Var} = {ProbeLabel(n.Set?.Probe)}",
+        FlowNodeKind.set => $"{n.Set?.Var} {(n.Set?.Append == true ? "+=" : "=")} {ProbeLabel(n.Set?.Probe)}",
         FlowNodeKind.@if => "如果 " + ConditionLabel(n.If?.Condition),
         FlowNodeKind.loop => LoopSummary(n.Loop),
         FlowNodeKind.@break => "跳出循环",
@@ -476,6 +494,7 @@ public static class FlowText
             ActionType.sendText => string.IsNullOrEmpty(a.Text) ? "发送文本" : $"发送文本：{Trim(a.Text, 24)}",
             ActionType.setClipboard => string.IsNullOrEmpty(a.Text) ? "写入剪贴板（清空）" : $"写入剪贴板：{Trim(a.Text, 24)}",
             ActionType.toast => string.IsNullOrEmpty(a.Text) ? "提示弹窗" : $"提示：{Trim(a.Text, 24)}",
+            ActionType.quickNote => QuickNoteLabel(a),
             ActionType.window => WindowLabel(a),
             ActionType.clickText => ClickTextLabel(a),
             ActionType.imageClick => ImageClickLabel(a),
@@ -530,6 +549,15 @@ public static class FlowText
         return $"点击图片 · {image} · {WhereLabel(a.Region)}";
     }
 
+    /// <summary>写速记摘要：「写速记：标题」/「写速记：正文前 20 字」。</summary>
+    private static string QuickNoteLabel(ActionDto a)
+    {
+        string text = !string.IsNullOrWhiteSpace(a.NoteTitle)
+            ? a.NoteTitle!
+            : a.Text ?? "";
+        return string.IsNullOrWhiteSpace(text) ? "写速记" : $"写速记：{Trim(text, 24)}";
+    }
+
     /// <summary>点击 / 查找区域的简短说明。</summary>
     private static string WhereLabel(ImageRegion? region) => (region ?? ImageRegion.foreground) switch
     {
@@ -555,6 +583,7 @@ public static class FlowText
             ProbeKind.image => $"图像 {Trim(System.IO.Path.GetFileName(p.Image), 20)}",
             ProbeKind.ocr => string.IsNullOrWhiteSpace(p.OcrImage) ? "文字识别" : $"识别 {Trim(p.OcrImage, 20)}",
             ProbeKind.textSearch => string.IsNullOrWhiteSpace(p.Text) ? "找文字" : $"找文字 {Trim(p.Text, 16)}",
+            ProbeKind.note => NoteProbeLabel(p),
             ProbeKind.color => $"颜色 ({p.X}, {p.Y})",
             ProbeKind.window => $"窗口 {Trim(p.WindowTitle ?? p.WindowClass, 16)}",
             ProbeKind.process => $"进程 {p.ProcessName}",
@@ -571,6 +600,14 @@ public static class FlowText
         ScreenshotMode.rect => "截图 · 固定区域",
         _ => "截图 · 交互框选",
     };
+
+    /// <summary>读速记摘要：「速记 · 工作」/「速记 · 工作 · 关键字」。</summary>
+    private static string NoteProbeLabel(Probe p)
+    {
+        string category = string.IsNullOrWhiteSpace(p.NoteCategory) ? "全部" : Trim(p.NoteCategory, 12);
+        string keyword = string.IsNullOrWhiteSpace(p.Text) ? "" : " · " + Trim(p.Text, 12);
+        return $"速记 · {category}{keyword}";
+    }
 
     /// <summary>条件摘要。</summary>
     public static string ConditionLabel(Condition? c)

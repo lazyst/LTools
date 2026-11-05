@@ -1533,6 +1533,7 @@ public partial class ConfigHelperWindow : Window
             ActionType.sendText => BriefText(a.Text),
             ActionType.setClipboard => BriefText(a.Text),
             ActionType.toast => BriefText(a.Text),
+            ActionType.quickNote => QuickNoteSummary(a),
             ActionType.window => WindowSummary(a),
             ActionType.clickText => ClickTextSummary(a),
             ActionType.imageClick => ImageClickSummary(a),
@@ -1589,6 +1590,14 @@ public partial class ConfigHelperWindow : Window
                 _ => "前台窗口",
             };
             return $"{where} · {image}";
+        }
+
+        /// <summary>写速记摘要：「工作 · 标题」/ 正文前 40 字。</summary>
+        private static string QuickNoteSummary(ActionDto a)
+        {
+            string title = a.NoteTitle?.Trim() ?? "";
+            if (title.Length == 0) return BriefText(a.Text);
+            return string.IsNullOrWhiteSpace(a.NoteCategory) ? title : $"{a.NoteCategory!.Trim()} · {title}";
         }
 
         private static int CountNodes(List<FlowNode> nodes)
