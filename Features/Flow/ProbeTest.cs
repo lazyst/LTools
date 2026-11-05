@@ -23,7 +23,7 @@ internal static class ProbeTest
             return "「截图 · 交互框选」要你自己框一块，只在流程运行时可用。";
 
         var test = probe.Clone();
-        if (test.Kind == ProbeKind.image)
+        if (test.Kind is ProbeKind.image or ProbeKind.textSearch)
             test.TimeoutMs = Math.Clamp(test.TimeoutMs, 0, MaxWaitMs);
 
         var ctx = new RunContext(CancellationToken.None, 0, 0);
@@ -54,6 +54,11 @@ internal static class ProbeTest
                 return value.Text.Length == 0
                     ? $"没有识别到文字（置信度 {value.Score ?? 0:0.00}）"
                     : $"识别到 {value.Text.Split('\n').Length} 行（置信度 {value.Score ?? 0:0.00}）：{Brief(value.Text)}";
+
+            case ProbeKind.textSearch:
+                return value.Flag == true
+                    ? $"找到「{value.Text}」· 位置 {value.X}, {value.Y}"
+                    : "没找到（结果 found = false，不是错误）";
 
             case ProbeKind.window:
                 return value.Flag == true ? $"窗口存在：{Brief(value.Text)}" : "窗口不存在";

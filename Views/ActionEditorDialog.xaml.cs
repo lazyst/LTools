@@ -90,6 +90,7 @@ public partial class ActionEditorDialog : Window
         _fieldsByType[ActionType.mouse] = F_Mouse;
         _fieldsByType[ActionType.window] = F_Window;
         _fieldsByType[ActionType.clickText] = F_ClickText;
+        _fieldsByType[ActionType.imageClick] = F_ImageClick;
         _fieldsByType[ActionType.macro] = F_Macro;
         _fieldsByType[ActionType.@internal] = F_Internal;
 
@@ -109,6 +110,7 @@ public partial class ActionEditorDialog : Window
             new("鼠标操作", ActionType.mouse),
             new("窗口操作", ActionType.window),
             new("文字点击", ActionType.clickText),
+            new("图片点击", ActionType.imageClick),
             // 宏按 Id 引用事件文件：组合步骤已支持宏步骤（引用 macros/ 下的文件，备份一起走）。
             new("内部动作", ActionType.@internal),
         };
@@ -304,6 +306,32 @@ public partial class ActionEditorDialog : Window
         ClickTimeoutBox.Text = (clickTimeout / 1000.0).ToString("0.###", CultureInfo.InvariantCulture);
         UpdateClickRectPanel();
         UpdateClickOcrHint();
+
+        // imageClick
+        ImageClickPicker.Path = _draft.Image ?? "";
+        ImageClickScoreBox.Text = (_draft.MinScore ?? 0.85).ToString("0.00", CultureInfo.InvariantCulture);
+        ImageClickRegionCombo.SelectedIndex = (_draft.Region ?? ImageRegion.foreground) switch
+        {
+            ImageRegion.screen => 1,
+            ImageRegion.rect => 2,
+            _ => 0,
+        };
+        int[]? imageClickRect = _draft.Rect;
+        ImageClickXBox.Text = imageClickRect is { Length: >= 4 } ? imageClickRect[0].ToString(CultureInfo.InvariantCulture) : "";
+        ImageClickYBox.Text = imageClickRect is { Length: >= 4 } ? imageClickRect[1].ToString(CultureInfo.InvariantCulture) : "";
+        ImageClickWBox.Text = imageClickRect is { Length: >= 4 } ? imageClickRect[2].ToString(CultureInfo.InvariantCulture) : "";
+        ImageClickHBox.Text = imageClickRect is { Length: >= 4 } ? imageClickRect[3].ToString(CultureInfo.InvariantCulture) : "";
+        ImageClickActionCombo.SelectedIndex = (_draft.MouseAction ?? MouseActionKind.click) switch
+        {
+            MouseActionKind.doubleClick => 1,
+            MouseActionKind.rightClick => 2,
+            MouseActionKind.middleClick => 3,
+            MouseActionKind.move => 4,
+            _ => 0,
+        };
+        int imageClickTimeout = Math.Clamp(_draft.TimeoutMs ?? 0, 0, 600_000);
+        ImageClickTimeoutBox.Text = (imageClickTimeout / 1000.0).ToString("0.###", CultureInfo.InvariantCulture);
+        UpdateImageClickRectPanel();
 
         TerminalCombo.SelectedIndex = IndexOfTerminal(_draft.Terminal ?? "direct");
         CommandCombo.SelectedIndex = IndexOfCommand(_draft.Command ?? "");
@@ -1193,6 +1221,50 @@ public partial class ActionEditorDialog : Window
                 _draft.TimeoutMs = timeoutMs > 0 ? timeoutMs : null;
                 break;
             }
+            case ActionType.imageClick:
+            {
+                string imagePath = ImageClickPicker.Path;
+                if (imagePath.Length == 0)
+                {
+                    ConfirmDialog.Info(this, "图片点击", "请选择模板图片（点「框选截图」直接在屏幕上截一张）。");
+                    return;
+                }
+                if (!System.IO.File.Exists(ImageLibrary.Resolve(imagePath)))
+                {
+                    ConfirmDialog.Info(this, "图片点击", "模板图片不存在，请重新选择。");
+                    return;
+                }
+                _draft.Image = imagePath;
+
+                _draft.Region = ImageClickRegionCombo.SelectedIndex switch
+                {
+                    1 => ImageRegion.screen,
+                    2 => ImageRegion.rect,
+                    _ => ImageRegion.foreground,
+                };
+                if (_draft.Region == ImageRegion.rect)
+                {
+                    if (!TryReadRectBoxes(ImageClickXBox, ImageClickYBox, ImageClickWBox, ImageClickHBox,
+                                          "图片点击", out int[] imageRect)) return;
+                    _draft.Rect = imageRect;
+                }
+
+                _draft.MouseAction = ImageClickActionCombo.SelectedIndex switch
+                {
+                    1 => MouseActionKind.doubleClick,
+                    2 => MouseActionKind.rightClick,
+                    3 => MouseActionKind.middleClick,
+                    4 => MouseActionKind.move,
+                    _ => MouseActionKind.click,
+                };
+
+                if (!TryReadScore(ImageClickScoreBox, out double score)) return;
+                _draft.MinScore = score;
+
+                if (!TryReadTimeout(ImageClickTimeoutBox, "图片点击", out int imageTimeout)) return;
+                _draft.TimeoutMs = imageTimeout > 0 ? imageTimeout : null;
+                break;
+            }
             case ActionType.mouse:
             {
                 string mx = MouseXBox.Text.Trim();
@@ -1436,12 +1508,16 @@ public partial class ActionEditorDialog : Window
 
     /// <summary>读固定区域四个框；不合法时提示。</summary>
     private bool TryReadClickRect(out int[] rect)
+        => TryReadRectBoxes(ClickXBox, ClickYBox, ClickWBox, ClickHBox, "文字点击", out rect);
+
+    /// <summary>读一组 x/y/w/h 输入框；越界或非整数时提示并返回 false。</summary>
+    private bool TryReadRectBoxes(TextBox xb, TextBox yb, TextBox wb, TextBox hb, string title, out int[] rect)
     {
         rect = Array.Empty<int>();
-        if (!TryReadRectBox(ClickXBox, -30_000, 30_000, "x", "文字点击", out int x) ||
-            !TryReadRectBox(ClickYBox, -30_000, 30_000, "y", "文字点击", out int y) ||
-            !TryReadRectBox(ClickWBox, 1, 20_000, "宽度 w", "文字点击", out int w) ||
-            !TryReadRectBox(ClickHBox, 1, 20_000, "高度 h", "文字点击", out int h))
+        if (!TryReadRectBox(xb, -30_000, 30_000, "x", title, out int x) ||
+            !TryReadRectBox(yb, -30_000, 30_000, "y", title, out int y) ||
+            !TryReadRectBox(wb, 1, 20_000, "宽度 w", title, out int w) ||
+            !TryReadRectBox(hb, 1, 20_000, "高度 h", title, out int h))
             return false;
 
         rect = new[] { x, y, w, h };
@@ -1449,22 +1525,74 @@ public partial class ActionEditorDialog : Window
     }
 
     /// <summary>「找不到时最多等」按秒填（可带小数），内部转成毫秒。</summary>
-    private bool TryReadClickTimeout(out int ms)
+    private bool TryReadClickTimeout(out int ms) => TryReadTimeout(ClickTimeoutBox, "文字点击", out ms);
+
+    /// <summary>把「最多等 N 秒」转成毫秒（0–600 秒）。</summary>
+    private bool TryReadTimeout(TextBox box, string title, out int ms)
     {
         ms = 0;
-        string raw = ClickTimeoutBox.Text.Trim();
+        string raw = box.Text.Trim();
         if (raw.Length == 0) return true;
 
         bool ok = double.TryParse(raw, NumberStyles.Float, CultureInfo.CurrentCulture, out double seconds)
                || double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out seconds);
         if (!ok || seconds < 0 || seconds > 600)
         {
-            ConfirmDialog.Info(this, "文字点击", "「找不到时最多等」请填 0–600 秒（可带小数，例如 2.5）。");
+            ConfirmDialog.Info(this, title, "「找不到时最多等」请填 0–600 秒（可带小数，例如 2.5）。");
             return false;
         }
 
         ms = (int)Math.Round(seconds * 1000);
         return true;
+    }
+
+    /// <summary>最低相似度：0.30–0.99，留空用默认 0.85。</summary>
+    private bool TryReadScore(TextBox box, out double score)
+    {
+        score = 0.85;
+        string raw = box.Text.Trim();
+        if (raw.Length == 0) return true;
+
+        if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out score) ||
+            score < 0.30 || score > 0.99)
+        {
+            ConfirmDialog.Info(this, "图片点击", "「最低相似度」请填 0.30–0.99（默认 0.85；调低更容易匹配，也更容易点错）。");
+            box.Focus();
+            return false;
+        }
+        return true;
+    }
+
+    // —— imageClick（图片点击）——
+
+    private void ImageClickRegion_Changed(object sender, SelectionChangedEventArgs e) => UpdateImageClickRectPanel();
+
+    private void UpdateImageClickRectPanel()
+    {
+        if (ImageClickRectPanel == null) return;
+        ImageClickRectPanel.Visibility = ImageClickRegionCombo.SelectedIndex == 2
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    /// <summary>在屏幕上框一块区域，切到「固定区域」并填好四个框。</summary>
+    private void ImageClickPickRect_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ScreenPicker.TryPickRegion(this, out var area, out _)) return;
+        SetImageClickRect(area);
+    }
+
+    /// <summary>框选截图完成后，把搜索区域收紧到刚框的那块。</summary>
+    private void ImageClickPicker_Captured(Int32Rect area) => SetImageClickRect(area);
+
+    private void SetImageClickRect(Int32Rect area)
+    {
+        ImageClickRegionCombo.SelectedIndex = 2;
+        ImageClickXBox.Text = area.X.ToString(CultureInfo.InvariantCulture);
+        ImageClickYBox.Text = area.Y.ToString(CultureInfo.InvariantCulture);
+        ImageClickWBox.Text = area.Width.ToString(CultureInfo.InvariantCulture);
+        ImageClickHBox.Text = area.Height.ToString(CultureInfo.InvariantCulture);
+        UpdateImageClickRectPanel();
     }
 
     private static KeyItemView WrapKeyItem(KeyItem m) => new(m);
@@ -1859,6 +1987,7 @@ public partial class ActionEditorDialog : Window
         WindowRect = a.WindowRect != null ? (int[])a.WindowRect.Clone() : null,
         Region = a.Region, Rect = a.Rect != null ? (int[])a.Rect.Clone() : null,
         OcrEngine = a.OcrEngine, TimeoutMs = a.TimeoutMs,
+        Image = a.Image, MinScore = a.MinScore,
         Items = a.Items?.ConvertAll(i => i.Clone()),
         X = a.X, Y = a.Y, MouseAction = a.MouseAction, WheelDelta = a.WheelDelta,
         MacroId = a.MacroId,

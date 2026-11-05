@@ -144,6 +144,7 @@ public partial class ConditionEditor : UserControl
     {
         ProbeKind.image => CompareOp.found,
         ProbeKind.ocr => CompareOp.isNotEmpty,
+        ProbeKind.textSearch => CompareOp.found,
         ProbeKind.color => CompareOp.nearColor,
         ProbeKind.window => CompareOp.found,
         ProbeKind.process => CompareOp.found,
@@ -159,6 +160,13 @@ public partial class ConditionEditor : UserControl
             case ProbeKind.image:
                 yield return (CompareOp.found, "找到了");
                 yield return (CompareOp.notFound, "没找到");
+                break;
+
+            case ProbeKind.textSearch:
+                yield return (CompareOp.found, "找到了");
+                yield return (CompareOp.notFound, "没找到");
+                yield return (CompareOp.contains, "找到的文字包含");
+                yield return (CompareOp.notContains, "找到的文字不包含");
                 break;
 
             case ProbeKind.color:

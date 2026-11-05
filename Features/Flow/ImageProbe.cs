@@ -23,7 +23,7 @@ internal static class ImageProbe
     private static readonly double[] Scales = { 1.0, 1.25, 1.5, 0.8, 1.75 };
 
     /// <summary>执行一次（可带等待的）图像探测。</summary>
-    public static VarValue Run(Probe probe, RunContext ctx)
+    public static VarValue Run(Probe probe, RunContext? ctx)
     {
         string path = ImageLibrary.Resolve(probe.Image);
         if (path.Length == 0 || !System.IO.File.Exists(path))
@@ -56,14 +56,21 @@ internal static class ImageProbe
             if (remain <= 0) break;
 
             int wait = (int)Math.Min(interval, remain);
-            if (!ctx.Wait(wait)) throw new FlowAbortException("已停止", userCancelled: true);
+            if (ctx != null)
+            {
+                if (!ctx.Wait(wait)) throw new FlowAbortException("已停止", userCancelled: true);
+            }
+            else
+            {
+                System.Threading.Thread.Sleep(wait);
+            }
         }
 
         return new VarValue { Text = "", Flag = false, Score = bestScore };
     }
 
     private static (bool found, int x, int y, double score, double scale) MatchOnce(
-        int rx, int ry, int rw, int rh, Mat template, double minScore, double? preferred, RunContext ctx)
+        int rx, int ry, int rw, int rh, Mat template, double minScore, double? preferred, RunContext? ctx)
     {
         using var screen = CaptureBgr(rx, ry, rw, rh);
         if (screen.Empty() || template.Width > screen.Width || template.Height > screen.Height)
@@ -80,7 +87,7 @@ internal static class ImageProbe
 
         foreach (double scale in order)
         {
-            if (ctx.IsCancelled) throw new FlowAbortException("已停止", userCancelled: true);
+            if (ctx?.IsCancelled == true) throw new FlowAbortException("已停止", userCancelled: true);
 
             using var scaled = ResizeTemplate(template, scale);
             if (scaled == null || scaled.Width > screen.Width || scaled.Height > screen.Height)

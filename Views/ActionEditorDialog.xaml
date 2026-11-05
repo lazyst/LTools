@@ -499,6 +499,73 @@
                                            Text="等的时候会反复截图重试，适合「点完上一步，等按钮出现再点」。一直找不到就是这一步失败（不会假装点过），报错里会列出区域内识别到的文字，方便判断是文字写错了还是 OCR 没认出来。高精度模型需先在「文字识别」取值器里下载一次。"/>
                             </StackPanel>
 
+                            <!-- imageClick（图片点击）：找模板图 → 点命中位置 -->
+                            <StackPanel x:Name="F_ImageClick">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="模板图片" Margin="0,0,0,4"/>
+                                <controls:TemplateImagePicker x:Name="ImageClickPicker"
+                                                              Captured="ImageClickPicker_Captured"/>
+                                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                           Text="框选截图最省事：截下来的就是模板，同时把搜索区域收紧到框内。和「截图找图」用同一套模板——在那里调好的图与阈值，这里可以直接用。"/>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="最低相似度" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                                    <TextBox x:Name="ImageClickScoreBox" Grid.Column="1" Width="72" MinHeight="30"
+                                             HorizontalAlignment="Left" Margin="8,0,0,0"
+                                             ToolTip="0.30–0.99，默认 0.85；调低更容易匹配，也更容易点错"/>
+                                </Grid>
+
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="在哪儿找" Margin="0,12,0,4"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="ImageClickRegionCombo" MinHeight="30" SelectionChanged="ImageClickRegion_Changed">
+                                        <ComboBoxItem Content="前台窗口"/>
+                                        <ComboBoxItem Content="整个屏幕"/>
+                                        <ComboBoxItem Content="固定区域"/>
+                                    </ComboBox>
+                                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}"
+                                            Content="框选区域…" MinHeight="30" Padding="10,4" Margin="8,0,0,0"
+                                            Click="ImageClickPickRect_Click"
+                                            ToolTip="在屏幕上框出一块，自动切到「固定区域」并填入 x / y / w / h"/>
+                                </Grid>
+                                <StackPanel x:Name="ImageClickRectPanel" Orientation="Horizontal" Margin="0,8,0,0" Visibility="Collapsed">
+                                    <TextBlock Text="x" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                                    <TextBox x:Name="ImageClickXBox" Width="64" MinHeight="30" Margin="4,0,10,0"/>
+                                    <TextBlock Text="y" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                                    <TextBox x:Name="ImageClickYBox" Width="64" MinHeight="30" Margin="4,0,10,0"/>
+                                    <TextBlock Text="w" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                                    <TextBox x:Name="ImageClickWBox" Width="64" MinHeight="30" Margin="4,0,10,0"/>
+                                    <TextBlock Text="h" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                                    <TextBox x:Name="ImageClickHBox" Width="64" MinHeight="30" Margin="4,0,0,0"/>
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                           Text="区域越小匹配越快、越不容易认错。「前台窗口」在执行时取当时最前面的窗口，适合跨程序复用；固定区域是虚拟桌面物理像素，与鼠标 / 截图同一坐标系。"/>
+
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="找到后" Margin="0,12,0,4"/>
+                                <ComboBox x:Name="ImageClickActionCombo" MinHeight="30">
+                                    <ComboBoxItem Content="左键单击"/>
+                                    <ComboBoxItem Content="左键双击"/>
+                                    <ComboBoxItem Content="右键单击"/>
+                                    <ComboBoxItem Content="中键单击"/>
+                                    <ComboBoxItem Content="只移动光标，不点击"/>
+                                </ComboBox>
+
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="等待" Margin="0,12,0,4"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="找不到时最多等" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                                    <TextBox x:Name="ImageClickTimeoutBox" Width="64" MinHeight="30" Margin="8,0,4,0"/>
+                                    <TextBlock Text="秒（0 = 只找一次）" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                           Text="等的时候会反复匹配重试，适合「点完上一步，等按钮出现再点」。一直找不到就是这一步失败（不会假装点过），报错里带最高相似度。想做「只判断有没有这个图，不点」就用取值器「截图找图」。" />
+                            </StackPanel>
+
                             <!-- macro（键鼠宏）：一宏一动作，只能当场录制，不再选宏文件。
                                  回放参数按宏独立（速度 / 循环 / 倒计时），录制的全局参数也在同一面板编辑：
                                  设置页不再有「键鼠录制」页，宏也不再需要手工管理文件。 -->

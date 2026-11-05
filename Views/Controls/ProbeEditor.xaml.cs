@@ -6,13 +6,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using LTools.Core;
 using LTools.Features;
 using LTools.Views;
-using Microsoft.Win32;
 
 namespace LTools.Views.Controls;
 
@@ -66,6 +63,7 @@ public partial class ProbeEditor : UserControl
             new("截图", ProbeKind.screenshot),
             new("截图找图", ProbeKind.image),
             new("文字识别", ProbeKind.ocr),
+            new("找文字（区域 + 坐标）", ProbeKind.textSearch),
             new("屏幕取色", ProbeKind.color),
             new("窗口", ProbeKind.window),
             new("进程", ProbeKind.process),
@@ -93,7 +91,6 @@ public partial class ProbeEditor : UserControl
         _ready = true;
         ShowPanel();
         UpdateOcrEngineState();
-        LoadThumbnail();
     }
 
     /// <summary>载入取值器。</summary>
@@ -113,7 +110,7 @@ public partial class ProbeEditor : UserControl
         UserDefaultBox.Text = probe.Default ?? "";
         UserMultilineBox.IsChecked = probe.Multiline;
 
-        ImagePathBox.Text = probe.Image ?? "";
+        ImagePicker.Path = probe.Image ?? "";
         SelectRegion(probe.Region);
         ScreenshotModeCombo.SelectedIndex = probe.ScreenshotMode switch
         {
@@ -124,8 +121,12 @@ public partial class ProbeEditor : UserControl
         };
         ScreenshotRectBox.Text = probe.ScreenshotRect ?? "";
         OcrImageBox.Text = probe.OcrImage ?? "";
+        TextSearchBox.Text = probe.Text ?? "";
+        TextSearchTimeoutBox.Text = Math.Clamp(probe.TimeoutMs, 0, 600_000).ToString(CultureInfo.InvariantCulture);
+        TextSearchIntervalBox.Text = (probe.IntervalMs > 0 ? probe.IntervalMs : TextLocator.DefaultIntervalMs)
+            .ToString(CultureInfo.InvariantCulture);
         // 已有 OCR 步骤保留自己的引擎；新建步骤沿用上次的选择（默认 PP-OCRv6 快速）
-        SelectOcrEngine(probe.Kind == ProbeKind.ocr ? probe.OcrEngine : OcrEnginePreference.DefaultForNewProbe);
+        SelectOcrEngine(probe.Kind is ProbeKind.ocr or ProbeKind.textSearch ? probe.OcrEngine : OcrEnginePreference.DefaultForNewProbe);
         RectXBox.Text = probe.Rect is { Length: >= 4 } r ? r[0].ToString(CultureInfo.InvariantCulture) : "0";
         RectYBox.Text = probe.Rect is { Length: >= 4 } r2 ? r2[1].ToString(CultureInfo.InvariantCulture) : "0";
         RectWBox.Text = probe.Rect is { Length: >= 4 } r3 ? r3[2].ToString(CultureInfo.InvariantCulture) : "0";
@@ -148,7 +149,6 @@ public partial class ProbeEditor : UserControl
         ShowPanel();
         UpdateOcrEngineState();
         UpdateColorPreview();
-        LoadThumbnail();
     }
 
     /// <summary>读出取值器；失败返回 false 并给出可读原因。</summary>
@@ -221,7 +221,7 @@ public partial class ProbeEditor : UserControl
 
             case ProbeKind.image:
             {
-                string path = ImagePathBox.Text.Trim();
+                string path = ImagePicker.Path;
                 if (path.Length == 0) return "请选择模板图片。";
                 if (!File.Exists(ImageLibrary.Resolve(path))) return "模板图片不存在，请重新选择。";
                 probe.Image = path;
@@ -245,6 +245,23 @@ public partial class ProbeEditor : UserControl
                 if (probe.OcrImage.Length == 0)
                     return "请填写要识别的图片（先用「截图」拿一张图，再填它的变量，例如 ${截图}）。";
                 break;
+
+            case ProbeKind.textSearch:
+            {
+                string needle = TextSearchBox.Text.Trim();
+                if (needle.Length == 0) return "请填写要在区域里查找的文字。";
+                probe.Text = needle;
+                probe.OcrEngine = (OcrEngineCombo.SelectedItem as OcrEngineItem)?.Value;
+                if (ReadRegion(probe) is string textRegionError) return textRegionError;
+
+                if (!TryInt(TextSearchTimeoutBox, 0, 0, 600_000, "找字等待时间",
+                            out int textTimeout, out string textTimeoutError)) return textTimeoutError;
+                if (!TryInt(TextSearchIntervalBox, TextLocator.DefaultIntervalMs, 50, 5000, "找字轮询间隔",
+                            out int textInterval, out string textIntervalError)) return textIntervalError;
+                probe.TimeoutMs = textTimeout;
+                probe.IntervalMs = textInterval;
+                break;
+            }
 
             case ProbeKind.color:
             {
@@ -323,6 +340,7 @@ public partial class ProbeEditor : UserControl
             [ProbeKind.screenshot] = P_Screenshot,
             [ProbeKind.image] = P_Image,
             [ProbeKind.ocr] = P_Ocr,
+            [ProbeKind.textSearch] = P_TextSearch,
             [ProbeKind.color] = P_Color,
             [ProbeKind.window] = P_Window,
             [ProbeKind.process] = P_Process,
@@ -342,17 +360,23 @@ public partial class ProbeEditor : UserControl
             ? ScreenshotModeHintText(ScreenshotModeCombo.SelectedIndex)
             : "";
 
-        // 截图找图的搜索范围与截图无关，只有找图才有区域设置。
-        bool hasRegion = kind == ProbeKind.image;
+        // 截图找图 / 找文字的搜索范围与截图无关，只有这两种取值方式才有区域设置。
+        bool hasRegion = kind is ProbeKind.image or ProbeKind.textSearch;
         RegionSection.Visibility = hasRegion ? Visibility.Visible : Visibility.Collapsed;
-        RegionLabel.Text = "搜索区域";
+        RegionLabel.Text = kind == ProbeKind.textSearch ? "查找区域" : "搜索区域";
         PickRegionBtn.ToolTip = "在屏幕上框出一块，自动填入 x / y / w / h";
 
         bool rect = hasRegion &&
                     (RegionCombo.SelectedItem as RegionItem)?.Region == ImageRegion.rect;
         RectPanel.Visibility = rect ? Visibility.Visible : Visibility.Collapsed;
         RegionHint.Visibility = rect ? Visibility.Visible : Visibility.Collapsed;
-        RegionHint.Text = "只在框内查找（更快更准）；目标位置会变就改成「前台窗口」。";
+        RegionHint.Text = kind == ProbeKind.textSearch
+            ? "只在框内找字（更快更准）；目标位置会变就改成「前台窗口」。"
+            : "只在框内查找（更快更准）；目标位置会变就改成「前台窗口」。";
+
+        OcrEngineSection.Visibility = kind is ProbeKind.ocr or ProbeKind.textSearch
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
         // 「输入文本 / 截图 · 交互框选」必须真的跑流程才能测，其他取值方式都可以就地试。
         bool interactive = kind == ProbeKind.user || interactiveShot;
@@ -363,6 +387,7 @@ public partial class ProbeEditor : UserControl
             ProbeKind.clipboard => "读取当前剪贴板内容",
             ProbeKind.image => $"用当前屏幕找一次（最多等 {ProbeTest.MaxWaitMs / 1000} 秒，窗口会短暂最小化）",
             ProbeKind.ocr => "识别图片变量里的图片（编辑时变量通常还没有值，跑流程才有）",
+            ProbeKind.textSearch => $"在当前屏幕上找一次（最多等 {ProbeTest.MaxWaitMs / 1000} 秒，窗口会短暂最小化）",
             ProbeKind.screenshot => "按当前方式截一张图（窗口会短暂最小化）",
             ProbeKind.color => "读取该点当前颜色（窗口会短暂最小化）",
             ProbeKind.window or ProbeKind.process => "检查当前系统状态",
@@ -481,72 +506,17 @@ public partial class ProbeEditor : UserControl
 
     // —— 图像 ——
 
-    private void BrowseImage_Click(object sender, RoutedEventArgs e)
+    /// <summary>框选截图完成：把搜索区域收紧到刚框的那块（找图 / 找字都更快更准）。</summary>
+    private void ImagePicker_Captured(Int32Rect area)
     {
-        ImageLibrary.EnsureDir(); // resources\user 得先存在才能当初始目录
+        _ready = false;
+        SelectRegion(ImageRegion.rect);
+        SetRect(area.X, area.Y, area.Width, area.Height);
+        _ready = true;
 
-        var dlg = new OpenFileDialog
-        {
-            Title = "选择模板图片",
-            Filter = "图像|*.png;*.jpg;*.jpeg;*.bmp|所有文件|*.*",
-            InitialDirectory = ImageLibrary.UserDir,
-        };
-        if (dlg.ShowDialog() != true) return;
-
-        // 外部图片复制进 resources\user：配置里存数据根相对路径，备份换机后才不会断链。
-        ImagePathBox.Text = ImageLibrary.ImportUserImage(dlg.FileName);
+        ShowPanel();
+        ShowTest($"模板图已保存 · 搜索区域已设为该框（{area.Width} × {area.Height}）", true);
     }
-
-    /// <summary>框选截图：截下来的就是模板，同时把搜索区域收紧到框内。</summary>
-    private void CaptureShot_Click(object sender, RoutedEventArgs e)
-    {
-        var window = Window.GetWindow(this);
-        if (!ScreenPicker.TryPickRegion(window, out var area, out var image)) return;
-
-        try
-        {
-            string path = SaveShot(image);
-            _ready = false;
-            ImagePathBox.Text = ImageLibrary.ToStoredPath(path);
-            SelectRegion(ImageRegion.rect);
-            SetRect(area.X, area.Y, area.Width, area.Height);
-            _ready = true;
-
-            ShowPanel();
-            LoadThumbnail();
-            ShowTest($"已保存 {Path.GetFileName(path)}（{image.PixelWidth} × {image.PixelHeight}）· 搜索区域已设为该框", true);
-        }
-        catch (Exception ex)
-        {
-            ConfirmDialog.Info(window, "框选截图", "保存模板图失败：" + ex.Message);
-        }
-    }
-
-    /// <summary>预览：在编辑窗口里弹出浮层（Popup），不新开顶层窗口。</summary>
-    private void PreviewImage_Click(object sender, RoutedEventArgs e)
-    {
-        string path = ImageLibrary.Resolve(ImagePathBox.Text);
-        if (!File.Exists(path))
-        {
-            ShowTest("没有可预览的图片。", false);
-            return;
-        }
-
-        BitmapSource image;
-        try
-        {
-            image = LoadBitmap(path);
-        }
-        catch (Exception ex)
-        {
-            ShowTest("预览失败：" + ex.Message, false);
-            return;
-        }
-
-        ImagePreview.Show(Window.GetWindow(this), image, Path.GetFileName(path));
-    }
-
-    private void Thumb_Click(object sender, MouseButtonEventArgs e) => PreviewImage_Click(sender, e);
 
     /// <summary>只框搜索区域，不动模板图。</summary>
     private void PickRegion_Click(object sender, RoutedEventArgs e)
@@ -561,65 +531,6 @@ public partial class ProbeEditor : UserControl
         ShowPanel();
         ShowTest($"搜索区域：{area.X}, {area.Y} · {area.Width} × {area.Height}", true);
     }
-
-    private void ImagePath_Changed(object sender, TextChangedEventArgs e)
-    {
-        if (!_ready) return;
-        LoadThumbnail();
-    }
-
-    private void LoadThumbnail()
-    {
-        if (ImageThumb == null) return;
-
-        string text = (ImagePathBox.Text ?? "").Trim();
-        if (text.Length == 0)
-        {
-            SetThumb(null, "无图", "还没有模板图，点「框选截图」直接在屏幕上截取。");
-            return;
-        }
-
-        string path = ImageLibrary.Resolve(text);
-        if (!File.Exists(path))
-        {
-            SetThumb(null, "找不到", "文件不存在：" + text);
-            return;
-        }
-
-        try
-        {
-            var bmp = LoadBitmap(path);
-            SetThumb(bmp, "", $"{bmp.PixelWidth} × {bmp.PixelHeight} px · {Path.GetFileName(path)} · 点击缩略图可预览");
-        }
-        catch (Exception ex)
-        {
-            SetThumb(null, "无法读取", "图片读取失败：" + ex.Message);
-        }
-    }
-
-    private void SetThumb(BitmapSource? image, string placeholder, string hint)
-    {
-        ImageThumb.Source = image;
-        ImageThumbHint.Text = placeholder;
-        ImageThumbHint.Visibility = image == null ? Visibility.Visible : Visibility.Collapsed;
-        ImageFileHint.Text = hint;
-        PreviewImageBtn.IsEnabled = image != null;
-    }
-
-    private static BitmapImage LoadBitmap(string path)
-    {
-        var bmp = new BitmapImage();
-        bmp.BeginInit();
-        bmp.CacheOption = BitmapCacheOption.OnLoad;
-        bmp.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
-        bmp.UriSource = new Uri(Path.GetFullPath(path));
-        bmp.EndInit();
-        bmp.Freeze();
-        return bmp;
-    }
-
-    /// <summary>模板图存到 resources/images，文件名带时间戳；重名自动加序号。</summary>
-    private static string SaveShot(BitmapSource image) => ImageLibrary.SaveGenerated(image);
 
     private void SetRect(int x, int y, int w, int h)
     {
@@ -692,8 +603,8 @@ public partial class ProbeEditor : UserControl
         if (probe.Kind == ProbeKind.screenshot && probe.ScreenshotMode == ScreenshotMode.interactive) return;
 
         // 看屏幕 / 取前台选区时，LTools 自己的窗口必须让开，否则搜到的是自己。
-        bool hide = probe.Kind is ProbeKind.image or ProbeKind.screenshot or ProbeKind.color or ProbeKind.cursor
-            or ProbeKind.window or ProbeKind.selection;
+        bool hide = probe.Kind is ProbeKind.image or ProbeKind.textSearch or ProbeKind.screenshot
+            or ProbeKind.color or ProbeKind.cursor or ProbeKind.window or ProbeKind.selection;
 
         TestBtn.IsEnabled = false;
         ShowTest("测试中…", null);

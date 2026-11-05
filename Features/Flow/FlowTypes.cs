@@ -84,6 +84,12 @@ public enum ProbeKind
     /// <summary>文字识别：识别一张图片（通常来自「截图」）里的文字，系统 Windows.Media.Ocr 或 PP-OCRv6。</summary>
     ocr,
 
+    /// <summary>
+    /// 找文字：在屏幕区域里查找一段文字，命中时给出位置（见 <see cref="TextLocator"/>）。
+    /// 与「文字点击」共用同一套定位；没找到不是错误，只是 <c>found = false</c>。
+    /// </summary>
+    textSearch,
+
     /// <summary>屏幕像素颜色。</summary>
     color,
 
@@ -177,7 +183,7 @@ public sealed class Probe
     /// <summary>取值方式。</summary>
     public ProbeKind Kind { get; set; }
 
-    /// <summary>text: 字面文本（支持 ${} 模板）。</summary>
+    /// <summary>text: 字面文本（支持 ${} 模板）；textSearch: 要找的文字（同样支持 ${} 模板）。</summary>
     public string? Text { get; set; }
 
     /// <summary>variable: 变量名（支持 a.b 取属性）。</summary>
@@ -200,16 +206,16 @@ public sealed class Probe
     /// <summary>image: 模板图片路径（相对 resources/images、相对数据根如 resources\user\a.png，或绝对路径）。</summary>
     public string? Image { get; set; }
 
-    /// <summary>image: 搜索区域。</summary>
+    /// <summary>image: 搜索区域；textSearch: 找字区域（与找图同一套语义）。</summary>
     public ImageRegion Region { get; set; }
 
-    /// <summary>image: 固定区域 [x, y, w, h]（Region=rect 时使用）。</summary>
+    /// <summary>image / textSearch: 固定区域 [x, y, w, h]（Region=rect 时使用）。</summary>
     public int[]? Rect { get; set; }
 
-    /// <summary>image: 最长等待时间（ms，0=只匹配一次）。</summary>
+    /// <summary>image / textSearch: 最长等待时间（ms，0=只匹配一次）。</summary>
     public int TimeoutMs { get; set; }
 
-    /// <summary>image: 轮询间隔（ms）。</summary>
+    /// <summary>image / textSearch: 轮询间隔（ms）。</summary>
     public int IntervalMs { get; set; } = 200;
 
     /// <summary>image: 最低置信度（0..1）。</summary>
@@ -228,7 +234,7 @@ public sealed class Probe
     /// <summary>ocr: 要识别的图片（变量或路径，支持 ${} 模板，如 <c>${截图}</c> / <c>${截图.file}</c>）。</summary>
     public string? OcrImage { get; set; }
 
-    /// <summary>ocr: 识别引擎。<c>null</c>/<c>windows</c> = 系统 OCR；<c>v6tiny</c> / <c>v6small</c> = PP-OCRv6。</summary>
+    /// <summary>ocr / textSearch: 识别引擎。<c>null</c>/<c>windows</c> = 系统 OCR；<c>v6tiny</c> / <c>v6small</c> = PP-OCRv6。</summary>
     public string? OcrEngine { get; set; }
 
     // —— color ——
@@ -472,6 +478,7 @@ public static class FlowText
             ActionType.toast => string.IsNullOrEmpty(a.Text) ? "提示弹窗" : $"提示：{Trim(a.Text, 24)}",
             ActionType.window => WindowLabel(a),
             ActionType.clickText => ClickTextLabel(a),
+            ActionType.imageClick => ImageClickLabel(a),
             ActionType.sendKeys => $"模拟按键（{count} 条）",
             ActionType.mouse => MouseLabel(a),
             _ => string.IsNullOrEmpty(a.Name) ? ActionTypeLabel.Of(a.Type) : a.Name,
@@ -511,14 +518,25 @@ public static class FlowText
     private static string ClickTextLabel(ActionDto a)
     {
         string text = string.IsNullOrWhiteSpace(a.Text) ? "?" : Trim(a.Text!, 20);
-        string where = (a.Region ?? ImageRegion.foreground) switch
-        {
-            ImageRegion.screen => "整个屏幕",
-            ImageRegion.rect => "固定区域",
-            _ => "前台窗口",
-        };
-        return $"点击 · {text} · {where}";
+        return $"点击 · {text} · {WhereLabel(a.Region)}";
     }
+
+    /// <summary>图片点击摘要：「点击图片 · save.png · 前台窗口」。</summary>
+    private static string ImageClickLabel(ActionDto a)
+    {
+        string image = string.IsNullOrWhiteSpace(a.Image)
+            ? "?"
+            : Trim(System.IO.Path.GetFileName(a.Image), 20);
+        return $"点击图片 · {image} · {WhereLabel(a.Region)}";
+    }
+
+    /// <summary>点击 / 查找区域的简短说明。</summary>
+    private static string WhereLabel(ImageRegion? region) => (region ?? ImageRegion.foreground) switch
+    {
+        ImageRegion.screen => "整个屏幕",
+        ImageRegion.rect => "固定区域",
+        _ => "前台窗口",
+    };
 
     /// <summary>取值器摘要。</summary>
     public static string ProbeLabel(Probe? p)
@@ -536,6 +554,7 @@ public static class FlowText
             ProbeKind.screenshot => ScreenshotLabel(p),
             ProbeKind.image => $"图像 {Trim(System.IO.Path.GetFileName(p.Image), 20)}",
             ProbeKind.ocr => string.IsNullOrWhiteSpace(p.OcrImage) ? "文字识别" : $"识别 {Trim(p.OcrImage, 20)}",
+            ProbeKind.textSearch => string.IsNullOrWhiteSpace(p.Text) ? "找文字" : $"找文字 {Trim(p.Text, 16)}",
             ProbeKind.color => $"颜色 ({p.X}, {p.Y})",
             ProbeKind.window => $"窗口 {Trim(p.WindowTitle ?? p.WindowClass, 16)}",
             ProbeKind.process => $"进程 {p.ProcessName}",

@@ -1535,6 +1535,7 @@ public partial class ConfigHelperWindow : Window
             ActionType.toast => BriefText(a.Text),
             ActionType.window => WindowSummary(a),
             ActionType.clickText => ClickTextSummary(a),
+            ActionType.imageClick => ImageClickSummary(a),
             ActionType.sendKeys => a.Items != null ? $"{a.Items.Count} 条输入" : "",
             ActionType.macro => MacroLabel(a.MacroId, macroNames),
             ActionType.@internal => a.Command ?? "",
@@ -1573,6 +1574,21 @@ public partial class ConfigHelperWindow : Window
                 _ => "前台窗口",
             };
             return $"{where} · {text}";
+        }
+
+        /// <summary>图片点击摘要：「前台窗口 · save.png」。</summary>
+        private static string ImageClickSummary(ActionDto a)
+        {
+            string image = string.IsNullOrWhiteSpace(a.Image)
+                ? "(未选模板图)"
+                : System.IO.Path.GetFileName(a.Image!.Trim());
+            string where = (a.Region ?? ImageRegion.foreground) switch
+            {
+                ImageRegion.screen => "整个屏幕",
+                ImageRegion.rect => "固定区域",
+                _ => "前台窗口",
+            };
+            return $"{where} · {image}";
         }
 
         private static int CountNodes(List<FlowNode> nodes)

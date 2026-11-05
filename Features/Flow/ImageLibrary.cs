@@ -243,6 +243,9 @@ internal static class ImageLibrary
     {
         if (a == null) return;
 
+        // 「图片点击」自带模板图（与「截图找图」取值器同一套路径语义）
+        AddRef(a.Image, live);
+
         // 组合动作：新流程（含旧 Steps 迁移）里的节点都可能引用模板
         if (a.Type == ActionType.composite)
             foreach (var n in FlowMigration.Ensure(a)) CollectNode(n, live);

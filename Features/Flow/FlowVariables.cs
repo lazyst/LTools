@@ -105,6 +105,7 @@ internal static class FlowVariables
     {
         ProbeKind.image => new[] { "x", "y", "found", "score" },
         ProbeKind.ocr => new[] { "found", "score" },
+        ProbeKind.textSearch => new[] { "x", "y", "found", "text" },
         ProbeKind.screenshot => new[] { "x", "y", "w", "h", "cx", "cy", "file", "found" },
         ProbeKind.user => new[] { "found" },
         ProbeKind.cursor => new[] { "x", "y" },

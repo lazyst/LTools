@@ -108,6 +108,9 @@ internal static class ActionExecutor
             case ActionType.clickText:
                 result = TextClickAction.Run(action, ctx);
                 break;
+            case ActionType.imageClick:
+                result = ImageClickAction.Run(action, ctx);
+                break;
             case ActionType.sendKeys:
                 SendKeys(action);
                 break;

@@ -107,49 +107,7 @@
 
         <!-- 图像 -->
         <StackPanel x:Name="P_Image" Visibility="Collapsed" Margin="0,8,0,0">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Border Width="100" Height="60" CornerRadius="4" ClipToBounds="True"
-                        Background="{StaticResource SurfaceAltBrush}"
-                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                        Cursor="Hand" ToolTip="点击预览这张模板图" MouseLeftButtonUp="Thumb_Click">
-                    <Grid>
-                        <TextBlock x:Name="ImageThumbHint" Text="无图" HorizontalAlignment="Center"
-                                   VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"
-                                   Foreground="{StaticResource HintTextBrush}"/>
-                        <Image x:Name="ImageThumb" Stretch="UniformToFill"
-                               RenderOptions.BitmapScalingMode="HighQuality"/>
-                    </Grid>
-                </Border>
-                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                    <WrapPanel Orientation="Horizontal">
-                        <Button x:Name="CaptureShotBtn" Style="{StaticResource BtnPrimary}" Content="▣ 框选截图"
-                                MinHeight="30" Padding="10,4" Click="CaptureShot_Click"
-                                ToolTip="最小化 LTools → 冻结屏幕；移动可高亮窗口/控件、单击选中，拖动自由框选"/>
-                        <Button Style="{StaticResource BtnGhost}" Content="换图…" Margin="6,0,0,0"
-                                MinHeight="30" Padding="10,4" Click="BrowseImage_Click"
-                                ToolTip="从 resources\user 选图；选到外部图片会复制进该目录，备份换机后仍有效"/>
-                        <Button x:Name="PreviewImageBtn" Style="{StaticResource BtnGhost}" Content="预览"
-                                Margin="6,0,0,0" MinHeight="30" Padding="10,4" Click="PreviewImage_Click"/>
-                    </WrapPanel>
-                    <TextBlock x:Name="ImageFileHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                               Margin="0,4,0,0"/>
-                </StackPanel>
-            </Grid>
-
-            <Grid Margin="0,8,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="模板文件" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
-                <TextBox x:Name="ImagePathBox" Grid.Column="1" MinHeight="30" Margin="8,0,0,0"
-                         TextChanged="ImagePath_Changed"
-                         ToolTip="相对 resources/images（或 resources/user 下的文件名），也可填绝对路径"/>
-            </Grid>
+            <controls:TemplateImagePicker x:Name="ImagePicker" Captured="ImagePicker_Captured"/>
 
             <Grid Margin="0,6,0,0">
                 <Grid.ColumnDefinitions>
@@ -192,8 +150,32 @@
                                       ToolTip="例如 ${截图}、${截图.file}，或图片文件的完整路径"/>
             <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,4,0,0"
                        Text="填 ${截图}（「截图」的结果会自动用它存下来的图片），也可填 ${截图.file} 或图片文件路径。直接识别那张图，不会重新截屏——中途切换窗口也不影响。"/>
+        </StackPanel>
 
+        <!-- 找文字（区域）：只查找、不点击，输出命中的文字与坐标 -->
+        <StackPanel x:Name="P_TextSearch" Visibility="Collapsed" Margin="0,8,0,0">
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                       Text="在屏幕区域里找一段文字（OCR），找到就给出它的位置。找不到不是错误：结果 found = false，用「找到了 / 没找到」判断。"/>
+            <TextBlock Text="要找的文字" Foreground="{StaticResource HintTextBrush}" Margin="0,8,0,0"/>
+            <controls:VariableTextBox x:Name="TextSearchBox" MinHeight="30" Margin="0,4,0,0"
+                                      ToolTip="按「包含」匹配，忽略大小写与词间空格；可用 ${变量}"/>
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,4,0,0"
+                       Text="按「包含」匹配（写「保存」也能命中「保存并关闭」），多处出现时取最上面那个。"/>
             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <TextBlock Text="等待" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                <TextBox x:Name="TextSearchTimeoutBox" Width="64" MinHeight="30" Margin="8,0,4,0"
+                         ToolTip="最长等待时间；0 = 只找一次"/>
+                <TextBlock Text="ms · 间隔" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                <TextBox x:Name="TextSearchIntervalBox" Width="64" MinHeight="30" Margin="6,0,4,0"/>
+                <TextBlock Text="ms" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}" Margin="2,0,0,0"/>
+            </StackPanel>
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
+                       Text="结果怎么用：${变量} 是实际命中的文字；${变量.x} / ${变量.y} 是命中位置（虚拟桌面物理像素，可直接填进「鼠标操作」）；${变量.found} 是 true / false。没找到时 ${变量} 为空、坐标不存在。"/>
+        </StackPanel>
+
+        <!-- OCR 引擎：文字识别与找文字共用（缺模型时先在这里下载） -->
+        <StackPanel x:Name="OcrEngineSection" Visibility="Collapsed" Margin="0,8,0,0">
+            <StackPanel Orientation="Horizontal">
                 <TextBlock Text="识别引擎" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
                 <ComboBox x:Name="OcrEngineCombo" Width="240" MinHeight="30" Margin="8,0,0,0"
                           DisplayMemberPath="Label" SelectionChanged="OcrEngine_Changed"/>
@@ -211,7 +193,7 @@
             </StackPanel>
         </StackPanel>
 
-        <!-- 屏幕区域：截图找图（搜索范围）与截图 OCR（截图范围）共用 -->
+        <!-- 屏幕区域：截图找图 / 找文字（搜索范围）共用 -->
         <StackPanel x:Name="RegionSection" Visibility="Collapsed" Margin="0,6,0,0">
             <Grid>
                 <Grid.ColumnDefinitions>

@@ -16,7 +16,8 @@ internal static class ActionResults
         ActionType.setClipboard or
         ActionType.mouse or
         ActionType.window or
-        ActionType.clickText;
+        ActionType.clickText or
+        ActionType.imageClick;
 
     /// <summary>输出变量可用的属性后缀（供变量面板 / 模板提示列出 <c>${变量.exit}</c> 之类写法）。</summary>
     public static IReadOnlyList<string> Properties(ActionType type) => type switch
@@ -26,6 +27,7 @@ internal static class ActionResults
         ActionType.mouse => new[] { "x", "y" },
         ActionType.window => new[] { "x", "y", "w", "h", "found" },
         ActionType.clickText => new[] { "x", "y", "found" },
+        ActionType.imageClick => new[] { "x", "y", "found", "score" },
         _ => Array.Empty<string>(),
     };
 
@@ -44,6 +46,8 @@ internal static class ActionResults
                              + "调整大小时这里是窗口**实际**的样子（可能被应用的最小尺寸夹住）。",
         ActionType.clickText => "写入点击位置：${变量} = x,y，另有 ${变量.x} / ${变量.y}。"
                                 + "找不到文字时不会写入，按失败策略处理（报错里带区域内识别到的文字）。",
+        ActionType.imageClick => "写入点击位置：${变量} = x,y，另有 ${变量.x} / ${变量.y} / ${变量.score}。"
+                                 + "找不到模板图时不会写入，按失败策略处理（报错里带最高相似度）。",
         _ => "",
     };
 }

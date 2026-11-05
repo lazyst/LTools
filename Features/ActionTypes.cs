@@ -31,6 +31,9 @@ public enum ActionType
     /// <summary>文字点击：在指定区域里识别文字，找到指定的文字就点它（见 <see cref="TextClickAction"/>）。</summary>
     clickText,
 
+    /// <summary>图片点击：在指定区域里找模板图，找到就点它（见 <see cref="ImageClickAction"/>）。</summary>
+    imageClick,
+
     sendKeys,
     mouse,
     macro,
@@ -164,6 +167,7 @@ public static class ActionTypeLabel
         ActionType.toast => "提示弹窗",
         ActionType.window => "窗口操作",
         ActionType.clickText => "文字点击",
+        ActionType.imageClick => "图片点击",
         ActionType.sendKeys => "模拟按键",
         ActionType.mouse => "鼠标操作",
         ActionType.macro => "键鼠宏",
@@ -310,19 +314,30 @@ public sealed class ActionDto
     /// <summary>window: <see cref="WindowActionKind.resize"/> 的目标矩形 [x, y, w, h]（虚拟桌面物理像素）。</summary>
     public int[]? WindowRect { get; set; }
 
-    // —— clickText（文字点击）——
+    // —— clickText（文字点击）/ imageClick（图片点击）——
 
-    /// <summary>clickText: 文字所在区域；null = 前台窗口（与「截图找图」同一套区域语义）。</summary>
+    /// <summary>clickText / imageClick: 文字所在区域 / 模板图搜索区域；null = 前台窗口（与「截图找图」同一套区域语义）。</summary>
     public ImageRegion? Region { get; set; }
 
-    /// <summary>clickText: <see cref="ImageRegion.rect"/> 时的区域 [x, y, w, h]（虚拟桌面物理像素）。</summary>
+    /// <summary>clickText / imageClick: <see cref="ImageRegion.rect"/> 时的区域 [x, y, w, h]（虚拟桌面物理像素）。</summary>
     public int[]? Rect { get; set; }
 
     /// <summary>clickText: 识别引擎（<c>null</c> / <c>windows</c> = 系统 OCR；<c>v6tiny</c> / <c>v6small</c> = PP-OCRv6）。</summary>
     public string? OcrEngine { get; set; }
 
-    /// <summary>clickText: 等文字出现的最长时间（ms，0 = 只找一次）。</summary>
+    /// <summary>clickText / imageClick: 等目标出现的最长时间（ms，0 = 只找一次）。</summary>
     public int? TimeoutMs { get; set; }
+
+    // —— imageClick（图片点击）——
+
+    /// <summary>
+    /// imageClick: 模板图片路径（语义同「截图找图」：resources/images 下的文件名、
+    /// resources\user 的数据根相对路径，或绝对路径）。
+    /// </summary>
+    public string? Image { get; set; }
+
+    /// <summary>imageClick: 最低相似度（0..1；null = 0.85）。</summary>
+    public double? MinScore { get; set; }
 
     // —— sendKeys（§3.2.1）——
 
@@ -384,6 +399,7 @@ public sealed class ActionDto
         WindowRect = WindowRect != null ? (int[])WindowRect.Clone() : null,
         Region = Region, Rect = Rect != null ? (int[])Rect.Clone() : null,
         OcrEngine = OcrEngine, TimeoutMs = TimeoutMs,
+        Image = Image, MinScore = MinScore,
         Items = Items?.Select(i => i.Clone()).ToList(),
         X = X, Y = Y, MouseAction = MouseAction, WheelDelta = WheelDelta,
         MacroId = MacroId,

@@ -49,6 +49,7 @@ public static class SlotMenu
         Add("新建 · 模拟按键", () => onNew(slot, ActionType.sendKeys));
         Add("新建 · 窗口操作", () => onNew(slot, ActionType.window));
         Add("新建 · 文字点击", () => onNew(slot, ActionType.clickText));
+        Add("新建 · 图片点击", () => onNew(slot, ActionType.imageClick));
         Add("新建 · 键鼠宏（录制 / 回放）", () => onNew(slot, ActionType.macro));
         menu.Items.Add(new Separator());
         Add("从动作池选择…", () => onPickExisting(slot));

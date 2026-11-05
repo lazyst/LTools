@@ -1,0 +1,51 @@
+<UserControl x:Class="LTools.Views.Controls.TemplateImagePicker"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
+    <StackPanel>
+        <!-- 模板图 + 取图入口：框选截图（最小化 LTools、冻结屏幕）最常用，放主按钮 -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Border Width="100" Height="60" CornerRadius="4" ClipToBounds="True"
+                    Background="{StaticResource SurfaceAltBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    Cursor="Hand" ToolTip="点击预览这张模板图" MouseLeftButtonUp="Thumb_Click">
+                <Grid>
+                    <TextBlock x:Name="ImageThumbHint" Text="无图" HorizontalAlignment="Center"
+                               VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"
+                               Foreground="{StaticResource HintTextBrush}"/>
+                    <Image x:Name="ImageThumb" Stretch="UniformToFill"
+                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                </Grid>
+            </Border>
+            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                <WrapPanel Orientation="Horizontal">
+                    <Button x:Name="CaptureShotBtn" Style="{StaticResource BtnPrimary}" Content="▣ 框选截图"
+                            MinHeight="30" Padding="10,4" Click="CaptureShot_Click"
+                            ToolTip="最小化 LTools → 冻结屏幕；移动可高亮窗口/控件、单击选中，拖动自由框选"/>
+                    <Button Style="{StaticResource BtnGhost}" Content="换图…" Margin="6,0,0,0"
+                            MinHeight="30" Padding="10,4" Click="BrowseImage_Click"
+                            ToolTip="从 resources\user 选图；选到外部图片会复制进该目录，备份换机后仍有效"/>
+                    <Button x:Name="PreviewImageBtn" Style="{StaticResource BtnGhost}" Content="预览"
+                            Margin="6,0,0,0" MinHeight="30" Padding="10,4" Click="PreviewImage_Click"/>
+                </WrapPanel>
+                <TextBlock x:Name="ImageFileHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                           Margin="0,4,0,0"/>
+            </StackPanel>
+        </Grid>
+
+        <Grid Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="模板文件" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+            <TextBox x:Name="PathBox" Grid.Column="1" MinHeight="30" Margin="8,0,0,0"
+                     TextChanged="Path_Changed"
+                     ToolTip="相对 resources/images（或 resources/user 下的文件名），也可填绝对路径"/>
+        </Grid>
+    </StackPanel>
+</UserControl>

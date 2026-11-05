@@ -112,6 +112,7 @@ public partial class CompositeActionDialog : Window
             (ActionType.mouse, "mouse", "鼠标操作"),
             (ActionType.window, "window", "窗口操作"),
             (ActionType.clickText, "magnifier", "文字点击"),
+            (ActionType.imageClick, "magnifier", "图片点击"),
             (ActionType.macro, "record", "键鼠宏"),
             (ActionType.@internal, "settings", "内部动作"),
         };
@@ -148,6 +149,8 @@ public partial class CompositeActionDialog : Window
             ("选中文本", ProbeKind.selection, "选中文本", "copy", "读取前台应用当前选中的文本（UI Automation，不模拟按键）"),
             ("鼠标位置", ProbeKind.cursor, "鼠标位置", "mouse", "记录当前鼠标坐标（用 ${变量.x} / ${变量.y} 引用）"),
             ("文字识别", ProbeKind.ocr, "文字", "search", "识别一张图片里的文字（通常填「截图」的结果 ${截图}）；Windows 自带 OCR 零下载，也可切 PP-OCRv6"),
+            ("找文字", ProbeKind.textSearch, "文字位置", "search", "在屏幕区域里找一段文字：${变量} = 命中的文字、.x / .y = 位置、.found = 是否找到；只查找，不点击"),
+            ("截图找图", ProbeKind.image, "图片位置", "image", "在屏幕上找模板图：${变量} = x,y、.score = 相似度、.found = 是否找到；配合「鼠标操作」即可点击，只判断也可以"),
             ("日期时间", ProbeKind.datetime, "日期时间", "clock", "记录当前日期时间（可设置格式）"),
             ("上一步的错误", ProbeKind.lastError, "错误", "help", "读取上一步被「继续下一步」吞掉的错误"),
         };
@@ -407,7 +410,14 @@ public partial class CompositeActionDialog : Window
                 Set = new SetNode
                 {
                     Var = NextVarName(item.DefaultVar ?? "值"),
-                    Probe = new Probe { Kind = item.ValueProbe.Value },
+                    Probe = new Probe
+                    {
+                        Kind = item.ValueProbe.Value,
+                        // 找文字默认用准确率明显更高的 PP-OCRv6 快速（与新建「文字点击」一致）；用户可改回系统 OCR
+                        OcrEngine = item.ValueProbe.Value == ProbeKind.textSearch
+                            ? OcrEnginePreference.DefaultForNewProbe
+                            : null,
+                    },
                 },
             };
             var dlg = new FlowNodeDialog(draft, FlowVariables.CollectInfos(_flow)) { Owner = this, Topmost = Topmost };
