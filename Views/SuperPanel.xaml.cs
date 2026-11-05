@@ -21,6 +21,8 @@ namespace LTools.Views;
 /// <para>
 /// **用完即收**：面板只当启动器——执行动作、打开设置、新建 / 编辑 / 复制 / 删除动作、从动作池选动作，
 /// 都先收起面板（取消也一样）。留在面板上的只有「钉住」、翻页和拖动重排这些还在面板里进行的操作。
+/// 打开模态编辑器 / 对话框前先调 <see cref="HideForDialog"/>：面板仍是对方 Owner（直接关会连对话框一起销毁），
+/// 但会立刻从屏幕上消失，不会出现「编辑器与面板并排」；对话框结束后再 <c>SuperPanel.Close()</c>。
 /// </para>
 /// </summary>
 public partial class SuperPanelWindow : Window
@@ -391,6 +393,7 @@ public partial class SuperPanelWindow : Window
     /// <summary>从动作池选已有动作放入本槽（补上面板此前缺失的「复用已有动作」能力）。</summary>
     private void PickExistingAt(int slot)
     {
+        HideForDialog();
         var picker = new ActionPoolPicker(this, "超级面板槽位 — 选择动作", CurrentPage[slot]) { Owner = this };
         RunDialog(() => { picker.ShowDialog(); });
 
@@ -459,6 +462,16 @@ public partial class SuperPanelWindow : Window
         return false;
     }
 
+    /// <summary>
+    /// 打开对话框 / 编辑器前立刻把面板藏起来：它仍作为 Owner 存活到对话框结束
+    /// （直接把 Owner 关掉会连对话框一起销毁），但视觉上不会再出现「编辑器和面板并排」。
+    /// 对话框结束后由调用方 <see cref="SuperPanel.Close"/> 收起面板。
+    /// </summary>
+    private void HideForDialog()
+    {
+        if (Visibility == Visibility.Visible) Visibility = Visibility.Hidden;
+    }
+
     /// <summary>把动作推迟到下一 Dispatcher 周期——右键菜单项 Click 内同步打开模态对话框，
     /// 会与菜单正在关闭的过程冲突（ShowDialog 可能不显示），故须延后执行。</summary>
     private void Defer(Action action) => Dispatcher.InvokeAsync(action);
@@ -467,6 +480,7 @@ public partial class SuperPanelWindow : Window
 
     private void NewActionAt(int slot, ActionType? presetType)
     {
+        HideForDialog();
         var dto = RunDialog(() =>
         {
             if (presetType == null)
@@ -492,6 +506,7 @@ public partial class SuperPanelWindow : Window
         var cur = ActionRegistry.FindById(id);
         if (cur == null) return;
 
+        HideForDialog();
         var dto = RunDialog(() => ActionEditor.Show(this, "编辑动作", cur));
         if (dto == null) { SuperPanel.Close(); return; }
         dto.Id = cur.Id;   // 编辑不换 Id
@@ -511,6 +526,7 @@ public partial class SuperPanelWindow : Window
         int empty = CurrentPage.FindIndex(x => x == null);
         if (empty < 0)
         {
+            HideForDialog();
             RunDialog(() => ConfirmDialog.Info(this, "超级面板", "当前页已满，副本已加入动作池（可在设置里放入格子）。"));
             SuperPanel.Close();
             return;
@@ -524,6 +540,8 @@ public partial class SuperPanelWindow : Window
         string? id = CurrentPage[slot];
         if (id == null) return;
         string name = ActionRegistry.FindById(id)?.Name ?? "(未知动作)";
+
+        HideForDialog();
         bool ok = RunDialog(() => ConfirmDialog.Confirm(this, "删除动作",
             $"确定删除「{name}」吗？\n所有菜单项 / 超级面板槽位 / 组合步骤中的引用也会被清除。", danger: true));
 
