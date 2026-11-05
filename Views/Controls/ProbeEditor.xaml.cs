@@ -20,6 +20,13 @@ public partial class ProbeEditor : UserControl
 {
     private bool _ready;
 
+    /// <summary>
+    /// 当前面板上的 OCR 引擎是不是「这个取值器自己的选择」。
+    /// true = 从已保存的 OCR 步骤读出来的（哪怕它是「系统 OCR」），切走再切回来不要改它；
+    /// false = 取值方式原本不是 OCR，刚切过来时用 <see cref="OcrEnginePreference.DefaultForNewProbe"/>。
+    /// </summary>
+    private bool _ocrEngineExplicit;
+
     /// <summary>正在下载 PP-OCRv6 高精度模型时的取消源；null 表示没在下载。</summary>
     private CancellationTokenSource? _downloadCts;
 
@@ -140,8 +147,11 @@ public partial class ProbeEditor : UserControl
             .ToString(CultureInfo.InvariantCulture);
         NoteCategoryCombo.Text = probe.NoteCategory ?? "";
         NoteKeywordBox.Text = probe.Text ?? "";
-        // 已有 OCR 步骤保留自己的引擎；新建步骤沿用上次的选择（默认 PP-OCRv6 快速）
-        SelectOcrEngine(probe.Kind is ProbeKind.ocr or ProbeKind.textSearch ? probe.OcrEngine : OcrEnginePreference.DefaultForNewProbe);
+        // 已有 OCR 步骤保留自己的引擎（含「系统 OCR」）；新建步骤沿用上次的选择。
+        // 注意：不能把 null 一律当成「沿用上次」——老配置里「系统 OCR」也存成 null。
+        bool ocrKind = probe.Kind is ProbeKind.ocr or ProbeKind.textSearch;
+        SelectOcrEngine(ocrKind ? probe.OcrEngine : OcrEnginePreference.DefaultForNewProbe);
+        _ocrEngineExplicit = ocrKind;
         RectXBox.Text = probe.Rect is { Length: >= 4 } r ? r[0].ToString(CultureInfo.InvariantCulture) : "0";
         RectYBox.Text = probe.Rect is { Length: >= 4 } r2 ? r2[1].ToString(CultureInfo.InvariantCulture) : "0";
         RectWBox.Text = probe.Rect is { Length: >= 4 } r3 ? r3[2].ToString(CultureInfo.InvariantCulture) : "0";
@@ -342,6 +352,13 @@ public partial class ProbeEditor : UserControl
     private void Kind_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!_ready) return;
+        var kind = SelectedKind;
+        // 从别的取值方式切到 OCR：面板上原来的引擎选择没有意义，直接沿用上次的选择
+        if (kind is ProbeKind.ocr or ProbeKind.textSearch && !_ocrEngineExplicit)
+        {
+            SelectOcrEngine(OcrEnginePreference.DefaultForNewProbe);
+            _ocrEngineExplicit = true;
+        }
         ShowPanel();
         KindChanged?.Invoke();
     }
@@ -459,6 +476,7 @@ public partial class ProbeEditor : UserControl
     private void OcrEngine_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!_ready) return;
+        _ocrEngineExplicit = true;
         UpdateOcrEngineState();
         OcrEnginePreference.Save((OcrEngineCombo.SelectedItem as OcrEngineItem)?.Value);
     }

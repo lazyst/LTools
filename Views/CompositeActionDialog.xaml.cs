@@ -422,8 +422,8 @@ public partial class CompositeActionDialog : Window
                     Probe = new Probe
                     {
                         Kind = item.ValueProbe.Value,
-                        // 找文字默认用准确率明显更高的 PP-OCRv6 快速（与新建「文字点击」一致）；用户可改回系统 OCR
-                        OcrEngine = item.ValueProbe.Value == ProbeKind.textSearch
+                        // 文字识别 / 找文字默认沿用上次选的引擎（首次是 PP-OCRv6 快速）；用户仍可改回系统 OCR
+                        OcrEngine = item.ValueProbe.Value is ProbeKind.ocr or ProbeKind.textSearch
                             ? OcrEnginePreference.DefaultForNewProbe
                             : null,
                     },

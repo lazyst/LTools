@@ -1498,7 +1498,18 @@ public partial class ActionEditorDialog : Window
             : Visibility.Collapsed;
     }
 
-    private void ClickOcr_Changed(object sender, SelectionChangedEventArgs e) => UpdateClickOcrHint();
+    private void ClickOcr_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateClickOcrHint();
+        // 载入草稿时也会触发，别把「打开已有动作」当成用户的选择写进全局偏好
+        if (!_ready) return;
+        OcrEnginePreference.Save(ClickOcrCombo.SelectedIndex switch
+        {
+            0 => "v6tiny",
+            2 => "v6small",
+            _ => null,
+        });
+    }
 
     /// <summary>提示当前引擎的代价，以及模型是否已经就位（缺模型在执行时才会报错，提前说清）。</summary>
     private void UpdateClickOcrHint()
