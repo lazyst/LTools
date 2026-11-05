@@ -439,6 +439,7 @@ public static class FlowText
             ActionType.sendText => string.IsNullOrEmpty(a.Text) ? "发送文本" : $"发送文本：{Trim(a.Text, 24)}",
             ActionType.setClipboard => string.IsNullOrEmpty(a.Text) ? "写入剪贴板（清空）" : $"写入剪贴板：{Trim(a.Text, 24)}",
             ActionType.toast => string.IsNullOrEmpty(a.Text) ? "提示弹窗" : $"提示：{Trim(a.Text, 24)}",
+            ActionType.window => WindowLabel(a),
             ActionType.sendKeys => $"模拟按键（{count} 条）",
             ActionType.mouse => MouseLabel(a),
             _ => string.IsNullOrEmpty(a.Name) ? ActionTypeLabel.Of(a.Type) : a.Name,
@@ -462,6 +463,16 @@ public static class FlowText
             _ => "点击",
         };
         return $"{what} {a.X ?? "?"}, {a.Y ?? "?"}";
+    }
+
+    /// <summary>窗口操作摘要：「切到前台 · 记事本」。</summary>
+    private static string WindowLabel(ActionDto a)
+    {
+        string op = WindowActionLabel.Short(a.WindowOp ?? WindowActionKind.activate);
+        string target = !string.IsNullOrWhiteSpace(a.WindowTitle) ? Trim(a.WindowTitle!, 20)
+                      : !string.IsNullOrWhiteSpace(a.WindowClass) ? Trim(a.WindowClass!, 20)
+                      : "?";
+        return $"{op} · {target}";
     }
 
     /// <summary>取值器摘要。</summary>

@@ -347,6 +347,89 @@
                                            Text="坐标留空 = 当前光标位置（滚轮可直接不填）。也可写 ${变量}：先用「设置变量 · 截图找图」拿到位置，再用 ${m.x} / ${m.y} 点击。"/>
                             </StackPanel>
 
+                            <!-- window（窗口操作）：目标窗口与条件里的「窗口」同一套匹配规则 -->
+                            <StackPanel x:Name="F_Window">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="目标窗口" Margin="0,0,0,4"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <controls:VariableTextBox Grid.Column="0" x:Name="WindowTitleBox" MinHeight="30"
+                                                              ToolTip="标题里包含这段文字就算匹配（可用 ${变量}）"/>
+                                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="从当前窗口选择…"
+                                            MinHeight="30" Padding="10,4" Margin="8,0,0,0" Click="WindowPick_Click"
+                                            ToolTip="列出当前打开的窗口，点一个即可填入标题"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                           Text="标题按「包含」匹配，命中最上面那个。同名窗口分不清时，在下面填类名精确定位。"/>
+
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="类名（可选）" VerticalAlignment="Center"
+                                               Foreground="{StaticResource HintTextBrush}"/>
+                                    <TextBox Grid.Column="1" x:Name="WindowClassBox" MinHeight="30" Margin="8,0,0,0"
+                                             ToolTip="精确匹配窗口类名（如 Notepad），一般不用填"/>
+                                </Grid>
+
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="操作" Margin="0,12,0,4"/>
+                                <ComboBox x:Name="WindowOpCombo" MinHeight="30" SelectionChanged="WindowOp_Changed">
+                                    <ComboBoxItem Content="切换到前台"/>
+                                    <ComboBoxItem Content="最大化"/>
+                                    <ComboBoxItem Content="最小化"/>
+                                    <ComboBoxItem Content="还原"/>
+                                    <ComboBoxItem Content="调整到指定大小"/>
+                                </ComboBox>
+
+                                <StackPanel x:Name="WindowRectPanel" Margin="0,10,0,0" Visibility="Collapsed">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="x" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource HintTextBrush}"/>
+                                        <TextBox Grid.Column="1" x:Name="WindowXBox" MinHeight="30" Margin="6,0,12,0"/>
+                                        <TextBlock Grid.Column="2" Text="y" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource HintTextBrush}"/>
+                                        <TextBox Grid.Column="3" x:Name="WindowYBox" MinHeight="30" Margin="6,0,0,0"/>
+                                    </Grid>
+                                    <Grid Margin="0,6,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="w" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource HintTextBrush}"/>
+                                        <TextBox Grid.Column="1" x:Name="WindowWBox" MinHeight="30" Margin="6,0,12,0"/>
+                                        <TextBlock Grid.Column="2" Text="h" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource HintTextBrush}"/>
+                                        <TextBox Grid.Column="3" x:Name="WindowHBox" MinHeight="30" Margin="6,0,0,0"/>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Button Style="{StaticResource BtnGhost}" Content="在屏幕上框选…"
+                                                MinHeight="30" Padding="10,4" Click="WindowPickRect_Click"
+                                                ToolTip="最小化窗口后在屏幕上框一块：把窗口摆到那块区域"/>
+                                        <Button Style="{StaticResource BtnGhost}" Content="用目标窗口当前尺寸"
+                                                MinHeight="30" Padding="10,4" Margin="8,0,0,0"
+                                                Click="WindowUseCurrentRect_Click"
+                                                ToolTip="读取目标窗口现在的矩形，填进上面四个框"/>
+                                    </StackPanel>
+                                    <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                               Text="物理像素，与鼠标 / 截图同一坐标系。框选 = 把窗口摆到刚框的那块区域（含标题栏的外框）。"/>
+                                </StackPanel>
+
+                                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,10,0,0"
+                                           Text="每个操作都会读回真实结果，做不到就按失败策略处理，不会假装成功。切前台受系统前台锁限制（别的程序全屏、窗口在别的虚拟桌面时会被拒绝）；调整大小可能被应用的最小尺寸夹住，那时会记日志，输出变量给的是实际矩形。"/>
+                            </StackPanel>
+
                             <!-- macro（键鼠宏）：一宏一动作，只能当场录制，不再选宏文件。
                                  回放参数按宏独立（速度 / 循环 / 倒计时），录制的全局参数也在同一面板编辑：
                                  设置页不再有「键鼠录制」页，宏也不再需要手工管理文件。 -->

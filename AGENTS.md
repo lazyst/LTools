@@ -69,6 +69,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - **引用型资源要能自回收**：宏文件（`MacroStore.CollectGarbage`）与模板截图（`ImageLibrary.CollectGarbage`）都在「启动」与「删除动作」时按引用清理；新增同类资源（图片 / 脚本 / 导出物）时照这个做法接上，否则删动作后会永久留在数据根里。备份导入的 `.bak-*`、配置损坏的 `.bad-*` 也各有「只留最近 3 份」的上限
 - **流程里的提示一律用 `Core/ToastService`**（`ActionType.toast`）：右下角堆叠、默认 4 秒、点一下关，`Show()` 从任意线程调用都只投递到 UI 线程就返回，**不阻塞后续步骤**；窗口用 `WS_EX_NOACTIVATE`，自动化正在往别的窗口输入时不会被抢焦点。别在流程里弹 `MessageBox` / `ConfirmDialog`（会阻塞整个流程并抢前台）
 - **流程图跑在后台线程，WPF 对象只能在 UI 线程上碰**：`Application.Windows`、窗口构造、`ShowDialog`、`ScreenPicker` 全部要放进 `Dispatcher.Invoke` 里再取；哪怕只是「先找 owner 再 Invoke 弹窗」也会在后台线程上抛「另一个线程拥有该对象」（`AskUser` 曾因此弹不出输入框）
+- **窗口操作（`Features/WindowAction.cs` + `Features/WindowFinder.cs`）**：窗口匹配与条件里的「窗口」取值共用 `WindowFinder`（标题包含 + 类名精确，命中最上面那个），别各写一套。操作后**读回真实状态**再判断（`IsZoomed` / `IsIconic` / `GetForegroundWindow`），没达到就抛错交给步骤失败策略，**不假装成功**；切前台被前台锁拒绝时用 `AttachThreadInput` 兜底并轮询确认；`resize` 被应用最小尺寸夹住时只记 `AppLog.Warn`、照常继续，输出实际矩形
 - 运行时「实时截图」取值（`Features/Flow/ScreenshotProbe.cs`）复用 `ScreenPicker` 的框选 / 吸附，裁下来的 png 走 `ImageLibrary.SaveGenerated` 存进 `resources\images\`，因此和模板截图共用按引用回收，不需要单独清理
 - OCR 双引擎：新建「截图 OCR」默认 `PP-OCRv6 快速`（内置在 `Assets/Ocr/ppocrv6`）；可切 `Windows.Media.Ocr`（最快、最省内存）。选择记在 `LTools.json` 的 `lastOcrEngine`，见 `Features/OcrEnginePreference.cs`。`Features/Flow/PaddleOcr.cs` 是 PP-OCRv6 推理（small 下载到数据根 `ocr-models/`，见 `OcrModelStore`）。RapidOcrNet 的包内 targets 会把自带的 v5 模型拷进输出目录，csproj 里有 target 在构建 / 发布后清理
 

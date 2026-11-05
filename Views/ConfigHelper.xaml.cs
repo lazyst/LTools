@@ -1533,6 +1533,7 @@ public partial class ConfigHelperWindow : Window
             ActionType.sendText => BriefText(a.Text),
             ActionType.setClipboard => BriefText(a.Text),
             ActionType.toast => BriefText(a.Text),
+            ActionType.window => WindowSummary(a),
             ActionType.sendKeys => a.Items != null ? $"{a.Items.Count} 条输入" : "",
             ActionType.macro => MacroLabel(a.MacroId, macroNames),
             ActionType.@internal => a.Command ?? "",
@@ -1546,6 +1547,18 @@ public partial class ConfigHelperWindow : Window
             if (a.Flow == null && a.Steps == null) return "";
             int count = CountNodes(FlowMigration.Ensure(a));
             return count > 0 ? $"{count} 个步骤" : "";
+        }
+
+        /// <summary>窗口操作摘要：「切到前台 · 记事本」/「改尺寸 800×600 · 记事本」。</summary>
+        private static string WindowSummary(ActionDto a)
+        {
+            WindowActionKind op = a.WindowOp ?? WindowActionKind.activate;
+            string target = !string.IsNullOrWhiteSpace(a.WindowTitle) ? a.WindowTitle!.Trim()
+                          : !string.IsNullOrWhiteSpace(a.WindowClass) ? a.WindowClass!.Trim()
+                          : "?";
+            if (op == WindowActionKind.resize && a.WindowRect is { Length: >= 4 } r)
+                return $"{WindowActionLabel.Short(op)} {r[2]}×{r[3]} · {target}";
+            return $"{WindowActionLabel.Short(op)} · {target}";
         }
 
         private static int CountNodes(List<FlowNode> nodes)

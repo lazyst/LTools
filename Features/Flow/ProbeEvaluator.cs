@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
 using LTools.Core;
@@ -218,17 +217,7 @@ internal static class ProbeEvaluator
     private static VarValue ReadWindow(Probe probe)
     {
         IntPtr foreground = Win32.GetForegroundWindow();
-        IntPtr found = IntPtr.Zero;
-        string foundTitle = "";
-
-        Win32.EnumWindows((hwnd, _) =>
-        {
-            if (!Win32.IsWindowVisible(hwnd)) return true;
-            if (!WindowMatches(hwnd, probe, out string title)) return true;
-            found = hwnd;
-            foundTitle = title;
-            return false;   // 找到第一个就停
-        }, IntPtr.Zero);
+        IntPtr found = WindowFinder.Find(probe.WindowTitle, probe.WindowClass, out string foundTitle);
 
         return new VarValue
         {
@@ -236,34 +225,6 @@ internal static class ProbeEvaluator
             Flag = found != IntPtr.Zero,
             Number = found != IntPtr.Zero && found == foreground ? 1 : 0,
         };
-    }
-
-    private static bool WindowMatches(IntPtr hwnd, Probe probe, out string title)
-    {
-        title = GetWindowText(hwnd);
-        if (!string.IsNullOrWhiteSpace(probe.WindowTitle) &&
-            !title.Contains(probe.WindowTitle, StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        if (!string.IsNullOrWhiteSpace(probe.WindowClass))
-        {
-            var sb = new StringBuilder(256);
-            Win32.GetClassName(hwnd, sb, sb.Capacity);
-            if (!string.Equals(sb.ToString(), probe.WindowClass, StringComparison.OrdinalIgnoreCase))
-                return false;
-        }
-
-        // 标题和类名都没填 = 任意可见窗口。
-        return true;
-    }
-
-    private static string GetWindowText(IntPtr hwnd)
-    {
-        int len = Win32.GetWindowTextLength(hwnd);
-        if (len <= 0) return "";
-        var sb = new StringBuilder(len + 1);
-        Win32.GetWindowText(hwnd, sb, sb.Capacity);
-        return sb.ToString();
     }
 
     // —— 输入文本 ——

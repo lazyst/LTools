@@ -86,6 +86,7 @@ public partial class ActionEditorDialog : Window
         _fieldsByType[ActionType.toast] = F_Toast;
         _fieldsByType[ActionType.sendKeys] = F_SendKeys;
         _fieldsByType[ActionType.mouse] = F_Mouse;
+        _fieldsByType[ActionType.window] = F_Window;
         _fieldsByType[ActionType.macro] = F_Macro;
         _fieldsByType[ActionType.@internal] = F_Internal;
 
@@ -103,6 +104,7 @@ public partial class ActionEditorDialog : Window
             new("提示弹窗", ActionType.toast),
             new("模拟按键", ActionType.sendKeys),
             new("鼠标操作", ActionType.mouse),
+            new("窗口操作", ActionType.window),
             // 宏按 Id 引用事件文件：组合步骤已支持宏步骤（引用 macros/ 下的文件，备份一起走）。
             new("内部动作", ActionType.@internal),
         };
@@ -246,6 +248,24 @@ public partial class ActionEditorDialog : Window
         MouseYBox.Text = _draft.Y ?? "";
         MouseWheelBox.Text = (_draft.WheelDelta ?? 120).ToString(CultureInfo.InvariantCulture);
         UpdateMouseWheelPanel();
+
+        // window
+        WindowTitleBox.Text = _draft.WindowTitle ?? "";
+        WindowClassBox.Text = _draft.WindowClass ?? "";
+        WindowOpCombo.SelectedIndex = (_draft.WindowOp ?? WindowActionKind.activate) switch
+        {
+            WindowActionKind.maximize => 1,
+            WindowActionKind.minimize => 2,
+            WindowActionKind.restore => 3,
+            WindowActionKind.resize => 4,
+            _ => 0,
+        };
+        int[]? rect = _draft.WindowRect;
+        WindowXBox.Text = rect is { Length: >= 4 } ? rect[0].ToString(CultureInfo.InvariantCulture) : "";
+        WindowYBox.Text = rect is { Length: >= 4 } ? rect[1].ToString(CultureInfo.InvariantCulture) : "";
+        WindowWBox.Text = rect is { Length: >= 4 } ? rect[2].ToString(CultureInfo.InvariantCulture) : "";
+        WindowHBox.Text = rect is { Length: >= 4 } ? rect[3].ToString(CultureInfo.InvariantCulture) : "";
+        UpdateWindowRectPanel();
 
         TerminalCombo.SelectedIndex = IndexOfTerminal(_draft.Terminal ?? "direct");
         CommandCombo.SelectedIndex = IndexOfCommand(_draft.Command ?? "");
@@ -994,6 +1014,7 @@ public partial class ActionEditorDialog : Window
         _draft.Text = null; _draft.Mode = null; _draft.AppendEnter = null; _draft.DurationMs = null;
         _draft.X = null; _draft.Y = null; _draft.MouseAction = null; _draft.WheelDelta = null;
         _draft.Items = null; _draft.MacroId = null;
+        _draft.WindowTitle = null; _draft.WindowClass = null; _draft.WindowOp = null; _draft.WindowRect = null;
 
         switch (type)
         {
@@ -1060,6 +1081,37 @@ public partial class ActionEditorDialog : Window
                 foreach (var v in _keyItems) items.Add(v.Model);
                 _draft.Items = items;
                 break;
+            case ActionType.window:
+            {
+                string title = WindowTitleBox.Text.Trim();
+                string cls = WindowClassBox.Text.Trim();
+                if (title.Length == 0 && cls.Length == 0)
+                {
+                    ConfirmDialog.Info(this, "窗口操作", "请先指定目标窗口（点「从当前窗口选择…」最省事）。");
+                    WindowTitleBox.Focus();
+                    return;
+                }
+                _draft.WindowTitle = title.Length > 0 ? title : null;
+                _draft.WindowClass = cls.Length > 0 ? cls : null;
+                _draft.WindowOp = WindowOpCombo.SelectedIndex switch
+                {
+                    1 => WindowActionKind.maximize,
+                    2 => WindowActionKind.minimize,
+                    3 => WindowActionKind.restore,
+                    4 => WindowActionKind.resize,
+                    _ => WindowActionKind.activate,
+                };
+                if (_draft.WindowOp == WindowActionKind.resize)
+                {
+                    if (!TryReadWindowRect(out int[] rect))
+                    {
+                        WindowXBox.Focus();
+                        return;
+                    }
+                    _draft.WindowRect = rect;
+                }
+                break;
+            }
             case ActionType.mouse:
             {
                 string mx = MouseXBox.Text.Trim();
@@ -1169,6 +1221,84 @@ public partial class ActionEditorDialog : Window
         if (!ScreenPicker.TryPickPoint(this, out int x, out int y, out _)) return;
         MouseXBox.Text = x.ToString(CultureInfo.InvariantCulture);
         MouseYBox.Text = y.ToString(CultureInfo.InvariantCulture);
+    }
+
+    // —— window（窗口操作）——
+
+    private void WindowOp_Changed(object sender, SelectionChangedEventArgs e) => UpdateWindowRectPanel();
+
+    private void UpdateWindowRectPanel()
+    {
+        if (WindowRectPanel == null) return;
+        WindowRectPanel.Visibility = WindowOpCombo.SelectedIndex == 4
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    /// <summary>从当前打开的窗口里挑一个，只回填标题（类名留给同名窗口分不清时手填）。</summary>
+    private void WindowPick_Click(object sender, RoutedEventArgs e)
+    {
+        var info = SystemPickerDialog.PickWindow(this);
+        if (info == null) return;
+        WindowTitleBox.Text = info.Title;
+    }
+
+    /// <summary>在屏幕上框一块区域，当作目标窗口的矩形（物理像素）。</summary>
+    private void WindowPickRect_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ScreenPicker.TryPickRegion(this, out var area, out _)) return;
+        WindowXBox.Text = area.X.ToString(CultureInfo.InvariantCulture);
+        WindowYBox.Text = area.Y.ToString(CultureInfo.InvariantCulture);
+        WindowWBox.Text = area.Width.ToString(CultureInfo.InvariantCulture);
+        WindowHBox.Text = area.Height.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>读取目标窗口现在的矩形，填进四个框（省得手抄数字）。</summary>
+    private void WindowUseCurrentRect_Click(object sender, RoutedEventArgs e)
+    {
+        IntPtr hwnd = WindowFinder.Find(WindowTitleBox.Text.Trim(), WindowClassBox.Text.Trim());
+        if (hwnd == IntPtr.Zero)
+        {
+            ConfirmDialog.Info(this, "窗口操作", "现在找不到这个窗口。请先打开它，或用「从当前窗口选择…」重新指定。");
+            return;
+        }
+        if (!Win32.GetWindowRect(hwnd, out var r))
+        {
+            ConfirmDialog.Info(this, "窗口操作", "读不到这个窗口的位置和大小。");
+            return;
+        }
+
+        WindowXBox.Text = r.Left.ToString(CultureInfo.InvariantCulture);
+        WindowYBox.Text = r.Top.ToString(CultureInfo.InvariantCulture);
+        WindowWBox.Text = (r.Right - r.Left).ToString(CultureInfo.InvariantCulture);
+        WindowHBox.Text = (r.Bottom - r.Top).ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>把四个框读成 [x, y, w, h]；不合法时提示并把焦点放到出错的框。</summary>
+    private bool TryReadWindowRect(out int[] rect)
+    {
+        rect = Array.Empty<int>();
+        if (!TryReadRectBox(WindowXBox, -30_000, 30_000, "x", out int x) ||
+            !TryReadRectBox(WindowYBox, -30_000, 30_000, "y", out int y) ||
+            !TryReadRectBox(WindowWBox, 1, 20_000, "宽度 w", out int w) ||
+            !TryReadRectBox(WindowHBox, 1, 20_000, "高度 h", out int h))
+            return false;
+
+        rect = new[] { x, y, w, h };
+        return true;
+    }
+
+    private bool TryReadRectBox(TextBox box, int min, int max, string label, out int value)
+    {
+        value = 0;
+        if (!int.TryParse(box.Text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value) ||
+            value < min || value > max)
+        {
+            ConfirmDialog.Info(this, "窗口操作", $"{label} 请填 {min}–{max} 的整数（物理像素）。");
+            box.Focus();
+            return false;
+        }
+        return true;
     }
 
     private static KeyItemView WrapKeyItem(KeyItem m) => new(m);
@@ -1558,7 +1688,9 @@ public partial class ActionEditorDialog : Window
         Id = a.Id, Name = a.Name, Icon = a.Icon, Type = a.Type,
         Target = a.Target, Args = a.Args, Workdir = a.Workdir, Path = a.Path, Url = a.Url,
         Cmd = a.Cmd, Terminal = a.Terminal, KeepWindow = a.KeepWindow, Command = a.Command,
-        Text = a.Text, Mode = a.Mode, AppendEnter = a.AppendEnter,
+        Text = a.Text, Mode = a.Mode, AppendEnter = a.AppendEnter, DurationMs = a.DurationMs,
+        WindowTitle = a.WindowTitle, WindowClass = a.WindowClass, WindowOp = a.WindowOp,
+        WindowRect = a.WindowRect != null ? (int[])a.WindowRect.Clone() : null,
         Items = a.Items?.ConvertAll(i => i.Clone()),
         X = a.X, Y = a.Y, MouseAction = a.MouseAction, WheelDelta = a.WheelDelta,
         MacroId = a.MacroId,

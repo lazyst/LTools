@@ -110,6 +110,7 @@ public partial class CompositeActionDialog : Window
             (ActionType.toast, "message", "提示弹窗"),
             (ActionType.sendKeys, "keyboard", "模拟按键"),
             (ActionType.mouse, "mouse", "鼠标操作"),
+            (ActionType.window, "window", "窗口操作"),
             (ActionType.macro, "record", "键鼠宏"),
             (ActionType.@internal, "settings", "内部动作"),
         };

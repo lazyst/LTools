@@ -28,6 +28,7 @@ internal static class IconCatalog
         ["send"]       = "\uE724",  // 纸飞机（发送文本）
         ["keyboard"]   = "\uE765",  // 键盘（模拟按键）
         ["mouse"]      = "\uE962",  // 鼠标（鼠标操作）
+        ["window"]     = "\uE8A7",  // 新窗口（窗口操作：切前台 / 最大化 / 调整大小）
         ["record"]     = "\uE7C8",  // 录制
         ["play"]       = "\uE768",  // 播放
         ["pause"]      = "\uE769",  // 暂停

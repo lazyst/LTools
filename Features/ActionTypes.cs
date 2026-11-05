@@ -25,6 +25,9 @@ public enum ActionType
     /// <summary>提示弹窗：把一段文字用置顶提示卡显示出来，**不阻塞**后续步骤。</summary>
     toast,
 
+    /// <summary>窗口操作：切到前台 / 最大化 / 最小化 / 还原 / 调整到指定大小。</summary>
+    window,
+
     sendKeys,
     mouse,
     macro,
@@ -56,6 +59,26 @@ public enum MouseActionKind
 
     /// <summary>滚轮向下。</summary>
     wheelDown,
+}
+
+/// <summary>窗口操作子类型（<see cref="ActionType.window"/>）。</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum WindowActionKind
+{
+    /// <summary>切到前台（最小化的先还原；系统前台锁会兜底处理）。</summary>
+    activate,
+
+    /// <summary>最大化。</summary>
+    maximize,
+
+    /// <summary>最小化。</summary>
+    minimize,
+
+    /// <summary>还原（取消最大化 / 最小化）。</summary>
+    restore,
+
+    /// <summary>调整到 <see cref="ActionDto.WindowRect"/> 指定的大小与位置（物理像素）。</summary>
+    resize,
 }
 
 /// <summary>sendText 发送方式（§3.2.2）。</summary>
@@ -136,12 +159,39 @@ public static class ActionTypeLabel
         ActionType.sendText => "发送文本",
         ActionType.setClipboard => "写入剪贴板",
         ActionType.toast => "提示弹窗",
+        ActionType.window => "窗口操作",
         ActionType.sendKeys => "模拟按键",
         ActionType.mouse => "鼠标操作",
         ActionType.macro => "键鼠宏",
         ActionType.@internal => "内部动作",
         ActionType.composite => "组合动作",
         _ => t.ToString(),
+    };
+}
+
+/// <summary>窗口操作的中文显示名（编辑器下拉 / 步骤摘要共用）。</summary>
+public static class WindowActionLabel
+{
+    /// <summary>完整名称（编辑器下拉）。</summary>
+    public static string Of(WindowActionKind kind) => kind switch
+    {
+        WindowActionKind.activate => "切换到前台",
+        WindowActionKind.maximize => "最大化",
+        WindowActionKind.minimize => "最小化",
+        WindowActionKind.restore => "还原",
+        WindowActionKind.resize => "调整到指定大小",
+        _ => kind.ToString(),
+    };
+
+    /// <summary>步骤行摘要用的短名称。</summary>
+    public static string Short(WindowActionKind kind) => kind switch
+    {
+        WindowActionKind.activate => "切到前台",
+        WindowActionKind.maximize => "最大化",
+        WindowActionKind.minimize => "最小化",
+        WindowActionKind.restore => "还原",
+        WindowActionKind.resize => "改尺寸",
+        _ => kind.ToString(),
     };
 }
 
@@ -242,6 +292,20 @@ public sealed class ActionDto
     /// <summary>toast: 停留时长（ms，null = 4000；0 = 不自动关闭，点一下关掉）。</summary>
     public int? DurationMs { get; set; }
 
+    // —— window（窗口操作）——
+
+    /// <summary>window: 目标窗口标题包含的文本（空 = 不按标题过滤，支持 ${变量}）。</summary>
+    public string? WindowTitle { get; set; }
+
+    /// <summary>window: 目标窗口类名（精确匹配，一般留空；同名窗口分不清时才填）。</summary>
+    public string? WindowClass { get; set; }
+
+    /// <summary>window: 操作，null 视为 <see cref="WindowActionKind.activate"/>。</summary>
+    public WindowActionKind? WindowOp { get; set; }
+
+    /// <summary>window: <see cref="WindowActionKind.resize"/> 的目标矩形 [x, y, w, h]（虚拟桌面物理像素）。</summary>
+    public int[]? WindowRect { get; set; }
+
     // —— sendKeys（§3.2.1）——
 
     /// <summary>sendKeys: 有序输入条目列表（chord / text / sleep 三种）。</summary>
@@ -298,6 +362,8 @@ public sealed class ActionDto
         Target = Target, Args = Args, Workdir = Workdir, Path = Path, Url = Url,
         Cmd = Cmd, Terminal = Terminal, KeepWindow = KeepWindow, Command = Command,
         Text = Text, Mode = Mode, AppendEnter = AppendEnter, DurationMs = DurationMs,
+        WindowTitle = WindowTitle, WindowClass = WindowClass, WindowOp = WindowOp,
+        WindowRect = WindowRect != null ? (int[])WindowRect.Clone() : null,
         Items = Items?.Select(i => i.Clone()).ToList(),
         X = X, Y = Y, MouseAction = MouseAction, WheelDelta = WheelDelta,
         MacroId = MacroId,

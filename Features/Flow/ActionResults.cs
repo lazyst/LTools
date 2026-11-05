@@ -14,7 +14,8 @@ internal static class ActionResults
         ActionType.openUrl or
         ActionType.runCommand or
         ActionType.setClipboard or
-        ActionType.mouse;
+        ActionType.mouse or
+        ActionType.window;
 
     /// <summary>输出变量可用的属性后缀（供变量面板 / 模板提示列出 <c>${变量.exit}</c> 之类写法）。</summary>
     public static IReadOnlyList<string> Properties(ActionType type) => type switch
@@ -22,6 +23,7 @@ internal static class ActionResults
         ActionType.launchApp => new[] { "number", "found" },
         ActionType.runCommand => new[] { "exit", "err", "found" },
         ActionType.mouse => new[] { "x", "y" },
+        ActionType.window => new[] { "x", "y", "w", "h", "found" },
         _ => Array.Empty<string>(),
     };
 
@@ -36,6 +38,8 @@ internal static class ActionResults
                                  + "上面的「终端」仍决定由哪个 shell 执行（PowerShell / Git Bash / WSL / CMD）。",
         ActionType.setClipboard => "写入实际写入剪贴板的文本。",
         ActionType.mouse => "写入操作后的光标坐标，可用 ${变量.x} / ${变量.y} 引用。",
+        ActionType.window => "写入操作后的窗口矩形：${变量} = x,y,w,h，另有 ${变量.x} / ${变量.y} / ${变量.w} / ${变量.h}。"
+                             + "调整大小时这里是窗口**实际**的样子（可能被应用的最小尺寸夹住）。",
         _ => "",
     };
 }

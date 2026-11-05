@@ -25,6 +25,8 @@ internal static class ActionMaterializer
         a.Text = Template.RenderOpt(a.Text, ctx);
         a.X = Template.RenderOpt(a.X, ctx);
         a.Y = Template.RenderOpt(a.Y, ctx);
+        a.WindowTitle = Template.RenderOpt(a.WindowTitle, ctx);
+        a.WindowClass = Template.RenderOpt(a.WindowClass, ctx);
 
         if (a.Items != null)
         {

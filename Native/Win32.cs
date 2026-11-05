@@ -166,9 +166,18 @@ internal static class Win32
     [DllImport("user32.dll")]
     public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
 
+    /// <summary>同步 ShowWindow：窗口状态改完立刻可读（异步版要等消息队列处理）。</summary>
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    /// <summary>窗口是否已最大化。</summary>
+    [DllImport("user32.dll")]
+    public static extern bool IsZoomed(IntPtr hWnd);
+
     // SetWindowPos 标志（HWND_TOP = IntPtr.Zero）
     public const uint SwpNosize = 0x0001;
     public const uint SwpNomove = 0x0002;
+    public const uint SwpNozorder = 0x0004;
     public const uint SwpNoactivate = 0x0010;
     public const uint SwpShowwindow = 0x0040;
 
@@ -347,6 +356,8 @@ internal static class Win32
     public const int Xbutton2 = 0x0002;
 
     // ShowWindow 命令
+    public const int SwMaximize = 3;
+    public const int SwShownoactivate = 4;
     public const int SwMinimize = 6;
     public const int SwRestore = 9;
     public const uint WmClose = 0x0010;
