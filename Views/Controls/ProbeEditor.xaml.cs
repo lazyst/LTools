@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using LTools.Core;
 using LTools.Features;
 using LTools.Views;
 using Microsoft.Win32;
@@ -20,6 +22,9 @@ namespace LTools.Views.Controls;
 public partial class ProbeEditor : UserControl
 {
     private bool _ready;
+
+    /// <summary>正在下载 PP-OCRv6 高精度模型时的取消源；null 表示没在下载。</summary>
+    private CancellationTokenSource? _downloadCts;
 
     /// <summary>取值方式改变（供条件编辑器刷新比较符）。</summary>
     public event Action? KindChanged;
@@ -75,8 +80,17 @@ public partial class ProbeEditor : UserControl
         };
         RegionCombo.SelectedIndex = 0;
 
+        OcrEngineCombo.ItemsSource = new List<OcrEngineItem>
+        {
+            new("系统 OCR（零下载，最快）", null),
+            new("PP-OCRv6 快速（内置 7.4 MB）", "v6tiny"),
+            new("PP-OCRv6 高精度（需下载 29.8 MB）", "v6small"),
+        };
+        OcrEngineCombo.SelectedIndex = 0;
+
         _ready = true;
         ShowPanel();
+        UpdateOcrEngineState();
         LoadThumbnail();
     }
 
@@ -98,6 +112,7 @@ public partial class ProbeEditor : UserControl
 
         ImagePathBox.Text = probe.Image ?? "";
         SelectRegion(probe.Region);
+        SelectOcrEngine(probe.OcrEngine);
         RectXBox.Text = probe.Rect is { Length: >= 4 } r ? r[0].ToString(CultureInfo.InvariantCulture) : "0";
         RectYBox.Text = probe.Rect is { Length: >= 4 } r2 ? r2[1].ToString(CultureInfo.InvariantCulture) : "0";
         RectWBox.Text = probe.Rect is { Length: >= 4 } r3 ? r3[2].ToString(CultureInfo.InvariantCulture) : "0";
@@ -118,6 +133,7 @@ public partial class ProbeEditor : UserControl
 
         _ready = true;
         ShowPanel();
+        UpdateOcrEngineState();
         UpdateColorPreview();
         LoadThumbnail();
     }
@@ -192,6 +208,7 @@ public partial class ProbeEditor : UserControl
 
             case ProbeKind.ocr:
                 if (ReadRegion(probe) is string ocrRegionError) return ocrRegionError;
+                probe.OcrEngine = (OcrEngineCombo.SelectedItem as OcrEngineItem)?.Value;
                 break;
 
             case ProbeKind.color:
@@ -330,6 +347,77 @@ public partial class ProbeEditor : UserControl
     {
         if (!_ready) return;
         ShowPanel();
+    }
+
+    // —— OCR 引擎 ——
+
+    private void OcrEngine_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready) return;
+        UpdateOcrEngineState();
+    }
+
+    /// <summary>按所选引擎给出说明 / 下载入口：模型缺了先说清楚，而不是等运行时才报错。</summary>
+    private void UpdateOcrEngineState()
+    {
+        if (OcrEngineHint == null || _downloadCts != null) return;
+
+        PaddleOcr.Tier? tier = PaddleOcr.ParseTier((OcrEngineCombo.SelectedItem as OcrEngineItem)?.Value);
+        OcrDownloadPanel.Visibility = Visibility.Collapsed;
+
+        if (tier == null)
+        {
+            OcrEngineHint.Text = "系统自带（Windows.Media.Ocr），零下载、十几毫秒出结果；12–14px 中文与数字、标点容易认错。";
+            return;
+        }
+
+        if (PaddleOcr.IsReady(tier.Value))
+        {
+            OcrEngineHint.Text = tier == PaddleOcr.Tier.Tiny
+                ? "内置模型，首次识别加载约 0.2 秒，单张约 0.4 秒；小字、数字明显更准。"
+                : "模型已就位，单张约 1.2 秒；同图基准里 15 个场景全部识别正确。";
+            return;
+        }
+
+        OcrEngineHint.Text = "模型还没下载，现在识别会报错。下载一次即可——模型存在数据目录，升级覆盖程序不会丢。";
+        OcrDownloadPanel.Visibility = Visibility.Visible;
+    }
+
+    private async void OcrDownload_Click(object sender, RoutedEventArgs e)
+    {
+        if (_downloadCts != null) return;
+
+        _downloadCts = new CancellationTokenSource();
+        OcrDownloadButton.IsEnabled = false;
+        OcrEngineCombo.IsEnabled = false;
+        OcrDownloadHint.Text = "准备下载…";
+
+        long total = OcrModelStore.SmallTotalBytes;
+        var progress = new Progress<double>(f => OcrDownloadHint.Text =
+            $"下载中 {f * 100:0}% · {f * total / 1048576.0:0.0} / {total / 1048576.0:0.0} MB");
+
+        try
+        {
+            await OcrModelStore.DownloadSmallAsync(progress, _downloadCts.Token);
+            OcrDownloadHint.Text = "下载完成，可以直接测试或保存。";
+        }
+        catch (OperationCanceledException)
+        {
+            OcrDownloadHint.Text = "已取消下载。";
+        }
+        catch (Exception ex)
+        {
+            OcrDownloadHint.Text = "下载失败：" + ex.Message;
+            AppLog.Warn("OCR", "PP-OCRv6 高精度模型下载失败：" + ex);
+        }
+        finally
+        {
+            _downloadCts.Dispose();
+            _downloadCts = null;
+            OcrDownloadButton.IsEnabled = true;
+            OcrEngineCombo.IsEnabled = true;
+            UpdateOcrEngineState();
+        }
     }
 
     // —— 图像 ——
@@ -670,6 +758,31 @@ public partial class ProbeEditor : UserControl
             }
         }
         RegionCombo.SelectedIndex = 0;
+    }
+
+    private void SelectOcrEngine(string? value)
+    {
+        string? normalized = PaddleOcr.ParseTier(value) switch
+        {
+            PaddleOcr.Tier.Tiny => "v6tiny",
+            PaddleOcr.Tier.Small => "v6small",
+            _ => null,
+        };
+
+        for (int i = 0; i < OcrEngineCombo.Items.Count; i++)
+        {
+            if (OcrEngineCombo.Items[i] is OcrEngineItem item && item.Value == normalized)
+            {
+                OcrEngineCombo.SelectedIndex = i;
+                return;
+            }
+        }
+        OcrEngineCombo.SelectedIndex = 0;
+    }
+
+    private sealed record OcrEngineItem(string Label, string? Value)
+    {
+        public override string ToString() => Label;
     }
 
     private sealed record KindItem(string Label, ProbeKind Kind)

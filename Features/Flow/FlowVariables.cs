@@ -104,7 +104,7 @@ internal static class FlowVariables
     private static IReadOnlyList<string> ProbeProperties(Probe? probe) => probe?.Kind switch
     {
         ProbeKind.image => new[] { "x", "y", "found", "score" },
-        ProbeKind.ocr => new[] { "found" },
+        ProbeKind.ocr => new[] { "found", "score" },
         ProbeKind.cursor => new[] { "x", "y" },
         ProbeKind.window => new[] { "found", "number", "text" },
         ProbeKind.process => new[] { "found", "number" },

@@ -78,7 +78,7 @@ public enum ProbeKind
     /// <summary>屏幕图像匹配（OpenCV 模板匹配）。</summary>
     image,
 
-    /// <summary>截图 OCR（系统 Windows.Media.Ocr，识别指定区域的文字）。</summary>
+    /// <summary>截图 OCR（系统 Windows.Media.Ocr 或 PP-OCRv6，识别指定区域的文字）。</summary>
     ocr,
 
     /// <summary>屏幕像素颜色。</summary>
@@ -192,6 +192,11 @@ public sealed class Probe
     /// <summary>image: 最低置信度（0..1）。</summary>
     public double MinScore { get; set; } = 0.85;
 
+    // —— ocr ——
+
+    /// <summary>ocr: 识别引擎。<c>null</c>/<c>windows</c> = 系统 OCR；<c>v6tiny</c> / <c>v6small</c> = PP-OCRv6。</summary>
+    public string? OcrEngine { get; set; }
+
     // —— color ——
 
     /// <summary>color: X 坐标（支持 ${} 模板）。</summary>
@@ -232,6 +237,7 @@ public sealed class Probe
         TimeoutMs = TimeoutMs,
         IntervalMs = IntervalMs,
         MinScore = MinScore,
+        OcrEngine = OcrEngine,
         X = X,
         Y = Y,
         Color = Color,

@@ -135,7 +135,23 @@
         <!-- 截图 OCR：区域控件与「截图找图」共用下方 RegionSection -->
         <StackPanel x:Name="P_Ocr" Visibility="Collapsed" Margin="0,8,0,0">
             <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                       Text="截取屏幕区域后识别文字（Windows 自带 OCR，中文 / 英文随系统语言包）。识别不到文字时结果为空，可用「不为空」判断。"/>
+                       Text="截取屏幕区域后识别文字。系统 OCR 零下载、十几毫秒出结果；PP-OCRv6 明显更准（小字、数字、深色底），代价是慢一些、占内存。识别不到文字时结果为空，可用「不为空」判断。"/>
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <TextBlock Text="识别引擎" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                <ComboBox x:Name="OcrEngineCombo" Width="240" MinHeight="30" Margin="8,0,0,0"
+                          DisplayMemberPath="Label" SelectionChanged="OcrEngine_Changed"/>
+            </StackPanel>
+            <TextBlock x:Name="OcrEngineHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                       Margin="0,4,0,0"/>
+            <StackPanel x:Name="OcrDownloadPanel" Orientation="Horizontal" Margin="0,6,0,0"
+                        Visibility="Collapsed">
+                <Button x:Name="OcrDownloadButton" Style="{StaticResource BtnGhost}"
+                        Content="下载模型（29.8 MB）" MinHeight="30" Padding="10,4"
+                        Click="OcrDownload_Click"
+                        ToolTip="从 ModelScope 下载 PP-OCRv6 高精度模型并校验 SHA-256；只需下载一次"/>
+                <TextBlock x:Name="OcrDownloadHint" Style="{StaticResource HintLabel}" VerticalAlignment="Center"
+                           Margin="8,0,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
         </StackPanel>
 
         <!-- 屏幕区域：截图找图（搜索范围）与截图 OCR（截图范围）共用 -->

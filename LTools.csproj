@@ -24,11 +24,17 @@
     <!-- 图像识别：OpenCV 的 .NET 绑定（模板匹配 / 缩放）。native 包只含 win-x64。 -->
     <PackageReference Include="OpenCvSharp4" Version="4.13.0.20260627" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20260627" />
+    <!-- 高精度 OCR：PP-OCRv6 推理（ONNX Runtime + SkiaSharp，纯托管包，无原生 Paddle） -->
+    <PackageReference Include="RapidOcrNet" Version="4.2.0" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="Icon\LTools.ico">
       <Link>Icon\LTools.ico</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- OCR 引擎按此目录找模型；tiny 随包分发，small 按需下载到数据根（见 OcrModelStore） -->
+    <Content Include="Assets\Ocr\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <!-- 只随包分发示例配置 LTools.example.json，绝不生成 LTools.json——
@@ -39,5 +45,23 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <!-- RapidOcrNet 的包内 targets 会把自带的 PP-OCRv5 模型（约 13.7 MB）拷到输出目录，
+       我们只用 PP-OCRv6（Assets\Ocr），故构建 / 发布后清掉，避免发布包白白变大。 -->
+  <Target Name="RemoveRapidOcrNetV5Models" AfterTargets="CopyModelsBuild">
+    <ItemGroup>
+      <_RapidOcrV5 Include="$(TargetDir)models\v5\**\*" />
+    </ItemGroup>
+    <Delete Files="@(_RapidOcrV5)" />
+    <RemoveDir Directories="$(TargetDir)models\v5" Condition="'$(TargetDir)' != ''" />
+  </Target>
+
+  <Target Name="RemoveRapidOcrNetV5ModelsOnPublish" AfterTargets="CopyModelsPublish" Condition="'$(PublishDir)' != ''">
+    <ItemGroup>
+      <_RapidOcrV5Publish Include="$(PublishDir)models\v5\**\*" />
+    </ItemGroup>
+    <Delete Files="@(_RapidOcrV5Publish)" />
+    <RemoveDir Directories="$(PublishDir)models\v5" />
+  </Target>
 
 </Project>

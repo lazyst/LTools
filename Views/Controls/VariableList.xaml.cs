@@ -93,7 +93,7 @@ public partial class VariableList : UserControl
         string what = prop switch
         {
             "found" => "是否找到 / 存在：true 或 false",
-            "score" => "相似度 0–1，1 表示完全一致；低于「最低相似度」就算没找到",
+            "score" => "0–1 的分数：找图是相似度（1 = 完全一致，低于「最低相似度」就算没找到）；OCR 是平均置信度",
             "x" or "y" => "屏幕坐标（虚拟桌面物理像素）",
             "exit" => "命令退出码，0 通常表示成功",
             "err" => "命令的错误输出",

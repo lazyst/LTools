@@ -61,7 +61,8 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 
 - `GlobalUsings.cs` 已把 `Button`/`Key`/`MessageBox` 等同名类型统一到 WPF 命名空间——不要引用 WinForms 类型
 - 文件夹选择用 WPF 原生 `Microsoft.Win32.OpenFolderDialog`，不引用 WinForms
-- 第三方依赖：`H.NotifyIcon.Wpf`（托盘图标）、`OpenCvSharp4`（图像匹配）、`FlaUI.UIA3`（UI Automation，读选中文本）
+- 第三方依赖：`H.NotifyIcon.Wpf`（托盘图标）、`OpenCvSharp4`（图像匹配）、`FlaUI.UIA3`（UI Automation，读选中文本）、`RapidOcrNet`（PP-OCRv6 识别，ONNX Runtime + SkiaSharp）
+- OCR 双引擎：默认 `Windows.Media.Ocr`；`Features/Flow/PaddleOcr.cs` 是按需的 PP-OCRv6（tiny 内置在 `Assets/Ocr/ppocrv6`，small 下载到数据根 `ocr-models/`，见 `OcrModelStore`）。RapidOcrNet 的包内 targets 会把自带的 v5 模型拷进输出目录，csproj 里有 target 在构建 / 发布后清理
 
 ## 其他
 

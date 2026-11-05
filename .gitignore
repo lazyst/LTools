@@ -51,3 +51,6 @@ CapsLock++.json   # 改名前旧配置
 
 publish/
 
+# 按需下载的 OCR 模型（PP-OCRv6 高精度），dev 落在仓库根
+ocr-models/
+
