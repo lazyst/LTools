@@ -62,18 +62,26 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="次数" VerticalAlignment="Center"
                                        Foreground="{StaticResource HintTextBrush}"/>
-                            <TextBox x:Name="LoopCountBox" Grid.Column="1" Width="90" MinHeight="32" Margin="8,0,0,0"/>
+                            <TextBox x:Name="LoopCountBox" Grid.Column="1" Width="90" MinHeight="32" Margin="8,0,0,0"
+                                     ToolTip="1–20000；单次运行的步数 / 时间预算另计"/>
                         </Grid>
 
-                        <StackPanel x:Name="LoopWhilePanel" Visibility="Collapsed">
+                        <!-- 下标 / 轮次变量放在条件编辑器之前：条件编辑器很高，放在它后面会被挤出可视区 -->
+                        <TextBlock x:Name="LoopIndexLabel" Style="{StaticResource SectionLabel}"
+                                   Text="下标变量（可选）" Margin="0,0,0,4"/>
+                        <TextBox x:Name="LoopIndexVarBox" MinHeight="32" TextChanged="LoopIndexVar_Changed"
+                                 ToolTip="填一个变量名，例如「序号」；留空表示不创建变量"/>
+                        <TextBlock x:Name="LoopIndexHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                                   Margin="0,4,0,0"
+                                   Text="每轮开始时写入当前下标（从 0 开始），循环体内用 ${变量名} 引用；结束后保留最后一次的值。"/>
+                        <TextBlock x:Name="LoopIndexWarn" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                                   Margin="0,3,0,10" Visibility="Collapsed"
+                                   Foreground="{StaticResource DangerBrush}"/>
+
+                        <StackPanel x:Name="LoopWhilePanel" Visibility="Collapsed" Margin="0,10,0,0">
                             <controls:ConditionEditor x:Name="LoopCondition"/>
                         </StackPanel>
 
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="下标变量（可选）" Margin="0,12,0,4"/>
-                        <TextBox x:Name="LoopIndexVarBox" MinHeight="32"
-                                 ToolTip="填一个变量名，例如「序号」；留空表示不记录下标"/>
-                        <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,4,0,0"
-                                   Text="填了变量名后，每轮开始时把当前下标（从 0 开始）写进这个变量；循环体内用 ${变量名} 引用。留空则不创建变量。"/>
                         <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,10,0,0"
                                    Text="跳出 / 继续用于控制循环。"/>
                     </StackPanel>

@@ -311,13 +311,16 @@ public sealed class LoopNode
     /// <summary>循环方式。</summary>
     public LoopMode Mode { get; set; }
 
-    /// <summary>count: 次数（1..100000）。</summary>
+    /// <summary>count: 次数（运行时允许 0..20000，0 表示不执行；编辑器要求 1..20000）。</summary>
     public int Count { get; set; } = 3;
 
     /// <summary>while: 每轮开始前判断；为真才继续。</summary>
     public Condition? While { get; set; }
 
-    /// <summary>可选：把当前轮下标（0 开始）写进这个用户变量；留空表示不写。</summary>
+    /// <summary>
+    /// 可选：把当前轮下标（0 开始）写进这个用户变量；留空表示不写。
+    /// 循环结束后保留最后一次的值（与全局变量表一致，没有块作用域）。
+    /// </summary>
     public string IndexVar { get; set; } = "";
 
     /// <summary>循环体。</summary>
@@ -384,14 +387,21 @@ public static class FlowText
         FlowNodeKind.action => ActionLabel(n.Action) + OutputSuffix(n.Action),
         FlowNodeKind.set => $"{n.Set?.Var} = {ProbeLabel(n.Set?.Probe)}",
         FlowNodeKind.@if => "如果 " + ConditionLabel(n.If?.Condition),
-        FlowNodeKind.loop => n.Loop?.Mode == LoopMode.@while
-            ? "循环 · 条件成立时"
-            : $"循环 · {n.Loop?.Count ?? 0} 次",
+        FlowNodeKind.loop => LoopSummary(n.Loop),
         FlowNodeKind.@break => "跳出循环",
         FlowNodeKind.@continue => "进入下一次循环",
         FlowNodeKind.stop => "停止流程",
         _ => n.Kind.ToString(),
     };
+
+    /// <summary>循环摘要：模式 / 次数 + 下标变量（有才显示），错误信息与流程行共用。</summary>
+    private static string LoopSummary(LoopNode? loop)
+    {
+        if (loop == null) return "循环";
+        string text = loop.Mode == LoopMode.@while ? "循环 · 条件成立时" : $"循环 · {loop.Count} 次";
+        string index = loop.IndexVar?.Trim() ?? "";
+        return index.Length == 0 ? text : $"{text} · {index}";
+    }
 
     /// <summary>节点类型徽标。</summary>
     public static string Badge(FlowNode n) => n.Kind switch

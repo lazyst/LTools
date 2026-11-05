@@ -20,6 +20,12 @@ public partial class FlowNodeDialog : Window
 {
     private readonly FlowNode _node;
 
+    /// <summary>流程里其它节点已有的变量名（用于提示下标变量重名会覆盖）。</summary>
+    private readonly HashSet<string> _otherVariables;
+
+    /// <summary>本节点原有下标变量名（重名提示时排除自己，否则每次打开都报警）。</summary>
+    private readonly string _ownIndexVar;
+
     /// <summary>确定后的新节点（取消时为 null）。</summary>
     public FlowNode? Result { get; private set; }
 
@@ -30,6 +36,8 @@ public partial class FlowNodeDialog : Window
         _node = node.Clone();
 
         var infos = customVariables?.ToList() ?? new List<VariableInfo>();
+        _otherVariables = new HashSet<string>(infos.Select(v => v.Name), StringComparer.OrdinalIgnoreCase);
+        _ownIndexVar = _node.Loop?.IndexVar?.Trim() ?? "";
         VariableSource.SetNames(this, FlowVariables.ExpandPaths(infos));
 
         switch (_node.Kind)
@@ -66,6 +74,8 @@ public partial class FlowNodeDialog : Window
                 }
                 UpdateLoopPanels();
                 LoopIndexVarBox.Text = loop.IndexVar ?? "";
+                UpdateLoopIndexTexts();
+                UpdateIndexWarn();
                 break;
         }
     }
@@ -74,6 +84,8 @@ public partial class FlowNodeDialog : Window
     {
         if (LoopCountPanel == null) return;   // 初始化期间字段尚未就绪
         UpdateLoopPanels();
+        UpdateLoopIndexTexts();
+        UpdateIndexWarn();
     }
 
     // —— 循环 ——
@@ -83,6 +95,44 @@ public partial class FlowNodeDialog : Window
         bool byCount = LoopCountRadio.IsChecked == true;
         LoopCountPanel.Visibility = byCount ? Visibility.Visible : Visibility.Collapsed;
         LoopWhilePanel.Visibility = byCount ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>固定次数叫「下标」，条件循环里其实是已执行轮次——文案跟着模式变，免得误导。</summary>
+    private void UpdateLoopIndexTexts()
+    {
+        if (LoopIndexLabel == null) return;
+
+        bool byCount = LoopCountRadio.IsChecked == true;
+        LoopIndexLabel.Text = byCount ? "下标变量（可选）" : "轮次变量（可选）";
+        LoopIndexHint.Text = byCount
+            ? "每轮开始时写入当前下标（从 0 开始），循环体内用 ${变量名} 引用；结束后保留最后一次的值。"
+            : "每轮开始时写入已执行轮次（从 0 开始），循环体内用 ${变量名} 引用；结束后保留最后一次的值。";
+    }
+
+    private void LoopIndexVar_Changed(object sender, TextChangedEventArgs e) => UpdateIndexWarn();
+
+    /// <summary>下标变量与流程里其它变量重名时给出提示：运行时会直接覆盖它。</summary>
+    private void UpdateIndexWarn()
+    {
+        if (LoopIndexWarn == null || LoopIndexVarBox == null) return;
+
+        string name = LoopIndexVarBox.Text.Trim();
+        bool clash = name.Length > 0
+                     && _otherVariables.Contains(name)
+                     && !string.Equals(name, _ownIndexVar, StringComparison.OrdinalIgnoreCase);
+
+        LoopIndexWarn.Visibility = clash ? Visibility.Visible : Visibility.Collapsed;
+        if (clash)
+            LoopIndexWarn.Text = $"流程里已有变量「{name}」，循环会覆盖它的值（结束后保留最后一次下标）。";
+    }
+
+    /// <summary>变量名不能带空白、属性分隔符或模板符号，否则 ${名字} 无法解析或会和属性混淆。</summary>
+    private static bool IsValidVariableName(string name)
+    {
+        foreach (char c in name)
+            if (char.IsWhiteSpace(c) || c is '$' or '{' or '}' or '.')
+                return false;
+        return true;
     }
 
     private void Ok_Click(object sender, RoutedEventArgs e)
@@ -136,9 +186,9 @@ public partial class FlowNodeDialog : Window
                 {
                     string text = LoopCountBox.Text.Trim();
                     if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int count) ||
-                        count < 1 || count > 100_000)
+                        count < 1 || count > RunContext.MaxLoopIterations)
                     {
-                        ConfirmDialog.Info(this, "循环", "次数必须是 1–100000 之间的整数。");
+                        ConfirmDialog.Info(this, "循环", $"次数必须是 1–{RunContext.MaxLoopIterations} 之间的整数。");
                         LoopCountBox.Focus();
                         return;
                     }
@@ -146,7 +196,16 @@ public partial class FlowNodeDialog : Window
                     loop.Count = count;
                     loop.While = null;
                 }
-                loop.IndexVar = LoopIndexVarBox.Text.Trim();
+
+                string indexVar = LoopIndexVarBox.Text.Trim();
+                if (!IsValidVariableName(indexVar))
+                {
+                    ConfirmDialog.Info(this, "循环", "变量名不能包含空格、小数点、$ 或 { }（点用于取属性，如 ${变量.x}）。");
+                    LoopIndexVarBox.Focus();
+                    return;
+                }
+
+                loop.IndexVar = indexVar;
                 _node.Loop = loop;
                 break;
             }

@@ -31,14 +31,18 @@ internal sealed class FlowAbortException : Exception
 /// </remarks>
 internal sealed class RunContext
 {
-    /// <summary>单次运行最多执行的节点数（防 while/goto 型失控）。</summary>
-    public const int MaxSteps = 20_000;
+    /// <summary>单次运行最多执行的节点数（循环体里的节点也算，轮次本身不算）。</summary>
+    public const int MaxSteps = 100_000;
+
+    /// <summary>单个循环最多执行的轮次（固定次数 / 条件循环共用）。</summary>
+    public const int MaxLoopIterations = 20_000;
 
     /// <summary>单次运行最长时长。</summary>
     public static readonly TimeSpan MaxDuration = TimeSpan.FromMinutes(30);
 
     private readonly CancellationToken _token;
     private readonly DateTime _deadline;
+    private int _iterationTicks;
 
     public RunContext(CancellationToken token, int cursorX, int cursorY)
     {
@@ -64,6 +68,12 @@ internal sealed class RunContext
     /// <summary>是否有取消请求。</summary>
     public bool IsCancelled => _token.IsCancellationRequested;
 
+    /// <summary>
+    /// 当前正在执行的循环摘要（如「循环 · 3 次 · 序号」）；空表示不在循环里。
+    /// 只用于把步数 / 时间预算错误指向具体循环，由 <see cref="FlowRunner"/> 设置并在结束后复原。
+    /// </summary>
+    public string LoopLabel { get; set; } = "";
+
     /// <summary>记录被 OnFail=继续 吞掉的异常。</summary>
     public void SetError(Exception ex) => LastError = ex.Message;
 
@@ -74,12 +84,27 @@ internal sealed class RunContext
 
         StepCount++;
         if (StepCount > MaxSteps)
-            throw new FlowAbortException($"执行步数超过上限（{MaxSteps} 步），已自动停止");
+            throw new FlowAbortException($"执行步数超过上限（{MaxSteps} 步），已自动停止{InLoop()}");
 
         // 每 32 步检查一次时钟，避免热循环里频繁取时间。
         if ((StepCount & 31) == 0 && DateTime.UtcNow > _deadline)
-            throw new FlowAbortException($"执行时间超过上限（{MaxDuration.TotalMinutes:0} 分钟），已自动停止");
+            throw new FlowAbortException($"执行时间超过上限（{MaxDuration.TotalMinutes:0} 分钟），已自动停止{InLoop()}");
     }
+
+    /// <summary>
+    /// 进入循环的一轮：只做取消与时间检查，**不计节点步数**。
+    /// 轮次另有 <see cref="MaxLoopIterations"/> 上限，否则「20000 次 × 3 个步骤」会先撞步数预算，
+    /// 而界面上明明允许填 20000 次。
+    /// </summary>
+    public void EnterIteration()
+    {
+        if (_token.IsCancellationRequested) throw new FlowAbortException("已停止", userCancelled: true);
+
+        if ((++_iterationTicks & 31) == 0 && DateTime.UtcNow > _deadline)
+            throw new FlowAbortException($"执行时间超过上限（{MaxDuration.TotalMinutes:0} 分钟），已自动停止{InLoop()}");
+    }
+
+    private string InLoop() => LoopLabel.Length == 0 ? "" : $"（在循环「{LoopLabel}」内）";
 
     /// <summary>可取消等待；返回 false 表示被用户停止。</summary>
     public bool Wait(int milliseconds)

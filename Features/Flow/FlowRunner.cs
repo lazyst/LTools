@@ -228,7 +228,7 @@ internal static class FlowRunner
             }
 
             case FlowNodeKind.loop:
-                return ExecuteLoop(node.Loop ?? throw new FlowException("循环节点为空"), ctx, owner);
+                return ExecuteLoop(node, ctx, owner);
 
             case FlowNodeKind.@break:
                 return Signal.breakLoop;
@@ -244,30 +244,49 @@ internal static class FlowRunner
         }
     }
 
-    private static Signal ExecuteLoop(LoopNode loop, RunContext ctx, ActionDto owner)
+    /// <summary>执行循环：固定次数 / 条件成立时重复；轮次有独立上限，出现问题时能指到具体循环。</summary>
+    private static Signal ExecuteLoop(FlowNode node, RunContext ctx, ActionDto owner)
     {
-        int count = loop.Mode == LoopMode.count ? Math.Clamp(loop.Count, 0, 100_000) : int.MaxValue;
+        var loop = node.Loop ?? throw new FlowException("循环节点为空");
+        if (loop.Mode == LoopMode.count && (loop.Count < 0 || loop.Count > RunContext.MaxLoopIterations))
+            throw new FlowException($"循环次数必须在 0–{RunContext.MaxLoopIterations} 之间（当前 {loop.Count}）。");
 
-        for (int i = 0; i < count; i++)
+        int count = loop.Mode == LoopMode.count ? loop.Count : int.MaxValue;
+        string label = FlowText.Summary(node);
+        string previousLabel = ctx.LoopLabel;
+        ctx.LoopLabel = label;
+
+        try
         {
-            ctx.EnterStep();   // 循环迭代也计入预算，防止空循环空转
-
-            if (loop.Mode == LoopMode.@while)
+            for (int i = 0; i < count; i++)
             {
-                if (loop.While == null) throw new FlowException("条件循环缺少条件");
-                if (!ProbeEvaluator.Test(loop.While, ctx)) break;
+                if (i >= RunContext.MaxLoopIterations)
+                    throw new FlowAbortException($"循环「{label}」已执行 {RunContext.MaxLoopIterations} 轮，已自动停止");
+
+                // 轮次不计入节点步数：预算只约束真正执行的节点，轮次由上面的上限约束。
+                ctx.EnterIteration();
+
+                if (loop.Mode == LoopMode.@while)
+                {
+                    if (loop.While == null) throw new FlowException("条件循环缺少条件");
+                    if (!ProbeEvaluator.Test(loop.While, ctx)) break;
+                }
+
+                // 把本轮下标写进用户指定的变量（留空则什么也不做）；循环结束后保留最后一次的值。
+                if (!string.IsNullOrWhiteSpace(loop.IndexVar))
+                    ctx.Vars[loop.IndexVar.Trim()] = VarValue.FromNumber(i);
+
+                var signal = ExecuteBlock(loop.Body, ctx, owner);
+                if (signal == Signal.stop) return Signal.stop;
+                if (signal == Signal.breakLoop) break;
+                // continueLoop：直接进入下一轮
             }
-
-            // 把本轮下标写进用户指定的变量（留空则什么也不做）；用户变量面板里能看到它
-            if (!string.IsNullOrWhiteSpace(loop.IndexVar))
-                ctx.Vars[loop.IndexVar.Trim()] = VarValue.FromNumber(i);
-
-            var signal = ExecuteBlock(loop.Body, ctx, owner);
-            if (signal == Signal.stop) return Signal.stop;
-            if (signal == Signal.breakLoop) break;
-            // continueLoop：直接进入下一轮
+            return Signal.none;
         }
-        return Signal.none;
+        finally
+        {
+            ctx.LoopLabel = previousLabel;
+        }
     }
 
     private static string IndicatorText(RunContext ctx)

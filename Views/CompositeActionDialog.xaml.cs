@@ -951,6 +951,12 @@ public partial class CompositeActionDialog : Window
             return;
         }
 
+        if (FindEmptyLoop(_flow) is string emptyLoop &&
+            !ConfirmDialog.Confirm(this, "组合动作",
+                $"「{emptyLoop}」没有循环体，运行时会空转（什么都不做）。仍要保存？",
+                okText: "仍要保存"))
+            return;
+
         PruneEmptyElse(_flow);
 
         _draft.Name = name;
@@ -979,6 +985,25 @@ public partial class CompositeActionDialog : Window
             else if (n.Kind == FlowNodeKind.loop && n.Loop != null)
             {
                 if (FindMisplacedLoopControl(n.Loop.Body, true) is string b) return b;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>找出空的循环体（只空转、不做事），保存前提醒一次。</summary>
+    private static string? FindEmptyLoop(List<FlowNode> nodes)
+    {
+        foreach (var n in nodes)
+        {
+            if (n.Kind == FlowNodeKind.loop && n.Loop != null)
+            {
+                if (n.Loop.Body.Count == 0) return FlowText.Summary(n);
+                if (FindEmptyLoop(n.Loop.Body) is string inner) return inner;
+            }
+            else if (n.Kind == FlowNodeKind.@if && n.If != null)
+            {
+                if (FindEmptyLoop(n.If.Then) is string t) return t;
+                if (n.If.Else != null && FindEmptyLoop(n.If.Else) is string f) return f;
             }
         }
         return null;
