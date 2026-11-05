@@ -16,24 +16,29 @@ namespace LTools.Views;
 /// </remarks>
 internal static class ActionEditor
 {
-    /// <summary>弹出模态编辑器；取消返回 null。existing=null 表示新建。</summary>
-    public static ActionDto? Show(Window owner, string title, ActionDto? existing)
+    /// <summary>
+    /// 弹出模态编辑器；取消返回 null。existing=null 表示新建。
+    /// <paramref name="owner"/> 可以为 null（超级面板「先关面板再开编辑器」走这条）：
+    /// 这时按「无 Owner = 置顶」处理，避免编辑器被其它窗口盖住。
+    /// </summary>
+    public static ActionDto? Show(Window? owner, string title, ActionDto? existing)
     {
         bool wantComposite = existing != null && existing.Type == ActionType.composite;
         string t = title;
+        bool topmost = owner?.Topmost ?? true;
 
         while (true)
         {
             if (wantComposite)
             {
-                var dlg = new CompositeActionDialog(t, existing) { Owner = owner, Topmost = owner.Topmost };
+                var dlg = new CompositeActionDialog(t, existing) { Owner = owner, Topmost = topmost };
                 dlg.ShowDialog();
                 if (dlg.JumpToNormal) { wantComposite = false; existing = null; t = "新建动作"; continue; }
                 return dlg.Result;
             }
             else
             {
-                var dlg = new ActionEditorDialog(t, existing) { Owner = owner, Topmost = owner.Topmost };
+                var dlg = new ActionEditorDialog(t, existing) { Owner = owner, Topmost = topmost };
                 dlg.ShowDialog();
                 if (dlg.JumpToComposite) { wantComposite = true; existing = null; t = "新建组合动作"; continue; }
                 return dlg.Result;

@@ -15,22 +15,22 @@ namespace LTools.Views;
 /// </summary>
 public partial class ActionPoolPicker : Window
 {
-    private readonly Window _owner;
     private List<ActionCell> _cells = new();
     private List<ActionCell> _all = new();
 
     /// <summary>选中的动作 Id；取消时为 null。</summary>
     public string? Result { get; private set; }
 
-    public ActionPoolPicker(Window owner, string title, string? preselectId = null)
+    /// <param name="owner">可以为 null（超级面板先关面板再开选择器）；无 Owner 时按置顶处理。</param>
+    public ActionPoolPicker(Window? owner, string title, string? preselectId = null)
     {
-        _owner = owner;
         InitializeComponent();
         WindowChromeHelper.FixMaximize(this);
         Title = title;
         // 继承 owner 的 Topmost：从超级面板（Topmost）打开时盖住同时置顶的设置窗口，
-        // 避免被设置盖住 + 设置又被模态禁用的死锁（设置页 3 处调用点同此理）
-        Topmost = owner.Topmost;
+        // 避免被设置盖住 + 设置又被模态禁用的死锁（设置页 3 处调用点同此理）。
+        // 没有 owner（面板已收）时就直接置顶。
+        Topmost = owner?.Topmost ?? true;
         HintText.Text = $"当前已选：{(string.IsNullOrEmpty(Result) ? "（未选）" : ActionRegistry.DisplayName(Result ?? ""))}";
         BuildCells(preselectId);
         Loaded += (_, _) => SearchBox.Focus();

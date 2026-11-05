@@ -21,8 +21,9 @@ namespace LTools.Views;
 /// <para>
 /// **用完即收**：面板只当启动器——执行动作、打开设置、新建 / 编辑 / 复制 / 删除动作、从动作池选动作，
 /// 都先收起面板（取消也一样）。留在面板上的只有「钉住」、翻页和拖动重排这些还在面板里进行的操作。
-/// 打开模态编辑器 / 对话框前先调 <see cref="HideForDialog"/>：面板仍是对方 Owner（直接关会连对话框一起销毁），
-/// 但会立刻从屏幕上消失，不会出现「编辑器与面板并排」；对话框结束后再 <c>SuperPanel.Close()</c>。
+/// 打开模态编辑器 / 对话框前直接 <see cref="SuperPanel.Close"/>：**不要把隐藏的面板当对话框的 Owner**
+/// ——隐藏的 Owner 在模态对话框出现时会被画成一整块黑窗闪一下，而且面板仍算「已打开」，
+/// 鼠标钩子的长按右键手势会被拦住（编辑器开着时唤不出面板）。
 /// </para>
 /// </summary>
 public partial class SuperPanelWindow : Window
@@ -393,13 +394,14 @@ public partial class SuperPanelWindow : Window
     /// <summary>从动作池选已有动作放入本槽（补上面板此前缺失的「复用已有动作」能力）。</summary>
     private void PickExistingAt(int slot)
     {
-        HideForDialog();
-        var picker = new ActionPoolPicker(this, "超级面板槽位 — 选择动作", CurrentPage[slot]) { Owner = this };
-        RunDialog(() => { picker.ShowDialog(); });
-
-        // 选完（含取消）收起面板：与新建 / 编辑 / 复制 / 删除一致，面板只在这次操作期间存在。
-        if (picker.Result != null) SetSlot(slot, picker.Result);
+        string? current = CurrentPage[slot];
         SuperPanel.Close();
+
+        var picker = new ActionPoolPicker(null, "超级面板槽位 — 选择动作", current);
+        picker.ShowDialog();
+
+        // 选完（含取消）都不再回到面板：与新建 / 编辑 / 复制 / 删除一致，面板只在这次操作期间存在。
+        if (picker.Result != null) SetSlot(slot, picker.Result);
     }
 
     /// <summary>在指定格子上弹出菜单（左键点空格走此路径；右键由 ContextMenu 自动弹出）。</summary>
@@ -462,41 +464,34 @@ public partial class SuperPanelWindow : Window
         return false;
     }
 
-    /// <summary>
-    /// 打开对话框 / 编辑器前立刻把面板藏起来：它仍作为 Owner 存活到对话框结束
-    /// （直接把 Owner 关掉会连对话框一起销毁），但视觉上不会再出现「编辑器和面板并排」。
-    /// 对话框结束后由调用方 <see cref="SuperPanel.Close"/> 收起面板。
-    /// </summary>
-    private void HideForDialog()
-    {
-        if (Visibility == Visibility.Visible) Visibility = Visibility.Hidden;
-    }
-
     /// <summary>把动作推迟到下一 Dispatcher 周期——右键菜单项 Click 内同步打开模态对话框，
     /// 会与菜单正在关闭的过程冲突（ShowDialog 可能不显示），故须延后执行。</summary>
     private void Defer(Action action) => Dispatcher.InvokeAsync(action);
 
     // —— 槽位 CRUD（全部经 ConfigIO 落盘）——
+    //
+    // 面板是「用完就收」的启动器：这些入口都**先关面板，再开对话框**。
+    // 不要改回「隐藏面板、让它当对话框的 Owner」：
+    //   1. 隐藏的 Owner 在模态对话框打开时会被 DWM 画成一整块黑窗闪一下（实测占满面板矩形）；
+    //   2. 面板仍然算「已打开」，鼠标钩子的长按右键手势会被拦住，编辑器开着时唤不出面板。
+    // 面板关掉后对话框没有 Owner，Topmost 由 ActionEditor / ActionPoolPicker 按「无 Owner = 置顶」处理，
+    // 依旧不会被其它窗口盖住。
 
     private void NewActionAt(int slot, ActionType? presetType)
     {
-        HideForDialog();
-        var dto = RunDialog(() =>
-        {
-            if (presetType == null)
-                return ActionEditor.Show(this, "新建动作", null);
-            string title = presetType == ActionType.composite ? "新建组合动作" : "新建动作";
-            var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = presetType.Value };
-            return ActionEditor.Show(this, title, draft);
-        });
+        SuperPanel.Close();
 
-        // 面板是用完就收的启动器：新建（含取消）之后不再留在屏幕上。
-        if (dto == null) { SuperPanel.Close(); return; }
+        var dto = presetType == null
+            ? ActionEditor.Show(null, "新建动作", null)
+            : ActionEditor.Show(null,
+                presetType == ActionType.composite ? "新建组合动作" : "新建动作",
+                new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = presetType.Value });
+
+        if (dto == null) return;   // 取消：面板已经收了，不用再关
 
         ConfigStore.AddAction(dto);
         SetSlot(slot, dto.Id);
         ConfigStore.Save();
-        SuperPanel.Close();
     }
 
     private void EditAt(int slot)
@@ -506,13 +501,13 @@ public partial class SuperPanelWindow : Window
         var cur = ActionRegistry.FindById(id);
         if (cur == null) return;
 
-        HideForDialog();
-        var dto = RunDialog(() => ActionEditor.Show(this, "编辑动作", cur));
-        if (dto == null) { SuperPanel.Close(); return; }
+        SuperPanel.Close();
+        var dto = ActionEditor.Show(null, "编辑动作", cur);
+        if (dto == null) return;
+
         dto.Id = cur.Id;   // 编辑不换 Id
         ConfigStore.UpdateAction(dto);
         ConfigStore.Save();
-        SuperPanel.Close();
     }
 
     private void DuplicateAt(int slot)
@@ -526,9 +521,8 @@ public partial class SuperPanelWindow : Window
         int empty = CurrentPage.FindIndex(x => x == null);
         if (empty < 0)
         {
-            HideForDialog();
-            RunDialog(() => ConfirmDialog.Info(this, "超级面板", "当前页已满，副本已加入动作池（可在设置里放入格子）。"));
             SuperPanel.Close();
+            ConfirmDialog.Info(null, "超级面板", "当前页已满，副本已加入动作池（可在设置里放入格子）。");
             return;
         }
         SetSlot(empty, copy.Id);
@@ -541,14 +535,12 @@ public partial class SuperPanelWindow : Window
         if (id == null) return;
         string name = ActionRegistry.FindById(id)?.Name ?? "(未知动作)";
 
-        HideForDialog();
-        bool ok = RunDialog(() => ConfirmDialog.Confirm(this, "删除动作",
-            $"确定删除「{name}」吗？\n所有菜单项 / 超级面板槽位 / 组合步骤中的引用也会被清除。", danger: true));
+        SuperPanel.Close();
+        bool ok = ConfirmDialog.Confirm(null, "删除动作",
+            $"确定删除「{name}」吗？\n所有菜单项 / 超级面板槽位 / 组合步骤中的引用也会被清除。", danger: true);
 
-        // 取消也收起：进过菜单就说明已经用完这次面板。
         if (ok) ConfigStore.RemoveAction(id);   // 同时清菜单项 / 组合步骤 / 所有页槽位
         if (ok) ConfigStore.Save();
-        SuperPanel.Close();
     }
 
     // —— 拖动重排（§5.6）——
@@ -750,25 +742,6 @@ public partial class SuperPanelWindow : Window
     {
         CurrentPage[slot] = id;
         SuperPanel.SavePages(_pages);
-    }
-
-    /// <summary>会话/对话框期间禁止钩子介入（否则点击对话框会被判为“点外部”而关面板）。
-    /// 不再撤下面板 Topmost：对话框自身继承 Owner 的 Topmost（见各 Show 助手 / ActionPoolPicker 构造），
-    /// 既盖住面板、也盖住同时开着的其它 Topmost 窗口（如设置）——否则面板一撤 Topmost，
-    /// 对话框会被仍置顶的设置窗口盖住、且设置又被模态禁用 → 死锁。</summary>
-    private void RunDialog(Action fn)
-    {
-        _interactCount++;
-        try { fn(); }
-        finally { if (_interactCount > 0) _interactCount--; }
-    }
-
-    /// <summary>会话/对话框期间禁止钩子介入（同 <see cref="RunDialog(Action)"/>），并返回对话框结果。</summary>
-    private T RunDialog<T>(Func<T> fn)
-    {
-        _interactCount++;
-        try { return fn(); }
-        finally { if (_interactCount > 0) _interactCount--; }
     }
 
     // —— 窗口事件 ——
