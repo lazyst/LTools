@@ -7,8 +7,7 @@
         ResizeMode="CanResize" WindowStartupLocation="CenterOwner" ShowInTaskbar="True"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
-        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
-        PreviewGotKeyboardFocus="Window_PreviewGotKeyboardFocus">
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -26,20 +25,18 @@
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="340"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="232" MinWidth="196"/>
             </Grid.ColumnDefinitions>
 
-            <!-- 参数区 -->
+            <!-- 参数区：变量用输入框右侧的「插入变量」按钮插入，不再另设右侧变量栏 -->
             <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
-                          Padding="20,12,16,0">
+                          Padding="20,12,20,0">
                 <StackPanel>
                     <!-- 设置变量 -->
                     <StackPanel x:Name="SetSection" Visibility="Collapsed">
                         <TextBlock Style="{StaticResource SectionLabel}" Text="变量名" Margin="0,0,0,4"/>
                         <TextBox x:Name="VarBox" MinHeight="32" Margin="0,0,0,4"/>
                         <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,0,0,14"
-                                   Text="变量名可以用中文，例如「名称」；之后在文本里写 ${名称} 引用。右侧变量面板只列出这里设置过的变量。"/>
+                                   Text="变量名可以用中文，例如「名称」；之后在下面要写文本的输入框里用 ${名称} 引用（每个这样的输入框右侧都有「插入变量」按钮）。"/>
                         <controls:ProbeEditor x:Name="SetProbe"/>
                     </StackPanel>
 
@@ -82,20 +79,6 @@
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>
-
-            <Border Grid.Column="1" Width="1" Background="{StaticResource BorderBrush}" Margin="0,10"/>
-
-            <!-- 变量面板（点一下插入到最近编辑的输入框） -->
-            <Border Grid.Column="2" Background="{StaticResource SurfaceAltBrush}">
-                <DockPanel Margin="12,10,12,10">
-                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionLabel}" Text="变量"/>
-                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintLabel}"
-                               Text="点一下插入到最近编辑的输入框" TextWrapping="Wrap" Margin="0,3,0,6"/>
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <controls:VariableList x:Name="VarList"/>
-                    </ScrollViewer>
-                </DockPanel>
-            </Border>
         </Grid>
 
         <Border Grid.Row="2" Background="{StaticResource SurfaceAltBrush}"
