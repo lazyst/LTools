@@ -80,7 +80,7 @@
                     <WrapPanel Orientation="Horizontal">
                         <Button x:Name="CaptureShotBtn" Style="{StaticResource BtnPrimary}" Content="▣ 框选截图"
                                 MinHeight="30" Padding="10,4" Click="CaptureShot_Click"
-                                ToolTip="最小化 LTools → 冻结屏幕 → 拖个框，微调后确认即存为模板图"/>
+                                ToolTip="最小化 LTools → 冻结屏幕；移动可高亮窗口/控件、单击选中，拖动自由框选"/>
                         <Button Style="{StaticResource BtnGhost}" Content="换图…" Margin="6,0,0,0"
                                 MinHeight="30" Padding="10,4" Click="BrowseImage_Click"
                                 ToolTip="从 resources\user 选图；选到外部图片会复制进该目录，备份换机后仍有效"/>

@@ -79,7 +79,31 @@ internal static class Win32
     [DllImport("user32.dll")]
     public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
+    [DllImport("user32.dll")]
+    public static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpEnumCallbackFunction, IntPtr lParam);
+
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    /// <summary>在父窗口的直接子窗口里按点查找（按 z 序），用于从顶层窗口往下钻。</summary>
+    [DllImport("user32.dll")]
+    public static extern IntPtr ChildWindowFromPointEx(IntPtr hWndParent, Point pt, uint flags);
+
+    public const uint CwpSkipinvisible = 0x0001;
+    public const uint CwpSkiptransparent = 0x0004;
+
+    public const uint GaRoot = 2;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
+    public const int GwlExstyle = -20;
+    public const long WsExTransparent = 0x00000020;
+
+    /// <summary>DWM 窗口属性：实际可见边框（不含不可见的阴影边距）。</summary>
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out Rect pvAttribute, int cbAttribute);
+
+    public const int DwmwaExtendedFrameBounds = 9;
 
     [DllImport("user32.dll")]
     public static extern IntPtr WindowFromPoint(Point pt);

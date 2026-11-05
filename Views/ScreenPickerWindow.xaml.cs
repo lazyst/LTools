@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -24,6 +25,11 @@ namespace LTools.Views;
 /// 再按「使用这块区域」/ Enter / 双击确认。像截图软件一样可以来回调，直到刚好框住目标。
 /// </para>
 /// <para>
+/// 探测与吸附（Snipaste / PixPin 同款交互）：鼠标移动时高亮光标下的窗口 / 控件，
+/// **单击**即选中它（拖动了就是自由框选）；滚轮在「控件 → 父容器 → 窗口」之间换层级；
+/// 拖动边角时自动吸附到附近元素的边，按住 Ctrl 临时关闭。
+/// </para>
+/// <para>
 /// 窗口盖住光标所在的那台显示器；坐标换算为「显示器左上角 + 图像像素」，
 /// 与 <see cref="ScreenCapture"/> 的物理像素坐标系一致（多显示器 / 混合 DPI 都不会偏）。
 /// </para>
@@ -33,12 +39,33 @@ public partial class ScreenPickerWindow : Window
     private const double MinSize = 4;     // 选区最小边长（DIP）
     private const double GripSize = 9;    // 把手方块尺寸（DIP）
     private const double GripHit = 8;     // 把手命中半径（DIP）
+    private const double SnapDistance = 8;  // 边 / 角吸附距离（DIP）
+    private const double PressSlop = 3;     // 按下后位移小于此值算「单击」而不是拖动
 
     private readonly BitmapSource _shot;
     private readonly System.Drawing.Rectangle _monitor;
     private readonly bool _pointMode;
     private readonly bool _wantColor;
     private readonly List<Rectangle> _grips = new();
+
+    // —— 窗口 / 控件探测（框选模式）——
+    private readonly List<SnapBox> _windowTargets = new();   // Win32 窗口树，打开时枚举一次
+    private List<SnapBox> _uiaTargets = new();               // 光标处 UIA 元素栈（由内到外）
+    private readonly Dictionary<string, List<SnapBox>> _uiaCache = new();
+    private readonly List<SnapBox> _hoverCandidates = new();
+    private int _hoverIndex;
+    private SnapBox? _hoverTarget;
+    private Point _hoverAt = new(-9999, -9999);
+    private System.Drawing.Point _uiaQueryAt = new(-9999, -9999);
+    private string _uiaKey = "";
+    private bool _uiaBusy;
+
+    private List<double> _snapXs = new();
+    private List<double> _snapYs = new();
+
+    private Point _pressAt;
+    private bool _pressMoved;
+    private SnapBox? _pressTarget;
 
     private Rect? _sel;          // 当前选区（窗口 DIP）
     private DragMode _drag;
@@ -95,8 +122,8 @@ public partial class ScreenPickerWindow : Window
         }
         else
         {
-            HintText.Text = "拖动框选范围 · 右键 / Esc 取消";
-            ActionHint.Text = "拖动框选要匹配的区域";
+            HintText.Text = "移动选窗口 / 控件 · 拖动自由框选 · 滚轮换层级 · 右键 / Esc 取消";
+            ActionHint.Text = "拖动边角微调，方向键逐像素";
             BuildGrips();
         }
 
@@ -149,7 +176,19 @@ public partial class ScreenPickerWindow : Window
         }
         else
         {
+            // 窗口树枚举很快（几百个句柄），打开时一次即可；UIA 的那一层在悬停时按需补。
+            try
+            {
+                _windowTargets.AddRange(ScreenSnapTargets.FromWindows(_monitor));
+                RebuildSnapLines();
+            }
+            catch { /* 探测失败不影响手动框选 */ }
+
             UpdateChrome();
+
+            // 打开时鼠标本来就停在某个窗口上：先算一次悬停，省得用户要动一下才看见高亮。
+            if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out var dip))
+                UpdateHover(Clamp(dip));
         }
     }
 
@@ -166,6 +205,12 @@ public partial class ScreenPickerWindow : Window
             else if (IsValid(_sel))
             {
                 ConfirmRegion(_sel!.Value);
+            }
+            else if (_hoverTarget is SnapBox hover)
+            {
+                // 还没框选时按 Enter = 选中当前高亮的窗口 / 控件，再按一次才确定
+                _sel = ToDipRect(hover.Bounds);
+                UpdateChrome();
             }
             e.Handled = true;
             return;
@@ -235,6 +280,10 @@ public partial class ScreenPickerWindow : Window
         }
 
         Handle hit = HitTest(p);
+        _pressAt = p;
+        _pressMoved = false;
+        _pressTarget = null;
+
         if (hit != Handle.None)
         {
             _drag = hit == Handle.Move ? DragMode.Move : DragMode.Resize;
@@ -243,10 +292,12 @@ public partial class ScreenPickerWindow : Window
         }
         else
         {
-            // 空白处按下：重新拖一块。
+            // 空白处按下：先按自由拖动开始；松手时若几乎没动、且光标下有窗口 / 控件，就选中它。
+            _pressTarget = _hoverTarget;
             _drag = DragMode.New;
             _handle = Handle.None;
             _sel = new Rect(p, p);
+            SetHover(null);
         }
 
         _origin = p;
@@ -265,19 +316,25 @@ public partial class ScreenPickerWindow : Window
         if (_drag == DragMode.None)
         {
             Cursor = CursorFor(HitTest(p));
+            UpdateHover(p);
             return;
         }
+
+        if (!_pressMoved &&
+            (Math.Abs(p.X - _pressAt.X) > PressSlop || Math.Abs(p.Y - _pressAt.Y) > PressSlop))
+            _pressMoved = true;
 
         switch (_drag)
         {
             case DragMode.New:
-                _sel = RectFrom(_origin, p);
+                // 拖出来的边角吸附到附近窗口 / 控件的边（按住 Ctrl 临时关闭）
+                _sel = RectFrom(_origin, SnapPoint(p));
                 break;
             case DragMode.Move:
-                _sel = MoveTo(_originRect, p - _origin);
+                _sel = SnapMove(MoveTo(_originRect, p - _origin));
                 break;
             case DragMode.Resize:
-                _sel = ResizeFrom(_originRect, _handle, p - _origin);
+                _sel = SnapResize(ResizeFrom(_originRect, _handle, p - _origin), _handle);
                 break;
         }
 
@@ -293,12 +350,19 @@ public partial class ScreenPickerWindow : Window
         _handle = Handle.None;
         ReleaseMouseCapture();
 
-        if (!IsValid(_sel))
+        // 几乎没移动 = 单击：选中光标下的窗口 / 控件（和 Snipaste / PixPin 的「点一下即选中」一致）。
+        // 拖动了就是自由框选，不抢。
+        if (!_pressMoved && _pressTarget is SnapBox target)
+        {
+            _sel = ToDipRect(target.Bounds);
+        }
+        else if (!IsValid(_sel))
         {
             // 误点 / 太小：清掉重来，不关闭窗口。
             _sel = null;
         }
 
+        _pressTarget = null;
         Cursor = Cursors.Arrow;
         UpdateChrome();
         e.Handled = true;
@@ -379,50 +443,128 @@ public partial class ScreenPickerWindow : Window
         Close();
     }
 
-    /// <summary>按当前选区重画压暗层、选区框、把手、尺寸提示与底部确认栏。</summary>
+    /// <summary>按当前选区重画压暗层、选区框、悬停高亮、把手、尺寸提示与确认栏。</summary>
     private void UpdateChrome()
     {
         var full = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
-        if (_sel is not Rect s || s.Width < 0.5 || s.Height < 0.5)
+        bool hasSelection = _sel is Rect ss && ss.Width >= 0.5 && ss.Height >= 0.5;
+        Rect sel = hasSelection ? _sel!.Value : default;
+
+        // 悬停高亮只在「还没选区」时出现；有选区时用户在看边角，不需要再跳候选。
+        Rect? hover = null;
+        if (!hasSelection && _hoverTarget is SnapBox hb)
         {
-            DimPath.Data = new RectangleGeometry(full);
-            DimPath.Visibility = Visibility.Visible;
-            Selection.Visibility = Visibility.Collapsed;
-            foreach (var grip in _grips) grip.Visibility = Visibility.Collapsed;
-            InfoBox.Visibility = Visibility.Collapsed;
-            ConfirmBtn.IsEnabled = false;
-            ActionBar.Visibility = Visibility.Collapsed;   // 没选区时不挡任何拖动（提示在顶部不拦鼠标）
-            ActionHint.Text = "拖动框选要匹配的区域";
-            HintText.Text = "拖动框选范围 · 右键 / Esc 取消";
-            return;
+            var hr = ToDipRect(hb.Bounds);
+            if (hr.Width >= 2 && hr.Height >= 2 && full.IntersectsWith(hr)) hover = hr;
         }
 
+        // 压暗层用 EvenOdd 挖洞：选区（或悬停命中的窗口 / 控件）保持原亮度。
         var geo = new GeometryGroup { FillRule = FillRule.EvenOdd };
         geo.Children.Add(new RectangleGeometry(full));
-        geo.Children.Add(new RectangleGeometry(s));
+        if (hasSelection) geo.Children.Add(new RectangleGeometry(sel));
+        else if (hover is Rect hh) geo.Children.Add(new RectangleGeometry(hh));
         DimPath.Data = geo;
         DimPath.Visibility = Visibility.Visible;
 
-        Selection.Visibility = Visibility.Visible;
-        Canvas.SetLeft(Selection, s.X);
-        Canvas.SetTop(Selection, s.Y);
-        Selection.Width = s.Width;
-        Selection.Height = s.Height;
+        // 选区
+        Selection.Visibility = hasSelection ? Visibility.Visible : Visibility.Collapsed;
+        SelectionShadow.Visibility = Selection.Visibility;
+        if (hasSelection)
+        {
+            Canvas.SetLeft(Selection, sel.X);
+            Canvas.SetTop(Selection, sel.Y);
+            Selection.Width = sel.Width;
+            Selection.Height = sel.Height;
+            Canvas.SetLeft(SelectionShadow, sel.X);
+            Canvas.SetTop(SelectionShadow, sel.Y);
+            SelectionShadow.Width = sel.Width;
+            SelectionShadow.Height = sel.Height;
+        }
 
-        bool valid = IsValid(s);
+        // 悬停候选
+        if (hover is Rect hr2) DrawDetect(hr2, _hoverTarget!.Value.Label);
+        else
+        {
+            DetectRect.Visibility = Visibility.Collapsed;
+            DetectLabel.Visibility = Visibility.Collapsed;
+        }
+
+        if (!hasSelection)
+        {
+            foreach (var grip in _grips) grip.Visibility = Visibility.Collapsed;
+            ConfirmBtn.IsEnabled = false;
+            ActionBar.Visibility = Visibility.Collapsed;   // 没选区时不挡任何拖动（提示在顶部不拦鼠标）
+            InfoBox.Visibility = Visibility.Collapsed;
+            ActionHint.Text = "拖动边角微调，方向键逐像素";
+            HintText.Text = _windowTargets.Count > 0
+                ? "移动选窗口 / 控件 · 拖动自由框选 · 滚轮换层级 · 右键 / Esc 取消"
+                : "拖动框选范围 · 右键 / Esc 取消";
+            return;
+        }
+
+        bool valid = IsValid(sel);
         bool showBar = valid && _drag == DragMode.None;   // 拖动过程中先别跳出来，松手后再给按钮
-        PositionGrips(s, valid);
+        PositionGrips(sel, valid);
         ConfirmBtn.IsEnabled = showBar;
         ActionBar.Visibility = showBar ? Visibility.Visible : Visibility.Collapsed;
-        ActionHint.Text = valid ? "可拖边 / 角微调，方向键逐像素" : "继续拖大一点";
+        ActionHint.Text = valid ? "拖动边角微调，方向键逐像素" : "继续拖大一点";
 
-        // 选区靠下时把确认栏挪到顶部，别挡住正在调的边。
-        bool nearBottom = s.Bottom > ActualHeight * 0.72 && ActualHeight > 220;
-        ActionBar.VerticalAlignment = nearBottom ? VerticalAlignment.Top : VerticalAlignment.Bottom;
-        ActionBar.Margin = nearBottom ? new Thickness(0, 78, 0, 0) : new Thickness(0, 0, 0, 38);
+        bool barAbove = showBar && PositionActionBar(sel);
+        ShowSizeInfo(sel, barAbove);
+        HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· 双击 / Enter 确定";
+    }
 
-        ShowSizeInfo(s);
-        HintText.Text = "拖边框 / 角微调 · 方向键 1px（Shift 10px）· 双击 / Enter 确定";
+    /// <summary>
+    /// 把确认栏贴到选区下方、与选区右边缘对齐（主流截图工具的摆法：Snipaste / PixPin / QQ 都是
+    /// 「选框外下方、靠右」）。下方放不下就翻到选区上方；返回 true 表示放在了上方。
+    /// </summary>
+    private bool PositionActionBar(Rect sel)
+    {
+        // 确认栏在 Canvas 里，按内容尺寸测量；量不到就先不动（下一帧再排）。
+        ActionBar.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double w = ActionBar.DesiredSize.Width;
+        double h = ActionBar.DesiredSize.Height;
+        if (w <= 1 || h <= 1) return false;
+
+        double left = Math.Clamp(sel.Right - w, 8, Math.Max(8, ActualWidth - w - 8));
+        double below = sel.Bottom + 8;
+        bool above = below + h > ActualHeight - 8;
+        double top = above ? sel.Top - h - 8 : below;
+
+        // 上下都放不下（选区几乎占满整屏）：贴着选区内部下方，至少不跑到屏幕外。
+        if (top < 8) top = Math.Max(8, sel.Bottom - h - 8);
+
+        Canvas.SetLeft(ActionBar, left);
+        Canvas.SetTop(ActionBar, Math.Clamp(top, 8, Math.Max(8, ActualHeight - h - 8)));
+        return above;
+    }
+
+    /// <summary>悬停高亮：琥珀色框 + 左上角标签（控件类型 · 名称 · 尺寸）。</summary>
+    private void DrawDetect(Rect r, string label)
+    {
+        DetectRect.Visibility = Visibility.Visible;
+        Canvas.SetLeft(DetectRect, r.X);
+        Canvas.SetTop(DetectRect, r.Y);
+        DetectRect.Width = r.Width;
+        DetectRect.Height = r.Height;
+
+        var (x1, y1) = ToImage(r.TopLeft);
+        var (x2, y2) = ToImage(r.BottomRight);
+        int w = Math.Abs(x2 - x1) + 1;
+        int h = Math.Abs(y2 - y1) + 1;
+        DetectText.Text = $"{label}   {w} × {h}";
+
+        DetectLabel.Visibility = Visibility.Visible;
+        DetectLabel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double lw = DetectLabel.DesiredSize.Width;
+        double lh = DetectLabel.DesiredSize.Height;
+
+        double left = Math.Clamp(r.X, 8, Math.Max(8, ActualWidth - lw - 8));
+        double top = r.Y - lh - 6;
+        if (top < 8) top = r.Y + 6;                    // 上方贴边就放进框内侧
+        if (top + lh > ActualHeight - 8) top = r.Bottom - lh - 6;
+        Canvas.SetLeft(DetectLabel, left);
+        Canvas.SetTop(DetectLabel, Math.Clamp(top, 8, Math.Max(8, ActualHeight - lh - 8)));
     }
 
     private void PositionGrips(Rect s, bool visible)
@@ -444,8 +586,8 @@ public partial class ScreenPickerWindow : Window
         }
     }
 
-    /// <summary>在选区角上角显示尺寸（物理像素，就是最终会存进配置的数字）。</summary>
-    private void ShowSizeInfo(Rect s)
+    /// <summary>尺寸提示（物理像素，就是最终会存进配置的数字）；主流放在选区左上角外侧。</summary>
+    private void ShowSizeInfo(Rect s, bool barAbove)
     {
         var (x1, y1) = ToImage(new Point(s.X, s.Y));
         var (x2, y2) = ToImage(new Point(s.X + s.Width, s.Y + s.Height));
@@ -459,11 +601,233 @@ public partial class ScreenPickerWindow : Window
         double ih = InfoBox.DesiredSize.Height;
 
         double left = Math.Clamp(s.X, 8, Math.Max(8, ActualWidth - iw - 8));
-        double top = s.Bottom + 8;
-        if (top + ih > ActualHeight - 8) top = s.Y - ih - 8;
-        if (top < 8) top = s.Y + 8;
+        double top = s.Y - ih - 6;                 // 选区上方
+        if (top < 8 || barAbove) top = s.Y + 6;    // 上方没空间 / 被确认栏占了 → 放进选区左上角
         Canvas.SetLeft(InfoBox, left);
         Canvas.SetTop(InfoBox, Math.Clamp(top, 8, Math.Max(8, ActualHeight - ih - 8)));
+    }
+
+    // ============ 窗口 / 控件探测与吸附 ============
+
+    /// <summary>滚轮在候选层级之间切换：向上滚 = 父级（更大范围），向下滚 = 更细的控件。</summary>
+    private void Window_Wheel(object sender, MouseWheelEventArgs e)
+    {
+        if (_pointMode || IsValid(_sel) || _hoverCandidates.Count < 2) return;
+
+        int step = e.Delta > 0 ? 1 : -1;
+        _hoverIndex = (_hoverIndex + step + _hoverCandidates.Count) % _hoverCandidates.Count;
+        SetHover(_hoverCandidates[_hoverIndex]);
+        e.Handled = true;
+    }
+
+    /// <summary>光标移动时更新悬停候选（Win32 窗口优先，UIA 结果异步补进来）。</summary>
+    private void UpdateHover(Point p)
+    {
+        if (IsValid(_sel)) { SetHover(null); return; }
+
+        var screen = ToScreen(p);
+        _hoverCandidates.Clear();
+
+        // 只保留最上层那个窗口及其子控件：窗口树里也包含被遮住的后台窗口，
+        // 不过滤的话光标处可能挑中最上层看不见的小控件。
+        IntPtr top = ScreenSnapTargets.TopWindowAtPoint(
+            new WindowInteropHelper(this).Handle, screen);
+
+        foreach (var box in _windowTargets)
+            if (box.Bounds.Contains(screen) && OwnedBy(box, top)) _hoverCandidates.Add(box);
+        foreach (var box in _uiaTargets)
+            if (box.Bounds.Contains(screen) && OwnedBy(box, top)) _hoverCandidates.Add(box);
+
+        if (_hoverCandidates.Count == 0)
+        {
+            SetHover(null);
+            MaybeQueryUia(screen);
+            return;
+        }
+
+        _hoverCandidates.Sort((a, b) => a.Area.CompareTo(b.Area));
+
+        // 光标在同一处停留时不重置层级（滚轮选好的那一级要留住）
+        if (Math.Abs(p.X - _hoverAt.X) > PressSlop || Math.Abs(p.Y - _hoverAt.Y) > PressSlop)
+        {
+            _hoverIndex = 0;
+            _hoverAt = p;
+        }
+        if (_hoverIndex >= _hoverCandidates.Count) _hoverIndex = 0;
+        SetHover(_hoverCandidates[_hoverIndex]);
+
+        MaybeQueryUia(screen);
+    }
+
+    private void SetHover(SnapBox? box)
+    {
+        if (Nullable.Equals(_hoverTarget, box)) return;
+        _hoverTarget = box;
+        UpdateChrome();
+    }
+
+    /// <summary>候选是否属于光标下最上层的那个窗口（拿不到顶层窗口时不过滤）。</summary>
+    private static bool OwnedBy(SnapBox box, IntPtr top) =>
+        top == IntPtr.Zero || box.Owner == IntPtr.Zero || box.Owner == top;
+
+    /// <summary>
+    /// UIA 查询放到后台线程并限流（同一个 4px 网格只查一次）：自绘界面里的按钮 / 输入框
+    /// 只能靠 UIA 拿到，但它是跨进程调用，慢的应用能卡几十毫秒，绝不能放在鼠标移动路径上。
+    /// </summary>
+    private void MaybeQueryUia(System.Drawing.Point screen)
+    {
+        string key = $"{screen.X / 4},{screen.Y / 4}";
+
+        if (_uiaCache.TryGetValue(key, out var cached))
+        {
+            if (!string.Equals(_uiaKey, key, StringComparison.Ordinal)) ApplyUia(key, cached);
+            return;
+        }
+
+        if (_uiaBusy) return;
+
+        double dx = screen.X - _uiaQueryAt.X;
+        double dy = screen.Y - _uiaQueryAt.Y;
+        if (_uiaQueryAt.X > -9999 && dx * dx + dy * dy < 36) return;   // 6px 内不重复查
+
+        _uiaBusy = true;
+        _uiaQueryAt = screen;
+
+        IntPtr overlay = new WindowInteropHelper(this).Handle;
+        var monitor = _monitor;
+
+        Task.Run(() => ScreenSnapTargets.FromUia(overlay, screen, monitor))
+            .ContinueWith(t =>
+            {
+                if (Dispatcher.HasShutdownStarted) return;
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    _uiaBusy = false;
+                    if (t.Status != TaskStatus.RanToCompletion) return;
+
+                    var list = t.Result;
+                    if (_uiaCache.Count > 200) _uiaCache.Clear();
+                    _uiaCache[key] = list;
+                    if (!IsValid(_sel)) ApplyUia(key, list);
+                }));
+            });
+    }
+
+    private void ApplyUia(string key, List<SnapBox> list)
+    {
+        _uiaKey = key;
+        _uiaTargets = list;
+        RebuildSnapLines();
+
+        // 用最新的 UIA 结果重算一次光标下的候选；位置没变时层级索引保持不变。
+        if (!IsValid(_sel) && Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out var dip))
+            UpdateHover(Clamp(dip));
+    }
+
+    /// <summary>把所有窗口 / 控件的边收集成吸附线（DIP）。</summary>
+    private void RebuildSnapLines()
+    {
+        var xs = new List<double>(_windowTargets.Count * 2 + 8);
+        var ys = new List<double>(_windowTargets.Count * 2 + 8);
+
+        void Add(System.Drawing.Rectangle b)
+        {
+            var r = ToDipRect(b);
+            if (r.Width < 1 || r.Height < 1) return;
+            xs.Add(r.Left); xs.Add(r.Right);
+            ys.Add(r.Top); ys.Add(r.Bottom);
+        }
+
+        foreach (var box in _windowTargets) Add(box.Bounds);
+        foreach (var box in _uiaTargets) Add(box.Bounds);
+        xs.Add(0); xs.Add(ActualWidth);
+        ys.Add(0); ys.Add(ActualHeight);
+
+        _snapXs = Dedup(xs);
+        _snapYs = Dedup(ys);
+    }
+
+    private static List<double> Dedup(List<double> values)
+    {
+        values.Sort();
+        var result = new List<double>(values.Count);
+        foreach (double v in values)
+            if (result.Count == 0 || Math.Abs(v - result[^1]) > 0.5) result.Add(v);
+        return result;
+    }
+
+    /// <summary>是否启用吸附：有候选边，且用户没有按住 Ctrl 临时关闭。</summary>
+    private bool SnapEnabled =>
+        _snapXs.Count > 0 && (Keyboard.Modifiers & ModifierKeys.Control) == 0;
+
+    private Point SnapPoint(Point p) => SnapEnabled
+        ? new Point(SnapValue(p.X, _snapXs), SnapValue(p.Y, _snapYs))
+        : p;
+
+    private Rect SnapMove(Rect r)
+    {
+        if (!SnapEnabled) return r;
+        double dx = NearestDelta(new[] { r.Left, r.Right }, _snapXs);
+        double dy = NearestDelta(new[] { r.Top, r.Bottom }, _snapYs);
+        return new Rect(r.X + dx, r.Y + dy, r.Width, r.Height);
+    }
+
+    private Rect SnapResize(Rect r, Handle handle)
+    {
+        if (!SnapEnabled) return r;
+
+        double left = r.Left, top = r.Top, right = r.Right, bottom = r.Bottom;
+        if (handle is Handle.Left or Handle.TopLeft or Handle.BottomLeft) left = SnapValue(left, _snapXs);
+        if (handle is Handle.Right or Handle.TopRight or Handle.BottomRight) right = SnapValue(right, _snapXs);
+        if (handle is Handle.Top or Handle.TopLeft or Handle.TopRight) top = SnapValue(top, _snapYs);
+        if (handle is Handle.Bottom or Handle.BottomLeft or Handle.BottomRight) bottom = SnapValue(bottom, _snapYs);
+
+        if (right - left < MinSize || bottom - top < MinSize) return r;
+        return new Rect(left, top, right - left, bottom - top);
+    }
+
+    private static double SnapValue(double v, List<double> lines)
+    {
+        double best = v, bestDelta = SnapDistance;
+        foreach (double line in lines)
+        {
+            double d = Math.Abs(line - v);
+            if (d < bestDelta) { bestDelta = d; best = line; }
+        }
+        return best;
+    }
+
+    private static double NearestDelta(double[] values, List<double> lines)
+    {
+        double bestDelta = 0, best = SnapDistance;
+        foreach (double v in values)
+            foreach (double line in lines)
+            {
+                double d = Math.Abs(line - v);
+                if (d < best) { best = d; bestDelta = line - v; }
+            }
+        return bestDelta;
+    }
+
+    // ============ 坐标 ============
+
+    /// <summary>窗口 DIP → 屏幕物理像素（吸附目标用物理像素记录）。</summary>
+    private System.Drawing.Point ToScreen(Point dip)
+    {
+        var (ix, iy) = ToImage(dip);
+        return new System.Drawing.Point(_monitor.X + ix, _monitor.Y + iy);
+    }
+
+    /// <summary>屏幕物理像素矩形 → 窗口 DIP。</summary>
+    private Rect ToDipRect(System.Drawing.Rectangle b)
+    {
+        double sx = ActualWidth > 0 ? ActualWidth / _shot.PixelWidth : 1;
+        double sy = ActualHeight > 0 ? ActualHeight / _shot.PixelHeight : 1;
+        return new Rect(
+            (b.X - _monitor.X) * sx,
+            (b.Y - _monitor.Y) * sy,
+            b.Width * sx,
+            b.Height * sy);
     }
 
     // ============ 选区计算 ============

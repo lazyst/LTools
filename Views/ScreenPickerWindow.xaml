@@ -10,10 +10,12 @@
         PreviewMouseLeftButtonDown="Window_MouseDown"
         PreviewMouseLeftButtonUp="Window_MouseUp"
         PreviewMouseRightButtonDown="Window_Cancel"
+        PreviewMouseWheel="Window_Wheel"
         Loaded="Window_Loaded">
     <!-- 冻结画面 + 取点 / 框选。窗口正好盖住光标所在的显示器，
          所有坐标最终换算成「显示器物理像素 + 左上角偏移」，与截图 / 鼠标注入同一坐标系。
-         框选松手后不直接确定：可以拖边角微调，再按「使用这块区域」/ Enter / 双击确认。 -->
+         框选松手后不直接确定：可以拖边角微调，再按「使用这块区域」/ Enter / 双击确认。
+         悬停会自动探测光标下的窗口 / 控件（Win32 窗口树 + UI Automation），单击即选中。 -->
     <Window.Resources>
         <Style x:Key="PickBtn" TargetType="Button">
             <Setter Property="Foreground" Value="#18181B"/>
@@ -54,9 +56,22 @@
         <Image x:Name="Shot" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality"/>
 
         <Canvas x:Name="Layer" Background="Transparent" ClipToBounds="True">
-            <!-- 框选 / 未选时压暗整体（EvenOdd 挖洞） -->
-            <Path x:Name="DimPath" Fill="#99000000" IsHitTestVisible="False"/>
+            <!-- 框选 / 未选时压暗整体（EvenOdd 挖洞：选区与悬停命中的元素保持原亮度）。
+                 40% 黑，比之前的 60% 轻，和 ShareX（20% 起）与 Snipaste（~50%）之间取值，
+                 既能突出选区，也能看清旁边要对齐的文字。 -->
+            <Path x:Name="DimPath" Fill="#66000000" IsHitTestVisible="False"/>
 
+            <!-- 悬停探测到的窗口 / 控件（琥珀色，和 Snipaste / PixPin 的预选高亮一致） -->
+            <Rectangle x:Name="DetectRect" Stroke="#F59E0B" StrokeThickness="2"
+                       Visibility="Collapsed" IsHitTestVisible="False"/>
+            <Border x:Name="DetectLabel" Background="#F59E0B" CornerRadius="3" Padding="6,2"
+                    Visibility="Collapsed" IsHitTestVisible="False">
+                <TextBlock x:Name="DetectText" Foreground="#18181B" FontSize="12" FontWeight="SemiBold"/>
+            </Border>
+
+            <!-- 选区：外面一层深色描边，保证浅色背景上白线也看得清 -->
+            <Rectangle x:Name="SelectionShadow" Stroke="#99000000" StrokeThickness="3"
+                       Visibility="Collapsed" IsHitTestVisible="False"/>
             <Rectangle x:Name="Selection" Stroke="#FFFFFF" StrokeThickness="1.5"
                        Visibility="Collapsed" IsHitTestVisible="False"/>
 
@@ -89,20 +104,21 @@
                     IsHitTestVisible="False">
                 <TextBlock x:Name="HintText" Foreground="#E4E4E7" FontSize="13"/>
             </Border>
-        </Canvas>
 
-        <!-- 确认栏（框选后出现） -->
-        <Border x:Name="ActionBar" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                Margin="0,0,0,38" Background="#E6101014" CornerRadius="8" Padding="12,9"
-                Visibility="Collapsed">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock x:Name="ActionHint" Foreground="#E4E4E7" VerticalAlignment="Center"
-                           Margin="2,0,14,0" FontSize="13"/>
-                <Button x:Name="ConfirmBtn" Style="{StaticResource PickBtn}" Content="✓ 使用这块区域"
-                        IsEnabled="False" Click="Confirm_Click"/>
-                <Button Style="{StaticResource PickBtnGhost}" Content="取消" Margin="8,0,0,0"
-                        Click="Cancel_Click"/>
-            </StackPanel>
-        </Border>
+            <!-- 确认栏（框选后出现）：贴在选区下方、与选区右边缘对齐；下方放不下时翻到上方。
+                 放在 Canvas 里而不是 Grid 里：Canvas 用无限约束测量子元素，DesiredSize 就是内容尺寸，
+                 才能算出「右对齐选区」所需的位置。 -->
+            <Border x:Name="ActionBar" Panel.ZIndex="20" Background="#E6101014" CornerRadius="8"
+                    Padding="12,9" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="ActionHint" Foreground="#E4E4E7" VerticalAlignment="Center"
+                               Margin="2,0,14,0" FontSize="13"/>
+                    <Button x:Name="ConfirmBtn" Style="{StaticResource PickBtn}" Content="✓ 使用这块区域"
+                            IsEnabled="False" Click="Confirm_Click"/>
+                    <Button Style="{StaticResource PickBtnGhost}" Content="取消" Margin="8,0,0,0"
+                            Click="Cancel_Click"/>
+                </StackPanel>
+            </Border>
+        </Canvas>
     </Grid>
 </Window>
