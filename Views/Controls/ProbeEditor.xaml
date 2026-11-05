@@ -171,10 +171,10 @@
             </StackPanel>
         </StackPanel>
 
-        <!-- 窗口 -->
+        <!-- 窗口：默认只暴露「标题包含」一个输入框；类名属于高级用法，需要时再展开 -->
         <StackPanel x:Name="P_Window" Visibility="Collapsed" Margin="0,8,0,0">
             <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                       Text="按标题包含匹配（类名可选、精确匹配）；留空表示任意窗口"/>
+                       Text="窗口标题包含的文本；留空表示任意窗口。点「从当前窗口选择…」可直接挑一个，不必手填。"/>
             <Grid Margin="0,4,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -186,8 +186,18 @@
                         MinHeight="32" Padding="10,4" Margin="8,0,0,0" Click="PickWindow_Click"
                         ToolTip="列出当前打开的窗口，点一个即可自动填入"/>
             </Grid>
-            <TextBox x:Name="WindowClassBox" MinHeight="32" Margin="0,6,0,0"
-                     ToolTip="窗口类名（可留空；用上面的按钮选择会自动填）"/>
+
+            <Button x:Name="WindowAdvancedToggle" Style="{StaticResource BtnGhost}"
+                    HorizontalContentAlignment="Left" Padding="0" Margin="0,7,0,0"
+                    FontSize="{StaticResource FontSizeHint}" Foreground="{StaticResource HintTextBrush}"
+                    Content="高级：按窗口类名精确匹配 ▸" Click="WindowAdvanced_Click"
+                    ToolTip="只有同名窗口分不清时才需要填写类名"/>
+            <StackPanel x:Name="WindowAdvancedPanel" Visibility="Collapsed" Margin="0,5,0,0">
+                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                           Text="类名必须精确匹配；一般留空即可，点「从当前窗口选择…」只按标题匹配。"/>
+                <TextBox x:Name="WindowClassBox" MinHeight="30" Margin="0,4,0,0"
+                         ToolTip="窗口类名（可留空）"/>
+            </StackPanel>
         </StackPanel>
 
         <!-- 进程 -->

@@ -84,7 +84,7 @@ public partial class SystemPickerDialog : Window
 
         var dialog = new SystemPickerDialog(
             "选择窗口",
-            "选中后会把标题与类名一起填入（标题按「包含」匹配，类名精确匹配；都可再改）。",
+            "选中后按窗口标题填入（按「包含」匹配）；要更严格时可再填窗口类名。",
             "按窗口标题 / 进程 / 类名筛选",
             rows, owner);
         return dialog.ShowDialog() == true && dialog.SelectedRow is { } row
@@ -95,6 +95,11 @@ public partial class SystemPickerDialog : Window
     /// <summary>挑一个正在运行的进程名；取消返回 null。</summary>
     public static string? PickProcess(Window? owner)
     {
+        // 先枚举一次可见窗口，得到「进程 → 主窗口标题」。
+        // 不要逐个 Process.MainWindowTitle：那会对每个进程都做一次窗口枚举，
+        // 遇到无响应的窗口时还可能卡住 UI 线程（表现为「打开选择器后整机很卡」）。
+        var titles = WindowTitlesByProcess();
+
         var rows = new List<PickerRow>();
         var snapshot = new Dictionary<string, (int Count, string? Title)>(StringComparer.OrdinalIgnoreCase);
         foreach (var process in Process.GetProcesses())
@@ -106,8 +111,8 @@ public partial class SystemPickerDialog : Window
 
                 snapshot.TryGetValue(name, out var entry);
                 string? windowTitle = entry.Title;
-                if (windowTitle == null && !string.IsNullOrWhiteSpace(process.MainWindowTitle))
-                    windowTitle = process.MainWindowTitle;
+                if (windowTitle == null && titles.TryGetValue((uint)process.Id, out string? title))
+                    windowTitle = title;
                 snapshot[name] = (entry.Count + 1, windowTitle);
             }
             catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
@@ -139,6 +144,28 @@ public partial class SystemPickerDialog : Window
             "按进程名 / 窗口标题筛选",
             rows, owner);
         return dialog.ShowDialog() == true ? dialog.SelectedRow?.Value : null;
+    }
+
+    /// <summary>当前可见顶层窗口的标题（按进程 Id 取第一条）。</summary>
+    private static Dictionary<uint, string> WindowTitlesByProcess()
+    {
+        var map = new Dictionary<uint, string>();
+        Win32.EnumWindows((hwnd, _) =>
+        {
+            if (!Win32.IsWindowVisible(hwnd)) return true;
+
+            int length = Win32.GetWindowTextLength(hwnd);
+            if (length <= 0) return true;
+            var buffer = new StringBuilder(length + 1);
+            Win32.GetWindowText(hwnd, buffer, buffer.Capacity);
+            string title = buffer.ToString().Trim();
+            if (title.Length == 0) return true;
+
+            Win32.GetWindowThreadProcessId(hwnd, out uint pid);
+            map.TryAdd(pid, title);
+            return true;
+        }, IntPtr.Zero);
+        return map;
     }
 
     // ============ 列表 ============

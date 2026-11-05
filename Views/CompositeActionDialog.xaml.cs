@@ -646,13 +646,24 @@ public partial class CompositeActionDialog : Window
         int hover = GripHoverRow(e);
         if (hover < 0) { InsertLine.Visibility = Visibility.Collapsed; return; }
         var c = FlowList.ItemContainerGenerator.ContainerFromIndex(hover) as FrameworkElement;
-        if (c == null) { InsertLine.Visibility = Visibility.Collapsed; return; }
+        if (c == null || !c.IsDescendantOf(this)) { InsertLine.Visibility = Visibility.Collapsed; return; }
         bool after = GripInsertAt(e, hover) > hover;
-        var p = c.TransformToAncestor(GhostLayer).Transform(new Point(0, after ? c.ActualHeight : 0));
-        Canvas.SetLeft(InsertLine, p.X);
-        Canvas.SetTop(InsertLine, p.Y - 1.5);
-        InsertLine.Width = c.ActualWidth > 0 ? c.ActualWidth : FlowList.ActualWidth;
-        InsertLine.Visibility = Visibility.Visible;
+        try
+        {
+            // GhostLayer 是覆盖全窗口的兄弟 Canvas，不是行容器的祖先——不能直接
+            // TransformToAncestor(GhostLayer)。先转到窗口坐标，再映射到 Canvas。
+            var inWindow = c.TransformToAncestor(this).Transform(new Point(0, after ? c.ActualHeight : 0));
+            var p = TranslatePoint(inWindow, GhostLayer);
+            Canvas.SetLeft(InsertLine, p.X);
+            Canvas.SetTop(InsertLine, p.Y - 1.5);
+            InsertLine.Width = c.ActualWidth > 0 ? c.ActualWidth : FlowList.ActualWidth;
+            InsertLine.Visibility = Visibility.Visible;
+        }
+        catch (InvalidOperationException)
+        {
+            // 拖动过程中行容器被回收 / 移出可视树：本次不画线即可
+            InsertLine.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void ShowGhost(int index)

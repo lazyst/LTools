@@ -111,6 +111,7 @@ public partial class ProbeEditor : UserControl
 
         WindowTitleBox.Text = probe.WindowTitle ?? "";
         WindowClassBox.Text = probe.WindowClass ?? "";
+        SetWindowAdvanced(!string.IsNullOrWhiteSpace(probe.WindowClass));
         ProcessNameBox.Text = probe.ProcessName ?? "";
 
         _ready = true;
@@ -483,14 +484,27 @@ public partial class ProbeEditor : UserControl
 
     // —— 窗口 / 进程：从当前系统状态里点选 ——
 
+    /// <summary>展开 / 收起「窗口类名」高级项。</summary>
+    private void WindowAdvanced_Click(object sender, RoutedEventArgs e)
+        => SetWindowAdvanced(WindowAdvancedPanel.Visibility != Visibility.Visible);
+
+    private void SetWindowAdvanced(bool expanded)
+    {
+        WindowAdvancedPanel.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        WindowAdvancedToggle.Content = expanded
+            ? "高级：按窗口类名精确匹配 ▾"
+            : "高级：按窗口类名精确匹配 ▸";
+    }
+
     private void PickWindow_Click(object sender, RoutedEventArgs e)
     {
         var info = SystemPickerDialog.PickWindow(Window.GetWindow(this));
         if (info == null) return;
 
+        // 只回填标题；类名保持为空（高级项里的旧类名会和新标题冲突，一并清掉）
         WindowTitleBox.Text = info.Title;
-        WindowClassBox.Text = info.ClassName;
-        ShowTest($"已选择窗口：{info.Title}（类名 {info.ClassName}）", true);
+        WindowClassBox.Text = "";
+        ShowTest($"已选择窗口：{info.Title}", true);
     }
 
     private void PickProcess_Click(object sender, RoutedEventArgs e)
