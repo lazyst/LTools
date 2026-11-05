@@ -79,10 +79,29 @@ public partial class VariableList : UserControl
             Padding = new Thickness(isProperty ? 16 : 7, 3, 7, 3),
             Margin = new Thickness(0, 1, 0, 1),
             Cursor = System.Windows.Input.Cursors.Hand,
-            ToolTip = "插入 / 复制 ${" + name + "}",
+            ToolTip = isProperty ? PropertyHint(name) : "插入 / 复制 ${" + name + "}",
         };
         button.Click += (_, _) => VariableInvoked?.Invoke(name);
         return button;
+    }
+
+    /// <summary>属性行的悬停说明：把 .found / .score 这类后缀翻译成一句话。</summary>
+    private static string PropertyHint(string path)
+    {
+        int dot = path.LastIndexOf('.');
+        string prop = dot >= 0 ? path[(dot + 1)..].ToLowerInvariant() : "";
+        string what = prop switch
+        {
+            "found" => "是否找到 / 存在：true 或 false",
+            "score" => "相似度 0–1，1 表示完全一致；低于「最低相似度」就算没找到",
+            "x" or "y" => "屏幕坐标（虚拟桌面物理像素）",
+            "exit" => "命令退出码，0 通常表示成功",
+            "err" => "命令的错误输出",
+            "number" => "数字形式，可直接参与数值比较",
+            "text" => "文本形式",
+            _ => "变量属性",
+        };
+        return $"插入 ${{{path}}} —— {what}";
     }
 
     /// <summary>去掉可能的 <c>${…}</c> 外壳与首尾空白；空名字返回空串。</summary>

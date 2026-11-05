@@ -126,6 +126,10 @@
                 <TextBox x:Name="ImageIntervalBox" Grid.Column="3" Width="64" MinHeight="30" Margin="6,0,4,0"/>
                 <TextBlock Grid.Column="4" Text="ms" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}" Margin="2,0,0,0"/>
             </Grid>
+
+            <!-- 找图结果怎么读：变量、found、score 三者分工不同，写清楚免得只能靠猜 -->
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
+                       Text="结果怎么用：${变量} 是命中位置「x,y」（没找到时为空）；${变量.found} 是 true / false；${变量.score} 是 0–1 的相似度，1 表示完全一致。分数低于「最低相似度」就算没找到——此时 ${变量.score} 仍会给出最像的那次分数，可用来判断阈值定高了还是定低了。"/>
         </StackPanel>
 
         <!-- 截图 OCR：区域控件与「截图找图」共用下方 RegionSection -->

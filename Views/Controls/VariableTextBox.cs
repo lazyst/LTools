@@ -8,7 +8,7 @@ using System.Windows.Media;
 namespace LTools.Views.Controls;
 
 /// <summary>
-/// 支持 <c>${变量}</c> 的输入框：右侧有一个小小的「$」按钮，点开就是当前流程的用户变量，
+/// 支持 <c>${变量}</c> 的输入框：右侧有一个「插入变量」按钮，点开就是当前流程的用户变量，
 /// 选中后插入到光标处。
 /// </summary>
 /// <remarks>
@@ -18,8 +18,14 @@ namespace LTools.Views.Controls;
 /// 外观与普通输入框一致。
 /// </para>
 /// <para>
-/// 按钮不吃焦点（<see cref="UIElement.Focusable"/> = false，并在抬起时接管处理），
-/// 因此插入位置始终是打开下拉前的光标 / 选区。
+/// 按钮不吃焦点（<see cref="UIElement.Focusable"/> = false），因此插入位置始终是
+/// 打开下拉前的光标 / 选区。
+/// </para>
+/// <para>
+/// 下拉用 <see cref="Popup.StaysOpen"/> = true 并自己判断「点外面就收起」：
+/// 若交给 WPF 的 StaysOpen=false，它会用鼠标捕获来判外部点击，而打开下拉的那次点击
+/// 自身就在捕获开始前发生，两者叠加会出现「点下拉里的条目却先被收起、条目点不中」。
+/// 自己判断时，下拉里的点击是独立窗口（不会进到主窗口的事件），所以不会误关。
 /// </para>
 /// </remarks>
 public class VariableTextBox : TextBox
@@ -38,6 +44,7 @@ public class VariableTextBox : TextBox
     private Button? _button;
     private Popup? _popup;
     private VariableList? _list;
+    private Window? _host;
 
     public VariableTextBox()
     {
@@ -50,9 +57,10 @@ public class VariableTextBox : TextBox
         PreviewKeyDown += (_, e) =>
         {
             if (_popup?.IsOpen != true || e.Key != Key.Escape) return;
-            _popup.IsOpen = false;
+            ClosePopup();
             e.Handled = true;
         };
+        Unloaded += (_, _) => ClosePopup();
     }
 
     public override void OnApplyTemplate()
@@ -60,7 +68,7 @@ public class VariableTextBox : TextBox
         base.OnApplyTemplate();
 
         if (_button != null)
-            _button.PreviewMouseLeftButtonUp -= Button_PreviewMouseLeftButtonUp;
+            _button.Click -= Button_Click;
 
         _button = GetTemplateChild("PART_VarButton") as Button;
         if (_button != null)
@@ -68,9 +76,8 @@ public class VariableTextBox : TextBox
             // 点按钮时焦点要留在输入框里，否则选区会丢、插入位置变成 0。
             _button.Focusable = false;
             _button.IsTabStop = false;
-            // 在「抬起」时打开下拉：Popup 的 StaysOpen=false 会在打开当次的鼠标事件里
-            // 把下拉当成外部点击立刻关掉（在按下时打开就会出现「按住能看到、松手就消失」）。
-            _button.PreviewMouseLeftButtonUp += Button_PreviewMouseLeftButtonUp;
+            // 用标准 Click（按下 + 抬起都走完）打开：这条路径与 WPF 自己的鼠标处理不冲突。
+            _button.Click += Button_Click;
         }
 
         RefreshAvailability();
@@ -78,32 +85,65 @@ public class VariableTextBox : TextBox
 
     private void RefreshAvailability() => HasVariables = VariableSource.Resolve(this) != null;
 
-    private void Button_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    private void Button_Click(object sender, RoutedEventArgs e)
     {
-        e.Handled = true;   // 不让按钮抢焦点 / 不触发换行等输入行为
-        TogglePopup();
+        e.Handled = true;
+        if (_popup?.IsOpen == true) ClosePopup();
+        else OpenPopup();
     }
 
-    private void TogglePopup()
+    private void OpenPopup()
     {
         var names = VariableSource.Resolve(this);
         if (names == null) return;
 
         if (_popup == null) BuildPopup();
 
-        if (_popup!.IsOpen)
-        {
-            _popup.IsOpen = false;
-            return;
-        }
-
         _list!.SetCustom(names);
-        // 下拉不跟着宽输入框铺满整行（那样像一块白板），但窄输入框也不至于挤成一条。
-        double width = Math.Clamp(ActualWidth, 200, 320);
-        _popup.MinWidth = width;
-        _popup.MaxWidth = width;
+
+        // 下拉与输入框同宽：变量名很长时在行内省略，不让下拉比输入框还宽。
+        double width = Math.Max(ActualWidth, 120);
+        _popup!.Width = width;
         _popup.IsOpen = true;
+
+        _host = Window.GetWindow(this);
+        if (_host != null)
+        {
+            _host.PreviewMouseDown += Host_PreviewMouseDown;
+            _host.Deactivated += Host_Deactivated;
+            _host.LocationChanged += Host_Moved;
+            _host.SizeChanged += Host_Moved;
+        }
     }
+
+    private void ClosePopup()
+    {
+        if (_popup?.IsOpen == true) _popup.IsOpen = false;
+
+        if (_host != null)
+        {
+            _host.PreviewMouseDown -= Host_PreviewMouseDown;
+            _host.Deactivated -= Host_Deactivated;
+            _host.LocationChanged -= Host_Moved;
+            _host.SizeChanged -= Host_Moved;
+            _host = null;
+        }
+    }
+
+    /// <summary>点主窗口里其它地方就收起；点按钮本身交给 <see cref="Button_Click"/> 切换。</summary>
+    private void Host_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_button != null && e.OriginalSource is DependencyObject src &&
+            (ReferenceEquals(src, _button) || _button.IsAncestorOf(src)))
+            return;
+
+        ClosePopup();
+    }
+
+    private void Host_Deactivated(object? sender, EventArgs e) => ClosePopup();
+
+    /// <summary>窗口移动 / 改大小时下拉会与输入框错位，直接收起。</summary>
+    private void Host_Moved(object? sender, EventArgs e) => ClosePopup();
 
     private void BuildPopup()
     {
@@ -112,7 +152,7 @@ public class VariableTextBox : TextBox
         _list.PreviewKeyDown += (_, e) =>
         {
             if (e.Key != Key.Escape) return;
-            _popup!.IsOpen = false;
+            ClosePopup();
             Focus();
             e.Handled = true;
         };
@@ -143,18 +183,20 @@ public class VariableTextBox : TextBox
         {
             Placement = PlacementMode.Bottom,
             PlacementTarget = this,
-            VerticalOffset = 4,
-            StaysOpen = false,
+            VerticalOffset = 2,
+            // 自己管关闭（见类注释），避免 StaysOpen=false 的鼠标捕获把下拉里的点击吃掉。
+            StaysOpen = true,
             AllowsTransparency = true,
             PopupAnimation = PopupAnimation.Fade,
             Child = border,
         };
+        _popup.Closed += (_, _) => ClosePopup();
     }
 
     /// <summary>把 <c>${name}</c> 插入光标处（有选区则替换选区），然后把焦点还给输入框。</summary>
     private void InsertVariable(string name)
     {
-        _popup!.IsOpen = false;
+        ClosePopup();
 
         string text = Text ?? "";
         int start = Math.Clamp(SelectionStart, 0, text.Length);

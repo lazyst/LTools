@@ -336,7 +336,7 @@
         </Setter>
     </Style>
 
-    <!-- 带变量按钮的输入框：样式与普通 TextBox 一致，只在右侧多一个「$」按钮。
+    <!-- 带变量按钮的输入框：样式与普通 TextBox 一致，只在右侧多一个「插入变量」按钮。
          按钮由 VariableTextBox 在 OnApplyTemplate 里接管（点开变量下拉并插入 ${变量}）；
          没有变量时 HasVariables=false，按钮整块收起，外观与普通输入框完全一样。 -->
     <Style TargetType="{x:Type controls:VariableTextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
@@ -355,14 +355,14 @@
                             <ScrollViewer x:Name="PART_ContentHost" Grid.Column="0" Focusable="False"
                                           HorizontalScrollBarVisibility="{TemplateBinding HorizontalScrollBarVisibility}"
                                           VerticalScrollBarVisibility="{TemplateBinding VerticalScrollBarVisibility}"/>
-                            <!-- 紧凑的方形「$」按钮：与 ${变量} 的写法对应，窄输入框里也放得下。
+                            <!-- 文字按钮：比 $(符号) 更直白；窄输入框里也不会被认错成输入内容。
                                  点击由 VariableTextBox 接管（打开变量下拉并插入到光标处）。 -->
                             <Button x:Name="PART_VarButton" Grid.Column="1"
                                     Style="{StaticResource BtnGhost}"
-                                    Content="$" FontFamily="{StaticResource MonoFont}" FontSize="13"
-                                    Width="22" Height="22" MinHeight="0" Padding="0"
+                                    Content="插入变量" FontSize="11"
+                                    MinHeight="0" Height="22" Padding="6,0"
                                     Margin="0,4,4,0" VerticalAlignment="Top"
-                                    ToolTip="插入变量（${…}）"/>
+                                    ToolTip="点开变量列表，点一个即可插入到光标处（${变量}）"/>
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
