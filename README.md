@@ -334,6 +334,8 @@ dotnet publish -c Release -r win-x64 --self-contained false
 
 所有配置在程序目录下的 `LTools.json`（开发环境为仓库根），由应用自身读写；**首次保存才生成**，升级解压不会覆盖。文件不存在时回退读取同目录的 `LTools.example.json`。格式为 **JSON**（枚举写成字符串，如 `"Type": "runCommand"`），**不是**旧的 INI 分节格式。
 
+如果 `LTools.json` 存在但无法解析（手改出错 / 旧格式），程序会**保留原文件**并备份为 `LTools.json.bad-时间戳`，本次运行使用示例默认值且不会写回；设置页保存时会提示失败。修复配置或从备份恢复后再保存即可，不会再把动作和菜单洗成空。
+
 建议用图形界面修改（**CapsLock+\**），保存后自动生效。手改配置时请先退出 LTools，并注意热键字段必须写成小写 canonical 形式（如 `ctrl+f2`、`f2`）。
 
 ### 11.1 主要字段

@@ -2,12 +2,14 @@ using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace LTools.Core;
 
 /// <summary>运行日志级别（数值越大越详细，配置里存小写字符串）。</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum LogLevel
 {
     /// <summary>只记错误（崩溃 / 动作失败）。</summary>

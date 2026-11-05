@@ -45,6 +45,8 @@ CapsLockPro-*.zip   # 改名前旧产物
 
 # 用户本地配置（仅保留示例 LTools.example.json）
 LTools.json
+# 配置解析失败时的现场备份（AppConfig.TryBackupUnreadable）
+LTools.json.bad-*
 CapsLock++.json   # 改名前旧配置
 
 publish/

@@ -125,6 +125,13 @@ public sealed class AppConfig
     /// <summary>组合动作编辑器左栏已折叠的分组 key（basic / internal / pool），下次打开恢复。</summary>
     public List<string> CompositeCollapsedGroups { get; set; } = new();
 
+    /// <summary>
+    /// 本次加载是否因用户配置不可读 / 损坏而回退到示例。回退值只用于本次运行，
+    /// 写盘前必须重新用 <see cref="LoadStrict"/> 读取，避免覆盖用户原文件。
+    /// </summary>
+    [JsonIgnore]
+    public bool LoadFailed { get; private set; }
+
     private static readonly JsonSerializerOptions Opt = new()
     {
         WriteIndented = true,
@@ -145,6 +152,8 @@ public sealed class AppConfig
     /// 用户配置已存在但读取失败（被占用等瞬时 IO 错误）时退避重试，绝不静默使用示例默认值——
     /// 否则开机自启瞬间的一次短暂占用就会让用户的全部设置"消失"（内存变默认值、界面显示默认），
     /// 且随后的保存还会用默认值覆盖真配置。仅当重试后仍不可读 / 内容损坏时，备份现场再回退示例。
+    /// 回退时 <see cref="LoadFailed"/> 为 true：调用方据此提示用户，且写配置必须走
+    /// <see cref="LoadStrict"/>（<see cref="ConfigIO.Modify"/> 已如此），绝不把回退值写回磁盘。
     /// </summary>
     public static AppConfig Load(string path)
     {
@@ -159,9 +168,22 @@ public sealed class AppConfig
                 // 仍不可读 / 内容损坏：记录 + 备份现场，再回退示例（不静默丢弃用户配置）
                 CrashLog.Write("AppConfigLoad", ex);
                 TryBackupUnreadable(path);
+                var fallback = LoadExample(path);
+                fallback.LoadFailed = true;
+                return fallback;
             }
         }
         return LoadExample(path);
+    }
+
+    /// <summary>
+    /// 严格加载（写配置前使用）：文件存在但无法解析时抛出，**不回退示例**。
+    /// 这样一次读取失败不会让后续「读-改-写」把用户的动作清单覆盖成默认值。
+    /// </summary>
+    public static AppConfig LoadStrict(string path)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return Load(path);
+        return ReadWithRetry(path);
     }
 
     /// <summary>读取并反序列化；对瞬时 IO 错误（被占用 / 共享冲突 / 权限）做固定间隔退避重试。</summary>
@@ -171,7 +193,8 @@ public sealed class AppConfig
         {
             try
             {
-                return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(path, Encoding.UTF8)) ?? new AppConfig();
+                return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(path, Encoding.UTF8), Opt)
+                       ?? new AppConfig();
             }
             catch (Exception ex) when (IsTransient(ex) && attempt < ReadRetries)
             {
@@ -201,7 +224,8 @@ public sealed class AppConfig
         {
             try
             {
-                return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(example, Encoding.UTF8)) ?? new AppConfig();
+                return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(example, Encoding.UTF8), Opt)
+                       ?? new AppConfig();
             }
             catch { /* 示例不可读则用内置默认 */ }
         }

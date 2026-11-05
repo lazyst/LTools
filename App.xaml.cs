@@ -81,6 +81,13 @@ public partial class App : Application
         AppLog.Info("App", $"数据目录 {AppPaths.DataRoot}");
         AppLog.Info("App", $"配置文件 {cfgPath}");
 
+        if (cfg.LoadFailed)
+        {
+            AppLog.Error("App",
+                $"配置文件读取失败，已备份为 {Path.GetFileName(cfgPath)}.bad-* 并回退示例；本次不会覆盖原文件");
+            TrayService.Notify("配置文件读取失败：原文件已保留，本次使用默认配置（详见运行日志）");
+        }
+
         AppState.MouseModeSpeed = cfg.MouseModeSpeed;
         AppState.IsToolEnabled = cfg.CapsLockEnabled;
         AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
