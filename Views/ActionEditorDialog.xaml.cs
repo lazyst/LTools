@@ -279,6 +279,7 @@ public partial class ActionEditorDialog : Window
         if (t == ActionType.macro) RefreshMacroPanel();
         SyncMacroSession(t == ActionType.macro);
         UpdateOutputPanel(t);
+        UpdateKeepWindowState();
     }
 
     /// <summary>
@@ -297,6 +298,47 @@ public partial class ActionEditorDialog : Window
             ? "从本流程已有的变量里选一个"
             : "本流程还没有其它变量，直接输入新名字即可";
     }
+
+    /// <summary>
+    /// 「保持窗口」有两个静默失效的场景：填了输出变量（改为后台捕获，根本没有窗口）、
+    /// 终端选「直接运行」（不经过终端）。这里把复选框置灰并写明原因，避免设置看着生效却没有效果。
+    /// </summary>
+    private void UpdateKeepWindowState()
+    {
+        if (KeepWindowBox == null || KeepWindowHint == null || OutputPanel == null || OutputVarBox == null) return;
+
+        bool byOutput = OutputPanel.Visibility == Visibility.Visible && OutputVarBox.Text.Trim().Length > 0;
+        string terminal = TerminalCombo.SelectedItem is ComboItem ti ? ti.Value : "direct";
+        bool direct = terminal.Length == 0 || terminal == "direct";
+
+        KeepWindowBox.IsEnabled = !byOutput && !direct;
+        KeepWindowBox.Opacity = KeepWindowBox.IsEnabled ? 1.0 : 0.45;   // 主题没有禁用态的灰化样式，这里补一个
+        if (byOutput)
+        {
+            ShowKeepWindowHint("填了输出变量：会改为后台执行并捕获输出，不显示窗口，所以「保持窗口」不适用（清空输出变量即恢复）。");
+            KeepWindowBox.ToolTip = "已填输出变量：命令在后台捕获执行，不会有窗口";
+        }
+        else if (direct)
+        {
+            ShowKeepWindowHint("「直接运行」不打开终端，没有窗口可保持；要保留窗口，请在上面选择 PowerShell / CMD / Git Bash / WSL。");
+            KeepWindowBox.ToolTip = "「直接运行」不打开终端，没有窗口可保持";
+        }
+        else
+        {
+            KeepWindowHint.Visibility = Visibility.Collapsed;
+            KeepWindowBox.ToolTip = "命令跑完后窗口留在原处";
+        }
+    }
+
+    private void ShowKeepWindowHint(string text)
+    {
+        KeepWindowHint.Text = text;
+        KeepWindowHint.Visibility = Visibility.Visible;
+    }
+
+    private void TerminalCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateKeepWindowState();
+
+    private void OutputVar_Changed(object sender, TextChangedEventArgs e) => UpdateKeepWindowState();
 
     /// <summary>从流程已有变量里选一个作为输出变量（也可直接输入新名字）。</summary>
     private void OutputVarPick_Click(object sender, RoutedEventArgs e)

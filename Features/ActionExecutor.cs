@@ -173,8 +173,13 @@ internal static class ActionExecutor
     private static VarValue? RunCommand(ActionDto a, RunContext? ctx)
     {
         // 输出变量 = 需要结果：改为后台执行并捕获 stdout / stderr / 退出码（不再打开终端）。
+        // 捕获模式没有窗口，「保持窗口」在这里不适用；记一条日志，便于解释「勾了却没保留」。
         if (!string.IsNullOrWhiteSpace(a.OutputVar))
+        {
+            if (a.KeepWindow == true)
+                AppLog.Info("Action", $"「{a.Name}」填了输出变量，改为后台捕获执行（不显示窗口），已忽略「保持窗口」");
             return RunCommandCaptured(a, ctx);
+        }
 
         string cmd = a.Cmd ?? "";
         string terminal = a.Terminal ?? "direct";
@@ -186,6 +191,8 @@ internal static class ActionExecutor
         {
             if (string.IsNullOrWhiteSpace(cmd))
                 throw new InvalidOperationException($"runCommand 缺少 Cmd: {a.Name}");
+            if (keepWindow)
+                AppLog.Info("Action", $"「{a.Name}」终端为「直接运行」，没有窗口可保持，已忽略「保持窗口」");
             RunDirect(cmd, workdir);
             return null;
         }

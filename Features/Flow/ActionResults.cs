@@ -31,8 +31,9 @@ internal static class ActionResults
         ActionType.launchApp => "写入新进程的 PID。引用 ${变量} 取 PID。",
         ActionType.openFile or ActionType.openFolder => "写入实际打开的绝对路径（相对路径已解析）。",
         ActionType.openUrl => "写入实际打开的网址。",
-        ActionType.runCommand => "填写后命令在后台执行并捕获输出（不再打开终端）：${变量} = 标准输出，"
-                                 + "${变量.exit} = 退出码，${变量.err} = 错误输出。命令结束才继续下一步。",
+        ActionType.runCommand => "填写后命令在后台执行并捕获输出（不打开窗口，所以「保持窗口」不生效）：${变量} = 标准输出，"
+                                 + "${变量.exit} = 退出码，${变量.err} = 错误输出。命令结束才继续下一步；"
+                                 + "上面的「终端」仍决定由哪个 shell 执行（PowerShell / Git Bash / WSL / CMD）。",
         ActionType.setClipboard => "写入实际写入剪贴板的文本。",
         ActionType.mouse => "写入操作后的光标坐标，可用 ${变量.x} / ${变量.y} 引用。",
         _ => "",

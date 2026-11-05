@@ -146,11 +146,14 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" Margin="0,0,8,0">
                                         <TextBlock Style="{StaticResource SectionLabel}" Text="终端" Margin="0,0,0,4"/>
-                                        <ComboBox x:Name="TerminalCombo" MinHeight="30"/>
+                                        <ComboBox x:Name="TerminalCombo" MinHeight="30" SelectionChanged="TerminalCombo_SelectionChanged"/>
                                     </StackPanel>
                                     <CheckBox Grid.Column="1" x:Name="KeepWindowBox" Content="保持窗口"
-                                              VerticalAlignment="Bottom" Margin="0,0,0,4"/>
+                                              VerticalAlignment="Bottom" Margin="0,0,0,4"
+                                              ToolTip="命令跑完后窗口留在原处；需要选择具体终端才有效（「直接运行」不打开终端）"/>
                                 </Grid>
+                                <TextBlock x:Name="KeepWindowHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                                           Margin="0,0,0,10" Visibility="Collapsed"/>
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="工作目录（可选，留空 = LTools 所在目录）" Margin="0,0,0,4"/>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -474,7 +477,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" x:Name="OutputVarBox" MinHeight="32"
+                            <TextBox Grid.Column="0" x:Name="OutputVarBox" MinHeight="32" TextChanged="OutputVar_Changed"
                                      ToolTip="变量名，例如 输出；留空表示不需要结果"/>
                             <Button Grid.Column="1" x:Name="OutputVarPickBtn" Style="{StaticResource BtnGhost}"
                                     Content="选择…" MinWidth="64" Margin="8,0,0,0"

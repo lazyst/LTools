@@ -54,6 +54,7 @@ internal static class TerminalLauncher
 
     public static string DisplayLabel(string terminal) => terminal switch
     {
+        "direct" => "直接运行",
         "pwsh7" => "PowerShell 7",
         "pwsh5" => "PowerShell 5",
         "cmd" => "CMD",
