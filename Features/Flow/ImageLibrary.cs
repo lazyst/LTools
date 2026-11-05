@@ -119,6 +119,26 @@ internal static class ImageLibrary
         }
     }
 
+    /// <summary>
+    /// 把程序生成的图片存进 <see cref="Dir"/>（<c>shot-时间戳.png</c>，重名加序号），返回绝对路径。
+    /// 模板截图与「实时截图」取值器共用；这类文件按引用回收（<see cref="CollectGarbage"/>），
+    /// 所以流程运行时截的图不会一直堆着——下次启动按「没人引用」清掉。
+    /// </summary>
+    public static string SaveGenerated(System.Windows.Media.Imaging.BitmapSource image)
+    {
+        EnsureDir();
+        string stem = $"shot-{DateTime.Now:yyyyMMdd-HHmmss}";
+        string path = Path.Combine(Dir, stem + ".png");
+        for (int n = 2; File.Exists(path); n++)
+            path = Path.Combine(Dir, $"{stem}-{n}.png");
+
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+        using var fs = File.Create(path);
+        encoder.Save(fs);
+        return path;
+    }
+
     /// <summary>两个文件内容是否完全一致（先比长度，再比 SHA-256）。读取失败按「不一致」处理。</summary>
     private static bool SameContent(string a, string b)
     {

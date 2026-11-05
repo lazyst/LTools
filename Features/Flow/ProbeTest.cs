@@ -18,7 +18,8 @@ internal static class ProbeTest
     /// <summary>求值并生成一行结果说明。可能阻塞（图像匹配 / 取选中文本），调用方放到后台线程。</summary>
     public static string Run(Probe probe)
     {
-        if (probe.Kind == ProbeKind.user) return "「询问用户」只在流程运行时可用。";
+        if (probe.Kind == ProbeKind.user) return "「输入文本」要等你真的填一次，只在流程运行时可用。";
+        if (probe.Kind == ProbeKind.screenshot) return "「实时截图」要你自己框一块，只在流程运行时可用。";
 
         var test = probe.Clone();
         if (test.Kind == ProbeKind.image)
@@ -59,6 +60,12 @@ internal static class ProbeTest
             case ProbeKind.selection:
             case ProbeKind.clipboard:
                 return value.Text.Length == 0 ? "读取成功，但内容为空" : $"读到：{Brief(value.Text)}";
+
+            case ProbeKind.screenshot:
+                return value.Flag == true
+                    ? $"区域 {value.X}, {value.Y} · {value.W} × {value.H} · "
+                      + System.IO.Path.GetFileName(value.File)
+                    : "已取消，没有区域";
 
             default:
                 return value.Text.Length == 0 ? "结果为空" : $"结果：{Brief(value.Text)}";

@@ -148,6 +148,7 @@ public partial class ConditionEditor : UserControl
         ProbeKind.window => CompareOp.found,
         ProbeKind.process => CompareOp.found,
         ProbeKind.cursor => CompareOp.greater,
+        ProbeKind.user or ProbeKind.screenshot => CompareOp.found,
         _ => CompareOp.contains,
     };
 
@@ -174,6 +175,18 @@ public partial class ConditionEditor : UserControl
             case ProbeKind.process:
                 yield return (CompareOp.found, "进程正在运行");
                 yield return (CompareOp.notFound, "进程未运行");
+                break;
+
+            case ProbeKind.user:
+            case ProbeKind.screenshot:
+                yield return (CompareOp.found, "用户确定了 / 框到了");
+                yield return (CompareOp.notFound, "用户取消了");
+                yield return (CompareOp.isEmpty, "为空");
+                yield return (CompareOp.isNotEmpty, "不为空");
+                yield return (CompareOp.contains, "包含");
+                yield return (CompareOp.notContains, "不包含");
+                yield return (CompareOp.equals, "等于");
+                yield return (CompareOp.notEquals, "不等于");
                 break;
 
             case ProbeKind.variable:

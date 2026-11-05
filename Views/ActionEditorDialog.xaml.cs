@@ -83,6 +83,7 @@ public partial class ActionEditorDialog : Window
         _fieldsByType[ActionType.runCommand] = F_RunCommand;
         _fieldsByType[ActionType.sendText] = F_SendText;
         _fieldsByType[ActionType.setClipboard] = F_SetClipboard;
+        _fieldsByType[ActionType.toast] = F_Toast;
         _fieldsByType[ActionType.sendKeys] = F_SendKeys;
         _fieldsByType[ActionType.mouse] = F_Mouse;
         _fieldsByType[ActionType.macro] = F_Macro;
@@ -99,6 +100,7 @@ public partial class ActionEditorDialog : Window
             new("运行命令", ActionType.runCommand),
             new("发送文本", ActionType.sendText),
             new("写入剪贴板", ActionType.setClipboard),
+            new("提示弹窗", ActionType.toast),
             new("模拟按键", ActionType.sendKeys),
             new("鼠标操作", ActionType.mouse),
             // 宏按 Id 引用事件文件：组合步骤已支持宏步骤（引用 macros/ 下的文件，备份一起走）。
@@ -212,6 +214,9 @@ public partial class ActionEditorDialog : Window
 
         SendTextBox.Text = _draft.Text ?? "";
         ClipboardTextBox.Text = _draft.Text ?? "";
+        ToastTextBox.Text = _draft.Text ?? "";
+        ToastDurationBox.Text = ((_draft.DurationMs ?? ToastService.DefaultDurationMs) / 1000.0)
+            .ToString("0.###", CultureInfo.InvariantCulture);
         SendModeCombo.SelectedIndex = (_draft.Mode ?? SendTextMode.auto) switch
         {
             SendTextMode.type => 1,
@@ -986,7 +991,7 @@ public partial class ActionEditorDialog : Window
         _draft.Target = null; _draft.Args = null; _draft.Path = null; _draft.Url = null;
         _draft.Cmd = null; _draft.Terminal = null; _draft.KeepWindow = null;
         _draft.Command = null; _draft.Steps = null; _draft.Flow = null; _draft.CompositeOnFail = null;
-        _draft.Text = null; _draft.Mode = null; _draft.AppendEnter = null;
+        _draft.Text = null; _draft.Mode = null; _draft.AppendEnter = null; _draft.DurationMs = null;
         _draft.X = null; _draft.Y = null; _draft.MouseAction = null; _draft.WheelDelta = null;
         _draft.Items = null; _draft.MacroId = null;
 
@@ -1035,6 +1040,19 @@ public partial class ActionEditorDialog : Window
                 // 留空 = 清空剪贴板（明确允许，方便流程里先清掉旧内容）
                 _draft.Text = ClipboardTextBox.Text;
                 break;
+            case ActionType.toast:
+            {
+                if (ToastTextBox.Text.Trim().Length == 0)
+                {
+                    ConfirmDialog.Info(this, "提示弹窗", "请输入要提示的文字。");
+                    ToastTextBox.Focus();
+                    return;
+                }
+                if (!TryReadToastDuration(out int durationMs)) { ToastDurationBox.Focus(); return; }
+                _draft.Text = ToastTextBox.Text;
+                _draft.DurationMs = durationMs;
+                break;
+            }
             case ActionType.sendKeys:
                 if (_keyItems.Count == 0) { ConfirmDialog.Info(this, "动作", "请至少添加一条输入条目。"); return; }
                 if (_recording) StopRecording();
@@ -1111,6 +1129,26 @@ public partial class ActionEditorDialog : Window
         _draft.Icon = IconPicker.SelectedIcon ?? IconCatalog.Default;
         Result = _draft;
         DialogResult = true;
+    }
+
+    // —— toast（提示弹窗）——
+
+    /// <summary>「停留」秒数 → 毫秒（0 = 不自动关闭；留空 = 默认 4 秒）。</summary>
+    private bool TryReadToastDuration(out int durationMs)
+    {
+        durationMs = ToastService.DefaultDurationMs;
+
+        string text = ToastDurationBox.Text.Trim();
+        if (text.Length == 0) return true;
+
+        if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds))
+        {
+            ConfirmDialog.Info(this, "提示弹窗", "停留时间请填秒数，例如 4（0 = 不自动关闭）。");
+            return false;
+        }
+
+        durationMs = (int)Math.Round(Math.Clamp(seconds, 0, 600) * 1000);
+        return true;
     }
 
     // —— mouse ——

@@ -96,8 +96,15 @@ internal static class Win32
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
     public const int GwlExstyle = -20;
     public const long WsExTransparent = 0x00000020;
+    public const long WsExToolwindow = 0x00000080;
+
+    /// <summary>点了也不抢焦点（提示弹窗用：自动化正在往别的窗口输入时不能抢前台）。</summary>
+    public const long WsExNoactivate = 0x08000000;
 
     /// <summary>DWM 窗口属性：实际可见边框（不含不可见的阴影边距）。</summary>
     [DllImport("dwmapi.dll")]

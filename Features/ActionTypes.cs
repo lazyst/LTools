@@ -21,6 +21,10 @@ public enum ActionType
     runCommand,
     sendText,
     setClipboard,
+
+    /// <summary>提示弹窗：把一段文字用置顶提示卡显示出来，**不阻塞**后续步骤。</summary>
+    toast,
+
     sendKeys,
     mouse,
     macro,
@@ -131,6 +135,7 @@ public static class ActionTypeLabel
         ActionType.runCommand => "运行命令",
         ActionType.sendText => "发送文本",
         ActionType.setClipboard => "写入剪贴板",
+        ActionType.toast => "提示弹窗",
         ActionType.sendKeys => "模拟按键",
         ActionType.mouse => "鼠标操作",
         ActionType.macro => "键鼠宏",
@@ -232,6 +237,11 @@ public sealed class ActionDto
     /// <summary>sendText: 文本发送后是否在末尾追加一次回车。</summary>
     public bool? AppendEnter { get; set; }
 
+    // —— toast（提示弹窗）——
+
+    /// <summary>toast: 停留时长（ms，null = 4000；0 = 不自动关闭，点一下关掉）。</summary>
+    public int? DurationMs { get; set; }
+
     // —— sendKeys（§3.2.1）——
 
     /// <summary>sendKeys: 有序输入条目列表（chord / text / sleep 三种）。</summary>
@@ -287,7 +297,7 @@ public sealed class ActionDto
         Id = Id, Name = Name, Icon = Icon, Type = Type,
         Target = Target, Args = Args, Workdir = Workdir, Path = Path, Url = Url,
         Cmd = Cmd, Terminal = Terminal, KeepWindow = KeepWindow, Command = Command,
-        Text = Text, Mode = Mode, AppendEnter = AppendEnter,
+        Text = Text, Mode = Mode, AppendEnter = AppendEnter, DurationMs = DurationMs,
         Items = Items?.Select(i => i.Clone()).ToList(),
         X = X, Y = Y, MouseAction = MouseAction, WheelDelta = WheelDelta,
         MacroId = MacroId,

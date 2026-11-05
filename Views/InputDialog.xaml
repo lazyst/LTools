@@ -26,10 +26,14 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <TextBlock Grid.Row="0" x:Name="PromptText" Style="{StaticResource HintLabel}" Margin="0,0,0,8"/>
             <controls:VariableTextBox Grid.Row="1" x:Name="ValueBox" MinHeight="32"/>
-            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <!-- 多行模式才会显示：单行时回车就是确定，多行时回车是换行 -->
+            <TextBlock Grid.Row="2" x:Name="MultilineHint" Style="{StaticResource HintLabel}"
+                       Text="Ctrl+Enter 确定（Enter 换行）" Margin="0,6,0,0" Visibility="Collapsed"/>
+            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
                 <Button Style="{StaticResource BtnGhost}" x:Name="CancelBtn" Content="取消"
                         MinWidth="78" Margin="0,0,8,0" IsCancel="True"/>
                 <Button Style="{StaticResource BtnPrimary}" x:Name="OkBtn" Content="确定"

@@ -55,6 +55,9 @@ internal static class ProbeEvaluator
             case ProbeKind.user:
                 return AskUser(probe);
 
+            case ProbeKind.screenshot:
+                return ScreenshotProbe.Run(probe, ctx);
+
             case ProbeKind.image:
                 return ImageProbe.Run(probe, ctx);
 
@@ -122,6 +125,8 @@ internal static class ProbeEvaluator
         if (value.Number is double n) parts.Add($"number={n.ToString("0.####", CultureInfo.InvariantCulture)}");
         if (value.Flag is bool f) parts.Add($"flag={f.ToString().ToLowerInvariant()}");
         if (value.X is int x && value.Y is int y) parts.Add($"({x},{y})");
+        if (value.W is int w && value.H is int h) parts.Add($"{w}×{h}");
+        if (value.File.Length > 0) parts.Add($"file={System.IO.Path.GetFileName(value.File)}");
         if (value.Error.Length > 0) parts.Add($"err={value.Error.Length} 字符");
         return string.Join(" ", parts);
     }
@@ -261,17 +266,20 @@ internal static class ProbeEvaluator
         return sb.ToString();
     }
 
-    // —— 询问用户 ——
+    // —— 输入文本 ——
 
     private static VarValue AskUser(Probe probe)
     {
         var app = Application.Current;
         if (app == null) throw new FlowException("界面未初始化，无法弹出输入框");
 
-        Window? owner = app.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? app.MainWindow;
+        // 全部在 UI 线程上做：Application.Windows 与对话框都归属 UI 线程（流程跑在后台线程）。
         var (ok, value) = app.Dispatcher.Invoke(() =>
-            InputDialog.Show(owner, "自动化", string.IsNullOrWhiteSpace(probe.Prompt) ? "请输入" : probe.Prompt!,
-                probe.Default ?? ""));
+        {
+            Window? owner = app.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? app.MainWindow;
+            return InputDialog.Show(owner, "自动化", string.IsNullOrWhiteSpace(probe.Prompt) ? "请输入" : probe.Prompt!,
+                probe.Default ?? "", multiline: probe.Multiline);
+        });
 
         return new VarValue { Text = ok ? value : "", Flag = ok };
     }

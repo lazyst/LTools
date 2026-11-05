@@ -75,6 +75,9 @@ public enum ProbeKind
     /// <summary>弹出输入框询问用户。</summary>
     user,
 
+    /// <summary>实时截图：运行时让用户在屏幕上框一块，取回区域 + 图片文件（见 <see cref="ScreenshotProbe"/>）。</summary>
+    screenshot,
+
     /// <summary>屏幕图像匹配（OpenCV 模板匹配）。</summary>
     image,
 
@@ -172,6 +175,9 @@ public sealed class Probe
     /// <summary>user: 默认值。</summary>
     public string? Default { get; set; }
 
+    /// <summary>user: 是否多行输入（长文本 / 多行内容用，Ctrl+Enter 确定）。</summary>
+    public bool Multiline { get; set; }
+
     // —— image ——
 
     /// <summary>image: 模板图片路径（相对 resources/images、相对数据根如 resources\user\a.png，或绝对路径）。</summary>
@@ -231,6 +237,7 @@ public sealed class Probe
         Format = Format,
         Prompt = Prompt,
         Default = Default,
+        Multiline = Multiline,
         Image = Image,
         Region = Region,
         Rect = Rect != null ? (int[])Rect.Clone() : null,
@@ -431,6 +438,7 @@ public static class FlowText
         {
             ActionType.sendText => string.IsNullOrEmpty(a.Text) ? "发送文本" : $"发送文本：{Trim(a.Text, 24)}",
             ActionType.setClipboard => string.IsNullOrEmpty(a.Text) ? "写入剪贴板（清空）" : $"写入剪贴板：{Trim(a.Text, 24)}",
+            ActionType.toast => string.IsNullOrEmpty(a.Text) ? "提示弹窗" : $"提示：{Trim(a.Text, 24)}",
             ActionType.sendKeys => $"模拟按键（{count} 条）",
             ActionType.mouse => MouseLabel(a),
             _ => string.IsNullOrEmpty(a.Name) ? ActionTypeLabel.Of(a.Type) : a.Name,
@@ -468,7 +476,8 @@ public static class FlowText
             ProbeKind.clipboard => "剪贴板",
             ProbeKind.cursor => "光标位置",
             ProbeKind.datetime => "当前时间",
-            ProbeKind.user => "\"询问用户\"",
+            ProbeKind.user => "输入文本",
+            ProbeKind.screenshot => "实时截图",
             ProbeKind.image => $"图像 {Trim(System.IO.Path.GetFileName(p.Image), 20)}",
             ProbeKind.ocr => "截图文字",
             ProbeKind.color => $"颜色 ({p.X}, {p.Y})",

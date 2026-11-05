@@ -28,6 +28,15 @@ public sealed class VarValue
     /// <summary>点坐标 Y。</summary>
     public int? Y { get; init; }
 
+    /// <summary>区域宽（实时截图的框选区域）。</summary>
+    public int? W { get; init; }
+
+    /// <summary>区域高（实时截图的框选区域）。</summary>
+    public int? H { get; init; }
+
+    /// <summary>关联的文件路径（实时截图存下来的 png）。</summary>
+    public string File { get; init; } = "";
+
     /// <summary>图像匹配置信度（0..1）。</summary>
     public double? Score { get; init; }
 
@@ -59,6 +68,18 @@ public sealed class VarValue
         Y = y,
     };
 
+    /// <summary>由框选区域构造：<c>${变量}</c> = <c>x,y,w,h</c>，另外带中心点与图片文件路径。</summary>
+    public static VarValue FromRegion(int x, int y, int w, int h, string file) => new()
+    {
+        Text = $"{x},{y},{w},{h}",
+        X = x,
+        Y = y,
+        W = w,
+        H = h,
+        File = file,
+        Flag = true,
+    };
+
     /// <summary>由图像匹配结果构造。</summary>
     public static VarValue FromMatch(int x, int y, double score) => new()
     {
@@ -70,11 +91,17 @@ public sealed class VarValue
         Number = score,
     };
 
-    /// <summary>取属性（x / y / found / score / number / text / err / exit）；未知属性返回 null。</summary>
+    /// <summary>取属性（x / y / w / h / cx / cy / rect / file / found / score / number / text / err）；未知属性返回 null。</summary>
     public string? Property(string name) => name.ToLowerInvariant() switch
     {
         "x" => X?.ToString(CultureInfo.InvariantCulture),
         "y" => Y?.ToString(CultureInfo.InvariantCulture),
+        "w" or "width" => W?.ToString(CultureInfo.InvariantCulture),
+        "h" or "height" => H?.ToString(CultureInfo.InvariantCulture),
+        "cx" => X is int rx && W is int rw ? (rx + rw / 2).ToString(CultureInfo.InvariantCulture) : null,
+        "cy" => Y is int ry && H is int rh ? (ry + rh / 2).ToString(CultureInfo.InvariantCulture) : null,
+        "rect" => W != null ? Text : null,
+        "file" or "path" => File.Length > 0 ? File : null,
         "found" or "flag" => Flag?.ToString().ToLowerInvariant(),
         "score" => Score?.ToString("0.###", CultureInfo.InvariantCulture),
         "number" or "exit" or "code" => Number?.ToString("0.####", CultureInfo.InvariantCulture),

@@ -62,7 +62,8 @@ public partial class ProbeEditor : UserControl
             new("剪贴板", ProbeKind.clipboard),
             new("光标位置", ProbeKind.cursor),
             new("日期时间", ProbeKind.datetime),
-            new("询问用户", ProbeKind.user),
+            new("输入文本", ProbeKind.user),
+            new("实时截图", ProbeKind.screenshot),
             new("截图找图", ProbeKind.image),
             new("截图 OCR", ProbeKind.ocr),
             new("屏幕取色", ProbeKind.color),
@@ -109,6 +110,7 @@ public partial class ProbeEditor : UserControl
         DateFormatBox.Text = probe.Format ?? "yyyy-MM-dd HH:mm:ss";
         UserPromptBox.Text = probe.Prompt ?? "";
         UserDefaultBox.Text = probe.Default ?? "";
+        UserMultilineBox.IsChecked = probe.Multiline;
 
         ImagePathBox.Text = probe.Image ?? "";
         SelectRegion(probe.Region);
@@ -185,6 +187,11 @@ public partial class ProbeEditor : UserControl
             case ProbeKind.user:
                 probe.Prompt = UserPromptBox.Text;
                 probe.Default = UserDefaultBox.Text;
+                probe.Multiline = UserMultilineBox.IsChecked == true;
+                break;
+
+            case ProbeKind.screenshot:
+                // 没有参数：区域由用户运行时现框。
                 break;
 
             case ProbeKind.image:
@@ -301,6 +308,7 @@ public partial class ProbeEditor : UserControl
             [ProbeKind.cursor] = P_Cursor,
             [ProbeKind.datetime] = P_DateTime,
             [ProbeKind.user] = P_User,
+            [ProbeKind.screenshot] = P_Screenshot,
             [ProbeKind.image] = P_Image,
             [ProbeKind.ocr] = P_Ocr,
             [ProbeKind.color] = P_Color,
@@ -327,8 +335,9 @@ public partial class ProbeEditor : UserControl
             ? "只识别框内文字；目标位置会变就改成「前台窗口」。"
             : "只在框内查找（更快更准）；目标位置会变就改成「前台窗口」。";
 
-        // 「询问用户」必须真的跑流程才能测，其他取值方式都可以就地试。
-        TestBar.Visibility = kind == ProbeKind.user ? Visibility.Collapsed : Visibility.Visible;
+        // 「输入文本 / 实时截图」必须真的跑流程才能测，其他取值方式都可以就地试。
+        bool interactive = kind is ProbeKind.user or ProbeKind.screenshot;
+        TestBar.Visibility = interactive ? Visibility.Collapsed : Visibility.Visible;
         TestHint.Text = kind switch
         {
             ProbeKind.selection => "通过 UI Automation 读取当前选区（不模拟按键，窗口会短暂最小化）",
@@ -562,20 +571,7 @@ public partial class ProbeEditor : UserControl
     }
 
     /// <summary>模板图存到 resources/images，文件名带时间戳；重名自动加序号。</summary>
-    private static string SaveShot(BitmapSource image)
-    {
-        ImageLibrary.EnsureDir();
-        string stem = $"shot-{DateTime.Now:yyyyMMdd-HHmmss}";
-        string path = Path.Combine(ImageLibrary.Dir, stem + ".png");
-        for (int n = 2; File.Exists(path); n++)
-            path = Path.Combine(ImageLibrary.Dir, $"{stem}-{n}.png");
-
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(image));
-        using var fs = File.Create(path);
-        encoder.Save(fs);
-        return path;
-    }
+    private static string SaveShot(BitmapSource image) => ImageLibrary.SaveGenerated(image);
 
     private void SetRect(int x, int y, int w, int h)
     {
@@ -644,7 +640,7 @@ public partial class ProbeEditor : UserControl
             ShowTest("请先修正：" + error, false);
             return;
         }
-        if (probe.Kind == ProbeKind.user) return;
+        if (probe.Kind is ProbeKind.user or ProbeKind.screenshot) return;
 
         // 看屏幕 / 取前台选区时，LTools 自己的窗口必须让开，否则搜到的是自己。
         bool hide = probe.Kind is ProbeKind.image or ProbeKind.ocr or ProbeKind.color or ProbeKind.cursor

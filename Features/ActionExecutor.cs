@@ -17,6 +17,7 @@ namespace LTools.Features;
 /// <item>runCommand → 复用 <see cref="TerminalLauncher"/> 终端路由；direct 走 ShellExecute</item>
 /// <item>sendText → 50ms 焦点延时后按 <see cref="SendTextMode"/> 分发（auto=Unicode 注入 / type=键入 / paste=剪贴板粘贴，§3.2.2）</item>
 /// <item>setClipboard → 把文本（可含运行期模板）写进系统剪贴板，不发送、不按键</item>
+/// <item>toast → 右下角提示卡片，投递到 UI 线程即返回（不阻塞后续步骤、不抢焦点）</item>
 /// <item>sendKeys → 50ms 焦点延时后顺序遍历条目（chord 逐 stroke Combo、stroke 间 15ms；text 复用 sendText auto；sleep 等待，§3.2.1）</item>
 /// <item>internal → <see cref="InternalActionRegistry"/> 分发（dispatch 到 UI 线程执行）</item>
 /// <item>mouse → 绝对移动 + 点击 / 双击 / 滚轮（坐标支持运行期模板）</item>
@@ -96,6 +97,9 @@ internal static class ActionExecutor
                 break;
             case ActionType.setClipboard:
                 result = SetClipboard(action);
+                break;
+            case ActionType.toast:
+                ShowToast(action);
                 break;
             case ActionType.sendKeys:
                 SendKeys(action);
@@ -429,6 +433,25 @@ internal static class ActionExecutor
         if (!NativeClipboard.SetText(text))
             throw new InvalidOperationException($"写入剪贴板失败（剪贴板被其他程序占用？）: {a.Name}");
         return new VarValue { Text = text, Flag = true };
+    }
+
+    // —— toast（提示弹窗）——
+    //
+    // 只是显示：投递到 UI 线程就返回，下一步立刻继续。提示卡片不抢焦点（WS_EX_NOACTIVATE），
+    // 自动化正在往别的窗口输入时也不会被它打断。
+
+    private static void ShowToast(ActionDto a)
+    {
+        string text = a.Text ?? "";
+        if (text.Length == 0)
+        {
+            // 空正文（比如 ${变量} 取出来是空串）没什么可看的：记一条日志，不弹空气泡。
+            AppLog.Warn("Action", $"「{a.Name}」的提示内容为空，已跳过");
+            return;
+        }
+
+        int duration = Math.Clamp(a.DurationMs ?? ToastService.DefaultDurationMs, 0, 600_000);
+        ToastService.Show(text, string.IsNullOrWhiteSpace(a.Name) ? null : a.Name, duration);
     }
 
     // —— sendText（发送文本，§3.2.2）——

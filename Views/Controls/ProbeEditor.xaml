@@ -45,16 +45,28 @@
             <TextBox x:Name="DateFormatBox" MinHeight="32" Margin="0,4,0,0"/>
         </StackPanel>
 
-        <!-- 询问用户：两个字段用途不同——上面是问句，下面是输入框的预填内容 -->
+        <!-- 实时截图：运行时让你自己框一块，结果带区域 + 图片文件 -->
+        <StackPanel x:Name="P_Screenshot" Visibility="Collapsed" Margin="0,8,0,0">
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                       Text="流程跑到这一步时，LTools 会让开并冻结屏幕，由你在屏幕上框一块（可吸附窗口 / 控件，和截图工具一样）。框完自动继续，不用再按确定。"/>
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
+                       Text="结果怎么用：${变量} 是区域「x,y,w,h」；${变量.cx} / ${变量.cy} 是中心点（可直接喂给鼠标操作）；${变量.w} / ${变量.h} 是尺寸；${变量.file} 是存下来的 png 路径（可给「打开文件」或发送文本）；${变量.found} 是 true / false，取消时为 false。"/>
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
+                       Text="截下来的图片存在 resources\images\，与模板截图同一套回收规则（没人引用时下次启动清掉），不会越堆越多。"/>
+        </StackPanel>
+
+        <!-- 输入文本：两个字段用途不同——上面是问句，下面是输入框的预填内容 -->
         <StackPanel x:Name="P_User" Visibility="Collapsed" Margin="0,8,0,0">
             <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                       Text="运行时弹出一个输入框，流程停下等你填（确定 / 取消）。两个字段不重复：上面是问用户什么，下面是输入框一开始的内容。"/>
+                       Text="运行时弹出输入框，流程停下等你填（确定 / 取消）。${变量} 就是填进来的文字；取消时为空且 ${变量.found} 为 false。"/>
             <TextBlock Style="{StaticResource SectionLabel}" Text="提示文字（问用户什么）" Margin="0,6,0,2"/>
             <TextBox x:Name="UserPromptBox" MinHeight="32"
                      ToolTip="运行时显示在输入框上方的说明文字，例如「请输入文件名」"/>
             <TextBlock Style="{StaticResource SectionLabel}" Text="默认值（预填在输入框里，可留空）" Margin="0,6,0,2"/>
             <TextBox x:Name="UserDefaultBox" MinHeight="32"
                      ToolTip="输入框一开始的内容，用户可以直接改；留空则从空白开始"/>
+            <CheckBox x:Name="UserMultilineBox" Content="多行输入（长文本 / 多行内容）" Margin="0,8,0,0"
+                      ToolTip="勾上后输入框支持换行，Ctrl+Enter 确定；单行时回车即确定"/>
         </StackPanel>
 
         <!-- 图像 -->

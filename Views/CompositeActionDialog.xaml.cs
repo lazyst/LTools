@@ -97,7 +97,7 @@ public partial class CompositeActionDialog : Window
         _query = (SearchBox.Text ?? "").Trim();
         SourceList.Children.Clear();
 
-        // 基础动作（11 种动作类型）→ 双击/拖入开预置类型的编辑器（§12）
+        // 基础动作（普通动作类型 + 内部动作）→ 双击/拖入开预置类型的编辑器（§12）
         var basicDefs = new (ActionType Type, string Icon, string Label)[]
         {
             (ActionType.launchApp, "app", "启动程序"),
@@ -107,6 +107,7 @@ public partial class CompositeActionDialog : Window
             (ActionType.runCommand, "terminal", "运行命令"),
             (ActionType.sendText, "send", "发送文本"),
             (ActionType.setClipboard, "paste", "写入剪贴板"),
+            (ActionType.toast, "message", "提示弹窗"),
             (ActionType.sendKeys, "keyboard", "模拟按键"),
             (ActionType.mouse, "mouse", "鼠标操作"),
             (ActionType.macro, "record", "键鼠宏"),
@@ -134,11 +135,13 @@ public partial class CompositeActionDialog : Window
             .ToList();
         AddGroup("flow", "流程", flowItems);
 
-        // 取值：把剪贴板 / 选中文本 / 光标 / 时间等「当前值」直接存成变量。
+        // 取值：把「当前值」直接存成变量，最上面两个是需要人参与一步的（实时截图 / 输入文本）。
         // 这些能力以前是隐藏的内置变量，现在改为左栏可点选的单元；生成的仍是普通的
         // 「设置变量」节点 —— 概念只有一个，变量面板也只显示用户创建的变量。
         var valueDefs = new (string Label, ProbeKind Kind, string Var, string Icon, string Tip)[]
         {
+            ("实时截图", ProbeKind.screenshot, "截图", "camera", "运行到这里让你自己框一块：结果带区域（.cx / .cy / .w / .h）和图片文件（.file）"),
+            ("输入文本", ProbeKind.user, "输入", "edit", "运行到这里弹出输入框问你一次：填的内容存进变量；取消 → 空 + found=false"),
             ("剪贴板文本", ProbeKind.clipboard, "剪贴板", "paste", "读取系统剪贴板里的文本"),
             ("选中文本", ProbeKind.selection, "选中文本", "copy", "读取前台应用当前选中的文本（UI Automation，不模拟按键）"),
             ("鼠标位置", ProbeKind.cursor, "鼠标位置", "mouse", "记录当前鼠标坐标（用 ${变量.x} / ${变量.y} 引用）"),
