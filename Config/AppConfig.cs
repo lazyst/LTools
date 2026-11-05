@@ -122,6 +122,12 @@ public sealed class AppConfig
     /// <summary>设置窗口上次所在的导航页（general/actions/menus/superpanel/terminals/logs/backup），下次打开恢复。</summary>
     public string LastNavPage { get; set; } = "actions";
 
+    /// <summary>
+    /// 上次选用的「截图 OCR」引擎（<c>windows</c> / <c>v6tiny</c> / <c>v6small</c>），
+    /// 新建 OCR 取值默认用它；null = 还没选过（默认内置的 PP-OCRv6 快速）。见 <c>Features/OcrEnginePreference</c>。
+    /// </summary>
+    public string? LastOcrEngine { get; set; }
+
     /// <summary>组合动作编辑器左栏已折叠的分组 key（basic / internal / pool），下次打开恢复。</summary>
     public List<string> CompositeCollapsedGroups { get; set; } = new();
 

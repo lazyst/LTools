@@ -82,8 +82,8 @@ public partial class ProbeEditor : UserControl
 
         OcrEngineCombo.ItemsSource = new List<OcrEngineItem>
         {
-            new("系统 OCR（零下载，最快）", null),
-            new("PP-OCRv6 快速（内置 7.4 MB）", "v6tiny"),
+            new("PP-OCRv6 快速（内置，推荐）", "v6tiny"),
+            new("系统 OCR（最快，最省内存）", null),
             new("PP-OCRv6 高精度（需下载 29.8 MB）", "v6small"),
         };
         OcrEngineCombo.SelectedIndex = 0;
@@ -112,7 +112,8 @@ public partial class ProbeEditor : UserControl
 
         ImagePathBox.Text = probe.Image ?? "";
         SelectRegion(probe.Region);
-        SelectOcrEngine(probe.OcrEngine);
+        // 已有 OCR 步骤保留自己的引擎；新建步骤沿用上次的选择（默认 PP-OCRv6 快速）
+        SelectOcrEngine(probe.Kind == ProbeKind.ocr ? probe.OcrEngine : OcrEnginePreference.DefaultForNewProbe);
         RectXBox.Text = probe.Rect is { Length: >= 4 } r ? r[0].ToString(CultureInfo.InvariantCulture) : "0";
         RectYBox.Text = probe.Rect is { Length: >= 4 } r2 ? r2[1].ToString(CultureInfo.InvariantCulture) : "0";
         RectWBox.Text = probe.Rect is { Length: >= 4 } r3 ? r3[2].ToString(CultureInfo.InvariantCulture) : "0";
@@ -355,6 +356,7 @@ public partial class ProbeEditor : UserControl
     {
         if (!_ready) return;
         UpdateOcrEngineState();
+        OcrEnginePreference.Save((OcrEngineCombo.SelectedItem as OcrEngineItem)?.Value);
     }
 
     /// <summary>按所选引擎给出说明 / 下载入口：模型缺了先说清楚，而不是等运行时才报错。</summary>
@@ -367,14 +369,14 @@ public partial class ProbeEditor : UserControl
 
         if (tier == null)
         {
-            OcrEngineHint.Text = "系统自带（Windows.Media.Ocr），零下载、十几毫秒出结果；12–14px 中文与数字、标点容易认错。";
+            OcrEngineHint.Text = "系统自带（Windows.Media.Ocr），零下载、十几毫秒出结果，内存占用最小；12–14px 中文与数字、标点容易认错。会记住这次的选择。";
             return;
         }
 
         if (PaddleOcr.IsReady(tier.Value))
         {
             OcrEngineHint.Text = tier == PaddleOcr.Tier.Tiny
-                ? "内置模型，首次识别加载约 0.2 秒，单张约 0.4 秒；小字、数字明显更准。"
+                ? "内置模型（随安装包），首次识别加载约 0.2 秒，单张约 0.4 秒；小字、数字明显更准。新建 OCR 步骤默认用它。"
                 : "模型已就位，单张约 1.2 秒；同图基准里 15 个场景全部识别正确。";
             return;
         }
