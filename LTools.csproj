@@ -64,4 +64,25 @@
     <RemoveDir Directories="$(PublishDir)models\v5" />
   </Target>
 
+  <!-- OpenCvSharp4.runtime.win 顺带拷贝 opencv_videoio_ffmpeg（27.3 MB），它是 VideoCapture /
+       VideoWriter 的 FFmpeg 后端插件，由 videoio 在用到时才 LoadLibrary。本应用只用 imgproc
+       （ImRead / Resize / CvtColor / MatchTemplate，见 Features\Flow\ImageProbe.cs），从不碰 videoio，
+       故构建 / 发布后删掉：解压包 -27.3 MB，zip 约 -11.6 MB。
+       未指定 RID 的构建把原生库放在 runtimes\<rid>\native\ 下，发布（-r win-x64）才摊平到根，两处都要删。 -->
+  <Target Name="RemoveUnusedOpenCvVideoio" AfterTargets="Build">
+    <ItemGroup>
+      <_OpenCvFfmpeg Include="$(TargetDir)opencv_videoio_ffmpeg*_64.dll" />
+      <_OpenCvFfmpeg Include="$(TargetDir)runtimes\**\opencv_videoio_ffmpeg*_64.dll" />
+    </ItemGroup>
+    <Delete Files="@(_OpenCvFfmpeg)" />
+  </Target>
+
+  <Target Name="RemoveUnusedOpenCvVideoioOnPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <ItemGroup>
+      <_OpenCvFfmpegPublish Include="$(PublishDir)opencv_videoio_ffmpeg*_64.dll" />
+      <_OpenCvFfmpegPublish Include="$(PublishDir)runtimes\**\opencv_videoio_ffmpeg*_64.dll" />
+    </ItemGroup>
+    <Delete Files="@(_OpenCvFfmpegPublish)" />
+  </Target>
+
 </Project>

@@ -85,9 +85,11 @@ public partial class ConfigHelperWindow : Window
             CapsLockEnabledBox.IsChecked = AppState.IsToolEnabled;
             SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
             SuperPanelBox2.IsChecked = AppState.IsSuperPanelEnabled;
-            // 自启状态（schtasks 是外部进程，异步查询避免白屏）
-            AutoStartBox.IsChecked = await System.Threading.Tasks.Task.Run(() => AutoStartService.IsEnabled());
+            // 自启状态：任务计划 COM 首次激活要百毫秒级，放线程池避免窗口白屏。
+            // 查询期间保持 _initializing，免得用户此刻点开关与查询结果互相覆盖。
+            var autoStart = await System.Threading.Tasks.Task.Run(AutoStartService.Query);
             _initializing = false;
+            ApplyAutoStartState(autoStart);
         };
         Closed += (_, _) =>
         {
@@ -165,7 +167,40 @@ public partial class ConfigHelperWindow : Window
             AutoStartBox.IsChecked = !want;
             _initializing = false;
             ConfirmDialog.Info(this, "开机自启", want ? "启用失败，请检查权限或任务计划服务。" : "禁用失败。");
+            return;
         }
+        // 重新注册会把 Command 改成当前 exe，旧的「路径已失效」提示随之消失
+        ApplyAutoStartState(AutoStartService.Query());
+    }
+
+    /// <summary>
+    /// 把自启任务状态刷到「通用」页：勾选 = 任务存在；任务指向别的路径时
+    /// （多为便携目录被挪走）给出红字说明与「改为当前程序」按钮。
+    /// </summary>
+    private void ApplyAutoStartState(AutoStartInfo info)
+    {
+        _initializing = true;
+        AutoStartBox.IsChecked = info.TaskExists;
+        _initializing = false;
+
+        bool stale = info.State == AutoStartState.Stale;
+        AutoStartFixButton.Visibility = stale ? Visibility.Visible : Visibility.Collapsed;
+        AutoStartHint.Foreground = (Brush)FindResource(stale ? "DangerBrush" : "HintTextBrush");
+        AutoStartHint.Text = !stale
+            ? "通过任务计划程序创建 ONLOGON / 最高权限任务，开机无 UAC 弹窗。"
+            : info.RegisteredPathExists
+                ? $"自启任务指向另一份拷贝：{info.RegisteredPath}。要改成当前程序，点下面「改为当前程序」。"
+                : $"自启任务指向 {info.RegisteredPath}，该文件已不存在（多为挪动了程序目录），登录时不会启动。点下面「改为当前程序」修复。";
+    }
+
+    private void AutoStartFix_Click(object sender, RoutedEventArgs e)
+    {
+        if (!AutoStartService.Enable())
+        {
+            ConfirmDialog.Info(this, "开机自启", "修复失败，请检查权限或任务计划服务。");
+            return;
+        }
+        ApplyAutoStartState(AutoStartService.Query());
     }
 
     // ============ 动作管理 ============

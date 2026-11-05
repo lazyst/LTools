@@ -196,9 +196,12 @@
                             <StackPanel>
                                 <CheckBox x:Name="AutoStartBox" Content="开机自动启动（任务计划，静默提权）"
                                           Checked="AutoStartBox_Changed" Unchecked="AutoStartBox_Changed"/>
-                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,0"
+                                <TextBlock x:Name="AutoStartHint" Style="{StaticResource HintLabel}" Margin="22,4,0,0"
                                            Text="通过任务计划程序创建 ONLOGON / 最高权限任务，开机无 UAC 弹窗。"
                                            TextWrapping="Wrap"/>
+                                <Button x:Name="AutoStartFixButton" Style="{StaticResource Btn}" Content="改为当前程序"
+                                        Margin="22,8,0,2" HorizontalAlignment="Left" Padding="12,4"
+                                        Visibility="Collapsed" Click="AutoStartFix_Click"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>

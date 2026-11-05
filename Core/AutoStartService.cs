@@ -1,10 +1,34 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Principal;
 using System.Text;
 
 namespace LTools.Core;
+
+/// <summary>自启任务相对「当前 exe」的状态。</summary>
+internal enum AutoStartState
+{
+    /// <summary>没有自启任务。</summary>
+    Disabled,
+
+    /// <summary>任务指向当前 exe，自启有效。</summary>
+    Enabled,
+
+    /// <summary>任务指向另一条路径（便携目录被挪动、或另一份拷贝抢过任务名），自启可能已失效。</summary>
+    Stale,
+}
+
+/// <summary>自启任务的查询结果。</summary>
+internal readonly record struct AutoStartInfo(
+    AutoStartState State,
+    string? RegisteredPath,
+    bool RegisteredPathExists)
+{
+    /// <summary>任务是否存在（不论指向哪里）——复选框是否勾上用它判断。</summary>
+    public bool TaskExists => State != AutoStartState.Disabled;
+}
 
 /// <summary>
 /// 开机自启管理（任务计划程序 + highest privileges）。
@@ -16,6 +40,11 @@ namespace LTools.Core;
 /// <c>Command</c> 指向当前 exe 全路径。必须用 XML 而非 <c>/sc ONLOGON /rl HIGHEST</c>：
 /// 后者默认勾选「仅交流电源启动」「切换到电池即停止」，笔记本掉一次交流电就杀掉常驻进程
 /// （见 <see cref="Enable"/> 与 CHANGELOG「笔记本离开后 LTools 无声退出」）。
+///
+/// 任务里存的是注册那一刻的绝对路径。便携版把目录挪走（下载 → 解压 → 移到 D:\Tools 很常见）后，
+/// 任务仍在但指向已消失的 exe，登录时静默失败（<c>MultipleInstancesPolicy=IgnoreNew</c>，失败不提示），
+/// 而设置页只查「任务是否存在」就会一直显示已启用。故这里除了注册 / 删除，还提供
+/// <see cref="Query"/>（带路径比对）与 <see cref="HealIfMoved"/>（启动时自愈）。
 /// </summary>
 internal static class AutoStartService
 {
@@ -26,29 +55,91 @@ internal static class AutoStartService
 
     private static bool _legacyCleaned;
 
+    // ============ 查询 ============
+
     /// <summary>
-    /// 是否已启用自启（查询任务计划是否存在）。
-    /// 首次查询时顺带清理改名前的旧任务 <c>CapsLockPro</c>——其 /tr 指向已不存在的旧 exe。
+    /// 查询任务状态：有没有任务、指向谁、那条路径是否还在。
+    /// 供设置页显示「已启用 / 路径已失效」，也供启动自愈判断。
     /// </summary>
-    public static bool IsEnabled()
+    public static AutoStartInfo Query()
     {
         CleanupLegacyTask();
-        var psi = new ProcessStartInfo("schtasks", $"/query /tn {TaskName} /fo LIST")
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
+
+        string? registered = QueryTaskCommand();
+        if (string.IsNullOrEmpty(registered))
+            return new AutoStartInfo(AutoStartState.Disabled, null, false);
+
+        bool same = SamePath(registered, ExePath);
+        return new AutoStartInfo(
+            same ? AutoStartState.Enabled : AutoStartState.Stale,
+            registered,
+            File.Exists(registered));
+    }
+
+    /// <summary>
+    /// 启动时的路径自愈：只处理「任务指向的 exe 已经不存在」这一种情况（挪动目录），
+    /// 改写为当前 exe。若指向的是另一份仍然存在的拷贝，属于用户有意共存，不抢。
+    /// </summary>
+    public static void HealIfMoved()
+    {
+        var info = Query();
+        if (info.State != AutoStartState.Stale || info.RegisteredPathExists) return;
+
+        var exe = ExePath;
+        if (string.IsNullOrEmpty(exe) || !File.Exists(exe)) return;
+
+        if (Enable())
+            AppLog.Info("Startup", $"自启任务路径已修正：{info.RegisteredPath} → {exe}");
+        else
+            AppLog.Warn("Startup", $"自启任务仍指向已不存在的 {info.RegisteredPath}，改写失败（可能缺少管理员权限）");
+    }
+
+    /// <summary>
+    /// 读任务计划里的可执行文件路径；任务不存在 / 查询失败时返回 null。
+    ///
+    /// 用任务计划 COM 而不是 <c>schtasks /query /xml</c>：后者把 XML 写进控制台代码页
+    /// （中文 Windows 是 GBK），.NET 按 UTF-8 解码会把中文路径解成乱码，从而误判「路径不符」
+    /// 并在每次启动时重写任务。COM 返回 BSTR，与代码页无关。
+    /// </summary>
+    private static string? QueryTaskCommand()
+    {
         try
         {
-            using var p = Process.Start(psi);
-            if (p == null) return false;
-            p.WaitForExit(3000);
-            return p.ExitCode == 0;   // 0 = 任务存在
+            var type = Type.GetTypeFromProgID("Schedule.Service");
+            if (type is null) return null;
+
+            dynamic service = Activator.CreateInstance(type)!;
+            service.Connect();
+
+            dynamic task = service.GetFolder("\\").GetTask(TaskName);
+            dynamic actions = task.Definition.Actions;
+            if ((int)actions.Count < 1) return null;
+
+            dynamic action = actions.Item(1);
+            // 0 = TASK_ACTION_EXEC；其它类型（COM handler 等）不是我们把关的形态
+            return (int)action.Type == 0 ? (string?)action.Path : null;
         }
-        catch { return false; }
+        catch (COMException)
+        {
+            return null;   // 0x80070002 = 任务不存在；其它 COM 失败也按「查不到」处理
+        }
+        catch
+        {
+            return null;
+        }
     }
+
+    private static bool SamePath(string? a, string? b) =>
+        !string.IsNullOrEmpty(a) && !string.IsNullOrEmpty(b) &&
+        string.Equals(Normalize(a), Normalize(b), StringComparison.OrdinalIgnoreCase);
+
+    private static string Normalize(string path)
+    {
+        try { return Path.GetFullPath(path).TrimEnd('\\'); }
+        catch { return path.Trim().TrimEnd('\\'); }
+    }
+
+    // ============ 注册 / 删除 ============
 
     /// <summary>
     /// 启用自启：用任务 XML 注册 ONLOGON + HighestAvailable 任务（覆盖已有）。
@@ -86,40 +177,40 @@ internal static class AutoStartService
                      ?? WindowsIdentity.GetCurrent().Name;
 
         return $$"""
-<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>LTools 登录自启（免 UAC 提权）</Description>
-    <URI>\{{TaskName}}</URI>
-  </RegistrationInfo>
-  <Principals>
-    <Principal id="Author">
-      <UserId>{{userId}}</UserId>
-      <LogonType>InteractiveToken</LogonType>
-      <RunLevel>HighestAvailable</RunLevel>
-    </Principal>
-  </Principals>
-  <Settings>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <AllowHardTerminate>true</AllowHardTerminate>
-    <StartWhenAvailable>true</StartWhenAvailable>
-    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
-    <Enabled>true</Enabled>
-  </Settings>
-  <Triggers>
-    <LogonTrigger>
-      <Enabled>true</Enabled>
-    </LogonTrigger>
-  </Triggers>
-  <Actions Context="Author">
-    <Exec>
-      <Command>{{SecurityElement.Escape(exe)}}</Command>
-    </Exec>
-  </Actions>
-</Task>
-""";
+        <?xml version="1.0" encoding="UTF-16"?>
+        <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+          <RegistrationInfo>
+            <Description>LTools 登录自启（免 UAC 提权）</Description>
+            <URI>\{{TaskName}}</URI>
+          </RegistrationInfo>
+          <Principals>
+            <Principal id="Author">
+              <UserId>{{userId}}</UserId>
+              <LogonType>InteractiveToken</LogonType>
+              <RunLevel>HighestAvailable</RunLevel>
+            </Principal>
+          </Principals>
+          <Settings>
+            <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+            <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+            <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+            <AllowHardTerminate>true</AllowHardTerminate>
+            <StartWhenAvailable>true</StartWhenAvailable>
+            <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+            <Enabled>true</Enabled>
+          </Settings>
+          <Triggers>
+            <LogonTrigger>
+              <Enabled>true</Enabled>
+            </LogonTrigger>
+          </Triggers>
+          <Actions Context="Author">
+            <Exec>
+              <Command>{{SecurityElement.Escape(exe)}}</Command>
+            </Exec>
+          </Actions>
+        </Task>
+        """;
     }
 
     /// <summary>禁用自启：删除任务。</summary>

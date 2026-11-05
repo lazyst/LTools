@@ -81,6 +81,11 @@ public partial class App : Application
         AppLog.Info("App", $"数据目录 {AppPaths.DataRoot}");
         AppLog.Info("App", $"配置文件 {cfgPath}");
 
+        // 自启任务路径自愈：便携版把目录挪走后，任务仍指向旧 exe，登录时静默失败
+        // （任务计划 IgnoreNew，失败不提示），设置页也会一直显示「已启用」。
+        // 放线程池执行——COM 激活与 schtasks 都是外部调用，不占启动阶段的主线程。
+        _ = Task.Run(AutoStartService.HealIfMoved);
+
         if (cfg.LoadFailed)
         {
             AppLog.Error("App",

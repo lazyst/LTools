@@ -33,7 +33,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - `App.xaml.cs` — 入口：单实例互斥体 → 托盘 → 装钩子 → 加载配置 → 看门狗
 - `Hooks/` — `WH_KEYBOARD_LL` / `WH_MOUSE_LL`，纯 P/Invoke，框架无关
 - `Native/` — Win32 调用、InputHelper、NativeClipboard、FolderPicker
-- `Core/` — AppState(全局状态)、CapsLockStateMachine、ConfigLocator、TrayService、CrashLog
+- `Core/` — AppState(全局状态)、CapsLockStateMachine、ConfigLocator、TrayService、CrashLog、AutoStartService（任务计划自启 + 路径自愈）
 - `Features/` — 功能模块（TextEditor、MouseMode、MenuSystem、QuickNote 等），非 UI 逻辑
   - 键鼠宏：`MacroRecorder`（录制）/ `MacroPlayer`（回放）/ `MacroStore`（`macros/*.json` 事件 + `Macros.Items` 元数据）/ `MacroSettings`（热键与全局参数）/ `MacroHotkey`（录制 / 回放期间的系统热键）/ `HotkeyCapture`（录制式热键录入）
 - `Views/` — WPF 窗体（XAML + code-behind）；`Views/Controls/` 为共用控件（`TitleBar`、`ActionKindSwitch` 等）
@@ -62,6 +62,8 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - `GlobalUsings.cs` 已把 `Button`/`Key`/`MessageBox` 等同名类型统一到 WPF 命名空间——不要引用 WinForms 类型
 - 文件夹选择用 WPF 原生 `Microsoft.Win32.OpenFolderDialog`，不引用 WinForms
 - 第三方依赖：`H.NotifyIcon.Wpf`（托盘图标）、`OpenCvSharp4`（图像匹配）、`FlaUI.UIA3`（UI Automation，读选中文本）、`RapidOcrNet`（PP-OCRv6 识别，ONNX Runtime + SkiaSharp）
+- OpenCvSharp 的 `opencv_videoio_ffmpeg`（27.3 MB）只服务 `VideoCapture`/`VideoWriter`，本项目只用 imgproc（`ImRead`/`Resize`/`CvtColor`/`MatchTemplate`），csproj 有 target 在构建 / 发布后删除；要加视频功能时得同时去掉那个 target
+- 开机自启用任务计划（`Core/AutoStartService.cs`）而非注册表 Run 键：`requireAdministrator` 的程序从 Run 键启动会弹 UAC，任务计划能静默提权。任务里存的是注册时的 exe 绝对路径，便携目录被挪走后会静默失效，故 `Query()` 比对路径、启动时 `HealIfMoved()` 自愈（只在旧路径已不存在时改写，不抢另一份拷贝）
 - OCR 双引擎：新建「截图 OCR」默认 `PP-OCRv6 快速`（内置在 `Assets/Ocr/ppocrv6`）；可切 `Windows.Media.Ocr`（最快、最省内存）。选择记在 `LTools.json` 的 `lastOcrEngine`，见 `Features/OcrEnginePreference.cs`。`Features/Flow/PaddleOcr.cs` 是 PP-OCRv6 推理（small 下载到数据根 `ocr-models/`，见 `OcrModelStore`）。RapidOcrNet 的包内 targets 会把自带的 v5 模型拷进输出目录，csproj 里有 target 在构建 / 发布后清理
 
 ## 其他
