@@ -5,7 +5,7 @@
         xmlns:controls="clr-namespace:LTools.Views.Controls"
         Title="组合动作" Width="980" Height="700"
         MinWidth="820" MinHeight="560"
-        WindowStartupLocation="CenterScreen" ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
@@ -151,7 +151,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <controls:TitleBar Grid.Row="0" x:Name="TitleBar" ShowMinimize="False"/>
+        <controls:TitleBar Grid.Row="0" x:Name="TitleBar"/>
 
         <!-- 三栏正文 -->
         <Grid Grid.Row="1">
@@ -216,7 +216,7 @@
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionLabel}" Text="变量" Margin="0,0,0,3"/>
                         <TextBlock x:Name="VarHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                                   Text="点一下复制 ${变量}；编辑步骤时右侧也能直接点选插入。"/>
+                                   Text="变量来自流程里的「设置变量」（名称可用中文）；点一下复制 ${变量}。"/>
                         <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto" Margin="0,4,0,0">
                             <controls:VariableList x:Name="VarList"/>
                         </ScrollViewer>

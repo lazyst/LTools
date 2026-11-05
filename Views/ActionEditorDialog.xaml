@@ -5,7 +5,7 @@
         xmlns:controls="clr-namespace:LTools.Views.Controls"
         Title="动作" Width="720" Height="560"
         MinWidth="620" MinHeight="480"
-        WindowStartupLocation="CenterScreen" ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
@@ -24,7 +24,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <controls:TitleBar Grid.Row="0" x:Name="TitleBar" ShowMinimize="False"/>
+        <controls:TitleBar Grid.Row="0" x:Name="TitleBar"/>
 
         <!-- 主体 -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="20,16,20,0">

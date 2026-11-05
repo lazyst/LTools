@@ -74,7 +74,7 @@ public partial class CompositeActionDialog : Window
         varHintTimer.Tick += (_, _) =>
         {
             varHintTimer.Stop();
-            VarHint.Text = "点一下复制 ${变量}；编辑步骤时右侧也能直接点选插入。";
+            VarHint.Text = "变量来自流程里的「设置变量」（名称可用中文）；点一下复制 ${变量}。";
         };
         _varHintTimer = varHintTimer;
         VarList.VariableInvoked += CopyVariable;
