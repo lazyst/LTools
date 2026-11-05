@@ -15,7 +15,7 @@ namespace LTools.Views;
 /// <remarks>
 /// 只编辑节点自身的参数：<c>if</c> 的 Then/Else、<c>loop</c> 的 Body 保持原样，
 /// 因此重开对话框改条件不会丢子步骤。动作节点走普通动作编辑器，不在此窗口。
-/// 右侧变量面板列出内置值与流程里的自定义变量，点一下插入到最近编辑的输入框。
+/// 右侧变量面板列出流程里的用户变量，点一下插入到最近编辑的输入框。
 /// </remarks>
 public partial class FlowNodeDialog : Window
 {
@@ -67,6 +67,7 @@ public partial class FlowNodeDialog : Window
                     LoopCondition.Load(null);
                 }
                 UpdateLoopPanels();
+                LoopIndexVarBox.Text = loop.IndexVar ?? "";
                 break;
         }
     }
@@ -81,8 +82,8 @@ public partial class FlowNodeDialog : Window
 
     private void Window_PreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        // 「变量名」「循环次数」是纯名字 / 数字，不接受 ${}，不作为插入目标
-        if (e.NewFocus is TextBox box && box != VarBox && box != LoopCountBox)
+        // 「变量名」「循环次数」「下标变量」是纯名字 / 数字，不接受 ${}，不作为插入目标
+        if (e.NewFocus is TextBox box && box != VarBox && box != LoopCountBox && box != LoopIndexVarBox)
             _lastBox = box;
     }
 
@@ -111,7 +112,7 @@ public partial class FlowNodeDialog : Window
             for (int i = 0; i < count; i++)
             {
                 var child = VisualTreeHelper.GetChild(root, i);
-                if (child is TextBox box && box.IsVisible && box != VarBox && box != LoopCountBox)
+                if (child is TextBox box && box.IsVisible && box != VarBox && box != LoopCountBox && box != LoopIndexVarBox)
                     return box;
                 if (Find(child) is TextBox nested) return nested;
             }
@@ -187,6 +188,7 @@ public partial class FlowNodeDialog : Window
                     loop.Count = count;
                     loop.While = null;
                 }
+                loop.IndexVar = LoopIndexVarBox.Text.Trim();
                 _node.Loop = loop;
                 break;
             }

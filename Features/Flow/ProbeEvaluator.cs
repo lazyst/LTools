@@ -79,6 +79,9 @@ internal static class ProbeEvaluator
                 }
             }
 
+            case ProbeKind.lastError:
+                return VarValue.FromText(ctx.LastError);
+
             default:
                 throw new FlowException($"未知取值方式：{probe.Kind}");
         }

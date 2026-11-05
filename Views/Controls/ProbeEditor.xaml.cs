@@ -62,6 +62,7 @@ public partial class ProbeEditor : UserControl
             new("屏幕取色", ProbeKind.color),
             new("窗口", ProbeKind.window),
             new("进程", ProbeKind.process),
+            new("上一步的错误", ProbeKind.lastError),
         };
         KindCombo.SelectedIndex = 0;
 
@@ -276,6 +277,7 @@ public partial class ProbeEditor : UserControl
             [ProbeKind.color] = P_Color,
             [ProbeKind.window] = P_Window,
             [ProbeKind.process] = P_Process,
+            [ProbeKind.lastError] = P_LastError,
         };
 
         foreach (var p in panels.Values) p.Visibility = Visibility.Collapsed;
@@ -290,11 +292,12 @@ public partial class ProbeEditor : UserControl
         TestBar.Visibility = kind == ProbeKind.user ? Visibility.Collapsed : Visibility.Visible;
         TestHint.Text = kind switch
         {
-            ProbeKind.selection => "会向前台应用发送 Ctrl+C 并还原剪贴板（窗口会短暂最小化）",
+            ProbeKind.selection => "通过 UI Automation 读取当前选区（不模拟按键，窗口会短暂最小化）",
             ProbeKind.clipboard => "读取当前剪贴板内容",
             ProbeKind.image => $"用当前屏幕找一次（最多等 {ProbeTest.MaxWaitMs / 1000} 秒，窗口会短暂最小化）",
             ProbeKind.color => "读取该点当前颜色（窗口会短暂最小化）",
             ProbeKind.window or ProbeKind.process => "检查当前系统状态",
+            ProbeKind.lastError => "显示上一步被「继续下一步」吞掉的错误（编辑时通常为空）",
             _ => "按现在的设置立即求值一次",
         };
         TestResult.Visibility = Visibility.Collapsed;

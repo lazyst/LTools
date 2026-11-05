@@ -216,7 +216,7 @@
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionLabel}" Text="变量" Margin="0,0,0,3"/>
                         <TextBlock x:Name="VarHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                                   Text="变量来自流程里的「设置变量」（名称可用中文）；点一下复制 ${变量}。"/>
+                                   Text="变量来自「设置变量」或左侧「取值」；点一下复制 ${变量}。"/>
                         <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto" Margin="0,4,0,0">
                             <controls:VariableList x:Name="VarList"/>
                         </ScrollViewer>

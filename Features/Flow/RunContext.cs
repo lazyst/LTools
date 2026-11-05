@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Threading;
 using LTools.Native;
 
@@ -24,11 +23,11 @@ internal sealed class FlowAbortException : Exception
 }
 
 /// <summary>
-/// 一次自动化运行的上下文：变量、取消、步数 / 时间预算、循环下标。
+/// 一次自动化运行的上下文：变量、取消、步数 / 时间预算。
 /// </summary>
 /// <remarks>
-/// 变量按运行隔离、不落盘。模板（<c>${name}</c>）与内置值（选中文本 / 剪贴板 / 光标等）
-/// 都在此处解析；未定义变量直接抛 <see cref="FlowException"/>，避免静默空串造成误操作。
+/// 变量按运行隔离、不落盘。模板（<c>${name}</c>）只解析「设置变量 / 取值」创建的用户变量；
+/// 未定义变量直接抛 <see cref="FlowException"/>，避免静默空串造成误操作。
 /// </remarks>
 internal sealed class RunContext
 {
@@ -40,19 +39,14 @@ internal sealed class RunContext
 
     private readonly CancellationToken _token;
     private readonly DateTime _deadline;
-    private readonly Stack<int> _loopIndexes = new();
 
-    public RunContext(string runName, CancellationToken token, int cursorX, int cursorY)
+    public RunContext(CancellationToken token, int cursorX, int cursorY)
     {
-        RunName = runName;
         _token = token;
         CursorX = cursorX;
         CursorY = cursorY;
         _deadline = DateTime.UtcNow + MaxDuration;
     }
-
-    /// <summary>动作名（日志 / <c>${run.name}</c>）。</summary>
-    public string RunName { get; }
 
     /// <summary>面板唤起时记录的光标坐标；0 表示运行时取当前位置。</summary>
     public int CursorX { get; }
@@ -64,23 +58,11 @@ internal sealed class RunContext
     /// <summary>已执行的节点数。</summary>
     public int StepCount { get; private set; }
 
-    /// <summary>最近一次被吞掉的异常文本（<c>${lastError}</c>）。</summary>
+    /// <summary>最近一次被吞掉的异常文本（「上一步的错误」取值器用）。</summary>
     public string LastError { get; private set; } = "";
-
-    /// <summary>当前循环下标（0-based；不在循环中为 null）。</summary>
-    public int? LoopIndex => _loopIndexes.Count > 0 ? _loopIndexes.Peek() : null;
 
     /// <summary>是否有取消请求。</summary>
     public bool IsCancelled => _token.IsCancellationRequested;
-
-    /// <summary>压入循环下标；调用方负责在 finally 中 <see cref="PopLoop"/>。</summary>
-    public void PushLoop(int index) => _loopIndexes.Push(index);
-
-    /// <summary>弹出循环下标。</summary>
-    public void PopLoop()
-    {
-        if (_loopIndexes.Count > 0) _loopIndexes.Pop();
-    }
 
     /// <summary>记录被 OnFail=继续 吞掉的异常。</summary>
     public void SetError(Exception ex) => LastError = ex.Message;
@@ -114,23 +96,12 @@ internal sealed class RunContext
         return Win32.GetCursorPos(out var p) ? (p.X, p.Y) : (0, 0);
     }
 
-    /// <summary>解析 <c>${...}</c> 里的路径；未定义抛 <see cref="FlowException"/>。</summary>
+    /// <summary>解析 <c>${...}</c> 里的变量路径；未定义抛 <see cref="FlowException"/>。</summary>
+    /// <remarks>只有流程里「设置变量 / 取值」创建的用户变量可以被解析，没有隐藏的内置值。</remarks>
     public VarValue ResolvePath(string path)
     {
         path = (path ?? "").Trim();
         if (path.Length == 0) throw new FlowException("模板里的变量名为空");
-
-        // 日期 / 时间带格式：${date:yyyy-MM-dd}
-        int colon = path.IndexOf(':');
-        if (colon > 0)
-        {
-            string head = path[..colon];
-            string format = path[(colon + 1)..];
-            if (head.Equals("date", StringComparison.OrdinalIgnoreCase))
-                return VarValue.FromText(DateTime.Now.ToString(format, CultureInfo.InvariantCulture));
-            if (head.Equals("time", StringComparison.OrdinalIgnoreCase))
-                return VarValue.FromText(DateTime.Now.ToString(format, CultureInfo.InvariantCulture));
-        }
 
         // 用户变量（支持 m.x 这类属性访问）
         if (Vars.TryGetValue(path, out var exact)) return exact;
@@ -147,38 +118,6 @@ internal sealed class RunContext
             }
         }
 
-        switch (path.ToLowerInvariant())
-        {
-            case "cursor":
-            {
-                var (x, y) = CurrentCursor();
-                return VarValue.FromPoint(x, y);
-            }
-            case "cursor.x":
-                return VarValue.FromText(CurrentCursor().x.ToString(CultureInfo.InvariantCulture));
-            case "cursor.y":
-                return VarValue.FromText(CurrentCursor().y.ToString(CultureInfo.InvariantCulture));
-            case "clipboard":
-                return VarValue.FromText(NativeClipboard.TryGetText(out var text) ? text : "");
-            case "selection":
-                return VarValue.FromText(SelectionCapture.Capture(800));
-            case "date":
-                return VarValue.FromText(DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-            case "time":
-                return VarValue.FromText(DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
-            case "loop.i":
-            case "loop.index":
-            {
-                int? i = LoopIndex;
-                if (i == null) throw new FlowException("${loop.i} 只能在循环体内使用");
-                return VarValue.FromNumber(i.Value);
-            }
-            case "run.name":
-                return VarValue.FromText(RunName);
-            case "lastError":
-                return VarValue.FromText(LastError);
-        }
-
-        throw new FlowException($"未定义变量：{path}");
+        throw new FlowException($"未定义变量：{path}（先添加「设置变量」或左侧「取值」）");
     }
 }

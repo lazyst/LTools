@@ -42,6 +42,7 @@ internal static class FlowVariables
                         break;
 
                     case FlowNodeKind.loop when node.Loop != null:
+                        Add(node.Loop.IndexVar);
                         Add(node.Loop.While?.Bind);
                         Walk(node.Loop.Body);
                         break;

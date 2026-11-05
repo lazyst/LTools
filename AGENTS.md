@@ -60,11 +60,11 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 
 - `GlobalUsings.cs` 已把 `Button`/`Key`/`MessageBox` 等同名类型统一到 WPF 命名空间——不要引用 WinForms 类型
 - 文件夹选择用 WPF 原生 `Microsoft.Win32.OpenFolderDialog`，不引用 WinForms
-- 唯一第三方依赖：`H.NotifyIcon.Wpf`（托盘图标）
+- 第三方依赖：`H.NotifyIcon.Wpf`（托盘图标）、`OpenCvSharp4`（图像匹配）、`FlaUI.UIA3`（UI Automation，读选中文本）
 
 ## 其他
 
 - `速记/`（速记文件）和 `logs/` 运行时生成，已 gitignore
-- `-p:EnableUia=true`：可选启用 UIAutomationClient COM 互操作（UIA/MSAA 功能）
+- UIA 走 `FlaUI.UIA3`（托管包）：.NET Core 的 MSBuild 不支持 `COMReference`/`ResolveComReference`，不要再加 `UIAutomationClient` 的 COM 引用
 - `app.manifest`：`requireAdministrator` + 声明 Win10/11 兼容 + `PerMonitorV2` DPI 感知
 - **DPI 感知双轨**：Release 由 `app.manifest` 在进程创建时设 PerMonitorV2；Debug 用 `-p:NoWin32Manifest=true` 剥了清单（免 UAC），改由 `Core/DpiInitializer.cs` 的 `[ModuleInitializer]` 在 Main 前、WPF 加载前 `SetProcessDpiAwarenessContext(-4)` 补设。修「全屏游戏切分辨率后托盘右键菜单错位」。

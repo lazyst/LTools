@@ -57,7 +57,7 @@ internal static class FlowRunner
         _stopKeySwallowed = false;
         var cts = new CancellationTokenSource();
         _cts = cts;
-        var ctx = new RunContext(action.Name, cts.Token, cursorX, cursorY);
+        var ctx = new RunContext(cts.Token, cursorX, cursorY);
 
         try
         {
@@ -230,18 +230,14 @@ internal static class FlowRunner
                 if (!ProbeEvaluator.Test(loop.While, ctx)) break;
             }
 
-            ctx.PushLoop(i);
-            try
-            {
-                var signal = ExecuteBlock(loop.Body, ctx, owner);
-                if (signal == Signal.stop) return Signal.stop;
-                if (signal == Signal.breakLoop) break;
-                // continueLoop：直接进入下一轮
-            }
-            finally
-            {
-                ctx.PopLoop();
-            }
+            // 把本轮下标写进用户指定的变量（留空则什么也不做）；用户变量面板里能看到它
+            if (!string.IsNullOrWhiteSpace(loop.IndexVar))
+                ctx.Vars[loop.IndexVar.Trim()] = VarValue.FromNumber(i);
+
+            var signal = ExecuteBlock(loop.Body, ctx, owner);
+            if (signal == Signal.stop) return Signal.stop;
+            if (signal == Signal.breakLoop) break;
+            // continueLoop：直接进入下一轮
         }
         return Signal.none;
     }

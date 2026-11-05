@@ -147,6 +147,17 @@ internal static class Win32
     [DllImport("user32.dll")]
     public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
+    /// <summary>发消息并在目标无响应时按超时放弃（不会无限期卡住调用线程）。</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam,
+        uint flags, uint timeout, out IntPtr result);
+
+    /// <summary>SendMessageTimeout 的 SMTO_ABORTIFHUNG。</summary>
+    public const uint SmtoAbortIfHung = 0x0002;
+
+    /// <summary>WM_COPY：让窗口把当前选区复制到剪贴板（标准消息，不是按键模拟）。</summary>
+    public const uint WmCopy = 0x0301;
+
     [DllImport("user32.dll")]
     public static extern bool GetGUIThreadInfo(uint idThread, ref Guithreadinfo lpgui);
 

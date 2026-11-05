@@ -60,7 +60,7 @@ public enum ProbeKind
     /// <summary>读取一个变量。</summary>
     variable,
 
-    /// <summary>获取当前选中的文本（Ctrl+C + 剪贴板还原）。</summary>
+    /// <summary>获取前台应用当前选中的文本（UI Automation，必要时退回 WM_COPY）。</summary>
     selection,
 
     /// <summary>读取剪贴板文本。</summary>
@@ -86,6 +86,9 @@ public enum ProbeKind
 
     /// <summary>进程是否存在。</summary>
     process,
+
+    /// <summary>上一步被「继续」策略吞掉的错误文本（没有则为空）。</summary>
+    lastError,
 }
 
 /// <summary>图像搜索区域。</summary>
@@ -311,6 +314,9 @@ public sealed class LoopNode
     /// <summary>while: 每轮开始前判断；为真才继续。</summary>
     public Condition? While { get; set; }
 
+    /// <summary>可选：把当前轮下标（0 开始）写进这个用户变量；留空表示不写。</summary>
+    public string IndexVar { get; set; } = "";
+
     /// <summary>循环体。</summary>
     public List<FlowNode> Body { get; set; } = new();
 
@@ -320,6 +326,7 @@ public sealed class LoopNode
         Mode = Mode,
         Count = Count,
         While = While?.Clone(),
+        IndexVar = IndexVar,
         Body = FlowNode.CloneList(Body),
     };
 }
@@ -442,6 +449,7 @@ public static class FlowText
             ProbeKind.color => $"颜色 ({p.X}, {p.Y})",
             ProbeKind.window => $"窗口 {Trim(p.WindowTitle ?? p.WindowClass, 16)}",
             ProbeKind.process => $"进程 {p.ProcessName}",
+            ProbeKind.lastError => "上一步的错误",
             _ => p.Kind.ToString(),
         };
     }

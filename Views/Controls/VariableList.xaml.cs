@@ -7,8 +7,8 @@ using System.Windows.Media;
 namespace LTools.Views.Controls;
 
 /// <summary>
-/// 变量列表：默认只显示流程里用「设置变量」创建的自定义变量（变量名可以是中文）；
-/// 光标 / 剪贴板 / 时间等**内置值**不是用户变量，收在「内置值」里按需展开。
+/// 变量列表：只显示流程里由用户创建的变量（「设置变量」或左侧「取值」）。
+/// 光标 / 剪贴板 / 选中文本等取值在左侧栏是独立单元，不再作为「内置变量」混进这里。
 /// 每一行可点，宿主决定是插入到输入框还是复制 <c>${name}</c>。
 /// </summary>
 public partial class VariableList : UserControl
@@ -16,32 +16,13 @@ public partial class VariableList : UserControl
     /// <summary>点了某个变量（参数是不带 <c>${}</c> 的变量名，可能含 <c>.x</c> 属性）。</summary>
     public event Action<string>? VariableInvoked;
 
-    private static readonly (string Name, string Hint)[] BuiltIn =
-    {
-        ("cursor.x", "光标 X"),
-        ("cursor.y", "光标 Y"),
-        ("clipboard", "剪贴板文本"),
-        ("selection", "选中文本"),
-        ("date", "今天日期"),
-        ("time", "当前时间"),
-        ("loop.i", "循环下标（循环内）"),
-        ("run.name", "组合动作名"),
-        ("lastError", "上一步的错误"),
-    };
-
-    private bool _builtInExpanded;
-
     public VariableList()
     {
         InitializeComponent();
-
-        foreach (var (name, hint) in BuiltIn)
-            BuiltInRows.Children.Add(BuildRow(name, hint));
-
         Rebuild(Array.Empty<string>());
     }
 
-    /// <summary>设置流程里自定义的变量名（只有当用户真的创建过变量时才会有内容）。</summary>
+    /// <summary>设置流程里由用户创建的变量名（只有当用户真的创建过变量时才会有内容）。</summary>
     public void SetCustom(IEnumerable<string>? names) => Rebuild(names ?? Array.Empty<string>());
 
     private void Rebuild(IEnumerable<string> customNames)
@@ -58,23 +39,14 @@ public partial class VariableList : UserControl
                 name = name[2..^1];
             if (!seen.Add(name)) continue;
 
-            Rows.Children.Add(BuildRow(name, "自定义变量"));
+            Rows.Children.Add(BuildRow(name));
             count++;
         }
 
         EmptyHint.Visibility = count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void BuiltIn_Click(object sender, RoutedEventArgs e)
-    {
-        _builtInExpanded = !_builtInExpanded;
-        BuiltInRows.Visibility = _builtInExpanded ? Visibility.Visible : Visibility.Collapsed;
-        BuiltInToggle.Content = _builtInExpanded
-            ? "内置值（光标 / 剪贴板 / 时间…） ▾"
-            : "内置值（光标 / 剪贴板 / 时间…） ▸";
-    }
-
-    private Button BuildRow(string name, string hint)
+    private Button BuildRow(string name)
     {
         var token = new TextBlock
         {
@@ -84,23 +56,11 @@ public partial class VariableList : UserControl
             Foreground = (Brush)FindResource("TextBrush"),
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        var label = new TextBlock
-        {
-            Text = hint,
-            FontSize = (double)FindResource("FontSizeHint"),
-            Foreground = (Brush)FindResource("HintTextBrush"),
-            Margin = new Thickness(0, 1, 0, 0),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
-
-        var content = new StackPanel();
-        content.Children.Add(token);
-        content.Children.Add(label);
 
         var button = new Button
         {
             Style = (Style)FindResource("BtnGhost"),
-            Content = content,
+            Content = token,
             HorizontalContentAlignment = HorizontalAlignment.Left,
             Padding = new Thickness(7, 3, 7, 3),
             Margin = new Thickness(0, 1, 0, 1),

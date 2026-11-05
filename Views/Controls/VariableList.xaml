@@ -3,19 +3,11 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
     <StackPanel>
-        <!-- 只列用户自己「设置变量」创建的变量；没有时给一句提示，避免看起来像凭空多出一堆变量 -->
+        <!-- 只列用户自己创建的变量（设置变量 / 取值）；取消内置值后这里不再有「凭空出现」的条目 -->
         <TextBlock x:Name="EmptyHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
                    Visibility="Collapsed" Margin="0,2,0,2"
-                   Text="流程里还没有变量。"/>
+                   Text="还没有变量。"/>
 
         <StackPanel x:Name="Rows"/>
-
-        <!-- 系统内置值默认收起：它们不是用户设置的变量，需要时再展开 -->
-        <Button x:Name="BuiltInToggle" Style="{StaticResource BtnGhost}" Click="BuiltIn_Click"
-                HorizontalContentAlignment="Left" Padding="7,3" Margin="0,6,0,0"
-                FontSize="{StaticResource FontSizeHint}"
-                Content="内置值（光标 / 剪贴板 / 时间…） ▸"
-                ToolTip="光标位置、剪贴板、选中文本、日期时间等系统提供的值"/>
-        <StackPanel x:Name="BuiltInRows" Visibility="Collapsed" Margin="0,2,0,0"/>
     </StackPanel>
 </UserControl>

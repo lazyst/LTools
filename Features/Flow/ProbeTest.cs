@@ -24,7 +24,7 @@ internal static class ProbeTest
         if (test.Kind == ProbeKind.image)
             test.TimeoutMs = Math.Clamp(test.TimeoutMs, 0, MaxWaitMs);
 
-        var ctx = new RunContext("测试", CancellationToken.None, 0, 0);
+        var ctx = new RunContext(CancellationToken.None, 0, 0);
         var value = ProbeEvaluator.Evaluate(test, ctx);
         return Describe(test, value);
     }

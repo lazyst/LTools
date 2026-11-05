@@ -18,11 +18,12 @@
 
         <!-- 选中文本 -->
         <StackPanel x:Name="P_Selection" Visibility="Collapsed" Margin="0,8,0,0">
-            <TextBlock Style="{StaticResource HintLabel}"
-                       Text="读取前台应用当前选中的文本（会短暂占用剪贴板；终端里 Ctrl+C 是中断，不适用）"/>
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                       Text="读取前台应用当前选中的文本（通过 UI Automation，不模拟按键、不动剪贴板）。"/>
             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <TextBlock Text="等待上限" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
-                <TextBox x:Name="SelectionTimeoutBox" Width="72" MinHeight="30" Margin="6,0,0,0"/>
+                <TextBlock Text="退回复制时最多等" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                <TextBox x:Name="SelectionTimeoutBox" Width="72" MinHeight="30" Margin="6,0,0,0"
+                         ToolTip="UI Automation 读不到时退回 WM_COPY，最多等这么久"/>
                 <TextBlock Text="ms" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}" Margin="4,0,0,0"/>
             </StackPanel>
         </StackPanel>
@@ -198,6 +199,12 @@
                 <TextBox x:Name="WindowClassBox" MinHeight="30" Margin="0,4,0,0"
                          ToolTip="窗口类名（可留空）"/>
             </StackPanel>
+        </StackPanel>
+
+        <!-- 上一步的错误 -->
+        <StackPanel x:Name="P_LastError" Visibility="Collapsed" Margin="0,8,0,0">
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                       Text="读取上一步被「失败策略：继续下一步」吞掉的错误文本；没有错误时为空。"/>
         </StackPanel>
 
         <!-- 进程 -->

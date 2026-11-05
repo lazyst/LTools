@@ -74,7 +74,7 @@ public partial class CompositeActionDialog : Window
         varHintTimer.Tick += (_, _) =>
         {
             varHintTimer.Stop();
-            VarHint.Text = "变量来自流程里的「设置变量」（名称可用中文）；点一下复制 ${变量}。";
+            VarHint.Text = "变量来自「设置变量」或左侧「取值」；点一下复制 ${变量}。";
         };
         _varHintTimer = varHintTimer;
         VarList.VariableInvoked += CopyVariable;
@@ -132,6 +132,30 @@ public partial class CompositeActionDialog : Window
             .Where(Match)
             .ToList();
         AddGroup("flow", "流程", flowItems);
+
+        // 取值：把剪贴板 / 选中文本 / 光标 / 时间等「当前值」直接存成变量。
+        // 这些能力以前是隐藏的内置变量，现在改为左栏可点选的单元；生成的仍是普通的
+        // 「设置变量」节点 —— 概念只有一个，变量面板也只显示用户创建的变量。
+        var valueDefs = new (string Label, ProbeKind Kind, string Var, string Icon, string Tip)[]
+        {
+            ("剪贴板文本", ProbeKind.clipboard, "剪贴板", "paste", "读取系统剪贴板里的文本"),
+            ("选中文本", ProbeKind.selection, "选中文本", "copy", "读取前台应用当前选中的文本（UI Automation，不模拟按键）"),
+            ("鼠标位置", ProbeKind.cursor, "鼠标位置", "mouse", "记录当前鼠标坐标（用 ${变量.x} / ${变量.y} 引用）"),
+            ("日期时间", ProbeKind.datetime, "日期时间", "clock", "记录当前日期时间（可设置格式）"),
+            ("上一步的错误", ProbeKind.lastError, "错误", "help", "读取上一步被「继续下一步」吞掉的错误"),
+        };
+        var values = valueDefs
+            .Select(v => new LeftItem
+            {
+                Label = v.Label,
+                Glyph = IconCatalog.GetGlyph(v.Icon),
+                ToolTip = v.Tip,
+                ValueProbe = v.Kind,
+                DefaultVar = v.Var,
+            })
+            .Where(Match)
+            .ToList();
+        AddGroup("value", "取值", values);
 
         // 内部动作（内置命令）→ 内联 internal 快照（无需开编辑器）
         var internals = InternalActionRegistry.Commands
@@ -364,6 +388,22 @@ public partial class CompositeActionDialog : Window
             node = BuildFlowNode(item.FlowKind.Value);
             if (node == null) return;   // 取消对话框
         }
+        else if (item.ValueProbe != null)
+        {
+            // 取值单元 = 预设好取值方式的「设置变量」；打开同一个编辑器让用户确认 / 改名
+            var draft = new FlowNode
+            {
+                Kind = FlowNodeKind.set,
+                Set = new SetNode
+                {
+                    Var = NextVarName(item.DefaultVar ?? "值"),
+                    Probe = new Probe { Kind = item.ValueProbe.Value },
+                },
+            };
+            var dlg = new FlowNodeDialog(draft, FlowVariables.Collect(_flow)) { Owner = this, Topmost = Topmost };
+            if (dlg.ShowDialog() != true || dlg.Result == null) return;
+            node = dlg.Result;
+        }
 
         if (node == null) return;
         InsertNode(target, node);
@@ -409,6 +449,18 @@ public partial class CompositeActionDialog : Window
             return dlg.Result;
         }
         return node;
+    }
+
+    /// <summary>取一个还没被占用的变量名（剪贴板 → 剪贴板2 → 剪贴板3 …）。</summary>
+    private string NextVarName(string baseName)
+    {
+        var used = new HashSet<string>(FlowVariables.Collect(_flow), StringComparer.OrdinalIgnoreCase);
+        if (!used.Contains(baseName)) return baseName;
+        for (int i = 2; ; i++)
+        {
+            string candidate = baseName + i.ToString(CultureInfo.InvariantCulture);
+            if (!used.Contains(candidate)) return candidate;
+        }
     }
 
     private void InsertNode((List<FlowNode> Container, int Index) target, FlowNode node)
@@ -978,6 +1030,8 @@ public partial class CompositeActionDialog : Window
         public string? PoolActionId { get; set; }       // 动作池组：复用（深拷贝）
         public ActionType? BasicType { get; set; }       // 基础动作组：动作类型（需开编辑器填字段）
         public FlowNodeKind? FlowKind { get; set; }      // 流程组：控制节点
+        public ProbeKind? ValueProbe { get; set; }       // 取值组：预设取值器的「设置变量」
+        public string? DefaultVar { get; set; }          // 取值组：建议的变量名
     }
 
     private enum RowKind

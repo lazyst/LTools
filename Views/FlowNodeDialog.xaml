@@ -72,8 +72,13 @@
                             <controls:ConditionEditor x:Name="LoopCondition"/>
                         </StackPanel>
 
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="下标变量（可选）" Margin="0,12,0,4"/>
+                        <TextBox x:Name="LoopIndexVarBox" MinHeight="32"
+                                 ToolTip="填一个变量名，例如「序号」；留空表示不记录下标"/>
+                        <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Text="填了变量名后，每轮开始时把当前下标（从 0 开始）写进这个变量；循环体内用 ${变量名} 引用。留空则不创建变量。"/>
                         <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,10,0,0"
-                                   Text="循环体内可用 ${loop.i} 读取当前下标（从 0 开始）；跳出 / 继续用于控制循环。"/>
+                                   Text="跳出 / 继续用于控制循环。"/>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>
