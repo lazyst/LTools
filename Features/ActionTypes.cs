@@ -273,6 +273,14 @@ public sealed class ActionDto
     /// </summary>
     public List<FlowNode>? Flow { get; set; }
 
+    // —— 输出（组合动作步骤）——
+
+    /// <summary>
+    /// 把执行结果存入流程变量（仅组合动作步骤使用；空 = 不输出）。
+    /// 支持的类型与结果内容见 <see cref="ActionResults"/>。
+    /// </summary>
+    public string? OutputVar { get; set; }
+
     /// <summary>深拷贝（含 Steps / Flow 递归）；用于把动作池动作复制成组合步骤的独立快照（§12 动作解耦）。</summary>
     public ActionDto Clone() => new()
     {
@@ -283,6 +291,7 @@ public sealed class ActionDto
         Items = Items?.Select(i => i.Clone()).ToList(),
         X = X, Y = Y, MouseAction = MouseAction, WheelDelta = WheelDelta,
         MacroId = MacroId,
+        OutputVar = OutputVar,
         CompositeOnFail = CompositeOnFail,
         Steps = Steps?.Select(s => new StepDto { Action = s.Action.Clone(), DelayMs = s.DelayMs, OnFail = s.OnFail }).ToList(),
         Flow = Flow != null ? FlowNode.CloneList(Flow) : null,

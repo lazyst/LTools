@@ -14,6 +14,8 @@ internal static class CrashLog
     /// <summary>追加一条异常记录。自身永不抛出。</summary>
     public static void Write(string context, System.Exception ex)
     {
+        // 同步镜像到运行日志（设置页可查看），崩溃也出现在同一份日志里便于排查。
+        AppLog.Error("Crash", context, ex);
         try
         {
             var msg = $"[{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{context}] "

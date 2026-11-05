@@ -74,5 +74,10 @@
     "Loops": 1,
     "LastMacroId": null,
     "Items": []
+  },
+  "Logging": {
+    "Enabled": true,
+    "Level": "info",
+    "RetentionDays": 14
   }
 }

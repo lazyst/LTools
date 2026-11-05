@@ -32,6 +32,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>   <!-- 名称 + 类型 -->
                     <RowDefinition Height="Auto"/>   <!-- 类型特定字段 -->
+                    <RowDefinition Height="Auto"/>   <!-- 输出变量（仅流程步骤） -->
                     <RowDefinition Height="Auto"/>   <!-- 图标 -->
                 </Grid.RowDefinitions>
 
@@ -460,8 +461,35 @@
                     </Border>
                 </StackPanel>
 
+                <!-- 输出：只有组合动作步骤（能拿到流程变量）且该类型有结果时显示 -->
+                <Border x:Name="OutputPanel" Grid.Row="2" Margin="0,0,0,14"
+                        Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="6" Padding="14,12"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="输出" Margin="0,0,0,6"/>
+                        <TextBlock Style="{StaticResource HintLabel}" Text="结果存到变量（可选）" Margin="0,0,0,4"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" x:Name="OutputVarBox" MinHeight="32"
+                                     ToolTip="变量名，例如 输出；留空表示不需要结果"/>
+                            <Button Grid.Column="1" x:Name="OutputVarPickBtn" Style="{StaticResource BtnGhost}"
+                                    Content="选择…" MinWidth="64" Margin="8,0,0,0"
+                                    Click="OutputVarPick_Click"
+                                    ToolTip="从本流程已有的变量里选一个"/>
+                        </Grid>
+                        <TextBlock x:Name="OutputVarHint" Style="{StaticResource HintLabel}"
+                                   TextWrapping="Wrap" Margin="0,6,0,0"/>
+                        <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,2,0,0"
+                                   Text="执行后变量会出现在右侧变量面板，后面的步骤可用 ${变量} 引用（也支持 .x / .exit / .err 等属性）。"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- 图标 -->
-                <Grid Grid.Row="2">
+                <Grid Grid.Row="3">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>

@@ -58,6 +58,9 @@ internal static class FlowRunner
         var cts = new CancellationTokenSource();
         _cts = cts;
         var ctx = new RunContext(cts.Token, cursorX, cursorY);
+        long started = Environment.TickCount64;
+
+        AppLog.Info("Flow", $"开始执行「{action.Name}」· 光标 ({cursorX},{cursorY})");
 
         try
         {
@@ -72,14 +75,23 @@ internal static class FlowRunner
             if (signal == Signal.breakLoop || signal == Signal.continueLoop)
                 CrashLog.Write("FlowRunner.RootSignal",
                     new InvalidOperationException("流程根层出现 break/continue，已忽略"));
+
+            AppLog.Info("Flow",
+                $"完成「{action.Name}」· {ctx.StepCount} 步 · {Environment.TickCount64 - started} ms");
         }
         catch (FlowAbortException ex)
         {
-            if (!ex.UserCancelled)
+            if (ex.UserCancelled)
+                AppLog.Info("Flow", $"已停止「{action.Name}」· {ctx.StepCount} 步");
+            else
+            {
+                AppLog.Warn("Flow", $"中止「{action.Name}」：{ex.Message} · {ctx.StepCount} 步");
                 TrayService.Notify("自动化：" + ex.Message);
+            }
         }
         catch (Exception ex)
         {
+            AppLog.Error("Flow", $"失败「{action.Name}」第 {ctx.StepCount} 步", ex);
             CrashLog.Write($"Flow[{action.Name}] 第{ctx.StepCount}步", ex);
             TrayService.Notify("自动化失败：" + ex.Message);
         }
@@ -96,6 +108,7 @@ internal static class FlowRunner
     /// <summary>请求停止流程（停止热键 / 钩子兜底）。</summary>
     public static void Stop()
     {
+        if (_cts != null) AppLog.Info("Flow", "收到停止请求");
         try { _cts?.Cancel(); } catch { /* 已释放 */ }
         MacroPlayer.Stop();   // 流程里的宏步骤也要停
     }
@@ -143,6 +156,8 @@ internal static class FlowRunner
             if ((ctx.StepCount % 5) == 0)
                 RecordingIndicatorWindow.ShowAutomation(IndicatorText(ctx));
 
+            AppLog.Debug("Flow", $"第 {ctx.StepCount} 步 · {FlowText.Badge(node)} · {FlowText.Summary(node)}");
+
             Signal signal;
             try
             {
@@ -163,6 +178,8 @@ internal static class FlowRunner
                     (node.OnFail ?? owner.CompositeOnFail ?? OnFailStrategy.@continue) == OnFailStrategy.abort)
                     throw new FlowAbortException($"第 {ctx.StepCount} 步失败：{ex.Message}");
 
+                AppLog.Warn("Flow",
+                    $"第 {ctx.StepCount} 步失败（已按「继续」策略跳过）：{FlowText.Summary(node)} — {ex.Message}");
                 signal = Signal.none;
             }
 
@@ -180,7 +197,16 @@ internal static class FlowRunner
                 var action = node.Action ?? throw new FlowException("动作节点为空");
                 if (action.Type == ActionType.composite)
                     throw new FlowException("流程不能嵌套流程");
-                ActionExecutor.Execute(ActionMaterializer.Materialize(action, ctx), ctx.CursorX, ctx.CursorY);
+
+                var result = ActionExecutor.Execute(ActionMaterializer.Materialize(action, ctx), ctx.CursorX, ctx.CursorY, ctx);
+
+                // 动作结果 → 用户指定的变量（不支持的动作为 null，保持原变量不动）
+                string output = action.OutputVar?.Trim() ?? "";
+                if (result != null && output.Length > 0)
+                {
+                    ctx.Vars[output] = result;
+                    AppLog.Debug("Flow", $"第 {ctx.StepCount} 步结果 → ${{{output}}}（{result.Text.Length} 字符）");
+                }
                 return Signal.none;
             }
 
@@ -188,7 +214,9 @@ internal static class FlowRunner
             {
                 var set = node.Set ?? throw new FlowException("赋值节点为空");
                 if (string.IsNullOrWhiteSpace(set.Var)) throw new FlowException("赋值节点缺少变量名");
-                ctx.Vars[set.Var.Trim()] = ProbeEvaluator.Evaluate(set.Probe, ctx);
+                string setVar = set.Var.Trim();
+                AppLog.Debug("Flow", $"设置变量「{setVar}」");
+                ctx.Vars[setVar] = ProbeEvaluator.Evaluate(set.Probe, ctx);
                 return Signal.none;
             }
 

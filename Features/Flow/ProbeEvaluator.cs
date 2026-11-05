@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
+using LTools.Core;
 using LTools.Native;
 using LTools.Views;
 
@@ -15,8 +17,15 @@ namespace LTools.Features;
 /// </summary>
 internal static class ProbeEvaluator
 {
-    /// <summary>求值一个取值器。</summary>
+    /// <summary>求值一个取值器（debug 级别记录取值结果，便于排查条件 / 赋值为何不符合预期）。</summary>
     public static VarValue Evaluate(Probe probe, RunContext ctx)
+    {
+        var value = EvaluateCore(probe, ctx);
+        AppLog.Debug("Probe", $"{FlowText.ProbeLabel(probe)} → {Describe(value)}");
+        return value;
+    }
+
+    private static VarValue EvaluateCore(Probe probe, RunContext ctx)
     {
         switch (probe.Kind)
         {
@@ -95,7 +104,23 @@ internal static class ProbeEvaluator
             ctx.Vars[condition.Bind.Trim()] = value;
 
         bool ok = Compare(value, condition, ctx);
-        return condition.Negate ? !ok : ok;
+        bool result = condition.Negate ? !ok : ok;
+        AppLog.Debug("Probe", $"条件{(result ? "成立" : "不成立")} · {FlowText.ConditionLabel(condition)}");
+        return result;
+    }
+
+    /// <summary>把取值结果压成一行（只进 debug 日志；文本截断，避免整段剪贴板刷屏）。</summary>
+    private static string Describe(VarValue value)
+    {
+        var parts = new List<string>();
+        string text = value.Text.Replace("\r", "\\r").Replace("\n", "\\n");
+        if (text.Length > 200) text = text[..200] + "…";
+        parts.Add($"\"{text}\"（{value.Text.Length} 字符）");
+        if (value.Number is double n) parts.Add($"number={n.ToString("0.####", CultureInfo.InvariantCulture)}");
+        if (value.Flag is bool f) parts.Add($"flag={f.ToString().ToLowerInvariant()}");
+        if (value.X is int x && value.Y is int y) parts.Add($"({x},{y})");
+        if (value.Error.Length > 0) parts.Add($"err={value.Error.Length} 字符");
+        return string.Join(" ", parts);
     }
 
     private static bool Compare(VarValue value, Condition c, RunContext ctx)

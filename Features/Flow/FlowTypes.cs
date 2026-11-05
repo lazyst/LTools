@@ -378,7 +378,7 @@ public static class FlowText
     /// <summary>节点摘要。</summary>
     public static string Summary(FlowNode n) => n.Kind switch
     {
-        FlowNodeKind.action => ActionLabel(n.Action),
+        FlowNodeKind.action => ActionLabel(n.Action) + OutputSuffix(n.Action),
         FlowNodeKind.set => $"{n.Set?.Var} = {ProbeLabel(n.Set?.Probe)}",
         FlowNodeKind.@if => "如果 " + ConditionLabel(n.If?.Condition),
         FlowNodeKind.loop => n.Loop?.Mode == LoopMode.@while
@@ -417,6 +417,10 @@ public static class FlowText
             _ => string.IsNullOrEmpty(a.Name) ? ActionTypeLabel.Of(a.Type) : a.Name,
         };
     }
+
+    /// <summary>动作输出变量的后缀（步骤行里显示「→ 变量名」）。</summary>
+    private static string OutputSuffix(ActionDto? a)
+        => string.IsNullOrWhiteSpace(a?.OutputVar) ? "" : $" → {a!.OutputVar!.Trim()}";
 
     private static string MouseLabel(ActionDto a)
     {

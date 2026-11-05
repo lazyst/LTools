@@ -296,6 +296,13 @@ dotnet publish -c Release -r win-x64 --self-contained false
 - 编辑器里的下拉框打开时按真实视口校正位置，不会「一打开就跳过前几项」；下拉框收起时滚轮掠过它，滚的是所在页面，不会偷偷改掉选中值
 - 变量**只在本次运行内有效**，不写盘、不跨运行；**没有内置变量**——要用剪贴板 / 选中文本 / 光标位置 / 日期时间，就在左栏「取值」里点一下，让它们变成你自己的变量。选中文本通过 UI Automation 读取，不模拟按键、不动剪贴板；循环下标在「循环」节点里填一个「下标变量」名（如「序号」），每轮开始写入当前下标（从 0 开始）
 - 文本字段（发送文本、运行命令、鼠标坐标、比较右值等）支持 `${变量名}`；图像匹配结果带中心坐标与相似度，用 `${m.x}` / `${m.y}` / `${m.score}` / `${m.found}` 取；`$$` 表示字面 `$`
+- **动作结果可以存进变量**：组合步骤的动作编辑器里有「输出」面板（只对能产生结果的动作显示），填一个变量名，执行结果就会出现在右侧变量面板，后面的步骤直接用 `${变量}` 引用。支持的动作与内容：
+  - 启动程序 → 新进程 PID
+  - 打开文件 / 文件夹 / 网址 → 实际打开的目标（相对路径已解析）
+  - 运行命令 → `${变量}` 标准输出、`${变量.exit}` 退出码、`${变量.err}` 错误输出
+  - 写入剪贴板 → 实际写入的文本
+  - 鼠标操作 → 操作后的光标坐标（`${变量.x}` / `${变量.y}`）
+  - 填了输出变量的「运行命令」会改为**后台捕获执行**（不再打开终端窗口，按所选终端隐藏执行），命令结束才继续下一步；停止热键可以连同子进程一起结束，输出过长会截断到 20 万字符。留空表示不需要结果。
 - **每个能写 `${变量}` 的输入框右侧都有一个小「$」按钮**：点开就是本流程的变量，选中即插入到光标处（有选区则替换）。编辑步骤时突然想起要用变量，不必先关窗口、再跑到右栏复制；窗口里没有变量时按钮自动隐藏，外观与普通输入框一样
 - 条件支持等于 / 不等于 / 包含 / 开头 / 结尾 / 正则 / 为空 / 数值比较 / 为真为假，以及按取值方式的专用判定（图像找到了、颜色接近目标、窗口在前台、进程正在运行）
 - 条件可勾选**取反**，也可把判断结果存回变量（「结果变量」），循环里用来累计状态
@@ -334,6 +341,7 @@ dotnet publish -c Release -r win-x64 --self-contained false
 - **`Actions`**：全局动作池。每个动作有 `Id` / `Name` / `Icon` / `Type` 及类型专属字段，类型见 `Features/ActionTypes.cs`：`launchApp`、`openFile`、`openFolder`、`openUrl`、`runCommand`、`sendText`、`setClipboard`、`sendKeys`、`mouse`、`macro`、`internal`、`composite`。`sendText` 与 `setClipboard` 共用 `Text` 字段（后者写入剪贴板而不发送）。宏动作只用 `MacroId` 引用事件文件，事件本体不在配置里。
   - `mouse`：`X` / `Y`（虚拟桌面像素，可写 `${变量}`）、`MouseAction`（`click` / `doubleClick` / `rightClick` / `middleClick` / `move` / `wheelUp` / `wheelDown`）、`WheelDelta`。
   - `composite`：`Flow` 是嵌套流程（`action` / `set` / `if` / `loop` / `break` / `continue` / `stop`），旧配置的 `Steps` 会在打开编辑器或运行时自动迁移并清空。流程变量只在单次运行内有效；文本字段只支持 `${变量}`（没有内置值，取值请用左栏「取值」或「设置变量」），`$$` 表示字面 `$`。图像识别用 `Probe` 的 `image`（模板放 `resources/images/`），颜色用 `color`。
+  - `OutputVar`：流程里单个动作步骤的输出变量（空 = 不输出）。`runCommand` 填了它会在后台捕获执行：`${变量}` 标准输出、`${变量.exit}` 退出码、`${变量.err}` 错误输出；`launchApp` 存 PID；`openFile` / `openFolder` / `openUrl` 存实际目标；`setClipboard` 存写入的文本；`mouse` 存操作后坐标（`${变量.x}` / `${变量.y}`）。
 - **`SuperPanel`**：超级面板。`Enabled`（独立开关）、`LongPressThresholdMs`（长按阈值 100–800）、`Pages`（每页 16 槽，元素为动作 Id 或 `null`）、`LastPage`（上次停留的页）。
 - **`MenuGroups`**：固定 10 组（下标 0–9 对应 `CapsLock+1`~`CapsLock+0`，`null` 表示空组）。每组含 `Enabled`、`Name`、`Items`（动作 Id 列表）。
 - **`Macros`**：键鼠宏：
@@ -348,6 +356,11 @@ dotnet publish -c Release -r win-x64 --self-contained false
 - **`MouseModeSpeed`**：鼠标模式速度 1–20。
 - **`CapsLockEnabled`**：CapsLock 增强总开关（与 `SuperPanel.Enabled` 相互独立）。
 - **`LastNavPage`** / **`CompositeCollapsedGroups`**：设置页上次所在页、组合动作左栏的折叠状态（`basic` / `flow` / `internal` / `pool`，界面记忆，无需手改）。
+- **`Logging`**：运行日志（数据根下 `logs/ltools-yyyyMMdd.log`，已 gitignore）：
+  - `Enabled`：是否记录（默认 `true`）
+  - `Level`：`error` / `warn` / `info` / `debug`，默认 `info`。`info` 记录启动环境、动作与流程执行、设置变更、宏录制 / 回放和异常，不记录文本正文；`debug` 额外记录每一步流程、取值结果与变量值（可能含剪贴板 / 选中文本内容）
+  - `RetentionDays`：保留天数（默认 14，`0` = 不自动清理）
+  - 崩溃日志同样会镜像进运行日志；日志只写本机，不上传
 
 宏事件文件与 `Macros.Items` 是一对一关系：删除宏动作会删除对应宏文件；启动时也会回收不被任何动作或组合步骤引用的孤儿宏。不要手工编辑 `macros/*.json`，需要修改请重新录制。
 
@@ -362,6 +375,7 @@ dotnet publish -c Release -r win-x64 --self-contained false
 - **CapsLock快捷菜单**：管理 10 个菜单组及菜单项（组名、启用 / 禁用、项增删、双击编辑）
 - **超级面板**：页与 16 个槽位、长按阈值、钉住等
 - **终端路径**：终端程序路径覆盖
+- **运行日志**：运行日志开关、记录级别（仅错误 / 常规 / 详细）、保留天数；一键打开日志文件夹、打开今天的日志或复制路径。排查「按了没反应 / 某步为什么失败」时先看这里
 - **备份与恢复**：导出 / 导入 `.ltbak`
 - 工作目录可通过「选择...」弹出现代文件夹选择器（带快速访问导航栏）选取
 

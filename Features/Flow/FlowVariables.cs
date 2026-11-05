@@ -4,7 +4,8 @@ using System.Collections.Generic;
 namespace LTools.Features;
 
 /// <summary>
-/// 收集一条流程里用到的自定义变量名（「设置变量」的目标 + 条件里的「存回变量」），供编辑器变量面板展示。
+/// 收集一条流程里用到的自定义变量名（「设置变量」的目标、条件「存回变量」、循环下标、动作输出变量），
+/// 供编辑器变量面板展示。
 /// </summary>
 /// <remarks>只做静态遍历，不关心当前是否运行；同名（大小写不敏感）只保留第一次出现的写法。</remarks>
 internal static class FlowVariables
@@ -31,6 +32,10 @@ internal static class FlowVariables
             {
                 switch (node.Kind)
                 {
+                    case FlowNodeKind.action:
+                        Add(node.Action?.OutputVar);
+                        break;
+
                     case FlowNodeKind.set:
                         Add(node.Set?.Var);
                         break;

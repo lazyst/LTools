@@ -171,6 +171,7 @@ internal static class MacroRecorder
         // 兜底停止通道：系统级热键，钩子被摘 / 修饰键判定异常时仍能停下录制。
         MacroHotkey.Register();
         Trace($"start target={targetId ?? "-"} editor={editorInitiated}");
+        AppLog.Info("Macro", $"开始录制（{(string.IsNullOrEmpty(targetId) ? "新建" : "覆盖 " + targetId)}）");
 
         _deskLeft = Win32.GetSystemMetrics(Win32.SmXVirtualscreen);
         _deskTop = Win32.GetSystemMetrics(Win32.SmYVirtualscreen);
@@ -210,6 +211,7 @@ internal static class MacroRecorder
         }
 
         Trace($"stop elapsed={_clock.ElapsedMilliseconds} events={_events.Count} force={force}\n{ShortStack()}");
+        AppLog.Info("Macro", $"停止录制 · {_clock.ElapsedMilliseconds} ms · {_events.Count} 个事件");
 
         _recording = false;
         _clock.Stop();
@@ -266,11 +268,13 @@ internal static class MacroRecorder
             {
                 snapshot.Id = string.IsNullOrEmpty(targetId) ? MacroStore.NewId() : targetId;
                 MacroStore.Save(snapshot);
+                AppLog.Info("Macro", $"宏已保存「{snapshot.Name}」({snapshot.Id}) · {snapshot.Events.Count} 个事件");
                 TrayService.Notify($"宏已保存：{snapshot.Name}（{snapshot.Events.Count} 个事件）");
                 RaiseSaved(snapshot.Id, autoCreate);
             }
             catch (Exception ex)
             {
+                AppLog.Error("Macro", "宏保存失败", ex);
                 CrashLog.Write("MacroRecorder.Save", ex);
                 TrayService.Notify("宏保存失败，详见崩溃日志");
             }
@@ -430,6 +434,8 @@ internal static class MacroRecorder
     /// </summary>
     internal static void Trace(string what)
     {
+        // 主日志（debug 级别）留一份，排查「刚开录就被停」时不必再去 %TEMP% 找单独文件。
+        AppLog.Debug("Macro", what);
         Task.Run(() =>
         {
             try

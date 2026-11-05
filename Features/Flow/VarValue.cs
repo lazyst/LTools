@@ -31,6 +31,9 @@ public sealed class VarValue
     /// <summary>图像匹配置信度（0..1）。</summary>
     public double? Score { get; init; }
 
+    /// <summary>错误输出（运行命令的 stderr；无则空）。</summary>
+    public string Error { get; init; } = "";
+
     /// <summary>由文本构造。</summary>
     public static VarValue FromText(string? text) => new() { Text = text ?? "" };
 
@@ -67,15 +70,16 @@ public sealed class VarValue
         Number = score,
     };
 
-    /// <summary>取属性（x / y / found / score / text / number）；未知属性返回 null。</summary>
+    /// <summary>取属性（x / y / found / score / number / text / err / exit）；未知属性返回 null。</summary>
     public string? Property(string name) => name.ToLowerInvariant() switch
     {
         "x" => X?.ToString(CultureInfo.InvariantCulture),
         "y" => Y?.ToString(CultureInfo.InvariantCulture),
         "found" or "flag" => Flag?.ToString().ToLowerInvariant(),
         "score" => Score?.ToString("0.###", CultureInfo.InvariantCulture),
-        "number" => Number?.ToString("0.####", CultureInfo.InvariantCulture),
-        "text" => Text,
+        "number" or "exit" or "code" => Number?.ToString("0.####", CultureInfo.InvariantCulture),
+        "text" or "out" => Text,
+        "err" or "error" or "stderr" => Error,
         _ => null,
     };
 }

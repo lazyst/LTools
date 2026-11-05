@@ -77,6 +77,19 @@ public sealed class MacroConfig
     public List<MacroMeta> Items { get; set; } = new();
 }
 
+/// <summary>运行日志配置（见 <see cref="AppLog"/>）：写入数据根下 <c>logs/</c>，按天分文件。</summary>
+public sealed class LogConfig
+{
+    /// <summary>是否记录运行日志（默认开启，便于用户 / agent 排查问题）。</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>记录级别：error / warn / info / debug（默认 info）。</summary>
+    public LogLevel Level { get; set; } = LogLevel.info;
+
+    /// <summary>日志保留天数（按文件修改时间清理；0 = 不自动清理）。</summary>
+    public int RetentionDays { get; set; } = 14;
+}
+
 public sealed class AppConfig
 {
     /// <summary>菜单组（长度固定 10，下标 0..9 对应 CapsLock+1~0；null=空组）。</summary>
@@ -91,6 +104,9 @@ public sealed class AppConfig
     /// <summary>键鼠宏录制配置。</summary>
     public MacroConfig Macros { get; set; } = new();
 
+    /// <summary>运行日志配置。</summary>
+    public LogConfig Logging { get; set; } = new();
+
     /// <summary>终端路径覆盖（如 gitbash）。</summary>
     public Dictionary<string, string> TerminalPaths { get; set; } = new();
 
@@ -103,7 +119,7 @@ public sealed class AppConfig
     /// </summary>
     public bool CapsLockEnabled { get; set; } = true;
 
-    /// <summary>设置窗口上次所在的导航页（general/actions/menus/superpanel/terminals/macro/backup），下次打开恢复。</summary>
+    /// <summary>设置窗口上次所在的导航页（general/actions/menus/superpanel/terminals/logs/backup），下次打开恢复。</summary>
     public string LastNavPage { get; set; } = "actions";
 
     /// <summary>组合动作编辑器左栏已折叠的分组 key（basic / internal / pool），下次打开恢复。</summary>

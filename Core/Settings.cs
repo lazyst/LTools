@@ -13,6 +13,7 @@ internal static class Settings
     public static void SetCapsLockEnabled(bool enabled)
     {
         AppState.IsToolEnabled = enabled;
+        AppLog.Info("Settings", $"CapsLock 键功能 = {(enabled ? "启用" : "禁用")}");
         SaveBool((cfg, on) => cfg.CapsLockEnabled = on, enabled);
         TrayService.Notify(enabled ? "CapsLock 键功能已启用" : "CapsLock 键功能已禁用");
     }
@@ -21,6 +22,7 @@ internal static class Settings
     public static void SetSuperPanelEnabled(bool enabled)
     {
         AppState.IsSuperPanelEnabled = enabled;
+        AppLog.Info("Settings", $"超级面板 = {(enabled ? "启用" : "禁用")}");
         SaveBool((cfg, on) => cfg.SuperPanel.Enabled = on, enabled);
         TrayService.Notify(enabled ? "超级面板已启用" : "超级面板已禁用");
     }

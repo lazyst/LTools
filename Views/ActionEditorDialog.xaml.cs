@@ -244,6 +244,8 @@ public partial class ActionEditorDialog : Window
         _macroId = _draft.MacroId;
         RefreshMacroPanel();
 
+        OutputVarBox.Text = _draft.OutputVar ?? "";
+
         IconPicker.SelectedIcon = _draft.Icon;
         ShowFields(_draft.Type);
     }
@@ -273,6 +275,52 @@ public partial class ActionEditorDialog : Window
             selected.Visibility = Visibility.Visible;
         if (t == ActionType.macro) RefreshMacroPanel();
         SyncMacroSession(t == ActionType.macro);
+        UpdateOutputPanel(t);
+    }
+
+    /// <summary>
+    /// 输出面板只在「流程步骤」（能拿到流程变量）且该类型有结果时显示；
+    /// 切换类型时同步更新提示文案（结果内容的差异见 <see cref="ActionResults"/>）。
+    /// </summary>
+    private void UpdateOutputPanel(ActionType t)
+    {
+        bool supported = _variables != null && ActionResults.SupportsOutput(t);
+        OutputPanel.Visibility = supported ? Visibility.Visible : Visibility.Collapsed;
+        if (!supported) return;
+
+        OutputVarHint.Text = ActionResults.Hint(t);
+        OutputVarPickBtn.IsEnabled = _variables!.Count > 0;
+        OutputVarPickBtn.ToolTip = _variables.Count > 0
+            ? "从本流程已有的变量里选一个"
+            : "本流程还没有其它变量，直接输入新名字即可";
+    }
+
+    /// <summary>从流程已有变量里选一个作为输出变量（也可直接输入新名字）。</summary>
+    private void OutputVarPick_Click(object sender, RoutedEventArgs e)
+    {
+        if (_variables == null || _variables.Count == 0)
+        {
+            ConfirmDialog.Info(this, "输出", "本流程还没有其它变量，直接在输入框里写一个新名字即可。");
+            return;
+        }
+
+        var menu = new ContextMenu
+        {
+            PlacementTarget = OutputVarPickBtn,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+        };
+        foreach (string name in _variables)
+        {
+            var item = new MenuItem { Header = name };
+            item.Click += (_, _) =>
+            {
+                OutputVarBox.Text = name;
+                OutputVarBox.CaretIndex = name.Length;
+                OutputVarBox.Focus();
+            };
+            menu.Items.Add(item);
+        }
+        menu.IsOpen = true;
     }
 
     /// <summary>只在「键鼠宏」类型下启用录制热键会话；切到其它类型立即失效。</summary>
@@ -997,6 +1045,24 @@ public partial class ActionEditorDialog : Window
                 break;
         }
 
+        // 输出变量：只在流程步骤里、且该类型有结果时保留。变量名不能含 $ { } 或小数点
+        // （小数点留给 ${变量.x} 这类属性访问），有错不关闭窗口。
+        string output = OutputVarBox.Text.Trim();
+        if (_variables != null && ActionResults.SupportsOutput(type) && output.Length > 0)
+        {
+            if (output.IndexOfAny(new[] { '$', '{', '}', '.' }) >= 0)
+            {
+                ConfirmDialog.Info(this, "输出", "变量名不能包含 $ { } 或小数点（点用于取属性，如 ${变量.x}）。");
+                OutputVarBox.Focus();
+                return;
+            }
+            _draft.OutputVar = output;
+        }
+        else
+        {
+            _draft.OutputVar = null;
+        }
+
         _draft.Icon = IconPicker.SelectedIcon ?? IconCatalog.Default;
         Result = _draft;
         DialogResult = true;
@@ -1413,6 +1479,7 @@ public partial class ActionEditorDialog : Window
         Items = a.Items?.ConvertAll(i => i.Clone()),
         X = a.X, Y = a.Y, MouseAction = a.MouseAction, WheelDelta = a.WheelDelta,
         MacroId = a.MacroId,
+        OutputVar = a.OutputVar,
         CompositeOnFail = a.CompositeOnFail,
         Steps = a.Steps != null ? new List<StepDto>(a.Steps) : null,
         Flow = a.Flow != null ? FlowNode.CloneList(a.Flow) : null,

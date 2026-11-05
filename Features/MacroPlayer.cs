@@ -47,15 +47,21 @@ internal static class MacroPlayer
         _stopKeySwallowed = false;
         _wake.Reset();
 
+        var started = Stopwatch.StartNew();
+        AppLog.Info("Macro",
+            $"回放「{macro.Name}」· {macro.Events?.Count ?? 0} 个事件 · 循环 {(options.Loops < 0 ? "无限" : options.Loops.ToString())} · 速度 {options.Speed:0.##}x");
+
         try
         {
             RegisterStopHotkey(options);
             if (options.Loops < 0)
                 NotifySafe($"宏「{macro.Name}」无限循环中，按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止");
             PlayCore(macro, options);
+            AppLog.Info("Macro", $"回放结束「{macro.Name}」· {started.ElapsedMilliseconds} ms");
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Error("Macro", $"回放失败「{macro.Name}」", ex);
             _playing = 0;
             throw;
         }
@@ -80,6 +86,7 @@ internal static class MacroPlayer
     /// <summary>请求停止回放；回放线程会在下一个等待点退出并释放按键。</summary>
     public static void Stop()
     {
+        if (_playing != 0) AppLog.Info("Macro", "收到停止回放请求");
         _stop = true;
         _wake.Set();
     }

@@ -69,6 +69,18 @@ public partial class App : Application
         // 钩子回调第一时间被服务。顺带也保证 AppState / 动作清单在钩子首次回调前已就绪。
         var cfgPath = ConfigLocator.FindPath();
         var cfg = AppConfig.Load(cfgPath);
+
+        // 运行日志：启动即按配置开启，后续设置页改动会即时生效。放在重活最前面，
+        // 让启动阶段的失败也能留下记录（CrashLog 会镜像到这里）。
+        var logCfg = cfg.Logging ?? new LogConfig();
+        AppLog.Configure(logCfg.Enabled, logCfg.Level, logCfg.RetentionDays);
+        AppLog.Info("App", $"===== LTools {typeof(App).Assembly.GetName().Version} 启动 =====");
+        AppLog.Info("App",
+            $"{System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription} · " +
+            $"管理员={Environment.IsPrivilegedProcess} · 进程 {Environment.ProcessId}");
+        AppLog.Info("App", $"数据目录 {AppPaths.DataRoot}");
+        AppLog.Info("App", $"配置文件 {cfgPath}");
+
         AppState.MouseModeSpeed = cfg.MouseModeSpeed;
         AppState.IsToolEnabled = cfg.CapsLockEnabled;
         AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
@@ -99,9 +111,9 @@ public partial class App : Application
         // —— 钩子：先预热回调 JIT（把首次 JIT 编译提前到无钩子阶段），再安装 ——
         KeyboardHook.WarmUp();
         MouseHook.WarmUp();
-        try { KeyboardHook.Install(); }
+        try { KeyboardHook.Install(); AppLog.Info("Hook", "键盘钩子已安装"); }
         catch (Win32Exception ex) { CrashLog.Write("KeyboardHookInstall", ex); }
-        try { MouseHook.Install(); }
+        try { MouseHook.Install(); AppLog.Info("Hook", "鼠标钩子已安装"); }
         catch (Win32Exception ex) { CrashLog.Write("MouseHookInstall", ex); }
     }
 
@@ -324,11 +336,19 @@ public partial class App : Application
 
     private void ExitApplication()
     {
+        AppLog.Info("App", "退出 LTools");
         _watchdog?.Stop();
         KeyboardHook.Uninstall();
         MouseHook.Uninstall();
         _tray?.Dispose();
         _singleInstanceMutex?.ReleaseMutex();
         Shutdown();
+    }
+
+    /// <summary>无论从托盘退出还是系统注销，都确保日志队列写完（可重复调用）。</summary>
+    protected override void OnExit(ExitEventArgs e)
+    {
+        AppLog.Shutdown();
+        base.OnExit(e);
     }
 }

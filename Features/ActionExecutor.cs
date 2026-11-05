@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LTools.Core;
@@ -21,6 +22,10 @@ namespace LTools.Features;
 /// <item>mouse → 绝对移动 + 点击 / 双击 / 滚轮（坐标支持运行期模板）</item>
 /// <item>composite → 交给 <see cref="FlowRunner"/> 解释执行嵌套流程；节点内嵌 <see cref="ActionDto"/> 快照，**不支持嵌套流程**</item>
 /// </list>
+/// <para>
+/// 有结果的动作（见 <see cref="ActionResults"/>）会把结果返回给调用方；流程里由
+/// <see cref="FlowRunner"/> 写入 <see cref="ActionDto.OutputVar"/> 指定的变量，独立运行动作时忽略。
+/// </para>
 /// </summary>
 /// <remarks>
 /// 线程模型：<see cref="Run"/> 一律 spawn 到后台线程（钩子回调不得阻塞 &gt;300ms）；
@@ -44,42 +49,59 @@ internal static class ActionExecutor
         // 若不在启动前清掉，状态机可能一直认为它按着（见 FlowRunner.PrepareToRun）。
         if (action.Type == ActionType.composite) FlowRunner.PrepareToRun();
 
+        bool trace = action.Type != ActionType.composite;   // composite 由 FlowRunner 记录流程日志
+
         Task.Run(() =>
         {
-            try { Execute(action, cursorX, cursorY); }
-            catch (Exception ex) { CrashLog.Write($"ActionExecutor[{action.Name}]", ex); }
+            long started = Environment.TickCount64;
+            if (trace) AppLog.Info("Action", $"执行「{action.Name}」({action.Type})");
+            try
+            {
+                Execute(action, cursorX, cursorY);
+                if (trace) AppLog.Info("Action", $"完成「{action.Name}」· {Environment.TickCount64 - started} ms");
+            }
+            catch (Exception ex)
+            {
+                if (trace) AppLog.Error("Action", $"失败「{action.Name}」({action.Type})", ex);
+                CrashLog.Write($"ActionExecutor[{action.Name}]", ex);
+            }
         });
     }
 
     // —— 同步执行（已位于后台线程，或被流程节点调用）——
     // 失败一律上抛（不在此吞掉），由 Run 顶层 / FlowRunner 的每个节点 catch 记录并按 OnFail 决策。
 
-    internal static void Execute(ActionDto action, int cursorX, int cursorY)
+    /// <summary>
+    /// 同步执行一个动作（已位于后台线程）。返回动作结果（不支持输出 / 无结果时返回 null），
+    /// 由 <see cref="FlowRunner"/> 决定是否写入变量；<paramref name="ctx"/> 供可取消的长命令使用。
+    /// </summary>
+    internal static VarValue? Execute(ActionDto action, int cursorX, int cursorY, RunContext? ctx = null)
     {
+        VarValue? result = null;
         switch (action.Type)
         {
             case ActionType.launchApp:
-                LaunchApp(action);
+                result = LaunchApp(action);
                 break;
             case ActionType.openFile:
             case ActionType.openFolder:
             case ActionType.openUrl:
-                ShellExecute(action);
+                result = ShellExecute(action);
                 break;
             case ActionType.runCommand:
-                RunCommand(action);
+                result = RunCommand(action, ctx);
                 break;
             case ActionType.sendText:
                 SendText(action);
                 break;
             case ActionType.setClipboard:
-                SetClipboard(action);
+                result = SetClipboard(action);
                 break;
             case ActionType.sendKeys:
                 SendKeys(action);
                 break;
             case ActionType.mouse:
-                Mouse(action);
+                result = Mouse(action);
                 break;
             case ActionType.macro:
                 PlayMacro(action);
@@ -93,10 +115,11 @@ internal static class ActionExecutor
             default:
                 throw new InvalidOperationException($"未知动作类型: {action.Type}");
         }
+        return result;
     }
 
     // —— launchApp ——
-    private static void LaunchApp(ActionDto a)
+    private static VarValue? LaunchApp(ActionDto a)
     {
         if (string.IsNullOrWhiteSpace(a.Target))
             throw new InvalidOperationException($"launchApp 缺少 Target: {a.Name}");
@@ -104,11 +127,29 @@ internal static class ActionExecutor
         // CreateProcess 解析相对 exe 用的是父进程 CWD，不是 WorkingDirectory；先按数据根 / 工作目录解析成绝对路径，
         // 否则 `resources\foo.exe` 在 LTools 自身 CWD 不是数据根时（如开机自启 = System32）会找不到文件。
         string target = AppPaths.ResolveTarget(a.Target!, wd);
-        Process.Start(BuildPsi(target, a.Args, wd));
+        var process = Process.Start(BuildPsi(target, a.Args, wd));
+        if (process == null) return VarValue.FromBool(true);
+
+        try
+        {
+            int pid = process.Id;
+            return new VarValue
+            {
+                Text = pid.ToString(CultureInfo.InvariantCulture),
+                Number = pid,
+                Flag = true,
+            };
+        }
+        catch
+        {
+            // 进程可能瞬间退出、句柄已失效：启动本身成功，给个布尔结果即可
+            return VarValue.FromBool(true);
+        }
+        finally { process.Dispose(); }
     }
 
     // —— openFile / openFolder / openUrl（ShellExecute 走默认程序）——
-    private static void ShellExecute(ActionDto a)
+    private static VarValue? ShellExecute(ActionDto a)
     {
         string wd = AppPaths.ResolveWorkdir(a.Workdir);
         string? target = a.Type switch
@@ -125,11 +166,16 @@ internal static class ActionExecutor
         if (a.Type != ActionType.openUrl && !string.IsNullOrEmpty(wd) && Directory.Exists(wd))
             psi.WorkingDirectory = wd;
         Process.Start(psi);
+        return new VarValue { Text = target!, Flag = true };
     }
 
-    // —— runCommand（复用 TerminalLauncher 终端路由）——
-    private static void RunCommand(ActionDto a)
+    // —— runCommand（复用 TerminalLauncher 终端路由；填了输出变量时后台捕获输出）——
+    private static VarValue? RunCommand(ActionDto a, RunContext? ctx)
     {
+        // 输出变量 = 需要结果：改为后台执行并捕获 stdout / stderr / 退出码（不再打开终端）。
+        if (!string.IsNullOrWhiteSpace(a.OutputVar))
+            return RunCommandCaptured(a, ctx);
+
         string cmd = a.Cmd ?? "";
         string terminal = a.Terminal ?? "direct";
         bool keepWindow = a.KeepWindow ?? false;
@@ -141,17 +187,176 @@ internal static class ActionExecutor
             if (string.IsNullOrWhiteSpace(cmd))
                 throw new InvalidOperationException($"runCommand 缺少 Cmd: {a.Name}");
             RunDirect(cmd, workdir);
-            return;
+            return null;
         }
 
         var r = TerminalLauncher.TryBuildLaunch(terminal, keepWindow, cmd, workdir);
         if (!r.Ok)
         {
-            if (r.Error == null) return; // 空命令仅开 shell 无 exe 时的 no-op
+            if (r.Error == null) return null; // 空命令仅开 shell 无 exe 时的 no-op
             TrayService.Notify(r.Error); // 替代原 MenuSystem 的模态提示，不阻塞动作路径
             throw new InvalidOperationException(r.Error);
         }
         Process.Start(BuildPsi(r.Exe!, r.Args, r.Workdir));
+        return null;
+    }
+
+    /// <summary>单条输出最多保留的字符数（防止命令刷屏把内存吃满）。</summary>
+    private const int MaxCapturedChars = 200_000;
+
+    /// <summary>没有流程上下文时，捕获型命令的最长等待时间。</summary>
+    private const int MaxCaptureMs = 10 * 60 * 1000;
+
+    private static readonly Encoding? OemEncoding = CreateOemEncoding();
+
+    private static Encoding? CreateOemEncoding()
+    {
+        try
+        {
+            // .NET 默认不带 OEM 代码页；注册一次即可按系统 OEM 编码解码 cmd 的输出（中文不乱码）。
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            return Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
+        }
+        catch
+        {
+            return null;   // 拿不到就退回运行时默认编码
+        }
+    }
+
+    /// <summary>Git Bash / WSL 的管道输出是 UTF-8（无 BOM）。</summary>
+    private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+    /// <summary>
+    /// 按「运行命令」里选的终端构造捕获用的启动信息：不使用 keepWindow / Windows Terminal 包装，
+    /// 直接跑 shell 的「执行一条命令」形式，才能从管道拿到输出。
+    /// Git Bash / WSL 的管道输出是 UTF-8；cmd 与 PowerShell 默认跟随系统 OEM 代码页（中文 Windows 为 GBK）。
+    /// </summary>
+    private static ProcessStartInfo BuildCapturePsi(ActionDto a, string cmd, string wd)
+    {
+        string terminal = a.Terminal ?? "direct";
+
+        var psi = new ProcessStartInfo
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+
+        if (terminal is "pwsh7" or "pwsh5" or "gitbash" or "wslbash")
+        {
+            string? shell = TerminalLauncher.Resolve(terminal);
+            if (!string.IsNullOrEmpty(shell) && File.Exists(shell))
+            {
+                psi.FileName = shell;
+                switch (terminal)
+                {
+                    case "pwsh7":
+                    case "pwsh5":
+                        psi.ArgumentList.Add("-NoProfile");
+                        psi.ArgumentList.Add("-NonInteractive");
+                        psi.ArgumentList.Add(terminal == "pwsh7" ? "-c" : "-Command");
+                        psi.ArgumentList.Add(cmd);
+                        break;
+                    case "gitbash":
+                        psi.ArgumentList.Add("-c");
+                        psi.ArgumentList.Add(cmd);
+                        break;
+                    case "wslbash":
+                        psi.ArgumentList.Add("bash");
+                        psi.ArgumentList.Add("-lc");
+                        psi.ArgumentList.Add(cmd);
+                        break;
+                }
+
+                // Git Bash / WSL 固定 UTF-8；cmd 与 PowerShell 的管道输出跟随系统 OEM 代码页。
+                bool utf8 = terminal is "gitbash" or "wslbash";
+                psi.StandardOutputEncoding = utf8 ? Utf8NoBom : OemEncoding;
+                psi.StandardErrorEncoding = utf8 ? Utf8NoBom : OemEncoding;
+
+                if (!string.IsNullOrEmpty(wd) && Directory.Exists(wd))
+                    psi.WorkingDirectory = wd;
+                return psi;
+            }
+
+            AppLog.Warn("Action",
+                $"未找到 {TerminalLauncher.DisplayLabel(terminal)}，捕获执行改用 cmd.exe：{a.Name}");
+        }
+
+        // direct / cmd / wt（wt 只是终端宿主，捕获时不需要它）
+        psi.FileName = "cmd.exe";
+        psi.Arguments = "/d /s /c \"" + cmd + "\"";
+        psi.StandardOutputEncoding = OemEncoding;
+        psi.StandardErrorEncoding = OemEncoding;
+        if (!string.IsNullOrEmpty(wd) && Directory.Exists(wd))
+            psi.WorkingDirectory = wd;
+        return psi;
+    }
+
+    /// <summary>
+    /// 后台执行命令并捕获输出（供「结果存到变量」使用）。
+    /// 隐藏窗口执行（cmd / 所选 shell），等待进程退出后返回
+    /// <c>Text</c>=标准输出、<c>Error</c>=错误输出、<c>Number</c>=退出码、<c>Flag</c>=是否成功。
+    /// 流程里可按停止热键取消（连同子进程一起结束）。
+    /// </summary>
+    private static VarValue RunCommandCaptured(ActionDto a, RunContext? ctx)
+    {
+        string cmd = (a.Cmd ?? "").Trim();
+        if (cmd.Length == 0)
+            throw new InvalidOperationException($"runCommand 缺少 Cmd: {a.Name}");
+
+        string wd = AppPaths.ResolveWorkdir(a.Workdir);
+        var psi = BuildCapturePsi(a, cmd, wd);
+
+        using var process = Process.Start(psi)
+            ?? throw new InvalidOperationException($"无法启动命令: {a.Name}");
+
+        // 先异步把两条流读空，避免子进程写满管道缓冲区后卡住
+        Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+        Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+
+        long started = Environment.TickCount64;
+        while (!process.HasExited)
+        {
+            if (ctx != null)
+            {
+                if (!ctx.Wait(100))
+                {
+                    TryKill(process);
+                    throw new FlowAbortException("已停止", userCancelled: true);
+                }
+            }
+            else
+            {
+                Thread.Sleep(100);
+                if (Environment.TickCount64 - started > MaxCaptureMs)
+                {
+                    TryKill(process);
+                    throw new InvalidOperationException($"命令运行超过 {MaxCaptureMs / 60000} 分钟，已中止: {a.Name}");
+                }
+            }
+        }
+
+        string stdout = Cap(stdoutTask.GetAwaiter().GetResult());
+        string stderr = Cap(stderrTask.GetAwaiter().GetResult());
+        int exitCode = process.ExitCode;
+
+        return new VarValue
+        {
+            Text = stdout.TrimEnd('\r', '\n'),
+            Error = stderr.TrimEnd('\r', '\n'),
+            Number = exitCode,
+            Flag = exitCode == 0,
+        };
+
+        static string Cap(string text) => text.Length <= MaxCapturedChars
+            ? text
+            : text[..MaxCapturedChars] + "\n…（输出过长，已截断）";
+    }
+
+    private static void TryKill(Process process)
+    {
+        try { process.Kill(entireProcessTree: true); } catch { /* 已退出 / 无权限 */ }
     }
 
     /// <summary>direct 终端：拆 exe+args 启动，失败回退 ShellExecute（URL/文档/含空格非可执行首段）。</summary>
@@ -211,10 +416,12 @@ internal static class ActionExecutor
     /// 把文本写进剪贴板（不发送、不按键）。文本为空表示清空剪贴板。
     /// 剪贴板被占用时的重试在 <see cref="NativeClipboard.SetText"/> 内部完成。
     /// </summary>
-    private static void SetClipboard(ActionDto a)
+    private static VarValue? SetClipboard(ActionDto a)
     {
-        if (NativeClipboard.SetText(a.Text ?? "")) return;
-        throw new InvalidOperationException($"写入剪贴板失败（剪贴板被其他程序占用？）: {a.Name}");
+        string text = a.Text ?? "";
+        if (!NativeClipboard.SetText(text))
+            throw new InvalidOperationException($"写入剪贴板失败（剪贴板被其他程序占用？）: {a.Name}");
+        return new VarValue { Text = text, Flag = true };
     }
 
     // —— sendText（发送文本，§3.2.2）——
@@ -378,7 +585,7 @@ internal static class ActionExecutor
     /// <summary>本类注入鼠标事件的标记（与宏回放一致，便于排查）。</summary>
     private static readonly IntPtr MouseTag = (IntPtr)0x1234ABCD;
 
-    private static void Mouse(ActionDto a)
+    private static VarValue? Mouse(ActionDto a)
     {
         string sx = a.X?.Trim() ?? "";
         string sy = a.Y?.Trim() ?? "";
@@ -420,6 +627,8 @@ internal static class ActionExecutor
                 Win32.mouse_event(Win32.MouseeventfWheel, 0, 0, unchecked((uint)-wheel), MouseTag);
                 break;
         }
+
+        return Win32.GetCursorPos(out var point) ? VarValue.FromPoint(point.X, point.Y) : null;
     }
 
     /// <summary>按下并释放一个鼠标键（1=左 2=右 3=中）。</summary>

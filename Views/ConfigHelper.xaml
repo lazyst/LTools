@@ -162,6 +162,8 @@
                                  Checked="Nav_Changed" Tag="superpanel"/>
                     <RadioButton Style="{StaticResource NavRow}" Content="终端路径"
                                  Checked="Nav_Changed" Tag="terminals"/>
+                    <RadioButton Style="{StaticResource NavRow}" Content="运行日志"
+                                 Checked="Nav_Changed" Tag="logs"/>
                     <RadioButton Style="{StaticResource NavRow}" Content="备份与恢复"
                                  Checked="Nav_Changed" Tag="backup"/>
                 </StackPanel>
@@ -364,6 +366,73 @@
                                 <Button Grid.Column="2" Style="{StaticResource BtnPrimary}" Content="保存"
                                         MinWidth="72" Click="SaveGitBash_Click"/>
                             </Grid>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ 运行日志 ============ -->
+                <ScrollViewer x:Name="Page_Logs" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="运行日志" Margin="0,0,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <CheckBox x:Name="LogEnabledBox" Content="记录运行日志"
+                                          Checked="LogOption_Changed" Unchecked="LogOption_Changed"/>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,12"
+                                           TextWrapping="Wrap"
+                                           Text="记录启动与环境、动作与流程执行、取值结果、设置变更和异常。日志按天写入数据根下的 logs 文件夹，只保存在本机，不会上传。"/>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="记录级别" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="LogLevelCombo" MinHeight="32"
+                                              SelectionChanged="LogOption_Changed">
+                                        <ComboBoxItem Content="仅错误"/>
+                                        <ComboBoxItem Content="常规（推荐）"/>
+                                        <ComboBoxItem Content="详细（含变量值）"/>
+                                    </ComboBox>
+                                </Grid>
+                                <TextBlock x:Name="LogLevelHint" Style="{StaticResource HintLabel}"
+                                           TextWrapping="Wrap" Margin="120,0,0,10"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="保留时间" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="LogRetentionCombo" MinHeight="32"
+                                              SelectionChanged="LogOption_Changed">
+                                        <ComboBoxItem Content="3 天"/>
+                                        <ComboBoxItem Content="7 天"/>
+                                        <ComboBoxItem Content="14 天"/>
+                                        <ComboBoxItem Content="30 天"/>
+                                        <ComboBoxItem Content="不自动清理"/>
+                                    </ComboBox>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="日志文件" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <TextBlock x:Name="LogPathText" Style="{StaticResource HintLabel}"
+                                           TextWrapping="Wrap"/>
+                                <TextBlock x:Name="LogStatusText" Style="{StaticResource HintLabel}"
+                                           TextWrapping="Wrap" Margin="0,4,0,10"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Style="{StaticResource BtnPrimary}" Content="打开日志文件夹"
+                                            MinWidth="120" Click="OpenLogFolder_Click"/>
+                                    <Button Style="{StaticResource BtnGhost}" Content="打开今天的日志"
+                                            MinWidth="120" Margin="8,0,0,0" Click="OpenTodayLog_Click"/>
+                                    <Button Style="{StaticResource BtnGhost}" Content="复制文件夹路径"
+                                            MinWidth="120" Margin="8,0,0,0" Click="CopyLogPath_Click"/>
+                                </StackPanel>
+                            </StackPanel>
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
