@@ -123,7 +123,7 @@ public sealed class AppConfig
     public string LastNavPage { get; set; } = "actions";
 
     /// <summary>
-    /// 上次选用的「截图 OCR」引擎（<c>windows</c> / <c>v6tiny</c> / <c>v6small</c>），
+    /// 上次选用的「文字识别」引擎（<c>windows</c> / <c>v6tiny</c> / <c>v6small</c>），
     /// 新建 OCR 取值默认用它；null = 还没选过（默认内置的 PP-OCRv6 快速）。见 <c>Features/OcrEnginePreference</c>。
     /// </summary>
     public string? LastOcrEngine { get; set; }

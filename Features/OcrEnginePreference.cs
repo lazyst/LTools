@@ -5,7 +5,7 @@ using LTools.Core;
 namespace LTools.Features;
 
 /// <summary>
-/// 记住上次选用的「截图 OCR」引擎：新建取值默认用它，不必每加一个 OCR 步骤都重选。
+/// 记住上次选用的「文字识别」引擎：新建取值默认用它，不必每加一个 OCR 步骤都重选。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,7 +22,7 @@ internal static class OcrEnginePreference
 {
     private const string Windows = "windows";
 
-    /// <summary>新建「截图 OCR」取值时预选的引擎；null = 系统 OCR。</summary>
+    /// <summary>新建「文字识别」取值时预选的引擎；null = 系统 OCR。</summary>
     public static string? DefaultForNewProbe
     {
         get

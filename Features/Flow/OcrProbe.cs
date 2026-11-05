@@ -5,7 +5,6 @@ using System.Drawing.Imaging;
 using System.Text;
 using System.Text.RegularExpressions;
 using LTools.Core;
-using LTools.Native;
 using Windows.Globalization;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
@@ -14,9 +13,13 @@ using Windows.Storage.Streams;
 namespace LTools.Features;
 
 /// <summary>
-/// 截图 OCR：截取前台窗口 / 整个屏幕 / 固定区域，识别文字后作为文本变量。
+/// 文字识别：读一张图片（通常来自「截图」步骤，也可直接填文件路径），识别其中的文字。
 /// </summary>
 /// <remarks>
+/// <para>
+/// 取图和识字是两件事：截图步骤负责拿图，这里只负责认字。中途切换窗口、画面变了，
+/// 识别的仍是截图当时存下来的那张 png。
+/// </para>
 /// <para>
 /// 两个引擎，默认用系统 OCR（<see cref="OcrEngine"/>）：零额外运行时与模型文件，
 /// 中文能力随系统语言包提供（Windows 10/11 中文环境默认就有 zh-Hans）。
@@ -27,15 +30,17 @@ namespace LTools.Features;
 /// </para>
 /// <para>
 /// 识别是异步 / 同步的阻塞调用，本方法在流程的后台线程上执行；不回到 UI 线程，
-/// 因此不会与 WPF 的 Dispatcher 互相等待。截图坐标与鼠标注入 / 图像匹配同一坐标系。
+/// 因此不会与 WPF 的 Dispatcher 互相等待。
 /// </para>
 /// </remarks>
 internal static class OcrProbe
 {
-    /// <summary>识别指定区域的屏幕文字。没有文字时返回空文本 + <c>found=false</c>。</summary>
+    /// <summary>识别图片中的文字。没有文字时返回空文本 + <c>found=false</c>。</summary>
     public static VarValue Run(Probe probe, RunContext ctx)
     {
         if (ctx.IsCancelled) throw new FlowAbortException("已停止", userCancelled: true);
+
+        string path = ResolveImagePath(probe, ctx);
 
         PaddleOcr.Tier? tier = PaddleOcr.ParseTier(probe.OcrEngine);
 
@@ -44,23 +49,69 @@ internal static class OcrProbe
         if (tier == null && windows == null)
             throw new FlowException("系统没有可用的 OCR 语言包，请在 Windows 设置里安装「中文(简体)」或「English」的 OCR 组件。");
 
-        var (x, y, w, h) = ScreenRegion.Resolve(probe);
-        string? indicator = null;
+        using Bitmap image = LoadImage(path);
+        return Recognize(tier, windows, image);
+    }
+
+    private static VarValue Recognize(PaddleOcr.Tier? tier, OcrEngine? windows, Bitmap bmp) =>
+        tier is PaddleOcr.Tier engine
+            ? PaddleOcr.Recognize(bmp, engine)
+            : RecognizeWindows(windows!, bmp);
+
+    // ============ 图片来源 ============
+
+    /// <summary>
+    /// 解析 <see cref="Probe.OcrImage"/>：整段一个变量时优先用它的 <c>file</c> 属性
+    /// （截图的 <c>${截图}</c> 自带图片路径），否则按模板渲染成路径。
+    /// </summary>
+    private static string ResolveImagePath(Probe probe, RunContext ctx)
+    {
+        string spec = (probe.OcrImage ?? "").Trim();
+        if (spec.Length == 0)
+            throw new FlowException("「文字识别」还没有指定图片：先用「截图」拿一张图，再把它的变量填进来（例如 ${截图}）。");
+
+        string path;
+        if (Template.TrySingleVariable(spec, out string name))
+        {
+            VarValue value = ctx.ResolvePath(name);
+            if (value.File.Length > 0)
+            {
+                path = value.File;
+            }
+            else if (value.W != null || value.X != null)
+            {
+                // 区域 / 坐标变量本身不是图片：多半是截图被取消，或者把「截图」和「找图」弄混了。
+                throw new FlowException(
+                    $"变量「{name}」里没有图片（截图被取消时不会留下 file；找图的结果是坐标，不是图片）。");
+            }
+            else
+            {
+                path = value.Text.Trim();
+            }
+        }
+        else
+        {
+            path = Template.Render(spec, ctx).Trim();
+        }
+
+        if (path.Length == 0)
+            throw new FlowException($"「{spec}」里没有图片路径（截图被取消时不会留下 file）。");
+
+        path = ImageLibrary.Resolve(path);
+        if (!File.Exists(path))
+            throw new FlowException($"要识别的图片不存在：{path}");
+        return path;
+    }
+
+    private static Bitmap LoadImage(string path)
+    {
         try
         {
-            // 自动化指示器是置顶窗口，会被一起截进画面；截图前收起，识别完再恢复。
-            indicator = LTools.Views.RecordingIndicatorWindow.HideAutomationForCapture();
-            if (indicator != null && !ctx.Wait(80))
-                throw new FlowAbortException("已停止", userCancelled: true);
-
-            using Bitmap bmp = ScreenCapture.Capture(x, y, w, h);
-            return tier is PaddleOcr.Tier engine
-                ? PaddleOcr.Recognize(bmp, engine)
-                : RecognizeWindows(windows!, bmp);
+            return new Bitmap(path);
         }
-        finally
+        catch (Exception ex)
         {
-            LTools.Views.RecordingIndicatorWindow.RestoreAutomation(indicator);
+            throw new FlowException($"读不到要识别的图片「{path}」：{ex.Message}");
         }
     }
 

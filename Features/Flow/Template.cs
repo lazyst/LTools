@@ -12,6 +12,27 @@ internal static class Template
     public static string? RenderOpt(string? template, RunContext ctx) =>
         template == null ? null : Render(template, ctx);
 
+    /// <summary>
+    /// 整段只是一个 <c>${变量}</c>（可带 <c>.属性</c>）时取出里面的路径。
+    /// 用于「整段按变量处理、保留结构化属性」的场景（文本取值、OCR 图片变量）。
+    /// </summary>
+    public static bool TrySingleVariable(string? text, out string path)
+    {
+        path = "";
+        string value = (text ?? "").Trim();
+        if (value.Length < 4 ||
+            !value.StartsWith("${", StringComparison.Ordinal) ||
+            !value.EndsWith('}'))
+            return false;
+
+        string inner = value[2..^1];
+        if (inner.Length == 0 || inner.Contains('$') || inner.Contains('{') || inner.Contains('}'))
+            return false;
+
+        path = inner;
+        return true;
+    }
+
     /// <summary>渲染模板；未定义变量抛 <see cref="FlowException"/>。</summary>
     public static string Render(string template, RunContext ctx)
     {

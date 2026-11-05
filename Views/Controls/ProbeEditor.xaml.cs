@@ -63,9 +63,9 @@ public partial class ProbeEditor : UserControl
             new("光标位置", ProbeKind.cursor),
             new("日期时间", ProbeKind.datetime),
             new("输入文本", ProbeKind.user),
-            new("实时截图", ProbeKind.screenshot),
+            new("截图", ProbeKind.screenshot),
             new("截图找图", ProbeKind.image),
-            new("截图 OCR", ProbeKind.ocr),
+            new("文字识别", ProbeKind.ocr),
             new("屏幕取色", ProbeKind.color),
             new("窗口", ProbeKind.window),
             new("进程", ProbeKind.process),
@@ -88,6 +88,7 @@ public partial class ProbeEditor : UserControl
             new("PP-OCRv6 高精度（需下载 29.8 MB）", "v6small"),
         };
         OcrEngineCombo.SelectedIndex = 0;
+        ScreenshotModeCombo.SelectedIndex = 0;
 
         _ready = true;
         ShowPanel();
@@ -114,6 +115,15 @@ public partial class ProbeEditor : UserControl
 
         ImagePathBox.Text = probe.Image ?? "";
         SelectRegion(probe.Region);
+        ScreenshotModeCombo.SelectedIndex = probe.ScreenshotMode switch
+        {
+            ScreenshotMode.foreground => 1,
+            ScreenshotMode.screen => 2,
+            ScreenshotMode.rect => 3,
+            _ => 0,
+        };
+        ScreenshotRectBox.Text = probe.ScreenshotRect ?? "";
+        OcrImageBox.Text = probe.OcrImage ?? "";
         // 已有 OCR 步骤保留自己的引擎；新建步骤沿用上次的选择（默认 PP-OCRv6 快速）
         SelectOcrEngine(probe.Kind == ProbeKind.ocr ? probe.OcrEngine : OcrEnginePreference.DefaultForNewProbe);
         RectXBox.Text = probe.Rect is { Length: >= 4 } r ? r[0].ToString(CultureInfo.InvariantCulture) : "0";
@@ -191,7 +201,22 @@ public partial class ProbeEditor : UserControl
                 break;
 
             case ProbeKind.screenshot:
-                // 没有参数：区域由用户运行时现框。
+                probe.ScreenshotMode = ScreenshotModeCombo.SelectedIndex switch
+                {
+                    1 => ScreenshotMode.foreground,
+                    2 => ScreenshotMode.screen,
+                    3 => ScreenshotMode.rect,
+                    _ => ScreenshotMode.interactive,
+                };
+                if (probe.ScreenshotMode == ScreenshotMode.rect)
+                {
+                    string spec = ScreenshotRectBox.Text.Trim();
+                    if (spec.Length == 0) return "请填写截图区域（x,y,w,h），或点「框选区域…」。";
+                    // 含模板时只能等运行时才知道实际数值；字面值在这里先校验一次，免得跑起来才报错。
+                    if (!spec.Contains('$') && !ScreenshotProbe.TryParseRect(spec, out _, out _, out _, out _))
+                        return "截图区域要写成 x,y,w,h（四个整数，宽高大于 0）。";
+                    probe.ScreenshotRect = spec;
+                }
                 break;
 
             case ProbeKind.image:
@@ -215,8 +240,10 @@ public partial class ProbeEditor : UserControl
             }
 
             case ProbeKind.ocr:
-                if (ReadRegion(probe) is string ocrRegionError) return ocrRegionError;
                 probe.OcrEngine = (OcrEngineCombo.SelectedItem as OcrEngineItem)?.Value;
+                probe.OcrImage = OcrImageBox.Text.Trim();
+                if (probe.OcrImage.Length == 0)
+                    return "请填写要识别的图片（先用「截图」拿一张图，再填它的变量，例如 ${截图}）。";
                 break;
 
             case ProbeKind.color:
@@ -273,22 +300,7 @@ public partial class ProbeEditor : UserControl
 
     /// <summary>整段只是一个 <c>${变量}</c> 时取出变量名（忽略首尾空白）。</summary>
     public static bool TryParseSingleVariable(string? text, out string name)
-    {
-        name = "";
-        string value = (text ?? "").Trim();
-        if (value.Length < 4 ||
-            !value.StartsWith("${", StringComparison.Ordinal) ||
-            !value.EndsWith('}'))
-            return false;
-
-        string inner = value[2..^1];
-        if (inner.Length == 0 ||
-            inner.Contains('$') || inner.Contains('{') || inner.Contains('}'))
-            return false;
-
-        name = inner;
-        return true;
-    }
+        => LTools.Features.Template.TrySingleVariable(text, out name);
 
     private void Kind_Changed(object sender, SelectionChangedEventArgs e)
     {
@@ -320,30 +332,38 @@ public partial class ProbeEditor : UserControl
         foreach (var p in panels.Values) p.Visibility = Visibility.Collapsed;
         if (panels.TryGetValue(kind, out var selected)) selected.Visibility = Visibility.Visible;
 
-        bool hasRegion = kind is ProbeKind.image or ProbeKind.ocr;
+        // 截图只在自己框选时才算「必须跑流程」；前台窗口 / 整个屏幕 / 固定区域可以就地试。
+        bool interactiveShot = kind == ProbeKind.screenshot &&
+                               ScreenshotModeCombo.SelectedIndex == 0;
+        bool screenshotRect = kind == ProbeKind.screenshot &&
+                              ScreenshotModeCombo.SelectedIndex == 3;
+        ScreenshotRectPanel.Visibility = screenshotRect ? Visibility.Visible : Visibility.Collapsed;
+        ScreenshotModeHint.Text = kind == ProbeKind.screenshot
+            ? ScreenshotModeHintText(ScreenshotModeCombo.SelectedIndex)
+            : "";
+
+        // 截图找图的搜索范围与截图无关，只有找图才有区域设置。
+        bool hasRegion = kind == ProbeKind.image;
         RegionSection.Visibility = hasRegion ? Visibility.Visible : Visibility.Collapsed;
-        RegionLabel.Text = kind == ProbeKind.ocr ? "截图区域" : "搜索区域";
-        PickRegionBtn.ToolTip = kind == ProbeKind.ocr
-            ? "在屏幕上框出要识别文字的区域，自动填入 x / y / w / h"
-            : "在屏幕上框出一块，自动填入 x / y / w / h";
+        RegionLabel.Text = "搜索区域";
+        PickRegionBtn.ToolTip = "在屏幕上框出一块，自动填入 x / y / w / h";
 
         bool rect = hasRegion &&
                     (RegionCombo.SelectedItem as RegionItem)?.Region == ImageRegion.rect;
         RectPanel.Visibility = rect ? Visibility.Visible : Visibility.Collapsed;
         RegionHint.Visibility = rect ? Visibility.Visible : Visibility.Collapsed;
-        RegionHint.Text = kind == ProbeKind.ocr
-            ? "只识别框内文字；目标位置会变就改成「前台窗口」。"
-            : "只在框内查找（更快更准）；目标位置会变就改成「前台窗口」。";
+        RegionHint.Text = "只在框内查找（更快更准）；目标位置会变就改成「前台窗口」。";
 
-        // 「输入文本 / 实时截图」必须真的跑流程才能测，其他取值方式都可以就地试。
-        bool interactive = kind is ProbeKind.user or ProbeKind.screenshot;
+        // 「输入文本 / 截图 · 交互框选」必须真的跑流程才能测，其他取值方式都可以就地试。
+        bool interactive = kind == ProbeKind.user || interactiveShot;
         TestBar.Visibility = interactive ? Visibility.Collapsed : Visibility.Visible;
         TestHint.Text = kind switch
         {
             ProbeKind.selection => "通过 UI Automation 读取当前选区（不模拟按键，窗口会短暂最小化）",
             ProbeKind.clipboard => "读取当前剪贴板内容",
             ProbeKind.image => $"用当前屏幕找一次（最多等 {ProbeTest.MaxWaitMs / 1000} 秒，窗口会短暂最小化）",
-            ProbeKind.ocr => "用当前屏幕识别一次（窗口会短暂最小化）",
+            ProbeKind.ocr => "识别图片变量里的图片（编辑时变量通常还没有值，跑流程才有）",
+            ProbeKind.screenshot => "按当前方式截一张图（窗口会短暂最小化）",
             ProbeKind.color => "读取该点当前颜色（窗口会短暂最小化）",
             ProbeKind.window or ProbeKind.process => "检查当前系统状态",
             ProbeKind.lastError => "显示上一步被「继续下一步」吞掉的错误（编辑时通常为空）",
@@ -353,9 +373,37 @@ public partial class ProbeEditor : UserControl
         TestResult.Text = "";
     }
 
+    /// <summary>截图方式的说明：把「什么时候需要人」「截到哪儿」讲清楚。</summary>
+    private static string ScreenshotModeHintText(int index) => index switch
+    {
+        1 => "截当前前台窗口的实际可见范围（不含窗口阴影边距）；如果前台正好是 LTools 自己，就会截到 LTools。",
+        2 => "截整个虚拟桌面（多显示器时为所有屏幕的合集）。",
+        3 => "按填好的区域截；区域可以引用变量，例如先用「截图」框一次，再用 ${截图} 同一块区域再截一次。",
+        _ => "流程跑到这一步时，LTools 会让开并冻结屏幕，由你在屏幕上框一块（可吸附窗口 / 控件，和截图工具一样）。框完自动继续，不用再按确定。",
+    };
+
     private void Region_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!_ready) return;
+        ShowPanel();
+    }
+
+    private void ScreenshotMode_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready) return;
+        ShowPanel();
+        ValueChanged?.Invoke();
+    }
+
+    /// <summary>框一块当作截图区域，填成 x,y,w,h。</summary>
+    private void ScreenshotPickRect_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ScreenPicker.TryPickRegion(Window.GetWindow(this), out var area, out _)) return;
+
+        _ready = false;
+        ScreenshotModeCombo.SelectedIndex = 3;
+        ScreenshotRectBox.Text = $"{area.X},{area.Y},{area.Width},{area.Height}";
+        _ready = true;
         ShowPanel();
     }
 
@@ -640,10 +688,11 @@ public partial class ProbeEditor : UserControl
             ShowTest("请先修正：" + error, false);
             return;
         }
-        if (probe.Kind is ProbeKind.user or ProbeKind.screenshot) return;
+        if (probe.Kind == ProbeKind.user) return;
+        if (probe.Kind == ProbeKind.screenshot && probe.ScreenshotMode == ScreenshotMode.interactive) return;
 
         // 看屏幕 / 取前台选区时，LTools 自己的窗口必须让开，否则搜到的是自己。
-        bool hide = probe.Kind is ProbeKind.image or ProbeKind.ocr or ProbeKind.color or ProbeKind.cursor
+        bool hide = probe.Kind is ProbeKind.image or ProbeKind.screenshot or ProbeKind.color or ProbeKind.cursor
             or ProbeKind.window or ProbeKind.selection;
 
         TestBtn.IsEnabled = false;

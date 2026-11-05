@@ -136,17 +136,17 @@ public partial class CompositeActionDialog : Window
             .ToList();
         AddGroup("flow", "流程", flowItems);
 
-        // 取值：把「当前值」直接存成变量，最上面两个是需要人参与一步的（实时截图 / 输入文本）。
+        // 取值：把「当前值」直接存成变量，最上面两个是需要人参与一步的（截图 / 输入文本）。
         // 这些能力以前是隐藏的内置变量，现在改为左栏可点选的单元；生成的仍是普通的
         // 「设置变量」节点 —— 概念只有一个，变量面板也只显示用户创建的变量。
         var valueDefs = new (string Label, ProbeKind Kind, string Var, string Icon, string Tip)[]
         {
-            ("实时截图", ProbeKind.screenshot, "截图", "camera", "运行到这里让你自己框一块：结果带区域（.cx / .cy / .w / .h）和图片文件（.file）"),
+            ("截图", ProbeKind.screenshot, "截图", "camera", "取一张屏幕截图（交互框选 / 前台窗口 / 整个屏幕 / 固定区域）：结果带区域（.cx / .cy / .w / .h）和图片文件（.file），交给「文字识别」即可读字"),
             ("输入文本", ProbeKind.user, "输入", "edit", "运行到这里弹出输入框问你一次：填的内容存进变量；取消 → 空 + found=false"),
             ("剪贴板文本", ProbeKind.clipboard, "剪贴板", "paste", "读取系统剪贴板里的文本"),
             ("选中文本", ProbeKind.selection, "选中文本", "copy", "读取前台应用当前选中的文本（UI Automation，不模拟按键）"),
             ("鼠标位置", ProbeKind.cursor, "鼠标位置", "mouse", "记录当前鼠标坐标（用 ${变量.x} / ${变量.y} 引用）"),
-            ("截图 OCR", ProbeKind.ocr, "截图文字", "search", "截取指定区域并识别其中的文字（Windows 自带 OCR，中文 / 英文随系统语言包）"),
+            ("文字识别", ProbeKind.ocr, "文字", "search", "识别一张图片里的文字（通常填「截图」的结果 ${截图}）；Windows 自带 OCR 零下载，也可切 PP-OCRv6"),
             ("日期时间", ProbeKind.datetime, "日期时间", "clock", "记录当前日期时间（可设置格式）"),
             ("上一步的错误", ProbeKind.lastError, "错误", "help", "读取上一步被「继续下一步」吞掉的错误"),
         };

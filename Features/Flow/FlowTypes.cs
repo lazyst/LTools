@@ -75,13 +75,13 @@ public enum ProbeKind
     /// <summary>弹出输入框询问用户。</summary>
     user,
 
-    /// <summary>实时截图：运行时让用户在屏幕上框一块，取回区域 + 图片文件（见 <see cref="ScreenshotProbe"/>）。</summary>
+    /// <summary>截图：交互框选 / 前台窗口 / 整个屏幕 / 固定区域，取回区域 + 图片文件（见 <see cref="ScreenshotProbe"/>）。</summary>
     screenshot,
 
     /// <summary>屏幕图像匹配（OpenCV 模板匹配）。</summary>
     image,
 
-    /// <summary>截图 OCR（系统 Windows.Media.Ocr 或 PP-OCRv6，识别指定区域的文字）。</summary>
+    /// <summary>文字识别：识别一张图片（通常来自「截图」）里的文字，系统 Windows.Media.Ocr 或 PP-OCRv6。</summary>
     ocr,
 
     /// <summary>屏幕像素颜色。</summary>
@@ -108,6 +108,23 @@ public enum ImageRegion
     screen,
 
     /// <summary>固定矩形（<see cref="Probe.Rect"/>）。</summary>
+    rect,
+}
+
+/// <summary>「截图」步骤的取图方式。</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ScreenshotMode
+{
+    /// <summary>交互框选：运行时让用户框一块（默认，旧配置也是它）。</summary>
+    interactive,
+
+    /// <summary>当前前台窗口的可见范围。</summary>
+    foreground,
+
+    /// <summary>整个虚拟桌面。</summary>
+    screen,
+
+    /// <summary>固定区域（<see cref="Probe.ScreenshotRect"/>，可写 ${} 模板）。</summary>
     rect,
 }
 
@@ -183,10 +200,10 @@ public sealed class Probe
     /// <summary>image: 模板图片路径（相对 resources/images、相对数据根如 resources\user\a.png，或绝对路径）。</summary>
     public string? Image { get; set; }
 
-    /// <summary>image / ocr: 搜索或截图区域。</summary>
+    /// <summary>image: 搜索区域。</summary>
     public ImageRegion Region { get; set; }
 
-    /// <summary>image / ocr: 固定区域 [x, y, w, h]（Region=rect 时使用）。</summary>
+    /// <summary>image: 固定区域 [x, y, w, h]（Region=rect 时使用）。</summary>
     public int[]? Rect { get; set; }
 
     /// <summary>image: 最长等待时间（ms，0=只匹配一次）。</summary>
@@ -198,7 +215,18 @@ public sealed class Probe
     /// <summary>image: 最低置信度（0..1）。</summary>
     public double MinScore { get; set; } = 0.85;
 
+    // —— screenshot ——
+
+    /// <summary>screenshot: 取图方式。</summary>
+    public ScreenshotMode ScreenshotMode { get; set; }
+
+    /// <summary>screenshot: 固定区域 «x,y,w,h»（支持 ${} 模板，如 <c>${区域}</c>）。</summary>
+    public string? ScreenshotRect { get; set; }
+
     // —— ocr ——
+
+    /// <summary>ocr: 要识别的图片（变量或路径，支持 ${} 模板，如 <c>${截图}</c> / <c>${截图.file}</c>）。</summary>
+    public string? OcrImage { get; set; }
 
     /// <summary>ocr: 识别引擎。<c>null</c>/<c>windows</c> = 系统 OCR；<c>v6tiny</c> / <c>v6small</c> = PP-OCRv6。</summary>
     public string? OcrEngine { get; set; }
@@ -244,6 +272,9 @@ public sealed class Probe
         TimeoutMs = TimeoutMs,
         IntervalMs = IntervalMs,
         MinScore = MinScore,
+        ScreenshotMode = ScreenshotMode,
+        ScreenshotRect = ScreenshotRect,
+        OcrImage = OcrImage,
         OcrEngine = OcrEngine,
         X = X,
         Y = Y,
@@ -488,9 +519,9 @@ public static class FlowText
             ProbeKind.cursor => "光标位置",
             ProbeKind.datetime => "当前时间",
             ProbeKind.user => "输入文本",
-            ProbeKind.screenshot => "实时截图",
+            ProbeKind.screenshot => ScreenshotLabel(p),
             ProbeKind.image => $"图像 {Trim(System.IO.Path.GetFileName(p.Image), 20)}",
-            ProbeKind.ocr => "截图文字",
+            ProbeKind.ocr => string.IsNullOrWhiteSpace(p.OcrImage) ? "文字识别" : $"识别 {Trim(p.OcrImage, 20)}",
             ProbeKind.color => $"颜色 ({p.X}, {p.Y})",
             ProbeKind.window => $"窗口 {Trim(p.WindowTitle ?? p.WindowClass, 16)}",
             ProbeKind.process => $"进程 {p.ProcessName}",
@@ -498,6 +529,15 @@ public static class FlowText
             _ => p.Kind.ToString(),
         };
     }
+
+    /// <summary>截图步骤摘要：「截图 · 前台窗口」。</summary>
+    private static string ScreenshotLabel(Probe p) => p.ScreenshotMode switch
+    {
+        ScreenshotMode.foreground => "截图 · 前台窗口",
+        ScreenshotMode.screen => "截图 · 整个屏幕",
+        ScreenshotMode.rect => "截图 · 固定区域",
+        _ => "截图 · 交互框选",
+    };
 
     /// <summary>条件摘要。</summary>
     public static string ConditionLabel(Condition? c)

@@ -71,6 +71,26 @@ internal static class WindowFinder
         return sb.ToString();
     }
 
+    /// <summary>
+    /// 窗口实际可见的矩形（虚拟桌面物理像素）。优先 DWM 的 extended frame bounds，
+    /// 不含 Windows 10+ 那圈不可见的阴影边距；最大化窗口也不会多出 -9,-9 的边框。
+    /// </summary>
+    public static (int X, int Y, int W, int H) GetVisibleBounds(IntPtr hwnd)
+    {
+        if (Win32.DwmGetWindowAttribute(hwnd, Win32.DwmwaExtendedFrameBounds,
+                out Win32.Rect dwm, System.Runtime.InteropServices.Marshal.SizeOf<Win32.Rect>()) == 0)
+        {
+            int w = dwm.Right - dwm.Left;
+            int h = dwm.Bottom - dwm.Top;
+            if (w > 0 && h > 0) return (dwm.Left, dwm.Top, w, h);
+        }
+
+        if (Win32.GetWindowRect(hwnd, out var r))
+            return (r.Left, r.Top, Math.Max(0, r.Right - r.Left), Math.Max(0, r.Bottom - r.Top));
+
+        return (0, 0, 0, 0);
+    }
+
     /// <summary>把匹配条件说成一句人话（「标题包含「记事本」」）。</summary>
     public static string Describe(string? titleFragment, string? className)
     {

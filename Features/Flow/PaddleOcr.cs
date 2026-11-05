@@ -13,7 +13,7 @@ using RapidTextBlock = RapidOcrNet.TextBlock;
 namespace LTools.Features;
 
 /// <summary>
-/// PP-OCRv6 本地识别引擎（RapidOcrNet + ONNX Runtime），用于「截图 OCR」里要求更准的场景。
+/// PP-OCRv6 本地识别引擎（RapidOcrNet + ONNX Runtime），用于「文字识别」里要求更准的场景。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -98,7 +98,7 @@ internal static class PaddleOcr
 
     /// <summary>模型缺失时给用户可执行的下一步，而不是一句「初始化失败」。</summary>
     private static string MissingModelMessage(Tier tier) => tier == Tier.Small
-        ? "PP-OCRv6 高精度模型还没下载：在「截图 OCR」取值器里点「下载模型」，或把引擎改成「系统 OCR」。"
+        ? "PP-OCRv6 高精度模型还没下载：在「文字识别」取值器里点「下载模型」，或把引擎改成「系统 OCR」。"
         : "内置的 PP-OCRv6 快速模型缺失，请重新解压完整安装包（Assets\\Ocr\\ppocrv6）。";
 
     private static RapidOcr GetEngine(Tier tier)

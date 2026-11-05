@@ -19,7 +19,8 @@ internal static class ProbeTest
     public static string Run(Probe probe)
     {
         if (probe.Kind == ProbeKind.user) return "「输入文本」要等你真的填一次，只在流程运行时可用。";
-        if (probe.Kind == ProbeKind.screenshot) return "「实时截图」要你自己框一块，只在流程运行时可用。";
+        if (probe.Kind == ProbeKind.screenshot && probe.ScreenshotMode == ScreenshotMode.interactive)
+            return "「截图 · 交互框选」要你自己框一块，只在流程运行时可用。";
 
         var test = probe.Clone();
         if (test.Kind == ProbeKind.image)

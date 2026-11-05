@@ -3,7 +3,7 @@ using LTools.Native;
 namespace LTools.Features;
 
 /// <summary>
-/// 屏幕取样区域：图像匹配与截图 OCR 共用同一套「前台窗口 / 整个屏幕 / 固定矩形」语义，
+/// 屏幕取样区域：图像匹配用（前台窗口 / 整个屏幕 / 固定矩形），
 /// 返回虚拟桌面物理像素坐标（与鼠标注入、截图坐标系一致）。
 /// </summary>
 internal static class ScreenRegion

@@ -45,12 +45,48 @@
             <TextBox x:Name="DateFormatBox" MinHeight="32" Margin="0,4,0,0"/>
         </StackPanel>
 
-        <!-- 实时截图：运行时让你自己框一块，结果带区域 + 图片文件 -->
+        <!-- 截图：只负责拿图（交互框选 / 前台窗口 / 整个屏幕 / 固定区域），识字交给「文字识别」 -->
         <StackPanel x:Name="P_Screenshot" Visibility="Collapsed" Margin="0,8,0,0">
             <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                       Text="流程跑到这一步时，LTools 会让开并冻结屏幕，由你在屏幕上框一块（可吸附窗口 / 控件，和截图工具一样）。框完自动继续，不用再按确定。"/>
+                       Text="取一张屏幕截图交给流程。要识别其中的文字，再接一步「文字识别」，把这张图的变量填进去即可。"/>
+
+            <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="截图方式" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                <ComboBox x:Name="ScreenshotModeCombo" Grid.Column="1" MinHeight="30" Margin="8,0,0,0"
+                          SelectionChanged="ScreenshotMode_Changed">
+                    <ComboBoxItem Content="交互框选（运行时框一块）"/>
+                    <ComboBoxItem Content="前台窗口"/>
+                    <ComboBoxItem Content="整个屏幕"/>
+                    <ComboBoxItem Content="固定区域 / 变量区域"/>
+                </ComboBox>
+            </Grid>
+
+            <StackPanel x:Name="ScreenshotRectPanel" Visibility="Collapsed" Margin="0,6,0,0">
+                <TextBlock Text="区域（物理像素 x,y,w,h）" Foreground="{StaticResource HintTextBrush}"/>
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <controls:VariableTextBox x:Name="ScreenshotRectBox" MinHeight="30"
+                                              TextChanged="TextValue_Changed"
+                                              ToolTip="例如 100,200,800,600，或 ${截图} 这类区域变量"/>
+                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="框选区域…"
+                            MinHeight="30" Padding="10,4" Margin="8,0,0,0"
+                            Click="ScreenshotPickRect_Click"
+                            ToolTip="在屏幕上框一块，自动填入 x / y / w / h"/>
+                </Grid>
+                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,4,0,0"
+                           Text="也可以填区域变量（如 ${截图}），把上一张图的区域再截一次。"/>
+            </StackPanel>
+
+            <TextBlock x:Name="ScreenshotModeHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"/>
             <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
-                       Text="结果怎么用：${变量} 是区域「x,y,w,h」；${变量.cx} / ${变量.cy} 是中心点（可直接喂给鼠标操作）；${变量.w} / ${变量.h} 是尺寸；${变量.file} 是存下来的 png 路径（可给「打开文件」或发送文本）；${变量.found} 是 true / false，取消时为 false。"/>
+                       Text="结果怎么用：${变量} 是区域「x,y,w,h」；${变量.cx} / ${变量.cy} 是中心点（可直接喂给鼠标操作）；${变量.w} / ${变量.h} 是尺寸；${变量.file} 是存下来的 png 路径，交给「文字识别」或「打开文件」；${变量.found} 是 true / false，交互框选按 Esc 取消时为 false。"/>
             <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
                        Text="截下来的图片存在 resources\images\，与模板截图同一套回收规则（没人引用时下次启动清掉），不会越堆越多。"/>
         </StackPanel>
@@ -145,11 +181,19 @@
                        Text="结果怎么用：${变量} 是命中位置「x,y」（没找到时为空）；${变量.found} 是 true / false；${变量.score} 是 0–1 的相似度，1 表示完全一致。分数低于「最低相似度」就算没找到——此时 ${变量.score} 仍会给出最像的那次分数，可用来判断阈值定高了还是定低了。"/>
         </StackPanel>
 
-        <!-- 截图 OCR：区域控件与「截图找图」共用下方 RegionSection -->
+        <!-- 文字识别：只吃图片（通常来自「截图」步骤），不再自己截屏 -->
         <StackPanel x:Name="P_Ocr" Visibility="Collapsed" Margin="0,8,0,0">
             <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                       Text="截取屏幕区域后识别文字。系统 OCR 零下载、十几毫秒出结果；PP-OCRv6 明显更准（小字、数字、深色底），代价是慢一些、占内存。识别不到文字时结果为空，可用「不为空」判断。"/>
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                       Text="识别一张图片里的文字。图片来自「截图」步骤（它会把 png 存进变量），也可以直接填图片文件路径。系统 OCR 零下载、十几毫秒出结果；PP-OCRv6 明显更准（小字、数字、深色底），代价是慢一些、占内存。识别不到文字时结果为空，可用「不为空」判断。"/>
+
+            <TextBlock Text="图片变量 / 文件路径" Foreground="{StaticResource HintTextBrush}" Margin="0,8,0,0"/>
+            <controls:VariableTextBox x:Name="OcrImageBox" MinHeight="30" Margin="0,4,0,0"
+                                      TextChanged="TextValue_Changed"
+                                      ToolTip="例如 ${截图}、${截图.file}，或图片文件的完整路径"/>
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,4,0,0"
+                       Text="填 ${截图}（「截图」的结果会自动用它存下来的图片），也可填 ${截图.file} 或图片文件路径。直接识别那张图，不会重新截屏——中途切换窗口也不影响。"/>
+
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                 <TextBlock Text="识别引擎" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
                 <ComboBox x:Name="OcrEngineCombo" Width="240" MinHeight="30" Margin="8,0,0,0"
                           DisplayMemberPath="Label" SelectionChanged="OcrEngine_Changed"/>

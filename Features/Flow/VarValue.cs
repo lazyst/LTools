@@ -28,13 +28,13 @@ public sealed class VarValue
     /// <summary>点坐标 Y。</summary>
     public int? Y { get; init; }
 
-    /// <summary>区域宽（实时截图的框选区域）。</summary>
+    /// <summary>区域宽（截图步骤框选 / 取到的范围）。</summary>
     public int? W { get; init; }
 
-    /// <summary>区域高（实时截图的框选区域）。</summary>
+    /// <summary>区域高（截图步骤框选 / 取到的范围）。</summary>
     public int? H { get; init; }
 
-    /// <summary>关联的文件路径（实时截图存下来的 png）。</summary>
+    /// <summary>关联的文件路径（截图步骤存下来的 png）。</summary>
     public string File { get; init; } = "";
 
     /// <summary>图像匹配置信度（0..1）。</summary>
