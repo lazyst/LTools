@@ -81,10 +81,14 @@ public partial class App : Application
         AppLog.Info("App", $"数据目录 {AppPaths.DataRoot}");
         AppLog.Info("App", $"配置文件 {cfgPath}");
 
-        // 自启任务路径自愈：便携版把目录挪走后，任务仍指向旧 exe，登录时静默失败
-        // （任务计划 IgnoreNew，失败不提示），设置页也会一直显示「已启用」。
+        // 配置读坏时每次启动都会留一份 .bad- 副本，只保留最近 3 份，避免反复失败时越积越多。
+        AppConfig.PruneBrokenBackups(cfgPath);
+
+        // 自启任务对齐：便携版把目录挪走、或另一份拷贝抢过任务名后，任务指向的
+        // exe 就不是当前程序了，登录时启动的不是这一份（甚至启动不了）。
+        // 同一个任务名只服务一份程序，启动时统一改写为当前 exe。
         // 放线程池执行——COM 激活与 schtasks 都是外部调用，不占启动阶段的主线程。
-        _ = Task.Run(AutoStartService.HealIfMoved);
+        _ = Task.Run(AutoStartService.HealIfStale);
 
         if (cfg.LoadFailed)
         {
@@ -115,6 +119,9 @@ public partial class App : Application
 
         // 一宏一动作：回收不再被任何动作 / 组合步骤引用的宏文件（含旧版本遗留的孤儿文件）。
         MacroStore.CollectGarbage();
+
+        // 模板截图同理：删动作 / 换模板后旧 shot-*.png 没有别处回收，启动时按引用清一次。
+        ImageLibrary.CollectGarbage();
 
         // —— 启动提示：在无钩子阶段同步显示——首个 WPF 窗口的首帧会初始化渲染栈（D3D 等），
         //    耗时落在此处，不阻塞任何钩子回调。 ——

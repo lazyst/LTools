@@ -189,8 +189,8 @@ public partial class ConfigHelperWindow : Window
         AutoStartHint.Text = !stale
             ? "通过任务计划程序创建 ONLOGON / 最高权限任务，开机无 UAC 弹窗。"
             : info.RegisteredPathExists
-                ? $"自启任务指向另一份拷贝：{info.RegisteredPath}。要改成当前程序，点下面「改为当前程序」。"
-                : $"自启任务指向 {info.RegisteredPath}，该文件已不存在（多为挪动了程序目录），登录时不会启动。点下面「改为当前程序」修复。";
+                ? $"自启任务指向另一份拷贝 {info.RegisteredPath}，登录时启动的不是这一份。点下面「改为当前程序」统一到这一份（启动时也会自动对齐）。"
+                : $"自启任务指向 {info.RegisteredPath}，该文件已不存在（多为挪动了程序目录），登录时不会启动。点下面「改为当前程序」修复（启动时也会自动对齐）。";
     }
 
     private void AutoStartFix_Click(object sender, RoutedEventArgs e)

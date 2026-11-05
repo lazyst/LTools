@@ -64,6 +64,8 @@ internal static class ConfigStore
         // 一宏一动作：动作删除后按引用回收宏文件（仍被组合步骤引用的宏会保留）。
         // 对非宏动作也执行一次，顺手清掉被删组合动作带走的宏步骤文件。
         MacroStore.CollectGarbage();
+        // 模板截图同理：被删动作 / 组合步骤独占的 shot-*.png 立刻回收，不必等下次启动。
+        ImageLibrary.CollectGarbage();
         return true;
     }
 

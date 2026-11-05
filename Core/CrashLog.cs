@@ -20,6 +20,9 @@ internal static class CrashLog
         {
             var msg = $"[{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{context}] "
                       + $"{ex.GetType().FullName}: {ex.Message}\n{ex.StackTrace}\n\n";
+            // %TEMP% 里的文件没人清：超过 1 MB 就丢弃重来（崩溃日志只用于事后溯源，不需要长期累积）
+            var fi = new FileInfo(Path);
+            if (fi.Exists && fi.Length > 1024 * 1024) fi.Delete();
             File.AppendAllText(Path, msg);
         }
         catch

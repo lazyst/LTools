@@ -77,21 +77,22 @@ internal static class AutoStartService
     }
 
     /// <summary>
-    /// 启动时的路径自愈：只处理「任务指向的 exe 已经不存在」这一种情况（挪动目录），
-    /// 改写为当前 exe。若指向的是另一份仍然存在的拷贝，属于用户有意共存，不抢。
+    /// 启动时的路径对齐：任务指向的 exe 不是当前程序，就改写为当前 exe。
+    /// 同一个任务名只能服务一份程序——留两套路径只会让「到底谁自启」说不清，
+    /// 所以以正在运行的这份为准（用户刚把它启动起来，说明想用的是它）。
     /// </summary>
-    public static void HealIfMoved()
+    public static void HealIfStale()
     {
         var info = Query();
-        if (info.State != AutoStartState.Stale || info.RegisteredPathExists) return;
+        if (info.State != AutoStartState.Stale) return;
 
         var exe = ExePath;
         if (string.IsNullOrEmpty(exe) || !File.Exists(exe)) return;
 
         if (Enable())
-            AppLog.Info("Startup", $"自启任务路径已修正：{info.RegisteredPath} → {exe}");
+            AppLog.Info("Startup", $"自启任务已改为指向当前程序：{info.RegisteredPath} → {exe}");
         else
-            AppLog.Warn("Startup", $"自启任务仍指向已不存在的 {info.RegisteredPath}，改写失败（可能缺少管理员权限）");
+            AppLog.Warn("Startup", $"自启任务仍指向 {info.RegisteredPath}，改写失败（可能缺少管理员权限）");
     }
 
     /// <summary>

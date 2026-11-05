@@ -249,6 +249,9 @@ internal static class BackupService
             Rollback(restores);
             throw;
         }
+
+        // 导入成功后再清理更早的残留备份：回滚还需要本次的 .bak，所以放在 try 之后。
+        PruneOldBackups();
     }
 
     /// <summary>清理预检产生的临时目录（导入成功 / 失败 / 用户取消都应调用）。</summary>
@@ -342,6 +345,42 @@ internal static class BackupService
         string bak = UniqueBackupPath(path, ts);
         File.Copy(path, bak, overwrite: true);
         return bak;
+    }
+
+    /// <summary>
+    /// 导入成功后的清理：每导入一次就多一份 <c>.bak-时间戳</c>（resources 可能有几十 MB），
+    /// 按「被替换的原路径」分组只留最近 <paramref name="keep"/> 份，其余删除。
+    /// </summary>
+    private static void PruneOldBackups(int keep = 3)
+    {
+        try
+        {
+            var groups = new Dictionary<string, List<FileSystemInfo>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in new DirectoryInfo(AppPaths.DataRoot).EnumerateFileSystemInfos())
+            {
+                int i = entry.Name.IndexOf(".bak-", StringComparison.OrdinalIgnoreCase);
+                if (i <= 0) continue;
+                string key = entry.Name[..i];
+                if (!groups.TryGetValue(key, out var list))
+                    groups[key] = list = new List<FileSystemInfo>();
+                list.Add(entry);
+            }
+
+            foreach (var list in groups.Values)
+            {
+                // 名字里的时间戳是 yyyyMMdd-HHmmss，按名字倒序即「最新在前」
+                foreach (var old in list.OrderByDescending(e => e.Name, StringComparer.OrdinalIgnoreCase).Skip(keep))
+                {
+                    try
+                    {
+                        if (old is DirectoryInfo d) d.Delete(recursive: true);
+                        else old.Delete();
+                    }
+                    catch { /* 被占用等：跳过 */ }
+                }
+            }
+        }
+        catch { /* 清理失败不影响导入结果 */ }
     }
 
     /// <summary>生成不与现有文件 / 目录冲突的 .bak-时间戳 路径。</summary>

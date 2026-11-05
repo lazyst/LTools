@@ -216,8 +216,32 @@ public sealed class AppConfig
     /// 用复制而非改名：保留原文件，万一应用随后用默认值覆盖，备份仍可恢复。</summary>
     private static void TryBackupUnreadable(string path)
     {
-        try { File.Copy(path, $"{path}.bad-{DateTime.Now:yyyyMMddHHmmss}", overwrite: false); }
+        try
+        {
+            File.Copy(path, $"{path}.bad-{DateTime.Now:yyyyMMddHHmmss}", overwrite: false);
+            PruneBrokenBackups(path);
+        }
         catch { /* 忽略 */ }
+    }
+
+    /// <summary>
+    /// 只保留最近 <paramref name="keep"/> 份 <c>.bad-时间戳</c> 副本。
+    /// 配置一直读不出来的话每次启动都会复制一份（同一秒内还会重名失败重试），不清就会越积越多。
+    /// </summary>
+    internal static void PruneBrokenBackups(string path, int keep = 3)
+    {
+        try
+        {
+            string dir = System.IO.Path.GetDirectoryName(path)!;
+            string prefix = System.IO.Path.GetFileName(path) + ".bad-";
+            foreach (var old in Directory.GetFiles(dir, prefix + "*")
+                                         .OrderByDescending(f => f, StringComparer.OrdinalIgnoreCase)
+                                         .Skip(keep))
+            {
+                try { File.Delete(old); } catch { /* 单个文件被占用时跳过 */ }
+            }
+        }
+        catch { /* 清理失败不影响启动 */ }
     }
 
     private static AppConfig LoadExample(string? path)

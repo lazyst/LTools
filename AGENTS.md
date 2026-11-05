@@ -63,7 +63,8 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - 文件夹选择用 WPF 原生 `Microsoft.Win32.OpenFolderDialog`，不引用 WinForms
 - 第三方依赖：`H.NotifyIcon.Wpf`（托盘图标）、`OpenCvSharp4`（图像匹配）、`FlaUI.UIA3`（UI Automation，读选中文本）、`RapidOcrNet`（PP-OCRv6 识别，ONNX Runtime + SkiaSharp）
 - OpenCvSharp 的 `opencv_videoio_ffmpeg`（27.3 MB）只服务 `VideoCapture`/`VideoWriter`，本项目只用 imgproc（`ImRead`/`Resize`/`CvtColor`/`MatchTemplate`），csproj 有 target 在构建 / 发布后删除；要加视频功能时得同时去掉那个 target
-- 开机自启用任务计划（`Core/AutoStartService.cs`）而非注册表 Run 键：`requireAdministrator` 的程序从 Run 键启动会弹 UAC，任务计划能静默提权。任务里存的是注册时的 exe 绝对路径，便携目录被挪走后会静默失效，故 `Query()` 比对路径、启动时 `HealIfMoved()` 自愈（只在旧路径已不存在时改写，不抢另一份拷贝）
+- 开机自启用任务计划（`Core/AutoStartService.cs`）而非注册表 Run 键：`requireAdministrator` 的程序从 Run 键启动会弹 UAC，任务计划能静默提权。任务里存的是注册时的 exe 绝对路径，便携目录被挪走后会静默失效，故 `Query()` 比对路径、启动时 `HealIfStale()` 把任务对齐到当前 exe（一个任务名只服务一份程序，不做多拷贝共存）；路径用任务计划 COM 读，别用 `schtasks /query /xml`（控制台代码页会毁掉中文路径）
+- **引用型资源要能自回收**：宏文件（`MacroStore.CollectGarbage`）与模板截图（`ImageLibrary.CollectGarbage`）都在「启动」与「删除动作」时按引用清理；新增同类资源（图片 / 脚本 / 导出物）时照这个做法接上，否则删动作后会永久留在数据根里。备份导入的 `.bak-*`、配置损坏的 `.bad-*` 也各有「只留最近 3 份」的上限
 - OCR 双引擎：新建「截图 OCR」默认 `PP-OCRv6 快速`（内置在 `Assets/Ocr/ppocrv6`）；可切 `Windows.Media.Ocr`（最快、最省内存）。选择记在 `LTools.json` 的 `lastOcrEngine`，见 `Features/OcrEnginePreference.cs`。`Features/Flow/PaddleOcr.cs` 是 PP-OCRv6 推理（small 下载到数据根 `ocr-models/`，见 `OcrModelStore`）。RapidOcrNet 的包内 targets 会把自带的 v5 模型拷进输出目录，csproj 里有 target 在构建 / 发布后清理
 
 ## 其他
