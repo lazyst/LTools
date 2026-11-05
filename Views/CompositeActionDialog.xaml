@@ -24,10 +24,10 @@
              双向绑定天然同步；切换只改 Visibility（触发器见模板底部）。 -->
         <DataTemplate x:Key="ParamsTemplate">
             <StackPanel Orientation="Horizontal">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
                     <TextBlock Text="⏱" VerticalAlignment="Center"
-                               Foreground="{StaticResource HintTextBrush}" FontSize="{StaticResource FontSizeBody}"/>
-                    <TextBox Width="46" MinHeight="26" Margin="4,0,0,0"
+                               Foreground="{StaticResource HintTextBrush}" FontSize="{StaticResource FontSizeHint}"/>
+                    <TextBox Width="44" MinHeight="22" Margin="4,0,0,0" Padding="4,1"
                              Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}"
                              PreviewTextInput="Delay_PreviewTextInput"/>
                     <TextBlock Text="ms" VerticalAlignment="Center"
@@ -37,7 +37,7 @@
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="失败" VerticalAlignment="Center"
                                Foreground="{StaticResource HintTextBrush}" FontSize="{StaticResource FontSizeHint}" Margin="0,0,4,0"/>
-                    <ComboBox MinWidth="78" MinHeight="28"
+                    <ComboBox MinWidth="74" MinHeight="22" FontSize="{StaticResource FontSizeHint}" Padding="6,0"
                               ItemsSource="{Binding StrategyOptions}"
                               SelectedIndex="{Binding OnFailIndex}"/>
                 </StackPanel>
@@ -46,17 +46,17 @@
 
         <!-- 流程行：缩进表示嵌套；标记行（否则 / 结束如果 / 结束循环）不可编辑、不可拖。 -->
         <DataTemplate x:Key="FlowRowTemplate">
-            <Border x:Name="Card" Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+            <Border x:Name="Card" Background="{StaticResource SurfaceBrush}" CornerRadius="3"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                    Margin="{Binding IndentMargin}" Padding="8,6">
+                    Margin="{Binding IndentMargin}" Padding="6,2">
                 <DockPanel LastChildFill="True">
                     <!-- 把手（停靠左侧、自动拉伸到整行高，可拖整行） -->
-                    <Border x:Name="Grip" DockPanel.Dock="Left" Width="18"
+                    <Border x:Name="Grip" DockPanel.Dock="Left" Width="16"
                             Cursor="SizeAll" Background="Transparent"
                             VerticalAlignment="Stretch" ToolTip="拖到另一行即可移动"
                             PreviewMouseLeftButtonDown="Grip_PreviewMouseLeftButtonDown">
                         <TextBlock Text="≡" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Foreground="{StaticResource HintTextBrush}" FontSize="{StaticResource FontSizeBody}"/>
+                                   Foreground="{StaticResource HintTextBrush}" FontSize="{StaticResource FontSizeHint}"/>
                     </Border>
 
                     <Grid>
@@ -71,36 +71,40 @@
                                 <ColumnDefinition Width="Auto"/>    <!-- 类型徽标 -->
                                 <ColumnDefinition Width="*"/>       <!-- 标题（截断） -->
                                 <ColumnDefinition Width="Auto"/>    <!-- 参数（宽时） -->
-                                <ColumnDefinition Width="30"/>      <!-- 编辑 -->
-                                <ColumnDefinition Width="30"/>      <!-- 删除 -->
+                                <ColumnDefinition Width="26"/>      <!-- 编辑 -->
+                                <ColumnDefinition Width="26"/>      <!-- 删除 -->
                             </Grid.ColumnDefinitions>
 
-                            <TextBlock x:Name="NumberText" Grid.Column="0" Text="{Binding Number}" FontWeight="SemiBold"
+                            <TextBlock x:Name="NumberText" Grid.Column="0" Text="{Binding Number}" FontSize="{StaticResource FontSizeSecondary}"
                                        Foreground="{StaticResource SecondaryTextBrush}"
-                                       VerticalAlignment="Center" Margin="4,0,8,0"/>
+                                       VerticalAlignment="Center" Margin="2,0,6,0"/>
                             <Border x:Name="BadgeBorder" Grid.Column="1" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3"
-                                    Padding="6,2" Margin="0,0,8,0" VerticalAlignment="Center">
+                                    Padding="5,0" Margin="0,0,6,0" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Badge}" FontSize="{StaticResource FontSizeHint}"
                                            Foreground="{StaticResource SecondaryTextBrush}"/>
                             </Border>
                             <TextBlock x:Name="TitleText" Grid.Column="2" Text="{Binding Title}" FontWeight="SemiBold"
-                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                       FontSize="{StaticResource FontSizeSecondary}"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding Title}"/>
 
                             <ContentPresenter Grid.Column="3" x:Name="ParamsInline"
                                               Content="{Binding}" ContentTemplate="{StaticResource ParamsTemplate}"
-                                              Visibility="Collapsed" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                              Visibility="Collapsed" VerticalAlignment="Center" Margin="6,0,0,0"/>
 
                             <Button x:Name="EditBtn" Grid.Column="4" Style="{StaticResource BtnGhost}" Content="✎"
-                                    Padding="0" Width="30" Height="30" VerticalAlignment="Center"
+                                    Padding="0" Width="24" Height="24" FontSize="{StaticResource FontSizeSecondary}"
+                                    VerticalAlignment="Center"
                                     ToolTip="编辑（双击行亦可）" Click="EditRow_Click"/>
                             <Button x:Name="DeleteBtn" Grid.Column="5" Style="{StaticResource BtnGhost}" Content="✕"
-                                    Padding="0" Width="30" Height="30" VerticalAlignment="Center"
+                                    Padding="0" Width="24" Height="24" FontSize="{StaticResource FontSizeHint}"
+                                    VerticalAlignment="Center"
                                     ToolTip="删除（含其子步骤）" Click="Delete_Click"/>
                         </Grid>
 
                         <ContentPresenter Grid.Row="1" x:Name="ParamsBelow"
                                           Content="{Binding}" ContentTemplate="{StaticResource ParamsTemplate}"
-                                          VerticalAlignment="Center" Margin="0,5,0,0"/>
+                                          VerticalAlignment="Center" Margin="0,2,0,0"/>
                     </Grid>
                 </DockPanel>
             </Border>
@@ -109,7 +113,7 @@
                 <!-- 宽度够 → 单行（参数上移，标题拉长）；不够 → 两行（按钮常驻） -->
                 <DataTrigger Binding="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=ListBox},
                                                Path=ActualWidth,
-                                               Converter={StaticResource WidthAtLeast}, ConverterParameter=560}"
+                                               Converter={StaticResource WidthAtLeast}, ConverterParameter=400}"
                              Value="True">
                     <Setter TargetName="ParamsInline" Property="Visibility" Value="Visible"/>
                     <Setter TargetName="ParamsBelow" Property="Visibility" Value="Collapsed"/>
@@ -124,7 +128,7 @@
                 <DataTrigger Binding="{Binding IsMarker}" Value="True">
                     <Setter TargetName="Card" Property="Background" Value="Transparent"/>
                     <Setter TargetName="Card" Property="BorderThickness" Value="0"/>
-                    <Setter TargetName="Card" Property="Padding" Value="8,2"/>
+                    <Setter TargetName="Card" Property="Padding" Value="6,1"/>
                     <Setter TargetName="Grip" Property="Visibility" Value="Collapsed"/>
                     <Setter TargetName="NumberText" Property="Visibility" Value="Collapsed"/>
                     <Setter TargetName="BadgeBorder" Property="Visibility" Value="Collapsed"/>
@@ -147,14 +151,14 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <controls:TitleBar Grid.Row="0" x:Name="TitleBar" ShowMinimize="False" ShowMaximize="False"/>
+        <controls:TitleBar Grid.Row="0" x:Name="TitleBar" ShowMinimize="False"/>
 
         <!-- 三栏正文 -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="240" MinWidth="200"/>
+                <ColumnDefinition Width="216" MinWidth="180"/>
                 <ColumnDefinition Width="*" MinWidth="320"/>
-                <ColumnDefinition Width="280" MinWidth="240"/>
+                <ColumnDefinition Width="256" MinWidth="220"/>
             </Grid.ColumnDefinitions>
 
             <!-- ============ 左：动作来源 ============ -->
@@ -192,15 +196,33 @@
                              ItemTemplate="{StaticResource FlowRowTemplate}"
                              AllowDrop="True"
                              DragOver="FlowList_DragOver" Drop="FlowList_Drop"
-                             MouseDoubleClick="FlowList_DoubleClick"/>
+                             MouseDoubleClick="FlowList_DoubleClick">
+                        <ListBox.ItemContainerStyle>
+                            <!-- 行高自己控制：去掉 ListBoxItem 默认的 8,6 内边距 -->
+                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="0,1"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                    </ListBox>
                 </DockPanel>
             </Border>
 
-            <!-- ============ 右：组合属性 ============ -->
+            <!-- ============ 右：变量 + 组合属性 ============ -->
             <Border Grid.Column="2" Background="{StaticResource SurfaceAltBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,8,12,8">
                     <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="变量" Margin="0,0,0,3"/>
+                        <TextBlock x:Name="VarHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                                   Text="点一下复制 ${变量}；编辑步骤时右侧也能直接点选插入。"/>
+                        <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto" Margin="0,4,0,0">
+                            <controls:VariableList x:Name="VarList"/>
+                        </ScrollViewer>
+
+                        <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,14,0,12"/>
+
                         <TextBlock Style="{StaticResource SectionLabel}" Text="名称" Margin="0,0,0,4"/>
                         <TextBox x:Name="NameBox" MinHeight="32" Margin="0,0,0,14"/>
 
@@ -210,10 +232,6 @@
                         <CheckBox x:Name="AbortBox"
                                   Content="任一节点失败即中止（默认继续）"
                                   Margin="0,8,0,0"/>
-
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="可用变量" Margin="0,18,0,4"/>
-                        <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                                   Text="${cursor.x} ${cursor.y} ${clipboard} ${selection} ${date} ${time} ${loop.i} ${run.name} ${lastError}；自定义变量用「设置变量」创建，${名.x} 取坐标属性。"/>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

@@ -51,6 +51,9 @@ public partial class App : Application
         // —— 托盘 ——
         BuildTray();
 
+        // 全局下拉框行为：打开时不自动下滚、关闭状态下滚轮转交给页面（见 ComboBoxAssist）
+        Views.Controls.ComboBoxAssist.Register();
+
         // 启动确保 CapsLock 灯灭
         CapsLockStateMachine.EnsureLightOff();
 

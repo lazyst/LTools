@@ -26,6 +26,7 @@ public partial class ActionPoolPicker : Window
     {
         _owner = owner;
         InitializeComponent();
+        WindowChromeHelper.FixMaximize(this);
         Title = title;
         // 继承 owner 的 Topmost：从超级面板（Topmost）打开时盖住同时置顶的设置窗口，
         // 避免被设置盖住 + 设置又被模态禁用的死锁（设置页 3 处调用点同此理）

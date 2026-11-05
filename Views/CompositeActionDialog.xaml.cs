@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features;
@@ -41,6 +42,7 @@ public partial class CompositeActionDialog : Window
     // 左栏分组折叠状态（写回 LTools.json，下次打开保持）与当前搜索词。
     private readonly HashSet<string> _collapsed;
     private string _query = "";
+    private readonly DispatcherTimer _varHintTimer;
 
     // 左栏拖拽（阈值触发，避免与双击冲突）
     private LeftItem? _leftDragCandidate;
@@ -50,6 +52,7 @@ public partial class CompositeActionDialog : Window
     public CompositeActionDialog(string title, ActionDto? existing)
     {
         InitializeComponent();
+        WindowChromeHelper.FixMaximize(this);
         _draft = existing != null
             ? existing.Clone()
             : new ActionDto { Type = ActionType.composite, Icon = IconCatalog.Default };
@@ -67,6 +70,15 @@ public partial class CompositeActionDialog : Window
         _kindSwitch.SelectionChanged += KindSwitch_SelectionChanged;
         TitleBar.ExtraContent = _kindSwitch;
         FlowList.ItemsSource = _rows;
+        var varHintTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
+        varHintTimer.Tick += (_, _) =>
+        {
+            varHintTimer.Stop();
+            VarHint.Text = "点一下复制 ${变量}；编辑步骤时右侧也能直接点选插入。";
+        };
+        _varHintTimer = varHintTimer;
+        VarList.VariableInvoked += CopyVariable;
+        RefreshVariables();
         ReloadRows();
         BuildSourceList();
         Loaded += (_, _) => NameBox.Focus();
@@ -392,7 +404,7 @@ public partial class CompositeActionDialog : Window
 
         if (kind is FlowNodeKind.set or FlowNodeKind.@if or FlowNodeKind.loop)
         {
-            var dlg = new FlowNodeDialog(node) { Owner = this, Topmost = Topmost };
+            var dlg = new FlowNodeDialog(node, FlowVariables.Collect(_flow)) { Owner = this, Topmost = Topmost };
             if (dlg.ShowDialog() != true || dlg.Result == null) return null;
             return dlg.Result;
         }
@@ -455,7 +467,12 @@ public partial class CompositeActionDialog : Window
             var target = _rows.FirstOrDefault(r => ReferenceEquals(r.Node, select));
             if (target != null) FlowList.SelectedItem = target;
         }
+
+        RefreshVariables();
     }
+
+    /// <summary>右侧变量面板跟上流程里「设置变量 / 存回变量」的变化。</summary>
+    private void RefreshVariables() => VarList.SetCustom(FlowVariables.Collect(_flow));
 
     private void BuildRows(List<FlowNode> nodes, int depth,
                            IReadOnlyList<StrategyItem> strategies,
@@ -534,7 +551,7 @@ public partial class CompositeActionDialog : Window
 
         if (row.Node.Kind is FlowNodeKind.set or FlowNodeKind.@if or FlowNodeKind.loop)
         {
-            var dlg = new FlowNodeDialog(row.Node) { Owner = this, Topmost = Topmost };
+            var dlg = new FlowNodeDialog(row.Node, FlowVariables.Collect(_flow)) { Owner = this, Topmost = Topmost };
             if (dlg.ShowDialog() != true || dlg.Result == null) return;
 
             int idx = row.Container.IndexOf(row.Node);
@@ -830,6 +847,23 @@ public partial class CompositeActionDialog : Window
 
     // ============ 右栏 / 底部 ============
 
+    /// <summary>右栏变量可点：复制 <c>${name}</c>，方便粘到步骤编辑窗口。</summary>
+    private void CopyVariable(string name)
+    {
+        string token = "${" + name + "}";
+        try
+        {
+            Clipboard.SetText(token);
+            _varHintTimer.Stop();
+            VarHint.Text = "已复制 " + token;
+            _varHintTimer.Start();
+        }
+        catch (Exception ex)
+        {
+            VarHint.Text = "复制失败：" + ex.Message;
+        }
+    }
+
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
         var name = NameBox.Text.Trim();
@@ -981,7 +1015,7 @@ public partial class CompositeActionDialog : Window
                 or FlowNodeKind.@if or FlowNodeKind.loop;
 
         /// <summary>缩进：每层 18px。</summary>
-        public Thickness IndentMargin => new(Depth * 18.0, 2, 0, 2);
+        public Thickness IndentMargin => new(Depth * 18.0, 1, 0, 1);
 
         public int DelayMs
         {

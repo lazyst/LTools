@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using LTools.Features;
 
 namespace LTools.Views;
@@ -11,18 +15,24 @@ namespace LTools.Views;
 /// <remarks>
 /// 只编辑节点自身的参数：<c>if</c> 的 Then/Else、<c>loop</c> 的 Body 保持原样，
 /// 因此重开对话框改条件不会丢子步骤。动作节点走普通动作编辑器，不在此窗口。
+/// 右侧变量面板列出内置值与流程里的自定义变量，点一下插入到最近编辑的输入框。
 /// </remarks>
 public partial class FlowNodeDialog : Window
 {
     private readonly FlowNode _node;
+    private TextBox? _lastBox;
 
     /// <summary>确定后的新节点（取消时为 null）。</summary>
     public FlowNode? Result { get; private set; }
 
-    public FlowNodeDialog(FlowNode node)
+    public FlowNodeDialog(FlowNode node, IEnumerable<string>? customVariables = null)
     {
         InitializeComponent();
+        WindowChromeHelper.FixMaximize(this);
         _node = node.Clone();
+
+        VarList.SetCustom(customVariables);
+        VarList.VariableInvoked += InsertVariable;
 
         switch (_node.Kind)
         {
@@ -65,6 +75,48 @@ public partial class FlowNodeDialog : Window
     {
         if (LoopCountPanel == null) return;   // 初始化期间字段尚未就绪
         UpdateLoopPanels();
+    }
+
+    // —— 变量面板：插入到最近编辑的输入框 ——
+
+    private void Window_PreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        // 「变量名」「循环次数」是纯名字 / 数字，不接受 ${}，不作为插入目标
+        if (e.NewFocus is TextBox box && box != VarBox && box != LoopCountBox)
+            _lastBox = box;
+    }
+
+    private void InsertVariable(string name)
+    {
+        TextBox? target = _lastBox is { IsVisible: true } remembered ? remembered : FirstEditableBox();
+        if (target == null) return;
+
+        string token = "${" + name + "}";
+        string text = target.Text ?? "";
+        int start = Math.Clamp(target.SelectionStart, 0, text.Length);
+        int length = Math.Clamp(target.SelectionLength, 0, text.Length - start);
+
+        target.Text = text[..start] + token + text[(start + length)..];
+        target.CaretIndex = start + token.Length;
+        target.Focus();
+    }
+
+    private TextBox? FirstEditableBox()
+    {
+        return Find(this);
+
+        TextBox? Find(DependencyObject root)
+        {
+            int count = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < count; i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i);
+                if (child is TextBox box && box.IsVisible && box != VarBox && box != LoopCountBox)
+                    return box;
+                if (Find(child) is TextBox nested) return nested;
+            }
+            return null;
+        }
     }
 
     private void UpdateLoopPanels()

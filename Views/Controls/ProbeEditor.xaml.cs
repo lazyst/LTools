@@ -24,6 +24,9 @@ public partial class ProbeEditor : UserControl
     /// <summary>取值方式改变（供条件编辑器刷新比较符）。</summary>
     public event Action? KindChanged;
 
+    /// <summary>文本内容变化（供条件编辑器在「文本 ⇄ 变量」之间切换比较符）。</summary>
+    public event Action? ValueChanged;
+
     /// <summary>是否显示「目标色 / 容差」——set 的右值不需要目标色，条件需要。</summary>
     public bool ShowColorTarget
     {
@@ -34,14 +37,22 @@ public partial class ProbeEditor : UserControl
     /// <summary>当前取值方式。</summary>
     public ProbeKind SelectedKind => KindCombo.SelectedItem is KindItem k ? k.Kind : ProbeKind.text;
 
+    /// <summary>
+    /// 实际语义：文本整段只写 <c>${变量}</c> 时按 <see cref="ProbeKind.variable"/> 处理，
+    /// 这样条件里仍可用「为真 / 为空 / 大于」等变量判定，运行时也保留 found / number 等属性。
+    /// </summary>
+    public ProbeKind EffectiveKind =>
+        SelectedKind == ProbeKind.text && TryParseSingleVariable(TextValueBox.Text, out _)
+            ? ProbeKind.variable
+            : SelectedKind;
+
     public ProbeEditor()
     {
         InitializeComponent();
 
         KindCombo.ItemsSource = new List<KindItem>
         {
-            new("固定文本", ProbeKind.text),
-            new("变量", ProbeKind.variable),
+            new("文本 / 变量", ProbeKind.text),
             new("选中文本", ProbeKind.selection),
             new("剪贴板", ProbeKind.clipboard),
             new("光标位置", ProbeKind.cursor),
@@ -73,9 +84,11 @@ public partial class ProbeEditor : UserControl
         probe ??= new Probe { Kind = ProbeKind.text };
         _ready = false;
 
-        SelectKind(probe.Kind);
-        TextValueBox.Text = probe.Text ?? "";
-        VarNameBox.Text = probe.Name ?? "";
+        SelectKind(probe.Kind == ProbeKind.variable ? ProbeKind.text : probe.Kind);
+        // 变量与文本在 UI 上合并：整段 ${name} 就是变量引用
+        TextValueBox.Text = probe.Kind == ProbeKind.variable
+            ? "${" + (probe.Name ?? "") + "}"
+            : probe.Text ?? "";
         SelectionTimeoutBox.Text = (probe.TimeoutMs > 0 ? probe.TimeoutMs : 800).ToString(CultureInfo.InvariantCulture);
         DateFormatBox.Text = probe.Format ?? "yyyy-MM-dd HH:mm:ss";
         UserPromptBox.Text = probe.Prompt ?? "";
@@ -122,13 +135,20 @@ public partial class ProbeEditor : UserControl
         switch (probe.Kind)
         {
             case ProbeKind.text:
-                probe.Text = TextValueBox.Text;
+            {
+                string text = TextValueBox.Text ?? "";
+                // 整段只写一个 ${变量} → 按变量取值（保留 found / number 等结构化属性）
+                if (TryParseSingleVariable(text, out string name))
+                {
+                    probe.Kind = ProbeKind.variable;
+                    probe.Name = name;
+                }
+                else
+                {
+                    probe.Text = text;
+                }
                 break;
-
-            case ProbeKind.variable:
-                probe.Name = VarNameBox.Text.Trim();
-                if (probe.Name.Length == 0) return "请填写变量名。";
-                break;
+            }
 
             case ProbeKind.selection:
                 if (!TryInt(SelectionTimeoutBox, 800, 100, 5000, "选中文本等待时间",
@@ -208,6 +228,31 @@ public partial class ProbeEditor : UserControl
 
     // —— 面板切换 ——
 
+    private void TextValue_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (!_ready) return;
+        ValueChanged?.Invoke();
+    }
+
+    /// <summary>整段只是一个 <c>${变量}</c> 时取出变量名（忽略首尾空白）。</summary>
+    public static bool TryParseSingleVariable(string? text, out string name)
+    {
+        name = "";
+        string value = (text ?? "").Trim();
+        if (value.Length < 4 ||
+            !value.StartsWith("${", StringComparison.Ordinal) ||
+            !value.EndsWith('}'))
+            return false;
+
+        string inner = value[2..^1];
+        if (inner.Length == 0 ||
+            inner.Contains('$') || inner.Contains('{') || inner.Contains('}'))
+            return false;
+
+        name = inner;
+        return true;
+    }
+
     private void Kind_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!_ready) return;
@@ -221,7 +266,6 @@ public partial class ProbeEditor : UserControl
         var panels = new Dictionary<ProbeKind, UIElement>
         {
             [ProbeKind.text] = P_Text,
-            [ProbeKind.variable] = P_Variable,
             [ProbeKind.selection] = P_Selection,
             [ProbeKind.clipboard] = P_Clipboard,
             [ProbeKind.cursor] = P_Cursor,
@@ -435,6 +479,27 @@ public partial class ProbeEditor : UserControl
         if (ShowColorTarget) ColorHexBox.Text = hex;
 
         ShowTest($"已取点 {x}, {y} · {hex}", true);
+    }
+
+    // —— 窗口 / 进程：从当前系统状态里点选 ——
+
+    private void PickWindow_Click(object sender, RoutedEventArgs e)
+    {
+        var info = SystemPickerDialog.PickWindow(Window.GetWindow(this));
+        if (info == null) return;
+
+        WindowTitleBox.Text = info.Title;
+        WindowClassBox.Text = info.ClassName;
+        ShowTest($"已选择窗口：{info.Title}（类名 {info.ClassName}）", true);
+    }
+
+    private void PickProcess_Click(object sender, RoutedEventArgs e)
+    {
+        string? name = SystemPickerDialog.PickProcess(Window.GetWindow(this));
+        if (name == null) return;
+
+        ProcessNameBox.Text = name;
+        ShowTest("已选择进程：" + name, true);
     }
 
     // —— 就地测试 ——

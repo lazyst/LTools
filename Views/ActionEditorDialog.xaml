@@ -24,7 +24,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <controls:TitleBar Grid.Row="0" x:Name="TitleBar" ShowMinimize="False" ShowMaximize="False"/>
+        <controls:TitleBar Grid.Row="0" x:Name="TitleBar" ShowMinimize="False"/>
 
         <!-- 主体 -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="20,16,20,0">

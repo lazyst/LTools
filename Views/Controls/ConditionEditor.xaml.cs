@@ -14,11 +14,13 @@ namespace LTools.Views.Controls;
 public partial class ConditionEditor : UserControl
 {
     private bool _ready;
+    private ProbeKind _opsKind = ProbeKind.text;
 
     public ConditionEditor()
     {
         InitializeComponent();
         Probe.KindChanged += RebuildOps;
+        Probe.ValueChanged += Value_Changed;
         _ready = true;
 
         Probe.Load(new Probe { Kind = ProbeKind.text });
@@ -80,7 +82,8 @@ public partial class ConditionEditor : UserControl
     private void RebuildOps()
     {
         // 注意：不能因 _ready=false 提前返回——Load 期间需要在禁用事件副作用的同时重建选项。
-        ProbeKind kind = Probe.SelectedKind;
+        ProbeKind kind = Probe.EffectiveKind;
+        _opsKind = kind;
         CompareOp? previous = (OpCombo.SelectedItem as OpItem)?.Op;
 
         var ops = new List<OpItem>();
@@ -115,9 +118,16 @@ public partial class ConditionEditor : UserControl
         UpdateOperand();
     }
 
+    /// <summary>文本内容在「模板文本 / 纯变量」之间切换时，比较方式列表也要跟着换。</summary>
+    private void Value_Changed()
+    {
+        if (!_ready) return;
+        if (Probe.EffectiveKind != _opsKind) RebuildOps();
+    }
+
     private void UpdateOperand()
     {
-        CompareOp op = (OpCombo.SelectedItem as OpItem)?.Op ?? DefaultOp(Probe.SelectedKind);
+        CompareOp op = (OpCombo.SelectedItem as OpItem)?.Op ?? DefaultOp(Probe.EffectiveKind);
         bool needs = NeedsOperand(op);
         OperandPanel.Visibility = needs ? Visibility.Visible : Visibility.Collapsed;
         OperandLabel.Text = op switch

@@ -3,13 +3,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:controls="clr-namespace:LTools.Views.Controls"
-        Title="流程" Width="560" SizeToContent="Height" MaxHeight="760"
-        ResizeMode="NoResize" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Title="流程" Width="780" Height="660" MinWidth="620" MinHeight="440"
+        ResizeMode="CanResize" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
-        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
+        PreviewGotKeyboardFocus="Window_PreviewGotKeyboardFocus">
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
@@ -20,56 +21,79 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <controls:TitleBar Grid.Row="0" ShowMinimize="False" ShowMaximize="False"/>
+        <controls:TitleBar Grid.Row="0" ShowMinimize="False"/>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="640"
-                      Padding="20,12,20,0">
-            <StackPanel>
-                <!-- 设置变量 -->
-                <StackPanel x:Name="SetSection" Visibility="Collapsed">
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="变量名" Margin="0,0,0,4"/>
-                    <TextBox x:Name="VarBox" MinHeight="32" Margin="0,0,0,14"/>
-                    <controls:ProbeEditor x:Name="SetProbe"/>
-                </StackPanel>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="340"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="232" MinWidth="196"/>
+            </Grid.ColumnDefinitions>
 
-                <!-- 条件分支 -->
-                <StackPanel x:Name="IfSection" Visibility="Collapsed">
-                    <controls:ConditionEditor x:Name="IfCondition"/>
-                </StackPanel>
-
-                <!-- 循环 -->
-                <StackPanel x:Name="LoopSection" Visibility="Collapsed">
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="循环方式" Margin="0,0,0,6"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                        <RadioButton x:Name="LoopCountRadio" Content="固定次数" GroupName="LoopMode"
-                                     VerticalAlignment="Center" Checked="LoopMode_Changed"/>
-                        <RadioButton x:Name="LoopWhileRadio" Content="条件成立时重复" GroupName="LoopMode"
-                                     VerticalAlignment="Center" Margin="18,0,0,0" Checked="LoopMode_Changed"/>
+            <!-- 参数区 -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
+                          Padding="20,12,16,0">
+                <StackPanel>
+                    <!-- 设置变量 -->
+                    <StackPanel x:Name="SetSection" Visibility="Collapsed">
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="变量名" Margin="0,0,0,4"/>
+                        <TextBox x:Name="VarBox" MinHeight="32" Margin="0,0,0,14"/>
+                        <controls:ProbeEditor x:Name="SetProbe"/>
                     </StackPanel>
 
-                    <Grid x:Name="LoopCountPanel" Margin="0,0,0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="次数" VerticalAlignment="Center"
-                                   Foreground="{StaticResource HintTextBrush}"/>
-                        <TextBox x:Name="LoopCountBox" Grid.Column="1" Width="90" MinHeight="32" Margin="8,0,0,0"/>
-                    </Grid>
-
-                    <StackPanel x:Name="LoopWhilePanel" Visibility="Collapsed">
-                        <controls:ConditionEditor x:Name="LoopCondition"/>
+                    <!-- 条件分支 -->
+                    <StackPanel x:Name="IfSection" Visibility="Collapsed">
+                        <controls:ConditionEditor x:Name="IfCondition"/>
                     </StackPanel>
 
-                    <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,10,0,0"
-                               Text="循环体内可用 ${loop.i} 读取当前下标（从 0 开始）；跳出 / 继续用于控制循环。"/>
+                    <!-- 循环 -->
+                    <StackPanel x:Name="LoopSection" Visibility="Collapsed">
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="循环方式" Margin="0,0,0,6"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <RadioButton x:Name="LoopCountRadio" Content="固定次数" GroupName="LoopMode"
+                                         VerticalAlignment="Center" Checked="LoopMode_Changed"/>
+                            <RadioButton x:Name="LoopWhileRadio" Content="条件成立时重复" GroupName="LoopMode"
+                                         VerticalAlignment="Center" Margin="18,0,0,0" Checked="LoopMode_Changed"/>
+                        </StackPanel>
+
+                        <Grid x:Name="LoopCountPanel" Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="次数" VerticalAlignment="Center"
+                                       Foreground="{StaticResource HintTextBrush}"/>
+                            <TextBox x:Name="LoopCountBox" Grid.Column="1" Width="90" MinHeight="32" Margin="8,0,0,0"/>
+                        </Grid>
+
+                        <StackPanel x:Name="LoopWhilePanel" Visibility="Collapsed">
+                            <controls:ConditionEditor x:Name="LoopCondition"/>
+                        </StackPanel>
+
+                        <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,10,0,0"
+                                   Text="循环体内可用 ${loop.i} 读取当前下标（从 0 开始）；跳出 / 继续用于控制循环。"/>
+                    </StackPanel>
                 </StackPanel>
-            </StackPanel>
-        </ScrollViewer>
+            </ScrollViewer>
+
+            <Border Grid.Column="1" Width="1" Background="{StaticResource BorderBrush}" Margin="0,10"/>
+
+            <!-- 变量面板（点一下插入到最近编辑的输入框） -->
+            <Border Grid.Column="2" Background="{StaticResource SurfaceAltBrush}">
+                <DockPanel Margin="12,10,12,10">
+                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionLabel}" Text="变量"/>
+                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintLabel}"
+                               Text="点一下插入到最近编辑的输入框" TextWrapping="Wrap" Margin="0,3,0,6"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <controls:VariableList x:Name="VarList"/>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
 
         <Border Grid.Row="2" Background="{StaticResource SurfaceAltBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
-                Padding="16,10" Margin="0,12,0,0">
+                Padding="16,10">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Style="{StaticResource BtnGhost}" Content="取消" MinWidth="84" Margin="0,0,8,0"
                         IsCancel="True"/>

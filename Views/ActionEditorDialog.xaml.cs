@@ -62,6 +62,7 @@ public partial class ActionEditorDialog : Window
     public ActionEditorDialog(string title, ActionDto? existing, bool allowComposite = true, bool requireName = true, bool allowMacro = true)
     {
         InitializeComponent();
+        WindowChromeHelper.FixMaximize(this);
         _draft = existing != null ? Clone(existing) : new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default };
         _requireName = requireName;
         if (!string.IsNullOrEmpty(title)) Title = title;
