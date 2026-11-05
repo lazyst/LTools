@@ -78,6 +78,9 @@ public enum ProbeKind
     /// <summary>屏幕图像匹配（OpenCV 模板匹配）。</summary>
     image,
 
+    /// <summary>截图 OCR（系统 Windows.Media.Ocr，识别指定区域的文字）。</summary>
+    ocr,
+
     /// <summary>屏幕像素颜色。</summary>
     color,
 
@@ -174,10 +177,10 @@ public sealed class Probe
     /// <summary>image: 模板图片路径（相对 resources/images 或绝对路径）。</summary>
     public string? Image { get; set; }
 
-    /// <summary>image: 搜索区域。</summary>
+    /// <summary>image / ocr: 搜索或截图区域。</summary>
     public ImageRegion Region { get; set; }
 
-    /// <summary>image: 固定区域 [x, y, w, h]（Region=rect 时使用）。</summary>
+    /// <summary>image / ocr: 固定区域 [x, y, w, h]（Region=rect 时使用）。</summary>
     public int[]? Rect { get; set; }
 
     /// <summary>image: 最长等待时间（ms，0=只匹配一次）。</summary>
@@ -451,6 +454,7 @@ public static class FlowText
             ProbeKind.datetime => "当前时间",
             ProbeKind.user => "\"询问用户\"",
             ProbeKind.image => $"图像 {Trim(System.IO.Path.GetFileName(p.Image), 20)}",
+            ProbeKind.ocr => "截图文字",
             ProbeKind.color => $"颜色 ({p.X}, {p.Y})",
             ProbeKind.window => $"窗口 {Trim(p.WindowTitle ?? p.WindowClass, 16)}",
             ProbeKind.process => $"进程 {p.ProcessName}",

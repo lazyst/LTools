@@ -101,6 +101,36 @@ public partial class RecordingIndicatorWindow : Window
         HideIndicator();
     }
 
+    /// <summary>
+    /// 截图 / OCR 前临时收起自动化指示器（它是置顶窗口，会被截进画面）。
+    /// 返回需要恢复的文本；本来没显示时返回 null。同步等待 UI 线程完成隐藏，避免截到半透明淡出。
+    /// </summary>
+    public static string? HideAutomationForCapture()
+    {
+        var app = Application.Current;
+        if (app == null || !_automation) return null;
+
+        string? text = null;
+        void HideNow()
+        {
+            if (!_automation) return;
+            text = _window?.IndicatorText.Text;
+            _automation = false;
+            HideIndicator();
+        }
+
+        if (app.Dispatcher.CheckAccess()) HideNow();
+        else app.Dispatcher.Invoke(HideNow);
+        return text;
+    }
+
+    /// <summary>恢复此前被 <see cref="HideAutomationForCapture"/> 收起的自动化指示器。</summary>
+    public static void RestoreAutomation(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        ShowAutomation(text!);
+    }
+
     /// <summary>隐藏指示器。</summary>
     public static void HideIndicator()
     {

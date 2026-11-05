@@ -42,6 +42,11 @@ internal static class ProbeTest
             case ProbeKind.color:
                 return $"该点颜色 {value.Text}";
 
+            case ProbeKind.ocr:
+                return value.Text.Length == 0
+                    ? "没有识别到文字"
+                    : $"识别到 {value.Text.Split('\n').Length} 行：{Brief(value.Text)}";
+
             case ProbeKind.window:
                 return value.Flag == true ? $"窗口存在：{Brief(value.Text)}" : "窗口不存在";
 

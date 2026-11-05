@@ -18,7 +18,7 @@ namespace LTools.Views.Controls;
 /// 外观与普通输入框一致。
 /// </para>
 /// <para>
-/// 按钮不吃焦点（<see cref="UIElement.Focusable"/> = false，并在按下时阻止默认处理），
+/// 按钮不吃焦点（<see cref="UIElement.Focusable"/> = false，并在抬起时接管处理），
 /// 因此插入位置始终是打开下拉前的光标 / 选区。
 /// </para>
 /// </remarks>
@@ -60,7 +60,7 @@ public class VariableTextBox : TextBox
         base.OnApplyTemplate();
 
         if (_button != null)
-            _button.PreviewMouseLeftButtonDown -= Button_PreviewMouseLeftButtonDown;
+            _button.PreviewMouseLeftButtonUp -= Button_PreviewMouseLeftButtonUp;
 
         _button = GetTemplateChild("PART_VarButton") as Button;
         if (_button != null)
@@ -68,7 +68,9 @@ public class VariableTextBox : TextBox
             // 点按钮时焦点要留在输入框里，否则选区会丢、插入位置变成 0。
             _button.Focusable = false;
             _button.IsTabStop = false;
-            _button.PreviewMouseLeftButtonDown += Button_PreviewMouseLeftButtonDown;
+            // 在「抬起」时打开下拉：Popup 的 StaysOpen=false 会在打开当次的鼠标事件里
+            // 把下拉当成外部点击立刻关掉（在按下时打开就会出现「按住能看到、松手就消失」）。
+            _button.PreviewMouseLeftButtonUp += Button_PreviewMouseLeftButtonUp;
         }
 
         RefreshAvailability();
@@ -76,7 +78,7 @@ public class VariableTextBox : TextBox
 
     private void RefreshAvailability() => HasVariables = VariableSource.Resolve(this) != null;
 
-    private void Button_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void Button_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;   // 不让按钮抢焦点 / 不触发换行等输入行为
         TogglePopup();

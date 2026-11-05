@@ -2,7 +2,8 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- 带 Windows SDK 投影：截图 OCR 用 Windows.Media.Ocr（Win10 2004+ 系统自带，无额外模型文件） -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -10,8 +11,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- exe 嵌入图标 -->
     <ApplicationIcon>Icon\LTools.ico</ApplicationIcon>
-    <Version>2.4.1</Version>
-    <AssemblyVersion>2.4.1.0</AssemblyVersion>
+    <Version>2.4.2</Version>
+    <AssemblyVersion>2.4.2.0</AssemblyVersion>
     <AssemblyName>LTools</AssemblyName>
     <RootNamespace>LTools</RootNamespace>
   </PropertyGroup>

@@ -26,16 +26,15 @@ public partial class FlowNodeDialog : Window
     /// <summary>确定后的新节点（取消时为 null）。</summary>
     public FlowNode? Result { get; private set; }
 
-    public FlowNodeDialog(FlowNode node, IEnumerable<string>? customVariables = null)
+    public FlowNodeDialog(FlowNode node, IEnumerable<VariableInfo>? customVariables = null)
     {
         InitializeComponent();
         WindowChromeHelper.FixMaximize(this);
         _node = node.Clone();
 
-        var variables = customVariables as IReadOnlyList<string>
-                        ?? (customVariables == null ? new List<string>() : new List<string>(customVariables));
-        VariableSource.SetNames(this, variables);
-        VarList.SetCustom(variables);
+        var infos = customVariables?.ToList() ?? new List<VariableInfo>();
+        VariableSource.SetNames(this, FlowVariables.ExpandPaths(infos));
+        VarList.SetVariables(infos);
         VarList.VariableInvoked += InsertVariable;
 
         switch (_node.Kind)

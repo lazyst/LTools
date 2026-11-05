@@ -59,6 +59,7 @@ public partial class ProbeEditor : UserControl
             new("日期时间", ProbeKind.datetime),
             new("询问用户", ProbeKind.user),
             new("截图找图", ProbeKind.image),
+            new("截图 OCR", ProbeKind.ocr),
             new("屏幕取色", ProbeKind.color),
             new("窗口", ProbeKind.window),
             new("进程", ProbeKind.process),
@@ -175,7 +176,7 @@ public partial class ProbeEditor : UserControl
                 if (path.Length == 0) return "请选择模板图片。";
                 if (!File.Exists(ImageLibrary.Resolve(path))) return "模板图片不存在，请重新选择。";
                 probe.Image = path;
-                probe.Region = (RegionCombo.SelectedItem as RegionItem)?.Region ?? ImageRegion.foreground;
+                if (ReadRegion(probe) is string regionError) return regionError;
 
                 if (!TryInt(ImageTimeoutBox, 0, 0, 600_000, "图像等待时间",
                             out int timeout, out string timeoutError)) return timeoutError;
@@ -186,17 +187,12 @@ public partial class ProbeEditor : UserControl
                 probe.TimeoutMs = timeout;
                 probe.IntervalMs = interval;
                 probe.MinScore = score;
-
-                if (probe.Region == ImageRegion.rect)
-                {
-                    if (!TryInt(RectXBox, 0, -100_000, 100_000, "区域 X", out int x, out string xError)) return xError;
-                    if (!TryInt(RectYBox, 0, -100_000, 100_000, "区域 Y", out int y, out string yError)) return yError;
-                    if (!TryInt(RectWBox, 0, 1, 100_000, "区域宽", out int w, out string wError)) return wError;
-                    if (!TryInt(RectHBox, 0, 1, 100_000, "区域高", out int h, out string hError)) return hError;
-                    probe.Rect = new[] { x, y, w, h };
-                }
                 break;
             }
+
+            case ProbeKind.ocr:
+                if (ReadRegion(probe) is string ocrRegionError) return ocrRegionError;
+                break;
 
             case ProbeKind.color:
             {
@@ -225,6 +221,20 @@ public partial class ProbeEditor : UserControl
                 break;
         }
 
+        return null;
+    }
+
+    /// <summary>读出共用的屏幕区域（图像搜索 / OCR 截图）；区域非法时返回可读错误。</summary>
+    private string? ReadRegion(Probe probe)
+    {
+        probe.Region = (RegionCombo.SelectedItem as RegionItem)?.Region ?? ImageRegion.foreground;
+        if (probe.Region != ImageRegion.rect) return null;
+
+        if (!TryInt(RectXBox, 0, -100_000, 100_000, "区域 X", out int x, out string xError)) return xError;
+        if (!TryInt(RectYBox, 0, -100_000, 100_000, "区域 Y", out int y, out string yError)) return yError;
+        if (!TryInt(RectWBox, 0, 1, 100_000, "区域宽", out int w, out string wError)) return wError;
+        if (!TryInt(RectHBox, 0, 1, 100_000, "区域高", out int h, out string hError)) return hError;
+        probe.Rect = new[] { x, y, w, h };
         return null;
     }
 
@@ -274,6 +284,7 @@ public partial class ProbeEditor : UserControl
             [ProbeKind.datetime] = P_DateTime,
             [ProbeKind.user] = P_User,
             [ProbeKind.image] = P_Image,
+            [ProbeKind.ocr] = P_Ocr,
             [ProbeKind.color] = P_Color,
             [ProbeKind.window] = P_Window,
             [ProbeKind.process] = P_Process,
@@ -283,10 +294,20 @@ public partial class ProbeEditor : UserControl
         foreach (var p in panels.Values) p.Visibility = Visibility.Collapsed;
         if (panels.TryGetValue(kind, out var selected)) selected.Visibility = Visibility.Visible;
 
-        bool rect = kind == ProbeKind.image &&
+        bool hasRegion = kind is ProbeKind.image or ProbeKind.ocr;
+        RegionSection.Visibility = hasRegion ? Visibility.Visible : Visibility.Collapsed;
+        RegionLabel.Text = kind == ProbeKind.ocr ? "截图区域" : "搜索区域";
+        PickRegionBtn.ToolTip = kind == ProbeKind.ocr
+            ? "在屏幕上框出要识别文字的区域，自动填入 x / y / w / h"
+            : "在屏幕上框出一块，自动填入 x / y / w / h";
+
+        bool rect = hasRegion &&
                     (RegionCombo.SelectedItem as RegionItem)?.Region == ImageRegion.rect;
         RectPanel.Visibility = rect ? Visibility.Visible : Visibility.Collapsed;
         RegionHint.Visibility = rect ? Visibility.Visible : Visibility.Collapsed;
+        RegionHint.Text = kind == ProbeKind.ocr
+            ? "只识别框内文字；目标位置会变就改成「前台窗口」。"
+            : "只在框内查找（更快更准）；目标位置会变就改成「前台窗口」。";
 
         // 「询问用户」必须真的跑流程才能测，其他取值方式都可以就地试。
         TestBar.Visibility = kind == ProbeKind.user ? Visibility.Collapsed : Visibility.Visible;
@@ -295,6 +316,7 @@ public partial class ProbeEditor : UserControl
             ProbeKind.selection => "通过 UI Automation 读取当前选区（不模拟按键，窗口会短暂最小化）",
             ProbeKind.clipboard => "读取当前剪贴板内容",
             ProbeKind.image => $"用当前屏幕找一次（最多等 {ProbeTest.MaxWaitMs / 1000} 秒，窗口会短暂最小化）",
+            ProbeKind.ocr => "用当前屏幕识别一次（窗口会短暂最小化）",
             ProbeKind.color => "读取该点当前颜色（窗口会短暂最小化）",
             ProbeKind.window or ProbeKind.process => "检查当前系统状态",
             ProbeKind.lastError => "显示上一步被「继续下一步」吞掉的错误（编辑时通常为空）",
@@ -532,7 +554,7 @@ public partial class ProbeEditor : UserControl
         if (probe.Kind == ProbeKind.user) return;
 
         // 看屏幕 / 取前台选区时，LTools 自己的窗口必须让开，否则搜到的是自己。
-        bool hide = probe.Kind is ProbeKind.image or ProbeKind.color or ProbeKind.cursor
+        bool hide = probe.Kind is ProbeKind.image or ProbeKind.ocr or ProbeKind.color or ProbeKind.cursor
             or ProbeKind.window or ProbeKind.selection;
 
         TestBtn.IsEnabled = false;

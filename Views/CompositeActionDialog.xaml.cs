@@ -142,6 +142,7 @@ public partial class CompositeActionDialog : Window
             ("剪贴板文本", ProbeKind.clipboard, "剪贴板", "paste", "读取系统剪贴板里的文本"),
             ("选中文本", ProbeKind.selection, "选中文本", "copy", "读取前台应用当前选中的文本（UI Automation，不模拟按键）"),
             ("鼠标位置", ProbeKind.cursor, "鼠标位置", "mouse", "记录当前鼠标坐标（用 ${变量.x} / ${变量.y} 引用）"),
+            ("截图 OCR", ProbeKind.ocr, "截图文字", "search", "截取指定区域并识别其中的文字（Windows 自带 OCR，中文 / 英文随系统语言包）"),
             ("日期时间", ProbeKind.datetime, "日期时间", "clock", "记录当前日期时间（可设置格式）"),
             ("上一步的错误", ProbeKind.lastError, "错误", "help", "读取上一步被「继续下一步」吞掉的错误"),
         };
@@ -377,8 +378,10 @@ public partial class CompositeActionDialog : Window
         {
             // 双击/拖入均开编辑器（类型已预置），填完字段后作为内嵌步骤
             var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = item.BasicType.Value };
+            var infos = FlowVariables.CollectInfos(_flow);
             var dto = ActionEditorDialog.Show(this, "新建步骤", draft, allowComposite: false, requireName: false,
-                variables: FlowVariables.Collect(_flow));
+                variables: infos.Select(v => v.Name).ToList(),
+                variablePaths: FlowVariables.ExpandPaths(infos));
             BuildSourceList();   // 编辑期间可能录了新宏，刷新左栏动作池
             if (dto == null || dto.Type == ActionType.composite) return;   // 取消 / 防御
             var c = dto.Clone();
@@ -402,7 +405,7 @@ public partial class CompositeActionDialog : Window
                     Probe = new Probe { Kind = item.ValueProbe.Value },
                 },
             };
-            var dlg = new FlowNodeDialog(draft, FlowVariables.Collect(_flow)) { Owner = this, Topmost = Topmost };
+            var dlg = new FlowNodeDialog(draft, FlowVariables.CollectInfos(_flow)) { Owner = this, Topmost = Topmost };
             if (dlg.ShowDialog() != true || dlg.Result == null) return;
             node = dlg.Result;
         }
@@ -446,7 +449,7 @@ public partial class CompositeActionDialog : Window
 
         if (kind is FlowNodeKind.set or FlowNodeKind.@if or FlowNodeKind.loop)
         {
-            var dlg = new FlowNodeDialog(node, FlowVariables.Collect(_flow)) { Owner = this, Topmost = Topmost };
+            var dlg = new FlowNodeDialog(node, FlowVariables.CollectInfos(_flow)) { Owner = this, Topmost = Topmost };
             if (dlg.ShowDialog() != true || dlg.Result == null) return null;
             return dlg.Result;
         }
@@ -526,7 +529,7 @@ public partial class CompositeActionDialog : Window
     }
 
     /// <summary>右侧变量面板跟上流程里「设置变量 / 存回变量」的变化。</summary>
-    private void RefreshVariables() => VarList.SetCustom(FlowVariables.Collect(_flow));
+    private void RefreshVariables() => VarList.SetVariables(FlowVariables.CollectInfos(_flow));
 
     private void BuildRows(List<FlowNode> nodes, int depth,
                            IReadOnlyList<StrategyItem> strategies,
@@ -593,8 +596,10 @@ public partial class CompositeActionDialog : Window
         if (row.Node.Kind == FlowNodeKind.action)
         {
             if (row.Node.Action == null) return;
+            var stepInfos = FlowVariables.CollectInfos(_flow);
             var dto = ActionEditorDialog.Show(this, "编辑步骤", row.Node.Action, allowComposite: false, requireName: false,
-                variables: FlowVariables.Collect(_flow));
+                variables: stepInfos.Select(v => v.Name).ToList(),
+                variablePaths: FlowVariables.ExpandPaths(stepInfos));
             if (dto == null || dto.Type == ActionType.composite) return;
             var a = dto.Clone();
             a.Id = "";
@@ -606,7 +611,7 @@ public partial class CompositeActionDialog : Window
 
         if (row.Node.Kind is FlowNodeKind.set or FlowNodeKind.@if or FlowNodeKind.loop)
         {
-            var dlg = new FlowNodeDialog(row.Node, FlowVariables.Collect(_flow)) { Owner = this, Topmost = Topmost };
+            var dlg = new FlowNodeDialog(row.Node, FlowVariables.CollectInfos(_flow)) { Owner = this, Topmost = Topmost };
             if (dlg.ShowDialog() != true || dlg.Result == null) return;
 
             int idx = row.Container.IndexOf(row.Node);

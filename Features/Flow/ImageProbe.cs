@@ -33,7 +33,7 @@ internal static class ImageProbe
         if (template.Empty())
             throw new FlowException($"图像无法读取（可能不是 PNG/JPG）：{path}");
 
-        var (rx, ry, rw, rh) = ResolveRegion(probe);
+        var (rx, ry, rw, rh) = ScreenRegion.Resolve(probe);
         int timeout = Math.Clamp(probe.TimeoutMs, 0, 600_000);
         int interval = Math.Clamp(probe.IntervalMs, 50, 5000);
         double minScore = Math.Clamp(probe.MinScore, 0.30, 0.99);
@@ -143,28 +143,5 @@ internal static class ImageProbe
         {
             bmp.UnlockBits(data);
         }
-    }
-
-    /// <summary>解析搜索区域；前台窗口无效时退回整个虚拟桌面。</summary>
-    private static (int x, int y, int w, int h) ResolveRegion(Probe probe)
-    {
-        var full = (ScreenCapture.VirtualLeft, ScreenCapture.VirtualTop,
-                    ScreenCapture.VirtualWidth, ScreenCapture.VirtualHeight);
-
-        if (probe.Region == ImageRegion.screen) return full;
-
-        if (probe.Region == ImageRegion.rect)
-        {
-            int[]? r = probe.Rect;
-            if (r == null || r.Length < 4 || r[2] <= 0 || r[3] <= 0) return full;
-            return (r[0], r[1], r[2], r[3]);
-        }
-
-        IntPtr hwnd = Win32.GetForegroundWindow();
-        if (hwnd == IntPtr.Zero || !Win32.GetWindowRect(hwnd, out var rect)) return full;
-        int w = rect.Right - rect.Left;
-        int h = rect.Bottom - rect.Top;
-        if (w <= 0 || h <= 0) return full;
-        return (rect.Left, rect.Top, w, h);
     }
 }

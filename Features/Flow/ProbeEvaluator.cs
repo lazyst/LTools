@@ -58,6 +58,9 @@ internal static class ProbeEvaluator
             case ProbeKind.image:
                 return ImageProbe.Run(probe, ctx);
 
+            case ProbeKind.ocr:
+                return OcrProbe.Run(probe, ctx);
+
             case ProbeKind.color:
             {
                 int x = ParseInt(Template.Render(probe.X ?? "", ctx), "颜色探测的 X");

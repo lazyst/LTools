@@ -45,11 +45,16 @@
             <TextBox x:Name="DateFormatBox" MinHeight="32" Margin="0,4,0,0"/>
         </StackPanel>
 
-        <!-- 询问用户 -->
+        <!-- 询问用户：两个字段用途不同——上面是问句，下面是输入框的预填内容 -->
         <StackPanel x:Name="P_User" Visibility="Collapsed" Margin="0,8,0,0">
-            <TextBlock Style="{StaticResource HintLabel}" Text="运行时弹出输入框（流程会等待用户确定 / 取消）"/>
-            <TextBox x:Name="UserPromptBox" MinHeight="32" Margin="0,4,0,0" ToolTip="提示文字"/>
-            <TextBox x:Name="UserDefaultBox" MinHeight="32" Margin="0,6,0,0" ToolTip="默认值"/>
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                       Text="运行时弹出一个输入框，流程停下等你填（确定 / 取消）。两个字段不重复：上面是问用户什么，下面是输入框一开始的内容。"/>
+            <TextBlock Style="{StaticResource SectionLabel}" Text="提示文字（问用户什么）" Margin="0,6,0,2"/>
+            <TextBox x:Name="UserPromptBox" MinHeight="32"
+                     ToolTip="运行时显示在输入框上方的说明文字，例如「请输入文件名」"/>
+            <TextBlock Style="{StaticResource SectionLabel}" Text="默认值（预填在输入框里，可留空）" Margin="0,6,0,2"/>
+            <TextBox x:Name="UserDefaultBox" MinHeight="32"
+                     ToolTip="输入框一开始的内容，用户可以直接改；留空则从空白开始"/>
         </StackPanel>
 
         <!-- 图像 -->
@@ -101,9 +106,43 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="最低相似度" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                <TextBox x:Name="ImageScoreBox" Grid.Column="1" Width="72" MinHeight="30"
+                         HorizontalAlignment="Left" Margin="8,0,0,0"/>
+            </Grid>
+            <Grid Margin="0,6,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="搜索区域" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                <TextBlock Text="等待" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                <TextBox x:Name="ImageTimeoutBox" Grid.Column="1" Width="64" MinHeight="30" Margin="6,0,4,0"
+                         ToolTip="最长等待时间；0 = 只找一次"/>
+                <TextBlock Grid.Column="2" Text="ms · 间隔" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                <TextBox x:Name="ImageIntervalBox" Grid.Column="3" Width="64" MinHeight="30" Margin="6,0,4,0"/>
+                <TextBlock Grid.Column="4" Text="ms" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}" Margin="2,0,0,0"/>
+            </Grid>
+        </StackPanel>
+
+        <!-- 截图 OCR：区域控件与「截图找图」共用下方 RegionSection -->
+        <StackPanel x:Name="P_Ocr" Visibility="Collapsed" Margin="0,8,0,0">
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                       Text="截取屏幕区域后识别文字（Windows 自带 OCR，中文 / 英文随系统语言包）。识别不到文字时结果为空，可用「不为空」判断。"/>
+        </StackPanel>
+
+        <!-- 屏幕区域：截图找图（搜索范围）与截图 OCR（截图范围）共用 -->
+        <StackPanel x:Name="RegionSection" Visibility="Collapsed" Margin="0,6,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="RegionLabel" Text="搜索区域" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
                 <ComboBox x:Name="RegionCombo" Grid.Column="1" MinHeight="30" Margin="8,0,8,0"
                           SelectionChanged="Region_Changed"/>
                 <Button x:Name="PickRegionBtn" Grid.Column="2" Style="{StaticResource BtnGhost}"
@@ -121,32 +160,7 @@
                 <TextBox x:Name="RectHBox" Width="58" MinHeight="30" Margin="4,0,0,0"/>
             </StackPanel>
             <TextBlock x:Name="RegionHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                       Margin="0,4,0,0" Visibility="Collapsed"
-                       Text="只在框内查找（更快更准）；目标位置会变就改成「前台窗口」。"/>
-            <Grid Margin="0,6,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="等待" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
-                <TextBox x:Name="ImageTimeoutBox" Grid.Column="1" Width="64" MinHeight="30" Margin="6,0,4,0"
-                         ToolTip="最长等待时间；0 = 只找一次"/>
-                <TextBlock Grid.Column="2" Text="ms · 间隔" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
-                <TextBox x:Name="ImageIntervalBox" Grid.Column="3" Width="64" MinHeight="30" Margin="6,0,4,0"/>
-                <TextBlock Grid.Column="4" Text="ms" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}" Margin="2,0,0,0"/>
-            </Grid>
-            <Grid Margin="0,6,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="最低相似度" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
-                <TextBox x:Name="ImageScoreBox" Grid.Column="1" Width="72" MinHeight="30"
-                         HorizontalAlignment="Left" Margin="8,0,0,0"/>
-            </Grid>
+                       Margin="0,4,0,0" Visibility="Collapsed"/>
         </StackPanel>
 
         <!-- 颜色 -->

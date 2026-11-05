@@ -15,7 +15,8 @@ dotnet build -c Release
 dotnet publish -c Release -r win-x64 --self-contained true -o publish
 ```
 
-- 输出：`bin/Debug/net10.0-windows/LTools.exe`
+- 输出：`bin/Debug/net10.0-windows10.0.19041.0/LTools.exe`
+- TFM 带 Windows SDK 投影（`net10.0-windows10.0.19041.0`），OCR 用 `Windows.Media.Ocr`；改动 TFM 会改变输出目录
 - 全局钩子需管理员权限；Debug 加 `-p:NoWin32Manifest=true` 免提权调试
 - 构建必须 **0 错 0 警**
 - 无测试项目，不要找 `dotnet test`

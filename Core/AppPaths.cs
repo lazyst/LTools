@@ -10,7 +10,7 @@ internal static class AppPaths
     /// <summary>应用所在目录（exe 同级）。</summary>
     public static string AppDirectory => Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
 
-    /// <summary>仓库根 = exe 目录上溯 3 级（bin/&lt;Config&gt;/net10.0-windows/）。</summary>
+    /// <summary>仓库根 = exe 目录上溯 3 级（bin/&lt;Config&gt;/&lt;TFM&gt;/）。</summary>
     public static string RepoRoot =>
         Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
 

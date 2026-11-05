@@ -16,6 +16,15 @@ internal static class ActionResults
         ActionType.setClipboard or
         ActionType.mouse;
 
+    /// <summary>输出变量可用的属性后缀（供变量面板 / 模板提示列出 <c>${变量.exit}</c> 之类写法）。</summary>
+    public static IReadOnlyList<string> Properties(ActionType type) => type switch
+    {
+        ActionType.launchApp => new[] { "number", "found" },
+        ActionType.runCommand => new[] { "exit", "err", "found" },
+        ActionType.mouse => new[] { "x", "y" },
+        _ => Array.Empty<string>(),
+    };
+
     /// <summary>输出变量的内容说明（编辑器提示用）。</summary>
     public static string Hint(ActionType type) => type switch
     {

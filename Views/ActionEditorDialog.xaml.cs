@@ -63,13 +63,14 @@ public partial class ActionEditorDialog : Window
     private bool _macroTopmostBefore; // 临时置顶前的 Topmost 值
 
     public ActionEditorDialog(string title, ActionDto? existing, bool allowComposite = true, bool requireName = true, bool allowMacro = true,
-        IReadOnlyList<string>? variables = null)
+        IReadOnlyList<string>? variables = null, IReadOnlyList<string>? variablePaths = null)
     {
         InitializeComponent();
         WindowChromeHelper.FixMaximize(this);
         // 可插入的变量由调用方（组合动作编辑器）一次性给出，沿逻辑树继承到每个 VariableTextBox；
         // 普通动作（不属于任何流程）没有变量，按钮会自动隐藏。
-        VariableSource.SetNames(this, variables);
+        // variablePaths 额外包含 ${m.x} / ${m.found} 这类属性写法（variables 仍只含变量名，供输出变量下拉选择）。
+        VariableSource.SetNames(this, variablePaths ?? variables);
         _variables = variables;
         _draft = existing != null ? Clone(existing) : new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default };
         _requireName = requireName;
@@ -179,10 +180,12 @@ public partial class ActionEditorDialog : Window
     /// <param name="requireName">名称是否必填；false = 组合步骤场景（名称可留空，步骤行显示类型名）。</param>
     /// <param name="allowMacro">是否允许选「键鼠宏」；默认提供，特殊场景可关闭。</param>
     /// <param name="variables">当前流程的用户变量（供输入框右侧的变量按钮）；普通动作传 null。</param>
+    /// <param name="variablePaths">可插入的变量写法（含 <c>m.x</c> 等属性）；不传则同 <paramref name="variables"/>。</param>
     public static ActionDto? Show(Window owner, string title, ActionDto? existing, bool allowComposite, bool requireName = true, bool allowMacro = true,
-        IReadOnlyList<string>? variables = null)
+        IReadOnlyList<string>? variables = null, IReadOnlyList<string>? variablePaths = null)
     {
-        var dlg = new ActionEditorDialog(title, existing, allowComposite, requireName, allowMacro, variables) { Owner = owner, Topmost = owner.Topmost };
+        var dlg = new ActionEditorDialog(title, existing, allowComposite, requireName, allowMacro, variables, variablePaths)
+        { Owner = owner, Topmost = owner.Topmost };
         dlg.ShowDialog();
         return dlg.Result;
     }

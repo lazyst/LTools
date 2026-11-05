@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using LTools.Features;
 
 namespace LTools.Views.Controls;
 
@@ -19,41 +21,53 @@ public partial class VariableList : UserControl
     public VariableList()
     {
         InitializeComponent();
-        Rebuild(Array.Empty<string>());
+        Rebuild(Array.Empty<VariableInfo>());
     }
 
     /// <summary>设置流程里由用户创建的变量名（只有当用户真的创建过变量时才会有内容）。</summary>
-    public void SetCustom(IEnumerable<string>? names) => Rebuild(names ?? Array.Empty<string>());
+    public void SetCustom(IEnumerable<string>? names) =>
+        Rebuild((names ?? Array.Empty<string>())
+            .Select(n => new VariableInfo(n, Array.Empty<string>()))
+            .ToList());
 
-    private void Rebuild(IEnumerable<string> customNames)
+    /// <summary>设置变量及其可用属性；属性会作为独立行列出（如图像匹配的 <c>m.found</c> / <c>m.score</c>）。</summary>
+    internal void SetVariables(IEnumerable<VariableInfo>? infos) =>
+        Rebuild(infos?.ToList() ?? new List<VariableInfo>());
+
+    private void Rebuild(IReadOnlyList<VariableInfo> variables)
     {
         Rows.Children.Clear();
 
         int count = 0;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (string raw in customNames)
+        foreach (var info in variables)
         {
-            string name = raw.Trim();
-            if (name.Length == 0) continue;
-            if (name.StartsWith("${", StringComparison.Ordinal) && name.EndsWith('}'))
-                name = name[2..^1];
-            if (!seen.Add(name)) continue;
+            string name = Clean(info.Name);
+            if (name.Length == 0 || !seen.Add(name)) continue;
 
             Rows.Children.Add(BuildRow(name));
             count++;
+
+            foreach (string prop in info.Properties)
+            {
+                string path = name + "." + prop;
+                if (!seen.Add(path)) continue;
+                Rows.Children.Add(BuildRow(path, isProperty: true));
+                count++;
+            }
         }
 
         EmptyHint.Visibility = count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private Button BuildRow(string name)
+    private Button BuildRow(string name, bool isProperty = false)
     {
         var token = new TextBlock
         {
             Text = "${" + name + "}",
             FontFamily = (FontFamily)FindResource("MonoFont"),
-            FontSize = 12.5,
-            Foreground = (Brush)FindResource("TextBrush"),
+            FontSize = isProperty ? 12 : 12.5,
+            Foreground = (Brush)FindResource(isProperty ? "SecondaryTextBrush" : "TextBrush"),
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
 
@@ -62,12 +76,21 @@ public partial class VariableList : UserControl
             Style = (Style)FindResource("BtnGhost"),
             Content = token,
             HorizontalContentAlignment = HorizontalAlignment.Left,
-            Padding = new Thickness(7, 3, 7, 3),
+            Padding = new Thickness(isProperty ? 16 : 7, 3, 7, 3),
             Margin = new Thickness(0, 1, 0, 1),
             Cursor = System.Windows.Input.Cursors.Hand,
             ToolTip = "插入 / 复制 ${" + name + "}",
         };
         button.Click += (_, _) => VariableInvoked?.Invoke(name);
         return button;
+    }
+
+    /// <summary>去掉可能的 <c>${…}</c> 外壳与首尾空白；空名字返回空串。</summary>
+    private static string Clean(string? raw)
+    {
+        string name = (raw ?? "").Trim();
+        if (name.StartsWith("${", StringComparison.Ordinal) && name.EndsWith('}'))
+            name = name[2..^1].Trim();
+        return name;
     }
 }

@@ -143,6 +143,7 @@ public partial class ConditionEditor : UserControl
     private static CompareOp DefaultOp(ProbeKind kind) => kind switch
     {
         ProbeKind.image => CompareOp.found,
+        ProbeKind.ocr => CompareOp.isNotEmpty,
         ProbeKind.color => CompareOp.nearColor,
         ProbeKind.window => CompareOp.found,
         ProbeKind.process => CompareOp.found,
