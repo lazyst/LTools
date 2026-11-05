@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -9,6 +10,7 @@ using Microsoft.ML.OnnxRuntime;
 using RapidOcrNet;
 using SkiaSharp;
 using RapidTextBlock = RapidOcrNet.TextBlock;
+using RapidWordBox = RapidOcrNet.WordBox;
 
 namespace LTools.Features;
 
@@ -44,9 +46,10 @@ internal static class PaddleOcr
     private const int IdleUnloadMs = 5 * 60_000;
 
     /// <summary>
-    /// 屏幕文字不会倒置，关掉方向分类：省一次模型推理，也省掉判定 180° 翻转的成本。
+    /// 引擎参数：屏幕文字不会倒置，关掉方向分类（省一次模型推理）；要词框，
+    /// 「文字点击」靠它算命中文字的位置。
     /// </summary>
-    private static readonly RapidOcrOptions Options = RapidOcrOptions.PPOCRv6 with { DoAngle = false };
+    private static readonly RapidOcrOptions Options = RapidOcrOptions.PPOCRv6 with { DoAngle = false, ReturnWordBox = true };
 
     private static readonly object Gate = new();
     private static readonly SemaphoreSlim Single = new(1, 1);
@@ -71,7 +74,13 @@ internal static class PaddleOcr
     public static bool IsReady(Tier tier) => tier == Tier.Tiny ? OcrModelStore.TinyReady : OcrModelStore.SmallReady;
 
     /// <summary>识别一张截图，返回文本 + 置信度（<see cref="VarValue.Score"/> 0..1）。</summary>
-    public static VarValue Recognize(Bitmap bmp, Tier tier)
+    public static VarValue Recognize(Bitmap bmp, Tier tier) => Build(ReadLines(bmp, tier));
+
+    /// <summary>
+    /// 识别一张截图，返回带坐标的行 / 词（「文字点击」按词框算点击位置）。
+    /// 文本与 <see cref="Recognize"/> 完全一致，只是多带了位置。
+    /// </summary>
+    public static IReadOnlyList<OcrLineBox> ReadLines(Bitmap bmp, Tier tier)
     {
         if (!IsReady(tier)) throw new FlowException(MissingModelMessage(tier));
 
@@ -83,7 +92,7 @@ internal static class PaddleOcr
 
             using SKBitmap image = ToSkia(bmp);
             OcrResult result = engine.Detect(image, Options);
-            return Build(result);
+            return BuildLines(result);
         }
         catch (FlowException) { throw; }
         catch (Exception ex)
@@ -175,24 +184,21 @@ internal static class PaddleOcr
     }
 
     /// <summary>把识别结果按行拼成文本，并给出整体置信度。</summary>
-    private static VarValue Build(OcrResult result)
+    private static VarValue Build(IReadOnlyList<OcrLineBox> lines)
     {
+        if (lines.Count == 0) return new VarValue { Text = "", Flag = false, Score = 0 };
+
         var sb = new StringBuilder();
         double sum = 0;
-        int lines = 0;
         bool confident = false;
 
-        foreach (RapidTextBlock block in result.TextBlocks)
+        foreach (OcrLineBox line in lines)
         {
-            string text = OcrText.Clean(block.Text ?? "");
-            if (text.Length == 0) continue;
-
             if (sb.Length > 0) sb.Append('\n');
-            sb.Append(text);
+            sb.Append(line.Text);
 
-            sum += block.BoxScore;
-            lines++;
-            if (block.BoxScore >= ConfidentLineScore) confident = true;
+            sum += line.Score;
+            if (line.Confident) confident = true;
         }
 
         return new VarValue
@@ -200,8 +206,70 @@ internal static class PaddleOcr
             Text = sb.ToString(),
             // found 的语义：PP-OCRv6 下指「至少一行识别得够可信」，避免把噪声当成识别成功
             Flag = confident,
-            Score = lines > 0 ? sum / lines : 0,
+            Score = sum / lines.Count,
         };
+    }
+
+    /// <summary>把引擎结果转成带坐标的行 / 词；空行丢掉，与文本输出的过滤保持一致。</summary>
+    private static List<OcrLineBox> BuildLines(OcrResult result)
+    {
+        var lines = new List<OcrLineBox>(result.TextBlocks.Length);
+
+        foreach (RapidTextBlock block in result.TextBlocks)
+        {
+            string text = OcrText.Clean(block.Text ?? "");
+            if (text.Length == 0) continue;
+
+            var wordBoxes = new List<OcrWordBox>();
+            RapidWordBox[]? boxes = block.WordResults;
+            if (boxes != null)
+            {
+                foreach (RapidWordBox word in boxes)
+                {
+                    string wt = word.Text ?? "";
+                    if (wt.Length == 0) continue;
+
+                    var (wx, wy, ww, wh) = Bounds(word.BoxPoints);
+                    if (ww <= 0 || wh <= 0) continue;
+                    wordBoxes.Add(new OcrWordBox
+                    {
+                        Text = wt,
+                        X = wx, Y = wy, W = ww, H = wh,
+                        Score = word.Score,
+                    });
+                }
+            }
+
+            var (x, y, w, h) = Bounds(block.BoxPoints);
+            lines.Add(new OcrLineBox
+            {
+                Text = text,
+                X = x, Y = y, W = w, H = h,
+                Score = block.BoxScore,
+                Confident = block.BoxScore >= ConfidentLineScore,
+                Words = wordBoxes,
+            });
+        }
+
+        return lines;
+    }
+
+    /// <summary>四点框 → 轴对齐矩形（检测框可能带一点旋转，取外接矩形）。</summary>
+    private static (int X, int Y, int W, int H) Bounds(SKPointI[]? points)
+    {
+        if (points == null || points.Length == 0) return (0, 0, 0, 0);
+
+        int left = int.MaxValue, top = int.MaxValue;
+        int right = int.MinValue, bottom = int.MinValue;
+        foreach (SKPointI p in points)
+        {
+            left = Math.Min(left, p.X);
+            top = Math.Min(top, p.Y);
+            right = Math.Max(right, p.X);
+            bottom = Math.Max(bottom, p.Y);
+        }
+
+        return (left, top, right - left, bottom - top);
     }
 
     /// <summary>

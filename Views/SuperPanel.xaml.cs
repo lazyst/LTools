@@ -18,6 +18,10 @@ namespace LTools.Views;
 /// 右键编辑 / 删除 / 复制；滚轮翻页 + 1~9 选格 + Esc / 点外部关闭。
 /// 标题栏可拖动窗口；标题栏「钉住」按钮开启后点外部不再关闭（Esc / ✕ 仍可关）。
 /// 由 <see cref="SuperPanel"/> 控制器创建，槽位改动经 <c>SuperPanel.SavePages</c>（ConfigIO）落盘。
+/// <para>
+/// **用完即收**：面板只当启动器——执行动作、打开设置、新建 / 编辑 / 复制 / 删除动作、从动作池选动作，
+/// 都先收起面板（取消也一样）。留在面板上的只有「钉住」、翻页和拖动重排这些还在面板里进行的操作。
+/// </para>
 /// </summary>
 public partial class SuperPanelWindow : Window
 {
@@ -389,9 +393,10 @@ public partial class SuperPanelWindow : Window
     {
         var picker = new ActionPoolPicker(this, "超级面板槽位 — 选择动作", CurrentPage[slot]) { Owner = this };
         RunDialog(() => { picker.ShowDialog(); });
-        if (picker.Result == null) return;
-        SetSlot(slot, picker.Result);
-        Rebuild();
+
+        // 选完（含取消）收起面板：与新建 / 编辑 / 复制 / 删除一致，面板只在这次操作期间存在。
+        if (picker.Result != null) SetSlot(slot, picker.Result);
+        SuperPanel.Close();
     }
 
     /// <summary>在指定格子上弹出菜单（左键点空格走此路径；右键由 ContextMenu 自动弹出）。</summary>
@@ -470,12 +475,14 @@ public partial class SuperPanelWindow : Window
             var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = presetType.Value };
             return ActionEditor.Show(this, title, draft);
         });
-        if (dto == null) return;
+
+        // 面板是用完就收的启动器：新建（含取消）之后不再留在屏幕上。
+        if (dto == null) { SuperPanel.Close(); return; }
 
         ConfigStore.AddAction(dto);
         SetSlot(slot, dto.Id);
         ConfigStore.Save();
-        Rebuild();
+        SuperPanel.Close();
     }
 
     private void EditAt(int slot)
@@ -486,11 +493,11 @@ public partial class SuperPanelWindow : Window
         if (cur == null) return;
 
         var dto = RunDialog(() => ActionEditor.Show(this, "编辑动作", cur));
-        if (dto == null) return;
+        if (dto == null) { SuperPanel.Close(); return; }
         dto.Id = cur.Id;   // 编辑不换 Id
         ConfigStore.UpdateAction(dto);
         ConfigStore.Save();
-        Rebuild();
+        SuperPanel.Close();
     }
 
     private void DuplicateAt(int slot)
@@ -498,17 +505,18 @@ public partial class SuperPanelWindow : Window
         string? id = CurrentPage[slot];
         if (id == null) return;
         var copy = ConfigStore.DuplicateAction(id);
-        if (copy == null) return;
+        if (copy == null) { SuperPanel.Close(); return; }
         ConfigStore.Save();
 
         int empty = CurrentPage.FindIndex(x => x == null);
         if (empty < 0)
         {
             RunDialog(() => ConfirmDialog.Info(this, "超级面板", "当前页已满，副本已加入动作池（可在设置里放入格子）。"));
+            SuperPanel.Close();
             return;
         }
         SetSlot(empty, copy.Id);
-        Rebuild();
+        SuperPanel.Close();
     }
 
     private void DeleteAt(int slot)
@@ -518,17 +526,11 @@ public partial class SuperPanelWindow : Window
         string name = ActionRegistry.FindById(id)?.Name ?? "(未知动作)";
         bool ok = RunDialog(() => ConfirmDialog.Confirm(this, "删除动作",
             $"确定删除「{name}」吗？\n所有菜单项 / 超级面板槽位 / 组合步骤中的引用也会被清除。", danger: true));
-        if (!ok) return;
 
-        ConfigStore.RemoveAction(id);   // 同时清菜单项 / 组合步骤 / 所有页槽位
-        ConfigStore.Save();
-        // 磁盘槽位已被清除，重新加载当前页
-        var reloaded = SuperPanel.LoadPages();
-        _pages.Clear();
-        _pages.AddRange(reloaded);
-        if (_pageIdx >= _pages.Count) _pageIdx = _pages.Count - 1;
-        Rebuild();
-        UpdateHeader();
+        // 取消也收起：进过菜单就说明已经用完这次面板。
+        if (ok) ConfigStore.RemoveAction(id);   // 同时清菜单项 / 组合步骤 / 所有页槽位
+        if (ok) ConfigStore.Save();
+        SuperPanel.Close();
     }
 
     // —— 拖动重排（§5.6）——

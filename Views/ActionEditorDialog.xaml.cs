@@ -30,6 +30,7 @@ public partial class ActionEditorDialog : Window
 {
     private ActionDto _draft;
     private bool _ready;   // 初始载入期间抑制事件副作用
+    private readonly bool _isNew;   // 新建（含预设类型）还是编辑已有动作：只影响新动作的默认值
 
     /// <summary>标题栏里的类型切换（普通动作 / 组合动作）。</summary>
     private readonly ActionKindSwitch _kindSwitch = new();
@@ -73,6 +74,7 @@ public partial class ActionEditorDialog : Window
         VariableSource.SetNames(this, variablePaths ?? variables);
         _variables = variables;
         _draft = existing != null ? Clone(existing) : new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default };
+        _isNew = string.IsNullOrEmpty(_draft.Id);   // 预设类型的「新建」也会带 Id="" 的草稿
         _requireName = requireName;
         if (!string.IsNullOrEmpty(title)) Title = title;
 
@@ -87,6 +89,7 @@ public partial class ActionEditorDialog : Window
         _fieldsByType[ActionType.sendKeys] = F_SendKeys;
         _fieldsByType[ActionType.mouse] = F_Mouse;
         _fieldsByType[ActionType.window] = F_Window;
+        _fieldsByType[ActionType.clickText] = F_ClickText;
         _fieldsByType[ActionType.macro] = F_Macro;
         _fieldsByType[ActionType.@internal] = F_Internal;
 
@@ -105,6 +108,7 @@ public partial class ActionEditorDialog : Window
             new("模拟按键", ActionType.sendKeys),
             new("鼠标操作", ActionType.mouse),
             new("窗口操作", ActionType.window),
+            new("文字点击", ActionType.clickText),
             // 宏按 Id 引用事件文件：组合步骤已支持宏步骤（引用 macros/ 下的文件，备份一起走）。
             new("内部动作", ActionType.@internal),
         };
@@ -266,6 +270,40 @@ public partial class ActionEditorDialog : Window
         WindowWBox.Text = rect is { Length: >= 4 } ? rect[2].ToString(CultureInfo.InvariantCulture) : "";
         WindowHBox.Text = rect is { Length: >= 4 } ? rect[3].ToString(CultureInfo.InvariantCulture) : "";
         UpdateWindowRectPanel();
+
+        // clickText
+        ClickTextBox.Text = _draft.Text ?? "";
+        ClickRegionCombo.SelectedIndex = (_draft.Region ?? ImageRegion.foreground) switch
+        {
+            ImageRegion.screen => 1,
+            ImageRegion.rect => 2,
+            _ => 0,
+        };
+        int[]? clickRect = _draft.Rect;
+        ClickXBox.Text = clickRect is { Length: >= 4 } ? clickRect[0].ToString(CultureInfo.InvariantCulture) : "";
+        ClickYBox.Text = clickRect is { Length: >= 4 } ? clickRect[1].ToString(CultureInfo.InvariantCulture) : "";
+        ClickWBox.Text = clickRect is { Length: >= 4 } ? clickRect[2].ToString(CultureInfo.InvariantCulture) : "";
+        ClickHBox.Text = clickRect is { Length: >= 4 } ? clickRect[3].ToString(CultureInfo.InvariantCulture) : "";
+        ClickActionCombo.SelectedIndex = (_draft.MouseAction ?? MouseActionKind.click) switch
+        {
+            MouseActionKind.doubleClick => 1,
+            MouseActionKind.rightClick => 2,
+            MouseActionKind.middleClick => 3,
+            MouseActionKind.move => 4,
+            _ => 0,
+        };
+        string? clickEngine = _draft.OcrEngine;
+        if (_isNew && clickEngine == null) clickEngine = OcrEnginePreference.DefaultForNewProbe;
+        ClickOcrCombo.SelectedIndex = PaddleOcr.ParseTier(clickEngine) switch
+        {
+            PaddleOcr.Tier.Tiny => 0,
+            PaddleOcr.Tier.Small => 2,
+            _ => 1,
+        };
+        int clickTimeout = Math.Clamp(_draft.TimeoutMs ?? 0, 0, 600_000);
+        ClickTimeoutBox.Text = (clickTimeout / 1000.0).ToString("0.###", CultureInfo.InvariantCulture);
+        UpdateClickRectPanel();
+        UpdateClickOcrHint();
 
         TerminalCombo.SelectedIndex = IndexOfTerminal(_draft.Terminal ?? "direct");
         CommandCombo.SelectedIndex = IndexOfCommand(_draft.Command ?? "");
@@ -1015,6 +1053,7 @@ public partial class ActionEditorDialog : Window
         _draft.X = null; _draft.Y = null; _draft.MouseAction = null; _draft.WheelDelta = null;
         _draft.Items = null; _draft.MacroId = null;
         _draft.WindowTitle = null; _draft.WindowClass = null; _draft.WindowOp = null; _draft.WindowRect = null;
+        _draft.Region = null; _draft.Rect = null; _draft.OcrEngine = null; _draft.TimeoutMs = null;
 
         switch (type)
         {
@@ -1110,6 +1149,48 @@ public partial class ActionEditorDialog : Window
                     }
                     _draft.WindowRect = rect;
                 }
+                break;
+            }
+            case ActionType.clickText:
+            {
+                if (ClickTextBox.Text.Trim().Length == 0)
+                {
+                    ConfirmDialog.Info(this, "文字点击", "请填写要点击的文字。");
+                    ClickTextBox.Focus();
+                    return;
+                }
+                _draft.Text = ClickTextBox.Text;
+                _draft.Region = ClickRegionCombo.SelectedIndex switch
+                {
+                    1 => ImageRegion.screen,
+                    2 => ImageRegion.rect,
+                    _ => ImageRegion.foreground,
+                };
+                if (_draft.Region == ImageRegion.rect)
+                {
+                    if (!TryReadClickRect(out int[] clickRect))
+                    {
+                        ClickXBox.Focus();
+                        return;
+                    }
+                    _draft.Rect = clickRect;
+                }
+                _draft.MouseAction = ClickActionCombo.SelectedIndex switch
+                {
+                    1 => MouseActionKind.doubleClick,
+                    2 => MouseActionKind.rightClick,
+                    3 => MouseActionKind.middleClick,
+                    4 => MouseActionKind.move,
+                    _ => MouseActionKind.click,
+                };
+                _draft.OcrEngine = ClickOcrCombo.SelectedIndex switch
+                {
+                    0 => "v6tiny",
+                    2 => "v6small",
+                    _ => null,
+                };
+                if (!TryReadClickTimeout(out int timeoutMs)) return;
+                _draft.TimeoutMs = timeoutMs > 0 ? timeoutMs : null;
                 break;
             }
             case ActionType.mouse:
@@ -1278,26 +1359,111 @@ public partial class ActionEditorDialog : Window
     private bool TryReadWindowRect(out int[] rect)
     {
         rect = Array.Empty<int>();
-        if (!TryReadRectBox(WindowXBox, -30_000, 30_000, "x", out int x) ||
-            !TryReadRectBox(WindowYBox, -30_000, 30_000, "y", out int y) ||
-            !TryReadRectBox(WindowWBox, 1, 20_000, "宽度 w", out int w) ||
-            !TryReadRectBox(WindowHBox, 1, 20_000, "高度 h", out int h))
+        if (!TryReadRectBox(WindowXBox, -30_000, 30_000, "x", "窗口操作", out int x) ||
+            !TryReadRectBox(WindowYBox, -30_000, 30_000, "y", "窗口操作", out int y) ||
+            !TryReadRectBox(WindowWBox, 1, 20_000, "宽度 w", "窗口操作", out int w) ||
+            !TryReadRectBox(WindowHBox, 1, 20_000, "高度 h", "窗口操作", out int h))
             return false;
 
         rect = new[] { x, y, w, h };
         return true;
     }
 
-    private bool TryReadRectBox(TextBox box, int min, int max, string label, out int value)
+    private bool TryReadRectBox(TextBox box, int min, int max, string label, string title, out int value)
     {
         value = 0;
         if (!int.TryParse(box.Text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value) ||
             value < min || value > max)
         {
-            ConfirmDialog.Info(this, "窗口操作", $"{label} 请填 {min}–{max} 的整数（物理像素）。");
+            ConfirmDialog.Info(this, title, $"{label} 请填 {min}–{max} 的整数（物理像素）。");
             box.Focus();
             return false;
         }
+        return true;
+    }
+
+    // —— clickText（文字点击）——
+
+    private void ClickRegion_Changed(object sender, SelectionChangedEventArgs e) => UpdateClickRectPanel();
+
+    private void UpdateClickRectPanel()
+    {
+        if (ClickRectPanel == null) return;
+        ClickRectPanel.Visibility = ClickRegionCombo.SelectedIndex == 2
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void ClickOcr_Changed(object sender, SelectionChangedEventArgs e) => UpdateClickOcrHint();
+
+    /// <summary>提示当前引擎的代价，以及模型是否已经就位（缺模型在执行时才会报错，提前说清）。</summary>
+    private void UpdateClickOcrHint()
+    {
+        if (ClickOcrHint == null) return;
+
+        PaddleOcr.Tier? tier = ClickOcrCombo.SelectedIndex switch
+        {
+            0 => PaddleOcr.Tier.Tiny,
+            2 => PaddleOcr.Tier.Small,
+            _ => (PaddleOcr.Tier?)null,
+        };
+
+        if (tier is PaddleOcr.Tier t && !PaddleOcr.IsReady(t))
+        {
+            ClickOcrHint.Text = t == PaddleOcr.Tier.Tiny
+                ? "快速模型缺失（程序文件不完整）：重新解压发布包即可。"
+                : "高精度模型还没下载：先在「文字识别」取值器里点「下载模型（29.8 MB）」，只需一次。";
+            return;
+        }
+
+        ClickOcrHint.Text = tier == null
+            ? "系统自带（Windows.Media.Ocr），最快、最省内存；12–14px 中文、数字与标点容易认错。"
+            : tier == PaddleOcr.Tier.Tiny
+                ? "内置模型，小字与中文明显更准，首次加载约 0.2 秒。"
+                : "最准，代价是慢一些、占内存；模型存在数据目录，升级程序不会丢。";
+    }
+
+    /// <summary>在屏幕上框一块区域，切到「固定区域」并填好四个框。</summary>
+    private void ClickPickRect_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ScreenPicker.TryPickRegion(this, out var area, out _)) return;
+        ClickRegionCombo.SelectedIndex = 2;
+        ClickXBox.Text = area.X.ToString(CultureInfo.InvariantCulture);
+        ClickYBox.Text = area.Y.ToString(CultureInfo.InvariantCulture);
+        ClickWBox.Text = area.Width.ToString(CultureInfo.InvariantCulture);
+        ClickHBox.Text = area.Height.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>读固定区域四个框；不合法时提示。</summary>
+    private bool TryReadClickRect(out int[] rect)
+    {
+        rect = Array.Empty<int>();
+        if (!TryReadRectBox(ClickXBox, -30_000, 30_000, "x", "文字点击", out int x) ||
+            !TryReadRectBox(ClickYBox, -30_000, 30_000, "y", "文字点击", out int y) ||
+            !TryReadRectBox(ClickWBox, 1, 20_000, "宽度 w", "文字点击", out int w) ||
+            !TryReadRectBox(ClickHBox, 1, 20_000, "高度 h", "文字点击", out int h))
+            return false;
+
+        rect = new[] { x, y, w, h };
+        return true;
+    }
+
+    /// <summary>「找不到时最多等」按秒填（可带小数），内部转成毫秒。</summary>
+    private bool TryReadClickTimeout(out int ms)
+    {
+        ms = 0;
+        string raw = ClickTimeoutBox.Text.Trim();
+        if (raw.Length == 0) return true;
+
+        bool ok = double.TryParse(raw, NumberStyles.Float, CultureInfo.CurrentCulture, out double seconds)
+               || double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out seconds);
+        if (!ok || seconds < 0 || seconds > 600)
+        {
+            ConfirmDialog.Info(this, "文字点击", "「找不到时最多等」请填 0–600 秒（可带小数，例如 2.5）。");
+            return false;
+        }
+
+        ms = (int)Math.Round(seconds * 1000);
         return true;
     }
 
@@ -1691,6 +1857,8 @@ public partial class ActionEditorDialog : Window
         Text = a.Text, Mode = a.Mode, AppendEnter = a.AppendEnter, DurationMs = a.DurationMs,
         WindowTitle = a.WindowTitle, WindowClass = a.WindowClass, WindowOp = a.WindowOp,
         WindowRect = a.WindowRect != null ? (int[])a.WindowRect.Clone() : null,
+        Region = a.Region, Rect = a.Rect != null ? (int[])a.Rect.Clone() : null,
+        OcrEngine = a.OcrEngine, TimeoutMs = a.TimeoutMs,
         Items = a.Items?.ConvertAll(i => i.Clone()),
         X = a.X, Y = a.Y, MouseAction = a.MouseAction, WheelDelta = a.WheelDelta,
         MacroId = a.MacroId,

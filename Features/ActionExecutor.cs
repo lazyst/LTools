@@ -105,6 +105,9 @@ internal static class ActionExecutor
             case ActionType.window:
                 result = WindowAction.Run(action);
                 break;
+            case ActionType.clickText:
+                result = TextClickAction.Run(action, ctx);
+                break;
             case ActionType.sendKeys:
                 SendKeys(action);
                 break;
@@ -616,9 +619,6 @@ internal static class ActionExecutor
 
     // —— mouse（鼠标操作）——
 
-    /// <summary>本类注入鼠标事件的标记（与宏回放一致，便于排查）。</summary>
-    private static readonly IntPtr MouseTag = (IntPtr)0x1234ABCD;
-
     private static VarValue? Mouse(ActionDto a)
     {
         string sx = a.X?.Trim() ?? "";
@@ -631,56 +631,12 @@ internal static class ActionExecutor
                 !int.TryParse(sy, NumberStyles.Integer, CultureInfo.InvariantCulture, out int y))
                 throw new InvalidOperationException($"mouse 坐标无效: X={a.X}, Y={a.Y} ({a.Name})");
 
-            InputHelper.MoveToScreen(x, y, MouseTag);
+            MouseOps.Move(x, y);
             Thread.Sleep(10);   // 让光标位置先落定，再发按键
         }
 
-        int wheel = Math.Clamp(a.WheelDelta ?? 120, 1, 12_000);
-        switch (a.MouseAction ?? MouseActionKind.click)
-        {
-            case MouseActionKind.click:
-                ClickButton(1);
-                break;
-            case MouseActionKind.doubleClick:
-                ClickButton(1);
-                Thread.Sleep(60);
-                ClickButton(1);
-                break;
-            case MouseActionKind.rightClick:
-                ClickButton(2);
-                break;
-            case MouseActionKind.middleClick:
-                ClickButton(3);
-                break;
-            case MouseActionKind.move:
-                break;
-            case MouseActionKind.wheelUp:
-                Win32.mouse_event(Win32.MouseeventfWheel, 0, 0, (uint)wheel, MouseTag);
-                break;
-            case MouseActionKind.wheelDown:
-                Win32.mouse_event(Win32.MouseeventfWheel, 0, 0, unchecked((uint)-wheel), MouseTag);
-                break;
-        }
+        MouseOps.Perform(a.MouseAction ?? MouseActionKind.click, a.WheelDelta ?? 120);
 
         return Win32.GetCursorPos(out var point) ? VarValue.FromPoint(point.X, point.Y) : null;
-    }
-
-    /// <summary>按下并释放一个鼠标键（1=左 2=右 3=中）。</summary>
-    private static void ClickButton(int button)
-    {
-        uint down = button switch
-        {
-            2 => Win32.MouseeventfRightdown,
-            3 => Win32.MouseeventfMiddledown,
-            _ => Win32.MouseeventfLeftdown,
-        };
-        uint up = button switch
-        {
-            2 => Win32.MouseeventfRightup,
-            3 => Win32.MouseeventfMiddleup,
-            _ => Win32.MouseeventfLeftup,
-        };
-        Win32.mouse_event(down, 0, 0, 0, MouseTag);
-        Win32.mouse_event(up, 0, 0, 0, MouseTag);
     }
 }

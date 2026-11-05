@@ -28,6 +28,9 @@ public enum ActionType
     /// <summary>窗口操作：切到前台 / 最大化 / 最小化 / 还原 / 调整到指定大小。</summary>
     window,
 
+    /// <summary>文字点击：在指定区域里识别文字，找到指定的文字就点它（见 <see cref="TextClickAction"/>）。</summary>
+    clickText,
+
     sendKeys,
     mouse,
     macro,
@@ -160,6 +163,7 @@ public static class ActionTypeLabel
         ActionType.setClipboard => "写入剪贴板",
         ActionType.toast => "提示弹窗",
         ActionType.window => "窗口操作",
+        ActionType.clickText => "文字点击",
         ActionType.sendKeys => "模拟按键",
         ActionType.mouse => "鼠标操作",
         ActionType.macro => "键鼠宏",
@@ -278,7 +282,7 @@ public sealed class ActionDto
 
     // —— sendText（§3.2.2）/ setClipboard ——
 
-    /// <summary>sendText / setClipboard: 要发送或写入剪贴板的文本（支持 ${变量} 模板）。</summary>
+    /// <summary>sendText / setClipboard / clickText: 文本内容（支持 ${变量}）；clickText 时是「要点击的文字」。</summary>
     public string? Text { get; set; }
 
     /// <summary>sendText: 发送方式，null 视为 <see cref="SendTextMode.auto"/>。</summary>
@@ -305,6 +309,20 @@ public sealed class ActionDto
 
     /// <summary>window: <see cref="WindowActionKind.resize"/> 的目标矩形 [x, y, w, h]（虚拟桌面物理像素）。</summary>
     public int[]? WindowRect { get; set; }
+
+    // —— clickText（文字点击）——
+
+    /// <summary>clickText: 文字所在区域；null = 前台窗口（与「截图找图」同一套区域语义）。</summary>
+    public ImageRegion? Region { get; set; }
+
+    /// <summary>clickText: <see cref="ImageRegion.rect"/> 时的区域 [x, y, w, h]（虚拟桌面物理像素）。</summary>
+    public int[]? Rect { get; set; }
+
+    /// <summary>clickText: 识别引擎（<c>null</c> / <c>windows</c> = 系统 OCR；<c>v6tiny</c> / <c>v6small</c> = PP-OCRv6）。</summary>
+    public string? OcrEngine { get; set; }
+
+    /// <summary>clickText: 等文字出现的最长时间（ms，0 = 只找一次）。</summary>
+    public int? TimeoutMs { get; set; }
 
     // —— sendKeys（§3.2.1）——
 
@@ -364,6 +382,8 @@ public sealed class ActionDto
         Text = Text, Mode = Mode, AppendEnter = AppendEnter, DurationMs = DurationMs,
         WindowTitle = WindowTitle, WindowClass = WindowClass, WindowOp = WindowOp,
         WindowRect = WindowRect != null ? (int[])WindowRect.Clone() : null,
+        Region = Region, Rect = Rect != null ? (int[])Rect.Clone() : null,
+        OcrEngine = OcrEngine, TimeoutMs = TimeoutMs,
         Items = Items?.Select(i => i.Clone()).ToList(),
         X = X, Y = Y, MouseAction = MouseAction, WheelDelta = WheelDelta,
         MacroId = MacroId,

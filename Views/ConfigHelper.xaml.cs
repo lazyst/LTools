@@ -1534,6 +1534,7 @@ public partial class ConfigHelperWindow : Window
             ActionType.setClipboard => BriefText(a.Text),
             ActionType.toast => BriefText(a.Text),
             ActionType.window => WindowSummary(a),
+            ActionType.clickText => ClickTextSummary(a),
             ActionType.sendKeys => a.Items != null ? $"{a.Items.Count} 条输入" : "",
             ActionType.macro => MacroLabel(a.MacroId, macroNames),
             ActionType.@internal => a.Command ?? "",
@@ -1559,6 +1560,19 @@ public partial class ConfigHelperWindow : Window
             if (op == WindowActionKind.resize && a.WindowRect is { Length: >= 4 } r)
                 return $"{WindowActionLabel.Short(op)} {r[2]}×{r[3]} · {target}";
             return $"{WindowActionLabel.Short(op)} · {target}";
+        }
+
+        /// <summary>文字点击摘要：「前台窗口 · 保存」。</summary>
+        private static string ClickTextSummary(ActionDto a)
+        {
+            string text = string.IsNullOrWhiteSpace(a.Text) ? "(未填文字)" : a.Text!.Trim();
+            string where = (a.Region ?? ImageRegion.foreground) switch
+            {
+                ImageRegion.screen => "整个屏幕",
+                ImageRegion.rect => "固定区域",
+                _ => "前台窗口",
+            };
+            return $"{where} · {text}";
         }
 
         private static int CountNodes(List<FlowNode> nodes)

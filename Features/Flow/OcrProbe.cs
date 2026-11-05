@@ -1,14 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.Text;
 using System.Text.RegularExpressions;
 using LTools.Core;
-using Windows.Globalization;
-using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
-using Windows.Storage.Streams;
 
 namespace LTools.Features;
 
@@ -45,7 +41,7 @@ internal static class OcrProbe
         PaddleOcr.Tier? tier = PaddleOcr.ParseTier(probe.OcrEngine);
 
         // 系统 OCR 的引擎不保证可跨线程，每次现建；PP-OCRv6 由 PaddleOcr 懒加载并跨步骤复用。
-        OcrEngine? windows = tier == null ? CreateEngine() : null;
+        OcrEngine? windows = tier == null ? OcrLayout.CreateEngine() : null;
         if (tier == null && windows == null)
             throw new FlowException("系统没有可用的 OCR 语言包，请在 Windows 设置里安装「中文(简体)」或「English」的 OCR 组件。");
 
@@ -117,45 +113,8 @@ internal static class OcrProbe
 
     private static VarValue RecognizeWindows(OcrEngine engine, Bitmap bmp)
     {
-        string text = Recognize(engine, bmp);
+        string text = Tidy(OcrLayout.RecognizeWindows(engine, bmp).Lines);
         return new VarValue { Text = text, Flag = text.Length > 0 };
-    }
-
-    private static string Recognize(OcrEngine engine, Bitmap bmp)
-    {
-        // WinRT 的软件位图只能从流 / 像素缓冲构造；用 PNG 内存流最省事，也避免 P/Invoke 锁位图。
-        using var ms = new MemoryStream();
-        bmp.Save(ms, ImageFormat.Png);
-        byte[] bytes = ms.ToArray();
-
-        var ras = new InMemoryRandomAccessStream();
-        try
-        {
-            // DataWriter 写完后必须 DetachStream，否则 ras 释放时会连带关闭流。
-            var writer = new DataWriter(ras.GetOutputStreamAt(0));
-            try
-            {
-                writer.WriteBytes(bytes);
-                writer.StoreAsync().AsTask().GetAwaiter().GetResult();
-                writer.FlushAsync().AsTask().GetAwaiter().GetResult();
-            }
-            finally
-            {
-                writer.DetachStream();
-            }
-
-            ras.Seek(0);
-            var decoder = BitmapDecoder.CreateAsync(ras).AsTask().GetAwaiter().GetResult();
-            using var bitmap = decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied)
-                .AsTask().GetAwaiter().GetResult();
-
-            OcrResult result = engine.RecognizeAsync(bitmap).AsTask().GetAwaiter().GetResult();
-            return Tidy(result.Lines);
-        }
-        finally
-        {
-            ras.Dispose();
-        }
     }
 
     /// <summary>按行拼接并清理 OCR 噪声：去掉中文之间多余的空格、空行与首尾空白。</summary>
@@ -171,36 +130,6 @@ internal static class OcrProbe
             sb.Append(text);
         }
         return sb.ToString();
-    }
-
-    private static OcrEngine? CreateEngine()
-    {
-        // 优先用户配置的 OCR 语言（中文系统即 zh-Hans-CN）。
-        try
-        {
-            var engine = OcrEngine.TryCreateFromUserProfileLanguages();
-            if (engine != null) return engine;
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warn("OCR", "按用户语言创建识别引擎失败，改用 en-US：" + ex.Message);
-        }
-
-        // 用户语言没有 OCR 组件时退回英文，至少能识别数字 / 英文。
-        foreach (string tag in new[] { "zh-Hans-CN", "zh-Hans", "en-US" })
-        {
-            try
-            {
-                var language = new Language(tag);
-                var engine = OcrEngine.TryCreateFromLanguage(language);
-                if (engine != null) return engine;
-            }
-            catch
-            {
-                // 语言标签不可用：继续试下一个
-            }
-        }
-        return null;
     }
 }
 
