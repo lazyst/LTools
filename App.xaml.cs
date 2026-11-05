@@ -105,6 +105,8 @@ public partial class App : Application
         QuickNote.Initialize(cfgPath);
         ConfigHelper.Initialize(cfgPath);
         ResourceDir.Ensure();
+        // 找图模板的两个子目录：images（程序生成、可回收）/ user（用户素材、永不回收）
+        ImageLibrary.EnsureDir();
         MacroSettings.Load(cfg);
         MacroStore.Ensure();
         // 录制即生成动作：托盘等入口录完的宏，自动进动作池（动作编辑器内录制除外）。

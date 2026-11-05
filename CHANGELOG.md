@@ -7,6 +7,10 @@
 ### 🔧 变更
 
 - **发布包瘦身 27.3 MB**：删掉 OpenCvSharp 附带、但项目从不使用的 `opencv_videoio_ffmpeg4130_64.dll`（VideoCapture / VideoWriter 的 FFmpeg 后端插件，找图只走 imgproc）。自包含发布解压 **325 → 298 MB**，zip **135 → 124 MB**。csproj 加了构建 / 发布后清理的 target，与清理 RapidOcrNet 自带 v5 模型同一处；万一以后要加录屏类功能，得同时去掉这个 target
+- **模板图目录拆分：`resources\images`（程序生成、可回收）+ `resources\user`（用户素材、永不回收）**：原先截图和用户自己放的图混在一个目录里，回收只能靠 `shot-` 文件名前缀判断，用户手放的文件也没有稳定的存放位置，而且选外部图片时配置里存的是绝对路径（换机 / 备份还原后断链）。
+  - 「换图…」默认打开 `resources\user`；选到外部图片会**复制进该目录**（重名加序号），配置里存数据根相对路径（`resources\user\a.png`），备份换机后仍有效
+  - 回收边界从「文件名前缀」变成「目录」：`images` 里的孤儿截图照旧清理（仍保留 `shot-*` 过滤，防误删历史用户文件），`user` 整个目录不在回收范围内
+  - 老配置不受影响：模板路径先按 `images` 找，再按 `user`，最后按数据根解析
 
 ### 🐛 修复
 

@@ -17,7 +17,10 @@ internal static class ResourceDir
         "这里存放你的脚本、程序或其他素材。动作编辑器里把「工作目录」留空，\r\n" +
         "runCommand / launchApp 用相对路径引用即可，例如：resources\\foo.ps1\r\n" +
         "\r\n" +
-        "升级 LTools 不会删除本目录。删除本文件不影响功能。\r\n";
+        "升级 LTools 不会删除本目录。删除本文件不影响功能。\r\n" +
+        "\r\n" +
+        "images\\ 是框选截图生成的找图模板（会自动回收不用的）；\r\n" +
+        "user\\ 放你自己的素材，永不自动删除。\r\n";
 
     /// <summary>资源目录路径（不保证存在）。</summary>
     public static string Get() => AppPaths.ResourceDir;

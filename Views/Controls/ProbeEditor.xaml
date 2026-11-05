@@ -82,7 +82,8 @@
                                 MinHeight="30" Padding="10,4" Click="CaptureShot_Click"
                                 ToolTip="最小化 LTools → 冻结屏幕 → 拖个框，微调后确认即存为模板图"/>
                         <Button Style="{StaticResource BtnGhost}" Content="换图…" Margin="6,0,0,0"
-                                MinHeight="30" Padding="10,4" Click="BrowseImage_Click"/>
+                                MinHeight="30" Padding="10,4" Click="BrowseImage_Click"
+                                ToolTip="从 resources\user 选图；选到外部图片会复制进该目录，备份换机后仍有效"/>
                         <Button x:Name="PreviewImageBtn" Style="{StaticResource BtnGhost}" Content="预览"
                                 Margin="6,0,0,0" MinHeight="30" Padding="10,4" Click="PreviewImage_Click"/>
                     </WrapPanel>
@@ -99,7 +100,7 @@
                 <TextBlock Text="模板文件" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
                 <TextBox x:Name="ImagePathBox" Grid.Column="1" MinHeight="30" Margin="8,0,0,0"
                          TextChanged="ImagePath_Changed"
-                         ToolTip="相对 resources/images，也可填绝对路径"/>
+                         ToolTip="相对 resources/images（或 resources/user 下的文件名），也可填绝对路径"/>
             </Grid>
 
             <Grid Margin="0,6,0,0">

@@ -174,7 +174,7 @@ public sealed class Probe
 
     // —— image ——
 
-    /// <summary>image: 模板图片路径（相对 resources/images 或绝对路径）。</summary>
+    /// <summary>image: 模板图片路径（相对 resources/images、相对数据根如 resources\user\a.png，或绝对路径）。</summary>
     public string? Image { get; set; }
 
     /// <summary>image / ocr: 搜索或截图区域。</summary>

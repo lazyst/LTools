@@ -59,6 +59,10 @@ public static string DefaultWorkdir() => Directory.Exists(DataRoot) ? DataRoot
 - 启动时 `EnsureResourceDir()`：不存在则 `CreateDirectory`，并写入一份 `README.txt`（仅首次；已存在不覆盖）。
 - 仓库提交 `resources/README.txt`（dev 用）+ `resources/.gitkeep`；**发布 zip 不带 `resources/`**，由首启生成（与 `LTools.json` 同理：升级解压不碰用户已有目录）。
 - `README.txt` 内容（约 5 行）：用途说明、相对路径用法（`resources\foo.ps1`）、升级不会删除本目录、可放任意文件。
+- 找图模板约定两个子目录（见 `Features/Flow/ImageLibrary.cs`）：
+  - `resources/images/`——程序生成的框选截图（`shot-时间戳.png`），启动与删除动作时按引用回收；
+  - `resources/user/`——用户自己的素材，文件选择器默认打开这里，整个目录不参与自动删除。
+  两个目录都在 `resources/` 下，所以备份 `.ltbak` 会一起打包，无需额外处理。
 
 ---
 

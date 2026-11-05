@@ -326,8 +326,9 @@ dotnet publish -c Release -r win-x64 --self-contained false
   - 引擎首次使用时加载（约 0.2 秒），之后跨步骤复用；空闲 5 分钟自动卸载，把内存还给系统
   - 同图基准（15 个场景：12–28px 中英文、深色底、灰字、代码、整屏页面）的平均字符错误率：系统 OCR **0.304**、系统 OCR 先放大 2× 0.155、PP-OCRv6 快速 **0.016**、高精度 **0.000**
   - 结果怎么用：`${变量}` 是识别出的文本（按行）；`${变量.score}` 是 0–1 的平均置信度；`${变量.found}` 表示识别到文字（PP-OCRv6 下要求至少一行置信度 ≥ 0.5，避免把噪声当成功）。识别不到文字时变量为空，可用「不为空」判断；编辑器里的「▶ 测试这个取值」可以直接看识别结果
-- 「截图找图」选一张模板图（放在数据根的 `resources\images\`，跟随备份），在屏幕上找它：可限定**前台窗口 / 整个屏幕 / 固定区域**，可设等待超时和轮询间隔
+- 「截图找图」选一张模板图（框选截图存在数据根的 `resources\images\`，自己放进 `resources\user\`，都跟随备份），在屏幕上找它：可限定**前台窗口 / 整个屏幕 / 固定区域**，可设等待超时和轮询间隔
 - 模板图不用去文件管理器里找：编辑器里点**「框选截图」**，LTools 会先把自己的窗口最小化（不用 Hide——隐藏会结束 `ShowDialog` 的模态循环，编辑器随后就成「僵尸窗口」）、冻结屏幕画面，拖个框后**不急着确定**——选区长出八个把手，可以拖边 / 拖角 / 整体挪，方向键逐像素微调（Shift 每次 10px），满意了点**「✓ 使用这块区域」**（或 Enter、双击选区）才存成 `resources\images\shot-时间戳.png`，同时把搜索区域设成刚框的那一块（目标位置会移动时改成「前台窗口」）；确认栏在选区下方，选区贴近屏幕底部时自动挪到上方，不会挡住正在调的那条边
+- 「换图…」默认打开 `resources\user\`；选到别的目录的图片会**复制一份进来**（重名加序号），配置里存相对路径，备份换机后不会断链。两个目录分工明确：`images\` 是程序生成、按引用自动回收（只删 `shot-*`），`user\` 整个不参与回收，放自己的素材不会被误删
 - 旁边有缩略图，**点缩略图或「预览」**可在编辑窗口里弹出大图（窗口内浮层，不新开顶层窗口）；点图、按 Esc 或点浮层外面即关，不会挡到 / 影响正在编辑的组合动作窗口。想换搜索范围点「框选区域…」直接框（同样是先框再微调），不必手填 x / y / w / h
 - 匹配用 OpenCV 模板匹配，并会尝试常见 Windows 缩放比例（100% / 125% / 150% …）；模板在 100% 下截取、在 125% 的屏幕上也能命中
 - 命中后可用「鼠标操作」点 `${m.x}` / `${m.y}`；「找到了 / 没找到」可作条件
@@ -353,7 +354,7 @@ dotnet publish -c Release -r win-x64 --self-contained false
 
 - **`Actions`**：全局动作池。每个动作有 `Id` / `Name` / `Icon` / `Type` 及类型专属字段，类型见 `Features/ActionTypes.cs`：`launchApp`、`openFile`、`openFolder`、`openUrl`、`runCommand`、`sendText`、`setClipboard`、`sendKeys`、`mouse`、`macro`、`internal`、`composite`。`sendText` 与 `setClipboard` 共用 `Text` 字段（后者写入剪贴板而不发送）。宏动作只用 `MacroId` 引用事件文件，事件本体不在配置里。
   - `mouse`：`X` / `Y`（虚拟桌面像素，可写 `${变量}`）、`MouseAction`（`click` / `doubleClick` / `rightClick` / `middleClick` / `move` / `wheelUp` / `wheelDown`）、`WheelDelta`。
-  - `composite`：`Flow` 是嵌套流程（`action` / `set` / `if` / `loop` / `break` / `continue` / `stop`），旧配置的 `Steps` 会在打开编辑器或运行时自动迁移并清空。流程变量只在单次运行内有效；文本字段只支持 `${变量}`（没有内置值，取值请用左栏「取值」或「设置变量」），`$$` 表示字面 `$`。图像识别用 `Probe` 的 `image`（模板放 `resources/images/`），颜色用 `color`。
+  - `composite`：`Flow` 是嵌套流程（`action` / `set` / `if` / `loop` / `break` / `continue` / `stop`），旧配置的 `Steps` 会在打开编辑器或运行时自动迁移并清空。流程变量只在单次运行内有效；文本字段只支持 `${变量}`（没有内置值，取值请用左栏「取值」或「设置变量」），`$$` 表示字面 `$`。图像识别用 `Probe` 的 `image`（截图模板在 `resources/images/`，用户素材在 `resources/user/`），颜色用 `color`。
   - `OutputVar`：流程里单个动作步骤的输出变量（空 = 不输出）。`runCommand` 填了它会在后台捕获执行：`${变量}` 标准输出、`${变量.exit}` 退出码、`${变量.err}` 错误输出；`launchApp` 存 PID；`openFile` / `openFolder` / `openUrl` 存实际目标；`setClipboard` 存写入的文本；`mouse` 存操作后坐标（`${变量.x}` / `${变量.y}`）。
 - **`SuperPanel`**：超级面板。`Enabled`（独立开关）、`LongPressThresholdMs`（长按阈值 100–800）、`Pages`（每页 16 槽，元素为动作 Id 或 `null`）、`LastPage`（上次停留的页）。
 - **`MenuGroups`**：固定 10 组（下标 0–9 对应 `CapsLock+1`~`CapsLock+0`，`null` 表示空组）。每组含 `Enabled`、`Name`、`Items`（动作 Id 列表）。
@@ -403,6 +404,11 @@ dotnet publish -c Release -r win-x64 --self-contained false
 - 「打开文件」/「打开文件夹」的路径同样支持 `resources\xxx`
 
 浏览选择或保存动作时，如果选到 `resources\` 或 `速记\` 里面的路径，会自动存成相对路径。这样备份换到另一台电脑导入后，引用资源目录的动作照常工作。编辑器里「工作目录」旁有「资源目录」按钮，一键打开该目录。
+
+找图模板另有两个约定子目录，分工是「谁生成、谁负责清」：
+
+- `resources\images\` —— 程序生成（框选截图的 `shot-时间戳.png`）。启动时与删除动作时按引用回收，删了动作 / 换了模板的截图不会一直堆着
+- `resources\user\` —— 用户自己的素材。文件选择器默认打开这里，选到外部图片会复制进来；**整个目录不参与任何自动删除**
 
 ### 12.2 备份与恢复
 

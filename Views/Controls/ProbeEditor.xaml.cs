@@ -426,15 +426,18 @@ public partial class ProbeEditor : UserControl
 
     private void BrowseImage_Click(object sender, RoutedEventArgs e)
     {
+        ImageLibrary.EnsureDir(); // resources\user 得先存在才能当初始目录
+
         var dlg = new OpenFileDialog
         {
             Title = "选择模板图片",
             Filter = "图像|*.png;*.jpg;*.jpeg;*.bmp|所有文件|*.*",
+            InitialDirectory = ImageLibrary.UserDir,
         };
         if (dlg.ShowDialog() != true) return;
 
-        ImageLibrary.EnsureDir();
-        ImagePathBox.Text = ImageLibrary.ToStoredPath(dlg.FileName);
+        // 外部图片复制进 resources\user：配置里存数据根相对路径，备份换机后才不会断链。
+        ImagePathBox.Text = ImageLibrary.ImportUserImage(dlg.FileName);
     }
 
     /// <summary>框选截图：截下来的就是模板，同时把搜索区域收紧到框内。</summary>
