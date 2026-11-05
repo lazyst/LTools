@@ -42,6 +42,9 @@ public partial class ActionEditorDialog : Window
     /// <summary>名称是否必填（组合步骤场景为 false，名称可留空）。</summary>
     private readonly bool _requireName;
 
+    /// <summary>当前流程可用的变量（供输入框变量按钮；普通动作为 null）。</summary>
+    private readonly IReadOnlyList<string>? _variables;
+
     // —— sendKeys 序列编辑状态 ——
     private readonly ObservableCollection<KeyItemView> _keyItems = new();
     private bool _recording;
@@ -59,10 +62,15 @@ public partial class ActionEditorDialog : Window
     private bool _macroTopmostPinned; // 恢复时抢不到前台，临时置顶保证用户看得见
     private bool _macroTopmostBefore; // 临时置顶前的 Topmost 值
 
-    public ActionEditorDialog(string title, ActionDto? existing, bool allowComposite = true, bool requireName = true, bool allowMacro = true)
+    public ActionEditorDialog(string title, ActionDto? existing, bool allowComposite = true, bool requireName = true, bool allowMacro = true,
+        IReadOnlyList<string>? variables = null)
     {
         InitializeComponent();
         WindowChromeHelper.FixMaximize(this);
+        // 可插入的变量由调用方（组合动作编辑器）一次性给出，沿逻辑树继承到每个 VariableTextBox；
+        // 普通动作（不属于任何流程）没有变量，按钮会自动隐藏。
+        VariableSource.SetNames(this, variables);
+        _variables = variables;
         _draft = existing != null ? Clone(existing) : new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default };
         _requireName = requireName;
         if (!string.IsNullOrEmpty(title)) Title = title;
@@ -73,6 +81,7 @@ public partial class ActionEditorDialog : Window
         _fieldsByType[ActionType.openUrl] = F_OpenUrl;
         _fieldsByType[ActionType.runCommand] = F_RunCommand;
         _fieldsByType[ActionType.sendText] = F_SendText;
+        _fieldsByType[ActionType.setClipboard] = F_SetClipboard;
         _fieldsByType[ActionType.sendKeys] = F_SendKeys;
         _fieldsByType[ActionType.mouse] = F_Mouse;
         _fieldsByType[ActionType.macro] = F_Macro;
@@ -88,6 +97,7 @@ public partial class ActionEditorDialog : Window
             new("打开网址", ActionType.openUrl),
             new("运行命令", ActionType.runCommand),
             new("发送文本", ActionType.sendText),
+            new("写入剪贴板", ActionType.setClipboard),
             new("模拟按键", ActionType.sendKeys),
             new("鼠标操作", ActionType.mouse),
             // 宏按 Id 引用事件文件：组合步骤已支持宏步骤（引用 macros/ 下的文件，备份一起走）。
@@ -168,9 +178,11 @@ public partial class ActionEditorDialog : Window
     /// <summary>同 <see cref="Show(Window, string, ActionDto?)"/>，可禁用「组合动作」类型项（编辑组合步骤时用）。</summary>
     /// <param name="requireName">名称是否必填；false = 组合步骤场景（名称可留空，步骤行显示类型名）。</param>
     /// <param name="allowMacro">是否允许选「键鼠宏」；默认提供，特殊场景可关闭。</param>
-    public static ActionDto? Show(Window owner, string title, ActionDto? existing, bool allowComposite, bool requireName = true, bool allowMacro = true)
+    /// <param name="variables">当前流程的用户变量（供输入框右侧的变量按钮）；普通动作传 null。</param>
+    public static ActionDto? Show(Window owner, string title, ActionDto? existing, bool allowComposite, bool requireName = true, bool allowMacro = true,
+        IReadOnlyList<string>? variables = null)
     {
-        var dlg = new ActionEditorDialog(title, existing, allowComposite, requireName, allowMacro) { Owner = owner, Topmost = owner.Topmost };
+        var dlg = new ActionEditorDialog(title, existing, allowComposite, requireName, allowMacro, variables) { Owner = owner, Topmost = owner.Topmost };
         dlg.ShowDialog();
         return dlg.Result;
     }
@@ -196,6 +208,7 @@ public partial class ActionEditorDialog : Window
         KeepWindowBox.IsChecked = _draft.KeepWindow ?? false;
 
         SendTextBox.Text = _draft.Text ?? "";
+        ClipboardTextBox.Text = _draft.Text ?? "";
         SendModeCombo.SelectedIndex = (_draft.Mode ?? SendTextMode.auto) switch
         {
             SendTextMode.type => 1,
@@ -925,6 +938,10 @@ public partial class ActionEditorDialog : Window
                 };
                 _draft.AppendEnter = AppendEnterBox.IsChecked == true;
                 break;
+            case ActionType.setClipboard:
+                // 留空 = 清空剪贴板（明确允许，方便流程里先清掉旧内容）
+                _draft.Text = ClipboardTextBox.Text;
+                break;
             case ActionType.sendKeys:
                 if (_keyItems.Count == 0) { ConfirmDialog.Info(this, "动作", "请至少添加一条输入条目。"); return; }
                 if (_recording) StopRecording();
@@ -1127,7 +1144,7 @@ public partial class ActionEditorDialog : Window
     private void AddText_Click(object sender, RoutedEventArgs e)
     {
         var (ok, val) = InputDialog.Show(this, "添加文本",
-            "输入要发送的文本（自动 Unicode 注入，中英文/emoji 均可，不碰剪贴板）", "");
+            "输入要发送的文本（自动 Unicode 注入，中英文/emoji 均可，不碰剪贴板）", "", _variables);
         if (!ok || val.Length == 0) return;
         _keyItems.Add(new KeyItemView(new KeyItem { Kind = KeyItemKind.text, Text = val }));
         RefreshKeyNumbers();
@@ -1200,7 +1217,7 @@ public partial class ActionEditorDialog : Window
                 break;
             case KeyItemKind.text:
                 var (okT, valT) = InputDialog.Show(this, "编辑文本",
-                    "输入要发送的文本（自动 Unicode 注入，中英文/emoji 均可，不碰剪贴板）", m.Text ?? "");
+                    "输入要发送的文本（自动 Unicode 注入，中英文/emoji 均可，不碰剪贴板）", m.Text ?? "", _variables);
                 if (!okT || valT.Length == 0) return;
                 m.Text = valT;
                 break;

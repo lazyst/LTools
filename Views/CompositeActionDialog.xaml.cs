@@ -97,7 +97,7 @@ public partial class CompositeActionDialog : Window
         _query = (SearchBox.Text ?? "").Trim();
         SourceList.Children.Clear();
 
-        // 基础动作（10 种动作类型）→ 双击/拖入开预置类型的编辑器（§12）
+        // 基础动作（11 种动作类型）→ 双击/拖入开预置类型的编辑器（§12）
         var basicDefs = new (ActionType Type, string Icon, string Label)[]
         {
             (ActionType.launchApp, "app", "启动程序"),
@@ -106,6 +106,7 @@ public partial class CompositeActionDialog : Window
             (ActionType.openUrl, "globe", "打开网址"),
             (ActionType.runCommand, "terminal", "运行命令"),
             (ActionType.sendText, "send", "发送文本"),
+            (ActionType.setClipboard, "paste", "写入剪贴板"),
             (ActionType.sendKeys, "keyboard", "模拟按键"),
             (ActionType.mouse, "mouse", "鼠标操作"),
             (ActionType.macro, "record", "键鼠宏"),
@@ -376,7 +377,8 @@ public partial class CompositeActionDialog : Window
         {
             // 双击/拖入均开编辑器（类型已预置），填完字段后作为内嵌步骤
             var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = item.BasicType.Value };
-            var dto = ActionEditorDialog.Show(this, "新建步骤", draft, allowComposite: false, requireName: false);
+            var dto = ActionEditorDialog.Show(this, "新建步骤", draft, allowComposite: false, requireName: false,
+                variables: FlowVariables.Collect(_flow));
             BuildSourceList();   // 编辑期间可能录了新宏，刷新左栏动作池
             if (dto == null || dto.Type == ActionType.composite) return;   // 取消 / 防御
             var c = dto.Clone();
@@ -591,7 +593,8 @@ public partial class CompositeActionDialog : Window
         if (row.Node.Kind == FlowNodeKind.action)
         {
             if (row.Node.Action == null) return;
-            var dto = ActionEditorDialog.Show(this, "编辑步骤", row.Node.Action, allowComposite: false, requireName: false);
+            var dto = ActionEditorDialog.Show(this, "编辑步骤", row.Node.Action, allowComposite: false, requireName: false,
+                variables: FlowVariables.Collect(_flow));
             if (dto == null || dto.Type == ActionType.composite) return;
             var a = dto.Clone();
             a.Id = "";

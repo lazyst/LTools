@@ -20,6 +20,7 @@ public enum ActionType
     openUrl,
     runCommand,
     sendText,
+    setClipboard,
     sendKeys,
     mouse,
     macro,
@@ -129,6 +130,7 @@ public static class ActionTypeLabel
         ActionType.openUrl => "打开网址",
         ActionType.runCommand => "运行命令",
         ActionType.sendText => "发送文本",
+        ActionType.setClipboard => "写入剪贴板",
         ActionType.sendKeys => "模拟按键",
         ActionType.mouse => "鼠标操作",
         ActionType.macro => "键鼠宏",
@@ -219,9 +221,9 @@ public sealed class ActionDto
     /// <summary>internal: 内部命令键（如 "quickNote.toggle"，见 <see cref="InternalActionRegistry"/>）。</summary>
     public string? Command { get; set; }
 
-    // —— sendText（§3.2.2）——
+    // —— sendText（§3.2.2）/ setClipboard ——
 
-    /// <summary>sendText: 要发送的多行文本。</summary>
+    /// <summary>sendText / setClipboard: 要发送或写入剪贴板的文本（支持 ${变量} 模板）。</summary>
     public string? Text { get; set; }
 
     /// <summary>sendText: 发送方式，null 视为 <see cref="SendTextMode.auto"/>。</summary>

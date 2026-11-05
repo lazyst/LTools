@@ -79,11 +79,11 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Grid.Column="0" x:Name="TargetBox" MinHeight="30" Margin="0,0,8,0"/>
+                                    <controls:VariableTextBox Grid.Column="0" x:Name="TargetBox" MinHeight="30" Margin="0,0,8,0"/>
                                     <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72" Click="BrowseTarget_Click"/>
                                 </Grid>
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="参数（可选）" Margin="0,0,0,4"/>
-                                <TextBox x:Name="ArgsBox" MinHeight="30" Margin="0,0,0,10"/>
+                                <controls:VariableTextBox x:Name="ArgsBox" MinHeight="30" Margin="0,0,0,10"/>
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="工作目录（可选，留空 = LTools 所在目录）" Margin="0,0,0,4"/>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -91,7 +91,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Grid.Column="0" x:Name="LaunchWorkdirBox" MinHeight="30" Margin="0,0,8,0"/>
+                                    <controls:VariableTextBox Grid.Column="0" x:Name="LaunchWorkdirBox" MinHeight="30" Margin="0,0,8,0"/>
                                     <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72" Margin="0,0,8,0"
                                             Click="BrowseLaunchWorkdir_Click" ToolTip="用文件资源管理器选择工作目录"/>
                                     <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="资源目录" MinWidth="80"
@@ -110,7 +110,7 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Grid.Column="0" x:Name="FileBox" MinHeight="30" Margin="0,0,8,0"/>
+                                    <controls:VariableTextBox Grid.Column="0" x:Name="FileBox" MinHeight="30" Margin="0,0,8,0"/>
                                     <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72" Click="BrowseFile_Click"/>
                                 </Grid>
                             </StackPanel>
@@ -123,7 +123,7 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Grid.Column="0" x:Name="FolderBox" MinHeight="30" Margin="0,0,8,0"/>
+                                    <controls:VariableTextBox Grid.Column="0" x:Name="FolderBox" MinHeight="30" Margin="0,0,8,0"/>
                                     <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72" Click="BrowseFolder_Click"/>
                                 </Grid>
                             </StackPanel>
@@ -131,13 +131,13 @@
                             <!-- openUrl -->
                             <StackPanel x:Name="F_OpenUrl">
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="网址" Margin="0,0,0,4"/>
-                                <TextBox x:Name="UrlBox" MinHeight="30"/>
+                                <controls:VariableTextBox x:Name="UrlBox" MinHeight="30"/>
                             </StackPanel>
 
                             <!-- runCommand -->
                             <StackPanel x:Name="F_RunCommand">
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="命令" Margin="0,0,0,4"/>
-                                <TextBox x:Name="CmdBox" MinHeight="30" Margin="0,0,0,10"/>
+                                <controls:VariableTextBox x:Name="CmdBox" MinHeight="30" Margin="0,0,0,10"/>
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -157,7 +157,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Grid.Column="0" x:Name="CmdWorkdirBox" MinHeight="30" Margin="0,0,8,0"/>
+                                    <controls:VariableTextBox Grid.Column="0" x:Name="CmdWorkdirBox" MinHeight="30" Margin="0,0,8,0"/>
                                     <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…" MinWidth="72" Margin="0,0,8,0"
                                             Click="BrowseCmdWorkdir_Click" ToolTip="用文件资源管理器选择工作目录"/>
                                     <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="资源目录" MinWidth="80"
@@ -171,9 +171,9 @@
                             <!-- sendText -->
                             <StackPanel x:Name="F_SendText">
                                 <TextBlock Style="{StaticResource SectionLabel}" Text="要发送的文本" Margin="0,0,0,4"/>
-                                <TextBox x:Name="SendTextBox" MinHeight="96" MaxHeight="200"
-                                         AcceptsReturn="True" TextWrapping="Wrap"
-                                         VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"/>
+                                <controls:VariableTextBox x:Name="SendTextBox" MinHeight="96" MaxHeight="200"
+                                                          AcceptsReturn="True" TextWrapping="Wrap"
+                                                          VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"/>
                                 <Grid Margin="0,10,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -191,6 +191,16 @@
                                               VerticalAlignment="Bottom" Margin="0,0,0,4"
                                               ToolTip="发送完文本后再发一次回车（聊天软件中用于直接发出）"/>
                                 </Grid>
+                            </StackPanel>
+
+                            <!-- setClipboard（写入剪贴板） -->
+                            <StackPanel x:Name="F_SetClipboard">
+                                <TextBlock Style="{StaticResource SectionLabel}" Text="写入剪贴板的文本" Margin="0,0,0,4"/>
+                                <controls:VariableTextBox x:Name="ClipboardTextBox" MinHeight="96" MaxHeight="200"
+                                                          AcceptsReturn="True" TextWrapping="Wrap"
+                                                          VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"/>
+                                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                           Text="可用 ${变量} 插入运行时的值（例如先「取值 · 选中文本」，再把它写进剪贴板）。留空则清空剪贴板。"/>
                             </StackPanel>
 
                             <!-- sendKeys（模拟按键） -->
@@ -284,10 +294,10 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="x" VerticalAlignment="Center"
                                                Foreground="{StaticResource HintTextBrush}"/>
-                                    <TextBox Grid.Column="1" x:Name="MouseXBox" MinHeight="30" Margin="6,0,12,0"/>
+                                    <controls:VariableTextBox Grid.Column="1" x:Name="MouseXBox" MinHeight="30" Margin="6,0,12,0"/>
                                     <TextBlock Grid.Column="2" Text="y" VerticalAlignment="Center"
                                                Foreground="{StaticResource HintTextBrush}"/>
-                                    <TextBox Grid.Column="3" x:Name="MouseYBox" MinHeight="30" Margin="6,0,0,0"/>
+                                    <controls:VariableTextBox Grid.Column="3" x:Name="MouseYBox" MinHeight="30" Margin="6,0,0,0"/>
                                     <Button Grid.Column="4" Style="{StaticResource BtnGhost}" Content="⌖ 拾取"
                                             MinHeight="30" Padding="10,4" Margin="8,0,0,0"
                                             Click="MousePick_Click"

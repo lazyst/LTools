@@ -279,6 +279,7 @@ dotnet publish -c Release -r win-x64 --self-contained false
 ### 10.1 流程控制
 
 - 左栏「流程」分组提供：设置变量、如果、循环、跳出循环、进入下一次循环、停止流程；「取值」分组提供剪贴板文本、选中文本、鼠标位置、日期时间、上一步的错误，点一下就把当前值存成变量（生成的仍是普通「设置变量」节点）
+- 「基础动作」里还有**写入剪贴板**：把文本（可含 `${变量}`）写进系统剪贴板，不发送、不按键；留空表示清空剪贴板。配合「取值 · 选中文本」就是「复制选中内容」的最短写法
 - 流程是**嵌套块**：`如果 … 否则 … 结束如果`、`循环 … 结束循环`，用缩进表示层级；**没有 goto**，重复执行用「循环 + 跳出 / 继续」表达
 - 中间流程区拖行首把手排序；拖到目标行的上半 / 下半决定插在它之前还是之后；「否则 / 结束如果 / 结束循环」这些标记行本身就是插入点
 - 每行可单独设置**延迟**（执行前等待，毫秒）与**失败策略**：继续下一步（默认）或中止组合
@@ -295,6 +296,7 @@ dotnet publish -c Release -r win-x64 --self-contained false
 - 编辑器里的下拉框打开时按真实视口校正位置，不会「一打开就跳过前几项」；下拉框收起时滚轮掠过它，滚的是所在页面，不会偷偷改掉选中值
 - 变量**只在本次运行内有效**，不写盘、不跨运行；**没有内置变量**——要用剪贴板 / 选中文本 / 光标位置 / 日期时间，就在左栏「取值」里点一下，让它们变成你自己的变量。选中文本通过 UI Automation 读取，不模拟按键、不动剪贴板；循环下标在「循环」节点里填一个「下标变量」名（如「序号」），每轮开始写入当前下标（从 0 开始）
 - 文本字段（发送文本、运行命令、鼠标坐标、比较右值等）支持 `${变量名}`；图像匹配结果带中心坐标与相似度，用 `${m.x}` / `${m.y}` / `${m.score}` / `${m.found}` 取；`$$` 表示字面 `$`
+- **每个能写 `${变量}` 的输入框右侧都有一个小「$」按钮**：点开就是本流程的变量，选中即插入到光标处（有选区则替换）。编辑步骤时突然想起要用变量，不必先关窗口、再跑到右栏复制；窗口里没有变量时按钮自动隐藏，外观与普通输入框一样
 - 条件支持等于 / 不等于 / 包含 / 开头 / 结尾 / 正则 / 为空 / 数值比较 / 为真为假，以及按取值方式的专用判定（图像找到了、颜色接近目标、窗口在前台、进程正在运行）
 - 条件可勾选**取反**，也可把判断结果存回变量（「结果变量」），循环里用来累计状态
 - 配置类错误（变量未定义、模板图片缺失、正则写错）会直接中止流程，不会带着错配置继续跑
@@ -329,7 +331,7 @@ dotnet publish -c Release -r win-x64 --self-contained false
 
 ### 11.1 主要字段
 
-- **`Actions`**：全局动作池。每个动作有 `Id` / `Name` / `Icon` / `Type` 及类型专属字段，类型见 `Features/ActionTypes.cs`：`launchApp`、`openFile`、`openFolder`、`openUrl`、`runCommand`、`sendText`、`sendKeys`、`mouse`、`macro`、`internal`、`composite`。宏动作只用 `MacroId` 引用事件文件，事件本体不在配置里。
+- **`Actions`**：全局动作池。每个动作有 `Id` / `Name` / `Icon` / `Type` 及类型专属字段，类型见 `Features/ActionTypes.cs`：`launchApp`、`openFile`、`openFolder`、`openUrl`、`runCommand`、`sendText`、`setClipboard`、`sendKeys`、`mouse`、`macro`、`internal`、`composite`。`sendText` 与 `setClipboard` 共用 `Text` 字段（后者写入剪贴板而不发送）。宏动作只用 `MacroId` 引用事件文件，事件本体不在配置里。
   - `mouse`：`X` / `Y`（虚拟桌面像素，可写 `${变量}`）、`MouseAction`（`click` / `doubleClick` / `rightClick` / `middleClick` / `move` / `wheelUp` / `wheelDown`）、`WheelDelta`。
   - `composite`：`Flow` 是嵌套流程（`action` / `set` / `if` / `loop` / `break` / `continue` / `stop`），旧配置的 `Steps` 会在打开编辑器或运行时自动迁移并清空。流程变量只在单次运行内有效；文本字段只支持 `${变量}`（没有内置值，取值请用左栏「取值」或「设置变量」），`$$` 表示字面 `$`。图像识别用 `Probe` 的 `image`（模板放 `resources/images/`），颜色用 `color`。
 - **`SuperPanel`**：超级面板。`Enabled`（独立开关）、`LongPressThresholdMs`（长按阈值 100–800）、`Pages`（每页 16 槽，元素为动作 Id 或 `null`）、`LastPage`（上次停留的页）。

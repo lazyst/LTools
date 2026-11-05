@@ -28,7 +28,7 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <TextBlock Grid.Row="0" x:Name="PromptText" Style="{StaticResource HintLabel}" Margin="0,0,0,8"/>
-            <TextBox Grid.Row="1" x:Name="ValueBox" MinHeight="32"/>
+            <controls:VariableTextBox Grid.Row="1" x:Name="ValueBox" MinHeight="32"/>
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
                 <Button Style="{StaticResource BtnGhost}" x:Name="CancelBtn" Content="取消"
                         MinWidth="78" Margin="0,0,8,0" IsCancel="True"/>

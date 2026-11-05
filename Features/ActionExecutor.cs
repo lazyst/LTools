@@ -15,6 +15,7 @@ namespace LTools.Features;
 /// <item>openFile / openFolder / openUrl → ShellExecute（默认程序打开）</item>
 /// <item>runCommand → 复用 <see cref="TerminalLauncher"/> 终端路由；direct 走 ShellExecute</item>
 /// <item>sendText → 50ms 焦点延时后按 <see cref="SendTextMode"/> 分发（auto=Unicode 注入 / type=键入 / paste=剪贴板粘贴，§3.2.2）</item>
+/// <item>setClipboard → 把文本（可含运行期模板）写进系统剪贴板，不发送、不按键</item>
 /// <item>sendKeys → 50ms 焦点延时后顺序遍历条目（chord 逐 stroke Combo、stroke 间 15ms；text 复用 sendText auto；sleep 等待，§3.2.1）</item>
 /// <item>internal → <see cref="InternalActionRegistry"/> 分发（dispatch 到 UI 线程执行）</item>
 /// <item>mouse → 绝对移动 + 点击 / 双击 / 滚轮（坐标支持运行期模板）</item>
@@ -70,6 +71,9 @@ internal static class ActionExecutor
                 break;
             case ActionType.sendText:
                 SendText(action);
+                break;
+            case ActionType.setClipboard:
+                SetClipboard(action);
                 break;
             case ActionType.sendKeys:
                 SendKeys(action);
@@ -199,6 +203,18 @@ internal static class ActionExecutor
         exe = cmd[..sp];
         args = cmd[(sp + 1)..].Trim();
         return true;
+    }
+
+    // —— setClipboard（写入剪贴板）——
+
+    /// <summary>
+    /// 把文本写进剪贴板（不发送、不按键）。文本为空表示清空剪贴板。
+    /// 剪贴板被占用时的重试在 <see cref="NativeClipboard.SetText"/> 内部完成。
+    /// </summary>
+    private static void SetClipboard(ActionDto a)
+    {
+        if (NativeClipboard.SetText(a.Text ?? "")) return;
+        throw new InvalidOperationException($"写入剪贴板失败（剪贴板被其他程序占用？）: {a.Name}");
     }
 
     // —— sendText（发送文本，§3.2.2）——

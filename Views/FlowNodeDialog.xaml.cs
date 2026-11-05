@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using LTools.Features;
+using LTools.Views.Controls;
 
 namespace LTools.Views;
 
@@ -31,7 +32,10 @@ public partial class FlowNodeDialog : Window
         WindowChromeHelper.FixMaximize(this);
         _node = node.Clone();
 
-        VarList.SetCustom(customVariables);
+        var variables = customVariables as IReadOnlyList<string>
+                        ?? (customVariables == null ? new List<string>() : new List<string>(customVariables));
+        VariableSource.SetNames(this, variables);
+        VarList.SetCustom(variables);
         VarList.VariableInvoked += InsertVariable;
 
         switch (_node.Kind)

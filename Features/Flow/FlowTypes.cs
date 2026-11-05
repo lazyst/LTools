@@ -411,6 +411,7 @@ public static class FlowText
         return a.Type switch
         {
             ActionType.sendText => string.IsNullOrEmpty(a.Text) ? "发送文本" : $"发送文本：{Trim(a.Text, 24)}",
+            ActionType.setClipboard => string.IsNullOrEmpty(a.Text) ? "写入剪贴板（清空）" : $"写入剪贴板：{Trim(a.Text, 24)}",
             ActionType.sendKeys => $"模拟按键（{count} 条）",
             ActionType.mouse => MouseLabel(a),
             _ => string.IsNullOrEmpty(a.Name) ? ActionTypeLabel.Of(a.Type) : a.Name,

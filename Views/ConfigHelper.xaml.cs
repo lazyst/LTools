@@ -1366,6 +1366,7 @@ public partial class ConfigHelperWindow : Window
             ActionType.openUrl => a.Url ?? "",
             ActionType.runCommand => string.IsNullOrEmpty(a.Cmd) ? "" : $"{a.Cmd}",
             ActionType.sendText => BriefText(a.Text),
+            ActionType.setClipboard => BriefText(a.Text),
             ActionType.sendKeys => a.Items != null ? $"{a.Items.Count} 条输入" : "",
             ActionType.macro => MacroLabel(a.MacroId, macroNames),
             ActionType.@internal => a.Command ?? "",

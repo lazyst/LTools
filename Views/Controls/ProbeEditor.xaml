@@ -1,6 +1,7 @@
 <UserControl x:Class="LTools.Views.Controls.ProbeEditor"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LTools.Views.Controls"
              FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
     <StackPanel>
         <TextBlock Style="{StaticResource SectionLabel}" Text="取值方式" Margin="0,0,0,4"/>
@@ -10,10 +11,10 @@
         <StackPanel x:Name="P_Text" Visibility="Collapsed" Margin="0,8,0,0">
             <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
                        Text="直接输入文本；用 ${变量} 插入运行时的值（整段只写 ${变量} 时按变量处理）。$$ 表示字面 $。"/>
-            <TextBox x:Name="TextValueBox" MinHeight="64" Margin="0,4,0,0"
-                     AcceptsReturn="True" TextWrapping="Wrap"
-                     VerticalScrollBarVisibility="Auto" MaxHeight="140"
-                     TextChanged="TextValue_Changed"/>
+            <controls:VariableTextBox x:Name="TextValueBox" MinHeight="64" Margin="0,4,0,0"
+                                      AcceptsReturn="True" TextWrapping="Wrap"
+                                      VerticalScrollBarVisibility="Auto" MaxHeight="140"
+                                      TextChanged="TextValue_Changed"/>
         </StackPanel>
 
         <!-- 选中文本 -->
@@ -153,9 +154,9 @@
             <TextBlock Style="{StaticResource HintLabel}" Text="读取屏幕某点的颜色；坐标支持 ${变量}"/>
             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                 <TextBlock Text="x" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
-                <TextBox x:Name="ColorXBox" Width="64" MinHeight="30" Margin="4,0,10,0"/>
+                <controls:VariableTextBox x:Name="ColorXBox" Width="64" MinHeight="30" Margin="4,0,10,0"/>
                 <TextBlock Text="y" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
-                <TextBox x:Name="ColorYBox" Width="64" MinHeight="30" Margin="4,0,0,0"/>
+                <controls:VariableTextBox x:Name="ColorYBox" Width="64" MinHeight="30" Margin="4,0,0,0"/>
                 <Button x:Name="PickPointBtn" Style="{StaticResource BtnGhost}" Content="⌖ 吸管取点"
                         MinHeight="30" Padding="10,4" Margin="10,0,0,0" Click="PickColorPoint_Click"
                         ToolTip="最小化窗口后在屏幕上单击：取坐标，条件里同时填入目标色"/>
@@ -215,7 +216,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBox x:Name="ProcessNameBox" MinHeight="32" Grid.Column="0"/>
+                <controls:VariableTextBox x:Name="ProcessNameBox" MinHeight="32" Grid.Column="0"/>
                 <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="从运行中的进程选择…"
                         MinHeight="32" Padding="10,4" Margin="8,0,0,0" Click="PickProcess_Click"
                         ToolTip="列出正在运行的进程，点一个即可自动填入"/>

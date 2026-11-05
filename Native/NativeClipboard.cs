@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace LTools.Native;
 
@@ -31,10 +32,30 @@ internal static class NativeClipboard
     private const uint CF_UNICODETEXT = 13;
     private const uint GMEM_MOVEABLE = 0x0002;
 
+    /// <summary>剪贴板被别的程序占用时的重试次数 / 间隔。</summary>
+    /// <remarks>
+    /// 剪贴板是全局独占资源：剪贴板管理器、云同步、截图工具都会在内容变化后立刻打开它。
+    /// 写完后马上读（流程里「写入剪贴板」紧跟「取值 · 剪贴板文本」）或读之前正好被抢走，
+    /// <c>OpenClipboard</c> 就会返回失败——不重试的话看起来就像内容凭空消失。
+    /// 总等待上限约 60ms，远小于钩子 300ms 的约束。
+    /// </remarks>
+    private const int OpenRetries = 5;
+    private const int OpenRetryDelayMs = 15;
+
+    private static bool OpenWithRetry()
+    {
+        for (int i = 0; i < OpenRetries; i++)
+        {
+            if (OpenClipboard(IntPtr.Zero)) return true;
+            if (i < OpenRetries - 1) Thread.Sleep(OpenRetryDelayMs);
+        }
+        return false;
+    }
+
     /// <summary>清空剪贴板（EmptyClipboard）。</summary>
     public static void Clear()
     {
-        if (OpenClipboard(IntPtr.Zero))
+        if (OpenWithRetry())
         {
             try { EmptyClipboard(); } finally { CloseClipboard(); }
         }
@@ -44,7 +65,7 @@ internal static class NativeClipboard
     public static bool TryGetText(out string text)
     {
         text = "";
-        if (!OpenClipboard(IntPtr.Zero)) return false;
+        if (!OpenWithRetry()) return false;
         try
         {
             var h = GetClipboardData(CF_UNICODETEXT);
@@ -70,7 +91,7 @@ internal static class NativeClipboard
     /// <summary>写入文本到剪贴板（CF_UNICODETEXT，立即落 Win32 层）。失败返回 false。</summary>
     public static bool SetText(string text)
     {
-        if (!OpenClipboard(IntPtr.Zero)) return false;
+        if (!OpenWithRetry()) return false;
         try
         {
             EmptyClipboard();

@@ -11,7 +11,7 @@
 
         <StackPanel x:Name="OperandPanel" Margin="0,8,0,0">
             <TextBlock x:Name="OperandLabel" Style="{StaticResource HintLabel}"/>
-            <TextBox x:Name="OperandBox" MinHeight="32" Margin="0,4,0,0"/>
+            <controls:VariableTextBox x:Name="OperandBox" MinHeight="32" Margin="0,4,0,0"/>
         </StackPanel>
 
         <CheckBox x:Name="NegateBox" Content="取反（条件不成立时才执行）" Margin="0,10,0,0"/>
