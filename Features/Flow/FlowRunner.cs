@@ -54,6 +54,10 @@ internal static class FlowRunner
             return;
         }
 
+        // 运行期截图（变量的 .file）只在这一次运行内有效：开始新一次 = 上一次的已经用完，顺手回收。
+        // 界线用「现在」：本次稍后截的图比它新，不会被误删；上一次留下的（含上次没清掉的）在这里清干净。
+        ImageLibrary.CollectGarbage(DateTime.Now);
+
         _stopKeySwallowed = false;
         var cts = new CancellationTokenSource();
         _cts = cts;

@@ -88,7 +88,7 @@
             <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
                        Text="结果怎么用：${变量} 是区域「x,y,w,h」；${变量.cx} / ${变量.cy} 是中心点（可直接喂给鼠标操作）；${变量.w} / ${变量.h} 是尺寸；${变量.file} 是存下来的 png 路径，交给「文字识别」或「打开文件」；${变量.found} 是 true / false，交互框选按 Esc 取消时为 false。"/>
             <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
-                       Text="截下来的图片存在 resources\images\，与模板截图同一套回收规则（没人引用时下次启动清掉），不会越堆越多。"/>
+                       Text="截下来的图片存在 resources\images\：本次运行期间一直可用（交给「文字识别」、写进剪贴板的 .file 路径都能读），下一次运行开始时清掉上一次留下的、没人引用的；编辑器里试截的图测完即删。"/>
         </StackPanel>
 
         <!-- 输入文本：两个字段用途不同——上面是问句，下面是输入框的预填内容 -->

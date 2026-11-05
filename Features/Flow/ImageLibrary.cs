@@ -121,8 +121,8 @@ internal static class ImageLibrary
 
     /// <summary>
     /// 把程序生成的图片存进 <see cref="Dir"/>（<c>shot-时间戳.png</c>，重名加序号），返回绝对路径。
-    /// 模板截图与「截图」取值器共用；这类文件按引用回收（<see cref="CollectGarbage"/>），
-    /// 所以流程运行时截的图不会一直堆着——下次启动按「没人引用」清掉。
+    /// 模板截图与「截图」取值器共用；这类文件按引用回收（<see cref="CollectGarbage"/>）：
+    /// 模板截图随配置长期保留，运行期截的图在下一次运行开始时清掉（本次运行期间一直可用）。
     /// </summary>
     public static string SaveGenerated(System.Windows.Media.Imaging.BitmapSource image)
     {
@@ -154,6 +154,26 @@ internal static class ImageLibrary
         return path;
     }
 
+    /// <summary>
+    /// 删掉一张程序生成的截图。只动 <see cref="Dir"/> 下的文件，误传别的路径（用户素材 / 模板以外的图）
+    /// 一律不碰；失败忽略——编辑器的「▶ 测试」用它清掉试截的那张。
+    /// </summary>
+    public static void DeleteGenerated(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        try
+        {
+            string full = Path.GetFullPath(Resolve(path));
+            string dir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Dir));
+            if (!string.Equals(Path.GetDirectoryName(full), dir, StringComparison.OrdinalIgnoreCase)) return;
+            if (File.Exists(full)) File.Delete(full);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("ImageLibrary.DeleteGenerated", ex);
+        }
+    }
+
     /// <summary>两个文件内容是否完全一致（先比长度，再比 SHA-256）。读取失败按「不一致」处理。</summary>
     private static bool SameContent(string a, string b)
     {
@@ -179,15 +199,19 @@ internal static class ImageLibrary
     // ============ 引用回收 ============
 
     /// <summary>
-    /// 按引用回收模板截图：删除不被任何找图 / 变量赋值 / 条件 / 循环条件引用的 <c>shot-*.png</c>。
+    /// 按引用回收程序生成的截图：删除不被任何找图 / 变量赋值 / 条件 / 循环条件引用的 <c>shot-*.png</c>。
     ///
     /// 与 <see cref="MacroStore.CollectGarbage"/> 同一套思路（引用来自所有动作，含组合里的嵌套节点与
-    /// 旧 Steps），在「启动」与「删除动作」时各跑一次。只扫 <see cref="Dir"/>，用户素材目录
-    /// <see cref="UserDir"/> 整个不在回收范围内；<see cref="Dir"/> 里也仍按 <see cref="ShotPrefix"/>
-    /// 过滤，避免误删用户以前直接放在 images 下的图。
+    /// 旧 Steps），在「启动」「删除动作」与「每次流程运行开始时」各跑一次。只扫 <see cref="Dir"/>，
+    /// 用户素材目录 <see cref="UserDir"/> 整个不在回收范围内；<see cref="Dir"/> 里也仍按
+    /// <see cref="ShotPrefix"/> 过滤，避免误删用户以前直接放在 images 下的图。
     /// </summary>
+    /// <param name="olderThan">
+    /// 只删在这个时间点之前写下的文件（<c>null</c> = 全都算）。流程运行开始时传本次开始的时间：
+    /// 上一次运行留下的会被清掉，本次稍后截的比它新，不会被误删。
+    /// </param>
     /// <returns>删除的文件数。</returns>
-    public static int CollectGarbage()
+    public static int CollectGarbage(DateTime? olderThan = null)
     {
         try
         {
@@ -200,11 +224,12 @@ internal static class ImageLibrary
             foreach (string file in Directory.GetFiles(Dir, ShotPrefix + "*.png"))
             {
                 if (live.Contains(Path.GetFileName(file))) continue;
+                if (olderThan is DateTime cutoff && File.GetLastWriteTime(file) >= cutoff) continue;
                 try { File.Delete(file); removed++; }
                 catch (Exception ex) { CrashLog.Write("ImageLibrary.CollectGarbage", ex); }
             }
             if (removed > 0)
-                AppLog.Info("Resource", $"回收未被引用的模板截图 {removed} 个");
+                AppLog.Info("Resource", $"回收没人引用的截图 {removed} 个");
             return removed;
         }
         catch (Exception ex)

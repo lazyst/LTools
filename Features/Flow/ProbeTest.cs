@@ -28,7 +28,13 @@ internal static class ProbeTest
 
         var ctx = new RunContext(CancellationToken.None, 0, 0);
         var value = ProbeEvaluator.Evaluate(test, ctx);
-        return Describe(test, value);
+        string text = Describe(test, value);
+
+        // 试截的图只服务这一次测试（结果里已经有区域），不必把它留在 resources\images；
+        // 运行期截图则要留给后续步骤，由下一次运行开始时回收。
+        if (test.Kind == ProbeKind.screenshot) ImageLibrary.DeleteGenerated(value.File);
+
+        return text;
     }
 
     /// <summary>把取值结果变成一句人话（带坐标 / 相似度等关键信息）。</summary>
@@ -64,8 +70,7 @@ internal static class ProbeTest
 
             case ProbeKind.screenshot:
                 return value.Flag == true
-                    ? $"区域 {value.X}, {value.Y} · {value.W} × {value.H} · "
-                      + System.IO.Path.GetFileName(value.File)
+                    ? $"区域 {value.X}, {value.Y} · {value.W} × {value.H}（试截的图已删除，运行流程时才会留下 png）"
                     : "已取消，没有区域";
 
             default:
