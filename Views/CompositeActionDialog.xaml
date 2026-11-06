@@ -124,6 +124,11 @@
                     <Setter TargetName="EditBtn" Property="Visibility" Value="Collapsed"/>
                 </DataTrigger>
 
+                <!-- 没有徽标的行（「停止」）不显示空白胶囊 -->
+                <DataTrigger Binding="{Binding Badge}" Value="">
+                    <Setter TargetName="BadgeBorder" Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+
                 <!-- 标记行最后覆盖：更轻的视觉、不可操作 -->
                 <DataTrigger Binding="{Binding IsMarker}" Value="True">
                     <Setter TargetName="Card" Property="Background" Value="Transparent"/>

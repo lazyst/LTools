@@ -132,7 +132,7 @@ public partial class CompositeActionDialog : Window
             (FlowNodeKind.loop, "refresh", "循环", false),
             (FlowNodeKind.@break, "back", "跳出循环", false),
             (FlowNodeKind.@continue, "forward", "进入下一次循环", false),
-            (FlowNodeKind.stop, "stop", "停止流程", false),
+            (FlowNodeKind.stop, "stop", "停止", false),
         };
         var flowItems = flowDefs
             .Select(f => new LeftItem
@@ -141,6 +141,10 @@ public partial class CompositeActionDialog : Window
                 Glyph = IconCatalog.GetGlyph(f.Icon),
                 FlowKind = f.Kind,
                 Append = f.Append,
+                // 「停止」容易被读成「只跳出循环、继续往后跑」，用提示说清是结束整个组合动作
+                ToolTip = f.Kind == FlowNodeKind.stop
+                    ? "立刻结束整个组合动作：后面的步骤都不再执行（不是只结束循环）"
+                    : null,
             })
             .Where(Match)
             .ToList();
@@ -566,7 +570,9 @@ public partial class CompositeActionDialog : Window
             number++;
             _rows.Add(new FlowRow(RowKind.Node, n, nodes, i, depth, owner: null,
                 number.ToString(CultureInfo.InvariantCulture) + ".",
-                FlowText.Badge(n), TitleOf(n, macroNames), strategies));
+                // 「停止」没有参数：徽标和标题都是同一个词，只留标题，避免一行出现两个「停止」
+                n.Kind == FlowNodeKind.stop ? "" : FlowText.Badge(n),
+                TitleOf(n, macroNames), strategies));
 
             if (n.Kind == FlowNodeKind.@if && n.If != null)
             {

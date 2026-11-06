@@ -458,7 +458,7 @@ public static class FlowText
         FlowNodeKind.loop => LoopSummary(n.Loop),
         FlowNodeKind.@break => "跳出循环",
         FlowNodeKind.@continue => "进入下一次循环",
-        FlowNodeKind.stop => "停止流程",
+        FlowNodeKind.stop => "停止",
         _ => n.Kind.ToString(),
     };
 
