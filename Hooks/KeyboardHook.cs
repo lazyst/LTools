@@ -153,8 +153,9 @@ internal static class KeyboardHook
                 }
             }
 
-            // 超级面板打开期间：1~9 选格 / Esc 关面板（钩子路由，不依赖窗口焦点；
-            // 右键菜单 / 对话框打开时 IsInteracting 为 true，交回 WPF/对话框处理，不吞键）
+            // 动作面板打开期间：只拦 Esc（钩子路由，不依赖窗口焦点），其余按键全部放行，
+            // 让搜索框正常输入 / 使用 IME；右键菜单或对话框打开时 IsInteracting 为 true，
+            // 连 Esc 也交回 WPF / 对话框处理。
             if (isDown && SuperPanel.IsOpen && !SuperPanel.IsInteracting)
             {
                 if (SuperPanel.HandleKey(vk, isDown))

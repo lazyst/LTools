@@ -35,6 +35,10 @@
     <Color x:Key="DangerHoverColor">#B91C1C</Color>
     <Color x:Key="DangerBorderColor">#FCA5A5</Color>
     <Color x:Key="DangerBgColor">#FEF2F2</Color>
+    <!-- 提示条（浅灰底）上的危险图标：比 DangerColor 淡，照 Quicker 的淡红 ⊘ -->
+    <Color x:Key="DangerSoftColor">#E58C8C</Color>
+    <!-- 浅灰底上的悬停底：DangerBgColor 太接近底色，看不清 -->
+    <Color x:Key="DangerHoverBgColor">#FBE4E4</Color>
 
     <!-- 状态 -->
     <Color x:Key="SuccessColor">#16A34A</Color>
@@ -62,6 +66,8 @@
     <SolidColorBrush x:Key="DangerHoverBrush" Color="{StaticResource DangerHoverColor}"/>
     <SolidColorBrush x:Key="DangerBorderBrush" Color="{StaticResource DangerBorderColor}"/>
     <SolidColorBrush x:Key="DangerBgBrush" Color="{StaticResource DangerBgColor}"/>
+    <SolidColorBrush x:Key="DangerSoftBrush" Color="{StaticResource DangerSoftColor}"/>
+    <SolidColorBrush x:Key="DangerHoverBgBrush" Color="{StaticResource DangerHoverBgColor}"/>
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
     <SolidColorBrush x:Key="ScrollThumbBrush" Color="{StaticResource ScrollThumbColor}"/>
     <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="{StaticResource ScrollThumbHoverColor}"/>
@@ -226,6 +232,32 @@
     <Style x:Key="BtnGhostDanger" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
         <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
         <Setter Property="Tag" Value="{StaticResource DangerBgBrush}"/>
+    </Style>
+
+    <!-- 未配置提示条里的行内动作（「添加专用设置」）：
+         提示条底色就是 SurfaceAlt，和默认悬停色 HoverBgBrush 同色 → 悬停等于没反应，
+         所以这里把 Tag 换成更深一档的 BorderBrush。 -->
+    <Style x:Key="HintActionButton" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="Tag" Value="{StaticResource BorderBrush}"/>
+        <Setter Property="Padding" Value="8,4"/>
+    </Style>
+
+    <!-- 未配置提示条里的关闭按钮：淡红 ⊘，悬停淡红底 + 颜色加深 -->
+    <Style x:Key="HintDismissButton" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+        <Setter Property="Foreground" Value="{StaticResource DangerSoftBrush}"/>
+        <Setter Property="Tag" Value="{StaticResource DangerHoverBgBrush}"/>
+        <Setter Property="Width" Value="26"/>
+        <Setter Property="Height" Value="24"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="FontSize" Value="18"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- 标题栏按钮 -->

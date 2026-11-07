@@ -1,0 +1,212 @@
+<UserControl x:Class="LTools.Views.Controls.PanelManageView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
+    <UserControl.Resources>
+        <Style x:Key="PanelCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,10"/>
+        </Style>
+        <Style x:Key="MiniBtn" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Padding" Value="8,1"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <!-- 场景列表行：整行可点，悬停浅灰，选中实底 -->
+        <Style x:Key="SceneRowBtn" TargetType="Button" BasedOn="{StaticResource Btn}">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="6,0"/>
+            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSecondary}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        </Style>
+        <!-- 面板磁贴：透明底、无卡片边，hover 软底，圆角 8（与动作面板一致） -->
+        <Style x:Key="PanelTileBtn" TargetType="Button">
+            <Setter Property="Height" Value="64"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Padding" Value="6,4,4,4"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                TextBlock.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="IsEnabled" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="bd" Property="Background"
+                                        Value="{StaticResource HoverBgBrush}"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background"
+                                        Value="{StaticResource SelectedBgBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="20,14,20,14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ============ 常规 ============ -->
+        <ScrollViewer x:Name="PageGeneral" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Style="{StaticResource SectionLabel}" Text="行为" Margin="0,0,0,8"/>
+                <Border Style="{StaticResource PanelCard}" Margin="0,0,0,14">
+                    <StackPanel>
+                        <CheckBox x:Name="EnabledBox" Content="启用动作面板（长按右键唤起）"
+                                  Checked="EnabledBox_Changed" Unchecked="EnabledBox_Changed"/>
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="长按阈值"
+                                       VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <Slider Grid.Column="1" x:Name="ThresholdSlider" Minimum="100" Maximum="800"
+                                    TickFrequency="50" IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                                    ValueChanged="ThresholdSlider_ValueChanged"/>
+                            <TextBlock Grid.Column="2" x:Name="ThresholdText" Style="{StaticResource HintLabel}"
+                                       VerticalAlignment="Center" Margin="12,0,0,0" Width="64" Text="250 ms"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Style="{StaticResource SectionLabel}" Text="视图" Margin="0,0,0,8"/>
+                <Border Style="{StaticResource PanelCard}">
+                    <StackPanel>
+                        <CheckBox x:Name="ShowGroupTitlesBox" Content="显示分组名"
+                                  Checked="Prefs_Changed" Unchecked="Prefs_Changed"/>
+                        <CheckBox x:Name="CompactTilesBox" Content="紧凑磁贴" Margin="0,6,0,0"
+                                  Checked="Prefs_Changed" Unchecked="Prefs_Changed"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button Style="{StaticResource Btn}" Content="重新显示未配置提示"
+                                    Height="26" MinHeight="0" Padding="10,2" FontSize="12"
+                                    Click="ResetHint_Click"
+                                    ToolTip="清除「尚未为程序添加专用设置」提示的「不再提示」标记"/>
+                            <TextBlock Style="{StaticResource HintLabel}" VerticalAlignment="Center"
+                                       Margin="10,0,0,0" Text="恢复面板底部那条提示"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Style="{StaticResource HintLabel}" Margin="2,12,0,0" TextWrapping="Wrap"
+                           Text="禁止弹出的程序在左侧「面板管理 → 禁止弹出」里管理。"/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ============ 禁止弹出 ============ -->
+        <ScrollViewer x:Name="PageBlocked" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Style="{StaticResource SectionLabel}" Text="禁止弹出的程序" Margin="0,0,0,8"/>
+                <Border Style="{StaticResource PanelCard}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,0,0,10"
+                                   Text="命中下面任意一项时，超级面板不会弹出。填进程名（如 game.exe）或完整路径，回车添加。"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="程序"
+                                       VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <TextBox Grid.Column="1" x:Name="BlockedInput" MinHeight="28" Width="300"
+                                     ToolTip="进程名（如 game.exe）或完整路径，回车添加"
+                                     KeyDown="BlockedInput_KeyDown"/>
+                            <Button Grid.Column="2" Style="{StaticResource MiniBtn}" Content="添加"
+                                    Margin="8,0,0,0" Click="AddBlocked_Click"/>
+                        </Grid>
+                        <StackPanel x:Name="BlockedHost" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ============ 场景 ============ -->
+        <Grid x:Name="PageScenes">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="230" MinWidth="180"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="*" MinWidth="320"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 场景列表：分组标题 + 整行按钮（全局 / 上下文 / 窗口子场景 / 通用） -->
+            <Border Grid.Column="0" Style="{StaticResource PanelCard}" Padding="0">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="10,8,8,4">
+                        <TextBlock Text="场景" Style="{StaticResource SectionLabel}" VerticalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="NewSceneBtn" Style="{StaticResource MiniBtn}" Content="新建"
+                                    Click="NewSceneBtn_Click">
+                                <Button.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="全局场景" Click="NewGlobalScene_Click"/>
+                                        <MenuItem Header="上下文程序场景" Click="NewContextScene_Click"/>
+                                        <MenuItem Header="窗口子场景" Click="NewChildScene_Click"/>
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                            </Button>
+                            <Button Style="{StaticResource MiniBtn}" Content="删除" Margin="4,0,0,0"
+                                    Click="DeleteScene_Click"/>
+                        </StackPanel>
+                    </Grid>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="6,0,6,8">
+                        <StackPanel x:Name="SceneList"/>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+
+            <!-- 场景详情：规则默认折叠成一行，动作管理常驻 -->
+            <Border Grid.Column="2" Style="{StaticResource PanelCard}" Padding="0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,10,12,12">
+                    <StackPanel x:Name="DetailHost"/>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <TextBlock Grid.Row="1" x:Name="StatusText" Style="{StaticResource HintLabel}"
+                   Margin="0,8,0,0" TextWrapping="Wrap"/>
+
+        <!-- 拖动幽灵 / 占位层（覆盖整页，不挡鼠标） -->
+        <Canvas x:Name="GhostLayer" Grid.RowSpan="2" IsHitTestVisible="False"/>
+    </Grid>
+</UserControl>

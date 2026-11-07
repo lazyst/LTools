@@ -70,6 +70,12 @@ public partial class CompositeActionDialog : Window
         _kindSwitch.SelectionChanged += KindSwitch_SelectionChanged;
         TitleBar.ExtraContent = _kindSwitch;
         FlowList.ItemsSource = _rows;
+        _flowDrag = new ListDragSort(
+            this, GhostLayer, FlowList,
+            () => _rows.Count,
+            MoveFlowPreview,
+            TakeFlowSnapshot,
+            RestoreFlowSnapshot);
         var varHintTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
         varHintTimer.Tick += (_, _) =>
         {
@@ -347,14 +353,6 @@ public partial class CompositeActionDialog : Window
 
     private void Window_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        // 把手排序：按下即记录，位移超阈值进入拖动（幽灵跟随 + 目标行高亮）
-        if (_gripIdx != null)
-        {
-            GripDragTick(e);
-            if (_gripDragging) e.Handled = true;
-            return;
-        }
-
         if (_leftDragCandidate == null || e.LeftButton != MouseButtonState.Pressed) return;
         var p = e.GetPosition(this);
         if (Math.Abs(p.X - _leftDragOrigin.X) < SystemParameters.MinimumHorizontalDragDistance &&
@@ -677,13 +675,10 @@ public partial class CompositeActionDialog : Window
         => e.Handled = !e.Text.All(char.IsDigit);
 
     // —— 拖拽（左栏项拖入 = 插入；把手拖动 = 移动，幽灵跟随，§12）——
-    // 把手排序走窗口级鼠标跟踪，而非 OLE DoDragDrop：避免系统 drag image 与幽灵叠加。
+    // 把手排序（与动作面板 / 菜单项同一套：快照幽灵 + 源行虚线占位 + 实时让位 + Esc 取消）
 
-    private int? _gripIdx;                    // 把手按下时记录的行索引
-    private Point _gripOrigin;                // 按下坐标（进入拖动态的阈值判定）
-    private bool _gripDragging;               // 是否已进入拖动态
-    private FrameworkElement? _gripSource;    // 把手元素（鼠标捕获载体）
-    private ListBoxItem? _gripSrcContainer;   // 源行（半透明占位）
+    private readonly ListDragSort _flowDrag;
+    private List<FlowNode>? _flowSnapshot;   // 拖动前的流程快照（Esc 还原）
 
     private void Grip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -692,133 +687,72 @@ public partial class CompositeActionDialog : Window
         int idx = _rows.IndexOf(row);
         if (idx < 0) return;
         FlowList.SelectedIndex = idx;
-        _gripSource = fe;
-        _gripIdx = idx;
-        _gripOrigin = e.GetPosition(this);
-        _gripDragging = false;
-        fe.CaptureMouse();      // 捕获：拖出窗口仍能收到移动 / 释放
+        _flowDrag.Press(idx, e.GetPosition(this));
         e.Handled = true;       // 吞掉，别让 ListBox 抢走选中 / 滚动
     }
 
-    private void Window_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    /// <summary>拖动中的实时预览：把源节点移到插入位置，返回它的新行下标（-1 = 没有变化）。</summary>
+    private int MoveFlowPreview(int fromRow, int insertAtFlat)
     {
-        if (_gripIdx is not int src || !_gripDragging) { EndReorderDrag(); return; }
+        if (fromRow < 0 || fromRow >= _rows.Count) return -1;
+        var src = _rows[fromRow];
+        if (src.IsMarker || src.Node == null) return -1;
 
-        int hover = GripHoverRow(e);
-        int insertAt = hover >= 0 ? GripInsertAt(e, hover) : -1;
-        EndReorderDrag();
-        if (insertAt >= 0) ApplyReorder(src, insertAt);
-        e.Handled = true;
+        int srcIdx = src.Container.IndexOf(src.Node);
+        if (srcIdx < 0) return -1;
+
+        var dest = ResolveFlatInsert(insertAtFlat);
+        if (ContainsContainer(src.Node, dest.Container)) return -1;   // 不能拖进自己的子树
+        if (ReferenceEquals(dest.Container, src.Container)
+            && (dest.Index == srcIdx || dest.Index == srcIdx + 1))
+            return -1;                                                 // 位置没变
+
+        var old = CaptureFlowPositions();
+        ApplyReorder(fromRow, insertAtFlat);
+        AnimateFlowFrom(old);
+
+        var row = _rows.FirstOrDefault(r => ReferenceEquals(r.Node, src.Node));
+        return row != null ? _rows.IndexOf(row) : -1;
     }
 
-    /// <summary>位移超阈值 → 显示幽灵跟随光标；目标行高亮。不在这里重排（见 <see cref="ApplyReorder"/>）。</summary>
-    private void GripDragTick(MouseEventArgs e)
+    private Dictionary<FlowNode, Point> CaptureFlowPositions()
     {
-        if (_gripIdx is not int idx) return;
-        if (e.LeftButton != MouseButtonState.Pressed) { EndReorderDrag(); return; }
-
-        var pos = e.GetPosition(this);
-        if (!_gripDragging)
+        var map = new Dictionary<FlowNode, Point>();
+        foreach (var r in _rows)
         {
-            if (Math.Abs(pos.X - _gripOrigin.X) < SystemParameters.MinimumHorizontalDragDistance &&
-                Math.Abs(pos.Y - _gripOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-            _gripDragging = true;
-            ShowGhost(idx);
+            if (r.Node == null) continue;
+            if (FlowList.ItemContainerGenerator.ContainerFromItem(r) is not FrameworkElement c) continue;
+            try { map[r.Node] = c.TransformToAncestor(this).Transform(new Point(0, 0)); }
+            catch (InvalidOperationException) { }
         }
-
-        UpdateGhost(pos);
-        PositionInsertLine(e);
+        return map;
     }
 
-    /// <summary>把插入线定位到光标所停留行的上/下边缘（上半=该行前，下半=该行后）。</summary>
-    private void PositionInsertLine(MouseEventArgs e)
+    /// <summary>按节点身份做 FLIP：重排后同一节点从旧位置滑到新位置（行号 / 缩进会变）。</summary>
+    private void AnimateFlowFrom(Dictionary<FlowNode, Point> old)
     {
-        int hover = GripHoverRow(e);
-        if (hover < 0) { InsertLine.Visibility = Visibility.Collapsed; return; }
-        var c = FlowList.ItemContainerGenerator.ContainerFromIndex(hover) as FrameworkElement;
-        if (c == null || !c.IsDescendantOf(this)) { InsertLine.Visibility = Visibility.Collapsed; return; }
-        bool after = GripInsertAt(e, hover) > hover;
-        try
+        FlowList.UpdateLayout();
+        foreach (var r in _rows)
         {
-            // GhostLayer 是覆盖全窗口的兄弟 Canvas，不是行容器的祖先——不能直接
-            // TransformToAncestor(GhostLayer)。先转到窗口坐标，再映射到 Canvas。
-            var inWindow = c.TransformToAncestor(this).Transform(new Point(0, after ? c.ActualHeight : 0));
-            var p = TranslatePoint(inWindow, GhostLayer);
-            Canvas.SetLeft(InsertLine, p.X);
-            Canvas.SetTop(InsertLine, p.Y - 1.5);
-            InsertLine.Width = c.ActualWidth > 0 ? c.ActualWidth : FlowList.ActualWidth;
-            InsertLine.Visibility = Visibility.Visible;
-        }
-        catch (InvalidOperationException)
-        {
-            // 拖动过程中行容器被回收 / 移出可视树：本次不画线即可
-            InsertLine.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private void ShowGhost(int index)
-    {
-        var row = _rows[index];
-        GhostBadge.Text = row.Badge;
-        GhostName.Text = row.Title;
-        DragGhost.Visibility = Visibility.Visible;
-        Mouse.OverrideCursor = Cursors.SizeAll;
-        if (FlowList.ItemContainerGenerator.ContainerFromIndex(index) is ListBoxItem c)
-        {
-            c.Opacity = 0.35;
-            _gripSrcContainer = c;
-        }
-    }
-
-    private void UpdateGhost(Point windowPos)
-    {
-        var rel = TranslatePoint(windowPos, GhostLayer);   // 窗口坐标 → Canvas 坐标
-        double w = DragGhost.ActualWidth > 0 ? DragGhost.ActualWidth : DragGhost.MinWidth;
-        double h = DragGhost.ActualHeight > 0 ? DragGhost.ActualHeight : 34;
-        Canvas.SetLeft(DragGhost, rel.X - w / 2);
-        Canvas.SetTop(DragGhost, rel.Y - h / 2);
-    }
-
-    private void EndReorderDrag()
-    {
-        bool wasDragging = _gripDragging;
-        _gripSource?.ReleaseMouseCapture();
-        _gripSource = null;
-        _gripIdx = null;
-        _gripDragging = false;
-        if (!wasDragging) return;      // 只是点了下把手（未拖动）：不碰光标与幽灵
-        DragGhost.Visibility = Visibility.Collapsed;
-        Mouse.OverrideCursor = null;
-        if (_gripSrcContainer != null) { _gripSrcContainer.Opacity = 1; _gripSrcContainer = null; }
-        InsertLine.Visibility = Visibility.Collapsed;
-    }
-
-    /// <summary>拖动中的目标行：先按坐标判定是否落在列表视口内（列表外 → -1），
-    /// 再找命中的行；命中列表内但没落在行上（项间空隙 / ItemsPanel）→ 末行。</summary>
-    private int GripHoverRow(MouseEventArgs e)
-    {
-        var p = e.GetPosition(FlowList);
-        if (p.X < 0 || p.Y < 0 || p.X > FlowList.ActualWidth || p.Y > FlowList.ActualHeight)
-            return -1;                       // 列表外（左栏 / 右栏 / 视口之外）
-
-        if (FlowList.InputHitTest(p) is DependencyObject d)
-        {
-            var container = ItemsControl.ContainerFromElement(FlowList, d) as ListBoxItem;
-            if (container != null)
+            if (r.Node == null || !old.TryGetValue(r.Node, out var p)) continue;
+            if (FlowList.ItemContainerGenerator.ContainerFromItem(r) is not FrameworkElement c) continue;
+            try
             {
-                int i = FlowList.ItemContainerGenerator.IndexFromContainer(container);
-                if (i >= 0) return i;
+                var now = c.TransformToAncestor(this).Transform(new Point(0, 0));
+                DragFx.Slide(c, p.X - now.X, p.Y - now.Y, DragFx.ReorderDurationMs, DragFx.ReorderEase);
             }
+            catch (InvalidOperationException) { }
         }
-        return _rows.Count - 1;             // 列表内但未命中行 → 末行（下半即追加到末尾）
     }
 
-    /// <summary>命中行 → 插入位置（0.._rows.Count）：上半 = 该行之前，下半 = 该行之后。</summary>
-    private int GripInsertAt(MouseEventArgs e, int hover)
+    private void TakeFlowSnapshot() => _flowSnapshot = _flow.Select(n => n.Clone()).ToList();
+
+    private void RestoreFlowSnapshot()
     {
-        var container = FlowList.ItemContainerGenerator.ContainerFromIndex(hover) as ListBoxItem;
-        if (container == null) return hover;
-        return e.GetPosition(container).Y < container.ActualHeight / 2 ? hover : hover + 1;
+        if (_flowSnapshot == null) return;
+        _flow.Clear();
+        _flow.AddRange(_flowSnapshot);
+        ReloadRows();
     }
 
     /// <summary>释放：把源节点移到插入位置。</summary>
@@ -912,7 +846,7 @@ public partial class CompositeActionDialog : Window
         return loopNode.Loop.Body;
     }
 
-    /// <summary>OLE 拖放只剩「左栏项拖入」一路——把手排序已改走窗口级鼠标跟踪（<see cref="GripDragTick"/>）。</summary>
+    /// <summary>OLE 拖放只剩「左栏项拖入」一路——把手排序已改走 <see cref="ListDragSort"/>（窗口级鼠标跟踪）。</summary>
     private void FlowList_DragOver(object sender, DragEventArgs e)
     {
         if (_dragLeftItem != null) { e.Effects = DragDropEffects.Copy; e.Handled = true; }

@@ -19,27 +19,53 @@
   ],
   "SuperPanel": {
     "Enabled": true,
-    "LongPressThresholdMs": 250,
-    "Pages": [
-      [
-        "a1",
-        "a3",
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null
+    "LongPressThresholdMs": 250
+  },
+  "Panel": {
+    "Preferences": {
+      "Width": 560,
+      "Height": 620,
+      "ShowGroupTitles": true,
+      "CompactTiles": false,
+      "GlobalRatio": 0.5
+    },
+    "Global": {
+      "Scenes": [
+        {
+          "Id": "s-default",
+          "Name": "默认",
+          "Icon": "app",
+          "Enabled": true,
+          "ParentId": null,
+          "Match": {},
+          "Groups": [
+            {
+              "Id": "g-default",
+              "Name": "未分组",
+              "Actions": [
+                "a1",
+                "a3"
+              ]
+            }
+          ]
+        }
+      ],
+      "ActiveSceneId": "s-default",
+      "Common": []
+    },
+    "Context": {
+      "Scenes": [],
+      "ActiveSceneId": null,
+      "Common": [
+        {
+          "Id": "g-common",
+          "Name": "常用",
+          "Actions": []
+        }
       ]
-    ]
+    },
+    "Blocked": [],
+    "HintDismissed": false
   },
   "MenuGroups": [
     {

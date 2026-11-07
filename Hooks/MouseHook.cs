@@ -29,6 +29,10 @@ internal static class MouseHook
     private static bool _suppressRButtonUp;     // 计时器触发后置位：吞掉随后的右键 up 阻止原生菜单
     private static bool _rightCloseUpPending;   // 「右键点外关闭」吞掉 down 后置位：配套 up 也必须吞
 
+    // 按下右键那一刻光标下的顶层窗口：右键不激活后台窗口，前台可能还停在别的程序上，
+    // 面板的上下文场景必须按这个句柄解析（照 Quicker）
+    private static IntPtr _superPanelContextHwnd;
+
     /// <summary>本类注入鼠标事件的 dwExtraInfo 魔法标记；钩子开头据此跳过，杜绝注入回流递归。</summary>
     private static readonly IntPtr InjectedTag = (IntPtr)0x1234ABCD;
 
@@ -221,6 +225,9 @@ internal static class MouseHook
     /// <summary>右键 down 启动长按计时（放行 down，不干预短按）。每次 down 重置计时与间隔。</summary>
     private static void StartSuperPanelGesture()
     {
+        // 按下那一刻光标下的顶层窗口 = 用户要操作的对象（右键不激活后台窗口）
+        _superPanelContextHwnd = Win32.TopLevelWindowAtCursor();
+
         var t = _superPanelTimer;
         if (t == null)
         {
@@ -240,7 +247,11 @@ internal static class MouseHook
     }
 
     /// <summary>短按收尾：停表放行，原生右键菜单照常弹出。</summary>
-    private static void CancelSuperPanelGesture() => _superPanelTimer?.Stop();
+    private static void CancelSuperPanelGesture()
+    {
+        _superPanelTimer?.Stop();
+        _superPanelContextHwnd = IntPtr.Zero;
+    }
 
     /// <summary>清除右键长按手势的待处理状态（进入宏录制透明模式前调用，避免残留标志误吞后续 up）。</summary>
     public static void CancelPendingGesture()
@@ -248,14 +259,17 @@ internal static class MouseHook
         _superPanelTimer?.Stop();
         _suppressRButtonUp = false;
         _rightCloseUpPending = false;
+        _superPanelContextHwnd = IntPtr.Zero;
     }
 
-    /// <summary>长按成立：光标处弹面板，并标记吞掉随后的右键 up 阻止原生菜单。</summary>
+    /// <summary>长按成立：光标处弹面板（上下文取按下时光标下的窗口），并标记吞掉随后的右键 up 阻止原生菜单。</summary>
     private static void OnSuperPanelTimerTick(object? sender, EventArgs e)
     {
         _superPanelTimer?.Stop();
         _suppressRButtonUp = true;
-        SuperPanel.Show();
+        IntPtr context = _superPanelContextHwnd;
+        _superPanelContextHwnd = IntPtr.Zero;
+        SuperPanel.Show(context);
     }
 
     /// <summary>阈值夹到合法区间（100–800ms），防止异常配置导致计时异常。</summary>

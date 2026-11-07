@@ -98,8 +98,14 @@ public sealed class AppConfig
     /// <summary>全局动作清单（计划 §2）。超级面板与菜单组都引用这里的 Id。</summary>
     public List<ActionDto> Actions { get; set; } = new();
 
-    /// <summary>超级面板配置。</summary>
+    /// <summary>超级面板配置（旧：页 + 槽位；仅用于迁移，见 <see cref="Panel"/>）。</summary>
     public SuperPanelConfig SuperPanel { get; set; } = new();
+
+    /// <summary>
+    /// 动作面板配置（全局区 + 上下文区）。为 null = 尚未从
+    /// <see cref="SuperPanelConfig.Pages"/> 迁移；迁移由 <c>Features.Panel.PanelLibrary</c> 负责。
+    /// </summary>
+    public PanelConfig? Panel { get; set; }
 
     /// <summary>键鼠宏录制配置。</summary>
     public MacroConfig Macros { get; set; } = new();

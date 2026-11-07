@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.Panel;
 using LTools.Views.Controls;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
@@ -32,19 +33,13 @@ public partial class ConfigHelperWindow : Window
     private readonly ObservableCollection<string> _groups = new();
     private readonly ObservableCollection<string> _items = new();
     private readonly ObservableCollection<ActionRow> _actionRows = new();
-    private readonly List<List<string?>> _superPages = new();   // 超级面板槽位（内存编辑态）
     private bool _initializing = true;   // 初始化设 IsChecked 会触发事件，用此标志跳过
     private bool _loadingList;           // 列表重建期间抑制选择事件
-    private bool _superDirty;            // 超级面板有未保存改动
     private bool _pagesReady;            // 页面全部构建完成前抑制导航切换
+    private bool _syncingNav;            // 程序化点亮「面板管理」下拉时不重复导航
+    private string _currentNav = "";      // 当前导航 tag（用于父项在子页时再点回主页）
     private bool _backupBusy;            // 备份 / 导入进行中，禁用重复点击
     private bool _loadingLog;            // 日志页控件回填期间抑制保存事件
-
-    // —— 超级面板槽位拖动（设置页内，交换语义，跨卡片=跨页）——
-    private int _dragSrcPage = -1, _dragSrcSlot = -1;
-    private Point _dragOrigin;
-    private bool _dragging;
-    private (int page, int slot) _hover = (-1, -1);
 
     public ConfigHelperWindow(string configPath)
     {
@@ -56,6 +51,23 @@ public partial class ConfigHelperWindow : Window
         GroupList.ItemsSource = _groups;
         ItemList.ItemsSource = _items;
         ActionList.ItemsSource = _actionRows;
+
+        _groupVisuals = new DragVisuals(this, GhostLayer);
+        _itemDrag = new ListDragSort(
+            this, GhostLayer, ItemList,
+            () => _items.Count,
+            MoveItemPreview,
+            TakeItemSnapshot,
+            RestoreItemSnapshot,
+            MarkDirty,
+            _ => MenuSystem.GetGroup(SelectedSlot) != null);
+
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Escape || !_groupDragging) return;
+            EndGroupDrag();
+            e.Handled = true;
+        };
 
         _saveDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         _saveDebounce.Tick += (_, _) => { _saveDebounce.Stop(); SaveNow(); };
@@ -71,7 +83,7 @@ public partial class ConfigHelperWindow : Window
         string lastNav = ConfigStore.LoadConfig().LastNavPage;
         if (string.IsNullOrEmpty(lastNav)) lastNav = "actions";
         bool navMatched = false;
-        foreach (var rb in NavList.Children.OfType<RadioButton>())
+        foreach (var rb in AllNavItems())
         {
             if (rb.Tag is string t && t == lastNav) { rb.IsChecked = true; navMatched = true; break; }
         }
@@ -84,7 +96,6 @@ public partial class ConfigHelperWindow : Window
             // 开关状态
             CapsLockEnabledBox.IsChecked = AppState.IsToolEnabled;
             SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
-            SuperPanelBox2.IsChecked = AppState.IsSuperPanelEnabled;
             // 自启状态：任务计划 COM 首次激活要百毫秒级，放线程池避免窗口白屏。
             // 查询期间保持 _initializing，免得用户此刻点开关与查询结果互相覆盖。
             var autoStart = await System.Threading.Tasks.Task.Run(AutoStartService.Query);
@@ -95,14 +106,6 @@ public partial class ConfigHelperWindow : Window
         {
             if (_saveDebounce.IsEnabled) { _saveDebounce.Stop(); SaveNow(); }
         };
-
-        // 超级面板槽位拖动（窗口级接管，捕获后拖出窗口也能收到 Up）
-        PreviewMouseMove += OnSlotDragMove;
-        PreviewMouseLeftButtonUp += OnSlotDragUp;
-        PreviewKeyDown += (_, e) =>
-        {
-            if (e.Key == Key.Escape && _dragging) { CancelSlotDrag(); e.Handled = true; }
-        };
     }
 
     /// <summary>配置文件路径（供显示/调试）。</summary>
@@ -111,29 +114,122 @@ public partial class ConfigHelperWindow : Window
     // ============ 导航切换 ============
     private void Nav_Changed(object sender, RoutedEventArgs e)
     {
-        if (!_pagesReady) return;
+        if (!_pagesReady || _syncingNav) return;
         if (sender is not RadioButton rb || rb.Tag is not string tag) return;
         // 切换页前先落盘未保存改动，避免重建列表时丢弃（如超级面板 800ms 防抖内的编辑）
         if (_saveDebounce.IsEnabled) { _saveDebounce.Stop(); SaveNow(); }
         ApplyNavPage(tag);
     }
 
+    /// <summary>
+    /// 已在某个二级页时再点「面板管理」：父项本来就是选中态，不会再触发 Checked，
+    /// 这里把它当作「回到常规主页」。
+    /// </summary>
+    private void NavSuperPanel_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_pagesReady || _syncingNav) return;
+        if (NavSuperPanel.IsChecked == true &&
+            _currentNav is "superpanel-general" or "superpanel-scenes" or "superpanel-blocked")
+            ApplyNavPage("superpanel");
+    }
+
+    /// <summary>左栏所有导航项（含「面板管理」下拉里的二级项）。</summary>
+    private IEnumerable<RadioButton> AllNavItems() =>
+        NavList.Children.OfType<RadioButton>()
+            .Concat(SuperPanelSubNav.Children.OfType<RadioButton>());
+
+    /// <summary>
+    /// 「面板管理」二级下拉：把父项与对应子项一起点亮，箭头朝下、子列表展开。
+    /// 期间置 <see cref="_syncingNav"/>，避免程序改 IsChecked 又触发一次导航。
+    /// </summary>
+    private void SyncSuperPanelNav(string page)
+    {
+        _syncingNav = true;
+        try
+        {
+            SuperPanelSubNavHost.Visibility = Visibility.Visible;
+            NavSuperPanelChevron.Text = "\uE70D";   // ChevronDown
+            if (NavSuperPanel.IsChecked != true) NavSuperPanel.IsChecked = true;
+
+            string want = "superpanel-" + page;
+            foreach (var rb in SuperPanelSubNav.Children.OfType<RadioButton>())
+            {
+                bool on = rb.Tag is string t && t == want;
+                if (rb.IsChecked != on) rb.IsChecked = on;
+            }
+        }
+        finally { _syncingNav = false; }
+    }
+
     private void ApplyNavPage(string tag)
     {
+        _currentNav = tag;
+        bool superPanel = tag is "superpanel" or "superpanel-general"
+                               or "superpanel-scenes" or "superpanel-blocked";
+
         Page_General.Visibility = tag == "general" ? Visibility.Visible : Visibility.Collapsed;
         Page_Actions.Visibility = tag == "actions" ? Visibility.Visible : Visibility.Collapsed;
         Page_Menus.Visibility = tag == "menus" ? Visibility.Visible : Visibility.Collapsed;
-        Page_SuperPanel.Visibility = tag == "superpanel" ? Visibility.Visible : Visibility.Collapsed;
+        Page_SuperPanel.Visibility = superPanel ? Visibility.Visible : Visibility.Collapsed;
         Page_Terminals.Visibility = tag == "terminals" ? Visibility.Visible : Visibility.Collapsed;
         Page_Logs.Visibility = tag == "logs" ? Visibility.Visible : Visibility.Collapsed;
         Page_Backup.Visibility = tag == "backup" ? Visibility.Visible : Visibility.Collapsed;
+
+        if (superPanel)
+        {
+            // 面板管理主页 = 常规；二级项各自对应一页
+            string page = tag switch
+            {
+                "superpanel-scenes" => "scenes",
+                "superpanel-blocked" => "blocked",
+                _ => "general",
+            };
+            SyncSuperPanelNav(page);
+            Page_SuperPanel.ShowPage(page);
+        }
+        else
+        {
+            // 离开面板管理：收起二级下拉，箭头朝右
+            SuperPanelSubNavHost.Visibility = Visibility.Collapsed;
+            NavSuperPanelChevron.Text = "\uE76C";   // ChevronRight
+        }
+
         if (tag == "terminals") PopulateTerminals();
         if (tag == "logs") PopulateLogging();
+        if (tag == "general")
+        {
+            // 开关可能在「面板管理」页被改过，切回来时同步显示
+            _initializing = true;
+            CapsLockEnabledBox.IsChecked = AppState.IsToolEnabled;
+            SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
+            _initializing = false;
+        }
         // 记忆当前导航页，下次打开恢复（ConfigIO 读改写：只动 LastNavPage，余字段不动）
         ConfigIO.Modify(ConfigPath, cfg => cfg.LastNavPage = tag);
         if (tag == "actions") PopulateActions();
         if (tag == "menus") PopulateGroupList();
-        if (tag == "superpanel") PopulateSuperPanel();
+        if (superPanel) PopulateSuperPanel();
+    }
+
+    /// <summary>从面板跳转过来：切到「面板管理 → 场景」并选中指定场景。</summary>
+    public void NavigateToPanelScene(string? sceneId)
+    {
+        if (_pagesReady)
+        {
+            _syncingNav = true;
+            try
+            {
+                NavSuperPanel.IsChecked = true;
+                foreach (var rb in SuperPanelSubNav.Children.OfType<RadioButton>())
+                    if (rb.Tag is string t && t == "superpanel-scenes") rb.IsChecked = true;
+            }
+            finally { _syncingNav = false; }
+            ApplyNavPage("superpanel-scenes");
+        }
+        Page_SuperPanel.SelectScene(sceneId);
+        Activate();
+        Topmost = true;
+        Topmost = false;
     }
 
     // ============ 通用：开关 ============
@@ -147,13 +243,8 @@ public partial class ConfigHelperWindow : Window
     private void SuperPanelEnabledBox_Changed(object sender, RoutedEventArgs e)
     {
         if (_initializing) return;
-        bool on = (sender == SuperPanelEnabledBox ? SuperPanelEnabledBox.IsChecked : SuperPanelBox2.IsChecked) == true;
-        // 两个复选框保持同步
-        _initializing = true;
-        SuperPanelEnabledBox.IsChecked = on;
-        SuperPanelBox2.IsChecked = on;
-        _initializing = false;
-        Settings.SetSuperPanelEnabled(on);
+        Settings.SetSuperPanelEnabled(SuperPanelEnabledBox.IsChecked == true);
+        Page_SuperPanel.Reload();
     }
 
     private void AutoStartBox_Changed(object sender, RoutedEventArgs e)
@@ -208,15 +299,33 @@ public partial class ConfigHelperWindow : Window
     {
         int sel = ActionList.SelectedIndex;
         var macroNames = MacroStore.NameMap();
+        string filter = ActionFilterBox?.Text?.Trim() ?? "";
+        int total = ActionRegistry.All.Count;
+
         _loadingList = true;
         _actionRows.Clear();
-        foreach (var a in ActionRegistry.All.OrderBy(x => x.Id))
-            _actionRows.Add(new ActionRow(a, macroNames));
+        foreach (var a in ActionRegistry.All.OrderBy(x => x.Name, StringComparer.CurrentCulture))
+        {
+            var row = new ActionRow(a, macroNames, PanelLibrary.DescribeReferences(a.Id));
+            if (filter.Length > 0
+                && !row.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                && !row.TypeLabel.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                && !row.Summary.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                continue;
+            _actionRows.Add(row);
+        }
         _loadingList = false;
         if (sel >= 0 && sel < _actionRows.Count) ActionList.SelectedIndex = sel;
+        ActionCountText.Text = filter.Length > 0
+            ? $"显示 {_actionRows.Count} / {total} 个动作"
+            : $"共 {total} 个动作";
     }
 
-    private void ActionList_SelectionChanged(object sender, SelectionChangedEventArgs e) { }
+    private void ActionFilter_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_loadingList) return;
+        PopulateActions();
+    }
 
     private void ActionList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
@@ -279,29 +388,23 @@ public partial class ConfigHelperWindow : Window
         MarkDirty();
     }
 
-    /// <summary>行内 hover ✕：删除该行动作（单条）。</summary>
-    private void ActionRowDelete_Click(object sender, RoutedEventArgs e)
+    private void DeleteAction_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button b && b.DataContext is ActionRow row)
-            DeleteAction(row.Id);
+        var cur = SelectedAction();
+        if (cur != null) DeleteAction(cur.Id);
     }
 
-    /// <summary>删除动作：确认后落盘，并清理菜单项 / 超级面板槽位中的引用。</summary>
+    /// <summary>删除动作：确认后落盘，并清理菜单项 / 面板入口中的引用。</summary>
     private void DeleteAction(string id)
     {
         if (!ConfirmDialog.Confirm(this, "删除动作",
-            $"确定删除「{ActionRegistry.DisplayName(id)}」吗？\n引用此动作的菜单项 / 超级面板槽位也会被清除。",
+            $"确定删除「{ActionRegistry.DisplayName(id)}」吗？\n\n面板引用：{PanelLibrary.DescribeReferences(id)}\n菜单项 / 组合步骤中的引用也会一并清除。",
             danger: true)) return;
 
-        ConfigStore.RemoveAction(id);
+        ConfigStore.RemoveAction(id);   // 内含清菜单项、组合步骤、面板引用
         PopulateActions();
         PopulateGroupList();
-        // 清掉超级面板槽位中对该动作的引用
-        bool pruned = false;
-        foreach (var p in _superPages)
-            for (int i = 0; i < p.Count; i++)
-                if (p[i] == id) { p[i] = null; pruned = true; }
-        if (pruned) { _superDirty = true; BuildSuperPagesUI(); }
+        Page_SuperPanel.Reload();
         MarkDirty();
     }
 
@@ -491,14 +594,19 @@ public partial class ConfigHelperWindow : Window
         MarkDirty();
     }
 
-    // —— 菜单组 / 菜单项拖动重排（窗口级鼠标跟踪 + 幽灵跟随 + 源占位 + 目标指示 + 位移动画，§12）——
-    // 不走 OLE DoDragDrop（系统 drag image 与自绘幽灵叠加）；节奏与超级面板/组合步骤一致。
+    // —— 菜单组 / 菜单项拖动排序 ——
+    // 统一规格（照 Quicker）：快照幽灵跟随光标 + 源行虚线占位 + 让位动画 + Esc 取消。
+    // 菜单组是固定 1..10 槽位（交换语义）；菜单项是插入语义（实时预览，松手落定）。
+    private readonly DragVisuals _groupVisuals;
+    private readonly ListDragSort _itemDrag;
+
     private Point _menuDragOrigin;
-    private bool _menuDragging;
     private int _groupDragFrom = -1;              // 组拖动源 index（0-based，对应 1..10 槽）
-    private int _itemDragFrom = -1;               // 项拖动源 index
-    private ListBoxItem? _menuDragSrcItem;        // 源行（半透明占位）
+    private bool _groupDragging;
+    private ListBoxItem? _groupSrcRow;
+    private FrameworkElement? _groupHole;
     private int _groupHover = -1;                 // 组拖动目标行（高亮）
+    private List<string>? _itemSnapshot;          // 菜单项拖动前的顺序（Esc 还原）
 
     /// <summary>visual tree 上溯找最近的 <typeparamref name="T"/> 祖先（命中 ListBoxItem 用）。</summary>
     private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
@@ -514,41 +622,7 @@ public partial class ConfigHelperWindow : Window
         return lbi != null ? list.ItemContainerGenerator.IndexFromContainer(lbi) : -1;
     }
 
-    private void BeginMenuDrag(ListBox list, int index, string ghostText)
-    {
-        _menuDragging = true;
-        list.CaptureMouse();
-        ListGhostText.Text = ghostText;
-        ListGhost.Visibility = Visibility.Visible;
-        Mouse.OverrideCursor = Cursors.SizeAll;
-        if (list.ItemContainerGenerator.ContainerFromIndex(index) is ListBoxItem c)
-        {
-            c.Opacity = 0.35;
-            _menuDragSrcItem = c;
-        }
-    }
-
-    private void UpdateListGhost(Point windowPos)
-    {
-        var rel = TranslatePoint(windowPos, GhostLayer);
-        double w = ListGhost.ActualWidth > 0 ? ListGhost.ActualWidth : ListGhost.MinWidth;
-        double h = ListGhost.ActualHeight > 0 ? ListGhost.ActualHeight : 30;
-        Canvas.SetLeft(ListGhost, rel.X - w / 2);
-        Canvas.SetTop(ListGhost, rel.Y - h / 2);
-    }
-
-    private void EndMenuDrag()
-    {
-        if (!_menuDragging) return;
-        ListGhost.Visibility = Visibility.Collapsed;
-        Mouse.OverrideCursor = null;
-        if (_menuDragSrcItem != null) { _menuDragSrcItem.Opacity = 1; _menuDragSrcItem = null; }
-        ClearGroupHover();
-        InsertLine.Visibility = Visibility.Collapsed;
-        _menuDragging = false;
-    }
-
-    // —— 组拖动（交换语义；目标行高亮，不用插入线）——
+    // —— 组拖动（交换语义；源槽虚线占位 + 目标行高亮）——
 
     private void GroupList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -559,92 +633,119 @@ public partial class ConfigHelperWindow : Window
         if (idx < 0 || MenuSystem.GetGroup(idx + 1) == null) return;   // 空槽不参与拖动
         _groupDragFrom = idx;
         _menuDragOrigin = e.GetPosition(this);
+        _groupDragging = false;
     }
 
     private void GroupList_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (_groupDragFrom < 0 || e.LeftButton != MouseButtonState.Pressed) { _groupDragFrom = -1; return; }
+        if (_groupDragFrom < 0) return;
+        if (e.LeftButton != MouseButtonState.Pressed) { EndGroupDrag(); return; }
+
         var pos = e.GetPosition(this);
-        if (!_menuDragging)
+        if (!_groupDragging)
         {
             if (Math.Abs(pos.X - _menuDragOrigin.X) < SystemParameters.MinimumHorizontalDragDistance
                 && Math.Abs(pos.Y - _menuDragOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-            BeginMenuDrag(GroupList, _groupDragFrom, MenuSystem.GetGroup(_groupDragFrom + 1)?.Name ?? "");
+            if (!StartGroupDrag(pos)) return;
         }
-        UpdateListGhost(pos);
+
+        _groupVisuals.MoveGhost(pos);
+        if (_groupHole != null
+            && GroupList.ItemContainerGenerator.ContainerFromIndex(_groupDragFrom) is ListBoxItem row)
+            DragFx.PlaceOver(GhostLayer, _groupHole, row, this);
+
         HighlightGroupTarget(HitTestRow(GroupList, pos));
         e.Handled = true;
     }
 
+    private bool StartGroupDrag(Point pos)
+    {
+        if (GroupList.ItemContainerGenerator.ContainerFromIndex(_groupDragFrom) is not ListBoxItem row)
+            return false;
+
+        _groupVisuals.ShowGhost(row, pos);
+        _groupHole = DragFx.CreateHole(6);
+        GhostLayer.Children.Add(_groupHole);
+        row.Opacity = 0;
+        _groupSrcRow = row;
+        DragFx.PlaceOver(GhostLayer, _groupHole, row, this);
+        _groupDragging = true;
+        GroupList.CaptureMouse();   // 拖出列表也能收到移动 / 释放
+        return true;
+    }
+
     private void GroupList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (!_menuDragging || _groupDragFrom < 0) { _groupDragFrom = -1; return; }
+        if (!_groupDragging) { _groupDragFrom = -1; return; }
         int from = _groupDragFrom;
         int to = HitTestRow(GroupList, e.GetPosition(this));
-        GroupList.ReleaseMouseCapture();
-        EndMenuDrag();
-        _groupDragFrom = -1;
+        var old = DragFx.CaptureByIndex(GroupList);
+        EndGroupDrag();
+
         if (to < 0 || to == from) return;
-        var old = Views.Controls.DragFx.CaptureByIndex(GroupList);
         if (!MenuSystem.SwapGroups(from + 1, to + 1)) return;
         PopulateGroupList();
         GroupList.SelectedIndex = to;
-        Views.Controls.DragFx.AnimateReorderByIndex(GroupList, old,
-            i => Views.Controls.DragFx.OldIndexOfSwap(i, from, to));
+        DragFx.AnimateReorderByIndex(GroupList, old, i => DragFx.OldIndexOfSwap(i, from, to));
         MarkDirty();
         e.Handled = true;
     }
 
-    // —— 项拖动（插入语义；目标位置插入线）——
+    private void EndGroupDrag()
+    {
+        if (_groupHole != null) { GhostLayer.Children.Remove(_groupHole); _groupHole = null; }
+        _groupVisuals.End();
+        GroupList.ReleaseMouseCapture();
+        if (_groupSrcRow != null) { _groupSrcRow.Opacity = 1; _groupSrcRow = null; }
+        // 列表马上会重建，容器可能被回收复用：逐行复位，避免残留隐形行
+        for (int i = 0; i < GroupList.Items.Count; i++)
+            if (GroupList.ItemContainerGenerator.ContainerFromIndex(i) is ListBoxItem c) c.Opacity = 1;
+        ClearGroupHover();
+        _groupDragging = false;
+        _groupDragFrom = -1;
+    }
+
+    // —— 项拖动（插入语义；实时让位，松手落定）——
 
     private void ItemList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        _itemDragFrom = -1;
         if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点 ✕ 不启动拖动
         if (MenuSystem.GetGroup(SelectedSlot) == null) return;
         if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not { } lbi) return;
         int idx = ItemList.ItemContainerGenerator.IndexFromContainer(lbi);
         if (idx < 0) return;
-        _itemDragFrom = idx;
-        _menuDragOrigin = e.GetPosition(this);
+        _itemDrag.Press(idx, e.GetPosition(this));
     }
 
-    private void ItemList_PreviewMouseMove(object sender, MouseEventArgs e)
+    /// <summary>实时预览：把源项移到插入位置，返回它的新下标（-1 = 没有变化）。</summary>
+    private int MoveItemPreview(int from, int insertAt)
     {
-        if (_itemDragFrom < 0 || e.LeftButton != MouseButtonState.Pressed) { _itemDragFrom = -1; return; }
-        var pos = e.GetPosition(this);
-        if (!_menuDragging)
-        {
-            if (Math.Abs(pos.X - _menuDragOrigin.X) < SystemParameters.MinimumHorizontalDragDistance
-                && Math.Abs(pos.Y - _menuDragOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-            var g = MenuSystem.GetGroup(SelectedSlot);
-            BeginMenuDrag(ItemList, _itemDragFrom,
-                g != null && _itemDragFrom < g.Items.Count ? ActionRegistry.DisplayName(g.Items[_itemDragFrom]) : "");
-        }
-        UpdateListGhost(pos);
-        PositionItemInsertLine(e);
-        e.Handled = true;
-    }
-
-    private void ItemList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        if (!_menuDragging || _itemDragFrom < 0) { _itemDragFrom = -1; return; }
-        int from = _itemDragFrom;
-        int insertAt = ItemInsertAt(e);        // 0..Count（基于移动前）
-        ItemList.ReleaseMouseCapture();
-        EndMenuDrag();
-        _itemDragFrom = -1;
-        if (insertAt < 0) return;
         int to = insertAt > from ? insertAt - 1 : insertAt;   // 移除源后索引前移
-        if (to == from) return;
-        var old = Views.Controls.DragFx.CaptureByIndex(ItemList);
-        if (!MenuSystem.MoveItemTo(SelectedSlot, from, to)) return;
+        if (to == from) return -1;
+
+        var old = DragFx.CaptureByIndex(ItemList);
+        if (!MenuSystem.MoveItemTo(SelectedSlot, from, to)) return -1;
         PopulateItemList();
         ItemList.SelectedIndex = to;
-        Views.Controls.DragFx.AnimateReorderByIndex(ItemList, old,
-            i => Views.Controls.DragFx.OldIndexOfMove(i, from, to));
-        MarkDirty();
-        e.Handled = true;
+        DragFx.AnimateReorderByIndex(ItemList, old, i => DragFx.OldIndexOfMove(i, from, to));
+        return to;
+    }
+
+    private void TakeItemSnapshot()
+    {
+        var g = MenuSystem.GetGroup(SelectedSlot);
+        _itemSnapshot = g != null ? new List<string>(g.Items) : null;
+    }
+
+    private void RestoreItemSnapshot()
+    {
+        var g = MenuSystem.GetGroup(SelectedSlot);
+        if (g != null && _itemSnapshot != null)
+        {
+            g.Items.Clear();
+            g.Items.AddRange(_itemSnapshot);
+        }
+        PopulateItemList();
     }
 
     // —— 菜单拖动命中 / 指示 ——
@@ -659,9 +760,10 @@ public partial class ConfigHelperWindow : Window
         return lbi != null ? list.ItemContainerGenerator.IndexFromContainer(lbi) : -1;
     }
 
-    /// <summary>组拖动目标行高亮（交换语义）。</summary>
+    /// <summary>组拖动目标行高亮（交换语义）；源行本身不高亮。</summary>
     private void HighlightGroupTarget(int idx)
     {
+        if (idx == _groupDragFrom) idx = -1;
         if (idx == _groupHover) return;
         ClearGroupHover();
         _groupHover = idx;
@@ -676,523 +778,8 @@ public partial class ConfigHelperWindow : Window
         _groupHover = -1;
     }
 
-    /// <summary>项拖动的插入位置（0..Count）：命中行上/下半；列表内空白 → 末尾；列表外 → -1。</summary>
-    private int ItemInsertAt(MouseEventArgs e)
-    {
-        var rel = e.GetPosition(ItemList);
-        if (rel.X < 0 || rel.Y < 0 || rel.X > ItemList.ActualWidth || rel.Y > ItemList.ActualHeight)
-            return -1;
-        int n = MenuSystem.GetGroup(SelectedSlot)?.Items.Count ?? 0;
-        if (ItemList.InputHitTest(rel) is DependencyObject d)
-        {
-            var lbi = FindAncestor<ListBoxItem>(d);
-            if (lbi != null)
-            {
-                int i = ItemList.ItemContainerGenerator.IndexFromContainer(lbi);
-                if (i >= 0) return e.GetPosition(lbi).Y < lbi.ActualHeight / 2 ? i : i + 1;
-            }
-        }
-        return n;   // 列表内空白 → 末尾
-    }
-
-    /// <summary>把插入线定位到光标所停留行的上/下边缘。</summary>
-    private void PositionItemInsertLine(MouseEventArgs e)
-    {
-        var rel = e.GetPosition(ItemList);
-        if (rel.X < 0 || rel.Y < 0 || rel.X > ItemList.ActualWidth || rel.Y > ItemList.ActualHeight)
-        { InsertLine.Visibility = Visibility.Collapsed; return; }
-        if (ItemList.InputHitTest(rel) is not DependencyObject d) { InsertLine.Visibility = Visibility.Collapsed; return; }
-        var lbi = FindAncestor<ListBoxItem>(d);
-        if (lbi == null) { InsertLine.Visibility = Visibility.Collapsed; return; }
-        bool after = e.GetPosition(lbi).Y >= lbi.ActualHeight / 2;
-        var p = lbi.TransformToAncestor(GhostLayer).Transform(
-            new Point(0, after ? lbi.ActualHeight : 0));
-        Canvas.SetLeft(InsertLine, p.X);
-        Canvas.SetTop(InsertLine, p.Y - 1.5);
-        InsertLine.Width = lbi.ActualWidth > 0 ? lbi.ActualWidth : ItemList.ActualWidth;
-        InsertLine.Visibility = Visibility.Visible;
-    }
-
-    // ============ 超级面板 ============
-    private void PopulateSuperPanel()
-    {
-        var cfg = AppConfig.Load(ConfigPath);
-        // 内存编辑态：从配置克隆（每页规整为 16 槽 4×4，旧 3×3 数据行映射）
-        _superPages.Clear();
-        foreach (var p in cfg.SuperPanel.Pages)
-            _superPages.Add(Features.SuperPanel.NormalizePage(p));
-        _superDirty = false;
-
-        _initializing = true;
-        SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
-        SuperPanelBox2.IsChecked = AppState.IsSuperPanelEnabled;
-        ThresholdSlider.Value = cfg.SuperPanel.LongPressThresholdMs;
-        ThresholdText.Text = $"{(int)ThresholdSlider.Value} ms";
-        AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;   // 与运行态同步（防外部改配置漂移）
-        _initializing = false;
-
-        BuildSuperPagesUI();
-    }
-
-    private void BuildSuperPagesUI()
-    {
-        _hover = (-1, -1);   // 子元素已清空，悬停引用失效
-        SuperPagesPanel.Children.Clear();
-        for (int pi = 0; pi < _superPages.Count; pi++)
-        {
-            int pageIdx = pi;   // for 循环变量在闭包里共享同一引用——循环结束后 pi==Count，
-                                // 所有「删除页」闭包都会传越界值。须局部副本隔离。
-            var card = new Border
-            {
-                Style = (Style)FindResource("CardBox"),
-                Margin = new Thickness(0, 0, 0, 12),
-            };
-            var sp = new StackPanel();
-
-            // 页头
-            var header = new Grid();
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var title = new TextBlock
-            {
-                Text = $"第 {pageIdx + 1} 页",
-                Style = (Style)FindResource("SectionLabel"),
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            title.SetValue(Grid.ColumnProperty, 0);
-            header.Children.Add(title);
-            var delBtn = new Button
-            {
-                Style = (Style)FindResource("BtnGhostDanger"),
-                Content = "删除页",
-                MinWidth = 64,
-            };
-            delBtn.SetValue(Grid.ColumnProperty, 1);
-            delBtn.Click += (_, _) => DeletePage(pageIdx);
-            header.Children.Add(delBtn);
-            sp.Children.Add(header);
-
-            // 4×4 网格
-            var grid = new UniformGrid { Rows = 4, Columns = 4, Margin = new Thickness(0, 10, 0, 0) };
-            for (int si = 0; si < 16; si++)
-            {
-                var cell = BuildSlotButton(pageIdx, si);
-                grid.Children.Add(cell);
-            }
-            sp.Children.Add(grid);
-            card.Child = sp;
-            SuperPagesPanel.Children.Add(card);
-        }
-    }
-
-    private Button BuildSlotButton(int pageIdx, int slotIdx)
-    {
-        string? id = _superPages[pageIdx][slotIdx];
-        var a = id != null ? ActionRegistry.FindById(id) : null;
-        var btn = new Button
-        {
-            Style = (Style)FindResource("BtnGhost"),
-            Margin = new Thickness(2),
-            MinHeight = 78,
-            Cursor = Cursors.Hand,
-        };
-        var content = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
-        content.Children.Add(new TextBlock
-        {
-            Text = a != null ? IconCatalog.GetGlyph(a.Icon) : "\uE710",   // add 字形
-            FontFamily = new FontFamily("Segoe MDL2 Assets"),
-            FontSize = 20,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Foreground = (Brush)FindResource("SecondaryTextBrush"),
-        });
-        content.Children.Add(new TextBlock
-        {
-            Text = a != null ? a.Name : "(空)",
-            Margin = new Thickness(0, 4, 0, 0),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 110,
-            HorizontalAlignment = HorizontalAlignment.Center,
-        });
-        btn.Content = content;
-
-        // 右键菜单：空格子 = 共享「添加动作」菜单；有动作的格子 = 编辑 / 复制 / 换绑 / 清除
-        btn.ContextMenu = BuildSlotMenu(pageIdx, slotIdx);
-        btn.PreviewMouseLeftButtonDown += (_, e) => OnSlotDown(pageIdx, slotIdx, e);
-        return btn;
-    }
-
-    private void PickSlotAction(int pageIdx, int slotIdx)
-    {
-        string? current = _superPages[pageIdx][slotIdx];
-        var picker = new ActionPoolPicker(this, "超级面板槽位 — 选择动作", current) { Owner = this };
-        picker.ShowDialog();
-        if (picker.Result == null) return;
-        _superPages[pageIdx][slotIdx] = picker.Result;
-        _superDirty = true;
-        BuildSuperPagesUI();
-        MarkSuperDirty();
-    }
-
-    private void ClearSlot(int pageIdx, int slotIdx)
-    {
-        _superPages[pageIdx][slotIdx] = null;
-        _superDirty = true;
-        BuildSuperPagesUI();
-        MarkSuperDirty();
-    }
-
-    /// <summary>新建动作并直接放入指定槽位（共享菜单的「新建/快捷新建」入口）。</summary>
-    private void NewActionAt(int pageIdx, int slotIdx, ActionType? presetType)
-    {
-        ActionDto? dto;
-        if (presetType == null)
-            dto = ActionEditor.Show(this, "新建动作", null);
-        else
-        {
-            string title = presetType == ActionType.composite ? "新建组合动作" : "新建动作";
-            var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = presetType.Value };
-            dto = ActionEditor.Show(this, title, draft);
-        }
-        if (dto == null) return;
-
-        ConfigStore.AddAction(dto);
-        _superPages[pageIdx][slotIdx] = dto.Id;
-        _superDirty = true;
-        PopulateActions();      // 动作管理列表同步刷新
-        BuildSuperPagesUI();
-        MarkSuperDirty();
-    }
-
-    /// <summary>编辑槽位引用的动作：走与「动作管理」页编辑同一条路径（Id 不变、原地更新），
-    /// 改名 / 改图标后动作列表与本页格子同步刷新。引用悬空（动作已被删）时退化为添加菜单。</summary>
-    private void EditSlotAction(int pageIdx, int slotIdx)
-    {
-        string? id = _superPages[pageIdx][slotIdx];
-        var cur = id != null ? ActionRegistry.FindById(id) : null;
-        if (cur == null) { ShowSlotMenu(pageIdx, slotIdx); return; }
-
-        var dto = ActionEditor.Show(this, "编辑动作", cur);
-        if (dto == null) return;
-        dto.Id = cur.Id;           // 编辑不换 Id（与 EditAction_Click 一致）
-        ConfigStore.UpdateAction(dto);
-        PopulateActions();         // 动作管理列表同步刷新
-        BuildSuperPagesUI();       // 本页格子的名称 / 图标同步
-        MarkDirty();
-    }
-
-    /// <summary>复制槽位动作：副本进动作池，并放进本页第一个空格子；本页已满则只入池并提示。</summary>
-    private void DuplicateSlot(int pageIdx, int slotIdx)
-    {
-        string? id = _superPages[pageIdx][slotIdx];
-        if (id == null) return;
-        var copy = ConfigStore.DuplicateAction(id);
-        if (copy == null) return;
-
-        int empty = _superPages[pageIdx].FindIndex(x => string.IsNullOrEmpty(x));
-        if (empty < 0)
-        {
-            PopulateActions();
-            MarkDirty();
-            ConfirmDialog.Info(this, "超级面板", "本页已满，副本已加入动作池（可在空格子里选择它）。");
-            return;
-        }
-        _superPages[pageIdx][empty] = copy.Id;
-        _superDirty = true;
-        PopulateActions();
-        BuildSuperPagesUI();
-        MarkSuperDirty();
-    }
-
-    /// <summary>槽位的右键菜单：空格子沿用共享「添加动作」菜单（新建 / 快捷新建 / 从动作池选择）；
-    /// 有动作的格子给「编辑… / 复制 / 换绑 / 清除」——「清除」只把动作移出格子，不删除动作本身
-    /// （与超级面板里长按菜单的「删除」语义不同，设置页删动作请到「动作管理」页）。</summary>
-    private ContextMenu BuildSlotMenu(int pageIdx, int slotIdx)
-    {
-        if (string.IsNullOrEmpty(_superPages[pageIdx][slotIdx]))
-            return SlotMenu.BuildAddMenu(this, slotIdx,
-                (s, t) => NewActionAt(pageIdx, s, t),
-                s => PickSlotAction(pageIdx, s),
-                onClear: null);
-
-        var menu = new ContextMenu();
-
-        // 菜单项 Click 内同步开模态对话框会与「菜单正在关闭」冲突（见 SlotMenu），统一推迟一帧
-        void Add(string header, Action invoke)
-        {
-            var mi = new MenuItem { Header = header };
-            mi.Click += (_, _) => Defer(invoke);
-            menu.Items.Add(mi);
-        }
-
-        Add("编辑…", () => EditSlotAction(pageIdx, slotIdx));
-        Add("复制", () => DuplicateSlot(pageIdx, slotIdx));
-        menu.Items.Add(new Separator());
-        Add("从动作池选择…（换绑）", () => PickSlotAction(pageIdx, slotIdx));
-        Add("清除", () => ClearSlot(pageIdx, slotIdx));
-        return menu;
-    }
-
-    /// <summary>在指定格子中心弹出共享添加菜单（左键短击走此路径，与面板空格一致）。</summary>
-    private void ShowSlotMenu(int pageIdx, int slotIdx)
-    {
-        bool hasAction = !string.IsNullOrEmpty(_superPages[pageIdx][slotIdx]);
-        var menu = SlotMenu.BuildAddMenu(this, slotIdx,
-            (s, t) => NewActionAt(pageIdx, s, t),
-            s => PickSlotAction(pageIdx, s),
-            hasAction ? new Action<int>(s => ClearSlot(pageIdx, s)) : null);
-        if (GetSlotButton(pageIdx, slotIdx) is UIElement target)
-        {
-            menu.PlacementTarget = target;
-            menu.Placement = PlacementMode.Center;
-            menu.IsOpen = true;
-        }
-    }
-
-    // —— 槽位拖动重排（交换语义，跨卡片=跨页；与面板 §5.6 同思路）——
-
-    private void OnSlotDown(int page, int slot, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton != MouseButton.Left) return;
-        _dragSrcPage = page;
-        _dragSrcSlot = slot;
-        _dragOrigin = e.GetPosition(this);
-        _dragging = false;
-        CaptureMouse();          // 捕获到窗口：拖出窗口后 PreviewMouseMove/Up 仍路由到本窗口
-        e.Handled = true;        // 吞掉 Button.Click——点击/拖动由释放时位移判定
-    }
-
-    private void OnSlotDragMove(object sender, MouseEventArgs e)
-    {
-        if (_dragSrcPage < 0) return;
-        var pos = e.GetPosition(this);
-
-        if (!_dragging)
-        {
-            double dx = Math.Abs(pos.X - _dragOrigin.X);
-            double dy = Math.Abs(pos.Y - _dragOrigin.Y);
-            if (dx <= SystemParameters.MinimumHorizontalDragDistance
-                && dy <= SystemParameters.MinimumVerticalDragDistance) return;
-            _dragging = true;
-            ShowSlotGhost(_dragSrcPage, _dragSrcSlot);
-        }
-
-        UpdateSlotGhost(pos);
-        SetHover(HitTestSlot(pos));
-        e.Handled = true;
-    }
-
-    private void OnSlotDragUp(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton != MouseButton.Left || _dragSrcPage < 0) return;
-        ReleaseMouseCapture();
-
-        int sp = _dragSrcPage, ss = _dragSrcSlot;
-        var target = _hover;
-        bool wasDrag = _dragging;
-        EndSlotDragVisuals();
-
-        if (wasDrag)
-        {
-            int dp = target.page, ds = target.slot;
-            // 交换：源格 ↔ 目标格（目标无效或同位→取消）
-            if (dp >= 0 && ds >= 0 && !(dp == sp && ds == ss))
-            {
-                bool samePage = dp == sp;
-                (_superPages[sp][ss], _superPages[dp][ds]) = (_superPages[dp][ds], _superPages[sp][ss]);
-                _superDirty = true;
-                BuildSuperPagesUI();
-                MarkSuperDirty();
-                // 同页交换：两格内容从对方位置滑入（跨页=跨卡片，跳过动画）
-                if (samePage)
-                {
-                    var a = GetSlotButton(sp, ss);
-                    var b = GetSlotButton(dp, ds);
-                    if (a != null && b != null)
-                        Views.Controls.DragFx.AnimateSwap(a, b, this);
-                }
-            }
-        }
-        else
-        {
-            // 位移未超阈值→视为单击：有动作的格子直接编辑该动作；空格子弹出共享添加菜单。
-            // （原先无论有没有动作都弹「添加」菜单，想改已配好的格子无从下手）
-            Defer(() =>
-            {
-                if (string.IsNullOrEmpty(_superPages[sp][ss])) ShowSlotMenu(sp, ss);
-                else EditSlotAction(sp, ss);
-            });
-        }
-        _dragSrcPage = -1;
-        _dragSrcSlot = -1;
-        _dragging = false;
-        e.Handled = true;
-    }
-
-    private void CancelSlotDrag()
-    {
-        if (_dragSrcPage < 0) return;
-        ReleaseMouseCapture();
-        EndSlotDragVisuals();
-        _dragSrcPage = -1;
-        _dragSrcSlot = -1;
-        _dragging = false;
-    }
-
-    private void Defer(Action action) => Dispatcher.InvokeAsync(action);
-
-    // —— 命中测试 / 目标高亮 ——
-
-    /// <summary>遍历所有页卡片的 4×4 网格，找光标下的槽位（page, slot）；无则 (-1,-1)。</summary>
-    private (int page, int slot) HitTestSlot(Point windowPos)
-    {
-        for (int pi = 0; pi < SuperPagesPanel.Children.Count; pi++)
-        {
-            if (SuperPagesPanel.Children[pi] is not Border card) continue;
-            var grid = FindSlotGrid(card);
-            if (grid == null) continue;
-            var rel = TranslatePoint(windowPos, grid);
-            if (rel.X < 0 || rel.Y < 0 || rel.X > grid.ActualWidth || rel.Y > grid.ActualHeight) continue;
-            var hit = grid.InputHitTest(rel) as DependencyObject;
-            if (hit == null) continue;
-            DependencyObject? d = hit;
-            while (d != null && d != grid)
-            {
-                if (d is Button b)
-                {
-                    int si = grid.Children.IndexOf(b);
-                    if (si >= 0) return (pi, si);
-                }
-                d = VisualTreeHelper.GetParent(d);
-            }
-        }
-        return (-1, -1);
-    }
-
-    private static UniformGrid? FindSlotGrid(Border card)
-    {
-        if (card.Child is not StackPanel sp) return null;
-        foreach (var c in sp.Children) if (c is UniformGrid g) return g;
-        return null;
-    }
-
-    private Button? GetSlotButton(int page, int slot)
-    {
-        if (page < 0 || page >= SuperPagesPanel.Children.Count) return null;
-        if (SuperPagesPanel.Children[page] is not Border card) return null;
-        var grid = FindSlotGrid(card);
-        if (grid == null || slot < 0 || slot >= grid.Children.Count) return null;
-        return grid.Children[slot] as Button;
-    }
-
-    private void SetHover((int page, int slot) h)
-    {
-        if (h == _hover) return;
-        ClearHoverSlot(_hover);
-        _hover = h;
-        ApplyHoverSlot(_hover);
-    }
-
-    private void ApplyHoverSlot((int page, int slot) h)
-    {
-        if (h.page < 0) return;
-        if (GetSlotButton(h.page, h.slot) is Button b)
-        {
-            b.BorderBrush = (Brush)FindResource("PrimaryBrush");
-            b.BorderThickness = new Thickness(2);
-        }
-    }
-
-    private void ClearHoverSlot((int page, int slot) h)
-    {
-        if (h.page < 0) return;
-        if (GetSlotButton(h.page, h.slot) is Button b)
-        {
-            b.ClearValue(BorderBrushProperty);     // 还原 BtnGhost 默认（透明边框）
-            b.ClearValue(BorderThicknessProperty);
-        }
-    }
-
-    // —— 幽灵 ——
-
-    private Button? _slotGhostSrc;   // 拖动源槽位（半透明占位，EndSlotDragVisuals 恢复）
-
-    private void ShowSlotGhost(int page, int slot)
-    {
-        string? id = _superPages[page][slot];
-        var a = id != null ? ActionRegistry.FindById(id) : null;
-        GhostIcon.Text = a != null ? IconCatalog.GetGlyph(a.Icon) : "\uE710";
-        GhostName.Text = a != null ? a.Name : "(空)";
-        DragGhost.Visibility = Visibility.Visible;
-        Mouse.OverrideCursor = Cursors.SizeAll;
-        // 源半透明占位
-        if (GetSlotButton(page, slot) is Button b) { b.Opacity = 0.35; _slotGhostSrc = b; }
-    }
-
-    private void UpdateSlotGhost(Point windowPos)
-    {
-        var rel = TranslatePoint(windowPos, GhostLayer);
-        double w = DragGhost.ActualWidth > 0 ? DragGhost.ActualWidth : DragGhost.Width;
-        double h = DragGhost.ActualHeight > 0 ? DragGhost.ActualHeight : DragGhost.Height;
-        Canvas.SetLeft(DragGhost, rel.X - w / 2);
-        Canvas.SetTop(DragGhost, rel.Y - h / 2);
-    }
-
-    private void EndSlotDragVisuals()
-    {
-        DragGhost.Visibility = Visibility.Collapsed;
-        Mouse.OverrideCursor = null;
-        if (_slotGhostSrc != null) { _slotGhostSrc.Opacity = 1; _slotGhostSrc = null; }
-        SetHover((-1, -1));
-    }
-
-    private void AddPage_Click(object sender, RoutedEventArgs e)
-    {
-        var page = new List<string?>(16);
-        for (int i = 0; i < 16; i++) page.Add(null);
-        _superPages.Add(page);
-        _superDirty = true;
-        BuildSuperPagesUI();
-        MarkSuperDirty();
-    }
-
-    private void DeletePage(int pi)
-    {
-        if (pi < 0 || pi >= _superPages.Count) return;
-        if (!ConfirmDialog.Confirm(this, "删除页", $"确定删除第 {pi + 1} 页吗？", danger: true)) return;
-        _superPages.RemoveAt(pi);
-        _superDirty = true;
-        BuildSuperPagesUI();
-        MarkSuperDirty();
-    }
-
-    private void ThresholdSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_initializing) return;
-        int v = (int)ThresholdSlider.Value;
-        ThresholdText.Text = $"{v} ms";
-        AppState.SuperPanelThresholdMs = v;   // 立即生效（手势读运行态值，不等防抖落盘）
-        _superDirty = true;
-        MarkSuperDirty();
-    }
-
-    private void MarkSuperDirty()
-    {
-        // 超级面板改动走防抖落盘（与 MarkDirty 合并）
-        MarkDirty();
-    }
-
-    /// <summary>把内存中的超级面板（页 / 槽 / 阈值）写回配置（读磁盘→替换 Pages+阈值→保存）。</summary>
-    private void SaveSuperPanel()
-    {
-        var pages = _superPages.Select(p => new List<string?>(p)).ToList();
-        int threshold = (int)ThresholdSlider.Value;
-        ConfigIO.Modify(ConfigPath, cfg =>
-        {
-            cfg.SuperPanel.Pages = pages;
-            cfg.SuperPanel.LongPressThresholdMs = threshold;
-        });
-        _superDirty = false;
-    }
+    // ============ 面板管理 ============
+    private void PopulateSuperPanel() => Page_SuperPanel.Reload();
 
     // ============ 终端路径 ============
     private void PopulateTerminals()
@@ -1430,8 +1017,6 @@ public partial class ConfigHelperWindow : Window
             PopulateActions();
             PopulateGroupList();
             PopulateSuperPanel();
-            // 重置超级面板脏标记（否则旧的内存编辑态会覆盖刚导入的配置）
-            _superDirty = false;
             // 全局开关 / 鼠标速度在 AppState，启动时从配置读取；导入新配置后重新应用，避免要重启才生效
             var cfg = ConfigStore.LoadConfig();
             AppState.IsToolEnabled = cfg.CapsLockEnabled;
@@ -1445,7 +1030,6 @@ public partial class ConfigHelperWindow : Window
             _initializing = true;
             CapsLockEnabledBox.IsChecked = AppState.IsToolEnabled;
             SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
-            SuperPanelBox2.IsChecked = AppState.IsSuperPanelEnabled;
             _initializing = false;
             ShowStatus("导入完成", ok: true);
             BackupStatusText.Text = "导入完成（旧数据已备份为 .bak-时间戳）";
@@ -1488,7 +1072,6 @@ public partial class ConfigHelperWindow : Window
         try
         {
             ConfigStore.Save();      // 菜单组 + 动作清单
-            if (_superDirty) SaveSuperPanel();
             QuickNote.Refresh();
             ShowStatus("已自动保存", ok: true);
         }
@@ -1510,16 +1093,19 @@ public partial class ConfigHelperWindow : Window
     /// <summary>动作列表展示模型。</summary>
     public sealed class ActionRow
     {
-        public ActionRow(ActionDto a, IReadOnlyDictionary<string, string>? macroNames = null)
+        public ActionRow(ActionDto a, IReadOnlyDictionary<string, string>? macroNames = null,
+            string references = "未使用")
         {
             Id = a.Id;
             Name = a.Name;
             TypeLabel = ActionTypeLabel.Of(a.Type);
             Glyph = IconCatalog.GetGlyph(a.Icon);
             Summary = Summarize(a, macroNames);
+            References = references;
         }
         public string Id { get; }
         public string Name { get; }
+        public string References { get; }
         public string TypeLabel { get; }
         public string Glyph { get; }
         public string Summary { get; }

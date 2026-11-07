@@ -1,26 +1,33 @@
-using System.Collections.Generic;
-using System.Linq;
+using System;
 using System.Windows;
-using LTools.Config;
+using System.Windows.Interop;
 using LTools.Core;
+using LTools.Features.Panel;
 using LTools.Native;
 using LTools.Views;
 
 namespace LTools.Features;
 
 /// <summary>
-/// 超级面板控制器（计划 §5）。管理面板窗口的生命周期、唤起瞬间的光标坐标、
-/// 以及槽位数据的磁盘读写（经 <see cref="ConfigIO"/> 串行落盘）。
+/// 动作面板控制器（设计见 <c>docs/PANEL_REDESIGN.md</c>）。
 /// </summary>
 /// <remarks>
-/// 键盘备用热键（`CapsLock+T`）与鼠标长按右键手势（阶段 5）都调 <see cref="Toggle"/> / <see cref="Show"/>。
-/// 唤起瞬间用 <see cref="Win32.GetCursorPos"/> 记录光标物理坐标，供 <c>windowPin.toggle</c> 等需坐标的
-/// 内部命令使用（见计划 §7）。槽位数据来自 <see cref="AppConfig.SuperPanelConfig.Pages"/>。
+/// <para>
+/// 唤起时先记录光标坐标与**目标窗口**（键盘唤起 = 前台窗口；长按右键 = 光标下的顶层窗口），
+/// 再创建面板窗口——窗口一显示，前台就变成 LTools 自己，上下文场景必须在创建之前解析。
+/// 目标命中「禁止弹出」列表时直接放弃。
+/// </para>
+/// <para>
+/// 键盘路由只处理 Esc：面板打开时搜索框需要正常 IME 与数字输入，全局钩子不能吞可打印字符。
+/// 面板内容、场景与动作引用都由 <see cref="PanelLibrary"/> 负责。
+/// </para>
 /// </remarks>
 internal static class SuperPanel
 {
+    private const string LogSource = "SuperPanel";
     private static SuperPanelWindow? _window;
     private static int _invokeX, _invokeY;
+    private static bool _hiddenForRecording;
 
     /// <summary>面板是否已打开。</summary>
     public static bool IsOpen => _window != null;
@@ -28,7 +35,7 @@ internal static class SuperPanel
     /// <summary>唤起瞬间的光标 X（屏幕物理像素）。面板未打开时为 0。</summary>
     public static int InvokeX => _invokeX;
 
-    /// <summary>唤起瞬间的光标 Y（屏幕物理像素）。</summary>
+    /// <summary>唤起瞬间的光标 Y（屏幕物理像素）。面板未打开时为 0。</summary>
     public static int InvokeY => _invokeY;
 
     /// <summary>是否有右键菜单 / 对话框正打开——钩子据此决定是否拦截外部点击 / Esc。</summary>
@@ -37,7 +44,7 @@ internal static class SuperPanel
     /// <summary>面板是否已钉住——钉住时点击外部不关闭（钩子不介入外部点击）。</summary>
     public static bool IsPinned => _window?.IsPinned == true;
 
-    /// <summary>面板上是否开着可见的子对话框（<c>Owner = 面板</c>，如从面板新建的动作编辑器）。</summary>
+    /// <summary>面板上是否开着可见的子对话框（<c>Owner = 面板</c>）。</summary>
     public static bool HasOpenDialog
     {
         get
@@ -52,13 +59,8 @@ internal static class SuperPanel
         }
     }
 
-    private static bool _hiddenForRecording;
-
     /// <summary>
-    /// 开始键鼠录制前让开屏幕：面板是 Topmost，留在屏幕上会挡住目标窗口并吃掉点击。
-    /// 注意<b>不能</b>直接 <see cref="Close"/>——面板上有对话框（动作编辑器 <c>Owner = 面板</c>）时，
-    /// 关闭 owner 会连带销毁对话框，表现为「点录制后编辑窗口直接消失」。此时改为临时隐藏，
-    /// 录制结束（<see cref="RestoreAfterRecording"/>）再显示回来。
+    /// 开始键鼠录制前让开屏幕。面板上有对话框时改为临时隐藏（关闭 Owner 会连带销毁对话框）。
     /// </summary>
     public static void HideForRecording()
     {
@@ -66,12 +68,12 @@ internal static class SuperPanel
         if (w == null) return;
         if (!HasOpenDialog)
         {
-            Close();   // 没有对话框：照旧关闭，下次唤起重新建窗
+            Close();
             return;
         }
         if (_hiddenForRecording) return;
         _hiddenForRecording = true;
-        try { w.Hide(); } catch { /* 静默：隐藏失败不影响录制 */ }
+        try { w.Hide(); } catch { /* 隐藏失败不影响录制 */ }
     }
 
     /// <summary>录制结束：恢复被 <see cref="HideForRecording"/> 临时隐藏的面板。</summary>
@@ -81,7 +83,7 @@ internal static class SuperPanel
         _hiddenForRecording = false;
         var w = _window;
         if (w == null) return;
-        try { w.Show(); } catch { /* 静默：恢复失败不影响编辑 */ }
+        try { w.Show(); } catch { /* 恢复失败不影响编辑 */ }
     }
 
     /// <summary>屏幕物理坐标点是否落在面板窗口矩形内（供鼠标钩子判定“点击外部”）。</summary>
@@ -89,7 +91,7 @@ internal static class SuperPanel
     {
         var w = _window;
         if (w == null) return false;
-        var hwnd = new System.Windows.Interop.WindowInteropHelper(w).Handle;
+        var hwnd = new WindowInteropHelper(w).Handle;
         if (hwnd == IntPtr.Zero) return false;
         if (!Win32.GetWindowRect(hwnd, out var r)) return false;
         return x >= r.Left && x <= r.Right && y >= r.Top && y <= r.Bottom;
@@ -102,31 +104,69 @@ internal static class SuperPanel
         Show();
     }
 
-    /// <summary>在光标处显示面板。勾子回调内调用时延迟到下一 Dispatcher 周期再创建窗口，
-    /// 并显式 Activate 确保成为前台（与 MenuPopup / HelpPanel 同一类激活竞态处理）。</summary>
-    public static void Show()
+    /// <summary>
+    /// 在光标处显示面板（键盘唤起：上下文按前台窗口解析）。
+    /// </summary>
+    public static void Show() => Show(IntPtr.Zero);
+
+    /// <summary>
+    /// 在光标处显示面板。
+    /// </summary>
+    /// <param name="contextHwnd">
+    /// 上下文窗口句柄。长按右键唤起时传**光标下的顶层窗口**：右键不会激活后台窗口，
+    /// 此刻前台可能还停在别的程序上。照 Quicker：先把这个窗口激活（面板关掉后焦点回到它），
+    /// 上下文也按它解析。传 <see cref="IntPtr.Zero"/> 时用当前前台窗口（键盘唤起 / CapsLock+T）。
+    /// </param>
+    public static void Show(IntPtr contextHwnd)
     {
         if (_window != null) return;
 
-        // 唤起瞬间记录光标位置（供 windowPin.toggle 等需坐标的内部命令使用）
+        // 唤起瞬间记录光标位置（windowPin.toggle 等内部命令依赖该坐标）
         if (Win32.GetCursorPos(out var pt)) { _invokeX = pt.X; _invokeY = pt.Y; }
         else { _invokeX = 0; _invokeY = 0; }
 
-        Application.Current.Dispatcher.BeginInvoke(new System.Action(() =>
+        // 钩子回调里只取句柄（微秒级）；进程 / 标题 / 类名放到 UI 线程补全，
+        // 避免 MainModule 在个别进程上阻塞低级钩子回调。
+        IntPtr fgHwnd = Win32.GetForegroundWindow();
+        IntPtr targetHwnd = contextHwnd;
+
+        // 光标下正好是 LTools 自己的浮层（提示卡片 / 录制指示器）时，仍按前台程序算
+        if (targetHwnd == IntPtr.Zero || ForegroundApp.IsOwnOverlay(targetHwnd))
+            targetHwnd = fgHwnd;
+
+        Application.Current.Dispatcher.BeginInvoke(new Action(() =>
         {
-            if (_window != null) return;   // 期间可能已打开/关闭
-            var pages = LoadPages();
-            int startPage = LoadLastPage(pages.Count);   // 记住上次关闭页（clamp 到有效范围）
-            var win = new SuperPanelWindow(pages, _invokeX, _invokeY, startPage);
+            if (_window != null) return;
+
+            var foreground = ForegroundApp.FromHandle(targetHwnd);
+            if (foreground == null && targetHwnd != fgHwnd)
+                foreground = ForegroundApp.FromHandle(fgHwnd);   // 句柄已销毁：退回前台
+            if (foreground != null && PanelLibrary.IsBlocked(foreground.ExeName, foreground.ExePath))
+            {
+                AppLog.Info(LogSource, $"目标程序在「禁止弹出」列表里：{foreground.ExeName}");
+                return;
+            }
+
+            // 照 Quicker：长按在哪个窗口上，就先把那个窗口激活——面板关掉后焦点回到它，
+            // 之后的动作也作用在它身上。短按不走这里（由注入的原生右键完成激活）；
+            // 键盘唤起时它本来就在前台，不用切。桌面 / 任务栏不激活。
+            if (contextHwnd != IntPtr.Zero && !ForegroundApp.IsShellWindow(targetHwnd))
+                WindowAction.ActivateNoWait(targetHwnd);
+
+            var win = new SuperPanelWindow(foreground, _invokeX, _invokeY);
             win.Closed += (_, _) =>
             {
-                SaveLastPage(win.PageIdx);   // 关闭时回写（各关闭路径统一走 Closed）
                 if (_window == win) _window = null;
             };
             _window = win;
             _hiddenForRecording = false;
             win.Show();
             win.Activate();
+
+            // 刚把前台让给目标窗口，前台锁可能让面板的 Activate() 抢不回来：兜底再抢一次
+            var winHwnd = new WindowInteropHelper(win).Handle;
+            if (winHwnd != IntPtr.Zero && Win32.GetForegroundWindow() != winHwnd)
+                WindowAction.ActivateNoWait(winHwnd);
         }));
     }
 
@@ -140,7 +180,7 @@ internal static class SuperPanel
         try { w.Close(); } catch { /* 静默 */ }
     }
 
-    /// <summary>钩子键路由（不依赖窗口焦点）：1~9 选格 / Esc 关面板。打开期间被钩子调用。</summary>
+    /// <summary>钩子键路由（不依赖窗口焦点）：Esc 关面板；其余按键放行（搜索框要正常输入）。</summary>
     /// <returns>true=已处理（吞掉该键）；false=不处理（交下层）。</returns>
     public static bool HandleKey(ushort vk, bool isDown)
     {
@@ -148,107 +188,13 @@ internal static class SuperPanel
         var w = _window;
         if (w == null) return false;
 
-        // 钉住后面板会长期停留：用户点外部切到别的窗口工作时，键盘应归前台窗口，
-        // 不能继续全局吞掉 1~9 / Esc（否则在别处打字会误触格子）。面板自身有焦点时
-        // 仍由窗口 KeyDown 正常处理。
+        // 钉住后用户去别的窗口工作：键盘归前台窗口，不能继续全局吞 Esc
         if (w.IsPinned && !w.IsActive) return false;
 
         if (vk == Win32.VkEscape) { w.RequestEscape(); return true; }
-        if (vk >= '1' && vk <= '9')
-        {
-            w.ExecuteSlot(vk - '1');   // 非空时内部已关面板
-            return true;
-        }
         return false;
     }
 
-    // —— 配置读写（经 ConfigIO 串行化，避免与设置窗口防抖保存互相覆盖）——
-
-    /// <summary>
-    /// 把磁盘页规整为 4×4（16 槽，§12 需求「一页 4×4」）。
-    /// <list type="bullet">
-    /// <item>≤9 项 = 旧 3×3 数据 → 按行映射到前 3 列（保持每行视觉结构，右列与末行补空）；</item>
-    /// <item>&gt;9 项（已是 16 或手工长度）→ 平移到前 N 格并截断到 16。</item>
-    /// </list>
-    /// 幂等：16 项再走此函数结果不变。
-    /// </summary>
-    internal static List<string?> NormalizePage(IReadOnlyList<string?> p)
-    {
-        var page = new List<string?>(16);
-        for (int i = 0; i < 16; i++) page.Add(null);
-        if (p.Count <= 9)
-        {
-            for (int r = 0; r < 3; r++)
-                for (int c = 0; c < 3; c++)
-                {
-                    int si = r * 3 + c;
-                    page[r * 4 + c] = si < p.Count ? p[si] : null;
-                }
-        }
-        else
-        {
-            for (int i = 0; i < 16 && i < p.Count; i++) page[i] = p[i];
-        }
-        return page;
-    }
-
-    /// <summary>从磁盘加载超级面板页（每页规整为 16 槽 4×4）；无页时返回单页空占位。</summary>
-    internal static List<List<string?>> LoadPages()
-    {
-        var path = ResolveConfigPath();
-        var cfg = AppConfig.Load(path);
-        var pages = new List<List<string?>>();
-        foreach (var p in cfg.SuperPanel.Pages)
-            pages.Add(NormalizePage(p));
-        if (pages.Count == 0) pages.Add(NormalizePage(new List<string?>()));
-        return pages;
-    }
-
-    /// <summary>把页写回磁盘（读现有配置→只替换 Pages→保存，保留动作清单等其它节）。</summary>
-    internal static void SavePages(List<List<string?>> pages)
-    {
-        ConfigIO.Modify(ResolveConfigPath(), cfg =>
-        {
-            cfg.SuperPanel.Pages = pages.Select(p => new List<string?>(p)).ToList();
-        });
-    }
-
-    /// <summary>读上次关闭时的页下标（clamp 到 [0, pageCount-1]，防页数减少后越界）。</summary>
-    internal static int LoadLastPage(int pageCount)
-    {
-        var cfg = AppConfig.Load(ResolveConfigPath());
-        int p = cfg.SuperPanel.LastPage;
-        if (p < 0) p = 0;
-        if (p >= pageCount) p = pageCount - 1;
-        return p;
-    }
-
-    /// <summary>面板关闭时回写当前页下标（值未变不落盘；失败静默，不影响关闭流程）。</summary>
-    internal static void SaveLastPage(int pageIdx)
-    {
-        try
-        {
-            var path = ResolveConfigPath();
-            if (AppConfig.Load(path).SuperPanel.LastPage == pageIdx) return;   // 未变不写
-            ConfigIO.Modify(path, cfg => cfg.SuperPanel.LastPage = pageIdx);
-        }
-        catch { /* 静默：记忆页失败不阻塞面板关闭 */ }
-    }
-
-    /// <summary>删除动作引用：把所有页槽位中指向该 Id 的清成 null（落盘）。</summary>
-    public static void RemoveActionReferences(string id)
-    {
-        ConfigIO.Modify(ResolveConfigPath(), cfg =>
-        {
-            if (cfg.SuperPanel?.Pages == null) return;
-            foreach (var p in cfg.SuperPanel.Pages)
-            {
-                for (int i = 0; i < p.Count; i++)
-                    if (p[i] == id) p[i] = null;
-            }
-        });
-    }
-
-    private static string ResolveConfigPath() =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
+    /// <summary>删除动作引用：从所有面板分组里移除（由 <see cref="ConfigStore.RemoveAction"/> 调用）。</summary>
+    public static void RemoveActionReferences(string id) => PanelLibrary.RemoveActionReferences(id);
 }

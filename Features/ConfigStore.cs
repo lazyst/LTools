@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using LTools.Config;
 using LTools.Core;
+using LTools.Features.Panel;
 
 namespace LTools.Features;
 
@@ -18,15 +19,20 @@ internal static class ConfigStore
     /// <summary>当前配置路径（ConfigLocator 解析结果）。</summary>
     public static string ConfigPath { get; private set; } = "";
 
-    /// <summary>加载配置路径并强制刷新 MenuSystem（动作清单 / 菜单组 / 终端路由）。</summary>
+    /// <summary>加载配置路径并强制刷新 MenuSystem（动作清单 / 菜单组 / 终端路由）与面板库。</summary>
     public static void Initialize(string configPath)
     {
         ConfigPath = configPath;
         MenuSystem.ReloadFromConfig(configPath);
+        PanelLibrary.Initialize(configPath);
     }
 
     /// <summary>重新从磁盘加载（配置已被外部对话框改写后调用）。</summary>
-    public static void Reload() => MenuSystem.ReloadFromConfig(ConfigPath);
+    public static void Reload()
+    {
+        MenuSystem.ReloadFromConfig(ConfigPath);
+        PanelLibrary.Reload();
+    }
 
     /// <summary>加载当前磁盘配置（不回写）。</summary>
     public static AppConfig LoadConfig() => AppConfig.Load(ConfigPath);

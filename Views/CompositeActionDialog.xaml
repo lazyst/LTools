@@ -9,8 +9,7 @@
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
-        PreviewMouseMove="Window_PreviewMouseMove"
-        PreviewMouseLeftButtonUp="Window_PreviewMouseLeftButtonUp">
+        PreviewMouseMove="Window_PreviewMouseMove">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -253,24 +252,7 @@
             </StackPanel>
         </Border>
 
-        <!-- 拖动幽灵层（覆盖全窗口，不挡鼠标；与超级面板 §5.6 同款视觉） -->
-        <Canvas x:Name="GhostLayer" Grid.RowSpan="3" IsHitTestVisible="False">
-            <Border x:Name="DragGhost" Visibility="Collapsed"
-                    Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource PrimaryBrush}"
-                    BorderThickness="2" CornerRadius="6" Padding="10,6" Opacity="0.92"
-                    MinWidth="180" MaxWidth="320">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock x:Name="GhostBadge" FontSize="{StaticResource FontSizeHint}"
-                               Foreground="{StaticResource SecondaryTextBrush}"
-                               VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBlock x:Name="GhostName" FontWeight="SemiBold" FontSize="{StaticResource FontSizeSecondary}"
-                               Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
-                               MaxWidth="260" TextTrimming="CharacterEllipsis"/>
-                </StackPanel>
-            </Border>
-            <!-- 插入指示线（拖动排序的目标位置，§12） -->
-            <Border x:Name="InsertLine" Height="3" CornerRadius="1.5"
-                    Background="{StaticResource PrimaryBrush}" Visibility="Collapsed"/>
-        </Canvas>
+        <!-- 拖动幽灵 / 占位层（覆盖全窗口，不挡鼠标） -->
+        <Canvas x:Name="GhostLayer" Grid.RowSpan="3" IsHitTestVisible="False"/>
     </Grid>
 </Window>

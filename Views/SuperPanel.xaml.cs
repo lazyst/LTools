@@ -1,189 +1,838 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
+using System.Linq;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using LTools.Config;
+using LTools.Core;
 using LTools.Features;
+using LTools.Features.Panel;
+using LTools.Native;
+using LTools.Views.Controls;
 
 namespace LTools.Views;
 
 /// <summary>
-/// 超级面板窗口（计划 §5）。4×4 格子；左键单击空格弹新建菜单 / 非空执行动作，左键按住拖动重排（§5.6，交换语义，支持跨页）；
-/// 右键编辑 / 删除 / 复制；滚轮翻页 + 1~9 选格 + Esc / 点外部关闭。
-/// 标题栏可拖动窗口；标题栏「钉住」按钮开启后点外部不再关闭（Esc / ✕ 仍可关）。
-/// 由 <see cref="SuperPanel"/> 控制器创建，槽位改动经 <c>SuperPanel.SavePages</c>（ConfigIO）落盘。
-/// <para>
-/// **用完即收**：面板只当启动器——执行动作、打开设置、新建 / 编辑 / 复制 / 删除动作、从动作池选动作，
-/// 都先收起面板（取消也一样）。留在面板上的只有「钉住」、翻页和拖动重排这些还在面板里进行的操作。
-/// 打开模态编辑器 / 对话框前直接 <see cref="SuperPanel.Close"/>：**不要把隐藏的面板当对话框的 Owner**
-/// ——隐藏的 Owner 在模态对话框出现时会被画成一整块黑窗闪一下，而且面板仍算「已打开」，
-/// 鼠标钩子的长按右键手势会被拦住（编辑器开着时唤不出面板）。
-/// </para>
+/// 动作面板窗口（设计见 <c>docs/PANEL_REDESIGN.md</c>）。
+/// 上下双区：全局区（可切换场景）+ 上下文区（唤起瞬间按前台窗口解析）。
 /// </summary>
+/// <remarks>
+/// <para>
+/// **用完即收**：执行动作、打开设置、新建 / 编辑 / 复制 / 删除动作等入口都先关面板再开对话框，
+/// 不把隐藏的面板当 Owner（隐藏 Owner 会让模态框出现时闪黑块，还会挡住长按右键手势）。
+/// </para>
+/// <para>
+/// 搜索框是普通 <see cref="TextBox"/>：打开即聚焦，正常 IME 输入。全局钩子只拦 Esc，
+/// 数字键不再选格（见 <see cref="Features.SuperPanel.HandleKey"/>）。
+/// </para>
+/// </remarks>
 public partial class SuperPanelWindow : Window
 {
-    /// <summary>当前编辑中的页（每页 16 槽 4×4，元素为动作 Id 或 null）。</summary>
-    private readonly List<List<string?>> _pages;
-
-    /// <summary>唤起瞬间的光标物理坐标（供 windowPin.toggle 等需坐标的内部动作使用）。</summary>
     private readonly int _invokeX;
     private readonly int _invokeY;
+    private readonly ForegroundApp? _foreground;
+    private readonly PanelResolveResult _resolved;
 
-    private int _pageIdx;
-    private int _interactCount;                 // >0 时（右键菜单/对话框打开）钩子不拦截外部点击与 Esc
-    private bool _pinned;                       // 钉住：点外部不关闭（钩子据此放行外部点击）
+    /// <summary>上下文区当前显示的场景 Id；null = 通用。仅本次会话有效，不落盘。</summary>
+    private string? _contextSceneId;
 
-    // —— 菜单外点击抑制（需求：菜单开着时点面板其他格子应只关菜单，不触发）——
-    private ContextMenu? _openMenu;             // 当前打开的菜单（Opened/Closed 时更新）
+    private readonly List<Button> _tiles = new();
+    private int _selected = -1;
+    private bool _pinned;
+    private int _interactCount;
+    private ContextMenu? _openMenu;
 
-    // —— 拖动重排（§5.6）——
-    private int? _dragSrcPage;                  // 拖动源页（左键按下时记录）
-    private int? _dragSrcSlot;                  // 拖动源格
-    private Point _dragOrigin;                  // 按下时的鼠标位置（阈值判定用）
-    private bool _dragging;                     // 是否已进入拖动态（位移超阈值）
-    private int _hoverSlot = -1;                // 拖动中悬停的目标格（-1=无）
-    private DispatcherTimer? _pageHoverTimer;   // ‹/› 悬停翻页计时
-    private int _pageHoverDir;                  // 悬停方向：-1=‹，+1=›
-    private int _pageAnimToken;                 // 翻页动画令牌（新一轮打断上一轮时自增，作废其完成回调）
+    // 空白处左键拖动窗口（照 Quicker：不只顶栏可以拖）
+    private Point _blankDragStart;
+    private bool _blankDragArmed;
 
-    internal SuperPanelWindow(List<List<string?>> pages, int invokeX, int invokeY, int startPage = 0)
-    {
-        InitializeComponent();
-        _pages = pages;
-        _invokeX = invokeX;
-        _invokeY = invokeY;
-        if (_pages.Count == 0) _pages.Add(new List<string?>(new string?[16]));
+    // 拖动排序（两个区各一个：互不跨区移动）
+    private readonly TileDragSort _globalDrag;
+    private readonly TileDragSort _contextDrag;
 
-        // 上次关闭页（记忆页，§12）：clamp 到有效范围
-        _pageIdx = Math.Clamp(startPage, 0, _pages.Count - 1);
+    // 上下两区高度比例（0.15~0.85），关闭时记忆
+    private double _globalRatio;
 
-        Rebuild();
-        UpdateHeader();
-        SetPinned(false);   // 初始化钉子按钮外观 / 提示（钉住状态不跨窗口保留）
+    // 分组导航（只是滚动锚点）：每区的导航条按钮 + 每个分组块的引用，用于滚动与高亮同步
+    private readonly List<Button> _globalRailBars = new();
+    private readonly List<Button> _contextRailBars = new();
+    private readonly List<FrameworkElement> _globalAnchors = new();
+    private readonly List<FrameworkElement> _contextAnchors = new();
 
-        // 不做 Opacity 淡入：不透明窗口上 Opacity<1 会触发 WS_EX_LAYERED（分层窗禁用
-        // ClearType），与本次「恢复 ClearType」相悖。面板直接显示，文本始终逐子像素渲染。
+    // 每区末尾的一块留白：让最后一个分组也能滚到视图顶部（否则内容装得下时滚不动）
+    private Border? _globalPad;
+    private Border? _contextPad;
 
-        // ActualWidth/Height 在加载后才可靠，此时再定位到光标处
-        Loaded += (_, _) => PlaceAtCursor(_invokeX, _invokeY);
-
-        // 拖动重排（§5.6）：窗口级接管鼠标移动/释放（捕获后拖出面板也能收到）
-        PreviewMouseMove += OnDragMove;
-        PreviewMouseLeftButtonUp += OnDragUp;
-        // 菜单外点击抑制：窗口级隧道先于格子 OnCellDown 收到 down（需求：点其他格子只关菜单）
-        PreviewMouseLeftButtonDown += OnWindowMouseDown;
-        _pageHoverTimer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher)
-        {
-            Interval = TimeSpan.FromMilliseconds(450)
-        };
-        _pageHoverTimer.Tick += (_, _) => GoPage(_pageHoverDir);   // 悬停翻页，可连续翻
-    }
-
-    /// <summary>供 <see cref="SuperPanel"/> 判断是否有右键菜单 / 对话框正打开（打开时钩子不介入）。</summary>
+    /// <summary>供 <see cref="Features.SuperPanel"/> 判断是否有菜单 / 对话框正打开。</summary>
     internal int InteractCount => _interactCount;
 
-    /// <summary>当前页下标（供关闭时回写 <c>LastPage</c> 记忆页）。</summary>
-    internal int PageIdx => _pageIdx;
-
-    /// <summary>是否已钉住（点外部不关闭）。供鼠标钩子判定是否介入外部点击。</summary>
+    /// <summary>是否已钉住（点外部不关闭）。</summary>
     internal bool IsPinned => _pinned;
 
-    /// <summary>关闭时停掉悬停翻页计时器：其 Tick 闭包持有本窗口引用，
-    /// 且关闭后仍会 Tick 调用 GoPage 操作已拆解的视觉树。</summary>
-    protected override void OnClosed(EventArgs e)
+    internal SuperPanelWindow(ForegroundApp? foreground, int invokeX, int invokeY)
     {
-        _pageHoverTimer?.Stop();
-        base.OnClosed(e);
+        InitializeComponent();
+        _foreground = foreground;
+        _invokeX = invokeX;
+        _invokeY = invokeY;
+
+        var panel = PanelLibrary.Current;
+        _resolved = PanelSceneResolver.Resolve(panel, foreground);
+        _contextSceneId = _resolved.Scene?.Id;
+
+        Width = panel.Preferences.Width;
+        Height = panel.Preferences.Height;
+
+        _globalRatio = Math.Clamp(panel.Preferences.GlobalRatio, 0.15, 0.85);
+        ApplySplitRatio();
+
+        _globalDrag = new TileDragSort(this, GhostLayer, GlobalGroups)
+        {
+            AllowDrag = () => string.IsNullOrEmpty(SearchBox.Text?.Trim()),
+            GhostBody = TileGhostBody,
+            Finished = RebuildAll,
+        };
+        _contextDrag = new TileDragSort(this, GhostLayer, ContextGroups)
+        {
+            AllowDrag = () => string.IsNullOrEmpty(SearchBox.Text?.Trim()),
+            GhostBody = TileGhostBody,
+            Finished = RebuildAll,
+        };
+
+        // 分组导航只是滚动锚点：滚动时同步高亮（视口顶部所在的分组）
+        GlobalScroll.ScrollChanged += (_, _) =>
+            SyncRail(GlobalScroll, GlobalGroups, _globalRailBars, _globalAnchors);
+        ContextScroll.ScrollChanged += (_, _) =>
+            SyncRail(ContextScroll, ContextGroups, _contextRailBars, _contextAnchors);
+
+        // 视口变大 / 变小（拖分割条、改面板高度）后，重算末尾留白
+        GlobalScroll.SizeChanged += (_, _) =>
+            UpdateZonePad(GlobalScroll, GlobalGroups, _globalAnchors, _globalPad);
+        ContextScroll.SizeChanged += (_, _) =>
+            UpdateZonePad(ContextScroll, ContextGroups, _contextAnchors, _contextPad);
+
+        try
+        {
+            var icon = App.LoadIconSource();
+            if (icon != null) LogoImage.Source = icon;
+            else LogoFallback.Visibility = Visibility.Visible;
+        }
+        catch { LogoFallback.Visibility = Visibility.Visible; }
+
+        SetPinned(false);
+        RebuildAll();
+
+        Loaded += (_, _) =>
+        {
+            PlaceAtCursor(_invokeX, _invokeY);
+            FocusSearch();
+        };
+        Activated += (_, _) => FocusSearch();
+
+        PreviewMouseLeftButtonDown += OnWindowMouseDown;
+        PreviewMouseMove += OnWindowMouseMove;
+        PreviewMouseLeftButtonUp += (_, _) => _blankDragArmed = false;
+        ContextMenuOpening += OnWindowContextMenuOpening;
     }
-
-    private List<string?> CurrentPage => _pages[_pageIdx];
-
-    // —— 定位（仿 MouseTipWindow.PlaceNearCursor：物理像素→DIP 换算 + 工作区避让）——
 
     /// <summary>
-    /// 唤起定位：光标落在 4×4 格子区正中（需求），越界时把窗口夹回工作区。
-    /// px/py 为唤起瞬间的屏幕物理坐标。
+    /// 空白处左键拖动窗口（照 Quicker）：磁贴 / 按钮 / 输入框 / 滚动条 / 分割条仍归自己处理。
     /// </summary>
-    public void PlaceAtCursor(int px, int py)
+    private void OnWindowMouseMove(object sender, MouseEventArgs e)
     {
-        double m11 = 1.0, m22 = 1.0;
-        var src = PresentationSource.FromVisual(this);
-        if (src != null)
+        if (!_blankDragArmed) return;
+        if (e.LeftButton != MouseButtonState.Pressed) { _blankDragArmed = false; return; }
+
+        var p = e.GetPosition(this);
+        if (Math.Abs(p.X - _blankDragStart.X) < 4 && Math.Abs(p.Y - _blankDragStart.Y) < 4) return;
+
+        _blankDragArmed = false;
+        try { DragMove(); }
+        catch (InvalidOperationException) { /* 鼠标已抬起 */ }
+    }
+
+    /// <summary>右键：没有自带菜单的地方（空白 / 分组标题 / 标题栏）弹出面板菜单。</summary>
+    private void OnWindowContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        var src = e.OriginalSource as DependencyObject;
+        if (FindContextMenuOwner(src) != null) return;   // 磁贴 / 场景标签 / 分组导航条自己的菜单
+        if (IsInteractive(src)) return;                  // 输入框 / 滚动条 / 分割条等，别抢原生行为
+
+        var pos = Mouse.GetPosition(this);
+        if (GlobalScroll.IsMouseOver || GlobalGroups.IsMouseOver || GlobalSceneTabs.IsMouseOver)
         {
-            var tfd = src.CompositionTarget.TransformFromDevice;
-            m11 = tfd.M11; m22 = tfd.M22;
+            ShowZoneMenu(global: true, GroupAt(pos));
+            e.Handled = true;
+        }
+        else if (ContextScroll.IsMouseOver || ContextGroups.IsMouseOver || ContextSceneTabs.IsMouseOver)
+        {
+            ShowZoneMenu(global: false, GroupAt(pos));
+            e.Handled = true;
+        }
+        else
+        {
+            ShowPanelMenu();   // 标题栏 / 左栏空白 / 腰栏
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>沿视觉树找第一个带 ContextMenu 的元素（有就交给它自己弹）。</summary>
+    private static ContextMenu? FindContextMenuOwner(DependencyObject? d)
+    {
+        while (d != null)
+        {
+            if (d is FrameworkElement fe && fe.ContextMenu != null) return fe.ContextMenu;
+            d = d is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(d)
+                : LogicalTreeHelper.GetParent(d);
+        }
+        return null;
+    }
+
+    /// <summary>光标下的分组（分组块 / 磁贴网格的 Tag 是 group）。</summary>
+    private PanelGroupDto? GroupAt(Point pos)
+    {
+        if (InputHitTest(pos) is not DependencyObject d) return null;
+        while (d != null)
+        {
+            if (d is FrameworkElement fe && fe.Tag is PanelGroupDto g) return g;
+            d = VisualTreeHelper.GetParent(d);
+        }
+        return null;
+    }
+
+    // ============ 构建 ============
+
+    private static Brush Res(string key) => (Brush)Application.Current.FindResource(key);
+
+    private void RebuildAll()
+    {
+        _tiles.Clear();
+        _selected = -1;
+        BuildSceneTabs();
+        BuildGlobal();
+        BuildContext();
+        SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void BuildSceneTabs()
+    {
+        GlobalSceneTabs.Children.Clear();
+        var active = PanelLibrary.ActiveGlobalScene();
+
+        foreach (var scene in PanelLibrary.Current.Global.Scenes)
+        {
+            var s = scene;
+            GlobalSceneTabs.Children.Add(BuildTab(
+                s.Name,
+                ReferenceEquals(s, active),
+                s.Name,
+                () =>
+                {
+                    PanelLibrary.Current.Global.ActiveSceneId = s.Id;
+                    PanelLibrary.Save();
+                    BuildSceneTabs();
+                    BuildGlobal();
+                    GlobalScroll.ScrollToTop();
+                },
+                BuildGlobalSceneMenu(s)));
         }
 
-        double cx = px * m11, cy = py * m22;   // 光标 DIP
-        double w = ActualWidth > 0 ? ActualWidth : 386;
-        double h = ActualHeight > 0 ? ActualHeight : 458;
-
-        // 窗口位置 = 光标 − 格子中心相对窗口的偏移（Loaded 时布局已完成，
-        // TranslatePoint 直接取 CellsHost 实测中心，不硬编码标题栏/页脚尺寸）。
-        Point center = CellsHost.ActualWidth > 0
-            ? CellsHost.TranslatePoint(
-                  new Point(CellsHost.ActualWidth / 2, CellsHost.ActualHeight / 2), this)
-            : new Point(w / 2, h / 2);   // 兜底（理论上 Loaded 时布局已就绪）
-        double left = cx - center.X;
-        double top = cy - center.Y;
-
-        // 屏幕边缘夹回：窗口外框完整保持在工作区内（无阴影留白，窗口即卡片）。
-        // 贴边唤起时光标不再居中，这是让面板不出屏的必然取舍。
-        var screen = GetScreenBounds(px, py);
-        double sLeft = screen.Left * m11, sTop = screen.Top * m22;
-        double sRight = screen.Right * m11, sBottom = screen.Bottom * m22;
-        if (left < sLeft) left = sLeft;
-        else if (left + w > sRight) left = Math.Max(sLeft, sRight - w);
-        if (top < sTop) top = sTop;
-        else if (top + h > sBottom) top = Math.Max(sTop, sBottom - h);
-
-        Left = left;
-        Top = top;
+        if (GlobalSceneTabs.Children.Count == 0)
+            GlobalSceneTabs.Children.Add(EmptyHint("还没有全局场景，请在设置「面板管理」里新建。"));
     }
 
-    private static (double Left, double Top, double Right, double Bottom) GetScreenBounds(int x, int y)
+    /// <summary>
+    /// 一个场景标签：左侧竖条 + 名称。选中 = 浅底 + 描边 + 主色竖条（照 Quicker 的区头标签）。
+    /// </summary>
+    private Button BuildTab(string text, bool active, string tooltip, Action onClick,
+                            ContextMenu? menu = null)
     {
-        var mon = MonitorFromPoint(new POINT { x = x, y = y }, 2 /*MONITOR_DEFAULTTONEAREST*/);
-        var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
-        if (GetMonitorInfo(mon, ref mi))
-            return (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom);
-        var wa = SystemParameters.WorkArea;
-        return (wa.Left, wa.Top, wa.Right, wa.Bottom);
+        var content = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        content.Children.Add(new Border
+        {
+            Width = 3,
+            Height = 13,
+            CornerRadius = new CornerRadius(1.5),
+            Background = active ? Res("PrimaryBrush") : Brushes.Transparent,
+            Margin = new Thickness(0, 0, 6, 0),
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = text,
+            FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal,
+            Foreground = active ? Res("TextBrush") : Res("SecondaryTextBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            MaxWidth = 160,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+
+        var b = new Button
+        {
+            Style = (Style)FindResource("SceneTabBtn"),
+            Content = content,
+            ToolTip = tooltip,
+            Background = active ? Res("SurfaceAltBrush") : Brushes.Transparent,
+            BorderBrush = active ? Res("BorderBrush") : Brushes.Transparent,
+            BorderThickness = active ? new Thickness(1) : new Thickness(0),
+        };
+        b.Click += (_, _) => onClick();
+        if (menu != null) b.ContextMenu = menu;
+        return b;
     }
 
-    // —— 格子渲染 ——
-
-    private void Rebuild()
+    private void BuildGlobal()
     {
-        CancelPageFx();      // 内容变更（拖动交换 / CRUD）后确保无翻页动画残留
-        _hoverSlot = -1;     // 子元素已清空，悬停引用失效
-        CellsHost.Children.Clear();
-        for (int slot = 0; slot < 16; slot++)   // 4×4（§12）
-            CellsHost.Children.Add(BuildCell(slot));
+        GlobalGroups.Children.Clear();
+        GlobalGroupRail.Children.Clear();
+        _globalRailBars.Clear();
+        _globalAnchors.Clear();
+        _globalPad = null;
+
+        var scene = PanelLibrary.ActiveGlobalScene();
+        if (scene == null)
+        {
+            GlobalGroupRail.Visibility = Visibility.Collapsed;
+            GlobalGroups.Children.Add(EmptyHint("还没有全局场景，请在设置「面板管理」里新建。"));
+            return;
+        }
+
+        FillZone(GlobalGroupRail, GlobalGroups, GlobalScroll, scene.Groups, _globalDrag,
+                 global: true, _globalRailBars, _globalAnchors);
     }
 
-    private Button BuildCell(int slot)
+    private void BuildContext()
     {
-        string? id = CurrentPage[slot];
-        var a = id != null ? ActionRegistry.FindById(id) : null;
+        ContextGroups.Children.Clear();
+        ContextGroupRail.Children.Clear();
+        _contextRailBars.Clear();
+        _contextAnchors.Clear();
+        _contextPad = null;
+        BuildContextTabs();
+
+        var scene = GetContextScene();
+        var groups = scene?.Groups ?? PanelLibrary.Current.Context.Common;
+        FillZone(ContextGroupRail, ContextGroups, ContextScroll, groups, _contextDrag,
+                 global: false, _contextRailBars, _contextAnchors);
+
+        // 手动切到别的场景时不显示「未配置」提示（那说的是自动匹配结果）
+        bool manual = _contextSceneId != _resolved.Scene?.Id;
+        if (!manual && _resolved.ShowHint && _foreground != null)
+        {
+            ContextHintBar.Visibility = Visibility.Visible;
+            ContextHintText.Text = HintTextFor(_foreground.ExeName);
+        }
+        else
+        {
+            ContextHintBar.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>
+    /// 未配置提示的文案（照 Quicker：`尚未为“OpenChamber”添加专用设置`，进程名去掉 .exe）。
+    /// </summary>
+    private static string HintTextFor(string? exeName)
+    {
+        string name = (exeName ?? "").Trim();
+        if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            name = name[..^4];
+        return name.Length == 0
+            ? "尚未为此程序添加专用设置"
+            : $"尚未为“{name}”添加专用设置";
+    }
+
+    /// <summary>
+    /// 画一个区：所有分组照常从上到下平铺（一个分组 = 标题 + 磁贴网格），
+    /// 左边那条导航只是**滚动锚点**——悬停哪一条就把视图滚到那个分组（照 Quicker 的分组导航）。
+    /// 搜索时导航条让位，因为筛选后分组位置会变。
+    /// </summary>
+    private void FillZone(StackPanel rail, StackPanel host, ScrollViewer scroll,
+                          List<PanelGroupDto> groups, TileDragSort drag, bool global,
+                          List<Button> bars, List<FrameworkElement> anchors)
+    {
+        string query = SearchBox.Text?.Trim() ?? "";
+        bars.Clear();
+        anchors.Clear();
+        rail.Children.Clear();
+
+        anchors.AddRange(AddGroups(host, groups, drag, global));
+
+        if (query.Length > 0 || groups.Count == 0 || anchors.Count != groups.Count)
+        {
+            rail.Visibility = Visibility.Collapsed;
+            if (global) _globalPad = null;
+            else _contextPad = null;
+            return;
+        }
+
+        rail.Visibility = Visibility.Visible;
+
+        // 末尾留白：让「最后一个分组的标题」也能贴到视图顶部（Quicker 的效果）。
+        // 高度由 UpdateZonePad 按视口算；搜索 / 单分组时不会加。
+        var pad = new Border { Height = 0 };
+        host.Children.Add(pad);
+        if (global) _globalPad = pad;
+        else _contextPad = pad;
+
+        for (int i = 0; i < groups.Count; i++)
+        {
+            int index = i;
+            var bar = BuildGroupBar(groups[i], global, active: false);
+            bar.MouseEnter += (_, _) =>
+            {
+                if (DateTime.UtcNow < _railHoverIgnoreUntil) return;
+                ScrollToGroup(scroll, host, anchors, index);
+            };
+            bar.Click += (_, _) => ScrollToGroup(scroll, host, anchors, index);
+            rail.Children.Add(bar);
+            bars.Add(bar);
+        }
+
+        rail.Children.Add(BuildGroupAddBar(groups, global));
+
+        // 重建后光标可能正好落在新的一条上（典型的：点完「＋」导航条整体下移），
+        // 这时的 MouseEnter 不是用户主动悬停，忽略一小会儿
+        _railHoverIgnoreUntil = DateTime.UtcNow.AddMilliseconds(250);
+
+        scroll.UpdateLayout();
+        UpdateZonePad(scroll, host, anchors, pad);
+        SyncRail(scroll, host, bars, anchors);
+    }
+
+    private Button BuildGroupBar(PanelGroupDto group, bool global, bool active)
+    {
+        var bar = new Button
+        {
+            Style = (Style)FindResource("GroupBarBtn"),
+            Tag = active ? "Active" : null,
+            ToolTip = group.Name + "\n右键：分组菜单",
+        };
+        AutomationProperties.SetName(bar, group.Name);
+        bar.ContextMenu = BuildGroupMenu(group, global);
+        return bar;
+    }
+
+    /// <summary>在当前场景里新建一个空分组，并滚到它。</summary>
+    private void AddGroupToZone(bool global)
+    {
+        var groups = ZoneGroups(global);
+        groups.Add(PanelLibrary.NewGroup("新分组"));
+        PanelLibrary.Save();
+
+        if (global)
+        {
+            BuildGlobal();
+            if (_globalAnchors.Count > 0)
+                ScrollToGroup(GlobalScroll, GlobalGroups, _globalAnchors, _globalAnchors.Count - 1);
+        }
+        else
+        {
+            BuildContext();
+            if (_contextAnchors.Count > 0)
+                ScrollToGroup(ContextScroll, ContextGroups, _contextAnchors, _contextAnchors.Count - 1);
+        }
+    }
+
+    private List<PanelGroupDto> ZoneGroups(bool global)
+    {
+        if (!global) return GetContextScene()?.Groups ?? PanelLibrary.Current.Context.Common;
+
+        var scene = PanelLibrary.ActiveGlobalScene();
+        if (scene == null)
+        {
+            // 没有全局场景时右键「新建分组」：顺手建一个默认场景，别让操作静默失败
+            scene = PanelLibrary.NewScene("默认");
+            PanelLibrary.Current.Global.Scenes.Add(scene);
+            PanelLibrary.Current.Global.ActiveSceneId = scene.Id;
+        }
+        return scene.Groups;
+    }
+
+    /// <summary>分组导航末尾的「＋」：在当前场景里新建一个空分组，并滚到它。</summary>
+    private Button BuildGroupAddBar(List<PanelGroupDto> groups, bool global)
+    {
+        var add = new Button
+        {
+            Style = (Style)FindResource("GroupAddBtn"),
+            ToolTip = "新建分组（右键空白处也有菜单）",
+        };
+        AutomationProperties.SetName(add, "新建分组");
+        add.Click += (_, _) => AddGroupToZone(global);
+        return add;
+    }
+
+    /// <summary>把视图滚到第 <paramref name="index"/> 个分组的顶部（带 180ms 缓出，照 Quicker 的悬停滚动）。</summary>
+    private void ScrollToGroup(ScrollViewer scroll, FrameworkElement host,
+                               List<FrameworkElement> anchors, int index, bool allowRetry = true)
+    {
+        if (index < 0 || index >= anchors.Count) return;
+
+        double target;
+        try { target = anchors[index].TranslatePoint(new Point(0, 0), host).Y - 2; }
+        catch (InvalidOperationException) { return; }
+
+        // 先把末尾留白算好再读可滚距离：否则最后一个分组永远滚不到顶部
+        UpdateZonePad(scroll, host, anchors, PadOf(scroll));
+        scroll.UpdateLayout();
+        double max = Math.Max(0, scroll.ScrollableHeight);
+
+        // 没有可滚的距离（内容装得下，或刚新建的分组还没量好高度）：
+        // 等一小会儿重试一次就够了。**不能无条件 BeginInvoke 重试**——内容一直装得下时
+        // 会把自己无限排回队列，把 UI 线程堵死。
+        if (target > 0.5 && max <= 0.5)
+        {
+            if (!allowRetry || _scrollRetryScheduled) return;
+
+            _scrollRetryScheduled = true;
+            var retry = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+            retry.Tick += (_, _) =>
+            {
+                retry.Stop();
+                _scrollRetryScheduled = false;
+                ScrollToGroup(scroll, host, anchors, index, allowRetry: false);
+            };
+            retry.Start();
+            return;
+        }
+
+        AnimateScroll(scroll, Math.Clamp(target, 0, max));
+    }
+
+    private DispatcherTimer? _scrollAnim;
+
+    /// <summary>滚到某个区时找它自己的末尾留白。</summary>
+    private Border? PadOf(ScrollViewer scroll)
+        => ReferenceEquals(scroll, GlobalScroll) ? _globalPad : _contextPad;
+
+    /// <summary>
+    /// 维护末尾留白：高度 = 视口高度 - 最后一个分组块的高度（不足则 0）。
+    /// 有了这块空高，最后一个分组也能把标题滚到视图顶部（Quicker 的效果）；
+    /// 单分组 / 搜索时不加，免得平白多一条滚动条。
+    /// </summary>
+    private static void UpdateZonePad(ScrollViewer scroll, FrameworkElement host,
+                                      List<FrameworkElement> anchors, Border? pad)
+    {
+        if (pad == null) return;
+
+        if (anchors.Count < 2)
+        {
+            if (pad.Height != 0) pad.Height = 0;
+            return;
+        }
+
+        if (scroll.ViewportHeight <= 0) return;
+
+        double lastTop;
+        try { lastTop = anchors[^1].TranslatePoint(new Point(0, 0), host).Y; }
+        catch (InvalidOperationException) { return; }
+
+        // 增量修正：目标 = ExtentHeight 刚好等于「最后一块的顶部 + 一屏」
+        double next = pad.Height + lastTop + scroll.ViewportHeight - scroll.ExtentHeight;
+        next = Math.Max(0, next);
+        if (Math.Abs(next - pad.Height) > 0.5) pad.Height = next;
+    }
+
+    /// <summary>「等布局再滚」只重试一次，避免在不可滚动的区域打转。</summary>
+    private bool _scrollRetryScheduled;
+
+    /// <summary>导航条刚重建完的一小段时间里，忽略 MouseEnter（光标被动落在新条目上）。</summary>
+    private DateTime _railHoverIgnoreUntil;
+
+    private void AnimateScroll(ScrollViewer scroll, double target)
+    {
+        _scrollAnim?.Stop();
+        _scrollAnim = null;
+
+        double from = scroll.VerticalOffset;
+        if (Math.Abs(target - from) < 1)
+        {
+            scroll.ScrollToVerticalOffset(target);
+            return;
+        }
+
+        double elapsed = 0;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _scrollAnim = timer;
+        timer.Tick += (_, _) =>
+        {
+            elapsed += 16;
+            double p = Math.Min(1, elapsed / 180.0);
+            double eased = 1 - Math.Pow(1 - p, 3);
+            scroll.ScrollToVerticalOffset(from + (target - from) * eased);
+            if (p >= 1)
+            {
+                timer.Stop();
+                if (ReferenceEquals(_scrollAnim, timer)) _scrollAnim = null;
+            }
+        };
+        timer.Start();
+    }
+
+    /// <summary>
+    /// 滚动时同步导航条的高亮：视口顶部所在的分组 = 当前分组。
+    /// 高亮只是「你在哪一段」，不改内容，也不写盘。
+    /// </summary>
+    private static void SyncRail(ScrollViewer scroll, FrameworkElement host,
+                                 List<Button> bars, List<FrameworkElement> anchors)
+    {
+        if (bars.Count == 0 || anchors.Count != bars.Count) return;
+
+        int active = 0;
+        for (int i = 0; i < anchors.Count; i++)
+        {
+            double top;
+            try { top = anchors[i].TranslatePoint(new Point(0, 0), host).Y; }
+            catch (InvalidOperationException) { return; }
+
+            // 8px 容差：滚过一点点就算到了这个分组
+            if (top - scroll.VerticalOffset <= 8) active = i;
+            else break;
+        }
+
+        // 最后一个分组一般没法定到顶部（内容不够高）：滚到底就算它
+        if (scroll.ScrollableHeight > 0 && scroll.VerticalOffset >= scroll.ScrollableHeight - 1)
+            active = anchors.Count - 1;
+
+        for (int i = 0; i < bars.Count; i++)
+            bars[i].Tag = i == active ? "Active" : null;
+    }
+
+    /// <summary>上下文区当前场景；null = 通用兜底。</summary>
+    private PanelSceneDto? GetContextScene()
+    {
+        if (_contextSceneId == null) return null;
+        return PanelLibrary.Current.Context.Scenes
+            .FirstOrDefault(s => s.Id == _contextSceneId && s.Enabled);
+    }
+
+    private void BuildContextTabs()
+    {
+        ContextSceneTabs.Children.Clear();
+
+        ContextSceneTabs.Children.Add(BuildTab(
+            "通用",
+            _contextSceneId == null,
+            "没有匹配到程序场景时显示",
+            () =>
+            {
+                _contextSceneId = null;
+                BuildContext();
+                ContextScroll.ScrollToTop();
+            },
+            BuildContextSceneMenu(null)));
+
+        var current = GetContextScene();
+        var scenes = PanelLibrary.Current.Context.Scenes
+            .Where(s => s.Enabled && string.IsNullOrEmpty(s.ParentId))
+            .ToList();
+
+        // 命中的窗口子场景不在根列表里：补一个标签，否则当前场景没有选中项
+        if (current != null && !scenes.Contains(current)) scenes.Insert(0, current);
+
+        foreach (var scene in scenes)
+        {
+            var s = scene;
+            string tip = PanelSceneResolver.DescribeMatch(s)
+                         + (string.IsNullOrEmpty(s.ParentId) ? "" : "（窗口子场景）");
+            ContextSceneTabs.Children.Add(BuildTab(
+                s.Name,
+                _contextSceneId == s.Id,
+                tip,
+                () =>
+                {
+                    _contextSceneId = s.Id;
+                    BuildContext();
+                    ContextScroll.ScrollToTop();
+                },
+                BuildContextSceneMenu(s)));
+        }
+    }
+
+    /// <summary>
+    /// 把所有分组铺进 <paramref name="host"/>：一个分组 = 一个小块（标题 + 磁贴网格）。
+    /// 返回每个分组的块，供左缘导航条当滚动锚点（块数 = 分组数，搜索过滤时可能更少）。
+    /// </summary>
+    private List<FrameworkElement> AddGroups(StackPanel host, List<PanelGroupDto> groups, TileDragSort drag,
+                                             bool global)
+    {
+        var anchors = new List<FrameworkElement>();
+        string query = SearchBox.Text?.Trim() ?? "";
+        var prefs = PanelLibrary.Current.Preferences;
+
+        foreach (var group in groups)
+        {
+            var ids = group.Actions
+                .Where(id => MatchesQuery(id, query))
+                .ToList();
+            if (ids.Count == 0 && query.Length > 0) continue;
+
+            var block = new StackPanel { Tag = group };
+
+            if (prefs.ShowGroupTitles)
+            {
+                var title = new TextBlock
+                {
+                    Text = group.Name,
+                    FontSize = (double)FindResource("FontSizeHint"),
+                    Foreground = Res("SecondaryTextBrush"),
+                    Margin = new Thickness(2, 4, 0, 2),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    ToolTip = "双击重命名；右键管理分组",
+                };
+                title.MouseLeftButtonDown += (_, e) =>
+                {
+                    if (e.ClickCount != 2) return;
+                    BeginRenameGroup(group, global);
+                    e.Handled = true;
+                };
+                block.Children.Add(title);
+            }
+
+            var grid = new TileGridPanel
+            {
+                MinTileWidth = 72,
+                GapX = 4,
+                GapY = 2,
+                TileHeight = prefs.CompactTiles ? 56 : 72,
+                Margin = new Thickness(0, 0, 0, 4),
+                Tag = group,
+            };
+
+            foreach (string id in ids)
+            {
+                int index = group.Actions.IndexOf(id);
+                if (index >= 0) grid.Children.Add(BuildTile(group, index, id, drag));
+            }
+
+            if (query.Length == 0) grid.Children.Add(BuildAddTile(group));
+
+            block.Children.Add(grid);
+            host.Children.Add(block);
+            anchors.Add(block);
+        }
+
+        if (host.Children.Count == 0)
+            host.Children.Add(EmptyHint(query.Length > 0 ? "没有匹配的动作" : "这个区域还没有动作"));
+
+        return anchors;
+    }
+
+    /// <summary>
+    /// 搜索只匹配动作名称（忽略大小写）。**不匹配内部 Id**——否则搜 "1" 会命中 a1 之类的编号；
+    /// 缺失动作没有名称，只在未搜索时显示。
+    /// </summary>
+    private bool MatchesQuery(string id, string query)
+    {
+        if (query.Length == 0) return true;
+        return ActionRegistry.FindById(id) is { } a
+               && a.Name.Contains(query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 磁贴内容（图标 chip + 标题）。磁贴与拖动幽灵共用一份，保证幽灵和磁贴长得一模一样。
+    /// </summary>
+    private static StackPanel TileContent(ActionDto? a, bool compact)
+    {
+        var content = new StackPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        content.Children.Add(new Border
+        {
+            Width = compact ? 26 : 36,
+            Height = compact ? 26 : 36,
+            CornerRadius = new CornerRadius(compact ? 6 : 8),
+            Background = Res("SurfaceAltBrush"),
+            BorderBrush = Res("BorderBrush"),
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = a != null ? IconCatalog.GetGlyph(a.Icon) : "\uE783",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = compact ? 15 : 19,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = Res(a != null ? "TextBrush" : "DangerBrush"),
+            },
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = a != null ? a.Name : "缺失",
+            Margin = new Thickness(0, 4, 0, 0),
+            FontSize = compact ? 12 : 11,
+            MaxWidth = 100,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextAlignment = TextAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Foreground = Res(a != null ? "SecondaryTextBrush" : "DangerBrush"),
+        });
+        return content;
+    }
+
+    /// <summary>拖动幽灵的内容：按拖动中的磁贴临时造一份同样的内容（不依赖截图快照）。</summary>
+    private static FrameworkElement? TileGhostBody(PanelTileRef tref)
+    {
+        if (tref.ActionId == null) return null;
+        return TileContent(
+            ActionRegistry.FindById(tref.ActionId),
+            PanelLibrary.Current.Preferences.CompactTiles);
+    }
+
+    private Button BuildTile(PanelGroupDto group, int index, string id, TileDragSort drag)
+    {
+        var a = ActionRegistry.FindById(id);
+        bool compact = PanelLibrary.Current.Preferences.CompactTiles;
 
         var btn = new Button
         {
-            Style = (Style)FindResource("BtnGhost"),
-            Margin = new Thickness(0),     // 格子无间隙（§5.3 紧凑）
-            Height = 96,                    // 正方形：面板宽 386 → 列宽 (386-2)/4=96
-            Cursor = Cursors.Hand,
-            // 不覆盖 Background/Tag：与设置页槽位（BuildSlotButton）一致——透明底 + 默认悬停
-            // HoverBg(#F4F4F5)。原覆盖 SurfaceAlt(#F4F4F5) 与默认悬停同色→悬停无变化；
-            // 改深色悬停又太暗。保留边框仅作 4×4 格子的视觉分隔。
-            BorderBrush = (Brush)FindResource("BorderBrush"),
-            BorderThickness = new Thickness(1),
+            Style = (Style)FindResource("TileBtn"),
+            Height = compact ? 56 : 72,
+            Margin = new Thickness(0),
+            Tag = new PanelTileRef { Group = group, Index = index, ActionId = id },
+        };
+
+        // 照 Quicker：36px 图标 chip（淡底 + 1px 内描边）+ 11px 次要色标题，垂直居中
+        var content = TileContent(a, compact);
+        btn.Content = content;
+
+        var tref = (PanelTileRef)btn.Tag;
+        drag.Attach(btn);
+        btn.Click += (_, _) =>
+        {
+            if (tref.ActionId != null) ExecuteAction(tref.ActionId);
+        };
+
+        var menu = a != null ? BuildFilledMenu(tref) : BuildMissingMenu(tref);
+        TrackInteract(menu);
+        btn.ContextMenu = menu;
+
+        _tiles.Add(btn);
+        return btn;
+    }
+
+    private Button BuildAddTile(PanelGroupDto group)
+    {
+        bool compact = PanelLibrary.Current.Preferences.CompactTiles;
+        var btn = new Button
+        {
+            Style = (Style)FindResource("TileBtn"),
+            Height = compact ? 56 : 72,
+            Margin = new Thickness(0),
+            Tag = new PanelTileRef { Group = group, Index = group.Actions.Count, ActionId = null },
+            Opacity = 0.75,
         };
         var content = new StackPanel
         {
@@ -192,233 +841,433 @@ public partial class SuperPanelWindow : Window
         };
         content.Children.Add(new TextBlock
         {
-            Text = a != null ? IconCatalog.GetGlyph(a.Icon) : "\uE710",   // add 字形
+            Text = "\uE710",
             FontFamily = new FontFamily("Segoe MDL2 Assets"),
-            FontSize = 22,
+            FontSize = compact ? 16 : 20,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Foreground = (Brush)FindResource(a != null ? "TextBrush" : "HintTextBrush"),
+            Foreground = Res("HintTextBrush"),
         });
         content.Children.Add(new TextBlock
         {
-            Text = a != null ? a.Name : "（空）",
-            Margin = new Thickness(0, 5, 0, 0),
-            MaxWidth = 104,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            Text = "添加",
+            Margin = new Thickness(0, 4, 0, 0),
+            FontSize = compact ? 11 : 11,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Foreground = (Brush)FindResource(a != null ? "TextBrush" : "HintTextBrush"),
+            Foreground = Res("HintTextBrush"),
         });
         btn.Content = content;
-
-        btn.PreviewMouseLeftButtonDown += (_, e) => OnCellDown(slot, e);
-        // 右键菜单：非空 → 编辑/删除/复制/移动；空 → §5.5 新建菜单
-        var menu = a != null ? BuildFilledMenu(slot) : BuildEmptyMenu(slot);
-        TrackInteract(menu);
-        btn.ContextMenu = menu;
+        btn.Click += (_, _) => ShowAddMenu(group, btn);
         return btn;
     }
 
-    // —— 交互（左键 / 1~9）——
-
-    /// <summary>选中/点击某格。非空→先关面板再执行动作（避免动作窗口被置顶面板遮挡）。</summary>
-    internal void ExecuteSlot(int slot)
+    private static TextBlock EmptyHint(string text) => new()
     {
-        if (slot < 0 || slot >= 16) return;
+        Text = text,
+        FontSize = 12,
+        Margin = new Thickness(4, 6, 4, 4),
+        Foreground = Res("HintTextBrush"),
+        TextWrapping = TextWrapping.Wrap,
+    };
 
-        string? id = CurrentPage[slot];
-        if (id == null)
+    // ============ 搜索 / 选中 ============
+
+    private void FocusSearch()
+    {
+        SearchBox.Focus();
+        SearchBox.CaretIndex = SearchBox.Text?.Length ?? 0;
+    }
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        RebuildAll();
+        GlobalScroll.ScrollToTop();
+        ContextScroll.ScrollToTop();
+        if (SearchBox.Text?.Length > 0 && _tiles.Count > 0) SelectTile(0);
+    }
+
+    private void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
         {
-            // 空格：弹出 §5.5 菜单（无窗口焦点时用代码弹出）
-            ShowMenu(BuildEmptyMenu(slot), slot);
-            return;
+            case Key.Escape:
+                RequestEscape();
+                e.Handled = true;
+                break;
+            case Key.Down:
+                MoveSelection(1);
+                e.Handled = true;
+                break;
+            case Key.Up:
+                MoveSelection(-1);
+                e.Handled = true;
+                break;
+            case Key.Enter:
+                ExecuteSelected();
+                e.Handled = true;
+                break;
+            case Key.Tab:
+                // 输入框里 Tab 让出焦点给磁贴，保持可键盘操作
+                break;
         }
+    }
 
+    private void Window_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape) { RequestEscape(); e.Handled = true; return; }
+        if (e.Key == Key.Down) { MoveSelection(1); e.Handled = true; return; }
+        if (e.Key == Key.Up) { MoveSelection(-1); e.Handled = true; return; }
+        if (e.Key == Key.Enter) { ExecuteSelected(); e.Handled = true; }
+    }
+
+    private void MoveSelection(int delta)
+    {
+        if (_tiles.Count == 0) return;
+        int next = _selected < 0
+            ? (delta > 0 ? 0 : _tiles.Count - 1)
+            : Math.Clamp(_selected + delta, 0, _tiles.Count - 1);
+        SelectTile(next);
+    }
+
+    private void SelectTile(int index)
+    {
+        if (index < 0 || index >= _tiles.Count) return;
+        if (_selected >= 0 && _selected < _tiles.Count)
+        {
+            var old = _tiles[_selected];
+            old.BorderBrush = Res("BorderBrush");
+            old.BorderThickness = new Thickness(1);
+        }
+        _selected = index;
+        var b = _tiles[index];
+        b.BorderBrush = Res("PrimaryBrush");
+        b.BorderThickness = new Thickness(2);
+        try { b.BringIntoView(); } catch { /* 布局尚未完成时忽略 */ }
+    }
+
+    private void ExecuteSelected()
+    {
+        if (_selected < 0 || _selected >= _tiles.Count) return;
+        if (_tiles[_selected].Tag is not PanelTileRef tref || tref.ActionId == null) return;
+        ExecuteAction(tref.ActionId);
+    }
+
+    /// <summary>Esc：拖动中先取消，否则关闭面板。</summary>
+    internal void RequestEscape()
+    {
+        if (_globalDrag.IsActive) { _globalDrag.Cancel(); return; }
+        if (_contextDrag.IsActive) { _contextDrag.Cancel(); return; }
+        Features.SuperPanel.Close();
+    }
+
+    private void ExecuteAction(string id)
+    {
         var action = ActionRegistry.FindById(id);
         if (action == null)
         {
-            ConfirmDialog.Info(this, "超级面板", $"槽位引用的动作不存在：{id}");
+            ToastService.Show("动作不存在：" + id);
             return;
         }
-
-        // 先关面板（避免动作窗口被置顶面板遮挡），再用唤起瞬间的光标坐标执行
-        // （windowPin.toggle 等内部命令依赖该坐标）。
-        SuperPanel.Close();
+        Features.SuperPanel.Close();
         ActionExecutor.Run(action, _invokeX, _invokeY);
     }
 
-    /// <summary>Esc 处理：拖动中→取消拖动；否则关闭面板。</summary>
-    internal void RequestEscape()
+    // ============ 磁贴拖动（实现见 Views/Controls/TileDragSort.cs） ============
+
+    /// <summary>坐标是否落在磁贴上（菜单在场时吞掉这次点击用）。</summary>
+    private bool IsOverTile(Point windowPos)
     {
-        if (_dragging || _dragSrcPage != null) { CancelDrag(); return; }
-        SuperPanel.Close();
-    }
-
-    // —— 页切换 ——
-
-    private void Prev_Click(object sender, RoutedEventArgs e) => GoPage(-1);
-    private void Next_Click(object sender, RoutedEventArgs e) => GoPage(1);
-
-    /// <summary>翻页（‹/› 按钮、滚轮、拖到 ‹/› 悬停）。**循环翻页**：末页再往后回到首页、首页再往前到末页。
-    /// 带横滑过渡动画（§5.3）；仅 1 页时原地不动。</summary>
-    private void GoPage(int delta)
-    {
-        if (_pages.Count <= 1) return;
-        int n = ((_pageIdx + delta) % _pages.Count + _pages.Count) % _pages.Count;   // 环回
-        _pageIdx = n;
-
-        // 拖动中（跨页悬停翻页）只做瞬时切换：幽灵由 UpdateGhost 跟随光标，
-        // 两页横滑会与幽灵叠加；刚创建 / 未加载时也无法截图。
-        bool animate = !_dragging && _dragSrcPage == null && IsLoaded;
-        var old = animate ? SnapshotCells() : null;   // 内部先打断上一轮，截到的是静止状态
-        if (!animate) CancelPageFx();
-
-        Rebuild();
-        UpdateHeader();
-        if (old != null) AnimatePageTurn(old, delta);
-    }
-
-    /// <summary>截当前格子区为位图（旧页）。</summary>
-    private Image? SnapshotCells()
-    {
-        CancelPageFx();                      // 打断上一轮动画 → 上一新页已静止，截图即完整旧页
-        double w = CellsHost.ActualWidth, h = CellsHost.ActualHeight;
-        if (w < 1 || h < 1) return null;
-        try
+        if (InputHitTest(windowPos) is not DependencyObject d) return false;
+        while (d != null)
         {
-            var dpi = VisualTreeHelper.GetDpi(this);
-            var bmp = new RenderTargetBitmap(
-                (int)Math.Ceiling(w * dpi.DpiScaleX), (int)Math.Ceiling(h * dpi.DpiScaleY),
-                96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
-            bmp.Render(CellsHost);
-            bmp.Freeze();
-            // 显式尺寸是关键：窗口 SizeToContent=Height ⇒ 测量链上「高度约束 = 无穷大」，
-            // 而 Image 的 Stretch=Fill 语义是「填满约束」→ 会回报无穷高并沿
-            // Image → PageFxHost → 格子区 Grid → 面板把高度撑爆（宽度受 Width=310 约束故只有高度变高）。
-            // 指定 Width/Height 后期望尺寸与约束无关，且与格子区等大、竖缝严格对齐。
-            return new Image
-            {
-                Source = bmp,
-                Width = w,
-                Height = h,
-                Stretch = Stretch.Fill,
-                HorizontalAlignment = HorizontalAlignment.Left,
-                VerticalAlignment = VerticalAlignment.Top,
-            };
+            if (d is Button b && b.Tag is PanelTileRef) return true;
+            d = VisualTreeHelper.GetParent(d);
         }
-        catch { return null; }   // 截图失败 → 退化为无动画翻页，绝不影响翻页本身
+        return false;
     }
 
-    /// <summary>
-    /// 翻页过渡：旧页（截图）与新页**同速同曲线**横滑，两者严格相邻（同一条竖缝扫过），无重叠。
-    /// delta&gt;0 = 新页自右滑入、旧页向左滑出；delta&lt;0 反之。
-    /// </summary>
-    private void AnimatePageTurn(Image old, int dir)
-    {
-        int token = ++_pageAnimToken;
-        double w = CellsHost.ActualWidth;
-        if (w < 1) return;
+    // ============ 菜单 ============
 
-        var dur = TimeSpan.FromMilliseconds(200);
-        var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
-
-        PageFxHost.Children.Clear();
-        PageFxHost.Children.Add(old);        // 旧页截图在下层，与新页无缝衔接
-
-        var oldT = new TranslateTransform();
-        old.RenderTransform = oldT;
-        var oldAnim = new DoubleAnimation(0, -dir * w, dur) { EasingFunction = ease };
-        oldT.BeginAnimation(TranslateTransform.XProperty, oldAnim);
-
-        var newT = new TranslateTransform(dir * w, 0);
-        CellsHost.RenderTransform = newT;
-        var newAnim = new DoubleAnimation(dir * w, 0, dur) { EasingFunction = ease };
-        newAnim.Completed += (_, _) => EndPageFx(token);   // 被打断时 token 不匹配，交由打断方收尾
-        newT.BeginAnimation(TranslateTransform.XProperty, newAnim);
-    }
-
-    /// <summary>翻页动画收尾：清截图、还原变换，回到静态。</summary>
-    private void EndPageFx(int token)
-    {
-        if (token != _pageAnimToken) return;
-        CancelPageFx();
-    }
-
-    /// <summary>终止翻页动画并还原静止状态（新一轮翻页开始 / 收尾 / 窗口销毁时调用）。</summary>
-    private void CancelPageFx()
-    {
-        _pageAnimToken++;                    // 作废在跑动画的完成回调
-        PageFxHost.Children.Clear();
-        if (CellsHost.RenderTransform is TranslateTransform t)
-            t.BeginAnimation(TranslateTransform.XProperty, null);
-        CellsHost.RenderTransform = null;
-    }
-
-    private void Window_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        if (_dragging) { e.Handled = true; return; }   // 拖动中不滚轮翻页，避免干扰跨页悬停
-        GoPage(e.Delta < 0 ? 1 : -1);
-        e.Handled = true;
-    }
-
-    private void UpdateHeader()
-    {
-        PageIndicator.Text = $"{_pageIdx + 1}/{_pages.Count}";
-        TitleText.Text = "超级面板";
-        HintText.Text = _dragging
-            ? "拖到目标格交换 · 拖到 ‹/› 翻页 · Esc 取消"
-            : _pinned
-                ? "已钉住 · 点击外部不关闭 · Esc 关闭"
-                : "1-9 选格 · 滚轮翻页 · Esc 关闭";
-    }
-
-    // —— 右键菜单（§5.4 / §5.5）——
-
-    private ContextMenu BuildFilledMenu(int slot)
+    private ContextMenu BuildFilledMenu(PanelTileRef tref)
     {
         var menu = new ContextMenu();
-        var miEdit = new MenuItem { Header = "编辑…" };
-        miEdit.Click += (_, _) => Defer(() => EditAt(slot));
-        var miCopy = new MenuItem { Header = "复制" };
-        miCopy.Click += (_, _) => Defer(() => DuplicateAt(slot));
-        var miDel = new MenuItem { Header = "删除" };
-        miDel.Click += (_, _) => Defer(() => DeleteAt(slot));
-        menu.Items.Add(miEdit);
-        menu.Items.Add(miCopy);
+        AddMenuItem(menu, "编辑…", () => EditAction(tref));
+        AddMenuItem(menu, "复制", () => DuplicateAction(tref));
         menu.Items.Add(new Separator());
-        menu.Items.Add(miDel);
+        AddMenuItem(menu, "从此组移除", () => RemoveFromGroup(tref));
+        AddMenuItem(menu, "删除动作…", () => DeleteAction(tref.ActionId!));
         return menu;
     }
 
-    private ContextMenu BuildEmptyMenu(int slot)
-        => SlotMenu.BuildAddMenu(this, slot, NewActionAt, PickExistingAt, onClear: null);
-
-    /// <summary>从动作池选已有动作放入本槽（补上面板此前缺失的「复用已有动作」能力）。</summary>
-    private void PickExistingAt(int slot)
+    private ContextMenu BuildMissingMenu(PanelTileRef tref)
     {
-        string? current = CurrentPage[slot];
-        SuperPanel.Close();
-
-        var picker = new ActionPoolPicker(null, "超级面板槽位 — 选择动作", current);
-        picker.ShowDialog();
-
-        // 选完（含取消）都不再回到面板：与新建 / 编辑 / 复制 / 删除一致，面板只在这次操作期间存在。
-        if (picker.Result != null) SetSlot(slot, picker.Result);
+        var menu = new ContextMenu();
+        AddMenuItem(menu, "从此组移除", () => RemoveFromGroup(tref));
+        return menu;
     }
 
-    /// <summary>在指定格子上弹出菜单（左键点空格走此路径；右键由 ContextMenu 自动弹出）。</summary>
-    private void ShowMenu(ContextMenu menu, int slot)
+    private void ShowAddMenu(PanelGroupDto group, UIElement? target)
     {
-        // 关键：该菜单未挂到按钮的 ContextMenu，须手动计入 IsInteracting，否则钩子在点菜单项时
-        // 判定为「点面板外」→ 关面板 → 菜单（作为面板的弹出子窗）随之销毁 → 菜单项点击落空。
+        var menu = new ContextMenu();
+        AddMenuItem(menu, "新建动作…", () => NewActionFor(group, null));
+        AddMenuItem(menu, "新建组合动作…", () => NewActionFor(group, ActionType.composite));
+        AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
         TrackInteract(menu);
-        menu.PlacementTarget = CellsHost.Children[slot] as UIElement;
-        menu.Placement = PlacementMode.Center;
+        menu.PlacementTarget = target;
+        menu.Placement = target != null ? PlacementMode.Bottom : PlacementMode.MousePoint;
         menu.IsOpen = true;
     }
 
+    private ContextMenu NewTrackedMenu()
+    {
+        var menu = new ContextMenu();
+        TrackInteract(menu);
+        return menu;
+    }
+
+    /// <summary>分组菜单（分组标题 / 左缘导航条）：新建动作、重命名、删除、去设置里管理。</summary>
+    private ContextMenu BuildGroupMenu(PanelGroupDto group, bool global)
+    {
+        var menu = NewTrackedMenu();
+        AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(group, null));
+        AddMenuItem(menu, "新建组合动作…", () => NewActionFor(group, ActionType.composite));
+        AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
+        menu.Items.Add(new Separator());
+        AddMenuItem(menu, "重命名分组…", () => BeginRenameGroup(group, global));
+        AddMenuItem(menu, "删除分组…", () => DeleteGroupFromPanel(group, global));
+        menu.Items.Add(new Separator());
+        AddMenuItem(menu, "在设置中管理…", () => OpenSceneSettings(group, global));
+        return menu;
+    }
+
     /// <summary>
-    /// 跟踪菜单开合：计入 <c>_interactCount</c>（钩子不关面板），记录当前打开的菜单
-    /// 供 <see cref="OnWindowMouseDown"/> 判定点击是否在菜单外。
+    /// 面板空白处菜单（照 Quicker）：新建动作 / 新建分组 / 管理场景，外加钉住、设置、关闭。
+    /// 光标在某个分组里时，新建动作直接落到那个分组。
     /// </summary>
+    private void ShowZoneMenu(bool global, PanelGroupDto? group)
+    {
+        var menu = NewTrackedMenu();
+        var target = group ?? ZoneGroups(global).FirstOrDefault();
+        if (target != null)
+        {
+            AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(target, null));
+            AddMenuItem(menu, "新建组合动作…", () => NewActionFor(target, ActionType.composite));
+            AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(target));
+            menu.Items.Add(new Separator());
+        }
+
+        if (group != null)
+        {
+            AddMenuItem(menu, "重命名分组…", () => BeginRenameGroup(group, global));
+            AddMenuItem(menu, "删除分组…", () => DeleteGroupFromPanel(group, global));
+            menu.Items.Add(new Separator());
+        }
+
+        AddMenuItem(menu, "新建分组", () => AddGroupToZone(global));
+        AddMenuItem(menu, "在设置中管理…", () => OpenSceneSettings(group, global));
+        menu.Items.Add(new Separator());
+        AddPanelCommands(menu);
+
+        menu.Placement = PlacementMode.MousePoint;
+        menu.IsOpen = true;
+    }
+
+    /// <summary>标题栏 / 左栏空白：只放面板级操作。</summary>
+    private void ShowPanelMenu()
+    {
+        var menu = NewTrackedMenu();
+        AddPanelCommands(menu);
+        menu.Placement = PlacementMode.MousePoint;
+        menu.IsOpen = true;
+    }
+
+    private void AddPanelCommands(ContextMenu menu)
+    {
+        var pin = new MenuItem
+        {
+            Header = "钉住面板",
+            IsCheckable = true,
+            IsChecked = _pinned,
+            ToolTip = "钉住后点击外部不关闭",
+        };
+        pin.Click += (_, _) => Defer(() => SetPinned(!_pinned));
+        menu.Items.Add(pin);
+        AddMenuItem(menu, "面板设置…", () =>
+        {
+            Features.SuperPanel.Close();
+            ConfigHelper.OpenPanelScene(PanelLibrary.ActiveGlobalScene()?.Id);
+        });
+        AddMenuItem(menu, "关闭面板", () => Features.SuperPanel.Close());
+    }
+
+    private ContextMenu BuildGlobalSceneMenu(PanelSceneDto scene)
+    {
+        var menu = NewTrackedMenu();
+        AddMenuItem(menu, "编辑场景…", () =>
+        {
+            Features.SuperPanel.Close();
+            ConfigHelper.OpenPanelScene(scene.Id);
+        });
+        AddMenuItem(menu, "新建全局场景", NewGlobalSceneFromPanel);
+        menu.Items.Add(new Separator());
+        AddMenuItem(menu, "删除场景…", () => DeleteSceneFromPanel(scene));
+        return menu;
+    }
+
+    private ContextMenu BuildContextSceneMenu(PanelSceneDto? scene)
+    {
+        var menu = NewTrackedMenu();
+        if (scene == null)
+        {
+            AddMenuItem(menu, "编辑通用分组…", () =>
+            {
+                Features.SuperPanel.Close();
+                ConfigHelper.OpenPanelScene(PanelManageView.CommonKey);
+            });
+            AddMenuItem(menu, "新建上下文场景", NewContextSceneFromPanel);
+            return menu;
+        }
+
+        AddMenuItem(menu, "编辑场景…", () =>
+        {
+            Features.SuperPanel.Close();
+            ConfigHelper.OpenPanelScene(scene.Id);
+        });
+        AddMenuItem(menu, "新建上下文场景", NewContextSceneFromPanel);
+        menu.Items.Add(new Separator());
+        AddMenuItem(menu, "改为显示通用", () =>
+        {
+            _contextSceneId = null;
+            BuildContext();
+            ContextScroll.ScrollToTop();
+        });
+        AddMenuItem(menu, "删除场景…", () => DeleteSceneFromPanel(scene));
+        return menu;
+    }
+
+    private void NewGlobalSceneFromPanel()
+    {
+        var scene = PanelLibrary.NewScene("新场景");
+        PanelLibrary.Current.Global.Scenes.Add(scene);
+        PanelLibrary.Current.Global.ActiveSceneId = scene.Id;
+        PanelLibrary.Save();
+        RebuildAll();
+    }
+
+    private void NewContextSceneFromPanel()
+    {
+        var scene = _foreground != null
+            ? PanelLibrary.CreateContextScene(_foreground.ExeName, _foreground.ExeName, _foreground.ExePath)
+            : PanelLibrary.CreateContextScene("新程序", null, null);
+        _contextSceneId = scene.Id;
+        RebuildAll();
+    }
+
+    private void DeleteSceneFromPanel(PanelSceneDto scene)
+    {
+        bool children = PanelLibrary.ChildrenOf(scene.Id).Any();
+        string extra = children ? "\n它的窗口子场景也会一并删除。" : "";
+        if (!ConfirmDialog.Confirm(this, "删除场景",
+                $"确定删除场景「{scene.Name}」吗？{extra}\n动作本体仍保留在动作池。",
+                danger: true))
+            return;
+
+        PanelLibrary.DeleteScene(scene);
+        if (_contextSceneId == scene.Id) _contextSceneId = null;
+        RebuildAll();
+    }
+
+    private void DeleteGroupFromPanel(PanelGroupDto group, bool global)
+    {
+        var groups = ZoneGroups(global);
+        if (groups.Count <= 1)
+        {
+            ToastService.Show("每个场景至少保留一个分组");
+            return;
+        }
+        if (!ConfirmDialog.Confirm(this, "删除分组",
+                $"确定删除分组「{group.Name}」吗？\n里面的动作只是从分组移除，不会删除动作本体。",
+                danger: true))
+            return;
+
+        groups.Remove(group);
+        PanelLibrary.Save();
+        RebuildAll();
+    }
+
+    private static PanelSceneDto? SceneOfGroup(PanelGroupDto group) =>
+        PanelLibrary.Current.Global.Scenes.Concat(PanelLibrary.Current.Context.Scenes)
+            .FirstOrDefault(s => s.Groups.Contains(group));
+
+    /// <summary>去设置里管理：优先定位到分组所属场景；通用 / 找不到场景时定位到「通用」。</summary>
+    private void OpenSceneSettings(PanelGroupDto? group, bool global)
+    {
+        Features.SuperPanel.Close();
+        var scene = group != null ? SceneOfGroup(group)
+            : global ? PanelLibrary.ActiveGlobalScene() : GetContextScene();
+        ConfigHelper.OpenPanelScene(scene?.Id ?? PanelManageView.CommonKey);
+    }
+
+    /// <summary>分组名原地改名：临时插一个输入框，Enter 保存、Esc 取消、失焦也保存。</summary>
+    private void BeginRenameGroup(PanelGroupDto group, bool global)
+    {
+        var host = global ? GlobalGroups : ContextGroups;
+        var block = host.Children.OfType<StackPanel>()
+            .FirstOrDefault(p => ReferenceEquals(p.Tag, group));
+        if (block == null) return;
+
+        var title = block.Children.OfType<TextBlock>().FirstOrDefault();
+        if (title != null) title.Visibility = Visibility.Collapsed;
+
+        var box = new TextBox
+        {
+            Text = group.Name,
+            MinHeight = 26,
+            FontSize = (double)FindResource("FontSizeSecondary"),
+            Margin = new Thickness(0, 2, 0, 2),
+            Tag = "GroupRename",
+        };
+        block.Children.Insert(0, box);
+
+        bool done = false;
+        void Commit()
+        {
+            if (done) return;
+            done = true;
+            string v = box.Text.Trim();
+            if (v.Length > 0 && v != group.Name)
+            {
+                group.Name = v;
+                PanelLibrary.Save();
+            }
+            RebuildAll();
+        }
+        void Cancel()
+        {
+            if (done) return;
+            done = true;
+            RebuildAll();
+        }
+
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter) { Commit(); e.Handled = true; }
+            else if (e.Key == Key.Escape) { Cancel(); e.Handled = true; }
+        };
+        box.LostFocus += (_, _) => Commit();
+        box.Loaded += (_, _) => { box.Focus(); box.SelectAll(); };
+    }
+
+    private void AddMenuItem(ContextMenu menu, string header, Action invoke)
+    {
+        var mi = new MenuItem { Header = header };
+        // 菜单项 Click 内同步打开模态框会与菜单关闭冲突，推迟到下一 Dispatcher 周期
+        mi.Click += (_, _) => Defer(invoke);
+        menu.Items.Add(mi);
+    }
+
     private void TrackInteract(ContextMenu menu)
     {
         menu.Opened += (_, _) => { _openMenu = menu; _interactCount++; };
@@ -429,401 +1278,264 @@ public partial class SuperPanelWindow : Window
         };
     }
 
-    /// <summary>
-    /// 窗口级鼠标 down（隧道，先于格子 <c>OnCellDown</c>）：菜单在场时收到的左键必在菜单外
-    /// （菜单是独立 popup hwnd，其内点击不路由到本窗口）→ 只关菜单，落在格子区的本次点击
-    /// 吞掉不触发；标题栏/页脚不吞（✕ 只点一次即生效）。
-    /// <para><b>时序依据（冒烟实测）</b>：<c>ContextMenu</c> 关闭时 <c>IsOpen</c> 先置 false、
-    /// <c>Closed</c> 事件<b>异步</b>派发——故判据只能用 <c>_openMenu != null</c>（状态对象在场，
-    /// 覆盖「仍开着 / IsOpen 已 false 未派发」两个窗口期），<c>不能</c>看 <c>IsOpen</c>；
-    /// 也无需时间窗兜底（down 到达时 Closed 必未派发 → <c>_openMenu</c> 必在场）。</para>
-    /// 吞 down 后 <c>OnDragUp</c> 因 <c>_dragSrcPage==null</c> 安全 no-op，无需吞配对 up。
-    /// </summary>
+    /// <summary>菜单在场时点击面板其它位置：只关菜单，磁贴上的这次点击吞掉。</summary>
     private void OnWindowMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (_openMenu == null) return;          // 无菜单在场：不干预
-        var m = _openMenu;
-        _openMenu = null;                       // 先自清：下面 IsOpen=false 触发的 Closed 不再重复动状态
-        if (m.IsOpen) m.IsOpen = false;         // 尚未关闭则关（Closed → interact--）
-        if (IsInCells(e.OriginalSource)) e.Handled = true;
+        bool hadMenu = _openMenu != null;
+        if (hadMenu)
+        {
+            var m = _openMenu!;
+            _openMenu = null;
+            if (m.IsOpen) m.IsOpen = false;
+            if (IsOverTile(e.GetPosition(this))) e.Handled = true;
+        }
+
+        // 空白处按下：记住起点，移动超过 4px 才拖窗口（磁贴 / 按钮等交互元素不参与）
+        if (!hadMenu && e.ChangedButton == MouseButton.Left && !IsInteractive(e.OriginalSource as DependencyObject))
+        {
+            _blankDragStart = e.GetPosition(this);
+            _blankDragArmed = true;
+        }
+
+        // 照 Quicker：中键点空白处关闭面板
+        if (!hadMenu && e.ChangedButton == MouseButton.Middle && !IsInteractive(e.OriginalSource as DependencyObject))
+        {
+            Features.SuperPanel.Close();
+            e.Handled = true;
+        }
     }
 
-    /// <summary>visual tree 上溯判断某元素是否落在格子区（CellsHost 子树内）。</summary>
-    private bool IsInCells(object? source)
+    /// <summary>交互控件（按钮 / 输入框 / 滚动条 / 分割条）上的拖动归控件自己。</summary>
+    private static bool IsInteractive(DependencyObject? d)
     {
-        DependencyObject? d = source as DependencyObject;
         while (d != null)
         {
-            if (ReferenceEquals(d, CellsHost)) return true;
-            // GetParent 对 ContentElement 等非 Visual 会抛异常，分别处理
-            if (d is System.Windows.Media.Visual || d is System.Windows.Media.Media3D.Visual3D)
-                d = System.Windows.Media.VisualTreeHelper.GetParent(d);
-            else if (d is FrameworkElement fe) d = fe.Parent;
-            else return false;
+            if (d is ButtonBase or TextBoxBase or ScrollBar or GridSplitter or Thumb
+                or ComboBox or Slider or MenuItem)
+                return true;
+            d = d is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(d)
+                : LogicalTreeHelper.GetParent(d);
         }
         return false;
     }
 
-    /// <summary>把动作推迟到下一 Dispatcher 周期——右键菜单项 Click 内同步打开模态对话框，
-    /// 会与菜单正在关闭的过程冲突（ShowDialog 可能不显示），故须延后执行。</summary>
     private void Defer(Action action) => Dispatcher.InvokeAsync(action);
 
-    // —— 槽位 CRUD（全部经 ConfigIO 落盘）——
-    //
-    // 面板是「用完就收」的启动器：这些入口都**先关面板，再开对话框**。
-    // 不要改回「隐藏面板、让它当对话框的 Owner」：
-    //   1. 隐藏的 Owner 在模态对话框打开时会被 DWM 画成一整块黑窗闪一下（实测占满面板矩形）；
-    //   2. 面板仍然算「已打开」，鼠标钩子的长按右键手势会被拦住，编辑器开着时唤不出面板。
-    // 面板关掉后对话框没有 Owner，Topmost 由 ActionEditor / ActionPoolPicker 按「无 Owner = 置顶」处理，
-    // 依旧不会被其它窗口盖住。
+    // ============ 磁贴 CRUD（全部先关面板再开对话框） ============
 
-    private void NewActionAt(int slot, ActionType? presetType)
+    private void NewActionFor(PanelGroupDto group, ActionType? presetType)
     {
-        SuperPanel.Close();
+        Features.SuperPanel.Close();
+        PanelActionOps.AddNew(null, group, presetType);
+    }
 
-        var dto = presetType == null
-            ? ActionEditor.Show(null, "新建动作", null)
-            : ActionEditor.Show(null,
-                presetType == ActionType.composite ? "新建组合动作" : "新建动作",
-                new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = presetType.Value });
+    private void PickExistingFor(PanelGroupDto group)
+    {
+        Features.SuperPanel.Close();
+        PanelActionOps.AddExisting(null, group);
+    }
 
-        if (dto == null) return;   // 取消：面板已经收了，不用再关
+    private void EditAction(PanelTileRef tref)
+    {
+        if (tref.ActionId == null) return;
+        Features.SuperPanel.Close();
+        if (PanelActionOps.Edit(null, tref.ActionId)) RebuildAll();
+    }
 
-        ConfigStore.AddAction(dto);
-        SetSlot(slot, dto.Id);
+    private void DuplicateAction(PanelTileRef tref)
+    {
+        if (tref.ActionId == null) return;
+        var copy = ConfigStore.DuplicateAction(tref.ActionId);
+        if (copy == null) return;
         ConfigStore.Save();
+        int insert = Math.Min(tref.Index + 1, tref.Group.Actions.Count);
+        tref.Group.Actions.Insert(insert, copy.Id);
+        PanelLibrary.Save();
+        RebuildAll();
     }
 
-    private void EditAt(int slot)
+    private void RemoveFromGroup(PanelTileRef tref)
     {
-        string? id = CurrentPage[slot];
-        if (id == null) return;
-        var cur = ActionRegistry.FindById(id);
-        if (cur == null) return;
-
-        SuperPanel.Close();
-        var dto = ActionEditor.Show(null, "编辑动作", cur);
-        if (dto == null) return;
-
-        dto.Id = cur.Id;   // 编辑不换 Id
-        ConfigStore.UpdateAction(dto);
-        ConfigStore.Save();
+        PanelActionOps.RemoveFromGroup(tref.Group, tref.Index);
+        RebuildAll();
     }
 
-    private void DuplicateAt(int slot)
+    private void DeleteAction(string id)
     {
-        string? id = CurrentPage[slot];
-        if (id == null) return;
-        var copy = ConfigStore.DuplicateAction(id);
-        if (copy == null) { SuperPanel.Close(); return; }
-        ConfigStore.Save();
-
-        int empty = CurrentPage.FindIndex(x => x == null);
-        if (empty < 0)
-        {
-            SuperPanel.Close();
-            ConfirmDialog.Info(null, "超级面板", "当前页已满，副本已加入动作池（可在设置里放入格子）。");
-            return;
-        }
-        SetSlot(empty, copy.Id);
-        SuperPanel.Close();
+        Features.SuperPanel.Close();
+        PanelActionOps.Delete(null, id);
     }
 
-    private void DeleteAt(int slot)
+    // ============ 未配置提示 ============
+
+    private void CreateSceneForForeground_Click(object sender, RoutedEventArgs e)
     {
-        string? id = CurrentPage[slot];
-        if (id == null) return;
-        string name = ActionRegistry.FindById(id)?.Name ?? "(未知动作)";
+        var fg = _foreground;
+        if (fg == null) return;
 
-        SuperPanel.Close();
-        bool ok = ConfirmDialog.Confirm(null, "删除动作",
-            $"确定删除「{name}」吗？\n所有菜单项 / 超级面板槽位 / 组合步骤中的引用也会被清除。", danger: true);
-
-        if (ok) ConfigStore.RemoveAction(id);   // 同时清菜单项 / 组合步骤 / 所有页槽位
-        if (ok) ConfigStore.Save();
+        Features.SuperPanel.Close();
+        var scene = PanelLibrary.CreateContextScene(fg.ExeName, fg.ExeName, fg.ExePath);
+        ConfigHelper.OpenPanelScene(scene.Id);
     }
 
-    // —— 拖动重排（§5.6）——
-
-    private void OnCellDown(int slot, MouseButtonEventArgs e)
+    private void DismissHint_Click(object sender, RoutedEventArgs e)
     {
-        if (e.ChangedButton != MouseButton.Left) return;
-        _dragSrcPage = _pageIdx;
-        _dragSrcSlot = slot;
-        _dragOrigin = e.GetPosition(this);
-        _dragging = false;
-        CaptureMouse();          // 捕获到窗口：拖出面板后 PreviewMouseMove/Up 仍路由到本窗口
-        e.Handled = true;        // 吞掉 Button.Click——点击/拖动由释放时位移判定
+        PanelLibrary.Current.HintDismissed = true;
+        PanelLibrary.Save();
+        ContextHintBar.Visibility = Visibility.Collapsed;
     }
 
-    private void OnDragMove(object sender, MouseEventArgs e)
-    {
-        if (_dragSrcPage is not int srcPage || _dragSrcSlot is not int srcSlot) return;
-        var pos = e.GetPosition(this);
+    // ============ 窗口事件 ============
 
-        if (!_dragging)
-        {
-            double dx = Math.Abs(pos.X - _dragOrigin.X);
-            double dy = Math.Abs(pos.Y - _dragOrigin.Y);
-            if (dx <= SystemParameters.MinimumHorizontalDragDistance
-                && dy <= SystemParameters.MinimumVerticalDragDistance) return;
-            _dragging = true;
-            ShowGhost(srcPage, srcSlot);
-            UpdateHeader();
-        }
+    private void NavActions_Click(object sender, RoutedEventArgs e) => FocusSearch();
 
-        UpdateGhost(pos);
-        SetHoverSlot(HitTestSlot(pos));
-        UpdatePageHover(pos);
-        e.Handled = true;
-    }
+    private void NavStash_Click(object sender, RoutedEventArgs e)
+        => ToastService.Show("暂存区还在做，先把常用内容放成动作磁贴吧。", "暂存区（即将推出）");
 
-    private void OnDragUp(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton != MouseButton.Left
-            || _dragSrcPage is not int sp || _dragSrcSlot is not int ss) return;
-        ReleaseMouseCapture();
-
-        bool wasDrag = _dragging;
-        int target = _hoverSlot;
-        EndDragVisuals();
-
-        if (wasDrag)
-        {
-            // 交换：源页源格 ↔ 当前页目标格（目标无效或同位→取消）
-            if (target >= 0 && target < 16 && !(sp == _pageIdx && ss == target))
-            {
-                bool samePage = sp == _pageIdx;
-                (_pages[sp][ss], _pages[_pageIdx][target]) = (_pages[_pageIdx][target], _pages[sp][ss]);
-                SuperPanel.SavePages(_pages);
-                Rebuild();
-                // 同页交换：两格内容从对方位置滑入（跨页交换目标格不在同 visual tree，跳过动画）
-                if (samePage && ss < CellsHost.Children.Count && target < CellsHost.Children.Count
-                    && CellsHost.Children[ss] is FrameworkElement a
-                    && CellsHost.Children[target] is FrameworkElement b)
-                {
-                    Views.Controls.DragFx.AnimateSwap(a, b, this);
-                }
-            }
-        }
-        else
-        {
-            // 位移未超阈值→视为单击：执行原语义（空格弹菜单/非空执行）
-            Defer(() => ExecuteSlot(ss));
-        }
-        _dragSrcPage = null;
-        _dragSrcSlot = null;
-        _dragging = false;
-        UpdateHeader();
-        e.Handled = true;
-    }
-
-    private void CancelDrag()
-    {
-        ReleaseMouseCapture();
-        EndDragVisuals();
-        _dragSrcPage = null;
-        _dragSrcSlot = null;
-        _dragging = false;
-        UpdateHeader();
-    }
-
-    // —— 拖动视觉 ——
-
-    private Button? _ghostSrcButton;   // 拖动源格（半透明占位，EndDragVisuals 恢复）
-
-    private void ShowGhost(int page, int slot)
-    {
-        string? id = _pages[page][slot];
-        var a = id != null ? ActionRegistry.FindById(id) : null;
-        GhostIcon.Text = a != null ? IconCatalog.GetGlyph(a.Icon) : "\uE710";
-        GhostName.Text = a != null ? a.Name : "（空）";
-        DragGhost.Visibility = Visibility.Visible;
-        Mouse.OverrideCursor = Cursors.SizeAll;
-        // 源半透明占位（同页：跨页时源格不在当前 visual tree，无需设）
-        if (page == _pageIdx && slot >= 0 && slot < CellsHost.Children.Count
-            && CellsHost.Children[slot] is Button b)
-        {
-            b.Opacity = 0.35;
-            _ghostSrcButton = b;
-        }
-    }
-
-    private void UpdateGhost(Point windowPos)
-    {
-        var rel = TranslatePoint(windowPos, GhostLayer);   // 窗口坐标→Canvas 坐标
-        double w = DragGhost.ActualWidth > 0 ? DragGhost.ActualWidth : DragGhost.Width;
-        double h = DragGhost.ActualHeight > 0 ? DragGhost.ActualHeight : DragGhost.Height;
-        Canvas.SetLeft(DragGhost, rel.X - w / 2);
-        Canvas.SetTop(DragGhost, rel.Y - h / 2);
-    }
-
-    private void EndDragVisuals()
-    {
-        DragGhost.Visibility = Visibility.Collapsed;
-        Mouse.OverrideCursor = null;
-        if (_ghostSrcButton != null) { _ghostSrcButton.Opacity = 1; _ghostSrcButton = null; }
-        SetHoverSlot(-1);
-        StopPageHover();
-    }
-
-    // —— 命中测试 / 目标高亮 ——
-
-    private int HitTestSlot(Point windowPos)
-    {
-        var rel = TranslatePoint(windowPos, CellsHost);
-        if (rel.X < 0 || rel.Y < 0 || rel.X > CellsHost.ActualWidth || rel.Y > CellsHost.ActualHeight)
-            return -1;
-        if (CellsHost.InputHitTest(rel) is not DependencyObject hit) return -1;
-        DependencyObject? d = hit;
-        while (d != null && d != CellsHost)
-        {
-            if (d is Button b) return CellsHost.Children.IndexOf(b);
-            d = VisualTreeHelper.GetParent(d);
-        }
-        return -1;
-    }
-
-    private void SetHoverSlot(int slot)
-    {
-        if (slot == _hoverSlot) return;
-        if (_hoverSlot >= 0 && _hoverSlot < CellsHost.Children.Count)
-            ClearHover((Button)CellsHost.Children[_hoverSlot]);
-        _hoverSlot = slot;
-        if (slot >= 0 && slot < CellsHost.Children.Count)
-            ApplyHover((Button)CellsHost.Children[slot]);
-    }
-
-    private void ApplyHover(Button b)
-    {
-        b.BorderBrush = (Brush)FindResource("PrimaryBrush");
-        b.BorderThickness = new Thickness(2);
-    }
-
-    private void ClearHover(Button b)
-    {
-        b.BorderBrush = (Brush)FindResource("BorderBrush");
-        b.BorderThickness = new Thickness(1);
-    }
-
-    // —— 跨页：拖到 ‹/› 悬停翻页 ——
-
-    private void UpdatePageHover(Point windowPos)
-    {
-        int dir = 0;
-        // 循环翻页：首页悬停 ‹、末页悬停 › 同样可翻（仅 1 页时不翻）
-        if (_pages.Count > 1 && IsOver(windowPos, PrevBtn)) dir = -1;
-        else if (_pages.Count > 1 && IsOver(windowPos, NextBtn)) dir = 1;
-
-        if (dir == 0) { StopPageHover(); return; }
-        if (_pageHoverDir != dir || _pageHoverTimer?.IsEnabled != true)
-        {
-            _pageHoverDir = dir;
-            _pageHoverTimer!.Stop();
-            _pageHoverTimer.Start();   // 悬停 ~0.45s 后翻页（Tick 内 GoPage，可连续翻）
-        }
-    }
-
-    private void StopPageHover()
-    {
-        if (_pageHoverTimer?.IsEnabled == true) _pageHoverTimer.Stop();
-    }
-
-    private bool IsOver(Point windowPos, FrameworkElement el)
-    {
-        if (el.ActualWidth <= 0) return false;
-        var rel = TranslatePoint(windowPos, el);
-        return rel.X >= 0 && rel.Y >= 0 && rel.X <= el.ActualWidth && rel.Y <= el.ActualHeight;
-    }
-
-    // —— 辅助 ——
-
-    private void SetSlot(int slot, string id)
-    {
-        CurrentPage[slot] = id;
-        SuperPanel.SavePages(_pages);
-    }
-
-    // —— 窗口事件 ——
-
-    /// <summary>标题栏拖动窗口。钉子 / 关闭按钮会自行吞掉按下事件，不会走到这里。</summary>
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
-        try
-        {
-            DragMove();   // 进入系统拖动循环；拖出工作区也由系统负责
-        }
-        catch (InvalidOperationException)
-        {
-            // 极快点击：按下时鼠标已抬起，DragMove 会抛异常。当作普通点击忽略。
-        }
+        // 搜索框 / 按钮自行处理，不拖窗口
+        if (e.OriginalSource is DependencyObject d
+            && (FindAncestor<Button>(d) != null || FindAncestor<TextBox>(d) != null)) return;
+        try { DragMove(); }
+        catch (InvalidOperationException) { /* 极快点击：按下时鼠标已抬起 */ }
         e.Handled = true;
     }
 
     private void Pin_Click(object sender, RoutedEventArgs e) => SetPinned(!_pinned);
 
-    /// <summary>
-    /// 标题栏齿轮：打开设置。先关面板再开窗口——面板是 Topmost，留着会盖住设置窗口
-    /// （与格子执行动作「先关面板、再执行」同一做法）。
-    /// </summary>
-    private void Settings_Click(object sender, RoutedEventArgs e)
-    {
-        SuperPanel.Close();
-        ConfigHelper.Toggle();
-    }
-
-    /// <summary>切换钉住状态：更新钉子图标 / 配色与页脚提示。钉住后鼠标钩子不再把外部点击当作关闭信号。</summary>
     private void SetPinned(bool pinned)
     {
         _pinned = pinned;
-        PinIcon.Text = pinned ? "\uE842" : "\uE840";   // PinnedFill（实心钉）/ Pinned（空心钉）
-        PinBtn.Foreground = (Brush)FindResource(pinned ? "PrimaryBrush" : "SecondaryTextBrush");
+        PinIcon.Text = pinned ? "\uE842" : "\uE840";
+        PinBtn.Foreground = Res(pinned ? "PrimaryBrush" : "SecondaryTextBrush");
         PinBtn.ToolTip = pinned ? "取消钉住（当前：点击外部不关闭）" : "钉住：点击外部不关闭";
-        UpdateHeader();
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e) => SuperPanel.Close();
-
-    private void Window_KeyDown(object sender, KeyEventArgs e)
+    private void Settings_Click(object sender, RoutedEventArgs e)
     {
-        // 钩子通常会先路由并吞掉这些键；此处为焦点落在窗口时的兜底。
-        if (e.Key == Key.Escape) { RequestEscape(); e.Handled = true; return; }
-        int idx = e.Key switch
+        Features.SuperPanel.Close();
+        ConfigHelper.OpenPanelScene(PanelLibrary.ActiveGlobalScene()?.Id);
+    }
+
+    private void Close_Click(object sender, RoutedEventArgs e) => Features.SuperPanel.Close();
+
+    protected override void OnClosed(EventArgs e)
+    {
+        var prefs = PanelLibrary.Current.Preferences;
+        double w = ActualWidth > 0 ? ActualWidth : Width;
+        double h = ActualHeight > 0 ? ActualHeight : Height;
+
+        bool dirty = false;
+        if (w >= 340 && h >= 320 && (Math.Abs(prefs.Width - w) > 0.5 || Math.Abs(prefs.Height - h) > 0.5))
         {
-            Key.D1 or Key.NumPad1 => 1,
-            Key.D2 or Key.NumPad2 => 2,
-            Key.D3 or Key.NumPad3 => 3,
-            Key.D4 or Key.NumPad4 => 4,
-            Key.D5 or Key.NumPad5 => 5,
-            Key.D6 or Key.NumPad6 => 6,
-            Key.D7 or Key.NumPad7 => 7,
-            Key.D8 or Key.NumPad8 => 8,
-            Key.D9 or Key.NumPad9 => 9,
-            _ => -1,
-        };
-        if (idx >= 1)
-        {
-            ExecuteSlot(idx - 1);   // 非空时内部已关面板
-            e.Handled = true;
+            prefs.Width = w;
+            prefs.Height = h;
+            dirty = true;
         }
+        if (Math.Abs(prefs.GlobalRatio - _globalRatio) > 0.001)
+        {
+            prefs.GlobalRatio = _globalRatio;
+            dirty = true;
+        }
+        if (dirty) PanelLibrary.Save();
+
+        base.OnClosed(e);
     }
 
-    // —— 屏幕工作区 P/Invoke（与 MouseTipWindow 同一套）——
+    // ============ 双区高度 ============
 
-    private struct POINT { public int x; public int y; }
-    private struct RECT { public int left; public int top; public int right; public int bottom; }
-    private struct MONITORINFO
+    /// <summary>按比例设置上下两区高度（分割条拖动后调用）。</summary>
+    private void ApplySplitRatio()
     {
-        public int cbSize;
-        public RECT rcMonitor;
-        public RECT rcWork;
-        public uint dwFlags;
+        GlobalRow.Height = new GridLength(_globalRatio, GridUnitType.Star);
+        ContextRow.Height = new GridLength(1 - _globalRatio, GridUnitType.Star);
     }
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+    /// <summary>
+    /// 分割条拖动：不交给 GridSplitter 写死像素，而是换算成比例写回星号行，
+    /// 这样窗口缩放时两区仍按比例伸缩（比例记入 Preferences.GlobalRatio）。
+    /// </summary>
+    private void PaneSplitter_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        double total = GlobalRow.ActualHeight + ContextRow.ActualHeight;
+        if (total <= 0) return;
 
-    [DllImport("user32.dll")]
-    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+        double min = Math.Max(96, total * 0.15);
+        double max = Math.Min(total - 96, total * 0.85);
+        if (max < min) { e.Handled = true; return; }
+
+        double proposed = Math.Clamp(GlobalRow.ActualHeight + e.VerticalChange, min, max);
+        double ratio = proposed / total;
+        if (Math.Abs(ratio - _globalRatio) > 0.0001)
+        {
+            _globalRatio = ratio;
+            ApplySplitRatio();
+        }
+        e.Handled = true;
+    }
+
+    // ============ 定位 ============
+
+    /// <summary>以光标为中心展开（鼠标落在面板正中）；越界时整体平移到工作区内。</summary>
+    private void PlaceAtCursor(int px, int py)
+    {
+        double m11 = 1.0, m22 = 1.0;
+        var src = PresentationSource.FromVisual(this);
+        if (src != null)
+        {
+            var tfd = src.CompositionTarget.TransformFromDevice;
+            m11 = tfd.M11;
+            m22 = tfd.M22;
+        }
+
+        double cx = px * m11, cy = py * m22;
+        double w = ActualWidth > 0 ? ActualWidth : Width;
+        double h = ActualHeight > 0 ? ActualHeight : Height;
+
+        var wa = WorkArea(px, py);
+        double sLeft = wa.Left * m11, sTop = wa.Top * m22;
+        double sRight = wa.Right * m11, sBottom = wa.Bottom * m22;
+
+        double left = cx - w / 2;
+        double top = cy - h / 2;
+
+        if (left + w > sRight) left = Math.Max(sLeft, sRight - w);
+        if (left < sLeft) left = sLeft;
+        if (top + h > sBottom) top = Math.Max(sTop, sBottom - h);
+        if (top < sTop) top = sTop;
+
+        Left = left;
+        Top = top;
+    }
+
+    private static Win32.Rect WorkArea(int x, int y)
+    {
+        var mon = Win32.MonitorFromPoint(new Win32.Point { X = x, Y = y }, Win32.MonitorDefaultToNearest);
+        var mi = new Win32.MonitorInfo { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Win32.MonitorInfo>() };
+        if (Win32.GetMonitorInfo(mon, ref mi)) return mi.rcWork;
+        var wa = SystemParameters.WorkArea;
+        return new Win32.Rect
+        {
+            Left = (int)wa.Left,
+            Top = (int)wa.Top,
+            Right = (int)wa.Right,
+            Bottom = (int)wa.Bottom,
+        };
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
+    {
+        while (d != null)
+        {
+            if (d is T t) return t;
+            d = d is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(d)
+                : (d as FrameworkElement)?.Parent;
+        }
+        return null;
+    }
 }
+

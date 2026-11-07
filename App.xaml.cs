@@ -143,6 +143,7 @@ public partial class App : Application
         var menu = new ContextMenu();
         menu.Items.Add(NewItem("帮助面板 (CapsLock+`)", () => HelpPanel.Toggle()));
         menu.Items.Add(NewItem("速记 (CapsLock+N)", () => QuickNote.Toggle()));
+        menu.Items.Add(NewItem("动作面板 (CapsLock+T)", () => Features.SuperPanel.Toggle()));
         menu.Items.Add(NewItem("设置 (CapsLock+\\)", () => ConfigHelper.Toggle()));
         menu.Items.Add(new Separator());
         _macroMenuItem = NewItem("开始 / 停止录制宏", () => MacroRecorder.Toggle());
@@ -329,7 +330,7 @@ public partial class App : Application
         ConfigStore.Save();
     }
 
-    private static System.Windows.Media.ImageSource? LoadIconSource()
+    internal static System.Windows.Media.ImageSource? LoadIconSource()
     {
         var candidates = new[]
         {

@@ -153,6 +153,12 @@ public partial class ActionEditorDialog : Window
 
         // sendKeys 序列编辑：列表绑定 + 空闲成条计时器
         KeysList.ItemsSource = _keyItems;
+        _keyDrag = new ListDragSort(
+            this, GhostLayer, KeysList,
+            () => _keyItems.Count,
+            MoveKeyPreview,
+            TakeKeySnapshot,
+            RestoreKeySnapshot);
         _idleTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         _idleTimer.Tick += (_, _) => { _idleTimer.Stop(); FlushPending(); };
 
@@ -1849,14 +1855,10 @@ public partial class ActionEditorDialog : Window
         v.Desc = DescribeKeyItem(m);
     }
 
-    // —— sendKeys 序列拖拽排序（把手拖动，幽灵跟随 + 插入线，与组合动作编辑器同款）——
-    // 走窗口级鼠标跟踪而非 OLE DoDragDrop：拖动中只跟幽灵 + 插入指示线，释放时才重排
-    // （与超级面板 §5.6 / 组合动作编辑器节奏一致）。
-    private int? _keyGripIdx;                   // 把手按下时记录的源条目索引
-    private Point _keyGripOrigin;               // 按下坐标（进入拖动态的阈值判定）
-    private bool _keyGripDragging;              // 是否已进入拖动态
-    private FrameworkElement? _keyGripSource;   // 把手元素（鼠标捕获载体）
-    private ListBoxItem? _keyGripSrcContainer;  // 源行（半透明占位）
+    // —— sendKeys 序列拖拽排序（把手拖动）——
+    // 与动作面板 / 菜单项同一套规格：快照幽灵 + 源行虚线占位 + 越过半行实时让位 + Esc 取消。
+    private readonly ListDragSort _keyDrag;
+    private List<KeyItemView>? _keySnapshot;   // 拖动前的顺序（Esc 还原）
 
     private void Grip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -1864,146 +1866,32 @@ public partial class ActionEditorDialog : Window
         int idx = _keyItems.IndexOf(v);
         if (idx < 0) return;
         KeysList.SelectedIndex = idx;
-        _keyGripSource = fe;
-        _keyGripIdx = idx;
-        _keyGripOrigin = e.GetPosition(this);
-        _keyGripDragging = false;
-        fe.CaptureMouse();      // 捕获：拖出窗口仍能收到移动 / 释放
-        e.Handled = true;       // 吞掉，别让 ListBox 抢走选中
+        _keyDrag.Press(idx, e.GetPosition(this));
+        e.Handled = true;       // 吞掉，别让 ListBox 抢走选中 / 滚动
     }
 
-    private void Window_PreviewMouseMove(object sender, MouseEventArgs e)
+    /// <summary>实时预览：把源条目移到插入位置，返回它的新下标（-1 = 没有变化）。</summary>
+    private int MoveKeyPreview(int from, int insertAt)
     {
-        if (_keyGripIdx == null) return;
-        KeyGripDragTick(e);
-        if (_keyGripDragging) e.Handled = true;
-    }
+        int to = insertAt > from ? insertAt - 1 : insertAt;   // 移除源后索引前移
+        if (to == from) return -1;
 
-    private void Window_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        if (_keyGripIdx is not int src || !_keyGripDragging) { EndKeyReorderDrag(); return; }
-
-        int hover = KeyGripHoverRow(e);
-        int insertAt = hover >= 0 ? KeyGripInsertAt(e, hover) : -1;
-        EndKeyReorderDrag();
-        KeysList.SelectedIndex = src;      // 先回落到源行（重排成功时会再改）
-        if (insertAt >= 0) ApplyKeyReorder(src, insertAt);
-        e.Handled = true;
-    }
-
-    /// <summary>位移超阈值 → 显示幽灵跟随光标；目标行高亮。不在这里重排（见 <see cref="ApplyKeyReorder"/>）。</summary>
-    private void KeyGripDragTick(MouseEventArgs e)
-    {
-        if (_keyGripIdx is not int idx) return;
-        if (e.LeftButton != MouseButtonState.Pressed) { EndKeyReorderDrag(); return; }
-
-        var pos = e.GetPosition(this);
-        if (!_keyGripDragging)
-        {
-            if (Math.Abs(pos.X - _keyGripOrigin.X) < SystemParameters.MinimumHorizontalDragDistance &&
-                Math.Abs(pos.Y - _keyGripOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-            _keyGripDragging = true;
-            ShowKeyGhost(idx);
-        }
-
-        UpdateKeyGhost(pos);
-        PositionKeyInsertLine(e);
-    }
-
-    /// <summary>把插入线定位到光标所停留行的上/下边缘（上半=该行前，下半=该行后）。</summary>
-    private void PositionKeyInsertLine(MouseEventArgs e)
-    {
-        int hover = KeyGripHoverRow(e);
-        if (hover < 0) { InsertLine.Visibility = Visibility.Collapsed; return; }
-        var c = KeysList.ItemContainerGenerator.ContainerFromIndex(hover) as FrameworkElement;
-        if (c == null) { InsertLine.Visibility = Visibility.Collapsed; return; }
-        bool after = KeyGripInsertAt(e, hover) > hover;
-        var p = c.TransformToAncestor(GhostLayer).Transform(new Point(0, after ? c.ActualHeight : 0));
-        Canvas.SetLeft(InsertLine, p.X);
-        Canvas.SetTop(InsertLine, p.Y - 1.5);
-        InsertLine.Width = c.ActualWidth > 0 ? c.ActualWidth : KeysList.ActualWidth;
-        InsertLine.Visibility = Visibility.Visible;
-    }
-
-    private void ShowKeyGhost(int index)
-    {
-        var v = _keyItems[index];
-        GhostBadge.Text = $"{index + 1}.";
-        GhostName.Text = v.Desc;
-        DragGhost.Visibility = Visibility.Visible;
-        Mouse.OverrideCursor = Cursors.SizeAll;
-        // 源行半透明占位
-        if (KeysList.ItemContainerGenerator.ContainerFromIndex(index) is ListBoxItem c)
-        {
-            c.Opacity = 0.35;
-            _keyGripSrcContainer = c;
-        }
-    }
-
-    private void UpdateKeyGhost(Point windowPos)
-    {
-        var rel = TranslatePoint(windowPos, GhostLayer);   // 窗口坐标 → Canvas 坐标
-        double w = DragGhost.ActualWidth > 0 ? DragGhost.ActualWidth : DragGhost.MinWidth;
-        double h = DragGhost.ActualHeight > 0 ? DragGhost.ActualHeight : 34;
-        Canvas.SetLeft(DragGhost, rel.X - w / 2);
-        Canvas.SetTop(DragGhost, rel.Y - h / 2);
-    }
-
-    private void EndKeyReorderDrag()
-    {
-        bool wasDragging = _keyGripDragging;
-        _keyGripSource?.ReleaseMouseCapture();
-        _keyGripSource = null;
-        _keyGripIdx = null;
-        _keyGripDragging = false;
-        if (!wasDragging) return;      // 只是点了下把手（未拖动）：不碰光标与幽灵
-        DragGhost.Visibility = Visibility.Collapsed;
-        Mouse.OverrideCursor = null;
-        if (_keyGripSrcContainer != null) { _keyGripSrcContainer.Opacity = 1; _keyGripSrcContainer = null; }
-        InsertLine.Visibility = Visibility.Collapsed;
-    }
-
-    /// <summary>拖动中的目标行：先按坐标判定是否落在列表视口内（列表外 → -1），
-    /// 再找命中的行；命中列表内但没落在行上（项间空隙 / ItemsPanel）→ 末行。</summary>
-    private int KeyGripHoverRow(MouseEventArgs e)
-    {
-        var p = e.GetPosition(KeysList);
-        if (p.X < 0 || p.Y < 0 || p.X > KeysList.ActualWidth || p.Y > KeysList.ActualHeight)
-            return -1;                       // 列表外
-
-        if (KeysList.InputHitTest(p) is DependencyObject d)
-        {
-            var container = ItemsControl.ContainerFromElement(KeysList, d) as ListBoxItem;
-            if (container != null)
-            {
-                int i = KeysList.ItemContainerGenerator.IndexFromContainer(container);
-                if (i >= 0) return i;
-            }
-        }
-        return _keyItems.Count - 1;          // 列表内但未命中行 → 末行（下半即追加到末尾）
-    }
-
-    /// <summary>命中行 → 插入位置（0.._keyItems.Count）：上半 = 该行之前，下半 = 该行之后。</summary>
-    private int KeyGripInsertAt(MouseEventArgs e, int hover)
-    {
-        var container = KeysList.ItemContainerGenerator.ContainerFromIndex(hover) as ListBoxItem;
-        if (container == null) return hover;
-        return e.GetPosition(container).Y < container.ActualHeight / 2 ? hover : hover + 1;
-    }
-
-    /// <summary>释放：把源条目移到插入位置（<paramref name="insertAt"/> 基于移动前的列表）。</summary>
-    private void ApplyKeyReorder(int src, int insertAt)
-    {
-        if (src < 0 || src >= _keyItems.Count) return;
-        if (insertAt < 0 || insertAt > _keyItems.Count) return;
-        int target = insertAt > src ? insertAt - 1 : insertAt;   // 移除源后索引前移
-        if (target == src) return;
-        var old = Views.Controls.DragFx.CaptureByIndex(KeysList);
-        _keyItems.Move(src, target);
+        var old = DragFx.CaptureByIndex(KeysList);
+        _keyItems.Move(from, to);
         RefreshKeyNumbers();
-        Views.Controls.DragFx.AnimateReorderByIndex(KeysList, old,
-            i => Views.Controls.DragFx.OldIndexOfMove(i, src, target));
-        KeysList.SelectedIndex = Math.Clamp(target, 0, _keyItems.Count - 1);
+        DragFx.AnimateReorderByIndex(KeysList, old, i => DragFx.OldIndexOfMove(i, from, to));
+        KeysList.SelectedIndex = to;
+        return to;
+    }
+
+    private void TakeKeySnapshot() => _keySnapshot = _keyItems.ToList();
+
+    private void RestoreKeySnapshot()
+    {
+        if (_keySnapshot == null) return;
+        _keyItems.Clear();
+        foreach (var v in _keySnapshot) _keyItems.Add(v);
+        RefreshKeyNumbers();
     }
 
     // —— 辅助 ——

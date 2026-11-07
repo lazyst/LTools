@@ -27,4 +27,19 @@ internal static class ConfigHelper
         _window.Closed += (_, _) => _window = null;
         _window.Show();
     }
+
+    /// <summary>
+    /// 打开设置并切到「面板管理」；<paramref name="sceneId"/> 非空时选中该场景
+    /// （面板的「为此程序创建场景」用）。窗口已打开则直接激活并定位。
+    /// </summary>
+    public static void OpenPanelScene(string? sceneId = null)
+    {
+        if (_window == null)
+        {
+            _window = new ConfigHelperWindow(_configPath ?? "");
+            _window.Closed += (_, _) => _window = null;
+            _window.Show();
+        }
+        _window.NavigateToPanelScene(sceneId);
+    }
 }

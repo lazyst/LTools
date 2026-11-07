@@ -130,6 +130,44 @@ internal static class WindowAction
     private static bool WaitForeground(IntPtr hwnd) =>
         Settle(() => Win32.GetForegroundWindow() == hwnd, 800);
 
+    /// <summary>
+    /// 非阻塞地把窗口切到前台（长按右键唤起面板时用：用户在哪个窗口上长按，就先激活哪个窗口，
+    /// 照 Quicker——面板关闭后焦点回到那个程序，之后的动作也作用在它身上）。
+    /// 唤起路径不能像 <see cref="Activate"/> 那样 Thread.Sleep 等结果，只发起、不等待。
+    /// </summary>
+    internal static void ActivateNoWait(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || Win32.GetForegroundWindow() == hwnd) return;
+
+        try
+        {
+            if (Win32.IsIconic(hwnd)) Win32.ShowWindow(hwnd, Win32.SwRestore);
+
+            IntPtr foreground = Win32.GetForegroundWindow();
+            uint self = Win32.GetCurrentThreadId();
+            uint fgThread = foreground != IntPtr.Zero ? Win32.GetWindowThreadProcessId(foreground, IntPtr.Zero) : 0;
+            uint targetThread = Win32.GetWindowThreadProcessId(hwnd, IntPtr.Zero);
+
+            bool attachedFg = fgThread != 0 && fgThread != self && Win32.AttachThreadInput(self, fgThread, true);
+            bool attachedTarget = targetThread != 0 && targetThread != self && targetThread != fgThread
+                                  && Win32.AttachThreadInput(self, targetThread, true);
+            try
+            {
+                Win32.BringWindowToTop(hwnd);
+                Win32.SetForegroundWindow(hwnd);
+            }
+            finally
+            {
+                if (attachedTarget) Win32.AttachThreadInput(self, targetThread, false);
+                if (attachedFg) Win32.AttachThreadInput(self, fgThread, false);
+            }
+        }
+        catch
+        {
+            // 目标进程已退出 / 拒绝激活：保持现状，上下文仍按光标下的窗口解析
+        }
+    }
+
     // ============ 调整大小 ============
 
     private static void Resize(IntPtr hwnd, ActionDto a)

@@ -121,6 +121,21 @@ internal static class Win32
     /// <summary>GetAncestor 取根拥有者窗口（跟随 owner 链到顶层，对应 AHK MouseGetPos 的顶层窗口）。</summary>
     public const uint GaRootOwner = 3;
 
+    /// <summary>
+    /// 光标下的顶层窗口：<see cref="WindowFromPoint"/> 取最深窗口（含子窗口）再取根祖先。
+    /// 长按右键唤起面板时用它当上下文——右键不会激活后台窗口，此刻
+    /// <see cref="GetForegroundWindow"/> 可能还停在别的程序上（照 Quicker 的取法）。
+    /// 取不到返回 <see cref="IntPtr.Zero"/>。
+    /// </summary>
+    public static IntPtr TopLevelWindowAtCursor()
+    {
+        if (!GetCursorPos(out var pt)) return IntPtr.Zero;
+        IntPtr hit = WindowFromPoint(pt);
+        if (hit == IntPtr.Zero) return IntPtr.Zero;
+        IntPtr root = GetAncestor(hit, GaRoot);
+        return root != IntPtr.Zero ? root : hit;
+    }
+
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
