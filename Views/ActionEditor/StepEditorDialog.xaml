@@ -49,7 +49,7 @@
                         <WrapPanel>
                             <TextBlock Text="失败时" VerticalAlignment="Center"
                                        Foreground="{StaticResource SecondaryTextBrush}"/>
-                            <ComboBox x:Name="FailBox" Width="110" MinHeight="28" Margin="8,0,18,0">
+                            <ComboBox x:Name="FailBox" MinWidth="110" MinHeight="28" Margin="8,0,18,0">
                                 <ComboBoxItem Content="停止整个动作"/>
                                 <ComboBoxItem Content="记录后继续"/>
                             </ComboBox>

@@ -74,27 +74,34 @@ internal static class AutomationRunner
         }
 
         Task.Run(() => RunCore(program, action.Name, cursorX, cursorY,
-            startPath: null, trace: null, notify: true, completed: null));
+            startPath: null, trace: null, notify: true, noticeOverride: null, completed: null));
     }
 
     /// <summary>
     /// 编辑器「试运行」：跑一份内存里的动作（**不必先保存**），轨迹与结果回调给调用方。
     /// </summary>
     /// <returns>false = 已有动作在运行（与真实运行共用同一个互斥，避免两套键鼠注入打架）。</returns>
-    /// <remarks>轨迹回调在后台线程上同步触发；调用方要自己投递到 UI 线程并攒批。</remarks>
+    /// <remarks>
+    /// 轨迹回调在后台线程上同步触发；调用方要自己投递到 UI 线程并攒批。
+    /// 试运行是调试态，结束**一定**给提示（成功也弹，2.5 秒消失；失败常驻）——
+    /// 否则「改一步、跑一下」时只能盯着状态行，看不到真实运行时的样子。
+    /// </remarks>
     public static bool TryRunProgram(string name, ActionProgram program, string? startPath,
         Action<StepTrace>? trace, Action<ActionRunResult>? completed)
     {
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return false;
 
         Task.Run(() => RunCore(program, name, 0, 0,
-            startPath, trace, notify: false, completed));
+            startPath, trace, notify: false, noticeOverride: RunNoticeMode.always, completed));
         return true;
     }
 
     /// <summary>一次运行的公共实现：真实动作与编辑器试运行都走这里。</summary>
+    /// <param name="notify">是否按用户设置给运行结果提示（真实运行为 true）。</param>
+    /// <param name="noticeOverride">试运行传 <see cref="RunNoticeMode.always"/>，忽略用户设置。</param>
     private static void RunCore(ActionProgram program, string name, int cursorX, int cursorY,
-        string? startPath, Action<StepTrace>? trace, bool notify, Action<ActionRunResult>? completed)
+        string? startPath, Action<StepTrace>? trace, bool notify, RunNoticeMode? noticeOverride,
+        Action<ActionRunResult>? completed)
     {
         // 运行期截图（变量的 .file）只在这一次运行内有效：开始新一次 = 上一次的已经用完，顺手回收。
         // 界线用「现在」：本次稍后截的图比它新，不会被误删；上一次留下的（含上次没清掉的）在这里清干净。
@@ -132,7 +139,7 @@ internal static class AutomationRunner
 
             ActionRunResult result = new ActionEngine(StepRegistry.Default).Run(program, options);
 
-            if (notify) NotifyFinished(name, result);
+            if (notify || noticeOverride != null) NotifyFinished(name, result, noticeOverride);
 
             try { completed?.Invoke(result); }
             catch (Exception ex) { AppLog.Warn("Flow", $"运行结果回调失败：{ex.Message}"); }
@@ -162,7 +169,7 @@ internal static class AutomationRunner
             AppLog.Error("Flow", $"失败「{name}」第 {steps} 步", ex);
             CrashLog.Write($"Flow[{name}] 第{steps}步", ex);
 
-            if (notify)
+            if (notify || noticeOverride != null)
                 ToastService.Show($"「{name}」启动失败：{ex.Message}", "动作失败",
                     ToastService.StickyMs, ToastKind.error, key: "run:" + name, onClick: OpenLogsFolder);
         }
@@ -179,11 +186,15 @@ internal static class AutomationRunner
     /// <summary>
     /// 把运行结果变成提示：失败**常驻**（红色，点一下看日志），成功按设置（默认静默）。
     /// </summary>
+    /// <param name="modeOverride">
+    /// 非 null 时忽略用户设置（编辑器试运行传 <see cref="RunNoticeMode.always"/>）：
+    /// 试跑就是要立刻看到结果，哪怕用户把真实运行的提示关了。
+    /// </param>
     /// <remarks>
     /// 失败以前走的是 <see cref="MouseTip"/>（跟鼠标、1.8 秒消失），跑完去看时早就没了；
     /// 现在用 toast，并且同一个动作用同一个 key，下一次运行会覆盖上一次的失败提示。
     /// </remarks>
-    private static void NotifyFinished(string name, ActionRunResult result)
+    private static void NotifyFinished(string name, ActionRunResult result, RunNoticeMode? modeOverride = null)
     {
         RunNoticeMode mode = RunNoticeMode.onFailure;
         ToastPosition position = ToastPosition.bottomRight;
@@ -198,8 +209,10 @@ internal static class AutomationRunner
             AppLog.Warn("Flow", $"读取提示设置失败：{ex.Message}");
         }
 
+        if (modeOverride is RunNoticeMode forced) mode = forced;
         if (mode == RunNoticeMode.off) return;
 
+        bool trial = modeOverride != null;
         string key = "run:" + name;
 
         if (result.Stopped)
@@ -211,11 +224,17 @@ internal static class AutomationRunner
 
         if (!result.Completed)
         {
+            // 标题已经带了「第 1 行」，正文里再重复一遍只会显得啰嗦。
+            string body = result.Error ?? "执行失败";
+            if (result.FailedStepLabel is { Length: > 0 } failedAt
+                && body.StartsWith(failedAt, StringComparison.Ordinal))
+                body = body[failedAt.Length..].TrimStart('：', ' ');
+
             string title = result.FailedStepLabel is { Length: > 0 } label
                 ? $"动作失败 · {label}"
                 : "动作失败";
 
-            ToastService.Show(result.Error ?? "执行失败", $"{title}（{name}）",
+            ToastService.Show(body, $"{title}（{name}）",
                 ToastService.StickyMs, ToastKind.error, key, OpenLogsFolder, position);
             return;
         }
@@ -224,7 +243,7 @@ internal static class AutomationRunner
         {
             ToastService.Show(
                 $"「{name}」· {result.Steps} 步 · {result.Elapsed.TotalMilliseconds:0} ms",
-                "运行成功", 2500, ToastKind.success, key, position: position);
+                trial ? "试运行完成" : "运行成功", 2500, ToastKind.success, key, position: position);
         }
     }
 

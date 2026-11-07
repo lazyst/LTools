@@ -3,36 +3,49 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
     <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
-        <ComboBox x:Name="ModeBox" Width="76" MinHeight="28" SelectedIndex="0"
-                  SelectionChanged="Mode_Changed" ToolTip="值的来源">
-            <ComboBoxItem Content="字面量"/>
-            <ComboBoxItem Content="变量"/>
-            <ComboBoxItem Content="取值单元"/>
-        </ComboBox>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
 
-        <Grid Grid.Column="1" Margin="6,0,0,0">
-            <TextBox x:Name="LiteralBox" MinHeight="28" TextChanged="Value_Changed"
-                     ToolTip="可以直接写文字；${变量} 会在运行时替换"/>
-            <TextBox x:Name="VarBox" MinHeight="28" Visibility="Collapsed" TextChanged="Value_Changed"
-                     FontFamily="{StaticResource MonoFont}"
-                     ToolTip="变量名，支持 a.b[0] 这样的路径"/>
-            <Grid x:Name="InlinePanel" Visibility="Collapsed">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <ComboBox x:Name="UnitBox" MinHeight="28" SelectionChanged="Unit_Changed"
-                          DisplayMemberPath="Display"
-                          ToolTip="取值单元：找图 / 读取剪贴板 / 文本处理…"/>
-                <Button x:Name="InlineSetupBtn" Grid.Column="1" Content="设置…"
-                        Style="{StaticResource BtnGhost}" Margin="6,0,0,0"
-                        MinHeight="28" Padding="10,2" Click="InlineSetup_Click"/>
+            <!-- 不写死宽度：Auto 列按最宽的「取值单元」量，固定 76px 会截成「取值单…」 -->
+            <ComboBox x:Name="ModeBox" MinWidth="92" MinHeight="28" SelectedIndex="0"
+                      SelectionChanged="Mode_Changed"
+                      ToolTip="这个参数的值从哪来：写一段文本模板、用变量，或现场取一个值">
+                <ComboBoxItem Content="文本模板" ToolTip="直接写内容；文本里的 ${变量} 会在运行时替换；数字 / 开关参数按对应类型解析"/>
+                <ComboBoxItem Content="变量" ToolTip="取一个变量的值（保留 found / number 等类型）"/>
+                <ComboBoxItem Content="取值单元" ToolTip="运行时现场取一个值：读剪贴板、识别文字、找图、取色…"/>
+            </ComboBox>
+
+            <Grid Grid.Column="1" Margin="6,0,0,0">
+                <TextBox x:Name="LiteralBox" MinHeight="28" TextChanged="Value_Changed"
+                         ToolTip="写内容；${变量} 会在运行时替换"/>
+                <TextBox x:Name="VarBox" MinHeight="28" Visibility="Collapsed" TextChanged="Value_Changed"
+                         FontFamily="{StaticResource MonoFont}"
+                         ToolTip="变量名，支持 a.b[0] 这样的路径"/>
+                <Grid x:Name="InlinePanel" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="UnitBox" MinHeight="28" SelectionChanged="Unit_Changed"
+                              DisplayMemberPath="Display"
+                              ToolTip="取值单元会在运行时现场执行一次，把结果填进这个参数"/>
+                    <Button x:Name="InlineSetupBtn" Grid.Column="1" Content="填参数…"
+                            Style="{StaticResource BtnGhost}" Margin="6,0,0,0"
+                            MinHeight="28" Padding="10,2" Click="InlineSetup_Click"/>
+                </Grid>
             </Grid>
         </Grid>
+
+        <!-- 选中「取值单元」时的一行说明：它做什么、还缺什么、下一步点哪里 -->
+        <TextBlock x:Name="InlineHint" Grid.Row="1" Style="{StaticResource HintLabel}"
+                   TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
     </Grid>
 </UserControl>

@@ -407,8 +407,10 @@ sealed class SubActionDef {
   文本 / 多行 / 数字 / 开关 / 枚举 / 文件 / 文件夹 / 图片 / 变量 / 条件表单；
   `VisibleWhen`（`key == 'value'`）实时收起 / 展开；输出按 `OutputSpec` 勾选映射到变量；
   `sub.run` 的按名参数由子动作变量表（`DynamicInputs`）生成。
-- 值源 `Views/ActionEditor/ValueSourceEditor`：字面量 / 变量 / 内联取值单元三态，
-  内联单元用同一个步骤表单继续编辑（递归到任意深度）。
+- 值源 `Views/ActionEditor/ValueSourceEditor`：文本模板（字面量）/ 变量 / 取值单元（内联）三态，
+  内联单元用同一个步骤表单继续编辑（递归到任意深度）。取值单元缺必填参数时按钮显示「填参数…」、
+  值下面一行提示列出缺少的项（按 `Required` + `VisibleWhen` 推导），填完变「改参数…」；
+  没有参数的单元收起按钮。新切到取值单元默认 `text.selection`（常用、参数少）。
 - 变量面板：名称 / 类型 / 默认值；步骤输出用到的新变量自动登记。
 - **子动作库**（设置 → 子动作库）：列表 + 新建 / 编辑 / 复制 / 删除 / 打开目录。
   编辑复用 `ActionEditorWindow.ForSubAction`——子动作与动作同构，只多一列「方向」
@@ -553,8 +555,13 @@ sealed class SubActionDef {
   同一动作用 `run:<动作名>` 作 key，下次运行就地替换。移除原 `TrayService.Notify` 的失败提示。
 - 设置 →「通用 → 运行提示」：结束后是否提示（三档）+ 默认提示位置（六向，`AppConfig.ToastPosition`）。
 - `ui.toast` 增 `position`（含「跟随设置」）与 `key` 参数。
+- **编辑器试运行也走同一套提示**（`noticeOverride = always`）：成功 2.5 秒、失败常驻，
+  想验证失败卡片时不用去面板找动作，直接在编辑器里加一个跑不通的步骤点「▶ 试运行」。
+  标题已经带位置，正文里重复的「第 N 行」会被剪掉。
 
-**验收**：构建 0 错 0 警；`ActionSmoke` 626 项；`PanelSmoke` 全绿。
+**验收**：构建 0 错 0 警；`ActionSmoke` 626 项；`PanelSmoke` 全绿
+（新增端到端断言：试运行一个必失败的动作后必须出现失败 Toast，标题含「第 1 行」，
+截图 `toast-failed.png`）。
 
 ### W6.5 编辑器试运行 ✅
 
