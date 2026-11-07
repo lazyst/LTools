@@ -60,7 +60,7 @@ public sealed class LastErrorUnit : IStepUnit
         Kind = UnitKind.pure,
         Outputs = new[]
         {
-            new OutputSpec("text", "错误文本", ValueKind.text, "lastError"),
+            new OutputSpec("text", "错误文本", ValueKind.text, "lastError", Description: "最近一次失败步骤的错误文本；没有错误时为空"),
         },
     };
 

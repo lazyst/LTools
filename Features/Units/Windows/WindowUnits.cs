@@ -22,11 +22,11 @@ public sealed class FindWindowUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("title", "实际标题", ValueKind.text, "windowTitle"),
-            new OutputSpec("found", "找到", ValueKind.@bool, "windowFound"),
-            new OutputSpec("active", "在前台", ValueKind.@bool),
-            new OutputSpec("handle", "句柄", ValueKind.number),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("title", "实际标题", ValueKind.text, "windowTitle", Description: "找到的窗口标题"),
+            new OutputSpec("found", "找到", ValueKind.@bool, "windowFound", Description: "是否找到窗口"),
+            new OutputSpec("active", "在前台", ValueKind.@bool, Description: "该窗口是否在前台"),
+            new OutputSpec("handle", "句柄", ValueKind.number, Description: "窗口句柄"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 
@@ -62,11 +62,11 @@ public sealed class ForegroundWindowUnit : IStepUnit
         Kind = UnitKind.pure,
         Outputs = new[]
         {
-            new OutputSpec("title", "标题", ValueKind.text, "windowTitle"),
-            new OutputSpec("exe", "进程名", ValueKind.text, "windowExe"),
-            new OutputSpec("handle", "句柄", ValueKind.number),
-            new OutputSpec("found", "有窗口", ValueKind.@bool),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("title", "标题", ValueKind.text, "windowTitle", Description: "前台窗口标题"),
+            new OutputSpec("exe", "进程名", ValueKind.text, "windowExe", Description: "前台程序的 exe 名"),
+            new OutputSpec("handle", "句柄", ValueKind.number, Description: "窗口句柄"),
+            new OutputSpec("found", "有窗口", ValueKind.@bool, Description: "是否取到前台窗口"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 
@@ -132,11 +132,11 @@ public sealed class OperateWindowUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("x", "X", ValueKind.number, "windowX"),
-            new OutputSpec("y", "Y", ValueKind.number, "windowY"),
-            new OutputSpec("w", "宽", ValueKind.number, "windowW"),
-            new OutputSpec("h", "高", ValueKind.number, "windowH"),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("x", "X", ValueKind.number, "windowX", Description: "操作后的窗口左上角 X"),
+            new OutputSpec("y", "Y", ValueKind.number, "windowY", Description: "操作后的窗口左上角 Y"),
+            new OutputSpec("w", "宽", ValueKind.number, "windowW", Description: "操作后的窗口宽度"),
+            new OutputSpec("h", "高", ValueKind.number, "windowH", Description: "操作后的窗口高度"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 

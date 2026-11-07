@@ -36,7 +36,7 @@
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionLabel}" Text="输出变量" Margin="0,0,0,3"/>
                         <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                                   Text="勾选后把这项结果存进变量，后面的步骤用 ${变量} 取用。"/>
+                                   Text="勾选后把这项结果存进变量，后面的步骤用 ${变量} 取用。类型由单元声明（徽标），不必自己记；主结果排在最前。"/>
                         <StackPanel x:Name="Outputs" Margin="0,6,0,0"/>
                     </StackPanel>
                 </Border>

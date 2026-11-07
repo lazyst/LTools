@@ -29,9 +29,9 @@ public sealed class OpenPathUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("target", "实际目标", ValueKind.text),
-            new OutputSpec("ok", "成功", ValueKind.@bool),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("target", "实际目标", ValueKind.text, Description: "实际打开的路径或网址"),
+            new OutputSpec("ok", "成功", ValueKind.@bool, Description: "是否成功发起打开"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 
@@ -89,8 +89,8 @@ public sealed class SelectFileUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("path", "路径", ValueKind.text, "path"),
-            new OutputSpec("found", "已选择", ValueKind.@bool),
+            new OutputSpec("path", "路径", ValueKind.text, "path", Description: "选中的文件路径；取消时为空"),
+            new OutputSpec("found", "已选择", ValueKind.@bool, Description: "是否选了文件"),
         },
     };
 
@@ -169,8 +169,8 @@ public sealed class ReadFileUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("text", "内容", ValueKind.text, "text"),
-            new OutputSpec("found", "读到", ValueKind.@bool),
+            new OutputSpec("text", "内容", ValueKind.text, "text", Description: "文件全部内容"),
+            new OutputSpec("found", "读到", ValueKind.@bool, Description: "文件是否存在且读取成功"),
         },
     };
 
@@ -212,8 +212,8 @@ public sealed class WriteFileUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("path", "实际路径", ValueKind.text, "path"),
-            new OutputSpec("ok", "成功", ValueKind.@bool),
+            new OutputSpec("path", "实际路径", ValueKind.text, "path", Description: "实际写入的文件路径"),
+            new OutputSpec("ok", "成功", ValueKind.@bool, Description: "是否写入成功"),
         },
     };
 
@@ -254,8 +254,8 @@ public sealed class FileOperationUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("path", "结果路径", ValueKind.text, "path"),
-            new OutputSpec("ok", "成功", ValueKind.@bool),
+            new OutputSpec("path", "结果路径", ValueKind.text, "path", Description: "操作后的路径"),
+            new OutputSpec("ok", "成功", ValueKind.@bool, Description: "是否成功"),
         },
     };
 
@@ -368,11 +368,11 @@ public sealed class PathInfoUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("exists", "存在", ValueKind.@bool, "exists"),
-            new OutputSpec("isFile", "是文件", ValueKind.@bool),
-            new OutputSpec("isFolder", "是目录", ValueKind.@bool),
-            new OutputSpec("size", "字节数", ValueKind.number),
-            new OutputSpec("modified", "修改时间", ValueKind.text),
+            new OutputSpec("exists", "存在", ValueKind.@bool, "exists", Description: "路径是否存在"),
+            new OutputSpec("isFile", "是文件", ValueKind.@bool, Description: "是不是文件"),
+            new OutputSpec("isFolder", "是目录", ValueKind.@bool, Description: "是不是目录"),
+            new OutputSpec("size", "字节数", ValueKind.number, Description: "文件大小（字节）"),
+            new OutputSpec("modified", "修改时间", ValueKind.text, Description: "最后修改时间"),
         },
     };
 
@@ -428,8 +428,8 @@ public sealed class ExplorerUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("path", "路径", ValueKind.text),
-            new OutputSpec("ok", "成功", ValueKind.@bool),
+            new OutputSpec("path", "路径", ValueKind.text, Description: "定位到的路径"),
+            new OutputSpec("ok", "成功", ValueKind.@bool, Description: "是否成功打开资源管理器"),
         },
     };
 

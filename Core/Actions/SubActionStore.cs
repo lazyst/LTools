@@ -28,9 +28,26 @@ public static class SubActionStore
 
     private static readonly char[] InvalidIdChars = { '\\', '/', ':', '*', '?', '"', '<', '>', '|' };
 
-    /// <summary>按 id 读取；文件不存在时扫描全部文件找嵌套子动作（大小写不敏感）。</summary>
-    public static SubActionDef? Load(string id)
+    /// <summary>
+    /// 按 id 找子动作：动作内（含嵌套）优先，其次全局库。
+    /// 编辑器与执行器都必须走这一条，别各自拼「先查动作内再查库」。
+    /// </summary>
+    public static SubActionDef? Resolve(ActionProgram? program, string id)
     {
+        id = (id ?? "").Trim();
+        if (id.Length == 0) return null;
+
+        if (program != null)
+        {
+            foreach (var root in program.SubActions)
+                if (FindIn(root, id) is { } local) return local;
+        }
+
+        return Load(id);
+    }
+
+    /// <summary>按 id 读取；文件不存在时扫描全部文件找嵌套子动作（大小写不敏感）。</summary>
+    public static SubActionDef? Load(string id)    {
         id = (id ?? "").Trim();
         if (id.Length == 0 || id.IndexOfAny(InvalidIdChars) >= 0) return null;
 
@@ -55,7 +72,7 @@ public static class SubActionStore
 
         foreach (var root in LoadAll())
         {
-            if (Find(root, id) is { } nested) return nested;
+            if (FindIn(root, id) is { } nested) return nested;
         }
 
         return null;
@@ -111,13 +128,13 @@ public static class SubActionStore
     private static string PathFor(string id) =>
         Path.Combine(DirectoryPath, (id ?? "").Trim() + ".json");
 
-    private static SubActionDef? Find(SubActionDef def, string id)
+    private static SubActionDef? FindIn(SubActionDef def, string id)
     {
         if (string.Equals((def.Id ?? "").Trim(), id, StringComparison.OrdinalIgnoreCase))
             return def;
 
         foreach (var child in def.SubActions)
-            if (Find(child, id) is { } nested) return nested;
+            if (FindIn(child, id) is { } nested) return nested;
 
         return null;
     }

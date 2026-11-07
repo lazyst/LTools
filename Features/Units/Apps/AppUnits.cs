@@ -29,11 +29,11 @@ public sealed class RunCommandUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("stdout", "标准输出", ValueKind.text, "stdout"),
-            new OutputSpec("stderr", "错误输出", ValueKind.text),
-            new OutputSpec("exit", "退出码", ValueKind.number),
-            new OutputSpec("ok", "成功", ValueKind.@bool),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("stdout", "标准输出", ValueKind.text, "stdout", Description: "命令的标准输出；需要开启「捕获输出」，否则为空"),
+            new OutputSpec("stderr", "错误输出", ValueKind.text, Description: "命令的错误输出；需要开启「捕获输出」，否则为空"),
+            new OutputSpec("exit", "退出码", ValueKind.number, Description: "退出码，0 表示成功"),
+            new OutputSpec("ok", "成功", ValueKind.@bool, Description: "退出码是否为 0"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 
@@ -89,10 +89,10 @@ public sealed class ProcessUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("count", "数量", ValueKind.number, "count"),
-            new OutputSpec("found", "存在", ValueKind.@bool),
-            new OutputSpec("pids", "进程号", ValueKind.list),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("count", "数量", ValueKind.number, "count", Description: "匹配到的进程数"),
+            new OutputSpec("found", "存在", ValueKind.@bool, Description: "是否至少找到一个匹配进程"),
+            new OutputSpec("pids", "进程号", ValueKind.list, Description: "匹配进程的 PID 列表"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 

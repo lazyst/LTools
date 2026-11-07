@@ -21,10 +21,10 @@ public sealed class NoteWriteUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("title", "标题", ValueKind.text, "noteTitle"),
-            new OutputSpec("time", "时间", ValueKind.text),
-            new OutputSpec("path", "文件", ValueKind.text),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("title", "标题", ValueKind.text, "noteTitle", Description: "最终标题（没填标题时按时间生成）"),
+            new OutputSpec("time", "时间", ValueKind.text, Description: "写入时间"),
+            new OutputSpec("path", "文件", ValueKind.text, Description: "速记文件路径"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 
@@ -71,13 +71,13 @@ public sealed class NoteReadUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("text", "正文", ValueKind.text, "note"),
-            new OutputSpec("title", "标题", ValueKind.text),
-            new OutputSpec("time", "时间", ValueKind.text),
-            new OutputSpec("path", "文件", ValueKind.text),
-            new OutputSpec("found", "找到", ValueKind.@bool),
-            new OutputSpec("count", "匹配数量", ValueKind.number),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("text", "正文", ValueKind.text, "note", Description: "命中的速记正文"),
+            new OutputSpec("title", "标题", ValueKind.text, Description: "速记标题"),
+            new OutputSpec("time", "时间", ValueKind.text, Description: "最后修改时间"),
+            new OutputSpec("path", "文件", ValueKind.text, Description: "速记文件路径"),
+            new OutputSpec("found", "找到", ValueKind.@bool, Description: "是否找到匹配的速记；没找到不是错误"),
+            new OutputSpec("count", "匹配数量", ValueKind.number, Description: "匹配到的条数"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 
@@ -152,10 +152,10 @@ public sealed class ListUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("list", "列表", ValueKind.list, "list"),
-            new OutputSpec("text", "文本", ValueKind.text, "text"),
-            new OutputSpec("number", "数值", ValueKind.number),
-            new OutputSpec("found", "成立", ValueKind.@bool),
+            new OutputSpec("list", "列表", ValueKind.list, "list", Description: "操作后的列表（排序 / 去重 / 反转 / 追加 / 删除 / 拆分）"),
+            new OutputSpec("text", "文本", ValueKind.text, "text", Description: "取出的那一项，或拼接出来的文本"),
+            new OutputSpec("number", "数值", ValueKind.number, Description: "数量或下标（count / split / indexOf 等）"),
+            new OutputSpec("found", "成立", ValueKind.@bool, Description: "contains / indexOf 是否命中"),
         },
     };
 
@@ -283,8 +283,8 @@ public sealed class CalcUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("number", "结果", ValueKind.number, "number"),
-            new OutputSpec("text", "文本", ValueKind.text),
+            new OutputSpec("number", "结果", ValueKind.number, "number", Description: "计算结果（数值）"),
+            new OutputSpec("text", "文本", ValueKind.text, Description: "计算结果的文本形式"),
         },
     };
 
@@ -342,10 +342,10 @@ public sealed class TimeUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("text", "时间文本", ValueKind.text, "time"),
-            new OutputSpec("timestamp", "Unix 毫秒", ValueKind.number),
-            new OutputSpec("date", "日期", ValueKind.text),
-            new OutputSpec("clock", "时分秒", ValueKind.text),
+            new OutputSpec("text", "时间文本", ValueKind.text, "time", Description: "格式化后的时间文本"),
+            new OutputSpec("timestamp", "Unix 毫秒", ValueKind.number, Description: "Unix 时间戳（秒）"),
+            new OutputSpec("date", "日期", ValueKind.text, Description: "日期部分（yyyy-MM-dd）"),
+            new OutputSpec("clock", "时分秒", ValueKind.text, Description: "时间部分（HH:mm:ss）"),
         },
     };
 

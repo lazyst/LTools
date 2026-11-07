@@ -25,8 +25,8 @@ public sealed class UserInputUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("text", "输入内容", ValueKind.text, "input"),
-            new OutputSpec("found", "已确定", ValueKind.@bool),
+            new OutputSpec("text", "输入内容", ValueKind.text, "input", Description: "用户输入的文字；取消时为空"),
+            new OutputSpec("found", "已确定", ValueKind.@bool, Description: "是否点了确定"),
         },
     };
 

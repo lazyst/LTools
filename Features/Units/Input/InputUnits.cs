@@ -101,9 +101,9 @@ public sealed class MouseUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("x", "X", ValueKind.number, "mouseX"),
-            new OutputSpec("y", "Y", ValueKind.number, "mouseY"),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("x", "X", ValueKind.number, "mouseX", Description: "操作后的光标 X（屏幕坐标）"),
+            new OutputSpec("y", "Y", ValueKind.number, "mouseY", Description: "操作后的光标 Y（屏幕坐标）"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 
@@ -198,9 +198,9 @@ public sealed class ClickTextUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("x", "X", ValueKind.number, "clickX"),
-            new OutputSpec("y", "Y", ValueKind.number, "clickY"),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("x", "X", ValueKind.number, "clickX", Description: "点击位置 X（屏幕坐标）"),
+            new OutputSpec("y", "Y", ValueKind.number, "clickY", Description: "点击位置 Y（屏幕坐标）"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 
@@ -260,10 +260,10 @@ public sealed class ClickImageUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("x", "X", ValueKind.number, "clickX"),
-            new OutputSpec("y", "Y", ValueKind.number, "clickY"),
-            new OutputSpec("score", "相似度", ValueKind.number),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("x", "X", ValueKind.number, "clickX", Description: "点击位置 X（屏幕坐标）"),
+            new OutputSpec("y", "Y", ValueKind.number, "clickY", Description: "点击位置 Y（屏幕坐标）"),
+            new OutputSpec("score", "相似度", ValueKind.number, Description: "模板匹配相似度（0–1）"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 
@@ -301,9 +301,9 @@ public sealed class CursorUnit : IStepUnit
         Kind = UnitKind.pure,
         Outputs = new[]
         {
-            new OutputSpec("x", "X", ValueKind.number, "cursorX"),
-            new OutputSpec("y", "Y", ValueKind.number, "cursorY"),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("x", "X", ValueKind.number, "cursorX", Description: "光标 X（屏幕坐标）"),
+            new OutputSpec("y", "Y", ValueKind.number, "cursorY", Description: "光标 Y（屏幕坐标）"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 

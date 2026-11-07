@@ -40,6 +40,9 @@ public partial class ActionEditorWindow : Window
     private readonly DragVisuals _dragGhost;
     private int _number;
 
+    /// <summary>程序化改变量类型时置位，避免被当成「用户改过」。</summary>
+    private bool _syncingKinds;
+
     // 拖动排序（只移动步骤本身，子步骤跟着走；标记行 / 空分支占位行不是落点）
     private StepRow? _dragRow;
     private int _dragRowIndex;
@@ -684,8 +687,9 @@ public partial class ActionEditorWindow : Window
         _variables[^1].Name.Focus();
     }
 
-    private void AddVariableRow(string key, ValueKind kind, Value? defaultValue,
-        VariableDirection direction = VariableDirection.local)
+    private VariableRowUi AddVariableRow(string key, ValueKind kind, Value? defaultValue,
+        VariableDirection direction = VariableDirection.local,
+        string origin = "", bool autoType = false)
     {
         var row = new VariableRowUi();
 
@@ -698,6 +702,8 @@ public partial class ActionEditorWindow : Window
         });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         row.Name = new TextBox
         {
@@ -718,6 +724,13 @@ public partial class ActionEditorWindow : Window
         row.Type.SelectedItem = ((List<KindChoice>)row.Type.ItemsSource)
             .FirstOrDefault(k => k.Kind == kind);
 
+        // 用户自己改过类型 = 表态，之后不再被步骤声明覆盖。
+        row.Type.SelectionChanged += (_, _) =>
+        {
+            if (_syncingKinds) return;
+            row.AutoType = false;
+        };
+
         row.Default = new TextBox
         {
             MinHeight = 26,
@@ -734,10 +747,21 @@ public partial class ActionEditorWindow : Window
             Padding = new Thickness(0),
             FontSize = (double)FindResource("FontSizeHint"),
             Margin = new Thickness(2, 0, 0, 0),
-            ToolTip = "删除变量声明（步骤里的引用要自己改）",
+            ToolTip = "删除变量声明；仍被步骤使用的会先提示",
         };
         remove.Click += (_, _) =>
         {
+            string name = row.Name.Text.Trim();
+            int refs = name.Length == 0 ? 0 : ReferenceCount(name);
+            if (refs > 0)
+            {
+                // 步骤还写着这个输出变量，删了会被下次同步自动加回来，还会让步骤引用空变量。
+                ConfirmDialog.Info(this, "删除变量",
+                    $"「${{{name}}}」还被 {refs} 处步骤用作输出变量。\n" +
+                    "先改掉那些步骤的「输出变量」（或删掉步骤），再删这里。");
+                return;
+            }
+
             _variables.Remove(row);
             VariableRows.Children.Remove(grid);
         };
@@ -766,26 +790,135 @@ public partial class ActionEditorWindow : Window
         Grid.SetColumn(remove, 4);
         grid.Children.Add(remove);
 
+        // 第二行小字：这个变量是谁写进来的。窄面板放不下独立列，就放行下。
+        row.OriginText = new TextBlock
+        {
+            FontSize = 11,
+            Foreground = (Brush)FindResource("HintTextBrush"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(0, 1, 0, 3),
+        };
+        Grid.SetRow(row.OriginText, 1);
+        Grid.SetColumn(row.OriginText, 0);
+        Grid.SetColumnSpan(row.OriginText, 4);
+        grid.Children.Add(row.OriginText);
+
         row.Host = grid;
+        row.Origin = origin;
+        row.AutoType = autoType;
+        row.Name.TextChanged += (_, _) => RefreshVariableTips();
         _variables.Add(row);
         VariableRows.Children.Add(grid);
+        RefreshVariableTips();
+        return row;
     }
 
-    /// <summary>步骤输出用到、但还没声明的变量补进右侧变量表。</summary>
+    /// <summary>变量表每次重建后重算提示：来源 + 被几处步骤写入。</summary>
+    private void RefreshVariableTips()
+    {
+        foreach (var row in _variables)
+        {
+            string name = row.Name.Text.Trim();
+            if (name.Length == 0)
+            {
+                row.OriginText.Text = row.Origin;
+                row.Host.ToolTip = "名字为空，保存时会忽略这一行";
+                continue;
+            }
+
+            int refs = ReferenceCount(name);
+            string origin = row.Origin.Length == 0 ? "手动创建" : row.Origin;
+            row.OriginText.Text = origin;
+            row.OriginText.ToolTip = refs == 0
+                ? "还没有步骤写入它"
+                : $"被 {refs} 处步骤写入";
+            row.Host.ToolTip = "来源：" + origin +
+                (refs == 0 ? "\n还没有步骤写入它" : $"\n被 {refs} 处步骤写入");
+        }
+    }
+
+    /// <summary>有多少步骤把这个名字当作输出变量（只数 <see cref="Step.Out"/> 的写入点）。</summary>
+    private int ReferenceCount(string name)
+    {
+        int count = 0;
+        foreach (var row in _rows)
+        {
+            if (row.Step == null) continue;
+            foreach (string target in row.Step.Out.Values)
+                if (string.Equals((target ?? "").Trim(), name, StringComparison.OrdinalIgnoreCase))
+                    count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// 步骤输出用到、还没声明的变量补进变量表；类型取单元声明（旧版本一律登记成文本，那是错的）。
+    /// 已在表里的只校正「类型没被用户改过」的行；来源写进行提示，方便看出这个变量是谁写的。
+    /// </summary>
     private void EnsureOutputVariables()
     {
-        var known = new HashSet<string>(
-            _variables.Select(v => v.Name.Text.Trim()), StringComparer.OrdinalIgnoreCase);
-
-        foreach (var step in _program.Steps.SelectMany(s => s.SelfAndDescendants()))
+        var known = new Dictionary<string, VariableRowUi>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in _variables)
         {
-            foreach (string name in step.Out.Values)
+            string key = row.Name.Text.Trim();
+            if (key.Length > 0) known.TryAdd(key, row);
+        }
+
+        foreach (var stepRow in _rows)
+        {
+            Step? step = stepRow.Step;
+            if (step == null) continue;
+
+            foreach (var pair in step.Out)
             {
-                string key = (name ?? "").Trim();
-                if (key.Length > 0 && known.Add(key))
-                    AddVariableRow(key, ValueKind.text, null);
+                string key = (pair.Value ?? "").Trim();
+                if (key.Length == 0) continue;
+
+                ValueKind? declared = OutputType(step, pair.Key);
+                string origin = $"第 {stepRow.Number} 步 · {stepRow.Title}（输出 {pair.Key}）";
+
+                if (known.TryGetValue(key, out var existing))
+                {
+                    if (existing.AutoType && declared != null) SelectKind(existing.Type, declared.Value);
+                    if (existing.Origin.Length == 0) existing.Origin = origin;
+                    continue;
+                }
+
+                known[key] = AddVariableRow(key, declared ?? ValueKind.text, null,
+                    VariableDirection.local, origin, autoType: true);
             }
         }
+
+        RefreshVariableTips();
+    }
+
+    /// <summary>某个步骤的某个输出键声明了什么类型（子动作按它的输出变量声明）。</summary>
+    private ValueKind? OutputType(Step step, string key)
+    {
+        if (step.Unit == "sub.run")
+        {
+            string id = step.In.TryGetValue("subAction", out var arg) ? arg.Literal.AsText() : "";
+            var def = SubActionStore.Resolve(_program, id);
+            return def?.Variables.FirstOrDefault(v =>
+                string.Equals(v.Key, key, StringComparison.OrdinalIgnoreCase))?.Type;
+        }
+
+        if (!StepRegistry.Default.TryGet(step.Unit, out var unit)) return null;
+        return unit.Spec.Outputs.FirstOrDefault(o =>
+            string.Equals(o.Key, key, StringComparison.OrdinalIgnoreCase))?.Type;
+    }
+
+    /// <summary>程序化改类型（不把它当成「用户改过」）。</summary>
+    private void SelectKind(ComboBox combo, ValueKind kind)
+    {
+        if (combo.ItemsSource is not List<KindChoice> items) return;
+        var match = items.FirstOrDefault(k => k.Kind == kind);
+        if (match == null || ReferenceEquals(combo.SelectedItem, match)) return;
+
+        _syncingKinds = true;
+        try { combo.SelectedItem = match; }
+        finally { _syncingKinds = false; }
     }
 
     private List<VariableDef> ReadVariables()
@@ -920,6 +1053,13 @@ public partial class ActionEditorWindow : Window
         public ComboBox? Direction;
         public TextBox Default = null!;
         public Grid Host = null!;
+        public TextBlock OriginText = null!;
+
+        /// <summary>这个变量是谁写进来的（「第 2 步 · 截图（输出 file）」/「手动创建」）。</summary>
+        public string Origin = "";
+
+        /// <summary>类型由单元声明决定（用户改过类型就为 false，不再被步骤覆盖）。</summary>
+        public bool AutoType;
     }
 }
 

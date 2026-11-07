@@ -25,13 +25,13 @@ public sealed class CaptureScreenUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("x", "X", ValueKind.number, "shotX"),
-            new OutputSpec("y", "Y", ValueKind.number, "shotY"),
-            new OutputSpec("w", "宽", ValueKind.number, "shotW"),
-            new OutputSpec("h", "高", ValueKind.number, "shotH"),
-            new OutputSpec("file", "图片文件", ValueKind.text, "shot"),
-            new OutputSpec("found", "取到图", ValueKind.@bool),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("x", "X", ValueKind.number, "shotX", Description: "截图区域左上角 X（屏幕坐标）"),
+            new OutputSpec("y", "Y", ValueKind.number, "shotY", Description: "截图区域左上角 Y（屏幕坐标）"),
+            new OutputSpec("w", "宽", ValueKind.number, "shotW", Description: "截图宽度"),
+            new OutputSpec("h", "高", ValueKind.number, "shotH", Description: "截图高度"),
+            new OutputSpec("file", "图片文件", ValueKind.text, "shot", Description: "截图 png 的路径，可交给「文字识别」「打开文件」或剪贴板"),
+            new OutputSpec("found", "取到图", ValueKind.@bool, Description: "是否取到图"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 
@@ -108,11 +108,11 @@ public sealed class FindImageUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("x", "X", ValueKind.number, "matchX"),
-            new OutputSpec("y", "Y", ValueKind.number, "matchY"),
-            new OutputSpec("score", "相似度", ValueKind.number),
-            new OutputSpec("found", "找到", ValueKind.@bool, "matchFound"),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("x", "X", ValueKind.number, "matchX", Description: "命中中心 X（屏幕坐标）"),
+            new OutputSpec("y", "Y", ValueKind.number, "matchY", Description: "命中中心 Y（屏幕坐标）"),
+            new OutputSpec("score", "相似度", ValueKind.number, Description: "最高相似度（0–1）"),
+            new OutputSpec("found", "找到", ValueKind.@bool, "matchFound", Description: "是否找到模板图；没找到不是错误"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 
@@ -173,9 +173,9 @@ public sealed class OcrUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("text", "文字", ValueKind.text, "text"),
-            new OutputSpec("found", "有文字", ValueKind.@bool),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("text", "文字", ValueKind.text, "text", Description: "识别出的整段文字"),
+            new OutputSpec("found", "有文字", ValueKind.@bool, Description: "是否识别到文字"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 
@@ -232,11 +232,11 @@ public sealed class FindTextUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("text", "命中文字", ValueKind.text, "foundText"),
-            new OutputSpec("x", "X", ValueKind.number, "textX"),
-            new OutputSpec("y", "Y", ValueKind.number, "textY"),
-            new OutputSpec("found", "找到", ValueKind.@bool, "textFound"),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("text", "命中文字", ValueKind.text, "foundText", Description: "实际命中的那段文字"),
+            new OutputSpec("x", "X", ValueKind.number, "textX", Description: "命中文字中心 X（屏幕坐标）"),
+            new OutputSpec("y", "Y", ValueKind.number, "textY", Description: "命中文字中心 Y（屏幕坐标）"),
+            new OutputSpec("found", "找到", ValueKind.@bool, "textFound", Description: "是否找到；没找到不是错误"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 
@@ -302,11 +302,11 @@ public sealed class PixelUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("color", "颜色", ValueKind.text, "color"),
-            new OutputSpec("r", "红", ValueKind.number),
-            new OutputSpec("g", "绿", ValueKind.number),
-            new OutputSpec("b", "蓝", ValueKind.number),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("color", "颜色", ValueKind.text, "color", Description: "颜色，形如 #RRGGBB"),
+            new OutputSpec("r", "红", ValueKind.number, Description: "红色分量（0–255）"),
+            new OutputSpec("g", "绿", ValueKind.number, Description: "绿色分量（0–255）"),
+            new OutputSpec("b", "蓝", ValueKind.number, Description: "蓝色分量（0–255）"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 

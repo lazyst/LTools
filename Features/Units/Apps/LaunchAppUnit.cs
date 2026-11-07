@@ -22,9 +22,9 @@ public sealed class LaunchAppUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("pid", "进程号", ValueKind.number, "pid"),
-            new OutputSpec("started", "已启动", ValueKind.@bool),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("pid", "进程号", ValueKind.number, "pid", Description: "新进程的 ID；拿不到句柄时为 0"),
+            new OutputSpec("started", "已启动", ValueKind.@bool, Description: "是否成功启动"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 

@@ -68,11 +68,16 @@ public sealed record InputSpec(
 /// <param name="Label">界面显示名。</param>
 /// <param name="Type">输出值类型；<c>null</c> = 任意。</param>
 /// <param name="DefaultVariable">新建步骤时建议的变量名。</param>
+/// <param name="Description">
+/// 一句话说明「这个变量装的是什么」（含空值 / 前置条件等坑）。
+/// 参数表单的提示行、变量插入菜单和将来的单元文档都由它派生，别再另写一份文案。
+/// </param>
 public sealed record OutputSpec(
     string Key,
     string Label,
     ValueKind? Type = null,
-    string? DefaultVariable = null);
+    string? DefaultVariable = null,
+    string? Description = null);
 
 /// <summary>功能单元的静态声明：键、名称、分类、输入/输出规格、是否携带子步骤。</summary>
 public sealed class UnitSpec

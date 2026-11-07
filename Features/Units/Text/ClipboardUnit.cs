@@ -26,9 +26,9 @@ public sealed class ClipboardUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("text", "文本", ValueKind.text, "text"),
-            new OutputSpec("ok", "成功", ValueKind.@bool),
-            new OutputSpec("value", "完整结果", ValueKind.@object),
+            new OutputSpec("text", "文本", ValueKind.text, "text", Description: "剪贴板文本；写入时是刚写进去的内容"),
+            new OutputSpec("ok", "成功", ValueKind.@bool, Description: "是否成功"),
+            new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },
     };
 

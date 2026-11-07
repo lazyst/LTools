@@ -191,7 +191,7 @@ internal static class FlowUnits
             },
             Outputs = new[]
             {
-                new OutputSpec("index", "下标", ValueKind.number, "i"),
+                new OutputSpec("index", "下标", ValueKind.number, "i", Description: "当前循环下标，从 0 开始；循环结束后保留最后一轮的值"),
             },
         };
 
@@ -231,8 +231,8 @@ internal static class FlowUnits
             },
             Outputs = new[]
             {
-                new OutputSpec("item", "当前项"),
-                new OutputSpec("index", "下标", ValueKind.number, "i"),
+                new OutputSpec("item", "当前项", Description: "当前这一项"),
+                new OutputSpec("index", "下标", ValueKind.number, "i", Description: "当前循环下标，从 0 开始"),
             },
         };
 
@@ -269,7 +269,7 @@ internal static class FlowUnits
             Inputs = new[] { ConditionLeft(), ConditionOp(), ConditionRight(), ConditionNegate() },
             Outputs = new[]
             {
-                new OutputSpec("index", "下标", ValueKind.number, "i"),
+                new OutputSpec("index", "下标", ValueKind.number, "i", Description: "当前循环下标，从 0 开始；循环结束后保留最后一轮的值"),
             },
         };
 

@@ -23,13 +23,16 @@ public partial class StepEditorDialog : Window
 {
     private sealed record Row(InputSpec Spec, FrameworkElement Host, Func<StepArg?> Read);
 
+    /// <summary>输出区的一行：勾选 + 类型徽标 + 变量名 + 说明。</summary>
+    private sealed record OutputRow(string Key, CheckBox Toggle, TextBox Box, Action Refresh);
+
     private readonly Step _step;
     private readonly UnitSpec _spec;
     private readonly bool _inline;
     private readonly List<Row> _rows = new();
-    private readonly List<(OutputSpec Spec, CheckBox Toggle, TextBox Box)> _outputs = new();
+    private readonly List<OutputRow> _outputs = new();
     private readonly List<(VariableDef Variable, ValueSourceEditor Editor)> _dynamicInputs = new();
-    private readonly List<(VariableDef Variable, CheckBox Toggle, TextBox Box)> _dynamicOutputs = new();
+    private readonly List<OutputRow> _dynamicOutputs = new();
     private readonly StackPanel _dynamicPanel = new() { Margin = new Thickness(0, 4, 0, 0) };
     private bool _syncing;
 
@@ -501,22 +504,12 @@ public partial class StepEditorDialog : Window
         }
     }
 
-    private SubActionDef? ResolveSubAction(string id)
-    {
-        if (string.IsNullOrWhiteSpace(id)) return null;
-
-        if (Program != null)
-        {
-            var local = Flatten(Program.SubActions).FirstOrDefault(d =>
-                string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));
-            if (local != null) return local;
-        }
-
-        return SubActionStore.Load(id);
-    }
+    private SubActionDef? ResolveSubAction(string id) => SubActionStore.Resolve(Program, id);
 
     private static string Label(SubActionDef def) =>
         string.IsNullOrWhiteSpace(def.Name) ? def.Id : def.Name;
+
+    private static string KindLabel(ValueKind? kind) => kind == null ? "任意" : KindLabel(kind.Value);
 
     private static string KindLabel(ValueKind kind) => kind switch
     {
@@ -542,18 +535,15 @@ public partial class StepEditorDialog : Window
             return;
         }
 
-        foreach (var output in _spec.Outputs)
+        // 主结果（整步结果）排最前：多数情况下用户只需要它，其余是拆出来的字段。
+        foreach (var output in _spec.Outputs.OrderByDescending(o =>
+                     string.Equals(o.Key, "value", StringComparison.OrdinalIgnoreCase)))
         {
             bool on = _step.Out.TryGetValue(output.Key, out string? target);
-            var (toggle, box) = BuildOutputRow(output.Label,
+            var row = AddOutputRow(output.Key, output.Label, output.Type, output.Description,
                 on ? target ?? "" : output.DefaultVariable ?? output.Key);
-
-            toggle.IsChecked = on;
-            box.IsEnabled = on;
-            toggle.Checked += (_, _) => box.IsEnabled = true;
-            toggle.Unchecked += (_, _) => box.IsEnabled = false;
-
-            _outputs.Add((output, toggle, box));
+            WireRow(row, on);
+            _outputs.Add(row);
         }
     }
 
@@ -566,42 +556,108 @@ public partial class StepEditorDialog : Window
         foreach (var variable in def.Variables.Where(v => v.Direction == VariableDirection.output))
         {
             bool on = _step.Out.TryGetValue(variable.Key, out string? target);
-            var (toggle, box) = BuildOutputRow(
-                $"{variable.Key}（{KindLabel(variable.Type)}）", target ?? variable.Key);
-
-            toggle.IsChecked = on;
-            box.IsEnabled = on;
-            toggle.Checked += (_, _) => box.IsEnabled = true;
-            toggle.Unchecked += (_, _) => box.IsEnabled = false;
-
-            _dynamicOutputs.Add((variable, toggle, box));
+            var row = AddOutputRow(variable.Key, variable.Key, variable.Type,
+                $"子动作「{Label(def)}」声明的输出参数",
+                on ? target ?? "" : variable.Key);
+            WireRow(row, on);
+            _dynamicOutputs.Add(row);
         }
     }
 
-    private (CheckBox Toggle, TextBox Box) BuildOutputRow(string label, string value)
+    /// <summary>勾选状态决定变量名是否可编辑，并刷新下面的说明行。</summary>
+    private static void WireRow(OutputRow row, bool on)
     {
-        var grid = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+        row.Toggle.IsChecked = on;
+        row.Box.IsEnabled = on;
+        row.Toggle.Checked += (_, _) => { row.Box.IsEnabled = true; row.Refresh(); };
+        row.Toggle.Unchecked += (_, _) => { row.Box.IsEnabled = false; row.Refresh(); };
+        row.Box.TextChanged += (_, _) => row.Refresh();
+        row.Refresh();
+    }
+
+    /// <summary>
+    /// 一行输出：<c>☑ 标签 [类型] → [变量名]</c>，下一行说明「写入 ${变量}：装的是什么」。
+    /// 说明行**不看勾选状态**都显示——用户要先读到「退出码是否为 0」才知道值不值得勾。
+    /// </summary>
+    private OutputRow AddOutputRow(string key, string label, ValueKind? type,
+        string? description, string value)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(170) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var toggle = new CheckBox
         {
             Content = label,
             VerticalAlignment = VerticalAlignment.Center,
         };
+
+        var badge = new Border
+        {
+            Background = (System.Windows.Media.Brush)FindResource("SurfaceAltBrush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("BorderBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(5, 1, 5, 1),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = KindLabel(type),
+                FontSize = 11.5,
+                Foreground = (System.Windows.Media.Brush)FindResource("SecondaryTextBrush"),
+            },
+        };
+
+        var arrow = new TextBlock
+        {
+            Text = "→",
+            Margin = new Thickness(7, 0, 7, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (System.Windows.Media.Brush)FindResource("HintTextBrush"),
+        };
+
         var box = new TextBox
         {
             MinHeight = 28,
             Text = value,
-            Margin = new Thickness(0, 0, 0, 0),
             FontFamily = (System.Windows.Media.FontFamily)FindResource("MonoFont"),
         };
 
+        var hint = new TextBlock
+        {
+            FontSize = 12,
+            Foreground = (System.Windows.Media.Brush)FindResource("SecondaryTextBrush"),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 3, 0, 0),
+        };
+
         grid.Children.Add(toggle);
-        Grid.SetColumn(box, 1);
+        Grid.SetColumn(badge, 1);
+        grid.Children.Add(badge);
+        Grid.SetColumn(arrow, 2);
+        grid.Children.Add(arrow);
+        Grid.SetColumn(box, 3);
         grid.Children.Add(box);
+        Grid.SetRow(hint, 1);
+        Grid.SetColumn(hint, 1);
+        Grid.SetColumnSpan(hint, 3);
+        grid.Children.Add(hint);
         Outputs.Children.Add(grid);
-        return (toggle, box);
+
+        Action refresh = () =>
+        {
+            string name = (box.Text ?? "").Trim();
+            string target = name.Length == 0 ? "（还没填变量名）" : "${" + name + "}";
+            string text = toggle.IsChecked == true ? $"写入 {target}" : $"勾选后写入 {target}";
+            if (!string.IsNullOrWhiteSpace(description)) text += "：" + description;
+            hint.Text = text;
+        };
+
+        return new OutputRow(key, toggle, box, refresh);
     }
 
     // ============ 选项 ============
@@ -643,17 +699,11 @@ public partial class StepEditorDialog : Window
         }
 
         _step.Out.Clear();
-        foreach (var (output, toggle, box) in _outputs)
+        foreach (var row in _outputs.Concat(_dynamicOutputs))
         {
-            if (toggle.IsChecked != true) continue;
-            string name = (box.Text ?? "").Trim();
-            if (name.Length > 0) _step.Out[output.Key] = name;
-        }
-        foreach (var (variable, toggle, box) in _dynamicOutputs)
-        {
-            if (toggle.IsChecked != true) continue;
-            string name = (box.Text ?? "").Trim();
-            if (name.Length > 0) _step.Out[variable.Key] = name;
+            if (row.Toggle.IsChecked != true) continue;
+            string name = (row.Box.Text ?? "").Trim();
+            if (name.Length > 0) _step.Out[row.Key] = name;
         }
 
         _step.OnFail = FailBox.SelectedIndex == 1 ? FailMode.@continue : FailMode.stop;

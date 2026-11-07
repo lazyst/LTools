@@ -21,8 +21,8 @@ public sealed class SelectionUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("text", "文本", ValueKind.text, "selection"),
-            new OutputSpec("found", "有内容", ValueKind.@bool),
+            new OutputSpec("text", "文本", ValueKind.text, "selection", Description: "选中的文本；没选中时为空"),
+            new OutputSpec("found", "有内容", ValueKind.@bool, Description: "是否取到选中文本"),
         },
     };
 
@@ -115,10 +115,10 @@ public sealed class ProcessTextUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("text", "结果文本", ValueKind.text, "text"),
-            new OutputSpec("list", "结果列表", ValueKind.list),
-            new OutputSpec("number", "数值", ValueKind.number),
-            new OutputSpec("found", "成立", ValueKind.@bool),
+            new OutputSpec("text", "结果文本", ValueKind.text, "text", Description: "处理后的文本"),
+            new OutputSpec("list", "结果列表", ValueKind.list, Description: "拆分 / 排序后的列表"),
+            new OutputSpec("number", "数值", ValueKind.number, Description: "长度或位置等数值结果"),
+            new OutputSpec("found", "成立", ValueKind.@bool, Description: "查找是否命中"),
         },
     };
 
