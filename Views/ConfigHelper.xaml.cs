@@ -169,6 +169,7 @@ public partial class ConfigHelperWindow : Window
 
         Page_General.Visibility = tag == "general" ? Visibility.Visible : Visibility.Collapsed;
         Page_Actions.Visibility = tag == "actions" ? Visibility.Visible : Visibility.Collapsed;
+        Page_SubActions.Visibility = tag == "subactions" ? Visibility.Visible : Visibility.Collapsed;
         Page_Menus.Visibility = tag == "menus" ? Visibility.Visible : Visibility.Collapsed;
         Page_SuperPanel.Visibility = superPanel ? Visibility.Visible : Visibility.Collapsed;
         Page_Terminals.Visibility = tag == "terminals" ? Visibility.Visible : Visibility.Collapsed;
@@ -207,6 +208,7 @@ public partial class ConfigHelperWindow : Window
         // 记忆当前导航页，下次打开恢复（ConfigIO 读改写：只动 LastNavPage，余字段不动）
         ConfigIO.Modify(ConfigPath, cfg => cfg.LastNavPage = tag);
         if (tag == "actions") PopulateActions();
+        if (tag == "subactions") Page_SubActions.Reload();
         if (tag == "menus") PopulateGroupList();
         if (superPanel) PopulateSuperPanel();
     }

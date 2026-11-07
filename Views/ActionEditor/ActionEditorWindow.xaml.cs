@@ -31,37 +31,97 @@ namespace LTools.Views;
 /// </remarks>
 public partial class ActionEditorWindow : Window
 {
-    private readonly ActionDto _draft;
+    private readonly ActionDto? _draft;
+    private readonly SubActionDef? _subDef;
+    private readonly bool _isSubAction;
     private readonly ActionProgram _program;
     private readonly ObservableCollection<StepRow> _rows = new();
     private readonly List<VariableRowUi> _variables = new();
+    private readonly DragVisuals _dragGhost;
     private int _number;
 
+    // 拖动排序（只移动步骤本身，子步骤跟着走；标记行 / 空分支占位行不是落点）
+    private StepRow? _dragRow;
+    private int _dragRowIndex;
+    private Point _dragOrigin;
+    private bool _dragPending;
+    private bool _dragging;
+    private Border? _insertLine;
+    private (List<Step> List, int Index)? _dropTarget;
+
     public ActionEditorWindow(string title, ActionDto? existing)
+        : this(title, existing, null) { }
+
+    /// <summary>
+    /// 编辑全局子动作（变量多一列「方向」，用来标记输入 / 输出）。
+    /// id 为空时自动生成——id 是对外调用名，生成后不再让用户随手改。
+    /// </summary>
+    public static ActionEditorWindow ForSubAction(string title, SubActionDef? existing)
+    {
+        var def = existing?.Clone() ?? new SubActionDef();
+        if (string.IsNullOrWhiteSpace(def.Id)) def.Id = NewSubActionId();
+        return new ActionEditorWindow(title, null, def);
+    }
+
+    private ActionEditorWindow(string title, ActionDto? existing, SubActionDef? subAction)
     {
         InitializeComponent();
         WindowChromeHelper.FixMaximize(this);
 
-        if (existing != null)
+        _subDef = subAction;
+        _isSubAction = subAction != null;
+
+        if (_isSubAction)
+        {
+            // 子动作与动作同构：步骤 + 变量，差别只在变量的「方向」标记。
+            _program = new ActionProgram
+            {
+                Id = subAction!.Id,
+                Name = subAction.Name,
+                Icon = subAction.Icon,
+                Description = subAction.Description,
+            };
+            foreach (var variable in subAction.Variables) _program.Variables.Add(variable.Clone());
+            foreach (var step in subAction.Steps) _program.Steps.Add(step.Clone());
+            foreach (var child in subAction.SubActions) _program.SubActions.Add(child.Clone());
+            _draft = null;
+
+            IconSection.Visibility = Visibility.Collapsed;
+            CodeHint.Text = "调用名：" + _program.Id;
+            CodeHint.Visibility = Visibility.Visible;
+            EmptyHint.Text = "（空子动作）从左侧点一个单元开始，例如：设置变量 → 提示弹窗";
+            // 多一列「方向」，右栏放宽一点，否则默认值、图标会被挤没
+            RightColumn.Width = new GridLength(360);
+        }
+        else if (existing != null)
         {
             _draft = existing.Clone();
             _program = ActionPrograms.For(_draft).Clone();
+            _draft.Program = _program;
+            DirectionColumn.Width = new GridLength(0);
+            DirectionHeader.Visibility = Visibility.Collapsed;
         }
         else
         {
             _draft = new ActionDto { Type = ActionType.composite, Icon = IconCatalog.Default };
             _program = new ActionProgram();
+            _draft.Program = _program;
+            DirectionColumn.Width = new GridLength(0);
+            DirectionHeader.Visibility = Visibility.Collapsed;
         }
 
-        _draft.Program = _program;
-
         if (!string.IsNullOrWhiteSpace(title)) Title = title;
-        NameBox.Text = _draft.Name;
-        IconPicker.SelectedIcon = string.IsNullOrWhiteSpace(_draft.Icon)
-            ? IconCatalog.Default : _draft.Icon;
+        NameBox.Text = _isSubAction ? _program.Name : _draft!.Name;
+        string? icon = _isSubAction ? _program.Icon : _draft!.Icon;
+        IconPicker.SelectedIcon = string.IsNullOrWhiteSpace(icon) ? IconCatalog.Default : icon;
 
         StepList.ItemsSource = _rows;
         StepList.PreviewKeyDown += StepList_PreviewKeyDown;
+
+        _dragGhost = new DragVisuals(this, GhostLayer);
+        PreviewMouseMove += OnDragMove;
+        PreviewMouseLeftButtonUp += OnDragUp;
+        PreviewKeyDown += OnDragKeyDown;
 
         BuildVariableRows();
         BuildToolbox();
@@ -72,6 +132,12 @@ public partial class ActionEditorWindow : Window
 
     /// <summary>确定后的动作；取消时为 null。</summary>
     public ActionDto? Result { get; private set; }
+
+    /// <summary>子动作模式下的结果；取消时为 null。</summary>
+    public SubActionDef? SubResult { get; private set; }
+
+    private static string NewSubActionId() =>
+        "sub-" + Guid.NewGuid().ToString("N")[..8];
 
     // ============ 步骤列表 ============
 
@@ -373,6 +439,218 @@ public partial class ActionEditorWindow : Window
         if (IsInitialized) BuildToolbox();
     }
 
+    // ============ 拖动排序 ============
+
+    /// <summary>
+    /// 按住某一步就开始「可能的拖动」；超过 4px 才真正进入拖动（照全项目统一的拖动手感）。
+    /// 只移动被拖的那一步（子步骤跟着走），落在别的分支里就是「移入该分支」。
+    /// </summary>
+    private void StepList_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        if (FindAncestor<Button>((DependencyObject)e.OriginalSource) != null) return;
+
+        StepRow? row = RowAt(e.OriginalSource as DependencyObject);
+        if (row?.Step == null || row.Owner == null) return;   // 标记行 / 空分支占位行不拖
+
+        _dragRow = row;
+        _dragRowIndex = _rows.IndexOf(row);
+        _dragOrigin = e.GetPosition(this);
+        _dragPending = true;
+    }
+
+    private void OnDragMove(object sender, MouseEventArgs e)
+    {
+        if (!_dragPending && !_dragging) return;
+
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            CancelDrag();
+            return;
+        }
+
+        Point p = e.GetPosition(this);
+        if (!_dragging)
+        {
+            if (Math.Abs(p.X - _dragOrigin.X) < 4 && Math.Abs(p.Y - _dragOrigin.Y) < 4) return;
+            if (!StartDrag(p)) return;
+        }
+
+        _dragGhost.MoveGhost(p);
+        UpdateDropTarget(p);
+        e.Handled = true;
+    }
+
+    private void OnDragUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+
+        if (!_dragging)
+        {
+            _dragPending = false;
+            _dragRow = null;
+            return;
+        }
+
+        StepRow? row = _dragRow;
+        var target = _dropTarget;
+        EndDragVisuals();
+
+        if (row?.Step != null && row.Owner != null && target is { } t)
+            MoveStepTo(row, t.List, t.Index);
+
+        _dragRow = null;
+        e.Handled = true;
+    }
+
+    private void OnDragKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || (!_dragPending && !_dragging)) return;
+        CancelDrag();
+        e.Handled = true;
+    }
+
+    private bool StartDrag(Point p)
+    {
+        if (_dragRow == null) return false;
+        if (StepList.ItemContainerGenerator.ContainerFromIndex(_dragRowIndex) is not ListBoxItem row)
+        {
+            _dragPending = false;
+            return false;
+        }
+
+        _dragGhost.ShowGhost(row, p);
+        row.Opacity = 0.35;
+        StepList.SelectedItem = _dragRow;
+        _dragPending = false;
+        _dragging = true;
+        return true;
+    }
+
+    private void UpdateDropTarget(Point windowPoint)
+    {
+        Point listPos = TranslatePoint(windowPoint, StepList);
+        if (listPos.X < 0 || listPos.Y < 0
+            || listPos.X > StepList.ActualWidth || listPos.Y > StepList.ActualHeight) return;
+
+        if (StepList.InputHitTest(listPos) is not DependencyObject hit) return;
+        if (ItemsControl.ContainerFromElement(StepList, hit) is not ListBoxItem container) return;
+
+        int hover = StepList.ItemContainerGenerator.IndexFromContainer(container);
+        if (hover < 0 || hover >= _rows.Count) return;
+
+        StepRow target = _rows[hover];
+        List<Step>? list;
+        int index;
+        bool after;
+
+        if (target.Step != null && target.Owner != null)
+        {
+            after = listPos.Y
+                    >= container.TranslatePoint(new Point(0, 0), StepList).Y + container.ActualHeight / 2;
+            list = target.Owner;
+            index = target.Index + (after ? 1 : 0);
+        }
+        else if (target.IsPlaceholder && target.Owner != null)
+        {
+            after = false;   // 空分支：放到分支里
+            list = target.Owner;
+            index = 0;
+        }
+        else
+        {
+            return;          // 否则 / 结束如果 / 结束循环 这类标记行不是落点
+        }
+
+        // 不能把一步拖进它自己的分支里
+        if (_dragRow?.Step != null && ContainsList(_dragRow.Step, list)) return;
+
+        _dropTarget = (list, index);
+        ShowInsertLine(container, target.Depth, after);
+    }
+
+    private void ShowInsertLine(ListBoxItem container, int depth, bool after)
+    {
+        _insertLine ??= new Border
+        {
+            Height = 2,
+            Background = (Brush)FindResource("AccentBrush"),
+            CornerRadius = new CornerRadius(1),
+        };
+        if (!GhostLayer.Children.Contains(_insertLine)) GhostLayer.Children.Add(_insertLine);
+
+        double indent = depth * 18;
+        Point origin = container.TranslatePoint(new Point(0, 0), GhostLayer);
+        _insertLine.Width = Math.Max(12, container.ActualWidth - indent);
+        Canvas.SetLeft(_insertLine, origin.X + indent);
+        Canvas.SetTop(_insertLine, origin.Y + (after ? container.ActualHeight : 0) - 1);
+    }
+
+    private void EndDragVisuals()
+    {
+        _dragGhost.End();
+        if (_insertLine != null) GhostLayer.Children.Remove(_insertLine);
+        _insertLine = null;
+        _dropTarget = null;
+        _dragging = false;
+        _dragPending = false;
+
+        // 容器会被回收复用，逐行复位不透明度
+        for (int i = 0; i < _rows.Count; i++)
+            if (StepList.ItemContainerGenerator.ContainerFromIndex(i) is ListBoxItem row)
+                row.Opacity = 1;
+    }
+
+    private void CancelDrag()
+    {
+        EndDragVisuals();
+        _dragRow = null;
+    }
+
+    private void MoveStepTo(StepRow row, List<Step> list, int index)
+    {
+        Step step = row.Step!;
+        List<Step> from = row.Owner!;
+        int fromIndex = row.Index;
+
+        if (ContainsList(step, list)) return;   // 不能把一步挪进它自己的分支
+
+        int insert = index;
+        if (ReferenceEquals(from, list) && insert > fromIndex) insert--;
+        if (ReferenceEquals(from, list) && insert == fromIndex) return;
+
+        from.RemoveAt(fromIndex);
+        list.Insert(Math.Clamp(insert, 0, list.Count), step);
+        ReloadRows(step);
+    }
+
+    /// <summary>该步（或它的任意后代）的分支列表是不是 <paramref name="list"/>。</summary>
+    private static bool ContainsList(Step step, List<Step> list)
+    {
+        if (ReferenceEquals(step.Then, list) || ReferenceEquals(step.Else, list)
+            || ReferenceEquals(step.Body, list)) return true;
+
+        foreach (var child in step.Then) if (ContainsList(child, list)) return true;
+        foreach (var child in step.Else) if (ContainsList(child, list)) return true;
+        foreach (var child in step.Body) if (ContainsList(child, list)) return true;
+
+        return false;
+    }
+
+    private StepRow? RowAt(DependencyObject? source)
+    {
+        while (source != null && source is not ListBoxItem)
+        {
+            source = source is Visual || source is System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(source)
+                : LogicalTreeHelper.GetParent(source);
+        }
+
+        if (source is not ListBoxItem item) return null;
+        int index = StepList.ItemContainerGenerator.IndexFromContainer(item);
+        return index >= 0 && index < _rows.Count ? _rows[index] : null;
+    }
+
     // ============ 变量 ============
 
     private static readonly (ValueKind Kind, string Label)[] Kinds =
@@ -384,28 +662,40 @@ public partial class ActionEditorWindow : Window
         (ValueKind.@object, "对象"),
     };
 
+    private static readonly (VariableDirection Direction, string Label)[] Directions =
+    {
+        (VariableDirection.input, "输入"),
+        (VariableDirection.local, "本地"),
+        (VariableDirection.output, "输出"),
+    };
+
     private void BuildVariableRows()
     {
         VariableRows.Children.Clear();
         _variables.Clear();
 
         foreach (var def in _program.Variables)
-            AddVariableRow(def.Key, def.Type, def.Default);
+            AddVariableRow(def.Key, def.Type, def.Default, def.Direction);
     }
 
     private void AddVariable_Click(object sender, RoutedEventArgs e)
     {
-        AddVariableRow("", ValueKind.text, null);
+        AddVariableRow("", ValueKind.text, null, VariableDirection.local);
         _variables[^1].Name.Focus();
     }
 
-    private void AddVariableRow(string key, ValueKind kind, Value? defaultValue)
+    private void AddVariableRow(string key, ValueKind kind, Value? defaultValue,
+        VariableDirection direction = VariableDirection.local)
     {
         var row = new VariableRowUi();
 
         var grid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(82) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = _isSubAction ? new GridLength(76) : new GridLength(0),
+        });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
 
@@ -455,9 +745,25 @@ public partial class ActionEditorWindow : Window
         grid.Children.Add(row.Name);
         Grid.SetColumn(row.Type, 1);
         grid.Children.Add(row.Type);
-        Grid.SetColumn(row.Default, 2);
+        Grid.SetColumn(row.Default, 3);
         grid.Children.Add(row.Default);
-        Grid.SetColumn(remove, 3);
+
+        if (_isSubAction)
+        {
+            row.Direction = new ComboBox
+            {
+                MinHeight = 26,
+                Margin = new Thickness(0, 0, 4, 0),
+                FontSize = (double)FindResource("FontSizeHint"),
+                ItemsSource = Directions.Select(d => new DirectionChoice(d.Direction, d.Label)).ToList(),
+            };
+            row.Direction.SelectedItem = ((List<DirectionChoice>)row.Direction.ItemsSource)
+                .FirstOrDefault(d => d.Direction == direction);
+            Grid.SetColumn(row.Direction, 2);
+            grid.Children.Add(row.Direction);
+        }
+
+        Grid.SetColumn(remove, 4);
         grid.Children.Add(remove);
 
         row.Host = grid;
@@ -504,7 +810,14 @@ public partial class ActionEditorWindow : Window
                 _ => null,
             };
 
-            list.Add(new VariableDef { Key = key, Type = kind, Default = value });
+            list.Add(new VariableDef
+            {
+                Key = key,
+                Type = kind,
+                Default = value,
+                Direction = (row.Direction?.SelectedItem as DirectionChoice)?.Direction
+                    ?? VariableDirection.local,
+            });
         }
 
         return list;
@@ -517,12 +830,12 @@ public partial class ActionEditorWindow : Window
         string name = (NameBox.Text ?? "").Trim();
         if (name.Length == 0)
         {
-            ConfirmDialog.Info(this, "动作", "给动作起一个名字。");
+            ConfirmDialog.Info(this, _isSubAction ? "子动作" : "动作",
+                _isSubAction ? "给子动作起一个名字。" : "给动作起一个名字。");
             NameBox.Focus();
             return;
         }
 
-        _program.Id = _draft.Id ?? "";
         _program.Name = name;
         _program.Icon = IconPicker.SelectedIcon ?? "";
 
@@ -530,17 +843,40 @@ public partial class ActionEditorWindow : Window
         foreach (var variable in ReadVariables()) _program.Variables.Add(variable);
 
         // 输出变量永远在变量表里（写配置的人不用再手动补声明）。
-        var declared = new HashSet<string>(
-            _program.Variables.Select(v => v.Key), StringComparer.OrdinalIgnoreCase);
-        foreach (var step in _program.Steps.SelectMany(s => s.SelfAndDescendants()))
+        // 子动作不自动补：那里「本地 / 输出」是刻意标记的，补一条反而要用户再改。
+        if (!_isSubAction)
         {
-            foreach (string raw in step.Out.Values)
+            var declared = new HashSet<string>(
+                _program.Variables.Select(v => v.Key), StringComparer.OrdinalIgnoreCase);
+            foreach (var step in _program.Steps.SelectMany(s => s.SelfAndDescendants()))
             {
-                string key = (raw ?? "").Trim();
-                if (key.Length == 0 || !declared.Add(key)) continue;
-                _program.Variables.Add(new VariableDef { Key = key, Type = ValueKind.text });
+                foreach (string raw in step.Out.Values)
+                {
+                    string key = (raw ?? "").Trim();
+                    if (key.Length == 0 || !declared.Add(key)) continue;
+                    _program.Variables.Add(new VariableDef { Key = key, Type = ValueKind.text });
+                }
             }
         }
+
+        if (_isSubAction)
+        {
+            var def = _subDef!;
+            def.Name = name;
+            def.Icon = _program.Icon;
+
+            def.Variables.Clear();
+            foreach (var variable in _program.Variables) def.Variables.Add(variable);
+
+            def.Steps.Clear();
+            foreach (var step in _program.Steps) def.Steps.Add(step);
+
+            SubResult = def;
+            DialogResult = true;
+            return;
+        }
+
+        _program.Id = _draft!.Id ?? "";
 
         _draft.Name = name;
         _draft.Icon = _program.Icon;
@@ -570,10 +906,16 @@ public partial class ActionEditorWindow : Window
         public override string ToString() => Label;
     }
 
+    public sealed record DirectionChoice(VariableDirection Direction, string Label)
+    {
+        public override string ToString() => Label;
+    }
+
     private sealed class VariableRowUi
     {
         public TextBox Name = null!;
         public ComboBox Type = null!;
+        public ComboBox? Direction;
         public TextBox Default = null!;
         public Grid Host = null!;
     }

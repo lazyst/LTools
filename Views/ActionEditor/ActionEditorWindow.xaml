@@ -97,7 +97,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="242" MinWidth="200"/>
                 <ColumnDefinition Width="*" MinWidth="360"/>
-                <ColumnDefinition Width="286" MinWidth="240"/>
+                <ColumnDefinition x:Name="RightColumn" Width="286" MinWidth="240"/>
             </Grid.ColumnDefinitions>
 
             <!-- ============ 左：工具箱 ============ -->
@@ -119,7 +119,8 @@
 
             <!-- ============ 中：步骤 ============ -->
             <Border Grid.Column="1" Background="{StaticResource SurfaceBrush}">
-                <DockPanel Margin="12,8,12,8">
+                <Grid>
+                    <DockPanel Margin="12,8,12,8">
                     <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
                         <TextBlock Style="{StaticResource SectionLabel}" Text="步骤" VerticalAlignment="Center"/>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -140,6 +141,7 @@
                     <ListBox x:Name="StepList" HorizontalContentAlignment="Stretch"
                              BorderThickness="0" Background="Transparent"
                              ItemTemplate="{StaticResource StepRowTemplate}"
+                             PreviewMouseLeftButtonDown="StepList_PreviewMouseDown"
                              MouseDoubleClick="StepList_MouseDoubleClick">
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
@@ -150,6 +152,10 @@
                         </ListBox.ItemContainerStyle>
                     </ListBox>
                 </DockPanel>
+
+                <!-- 拖动排序的幽灵 + 插入线（不吃鼠标事件） -->
+                <Canvas x:Name="GhostLayer" Panel.ZIndex="50" IsHitTestVisible="False"/>
+                </Grid>
             </Border>
 
             <!-- ============ 右：变量 + 动作属性 ============ -->
@@ -161,10 +167,11 @@
                         <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
                                    Text="给步骤的输出变量起名后会自动登记在这里。"/>
 
-                        <Grid Margin="0,8,0,2">
+                        <Grid x:Name="VariableHeader" Margin="0,8,0,2">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="82"/>
                                 <ColumnDefinition Width="72"/>
+                                <ColumnDefinition x:Name="DirectionColumn" Width="76"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="24"/>
                             </Grid.ColumnDefinitions>
@@ -172,7 +179,10 @@
                                        Foreground="{StaticResource HintTextBrush}"/>
                             <TextBlock Grid.Column="1" Text="类型" FontSize="{StaticResource FontSizeHint}"
                                        Foreground="{StaticResource HintTextBrush}"/>
-                            <TextBlock Grid.Column="2" Text="默认值" FontSize="{StaticResource FontSizeHint}"
+                            <TextBlock x:Name="DirectionHeader" Grid.Column="2" Text="方向"
+                                       FontSize="{StaticResource FontSizeHint}"
+                                       Foreground="{StaticResource HintTextBrush}"/>
+                            <TextBlock Grid.Column="3" Text="默认值" FontSize="{StaticResource FontSizeHint}"
                                        Foreground="{StaticResource HintTextBrush}"/>
                         </Grid>
 
@@ -187,8 +197,13 @@
                         <TextBlock Style="{StaticResource SectionLabel}" Text="名称" Margin="0,0,0,4"/>
                         <TextBox x:Name="NameBox" MinHeight="32" Margin="0,0,0,12"/>
 
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="图标" Margin="0,0,0,6"/>
-                        <controls:IconPicker x:Name="IconPicker" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="CodeHint" Style="{StaticResource HintLabel}"
+                                   TextWrapping="Wrap" Visibility="Collapsed" Margin="0,-6,0,12"/>
+
+                        <StackPanel x:Name="IconSection">
+                            <TextBlock Style="{StaticResource SectionLabel}" Text="图标" Margin="0,0,0,6"/>
+                            <controls:IconPicker x:Name="IconPicker" Margin="0,0,0,8"/>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
