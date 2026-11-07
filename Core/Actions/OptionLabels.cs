@@ -105,6 +105,15 @@ internal static class OptionLabels
         ["type"] = "逐字输入",
         ["paste"] = "粘贴",
 
+        // —— 提示弹窗（ui.toast）——
+        ["default"] = "跟随设置",
+        ["bottomRight"] = "右下",
+        ["bottomLeft"] = "左下",
+        ["bottomCenter"] = "底部居中",
+        ["topRight"] = "右上",
+        ["topLeft"] = "左上",
+        ["topCenter"] = "顶部居中",
+
         // —— 窗口操作 ——
         ["activate"] = "切换到前台",
         ["maximize"] = "最大化",

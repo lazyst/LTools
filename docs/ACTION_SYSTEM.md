@@ -526,6 +526,51 @@ sealed class SubActionDef {
 **验收**：构建 0 错 0 警；`ActionSmoke` 601 项；`PanelSmoke` 全绿
 （新增 `step-editor-region.png`，并断言框选结果会把 `region` 切成 `rect`、`rect` 写成 `x,y,w,h`）。
 
+### W6.3 步骤路径与执行轨迹 ✅
+
+用户反馈：「失败只说第 N 步，循环 / 分支一跑就对不上编辑器里的行」。
+
+- 引擎递归时拼**步骤路径**：`/steps/2/then/0`（每层 `<分支>/<下标>`，顶层 `/steps/2`），
+  同时给出人话标签 `第 3 行 › 否则 › 第 1 行`；子动作挂 `/sub/<id>`。
+- 新 `Core/Actions/StepTrace.cs`：`StepTrace(Path, Label, Depth, UnitKey, UnitName, Status,
+  ElapsedMs, Error, Outputs)`；`ActionRunOptions.StepTrace` 每步回调一次（`ok` / `failed` /
+  `continued` / `aborted`），回调抛异常一律吞掉（调试信息不该毁掉动作）。
+- 失败文案改「第 3 行「提示弹窗」失败：…」；`ActionRunResult.FailedStepLabel` 给面板定位用。
+  失败经内部 `StepFailureException` 上抛，外层只 `??=` 记位置、原样 rethrow，避免前缀套娃。
+- `ActionRunOptions.StartPath`：「从这一行开始」只跑顶层某一步；路径对不上报「找不到起点步骤」。
+
+**验收**：构建 0 错 0 警；`ActionSmoke` 626 项（新增 25 项：路径 / 标签 / 深度 / 状态 /
+输出、失败条目与 `FailedStepLabel`、`StartPath` 与错误路径）。
+
+### W6.4 运行结果提示 ✅
+
+用户反馈：「成功了没反馈，失败了提示一闪就没，还不知道哪一步」。
+
+- `Core/ToastService` 增等级（info / success / warning / error，色条 + 失败红边）、
+  位置（六向）、`key` 去重（就地更新 + `×N`）、`StickyMs`（≤ 0 = 常驻）、点击回调。
+- `AutomationRunner` 拆出 `RunCore` / `NotifyFinished`：失败**常驻**红色提示（标题带失败位置，
+  点一下打开日志目录），成功按 `AppConfig.RunNotice`（默认只在失败时），停止给 2 秒 info；
+  同一动作用 `run:<动作名>` 作 key，下次运行就地替换。移除原 `TrayService.Notify` 的失败提示。
+- 设置 →「通用 → 运行提示」：结束后是否提示（三档）+ 默认提示位置（六向，`AppConfig.ToastPosition`）。
+- `ui.toast` 增 `position`（含「跟随设置」）与 `key` 参数。
+
+**验收**：构建 0 错 0 警；`ActionSmoke` 626 项；`PanelSmoke` 全绿。
+
+### W6.5 编辑器试运行 ✅
+
+用户反馈：「想验证只能先保存再回面板点动作」「变量只能插一个提示弹窗打出来看」。
+
+- 编辑器底部「试运行」栏：`▶ 试运行` / `▶ 从此行` / `■ 停止` + 状态行；
+  跑 `_program.Clone()` + 现读变量表，**不必先保存**，关窗即停。
+- 与真实运行共用 `AutomationRunner` 的互斥锁、停止热键与运行指示器（`TryRunProgram`），
+  两套键鼠注入不会打架。
+- 轨迹列表按 `Path` 聚合（同一步骤循环多次只一行，`×N`）：状态图标 / 行号 / 单元 / 耗时 /
+  错误或写入的变量；点行跳到左侧步骤，失败自动选中。右侧「变量（运行结束后）」是快照。
+- 轨迹从后台线程入队、120ms 定时器攒批上屏（循环几千步也不卡）。
+
+**验收**：构建 0 错 0 警；`ActionSmoke` 626 项；`PanelSmoke` 全绿
+（新增 `action-editor-run.png`：断言抽屉能展开、注入两条轨迹后列表为 2 行）。
+
 ---
 
 ## 6. UI / 交互

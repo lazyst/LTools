@@ -224,6 +224,46 @@
                                         Visibility="Collapsed" Click="AutoStartFix_Click"/>
                             </StackPanel>
                         </Border>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="运行提示" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="动作结束后" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="RunNoticeCombo" MinHeight="32"
+                                              SelectionChanged="RunNotice_Changed">
+                                        <ComboBoxItem Content="不提示（只看日志）"/>
+                                        <ComboBoxItem Content="只在失败时（推荐）"/>
+                                        <ComboBoxItem Content="成功也提示"/>
+                                    </ComboBox>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="默认提示位置" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="ToastPositionCombo" MinHeight="32"
+                                              SelectionChanged="RunNotice_Changed">
+                                        <ComboBoxItem Content="右下（推荐）"/>
+                                        <ComboBoxItem Content="左下"/>
+                                        <ComboBoxItem Content="底部居中"/>
+                                        <ComboBoxItem Content="右上"/>
+                                        <ComboBoxItem Content="左上"/>
+                                        <ComboBoxItem Content="顶部居中"/>
+                                    </ComboBox>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="120,6,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="失败提示常驻（点一下关，下一次运行自动替换），标题带「第 3 行 › 否则 › 第 1 行」这样的位置；按停止也会给一条。成功提示 2.5 秒后自动消失。「提示弹窗」步骤里位置选「跟随设置」时用这里的落点。"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
 

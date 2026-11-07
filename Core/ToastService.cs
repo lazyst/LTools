@@ -1,12 +1,33 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using LTools.Views;
 
 namespace LTools.Core;
 
+/// <summary>提示的语义等级，决定左侧色条的颜色（失败要用红，别和普通提示长一样）。</summary>
+public enum ToastKind
+{
+    info,
+    success,
+    warning,
+    error,
+}
+
+/// <summary>提示出现的位置（工作区坐标，多屏时用主显示器的工作区）。</summary>
+public enum ToastPosition
+{
+    bottomRight,
+    bottomLeft,
+    bottomCenter,
+    topRight,
+    topLeft,
+    topCenter,
+}
+
 /// <summary>
-/// 提示弹窗（toast）的显示服务：右下角堆叠、自动消失、**不阻塞调用方**。
+/// 提示弹窗（toast）的显示服务：堆叠、自动消失、**不阻塞调用方**。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -18,14 +39,17 @@ namespace LTools.Core;
 /// 所以「提示弹窗」这一步不会拖住后面的步骤。
 /// </para>
 /// <para>
-/// 位置取工作区右下角（主显示器，DIP）——与系统通知一致；自动化可能跑在任何窗口上，
-/// 固定角落比跟随光标更不容易挡住正在操作的地方。
+/// 运行结果提示带 <see cref="ToastKind"/> 与可选的 <c>key</c>：同一个 key 的提示会**就地更新**
+/// 并累加次数（循环里反复提示同一句话不会刷屏），点一下可以执行一个回调（打开详情 / 运行记录）。
 /// </para>
 /// </remarks>
 internal static class ToastService
 {
     /// <summary>默认停留时长（ms）。</summary>
     public const int DefaultDurationMs = 4000;
+
+    /// <summary>失败提示默认常驻（等用户看完 / 点掉，下一次运行会替换它）。</summary>
+    public const int StickyMs = 0;
 
     /// <summary>最多同时显示几条；超出时挤掉最旧的那条。</summary>
     private const int MaxVisible = 4;
@@ -35,8 +59,19 @@ internal static class ToastService
 
     private static readonly List<ToastWindow> Visible = new();
 
-    /// <summary>显示一条提示（不阻塞；可从任意线程调用）。<paramref name="durationMs"/> ≤ 0 = 不自动关闭。</summary>
-    public static void Show(string text, string? title = null, int durationMs = DefaultDurationMs)
+    /// <summary>按 key 去重：同一个 key 只留一条，内容就地换成最新的。</summary>
+    private static readonly Dictionary<string, ToastWindow> ByKey = new(StringComparer.Ordinal);
+
+    /// <summary>显示一条普通提示（不阻塞；可从任意线程调用）。<paramref name="durationMs"/> ≤ 0 = 不自动关闭。</summary>
+    public static void Show(string text, string? title = null, int durationMs = DefaultDurationMs) =>
+        Show(text, title, durationMs, ToastKind.info);
+
+    /// <summary>显示一条带等级 / 位置 / 去重键 / 点击回调的提示。</summary>
+    /// <param name="durationMs">≤ 0 = 不自动关闭（失败提示用这个）。</param>
+    /// <param name="key">去重键：同一个键的提示就地更新并累计次数。</param>
+    /// <param name="onClick">点一下提示时执行（例如打开运行记录）。</param>
+    public static void Show(string text, string? title, int durationMs, ToastKind kind,
+        string? key = null, Action? onClick = null, ToastPosition position = ToastPosition.bottomRight)
     {
         if (string.IsNullOrEmpty(text)) return;
 
@@ -47,10 +82,11 @@ internal static class ToastService
         {
             if (!app.Dispatcher.CheckAccess())
             {
-                app.Dispatcher.BeginInvoke(() => SafeShowCore(text, title, durationMs));
+                app.Dispatcher.BeginInvoke(
+                    () => SafeShowCore(text, title, durationMs, kind, key, onClick, position));
                 return;
             }
-            SafeShowCore(text, title, durationMs);
+            SafeShowCore(text, title, durationMs, kind, key, onClick, position);
         }
         catch (Exception ex)
         {
@@ -59,14 +95,26 @@ internal static class ToastService
         }
     }
 
-    private static void SafeShowCore(string text, string? title, int durationMs)
+    private static void SafeShowCore(string text, string? title, int durationMs, ToastKind kind,
+        string? key, Action? onClick, ToastPosition position)
     {
-        try { ShowCore(text, title, durationMs); }
+        try { ShowCore(text, title, durationMs, kind, key, onClick, position); }
         catch (Exception ex) { AppLog.Warn("Toast", $"提示弹窗显示失败：{ex.Message}"); }
     }
 
-    private static void ShowCore(string text, string? title, int durationMs)
+    private static void ShowCore(string text, string? title, int durationMs, ToastKind kind,
+        string? key, Action? onClick, ToastPosition position)
     {
+        // 同一个 key：就地更新内容 + 次数，不新开一条（循环里的提示不会刷满屏幕）。
+        if (!string.IsNullOrEmpty(key) && ByKey.TryGetValue(key, out var existing) && Visible.Contains(existing))
+        {
+            existing.SetContent(title, text, kind, onClick);
+            existing.Bump();
+            existing.StartCountdown(durationMs);
+            Reflow();
+            return;
+        }
+
         // 先把最旧的移出列表再让它淡出：Dismiss 是异步的，等它关闭会导致这里空转。
         while (Visible.Count >= MaxVisible)
         {
@@ -75,36 +123,63 @@ internal static class ToastService
             oldest.Dismiss();
         }
 
-        var toast = new ToastWindow(title, text);
+        var toast = new ToastWindow(title, text, kind, position) { ClickAction = onClick };
         toast.Closed += (_, _) =>
         {
             Visible.Remove(toast);
+            if (!string.IsNullOrEmpty(key)
+                && ByKey.TryGetValue(key, out var mapped)
+                && ReferenceEquals(mapped, toast))
+                ByKey.Remove(key);
             Reflow();
         };
 
         Visible.Add(toast);
+        if (!string.IsNullOrEmpty(key)) ByKey[key] = toast;
+
         toast.Show();
         toast.UpdateLayout();   // SizeToContent=Height：先量出高度才能往上堆
         Reflow();
         toast.StartCountdown(durationMs);
     }
 
-    /// <summary>从右下角往上重新排（最新的贴右下角）。</summary>
+    /// <summary>按位置分组重新排版：右下 / 左下 / 底部居中往上堆，右上 / 左上 / 顶部居中往下堆。</summary>
     private static void Reflow()
     {
         var area = SystemParameters.WorkArea;
-        double bottom = area.Bottom - MarginPx;
 
-        for (int i = Visible.Count - 1; i >= 0; i--)
+        foreach (var group in Visible.GroupBy(t => t.Position))
         {
-            var toast = Visible[i];
-            double width = toast.ActualWidth > 0 ? toast.ActualWidth : toast.Width;
-            double height = toast.ActualHeight > 0 ? toast.ActualHeight : 60;
+            bool top = group.Key is ToastPosition.topLeft or ToastPosition.topCenter or ToastPosition.topRight;
+            double edge = top ? area.Top + MarginPx : area.Bottom - MarginPx;
+            var toasts = group.ToList();
 
-            toast.Left = Math.Round(area.Right - MarginPx - width);
-            bottom -= height;
-            toast.Top = Math.Round(bottom);
-            bottom -= GapPx;
+            // 最新的贴边，旧的往外推（与原来的堆叠顺序一致）。
+            for (int i = toasts.Count - 1; i >= 0; i--)
+            {
+                var toast = toasts[i];
+                double width = toast.ActualWidth > 0 ? toast.ActualWidth : toast.Width;
+                double height = toast.ActualHeight > 0 ? toast.ActualHeight : 60;
+
+                toast.Left = Math.Round(group.Key switch
+                {
+                    ToastPosition.bottomLeft or ToastPosition.topLeft => area.Left + MarginPx,
+                    ToastPosition.bottomCenter or ToastPosition.topCenter => area.Left + (area.Width - width) / 2,
+                    _ => area.Right - MarginPx - width,
+                });
+
+                if (top)
+                {
+                    toast.Top = Math.Round(edge);
+                    edge += height + GapPx;
+                }
+                else
+                {
+                    edge -= height;
+                    toast.Top = Math.Round(edge);
+                    edge -= GapPx;
+                }
+            }
         }
     }
 }

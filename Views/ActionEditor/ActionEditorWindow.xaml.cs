@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Features;
@@ -39,6 +41,15 @@ public partial class ActionEditorWindow : Window
     private readonly List<VariableRowUi> _variables = new();
     private readonly DragVisuals _dragGhost;
     private int _number;
+
+    // —— 试运行 ——
+    private readonly ObservableCollection<TraceRow> _traceRows = new();
+    private readonly ObservableCollection<SnapshotRow> _snapshotRows = new();
+    private readonly List<StepTrace> _pendingTraces = new();
+    private readonly Dictionary<string, TraceRow> _traceRowsByPath = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, StepRow> _traceTargets = new(StringComparer.Ordinal);
+    private DispatcherTimer? _traceFlush;
+    private bool _running;
 
     /// <summary>程序化改变量类型时置位，避免被当成「用户改过」。</summary>
     private bool _syncingKinds;
@@ -129,6 +140,16 @@ public partial class ActionEditorWindow : Window
         BuildVariableRows();
         BuildToolbox();
         ReloadRows();
+
+        TraceList.ItemsSource = _traceRows;
+        SnapshotList.ItemsSource = _snapshotRows;
+
+        // 关窗时别把正在跑的试运行留在后台（它会继续操作键鼠）。
+        Closed += (_, _) =>
+        {
+            _traceFlush?.Stop();
+            if (_running) AutomationRunner.Stop();
+        };
 
         Loaded += (_, _) => NameBox.Focus();
     }
@@ -1022,6 +1043,237 @@ public partial class ActionEditorWindow : Window
         DialogResult = true;
     }
 
+    // ============ 试运行 ============
+
+    private void RunToggle_Click(object sender, RoutedEventArgs e)
+    {
+        bool show = RunBody.Visibility != Visibility.Visible;
+        RunBody.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        RunToggleButton.Content = show ? "收起" : "展开";
+    }
+
+    private void Run_Click(object sender, RoutedEventArgs e) => StartRun(fromSelected: false);
+
+    private void RunFrom_Click(object sender, RoutedEventArgs e) => StartRun(fromSelected: true);
+
+    private void StopRun_Click(object sender, RoutedEventArgs e)
+    {
+        AutomationRunner.Stop();
+        RunStatus.Text = "正在停止…";
+    }
+
+    /// <summary>
+    /// 试运行：跑的是**编辑器里现在的内容**（克隆一份，不必先保存），轨迹按步骤路径回填。
+    /// </summary>
+    private void StartRun(bool fromSelected)
+    {
+        if (_running) return;
+
+        string? startPath = null;
+        if (fromSelected)
+        {
+            StepRow? row = SelectedRow();
+            if (row?.Step == null || !ReferenceEquals(row.Owner, _program.Steps))
+            {
+                ConfirmDialog.Info(this, "试运行",
+                    "「从此行」只支持顶层步骤：先选中左侧最外层的那一行为起点。");
+                return;
+            }
+            startPath = $"/steps/{row.Index}";
+        }
+
+        string name = (NameBox.Text ?? "").Trim();
+        if (name.Length == 0) name = "未命名动作";
+
+        ActionProgram program = BuildRunProgram();
+
+        // 路径 → 步骤行：等宽两条遍历（程序本身 + 编辑器行），运行时靠路径定位到某一行。
+        _traceTargets.Clear();
+        var paths = new List<string>();
+        IndexStepPaths(_program.Steps, "", paths);
+        var realRows = _rows.Where(r => r.Step != null).ToList();
+        for (int i = 0; i < paths.Count && i < realRows.Count; i++)
+            _traceTargets[paths[i]] = realRows[i];
+
+        _traceRowsByPath.Clear();
+        _traceRows.Clear();
+        _snapshotRows.Clear();
+        lock (_pendingTraces) _pendingTraces.Clear();
+
+        RunBody.Visibility = Visibility.Visible;
+        RunToggleButton.Content = "收起";
+        SetStatus(fromSelected ? "试运行（从此行）" : "试运行中", hint: true);
+
+        if (!AutomationRunner.TryRunProgram(name, program, startPath, OnTrace, OnRunCompleted))
+        {
+            SetStatus("已有动作正在运行，先等它结束或按停止", hint: false);
+            return;
+        }
+
+        SetRunning(true);
+        StartTraceFlush();
+    }
+
+    /// <summary>克隆当前编辑器内容：步骤是活的模型，变量表要现读（保存前 <see cref="_program.Variables"/> 是旧的）。</summary>
+    private ActionProgram BuildRunProgram()
+    {
+        ActionProgram program = _program.Clone();
+        program.Variables.Clear();
+        foreach (var variable in ReadVariables()) program.Variables.Add(variable.Clone());
+        return program;
+    }
+
+    /// <summary>按引擎的路径规则遍历：<c>/steps/2/then/0</c>（分支段 + 该层的步骤下标）。</summary>
+    private static void IndexStepPaths(List<Step> steps, string prefix, List<string> output)
+    {
+        for (int i = 0; i < steps.Count; i++)
+        {
+            var step = steps[i];
+            string path = prefix.Length == 0 ? $"/steps/{i}" : $"{prefix}/{i}";
+            output.Add(path);
+            IndexStepPaths(step.Then, $"{path}/then", output);
+            IndexStepPaths(step.Else, $"{path}/else", output);
+            IndexStepPaths(step.Body, $"{path}/body", output);
+        }
+    }
+
+    /// <summary>轨迹回调（后台线程）：只往队列里塞，由计时器攒批上屏，循环几千步也不会淹掉 UI。</summary>
+    private void OnTrace(StepTrace trace)
+    {
+        lock (_pendingTraces)
+        {
+            if (_pendingTraces.Count >= 4000) _pendingTraces.RemoveAt(0);
+            _pendingTraces.Add(trace);
+        }
+    }
+
+    private void StartTraceFlush()
+    {
+        _traceFlush ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        _traceFlush.Tick -= TraceFlush_Tick;
+        _traceFlush.Tick += TraceFlush_Tick;
+        _traceFlush.Start();
+    }
+
+    private void TraceFlush_Tick(object? sender, EventArgs e) => FlushTraces();
+
+    private void FlushTraces()
+    {
+        List<StepTrace> batch;
+        lock (_pendingTraces)
+        {
+            if (_pendingTraces.Count == 0) return;
+            batch = new List<StepTrace>(_pendingTraces);
+            _pendingTraces.Clear();
+        }
+
+        foreach (var trace in batch)
+        {
+            if (_traceRowsByPath.TryGetValue(trace.Path, out var row))
+            {
+                row.Merge(trace);
+                continue;
+            }
+
+            row = new TraceRow(trace);
+            _traceRowsByPath[trace.Path] = row;
+            _traceRows.Add(row);
+        }
+
+        // 只保留最近 400 行（循环里路径去重后一般远小于这个数）。
+        while (_traceRows.Count > 400)
+        {
+            TraceRow first = _traceRows[0];
+            _traceRows.RemoveAt(0);
+            if (_traceRowsByPath.TryGetValue(first.Path, out var mapped) && ReferenceEquals(mapped, first))
+                _traceRowsByPath.Remove(first.Path);
+        }
+    }
+
+    /// <summary>运行结束（后台线程）：回到 UI 线程收尾、填变量快照、选中失败那一行。</summary>
+    private void OnRunCompleted(ActionRunResult result)
+    {
+        if (Dispatcher.HasShutdownStarted) return;
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            _traceFlush?.Stop();
+            FlushTraces();
+            SetRunning(false);
+            FillSnapshot(result);
+
+            if (result.Stopped)
+            {
+                SetStatus($"已停止 · 共 {result.Steps} 步", hint: true);
+                return;
+            }
+
+            if (result.Completed)
+            {
+                SetStatus($"完成 · {result.Steps} 步 · {result.Elapsed.TotalMilliseconds:0} ms", hint: true);
+                return;
+            }
+
+            SetStatus(result.Error ?? "执行失败", hint: false, danger: true);
+            SelectTraceRow(result.FailedStepLabel);
+        }));
+    }
+
+    private void FillSnapshot(ActionRunResult result)
+    {
+        _snapshotRows.Clear();
+        foreach (var pair in result.Variables.OrderBy(p => p.Key, StringComparer.CurrentCultureIgnoreCase))
+        {
+            string text;
+            try { text = pair.Value.AsText(); }
+            catch { text = "(无法显示)"; }
+
+            if (text.Length > 300) text = text[..300] + "…";
+            _snapshotRows.Add(new SnapshotRow(pair.Key, text));
+        }
+    }
+
+    /// <summary>失败定位：按<strong>步骤路径</strong>找回编辑器里的那一行（嵌套步骤也能对上）。</summary>
+    private void SelectTraceRow(string? label)
+    {
+        TraceRow? target = label == null
+            ? _traceRows.FirstOrDefault(r => r.IsFailed)
+            : _traceRows.FirstOrDefault(r => r.Label == label);
+
+        if (target == null) return;
+        TraceList.SelectedItem = target;
+        TraceList.ScrollIntoView(target);
+    }
+
+    /// <summary>点轨迹行 = 定位到对应的步骤行（左侧列表跟着滚动、选中）。</summary>
+    private void TraceList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_running) return;   // 跑的时候别抢用户正在看的行
+
+        if (TraceList.SelectedItem is not TraceRow trace) return;
+        if (!_traceTargets.TryGetValue(trace.Path, out var row)) return;
+        if (!_rows.Contains(row)) return;
+
+        StepList.SelectedItem = row;
+        StepList.ScrollIntoView(row);
+    }
+
+    private void SetRunning(bool running)
+    {
+        _running = running;
+        RunButton.IsEnabled = !running;
+        RunFromButton.IsEnabled = !running;
+        StopRunButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        if (running) SetStatus("试运行中…（真的会操作鼠标键盘）", hint: false);
+    }
+
+    private void SetStatus(string text, bool hint, bool danger = false)
+    {
+        RunStatus.Text = text;
+        RunStatus.Foreground = (Brush)FindResource(
+            danger ? "DangerBrush" : hint ? "HintTextBrush" : "TextBrush");
+    }
+
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
     private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
@@ -1101,3 +1353,122 @@ public sealed class StepRow
 
     public Thickness MarkerIndent => new(Depth * 18 + 26, 0, 0, 1);
 }
+
+/// <summary>
+/// 试运行轨迹的一行（按**步骤路径**聚合：循环跑十轮，同一行只留一条，右侧显示 ×N）。
+/// </summary>
+/// <remarks>
+/// 轨迹在后台线程到达，面板攒批后在这里更新——所以属性都带变更通知，
+/// 循环里反复命中同一行时只是「改一个属性」，不重建列表。
+/// </remarks>
+public sealed class TraceRow : INotifyPropertyChanged
+{
+    private string _glyph = "·";
+    private Brush _brush = Brushes.Gray;
+    private string _elapsed = "";
+    private string _detail = "";
+    private bool _isFailed;
+    private int _count = 1;
+
+    public TraceRow(StepTrace trace)
+    {
+        Path = trace.Path;
+        Label = trace.Label;
+        Unit = trace.UnitName;
+        Merge(trace);
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string Path { get; }
+
+    public string Label { get; }
+
+    public string Unit { get; }
+
+    /// <summary>状态图标：✓ 成功、✕ 失败、! 失败但继续、■ 被停止。</summary>
+    public string Glyph
+    {
+        get => _glyph;
+        private set => Set(ref _glyph, value, nameof(Glyph));
+    }
+
+    public Brush Brush
+    {
+        get => _brush;
+        private set => Set(ref _brush, value, nameof(Brush));
+    }
+
+    /// <summary>耗时（末次），重复执行时带 ×N。</summary>
+    public string Elapsed
+    {
+        get => _elapsed;
+        private set => Set(ref _elapsed, value, nameof(Elapsed));
+    }
+
+    /// <summary>错误信息优先，其次是本步写入的变量（<c>text = 你好</c>）。</summary>
+    public string Detail
+    {
+        get => _detail;
+        private set => Set(ref _detail, value, nameof(Detail));
+    }
+
+    /// <summary>是否失败（失败定位用）。</summary>
+    public bool IsFailed
+    {
+        get => _isFailed;
+        private set => Set(ref _isFailed, value, nameof(IsFailed));
+    }
+
+    /// <summary>同一步骤又执行了一次（循环）：更新耗时 / 状态 / 详情，并累加次数。</summary>
+    public void Merge(StepTrace trace)
+    {
+        if (_count > 1 || _elapsed.Length > 0) _count++;
+
+        (Glyph, IsFailed, Brush) = trace.Status switch
+        {
+            StepTraceStatus.ok => ("✓", false, Done),
+            StepTraceStatus.failed => ("✕", true, Fail),
+            StepTraceStatus.continued => ("!", true, Warn),
+            _ => ("■", false, Muted),
+        };
+
+        Elapsed = _count > 1 ? $"{trace.ElapsedMs} ms ×{_count}" : $"{trace.ElapsedMs} ms";
+
+        Detail = !string.IsNullOrEmpty(trace.Error)
+            ? trace.Error!
+            : string.Join(" · ", trace.Outputs.Select(p => $"{p.Key} = {Short(p.Value)}"));
+    }
+
+    private static string Short(Value value)
+    {
+        string text;
+        try { text = value.AsText(); }
+        catch { return "(无法显示)"; }
+
+        text = text.Replace("\r", " ").Replace("\n", " ");
+        return text.Length > 80 ? text[..80] + "…" : text;
+    }
+
+    private static readonly Brush Done = Freeze(Color.FromRgb(0x22, 0xC5, 0x5E));
+    private static readonly Brush Fail = Freeze(Color.FromRgb(0xEF, 0x44, 0x44));
+    private static readonly Brush Warn = Freeze(Color.FromRgb(0xF5, 0x9E, 0x0B));
+    private static readonly Brush Muted = Freeze(Color.FromRgb(0x9C, 0xA3, 0xAF));
+
+    private static Brush Freeze(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    private void Set<T>(ref T field, T value, string name)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return;
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    }
+}
+
+/// <summary>变量快照的一行（运行结束时的值）。</summary>
+public sealed record SnapshotRow(string Name, string Value);

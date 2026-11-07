@@ -8,6 +8,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using LTools.Native;
 
 namespace LTools.Views;
@@ -50,15 +51,15 @@ public partial class ScreenPickerWindow : Window
 
     // —— 窗口 / 控件探测（框选模式）——
     private readonly List<SnapBox> _windowTargets = new();   // Win32 窗口树，打开时枚举一次
-    private List<SnapBox> _uiaTargets = new();               // 光标处 UIA 元素栈（由内到外）
-    private readonly Dictionary<string, List<SnapBox>> _uiaCache = new();
+    private readonly Dictionary<IntPtr, List<SnapBox>> _uiaTrees = new();   // 顶层窗口 → 整棵控件子树
+    private List<SnapBox> _uiaTargets = new();               // 光标所在窗口的控件子树
     private readonly List<SnapBox> _hoverCandidates = new();
     private int _hoverIndex;
     private SnapBox? _hoverTarget;
     private Point _hoverAt = new(-9999, -9999);
-    private System.Drawing.Point _uiaQueryAt = new(-9999, -9999);
-    private string _uiaKey = "";
-    private bool _uiaBusy;
+    private IntPtr _uiaPending;      // 正在后台枚举的窗口
+    private string _notice = "";     // 「已复制坐标」这类一次性提示
+    private DispatcherTimer? _noticeTimer;
 
     private List<double> _snapXs = new();
     private List<double> _snapYs = new();
@@ -194,17 +195,40 @@ public partial class ScreenPickerWindow : Window
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape) { Cancel(); return; }
+        if (e.Key == Key.Escape)
+        {
+            // 拖动中按 Esc 只放弃这一次拖动（和 Snipaste / Quicker 一致），再按一次才退出框选。
+            if (_drag != DragMode.None) CancelDrag();
+            else Cancel();
+            e.Handled = true;
+            return;
+        }
+
+        if (_pointMode) { if (e.Key == Key.Enter && Hex.Length > 0) { ConfirmPoint(); e.Handled = true; } return; }
+
+        // Ctrl+A：整屏（当前显示器）。很多人用惯了截图工具的「截全屏」。
+        if (e.Key == Key.A && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        {
+            _drag = DragMode.None;
+            _sel = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
+            UpdateChrome();
+            e.Handled = true;
+            return;
+        }
+
+        // P：把当前选区（没选区就光标位置）复制成 x,y,w,h，方便填到别处。
+        if (e.Key == Key.P && (Keyboard.Modifiers & ModifierKeys.Control) == 0)
+        {
+            CopySelection();
+            e.Handled = true;
+            return;
+        }
 
         if (e.Key == Key.Enter)
         {
-            if (_pointMode)
+            if (_sel is Rect enterSel && IsValid(enterSel))
             {
-                if (Hex.Length > 0) ConfirmPoint();
-            }
-            else if (IsValid(_sel))
-            {
-                ConfirmRegion(_sel!.Value);
+                ConfirmRegion(enterSel);
             }
             else if (_hoverTarget is SnapBox hover)
             {
@@ -216,7 +240,7 @@ public partial class ScreenPickerWindow : Window
             return;
         }
 
-        if (_pointMode || _sel is not Rect sel || _drag != DragMode.None) return;
+        if (_sel is not Rect sel || _drag != DragMode.None) return;
 
         // 方向键逐像素微调；按住 Shift 每次 10px。
         double step = (Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? 10 : 1;
@@ -233,6 +257,65 @@ public partial class ScreenPickerWindow : Window
         _sel = MoveTo(sel, delta);
         UpdateChrome();
         e.Handled = true;
+    }
+
+    /// <summary>放弃当前拖动：正在拖新选区就清掉，拖把手 / 移动就还原。</summary>
+    private void CancelDrag()
+    {
+        _drag = DragMode.None;
+        _handle = Handle.None;
+        _pressTarget = null;
+        _sel = _sel is Rect s && IsValid(s) && _originRect != default ? _originRect : null;
+        if (_sel is Rect back && (back.Width < MinSize || back.Height < MinSize)) _sel = null;
+        try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
+        Cursor = Cursors.Arrow;
+        UpdateChrome();
+    }
+
+    /// <summary>复制选区（<c>x,y,w,h</c>）或光标位置（<c>x,y</c>）到剪贴板。</summary>
+    private void CopySelection()
+    {
+        string text;
+        if (_sel is Rect s && IsValid(s))
+        {
+            var (x1, y1) = ToImage(s.TopLeft);
+            var (x2, y2) = ToImage(s.BottomRight);
+            int x = Math.Min(x1, x2), y = Math.Min(y1, y2);
+            text = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"{_monitor.X + x},{_monitor.Y + y},{Math.Abs(x2 - x1) + 1},{Math.Abs(y2 - y1) + 1}");
+        }
+        else if (Win32.GetCursorPos(out var cursor))
+        {
+            text = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"{cursor.X},{cursor.Y}");
+        }
+        else return;
+
+        try { Clipboard.SetText(text); }
+        catch { return; }   // 剪贴板被别的程序占着：不打断框选
+
+        ShowNotice($"已复制 {text}");
+    }
+
+    /// <summary>顶部提示临时换成一句话，2 秒后恢复。</summary>
+    private void ShowNotice(string text)
+    {
+        _notice = text;
+        UpdateChrome();
+
+        _noticeTimer ??= new DispatcherTimer();
+        _noticeTimer.Stop();
+        _noticeTimer.Interval = TimeSpan.FromSeconds(2);
+        _noticeTimer.Tick -= NoticeElapsed;
+        _noticeTimer.Tick += NoticeElapsed;
+        _noticeTimer.Start();
+    }
+
+    private void NoticeElapsed(object? sender, EventArgs e)
+    {
+        _noticeTimer?.Stop();
+        _notice = "";
+        UpdateChrome();
     }
 
     private void Window_Cancel(object sender, MouseButtonEventArgs e)
@@ -296,11 +379,17 @@ public partial class ScreenPickerWindow : Window
             _pressTarget = _hoverTarget;
             _drag = DragMode.New;
             _handle = Handle.None;
+            _originRect = _sel ?? default;   // Esc 放弃这次拖动时还原成原来的选区
             _sel = new Rect(p, p);
             SetHover(null);
         }
 
         _origin = p;
+
+        // 吸附线只取「按下时最上层那个窗口」的边：后台窗口的边不该把框吸走。
+        // 拖动期间不再重算，保证手感稳定（Ctrl 可以临时关掉吸附）。
+        RebuildSnapLines();
+
         Cursor = _drag == DragMode.New ? Cursors.Cross : CursorFor(_handle);
         CaptureMouse();
         UpdateChrome();
@@ -327,9 +416,13 @@ public partial class ScreenPickerWindow : Window
         switch (_drag)
         {
             case DragMode.New:
-                // 拖出来的边角吸附到附近窗口 / 控件的边（按住 Ctrl 临时关闭）
-                _sel = RectFrom(_origin, SnapPoint(p));
+            {
+                // 拖出来的边角吸附到附近窗口 / 控件的边（按住 Ctrl 临时关闭）；按住 Shift 锁正方形。
+                Point end = SnapPoint(p);
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) end = SquareOf(_origin, end);
+                _sel = RectFrom(_origin, end);
                 break;
+            }
             case DragMode.Move:
                 _sel = SnapMove(MoveTo(_originRect, p - _origin));
                 break;
@@ -496,9 +589,7 @@ public partial class ScreenPickerWindow : Window
             ActionBar.Visibility = Visibility.Collapsed;   // 没选区时不挡任何拖动（提示在顶部不拦鼠标）
             InfoBox.Visibility = Visibility.Collapsed;
             ActionHint.Text = "拖动边角微调，方向键逐像素";
-            HintText.Text = _windowTargets.Count > 0
-                ? "移动选窗口 / 控件 · 拖动自由框选 · 滚轮换层级 · 右键 / Esc 取消"
-                : "拖动框选范围 · 右键 / Esc 取消";
+            RefreshHint();
             return;
         }
 
@@ -511,7 +602,43 @@ public partial class ScreenPickerWindow : Window
 
         bool barAbove = showBar && PositionActionBar(sel);
         ShowSizeInfo(sel, barAbove);
-        HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· 双击 / Enter 确定";
+        RefreshHint();
+    }
+
+    /// <summary>
+    /// 顶部提示行：把「当前能做什么」和「控件识别到了没有」放在一句话里，
+    /// 识别中 / 识别不到都要说出来——静默降级会让人以为这程序不支持吸附。
+    /// </summary>
+    private void RefreshHint()
+    {
+        if (_pointMode)
+        {
+            HintText.Text = _wantColor ? "单击取色 · 右键 / Esc 取消" : "单击取点 · 右键 / Esc 取消";
+            return;
+        }
+
+        if (_notice.Length > 0)
+        {
+            HintText.Text = _notice;
+            return;
+        }
+
+        if (_sel is Rect s && IsValid(s))
+        {
+            HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· Ctrl+A 整屏 · P 复制坐标 · 双击 / Enter 确定";
+            return;
+        }
+
+        string text = _windowTargets.Count > 0
+            ? "移动选窗口 / 控件 · 拖动自由框选 · 滚轮换层级 · 右键 / Esc 取消"
+            : "拖动框选范围 · 右键 / Esc 取消";
+
+        if (_uiaPending != IntPtr.Zero)
+            text += " · 识别控件中…";
+        else if (_uiaTargets.Count == 0 && _windowTargets.Count > 0)
+            text += " · 未检测到控件，可直接拖拽框选";
+
+        HintText.Text = text;
     }
 
     /// <summary>
@@ -620,28 +747,40 @@ public partial class ScreenPickerWindow : Window
         e.Handled = true;
     }
 
-    /// <summary>光标移动时更新悬停候选（Win32 窗口优先，UIA 结果异步补进来）。</summary>
+    /// <summary>光标移动时更新悬停候选（窗口树即时，控件子树按窗口缓存、异步取一次）。</summary>
     private void UpdateHover(Point p)
     {
         if (IsValid(_sel)) { SetHover(null); return; }
 
         var screen = ToScreen(p);
-        _hoverCandidates.Clear();
-
-        // 只保留最上层那个窗口及其子控件：窗口树里也包含被遮住的后台窗口，
-        // 不过滤的话光标处可能挑中最上层看不见的小控件。
         IntPtr top = ScreenSnapTargets.TopWindowAtPoint(
             new WindowInteropHelper(this).Handle, screen);
 
-        foreach (var box in _windowTargets)
-            if (box.Bounds.Contains(screen) && OwnedBy(box, top)) _hoverCandidates.Add(box);
-        foreach (var box in _uiaTargets)
-            if (box.Bounds.Contains(screen) && OwnedBy(box, top)) _hoverCandidates.Add(box);
+        // 第一次进这个窗口：后台把它的控件子树取回来（之后移动鼠标纯本地判断）。
+        EnsureUiaTree(top);
+
+        _hoverCandidates.Clear();
+        var seen = new HashSet<(int X, int Y, int W, int H)>();
+
+        // 只保留最上层那个窗口及其子控件：窗口树里也包含被遮住的后台窗口，
+        // 不过滤的话光标处可能挑中最上层看不见的小控件。
+        void Collect(List<SnapBox> boxes)
+        {
+            foreach (var box in boxes)
+            {
+                if (!box.Bounds.Contains(screen) || !OwnedBy(box, top)) continue;
+                // Win32 窗口与 UIA 根元素常常是同一个矩形：只留一个，免得滚轮白转一圈。
+                if (!seen.Add((box.Bounds.X, box.Bounds.Y, box.Bounds.Width, box.Bounds.Height))) continue;
+                _hoverCandidates.Add(box);
+            }
+        }
+
+        Collect(_windowTargets);
+        Collect(_uiaTargets);
 
         if (_hoverCandidates.Count == 0)
         {
             SetHover(null);
-            MaybeQueryUia(screen);
             return;
         }
 
@@ -655,8 +794,6 @@ public partial class ScreenPickerWindow : Window
         }
         if (_hoverIndex >= _hoverCandidates.Count) _hoverIndex = 0;
         SetHover(_hoverCandidates[_hoverIndex]);
-
-        MaybeQueryUia(screen);
     }
 
     private void SetHover(SnapBox? box)
@@ -671,64 +808,73 @@ public partial class ScreenPickerWindow : Window
         top == IntPtr.Zero || box.Owner == IntPtr.Zero || box.Owner == top;
 
     /// <summary>
-    /// UIA 查询放到后台线程并限流（同一个 4px 网格只查一次）：自绘界面里的按钮 / 输入框
-    /// 只能靠 UIA 拿到，但它是跨进程调用，慢的应用能卡几十毫秒，绝不能放在鼠标移动路径上。
+    /// 按窗口缓存控件子树：UIA 是跨进程调用，慢应用一次能花几十到几百毫秒，
+    /// 所以整棵树只在**第一次进入某个窗口**时后台取一次，之后鼠标移动只是本地包含判断。
     /// </summary>
-    private void MaybeQueryUia(System.Drawing.Point screen)
+    private void EnsureUiaTree(IntPtr top)
     {
-        string key = $"{screen.X / 4},{screen.Y / 4}";
+        if (top == IntPtr.Zero) return;
 
-        if (_uiaCache.TryGetValue(key, out var cached))
+        if (_uiaTrees.TryGetValue(top, out var cached))
         {
-            if (!string.Equals(_uiaKey, key, StringComparison.Ordinal)) ApplyUia(key, cached);
+            if (!ReferenceEquals(_uiaTargets, cached))
+            {
+                _uiaTargets = cached;
+                RebuildSnapLines();
+            }
             return;
         }
 
-        if (_uiaBusy) return;
+        if (_uiaPending == top) return;   // 已经有人在查这个窗口了
+        _uiaPending = top;
 
-        double dx = screen.X - _uiaQueryAt.X;
-        double dy = screen.Y - _uiaQueryAt.Y;
-        if (_uiaQueryAt.X > -9999 && dx * dx + dy * dy < 36) return;   // 6px 内不重复查
-
-        _uiaBusy = true;
-        _uiaQueryAt = screen;
-
-        IntPtr overlay = new WindowInteropHelper(this).Handle;
         var monitor = _monitor;
-
-        Task.Run(() => ScreenSnapTargets.FromUia(overlay, screen, monitor))
+        Task.Run(() => ScreenSnapTargets.FromWindowTree(top, monitor))
             .ContinueWith(t =>
             {
                 if (Dispatcher.HasShutdownStarted) return;
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    _uiaBusy = false;
-                    if (t.Status != TaskStatus.RanToCompletion) return;
+                    if (_uiaPending != top) return;
+                    _uiaPending = IntPtr.Zero;
 
-                    var list = t.Result;
-                    if (_uiaCache.Count > 200) _uiaCache.Clear();
-                    _uiaCache[key] = list;
-                    if (!IsValid(_sel)) ApplyUia(key, list);
+                    if (t.Status != TaskStatus.RanToCompletion)
+                    {
+                        UpdateChrome();
+                        return;
+                    }
+
+                    // 空结果也缓存：说明这个程序不暴露 UIA，别再反复问它。
+                    if (_uiaTrees.Count > 40) _uiaTrees.Clear();
+                    _uiaTrees[top] = t.Result;
+
+                    if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out var dip))
+                    {
+                        var at = Clamp(dip);
+                        if (ScreenSnapTargets.TopWindowAtPoint(
+                                new WindowInteropHelper(this).Handle, ToScreen(at)) == top)
+                        {
+                            _uiaTargets = t.Result;
+                            RebuildSnapLines();
+                            if (!IsValid(_sel)) UpdateHover(at);
+                        }
+                    }
+
+                    UpdateChrome();
                 }));
             });
     }
 
-    private void ApplyUia(string key, List<SnapBox> list)
-    {
-        _uiaKey = key;
-        _uiaTargets = list;
-        RebuildSnapLines();
-
-        // 用最新的 UIA 结果重算一次光标下的候选；位置没变时层级索引保持不变。
-        if (!IsValid(_sel) && Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out var dip))
-            UpdateHover(Clamp(dip));
-    }
-
-    /// <summary>把所有窗口 / 控件的边收集成吸附线（DIP）。</summary>
+    /// <summary>收集吸附值（DIP）：只取光标下最上层窗口及子控件的边 + 屏幕四边。</summary>
     private void RebuildSnapLines()
     {
-        var xs = new List<double>(_windowTargets.Count * 2 + 8);
-        var ys = new List<double>(_windowTargets.Count * 2 + 8);
+        var xs = new List<double>(_windowTargets.Count * 2 + 16);
+        var ys = new List<double>(_windowTargets.Count * 2 + 16);
+
+        IntPtr top = IntPtr.Zero;
+        if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out _))
+            top = ScreenSnapTargets.TopWindowAtPoint(
+                new WindowInteropHelper(this).Handle, new System.Drawing.Point(cursor.X, cursor.Y));
 
         void Add(System.Drawing.Rectangle b)
         {
@@ -738,8 +884,11 @@ public partial class ScreenPickerWindow : Window
             ys.Add(r.Top); ys.Add(r.Bottom);
         }
 
-        foreach (var box in _windowTargets) Add(box.Bounds);
-        foreach (var box in _uiaTargets) Add(box.Bounds);
+        // 后台窗口的边也吸的话，框会被「看不见的窗口」拽住——Quicker / Snipaste 都只吸看得见的那个。
+        foreach (var box in _windowTargets)
+            if (OwnedBy(box, top)) Add(box.Bounds);
+        foreach (var box in _uiaTargets)
+            if (OwnedBy(box, top)) Add(box.Bounds);
         xs.Add(0); xs.Add(ActualWidth);
         ys.Add(0); ys.Add(ActualHeight);
 
@@ -971,6 +1120,16 @@ public partial class ScreenPickerWindow : Window
     private static Rect RectFrom(Point a, Point b) => new(
         Math.Min(a.X, b.X), Math.Min(a.Y, b.Y),
         Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
+
+    /// <summary>按住 Shift 时把拖拽终点修正成正方形（保持拖拽方向）。</summary>
+    private static Point SquareOf(Point origin, Point end)
+    {
+        double dx = end.X - origin.X;
+        double dy = end.Y - origin.Y;
+        double side = Math.Max(Math.Abs(dx), Math.Abs(dy));
+        if (side < 1) return end;
+        return new Point(origin.X + (dx < 0 ? -side : side), origin.Y + (dy < 0 ? -side : side));
+    }
 
     /// <summary>DIP → 冻结画面像素（画面就是显示器的 1:1 物理像素）。</summary>
     private (int X, int Y) ToImage(Point dip)

@@ -41,6 +41,7 @@ public partial class ConfigHelperWindow : Window
     private string _currentNav = "";      // 当前导航 tag（用于父项在子页时再点回主页）
     private bool _backupBusy;            // 备份 / 导入进行中，禁用重复点击
     private bool _loadingLog;            // 日志页控件回填期间抑制保存事件
+    private bool _loadingRunNotice;      // 通用页「运行提示」回填期间抑制保存事件
 
     public ConfigHelperWindow(string configPath)
     {
@@ -97,6 +98,7 @@ public partial class ConfigHelperWindow : Window
             // 开关状态
             CapsLockEnabledBox.IsChecked = AppState.IsToolEnabled;
             SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
+            PopulateRunNotice();
             // 自启状态：任务计划 COM 首次激活要百毫秒级，放线程池避免窗口白屏。
             // 查询期间保持 _initializing，免得用户此刻点开关与查询结果互相覆盖。
             var autoStart = await System.Threading.Tasks.Task.Run(AutoStartService.Query);
@@ -204,6 +206,7 @@ public partial class ConfigHelperWindow : Window
             _initializing = true;
             CapsLockEnabledBox.IsChecked = AppState.IsToolEnabled;
             SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
+            PopulateRunNotice();
             _initializing = false;
         }
         // 记忆当前导航页，下次打开恢复（ConfigIO 读改写：只动 LastNavPage，余字段不动）
@@ -782,6 +785,56 @@ public partial class ConfigHelperWindow : Window
         PopulateTerminals();
         TrayService.Notify("终端路径已保存");
         ShowStatus("终端路径已保存", ok: true);
+    }
+
+    // ============ 运行提示（通用页） ============
+
+    /// <summary>把配置里的提示策略回填到控件（回填期间不触发保存）。</summary>
+    private void PopulateRunNotice()
+    {
+        var cfg = ConfigStore.LoadConfig();
+
+        _loadingRunNotice = true;
+        RunNoticeCombo.SelectedIndex = cfg.RunNotice switch
+        {
+            RunNoticeMode.off => 0,
+            RunNoticeMode.always => 2,
+            _ => 1,
+        };
+        ToastPositionCombo.SelectedIndex = cfg.ToastPosition switch
+        {
+            ToastPosition.bottomLeft => 1,
+            ToastPosition.bottomCenter => 2,
+            ToastPosition.topRight => 3,
+            ToastPosition.topLeft => 4,
+            ToastPosition.topCenter => 5,
+            _ => 0,
+        };
+        _loadingRunNotice = false;
+    }
+
+    private void RunNotice_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingRunNotice) return;
+
+        ConfigIO.Modify(ConfigPath, cfg =>
+        {
+            cfg.RunNotice = RunNoticeCombo.SelectedIndex switch
+            {
+                0 => RunNoticeMode.off,
+                2 => RunNoticeMode.always,
+                _ => RunNoticeMode.onFailure,
+            };
+            cfg.ToastPosition = ToastPositionCombo.SelectedIndex switch
+            {
+                1 => ToastPosition.bottomLeft,
+                2 => ToastPosition.bottomCenter,
+                3 => ToastPosition.topRight,
+                4 => ToastPosition.topLeft,
+                5 => ToastPosition.topCenter,
+                _ => ToastPosition.bottomRight,
+            };
+        });
     }
 
     // ============ 运行日志 ============

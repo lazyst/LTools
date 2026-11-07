@@ -138,6 +138,134 @@
                                Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
                                Text="（空动作）从左侧点一个单元开始，例如：读取选中文本 → 文本处理 → 提示弹窗"/>
 
+                    <!-- 试运行：不用先保存，跑的就是编辑器里现在的内容；轨迹按步骤路径回填到下面的列表 -->
+                    <Border x:Name="RunBar" DockPanel.Dock="Bottom" Margin="0,6,0,0"
+                            Background="{StaticResource SurfaceAltBrush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                            Padding="0,6,0,0">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Button x:Name="RunButton" Style="{StaticResource BtnGhost}" Content="▶ 试运行"
+                                        MinHeight="24" Padding="8,2" Click="Run_Click"
+                                        ToolTip="试运行整个动作（不必先保存）。试运行会真的操作鼠标键盘"/>
+                                <Button x:Name="RunFromButton" Grid.Column="1" Style="{StaticResource BtnGhost}"
+                                        Content="▶ 从此行" MinHeight="24" Padding="8,2" Margin="6,0,0,0"
+                                        Click="RunFrom_Click"
+                                        ToolTip="从选中的顶层步骤开始试运行（只支持顶层步骤）"/>
+                                <Button x:Name="StopRunButton" Grid.Column="2" Style="{StaticResource BtnGhost}"
+                                        Content="■ 停止" MinHeight="24" Padding="8,2" Margin="6,0,0,0"
+                                        Visibility="Collapsed" Click="StopRun_Click"/>
+
+                                <TextBlock x:Name="RunStatus" Grid.Column="3" VerticalAlignment="Center"
+                                           Margin="10,0,8,0" FontSize="{StaticResource FontSizeHint}"
+                                           Foreground="{StaticResource HintTextBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="试运行不会先保存；改了不想要就取消"/>
+
+                                <Button x:Name="RunToggleButton" Grid.Column="4" Style="{StaticResource BtnGhost}"
+                                        Content="展开" MinHeight="24" Padding="8,2" Click="RunToggle_Click"/>
+                            </Grid>
+
+                            <Grid x:Name="RunBody" Height="186" Margin="0,6,0,0" Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*" MinWidth="220"/>
+                                    <ColumnDefinition Width="1*" MinWidth="150"/>
+                                </Grid.ColumnDefinitions>
+
+                                <DockPanel Grid.Column="0" Margin="0,0,6,0">
+                                    <TextBlock DockPanel.Dock="Top" Text="运行轨迹" FontSize="{StaticResource FontSizeHint}"
+                                               Foreground="{StaticResource HintTextBrush}" Margin="0,0,0,2"/>
+                                    <ListView x:Name="TraceList" BorderThickness="0" Background="Transparent"
+                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                              SelectionChanged="TraceList_SelectionChanged">
+                                        <ListView.ItemContainerStyle>
+                                            <Style TargetType="ListViewItem">
+                                                <Setter Property="Padding" Value="0"/>
+                                                <Setter Property="Margin" Value="0"/>
+                                                <Setter Property="MinHeight" Value="22"/>
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                            </Style>
+                                        </ListView.ItemContainerStyle>
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="16"/>
+                                                        <ColumnDefinition Width="96"/>
+                                                        <ColumnDefinition Width="86"/>
+                                                        <ColumnDefinition Width="42"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Glyph}" Foreground="{Binding Brush}"
+                                                               FontSize="{StaticResource FontSizeHint}"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Label}"
+                                                               FontSize="{StaticResource FontSizeHint}"
+                                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding Unit}"
+                                                               FontSize="{StaticResource FontSizeHint}"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Grid.Column="3" Text="{Binding Elapsed}"
+                                                               FontSize="{StaticResource FontSizeHint}"
+                                                               Foreground="{StaticResource HintTextBrush}"/>
+                                                    <TextBlock Grid.Column="4" Text="{Binding Detail}"
+                                                               FontSize="{StaticResource FontSizeHint}"
+                                                               Foreground="{StaticResource HintTextBrush}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding Detail}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                </DockPanel>
+
+                                <DockPanel Grid.Column="1">
+                                    <TextBlock DockPanel.Dock="Top" Text="变量（运行结束后）"
+                                               FontSize="{StaticResource FontSizeHint}"
+                                               Foreground="{StaticResource HintTextBrush}" Margin="0,0,0,2"/>
+                                    <ListView x:Name="SnapshotList" BorderThickness="0" Background="Transparent"
+                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <ListView.ItemContainerStyle>
+                                            <Style TargetType="ListViewItem">
+                                                <Setter Property="Padding" Value="0"/>
+                                                <Setter Property="Margin" Value="0"/>
+                                                <Setter Property="MinHeight" Value="22"/>
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                            </Style>
+                                        </ListView.ItemContainerStyle>
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="84"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Name}"
+                                                               FontFamily="{StaticResource MonoFont}"
+                                                               FontSize="{StaticResource FontSizeHint}"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Value}"
+                                                               FontSize="{StaticResource FontSizeHint}"
+                                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding Value}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                </DockPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
                     <ListBox x:Name="StepList" HorizontalContentAlignment="Stretch"
                              BorderThickness="0" Background="Transparent"
                              ItemTemplate="{StaticResource StepRowTemplate}"

@@ -26,6 +26,18 @@ public sealed class ActionRunOptions
     public Action<string>? Log { get; init; }
 
     /// <summary>
+    /// 每一步结束时的轨迹回调（成功 / 失败 / 失败继续 / 被停止）。在后台线程同步调用，
+    /// **不要在这里做重活**；抛出的异常会被引擎吞掉，不影响动作本身。
+    /// </summary>
+    public Action<StepTrace>? StepTrace { get; init; }
+
+    /// <summary>
+    /// 只从这个步骤路径开始执行（<c>/steps/2</c>）；空 = 从头。编辑器「从选中行开始试运行」用。
+    /// 只支持顶层步骤：路径指向分支内部时前面的步骤会被跳过，等于什么都不跑。
+    /// </summary>
+    public string? StartPath { get; init; }
+
+    /// <summary>
     /// 每开始一步回调一次（步序号从 1 开始）。用于进度提示 / 运行指示器；
     /// 在后台线程上同步调用，**不要在这里做重活**。
     /// </summary>
@@ -47,6 +59,9 @@ public sealed class ActionRunResult
     public bool Stopped { get; private init; }
 
     public string? Error { get; private init; }
+
+    /// <summary>失败发生在哪一行（<c>第 3 行 › 否则 › 第 1 行</c>）；不是步骤失败时为 null。</summary>
+    public string? FailedStepLabel { get; private init; }
 
     public Exception? Exception { get; private init; }
 
@@ -72,7 +87,7 @@ public sealed class ActionRunResult
 
     internal static ActionRunResult Failure(
         IReadOnlyDictionary<string, Value> variables, int steps, TimeSpan elapsed,
-        string error, Exception? exception, bool stopped) =>
+        string error, Exception? exception, bool stopped, string? failedStepLabel = null) =>
         new()
         {
             Completed = false,
@@ -82,6 +97,7 @@ public sealed class ActionRunResult
             Elapsed = elapsed,
             Error = error,
             Exception = exception,
+            FailedStepLabel = failedStepLabel,
         };
 }
 
@@ -117,6 +133,11 @@ public sealed class ActionEngine
             ValidateProgram(program);
             SeedVariables(program.Variables, root);
             RunSteps(program.Steps, ctx);
+
+            // 「从选中行开始」给了个对不上的路径：说清楚，别悄悄跑了个空动作。
+            if (!string.IsNullOrEmpty(opt.StartPath) && !state.Started)
+                throw new ActionException($"找不到起点步骤：{opt.StartPath}");
+
             return ActionRunResult.Success(root.Snapshot(), state.StepCount, started.Elapsed);
         }
         catch (StopSignal)
@@ -138,58 +159,135 @@ public sealed class ActionEngine
             return ActionRunResult.Failure(root.Snapshot(), state.StepCount, started.Elapsed,
                 "「继续下一次」只能出现在循环体里", null, stopped: false);
         }
+        catch (StepFailureException ex)
+        {
+            return ActionRunResult.Failure(root.Snapshot(), state.StepCount, started.Elapsed,
+                ex.Message, ex.InnerException ?? ex, stopped: false, state.FailedStepLabel);
+        }
         catch (ActionException ex)
         {
             return ActionRunResult.Failure(root.Snapshot(), state.StepCount, started.Elapsed,
-                ex.Message, ex, stopped: false);
+                ex.Message, ex, stopped: false, state.FailedStepLabel);
         }
         catch (Exception ex)
         {
             return ActionRunResult.Failure(root.Snapshot(), state.StepCount, started.Elapsed,
-                ex.Message, ex, stopped: false);
+                ex.Message, ex, stopped: false, state.FailedStepLabel);
         }
     }
 
     /// <summary>执行一组步骤（循环体 / 分支体复用）。异常向调用方传播，由顶层统一收口。</summary>
-    internal void RunSteps(IReadOnlyList<Step> steps, StepContext parent)
+    internal void RunSteps(IReadOnlyList<Step> steps, StepContext parent) =>
+        RunSteps(steps, parent, parent.Path, parent.Label);
+
+    /// <param name="pathPrefix">父级步骤路径（<c>/steps/2/then</c>）；顶层为空串。</param>
+    /// <param name="labelPrefix">父级人类可读位置（<c>第 3 行 › 否则</c>）；顶层为空串。</param>
+    internal void RunSteps(IReadOnlyList<Step> steps, StepContext parent, string pathPrefix, string labelPrefix)
     {
         for (int i = 0; i < steps.Count; i++)
         {
             var step = steps[i];
             if (step.Disabled) continue;
 
+            string path = pathPrefix.Length == 0 ? $"/steps/{i}" : $"{pathPrefix}/{i}";
+            if (parent.State.ShouldSkip(path)) continue;
+
+            string label = labelPrefix.Length == 0 ? $"第 {i + 1} 行" : $"{labelPrefix} › 第 {i + 1} 行";
+
             parent.State.EnterStep();
             var unit = _registry.Get(step.Unit);
             var ctx = parent.ForStep(step);
+            ctx.Path = path;
+            ctx.Label = label;
+            ctx.Depth = parent.Depth + 1;
 
+            long started = Environment.TickCount64;
             try
             {
                 var args = ResolveArgs(step, unit.Spec, ctx);
                 unit.Execute(ctx, args);
             }
-            catch (ActionAbortedException) { throw; }
-            catch (StopSignal) { throw; }
-            catch (BreakSignal) { throw; }
-            catch (ContinueSignal) { throw; }
+            catch (ActionAbortedException ex)
+            {
+                Trace(parent, step, path, label, ctx, StepTraceStatus.aborted, started, ex.Message);
+                throw;
+            }
+            catch (StopSignal)
+            {
+                Trace(parent, step, path, label, ctx, StepTraceStatus.aborted, started, "已停止");
+                throw;
+            }
+            catch (BreakSignal)
+            {
+                Trace(parent, step, path, label, ctx, StepTraceStatus.ok, started, null);
+                throw;
+            }
+            catch (ContinueSignal)
+            {
+                Trace(parent, step, path, label, ctx, StepTraceStatus.ok, started, null);
+                throw;
+            }
             catch (Exception ex)
             {
                 if (step.OnFail == FailMode.@continue)
                 {
                     parent.State.RecordError(unit, ex);
+                    parent.State.FailedStepLabel ??= label;
+                    Trace(parent, step, path, label, ctx, StepTraceStatus.continued, started, ex.Message);
                     continue;
                 }
 
-                throw ex is ActionException known
-                    ? new ActionException(
-                        $"第 {parent.State.StepCount} 步「{unit.Spec.Name}」失败：{known.Message}", known)
-                    : new ActionException(
-                        $"第 {parent.State.StepCount} 步「{unit.Spec.Name}」失败：{ex.Message}", ex);
+                parent.State.FailedStepLabel ??= label;
+                Trace(parent, step, path, label, ctx, StepTraceStatus.failed, started, ex.Message);
+
+                // 内层步骤已经带了「第几行」前缀（例如循环体里那一步），外层别再套一层。
+                if (ex is StepFailureException) throw;
+
+                throw new StepFailureException(
+                    $"{label}「{unit.Spec.Name}」失败：{ex.Message}", ex);
             }
+
+            Trace(parent, step, path, label, ctx, StepTraceStatus.ok, started, null);
 
             if (step.DelayMs > 0 && !parent.State.Wait(step.DelayMs))
                 throw new ActionAbortedException("已停止", userCancelled: true);
         }
     }
+
+    /// <summary>发一条轨迹；<c>StepTrace</c> 回调抛异常时吞掉（调试信息不该毁掉动作）。</summary>
+    private static void Trace(StepContext parent, Step step, string path, string label,
+        StepContext ctx, StepTraceStatus status, long started, string? error)
+    {
+        var callback = parent.State.Options.StepTrace;
+        if (callback == null) return;
+
+        try
+        {
+            callback(new StepTrace(path, label, ctx.Depth, step.Unit,
+                parent.Engine.Registry.Get(step.Unit).Spec.Name, status,
+                Environment.TickCount64 - started, error, CaptureOutputs(step, ctx)));
+        }
+        catch
+        {
+            // 面板已经关掉 / 回调自己出错：不影响执行
+        }
+    }
+
+    private static IReadOnlyDictionary<string, Value> CaptureOutputs(Step step, StepContext ctx)
+    {
+        if (step.Out.Count == 0) return EmptyOutputs;
+
+        var values = new Dictionary<string, Value>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in step.Out)
+        {
+            if (string.IsNullOrWhiteSpace(pair.Value)) continue;
+            if (ctx.Scope.TryGet(pair.Value, out var value)) values[pair.Key] = value;
+        }
+        return values;
+    }
+
+    private static readonly IReadOnlyDictionary<string, Value> EmptyOutputs =
+        new Dictionary<string, Value>();
 
     /// <summary>子动作递归深度上限。</summary>
     public const int MaxSubActionDepth = 8;
@@ -237,7 +335,12 @@ public sealed class ActionEngine
                 scope.Set(key, args.Has(key) ? args.Get(key) : variable.Seed());
             }
 
-            var ctx = new StepContext(this, caller.State, scope, new Step { Unit = "<subaction>" });
+            var ctx = new StepContext(this, caller.State, scope, new Step { Unit = "<subaction>" })
+            {
+                Path = $"{caller.Path}/sub/{id}",
+                Label = caller.Label.Length == 0 ? $"子动作「{label}」" : $"{caller.Label} › 子动作「{label}」",
+                Depth = caller.Depth + 1,
+            };
             RunSteps(def.Steps, ctx);
 
             foreach (var variable in def.Variables)
@@ -252,6 +355,7 @@ public sealed class ActionEngine
         catch (StopSignal) { throw; }
         catch (BreakSignal) { throw; }
         catch (ContinueSignal) { throw; }
+        catch (StepFailureException) { throw; }   // 里面已经带好位置（含「子动作「x」」）
         catch (ActionException ex)
         {
             throw new ActionException($"子动作「{label}」失败：{ex.Message}", ex);
@@ -449,6 +553,22 @@ internal sealed class ActionRunState
 
     public string LastError { get; private set; } = "";
 
+    /// <summary>最近一次失败所在的步骤位置（<c>第 3 行</c>），由 <see cref="ActionEngine"/> 写入。</summary>
+    public string? FailedStepLabel { get; set; }
+
+    /// <summary>「从选中行开始」：还没走到起点时返回 true（跳过这一步）。只认第一个命中的路径。</summary>
+    public bool ShouldSkip(string path)
+    {
+        string? start = _options.StartPath;
+        if (Started || string.IsNullOrEmpty(start)) return false;
+        if (!string.Equals(path, start, StringComparison.Ordinal)) return true;
+        Started = true;
+        return false;
+    }
+
+    /// <summary>是否已经越过 <see cref="ActionRunOptions.StartPath"/>。</summary>
+    public bool Started { get; private set; }
+
     public void EnterStep()
     {
         if (Token.IsCancellationRequested)
@@ -518,6 +638,15 @@ public sealed class StepContext
 
     public Step Step { get; }
 
+    /// <summary>步骤路径（<c>/steps/2/then/0</c>）：运行轨迹与编辑器定位用，与运行时步数无关。</summary>
+    public string Path { get; internal set; } = "";
+
+    /// <summary>给人看的步骤位置（<c>第 3 行 › 否则 › 第 1 行</c>）。</summary>
+    public string Label { get; internal set; } = "";
+
+    /// <summary>步骤嵌套深度（顶层为 1）。</summary>
+    public int Depth { get; internal set; }
+
     public IReadOnlyDictionary<string, string> OutputMap => _outputMap;
 
     public CancellationToken Token => State.Token;
@@ -539,8 +668,25 @@ public sealed class StepContext
     /// <summary>该输出是否映射到了变量（循环单元可用它避免无意义的赋值）。</summary>
     public bool HasOutput(string key) => _outputMap.ContainsKey(key);
 
-    /// <summary>执行当前步骤的子步骤（循环体 / 分支体）。</summary>
-    public void RunBody(IReadOnlyList<Step> steps) => Engine.RunSteps(steps, this);
+    /// <summary>执行当前步骤的子步骤（循环体 / 分支体）。子步骤的路径挂在当前步骤下面。</summary>
+    public void RunBody(IReadOnlyList<Step> steps)
+    {
+        string branch = ReferenceEquals(steps, Step.Body) ? "body"
+            : ReferenceEquals(steps, Step.Then) ? "then"
+            : ReferenceEquals(steps, Step.Else) ? "else"
+            : "body";
+
+        string branchLabel = branch switch
+        {
+            "then" => "满足时",
+            "else" => "否则",
+            _ => "循环体",
+        };
+
+        Engine.RunSteps(steps, this,
+            $"{Path}/{branch}",
+            Label.Length == 0 ? branchLabel : $"{Label} › {branchLabel}");
+    }
 
     /// <summary>调用一个子动作（输入按变量名从 <paramref name="args"/> 取，输出按步骤 out 映射写回）。</summary>
     public void RunSubAction(string id, StepArgs args) => Engine.RunSubAction(this, id, args);
@@ -577,3 +723,17 @@ public sealed class StepContext
             }));
     }
 }
+
+/// <summary>
+/// 步骤失败的内部信号：消息里已经带好「第 3 行 › 否则 › 第 1 行」前缀。
+/// </summary>
+/// <remarks>
+/// 单独一个类型是为了让外层步骤区分「自己这一步失败」和「子步骤已经报过位置」——
+/// 否则循环 / 分支会把前缀套成「第 2 行「如果」失败：第 2 行 › 满足时 › 第 1 行「提示弹窗」失败：…」。
+/// 引擎对外的结果仍然把内层异常放在 <see cref="Exception.InnerException"/> 上。
+/// </remarks>
+internal sealed class StepFailureException : Exception
+{
+    public StepFailureException(string message, Exception inner) : base(message, inner) { }
+}
+

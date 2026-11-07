@@ -22,13 +22,15 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" Background="#3B82F6" CornerRadius="10,0,0,10"/>
+            <Border x:Name="AccentBar" Grid.Column="0" Background="#3B82F6" CornerRadius="10,0,0,10"/>
 
             <StackPanel Grid.Column="1" Margin="14,12,6,12">
                 <TextBlock x:Name="TitleText" Foreground="#F4F4F5" FontWeight="SemiBold"
                            TextWrapping="Wrap" Visibility="Collapsed" Margin="0,0,0,3"/>
                 <TextBlock x:Name="MessageText" Foreground="#E4E4E7" TextWrapping="Wrap"
                            MaxHeight="260" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="DetailText" Text="点击查看详情" Foreground="#9CA3AF" FontSize="11"
+                           Margin="0,5,0,0" Visibility="Collapsed"/>
             </StackPanel>
 
             <!-- 关闭按钮只是视觉提示：整块都能点 -->

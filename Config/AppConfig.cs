@@ -138,6 +138,15 @@ public sealed class AppConfig
     public List<string> CompositeCollapsedGroups { get; set; } = new();
 
     /// <summary>
+    /// 动作运行结束后的提示策略：不提示 / 只在失败时（默认）/ 成功也提示。
+    /// 失败提示是常驻的（点一下关，下一次运行自动替换）。
+    /// </summary>
+    public RunNoticeMode RunNotice { get; set; } = RunNoticeMode.onFailure;
+
+    /// <summary>「提示弹窗」没指定位置时的默认落点（右下角，与系统通知一致）。</summary>
+    public ToastPosition ToastPosition { get; set; } = ToastPosition.bottomRight;
+
+    /// <summary>
     /// 本次加载是否因用户配置不可读 / 损坏而回退到示例。回退值只用于本次运行，
     /// 写盘前必须重新用 <see cref="LoadStrict"/> 读取，避免覆盖用户原文件。
     /// </summary>

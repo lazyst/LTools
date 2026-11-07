@@ -1,5 +1,8 @@
 using System;
+using System.Diagnostics;
+using System.IO;
 using System.Threading;
+using LTools.Config;
 using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Features.Migration;
@@ -46,15 +49,53 @@ internal static class AutomationRunner
         AppState.CapsLockEscPressed = false;
     }
 
-    /// <summary>执行一个动作（已在后台线程）。异常在此记录并提示，不再上抛。</summary>
+    /// <summary>执行一个动作（在后台线程里跑，异常在此记录并提示，不再上抛）。</summary>
     public static void Run(ActionDto action, int cursorX, int cursorY)
     {
+        // 旧格式动作第一次运行时懒迁移（可能写盘，放在调用线程没问题）。
+        ActionProgram program;
+        try
+        {
+            program = ActionPrograms.For(action);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Flow", $"迁移「{action.Name}」失败", ex);
+            CrashLog.Write($"Flow[{action.Name}] 迁移", ex);
+            ToastService.Show($"「{action.Name}」启动失败：{ex.Message}", "动作失败",
+                ToastService.StickyMs, ToastKind.error, key: "run:" + action.Name, OpenLogsFolder);
+            return;
+        }
+
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
         {
             TrayService.Notify("已有自动化正在运行");
             return;
         }
 
+        Task.Run(() => RunCore(program, action.Name, cursorX, cursorY,
+            startPath: null, trace: null, notify: true, completed: null));
+    }
+
+    /// <summary>
+    /// 编辑器「试运行」：跑一份内存里的动作（**不必先保存**），轨迹与结果回调给调用方。
+    /// </summary>
+    /// <returns>false = 已有动作在运行（与真实运行共用同一个互斥，避免两套键鼠注入打架）。</returns>
+    /// <remarks>轨迹回调在后台线程上同步触发；调用方要自己投递到 UI 线程并攒批。</remarks>
+    public static bool TryRunProgram(string name, ActionProgram program, string? startPath,
+        Action<StepTrace>? trace, Action<ActionRunResult>? completed)
+    {
+        if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return false;
+
+        Task.Run(() => RunCore(program, name, 0, 0,
+            startPath, trace, notify: false, completed));
+        return true;
+    }
+
+    /// <summary>一次运行的公共实现：真实动作与编辑器试运行都走这里。</summary>
+    private static void RunCore(ActionProgram program, string name, int cursorX, int cursorY,
+        string? startPath, Action<StepTrace>? trace, bool notify, Action<ActionRunResult>? completed)
+    {
         // 运行期截图（变量的 .file）只在这一次运行内有效：开始新一次 = 上一次的已经用完，顺手回收。
         // 界线用「现在」：本次稍后截的图比它新，不会被误删；上一次留下的（含上次没清掉的）在这里清干净。
         ImageLibrary.CollectGarbage(DateTime.Now);
@@ -65,12 +106,10 @@ internal static class AutomationRunner
         long started = Environment.TickCount64;
         int steps = 0;
 
-        AppLog.Info("Flow", $"开始执行「{action.Name}」· 光标 ({cursorX},{cursorY})");
+        AppLog.Info("Flow", $"开始执行「{name}」· 光标 ({cursorX},{cursorY})");
 
         try
         {
-            ActionProgram program = ActionPrograms.For(action);
-
             MacroHotkey.RegisterPlaybackStop();
             RecordingIndicatorWindow.ShowAutomation(IndicatorText(0));
             if (cts.Token.WaitHandle.WaitOne(80))
@@ -81,6 +120,8 @@ internal static class AutomationRunner
                 Token = cts.Token,
                 CursorX = cursorX,
                 CursorY = cursorY,
+                StartPath = startPath,
+                StepTrace = trace,
                 Log = message => AppLog.Debug("Flow", message),
                 StepStarted = step =>
                 {
@@ -90,6 +131,11 @@ internal static class AutomationRunner
             };
 
             ActionRunResult result = new ActionEngine(StepRegistry.Default).Run(program, options);
+
+            if (notify) NotifyFinished(name, result);
+
+            try { completed?.Invoke(result); }
+            catch (Exception ex) { AppLog.Warn("Flow", $"运行结果回调失败：{ex.Message}"); }
 
             if (result.Stopped)
                 throw new FlowAbortException("已停止", userCancelled: true);
@@ -102,23 +148,23 @@ internal static class AutomationRunner
             }
 
             AppLog.Info("Flow",
-                $"完成「{action.Name}」· {result.Steps} 步 · {Environment.TickCount64 - started} ms");
+                $"完成「{name}」· {result.Steps} 步 · {Environment.TickCount64 - started} ms");
         }
         catch (FlowAbortException ex)
         {
             if (ex.UserCancelled)
-                AppLog.Info("Flow", $"已停止「{action.Name}」· {steps} 步");
+                AppLog.Info("Flow", $"已停止「{name}」· {steps} 步");
             else
-            {
-                AppLog.Warn("Flow", $"中止「{action.Name}」：{ex.Message} · {steps} 步");
-                TrayService.Notify("自动化：" + ex.Message);
-            }
+                AppLog.Warn("Flow", $"中止「{name}」：{ex.Message} · {steps} 步");
         }
         catch (Exception ex)
         {
-            AppLog.Error("Flow", $"失败「{action.Name}」第 {steps} 步", ex);
-            CrashLog.Write($"Flow[{action.Name}] 第{steps}步", ex);
-            TrayService.Notify("自动化失败：" + ex.Message);
+            AppLog.Error("Flow", $"失败「{name}」第 {steps} 步", ex);
+            CrashLog.Write($"Flow[{name}] 第{steps}步", ex);
+
+            if (notify)
+                ToastService.Show($"「{name}」启动失败：{ex.Message}", "动作失败",
+                    ToastService.StickyMs, ToastKind.error, key: "run:" + name, onClick: OpenLogsFolder);
         }
         finally
         {
@@ -127,6 +173,76 @@ internal static class AutomationRunner
             Volatile.Write(ref _running, 0);
             MacroHotkey.UnregisterPlaybackStop();
             RecordingIndicatorWindow.HideAutomation();
+        }
+    }
+
+    /// <summary>
+    /// 把运行结果变成提示：失败**常驻**（红色，点一下看日志），成功按设置（默认静默）。
+    /// </summary>
+    /// <remarks>
+    /// 失败以前走的是 <see cref="MouseTip"/>（跟鼠标、1.8 秒消失），跑完去看时早就没了；
+    /// 现在用 toast，并且同一个动作用同一个 key，下一次运行会覆盖上一次的失败提示。
+    /// </remarks>
+    private static void NotifyFinished(string name, ActionRunResult result)
+    {
+        RunNoticeMode mode = RunNoticeMode.onFailure;
+        ToastPosition position = ToastPosition.bottomRight;
+        try
+        {
+            var config = ConfigStore.LoadConfig();
+            mode = config.RunNotice;
+            position = config.ToastPosition;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Flow", $"读取提示设置失败：{ex.Message}");
+        }
+
+        if (mode == RunNoticeMode.off) return;
+
+        string key = "run:" + name;
+
+        if (result.Stopped)
+        {
+            ToastService.Show($"「{name}」· {result.Steps} 步", "已停止", 2000, ToastKind.info,
+                key, position: position);
+            return;
+        }
+
+        if (!result.Completed)
+        {
+            string title = result.FailedStepLabel is { Length: > 0 } label
+                ? $"动作失败 · {label}"
+                : "动作失败";
+
+            ToastService.Show(result.Error ?? "执行失败", $"{title}（{name}）",
+                ToastService.StickyMs, ToastKind.error, key, OpenLogsFolder, position);
+            return;
+        }
+
+        if (mode == RunNoticeMode.always)
+        {
+            ToastService.Show(
+                $"「{name}」· {result.Steps} 步 · {result.Elapsed.TotalMilliseconds:0} ms",
+                "运行成功", 2500, ToastKind.success, key, position: position);
+        }
+    }
+
+    /// <summary>失败提示的「点击查看详情」：打开运行日志目录（运行记录面板做好后换成它）。</summary>
+    private static void OpenLogsFolder()
+    {
+        try
+        {
+            Directory.CreateDirectory(AppPaths.LogsDir);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = AppPaths.LogsDir,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Flow", $"打开日志目录失败：{ex.Message}");
         }
     }
 

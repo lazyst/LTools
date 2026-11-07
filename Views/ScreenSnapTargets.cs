@@ -18,18 +18,19 @@ internal readonly record struct SnapBox(Rectangle Bounds, string Label, IntPtr O
 
 /// <summary>
 /// 框选时的「窗口 / 控件」探测：先枚举 Win32 窗口树（快、不阻塞），再用 UI Automation
-/// 在光标所在窗口里往下钻一层，拿到自绘界面（WPF / 浏览器 / Electron）里的按钮、输入框等。
+/// 把光标所在窗口的**整棵子树**取回来（自绘界面里的按钮、输入框也能命中）。
 /// </summary>
 /// <remarks>
 /// 截图窗口自己盖住了整个屏幕，所以 UIA 的 <c>FromPoint</c> 只会命中我们自己。
-/// 这里改为：按 z 序找光标下第一个不属于本进程的顶层窗口，再用 ChildWindowFromPointEx
-/// 递归下钻到最深的子窗口，最后交给 UIA 从该窗口的根元素往下找包含光标的最小子元素。
-/// 所有方法都可以在 UI 线程调用（Win32 部分很快），UIA 部分请放到后台线程并限流。
+/// 这里改为：按 z 序找光标下第一个不属于本进程的顶层窗口，再从该窗口的 UIA 根元素做广度优先，
+/// 拿到所有可交互元素并按窗口缓存（见 <see cref="FromWindowTree"/>）。
+/// 所有方法都可以在 UI 线程调用（Win32 部分很快），UIA 部分请放到后台线程。
 /// </remarks>
 internal static class ScreenSnapTargets
 {
     private const int MaxUiaDepth = 8;
     private const int MaxUiaChildren = 160;
+    private const int MaxUiaElements = 700;
 
     /// <summary>窗口树枚举时跳过的系统辅助窗口（提示气泡、阴影、输入法合成窗等）。</summary>
     private static readonly HashSet<string> SkipClasses = new(StringComparer.OrdinalIgnoreCase)
@@ -142,58 +143,55 @@ internal static class ScreenSnapTargets
     // ============ UI Automation ============
 
     /// <summary>
-    /// 光标下窗口里的 UIA 元素（由内到外，含窗口本身）。在后台线程调用。
-    /// 目标程序没有暴露 UIA 时返回空列表，调用方退回 Win32 结果。
+    /// 某个顶层窗口下**整棵**可交互子树（含窗口本身，屏幕物理像素）。在后台线程调用，按窗口缓存。
     /// </summary>
-    public static List<SnapBox> FromUia(IntPtr overlayHwnd, Point point, Rectangle monitor)
+    /// <remarks>
+    /// 旧做法是「光标在哪儿就查哪条路径」，每移动几像素就要跨进程问一次 UIA，慢应用能滞后半秒，
+    /// 而且拿不到兄弟节点（滚轮换层级只能在一条路径上换来换去）。改成一次取整棵树：
+    /// 之后鼠标移动只是本地 <see cref="Rectangle.Contains(Rectangle)"/> 判断，微秒级。
+    /// 浏览器 / Electron 可能有上千个元素，所以限深 8、每层 160、总数 700，超了就只取前一半。
+    /// 目标不暴露 UIA 或没有响应时返回空列表，调用方退回 Win32 的窗口级结果。
+    /// </remarks>
+    public static List<SnapBox> FromWindowTree(IntPtr window, Rectangle monitor)
     {
-        var result = new List<SnapBox>(10);
+        var result = new List<SnapBox>(64);
+        if (window == IntPtr.Zero) return result;
+
         try
         {
-            IntPtr top = TopWindowUnderPoint(overlayHwnd, point);
-            if (top == IntPtr.Zero) return result;
+            AutomationElement? root = Automation.Value.FromHandle(window);
+            if (root == null) return result;
 
-            IntPtr root = Win32.GetAncestor(top, Win32.GaRoot);
-            if (root == IntPtr.Zero) root = top;
+            // 同一个矩形只留一个（Pane 和它的 Button 常常完全重合）：后入的更深、标签也更具体。
+            var index = new Dictionary<(int X, int Y, int W, int H), int>(256);
+            var queue = new Queue<(AutomationElement Element, Rectangle Bounds, int Depth)>();
+            queue.Enqueue((root, SafeBounds(root), 0));
+            int walked = 0;
 
-            AutomationElement? element = Automation.Value.FromHandle(root);
-            if (element == null) return result;
-
-            // UIA 没有「按点列子元素」的接口：从顶层窗口一层层往下，只跟进包含光标的那个子元素。
-            var path = new List<(AutomationElement El, Rectangle Bounds)>();
-            var current = element;
-            var currentBounds = SafeBounds(current);
-            path.Add((current, currentBounds));
-
-            for (int depth = 0; depth < MaxUiaDepth; depth++)
+            while (queue.Count > 0 && walked < MaxUiaElements)
             {
-                AutomationElement? next = null;
-                Rectangle nextBounds = default;
-                long best = long.MaxValue;
-                int seen = 0;
+                var (element, bounds, depth) = queue.Dequeue();
+                walked++;
 
-                foreach (var child in SafeChildren(current))
+                var clipped = Rectangle.Intersect(bounds, monitor);
+                if (clipped.Width >= 4 && clipped.Height >= 4)
+                    Add(result, index, clipped, LabelOf(element), window);
+                else if (depth == 0)
+                    return result;   // 窗口本身不在本屏，整棵树都不用看
+
+                if (depth >= MaxUiaDepth) continue;
+
+                int seen = 0;
+                foreach (var child in SafeChildren(element))
                 {
                     if (++seen > MaxUiaChildren) break;
 
-                    Rectangle b = SafeBounds(child);
-                    if (b.Width < 4 || b.Height < 4) continue;
-                    if (!b.Contains(point)) continue;
-                    if (b == currentBounds) continue;
-
-                    long area = (long)b.Width * b.Height;
-                    if (area < best) { best = area; next = child; nextBounds = b; }
+                    Rectangle childBounds = SafeBounds(child);
+                    if (childBounds.Width < 4 || childBounds.Height < 4) continue;
+                    if (Rectangle.Intersect(childBounds, monitor).IsEmpty) continue;
+                    queue.Enqueue((child, childBounds, depth + 1));
                 }
-
-                if (next == null) break;
-                current = next;
-                currentBounds = nextBounds;
-                path.Add((current, currentBounds));
             }
-
-            // 由内到外：滚轮第一次切换就是「父级」
-            for (int i = path.Count - 1; i >= 0; i--)
-                Add(result, path[i].Bounds, LabelOf(path[i].El), point, monitor, root);
         }
         catch
         {
@@ -202,13 +200,17 @@ internal static class ScreenSnapTargets
         return result;
     }
 
-    private static void Add(List<SnapBox> list, Rectangle bounds, string label, Point point,
-        Rectangle monitor, IntPtr owner)
+    private static void Add(List<SnapBox> list, Dictionary<(int X, int Y, int W, int H), int> index,
+        Rectangle bounds, string label, IntPtr owner)
     {
-        var clipped = Rectangle.Intersect(bounds, monitor);
-        if (clipped.Width < 4 || clipped.Height < 4 || !clipped.Contains(point)) return;
-        if (list.Count > 0 && list[^1].Bounds == clipped) return;
-        list.Add(new SnapBox(clipped, label, owner));
+        var key = (bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        var box = new SnapBox(bounds, label, owner);
+        if (index.TryGetValue(key, out int at)) list[at] = box;
+        else
+        {
+            index[key] = list.Count;
+            list.Add(box);
+        }
     }
 
     /// <summary>
@@ -239,25 +241,6 @@ internal static class ScreenSnapTargets
         }
 
         return found;
-    }
-
-    /// <summary>光标下最深的那层窗口（顶层窗口 + 逐层子窗口），UIA 从这里往下钻。</summary>
-    private static IntPtr TopWindowUnderPoint(IntPtr overlayHwnd, Point point)
-    {
-        IntPtr found = TopWindowAtPoint(overlayHwnd, point);
-        if (found == IntPtr.Zero) return IntPtr.Zero;
-
-        // 往下钻到最深的子窗口（标准 Win32 控件有独立 HWND；自绘界面靠后面的 UIA）
-        var current = found;
-        for (int depth = 0; depth < 12; depth++)
-        {
-            IntPtr child = Win32.ChildWindowFromPointEx(current,
-                new Win32.Point { X = point.X, Y = point.Y },
-                Win32.CwpSkipinvisible | Win32.CwpSkiptransparent);
-            if (child == IntPtr.Zero || child == current) break;
-            current = child;
-        }
-        return current;
     }
 
     private static Rectangle SafeBounds(AutomationElement element)
