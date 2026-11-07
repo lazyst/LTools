@@ -1,0 +1,38 @@
+<UserControl x:Class="LTools.Views.ValueSourceEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <ComboBox x:Name="ModeBox" Width="76" MinHeight="28" SelectedIndex="0"
+                  SelectionChanged="Mode_Changed" ToolTip="值的来源">
+            <ComboBoxItem Content="字面量"/>
+            <ComboBoxItem Content="变量"/>
+            <ComboBoxItem Content="取值单元"/>
+        </ComboBox>
+
+        <Grid Grid.Column="1" Margin="6,0,0,0">
+            <TextBox x:Name="LiteralBox" MinHeight="28" TextChanged="Value_Changed"
+                     ToolTip="可以直接写文字；${变量} 会在运行时替换"/>
+            <TextBox x:Name="VarBox" MinHeight="28" Visibility="Collapsed" TextChanged="Value_Changed"
+                     FontFamily="{StaticResource MonoFont}"
+                     ToolTip="变量名，支持 a.b[0] 这样的路径"/>
+            <Grid x:Name="InlinePanel" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ComboBox x:Name="UnitBox" MinHeight="28" SelectionChanged="Unit_Changed"
+                          DisplayMemberPath="Display"
+                          ToolTip="取值单元：找图 / 读取剪贴板 / 文本处理…"/>
+                <Button x:Name="InlineSetupBtn" Grid.Column="1" Content="设置…"
+                        Style="{StaticResource BtnGhost}" Margin="6,0,0,0"
+                        MinHeight="28" Padding="10,2" Click="InlineSetup_Click"/>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

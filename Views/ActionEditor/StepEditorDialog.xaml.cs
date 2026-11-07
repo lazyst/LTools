@@ -1,0 +1,705 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using LTools.Core.Actions;
+using LTools.Views.Controls;
+using Microsoft.Win32;
+
+namespace LTools.Views;
+
+/// <summary>
+/// 按 <see cref="UnitSpec"/> 生成的步骤参数表单：一个单元一个对话框，不写任何按单元分支的代码。
+/// </summary>
+/// <remarks>
+/// 输入行来自 <see cref="UnitSpec.Inputs"/>，编辑器形态由 <see cref="InputSpec.Editor"/> 决定；
+/// <c>VisibleWhen</c> 只支持 <c>key == 'value'</c>，切换枚举值时实时收起 / 展开。
+/// 「调用子动作」的按名参数由 <see cref="UnitSpec.DynamicInputs"/> + 子动作变量表生成。
+/// </remarks>
+public partial class StepEditorDialog : Window
+{
+    private sealed record Row(InputSpec Spec, FrameworkElement Host, Func<StepArg?> Read);
+
+    private readonly Step _step;
+    private readonly UnitSpec _spec;
+    private readonly bool _inline;
+    private readonly List<Row> _rows = new();
+    private readonly List<(OutputSpec Spec, CheckBox Toggle, TextBox Box)> _outputs = new();
+    private readonly List<(VariableDef Variable, ValueSourceEditor Editor)> _dynamicInputs = new();
+    private readonly List<(VariableDef Variable, CheckBox Toggle, TextBox Box)> _dynamicOutputs = new();
+    private readonly StackPanel _dynamicPanel = new() { Margin = new Thickness(0, 4, 0, 0) };
+    private bool _syncing;
+
+    public StepEditorDialog(Step step, bool inline = false)
+    {
+        InitializeComponent();
+        WindowChromeHelper.FixMaximize(this);
+
+        _step = step.Clone();
+        _spec = StepRegistry.Default.Get(_step.Unit).Spec;
+        _inline = inline;
+
+        Title = _spec.Name;
+        HeaderText.Text = inline ? _spec.Name + " · 取值" : _spec.Name;
+        DescText.Text = _spec.Description ?? "";
+        DescText.Visibility = string.IsNullOrWhiteSpace(_spec.Description)
+            ? Visibility.Collapsed : Visibility.Visible;
+
+        BuildInputs();
+        BuildOutputs();
+        BuildOptions();
+
+        if (inline)
+        {
+            OutputSection.Visibility = Visibility.Collapsed;
+            OptionSection.Visibility = Visibility.Collapsed;
+        }
+
+        Loaded += (_, _) => FocusFirstEditor();
+    }
+
+    /// <summary>确定后的步骤（取消时为 null）。</summary>
+    public Step? Result { get; private set; }
+
+    /// <summary>可用于变量编辑的变量名（由动作编辑器透传）。</summary>
+    internal Func<IEnumerable<string>>? VariableNameSource { get; set; }
+
+    /// <summary>动作体（解析「本动作」子动作、内联取值编辑用）。</summary>
+    internal ActionProgram? Program { get; set; }
+
+    // ============ 输入 ============
+
+    private void BuildInputs()
+    {
+        foreach (var input in _spec.Inputs)
+        {
+            FrameworkElement editor = BuildEditor(input, out var read);
+            _rows.Add(new Row(input, AddRow(Form, input, editor), read));
+        }
+
+        Form.Children.Add(_dynamicPanel);
+        SyncStepArgs();
+        if (_spec.DynamicInputs) RebuildDynamic();
+        UpdateVisibility();
+    }
+
+    private FrameworkElement BuildEditor(InputSpec input, out Func<StepArg?> read)
+    {
+        StepArg? current = CurrentArg(input);
+
+        if (_step.Unit == "sub.run" && input.Key == "subAction" && Program != null)
+        {
+            var combo = new ComboBox { MinHeight = 28, MinWidth = 240 };
+            var choices = SubActionChoices();
+            combo.ItemsSource = choices;
+            combo.DisplayMemberPath = nameof(SubChoice.Display);
+            string id = current?.Literal.AsText() ?? "";
+            if (id.Length > 0 && choices.All(c =>
+                    !string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase)))
+                choices.Add(new SubChoice(id, id + "（未找到）"));
+
+            combo.SelectedItem = choices.FirstOrDefault(c =>
+                string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase))
+                ?? choices.FirstOrDefault();
+            if (combo.SelectedItem == null && choices.Count > 0) combo.SelectedIndex = 0;
+
+            read = () => StepArg.FromText((combo.SelectedItem as SubChoice)?.Id ?? "");
+            combo.SelectionChanged += (_, _) =>
+            {
+                if (_syncing) return;
+                SyncStepArgs();
+                DropUnknownDynamicArgs();
+                RebuildDynamic();
+                BuildOutputs();
+                OnEdited();
+            };
+            return combo;
+        }
+
+        switch (input.Editor)
+        {
+            case InputEditor.boolean:
+            {
+                var check = new CheckBox
+                {
+                    IsChecked = current == null || current.Literal.AsBool(),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Content = "启用",
+                };
+                read = () => StepArg.FromBool(check.IsChecked == true);
+                check.Checked += (_, _) => OnEdited();
+                check.Unchecked += (_, _) => OnEdited();
+                return check;
+            }
+
+            case InputEditor.enumList:
+            {
+                var combo = new ComboBox { MinHeight = 28, MinWidth = 180 };
+                var options = input.Options ?? Array.Empty<string>();
+                foreach (string option in options)
+                    combo.Items.Add(new ComboBoxItem { Content = option });
+
+                string want = current?.Literal.AsText() ?? input.Default?.AsText() ?? "";
+                int index = -1;
+                for (int i = 0; i < options.Count; i++)
+                {
+                    if (!string.Equals(options[i], want, StringComparison.OrdinalIgnoreCase)) continue;
+                    index = i;
+                    break;
+                }
+                combo.SelectedIndex = index >= 0 ? index : 0;
+
+                read = () => StepArg.FromText(
+                    (combo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "");
+                combo.SelectionChanged += (_, _) => OnEdited();
+                return combo;
+            }
+
+            case InputEditor.variable:
+            {
+                var combo = new ComboBox { IsEditable = true, MinHeight = 28, MinWidth = 200 };
+                var names = VariableNameSource?.Invoke()?.ToList() ?? new List<string>();
+                combo.ItemsSource = names;
+
+                string initial = current == null ? ""
+                    : current.Kind == StepArgKind.variable ? current.VariablePath
+                    : current.Literal.AsText();
+                combo.Text = initial;
+
+                // 变量名以「变量引用」保存（保留类型）；少数把名字本身当文本的输入
+                //（flow.set 的 name）仍按字面量存。
+                bool asReference = input.Type != ValueKind.text;
+                read = () =>
+                {
+                    string text = (combo.Text ?? "").Trim();
+                    if (!asReference) return StepArg.FromText(text);
+                    if (text.StartsWith("${", StringComparison.Ordinal) && text.EndsWith('}'))
+                        text = text[2..^1].Trim();
+                    return StepArg.FromVar(text);
+                };
+                combo.AddHandler(TextBoxBase.TextChangedEvent,
+                    new TextChangedEventHandler((_, _) => OnEdited()));
+                return combo;
+            }
+
+            case InputEditor.condition:
+            {
+                var value = new ValueSourceEditor
+                {
+                    Type = input.Type,
+                    VariableNameSource = VariableNameSource,
+                    Program = Program,
+                    Value = current ?? StepArg.FromText(""),
+                };
+                value.Changed += OnEdited;
+                read = () => value.Value;
+                return value;
+            }
+
+            case InputEditor.image:
+            {
+                if (current != null && current.Kind != StepArgKind.literal)
+                {
+                    var value = new ValueSourceEditor
+                    {
+                        Type = input.Type,
+                        VariableNameSource = VariableNameSource,
+                        Program = Program,
+                        Value = current,
+                    };
+                    value.Changed += OnEdited;
+                    read = () => value.Value;
+                    return value;
+                }
+
+                var picker = new TemplateImagePicker
+                {
+                    Path = current?.Literal.AsText() ?? "",
+                };
+                read = () => StepArg.FromText(picker.Path);
+                picker.Changed += OnEdited;
+                return picker;
+            }
+
+            case InputEditor.file:
+            case InputEditor.folder:
+            {
+                var value = new ValueSourceEditor
+                {
+                    Type = input.Type,
+                    VariableNameSource = VariableNameSource,
+                    Program = Program,
+                    Value = current ?? StepArg.FromText(""),
+                };
+                value.Changed += OnEdited;
+
+                var browse = new Button
+                {
+                    Content = "浏览…",
+                    Style = (Style)FindResource("BtnGhost"),
+                    MinHeight = 28,
+                    Margin = new Thickness(6, 0, 0, 0),
+                    Padding = new Thickness(10, 2, 10, 2),
+                };
+                browse.Click += (_, _) =>
+                {
+                    string? picked = input.Editor == InputEditor.folder
+                        ? PickFolder(value.LiteralText)
+                        : PickFile(value.LiteralText);
+                    if (picked != null) value.LiteralText = picked;
+                };
+
+                var grid = new Grid();
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                grid.Children.Add(value);
+                Grid.SetColumn(browse, 1);
+                grid.Children.Add(browse);
+
+                read = () => value.Value;
+                return grid;
+            }
+
+            case InputEditor.multiline:
+            case InputEditor.number:
+            default:
+            {
+                var value = new ValueSourceEditor
+                {
+                    Type = input.Type,
+                    Multiline = input.Editor == InputEditor.multiline,
+                    VariableNameSource = VariableNameSource,
+                    Program = Program,
+                    Value = current ?? StepArg.FromText(""),
+                };
+                value.Changed += OnEdited;
+                read = () => value.Value;
+                return value;
+            }
+        }
+    }
+
+    private StepArg? CurrentArg(InputSpec input)
+    {
+        if (_step.In.TryGetValue(input.Key, out var arg)) return arg;
+        return input.Default != null ? StepArg.FromValue(input.Default) : null;
+    }
+
+    private FrameworkElement AddRow(Panel host, InputSpec input, FrameworkElement editor)
+    {
+        var row = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(118) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var label = new TextBlock
+        {
+            Text = input.Required ? input.Label + " *" : input.Label,
+            Foreground = (System.Windows.Media.Brush)FindResource(
+                input.Required ? "TextBrush" : "SecondaryTextBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        if (editor is TemplateImagePicker) row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        row.Children.Add(label);
+        Grid.SetColumn(editor, 1);
+        row.Children.Add(editor);
+        host.Children.Add(row);
+        return row;
+    }
+
+    private void UpdateVisibility()
+    {
+        foreach (var row in _rows)
+            row.Host.Visibility = StepSummary.IsVisible(row.Spec, _step, _spec)
+                ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>把编辑器里的值写回 <see cref="_step"/>（含可见性所依赖的枚举值）。</summary>
+    private void SyncStepArgs()
+    {
+        if (_syncing) return;
+        _syncing = true;
+        try
+        {
+            var all = new Dictionary<string, StepArg>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in _rows)
+            {
+                var arg = row.Read();
+                if (arg != null && ShouldKeep(row.Spec, arg)) all[row.Spec.Key] = arg;
+            }
+
+            foreach (var (variable, editor) in _dynamicInputs)
+            {
+                StepArg value = editor.Value;
+                if (value.Kind == StepArgKind.literal
+                    && value.Literal.Kind == ValueKind.text
+                    && value.Literal.AsText().Length == 0) continue;
+                all[variable.Key] = value;
+            }
+
+            // 声明之外的参数只有动态参数单元（sub.run）才保留；
+            // 其它单元的未知键会在运行时被判为拼写错误，顺手清掉。
+            var extra = _spec.DynamicInputs
+                ? _step.In.Where(p => !_spec.Inputs.Any(i =>
+                    string.Equals(i.Key, p.Key, StringComparison.OrdinalIgnoreCase))).ToList()
+                : new List<KeyValuePair<string, StepArg>>();
+
+            _step.In.Clear();
+            foreach (var pair in extra) _step.In[pair.Key] = pair.Value;
+            foreach (var pair in all) _step.In[pair.Key] = pair.Value;
+
+            // 隐藏的参数（如 operation=read 时的 text）保存时丢掉，避免留下无关字段。
+            foreach (var row in _rows)
+            {
+                if (row.Spec.VisibleWhen != null
+                    && !StepSummary.IsVisible(row.Spec, _step, _spec))
+                    _step.In.Remove(row.Spec.Key);
+            }
+        }
+        finally { _syncing = false; }
+    }
+
+    private void OnEdited()
+    {
+        if (_syncing) return;
+        SyncStepArgs();
+        UpdateVisibility();
+    }
+
+    /// <summary>
+    /// 空的可选文本、false 的开关不必写进步骤（运行时按默认值处理），
+    /// 这样保存出来的 JSON 只留用户真正填过的参数。
+    /// </summary>
+    private static bool ShouldKeep(InputSpec spec, StepArg arg)
+    {
+        if (arg.Kind != StepArgKind.literal) return true;
+
+        if (arg.Literal.Kind == ValueKind.@bool)
+            return arg.Literal.AsBool() != (spec.Default?.AsBool() ?? false);
+
+        if (arg.Literal.Kind == ValueKind.number)
+            return spec.Default == null || arg.Literal.AsNumber() != spec.Default.AsNumber();
+
+        if (arg.Literal.Kind != ValueKind.text) return true;
+
+        string text = arg.Literal.AsText();
+        if (text.Length > 0) return true;
+        if (spec.Required) return true;
+        return spec.Default != null && spec.Default.AsText().Length > 0;
+    }
+
+    // ============ 子动作动态参数 ============
+
+    private void DropUnknownDynamicArgs()
+    {
+        var allowed = new HashSet<string>(
+            _spec.Inputs.Select(i => i.Key), StringComparer.OrdinalIgnoreCase);
+        string id = _step.In.TryGetValue("subAction", out var arg) ? arg.Literal.AsText() : "";
+        var def = ResolveSubAction(id);
+        if (def != null)
+            foreach (var variable in def.Variables) allowed.Add(variable.Key);
+
+        foreach (string key in _step.In.Keys.ToList())
+            if (!allowed.Contains(key)) _step.In.Remove(key);
+    }
+
+    private void RebuildDynamic()
+    {
+        _dynamicPanel.Children.Clear();
+        _dynamicInputs.Clear();
+
+        if (_step.Unit != "sub.run" || !_spec.DynamicInputs) return;
+
+        string id = _step.In.TryGetValue("subAction", out var arg) ? arg.Literal.AsText() : "";
+        var def = ResolveSubAction(id);
+
+        _dynamicPanel.Children.Add(new TextBlock
+        {
+            Text = def == null
+                ? "（选一个子动作后，这里会出现它的输入参数）"
+                : "子动作参数",
+            Style = (Style)FindResource(def == null ? "HintLabel" : "SectionLabel"),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 2, 0, 6),
+        });
+
+        if (def == null) return;
+
+        foreach (var variable in def.Variables.Where(v => v.Direction == VariableDirection.input))
+        {
+            var editor = new ValueSourceEditor
+            {
+                Type = variable.Type,
+                VariableNameSource = VariableNameSource,
+                Program = Program,
+                Value = _step.In.TryGetValue(variable.Key, out var existing)
+                    ? existing : StepArg.FromText(""),
+            };
+            editor.Changed += OnEdited;
+
+            var spec = new InputSpec(variable.Key,
+                $"{variable.Key}（{KindLabel(variable.Type)}）", variable.Type);
+            _dynamicPanel.Children.Add(BuildRowFor(spec, editor));
+            _dynamicInputs.Add((variable, editor));
+        }
+
+        if (_dynamicInputs.Count == 0)
+        {
+            _dynamicPanel.Children.Add(new TextBlock
+            {
+                Text = "这个子动作没有输入参数。",
+                Style = (Style)FindResource("HintLabel"),
+                Margin = new Thickness(0, 0, 0, 4),
+            });
+        }
+    }
+
+    private FrameworkElement BuildRowFor(InputSpec spec, FrameworkElement editor)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(118) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        grid.Children.Add(new TextBlock
+        {
+            Text = spec.Label,
+            Foreground = (System.Windows.Media.Brush)FindResource("SecondaryTextBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+        });
+        Grid.SetColumn(editor, 1);
+        grid.Children.Add(editor);
+        return grid;
+    }
+
+    private List<SubChoice> SubActionChoices()
+    {
+        var list = new List<SubChoice>();
+        if (Program != null)
+        {
+            foreach (var def in Flatten(Program.SubActions))
+                list.Add(new SubChoice(def.Id, $"本动作 · {Label(def)}"));
+        }
+
+        foreach (var def in SubActionStore.LoadAll())
+            list.Add(new SubChoice(def.Id, $"全局 · {Label(def)}"));
+
+        return list;
+    }
+
+    private static IEnumerable<SubActionDef> Flatten(IEnumerable<SubActionDef> defs)
+    {
+        foreach (var def in defs)
+        {
+            yield return def;
+            foreach (var child in Flatten(def.SubActions)) yield return child;
+        }
+    }
+
+    private SubActionDef? ResolveSubAction(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return null;
+
+        if (Program != null)
+        {
+            var local = Flatten(Program.SubActions).FirstOrDefault(d =>
+                string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (local != null) return local;
+        }
+
+        return SubActionStore.Load(id);
+    }
+
+    private static string Label(SubActionDef def) =>
+        string.IsNullOrWhiteSpace(def.Name) ? def.Id : def.Name;
+
+    private static string KindLabel(ValueKind kind) => kind switch
+    {
+        ValueKind.text => "文本",
+        ValueKind.number => "数字",
+        ValueKind.@bool => "布尔",
+        ValueKind.list => "列表",
+        ValueKind.@object => "对象",
+        _ => "任意",
+    };
+
+    // ============ 输出 ============
+
+    private void BuildOutputs()
+    {
+        Outputs.Children.Clear();
+        _outputs.Clear();
+        _dynamicOutputs.Clear();
+
+        if (_step.Unit == "sub.run")
+        {
+            BuildDynamicOutputs();
+            return;
+        }
+
+        foreach (var output in _spec.Outputs)
+        {
+            bool on = _step.Out.TryGetValue(output.Key, out string? target);
+            var (toggle, box) = BuildOutputRow(output.Label,
+                on ? target ?? "" : output.DefaultVariable ?? output.Key);
+
+            toggle.IsChecked = on;
+            box.IsEnabled = on;
+            toggle.Checked += (_, _) => box.IsEnabled = true;
+            toggle.Unchecked += (_, _) => box.IsEnabled = false;
+
+            _outputs.Add((output, toggle, box));
+        }
+    }
+
+    private void BuildDynamicOutputs()
+    {
+        string id = _step.In.TryGetValue("subAction", out var arg) ? arg.Literal.AsText() : "";
+        var def = ResolveSubAction(id);
+        if (def == null) return;
+
+        foreach (var variable in def.Variables.Where(v => v.Direction == VariableDirection.output))
+        {
+            bool on = _step.Out.TryGetValue(variable.Key, out string? target);
+            var (toggle, box) = BuildOutputRow(
+                $"{variable.Key}（{KindLabel(variable.Type)}）", target ?? variable.Key);
+
+            toggle.IsChecked = on;
+            box.IsEnabled = on;
+            toggle.Checked += (_, _) => box.IsEnabled = true;
+            toggle.Unchecked += (_, _) => box.IsEnabled = false;
+
+            _dynamicOutputs.Add((variable, toggle, box));
+        }
+    }
+
+    private (CheckBox Toggle, TextBox Box) BuildOutputRow(string label, string value)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(170) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var toggle = new CheckBox
+        {
+            Content = label,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var box = new TextBox
+        {
+            MinHeight = 28,
+            Text = value,
+            Margin = new Thickness(0, 0, 0, 0),
+            FontFamily = (System.Windows.Media.FontFamily)FindResource("MonoFont"),
+        };
+
+        grid.Children.Add(toggle);
+        Grid.SetColumn(box, 1);
+        grid.Children.Add(box);
+        Outputs.Children.Add(grid);
+        return (toggle, box);
+    }
+
+    // ============ 选项 ============
+
+    private void BuildOptions()
+    {
+        FailBox.SelectedIndex = _step.OnFail == FailMode.@continue ? 1 : 0;
+        DelayBox.Text = _step.DelayMs > 0
+            ? _step.DelayMs.ToString(CultureInfo.InvariantCulture) : "";
+        DisabledBox.IsChecked = _step.Disabled;
+        NoteBox.Text = _step.Note ?? "";
+    }
+
+    private void FocusFirstEditor()
+    {
+        var first = _rows.FirstOrDefault(r => r.Host.Visibility == Visibility.Visible);
+        if (first?.Host is not null)
+        {
+            if (first.Host is TextBox box) { box.Focus(); box.SelectAll(); }
+            else if (first.Host is ValueSourceEditor value) value.Focus();
+        }
+    }
+
+    // ============ 确定 / 取消 ============
+
+    private void Ok_Click(object sender, RoutedEventArgs e)
+    {
+        SyncStepArgs();
+
+        foreach (var row in _rows)
+        {
+            if (!row.Spec.Required) continue;
+            if (!StepSummary.IsVisible(row.Spec, _step, _spec)) continue;
+            if (!_step.In.TryGetValue(row.Spec.Key, out var arg) || IsEmptyArg(arg))
+            {
+                ConfirmDialog.Info(this, _spec.Name, $"「{row.Spec.Label}」不能为空。");
+                return;
+            }
+        }
+
+        _step.Out.Clear();
+        foreach (var (output, toggle, box) in _outputs)
+        {
+            if (toggle.IsChecked != true) continue;
+            string name = (box.Text ?? "").Trim();
+            if (name.Length > 0) _step.Out[output.Key] = name;
+        }
+        foreach (var (variable, toggle, box) in _dynamicOutputs)
+        {
+            if (toggle.IsChecked != true) continue;
+            string name = (box.Text ?? "").Trim();
+            if (name.Length > 0) _step.Out[variable.Key] = name;
+        }
+
+        _step.OnFail = FailBox.SelectedIndex == 1 ? FailMode.@continue : FailMode.stop;
+        _step.DelayMs = int.TryParse((DelayBox.Text ?? "").Trim(),
+            NumberStyles.Integer, CultureInfo.InvariantCulture, out int delay)
+            ? Math.Max(0, delay) : 0;
+        _step.Disabled = DisabledBox.IsChecked == true;
+        _step.Note = string.IsNullOrWhiteSpace(NoteBox.Text) ? null : NoteBox.Text.Trim();
+
+        Result = _step;
+        DialogResult = true;
+    }
+
+    private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+
+    private static bool IsEmptyArg(StepArg arg) => arg.Kind switch
+    {
+        StepArgKind.variable => arg.VariablePath.Trim().Length == 0,
+        StepArgKind.inline => arg.InlineStep == null,
+        _ => arg.Literal.Kind == ValueKind.text && arg.Literal.AsText().Length == 0,
+    };
+
+    // ============ 文件选择 ============
+
+    private static string? PickFile(string? current)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Title = "选择文件",
+            Filter = "所有文件|*.*",
+        };
+        if (!string.IsNullOrWhiteSpace(current) && System.IO.File.Exists(current))
+            dlg.InitialDirectory = System.IO.Path.GetDirectoryName(current);
+        return dlg.ShowDialog() == true ? dlg.FileName : null;
+    }
+
+    private static string? PickFolder(string? current)
+    {
+        var dlg = new OpenFolderDialog { Title = "选择文件夹" };
+        if (!string.IsNullOrWhiteSpace(current) && System.IO.Directory.Exists(current))
+            dlg.InitialDirectory = current;
+        return dlg.ShowDialog() == true ? dlg.FolderName : null;
+    }
+
+    public sealed record SubChoice(string Id, string Display)
+    {
+        public override string ToString() => Display;
+    }
+}

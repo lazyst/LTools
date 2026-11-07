@@ -391,15 +391,36 @@ sealed class SubActionDef {
 **验收**：`ActionSmoke` 迁移 `LTools.example.json` + 手工构造的旧动作，逐项断言结构，
 并**执行**迁移结果（赋值 / 条件 / 两种循环 / 命令 / 子动作输出回写）；共 574 项断言通过。
 
-### W4 编辑器
+### W4 编辑器（进行中）
 
-- `Views/ActionEditor/`：三栏（工具箱 / 步骤 / 变量），由 `UnitSpec` 生成参数表单。
-- 步骤行：图标 + 名称 + 摘要 + 输出变量 chip；拖动排序复用 `ListDragSort`。
-- 条件编辑：值源选择器（变量 / 字面量 / 取值单元）+ 比较符。
-- 子动作库：设置里新增一页，列表 + 同构编辑器 + 「本动作 / 全局」分组。
-- 动作管理列表：显示步骤数、类型改由首步骤推断（或保留「组合动作」统一叫「动作」）。
+已完成：
+
+- `Views/ActionEditor/ActionEditorWindow`：三栏（工具箱 / 步骤 / 变量 + 动作属性）。
+- 工具箱完全由 `StepRegistry` 的 `UnitSpec` 生成（分类 + 搜索）；点一下插到选中行之后。
+  新增单元**不用改 UI 代码**即可出现并能编辑。
+- 步骤行：图标 + 名称 + 一行摘要 + 输出变量 chip；缩进表示嵌套，
+  「否则 / 结束如果 / 结束循环」是标记行，空分支有一行可选的占位行。
+  增删改、上下移（`↑` / `↓`，或 `Alt+↑ / Alt+↓`）。
+- 参数表单 `Views/ActionEditor/StepEditorDialog`：按 `InputSpec.Editor` 生成
+  文本 / 多行 / 数字 / 开关 / 枚举 / 文件 / 文件夹 / 图片 / 变量 / 条件表单；
+  `VisibleWhen`（`key == 'value'`）实时收起 / 展开；输出按 `OutputSpec` 勾选映射到变量；
+  `sub.run` 的按名参数由子动作变量表（`DynamicInputs`）生成。
+- 值源 `Views/ActionEditor/ValueSourceEditor`：字面量 / 变量 / 内联取值单元三态，
+  内联单元用同一个步骤表单继续编辑（递归到任意深度）。
+- 变量面板：名称 / 类型 / 默认值；步骤输出用到的新变量自动登记。
+- 执行桥：`ActionDto.Program` + `Features/Migration/ActionPrograms.For`（懒迁移并缓存）；
+  `ActionExecutor` 在 `Program != null` 时改走 `ActionEngine`，旧格式到 W5 再说。
+- 动作管理列表：`Program` 动作显示「动作 · N 步」（旧格式仍按原类型显示）。
+
+暂缓（后续补）：
+
+- 拖动排序（当前用 ↑ / ↓；`ListDragSort` 接入留待 W4 收尾）。
+- 行内直接改关键参数（当前双击进对话框）。
+- 子动作库页面（设置里新增一页，列表 + 同构编辑器 + 输入 / 输出标记）。
 
 **验收**：新增一个单元**不改任何 UI 代码**即可出现在工具箱并能编辑。
+`PanelSmoke` 真实构造三栏窗口 + 生成的参数表单并截图；`ActionSmoke` 覆盖
+迁移缓存 / 深拷贝 / JSON 往返 / `Program` 执行桥（共 599 项断言）。
 
 ### W5 切流与删除
 

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
+using LTools.Core.Actions;
 
 namespace LTools.Features;
 
@@ -400,7 +401,13 @@ public sealed class ActionDto
     /// </summary>
     public string? OutputVar { get; set; }
 
-    /// <summary>深拷贝（含 Steps / Flow 递归）；用于把动作池动作复制成组合步骤的独立快照（§12 动作解耦）。</summary>
+    /// <summary>
+    /// 动作体（schema v2：变量表 + 步骤 + 动作内子动作）。为 null = 旧格式，
+    /// 由 <c>Features.Migration.ActionPrograms</c> 按需迁移；非 null 时执行走新引擎。
+    /// </summary>
+    public ActionProgram? Program { get; set; }
+
+    /// <summary>深拷贝（含 Steps / Flow / Program 递归）；用于把动作池动作复制成组合步骤的独立快照（§12 动作解耦）。</summary>
     public ActionDto Clone() => new()
     {
         Id = Id, Name = Name, Icon = Icon, Type = Type,
@@ -417,6 +424,7 @@ public sealed class ActionDto
         X = X, Y = Y, MouseAction = MouseAction, WheelDelta = WheelDelta,
         MacroId = MacroId,
         OutputVar = OutputVar,
+        Program = Program?.Clone(),
         CompositeOnFail = CompositeOnFail,
         Steps = Steps?.Select(s => new StepDto { Action = s.Action.Clone(), DelayMs = s.DelayMs, OnFail = s.OnFail }).ToList(),
         Flow = Flow != null ? FlowNode.CloneList(Flow) : null,

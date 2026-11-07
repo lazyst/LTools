@@ -56,6 +56,9 @@ internal sealed class RunContext
     public int CursorX { get; }
     public int CursorY { get; }
 
+    /// <summary>停止热键 / 外部取消（供新引擎桥接使用）。</summary>
+    public CancellationToken Token => _token;
+
     /// <summary>变量表（大小写不敏感）。</summary>
     public Dictionary<string, VarValue> Vars { get; } = new(StringComparer.OrdinalIgnoreCase);
 

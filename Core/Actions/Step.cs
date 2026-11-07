@@ -66,6 +66,15 @@ public sealed class StepArg
     public static StepArg FromInline(Step step) =>
         new(StepArgKind.inline, inline: step ?? throw new ArgumentNullException(nameof(step)));
 
+    /// <summary>深拷贝（内联步骤递归复制；字面量值本身不可变，直接共享）。</summary>
+    public StepArg Clone() => Kind switch
+    {
+        StepArgKind.variable => new StepArg(StepArgKind.variable, variable: VariablePath),
+        StepArgKind.inline => new StepArg(StepArgKind.inline,
+            inline: InlineStep?.Clone() ?? throw new ActionException("内联取值步骤为空")),
+        _ => new StepArg(StepArgKind.literal, literal: Literal),
+    };
+
     /// <summary>求值。字面量文本会渲染 <c>${...}</c>（列表 / 对象里的文本也递归渲染）；其余保留原始类型。</summary>
     internal Value Resolve(StepContext ctx) => Kind switch
     {
@@ -171,6 +180,28 @@ public sealed class Step
         foreach (var child in Body.Concat(Then).Concat(Else))
             foreach (var step in child.SelfAndDescendants())
                 yield return step;
+    }
+
+    /// <summary>深拷贝（参数、输出映射、子步骤全部复制）。</summary>
+    public Step Clone()
+    {
+        var clone = new Step
+        {
+            Unit = Unit,
+            Note = Note,
+            Disabled = Disabled,
+            OnFail = OnFail,
+            DelayMs = DelayMs,
+        };
+
+        foreach (var pair in In) clone.In[pair.Key] = pair.Value.Clone();
+        foreach (var pair in Out) clone.Out[pair.Key] = pair.Value;
+
+        foreach (var child in Body) clone.Body.Add(child.Clone());
+        foreach (var child in Then) clone.Then.Add(child.Clone());
+        foreach (var child in Else) clone.Else.Add(child.Clone());
+
+        return clone;
     }
 }
 

@@ -4,6 +4,8 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using LTools.Core;
+using LTools.Core.Actions;
+using LTools.Features.Migration;
 using LTools.Native;
 
 namespace LTools.Features;
@@ -49,7 +51,7 @@ internal static class ActionExecutor
     {
         // 从 CapsLock 菜单启动时 CapsLock 仍可能处于按下态；流程运行期间钩子会屏蔽 CapsLock，
         // 若不在启动前清掉，状态机可能一直认为它按着（见 FlowRunner.PrepareToRun）。
-        if (action.Type == ActionType.composite) FlowRunner.PrepareToRun();
+        if (action.Type == ActionType.composite || action.Program != null) FlowRunner.PrepareToRun();
 
         bool trace = action.Type != ActionType.composite;   // composite 由 FlowRunner 记录流程日志
 
@@ -79,6 +81,10 @@ internal static class ActionExecutor
     /// </summary>
     internal static VarValue? Execute(ActionDto action, int cursorX, int cursorY, RunContext? ctx = null)
     {
+        // v2 动作体（新编辑器保存的）交给新引擎；旧格式继续走下面的 switch，W5 删除。
+        if (action.Program != null)
+            return RunProgram(action, cursorX, cursorY, ctx);
+
         VarValue? result = null;
         switch (action.Type)
         {
@@ -133,6 +139,34 @@ internal static class ActionExecutor
                 throw new InvalidOperationException($"未知动作类型: {action.Type}");
         }
         return result;
+    }
+
+    // —— v2 动作体（新引擎桥接）——
+
+    /// <summary>用新引擎执行 <see cref="ActionDto.Program"/>；失败按旧流程的异常语义上抛。</summary>
+    private static VarValue? RunProgram(
+        ActionDto action, int cursorX, int cursorY, RunContext? ctx)
+    {
+        var options = new ActionRunOptions
+        {
+            Token = ctx?.Token ?? CancellationToken.None,
+            CursorX = cursorX,
+            CursorY = cursorY,
+        };
+
+        var engine = new ActionEngine(StepRegistry.Default);
+        ActionRunResult result = engine.Run(
+            action.Program ?? throw new InvalidOperationException($"「{action.Name}」没有动作体"),
+            options);
+
+        if (result.Stopped)
+            throw new FlowAbortException("已停止", userCancelled: true);
+
+        if (!result.Ok)
+            throw new InvalidOperationException(
+                result.Error ?? $"动作「{action.Name}」执行失败");
+
+        return null;
     }
 
     // —— launchApp ——

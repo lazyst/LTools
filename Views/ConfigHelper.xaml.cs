@@ -1098,9 +1098,9 @@ public partial class ConfigHelperWindow : Window
         {
             Id = a.Id;
             Name = a.Name;
-            TypeLabel = ActionTypeLabel.Of(a.Type);
+            TypeLabel = a.Program != null ? "动作" : ActionTypeLabel.Of(a.Type);
             Glyph = IconCatalog.GetGlyph(a.Icon);
-            Summary = Summarize(a, macroNames);
+            Summary = a.Program != null ? ProgramSummary(a) : Summarize(a, macroNames);
             References = references;
         }
         public string Id { get; }
@@ -1109,6 +1109,13 @@ public partial class ConfigHelperWindow : Window
         public string TypeLabel { get; }
         public string Glyph { get; }
         public string Summary { get; }
+
+        /// <summary>v2 动作体：显示步骤总数（含子步骤）。</summary>
+        private static string ProgramSummary(ActionDto a)
+        {
+            int count = a.Program?.Steps.Sum(s => s.SelfAndDescendants().Count()) ?? 0;
+            return count == 0 ? "空动作" : $"{count} 步";
+        }
 
         private static string Summarize(ActionDto a, IReadOnlyDictionary<string, string>? macroNames) => a.Type switch
         {

@@ -34,6 +34,16 @@ public sealed class VariableDef
     /// <summary>实际初始值（默认值按声明类型转换；缺失时给该类型的空值）。</summary>
     public Value Seed() => Default?.Coerce(Type) ?? DefaultFor(Type);
 
+    /// <summary>复制声明（值不可变，直接共享）。</summary>
+    public VariableDef Clone() => new()
+    {
+        Key = Key,
+        Type = Type,
+        Default = Default,
+        Label = Label,
+        Direction = Direction,
+    };
+
     public static Value DefaultFor(ValueKind kind) => kind switch
     {
         ValueKind.text => Value.FromText(""),
@@ -71,6 +81,24 @@ public sealed class SubActionDef
     [JsonPropertyName("subActions")]
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Populate)]
     public List<SubActionDef> SubActions { get; } = new();
+
+    /// <summary>深拷贝（变量、步骤、嵌套子动作全部复制）。</summary>
+    public SubActionDef Clone()
+    {
+        var clone = new SubActionDef
+        {
+            Id = Id,
+            Name = Name,
+            Icon = Icon,
+            Description = Description,
+        };
+
+        foreach (var variable in Variables) clone.Variables.Add(variable.Clone());
+        foreach (var step in Steps) clone.Steps.Add(step.Clone());
+        foreach (var child in SubActions) clone.SubActions.Add(child.Clone());
+
+        return clone;
+    }
 }
 
 /// <summary>
@@ -102,4 +130,22 @@ public sealed class ActionProgram
     [JsonPropertyName("subActions")]
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Populate)]
     public List<SubActionDef> SubActions { get; } = new();
+
+    /// <summary>深拷贝（变量、步骤、动作内子动作全部复制）。</summary>
+    public ActionProgram Clone()
+    {
+        var clone = new ActionProgram
+        {
+            Id = Id,
+            Name = Name,
+            Icon = Icon,
+            Description = Description,
+        };
+
+        foreach (var variable in Variables) clone.Variables.Add(variable.Clone());
+        foreach (var step in Steps) clone.Steps.Add(step.Clone());
+        foreach (var child in SubActions) clone.SubActions.Add(child.Clone());
+
+        return clone;
+    }
 }
