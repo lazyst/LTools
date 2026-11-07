@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace LTools.Features;
 
 /// <summary>
-/// 内部动作注册表（对应计划 §7）。<see cref="ActionType.@internal"/> 类型动作的
+/// 内部动作注册表（对应计划 §7）。v1 配置里 <c>type = "internal"</c> 的动作，迁移后变成「内部动作」单元。
 /// <see cref="ActionDto.Command"/> 在此查表分发到对应功能的入口方法。
 /// 启动时由 App 调用 <see cref="RegisterDefaults"/> 注册内置命令。
 /// </summary>

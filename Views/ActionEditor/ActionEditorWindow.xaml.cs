@@ -881,6 +881,8 @@ public partial class ActionEditorWindow : Window
         _draft.Name = name;
         _draft.Icon = _program.Icon;
         _draft.Type = ActionType.composite;
+        // 用新编辑器保存过 = 已是新格式，不再回写 v1 字段
+        _draft.ClearLegacy();
         _draft.Program = _program;
 
         Result = _draft;

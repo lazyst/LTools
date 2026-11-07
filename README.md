@@ -427,7 +427,7 @@ dotnet publish -c Release -r win-x64 --self-contained false
 
 ## 11. 自定义指南
 
-所有配置在程序目录下的 `LTools.json`（开发环境为仓库根），由应用自身读写；**首次保存才生成**，升级解压不会覆盖。文件不存在时回退读取同目录的 `LTools.example.json`。格式为 **JSON**（枚举写成字符串，如 `"Type": "runCommand"`），**不是**旧的 INI 分节格式。
+所有配置在程序目录下的 `LTools.json`（开发环境为仓库根），由应用自身读写；**首次保存才生成**，升级解压不会覆盖。文件不存在时回退读取同目录的 `LTools.example.json`。格式为 **JSON**（枚举写成字符串，如 `"Type": "composite"`），**不是**旧的 INI 分节格式。
 
 如果 `LTools.json` 存在但无法解析（手改出错 / 旧格式），程序会**保留原文件**并备份为 `LTools.json.bad-时间戳`，本次运行使用示例默认值且不会写回；设置页保存时会提示失败。修复配置或从备份恢复后再保存即可，不会再把动作和菜单洗成空。
 
@@ -435,13 +435,10 @@ dotnet publish -c Release -r win-x64 --self-contained false
 
 ### 11.1 主要字段
 
-- **`Actions`**：全局动作池。每个动作有 `Id` / `Name` / `Icon` / `Type` 及类型专属字段，类型见 `Features/ActionTypes.cs`：`launchApp`、`openFile`、`openFolder`、`openUrl`、`runCommand`、`sendText`、`setClipboard`、`toast`、`sendKeys`、`mouse`、`window`、`clickText`、`imageClick`、`macro`、`internal`、`composite`。`sendText`、`setClipboard`、`toast` 与 `clickText` 共用 `Text` 字段（写入剪贴板 / 提示卡正文 / 要点击的文字，均不发送按键）；`toast` 另有 `DurationMs`（停留毫秒，缺省 4000，`0` = 不自动关闭）。宏动作只用 `MacroId` 引用事件文件，事件本体不在配置里。
-  - `mouse`：`X` / `Y`（虚拟桌面像素，可写 `${变量}`）、`MouseAction`（`click` / `doubleClick` / `rightClick` / `middleClick` / `move` / `wheelUp` / `wheelDown`）、`WheelDelta`。
-  - `window`：`WindowTitle`（标题包含，支持 `${变量}`）、`WindowClass`（类名精确，一般留空）、`WindowOp`（`activate` / `maximize` / `minimize` / `restore` / `resize`）、`WindowRect`（`resize` 用的 `[x, y, w, h]`，物理像素）。
-  - `clickText`：`Text`（要点的文字，支持 `${变量}`）、`Region`（`foreground` / `screen` / `rect`）、`Rect`（`rect` 时的 `[x, y, w, h]`）、`OcrEngine`（空 = 系统 OCR，或 `v6tiny` / `v6small`）、`TimeoutMs`（等文字出现的毫秒数，空 = 只找一次）、`MouseAction`（点击方式，取值同 `mouse`，滚轮两项无意义）。
-  - `imageClick`：`Image`（模板图路径，语义同「截图找图」）、`MinScore`（最低相似度 0.30–0.99，空 = 0.85）、`Region` / `Rect` / `TimeoutMs` / `MouseAction`（含义同 `clickText`）。
-  - `composite`：`Flow` 是嵌套流程（`action` / `set` / `if` / `loop` / `break` / `continue` / `stop`），旧配置的 `Steps` 会在打开编辑器或运行时自动迁移并清空。流程变量只在单次运行内有效；文本字段只支持 `${变量}`（没有内置值，取值请用左栏「取值」或「设置变量」），`$$` 表示字面 `$`。图像识别用 `Probe` 的 `image`（截图模板在 `resources/images/`，用户素材在 `resources/user/`），找文字用 `textSearch`（`Text` = 要找的文字，`OcrEngine` 同 `ocr`，输出 `x` / `y` / `found` / `text`），颜色用 `color`；截图的 `screenshot` 用 `ScreenshotMode`（`interactive` / `foreground` / `screen` / `rect`）与 `ScreenshotRect`（`rect` 时的 `x,y,w,h`，可写模板），结果带 `x` / `y` / `w` / `h` / `cx` / `cy` / `file` / `found`；文字识别用 `ocr` 的 `OcrImage`（图片变量或路径，如 `${截图}`）与 `OcrEngine`，**不再自己截屏**；弹框输入用 `user`（可加 `Multiline`）。
-  - `OutputVar`：流程里单个动作步骤的输出变量（空 = 不输出）。`runCommand` 填了它会在后台捕获执行：`${变量}` 标准输出、`${变量.exit}` 退出码、`${变量.err}` 错误输出；`launchApp` 存 PID；`openFile` / `openFolder` / `openUrl` 存实际目标；`setClipboard` 存写入的文本；`mouse` 存操作后坐标（`${变量.x}` / `${变量.y}`）；`window` 存操作后的窗口矩形（`${变量}` = `x,y,w,h`，另有 `.x` / `.y` / `.w` / `.h`，`found` 表示找到窗口且达到目标状态）；`clickText` 存点击位置（`${变量}` = `x,y`，另有 `.x` / `.y` / `found`）；`imageClick` 另带 `.score`。
+- **`Actions`**：全局动作池。新格式每个动作只有 `Id` / `Name` / `Icon` / `Type`（`composite` 或 `macro`） / `MacroId`（宏动作） / `Program`：
+  - `Program`：变量表 `variables`、步骤 `steps`、动作内子动作 `subActions`。步骤是「功能单元 + 参数」的 JSON（`unit` / `in` / `out` / `body` / `then` / `else`），单元与写法见 `docs/ACTION_SYSTEM.md`；文本参数支持 `${变量}`。
+  - **旧格式仍能直接读入**：`Type` 为 `launchApp` / `runCommand` / `sendText` / `clickText` / `composite` 等 v1 类型、字段平铺在动作上的配置，第一次执行或用新编辑器打开时由迁移器转成 `Program`；保存后这个动作只写新格式。旧字段含义与迁移对照表见 `docs/ACTION_SYSTEM.md` 的「迁移」一节。
+  - 动作里引用的模板图存 `resources/images/`（程序生成，按引用回收）或 `resources/user/`（用户素材，不自动删除）；宏事件本体存数据根 `macros/<id>.json`，配置里只放 `MacroId`。
 - **`SuperPanel`**：旧面板配置。`Enabled`（独立开关）、`LongPressThresholdMs`（长按阈值 100–800）；`Pages` / `LastPage` 只用于从旧版本迁移，新版本不再写入。
 - **`Panel`**：动作面板结构。`Preferences`（尺寸、视图选项、上次全局场景）、`Global`（全局场景与标签）、`Context`（上下文场景、`Common` 兜底分组）、`Blocked`（禁止弹出的进程）、`HintDismissed`（是否关掉未配置提示）。动作入口只存动作 Id；字段与迁移规则见 `docs/PANEL_REDESIGN.md`。
 - **`MenuGroups`**：固定 10 组（下标 0–9 对应 `CapsLock+1`~`CapsLock+0`，`null` 表示空组）。每组含 `Enabled`、`Name`、`Items`（动作 Id 列表）。

@@ -10,7 +10,7 @@ namespace LTools.Features.Migration.Legacy;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 只处理 schema v1 的动作（<see cref="ActionType.@internal"/> 和旧 <c>steps</c> / <c>flow</c>）；
+/// 只处理 schema v1 的动作（旧 <c>type = "internal"</c> 和旧 <c>steps</c> / <c>flow</c>）；
 /// 新动作编译成 <see cref="ActionProgram"/>，没有这些字段，扫到也不会命中。
 /// </para>
 /// <list type="bullet">
@@ -52,7 +52,7 @@ internal static class ObsoleteActionCleanup
     }
 
     private static bool IsObsolete(ActionDto a) =>
-        a.Type == ActionType.@internal && a.Command != null && ObsoleteCommands.Contains(a.Command);
+        a.SourceType == "internal" && a.Command != null && ObsoleteCommands.Contains(a.Command);
 
     private static bool RemoveObsoleteNodes(List<FlowNode> nodes)
     {

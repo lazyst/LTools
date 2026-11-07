@@ -5,7 +5,7 @@ using LTools.Core;
 namespace LTools.Features;
 
 /// <summary>
-/// 速记动作 / 取值器的薄封装：写速记（<see cref="ActionType.quickNote"/>）与读速记（<see cref="ProbeKind.note"/>）。
+/// 速记动作 / 取值器的薄封装：写速记（v1 的 <c>quickNote</c> 动作 / 新单元的 <c>data.noteWrite</c>）与读速记（<see cref="ProbeKind.note"/>）。
 /// 数据层复用 <see cref="NoteRepository"/>，目录与 CapsLock+N 的速记窗口完全一致（<see cref="AppPaths.NotesDir"/>）。
 /// </summary>
 /// <remarks>

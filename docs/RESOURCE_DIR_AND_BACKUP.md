@@ -119,7 +119,7 @@ resources/...        （含时）
 3. 校验 `manifest.json`：`format == "ltools-backup"`、`formatVersion == 1`、`includes` 合法、`LTools.json` 存在且可解析为 `AppConfig`。
 4. **安全扫描**（仅针对 `resources/`，配置本身不算可执行）：
    - 统计可执行文件数：扩展名 ∈ `{.exe,.bat,.cmd,.ps1,.vbs,.js,.msi,.com,.scr,.lnk,.wsf,.jar}`。
-   - 列出引用 `resources` 的动作：解析导入的 `LTools.json`，`Actions` 中 `Type ∈ {launchApp, runCommand}` 且 `Cmd` / `Target` 含 `resources`（不区分大小写、忽略分隔符差异）的条目，取「名称 + 片段」。
+   - 列出引用 `resources` 的动作：解析导入的 `LTools.json`，看 `Actions` 里的新动作体（`Program` 步骤的 `app.launch.target` / `app.runCommand.command` / `file.open.path`）与旧字段（`launchApp.Target` / `runCommand.Cmd`），含 `resources`（不区分大小写、忽略分隔符差异）的条目取「名称 + 片段」。
 5. 弹 `ConfirmDialog` 警告：
    > 此备份含 **N** 个可执行文件，并将替换当前配置。导入后以下动作可能以**管理员权限**执行其中脚本：
    > • 名称1 — `resources\foo.ps1`

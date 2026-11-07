@@ -1071,7 +1071,7 @@ public partial class ConfigHelperWindow : Window
         {
             Id = a.Id;
             Name = a.Name;
-            TypeLabel = a.Program != null ? "动作" : ActionTypeLabel.Of(a.Type);
+            TypeLabel = a.Program != null ? "动作" : LegacyActionSummary.TypeLabel(a);
             Glyph = IconCatalog.GetGlyph(a.Icon);
             Summary = a.Program != null ? ProgramSummary(a) : LegacyActionSummary.Summarize(a, macroNames);
             References = references;

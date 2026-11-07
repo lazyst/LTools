@@ -21,35 +21,47 @@ namespace LTools.Features.Migration.Legacy;
 internal static class LegacyActionSummary
 {
     /// <summary>旧动作的列表摘要（与编辑器 / 备份预览的显示一致）。</summary>
-    public static string Summarize(ActionDto a, IReadOnlyDictionary<string, string>? macroNames) => a.Type switch
+    public static string Summarize(ActionDto a, IReadOnlyDictionary<string, string>? macroNames) => a.SourceType switch
     {
-        ActionType.launchApp => a.Target ?? "",
-        ActionType.openFile or ActionType.openFolder => a.Path ?? "",
-        ActionType.openUrl => a.Url ?? "",
-        ActionType.runCommand => string.IsNullOrEmpty(a.Cmd) ? "" : $"{a.Cmd}",
-        ActionType.sendText => BriefText(a.Text),
-        ActionType.setClipboard => BriefText(a.Text),
-        ActionType.toast => BriefText(a.Text),
-        ActionType.quickNote => QuickNoteSummary(a),
-        ActionType.window => WindowSummary(a),
-        ActionType.clickText => ClickTextSummary(a),
-        ActionType.imageClick => ImageClickSummary(a),
-        ActionType.sendKeys => a.Items != null ? $"{a.Items.Count} 条输入" : "",
-        ActionType.macro => MacroLabel(a.MacroId, macroNames),
-        ActionType.@internal => a.Command ?? "",
-        ActionType.composite => CompositeSummary(a),
+        "launchApp" => a.Target ?? "",
+        "openFile" or "openFolder" => a.Path ?? "",
+        "openUrl" => a.Url ?? "",
+        "runCommand" => string.IsNullOrEmpty(a.Cmd) ? "" : $"{a.Cmd}",
+        "sendText" => BriefText(a.Text),
+        "setClipboard" => BriefText(a.Text),
+        "toast" => BriefText(a.Text),
+        "quickNote" => QuickNoteSummary(a),
+        "window" => WindowSummary(a),
+        "clickText" => ClickTextSummary(a),
+        "imageClick" => ImageClickSummary(a),
+        "sendKeys" => a.Items != null ? $"{a.Items.Count} 条输入" : "",
+        "macro" => MacroLabel(a.MacroId, macroNames),
+        "internal" => a.Command ?? "",
+        "composite" => CompositeSummary(a),
         _ => "",
     };
 
-    /// <summary>
-    /// 旧动作里可能指向 <c>resources</c> 目录的路径（备份预览用来提示「导入了可执行文件」）。
-    /// 迁移后的新动作由步骤参数表达，这里只认旧字段。
-    /// </summary>
-    public static string? ResourceReference(ActionDto a) => a.Type switch
+    /// <summary>旧动作的中文类型名（新动作由调用方显示「动作」）。</summary>
+    public static string TypeLabel(ActionDto a) => a.SourceType switch
     {
-        ActionType.launchApp => a.Target,
-        ActionType.runCommand => a.Cmd,
-        _ => null,
+        "launchApp" => "启动程序",
+        "openFile" => "打开文件",
+        "openFolder" => "打开文件夹",
+        "openUrl" => "打开网址",
+        "runCommand" => "运行命令",
+        "sendText" => "发送文本",
+        "setClipboard" => "写入剪贴板",
+        "toast" => "提示弹窗",
+        "quickNote" => "写速记",
+        "window" => "窗口操作",
+        "clickText" => "文字点击",
+        "imageClick" => "图片点击",
+        "sendKeys" => "模拟按键",
+        "mouse" => "鼠标操作",
+        "macro" => "键鼠宏",
+        "internal" => "内部动作",
+        "composite" => "组合动作",
+        _ => a.SourceType,
     };
 
     /// <summary>组合动作摘要：统计含嵌套在内的节点数（旧 Steps 也能显示）。</summary>

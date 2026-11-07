@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
@@ -7,46 +8,28 @@ using LTools.Features.Migration.Legacy;
 namespace LTools.Features;
 
 /// <summary>
-/// 动作类型枚举（对应计划 §3 动作类型表）。JSON 中以小写字符串存储。
+/// 动作类型（新格式只有两种）。JSON 中以小写字符串存储。
 /// </summary>
 /// <remarks>
-/// 成员名与 JSON schema 一致；<c>@internal</c> 的 <c>@</c> 仅转义 C# 关键字，
-/// 运行时成员名为 <c>internal</c>，<see cref="JsonStringEnumConverter"/> 序列化为 <c>"internal"</c>。
+/// <para>
+/// v1 的类型名（<c>launchApp</c> / <c>runCommand</c> / <c>sendText</c> / <c>internal</c> …）
+/// 不再进枚举，而是留在 <see cref="ActionDto.LegacyType"/>（由 JSON 的 <c>type</c> 读入），
+/// 只给迁移器与旧动作摘要用。读旧配置时这些动作在内存里按 <see cref="composite"/> 对待，
+/// 第一次执行 / 编辑后由 <see cref="Features.Migration.ActionPrograms"/> 迁移成
+/// <see cref="ActionProgram"/> 并丢掉旧字段。
+/// </para>
 /// </remarks>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum ActionType
 {
-    launchApp,
-    openFile,
-    openFolder,
-    openUrl,
-    runCommand,
-    sendText,
-    setClipboard,
-
-    /// <summary>提示弹窗：把一段文字用置顶提示卡显示出来，**不阻塞**后续步骤。</summary>
-    toast,
-
-    /// <summary>写速记：把一段文字存进速记（<see cref="NoteRepository"/>，与 CapsLock+N 同一个目录）。</summary>
-    quickNote,
-
-    /// <summary>窗口操作：切到前台 / 最大化 / 最小化 / 还原 / 调整到指定大小。</summary>
-    window,
-
-    /// <summary>文字点击：在指定区域里识别文字，找到指定的文字就点它（见 <see cref="TextClickAction"/>）。</summary>
-    clickText,
-
-    /// <summary>图片点击：在指定区域里找模板图，找到就点它（见 <see cref="ImageClickAction"/>）。</summary>
-    imageClick,
-
-    sendKeys,
-    mouse,
-    macro,
-    @internal,
+    /// <summary>动作体（<see cref="ActionDto.Program"/>）：新建动作、迁移后的旧动作都是它。</summary>
     composite,
+
+    /// <summary>「一个键鼠宏就是一个动作」的顶层宏动作（事件本体在 <c>macros/&lt;id&gt;.json</c>）。</summary>
+    macro,
 }
 
-/// <summary>鼠标动作的子类型（<see cref="ActionType.mouse"/>）。</summary>
+/// <summary>鼠标动作的子类型（旧 <c>mouse</c> 动作 / 新「鼠标操作」单元）。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum MouseActionKind
 {
@@ -72,7 +55,7 @@ public enum MouseActionKind
     wheelDown,
 }
 
-/// <summary>窗口操作子类型（<see cref="ActionType.window"/>）。</summary>
+/// <summary>窗口操作子类型（旧 <c>window</c> 动作 / 新「窗口操作」单元）。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum WindowActionKind
 {
@@ -156,33 +139,6 @@ public sealed class KeyItem
     };
 }
 
-/// <summary>动作类型的中文显示名（UI 共用）。</summary>
-public static class ActionTypeLabel
-{
-    /// <summary>取得中文类型名。</summary>
-    public static string Of(ActionType t) => t switch
-    {
-        ActionType.launchApp => "启动程序",
-        ActionType.openFile => "打开文件",
-        ActionType.openFolder => "打开文件夹",
-        ActionType.openUrl => "打开网址",
-        ActionType.runCommand => "运行命令",
-        ActionType.sendText => "发送文本",
-        ActionType.setClipboard => "写入剪贴板",
-        ActionType.toast => "提示弹窗",
-        ActionType.quickNote => "写速记",
-        ActionType.window => "窗口操作",
-        ActionType.clickText => "文字点击",
-        ActionType.imageClick => "图片点击",
-        ActionType.sendKeys => "模拟按键",
-        ActionType.mouse => "鼠标操作",
-        ActionType.macro => "键鼠宏",
-        ActionType.@internal => "内部动作",
-        ActionType.composite => "组合动作",
-        _ => t.ToString(),
-    };
-}
-
 /// <summary>窗口操作的中文显示名（编辑器下拉 / 步骤摘要共用）。</summary>
 public static class WindowActionLabel
 {
@@ -257,8 +213,51 @@ public sealed class ActionDto : ActionDtoLegacy
     /// <summary>内置图标 Id（见 <see cref="IconCatalog"/>），可为空。</summary>
     public string? Icon { get; set; }
 
-    /// <summary>动作类型。新动作是 <see cref="ActionType.composite"/>（宏动作是 <see cref="ActionType.macro"/>）。</summary>
+    /// <summary>
+    /// 动作类型。新动作是 <see cref="ActionType.composite"/>（宏动作是 <see cref="ActionType.macro"/>）。
+    /// 旧配置的 v1 类型名不在这里，见 <see cref="RawType"/> / <see cref="LegacyType"/>。
+    /// </summary>
+    [JsonIgnore]
     public ActionType Type { get; set; }
+
+    /// <summary>
+    /// JSON 里的 <c>Type</c>：新动作写 <c>composite</c> / <c>macro</c>；
+    /// 旧配置读到的 v1 类型名（<c>runCommand</c> / <c>sendText</c> …）原样留在
+    /// <see cref="ActionDtoLegacy.LegacyType"/>，迁移器按它映射，回写时也写回原值。
+    /// </summary>
+    [JsonPropertyName("Type")]
+    [JsonConverter(typeof(LegacyTypeNameConverter))]
+    public string RawType
+    {
+        get => LegacyType ?? Type.ToString();
+        set
+        {
+            string raw = (value ?? "").Trim();
+            if (raw.Equals("macro", StringComparison.OrdinalIgnoreCase))
+            {
+                LegacyType = null;
+                Type = ActionType.macro;
+            }
+            else if (raw.Length == 0 || raw.Equals("composite", StringComparison.OrdinalIgnoreCase))
+            {
+                LegacyType = null;
+                Type = ActionType.composite;
+            }
+            else
+            {
+                // v1 类型名：先按「组合动作」对待（它会被迁移成程序），原字符串留给迁移器。
+                LegacyType = raw;
+                Type = ActionType.composite;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 迁移 / 旧动作摘要用的类型名：旧动作是 v1 的 <c>type</c> 字符串，
+    /// 新动作是 <c>composite</c> / <c>macro</c>。
+    /// </summary>
+    [JsonIgnore]
+    public string SourceType => LegacyType ?? Type.ToString();
 
     // —— macro（录制宏）——
 

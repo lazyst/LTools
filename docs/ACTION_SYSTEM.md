@@ -466,11 +466,20 @@ sealed class SubActionDef {
 - 删除无调用的 `Features/Flow/ActionMaterializer`、`ActionResults`、`FlowVariables`；
   `Views/Controls/VariableList` 只收变量名（不再列属性后缀）。
 
-#### W5b-2 枚举收窄（待做）
+#### W5b-2 枚举收窄 ✅
 
-- `ActionType` 收窄（新动作只需要 `composite` + 宏），旧枚举值只留在迁移映射里；
-  旧 `type` 字符串进 legacy，读取用容错 `JsonConverter<ActionDto>`（并兼容旧配置回写）。
-- `git grep FlowNodeKind` 只剩迁移器里的历史映射。
+- `ActionType` 只剩 `composite` / `macro`；`ActionDto.Type` 标 `[JsonIgnore]`，JSON 的 `Type`
+  改由 `ActionDto.RawType` 读写：新动作写 `composite` / `macro`，旧配置的 v1 类型名原样留在
+  `ActionDtoLegacy.LegacyType`——未迁移的动作回写时仍是旧值，旧版本也还能读。
+- `LegacyTypeNameConverter` 容错读取：`Type` 写成数字（旧枚举声明序号）也能映射回名字。
+- 迁移器按 `ActionDto.SourceType`（旧类型名，或 `composite` / `macro`）分支；`ActionPrograms.For`
+  迁移成功后 `ClearLegacy()`，动作从此只写 `program`；新编辑器保存同样清空旧字段。
+- 旧动作摘要 / 类型标签 / 备份引用预览统一在 `LegacyActionSummary` 里按字符串分支；
+  `ActionTypeLabel` 与无调用的 `FlowText` 删除。
+- `git grep FlowNodeKind` 只剩 `FlowTypes`（定义）、`FlowMigration`（旧 Steps → Flow）与迁移器。
+
+**验收**：仓库构建 0 错 0 警；`ActionSmoke` 601 项断言通过；`PanelSmoke` 全绿；
+另用外部检查覆盖真实 `LTools.example.json` 读取、旧 `Type` 回写、数字 `Type`、宏动作迁移。
 
 ---
 

@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using LTools.Features;
+using LTools.Features.Migration.Legacy;
 
 namespace LTools.Views;
 
@@ -45,7 +46,7 @@ public partial class ActionPoolPicker : Window
             {
                 Id = a.Id,
                 Name = a.Name,
-                Type = ActionTypeLabel.Of(a.Type),
+                Type = a.Program != null ? "动作" : LegacyActionSummary.TypeLabel(a),
                 Glyph = IconCatalog.GetGlyph(a.Icon),
             });
         }

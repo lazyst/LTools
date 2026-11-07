@@ -311,7 +311,8 @@ public sealed class AppConfig
                 {
                     Id = id,
                     Name = iname,
-                    Type = ActionType.runCommand,
+                    Type = ActionType.composite,
+                    LegacyType = "runCommand",
                     Cmd = IniFile.ReadValue(iniPath, section, "action" + j) ?? "",
                     Terminal = IniFile.ReadValue(iniPath, section, "terminal" + j) ?? "direct",
                     KeepWindow = (IniFile.ReadValue(iniPath, section, "keepwindow" + j) ?? "false")

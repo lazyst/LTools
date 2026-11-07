@@ -62,7 +62,7 @@ public static class ActionMigrator
         result.Program.Name = action.Name ?? "";
         result.Program.Icon = action.Icon ?? "";
 
-        if (action.Type == ActionType.composite)
+        if (action.SourceType == "composite")
         {
             result.Program.Steps.AddRange(ConvertComposite(action, ctx));
         }
@@ -123,7 +123,7 @@ public static class ActionMigrator
                         break;
                     }
 
-                    var actionSteps = node.Action.Type == ActionType.composite
+                    var actionSteps = node.Action.SourceType == "composite"
                         ? ConvertComposite(node.Action, ctx)
                         : ConvertAction(node.Action, node.Action.OutputVar, ctx);
 
@@ -304,67 +304,68 @@ public static class ActionMigrator
             return steps;
         }
 
-        if (action.Type == ActionType.composite)
+        if (action.SourceType == "composite")
         {
             ctx.Warn($"「{action.Name}」是嵌套组合动作（旧版不支持），已就地展开");
             steps.AddRange(ConvertComposite(action, ctx));
             return steps;
         }
 
-        Step? primary = action.Type switch
+        string kind = action.SourceType;
+        Step? primary = kind switch
         {
-            ActionType.launchApp => Step.Of("app.launch")
+            "launchApp" => Step.Of("app.launch")
                 .WithText("target", action.Target)
                 .WithText("args", action.Args)
                 .WithText("workdir", action.Workdir),
 
-            ActionType.openFile => Step.Of("file.open")
+            "openFile" => Step.Of("file.open")
                 .WithText("operation", "file")
                 .WithText("path", action.Path)
                 .WithText("workdir", action.Workdir),
 
-            ActionType.openFolder => Step.Of("file.open")
+            "openFolder" => Step.Of("file.open")
                 .WithText("operation", "folder")
                 .WithText("path", action.Path)
                 .WithText("workdir", action.Workdir),
 
-            ActionType.openUrl => Step.Of("file.open")
+            "openUrl" => Step.Of("file.open")
                 .WithText("operation", "url")
                 .WithText("path", action.Url),
 
-            ActionType.runCommand => BuildRunCommand(action),
+            "runCommand" => BuildRunCommand(action),
 
-            ActionType.sendText => Step.Of("text.send")
+            "sendText" => Step.Of("text.send")
                 .WithText("text", action.Text)
                 .WithText("mode", (action.Mode ?? SendTextMode.auto).ToString())
                 .With("appendEnter", StepArg.FromBool(action.AppendEnter == true))
                 .With("focusDelayMs", StepArg.FromNumber(50)),
 
-            ActionType.setClipboard => Step.Of("text.clipboard")
+            "setClipboard" => Step.Of("text.clipboard")
                 .WithText("operation", "write")
                 .WithText("text", action.Text),
 
-            ActionType.toast => BuildToast(action),
+            "toast" => BuildToast(action),
 
-            ActionType.quickNote => Step.Of("data.noteWrite")
+            "quickNote" => Step.Of("data.noteWrite")
                 .WithText("body", action.Text)
                 .WithText("title", action.NoteTitle)
                 .WithText("category", action.NoteCategory),
 
-            ActionType.window => BuildWindow(action, ctx),
+            "window" => BuildWindow(action, ctx),
 
-            ActionType.clickText => BuildClickText(action, ctx),
+            "clickText" => BuildClickText(action, ctx),
 
-            ActionType.imageClick => BuildClickImage(action),
+            "imageClick" => BuildClickImage(action),
 
-            ActionType.sendKeys => BuildSendKeys(action, ctx),
+            "sendKeys" => BuildSendKeys(action, ctx),
 
-            ActionType.mouse => BuildMouse(action),
+            "mouse" => BuildMouse(action),
 
-            ActionType.macro => Step.Of("input.macro")
+            "macro" => Step.Of("input.macro")
                 .WithText("macroId", action.MacroId),
 
-            ActionType.@internal => Step.Of("internal.invoke")
+            "internal" => Step.Of("internal.invoke")
                 .WithText("command", action.Command),
 
             _ => null,
@@ -372,7 +373,7 @@ public static class ActionMigrator
 
         if (primary == null)
         {
-            ctx.Error($"未知动作类型：{action.Type}");
+            ctx.Error($"未知动作类型：{kind}");
             return steps;
         }
 

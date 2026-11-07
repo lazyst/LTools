@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Serialization;
 using LTools.Features;
 
 namespace LTools.Features.Migration.Legacy;
@@ -10,8 +11,8 @@ namespace LTools.Features.Migration.Legacy;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 字段保持「按 <see cref="ActionDto.Type"/> 平铺」的老结构，由
-/// <see cref="ActionDto"/> 继承后仍是 JSON 扁平字段——旧配置不需要改写就能读进来。
+/// 字段保持「按旧的 <c>type</c> 平铺」的老结构，由 <see cref="ActionDto"/> 继承后仍是
+/// JSON 扁平字段——旧配置不需要改写就能读进来。
 /// </para>
 /// <para>
 /// 迁移完成后动作只写 <c>program</c>；这些字段为 null 时不会出现在 JSON 里。
@@ -19,6 +20,13 @@ namespace LTools.Features.Migration.Legacy;
 /// </remarks>
 public abstract class ActionDtoLegacy
 {
+    /// <summary>
+    /// v1 配置里的 <c>type</c> 字符串（<c>runCommand</c> / <c>sendText</c> …）。
+    /// 由 <see cref="ActionDto.RawType"/> 在反序列化时填充；新动作 / 已迁移动作为 null。
+    /// </summary>
+    [JsonIgnore]
+    public string? LegacyType { get; set; }
+
     // —— launchApp / runCommand 共用 ——
 
     /// <summary>launchApp: 目标 exe 路径。</summary>
@@ -152,6 +160,7 @@ public abstract class ActionDtoLegacy
     /// <summary>复制全部旧字段（含数组 / 列表的深拷贝）。</summary>
     public void CopyLegacyTo(ActionDtoLegacy target)
     {
+        target.LegacyType = LegacyType;
         target.Target = Target;
         target.Args = Args;
         target.Workdir = Workdir;
@@ -191,5 +200,45 @@ public abstract class ActionDtoLegacy
             OnFail = s.OnFail,
         }).ToList();
         target.Flow = Flow != null ? FlowNode.CloneList(Flow) : null;
+    }
+
+    /// <summary>迁移成功后清掉旧字段（动作从此只写 <c>program</c>）。</summary>
+    public void ClearLegacy()
+    {
+        LegacyType = null;
+        Target = null;
+        Args = null;
+        Workdir = null;
+        Path = null;
+        Url = null;
+        Cmd = null;
+        Terminal = null;
+        KeepWindow = null;
+        Command = null;
+        Text = null;
+        Mode = null;
+        AppendEnter = null;
+        DurationMs = null;
+        NoteTitle = null;
+        NoteCategory = null;
+        WindowTitle = null;
+        WindowClass = null;
+        WindowOp = null;
+        WindowRect = null;
+        Region = null;
+        Rect = null;
+        OcrEngine = null;
+        TimeoutMs = null;
+        Image = null;
+        MinScore = null;
+        Items = null;
+        X = null;
+        Y = null;
+        MouseAction = null;
+        WheelDelta = null;
+        OutputVar = null;
+        CompositeOnFail = null;
+        Steps = null;
+        Flow = null;
     }
 }

@@ -30,6 +30,10 @@ public static class ActionPrograms
             result.Program.Icon = action.Icon ?? "";
 
         action.Program = result.Program;
+
+        // 迁移成功就丢掉 v1 字段：动作从此只写 program（失败时保留，便于排查与重试）。
+        if (result.Ok) action.ClearLegacy();
+
         return result.Program;
     }
 
