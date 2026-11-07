@@ -31,6 +31,7 @@ public sealed class OpenPathUnit : IStepUnit
         {
             new OutputSpec("target", "实际目标", ValueKind.text),
             new OutputSpec("ok", "成功", ValueKind.@bool),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -56,6 +57,11 @@ public sealed class OpenPathUnit : IStepUnit
         Process.Start(psi);
         ctx.SetOutput("target", Value.FromText(target));
         ctx.SetOutput("ok", Value.FromBool(true));
+        ctx.SetOutput("value", Value.Object(
+            ("text", Value.FromText(target)),
+            ("path", Value.FromText(target)),
+            ("file", Value.FromText(target)),
+            ("found", Value.FromBool(true))));
     }
 }
 

@@ -105,11 +105,16 @@ public sealed class Value
         _ => "",
     };
 
-    /// <summary>转为数字。文本按不变文化解析；布尔 <c>true</c> = 1、<c>false</c> = 0。</summary>
+    /// <summary>
+    /// 转为数字。文本按不变文化解析；布尔 <c>true</c> = 1、<c>false</c> = 0；
+    /// 对象有 <c>number</c> 成员时取它（结构化结果如进程数量 / 退出码）。
+    /// </summary>
     public double AsNumber()
     {
         if (Kind == ValueKind.number) return _number;
         if (Kind == ValueKind.@bool) return _flag ? 1 : 0;
+        if (Kind == ValueKind.@object && Members.TryGetValue("number", out var number))
+            return number.AsNumber();
         if (Kind == ValueKind.text)
         {
             string s = _text.Trim();
@@ -120,11 +125,19 @@ public sealed class Value
         throw new ActionException($"值不是数字（实际是 {Kind}）");
     }
 
-    /// <summary>转为布尔。文本接受 true/false、1/0、yes/no、on/off（忽略大小写与首尾空白）。</summary>
+    /// <summary>
+    /// 转为布尔。文本接受 true/false、1/0、yes/no、on/off（忽略大小写与首尾空白）；
+    /// 对象有 <c>found</c> / <c>flag</c> 成员时取它（结构化结果的「是否找到 / 是否存在」）。
+    /// </summary>
     public bool AsBool()
     {
         if (Kind == ValueKind.@bool) return _flag;
         if (Kind == ValueKind.number) return Math.Abs(_number) > double.Epsilon;
+        if (Kind == ValueKind.@object)
+        {
+            if (Members.TryGetValue("found", out var found)) return found.AsBool();
+            if (Members.TryGetValue("flag", out var flag)) return flag.AsBool();
+        }
         if (Kind == ValueKind.text)
         {
             string s = _text.Trim();

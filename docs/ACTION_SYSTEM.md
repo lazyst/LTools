@@ -153,6 +153,8 @@ sealed class Value {
 - 「坐标 / 区域 / 匹配结果」不再是 `VarValue` 的一堆可选字段，而是**对象**：
   `{ x, y, w, h, cx, cy, found, score }`；属性访问统一 `${m.x}`。
 - 变量声明带类型 + 默认值；运行期 `RunContext` 里是 `Dictionary<string, Value>`。
+- 对象的隐式取用：`AsText()` 取 `text`、`AsNumber()` 取 `number`、`AsBool()` 取 `found` / `flag`，
+  所以「有结果」的单元都带 `text` 成员时，`${变量}` 与旧 `VarValue.Text` 一致。
 - 表达式只支持**模板 + 成员/下标访问**（`${a.b}`、`${list[0]}`、`${list.count}`），
   不引入完整表达式语言；需要计算结果时用「计算」单元。
 
@@ -192,17 +194,17 @@ interface IStepUnit {
     { "key": "n",     "type": "number", "default": 0 }
   ],
   "steps": [
-    { "unit": "file.selection", "in": {}, "out": { "files": "files" } },
+    { "unit": "file.select", "in": {}, "out": { "path": "files" } },
 
     { "unit": "flow.forEach", "in": { "items": { "var": "files" } },
       "out": { "item": "file", "index": "i" },
       "body": [
-        { "unit": "file.move",
-          "in": { "path": { "var": "file" }, "to": "D:\\归档\\${i}" } }
+        { "unit": "file.operation",
+          "in": { "operation": "copy", "path": { "var": "file" }, "target": "D:\\归档\\${i}" } }
       ] },
 
     { "unit": "flow.if",
-      "in": { "condition": { "left": { "var": "n" }, "op": ">", "right": 0 } },
+      "in": { "left": { "var": "n" }, "op": "greater", "right": 0 },
       "then": [ { "unit": "ui.toast", "in": { "text": "已整理 ${n} 个文件" } } ] }
   ],
   "subActions": [ /* 动作内子动作，见 §3.5 */ ]
@@ -220,25 +222,26 @@ interface IStepUnit {
 sealed class SubActionDef {
     string Id;                 // 全局 "s1" / 动作内 "local:xxx"
     string Name, Icon, Description;
-    bool IsLocal;              // true = 随动作保存
-    List<VariableDef> Variables;   // 带 Direction: in / out / local
+    List<VariableDef> Variables;   // 带 Direction: input / output / local
     List<Step> Steps;
     List<SubActionDef> SubActions; // 允许嵌套（可选）
 }
 ```
 
+> 存放位置决定「动作内 / 全局」，模型里不再另设 `IsLocal` 字段。
+
 | 位置 | 存储 | 可见性 |
 |---|---|---|
-| **全局库** | `<数据根>/subactions/<id>.json` + 配置里的名称/图标元数据（与 `macros/*.json` 同一套约定） | 所有动作可见 |
-| **动作内** | `ActionDto.SubActions[]` | 仅当前动作可见；可「升级为全局」 |
+| **全局库** | `<数据根>/subactions/<id>.json`（`SubActionStore`，与 `macros/*.json` 同一套约定） | 所有动作可见 |
+| **动作内** | `ActionProgram.SubActions[]` | 仅当前动作可见；可「升级为全局」 |
 
-调用单元 `sub.run`：
+调用单元 `sub.run`：**参数名就是子动作的输入变量名**（`DynamicInputs`），
+输出按步骤的 `out` 映射写回调用方：
 
 ```jsonc
 { "unit": "sub.run",
-  "in": { "subAction": "s1",
-          "args": { "input": { "var": "text" } } },
-  "out": { "output": "clean" } }
+  "in": { "subAction": "s1", "input": { "var": "text" } },   // input = 子动作里 Direction=input 的变量
+  "out": { "output": "clean" } }                             // output = Direction=output 的变量
 ```
 
 - 每次调用新建作用域，内部变量初始化；列表/对象**按引用传递**（与 Quicker 一致）。
@@ -246,7 +249,7 @@ sealed class SubActionDef {
 - 编辑全局子动作影响所有调用方（这是「函数」应有的语义）；动作内子动作跟着动作走。
 - 删除前列出引用位置；「升级为全局」= 写文件 + 把 `local:` 引用改成全局 id。
 
-### 3.6 单元清单（初稿，约 40 个）
+### 3.6 单元清单（W2/W3 已实现）
 
 | 分类 | 单元（W2 已实现） | 对应今天的 |
 |---|---|---|
@@ -265,6 +268,7 @@ sealed class SubActionDef {
 | | `app.process` 进程数量/进程号/结束进程 | Probe.process |
 | **输入** | `input.sendKeys` 模拟按键 | sendKeys |
 | | `input.mouse` 鼠标操作 | mouse |
+| | `input.cursor` 读取光标位置（Pure） | 面板唤起坐标 |
 | | `input.clickText` 文字点击 | clickText |
 | | `input.clickImage` 图片点击 | imageClick |
 | | `input.macro` 回放宏 | macro |
@@ -281,7 +285,7 @@ sealed class SubActionDef {
 | | `flow.repeat` / `flow.forEach` / `flow.while` 循环 | FlowNode.loop |
 | | `flow.break` / `flow.continue` / `flow.stop` / `flow.delay` | 同名节点 / DelayMs |
 | | `flow.lastError` 上一步的错误 | RunContext.LastError |
-| | `flow.runSubAction` 调用子动作（W3） | 新增 |
+| **子动作** | `sub.run` 调用子动作（W3） | 新增 |
 | **数据** | `data.noteWrite` / `data.noteRead` 速记 | quickNote / Probe.note |
 | | `data.list` 列表增删改查/排序/去重 | 新增 |
 | | `data.calc` 数值计算 | 新增 |
@@ -297,14 +301,35 @@ sealed class SubActionDef {
 
 ### 3.7 迁移规则
 
+实现：`Features/Migration/ActionMigrator.cs`（旧 DTO 都在 `Features/`，迁移器放这里，避免 `Core/` 反向依赖）。
+入口 `ActionMigrator.Migrate(ActionDto) → MigrationResult{Program, Warnings, Errors}`；
+未知字段 / 无法表达的语义进 `Warnings`，**不静默丢**。
+
 | 旧 | 新 |
 |---|---|
 | `ActionDto { Type=launchApp, Target, Args, Workdir }` | `steps:[{unit:"app.launch", in:{target,args,workdir}}]` |
+| `openFile / openFolder / openUrl` | `file.open` + `operation = file / folder / url` |
 | `composite.Steps[]`（内嵌快照） | 逐个铺平成 `steps[]`；`OnFail` → 步骤的 `onFail` |
 | `composite.Flow[]` | `flow.*` 单元；`Then/Else/Body` → `then/else/body` |
-| `Probe`（条件 / set 右值） | 内联 Pure 单元 `{unit, in}` |
-| `ActionDto.OutputVar` | 该步骤的 `out` 映射 |
+| `Probe`（条件 / set 右值） | 字面量 / `{var}` / 内联 Pure 单元 `{unit, in}` |
+| `Condition` | `flow.if` / `flow.while` 的 `left` / `op` / `right` / `negate` |
+| `Condition.Bind` | 先 `flow.set` 存进变量，条件改用 `{var}` |
+| `ActionDto.OutputVar` | 该步骤 `out: { "value": 变量 }` |
 | `VarValue` 的 `X/Y/W/H/Score/File` | 对象成员 `x/y/w/h/score/file` |
+| `Node.DelayMs` | 前置 `flow.delay`（旧语义是执行**前**等待） |
+| `OnFail` / `CompositeOnFail` 缺省 | 显式写 `onFail: "continue"`（旧默认；新引擎默认 `stop`） |
+| `runCommand` 无 `OutputVar` | `capture: false`（旧行为是打开终端窗口） |
+| `sendKeys.Items` | 摊平成 `keys[]`：stroke → 原样、text → `text:…`、sleep → `sleep:…` |
+| `mouse.WheelDelta`（120/格） | `wheel` = 格数 |
+| `ProbeKind.ocr / textSearch` 的 `OcrEngine == null` | `engine: "windows"`（新单元默认 PP-OCRv6） |
+| `CompareOp.nearColor` | `equals` + 告警（容差无对应单元） |
+
+**结果对象约定**：有结果的单元除具名输出外还写一个 `value` 对象输出（`{text, found, x, y, …}`），
+迁移的 `OutputVar` 统一映射到它；内联求值时优先返回 `value`，因此
+`${变量}` = 旧 `VarValue.Text`（PID / stdout / 路径 / 坐标串），`${变量.x}` 等照旧可用。
+
+**变量**：旧流程的变量没有声明，迁移时从 `flow.set`、步骤 `out`、模板 `${a.b}` 里收集名字，
+一律声明为 `text`（对象 / 数字在运行期按实际值覆盖声明类型）。
 
 加载时迁移一次，写回新格式；旧 JSON 保留 `.bak-*` 备份（沿用现有惯例，最多 3 份）。
 
@@ -354,14 +379,17 @@ sealed class SubActionDef {
 **验收**：`ActionSmoke` 遍历注册表，校验 Key 唯一、`Spec` 完整、枚举选项齐全，
 并跑通文本/数据/文件/命令/内联取值/错误文本；共 395 项断言通过。
 
-### W3 迁移器
+### W3 迁移器 ✅
 
-- `Core/Actions/Migration/ActionMigrator.cs`：旧 `ActionDto` → v2。
-- 覆盖：17 种动作、16 种取值、7 种流程节点、`StepDto` 快照、`OutputVar`。
-- 未知字段：告警 + 原 JSON 备份，不静默丢。
+- `Features/Migration/ActionMigrator.cs`：旧 `ActionDto` → v2（旧 DTO 都在 `Features/`，不放 `Core/`）。
+- 覆盖：17 种动作、16 种取值、7 种流程节点、`StepDto` 快照、`OutputVar`，以及 `sub.run` 调用。
+- 未知字段 / 无法表达的语义：告警列表 + 原 JSON 备份，不静默丢。
+- 顺带补齐：`input.cursor` 取值单元、`flow.if` / `flow.while` 的 `negate`、
+  条件比较新增 `found` / `notFound` / `active` / `notActive`、`SubActionStore`（全局子动作库）、
+  结构化结果统一的 `value` 输出（内联求值优先返回它）。
 
-**验收**：仓库里 `LTools.example.json` + 手工构造 20 个旧动作，迁移后**执行结果逐项比对**
-（输出文本、变量值、外部副作用都记录）。
+**验收**：`ActionSmoke` 迁移 `LTools.example.json` + 手工构造的旧动作，逐项断言结构，
+并**执行**迁移结果（赋值 / 条件 / 两种循环 / 命令 / 子动作输出回写）；共 574 项断言通过。
 
 ### W4 编辑器
 

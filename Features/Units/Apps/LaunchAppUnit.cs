@@ -24,6 +24,7 @@ public sealed class LaunchAppUnit : IStepUnit
         {
             new OutputSpec("pid", "进程号", ValueKind.number, "pid"),
             new OutputSpec("started", "已启动", ValueKind.@bool),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -54,6 +55,7 @@ public sealed class LaunchAppUnit : IStepUnit
             // 复用了已有进程 / 没有新进程：启动本身成功。
             ctx.SetOutput("pid", Value.FromNumber(0));
             ctx.SetOutput("started", Value.FromBool(true));
+            ctx.SetOutput("value", Result(0));
             return;
         }
 
@@ -64,10 +66,17 @@ public sealed class LaunchAppUnit : IStepUnit
 
             ctx.SetOutput("pid", Value.FromNumber(pid));
             ctx.SetOutput("started", Value.FromBool(true));
+            ctx.SetOutput("value", Result(pid));
         }
         finally
         {
             process.Dispose();
         }
     }
+
+    private static Value Result(int pid) => Value.Object(
+        ("text", Value.FromText(pid.ToString(System.Globalization.CultureInfo.InvariantCulture))),
+        ("number", Value.FromNumber(pid)),
+        ("pid", Value.FromNumber(pid)),
+        ("found", Value.FromBool(true)));
 }

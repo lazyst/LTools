@@ -24,6 +24,7 @@ public sealed class NoteWriteUnit : IStepUnit
             new OutputSpec("title", "标题", ValueKind.text, "noteTitle"),
             new OutputSpec("time", "时间", ValueKind.text),
             new OutputSpec("path", "文件", ValueKind.text),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -44,6 +45,13 @@ public sealed class NoteWriteUnit : IStepUnit
         ctx.SetOutput("title", Value.FromText(result.Title));
         ctx.SetOutput("time", Value.FromText(result.Time));
         ctx.SetOutput("path", Value.FromText(result.File));
+        ctx.SetOutput("value", Value.Object(
+            ("text", Value.FromText(result.File)),
+            ("path", Value.FromText(result.File)),
+            ("file", Value.FromText(result.File)),
+            ("title", Value.FromText(result.Title)),
+            ("time", Value.FromText(result.Time)),
+            ("found", Value.FromBool(true))));
     }
 }
 
@@ -71,6 +79,7 @@ public sealed class NoteReadUnit : IStepUnit
             new OutputSpec("path", "文件", ValueKind.text),
             new OutputSpec("found", "找到", ValueKind.@bool),
             new OutputSpec("count", "匹配数量", ValueKind.number),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -84,12 +93,28 @@ public sealed class NoteReadUnit : IStepUnit
         };
 
         var value = LegacyFlow.Evaluate(ctx, legacy => NoteActions.Read(probe, legacy));
-        ctx.SetOutput("text", Value.FromText(UnitValues.Member(value, "text")?.AsText() ?? ""));
-        ctx.SetOutput("title", Value.FromText(UnitValues.Member(value, "title")?.AsText() ?? ""));
-        ctx.SetOutput("time", Value.FromText(UnitValues.Member(value, "time")?.AsText() ?? ""));
-        ctx.SetOutput("path", Value.FromText(UnitValues.Member(value, "file")?.AsText() ?? ""));
-        ctx.SetOutput("found", Value.FromBool(UnitValues.Member(value, "found")?.AsBool() ?? false));
-        ctx.SetOutput("count", Value.FromNumber(Number(value, "number")));
+        string text = UnitValues.Member(value, "text")?.AsText() ?? "";
+        string title = UnitValues.Member(value, "title")?.AsText() ?? "";
+        string time = UnitValues.Member(value, "time")?.AsText() ?? "";
+        string path = UnitValues.Member(value, "file")?.AsText() ?? "";
+        bool found = UnitValues.Member(value, "found")?.AsBool() ?? false;
+        int count = (int)Number(value, "number");
+
+        ctx.SetOutput("text", Value.FromText(text));
+        ctx.SetOutput("title", Value.FromText(title));
+        ctx.SetOutput("time", Value.FromText(time));
+        ctx.SetOutput("path", Value.FromText(path));
+        ctx.SetOutput("found", Value.FromBool(found));
+        ctx.SetOutput("count", Value.FromNumber(count));
+        ctx.SetOutput("value", Value.Object(
+            ("text", Value.FromText(text)),
+            ("title", Value.FromText(title)),
+            ("time", Value.FromText(time)),
+            ("path", Value.FromText(path)),
+            ("file", Value.FromText(path)),
+            ("found", Value.FromBool(found)),
+            ("count", Value.FromNumber(count)),
+            ("number", Value.FromNumber(count))));
     }
 
     private static double Number(Value value, string name)

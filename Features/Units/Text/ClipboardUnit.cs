@@ -28,6 +28,7 @@ public sealed class ClipboardUnit : IStepUnit
         {
             new OutputSpec("text", "文本", ValueKind.text, "text"),
             new OutputSpec("ok", "成功", ValueKind.@bool),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -43,6 +44,9 @@ public sealed class ClipboardUnit : IStepUnit
 
             ctx.SetOutput("text", Value.FromText(text));
             ctx.SetOutput("ok", Value.FromBool(true));
+            ctx.SetOutput("value", Value.Object(
+                ("text", Value.FromText(text)),
+                ("found", Value.FromBool(true))));
             return;
         }
 
@@ -52,5 +56,8 @@ public sealed class ClipboardUnit : IStepUnit
         bool ok = NativeClipboard.TryGetText(out string clipboard);
         ctx.SetOutput("text", Value.FromText(clipboard));
         ctx.SetOutput("ok", Value.FromBool(ok));
+        ctx.SetOutput("value", Value.Object(
+            ("text", Value.FromText(clipboard)),
+            ("found", Value.FromBool(ok))));
     }
 }

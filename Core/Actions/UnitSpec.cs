@@ -91,6 +91,12 @@ public sealed class UnitSpec
 
     public BodyKind Body { get; init; } = BodyKind.none;
 
+    /// <summary>
+    /// 允许步骤携带声明之外的参数（如「调用子动作」按输入变量名传值）。
+    /// 这些参数照常求值，但不在 <see cref="Inputs"/> 里，编辑器需要另行生成表单。
+    /// </summary>
+    public bool DynamicInputs { get; init; }
+
     public IReadOnlyList<InputSpec> Inputs { get; init; } = Array.Empty<InputSpec>();
 
     public IReadOnlyList<OutputSpec> Outputs { get; init; } = Array.Empty<OutputSpec>();

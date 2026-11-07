@@ -103,6 +103,7 @@ public sealed class MouseUnit : IStepUnit
         {
             new OutputSpec("x", "X", ValueKind.number, "mouseX"),
             new OutputSpec("y", "Y", ValueKind.number, "mouseY"),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -160,6 +161,7 @@ public sealed class MouseUnit : IStepUnit
         {
             ctx.SetOutput("x", Value.FromNumber(point.X));
             ctx.SetOutput("y", Value.FromNumber(point.Y));
+            ctx.SetOutput("value", UnitValues.Point(point.X, point.Y));
         }
     }
 
@@ -198,6 +200,7 @@ public sealed class ClickTextUnit : IStepUnit
         {
             new OutputSpec("x", "X", ValueKind.number, "clickX"),
             new OutputSpec("y", "Y", ValueKind.number, "clickY"),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -222,6 +225,7 @@ public sealed class ClickTextUnit : IStepUnit
 
         ctx.SetOutput("x", Value.FromNumber(result.X ?? 0));
         ctx.SetOutput("y", Value.FromNumber(result.Y ?? 0));
+        ctx.SetOutput("value", UnitValues.Point(result.X ?? 0, result.Y ?? 0));
     }
 
     internal static MouseActionKind ParseMouse(string text) => (text ?? "").Trim().ToLowerInvariant() switch
@@ -262,6 +266,7 @@ public sealed class ClickImageUnit : IStepUnit
             new OutputSpec("x", "X", ValueKind.number, "clickX"),
             new OutputSpec("y", "Y", ValueKind.number, "clickY"),
             new OutputSpec("score", "相似度", ValueKind.number),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -284,6 +289,38 @@ public sealed class ClickImageUnit : IStepUnit
         ctx.SetOutput("x", Value.FromNumber(result.X ?? 0));
         ctx.SetOutput("y", Value.FromNumber(result.Y ?? 0));
         ctx.SetOutput("score", Value.FromNumber(result.Score ?? 0));
+        ctx.SetOutput("value", UnitValues.Match(
+            result.X ?? 0, result.Y ?? 0, result.Score ?? 0));
+    }
+}
+
+/// <summary>读取当前光标位置（纯取值，不移动光标）。</summary>
+public sealed class CursorUnit : IStepUnit
+{
+    public UnitSpec Spec { get; } = new()
+    {
+        Key = "input.cursor",
+        Name = "光标位置",
+        Category = "输入",
+        Icon = "cursor",
+        Description = "读取当前光标在虚拟桌面上的坐标，不移动光标",
+        Kind = UnitKind.pure,
+        Outputs = new[]
+        {
+            new OutputSpec("x", "X", ValueKind.number, "cursorX"),
+            new OutputSpec("y", "Y", ValueKind.number, "cursorY"),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
+        },
+    };
+
+    public void Execute(StepContext ctx, StepArgs args)
+    {
+        if (!Win32.GetCursorPos(out var point))
+            throw new ActionException("读取光标位置失败");
+
+        ctx.SetOutput("x", Value.FromNumber(point.X));
+        ctx.SetOutput("y", Value.FromNumber(point.Y));
+        ctx.SetOutput("value", UnitValues.Point(point.X, point.Y));
     }
 }
 

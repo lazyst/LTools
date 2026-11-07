@@ -19,6 +19,7 @@ internal static class FlowUnits
         registry.Register(new ContinueUnit());
         registry.Register(new StopUnit());
         registry.Register(new DelayUnit());
+        registry.Register(new SubRunUnit());
     }
 
     /// <summary>条件比较（<c>flow.if</c> / <c>flow.while</c> 共用）。</summary>
@@ -28,7 +29,7 @@ internal static class FlowUnits
         {
             "equals", "notEquals", "contains", "notContains", "startsWith", "endsWith",
             "regex", "isEmpty", "isNotEmpty", "greater", "less", "greaterOrEqual",
-            "lessOrEqual", "isTrue", "isFalse",
+            "lessOrEqual", "isTrue", "isFalse", "found", "notFound", "active", "notActive",
         };
 
         public static bool Test(Value left, string op, Value right)
@@ -52,10 +53,32 @@ internal static class FlowUnits
                 "less" => left.AsNumber() < right.AsNumber(),
                 "greaterOrEqual" => left.AsNumber() >= right.AsNumber(),
                 "lessOrEqual" => left.AsNumber() <= right.AsNumber(),
-                "isTrue" => left.AsBool(),
-                "isFalse" => !left.AsBool(),
+                "isTrue" => Truthy(left),
+                "isFalse" => !Truthy(left),
+                "found" => MemberTruthy(left, "found"),
+                "notFound" => !MemberTruthy(left, "found"),
+                "active" => MemberTruthy(left, "active"),
+                "notActive" => !MemberTruthy(left, "active"),
                 _ => throw new ActionException($"未知比较方式：{op}"),
             };
+        }
+
+        /// <summary>布尔真值：布尔按自身，对象先看 found，其余按文本非空。</summary>
+        private static bool Truthy(Value value)
+        {
+            try { return value.AsBool(); }
+            catch (ActionException) { return value.AsText().Length > 0; }
+        }
+
+        /// <summary>
+        /// 取对象成员的真值（条件里的 found / active）；不是对象时退回
+        /// 布尔真值 / 非空文本，兼容「变量里只存了 true / 1」的旧配置。
+        /// </summary>
+        private static bool MemberTruthy(Value value, string name)
+        {
+            if (value.Kind == ValueKind.@object && value.Members.TryGetValue(name, out var member))
+                return Truthy(member);
+            return Truthy(value);
         }
 
         private static bool IsEmpty(Value value) => value.Kind switch
@@ -89,6 +112,10 @@ internal static class FlowUnits
 
     private static InputSpec ConditionRight() =>
         new("right", "右值", Editor: InputEditor.condition);
+
+    private static InputSpec ConditionNegate() =>
+        new("negate", "对结果取反", ValueKind.@bool, InputEditor.boolean,
+            Default: Value.FromBool(false));
 
     /// <summary>赋值 / 追加：<c>flow.set</c>。</summary>
     private sealed class SetUnit : IStepUnit
@@ -136,12 +163,13 @@ internal static class FlowUnits
             Icon = "if",
             Description = "条件成立走 then，否则走 else",
             Body = BodyKind.thenElse,
-            Inputs = new[] { ConditionLeft(), ConditionOp(), ConditionRight() },
+            Inputs = new[] { ConditionLeft(), ConditionOp(), ConditionRight(), ConditionNegate() },
         };
 
         public void Execute(StepContext ctx, StepArgs args)
         {
             bool ok = Compare.Test(args.Get("left"), args.Text("op"), args.Get("right"));
+            if (args.Bool("negate")) ok = !ok;
             ctx.RunBody(ok ? ctx.Step.Then : ctx.Step.Else);
         }
     }
@@ -238,7 +266,11 @@ internal static class FlowUnits
             Icon = "while",
             Description = "条件成立时重复执行循环体",
             Body = BodyKind.body,
-            Inputs = new[] { ConditionLeft(), ConditionOp(), ConditionRight() },
+            Inputs = new[] { ConditionLeft(), ConditionOp(), ConditionRight(), ConditionNegate() },
+            Outputs = new[]
+            {
+                new OutputSpec("index", "下标", ValueKind.number, "i"),
+            },
         };
 
         public void Execute(StepContext ctx, StepArgs args)
@@ -250,8 +282,11 @@ internal static class FlowUnits
                     throw new ActionException($"循环已执行 {ctx.MaxLoopIterations} 轮，已自动停止");
 
                 ctx.EnterIteration();
-                if (!Compare.Test(current.Get("left"), current.Text("op"), current.Get("right")))
-                    break;
+                ctx.SetOutput("index", Value.FromNumber(i));
+
+                bool ok = Compare.Test(current.Get("left"), current.Text("op"), current.Get("right"));
+                if (current.Bool("negate")) ok = !ok;
+                if (!ok) break;
 
                 try { ctx.RunBody(ctx.Step.Body); }
                 catch (ContinueSignal) { /* 进入下一轮 */ }
@@ -303,6 +338,31 @@ internal static class FlowUnits
         };
 
         public void Execute(StepContext ctx, StepArgs args) => throw new StopSignal();
+    }
+
+    /// <summary>调用一个子动作（动作内 / 全局）：按输入变量名传值，输出按 out 映射写回。</summary>
+    private sealed class SubRunUnit : IStepUnit
+    {
+        public UnitSpec Spec { get; } = new()
+        {
+            Key = "sub.run",
+            Name = "调用子动作",
+            Category = "子动作",
+            Icon = "sub",
+            Description = "调用动作内或全局子动作；参数名 = 子动作的输入变量名，输出按 out 映射写回",
+            DynamicInputs = true,
+            Inputs = new[]
+            {
+                new InputSpec("subAction", "子动作", ValueKind.text, InputEditor.text, Required: true),
+            },
+        };
+
+        public void Execute(StepContext ctx, StepArgs args)
+        {
+            string id = args.Text("subAction").Trim();
+            if (id.Length == 0) throw new ActionException("调用子动作没有指定子动作 id");
+            ctx.RunSubAction(id, args);
+        }
     }
 
     private sealed class DelayUnit : IStepUnit

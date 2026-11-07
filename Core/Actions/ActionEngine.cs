@@ -24,6 +24,12 @@ public sealed class ActionRunOptions
 
     /// <summary>诊断日志回调（不依赖 UI）。</summary>
     public Action<string>? Log { get; init; }
+
+    /// <summary>
+    /// 全局子动作解析（id → 定义）；缺省从数据根 <c>subactions/</c> 读取。
+    /// 动作内子动作（<see cref="ActionProgram.SubActions"/>）总是优先。
+    /// </summary>
+    public Func<string, SubActionDef?>? SubActionResolver { get; init; }
 }
 
 /// <summary>一次运行的结果。失败不抛异常，由调用方按 <see cref="Error"/> 处理。</summary>
@@ -97,7 +103,7 @@ public sealed class ActionEngine
         var opt = options ?? new ActionRunOptions();
         var started = Stopwatch.StartNew();
         var root = new VariableScope();
-        var state = new ActionRunState(opt);
+        var state = new ActionRunState(opt, program);
         var ctx = new StepContext(this, state, root, new Step { Unit = "<root>" });
 
         try
@@ -179,6 +185,89 @@ public sealed class ActionEngine
         }
     }
 
+    /// <summary>子动作递归深度上限。</summary>
+    public const int MaxSubActionDepth = 8;
+
+    /// <summary>按 id 找子动作：动作内（含嵌套）优先，其次全局库。</summary>
+    internal SubActionDef? ResolveSubAction(ActionRunState state, string id)
+    {
+        id = (id ?? "").Trim();
+        if (id.Length == 0) return null;
+
+        if (FindSubAction(state.Program.SubActions, id) is { } local) return local;
+
+        var globals = state.Options.SubActionResolver ?? SubActionStore.Load;
+        return globals(id);
+    }
+
+    /// <summary>调用一个子动作：新作用域、按输入变量名传值、输出按步骤的 out 映射写回。</summary>
+    internal void RunSubAction(StepContext caller, string id, StepArgs args)
+    {
+        var def = ResolveSubAction(caller.State, id)
+            ?? throw new ActionException($"找不到子动作：{id}");
+
+        string label = string.IsNullOrWhiteSpace(def.Name) ? id : def.Name!;
+        if (caller.State.SubActionDepth >= MaxSubActionDepth)
+            throw new ActionException(
+                $"子动作调用层数超过上限（{MaxSubActionDepth}）：{label}");
+
+        var declared = new HashSet<string>(
+            def.Variables.Select(v => v.Key?.Trim() ?? ""), StringComparer.OrdinalIgnoreCase);
+        foreach (string key in args.Values.Keys)
+        {
+            if (string.Equals(key, "subAction", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!declared.Contains(key))
+                throw new ActionException($"子动作「{label}」没有输入「{key}」");
+        }
+
+        caller.State.SubActionDepth++;
+        try
+        {
+            var scope = new VariableScope();
+            foreach (var variable in def.Variables)
+            {
+                string key = variable.Key?.Trim() ?? "";
+                if (key.Length == 0) continue;
+                scope.Set(key, args.Has(key) ? args.Get(key) : variable.Seed());
+            }
+
+            var ctx = new StepContext(this, caller.State, scope, new Step { Unit = "<subaction>" });
+            RunSteps(def.Steps, ctx);
+
+            foreach (var variable in def.Variables)
+            {
+                if (variable.Direction != VariableDirection.output) continue;
+                string key = variable.Key?.Trim() ?? "";
+                if (key.Length == 0 || !scope.TryGetLocal(key, out var value) || value == null) continue;
+                caller.SetOutput(key, value);
+            }
+        }
+        catch (ActionAbortedException) { throw; }
+        catch (StopSignal) { throw; }
+        catch (BreakSignal) { throw; }
+        catch (ContinueSignal) { throw; }
+        catch (ActionException ex)
+        {
+            throw new ActionException($"子动作「{label}」失败：{ex.Message}", ex);
+        }
+        finally
+        {
+            caller.State.SubActionDepth--;
+        }
+    }
+
+    private static SubActionDef? FindSubAction(IEnumerable<SubActionDef> defs, string id)
+    {
+        foreach (var def in defs)
+        {
+            if (string.Equals((def.Id ?? "").Trim(), id, StringComparison.OrdinalIgnoreCase))
+                return def;
+            if (FindSubAction(def.SubActions, id) is { } nested) return nested;
+        }
+
+        return null;
+    }
+
     /// <summary>求值一个内联取值步骤（Pure 单元）。</summary>
     internal Value EvaluateInline(Step step, StepContext parent)
     {
@@ -200,6 +289,8 @@ public sealed class ActionEngine
         {
             throw new ActionException($"取值「{unit.Spec.Name}」失败：{ex.Message}", ex);
         }
+
+        if (collected.TryGetValue("value", out var structured)) return structured;
 
         if (unit.Spec.Outputs.Count > 0 &&
             collected.TryGetValue(unit.Spec.Outputs[0].Key, out var first))
@@ -248,10 +339,21 @@ public sealed class ActionEngine
             }
         }
 
-        foreach (string key in step.In.Keys)
+        foreach (var extra in step.In)
         {
-            if (!spec.Inputs.Any(input => string.Equals(input.Key, key, StringComparison.OrdinalIgnoreCase)))
-                throw new ActionException($"「{spec.Name}」没有参数「{key}」（检查拼写）");
+            if (spec.Inputs.Any(input => string.Equals(input.Key, extra.Key, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            if (!spec.DynamicInputs)
+                throw new ActionException($"「{spec.Name}」没有参数「{extra.Key}」（检查拼写）");
+
+            // 动态参数（如子动作的输入变量）：保留原始类型，不做类型转换。
+            provided.Add(extra.Key);
+            try { values[extra.Key] = extra.Value.Resolve(ctx); }
+            catch (ActionException ex)
+            {
+                throw new ActionException($"参数「{extra.Key}」求值失败：{ex.Message}", ex);
+            }
         }
 
         return new StepArgs(values, provided);
@@ -314,11 +416,20 @@ internal sealed class ActionRunState
     private int _steps;
     private int _iterations;
 
-    public ActionRunState(ActionRunOptions options)
+    public ActionRunState(ActionRunOptions options, ActionProgram program)
     {
         _options = options;
+        Program = program;
         _deadline = DateTime.UtcNow + options.MaxDuration;
     }
+
+    /// <summary>本次运行的动作（子动作解析用）。</summary>
+    public ActionProgram Program { get; }
+
+    public ActionRunOptions Options => _options;
+
+    /// <summary>当前子动作调用深度。</summary>
+    public int SubActionDepth { get; set; }
 
     public CancellationToken Token => _options.Token;
 
@@ -422,6 +533,9 @@ public sealed class StepContext
 
     /// <summary>执行当前步骤的子步骤（循环体 / 分支体）。</summary>
     public void RunBody(IReadOnlyList<Step> steps) => Engine.RunSteps(steps, this);
+
+    /// <summary>调用一个子动作（输入按变量名从 <paramref name="args"/> 取，输出按步骤 out 映射写回）。</summary>
+    public void RunSubAction(string id, StepArgs args) => Engine.RunSubAction(this, id, args);
 
     /// <summary>求值一个内联取值步骤。</summary>
     public Value EvaluateInline(Step step) => Engine.EvaluateInline(step, this);

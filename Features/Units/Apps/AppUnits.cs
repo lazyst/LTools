@@ -33,6 +33,7 @@ public sealed class RunCommandUnit : IStepUnit
             new OutputSpec("stderr", "错误输出", ValueKind.text),
             new OutputSpec("exit", "退出码", ValueKind.number),
             new OutputSpec("ok", "成功", ValueKind.@bool),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -54,6 +55,7 @@ public sealed class RunCommandUnit : IStepUnit
             ctx.SetOutput("stderr", Value.FromText(""));
             ctx.SetOutput("exit", Value.FromNumber(0));
             ctx.SetOutput("ok", Value.FromBool(true));
+            ctx.SetOutput("value", UnitValues.CommandResult("", "", 0));
             return;
         }
 
@@ -61,6 +63,8 @@ public sealed class RunCommandUnit : IStepUnit
         ctx.SetOutput("stderr", Value.FromText(outcome.Stderr));
         ctx.SetOutput("exit", Value.FromNumber(outcome.ExitCode));
         ctx.SetOutput("ok", Value.FromBool(outcome.ExitCode == 0));
+        ctx.SetOutput("value", UnitValues.CommandResult(
+            outcome.Stdout, outcome.Stderr, outcome.ExitCode));
     }
 }
 
@@ -88,6 +92,7 @@ public sealed class ProcessUnit : IStepUnit
             new OutputSpec("count", "数量", ValueKind.number, "count"),
             new OutputSpec("found", "存在", ValueKind.@bool),
             new OutputSpec("pids", "进程号", ValueKind.list),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -119,6 +124,7 @@ public sealed class ProcessUnit : IStepUnit
                 ctx.SetOutput("count", Value.FromNumber(processes.Length));
                 ctx.SetOutput("found", Value.FromBool(processes.Length > 0));
                 ctx.SetOutput("pids", Value.FromList(pids.Select(id => Value.FromNumber(id))));
+                ctx.SetOutput("value", Result(name, processes.Length, pids));
                 return;
             }
 
@@ -128,10 +134,18 @@ public sealed class ProcessUnit : IStepUnit
             ctx.SetOutput("count", Value.FromNumber(processes.Length));
             ctx.SetOutput("found", Value.FromBool(processes.Length > 0));
             ctx.SetOutput("pids", Value.FromList(pids.Select(id => Value.FromNumber(id))));
+            ctx.SetOutput("value", Result(name, processes.Length, pids));
         }
         finally
         {
             foreach (var process in processes) process.Dispose();
         }
     }
+
+    private static Value Result(string name, int count, List<int> pids) => Value.Object(
+        ("text", Value.FromText(name)),
+        ("count", Value.FromNumber(count)),
+        ("number", Value.FromNumber(count)),
+        ("found", Value.FromBool(count > 0)),
+        ("pids", Value.FromList(pids.Select(id => Value.FromNumber(id)))));
 }

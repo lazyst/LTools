@@ -31,6 +31,7 @@ public sealed class CaptureScreenUnit : IStepUnit
             new OutputSpec("h", "高", ValueKind.number, "shotH"),
             new OutputSpec("file", "图片文件", ValueKind.text, "shot"),
             new OutputSpec("found", "取到图", ValueKind.@bool),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -45,12 +46,22 @@ public sealed class CaptureScreenUnit : IStepUnit
 
         var value = LegacyFlow.Evaluate(ctx, legacy => ScreenshotProbe.Run(probe, legacy));
 
-        ctx.SetOutput("x", Value.FromNumber(MemberNumber(value, "x")));
-        ctx.SetOutput("y", Value.FromNumber(MemberNumber(value, "y")));
-        ctx.SetOutput("w", Value.FromNumber(MemberNumber(value, "w")));
-        ctx.SetOutput("h", Value.FromNumber(MemberNumber(value, "h")));
-        ctx.SetOutput("file", Value.FromText(UnitValues.Member(value, "file")?.AsText() ?? ""));
-        ctx.SetOutput("found", Value.FromBool(UnitValues.Member(value, "found")?.AsBool() ?? false));
+        int x = (int)MemberNumber(value, "x");
+        int y = (int)MemberNumber(value, "y");
+        int w = (int)MemberNumber(value, "w");
+        int h = (int)MemberNumber(value, "h");
+        string file = UnitValues.Member(value, "file")?.AsText() ?? "";
+        bool found = UnitValues.Member(value, "found")?.AsBool() ?? false;
+
+        ctx.SetOutput("x", Value.FromNumber(x));
+        ctx.SetOutput("y", Value.FromNumber(y));
+        ctx.SetOutput("w", Value.FromNumber(w));
+        ctx.SetOutput("h", Value.FromNumber(h));
+        ctx.SetOutput("file", Value.FromText(file));
+        ctx.SetOutput("found", Value.FromBool(found));
+        ctx.SetOutput("value", found
+            ? UnitValues.Region(x, y, w, h, file)
+            : UnitValues.NotFound());
     }
 
     private static ScreenshotMode ParseMode(string text) => (text ?? "").Trim().ToLowerInvariant() switch
@@ -101,6 +112,7 @@ public sealed class FindImageUnit : IStepUnit
             new OutputSpec("y", "Y", ValueKind.number, "matchY"),
             new OutputSpec("score", "相似度", ValueKind.number),
             new OutputSpec("found", "找到", ValueKind.@bool, "matchFound"),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -114,10 +126,21 @@ public sealed class FindImageUnit : IStepUnit
         probe.Image = image;
 
         var value = LegacyFlow.Evaluate(ctx, legacy => ImageProbe.Run(probe, legacy));
-        ctx.SetOutput("x", Value.FromNumber(MemberNumber(value, "x")));
-        ctx.SetOutput("y", Value.FromNumber(MemberNumber(value, "y")));
-        ctx.SetOutput("score", Value.FromNumber(MemberNumber(value, "score")));
-        ctx.SetOutput("found", Value.FromBool(UnitValues.Member(value, "found")?.AsBool() ?? false));
+        int x = (int)MemberNumber(value, "x");
+        int y = (int)MemberNumber(value, "y");
+        double score = MemberNumber(value, "score");
+        bool found = UnitValues.Member(value, "found")?.AsBool() ?? false;
+
+        ctx.SetOutput("x", Value.FromNumber(x));
+        ctx.SetOutput("y", Value.FromNumber(y));
+        ctx.SetOutput("score", Value.FromNumber(score));
+        ctx.SetOutput("found", Value.FromBool(found));
+        ctx.SetOutput("value", found
+            ? UnitValues.Match(x, y, score)
+            : Value.Object(
+                ("text", Value.FromText("")),
+                ("found", Value.FromBool(false)),
+                ("score", Value.FromNumber(score))));
     }
 
     private static double MemberNumber(Value value, string name)
@@ -152,6 +175,7 @@ public sealed class OcrUnit : IStepUnit
         {
             new OutputSpec("text", "文字", ValueKind.text, "text"),
             new OutputSpec("found", "有文字", ValueKind.@bool),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -169,8 +193,14 @@ public sealed class OcrUnit : IStepUnit
         };
 
         var value = LegacyFlow.Evaluate(ctx, legacy => OcrProbe.Run(probe, legacy));
-        ctx.SetOutput("text", Value.FromText(UnitValues.Member(value, "text")?.AsText() ?? ""));
-        ctx.SetOutput("found", Value.FromBool(UnitValues.Member(value, "found")?.AsBool() ?? false));
+        string text = UnitValues.Member(value, "text")?.AsText() ?? "";
+        bool found = UnitValues.Member(value, "found")?.AsBool() ?? false;
+
+        ctx.SetOutput("text", Value.FromText(text));
+        ctx.SetOutput("found", Value.FromBool(found));
+        ctx.SetOutput("value", Value.Object(
+            ("text", Value.FromText(text)),
+            ("found", Value.FromBool(found))));
     }
 }
 
@@ -206,6 +236,7 @@ public sealed class FindTextUnit : IStepUnit
             new OutputSpec("x", "X", ValueKind.number, "textX"),
             new OutputSpec("y", "Y", ValueKind.number, "textY"),
             new OutputSpec("found", "找到", ValueKind.@bool, "textFound"),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -223,10 +254,25 @@ public sealed class FindTextUnit : IStepUnit
         probe.OcrEngine = args.Text("engine").Trim();
 
         var value = LegacyFlow.Evaluate(ctx, legacy => TextLocator.Run(probe, legacy));
-        ctx.SetOutput("text", Value.FromText(UnitValues.Member(value, "text")?.AsText() ?? ""));
-        ctx.SetOutput("x", Value.FromNumber(MemberNumber(value, "x")));
-        ctx.SetOutput("y", Value.FromNumber(MemberNumber(value, "y")));
-        ctx.SetOutput("found", Value.FromBool(UnitValues.Member(value, "found")?.AsBool() ?? false));
+        string text = UnitValues.Member(value, "text")?.AsText() ?? "";
+        int x = (int)MemberNumber(value, "x");
+        int y = (int)MemberNumber(value, "y");
+        bool found = UnitValues.Member(value, "found")?.AsBool() ?? false;
+
+        ctx.SetOutput("text", Value.FromText(text));
+        ctx.SetOutput("x", Value.FromNumber(x));
+        ctx.SetOutput("y", Value.FromNumber(y));
+        ctx.SetOutput("found", Value.FromBool(found));
+        ctx.SetOutput("value", found
+            ? Value.Object(
+                ("text", Value.FromText(text)),
+                ("number", Value.FromNumber(0)),
+                ("x", Value.FromNumber(x)),
+                ("y", Value.FromNumber(y)),
+                ("found", Value.FromBool(true)))
+            : Value.Object(
+                ("text", Value.FromText(text)),
+                ("found", Value.FromBool(false))));
     }
 
     private static double MemberNumber(Value value, string name)
@@ -260,6 +306,7 @@ public sealed class PixelUnit : IStepUnit
             new OutputSpec("r", "红", ValueKind.number),
             new OutputSpec("g", "绿", ValueKind.number),
             new OutputSpec("b", "蓝", ValueKind.number),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -271,13 +318,24 @@ public sealed class PixelUnit : IStepUnit
 
         ctx.SetOutput("color", Value.FromText(color));
 
+        int r = 0, g = 0, b = 0;
         string hex = color.TrimStart('#');
         if (hex.Length == 6 &&
             int.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int rgb))
         {
-            ctx.SetOutput("r", Value.FromNumber((rgb >> 16) & 0xFF));
-            ctx.SetOutput("g", Value.FromNumber((rgb >> 8) & 0xFF));
-            ctx.SetOutput("b", Value.FromNumber(rgb & 0xFF));
+            r = (rgb >> 16) & 0xFF;
+            g = (rgb >> 8) & 0xFF;
+            b = rgb & 0xFF;
+            ctx.SetOutput("r", Value.FromNumber(r));
+            ctx.SetOutput("g", Value.FromNumber(g));
+            ctx.SetOutput("b", Value.FromNumber(b));
         }
+
+        ctx.SetOutput("value", Value.Object(
+            ("text", Value.FromText(color)),
+            ("color", Value.FromText(color)),
+            ("r", Value.FromNumber(r)),
+            ("g", Value.FromNumber(g)),
+            ("b", Value.FromNumber(b))));
     }
 }

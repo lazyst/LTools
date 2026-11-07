@@ -26,6 +26,7 @@ public sealed class FindWindowUnit : IStepUnit
             new OutputSpec("found", "找到", ValueKind.@bool, "windowFound"),
             new OutputSpec("active", "在前台", ValueKind.@bool),
             new OutputSpec("handle", "句柄", ValueKind.number),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -44,6 +45,7 @@ public sealed class FindWindowUnit : IStepUnit
         ctx.SetOutput("found", Value.FromBool(found));
         ctx.SetOutput("active", Value.FromBool(active));
         ctx.SetOutput("handle", Value.FromNumber(hwnd.ToInt64()));
+        ctx.SetOutput("value", UnitValues.Window(matched, found, active, hwnd.ToInt64()));
     }
 }
 
@@ -64,6 +66,7 @@ public sealed class ForegroundWindowUnit : IStepUnit
             new OutputSpec("exe", "进程名", ValueKind.text, "windowExe"),
             new OutputSpec("handle", "句柄", ValueKind.number),
             new OutputSpec("found", "有窗口", ValueKind.@bool),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -76,6 +79,7 @@ public sealed class ForegroundWindowUnit : IStepUnit
             ctx.SetOutput("exe", Value.FromText(""));
             ctx.SetOutput("handle", Value.FromNumber(0));
             ctx.SetOutput("found", Value.FromBool(false));
+            ctx.SetOutput("value", UnitValues.Window("", false, false));
             return;
         }
 
@@ -99,6 +103,7 @@ public sealed class ForegroundWindowUnit : IStepUnit
         ctx.SetOutput("exe", Value.FromText(exe));
         ctx.SetOutput("handle", Value.FromNumber(hwnd.ToInt64()));
         ctx.SetOutput("found", Value.FromBool(true));
+        ctx.SetOutput("value", UnitValues.Window(title, true, true, hwnd.ToInt64()));
     }
 }
 
@@ -131,6 +136,7 @@ public sealed class OperateWindowUnit : IStepUnit
             new OutputSpec("y", "Y", ValueKind.number, "windowY"),
             new OutputSpec("w", "宽", ValueKind.number, "windowW"),
             new OutputSpec("h", "高", ValueKind.number, "windowH"),
+            new OutputSpec("value", "完整结果", ValueKind.@object),
         },
     };
 
@@ -182,5 +188,7 @@ public sealed class OperateWindowUnit : IStepUnit
         ctx.SetOutput("y", Value.FromNumber(result.Y ?? 0));
         ctx.SetOutput("w", Value.FromNumber(result.W ?? 0));
         ctx.SetOutput("h", Value.FromNumber(result.H ?? 0));
+        ctx.SetOutput("value", UnitValues.Region(
+            result.X ?? 0, result.Y ?? 0, result.W ?? 0, result.H ?? 0));
     }
 }

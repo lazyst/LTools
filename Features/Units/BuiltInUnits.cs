@@ -47,6 +47,7 @@ public static class BuiltInUnits
         // —— 输入 ——
         registry.Register(new SendKeysUnit());
         registry.Register(new MouseUnit());
+        registry.Register(new CursorUnit());
         registry.Register(new ClickTextUnit());
         registry.Register(new ClickImageUnit());
         registry.Register(new MacroUnit());
