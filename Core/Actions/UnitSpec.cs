@@ -52,7 +52,11 @@ public enum BodyKind
 /// <param name="Required">是否必填。</param>
 /// <param name="Default">默认值。</param>
 /// <param name="VisibleWhen">显示条件（如 <c>operation == 'write'</c>），由 UI 解释。</param>
-/// <param name="Options">枚举选项（<see cref="InputEditor.enumList"/> 用）。</param>
+/// <param name="Options">枚举选项（<see cref="InputEditor.enumList"/> 用），存的是英文键。</param>
+/// <param name="Labels">
+/// 该参数私有的选项中文名，优先于 <see cref="OptionLabels"/> 的全局表。
+/// 只在同一个键于不同单元含义不同时才用（如 <c>add</c>：列表里是「追加一项」、计算里是「加法」）。
+/// </param>
 public sealed record InputSpec(
     string Key,
     string Label,
@@ -61,7 +65,8 @@ public sealed record InputSpec(
     bool Required = false,
     Value? Default = null,
     string? VisibleWhen = null,
-    IReadOnlyList<string>? Options = null);
+    IReadOnlyList<string>? Options = null,
+    IReadOnlyDictionary<string, string>? Labels = null);
 
 /// <summary>一个输出参数的声明。输出要写哪个变量由步骤的 <c>out</c> 映射决定。</summary>
 /// <param name="Key">输出键。</param>

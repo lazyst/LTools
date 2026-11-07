@@ -497,6 +497,18 @@ sealed class SubActionDef {
 
 **验收**：构建 0 错 0 警；`ActionSmoke` 601 项断言；`PanelSmoke` 全绿（含参数对话框截图）。
 
+### W6.1 枚举值显示中文化 ✅
+
+用户反馈「许多操作都是英文，比如 trim、read、foreground」。
+
+- 新增 `Core/Actions/OptionLabels.cs`：英文键 → 中文名（唯一映射），参数对话框下拉与步骤行摘要共用。
+- `InputSpec.Labels`（可选）给单个参数覆盖全局表：`data.calc` 的 `add` 是「加法」，`data.list` 的是「追加一项」；
+  `file.explorer` 的 `open` 是「打开文件夹」，`file.open` 的才是「用默认程序打开」。
+- **只翻译显示层**：`Options` 里仍是英文键，`VisibleWhen`、迁移器、单元实现、老配置一律按英文比较；
+  下拉项把英文键放在 `Tag` 里读回，摘要只翻字面量（变量 / 内联取值原样显示）。
+
+**验收**：构建 0 错 0 警；`ActionSmoke` 601 项断言；`PanelSmoke` 全绿（参数对话框下拉与摘要均为中文）。
+
 ---
 
 ## 6. UI / 交互

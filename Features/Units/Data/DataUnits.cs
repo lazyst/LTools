@@ -263,6 +263,21 @@ public sealed class CalcUnit : IStepUnit
     private static readonly string[] Operations =
         { "add", "subtract", "multiply", "divide", "modulo", "power", "min", "max", "abs", "round" };
 
+    /// <summary>运算的中文名。<c>add</c> 在这里是「加法」，不能沿用列表的「追加一项」。</summary>
+    private static readonly Dictionary<string, string> OperationLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["add"] = "加法",
+        ["subtract"] = "减法",
+        ["multiply"] = "乘法",
+        ["divide"] = "除法",
+        ["modulo"] = "取余",
+        ["power"] = "乘方",
+        ["min"] = "最小值",
+        ["max"] = "最大值",
+        ["abs"] = "绝对值",
+        ["round"] = "四舍五入",
+    };
+
     public UnitSpec Spec { get; } = new()
     {
         Key = "data.calc",
@@ -274,7 +289,8 @@ public sealed class CalcUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("operation", "运算", ValueKind.text, InputEditor.enumList,
-                Required: true, Default: Value.FromText("add"), Options: Operations),
+                Required: true, Default: Value.FromText("add"), Options: Operations,
+                Labels: OperationLabels),
             new InputSpec("a", "A", ValueKind.number, InputEditor.number, Required: true),
             new InputSpec("b", "B", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(0)),

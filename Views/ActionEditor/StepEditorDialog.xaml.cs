@@ -142,8 +142,13 @@ public partial class StepEditorDialog : Window
             {
                 var combo = new ComboBox { MinHeight = 28, MinWidth = 180 };
                 var options = input.Options ?? Array.Empty<string>();
+                // 显示中文名，Tag 里留英文键——存进步骤的仍是键，老配置与单元实现不受影响。
                 foreach (string option in options)
-                    combo.Items.Add(new ComboBoxItem { Content = option });
+                    combo.Items.Add(new ComboBoxItem
+                    {
+                        Content = OptionLabels.For(input, option),
+                        Tag = option,
+                    });
 
                 string want = current?.Literal.AsText() ?? input.Default?.AsText() ?? "";
                 int index = -1;
@@ -156,7 +161,7 @@ public partial class StepEditorDialog : Window
                 combo.SelectedIndex = index >= 0 ? index : 0;
 
                 read = () => StepArg.FromText(
-                    (combo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "");
+                    ((combo.SelectedItem as ComboBoxItem)?.Tag as string) ?? "");
                 combo.SelectionChanged += (_, _) => OnEdited();
                 return combo;
             }

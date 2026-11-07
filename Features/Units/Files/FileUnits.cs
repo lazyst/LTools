@@ -413,17 +413,25 @@ public sealed class ExplorerUnit : IStepUnit
 {
     private static readonly string[] Operations = { "show", "open" };
 
+    /// <summary>这里的 <c>open</c> 是「打开文件夹」，不是「用默认程序打开」。</summary>
+    private static readonly Dictionary<string, string> OperationLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["show"] = "定位文件",
+        ["open"] = "打开文件夹",
+    };
+
     public UnitSpec Spec { get; } = new()
     {
         Key = "file.explorer",
         Name = "在资源管理器中显示",
         Category = "文件",
         Icon = "explorer",
-        Description = "选中文件（show）或打开文件夹（open）",
+        Description = "在资源管理器中定位文件，或打开文件夹",
         Inputs = new[]
         {
             new InputSpec("operation", "操作", ValueKind.text, InputEditor.enumList,
-                Required: true, Default: Value.FromText("show"), Options: Operations),
+                Required: true, Default: Value.FromText("show"), Options: Operations,
+                Labels: OperationLabels),
             new InputSpec("path", "路径", ValueKind.text, InputEditor.file, Required: true),
         },
         Outputs = new[]

@@ -13,29 +13,6 @@ namespace LTools.Views;
 /// </summary>
 internal static class StepSummary
 {
-    private static readonly Dictionary<string, string> OpLabels = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["equals"] = "等于",
-        ["notEquals"] = "不等于",
-        ["contains"] = "包含",
-        ["notContains"] = "不包含",
-        ["startsWith"] = "开头是",
-        ["endsWith"] = "结尾是",
-        ["regex"] = "匹配正则",
-        ["isEmpty"] = "为空",
-        ["isNotEmpty"] = "不为空",
-        ["greater"] = "大于",
-        ["less"] = "小于",
-        ["greaterOrEqual"] = "大于等于",
-        ["lessOrEqual"] = "小于等于",
-        ["isTrue"] = "为真",
-        ["isFalse"] = "为假",
-        ["found"] = "已找到",
-        ["notFound"] = "未找到",
-        ["active"] = "已激活",
-        ["notActive"] = "未激活",
-    };
-
     private static readonly HashSet<string> UnaryOps = new(StringComparer.OrdinalIgnoreCase)
     {
         "isEmpty", "isNotEmpty", "isTrue", "isFalse",
@@ -65,7 +42,9 @@ internal static class StepSummary
                 && string.Equals(arg.Literal.AsText(), input.Default.AsText(), StringComparison.Ordinal))
                 continue;
 
-            string value = ArgText(arg);
+            string value = input.Editor == InputEditor.enumList
+                ? OptionText(input, arg)
+                : ArgText(arg);
             parts.Add(input.Editor == InputEditor.enumList ? value : $"{input.Label} {value}");
             if (parts.Count >= 2) break;
         }
@@ -102,6 +81,15 @@ internal static class StepSummary
         return s;
     }
 
+    /// <summary>
+    /// 枚举参数的摘要文本：字面量翻成中文名，变量 / 内联取值原样显示
+    /// （它们运行期才知道值，翻不了也不该翻）。
+    /// </summary>
+    private static string OptionText(InputSpec input, StepArg arg) =>
+        arg.Kind == StepArgKind.literal
+            ? OptionLabels.For(input, arg.Literal.AsText())
+            : ArgText(arg);
+
     private static string Text(Step step, string key) =>
         step.In.TryGetValue(key, out var arg) ? ArgText(arg) : "";
 
@@ -115,7 +103,7 @@ internal static class StepSummary
         string left = step.In.TryGetValue("left", out var l) ? ArgText(l) : "";
         string op = step.In.TryGetValue("op", out var o) ? o.Literal.AsText() : "equals";
         string right = step.In.TryGetValue("right", out var r) ? ArgText(r) : "";
-        string label = OpLabels.TryGetValue(op, out var pretty) ? pretty : op;
+        string label = OptionLabels.Of(op);
 
         string text = UnaryOps.Contains(op) || right.Length == 0
             ? $"{left} {label}"
