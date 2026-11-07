@@ -96,6 +96,14 @@ public sealed class VariableScope
         return current;
     }
 
+    /// <summary>把本作用域与所有父作用域摊平（子作用域覆盖父作用域）。</summary>
+    public Dictionary<string, Value> Flatten()
+    {
+        var all = Parent?.Flatten() ?? new Dictionary<string, Value>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in _values) all[kv.Key] = kv.Value;
+        return all;
+    }
+
     /// <summary>当前作用域的变量快照（不含父作用域）。</summary>
     public IReadOnlyDictionary<string, Value> Snapshot()
     {

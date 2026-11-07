@@ -6,8 +6,9 @@
 > 已定方向：**一次性重写** / 子动作 = **全局库 + 动作内** / 变量 = **5 种类型**。
 > 本文件是方案与施工图，不含实现。证据见 §2。
 >
-> **状态（2026-11-07）**：W1 内核已落地（`Core/Actions/` + 3 个示例单元），
-> 无头冒烟 92 项断言通过。上一代动作系统的说明在 `docs/ACTION_SYSTEM_PLAN.md`，本文档取代它。
+> **状态（2026-11-07）**：W1 内核 + W2 全量单元已落地（`Core/Actions/` + `Features/Units/`，
+> 36 个功能单元 + 9 个流程单元），无头冒烟 395 项断言通过，面板 UI 冒烟无回归。
+> 上一代动作系统的说明在 `docs/ACTION_SYSTEM_PLAN.md`，本文档取代它。
 
 ---
 
@@ -247,29 +248,29 @@ sealed class SubActionDef {
 
 ### 3.6 单元清单（初稿，约 40 个）
 
-| 分类 | 单元 | 对应今天的 |
+| 分类 | 单元（W2 已实现） | 对应今天的 |
 |---|---|---|
 | **文本** | `text.selection` 取选中文字 | Probe.selection |
 | | `text.clipboard` 读写剪贴板 | setClipboard / Probe.clipboard |
 | | `text.send` 发送文本 | sendText |
-| | `text.process` 处理（去空格/替换/截取/大小写/分割/合并） | 新增（合并零碎操作） |
-| | `text.format` 模板拼接 | 变量模板 |
+| | `text.process` 去空白/大小写/替换/截取/分割/拼接/查找 | 新增（合并零碎操作） |
 | **文件** | `file.open` 打开文件/文件夹/网址 | openFile/openFolder/openUrl |
 | | `file.select` 选择文件/文件夹 | 新增 |
 | | `file.read` / `file.write` 读写文本 | 新增 |
-| | `file.operation` 复制/移动/删除/建目录 | 新增 |
+| | `file.operation` 复制/移动/删除/建目录/重命名 | 新增 |
+| | `file.exists` 存在/类型/大小/修改时间 | 新增 |
 | | `file.explorer` 在资源管理器中定位 | 新增 |
 | **程序** | `app.launch` 启动程序 | launchApp |
 | | `app.runCommand` 运行命令（→ 退出码/stdout/stderr） | runCommand |
+| | `app.process` 进程数量/进程号/结束进程 | Probe.process |
 | **输入** | `input.sendKeys` 模拟按键 | sendKeys |
 | | `input.mouse` 鼠标操作 | mouse |
 | | `input.clickText` 文字点击 | clickText |
 | | `input.clickImage` 图片点击 | imageClick |
 | | `input.macro` 回放宏 | macro |
 | **窗口** | `window.find` 查找窗口 → 对象 | 新增（复用 WindowFinder） |
-| | `window.operate` 切前台/最大化/最小化/还原/改尺寸 | window |
 | | `window.foreground` 前台窗口信息 | Probe.window |
-| | `window.process` 进程是否存在/信息 | Probe.process |
+| | `window.operate` 切前台/最大化/最小化/还原/改尺寸 | window |
 | **屏幕** | `screen.capture` 截图 → 对象 | Probe.screenshot |
 | | `screen.findImage` 找图 → 对象 | Probe.image |
 | | `screen.ocr` 文字识别 → 文本 | Probe.ocr |
@@ -278,21 +279,21 @@ sealed class SubActionDef {
 | **流程** | `flow.set` 赋值/追加 | FlowNode.set |
 | | `flow.if` 条件（then/else） | FlowNode.if |
 | | `flow.repeat` / `flow.forEach` / `flow.while` 循环 | FlowNode.loop |
-| | `flow.break` / `flow.continue` / `flow.stop` | 同名节点 |
-| | `flow.delay` 等待 | DelayMs / sleep |
-| | `flow.toast` 提示 | toast |
-| | `flow.input` 弹输入框 | Probe.user |
-| | `flow.runSubAction` 调用子动作 | 新增 |
-| | `flow.comment` 注释 | 新增 |
+| | `flow.break` / `flow.continue` / `flow.stop` / `flow.delay` | 同名节点 / DelayMs |
+| | `flow.lastError` 上一步的错误 | RunContext.LastError |
+| | `flow.runSubAction` 调用子动作（W3） | 新增 |
 | **数据** | `data.noteWrite` / `data.noteRead` 速记 | quickNote / Probe.note |
 | | `data.list` 列表增删改查/排序/去重 | 新增 |
 | | `data.calc` 数值计算 | 新增 |
-| | `data.json` JSON 取值（可选，后期） | 新增 |
+| | `data.time` 当前时间/格式化/偏移 | 新增 |
+| **界面** | `ui.toast` 提示 | toast |
+| | `ui.input` 弹输入框 | Probe.user |
 | **内部** | `internal.invoke` 内部命令 | internal |
 
 **粒度原则**：能用一个 `operation` 参数区分的微操作，合并在同一个单元里
-（`text.process`、`file.operation`、`window.operate`、`data.list`），
-否则工具箱会变成今天 Quicker 的 119 项。
+（`text.process`、`file.operation`、`window.operate`、`data.list`、`data.calc`），
+否则工具箱会变成今天 Quicker 的 119 项。`text.format` 已并入模板 + `text.process join`；
+`data.json` 留到后期按需要再加。
 
 ### 3.7 迁移规则
 
@@ -339,13 +340,19 @@ sealed class SubActionDef {
 
 **验收**：无头测试跑通「取值 → 赋值 → 条件 → 循环 → 提示」五步动作。
 
-### W2 全量单元
+### W2 全量单元 ✅
 
-- `Features/Units/<分类>/*.cs`，每类一个文件，每个单元一个类 + `[Unit("key")]` 注册。
+- `Features/Units/<分类>/*.cs`，每类一个文件，每个单元一个类 + `IStepUnit` 实现。
 - 逻辑从 `ActionExecutor` / `ProbeEvaluator` / `FlowRunner` **搬**过来（不重写行为），
-  共享代码下沉到 `Core/`（如 `WindowFinder`、`MouseOps`、`TextLocator`）。
+  共享代码下沉到 `Features/`（`TextSender`、`CommandRunner`、`ProcessLauncher`）与
+  既有工具类（`WindowFinder`、`MouseOps`、`TextLocator`、`ImageProbe`、`ScreenshotProbe`）。
+- 旧实现过渡：`Features/Units/UnitValues.cs`（`Value` ↔ `VarValue`）+
+  `LegacyFlow.cs`（把新上下文包装成 `RunContext`）；旧实现只读变量，不回写。
+- `Value.AsText()` 对对象优先取 `text` 成员，于是 `${截图}` 仍是 `"x,y,w,h"`、
+  `${匹配.x}` 才拿坐标。
 
-**验收**：`UnitsTest` 反射遍历所有单元，校验 Key 唯一、`Spec` 完整、默认值类型匹配。
+**验收**：`ActionSmoke` 遍历注册表，校验 Key 唯一、`Spec` 完整、枚举选项齐全，
+并跑通文本/数据/文件/命令/内联取值/错误文本；共 395 项断言通过。
 
 ### W3 迁移器
 

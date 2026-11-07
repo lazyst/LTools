@@ -20,12 +20,18 @@ public interface IStepUnit
 public sealed class StepArgs
 {
     private readonly Dictionary<string, Value> _values;
+    private readonly HashSet<string> _provided;
 
-    internal StepArgs(Dictionary<string, Value> values) => _values = values;
+    internal StepArgs(Dictionary<string, Value> values, IEnumerable<string> provided)
+    {
+        _values = values;
+        _provided = new HashSet<string>(provided, StringComparer.OrdinalIgnoreCase);
+    }
 
     public IReadOnlyDictionary<string, Value> Values => _values;
 
-    public bool Has(string key) => _values.ContainsKey(key);
+    /// <summary>该参数是否由步骤提供（或带默认值）；仅用于可选参数的「填了没有」判断。</summary>
+    public bool Has(string key) => _provided.Contains(key);
 
     public Value? TryGet(string key) => _values.TryGetValue(key, out var value) ? value : null;
 

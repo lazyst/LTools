@@ -213,12 +213,14 @@ public sealed class ActionEngine
     internal StepArgs ResolveArgs(Step step, UnitSpec spec, StepContext ctx)
     {
         var values = new Dictionary<string, Value>(StringComparer.OrdinalIgnoreCase);
+        var provided = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var input in spec.Inputs)
         {
             Value value;
             if (step.In.TryGetValue(input.Key, out var arg))
             {
+                provided.Add(input.Key);
                 try { value = arg.Resolve(ctx); }
                 catch (ActionException ex)
                 {
@@ -227,6 +229,7 @@ public sealed class ActionEngine
             }
             else if (input.Default != null)
             {
+                provided.Add(input.Key);
                 value = input.Default;
             }
             else if (input.Required)
@@ -238,7 +241,7 @@ public sealed class ActionEngine
                 value = Value.Empty;
             }
 
-            try { values[input.Key] = value.Coerce(input.Type); }
+            try { values[input.Key] = provided.Contains(input.Key) ? value.Coerce(input.Type) : Value.Empty; }
             catch (ActionException ex)
             {
                 throw new ActionException($"参数「{input.Label}」类型不对：{ex.Message}", ex);
@@ -251,7 +254,7 @@ public sealed class ActionEngine
                 throw new ActionException($"「{spec.Name}」没有参数「{key}」（检查拼写）");
         }
 
-        return new StepArgs(values);
+        return new StepArgs(values, provided);
     }
 
     private void ValidateProgram(ActionProgram program)

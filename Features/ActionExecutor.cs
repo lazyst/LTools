@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.Globalization;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LTools.Core;
@@ -142,10 +141,7 @@ internal static class ActionExecutor
         if (string.IsNullOrWhiteSpace(a.Target))
             throw new InvalidOperationException($"launchApp 缺少 Target: {a.Name}");
         string wd = AppPaths.ResolveWorkdir(a.Workdir);
-        // CreateProcess 解析相对 exe 用的是父进程 CWD，不是 WorkingDirectory；先按数据根 / 工作目录解析成绝对路径，
-        // 否则 `resources\foo.exe` 在 LTools 自身 CWD 不是数据根时（如开机自启 = System32）会找不到文件。
-        string target = AppPaths.ResolveTarget(a.Target!, wd);
-        var process = Process.Start(BuildPsi(target, a.Args, wd));
+        var process = ProcessLauncher.StartApp(a.Target!, a.Args, a.Workdir ?? "");
         if (process == null) return VarValue.FromBool(true);
 
         try
@@ -191,250 +187,27 @@ internal static class ActionExecutor
     private static VarValue? RunCommand(ActionDto a, RunContext? ctx)
     {
         // 输出变量 = 需要结果：改为后台执行并捕获 stdout / stderr / 退出码（不再打开终端）。
-        // 捕获模式没有窗口，「保持窗口」在这里不适用；记一条日志，便于解释「勾了却没保留」。
-        if (!string.IsNullOrWhiteSpace(a.OutputVar))
+        bool capture = !string.IsNullOrWhiteSpace(a.OutputVar);
+        var outcome = CommandRunner.Run(new CommandRequest
         {
-            if (a.KeepWindow == true)
-                AppLog.Info("Action", $"「{a.Name}」填了输出变量，改为后台捕获执行（不显示窗口），已忽略「保持窗口」");
-            return RunCommandCaptured(a, ctx);
-        }
+            Command = a.Cmd ?? "",
+            Terminal = a.Terminal ?? "direct",
+            KeepWindow = a.KeepWindow ?? false,
+            Workdir = a.Workdir ?? "",
+            Label = a.Name,
+            Capture = capture,
+        }, ctx);
 
-        string cmd = a.Cmd ?? "";
-        string terminal = a.Terminal ?? "direct";
-        bool keepWindow = a.KeepWindow ?? false;
-        string workdir = a.Workdir ?? "";
-
-        // direct / 空 terminal：走 ShellExecute（TerminalLauncher 的 direct 分支为 no-op）
-        if (terminal == "direct" || terminal.Length == 0)
-        {
-            if (string.IsNullOrWhiteSpace(cmd))
-                throw new InvalidOperationException($"runCommand 缺少 Cmd: {a.Name}");
-            if (keepWindow)
-                AppLog.Info("Action", $"「{a.Name}」终端为「直接运行」，没有窗口可保持，已忽略「保持窗口」");
-            RunDirect(cmd, workdir);
-            return null;
-        }
-
-        var r = TerminalLauncher.TryBuildLaunch(terminal, keepWindow, cmd, workdir);
-        if (!r.Ok)
-        {
-            if (r.Error == null) return null; // 空命令仅开 shell 无 exe 时的 no-op
-            TrayService.Notify(r.Error); // 替代原 MenuSystem 的模态提示，不阻塞动作路径
-            throw new InvalidOperationException(r.Error);
-        }
-        Process.Start(BuildPsi(r.Exe!, r.Args, r.Workdir));
-        return null;
-    }
-
-    /// <summary>单条输出最多保留的字符数（防止命令刷屏把内存吃满）。</summary>
-    private const int MaxCapturedChars = 200_000;
-
-    /// <summary>没有流程上下文时，捕获型命令的最长等待时间。</summary>
-    private const int MaxCaptureMs = 10 * 60 * 1000;
-
-    private static readonly Encoding? OemEncoding = CreateOemEncoding();
-
-    private static Encoding? CreateOemEncoding()
-    {
-        try
-        {
-            // .NET 默认不带 OEM 代码页；注册一次即可按系统 OEM 编码解码 cmd 的输出（中文不乱码）。
-            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-            return Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
-        }
-        catch
-        {
-            return null;   // 拿不到就退回运行时默认编码
-        }
-    }
-
-    /// <summary>Git Bash / WSL 的管道输出是 UTF-8（无 BOM）。</summary>
-    private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-
-    /// <summary>
-    /// 按「运行命令」里选的终端构造捕获用的启动信息：不使用 keepWindow / Windows Terminal 包装，
-    /// 直接跑 shell 的「执行一条命令」形式，才能从管道拿到输出。
-    /// Git Bash / WSL 的管道输出是 UTF-8；cmd 与 PowerShell 默认跟随系统 OEM 代码页（中文 Windows 为 GBK）。
-    /// </summary>
-    private static ProcessStartInfo BuildCapturePsi(ActionDto a, string cmd, string wd)
-    {
-        string terminal = a.Terminal ?? "direct";
-
-        var psi = new ProcessStartInfo
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-
-        if (terminal is "pwsh7" or "pwsh5" or "gitbash" or "wslbash")
-        {
-            string? shell = TerminalLauncher.Resolve(terminal);
-            if (!string.IsNullOrEmpty(shell) && File.Exists(shell))
-            {
-                psi.FileName = shell;
-                switch (terminal)
-                {
-                    case "pwsh7":
-                    case "pwsh5":
-                        psi.ArgumentList.Add("-NoProfile");
-                        psi.ArgumentList.Add("-NonInteractive");
-                        psi.ArgumentList.Add(terminal == "pwsh7" ? "-c" : "-Command");
-                        psi.ArgumentList.Add(cmd);
-                        break;
-                    case "gitbash":
-                        psi.ArgumentList.Add("-c");
-                        psi.ArgumentList.Add(cmd);
-                        break;
-                    case "wslbash":
-                        psi.ArgumentList.Add("bash");
-                        psi.ArgumentList.Add("-lc");
-                        psi.ArgumentList.Add(cmd);
-                        break;
-                }
-
-                // Git Bash / WSL 固定 UTF-8；cmd 与 PowerShell 的管道输出跟随系统 OEM 代码页。
-                bool utf8 = terminal is "gitbash" or "wslbash";
-                psi.StandardOutputEncoding = utf8 ? Utf8NoBom : OemEncoding;
-                psi.StandardErrorEncoding = utf8 ? Utf8NoBom : OemEncoding;
-
-                if (!string.IsNullOrEmpty(wd) && Directory.Exists(wd))
-                    psi.WorkingDirectory = wd;
-                return psi;
-            }
-
-            AppLog.Warn("Action",
-                $"未找到 {TerminalLauncher.DisplayLabel(terminal)}，捕获执行改用 cmd.exe：{a.Name}");
-        }
-
-        // direct / cmd / wt（wt 只是终端宿主，捕获时不需要它）
-        psi.FileName = "cmd.exe";
-        psi.Arguments = "/d /s /c \"" + cmd + "\"";
-        psi.StandardOutputEncoding = OemEncoding;
-        psi.StandardErrorEncoding = OemEncoding;
-        if (!string.IsNullOrEmpty(wd) && Directory.Exists(wd))
-            psi.WorkingDirectory = wd;
-        return psi;
-    }
-
-    /// <summary>
-    /// 后台执行命令并捕获输出（供「结果存到变量」使用）。
-    /// 隐藏窗口执行（cmd / 所选 shell），等待进程退出后返回
-    /// <c>Text</c>=标准输出、<c>Error</c>=错误输出、<c>Number</c>=退出码、<c>Flag</c>=是否成功。
-    /// 流程里可按停止热键取消（连同子进程一起结束）。
-    /// </summary>
-    private static VarValue RunCommandCaptured(ActionDto a, RunContext? ctx)
-    {
-        string cmd = (a.Cmd ?? "").Trim();
-        if (cmd.Length == 0)
-            throw new InvalidOperationException($"runCommand 缺少 Cmd: {a.Name}");
-
-        string wd = AppPaths.ResolveWorkdir(a.Workdir);
-        var psi = BuildCapturePsi(a, cmd, wd);
-
-        using var process = Process.Start(psi)
-            ?? throw new InvalidOperationException($"无法启动命令: {a.Name}");
-
-        // 先异步把两条流读空，避免子进程写满管道缓冲区后卡住
-        Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
-        Task<string> stderrTask = process.StandardError.ReadToEndAsync();
-
-        long started = Environment.TickCount64;
-        while (!process.HasExited)
-        {
-            if (ctx != null)
-            {
-                if (!ctx.Wait(100))
-                {
-                    TryKill(process);
-                    throw new FlowAbortException("已停止", userCancelled: true);
-                }
-            }
-            else
-            {
-                Thread.Sleep(100);
-                if (Environment.TickCount64 - started > MaxCaptureMs)
-                {
-                    TryKill(process);
-                    throw new InvalidOperationException($"命令运行超过 {MaxCaptureMs / 60000} 分钟，已中止: {a.Name}");
-                }
-            }
-        }
-
-        string stdout = Cap(stdoutTask.GetAwaiter().GetResult());
-        string stderr = Cap(stderrTask.GetAwaiter().GetResult());
-        int exitCode = process.ExitCode;
+        if (!outcome.Captured) return null;
 
         return new VarValue
         {
-            Text = stdout.TrimEnd('\r', '\n'),
-            Error = stderr.TrimEnd('\r', '\n'),
-            Number = exitCode,
-            Flag = exitCode == 0,
+            Text = outcome.Stdout,
+            Error = outcome.Stderr,
+            Number = outcome.ExitCode,
+            Flag = outcome.ExitCode == 0,
         };
-
-        static string Cap(string text) => text.Length <= MaxCapturedChars
-            ? text
-            : text[..MaxCapturedChars] + "\n…（输出过长，已截断）";
     }
-
-    private static void TryKill(Process process)
-    {
-        try { process.Kill(entireProcessTree: true); } catch { /* 已退出 / 无权限 */ }
-    }
-
-    /// <summary>direct 终端：拆 exe+args 启动，失败回退 ShellExecute（URL/文档/含空格非可执行首段）。</summary>
-    private static void RunDirect(string cmd, string workdir)
-    {
-        string wd = AppPaths.ResolveWorkdir(workdir);
-        try
-        {
-            TrySplitCommandLine(cmd, out string exe, out string args);
-            Process.Start(BuildPsi(AppPaths.ResolveTarget(exe, wd), args, wd));
-        }
-        catch
-        {
-            // 回退：ShellExecute 处理 URL/文档等非可执行目标（回退再失败则上抛）
-            Process.Start(new ProcessStartInfo(cmd) { UseShellExecute = true, WorkingDirectory = wd });
-        }
-    }
-
-    /// <summary>构造 ProcessStartInfo（工作目录仅在存在时设置）。</summary>
-    private static ProcessStartInfo BuildPsi(string exe, string? args, string? workdir)
-    {
-        var psi = new ProcessStartInfo(exe)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = false,
-        };
-        if (!string.IsNullOrEmpty(args)) psi.Arguments = args;
-        if (!string.IsNullOrEmpty(workdir) && Directory.Exists(workdir))
-            psi.WorkingDirectory = workdir;
-        return psi;
-    }
-
-    /// <summary>命令行拆分：首段（带引号或到空格）为 exe，其余为参数。</summary>
-    private static bool TrySplitCommandLine(string cmd, out string exe, out string args)
-    {
-        cmd = cmd.Trim();
-        exe = ""; args = "";
-        if (cmd.Length == 0) return false;
-        if (cmd[0] == '"')
-        {
-            int end = cmd.IndexOf('"', 1);
-            if (end < 0) { exe = cmd[1..]; return true; }
-            exe = cmd[1..end];
-            args = cmd[(end + 1)..].Trim();
-            return true;
-        }
-        int sp = cmd.IndexOf(' ');
-        if (sp < 0) { exe = cmd; return true; }
-        exe = cmd[..sp];
-        args = cmd[(sp + 1)..].Trim();
-        return true;
-    }
-
     // —— setClipboard（写入剪贴板）——
 
     /// <summary>
@@ -478,79 +251,11 @@ internal static class ActionExecutor
         // 焦点延时（§12）：面板/菜单关闭 → 目标窗口焦点切回有时间差，立即发键可能丢焦点。
         Thread.Sleep(50);
 
-        DispatchText(a, text, a.Mode ?? SendTextMode.auto);
+        TextSender.Dispatch(text, a.Mode ?? SendTextMode.auto, a.Name);
 
         if (a.AppendEnter == true)
             InputHelper.Tap((ushort)Win32.VkReturn);
     }
-
-    /// <summary>
-    /// 按 <paramref name="mode"/> 发送文本（不含焦点延时、不含 AppendEnter）。
-    /// 供 sendText 动作（前置延时后调用）与 sendKeys 的 text 条目（无延时）共用。
-    /// </summary>
-    /// <remarks>
-    /// 三模式语义（§12「输入法干扰修复」修订）：
-    /// <list type="bullet">
-    /// <item><b>auto（默认）</b>：<c>KEYEVENTF_UNICODE</c> 批量注入——绕过键盘布局与输入法，
-    /// 中英文/emoji 均可发，<b>不碰剪贴板</b>（修复「纯 ASCII 键入被中文输入法吞」+「剪贴板残留历史」）。</item>
-    /// <item><b>type</b>：<c>VkKeyScanW</c> 键入——真实模拟按键，受输入法影响（用户明确要求时才用）。</item>
-    /// <item><b>paste</b>：剪贴板粘贴 + 150ms 后恢复原剪贴板（仅文本格式可恢复）。</item>
-    /// </list>
-    /// </remarks>
-    private static void DispatchText(ActionDto a, string text, SendTextMode mode)
-    {
-        if (mode == SendTextMode.paste)
-        {
-            // 先备份原剪贴板文本（非文本内容如图片无法经文本接口恢复——粘贴模式必然覆盖）。
-            bool hadOld = NativeClipboard.TryGetText(out var oldText);
-            if (!NativeClipboard.SetText(text))
-                throw new InvalidOperationException($"sendText 写剪贴板失败: {a.Name}");
-            InputHelper.Combo((ushort)Win32.VkControl, (ushort)'V');
-            // 等目标窗口读走剪贴板再恢复，否则粘到原内容；150ms 对前台应用足够。
-            Thread.Sleep(150);
-            // 仅当剪贴板仍是我们写入的文本（用户未在此期间复制新内容）才恢复，避免覆盖新复制。
-            if (hadOld && NativeClipboard.TryGetText(out var now) && now == text)
-                NativeClipboard.SetText(oldText);
-        }
-        else if (mode == SendTextMode.type)
-        {
-            TypeText(a, text);
-        }
-        else // auto（默认）
-        {
-            InputHelper.SendUnicodeText(text);
-        }
-    }
-
-    /// <summary>
-    /// 键入式发送：预检全部字符可映射后逐字符发送；遇 <c>\n</c>/<c>\r\n</c> 转 Enter、<c>\t</c> 转 Tab。
-    /// 强制 type 模式遇不可映射字符（中文等）**报错而非静默改走剪贴板**——不违背「强制键入」语义（§12）。
-    /// </summary>
-    private static void TypeText(ActionDto a, string text)
-    {
-        for (int i = 0; i < text.Length; i++)
-        {
-            char ch = text[i];
-            if (ch == '\n' || ch == '\r' || ch == '\t') continue;
-            if (!InputHelper.CanType(ch))
-                throw new InvalidOperationException(
-                    $"sendText 键入方式无法映射字符 U+{(int)ch:X4}（非当前键盘布局字符），请改用「自动」或「粘贴」模式: {a.Name}");
-        }
-
-        for (int i = 0; i < text.Length; i++)
-        {
-            char ch = text[i];
-            if (ch == '\r')
-            {
-                if (i + 1 < text.Length && text[i + 1] == '\n') i++;  // \r\n 算一次回车
-                InputHelper.Tap((ushort)Win32.VkReturn);
-            }
-            else if (ch == '\n') InputHelper.Tap((ushort)Win32.VkReturn);
-            else if (ch == '\t') InputHelper.Tap((ushort)Win32.VkTab);
-            else InputHelper.SendChar(ch);
-        }
-    }
-
     // —— sendKeys（模拟按键，§3.2.1）——
     private static void SendKeys(ActionDto a)
     {
@@ -580,7 +285,7 @@ internal static class ActionExecutor
                 case KeyItemKind.text:
                     // 内联短文本条目：复用 sendText 的 auto 逻辑（不延时、不追加回车）
                     var t = item.Text ?? "";
-                    if (t.Length > 0) DispatchText(a, t, SendTextMode.auto);
+                    if (t.Length > 0) TextSender.Dispatch(t, SendTextMode.auto, a.Name);
                     break;
                 case KeyItemKind.sleep:
                     if (item.Ms > 0) Thread.Sleep(item.Ms);

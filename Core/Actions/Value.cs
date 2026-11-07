@@ -71,6 +71,10 @@ public sealed class Value
         return new Value(ValueKind.@object, members: map);
     }
 
+    /// <summary>用键值对构造对象（结构化结果的书写糖）。</summary>
+    public static Value Object(params (string Key, Value Value)[] members) =>
+        FromObject(members.Select(m => new KeyValuePair<string, Value>(m.Key, m.Value)));
+
     /// <summary>数字形式（内部值；类型不匹配时按文本解析）。</summary>
     public double NumberValue => Kind == ValueKind.number ? _number : AsNumber();
 
@@ -92,8 +96,12 @@ public sealed class Value
         ValueKind.number => _number.ToString("0.############", CultureInfo.InvariantCulture),
         ValueKind.@bool => _flag ? "true" : "false",
         ValueKind.list => "[" + string.Join(", ", Items.Select(v => v.AsText())) + "]",
-        ValueKind.@object => "{" + string.Join(", ",
-            Members.Select(kv => $"{kv.Key}={kv.Value.AsText()}")) + "}",
+        // 结构化结果的约定：对象里有 text 成员时，它就代表「直接当文本用」的样子
+        // （区域是 "x,y,w,h"、匹配是 "x,y"、命令结果是 stdout），
+        // 这样 ${匹配} 仍是紧凑文本，${匹配.x} 才拿坐标。
+        ValueKind.@object => Members.TryGetValue("text", out var textMember)
+            ? textMember.AsText()
+            : "{" + string.Join(", ", Members.Select(kv => $"{kv.Key}={kv.Value.AsText()}")) + "}",
         _ => "",
     };
 
