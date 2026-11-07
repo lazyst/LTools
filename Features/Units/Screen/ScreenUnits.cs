@@ -21,7 +21,8 @@ public sealed class CaptureScreenUnit : IStepUnit
         {
             new InputSpec("mode", "取图方式", ValueKind.text, InputEditor.enumList,
                 Required: true, Default: Value.FromText("interactive"), Options: Modes),
-            new InputSpec("rect", "固定区域", ValueKind.text, VisibleWhen: "mode == 'rect'"),
+            new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region,
+                VisibleWhen: "mode == 'rect'"),
         },
         Outputs = new[]
         {
@@ -98,7 +99,8 @@ public sealed class FindImageUnit : IStepUnit
             new InputSpec("image", "模板图", Editor: InputEditor.image, Required: true),
             new InputSpec("region", "区域", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("foreground"), Options: ScreenArgs.Regions),
-            new InputSpec("rect", "固定区域", ValueKind.text, VisibleWhen: "region == 'rect'"),
+            new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region,
+                VisibleWhen: "region == 'rect'"),
             new InputSpec("minScore", "最低相似度", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(0.85)),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,
@@ -222,7 +224,8 @@ public sealed class FindTextUnit : IStepUnit
             new InputSpec("text", "要找的文字", ValueKind.text, Required: true),
             new InputSpec("region", "区域", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("foreground"), Options: ScreenArgs.Regions),
-            new InputSpec("rect", "固定区域", ValueKind.text, VisibleWhen: "region == 'rect'"),
+            new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region,
+                VisibleWhen: "region == 'rect'"),
             new InputSpec("engine", "识别引擎", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("v6tiny"), Options: Engines),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,

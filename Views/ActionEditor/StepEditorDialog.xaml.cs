@@ -34,6 +34,15 @@ public partial class StepEditorDialog : Window
     private readonly List<(VariableDef Variable, ValueSourceEditor Editor)> _dynamicInputs = new();
     private readonly List<OutputRow> _dynamicOutputs = new();
     private readonly StackPanel _dynamicPanel = new() { Margin = new Thickness(0, 4, 0, 0) };
+
+    /// <summary>枚举行按英文键改选中项（框选完把「区域」切到 rect 用）。</summary>
+    private readonly Dictionary<string, Action<string>> _enumSetters =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>固定区域行按文本写入（框选结果落到 <c>x,y,w,h</c>）。</summary>
+    private readonly Dictionary<string, Action<string>> _rectSetters =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private bool _syncing;
 
     public StepEditorDialog(Step step, bool inline = false)
@@ -163,7 +172,22 @@ public partial class StepEditorDialog : Window
                 read = () => StepArg.FromText(
                     ((combo.SelectedItem as ComboBoxItem)?.Tag as string) ?? "");
                 combo.SelectionChanged += (_, _) => OnEdited();
-                return combo;
+
+                // 让别的行能按英文键改这一行的选中项（框选区域后自动切到「固定区域」）。
+                _enumSetters[input.Key] = key =>
+                {
+                    foreach (ComboBoxItem item in combo.Items)
+                    {
+                        if (!string.Equals(item.Tag as string, key, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        combo.SelectedItem = item;
+                        break;
+                    }
+                };
+
+                // 有配套「固定区域」的枚举（区域 / 取图方式）直接给个「框选…」：
+                // 不必先切到「固定区域」，拖完自动切好并填上坐标。
+                return IsRegionDriver(input) ? WithButton(combo, PickRegionButton()) : combo;
             }
 
             case InputEditor.variable:
@@ -229,7 +253,27 @@ public partial class StepEditorDialog : Window
                 };
                 read = () => StepArg.FromText(picker.Path);
                 picker.Changed += OnEdited;
+
+                // 框选模板图时顺手把搜索区域收紧到刚框的那块：找图 / 找字更快也更准。
+                // 没有 region / rect 的单元（如「文字识别」）什么也不做。
+                picker.Captured += ApplyPickedRegion;
                 return picker;
+            }
+
+            case InputEditor.region:
+            {
+                var value = new ValueSourceEditor
+                {
+                    Type = input.Type,
+                    VariableNameSource = VariableNameSource,
+                    Program = Program,
+                    Value = current ?? StepArg.FromText(""),
+                };
+                value.Changed += OnEdited;
+
+                _rectSetters[input.Key] = text => value.LiteralText = text;
+                read = () => value.Value;
+                return WithButton(value, PickRegionButton());
             }
 
             case InputEditor.file:
@@ -318,6 +362,66 @@ public partial class StepEditorDialog : Window
         row.Children.Add(editor);
         host.Children.Add(row);
         return row;
+    }
+
+    /// <summary>输入控件 + 右侧一个小按钮（「浏览…」/「框选…」）。</summary>
+    private static Grid WithButton(FrameworkElement editor, Button button)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.Children.Add(editor);
+        Grid.SetColumn(button, 1);
+        grid.Children.Add(button);
+        return grid;
+    }
+
+    /// <summary>「框选…」：拖一块屏幕，结果写进固定区域并切好枚举。</summary>
+    private Button PickRegionButton()
+    {
+        var pick = new Button
+        {
+            Content = "框选…",
+            Style = (Style)FindResource("BtnGhost"),
+            MinHeight = 28,
+            Margin = new Thickness(6, 0, 0, 0),
+            Padding = new Thickness(10, 2, 10, 2),
+            ToolTip = "在屏幕上拖一块，自动填好 x,y,w,h（并把区域切到「固定区域」）",
+        };
+        pick.Click += (_, _) =>
+        {
+            if (!ScreenPicker.TryPickRegion(Window.GetWindow(this), out var area, out _)) return;
+            ApplyPickedRegion(area);
+        };
+        return pick;
+    }
+
+    /// <summary>这个枚举值切换时会不会露出「固定区域」行（<c>region</c> / <c>mode</c>）。</summary>
+    private bool IsRegionDriver(InputSpec input) => _spec.Inputs.Any(i =>
+        string.Equals(i.Key, "rect", StringComparison.OrdinalIgnoreCase)
+        && StepSummary.TryGetVisibleRule(i, out string key, out _)
+        && string.Equals(key, input.Key, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// 框选完一块区域：先写「固定区域」文本，再把配套枚举（<c>region</c> / <c>mode</c>）切到 <c>rect</c>。
+    /// 顺序不能反——枚举一切换就会同步参数并把隐藏行丢掉，那时文本还没写进去。
+    /// </summary>
+    private void ApplyPickedRegion(Int32Rect area)
+    {
+        string rect = string.Format(CultureInfo.InvariantCulture,
+            "{0},{1},{2},{3}", area.X, area.Y, area.Width, area.Height);
+
+        var rectSpec = _spec.Inputs.FirstOrDefault(i =>
+            string.Equals(i.Key, "rect", StringComparison.OrdinalIgnoreCase));
+        if (rectSpec == null) return;   // 这个单元没有固定区域参数（如「文字识别」）
+
+        if (_rectSetters.TryGetValue(rectSpec.Key, out var setRect)) setRect(rect);
+
+        if (StepSummary.TryGetVisibleRule(rectSpec, out string key, out string value)
+            && _enumSetters.TryGetValue(key, out var setEnum))
+            setEnum(value);
+
+        OnEdited();
     }
 
     private void UpdateVisibility()

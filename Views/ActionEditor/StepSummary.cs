@@ -127,18 +127,30 @@ internal static class StepSummary
     /// </summary>
     public static bool IsVisible(InputSpec input, Step step, UnitSpec spec)
     {
-        if (string.IsNullOrWhiteSpace(input.VisibleWhen)) return true;
-
-        Match match = VisibleRule.Match(input.VisibleWhen);
-        if (!match.Success) return true;
-
-        string key = match.Groups["key"].Value;
-        string expected = match.Groups["value"].Value;
+        if (!TryGetVisibleRule(input, out string key, out string expected)) return true;
 
         if (step.In.TryGetValue(key, out var arg)) return arg.Literal.AsText() == expected;
 
         var dependency = spec.Inputs.FirstOrDefault(i =>
             string.Equals(i.Key, key, StringComparison.OrdinalIgnoreCase));
         return dependency?.Default?.AsText() == expected;
+    }
+
+    /// <summary>
+    /// 解析 <see cref="InputSpec.VisibleWhen"/> 的 <c>key == 'value'</c> 形式。
+    /// 参数对话框用它把「配套枚举」切到让这一行出现的值（框选完自动切到「固定区域」）。
+    /// </summary>
+    public static bool TryGetVisibleRule(InputSpec input, out string key, out string value)
+    {
+        key = "";
+        value = "";
+        if (string.IsNullOrWhiteSpace(input.VisibleWhen)) return false;
+
+        Match match = VisibleRule.Match(input.VisibleWhen);
+        if (!match.Success) return false;
+
+        key = match.Groups["key"].Value;
+        value = match.Groups["value"].Value;
+        return true;
     }
 }

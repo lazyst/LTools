@@ -509,6 +509,23 @@ sealed class SubActionDef {
 
 **验收**：构建 0 错 0 警；`ActionSmoke` 601 项断言；`PanelSmoke` 全绿（参数对话框下拉与摘要均为中文）。
 
+### W6.2 屏幕区域一键框选 ✅
+
+用户反馈：「需要用户输入区域的功能，应该能截图框选填入，而不是手填坐标」。
+
+- 受影响的 5 个单元：`screen.capture`（`mode` + `rect`）、`screen.findImage` / `screen.findText` /
+  `input.clickText` / `input.clickImage`（`region` + `rect`）。
+- 新编辑器 `InputEditor.region`：文本输入右侧多一个「框选…」（`ScreenPicker.TryPickRegion`），
+  框完写 `x,y,w,h`。配套枚举行（区域 / 取图方式）本身也挂一个「框选…」
+  （`IsRegionDriver` 按 `rect` 行的 `VisibleWhen` 认驱动键），不必先切到「固定区域」。
+- `StepEditorDialog.ApplyPickedRegion`：**先写文本、再切枚举**——顺序反了，切换时同步逻辑会先把隐藏行丢掉。
+- `TemplateImagePicker.Captured` 在参数对话框里接上：框选模板图后顺手把搜索区域收紧到刚框处
+  （旧编辑器有这个行为，W4 重写时漏了）。
+- 框选结果仍是普通字面量，可手改，也保留变量 / 内联取值两种模式。
+
+**验收**：构建 0 错 0 警；`ActionSmoke` 601 项；`PanelSmoke` 全绿
+（新增 `step-editor-region.png`，并断言框选结果会把 `region` 切成 `rect`、`rect` 写成 `x,y,w,h`）。
+
 ---
 
 ## 6. UI / 交互
