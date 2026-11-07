@@ -74,15 +74,15 @@ internal static class KeyboardHook
 
             // 自动化 / 宏回放期间按配置的停止热键停止（热键注册失败时的兜底；成对吞掉 keydown / keyup）。
             // 放在录入拦截之前：即使正在录入热键，也保留这个安全出口。
-            if (FlowRunner.IsRunning
-                    ? FlowRunner.HandleStopHotkey(vk, isDown, isUp)
+            if (AutomationRunner.IsRunning
+                    ? AutomationRunner.HandleStopHotkey(vk, isDown, isUp)
                     : MacroPlayer.HandleStopHotkey(vk, isDown, isUp))
                 return (IntPtr)1;
 
             // 自动化运行期间：屏蔽 LTools 的全部 CapsLock 手势 / 菜单 / 面板 / vim 热键。
             // 普通物理按键照常放行（用户仍可在目标应用里输入），CapsLock 本体吞掉，
             // 避免切换大小写或让状态机进入按下态。停止热键已在上方优先处理。
-            if (FlowRunner.IsRunning)
+            if (AutomationRunner.IsRunning)
             {
                 if (isUp && AppState.SwallowedVks.Remove((int)vk)) return (IntPtr)1;
                 if (vk == Win32.VkCapital)

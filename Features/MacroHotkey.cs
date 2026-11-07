@@ -158,7 +158,7 @@ internal static class MacroHotkey
         {
             handled = true;
             // 流程内的宏停止热键由流程接管：停止整个流程（并连带停止正在回放的宏）。
-            if (FlowRunner.IsRunning) FlowRunner.Stop();
+            if (AutomationRunner.IsRunning) AutomationRunner.Stop();
             else if (MacroPlayer.IsPlaying) MacroPlayer.Stop();
             return IntPtr.Zero;
         }

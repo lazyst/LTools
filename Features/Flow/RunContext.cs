@@ -18,6 +18,8 @@ internal sealed class FlowAbortException : Exception
     public FlowAbortException(string reason, bool userCancelled = false) : base(reason)
         => UserCancelled = userCancelled;
 
+    public FlowAbortException(string reason, Exception inner) : base(reason, inner) { }
+
     /// <summary>是否由用户按停止热键触发。</summary>
     public bool UserCancelled { get; }
 }
@@ -73,7 +75,7 @@ internal sealed class RunContext
 
     /// <summary>
     /// 当前正在执行的循环摘要（如「循环 · 3 次 · 序号」）；空表示不在循环里。
-    /// 只用于把步数 / 时间预算错误指向具体循环，由 <see cref="FlowRunner"/> 设置并在结束后复原。
+    /// 只用于把步数 / 时间预算错误指向具体循环（旧流程实现设置并在结束后复原）。
     /// </summary>
     public string LoopLabel { get; set; } = "";
 

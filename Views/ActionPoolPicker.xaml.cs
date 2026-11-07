@@ -10,7 +10,7 @@ namespace LTools.Views;
 
 /// <summary>
 /// 动作池选择器（阶段 3）：卡片网格浏览全局动作清单，搜索筛选，
-/// 点击选中，「新建动作…」跳 <see cref="ActionEditorDialog"/> 新建。
+/// 点击选中，「新建动作…」跳 <see cref="ActionEditor"/> 打开三栏编辑器。
 /// 供「菜单组」页和「超级面板」槽位共用。
 /// </summary>
 public partial class ActionPoolPicker : Window

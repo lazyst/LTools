@@ -352,20 +352,6 @@ public partial class ConfigHelperWindow : Window
         MarkDirty();
     }
 
-    /// <summary>新建组合动作（动作管理页入口，与超级面板槽位的「新建组合动作」一致走 ActionEditor 分发）。</summary>
-    private void NewCompositeAction_Click(object sender, RoutedEventArgs e)
-    {
-        // 传 composite 草稿（Id 空）→ ActionEditor.Show 走 CompositeActionDialog 新建模式
-        var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = ActionType.composite };
-        var dto = ActionEditor.Show(this, "新建组合动作", draft);
-        if (dto == null) return;
-        ConfigStore.AddAction(dto);
-        PopulateActions();
-        for (int i = 0; i < _actionRows.Count; i++)
-            if (_actionRows[i].Id == dto.Id) { ActionList.SelectedIndex = i; break; }
-        MarkDirty();
-    }
-
     private void EditAction_Click(object sender, RoutedEventArgs e)
     {
         var cur = SelectedAction();
@@ -527,22 +513,6 @@ public partial class ConfigHelperWindow : Window
         ConfigStore.AddAction(dto);
         MenuSystem.AddItem(SelectedSlot, dto.Id);
         PopulateActions();          // 动作池新增了动作，刷新动作管理列表
-        PopulateItemList();
-        var g = MenuSystem.GetGroup(SelectedSlot);
-        if (g != null) ItemList.SelectedIndex = g.Items.Count - 1;
-        MarkDirty();
-    }
-
-    /// <summary>在菜单页新建一个组合动作并加入当前菜单组。</summary>
-    private void NewCompositeFromMenu_Click(object sender, RoutedEventArgs e)
-    {
-        if (!EnsureGroupForEdit()) return;
-        var draft = new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = ActionType.composite };
-        var dto = ActionEditor.Show(this, "新建组合动作", draft);
-        if (dto == null) return;
-        ConfigStore.AddAction(dto);
-        MenuSystem.AddItem(SelectedSlot, dto.Id);
-        PopulateActions();
         PopulateItemList();
         var g = MenuSystem.GetGroup(SelectedSlot);
         if (g != null) ItemList.SelectedIndex = g.Items.Count - 1;

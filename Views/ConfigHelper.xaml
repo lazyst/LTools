@@ -297,8 +297,6 @@
                     <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
                         <Button Style="{StaticResource BtnPrimary}" Content="新建动作…" MinWidth="104"
                                 Click="NewAction_Click"/>
-                        <Button Style="{StaticResource BtnPrimary}" Content="新建组合动作…" MinWidth="104"
-                                Margin="8,0,0,0" Click="NewCompositeAction_Click"/>
                         <Button Style="{StaticResource BtnGhost}" Content="编辑" MinWidth="64"
                                 Margin="8,0,0,0" Click="EditAction_Click"/>
                         <Button Style="{StaticResource BtnGhost}" Content="复制" MinWidth="64"
@@ -356,9 +354,6 @@
                             <Button Style="{StaticResource BtnPrimary}" Content="新建动作…" MinWidth="84"
                                     Margin="6,0,0,0" Click="NewActionFromMenu_Click"
                                     ToolTip="新建一个动作并加入本菜单组"/>
-                            <Button Style="{StaticResource BtnPrimary}" Content="新建组合动作…" MinWidth="104"
-                                    Margin="6,0,0,0" Click="NewCompositeFromMenu_Click"
-                                    ToolTip="新建一个组合动作并加入本菜单组"/>
                             <Button Style="{StaticResource BtnGhost}" Content="修改" Margin="6,0,0,0" Click="EditItem_Click"/>
                         </StackPanel>
                     </Grid>

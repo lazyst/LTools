@@ -26,6 +26,12 @@ public sealed class ActionRunOptions
     public Action<string>? Log { get; init; }
 
     /// <summary>
+    /// 每开始一步回调一次（步序号从 1 开始）。用于进度提示 / 运行指示器；
+    /// 在后台线程上同步调用，**不要在这里做重活**。
+    /// </summary>
+    public Action<int>? StepStarted { get; init; }
+
+    /// <summary>
     /// 全局子动作解析（id → 定义）；缺省从数据根 <c>subactions/</c> 读取。
     /// 动作内子动作（<see cref="ActionProgram.SubActions"/>）总是优先。
     /// </summary>
@@ -456,6 +462,8 @@ internal sealed class ActionRunState
         if ((_steps & 31) == 0 && DateTime.UtcNow > _deadline)
             throw new ActionAbortedException(
                 $"执行时间超过上限（{_options.MaxDuration.TotalMinutes:0} 分钟），已自动停止");
+
+        _options.StepStarted?.Invoke(_steps);
     }
 
     /// <summary>进入循环的一轮：只做取消与时间检查，不计步骤数。</summary>

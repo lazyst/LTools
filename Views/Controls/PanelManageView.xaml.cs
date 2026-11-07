@@ -83,7 +83,6 @@ public partial class PanelManageView : UserControl
 
     private ContextMenu BuildDetailBlankMenu() => Menu(
         ("在此场景新建动作…", () => NewActionForSelectedScene()),
-        ("新建组合动作…", () => NewActionForSelectedScene(ActionType.composite)),
         ("新建分组", AddGroupToSelectedScene));
 
     private ContextMenu BuildSceneRowMenu(PanelSceneDto scene, bool isGlobal)
@@ -104,7 +103,6 @@ public partial class PanelManageView : UserControl
     private ContextMenu BuildGroupMenu(PanelGroupDto group, List<PanelGroupDto> groups) => Menu(
         ("重命名分组", () => RenameGroup(group)),
         ("新建动作…", () => AddActionToGroup(group)),
-        ("新建组合动作…", () => AddActionToGroup(group, ActionType.composite)),
         ("从动作池选择…", () => AddExistingToGroup(group)),
         ("-", null),
         ("删除分组…", () => DeleteGroup(groups, group)));
@@ -180,11 +178,11 @@ public partial class PanelManageView : UserControl
         SetStatus($"已在「{parent.Name}」下新建窗口子场景", ok: true);
     }
 
-    private void NewActionForSelectedScene(ActionType? presetType = null)
+    private void NewActionForSelectedScene()
     {
         var groups = GroupsOfSelectedScene();
         if (groups.Count == 0) return;
-        AddActionToGroup(groups[0], presetType);
+        AddActionToGroup(groups[0]);
     }
 
     private void NewActionForScene(PanelSceneDto scene)
@@ -215,9 +213,9 @@ public partial class PanelManageView : UserControl
         return PanelLibrary.FindScene(_selectedKey)?.Groups ?? PanelLibrary.Current.Context.Common;
     }
 
-    private void AddActionToGroup(PanelGroupDto group, ActionType? presetType = null)
+    private void AddActionToGroup(PanelGroupDto group)
     {
-        if (PanelActionOps.AddNew(Window.GetWindow(this), group, presetType) != null) RefreshAll();
+        if (PanelActionOps.AddNew(Window.GetWindow(this), group) != null) RefreshAll();
     }
 
     private void AddExistingToGroup(PanelGroupDto group)
@@ -1288,8 +1286,7 @@ public partial class PanelManageView : UserControl
                 mi.Click += (_, _) => Dispatcher.InvokeAsync(() => { act(); RefreshAll(); });
                 menu.Items.Add(mi);
             }
-            Add("新建动作…", () => PanelActionOps.AddNew(owner, group, null));
-            Add("新建组合动作…", () => PanelActionOps.AddNew(owner, group, ActionType.composite));
+            Add("新建动作…", () => PanelActionOps.AddNew(owner, group));
             Add("从动作池选择…", () => PanelActionOps.AddExisting(owner, group));
             menu.PlacementTarget = btn;
             menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;

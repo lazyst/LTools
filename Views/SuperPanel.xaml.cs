@@ -1011,8 +1011,7 @@ public partial class SuperPanelWindow : Window
     private void ShowAddMenu(PanelGroupDto group, UIElement? target)
     {
         var menu = new ContextMenu();
-        AddMenuItem(menu, "新建动作…", () => NewActionFor(group, null));
-        AddMenuItem(menu, "新建组合动作…", () => NewActionFor(group, ActionType.composite));
+        AddMenuItem(menu, "新建动作…", () => NewActionFor(group));
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
         TrackInteract(menu);
         menu.PlacementTarget = target;
@@ -1031,8 +1030,7 @@ public partial class SuperPanelWindow : Window
     private ContextMenu BuildGroupMenu(PanelGroupDto group, bool global)
     {
         var menu = NewTrackedMenu();
-        AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(group, null));
-        AddMenuItem(menu, "新建组合动作…", () => NewActionFor(group, ActionType.composite));
+        AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(group));
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
         menu.Items.Add(new Separator());
         AddMenuItem(menu, "重命名分组…", () => BeginRenameGroup(group, global));
@@ -1052,8 +1050,7 @@ public partial class SuperPanelWindow : Window
         var target = group ?? ZoneGroups(global).FirstOrDefault();
         if (target != null)
         {
-            AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(target, null));
-            AddMenuItem(menu, "新建组合动作…", () => NewActionFor(target, ActionType.composite));
+            AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(target));
             AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(target));
             menu.Items.Add(new Separator());
         }
@@ -1324,10 +1321,10 @@ public partial class SuperPanelWindow : Window
 
     // ============ 磁贴 CRUD（全部先关面板再开对话框） ============
 
-    private void NewActionFor(PanelGroupDto group, ActionType? presetType)
+    private void NewActionFor(PanelGroupDto group)
     {
         Features.SuperPanel.Close();
-        PanelActionOps.AddNew(null, group, presetType);
+        PanelActionOps.AddNew(null, group);
     }
 
     private void PickExistingFor(PanelGroupDto group)

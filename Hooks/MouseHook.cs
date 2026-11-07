@@ -80,7 +80,7 @@ internal static class MouseHook
 
             // 自动化运行期间：LTools 的鼠标手势（音量 / 裸右键长按面板 / 窗口置顶）全部让路，
             // 物理鼠标事件原样交给目标应用；注入事件已在上方过滤。
-            if (FlowRunner.IsRunning)
+            if (AutomationRunner.IsRunning)
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
 
             // 录制透明模式：只观察并放行，跳过音量 / 超级面板 / 窗口置顶 / 资源管理器重命名

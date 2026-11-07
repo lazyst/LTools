@@ -16,13 +16,9 @@ namespace LTools.Features.Panel;
 internal static class PanelActionOps
 {
     /// <summary>新建动作并加入分组；返回新动作（取消返回 null）。</summary>
-    public static ActionDto? AddNew(Window? owner, PanelGroupDto group, ActionType? presetType)
+    public static ActionDto? AddNew(Window? owner, PanelGroupDto group)
     {
-        var dto = presetType == null
-            ? ActionEditor.Show(owner, "新建动作", null)
-            : ActionEditor.Show(owner,
-                presetType == ActionType.composite ? "新建组合动作" : "新建动作",
-                new ActionDto { Id = "", Name = "", Icon = IconCatalog.Default, Type = presetType.Value });
+        var dto = ActionEditor.Show(owner, "新建动作", null);
 
         if (dto == null) return null;
         ConfigStore.AddAction(dto);

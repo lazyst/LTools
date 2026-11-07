@@ -179,7 +179,7 @@ public enum CompareOp
 
 /// <summary>
 /// 取值器参数。这是一个**参数包**（按 <see cref="Kind"/> 使用其中一部分字段），
-/// 与 <see cref="ActionDto"/> 的扁平风格一致；运行时由 <see cref="ProbeEvaluator"/> 分发。
+/// 与 <see cref="ActionDto"/> 的扁平风格一致；只给迁移器读旧 JSON 用（新单元在 <c>Core/Actions</c>）。
 /// </summary>
 public sealed class Probe
 {

@@ -430,12 +430,33 @@ sealed class SubActionDef {
 
 ### W5 切流与删除
 
-- 装配切换：`ActionRegistry` / `ActionExecutor` / `FlowRunner` 指向新引擎。
-- 删除：`FlowNode` 系列、`Probe` 系列、`ActionExecutor` 的 switch、`FlowNodeDialog`、
-  `ProbeEditor`、`ActionEditorDialog` 的按类型分支。
-- 文档：`README.md`、`AGENTS.md`、本文件同步。
+#### W5a 装配与删除 ✅
 
-**验收**：全量冒烟通过；`git grep FlowNodeKind` 只剩迁移器里的历史映射。
+- 执行装配：`ActionExecutor` 只剩 `Run` / `Execute` / `RunProgram`——先 `ActionPrograms.For(action)`
+  （旧格式懒迁移并缓存），再交给 `ActionEngine`；不再有按动作类型的 switch。
+- 会话层：新增 `Features/AutomationRunner`，接走 `FlowRunner` 的 `IsRunning` / `PrepareToRun` /
+  `Run` / `Stop` / `HandleStopHotkey` / 运行指示器 / 运行期截图回收。键盘钩子、鼠标钩子、
+  宏回放热键改读 `AutomationRunner`。
+- 删除：
+  - 旧解释器：`Features/Flow/FlowRunner`、`ProbeEvaluator`、`ProbeTest`
+  - 旧编辑器：`Views/ActionEditorDialog`、`Views/CompositeActionDialog`、`Views/FlowNodeDialog`、
+    `Views/Controls/ProbeEditor`、`Views/Controls/ConditionEditor`
+  - 随之无引用的旧控件 / 菜单：`Views/Controls/ActionKindSwitch`、`Features/SlotMenu`
+- 入口清理：「新建组合动作」从设置动作管理页、快捷菜单页、超级面板右键菜单、面板管理页全部移除
+  （新建动作一律走三栏编辑器，不再有「普通 / 组合」两种新建入口）。
+- 保留：`FlowTypes` / `FlowMigration`（迁移器读旧 JSON 用）、`RunContext` / `FlowVariables`
+  （旧取值实现与新单元的过渡层 `Features/Units/LegacyFlow`）、`Features/Flow/*Probe` /
+  `TextLocator` / `NoteActions`（新单元的底层实现）。
+
+**验收**：仓库构建 0 错 0 警；`ActionSmoke` 601 项断言通过；`PanelSmoke` 全绿
+（三栏编辑器、参数表单、拖动排序、子动作编辑器 / 库、设置导航）；旧编辑器相关测试项随之删除。
+
+#### W5b 数据收口（待做）
+
+- `ActionDto` 的旧字段（`Text` / `Cmd` / `Flow` / `Steps` / 各类型专属字段）搬进
+  `Features/Migration/Legacy/`，只给迁移器读旧 JSON 用。
+- `ActionType` 收窄（新动作只需要 `composite` + 宏），旧枚举值只留在迁移映射里。
+- `git grep FlowNodeKind` 只剩迁移器里的历史映射。
 
 ---
 

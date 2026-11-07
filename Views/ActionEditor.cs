@@ -9,8 +9,7 @@ namespace LTools.Views;
 /// 旧格式动作在打开时迁移成 v2 动作体，保存后即以新结构落盘。
 /// </summary>
 /// <remarks>
-/// 旧的 <see cref="ActionEditorDialog"/> / <see cref="CompositeActionDialog"/> 保留到 W5 删除，
-/// 这里已不再使用它们。
+/// 旧编辑器（按动作类型分支的 <c>ActionEditorDialog</c> / <c>CompositeActionDialog</c>）已在 W5 删除。
 /// </remarks>
 internal static class ActionEditor
 {
