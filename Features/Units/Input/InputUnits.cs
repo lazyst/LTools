@@ -209,19 +209,16 @@ public sealed class ClickTextUnit : IStepUnit
         string needle = args.Text("text").Trim();
         if (needle.Length == 0) throw new ActionException("文字点击还没有指定要点的文字");
 
-        var action = new ActionDto
+        var result = TextClickAction.Run(new TextClickRequest
         {
             Name = "文字点击",
-            Type = ActionType.clickText,
             Text = needle,
             Region = LTools.Features.Units.Screen.ScreenArgs.ParseRegion(args.Text("region")),
             Rect = LTools.Features.Units.Screen.ScreenArgs.ParseRect(args),
             OcrEngine = args.Text("ocrEngine").Trim(),
             TimeoutMs = (int)Math.Clamp(args.Number("timeoutMs"), 0, 600_000),
             MouseAction = ParseMouse(args.Text("mouseAction")),
-        };
-
-        var result = TextClickAction.Run(action, LegacyFlow.Create(ctx));
+        }, LegacyFlow.Create(ctx));
 
         ctx.SetOutput("x", Value.FromNumber(result.X ?? 0));
         ctx.SetOutput("y", Value.FromNumber(result.Y ?? 0));
@@ -272,19 +269,16 @@ public sealed class ClickImageUnit : IStepUnit
 
     public void Execute(StepContext ctx, StepArgs args)
     {
-        var action = new ActionDto
+        var result = ImageClickAction.Run(new ImageClickRequest
         {
             Name = "图片点击",
-            Type = ActionType.imageClick,
             Image = args.Text("image"),
             Region = LTools.Features.Units.Screen.ScreenArgs.ParseRegion(args.Text("region")),
             Rect = LTools.Features.Units.Screen.ScreenArgs.ParseRect(args),
             MinScore = Math.Clamp(args.Number("minScore"), 0.30, 0.99),
             TimeoutMs = (int)Math.Clamp(args.Number("timeoutMs"), 0, 600_000),
             MouseAction = ClickTextUnit.ParseMouse(args.Text("mouseAction")),
-        };
-
-        var result = ImageClickAction.Run(action, LegacyFlow.Create(ctx));
+        }, LegacyFlow.Create(ctx));
 
         ctx.SetOutput("x", Value.FromNumber(result.X ?? 0));
         ctx.SetOutput("y", Value.FromNumber(result.Y ?? 0));

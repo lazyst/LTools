@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Config;
 using LTools.Features;
+using LTools.Features.Migration.Legacy;
 
 namespace LTools.Core;
 
@@ -170,8 +171,7 @@ internal static class BackupService
                 var cfg = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(cfgPath, Encoding.UTF8), ConfigOpt) ?? new AppConfig();
                 foreach (var a in cfg.Actions ?? new List<ActionDto>())
                 {
-                    string? s = a.Type is ActionType.launchApp ? a.Target
-                        : a.Type is ActionType.runCommand ? a.Cmd : null;
+                    string? s = LegacyActionSummary.ResourceReference(a);
                     if (string.IsNullOrWhiteSpace(s)) continue;
                     if (s.Replace('\\', '/').Contains("resources", StringComparison.OrdinalIgnoreCase))
                         refs.Add($"{a.Name} — {Truncate(s, 60)}");

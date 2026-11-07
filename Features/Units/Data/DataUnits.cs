@@ -33,13 +33,11 @@ public sealed class NoteWriteUnit : IStepUnit
         string body = args.Text("body");
         if (string.IsNullOrWhiteSpace(body)) throw new ActionException("写速记缺少正文");
 
-        var result = NoteActions.Write(new ActionDto
+        var result = NoteActions.Write(new NoteWriteRequest
         {
-            Name = "写速记",
-            Type = ActionType.quickNote,
-            Text = body,
-            NoteTitle = args.Text("title"),
-            NoteCategory = args.Text("category"),
+            Body = body,
+            Title = args.Text("title"),
+            Category = args.Text("category"),
         });
 
         ctx.SetOutput("title", Value.FromText(result.Title));

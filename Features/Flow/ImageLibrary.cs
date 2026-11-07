@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using LTools.Core;
+using LTools.Core.Actions;
 
 namespace LTools.Features;
 
@@ -242,6 +243,12 @@ internal static class ImageLibrary
     private static void CollectAction(ActionDto? a, HashSet<string> live)
     {
         if (a == null) return;
+
+        // 新动作体：所有单元的 image 参数（含动作内子动作与内联取值步骤）
+        foreach (var step in ProgramWalker.AllSteps(a.Program))
+            AddRef(ProgramWalker.LiteralText(step, "image"), live);
+
+        // —— 以下只服务还没迁移过的旧动作（迁移后这些字段为 null）——
 
         // 「图片点击」自带模板图（与「截图找图」取值器同一套路径语义）
         AddRef(a.Image, live);

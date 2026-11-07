@@ -444,18 +444,32 @@ sealed class SubActionDef {
   - 随之无引用的旧控件 / 菜单：`Views/Controls/ActionKindSwitch`、`Features/SlotMenu`
 - 入口清理：「新建组合动作」从设置动作管理页、快捷菜单页、超级面板右键菜单、面板管理页全部移除
   （新建动作一律走三栏编辑器，不再有「普通 / 组合」两种新建入口）。
-- 保留：`FlowTypes` / `FlowMigration`（迁移器读旧 JSON 用）、`RunContext` / `FlowVariables`
+- 保留：`FlowTypes` / `FlowMigration`（迁移器读旧 JSON 用）、`RunContext`
   （旧取值实现与新单元的过渡层 `Features/Units/LegacyFlow`）、`Features/Flow/*Probe` /
-  `TextLocator` / `NoteActions`（新单元的底层实现）。
+  `TextLocator` / `NoteActions`（新单元的底层实现）。`FlowVariables` / `ActionResults` /
+  `ActionMaterializer` 已无调用，W5b-1 删除。
 
 **验收**：仓库构建 0 错 0 警；`ActionSmoke` 601 项断言通过；`PanelSmoke` 全绿
 （三栏编辑器、参数表单、拖动排序、子动作编辑器 / 库、设置导航）；旧编辑器相关测试项随之删除。
 
-#### W5b 数据收口（待做）
+#### W5b-1 旧字段搬家 ✅
 
-- `ActionDto` 的旧字段（`Text` / `Cmd` / `Flow` / `Steps` / 各类型专属字段）搬进
-  `Features/Migration/Legacy/`，只给迁移器读旧 JSON 用。
-- `ActionType` 收窄（新动作只需要 `composite` + 宏），旧枚举值只留在迁移映射里。
+- 新增 `Features/Migration/Legacy/ActionDtoLegacy.cs`：`ActionDto` 的全部类型专属旧字段
+  （`Target` … `Flow`、`OutputVar`）与深拷贝都搬到这里，`ActionDto : ActionDtoLegacy`
+  只留 `Id` / `Name` / `Icon` / `Type` / `MacroId` / `Program`；JSON 仍是扁平字段，旧配置照旧能读。
+- 新代码不再为了复用实现去拼 `ActionDto`：图片点击 / 文字点击 / 窗口操作 / 写速记改成
+  `ImageClickRequest` / `TextClickRequest` / `WindowActionRequest` / `NoteWriteRequest`。
+- 旧字段的只读用法集中到 legacy：`LegacyActionSummary`（设置页动作清单摘要、
+  `BackupService` 的 `resources` 引用预览）、`ObsoleteActionCleanup`（已取消动作的清理）。
+- 资源回收改读新动作体：新增 `Core/Actions/ProgramWalker`，`ImageLibrary` / `MacroStore`
+  扫所有步骤（含动作内子动作、内联取值步骤）的 `image` / `macroId` 参数；旧字段只兜底未迁移动作。
+- 删除无调用的 `Features/Flow/ActionMaterializer`、`ActionResults`、`FlowVariables`；
+  `Views/Controls/VariableList` 只收变量名（不再列属性后缀）。
+
+#### W5b-2 枚举收窄（待做）
+
+- `ActionType` 收窄（新动作只需要 `composite` + 宏），旧枚举值只留在迁移映射里；
+  旧 `type` 字符串进 legacy，读取用容错 `JsonConverter<ActionDto>`（并兼容旧配置回写）。
 - `git grep FlowNodeKind` 只剩迁移器里的历史映射。
 
 ---

@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.Migration.Legacy;
 using LTools.Hooks;
 using H.NotifyIcon;
 
@@ -269,66 +270,8 @@ public partial class App : Application
         ConfigStore.Save();
     }
 
-    /// <summary>
-    /// 旧配置迁移：删除已取消动作化的内置动作，并清理菜单 / 超级面板 / 组合步骤里的引用，
-    /// 避免留下点了没反应的死项。
-    /// <list type="bullet">
-    /// <item>v2.3.3：<c>macro.playLast</c>（回放上次宏）→ 由「键鼠宏」动作取代。</item>
-    /// <item>v2.3.3：<c>settings.toggle</c>（设置）、<c>helpPanel.toggle</c>（帮助面板）→ 改为纯入口
-    /// （CapsLock+\ / CapsLock+` / 托盘 / 超级面板标题栏齿轮），不再作为动作出现在动作池里。</item>
-    /// <item>v2.3.3：<c>macro.recordToggle</c>（录制宏）、<c>macro.manage</c>（宏管理）→ 属于创作 / 管理入口
-    /// （托盘 / 动作编辑器 / 组合动作左栏；宏管理入口已彻底移除），不是可重复执行的动作。</item>
-    /// </list>
-    /// </summary>
-    private static void RemoveObsoleteActions()
-    {
-        string[] obsolete = ["macro.playLast", "settings.toggle", "helpPanel.toggle", "macro.recordToggle", "macro.manage"];
-        static bool IsObsolete(ActionDto a, string[] commands) =>
-            a.Type == ActionType.@internal && a.Command != null && commands.Contains(a.Command);
-
-        var stale = ActionRegistry.All
-            .Where(a => IsObsolete(a, obsolete))
-            .Select(a => a.Id)
-            .ToList();
-
-        // 组合步骤是内嵌快照，删动作不会自动清；单独扫一遍，把过期步骤移除。
-        bool stepChanged = false;
-        foreach (var a in ActionRegistry.All)
-        {
-            if (a.Type != ActionType.composite) continue;
-            if (a.Steps != null)
-                stepChanged |= a.Steps.RemoveAll(s => IsObsolete(s.Action, obsolete)) > 0;
-            if (a.Flow != null)
-                stepChanged |= RemoveObsoleteNodes(a.Flow, obsolete);
-        }
-
-        static bool RemoveObsoleteNodes(List<FlowNode> nodes, string[] commands)
-        {
-            bool changed = false;
-            for (int i = nodes.Count - 1; i >= 0; i--)
-            {
-                var n = nodes[i];
-                if (n.Action != null && IsObsolete(n.Action, commands))
-                {
-                    nodes.RemoveAt(i);
-                    changed = true;
-                    continue;
-                }
-                if (n.If != null)
-                {
-                    changed |= RemoveObsoleteNodes(n.If.Then, commands);
-                    if (n.If.Else != null) changed |= RemoveObsoleteNodes(n.If.Else, commands);
-                }
-                if (n.Loop != null) changed |= RemoveObsoleteNodes(n.Loop.Body, commands);
-            }
-            return changed;
-        }
-
-        if (stale.Count == 0 && !stepChanged) return;
-
-        foreach (string id in stale) ConfigStore.RemoveAction(id);
-        ConfigStore.Save();
-    }
+    /// <summary>旧配置迁移：删除已取消动作化的内置动作及其引用（见 <see cref="ObsoleteActionCleanup"/>）。</summary>
+    private static void RemoveObsoleteActions() => ObsoleteActionCleanup.Run();
 
     internal static System.Windows.Media.ImageSource? LoadIconSource()
     {

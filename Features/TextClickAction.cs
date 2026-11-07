@@ -24,25 +24,56 @@ namespace LTools.Features;
 /// </remarks>
 internal static class TextClickAction
 {
-    public static VarValue Run(ActionDto a, RunContext? ctx)
+    public static VarValue Run(TextClickRequest request, RunContext? ctx)
     {
-        string needle = (a.Text ?? "").Trim();
+        string needle = (request.Text ?? "").Trim();
         if (needle.Length == 0)
-            throw new InvalidOperationException($"「{a.Name}」还没有指定要点击的文字");
+            throw new InvalidOperationException($"「{request.Name}」还没有指定要点击的文字");
 
-        int timeout = Math.Clamp(a.TimeoutMs ?? 0, 0, 600_000);
-        var result = TextLocator.Locate(needle, a.Region ?? ImageRegion.foreground, a.Rect, a.OcrEngine,
+        int timeout = Math.Clamp(request.TimeoutMs, 0, 600_000);
+        var result = TextLocator.Locate(needle, request.Region, request.Rect, request.OcrEngine,
             timeout, TextLocator.DefaultIntervalMs, ctx);
 
         if (!result.Found)
-            throw new InvalidOperationException(TextLocator.MissMessage(a.Name, needle, result.Seen, timeout));
+            throw new InvalidOperationException(TextLocator.MissMessage(request.Name, needle, result.Seen, timeout));
 
         int x = result.X, y = result.Y;
         MouseOps.Move(x, y);
         Thread.Sleep(10);   // 让光标先落定，再发按键（与「鼠标操作」一致）
-        MouseOps.Perform(a.MouseAction ?? MouseActionKind.click, a.WheelDelta ?? 120);
+        MouseOps.Perform(request.MouseAction, request.WheelDelta);
 
-        AppLog.Info("TextClick", $"「{a.Name}」点到「{result.Matched}」：{x},{y}");
+        AppLog.Info("TextClick", $"「{request.Name}」点到「{result.Matched}」：{x},{y}");
         return new VarValue { Text = $"{x},{y}", X = x, Y = y, Flag = true };
     }
+}
+
+/// <summary>
+/// 「文字点击」的入参。功能单元把参数求值后装成它，不再为了复用这套实现去拼一个
+/// <see cref="ActionDto"/>（<see cref="ActionDto"/> 的旧类型字段只服务迁移）。
+/// </summary>
+internal sealed record TextClickRequest
+{
+    /// <summary>动作 / 步骤名（只用于报错与日志）。</summary>
+    public string Name { get; init; } = "";
+
+    /// <summary>要点击的文字（支持模板，由调用方先求值）。</summary>
+    public string? Text { get; init; }
+
+    /// <summary>搜索区域；默认前台窗口。</summary>
+    public ImageRegion Region { get; init; } = ImageRegion.foreground;
+
+    /// <summary><see cref="ImageRegion.rect"/> 时的区域 [x, y, w, h]（虚拟桌面物理像素）。</summary>
+    public int[]? Rect { get; init; }
+
+    /// <summary>识别引擎（<c>null</c> / <c>windows</c> = 系统 OCR；<c>v6tiny</c> / <c>v6small</c> = PP-OCRv6）。</summary>
+    public string? OcrEngine { get; init; }
+
+    /// <summary>等目标出现的最长时间（ms，0 = 只找一次）。</summary>
+    public int TimeoutMs { get; init; }
+
+    /// <summary>命中后的鼠标动作（默认单击）。</summary>
+    public MouseActionKind MouseAction { get; init; } = MouseActionKind.click;
+
+    /// <summary>滚轮刻度（默认 120）。</summary>
+    public int WheelDelta { get; init; } = 120;
 }

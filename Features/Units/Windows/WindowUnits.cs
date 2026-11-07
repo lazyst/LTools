@@ -173,17 +173,14 @@ public sealed class OperateWindowUnit : IStepUnit
             };
         }
 
-        var action = new ActionDto
+        var result = WindowAction.Run(new WindowActionRequest
         {
             Name = "窗口操作",
-            Type = ActionType.window,
-            WindowTitle = title,
-            WindowClass = cls,
-            WindowOp = kind,
-            WindowRect = rect,
-        };
-
-        var result = WindowAction.Run(action);
+            Title = title,
+            Class = cls,
+            Op = kind,
+            Rect = rect,
+        });
         ctx.SetOutput("x", Value.FromNumber(result.X ?? 0));
         ctx.SetOutput("y", Value.FromNumber(result.Y ?? 0));
         ctx.SetOutput("w", Value.FromNumber(result.W ?? 0));

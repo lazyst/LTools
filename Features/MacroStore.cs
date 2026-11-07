@@ -7,6 +7,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using LTools.Config;
 using LTools.Core;
+using LTools.Core.Actions;
 
 namespace LTools.Features;
 
@@ -229,6 +230,13 @@ internal static class MacroStore
             {
                 if (a.Type == ActionType.macro && !string.IsNullOrWhiteSpace(a.MacroId))
                     live.Add(a.MacroId!);
+
+                // 新动作体：所有单元的 macroId 参数（含动作内子动作与内联取值步骤）
+                foreach (var step in ProgramWalker.AllSteps(a.Program))
+                    if (ProgramWalker.LiteralText(step, "macroId") is { } id && id.Trim().Length > 0)
+                        live.Add(id.Trim());
+
+                // —— 以下只服务还没迁移过的旧动作（迁移后这些字段为 null）——
                 // 新流程（含旧 Steps 迁移）与残留 Steps 都算引用，避免误删仍被使用的宏文件。
                 if (a.Type == ActionType.composite)
                     foreach (var n in FlowMigration.Ensure(a)) CollectNode(n);

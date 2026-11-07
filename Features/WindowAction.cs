@@ -27,19 +27,19 @@ namespace LTools.Features;
 internal static class WindowAction
 {
     /// <summary>执行动作；返回实际窗口矩形（<c>${变量}</c> = <c>x,y,w,h</c>）。</summary>
-    public static VarValue Run(ActionDto a)
+    public static VarValue Run(WindowActionRequest request)
     {
-        string title = (a.WindowTitle ?? "").Trim();
-        string cls = (a.WindowClass ?? "").Trim();
+        string title = (request.Title ?? "").Trim();
+        string cls = (request.Class ?? "").Trim();
         if (title.Length == 0 && cls.Length == 0)
-            throw new InvalidOperationException($"「{a.Name}」还没有指定目标窗口");
+            throw new InvalidOperationException($"「{request.Name}」还没有指定目标窗口");
 
         IntPtr hwnd = WindowFinder.Find(title, cls, out string matched);
         if (hwnd == IntPtr.Zero)
             throw new InvalidOperationException(
                 $"找不到窗口：{WindowFinder.Describe(title, cls)}（可能已关闭，或标题变了）");
 
-        WindowActionKind op = a.WindowOp ?? WindowActionKind.activate;
+        WindowActionKind op = request.Op;
         string label = WindowFinder.GetText(hwnd) is { Length: > 0 } t ? Trim(t) : WindowFinder.GetClass(hwnd);
 
         switch (op)
@@ -69,7 +69,7 @@ internal static class WindowAction
                 break;
 
             case WindowActionKind.resize:
-                Resize(hwnd, a);
+                Resize(hwnd, request);
                 break;
         }
 
@@ -170,11 +170,11 @@ internal static class WindowAction
 
     // ============ 调整大小 ============
 
-    private static void Resize(IntPtr hwnd, ActionDto a)
+    private static void Resize(IntPtr hwnd, WindowActionRequest request)
     {
-        int[]? rect = a.WindowRect;
+        int[]? rect = request.Rect;
         if (rect == null || rect.Length < 4)
-            throw new InvalidOperationException($"「{a.Name}」还没有设置目标大小");
+            throw new InvalidOperationException($"「{request.Name}」还没有设置目标大小");
 
         int x = rect[0], y = rect[1];
         int w = Math.Max(1, rect[2]), h = Math.Max(1, rect[3]);
@@ -222,4 +222,26 @@ internal static class WindowAction
     }
 
     private static string Trim(string text) => text.Length <= 32 ? text : text[..32] + "…";
+}
+
+/// <summary>
+/// 「窗口操作」的入参。功能单元把参数求值后装成它，不再为了复用这套实现去拼一个
+/// <see cref="ActionDto"/>（<see cref="ActionDto"/> 的旧类型字段只服务迁移）。
+/// </summary>
+internal sealed record WindowActionRequest
+{
+    /// <summary>动作 / 步骤名（只用于报错与日志）。</summary>
+    public string Name { get; init; } = "";
+
+    /// <summary>目标窗口标题包含的文本（空 = 不按标题过滤）。</summary>
+    public string? Title { get; init; }
+
+    /// <summary>目标窗口类名（精确匹配，一般留空）。</summary>
+    public string? Class { get; init; }
+
+    /// <summary>操作（默认切到前台）。</summary>
+    public WindowActionKind Op { get; init; } = WindowActionKind.activate;
+
+    /// <summary><see cref="WindowActionKind.resize"/> 的目标矩形 [x, y, w, h]（虚拟桌面物理像素）。</summary>
+    public int[]? Rect { get; init; }
 }

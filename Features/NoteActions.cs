@@ -18,15 +18,15 @@ internal static class NoteActions
     public const string TimeFormat = "yyyy-MM-dd HH:mm:ss";
 
     /// <summary>写一条速记。标题留空时取正文第一行，分类留空 = 未分类。</summary>
-    public static VarValue Write(ActionDto a)
+    public static VarValue Write(NoteWriteRequest request)
     {
-        string body = a.Text ?? "";
+        string body = request.Body ?? "";
         if (string.IsNullOrWhiteSpace(body))
             throw new FlowException("写速记缺少正文");
 
-        string title = (a.NoteTitle ?? "").Trim();
+        string title = (request.Title ?? "").Trim();
         if (title.Length == 0) title = FirstLine(body);
-        string category = (a.NoteCategory ?? "").Trim();
+        string category = (request.Category ?? "").Trim();
 
         var entry = new NoteEntry
         {
@@ -86,4 +86,20 @@ internal static class NoteActions
         string first = body.Replace("\r\n", "\n").Split('\n')[0].Trim();
         return first.Length <= 40 ? first : first[..40];
     }
+}
+
+/// <summary>
+/// 「写速记」的入参。功能单元把参数求值后装成它，不再为了复用这套实现去拼一个
+/// <see cref="ActionDto"/>（<see cref="ActionDto"/> 的旧类型字段只服务迁移）。
+/// </summary>
+internal sealed record NoteWriteRequest
+{
+    /// <summary>正文（支持 ${变量}，由调用方先求值）。</summary>
+    public string? Body { get; init; }
+
+    /// <summary>标题（留空则取正文第一行）。</summary>
+    public string? Title { get; init; }
+
+    /// <summary>分类（留空 = 未分类；不存在时自动创建）。</summary>
+    public string? Category { get; init; }
 }

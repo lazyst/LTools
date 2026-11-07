@@ -22,19 +22,19 @@ namespace LTools.Features;
 /// </remarks>
 internal static class ImageClickAction
 {
-    public static VarValue Run(ActionDto a, RunContext? ctx)
+    public static VarValue Run(ImageClickRequest request, RunContext? ctx)
     {
-        if (string.IsNullOrWhiteSpace(a.Image))
-            throw new InvalidOperationException($"「{a.Name}」还没有选择模板图片");
+        if (string.IsNullOrWhiteSpace(request.Image))
+            throw new InvalidOperationException($"「{request.Name}」还没有选择模板图片");
 
         var probe = new Probe
         {
             Kind = ProbeKind.image,
-            Image = a.Image,
-            Region = a.Region ?? ImageRegion.foreground,
-            Rect = a.Rect,
-            TimeoutMs = Math.Clamp(a.TimeoutMs ?? 0, 0, 600_000),
-            MinScore = Math.Clamp(a.MinScore ?? 0.85, 0.30, 0.99),
+            Image = request.Image,
+            Region = request.Region,
+            Rect = request.Rect,
+            TimeoutMs = Math.Clamp(request.TimeoutMs, 0, 600_000),
+            MinScore = Math.Clamp(request.MinScore, 0.30, 0.99),
         };
 
         // 自动化指示器是置顶窗口，会盖住目标并被截进画面：找图期间收起，点完再恢复。
@@ -51,15 +51,46 @@ internal static class ImageClickAction
 
         if (match.Flag != true)
             throw new InvalidOperationException(
-                $"「{a.Name}」在区域里没有找到模板图（最高相似度 {(match.Score ?? 0):0.00}）；" +
+                $"「{request.Name}」在区域里没有找到模板图（最高相似度 {(match.Score ?? 0):0.00}）；" +
                 "可以调低「最低相似度」，或重新框选模板图");
 
         int x = match.X ?? 0, y = match.Y ?? 0;
         MouseOps.Move(x, y);
         Thread.Sleep(10);   // 让光标先落定，再发按键（与「鼠标操作」一致）
-        MouseOps.Perform(a.MouseAction ?? MouseActionKind.click, a.WheelDelta ?? 120);
+        MouseOps.Perform(request.MouseAction, request.WheelDelta);
 
-        AppLog.Info("ImageClick", $"「{a.Name}」点到图片位置：{x},{y}（相似度 {(match.Score ?? 0):0.00}）");
+        AppLog.Info("ImageClick", $"「{request.Name}」点到图片位置：{x},{y}（相似度 {(match.Score ?? 0):0.00}）");
         return new VarValue { Text = $"{x},{y}", X = x, Y = y, Flag = true, Score = match.Score };
     }
+}
+
+/// <summary>
+/// 「图片点击」的入参。功能单元把参数求值后装成它，不再为了复用这套实现去拼一个
+/// <see cref="ActionDto"/>（<see cref="ActionDto"/> 的旧类型字段只服务迁移）。
+/// </summary>
+internal sealed record ImageClickRequest
+{
+    /// <summary>动作 / 步骤名（只用于报错与日志）。</summary>
+    public string Name { get; init; } = "";
+
+    /// <summary>模板图片路径（语义同「截图找图」）。</summary>
+    public string? Image { get; init; }
+
+    /// <summary>搜索区域；默认前台窗口。</summary>
+    public ImageRegion Region { get; init; } = ImageRegion.foreground;
+
+    /// <summary><see cref="ImageRegion.rect"/> 时的区域 [x, y, w, h]（虚拟桌面物理像素）。</summary>
+    public int[]? Rect { get; init; }
+
+    /// <summary>等目标出现的最长时间（ms，0 = 只找一次）。</summary>
+    public int TimeoutMs { get; init; }
+
+    /// <summary>最低相似度（0..1，默认 0.85）。</summary>
+    public double MinScore { get; init; } = 0.85;
+
+    /// <summary>命中后的鼠标动作（默认单击）。</summary>
+    public MouseActionKind MouseAction { get; init; } = MouseActionKind.click;
+
+    /// <summary>滚轮刻度（默认 120）。</summary>
+    public int WheelDelta { get; init; } = 120;
 }

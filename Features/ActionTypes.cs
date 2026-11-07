@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 using LTools.Core.Actions;
+using LTools.Features.Migration.Legacy;
 
 namespace LTools.Features;
 
@@ -234,11 +235,18 @@ public sealed class StepDto
 /// 超级面板格子与 CapsLock+数字菜单项都只引用其 <see cref="Id"/>。
 /// </summary>
 /// <remarks>
-/// 类型特定字段平铺存放（discriminated union by <see cref="Type"/>），
-/// 不使用的字段保持默认值，便于 System.Text.Json 序列化。
-/// 字段对应关系见计划 §3 动作类型表。
+/// <para>
+/// 新动作只保存 <see cref="Program"/>（变量表 + 步骤 + 动作内子动作）。
+/// 旧格式的类型专属字段（<c>target</c> / <c>cmd</c> / <c>text</c> / <c>steps</c> / <c>flow</c> …）
+/// 已搬到 <see cref="Features.Migration.Legacy.ActionDtoLegacy"/>，由本类继承后仍是 JSON 扁平字段，
+/// 只给 <see cref="Features.Migration.ActionPrograms"/> 的懒迁移读。
+/// </para>
+/// <para>
+/// 新建动作一律写 <see cref="ActionType.composite"/> + <see cref="Program"/>；
+/// <see cref="ActionType.macro"/> 保留给「一个键鼠宏就是一个动作」的顶层宏动作。
+/// </para>
 /// </remarks>
-public sealed class ActionDto
+public sealed class ActionDto : ActionDtoLegacy
 {
     /// <summary>稳定标识，如 "a1"、"cmd1"。编辑器自动生成，用户不可见。</summary>
     public string Id { get; set; } = "";
@@ -249,157 +257,13 @@ public sealed class ActionDto
     /// <summary>内置图标 Id（见 <see cref="IconCatalog"/>），可为空。</summary>
     public string? Icon { get; set; }
 
-    /// <summary>动作类型，决定使用哪些字段。</summary>
+    /// <summary>动作类型。新动作是 <see cref="ActionType.composite"/>（宏动作是 <see cref="ActionType.macro"/>）。</summary>
     public ActionType Type { get; set; }
-
-    // —— launchApp / runCommand 共用 ——
-
-    /// <summary>launchApp: 目标 exe 路径。</summary>
-    public string? Target { get; set; }
-
-    /// <summary>launchApp: 命令行参数（可选）。</summary>
-    public string? Args { get; set; }
-
-    /// <summary>launchApp / runCommand: 工作目录（空则默认应用目录）。</summary>
-    public string? Workdir { get; set; }
-
-    // —— openFile / openFolder ——
-
-    /// <summary>openFile / openFolder: 路径。</summary>
-    public string? Path { get; set; }
-
-    // —— openUrl ——
-
-    /// <summary>openUrl: URL。</summary>
-    public string? Url { get; set; }
-
-    // —— runCommand ——
-
-    /// <summary>runCommand: 命令字符串。</summary>
-    public string? Cmd { get; set; }
-
-    /// <summary>runCommand: 终端 key（direct/pwsh7/pwsh5/cmd/gitbash/wslbash/wt）。</summary>
-    public string? Terminal { get; set; }
-
-    /// <summary>runCommand: 执行完是否保持终端窗口。</summary>
-    public bool? KeepWindow { get; set; }
-
-    // —— internal ——
-
-    /// <summary>internal: 内部命令键（如 "quickNote.toggle"，见 <see cref="InternalActionRegistry"/>）。</summary>
-    public string? Command { get; set; }
-
-    // —— sendText（§3.2.2）/ setClipboard ——
-
-    /// <summary>sendText / setClipboard / clickText: 文本内容（支持 ${变量}）；clickText 时是「要点击的文字」。</summary>
-    public string? Text { get; set; }
-
-    /// <summary>sendText: 发送方式，null 视为 <see cref="SendTextMode.auto"/>。</summary>
-    public SendTextMode? Mode { get; set; }
-
-    /// <summary>sendText: 文本发送后是否在末尾追加一次回车。</summary>
-    public bool? AppendEnter { get; set; }
-
-    // —— toast（提示弹窗）——
-
-    /// <summary>toast: 停留时长（ms，null = 4000；0 = 不自动关闭，点一下关掉）。</summary>
-    public int? DurationMs { get; set; }
-
-    // —— quickNote（写速记）——
-
-    /// <summary>quickNote: 标题（支持 ${变量}；留空则用正文第一行）。</summary>
-    public string? NoteTitle { get; set; }
-
-    /// <summary>quickNote: 分类（支持 ${变量}；留空 = 未分类；不存在时自动创建）。</summary>
-    public string? NoteCategory { get; set; }
-
-    // —— window（窗口操作）——
-
-    /// <summary>window: 目标窗口标题包含的文本（空 = 不按标题过滤，支持 ${变量}）。</summary>
-    public string? WindowTitle { get; set; }
-
-    /// <summary>window: 目标窗口类名（精确匹配，一般留空；同名窗口分不清时才填）。</summary>
-    public string? WindowClass { get; set; }
-
-    /// <summary>window: 操作，null 视为 <see cref="WindowActionKind.activate"/>。</summary>
-    public WindowActionKind? WindowOp { get; set; }
-
-    /// <summary>window: <see cref="WindowActionKind.resize"/> 的目标矩形 [x, y, w, h]（虚拟桌面物理像素）。</summary>
-    public int[]? WindowRect { get; set; }
-
-    // —— clickText（文字点击）/ imageClick（图片点击）——
-
-    /// <summary>clickText / imageClick: 文字所在区域 / 模板图搜索区域；null = 前台窗口（与「截图找图」同一套区域语义）。</summary>
-    public ImageRegion? Region { get; set; }
-
-    /// <summary>clickText / imageClick: <see cref="ImageRegion.rect"/> 时的区域 [x, y, w, h]（虚拟桌面物理像素）。</summary>
-    public int[]? Rect { get; set; }
-
-    /// <summary>clickText: 识别引擎（<c>null</c> / <c>windows</c> = 系统 OCR；<c>v6tiny</c> / <c>v6small</c> = PP-OCRv6）。</summary>
-    public string? OcrEngine { get; set; }
-
-    /// <summary>clickText / imageClick: 等目标出现的最长时间（ms，0 = 只找一次）。</summary>
-    public int? TimeoutMs { get; set; }
-
-    // —— imageClick（图片点击）——
-
-    /// <summary>
-    /// imageClick: 模板图片路径（语义同「截图找图」：resources/images 下的文件名、
-    /// resources\user 的数据根相对路径，或绝对路径）。
-    /// </summary>
-    public string? Image { get; set; }
-
-    /// <summary>imageClick: 最低相似度（0..1；null = 0.85）。</summary>
-    public double? MinScore { get; set; }
-
-    // —— sendKeys（§3.2.1）——
-
-    /// <summary>sendKeys: 有序输入条目列表（chord / text / sleep 三种）。</summary>
-    public List<KeyItem>? Items { get; set; }
-
-    // —— mouse（鼠标操作）——
-
-    /// <summary>mouse: 目标 X 坐标（支持 ${变量} 模板）。</summary>
-    public string? X { get; set; }
-
-    /// <summary>mouse: 目标 Y 坐标（支持 ${变量} 模板）。</summary>
-    public string? Y { get; set; }
-
-    /// <summary>mouse: 鼠标动作，null 视为单击。</summary>
-    public MouseActionKind? MouseAction { get; set; }
-
-    /// <summary>mouse: 滚轮刻度（默认 120）。</summary>
-    public int? WheelDelta { get; set; }
 
     // —— macro（录制宏）——
 
     /// <summary>macro: 宏 Id（事件本体存 <c>macros/&lt;id&gt;.json</c>）。</summary>
     public string? MacroId { get; set; }
-
-    // —— composite ——
-
-    /// <summary>composite: 有序步骤列表（nullable 以便 JSON 省略非 composite 动作的空列表）。</summary>
-    public List<StepDto>? Steps { get; set; }
-
-    /// <summary>
-    /// composite: 组合级默认失败策略（对应 §4「组合可有整体默认」）。
-    /// 步骤未显式设置 <see cref="StepDto.OnFail"/> 时使用此值；也为 null 则视为 continue。
-    /// </summary>
-    public OnFailStrategy? CompositeOnFail { get; set; }
-
-    /// <summary>
-    /// composite: 自动化流程（嵌套块）。旧配置只有 <see cref="Steps"/> 时由
-    /// <see cref="FlowMigration"/> 在加载 / 执行 / 编辑时迁移，保存后写 <see cref="Flow"/> 并清空 Steps。
-    /// </summary>
-    public List<FlowNode>? Flow { get; set; }
-
-    // —— 输出（组合动作步骤）——
-
-    /// <summary>
-    /// 把执行结果存入流程变量（仅组合动作步骤使用；空 = 不输出）。
-    /// 支持的类型与结果内容见 <see cref="ActionResults"/>。
-    /// </summary>
-    public string? OutputVar { get; set; }
 
     /// <summary>
     /// 动作体（schema v2：变量表 + 步骤 + 动作内子动作）。为 null = 旧格式，
@@ -407,26 +271,19 @@ public sealed class ActionDto
     /// </summary>
     public ActionProgram? Program { get; set; }
 
-    /// <summary>深拷贝（含 Steps / Flow / Program 递归）；用于把动作池动作复制成组合步骤的独立快照（§12 动作解耦）。</summary>
-    public ActionDto Clone() => new()
+    /// <summary>深拷贝（含 Program 与旧字段的深拷贝）。</summary>
+    public ActionDto Clone()
     {
-        Id = Id, Name = Name, Icon = Icon, Type = Type,
-        Target = Target, Args = Args, Workdir = Workdir, Path = Path, Url = Url,
-        Cmd = Cmd, Terminal = Terminal, KeepWindow = KeepWindow, Command = Command,
-        Text = Text, Mode = Mode, AppendEnter = AppendEnter, DurationMs = DurationMs,
-        NoteTitle = NoteTitle, NoteCategory = NoteCategory,
-        WindowTitle = WindowTitle, WindowClass = WindowClass, WindowOp = WindowOp,
-        WindowRect = WindowRect != null ? (int[])WindowRect.Clone() : null,
-        Region = Region, Rect = Rect != null ? (int[])Rect.Clone() : null,
-        OcrEngine = OcrEngine, TimeoutMs = TimeoutMs,
-        Image = Image, MinScore = MinScore,
-        Items = Items?.Select(i => i.Clone()).ToList(),
-        X = X, Y = Y, MouseAction = MouseAction, WheelDelta = WheelDelta,
-        MacroId = MacroId,
-        OutputVar = OutputVar,
-        Program = Program?.Clone(),
-        CompositeOnFail = CompositeOnFail,
-        Steps = Steps?.Select(s => new StepDto { Action = s.Action.Clone(), DelayMs = s.DelayMs, OnFail = s.OnFail }).ToList(),
-        Flow = Flow != null ? FlowNode.CloneList(Flow) : null,
-    };
+        var clone = new ActionDto
+        {
+            Id = Id,
+            Name = Name,
+            Icon = Icon,
+            Type = Type,
+            MacroId = MacroId,
+            Program = Program?.Clone(),
+        };
+        CopyLegacyTo(clone);
+        return clone;
+    }
 }
