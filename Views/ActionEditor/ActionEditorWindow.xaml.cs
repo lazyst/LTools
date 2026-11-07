@@ -275,12 +275,8 @@ public partial class ActionEditorWindow : Window
         return (_program.Steps, _program.Steps.Count, 0);
     }
 
-    private StepEditorDialog CreateStepDialog(Step step) => new(step)
-    {
-        Owner = this,
-        Program = _program,
-        VariableNameSource = VariableNames,
-    };
+    private StepEditorDialog CreateStepDialog(Step step) =>
+        new(step, program: _program, variableNames: VariableNames) { Owner = this };
 
     private IEnumerable<string> VariableNames() =>
         _variables.Select(v => v.Name.Text.Trim())
@@ -379,12 +375,13 @@ public partial class ActionEditorWindow : Window
         "输入" => 3,
         "窗口" => 4,
         "程序" => 5,
-        "数据" => 6,
-        "界面" => 7,
-        "内部" => 8,
-        "流程" => 9,
-        "子动作" => 10,
-        _ => 11,
+        "脚本" => 6,
+        "数据" => 7,
+        "界面" => 8,
+        "内部" => 9,
+        "流程" => 10,
+        "子动作" => 11,
+        _ => 12,
     };
 
     // ============ 增删改 ============
@@ -400,17 +397,21 @@ public partial class ActionEditorWindow : Window
         ReloadRows(dlg.Result);
     }
 
-    private void EditStep_Click(object sender, RoutedEventArgs e) => EditSelected();
+    private void EditStep_Click(object sender, RoutedEventArgs e) => EditSelected(RowOf(sender));
 
     private void StepList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;
-        EditSelected();
+        EditSelected(RowAt(e.OriginalSource as DependencyObject));
     }
 
-    private void EditSelected()
+    /// <summary>按钮所在的那一行（行内按钮的 DataContext 就是 <see cref="StepRow"/>）。</summary>
+    private static StepRow? RowOf(object sender) =>
+        (sender as FrameworkElement)?.DataContext as StepRow;
+
+    private void EditSelected(StepRow? row = null)
     {
-        StepRow? row = SelectedRow();
+        row ??= SelectedRow();
         if (row?.Step == null || row.Owner == null) return;
 
         var dlg = CreateStepDialog(row.Step);
@@ -422,7 +423,9 @@ public partial class ActionEditorWindow : Window
 
     private void DeleteStep_Click(object sender, RoutedEventArgs e)
     {
-        StepRow? row = SelectedRow();
+        // 行内按钮点下去不会选中那一行（按钮吃掉了鼠标事件），所以优先用按钮自己的 DataContext，
+        // 不能只看当前选中项——否则删掉一步后什么都没选中，再点第二个删除就「没反应」。
+        StepRow? row = RowOf(sender) ?? SelectedRow();
         if (row?.Step == null || row.Owner == null) return;
 
         if (row.Step.Body.Count + row.Step.Then.Count + row.Step.Else.Count > 0
@@ -430,8 +433,14 @@ public partial class ActionEditorWindow : Window
                 $"「{StepSummary.Title(row.Step)}」带有子步骤，会一起删除。", danger: true))
             return;
 
-        row.Owner.RemoveAt(row.Index);
-        ReloadRows();
+        // 删完把选中项落到下一行（没有下一行就上一行），连点删除才能一直生效。
+        int index = row.Index;
+        List<Step> owner = row.Owner;
+        Step? next = index + 1 < owner.Count ? owner[index + 1]
+            : index > 0 ? owner[index - 1] : null;
+
+        owner.RemoveAt(index);
+        ReloadRows(next);
     }
 
     private void MoveUp_Click(object sender, RoutedEventArgs e) => MoveSelected(-1);

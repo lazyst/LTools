@@ -7,16 +7,33 @@ namespace LTools.Features.Units.Internal;
 /// <summary>触发内置功能入口（速记 / 搜索 / 放大镜等）。</summary>
 public sealed class InvokeInternalUnit : IStepUnit
 {
+    /// <summary>可选的命令键（存英文键；<see cref="LTools.Features.InternalActionRegistry"/> 里注册的同名入口）。</summary>
+    private static readonly string[] Commands =
+    {
+        "quickNote.toggle", "quickSearch.run", "magnifier.toggle", "windowPin.toggle",
+    };
+
+    private static readonly IReadOnlyDictionary<string, string> CommandLabels =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["quickNote.toggle"] = "速记窗口",
+            ["quickSearch.run"] = "快速搜索",
+            ["magnifier.toggle"] = "放大镜",
+            ["windowPin.toggle"] = "窗口置顶",
+        };
+
     public UnitSpec Spec { get; } = new()
     {
         Key = "internal.invoke",
         Name = "内置功能",
         Category = "内部",
         Icon = "internal",
-        Description = "调用程序内置的功能入口（命令键见 InternalActionRegistry）",
+        Description = "触发一个程序内置的功能入口（速记窗口 / 快速搜索 / 放大镜 / 窗口置顶）",
         Inputs = new[]
         {
-            new InputSpec("command", "命令", ValueKind.text, Required: true),
+            new InputSpec("command", "功能", ValueKind.text, InputEditor.enumList,
+                Required: true, Default: Value.FromText(Commands[0]),
+                Options: Commands, Labels: CommandLabels),
         },
     };
 

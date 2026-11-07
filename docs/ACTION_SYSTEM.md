@@ -266,6 +266,7 @@ sealed class SubActionDef {
 | **程序** | `app.launch` 启动程序 | launchApp |
 | | `app.runCommand` 运行命令（→ 退出码/stdout/stderr） | runCommand |
 | | `app.process` 进程数量/进程号/结束进程 | Probe.process |
+| **脚本** | `script.ahk` 运行 AutoHotkey v2 脚本（随包运行时） | 新增（W7） |
 | **输入** | `input.sendKeys` 模拟按键 | sendKeys |
 | | `input.mouse` 鼠标操作 | mouse |
 | | `input.cursor` 读取光标位置（Pure） | 面板唤起坐标 |
@@ -411,6 +412,11 @@ sealed class SubActionDef {
   内联单元用同一个步骤表单继续编辑（递归到任意深度）。取值单元缺必填参数时按钮显示「填参数…」、
   值下面一行提示列出缺少的项（按 `Required` + `VisibleWhen` 推导），填完变「改参数…」；
   没有参数的单元收起按钮。新切到取值单元默认 `text.selection`（常用、参数少）。
+- 参数表单在**构造函数里**就建好（`StepEditorDialog(step, inline, program, variableNames)`）：
+  `sub.run` 的「子动作」是下拉（本动作 + 全局库），`internal.invoke` 的「功能」是枚举下拉
+  （速记窗口 / 快速搜索 / 放大镜 / 窗口置顶，存英文命令键）；`Program` / 变量名必须作为构造参数
+  传入，放到对象初始化器会晚一步（表单按 null 建好，子动作退化成手填 id 的文本框）。
+  下拉遇到不在 `Options` 里的旧值原样保留并标「未知选项」，不静默改成第一项。
 - 变量面板：名称 / 类型 / 默认值；步骤输出用到的新变量自动登记。
 - **子动作库**（设置 → 子动作库）：列表 + 新建 / 编辑 / 复制 / 删除 / 打开目录。
   编辑复用 `ActionEditorWindow.ForSubAction`——子动作与动作同构，只多一列「方向」
@@ -577,6 +583,97 @@ sealed class SubActionDef {
 
 **验收**：构建 0 错 0 警；`ActionSmoke` 626 项；`PanelSmoke` 全绿
 （新增 `action-editor-run.png`：断言抽屉能展开、注入两条轨迹后列表为 2 行）。
+
+### W6.6 表单与步骤列表的可用性修补 ✅
+
+用户反馈：新用户不知道「取值单元」怎么用、四个字还显示不全；「内置功能」「调用子动作」
+只有空文本框，不知道填什么；删掉两步动作的第二步时按钮「没反应」。
+
+- 值源三态改为 **文本模板 / 变量 / 取值单元**；模式下拉不再写死 76px。
+  取值单元缺必填参数时按钮显示「填参数…」、值下面一行提示（红字）列出缺少的项；
+  填完变「改参数…」，无参数单元收起按钮。新切到取值单元默认 `text.selection`。
+- `StepEditorDialog` 的 `Program` / 变量名改为**构造参数**（表单在构造函数里就建好）：
+  「调用子动作」恢复成子动作下拉（本动作 + 全局库，没有可选项时给提示），
+  `InputEditor.variable` 也有候选名了。
+- 「内置功能」的 `command` 改成枚举下拉（速记窗口 / 快速搜索 / 放大镜 / 窗口置顶）；
+  下拉遇到 `Options` 之外的旧值原样保留并标「未知选项」，不再静默改成第一项。
+- 没有输出的单元不再显示空的「输出变量」区（内置功能 / 还没选子动作）。
+- 步骤行内的删除 / 编辑按钮改为按按钮自己的 `DataContext` 找行；删除后自动选中下一行
+  （没有则上一行），连点删除一直有效。
+
+**验收**：构建 0 错 0 警；`ActionSmoke` 628 项；`PanelSmoke` 全绿
+（新增断言：连删两行后步骤数为 0；子动作下拉出现「本动作 · 打招呼」并带输入参数；
+内置功能是 4 项中文下拉、输出区收起；旧命令键 `settings.toggle` 保留为「未知选项」；
+截图 `step-editor-subrun.png` / `step-editor-internal.png`）。
+
+---
+
+### W7 脚本单元：AutoHotkey v2
+
+第一个脚本单元 `script.ahk`（分类「脚本」，图标 `script`）。运行时**随包分发**
+（`runtime\autohotkey\AutoHotkey64.exe`，2.0.31），不依赖用户机器上装没装 AHK；
+许可证与源码出处放 `licenses\`（GPL-2.0），更新用 `tools\fetch-autohotkey.ps1`。
+
+**参数与编辑器**
+
+- `code`（`InputEditor.code` + `InputSpec.Raw = true`）：等宽多行框，Tab 缩进、
+  双向滚动，下方「检查语法」调 `AhkRunner.Check`（`/validate`，只校验不执行），
+  错误红字显示，行号按用户代码算。
+- **`Raw` 是必须的**：代码里的 `${…}` 不能被 `TextTemplate` 当变量求值，否则脚本里
+  的模板字符串会整步失败。`ActionEngine.ResolveArgs` 按 `InputSpec.Raw` 传
+  `renderLiteral: false`；这是「原样传参」唯一的开关，别在单元里另写一套。
+- 另有两个普通参数：`workdir`（进程工作目录 = `A_WorkingDir`）、`timeoutMs`
+  （默认 60000，0 = 不超时；上限 1 小时）。
+
+**与流程交互**（前言的三个函数）
+
+| 函数 | 作用 |
+|---|---|
+| `LT_Var(name, default := "")` | 读当前运行变量（`ctx.Scope.Flatten()` 摊平成文本注入 `LT_Vars`） |
+| `LT_Set(name, value)` | 写回运行变量（与「设置变量」一样直接落到当前作用域，后续 `${名字}` 可见） |
+| `LT_Print(text)` | 往标准输出写一行（UTF-8） |
+
+输出声明沿用命令单元的命名：`stdout` / `stderr` / `exit` / `ok` / `value`
+（`value` 里额外带上 `LT_Set` 写回的变量）。
+
+**错误怎么融进同一条调试链（关键）**
+
+AHK 默认用**模态对话框**显示运行时错误、以及 `#Warn` 警告；没人点就永远卡住，
+必须由前言接管：
+
+1. `OnError(LT_OnError)` 把 `err.Message / File / Line / Stack` 写成 JSON，再
+   `ExitApp 3`。于是运行时错误变成普通步骤失败，消息里带**用户代码行号**，
+   引擎照常加「第 N 行「AutoHotkey 脚本」失败：」前缀，进提示 / 轨迹 / 失败位置。
+2. `#Warn All, Off` 关掉**警告对话框**。未定义变量 / 函数的第一道坎就是
+   「Warning: This global variable appears to never be assigned a value」——
+   它同样是模态框。关掉后这类写法继续执行，在真正使用处抛运行时错误，由
+   `OnError` 给出更准确的消息与行号。
+3. `/ErrorStdOut` 只覆盖**加载期**错误（语法 / `#Include` 找不到等，退出码 2，
+   写 stderr），不覆盖运行时错误；两者都要处理，不能只留一个。
+4. 行号换算：报错行号是「前言 + 用户代码」生成文件里的绝对行号，减去前言换行数
+   （`ScriptFile.UserLineOffset`）才是用户行号；只对生成文件自身的错误换算，
+   运行器内部（前言）的错误原样报。
+5. `OnExit(LT_OnExit)` 负责把 `LT_Set` 攒下的变量落盘；即使脚本中途 `ExitApp`
+   或触发 `OnError` 也能收回来（失败时也写回，方便看跑到哪一步）。
+6. 超时 / 停止热键：`Process.Kill(entireProcessTree: true)`；停止抛
+   `ActionAbortedException`（新引擎的「已停止」语义），不是失败。
+7. 编码：脚本必须写 **UTF-8 带 BOM**（AHK 靠 BOM 判定 UTF-8）。stdout 先按
+   UTF-8 严格解码，失败再退回系统 OEM 代码页（用户脚本里裸 `FileAppend …,"*"`
+   是 ANSI）。
+
+**已知边界**（MVP）
+
+- `#Include` 按**生成脚本所在临时目录**解析，用户目录里的相对 include 找不到；
+  要用就写绝对路径（`A_WorkingDir` 可用于普通文件操作）。
+- 脚本里的 `MsgBox` / `InputBox` 仍会阻塞，直到超时或用户手动关掉；流程内提示
+  仍应使用「提示弹窗」单元。
+- AHK 的报错消息是英文（AHK 自己的本地化取决于系统，未做翻译）。
+
+**验收**：构建 0 错 0 警；`ActionSmoke` 647 项（新增：正常脚本 / 变量进出 /
+`${…}` 原样传入 / 语法检查与错误行号 / 运行时错误走 `OnError` 且此前 `LT_Set`
+仍写回 / 超时中止）；`PanelSmoke` 全绿（截图 `step-editor-ahk.png` /
+`step-editor-ahk-error.png`；断言等宽多行、260px 高、「检查语法」按钮、
+错误红字带 `第 1 行`）。
 
 ---
 

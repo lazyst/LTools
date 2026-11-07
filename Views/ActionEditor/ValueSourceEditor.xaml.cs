@@ -255,11 +255,10 @@ public partial class ValueSourceEditor : UserControl
         if (UnitBox.SelectedItem is not UnitChoice choice) return;
         _inline ??= Step.Of(choice.Key);
 
-        var dlg = new StepEditorDialog(_inline, inline: true)
+        var dlg = new StepEditorDialog(_inline, inline: true,
+            program: Program, variableNames: VariableNameSource)
         {
             Owner = Window.GetWindow(this),
-            VariableNameSource = VariableNameSource,
-            Program = Program,
         };
         if (dlg.ShowDialog() == true && dlg.Result != null)
         {

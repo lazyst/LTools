@@ -37,6 +37,15 @@
     <Content Include="Assets\Ocr\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- 随包 AutoHotkey v2：脚本单元直接用，不依赖用户机器上装没装 AHK。
+         只放 64 位主程序（1.2 MB）；许可证与源码出处在 licenses\ 里（GPL-2.0 要求）。
+         更新用 tools\fetch-autohotkey.ps1。 -->
+    <Content Include="runtime\autohotkey\AutoHotkey64.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="licenses\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- 只随包分发示例配置 LTools.example.json，绝不生成 LTools.json——
          否则用户用新版 zip 解压覆盖旧版时会把已有的用户配置冲掉。
          运行时若 LTools.json 缺失，AppConfig.Load 回退读同目录示例作为默认值，

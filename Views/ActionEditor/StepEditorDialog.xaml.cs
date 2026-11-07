@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using LTools.Core.Actions;
+using LTools.Features.Script;
 using LTools.Views.Controls;
 using Microsoft.Win32;
 
@@ -45,10 +46,17 @@ public partial class StepEditorDialog : Window
 
     private bool _syncing;
 
-    public StepEditorDialog(Step step, bool inline = false)
+    public StepEditorDialog(Step step, bool inline = false,
+        ActionProgram? program = null, Func<IEnumerable<string>>? variableNames = null)
     {
         InitializeComponent();
         WindowChromeHelper.FixMaximize(this);
+
+        // 必须在 BuildInputs 之前就位：「调用子动作」的子动作下拉、`InputEditor.variable`
+        // 的候选名、取值单元里再嵌一层编辑器都依赖它们。放在对象初始化器里会在构造
+        // 之后才赋值，表单已经按 null 建好（子动作就退化成只能手填 id 的空文本框）。
+        Program = program;
+        VariableNameSource = variableNames;
 
         _step = step.Clone();
         _spec = StepRegistry.Default.Get(_step.Unit).Spec;
@@ -76,11 +84,11 @@ public partial class StepEditorDialog : Window
     /// <summary>确定后的步骤（取消时为 null）。</summary>
     public Step? Result { get; private set; }
 
-    /// <summary>可用于变量编辑的变量名（由动作编辑器透传）。</summary>
-    internal Func<IEnumerable<string>>? VariableNameSource { get; set; }
+    /// <summary>可用于变量编辑的变量名（由动作编辑器透传，构造时就要给）。</summary>
+    internal Func<IEnumerable<string>>? VariableNameSource { get; }
 
-    /// <summary>动作体（解析「本动作」子动作、内联取值编辑用）。</summary>
-    internal ActionProgram? Program { get; set; }
+    /// <summary>动作体（解析「本动作」子动作、内联取值编辑用，构造时就要给）。</summary>
+    internal ActionProgram? Program { get; }
 
     // ============ 输入 ============
 
@@ -104,14 +112,24 @@ public partial class StepEditorDialog : Window
 
         if (_step.Unit == "sub.run" && input.Key == "subAction" && Program != null)
         {
-            var combo = new ComboBox { MinHeight = 28, MinWidth = 240 };
+            var combo = new ComboBox
+            {
+                MinHeight = 28,
+                MinWidth = 240,
+                ToolTip = "「本动作 · …」是当前动作里定义的子动作，「全局 · …」来自设置 → 子动作库",
+            };
             var choices = SubActionChoices();
-            combo.ItemsSource = choices;
-            combo.DisplayMemberPath = nameof(SubChoice.Display);
             string id = current?.Literal.AsText() ?? "";
             if (id.Length > 0 && choices.All(c =>
                     !string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase)))
                 choices.Add(new SubChoice(id, id + "（未找到）"));
+            if (choices.Count == 0 && id.Length == 0)
+                choices.Add(new SubChoice("",
+                    "（还没有子动作：先到 设置 → 子动作库 新建一个）"));
+
+            // 先把候选补齐再设 ItemsSource：普通 List 不通知集合变化，先绑定再加会少一项。
+            combo.ItemsSource = choices;
+            combo.DisplayMemberPath = nameof(SubChoice.Display);
 
             combo.SelectedItem = choices.FirstOrDefault(c =>
                 string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase))
@@ -167,6 +185,19 @@ public partial class StepEditorDialog : Window
                     index = i;
                     break;
                 }
+
+                // 老配置里可能有已下线的选项（内置命令改名 / 删掉）：把它原样留在下拉里并选中，
+                // 否则会静默落到第一项，点一次确定就把配置改掉了。
+                if (index < 0 && want.Length > 0)
+                {
+                    combo.Items.Add(new ComboBoxItem
+                    {
+                        Content = want + "（未知选项）",
+                        Tag = want,
+                    });
+                    index = combo.Items.Count - 1;
+                }
+
                 combo.SelectedIndex = index >= 0 ? index : 0;
 
                 read = () => StepArg.FromText(
@@ -315,6 +346,81 @@ public partial class StepEditorDialog : Window
                 return grid;
             }
 
+            case InputEditor.code:
+            {
+                var box = new TextBox
+                {
+                    Text = current?.Literal.AsText() ?? "",
+                    FontFamily = (System.Windows.Media.FontFamily)FindResource("MonoFont"),
+                    AcceptsReturn = true,
+                    AcceptsTab = true,
+                    TextWrapping = TextWrapping.NoWrap,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    MinHeight = 260,
+                    Padding = new Thickness(8, 6, 8, 6),
+                    VerticalContentAlignment = VerticalAlignment.Top,
+                    ToolTip = "AHK v2 代码。LT_Var 读变量、LT_Set 写回变量、LT_Print 写标准输出。",
+                };
+
+                var check = new Button
+                {
+                    Content = "检查语法",
+                    Style = (Style)FindResource("Btn"),
+                    MinHeight = 28,
+                    Padding = new Thickness(10, 2, 10, 2),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    ToolTip = "只做语法检查，不会执行脚本（也不会产生任何副作用）",
+                };
+
+                var status = new TextBlock
+                {
+                    FontSize = 12,
+                    Margin = new Thickness(10, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextWrapping = TextWrapping.Wrap,
+                };
+
+                check.Click += (_, _) =>
+                {
+                    status.Foreground = (System.Windows.Media.Brush)FindResource("SecondaryTextBrush");
+                    status.Text = "检查中…";
+                    check.IsEnabled = false;
+                    try
+                    {
+                        AhkCheckResult result = AhkRunner.Check(box.Text ?? "");
+                        Status(status, result.Ok, result.Ok ? "语法没问题" : result.Message);
+                    }
+                    catch (Exception ex)
+                    {
+                        Status(status, false, ex.Message);
+                    }
+                    finally
+                    {
+                        check.IsEnabled = true;
+                    }
+                };
+
+                var bar = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Margin = new Thickness(0, 6, 0, 0),
+                };
+                bar.Children.Add(check);
+                bar.Children.Add(status);
+
+                var panel = new Grid();
+                panel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+                panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                panel.Children.Add(box);
+                Grid.SetRow(bar, 1);
+                panel.Children.Add(bar);
+
+                read = () => StepArg.FromText(box.Text ?? "");
+                box.TextChanged += (_, _) => OnEdited();
+                return panel;
+            }
+
             case InputEditor.multiline:
             case InputEditor.number:
             default:
@@ -340,6 +446,13 @@ public partial class StepEditorDialog : Window
         return input.Default != null ? StepArg.FromValue(input.Default) : null;
     }
 
+    /// <summary>代码编辑器的检查结果显示：成功用次要色，失败用与其它表单错误一致的危险色。</summary>
+    private static void Status(TextBlock label, bool ok, string text)
+    {
+        label.Foreground = (System.Windows.Media.Brush)label.FindResource(
+            ok ? "SecondaryTextBrush" : "DangerBrush");
+        label.Text = text;
+    }
     private FrameworkElement AddRow(Panel host, InputSpec input, FrameworkElement editor)
     {
         var row = new Grid { Margin = new Thickness(0, 0, 0, 8) };
@@ -641,19 +754,25 @@ public partial class StepEditorDialog : Window
         if (_step.Unit == "sub.run")
         {
             BuildDynamicOutputs();
-            return;
+        }
+        else
+        {
+            // 主结果（整步结果）排最前：多数情况下用户只需要它，其余是拆出来的字段。
+            foreach (var output in _spec.Outputs.OrderByDescending(o =>
+                         string.Equals(o.Key, "value", StringComparison.OrdinalIgnoreCase)))
+            {
+                bool on = _step.Out.TryGetValue(output.Key, out string? target);
+                var row = AddOutputRow(output.Key, output.Label, output.Type, output.Description,
+                    on ? target ?? "" : output.DefaultVariable ?? output.Key);
+                WireRow(row, on);
+                _outputs.Add(row);
+            }
         }
 
-        // 主结果（整步结果）排最前：多数情况下用户只需要它，其余是拆出来的字段。
-        foreach (var output in _spec.Outputs.OrderByDescending(o =>
-                     string.Equals(o.Key, "value", StringComparison.OrdinalIgnoreCase)))
-        {
-            bool on = _step.Out.TryGetValue(output.Key, out string? target);
-            var row = AddOutputRow(output.Key, output.Label, output.Type, output.Description,
-                on ? target ?? "" : output.DefaultVariable ?? output.Key);
-            WireRow(row, on);
-            _outputs.Add(row);
-        }
+        // 没有输出就别留一个空白的「输出变量」区（内置功能 / 没选子动作的调用子动作）。
+        OutputSection.Visibility = _inline || _outputs.Count + _dynamicOutputs.Count == 0
+            ? Visibility.Collapsed
+            : Visibility.Visible;
     }
 
     private void BuildDynamicOutputs()
@@ -787,7 +906,28 @@ public partial class StepEditorDialog : Window
         {
             if (first.Host is TextBox box) { box.Focus(); box.SelectAll(); }
             else if (first.Host is ValueSourceEditor value) value.Focus();
+            else if (first.Host is Panel panel && FindEditorBox(panel) is { } inner)
+            {
+                inner.Focus();
+                if (first.Spec.Editor == InputEditor.code) inner.CaretIndex = 0;
+            }
         }
+    }
+
+    /// <summary>包装过的编辑器（文件 / 代码）里第一个可输入的文本框，用于打开对话框时聚焦。</summary>
+    private static TextBox? FindEditorBox(DependencyObject root) =>
+        FindChild<TextBox>(root, box => box.IsEnabled && box.IsVisible);
+
+    private static T? FindChild<T>(DependencyObject root, Func<T, bool> match) where T : DependencyObject
+    {
+        int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            DependencyObject child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is T typed && match(typed)) return typed;
+            if (FindChild(child, match) is { } found) return found;
+        }
+        return null;
     }
 
     // ============ 确定 / 取消 ============

@@ -5,6 +5,7 @@ using LTools.Features.Units.Files;
 using LTools.Features.Units.Input;
 using LTools.Features.Units.Internal;
 using LTools.Features.Units.Screen;
+using LTools.Features.Units.Script;
 using LTools.Features.Units.Text;
 using LTools.Features.Units.Ui;
 using LTools.Features.Units.Windows;
@@ -43,6 +44,9 @@ public static class BuiltInUnits
         registry.Register(new LaunchAppUnit());
         registry.Register(new RunCommandUnit());
         registry.Register(new ProcessUnit());
+
+        // —— 脚本 ——
+        registry.Register(new AhkScriptUnit());
 
         // —— 输入 ——
         registry.Register(new SendKeysUnit());

@@ -18,6 +18,7 @@ internal static class IconCatalog
         ["folder"]     = "\uE8B7",  // 文件夹
         ["link"]       = "\uE71B",  // 链接
         ["terminal"]   = "\uE756",  // 命令提示符
+        ["script"]     = "\uE943",  // 代码（AutoHotkey 脚本）
         ["note"]       = "\uE70B",  // 编辑/速记
         ["search"]     = "\uE721",  // 搜索
         ["magnifier"]  = "\uE714",  // 放大镜

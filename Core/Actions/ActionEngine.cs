@@ -422,7 +422,7 @@ public sealed class ActionEngine
             if (step.In.TryGetValue(input.Key, out var arg))
             {
                 provided.Add(input.Key);
-                try { value = arg.Resolve(ctx); }
+                try { value = arg.Resolve(ctx, renderLiteral: !input.Raw); }
                 catch (ActionException ex)
                 {
                     throw new ActionException($"参数「{input.Label}」求值失败：{ex.Message}", ex);

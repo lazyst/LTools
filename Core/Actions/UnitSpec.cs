@@ -19,6 +19,13 @@ public enum InputEditor
 {
     text,
     multiline,
+
+    /// <summary>
+    /// 代码：等宽多行编辑器 + 「检查语法」按钮。配 <see cref="InputSpec.Raw"/> 用，
+    /// 内容原样交给单元（不做 <c>${变量}</c> 模板渲染，否则脚本里的花括号会被当成取值）。
+    /// </summary>
+    code,
+
     number,
     boolean,
     enumList,
@@ -62,6 +69,10 @@ public enum BodyKind
 /// 该参数私有的选项中文名，优先于 <see cref="OptionLabels"/> 的全局表。
 /// 只在同一个键于不同单元含义不同时才用（如 <c>add</c>：列表里是「追加一项」、计算里是「加法」）。
 /// </param>
+/// <param name="Raw">
+/// true = 字面量**原样**传入，不做 <c>${变量}</c> 模板渲染。代码类参数（<see cref="InputEditor.code"/>）
+/// 必须打开，否则脚本里的 <c>${…}</c> 会被求值，甚至因为变量不存在而整步失败。
+/// </param>
 public sealed record InputSpec(
     string Key,
     string Label,
@@ -71,7 +82,8 @@ public sealed record InputSpec(
     Value? Default = null,
     string? VisibleWhen = null,
     IReadOnlyList<string>? Options = null,
-    IReadOnlyDictionary<string, string>? Labels = null);
+    IReadOnlyDictionary<string, string>? Labels = null,
+    bool Raw = false);
 
 /// <summary>一个输出参数的声明。输出要写哪个变量由步骤的 <c>out</c> 映射决定。</summary>
 /// <param name="Key">输出键。</param>

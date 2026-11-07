@@ -1,0 +1,13 @@
+AutoHotkey v2（首次随包版本 2.0.31）
+=====================================
+
+本目录下的 AutoHotkey64.exe 是 AutoHotkey 官方发布的未修改二进制，
+随 LTools 一起分发，供「脚本 → AutoHotkey 脚本」单元执行用户脚本。
+
+许可证：GNU General Public License v2.0（全文见同目录 AutoHotkey-LICENSE.txt）
+项目主页：https://www.autohotkey.com/
+对应源码：https://github.com/AutoHotkey/AutoHotkey/releases/tag/v2.0.31
+          （亦可向 LTools 维护者索取该版本的完整源码）
+
+更新方式：运行 tools/fetch-autohotkey.ps1（会下载官方最新 ahk-v2.zip，
+只取 AutoHotkey64.exe 与 license.txt，并同步更新版本号与上述源码链接）。

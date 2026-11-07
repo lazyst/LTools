@@ -76,9 +76,15 @@ public sealed class StepArg
     };
 
     /// <summary>求值。字面量文本会渲染 <c>${...}</c>（列表 / 对象里的文本也递归渲染）；其余保留原始类型。</summary>
-    internal Value Resolve(StepContext ctx) => Kind switch
+    internal Value Resolve(StepContext ctx) => Resolve(ctx, renderLiteral: true);
+
+    /// <summary>
+    /// 求值；<paramref name="renderLiteral"/> = false 时字面量文本原样返回（代码类参数用，
+    /// 脚本里的 <c>${…}</c> 不该被当模板求值）。
+    /// </summary>
+    internal Value Resolve(StepContext ctx, bool renderLiteral) => Kind switch
     {
-        StepArgKind.literal => RenderLiteral(Literal, ctx.Scope),
+        StepArgKind.literal => renderLiteral ? RenderLiteral(Literal, ctx.Scope) : Literal,
         StepArgKind.variable => ctx.Scope.Resolve(VariablePath),
         StepArgKind.inline => ctx.EvaluateInline(InlineStep
             ?? throw new ActionException("内联取值步骤为空")),
