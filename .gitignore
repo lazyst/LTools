@@ -28,6 +28,8 @@ __pycache__/
 macros/
 # 运行时日志目录
 logs/
+# 可随时清空的运行缓存（运行期截图 cache/screenshots，下一次运行 / 启动时整体清空）
+/cache/
 # AI 接入：服务配置（含令牌）/ 知识包 / 审计，与暂存区草稿（运行时生成）
 /ai/
 /staging/

@@ -109,8 +109,9 @@ internal static class AutomationRunner
         string? startPath, Action<StepTrace>? trace, bool notify, RunNoticeMode? noticeOverride,
         Action<ActionRunResult>? completed, string? resourceRoot = null)
     {
-        // 运行期截图（变量的 .file）只在这一次运行内有效：开始新一次 = 上一次的已经用完，顺手回收。
-        // 界线用「现在」：本次稍后截的图比它新，不会被误删；上一次留下的（含上次没清掉的）在这里清干净。
+        // 运行期截图（变量 .file）只服务一次运行：开始新一次就整体清空上一轮的缓存目录。
+        // resources/images 里仍可能有「剪贴板图片」等程序生成图，按引用 + 时间界线回收。
+        ImageLibrary.ClearCaptures();
         ImageLibrary.CollectGarbage(DateTime.Now);
 
         _stopKeySwallowed = false;

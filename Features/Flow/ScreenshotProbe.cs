@@ -27,9 +27,9 @@ namespace LTools.Features;
 /// 后续步骤可以用「条件：found 为真」决定要不要继续。其余三种方式取不到图会直接报错。
 /// </para>
 /// <para>
-/// 图片存进 <c>resources/images</c>（与模板截图同一目录）：本次运行期间一直可用（后续「文字识别」、
-/// 「打开文件」、写进剪贴板的路径都还能读），下一次运行开始时连同更早的没人引用的截图一起清掉，
-/// 所以反复运行不会越堆越多。
+/// 图片存进 <c>cache/screenshots/</c>（运行期截图的专属目录）：本次运行期间一直可用（后续「文字识别」、
+/// 「打开文件」、写进剪贴板的路径都还能读），下一次运行开始时整体清空，程序启动时也会清一次。
+/// 模板图仍走 <c>resources/images</c> / 动作目录，两者不再混在一起。
 /// </para>
 /// <para>
 /// 线程：框选窗口是 WPF 窗口，必须建在 UI 线程；流程在后台线程，这里用 <see cref="Dispatcher.Invoke(Delegate)"/>
@@ -78,7 +78,7 @@ internal static class ScreenshotProbe
                 return new VarValue { Text = "", Flag = false };
             }
 
-            string file = ImageLibrary.SaveGenerated(image);
+            string file = ImageLibrary.SaveCapture(image);
             AppLog.Info("Probe", $"截图 · 交互框选：{area.X},{area.Y} · {area.Width} × {area.Height} → {file}");
             return VarValue.FromRegion(area.X, area.Y, area.Width, area.Height, file);
         }
@@ -124,7 +124,7 @@ internal static class ScreenshotProbe
                 throw new FlowAbortException("已停止", userCancelled: true);
 
             using Bitmap bmp = ScreenCapture.Capture(x, y, w, h);
-            string file = ImageLibrary.SaveGenerated(bmp);
+            string file = ImageLibrary.SaveCapture(bmp);
             AppLog.Info("Probe", $"截图 · {label}：{x},{y} · {w} × {h} → {file}");
             return VarValue.FromRegion(x, y, w, h, file);
         }

@@ -12,7 +12,8 @@ namespace LTools.Features;
 /// <list type="bullet">
 /// <item><c>actions/&lt;id&gt;/files/</c>——该动作独占的模板图（采纳草稿时整体搬进来），按动作目录回收；</item>
 /// <item><c>resources/images/</c>——程序生成的模板截图（<c>shot-时间戳.png</c>），由 <see cref="CollectGarbage"/> 按引用回收；</item>
-/// <item><c>resources/user/</c>——用户自己的素材，文件选择器默认打开这里，从不自动删除。</item>
+/// <item><c>resources/user/</c>——用户自己的素材，文件选择器默认打开这里，从不自动删除；</item>
+/// <item><c>cache/screenshots/</c>——「截图」步骤的运行期输出，下一次运行 / 启动时整体清空，不进备份。</item>
 /// </list>
 /// 分成多个目录是为了让回收边界是「目录」而不是「文件名前缀」：程序生成的东西可以放心清，
 /// 用户资产与动作独占的资源不会被误伤。也允许引用任意绝对路径（这类文件不参与回收）。
@@ -24,6 +25,12 @@ internal static class ImageLibrary
 
     /// <summary>用户素材目录（永不回收）。</summary>
     public static string UserDir => Path.Combine(AppPaths.ResourceDir, "user");
+
+    /// <summary>
+    /// 运行期截图目录：只服务当前这次运行（「截图」步骤的 <c>.file</c>），
+    /// 下一次运行开始 / 启动时整体清空，不进备份。
+    /// </summary>
+    public static string CaptureDir => Path.Combine(AppPaths.DataRoot, "cache", "screenshots");
 
     /// <summary>本应用生成的模板文件名前缀。</summary>
     private const string ShotPrefix = "shot-";
@@ -157,15 +164,48 @@ internal static class ImageLibrary
     }
 
     /// <summary>
-    /// 把程序生成的图片存进 <see cref="Dir"/>（<c>shot-时间戳.png</c>，重名加序号），返回绝对路径。
-    /// 模板截图与「截图」取值器共用；这类文件按引用回收（<see cref="CollectGarbage"/>）：
-    /// 模板截图随配置长期保留，运行期截的图在下一次运行开始时清掉（本次运行期间一直可用）。
+    /// 把程序生成的模板图片存进 <see cref="Dir"/>（<c>shot-时间戳.png</c>，重名加序号），返回绝对路径。
+    /// 模板截图与「剪贴板图片」取值器共用；这类文件按引用回收（<see cref="CollectGarbage"/>）：
+    /// 模板截图随配置长期保留，未被动作引用的在下一次运行开始时清掉。
     /// </summary>
     public static string SaveGenerated(System.Windows.Media.Imaging.BitmapSource image)
     {
         EnsureDir();
-        string path = NextShotPath();
+        return SavePng(image, Dir);
+    }
 
+    /// <summary>同上，直接保存 GDI+ 位图（模板截图 / 剪贴板图片用）。</summary>
+    public static string SaveGenerated(System.Drawing.Bitmap image)
+    {
+        EnsureDir();
+        return SavePng(image, Dir);
+    }
+
+    /// <summary>
+    /// 运行期截图（「截图」步骤的输出）存进 <see cref="CaptureDir"/>：本次运行内一直可用
+    /// （文字识别 / 打开文件 / 剪贴板都还能读），下一次运行开始或程序启动时整体清空。
+    /// </summary>
+    public static string SaveCapture(System.Windows.Media.Imaging.BitmapSource image)
+    {
+        EnsureCaptureDir();
+        return SavePng(image, CaptureDir);
+    }
+
+    /// <summary>同上，直接保存 GDI+ 位图（「截图」步骤的自动取图用）。</summary>
+    public static string SaveCapture(System.Drawing.Bitmap image)
+    {
+        EnsureCaptureDir();
+        return SavePng(image, CaptureDir);
+    }
+
+    private static void EnsureCaptureDir()
+    {
+        try { Directory.CreateDirectory(CaptureDir); } catch { /* 保存时会再报错 */ }
+    }
+
+    private static string SavePng(System.Windows.Media.Imaging.BitmapSource image, string dir)
+    {
+        string path = NextShotPath(dir);
         var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
         encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
         using var fs = File.Create(path);
@@ -173,27 +213,48 @@ internal static class ImageLibrary
         return path;
     }
 
-    /// <summary>同上，直接保存 GDI+ 位图（「截图」步骤的自动取图用）。</summary>
-    public static string SaveGenerated(System.Drawing.Bitmap image)
+    private static string SavePng(System.Drawing.Bitmap image, string dir)
     {
-        EnsureDir();
-        string path = NextShotPath();
+        string path = NextShotPath(dir);
         image.Save(path, System.Drawing.Imaging.ImageFormat.Png);
         return path;
     }
 
-    private static string NextShotPath()
+    private static string NextShotPath(string dir)
     {
         string stem = $"shot-{DateTime.Now:yyyyMMdd-HHmmss}";
-        string path = Path.Combine(Dir, stem + ".png");
+        string path = Path.Combine(dir, stem + ".png");
         for (int n = 2; File.Exists(path); n++)
-            path = Path.Combine(Dir, $"{stem}-{n}.png");
+            path = Path.Combine(dir, $"{stem}-{n}.png");
         return path;
     }
 
+    /// <summary>清空运行期截图目录（下一次运行开始 / 启动时调用）；返回删除的文件数。</summary>
+    public static int ClearCaptures()
+    {
+        try
+        {
+            if (!Directory.Exists(CaptureDir)) return 0;
+            int removed = 0;
+            foreach (string file in Directory.GetFiles(CaptureDir))
+            {
+                try { File.Delete(file); removed++; }
+                catch (Exception ex) { CrashLog.Write("ImageLibrary.ClearCaptures", ex); }
+            }
+            if (removed > 0)
+                AppLog.Info("Resource", $"清空运行期截图 {removed} 个");
+            return removed;
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("ImageLibrary.ClearCaptures", ex);
+            return 0;
+        }
+    }
+
     /// <summary>
-    /// 删掉一张程序生成的截图。只动 <see cref="Dir"/> 下的文件，误传别的路径（用户素材 / 模板以外的图）
-    /// 一律不碰；失败忽略——编辑器的「▶ 测试」用它清掉试截的那张。
+    /// 删掉一张程序生成的图片（模板试截 / 运行期截图）。只动 <see cref="Dir"/> 与
+    /// <see cref="CaptureDir"/> 下的文件，误传别的路径（用户素材 / 动作目录）一律不碰；失败忽略。
     /// </summary>
     public static void DeleteGenerated(string? path)
     {
@@ -201,9 +262,13 @@ internal static class ImageLibrary
         try
         {
             string full = Path.GetFullPath(Resolve(path));
-            string dir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Dir));
-            if (!string.Equals(Path.GetDirectoryName(full), dir, StringComparison.OrdinalIgnoreCase)) return;
-            if (File.Exists(full)) File.Delete(full);
+            foreach (string owned in new[] { Dir, CaptureDir })
+            {
+                string dir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(owned));
+                if (!string.Equals(Path.GetDirectoryName(full), dir, StringComparison.OrdinalIgnoreCase)) continue;
+                if (File.Exists(full)) File.Delete(full);
+                return;
+            }
         }
         catch (Exception ex)
         {
