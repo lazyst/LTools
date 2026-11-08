@@ -34,6 +34,7 @@ public partial class SuperPanelWindow
         AddMenuItem(menu, "复制", () => DuplicateAction(tref));
         // 照 Quicker「以暂存区方式编辑」：正式动作只读，先复制一份到暂存区再改
         AddMenuItem(menu, "在暂存区编辑…", () => EditInStash(id));
+        AddMenuItem(menu, "导出动作…", () => ExportAction(tref));
         menu.Items.Add(new Separator());
         bool floating = FloatingLibrary.IsFloating(id);
         string label = !floating ? "悬浮此动作"
@@ -455,5 +456,13 @@ public partial class SuperPanelWindow
     {
         Features.SuperPanel.Close();
         PanelActionOps.Delete(null, id);
+    }
+
+    /// <summary>导出一个动作（<c>.ltact</c>）：先关面板再开保存对话框（隐藏的 Topmost 面板会让对话框闪黑）。</summary>
+    private void ExportAction(PanelTileRef tref)
+    {
+        if (tref.ActionId == null) return;
+        Features.SuperPanel.Close();
+        PanelActionOps.Export(null, tref.ActionId);
     }
 }

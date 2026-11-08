@@ -1,6 +1,9 @@
 using System;
+using System.IO;
+using System.Threading.Tasks;
 using System.Windows;
 using LTools.Config;
+using LTools.Core;
 using LTools.Views;
 
 namespace LTools.Features.Panel;
@@ -65,6 +68,50 @@ internal static class PanelActionOps
 
         ConfigStore.RemoveAction(id);
         return true;
+    }
+
+    /// <summary>
+    /// 导出单个动作（<c>.ltact</c>）：打包 <c>actions/&lt;id&gt;/</c>（action.json + files/）。
+    /// 导出在后台线程跑，完成后用 toast 报告路径（失败常驻并可点击开日志目录）。
+    /// </summary>
+    public static void Export(Window? owner, string id)
+    {
+        var action = ActionRegistry.FindById(id);
+        if (action == null) return;
+
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "LTools 动作 (*.ltact)|*.ltact",
+            FileName = SafeFileName(action.Name) + BackupService.ActionExtension,
+            DefaultExt = BackupService.ActionExtension,
+            AddExtension = true,
+            Title = "导出动作",
+        };
+        if (dlg.ShowDialog(owner) != true) return;
+
+        string dest = dlg.FileName;
+        string name = action.Name;
+        Task.Run(() => BackupService.ExportAction(id, dest)).ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+            {
+                string msg = t.Exception?.GetBaseException().Message ?? "未知错误";
+                ToastService.Show($"导出失败：{msg}", name, ToastService.StickyMs, ToastKind.error,
+                    onClick: () => { try { System.Diagnostics.Process.Start("explorer.exe", AppPaths.DataRoot); } catch { } });
+            }
+            else
+            {
+                ToastService.Show($"已导出到 {dest}", name, 3000, ToastKind.success);
+            }
+        }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    /// <summary>文件名里去掉 Windows 不允许的字符（动作名可能带 <c>/</c>、冒号等）。</summary>
+    private static string SafeFileName(string name)
+    {
+        string cleaned = name.Trim();
+        foreach (char c in Path.GetInvalidFileNameChars()) cleaned = cleaned.Replace(c, '_');
+        return cleaned.Length == 0 ? "action" : cleaned;
     }
 
     /// <summary>把动作从分组里移除（不删除动作本体）。</summary>

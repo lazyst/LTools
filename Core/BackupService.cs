@@ -14,10 +14,13 @@ namespace LTools.Core;
 /// <summary>
 /// 配置备份（导出 / 导入 .ltbak）：一个 zip 同时打包 <c>configs/</c>（分域配置；旧备份是单文件
 /// <c>LTools.json</c>）+ 动作目录 <c>actions/</c>（动作体与它自己的模板图）+ 用户资源目录
-/// <c>resources/</c> + 速记目录 <c>速记/</c> + 宏事件目录 <c>macros/</c>。
+/// <c>resources/</c> + 速记目录 <c>速记/</c> + 宏事件目录 <c>macros/</c> + AI 暂存区 <c>staging/</c>。
+/// 打包哪些目录由<b>目录白名单</b>（<see cref="BackupDomain"/>）决定，manifest 的 <c>includes</c>
+/// 也只声明实际打进包里的域；<c>cache/</c>、<c>ai/</c>、<c>logs/</c> 这类运行数据永远不进备份。
 /// 导入为整体替换（仅替换备份包含的项），旧数据先改名为 <c>.bak-时间戳</c>；
 /// 导入前由 <see cref="Inspect"/> 扫描可执行文件并列出引用 <c>resources</c> 的动作，
 /// 交给调用方弹警告——导入备份等于可能以管理员权限运行外来脚本。
+/// 另有 <see cref="ExportAction"/>：只打包一个动作目录（<c>.ltact</c>）。
 /// 所有方法同步执行且阻塞，调用方应放在后台线程。
 /// </summary>
 internal static class BackupService
@@ -25,10 +28,14 @@ internal static class BackupService
     /// <summary>备份文件扩展名（本质 zip）。</summary>
     public const string Extension = ".ltbak";
 
+    /// <summary>单个动作导出的扩展名（本质 zip：manifest + action.json + files/）。</summary>
+    public const string ActionExtension = ".ltact";
+
     /// <summary>导出体积超过该值时调用方应先确认。</summary>
     public const long ExportWarnBytes = 50 * 1024 * 1024;
 
     private const string FormatId = "ltools-backup";
+    private const string ActionFormatId = "ltools-action";
     private const int FormatVersion = 1;
 
     /// <summary>视为可执行 / 可被动作以管理员权限运行的扩展名。</summary>
@@ -60,6 +67,32 @@ internal static class BackupService
         public string AppVersion { get; set; } = "";
         public string CreatedAt { get; set; } = "";
         public List<string> Includes { get; set; } = new();
+
+        /// <summary>单个动作导出（<see cref="ActionFormatId"/>）时的来源动作。</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? ActionId { get; set; }
+
+        /// <summary>同上的动作名（导出时就近取，导入端不必再解析 action.json）。</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? ActionName { get; set; }
+    }
+
+    /// <summary>
+    /// 一个备份域 = 数据根下一个目录：manifest 键、zip 内目录名、源目录。
+    /// </summary>
+    /// <remarks>
+    /// <b>目录白名单</b>：能进备份的目录只来自这张表（见 <see cref="BuildPlan"/>），
+    /// 新增一类要备份的目录就在这里加一行——导出、体积估算、manifest 声明自动跟上，
+    /// 不需要再改三处。表里没列的目录（<c>cache/</c>、<c>ai/</c>、<c>logs/</c>…）永远不进备份。
+    /// </remarks>
+    private sealed record BackupDomain(string Key, string Entry, string Dir);
+
+    /// <summary>一次导出要打包的东西（配置单独处理：旧布局是单文件，新布局是 <c>configs/</c>）。</summary>
+    private sealed class ExportPlan
+    {
+        public string ConfigPath { get; init; } = "";
+        public string? ConfigDir { get; init; }
+        public List<BackupDomain> Domains { get; } = new();
     }
 
     /// <summary>备份清单信息（导入预检结果的一部分，供 UI 展示）。</summary>
@@ -100,55 +133,94 @@ internal static class BackupService
     /// <summary>估算将要打包的字节数（调用方用于体积提示）。</summary>
     public static long EstimateSize(bool includeResources, bool includeNotes)
     {
-        string cfgPath = ConfigLocator.FindPath();
-        long total = FileSize(cfgPath) + DirSize(ConfigBundle.ConfigDir(cfgPath));
-        total += DirSize(ActionStore.Root(cfgPath));
-        if (includeResources) total += DirSize(AppPaths.ResourceDir);
-        if (includeNotes) total += DirSize(AppPaths.NotesDir);
-        total += DirSize(MacroStore.Dir);
-        // AI 暂存区：草稿大小随图片数量变化，和宏一样按实际目录估算。
-        total += DirSize(DraftStore.Root);
+        var plan = BuildPlan(includeResources, includeNotes);
+        long total = FileSize(plan.ConfigPath);
+        if (plan.ConfigDir != null) total += DirSize(plan.ConfigDir);
+        foreach (var domain in plan.Domains) total += DirSize(domain.Dir);
         return total;
+    }
+
+    /// <summary>
+    /// 按目录白名单决定这次打包什么：配置 / 动作总是带上；资源目录、速记按勾选；
+    /// 宏事件与 AI 暂存区存在就带上（用户感受不到这两个选项，旧的备份也不含它们）。
+    /// </summary>
+    private static ExportPlan BuildPlan(bool includeResources, bool includeNotes)
+    {
+        string cfgPath = ConfigLocator.FindPath();
+        string cfgDir = ConfigBundle.ConfigDir(cfgPath);
+        var plan = new ExportPlan
+        {
+            ConfigPath = cfgPath,
+            ConfigDir = Directory.Exists(cfgDir) ? cfgDir : null,
+        };
+
+        if (ActionStore.HasStore(cfgPath))
+            plan.Domains.Add(new BackupDomain("actions", "actions", ActionStore.Root(cfgPath)));
+        if (includeResources)
+            plan.Domains.Add(new BackupDomain("resources", "resources", AppPaths.ResourceDir));
+        if (includeNotes)
+            plan.Domains.Add(new BackupDomain("notes", "速记", AppPaths.NotesDir));
+        if (Directory.Exists(MacroStore.Dir))
+            plan.Domains.Add(new BackupDomain("macros", "macros", MacroStore.Dir));
+        if (Directory.Exists(DraftStore.Root))
+            plan.Domains.Add(new BackupDomain("staging", "staging", DraftStore.Root));
+        return plan;
     }
 
     /// <summary>导出备份到 destPath；配置始终包含，资源目录 / 速记按参数决定。</summary>
     public static void Export(string destPath, bool includeResources, bool includeNotes)
     {
-        string tmp = destPath + ".part-" + Guid.NewGuid().ToString("N")[..8];
+        var plan = BuildPlan(includeResources, includeNotes);
+        WriteZip(destPath, zip =>
+        {
+            // 配置必须总是写入：分域后打包 configs/ 目录；还没分域（首次保存前）就打包旧单文件；
+            // 两者都没有（用户从未保存过）时按当前内存态写一份旧格式快照，导入时由 ConfigBundle 自动分域。
+            if (plan.ConfigDir != null) AddDir(zip, plan.ConfigDir, "configs");
+            else if (File.Exists(plan.ConfigPath)) AddFile(zip, plan.ConfigPath, "LTools.json");
+            else AddText(zip, "LTools.json",
+                JsonSerializer.Serialize(AppConfig.Load(plan.ConfigPath), ConfigOpt));
+
+            foreach (var domain in plan.Domains) AddDir(zip, domain.Dir, domain.Entry);
+
+            AddText(zip, "manifest.json", BuildManifest(plan));
+        });
+    }
+
+    /// <summary>
+    /// 导出单个动作：<c>manifest.json</c> + <c>action.json</c> + <c>files/…</c>，
+    /// 内容就是 <c>actions/&lt;id&gt;/</c> 这一份目录（动作体与它自己的模板图 / 脚本）。
+    /// </summary>
+    public static void ExportAction(string actionId, string destPath)
+    {
+        if (string.IsNullOrWhiteSpace(actionId)) throw new ArgumentException("动作 Id 不能为空", nameof(actionId));
+        string cfgPath = ConfigLocator.FindPath();
+        string json = ActionStore.ActionPath(cfgPath, actionId);
+        if (!File.Exists(json)) throw new FileNotFoundException("动作不存在", json);
+
+        string name = "";
         try
         {
-            using (var zip = ZipFile.Open(tmp, ZipArchiveMode.Create))
-            {
-                // 配置必须总是写入：分域后打包 config/ 目录；还没分域（首次保存前）就打包旧单文件；
-                // 两者都没有（用户从未保存过）时按当前内存态写一份旧格式快照，导入时由 ConfigBundle 自动分域。
-                string cfgPath = ConfigLocator.FindPath();
-                string cfgDir = ConfigBundle.ConfigDir(cfgPath);
-                if (Directory.Exists(cfgDir)) AddDir(zip, cfgDir, "configs");
-                else if (File.Exists(cfgPath)) AddFile(zip, cfgPath, "LTools.json");
-                else AddText(zip, "LTools.json",
-                    JsonSerializer.Serialize(AppConfig.Load(cfgPath), ConfigOpt));
-                // 动作目录（action.json + 动作私有的 files/ 模板图）：与配置一起总是打包。
-                bool includeActions = ActionStore.HasStore(cfgPath);
-                if (includeActions) AddDir(zip, ActionStore.Root(cfgPath), "actions");
-                if (includeResources) AddDir(zip, AppPaths.ResourceDir, "resources");
-                if (includeNotes) AddDir(zip, AppPaths.NotesDir, "速记");
-                // 宏事件文件：存在才打包，旧备份不含 macros 时导入不会清空现有宏。
-                bool includeMacros = Directory.Exists(MacroStore.Dir);
-                if (includeMacros) AddDir(zip, MacroStore.Dir, "macros");
-                // AI 暂存区草稿：未采纳的草稿换机后还要接着用；ai/ 里是令牌，故意不进备份。
-                bool includeStaging = Directory.Exists(DraftStore.Root);
-                if (includeStaging) AddDir(zip, DraftStore.Root, "staging");
-                AddText(zip, "manifest.json",
-                    BuildManifest(includeResources, includeNotes, includeMacros, includeStaging, includeActions));
-            }
-            if (File.Exists(destPath)) File.Delete(destPath);
-            File.Move(tmp, destPath);
+            var action = JsonSerializer.Deserialize<ActionDto>(File.ReadAllText(json, Encoding.UTF8), ConfigBundle.Options);
+            name = action?.Name ?? "";
         }
-        catch
+        catch { /* 名字只用于 manifest 展示，读不出来不影响导出 */ }
+
+        var manifest = new Manifest
         {
-            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* 清理失败忽略 */ }
-            throw;
-        }
+            Format = ActionFormatId,
+            FormatVersion = FormatVersion,
+            AppVersion = AppVersion,
+            CreatedAt = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+            Includes = new List<string> { "action" },
+            ActionId = actionId,
+            ActionName = name,
+        };
+        WriteZip(destPath, zip =>
+        {
+            AddFile(zip, json, "action.json");
+            AddDir(zip, ActionStore.FilesDir(cfgPath, actionId), "files");
+            AddText(zip, "manifest.json", JsonSerializer.Serialize(manifest, ManifestOpt));
+        });
     }
 
     // ============ 导入：预检 ============
@@ -350,24 +422,41 @@ internal static class BackupService
 
     // ============ 内部 ============
 
-    private static string BuildManifest(bool includeResources, bool includeNotes, bool includeMacros,
-        bool includeStaging = false, bool includeActions = false)
+    private static string BuildManifest(ExportPlan plan)
     {
         var includes = new List<string> { "config" };
-        if (includeActions) includes.Add("actions");
-        if (includeResources) includes.Add("resources");
-        if (includeNotes) includes.Add("notes");
-        if (includeMacros) includes.Add("macros");
-        if (includeStaging) includes.Add("staging");
+        foreach (var domain in plan.Domains) includes.Add(domain.Key);
         var m = new Manifest
         {
             Format = FormatId,
             FormatVersion = FormatVersion,
-            AppVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0",
+            AppVersion = AppVersion,
             CreatedAt = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
             Includes = includes,
         };
         return JsonSerializer.Serialize(m, ManifestOpt);
+    }
+
+    private static string AppVersion =>
+        System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
+
+    /// <summary>
+    /// 先写 <c>.part-*</c> 临时文件，成功后再替换目标：导出到一半失败不会留下半个 zip。
+    /// </summary>
+    private static void WriteZip(string destPath, Action<ZipArchive> write)
+    {
+        string tmp = destPath + ".part-" + Guid.NewGuid().ToString("N")[..8];
+        try
+        {
+            using (var zip = ZipFile.Open(tmp, ZipArchiveMode.Create)) write(zip);
+            if (File.Exists(destPath)) File.Delete(destPath);
+            File.Move(tmp, destPath);
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* 清理失败忽略 */ }
+            throw;
+        }
     }
 
     private static void AddFile(ZipArchive zip, string path, string entryName)

@@ -1252,6 +1252,12 @@ public partial class PanelManageView : UserControl
             RefreshAll();
         };
         menu.Items.Add(edit);
+        if (a != null)
+        {
+            var export = new MenuItem { Header = "导出动作…" };
+            export.Click += (_, _) => PanelActionOps.Export(Window.GetWindow(this), id);
+            menu.Items.Add(export);
+        }
         menu.Items.Add(new Separator());
         menu.Items.Add(remove);
         if (a != null)
