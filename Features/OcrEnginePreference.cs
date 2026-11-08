@@ -55,7 +55,7 @@ internal static class OcrEnginePreference
         try
         {
             if (string.Equals(Load(), value, StringComparison.OrdinalIgnoreCase)) return;
-            ConfigIO.Modify(ResolveConfigPath(), cfg => cfg.LastOcrEngine = value);
+            UiStore.Modify(ResolveConfigPath(), ui => ui.LastOcrEngine = value);
         }
         catch (Exception ex)
         {

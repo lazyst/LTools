@@ -1,6 +1,5 @@
 using LTools.Config;
 using LTools.Features;
-
 namespace LTools.Core;
 
 /// <summary>
@@ -14,7 +13,7 @@ internal static class Settings
     {
         AppState.IsToolEnabled = enabled;
         AppLog.Info("Settings", $"CapsLock 键功能 = {(enabled ? "启用" : "禁用")}");
-        SaveBool((cfg, on) => cfg.CapsLockEnabled = on, enabled);
+        SaveBool(on => SettingsStore.Modify(s => s.CapsLockEnabled = on), enabled);
         TrayService.Notify(enabled ? "CapsLock 键功能已启用" : "CapsLock 键功能已禁用");
     }
 
@@ -23,7 +22,7 @@ internal static class Settings
     {
         AppState.IsSuperPanelEnabled = enabled;
         AppLog.Info("Settings", $"超级面板 = {(enabled ? "启用" : "禁用")}");
-        SaveBool((cfg, on) => cfg.SuperPanel.Enabled = on, enabled);
+        SaveBool(on => PanelStore.Modify(p => p.SuperPanel.Enabled = on), enabled);
         TrayService.Notify(enabled ? "超级面板已启用" : "超级面板已禁用");
     }
 
@@ -33,15 +32,15 @@ internal static class Settings
     /// <summary>切换超级面板开关（托盘菜单用）。</summary>
     public static void ToggleSuperPanel() => SetSuperPanelEnabled(!AppState.IsSuperPanelEnabled);
 
-    /// <summary>把单个 bool 设置写回配置（读磁盘→改一个字段→整体保存）。
+    /// <summary>把单个 bool 设置写回配置（读磁盘→改一个字段→只写该域）。
     /// 落盘放后台线程：<see cref="SetCapsLockEnabled"/> 会在钩子回调路径上被调用，
     /// 钩子回调不得阻塞（&gt;300ms 系统会卸载钩子）；状态本身已同步改完。
     /// 读-改-写经 <see cref="ConfigIO"/> 加锁，避免与设置窗口的保存互相覆盖。</summary>
-    private static void SaveBool(Action<AppConfig, bool> write, bool value)
+    private static void SaveBool(Action<bool> write, bool value)
     {
         System.Threading.Tasks.Task.Run(() =>
         {
-            try { ConfigIO.Modify(cfg => write(cfg, value)); }
+            try { write(value); }
             catch (Exception ex) { CrashLog.Write("Settings.SaveBool", ex); }
         });
     }

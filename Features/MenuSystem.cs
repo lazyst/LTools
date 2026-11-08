@@ -288,7 +288,7 @@ internal static class MenuSystem
             groups.Add(ToDto(_groups[i]));
         // 按 Id 排序，避免字典枚举顺序造成配置文件无谓变动
         var actions = new List<ActionDto>(ActionRegistry.All.OrderBy(a => a.Id, StringComparer.Ordinal));
-        ConfigIO.Modify(configPath, cfg =>
+        ConfigIO.Modify(configPath, ConfigDomain.menus | ConfigDomain.actions, cfg =>
         {
             cfg.MenuGroups = groups;
             cfg.Actions = actions;

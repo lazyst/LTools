@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using LTools.Config;
 using LTools.Core;
 using LTools.Core.Storage;
@@ -28,8 +30,14 @@ internal static class ConfigStore
         // 运行时找动作私有资源（actions/<id>/files）要这条锚点；顺手清理过期的 trash。
         ActionStore.Anchor = configPath;
         ActionStore.PruneTrash(configPath);
+        // 外部编辑 / 备份导入 / 中途崩溃可能留下指向已删动作的菜单项与面板槽位：
+        // 先按磁盘动作目录修好，再让两个库加载，内存里拿到的就是干净数据。
+        ActionRemoval.RepairReferences(configPath);
         MenuSystem.ReloadFromConfig(configPath);
         PanelLibrary.Initialize(configPath);
+        // 旧面板刚迁移出来时 RepairReferences 还看不到（Panel 为 null），按内存动作清单再收一次。
+        PanelLibrary.RemoveMissingActions(
+            new HashSet<string>(ActionRegistry.All.Select(a => a.Id), StringComparer.Ordinal));
     }
 
     /// <summary>重新从磁盘加载（配置已被外部对话框改写后调用）。</summary>
@@ -66,21 +74,7 @@ internal static class ConfigStore
     }
 
     /// <summary>从清单删除动作（同时清掉菜单项 / 组合步骤 / 超级面板槽位三处引用）。</summary>
-    public static bool RemoveAction(string id)
-    {
-        if (!MenuSystem.RemoveAction(id)) return false;   // 清清单 + 菜单项 + 组合步骤（内存）
-        SuperPanel.RemoveActionReferences(id);            // 清超级面板槽位（落盘）
-        // 先把动作删除落盘，再回收宏文件：避免中途崩溃留下「动作还在、宏文件已删」的悬空引用。
-        Save();
-        // 一宏一动作：动作删除后按引用回收宏文件（仍被组合步骤引用的宏会保留）。
-        // 对非宏动作也执行一次，顺手清掉被删组合动作带走的宏步骤文件。
-        MacroStore.CollectGarbage();
-        // 模板截图同理：被删动作 / 组合步骤独占的 shot-*.png 立刻回收，不必等下次启动。
-        ImageLibrary.CollectGarbage();
-        // 悬浮项按引用回收：动作没了，按钮也跟着消失（分组空了整项移除）。
-        FloatingManager.RefreshAll();
-        return true;
-    }
+    public static bool RemoveAction(string id) => ActionRemoval.Remove(id);
 
     /// <summary>复制动作（新 Id + 名称追加「副本」）。</summary>
     public static ActionDto? DuplicateAction(string id)
@@ -103,10 +97,10 @@ internal static class ConfigStore
     public static void SaveGitBashPath(string gitBashPath)
     {
         var p = string.IsNullOrWhiteSpace(gitBashPath) ? null : gitBashPath.Trim();
-        ConfigIO.Modify(ConfigPath, cfg =>
+        SettingsStore.Modify(ConfigPath, s =>
         {
-            if (p == null) cfg.TerminalPaths.Remove("gitbash");
-            else cfg.TerminalPaths["gitbash"] = p;
+            if (p == null) s.TerminalPaths.Remove("gitbash");
+            else s.TerminalPaths["gitbash"] = p;
         });
         TerminalLauncher.LoadFromConfig(AppConfig.Load(ConfigPath));
     }

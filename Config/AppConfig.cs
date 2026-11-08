@@ -172,10 +172,10 @@ public sealed class AppConfig
     private const int ReadRetryDelayMs = 200;
 
     /// <summary>
-    /// 加载配置：合并 <c>config/</c> 下的 6 个域文件（路径按 <paramref name="path"/> 同级的 <c>config/</c> 解析）。
+    /// 加载配置：合并 <c>configs/</c> 下的 6 个域文件（路径按 <paramref name="path"/> 同级的 <c>configs/</c> 解析）。
     /// 域文件不存在时从旧 <c>LTools.json</c> / 同目录示例回填；已有文件读失败（占用）会退避重试，
     /// 仍失败则按域回退默认值并置 <see cref="LoadFailed"/>——**写盘必须走 <see cref="LoadStrict"/>**
-    /// （<see cref="ConfigIO.Modify"/> 已如此），绝不把回退值写回磁盘。
+    /// （<see cref="ConfigIO"/> 与各域 store 都已如此），绝不把回退值写回磁盘。
     /// </summary>
     public static AppConfig Load(string path) => ConfigBundle.Load(path);
 

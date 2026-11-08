@@ -398,7 +398,7 @@ mode=replace  → 校验 draft.baseActionId 仍存在、baseSourceHash 未变（
 
 1. **线程**：HttpListener/ASP.NET 回调线程上碰 `MenuSystem` / `ConfigStore` / WPF 对象必炸。全部走
    `Application.Current.Dispatcher.InvokeAsync`，且不要在 UI 线程上等 HTTP 结果（死锁）。
-2. **配置是整体读改写**：promote 必须走 `ConfigStore`（内部 Load→改→Save），否则和设置页并发保存会互相覆盖。落盘时 `ActionStore` 只重写内容变了的 `action.json`。
+2. **配置按域读改写**：promote 必须走 `ConfigStore`（内部 Load→改→Save，只写 `menus.json` + `actions/`），否则和设置页并发保存会互相覆盖。单域设置走 `SettingsStore` / `UiStore` 等，落盘时 `ActionStore` 只重写内容变了的 `action.json`。
 3. **不要给 agent 直写正式库的入口**：一旦有 `actions_update`，模型迟早会「顺手」改掉用户动作。
 4. **revision 必须能从文件内容重算**，不能只在 MCP 写入时自增——否则 agent 用 fs 工具改完，save 会以为没变。
 5. **`VisibleWhen` 是必填判断的一部分**：只校验可见参数，否则「写入时才必填」的参数会误报（这条 AGENTS.md 已写过）。

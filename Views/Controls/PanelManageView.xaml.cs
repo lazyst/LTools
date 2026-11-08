@@ -300,7 +300,7 @@ public partial class PanelManageView : UserControl
         try
         {
             int v = (int)ThresholdSlider.Value;
-            ConfigIO.Modify(ConfigStore.ConfigPath, cfg => cfg.SuperPanel.LongPressThresholdMs = v);
+            PanelStore.Modify(ConfigStore.ConfigPath, p => p.SuperPanel.LongPressThresholdMs = v);
             SetStatus($"长按阈值已保存：{v} ms", ok: true);
         }
         catch (Exception ex)

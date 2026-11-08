@@ -4,44 +4,70 @@ using LTools.Config;
 namespace LTools.Core;
 
 /// <summary>
-/// 配置文件读-改-写的串行化入口。多处（设置窗口防抖保存、钩子路径上的开关切换、
-/// 终端路径对话框、超级面板编辑）都会整份读改写同一组配置，并发的 Load→Save 会互相覆盖
-/// （读到旧状态后整体写回）。本类用一把锁把「读磁盘 → 修改 → 写磁盘」当成原子段串行执行。
+/// 配置读-改-写的串行化入口（P3 起按域收口）。
+/// 多处（设置窗口防抖保存、钩子路径上的开关切换、终端路径对话框、超级面板编辑）都会改动配置，
+/// 并发的 Load→Save 会互相覆盖；本类用一把锁把「读 → 修改 → 写」当成原子段串行执行。
 /// </summary>
 /// <remarks>
-/// 分域后（见 <see cref="ConfigBundle"/>）一次保存只会真正写回内容变了的域文件，
-/// 但「读整份 → 改 → 写整份」的语义保持不变，调用点无需关心自己属于哪个域。
-/// 写前用 <see cref="AppConfig.LoadStrict"/>：有域文件无法解析时**抛出并放弃写入**，
-/// 绝不拿默认值覆盖原文件。调用方按需捕获：设置页会提示「保存失败」，后台开关与面板记忆则静默留在日志里。
+/// <para>
+/// 日常修改走 <c>Config/DomainStores.cs</c> 里的 <c>SettingsStore</c> / <c>UiStore</c> / <c>MenuStore</c>
+/// / <c>PanelStore</c> / <c>FloatingStore</c> / <c>MacroFileStore</c>：它们的 <see cref="ModifyDomain{T}"/>
+/// **只写自己那一个域文件**，改一个开关不会再扫 <c>actions/</c> 或重写其它域。
+/// </para>
+/// <para>
+/// 只有需要同时落多个域的才用 <see cref="Modify(ConfigDomain, Action{AppConfig})"/>（例：菜单组 + 动作清单）。
+/// 读仍走整份聚合：首次写入能带上示例模板 / 旧单文件的种子，也让 <see cref="AppConfig.LoadStrict"/>
+/// 的「坏文件不覆盖」语义保持不变。
+/// </para>
 /// </remarks>
 internal static class ConfigIO
 {
     private static readonly object _lock = new();
 
-    /// <summary>读-改-写一次配置；解析失败时不写入并抛出。</summary>
-    public static void Modify(Action<AppConfig> change)
+    /// <summary>
+    /// 单域读-改-写：读出聚合 → 转成该域的磁盘形状 → 改 → 只写该域。
+    /// </summary>
+    /// <param name="path">配置锚点；null = <see cref="ConfigLocator.FindPath"/>。</param>
+    internal static void ModifyDomain<T>(ConfigDomain domain, Func<AppConfig, T> read, Action<T> change,
+        Action<string, T> write) => ModifyDomain(null, domain, read, change, write);
+
+    /// <inheritdoc cref="ModifyDomain{T}(ConfigDomain, Func{AppConfig, T}, Action{T}, Action{string, T})"/>
+    internal static void ModifyDomain<T>(string? path, ConfigDomain domain, Func<AppConfig, T> read,
+        Action<T> change, Action<string, T> write)
     {
         if (change == null) return;
         lock (_lock)
         {
-            var path = ConfigLocator.FindPath();
-            var cfg = LoadForWrite(path);
-            change(cfg);
-            cfg.Save(path);
+            string anchor = Resolve(path);
+            var cfg = LoadForWrite(anchor);
+            // 首次分域 / 有域文件缺失：先把迁移补齐（写全 6 个域 + 动作目录），再写本次修改的域。
+            if (!ConfigBundle.IsFullySplit(anchor)) ConfigBundle.SaveDomains(anchor, cfg, ConfigDomain.all);
+
+            T model = read(cfg);
+            change(model);
+            write(anchor, model);
+            ConfigBundle.CompleteMigration(anchor);
         }
     }
 
-    /// <summary>带自定义路径的读-改-写（设置窗口使用固定路径时）。</summary>
-    public static void Modify(string path, Action<AppConfig> change)
+    /// <summary>多域读-改-写（例如菜单组 + 动作清单必须一起落盘）。</summary>
+    public static void Modify(ConfigDomain domains, Action<AppConfig> change) => Modify(null, domains, change);
+
+    /// <inheritdoc cref="Modify(ConfigDomain, Action{AppConfig})"/>
+    public static void Modify(string? path, ConfigDomain domains, Action<AppConfig> change)
     {
         if (change == null) return;
         lock (_lock)
         {
-            var cfg = LoadForWrite(path);
+            string anchor = Resolve(path);
+            var cfg = LoadForWrite(anchor);
             change(cfg);
-            cfg.Save(path);
+            ConfigBundle.SaveDomains(anchor, cfg, domains);
         }
     }
+
+    private static string Resolve(string? path)
+        => string.IsNullOrWhiteSpace(path) ? ConfigLocator.FindPath() : path;
 
     /// <summary>
     /// 写配置前的严格读取：配置不存在 = 首次保存（按默认模板写）；

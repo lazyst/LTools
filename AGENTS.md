@@ -55,6 +55,8 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - **一个动作一个目录**（P2，`Core/Storage/ActionStore.cs`）：`actions/<id>/action.json` + `actions/<id>/files/`（动作私有模板图 / 脚本）；清单里没有的目录在保存时移入 `trash/<时间戳>/`（保留 30 天）。**`actions/` 目录存在（含空）就是权威**，所以删光动作不会被旧清单复活；动作的 `Id` 同时是目录名（`a1..aN`），菜单 / 面板 / 悬浮照旧只存 Id
 - **运行期资源根**：正式运行 `AutomationRunner.Run` 与编辑器 `ActionEditor.Show` 都传 `ActionStore.ResourceRootFor(id)`（= 该动作的 `files/`），动作里的图片可以写 `files/x.png` 或裸文件名；草稿试运行由调用方另行传 `staging/<id>/files`。新增消费图片的入口时照这个传，别再自己拼路径
 - 采纳草稿 = 把 `staging/<id>/files/*` 复制进 `actions/<id>/files/`，**保留 `files/x.png` 引用、不改写路径**（P2 起；`DraftPromoter` 不再迁图到 `resources/images`）
+- **写配置按域走对应 store**（P3，`Config/DomainStores.cs`）：`SettingsStore` / `UiStore` / `MenuStore` / `PanelStore` / `FloatingStore` / `MacroFileStore`，每次只写自己那个 `configs/*.json`（读仍走严格整份聚合，首次升级会自动补全 6 个域 + `actions/`）。改一个开关不会再扫动作目录或重写别的域；需要同时落多个域（菜单组 + 动作清单）才用 `ConfigIO.Modify(ConfigDomain.menus | ConfigDomain.actions, …)`。**别再新加「读整份 → 改 → 整份 Save」的调用点**
+- **删除动作走 `Core/Storage/ActionRemoval`**：顺序固定为「内存清单 / 菜单项 → 面板槽位 → 菜单组 + 动作目录 → 宏 / 模板图 / 悬浮项回收」；启动时按磁盘动作目录幂等清掉菜单与面板里的悬空引用（`ActionRemoval.RepairReferences`，在 `MenuSystem` / `PanelLibrary` 加载之前跑）
 - 旧单文件 `LTools.json`（gitignored）：首次保存后自动拆成 `configs/` 六个文件，旧文件改名 `LTools.json.migrated`（内容原样保留，回滚时删 `configs/` 再改回来）。P1 的 `configs/actions.json` 在动作目录化后归档为 `actions.json.migrated`（回滚时删 `actions/` 再改回来）
 - `LTools.example.json`（已提交）— 初始模板，随包分发；`configs/` 缺失时 `ConfigBundle` 回退读它（发布包只带示例、不带实际配置，避免覆盖用户配置）
 - `ConfigLocator.FindPath()`：dev（仓库根含 `LTools.csproj`）落仓库根，prod 落 exe 同级；返回值是**锚点路径**，配置在它同级的 `configs/`、动作在它同级的 `actions/`。首启自动迁移旧配置：`CapsLock++.json` 同目录改名 `LTools.json`；更旧的 `CapsLock++.ini` 读入后改名 `.migrated` 备份

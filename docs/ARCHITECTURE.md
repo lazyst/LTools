@@ -66,13 +66,16 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 
 | 文件 | 唯一写入者 | 读方 |
 | --- | --- | --- |
-| `configs/settings.json` | `ConfigBundle`（经 `ConfigIO`） | 设置页、托盘、钩子 |
-| `configs/ui.json` | 同上 | 设置页、选择器、编辑器 |
-| `configs/menus.json` | `ConfigBundle`（`MenuSystem.SaveToConfig`） | `MenuSystem`、备份 |
-| `configs/panel.json` | `PanelLibrary.Save` | 面板、设置页 |
-| `configs/floating.json` | `FloatingLibrary.Save` | 悬浮窗、设置页 |
-| `configs/macros.json` | `MacroStore` | 宏菜单、编辑器 |
-| `actions/<id>/…` | `ActionStore`（经 `ConfigBundle.Save`） | 引擎、面板、编辑器、AI 工具 |
+| `configs/settings.json` | `SettingsStore` | 设置页、托盘、钩子 |
+| `configs/ui.json` | `UiStore` | 设置页、选择器、编辑器 |
+| `configs/menus.json` | `MenuStore`（经 `MenuSystem.SaveToConfig`） | `MenuSystem`、备份 |
+| `configs/panel.json` | `PanelStore`（经 `PanelLibrary.Save`） | 面板、设置页 |
+| `configs/floating.json` | `FloatingStore`（经 `FloatingLibrary.SavePreferences`） | 悬浮窗、设置页 |
+| `configs/macros.json` | `MacroFileStore`（经 `MacroStore`） | 宏菜单、编辑器 |
+| `actions/<id>/…` | `ActionStore`（经 `ConfigBundle` / `ConfigStore`） | 引擎、面板、编辑器、AI 工具 |
+
+所有单域写入经 `ConfigIO.ModifyDomain`（一把锁 + 严格读）；读仍合并整份聚合，所以首次升级能带上
+旧文件的种子，分域完成后每次只碰被点的那个文件。
 
 ## 3. 阶段
 
@@ -103,14 +106,22 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 - 暂时保留：编辑器新截的模板图仍进 `resources/images`，运行期截图仍与它混放——统一搬到
   `cache/screenshots` 与共享素材去重放到 P5。
 
-### P3 · 存储层收口（下一步）
+### P3 · 存储层收口（已完成）
 
-- `ConfigIO.Modify` 拆成按域的 store（`SettingsStore` / `UiStore` / `MenuStore` / `PanelStore` / `FloatingStore`），
-  UI 只调自己那个；`AppConfig` 退化为启动快照 + 迁移兼容视图。
-- 15 处 `ConfigIO.Modify` 逐个改成域写入；跨域操作（删动作要清菜单 / 面板 / 悬浮）做成一个显式的
-  `ActionRemoval` 事务（顺序写 + 启动时幂等修复引用，不用分布式事务）。
+- 新增 `Config/ConfigDomain.cs` + `Config/DomainStores.cs`：`SettingsStore` / `UiStore` / `MenuStore` /
+  `PanelStore` / `FloatingStore` / `MacroFileStore`；每个 store 只读改写自己那个域文件
+  （`ConfigIO.ModifyDomain` 一把锁 + 严格读，写仍走 `WriteIfChanged`）。
+- 15 处 `ConfigIO.Modify` 全部改成域写入；跨域只剩「菜单组 + 动作清单」
+  （`ConfigIO.Modify(ConfigDomain.menus | ConfigDomain.actions, …)`，`MenuSystem.SaveToConfig` 用）。
+- 迁移收尾：域文件不全时第一次写入自动扩成整份（6 个域 + `actions/`）并归档旧文件；
+  分域完成后改一个开关只动目标 `configs/*.json`，不再扫动作目录、不再重写别的域。
+- 删除动作收口到 `Core/Storage/ActionRemoval`：顺序固定「内存清单 / 菜单项 → 面板槽位 →
+  菜单组 + 动作目录 → 宏 / 模板图 / 悬浮项回收」；启动时按磁盘动作目录幂等清掉菜单与面板里的
+  悬空引用（在 `MenuSystem` / `PanelLibrary` 加载之前跑，没悬空就不写盘）。
+- 验收：Debug/Release 0/0；用自检程序逐个域写入，只有目标文件 mtime 变化、`actions/*.json` 不动；
+  人为塞一个不存在的动作 Id 进菜单 / 面板，启动修复只重写这两个文件。回滚：文件格式不变，退回旧版本即可。
 
-### P4 · 代码结构
+### P4 · 代码结构（下一步）
 
 - `Views` 里 1000+ 行的窗口拆成「外壳 + 部件」：
   `SuperPanel` → 区容器 / 吸附导航 / 搜索 / 拖动；`ActionEditorWindow` → 步骤列表 / 工具箱 / 运行面板 / 变量表。
@@ -131,7 +142,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | --- | --- | --- |
 | P1 | Debug/Release 0/0；6 个文件生成；只改一个域时其它文件 mtime 不变；旧文件仍可恢复 | 删 `configs/`，把 `LTools.json.migrated` 改回 `LTools.json` |
 | P2 | 采纳草稿后 `actions/<id>/files/` 里直接有图、引用仍是 `files/x.png`；删动作进 `trash/`；改一个动作只重写它自己的 `action.json`；删光动作后重启不复活 | 把 `configs/actions.json.migrated` 改回 `actions.json`、删 `actions/`，回退版本直接读它 |
-| P3 | 15 处写入点各自只碰一个文件；并发保存不互相覆盖 | 域文件格式不变，退回旧版本仍能读 |
+| P3 | 逐个域写入只有目标 `configs/*.json` 的 mtime 变化、`actions/*.json` 不动；并发保存不互相覆盖；菜单 / 面板里的悬空动作 Id 在启动时被清掉 | 域文件格式不变，退回旧版本仍能读 |
 | P4 | 窗口拆完后交互与原版一致（跑一遍手动清单） | 纯代码改动，git revert |
 
 ## 5. 明确不做

@@ -258,18 +258,74 @@ internal static class ConfigBundle
 
     // ============ 写 ============
 
-    /// <summary>逐域写回：内容没变的文件不碰（保留 mtime，也让 diff / 备份更干净）。</summary>
+    /// <summary>整份写回（启动迁移 / 备份恢复用）。日常单域修改走 <c>DomainStores</c>。</summary>
     public static void Save(string anchorPath, AppConfig cfg)
+        => SaveDomains(anchorPath, cfg, ConfigDomain.all);
+
+    /// <summary>
+    /// 按域写回：只写 <paramref name="domains"/> 选中的文件，内容没变的文件不碰
+    /// （保留 mtime，也让 diff / 备份更干净）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 还没分域完整（旧 <c>LTools.json</c> 升级后 6 个文件不全）时，这一次写入自动扩成整份：
+    /// 迁移必须一步到位，否则只改一个界面开关会留下半个分域目录、旧文件永远归档不掉。
+    /// 分域完成后每次只碰被点的那个文件。
+    /// </para>
+    /// <para>
+    /// 动作目录同理：<c>actions/</c> 不存在时至少写一次（把种子里的动作落成目录），
+    /// 否则「只改了一个开关」永远不会建立权威目录。
+    /// </para>
+    /// </remarks>
+    public static void SaveDomains(string anchorPath, AppConfig cfg, ConfigDomain domains)
     {
         Directory.CreateDirectory(ConfigDir(anchorPath));
-        WriteIfChanged(SettingsPath(anchorPath), ToSettings(cfg));
-        WriteIfChanged(UiPath(anchorPath), ToUi(cfg));
-        WriteIfChanged(MenusPath(anchorPath), ToMenus(cfg));
-        WriteIfChanged(PanelPath(anchorPath), ToPanel(cfg));
-        WriteIfChanged(FloatingPath(anchorPath), ToFloating(cfg));
-        WriteIfChanged(MacrosPath(anchorPath), ToMacros(cfg));
+        // 首次分域 / 有域文件缺失：这次写全，把迁移做完。
+        if (!IsFullySplit(anchorPath)) domains = ConfigDomain.all;
+
+        if (domains.HasFlag(ConfigDomain.settings)) WriteIfChanged(SettingsPath(anchorPath), ToSettings(cfg));
+        if (domains.HasFlag(ConfigDomain.ui)) WriteIfChanged(UiPath(anchorPath), ToUi(cfg));
+        if (domains.HasFlag(ConfigDomain.menus)) WriteIfChanged(MenusPath(anchorPath), ToMenus(cfg));
+        if (domains.HasFlag(ConfigDomain.panel)) WriteIfChanged(PanelPath(anchorPath), ToPanel(cfg));
+        if (domains.HasFlag(ConfigDomain.floating)) WriteIfChanged(FloatingPath(anchorPath), ToFloating(cfg));
+        if (domains.HasFlag(ConfigDomain.macros)) WriteIfChanged(MacrosPath(anchorPath), ToMacros(cfg));
+
         // 动作一个目录一个（内容没变的 action.json 不重写；清单里没有的目录移入 trash/）。
-        ActionStore.SaveAll(anchorPath, cfg.Actions ?? new List<ActionDto>());
+        if (domains.HasFlag(ConfigDomain.actions) || !ActionStore.HasStore(anchorPath))
+            ActionStore.SaveAll(anchorPath, cfg.Actions ?? new List<ActionDto>());
+
+        CompleteMigration(anchorPath);
+    }
+
+    // —— 单域写入（DomainStores 用） ——
+
+    public static void WriteSettings(string anchorPath, SettingsFile file)
+        => WriteDomain(SettingsPath(anchorPath), file);
+
+    public static void WriteUi(string anchorPath, UiStateFile file)
+        => WriteDomain(UiPath(anchorPath), file);
+
+    public static void WriteMenus(string anchorPath, MenuFile file)
+        => WriteDomain(MenusPath(anchorPath), file);
+
+    public static void WritePanel(string anchorPath, PanelFile file)
+        => WriteDomain(PanelPath(anchorPath), file);
+
+    public static void WriteFloating(string anchorPath, FloatingFile file)
+        => WriteDomain(FloatingPath(anchorPath), file);
+
+    public static void WriteMacros(string anchorPath, MacroFile file)
+        => WriteDomain(MacrosPath(anchorPath), file);
+
+    private static void WriteDomain<T>(string path, T file)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        WriteIfChanged(path, file);
+    }
+
+    /// <summary>任一域落盘后都试一次旧文件归档（条件不满足就是几个 <c>File.Exists</c>）。</summary>
+    public static void CompleteMigration(string anchorPath)
+    {
         ArchiveLegacyActions(anchorPath);
         ArchiveLegacy(anchorPath);
     }
@@ -329,7 +385,7 @@ internal static class ConfigBundle
 
     // ============ 聚合 ↔ 域文件 ============
 
-    private static SettingsFile ToSettings(AppConfig cfg) => new()
+    internal static SettingsFile ToSettings(AppConfig cfg) => new()
     {
         CapsLockEnabled = cfg.CapsLockEnabled,
         TerminalPaths = cfg.TerminalPaths ?? new(),
@@ -339,7 +395,7 @@ internal static class ConfigBundle
         Logging = cfg.Logging ?? new LogConfig(),
     };
 
-    private static UiStateFile ToUi(AppConfig cfg) => new()
+    internal static UiStateFile ToUi(AppConfig cfg) => new()
     {
         LastNavPage = cfg.LastNavPage,
         NavExpandedGroups = cfg.NavExpandedGroups,
@@ -348,20 +404,20 @@ internal static class ConfigBundle
         RecentActionIds = cfg.RecentActionIds,
     };
 
-    private static MenuFile ToMenus(AppConfig cfg) => new()
+    internal static MenuFile ToMenus(AppConfig cfg) => new()
     {
         MenuGroups = cfg.MenuGroups ?? new(),
     };
 
-    private static PanelFile ToPanel(AppConfig cfg) => new()
+    internal static PanelFile ToPanel(AppConfig cfg) => new()
     {
         SuperPanel = cfg.SuperPanel ?? new SuperPanelConfig(),
         Panel = cfg.Panel,
     };
 
-    private static FloatingFile ToFloating(AppConfig cfg) => new() { Floating = cfg.Floating };
+    internal static FloatingFile ToFloating(AppConfig cfg) => new() { Floating = cfg.Floating };
 
-    private static MacroFile ToMacros(AppConfig cfg) => new() { Macros = cfg.Macros ?? new MacroConfig() };
+    internal static MacroFile ToMacros(AppConfig cfg) => new() { Macros = cfg.Macros ?? new MacroConfig() };
 
     // ============ 坏文件备份 ============
 
@@ -403,3 +459,4 @@ internal static class ConfigBundle
         foreach (string path in DomainPaths(anchorPath)) PruneBrokenBackups(path, keep);
     }
 }
+

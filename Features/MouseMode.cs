@@ -142,7 +142,7 @@ internal static class MouseMode
         int speed = AppState.MouseModeSpeed;
         System.Threading.Tasks.Task.Run(() =>
         {
-            try { ConfigIO.Modify(cfg => cfg.MouseModeSpeed = speed); }
+            try { SettingsStore.Modify(s => s.MouseModeSpeed = speed); }
             catch (System.Exception ex) { CrashLog.Write("MouseMode.SaveSpeed", ex); }
         });
     }

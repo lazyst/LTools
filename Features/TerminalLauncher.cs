@@ -28,10 +28,10 @@ internal static class TerminalLauncher
     public static void SaveGitBashPath(string path)
     {
         _gitBashOverride = string.IsNullOrWhiteSpace(path) ? null : path.Trim();
-        ConfigIO.Modify(cfg =>
+        SettingsStore.Modify(s =>
         {
-            if (_gitBashOverride == null) cfg.TerminalPaths.Remove("gitbash");
-            else cfg.TerminalPaths["gitbash"] = _gitBashOverride;
+            if (_gitBashOverride == null) s.TerminalPaths.Remove("gitbash");
+            else s.TerminalPaths["gitbash"] = _gitBashOverride;
         });
     }
 

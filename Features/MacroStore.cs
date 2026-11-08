@@ -98,22 +98,22 @@ internal static class MacroStore
         string now = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         string cfgPath = CurrentConfigPath();
 
-        ConfigIO.Modify(cfgPath, cfg =>
+        MacroFileStore.Modify(cfgPath, file =>
         {
-            cfg.Macros ??= new MacroConfig();
-            cfg.Macros.Items ??= new List<MacroMeta>();
-            var meta = cfg.Macros.Items.FirstOrDefault(m => m.Id == macro.Id);
+            var macros = file.Macros;
+            macros.Items ??= new List<MacroMeta>();
+            var meta = macros.Items.FirstOrDefault(m => m.Id == macro.Id);
             if (meta == null)
             {
                 meta = new MacroMeta { Id = macro.Id };
-                cfg.Macros.Items.Add(meta);
+                macros.Items.Add(meta);
             }
             meta.Name = macro.Name;
             meta.DurationMs = macro.DurationMs;
             meta.EventCount = macro.Events.Count;
             meta.SizeBytes = size;
             meta.UpdatedAt = now;
-            cfg.Macros.LastMacroId = macro.Id;
+            macros.LastMacroId = macro.Id;
         });
 
         // 让钩子 / 托盘立即读到新值（LastMacroId 等），无需重启。
@@ -188,9 +188,9 @@ internal static class MacroStore
         int l = loops < 0 ? -1 : Math.Clamp(loops, 1, 99);
         int c = Math.Clamp(countdownMs, 0, 10_000);
 
-        ConfigIO.Modify(CurrentConfigPath(), cfg =>
+        MacroFileStore.Modify(CurrentConfigPath(), file =>
         {
-            var item = cfg.Macros?.Items?.FirstOrDefault(m => m.Id == id);
+            var item = file.Macros.Items?.FirstOrDefault(m => m.Id == id);
             if (item == null) return;
             item.Speed = s;
             item.Loops = l;
@@ -267,13 +267,13 @@ internal static class MacroStore
                             !live.Contains(cfg.Macros!.LastMacroId!);
             if (!hasDeadMeta && !lastDead) return removed;
 
-            ConfigIO.Modify(cfgPath, c =>
+            MacroFileStore.Modify(cfgPath, file =>
             {
-                c.Macros ??= new MacroConfig();
-                c.Macros.Items ??= new List<MacroMeta>();
-                c.Macros.Items.RemoveAll(m => string.IsNullOrEmpty(m.Id) || !live.Contains(m.Id));
-                if (!string.IsNullOrEmpty(c.Macros.LastMacroId) && !live.Contains(c.Macros.LastMacroId))
-                    c.Macros.LastMacroId = null;
+                var macros = file.Macros;
+                macros.Items ??= new List<MacroMeta>();
+                macros.Items.RemoveAll(m => string.IsNullOrEmpty(m.Id) || !live.Contains(m.Id));
+                if (!string.IsNullOrEmpty(macros.LastMacroId) && !live.Contains(macros.LastMacroId))
+                    macros.LastMacroId = null;
             });
             return removed;
         }

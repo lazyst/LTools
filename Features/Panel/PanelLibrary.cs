@@ -12,11 +12,11 @@ namespace LTools.Features.Panel;
 /// <remarks>
 /// <para>
 /// 面板窗口与设置「面板管理」页共用同一个 <see cref="Current"/> 实例：编辑它之后调用
-/// <see cref="Save"/>，整份 <c>Panel</c> 经 <see cref="ConfigIO.Modify"/> 落盘。动作本体不在
+/// <see cref="Save"/>，整份 <c>Panel</c> 经 <see cref="PanelStore"/> 落盘（只写 <c>configs/panel.json</c>）。动作本体不在
 /// 这里，仍由 <see cref="ConfigStore"/> / <see cref="ActionRegistry"/> 管理。
 /// </para>
 /// <para>
-/// <see cref="ConfigIO.Modify"/> 用 <see cref="AppConfig.LoadStrict"/> 读盘，用户配置不可解析时
+/// <see cref="PanelStore"/> 的读改写用 <see cref="AppConfig.LoadStrict"/> 读盘，用户配置不可解析时
 /// 会抛错并放弃写入，因此迁移 / 保存都不会覆盖坏掉的配置文件。
 /// </para>
 /// </remarks>
@@ -160,14 +160,40 @@ internal static class PanelLibrary
         if (changed) Save();
     }
 
-    /// <summary>所有分组（全局 + 上下文场景 + 上下文兜底）。</summary>
-    public static IEnumerable<PanelGroupDto> AllGroups()
+    /// <summary>
+    /// 启动时清理指向不存在动作的槽位（外部编辑 / 备份导入 / 中途崩溃留下的悬空引用）。
+    /// 没有变化就不写盘；返回是否改动过。
+    /// </summary>
+    public static bool RemoveMissingActions(ISet<string> liveIds)
     {
-        foreach (var s in Current.Global.Scenes)
+        if (!PruneMissing(Current, liveIds)) return false;
+        Save();
+        AppLog.Info(LogSource, "已清掉超级面板里指向不存在动作的槽位");
+        return true;
+    }
+
+    /// <summary>就地删掉某个面板配置里指向不存在动作的槽位；返回是否有改动（不写盘）。</summary>
+    public static bool PruneMissing(PanelConfig panel, ISet<string> liveIds)
+    {
+        bool changed = false;
+        foreach (var group in GroupsOf(panel))
+        {
+            if (group.Actions.RemoveAll(id => !liveIds.Contains(id)) > 0) changed = true;
+        }
+        return changed;
+    }
+
+    /// <summary>所有分组（全局 + 上下文场景 + 上下文兜底）。</summary>
+    public static IEnumerable<PanelGroupDto> AllGroups() => GroupsOf(Current);
+
+    /// <summary>某个面板配置里的所有分组（全局 + 上下文场景 + 上下文兜底）。</summary>
+    public static IEnumerable<PanelGroupDto> GroupsOf(PanelConfig panel)
+    {
+        foreach (var s in panel.Global.Scenes)
             foreach (var g in s.Groups) yield return g;
-        foreach (var s in Current.Context.Scenes)
+        foreach (var s in panel.Context.Scenes)
             foreach (var g in s.Groups) yield return g;
-        foreach (var g in Current.Context.Common) yield return g;
+        foreach (var g in panel.Context.Common) yield return g;
     }
 
     /// <summary>某个动作被哪些面板位置引用。</summary>
@@ -242,7 +268,7 @@ internal static class PanelLibrary
     {
         try
         {
-            ConfigIO.Modify(_path, cfg => cfg.Panel = Current);
+            PanelStore.Modify(_path, p => p.Panel = Current);
             return true;
         }
         catch (Exception ex)

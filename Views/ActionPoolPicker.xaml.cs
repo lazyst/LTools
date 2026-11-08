@@ -7,6 +7,7 @@ using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using LTools.Config;
 using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Features;
@@ -542,9 +543,9 @@ public partial class ActionPoolPicker : Window
     {
         try
         {
-            ConfigIO.Modify(cfg =>
+            UiStore.Modify(ui =>
             {
-                var list = cfg.RecentActionIds ??= new List<string>();
+                var list = ui.RecentActionIds ??= new List<string>();
                 list.RemoveAll(x => string.Equals(x, id, StringComparison.Ordinal));
                 list.Insert(0, id);
                 while (list.Count > RecentMax) list.RemoveAt(list.Count - 1);

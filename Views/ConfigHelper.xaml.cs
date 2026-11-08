@@ -462,15 +462,15 @@ public partial class ConfigHelperWindow : Window
         if (superPanel) PopulateSuperPanel();
     }
 
-    /// <summary>记住当前导航页与二级下拉的展开状态（ConfigIO 读改写：只动这两个字段）。</summary>
+    /// <summary>记住当前导航页与二级下拉的展开状态（只动 ui.json 的这两个字段）。</summary>
     private void PersistNav()
     {
         string nav = string.IsNullOrEmpty(_currentNav) ? "actions" : _currentNav;
         var groups = _expandedGroups.ToList();
-        ConfigIO.Modify(ConfigPath, cfg =>
+        UiStore.Modify(ConfigPath, ui =>
         {
-            cfg.LastNavPage = nav;
-            cfg.NavExpandedGroups = groups;
+            ui.LastNavPage = nav;
+            ui.NavExpandedGroups = groups;
         });
     }
 
@@ -1091,15 +1091,15 @@ public partial class ConfigHelperWindow : Window
     {
         if (_loadingRunNotice) return;
 
-        ConfigIO.Modify(ConfigPath, cfg =>
+        SettingsStore.Modify(ConfigPath, s =>
         {
-            cfg.RunNotice = RunNoticeCombo.SelectedIndex switch
+            s.RunNotice = RunNoticeCombo.SelectedIndex switch
             {
                 0 => RunNoticeMode.off,
                 2 => RunNoticeMode.always,
                 _ => RunNoticeMode.onFailure,
             };
-            cfg.ToastPosition = ToastPositionCombo.SelectedIndex switch
+            s.ToastPosition = ToastPositionCombo.SelectedIndex switch
             {
                 1 => ToastPosition.bottomLeft,
                 2 => ToastPosition.bottomCenter,
@@ -1162,7 +1162,7 @@ public partial class ConfigHelperWindow : Window
             },
         };
 
-        ConfigIO.Modify(ConfigPath, c => c.Logging = cfg);
+        SettingsStore.Modify(ConfigPath, s => s.Logging = cfg);
         AppLog.Configure(cfg.Enabled, cfg.Level, cfg.RetentionDays);
         if (cfg.Enabled)
             AppLog.Info("Settings", $"日志已更新：级别={cfg.Level}，保留={cfg.RetentionDays} 天");

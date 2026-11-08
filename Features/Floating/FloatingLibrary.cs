@@ -70,7 +70,7 @@ internal static class FloatingLibrary
         if (string.IsNullOrEmpty(_path)) return false;
         try
         {
-            ConfigIO.Modify(_path, cfg => cfg.Floating = Current);
+            FloatingStore.Modify(_path, f => f.Floating = Current);
             return true;
         }
         catch (Exception ex)
