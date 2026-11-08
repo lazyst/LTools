@@ -82,6 +82,9 @@ internal static class ActionStore
         return Directory.Exists(dir) ? dir : null;
     }
 
+    /// <summary>数据根下的 <c>trash/</c>（删除的动作目录与孤儿图都落这里，保留一段时间）。</summary>
+    public static string TrashDir(string anchorPath) => Path.Combine(BaseDir(anchorPath), "trash");
+
     private static string BaseDir(string anchorPath)
     {
         if (string.IsNullOrWhiteSpace(anchorPath)) return AppPaths.DataRoot;
@@ -386,7 +389,7 @@ internal static class ActionStore
         try
         {
             string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            string trash = Path.Combine(BaseDir(anchorPath), "trash", stamp);
+            string trash = Path.Combine(TrashDir(anchorPath), stamp);
             string target = Path.Combine(trash, name);
             for (int n = 2; Directory.Exists(target) || File.Exists(target); n++)
                 target = Path.Combine(trash, $"{name}-{n}");
@@ -407,7 +410,7 @@ internal static class ActionStore
     {
         try
         {
-            string root = Path.Combine(BaseDir(anchorPath), "trash");
+            string root = TrashDir(anchorPath);
             if (!Directory.Exists(root)) return;
             DateTime cutoff = DateTime.Now.AddDays(-TrashKeepDays);
             int removed = 0;

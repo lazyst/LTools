@@ -38,6 +38,8 @@ internal static class ConfigStore
         // 旧面板刚迁移出来时 RepairReferences 还看不到（Panel 为 null），按内存动作清单再收一次。
         PanelLibrary.RemoveMissingActions(
             new HashSet<string>(ActionRegistry.All.Select(a => a.Id), StringComparer.Ordinal));
+        // 动作目录里没人引用的模板图移进 trash（动态引用的动作整个跳过，只搬不删）。
+        OrphanFiles.Collect(configPath, ActionRegistry.All);
     }
 
     /// <summary>重新从磁盘加载（配置已被外部对话框改写后调用）。</summary>
