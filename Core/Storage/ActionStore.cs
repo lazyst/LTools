@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using LTools.Config;
 using LTools.Features;
+using LTools.Native;
 
 namespace LTools.Core.Storage;
 
@@ -220,9 +221,20 @@ internal static class ActionStore
     }
 
     /// <summary>
-    /// 把一个草稿的 <c>files/</c> 复制进动作目录（采纳草稿用）。
+    /// 把一个草稿的 <c>files/</c> 搬进动作目录（采纳草稿用）。
     /// 保留原来的文件名，因此动作里的 <c>files/x.png</c> 不用改写。
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>跨动作素材去重</b>：内容（SHA-256）与别的动作已有的文件相同时，用<b>硬链接</b>
+    /// （<see cref="FileLinks.TryCreateHardLink"/>）指向那一份，磁盘上只存一次；
+    /// 链接失败（跨卷 / 文件系统不支持）回退成复制。
+    /// </para>
+    /// <para>
+    /// 硬链接共享内容，所以写目标文件前一律先删掉旧名字再建新的：直接覆盖会把共享同一份内容的
+    /// 另一个动作的模板图一起改掉。
+    /// </para>
+    /// </remarks>
     /// <returns>写进动作的存储路径（<c>files/x.png</c>），供采纳回执展示。</returns>
     public static List<string> CopyFilesFrom(string anchorPath, string actionId, string sourceDir)
     {
@@ -231,16 +243,139 @@ internal static class ActionStore
 
         string dest = FilesDir(anchorPath, actionId);
         Directory.CreateDirectory(dest);
+
+        // 其它动作的文件按体积建索引：同体积才值得算哈希（模板图很小，这一步避免全盘扫描）。
+        var index = new ContentIndex(anchorPath, actionId);
+        int linked = 0;
+
         foreach (string file in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
         {
             string relative = Path.GetRelativePath(sourceDir, file);
             string target = Path.Combine(dest, relative);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            File.Copy(file, target, overwrite: true);
+
+            if (File.Exists(target))
+            {
+                if (SameContent(file, target))
+                {
+                    // 内容没变（重复采纳同一张图）：保持原文件不动，保留硬链接。
+                    index.Add(target);
+                    copied.Add(FilesDirName + "/" + relative.Replace('\\', '/'));
+                    continue;
+                }
+                // 内容变了：先删名字断开可能存在的硬链接，再写新内容。
+                File.Delete(target);
+            }
+
+            if (index.FindSameContent(file) is { } shared && FileLinks.TryCreateHardLink(target, shared))
+            {
+                linked++;
+                index.Add(target);
+            }
+            else
+            {
+                File.Copy(file, target, overwrite: false);
+                index.Add(target);
+            }
             copied.Add(FilesDirName + "/" + relative.Replace('\\', '/'));
         }
+
+        if (linked > 0)
+            AppLog.Info("ActionStore", $"动作 {actionId}：{linked} 个素材与已有动作共享（硬链接，不重复占空间）");
         copied.Sort(StringComparer.OrdinalIgnoreCase);
         return copied;
+    }
+
+    /// <summary>
+    /// 「其它动作的 files/」按文件体积索引，按内容哈希查重（构建一次，服务一次采纳）。
+    /// </summary>
+    private sealed class ContentIndex
+    {
+        private readonly Dictionary<long, List<string>> _bySize = new();
+        private readonly Dictionary<string, string> _hashes = new(StringComparer.OrdinalIgnoreCase);
+
+        public ContentIndex(string anchorPath, string excludeActionId)
+        {
+            string root = Root(anchorPath);
+            if (!Directory.Exists(root)) return;
+
+            foreach (string dir in Directory.GetDirectories(root))
+            {
+                if (string.Equals(Path.GetFileName(dir), excludeActionId, StringComparison.OrdinalIgnoreCase)) continue;
+                string files = Path.Combine(dir, FilesDirName);
+                if (!Directory.Exists(files)) continue;
+                try
+                {
+                    foreach (string file in Directory.GetFiles(files, "*", SearchOption.AllDirectories))
+                        Add(file);
+                }
+                catch (Exception ex)
+                {
+                    // 某个动作目录读不动不影响采纳，只是少一个可以共享的候选。
+                    AppLog.Warn("ActionStore", $"扫描动作素材失败（跳过）：{dir}：{ex.Message}");
+                }
+            }
+        }
+
+        public void Add(string path)
+        {
+            try
+            {
+                long size = new FileInfo(path).Length;
+                if (!_bySize.TryGetValue(size, out var list)) _bySize[size] = list = new List<string>();
+                list.Add(path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // 文件刚被删 / 被占用：不参与去重。
+            }
+        }
+
+        /// <summary>找一份内容相同的既有文件；没有返回 null。</summary>
+        public string? FindSameContent(string file)
+        {
+            long size;
+            try { size = new FileInfo(file).Length; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
+            if (!_bySize.TryGetValue(size, out var candidates)) return null;
+
+            string want = Hash(file);
+            foreach (string candidate in candidates)
+            {
+                if (!File.Exists(candidate)) continue;
+                if (string.Equals(Hash(candidate), want, StringComparison.Ordinal)) return candidate;
+            }
+            return null;
+        }
+
+        private string Hash(string path)
+        {
+            if (_hashes.TryGetValue(path, out string? known)) return known;
+            using var fs = File.OpenRead(path);
+            string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(fs));
+            _hashes[path] = hash;
+            return hash;
+        }
+    }
+
+    /// <summary>两个文件内容是否相同（先比长度，再比 SHA-256）。</summary>
+    private static bool SameContent(string a, string b)
+    {
+        try
+        {
+            if (new FileInfo(a).Length != new FileInfo(b).Length) return false;
+            return string.Equals(HashFile(a), HashFile(b), StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static string HashFile(string path)
+    {
+        using var fs = File.OpenRead(path);
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(fs));
     }
 
     // ============ trash ============
