@@ -51,12 +51,13 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 
 ## 配置
 
-- `LTools.json`（gitignored）— 用户配置，由应用自身读写（设置面板/快捷键），不面向手改；首次保存才生成，升级解压不会覆盖
-- `LTools.example.json`（已提交）— 默认模板，随包分发；`AppConfig.Load` 在用户配置缺失时回退读同目录示例（故发布包只带示例、不带实际配置，避免覆盖用户配置）
-- `ConfigLocator.FindPath()`：dev（仓库根含 `LTools.csproj`）落仓库根，prod 落 exe 同级。首启自动迁移旧配置：`CapsLock++.json` 同目录改名 `LTools.json`；更旧的 `CapsLock++.ini` 读入后改名 `.migrated` 备份
-- 配置格式为 JSON（`Actions`、`SuperPanel`、`MenuGroups[10]`、`Macros`、`TerminalPaths`、`MouseModeSpeed`，见 `Config/AppConfig.cs`），**非旧的 INI 分节格式**；README §10 已同步为 JSON 字段说明，手改时以代码为准
+- **配置按域分成 `configs/*.json`**（gitignored，2026-11 起；见 `docs/ARCHITECTURE.md` P1）：`settings`（全局行为）/ `ui`（界面状态）/ `actions`（动作清单 + 菜单组）/ `panel` / `floating` / `macros`。一个文件一个属主，`AppConfig` 只是内存聚合视图；`AppConfig.Load/Save` 经 `Config/ConfigBundle.cs` 合并读、**内容没变的域不落盘**（改导航页只会动 `ui.json`）。**别在 `Config/` 源码目录旁边新建单数的 `config/`**——Windows 大小写不敏感，会撞上源码目录（踩过）
+- 旧单文件 `LTools.json`（gitignored）：首次保存后自动拆成 `configs/` 六个文件，旧文件改名 `LTools.json.migrated`（内容原样保留，回滚时删 `configs/` 再改回来）
+- `LTools.example.json`（已提交）— 初始模板，随包分发；`configs/` 缺失时 `ConfigBundle` 回退读它（发布包只带示例、不带实际配置，避免覆盖用户配置）
+- `ConfigLocator.FindPath()`：dev（仓库根含 `LTools.csproj`）落仓库根，prod 落 exe 同级；返回值是**锚点路径**，配置在它同级的 `configs/`。首启自动迁移旧配置：`CapsLock++.json` 同目录改名 `LTools.json`；更旧的 `CapsLock++.ini` 读入后改名 `.migrated` 备份
+- 配置格式为 JSON（`Actions`、`SuperPanel`、`MenuGroups[10]`、`Macros`、`TerminalPaths`、`MouseModeSpeed`，见 `Config/AppConfig.cs` 与 `Config/ConfigFiles.cs`），**非旧的 INI 分节格式**；README §11 已同步为 JSON 字段说明，手改时以代码为准
 - **动作 JSON 的 `Type` 只有 `composite` / `macro`**：`ActionDto.Type` 是 `[JsonIgnore]`，JSON 由 `ActionDto.RawType` 读写。旧配置的 v1 类型名（`runCommand` / `sendText` / `internal` …）读进 `ActionDtoLegacy.LegacyType`，按它迁移、也按它回写（没迁移过的动作不会被悄悄改类型）；`ActionPrograms.For` 迁移成功后 `ClearLegacy()`，动作从此只写 `program`。新增字段时判断「动作原来是什么」用 `SourceType`，不要用 `Type`（旧动作在这里一律是 `composite`）
-- 宏事件存 `<数据根>/macros/<id>.json`（已 gitignore），元数据在 `LTools.json` 的 `Macros.Items`；**一个宏 = 一个 `macro` 动作**，删动作即删宏文件，启动回收孤儿宏
+- 宏事件存 `<数据根>/macros/<id>.json`（已 gitignore），元数据在 `configs/macros.json` 的 `Macros.Items`；**一个宏 = 一个 `macro` 动作**，删动作即删宏文件，启动回收孤儿宏
 
 ## WPF 约定
 

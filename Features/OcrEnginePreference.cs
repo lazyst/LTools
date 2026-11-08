@@ -9,7 +9,7 @@ namespace LTools.Features;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 存进 <c>LTools.json</c> 的 <see cref="AppConfig.LastOcrEngine"/>（<c>windows</c> / <c>v6tiny</c> / <c>v6small</c>），
+/// 存进 <c>configs/ui.json</c> 的 <see cref="AppConfig.LastOcrEngine"/>（<c>windows</c> / <c>v6tiny</c> / <c>v6small</c>），
 /// 与「上次导航页」「超级面板上次页」同一个思路：界面上的选择记一次，下次沿用。
 /// </para>
 /// <para>

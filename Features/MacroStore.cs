@@ -13,7 +13,7 @@ namespace LTools.Features;
 
 /// <summary>
 /// 宏文件存储：事件序列存 <c>&lt;数据根&gt;/macros/&lt;id&gt;.json</c>，
-/// 元数据（名称 / 时长 / 事件数 / 大小 / 回放参数）存 <c>LTools.json</c> 的 <c>Macros.Items</c>，
+/// 元数据（名称 / 时长 / 事件数 / 大小 / 回放参数）存 <c>configs/macros.json</c> 的 <c>Macros.Items</c>，
 /// 动作编辑器只读元数据，不必每次解析大文件。
 /// </summary>
 /// <remarks>

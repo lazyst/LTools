@@ -13,7 +13,7 @@ namespace LTools.Features.Floating;
 /// <remarks>
 /// <para>
 /// **悬浮项无状态**（与 Quicker 一致）：<see cref="Items"/> 只在内存里，退出即消失，
-/// 不写进 <c>LTools.json</c>、重启也不恢复。落盘的只有 <see cref="Prefs"/>（中键关闭、
+/// 不写进 <c>configs/floating.json</c>、重启也不恢复。落盘的只有 <see cref="Prefs"/>（中键关闭、
 /// 吸附阈值、默认尺寸这些设置）。
 /// </para>
 /// <para>

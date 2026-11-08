@@ -11,8 +11,8 @@ using LTools.Features;
 namespace LTools.Core;
 
 /// <summary>
-/// 配置备份（导出 / 导入 .ltbak）：一个 zip 同时打包 <c>LTools.json</c> + 用户资源目录
-/// <c>resources/</c> + 速记目录 <c>速记/</c> + 宏事件目录 <c>macros/</c>。
+/// 配置备份（导出 / 导入 .ltbak）：一个 zip 同时打包 <c>config/</c>（分域配置；旧备份是单文件
+/// <c>LTools.json</c>）+ 用户资源目录 <c>resources/</c> + 速记目录 <c>速记/</c> + 宏事件目录 <c>macros/</c>。
 /// 导入为整体替换（仅替换备份包含的项），旧数据先改名为 <c>.bak-时间戳</c>；
 /// 导入前由 <see cref="Inspect"/> 扫描可执行文件并列出引用 <c>resources</c> 的动作，
 /// 交给调用方弹警告——导入备份等于可能以管理员权限运行外来脚本。
@@ -81,6 +81,9 @@ internal static class BackupService
         public bool IncludeNotes { get; init; }
         public bool IncludeMacros { get; init; }
         public bool IncludeStaging { get; init; }
+
+        /// <summary>备份里是分域后的 <c>config/</c> 目录（false = 旧单文件 LTools.json）。</summary>
+        public bool IncludeConfig { get; init; }
         public int ExecutableCount { get; init; }
         public List<string> ResourceActionRefs { get; init; } = new(); // "名称 — 片段"
         public long SizeBytes { get; init; }
@@ -91,7 +94,8 @@ internal static class BackupService
     /// <summary>估算将要打包的字节数（调用方用于体积提示）。</summary>
     public static long EstimateSize(bool includeResources, bool includeNotes)
     {
-        long total = FileSize(ConfigLocator.FindPath());
+        string cfgPath = ConfigLocator.FindPath();
+        long total = FileSize(cfgPath) + DirSize(ConfigBundle.ConfigDir(cfgPath));
         if (includeResources) total += DirSize(AppPaths.ResourceDir);
         if (includeNotes) total += DirSize(AppPaths.NotesDir);
         total += DirSize(MacroStore.Dir);
@@ -108,11 +112,12 @@ internal static class BackupService
         {
             using (var zip = ZipFile.Open(tmp, ZipArchiveMode.Create))
             {
-                // 配置必须总是写入：manifest 已声明包含 config，若用户从未保存过（LTools.json 尚未生成），
-                // AddFile 会静默跳过，导致备份「声称含配置、实际没有」，导入时又跳过替换配置。
-                // 此处回退读同目录示例 / 内置默认，与应用此刻的内存态一致。
+                // 配置必须总是写入：分域后打包 config/ 目录；还没分域（首次保存前）就打包旧单文件；
+                // 两者都没有（用户从未保存过）时按当前内存态写一份旧格式快照，导入时由 ConfigBundle 自动分域。
                 string cfgPath = ConfigLocator.FindPath();
-                if (File.Exists(cfgPath)) AddFile(zip, cfgPath, "LTools.json");
+                string cfgDir = ConfigBundle.ConfigDir(cfgPath);
+                if (Directory.Exists(cfgDir)) AddDir(zip, cfgDir, "config");
+                else if (File.Exists(cfgPath)) AddFile(zip, cfgPath, "LTools.json");
                 else AddText(zip, "LTools.json",
                     JsonSerializer.Serialize(AppConfig.Load(cfgPath), ConfigOpt));
                 if (includeResources) AddDir(zip, AppPaths.ResourceDir, "resources");
@@ -158,11 +163,15 @@ internal static class BackupService
                     ? "备份来自更新版本，请升级 LTools 后再导入"
                     : "备份格式版本过旧，无法导入");
 
+            // 配置：分域备份是 staging/config/*.json，旧备份是 staging/LTools.json。
+            // AppConfig.Load 按锚点同级的 config/ 解析，两种布局都能读（读不出来 = 备份损坏）。
             string cfgPath = Path.Combine(staging, "LTools.json");
-            if (File.Exists(cfgPath))
+            bool hasConfigDir = Directory.Exists(ConfigBundle.ConfigDir(cfgPath));
+            if (hasConfigDir || File.Exists(cfgPath))
             {
-                try { JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(cfgPath, Encoding.UTF8), ConfigOpt); }
-                catch (Exception ex) { throw new InvalidDataException("LTools.json 无法解析：" + ex.Message); }
+                var stagedCfg = AppConfig.Load(cfgPath);
+                if (stagedCfg.LoadFailed)
+                    throw new InvalidDataException("备份里的配置无法解析（或文件已损坏）");
             }
 
             // includes 以 manifest 为准：即使目录为空（zip 无文件条目），导入也要整体替换成空目录
@@ -174,9 +183,9 @@ internal static class BackupService
 
             var refs = new List<string>();
             int execCount = 0;
-            if (File.Exists(cfgPath))
+            if (hasConfigDir || File.Exists(cfgPath))
             {
-                var cfg = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(cfgPath, Encoding.UTF8), ConfigOpt) ?? new AppConfig();
+                var cfg = AppConfig.Load(cfgPath);
                 foreach (var a in cfg.Actions ?? new List<ActionDto>())
                 {
                     foreach (string s in ActionReferences.ResourcePaths(a))
@@ -209,6 +218,7 @@ internal static class BackupService
                 IncludeNotes = hasNotes,
                 IncludeMacros = hasMacros,
                 IncludeStaging = hasStaging,
+                IncludeConfig = hasConfigDir,
                 ExecutableCount = execCount,
                 ResourceActionRefs = refs,
                 SizeBytes = DirSize(staging),
@@ -234,10 +244,25 @@ internal static class BackupService
         var restores = new List<(string dest, string? backup, bool isDir)>();
         try
         {
-            // 1) 配置
+            // 1) 配置：分域备份整体替换 config/；旧备份写回 LTools.json，并把现有 config/ 移开
+            //    （域文件优先于单文件，不移开的话刚恢复的旧配置会被旧域文件盖住）。
             string stagedCfg = Path.Combine(preview.StagingDir, "LTools.json");
-            if (File.Exists(stagedCfg))
+            string stagedConfigDir = ConfigBundle.ConfigDir(preview.StagingDir);
+            string targetConfigDir = ConfigBundle.ConfigDir(cfgPath);
+
+            if (preview.IncludeConfig && Directory.Exists(stagedConfigDir))
             {
+                ReplaceDir(stagedConfigDir, targetConfigDir, ts, restores);
+                if (File.Exists(cfgPath)) BackupFile(cfgPath, ts);   // 已分域，旧单文件留着会误导
+            }
+            else if (File.Exists(stagedCfg))
+            {
+                if (Directory.Exists(targetConfigDir))
+                {
+                    string bakDir = UniqueBackupPath(targetConfigDir, ts);
+                    Directory.Move(targetConfigDir, bakDir);
+                    restores.Add((targetConfigDir, bakDir, true));
+                }
                 string? bak = BackupFile(cfgPath, ts);
                 restores.Add((cfgPath, bak, false));
                 Directory.CreateDirectory(Path.GetDirectoryName(cfgPath)!);
@@ -323,9 +348,10 @@ internal static class BackupService
         }
     }
 
-    /// <summary>跳过 .bak- 命名（避免把旧备份嵌进新备份）与写了一半的 .tmp。</summary>
+    /// <summary>跳过现场备份（.bak- / .bad-）与写了一半的 .tmp，避免把旧副本嵌进新备份。</summary>
     private static bool ShouldSkip(string name)
         => name.Contains(".bak-", StringComparison.OrdinalIgnoreCase)
+           || name.Contains(".bad-", StringComparison.OrdinalIgnoreCase)
            || name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase);
 
     private static long FileSize(string path) => File.Exists(path) ? new FileInfo(path).Length : 0;

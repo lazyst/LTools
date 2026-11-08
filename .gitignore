@@ -50,8 +50,11 @@ CapsLockPro-*.zip   # 改名前旧产物
 
 # 用户本地配置（仅保留示例 LTools.example.json）
 LTools.json
-# 配置解析失败时的现场备份（AppConfig.TryBackupUnreadable）
+# 配置解析失败时的现场备份（ConfigBundle.TryBackupUnreadable）
 LTools.json.bad-*
+# 分域后的配置目录（settings / ui / actions / panel / floating / macros），迁移后旧文件归档为 .migrated
+/configs/
+LTools.json.migrated*
 CapsLock++.json   # 改名前旧配置
 
 publish/

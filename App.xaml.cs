@@ -89,7 +89,7 @@ public partial class App : Application
             $"{System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription} · " +
             $"管理员={Environment.IsPrivilegedProcess} · 进程 {Environment.ProcessId}");
         AppLog.Info("App", $"数据目录 {AppPaths.DataRoot}");
-        AppLog.Info("App", $"配置文件 {cfgPath}");
+        AppLog.Info("App", $"配置文件 {LTools.Config.ConfigBundle.ConfigDir(cfgPath)}（锚点 {Path.GetFileName(cfgPath)}）");
 
         // 配置读坏时每次启动都会留一份 .bad- 副本，只保留最近 3 份，避免反复失败时越积越多。
         AppConfig.PruneBrokenBackups(cfgPath);
@@ -103,7 +103,7 @@ public partial class App : Application
         if (cfg.LoadFailed)
         {
             AppLog.Error("App",
-                $"配置文件读取失败，已备份为 {Path.GetFileName(cfgPath)}.bad-* 并回退示例；本次不会覆盖原文件");
+                $"配置文件读取失败，已备份为 .bad-* 并回退默认；本次不会覆盖原文件");
             TrayService.Notify("配置文件读取失败：原文件已保留，本次使用默认配置（详见运行日志）");
         }
 

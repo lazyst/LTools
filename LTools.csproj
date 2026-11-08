@@ -48,10 +48,10 @@
     <Content Include="licenses\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <!-- 只随包分发示例配置 LTools.example.json，绝不生成 LTools.json——
+    <!-- 只随包分发示例配置 LTools.example.json，绝不生成用户配置——
          否则用户用新版 zip 解压覆盖旧版时会把已有的用户配置冲掉。
-         运行时若 LTools.json 缺失，AppConfig.Load 回退读同目录示例作为默认值，
-         首次保存才在同目录生成 LTools.json（见 Core/ConfigLocator + Config/AppConfig）。 -->
+         运行时若 configs/ 缺失，ConfigBundle 回退读同目录示例作为默认值，
+         首次保存才在同级生成 configs/（见 Core/ConfigLocator + Config/ConfigBundle）。 -->
     <Content Include="LTools.example.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

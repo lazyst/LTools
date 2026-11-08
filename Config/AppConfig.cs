@@ -9,11 +9,10 @@ using LTools.Features;
 namespace LTools.Config;
 
 /// <summary>
-/// 应用配置（LTools.json）强类型模型 + System.Text.Json 读写。
-/// 动作系统 schema（计划 §9）：全局动作清单 <see cref="Actions"/> + 超级面板 <see cref="SuperPanel"/> +
-/// 菜单组 <see cref="MenuGroups"/>（项为动作 Id 引用）。无需兼容旧 schema（旧 json 废弃）。
-/// 发布包只携带 LTools.example.json；用户首次改动保存后才在同目录生成
-/// LTools.json，升级解压不会覆盖用户配置。
+/// 应用配置的强类型模型 + System.Text.Json 读写（内存里的聚合视图）。
+/// 磁盘上是 <c>config/</c> 下的 6 个域文件（settings / ui / actions / panel / floating / macros），
+/// 读写细节见 <see cref="ConfigBundle"/>；分域前是单文件 <c>LTools.json</c>（首次保存后归档为
+/// <c>.migrated</c>）。发布包只携带 <c>LTools.example.json</c>，升级解压不会覆盖用户配置。
 /// </summary>
 public sealed class MenuGroupDto
 {
@@ -162,151 +161,38 @@ public sealed class AppConfig
     public ToastPosition ToastPosition { get; set; } = ToastPosition.bottomRight;
 
     /// <summary>
-    /// 本次加载是否因用户配置不可读 / 损坏而回退到示例。回退值只用于本次运行，
+    /// 本次加载是否因用户配置不可读 / 损坏而回退到默认值。回退值只用于本次运行，
     /// 写盘前必须重新用 <see cref="LoadStrict"/> 读取，避免覆盖用户原文件。
     /// </summary>
     [JsonIgnore]
-    public bool LoadFailed { get; private set; }
-
-    private static readonly JsonSerializerOptions Opt = new()
-    {
-        WriteIndented = true,
-        // 中文/特殊字符不转义为 \uXXXX，保持配置可读
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        // 枚举序列化为字符串（ActionType / OnFailStrategy）
-        Converters = { new JsonStringEnumConverter() },
-        // 省略 null 字段，减少 JSON 噪声（空 Steps、未用的类型特定字段等）
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    public bool LoadFailed { get; internal set; }
 
     /// <summary>读失败（含被占用 / 共享冲突）时的重试次数与间隔——开机自启瞬间配置常被 AV / 索引器短暂占用。</summary>
     private const int ReadRetries = 15;
     private const int ReadRetryDelayMs = 200;
 
     /// <summary>
-    /// 加载配置：优先读用户 json；**不存在**时才回退读同目录示例作为默认模板。
-    /// 用户配置已存在但读取失败（被占用等瞬时 IO 错误）时退避重试，绝不静默使用示例默认值——
-    /// 否则开机自启瞬间的一次短暂占用就会让用户的全部设置"消失"（内存变默认值、界面显示默认），
-    /// 且随后的保存还会用默认值覆盖真配置。仅当重试后仍不可读 / 内容损坏时，备份现场再回退示例。
-    /// 回退时 <see cref="LoadFailed"/> 为 true：调用方据此提示用户，且写配置必须走
-    /// <see cref="LoadStrict"/>（<see cref="ConfigIO.Modify"/> 已如此），绝不把回退值写回磁盘。
+    /// 加载配置：合并 <c>config/</c> 下的 6 个域文件（路径按 <paramref name="path"/> 同级的 <c>config/</c> 解析）。
+    /// 域文件不存在时从旧 <c>LTools.json</c> / 同目录示例回填；已有文件读失败（占用）会退避重试，
+    /// 仍失败则按域回退默认值并置 <see cref="LoadFailed"/>——**写盘必须走 <see cref="LoadStrict"/>**
+    /// （<see cref="ConfigIO.Modify"/> 已如此），绝不把回退值写回磁盘。
     /// </summary>
-    public static AppConfig Load(string path)
-    {
-        if (!string.IsNullOrEmpty(path) && File.Exists(path))
-        {
-            try
-            {
-                return ReadWithRetry(path);
-            }
-            catch (Exception ex)
-            {
-                // 仍不可读 / 内容损坏：记录 + 备份现场，再回退示例（不静默丢弃用户配置）
-                CrashLog.Write("AppConfigLoad", ex);
-                TryBackupUnreadable(path);
-                var fallback = LoadExample(path);
-                fallback.LoadFailed = true;
-                return fallback;
-            }
-        }
-        return LoadExample(path);
-    }
+    public static AppConfig Load(string path) => ConfigBundle.Load(path);
 
     /// <summary>
-    /// 严格加载（写配置前使用）：文件存在但无法解析时抛出，**不回退示例**。
+    /// 严格加载（写配置前使用）：**已存在**的域文件无法解析时抛出，不回退默认值。
     /// 这样一次读取失败不会让后续「读-改-写」把用户的动作清单覆盖成默认值。
     /// </summary>
-    public static AppConfig LoadStrict(string path)
-    {
-        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return Load(path);
-        return ReadWithRetry(path);
-    }
-
-    /// <summary>读取并反序列化；对瞬时 IO 错误（被占用 / 共享冲突 / 权限）做固定间隔退避重试。</summary>
-    private static AppConfig ReadWithRetry(string path)
-    {
-        for (int attempt = 1; ; attempt++)
-        {
-            try
-            {
-                return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(path, Encoding.UTF8), Opt)
-                       ?? new AppConfig();
-            }
-            catch (Exception ex) when (IsTransient(ex) && attempt < ReadRetries)
-            {
-                Thread.Sleep(ReadRetryDelayMs);
-            }
-        }
-    }
-
-    /// <summary>瞬时 IO 错误：被占用 / 共享冲突 / 权限不足（区别于内容损坏的 JsonException）。</summary>
-    private static bool IsTransient(Exception ex) => ex is IOException or UnauthorizedAccessException;
-
-    /// <summary>把不可读 / 损坏的用户配置复制为 <c>.bad-时间戳</c> 备份（复制失败则忽略）。
-    /// 用复制而非改名：保留原文件，万一应用随后用默认值覆盖，备份仍可恢复。</summary>
-    private static void TryBackupUnreadable(string path)
-    {
-        try
-        {
-            File.Copy(path, $"{path}.bad-{DateTime.Now:yyyyMMddHHmmss}", overwrite: false);
-            PruneBrokenBackups(path);
-        }
-        catch { /* 忽略 */ }
-    }
+    public static AppConfig LoadStrict(string path) => ConfigBundle.LoadStrict(path);
 
     /// <summary>
-    /// 只保留最近 <paramref name="keep"/> 份 <c>.bad-时间戳</c> 副本。
-    /// 配置一直读不出来的话每次启动都会复制一份（同一秒内还会重名失败重试），不清就会越积越多。
+    /// 清理不可读配置留下的 <c>.bad-*</c> 现场副本（旧单文件 + 每个域文件，各留最近 3 份）。
     /// </summary>
-    internal static void PruneBrokenBackups(string path, int keep = 3)
-    {
-        try
-        {
-            string dir = System.IO.Path.GetDirectoryName(path)!;
-            string prefix = System.IO.Path.GetFileName(path) + ".bad-";
-            foreach (var old in Directory.GetFiles(dir, prefix + "*")
-                                         .OrderByDescending(f => f, StringComparer.OrdinalIgnoreCase)
-                                         .Skip(keep))
-            {
-                try { File.Delete(old); } catch { /* 单个文件被占用时跳过 */ }
-            }
-        }
-        catch { /* 清理失败不影响启动 */ }
-    }
+    internal static void PruneBrokenBackups(string path, int keep = 3) =>
+        ConfigBundle.PruneAllBrokenBackups(path, keep);
 
-    private static AppConfig LoadExample(string? path)
-    {
-        // 用户配置缺失或不可读：回退读同目录示例作为默认模板。
-        // 发布包只携带 LTools.example.json（不携带 LTools.json），
-        // 用户首次保存才在同目录生成 LTools.json，升级解压不会覆盖已有配置。
-        var example = FindExample(path);
-        if (example != null)
-        {
-            try
-            {
-                return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(example, Encoding.UTF8), Opt)
-                       ?? new AppConfig();
-            }
-            catch { /* 示例不可读则用内置默认 */ }
-        }
-        return new AppConfig();
-    }
-
-    private static string? FindExample(string? path)
-    {
-        if (string.IsNullOrEmpty(path)) return null;
-        var dir = Path.GetDirectoryName(path);
-        if (string.IsNullOrEmpty(dir)) return null;
-        var example = Path.Combine(dir, "LTools.example.json");
-        return File.Exists(example) ? example : null;
-    }
-
-    public void Save(string path)
-    {
-        var dir = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        File.WriteAllText(path, JsonSerializer.Serialize(this, Opt), new UTF8Encoding(false));
-    }
+    /// <summary>保存配置：逐域写回，内容没变的文件不动；6 个域文件齐全后把旧单文件归档。</summary>
+    public void Save(string path) => ConfigBundle.Save(path, this);
 
     /// <summary>
     /// 从旧版 CapsLock++.ini 迁移（仅首次升级时由 <see cref="Core.ConfigLocator"/> 调用）。

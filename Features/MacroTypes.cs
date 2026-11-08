@@ -75,7 +75,7 @@ public sealed class MacroDto
 }
 
 /// <summary>
-/// 宏的元数据（存于 <c>LTools.json</c> 的 <c>Macros.Items</c>），供动作编辑器显示宏信息与回放参数，
+/// 宏的元数据（存于 <c>configs/macros.json</c> 的 <c>Macros.Items</c>），供动作编辑器显示宏信息与回放参数，
 /// 避免每次打开都读取体积较大的事件文件。
 /// </summary>
 public sealed class MacroMeta
