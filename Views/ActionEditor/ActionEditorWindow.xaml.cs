@@ -42,6 +42,12 @@ public partial class ActionEditorWindow : Window
     private readonly DragVisuals _dragGhost;
     private int _number;
 
+    /// <summary>
+    /// 编辑草稿时的资源根（<c>staging/&lt;id&gt;/files</c>）：试运行与校验把它交给图片解析，
+    /// 所以 <c>files/x.png</c> 能直接找到。正式动作 / 新建为 null。
+    /// </summary>
+    public string? ResourceRoot { get; set; }
+
     // —— 试运行 ——
     private readonly ObservableCollection<TraceRow> _traceRows = new();
     private readonly ObservableCollection<SnapshotRow> _snapshotRows = new();
@@ -284,7 +290,7 @@ public partial class ActionEditorWindow : Window
     }
 
     private StepEditorDialog CreateStepDialog(Step step) =>
-        new(step, program: _program, variableNames: VariableNames) { Owner = this };
+        new(step, program: _program, variableNames: VariableNames, resourceRoot: ResourceRoot) { Owner = this };
 
     private IEnumerable<string> VariableNames() =>
         _variables.Select(v => v.Name.Text.Trim())
@@ -1160,7 +1166,7 @@ public partial class ActionEditorWindow : Window
         RunToggleButton.Content = "收起";
         SetStatus(fromSelected ? "试运行（从此行）" : "试运行中", hint: true);
 
-        if (!AutomationRunner.TryRunProgram(name, program, startPath, OnTrace, OnRunCompleted))
+        if (!AutomationRunner.TryRunProgram(name, program, startPath, OnTrace, OnRunCompleted, ResourceRoot))
         {
             SetStatus("已有动作正在运行，先等它结束或按停止", hint: false);
             return;
@@ -1344,7 +1350,7 @@ public partial class ActionEditorWindow : Window
         _program.Name = (NameBox.Text ?? "").Trim();
         _program.Icon = IconPicker.SelectedIcon ?? "";
 
-        var result = ActionValidator.Validate(_program);
+        var result = ActionValidator.Validate(_program, null, ResourceRoot);
         if (result.Issues.Count == 0)
         {
             SetStatus("校验通过：没有发现问题", hint: true);

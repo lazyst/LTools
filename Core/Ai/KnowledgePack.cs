@@ -291,6 +291,8 @@ internal static class KnowledgePack
 ## 5. 图片
 
 草稿资源只接受图片：写到 `files/xxx.png`，步骤的 `image` 参数写 `files/xxx.png`。
+`ltools_staging_run` / 面板试运行 / 编辑器测试会把草稿的 `files/` 当作运行期资源根，所以**不用写绝对路径**；
+`files/xxx.png` 与裸 `xxx.png` 都先在那里找。
 采纳时它们会迁到 `resources/images/shot-<时间戳>-xxx.png`（必须带 `shot-` 前缀，否则按引用回收管不到）。
 其它类型文件 v1 直接拒绝。
 

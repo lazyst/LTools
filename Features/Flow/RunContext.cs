@@ -54,6 +54,12 @@ internal sealed class RunContext
         _deadline = DateTime.UtcNow + MaxDuration;
     }
 
+    /// <summary>
+    /// 本次运行的资源根（草稿的 <c>files/</c>）；正式运行为空。
+    /// 图片的相对路径先在这里找（由 <see cref="LegacyFlow.Create"/> 从新引擎上下文带过来）。
+    /// </summary>
+    public string? ResourceRoot { get; init; }
+
     /// <summary>面板唤起时记录的光标坐标；0 表示运行时取当前位置。</summary>
     public int CursorX { get; }
     public int CursorY { get; }

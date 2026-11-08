@@ -16,7 +16,10 @@ internal static class LegacyFlow
     /// <summary>按当前步骤上下文构造旧上下文（变量、取消、光标坐标一致）。</summary>
     public static RunContext Create(StepContext ctx)
     {
-        var legacy = new RunContext(ctx.Token, ctx.CursorX, ctx.CursorY);
+        var legacy = new RunContext(ctx.Token, ctx.CursorX, ctx.CursorY)
+        {
+            ResourceRoot = ctx.ResourceRoot,
+        };
         foreach (var kv in ctx.Scope.Flatten())
             legacy.Vars[kv.Key] = UnitValues.ToLegacy(kv.Value);
         return legacy;

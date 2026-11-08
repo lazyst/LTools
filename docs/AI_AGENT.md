@@ -298,6 +298,10 @@ staging/
 
 - `ltools_staging_run` 直接调 `AutomationRunner.TryRunProgram`（与编辑器试运行共用互斥），
   额外挂一个 `StepTrace` 收集器把轨迹按路径聚合、写进内存 run 表。
+- **试运行带「运行期资源根」**：起跑时把草稿的 `staging/<id>/files` 一起传下去
+  （`ActionRunOptions.ResourceRoot` → `StepContext.ResourceRoot` → `ImageLibrary.Resolve`），
+  所以步骤里写 `files/x.png`（或裸 `x.png`）就能找到草稿里的图，**不需要写绝对路径**。
+  正式运行为 null，解析规则不变。面板试运行与编辑器的「▶ 测试 / 校验」走同一套根。
 - 已有运行在跑时返回 `busy`（不要排队，用户可能正在用键鼠）。
 - 停止走 `AutomationRunner.Stop()`；停止热键不变。
 - 轨迹回执带 `StepTrace` 的 `Path` / `Label` / `Status` / `Error` / `Outputs` / 耗时，支持 cursor 分页。

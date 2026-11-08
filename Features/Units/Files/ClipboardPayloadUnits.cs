@@ -133,7 +133,7 @@ public sealed class ClipboardImageUnit : IStepUnit
 
         if (operation == "write")
         {
-            string path = ImageLibrary.Resolve(args.Text("path"));
+            string path = ImageLibrary.Resolve(args.Text("path"), ctx.ResourceRoot);
             if (path.Length == 0) throw new ActionException("没有指定图片文件");
             if (!File.Exists(path)) throw new ActionException($"图片文件不存在：{path}");
 

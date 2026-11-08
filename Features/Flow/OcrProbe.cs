@@ -93,7 +93,7 @@ internal static class OcrProbe
         if (path.Length == 0)
             throw new FlowException($"「{spec}」里没有图片路径（截图被取消时不会留下 file）。");
 
-        path = ImageLibrary.Resolve(path);
+        path = ImageLibrary.Resolve(path, ctx.ResourceRoot);
         if (!File.Exists(path))
             throw new FlowException($"要识别的图片不存在：{path}");
         return path;

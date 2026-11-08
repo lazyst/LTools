@@ -43,6 +43,9 @@ public partial class ValueSourceEditor : UserControl
     /// <summary>期望类型；<see cref="ValueKind.number"/> 时字面量会转成数字。</summary>
     public ValueKind? Type { get; set; }
 
+    /// <summary>草稿资源根：内联取值再编辑时继续传下去（缩略图才认 <c>files/x.png</c>）。</summary>
+    public string? ResourceRoot { get; set; }
+
     /// <summary>多行字面量（命令 / 正文）。</summary>
     public bool Multiline
     {
@@ -387,7 +390,7 @@ public partial class ValueSourceEditor : UserControl
         _inline ??= Step.Of(choice.Key);
 
         var dlg = new StepEditorDialog(_inline, inline: true,
-            program: Program, variableNames: VariableNameSource)
+            program: Program, variableNames: VariableNameSource, resourceRoot: ResourceRoot)
         {
             Owner = Window.GetWindow(this),
         };

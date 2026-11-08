@@ -421,7 +421,9 @@ internal static class AiToolHandlers
             ? snapshot.Meta.Title ?? "AI 草稿"
             : snapshot.Program.Name;
 
-        var run = AiRuns.Start(draftId, name, snapshot.Program.Clone(), startPath);
+        // 草稿里的图写在 files/x.png：把草稿目录当资源根，试运行就不用写绝对路径。
+        var run = AiRuns.Start(draftId, name, snapshot.Program.Clone(), startPath,
+            DraftStore.FilesDir(draftId));
         if (run == null)
             throw new AiToolException("busy", "已有自动化正在运行，等它结束再试（不排队，避免两套键鼠注入打架）");
 

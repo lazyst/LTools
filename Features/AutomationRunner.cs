@@ -87,21 +87,24 @@ internal static class AutomationRunner
     /// 否则「改一步、跑一下」时只能盯着状态行，看不到真实运行时的样子。
     /// </remarks>
     public static bool TryRunProgram(string name, ActionProgram program, string? startPath,
-        Action<StepTrace>? trace, Action<ActionRunResult>? completed)
+        Action<StepTrace>? trace, Action<ActionRunResult>? completed, string? resourceRoot = null)
     {
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return false;
 
         Task.Run(() => RunCore(program, name, 0, 0,
-            startPath, trace, notify: false, noticeOverride: RunNoticeMode.always, completed));
+            startPath, trace, notify: false, noticeOverride: RunNoticeMode.always, completed, resourceRoot));
         return true;
     }
 
     /// <summary>一次运行的公共实现：真实动作与编辑器试运行都走这里。</summary>
     /// <param name="notify">是否按用户设置给运行结果提示（真实运行为 true）。</param>
     /// <param name="noticeOverride">试运行传 <see cref="RunNoticeMode.always"/>，忽略用户设置。</param>
+    /// <param name="resourceRoot">
+    /// 额外资源根（草稿的 <c>files/</c>）：图片相对路径先在这里找。正式运行为 null。
+    /// </param>
     private static void RunCore(ActionProgram program, string name, int cursorX, int cursorY,
         string? startPath, Action<StepTrace>? trace, bool notify, RunNoticeMode? noticeOverride,
-        Action<ActionRunResult>? completed)
+        Action<ActionRunResult>? completed, string? resourceRoot = null)
     {
         // 运行期截图（变量的 .file）只在这一次运行内有效：开始新一次 = 上一次的已经用完，顺手回收。
         // 界线用「现在」：本次稍后截的图比它新，不会被误删；上一次留下的（含上次没清掉的）在这里清干净。
@@ -129,6 +132,7 @@ internal static class AutomationRunner
                 CursorY = cursorY,
                 StartPath = startPath,
                 StepTrace = trace,
+                ResourceRoot = resourceRoot,
                 Log = message => AppLog.Debug("Flow", message),
                 StepStarted = step =>
                 {

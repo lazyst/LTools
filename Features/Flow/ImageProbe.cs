@@ -25,9 +25,13 @@ internal static class ImageProbe
     /// <summary>执行一次（可带等待的）图像探测。</summary>
     public static VarValue Run(Probe probe, RunContext? ctx)
     {
-        string path = ImageLibrary.Resolve(probe.Image);
+        string path = ImageLibrary.Resolve(probe.Image, ctx?.ResourceRoot);
         if (path.Length == 0 || !System.IO.File.Exists(path))
-            throw new FlowException($"图像文件不存在：{probe.Image}");
+        {
+            throw new FlowException(ctx?.ResourceRoot is { Length: > 0 } root
+                ? $"图像文件不存在：{probe.Image}（草稿资源目录 {root} 里也没有；草稿图片请放在 files/ 下）"
+                : $"图像文件不存在：{probe.Image}");
+        }
 
         using var template = Cv2.ImRead(path, ImreadModes.Color);
         if (template.Empty())

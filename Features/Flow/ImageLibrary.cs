@@ -37,12 +37,31 @@ internal static class ImageLibrary
     /// 把界面上填的路径解析为实际文件路径（找不到时返回最可能的候选，便于报错）。
     /// 依次尝试：绝对路径 → resources/images → resources/user → 数据根（覆盖 <c>resources\user\a.png</c> 这种存法）。
     /// </summary>
-    public static string Resolve(string? path)
+    public static string Resolve(string? path) => Resolve(path, null);
+
+    /// <summary>
+    /// 同上，但先查一个「资源根」再走常规顺序。
+    /// </summary>
+    /// <param name="resourceRoot">
+    /// 本次运行的额外第一查找根（草稿试运行时传草稿 <c>files/</c>）：
+    /// 动作里的 <c>files/x.png</c> 与裸文件名 <c>x.png</c> 都认。
+    /// 为空（正式动作）时行为与单参版本完全一致。
+    /// </param>
+    public static string Resolve(string? path, string? resourceRoot)
     {
         if (string.IsNullOrWhiteSpace(path)) return "";
         path = path.Trim();
 
         if (Path.IsPathRooted(path)) return path;
+
+        if (!string.IsNullOrWhiteSpace(resourceRoot))
+        {
+            foreach (string candidate in new[] { path, StripFilesPrefix(path) })
+            {
+                string under = Path.Combine(resourceRoot, candidate.Replace('/', Path.DirectorySeparatorChar));
+                if (File.Exists(under)) return under;
+            }
+        }
 
         string underImages = Path.Combine(Dir, path);
         if (File.Exists(underImages)) return underImages;
@@ -53,7 +72,22 @@ internal static class ImageLibrary
         string underRoot = Path.Combine(AppPaths.DataRoot, path);
         if (File.Exists(underRoot)) return underRoot;
 
+        // 草稿根下的兜底候选也要指对，否则报错会指到 resources/images 里一个不存在的位置
+        if (!string.IsNullOrWhiteSpace(resourceRoot))
+            return Path.Combine(resourceRoot, StripFilesPrefix(path).Replace('/', Path.DirectorySeparatorChar));
+
         return underImages;
+    }
+
+    /// <summary>草稿里图片按约定写在 <c>files/x.png</c>：查资源根时去掉这层前缀。</summary>
+    private static string StripFilesPrefix(string path)
+    {
+        foreach (string prefix in new[] { "files/", "files\\" })
+        {
+            if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return path[prefix.Length..];
+        }
+        return path;
     }
 
     /// <summary>

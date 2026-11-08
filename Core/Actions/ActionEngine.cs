@@ -48,6 +48,13 @@ public sealed class ActionRunOptions
     /// 动作内子动作（<see cref="ActionProgram.SubActions"/>）总是优先。
     /// </summary>
     public Func<string, SubActionDef?>? SubActionResolver { get; init; }
+
+    /// <summary>
+    /// 本次运行的资源根（草稿试运行时是草稿的 <c>files/</c> 目录）。
+    /// 图片的相对路径先在它下面找，再走常规顺序（见 <c>ImageLibrary.Resolve</c>）；
+    /// 正式运行为空，解析规则完全不变。
+    /// </summary>
+    public string? ResourceRoot { get; init; }
 }
 
 /// <summary>一次运行的结果。失败不抛异常，由调用方按 <see cref="Error"/> 处理。</summary>
@@ -680,6 +687,9 @@ public sealed class StepContext
     public int CursorY => State.CursorY;
 
     public int MaxLoopIterations => State.MaxLoopIterations;
+
+    /// <summary>本次运行的资源根（草稿的 <c>files/</c>）；正式运行为空。</summary>
+    public string? ResourceRoot => State.Options.ResourceRoot;
 
     /// <summary>本次运行最近一次被「失败继续」吞掉的错误文本。</summary>
     public string LastError => State.LastError;

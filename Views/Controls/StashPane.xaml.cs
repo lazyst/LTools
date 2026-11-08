@@ -342,7 +342,7 @@ public sealed partial class StashPane : UserControl
         };
 
         Features.SuperPanel.Close();
-        var result = ActionEditor.Show(null, "编辑草稿 · " + draft.Name, draft);
+        var result = ActionEditor.Show(null, "编辑草稿 · " + draft.Name, draft, DraftStore.FilesDir(id));
         if (result?.Program == null) return;
 
         try
@@ -387,7 +387,7 @@ public sealed partial class StashPane : UserControl
         if (!validation.Ok && !ShowIssues(validation, "还不能试运行")) return;
 
         string name = string.IsNullOrWhiteSpace(program.Name) ? "AI 草稿" : program.Name;
-        if (AiRuns.Start(id, name, program, null, notify: true) == null)
+        if (AiRuns.Start(id, name, program, null, filesDir, notify: true) == null)
         {
             ToastService.Show("已有自动化在运行，等它结束再试", "试运行", 3000, ToastKind.warning);
             return;

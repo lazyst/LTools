@@ -33,6 +33,23 @@ public partial class TemplateImagePicker : UserControl
         set => PathBox.Text = value ?? "";
     }
 
+    private string? _resourceRoot;
+
+    /// <summary>
+    /// 草稿编辑时的资源根（<c>staging/&lt;id&gt;/files</c>）：缩略图按它解析 <c>files/x.png</c>。
+    /// 正式动作 / 新建为 null，解析规则不变。
+    /// </summary>
+    public string? ResourceRoot
+    {
+        get => _resourceRoot;
+        set
+        {
+            if (_resourceRoot == value) return;
+            _resourceRoot = value;
+            LoadThumbnail();
+        }
+    }
+
     public TemplateImagePicker()
     {
         InitializeComponent();
@@ -113,7 +130,7 @@ public partial class TemplateImagePicker : UserControl
     private string ResolvePath()
     {
         string text = Path;
-        return text.Length == 0 ? "" : ImageLibrary.Resolve(text);
+        return text.Length == 0 ? "" : ImageLibrary.Resolve(text, ResourceRoot);
     }
 
     private void LoadThumbnail()

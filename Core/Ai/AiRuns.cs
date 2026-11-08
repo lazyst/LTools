@@ -44,12 +44,16 @@ internal static class AiRuns
     private static readonly List<AiRun> Runs = new();
 
     /// <summary>启动一次试运行；返回 null 表示已有自动化在运行。</summary>
+    /// <param name="resourceRoot">
+    /// 草稿的资源根（<c>staging/&lt;id&gt;/files</c>）：动作里的 <c>files/x.png</c> 先在它下面找，
+    /// 所以 MCP / 面板试运行不用把路径改成绝对路径。
+    /// </param>
     /// <param name="notify">
     /// 跑完给个结果提示（面板里点「试运行」时用）。MCP 的 agent 自己会读 <c>ltools_run_output</c>，
     /// 不传这个参数，免得 agent 每次试运行都给用户弹提示。
     /// </param>
     public static AiRun? Start(string draftId, string name, ActionProgram program, string? startPath,
-                               bool notify = false)
+                               string? resourceRoot = null, bool notify = false)
     {
         var run = new AiRun { Id = NewId(), DraftId = draftId, Name = name };
 
@@ -77,7 +81,8 @@ internal static class AiRuns
                 }
 
                 if (notify) NotifyResult(run);
-            });
+            },
+            resourceRoot);
 
         if (!started) return null;
 

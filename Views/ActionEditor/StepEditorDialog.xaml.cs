@@ -49,7 +49,8 @@ public partial class StepEditorDialog : Window
     private bool _syncing;
 
     public StepEditorDialog(Step step, bool inline = false,
-        ActionProgram? program = null, Func<IEnumerable<string>>? variableNames = null)
+        ActionProgram? program = null, Func<IEnumerable<string>>? variableNames = null,
+        string? resourceRoot = null)
     {
         InitializeComponent();
         WindowChromeHelper.FixMaximize(this);
@@ -59,6 +60,7 @@ public partial class StepEditorDialog : Window
         // 之后才赋值，表单已经按 null 建好（子动作就退化成只能手填 id 的空文本框）。
         Program = program;
         VariableNameSource = variableNames;
+        ResourceRoot = resourceRoot;
 
         _step = step.Clone();
         _spec = StepRegistry.Default.Get(_step.Unit).Spec;
@@ -91,6 +93,9 @@ public partial class StepEditorDialog : Window
 
     /// <summary>动作体（解析「本动作」子动作、内联取值编辑用，构造时就要给）。</summary>
     internal ActionProgram? Program { get; }
+
+    /// <summary>草稿资源根（<c>staging/&lt;id&gt;/files</c>）：模板图缩略图与内联取值编辑器用它解析 <c>files/x.png</c>。</summary>
+    internal string? ResourceRoot { get; }
 
     // ============ 输入 ============
 
@@ -304,6 +309,7 @@ public partial class StepEditorDialog : Window
                         Type = input.Type,
                         VariableNameSource = VariableNameSource,
                         Program = Program,
+                        ResourceRoot = ResourceRoot,
                         Value = current,
                     };
                     value.Changed += OnEdited;
@@ -313,6 +319,7 @@ public partial class StepEditorDialog : Window
 
                 var picker = new TemplateImagePicker
                 {
+                    ResourceRoot = ResourceRoot,
                     Path = current?.Literal.AsText() ?? "",
                 };
                 read = () => StepArg.FromText(picker.Path);

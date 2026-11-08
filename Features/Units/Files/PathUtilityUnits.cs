@@ -167,7 +167,7 @@ public sealed class ImageInfoUnit : IStepUnit
 
     public void Execute(StepContext ctx, StepArgs args)
     {
-        string path = ImageLibrary.Resolve(args.Text("path"));
+        string path = ImageLibrary.Resolve(args.Text("path"), ctx.ResourceRoot);
 
         int width = 0, height = 0, orientation = 1;
         string format = "", exifDate = "";
