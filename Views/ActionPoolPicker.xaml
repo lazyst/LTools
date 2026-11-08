@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:controls="clr-namespace:LTools.Views.Controls"
-        Width="760" Height="540" MinWidth="620" MinHeight="420"
+        Width="860" Height="560" MinWidth="720" MinHeight="460"
         WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
@@ -13,6 +13,62 @@
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
+    <Window.Resources>
+        <!-- 列表行：图标 chip + 名称 + 右侧次要信息（步数 / 宏），选中 = 淡底 + 左缘竖条 -->
+        <DataTemplate x:Key="RowTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Border Width="24" Height="24" CornerRadius="6"
+                        Background="{StaticResource SurfaceAltBrush}"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                    <TextBlock Text="{Binding Glyph}" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock Grid.Column="1" Text="{Binding Name}" ToolTip="{Binding Name}"
+                           Margin="10,0,8,0" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"/>
+                <TextBlock Grid.Column="2" Text="{Binding RightText}" VerticalAlignment="Center"
+                           Foreground="{StaticResource HintTextBrush}" FontSize="11"/>
+            </Grid>
+        </DataTemplate>
+
+        <Style x:Key="RowContainer" TargetType="ListBoxItem">
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Grid Background="Transparent">
+                            <Border x:Name="Bg" CornerRadius="6" Margin="2,0"/>
+                            <Border x:Name="Bar" Width="2" CornerRadius="1" Margin="2,8,0,8"
+                                    HorizontalAlignment="Left" Background="{StaticResource TextBrush}"
+                                    Visibility="Collapsed"/>
+                            <ContentPresenter Margin="12,0,10,0" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="IsSelected" Value="False"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Bg" Property="Background" Value="{StaticResource HoverBgBrush}"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{StaticResource SelectedBgBrush}"/>
+                                <Setter TargetName="Bar" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="36"/>
@@ -21,25 +77,71 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <controls:TitleBar Grid.Row="0" x:Name="TitleBar"/>
+        <controls:TitleBar Grid.Row="0" x:Name="TitleBar" ShowMaximize="False"/>
 
-        <!-- 搜索 + 操作 -->
-        <Grid Grid.Row="1" Margin="20,10,20,0">
+        <!-- 搜索 + 计数 + 新建 -->
+        <Grid Grid.Row="1" Margin="20,12,20,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <TextBox Grid.Column="0" x:Name="SearchBox" MinHeight="32"
-                     ToolTip="按名称 / 类型筛选"
-                     TextChanged="SearchBox_TextChanged"/>
-            <Button Grid.Column="1" Style="{StaticResource BtnPrimary}" Content="新建动作…"
-                    MinWidth="104" Margin="12,0,0,0" Click="New_Click"/>
+            <Grid Grid.Column="0" Width="300" HorizontalAlignment="Left">
+                <TextBox x:Name="SearchBox" MinHeight="32" ToolTip="按名称或步骤内容筛选"
+                         TextChanged="SearchBox_TextChanged"/>
+                <TextBlock x:Name="SearchPlaceholder" Text="搜索动作名称或步骤内容…"
+                           Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                           Foreground="{StaticResource HintTextBrush}"/>
+            </Grid>
+            <TextBlock x:Name="CountText" Grid.Column="1" Style="{StaticResource HintLabel}"
+                       VerticalAlignment="Center" Margin="0,0,12,0"/>
+            <Button Grid.Column="2" Style="{StaticResource BtnPrimary}" Content="新建动作…"
+                    MinWidth="104" Click="New_Click"/>
         </Grid>
 
-        <!-- 动作网格 -->
-        <ScrollViewer Grid.Row="2" Margin="20,12,20,0" VerticalScrollBarVisibility="Auto">
-            <controls:StretchWrapPanel x:Name="ActionPanel"/>
-        </ScrollViewer>
+        <!-- 左：动作列表；右：选中动作的步骤 / 变量预览 -->
+        <Border Grid.Row="2" Margin="20,0,20,0" CornerRadius="8" BorderThickness="1"
+                BorderBrush="{StaticResource BorderBrush}" Background="{StaticResource SurfaceBrush}"
+                ClipToBounds="True">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="286"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Background="{StaticResource SurfaceBrush}"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+                    <Grid>
+                        <ListBox x:Name="ActionList" Padding="4,2,4,8"
+                                 ItemContainerStyle="{StaticResource RowContainer}"
+                                 ItemTemplate="{StaticResource RowTemplate}"
+                                 SelectionChanged="ActionList_SelectionChanged"
+                                 MouseDoubleClick="ActionList_MouseDoubleClick">
+                            <ListBox.GroupStyle>
+                                <GroupStyle>
+                                    <GroupStyle.HeaderTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}" Margin="14,10,0,3"
+                                                       Foreground="{StaticResource HintTextBrush}"
+                                                       FontSize="{StaticResource FontSizeHint}"/>
+                                        </DataTemplate>
+                                    </GroupStyle.HeaderTemplate>
+                                </GroupStyle>
+                            </ListBox.GroupStyle>
+                        </ListBox>
+                        <TextBlock x:Name="EmptyHint" Text="没有匹配的动作"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Style="{StaticResource HintLabel}" IsHitTestVisible="False"
+                                   Visibility="Collapsed"/>
+                    </Grid>
+                </Border>
+
+                <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="PreviewHost" Margin="18,16,18,16"/>
+                </ScrollViewer>
+            </Grid>
+        </Border>
 
         <!-- 底部 -->
         <Border Grid.Row="3" Background="{StaticResource SurfaceAltBrush}"
@@ -47,7 +149,8 @@
                 Padding="16,10" Margin="0,12,0,0">
             <DockPanel LastChildFill="False">
                 <TextBlock DockPanel.Dock="Left" x:Name="HintText" Style="{StaticResource HintLabel}"
-                           VerticalAlignment="Center" Margin="0,0,12,0"/>
+                           VerticalAlignment="Center" Margin="0,0,12,0" MaxWidth="520"
+                           TextTrimming="CharacterEllipsis"/>
                 <Button DockPanel.Dock="Right" Style="{StaticResource BtnGhost}" Content="取消"
                         MinWidth="84" Margin="0,0,8,0" IsCancel="True"/>
                 <Button DockPanel.Dock="Right" Style="{StaticResource BtnPrimary}" Content="确定"

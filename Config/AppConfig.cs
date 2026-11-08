@@ -147,6 +147,12 @@ public sealed class AppConfig
     public List<string> CompositeCollapsedGroups { get; set; } = new();
 
     /// <summary>
+    /// 动作选择器（<c>ActionPoolPicker</c>）里「最近使用」的动作 Id，最新的在前，最多 6 条。
+    /// 只在确定选择时写入（见选择器的 <c>SaveRecent</c>）。
+    /// </summary>
+    public List<string>? RecentActionIds { get; set; }
+
+    /// <summary>
     /// 动作运行结束后的提示策略：不提示 / 只在失败时（默认）/ 成功也提示。
     /// 失败提示是常驻的（点一下关，下一次运行自动替换）。
     /// </summary>
