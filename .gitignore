@@ -52,9 +52,12 @@ CapsLockPro-*.zip   # 改名前旧产物
 LTools.json
 # 配置解析失败时的现场备份（ConfigBundle.TryBackupUnreadable）
 LTools.json.bad-*
-# 分域后的配置目录（settings / ui / actions / panel / floating / macros），迁移后旧文件归档为 .migrated
+# 分域后的配置目录（settings / ui / menus / panel / floating / macros），迁移后旧文件归档为 .migrated
 /configs/
 LTools.json.migrated*
+# 动作目录（一个动作一个目录：action.json + files/），与删除后保留的回收目录
+/actions/
+/trash/
 CapsLock++.json   # 改名前旧配置
 
 publish/

@@ -52,12 +52,24 @@ public sealed class UiStateFile
     public List<string>? RecentActionIds { get; set; }
 }
 
-/// <summary><c>config/actions.json</c>：动作清单 + 菜单组（菜单项是动作 Id 引用，两者同生共死）。</summary>
+/// <summary>
+/// 旧 <c>configs/actions.json</c>（P2 之前）：动作清单 + 菜单组。
+/// 现在动作在 <c>actions/&lt;id&gt;/action.json</c>、菜单组在 <c>configs/menus.json</c>，
+/// 这个类型只用来读迁移种子；首存后旧文件归档为 <c>actions.json.migrated</c>。
+/// </summary>
 public sealed class ActionLibraryFile
 {
     public int SchemaVersion { get; set; } = ConfigBundle.SchemaVersion;
 
     public List<ActionDto> Actions { get; set; } = new();
+
+    public List<MenuGroupDto?> MenuGroups { get; set; } = new();
+}
+
+/// <summary><c>configs/menus.json</c>：快捷菜单组（10 个槽位，项为动作 Id 引用）。</summary>
+public sealed class MenuFile
+{
+    public int SchemaVersion { get; set; } = ConfigBundle.SchemaVersion;
 
     public List<MenuGroupDto?> MenuGroups { get; set; } = new();
 }

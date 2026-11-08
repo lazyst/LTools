@@ -1,4 +1,5 @@
 using LTools.Core.Actions;
+using LTools.Core.Storage;
 using LTools.Features;
 using LTools.Features.Migration;
 
@@ -23,9 +24,9 @@ internal sealed class PromoteResult
 /// 写入统一走 <see cref="ConfigStore"/>（内部 Load → 改 → Save），避免和设置页并发保存互相覆盖。
 /// </para>
 /// <para>
-/// 图片：草稿 <c>files/x.png</c> → <c>resources/images/shot-&lt;时间戳&gt;-x.png</c>，并把步骤里的
-/// <c>image</c> 参数改写成新文件名。**必须**带 <c>shot-</c> 前缀，否则 <see cref="ImageLibrary.CollectGarbage"/>
-/// 的按引用回收看不见它。
+/// 图片：草稿 <c>staging/&lt;id&gt;/files/</c> 整体复制进 <c>actions/&lt;actionId&gt;/files/</c>，
+/// 步骤里的 <c>files/x.png</c> 原样保留——不再改写路径，也不再搬进共享的 <c>resources/images</c>。
+/// 删除动作时整个目录进 <c>trash/</c>，图片跟着走，不需要按引用扫描孤儿。
 /// </para>
 /// </remarks>
 internal static class DraftPromoter
@@ -49,7 +50,8 @@ internal static class DraftPromoter
                 $"草稿内容已被改动（当前 revision {snapshot.Revision[..12]}）。先重新读取，再采纳");
         }
 
-        var validation = ActionValidator.Validate(snapshot.Program, snapshot.Revision, DraftStore.FilesDir(draftId));
+        var validation = ActionValidator.Validate(snapshot.Program, snapshot.Revision, DraftStore.FilesDir(draftId),
+            draftCheck: true);
         if (!validation.Ok)
         {
             string detail = string.Join("；", validation.Issues
@@ -60,15 +62,12 @@ internal static class DraftPromoter
         }
 
         var program = snapshot.Program.Clone();
-        var imported = MigrateImages(draftId, program, out var keptDraftRefs);
-        if (keptDraftRefs.Count > 0)
-            throw new ActionException(
-                "还有图片指向草稿目录：" + string.Join("、", keptDraftRefs) +
-                "（草稿一旦删除就失效）。把图片放进 files/ 再采纳，或改成正式资源目录里的图片");
 
         string title = string.IsNullOrWhiteSpace(program.Name) ? meta.Title ?? "AI 动作" : program.Name.Trim();
         bool replace = mode.Equals("replace", StringComparison.OrdinalIgnoreCase);
         string actionId;
+        var imported = new List<string>();
+        string draftFiles = DraftStore.FilesDir(draftId);
 
         if (replace)
         {
@@ -94,6 +93,8 @@ internal static class DraftPromoter
                 program.Id = update.Id;
                 update.Program = program;
                 update.ClearLegacy();
+                // 先把草稿 files/ 搬进动作目录再落盘：复制失败会放弃采纳，不留「引用了不存在的图」的动作。
+                imported.AddRange(ActionStore.CopyFilesFrom(ConfigStore.ConfigPath, update.Id, draftFiles));
                 ConfigStore.UpdateAction(update);
                 ConfigStore.Save();
             });
@@ -116,6 +117,7 @@ internal static class DraftPromoter
                 // 复制来源的草稿会把旧动作 Id 带在 program 里；生成新 Id 后对齐，避免动作体指向别的动作。
                 program.Id = action.Id;
                 action.Program = program;
+                imported.AddRange(ActionStore.CopyFilesFrom(ConfigStore.ConfigPath, action.Id, draftFiles));
                 ConfigStore.Save();
                 return action;
             });
@@ -124,53 +126,10 @@ internal static class DraftPromoter
             AppLog.Info("Ai", $"采纳草稿 {draftId} → 新动作 {actionId}「{title}」");
         }
 
-        // 动作已经引用新图片，这里回收不会误删它；顺手清掉草稿里不再被引用的旧模板。
+        // 动作已经引用自己的 files/，这里回收不会误删它；顺手清掉不再被引用的共享模板。
         ImageLibrary.CollectGarbage();
         DraftStore.MarkPromoted(draftId, actionId);
 
         return new PromoteResult { ActionId = actionId, Created = !replace, ImportedImages = imported };
-    }
-
-    /// <summary>
-    /// 把草稿图片迁进资源目录并改写步骤里的 <c>image</c> 参数；返回新图片的存储路径。
-    /// <paramref name="keptDraftRefs"/> 收的是「仍然指向草稿、又没被迁走」的引用（正常情况下为空）。
-    /// </summary>
-    private static List<string> MigrateImages(string draftId, ActionProgram program, out List<string> keptDraftRefs)
-    {
-        var imported = new List<string>();
-        keptDraftRefs = new List<string>();
-        string filesDir = Path.GetFullPath(DraftStore.FilesDir(draftId));
-
-        foreach (var step in ProgramWalker.AllSteps(program))
-        {
-            if (!step.In.TryGetValue("image", out var arg) || arg.Kind != StepArgKind.literal) continue;
-
-            string text = arg.Literal.AsText().Trim();
-            if (text.Length == 0 || text.Contains("${")) continue;
-            if (Path.IsPathRooted(text)) continue;
-
-            string relative = text.Replace('\\', '/');
-            if (relative.StartsWith("files/", StringComparison.OrdinalIgnoreCase))
-                relative = relative[6..];
-
-            string source = Path.GetFullPath(Path.Combine(filesDir, relative.Replace('/', Path.DirectorySeparatorChar)));
-            if (!source.StartsWith(filesDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-            {
-                keptDraftRefs.Add(text);
-                continue;
-            }
-
-            if (!File.Exists(source))
-            {
-                keptDraftRefs.Add(text);
-                continue;
-            }
-
-            string stored = ImageLibrary.ImportDraftImage(source);
-            step.In["image"] = StepArg.FromText(stored);
-            imported.Add(stored);
-        }
-
-        return imported;
     }
 }

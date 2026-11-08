@@ -174,7 +174,7 @@ agent/
 ## 3. LTools 的现状约束
 
 - 动作模型：`ActionDto`（Id/Name/Icon/Type/Program）+ `ActionProgram`（Name/Icon/Description/Variables/Steps/SubActions），
-  全部落在单个 `LTools.json` 的 `Actions` 数组里；`Program` 是纯数据，天然可序列化。
+  一个动作一个目录 `actions/<id>/action.json`（P2 起；更早是一份 `LTools.json` / `configs/actions.json` 的数组）；`Program` 是纯数据，天然可序列化。
 - 62 个功能单元，全部有 `UnitSpec`：`Key/Name/Category/Kind/Body/Inputs/Outputs/Description`；
   `InputSpec` 带 `Type/Editor/Required/Default/VisibleWhen/Options/Labels/Raw/Description`。
   **这就是现成的机器可读目录**，不需要另写一份 YAML。
@@ -183,6 +183,7 @@ agent/
 - 线程模型：单 STA，钩子在 UI 线程派发。**任何 MCP 写操作都必须 `Dispatcher.InvokeAsync`**。
 - 资源回收：`ImageLibrary.CollectGarbage` 只扫 `resources/images/shot-*.png`，按 `ProgramWalker` 收集的
   `image` 字面量判活；`resources/user/` 永不回收。
+- 动作私有资源在 `actions/<id>/files/`：随动作目录删除 / 备份，不参与上面的按引用回收。
 - 无测试项目；`check` 就是质量闸门，必须自己扛住。
 
 ---
@@ -231,8 +232,8 @@ staging/
   不需要再维护一份 `action.json`，避免两个真源。
 - `revision` = `sha256(program.json 规范化字节 + 排序后的 files 清单与内容哈希)`；任何一路写入
   （MCP 的 `staging_write` 或 agent 自己的 fs 工具）都能被 `check/save` 重算出来，**不依赖写入通道**。
-- 草稿不进 `LTools.json`。备份目前只打包 `resources/` + `速记/` + `macros/`（见 `Core/BackupService.cs`
-  的 manifest `includes`），所以要在备份里再加一个 `staging` 条目，否则换机后「未采纳的草稿」全丢。
+- 草稿不进正式配置。备份打包 `configs/` + `actions/` + `resources/` + `速记/` + `macros/` + `staging/`
+  （见 `Core/BackupService.cs` 的 manifest `includes`），换机后未采纳的草稿不会丢。
 
 ### 5.2 MCP 工具清单（v1，18 个）
 
@@ -301,7 +302,8 @@ staging/
 - **试运行带「运行期资源根」**：起跑时把草稿的 `staging/<id>/files` 一起传下去
   （`ActionRunOptions.ResourceRoot` → `StepContext.ResourceRoot` → `ImageLibrary.Resolve`），
   所以步骤里写 `files/x.png`（或裸 `x.png`）就能找到草稿里的图，**不需要写绝对路径**。
-  正式运行为 null，解析规则不变。面板试运行与编辑器的「▶ 测试 / 校验」走同一套根。
+  正式运行时传动作自己的 `actions/<id>/files`（`ActionStore.ResourceRootFor`），解析规则相同。
+  面板试运行与编辑器的「▶ 测试 / 校验」走同一套根。
 - 已有运行在跑时返回 `busy`（不要排队，用户可能正在用键鼠）。
 - 停止走 `AutomationRunner.Stop()`；停止热键不变。
 - 轨迹回执带 `StepTrace` 的 `Path` / `Label` / `Status` / `Error` / `Outputs` / 耗时，支持 cursor 分页。
@@ -315,10 +317,12 @@ mode=replace  → 校验 draft.baseActionId 仍存在、baseSourceHash 未变（
                 不一致 → 拒绝，提示「原动作已变更，请另存为新动作」
 ```
 
-- 图片：草稿 `files/x.png` → `resources/images/shot-<时间戳>-x.png`（**必须**用 `shot-` 前缀，
-  这样 `ImageLibrary.CollectGarbage` 的按引用回收才管得到），并把步骤里 `image` 参数从
-  `files/x.png` 改写成新文件名。其它类型文件 v1 直接拒绝（`check` 就报错），避免出现没人回收的孤儿。
-- 采纳顺序：先 `Save()` 落盘 → 再 `ImageLibrary.CollectGarbage()`（新图已被引用，不会被误删）。
+- 图片：草稿 `files/x.png` 整体复制进 `actions/<动作id>/files/`，步骤里的 `files/x.png` **原样保留**
+  （P2 起，不再改写路径、也不再搬进 `resources/images`）。动作运行时以该动作的 `files/` 作为
+  `ResourceRoot`，所以引用一直有效；删动作时整个目录进 `trash/`，图片跟着走。其它类型文件 v1 直接拒绝
+  （`check` 就报错），避免出现没人回收的孤儿。
+- 采纳顺序：先把 `files/` 复制进动作目录，再 `Save()` 落盘（复制失败就放弃采纳，不留悬空引用）；
+  最后 `ImageLibrary.CollectGarbage()` 回收不再被引用的共享模板。
 - 采纳后 `draft.json.promotedActionId` 记下来，草稿列表显示「已采纳 → 动作名」，允许再次采纳（会新建/覆盖）。
 - 悬浮项 / 菜单组引用：v1 不自动挂到面板，采纳后由用户在动作管理页拖进面板（避免 AI 擅自改布局）。
 
@@ -372,12 +376,12 @@ mode=replace  → 校验 draft.baseActionId 仍存在、baseSourceHash 未变（
 | `Core/Actions/ActionValidator.cs`（新） | §5.4 的规则 |
 | `Core/Ai/McpServer.cs`（新） | `ModelContextProtocol.AspNetCore` + `WebApplication`，后台线程，全部 `Dispatcher.InvokeAsync` |
 | `Core/Ai/AiSettings.cs`（新） | `ai/mcp.json` 读写，token 生成 |
-| `Config/AppConfig.cs` | 只加 `LastNavPage` / `NavExpandedGroups` 两个导航字段，别把 AI 配置塞进 `LTools.json` |
+| `Config/AppConfig.cs` | 只加 `LastNavPage` / `NavExpandedGroups` 两个导航字段，别把 AI 配置塞进 `configs/` |
 | `Views/ConfigHelper.xaml(.cs)` + `Views/Controls/AiView.xaml(.cs)`（新） | §5.7 设置页二级下拉的两页（连接〔含给 AI 的说明 + 知识包〕/ 审计） |
 | `Views/Controls/StashPane.xaml(.cs)`（新）+ `Views/SuperPanel.xaml(.cs)` | §5.7 面板暂存区页面（卡片 / 右键菜单 / 轮询） |
 | `Views/ActionEditor/ActionEditorWindow.xaml.cs` | 支持「打开草稿」（复用现有 `_program` 加载路径） |
 | `Features/ConfigStore.cs` | 只经它写动作（promote 复用它，别绕过） |
-| `Features/Flow/ImageLibrary.cs` | 采纳时的图片导入（复用 `shot-` 命名与 `ToStoredPath`） |
+| `Features/Flow/ImageLibrary.cs` | 共享模板图的解析 / 回收（`Resolve(path, resourceRoot)`、`ToStoredPath`） |
 | `LTools.csproj` | 加 MCP SDK 依赖；构建后清理用不到的 runtime 资源 |
 
 ### 5.9 分期
@@ -394,11 +398,12 @@ mode=replace  → 校验 draft.baseActionId 仍存在、baseSourceHash 未变（
 
 1. **线程**：HttpListener/ASP.NET 回调线程上碰 `MenuSystem` / `ConfigStore` / WPF 对象必炸。全部走
    `Application.Current.Dispatcher.InvokeAsync`，且不要在 UI 线程上等 HTTP 结果（死锁）。
-2. **`LTools.json` 是整体读写**：promote 必须走 `ConfigStore`（内部 Load→改→Save），否则和设置页并发保存会互相覆盖。
+2. **配置是整体读改写**：promote 必须走 `ConfigStore`（内部 Load→改→Save），否则和设置页并发保存会互相覆盖。落盘时 `ActionStore` 只重写内容变了的 `action.json`。
 3. **不要给 agent 直写正式库的入口**：一旦有 `actions_update`，模型迟早会「顺手」改掉用户动作。
 4. **revision 必须能从文件内容重算**，不能只在 MCP 写入时自增——否则 agent 用 fs 工具改完，save 会以为没变。
 5. **`VisibleWhen` 是必填判断的一部分**：只校验可见参数，否则「写入时才必填」的参数会误报（这条 AGENTS.md 已写过）。
-6. **图片必须走 `shot-` 命名进 `resources/images`**，否则回收机制看不见，草稿里的图会被当成孤儿或永远残留。
+6. **动作的图要么在动作目录 `files/`，要么在 `resources/`**：采纳会把草稿 `files/` 搬进 `actions/<id>/files/`，
+   运行时按该目录解析；别再往共享池写「只有草稿知道」的路径。
 7. **试运行会真的动键鼠**：UI 上要能一眼看到「AI 正在试运行」，并保留停止热键；MCP 侧返回 `busy` 而不是排队。
 8. **token 只存本地、只显示一次以上**：设置页可复制，不进日志、不进错误消息、不进 `health` 回执。
 9. **`units.md` 会随单元变化漂移**：用 `.version`（程序集版本 + 单元计数哈希）控制重生成，别手工维护。

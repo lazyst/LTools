@@ -343,7 +343,8 @@ internal static class AiToolHandlers
     public static Dictionary<string, object?> StagingCheck(string draftId)
     {
         var snapshot = DraftStore.Read(draftId);
-        var result = ActionValidator.Validate(snapshot.Program, snapshot.Revision, DraftStore.FilesDir(draftId));
+        var result = ActionValidator.Validate(snapshot.Program, snapshot.Revision, DraftStore.FilesDir(draftId),
+        draftCheck: true);
 
         return new Dictionary<string, object?>
         {
@@ -409,7 +410,8 @@ internal static class AiToolHandlers
             !string.Equals(expectedRevision.Trim(), snapshot.Revision, StringComparison.OrdinalIgnoreCase))
             throw new DraftConflictException("草稿内容已被改动（期望的 revision 与当前不一致），先重新读取");
 
-        var validation = ActionValidator.Validate(snapshot.Program, snapshot.Revision, DraftStore.FilesDir(draftId));
+        var validation = ActionValidator.Validate(snapshot.Program, snapshot.Revision, DraftStore.FilesDir(draftId),
+        draftCheck: true);
         if (!validation.Ok)
         {
             var errors = validation.Issues.Where(i => i.Severity == IssueSeverity.error).Take(5).ToList();

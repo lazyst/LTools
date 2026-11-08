@@ -492,12 +492,14 @@ LT_Set("结果", 名字 . "！")
 | --- | --- |
 | `configs/settings.json` | 全局行为：CapsLock 开关、终端路径、鼠标速度、运行提示、提示位置、日志 |
 | `configs/ui.json` | 界面状态：导航页、展开的分组、最近使用、OCR 偏好、编辑器折叠态（丢了不影响功能） |
-| `configs/actions.json` | 动作清单 + 菜单组（菜单项是动作 Id 引用） |
+| `configs/menus.json` | 快捷菜单组（固定 10 组，菜单项是动作 Id 引用） |
 | `configs/panel.json` | 超级面板：开关 / 长按阈值 / 场景与分组 / 尺寸 / 上次页 |
 | `configs/floating.json` | 悬浮项偏好（悬浮项本身不落盘） |
 | `configs/macros.json` | 宏设置 + 宏元数据（事件本体在 `macros/<id>.json`） |
 
-旧版单文件 `LTools.json` 会在第一次保存后自动拆成上述文件，并把旧文件改名 `LTools.json.migrated`（内容原样保留：删掉 `configs/` 再把它改回来即可回滚）。`configs/` 不存在时回退读取同目录的 `LTools.example.json` 作为初始模板。格式为 **JSON**（枚举写成字符串，如 `"Type": "composite"`），**不是**旧的 INI 分节格式。
+动作不进配置文件，而是一个动作一个目录：`actions/<id>/action.json`（动作体）+ `actions/<id>/files/`（它自己的模板图 / 脚本）。删除动作时整个目录移入 `trash/<时间戳>/`（保留 30 天，可手工捞回），菜单 / 面板 / 悬浮里的引用当场清掉。
+
+旧版单文件 `LTools.json` 会在第一次保存后自动拆成上述文件，并把旧文件改名 `LTools.json.migrated`；更早一版 `configs/actions.json` 里的动作也会在第一次保存后写成动作目录，旧清单归档为 `configs/actions.json.migrated`（内容原样保留：删掉 `configs/` 与 `actions/`、把这两个 `.migrated` 改回来即可回滚）。`configs/` 不存在时回退读取同目录的 `LTools.example.json` 作为初始模板。格式为 **JSON**（枚举写成字符串，如 `"Type": "composite"`），**不是**旧的 INI 分节格式。
 
 某个配置文件存在但无法解析（手改出错 / 旧格式）时，程序会**保留原文件**并备份为 `<文件名>.bad-时间戳`（每个文件只留最近 3 份），本次运行该域使用默认值且不会写回；设置页保存时会提示失败。修复或从备份恢复后再保存即可，不会再把动作和菜单洗成空。
 
@@ -505,10 +507,10 @@ LT_Set("结果", 名字 . "！")
 
 ### 11.1 主要字段
 
-- **`Actions`**：全局动作池。新格式每个动作只有 `Id` / `Name` / `Icon` / `Type`（`composite` 或 `macro`） / `MacroId`（宏动作） / `Program`：
+- **`Actions`**：全局动作池（存于 `actions/<id>/action.json`）。新格式每个动作只有 `Id` / `Name` / `Icon` / `Type`（`composite` 或 `macro`） / `MacroId`（宏动作） / `Program`：
   - `Program`：变量表 `variables`、步骤 `steps`、动作内子动作 `subActions`。步骤是「功能单元 + 参数」的 JSON（`unit` / `in` / `out` / `body` / `then` / `else`），单元与写法见 `docs/ACTION_SYSTEM.md`；文本参数支持 `${变量}`。
   - **旧格式仍能直接读入**：`Type` 为 `launchApp` / `runCommand` / `sendText` / `clickText` / `composite` 等 v1 类型、字段平铺在动作上的配置，第一次执行或用新编辑器打开时由迁移器转成 `Program`；保存后这个动作只写新格式。旧字段含义与迁移对照表见 `docs/ACTION_SYSTEM.md` 的「迁移」一节。
-  - 动作里引用的模板图存 `resources/images/`（程序生成，按引用回收）或 `resources/user/`（用户素材，不自动删除）；宏事件本体存数据根 `macros/<id>.json`，配置里只放 `MacroId`。
+  - 动作里引用的模板图优先在 `actions/<id>/files/` 下找（采纳草稿时整体搬进来，写 `files/x.png` 或裸文件名都行）；共享 / 历史图存 `resources/images/`（程序生成，按引用回收）或 `resources/user/`（用户素材，不自动删除）。宏事件本体存数据根 `macros/<id>.json`，配置里只放 `MacroId`。
 - **`SuperPanel`**：旧面板配置。`Enabled`（独立开关）、`LongPressThresholdMs`（长按阈值 100–800）；`Pages` / `LastPage` 只用于从旧版本迁移，新版本不再写入。
 - **`Panel`**：动作面板结构。`Preferences`（尺寸、视图选项、上次全局场景）、`Global`（全局场景与标签）、`Context`（上下文场景、`Common` 兜底分组）、`Blocked`（禁止弹出的进程）、`HintDismissed`（是否关掉未配置提示）。动作入口只存动作 Id；字段与迁移规则见 `docs/PANEL_REDESIGN.md`。
 - **`MenuGroups`**：固定 10 组（下标 0–9 对应 `CapsLock+1`~`CapsLock+0`，`null` 表示空组）。每组含 `Enabled`、`Name`、`Items`（动作 Id 列表）。

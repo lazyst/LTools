@@ -1,4 +1,5 @@
 using System.Windows;
+using LTools.Core.Storage;
 using LTools.Features;
 
 namespace LTools.Views;
@@ -18,7 +19,8 @@ internal static class ActionEditor
     /// <paramref name="owner"/> 可以为 null（超级面板「先关面板再开编辑器」走这条）：
     /// 这时按「无 Owner = 置顶」处理，避免编辑器被其它窗口盖住。
     /// <paramref name="resourceRoot"/> 是草稿的资源根（<c>staging/&lt;id&gt;/files</c>）：
-    /// 编辑草稿时传它，编辑器里的测试与校验才认 <c>files/x.png</c>；正式动作为 null。
+    /// 编辑草稿时传它，编辑器里的测试与校验才认 <c>files/x.png</c>；正式动作不传，
+    /// 由本方法自动取它自己的 <c>actions/&lt;id&gt;/files</c>。
     /// </summary>
     public static ActionDto? Show(Window? owner, string title, ActionDto? existing, string? resourceRoot = null)
     {
@@ -26,7 +28,8 @@ internal static class ActionEditor
         {
             Owner = owner,
             Topmost = owner?.Topmost ?? true,
-            ResourceRoot = resourceRoot,
+            // 正式动作的模板图在动作目录里（actions/<id>/files）；草稿由调用方显式给根。
+            ResourceRoot = resourceRoot ?? (existing is null ? null : ActionStore.ResourceRootFor(existing.Id)),
         };
         dlg.ShowDialog();
         return dlg.Result;

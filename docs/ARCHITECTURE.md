@@ -48,7 +48,7 @@ ai/                      令牌 / 审计 / 知识包
 configs/
   settings.json      全局行为：CapsLock 开关、终端路径、鼠标速度、运行提示、提示位置、日志
   ui.json            界面状态：导航页、展开的分组、最近使用、OCR 偏好、编辑器折叠态
-  actions.json       动作清单 + 菜单组（P2 起只留菜单组，动作迁到 actions/）
+  menus.json         快捷菜单组（10 个槽位，项为动作 Id 引用）
   panel.json         超级面板：开关 / 长按阈值 / 场景与分组 / 尺寸 / 上次页
   floating.json      悬浮项偏好（悬浮项本身仍然不落盘）
   macros.json        宏设置 + 宏元数据（事件仍在 macros/<id>.json）
@@ -56,10 +56,9 @@ actions/<id>/
   action.json        动作体（名称 / 图标 / 说明 / 变量 / 步骤）
   files/             该动作自己的模板图与脚本（P2）
 resources/
-  shared/            跨动作共享素材（P2 起，可选）
+  images/            共享 / 历史模板图（P2 起新增的模板图优先放动作目录）
   user/              用户素材（永不自动删）
-cache/screenshots/   运行期截图（可随时清空，P2/P4）
-trash/<时间戳>/       删除的动作目录（保留 N 天，P2）
+trash/<时间戳>/<id>/  删除的动作目录（保留 30 天，可手工捞回）
 staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 ```
 
@@ -69,17 +68,17 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | --- | --- | --- |
 | `configs/settings.json` | `ConfigBundle`（经 `ConfigIO`） | 设置页、托盘、钩子 |
 | `configs/ui.json` | 同上 | 设置页、选择器、编辑器 |
-| `configs/actions.json` | `MenuSystem.SaveToConfig` | `MenuSystem`、备份、AI 工具 |
+| `configs/menus.json` | `ConfigBundle`（`MenuSystem.SaveToConfig`） | `MenuSystem`、备份 |
 | `configs/panel.json` | `PanelLibrary.Save` | 面板、设置页 |
 | `configs/floating.json` | `FloatingLibrary.Save` | 悬浮窗、设置页 |
 | `configs/macros.json` | `MacroStore` | 宏菜单、编辑器 |
-| `actions/<id>/…` | `ConfigStore`（P2） | 引擎、面板、AI 工具 |
+| `actions/<id>/…` | `ActionStore`（经 `ConfigBundle.Save`） | 引擎、面板、编辑器、AI 工具 |
 
 ## 3. 阶段
 
-### P1 · 配置分域（本阶段）
+### P1 · 配置分域（已完成）
 
-- 新增 `configs/ConfigBundle.cs` + `configs/ConfigFiles.cs`：把 `AppConfig` 的字段拆成 6 个域文件，
+- 新增 `Config/ConfigBundle.cs` + `Config/ConfigFiles.cs`：把 `AppConfig` 的字段拆成 6 个域文件，
   每个文件带 `schemaVersion`；`AppConfig.Load/Save` 改为「合并读 / 只写变更的域」。
 - 迁移：`configs/` 不存在时从 `LTools.json`（或 `LTools.example.json`）读种子；首次保存写出 6 个文件后，
   旧文件改名 `LTools.json.migrated`（不动内容，随时可回滚）。
@@ -87,18 +86,26 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 - 备份：导出改为打包 `configs/`；导入同时兼容「旧备份只有 LTools.json」。
 - 验收：启动后 6 个文件齐全；改导航页只改 `ui.json`；删 `configs/` 并把 `LTools.json.migrated` 改回来能完整恢复。
 
-### P2 · 一个动作一个目录
+### P2 · 一个动作一个目录（已完成）
 
-- `actions/<id>/action.json` + `actions/<id>/files/`；`configs/actions.json` 只留菜单组。
-- 采纳草稿 = 把 `staging/<id>/` 搬成 `actions/<新id>/`（图片不迁移、不改写路径）。
-- 模板图归属动作：动作内 `image` 写 `files/x.png`；共享图放 `resources/shared/`（按内容哈希去重，可选）。
-- 删除动作 = 目录移入 `trash/<时间戳>/`（保留 30 天），三条引用（菜单 / 面板 / 悬浮）当场清理。
-- 运行期截图迁到 `cache/screenshots/`，不再靠 `shot-` 前缀区分归属。
-- 兼容：启动时若 `actions/` 为空且 `configs/actions.json` 有动作 → 逐条写成目录（**不删旧字段**，只标记已迁移）。
+- 新增 `Core/Storage/ActionStore.cs`：`actions/<id>/action.json` + `actions/<id>/files/`；
+  菜单组独立成 `configs/menus.json`，动作清单不再进配置文件。
+- 迁移：仍以旧 `configs/actions.json` 为种子，首存后归档 `actions.json.migrated`；
+  **`actions/` 目录存在（含空）即权威**，所以删光动作不会被旧清单复活。
+- 写回只碰变了的动作：`ActionStore.SaveAll` 逐条比较 `action.json` 内容，没变不写；
+  清单里没有的目录移入 `trash/<时间戳>/`（保留 30 天，启动时清理过期项）。
+- 采纳草稿 = 把 `staging/<id>/files/*` 复制进 `actions/<id>/files/`，动作里的 `files/x.png` **原样保留**，
+  不再改写路径、也不再搬进共享的 `resources/images`。
+- 运行期资源根：正式运行（`AutomationRunner.Run`）与编辑器（`ActionEditor.Show`）都传该动作的 `files/`
+  （`ActionStore.ResourceRootFor`），解析顺序仍是 `ImageLibrary.Resolve` 的四级回退。
+- 备份：导出打包 `actions/`（含动作私有图）；导入旧备份时让现有 `actions/` 退位，
+  让恢复出来的 `configs/actions.json` 生效，下次保存再重建目录。
+- 暂时保留：编辑器新截的模板图仍进 `resources/images`，运行期截图仍与它混放——统一搬到
+  `cache/screenshots` 与共享素材去重放到 P5。
 
-### P3 · 存储层收口
+### P3 · 存储层收口（下一步）
 
-- `ConfigIO.Modify` 拆成按域的 store（`SettingsStore` / `UiStore` / `ActionStore` / `PanelStore` / `FloatingStore`），
+- `ConfigIO.Modify` 拆成按域的 store（`SettingsStore` / `UiStore` / `MenuStore` / `PanelStore` / `FloatingStore`），
   UI 只调自己那个；`AppConfig` 退化为启动快照 + 迁移兼容视图。
 - 15 处 `ConfigIO.Modify` 逐个改成域写入；跨域操作（删动作要清菜单 / 面板 / 悬浮）做成一个显式的
   `ActionRemoval` 事务（顺序写 + 启动时幂等修复引用，不用分布式事务）。
@@ -112,8 +119,10 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 
 ### P5 · 资源与备份
 
+- 运行期截图搬到 `cache/screenshots/`（可随时清空），不再靠 `shot-` 前缀 + 时间界线区分归属。
+- 跨动作共享素材去重（按内容哈希），避免同一张图在多个动作目录里各存一份。
 - 备份清单改为「目录白名单 + manifest 声明」，新增目录自动纳入。
-- 启动时做一次孤儿检查（`actions/` 里的图无人引用 → 移入 `trash`，不直接删）。
+- 启动时做一次孤儿检查（动作目录里无人引用的图 → 移入 `trash`，不直接删）。
 - 提供「导出单个动作」= 打包一个动作目录。
 
 ## 4. 每阶段验收与回滚
@@ -121,7 +130,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | 阶段 | 验收 | 回滚 |
 | --- | --- | --- |
 | P1 | Debug/Release 0/0；6 个文件生成；只改一个域时其它文件 mtime 不变；旧文件仍可恢复 | 删 `configs/`，把 `LTools.json.migrated` 改回 `LTools.json` |
-| P2 | 采纳草稿后 `actions/<id>/` 里直接有图；删动作进 `trash/`；面板 / 菜单 / 悬浮引用清空 | 保留 `configs/actions.json` 的旧动作清单，回退版本直接读它 |
+| P2 | 采纳草稿后 `actions/<id>/files/` 里直接有图、引用仍是 `files/x.png`；删动作进 `trash/`；改一个动作只重写它自己的 `action.json`；删光动作后重启不复活 | 把 `configs/actions.json.migrated` 改回 `actions.json`、删 `actions/`，回退版本直接读它 |
 | P3 | 15 处写入点各自只碰一个文件；并发保存不互相覆盖 | 域文件格式不变，退回旧版本仍能读 |
 | P4 | 窗口拆完后交互与原版一致（跑一遍手动清单） | 纯代码改动，git revert |
 

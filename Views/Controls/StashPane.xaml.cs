@@ -383,7 +383,8 @@ public sealed partial class StashPane : UserControl
 
         Features.SuperPanel.Close();
 
-        var validation = ActionValidator.Validate(program, revision.Length > 0 ? revision : null, filesDir);
+        var validation = ActionValidator.Validate(program, revision.Length > 0 ? revision : null, filesDir,
+            draftCheck: true);
         if (!validation.Ok && !ShowIssues(validation, "还不能试运行")) return;
 
         string name = string.IsNullOrWhiteSpace(program.Name) ? "AI 草稿" : program.Name;

@@ -7,23 +7,26 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Core;
+using LTools.Core.Storage;
 using LTools.Features;
 
 namespace LTools.Config;
 
 /// <summary>
-/// 配置分域读写（见 <c>docs/ARCHITECTURE.md</c> P1）：
-/// 把原来的单文件 <c>LTools.json</c> 拆成 <c>configs/</c> 下的 6 个域文件，一个文件一个属主。
+/// 配置分域读写（见 <c>docs/ARCHITECTURE.md</c> P1 / P2）：
+/// 全局配置拆成 <c>configs/</c> 下的 6 个域文件，动作各自一个目录 <c>actions/&lt;id&gt;/</c>。
 /// （目录名用复数的 <c>configs</c>：Windows 大小写不敏感，单数会撞上源码目录 <c>Config/</c>。）
 /// </summary>
 /// <remarks>
 /// <para>
 /// <see cref="AppConfig"/> 仍是内存里的聚合视图，<see cref="AppConfig.Load"/> / <see cref="AppConfig.Save"/>
-/// 转到这里：读 = 合并 6 个域文件；写 = 逐域序列化，**内容没变就不碰磁盘**（因此改导航页只会动 <c>ui.json</c>）。
+/// 转到这里：读 = 合并域文件 + 动作目录；写 = 逐域序列化，**内容没变就不碰磁盘**
+/// （因此改导航页只会动 <c>ui.json</c>，改一个动作只重写它自己的 <c>action.json</c>）。
 /// </para>
 /// <para>
-/// 首次升级：<c>configs/</c> 不存在时把 <c>LTools.json</c>（或同目录示例）当作种子读进来，
-/// 第一次保存写出 6 个文件后再把旧文件改名 <c>LTools.json.migrated</c>——内容原样保留，随时可回滚。
+/// 首次升级：<c>configs/</c> 不存在时把 <c>LTools.json</c>（或同目录示例）当作种子读进来；
+/// 动作仍以旧 <c>configs/actions.json</c> 为种子。第一次保存写出域文件与动作目录后，
+/// 旧文件分别改名 <c>LTools.json.migrated</c> / <c>configs/actions.json.migrated</c>——内容原样保留，随时可回滚。
 /// </para>
 /// <para>
 /// 读取失败按域隔离：坏掉的那个文件备份成 <c>&lt;file&gt;.bad-时间戳</c>（每域只留 3 份）并用默认值顶上，
@@ -33,8 +36,8 @@ namespace LTools.Config;
 /// </remarks>
 internal static class ConfigBundle
 {
-    /// <summary>分域格式的版本号（写入每个域文件；1 = 旧单文件时代）。</summary>
-    public const int SchemaVersion = 2;
+    /// <summary>分域格式的版本号（写入每个域文件；1 = 旧单文件时代，2 = 六域文件，3 = 动作目录化）。</summary>
+    public const int SchemaVersion = 3;
 
     /// <summary>读失败（含被占用 / 共享冲突）时的重试次数与间隔——开机自启瞬间配置常被 AV / 索引器短暂占用。</summary>
     private const int ReadRetries = 15;
@@ -56,17 +59,20 @@ internal static class ConfigBundle
 
     private static string SettingsPath(string a) => Path.Combine(ConfigDir(a), "settings.json");
     private static string UiPath(string a) => Path.Combine(ConfigDir(a), "ui.json");
-    private static string ActionsPath(string a) => Path.Combine(ConfigDir(a), "actions.json");
+    private static string MenusPath(string a) => Path.Combine(ConfigDir(a), "menus.json");
     private static string PanelPath(string a) => Path.Combine(ConfigDir(a), "panel.json");
     private static string FloatingPath(string a) => Path.Combine(ConfigDir(a), "floating.json");
     private static string MacrosPath(string a) => Path.Combine(ConfigDir(a), "macros.json");
+
+    /// <summary>P2 之前的旧文件（动作清单 + 菜单组），只用于迁移种子。</summary>
+    private static string LegacyActionsPath(string a) => Path.Combine(ConfigDir(a), "actions.json");
 
     /// <summary>6 个域文件（顺序固定，便于诊断）。</summary>
     public static IReadOnlyList<string> DomainPaths(string anchorPath) => new[]
     {
         SettingsPath(anchorPath),
         UiPath(anchorPath),
-        ActionsPath(anchorPath),
+        MenusPath(anchorPath),
         PanelPath(anchorPath),
         FloatingPath(anchorPath),
         MacrosPath(anchorPath),
@@ -114,10 +120,29 @@ internal static class ConfigBundle
         cfg.CompositeCollapsedGroups = ui.CompositeCollapsedGroups ?? new();
         cfg.RecentActionIds = ui.RecentActionIds;
 
-        var actions = Read<ActionLibraryFile>(ActionsPath(anchorPath), ctx);
-        if (actions == null) actions = ToActions(ctx.GetSeed());
-        cfg.Actions = actions.Actions ?? new();
-        cfg.MenuGroups = actions.MenuGroups ?? new();
+        bool hasStore = ActionStore.HasStore(anchorPath);
+        ActionLibraryFile? legacyActions = null;
+        if (hasStore)
+        {
+            // actions/ 目录存在（含空）= 权威来源；空目录表示用户把动作全删了，不再回落到旧清单。
+            var (fromStore, failed) = ActionStore.LoadAll(anchorPath, ctx.Strict);
+            cfg.Actions = fromStore;
+            if (failed) ctx.Failed = true;
+        }
+        else
+        {
+            legacyActions = ReadLegacyActions(anchorPath, ctx);
+            cfg.Actions = legacyActions?.Actions ?? ctx.GetSeed().Actions ?? new();
+        }
+
+        var menus = Read<MenuFile>(MenusPath(anchorPath), ctx);
+        if (menus == null)
+        {
+            // 迁移期：菜单组还在旧的 actions.json 里；目录已建好时也要读它一次，写完 menus.json 就不再看。
+            legacyActions ??= ReadLegacyActions(anchorPath, ctx);
+            menus = new MenuFile { MenuGroups = legacyActions?.MenuGroups ?? ctx.GetSeed().MenuGroups ?? new() };
+        }
+        cfg.MenuGroups = menus.MenuGroups ?? new();
 
         var panel = Read<PanelFile>(PanelPath(anchorPath), ctx);
         if (panel == null) panel = ToPanel(ctx.GetSeed());
@@ -219,6 +244,10 @@ internal static class ConfigBundle
     /// <summary>瞬时 IO 错误：被占用 / 共享冲突 / 权限不足（区别于内容损坏的 JsonException）。</summary>
     private static bool IsTransient(Exception ex) => ex is IOException or UnauthorizedAccessException;
 
+    /// <summary>读 P2 之前的 <c>configs/actions.json</c>（动作 + 菜单组的迁移种子）。</summary>
+    private static ActionLibraryFile? ReadLegacyActions(string anchorPath, LoadContext ctx)
+        => Read<ActionLibraryFile>(LegacyActionsPath(anchorPath), ctx);
+
     private static string? FindExample(string anchorPath)
     {
         string example = Path.Combine(BaseDir(anchorPath), "LTools.example.json");
@@ -235,11 +264,34 @@ internal static class ConfigBundle
         Directory.CreateDirectory(ConfigDir(anchorPath));
         WriteIfChanged(SettingsPath(anchorPath), ToSettings(cfg));
         WriteIfChanged(UiPath(anchorPath), ToUi(cfg));
-        WriteIfChanged(ActionsPath(anchorPath), ToActions(cfg));
+        WriteIfChanged(MenusPath(anchorPath), ToMenus(cfg));
         WriteIfChanged(PanelPath(anchorPath), ToPanel(cfg));
         WriteIfChanged(FloatingPath(anchorPath), ToFloating(cfg));
         WriteIfChanged(MacrosPath(anchorPath), ToMacros(cfg));
+        // 动作一个目录一个（内容没变的 action.json 不重写；清单里没有的目录移入 trash/）。
+        ActionStore.SaveAll(anchorPath, cfg.Actions ?? new List<ActionDto>());
+        ArchiveLegacyActions(anchorPath);
         ArchiveLegacy(anchorPath);
+    }
+
+    /// <summary>动作目录 + <c>menus.json</c> 都齐了，把 P2 之前的 <c>actions.json</c> 改名归档（只做一次）。</summary>
+    private static void ArchiveLegacyActions(string anchorPath)
+    {
+        string legacy = LegacyActionsPath(anchorPath);
+        if (!File.Exists(legacy) || !File.Exists(MenusPath(anchorPath)) || !ActionStore.HasStore(anchorPath))
+            return;
+
+        string target = legacy + ".migrated";
+        if (File.Exists(target)) target = $"{legacy}.migrated-{DateTime.Now:yyyyMMddHHmmss}";
+        try
+        {
+            File.Move(legacy, target);
+            AppLog.Info("Config", $"动作为动作目录，旧清单保留为 {Path.GetFileName(target)}");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Config", $"旧动作清单改名失败（下次保存再试）：{ex.Message}");
+        }
     }
 
     /// <summary>先写临时文件再整体替换，避免写到一半崩溃留下半个 JSON。</summary>
@@ -296,9 +348,8 @@ internal static class ConfigBundle
         RecentActionIds = cfg.RecentActionIds,
     };
 
-    private static ActionLibraryFile ToActions(AppConfig cfg) => new()
+    private static MenuFile ToMenus(AppConfig cfg) => new()
     {
-        Actions = cfg.Actions ?? new(),
         MenuGroups = cfg.MenuGroups ?? new(),
     };
 

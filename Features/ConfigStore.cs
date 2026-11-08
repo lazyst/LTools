@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using LTools.Config;
 using LTools.Core;
+using LTools.Core.Storage;
 using LTools.Features.Floating;
 using LTools.Features.Panel;
 
@@ -24,6 +25,9 @@ internal static class ConfigStore
     public static void Initialize(string configPath)
     {
         ConfigPath = configPath;
+        // 运行时找动作私有资源（actions/<id>/files）要这条锚点；顺手清理过期的 trash。
+        ActionStore.Anchor = configPath;
+        ActionStore.PruneTrash(configPath);
         MenuSystem.ReloadFromConfig(configPath);
         PanelLibrary.Initialize(configPath);
     }

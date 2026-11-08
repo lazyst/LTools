@@ -5,6 +5,7 @@ using System.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Core.Actions;
+using LTools.Core.Storage;
 using LTools.Features.Migration;
 using LTools.Views;
 
@@ -74,7 +75,8 @@ internal static class AutomationRunner
         }
 
         Task.Run(() => RunCore(program, action.Name, cursorX, cursorY,
-            startPath: null, trace: null, notify: true, noticeOverride: null, completed: null));
+            startPath: null, trace: null, notify: true, noticeOverride: null, completed: null,
+            resourceRoot: ActionStore.ResourceRootFor(action.Id)));
     }
 
     /// <summary>
@@ -100,7 +102,8 @@ internal static class AutomationRunner
     /// <param name="notify">是否按用户设置给运行结果提示（真实运行为 true）。</param>
     /// <param name="noticeOverride">试运行传 <see cref="RunNoticeMode.always"/>，忽略用户设置。</param>
     /// <param name="resourceRoot">
-    /// 额外资源根（草稿的 <c>files/</c>）：图片相对路径先在这里找。正式运行为 null。
+    /// 额外资源根：草稿是 <c>staging/&lt;id&gt;/files</c>，正式动作是 <c>actions/&lt;id&gt;/files</c>；
+    /// 图片相对路径先在这里找。
     /// </param>
     private static void RunCore(ActionProgram program, string name, int cursorX, int cursorY,
         string? startPath, Action<StepTrace>? trace, bool notify, RunNoticeMode? noticeOverride,

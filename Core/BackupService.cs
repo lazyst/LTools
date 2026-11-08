@@ -6,13 +6,15 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Config;
 using LTools.Core.Ai;
+using LTools.Core.Storage;
 using LTools.Features;
 
 namespace LTools.Core;
 
 /// <summary>
-/// 配置备份（导出 / 导入 .ltbak）：一个 zip 同时打包 <c>config/</c>（分域配置；旧备份是单文件
-/// <c>LTools.json</c>）+ 用户资源目录 <c>resources/</c> + 速记目录 <c>速记/</c> + 宏事件目录 <c>macros/</c>。
+/// 配置备份（导出 / 导入 .ltbak）：一个 zip 同时打包 <c>configs/</c>（分域配置；旧备份是单文件
+/// <c>LTools.json</c>）+ 动作目录 <c>actions/</c>（动作体与它自己的模板图）+ 用户资源目录
+/// <c>resources/</c> + 速记目录 <c>速记/</c> + 宏事件目录 <c>macros/</c>。
 /// 导入为整体替换（仅替换备份包含的项），旧数据先改名为 <c>.bak-时间戳</c>；
 /// 导入前由 <see cref="Inspect"/> 扫描可执行文件并列出引用 <c>resources</c> 的动作，
 /// 交给调用方弹警告——导入备份等于可能以管理员权限运行外来脚本。
@@ -70,6 +72,7 @@ internal static class BackupService
         public bool HasNotes { get; init; }
         public bool HasMacros { get; init; }
         public bool HasStaging { get; init; }
+        public bool HasActions { get; init; }
     }
 
     /// <summary>导入预检结果：解压到临时目录后的扫描信息；调用方确认后由 <see cref="Import"/> 执行替换。</summary>
@@ -82,8 +85,11 @@ internal static class BackupService
         public bool IncludeMacros { get; init; }
         public bool IncludeStaging { get; init; }
 
-        /// <summary>备份里是分域后的 <c>config/</c> 目录（false = 旧单文件 LTools.json）。</summary>
+        /// <summary>备份里是分域后的 <c>configs/</c> 目录（false = 旧单文件 LTools.json）。</summary>
         public bool IncludeConfig { get; init; }
+
+        /// <summary>备份里带了 <c>actions/</c> 动作目录（false = 动作还在旧 <c>configs/actions.json</c>）。</summary>
+        public bool IncludeActions { get; init; }
         public int ExecutableCount { get; init; }
         public List<string> ResourceActionRefs { get; init; } = new(); // "名称 — 片段"
         public long SizeBytes { get; init; }
@@ -96,6 +102,7 @@ internal static class BackupService
     {
         string cfgPath = ConfigLocator.FindPath();
         long total = FileSize(cfgPath) + DirSize(ConfigBundle.ConfigDir(cfgPath));
+        total += DirSize(ActionStore.Root(cfgPath));
         if (includeResources) total += DirSize(AppPaths.ResourceDir);
         if (includeNotes) total += DirSize(AppPaths.NotesDir);
         total += DirSize(MacroStore.Dir);
@@ -116,10 +123,13 @@ internal static class BackupService
                 // 两者都没有（用户从未保存过）时按当前内存态写一份旧格式快照，导入时由 ConfigBundle 自动分域。
                 string cfgPath = ConfigLocator.FindPath();
                 string cfgDir = ConfigBundle.ConfigDir(cfgPath);
-                if (Directory.Exists(cfgDir)) AddDir(zip, cfgDir, "config");
+                if (Directory.Exists(cfgDir)) AddDir(zip, cfgDir, "configs");
                 else if (File.Exists(cfgPath)) AddFile(zip, cfgPath, "LTools.json");
                 else AddText(zip, "LTools.json",
                     JsonSerializer.Serialize(AppConfig.Load(cfgPath), ConfigOpt));
+                // 动作目录（action.json + 动作私有的 files/ 模板图）：与配置一起总是打包。
+                bool includeActions = ActionStore.HasStore(cfgPath);
+                if (includeActions) AddDir(zip, ActionStore.Root(cfgPath), "actions");
                 if (includeResources) AddDir(zip, AppPaths.ResourceDir, "resources");
                 if (includeNotes) AddDir(zip, AppPaths.NotesDir, "速记");
                 // 宏事件文件：存在才打包，旧备份不含 macros 时导入不会清空现有宏。
@@ -128,7 +138,8 @@ internal static class BackupService
                 // AI 暂存区草稿：未采纳的草稿换机后还要接着用；ai/ 里是令牌，故意不进备份。
                 bool includeStaging = Directory.Exists(DraftStore.Root);
                 if (includeStaging) AddDir(zip, DraftStore.Root, "staging");
-                AddText(zip, "manifest.json", BuildManifest(includeResources, includeNotes, includeMacros, includeStaging));
+                AddText(zip, "manifest.json",
+                    BuildManifest(includeResources, includeNotes, includeMacros, includeStaging, includeActions));
             }
             if (File.Exists(destPath)) File.Delete(destPath);
             File.Move(tmp, destPath);
@@ -163,10 +174,15 @@ internal static class BackupService
                     ? "备份来自更新版本，请升级 LTools 后再导入"
                     : "备份格式版本过旧，无法导入");
 
-            // 配置：分域备份是 staging/config/*.json，旧备份是 staging/LTools.json。
-            // AppConfig.Load 按锚点同级的 config/ 解析，两种布局都能读（读不出来 = 备份损坏）。
+            // 配置：分域备份是 staging/configs/*.json，旧备份是 staging/LTools.json。
+            // AppConfig.Load 按锚点同级的 configs/ 解析，两种布局都能读（读不出来 = 备份损坏）。
             string cfgPath = Path.Combine(staging, "LTools.json");
-            bool hasConfigDir = Directory.Exists(ConfigBundle.ConfigDir(cfgPath));
+            // 兼容 P1 初版备份：配置条目叫 config/，导入前先搬成 configs/。
+            string legacyCfgDir = Path.Combine(staging, "config");
+            string stagedCfgDir = ConfigBundle.ConfigDir(cfgPath);
+            if (!Directory.Exists(stagedCfgDir) && Directory.Exists(legacyCfgDir))
+                Directory.Move(legacyCfgDir, stagedCfgDir);
+            bool hasConfigDir = Directory.Exists(stagedCfgDir);
             if (hasConfigDir || File.Exists(cfgPath))
             {
                 var stagedCfg = AppConfig.Load(cfgPath);
@@ -180,6 +196,9 @@ internal static class BackupService
             bool hasNotes = includes.Contains("notes", StringComparer.OrdinalIgnoreCase);
             bool hasMacros = includes.Contains("macros", StringComparer.OrdinalIgnoreCase);
             bool hasStaging = includes.Contains("staging", StringComparer.OrdinalIgnoreCase);
+            // 老备份没有 "actions" 项：动作在 configs/actions.json 里，导入时把它写回并让目录退位。
+            bool hasActions = includes.Contains("actions", StringComparer.OrdinalIgnoreCase)
+                              || Directory.Exists(Path.Combine(staging, "actions"));
 
             var refs = new List<string>();
             int execCount = 0;
@@ -196,10 +215,14 @@ internal static class BackupService
                     }
                 }
             }
-            string resDir = Path.Combine(staging, "resources");
-            if (Directory.Exists(resDir))
-                foreach (var f in Directory.EnumerateFiles(resDir, "*", SearchOption.AllDirectories))
+            // 可执行文件扫描：resources 与动作目录（actions/<id>/files 也可能放脚本）。
+            foreach (string dirName in new[] { "resources", "actions" })
+            {
+                string scanDir = Path.Combine(staging, dirName);
+                if (!Directory.Exists(scanDir)) continue;
+                foreach (var f in Directory.EnumerateFiles(scanDir, "*", SearchOption.AllDirectories))
                     if (ExecExtensions.Contains(Path.GetExtension(f))) execCount++;
+            }
 
             return new ImportPreview
             {
@@ -213,12 +236,14 @@ internal static class BackupService
                     HasNotes = hasNotes,
                     HasMacros = hasMacros,
                     HasStaging = hasStaging,
+                    HasActions = hasActions,
                 },
                 IncludeResources = hasResources,
                 IncludeNotes = hasNotes,
                 IncludeMacros = hasMacros,
                 IncludeStaging = hasStaging,
                 IncludeConfig = hasConfigDir,
+                IncludeActions = hasActions,
                 ExecutableCount = execCount,
                 ResourceActionRefs = refs,
                 SizeBytes = DirSize(staging),
@@ -269,6 +294,26 @@ internal static class BackupService
                 File.Copy(stagedCfg, cfgPath, overwrite: true);
             }
 
+            // 1.5) 动作目录
+            string stagedActions = Path.Combine(preview.StagingDir, "actions");
+            string targetActions = ActionStore.Root(cfgPath);
+            if (preview.IncludeActions)
+            {
+                // 备份声明带了动作目录：整体替换（目录缺失 = 备份里是空的，替换为空目录）。
+                ReplaceDir(stagedActions, targetActions, ts, restores);
+            }
+            else if (preview.IncludeConfig || File.Exists(stagedCfg))
+            {
+                // 旧备份的动作在 configs/actions.json 或 LTools.json 里：现有动作目录先退位，
+                // 否则「目录优先」会让刚恢复出来的旧清单不生效。下次保存会按它重建目录。
+                if (Directory.Exists(targetActions))
+                {
+                    string bakDir = UniqueBackupPath(targetActions, ts);
+                    Directory.Move(targetActions, bakDir);
+                    restores.Add((targetActions, bakDir, true));
+                }
+            }
+
             // 2) 资源目录（includes 以 manifest 为准；备份里目录缺失 = 备份是空目录，替换为空）
             if (preview.IncludeResources)
                 ReplaceDir(Path.Combine(preview.StagingDir, "resources"), AppPaths.ResourceDir, ts, restores);
@@ -306,9 +351,10 @@ internal static class BackupService
     // ============ 内部 ============
 
     private static string BuildManifest(bool includeResources, bool includeNotes, bool includeMacros,
-        bool includeStaging = false)
+        bool includeStaging = false, bool includeActions = false)
     {
         var includes = new List<string> { "config" };
+        if (includeActions) includes.Add("actions");
         if (includeResources) includes.Add("resources");
         if (includeNotes) includes.Add("notes");
         if (includeMacros) includes.Add("macros");
@@ -348,10 +394,11 @@ internal static class BackupService
         }
     }
 
-    /// <summary>跳过现场备份（.bak- / .bad-）与写了一半的 .tmp，避免把旧副本嵌进新备份。</summary>
+    /// <summary>跳过现场备份（.bak- / .bad- / .migrated）与写了一半的 .tmp，避免把旧副本嵌进新备份。</summary>
     private static bool ShouldSkip(string name)
         => name.Contains(".bak-", StringComparison.OrdinalIgnoreCase)
            || name.Contains(".bad-", StringComparison.OrdinalIgnoreCase)
+           || name.Contains(".migrated", StringComparison.OrdinalIgnoreCase)
            || name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase);
 
     private static long FileSize(string path) => File.Exists(path) ? new FileInfo(path).Length : 0;

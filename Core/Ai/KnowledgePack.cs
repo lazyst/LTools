@@ -293,12 +293,12 @@ internal static class KnowledgePack
 草稿资源只接受图片：写到 `files/xxx.png`，步骤的 `image` 参数写 `files/xxx.png`。
 `ltools_staging_run` / 面板试运行 / 编辑器测试会把草稿的 `files/` 当作运行期资源根，所以**不用写绝对路径**；
 `files/xxx.png` 与裸 `xxx.png` 都先在那里找。
-采纳时它们会迁到 `resources/images/shot-<时间戳>-xxx.png`（必须带 `shot-` 前缀，否则按引用回收管不到）。
+采纳时整个 `files/` 会复制进 `actions/<动作id>/files/`，引用原样保留；正式运行时以该目录为资源根。
 其它类型文件 v1 直接拒绝。
 
 ## 6. 纪律
 
-- 找不到能力就说不支持，**不要臆造单元键**，也不要试图写 `LTools.json`。
+- 找不到能力就说不支持，**不要臆造单元键**，也不要试图写配置文件或 `actions/` 目录（正式动作只经用户采纳写入）。
 - 不要为了一个功能另造一套循环 / 条件 / 取值——先看 `units.md` 里现成的单元。
 - 动作执行在后台线程；会动键鼠的步骤（点击、输入、窗口操作）要留出等待（`flow.delay` 或单元自带的超时 / 等待）。
 - 用户动作只能读（`ltools_actions_get`）；要改就先 `staging_create(copyFromActionId:...)`。

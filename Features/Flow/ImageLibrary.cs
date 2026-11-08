@@ -7,13 +7,15 @@ using LTools.Core.Actions;
 namespace LTools.Features;
 
 /// <summary>
-/// 图像模板的存放约定（都在数据根的 <c>resources/</c> 下，备份服务已整体打包，导出 / 导入无需额外处理）：
+/// 图像模板的存放约定。动作自己的图在 <c>actions/&lt;id&gt;/files/</c>（随动作目录一起删除 / 备份），
+/// 共享与历史图仍在数据根的 <c>resources/</c> 下：
 /// <list type="bullet">
+/// <item><c>actions/&lt;id&gt;/files/</c>——该动作独占的模板图（采纳草稿时整体搬进来），按动作目录回收；</item>
 /// <item><c>resources/images/</c>——程序生成的模板截图（<c>shot-时间戳.png</c>），由 <see cref="CollectGarbage"/> 按引用回收；</item>
 /// <item><c>resources/user/</c>——用户自己的素材，文件选择器默认打开这里，从不自动删除。</item>
 /// </list>
-/// 分成两个目录是为了让回收边界是「目录」而不是「文件名前缀」：程序生成的东西可以放心清，
-/// 用户资产不会被误伤。也允许引用任意绝对路径（这类文件不参与回收）。
+/// 分成多个目录是为了让回收边界是「目录」而不是「文件名前缀」：程序生成的东西可以放心清，
+/// 用户资产与动作独占的资源不会被误伤。也允许引用任意绝对路径（这类文件不参与回收）。
 /// </remarks>
 internal static class ImageLibrary
 {
@@ -187,36 +189,6 @@ internal static class ImageLibrary
         for (int n = 2; File.Exists(path); n++)
             path = Path.Combine(Dir, $"{stem}-{n}.png");
         return path;
-    }
-
-    /// <summary>
-    /// 把草稿 <c>files/</c> 里的图片迁进 <see cref="Dir"/>，返回可存进动作的路径（文件名）。
-    /// </summary>
-    /// <remarks>
-    /// 采纳（promote）只走这里：文件名必须带 <see cref="ShotPrefix"/>，否则按引用回收管不到它。
-    /// 重名时加序号，不覆盖已有模板；复制失败抛出，由调用方放弃采纳（不能留下「动作指向草稿目录」的引用）。
-    /// </remarks>
-    public static string ImportDraftImage(string sourcePath)
-    {
-        EnsureDir();
-        string full = Path.GetFullPath(sourcePath);
-        if (!File.Exists(full)) throw new FileNotFoundException("草稿图片不存在", full);
-
-        string stem = Path.GetFileNameWithoutExtension(full);
-        string ext = Path.GetExtension(full);
-        if (string.IsNullOrWhiteSpace(ext)) ext = ".png";
-
-        // 只保留安全字符，避免 files/ 里的奇怪名字带进资源目录。
-        var safe = new string(stem.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_').ToArray());
-        if (safe.Length == 0) safe = "image";
-
-        string baseName = $"shot-{DateTime.Now:yyyyMMdd-HHmmss}-{safe}";
-        string dest = Path.Combine(Dir, baseName + ext);
-        for (int n = 2; File.Exists(dest); n++)
-            dest = Path.Combine(Dir, $"{baseName}-{n}{ext}");
-
-        File.Copy(full, dest);
-        return ToStoredPath(dest);
     }
 
     /// <summary>

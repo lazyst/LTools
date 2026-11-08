@@ -62,9 +62,16 @@ internal static class ActionValidator
     /// 校验一个动作体。
     /// </summary>
     /// <param name="revision">内容修订号（草稿 check 用；编辑器传 null）。</param>
-    /// <param name="draftFilesDir">草稿 <c>files/</c> 的绝对路径；null = 编辑器校验，图片按数据根解析。</param>
+    /// <param name="resourceRoot">
+    /// 图片资源根：草稿是 <c>staging/&lt;id&gt;/files</c>，正式动作是 <c>actions/&lt;id&gt;/files</c>；
+    /// null = 按数据根解析。动作里的 <c>files/x.png</c> 与裸文件名都先在这里找。
+    /// </param>
+    /// <param name="draftCheck">
+    /// 草稿验收（check / promote）：图片**必须**在资源根里（否则采纳后会指向不存在的文件）；
+    /// 编辑器校验传 false，找不到只报 warning（可能引用共享模板或用户素材）。
+    /// </param>
     public static ActionValidationResult Validate(ActionProgram? program, string? revision = null,
-        string? draftFilesDir = null)
+        string? resourceRoot = null, bool draftCheck = false)
     {
         var issues = new List<ActionIssue>();
         if (program == null)
@@ -76,7 +83,7 @@ internal static class ActionValidator
         if (string.IsNullOrWhiteSpace(program.Name))
             issues.Add(new ActionIssue("", "", "", "name", "动作没有名称（AI 那边叫「未命名动作」也能跑）", IssueSeverity.warning));
 
-        ValidateScope(program, null, draftFilesDir, issues);
+        ValidateScope(program, null, resourceRoot, draftCheck, issues);
 
         if (program.Steps.Count == 0)
             issues.Add(new ActionIssue("/steps", "", "", "steps",
@@ -89,15 +96,15 @@ internal static class ActionValidator
     public static ActionValidationResult ValidateSubAction(ActionProgram owner, SubActionDef sub)
     {
         var issues = new List<ActionIssue>();
-        ValidateScope(owner, sub, null, issues);
+        ValidateScope(owner, sub, null, false, issues);
         return new ActionValidationResult { Issues = issues };
     }
 
     // ============ 作用域 ============
 
     /// <summary><paramref name="sub"/> 为 null 时校验整个动作（含全部子动作）。</summary>
-    private static void ValidateScope(ActionProgram program, SubActionDef? sub, string? draftFilesDir,
-        List<ActionIssue> issues)
+    private static void ValidateScope(ActionProgram program, SubActionDef? sub, string? resourceRoot,
+        bool draftCheck, List<ActionIssue> issues)
     {
         var declared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         IEnumerable<VariableDef> variables = sub?.Variables ?? program.Variables;
@@ -163,7 +170,7 @@ internal static class ActionValidator
         }
 
         foreach (var (step, path, label, depth) in allSteps)
-            ValidateStep(program, step, path, label, depth, produced, draftFilesDir, issues);
+            ValidateStep(program, step, path, label, depth, produced, resourceRoot, draftCheck, issues);
 
         // 子动作 id 不能重复（含嵌套）。
         if (sub == null) ValidateSubActionIds(program, issues);
@@ -222,7 +229,7 @@ internal static class ActionValidator
     // ============ 单步 ============
 
     private static void ValidateStep(ActionProgram program, Step step, string path, string label, int depth,
-        HashSet<string> produced, string? draftFilesDir, List<ActionIssue> issues)
+        HashSet<string> produced, string? resourceRoot, bool draftCheck, List<ActionIssue> issues)
     {
         var registry = StepRegistry.Default;
         if (!registry.TryGet(step.Unit, out var unit))
@@ -267,7 +274,7 @@ internal static class ActionValidator
                 continue;
             }
 
-            ValidateArg(program, step, path, label, input, arg, produced, draftFilesDir, issues);
+            ValidateArg(program, step, path, label, input, arg, produced, resourceRoot, draftCheck, issues);
         }
 
         // —— 条件 ——
@@ -283,7 +290,7 @@ internal static class ActionValidator
     }
 
     private static void ValidateArg(ActionProgram program, Step step, string path, string label, InputSpec input,
-        StepArg arg, HashSet<string> produced, string? draftFilesDir, List<ActionIssue> issues)
+        StepArg arg, HashSet<string> produced, string? resourceRoot, bool draftCheck, List<ActionIssue> issues)
     {
         string issuePath = $"{path}/in/{input.Key}";
 
@@ -313,7 +320,7 @@ internal static class ActionValidator
             }
             else
             {
-                ValidateStep(program, arg.InlineStep, issuePath, label, 1, produced, draftFilesDir, issues);
+                ValidateStep(program, arg.InlineStep, issuePath, label, 1, produced, resourceRoot, draftCheck, issues);
             }
         }
 
@@ -363,10 +370,10 @@ internal static class ActionValidator
         if (!input.Raw)
             CheckTemplate(text, issuePath, label, input, produced, issues);
 
-        // 图片（草稿 files/ 或既有资源）
+        // 图片（动作目录 files/、草稿 files/ 或既有共享资源）
         if (string.Equals(input.Key, "image", StringComparison.OrdinalIgnoreCase) && text.Trim().Length > 0 &&
             !text.Contains("${"))
-            ValidateImage(text.Trim(), issuePath, label, step.Unit, draftFilesDir, issues);
+            ValidateImage(text.Trim(), issuePath, label, step.Unit, resourceRoot, draftCheck, issues);
     }
 
     private static void CheckVariable(string path, string issuePath, string label, InputSpec input,
@@ -519,7 +526,7 @@ internal static class ActionValidator
     }
 
     private static void ValidateImage(string image, string issuePath, string label, string unit,
-        string? draftFilesDir, List<ActionIssue> issues)
+        string? resourceRoot, bool draftCheck, List<ActionIssue> issues)
     {
         try
         {
@@ -527,23 +534,33 @@ internal static class ActionValidator
             {
                 issues.Add(new ActionIssue(issuePath, label, unit, "image",
                     File.Exists(image)
-                        ? "引用了草稿外的绝对路径图片（采纳时不会迁移，换机后可能失效）"
+                        ? "引用了绝对路径图片（换机后可能失效）"
                         : $"图片不存在：{image}",
                     IssueSeverity.warning));
                 return;
             }
 
-            // 草稿工作副本：files/x.png（也接受直接写 x.png）
+            // files/x.png（也接受直接写 x.png）
             string relative = image.Replace('\\', '/');
             if (relative.StartsWith("files/", StringComparison.OrdinalIgnoreCase))
                 relative = relative[6..];
 
-            if (draftFilesDir != null)
+            if (!string.IsNullOrWhiteSpace(resourceRoot))
             {
-                string full = Path.Combine(draftFilesDir, relative.Replace('/', Path.DirectorySeparatorChar));
-                if (!File.Exists(full))
+                string full = Path.Combine(resourceRoot, relative.Replace('/', Path.DirectorySeparatorChar));
+                if (File.Exists(full)) return;
+
+                if (draftCheck)
+                {
                     issues.Add(new ActionIssue(issuePath, label, unit, "image",
                         $"草稿里找不到图片：{image}（应写在 files/ 下）", IssueSeverity.error));
+                    return;
+                }
+
+                // 编辑器 / 正式动作：动作目录里没有就按常规顺序找（共享模板、用户素材）。
+                if (!File.Exists(ImageLibrary.Resolve(image, resourceRoot)))
+                    issues.Add(new ActionIssue(issuePath, label, unit, "image",
+                        $"找不到图片：{image}", IssueSeverity.warning));
                 return;
             }
 
