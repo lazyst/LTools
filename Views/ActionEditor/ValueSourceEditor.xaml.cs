@@ -17,6 +17,12 @@ public partial class ValueSourceEditor : UserControl
     private bool _loading;
     private Step? _inline;
 
+    /// <summary>
+    /// 打开时传进来的列表字面量：列表参数按「每行一项」显示，
+    /// 用户没改就原样写回（否则嵌套项 / 数字项会被当成文本重新拆一遍）。
+    /// </summary>
+    private Value? _listLiteral;
+
     public ValueSourceEditor()
     {
         InitializeComponent();
@@ -78,6 +84,10 @@ public partial class ValueSourceEditor : UserControl
                         return StepArg.FromNumber(number);
                     if (Type == ValueKind.@bool && bool.TryParse(text.Trim(), out bool flag))
                         return StepArg.FromBool(flag);
+                    // 列表没改过就保留原值：嵌套项是 JSON，重新按行拆会散架。
+                    if (_listLiteral != null
+                        && string.Equals(text, ListText.Display(_listLiteral), StringComparison.Ordinal))
+                        return StepArg.FromValue(_listLiteral);
                     return StepArg.FromText(text);
             }
         }
@@ -128,7 +138,10 @@ public partial class ValueSourceEditor : UserControl
 
                 default:
                     ModeBox.SelectedIndex = 0;
-                    LiteralBox.Text = value.Literal.AsText();
+                    _listLiteral = value.Literal.Kind == ValueKind.list ? value.Literal : null;
+                    LiteralBox.Text = _listLiteral != null
+                        ? ListText.Display(_listLiteral)
+                        : value.Literal.AsText();
                     break;
             }
 

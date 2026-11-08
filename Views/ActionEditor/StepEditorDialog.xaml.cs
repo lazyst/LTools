@@ -17,7 +17,9 @@ namespace LTools.Views;
 /// </summary>
 /// <remarks>
 /// 输入行来自 <see cref="UnitSpec.Inputs"/>，编辑器形态由 <see cref="InputSpec.Editor"/> 决定；
-/// <c>VisibleWhen</c> 只支持 <c>key == 'value'</c>，切换枚举值时实时收起 / 展开。
+/// 每个输入框下方有一行 <see cref="InputHint"/> 说明「该填什么」。
+/// <c>VisibleWhen</c> 支持 <c>key == 'value'</c>（多个用 <c>||</c> 连接，值可不带引号），
+/// 切换枚举值时实时收起 / 展开。
 /// 「调用子动作」的按名参数由 <see cref="UnitSpec.DynamicInputs"/> + 子动作变量表生成。
 /// </remarks>
 public partial class StepEditorDialog : Window
@@ -226,25 +228,54 @@ public partial class StepEditorDialog : Window
                 var combo = new ComboBox { IsEditable = true, MinHeight = 28, MinWidth = 200 };
                 var names = VariableNameSource?.Invoke()?.ToList() ?? new List<string>();
                 combo.ItemsSource = names;
+                if (input.Type == ValueKind.list)
+                    combo.ToolTip = "写变量名；也可以直接写多项，每行一项或用逗号分隔";
+                else if (input.Type == ValueKind.@object)
+                    combo.ToolTip = "写变量名；对象不能直接内联，先用 JSON 单元取出来";
 
+                // 列表字面量按「每行一项」显示；改了才重写，没改就原样保留
+                //（嵌套项是 JSON，重新拆一遍会散架）。
                 string initial = current == null ? ""
                     : current.Kind == StepArgKind.variable ? current.VariablePath
-                    : current.Literal.AsText();
+                    : ListText.Display(current.Literal);
                 combo.Text = initial;
 
                 // 变量名以「变量引用」保存（保留类型）；少数把名字本身当文本的输入
                 //（flow.set 的 name）仍按字面量存。
                 bool asReference = input.Type != ValueKind.text;
+                bool edited = false;
                 read = () =>
                 {
                     string text = (combo.Text ?? "").Trim();
                     if (!asReference) return StepArg.FromText(text);
-                    if (text.StartsWith("${", StringComparison.Ordinal) && text.EndsWith('}'))
-                        text = text[2..^1].Trim();
+
+                    // 只认「整串就是一个 ${…}」：否则 ${a},${b} 这种内联列表会被当成变量名。
+                    if (text.StartsWith("${", StringComparison.Ordinal) && text.EndsWith('}')
+                        && text.IndexOf('{', 2) < 0 && text.LastIndexOf('}') == text.Length - 1)
+                        return StepArg.FromVar(text[2..^1].Trim());
+
+                    // 列表参数可以直接写字面量（每行一项 / 逗号分隔），绑定参数时拆成列表；
+                    // 写了已有变量名还是按引用走，别把人家的变量名当文本。
+                    if (input.Type == ValueKind.list
+                        && !names.Contains(text, StringComparer.OrdinalIgnoreCase))
+                    {
+                        // 没动过就保留原来的列表值：嵌套项是 JSON，重新按行 / 逗号拆会散架。
+                        if (current != null && current.Kind == StepArgKind.literal
+                            && current.Literal.Kind == ValueKind.list
+                            && (!edited || string.Equals(text, initial, StringComparison.Ordinal)))
+                            return current;
+
+                        return StepArg.FromText(text);
+                    }
+
                     return StepArg.FromVar(text);
                 };
                 combo.AddHandler(TextBoxBase.TextChangedEvent,
-                    new TextChangedEventHandler((_, _) => OnEdited()));
+                    new TextChangedEventHandler((_, _) =>
+                    {
+                        edited = true;
+                        OnEdited();
+                    }));
                 return combo;
             }
 
@@ -428,7 +459,10 @@ public partial class StepEditorDialog : Window
                 var value = new ValueSourceEditor
                 {
                     Type = input.Type,
-                    Multiline = input.Editor == InputEditor.multiline,
+                    // 列表参数按「每行一项」写，单行框看不清也容易误删；
+                    // 绑定参数时仍由引擎按行 / 逗号拆成列表。
+                    Multiline = input.Editor == InputEditor.multiline
+                                || (input.Editor == InputEditor.text && input.Type == ValueKind.list),
                     VariableNameSource = VariableNameSource,
                     Program = Program,
                     Value = current ?? StepArg.FromText(""),
@@ -464,15 +498,40 @@ public partial class StepEditorDialog : Window
             Text = input.Required ? input.Label + " *" : input.Label,
             Foreground = (System.Windows.Media.Brush)FindResource(
                 input.Required ? "TextBrush" : "SecondaryTextBrush"),
-            VerticalAlignment = VerticalAlignment.Center,
+            // 图片选择器是一整块（预览 + 按钮 + 路径），标签贴顶更贴近第一行；
+            // 普通输入框仍居中对齐。
+            VerticalAlignment = editor is TemplateImagePicker
+                ? VerticalAlignment.Top
+                : VerticalAlignment.Center,
+            Margin = editor is TemplateImagePicker ? new Thickness(0, 6, 0, 0) : new Thickness(0),
             TextWrapping = TextWrapping.Wrap,
         };
 
-        if (editor is TemplateImagePicker) row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        // 第一行放输入控件，第二行（有说明时）放「该填什么」——说明不占标签列，
+        // 长文本可以贴着输入框的宽度换行。
+        row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        string hint = InputHint.Of(input);
+        if (hint.Length > 0)
+            row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         row.Children.Add(label);
         Grid.SetColumn(editor, 1);
         row.Children.Add(editor);
+
+        if (hint.Length > 0)
+        {
+            var note = new TextBlock
+            {
+                Text = hint,
+                Style = (Style)FindResource("HintLabel"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 3, 0, 0),
+            };
+            Grid.SetRow(note, 1);
+            Grid.SetColumn(note, 1);
+            row.Children.Add(note);
+        }
+
         host.Children.Add(row);
         return row;
     }

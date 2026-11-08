@@ -157,27 +157,41 @@ sealed class Value {
   所以「有结果」的单元都带 `text` 成员时，`${变量}` 与旧 `VarValue.Text` 一致。
 - 表达式只支持**模板 + 成员/下标访问**（`${a.b}`、`${list[0]}`、`${list.count}`），
   不引入完整表达式语言；需要计算结果时用「计算」单元。
+- 列表写进文本只有一套规则（`Core/Actions/ListText.cs`）：换行 / 逗号都算分隔符
+  （`a,b` 与每行一项等价），项里要带逗号或要嵌套就写 JSON 数组；**绑定时才拆成列表**，
+  `${列表}` 仍是引用、不会被再拆一次；空文本 = 空列表。
 
 ### 3.3 单元声明（关键接口）
 
 ```csharp
 sealed record InputSpec(
-    string Key, string Label, ValueKind Type,
-    InputEditor Editor = InputEditor.Text,      // Text/Multiline/Number/Bool/Enum/File/Image
-    bool Required = false, object? Default = null,
-    string? VisibleWhen = null);                // 例如 "operation == 'resize'"
+    string Key, string Label, ValueKind? Type,
+    InputEditor Editor = InputEditor.text,      // text / multiline / code / number / boolean /
+                                                // enumList / file / folder / image / region / variable / condition
+    bool Required = false, Value? Default = null,
+    string? VisibleWhen = null,                 // 例如 "operation == 'resize'"，多个条件用 || 连接
+    IReadOnlyList<string>? Options = null,      // 枚举的英文键
+    IReadOnlyDictionary<string, string>? Labels = null,
+    bool Raw = false,                           // 代码参数：不做 ${变量} 模板渲染
+    string? Description = null);                // 输入框下方的「该填什么」
 
-sealed record OutputSpec(string Key, string Label, ValueKind Type, string? DefaultVariable = null);
+sealed record OutputSpec(
+    string Key, string Label, ValueKind? Type,
+    string? DefaultVariable = null, string? Description = null);
 
-enum UnitKind { Action, Pure }                  // Pure = 只算值，可在值位置内联
+enum UnitKind { action, pure }                  // pure = 只算值，可在值位置内联
 
 interface IStepUnit {
     UnitSpec Spec { get; }                       // 静态元数据，只声明一次
-    StepResult Execute(StepContext ctx, StepArgs args);
+    void Execute(StepContext ctx, StepArgs args);
 }
 ```
 
 编辑器、参数校验、步骤摘要全部由 `Spec` 生成；**新增一个单元 = 新增一个类 + 一行注册**。
+
+**参数说明**：每个输入框下方都有一行「该填什么」（`Core/Actions/InputHint`）。单元写了
+`Description` 就用它（单位、格式、可填哪些值），没写时按 `Type` / `Editor` 给默认说明
+（文本 / 数字 / 文件路径 / 屏幕区域…）；下拉与开关本身说明了选项，默认不加说明。
 
 **取值单元（Pure）**：今天的「取值器」并入这套模型，但标记为 `UnitKind.Pure`，
 可以出现在任何「值」的位置（参数、条件左右值），不需要先落成一个步骤。
@@ -254,15 +268,25 @@ sealed class SubActionDef {
 | 分类 | 单元（W2 已实现） | 对应今天的 |
 |---|---|---|
 | **文本** | `text.selection` 取选中文字 | Probe.selection |
-| | `text.clipboard` 读写剪贴板 | setClipboard / Probe.clipboard |
+| | `text.clipboard` 读写剪贴板（纯文本 / HTML / RTF） | setClipboard / Probe.clipboard |
 | | `text.send` 发送文本 | sendText |
 | | `text.process` 去空白/大小写/替换/截取/分割/拼接/查找 | 新增（合并零碎操作） |
+| | `text.regex` 正则全部命中（可指定分组）→ 列表 | 新增（W8） |
 | **文件** | `file.open` 打开文件/文件夹/网址 | openFile/openFolder/openUrl |
 | | `file.select` 选择文件/文件夹 | 新增 |
 | | `file.read` / `file.write` 读写文本 | 新增 |
 | | `file.operation` 复制/移动/删除/建目录/重命名 | 新增 |
-| | `file.exists` 存在/类型/大小/修改时间 | 新增 |
+| | `file.exists` 存在/类型/大小/修改时间/创建时间/只读·隐藏·系统/目录文件数/快捷方式目标 | 新增 |
 | | `file.explorer` 在资源管理器中定位 | 新增 |
+| | `file.list` 列目录 → 路径列表（通配符 / 递归 / 只文件或文件夹） | 新增（W8） |
+| | `file.selection` 选中的文件（资源管理器 COM / 桌面 UIA）→ 路径列表 | 新增（W9） |
+| | `file.explorerPath` 资源管理器当前目录 + 全部已打开目录 | 新增（W9） |
+| | `file.tempPath` 生成临时文件路径 | 新增（W9） |
+| | `file.folderPath` 桌面/下载/文档/临时/AppData 等系统文件夹 | 新增（W9） |
+| | `file.hash` 文件哈希（MD5 / SHA-1 / SHA-256 / CRC32） | 新增（W9） |
+| | `clipboard.files` 剪贴板文件列表（读写，可剪切） | 新增（W9） |
+| | `clipboard.image` 剪贴板图片（→ png 文件 / png 写回剪贴板） | 新增（W9） |
+| | `image.info` 图片宽高 / 格式 / EXIF 方向与拍摄时间 | 新增（W9） |
 | **程序** | `app.launch` 启动程序 | launchApp |
 | | `app.runCommand` 运行命令（→ 退出码/stdout/stderr） | runCommand |
 | | `app.process` 进程数量/进程号/结束进程 | Probe.process |
@@ -289,6 +313,7 @@ sealed class SubActionDef {
 | **子动作** | `sub.run` 调用子动作（W3） | 新增 |
 | **数据** | `data.noteWrite` / `data.noteRead` 速记 | quickNote / Probe.note |
 | | `data.list` 列表增删改查/排序/去重 | 新增 |
+| | `data.json` JSON 文本 → 值 / 列表，支持 `a.b[0]` 取值路径 | 新增（W8） |
 | | `data.calc` 数值计算 | 新增 |
 | | `data.time` 当前时间/格式化/偏移 | 新增 |
 | **界面** | `ui.toast` 提示 | toast |
@@ -297,8 +322,7 @@ sealed class SubActionDef {
 
 **粒度原则**：能用一个 `operation` 参数区分的微操作，合并在同一个单元里
 （`text.process`、`file.operation`、`window.operate`、`data.list`、`data.calc`），
-否则工具箱会变成今天 Quicker 的 119 项。`text.format` 已并入模板 + `text.process join`；
-`data.json` 留到后期按需要再加。
+否则工具箱会变成今天 Quicker 的 119 项。`text.format` 已并入模板 + `text.process join`。
 
 ### 3.7 迁移规则
 
@@ -674,6 +698,107 @@ AHK 默认用**模态对话框**显示运行时错误、以及 `#Warn` 警告；
 仍写回 / 超时中止）；`PanelSmoke` 全绿（截图 `step-editor-ahk.png` /
 `step-editor-ahk-error.png`；断言等宽多行、260px 高、「检查语法」按钮、
 错误红字带 `第 1 行`）。
+
+---
+
+### W8 列表的来源（「获取列表」）✅
+
+反馈：「有列表变量，但缺少获取列表的功能」。核对后的结论：**读取侧本来就全**
+（`flow.forEach`、`${列表.count}`、`${列表.0}`、拼接 / 去重 / 排序），缺的是**产出**
+以及两处写法（变量默认值存不进去、参数里没法内联列表）。
+
+**产出（三个新单元）**
+
+| 单元 | 用途 |
+|---|---|
+| `file.list` | 目录 + 通配符（`*.txt;*.log`）+ 是否递归 + 只文件 / 只文件夹 → 路径列表；`最多项数` 填 0 = 不限，超出置 `truncated` |
+| `data.json` | JSON 文本 → 值；`取值路径` 支持 `a.b[0]`，结果是数组时同时给 `list`；语法错误直接失败，路径不存在只是 `found = false` |
+| `text.regex` | 正则全部命中（可指定分组）→ 列表；没命中只是 `found = false`，正则写错才失败 |
+
+**写法（`Core/Actions/ListText.cs`，唯一规则）**
+
+- 参数或变量默认值里写列表：换行 / 逗号都算分隔符（`a,b` 与每行一项等价），
+  项里要带逗号或要嵌套时写 JSON 数组（`["a,b", 1]`）。
+- 列表参数在**绑定参数时**才拆成列表（`ActionEngine.CoerceInput`）：`${列表}` 仍是引用、
+  不会被再拆一次，空文本 = 空列表（「文本」变量当累加器时第一轮就是空）。
+- 变量表的列表 / 对象默认值框变成多行：显示走 `ListText.Display`（列表回填成每行一项，
+  不再是 `[a, b]`），保存走 `ListText.TryParseDefault`。**填错提示并拦住保存**，
+  不再像以前那样静默丢掉——以前 `ReadVariables` 对列表 / 对象一律给 `null`，
+  列表默认值永远存不进去。
+- 参数对话框里列表参数仍能选已有变量；既不是 `${…}`、也不是已有变量名时按字面量存
+  （以前会被当变量名，运行时才报「变量不存在」）。
+
+**验收**：构建 0 错 0 警；`ActionSmoke` 713 项（新增 66：内联列表遍历 + JSON 数组内联 /
+变量默认值列表 / `ListText` 文本规则 / 列目录的当前层·递归·只文件夹·截断 /
+JSON 取值与错误 / 正则分组与错误）；
+`PanelSmoke` 全绿（新增断言：列表变量的默认值是多行框、显示成每行一项、`ReadVariables`
+能原样存回；截图 `action-editor-list-var.png`）。
+
+---
+
+### W9 剪贴板载荷 / 文件 / 图片（「从选中获取路径」）✅
+
+反馈：「想要『从选中的文件获取路径』『从剪贴板读文件 / 图片』这类编写效率功能」。
+按 Quicker 的对应单元（REA 核对 `sys.clipboard*` / `sys.fileOperation` / `sys.image` 的参数与输出）
+补齐成一套完整的剪贴板 / 文件 / 图片工具，共 10 个新单元 + 2 处扩展。
+
+**新增单元**
+
+| 单元 | 用途 | 输出 |
+|---|---|---|
+| `clipboard.files` | 读 / 写剪贴板里的文件列表（CF_HDROP），`cut` = 粘贴后移动 | `list` `count` `first` `names` `text` `cut` `found` |
+| `clipboard.image` | 剪贴板图片 → png 文件；png 文件 → 剪贴板（PNG + CF_DIB） | `path` `width` `height` `found` |
+| `clipboard.history` | Windows 剪贴板历史（Win+V）：列出 / 删一条（`id` 留空 = 最新一条） | `items` `texts` `ids` `count` `first` `deleted` `found` |
+| `clipboard.clear` | 清空当前剪贴板；`includeHistory` 连 Win+V 历史一起清 | `cleared` `count` |
+| `file.selection` | 资源管理器 / 桌面里选中的文件与文件夹 | `list` `count` `first` `names` `folder` `text` `found` |
+| `file.explorerPath` | 前台资源管理器当前目录；另给全部已打开窗口的目录 | `path` `all` `count` `found` |
+| `file.tempPath` | 生成一个未被占用的临时文件路径（不创建文件） | `path` `folder` |
+| `file.folderPath` | 桌面 / 下载 / 文档 / 图片 / 临时 / AppData / 程序目录… | `path` `found` |
+| `image.info` | 图片宽高、格式、EXIF 方向与拍摄时间 | `width` `height` `format` `orientation` `exifDate` `found` |
+| `file.hash` | MD5 / SHA-1 / SHA-256 / CRC32（流式，大文件也行） | `hash` `algorithm` `size` `found` |
+
+**扩展**
+
+- `text.clipboard` 增加 `format = text | html | rtf`：读 HTML 时给 CF_HTML 的 Fragment 段，
+  写 HTML 时按规范补 `StartHTML` / `StartFragment` 偏移（只写这一种格式，整块替换剪贴板）。
+- `file.exists` 增加 `createTime` / `isReadOnly` / `isHidden` / `isSystem` /
+  `fileCount` / `totalSize`（目录取顶层文件，不含子目录）/ `lnkTarget`（`.lnk` 目标）。
+
+**「选中的文件」怎么取（`Features/Selection/`）**
+
+- 主路径 `ShellBridge`：`Shell.Application` 枚举 `Windows()`，按前台窗口 `HWND` 匹配，
+  Win11 多标签靠窗口标题（= 活动标签的文件夹名）挑出活动标签那个；桌面不在 `ShellWindows` 里，
+  改从 `NameSpace(0)` 取目录、用 UIA 读选中图标的名字再映射回桌面目录（含公共桌面）。
+  COM 与 UIA 都在 `Native/StaRunner` 起的临时 STA 线程上跑（动作本身在 MTA 后台线程）。
+- 兜底 `SelectionFallback`（参数 `useClipboardFallback`，**默认关**）：给前台发 Ctrl+C 读剪贴板。
+  只服务资源管理器之外的第三方文件管理器；它会模拟按键、临时占用剪贴板，所以默认不启用。
+  剪贴板原内容是文本 / 文件列表时用完还原，原本为空则保留这次复制的结果。
+- 拿不到就只是 `found = false`（不报错、不弹窗）：后续用「条件」判断要不要继续。
+
+**剪贴板载荷（`Native/NativeClipboard.cs`）**
+
+- 全部走原始 Win32（`OpenClipboard` / `GetClipboardData`），不走 WinForms OLE——
+  工作线程是裸 STA 无消息泵，OLE 跨进程读取会阻塞数秒（见文件头注释）。
+- 覆盖 `CF_HDROP`（含 `Preferred DropEffect` 复制 / 剪切）、`CF_DIB` / `CF_DIBV5` 与注册格式
+  `PNG`（CF_DIB 读入时补 `BITMAPFILEHEADER` 再交给 WPF 解码）、`HTML Format`、`Rich Text Format`。
+- 剪贴板是全局独占资源，`OpenClipboard` 失败会重试 5 次 × 15ms（约 60ms 上限，远小于钩子 300ms 约束）。
+
+**剪贴板历史（`Native/ClipboardHistory.cs`）**
+
+- 走 WinRT 的 `Clipboard.GetHistoryItemsAsync` / `DeleteItemFromHistory` / `ClearHistory`：
+  非打包 + 提权的桌面进程实测可用（`Status = Success`）。异步方法在动作线程上同步等待，
+  后台 MTA 线程没有同步上下文，不会死锁。
+- **只能删，不能改**：历史条目是系统快照，没有编辑接口——「改」只能是删掉再写一条。
+- 值模型没有句柄类型，所以删除按 `id` 重新查一遍历史再定位；`id` 留空 = 最新一条。
+- 系统关掉「剪贴板历史记录」时返回 `ClipboardHistoryDisabled`，翻成可照着做的提示并抛错
+  （这是环境没准备好，不是「没找到」，静默给空列表会让人以为历史里真没东西）；
+  删一条不存在的记录只是 `deleted = false`，不打断流程。
+
+**验收**：构建 0 错 0 警；`ActionSmoke` 856 项（新增 115：文件列表 / 剪切标记 / 图片往返 /
+HTML·RTF 往返 / `file.hash` 已知值 / `file.exists` 新字段 / 临时路径 / 系统文件夹 / 图片信息 /
+前台为资源管理器时读到当前目录与真实选中项 / 降级时不动剪贴板；另加剪贴板历史的列出形状、
+删不存在的记录、清空当前剪贴板）；
+`PanelSmoke` 全绿（新增断言：工具箱出现这 10 个单元）；`UnitShots` 21 个参数对话框全绿。
 
 ---
 

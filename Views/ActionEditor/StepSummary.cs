@@ -117,40 +117,16 @@ internal static class StepSummary
 
     // —— VisibleWhen ——
 
-    private static readonly Regex VisibleRule = new(
-        @"^\s*(?<key>\w+)\s*==\s*'(?<value>[^']*)'\s*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
     /// <summary>
-    /// 按 <see cref="InputSpec.VisibleWhen"/> 判断参数行是否显示。
-    /// 只支持 <c>key == 'value'</c>（单元声明里只用了这一种），解析不了就当可见。
+    /// 按 <see cref="InputSpec.VisibleWhen"/> 判断参数行是否显示（规则见 <see cref="VisibleWhen"/>）。
     /// </summary>
-    public static bool IsVisible(InputSpec input, Step step, UnitSpec spec)
-    {
-        if (!TryGetVisibleRule(input, out string key, out string expected)) return true;
-
-        if (step.In.TryGetValue(key, out var arg)) return arg.Literal.AsText() == expected;
-
-        var dependency = spec.Inputs.FirstOrDefault(i =>
-            string.Equals(i.Key, key, StringComparison.OrdinalIgnoreCase));
-        return dependency?.Default?.AsText() == expected;
-    }
+    public static bool IsVisible(InputSpec input, Step step, UnitSpec spec) =>
+        VisibleWhen.IsVisible(input, step.In, spec);
 
     /// <summary>
-    /// 解析 <see cref="InputSpec.VisibleWhen"/> 的 <c>key == 'value'</c> 形式。
+    /// 解析 <see cref="InputSpec.VisibleWhen"/> 的第一条 <c>key == 'value'</c>。
     /// 参数对话框用它把「配套枚举」切到让这一行出现的值（框选完自动切到「固定区域」）。
     /// </summary>
-    public static bool TryGetVisibleRule(InputSpec input, out string key, out string value)
-    {
-        key = "";
-        value = "";
-        if (string.IsNullOrWhiteSpace(input.VisibleWhen)) return false;
-
-        Match match = VisibleRule.Match(input.VisibleWhen);
-        if (!match.Success) return false;
-
-        key = match.Groups["key"].Value;
-        value = match.Groups["value"].Value;
-        return true;
-    }
+    public static bool TryGetVisibleRule(InputSpec input, out string key, out string value) =>
+        VisibleWhen.TryGetRule(input, out key, out value);
 }

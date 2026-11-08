@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using LTools.Core.Actions;
 using LTools.Native;
 
@@ -103,15 +104,22 @@ public sealed class ProcessTextUnit : IStepUnit
         {
             new InputSpec("operation", "操作", ValueKind.text, InputEditor.enumList,
                 Required: true, Default: Value.FromText("trim"), Options: Operations),
-            new InputSpec("text", "文本", ValueKind.text, InputEditor.multiline),
-            new InputSpec("list", "列表", ValueKind.list),
-            new InputSpec("find", "查找", ValueKind.text),
-            new InputSpec("replace", "替换为", ValueKind.text),
-            new InputSpec("separator", "分隔符", ValueKind.text, Default: Value.FromText(",")),
+            new InputSpec("text", "文本", ValueKind.text, InputEditor.multiline,
+                Description: "要处理的文本；可写 ${变量}"),
+            new InputSpec("list", "列表", ValueKind.list,
+                Description: "拆分 / 拼接时用：列表变量，或每行一项"),
+            new InputSpec("find", "查找", ValueKind.text,
+                Description: "替换 / 查找时要比对的内容"),
+            new InputSpec("replace", "替换为", ValueKind.text,
+                Description: "替换成什么；留空 = 删掉"),
+            new InputSpec("separator", "分隔符", ValueKind.text, Default: Value.FromText(","),
+                Description: "拆分 / 拼接用的分隔符，例如 , 或 \\n"),
             new InputSpec("start", "起始位置", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(0), VisibleWhen: "operation == 'substring'"),
+                Default: Value.FromNumber(0), VisibleWhen: "operation == 'substring'",
+                Description: "从 0 开始数；超过文本长度会报错"),
             new InputSpec("count", "长度", ValueKind.number, InputEditor.number,
-                VisibleWhen: "operation == 'substring'"),
+                VisibleWhen: "operation == 'substring'",
+                Description: "取多少个字符；留空或 0 = 一直取到末尾"),
         },
         Outputs = new[]
         {
@@ -214,5 +222,78 @@ public sealed class ProcessTextUnit : IStepUnit
         if (list != null) ctx.SetOutput("list", Value.FromList(list));
         if (number != null) ctx.SetOutput("number", Value.FromNumber(number.Value));
         if (found != null) ctx.SetOutput("found", Value.FromBool(found.Value));
+    }
+}
+
+/// <summary>用正则把文本里所有命中提取成列表。</summary>
+public sealed class RegexUnit : IStepUnit
+{
+    public UnitSpec Spec { get; } = new()
+    {
+        Key = "text.regex",
+        Name = "正则提取",
+        Category = "文本",
+        Icon = "filter",
+        Description = "找出全部命中（或其中某一组）放进列表；没命中只是「找到」为假",
+        Kind = UnitKind.pure,
+        Inputs = new[]
+        {
+            new InputSpec("text", "文本", ValueKind.text, InputEditor.multiline, Required: true,
+                Description: "要匹配的文本；可写 ${变量}"),
+            new InputSpec("pattern", "正则", ValueKind.text, Required: true,
+                Description: "正则表达式（.NET 写法）；写错会直接失败"),
+            new InputSpec("group", "分组", ValueKind.number, InputEditor.number,
+                Default: Value.FromNumber(0),
+                Description: "取第几个括号分组；0 = 整个匹配"),
+            new InputSpec("ignoreCase", "忽略大小写", ValueKind.@bool, InputEditor.boolean),
+        },
+        Outputs = new[]
+        {
+            new OutputSpec("list", "列表", ValueKind.list, "matches",
+                Description: "全部命中（取分组时是那个分组的文本），可直接给「遍历列表」"),
+            new OutputSpec("count", "数量", ValueKind.number, Description: "命中个数"),
+            new OutputSpec("text", "第一个", ValueKind.text, Description: "第一个命中的文本"),
+            new OutputSpec("found", "找到", ValueKind.@bool, Description: "是否至少命中一次"),
+        },
+    };
+
+    public void Execute(StepContext ctx, StepArgs args)
+    {
+        string text = args.Text("text");
+        string pattern = args.Text("pattern");
+        if (pattern.Length == 0) throw new ActionException("正则为空");
+
+        int group = (int)Math.Round(args.Number("group"));
+        if (group < 0) throw new ActionException($"分组不能是负数（当前 {group}）");
+
+        var options = RegexOptions.CultureInvariant;
+        if (args.Bool("ignoreCase")) options |= RegexOptions.IgnoreCase;
+
+        var matches = new List<Value>();
+        try
+        {
+            var regex = new Regex(pattern, options, TimeSpan.FromSeconds(2));
+            foreach (Match match in regex.Matches(text))
+            {
+                if (group >= match.Groups.Count)
+                    throw new ActionException(
+                        $"正则只有 {match.Groups.Count - 1} 个分组（当前要第 {group} 组）");
+
+                matches.Add(Value.FromText(match.Groups[group].Value));
+            }
+        }
+        catch (RegexMatchTimeoutException ex)
+        {
+            throw new ActionException("正则匹配超过 2 秒仍未结束，检查是否写成了灾难性回溯", ex);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ActionException($"正则写法不对：{ex.Message}", ex);
+        }
+
+        ctx.SetOutput("list", Value.FromList(matches));
+        ctx.SetOutput("count", Value.FromNumber(matches.Count));
+        ctx.SetOutput("text", Value.FromText(matches.Count > 0 ? matches[0].AsText() : ""));
+        ctx.SetOutput("found", Value.FromBool(matches.Count > 0));
     }
 }

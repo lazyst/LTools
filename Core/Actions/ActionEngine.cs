@@ -433,7 +433,7 @@ public sealed class ActionEngine
                 provided.Add(input.Key);
                 value = input.Default;
             }
-            else if (input.Required)
+            else if (input.Required && VisibleWhen.IsVisible(input, step.In, spec))
             {
                 throw new ActionException($"「{spec.Name}」缺少必填参数「{input.Label}」");
             }
@@ -442,7 +442,7 @@ public sealed class ActionEngine
                 value = Value.Empty;
             }
 
-            try { values[input.Key] = provided.Contains(input.Key) ? value.Coerce(input.Type) : Value.Empty; }
+            try { values[input.Key] = provided.Contains(input.Key) ? CoerceInput(input, value) : Value.Empty; }
             catch (ActionException ex)
             {
                 throw new ActionException($"参数「{input.Label}」类型不对：{ex.Message}", ex);
@@ -467,6 +467,30 @@ public sealed class ActionEngine
         }
 
         return new StepArgs(values, provided);
+    }
+
+    /// <summary>
+    /// 绑定参数时的类型转换（唯一一处做隐式转换的地方）。
+    /// </summary>
+    /// <remarks>
+    /// 列表参数允许直接写字面量（<c>a,b,c</c> / 每行一项）：参数框里本来就没法写列表，
+    /// 以前只能先摆一个「拆分」步骤。拆法统一走 <see cref="ListText.Parse"/>，
+    /// 变量引用（<c>${列表}</c>）仍然解析成列表本身，不会被再拆一次。
+    /// </remarks>
+    private static Value CoerceInput(InputSpec input, Value value)
+    {
+        // 空文本也算空列表（和 Value.AsList 一致）：声明的类型是「文本」的变量
+        // 常被拿来当累加器，第一次往里追加时值是空文本，不该在这里报类型错。
+        if (input.Type == ValueKind.list && value.Kind == ValueKind.text)
+        {
+            if (!ListText.TryParseDefault(ValueKind.list, value.AsText(),
+                    out Value? list, out string error))
+                throw new ActionException(error);
+
+            return list ?? Value.FromList();
+        }
+
+        return value.Coerce(input.Type);
     }
 
     private void ValidateProgram(ActionProgram program)

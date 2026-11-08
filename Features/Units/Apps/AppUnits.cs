@@ -18,14 +18,19 @@ public sealed class RunCommandUnit : IStepUnit
         Description = "执行命令行；捕获模式下返回 stdout / stderr / 退出码，不打开窗口",
         Inputs = new[]
         {
-            new InputSpec("command", "命令", ValueKind.text, InputEditor.multiline, Required: true),
+            new InputSpec("command", "命令", ValueKind.text, InputEditor.multiline, Required: true,
+                Description: "一行或多行命令，按所选终端执行；可写 ${变量}"),
             new InputSpec("terminal", "终端", ValueKind.text, InputEditor.enumList,
-                Default: Value.FromText("direct"), Options: Terminals),
+                Default: Value.FromText("direct"), Options: Terminals,
+                Description: "用哪个 shell 执行（CMD / PowerShell / Git Bash / WSL）"),
             new InputSpec("capture", "捕获输出", ValueKind.@bool, InputEditor.boolean,
-                Default: Value.FromBool(true)),
+                Default: Value.FromBool(true),
+                Description: "勾上 = 后台执行并收下 stdout / stderr / 退出码；不勾 = 打开窗口直接跑"),
             new InputSpec("keepWindow", "保持窗口", ValueKind.@bool, InputEditor.boolean,
-                Default: Value.FromBool(false), VisibleWhen: "capture == false"),
-            new InputSpec("workdir", "工作目录", ValueKind.text, InputEditor.folder),
+                Default: Value.FromBool(false), VisibleWhen: "capture == false",
+                Description: "跑完不关窗口；捕获模式下没有窗口，这个选项不生效"),
+            new InputSpec("workdir", "工作目录", ValueKind.text, InputEditor.folder,
+                Description: "命令的工作目录；留空 = 程序所在目录"),
         },
         Outputs = new[]
         {

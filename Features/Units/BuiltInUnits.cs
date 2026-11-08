@@ -27,9 +27,12 @@ public static class BuiltInUnits
         registry.Register(new ToastUnit());
         registry.Register(new UserInputUnit());
         registry.Register(new ClipboardUnit());
+        registry.Register(new ClipboardHistoryUnit());
+        registry.Register(new ClipboardClearUnit());
         registry.Register(new SelectionUnit());
         registry.Register(new SendTextUnit());
         registry.Register(new ProcessTextUnit());
+        registry.Register(new RegexUnit());
 
         // —— 文件 ——
         registry.Register(new OpenPathUnit());
@@ -38,7 +41,16 @@ public static class BuiltInUnits
         registry.Register(new WriteFileUnit());
         registry.Register(new FileOperationUnit());
         registry.Register(new PathInfoUnit());
+        registry.Register(new ListFolderUnit());
         registry.Register(new ExplorerUnit());
+        registry.Register(new ClipboardFilesUnit());
+        registry.Register(new ClipboardImageUnit());
+        registry.Register(new FileSelectionUnit());
+        registry.Register(new ExplorerPathUnit());
+        registry.Register(new TempPathUnit());
+        registry.Register(new FolderPathUnit());
+        registry.Register(new ImageInfoUnit());
+        registry.Register(new FileHashUnit());
 
         // —— 程序 ——
         registry.Register(new LaunchAppUnit());
@@ -72,6 +84,7 @@ public static class BuiltInUnits
         registry.Register(new NoteWriteUnit());
         registry.Register(new NoteReadUnit());
         registry.Register(new ListUnit());
+        registry.Register(new JsonUnit());
         registry.Register(new CalcUnit());
         registry.Register(new TimeUnit());
 

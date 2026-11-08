@@ -102,11 +102,14 @@ public sealed class FindImageUnit : IStepUnit
             new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region,
                 VisibleWhen: "region == 'rect'"),
             new InputSpec("minScore", "最低相似度", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(0.85)),
+                Default: Value.FromNumber(0.85),
+                Description: "0–1，越高越严格；找不到时可降到 0.7 左右再试"),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(0)),
+                Default: Value.FromNumber(0),
+                Description: "找不到时最多等这么久；0 = 只找一次"),
             new InputSpec("intervalMs", "轮询间隔毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(200)),
+                Default: Value.FromNumber(200),
+                Description: "等待期间每隔多久再找一次"),
         },
         Outputs = new[]
         {

@@ -72,6 +72,11 @@ internal static class OptionLabels
         ["show"] = "在资源管理器中定位",
         ["open"] = "用默认程序打开",
 
+        // —— 列出文件夹 ——
+        ["files"] = "只文件",
+        ["folders"] = "只文件夹",
+        ["both"] = "文件和文件夹",
+
         // —— 编码 ——
         ["utf8"] = "UTF-8",
         ["utf8bom"] = "UTF-8（带 BOM）",
@@ -104,6 +109,27 @@ internal static class OptionLabels
         ["write"] = "写入剪贴板",
         ["type"] = "逐字输入",
         ["paste"] = "粘贴",
+
+        // —— 剪贴板格式（text.clipboard）——
+        ["text"] = "纯文本",
+        ["html"] = "HTML",
+        ["rtf"] = "RTF",
+
+        // —— 系统文件夹（file.folderPath）——
+        ["desktop"] = "桌面",
+        ["downloads"] = "下载",
+        ["documents"] = "文档",
+        ["pictures"] = "图片",
+        ["music"] = "音乐",
+        ["videos"] = "视频",
+        ["temp"] = "临时目录",
+        ["appdata"] = "漫游数据（AppData）",
+        ["localAppData"] = "本地数据（LocalAppData）",
+        ["programFiles"] = "程序目录",
+        ["programFilesX86"] = "程序目录（32 位）",
+        ["startup"] = "启动目录",
+        ["userProfile"] = "用户目录",
+        ["dataRoot"] = "LTools 数据目录",
 
         // —— 提示弹窗（ui.toast）——
         ["default"] = "跟随设置",

@@ -16,9 +16,11 @@ public sealed class SendKeysUnit : IStepUnit
         Description = "依次发送按键组合、短文本或等待；条目写法 ctrl+s / text:你好 / sleep:200",
         Inputs = new[]
         {
-            new InputSpec("keys", "按键", Editor: InputEditor.multiline, Required: true),
+            new InputSpec("keys", "按键", Editor: InputEditor.multiline, Required: true,
+                Description: "ctrl+s / text:文字 / sleep:200，每行一项"),
             new InputSpec("focusDelayMs", "焦点延时毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(50)),
+                Default: Value.FromNumber(50),
+                Description: "发送前等多久，给目标窗口切到前台的时间"),
         },
     };
 

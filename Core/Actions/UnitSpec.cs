@@ -73,6 +73,11 @@ public enum BodyKind
 /// true = 字面量**原样**传入，不做 <c>${变量}</c> 模板渲染。代码类参数（<see cref="InputEditor.code"/>）
 /// 必须打开，否则脚本里的 <c>${…}</c> 会被求值，甚至因为变量不存在而整步失败。
 /// </param>
+/// <param name="Description">
+/// 一句话说明「这个框里该填什么」：格式、单位、可填变量与否、常见取值。
+/// 参数表单把它显示在输入框下方（见 <c>Core/Actions/InputHint</c>）；不填时按 <see cref="Type"/> /
+/// <see cref="Editor"/> 给一句默认说明，所以必填项之外不必逐条重复「文本」「数字」这类废话。
+/// </param>
 public sealed record InputSpec(
     string Key,
     string Label,
@@ -83,7 +88,8 @@ public sealed record InputSpec(
     string? VisibleWhen = null,
     IReadOnlyList<string>? Options = null,
     IReadOnlyDictionary<string, string>? Labels = null,
-    bool Raw = false);
+    bool Raw = false,
+    string? Description = null);
 
 /// <summary>一个输出参数的声明。输出要写哪个变量由步骤的 <c>out</c> 映射决定。</summary>
 /// <param name="Key">输出键。</param>

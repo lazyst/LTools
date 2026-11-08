@@ -363,8 +363,10 @@ public sealed class PathInfoUnit : IStepUnit
         Kind = UnitKind.pure,
         Inputs = new[]
         {
-            new InputSpec("path", "路径", ValueKind.text, InputEditor.file, Required: true),
-            new InputSpec("workdir", "工作目录", ValueKind.text, InputEditor.folder),
+            new InputSpec("path", "路径", ValueKind.text, InputEditor.file, Required: true,
+                Description: "文件或文件夹路径；可写 ${变量}"),
+            new InputSpec("workdir", "工作目录", ValueKind.text, InputEditor.folder,
+                Description: "「路径」填相对路径时的基准目录"),
         },
         Outputs = new[]
         {
@@ -373,6 +375,16 @@ public sealed class PathInfoUnit : IStepUnit
             new OutputSpec("isFolder", "是目录", ValueKind.@bool, Description: "是不是目录"),
             new OutputSpec("size", "字节数", ValueKind.number, Description: "文件大小（字节）"),
             new OutputSpec("modified", "修改时间", ValueKind.text, Description: "最后修改时间"),
+            new OutputSpec("createTime", "创建时间", ValueKind.text, Description: "创建时间"),
+            new OutputSpec("isReadOnly", "只读", ValueKind.@bool, Description: "是否只读"),
+            new OutputSpec("isHidden", "隐藏", ValueKind.@bool, Description: "是否隐藏"),
+            new OutputSpec("isSystem", "系统", ValueKind.@bool, Description: "是否系统文件"),
+            new OutputSpec("fileCount", "文件数", ValueKind.number,
+                Description: "目录里顶层文件个数（文件恒为 0；不含子目录）"),
+            new OutputSpec("totalSize", "总字节数", ValueKind.number,
+                Description: "目录里顶层文件总大小（文件恒为 0；不含子目录）"),
+            new OutputSpec("lnkTarget", "快捷方式目标", ValueKind.text,
+                Description: "是 .lnk 时给出它指向的路径"),
         },
     };
 
@@ -381,29 +393,107 @@ public sealed class PathInfoUnit : IStepUnit
         string path = FileText.Resolve(args.Text("path"), args.Text("workdir"));
         bool isFile = File.Exists(path);
         bool isFolder = Directory.Exists(path);
+        bool exists = isFile || isFolder;
 
-        ctx.SetOutput("exists", Value.FromBool(isFile || isFolder));
+        ctx.SetOutput("exists", Value.FromBool(exists));
         ctx.SetOutput("isFile", Value.FromBool(isFile));
         ctx.SetOutput("isFolder", Value.FromBool(isFolder));
+
+        if (!exists)
+        {
+            ctx.SetOutput("size", Value.FromNumber(0));
+            ctx.SetOutput("modified", Value.FromText(""));
+            ctx.SetOutput("createTime", Value.FromText(""));
+            ctx.SetOutput("isReadOnly", Value.FromBool(false));
+            ctx.SetOutput("isHidden", Value.FromBool(false));
+            ctx.SetOutput("isSystem", Value.FromBool(false));
+            ctx.SetOutput("fileCount", Value.FromNumber(0));
+            ctx.SetOutput("totalSize", Value.FromNumber(0));
+            ctx.SetOutput("lnkTarget", Value.FromText(""));
+            return;
+        }
+
+        FileAttributes attributes;
+        DateTime created;
+        DateTime modified;
+        long size = 0;
+        int fileCount = 0;
+        long totalSize = 0;
 
         if (isFile)
         {
             var info = new FileInfo(path);
-            ctx.SetOutput("size", Value.FromNumber(info.Length));
-            ctx.SetOutput("modified", Value.FromText(info.LastWriteTime.ToString(
-                "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)));
-        }
-        else if (isFolder)
-        {
-            var info = new DirectoryInfo(path);
-            ctx.SetOutput("size", Value.FromNumber(0));
-            ctx.SetOutput("modified", Value.FromText(info.LastWriteTime.ToString(
-                "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)));
+            attributes = info.Attributes;
+            created = info.CreationTime;
+            modified = info.LastWriteTime;
+            size = info.Length;
         }
         else
         {
-            ctx.SetOutput("size", Value.FromNumber(0));
-            ctx.SetOutput("modified", Value.FromText(""));
+            var info = new DirectoryInfo(path);
+            attributes = info.Attributes;
+            created = info.CreationTime;
+            modified = info.LastWriteTime;
+
+            try
+            {
+                foreach (var file in info.EnumerateFiles())
+                {
+                    fileCount++;
+                    totalSize += file.Length;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // 无权限的子目录按空处理
+            }
+        }
+
+        ctx.SetOutput("size", Value.FromNumber(size));
+        ctx.SetOutput("modified", Value.FromText(Format(modified)));
+        ctx.SetOutput("createTime", Value.FromText(Format(created)));
+        ctx.SetOutput("isReadOnly", Value.FromBool((attributes & FileAttributes.ReadOnly) != 0));
+        ctx.SetOutput("isHidden", Value.FromBool((attributes & FileAttributes.Hidden) != 0));
+        ctx.SetOutput("isSystem", Value.FromBool((attributes & FileAttributes.System) != 0));
+        ctx.SetOutput("fileCount", Value.FromNumber(fileCount));
+        ctx.SetOutput("totalSize", Value.FromNumber(totalSize));
+        ctx.SetOutput("lnkTarget", Value.FromText(isFile ? ResolveShortcut(path) : ""));
+    }
+
+    private static string Format(DateTime time) =>
+        time == DateTime.MinValue ? "" : time.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+
+    /// <summary>解析 .lnk 指向的路径；不是快捷方式 / 解析失败返回空串。</summary>
+    private static string ResolveShortcut(string path)
+    {
+        if (!string.Equals(Path.GetExtension(path), ".lnk", StringComparison.OrdinalIgnoreCase))
+            return "";
+
+        object? shell = null;
+        try
+        {
+            Type? type = Type.GetTypeFromProgID("WScript.Shell");
+            if (type == null) return "";
+
+            shell = Activator.CreateInstance(type);
+            if (shell == null) return "";
+
+            dynamic link = ((dynamic)shell).CreateShortcut(path);
+            return (string?)link.TargetPath ?? "";
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("File", $"解析快捷方式失败（{path}）：{ex.Message}");
+            return "";
+        }
+        finally
+        {
+            try
+            {
+                if (shell != null && System.Runtime.InteropServices.Marshal.IsComObject(shell))
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(shell);
+            }
+            catch { /* 已释放 */ }
         }
     }
 }
@@ -465,6 +555,125 @@ public sealed class ExplorerUnit : IStepUnit
 
         ctx.SetOutput("path", Value.FromText(path));
         ctx.SetOutput("ok", Value.FromBool(true));
+    }
+}
+
+/// <summary>列出文件夹内容——「从磁盘造出一个列表」的唯一入口。</summary>
+public sealed class ListFolderUnit : IStepUnit
+{
+    private static readonly string[] Includes = { "files", "folders", "both" };
+
+    public UnitSpec Spec { get; } = new()
+    {
+        Key = "file.list",
+        Name = "列出文件夹",
+        Category = "文件",
+        Icon = "folder",
+        Description = "按通配符列出目录里的文件 / 子文件夹（可递归）；「最多项数」填 0 = 不限",
+        Kind = UnitKind.pure,
+        Inputs = new[]
+        {
+            new InputSpec("path", "目录", ValueKind.text, InputEditor.folder, Required: true,
+                Description: "要列出的文件夹；可写 ${变量}"),
+            new InputSpec("pattern", "通配符", ValueKind.text, Default: Value.FromText("*"),
+                Description: "多个用分号分隔，例如 *.txt;*.log；留空 = 全部"),
+            new InputSpec("include", "包含", ValueKind.text, InputEditor.enumList,
+                Default: Value.FromText("files"), Options: Includes,
+                Description: "只要文件 / 只要子文件夹 / 都要"),
+            new InputSpec("recursive", "包含子文件夹", ValueKind.@bool, InputEditor.boolean,
+                Description: "连子文件夹里的内容一起列（大目录会慢）"),
+            new InputSpec("limit", "最多项数", ValueKind.number, InputEditor.number,
+                Default: Value.FromNumber(1000),
+                Description: "超出就停下并置 truncated；填 0 = 不限"),
+            new InputSpec("workdir", "工作目录", ValueKind.text, InputEditor.folder,
+                Description: "「目录」填相对路径时的基准目录"),
+        },
+        Outputs = new[]
+        {
+            new OutputSpec("list", "列表", ValueKind.list, "files",
+                Description: "匹配到的完整路径，直接给「遍历列表」用"),
+            new OutputSpec("count", "数量", ValueKind.number, Description: "实际取到的项数"),
+            new OutputSpec("text", "文本", ValueKind.text, Description: "每行一个路径，方便拼进文本 / 命令"),
+            new OutputSpec("truncated", "被截断", ValueKind.@bool,
+                Description: "超出「最多项数」而没有全部返回时为真"),
+            new OutputSpec("folder", "实际目录", ValueKind.text, Description: "解析后的目录绝对路径"),
+        },
+    };
+
+    public void Execute(StepContext ctx, StepArgs args)
+    {
+        string root = FileText.Resolve(args.Text("path"), args.Text("workdir"));
+        if (!Directory.Exists(root))
+            throw new ActionException($"目录不存在：{root}");
+
+        string include = args.Text("include").Trim().ToLowerInvariant();
+        if (Array.IndexOf(Includes, include) < 0)
+            throw new ActionException($"「包含」只能是 files / folders / both（当前 {include}）");
+
+        int limit = (int)Math.Round(args.Number("limit"));
+        if (limit < 0) throw new ActionException($"「最多项数」不能是负数（当前 {limit}）");
+
+        string patterns = args.Text("pattern").Trim();
+        string[] globs = (patterns.Length == 0 ? "*" : patterns)
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (globs.Length == 0) globs = new[] { "*" };
+
+        var options = new EnumerationOptions
+        {
+            IgnoreInaccessible = true,
+            RecurseSubdirectories = args.Bool("recursive"),
+            AttributesToSkip = 0,
+            MatchCasing = MatchCasing.CaseInsensitive,
+        };
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var found = new List<string>();
+        bool truncated = false;
+
+        try
+        {
+            foreach (string glob in globs)
+            {
+                foreach (string entry in Directory.EnumerateFileSystemEntries(root, glob, options))
+                {
+                    if (!seen.Add(entry)) continue;
+
+                    bool isFolder;
+                    try { isFolder = (File.GetAttributes(entry) & FileAttributes.Directory) != 0; }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
+
+                    bool keep = include switch
+                    {
+                        "files" => !isFolder,
+                        "folders" => isFolder,
+                        _ => true,
+                    };
+                    if (!keep) continue;
+
+                    if (limit > 0 && found.Count >= limit)
+                    {
+                        truncated = true;
+                        break;
+                    }
+
+                    found.Add(entry);
+                }
+
+                if (truncated) break;
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            throw new ActionException($"列目录失败：{ex.Message}", ex);
+        }
+
+        found.Sort(StringComparer.OrdinalIgnoreCase);
+
+        ctx.SetOutput("list", Value.FromList(found.Select(path => Value.FromText(path))));
+        ctx.SetOutput("count", Value.FromNumber(found.Count));
+        ctx.SetOutput("text", Value.FromText(string.Join("\n", found)));
+        ctx.SetOutput("truncated", Value.FromBool(truncated));
+        ctx.SetOutput("folder", Value.FromText(root));
     }
 }
 

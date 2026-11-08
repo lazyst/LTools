@@ -759,14 +759,16 @@ public partial class ActionEditorWindow : Window
         {
             if (_syncingKinds) return;
             row.AutoType = false;
+            SyncDefaultEditor(row);
         };
 
         row.Default = new TextBox
         {
             MinHeight = 26,
-            Text = defaultValue?.AsText() ?? "",
+            Text = ListText.Display(defaultValue),
             FontSize = (double)FindResource("FontSizeHint"),
         };
+        SyncDefaultEditor(row);
 
         var remove = new Button
         {
@@ -841,6 +843,33 @@ public partial class ActionEditorWindow : Window
         VariableRows.Children.Add(grid);
         RefreshVariableTips();
         return row;
+    }
+
+    /// <summary>
+    /// 默认值输入框按类型换形态：列表 / 对象是多行的（每行一项 / JSON），
+    /// 单行框会把它们挤成一条，用户根本看不出自己填了什么。
+    /// </summary>
+    private static void SyncDefaultEditor(VariableRowUi row)
+    {
+        ValueKind kind = (row.Type.SelectedItem as KindChoice)?.Kind ?? ValueKind.text;
+        bool multiline = kind is ValueKind.list or ValueKind.@object;
+
+        row.Default.AcceptsReturn = multiline;
+        row.Default.TextWrapping = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap;
+        row.Default.MinHeight = multiline ? 48 : 26;
+        row.Default.MaxHeight = multiline ? 120 : double.PositiveInfinity;
+        row.Default.VerticalScrollBarVisibility = multiline
+            ? ScrollBarVisibility.Auto
+            : ScrollBarVisibility.Disabled;
+
+        row.Default.ToolTip = kind switch
+        {
+            ValueKind.list => "每行一项，也可以用逗号分隔；项里含逗号或要嵌套时写 JSON 数组，如 [\"a,b\", 1]",
+            ValueKind.@object => "写 JSON 对象，如 {\"a\": 1}",
+            ValueKind.number => "留空 = 0",
+            ValueKind.@bool => "true / false；留空 = false",
+            _ => "留空 = 空文本",
+        };
     }
 
     /// <summary>变量表每次重建后重算提示：来源 + 被几处步骤写入。</summary>
@@ -951,7 +980,7 @@ public partial class ActionEditorWindow : Window
         finally { _syncingKinds = false; }
     }
 
-    private List<VariableDef> ReadVariables()
+    private List<VariableDef>? ReadVariables()
     {
         var list = new List<VariableDef>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -962,16 +991,17 @@ public partial class ActionEditorWindow : Window
             if (key.Length == 0 || !seen.Add(key)) continue;
 
             ValueKind kind = (row.Type.SelectedItem as KindChoice)?.Kind ?? ValueKind.text;
-            string text = row.Default.Text ?? "";
 
-            Value? value = kind switch
+            // 列表 / 对象的默认值以前在这里被直接丢掉（列表只能永远是空的）。
+            // 现在按类型解析；填错就提示并拦住保存，不静默丢值。
+            if (!ListText.TryParseDefault(kind, row.Default.Text, out Value? value, out string error))
             {
-                ValueKind.number when double.TryParse(text.Trim(), NumberStyles.Any,
-                    CultureInfo.InvariantCulture, out double number) => Value.FromNumber(number),
-                ValueKind.@bool when bool.TryParse(text.Trim(), out bool flag) => Value.FromBool(flag),
-                ValueKind.text when text.Length > 0 => Value.FromText(text),
-                _ => null,
-            };
+                ConfirmDialog.Info(this, "变量默认值",
+                    $"「{key}」的默认值填得不对：\n{error}");
+                row.Default.Focus();
+                row.Default.SelectAll();
+                return null;
+            }
 
             list.Add(new VariableDef
             {
@@ -1003,7 +1033,9 @@ public partial class ActionEditorWindow : Window
         _program.Icon = IconPicker.SelectedIcon ?? "";
 
         _program.Variables.Clear();
-        foreach (var variable in ReadVariables()) _program.Variables.Add(variable);
+        var variables = ReadVariables();
+        if (variables == null) return;
+        foreach (var variable in variables) _program.Variables.Add(variable);
 
         // 输出变量永远在变量表里（写配置的人不用再手动补声明）。
         // 子动作不自动补：那里「本地 / 输出」是刻意标记的，补一条反而要用户再改。
@@ -1094,7 +1126,8 @@ public partial class ActionEditorWindow : Window
         string name = (NameBox.Text ?? "").Trim();
         if (name.Length == 0) name = "未命名动作";
 
-        ActionProgram program = BuildRunProgram();
+        ActionProgram? program = BuildRunProgram();
+        if (program == null) return;
 
         // 路径 → 步骤行：等宽两条遍历（程序本身 + 编辑器行），运行时靠路径定位到某一行。
         _traceTargets.Clear();
@@ -1124,11 +1157,14 @@ public partial class ActionEditorWindow : Window
     }
 
     /// <summary>克隆当前编辑器内容：步骤是活的模型，变量表要现读（保存前 <see cref="_program.Variables"/> 是旧的）。</summary>
-    private ActionProgram BuildRunProgram()
+    private ActionProgram? BuildRunProgram()
     {
+        var variables = ReadVariables();
+        if (variables == null) return null;   // 默认值填错，ReadVariables 已经提示过
+
         ActionProgram program = _program.Clone();
         program.Variables.Clear();
-        foreach (var variable in ReadVariables()) program.Variables.Add(variable.Clone());
+        foreach (var variable in variables) program.Variables.Add(variable.Clone());
         return program;
     }
 
