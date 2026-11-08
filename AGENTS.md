@@ -36,6 +36,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - `Core/` — AppState(全局状态)、CapsLockStateMachine、ConfigLocator、TrayService、CrashLog、AutoStartService（任务计划自启 + 路径自愈）
 - `Features/` — 功能模块（TextEditor、MouseMode、MenuSystem、QuickNote 等），非 UI 逻辑
   - 键鼠宏：`MacroRecorder`（录制）/ `MacroPlayer`（回放）/ `MacroStore`（`macros/*.json` 事件 + `Macros.Items` 元数据）/ `MacroSettings`（热键与全局参数）/ `MacroHotkey`（录制 / 回放期间的系统热键）/ `HotkeyCapture`（录制式热键录入）
+- `Features/Units/` — 功能单元（`<分类>/<XxxUnit>.cs`，**一个单元一个文件**；共用的静态小工具如 `FileText` / `Crc32` 放同目录），注册统一在 `BuiltInUnits.RegisterAll`，新增单元只加一行
 - `Views/` — WPF 窗体（XAML + code-behind）；`Views/Controls/` 为共用控件（`TitleBar`、`ActionKindSwitch` 等）
 - `Themes/Modern.xaml` — ResourceDictionary 配色与控件样式
 - `Config/` — AppConfig(JSON 模型)、IniFile(仅旧 ini 迁移用)
@@ -66,6 +67,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 
 ## WPF 约定
 
+- **1000+ 行窗口按职责拆 `partial`**（`Views/SuperPanel.*.cs`、`Views/ActionEditor/ActionEditorWindow.*.cs`）：主文件留字段 / 构造函数 / 窗口事件，其余按「构建 / 导航 / 菜单」「步骤 / 拖动 / 变量 / 试运行」分文件；类名与 XAML 不变，只搬代码不改逻辑。新增分区照这个命名继续拆，别再往主文件里堆
 - `GlobalUsings.cs` 已把 `Button`/`Key`/`MessageBox` 等同名类型统一到 WPF 命名空间——不要引用 WinForms 类型
 - 文件夹选择用 WPF 原生 `Microsoft.Win32.OpenFolderDialog`，不引用 WinForms
 - **`DataGrid` 行高是全局写死的 30**（`Themes/Modern.xaml` 的 `DataGrid` 样式）：`DataGridTemplateColumn` 里别再堆两行（名称 + 副标题），第二行会被裁掉。动作管理的「动作」列就是单行——名称（正常字色）+ 摘要（12px 浅色）同行，长文本靠 `TextTrimming` + `ToolTip`；真需要两行时在该表格实例上设 `RowHeight="Auto"` 并给内容 `MinHeight`，**别改全局样式**（终端路径那个表格靠 30 行高）

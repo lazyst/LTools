@@ -121,12 +121,22 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 - 验收：Debug/Release 0/0；用自检程序逐个域写入，只有目标文件 mtime 变化、`actions/*.json` 不动；
   人为塞一个不存在的动作 Id 进菜单 / 面板，启动修复只重写这两个文件。回滚：文件格式不变，退回旧版本即可。
 
-### P4 · 代码结构（下一步）
+### P4 · 代码结构（窗口与单元已完成，迁移入口待做）
 
-- `Views` 里 1000+ 行的窗口拆成「外壳 + 部件」：
-  `SuperPanel` → 区容器 / 吸附导航 / 搜索 / 拖动；`ActionEditorWindow` → 步骤列表 / 工具箱 / 运行面板 / 变量表。
-- 单元实现按分类分文件（`Features/Units/<分类>/`），新增单元不需要改注册中心。
-- 迁移入口统一到 `Core/Storage/Migrations`：`schemaVersion` 驱动，一次只跑一步。
+- `Views` 里 1000+ 行的窗口拆成「外壳 + 部件」（partial，类名 / XAML 不变，只搬代码）：
+  - `SuperPanel.xaml.cs`（1669 → 449 行）= 外壳 + 未配置提示 + 关闭保存；
+    `SuperPanel.Build.cs`（渲染 / 场景标签 / 分区 / 分组导航 / 磁贴）、
+    `SuperPanel.Navigation.cs`（搜索 / 选中 / 键盘 / 左栏页面切换 / 窗口事件）、
+    `SuperPanel.Menus.cs`（右键菜单 + 磁贴 CRUD）。
+  - `ActionEditorWindow.xaml.cs`（1568 → 355 行）= 外壳 + 字段 / 构造函数 + 行模型；
+    `ActionEditorWindow.Steps.cs`（步骤列表 / 工具箱 / 增删改）、
+    `ActionEditorWindow.DragSort.cs`（拖动排序）、
+    `ActionEditorWindow.Variables.cs`（变量表）、
+    `ActionEditorWindow.Run.cs`（保存 + 试运行）。
+- 单元实现按分类分文件（`Features/Units/<分类>/<XxxUnit>.cs`，一个单元一个文件），
+  共用的静态小工具留在同目录（`FileText.cs` / `Crc32.cs`）；新增单元仍只在 `BuiltInUnits` 加一行。
+- 待做：迁移入口统一到 `Core/Storage/Migrations`（`schemaVersion` 驱动，一次只跑一步）；
+  当前迁移逻辑仍散在 `ConfigBundle` / `ActionPrograms` 里。
 
 ### P5 · 资源与备份
 
@@ -143,7 +153,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | P1 | Debug/Release 0/0；6 个文件生成；只改一个域时其它文件 mtime 不变；旧文件仍可恢复 | 删 `configs/`，把 `LTools.json.migrated` 改回 `LTools.json` |
 | P2 | 采纳草稿后 `actions/<id>/files/` 里直接有图、引用仍是 `files/x.png`；删动作进 `trash/`；改一个动作只重写它自己的 `action.json`；删光动作后重启不复活 | 把 `configs/actions.json.migrated` 改回 `actions.json`、删 `actions/`，回退版本直接读它 |
 | P3 | 逐个域写入只有目标 `configs/*.json` 的 mtime 变化、`actions/*.json` 不动；并发保存不互相覆盖；菜单 / 面板里的悬空动作 Id 在启动时被清掉 | 域文件格式不变，退回旧版本仍能读 |
-| P4 | 窗口拆完后交互与原版一致（跑一遍手动清单） | 纯代码改动，git revert |
+| P4 | 窗口拆完后交互与原版一致（面板建窗 / 切暂存区 / 编辑器载入动作均正常）；单元清单数量不变 | 纯代码改动，git revert |
 
 ## 5. 明确不做
 
