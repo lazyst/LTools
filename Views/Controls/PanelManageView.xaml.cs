@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.Floating;
 using LTools.Features.Panel;
 
 namespace LTools.Views.Controls;
@@ -235,6 +236,10 @@ public partial class PanelManageView : UserControl
         ThresholdText.Text = $"{(int)ThresholdSlider.Value} ms";
         ShowGroupTitlesBox.IsChecked = prefs.ShowGroupTitles;
         CompactTilesBox.IsChecked = prefs.CompactTiles;
+        var fp = FloatingLibrary.Prefs;
+        FloatMiddleCloseBox.IsChecked = fp.MiddleClickClose;
+        FloatTooltipBox.IsChecked = fp.ShowTooltip;
+        FloatSnapBox.IsChecked = fp.SnapToEdges;
         _loading = false;
 
         if (_selectedKey != CommonKey && PanelLibrary.FindScene(_selectedKey) == null)
@@ -312,6 +317,20 @@ public partial class PanelManageView : UserControl
         prefs.CompactTiles = CompactTilesBox.IsChecked == true;
         PanelLibrary.Save();
     }
+
+    /// <summary>悬浮偏好：立即写盘，并重建现有悬浮窗口（悬停说明 / 吸附等要马上生效）。</summary>
+    private void FloatPrefs_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        var prefs = FloatingLibrary.Prefs;
+        prefs.MiddleClickClose = FloatMiddleCloseBox.IsChecked == true;
+        prefs.ShowTooltip = FloatTooltipBox.IsChecked == true;
+        prefs.SnapToEdges = FloatSnapBox.IsChecked == true;
+        FloatingLibrary.SavePreferences();
+        FloatingManager.RefreshAll();
+    }
+
+    private void FloatCloseAll_Click(object sender, RoutedEventArgs e) => FloatingManager.CloseAll();
 
     private void ResetHint_Click(object sender, RoutedEventArgs e)
     {

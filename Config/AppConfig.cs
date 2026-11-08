@@ -107,6 +107,9 @@ public sealed class AppConfig
     /// </summary>
     public PanelConfig? Panel { get; set; }
 
+    /// <summary>悬浮动作 / 悬浮分组（桌面上的置顶按钮，设计见 <c>docs/FLOATING.md</c>）。</summary>
+    public FloatingConfig? Floating { get; set; }
+
     /// <summary>键鼠宏录制配置。</summary>
     public MacroConfig Macros { get; set; } = new();
 

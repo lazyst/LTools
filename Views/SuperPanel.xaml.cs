@@ -11,6 +11,7 @@ using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.Floating;
 using LTools.Features.Panel;
 using LTools.Native;
 using LTools.Views.Controls;
@@ -996,10 +997,25 @@ public partial class SuperPanelWindow : Window
         AddMenuItem(menu, "编辑…", () => EditAction(tref));
         AddMenuItem(menu, "复制", () => DuplicateAction(tref));
         menu.Items.Add(new Separator());
+        string id = tref.ActionId!;
+        bool floating = FloatingLibrary.IsFloating(id);
+        string label = !floating ? "悬浮此动作"
+            : FloatingManager.IsOnDesktop(id) ? "取消悬浮" : "显示悬浮";
+        AddMenuItem(menu, label, () => ToggleFloat(id));
+        menu.Items.Add(new Separator());
         AddMenuItem(menu, "从此组移除", () => RemoveFromGroup(tref));
         AddMenuItem(menu, "删除动作…", () => DeleteAction(tref.ActionId!));
         return menu;
     }
+
+    /// <summary>
+    /// 悬浮 / 取消悬浮一个动作。悬浮项**全局常驻**（不绑进程），所以这里不需要知道前台程序。
+    /// **面板不关**（照 Quicker）：可以接着悬浮下一个动作，不用重新唤面板。
+    /// </summary>
+    private void ToggleFloat(string actionId) => FloatingManager.ToggleAction(actionId);
+
+    /// <summary>「悬浮此分组」：把整组动作一起放上桌面（面板同样不关）。</summary>
+    private void FloatGroupToDesktop(PanelGroupDto group) => FloatingManager.FloatGroup(group);
 
     private ContextMenu BuildMissingMenu(PanelTileRef tref)
     {
@@ -1033,11 +1049,26 @@ public partial class SuperPanelWindow : Window
         AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(group));
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
         menu.Items.Add(new Separator());
+        AddFloatGroupItem(menu, group);
+        menu.Items.Add(new Separator());
         AddMenuItem(menu, "重命名分组…", () => BeginRenameGroup(group, global));
         AddMenuItem(menu, "删除分组…", () => DeleteGroupFromPanel(group, global));
         menu.Items.Add(new Separator());
         AddMenuItem(menu, "在设置中管理…", () => OpenSceneSettings(group, global));
         return menu;
+    }
+
+    /// <summary>分组菜单里的「悬浮此分组」（分组为空或动作都已在桌面时置灰）。</summary>
+    private void AddFloatGroupItem(ContextMenu menu, PanelGroupDto group)
+    {
+        var item = new MenuItem
+        {
+            Header = "悬浮此分组",
+            IsEnabled = group.Actions.Count > 0 && FloatingManager.CanFloatGroup(group),
+            ToolTip = "把这一组的动作放到桌面上（已在桌面上的动作会跳过）",
+        };
+        item.Click += (_, _) => FloatGroupToDesktop(group);
+        menu.Items.Add(item);
     }
 
     /// <summary>
@@ -1057,6 +1088,8 @@ public partial class SuperPanelWindow : Window
 
         if (group != null)
         {
+            AddFloatGroupItem(menu, group);
+            menu.Items.Add(new Separator());
             AddMenuItem(menu, "重命名分组…", () => BeginRenameGroup(group, global));
             AddMenuItem(menu, "删除分组…", () => DeleteGroupFromPanel(group, global));
             menu.Items.Add(new Separator());
@@ -1272,6 +1305,8 @@ public partial class SuperPanelWindow : Window
         {
             if (_openMenu == menu) _openMenu = null;
             if (_interactCount > 0) _interactCount--;
+            // 菜单关掉后焦点回到面板，Windows 可能顺手把面板提到最前；悬浮项要一直盖在面板上面。
+            FloatingManager.RaiseAllAbove();
         };
     }
 

@@ -125,6 +125,26 @@
                     </StackPanel>
                 </Border>
 
+                <TextBlock Style="{StaticResource SectionLabel}" Text="悬浮动作" Margin="0,14,0,8"/>
+                <Border Style="{StaticResource PanelCard}">
+                    <StackPanel>
+                        <CheckBox x:Name="FloatMiddleCloseBox" Content="中键关闭悬浮项"
+                                  Checked="FloatPrefs_Changed" Unchecked="FloatPrefs_Changed"/>
+                        <CheckBox x:Name="FloatTooltipBox" Content="悬停时显示完整动作名（名称过长被截断时）"
+                                  Margin="0,6,0,0" Checked="FloatPrefs_Changed" Unchecked="FloatPrefs_Changed"/>
+                        <CheckBox x:Name="FloatSnapBox" Content="拖动时吸附屏幕边缘"
+                                  Margin="0,6,0,0" Checked="FloatPrefs_Changed" Unchecked="FloatPrefs_Changed"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button Style="{StaticResource Btn}" Content="关闭全部悬浮项"
+                                    Height="26" MinHeight="0" Padding="10,2" FontSize="12"
+                                    Click="FloatCloseAll_Click"/>
+                            <TextBlock Style="{StaticResource HintLabel}" VerticalAlignment="Center"
+                                       Margin="10,0,0,0" TextWrapping="Wrap"
+                                       Text="悬浮项上右键可调大小 / 方向 / 拆分 / 锁定 / 关闭"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
                 <TextBlock Style="{StaticResource HintLabel}" Margin="2,12,0,0" TextWrapping="Wrap"
                            Text="禁止弹出的程序在左侧「面板管理 → 禁止弹出」里管理。"/>
             </StackPanel>

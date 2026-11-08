@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using LTools.Config;
 using LTools.Core;
+using LTools.Features.Floating;
 using LTools.Features.Panel;
 
 namespace LTools.Features;
@@ -72,6 +73,8 @@ internal static class ConfigStore
         MacroStore.CollectGarbage();
         // 模板截图同理：被删动作 / 组合步骤独占的 shot-*.png 立刻回收，不必等下次启动。
         ImageLibrary.CollectGarbage();
+        // 悬浮项按引用回收：动作没了，按钮也跟着消失（分组空了整项移除）。
+        FloatingManager.RefreshAll();
         return true;
     }
 

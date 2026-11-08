@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Interop;
 using LTools.Core;
+using LTools.Features.Floating;
 using LTools.Features.Panel;
 using LTools.Native;
 using LTools.Views;
@@ -84,6 +85,7 @@ internal static class SuperPanel
         var w = _window;
         if (w == null) return;
         try { w.Show(); } catch { /* 恢复失败不影响编辑 */ }
+        FloatingManager.RaiseAllAbove();
     }
 
     /// <summary>屏幕物理坐标点是否落在面板窗口矩形内（供鼠标钩子判定“点击外部”）。</summary>
@@ -160,13 +162,23 @@ internal static class SuperPanel
             };
             _window = win;
             _hiddenForRecording = false;
+            // 悬浮项要永远盖在面板前面（照 Quicker）：两边都是 Topmost，同一层里谁最后
+            // SetWindowPos 谁在前，面板一显示 / 一激活就会把悬浮按钮盖住。面板每次激活都把
+            // 悬浮项重新顶回去（悬浮窗是 WS_EX_NOACTIVATE，不会把焦点从面板抢走）。
+            win.Activated += (_, _) => FloatingManager.RaiseAllAbove();
+            // 在面板里按下鼠标时，Windows 会把面板提到 topmost 带的最前面——即使它已经是活动窗口
+            // （这时不会再触发 Activated）。悬浮项要一直盖在面板上面，所以每次按下都顶一次；
+            // 只改 z 序（SWP_NOACTIVATE），不会把焦点从面板抢走。
+            win.PreviewMouseDown += (_, _) => FloatingManager.RaiseAllAbove();
             win.Show();
             win.Activate();
+            FloatingManager.RaiseAllAbove();
 
             // 刚把前台让给目标窗口，前台锁可能让面板的 Activate() 抢不回来：兜底再抢一次
             var winHwnd = new WindowInteropHelper(win).Handle;
             if (winHwnd != IntPtr.Zero && Win32.GetForegroundWindow() != winHwnd)
                 WindowAction.ActivateNoWait(winHwnd);
+            FloatingManager.RaiseAllAbove();   // 兜底激活也可能把面板提到最前
         }));
     }
 

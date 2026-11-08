@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.Floating;
 using LTools.Features.Migration.Legacy;
 using LTools.Hooks;
 using H.NotifyIcon;
@@ -103,6 +104,7 @@ public partial class App : Application
         AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
         AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
         ConfigStore.Initialize(cfgPath);
+        FloatingLibrary.Initialize(cfgPath);
         QuickNote.Initialize(cfgPath);
         ConfigHelper.Initialize(cfgPath);
         ResourceDir.Ensure();
@@ -126,9 +128,13 @@ public partial class App : Application
         // 模板截图同理：删动作 / 换模板后旧 shot-*.png 没有别处回收，启动时按引用清一次。
         ImageLibrary.CollectGarbage();
 
-        // —— 启动提示：在无钩子阶段同步显示——首个 WPF 窗口的首帧会初始化渲染栈（D3D 等），
+        // —— 启动提示：屏幕右下角的 toast（抽屉式从右侧滑入、点一下就关），不再跟着鼠标弹小字。
+        //    仍在无钩子阶段同步显示：首个 WPF 窗口的首帧会初始化渲染栈（D3D 等），
         //    耗时落在此处，不阻塞任何钩子回调。 ——
-        MouseTip.Show("LTools 已启动");
+        ToastService.Show("LTools 已启动", null, 2500, ToastKind.success);
+
+        // —— 悬浮项无状态：启动不恢复任何按钮（等用户从面板悬浮），只把偏好准备好 ——
+        FloatingManager.Initialize();
 
         // —— 钩子：先预热回调 JIT（把首次 JIT 编译提前到无钩子阶段），再安装 ——
         KeyboardHook.WarmUp();
@@ -152,6 +158,8 @@ public partial class App : Application
         menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("启用 CapsLock 增强", Settings.ToggleCapsLock, () => AppState.IsToolEnabled));
         menu.Items.Add(NewItem("启用超级面板", Settings.ToggleSuperPanel, () => AppState.IsSuperPanelEnabled));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(NewItem("关闭所有悬浮项", FloatingManager.CloseAll));
         menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("退出 LTools", ExitApplication));
 
@@ -303,6 +311,7 @@ public partial class App : Application
     {
         AppLog.Info("App", "退出 LTools");
         _watchdog?.Stop();
+        FloatingManager.Shutdown();
         KeyboardHook.Uninstall();
         MouseHook.Uninstall();
         _tray?.Dispose();
@@ -313,6 +322,7 @@ public partial class App : Application
     /// <summary>无论从托盘退出还是系统注销，都确保日志队列写完（可重复调用）。</summary>
     protected override void OnExit(ExitEventArgs e)
     {
+        FloatingManager.Shutdown();
         AppLog.Shutdown();
         base.OnExit(e);
     }

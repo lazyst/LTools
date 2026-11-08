@@ -3,6 +3,7 @@ using System.Text;
 using System.Windows.Threading;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.Floating;
 using LTools.Native;
 
 namespace LTools.Hooks;
@@ -28,6 +29,9 @@ internal static class MouseHook
     private static DispatcherTimer? _superPanelTimer;
     private static bool _suppressRButtonUp;     // 计时器触发后置位：吞掉随后的右键 up 阻止原生菜单
     private static bool _rightCloseUpPending;   // 「右键点外关闭」吞掉 down 后置位：配套 up 也必须吞
+    private static bool _rightPassUpPending;    // 「右键点外关面板」把 down 放行后置位：配套 up 也原样放行
+                                                // （此时面板已关闭，不置位的话 up 会落到长按手势分支：
+                                                // 被吞掉并再注入一次右键，等于这次右键被吞）
 
     // 按下右键那一刻光标下的顶层窗口：右键不激活后台窗口，前台可能还停在别的程序上，
     // 面板的上下文场景必须按这个句柄解析（照 Quicker）
@@ -119,20 +123,28 @@ internal static class MouseHook
                     }
                     // 点外关闭——右键版（三处覆盖式弹层：超级面板 / 菜单组 / 帮助面板）。
                     // 与左键分支同样只在面板外部触发（右键菜单/对话框打开期间 SuperPanel.IsInteracting 不介入）。
-                    // 语义（用户已定）：关掉弹层，且这一下右键**整组吞掉**、不作用到下层（不弹原生菜单）。
                     //
                     // ⚠️ down/up 必须同进同出：若放行 down 却吞 up，目标窗口收不到配对的 up，
                     //    鼠标捕获不释放 → 右键永久「卡住」（须再点一次右键才解除）。
-                    // ⚠️ 关闭面板后 `!SuperPanel.IsOpen` 会变 true，故此处必须 return 提前退出，
-                    //    绝不能落到下面的长按手势分支——否则 up 会被吞 + 注入，重新制造上述卡键。
-                    if ((int)wParam == Win32.WmRbuttonup && _rightCloseUpPending)
+                    // 超级面板：只关面板，**这一下右键放行**给光标下窗口（用户要求：点面板外部不要吞事件，
+                    // 和左键语义一致——下层程序该收到右键 / 该弹自己的菜单就弹）。
+                    if ((int)wParam == Win32.WmRbuttonup)
                     {
-                        _rightCloseUpPending = false;
-                        return (IntPtr)1; // 吞掉配套 up（成对）
+                        if (_rightCloseUpPending)
+                        {
+                            _rightCloseUpPending = false;
+                            return (IntPtr)1; // 吞掉配套 up（成对）
+                        }
+                        if (_rightPassUpPending)
+                        {
+                            _rightPassUpPending = false;
+                            break; // 配对放行：down 已经交给下层，up 也必须原样交给它
+                        }
                     }
                     if ((int)wParam == Win32.WmRbuttondown)
                     {
                         _rightCloseUpPending = false;   // 兜底：上个 up 若丢失，清残留避免误吞
+                        _rightPassUpPending = false;
 
                         bool overSuper = SuperPanel.IsOpen && !SuperPanel.IsInteracting
                                          && !SuperPanel.IsPinned
@@ -141,16 +153,33 @@ internal static class MouseHook
                                         && !MenuSystem.PointInMenuRect(ms.Pt.X, ms.Pt.Y);
                         bool overHelp = HelpPanel.IsOpen
                                         && !HelpPanel.PointInWindowRect(ms.Pt.X, ms.Pt.Y);
+                        // 悬浮窗的右键菜单：popup 拿不到有效捕获（悬浮窗永远不是前台窗口，
+                        // Windows 只让前台窗口捕获「窗口之外」的点击），WPF 那套「点外部关闭」
+                        // 在它身上根本不触发，所以只能在这里按坐标关。
+                        bool overFloatMenu = FloatingManager.IsMenuOpen
+                                             && !FloatingManager.MenuContains(ms.Pt.X, ms.Pt.Y);
 
-                        if (overSuper || overMenu || overHelp)
+                        if (overSuper)
                         {
-                            if (overSuper) { CancelSuperPanelGesture(); SuperPanel.Close(); }  // 优先级同左键分支
-                            else if (overMenu) MenuSystem.CloseCurrent();
+                            CancelSuperPanelGesture();
+                            SuperPanel.Close();
+                            _rightPassUpPending = true; // 面板已关，配套 up 也要原样放行
+                            break; // 不吞：右键点面板外部照常交给光标下窗口
+                        }
+
+                        if (overMenu || overHelp || overFloatMenu)
+                        {
+                            if (overMenu) MenuSystem.CloseCurrent();
+                            else if (overFloatMenu) FloatingManager.CloseOpenMenu();
                             else HelpPanel.Close();
 
                             _rightCloseUpPending = true;
                             return (IntPtr)1; // 吞 down，并提前退出（不进长按手势分支）
                         }
+
+                        // 右键点在悬浮菜单里面：交给菜单自己处理，别起长按手势
+                        // （否则会吞掉这一下再注入一次右键，菜单状态就乱了）
+                        if (FloatingManager.IsMenuOpen) break;
                     }
                     // 裸右键长按手势（§5.1）：开关开 且 面板未打开时，整组吞掉 down/up。
                     // 必须吞 down（而非放行）——若放行 down 却吞 up，目标窗口会收到 down 收不到 up，
@@ -173,6 +202,13 @@ internal static class MouseHook
                     break;
 
                 case Win32.WmLbuttondown:
+                    // 悬浮窗右键菜单开着：点菜单外就关掉，并把这一下放行给光标下窗口
+                    // （popup 在悬浮窗上拿不到有效捕获，WPF 自己不会关）。
+                    if (FloatingManager.IsMenuOpen)
+                    {
+                        FloatingManager.CloseMenuIfOutside(ms.Pt.X, ms.Pt.Y);
+                        break; // 菜单开着时不参与其它鼠标手势
+                    }
                     // 超级面板打开时：点击面板外部 → 关闭面板并放行点击（坐标判定，与 MenuPopup/HelpPanel
                     // 同思路；右键菜单/对话框打开期间 IsInteracting，不介入，避免误关）。
                     if (SuperPanel.IsOpen && !SuperPanel.IsInteracting && !SuperPanel.IsPinned
@@ -259,6 +295,7 @@ internal static class MouseHook
         _superPanelTimer?.Stop();
         _suppressRButtonUp = false;
         _rightCloseUpPending = false;
+        _rightPassUpPending = false;
         _superPanelContextHwnd = IntPtr.Zero;
     }
 

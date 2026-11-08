@@ -1,0 +1,54 @@
+<Window x:Class="LTools.Views.FloatWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="LTools 悬浮"
+        Width="62" Height="80"
+        AllowsTransparency="True" Background="Transparent"
+        WindowStyle="None" ResizeMode="NoResize"
+        ShowActivated="False" ShowInTaskbar="False" Topmost="True"
+        WindowStartupLocation="Manual"
+        SnapsToDevicePixels="True" UseLayoutRounding="True">
+    <Window.Resources>
+        <Style x:Key="FloatBtn" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="3,2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="B"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="9"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="B" Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+                                <Setter TargetName="B" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="B" Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <!-- 外边距留给阴影（AllowsTransparency 下窗口矩形之外画不出来） -->
+    <Border x:Name="Root" Margin="6" CornerRadius="12" BorderThickness="1"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderStrongBrush}">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270"
+                              Opacity="0.22" Color="#000000"/>
+        </Border.Effect>
+        <StackPanel x:Name="MemberHost" Orientation="Horizontal" Margin="3"/>
+    </Border>
+</Window>
