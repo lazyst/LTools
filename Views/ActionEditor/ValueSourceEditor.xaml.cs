@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using LTools.Core.Actions;
 
 namespace LTools.Views;
@@ -26,6 +27,8 @@ public partial class ValueSourceEditor : UserControl
     public ValueSourceEditor()
     {
         InitializeComponent();
+        // UIA / 自动化验证靠这个名字找按钮（按钮上只有「变量」两个字）。
+        System.Windows.Automation.AutomationProperties.SetName(InsertVarButton, "插入变量");
         UnitBox.ItemsSource = StepRegistry.Default.Units
             .Where(u => u.Spec.Kind == UnitKind.pure)
             .Select(u => new UnitChoice(u.Spec.Key, u.Spec.Category, u.Spec.Name))
@@ -172,6 +175,10 @@ public partial class ValueSourceEditor : UserControl
         LiteralBox.Visibility = ModeBox.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
         VarBox.Visibility = ModeBox.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
         InlinePanel.Visibility = ModeBox.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+        // 取值单元模式没有可插入变量的输入框（参数在「填参数…」里编辑）。
+        InsertVarButton.Visibility = ModeBox.SelectedIndex == 2
+            ? Visibility.Collapsed : Visibility.Visible;
+        RefreshVarHint();
         RefreshInlineHint();
     }
 
@@ -248,7 +255,118 @@ public partial class ValueSourceEditor : UserControl
     private void Value_Changed(object sender, TextChangedEventArgs e)
     {
         if (_loading) return;
+        RefreshVarHint();
         Changed?.Invoke();
+    }
+
+    /// <summary>当前动作里能用的变量名（去空、去重、排序）。</summary>
+    private List<string> KnownVariableNames()
+    {
+        IEnumerable<string>? source = null;
+        try { source = VariableNameSource?.Invoke(); }
+        catch { /* 宿主还取不到变量表时按没有变量处理 */ }
+        source ??= VariableNames;
+
+        return (source ?? Enumerable.Empty<string>())
+            .Select(n => (n ?? "").Trim())
+            .Where(n => n.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.CurrentCulture)
+            .ToList();
+    }
+
+    /// <summary>
+    /// 「变量」按钮：列出当前动作的变量，选中就写进输入框——
+    /// 文本模板插 <c>${名}</c>（光标处，覆盖选中内容），变量模式填变量名。
+    /// </summary>
+    private void InsertVar_Click(object sender, RoutedEventArgs e)
+    {
+        var names = KnownVariableNames();
+        var menu = new ContextMenu
+        {
+            PlacementTarget = InsertVarButton,
+            Placement = PlacementMode.Bottom,
+        };
+
+        if (names.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "这个动作还没有变量", IsEnabled = false });
+        }
+        else
+        {
+            foreach (string name in names)
+            {
+                var item = new MenuItem { Header = name };
+                item.Click += (_, _) => InsertVariable(name);
+                menu.Items.Add(item);
+            }
+        }
+
+        menu.IsOpen = true;
+    }
+
+    private void InsertVariable(string name)
+    {
+        if (ModeBox.SelectedIndex == 1)
+        {
+            VarBox.Text = name;
+            VarBox.CaretIndex = VarBox.Text.Length;
+            VarBox.Focus();
+            return;
+        }
+
+        string token = "${" + name + "}";
+        string text = LiteralBox.Text ?? "";
+        int start;
+        int length;
+
+        if (LiteralBox.SelectionLength > 0)
+        {
+            // 选了内容就替换掉
+            start = Math.Clamp(LiteralBox.SelectionStart, 0, text.Length);
+            length = Math.Clamp(LiteralBox.SelectionLength, 0, text.Length - start);
+        }
+        else if (string.Equals(text.Trim(), name, StringComparison.OrdinalIgnoreCase))
+        {
+            // 整段就是一个变量名（「写了个名字当文本」那个常见错误）：直接换掉
+            start = 0;
+            length = text.Length;
+        }
+        else if (LiteralBox.IsKeyboardFocusWithin)
+        {
+            // 正在输入框里编辑：插在光标处
+            start = Math.Clamp(LiteralBox.CaretIndex, 0, text.Length);
+            length = 0;
+        }
+        else
+        {
+            // 没有光标可循：接在末尾，别把变量插到开头去
+            start = text.Length;
+            length = 0;
+        }
+
+        LiteralBox.Text = text.Remove(start, length).Insert(start, token);
+        LiteralBox.CaretIndex = start + token.Length;
+        LiteralBox.Focus();
+    }
+
+    /// <summary>
+    /// 文本模板里正好写了某个变量名（例如 <c>found</c>）时提醒一句：那是文本，不是变量。
+    /// 名字对得上变量、但没写 <c>${}</c>，运行时会原样当文本用——「如果永远进 then」多半就是这么来的。
+    /// </summary>
+    private void RefreshVarHint()
+    {
+        VarHint.Visibility = Visibility.Collapsed;
+        if (ModeBox.SelectedIndex != 0) return;
+
+        string text = (LiteralBox.Text ?? "").Trim();
+        if (text.Length == 0 || text.Contains("${", StringComparison.Ordinal)) return;
+
+        if (!KnownVariableNames().Any(n => string.Equals(n, text, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        VarHint.Text = $"「{text}」是变量名，写在这里只是一段文本。要取它的值：点右边「变量」按钮，或把来源切到「变量」。";
+        VarHint.Visibility = Visibility.Visible;
     }
 
     private void Unit_Changed(object sender, SelectionChangedEventArgs e)

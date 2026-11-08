@@ -157,7 +157,9 @@ public partial class StepEditorDialog : Window
             {
                 var check = new CheckBox
                 {
-                    IsChecked = current == null || current.Literal.AsBool(),
+                    // 没存过的开关按参数默认值勾（以前 `current == null` 就勾上，会把
+                    // 没有 Default 的开关（如「递归」）白白存成 true）。
+                    IsChecked = current?.Literal.AsBool() ?? false,
                     VerticalAlignment = VerticalAlignment.Center,
                     Content = "启用",
                 };

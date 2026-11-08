@@ -9,11 +9,13 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using System.Text;
 using System.Threading.Tasks;
 using LTools.Config;
 using LTools.Core;
+using LTools.Core.Ai;
 using LTools.Features;
 using LTools.Features.Panel;
 using LTools.Features.Migration.Legacy;
@@ -30,6 +32,10 @@ namespace LTools.Views;
 /// </summary>
 public partial class ConfigHelperWindow : Window
 {
+    // 二级下拉导航的两个父项（AppConfig.NavExpandedGroups 里也用这两个值）
+    private const string FamilySuperPanel = "superpanel";
+    private const string FamilyAi = "ai";
+
     private readonly DispatcherTimer _saveDebounce;
     private readonly ObservableCollection<string> _groups = new();
     private readonly ObservableCollection<string> _items = new();
@@ -37,8 +43,16 @@ public partial class ConfigHelperWindow : Window
     private bool _initializing = true;   // 初始化设 IsChecked 会触发事件，用此标志跳过
     private bool _loadingList;           // 列表重建期间抑制选择事件
     private bool _pagesReady;            // 页面全部构建完成前抑制导航切换
-    private bool _syncingNav;            // 程序化点亮「面板管理」下拉时不重复导航
-    private string _currentNav = "";      // 当前导航 tag（用于父项在子页时再点回主页）
+    private bool _syncingNav;            // 程序化点亮二级导航时不重复导航
+    private bool _restoringNav;          // 恢复上次导航时不写盘、不播动画
+    private string _currentNav = "";     // 当前导航 tag（具体子页，如 ai-audit）
+    private readonly HashSet<string> _expandedGroups = new();   // 展开着的二级分组（superpanel / ai）
+    // 每个二级分组上次所在的子页：点父项切进来时回到这里，而不是永远回第一页
+    private readonly Dictionary<string, string> _lastSubPage = new()
+    {
+        [FamilySuperPanel] = "general",
+        [FamilyAi] = "connect",
+    };
     private bool _backupBusy;            // 备份 / 导入进行中，禁用重复点击
     private bool _loadingLog;            // 日志页控件回填期间抑制保存事件
     private bool _loadingRunNotice;      // 通用页「运行提示」回填期间抑制保存事件
@@ -81,15 +95,31 @@ public partial class ConfigHelperWindow : Window
         PopulateLogging();
 
         _pagesReady = true;
-        // 恢复上次导航页（§10.x）：存于 AppConfig.LastNavPage，默认「动作管理」
-        string lastNav = ConfigStore.LoadConfig().LastNavPage;
-        if (string.IsNullOrEmpty(lastNav)) lastNav = "actions";
-        bool navMatched = false;
-        foreach (var rb in AllNavItems())
+        // 恢复上次导航页（AppConfig.LastNavPage）+ 二级下拉的展开状态（NavExpandedGroups）
+        var startup = ConfigStore.LoadConfig();
+        string lastNav = NormalizeSavedNav(startup.LastNavPage);
+        _expandedGroups.Clear();
+        foreach (string g in startup.NavExpandedGroups ?? new List<string>())
+            if (g is FamilySuperPanel or FamilyAi) _expandedGroups.Add(g);
+        string? startupFamily = NavFamilyOf(lastNav);
+        // 当前页所在的组一定展开：否则打开设置看不出自己在哪个子页（其余分组按记录）
+        if (startupFamily != null) _expandedGroups.Add(startupFamily);
+
+        _restoringNav = true;
+        try
         {
-            if (rb.Tag is string t && t == lastNav) { rb.IsChecked = true; navMatched = true; break; }
+            bool navMatched = false;
+            foreach (var rb in AllNavItems())
+            {
+                if (rb.Tag is string t && t == lastNav) { rb.IsChecked = true; navMatched = true; break; }
+            }
+            if (!navMatched) NavActions.IsChecked = true;
+            ApplyNavExpandedStates(animate: false);   // 首帧就到位，不做动画
         }
-        if (!navMatched) NavActions.IsChecked = true;
+        finally { _restoringNav = false; }
+
+        // 布局完成后把当前页滚进视野：两个下拉都展开时会超出左边栏的可视高度
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(ScrollCheckedNavIntoView));
 
         // 初始化完成后再响应用户操作
         Loaded += async (_, _) =>
@@ -115,6 +145,8 @@ public partial class ConfigHelperWindow : Window
     private string ConfigPath { get; }
 
     // ============ 导航切换 ============
+    private static readonly Duration SubNavAnimDuration = new(TimeSpan.FromMilliseconds(170));
+
     private void Nav_Changed(object sender, RoutedEventArgs e)
     {
         if (!_pagesReady || _syncingNav) return;
@@ -124,41 +156,254 @@ public partial class ConfigHelperWindow : Window
         ApplyNavPage(tag);
     }
 
+    /// <summary>「面板管理」父项点击：已在该分组里时 = 展开 / 收起。</summary>
+    private void NavSuperPanel_MouseUp(object sender, MouseButtonEventArgs e) =>
+        ToggleNavGroup(FamilySuperPanel, e);
+
+    /// <summary>「AI 接入」父项点击：已在该分组里时 = 展开 / 收起。</summary>
+    private void NavAi_MouseUp(object sender, MouseButtonEventArgs e) =>
+        ToggleNavGroup(FamilyAi, e);
+
     /// <summary>
-    /// 已在某个二级页时再点「面板管理」：父项本来就是选中态，不会再触发 Checked，
-    /// 这里把它当作「回到常规主页」。
+    /// 父项已经选中（正在这个分组里）时，再点它就是展开 / 收起，不换页；
+    /// 没选中时不动它，交给 RadioButton 的 Checked → <see cref="ApplyNavPage"/> 进该分组。
     /// </summary>
-    private void NavSuperPanel_MouseUp(object sender, MouseButtonEventArgs e)
+    private void ToggleNavGroup(string family, MouseButtonEventArgs e)
     {
         if (!_pagesReady || _syncingNav) return;
-        if (NavSuperPanel.IsChecked == true &&
-            _currentNav is "superpanel-general" or "superpanel-scenes" or "superpanel-blocked")
-            ApplyNavPage("superpanel");
+        if (NavGroupItem(family).IsChecked != true) return;
+        e.Handled = true;
+        SetNavGroupExpanded(family, !_expandedGroups.Contains(family), animate: true);
+        PersistNav();
     }
 
-    /// <summary>左栏所有导航项（含「面板管理」下拉里的二级项）。</summary>
+    /// <summary>左栏所有导航项（含两个二级下拉里的子项）。</summary>
     private IEnumerable<RadioButton> AllNavItems() =>
         NavList.Children.OfType<RadioButton>()
-            .Concat(SuperPanelSubNav.Children.OfType<RadioButton>());
+            .Concat(SuperPanelSubNav.Children.OfType<RadioButton>())
+            .Concat(AiSubNav.Children.OfType<RadioButton>());
+
+    private RadioButton NavGroupItem(string family) => family == FamilyAi ? NavAi : NavSuperPanel;
+
+    private StackPanel NavGroupPanel(string family) => family == FamilyAi ? AiSubNav : SuperPanelSubNav;
+
+    private Border NavGroupHost(string family) => family == FamilyAi ? AiSubNavHost : SuperPanelSubNavHost;
+
+    private TextBlock NavGroupChevron(string family) => family == FamilyAi ? NavAiChevron : NavSuperPanelChevron;
+
+    /// <summary>导航 tag → 所属二级分组（null = 普通一级页）。</summary>
+    private static string? NavFamilyOf(string? tag) => tag switch
+    {
+        "superpanel" or "superpanel-general" or "superpanel-scenes" or "superpanel-blocked" => FamilySuperPanel,
+        "ai" or "ai-connect" or "ai-audit" => FamilyAi,
+        _ => null,
+    };
+
+    /// <summary>导航 tag → 子页 key（PanelManageView / AiView 的 ShowPage 认这个）。</summary>
+    private static string SubPageOf(string family, string tag) => (family, tag) switch
+    {
+        (FamilySuperPanel, "superpanel-scenes") => "scenes",
+        (FamilySuperPanel, "superpanel-blocked") => "blocked",
+        (FamilySuperPanel, _) => "general",
+        (FamilyAi, "ai-audit") => "audit",
+        _ => "connect",
+    };
+
+    private static string NavTagOf(string family, string page) => family == FamilyAi
+        ? "ai-" + page
+        : page switch
+        {
+            "scenes" => "superpanel-scenes",
+            "blocked" => "superpanel-blocked",
+            _ => "superpanel-general",
+        };
 
     /// <summary>
-    /// 「面板管理」二级下拉：把父项与对应子项一起点亮，箭头朝下、子列表展开。
+    /// 旧配置里的导航 tag 归一：父项（<c>superpanel</c> / <c>ai</c>）落到具体子页，
+    /// 已并入「连接」的 <c>ai-prompt</c> / <c>ai-knowledge</c> / <c>ai-stash</c> 也回到连接。
+    /// </summary>
+    private static string NormalizeSavedNav(string? tag)
+    {
+        if (string.IsNullOrEmpty(tag)) return "actions";
+        if (tag is "ai-prompt" or "ai-knowledge" or "ai-stash") return "ai-connect";
+        string? family = NavFamilyOf(tag);
+        if (family != null && tag == family)
+            return NavTagOf(family, family == FamilyAi ? "connect" : "general");
+        return tag;
+    }
+
+    /// <summary>把某个二级下拉设为展开 / 收起，并记住这个状态。</summary>
+    private void SetNavGroupExpanded(string family, bool expanded, bool animate)
+    {
+        if (expanded) _expandedGroups.Add(family);
+        else _expandedGroups.Remove(family);
+        AnimateSubNav(NavGroupHost(family), NavGroupChevron(family), expanded, animate);
+    }
+
+    /// <summary>按 <see cref="_expandedGroups"/> 套一遍两个下拉（启动恢复用，不播动画）。</summary>
+    private void ApplyNavExpandedStates(bool animate)
+    {
+        SetNavGroupExpanded(FamilySuperPanel, _expandedGroups.Contains(FamilySuperPanel), animate);
+        SetNavGroupExpanded(FamilyAi, _expandedGroups.Contains(FamilyAi), animate);
+    }
+
+    /// <summary>把当前选中的导航项滚进视野（启动恢复时用：两个下拉都展开会超出可视高度）。</summary>
+    private void ScrollCheckedNavIntoView()
+    {
+        RadioButton? parent = null;
+        foreach (var rb in AllNavItems())
+        {
+            if (rb.IsChecked != true || rb.Tag is not string t) continue;
+            if (t is FamilySuperPanel or FamilyAi) { parent = rb; continue; }
+            rb.BringIntoView();   // 具体子页优先：父项在上面，滚它不一定能看到子项
+            return;
+        }
+        parent?.BringIntoView();
+    }
+
+    /// <summary>
+    /// 二级下拉的展开 / 收起：高度 0↔内容高 + 淡入淡出 + 箭头 0°↔90°。
+    /// 同一个 host 用 <see cref="FrameworkElement.Tag"/> 记序号，旧动画的 Completed 不许覆盖新状态。
+    /// </summary>
+    private void AnimateSubNav(Border host, TextBlock chevron, bool expanded, bool animate)
+    {
+        int seq = (host.Tag as int? ?? 0) + 1;
+        host.Tag = seq;
+
+        if (chevron.RenderTransform is not RotateTransform rotate)
+        {
+            rotate = new RotateTransform();
+            chevron.RenderTransform = rotate;
+        }
+        rotate.BeginAnimation(RotateTransform.AngleProperty, null);
+        host.BeginAnimation(MaxHeightProperty, null);
+        host.BeginAnimation(OpacityProperty, null);
+
+        if (!animate)
+        {
+            host.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+            host.MaxHeight = double.PositiveInfinity;
+            host.Opacity = 1;
+            rotate.Angle = expanded ? 90 : 0;
+            return;
+        }
+
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        if (expanded)
+        {
+            double target = MeasureSubNavHeight(host);
+            host.Visibility = Visibility.Visible;
+            host.MaxHeight = double.PositiveInfinity;   // 基值：动画清掉后回落到正文高度
+            host.Opacity = 1;
+
+            var height = new DoubleAnimation(0, target, SubNavAnimDuration) { EasingFunction = ease };
+            height.Completed += (_, _) =>
+            {
+                if (host.Tag is not int cur || cur != seq) return;
+                host.BeginAnimation(MaxHeightProperty, null);   // 交回 Auto，内容变了不会被夹住
+                host.BringIntoView();                           // 展开后整组滚进视野
+            };
+            host.BeginAnimation(MaxHeightProperty, height);
+            host.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(0, 1, SubNavAnimDuration) { EasingFunction = ease });
+            rotate.BeginAnimation(RotateTransform.AngleProperty,
+                new DoubleAnimation(0, 90, SubNavAnimDuration) { EasingFunction = ease });
+            return;
+        }
+
+        double from = host.ActualHeight > 0 ? host.ActualHeight : MeasureSubNavHeight(host);
+        if (from <= 0 || host.Visibility != Visibility.Visible)
+        {
+            host.Visibility = Visibility.Collapsed;
+            host.MaxHeight = double.PositiveInfinity;
+            host.Opacity = 1;
+            rotate.Angle = 0;
+            return;
+        }
+
+        host.MaxHeight = double.PositiveInfinity;   // 基值：动画被清掉时不会留下 0 高
+        var collapse = new DoubleAnimation(from, 0, SubNavAnimDuration) { EasingFunction = ease };
+        collapse.Completed += (_, _) =>
+        {
+            if (host.Tag is not int cur || cur != seq) return;
+            host.BeginAnimation(MaxHeightProperty, null);
+            host.BeginAnimation(OpacityProperty, null);
+            host.Visibility = Visibility.Collapsed;
+        };
+        host.BeginAnimation(MaxHeightProperty, collapse);
+        host.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(1, 0, SubNavAnimDuration) { EasingFunction = ease });
+        rotate.BeginAnimation(RotateTransform.AngleProperty,
+            new DoubleAnimation(90, 0, SubNavAnimDuration) { EasingFunction = ease });
+    }
+
+    /// <summary>展开目标高度：Border 的 padding / border + 内容高度（不含 Margin）。</summary>
+    private static double MeasureSubNavHeight(Border host)
+    {
+        if (host.Child is not FrameworkElement content) return 0;
+        double width = host.ActualWidth - host.Padding.Left - host.Padding.Right
+                       - host.BorderThickness.Left - host.BorderThickness.Right;
+        if (width <= 0) width = 150;
+        content.Measure(new Size(width, double.PositiveInfinity));
+        return content.DesiredSize.Height + host.Padding.Top + host.Padding.Bottom
+               + host.BorderThickness.Top + host.BorderThickness.Bottom;
+    }
+
+    /// <summary>
+    /// 点亮某个二级分组：父项选中 + 展开，对应子项选中。
     /// 期间置 <see cref="_syncingNav"/>，避免程序改 IsChecked 又触发一次导航。
     /// </summary>
-    private void SyncSuperPanelNav(string page)
+    private void SyncNavGroup(string family, string page)
     {
         _syncingNav = true;
         try
         {
-            SuperPanelSubNavHost.Visibility = Visibility.Visible;
-            NavSuperPanelChevron.Text = "\uE70D";   // ChevronDown
-            if (NavSuperPanel.IsChecked != true) NavSuperPanel.IsChecked = true;
+            var parent = NavGroupItem(family);
+            if (parent.IsChecked != true) parent.IsChecked = true;
 
-            string want = "superpanel-" + page;
-            foreach (var rb in SuperPanelSubNav.Children.OfType<RadioButton>())
+            string want = NavTagOf(family, page);
+            foreach (var rb in NavGroupPanel(family).Children.OfType<RadioButton>())
             {
                 bool on = rb.Tag is string t && t == want;
                 if (rb.IsChecked != on) rb.IsChecked = on;
+            }
+        }
+        finally { _syncingNav = false; }
+
+        // 恢复期间不动展开集合：状态由 NavExpandedGroups 决定（ApplyNavExpandedStates 统一套上）
+        // 已经展开的组不重播动画（不然每点一个子页都让左边栏滚一下）
+        if (!_restoringNav && !_expandedGroups.Contains(family))
+            SetNavGroupExpanded(family, true, animate: true);
+    }
+
+    /// <summary>
+    /// 清掉某分组里被选中的子项（不触发导航；分组的「上次子页」保留，点回父项时还落在那儿）。
+    /// </summary>
+    private void ClearSubNav(string family)
+    {
+        _syncingNav = true;
+        try
+        {
+            foreach (var rb in NavGroupPanel(family).Children.OfType<RadioButton>())
+            {
+                if (rb.IsChecked == true) rb.IsChecked = false;
+            }
+        }
+        finally { _syncingNav = false; }
+    }
+
+    /// <summary>程序化选中某个导航项（含它的父项），不触发导航事件。</summary>
+    private void SelectNavItem(string tag)
+    {
+        string? family = NavFamilyOf(tag);
+        _syncingNav = true;
+        try
+        {
+            if (family != null) NavGroupItem(family).IsChecked = true;
+            foreach (var rb in AllNavItems())
+            {
+                if (rb.Tag is string t && t == tag) { rb.IsChecked = true; break; }
             }
         }
         finally { _syncingNav = false; }
@@ -166,9 +411,15 @@ public partial class ConfigHelperWindow : Window
 
     private void ApplyNavPage(string tag)
     {
+        // 父项（superpanel / ai）落到该分组上次所在的子页
+        if (tag is FamilySuperPanel or FamilyAi) tag = NavTagOf(tag, _lastSubPage[tag]);
+
         _currentNav = tag;
-        bool superPanel = tag is "superpanel" or "superpanel-general"
-                               or "superpanel-scenes" or "superpanel-blocked";
+        string? family = NavFamilyOf(tag);
+        string page = family == null ? "" : SubPageOf(family, tag);
+        if (family != null) _lastSubPage[family] = page;
+        bool superPanel = family == FamilySuperPanel;
+        bool ai = family == FamilyAi;
 
         Page_General.Visibility = tag == "general" ? Visibility.Visible : Visibility.Collapsed;
         Page_Actions.Visibility = tag == "actions" ? Visibility.Visible : Visibility.Collapsed;
@@ -177,26 +428,19 @@ public partial class ConfigHelperWindow : Window
         Page_SuperPanel.Visibility = superPanel ? Visibility.Visible : Visibility.Collapsed;
         Page_Terminals.Visibility = tag == "terminals" ? Visibility.Visible : Visibility.Collapsed;
         Page_Logs.Visibility = tag == "logs" ? Visibility.Visible : Visibility.Collapsed;
+        Page_Ai.Visibility = ai ? Visibility.Visible : Visibility.Collapsed;
         Page_Backup.Visibility = tag == "backup" ? Visibility.Visible : Visibility.Collapsed;
 
-        if (superPanel)
-        {
-            // 面板管理主页 = 常规；二级项各自对应一页
-            string page = tag switch
-            {
-                "superpanel-scenes" => "scenes",
-                "superpanel-blocked" => "blocked",
-                _ => "general",
-            };
-            SyncSuperPanelNav(page);
-            Page_SuperPanel.ShowPage(page);
-        }
-        else
-        {
-            // 离开面板管理：收起二级下拉，箭头朝右
-            SuperPanelSubNavHost.Visibility = Visibility.Collapsed;
-            NavSuperPanelChevron.Text = "\uE76C";   // ChevronRight
-        }
+        // 进哪个分组就展开 + 点亮哪个；离开不自动收起（展开状态由用户点父项决定，记进配置）
+        if (superPanel) SyncNavGroup(FamilySuperPanel, page);
+        if (ai) SyncNavGroup(FamilyAi, page);
+        // 两套子项各有 GroupName（subnav / subnav-ai），跨组不会自动互斥：
+        // 切到别处时清掉不在当前分组的子项，否则左边栏会同时高亮两项。
+        // 「上次子页」保留在 _lastSubPage 里，点回父项时还落在那儿。
+        if (!superPanel) ClearSubNav(FamilySuperPanel);
+        if (!ai) ClearSubNav(FamilyAi);
+        if (superPanel) Page_SuperPanel.ShowPage(page);
+        if (ai) Page_Ai.ShowPage(page);
 
         if (tag == "terminals") PopulateTerminals();
         if (tag == "logs") PopulateLogging();
@@ -209,12 +453,25 @@ public partial class ConfigHelperWindow : Window
             PopulateRunNotice();
             _initializing = false;
         }
-        // 记忆当前导航页，下次打开恢复（ConfigIO 读改写：只动 LastNavPage，余字段不动）
-        ConfigIO.Modify(ConfigPath, cfg => cfg.LastNavPage = tag);
+        // 记忆当前页 + 展开状态，下次打开恢复（恢复期间不写盘、不播动画）
+        if (!_restoringNav) PersistNav();
         if (tag == "actions") PopulateActions();
         if (tag == "subactions") Page_SubActions.Reload();
+        if (ai) Page_Ai.Reload();
         if (tag == "menus") PopulateGroupList();
         if (superPanel) PopulateSuperPanel();
+    }
+
+    /// <summary>记住当前导航页与二级下拉的展开状态（ConfigIO 读改写：只动这两个字段）。</summary>
+    private void PersistNav()
+    {
+        string nav = string.IsNullOrEmpty(_currentNav) ? "actions" : _currentNav;
+        var groups = _expandedGroups.ToList();
+        ConfigIO.Modify(ConfigPath, cfg =>
+        {
+            cfg.LastNavPage = nav;
+            cfg.NavExpandedGroups = groups;
+        });
     }
 
     /// <summary>从面板跳转过来：切到「面板管理 → 场景」并选中指定场景。</summary>
@@ -222,17 +479,26 @@ public partial class ConfigHelperWindow : Window
     {
         if (_pagesReady)
         {
-            _syncingNav = true;
-            try
-            {
-                NavSuperPanel.IsChecked = true;
-                foreach (var rb in SuperPanelSubNav.Children.OfType<RadioButton>())
-                    if (rb.Tag is string t && t == "superpanel-scenes") rb.IsChecked = true;
-            }
-            finally { _syncingNav = false; }
+            SelectNavItem("superpanel-scenes");
             ApplyNavPage("superpanel-scenes");
         }
         Page_SuperPanel.SelectScene(sceneId);
+        Activate();
+        Topmost = true;
+        Topmost = false;
+    }
+
+    /// <summary>从面板暂存区跳过来：停在「AI 接入」上次所在的子页（没进过就是连接）。</summary>
+    public void NavigateToAi()
+    {
+        if (_pagesReady)
+        {
+            string target = NavFamilyOf(_currentNav) == FamilyAi
+                ? _currentNav
+                : NavTagOf(FamilyAi, _lastSubPage[FamilyAi]);
+            SelectNavItem(target);
+            ApplyNavPage(target);
+        }
         Activate();
         Topmost = true;
         Topmost = false;
@@ -308,6 +574,10 @@ public partial class ConfigHelperWindow : Window
         string filter = ActionFilterBox?.Text?.Trim() ?? "";
         int total = ActionRegistry.All.Count;
 
+        // 暂存区入口带上草稿数：AI 写完的东西在这里先看一眼，再决定是否采纳。
+        try { OpenStagingButton.Content = $"暂存区（{DraftStore.List().Count}）"; }
+        catch { OpenStagingButton.Content = "暂存区"; }
+
         _loadingList = true;
         _actionRows.Clear();
         foreach (var a in ActionRegistry.All.OrderBy(x => x.Name, StringComparer.CurrentCulture))
@@ -332,6 +602,10 @@ public partial class ConfigHelperWindow : Window
         if (_loadingList) return;
         PopulateActions();
     }
+
+    /// <summary>动作管理页顶部「暂存区（N）」：打开面板的暂存区页（草稿不在设置里）。</summary>
+    private void OpenStagingPage_Click(object sender, RoutedEventArgs e)
+        => Features.SuperPanel.ShowStash();
 
     private void ActionList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
@@ -1082,6 +1356,7 @@ public partial class ConfigHelperWindow : Window
         PopulateActions();
         PopulateGroupList();
         PopulateSuperPanel();
+        Page_Ai.Reload();
         ShowStatus("已重新加载", ok: true);
     }
 

@@ -30,6 +30,9 @@ internal static class SuperPanel
     private static int _invokeX, _invokeY;
     private static bool _hiddenForRecording;
 
+    /// <summary>下一次建窗时直接停到暂存区（<see cref="ShowStash"/> 用；建好即复位）。</summary>
+    private static bool _openOnStash;
+
     /// <summary>面板是否已打开。</summary>
     public static bool IsOpen => _window != null;
 
@@ -112,6 +115,24 @@ internal static class SuperPanel
     public static void Show() => Show(IntPtr.Zero);
 
     /// <summary>
+    /// 显示面板并直接停在「暂存区」（设置页 / 动作管理里的入口用）。
+    /// </summary>
+    public static void ShowStash()
+    {
+        var w = _window;
+        if (w != null)
+        {
+            w.ShowStashPage();
+            w.Activate();
+            FloatingManager.RaiseAllAbove();
+            return;
+        }
+
+        _openOnStash = true;
+        Show();
+    }
+
+    /// <summary>
     /// 在光标处显示面板。
     /// </summary>
     /// <param name="contextHwnd">
@@ -122,6 +143,10 @@ internal static class SuperPanel
     public static void Show(IntPtr contextHwnd)
     {
         if (_window != null) return;
+
+        // 建窗是异步的：把「是否停到暂存区」摘进局部变量，别让后续 Show 影响这一次
+        bool openOnStash = _openOnStash;
+        _openOnStash = false;
 
         // 唤起瞬间记录光标位置（windowPin.toggle 等内部命令依赖该坐标）
         if (Win32.GetCursorPos(out var pt)) { _invokeX = pt.X; _invokeY = pt.Y; }
@@ -171,6 +196,7 @@ internal static class SuperPanel
             // 只改 z 序（SWP_NOACTIVATE），不会把焦点从面板抢走。
             win.PreviewMouseDown += (_, _) => FloatingManager.RaiseAllAbove();
             win.Show();
+            if (openOnStash) win.ShowStashPage();
             win.Activate();
             FloatingManager.RaiseAllAbove();
 

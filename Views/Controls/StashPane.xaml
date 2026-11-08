@@ -1,0 +1,59 @@
+<UserControl x:Class="LTools.Views.Controls.StashPane"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LTools.Views.Controls"
+             FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
+    <UserControl.Resources>
+        <!-- 暂存区页头的小图标按钮（刷新 / 更多） -->
+        <Style x:Key="StashIconBtn" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+    </UserControl.Resources>
+
+    <DockPanel Background="{StaticResource SurfaceBrush}">
+        <!-- 页头：标题 + 草稿数，右侧刷新 / 更多 -->
+        <Grid DockPanel.Dock="Top" Height="30" Margin="12,4,8,0">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="暂存区" FontWeight="SemiBold"
+                           FontSize="{StaticResource FontSizeSecondary}"
+                           Foreground="{StaticResource TextBrush}"/>
+                <TextBlock x:Name="CountText" Style="{StaticResource HintLabel}"
+                           VerticalAlignment="Center" Margin="6,0,0,0"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button Style="{StaticResource StashIconBtn}" Click="Refresh_Click"
+                        ToolTip="刷新（AI 直接改文件也能看到）">
+                    <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                </Button>
+                <Button Style="{StaticResource StashIconBtn}" Click="More_Click" Margin="2,0,0,0"
+                        ToolTip="更多：打开暂存目录 / 清空暂存区 / AI 接入设置">
+                    <TextBlock Text="&#xE712;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- 页脚：一句话说明（照 Quicker：暂存区是临时落点，确认后才进动作库） -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource SurfaceAltBrush}" Padding="12,5">
+            <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                       Text="点卡片直接运行；右键可编辑、采纳或删除。AI 写好的草稿都停在这里，采纳后才进正式动作库。"/>
+        </Border>
+
+        <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled" Padding="8,4,8,8">
+            <StackPanel>
+                <controls:TileGridPanel x:Name="CardGrid" MinTileWidth="88" TileHeight="82" GapX="4" GapY="4"/>
+
+                <StackPanel x:Name="EmptyBox" Margin="2,8,2,0">
+                    <TextBlock Text="暂存区是空的" FontSize="{StaticResource FontSizeSecondary}"
+                               Foreground="{StaticResource SecondaryTextBrush}"/>
+                    <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,4,0,0"
+                               Text="让 AI 助手写一个动作（或把正式动作复制到暂存区），它会出现在这里，你确认后再采纳。"/>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

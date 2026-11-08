@@ -147,46 +147,72 @@
             <!-- 左导航 -->
             <Border Grid.Column="0" Background="{StaticResource SurfaceAltBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
-                <StackPanel x:Name="NavList" Margin="0,8">
-                    <RadioButton Style="{StaticResource NavRow}" Content="通用"
-                                 Checked="Nav_Changed" Tag="general"/>
-                    <RadioButton x:Name="NavActions" Style="{StaticResource NavRow}" Content="动作管理"
-                                 Checked="Nav_Changed" Tag="actions"/>
-                    <RadioButton Style="{StaticResource NavRow}" Content="子动作库"
-                                 Checked="Nav_Changed" Tag="subactions"/>
-                    <RadioButton Style="{StaticResource NavRow}" Content="CapsLock快捷菜单"
-                                 Checked="Nav_Changed" Tag="menus"/>
-                    <!-- 面板管理：点它进「常规」主页面，并在下方展开二级下拉导航 -->
-                    <RadioButton x:Name="NavSuperPanel" Style="{StaticResource NavRow}"
-                                 Checked="Nav_Changed" Tag="superpanel"
-                                 PreviewMouseLeftButtonUp="NavSuperPanel_MouseUp">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="面板管理" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="NavSuperPanelChevron" Text="&#xE76C;"
-                                       FontFamily="Segoe MDL2 Assets" FontSize="9"
-                                       Margin="6,1,0,0" VerticalAlignment="Center"
-                                       Foreground="{StaticResource HintTextBrush}"/>
-                        </StackPanel>
-                    </RadioButton>
-                    <Border x:Name="SuperPanelSubNavHost" Visibility="Collapsed"
-                            Margin="22,0,0,6" Padding="6,2,0,2"
-                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="2,0,0,0">
-                        <StackPanel x:Name="SuperPanelSubNav">
-                            <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav"
-                                         Content="常规" Checked="Nav_Changed" Tag="superpanel-general"/>
-                            <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav"
-                                         Content="场景" Checked="Nav_Changed" Tag="superpanel-scenes"/>
-                            <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav"
-                                         Content="禁止弹出" Checked="Nav_Changed" Tag="superpanel-blocked"/>
-                        </StackPanel>
-                    </Border>
-                    <RadioButton Style="{StaticResource NavRow}" Content="终端路径"
-                                 Checked="Nav_Changed" Tag="terminals"/>
-                    <RadioButton Style="{StaticResource NavRow}" Content="运行日志"
-                                 Checked="Nav_Changed" Tag="logs"/>
-                    <RadioButton Style="{StaticResource NavRow}" Content="备份与恢复"
-                                 Checked="Nav_Changed" Tag="backup"/>
-                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              Focusable="False" Padding="0">
+                    <StackPanel x:Name="NavList" Margin="0,8">
+                        <RadioButton Style="{StaticResource NavRow}" Content="通用"
+                                     Checked="Nav_Changed" Tag="general"/>
+                        <RadioButton x:Name="NavActions" Style="{StaticResource NavRow}" Content="动作管理"
+                                     Checked="Nav_Changed" Tag="actions"/>
+                        <RadioButton Style="{StaticResource NavRow}" Content="子动作库"
+                                     Checked="Nav_Changed" Tag="subactions"/>
+                        <RadioButton Style="{StaticResource NavRow}" Content="CapsLock快捷菜单"
+                                     Checked="Nav_Changed" Tag="menus"/>
+                        <!-- 面板管理：点它进「常规」主页面，并在下方展开二级下拉导航 -->
+                        <RadioButton x:Name="NavSuperPanel" Style="{StaticResource NavRow}"
+                                     Checked="Nav_Changed" Tag="superpanel"
+                                     PreviewMouseLeftButtonUp="NavSuperPanel_MouseUp">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="面板管理" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="NavSuperPanelChevron" Text="&#xE76C;"
+                                           FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                           Margin="6,1,0,0" VerticalAlignment="Center"
+                                           RenderTransformOrigin="0.5,0.5"
+                                           Foreground="{StaticResource HintTextBrush}"/>
+                            </StackPanel>
+                        </RadioButton>
+                        <Border x:Name="SuperPanelSubNavHost" Visibility="Collapsed" ClipToBounds="True"
+                                Margin="22,0,0,6" Padding="6,2,0,2"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="2,0,0,0">
+                            <StackPanel x:Name="SuperPanelSubNav">
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav"
+                                             Content="常规" Checked="Nav_Changed" Tag="superpanel-general"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav"
+                                             Content="场景" Checked="Nav_Changed" Tag="superpanel-scenes"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav"
+                                             Content="禁止弹出" Checked="Nav_Changed" Tag="superpanel-blocked"/>
+                            </StackPanel>
+                        </Border>
+                        <RadioButton Style="{StaticResource NavRow}" Content="终端路径"
+                                     Checked="Nav_Changed" Tag="terminals"/>
+                        <RadioButton Style="{StaticResource NavRow}" Content="运行日志"
+                                     Checked="Nav_Changed" Tag="logs"/>
+                        <RadioButton x:Name="NavAi" Style="{StaticResource NavRow}"
+                                     Checked="Nav_Changed" Tag="ai"
+                                     PreviewMouseLeftButtonUp="NavAi_MouseUp">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="AI 接入" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="NavAiChevron" Text="&#xE76C;"
+                                           FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                           Margin="6,1,0,0" VerticalAlignment="Center"
+                                           RenderTransformOrigin="0.5,0.5"
+                                           Foreground="{StaticResource HintTextBrush}"/>
+                            </StackPanel>
+                        </RadioButton>
+                        <Border x:Name="AiSubNavHost" Visibility="Collapsed" ClipToBounds="True"
+                                Margin="22,0,0,6" Padding="6,2,0,2"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="2,0,0,0">
+                            <StackPanel x:Name="AiSubNav">
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-ai"
+                                             Content="连接" Checked="Nav_Changed" Tag="ai-connect"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-ai"
+                                             Content="审计" Checked="Nav_Changed" Tag="ai-audit"/>
+                            </StackPanel>
+                        </Border>
+                        <RadioButton Style="{StaticResource NavRow}" Content="备份与恢复"
+                                     Checked="Nav_Changed" Tag="backup"/>
+                    </StackPanel>
+                </ScrollViewer>
             </Border>
 
             <!-- 右内容：所有页面同层，按导航切换可见性 -->
@@ -279,6 +305,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="0" x:Name="ActionFilterBox" Width="260" MinHeight="30"
                                  HorizontalAlignment="Left"
@@ -286,6 +313,10 @@
                                  TextChanged="ActionFilter_TextChanged"/>
                         <TextBlock Grid.Column="1" x:Name="ActionCountText" Style="{StaticResource HintLabel}"
                                    VerticalAlignment="Center"/>
+                        <Button Grid.Column="2" x:Name="OpenStagingButton" Style="{StaticResource BtnGhost}"
+                                Content="暂存区" MinWidth="0" Height="28" Padding="10,2" FontSize="12"
+                                Margin="12,0,0,0" ToolTip="AI 写出来的动作草稿都在那里"
+                                Click="OpenStagingPage_Click"/>
                     </Grid>
 
                     <DataGrid Grid.Row="1" x:Name="ActionList"
@@ -509,6 +540,9 @@
                     </StackPanel>
                 </ScrollViewer>
 
+                <!-- ============ AI 接入 ============ -->
+                <controls:AiView x:Name="Page_Ai" Visibility="Collapsed"/>
+
                 <!-- ============ 备份与恢复 ============ -->
                 <ScrollViewer x:Name="Page_Backup" VerticalScrollBarVisibility="Auto"
                               Visibility="Collapsed" Padding="20,14,20,14">
@@ -523,8 +557,8 @@
                                           Content="速记" IsChecked="True"
                                           Margin="0,0,0,8"/>
                                 <TextBlock Style="{StaticResource HintLabel}"
-                                           Text="配置（LTools.json）与宏（macros）始终包含。"
-                                           Margin="0,0,0,8"/>
+                                           Text="配置（LTools.json）、宏（macros）与 AI 暂存区草稿（staging）始终包含；AI 访问令牌不在备份里。"
+                                           TextWrapping="Wrap" Margin="0,0,0,8"/>
                                 <StackPanel Orientation="Horizontal">
                                     <Button Style="{StaticResource BtnPrimary}" Content="导出…"
                                             MinWidth="104" Click="BackupExport_Click"/>

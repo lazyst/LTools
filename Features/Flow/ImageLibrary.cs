@@ -156,6 +156,36 @@ internal static class ImageLibrary
     }
 
     /// <summary>
+    /// 把草稿 <c>files/</c> 里的图片迁进 <see cref="Dir"/>，返回可存进动作的路径（文件名）。
+    /// </summary>
+    /// <remarks>
+    /// 采纳（promote）只走这里：文件名必须带 <see cref="ShotPrefix"/>，否则按引用回收管不到它。
+    /// 重名时加序号，不覆盖已有模板；复制失败抛出，由调用方放弃采纳（不能留下「动作指向草稿目录」的引用）。
+    /// </remarks>
+    public static string ImportDraftImage(string sourcePath)
+    {
+        EnsureDir();
+        string full = Path.GetFullPath(sourcePath);
+        if (!File.Exists(full)) throw new FileNotFoundException("草稿图片不存在", full);
+
+        string stem = Path.GetFileNameWithoutExtension(full);
+        string ext = Path.GetExtension(full);
+        if (string.IsNullOrWhiteSpace(ext)) ext = ".png";
+
+        // 只保留安全字符，避免 files/ 里的奇怪名字带进资源目录。
+        var safe = new string(stem.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_').ToArray());
+        if (safe.Length == 0) safe = "image";
+
+        string baseName = $"shot-{DateTime.Now:yyyyMMdd-HHmmss}-{safe}";
+        string dest = Path.Combine(Dir, baseName + ext);
+        for (int n = 2; File.Exists(dest); n++)
+            dest = Path.Combine(Dir, $"{baseName}-{n}{ext}");
+
+        File.Copy(full, dest);
+        return ToStoredPath(dest);
+    }
+
+    /// <summary>
     /// 删掉一张程序生成的截图。只动 <see cref="Dir"/> 下的文件，误传别的路径（用户素材 / 模板以外的图）
     /// 一律不碰；失败忽略——编辑器的「▶ 测试」用它清掉试截的那张。
     /// </summary>

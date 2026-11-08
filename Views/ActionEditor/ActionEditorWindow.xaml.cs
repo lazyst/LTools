@@ -202,14 +202,16 @@ public partial class ActionEditorWindow : Window
             if (body == BodyKind.thenElse)
             {
                 AddBranch(step.Then, depth + 1, "真分支为空 · 选中这一行后从左侧添加");
-                _rows.Add(MarkerRow("否则", depth));
+                // 「否则」这一行就是假分支的开头：选中它再加步骤要落进 else 里。
+                // （标记行以前没有 Owner，加进去的步骤会跑到动作末尾，看起来像「否则里什么都没执行」。）
+                _rows.Add(MarkerRow("否则", depth, step.Else, 0));
                 AddBranch(step.Else, depth + 1, "假分支为空 · 选中这一行后从左侧添加");
-                _rows.Add(MarkerRow("结束如果", depth));
+                _rows.Add(MarkerRow("结束如果", depth, list, i + 1));
             }
             else if (body == BodyKind.body)
             {
                 AddBranch(step.Body, depth + 1, "循环体为空 · 选中这一行后从左侧添加");
-                _rows.Add(MarkerRow("结束循环", depth));
+                _rows.Add(MarkerRow("结束循环", depth, list, i + 1));
             }
         }
     }
@@ -250,11 +252,17 @@ public partial class ActionEditorWindow : Window
         };
     }
 
-    private static StepRow MarkerRow(string text, int depth) => new()
+    /// <summary>
+    /// 标记行（否则 / 结束如果 / 结束循环）：<c>Owner</c> / <c>Index</c> 决定「选中这一行再加步骤」落到哪里——
+    /// 「否则」= 假分支开头，「结束如果」「结束循环」= 这一块之后的下一行。
+    /// </summary>
+    private static StepRow MarkerRow(string text, int depth, List<Step>? owner = null, int index = 0) => new()
     {
         Depth = depth,
         IsMarker = true,
         MarkerText = text,
+        Owner = owner,
+        Index = index,
     };
 
     private StepRow? SelectedRow() => StepList.SelectedItem as StepRow;
@@ -590,9 +598,15 @@ public partial class ActionEditorWindow : Window
             list = target.Owner;
             index = 0;
         }
+        else if (target.IsMarker && target.Owner != null)
+        {
+            after = false;   // 否则 / 结束如果 / 结束循环：落到它标记的那个位置
+            list = target.Owner;
+            index = target.Index;
+        }
         else
         {
-            return;          // 否则 / 结束如果 / 结束循环 这类标记行不是落点
+            return;          // 没有归属的标记行不是落点
         }
 
         // 不能把一步拖进它自己的分支里
@@ -1320,6 +1334,35 @@ public partial class ActionEditorWindow : Window
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+
+    /// <summary>
+    /// 静态校验：与 AI 草稿的 <c>ltools_staging_check</c> 用同一个 <see cref="ActionValidator"/>，
+    /// 免得编辑器和 MCP 两套规则长期分叉。
+    /// </summary>
+    private void Validate_Click(object sender, RoutedEventArgs e)
+    {
+        _program.Name = (NameBox.Text ?? "").Trim();
+        _program.Icon = IconPicker.SelectedIcon ?? "";
+
+        var result = ActionValidator.Validate(_program);
+        if (result.Issues.Count == 0)
+        {
+            SetStatus("校验通过：没有发现问题", hint: true);
+            return;
+        }
+
+        const int maxShown = 12;
+        string detail = string.Join("\n", result.Issues.Take(maxShown).Select(i =>
+            (i.Severity == IssueSeverity.error ? "✕ " : "！ ") + i.Label + i.Message));
+        if (result.Issues.Count > maxShown)
+            detail += $"\n…还有 {result.Issues.Count - maxShown} 条，修完刷新后再看";
+
+        SetStatus($"校验：{result.Errors} 个错误 / {result.Warnings} 个提醒",
+            hint: result.Ok, danger: !result.Ok);
+        MessageBox.Show(detail,
+            $"LTools · 动作校验（{result.Errors} 个错误 / {result.Warnings} 个提醒）",
+            MessageBoxButton.OK, result.Ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
+    }
 
     private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
     {

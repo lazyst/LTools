@@ -26,6 +26,8 @@
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20260627" />
     <!-- 高精度 OCR：PP-OCRv6 推理（ONNX Runtime + SkiaSharp，纯托管包，无原生 Paddle） -->
     <PackageReference Include="RapidOcrNet" Version="4.2.0" />
+    <!-- 本机 MCP（外部 agent 帮写动作）：官方 C# SDK，HTTP 传输；只用 127.0.0.1 + 令牌。 -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
   </ItemGroup>
 
   <ItemGroup>

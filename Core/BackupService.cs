@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Config;
+using LTools.Core.Ai;
 using LTools.Features;
 
 namespace LTools.Core;
@@ -68,6 +69,7 @@ internal static class BackupService
         public bool HasResources { get; init; }
         public bool HasNotes { get; init; }
         public bool HasMacros { get; init; }
+        public bool HasStaging { get; init; }
     }
 
     /// <summary>导入预检结果：解压到临时目录后的扫描信息；调用方确认后由 <see cref="Import"/> 执行替换。</summary>
@@ -78,6 +80,7 @@ internal static class BackupService
         public bool IncludeResources { get; init; }
         public bool IncludeNotes { get; init; }
         public bool IncludeMacros { get; init; }
+        public bool IncludeStaging { get; init; }
         public int ExecutableCount { get; init; }
         public List<string> ResourceActionRefs { get; init; } = new(); // "名称 — 片段"
         public long SizeBytes { get; init; }
@@ -92,6 +95,8 @@ internal static class BackupService
         if (includeResources) total += DirSize(AppPaths.ResourceDir);
         if (includeNotes) total += DirSize(AppPaths.NotesDir);
         total += DirSize(MacroStore.Dir);
+        // AI 暂存区：草稿大小随图片数量变化，和宏一样按实际目录估算。
+        total += DirSize(DraftStore.Root);
         return total;
     }
 
@@ -115,7 +120,10 @@ internal static class BackupService
                 // 宏事件文件：存在才打包，旧备份不含 macros 时导入不会清空现有宏。
                 bool includeMacros = Directory.Exists(MacroStore.Dir);
                 if (includeMacros) AddDir(zip, MacroStore.Dir, "macros");
-                AddText(zip, "manifest.json", BuildManifest(includeResources, includeNotes, includeMacros));
+                // AI 暂存区草稿：未采纳的草稿换机后还要接着用；ai/ 里是令牌，故意不进备份。
+                bool includeStaging = Directory.Exists(DraftStore.Root);
+                if (includeStaging) AddDir(zip, DraftStore.Root, "staging");
+                AddText(zip, "manifest.json", BuildManifest(includeResources, includeNotes, includeMacros, includeStaging));
             }
             if (File.Exists(destPath)) File.Delete(destPath);
             File.Move(tmp, destPath);
@@ -162,6 +170,7 @@ internal static class BackupService
             bool hasResources = includes.Contains("resources", StringComparer.OrdinalIgnoreCase);
             bool hasNotes = includes.Contains("notes", StringComparer.OrdinalIgnoreCase);
             bool hasMacros = includes.Contains("macros", StringComparer.OrdinalIgnoreCase);
+            bool hasStaging = includes.Contains("staging", StringComparer.OrdinalIgnoreCase);
 
             var refs = new List<string>();
             int execCount = 0;
@@ -194,10 +203,12 @@ internal static class BackupService
                     HasResources = hasResources,
                     HasNotes = hasNotes,
                     HasMacros = hasMacros,
+                    HasStaging = hasStaging,
                 },
                 IncludeResources = hasResources,
                 IncludeNotes = hasNotes,
                 IncludeMacros = hasMacros,
+                IncludeStaging = hasStaging,
                 ExecutableCount = execCount,
                 ResourceActionRefs = refs,
                 SizeBytes = DirSize(staging),
@@ -244,6 +255,10 @@ internal static class BackupService
             // 4) 宏事件文件
             if (preview.IncludeMacros)
                 ReplaceDir(Path.Combine(preview.StagingDir, "macros"), MacroStore.Dir, ts, restores);
+
+            // 5) AI 暂存区草稿（含 history；排除 ai/ 里的令牌）
+            if (preview.IncludeStaging)
+                ReplaceDir(Path.Combine(preview.StagingDir, "staging"), DraftStore.Root, ts, restores);
         }
         catch
         {
@@ -265,12 +280,14 @@ internal static class BackupService
 
     // ============ 内部 ============
 
-    private static string BuildManifest(bool includeResources, bool includeNotes, bool includeMacros)
+    private static string BuildManifest(bool includeResources, bool includeNotes, bool includeMacros,
+        bool includeStaging = false)
     {
         var includes = new List<string> { "config" };
         if (includeResources) includes.Add("resources");
         if (includeNotes) includes.Add("notes");
         if (includeMacros) includes.Add("macros");
+        if (includeStaging) includes.Add("staging");
         var m = new Manifest
         {
             Format = FormatId,

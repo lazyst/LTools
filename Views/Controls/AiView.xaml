@@ -1,0 +1,224 @@
+<UserControl x:Class="LTools.Views.Controls.AiView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
+    <UserControl.Resources>
+        <Style x:Key="AiCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="14,12"/>
+        </Style>
+        <Style x:Key="MiniBtn" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="8,1"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- 子页同层：由设置左栏「AI 接入」的二级下拉切换（ShowPage） -->
+    <Grid>
+        <!-- ============ 连接（含「给 AI 的说明」与知识包） ============ -->
+        <ScrollViewer x:Name="Page_Connect" VerticalScrollBarVisibility="Auto"
+                      Visibility="Collapsed" Padding="20,14,20,14">
+            <StackPanel>
+                <Border Style="{StaticResource AiCard}" Margin="0,0,0,14">
+                    <StackPanel>
+                        <CheckBox x:Name="EnabledBox" Content="启用本机 MCP 服务（让 AI 助手读写暂存区草稿）"
+                                  Checked="Settings_Changed" Unchecked="Settings_Changed"/>
+                        <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="22,4,0,0"
+                                   Text="服务只监听 127.0.0.1，需要访问令牌。正式动作对 AI 只读，AI 写出的内容先落在暂存区，由你确认后采纳。"/>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Ellipse x:Name="StatusDot" Width="8" Height="8" VerticalAlignment="Center"
+                                     Fill="{StaticResource HintTextBrush}"/>
+                            <TextBlock x:Name="StatusText" Style="{StaticResource HintLabel}"
+                                       VerticalAlignment="Center" Margin="6,0,0,0" Text="未启用"/>
+                        </StackPanel>
+
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="端口"
+                                       VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <TextBox Grid.Column="1" x:Name="PortBox" Width="88" MinHeight="28"
+                                     VerticalContentAlignment="Center" ToolTip="1024–65535，默认 18766"/>
+                            <TextBlock Grid.Column="2" x:Name="EndpointText" Style="{StaticResource HintLabel}"
+                                       VerticalAlignment="Center" Margin="12,0,0,0" TextWrapping="Wrap"/>
+                            <Button Grid.Column="3" Style="{StaticResource MiniBtn}" Content="应用端口"
+                                    Click="ApplyPort_Click" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="访问令牌" Margin="0,14,0,6"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" x:Name="TokenBox" IsReadOnly="True" MinHeight="28"
+                                     FontFamily="Consolas" VerticalContentAlignment="Center"
+                                     ToolTip="AI 客户端用 Bearer 方式携带它"/>
+                            <CheckBox Grid.Column="1" x:Name="ShowTokenBox" Content="显示"
+                                      Margin="10,0,0,0" VerticalAlignment="Center"
+                                      Checked="ShowToken_Changed" Unchecked="ShowToken_Changed"/>
+                            <Button Grid.Column="2" Style="{StaticResource MiniBtn}" Content="复制"
+                                    Margin="10,0,0,0" Click="CopyToken_Click"/>
+                            <Button Grid.Column="3" Style="{StaticResource MiniBtn}" Content="重置"
+                                    Margin="6,0,0,0" Click="ResetToken_Click"/>
+                        </Grid>
+                        <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Text="令牌只存本机（ai/mcp.json），日志与回执里一律打码。重置后旧客户端要重新填。"/>
+
+                        <CheckBox x:Name="AllowWritesBox" Margin="0,14,0,0"
+                                  Content="允许 AI 写入（暂存区草稿的增删改、保存、试运行）"
+                                  Checked="Settings_Changed" Unchecked="Settings_Changed"/>
+
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="审批模式"
+                                       VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <ComboBox Grid.Column="1" x:Name="ApprovalBox" Width="176"
+                                      VerticalAlignment="Center" SelectionChanged="Settings_Changed">
+                                <ComboBoxItem Content="只读"/>
+                                <ComboBoxItem Content="沙箱（采纳 / 删除需确认）"/>
+                                <ComboBoxItem Content="全部放行"/>
+                            </ComboBox>
+                            <TextBlock Grid.Column="2" x:Name="ApprovalHint" Style="{StaticResource HintLabel}"
+                                       VerticalAlignment="Center" Margin="12,0,0,0" TextWrapping="Wrap"/>
+                        </Grid>
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="客户端配置"
+                                       VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <ComboBox Grid.Column="1" x:Name="ClientKindBox" Width="130"
+                                      SelectedIndex="0" VerticalAlignment="Center">
+                                <ComboBoxItem Content="opencode"/>
+                                <ComboBoxItem Content="Claude Code" Tag="claude"/>
+                                <ComboBoxItem Content="Codex" Tag="codex"/>
+                                <ComboBoxItem Content="Cursor / 其它" Tag="cursor"/>
+                                <ComboBoxItem Content="stdio（命令行）" Tag="stdio"/>
+                            </ComboBox>
+                            <Button Grid.Column="2" Style="{StaticResource MiniBtn}" Content="复制配置"
+                                    Margin="8,0,0,0" Click="CopyConfig_Click"/>
+                            <TextBlock x:Name="CopyHint" Grid.Column="3" Style="{StaticResource HintLabel}"
+                                       VerticalAlignment="Center" Margin="10,0,0,0"/>
+                        </Grid>
+                        <TextBlock x:Name="StdioHintText" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                                   Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- 给 AI 的说明：一句提示词，粘过去就能配好并开始写动作 -->
+                <Border Style="{StaticResource AiCard}" Margin="0,0,0,14">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="给 AI 的说明"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox Grid.Column="1" x:Name="ModeBox" Width="150" SelectedIndex="0"
+                                      VerticalAlignment="Center" ToolTip="接入方式；两种都能用，HTTP 少一层转发"
+                                      SelectionChanged="PromptMode_Changed">
+                                <ComboBoxItem Content="HTTP（推荐）" Tag="http"/>
+                                <ComboBoxItem Content="stdio（命令行）" Tag="stdio"/>
+                            </ComboBox>
+                        </Grid>
+                        <TextBox x:Name="PromptBox" Margin="0,8,0,0" Height="170" MinHeight="140"
+                                 IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                                 FontFamily="Consolas" FontSize="{StaticResource FontSizeSecondary}"
+                                 ToolTip="只读；改端口 / 重置令牌后自动更新"/>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Style="{StaticResource MiniBtn}" Content="复制这段说明"
+                                    Click="CopyPrompt_Click"/>
+                            <CheckBox Grid.Column="1" x:Name="HideTokenBox" Content="隐藏令牌"
+                                      Margin="12,0,0,0" VerticalAlignment="Center"
+                                      ToolTip="截图 / 分享时勾上：令牌位置换成占位符"
+                                      Checked="HideToken_Changed" Unchecked="HideToken_Changed"/>
+                            <TextBlock Grid.Column="2" x:Name="PromptHint" Style="{StaticResource HintLabel}"
+                                       VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap"
+                                       Text="整段粘给 AI 助手即可。这段说明含访问令牌，只粘给你信任的客户端。"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- 知识包：AI 写动作前会读的几份文档 -->
+                <Border Style="{StaticResource AiCard}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                                   Text="AI 写动作前会读这几份文档：格式说明、单元目录（从程序里的单元定义自动生成）和示例。升级后自动重建。"/>
+                        <TextBlock x:Name="KnowledgePathText" Margin="0,8,0,0" FontFamily="Consolas"
+                                   FontSize="{StaticResource FontSizeSecondary}" TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button Style="{StaticResource MiniBtn}" Content="重新生成 units.md"
+                                    Click="RegenerateKnowledge_Click"/>
+                            <Button Style="{StaticResource MiniBtn}" Content="打开目录" Margin="6,0,0,0"
+                                    Click="OpenKnowledge_Click"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ============ 审计 ============ -->
+        <ScrollViewer x:Name="Page_Audit" VerticalScrollBarVisibility="Auto"
+                      Visibility="Collapsed" Padding="20,14,20,14">
+            <StackPanel>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource HintLabel}"
+                               VerticalAlignment="Center" Text="最近 20 条工具调用（只记元数据）"/>
+                    <Button Grid.Column="1" Style="{StaticResource MiniBtn}" Content="刷新"
+                            Margin="0,0,6,0" Click="RefreshAudit_Click"/>
+                    <Button Grid.Column="2" Style="{StaticResource MiniBtn}" Content="打开审计日志"
+                            Click="OpenAudit_Click"/>
+                </Grid>
+                <Border Style="{StaticResource AiCard}">
+                    <StackPanel>
+                        <ItemsControl x:Name="AuditList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontFamily="Consolas"
+                                               FontSize="{StaticResource FontSizeHint}"
+                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                               TextWrapping="Wrap" Margin="0,1"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock x:Name="AuditEmpty" Style="{StaticResource HintLabel}"
+                                   Text="还没有工具调用记录。"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

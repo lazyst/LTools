@@ -132,6 +132,12 @@ public sealed class AppConfig
     public string LastNavPage { get; set; } = "actions";
 
     /// <summary>
+    /// 设置左栏「二级下拉导航」中处于展开状态的父项（<c>superpanel</c> / <c>ai</c>）。
+    /// 页面本身由 <see cref="LastNavPage"/> 记；启动时当前页所在组一定会展开（否则看不出在哪个子页）。
+    /// </summary>
+    public List<string>? NavExpandedGroups { get; set; }
+
+    /// <summary>
     /// 上次选用的「文字识别」引擎（<c>windows</c> / <c>v6tiny</c> / <c>v6small</c>），
     /// 新建 OCR 取值默认用它；null = 还没选过（默认内置的 PP-OCRv6 快速）。见 <c>Features/OcrEnginePreference</c>。
     /// </summary>

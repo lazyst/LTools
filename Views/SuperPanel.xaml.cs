@@ -10,6 +10,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
+using LTools.Core.Ai;
 using LTools.Features;
 using LTools.Features.Floating;
 using LTools.Features.Panel;
@@ -47,6 +48,9 @@ public partial class SuperPanelWindow : Window
     private bool _pinned;
     private int _interactCount;
     private ContextMenu? _openMenu;
+
+    /// <summary>主区停在「暂存区」页（左栏第二个入口）。仅本次打开有效，不落盘。</summary>
+    private bool _stashMode;
 
     // 空白处左键拖动窗口（照 Quicker：不只顶栏可以拖）
     private Point _blankDragStart;
@@ -92,6 +96,10 @@ public partial class SuperPanelWindow : Window
         _globalRatio = Math.Clamp(panel.Preferences.GlobalRatio, 0.15, 0.85);
         ApplySplitRatio();
 
+        // 上次停留的页（动作面板 / 暂存区）：别每次打开都回到动作面板。
+        // XAML 默认是动作面板，暂存区在 Loaded 里再切（此时窗口还没显示，切了不闪）。
+        _stashMode = string.Equals(panel.Preferences.LastPage, "stash", StringComparison.OrdinalIgnoreCase);
+
         _globalDrag = new TileDragSort(this, GhostLayer, GlobalGroups)
         {
             AllowDrag = () => string.IsNullOrEmpty(SearchBox.Text?.Trim()),
@@ -128,10 +136,15 @@ public partial class SuperPanelWindow : Window
         SetPinned(false);
         RebuildAll();
 
+        // 暂存区页（照 Quicker：AI 写好的草稿就在面板左栏，不在设置里）
+        StashView.ItemsChanged += UpdateStashRail;
+        StashView.Reload(force: true);   // 只为把草稿数带进左栏提示（页面还没打开）
+
         Loaded += (_, _) =>
         {
             PlaceAtCursor(_invokeX, _invokeY);
-            FocusSearch();
+            // 按上次停留的页恢复（暂存区的搜索框收起、列表刷新都在 ApplyPageMode 里）
+            ApplyPageMode();
         };
         Activated += (_, _) => FocusSearch();
 
@@ -874,6 +887,8 @@ public partial class SuperPanelWindow : Window
 
     private void FocusSearch()
     {
+        // 暂存区页没有搜索框：别把焦点塞给隐藏的 TextBox（Esc / 方向键仍由窗口处理）
+        if (SearchHost.Visibility != Visibility.Visible) return;
         SearchBox.Focus();
         SearchBox.CaretIndex = SearchBox.Text?.Length ?? 0;
     }
@@ -918,6 +933,8 @@ public partial class SuperPanelWindow : Window
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape) { RequestEscape(); e.Handled = true; return; }
+        // 暂存区页没有可键盘选中的磁贴：别让方向键 / Enter 去碰被遮住的正式动作
+        if (_stashMode) return;
         if (e.Key == Key.Down) { MoveSelection(1); e.Handled = true; return; }
         if (e.Key == Key.Up) { MoveSelection(-1); e.Handled = true; return; }
         if (e.Key == Key.Enter) { ExecuteSelected(); e.Handled = true; }
@@ -993,11 +1010,13 @@ public partial class SuperPanelWindow : Window
 
     private ContextMenu BuildFilledMenu(PanelTileRef tref)
     {
+        string id = tref.ActionId!;
         var menu = new ContextMenu();
         AddMenuItem(menu, "编辑…", () => EditAction(tref));
         AddMenuItem(menu, "复制", () => DuplicateAction(tref));
+        // 照 Quicker「以暂存区方式编辑」：正式动作只读，先复制一份到暂存区再改
+        AddMenuItem(menu, "在暂存区编辑…", () => EditInStash(id));
         menu.Items.Add(new Separator());
-        string id = tref.ActionId!;
         bool floating = FloatingLibrary.IsFloating(id);
         string label = !floating ? "悬浮此动作"
             : FloatingManager.IsOnDesktop(id) ? "取消悬浮" : "显示悬浮";
@@ -1375,6 +1394,27 @@ public partial class SuperPanelWindow : Window
         if (PanelActionOps.Edit(null, tref.ActionId)) RebuildAll();
     }
 
+    /// <summary>
+    /// 照 Quicker「以暂存区方式编辑」：把正式动作复制成一份草稿（正式动作只读），
+    /// 切到暂存区页继续改；改完由用户决定「覆盖原动作」还是「另存为新动作」。
+    /// </summary>
+    private void EditInStash(string actionId)
+    {
+        var action = ActionRegistry.FindById(actionId);
+        if (action == null) return;
+
+        try
+        {
+            DraftStore.Create(action.Name, action.Program?.Description, actionId, "user");
+            ShowStashPage();
+            ToastService.Show("已复制到暂存区；改完再决定是否覆盖原动作", action.Name, 3000, ToastKind.success);
+        }
+        catch (Exception ex)
+        {
+            ToastService.Show(ex.Message, "复制到暂存区失败", 4000, ToastKind.error);
+        }
+    }
+
     private void DuplicateAction(PanelTileRef tref)
     {
         if (tref.ActionId == null) return;
@@ -1420,10 +1460,57 @@ public partial class SuperPanelWindow : Window
 
     // ============ 窗口事件 ============
 
-    private void NavActions_Click(object sender, RoutedEventArgs e) => FocusSearch();
+    /// <summary>左栏「动作面板」：回到双区磁贴页。</summary>
+    private void NavActions_Click(object sender, RoutedEventArgs e)
+    {
+        ShowActionsPage();
+        FocusSearch();
+    }
 
-    private void NavStash_Click(object sender, RoutedEventArgs e)
-        => ToastService.Show("暂存区还在做，先把常用内容放成动作磁贴吧。", "暂存区（即将推出）");
+    /// <summary>左栏「暂存区」：主区切成草稿卡片页（照 Quicker：暂存区是面板的一页）。</summary>
+    private void NavStash_Click(object sender, RoutedEventArgs e) => ShowStashPage();
+
+    /// <summary>切到暂存区页（<see cref="Features.SuperPanel.ShowStash"/> 也从这里进来）。</summary>
+    internal void ShowStashPage()
+    {
+        _stashMode = true;
+        ApplyPageMode();
+    }
+
+    private void ShowActionsPage()
+    {
+        _stashMode = false;
+        ApplyPageMode();
+    }
+
+    private void ApplyPageMode()
+    {
+        ActionsPane.Visibility = _stashMode ? Visibility.Collapsed : Visibility.Visible;
+        StashView.Visibility = _stashMode ? Visibility.Visible : Visibility.Collapsed;
+
+        NavActionsBtn.Tag = _stashMode ? null : "Selected";
+        NavStashBtn.Tag = _stashMode ? "Selected" : null;
+
+        // 搜索只搜正式动作：停在草稿页时把搜索框收起来，免得输进去什么也搜不到
+        SearchHost.Visibility = _stashMode ? Visibility.Collapsed : Visibility.Visible;
+
+        StashView.SetActive(_stashMode);
+        if (_stashMode) StashView.Reload(force: true);
+        else FocusSearch();
+    }
+
+    /// <summary>左栏暂存区入口的提示带上草稿数（卡片数由 <see cref="StashPane"/> 报回来）。</summary>
+    private void UpdateStashRail()
+    {
+        int count = StashView.Count;
+        NavStashBtn.ToolTip = count == 0
+            ? "暂存区：AI 写好的草稿停在这里（现在是空的）"
+            : $"暂存区：{count} 份草稿（点开查看 / 试运行 / 采纳）";
+        AutomationProperties.SetHelpText(NavStashBtn, count == 0 ? "空" : $"{count} 份草稿");
+    }
+
+    /// <summary>菜单交给面板窗口记账（钩子据此不关面板；悬浮项继续盖在上面）。</summary>
+    internal void AttachMenu(ContextMenu menu) => TrackInteract(menu);
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -1456,6 +1543,8 @@ public partial class SuperPanelWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        StashView.SetActive(false);
+
         var prefs = PanelLibrary.Current.Preferences;
         double w = ActualWidth > 0 ? ActualWidth : Width;
         double h = ActualHeight > 0 ? ActualHeight : Height;
@@ -1470,6 +1559,13 @@ public partial class SuperPanelWindow : Window
         if (Math.Abs(prefs.GlobalRatio - _globalRatio) > 0.001)
         {
             prefs.GlobalRatio = _globalRatio;
+            dirty = true;
+        }
+
+        string page = _stashMode ? "stash" : "actions";
+        if (!string.Equals(prefs.LastPage, page, StringComparison.OrdinalIgnoreCase))
+        {
+            prefs.LastPage = page;
             dirty = true;
         }
         if (dirty) PanelLibrary.Save();

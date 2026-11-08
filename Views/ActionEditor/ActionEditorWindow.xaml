@@ -344,6 +344,9 @@
                            VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"
                            Foreground="{StaticResource HintTextBrush}"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource BtnGhost}" Content="校验" Width="80" MinHeight="32"
+                            Margin="0,0,8,0" Click="Validate_Click"
+                            ToolTip="按与 AI 草稿相同的规则静态检查变量 / 参数 / 引用"/>
                     <Button Style="{StaticResource BtnGhost}" Content="取消" IsCancel="True"
                             Width="92" MinHeight="32" Margin="0,0,8,0" Click="Cancel_Click"/>
                     <Button Style="{StaticResource BtnPrimary}" Content="确定" IsDefault="True"

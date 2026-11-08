@@ -42,4 +42,16 @@ internal static class ConfigHelper
         }
         _window.NavigateToPanelScene(sceneId);
     }
+
+    /// <summary>打开设置并切到「AI 接入」（面板暂存区的「AI 接入设置」入口用）。</summary>
+    public static void OpenAi()
+    {
+        if (_window == null)
+        {
+            _window = new ConfigHelperWindow(_configPath ?? "");
+            _window.Closed += (_, _) => _window = null;
+            _window.Show();
+        }
+        _window.NavigateToAi();
+    }
 }

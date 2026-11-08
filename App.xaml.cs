@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
+using LTools.Core.Ai;
 using LTools.Features;
 using LTools.Features.Floating;
 using LTools.Features.Migration.Legacy;
@@ -32,6 +33,13 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // —— stdio 桥（LTools.exe --mcp-stdio）：只转发 JSON-RPC，不建托盘 / 钩子 / 单实例互斥体 ——
+        if (McpStdioBridge.IsRequested(e.Args))
+        {
+            Shutdown(McpStdioBridge.Run());
+            return;
+        }
 
         // —— UI 线程未捕获异常兑底：记录到崩溃日志并吞掉（常驻输入工具不因单次异常退出）——
         DispatcherUnhandledException += App_DispatcherUnhandledException;
@@ -127,6 +135,11 @@ public partial class App : Application
 
         // 模板截图同理：删动作 / 换模板后旧 shot-*.png 没有别处回收，启动时按引用清一次。
         ImageLibrary.CollectGarbage();
+
+        // AI 接入：知识包随单元清单变化重建（后台线程，别拖住启动）；MCP 服务默认关闭，
+        // 只有用户在设置里打开才会在后台起 HTTP 服务（启动失败只记配置里的 LastError）。
+        _ = Task.Run(KnowledgePack.Ensure);
+        _ = Task.Run(McpServer.Apply);
 
         // —— 启动提示：屏幕右下角的 toast（抽屉式从右侧滑入、点一下就关），不再跟着鼠标弹小字。
         //    仍在无钩子阶段同步显示：首个 WPF 窗口的首帧会初始化渲染栈（D3D 等），
@@ -311,6 +324,8 @@ public partial class App : Application
     {
         AppLog.Info("App", "退出 LTools");
         _watchdog?.Stop();
+        // 只管「别再收请求」并把关停排到后台：绝不在 UI 线程上等 ASP.NET Core 关停（会永久卡死托盘）。
+        McpServer.Stop();
         FloatingManager.Shutdown();
         KeyboardHook.Uninstall();
         MouseHook.Uninstall();
@@ -322,6 +337,7 @@ public partial class App : Application
     /// <summary>无论从托盘退出还是系统注销，都确保日志队列写完（可重复调用）。</summary>
     protected override void OnExit(ExitEventArgs e)
     {
+        McpServer.Stop();
         FloatingManager.Shutdown();
         AppLog.Shutdown();
         base.OnExit(e);

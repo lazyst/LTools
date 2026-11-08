@@ -12,6 +12,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
             <!-- 不写死宽度：Auto 列按最宽的「取值单元」量，固定 76px 会截成「取值单…」 -->
@@ -42,10 +43,23 @@
                             MinHeight="28" Padding="10,2" Click="InlineSetup_Click"/>
                 </Grid>
             </Grid>
+
+            <!-- 插入变量：点开变量列表，选中后写进左边那个输入框（文本模板插 ${名}，变量模式填名字） -->
+            <!-- Focusable=False：点按钮不抢输入框的焦点，光标 / 选区才不会丢 -->
+            <Button x:Name="InsertVarButton" Grid.Column="2" Content="变量" Focusable="False"
+                    Style="{StaticResource BtnGhost}" Margin="6,0,0,0"
+                    MinHeight="28" Padding="10,2" Click="InsertVar_Click"
+                    ToolTip="插入变量：从列表里选一个变量，写进这个输入框"/>
         </Grid>
 
-        <!-- 选中「取值单元」时的一行说明：它做什么、还缺什么、下一步点哪里 -->
-        <TextBlock x:Name="InlineHint" Grid.Row="1" Style="{StaticResource HintLabel}"
-                   TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
+        <StackPanel Grid.Row="1">
+            <!-- 写成了变量名的文本：提醒一句，否则运行时会当成一段普通文本 -->
+            <TextBlock x:Name="VarHint" Style="{StaticResource HintLabel}"
+                       Foreground="{StaticResource DangerBrush}"
+                       TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
+            <!-- 选中「取值单元」时的一行说明：它做什么、还缺什么、下一步点哪里 -->
+            <TextBlock x:Name="InlineHint" Style="{StaticResource HintLabel}"
+                       TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
+        </StackPanel>
     </Grid>
 </UserControl>

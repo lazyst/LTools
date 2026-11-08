@@ -42,6 +42,12 @@ public sealed class PanelPreferencesDto
 
     /// <summary>全局区占上下两区总高度的比例（0.15~0.85），分割条拖动后记住。</summary>
     public double GlobalRatio { get; set; } = 0.5;
+
+    /// <summary>
+    /// 上次停留的页：<c>actions</c>（动作面板）/ <c>stash</c>（暂存区）。
+    /// 只在窗口关闭时写回，切页不落盘。
+    /// </summary>
+    public string LastPage { get; set; } = "actions";
 }
 
 /// <summary>一个区（全局 / 上下文）的场景集合。</summary>

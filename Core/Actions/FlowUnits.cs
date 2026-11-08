@@ -25,6 +25,13 @@ internal static class FlowUnits
     /// <summary>条件比较（<c>flow.if</c> / <c>flow.while</c> 共用）。</summary>
     internal static class Compare
     {
+        /// <summary>需要「右值」的比较方式（其余是一元判断，右值不显示）。</summary>
+        public static readonly string[] BinaryOps =
+        {
+            "equals", "notEquals", "contains", "notContains", "startsWith", "endsWith",
+            "regex", "greater", "less", "greaterOrEqual", "lessOrEqual",
+        };
+
         public static readonly string[] Ops =
         {
             "equals", "notEquals", "contains", "notContains", "startsWith", "endsWith",
@@ -63,16 +70,51 @@ internal static class FlowUnits
             };
         }
 
-        /// <summary>布尔真值：布尔按自身，对象先看 found，其余按文本非空。</summary>
+        /// <summary>
+        /// 布尔真值：布尔按自身、数字非 0、列表 / 对象非空、对象先看 <c>found</c> / <c>flag</c>。
+        /// </summary>
+        /// <remarks>
+        /// 文本只认 true/false/1/0/yes/no/on/off，别的文本一律报错。
+        /// 以前这里退回「文本非空即真」，于是把变量名当文本写进左值（<c>"found"</c> 而不是
+        /// <c>${found}</c>）就永远成立，看起来像「如果永远进 then」（用户报过）。
+        /// 宁可报一句能照着改的错，也不要悄悄判成 true。
+        /// </remarks>
         private static bool Truthy(Value value)
         {
-            try { return value.AsBool(); }
-            catch (ActionException) { return value.AsText().Length > 0; }
+            switch (value.Kind)
+            {
+                case ValueKind.list:
+                    return value.Items.Count > 0;
+
+                case ValueKind.@object:
+                    if (value.Members.TryGetValue("found", out var found)) return Truthy(found);
+                    if (value.Members.TryGetValue("flag", out var flag)) return Truthy(flag);
+                    return value.Members.Count > 0;
+
+                case ValueKind.text:
+                {
+                    string text = value.AsText().Trim();
+                    if (text.Length == 0) return false;
+                    try
+                    {
+                        return value.AsBool();
+                    }
+                    catch (ActionException)
+                    {
+                        throw new ActionException(
+                            $"左值是文本「{text}」，不是布尔值。要判断变量，请把左值切到「变量」或写成 ${{{text}}}；" +
+                            "要判断文本非空，请把比较方式改成「不为空」。");
+                    }
+                }
+
+                default:
+                    return value.AsBool();
+            }
         }
 
         /// <summary>
-        /// 取对象成员的真值（条件里的 found / active）；不是对象时退回
-        /// 布尔真值 / 非空文本，兼容「变量里只存了 true / 1」的旧配置。
+        /// 取对象成员的真值（条件里的 found / active）；不是对象时退回布尔真值
+        /// （文本要写成 true / 1 / no 这类，存了布尔值的对象也能判断）。
         /// </summary>
         private static bool MemberTruthy(Value value, string name)
         {
@@ -104,18 +146,26 @@ internal static class FlowUnits
     }
 
     private static InputSpec ConditionLeft() =>
-        new("left", "左值", Editor: InputEditor.condition, Required: true);
+        new("left", "左值", Editor: InputEditor.condition, Required: true,
+            Description: "要判断的值。判断变量就点右侧「变量」按钮插入 ${变量名}，或把来源切到「变量」（直接写变量名会被当成文本）");
 
     private static InputSpec ConditionOp() =>
         new("op", "比较", ValueKind.text, InputEditor.enumList, Required: true,
             Default: Value.FromText("equals"), Options: Compare.Ops);
 
     private static InputSpec ConditionRight() =>
-        new("right", "右值", Editor: InputEditor.condition);
+        new("right", "右值", Editor: InputEditor.condition,
+            VisibleWhen: RightVisibleWhen(),
+            Description: "拿左值跟它比。同样可以点「变量」按钮 / 切到「变量」来比较另一个变量");
 
     private static InputSpec ConditionNegate() =>
         new("negate", "对结果取反", ValueKind.@bool, InputEditor.boolean,
-            Default: Value.FromBool(false));
+            Default: Value.FromBool(false),
+            Description: "勾上就把比较结果反过来：成立变不成立、不成立变成立");
+
+    /// <summary>右值只在二元比较时显示（为真 / 为空 / 找到 这类一元判断不需要右值）。</summary>
+    private static string RightVisibleWhen() =>
+        string.Join(" || ", Compare.BinaryOps.Select(op => $"op == '{op}'"));
 
     /// <summary>赋值 / 追加：<c>flow.set</c>。</summary>
     private sealed class SetUnit : IStepUnit
