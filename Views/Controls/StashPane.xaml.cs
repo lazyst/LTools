@@ -511,6 +511,8 @@ public sealed partial class StashPane : UserControl
 
     private static void OpenPath(string path)
     {
+        // 打开的是外部资源管理器窗口：面板留着只会挡在它前面（用户预期是「打开目录」后回到桌面）。
+        Features.SuperPanel.Close();
         try
         {
             if (!Directory.Exists(path)) Directory.CreateDirectory(path);

@@ -135,18 +135,6 @@ public partial class SuperPanelWindow
 
     // ============ 磁贴拖动（实现见 Views/Controls/TileDragSort.cs） ============
 
-    /// <summary>坐标是否落在磁贴上（菜单在场时吞掉这次点击用）。</summary>
-    private bool IsOverTile(Point windowPos)
-    {
-        if (InputHitTest(windowPos) is not DependencyObject d) return false;
-        while (d != null)
-        {
-            if (d is Button b && b.Tag is PanelTileRef) return true;
-            d = VisualTreeHelper.GetParent(d);
-        }
-        return false;
-    }
-
     // ============ 窗口事件 ============
 
     /// <summary>左栏「动作面板」：回到双区磁贴页。</summary>

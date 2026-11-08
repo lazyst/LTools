@@ -146,8 +146,10 @@ internal static class MouseHook
                         _rightCloseUpPending = false;   // 兜底：上个 up 若丢失，清残留避免误吞
                         _rightPassUpPending = false;
 
-                        bool overSuper = SuperPanel.IsOpen && !SuperPanel.IsInteracting
-                                         && !SuperPanel.IsPinned
+                        // 面板自己的右键菜单也算面板的一部分：点在菜单里交给菜单，
+                        // 点在菜单外（面板外）就是「点外部」——关面板（菜单随之销毁），这一下右键放行。
+                        bool overSuperMenu = SuperPanel.IsOpen && SuperPanel.PointInOpenMenu(ms.Pt.X, ms.Pt.Y);
+                        bool overSuper = SuperPanel.IsOpen && !SuperPanel.IsPinned && !overSuperMenu
                                          && !SuperPanel.PointInWindowRect(ms.Pt.X, ms.Pt.Y);
                         bool overMenu = MenuSystem.IsMenuOpen
                                         && !MenuSystem.PointInMenuRect(ms.Pt.X, ms.Pt.Y);
@@ -210,9 +212,11 @@ internal static class MouseHook
                         break; // 菜单开着时不参与其它鼠标手势
                     }
                     // 超级面板打开时：点击面板外部 → 关闭面板并放行点击（坐标判定，与 MenuPopup/HelpPanel
-                    // 同思路；右键菜单/对话框打开期间 IsInteracting，不介入，避免误关）。
-                    if (SuperPanel.IsOpen && !SuperPanel.IsInteracting && !SuperPanel.IsPinned
-                        && !SuperPanel.PointInWindowRect(ms.Pt.X, ms.Pt.Y))
+                    // 同思路）。**面板自己的右键菜单在场也算**（用户要求）：点菜单外就关面板，
+                    // 菜单随面板一起销毁；点在菜单里则由菜单自己处理（子菜单也是独立 popup，一起算）。
+                    if (SuperPanel.IsOpen && !SuperPanel.IsPinned
+                        && !SuperPanel.PointInWindowRect(ms.Pt.X, ms.Pt.Y)
+                        && !SuperPanel.PointInOpenMenu(ms.Pt.X, ms.Pt.Y))
                     {
                         SuperPanel.Close();
                         break; // 不吞点击：放行给光标下窗口

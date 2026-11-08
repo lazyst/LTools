@@ -102,6 +102,12 @@ internal static class SuperPanel
         return x >= r.Left && x <= r.Right && y >= r.Top && y <= r.Bottom;
     }
 
+    /// <summary>
+    /// 屏幕物理坐标点是否落在面板当前打开的右键菜单里（含已展开的子菜单）。
+    /// 菜单浮在面板外面，钩子判「点外部」时要靠它把「点菜单项」排除掉。
+    /// </summary>
+    public static bool PointInOpenMenu(int x, int y) => _window?.MenuContains(x, y) == true;
+
     /// <summary>切换显示/关闭。</summary>
     public static void Toggle()
     {

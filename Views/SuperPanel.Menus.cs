@@ -348,7 +348,57 @@ public partial class SuperPanelWindow
         };
     }
 
-    /// <summary>菜单在场时点击面板其它位置：只关菜单，磁贴上的这次点击吞掉。</summary>
+    /// <summary>
+    /// 点是否落在当前打开的右键菜单里（**物理屏幕像素**，直接跟钩子给的坐标比）。
+    /// </summary>
+    /// <remarks>
+    /// 菜单浮在面板**外面**，只按面板矩形判断会把它当成「点面板外部」——钩子在那一步就把面板关了，
+    /// 菜单项的命令还会连带一起被销毁。所以钩子判「点外面」时必须把菜单（含已展开的子菜单）排除掉。
+    /// 子菜单是另一个 popup 窗口，只查根菜单矩形不够。
+    /// </remarks>
+    internal bool MenuContains(int screenX, int screenY)
+    {
+        var menu = _openMenu;
+        if (menu == null || !menu.IsOpen) return false;
+        try
+        {
+            if (ContainsScreenPoint(menu, screenX, screenY)) return true;
+
+            foreach (var item in MenuDescendants(menu.Items))
+            {
+                if (!item.IsSubmenuOpen) continue;
+                if (item.Template?.FindName("PART_Popup", item) is Popup { Child: Visual child }
+                    && ContainsScreenPoint(child, screenX, screenY))
+                {
+                    return true;
+                }
+            }
+        }
+        catch { /* 拿不到矩形就当不在菜单里 */ }
+        return false;
+    }
+
+    private static IEnumerable<MenuItem> MenuDescendants(ItemCollection items)
+    {
+        foreach (var entry in items)
+        {
+            if (entry is not MenuItem item) continue;
+            yield return item;
+            foreach (var child in MenuDescendants(item.Items)) yield return child;
+        }
+    }
+
+    private static bool ContainsScreenPoint(Visual visual, int screenX, int screenY)
+    {
+        if (PresentationSource.FromVisual(visual) is not System.Windows.Interop.HwndSource source
+            || source.Handle == IntPtr.Zero)
+            return false;
+        if (!Win32.GetWindowRect(source.Handle, out Win32.Rect rect)) return false;
+        return screenX >= rect.Left && screenX < rect.Right
+            && screenY >= rect.Top && screenY < rect.Bottom;
+    }
+
+    /// <summary>菜单在场时点击面板其它位置：只关菜单，**这一下点击照常交给面板内容**（不再吞）。</summary>
     private void OnWindowMouseDown(object sender, MouseButtonEventArgs e)
     {
         bool hadMenu = _openMenu != null;
@@ -357,7 +407,6 @@ public partial class SuperPanelWindow
             var m = _openMenu!;
             _openMenu = null;
             if (m.IsOpen) m.IsOpen = false;
-            if (IsOverTile(e.GetPosition(this))) e.Handled = true;
         }
 
         // 空白处按下：记住起点，移动超过 4px 才拖窗口（磁贴 / 按钮等交互元素不参与）
