@@ -91,6 +91,12 @@ public partial class App : Application
         AppLog.Info("App", $"数据目录 {AppPaths.DataRoot}");
         AppLog.Info("App", $"配置文件 {LTools.Config.ConfigBundle.ConfigDir(cfgPath)}（锚点 {Path.GetFileName(cfgPath)}）");
 
+        // 配置结构升级（旧文件名 → 单文件 → 六域 → 动作目录）：按版本逐级执行。
+        // 放在日志就绪之后：迁移会写文件，成功 / 失败都要留下记录；有推进就重新读一遍。
+        int schemaBefore = LTools.Core.Storage.Migrations.ConfigSchema.Detect(cfgPath);
+        if (LTools.Core.Storage.Migrations.MigrationRunner.RunPending(cfgPath) != schemaBefore)
+            cfg = AppConfig.Load(cfgPath);
+
         // 配置读坏时每次启动都会留一份 .bad- 副本，只保留最近 3 份，避免反复失败时越积越多。
         AppConfig.PruneBrokenBackups(cfgPath);
 

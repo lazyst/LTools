@@ -501,7 +501,7 @@ LT_Set("结果", 名字 . "！")
 
 分域之后，界面上改一个开关只会重写对应的那一个文件（例如改通知策略只动 `settings.json`、记住导航页只动 `ui.json`），不会顺手把动作清单或别的域一起写一遍。
 
-旧版单文件 `LTools.json` 会在第一次保存后自动拆成上述文件，并把旧文件改名 `LTools.json.migrated`；更早一版 `configs/actions.json` 里的动作也会在第一次保存后写成动作目录，旧清单归档为 `configs/actions.json.migrated`（内容原样保留：删掉 `configs/` 与 `actions/`、把这两个 `.migrated` 改回来即可回滚）。`configs/` 不存在时回退读取同目录的 `LTools.example.json` 作为初始模板。格式为 **JSON**（枚举写成字符串，如 `"Type": "composite"`），**不是**旧的 INI 分节格式。
+旧版单文件 `LTools.json` 会在升级后**首次启动**时由迁移器自动拆成上述文件，并把旧文件改名 `LTools.json.migrated`；更早一版 `configs/actions.json` 里的动作也会在同一次升级里写成动作目录，旧清单归档为 `configs/actions.json.migrated`（内容原样保留：删掉 `configs/` 与 `actions/`、把这两个 `.migrated` 改回来即可回滚）。迁移按版本逐级执行、可重入，失败只记日志不阻断启动（下次启动从同一版本重试），见 `Core/Storage/Migrations`。`configs/` 不存在时回退读取同目录的 `LTools.example.json` 作为初始模板。格式为 **JSON**（枚举写成字符串，如 `"Type": "composite"`），**不是**旧的 INI 分节格式。
 
 某个配置文件存在但无法解析（手改出错 / 旧格式）时，程序会**保留原文件**并备份为 `<文件名>.bad-时间戳`（每个文件只留最近 3 份），本次运行该域使用默认值且不会写回；设置页保存时会提示失败。修复或从备份恢复后再保存即可，不会再把动作和菜单洗成空。
 

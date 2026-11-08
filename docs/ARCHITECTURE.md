@@ -121,7 +121,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 - 验收：Debug/Release 0/0；用自检程序逐个域写入，只有目标文件 mtime 变化、`actions/*.json` 不动；
   人为塞一个不存在的动作 Id 进菜单 / 面板，启动修复只重写这两个文件。回滚：文件格式不变，退回旧版本即可。
 
-### P4 · 代码结构（窗口与单元已完成，迁移入口待做）
+### P4 · 代码结构（已完成）
 
 - `Views` 里 1000+ 行的窗口拆成「外壳 + 部件」（partial，类名 / XAML 不变，只搬代码）：
   - `SuperPanel.xaml.cs`（1669 → 449 行）= 外壳 + 未配置提示 + 关闭保存；
@@ -135,8 +135,10 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
     `ActionEditorWindow.Run.cs`（保存 + 试运行）。
 - 单元实现按分类分文件（`Features/Units/<分类>/<XxxUnit>.cs`，一个单元一个文件），
   共用的静态小工具留在同目录（`FileText.cs` / `Crc32.cs`）；新增单元仍只在 `BuiltInUnits` 加一行。
-- 待做：迁移入口统一到 `Core/Storage/Migrations`（`schemaVersion` 驱动，一次只跑一步）；
-  当前迁移逻辑仍散在 `ConfigBundle` / `ActionPrograms` 里。
+- 迁移入口统一到 `Core/Storage/Migrations`：`ConfigSchema` 从磁盘现状推断版本
+  （0 旧文件名 / 1 单文件 / 2 六域 / 3 动作目录），`MigrationRunner.RunPending` 在启动时逐级执行
+  `SplitDomainsStep` → `ActionDirectoriesStep`（`LegacyFileStep` 在定位配置路径时处理改名 / ini 转换）；
+  每一步只做一件事、可重入，失败只记录并在下次启动从同一版本重试，不再散在读写路径里。
 
 ### P5 · 资源与备份
 
@@ -153,7 +155,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | P1 | Debug/Release 0/0；6 个文件生成；只改一个域时其它文件 mtime 不变；旧文件仍可恢复 | 删 `configs/`，把 `LTools.json.migrated` 改回 `LTools.json` |
 | P2 | 采纳草稿后 `actions/<id>/files/` 里直接有图、引用仍是 `files/x.png`；删动作进 `trash/`；改一个动作只重写它自己的 `action.json`；删光动作后重启不复活 | 把 `configs/actions.json.migrated` 改回 `actions.json`、删 `actions/`，回退版本直接读它 |
 | P3 | 逐个域写入只有目标 `configs/*.json` 的 mtime 变化、`actions/*.json` 不动；并发保存不互相覆盖；菜单 / 面板里的悬空动作 Id 在启动时被清掉 | 域文件格式不变，退回旧版本仍能读 |
-| P4 | 窗口拆完后交互与原版一致（面板建窗 / 切暂存区 / 编辑器载入动作均正常）；单元清单数量不变 | 纯代码改动，git revert |
+| P4 | 窗口拆完后交互与原版一致（面板建窗 / 切暂存区 / 编辑器载入动作均正常）；单元清单数量不变；迁移沙盒覆盖版本 0/1/2/3，版本 3 启动零写入 | 纯代码改动，git revert |
 
 ## 5. 明确不做
 

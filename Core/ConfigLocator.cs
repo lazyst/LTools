@@ -1,65 +1,36 @@
 using System.IO;
-using LTools.Config;
+using LTools.Core.Storage.Migrations;
 
 namespace LTools.Core;
 
 /// <summary>
-/// 配置路径定位 + 旧版配置一次性迁移。
-/// 返回的是「锚点路径」：真正的配置在它同级的 <c>config/</c> 目录（见 <see cref="ConfigBundle"/>），
+/// 配置路径定位 + 旧版配置文件名迁移。
+/// 返回的是「锚点路径」：真正的配置在它同级的 <c>configs/</c> 目录（见 <see cref="Config.ConfigBundle"/>），
 /// 尚未分域时锚点本身就是旧单文件 <c>LTools.json</c>。dev 上溯 3 级到仓库根，prod 取 exe 同级。
 /// 发布包只携带 LTools.example.json（绝不携带用户配置），
 /// 故本类只负责「找到已存在的用户配置 / 决定新建位置」。
-/// 迁移链（均为一次性，旧文件改名后不再回流）：
-///   1) 旧 <c>CapsLock++.json</c>（改名 LTools 前的用户配置）→ 同目录改名 LTools.json；
-///   2) 更旧的 <c>CapsLock++.ini</c>（v1.x）→ 读 ini 写 LTools.json，ini 改名 .migrated 备份。
+/// </summary>
+/// <remarks>
+/// 版本 0 的改名 / ini 转换见 <see cref="LegacyFileStep"/>；拆域与动作目录化由
+/// <see cref="MigrationRunner"/> 在拿到锚点后执行（启动时调用）。
 /// 统一此处后，App / MenuSystem / TerminalLauncher / MouseMode 不再各自拼路径
 /// （原先 App 上溯 3 级、MouseMode 上溯 5 级，规则不一致）。
-/// </summary>
+/// </remarks>
 internal static class ConfigLocator
 {
     public static string FindPath()
     {
-        // 已存在的用户配置：dev 仓库根优先，其次 exe 同级
-        string devPath = Path.Combine(RepoRoot, "LTools.json");
-        string prodPath = Path.Combine(AppContext.BaseDirectory, "LTools.json");
-        if (File.Exists(devPath)) return devPath;
-        if (File.Exists(prodPath)) return prodPath;
-
-        // 改名迁移：旧 CapsLock++.json → LTools.json（同目录改名，内容原样保留）
-        foreach (var legacy in new[]
-        {
-            Path.Combine(RepoRoot, "CapsLock++.json"),
-            Path.Combine(AppContext.BaseDirectory, "CapsLock++.json"),
-        })
-        {
-            if (!File.Exists(legacy)) continue;
-            string target = Path.Combine(Path.GetDirectoryName(legacy)!, "LTools.json");
-            try
-            {
-                File.Move(legacy, target);
-                return target;
-            }
-            catch { /* 改名失败（被占用等）继续走后续回退 */ }
-        }
-
-        // 迁移旧 ini（与 ini 同目录生成 json）
-        foreach (var ini in new[]
-        {
-            Path.Combine(RepoRoot, "CapsLock++.ini"),
-            Path.Combine(AppContext.BaseDirectory, "CapsLock++.ini"),
-        })
-        {
-            if (!File.Exists(ini)) continue;
-            var cfg = AppConfig.MigrateFromIni(ini);
-            string jsonPath = Path.Combine(Path.GetDirectoryName(ini)!, "LTools.json");
-            cfg.Save(jsonPath);
-            try { File.Move(ini, ini + ".migrated"); } catch { /* 备份失败不阻断 */ }
-            return jsonPath;
-        }
+        // 已存在（或能从未改名 / ini 迁移出）的配置：dev 仓库根优先，其次 exe 同级。
+        string? promoted = LegacyFileStep.TryPromote(RepoRoot)
+                           ?? LegacyFileStep.TryPromote(AppContext.BaseDirectory);
+        if (promoted != null) return promoted;
 
         // 全新安装：dev（仓库根含项目文件）落在仓库根，否则落在 exe 同级。
         // 注意 prod 必须回到 exe 同级，不能沿用旧的 candidate[0]（否则会把配置写到 exe 上溯三级处）。
-        return IsDevLayout ? devPath : prodPath;
+        string name = "LTools.json";
+        return IsDevLayout
+            ? Path.Combine(RepoRoot, name)
+            : Path.Combine(AppContext.BaseDirectory, name);
     }
 
     /// <summary>仓库根（同 <see cref="AppPaths.RepoRoot"/>，统一在此委派）。</summary>
