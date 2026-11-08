@@ -103,8 +103,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
   （`ActionStore.ResourceRootFor`），解析顺序仍是 `ImageLibrary.Resolve` 的四级回退。
 - 备份：导出打包 `actions/`（含动作私有图）；导入旧备份时让现有 `actions/` 退位，
   让恢复出来的 `configs/actions.json` 生效，下次保存再重建目录。
-- 暂时保留：编辑器新截的模板图仍进 `resources/images`，运行期截图仍与它混放——统一搬到
-  `cache/screenshots` 与共享素材去重放到 P5。
+- P5 已完成：运行期截图改落 `cache/screenshots/`（见下），编辑器新截的模板图仍进 `resources/images/`。
 
 ### P3 · 存储层收口（已完成）
 
@@ -140,13 +139,26 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
   `SplitDomainsStep` → `ActionDirectoriesStep`（`LegacyFileStep` 在定位配置路径时处理改名 / ini 转换）；
   每一步只做一件事、可重入，失败只记录并在下次启动从同一版本重试，不再散在读写路径里。
 
-### P5 · 资源与备份
+### P5 · 资源与备份（已完成）
 
-- 运行期截图搬到 `cache/screenshots/`（可随时清空），不再靠 `shot-` 前缀 + 时间界线区分归属。
-- 跨动作共享素材去重（按内容哈希），避免同一张图在多个动作目录里各存一份。
-- 备份清单改为「目录白名单 + manifest 声明」，新增目录自动纳入。
-- 启动时做一次孤儿检查（动作目录里无人引用的图 → 移入 `trash`，不直接删）。
-- 提供「导出单个动作」= 打包一个动作目录。
+五条都按「目录边界 + 显式声明」落地，不再靠文件名前缀或散在各处的特判：
+
+- **运行期截图独立目录**：`Features/Flow/ImageLibrary.CaptureDir` = `<数据根>/cache/screenshots/`，
+  「截图」步骤走 `SaveCapture`；下一次运行开始（`AutomationRunner.RunCore`）与程序启动（`App.OnStartup`）
+  各调一次 `ClearCaptures()` 整体清空。`resources/images/` 只留模板图 / 剪贴板图，继续按引用 + 时间界线回收；
+  `cache/` 不进备份、不进仓库（`.gitignore`）。
+- **跨动作素材去重**：采纳草稿复制 `staging/<id>/files/` 时，`ActionStore.CopyFilesFrom` 先按体积建索引、
+  再比 SHA-256；命中别的动作已有的同内容文件就用**硬链接**（`Native/FileLinks`）指向它，失败回退复制。
+  写目标文件前一律先删旧名字（硬链接共享内容，就地覆盖会连带改掉另一个动作的模板图）。
+- **备份目录白名单**：`Core/BackupService` 的 `BackupDomain` 表列出唯一允许进包的目录
+  （配置 / `actions` / `resources` / `速记` / `macros` / `staging`），`Export`、`EstimateSize`、
+  manifest 的 `includes` 都从同一张表生成；新增一类目录只加一行，`cache/`、`ai/`、`logs/` 永远不进来。
+  导出先写 `.part-*` 再替换，失败不留半个 zip。
+- **启动孤儿检查**：`Core/Storage/OrphanFiles.Collect`（`ConfigStore.Initialize` 里调用）扫
+  `actions/<id>/files/` 的图片，把没有任何 `image` 参数引用的移进 `trash/<时间戳>/orphans/<id>/`（只搬不删）。
+  只处理已迁移（有 `Program`）的动作；出现 `${变量}` / `{"var": …}` / 内联取值这类动态引用时整个动作跳过。
+- **导出单个动作**：`BackupService.ExportAction` 打一个 `.ltact`（`manifest.json` + `action.json` + `files/…`），
+  入口在面板磁贴右键与「动作管理」磁贴右键（`PanelActionOps.Export`，后台导出 + toast 报路径）。
 
 ## 4. 每阶段验收与回滚
 
@@ -156,6 +168,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | P2 | 采纳草稿后 `actions/<id>/files/` 里直接有图、引用仍是 `files/x.png`；删动作进 `trash/`；改一个动作只重写它自己的 `action.json`；删光动作后重启不复活 | 把 `configs/actions.json.migrated` 改回 `actions.json`、删 `actions/`，回退版本直接读它 |
 | P3 | 逐个域写入只有目标 `configs/*.json` 的 mtime 变化、`actions/*.json` 不动；并发保存不互相覆盖；菜单 / 面板里的悬空动作 Id 在启动时被清掉 | 域文件格式不变，退回旧版本仍能读 |
 | P4 | 窗口拆完后交互与原版一致（面板建窗 / 切暂存区 / 编辑器载入动作均正常）；单元清单数量不变；迁移沙盒覆盖版本 0/1/2/3，版本 3 启动零写入 | 纯代码改动，git revert |
+| P5 | 截图落在 `cache/screenshots/` 且下次运行 / 重启后被清空；同内容图采纳到第二个动作时 `fsutil hardlink list` 显示两份名字、改内容只影响一个动作；孤儿图移入 `trash/orphans/`、动态引用动作不动；备份 manifest 的 `includes` 与 zip 条目一致、`cache/` 不出现；`.ltact` 含 manifest + action.json + files/ | 纯代码 + 目录迁移，退回旧版本仍能读写（`cache/` 只是多了个目录） |
 
 ## 5. 明确不做
 

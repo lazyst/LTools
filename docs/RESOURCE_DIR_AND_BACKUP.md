@@ -3,7 +3,9 @@
 > **状态**：已实现（待手测）　**关联**：默认工作目录已落地（commit `b1d28be`）；SQLite 评估后决定**暂不引入**。
 >
 > **后续变更（2026-11，见 `docs/ARCHITECTURE.md`）**：配置已拆成 `configs/*.json`（P1），动作改成一个动作一个目录
-> `actions/<id>/`（P2）。本文下面关于 `LTools.json` 的段落是当时的实现记录；备份现在总是打包
+> `actions/<id>/`（P2），运行期截图改落 `cache/screenshots/`、采纳时素材按内容哈希硬链接去重、
+> 启动时回收动作目录孤儿图、备份改为「目录白名单 + manifest」并支持导出单个动作 `.ltact`（P5）。
+> 本文下面关于 `LTools.json` 的段落是当时的实现记录；备份现在总是打包
 > `configs/` + `actions/`，再按勾选加 `resources/` + `速记/`，另有 `macros/` 与 `staging/`，并继续兼容旧单文件备份。
 >
 > **背景**：用户希望在应用目录下放一个「资源目录」存放脚本 / 程序等，`runCommand` 动作可用相对路径引用；并新增配置备份的导出 / 导入，一个包同时备份设置与资源目录（含速记）。
@@ -65,22 +67,35 @@ public static string DefaultWorkdir() => Directory.Exists(DataRoot) ? DataRoot
 - `README.txt` 内容（约 5 行）：用途说明、相对路径用法（`resources\foo.ps1`）、升级不会删除本目录、可放任意文件。
 - 找图模板约定（见 `Features/Flow/ImageLibrary.cs`）：
   - `actions/<动作id>/files/`——该动作独占的模板图（采纳草稿时搬进来），随动作目录删除 / 备份；
+    采纳时若与别的动作已有文件内容相同（SHA-256），用**硬链接**共享同一份内容，磁盘上只存一次；
   - `resources/images/`——程序生成的共享 / 历史截图（`shot-时间戳.png`），启动与删除动作时按引用回收；
-  - `resources/user/`——用户自己的素材，文件选择器默认打开这里，整个目录不参与自动删除。
+  - `resources/user/`——用户自己的素材，文件选择器默认打开这里，整个目录不参与自动删除；
+  - `<数据根>/cache/screenshots/`——「截图」步骤的运行期输出，下次运行开始 / 程序启动时整体清空，
+    **不进备份**（`cache/` 是纯运行缓存）。
   `resources/` 下两个目录由备份 `.ltbak` 一起打包，`actions/` 也总是进备份，无需额外处理。
+- **动作目录孤儿图**：启动时 `Core/Storage/OrphanFiles.Collect` 扫 `actions/<id>/files/` 的图片，
+  没有任何 `image` 参数引用的移进 `trash/<时间戳>/orphans/<id>/`（只搬不删）。只处理已迁移成
+  `ActionDto.Program` 的动作；出现 `${变量}` / `{"var": …}` / 内联取值这类动态引用时整个动作跳过。
 
 ---
 
 ## 4. 备份格式 `.ltbak`
 
-本质是 zip（扩展名 `.ltbak`，关联「打开方式」非本应用职责）。包内固定结构：
+本质是 zip（扩展名 `.ltbak`，关联「打开方式」非本应用职责）。包内固定结构（P5 起）：
 
 ```
 manifest.json
-LTools.json
-resources/...        （含时）
-速记/...             （含时）
+configs/*.json        （已分域；旧布局是单文件 LTools.json）
+actions/<id>/...      （动作体 + 该动作自己的 files/）
+resources/...         （勾选「资源目录」时）
+速记/...              （勾选「速记」时）
+macros/...            （存在宏时）
+staging/...           （存在未采纳草稿时）
 ```
+
+**目录白名单**（`BackupService.BackupDomain`）是唯一来源：导出内容、体积估算、manifest 的
+`includes` 都由同一张表生成；表里没列的目录（`cache/`、`ai/`、`logs/`、`trash/`）永远不进备份。
+新增一类目录只加一行。
 
 `manifest.json`：
 
@@ -88,15 +103,23 @@ resources/...        （含时）
 {
   "format": "ltools-backup",
   "formatVersion": 1,
-  "appVersion": "2.2.6",
-  "createdAt": "2026-10-31T12:00:00",
-  "includes": ["config", "resources", "notes"]
+  "appVersion": "2.5.0",
+  "createdAt": "2026-11-09T12:00:00",
+  "includes": ["config", "actions", "resources", "notes", "macros", "staging"]
 }
 ```
 
-- 始终含 `config`；`resources` / `notes` 按 `includes` 决定。
+- 始终含 `config`；`actions` / `macros` / `staging` 存在就带；`resources` / `notes` 按勾选。
+- `includes` 只声明**实际打进包里**的域；导入按它整体替换（缺目录 = 该域是空的）。
 - zip 条目名 UTF-8（`ZipFile` 默认），保留中文路径。
 - `formatVersion` 预留向后兼容；导入端只认 `1`，高于则提示版本不支持。
+
+### 4.1 单个动作 `.ltact`
+
+`BackupService.ExportAction` 只打包一个动作目录：`manifest.json`（`format = "ltools-action"`，
+带 `actionId` / `actionName`）+ `action.json` + `files/…`。入口在面板磁贴右键、
+「动作管理」磁贴右键的「导出动作…」（后台导出，完成后 toast 报路径）。
+`.ltact` 不是完整备份，导入端（`Inspect`）会以「格式标识不符」拒绝。
 
 ---
 
@@ -107,11 +130,13 @@ resources/...        （含时）
 1. 范围复选框：`☑ 资源目录` `☑ 速记`（配置固定含）。默认全勾。
 2. `SaveFileDialog`：默认文件名 `LTools-backup-yyyyMMdd-HHmmss.ltbak`，过滤器 `LTools 备份 (*.ltbak)|*.ltbak`。
 3. 后台线程执行（避免阻塞钩子 / UI）：
-   - 读 `ConfigLocator.FindPath()` 的 `LTools.json`；**文件不存在**（全新安装、从未保存过）时改为序列化 `AppConfig.Load(...)` 的内存配置写入——manifest 已声明含 `config`，不能产出「声称含配置、实际没有」的备份。
-   - 按 includes 收集 `resources/`、`速记/` 文件树（跳过 `.bak-*`）。
-   - 写 `manifest.json` + 各条目到临时 zip，完成后移到目标路径（避免半写文件被当作有效备份）。
+   - 按目录白名单（见 §4）收集：`configs/`（未分域时是单文件 `LTools.json`；**两者都没有**
+     ——全新安装、从未保存过——时序列化 `AppConfig.Load(...)` 的内存配置写入，
+     manifest 已声明含 `config`，不能产出「声称含配置、实际没有」的备份）；
+     `actions/`、`macros/`、`staging/` 存在就带；`resources/`、`速记/` 按勾选（跳过 `.bak-*` 等现场备份）。
+   - 写 `manifest.json` + 各条目到临时 zip（`.part-随机`），完成后移到目标路径——导出到一半失败不会留下半个 zip。
 4. 体积 > 50 MB 时导出前确认（确认按钮为「确认导出」，非红色）。
-5. 完成后 `TrayService.Notify` 提示路径。
+5. 完成后用 `ToastService` 提示路径（不再走托盘气泡）。
 
 ---
 
