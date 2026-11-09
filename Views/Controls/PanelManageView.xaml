@@ -88,9 +88,11 @@
                 <TextBlock Style="{StaticResource SectionLabel}" Text="行为" Margin="0,0,0,8"/>
                 <Border Style="{StaticResource PanelCard}" Margin="0,0,0,14">
                     <StackPanel>
-                        <CheckBox x:Name="EnabledBox" Content="启用动作面板（长按右键唤起）"
+                        <CheckBox x:Name="EnabledBox" Content="启用超级面板（长按右键唤起）"
                                   Checked="EnabledBox_Changed" Unchecked="EnabledBox_Changed"/>
-                        <Grid Margin="0,12,0,0">
+                        <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,0" TextWrapping="Wrap"
+                                   Text="关掉后长按右键不再弹面板，右键保持系统原生行为；托盘菜单里也有这个开关。"/>
+                        <Grid x:Name="ThresholdRow" Margin="0,12,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>

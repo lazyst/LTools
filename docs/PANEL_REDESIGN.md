@@ -268,7 +268,7 @@ UWP / 托管进程取不到真实 exe 时（如 `ApplicationFrameHost.exe`）退
 
 **常规**
 
-- 启用超级面板（与「通用」页同一开关，双向同步）。
+- 启用超级面板（**唯一开关**，别再往「通用」页放一份；关掉时长按阈值置灰）。
 - 长按阈值 100–800ms（沿用 `AppState.SuperPanelThresholdMs`）。
 - 视图选项：显示分组标题 / 紧凑磁贴。
 - 「重新显示未配置提示」：清 `HintDismissed`。

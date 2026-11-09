@@ -483,7 +483,8 @@ public partial class ConfigHelperWindow : Window
 
     // ============ 通用：开关 ============
 
-    /// <summary>把「工具开关」三个开关的状态刷到控件（调用方负责 <c>_initializing</c>）。</summary>
+    /// <summary>把「工具开关」的状态刷到控件（调用方负责 <c>_initializing</c>）。
+    /// 超级面板的开关不在这里：它归「面板管理 → 常规 → 行为」。</summary>
     private void PopulateToggles()
     {
         CapsLockModifierBox.IsChecked = AppState.CapsLockModifier;
@@ -494,7 +495,6 @@ public partial class ConfigHelperWindow : Window
             WheelVolumeEdge.both => 2,
             _ => 0,
         };
-        SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
         ApplyEdgeWheelVisibility();
     }
 
@@ -528,13 +528,6 @@ public partial class ConfigHelperWindow : Window
             2 => WheelVolumeEdge.both,
             _ => WheelVolumeEdge.bottom,
         });
-    }
-
-    private void SuperPanelEnabledBox_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_initializing) return;
-        Settings.SetSuperPanelEnabled(SuperPanelEnabledBox.IsChecked == true);
-        Page_SuperPanel.Reload();
     }
 
     private void AutoStartBox_Changed(object sender, RoutedEventArgs e)

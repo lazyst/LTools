@@ -110,6 +110,7 @@
                           IsReadOnly="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
                           Background="Transparent" BorderThickness="0"
                           SelectionMode="Single" SelectionUnit="FullRow"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                           PreviewMouseLeftButtonDown="BindingGrid_PreviewMouseLeftButtonDown">
                     <DataGrid.Columns>
                         <DataGridTemplateColumn Header="启用" Width="46">
@@ -123,7 +124,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="快捷键" Width="150">
+                        <DataGridTemplateColumn Header="快捷键" Width="140">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Chord}" Margin="2,0"
@@ -145,7 +146,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="动作" Width="*">
+                        <DataGridTemplateColumn Header="动作" Width="*" MinWidth="160">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding ActionName}" Margin="2,0"
@@ -155,19 +156,19 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="生效范围" Width="150">
+                        <DataGridTemplateColumn Header="生效范围" Width="130">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding ScopeText}" Margin="2,0"
                                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                                Style="{StaticResource HintLabel}"
                                                FontSize="{StaticResource FontSizeHint}"
-                                               ToolTip="{Binding ScopeText}"/>
+                                               ToolTip="{Binding ScopeTip}"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="备注" Width="140">
+                        <DataGridTemplateColumn Header="备注" Width="130">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Note}" Margin="2,0"

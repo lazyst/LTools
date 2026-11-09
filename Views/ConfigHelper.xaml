@@ -16,7 +16,9 @@
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
-        <!-- 导航项：整行可点、悬停浅灰、选中强调 -->
+        <!-- 导航项：整行可点、行内缩成圆角块（悬停浅灰、选中最深）。
+             侧栏底是 SurfaceAlt(#F4F4F5)，所以用 NavHover / NavSelected 两组专用色，
+             别套全局 HoverBg / SelectedBg——它们与侧栏底同色，看不出反馈。 -->
         <Style x:Key="NavRow" TargetType="RadioButton">
             <Setter Property="GroupName" Value="nav"/>
             <Setter Property="Height" Value="38"/>
@@ -25,15 +27,17 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="bd" Background="Transparent" Padding="16,0">
+                        <Border x:Name="bd" Background="Transparent" CornerRadius="6"
+                                Margin="6,1" Padding="10,0">
                             <ContentPresenter VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{StaticResource HoverBgBrush}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{StaticResource NavHoverBgBrush}"/>
                             </Trigger>
+                            <!-- 选中放在悬停之后：同一行既悬停又选中时，选中的色更深，优先级由此决定 -->
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{StaticResource SelectedBgBrush}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{StaticResource NavSelectedBgBrush}"/>
                                 <Setter Property="FontWeight" Value="SemiBold"/>
                                 <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
                             </Trigger>
@@ -49,7 +53,8 @@
             <Setter Property="Margin" Value="0,0,12,0"/>
         </Style>
 
-        <!-- 二级导航项（面板管理下拉）：缩进 + 细竖线，选中实底 -->
+        <!-- 二级导航项（面板管理下拉）：缩进 + 细竖线。选中与父项同一个灰底 (#E4E4E7)，
+             靠左侧 3px 近黑竖条标「当前页」——别改回白底：白块在灰侧栏上比父项还亮，上下级倒挂。 -->
         <Style x:Key="SubNavRow" TargetType="RadioButton">
             <Setter Property="Height" Value="30"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -58,15 +63,22 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="bd" Background="Transparent" CornerRadius="5" Padding="8,0" Margin="0,1">
-                            <ContentPresenter VerticalAlignment="Center"/>
+                        <Border x:Name="bd" Background="Transparent" CornerRadius="{StaticResource CornerMd}" Margin="0,1">
+                            <Grid>
+                                <Border x:Name="bar" Width="3" CornerRadius="2" Margin="0,5"
+                                        HorizontalAlignment="Left" Background="{StaticResource TextBrush}"
+                                        Visibility="Collapsed"/>
+                                <!-- 左边距 20 = 3px 竖条 + 间隙：竖条贴块左缘，文字别压在它上面 -->
+                                <ContentPresenter Margin="20,0,9,0" VerticalAlignment="Center"/>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{StaticResource SurfaceBrush}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{StaticResource NavHoverBgBrush}"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{StaticResource BorderBrush}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{StaticResource NavSelectedBgBrush}"/>
+                                <Setter TargetName="bar" Property="Visibility" Value="Visible"/>
                                 <Setter Property="FontWeight" Value="SemiBold"/>
                                 <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
                             </Trigger>
@@ -206,13 +218,8 @@
                                     </ComboBox>
                                 </Grid>
                                 <TextBlock x:Name="EdgeWheelVolumeHint" Style="{StaticResource HintLabel}"
-                                           Margin="22,6,0,12" TextWrapping="Wrap"
+                                           Margin="22,6,0,0" TextWrapping="Wrap"
                                            Text="鼠标停在光标所在显示器边缘 8px 内滚动滚轮 → 系统音量 ±1 档；其它位置的滚轮不受影响。多显示器只认光标所在的那块屏。"/>
-                                <CheckBox x:Name="SuperPanelEnabledBox" Content="启用超级面板"
-                                          Checked="SuperPanelEnabledBox_Changed" Unchecked="SuperPanelEnabledBox_Changed"/>
-                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,0"
-                                           Text="按住右键（长按）唤起动作面板。与上面的开关相互独立。"
-                                           TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
 

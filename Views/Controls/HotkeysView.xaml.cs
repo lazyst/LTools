@@ -514,6 +514,8 @@ public partial class HotkeysView : UserControl
 
         public string ScopeText => AppFilterMatch.DescribeScope(Source, _file);
 
+        public string ScopeTip => AppFilterMatch.DescribeScopeLong(Source, _file);
+
         public string Note => Source.Note;
 
         public bool Matches(string query) =>

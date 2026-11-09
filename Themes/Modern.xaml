@@ -25,6 +25,10 @@
     <Color x:Key="HoverBgColor">#F4F4F5</Color>
     <Color x:Key="PressedBgColor">#E4E4E7</Color>
     <Color x:Key="SelectedBgColor">#F4F4F5</Color>
+    <!-- 设置左栏导航：侧栏底色是 SurfaceAlt(#F4F4F5)，悬停 / 选中必须比它更深才看得见。
+         别改用 HoverBgColor / SelectedBgColor——那两个和侧栏底同色，等于没有反馈。 -->
+    <Color x:Key="NavHoverBgColor">#E9E9EC</Color>
+    <Color x:Key="NavSelectedBgColor">#E4E4E7</Color>
 
     <!-- 主操作（黑底白字） -->
     <Color x:Key="PrimaryColor">#18181B</Color>
@@ -60,6 +64,8 @@
     <SolidColorBrush x:Key="HoverBgBrush" Color="{StaticResource HoverBgColor}"/>
     <SolidColorBrush x:Key="PressedBgBrush" Color="{StaticResource PressedBgColor}"/>
     <SolidColorBrush x:Key="SelectedBgBrush" Color="{StaticResource SelectedBgColor}"/>
+    <SolidColorBrush x:Key="NavHoverBgBrush" Color="{StaticResource NavHoverBgColor}"/>
+    <SolidColorBrush x:Key="NavSelectedBgBrush" Color="{StaticResource NavSelectedBgColor}"/>
     <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource PrimaryColor}"/>
     <SolidColorBrush x:Key="PrimaryHoverBrush" Color="{StaticResource PrimaryHoverColor}"/>
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}"/>

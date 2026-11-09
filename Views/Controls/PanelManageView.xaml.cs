@@ -235,6 +235,7 @@ public partial class PanelManageView : UserControl
         EnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
         ThresholdSlider.Value = Math.Clamp(AppState.SuperPanelThresholdMs, 100, 800);
         ThresholdText.Text = $"{(int)ThresholdSlider.Value} ms";
+        ApplyEnabledState();
         ShowGroupTitlesBox.IsChecked = prefs.ShowGroupTitles;
         CompactTilesBox.IsChecked = prefs.CompactTiles;
         var fp = FloatingLibrary.Prefs;
@@ -282,9 +283,14 @@ public partial class PanelManageView : UserControl
 
     private void EnabledBox_Changed(object sender, RoutedEventArgs e)
     {
+        ApplyEnabledState();
         if (_loading) return;
         Settings.SetSuperPanelEnabled(EnabledBox.IsChecked == true);
     }
+
+    /// <summary>面板关掉时长按阈值没有意义，整行置灰（点不动，但仍能看到当前值）。</summary>
+    private void ApplyEnabledState()
+        => ThresholdRow.IsEnabled = EnabledBox.IsChecked == true;
 
     private void ThresholdSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {

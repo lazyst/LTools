@@ -27,38 +27,42 @@ internal static class HotkeySeeding
     private const string GroupName = "CapsLock 经典";
 
     /// <summary>一条种子：快捷键 → 内置功能引用（参数用默认值）。</summary>
-    private sealed record FeatureSeed(string Chord, string Reference, string Note);
+    /// <remarks>
+    /// 不写备注：列表里「动作」列已经写着功能名，同一句话再占一列是重复；
+    /// 备注列留给用户自己填。
+    /// </remarks>
+    private sealed record FeatureSeed(string Chord, string Reference);
 
     private static readonly FeatureSeed[] FeatureSeeds =
     {
         // —— CapsLock 高频入口 ——
-        new("capslock+t", "ltools.panel", "预置：打开超级面板"),
-        new("capslock+n", "ltools.note", "预置：打开速记"),
-        new("capslock+q", "common.quickSearch", "预置：快速搜索"),
-        new("capslock+tab", "common.magnifier", "预置：切换放大镜"),
-        new("capslock+backslash", "ltools.settings", "预置：打开设置"),
+        new("capslock+t", "ltools.panel"),
+        new("capslock+n", "ltools.note"),
+        new("capslock+q", "common.quickSearch"),
+        new("capslock+tab", "common.magnifier"),
+        new("capslock+backslash", "ltools.settings"),
         // capslock+space 故意留空（旧「鼠标模式」已移除）。
 
         // —— 光标移动 ——
-        new("capslock+s", "common.key.left", "预置：左移一字符"),
-        new("capslock+d", "common.key.down", "预置：下移一行"),
-        new("capslock+e", "common.key.up", "预置：上移一行"),
-        new("capslock+f", "common.key.right", "预置：右移一字符"),
-        new("capslock+w", "common.key.home", "预置：移到行首"),
-        new("capslock+r", "common.key.end", "预置：移到行尾"),
+        new("capslock+s", "common.key.left"),
+        new("capslock+d", "common.key.down"),
+        new("capslock+e", "common.key.up"),
+        new("capslock+f", "common.key.right"),
+        new("capslock+w", "common.key.home"),
+        new("capslock+r", "common.key.end"),
 
         // —— 文本选择 ——
-        new("capslock+j", "common.select.left", "预置：选中左一字符"),
-        new("capslock+k", "common.select.down", "预置：选中下一行"),
-        new("capslock+i", "common.select.up", "预置：选中上一行"),
-        new("capslock+l", "common.select.right", "预置：选中右一字符"),
+        new("capslock+j", "common.select.left"),
+        new("capslock+k", "common.select.down"),
+        new("capslock+i", "common.select.up"),
+        new("capslock+l", "common.select.right"),
 
         // —— 删除与撤销 ——
-        new("capslock+comma", "common.edit.backspace", "预置：退格"),
-        new("capslock+period", "common.edit.delete", "预置：删除"),
-        new("capslock+backspace", "common.edit.deleteLine", "预置：删除整行"),
-        new("capslock+z", "common.edit.undo", "预置：撤销"),
-        new("capslock+y", "common.edit.redo", "预置：重做"),
+        new("capslock+comma", "common.edit.backspace"),
+        new("capslock+period", "common.edit.delete"),
+        new("capslock+backspace", "common.edit.deleteLine"),
+        new("capslock+z", "common.edit.undo"),
+        new("capslock+y", "common.edit.redo"),
     };
 
     /// <summary>播种（已播过就什么都不做）。</summary>
@@ -82,7 +86,7 @@ internal static class HotkeySeeding
             }
 
             foreach (var seed in FeatureSeeds)
-                Bind(group, file, seed.Chord, seed.Reference, seed.Note);
+                Bind(group, file, seed.Chord, seed.Reference);
 
             file.SeedVersion = Version;
             c.Hotkeys = file;
@@ -99,8 +103,7 @@ internal static class HotkeySeeding
     }
 
     /// <summary>组内按快捷键复用绑定；空引用的绑定就地补上。</summary>
-    private static void Bind(HotkeyGroup group, HotkeyFile file, string chordText,
-        string reference, string note)
+    private static void Bind(HotkeyGroup group, HotkeyFile file, string chordText, string reference)
     {
         string chord = HotkeyChord.Normalize(chordText);
         var binding = group.Bindings.FirstOrDefault(b => b.Chord == chord);
@@ -112,7 +115,6 @@ internal static class HotkeySeeding
                 Enabled = true,
                 Chord = chord,
                 ActionId = reference,
-                Note = note,
             });
             return;
         }

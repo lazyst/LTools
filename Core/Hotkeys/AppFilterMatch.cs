@@ -105,7 +105,7 @@ internal static class AppFilterMatch
         return string.Join("，", parts);
     }
 
-    /// <summary>一条绑定的生效范围说明（界面右列用）。</summary>
+    /// <summary>一条绑定的生效范围：列表里显示的短标签（长名单会被列宽截断，全文见 <see cref="DescribeScopeLong"/>）。</summary>
     public static string DescribeScope(HotkeyBinding binding, HotkeyFile file)
     {
         return binding.Scope switch
@@ -115,9 +115,28 @@ internal static class AppFilterMatch
             HotkeyScope.blacklist => "排除 " + (Describe(binding.Filter) ?? "黑名单（空）"),
             _ => file.DefaultScope switch
             {
-                HotkeyScope.whitelist => "默认白名单",
-                HotkeyScope.blacklist => "默认黑名单",
-                _ => "跟随默认（全部窗口）",
+                HotkeyScope.whitelist => "默认·白名单",
+                HotkeyScope.blacklist => "默认·黑名单",
+                _ => "跟随默认",
+            },
+        };
+    }
+
+    /// <summary>同一条范围说明的全文（列表里当 ToolTip，不截断）。</summary>
+    public static string DescribeScopeLong(HotkeyBinding binding, HotkeyFile file)
+    {
+        return binding.Scope switch
+        {
+            HotkeyScope.all => "全部窗口：不受下方「全局默认名单」限制",
+            HotkeyScope.whitelist => "仅在匹配的窗口生效：" + (Describe(binding.Filter) ?? "（规则为空，等于不生效）"),
+            HotkeyScope.blacklist => "除匹配的窗口外都生效：" + (Describe(binding.Filter) ?? "（规则为空，等于全部窗口）"),
+            _ => file.DefaultScope switch
+            {
+                HotkeyScope.whitelist => "跟随全局默认名单 → 仅在匹配的窗口生效："
+                    + (Describe(file.DefaultFilter) ?? "（规则为空）"),
+                HotkeyScope.blacklist => "跟随全局默认名单 → 除匹配的窗口外都生效："
+                    + (Describe(file.DefaultFilter) ?? "（规则为空）"),
+                _ => "跟随全局默认名单 → 全部窗口",
             },
         };
     }
