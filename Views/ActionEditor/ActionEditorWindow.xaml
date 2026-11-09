@@ -107,7 +107,7 @@
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionLabel}"
                                Text="工具箱" Margin="12,0,0,4"/>
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintLabel}"
-                               Text="点一下加到选中行之后" Margin="12,0,12,6" TextWrapping="Wrap"/>
+                               Text="点一下填参数 · 拖到步骤里插入 · 右键直接添加" Margin="12,0,12,6" TextWrapping="Wrap"/>
                     <TextBox DockPanel.Dock="Top" x:Name="SearchBox" Margin="12,0,12,8"
                              MinHeight="30" TextChanged="SearchBox_TextChanged"
                              ToolTip="按名称 / 分类 / 单元键搜索"/>
@@ -269,6 +269,7 @@
                     <ListBox x:Name="StepList" HorizontalContentAlignment="Stretch"
                              BorderThickness="0" Background="Transparent"
                              ItemTemplate="{StaticResource StepRowTemplate}"
+                             ContextMenuOpening="StepList_ContextMenuOpening"
                              PreviewMouseLeftButtonDown="StepList_PreviewMouseDown"
                              MouseDoubleClick="StepList_MouseDoubleClick">
                         <ListBox.ItemContainerStyle>
@@ -340,7 +341,7 @@
         <Border Grid.Row="2" Background="{StaticResource SurfaceAltBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,8">
             <Grid>
-                <TextBlock Text="双击步骤编辑；选中行后从左侧添加会插在它后面"
+                <TextBlock Text="双击步骤编辑 · 右键更多操作 · 从左侧拖到任意行之间插入"
                            VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"
                            Foreground="{StaticResource HintTextBrush}"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

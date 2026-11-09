@@ -88,7 +88,16 @@ public partial class ActionEditorWindow
 
     private void OnDragKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Escape || (!_dragPending && !_dragging)) return;
+        if (e.Key != Key.Escape) return;
+
+        if (_unitPending || _unitDragging)
+        {
+            CancelUnitDrag();
+            e.Handled = true;
+            return;
+        }
+
+        if (!_dragPending && !_dragging) return;
         CancelDrag();
         e.Handled = true;
     }
@@ -112,18 +121,48 @@ public partial class ActionEditorWindow
 
     private void UpdateDropTarget(Point windowPoint)
     {
+        if (!TryResolveDrop(windowPoint, _dragRow?.Step, out DropSpot spot))
+        {
+            _dropTarget = null;
+            HideInsertLine();
+            return;
+        }
+
+        _dropTarget = (spot.List, spot.Index);
+        ShowInsertLine(spot);
+    }
+
+    /// <summary>落点：某个列表的第 index 项之前，行 / 缩进 / 插入线画在哪。</summary>
+    private readonly record struct DropSpot(List<Step> List, int Index, int Depth, ListBoxItem? Container, bool After);
+
+    /// <summary>
+    /// 由窗口坐标算出落点（拖步骤与从工具箱拖单元共用）。<paramref name="moving"/> 是正在被拖的步骤，
+    /// 用来拦住「把一步拖进它自己的分支」；从工具箱拖时为 null。
+    /// </summary>
+    private bool TryResolveDrop(Point windowPoint, Step? moving, out DropSpot spot)
+    {
+        spot = default;
         Point listPos = TranslatePoint(windowPoint, StepList);
         if (listPos.X < 0 || listPos.Y < 0
-            || listPos.X > StepList.ActualWidth || listPos.Y > StepList.ActualHeight) return;
+            || listPos.X > StepList.ActualWidth || listPos.Y > StepList.ActualHeight) return false;
 
-        if (StepList.InputHitTest(listPos) is not DependencyObject hit) return;
-        if (ItemsControl.ContainerFromElement(StepList, hit) is not ListBoxItem container) return;
+        ListBoxItem? container = null;
+        if (StepList.InputHitTest(listPos) is DependencyObject hit
+            && ItemsControl.ContainerFromElement(StepList, hit) is ListBoxItem found)
+            container = found;
+
+        if (container == null)
+        {
+            // 行下面的空白处 = 放到动作末尾（空动作也走这里）。
+            spot = new DropSpot(_program.Steps, _program.Steps.Count, 0, null, After: true);
+            return true;
+        }
 
         int hover = StepList.ItemContainerGenerator.IndexFromContainer(container);
-        if (hover < 0 || hover >= _rows.Count) return;
+        if (hover < 0 || hover >= _rows.Count) return false;
 
         StepRow target = _rows[hover];
-        List<Step>? list;
+        List<Step> list;
         int index;
         bool after;
 
@@ -148,17 +187,17 @@ public partial class ActionEditorWindow
         }
         else
         {
-            return;          // 没有归属的标记行不是落点
+            return false;    // 没有归属的标记行不是落点
         }
 
         // 不能把一步拖进它自己的分支里
-        if (_dragRow?.Step != null && ContainsList(_dragRow.Step, list)) return;
+        if (moving != null && ContainsList(moving, list)) return false;
 
-        _dropTarget = (list, index);
-        ShowInsertLine(container, target.Depth, after);
+        spot = new DropSpot(list, index, target.Depth, container, after);
+        return true;
     }
 
-    private void ShowInsertLine(ListBoxItem container, int depth, bool after)
+    private void ShowInsertLine(DropSpot spot)
     {
         _insertLine ??= new Border
         {
@@ -168,18 +207,35 @@ public partial class ActionEditorWindow
         };
         if (!GhostLayer.Children.Contains(_insertLine)) GhostLayer.Children.Add(_insertLine);
 
-        double indent = depth * 18;
-        Point origin = container.TranslatePoint(new Point(0, 0), GhostLayer);
-        _insertLine.Width = Math.Max(12, container.ActualWidth - indent);
-        Canvas.SetLeft(_insertLine, origin.X + indent);
-        Canvas.SetTop(_insertLine, origin.Y + (after ? container.ActualHeight : 0) - 1);
+        if (spot.Container is { } container)
+        {
+            double indent = spot.Depth * 18;
+            Point origin = container.TranslatePoint(new Point(0, 0), GhostLayer);
+            _insertLine.Width = Math.Max(12, container.ActualWidth - indent);
+            Canvas.SetLeft(_insertLine, origin.X + indent);
+            Canvas.SetTop(_insertLine, origin.Y + (spot.After ? container.ActualHeight : 0) - 1);
+            return;
+        }
+
+        // 空动作 / 行下面的空白：贴列表顶（空）或底（末尾）
+        Point listOrigin = StepList.TranslatePoint(new Point(0, 0), GhostLayer);
+        _insertLine.Width = Math.Max(12, StepList.ActualWidth - 12);
+        Canvas.SetLeft(_insertLine, listOrigin.X + 6);
+        Canvas.SetTop(_insertLine, listOrigin.Y
+            + (_rows.Count == 0 ? 4 : Math.Max(0, StepList.ActualHeight - 2)));
+    }
+
+    private void HideInsertLine()
+    {
+        if (_insertLine == null) return;
+        GhostLayer.Children.Remove(_insertLine);
+        _insertLine = null;
     }
 
     private void EndDragVisuals()
     {
         _dragGhost.End();
-        if (_insertLine != null) GhostLayer.Children.Remove(_insertLine);
-        _insertLine = null;
+        HideInsertLine();
         _dropTarget = null;
         _dragging = false;
         _dragPending = false;

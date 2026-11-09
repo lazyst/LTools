@@ -220,7 +220,27 @@ public partial class ActionEditorWindow
                 ? spec.Key
                 : $"{spec.Description}\n{spec.Key}",
         };
-        button.Click += (_, _) => AddStep(spec.Key);
+        button.PreviewMouseLeftButtonDown += (_, e) => BeginUnitPress(button, spec, e);
+        button.ContextMenu = BuildUnitMenu(spec);
+        button.Click += (_, _) =>
+        {
+            // 拖拽结束的这一下 mouseup 也会补一个 Click：别再插一步
+            if (_suppressUnitClick)
+            {
+                _suppressUnitClick = false;
+                return;
+            }
+
+            // Ctrl+点击 = 按默认参数直接插，省一次表单
+            if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
+            {
+                var (list, index, _) = InsertionTarget();
+                AddStepAt(spec.Key, list, index, direct: true);
+                return;
+            }
+
+            AddStep(spec.Key);
+        };
         return button;
     }
 
@@ -240,13 +260,52 @@ public partial class ActionEditorWindow
 
     private void AddStep(string unitKey)
     {
-        Step draft = Step.Of(unitKey);
-        var dlg = CreateStepDialog(draft);
-        if (dlg.ShowDialog() != true || dlg.Result == null) return;
-
         var (list, index, _) = InsertionTarget();
-        list.Insert(Math.Clamp(index, 0, list.Count), dlg.Result);
-        ReloadRows(dlg.Result);
+        AddStepAt(unitKey, list, index, direct: false);
+    }
+
+    /// <summary>
+    /// 把单元插到指定位置。<paramref name="direct"/> = 按默认参数直接插（拖拽 / Ctrl+点击 / 右键「直接添加」）；
+    /// 有必填项没默认值时退回参数表单，别插出一个跑不了的步骤。
+    /// </summary>
+    private void AddStepAt(string unitKey, List<Step> list, int index, bool direct)
+    {
+        Step? step = direct ? BuildDefaultStep(unitKey) : null;
+        if (step == null)
+        {
+            var dlg = CreateStepDialog(Step.Of(unitKey));
+            if (dlg.ShowDialog() != true || dlg.Result == null) return;
+            step = dlg.Result;
+        }
+
+        list.Insert(Math.Clamp(index, 0, list.Count), step);
+        ReloadRows(step);
+    }
+
+    /// <summary>
+    /// 只套 <see cref="InputSpec.Default"/> 建一步；有可见的必填参数没默认值时返回 null。
+    /// 与参数表单共用同一份声明，新增单元不用改这里。
+    /// </summary>
+    private static Step? BuildDefaultStep(string unitKey)
+    {
+        if (!StepRegistry.Default.TryGet(unitKey, out var unit)) return null;
+
+        Step step = Step.Of(unitKey);
+        foreach (var input in unit.Spec.Inputs)
+        {
+            if (input.Default == null) continue;
+            if (!VisibleWhen.IsVisible(input, step.In, unit.Spec)) continue;
+            step.In[input.Key] = StepArg.FromValue(input.Default);
+        }
+
+        foreach (var input in unit.Spec.Inputs)
+        {
+            if (!input.Required) continue;
+            if (!VisibleWhen.IsVisible(input, step.In, unit.Spec)) continue;
+            if (!step.In.ContainsKey(input.Key)) return null;
+        }
+
+        return step;
     }
 
     private void EditStep_Click(object sender, RoutedEventArgs e) => EditSelected(RowOf(sender));
@@ -278,6 +337,12 @@ public partial class ActionEditorWindow
         // 行内按钮点下去不会选中那一行（按钮吃掉了鼠标事件），所以优先用按钮自己的 DataContext，
         // 不能只看当前选中项——否则删掉一步后什么都没选中，再点第二个删除就「没反应」。
         StepRow? row = RowOf(sender) ?? SelectedRow();
+        if (row != null) DeleteRow(row);
+    }
+
+    /// <summary>删除一行（含子步骤），删完把选中项落到相邻一行。</summary>
+    private void DeleteRow(StepRow row)
+    {
         if (row?.Step == null || row.Owner == null) return;
 
         if (row.Step.Body.Count + row.Step.Then.Count + row.Step.Else.Count > 0
@@ -302,7 +367,12 @@ public partial class ActionEditorWindow
     private void MoveSelected(int delta)
     {
         StepRow? row = SelectedRow();
-        if (row?.Step == null || row.Owner == null) return;
+        if (row != null) MoveRow(row, delta);
+    }
+
+    private void MoveRow(StepRow row, int delta)
+    {
+        if (row.Step == null || row.Owner == null) return;
 
         int target = row.Index + delta;
         if (target < 0 || target >= row.Owner.Count) return;
@@ -313,10 +383,60 @@ public partial class ActionEditorWindow
 
     private void StepList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        StepRow? row = SelectedRow();
+        bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+
+        if (ctrl)
+        {
+            switch (e.Key)
+            {
+                case Key.C when row?.Step != null:
+                    _stepClipboard = row.Step.Clone();
+                    e.Handled = true;
+                    return;
+                case Key.V:
+                    PasteToSelection();
+                    e.Handled = true;
+                    return;
+                case Key.D when row?.Step != null:
+                    DuplicateRow(row);
+                    e.Handled = true;
+                    return;
+            }
+        }
+
+        if (e.Key == Key.Delete && row?.Step != null)
+        {
+            DeleteRow(row);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Enter && row?.Step != null)
+        {
+            EditSelected(row);
+            e.Handled = true;
+            return;
+        }
+
         if ((Keyboard.Modifiers & ModifierKeys.Alt) == 0) return;
 
         if (e.Key == Key.Up) { MoveSelected(-1); e.Handled = true; }
         else if (e.Key == Key.Down) { MoveSelected(1); e.Handled = true; }
+    }
+
+    /// <summary>Ctrl+V：选中步骤 → 粘到它下面；标记行 / 空分支 → 粘进那个位置；没选中 → 粘到末尾。</summary>
+    private void PasteToSelection()
+    {
+        StepRow? row = SelectedRow();
+        if (row?.Owner == null)
+        {
+            PasteAt(_program.Steps, _program.Steps.Count);
+            return;
+        }
+
+        int index = row.Step != null ? row.Index + 1 : row.Index;
+        PasteAt(row.Owner, index);
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)

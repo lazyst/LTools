@@ -69,6 +69,17 @@ public partial class ActionEditorWindow : Window
     private Border? _insertLine;
     private (List<Step> List, int Index)? _dropTarget;
 
+    // 从工具箱拖单元进步骤列表（松手按默认参数直接插入）
+    private UnitSpec? _unitSpec;
+    private FrameworkElement? _unitSource;
+    private Point _unitOrigin;
+    private Point _unitPoint;
+    private bool _unitPending;
+    private bool _unitDragging;
+    private bool _suppressUnitClick;
+    private DropSpot? _unitDrop;
+    private DispatcherTimer? _unitScroll;
+
     public ActionEditorWindow(string title, ActionDto? existing)
         : this(title, existing, null) { }
 
@@ -142,6 +153,9 @@ public partial class ActionEditorWindow : Window
         PreviewMouseMove += OnDragMove;
         PreviewMouseLeftButtonUp += OnDragUp;
         PreviewKeyDown += OnDragKeyDown;
+
+        PreviewMouseMove += OnUnitDragMove;
+        PreviewMouseLeftButtonUp += OnUnitDragUp;
 
         BuildVariableRows();
         BuildToolbox();
