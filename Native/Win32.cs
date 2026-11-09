@@ -20,9 +20,31 @@ internal static class Win32
 
     [DllImport("user32.dll")]
     public static extern bool GetCursorPos(out Point lpPoint);
-
     [DllImport("user32.dll")]
     public static extern bool SetCursorPos(int x, int y);
+
+    // —— 窗口圆角（Win11 22H2+）——
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+    private const int DwmwaWindowCornerPreference = 33;
+    private const int DwmwcpRound = 2;
+
+    /// <summary>
+    /// 让窗口用系统圆角（Win11 22H2 起）。返回 false = 系统不支持（Win10）或窗口是分层的，
+    /// 调用方保持方角自绘边框——**别在失败时硬画圆角边框**，那会在四角留出缺口。
+    /// </summary>
+    public static bool TryEnableRoundCorners(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return false;
+        try
+        {
+            int round = DwmwcpRound;
+            return DwmSetWindowAttribute(hwnd, DwmwaWindowCornerPreference, ref round, sizeof(int)) == 0;
+        }
+        catch (DllNotFoundException) { return false; }
+        catch (EntryPointNotFoundException) { return false; }
+    }
 
     [DllImport("user32.dll")]
     public static extern int GetSystemMetrics(int nIndex);

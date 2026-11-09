@@ -104,10 +104,13 @@
     <sys:Double x:Key="FontSizeBody">14</sys:Double>
     <sys:Double x:Key="FontSizeTitle">16</sys:Double>
 
-    <!-- 常用尺寸 -->
+    <!-- 圆角阶梯（**所有边框只能取这三档**，别再就地写 5 / 6 / 9 / 12）：
+         CornerSm 4 = 控件（按钮 / 输入框 / 下拉框 / 复选框 / 列表项 / 菜单项 / ToolTip / 滑块）
+         CornerMd 6 = 容器（卡片 / 下拉弹层 / 右键菜单 / 搜索框）
+         CornerLg 8 = 浮层与窗口（面板磁贴 / 悬浮项 / Toast / 窗口圆角，窗口由 DWM 画） -->
     <sys:Double x:Key="RadiusSm">4</sys:Double>
     <CornerRadius x:Key="CornerSm">4</CornerRadius>
-    <CornerRadius x:Key="CornerMd">5</CornerRadius>
+    <CornerRadius x:Key="CornerMd">6</CornerRadius>
     <CornerRadius x:Key="CornerLg">8</CornerRadius>
 
     <!-- 细线分隔 -->
@@ -150,7 +153,7 @@
             <Setter.Value>
                 <ControlTemplate>
                     <Border BorderBrush="{StaticResource SecondaryTextBrush}" BorderThickness="1"
-                            CornerRadius="5" Margin="-1" Opacity="0.7"/>
+                            CornerRadius="{StaticResource CornerSm}" Margin="-1" Opacity="0.7"/>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -164,7 +167,7 @@
                 Background="{TemplateBinding Background}"
                 BorderBrush="{TemplateBinding BorderBrush}"
                 BorderThickness="{TemplateBinding BorderThickness}"
-                CornerRadius="5"
+                CornerRadius="{StaticResource CornerSm}"
                 SnapsToDevicePixels="True"
                 Padding="{TemplateBinding Padding}">
             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"
@@ -277,7 +280,8 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="bd" Background="{TemplateBinding Background}">
+                    <Border x:Name="bd" Background="{TemplateBinding Background}"
+                            CornerRadius="{StaticResource CornerSm}" Margin="2,4">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
@@ -297,7 +301,8 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="bd" Background="{TemplateBinding Background}">
+                    <Border x:Name="bd" Background="{TemplateBinding Background}"
+                            CornerRadius="{StaticResource CornerSm}" Margin="2,4">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
@@ -346,7 +351,7 @@
                     <Border x:Name="bd" Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="5" SnapsToDevicePixels="True">
+                            CornerRadius="{StaticResource CornerSm}" SnapsToDevicePixels="True">
                         <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
                                       HorizontalScrollBarVisibility="{TemplateBinding HorizontalScrollBarVisibility}"
                                       VerticalScrollBarVisibility="{TemplateBinding VerticalScrollBarVisibility}"/>
@@ -384,7 +389,7 @@
                     <Border x:Name="bd" Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="5" SnapsToDevicePixels="True">
+                            CornerRadius="{StaticResource CornerSm}" SnapsToDevicePixels="True">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -434,7 +439,7 @@
          ============================================================ -->
     <ControlTemplate x:Key="ComboBoxToggleTemplate" TargetType="ToggleButton">
         <Border x:Name="bd" Background="{StaticResource SurfaceBrush}"
-                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="5"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="{StaticResource CornerSm}"
                 SnapsToDevicePixels="True">
             <Path x:Name="arrow" HorizontalAlignment="Right" VerticalAlignment="Center"
                   Margin="0,0,10,0" Data="M 0,0 L 4,4 L 8,0"
@@ -463,7 +468,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBoxItem">
-                    <Border x:Name="bd" Background="Transparent" CornerRadius="5"
+                    <Border x:Name="bd" Background="Transparent" CornerRadius="{StaticResource CornerSm}"
                             Margin="4,1" Padding="{TemplateBinding Padding}">
                         <ContentPresenter VerticalAlignment="Center"/>
                     </Border>
@@ -512,7 +517,7 @@
                                     Margin="0,4,0,0" Padding="0,3"
                                     Background="{StaticResource SurfaceBrush}"
                                     BorderBrush="{StaticResource BorderBrush}"
-                                    BorderThickness="1" CornerRadius="6">
+                                    BorderThickness="1" CornerRadius="{StaticResource CornerMd}">
                                 <Border.Effect>
                                     <DropShadowEffect BlurRadius="14" ShadowDepth="2" Direction="270"
                                                       Opacity="0.16" Color="#000000"/>
@@ -547,7 +552,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
                     <StackPanel Orientation="Horizontal" Background="Transparent">
-                        <Border x:Name="box" Width="15" Height="15" CornerRadius="4"
+                        <Border x:Name="box" Width="15" Height="15" CornerRadius="{StaticResource CornerSm}"
                                 Background="{StaticResource SurfaceBrush}"
                                 BorderBrush="{StaticResource BorderStrongBrush}" BorderThickness="1"
                                 VerticalAlignment="Center" SnapsToDevicePixels="True">
@@ -579,11 +584,140 @@
     </Style>
 
     <!-- ============================================================
+         滑块
+         ============================================================ -->
+    <!-- 细轨道 4px + 小圆角滑块，替掉系统默认那套带渐变的粗滑杆 -->
+    <Style x:Key="SliderTrackButton" TargetType="RepeatButton">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RepeatButton">
+                    <Border Background="Transparent" Height="20"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SliderThumb" TargetType="Thumb">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Width" Value="10"/>
+        <Setter Property="Height" Value="18"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Border x:Name="bd" Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource BorderStrongBrush}" BorderThickness="1"
+                            CornerRadius="{StaticResource CornerSm}"/>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource SecondaryTextBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="Slider">
+        <Setter Property="Height" Value="20"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid Background="Transparent" VerticalAlignment="Center">
+                        <Border Height="4" CornerRadius="2" Background="{StaticResource BorderBrush}"
+                                VerticalAlignment="Center"/>
+                        <Track x:Name="PART_Track">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource SliderTrackButton}"
+                                              Command="Slider.DecreaseLarge"/>
+                            </Track.DecreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource SliderThumb}"/>
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource SliderTrackButton}"
+                                              Command="Slider.IncreaseLarge"/>
+                            </Track.IncreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================
+         折叠头（Expander）
+         ============================================================ -->
+    <!-- 标题行是 4px 圆角的可点小块 + 箭头，展开内容直出（内容自己带卡片样式） -->
+    <Style TargetType="Expander">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Expander">
+                    <StackPanel>
+                        <ToggleButton x:Name="Head" Focusable="False" Cursor="Hand"
+                                      HorizontalAlignment="Left" Background="Transparent"
+                                      BorderThickness="0" Padding="0"
+                                      IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="hb" Background="Transparent" Padding="6,3"
+                                            CornerRadius="{StaticResource CornerSm}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock x:Name="chev" Text="&#xE76C;"
+                                                       FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                                       VerticalAlignment="Center" Margin="0,1,7,0"
+                                                       RenderTransformOrigin="0.5,0.5"
+                                                       Foreground="{StaticResource HintTextBrush}">
+                                                <TextBlock.RenderTransform>
+                                                    <RotateTransform Angle="0"/>
+                                                </TextBlock.RenderTransform>
+                                            </TextBlock>
+                                            <ContentPresenter ContentSource="Content" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="hb" Property="Background" Value="{StaticResource HoverBgBrush}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="chev" Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <RotateTransform Angle="90"/>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                            <ContentPresenter ContentSource="Header"/>
+                        </ToggleButton>
+                        <ContentPresenter x:Name="ExpandSite" Visibility="Collapsed" Focusable="False"/>
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True">
+                            <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================
          列表
          ============================================================ -->
     <ControlTemplate x:Key="ListItemTemplate" TargetType="ListBoxItem">
         <Border x:Name="bd" Background="{TemplateBinding Background}"
-                CornerRadius="5" Padding="{TemplateBinding Padding}"
+                CornerRadius="{StaticResource CornerSm}" Padding="{TemplateBinding Padding}"
                 SnapsToDevicePixels="True">
             <ContentPresenter VerticalAlignment="Center"/>
         </Border>
@@ -639,7 +773,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ListViewItem">
                     <Border x:Name="bd" Background="{TemplateBinding Background}"
-                            CornerRadius="5" Padding="{TemplateBinding Padding}"
+                            CornerRadius="{StaticResource CornerSm}" Padding="{TemplateBinding Padding}"
                             SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                           VerticalAlignment="Center"/>
@@ -832,7 +966,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToolTip">
-                    <Border Background="{StaticResource PrimaryBrush}" CornerRadius="5"
+                    <Border Background="{StaticResource PrimaryBrush}" CornerRadius="{StaticResource CornerSm}"
                             Padding="9,5" Margin="4">
                         <Border.Effect>
                             <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270"
@@ -857,7 +991,7 @@
         <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CornerMd}"/>
         <Setter Property="Padding" Value="4"/>
         <Setter Property="SnapsToDevicePixels" Value="True"/>
     </Style>
@@ -888,7 +1022,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="MenuItem">
                     <Grid>
-                        <Border x:Name="bd" Background="Transparent" CornerRadius="5" Padding="8,6">
+                        <Border x:Name="bd" Background="Transparent" CornerRadius="{StaticResource CornerSm}" Padding="8,6">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="18"/>
@@ -983,7 +1117,7 @@
         <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="CornerRadius" Value="8"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CornerLg}"/>
         <Setter Property="Padding" Value="12,10"/>
     </Style>
 
@@ -1000,7 +1134,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Window">
-                    <Border Background="{TemplateBinding Background}"
+                    <Border x:Name="WindowFrame" Background="{TemplateBinding Background}"
                             BorderBrush="{StaticResource BorderStrongBrush}"
                             BorderThickness="1">
                         <AdornerDecorator>

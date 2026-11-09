@@ -7,7 +7,7 @@
         ShowInTaskbar="False" ShowActivated="False" Focusable="False"
         ResizeMode="NoResize" WindowStartupLocation="Manual"
         Background="Transparent">
-    <Border Background="#D918181B" CornerRadius="14" Padding="14,7">
+    <Border Background="#D918181B" CornerRadius="{StaticResource CornerLg}" Padding="14,7">
         <StackPanel Orientation="Horizontal">
             <Ellipse x:Name="Dot" Width="8" Height="8" Fill="#EF4444"
                      Margin="0,0,8,0" VerticalAlignment="Center"/>

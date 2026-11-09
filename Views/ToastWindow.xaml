@@ -9,7 +9,7 @@
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
     <!-- 提示弹窗的卡片：置顶、不抢焦点、不阻塞调用方（流程继续往下跑）。
          自动化进行中时它可能出现在鼠标附近，所以整块都可点关闭，且不会激活本窗口。 -->
-    <Border x:Name="Card" Background="#F51B1B1F" CornerRadius="10" Padding="0"
+    <Border x:Name="Card" Background="#F51B1B1F" CornerRadius="{StaticResource CornerLg}" Padding="0"
             BorderBrush="#33FFFFFF" BorderThickness="1" Cursor="Hand"
             MouseLeftButtonUp="Card_Click" ToolTip="点击关闭">
         <Border.Effect>

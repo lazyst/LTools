@@ -22,7 +22,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="9"
+                                CornerRadius="{StaticResource CornerMd}"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -42,7 +42,7 @@
     </Window.Resources>
 
     <!-- 外边距留给阴影（AllowsTransparency 下窗口矩形之外画不出来） -->
-    <Border x:Name="Root" Margin="6" CornerRadius="12" BorderThickness="1"
+    <Border x:Name="Root" Margin="6" CornerRadius="{StaticResource CornerLg}" BorderThickness="1"
             Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderStrongBrush}">
         <Border.Effect>
