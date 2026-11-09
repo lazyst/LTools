@@ -67,7 +67,7 @@ internal static class HotkeySeeding
         if (cfg.Hotkeys.SeedVersion >= Version) return;
 
         bool changed = false;
-        // 首次播种顺带补齐 configs/ 六个域（与 SplitDomainsStep 做的事一致）；之后每次启动只读不写。
+        // 首次播种顺带补齐 configs/ 六个域；之后每次启动只读不写。
         ConfigIO.Modify(configPath, ConfigDomain.all, c =>
         {
             var file = c.Hotkeys ?? new HotkeyFile();
