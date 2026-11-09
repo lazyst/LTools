@@ -7,7 +7,7 @@
 
 1. **动作只能经 `ConfigStore` 改**，写入仍走「读磁盘 → 改 → 写回」，不引入第二套内存真源。
 2. **每个持久化文件只有一个属主**：谁能写它、写哪些字段，在本文第 2 节列表里唯一。
-3. **所有 JSON 带 `schemaVersion`**；升级只向前迁移，旧文件改名保留，不删除。
+3. **所有 JSON 带 `schemaVersion`**（只作标注）；**不做向后兼容**：结构变了直接改读写代码与示例文件，不写迁移器、不认旧字段、不留 `.migrated` 归档。
 4. **路径解析只有一个入口**：数据根内相对路径走 `AppPaths` / `ImageLibrary`，不在各处手拼。
 5. **引用型资源按引用回收**（宏、模板图、悬浮项、面板槽位），删除动作后立刻清理。
 6. **构建 0 错 0 警**，每个阶段真机走一遍相关路径再提交。
@@ -37,7 +37,7 @@ ai/                      令牌 / 审计 / 知识包
 | 模板图与运行期截图混在 `resources/images` | 回收靠文件名前缀 + 时间界线，规则脆弱 |
 | 备份清单硬编码（LTools.json / resources / 速记 / macros / staging） | 新增目录不会自动进备份 |
 | `SuperPanel` 1458 行、`ActionEditorWindow` 1318 行、`ConfigHelper` 1277 行、`PanelManageView` 1227 行 | 改一处要在大文件里翻，评审与 AI 定位都慢 |
-| 迁移逻辑分散（ini / LegacyType / PanelConfig / FlowMigration） | 没有统一 schema 版本，不可回滚 |
+| 旧兼容层散在读写路径（ini 解析 / `LegacyType` / `PanelConfig` 旧页 / `FlowMigration`） | 读路径里藏着一次性转换，删不掉也测不清（已全部移除） |
 
 已经做对的一半：`subactions/` 是一子动作一文件、`staging/<id>/` 是一草稿一目录。
 动作目录化只是把同一套做法推进到动作本身。
@@ -83,18 +83,18 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 
 - 新增 `Config/ConfigBundle.cs` + `Config/ConfigFiles.cs`：把 `AppConfig` 的字段拆成 6 个域文件，
   每个文件带 `schemaVersion`；`AppConfig.Load/Save` 改为「合并读 / 只写变更的域」。
-- 迁移：`configs/` 不存在时从 `LTools.json`（或 `LTools.example.json`）读种子；首次保存写出 6 个文件后，
-  旧文件改名 `LTools.json.migrated`（不动内容，随时可回滚）。
+- 种子：`configs/` 不存在时从同目录的 `LTools.example.json` 读种子；**不做旧文件迁移**——旧 `LTools.json`、
+  旧域文件、`.migrated` 归档一律不再读，缺哪个域就用示例默认值补哪个域。
 - 原子写：先写 `<file>.tmp` 再 `File.Move(overwrite)`；坏文件按域备份为 `<file>.bad-<时间戳>`（每域只留 3 份）。
-- 备份：导出改为打包 `configs/`；导入同时兼容「旧备份只有 LTools.json」。
-- 验收：启动后 6 个文件齐全；改导航页只改 `ui.json`；删 `configs/` 并把 `LTools.json.migrated` 改回来能完整恢复。
+- 备份：导出打包 `configs/`；导入只认 `configs/`（旧版单文件备份不再支持）。
+- 验收：启动后 6 个文件齐全；改导航页只改 `ui.json`；删 `configs/` 后重启按示例重新播种。
 
 ### P2 · 一个动作一个目录（已完成）
 
 - 新增 `Core/Storage/ActionStore.cs`：`actions/<id>/action.json` + `actions/<id>/files/`；
   动作清单不再进配置文件（P4 起菜单组也改成了 `hotkeys.json`）。
-- 迁移：仍以旧 `configs/actions.json` 为种子，首存后归档 `actions.json.migrated`；
-  **`actions/` 目录存在（含空）即权威**，所以删光动作不会被旧清单复活。
+- 种子：`actions/` 不存在时按示例动作建目录；**不读旧 `configs/actions.json`**；
+  **`actions/` 目录存在（含空）即权威**，所以删光动作不会被示例复活。
 - 写回只碰变了的动作：`ActionStore.SaveAll` 逐条比较 `action.json` 内容，没变不写；
   清单里没有的目录移入 `trash/<时间戳>/`（保留 30 天，启动时清理过期项）。
 - 采纳草稿 = 把 `staging/<id>/files/*` 复制进 `actions/<id>/files/`，动作里的 `files/x.png` **原样保留**，
@@ -112,7 +112,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
   （`ConfigIO.ModifyDomain` 一把锁 + 严格读，写仍走 `WriteIfChanged`）。
 - 15 处 `ConfigIO.Modify` 全部改成域写入；跨域只剩「动作清单 + 快捷键」与「动作清单 + 面板」
   （`ConfigIO.Modify(ConfigDomain.actions | ConfigDomain.hotkeys, …)`，`HotkeySeeding` / `ActionLibrary` 用）。
-- 迁移收尾：域文件不全时第一次写入自动扩成整份（6 个域 + `actions/`）并归档旧文件；
+- 首装兜底：域文件不全时第一次写入自动扩成整份（6 个域 + `actions/`）；不归档、不改名任何旧文件。
   分域完成后改一个开关只动目标 `configs/*.json`，不再扫动作目录、不再重写别的域。
 - 删除动作收口到 `Core/Storage/ActionRemoval`：顺序固定「内存清单 → 快捷键绑定 + 面板槽位 →
   动作目录 → 宏 / 模板图 / 悬浮项回收」；启动时按磁盘动作目录幂等清掉快捷键与面板里的
@@ -134,10 +134,8 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
     `ActionEditorWindow.Run.cs`（保存 + 试运行）。
 - 单元实现按分类分文件（`Features/Units/<分类>/<XxxUnit>.cs`，一个单元一个文件），
   共用的静态小工具留在同目录（`FileText.cs` / `Crc32.cs`）；新增单元仍只在 `BuiltInUnits` 加一行。
-- 迁移入口统一到 `Core/Storage/Migrations`：`ConfigSchema` 从磁盘现状推断版本
-  （0 旧文件名 / 1 单文件 / 2 六域 / 3 动作目录 / 4 快捷键），`MigrationRunner.RunPending` 在启动时逐级执行
-  `SplitDomainsStep` → `ActionDirectoriesStep` → `HotkeysStep`（`LegacyFileStep` 在定位配置路径时处理改名 / ini 转换）；
-  每一步只做一件事、可重入，失败只记录并在下次启动从同一版本重试，不再散在读写路径里。
+- **不做迁移层**：配置 / 动作结构变化时直接改读写代码与 `LTools.example.json`，`SchemaVersion` 只作标注；
+  启动时没有 `MigrationRunner` / `ConfigSchema` 这类版本分支（曾经有，已随「不要向后兼容」删除）。
 
 ### P5 · 资源与备份（已完成）
 
@@ -156,7 +154,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
   导出先写 `.part-*` 再替换，失败不留半个 zip。
 - **启动孤儿检查**：`Core/Storage/OrphanFiles.Collect`（`ConfigStore.Initialize` 里调用）扫
   `actions/<id>/files/` 的图片，把没有任何 `image` 参数引用的移进 `trash/<时间戳>/orphans/<id>/`（只搬不删）。
-  只处理已迁移（有 `Program`）的动作；出现 `${变量}` / `{"var": …}` / 内联取值这类动态引用时整个动作跳过。
+  只处理有 `Program` 的动作；出现 `${变量}` / `{"var": …}` / 内联取值这类动态引用时整个动作跳过。
 - **导出单个动作**：`BackupService.ExportAction` 打一个 `.ltact`（`manifest.json` + `action.json` + `files/…`），
   入口在面板磁贴右键与「动作管理」磁贴右键（`PanelActionOps.Export`，后台导出 + toast 报路径）。
 
@@ -164,8 +162,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 
 - CapsLock 从「写死的手势表」变成「动作 + 快捷键」：`Config/Hotkeys.cs` 定义 `HotkeyFile` /
   `HotkeyGroup` / `HotkeyBinding` / `AppFilter` / `HotkeyScope`，域文件 `configs/hotkeys.json`
-  （旧的 `menus` 槽位改名成 `hotkeys`，仍是 6 个域；旧 `menus.json` 由 `HotkeysStep` 并成一个
-  「旧菜单」组后归档为 `menus.json.migrated`）。
+  （域文件里的槽位就是 `hotkeys`，没有旧 `menus` 概念，也不做旧文件合并）。
 - 匹配在 `Hooks/KeyboardHook` 里、录制透明分支之后、`CapsLockStateMachine.TryHandle` 之前：
   `HotkeyRegistry.TryFire` 按「组顺序 → 绑定顺序」精确比较修饰键（`RegisterHotKey` 不支持
   CapsLock 修饰键，所以不用它）；命中就吞掉并投递动作，没命中的键照常下传。
@@ -175,7 +172,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 - 预设：`Features/HotkeySeeding` 首次启动播种「CapsLock 经典」（SeedVersion = 3），
   20 条**全部是内置功能引用**（5 个入口 + 光标移动 / 文本选择 / 删除与撤销 15 条）；
   不再生成预置动作，用户能把同一批条目放进面板 / 悬浮 / 换键。
-  `HotkeyFile.SeedVersion` 保证删掉的条目不会复活；功能改名只加 `FeatureCatalog.Aliases`。
+  `HotkeyFile.SeedVersion` 保证删掉的条目不会复活；功能 Id 没有别名表，改名就同步改种子与用户配置。
 - **内置功能目录**（P7）：`Features/Builtin/FeatureCatalog` 提供「常用功能 `common.*`」与
   「LTools 功能 `ltools.*`」两套只读入口，参数声明在 `FeatureDef`，引用编码成 `id#key=value&…`
   （`FeatureRef`），直接存进面板 / 快捷键 / 悬浮原有的字符串字段，**不升 schema**；存活判断与
@@ -188,15 +185,15 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 
 | 阶段 | 验收 | 回滚 |
 | --- | --- | --- |
-| P1 | Debug/Release 0/0；6 个文件生成；只改一个域时其它文件 mtime 不变；旧文件仍可恢复 | 删 `configs/`，把 `LTools.json.migrated` 改回 `LTools.json` |
-| P2 | 采纳草稿后 `actions/<id>/files/` 里直接有图、引用仍是 `files/x.png`；删动作进 `trash/`；改一个动作只重写它自己的 `action.json`；删光动作后重启不复活 | 把 `configs/actions.json.migrated` 改回 `actions.json`、删 `actions/`，回退版本直接读它 |
+| P1 | Debug/Release 0/0；6 个文件生成；只改一个域时其它文件 mtime 不变；删 `configs/` 后按示例重新播种 | 删 `configs/`，重启（示例即默认值） |
+| P2 | 采纳草稿后 `actions/<id>/files/` 里直接有图、引用仍是 `files/x.png`；删动作进 `trash/`；改一个动作只重写它自己的 `action.json`；删光动作后重启不复活 | 删 `actions/`（下次启动按示例重建）+ git revert |
 | P3 | 逐个域写入只有目标 `configs/*.json` 的 mtime 变化、`actions/*.json` 不动；并发保存不互相覆盖；菜单 / 面板里的悬空动作 Id 在启动时被清掉 | 域文件格式不变，退回旧版本仍能读 |
-| P4 | 窗口拆完后交互与原版一致（面板建窗 / 切暂存区 / 编辑器载入动作均正常）；单元清单数量不变；迁移沙盒覆盖版本 0/1/2/3，版本 3 启动零写入 | 纯代码改动，git revert |
-| P5 | 截图落在 `cache/screenshots/` 且下次运行 / 重启后被清空；同内容图采纳到第二个动作时 `fsutil hardlink list` 显示两份名字、改内容只影响一个动作；孤儿图移入 `trash/orphans/`、动态引用动作不动；备份 manifest 的 `includes` 与 zip 条目一致、`cache/` 不出现；`.ltact` 含 manifest + action.json + files/ | 纯代码 + 目录迁移，退回旧版本仍能读写（`cache/` 只是多了个目录） |
-| P6 | 3→4 迁移只把 `menus.json` 并成 `hotkeys.json` 后归档；删掉预置动作 / 绑定重启不复活；`CapsLock+S` 不在 `CapsLock+Ctrl+S` 时触发；名单里的程序与 LTools 自己的窗口不触发；快捷键页改完立即生效（不必重启） | 删 `configs/hotkeys.json`、把 `menus.json.migrated` 改回 `menus.json`，退回旧版本 |
+| P4 | 窗口拆完后交互与原版一致（面板建窗 / 切暂存区 / 编辑器载入动作均正常）；单元清单数量不变；启动时没有任何迁移扫描 | 纯代码改动，git revert |
+| P5 | 截图落在 `cache/screenshots/` 且下次运行 / 重启后被清空；同内容图采纳到第二个动作时 `fsutil hardlink list` 显示两份名字、改内容只影响一个动作；孤儿图移入 `trash/orphans/`、动态引用动作不动；备份 manifest 的 `includes` 与 zip 条目一致、`cache/` 不出现；`.ltact` 含 manifest + action.json + files/ | 纯代码 + 目录调整，退回旧版本仍能读写（`cache/` 只是多了个目录） |
+| P6 | 删掉绑定重启不复活；`CapsLock+S` 不在 `CapsLock+Ctrl+S` 时触发；名单里的程序与 LTools 自己的窗口不触发；快捷键页改完立即生效（不必重启） | 删 `configs/hotkeys.json`，重启按示例 / 播种重建 |
 
 ## 5. 明确不做
 
 - 不做跨文件事务 / 数据库：单进程 + 每域单写者 + 启动修复引用，够用且可读。
-- 不为兼容旧版本同时写两份配置（迁移期除外）。
+- 不做向后兼容：不写配置 / 动作迁移器、不认旧字段与旧文件名、不留 `.migrated` 归档、不维护功能 Id 别名表。
 - 不把 `速记/`、`logs/`、`ai/` 收进 `configs/`：它们不是一个域，且速记是用户资产。

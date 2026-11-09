@@ -6,7 +6,8 @@
 > `actions/<id>/`（P2），运行期截图改落 `cache/screenshots/`、采纳时素材按内容哈希硬链接去重、
 > 启动时回收动作目录孤儿图、备份改为「目录白名单 + manifest」并支持导出单个动作 `.ltact`（P5）。
 > 本文下面关于 `LTools.json` 的段落是当时的实现记录；备份现在总是打包
-> `configs/` + `actions/`，再按勾选加 `resources/` + `速记/`，另有 `macros/` 与 `staging/`，并继续兼容旧单文件备份。
+> `configs/` + `actions/`，再按勾选加 `resources/` + `速记/`，另有 `macros/` 与 `staging/`；**不再兼容旧单文件备份**
+> （导入只认 `configs/`，旧版 `LTools.json` 备份会被 `Inspect` 拒绝）。
 >
 > **背景**：用户希望在应用目录下放一个「资源目录」存放脚本 / 程序等，`runCommand` 动作可用相对路径引用；并新增配置备份的导出 / 导入，一个包同时备份设置与资源目录（含速记）。
 
@@ -18,7 +19,7 @@
 
 - 提供用户自有的 `resources/` 目录，存放脚本 / 可执行文件 / 其他素材。
 - `runCommand` / `launchApp` 可用相对路径引用其中文件（默认工作目录已是应用目录）。
-- 配置备份：导出 / 导入 `.ltbak` 包，含 `LTools.json` + `resources/` + `速记/`（速记可取消勾选）。
+- 配置备份：导出 / 导入 `.ltbak` 包，含配置（`configs/` + `actions/`）+ `resources/` + `速记/`（速记可取消勾选）。
 - 导入时弹安全警告并列出引用 `resources/` 的动作（防投毒）。
 
 ### 1.2 非目标
@@ -63,7 +64,7 @@ public static string DefaultWorkdir() => Directory.Exists(DataRoot) ? DataRoot
 
 - 路径：`AppPaths.ResourceDir` = `DataRoot/resources`。
 - 启动时 `EnsureResourceDir()`：不存在则 `CreateDirectory`，并写入一份 `README.txt`（仅首次；已存在不覆盖）。
-- 仓库提交 `resources/README.txt`（dev 用）+ `resources/.gitkeep`；**发布 zip 不带 `resources/`**，由首启生成（与 `LTools.json` 同理：升级解压不碰用户已有目录）。
+- 仓库提交 `resources/README.txt`（dev 用）+ `resources/.gitkeep`；**发布 zip 不带 `resources/`**，由首启生成（与 `configs/` 同理：升级解压不碰用户已有目录）。
 - `README.txt` 内容（约 5 行）：用途说明、相对路径用法（`resources\foo.ps1`）、升级不会删除本目录、可放任意文件。
 - 找图模板约定（见 `Features/Flow/ImageLibrary.cs`）：
   - `actions/<动作id>/files/`——该动作独占的模板图（采纳草稿时搬进来），随动作目录删除 / 备份；
@@ -74,8 +75,8 @@ public static string DefaultWorkdir() => Directory.Exists(DataRoot) ? DataRoot
     **不进备份**（`cache/` 是纯运行缓存）。
   `resources/` 下两个目录由备份 `.ltbak` 一起打包，`actions/` 也总是进备份，无需额外处理。
 - **动作目录孤儿图**：启动时 `Core/Storage/OrphanFiles.Collect` 扫 `actions/<id>/files/` 的图片，
-  没有任何 `image` 参数引用的移进 `trash/<时间戳>/orphans/<id>/`（只搬不删）。只处理已迁移成
-  `ActionDto.Program` 的动作；出现 `${变量}` / `{"var": …}` / 内联取值这类动态引用时整个动作跳过。
+  没有任何 `image` 参数引用的移进 `trash/<时间戳>/orphans/<id>/`（只搬不删）。只看
+  `ActionDto.Program`；出现 `${变量}` / `{"var": …}` / 内联取值这类动态引用时整个动作跳过。
 
 ---
 
@@ -85,7 +86,7 @@ public static string DefaultWorkdir() => Directory.Exists(DataRoot) ? DataRoot
 
 ```
 manifest.json
-configs/*.json        （已分域；旧布局是单文件 LTools.json）
+configs/*.json        （六个域文件）
 actions/<id>/...      （动作体 + 该动作自己的 files/）
 resources/...         （勾选「资源目录」时）
 速记/...              （勾选「速记」时）
@@ -130,9 +131,8 @@ staging/...           （存在未采纳草稿时）
 1. 范围复选框：`☑ 资源目录` `☑ 速记`（配置固定含）。默认全勾。
 2. `SaveFileDialog`：默认文件名 `LTools-backup-yyyyMMdd-HHmmss.ltbak`，过滤器 `LTools 备份 (*.ltbak)|*.ltbak`。
 3. 后台线程执行（避免阻塞钩子 / UI）：
-   - 按目录白名单（见 §4）收集：`configs/`（未分域时是单文件 `LTools.json`；**两者都没有**
-     ——全新安装、从未保存过——时序列化 `AppConfig.Load(...)` 的内存配置写入，
-     manifest 已声明含 `config`，不能产出「声称含配置、实际没有」的备份）；
+   - 按目录白名单（见 §4）收集：`configs/`（**不存在**——全新安装、从未保存过——时先按内存配置
+     写出一份，manifest 已声明含 `config`，不能产出「声称含配置、实际没有」的备份）；
      `actions/`、`macros/`、`staging/` 存在就带；`resources/`、`速记/` 按勾选（跳过 `.bak-*` 等现场备份）。
    - 写 `manifest.json` + 各条目到临时 zip（`.part-随机`），完成后移到目标路径——导出到一半失败不会留下半个 zip。
 4. 体积 > 50 MB 时导出前确认（确认按钮为「确认导出」，非红色）。
@@ -146,10 +146,10 @@ staging/...           （存在未采纳草稿时）
 
 1. `OpenFileDialog`：过滤器 `LTools 备份 (*.ltbak)|*.ltbak`。
 2. 解压到临时目录 `%TEMP%/ltools-import-<guid>/`（用 `ZipFile.ExtractToDirectory`，.NET 内置 zip-slip 校验）。
-3. 校验 `manifest.json`：`format == "ltools-backup"`、`formatVersion == 1`、`includes` 合法、`LTools.json` 存在且可解析为 `AppConfig`。
+3. 校验 `manifest.json`：`format == "ltools-backup"`、`formatVersion == 1`、`includes` 合法、`configs/` 存在且可解析为 `AppConfig`。
 4. **安全扫描**（仅针对 `resources/`，配置本身不算可执行）：
    - 统计可执行文件数：扩展名 ∈ `{.exe,.bat,.cmd,.ps1,.vbs,.js,.msi,.com,.scr,.lnk,.wsf,.jar}`。
-   - 列出引用 `resources` 的动作：解析导入的 `LTools.json`，看 `Actions` 里的新动作体（`Program` 步骤的 `app.launch.target` / `app.runCommand.command` / `file.open.path`）与旧字段（`launchApp.Target` / `runCommand.Cmd`），含 `resources`（不区分大小写、忽略分隔符差异）的条目取「名称 + 片段」。
+   - 列出引用 `resources` 的动作：解析导入的 `configs/` + `actions/`，看动作体的 `Program` 步骤（`app.launch.target` / `app.runCommand.command` / `file.open.path`），含 `resources`（不区分大小写、忽略分隔符差异）的条目取「名称 + 片段」。
 5. 弹 `ConfirmDialog` 警告：
    > 此备份含 **N** 个可执行文件，并将替换当前配置。导入后以下动作可能以**管理员权限**执行其中脚本：
    > • 名称1 — `resources\foo.ps1`
@@ -159,7 +159,7 @@ staging/...           （存在未采纳草稿时）
 
    | 项 | 备份当前 | 写入导入 |
    |---|---|---|
-   | 配置 | `LTools.json` → `LTools.json.bak-<ts>` | 覆盖写导入的 `LTools.json` |
+   | 配置 | `configs/` → `configs.bak-<ts>` | 整体替换为导入的 `configs/` |
    | 资源目录 | `resources/` → `resources.bak-<ts>` | 替换为导入的 `resources/` |
    | 速记 | `速记/` → `速记.bak-<ts>` | 替换为导入的 `速记/` |
 
@@ -252,7 +252,7 @@ staging/...           （存在未采纳草稿时）
 
 - dev 下默认工作目录 = 仓库根；`resources/` 出现在仓库根并含 `README.txt`。
 - 放 `resources/foo.ps1`，`runCommand` 命令填 `resources\foo.ps1`、工作目录留空 → 能执行。
-- 导出 `.ltbak` 含 `manifest.json` + `LTools.json` + `resources/` + `速记/`（按勾选）。
+- 导出 `.ltbak` 含 `manifest.json` + `configs/` + `actions/` + `resources/` + `速记/`（按勾选）。
 - 删除上述三项后导入 → 数据恢复，且各留一份 `*.bak-<ts>`。
 - 导入一份含 `resources/evil.ps1` 且配置有引用动作的备份 → 弹警告、列出动作、用户取消则不改动。
 - 导入非 LTools 备份 / 损坏 zip → 友好提示，不动现有数据。
@@ -267,7 +267,7 @@ staging/...           （存在未采纳草稿时）
 - **被测版本**：仓库构建的开发版（数据目录 = 仓库根）或发布包（数据目录 = `LTools.exe` 所在文件夹）。下文统一称数据目录为「**程序目录**」。
 - **打开设置**：`CapsLock + \`。
 - **重要**：每个会改动数据的用例执行前，先整体复制一份程序目录到别处（或用产品「导出」做一份备份），测完可就地还原。
-- 术语：`LTools.json` = 配置文件；`resources` = 资源目录；`速记` = 速记目录；`.ltbak` = 备份文件。
+- 术语：`configs/` = 配置目录（六个域文件）；`actions/` = 动作目录；`resources` = 资源目录；`速记` = 速记目录；`.ltbak` = 备份文件。
 
 ### 13.2 生成测试样本
 
@@ -299,27 +299,27 @@ fsutil file createnew resources\大文件.bin 62914560
 | R09 | 旧绝对路径编辑时转相对 | 旧动作的程序路径 / 工作目录是数据根下的绝对路径 | ① 打开该动作编辑器 | 框里显示的是相对路径（如 `resources\foo.exe`、`resources`）；点确定保存后配置里也是相对值 |
 | R10 | 「打开文件 / 文件夹」用相对路径 | `resources\test.ps1` 与 `resources` 目录存在 | ① 新建「打开文件」动作，路径填 `resources\test.ps1`，保存　② 新建「打开文件夹」动作，路径填 `resources`，保存　③ 分别执行 | 「打开文件」用记事本（或默认程序）打开 `test.ps1`，不报「找不到文件」；「打开文件夹」在资源管理器打开 `resources` 目录；配置里两项均为相对值 |
 | R11 | 编辑器打开旧相对路径显示为相对 | 旧动作的文件路径是数据根下的绝对路径 | ① 打开该「打开文件 / 打开文件夹」动作的编辑器 | 框里显示的是相对路径（如 `resources\test.ps1`）；点确定后配置里也是相对值 |
-| E01 | 默认导出包含三项 | `resources\test.ps1` 存在；速记里至少有一条 | ① 设置 → 备份与恢复（两个勾选框默认已勾）　② 点「导出…」，保存为桌面 `test-全量.ltbak` | 文件生成；用压缩软件打开可看到 `manifest.json`、`LTools.json`、`resources` 文件夹、`速记` 文件夹 |
-| E02 | 只导出配置 | — | ① 取消勾选「资源目录」「速记」　② 导出为 `仅配置.ltbak` | 包内只有 `manifest.json` 与 `LTools.json`，没有 `resources` 和 `速记` |
+| E01 | 默认导出包含三项 | `resources\test.ps1` 存在；速记里至少有一条 | ① 设置 → 备份与恢复（两个勾选框默认已勾）　② 点「导出…」，保存为桌面 `test-全量.ltbak` | 文件生成；用压缩软件打开可看到 `manifest.json`、`configs` 文件夹、`actions` 文件夹、`resources` 文件夹、`速记` 文件夹 |
+| E02 | 只导出配置 | — | ① 取消勾选「资源目录」「速记」　② 导出为 `仅配置.ltbak` | 包内只有 `manifest.json`、`configs/` 与 `actions/`，没有 `resources` 和 `速记` |
 | E03 | 旧备份文件不进包 | `resources\old.bak-20260101.txt` 存在 | ① 勾选资源目录，导出全量 | 包内看不到 `old.bak-20260101.txt` |
 | E04 | 大文件导出提醒 | `resources\大文件.bin`（约 60 MB）存在 | ① 导出全量　② 先点「取消」，再重复一次并点「确定」 | 弹出确认「备份约 60.x MB，确定导出吗？」，确认按钮为「确认导出」（不是「确认删除」）；取消后不生成文件；确定后生成 |
 | E05 | 覆盖已有备份 | 目标路径已存在同名 `.ltbak` | ① 导出到该路径并确认覆盖 | 文件内容更新，无报错；目标文件夹内没有 `.part` 之类残留文件 |
 | E06 | 导出中不能重复点击 | 使用大文件以便耗时 | ① 点「导出…」选好路径，趁进度未完成再点一次「导出…」 | 第二次点击无反应；完成后状态只显示一次「已导出：…」 |
-| E07 | 从未保存过设置也导出含配置 | 程序目录下**没有** `LTools.json`（如刚解压的全新安装，也没改过任何设置） | ① 直接点「导出…」并保存　② 用压缩软件打开 | 包内含 `manifest.json` 和 `LTools.json`（不能只有 manifest）；`manifest.json` 的 `includes` 含 `config` |
-| I01 | 全量恢复 | 先用 E01 导出 `test-全量.ltbak` | ① 删除 `resources\test.ps1`　② 在设置里新建一个动作（制造差异）　③ 删除一条速记　④ 导入 `test-全量.ltbak` 并点「确定」 | 脚本文件恢复；多建的动作消失；被删速记恢复；程序目录出现 `LTools.json.bak-…`、`resources.bak-…`、`速记.bak-…` 三份；设置中的列表立即刷新 |
+| E07 | 从未保存过设置也导出含配置 | 程序目录下**没有** `configs/`（如刚解压的全新安装，也没改过任何设置） | ① 直接点「导出…」并保存　② 用压缩软件打开 | 包内含 `manifest.json` 和 `configs/`（不能只有 manifest）；`manifest.json` 的 `includes` 含 `config` |
+| I01 | 全量恢复 | 先用 E01 导出 `test-全量.ltbak` | ① 删除 `resources\test.ps1`　② 在设置里新建一个动作（制造差异）　③ 删除一条速记　④ 导入 `test-全量.ltbak` 并点「确定」 | 脚本文件恢复；多建的动作消失；被删速记恢复；程序目录出现 `configs.bak-…`、`actions.bak-…`、`resources.bak-…`、`速记.bak-…` 四份；设置中的列表立即刷新 |
 | I02 | 可执行文件安全警告 | `resources\演示.exe` 与 `test.ps1` 存在，且有动作的命令包含 `resources\test.ps1` | ① 导出全量　② 导入该备份 | 弹窗标题「导入备份」，正文写明「2 个可执行文件」并列出该动作的名称与命令片段；确认按钮为「确认导入」 |
 | I03 | 取消导入不改数据 | 任意有效备份 | ① 导入，在警告框点「取消」 | 配置、`resources`、`速记` 均无变化；程序目录没有新增 `.bak`；`%TEMP%` 下没有 `ltools-import-` 开头的残留目录 |
 | I04 | 备份不含速记时不碰速记 | 使用 E02 的 `仅配置.ltbak` | ① 导入并确定 | 速记内容保持原样，没有出现 `速记.bak-…` |
 | I05 | 普通压缩包被拒绝 | — | ① 把任意 `.zip` 或文本文件改名为 `x.ltbak`　② 导入 | 提示「不是有效的 LTools 备份…」；现有数据不变 |
 | I06 | 更新版本的备份被拒绝 | 一个有效备份 | ① 用压缩软件打开备份，把 `manifest.json` 中 `"formatVersion": 1` 改为 `2`　② 重新打包为 `.ltbak`　③ 导入 | 提示「备份来自更新版本，请升级 LTools 后再导入」；数据不变 |
-| I07 | 配置损坏被拒绝 | 一个有效备份 | ① 解压后把 `LTools.json` 内容改为 `{ 坏`　② 重新打包　③ 导入 | 提示「LTools.json 无法解析：…」；数据不变 |
+| I07 | 配置损坏被拒绝 | 一个有效备份 | ① 解压后把 `configs/settings.json` 内容改为 `{ 坏`　② 重新打包　③ 导入 | 提示「备份里的配置无法解析（或文件已损坏）」；数据不变 |
 | I08 | 恶意路径条目被拒绝 | 按 13.4 生成 `slip.ltbak` | ① 导入 `slip.ltbak` | 提示「导入失败」；`evil.txt` 没有出现在程序目录或其上一级；现有数据不变 |
-| I09 | 连续导入两次 | 同一有效备份 | ① 连续导入两次 | 第二次产生的备份名形如 `LTools.json.bak-…-1`；第一次的 `.bak` 仍在 |
+| I09 | 连续导入两次 | 同一有效备份 | ① 连续导入两次 | 第二次产生的备份名形如 `configs.bak-…-1`；第一次的 `.bak` 仍在 |
 | I10 | 导入失败自动恢复（选测） | 需开发协助制造写入失败 | ① 导入全量备份，在资源目录写入阶段人为制造占用 / 失败 | 提示「导入失败」；配置恢复为导入前内容；资源目录与速记未停留在半替换状态 |
 | I11 | 空资源目录的备份清空本地 | 一个 `resources` 里没有文件的备份：删空 `resources` 里的文件（保留 `README.txt` 也行）后导出全量 | ① 在 `resources` 里放入一个新文件（如 `keep.txt`）　② 导入刚才的备份 | `resources` 目录仍存在但已不含 `keep.txt`；`keep.txt` 出现在 `resources.bak-…` 里；不能是「什么都不发生」 |
 | I12 | 导入后全局开关立即生效 | 一个把「CapsLock 增强」关掉的备份（先把开关关掉再导出） | ① 把「CapsLock 增强」重新打开　② 导入该备份 | 导入完成后不用重启：CapsLock 快捷键立即失效；设置页「通用」页里的开关显示为已关闭 |
 | G01 | 备份往返一致 | 已执行 13.2 | ① 导出全量　② 记录 `test.ps1` 内容、速记条数、动作数量　③ 删除部分数据　④ 导入　⑤ 复核 | 三项均与记录一致（`.bak` 文件不计入） |
-| G02 | 发布包不含用户数据 | 发布 zip | ① 解压查看 | 没有 `resources` 文件夹，也没有 `LTools.json`（首次启动才生成） |
+| G02 | 发布包不含用户数据 | 发布 zip | ① 解压查看 | 没有 `resources` 文件夹，也没有 `configs/`（首次启动才生成） |
 | G03 | 设置页记忆 | — | ① 停在「备份与恢复」页　② 关闭设置　③ 用 `CapsLock + \` 重新打开 | 仍停在「备份与恢复」页 |
 | G04 | 换机导入后相对路径动作仍可用 | 用 R08 的相对路径动作做全量备份 | ① 在另一台机器（或把程序目录整体挪到新路径）导入　② 执行该「启动程序」/「运行命令」动作 | 动作在新环境找到脚本 / 程序（相对路径解析到新程序目录），不因旧机器的绝对路径失败 |
 

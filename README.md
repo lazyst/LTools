@@ -147,7 +147,7 @@ dotnet publish -c Release -r win-x64 --self-contained false
 - 设置 →「快捷键」：左边是**预设组**，右边是组内的「快捷键 → 动作」表
 - 可以同时启用多个组；组和条目都能单独启停，也能上下调整顺序（排在前面的优先）
 - 首次启动播种一组「CapsLock 经典」（20 条，见 §4）；删掉的条目不会再被塞回来（播种版本记在 `configs/hotkeys.json`）
-- 旧版 10 个「CapsLock+数字」菜单组会并成一个「旧菜单」组：动作引用都还在，快捷键留空（菜单本来就没有快捷键），自己补上就能用
+- 旧版的「CapsLock+数字」菜单组不再自动导入；想保留哪条，自己新建绑定即可
 - 一条绑定只存「快捷键 + 动作 Id」：动作本体在动作管理里编辑，删动作时引用它的绑定一起清掉
 
 ### 8.2 添加 / 编辑
@@ -270,7 +270,7 @@ dotnet publish -c Release -r win-x64 --self-contained false
 - 运行中按停止热键（与宏回放共用，默认 `Ctrl+F3`）可随时停止；同一时间只允许一个动作运行（单步动作可直接执行）。
 - **试运行不用先保存**：编辑器底部「▶ 试运行」跑的就是你现在改的内容（克隆一份，不写盘），「▶ 从此行」从选中的**顶层**步骤开始；它会真的操作鼠标键盘，中途可以「■ 停止」。**运行选中步骤**：选中若干步骤（`Ctrl` / `Shift` 点选）后右键「运行选中的 N 步」（单行是「只运行这一步」），只跑这几步——选中的块和块里的子步骤一起选时取最外层（子步骤跟着块走）；选中的全是顶层步骤时未选中的会自动跳过，轨迹里的「第 N 行」仍与编辑器行号一致，选中里含分支步骤时压紧成临时动作（状态栏会注明「按临时动作编号」）。展开后左「运行轨迹」按步骤列出每一步（✓ / ✕ / ! / ■ + 耗时 + 写入的变量 / 错误），循环里的同一步骤只占一行并标 `×N`，右「变量」是运行结束时的快照。点轨迹行会跳到左侧对应步骤；失败时自动选中失败那一行。试运行与真实运行共用同一把互斥锁和停止热键，不会同时操作键鼠；关掉编辑器会顺手停掉还在跑的试运行。**试运行一定给提示**（成功 2.5 秒、失败常驻，和真实运行时看到的一致），所以想验证「失败卡片长什么样」时，直接加一个跑不通的步骤点「▶ 试运行」就行（例如「窗口操作」不填标题 / 类名）。
 - **运行结果怎么提示**：失败一定留得住——卡片常驻（点一下关，下一次运行自动替换），标题带失败位置「第 3 行 › 否则 › 第 1 行」，红条 + 红边一眼能分辨；成功默认不打扰，可在设置 →「通用 → 运行提示」改成「成功也提示」；按停止会给一条「已停止 · N 步」。失败文案用的是**编辑器里的行号**（`第 3 行「提示弹窗」失败：缺少参数「内容」`），不是运行时步数——循环 / 分支跑多少轮都对得上。
-- 旧版本的组合动作（老格式）在第一次打开编辑器或运行时自动迁移成新结构，保存后写回新格式。
+- 动作只有一种结构（`Program` = 变量表 + 步骤）：**不做旧格式迁移**，旧版（v1）动作文件解析不了就是坏文件，重新建一个即可。
 
 ### 10.2 变量与模板
 
@@ -440,7 +440,7 @@ LT_Set("结果", 名字 . "！")
 | --- | --- |
 | `configs/settings.json` | 全局行为：CapsLock 开关、终端路径、鼠标速度、运行提示、提示位置、日志 |
 | `configs/ui.json` | 界面状态：导航页、展开的分组、最近使用、OCR 偏好、编辑器折叠态（丢了不影响功能） |
-| `configs/hotkeys.json` | 快捷键：预设组 + 「快捷键 → 动作」绑定 + 全局默认名单（旧 `menus.json` 会并入这里） |
+| `configs/hotkeys.json` | 快捷键：预设组 + 「快捷键 → 动作」绑定 + 全局默认名单 |
 | `configs/panel.json` | 超级面板：开关 / 长按阈值 / 场景与分组 / 尺寸 / 上次页 |
 | `configs/floating.json` | 悬浮项偏好（悬浮项本身不落盘） |
 | `configs/macros.json` | 宏设置 + 宏元数据（事件本体在 `macros/<id>.json`） |
@@ -449,7 +449,7 @@ LT_Set("结果", 名字 . "！")
 
 分域之后，界面上改一个开关只会重写对应的那一个文件（例如改通知策略只动 `settings.json`、记住导航页只动 `ui.json`），不会顺手把动作清单或别的域一起写一遍。
 
-旧版单文件 `LTools.json` 会在升级后**首次启动**时由迁移器自动拆成上述文件，并把旧文件改名 `LTools.json.migrated`；更早一版 `configs/actions.json` 里的动作也会在同一次升级里写成动作目录，旧清单归档为 `configs/actions.json.migrated`（内容原样保留：删掉 `configs/` 与 `actions/`、把这两个 `.migrated` 改回来即可回滚）。迁移按版本逐级执行、可重入，失败只记日志不阻断启动（下次启动从同一版本重试），见 `Core/Storage/Migrations`。`configs/` 不存在时回退读取同目录的 `LTools.example.json` 作为初始模板。格式为 **JSON**（枚举写成字符串，如 `"Type": "composite"`），**不是**旧的 INI 分节格式。
+`configs/` 不存在时读取同目录的 `LTools.example.json` 作为初始模板（发布包只带示例）。**不做向后兼容**：旧版单文件 `LTools.json`、更早的 `configs/actions.json` / `configs/menus.json` 以及任何 `.migrated` 归档都不再读取——从旧版本升级请重新配置，或导入新格式备份（备份里就是 `configs/` + `actions/`）。格式为 **JSON**（枚举写成字符串，如 `"Type": "composite"`）。
 
 某个配置文件存在但无法解析（手改出错 / 旧格式）时，程序会**保留原文件**并备份为 `<文件名>.bad-时间戳`（每个文件只留最近 3 份），本次运行该域使用默认值且不会写回；设置页保存时会提示失败。修复或从备份恢复后再保存即可，不会再把动作和菜单洗成空。
 
@@ -459,16 +459,15 @@ LT_Set("结果", 名字 . "！")
 
 - **`Actions`**：全局动作池（存于 `actions/<id>/action.json`）。新格式每个动作只有 `Id` / `Name` / `Icon` / `Type`（`composite` 或 `macro`） / `MacroId`（宏动作） / `Program`：
   - `Program`：变量表 `variables`、步骤 `steps`、动作内子动作 `subActions`。步骤是「功能单元 + 参数」的 JSON（`unit` / `in` / `out` / `body` / `then` / `else`），单元与写法见 `docs/ACTION_SYSTEM.md`；文本参数支持 `${变量}`。
-  - **旧格式仍能直接读入**：`Type` 为 `launchApp` / `runCommand` / `sendText` / `clickText` / `composite` 等 v1 类型、字段平铺在动作上的配置，第一次执行或用新编辑器打开时由迁移器转成 `Program`；保存后这个动作只写新格式。旧字段含义与迁移对照表见 `docs/ACTION_SYSTEM.md` 的「迁移」一节。
+  - **不读旧格式**：`Type` 是 `launchApp` / `runCommand` / `sendText` / `internal` 这类 v1 类型名的文件已经不支持，读到就按坏文件处理（备份成 `.bad-时间戳`，该动作不加载）。
   - 动作里引用的模板图优先在 `actions/<id>/files/` 下找（采纳草稿时整体搬进来，写 `files/x.png` 或裸文件名都行）；共享 / 历史图存 `resources/images/`（程序生成，按引用回收）或 `resources/user/`（用户素材，不自动删除）。宏事件本体存数据根 `macros/<id>.json`，配置里只放 `MacroId`。
-- **`SuperPanel`**：旧面板配置。`Enabled`（独立开关）、`LongPressThresholdMs`（长按阈值 100–800）；`Pages` / `LastPage` 只用于从旧版本迁移，新版本不再写入。
-- **`Panel`**：动作面板结构。`Preferences`（尺寸、视图选项、上次全局场景）、`Global`（全局场景与标签）、`Context`（上下文场景、`Common` 兜底分组）、`Blocked`（禁止弹出的进程）、`HintDismissed`（是否关掉未配置提示）。动作入口只存动作 Id；字段与迁移规则见 `docs/PANEL_REDESIGN.md`。
+- **`SuperPanel`**：面板开关。`Enabled`（独立开关）、`LongPressThresholdMs`（长按阈值 100–800）。
+- **`Panel`**：动作面板结构。`Preferences`（尺寸、视图选项、上次全局场景）、`Global`（全局场景与标签）、`Context`（上下文场景、`Common` 兜底分组）、`Blocked`（禁止弹出的进程）、`HintDismissed`（是否关掉未配置提示）。动作入口只存动作 Id；字段见 `docs/PANEL_REDESIGN.md`。
 - **`Hotkeys`**：快捷键，落在 `configs/hotkeys.json`：
   - `Groups`：预设组列表，顺序 = 运行期匹配优先级。每组有 `Id` / `Name` / `Enabled` / `Bindings`
   - 每条绑定只有 `Chord`（规范化的小写组合键，如 `capslock+s`、`ctrl+shift+f9`）、`ActionId`、`Enabled`、`Note`，以及可选的 `Scope`（`inherit` / `all` / `whitelist` / `blacklist`）与 `Filter`（`Processes` / `Titles` / `Classes`）
   - `DefaultScope` + `DefaultFilter`：全局默认名单，绑定写 `inherit`（或不写 `Scope`）时跟随它
   - `SeedVersion`：预设播种版本；删掉的预置条目不会因为版本没变而被重新加回来
-- **`MenuGroups`**：只在读取旧配置时存在（迁移种子），新版本不再写。
 - **`Macros`**：键鼠宏：
   - `Enabled`：宏功能总开关
   - `RecordHotkey` / `PlaybackStopHotkey`：停止录制 / 停止回放或自动化流程的热键，**统一存小写**（默认 `ctrl+f2` / `ctrl+f3`）；界面显示为 `Ctrl+F2` / `Ctrl+F3`。也允许无修饰键，如 `f2`、`pause`、`printscreen`

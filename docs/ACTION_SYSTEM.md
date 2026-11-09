@@ -8,6 +8,12 @@
 >
 > **状态（2026-11-07）**：W1 内核 + W2 全量单元已落地（`Core/Actions/` + `Features/Units/`，
 > 36 个功能单元 + 9 个流程单元），无头冒烟 395 项断言通过，面板 UI 冒烟无回归。
+>
+> **状态（2026-11-10）**：旧格式迁移层已整体删除（见 §3.7 的说明）。本文 W3 / W5a / W5b 里出现的
+> `Features/Migration/*`、`ActionDtoLegacy`、`LegacyType`、`FlowTypes` / `FlowMigration`、
+> `Features/Units/LegacyFlow` 均**已不存在**；现在只有 `ActionDto.Program` 一条执行路径，
+> 跨值模型取值的适配是 `Features/Units/ProbeContext`（`Of` / `Evaluate`）与 `UnitValues`。
+>
 > 上一代动作系统的说明在 `docs/ACTION_SYSTEM_PLAN.md`，本文档取代它。
 
 ---
@@ -329,11 +335,15 @@ sealed class SubActionDef {
 （`text.process`、`file.operation`、`window.operate`、`data.list`、`data.calc`），
 否则工具箱会变成今天 Quicker 的 119 项。`text.format` 已并入模板 + `text.process join`。
 
-### 3.7 迁移规则
+### 3.7 迁移规则（已删除）
 
-实现：`Features/Migration/ActionMigrator.cs`（旧 DTO 都在 `Features/`，迁移器放这里，避免 `Core/` 反向依赖）。
-入口 `ActionMigrator.Migrate(ActionDto) → MigrationResult{Program, Warnings, Errors}`；
-未知字段 / 无法表达的语义进 `Warnings`，**不静默丢**。
+> **2026-11 起本项目不做向后兼容**：`Features/Migration/`（`ActionMigrator` / `ActionPrograms` /
+> `ActionDtoLegacy` / `LegacyActionSummary`）、`ActionDto.RawType` / `SourceType` 与 `FlowTypes` /
+> `FlowMigration` 全部删除。`ActionDto` 只写 `Type`（`composite` / `macro`）+ `Program`，
+> v1 类型名（`runCommand` / `sendText` / `internal` …）解析不了就是坏文件。下面这张表只作历史对照，
+> 程序不再读 v1 动作；新写单元 / 步骤时别按它去「兼容」。
+
+历史对照：
 
 | 旧 | 新 |
 |---|---|
