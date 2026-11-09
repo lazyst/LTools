@@ -422,16 +422,23 @@ public partial class ActionEditorWindow
     private void StepList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;
-        EditSelected(RowAt(e.OriginalSource as DependencyObject));
+
+        // 只有真的双击在某一行上才编辑：点在列表空白处时不要拿「当前选中行」凑数
+        StepRow? row = RowAt(e.OriginalSource as DependencyObject);
+        if (row?.Step == null || row.Owner == null) return;
+        EditSelected(row);
     }
 
     /// <summary>按钮所在的那一行（行内按钮的 DataContext 就是 <see cref="StepRow"/>）。</summary>
     private static StepRow? RowOf(object sender) =>
         (sender as FrameworkElement)?.DataContext as StepRow;
 
-    private void EditSelected(StepRow? row = null)
+    /// <summary>
+    /// 编辑一行步骤（工具栏按钮 / 右键「编辑…」/ Enter / 双击）。<paramref name="row"/> 必须是真正的那一行，
+    /// 不要在这里兜底「没有就编辑当前选中行」——双击空白处会因此误开选中步骤。
+    /// </summary>
+    private void EditSelected(StepRow? row)
     {
-        row ??= SelectedRow();
         if (row?.Step == null || row.Owner == null) return;
 
         // 对话框里的「上一步 / 下一步」会先保存这一步，再接着编辑相邻步骤——
