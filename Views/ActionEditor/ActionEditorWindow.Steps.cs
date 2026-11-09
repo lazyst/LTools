@@ -368,9 +368,22 @@ public partial class ActionEditorWindow
         Step? step = direct ? BuildDefaultStep(unitKey) : null;
         if (step == null)
         {
-            var dlg = CreateStepDialog(Step.Of(unitKey));
-            if (dlg.ShowDialog() != true || dlg.Result == null) return;
-            step = dlg.Result;
+            // 「保存并继续添加」：保存这一步后原地再开一个同单元的空表单，适合连着加一串。
+            int at = Math.Clamp(index, 0, list.Count);
+            while (true)
+            {
+                var dlg = CreateStepDialog(Step.Of(unitKey));
+                dlg.EnableContinueAdding();
+
+                if (dlg.ShowDialog() != true || dlg.Result == null) return;
+
+                PushUndo($"添加「{StepSummary.Title(unitKey)}」");
+                list.Insert(Math.Clamp(at, 0, list.Count), dlg.Result);
+                ReloadRows(dlg.Result);
+                at++;
+
+                if (!dlg.ContinueAdding) return;
+            }
         }
 
         PushUndo($"添加「{StepSummary.Title(unitKey)}」");
@@ -421,12 +434,47 @@ public partial class ActionEditorWindow
         row ??= SelectedRow();
         if (row?.Step == null || row.Owner == null) return;
 
-        var dlg = CreateStepDialog(row.Step);
-        if (dlg.ShowDialog() != true || dlg.Result == null) return;
+        // 对话框里的「上一步 / 下一步」会先保存这一步，再接着编辑相邻步骤——
+        // 一次打开就能顺着改完一串，不用反复双击。
+        StepRow current = row;
+        while (true)
+        {
+            Step step = current.Step!;
+            List<Step> owner = current.Owner!;
 
-        PushUndo($"编辑「{StepSummary.Title(row.Step)}」");
-        row.Owner[row.Index] = dlg.Result;
-        ReloadRows(dlg.Result);
+            var dlg = CreateStepDialog(step);
+            dlg.EnableNavigation(
+                NeighborStepRow(current, -1) != null,
+                NeighborStepRow(current, 1) != null);
+
+            if (dlg.ShowDialog() != true || dlg.Result == null) return;
+
+            PushUndo($"编辑「{StepSummary.Title(step)}」");
+            owner[current.Index] = dlg.Result;
+            ReloadRows(dlg.Result);
+
+            if (dlg.NavigateDelta == 0) return;
+
+            StepRow? saved = _rows.FirstOrDefault(r => ReferenceEquals(r.Step, dlg.Result));
+            StepRow? next = saved == null ? null : NeighborStepRow(saved, dlg.NavigateDelta);
+            if (next?.Step == null || next.Owner == null) return;
+            current = next;
+        }
+    }
+
+    /// <summary>相邻的可编辑步骤行（跳过标记行 / 空分支占位行）；没有就返回 null。</summary>
+    private StepRow? NeighborStepRow(StepRow row, int delta)
+    {
+        int index = _rows.IndexOf(row);
+        if (index < 0) return null;
+
+        for (int i = index + delta; i >= 0 && i < _rows.Count; i += delta)
+        {
+            StepRow candidate = _rows[i];
+            if (candidate.Step != null && candidate.Owner != null) return candidate;
+        }
+
+        return null;
     }
 
     private void DeleteStep_Click(object sender, RoutedEventArgs e)

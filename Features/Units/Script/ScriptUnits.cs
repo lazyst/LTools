@@ -39,7 +39,7 @@ public sealed class AhkScriptUnit : IStepUnit
                 Required: true, Raw: true),
             new InputSpec("workdir", "工作目录", ValueKind.text, InputEditor.folder),
             new InputSpec("timeoutMs", "超时毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(60_000)),
+                Default: Value.FromNumber(60_000), Advanced: true),
         },
         Outputs = new[]
         {

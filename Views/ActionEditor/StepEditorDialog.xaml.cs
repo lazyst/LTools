@@ -38,6 +38,13 @@ public partial class StepEditorDialog : Window
     private readonly List<OutputRow> _dynamicOutputs = new();
     private readonly StackPanel _dynamicPanel = new() { Margin = new Thickness(0, 4, 0, 0) };
 
+    /// <summary>「高级参数」折叠区（超时 / 轮询间隔 / 相似度这类调优项）。</summary>
+    private readonly StackPanel _advancedPanel = new() { Margin = new Thickness(0, 2, 0, 0) };
+
+    private Button? _advancedHeader;
+    private bool _advancedExpanded;
+    private int _advancedCount;
+
     /// <summary>枚举行按英文键改选中项（框选完把「区域」切到 rect 用）。</summary>
     private readonly Dictionary<string, Action<string>> _enumSetters =
         new(StringComparer.OrdinalIgnoreCase);
@@ -88,6 +95,27 @@ public partial class StepEditorDialog : Window
     /// <summary>确定后的步骤（取消时为 null）。</summary>
     public Step? Result { get; private set; }
 
+    /// <summary>-1 / +1 = 用户点了上一步 / 下一步（编辑器据此打开相邻步骤）；0 = 正常确定。</summary>
+    public int NavigateDelta { get; private set; }
+
+    /// <summary>「保存并继续添加」：添加流程里再开一个同单元的空表单。</summary>
+    public bool ContinueAdding { get; private set; }
+
+    /// <summary>编辑器在 ShowDialog 之前调用：显示上一步 / 下一步（没有相邻步骤时对应按钮隐藏）。</summary>
+    internal void EnableNavigation(bool canPrevious, bool canNext)
+    {
+        PrevButton.Visibility = canPrevious ? Visibility.Visible : Visibility.Collapsed;
+        NextButton.Visibility = canNext ? Visibility.Visible : Visibility.Collapsed;
+        NavPanel.Visibility = canPrevious || canNext ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>添加新步骤时调用：显示「保存并继续添加」。</summary>
+    internal void EnableContinueAdding()
+    {
+        ContinueButton.Visibility = Visibility.Visible;
+        NavPanel.Visibility = Visibility.Visible;
+    }
+
     /// <summary>可用于变量编辑的变量名（由动作编辑器透传，构造时就要给）。</summary>
     internal Func<IEnumerable<string>>? VariableNameSource { get; }
 
@@ -101,16 +129,68 @@ public partial class StepEditorDialog : Window
 
     private void BuildInputs()
     {
+        var advanced = new List<InputSpec>();
+
         foreach (var input in _spec.Inputs)
         {
+            if (input.Advanced)
+            {
+                advanced.Add(input);
+                continue;
+            }
+
             FrameworkElement editor = BuildEditor(input, out var read);
             _rows.Add(new Row(input, AddRow(Form, input, editor), read));
         }
 
         Form.Children.Add(_dynamicPanel);
+        if (advanced.Count > 0) BuildAdvancedSection(advanced);
+
         SyncStepArgs();
         if (_spec.DynamicInputs) RebuildDynamic();
         UpdateVisibility();
+    }
+
+    /// <summary>
+    /// 调优参数（超时 / 轮询间隔 / 相似度…）收进「高级参数」：默认折叠，
+    /// **已经设过非默认值的自动展开**，不会把用户填过的参数藏起来。
+    /// </summary>
+    private void BuildAdvancedSection(List<InputSpec> advanced)
+    {
+        var host = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+        var header = new Button
+        {
+            Style = (Style)FindResource("BtnGhost"),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(8, 3, 8, 3),
+            Margin = new Thickness(0, 4, 0, 2),
+            ToolTip = "超时、轮询间隔、相似度这类调优参数；平时不用改",
+        };
+
+        _advancedHeader = header;
+        _advancedCount = advanced.Count;
+        SetAdvancedExpanded(advanced.Any(input => _step.In.ContainsKey(input.Key)));
+
+        header.Click += (_, _) => SetAdvancedExpanded(!_advancedExpanded);
+
+        host.Children.Add(header);
+        host.Children.Add(_advancedPanel);
+        Form.Children.Add(host);
+
+        foreach (var input in advanced)
+        {
+            FrameworkElement editor = BuildEditor(input, out var read);
+            _rows.Add(new Row(input, AddRow(_advancedPanel, input, editor), read));
+        }
+    }
+
+    /// <summary>折叠 / 展开高级参数（标题箭头与面板可见性一起改）。</summary>
+    private void SetAdvancedExpanded(bool expanded)
+    {
+        _advancedExpanded = expanded;
+        if (_advancedHeader != null)
+            _advancedHeader.Content = (expanded ? "▾ " : "▸ ") + $"高级参数（{_advancedCount}）";
+        _advancedPanel.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private FrameworkElement BuildEditor(InputSpec input, out Func<StepArg?> read)
@@ -1002,6 +1082,51 @@ public partial class StepEditorDialog : Window
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
+        if (!TrySave()) return;
+        NavigateDelta = 0;
+        DialogResult = true;
+    }
+
+    private void Prev_Click(object sender, RoutedEventArgs e) => Navigate(-1);
+
+    private void Next_Click(object sender, RoutedEventArgs e) => Navigate(1);
+
+    private void Continue_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TrySave()) return;
+        ContinueAdding = true;
+        DialogResult = true;
+    }
+
+    /// <summary>上一步 / 下一步：先按「确定」的规则保存，再让编辑器打开相邻步骤。</summary>
+    private void Navigate(int delta)
+    {
+        if (!TrySave()) return;
+        NavigateDelta = delta;
+        DialogResult = true;
+    }
+
+    /// <summary>Alt+← / Alt+→ 也能翻（按钮不可用时不管，别吞掉文本框自己的按键）。</summary>
+    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Alt) == 0)
+            return;
+
+        if (e.Key == System.Windows.Input.Key.Left && PrevButton.Visibility == Visibility.Visible)
+        {
+            Navigate(-1);
+            e.Handled = true;
+        }
+        else if (e.Key == System.Windows.Input.Key.Right && NextButton.Visibility == Visibility.Visible)
+        {
+            Navigate(1);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>把表单写回步骤；必填项为空时提示并返回 false（对话框不关）。</summary>
+    private bool TrySave()
+    {
         SyncStepArgs();
 
         foreach (var row in _rows)
@@ -1010,8 +1135,10 @@ public partial class StepEditorDialog : Window
             if (!StepSummary.IsVisible(row.Spec, _step, _spec)) continue;
             if (!_step.In.TryGetValue(row.Spec.Key, out var arg) || IsEmptyArg(arg))
             {
+                // 必填项在高级参数里时先展开，别让用户对着看不见的框找错误。
+                if (row.Spec.Advanced) SetAdvancedExpanded(true);
                 ConfirmDialog.Info(this, _spec.Name, $"「{row.Spec.Label}」不能为空。");
-                return;
+                return false;
             }
         }
 
@@ -1031,7 +1158,7 @@ public partial class StepEditorDialog : Window
         _step.Note = string.IsNullOrWhiteSpace(NoteBox.Text) ? null : NoteBox.Text.Trim();
 
         Result = _step;
-        DialogResult = true;
+        return true;
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;

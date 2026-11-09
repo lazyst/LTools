@@ -27,9 +27,9 @@ public sealed class FindTextUnit : IStepUnit
             new InputSpec("engine", "识别引擎", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("v6tiny"), Options: Engines),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(0)),
+                Default: Value.FromNumber(0), Advanced: true),
             new InputSpec("intervalMs", "轮询间隔毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(300)),
+                Default: Value.FromNumber(300), Advanced: true),
         },
         Outputs = new[]
         {

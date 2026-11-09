@@ -7,6 +7,7 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        PreviewKeyDown="Window_PreviewKeyDown"
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
@@ -72,12 +73,27 @@
 
         <Border Grid.Row="2" Background="{StaticResource SurfaceAltBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,8">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Style="{StaticResource BtnGhost}" Content="取消" IsCancel="True"
-                        Width="88" MinHeight="32" Margin="0,0,8,0" Click="Cancel_Click"/>
-                <Button Style="{StaticResource BtnPrimary}" Content="确定" IsDefault="True"
-                        Width="88" MinHeight="32" Click="Ok_Click"/>
-            </StackPanel>
+            <Grid>
+                <StackPanel x:Name="NavPanel" Orientation="Horizontal" HorizontalAlignment="Left"
+                            VerticalAlignment="Center" Visibility="Collapsed">
+                    <Button x:Name="PrevButton" Style="{StaticResource BtnGhost}" Content="‹ 上一步"
+                            MinHeight="32" Padding="10,2" Margin="0,0,6,0" Visibility="Collapsed"
+                            ToolTip="保存这一步并编辑上一步（Alt+←）" Click="Prev_Click"/>
+                    <Button x:Name="NextButton" Style="{StaticResource BtnGhost}" Content="下一步 ›"
+                            MinHeight="32" Padding="10,2" Margin="0,0,6,0" Visibility="Collapsed"
+                            ToolTip="保存这一步并继续编辑下一步（Alt+→）" Click="Next_Click"/>
+                    <Button x:Name="ContinueButton" Style="{StaticResource BtnGhost}" Content="保存并继续添加"
+                            MinHeight="32" Padding="10,2" Visibility="Collapsed"
+                            ToolTip="保存这一步，再开一个同样的空表单接着加" Click="Continue_Click"/>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource BtnGhost}" Content="取消" IsCancel="True"
+                            Width="88" MinHeight="32" Margin="0,0,8,0" Click="Cancel_Click"/>
+                    <Button Style="{StaticResource BtnPrimary}" Content="确定" IsDefault="True"
+                            Width="88" MinHeight="32" Click="Ok_Click"/>
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>

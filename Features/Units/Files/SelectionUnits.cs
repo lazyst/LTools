@@ -29,10 +29,10 @@ public sealed class FileSelectionUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("useClipboardFallback", "Ctrl+C 兜底", ValueKind.@bool, InputEditor.boolean,
-                Default: Value.FromBool(false),
+                Default: Value.FromBool(false), Advanced: true,
                 Description: "给前台发一次 Ctrl+C 读剪贴板；只服务第三方文件管理器，会临时占用剪贴板"),
             new InputSpec("waitMs", "等待剪贴板毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(200), VisibleWhen: "useClipboardFallback == true",
+                Default: Value.FromNumber(200), VisibleWhen: "useClipboardFallback == true", Advanced: true,
                 Description: "等剪贴板出现文件的时长（50–3000）；太短会读不到大文件"),
             new InputSpec("sort", "排序", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("none"), Options: Sorts, Labels: SortLabels,

@@ -24,7 +24,7 @@ public sealed class ClickTextUnit : IStepUnit
             new InputSpec("ocrEngine", "识别引擎", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("v6tiny"), Options: new[] { "windows", "v6tiny", "v6small" }),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(0)),
+                Default: Value.FromNumber(0), Advanced: true),
             new InputSpec("mouseAction", "点击方式", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("click"),
                 Options: new[] { "click", "doubleClick", "rightClick", "middleClick" }),

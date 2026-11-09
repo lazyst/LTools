@@ -18,7 +18,7 @@ public sealed class SelectionUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("timeoutMs", "超时毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(800)),
+                Default: Value.FromNumber(800), Advanced: true),
         },
         Outputs = new[]
         {
@@ -56,7 +56,7 @@ public sealed class SendTextUnit : IStepUnit
             new InputSpec("appendEnter", "末尾回车", ValueKind.@bool, InputEditor.boolean,
                 Default: Value.FromBool(false)),
             new InputSpec("focusDelayMs", "焦点延时毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(50)),
+                Default: Value.FromNumber(50), Advanced: true),
         },
     };
 

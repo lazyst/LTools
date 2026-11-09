@@ -78,6 +78,10 @@ public enum BodyKind
 /// 参数表单把它显示在输入框下方（见 <c>Core/Actions/InputHint</c>）；不填时按 <see cref="Type"/> /
 /// <see cref="Editor"/> 给一句默认说明，所以必填项之外不必逐条重复「文本」「数字」这类废话。
 /// </param>
+/// <param name="Advanced">
+/// true = 调优参数（超时、轮询间隔、相似度、焦点延时…），参数表单把它们收进「高级参数」里，
+/// 默认折叠；已经设过值的会自动展开，不会把用户填过的参数藏起来。
+/// </param>
 public sealed record InputSpec(
     string Key,
     string Label,
@@ -89,7 +93,8 @@ public sealed record InputSpec(
     IReadOnlyList<string>? Options = null,
     IReadOnlyDictionary<string, string>? Labels = null,
     bool Raw = false,
-    string? Description = null);
+    string? Description = null,
+    bool Advanced = false);
 
 /// <summary>一个输出参数的声明。输出要写哪个变量由步骤的 <c>out</c> 映射决定。</summary>
 /// <param name="Key">输出键。</param>

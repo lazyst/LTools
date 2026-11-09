@@ -20,7 +20,7 @@ public sealed class TimeUnit : IStepUnit
             new InputSpec("format", "格式", ValueKind.text,
                 Default: Value.FromText("yyyy-MM-dd HH:mm:ss")),
             new InputSpec("offsetMs", "偏移毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(0)),
+                Default: Value.FromNumber(0), Advanced: true),
         },
         Outputs = new[]
         {
