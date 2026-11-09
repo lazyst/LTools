@@ -24,6 +24,9 @@ public partial class ActionEditorWindow
 {
     // ============ 步骤列表 ============
 
+    /// <summary>被折叠的块（如果 / 循环）。按步骤对象记，重建列表后仍然有效；只在本次编辑期间有效。</summary>
+    private readonly HashSet<Step> _collapsed = new();
+
     private void ReloadRows(Step? select = null)
     {
         // 多选：按步骤引用记住选中项，重建列表后恢复（不传 select 时保留当前多选）
@@ -59,9 +62,23 @@ public partial class ActionEditorWindow
         {
             Step step = list[i];
             _number++;
-            _rows.Add(MakeRow(step, list, i, depth));
 
             BodyKind body = SpecOf(step)?.Body ?? BodyKind.none;
+            bool hasChildren = body != BodyKind.none
+                && step.Body.Count + step.Then.Count + step.Else.Count > 0;
+            bool collapsed = hasChildren && _collapsed.Contains(step);
+
+            _rows.Add(MakeRow(step, list, i, depth, hasChildren, collapsed));
+
+            if (body == BodyKind.none) continue;
+
+            if (collapsed)
+            {
+                // 折叠的块不占行，但步号要照旧连续（后面的「第 N 步」不能因为折叠就变）。
+                _number += DescendantCount(step);
+                continue;
+            }
+
             if (body == BodyKind.thenElse)
             {
                 AddBranch(step.Then, depth + 1, "真分支为空 · 选中这一行后从左侧添加");
@@ -79,6 +96,12 @@ public partial class ActionEditorWindow
         }
     }
 
+    /// <summary>一个块里一共有多少个子步骤（用来给折叠块跳过步号）。</summary>
+    private static int DescendantCount(Step step) =>
+        step.Then.Sum(s => 1 + DescendantCount(s))
+        + step.Else.Sum(s => 1 + DescendantCount(s))
+        + step.Body.Sum(s => 1 + DescendantCount(s));
+
     private void AddBranch(List<Step> branch, int depth, string emptyHint)
     {
         if (branch.Count == 0)
@@ -95,11 +118,19 @@ public partial class ActionEditorWindow
             Walk(branch, depth);
     }
 
-    private StepRow MakeRow(Step step, List<Step> owner, int index, int depth)
+    private StepRow MakeRow(Step step, List<Step> owner, int index, int depth,
+        bool hasChildren = false, bool collapsed = false)
     {
         UnitSpec? spec = SpecOf(step);
         string title = spec?.Name ?? step.Unit;
         if (step.Disabled) title += "（跳过）";
+
+        string summary = StepSummary.Describe(step);
+        if (collapsed)
+        {
+            string folded = $"已折叠 {DescendantCount(step)} 步";
+            summary = summary.Length == 0 ? folded : $"{summary} · {folded}";
+        }
 
         return new StepRow
         {
@@ -110,9 +141,62 @@ public partial class ActionEditorWindow
             Number = _number.ToString(CultureInfo.InvariantCulture),
             Glyph = IconCatalog.GetGlyph(spec?.Icon),
             Title = title,
-            Summary = StepSummary.Describe(step),
+            Summary = summary,
             Output = StepSummary.OutputText(step),
+            HasChildren = hasChildren,
+            IsCollapsed = collapsed,
         };
+    }
+
+    /// <summary>折叠箭头：收起 / 展开这一块（子步骤不占行，选中项与滚动位置尽量保留）。</summary>
+    private void FoldToggle_Click(object sender, RoutedEventArgs e)
+    {
+        StepRow? row = RowOf(sender);
+        if (row?.Step != null) ToggleFold(row.Step);
+    }
+
+    private void ToggleFold(Step step)
+    {
+        if (!_collapsed.Remove(step)) _collapsed.Add(step);
+        ReloadRows();
+    }
+
+    private void CollapseAll()
+    {
+        foreach (var (step, _) in AllSteps())
+            if (step.Body.Count + step.Then.Count + step.Else.Count > 0) _collapsed.Add(step);
+        ReloadRows();
+    }
+
+    private void ExpandAll()
+    {
+        _collapsed.Clear();
+        ReloadRows();
+    }
+
+    /// <summary>
+    /// 按执行顺序列出全部步骤（**含已折叠块里的**）与它的祖先链。
+    /// 搜索定位要用祖先链自动展开，变量引用统计不能漏掉折叠块。
+    /// </summary>
+    private List<(Step Step, List<Step> Ancestors)> AllSteps()
+    {
+        var list = new List<(Step, List<Step>)>();
+        CollectAll(_program.Steps, new List<Step>(), list);
+        return list;
+    }
+
+    private static void CollectAll(List<Step> steps, List<Step> ancestors,
+        List<(Step Step, List<Step> Ancestors)> into)
+    {
+        foreach (Step step in steps)
+        {
+            into.Add((step, new List<Step>(ancestors)));
+            ancestors.Add(step);
+            CollectAll(step.Then, ancestors, into);
+            CollectAll(step.Else, ancestors, into);
+            CollectAll(step.Body, ancestors, into);
+            ancestors.RemoveAt(ancestors.Count - 1);
+        }
     }
 
     /// <summary>

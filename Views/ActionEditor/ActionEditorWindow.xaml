@@ -22,6 +22,7 @@
                         Margin="{Binding Indent}" Padding="6,3">
                     <Grid>
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="16"/>
                             <ColumnDefinition Width="24"/>
                             <ColumnDefinition Width="24"/>
                             <ColumnDefinition Width="*"/>
@@ -30,14 +31,21 @@
                             <ColumnDefinition Width="26"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Column="0" Text="{Binding Number}" VerticalAlignment="Center"
+                        <!-- 折叠箭头：只有带子步骤的块才有 -->
+                        <Button x:Name="FoldButton" Grid.Column="0" Style="{StaticResource BtnGhost}"
+                                Content="{Binding FoldGlyph}" Padding="0" Width="16" Height="20"
+                                FontSize="{StaticResource FontSizeHint}" VerticalAlignment="Center"
+                                Foreground="{StaticResource SecondaryTextBrush}"
+                                Visibility="{Binding FoldVisibility}" ToolTip="{Binding FoldTip}"
+                                Click="FoldToggle_Click"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Number}" VerticalAlignment="Center"
                                    FontSize="{StaticResource FontSizeSecondary}"
                                    Foreground="{StaticResource SecondaryTextBrush}"/>
-                        <TextBlock Grid.Column="1" Text="{Binding Glyph}" VerticalAlignment="Center"
+                        <TextBlock Grid.Column="2" Text="{Binding Glyph}" VerticalAlignment="Center"
                                    FontFamily="Segoe MDL2 Assets" FontSize="14"
                                    Foreground="{StaticResource SecondaryTextBrush}"/>
 
-                        <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="4,0,6,0">
+                        <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="4,0,6,0">
                             <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
                                        FontSize="{StaticResource FontSizeSecondary}"
                                        TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}"/>
@@ -47,7 +55,7 @@
                                        ToolTip="{Binding Summary}"/>
                         </StackPanel>
 
-                        <Border Grid.Column="3" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3"
+                        <Border Grid.Column="4" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3"
                                 Padding="6,1" VerticalAlignment="Center" Margin="0,0,6,0"
                                 Visibility="{Binding OutputVisibility}" ToolTip="输出变量">
                             <TextBlock Text="{Binding Output}" FontSize="{StaticResource FontSizeHint}"
@@ -55,11 +63,11 @@
                                        Foreground="{StaticResource SecondaryTextBrush}"/>
                         </Border>
 
-                        <Button Grid.Column="4" Style="{StaticResource BtnGhost}" Content="✎" Padding="0"
+                        <Button Grid.Column="5" Style="{StaticResource BtnGhost}" Content="✎" Padding="0"
                                 Width="24" Height="24" FontSize="{StaticResource FontSizeSecondary}"
                                 VerticalAlignment="Center" ToolTip="编辑（双击行亦可）"
                                 Visibility="{Binding ButtonVisibility}" Click="EditStep_Click"/>
-                        <Button Grid.Column="5" Style="{StaticResource BtnGhost}" Content="✕" Padding="0"
+                        <Button Grid.Column="6" Style="{StaticResource BtnGhost}" Content="✕" Padding="0"
                                 Width="24" Height="24" FontSize="{StaticResource FontSizeHint}"
                                 VerticalAlignment="Center" ToolTip="删除（含子步骤）"
                                 Visibility="{Binding ButtonVisibility}" Click="DeleteStep_Click"/>
@@ -79,6 +87,9 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
                     <Setter TargetName="MarkerText" Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsCollapsed}" Value="True">
+                    <Setter TargetName="FoldButton" Property="Foreground" Value="{StaticResource AccentBrush}"/>
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
@@ -136,6 +147,32 @@
                                        FontSize="{StaticResource FontSizeHint}"
                                        Foreground="{StaticResource HintTextBrush}"/>
                         </StackPanel>
+                    </Grid>
+
+                    <!-- 搜步骤：只在现有列表里定位（不筛选，避免打乱嵌套结构）；Enter 下一处、Shift+Enter 上一处、Esc 清空 -->
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <TextBox x:Name="StepSearchBox" MinHeight="28" Padding="6,3"
+                                 TextChanged="StepSearchBox_TextChanged"
+                                 PreviewKeyDown="StepSearchBox_PreviewKeyDown"
+                                 ToolTip="搜索步骤（名称 / 摘要 / 单元键 / 参数文本）；Enter 跳到下一处，Shift+Enter 上一处，Esc 清空。当前折叠的块会自动展开"/>
+                        <TextBlock IsHitTestVisible="False" Margin="8,0" VerticalAlignment="Center"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource HintTextBrush}" Text="搜索步骤…">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=StepSearchBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock x:Name="StepSearchInfo" IsHitTestVisible="False"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   Margin="0,0,8,0" FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource HintTextBrush}" Visibility="Collapsed"/>
                     </Grid>
 
                     <TextBlock x:Name="EmptyHint" DockPanel.Dock="Bottom"

@@ -60,6 +60,9 @@ public partial class ActionEditorWindow : Window
     /// <summary>程序化改变量类型时置位，避免被当成「用户改过」。</summary>
     private bool _syncingKinds;
 
+    /// <summary>改名时同步过步骤引用：等变量名输入框失焦后重建步骤列表（别在每次按键时重建）。</summary>
+    private bool _renameTouchedSteps;
+
     // 拖动排序（只移动步骤本身，子步骤跟着走；标记行 / 空分支占位行不是落点）
     private StepRow? _dragRow;
     private int _dragRowIndex;
@@ -208,6 +211,9 @@ public partial class ActionEditorWindow : Window
 
         /// <summary>类型由单元声明决定（用户改过类型就为 false，不再被步骤覆盖）。</summary>
         public bool AutoType;
+
+        /// <summary>上一次确认过的变量名（改名时用它找出要同步的 ${旧名}）。</summary>
+        public string LastName = "";
     }
 }
 
@@ -222,6 +228,19 @@ public sealed class StepRow
     public int Index { get; init; }
 
     public int Depth { get; init; }
+
+    /// <summary>带子步骤的块（如果 / 循环）才有折叠箭头。</summary>
+    public bool HasChildren { get; init; }
+
+    /// <summary>这个块现在是折叠的（子步骤不占行）。</summary>
+    public bool IsCollapsed { get; init; }
+
+    public Visibility FoldVisibility =>
+        HasChildren ? Visibility.Visible : Visibility.Collapsed;
+
+    public string FoldGlyph => IsCollapsed ? "▸" : "▾";
+
+    public string FoldTip => IsCollapsed ? "展开子步骤" : "折叠子步骤（收起这一块）";
 
     public bool IsMarker { get; init; }
 
@@ -247,7 +266,7 @@ public sealed class StepRow
 
     public Thickness Indent => new(Depth * 18, 0, 0, 0);
 
-    public Thickness MarkerIndent => new(Depth * 18 + 26, 0, 0, 1);
+    public Thickness MarkerIndent => new(Depth * 18 + 44, 0, 0, 1);
 }
 
 /// <summary>

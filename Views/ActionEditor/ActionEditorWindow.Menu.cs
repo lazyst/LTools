@@ -72,6 +72,17 @@ public partial class ActionEditorWindow
             Item(menu, AllDisabled(selected) ? "启用这一步" : "跳过这一步",
                 ToggleDisabledSelected, "Space");
             menu.Items.Add(new Separator());
+
+            int children = row.Step.Body.Count + row.Step.Then.Count + row.Step.Else.Count;
+            if (children > 0)
+            {
+                Item(menu, _collapsed.Contains(row.Step)
+                        ? $"展开子步骤（{children} 步）"
+                        : $"折叠子步骤（{children} 步）",
+                    () => ToggleFold(row.Step));
+                menu.Items.Add(new Separator());
+            }
+
             Item(menu, "上移", () => MoveRow(row, -1), enabled: row.Index > 0);
             Item(menu, "下移", () => MoveRow(row, 1), enabled: row.Index + 1 < row.Owner.Count);
             menu.Items.Add(new Separator());
@@ -89,6 +100,9 @@ public partial class ActionEditorWindow
             Item(menu, "粘贴到末尾", () => PasteAt(_program.Steps, _program.Steps.Count),
                 "Ctrl+V", _stepClipboard.Count > 0);
             menu.Items.Add(InsertUnitMenu("在末尾插入单元", _program.Steps, _program.Steps.Count));
+            menu.Items.Add(new Separator());
+            Item(menu, "全部展开", ExpandAll, enabled: _collapsed.Count > 0);
+            Item(menu, "折叠所有块", CollapseAll, enabled: _program.Steps.Count > 0);
         }
 
         return menu;

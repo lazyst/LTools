@@ -122,13 +122,16 @@ public partial class ActionEditorWindow
         remove.Click += (_, _) =>
         {
             string name = row.Name.Text.Trim();
-            int refs = name.Length == 0 ? 0 : ReferenceCount(name);
-            if (refs > 0)
+            var (reads, writes) = name.Length == 0 ? (0, 0) : ReferenceStats(name);
+            if (reads + writes > 0)
             {
-                // 步骤还写着这个输出变量，删了会被下次同步自动加回来，还会让步骤引用空变量。
+                // 步骤还写着这个变量（写入或 ${名}），删了会被下次同步自动加回来，还会留下读不到变量的引用。
+                string detail = writes > 0 && reads > 0
+                    ? $"{writes} 处写入、{reads} 处读取"
+                    : writes > 0 ? $"{writes} 处写入" : $"{reads} 处读取";
                 ConfirmDialog.Info(this, "删除变量",
-                    $"「${{{name}}}」还被 {refs} 处步骤用作输出变量。\n" +
-                    "先改掉那些步骤的「输出变量」（或删掉步骤），再删这里。");
+                    $"「${{{name}}}」还被 {detail} 引用。\n" +
+                    "先改掉那些步骤（或改用别的变量名），再删这里。");
                 return;
             }
 
@@ -176,7 +179,33 @@ public partial class ActionEditorWindow
         row.Host = grid;
         row.Origin = origin;
         row.AutoType = autoType;
-        row.Name.TextChanged += (_, _) => RefreshVariableTips();
+        row.LastName = key;
+        row.Name.TextChanged += (_, _) =>
+        {
+            // 改名同步：a → b 时把步骤里的 ${a} / 变量取值 / 输出映射一起改掉。
+            // 逐键同步（不是失焦才同步），用户看着步骤摘要一起变，不会漏改。
+            string name = row.Name.Text.Trim();
+            if (row.LastName.Length > 0 && name.Length > 0
+                && !string.Equals(row.LastName, name, StringComparison.Ordinal))
+            {
+                RenameReferences(row.LastName, name);
+                row.LastName = name;
+                _renameTouchedSteps = true;
+            }
+            else if (name.Length > 0)
+            {
+                row.LastName = name;
+            }
+
+            RefreshVariableTips();
+        };
+        row.Name.LostFocus += (_, _) =>
+        {
+            // 步骤列表在失焦后重建一次：摘要里的 ${变量} 要跟着新名字变。
+            if (!_renameTouchedSteps) return;
+            _renameTouchedSteps = false;
+            ReloadRows();
+        };
         _variables.Add(row);
         VariableRows.Children.Add(grid);
         RefreshVariableTips();
@@ -210,7 +239,7 @@ public partial class ActionEditorWindow
         };
     }
 
-    /// <summary>变量表每次重建后重算提示：来源 + 被几处步骤写入。</summary>
+    /// <summary>变量表每次重建后重算提示：来源 + 被几处步骤引用（写入 / 读取分开算）。</summary>
     private void RefreshVariableTips()
     {
         foreach (var row in _variables)
@@ -223,30 +252,236 @@ public partial class ActionEditorWindow
                 continue;
             }
 
-            int refs = ReferenceCount(name);
+            var (reads, writes) = ReferenceStats(name);
+            int refs = reads + writes;
             string origin = row.Origin.Length == 0 ? "手动创建" : row.Origin;
-            row.OriginText.Text = origin;
+            row.OriginText.Text = refs > 0 ? $"{origin} · 引用 {refs} 处" : origin;
             row.OriginText.ToolTip = refs == 0
-                ? "还没有步骤写入它"
-                : $"被 {refs} 处步骤写入";
+                ? "还没有步骤用到它"
+                : $"被 {refs} 处步骤引用（{writes} 处写入 · {reads} 处读取）";
             row.Host.ToolTip = "来源：" + origin +
-                (refs == 0 ? "\n还没有步骤写入它" : $"\n被 {refs} 处步骤写入");
+                (refs == 0 ? "\n还没有步骤用到它" : $"\n被 {refs} 处步骤引用（{writes} 处写入 · {reads} 处读取）");
         }
     }
 
-    /// <summary>有多少步骤把这个名字当作输出变量（只数 <see cref="Step.Out"/> 的写入点）。</summary>
-    private int ReferenceCount(string name)
+    /// <summary>
+    /// 变量名在步骤里的引用：<b>写入</b> = <see cref="Step.Out"/> 映射到这个变量，
+    /// <b>读取</b> = 参数文本里的 <c>${名}</c>、变量取值、内联取值里的引用。
+    /// </summary>
+    private (int Reads, int Writes) ReferenceStats(string name)
     {
-        int count = 0;
-        foreach (var row in _rows)
+        int reads = 0, writes = 0;
+        foreach (var (step, _) in AllSteps()) ScanReferences(step, name, ref reads, ref writes);
+        return (reads, writes);
+    }
+
+    private static void ScanReferences(Step step, string name, ref int reads, ref int writes)
+    {
+        foreach (string target in step.Out.Values)
+            if (NameEquals(target, name)) writes++;
+
+        foreach (StepArg arg in step.In.Values) ScanArgReferences(arg, name, ref reads);
+    }
+
+    /// <summary>内联取值步骤自己的输出变量不算「这个动作里的写入」，只继续找它读的变量。</summary>
+    private static void ScanArgReferences(StepArg arg, string name, ref int reads)
+    {
+        switch (arg.Kind)
         {
-            if (row.Step == null) continue;
-            foreach (string target in row.Step.Out.Values)
-                if (string.Equals((target ?? "").Trim(), name, StringComparison.OrdinalIgnoreCase))
-                    count++;
+            case StepArgKind.literal:
+                if (ValueUsesVariable(arg.Literal, name)) reads++;
+                break;
+            case StepArgKind.variable:
+                if (NameEquals(PathBase(arg.VariablePath), name)) reads++;
+                break;
+            case StepArgKind.inline when arg.InlineStep != null:
+                foreach (StepArg nested in arg.InlineStep.In.Values) ScanArgReferences(nested, name, ref reads);
+                break;
+        }
+    }
+
+    // ============ 改名同步 ============
+
+    /// <summary>
+    /// 把步骤里对 <paramref name="oldName"/> 的引用改成 <paramref name="newName"/>：
+    /// 输出映射、<c>${旧名}</c>（含 <c>旧名.成员</c> / <c>旧名[0]</c>）、变量取值。返回改动处数。
+    /// </summary>
+    private int RenameReferences(string oldName, string newName)
+    {
+        if (oldName.Length == 0 || newName.Length == 0) return 0;
+
+        int count = 0;
+        foreach (var (step, _) in AllSteps()) RenameInStep(step, oldName, newName, ref count);
+        if (count > 0) SetStatus($"变量改名：{oldName} → {newName}，同步 {count} 处引用", hint: true);
+        return count;
+    }
+
+    private static void RenameInStep(Step step, string oldName, string newName, ref int count)
+    {
+        foreach (string key in step.Out.Keys.ToList())
+        {
+            if (!NameEquals(step.Out[key], oldName)) continue;
+            step.Out[key] = newName;
+            count++;
         }
 
-        return count;
+        foreach (string key in step.In.Keys.ToList())
+        {
+            StepArg arg = step.In[key];
+            switch (arg.Kind)
+            {
+                case StepArgKind.literal:
+                {
+                    Value renamed = RenameValue(arg.Literal, oldName, newName, ref count);
+                    if (!ReferenceEquals(renamed, arg.Literal)) step.In[key] = StepArg.FromValue(renamed);
+                    break;
+                }
+                case StepArgKind.variable:
+                {
+                    string path = RenamePath(arg.VariablePath, oldName, newName);
+                    if (!string.Equals(path, arg.VariablePath, StringComparison.Ordinal))
+                    {
+                        step.In[key] = StepArg.FromVar(path);
+                        count++;
+                    }
+                    break;
+                }
+                case StepArgKind.inline when arg.InlineStep != null:
+                    RenameInStep(arg.InlineStep, oldName, newName, ref count);
+                    break;
+            }
+        }
+    }
+
+    private static Value RenameValue(Value value, string oldName, string newName, ref int count)
+    {
+        switch (value.Kind)
+        {
+            case ValueKind.text:
+                return RenameTextValue(value, oldName, newName, ref count);
+
+            case ValueKind.list:
+            {
+                var items = new List<Value>(value.Items.Count);
+                foreach (Value item in value.Items)
+                    items.Add(RenameValue(item, oldName, newName, ref count));
+                return Value.FromList(items);
+            }
+
+            case ValueKind.@object:
+            {
+                var members = new List<KeyValuePair<string, Value>>(value.Members.Count);
+                foreach (var pair in value.Members)
+                    members.Add(new KeyValuePair<string, Value>(
+                        pair.Key, RenameValue(pair.Value, oldName, newName, ref count)));
+                return Value.FromObject(members);
+            }
+
+            default:
+                return value;
+        }
+    }
+
+    private static Value RenameTextValue(Value value, string oldName, string newName, ref int count)
+    {
+        string renamed = RenameInText(value.AsText(), oldName, newName, out int hits);
+        count += hits;
+        return hits == 0 ? value : Value.FromText(renamed);
+    }
+
+    /// <summary>把文本里的 <c>${旧名…}</c> 换成 <c>${新名…}</c>；<c>$$</c> 转义的写法不动。</summary>
+    private static string RenameInText(string text, string oldName, string newName, out int hits)
+    {
+        hits = 0;
+        if (text.IndexOf("${", StringComparison.Ordinal) < 0) return text;
+
+        var sb = new System.Text.StringBuilder(text.Length + 8);
+        int i = 0;
+        while (i < text.Length)
+        {
+            int start = text.IndexOf("${", i, StringComparison.Ordinal);
+            if (start < 0)
+            {
+                sb.Append(text, i, text.Length - i);
+                break;
+            }
+
+            int end = text.IndexOf('}', start + 2);
+            if (end < 0)
+            {
+                sb.Append(text, i, text.Length - i);
+                break;
+            }
+
+            bool escaped = start > 0 && text[start - 1] == '$';
+            string inner = text[(start + 2)..end];
+            bool hit = !escaped && NameEquals(PathBase(inner), oldName);
+            if (hit) hits++;
+
+            sb.Append(text, i, start - i);
+            sb.Append("${");
+            sb.Append(hit ? RenamePath(inner, oldName, newName) : inner);
+            sb.Append('}');
+            i = end + 1;
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>只换路径的第一段（变量名），<c>a.b[0]</c> → <c>new.b[0]</c>；保留前后的空白。</summary>
+    private static string RenamePath(string path, string oldName, string newName)
+    {
+        string trimmed = path.Trim();
+        if (trimmed.Length == 0) return path;
+
+        string baseName = PathBase(trimmed);
+        if (!NameEquals(baseName, oldName)) return path;
+
+        int lead = path.Length - path.TrimStart().Length;
+        int tail = path.Length - path.TrimEnd().Length;
+        return path[..lead] + newName + trimmed[baseName.Length..]
+            + (tail == 0 ? "" : path[(path.Length - tail)..]);
+    }
+
+    // ============ 变量引用的小工具 ============
+
+    private static bool NameEquals(string? a, string b) =>
+        string.Equals((a ?? "").Trim(), b, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary><c>a.b[0]</c> 的第一段（变量名本身）。</summary>
+    private static string PathBase(string? path)
+    {
+        string trimmed = (path ?? "").Trim();
+        int cut = trimmed.IndexOfAny(new[] { '.', '[' });
+        return (cut < 0 ? trimmed : trimmed[..cut]).Trim();
+    }
+
+    private static bool ValueUsesVariable(Value value, string name) => value.Kind switch
+    {
+        ValueKind.text => TemplatePaths(value.AsText()).Any(path => NameEquals(PathBase(path), name)),
+        ValueKind.list => value.Items.Any(item => ValueUsesVariable(item, name)),
+        ValueKind.@object => value.Members.Any(kv => ValueUsesVariable(kv.Value, name)),
+        _ => false,
+    };
+
+    /// <summary>文本里出现的 <c>${…}</c> 路径（<c>$$</c> 转义的不算）。</summary>
+    private static IEnumerable<string> TemplatePaths(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) yield break;
+
+        int i = 0;
+        while (i < text.Length)
+        {
+            int start = text.IndexOf("${", i, StringComparison.Ordinal);
+            if (start < 0) yield break;
+
+            int end = text.IndexOf('}', start + 2);
+            if (end < 0) yield break;
+
+            bool escaped = start > 0 && text[start - 1] == '$';
+            if (!escaped) yield return text[(start + 2)..end];
+            i = end + 1;
+        }
     }
 
     /// <summary>
@@ -262,10 +497,9 @@ public partial class ActionEditorWindow
             if (key.Length > 0) known.TryAdd(key, row);
         }
 
-        foreach (var stepRow in _rows)
+        foreach (var (step, _) in AllSteps())
         {
-            Step? step = stepRow.Step;
-            if (step == null) continue;
+            StepRow? stepRow = _rows.FirstOrDefault(r => ReferenceEquals(r.Step, step));
 
             foreach (var pair in step.Out)
             {
@@ -273,7 +507,9 @@ public partial class ActionEditorWindow
                 if (key.Length == 0) continue;
 
                 ValueKind? declared = OutputType(step, pair.Key);
-                string origin = $"第 {stepRow.Number} 步 · {stepRow.Title}（输出 {pair.Key}）";
+                string origin = stepRow == null
+                    ? $"{StepSummary.Title(step)}（输出 {pair.Key}）"
+                    : $"第 {stepRow.Number} 步 · {stepRow.Title}（输出 {pair.Key}）";
 
                 if (known.TryGetValue(key, out var existing))
                 {
