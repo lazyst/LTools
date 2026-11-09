@@ -49,6 +49,8 @@ public partial class ActionEditorWindow
         if (multi)
         {
             int count = selected.Count;
+            Item(menu, $"运行选中的 {count} 步", RunSelected);
+            menu.Items.Add(new Separator());
             Item(menu, $"复制选中的 {count} 步", CopySelected, "Ctrl+C");
             Item(menu, $"复制一份选中的 {count} 步", DuplicateSelected, "Ctrl+D");
             Item(menu, AllDisabled(selected) ? $"启用选中的 {count} 步" : $"跳过选中的 {count} 步",
@@ -71,11 +73,12 @@ public partial class ActionEditorWindow
             menu.Items.Add(InsertUnitMenu("在上方插入单元", row.Owner, row.Index));
             menu.Items.Add(InsertUnitMenu("在下方插入单元", row.Owner, row.Index + 1));
             menu.Items.Add(new Separator());
+            Item(menu, "只运行这一步", RunSelected);
             Item(menu, "从此行试运行", () =>
             {
                 StepList.SelectedItems.Clear();
                 StepList.SelectedItem = row;
-                StartRun(fromSelected: true);
+                StartRun(RunScope.FromRow);
             }, enabled: ReferenceEquals(row.Owner, _program.Steps));
             Item(menu, AllDisabled(selected) ? "启用这一步" : "跳过这一步",
                 ToggleDisabledSelected, "Space");

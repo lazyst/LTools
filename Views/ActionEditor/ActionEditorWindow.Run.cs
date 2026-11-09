@@ -99,9 +99,25 @@ public partial class ActionEditorWindow
         RunToggleButton.Content = show ? "收起" : "展开";
     }
 
-    private void Run_Click(object sender, RoutedEventArgs e) => StartRun(fromSelected: false);
+    private void Run_Click(object sender, RoutedEventArgs e) => StartRun(RunScope.All);
 
-    private void RunFrom_Click(object sender, RoutedEventArgs e) => StartRun(fromSelected: true);
+    private void RunFrom_Click(object sender, RoutedEventArgs e) => StartRun(RunScope.FromRow);
+
+    /// <summary>右键菜单「运行选中的 N 步」/「只运行这一步」。</summary>
+    private void RunSelected()
+    {
+        if (_running) return;
+        if (SelectedRows().Count == 0)
+        {
+            ConfirmDialog.Info(this, "试运行", "先选中要运行的步骤（Ctrl / Shift 可多选）。");
+            return;
+        }
+
+        StartRun(RunScope.Selection);
+    }
+
+    /// <summary>试运行的范围：整个动作 / 从选中行到结尾 / 只跑选中的步骤。</summary>
+    private enum RunScope { All, FromRow, Selection }
 
     private void StopRun_Click(object sender, RoutedEventArgs e)
     {
@@ -110,14 +126,15 @@ public partial class ActionEditorWindow
     }
 
     /// <summary>
-    /// 试运行：跑的是**编辑器里现在的内容**（克隆一份，不必先保存），轨迹按步骤路径回填。
+    /// 试运行：跑的是**编辑器里现在的内容**（按范围克隆，不必先保存），轨迹按步骤路径回填。
     /// </summary>
-    private void StartRun(bool fromSelected)
+    private void StartRun(RunScope scope)
     {
         if (_running) return;
 
         string? startPath = null;
-        if (fromSelected)
+        List<StepRow>? selection = null;
+        if (scope == RunScope.FromRow)
         {
             StepRow? row = SelectedRow();
             if (row?.Step == null || !ReferenceEquals(row.Owner, _program.Steps))
@@ -128,20 +145,22 @@ public partial class ActionEditorWindow
             }
             startPath = $"/steps/{row.Index}";
         }
+        else if (scope == RunScope.Selection)
+        {
+            selection = OutermostSelectedRows();
+            if (selection.Count == 0) return;
+        }
 
         string name = (NameBox.Text ?? "").Trim();
         if (name.Length == 0) name = "未命名动作";
 
-        ActionProgram? program = BuildRunProgram();
+        // 顶层选择按原下标补齐（未选中的顶层步骤变成跳过），这样轨迹里的「第 N 行」仍是编辑器里的行号；
+        // 选中里含分支步骤时没法补，压紧成临时动作（行号以这次运行为准）。
+        bool topLevelOnly = selection?.All(r => ReferenceEquals(r.Owner, _program.Steps)) == true;
+        ActionProgram? program = BuildRunProgram(selection, topLevelOnly);
         if (program == null) return;
 
-        // 路径 → 步骤行：等宽两条遍历（程序本身 + 编辑器行），运行时靠路径定位到某一行。
-        _traceTargets.Clear();
-        var paths = new List<string>();
-        IndexStepPaths(_program.Steps, "", paths);
-        var realRows = _rows.Where(r => r.Step != null).ToList();
-        for (int i = 0; i < paths.Count && i < realRows.Count; i++)
-            _traceTargets[paths[i]] = realRows[i];
+        PrepareTraceTargets(selection == null || topLevelOnly ? null : SourcePaths(selection!));
 
         _traceRowsByPath.Clear();
         _traceRows.Clear();
@@ -150,7 +169,14 @@ public partial class ActionEditorWindow
 
         RunBody.Visibility = Visibility.Visible;
         RunToggleButton.Content = "收起";
-        SetStatus(fromSelected ? "试运行（从此行）" : "试运行中", hint: true);
+        SetStatus(scope switch
+        {
+            RunScope.FromRow => "试运行（从此行）",
+            RunScope.Selection => topLevelOnly
+                ? $"试运行（选中 {selection!.Count} 步）"
+                : $"试运行（选中 {selection!.Count} 步 · 按临时动作编号）",
+            _ => "试运行中",
+        }, hint: true);
 
         if (!AutomationRunner.TryRunProgram(name, program, startPath, OnTrace, OnRunCompleted, ResourceRoot))
         {
@@ -162,8 +188,31 @@ public partial class ActionEditorWindow
         StartTraceFlush();
     }
 
-    /// <summary>克隆当前编辑器内容：步骤是活的模型，变量表要现读（保存前 <see cref="_program.Variables"/> 是旧的）。</summary>
-    private ActionProgram? BuildRunProgram()
+    /// <summary>选中的最外层步骤行（被另一个选中步骤包含的后代不重复算），按显示顺序。</summary>
+    private List<StepRow> OutermostSelectedRows()
+    {
+        List<StepRow> rows = SelectedRows();
+        return rows
+            .Where(r => !rows.Any(o => !ReferenceEquals(o, r) && ContainsStep(o.Step!, r.Step!)))
+            .OrderBy(r => _rows.IndexOf(r))
+            .ToList();
+    }
+
+    /// <summary>每一行步骤在源程序里的路径（选中运行压紧下标时用来平移轨迹路径）。</summary>
+    private List<string> SourcePaths(IReadOnlyList<StepRow> rows)
+    {
+        var paths = WalkPaths(_program.Steps, "", new List<(string, Step)>());
+        var pathOf = new Dictionary<Step, string>();
+        foreach (var (path, step) in paths) pathOf[step] = path;
+        return rows.Select(r => pathOf[r.Step!]).ToList();
+    }
+
+    /// <summary>
+    /// 克隆当前编辑器内容：步骤是活的模型，变量表要现读（保存前 <see cref="_program.Variables"/> 是旧的）。
+    /// <paramref name="only"/> 非空时只保留这些步骤：全是顶层时按原下标补齐（未选中的顶层步骤置为跳过），
+    /// 否则按显示顺序压紧成临时动作。
+    /// </summary>
+    private ActionProgram? BuildRunProgram(List<StepRow>? only = null, bool keepIndex = false)
     {
         var variables = ReadVariables();
         if (variables == null) return null;   // 默认值填错，ReadVariables 已经提示过
@@ -171,20 +220,79 @@ public partial class ActionEditorWindow
         ActionProgram program = _program.Clone();
         program.Variables.Clear();
         foreach (var variable in variables) program.Variables.Add(variable.Clone());
+
+        if (only == null) return program;
+
+        var selected = new HashSet<Step>(only.Select(r => r.Step!));
+        program.Steps.Clear();
+
+        if (keepIndex)
+        {
+            // 下标对齐：未选中的顶层步骤留成跳过（引擎遇到 Disabled 直接 continue，不执行、不记轨迹）
+            foreach (Step step in _program.Steps)
+            {
+                Step copy = step.Clone();
+                if (!selected.Contains(step)) copy.Disabled = true;
+                program.Steps.Add(copy);
+            }
+        }
+        else
+        {
+            foreach (StepRow row in only) program.Steps.Add(row.Step!.Clone());
+        }
+
         return program;
     }
 
-    /// <summary>按引擎的路径规则遍历：<c>/steps/2/then/0</c>（分支段 + 该层的步骤下标）。</summary>
-    private static void IndexStepPaths(List<Step> steps, string prefix, List<string> output)
+    /// <summary>源程序里的每条路径与步骤（先序，路径规则同引擎：<c>/steps/2/then/0</c>）。</summary>
+    private static List<(string Path, Step Step)> WalkPaths(List<Step> steps, string prefix,
+        List<(string Path, Step Step)> output)
     {
         for (int i = 0; i < steps.Count; i++)
         {
-            var step = steps[i];
+            Step step = steps[i];
             string path = prefix.Length == 0 ? $"/steps/{i}" : $"{prefix}/{i}";
-            output.Add(path);
-            IndexStepPaths(step.Then, $"{path}/then", output);
-            IndexStepPaths(step.Else, $"{path}/else", output);
-            IndexStepPaths(step.Body, $"{path}/body", output);
+            output.Add((path, step));
+            WalkPaths(step.Then, $"{path}/then", output);
+            WalkPaths(step.Else, $"{path}/else", output);
+            WalkPaths(step.Body, $"{path}/body", output);
+        }
+
+        return output;
+    }
+
+    /// <summary>
+    /// 轨迹路径 → 编辑器行。折叠块里的步骤没有可见行，不参与高亮。
+    /// <paramref name="remap"/> 非空时（选中运行压紧了外层下标）：
+    /// 临时程序的 <c>/steps/i</c> 对应 <c>remap[i]</c> 那棵子树。
+    /// </summary>
+    private void PrepareTraceTargets(List<string>? remap)
+    {
+        _traceTargets.Clear();
+
+        var rowOf = new Dictionary<Step, StepRow>();
+        foreach (StepRow row in _rows)
+            if (row.Step != null) rowOf[row.Step] = row;
+
+        var paths = WalkPaths(_program.Steps, "", new List<(string, Step)>());
+        if (remap == null)
+        {
+            foreach (var (path, step) in paths)
+                if (rowOf.TryGetValue(step, out StepRow? row)) _traceTargets[path] = row;
+            return;
+        }
+
+        for (int i = 0; i < remap.Count; i++)
+        {
+            string source = remap[i];
+            string temp = $"/steps/{i}";
+            foreach (var (path, step) in paths)
+            {
+                if (!path.StartsWith(source, StringComparison.Ordinal)) continue;
+                if (path.Length > source.Length && path[source.Length] != '/') continue;
+                if (rowOf.TryGetValue(step, out StepRow? row))
+                    _traceTargets[temp + path[source.Length..]] = row;
+            }
         }
     }
 
