@@ -1,7 +1,6 @@
 using LTools.Core.Actions;
 using LTools.Core.Storage;
 using LTools.Features;
-using LTools.Features.Migration;
 
 namespace LTools.Core.Ai;
 
@@ -81,7 +80,8 @@ internal static class DraftPromoter
             if (string.IsNullOrWhiteSpace(meta.BaseSourceHash))
                 throw new ActionException("草稿没有记录来源动作的内容哈希，请另存为新动作");
 
-            string currentHash = DraftStore.HashProgram(ActionPrograms.For(existing));
+            string currentHash = DraftStore.HashProgram(existing.Program
+                ?? new LTools.Core.Actions.ActionProgram());
             if (!string.Equals(currentHash, meta.BaseSourceHash, StringComparison.OrdinalIgnoreCase))
                 throw new ActionException("原动作在你复制之后已被修改，覆盖会丢掉那些改动；请另存为新动作");
 
@@ -92,7 +92,6 @@ internal static class DraftPromoter
                 if (!string.IsNullOrWhiteSpace(program.Icon)) update.Icon = program.Icon;
                 program.Id = update.Id;
                 update.Program = program;
-                update.ClearLegacy();
                 // 先把草稿 files/ 搬进动作目录再落盘：复制失败会放弃采纳，不留「引用了不存在的图」的动作。
                 imported.AddRange(ActionStore.CopyFilesFrom(ConfigStore.ConfigPath, update.Id, draftFiles));
                 ConfigStore.UpdateAction(update);

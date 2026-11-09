@@ -23,7 +23,7 @@ namespace LTools.Features.Builtin;
 /// <para>
 /// 常用功能里除了系统类入口，还有一组「光标移动 / 文本选择 / 删除与撤销」的预设按键
 /// （<c>common.key.*</c> / <c>common.select.*</c> / <c>common.edit.*</c>）：它们就是一次
-/// 模拟按键，和以前那些预置动作等价，但因为是功能，可以直接放进面板 / 悬浮 / 换键。
+/// 模拟按键；因为是功能，可以直接放进面板 / 悬浮 / 换键。
 /// </para>
 /// <para>
 /// 新增一条只需在 <see cref="Defs"/> 里加一行；参数声明写在 <see cref="FeatureParam"/> 上，
@@ -172,33 +172,11 @@ internal static class FeatureCatalog
     private static readonly Dictionary<string, FeatureDef> ById =
         Defs.ToDictionary(d => d.Id, StringComparer.Ordinal);
 
-    /// <summary>
-    /// 旧 Id → 现在的 Id。功能改名时在这里留一条，**不迁移已写进配置的引用**：
-    /// 面板 / 快捷键里的老引用照样能跑（<see cref="Find"/> 会翻过去），播种时再顺手改写成新 Id。
-    /// </summary>
-    private static readonly Dictionary<string, string> Aliases = new(StringComparer.Ordinal)
-    {
-        // 「打开速记」从常用功能挪到 LTools 功能（2026-11）。
-        ["common.note"] = "ltools.note",
-    };
-
     public static IReadOnlyList<FeatureDef> All => Defs;
 
-    public static FeatureDef? Find(string? id)
-    {
-        if (string.IsNullOrEmpty(id)) return null;
-        if (Aliases.TryGetValue(id, out string? canonical)) id = canonical;
-        return ById.TryGetValue(id, out var d) ? d : null;
-    }
-
-    /// <summary>把旧 Id 的引用换成新 Id（参数保留）；已经是新 Id / 不是功能就原样返回。</summary>
-    public static string Canonical(string? reference)
-    {
-        if (string.IsNullOrWhiteSpace(reference)) return reference ?? "";
-        string id = FeatureRef.IdOf(reference);
-        if (!Aliases.TryGetValue(id, out string? target)) return reference;
-        return FeatureRef.Build(target, FeatureRef.Parse(reference));
-    }
+    /// <summary>按 Id 取功能定义；没有这个功能返回 null。</summary>
+    public static FeatureDef? Find(string? id) =>
+        !string.IsNullOrEmpty(id) && ById.TryGetValue(id, out var d) ? d : null;
 
     /// <summary>是不是一个功能引用（动作 Id 永远不带 <c>#</c>、也不在目录里）。</summary>
     public static bool IsFeatureRef(string? reference) =>
@@ -322,7 +300,7 @@ internal static class FeatureCatalog
 
     /// <summary>
     /// 依次发送按键（写法与「模拟按键」步骤一致：<c>ctrl+z</c> / <c>shift+left</c>…）。
-    /// 常用功能里的光标 / 选择 / 删除就是这一串预设按键，和以前预置动作里那一步完全等价。
+    /// 常用功能里的光标 / 选择 / 删除就是这一串预设按键（模拟一次按键）。
     /// </summary>
     private static void Keys(params string[] strokes)
     {

@@ -52,7 +52,7 @@ public sealed class RunCommandUnit : IStepUnit
             Workdir = args.Text("workdir"),
             Label = "运行命令",
             Capture = args.Bool("capture"),
-        }, LegacyFlow.Create(ctx));
+        }, ProbeContext.Of(ctx));
 
         if (!outcome.Captured)
         {

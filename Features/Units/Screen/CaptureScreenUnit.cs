@@ -45,7 +45,7 @@ public sealed class CaptureScreenUnit : IStepUnit
             ScreenshotRect = args.Text("rect").Trim(),
         };
 
-        var value = LegacyFlow.Evaluate(ctx, legacy => ScreenshotProbe.Run(probe, legacy));
+        var value = ProbeContext.Evaluate(ctx, legacy => ScreenshotProbe.Run(probe, legacy));
 
         int x = (int)MemberNumber(value, "x");
         int y = (int)MemberNumber(value, "y");

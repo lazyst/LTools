@@ -13,7 +13,6 @@ using LTools.Config;
 using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Features;
-using LTools.Features.Migration;
 using LTools.Views.Controls;
 
 namespace LTools.Views;

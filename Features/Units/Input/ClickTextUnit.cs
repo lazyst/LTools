@@ -51,7 +51,7 @@ public sealed class ClickTextUnit : IStepUnit
             OcrEngine = args.Text("ocrEngine").Trim(),
             TimeoutMs = (int)Math.Clamp(args.Number("timeoutMs"), 0, 600_000),
             MouseAction = ParseMouse(args.Text("mouseAction")),
-        }, LegacyFlow.Create(ctx));
+        }, ProbeContext.Of(ctx));
 
         ctx.SetOutput("x", Value.FromNumber(result.X ?? 0));
         ctx.SetOutput("y", Value.FromNumber(result.Y ?? 0));

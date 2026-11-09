@@ -56,7 +56,7 @@ internal sealed class RunContext
 
     /// <summary>
     /// 本次运行的资源根（草稿的 <c>files/</c>）；正式运行为空。
-    /// 图片的相对路径先在这里找（由 <see cref="LegacyFlow.Create"/> 从新引擎上下文带过来）。
+    /// 图片的相对路径先在这里找（由 <see cref="Units.ProbeContext.Of"/> 从步骤上下文带过来）。
     /// </summary>
     public string? ResourceRoot { get; init; }
 

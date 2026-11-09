@@ -15,8 +15,8 @@ namespace LTools.Core;
 /// **只写自己那一个域文件**，改一个开关不会再扫 <c>actions/</c> 或重写其它域。
 /// </para>
 /// <para>
-/// 只有需要同时落多个域的才用 <see cref="Modify(ConfigDomain, Action{AppConfig})"/>（例：菜单组 + 动作清单）。
-/// 读仍走整份聚合：首次写入能带上示例模板 / 旧单文件的种子，也让 <see cref="AppConfig.LoadStrict"/>
+/// 只有需要同时落多个域的才用 <see cref="Modify(ConfigDomain, Action{AppConfig})"/>（例：动作清单 + 快捷键）。
+/// 读仍走整份聚合：首次写入能带上示例模板的种子，也让 <see cref="AppConfig.LoadStrict"/>
 /// 的「坏文件不覆盖」语义保持不变。
 /// </para>
 /// </remarks>
@@ -40,13 +40,12 @@ internal static class ConfigIO
         {
             string anchor = Resolve(path);
             var cfg = LoadForWrite(anchor);
-            // 首次分域 / 有域文件缺失：先把迁移补齐（写全 6 个域 + 动作目录），再写本次修改的域。
+            // 域文件缺失（首装 / 备份导入只带回一部分）：先整份补齐，再写本次修改的域。
             if (!ConfigBundle.IsFullySplit(anchor)) ConfigBundle.SaveDomains(anchor, cfg, ConfigDomain.all);
 
             T model = read(cfg);
             change(model);
             write(anchor, model);
-            ConfigBundle.CompleteMigration(anchor);
         }
     }
 

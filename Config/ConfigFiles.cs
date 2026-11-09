@@ -49,36 +49,14 @@ public sealed class UiStateFile
     public List<string>? RecentActionIds { get; set; }
 }
 
-/// <summary>
-/// 旧 <c>configs/actions.json</c>（P2 之前）：动作清单 + 菜单组。
-/// 现在动作在 <c>actions/&lt;id&gt;/action.json</c>、菜单组在 <c>configs/menus.json</c>，
-/// 这个类型只用来读迁移种子；首存后旧文件归档为 <c>actions.json.migrated</c>。
-/// </summary>
-public sealed class ActionLibraryFile
-{
-    public int SchemaVersion { get; set; } = ConfigBundle.SchemaVersion;
-
-    public List<ActionDto> Actions { get; set; } = new();
-
-    public List<MenuGroupDto?> MenuGroups { get; set; } = new();
-}
-
-/// <summary><c>configs/menus.json</c>：**3 及更早版本**的快捷菜单组（只用于迁移成 <c>hotkeys.json</c>）。</summary>
-public sealed class MenuFile
-{
-    public int SchemaVersion { get; set; } = ConfigBundle.SchemaVersion;
-
-    public List<MenuGroupDto?> MenuGroups { get; set; } = new();
-}
-
-/// <summary><c>config/panel.json</c>：超级面板（开关 / 长按阈值 / 旧页 / 新面板结构）。</summary>
+/// <summary><c>configs/panel.json</c>：超级面板（开关 / 长按阈值 / 面板结构）。</summary>
 public sealed class PanelFile
 {
     public int SchemaVersion { get; set; } = ConfigBundle.SchemaVersion;
 
     public SuperPanelConfig SuperPanel { get; set; } = new();
 
-    /// <summary>null = 尚未从旧 <see cref="SuperPanelConfig.Pages"/> 迁移。</summary>
+    /// <summary>面板结构；null = 全新安装（由 <c>PanelLibrary</c> 建默认场景）。</summary>
     public PanelConfig? Panel { get; set; }
 }
 

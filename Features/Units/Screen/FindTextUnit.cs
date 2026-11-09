@@ -54,7 +54,7 @@ public sealed class FindTextUnit : IStepUnit
         probe.IntervalMs = (int)Math.Clamp(args.Number("intervalMs"), 50, 5_000);
         probe.OcrEngine = args.Text("engine").Trim();
 
-        var value = LegacyFlow.Evaluate(ctx, legacy => TextLocator.Run(probe, legacy));
+        var value = ProbeContext.Evaluate(ctx, legacy => TextLocator.Run(probe, legacy));
         string text = UnitValues.Member(value, "text")?.AsText() ?? "";
         int x = (int)MemberNumber(value, "x");
         int y = (int)MemberNumber(value, "y");

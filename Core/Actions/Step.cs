@@ -159,7 +159,7 @@ public sealed class Step
 
     public static Step Of(string unit) => new() { Unit = unit };
 
-    /// <summary>设置一个参数（链式写法，便于测试与迁移器构造）。</summary>
+    /// <summary>设置一个参数（链式写法，便于构造测试用例）。</summary>
     public Step With(string key, StepArg arg)
     {
         In[key] = arg;
@@ -241,8 +241,7 @@ public sealed class StepArgConverter : JsonConverter<StepArg>
         using var doc = JsonDocument.ParseValue(ref reader);
         var root = doc.RootElement;
 
-        if (root.TryGetProperty("var", out var varElement) ||
-            root.TryGetProperty("variable", out varElement))
+        if (root.TryGetProperty("var", out var varElement))
         {
             string? path = varElement.GetString();
             if (string.IsNullOrWhiteSpace(path))
@@ -256,10 +255,6 @@ public sealed class StepArgConverter : JsonConverter<StepArg>
             if (step == null) throw new JsonException("内联取值步骤为空");
             return StepArg.FromInline(step);
         }
-
-        // 兼容旧写法 / 手写便利：{"value": ...} 当作字面量
-        if (root.TryGetProperty("value", out var valueElement))
-            return StepArg.FromValue(ValueJsonConverter.FromElement(valueElement));
 
         // 其余对象整体当字面量对象
         return StepArg.FromValue(ValueJsonConverter.FromElement(root));

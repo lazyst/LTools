@@ -52,14 +52,6 @@ internal static class BackupService
         PropertyNameCaseInsensitive = true,
     };
 
-    // —— AppConfig 反序列化复用 AppConfig.Opt 同款转换器 ——
-    private static readonly JsonSerializerOptions ConfigOpt = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() },
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     private sealed class Manifest
     {
         public string Format { get; set; } = "";
@@ -90,8 +82,7 @@ internal static class BackupService
     /// <summary>一次导出要打包的东西（配置单独处理：旧布局是单文件，新布局是 <c>configs/</c>）。</summary>
     private sealed class ExportPlan
     {
-        public string ConfigPath { get; init; } = "";
-        public string? ConfigDir { get; init; }
+        public string ConfigDir { get; init; } = "";
         public List<BackupDomain> Domains { get; } = new();
     }
 
@@ -118,10 +109,10 @@ internal static class BackupService
         public bool IncludeMacros { get; init; }
         public bool IncludeStaging { get; init; }
 
-        /// <summary>备份里是分域后的 <c>configs/</c> 目录（false = 旧单文件 LTools.json）。</summary>
+        /// <summary>备份里带了 <c>configs/</c> 配置目录。</summary>
         public bool IncludeConfig { get; init; }
 
-        /// <summary>备份里带了 <c>actions/</c> 动作目录（false = 动作还在旧 <c>configs/actions.json</c>）。</summary>
+        /// <summary>备份里带了 <c>actions/</c> 动作目录。</summary>
         public bool IncludeActions { get; init; }
         public int ExecutableCount { get; init; }
         public List<string> ResourceActionRefs { get; init; } = new(); // "名称 — 片段"
@@ -134,25 +125,19 @@ internal static class BackupService
     public static long EstimateSize(bool includeResources, bool includeNotes)
     {
         var plan = BuildPlan(includeResources, includeNotes);
-        long total = FileSize(plan.ConfigPath);
-        if (plan.ConfigDir != null) total += DirSize(plan.ConfigDir);
+        long total = DirSize(plan.ConfigDir);
         foreach (var domain in plan.Domains) total += DirSize(domain.Dir);
         return total;
     }
 
     /// <summary>
     /// 按目录白名单决定这次打包什么：配置 / 动作总是带上；资源目录、速记按勾选；
-    /// 宏事件与 AI 暂存区存在就带上（用户感受不到这两个选项，旧的备份也不含它们）。
+    /// 宏事件与 AI 暂存区存在就带上（用户感受不到这两个选项）。
     /// </summary>
     private static ExportPlan BuildPlan(bool includeResources, bool includeNotes)
     {
         string cfgPath = ConfigLocator.FindPath();
-        string cfgDir = ConfigBundle.ConfigDir(cfgPath);
-        var plan = new ExportPlan
-        {
-            ConfigPath = cfgPath,
-            ConfigDir = Directory.Exists(cfgDir) ? cfgDir : null,
-        };
+        var plan = new ExportPlan { ConfigDir = ConfigBundle.ConfigDir(cfgPath) };
 
         if (ActionStore.HasStore(cfgPath))
             plan.Domains.Add(new BackupDomain("actions", "actions", ActionStore.Root(cfgPath)));
@@ -170,16 +155,15 @@ internal static class BackupService
     /// <summary>导出备份到 destPath；配置始终包含，资源目录 / 速记按参数决定。</summary>
     public static void Export(string destPath, bool includeResources, bool includeNotes)
     {
+        // 配置总是打包 configs/；用户从未保存过配置时先按当前内存态补一份，否则备份里会缺配置。
+        string cfgPath = ConfigLocator.FindPath();
+        if (!ConfigBundle.IsFullySplit(cfgPath))
+            ConfigBundle.SaveDomains(cfgPath, AppConfig.Load(cfgPath), ConfigDomain.all);
+
         var plan = BuildPlan(includeResources, includeNotes);
         WriteZip(destPath, zip =>
         {
-            // 配置必须总是写入：分域后打包 configs/ 目录；还没分域（首次保存前）就打包旧单文件；
-            // 两者都没有（用户从未保存过）时按当前内存态写一份旧格式快照，导入时由 ConfigBundle 自动分域。
-            if (plan.ConfigDir != null) AddDir(zip, plan.ConfigDir, "configs");
-            else if (File.Exists(plan.ConfigPath)) AddFile(zip, plan.ConfigPath, "LTools.json");
-            else AddText(zip, "LTools.json",
-                JsonSerializer.Serialize(AppConfig.Load(plan.ConfigPath), ConfigOpt));
-
+            AddDir(zip, plan.ConfigDir, "configs");
             foreach (var domain in plan.Domains) AddDir(zip, domain.Dir, domain.Entry);
 
             AddText(zip, "manifest.json", BuildManifest(plan));
@@ -246,16 +230,11 @@ internal static class BackupService
                     ? "备份来自更新版本，请升级 LTools 后再导入"
                     : "备份格式版本过旧，无法导入");
 
-            // 配置：分域备份是 staging/configs/*.json，旧备份是 staging/LTools.json。
-            // AppConfig.Load 按锚点同级的 configs/ 解析，两种布局都能读（读不出来 = 备份损坏）。
+            // 配置：备份里是 staging/configs/*.json，读不出来 = 备份损坏。
             string cfgPath = Path.Combine(staging, "LTools.json");
-            // 兼容 P1 初版备份：配置条目叫 config/，导入前先搬成 configs/。
-            string legacyCfgDir = Path.Combine(staging, "config");
             string stagedCfgDir = ConfigBundle.ConfigDir(cfgPath);
-            if (!Directory.Exists(stagedCfgDir) && Directory.Exists(legacyCfgDir))
-                Directory.Move(legacyCfgDir, stagedCfgDir);
             bool hasConfigDir = Directory.Exists(stagedCfgDir);
-            if (hasConfigDir || File.Exists(cfgPath))
+            if (hasConfigDir)
             {
                 var stagedCfg = AppConfig.Load(cfgPath);
                 if (stagedCfg.LoadFailed)
@@ -268,13 +247,12 @@ internal static class BackupService
             bool hasNotes = includes.Contains("notes", StringComparer.OrdinalIgnoreCase);
             bool hasMacros = includes.Contains("macros", StringComparer.OrdinalIgnoreCase);
             bool hasStaging = includes.Contains("staging", StringComparer.OrdinalIgnoreCase);
-            // 老备份没有 "actions" 项：动作在 configs/actions.json 里，导入时把它写回并让目录退位。
             bool hasActions = includes.Contains("actions", StringComparer.OrdinalIgnoreCase)
                               || Directory.Exists(Path.Combine(staging, "actions"));
 
             var refs = new List<string>();
             int execCount = 0;
-            if (hasConfigDir || File.Exists(cfgPath))
+            if (hasConfigDir)
             {
                 var cfg = AppConfig.Load(cfgPath);
                 foreach (var a in cfg.Actions ?? new List<ActionDto>())
@@ -341,49 +319,18 @@ internal static class BackupService
         var restores = new List<(string dest, string? backup, bool isDir)>();
         try
         {
-            // 1) 配置：分域备份整体替换 config/；旧备份写回 LTools.json，并把现有 config/ 移开
-            //    （域文件优先于单文件，不移开的话刚恢复的旧配置会被旧域文件盖住）。
-            string stagedCfg = Path.Combine(preview.StagingDir, "LTools.json");
+            // 1) 配置：整体替换 configs/
             string stagedConfigDir = ConfigBundle.ConfigDir(preview.StagingDir);
             string targetConfigDir = ConfigBundle.ConfigDir(cfgPath);
 
             if (preview.IncludeConfig && Directory.Exists(stagedConfigDir))
-            {
                 ReplaceDir(stagedConfigDir, targetConfigDir, ts, restores);
-                if (File.Exists(cfgPath)) BackupFile(cfgPath, ts);   // 已分域，旧单文件留着会误导
-            }
-            else if (File.Exists(stagedCfg))
-            {
-                if (Directory.Exists(targetConfigDir))
-                {
-                    string bakDir = UniqueBackupPath(targetConfigDir, ts);
-                    Directory.Move(targetConfigDir, bakDir);
-                    restores.Add((targetConfigDir, bakDir, true));
-                }
-                string? bak = BackupFile(cfgPath, ts);
-                restores.Add((cfgPath, bak, false));
-                Directory.CreateDirectory(Path.GetDirectoryName(cfgPath)!);
-                File.Copy(stagedCfg, cfgPath, overwrite: true);
-            }
 
-            // 1.5) 动作目录
-            string stagedActions = Path.Combine(preview.StagingDir, "actions");
-            string targetActions = ActionStore.Root(cfgPath);
+            // 1.5) 动作目录（备份声明带了就整体替换；目录缺失 = 备份里是空的，替换为空目录）
             if (preview.IncludeActions)
             {
-                // 备份声明带了动作目录：整体替换（目录缺失 = 备份里是空的，替换为空目录）。
-                ReplaceDir(stagedActions, targetActions, ts, restores);
-            }
-            else if (preview.IncludeConfig || File.Exists(stagedCfg))
-            {
-                // 旧备份的动作在 configs/actions.json 或 LTools.json 里：现有动作目录先退位，
-                // 否则「目录优先」会让刚恢复出来的旧清单不生效。下次保存会按它重建目录。
-                if (Directory.Exists(targetActions))
-                {
-                    string bakDir = UniqueBackupPath(targetActions, ts);
-                    Directory.Move(targetActions, bakDir);
-                    restores.Add((targetActions, bakDir, true));
-                }
+                string stagedActions = Path.Combine(preview.StagingDir, "actions");
+                ReplaceDir(stagedActions, ActionStore.Root(cfgPath), ts, restores);
             }
 
             // 2) 资源目录（includes 以 manifest 为准；备份里目录缺失 = 备份是空目录，替换为空）
@@ -483,14 +430,11 @@ internal static class BackupService
         }
     }
 
-    /// <summary>跳过现场备份（.bak- / .bad- / .migrated）与写了一半的 .tmp，避免把旧副本嵌进新备份。</summary>
+    /// <summary>跳过现场备份（.bak- / .bad-）与写了一半的 .tmp，避免把旧副本嵌进新备份。</summary>
     private static bool ShouldSkip(string name)
         => name.Contains(".bak-", StringComparison.OrdinalIgnoreCase)
            || name.Contains(".bad-", StringComparison.OrdinalIgnoreCase)
-           || name.Contains(".migrated", StringComparison.OrdinalIgnoreCase)
            || name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase);
-
-    private static long FileSize(string path) => File.Exists(path) ? new FileInfo(path).Length : 0;
 
     private static long DirSize(string root)
     {
@@ -517,14 +461,6 @@ internal static class BackupService
         restores.Add((dest, backup, true));
         if (Directory.Exists(src)) CopyDir(src, dest);
         else Directory.CreateDirectory(dest);
-    }
-
-    private static string? BackupFile(string path, string ts)
-    {
-        if (!File.Exists(path)) return null;
-        string bak = UniqueBackupPath(path, ts);
-        File.Copy(path, bak, overwrite: true);
-        return bak;
     }
 
     /// <summary>

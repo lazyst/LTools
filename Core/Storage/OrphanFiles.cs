@@ -14,11 +14,6 @@ namespace LTools.Core.Storage;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 只处理已经迁移成 <see cref="ActionDto.Program"/> 的动作：旧格式的引用散在
-/// <see cref="ActionDto.Steps" /> / <see cref="ActionDto.Image" /> 里，读它们会触发迁移，
-/// 启动时不该为了清一张图去改配置。
-/// </para>
-/// <para>
 /// 引用来源是步骤的 <c>image</c> 参数（含动作内子动作、嵌套块、内联取值步骤）。出现动态引用
 /// （<c>${变量}</c>、<c>{"var": …}</c>、内联取值单元）时**整个动作跳过**——算不准就不动它。
 /// </para>
@@ -92,7 +87,7 @@ internal static class OrphanFiles
     }
 
     /// <summary>
-    /// 收集动作体里引用的 <c>files/</c> 相对路径。返回 false = 引用算不准（旧格式 / 动态引用），
+    /// 收集动作体里引用的 <c>files/</c> 相对路径。返回 false = 引用算不准（没有动作体 / 动态引用），
     /// 调用方应跳过这个动作。
     /// </summary>
     private static bool TryCollectRefs(ActionDto action, out HashSet<string> referenced)

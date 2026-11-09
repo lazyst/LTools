@@ -12,7 +12,6 @@ using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Features;
 using LTools.Features.Builtin;
-using LTools.Features.Migration.Legacy;
 using LTools.Features.Panel;
 
 namespace LTools.Views;
@@ -91,10 +90,8 @@ public partial class ActionPoolPicker : Window
     {
         _all.Clear();
         foreach (var a in ActionRegistry.All
-                     .Where(x => !x.Preset)   // 预设动作（CapsLock 播种）只在动作管理里出现
                      .OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase))
         {
-            // 只用已经迁移好的动作体：旧格式动作在这里不触发迁移（避免「看一眼就改写配置」）
             ActionProgram? program = a.Program;
             bool macro = a.Type == ActionType.macro;
 
@@ -104,7 +101,7 @@ public partial class ActionPoolPicker : Window
                 Name = string.IsNullOrWhiteSpace(a.Name) ? a.Id : a.Name,
                 Glyph = IconCatalog.GetGlyph(a.Icon),
                 IsMacro = macro,
-                TypeLabel = program != null ? (macro ? "宏" : "动作") : LegacyActionSummary.TypeLabel(a),
+                TypeLabel = macro ? "宏" : "动作",
                 Description = program?.Description ?? "",
                 StepCount = program?.Steps.Count ?? 0,
             };
@@ -308,8 +305,8 @@ public partial class ActionPoolPicker : Window
         AddSection(_current.StepCount > 0 ? $"步骤（{_current.StepCount}）" : "步骤");
         if (_current.Steps.Count == 0)
         {
-            AddMuted(_current.StepCount > 0
-                ? "旧格式动作：打开编辑器时会自动迁移，这里先不列步骤。"
+            AddMuted(_current.IsMacro
+                ? "键鼠宏：动作本身就是一段录制的键鼠事件，没有步骤。"
                 : "这个动作还没有步骤，可以在编辑器里添加。");
         }
         else

@@ -92,7 +92,6 @@ internal static class ConfigStore
         var copy = src.Clone();
         copy.Id = ActionRegistry.NextId();
         copy.Name = src.Name + " 副本";
-        copy.Preset = false;
         if (string.IsNullOrEmpty(copy.Icon)) copy.Icon = IconCatalog.Default;
         ActionLibrary.Add(copy);
         return copy;

@@ -9,7 +9,6 @@ using LTools.Core;
 using LTools.Core.Ai;
 using LTools.Features;
 using LTools.Features.Floating;
-using LTools.Features.Migration.Legacy;
 using LTools.Hooks;
 using H.NotifyIcon;
 
@@ -91,12 +90,6 @@ public partial class App : Application
         AppLog.Info("App", $"数据目录 {AppPaths.DataRoot}");
         AppLog.Info("App", $"配置文件 {LTools.Config.ConfigBundle.ConfigDir(cfgPath)}（锚点 {Path.GetFileName(cfgPath)}）");
 
-        // 配置结构升级（旧文件名 → 单文件 → 六域 → 动作目录）：按版本逐级执行。
-        // 放在日志就绪之后：迁移会写文件，成功 / 失败都要留下记录；有推进就重新读一遍。
-        int schemaBefore = LTools.Core.Storage.Migrations.ConfigSchema.Detect(cfgPath);
-        if (LTools.Core.Storage.Migrations.MigrationRunner.RunPending(cfgPath) != schemaBefore)
-            cfg = AppConfig.Load(cfgPath);
-
         // 配置读坏时每次启动都会留一份 .bad- 副本，只保留最近 3 份，避免反复失败时越积越多。
         AppConfig.PruneBrokenBackups(cfgPath);
 
@@ -132,7 +125,6 @@ public partial class App : Application
         MacroHotkey.Initialize();
 
         // —— 内部动作注册（动作系统 §7）——
-        RemoveObsoleteActions();
 
         // 一宏一动作：回收不再被任何动作 / 组合步骤引用的宏文件（含旧版本遗留的孤儿文件）。
         MacroStore.CollectGarbage();
@@ -298,9 +290,6 @@ public partial class App : Application
         });
         ConfigStore.Save();
     }
-
-    /// <summary>旧配置迁移：删除已取消动作化的内置动作及其引用（见 <see cref="ObsoleteActionCleanup"/>）。</summary>
-    private static void RemoveObsoleteActions() => ObsoleteActionCleanup.Run();
 
     internal static System.Windows.Media.ImageSource? LoadIconSource()
     {

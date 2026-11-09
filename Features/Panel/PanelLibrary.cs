@@ -36,7 +36,7 @@ internal static class PanelLibrary
         Reload();
     }
 
-    /// <summary>重新从磁盘加载；旧结构（<see cref="AppConfig.Panel"/> 为 null）就地迁移并落盘。</summary>
+    /// <summary>重新从磁盘加载面板配置。</summary>
     public static void Reload()
     {
         AppConfig cfg;
@@ -49,18 +49,10 @@ internal static class PanelLibrary
             return;
         }
 
-        if (cfg.Panel == null)
-        {
-            cfg.Panel = MigrateFromLegacy(cfg);
-            Current = cfg.Panel;
-            AppLog.Info(LogSource, "已把旧的超级面板页迁移为全局场景分组");
-            Persist();
-        }
-        else
-        {
-            Current = cfg.Panel;
-            Normalize(Current);
-        }
+        bool created = cfg.Panel == null;
+        Current = cfg.Panel ?? CreateDefault();
+        Normalize(Current);
+        if (created) Persist();
     }
 
     /// <summary>把内存配置整份写回磁盘。失败只记日志，不阻塞 UI。</summary>
@@ -282,8 +274,8 @@ internal static class PanelLibrary
         }
     }
 
-    /// <summary>从旧的「页 + 槽位」生成全局场景。见文档 §6。</summary>
-    internal static PanelConfig MigrateFromLegacy(AppConfig cfg)
+    /// <summary>全新安装（配置里没有面板）时的默认结构：一个全局场景 + 一个上下文常用分组。</summary>
+    private static PanelConfig CreateDefault()
     {
         var panel = new PanelConfig();
         var scene = new PanelSceneDto
@@ -291,32 +283,8 @@ internal static class PanelLibrary
             Id = NewSceneId(),
             Name = "默认",
             Icon = "app",
-            Groups = new List<PanelGroupDto>(),
+            Groups = new List<PanelGroupDto> { new() { Id = NewGroupId(), Name = "未分组" } },
         };
-
-        var pages = cfg.SuperPanel?.Pages ?? new List<List<string?>>();
-        if (pages.Count == 0) pages.Add(new List<string?>());
-
-        for (int i = 0; i < pages.Count; i++)
-        {
-            var ids = (pages[i] ?? new List<string?>())
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Select(x => x!.Trim())
-                .Distinct()
-                .ToList();
-            if (ids.Count == 0 && pages.Count > 1) continue;   // 多页时空页跳过
-
-            scene.Groups.Add(new PanelGroupDto
-            {
-                Id = NewGroupId(),
-                Name = pages.Count <= 1 ? "未分组" : $"第 {i + 1} 页",
-                Actions = ids,
-            });
-        }
-
-        if (scene.Groups.Count == 0)
-            scene.Groups.Add(new PanelGroupDto { Id = NewGroupId(), Name = "未分组" });
-
         panel.Global.Scenes.Add(scene);
         panel.Global.ActiveSceneId = scene.Id;
         panel.Context.Common.Add(new PanelGroupDto { Id = NewGroupId(), Name = "常用" });

@@ -5,7 +5,6 @@ namespace LTools.Config;
 /// <summary>
 /// 超级面板（动作面板）配置。设计见 <c>docs/PANEL_REDESIGN.md</c>。
 /// 动作本体仍在 <see cref="AppConfig.Actions"/>，这里只存动作 Id 引用。
-/// 为 null 表示「还没有迁移过旧 <see cref="SuperPanelConfig.Pages"/>」。
 /// </summary>
 public sealed class PanelConfig
 {

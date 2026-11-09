@@ -18,7 +18,6 @@ using LTools.Core;
 using LTools.Core.Ai;
 using LTools.Features;
 using LTools.Features.Panel;
-using LTools.Features.Migration.Legacy;
 using LTools.Views.Controls;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
@@ -196,20 +195,21 @@ public partial class ConfigHelperWindow : Window
             _ => "superpanel-general",
         };
 
-    /// <summary>
-    /// 旧配置里的导航 tag 归一：父项（<c>superpanel</c> / <c>ai</c>）落到具体子页，
-    /// 已并入「连接」的 <c>ai-prompt</c> / <c>ai-knowledge</c> / <c>ai-stash</c> 也回到连接。
-    /// </summary>
+    /// <summary>校验存下来的导航 tag：父项落到具体子页，不认识的（旧版本 / 手改）回到动作管理。</summary>
     private static string NormalizeSavedNav(string? tag)
     {
         if (string.IsNullOrEmpty(tag)) return "actions";
-        if (tag == "menus") return "hotkeys";   // 旧「CapsLock 快捷菜单」页已并入快捷键
-        if (tag is "ai-prompt" or "ai-knowledge" or "ai-stash") return "ai-connect";
         string? family = NavFamilyOf(tag);
-        if (family != null && tag == family)
-            return NavTagOf(family, family == FamilyAi ? "connect" : "general");
-        return tag;
+        if (family != null)
+            return tag == family ? NavTagOf(family, family == FamilyAi ? "connect" : "general") : tag;
+        return FirstLevelNav.Contains(tag) ? tag : "actions";
     }
+
+    /// <summary>一级导航的 tag（与 <c>ConfigHelper.xaml</c> 的 RadioButton 一一对应）。</summary>
+    private static readonly HashSet<string> FirstLevelNav = new(StringComparer.Ordinal)
+    {
+        "general", "actions", "subactions", "hotkeys", "terminals", "logs", "backup",
+    };
 
     /// <summary>把某个二级下拉设为展开 / 收起，并记住这个状态。</summary>
     private void SetNavGroupExpanded(string family, bool expanded, bool animate)
@@ -549,7 +549,6 @@ public partial class ConfigHelperWindow : Window
     private void PopulateActions()
     {
         int sel = ActionList.SelectedIndex;
-        var macroNames = MacroStore.NameMap();
         string filter = ActionFilterBox?.Text?.Trim() ?? "";
         int total = ActionRegistry.All.Count;
 
@@ -561,7 +560,7 @@ public partial class ConfigHelperWindow : Window
         _actionRows.Clear();
         foreach (var a in ActionRegistry.All.OrderBy(x => x.Name, StringComparer.CurrentCulture))
         {
-            var row = new ActionRow(a, macroNames, PanelLibrary.DescribeReferences(a.Id));
+            var row = new ActionRow(a, PanelLibrary.DescribeReferences(a.Id));
             if (filter.Length > 0
                 && !row.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
                 && !row.TypeLabel.Contains(filter, StringComparison.OrdinalIgnoreCase)
@@ -1025,14 +1024,13 @@ public partial class ConfigHelperWindow : Window
     /// <summary>动作列表展示模型。</summary>
     public sealed class ActionRow
     {
-        public ActionRow(ActionDto a, IReadOnlyDictionary<string, string>? macroNames = null,
-            string references = "未使用")
+        public ActionRow(ActionDto a, string references = "未使用")
         {
             Id = a.Id;
             Name = a.Name;
-            TypeLabel = a.Program != null ? "动作" : LegacyActionSummary.TypeLabel(a);
+            TypeLabel = a.Type == ActionType.macro ? "宏" : "动作";
             Glyph = IconCatalog.GetGlyph(a.Icon);
-            Summary = a.Program != null ? ProgramSummary(a) : LegacyActionSummary.Summarize(a, macroNames);
+            Summary = ProgramSummary(a);
             References = references;
         }
         public string Id { get; }
@@ -1042,9 +1040,10 @@ public partial class ConfigHelperWindow : Window
         public string Glyph { get; }
         public string Summary { get; }
 
-        /// <summary>v2 动作体：显示步骤总数（含子步骤）。</summary>
+        /// <summary>动作体：显示步骤总数（含子步骤）；宏动作没有步骤。</summary>
         private static string ProgramSummary(ActionDto a)
         {
+            if (a.Type == ActionType.macro) return "键盘鼠标宏";
             int count = a.Program?.Steps.Sum(s => s.SelfAndDescendants().Count()) ?? 0;
             return count == 0 ? "空动作" : $"{count} 步";
         }

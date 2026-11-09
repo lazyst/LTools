@@ -51,7 +51,7 @@ public sealed class FindImageUnit : IStepUnit
             args, ScreenArgs.ParseRegion(args.Text("region")), ScreenArgs.ParseRect(args));
         probe.Image = image;
 
-        var value = LegacyFlow.Evaluate(ctx, legacy => ImageProbe.Run(probe, legacy));
+        var value = ProbeContext.Evaluate(ctx, legacy => ImageProbe.Run(probe, legacy));
         int x = (int)MemberNumber(value, "x");
         int y = (int)MemberNumber(value, "y");
         double score = MemberNumber(value, "score");

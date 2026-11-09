@@ -136,26 +136,6 @@ internal static class MacroStore
         }
     }
 
-    /// <summary>宏 Id → 显示名（供动作列表一次查出，避免逐行动作读配置）。</summary>
-    public static IReadOnlyDictionary<string, string> NameMap()
-    {
-        try
-        {
-            var items = AppConfig.Load(CurrentConfigPath()).Macros?.Items;
-            if (items == null || items.Count == 0)
-                return new Dictionary<string, string>();
-            return items
-                .Where(m => !string.IsNullOrEmpty(m.Id))
-                .GroupBy(m => m.Id)
-                .ToDictionary(g => g.Key, g => g.First().Name);
-        }
-        catch (Exception ex)
-        {
-            CrashLog.Write("MacroStore.NameMap", ex);
-            return new Dictionary<string, string>();
-        }
-    }
-
     // ============ 回放参数（每宏独立，缺省回退全局） ============
 
     /// <summary>某个宏实际生效的回放参数；<see cref="Loops"/> = -1 表示无限循环。</summary>
@@ -213,35 +193,15 @@ internal static class MacroStore
             var live = new HashSet<string>(StringComparer.Ordinal);
             foreach (var a in ActionRegistry.All) CollectRefs(a);
 
-            void CollectNode(FlowNode n)
-            {
-                if (n.Action != null) CollectRefs(n.Action);
-                if (n.If != null)
-                {
-                    foreach (var c in n.If.Then) CollectNode(c);
-                    if (n.If.Else != null)
-                        foreach (var c in n.If.Else) CollectNode(c);
-                }
-                if (n.Loop != null)
-                    foreach (var c in n.Loop.Body) CollectNode(c);
-            }
-
             void CollectRefs(ActionDto a)
             {
                 if (a.Type == ActionType.macro && !string.IsNullOrWhiteSpace(a.MacroId))
                     live.Add(a.MacroId!);
 
-                // 新动作体：所有单元的 macroId 参数（含动作内子动作与内联取值步骤）
+                // 所有单元的 macroId 参数（含动作内子动作与内联取值步骤）
                 foreach (var step in ProgramWalker.AllSteps(a.Program))
                     if (ProgramWalker.LiteralText(step, "macroId") is { } id && id.Trim().Length > 0)
                         live.Add(id.Trim());
-
-                // —— 以下只服务还没迁移过的旧动作（迁移后这些字段为 null）——
-                // 新流程（含旧 Steps 迁移）与残留 Steps 都算引用，避免误删仍被使用的宏文件。
-                if (a.Type == ActionType.composite)
-                    foreach (var n in FlowMigration.Ensure(a)) CollectNode(n);
-                if (a.Steps == null) return;
-                foreach (var s in a.Steps) CollectRefs(s.Action);
             }
 
             Ensure();

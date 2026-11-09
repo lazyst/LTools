@@ -8,13 +8,13 @@ namespace LTools.Config;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 读仍然是「先按严格模式读整份聚合」（这样首次写入能带上示例模板 / 旧单文件里的种子，
+/// 读仍然是「先按严格模式读整份聚合」（这样首次写入能带上示例模板的种子，
 /// 且坏文件不会被默认值覆盖），但**写只写自己那一个域**——改一次鼠标速度不会再扫一遍
 /// <c>actions/</c>、也不会重写其它域的时间戳。
 /// </para>
 /// <para>
-/// 所有写入共用 <see cref="ConfigIO"/> 的一把锁，与旧 <c>ConfigIO.Modify</c> 的串行语义一致。
-/// 需要同时改多个域的（菜单组 + 动作清单）走 <see cref="ConfigIO.Modify(ConfigDomain, Action{AppConfig})"/>。
+/// 所有写入共用 <see cref="ConfigIO"/> 的一把锁，写操作串行。
+/// 需要同时改多个域的（动作清单 + 快捷键）走 <see cref="ConfigIO.Modify(ConfigDomain, Action{AppConfig})"/>。
 /// </para>
 /// </remarks>
 internal static class SettingsStore

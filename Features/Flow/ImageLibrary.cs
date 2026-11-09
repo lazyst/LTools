@@ -100,7 +100,7 @@ internal static class ImageLibrary
     }
 
     /// <summary>
-    /// 保存到配置时用的路径：images 下的只存文件名（兼容老配置），数据根下的存数据根相对路径
+    /// 保存到配置时用的路径：images 下的只存文件名，数据根下的存数据根相对路径
     /// （<c>resources\user\a.png</c>，备份换机仍有效），其余保持绝对路径。
     /// </summary>
     public static string ToStoredPath(string path)
@@ -345,39 +345,9 @@ internal static class ImageLibrary
     {
         if (a == null) return;
 
-        // 新动作体：所有单元的 image 参数（含动作内子动作与内联取值步骤）
+        // 所有单元的 image 参数（含动作内子动作与内联取值步骤）
         foreach (var step in ProgramWalker.AllSteps(a.Program))
             AddRef(ProgramWalker.LiteralText(step, "image"), live);
-
-        // —— 以下只服务还没迁移过的旧动作（迁移后这些字段为 null）——
-
-        // 「图片点击」自带模板图（与「截图找图」取值器同一套路径语义）
-        AddRef(a.Image, live);
-
-        // 组合动作：新流程（含旧 Steps 迁移）里的节点都可能引用模板
-        if (a.Type == ActionType.composite)
-            foreach (var n in FlowMigration.Ensure(a)) CollectNode(n, live);
-
-        if (a.Steps == null) return;
-        foreach (var s in a.Steps) CollectAction(s.Action, live);
-    }
-
-    private static void CollectNode(FlowNode n, HashSet<string> live)
-    {
-        CollectAction(n.Action, live);
-        AddRef(n.Set?.Probe.Image, live);
-        if (n.If != null)
-        {
-            AddRef(n.If.Condition.Probe.Image, live);
-            foreach (var c in n.If.Then) CollectNode(c, live);
-            if (n.If.Else != null)
-                foreach (var c in n.If.Else) CollectNode(c, live);
-        }
-        if (n.Loop != null)
-        {
-            AddRef(n.Loop.While?.Probe.Image, live);
-            foreach (var c in n.Loop.Body) CollectNode(c, live);
-        }
     }
 
     /// <summary>登记引用；只关心直接落在 <see cref="Dir"/> 下的文件（绝对路径 / 其它目录不参与回收）。</summary>

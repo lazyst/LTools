@@ -8,21 +8,6 @@ using LTools.Features;
 
 namespace LTools.Config;
 
-/// <summary>
-/// 应用配置的强类型模型 + System.Text.Json 读写（内存里的聚合视图）。
-/// 磁盘上是 <c>config/</c> 下的 6 个域文件（settings / ui / actions / panel / floating / macros），
-/// 读写细节见 <see cref="ConfigBundle"/>；分域前是单文件 <c>LTools.json</c>（首次保存后归档为
-/// <c>.migrated</c>）。发布包只携带 <c>LTools.example.json</c>，升级解压不会覆盖用户配置。
-/// </summary>
-public sealed class MenuGroupDto
-{
-    public bool Enabled { get; set; } = true;
-    public string Name { get; set; } = "";
-
-    /// <summary>菜单项为动作 Id 引用列表（对应 <see cref="AppConfig.Actions"/>）。</summary>
-    public List<string> Items { get; set; } = new();
-}
-
 /// <summary>超级面板配置（计划 §5）。</summary>
 public sealed class SuperPanelConfig
 {
@@ -31,12 +16,6 @@ public sealed class SuperPanelConfig
 
     /// <summary>长按阈值（ms，可调 100–800）。</summary>
     public int LongPressThresholdMs { get; set; } = 250;
-
-    /// <summary>每页 16 槽（4×4），元素为动作 Id 或 null（空格）。</summary>
-    public List<List<string?>> Pages { get; set; } = new();
-
-    /// <summary>上次关闭时的页下标（0-based，运行时自动记忆，下次唤起停在该页）。</summary>
-    public int LastPage { get; set; } = 0;
 }
 
 /// <summary>键鼠宏录制配置（见 <c>Features/MacroRecorder.cs</c>）。</summary>
@@ -89,27 +68,23 @@ public sealed class LogConfig
     public int RetentionDays { get; set; } = 14;
 }
 
+/// <summary>
+/// 应用配置的强类型模型（内存里的聚合视图 + <c>LTools.example.json</c> 的种子形状）。
+/// 磁盘上按域分成 <c>configs/*.json</c>，读写细节见 <see cref="ConfigBundle"/>；
+/// 发布包只携带示例文件，升级解压不会覆盖用户配置。
+/// </summary>
 public sealed class AppConfig
 {
-    /// <summary>
-    /// 3 及更早版本的「CapsLock 快捷菜单」组（只读：启动迁移会把它并成 hotkeys 里的
-    /// 一个「旧菜单」预设组，之后不再写回）。保留字段只是为了让旧 <c>LTools.json</c> 还能当迁移种子。
-    /// </summary>
-    public List<MenuGroupDto?> MenuGroups { get; set; } = new();
-
     /// <summary>全局快捷键（预设组 + 绑定 + 默认名单），落在 <c>configs/hotkeys.json</c>。</summary>
     public HotkeyFile Hotkeys { get; set; } = new();
 
-    /// <summary>全局动作清单（计划 §2）。超级面板与菜单组都引用这里的 Id。</summary>
+    /// <summary>全局动作清单（计划 §2）。面板 / 快捷键 / 悬浮都引用这里的 Id。</summary>
     public List<ActionDto> Actions { get; set; } = new();
 
-    /// <summary>超级面板配置（旧：页 + 槽位；仅用于迁移，见 <see cref="Panel"/>）。</summary>
+    /// <summary>超级面板开关与长按阈值（面板结构本身见 <see cref="Panel"/>）。</summary>
     public SuperPanelConfig SuperPanel { get; set; } = new();
 
-    /// <summary>
-    /// 动作面板配置（全局区 + 上下文区）。为 null = 尚未从
-    /// <see cref="SuperPanelConfig.Pages"/> 迁移；迁移由 <c>Features.Panel.PanelLibrary</c> 负责。
-    /// </summary>
+    /// <summary>动作面板配置（全局区 + 上下文区）。</summary>
     public PanelConfig? Panel { get; set; }
 
     /// <summary>悬浮动作 / 悬浮分组（桌面上的置顶按钮，设计见 <c>docs/FLOATING.md</c>）。</summary>
@@ -192,57 +167,11 @@ public sealed class AppConfig
     public static AppConfig LoadStrict(string path) => ConfigBundle.LoadStrict(path);
 
     /// <summary>
-    /// 清理不可读配置留下的 <c>.bad-*</c> 现场副本（旧单文件 + 每个域文件，各留最近 3 份）。
+    /// 清理不可读配置留下的 <c>.bad-*</c> 现场副本（每个域文件各留最近 3 份）。
     /// </summary>
     internal static void PruneBrokenBackups(string path, int keep = 3) =>
         ConfigBundle.PruneAllBrokenBackups(path, keep);
 
-    /// <summary>保存配置：逐域写回，内容没变的文件不动；6 个域文件齐全后把旧单文件归档。</summary>
+    /// <summary>保存配置：逐域写回，内容没变的文件不动。</summary>
     public void Save(string path) => ConfigBundle.Save(path, this);
-
-    /// <summary>
-    /// 从旧版 CapsLock++.ini 迁移（仅首次升级时由 <see cref="Core.ConfigLocator"/> 调用）。
-    /// 把每个 ini 菜单项转为一个 runCommand 动作（保留 Terminal/Cmd/KeepWindow/Workdir），
-    /// 菜单组 Items 存生成的动作 Id。依赖 IniFile 的逐节读取。
-    /// </summary>
-    public static AppConfig MigrateFromIni(string iniPath)
-    {
-        var cfg = new AppConfig();
-        int seq = 0;
-        for (int i = 1; i <= 10; i++)
-        {
-            string enabled = IniFile.ReadValue(iniPath, "MenuGroupsEnable", "enableGroup" + i) ?? "true";
-            if (!enabled.Equals("true", StringComparison.OrdinalIgnoreCase)) { cfg.MenuGroups.Add(null); continue; }
-
-            string name = IniFile.ReadValue(iniPath, "MenuGroupName", "name" + i) ?? ("菜单组 " + i);
-            int count = int.TryParse(IniFile.ReadValue(iniPath, "MenuGroupCount", "count" + i), out var c) ? c : 0;
-            var items = new List<string>();
-            string section = "MenuGroups" + i + "Items";
-            for (int j = 1; j <= count; j++)
-            {
-                string iname = IniFile.ReadValue(iniPath, section, "name" + j) ?? "";
-                if (iname.Length == 0) continue;
-                string id = "m" + (++seq);
-                cfg.Actions.Add(new ActionDto
-                {
-                    Id = id,
-                    Name = iname,
-                    Type = ActionType.composite,
-                    LegacyType = "runCommand",
-                    Cmd = IniFile.ReadValue(iniPath, section, "action" + j) ?? "",
-                    Terminal = IniFile.ReadValue(iniPath, section, "terminal" + j) ?? "direct",
-                    KeepWindow = (IniFile.ReadValue(iniPath, section, "keepwindow" + j) ?? "false")
-                        .Equals("true", StringComparison.OrdinalIgnoreCase),
-                    Workdir = IniFile.ReadValue(iniPath, section, "workdir" + j) ?? "",
-                });
-                items.Add(id);
-            }
-            cfg.MenuGroups.Add(new MenuGroupDto { Enabled = true, Name = name, Items = items });
-        }
-
-        var gb = IniFile.ReadValue(iniPath, "TerminalPaths", "gitbash")?.Trim();
-        if (!string.IsNullOrEmpty(gb)) cfg.TerminalPaths["gitbash"] = gb;
-
-        return cfg;
-    }
 }

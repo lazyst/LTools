@@ -92,7 +92,7 @@ internal static class ActionRemoval
                 AppLog.Info("ActionRemoval", "已清掉快捷键里指向不存在动作的绑定");
             }
 
-            // Panel 为 null = 还没从旧页迁移（PanelLibrary.Initialize 会迁移），这里没有可修的东西。
+            // Panel 为 null = 全新安装（还没有面板结构），这里没有可修的东西。
             if (cfg.Panel != null && PanelLibrary.PruneMissing(cfg.Panel, live))
             {
                 PanelStore.Modify(path, file =>

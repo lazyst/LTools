@@ -12,7 +12,6 @@ using System.Windows.Threading;
 using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Features;
-using LTools.Features.Migration;
 using LTools.Views.Controls;
 
 namespace LTools.Views;
@@ -134,7 +133,7 @@ public partial class ActionEditorWindow : Window
         else if (existing != null)
         {
             _draft = existing.Clone();
-            _program = ActionPrograms.For(_draft).Clone();
+            _program = _draft.Program?.Clone() ?? new ActionProgram();
             _draft.Program = _program;
             DirectionColumn.Width = new GridLength(0);
             DirectionHeader.Visibility = Visibility.Collapsed;

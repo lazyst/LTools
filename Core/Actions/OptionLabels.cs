@@ -8,8 +8,8 @@ namespace LTools.Core.Actions;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 参数里存的一律是英文键（<c>trim</c> / <c>foreground</c> / <c>read</c> …）——配置、迁移器、
-/// 单元实现都按它工作，老配置也照旧能读。界面只负责把它翻译给用户看：
+/// 参数里存的一律是英文键（<c>trim</c> / <c>foreground</c> / <c>read</c> …）——配置、
+/// 单元实现都按它工作。界面只负责把它翻译给用户看：
 /// 参数对话框的下拉、步骤行摘要都走这里，别在各处再写一份 switch。
 /// </para>
 /// <para>

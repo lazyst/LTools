@@ -6,7 +6,6 @@ using LTools.Config;
 using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Core.Storage;
-using LTools.Features.Migration;
 using LTools.Views;
 
 namespace LTools.Features;
@@ -17,7 +16,7 @@ namespace LTools.Features;
 /// <remarks>
 /// <para>
 /// 执行本身由 <see cref="ActionEngine"/> 负责；这里只管「一次运行」的边界——
-/// 动作体从 <see cref="ActionPrograms.For"/> 取（旧动作第一次运行时懒迁移）。
+/// 动作体就是 <see cref="ActionDto.Program"/>。
 /// </para>
 /// <para>
 /// 线程模型：在 <see cref="ActionExecutor.Run"/> 的后台线程里同步执行；停止热键与宏回放共用
@@ -52,17 +51,11 @@ internal static class AutomationRunner
     /// <summary>执行一个动作（在后台线程里跑，异常在此记录并提示，不再上抛）。</summary>
     public static void Run(ActionDto action, int cursorX, int cursorY)
     {
-        // 旧格式动作第一次运行时懒迁移（可能写盘，放在调用线程没问题）。
-        ActionProgram program;
-        try
+        ActionProgram? program = action.Program;
+        if (program == null)
         {
-            program = ActionPrograms.For(action);
-        }
-        catch (Exception ex)
-        {
-            AppLog.Error("Flow", $"迁移「{action.Name}」失败", ex);
-            CrashLog.Write($"Flow[{action.Name}] 迁移", ex);
-            ToastService.Show($"「{action.Name}」启动失败：{ex.Message}", "动作失败",
+            AppLog.Error("Flow", $"动作「{action.Name}」没有动作体");
+            ToastService.Show($"「{action.Name}」没有动作体，无法运行", "动作失败",
                 ToastService.StickyMs, ToastKind.error, key: "run:" + action.Name, OpenLogsFolder);
             return;
         }

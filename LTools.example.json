@@ -3,18 +3,65 @@
     {
       "Id": "a1",
       "Name": "ipconfig",
-      "Type": "runCommand",
-      "Cmd": "ipconfig /all",
-      "Terminal": "pwsh7",
-      "KeepWindow": true,
-      "Icon": "terminal"
+      "Icon": "terminal",
+      "Type": "composite",
+      "Program": {
+        "id": "a1",
+        "name": "ipconfig",
+        "icon": "terminal",
+        "description": "",
+        "variables": [],
+        "steps": [
+          {
+            "unit": "app.runCommand",
+            "in": {
+              "command": "ipconfig /all",
+              "terminal": "pwsh7",
+              "workdir": "",
+              "capture": false,
+              "keepWindow": true
+            },
+            "out": {},
+            "body": [],
+            "then": [],
+            "else": [],
+            "disabled": false,
+            "onFail": "stop",
+            "delayMs": 0
+          }
+        ],
+        "subActions": []
+      }
     },
     {
       "Id": "a3",
-      "Name": "速记",
-      "Type": "internal",
-      "Command": "quickNote.toggle",
-      "Icon": "note"
+      "Name": "提示",
+      "Icon": "note",
+      "Type": "composite",
+      "Program": {
+        "id": "a3",
+        "name": "提示",
+        "icon": "note",
+        "description": "",
+        "variables": [],
+        "steps": [
+          {
+            "unit": "ui.toast",
+            "in": {
+              "text": "这是一个示例动作，从动作编辑器改成你要做的事。",
+              "title": "LTools"
+            },
+            "out": {},
+            "body": [],
+            "then": [],
+            "else": [],
+            "disabled": false,
+            "onFail": "stop",
+            "delayMs": 0
+          }
+        ],
+        "subActions": []
+      }
     }
   ],
   "SuperPanel": {
@@ -67,27 +114,7 @@
     "Blocked": [],
     "HintDismissed": false
   },
-  "MenuGroups": [
-    {
-      "Enabled": true,
-      "Name": "常用",
-      "Items": [
-        "a1",
-        "a3"
-      ]
-    },
-    null,
-    null,
-    null,
-    null,
-    null,
-    null,
-    null,
-    null,
-    null
-  ],
   "TerminalPaths": {},
-  "MouseModeSpeed": 7,
   "Macros": {
     "Enabled": true,
     "RecordHotkey": "ctrl+f2",

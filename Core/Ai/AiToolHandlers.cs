@@ -3,7 +3,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Core.Actions;
 using LTools.Features;
-using LTools.Features.Migration;
 
 namespace LTools.Core.Ai;
 
@@ -183,7 +182,7 @@ internal static class AiToolHandlers
                 ["id"] = a.Id,
                 ["name"] = a.Name,
                 ["icon"] = a.Icon,
-                ["type"] = a.SourceType,
+                ["type"] = a.Type.ToString(),
                 ["stepCount"] = a.Program?.Steps.Count,
             })
             .ToList());
@@ -201,13 +200,13 @@ internal static class AiToolHandlers
         var action = AiUi.Run(() => ActionRegistry.FindById(id))
             ?? throw new AiToolException("not_found", $"正式动作不存在：{id}");
 
-        var program = AiUi.Run(() => ActionPrograms.For(action).Clone());
+        var program = AiUi.Run(() => action.Program?.Clone());
         return new Dictionary<string, object?>
         {
             ["id"] = action.Id,
             ["name"] = action.Name,
             ["icon"] = action.Icon,
-            ["type"] = action.SourceType,
+            ["type"] = action.Type.ToString(),
             ["program"] = program,
         };
     }

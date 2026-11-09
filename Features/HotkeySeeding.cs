@@ -1,11 +1,8 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using LTools.Config;
 using LTools.Core;
-using LTools.Core.Actions;
 using LTools.Features.Builtin;
-using LTools.Features.Panel;
 
 namespace LTools.Features;
 
@@ -16,11 +13,11 @@ namespace LTools.Features;
 /// <para>
 /// **种子全部是内置功能引用**（<c>ltools.*</c> / <c>common.*</c>）：打开面板 / 速记 / 设置这类入口、
 /// 光标移动 / 选择 / 删除这些模拟按键，都在 <see cref="FeatureCatalog"/> 里有对应条目。
-/// 所以预设组里不再生成预置动作——同一份条目用户也能放进面板、悬浮、绑别的键。
+/// 所以预设组里只有功能引用、不生成任何动作——同一份条目用户也能放进面板、悬浮、绑别的键。
 /// </para>
 /// <para>
 /// 幂等：绑定按「组内同快捷键」复用；播种完成后写 <see cref="HotkeyFile.SeedVersion"/>，
-/// 用户删掉的条目不会再被塞回来。功能改名由 <see cref="FeatureCatalog.Canonical"/> 兜底。
+/// 用户删掉的条目不会再被塞回来。
 /// </para>
 /// </remarks>
 internal static class HotkeySeeding
@@ -64,19 +61,6 @@ internal static class HotkeySeeding
         new("capslock+y", "common.edit.redo", "预置：重做"),
     };
 
-    /// <summary>
-    /// v1 / v2 播下的预置动作名（`input.sendKeys` 单步）。v3 起这些手势改成内置功能，
-    /// 旧动作在升级时清掉；只有**内容仍是原样**的才清，用户改过的留着。
-    /// </summary>
-    private static readonly HashSet<string> LegacyKeySeedNames = new(StringComparer.Ordinal)
-    {
-        "CapsLock · 左移一字符", "CapsLock · 下移一行", "CapsLock · 上移一行",
-        "CapsLock · 右移一字符", "CapsLock · 移到行首", "CapsLock · 移到行尾",
-        "CapsLock · 选中左一字符", "CapsLock · 选中下一行", "CapsLock · 选中上一行",
-        "CapsLock · 选中右一字符", "CapsLock · 退格", "CapsLock · 删除",
-        "CapsLock · 删除整行", "CapsLock · 撤销", "CapsLock · 重做",
-    };
-
     /// <summary>播种（已播过就什么都不做）。</summary>
     public static void Ensure(string configPath, AppConfig cfg)
     {
@@ -90,16 +74,6 @@ internal static class HotkeySeeding
             file.Normalize();
             if (file.SeedVersion >= Version) return;
 
-            var actions = c.Actions ?? new List<ActionDto>();
-
-            // v1 的「LTools 内置功能」单元、v2 的 15 条按键预置动作都已下线，一次性清掉。
-            // 只有预置动作会被清，用户自己建的动作不动（哪怕引用了旧单元也留给他们自己改）。
-            var obsolete = actions
-                .Where(a => a.Preset && (UsesRemovedUnit(a) || IsLegacyKeySeed(a)))
-                .Select(a => a.Id)
-                .ToHashSet(StringComparer.Ordinal);
-            if (obsolete.Count > 0) actions.RemoveAll(a => obsolete.Contains(a.Id));
-
             var group = file.Groups.FirstOrDefault(g => g.Name == GroupName);
             if (group == null)
             {
@@ -108,22 +82,9 @@ internal static class HotkeySeeding
             }
 
             foreach (var seed in FeatureSeeds)
-                Bind(group, file, seed.Chord, seed.Reference, seed.Note, obsolete);
-
-            // 旧功能 Id 就地改名（如 common.note → ltools.note），面板里的引用同样处理。
-            foreach (var binding in file.Groups.SelectMany(g => g.Bindings))
-                binding.ActionId = FeatureCatalog.Canonical(binding.ActionId);
-            if (c.Panel != null)
-            {
-                foreach (var panelGroup in PanelLibrary.GroupsOf(c.Panel))
-                {
-                    for (int i = 0; i < panelGroup.Actions.Count; i++)
-                        panelGroup.Actions[i] = FeatureCatalog.Canonical(panelGroup.Actions[i]);
-                }
-            }
+                Bind(group, file, seed.Chord, seed.Reference, seed.Note);
 
             file.SeedVersion = Version;
-            c.Actions = actions;
             c.Hotkeys = file;
             changed = true;
         });
@@ -137,9 +98,9 @@ internal static class HotkeySeeding
             $"已播种预设组「{GroupName}」（{FeatureSeeds.Length} 条内置功能绑定）");
     }
 
-    /// <summary>组内按快捷键复用绑定；空引用 / 指向已下线预置动作的绑定就地补上。</summary>
+    /// <summary>组内按快捷键复用绑定；空引用的绑定就地补上。</summary>
     private static void Bind(HotkeyGroup group, HotkeyFile file, string chordText,
-        string reference, string note, HashSet<string> obsolete)
+        string reference, string note)
     {
         string chord = HotkeyChord.Normalize(chordText);
         var binding = group.Bindings.FirstOrDefault(b => b.Chord == chord);
@@ -156,48 +117,7 @@ internal static class HotkeySeeding
             return;
         }
 
-        if (binding.ActionId.Length == 0 || obsolete.Contains(binding.ActionId))
+        if (binding.ActionId.Length == 0)
             binding.ActionId = reference;
-    }
-
-    /// <summary>这个动作的步骤还在用已删除的 <c>internal.*</c> 单元吗。</summary>
-    private static bool UsesRemovedUnit(ActionDto action)
-    {
-        // 还没迁移的 v1 动作：类型是 internal（整条动作用的就是一个内置功能）
-        if (action.Program == null
-            && string.Equals(action.LegacyType, "internal", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        var steps = action.Program?.Steps;
-        if (steps == null) return false;
-        return Walk(steps);
-    }
-
-    private static bool Walk(IEnumerable<Step> steps)
-    {
-        foreach (var step in steps)
-        {
-            if (step.Unit.StartsWith("internal.", StringComparison.Ordinal)) return true;
-            if (step.Then.Count > 0 && Walk(step.Then)) return true;
-            if (step.Else.Count > 0 && Walk(step.Else)) return true;
-            if (step.Body.Count > 0 && Walk(step.Body)) return true;
-        }
-        return false;
-    }
-
-    /// <summary>v2 播下的按键预置动作、内容没被改过（仍是单步 input.sendKeys）。</summary>
-    private static bool IsLegacyKeySeed(ActionDto action)
-    {
-        if (!LegacyKeySeedNames.Contains(action.Name)) return false;
-
-        var steps = action.Program?.Steps;
-        if (steps == null || steps.Count != 1) return false;
-
-        var step = steps[0];
-        return step.Unit == "input.sendKeys"
-               && !step.Disabled
-               && step.Then.Count == 0
-               && step.Else.Count == 0
-               && step.Body.Count == 0;
     }
 }

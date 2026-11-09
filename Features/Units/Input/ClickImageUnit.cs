@@ -49,7 +49,7 @@ public sealed class ClickImageUnit : IStepUnit
             MinScore = Math.Clamp(args.Number("minScore"), 0.30, 0.99),
             TimeoutMs = (int)Math.Clamp(args.Number("timeoutMs"), 0, 600_000),
             MouseAction = ClickTextUnit.ParseMouse(args.Text("mouseAction")),
-        }, LegacyFlow.Create(ctx));
+        }, ProbeContext.Of(ctx));
 
         ctx.SetOutput("x", Value.FromNumber(result.X ?? 0));
         ctx.SetOutput("y", Value.FromNumber(result.Y ?? 0));

@@ -6,8 +6,7 @@ namespace LTools.Views;
 
 /// <summary>
 /// 动作编辑统一入口（W4 起指向 <see cref="ActionEditorWindow"/>）。
-/// 所有调用点（设置页 / 超级面板 / 动作池选择器）只走 <see cref="Show"/>，不自行判断类型：
-/// 旧格式动作在打开时迁移成 v2 动作体，保存后即以新结构落盘。
+/// 所有调用点（设置页 / 超级面板 / 动作池选择器）只走 <see cref="Show"/>，不自行判断类型。
 /// </summary>
 /// <remarks>
 /// 旧编辑器（按动作类型分支的 <c>ActionEditorDialog</c> / <c>CompositeActionDialog</c>）已在 W5 删除。

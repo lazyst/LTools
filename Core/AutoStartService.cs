@@ -53,8 +53,6 @@ internal static class AutoStartService
     /// <summary>当前 exe 全路径（任务计划 Command）。</summary>
     private static string ExePath => Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName ?? "";
 
-    private static bool _legacyCleaned;
-
     // ============ 查询 ============
 
     /// <summary>
@@ -63,8 +61,6 @@ internal static class AutoStartService
     /// </summary>
     public static AutoStartInfo Query()
     {
-        CleanupLegacyTask();
-
         string? registered = QueryTaskCommand();
         if (string.IsNullOrEmpty(registered))
             return new AutoStartInfo(AutoStartState.Disabled, null, false);
@@ -216,14 +212,6 @@ internal static class AutoStartService
 
     /// <summary>禁用自启：删除任务。</summary>
     public static bool Disable() => RunSchtasks($"/delete /tn {TaskName} /f");
-
-    /// <summary>一次性删除改名前遗留的自启任务（改名 LTools 前任务名为 CapsLockPro）。</summary>
-    private static void CleanupLegacyTask()
-    {
-        if (_legacyCleaned) return;
-        _legacyCleaned = true;
-        RunSchtasks("/delete /tn CapsLockPro /f");   // 任务不存在/无权限时静默失败
-    }
 
     private static bool RunSchtasks(string arguments)
     {

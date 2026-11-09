@@ -24,9 +24,8 @@ namespace LTools.Config;
 /// （因此改导航页只会动 <c>ui.json</c>，改一个动作只重写它自己的 <c>action.json</c>）。
 /// </para>
 /// <para>
-/// 首次升级：<c>configs/</c> 不存在时把 <c>LTools.json</c>（或同目录示例）当作种子读进来；
-/// 动作仍以旧 <c>configs/actions.json</c> 为种子。第一次保存写出域文件与动作目录后，
-/// 旧文件分别改名 <c>LTools.json.migrated</c> / <c>configs/actions.json.migrated</c>——内容原样保留，随时可回滚。
+/// 首次启动：<c>configs/</c> 不存在时从同目录的 <c>LTools.example.json</c> 读种子，补齐六个域；
+/// 第一次保存就把域文件与 <c>actions/</c> 动作目录一起写出来，之后各域各自读写。
 /// </para>
 /// <para>
 /// 读取失败按域隔离：坏掉的那个文件备份成 <c>&lt;file&gt;.bad-时间戳</c>（每域只留 3 份）并用默认值顶上，
@@ -36,14 +35,14 @@ namespace LTools.Config;
 /// </remarks>
 internal static class ConfigBundle
 {
-    /// <summary>分域格式的版本号（写入每个域文件；1 = 旧单文件时代，2 = 六域文件，3 = 动作目录化，4 = hotkeys 域代替 menus）。</summary>
+    /// <summary>分域格式的版本号（写入每个域文件；以后改结构就 +1 并同步读取逻辑）。</summary>
     public const int SchemaVersion = 4;
 
     /// <summary>读失败（含被占用 / 共享冲突）时的重试次数与间隔——开机自启瞬间配置常被 AV / 索引器短暂占用。</summary>
     private const int ReadRetries = 15;
     private const int ReadRetryDelayMs = 200;
 
-    /// <summary>与旧版 <c>LTools.json</c> 完全一致的序列化选项（可读、不转义中文、枚举写字符串）。</summary>
+    /// <summary>域文件的序列化选项（可读、不转义中文、枚举写字符串）。</summary>
     internal static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
@@ -64,12 +63,6 @@ internal static class ConfigBundle
     private static string FloatingPath(string a) => Path.Combine(ConfigDir(a), "floating.json");
     private static string MacrosPath(string a) => Path.Combine(ConfigDir(a), "macros.json");
 
-    /// <summary>3 及更早版本的快捷菜单组文件（只用于迁移成 hotkeys.json）。</summary>
-    private static string LegacyMenusPath(string a) => Path.Combine(ConfigDir(a), "menus.json");
-
-    /// <summary>P2 之前的旧文件（动作清单 + 菜单组），只用于迁移种子。</summary>
-    private static string LegacyActionsPath(string a) => Path.Combine(ConfigDir(a), "actions.json");
-
     /// <summary>6 个域文件（顺序固定，便于诊断）。</summary>
     public static IReadOnlyList<string> DomainPaths(string anchorPath) => new[]
     {
@@ -81,42 +74,8 @@ internal static class ConfigBundle
         MacrosPath(anchorPath),
     };
 
-    /// <summary>已经分域写过分（至少一个域文件存在）。</summary>
-    public static bool HasSplitFiles(string anchorPath) => DomainPaths(anchorPath).Any(File.Exists);
-
-    /// <summary>6 个域文件都在（此时旧单文件可以被归档）。</summary>
+    /// <summary>6 个域文件都在（首装 / 备份导入缺文件时用来决定是否整份补齐）。</summary>
     public static bool IsFullySplit(string anchorPath) => DomainPaths(anchorPath).All(File.Exists);
-
-    /// <summary>旧六域（3 及更早：用 menus.json 存快捷菜单组）是否齐全。</summary>
-    public static bool IsLegacySplit(string anchorPath) => new[]
-    {
-        SettingsPath(anchorPath),
-        UiPath(anchorPath),
-        LegacyMenusPath(anchorPath),
-        PanelPath(anchorPath),
-        FloatingPath(anchorPath),
-        MacrosPath(anchorPath),
-    }.All(File.Exists);
-
-    /// <summary>
-    /// 读旧「CapsLock 快捷菜单」的组（menus.json；没有就退回 P2 之前的 actions.json）。
-    /// 只给迁移和「hotkeys.json 缺失」的兜底用。
-    /// </summary>
-    internal static List<MenuGroupDto?> ReadLegacyMenuGroups(string anchorPath)
-    {
-        try
-        {
-            if (File.Exists(LegacyMenusPath(anchorPath)))
-                return ReadWithRetry<MenuFile>(LegacyMenusPath(anchorPath)).MenuGroups ?? new();
-            if (File.Exists(LegacyActionsPath(anchorPath)))
-                return ReadWithRetry<ActionLibraryFile>(LegacyActionsPath(anchorPath)).MenuGroups ?? new();
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warn("Config", "读取旧快捷菜单失败（按空处理）：" + ex.Message);
-        }
-        return new List<MenuGroupDto?>();
-    }
 
     private static string BaseDir(string anchorPath)
     {
@@ -154,31 +113,19 @@ internal static class ConfigBundle
         cfg.RecentActionIds = ui.RecentActionIds;
 
         bool hasStore = ActionStore.HasStore(anchorPath);
-        ActionLibraryFile? legacyActions = null;
         if (hasStore)
         {
-            // actions/ 目录存在（含空）= 权威来源；空目录表示用户把动作全删了，不再回落到旧清单。
+            // actions/ 目录存在（含空）= 唯一来源；空目录表示用户把动作全删了。
             var (fromStore, failed) = ActionStore.LoadAll(anchorPath, ctx.Strict);
             cfg.Actions = fromStore;
             if (failed) ctx.Failed = true;
         }
         else
         {
-            legacyActions = ReadLegacyActions(anchorPath, ctx);
-            cfg.Actions = legacyActions?.Actions ?? ctx.GetSeed().Actions ?? new();
+            cfg.Actions = ctx.GetSeed().Actions ?? new();
         }
 
-        var hotkeys = Read<HotkeyFile>(HotkeysPath(anchorPath), ctx);
-        if (hotkeys == null)
-        {
-            // 3 及更早版本：菜单组在 menus.json / 旧 actions.json 里，合并成一个「旧菜单」预设组。
-            var legacyMenus = Read<MenuFile>(LegacyMenusPath(anchorPath), ctx);
-            legacyActions ??= ReadLegacyActions(anchorPath, ctx);
-            var legacyGroups = legacyMenus?.MenuGroups
-                ?? legacyActions?.MenuGroups
-                ?? ctx.GetSeed().MenuGroups;
-            hotkeys = new HotkeyFile { Groups = ConvertLegacyMenus(legacyGroups) };
-        }
+        var hotkeys = Read<HotkeyFile>(HotkeysPath(anchorPath), ctx) ?? ToHotkeys(ctx.GetSeed());
         cfg.Hotkeys = hotkeys;
         cfg.Hotkeys.Normalize();
 
@@ -210,8 +157,8 @@ internal static class ConfigBundle
         private AppConfig? _seed;
 
         /// <summary>
-        /// 缺失域的回填来源：旧单文件 → 同目录示例 → 内置默认。只在真有域文件缺失时才读，
-        /// 因此完全分域之后启动不会再去碰旧文件。
+        /// 缺失域的回填来源：同目录示例 → 内置默认。只在真有域文件缺失时才读，
+        /// 因此配置齐全之后启动不会再去碰示例文件。
         /// </summary>
         public AppConfig GetSeed()
         {
@@ -224,9 +171,6 @@ internal static class ConfigBundle
 
     private static AppConfig LoadSeed(LoadContext ctx)
     {
-        var legacy = Read<AppConfig>(ctx.Anchor, ctx);
-        if (legacy != null) return legacy;
-
         string? example = FindExample(ctx.Anchor);
         if (example != null)
         {
@@ -282,10 +226,6 @@ internal static class ConfigBundle
     /// <summary>瞬时 IO 错误：被占用 / 共享冲突 / 权限不足（区别于内容损坏的 JsonException）。</summary>
     private static bool IsTransient(Exception ex) => ex is IOException or UnauthorizedAccessException;
 
-    /// <summary>读 P2 之前的 <c>configs/actions.json</c>（动作 + 菜单组的迁移种子）。</summary>
-    private static ActionLibraryFile? ReadLegacyActions(string anchorPath, LoadContext ctx)
-        => Read<ActionLibraryFile>(LegacyActionsPath(anchorPath), ctx);
-
     private static string? FindExample(string anchorPath)
     {
         string example = Path.Combine(BaseDir(anchorPath), "LTools.example.json");
@@ -296,7 +236,7 @@ internal static class ConfigBundle
 
     // ============ 写 ============
 
-    /// <summary>整份写回（启动迁移 / 备份恢复用）。日常单域修改走 <c>DomainStores</c>。</summary>
+    /// <summary>整份写回（备份恢复用）。日常单域修改走 <c>DomainStores</c>。</summary>
     public static void Save(string anchorPath, AppConfig cfg)
         => SaveDomains(anchorPath, cfg, ConfigDomain.all);
 
@@ -306,9 +246,8 @@ internal static class ConfigBundle
     /// </summary>
     /// <remarks>
     /// <para>
-    /// 还没分域完整（旧 <c>LTools.json</c> 升级后 6 个文件不全）时，这一次写入自动扩成整份：
-    /// 迁移必须一步到位，否则只改一个界面开关会留下半个分域目录、旧文件永远归档不掉。
-    /// 分域完成后每次只碰被点的那个文件。
+    /// 六个域文件还不齐（首装 / 备份导入只带回一部分）时，这一次写入自动扩成整份：
+    /// 否则只改一个界面开关会留下半个配置目录，缺的域永远补不上。
     /// </para>
     /// <para>
     /// 动作目录同理：<c>actions/</c> 不存在时至少写一次（把种子里的动作落成目录），
@@ -318,7 +257,7 @@ internal static class ConfigBundle
     public static void SaveDomains(string anchorPath, AppConfig cfg, ConfigDomain domains)
     {
         Directory.CreateDirectory(ConfigDir(anchorPath));
-        // 首次分域 / 有域文件缺失：这次写全，把迁移做完。
+        // 首装 / 有域文件缺失：这次写全，之后每次只碰被点的那个文件。
         if (!IsFullySplit(anchorPath)) domains = ConfigDomain.all;
 
         if (domains.HasFlag(ConfigDomain.settings)) WriteIfChanged(SettingsPath(anchorPath), ToSettings(cfg));
@@ -331,8 +270,6 @@ internal static class ConfigBundle
         // 动作一个目录一个（内容没变的 action.json 不重写；清单里没有的目录移入 trash/）。
         if (domains.HasFlag(ConfigDomain.actions) || !ActionStore.HasStore(anchorPath))
             ActionStore.SaveAll(anchorPath, cfg.Actions ?? new List<ActionDto>());
-
-        CompleteMigration(anchorPath);
     }
 
     // —— 单域写入（DomainStores 用） ——
@@ -361,38 +298,6 @@ internal static class ConfigBundle
         WriteIfChanged(path, file);
     }
 
-    /// <summary>任一域落盘后都试一次旧文件归档（条件不满足就是几个 <c>File.Exists</c>）。</summary>
-    public static void CompleteMigration(string anchorPath)
-    {
-        ArchiveLegacyActions(anchorPath);
-        ArchiveLegacy(anchorPath);
-    }
-
-    /// <summary>动作目录 + <c>hotkeys.json</c> 都齐了，把 P2 之前的 <c>actions.json</c> 与旧 <c>menus.json</c> 改名归档（只做一次）。</summary>
-    private static void ArchiveLegacyActions(string anchorPath)
-    {
-        ArchiveIfReady(LegacyActionsPath(anchorPath), "动作为动作目录");
-        ArchiveIfReady(LegacyMenusPath(anchorPath), "快捷菜单已并入快捷键");
-
-        void ArchiveIfReady(string legacy, string reason)
-        {
-            if (!File.Exists(legacy) || !File.Exists(HotkeysPath(anchorPath)) || !ActionStore.HasStore(anchorPath))
-                return;
-
-            string target = legacy + ".migrated";
-            if (File.Exists(target)) target = $"{legacy}.migrated-{DateTime.Now:yyyyMMddHHmmss}";
-            try
-            {
-                File.Move(legacy, target);
-                AppLog.Info("Config", $"{reason}，旧文件保留为 {Path.GetFileName(target)}");
-            }
-            catch (Exception ex)
-            {
-                AppLog.Warn("Config", $"旧文件改名失败（下次保存再试）：{ex.Message}");
-            }
-        }
-    }
-
     /// <summary>先写临时文件再整体替换，避免写到一半崩溃留下半个 JSON。</summary>
     private static void WriteIfChanged<T>(string path, T value)
     {
@@ -406,24 +311,6 @@ internal static class ConfigBundle
         string tmp = path + ".tmp";
         File.WriteAllText(tmp, json, new UTF8Encoding(false));
         File.Move(tmp, path, overwrite: true);
-    }
-
-    /// <summary>6 个域文件齐全后，把旧单文件改名归档（只做一次，失败下次再试）。</summary>
-    private static void ArchiveLegacy(string anchorPath)
-    {
-        if (!File.Exists(anchorPath) || !IsFullySplit(anchorPath)) return;
-
-        string target = anchorPath + ".migrated";
-        if (File.Exists(target)) target = $"{anchorPath}.migrated-{DateTime.Now:yyyyMMddHHmmss}";
-        try
-        {
-            File.Move(anchorPath, target);
-            AppLog.Info("Config", $"配置已分域到 configs/，旧文件保留为 {Path.GetFileName(target)}");
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warn("Config", $"旧配置文件改名失败（下次保存再试）：{ex.Message}");
-        }
     }
 
     // ============ 聚合 ↔ 域文件 ============
@@ -446,36 +333,7 @@ internal static class ConfigBundle
         RecentActionIds = cfg.RecentActionIds,
     };
 
-    internal static HotkeyFile ToHotkeys(AppConfig cfg)
-    {
-        if (cfg.Hotkeys != null) return cfg.Hotkeys;
-        return new HotkeyFile { Groups = ConvertLegacyMenus(cfg.MenuGroups) };
-    }
-
-    /// <summary>
-    /// 旧「CapsLock 快捷菜单」的 10 个组 → **一个**「旧菜单」预设组：
-    /// 动作引用保留、快捷键留空（菜单本来就没有快捷键），之后由用户自己补。
-    /// </summary>
-    internal static List<HotkeyGroup> ConvertLegacyMenus(List<MenuGroupDto?>? groups)
-    {
-        var bindings = new List<HotkeyBinding>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        int n = 0;
-        foreach (var group in groups ?? new List<MenuGroupDto?>())
-        {
-            if (group?.Items == null) continue;
-            foreach (string id in group.Items)
-            {
-                if (string.IsNullOrWhiteSpace(id) || !seen.Add(id)) continue;
-                bindings.Add(new HotkeyBinding { Id = "b" + (++n), Chord = "", ActionId = id });
-            }
-        }
-
-        var result = new List<HotkeyGroup>();
-        if (bindings.Count > 0)
-            result.Add(new HotkeyGroup { Id = "g1", Name = "旧菜单", Enabled = true, Bindings = bindings });
-        return result;
-    }
+    internal static HotkeyFile ToHotkeys(AppConfig cfg) => cfg.Hotkeys ?? new HotkeyFile();
 
     internal static PanelFile ToPanel(AppConfig cfg) => new()
     {
@@ -520,10 +378,9 @@ internal static class ConfigBundle
         catch { /* 清理失败不影响启动 */ }
     }
 
-    /// <summary>启动时清理：旧单文件的 <c>.bad-*</c> + 每个域文件的 <c>.bad-*</c>。</summary>
+    /// <summary>启动时清理：每个域文件旁边的 <c>.bad-*</c> 只留最近几份。</summary>
     public static void PruneAllBrokenBackups(string anchorPath, int keep = 3)
     {
-        PruneBrokenBackups(anchorPath, keep);
         foreach (string path in DomainPaths(anchorPath)) PruneBrokenBackups(path, keep);
     }
 }

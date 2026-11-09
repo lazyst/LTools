@@ -6,7 +6,6 @@ using System.Text.Json.Serialization;
 using LTools.Config;
 using LTools.Core.Actions;
 using LTools.Features;
-using LTools.Features.Migration;
 
 namespace LTools.Core.Ai;
 
@@ -292,7 +291,7 @@ internal static class DraftStore
         string? baseHash = null;
         if (source != null)
         {
-            program = ActionPrograms.For(source).Clone();
+            program = source.Program?.Clone() ?? new ActionProgram();
             baseHash = HashProgram(program);
             if (string.IsNullOrWhiteSpace(program.Name)) program.Name = source.Name;
         }

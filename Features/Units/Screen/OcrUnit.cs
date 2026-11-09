@@ -44,7 +44,7 @@ public sealed class OcrUnit : IStepUnit
             OcrEngine = args.Text("engine").Trim(),
         };
 
-        var value = LegacyFlow.Evaluate(ctx, legacy => OcrProbe.Run(probe, legacy));
+        var value = ProbeContext.Evaluate(ctx, legacy => OcrProbe.Run(probe, legacy));
         string text = UnitValues.Member(value, "text")?.AsText() ?? "";
         bool found = UnitValues.Member(value, "found")?.AsBool() ?? false;
 

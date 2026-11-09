@@ -4,17 +4,17 @@ using LTools.Core.Actions;
 namespace LTools.Features.Units;
 
 /// <summary>
-/// 新值模型（<see cref="Value"/>）与旧流程值（<see cref="VarValue"/>）之间的桥。
+/// 新值模型（<see cref="Value"/>）与取值实现使用的 <see cref="VarValue"/> 之间的桥。
 /// </summary>
 /// <remarks>
-/// W2 期间大量能力（找图 / OCR / 截图 / 窗口 / 速记）仍是旧实现，接收 <see cref="VarValue"/>。
+/// <c>Features/Flow</c> 下的取值实现（找图 / OCR / 截图 / 窗口 / 速记）接收 <see cref="VarValue"/>。
 /// 这里把两边的结构化字段对齐：坐标、区域、匹配分数、命令输出、速记元数据都装进对象的同名成员，
-/// 于是 <c>${变量.x}</c>、<c>${变量.file}</c> 这类写法在旧流程和新流程里表现一致。
+/// 于是 <c>${变量.x}</c>、<c>${变量.file}</c> 这类写法在步骤输出与取值结果里表现一致。
 /// </remarks>
 internal static class UnitValues
 {
-    /// <summary>旧值 → 新值（对象里一定带 <c>text</c> 成员，因此直接当文本用仍然正确）。</summary>
-    public static Value FromLegacy(VarValue value)
+    /// <summary>取值结果 → 新值（对象里一定带 <c>text</c> 成员，因此直接当文本用仍然正确）。</summary>
+    public static Value FromVarValue(VarValue value)
     {
         var members = new List<KeyValuePair<string, Value>>
         {
@@ -56,8 +56,8 @@ internal static class UnitValues
         return Value.FromObject(members);
     }
 
-    /// <summary>新值 → 旧值（只取旧实现认识的字段；缺什么就留空）。</summary>
-    public static VarValue ToLegacy(Value value)
+    /// <summary>新值 → 取值实现的值（只取它认识的字段；缺什么就留空）。</summary>
+    public static VarValue ToVarValue(Value value)
     {
         string text = value.AsText();
         double? number = null;

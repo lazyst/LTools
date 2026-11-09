@@ -41,7 +41,7 @@ public sealed class NoteReadUnit : IStepUnit
             Text = args.Text("filter"),
         };
 
-        var value = LegacyFlow.Evaluate(ctx, legacy => NoteActions.Read(probe, legacy));
+        var value = ProbeContext.Evaluate(ctx, legacy => NoteActions.Read(probe, legacy));
         string text = UnitValues.Member(value, "text")?.AsText() ?? "";
         string title = UnitValues.Member(value, "title")?.AsText() ?? "";
         string time = UnitValues.Member(value, "time")?.AsText() ?? "";
