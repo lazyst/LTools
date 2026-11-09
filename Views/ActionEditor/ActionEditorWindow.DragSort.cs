@@ -26,7 +26,8 @@ public partial class ActionEditorWindow
 
     /// <summary>
     /// 按住某一步就开始「可能的拖动」；超过 4px 才真正进入拖动（照全项目统一的拖动手感）。
-    /// 只移动被拖的那一步（子步骤跟着走），落在别的分支里就是「移入该分支」。
+    /// 按在已选中的行上（不带 Ctrl / Shift）时整组选中项一起移动，否则只移动按下的那一步；
+    /// 子步骤跟着走，落在别的分支里就是「移入该分支」。
     /// </summary>
     private void StepList_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -36,10 +37,23 @@ public partial class ActionEditorWindow
         StepRow? row = RowAt(e.OriginalSource as DependencyObject);
         if (row?.Step == null || row.Owner == null) return;   // 标记行 / 空分支占位行不拖
 
+        // 选中组在 ListBox 自己处理鼠标之前取：它会把多选收成按下的那一行。
+        // Ctrl / Shift 是在改选择，不是要拖整组。
+        _dragRows = DragRowsFor(row);
         _dragRow = row;
         _dragRowIndex = _rows.IndexOf(row);
         _dragOrigin = e.GetPosition(this);
         _dragPending = true;
+    }
+
+    /// <summary>按下某一行时这次拖动要移动哪些行：按在已选中的行上就是整组，否则只有这一行。</summary>
+    private List<StepRow> DragRowsFor(StepRow row)
+    {
+        List<StepRow> selected = SelectedRows();
+        bool group = (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == 0
+                     && selected.Count > 1
+                     && selected.Any(r => ReferenceEquals(r, row));
+        return group ? selected : new List<StepRow> { row };
     }
 
     private void OnDragMove(object sender, MouseEventArgs e)
@@ -72,17 +86,19 @@ public partial class ActionEditorWindow
         {
             _dragPending = false;
             _dragRow = null;
+            _dragRows = new List<StepRow>();
             return;
         }
 
-        StepRow? row = _dragRow;
+        List<StepRow> rows = _dragRows;
         var target = _dropTarget;
         EndDragVisuals();
 
-        if (row?.Step != null && row.Owner != null && target is { } t)
-            MoveStepTo(row, t.List, t.Index);
+        if (rows.Count > 0 && target is { } t)
+            MoveStepsTo(rows, t.List, t.Index);
 
         _dragRow = null;
+        _dragRows = new List<StepRow>();
         e.Handled = true;
     }
 
@@ -104,24 +120,55 @@ public partial class ActionEditorWindow
 
     private bool StartDrag(Point p)
     {
-        if (_dragRow == null) return false;
+        if (_dragRow == null || _dragRows.Count == 0) return false;
         if (StepList.ItemContainerGenerator.ContainerFromIndex(_dragRowIndex) is not ListBoxItem row)
         {
             _dragPending = false;
             return false;
         }
 
-        _dragGhost.ShowGhost(row, p);
-        row.Opacity = 0.35;
-        StepList.SelectedItem = _dragRow;
+        // 整组拖动时幽灵写明「N 步」，免得以为只拖了一行。
+        _dragGhost.ShowGhost(row, p,
+            _dragRows.Count > 1 ? BuildDragSummary() : null);
+
+        // ListBox 已经按鼠标把多选收成了一行，这里按快照恢复整组。
+        StepList.SelectedItems.Clear();
+        foreach (StepRow dragged in _dragRows) StepList.SelectedItems.Add(dragged);
+
+        foreach (StepRow dragged in _dragRows)
+            if (ContainerOf(dragged) is ListBoxItem item) item.Opacity = 0.35;
+
         _dragPending = false;
         _dragging = true;
         return true;
     }
 
+    /// <summary>整组拖动的幽灵内容：「3 步 · 第一步的名字」。</summary>
+    private FrameworkElement BuildDragSummary()
+    {
+        var text = new TextBlock
+        {
+            Text = $"{_dragRows.Count} 步 · {StepSummary.Title(_dragRows[0].Step!)}",
+            FontSize = 12,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(8, 0, 8, 0),
+        };
+        return text;
+    }
+
+    private ListBoxItem? ContainerOf(StepRow row)
+    {
+        int index = _rows.IndexOf(row);
+        return index >= 0
+            ? StepList.ItemContainerGenerator.ContainerFromIndex(index) as ListBoxItem
+            : null;
+    }
+
     private void UpdateDropTarget(Point windowPoint)
     {
-        if (!TryResolveDrop(windowPoint, _dragRow?.Step, out DropSpot spot))
+        if (!TryResolveDrop(windowPoint, _dragRows.Select(r => r.Step!).ToList(), out DropSpot spot))
         {
             _dropTarget = null;
             HideInsertLine();
@@ -137,9 +184,9 @@ public partial class ActionEditorWindow
 
     /// <summary>
     /// 由窗口坐标算出落点（拖步骤与从工具箱拖单元共用）。<paramref name="moving"/> 是正在被拖的步骤，
-    /// 用来拦住「把一步拖进它自己的分支」；从工具箱拖时为 null。
+    /// 用来拦住「把一步拖进它自己的分支」（整组拖动时任一命中就拒绝）；从工具箱拖时为 null。
     /// </summary>
-    private bool TryResolveDrop(Point windowPoint, Step? moving, out DropSpot spot)
+    private bool TryResolveDrop(Point windowPoint, IReadOnlyCollection<Step>? moving, out DropSpot spot)
     {
         spot = default;
         Point listPos = TranslatePoint(windowPoint, StepList);
@@ -191,7 +238,7 @@ public partial class ActionEditorWindow
         }
 
         // 不能把一步拖进它自己的分支里
-        if (moving != null && ContainsList(moving, list)) return false;
+        if (moving != null && moving.Any(step => ContainsList(step, list))) return false;
 
         spot = new DropSpot(list, index, target.Depth, container, after);
         return true;
@@ -250,24 +297,50 @@ public partial class ActionEditorWindow
     {
         EndDragVisuals();
         _dragRow = null;
+        _dragRows = new List<StepRow>();
     }
 
-    private void MoveStepTo(StepRow row, List<Step> list, int index)
+    /// <summary>
+    /// 把一组步骤（多选）移到 <paramref name="list"/> 的第 <paramref name="index"/> 项之前。
+    /// 顺序按列表显示顺序，跨列表移动保持相对顺序；被别的选中步骤包含的后代自动跳过
+    /// （它们跟着父步骤走），目标落在被拖分组自己的分支里一律拒绝。
+    /// </summary>
+    private void MoveStepsTo(IReadOnlyList<StepRow> rows, List<Step> list, int index)
     {
-        Step step = row.Step!;
-        List<Step> from = row.Owner!;
-        int fromIndex = row.Index;
+        List<StepRow> outer = rows
+            .Where(r => r.Step != null && r.Owner != null)
+            .Where(r => !rows.Any(o => !ReferenceEquals(o, r)
+                                       && o.Step != null && ContainsStep(o.Step, r.Step!)))
+            .OrderBy(r => _rows.IndexOf(r))
+            .ToList();
+        if (outer.Count == 0) return;
 
-        if (ContainsList(step, list)) return;   // 不能把一步挪进它自己的分支
+        if (outer.Any(r => ContainsList(r.Step!, list))) return;   // 不能挪进自己的分支
 
-        int insert = index;
-        if (ReferenceEquals(from, list) && insert > fromIndex) insert--;
-        if (ReferenceEquals(from, list) && insert == fromIndex) return;
+        // 目标就在来源列表里时，删掉它前面的移动项会让下标前移。
+        int adjust = outer.Count(r => ReferenceEquals(r.Owner, list) && r.Index < index);
+        List<Step> without = list
+            .Where(s => !outer.Any(r => ReferenceEquals(r.Step, s)))
+            .ToList();
+        int insert = Math.Clamp(index - adjust, 0, without.Count);
 
-        PushUndo("拖动步骤");
-        from.RemoveAt(fromIndex);
-        list.Insert(Math.Clamp(insert, 0, list.Count), step);
-        ReloadRows(step);
+        List<Step> expected = without.Take(insert)
+            .Concat(outer.Select(r => r.Step!))
+            .Concat(without.Skip(insert))
+            .ToList();
+        bool same = expected.Count == list.Count && expected.SequenceEqual(list);
+
+        // 落在原位（例如拖回自己的缺口）不算一次改动，别记撤销。
+        if (same && outer.All(r => ReferenceEquals(r.Owner, list))) return;
+
+        PushUndo(outer.Count > 1 ? $"拖动 {outer.Count} 步" : "拖动步骤");
+
+        foreach (StepRow row in outer) row.Owner!.Remove(row.Step!);
+        list.Clear();
+        list.AddRange(expected);
+
+        // 不传选中项：ReloadRows 按步骤引用恢复整组多选。
+        ReloadRows();
     }
 
     /// <summary>该步（或它的任意后代）的分支列表是不是 <paramref name="list"/>。</summary>

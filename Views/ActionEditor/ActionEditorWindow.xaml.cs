@@ -63,8 +63,12 @@ public partial class ActionEditorWindow : Window
     /// <summary>改名时同步过步骤引用：等变量名输入框失焦后重建步骤列表（别在每次按键时重建）。</summary>
     private bool _renameTouchedSteps;
 
-    // 拖动排序（只移动步骤本身，子步骤跟着走；标记行 / 空分支占位行不是落点）
+    // 拖动排序（子步骤跟着走；标记行 / 空分支占位行不是落点）
     private StepRow? _dragRow;
+
+    /// <summary>这次拖动要移动的行：按在已选中的行上时是整组，否则只有按下的那一行。</summary>
+    private List<StepRow> _dragRows = new();
+
     private int _dragRowIndex;
     private Point _dragOrigin;
     private bool _dragPending;
