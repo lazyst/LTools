@@ -26,6 +26,7 @@ public static class BuiltInUnits
         // —— 界面 / 文本 ——
         registry.Register(new ToastUnit());
         registry.Register(new UserInputUnit());
+        registry.Register(new TextWindowUnit());
         registry.Register(new ClipboardUnit());
         registry.Register(new ClipboardHistoryUnit());
         registry.Register(new ClipboardClearUnit());
