@@ -269,7 +269,10 @@
         </Style.Triggers>
     </Style>
 
-    <!-- 标题栏按钮 -->
+    <!-- 标题栏按钮：
+         ① 底色**必须方角满铺**（没有圆角、没有内缩边距）：窗口最大化后用户把鼠标甩到屏幕右上角
+            就要能直接点到关闭，按钮只要往里缩一点、或四角被圆角切掉，那个像素就落空了。
+         ② 高度与 TitleBar 一致（36），宽 44 = Win11 系统按钮的宽度，别改小。 -->
     <Style x:Key="TitleBarButton" TargetType="Button">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
@@ -280,8 +283,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="bd" Background="{TemplateBinding Background}"
-                            CornerRadius="{StaticResource CornerSm}" Margin="2,4">
+                    <Border x:Name="bd" Background="{TemplateBinding Background}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
@@ -301,8 +303,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="bd" Background="{TemplateBinding Background}"
-                            CornerRadius="{StaticResource CornerSm}" Margin="2,4">
+                    <Border x:Name="bd" Background="{TemplateBinding Background}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
@@ -885,7 +886,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Thumb">
-                    <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="3" Margin="2,1"/>
+                    <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="{StaticResource CornerSm}" Margin="2,1"/>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -903,7 +904,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Thumb">
-                    <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="3" Margin="1,2"/>
+                    <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="{StaticResource CornerSm}" Margin="1,2"/>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

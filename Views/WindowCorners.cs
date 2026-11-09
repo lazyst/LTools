@@ -19,6 +19,10 @@ namespace LTools.Views;
 /// DWM 对分层窗口不生效，直接跳过；<see cref="Win32.TryEnableRoundCorners"/> 失败（Win10）时
 /// 也一律保持原样，绝不硬画圆角边框。
 /// </para>
+/// <para>
+/// 最大化时系统不给窗口画圆角，所以自绘边框也跟着回到方角、**并把 1px 边框去掉**：
+/// 那条边框会把标题栏按钮往内挤 1px，用户把鼠标甩到屏幕右上角就点不到关闭。
+/// </para>
 /// </remarks>
 internal static class WindowCorners
 {
@@ -37,7 +41,17 @@ internal static class WindowCorners
         if (!Win32.TryEnableRoundCorners(new WindowInteropHelper(window).Handle)) return;
 
         // ModernWindow 模板里的那圈 1px 边框（其余窗口没有这个部件，圆角交给 DWM 就够了）
-        if (window.Template?.FindName("WindowFrame", window) is Border frame)
-            frame.CornerRadius = new CornerRadius(Radius);
+        var frame = window.Template?.FindName("WindowFrame", window) as Border;
+        if (frame == null) return;
+
+        ApplyFrame(frame, window.WindowState);
+        window.StateChanged += (_, _) => ApplyFrame(frame, window.WindowState);
+    }
+
+    private static void ApplyFrame(Border frame, WindowState state)
+    {
+        bool maximized = state == WindowState.Maximized;
+        frame.CornerRadius = new CornerRadius(maximized ? 0 : Radius);
+        frame.BorderThickness = new Thickness(maximized ? 0 : 1);
     }
 }
