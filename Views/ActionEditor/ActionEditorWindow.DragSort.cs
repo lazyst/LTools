@@ -138,8 +138,11 @@ public partial class ActionEditorWindow
         foreach (StepRow dragged in _dragRows)
             if (ContainerOf(dragged) is ListBoxItem item) item.Opacity = 0.35;
 
+        // 状态先落定再释放捕获：ReleaseMouseCapture 会同步派发挂起的 MouseMove（见 AGENTS）。
+        // 行在按下时捕获了鼠标；窗口层会吞掉 mouseup，留着捕获会让下一次点击落在旧行上。
         _dragPending = false;
         _dragging = true;
+        Mouse.Capture(null);
         return true;
     }
 

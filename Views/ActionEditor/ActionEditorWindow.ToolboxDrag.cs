@@ -52,6 +52,13 @@ public partial class ActionEditorWindow
             _dragGhost.ShowGhost(_unitSource, p);
             _unitPending = false;
             _unitDragging = true;
+
+            // 按钮在按下时捕获了鼠标；窗口层把 mouseup 吞掉后它永远等不到释放，
+            // 于是**下一次点击**会被它当成自己的松手，补一个 Click（弹出该单元的参数表单）。
+            // 进入拖动就交还捕获，并让这次按下不再算点击。
+            _suppressUnitClick = true;
+            Mouse.Capture(null);
+
             StartUnitAutoScroll();
         }
 
@@ -92,6 +99,7 @@ public partial class ActionEditorWindow
     private void CancelUnitDrag()
     {
         EndUnitDragVisuals();
+        _suppressUnitClick = false;   // Esc 取消：别让下一次正常点击被吞掉
         _unitSpec = null;
         _unitSource = null;
     }

@@ -22,6 +22,14 @@ public partial class ActionEditorWindow
     /// <summary>进程内步骤剪贴板：复制即覆盖，可跨动作窗口粘贴（按行顺序存多步）。</summary>
     private static readonly List<Step> _stepClipboard = new();
 
+    /// <summary>
+    /// 右键菜单必须在**按下时**就装好。WPF 的 ContextMenu 服务是在
+    /// <c>ContextMenuOpening</c> 触发之后才取菜单，在事件里现赋会赶不上——第一次右键只把菜单存下来、
+    /// 不弹出（用户报过「打开编辑器后第一次右键没反应」）。键盘（Shift+F10）仍走 Opening 兜底。
+    /// </summary>
+    private void StepList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e) =>
+        StepList.ContextMenu = BuildStepMenu(RowAt(e.OriginalSource as DependencyObject));
+
     private void StepList_ContextMenuOpening(object sender, ContextMenuEventArgs e) =>
         StepList.ContextMenu = BuildStepMenu(RowAt(e.OriginalSource as DependencyObject));
 

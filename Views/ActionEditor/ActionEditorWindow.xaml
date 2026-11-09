@@ -31,6 +31,11 @@
                             <ColumnDefinition Width="26"/>
                         </Grid.ColumnDefinitions>
 
+                        <!-- 选中指示：最左侧 3px 主色竖条（压在内边距上，不挤布局） -->
+                        <Border x:Name="AccentBar" Grid.ColumnSpan="7" Width="3"
+                                HorizontalAlignment="Left" CornerRadius="1.5" Margin="-5,0,0,0"
+                                Background="Transparent" IsHitTestVisible="False" Panel.ZIndex="1"/>
+
                         <!-- 折叠箭头：只有带子步骤的块才有 -->
                         <Button x:Name="FoldButton" Grid.Column="0" Style="{StaticResource BtnGhost}"
                                 Content="{Binding FoldGlyph}" Padding="0" Width="16" Height="20"
@@ -74,22 +79,33 @@
                     </Grid>
                 </Border>
 
-                <TextBlock x:Name="MarkerText" Text="{Binding MarkerText}" Visibility="Collapsed"
-                           Margin="{Binding MarkerIndent}" FontSize="{StaticResource FontSizeHint}"
-                           FontStyle="Italic" Foreground="{StaticResource HintTextBrush}"
-                           TextTrimming="CharacterEllipsis"/>
+                <Border x:Name="MarkerHost" Background="Transparent" CornerRadius="3" Padding="4,2"
+                        Margin="{Binding MarkerIndent}" Visibility="Collapsed">
+                    <TextBlock x:Name="MarkerText" Text="{Binding MarkerText}"
+                               FontSize="{StaticResource FontSizeHint}"
+                               FontStyle="Italic" Foreground="{StaticResource HintTextBrush}"
+                               TextTrimming="CharacterEllipsis"/>
+                </Border>
             </Grid>
 
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsMarker}" Value="True">
                     <Setter TargetName="Card" Property="Visibility" Value="Collapsed"/>
-                    <Setter TargetName="MarkerText" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="MarkerHost" Property="Visibility" Value="Visible"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
                     <Setter TargetName="MarkerText" Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsCollapsed}" Value="True">
                     <Setter TargetName="FoldButton" Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                </DataTrigger>
+                <!-- 单击选中的视觉：卡片变灰底 + 主色描边 + 左侧竖条（行本身是白卡片，容器底色被盖住） -->
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                             Value="True">
+                    <Setter TargetName="Card" Property="Background" Value="{StaticResource PressedBgBrush}"/>
+                    <Setter TargetName="Card" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                    <Setter TargetName="AccentBar" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+                    <Setter TargetName="MarkerHost" Property="Background" Value="{StaticResource PressedBgBrush}"/>
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
@@ -311,6 +327,7 @@
                              BorderThickness="0" Background="Transparent" SelectionMode="Extended"
                              ItemTemplate="{StaticResource StepRowTemplate}"
                              ContextMenuOpening="StepList_ContextMenuOpening"
+                             PreviewMouseRightButtonDown="StepList_PreviewMouseRightButtonDown"
                              PreviewMouseLeftButtonDown="StepList_PreviewMouseDown"
                              MouseDoubleClick="StepList_MouseDoubleClick">
                         <ListBox.ItemContainerStyle>
