@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -33,6 +34,15 @@ public partial class SuperPanelWindow
         if (FeatureCatalog.IsFeatureRef(id)) return BuildFeatureMenu(tref);
 
         var menu = new ContextMenu();
+        // 宏动作（单步「回放宏」）：磁贴就是宏，右键直接试放 / 重录，不必进编辑器。
+        var action = ActionRegistry.FindById(id);
+        if (MacroAction.MacroIdOf(action) is { } macroId)
+        {
+            AddMenuItem(menu, "▶ 试放宏", () => PlayMacro(macroId));
+            AddMenuItem(menu, "● 重新录制…", () => RerecordMacro(macroId, action?.Name));
+            menu.Items.Add(new Separator());
+        }
+
         AddMenuItem(menu, "编辑…", () => EditAction(tref));
         AddMenuItem(menu, "复制", () => DuplicateAction(tref));
         // 照 Quicker「以暂存区方式编辑」：正式动作只读，先复制一份到暂存区再改
@@ -107,6 +117,52 @@ public partial class SuperPanelWindow
     /// </summary>
     private void ToggleFloat(string actionId) => FloatingManager.ToggleAction(actionId);
 
+    // ============ 键鼠宏（磁贴 / 分组菜单） ============
+
+    /// <summary>
+    /// 面板里「录制键鼠宏」：先收起面板（录制期间钩子透明，面板上的点击也会被录进去），
+    /// 停止后自动挂成动作并放进面板（见 <see cref="MacroAction"/>）。
+    /// </summary>
+    private void RecordMacro()
+    {
+        Features.SuperPanel.Close();
+        MacroRecorder.Start();
+    }
+
+    /// <summary>试放一个宏：面板先收起，回放放后台线程（失败只提示，不抛到 UI）。</summary>
+    private void PlayMacro(string macroId)
+    {
+        var macro = MacroStore.Load(macroId);
+        if (macro == null)
+        {
+            ToastService.Show("宏文件不存在（可能被手工删掉了），请重新录制", "键鼠宏",
+                ToastService.StickyMs, ToastKind.error, key: "macro:play:hint");
+            return;
+        }
+
+        Features.SuperPanel.Close();
+        Task.Run(() =>
+        {
+            try
+            {
+                MacroPlayer.PlaySync(macro, MacroStore.PlaybackOf(macroId));
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("Macro", $"试放失败「{macro.Name}」", ex);
+                ToastService.Show("试放失败：" + ex.Message, "键鼠宏", ToastService.StickyMs,
+                    ToastKind.error, key: "macro:play:hint");
+            }
+        });
+    }
+
+    /// <summary>重新录制：沿用同一个宏与动作（面板 / 快捷键上的引用不用重放）。</summary>
+    private void RerecordMacro(string macroId, string? name)
+    {
+        Features.SuperPanel.Close();
+        MacroRecorder.StartInto(macroId, name);
+    }
+
     /// <summary>「悬浮此分组」：把整组动作一起放上桌面（面板同样不关）。</summary>
     private void FloatGroupToDesktop(PanelGroupDto group) => FloatingManager.FloatGroup(group);
 
@@ -122,6 +178,7 @@ public partial class SuperPanelWindow
         var menu = new ContextMenu();
         AddMenuItem(menu, "新建动作…", () => NewActionFor(group));
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
+        AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
         menu.Items.Add(new Separator());
         AddFeatureMenus(menu, group);
         TrackInteract(menu);
@@ -174,6 +231,7 @@ public partial class SuperPanelWindow
         var menu = NewTrackedMenu();
         AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(group));
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
+        AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
         menu.Items.Add(new Separator());
         AddFeatureMenus(menu, group);
         menu.Items.Add(new Separator());

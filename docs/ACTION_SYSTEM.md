@@ -861,3 +861,25 @@ HTML·RTF 往返 / `file.hash` 已知值 / `file.exists` 新字段 / 临时路�
 - `MigrateTest`：旧动作迁移后执行结果与旧执行器逐项比对。
 - `SubActionTest`：全局 + 动作内两种调用、三层嵌套、递归保护、删除引用提示。
 - `EditorTest`：由 Spec 生成的表单能打开并保存每个单元。
+
+---
+
+## 9. 宏收敛：一个宏就是一个动作（2026-11）
+
+原来的 `ActionType.macro`（顶层宏动作只存 `MacroId`、没有 `Program`）在实现上是半截管道：
+`ActionExecutor` 只给 `composite` 建运行会话，宏动作从任何入口触发都跑不动（异常只进日志），
+而编辑器保存时又会把类型强行改回 `composite`，宏随即变成孤儿被回收。
+
+现在的形状：
+
+- **删掉 `ActionType` / `ActionDto.Type` / `ActionDto.MacroId`**。动作只有 `Id` / `Name` / `Icon` / `Program`。
+- **一个宏 = 一个「1 步 · `input.macro`」的动作**：步骤参数 `macroId` 指向 `macros/<id>.json`，
+  宏元数据仍在 `configs/macros.json` 的 `Macros.Items`。
+- **`Features/MacroAction.cs` 是唯一桥梁**：`MacroIdOf` 做结构判定（单步 + `input.macro` + 字面量 `macroId`），
+  `Attach` 把宏挂成动作（已有就更新），`PlaceOnPanel` 放进当前全局场景的第一个分组。
+- **录制即闭环**：`MacroRecorder.MacroSaved(id)` → `App.OnMacroSaved` → `Attach` + `PlaceOnPanel` + toast。
+  录制热键是全局的（按一次开始、再按一次停止），托盘 / 面板「＋」/ 设置页「键鼠宏」三个入口等价。
+- **管理界面在设置 →「键鼠宏」**（`Views/Controls/MacroView`）：热键、启用开关、宏列表（改名 / 试放 / 重录 / 删除）、
+  回放默认值。动作编辑器里打开宏动作时显示一条宏横幅（重录 / 打开设置）。
+- **旧数据不迁移**：`"Type": "macro"` 的动作目录与它的宏文件在启动时（读配置之前）整体移进
+  `trash/<时间戳>/legacy-macro/`，用户重录一遍即可。

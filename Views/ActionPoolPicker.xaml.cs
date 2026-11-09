@@ -93,7 +93,8 @@ public partial class ActionPoolPicker : Window
                      .OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase))
         {
             ActionProgram? program = a.Program;
-            bool macro = a.Type == ActionType.macro;
+            string? macroId = MacroAction.MacroIdOf(a);
+            bool macro = macroId != null;
 
             var row = new ActionRow
             {
@@ -102,7 +103,9 @@ public partial class ActionPoolPicker : Window
                 Glyph = IconCatalog.GetGlyph(a.Icon),
                 IsMacro = macro,
                 TypeLabel = macro ? "宏" : "动作",
-                Description = program?.Description ?? "",
+                Description = macro
+                    ? MacroAction.SummaryOf(a) ?? "宏文件缺失"
+                    : program?.Description ?? "",
                 StepCount = program?.Steps.Count ?? 0,
             };
 
@@ -302,12 +305,19 @@ public partial class ActionPoolPicker : Window
             return;
         }
 
+        if (_current.IsMacro)
+        {
+            // 宏动作只有一个「回放宏」步骤，把宏的时长 / 事件数说清楚比列步骤有用。
+            AddSection("键鼠宏");
+            AddMuted(_current.Description.Length > 0 ? _current.Description : "宏文件缺失");
+            AddPickerHint();
+            return;
+        }
+
         AddSection(_current.StepCount > 0 ? $"步骤（{_current.StepCount}）" : "步骤");
         if (_current.Steps.Count == 0)
         {
-            AddMuted(_current.IsMacro
-                ? "键鼠宏：动作本身就是一段录制的键鼠事件，没有步骤。"
-                : "这个动作还没有步骤，可以在编辑器里添加。");
+            AddMuted("这个动作还没有步骤，可以在编辑器里添加。");
         }
         else
         {

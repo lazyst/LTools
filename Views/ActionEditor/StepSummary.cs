@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using LTools.Core.Actions;
+using LTools.Features;
 
 namespace LTools.Views;
 
@@ -31,6 +32,7 @@ internal static class StepSummary
 
         if (step.Unit is "flow.if" or "flow.while") return ConditionText(step);
         if (step.Unit == "sub.run") return Text(step, "subAction");
+        if (step.Unit == MacroAction.UnitKey) return MacroText(step);
 
         var parts = new List<string>();
         foreach (var input in unit.Spec.Inputs)
@@ -92,6 +94,23 @@ internal static class StepSummary
 
     private static string Text(Step step, string key) =>
         step.In.TryGetValue(key, out var arg) ? ArgText(arg) : "";
+
+    /// <summary>
+    /// 「回放宏」步骤的摘要：宏名字 + 时长（比裸宏 Id 有用）。宏文件没了就说清楚，
+    /// 而不是显示一个看不懂的 Id。
+    /// </summary>
+    private static string MacroText(Step step)
+    {
+        if (!step.In.TryGetValue("macroId", out var arg)) return "";
+        if (arg.Kind != StepArgKind.literal) return ArgText(arg);
+
+        string id = arg.Literal.AsText().Trim();
+        if (id.Length == 0) return "（未选择宏）";
+
+        var meta = MacroStore.MetaOf(id);
+        if (meta == null) return "宏文件缺失";
+        return $"{meta.Name} · {meta.DurationText}";
+    }
 
     private static bool IsEmpty(StepArg arg) =>
         arg.Kind == StepArgKind.literal

@@ -207,7 +207,7 @@ public partial class ConfigHelperWindow : Window
     /// <summary>一级导航的 tag（与 <c>ConfigHelper.xaml</c> 的 RadioButton 一一对应）。</summary>
     private static readonly HashSet<string> FirstLevelNav = new(StringComparer.Ordinal)
     {
-        "general", "actions", "subactions", "hotkeys", "terminals", "logs", "backup",
+        "general", "actions", "subactions", "hotkeys", "macros", "terminals", "logs", "backup",
     };
 
     /// <summary>把某个二级下拉设为展开 / 收起，并记住这个状态。</summary>
@@ -403,6 +403,7 @@ public partial class ConfigHelperWindow : Window
         Page_Actions.Visibility = tag == "actions" ? Visibility.Visible : Visibility.Collapsed;
         Page_SubActions.Visibility = tag == "subactions" ? Visibility.Visible : Visibility.Collapsed;
         Page_Hotkeys.Visibility = tag == "hotkeys" ? Visibility.Visible : Visibility.Collapsed;
+        Page_Macros.Visibility = tag == "macros" ? Visibility.Visible : Visibility.Collapsed;
         Page_SuperPanel.Visibility = superPanel ? Visibility.Visible : Visibility.Collapsed;
         Page_Terminals.Visibility = tag == "terminals" ? Visibility.Visible : Visibility.Collapsed;
         Page_Logs.Visibility = tag == "logs" ? Visibility.Visible : Visibility.Collapsed;
@@ -436,6 +437,7 @@ public partial class ConfigHelperWindow : Window
         if (tag == "subactions") Page_SubActions.Reload();
         if (ai) Page_Ai.Reload();
         if (tag == "hotkeys") Page_Hotkeys.Reload();
+        if (tag == "macros") Page_Macros.Reload();
         if (superPanel) PopulateSuperPanel();
     }
 
@@ -475,6 +477,19 @@ public partial class ConfigHelperWindow : Window
                 : NavTagOf(FamilyAi, _lastSubPage[FamilyAi]);
             SelectNavItem(target);
             ApplyNavPage(target);
+        }
+        Activate();
+        Topmost = true;
+        Topmost = false;
+    }
+
+    /// <summary>从托盘「键鼠宏…」跳过来：停在「键鼠宏」页。</summary>
+    public void NavigateToMacros()
+    {
+        if (_pagesReady)
+        {
+            SelectNavItem("macros");
+            ApplyNavPage("macros");
         }
         Activate();
         Topmost = true;
@@ -1061,7 +1076,7 @@ public partial class ConfigHelperWindow : Window
         {
             Id = a.Id;
             Name = a.Name;
-            TypeLabel = a.Type == ActionType.macro ? "宏" : "动作";
+            TypeLabel = MacroAction.MacroIdOf(a) != null ? "宏" : "动作";
             Glyph = IconCatalog.GetGlyph(a.Icon);
             Summary = ProgramSummary(a);
             References = references;
@@ -1073,10 +1088,10 @@ public partial class ConfigHelperWindow : Window
         public string Glyph { get; }
         public string Summary { get; }
 
-        /// <summary>动作体：显示步骤总数（含子步骤）；宏动作没有步骤。</summary>
+        /// <summary>动作体：显示步骤总数（含子步骤）；宏动作显示时长与事件数。</summary>
         private static string ProgramSummary(ActionDto a)
         {
-            if (a.Type == ActionType.macro) return "键盘鼠标宏";
+            if (MacroAction.SummaryOf(a) is { } macro) return macro;
             int count = a.Program?.Steps.Sum(s => s.SelfAndDescendants().Count()) ?? 0;
             return count == 0 ? "空动作" : $"{count} 步";
         }

@@ -207,6 +207,36 @@
                                    Foreground="{StaticResource HintTextBrush}" Visibility="Collapsed"/>
                     </Grid>
 
+                    <!-- 宏动作横幅：这个动作就是一段录制的宏（单步「回放宏」），重录 / 调参不在这里改步骤 -->
+                    <Border x:Name="MacroPanel" DockPanel.Dock="Top" Visibility="Collapsed"
+                            Margin="0,0,0,8" Padding="10,8" CornerRadius="6"
+                            Background="{StaticResource SurfaceAltBrush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
+                                <TextBlock x:Name="MacroTitle" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock x:Name="MacroMetaText" Margin="0,2,0,0"
+                                           FontSize="{StaticResource FontSizeHint}"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Style="{StaticResource BtnGhost}" Content="● 重新录制…"
+                                        MinHeight="24" Padding="8,2" Click="MacroRerecord_Click"
+                                        ToolTip="重新录一遍，覆盖这段宏（名称、面板 / 快捷键上的引用都不变）"/>
+                                <Button Style="{StaticResource BtnGhost}" Content="键鼠宏设置"
+                                        MinHeight="24" Padding="8,2" Margin="6,0,0,0"
+                                        Click="MacroSettings_Click"
+                                        ToolTip="录制热键、回放参数、改名 / 删除宏"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
                     <TextBlock x:Name="EmptyHint" DockPanel.Dock="Bottom"
                                Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
                                Text="（空动作）从左侧点一个单元开始，例如：读取选中文本 → 文本处理 → 提示弹窗"/>

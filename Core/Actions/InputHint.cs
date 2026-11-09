@@ -30,6 +30,7 @@ internal static class InputHint
             InputEditor.file => "文件路径；可写 ${变量}，也可点「浏览…」",
             InputEditor.folder => "文件夹路径；可写 ${变量}，也可点「浏览…」",
             InputEditor.image => "图片文件路径（png / jpg）；可写 ${变量}",
+            InputEditor.macro => "选择一个已录制的宏（在「设置 → 键鼠宏」里录制）",
             InputEditor.region => "屏幕区域 x,y,w,h；点「框选…」直接拖一块",
             InputEditor.variable => "变量名（只填名字，不用 ${}）",
             InputEditor.condition => "要比较的值：文本模板 / 变量 / 取值单元",

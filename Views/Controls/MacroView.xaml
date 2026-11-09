@@ -1,0 +1,246 @@
+<UserControl x:Class="LTools.Views.Controls.MacroView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
+    <UserControl.Resources>
+        <!-- 卡片容器（本页自带一份：ConfigHelper 的 CardBox 只在那个 Window 的资源里） -->
+        <Style x:Key="CardBox" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="14,12"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+
+        <Style x:Key="MiniBtn" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Padding" Value="9,1"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="MinWidth" Value="0"/>
+        </Style>
+
+        <!-- 字段行：左标签 + 右控件 -->
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
+            <Setter Property="Margin" Value="0,0,12,0"/>
+        </Style>
+
+        <Style x:Key="FieldRow" TargetType="Grid">
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+
+        <!-- 一个宏一行：名字（可改）+ 摘要 + 操作 -->
+        <DataTemplate x:Key="MacroRowTemplate">
+            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="2,6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="140"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
+                        <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                 BorderThickness="0" Background="Transparent" Padding="0"
+                                 FontWeight="SemiBold" LostKeyboardFocus="NameBox_LostFocus"
+                                 ToolTip="改完名字按回车 / 点到别处即保存；动作名会跟着改"/>
+                        <TextBlock Text="{Binding Meta}" Margin="0,2,0,0"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Style="{StaticResource MiniBtn}" Content="试放" Tag="{Binding}"
+                                Click="Play_Click" ToolTip="立即回放一遍（Esc 之外按回放停止热键也能停）"/>
+                        <Button Style="{StaticResource MiniBtn}" Content="回放设置…" Margin="6,0,0,0"
+                                Tag="{Binding}" Click="PlaybackSettings_Click"
+                                ToolTip="只改这一个宏：倒计时 / 速度 / 循环次数（留空跟随下面的默认值）"/>
+                        <Button Style="{StaticResource MiniBtn}" Content="重新录制" Margin="6,0,0,0"
+                                Tag="{Binding}" Click="Rerecord_Click"
+                                ToolTip="覆盖这个宏（名称与面板 / 快捷键上的引用都不变）"/>
+                        <Button Style="{StaticResource MiniBtn}" Content="删除" Margin="6,0,0,0"
+                                Tag="{Binding}" Click="Delete_Click"
+                                ToolTip="删除宏，引用它的动作也会一起删掉"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                  Padding="20,14,20,14">
+        <StackPanel>
+            <!-- ============ 录制 ============ -->
+            <TextBlock Style="{StaticResource SectionLabel}" Text="录制" Margin="0,0,0,8"/>
+            <Border Style="{StaticResource CardBox}">
+                <StackPanel>
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="RecordButton" Style="{StaticResource BtnPrimary}"
+                                Content="● 录制新宏" MinWidth="118" Click="Record_Click"/>
+                        <TextBlock Grid.Column="1" x:Name="RecordHint" Margin="12,0,0,0"
+                                   VerticalAlignment="Center" TextWrapping="Wrap"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource SecondaryTextBrush}"/>
+                    </Grid>
+
+                    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                            Margin="0,0,0,10"/>
+
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="启用键鼠宏"/>
+                        <CheckBox Grid.Column="1" x:Name="EnabledCheck" Content="允许录制与回放"
+                                  VerticalAlignment="Center" Click="Enabled_Click"/>
+                    </Grid>
+
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150"/>
+                            <ColumnDefinition Width="220"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="录制 / 停止热键"/>
+                        <TextBox Grid.Column="1" x:Name="RecordHotkeyBox"/>
+                        <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
+                                   Margin="12,0,0,0" VerticalAlignment="Center"
+                                   Text="按一次开始录，再按一次停止（全局生效）"/>
+                    </Grid>
+
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150"/>
+                            <ColumnDefinition Width="220"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="停止回放热键"/>
+                        <TextBox Grid.Column="1" x:Name="PlayHotkeyBox"/>
+                        <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
+                                   Margin="12,0,0,0" VerticalAlignment="Center"
+                                   Text="回放期间按下即停（只在回放时占用）"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 宏列表 ============ -->
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Style="{StaticResource SectionLabel}" Text="已录制的宏" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Style="{StaticResource MiniBtn}" Content="打开宏目录"
+                        Click="OpenFolder_Click" ToolTip="事件文件在数据根的 macros/ 下，可直接备份 / 拷走"/>
+            </Grid>
+            <Border Style="{StaticResource CardBox}" Padding="10,4">
+                <StackPanel>
+                    <ListBox x:Name="MacroList" BorderThickness="0" Background="Transparent"
+                             ItemTemplate="{StaticResource MacroRowTemplate}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             Padding="0"/>
+                    <TextBlock x:Name="EmptyHint" Margin="4,10,4,10" TextWrapping="Wrap"
+                               FontSize="{StaticResource FontSizeHint}"
+                               Foreground="{StaticResource HintTextBrush}"
+                               Text="还没有录制过宏。点上面的「● 录制新宏」，或直接按录制热键。录完会自动变成面板上的一个动作。"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 回放默认值 ============ -->
+            <TextBlock Style="{StaticResource SectionLabel}" Text="回放默认值" Margin="0,0,0,8"/>
+            <Border Style="{StaticResource CardBox}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,0,0,10"
+                               Text="点某个宏的「回放设置…」可以只改那一个宏；这里是没有单独设置时的默认值。"/>
+
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150"/>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="开始前倒计时"/>
+                        <TextBox Grid.Column="1" x:Name="CountdownBox" LostKeyboardFocus="Number_LostFocus"/>
+                        <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}" Margin="8,0,0,0"
+                                   VerticalAlignment="Center" Text="毫秒，0 = 立即开始"/>
+                    </Grid>
+
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150"/>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="速度倍率"/>
+                        <TextBox Grid.Column="1" x:Name="SpeedBox" LostKeyboardFocus="Number_LostFocus"/>
+                        <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}" Margin="8,0,0,0"
+                                   VerticalAlignment="Center" Text="0.1–5，2 = 两倍速"/>
+                    </Grid>
+
+                    <Grid Style="{StaticResource FieldRow}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150"/>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="循环次数"/>
+                        <TextBox Grid.Column="1" x:Name="LoopsBox" LostKeyboardFocus="Number_LostFocus"/>
+                        <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}" Margin="8,0,0,0"
+                                   VerticalAlignment="Center" Text="1–99"/>
+                    </Grid>
+
+                    <Expander Header="高级" Margin="0,4,0,0">
+                        <StackPanel Margin="0,8,0,0">
+                            <Grid Style="{StaticResource FieldRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="鼠标采样间隔"/>
+                                <TextBox Grid.Column="1" x:Name="SampleMsBox"
+                                         LostKeyboardFocus="Number_LostFocus"/>
+                                <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
+                                           Margin="8,0,0,0" VerticalAlignment="Center"
+                                           Text="毫秒，0 = 不按时间抽稀（越小越还原，文件越大）"/>
+                            </Grid>
+                            <Grid Style="{StaticResource FieldRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="鼠标最小位移"/>
+                                <TextBox Grid.Column="1" x:Name="SamplePxBox"
+                                         LostKeyboardFocus="Number_LostFocus"/>
+                                <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
+                                           Margin="8,0,0,0" VerticalAlignment="Center"
+                                           Text="像素，0 = 不按距离抽稀"/>
+                            </Grid>
+                            <Grid Style="{StaticResource FieldRow}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="最大事件数"/>
+                                <TextBox Grid.Column="1" x:Name="MaxEventsBox"
+                                         LostKeyboardFocus="Number_LostFocus"/>
+                                <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
+                                           Margin="8,0,0,0" VerticalAlignment="Center"
+                                           Text="达到后自动停止录制"/>
+                            </Grid>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

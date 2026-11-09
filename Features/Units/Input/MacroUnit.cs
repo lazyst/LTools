@@ -1,22 +1,27 @@
-using System.Globalization;
 using LTools.Core.Actions;
 using LTools.Native;
 
 namespace LTools.Features.Units.Input;
 
 /// <summary>回放录制的键鼠宏。</summary>
+/// <remarks>
+/// 一个宏就是一个「1 步 · 回放宏」的动作（见 <see cref="MacroAction"/>），
+/// 所以宏动作在编辑器里打开时看到的也是这一步。
+/// </remarks>
 public sealed class MacroUnit : IStepUnit
 {
     public UnitSpec Spec { get; } = new()
     {
-        Key = "input.macro",
+        Key = MacroAction.UnitKey,
         Name = "回放宏",
         Category = "键鼠与输入",
         Icon = "macro",
         Description = "同步回放一个已录制的键鼠宏",
         Inputs = new[]
         {
-            new InputSpec("macroId", "宏", ValueKind.text, Required: true),
+            new InputSpec("macroId", "宏", ValueKind.text, Required: true,
+                Editor: InputEditor.macro,
+                Description: "要回放的宏；宏在「设置 → 键鼠宏」里录制、改名、调回放参数"),
         },
     };
 

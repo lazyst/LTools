@@ -80,6 +80,11 @@ public partial class App : Application
         // 鼠标事件挂起 → 启动瞬间鼠标卡顿。故重活前置、钩子最后装：装完即返回，Dispatcher 立即泵消息，
         // 钩子回调第一时间被服务。顺带也保证 AppState / 动作清单在钩子首次回调前已就绪。
         var cfgPath = ConfigLocator.FindPath();
+
+        // 旧版「宏动作」（Type = "macro"）已经没有对应类型：连同宏文件一起移进 trash/，
+        // 必须在读配置之前做——否则 ActionStore 会把它当成空动作读进来再写回去。
+        MacroStore.RetireLegacyMacroActions(cfgPath);
+
         var cfg = AppConfig.Load(cfgPath);
 
         // 运行日志：启动即按配置开启，后续设置页改动会即时生效。放在重活最前面，
@@ -123,7 +128,7 @@ public partial class App : Application
         ImageLibrary.EnsureDir();
         MacroSettings.Load(cfg);
         MacroStore.Ensure();
-        // 录制即生成动作：托盘等入口录完的宏，自动进动作池（动作编辑器内录制除外）。
+        // 录制即生成动作：录完的宏自动挂成一个「回放宏」动作并放进面板（见 MacroAction）。
         MacroRecorder.MacroSaved += OnMacroSaved;
 
         // 停止录制的兜底热键：消息窗口必须在钩子安装前建好（注册时不能再建窗口）。
@@ -131,7 +136,7 @@ public partial class App : Application
 
         // —— 内部动作注册（动作系统 §7）——
 
-        // 一宏一动作：回收不再被任何动作 / 组合步骤引用的宏文件（含旧版本遗留的孤儿文件）。
+        // 一宏一动作：回收不再被任何动作步骤引用的宏文件（含旧版本遗留的孤儿文件）。
         MacroStore.CollectGarbage();
 
         // 模板截图同理：删动作 / 换模板后旧 shot-*.png 没有别处回收，启动时按引用清一次。
@@ -173,6 +178,8 @@ public partial class App : Application
         menu.Items.Add(new Separator());
         _macroMenuItem = NewItem("开始 / 停止录制宏", () => MacroRecorder.Toggle());
         _macroMenuItemText = (TextBlock)((StackPanel)_macroMenuItem.Header).Children[1];
+        menu.Items.Add(_macroMenuItem);
+        menu.Items.Add(NewItem("键鼠宏…", ConfigHelper.OpenMacros));
         menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("启用 CapsLock 修饰键", Settings.ToggleCapsLockModifier, () => AppState.CapsLockModifier));
         menu.Items.Add(NewItem("启用超级面板", Settings.ToggleSuperPanel, () => AppState.IsSuperPanelEnabled));
@@ -247,7 +254,7 @@ public partial class App : Application
         if (_macroMenuItemText == null) return;
         _macroMenuItemText.Text = MacroRecorder.IsRecording
             ? $"■ 停止录制宏（{MacroSettings.RecordHotkeyDisplay}）"
-            : "开始 / 停止录制宏";
+            : $"● 开始录制宏（{MacroSettings.RecordHotkeyDisplay}）";
     }
 
     private const double StatusDotSize = 9;
@@ -265,35 +272,33 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// 宏保存完成（后台线程）：非动作编辑器发起的录制要在动作池生成同名宏动作。
+    /// 宏保存完成（后台线程）：把它挂成动作（新建或覆盖同名宏动作），并放进面板
+    /// （见 <see cref="MacroAction.Attach"/> / <see cref="MacroAction.PlaceOnPanel"/>）。
     /// <c>ConfigStore</c> / <c>ActionRegistry</c> 非线程安全，必须回到 UI 线程。
     /// </summary>
-    private static void OnMacroSaved(string id, bool autoCreate)
+    private static void OnMacroSaved(string id)
     {
-        if (!autoCreate) return;
         Application.Current?.Dispatcher.BeginInvoke(() =>
         {
-            try { EnsureMacroAction(id); }
-            catch (Exception ex) { CrashLog.Write("App.EnsureMacroAction", ex); }
-        });
-    }
+            try
+            {
+                string name = MacroStore.MetaOf(id)?.Name ?? ("宏 " + id);
+                string? actionId = MacroAction.Attach(id, name);
+                if (actionId == null) return;
 
-    /// <summary>为宏生成动作（已存在则跳过），实现「一个键鼠宏就是一个动作」。</summary>
-    private static void EnsureMacroAction(string id)
-    {
-        if (string.IsNullOrWhiteSpace(id)) return;
-        if (ActionRegistry.All.Any(a => a.Type == ActionType.macro && a.MacroId == id)) return;
-
-        var meta = MacroStore.MetaOf(id);
-        string name = string.IsNullOrWhiteSpace(meta?.Name) ? "宏 " + id : meta!.Name;
-        ConfigStore.AddAction(new ActionDto
-        {
-            Name = name,
-            Type = ActionType.macro,
-            MacroId = id,
-            Icon = "record",
+                string? group = MacroAction.PlaceOnPanel(actionId);
+                string where = group == null ? "已在面板里" : $"已放进面板「{group}」";
+                ToastService.Show($"{name}\n{where} · 右键磁贴可试放 / 重新录制",
+                    "键鼠宏已录好", 6000, ToastKind.success, key: "macro:saved",
+                    onClick: ConfigHelper.OpenMacros);
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write("App.OnMacroSaved", ex);
+                ToastService.Show("宏已保存，但没能挂成动作：" + ex.Message, "键鼠宏",
+                    ToastService.StickyMs, ToastKind.error, key: "macro:saved");
+            }
         });
-        ConfigStore.Save();
     }
 
     internal static System.Windows.Media.ImageSource? LoadIconSource()

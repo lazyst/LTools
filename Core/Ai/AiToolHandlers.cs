@@ -182,7 +182,7 @@ internal static class AiToolHandlers
                 ["id"] = a.Id,
                 ["name"] = a.Name,
                 ["icon"] = a.Icon,
-                ["type"] = a.Type.ToString(),
+                ["type"] = MacroAction.MacroIdOf(a) != null ? "macro" : "action",
                 ["stepCount"] = a.Program?.Steps.Count,
             })
             .ToList());
@@ -206,7 +206,7 @@ internal static class AiToolHandlers
             ["id"] = action.Id,
             ["name"] = action.Name,
             ["icon"] = action.Icon,
-            ["type"] = action.Type.ToString(),
+            ["type"] = MacroAction.MacroIdOf(action) != null ? "macro" : "action",
             ["program"] = program,
         };
     }

@@ -337,7 +337,6 @@ public sealed partial class StashPane : UserControl
         {
             Name = string.IsNullOrWhiteSpace(program.Name) ? "AI 草稿" : program.Name,
             Icon = string.IsNullOrWhiteSpace(program.Icon) ? IconCatalog.Default : program.Icon,
-            Type = ActionType.composite,
             Program = program.Clone(),
         };
 

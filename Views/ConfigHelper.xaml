@@ -130,6 +130,8 @@
                                      Checked="Nav_Changed" Tag="subactions"/>
                         <RadioButton x:Name="NavHotkeys" Style="{StaticResource NavRow}" Content="快捷键"
                                      Checked="Nav_Changed" Tag="hotkeys"/>
+                        <RadioButton Style="{StaticResource NavRow}" Content="键鼠宏"
+                                     Checked="Nav_Changed" Tag="macros"/>
                         <!-- 面板管理：点它进「常规」主页面，并在下方展开二级下拉导航 -->
                         <RadioButton x:Name="NavSuperPanel" Style="{StaticResource NavRow}"
                                      Checked="Nav_Changed" Tag="superpanel"
@@ -365,6 +367,9 @@
 
                 <!-- ============ 快捷键 ============ -->
                 <controls:HotkeysView x:Name="Page_Hotkeys" Visibility="Collapsed"/>
+
+                <!-- ============ 键鼠宏 ============ -->
+                <controls:MacroView x:Name="Page_Macros" Visibility="Collapsed"/>
 
                 <!-- ============ 子动作库 ============ -->
                 <controls:SubActionLibraryView x:Name="Page_SubActions" Visibility="Collapsed"/>

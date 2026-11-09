@@ -54,8 +54,12 @@ internal static class MacroPlayer
         try
         {
             RegisterStopHotkey(options);
-            if (options.Loops < 0)
-                NotifySafe($"宏「{macro.Name}」无限循环中，按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止");
+            // 回放期间挂一条常驻提示（含停止热键），结束时收掉：用户随时知道「怎么停」。
+            ToastService.Show(
+                options.Loops < 0
+                    ? $"「{macro.Name}」无限循环中 · 按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止"
+                    : $"「{macro.Name}」回放中 · 按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止",
+                "键鼠宏", ToastService.StickyMs, ToastKind.info, key: PlayKey);
             PlayCore(macro, options);
             AppLog.Info("Macro", $"回放结束「{macro.Name}」· {started.ElapsedMilliseconds} ms");
         }
@@ -68,8 +72,12 @@ internal static class MacroPlayer
         finally
         {
             MacroHotkey.UnregisterPlaybackStop();
+            ToastService.Close(PlayKey);
         }
     }
+
+    /// <summary>回放期间那条常驻提示的 key（结束时按它收掉）。</summary>
+    private const string PlayKey = "macro:play";
 
     /// <summary>
     /// 回放开始前注册系统停止热键；被其他程序占用时不影响回放——
@@ -79,8 +87,10 @@ internal static class MacroPlayer
     private static void RegisterStopHotkey(MacroStore.MacroPlayback options)
     {
         if (!MacroHotkey.RegisterPlaybackStop() && options.Loops < 0)
-            NotifySafe($"系统热键 {MacroSettings.PlaybackStopHotkeyDisplay} 被其他程序占用；"
-                       + "LTools 键盘钩子仍会在按下该组合键时停止宏。");
+            ToastService.Show(
+                $"系统热键 {MacroSettings.PlaybackStopHotkeyDisplay} 被其他程序占用；"
+                + "LTools 键盘钩子仍会在按下该组合键时停止宏。",
+                "键鼠宏", 6000, ToastKind.warning, key: "macro:play:hotkey");
     }
 
     /// <summary>请求停止回放；回放线程会在下一个等待点退出并释放按键。</summary>
@@ -163,14 +173,6 @@ internal static class MacroPlayer
             _playing = 0;
             _wake.Reset();
         }
-    }
-
-    /// <summary>后台线程提示（MouseTip 必须在 UI 线程创建窗口）。</summary>
-    private static void NotifySafe(string message)
-    {
-        var app = Application.Current;
-        if (app == null) return;
-        app.Dispatcher.BeginInvoke(() => TrayService.Notify(message));
     }
 
     /// <summary>等到相对开始时间的 targetMs；可被 <see cref="Stop"/> 立即唤醒。</summary>

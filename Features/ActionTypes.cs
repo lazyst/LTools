@@ -5,19 +5,6 @@ using LTools.Core.Actions;
 
 namespace LTools.Features;
 
-/// <summary>
-/// 动作类型。JSON 中以小写字符串存储。
-/// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter))]
-public enum ActionType
-{
-    /// <summary>动作体（<see cref="ActionDto.Program"/>）：新建动作都是它。</summary>
-    composite,
-
-    /// <summary>「一个键鼠宏就是一个动作」的顶层宏动作（事件本体在 <c>macros/&lt;id&gt;.json</c>）。</summary>
-    macro,
-}
-
 /// <summary>鼠标动作的子类型（旧 <c>mouse</c> 动作 / 新「鼠标操作」单元）。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum MouseActionKind
@@ -120,8 +107,9 @@ public static class WindowActionLabel
 /// 超级面板格子、快捷键绑定与悬浮项都只引用其 <see cref="Id"/>。
 /// </summary>
 /// <remarks>
-/// 新建动作一律写 <see cref="ActionType.composite"/> + <see cref="Program"/>；
-/// <see cref="ActionType.macro"/> 保留给「一个键鼠宏就是一个动作」的顶层宏动作。
+/// 动作只有一种形状：<see cref="Program"/>（变量表 + 步骤）。键鼠宏也不例外——
+/// 一个宏就是一个「1 步 · 回放宏」的动作（<c>input.macro</c>），宏的事件本体在
+/// <c>macros/&lt;id&gt;.json</c>，由步骤的 <c>macroId</c> 参数引用。
 /// </remarks>
 public sealed class ActionDto
 {
@@ -134,18 +122,7 @@ public sealed class ActionDto
     /// <summary>内置图标 Id（见 <see cref="IconCatalog"/>），可为空。</summary>
     public string? Icon { get; set; }
 
-    /// <summary>
-    /// 动作类型：<see cref="ActionType.composite"/>（有动作体）或 <see cref="ActionType.macro"/>。
-    /// </summary>
-    [JsonPropertyName("Type")]
-    public ActionType Type { get; set; }
-
-    // —— macro（录制宏）——
-
-    /// <summary>macro: 宏 Id（事件本体存 <c>macros/&lt;id&gt;.json</c>）。</summary>
-    public string? MacroId { get; set; }
-
-    /// <summary>动作体（变量表 + 步骤 + 动作内子动作）；<see cref="Type"/> 为 composite 时必须有。</summary>
+    /// <summary>动作体（变量表 + 步骤 + 动作内子动作）。</summary>
     public ActionProgram? Program { get; set; }
 
     /// <summary>深拷贝（含动作体深拷贝）。</summary>
@@ -156,8 +133,6 @@ public sealed class ActionDto
             Id = Id,
             Name = Name,
             Icon = Icon,
-            Type = Type,
-            MacroId = MacroId,
             Program = Program?.Clone(),
         };
     }

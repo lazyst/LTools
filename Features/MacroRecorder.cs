@@ -17,9 +17,9 @@ namespace LTools.Features;
 /// </summary>
 /// <remarks>
 /// 线程模型：钩子回调在主 UI 线程，录制状态与事件列表也只在 UI 线程读写
-/// （起始 / 停止由动作编辑器或托盘触发，同样在 UI 线程），故热路径无需加锁。
+/// （起始 / 停止由托盘、面板、设置页或录制热键触发，同样在 UI 线程），故热路径无需加锁。
 /// 停止时在 UI 线程做一次不可变快照，落盘交给后台线程。
-/// 录制热键只在「键鼠宏」动作编辑窗口打开期间生效，不是全局热键。
+/// 录制热键是**全局**的：按一次开始录一个新宏，再按一次停止（见 <see cref="HandleHotkey"/>）。
 /// </remarks>
 internal static class MacroRecorder
 {
@@ -37,24 +37,20 @@ internal static class MacroRecorder
     private static bool _recording;
     private static bool _capsSwallowedDown;   // 录制中吞掉的 CapsLock 仍处于按下状态
 
-    // 录制目标：非空表示覆盖同一宏（动作编辑器「重新录制」）；null 表示新建宏。
+    // 录制目标：非空表示覆盖同一宏（「重新录制」）；null 表示新建宏。
     private static string? _recordTargetId;
     private static string? _recordName;          // 覆盖录制时保留原名称；null = 用默认时间戳名
-    private static bool _suppressAutoAction;    // 动作编辑器内录制：由编辑器自己绑定，不自动建动作
-    private static bool _editorInitiated;       // 本次录制由宏动作编辑器发起（按钮或热键）
 
-    // 宏动作编辑窗口会话：热键只在这个窗口打开期间生效（不再是全局热键）。
-    private static int _editorSessions;
-    private static string? _editorTargetId;
-    private static string? _editorTargetName;
-
-    // —— 录制状态事件（供动作编辑器等 UI 同步）——
+    // —— 录制状态事件（供设置页 / 指示器同步）——
     // 均在触发录制 / 停止的线程（通常是 UI 线程）同步触发；保存完成事件来自后台线程。
     public static event Action? RecordingStarted;
     public static event Action? RecordingStopped;
 
-    /// <summary>宏保存完成（后台线程触发）：<c>id</c>、是否应自动在动作池创建同名宏动作。</summary>
-    public static event Action<string, bool>? MacroSaved;
+    /// <summary>
+    /// 宏保存完成（后台线程触发）：参数是宏 Id。订阅方负责把它挂成动作并放进面板
+    /// （见 <see cref="MacroAction.Attach"/>）。
+    /// </summary>
+    public static event Action<string>? MacroSaved;
 
     // 录制开始时的虚拟桌面矩形：回放换分辨率 / 换显示器布局时按比例缩放鼠标坐标。
     private static int _deskLeft, _deskTop, _deskWidth, _deskHeight;
@@ -63,39 +59,6 @@ internal static class MacroRecorder
     private static bool _recordHotkeyDown;
 
     public static bool IsRecording => _recording;
-
-    /// <summary>本次录制是否由宏动作编辑器发起（按钮或限定热键）。</summary>
-    public static bool IsEditorRecording => _editorInitiated;
-
-    /// <summary>录制热键是否生效（仅宏动作编辑窗口打开期间）。</summary>
-    public static bool HotkeyActive => _editorSessions > 0;
-
-    /// <summary>进入宏动作编辑窗口会话：之后录制热键才生效。</summary>
-    public static void EnterEditorSession() { _editorSessions++; _recordHotkeyDown = false; }
-
-    /// <summary>编辑器切换 / 保存宏后，更新热键录制要绑定到的目标。</summary>
-    public static void UpdateEditorTarget(string? macroId, string? name)
-    {
-        _editorTargetId = string.IsNullOrWhiteSpace(macroId) ? null : macroId;
-        _editorTargetName = string.IsNullOrWhiteSpace(name) ? null : name;
-    }
-
-    /// <summary>退出宏动作编辑窗口会话；最后一个窗口关闭后热键立即失效。</summary>
-    public static void ExitEditorSession()
-    {
-        if (_editorSessions > 0) _editorSessions--;
-        if (_editorSessions > 0) return;
-
-        _editorTargetId = null;
-        _editorTargetName = null;
-        // 会话结束时不吞键：清掉热键锁存，避免下次进窗口后热键被上一次的残留状态卡住。
-        _recordHotkeyDown = false;
-
-        // 会话结束 = 窗口内热键失效。编辑器发起的录制若还在跑，就先收尾保存，
-        // 否则录制会一直继续且没有热键可停（窗口已关、指示器还挂着）。
-        // 这里必须 force：刚开录就被关窗时不能被防抖挡住而留下「无界面的录制」。
-        if (_recording && _editorInitiated) Stop(force: true);
-    }
 
     /// <summary>键盘钩子是否需要接管 CapsLock：录制中，或录制的 CapsLock 仍按住（补吞 keyup）。</summary>
     public static bool ShouldHandleCapsLock => _recording || _capsSwallowedDown;
@@ -136,20 +99,34 @@ internal static class MacroRecorder
     public static void Start() => Start(0);
 
     /// <summary>开始录制；<paramref name="rawTime"/> 为热键事件的钩子时间（保留触发前的等待时长）。</summary>
-    public static void Start(uint rawTime) => StartCore(rawTime, null, null, suppressAutoAction: false, editorInitiated: false);
+    public static void Start(uint rawTime) => StartCore(rawTime, null, null);
 
     /// <summary>
-    /// 为动作编辑器开始录制：<paramref name="targetId"/> 非空时覆盖该宏（重新录制），
-    /// 否则新建；<paramref name="name"/> 为覆盖录制时保留的宏名。
-    /// 编辑器自己会把 MacroId 绑回动作，故不自动创建动作。
+    /// 开始录制并覆盖已有宏（「重新录制」）：<paramref name="targetId"/> 非空时沿用同一个宏，
+    /// 事件文件整体替换，宏动作不用重建（面板 / 快捷键上的引用保持有效）。
     /// </summary>
-    public static void StartInto(string? targetId, string? name)
-        => StartCore(0, targetId, name, suppressAutoAction: true, editorInitiated: true);
+    public static void StartInto(string targetId, string? name) => StartCore(0, targetId, name);
 
-    private static void StartCore(uint rawTime, string? targetId, string? name,
-                                  bool suppressAutoAction, bool editorInitiated)
+    private static void StartCore(uint rawTime, string? targetId, string? name)
     {
-        if (_recording || !MacroSettings.Enabled || MacroPlayer.IsPlaying) return;
+        if (_recording) return;
+
+        // 拒绝原因要说清楚：热键 / 按钮都没反应时用户只能猜。
+        if (!MacroSettings.Enabled)
+        {
+            TrayService.Notify("键鼠宏已停用，无法录制（在设置 → 键鼠宏里打开）");
+            return;
+        }
+        if (MacroPlayer.IsPlaying)
+        {
+            TrayService.Notify("宏正在回放，无法开始录制");
+            return;
+        }
+        if (AutomationRunner.IsRunning)
+        {
+            TrayService.Notify("有动作正在运行，无法开始录制");
+            return;
+        }
 
         _events.Clear();
         _downKeys.Clear();
@@ -157,8 +134,6 @@ internal static class MacroRecorder
         _capsSwallowedDown = false;
         _recordTargetId = string.IsNullOrWhiteSpace(targetId) ? null : targetId;
         _recordName = string.IsNullOrWhiteSpace(name) ? null : name;
-        _suppressAutoAction = suppressAutoAction;
-        _editorInitiated = editorInitiated;
         // 以热键事件的系统 tick 作为零点：录制开始后到第一个输入的停顿也会被回放。
         _startRaw = rawTime != 0 ? rawTime : unchecked((uint)Environment.TickCount);
         _lastEventMs = 0;
@@ -170,7 +145,7 @@ internal static class MacroRecorder
 
         // 兜底停止通道：系统级热键，钩子被摘 / 修饰键判定异常时仍能停下录制。
         MacroHotkey.Register();
-        Trace($"start target={targetId ?? "-"} editor={editorInitiated}");
+        Trace($"start target={targetId ?? "-"}");
         AppLog.Info("Macro", $"开始录制（{(string.IsNullOrEmpty(targetId) ? "新建" : "覆盖 " + targetId)}）");
 
         _deskLeft = Win32.GetSystemMetrics(Win32.SmXVirtualscreen);
@@ -235,11 +210,8 @@ internal static class MacroRecorder
 
         string? targetId = _recordTargetId;
         string? recordName = _recordName;
-        bool autoCreate = !_suppressAutoAction;
         _recordTargetId = null;
         _recordName = null;
-        _suppressAutoAction = false;
-        _editorInitiated = false;
 
         if (_events.Count == 0)
         {
@@ -267,30 +239,31 @@ internal static class MacroRecorder
                 snapshot.Id = string.IsNullOrEmpty(targetId) ? MacroStore.NewId() : targetId;
                 MacroStore.Save(snapshot);
                 AppLog.Info("Macro", $"宏已保存「{snapshot.Name}」({snapshot.Id}) · {snapshot.Events.Count} 个事件");
-                TrayService.Notify($"宏已保存：{snapshot.Name}（{snapshot.Events.Count} 个事件）");
-                RaiseSaved(snapshot.Id, autoCreate);
+                RaiseSaved(snapshot.Id);
             }
             catch (Exception ex)
             {
                 AppLog.Error("Macro", "宏保存失败", ex);
                 CrashLog.Write("MacroRecorder.Save", ex);
-                TrayService.Notify("宏保存失败，详见崩溃日志");
+                ToastService.Show("宏保存失败，详见崩溃日志", "键鼠宏", ToastService.StickyMs, ToastKind.error);
             }
         });
     }
 
     /// <summary>
     /// 钩子回调内调用：识别录制热键。命中返回 true（吞掉该键），未命中返回 false。
-    /// 「停止」不受编辑器会话限制——只要正在录制就能停；「开始」只在键鼠宏动作编辑窗口内生效。
+    /// 录制中是「停止」；没录制时是「开始录一个新宏」。两条都只在 <see cref="MacroSettings.Enabled"/>
+    /// 打开、且没有宏在回放 / 动作在运行时才认。
     /// </summary>
     public static bool HandleHotkey(ushort vk, bool isDown, bool isUp, uint rawTime)
     {
         bool canStop = _recording;
-        bool canStart = !_recording && _editorSessions > 0 && MacroSettings.Enabled;
+        bool canStart = !_recording && MacroSettings.Enabled
+                        && !MacroPlayer.IsPlaying && !AutomationRunner.IsRunning;
 
         if (!canStop && !canStart)
         {
-            // 会话外不锁存：长按过热键后再关窗口，残留状态会让下一次录制热键失灵。
+            // 不锁存：长按过热键后再开始录制，残留状态会让下一次录制热键失灵。
             if (isUp) _recordHotkeyDown = false;
             return false;
         }
@@ -302,10 +275,9 @@ internal static class MacroRecorder
             if (!_recordHotkeyDown && ModifiersDown(MacroSettings.RecordHotkeyModifiers))
             {
                 _recordHotkeyDown = true;
-                // 录制中 → 停止；编辑器内未录制 → 绑定当前编辑目标开录。
+                // 录制中 → 停止；否则新建一个宏。
                 if (_recording) Stop();
-                else StartCore(rawTime, _editorTargetId, _editorTargetName,
-                               suppressAutoAction: true, editorInitiated: true);
+                else StartCore(rawTime, null, null);
             }
             return _recordHotkeyDown;   // 已锁存：吞掉自动重复
         }
@@ -466,13 +438,13 @@ internal static class MacroRecorder
         }
     }
 
-    private static void RaiseSaved(string id, bool autoCreate)
+    private static void RaiseSaved(string id)
     {
         var evt = MacroSaved;
         if (evt == null) return;
-        foreach (Action<string, bool> h in evt.GetInvocationList())
+        foreach (Action<string> h in evt.GetInvocationList())
         {
-            try { h(id, autoCreate); } catch (Exception ex) { CrashLog.Write("MacroRecorder.MacroSaved", ex); }
+            try { h(id); } catch (Exception ex) { CrashLog.Write("MacroRecorder.MacroSaved", ex); }
         }
     }
 

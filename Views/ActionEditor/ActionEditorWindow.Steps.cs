@@ -54,6 +54,7 @@ public partial class ActionEditorWindow
         if (first != null) StepList.ScrollIntoView(first);
 
         EnsureOutputVariables();
+        UpdateMacroPanel();
     }
 
     private void Walk(List<Step> list, int depth)

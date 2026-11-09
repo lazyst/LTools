@@ -32,6 +32,9 @@ public enum InputEditor
     file,
     folder,
     image,
+
+    /// <summary>键鼠宏：下拉列出已录制的宏（值仍是宏 Id）。</summary>
+    macro,
     /// <summary>
     /// 屏幕区域 <c>x,y,w,h</c>：文本 + 「框选…」按钮，拖一块屏幕自动填进来。
     /// 配套的枚举参数（<c>region</c> / <c>mode</c>）由参数对话框按 <c>VisibleWhen</c> 自动切到 <c>rect</c>。

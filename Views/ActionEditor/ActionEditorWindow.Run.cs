@@ -80,7 +80,6 @@ public partial class ActionEditorWindow
 
         _draft.Name = name;
         _draft.Icon = _program.Icon;
-        _draft.Type = ActionType.composite;
         _draft.Program = _program;
 
         Result = _draft;

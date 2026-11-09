@@ -65,4 +65,10 @@ internal static class ConfigHelper
     {
         EnsureWindow().NavigateToAi();
     }
+
+    /// <summary>打开设置并切到「键鼠宏」（托盘「键鼠宏…」与录制完的提示用）。</summary>
+    public static void OpenMacros()
+    {
+        EnsureWindow().NavigateToMacros();
+    }
 }

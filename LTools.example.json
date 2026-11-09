@@ -4,7 +4,6 @@
       "Id": "a1",
       "Name": "ipconfig",
       "Icon": "terminal",
-      "Type": "composite",
       "Program": {
         "id": "a1",
         "name": "ipconfig",
@@ -37,7 +36,6 @@
       "Id": "a3",
       "Name": "提示",
       "Icon": "note",
-      "Type": "composite",
       "Program": {
         "id": "a3",
         "name": "提示",

@@ -42,35 +42,16 @@ internal static class ActionExecutor
     /// 执行动作（spawn 后台线程，不阻塞调用方）。cursorX/cursorY 为面板唤起时记录的光标坐标
     /// （0=取当前光标位置，供 <c>windowPin.toggle</c> 等需坐标的内部命令使用）。
     /// </summary>
+    /// <remarks>
+    /// 动作只有一种形状（<see cref="ActionDto.Program"/>），所以这里不做类型分支：
+    /// 一律交给 <see cref="AutomationRunner"/>（单实例保护、停止热键、运行指示器、结果提示）。
+    /// </remarks>
     public static void Run(ActionDto action, int cursorX, int cursorY)
     {
-        bool session = action.Type == ActionType.composite;
-
-        if (session)
-        {
-            // 从 CapsLock 菜单启动时 CapsLock 仍可能处于按下态；运行期间钩子会屏蔽 CapsLock，
-            // 若不在启动前清掉，状态机可能一直认为它按着（见 AutomationRunner.PrepareToRun）。
-            AutomationRunner.PrepareToRun();
-            Task.Run(() => AutomationRunner.Run(action, cursorX, cursorY));
-            return;
-        }
-
-        Task.Run(() =>
-        {
-            long started = Environment.TickCount64;
-            AppLog.Info("Action", $"执行「{action.Name}」({action.Type})");
-            try
-            {
-                Execute(action, cursorX, cursorY);
-                AppLog.Info("Action",
-                    $"完成「{action.Name}」· {Environment.TickCount64 - started} ms");
-            }
-            catch (Exception ex)
-            {
-                AppLog.Error("Action", $"失败「{action.Name}」({action.Type})", ex);
-                CrashLog.Write($"ActionExecutor[{action.Name}]", ex);
-            }
-        });
+        // 从 CapsLock 菜单启动时 CapsLock 仍可能处于按下态；运行期间钩子会屏蔽 CapsLock，
+        // 若不在启动前清掉，状态机可能一直认为它按着（见 AutomationRunner.PrepareToRun）。
+        AutomationRunner.PrepareToRun();
+        Task.Run(() => AutomationRunner.Run(action, cursorX, cursorY));
     }
 
     /// <summary>

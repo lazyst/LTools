@@ -140,7 +140,7 @@ public partial class ActionEditorWindow : Window
         }
         else
         {
-            _draft = new ActionDto { Type = ActionType.composite, Icon = IconCatalog.Default };
+            _draft = new ActionDto { Icon = IconCatalog.Default };
             _program = new ActionProgram();
             _draft.Program = _program;
             DirectionColumn.Width = new GridLength(0);
@@ -176,7 +176,19 @@ public partial class ActionEditorWindow : Window
         {
             _traceFlush?.Stop();
             if (_running) AutomationRunner.Stop();
+            MacroRecorder.RecordingStopped -= OnMacroRecordingStopped;
+            MacroRecorder.MacroSaved -= OnMacroSavedRefresh;
+            // 关窗时还在重录（窗口是藏起来的，用户看不到）：先收尾保存，别留下无界面的录制。
+            if (_macroHidden && MacroRecorder.IsRecording)
+            {
+                _macroHidden = false;
+                MacroRecorder.Stop(force: true);
+            }
+            _macroHidden = false;
         };
+
+        MacroRecorder.RecordingStopped += OnMacroRecordingStopped;
+        MacroRecorder.MacroSaved += OnMacroSavedRefresh;
 
         Loaded += (_, _) => NameBox.Focus();
     }

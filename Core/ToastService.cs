@@ -95,6 +95,38 @@ internal static class ToastService
         }
     }
 
+    /// <summary>按 key 关掉一条提示（例如回放结束收起「按 X 停止」）。不存在的 key 什么也不做。</summary>
+    public static void Close(string? key)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+
+        var app = Application.Current;
+        if (app == null) return;
+
+        try
+        {
+            if (!app.Dispatcher.CheckAccess())
+            {
+                app.Dispatcher.BeginInvoke(() => CloseCore(key));
+                return;
+            }
+            CloseCore(key);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Toast", $"关闭提示失败：{ex.Message}");
+        }
+    }
+
+    private static void CloseCore(string key)
+    {
+        if (!ByKey.TryGetValue(key, out var toast)) return;
+        ByKey.Remove(key);
+        Visible.Remove(toast);
+        toast.Dismiss();
+        Reflow();
+    }
+
     private static void SafeShowCore(string text, string? title, int durationMs, ToastKind kind,
         string? key, Action? onClick, ToastPosition position)
     {

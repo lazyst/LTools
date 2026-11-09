@@ -118,22 +118,91 @@ internal static class MacroStore
 
         // 让钩子 / 托盘立即读到新值（LastMacroId 等），无需重启。
         MacroSettings.Load(AppConfig.Load(cfgPath));
+        Invalidate();
     }
 
     /// <summary>某个宏的元数据；不存在返回 null。</summary>
     public static MacroMeta? MetaOf(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) return null;
+        return Items().FirstOrDefault(m => m.Id == id);
+    }
+
+    /// <summary>全部宏的元数据（最近录的在前），供「键鼠宏」页与宏下拉使用。</summary>
+    public static List<MacroMeta> List() => Items()
+        .Where(m => !string.IsNullOrWhiteSpace(m.Id))
+        .OrderByDescending(m => m.UpdatedAt, StringComparer.Ordinal)
+        .ThenByDescending(m => m.Id, StringComparer.Ordinal)
+        .ToList();
+
+    // 元数据缓存：编辑器每渲染一行摘要都要查一次名字，不能每次都读整份配置。
+    private static List<MacroMeta>? _cache;
+
+    /// <summary>丢弃元数据缓存（本类之外改了 <c>configs/macros.json</c> 后调用）。</summary>
+    public static void Invalidate() => _cache = null;
+
+    private static List<MacroMeta> Items()
+    {
+        if (_cache != null) return _cache;
         try
         {
-            return AppConfig.Load(CurrentConfigPath()).Macros?.Items?
-                .FirstOrDefault(m => m.Id == id);
+            _cache = AppConfig.Load(CurrentConfigPath()).Macros?.Items ?? new List<MacroMeta>();
         }
         catch (Exception ex)
         {
-            CrashLog.Write("MacroStore.MetaOf", ex);
-            return null;
+            CrashLog.Write("MacroStore.Items", ex);
+            _cache = new List<MacroMeta>();
         }
+        return _cache;
+    }
+
+    /// <summary>改名：只动元数据（界面显示的是元数据里的名字），引用它的动作名一起改。</summary>
+    public static void Rename(string id, string name)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return;
+        string trimmed = (name ?? "").Trim();
+        if (trimmed.Length == 0) return;
+
+        MacroFileStore.Modify(CurrentConfigPath(), file =>
+        {
+            var item = file.Macros.Items?.FirstOrDefault(m => m.Id == id);
+            if (item != null) item.Name = trimmed;
+        });
+        Invalidate();
+        MacroAction.Attach(id, trimmed);
+    }
+
+    /// <summary>删除宏：事件文件 + 元数据 + 引用它的动作（一宏一动作）。</summary>
+    /// <returns>被一起删掉的动作数。</returns>
+    public static int Delete(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return 0;
+
+        int removedActions = 0;
+        foreach (var action in ActionRegistry.All
+                     .Where(a => string.Equals(MacroAction.MacroIdOf(a), id, StringComparison.Ordinal))
+                     .ToList())
+        {
+            if (ConfigStore.RemoveAction(action.Id)) removedActions++;
+        }
+
+        try
+        {
+            string path = PathOf(id);
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("MacroStore.Delete", ex);
+        }
+
+        MacroFileStore.Modify(CurrentConfigPath(), file =>
+        {
+            file.Macros.Items?.RemoveAll(m => m.Id == id);
+            if (file.Macros.LastMacroId == id) file.Macros.LastMacroId = null;
+        });
+        Invalidate();
+        return removedActions;
     }
 
     // ============ 回放参数（每宏独立，缺省回退全局） ============
@@ -158,51 +227,156 @@ internal static class MacroStore
     }
 
     /// <summary>
-    /// 保存某个宏的回放参数（速度 / 循环 / 倒计时）与显示名；<paramref name="loops"/> = -1 表示无限循环，
+    /// 某个宏的回放参数覆盖值：字段为 <c>null</c> = 该字段跟随全局默认。
+    /// <see cref="Loops"/> = -1 表示无限循环，1–99 表示次数。
+    /// </summary>
+    public readonly record struct MacroPlaybackOverride(double? Speed, int? Loops, int? CountdownMs)
+    {
+        /// <summary>全部跟随默认（「恢复默认」）。</summary>
+        public static MacroPlaybackOverride None => new(null, null, null);
+
+        /// <summary>有没有任何字段是单独设过的。</summary>
+        public bool Any => Speed != null || Loops != null || CountdownMs != null;
+    }
+
+    /// <summary>
+    /// 保存某个宏的回放参数覆盖值（「回放设置…」对话框写这里）；字段为 null 表示该字段跟随全局默认，
     /// <paramref name="name"/> 为 null 表示不改名。
     /// </summary>
-    public static void SavePlaybackSettings(string id, string? name, double speed, int loops, int countdownMs)
+    public static void SavePlaybackSettings(string id, string? name, MacroPlaybackOverride value)
     {
         if (string.IsNullOrWhiteSpace(id)) return;
-        double s = Math.Clamp(speed, 0.1, 5.0);
-        int l = loops < 0 ? -1 : Math.Clamp(loops, 1, 99);
-        int c = Math.Clamp(countdownMs, 0, 10_000);
 
         MacroFileStore.Modify(CurrentConfigPath(), file =>
         {
             var item = file.Macros.Items?.FirstOrDefault(m => m.Id == id);
             if (item == null) return;
-            item.Speed = s;
-            item.Loops = l;
-            item.CountdownMs = c;
+            item.Speed = value.Speed is double s ? Math.Clamp(s, 0.1, 5.0) : 0;
+            item.Loops = value.Loops is int l ? (l < 0 ? -1 : Math.Clamp(l, 1, 99)) : null;
+            item.CountdownMs = value.CountdownMs is int c ? Math.Clamp(c, 0, 10_000) : null;
             if (!string.IsNullOrWhiteSpace(name)) item.Name = name.Trim();
         });
+        Invalidate();
+    }
+
+    // ============ 旧数据 ============
+
+    /// <summary>
+    /// 把旧版的「宏动作」（<c>"Type": "macro"</c> + <c>MacroId</c>）连同它的宏文件移进 <c>trash/</c>。
+    /// </summary>
+    /// <remarks>
+    /// 这个形状已经没有对应类型了：读进来是一个没有动作体的空动作，任何入口都跑不动，
+    /// 而 <see cref="Core.Storage.ActionStore"/> 又会把它当成正常动作写回去。所以启动时（读配置之前）
+    /// 先整体搬走——不迁移、不猜语义，用户重录一遍即可。搬完 <see cref="CollectGarbage"/> 会顺带清掉
+    /// 不再被引用的元数据，<c>ActionRemoval.RepairReferences</c> 会清掉面板 / 快捷键里的悬空引用。
+    /// </remarks>
+    /// <returns>搬走的旧宏动作数。</returns>
+    public static int RetireLegacyMacroActions(string anchorPath)
+    {
+        try
+        {
+            string root = Core.Storage.ActionStore.Root(anchorPath);
+            if (!Directory.Exists(root)) return 0;
+
+            var actionDirs = new List<string>();
+            var macroIds = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (string dir in Directory.GetDirectories(root))
+            {
+                string file = Path.Combine(dir, "action.json");
+                if (!File.Exists(file)) continue;
+                if (!IsLegacyMacroFile(file, out string? macroId)) continue;
+
+                actionDirs.Add(dir);
+                if (!string.IsNullOrWhiteSpace(macroId)) macroIds.Add(macroId!);
+            }
+
+            if (actionDirs.Count == 0) return 0;
+
+            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            string target = Path.Combine(Core.Storage.ActionStore.TrashDir(anchorPath), stamp, "legacy-macro");
+
+            foreach (string dir in actionDirs)
+            {
+                string to = Path.Combine(target, "actions", Path.GetFileName(dir));
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+                    Directory.Move(dir, to);
+                }
+                catch (Exception ex)
+                {
+                    CrashLog.Write("MacroStore.RetireLegacyMacroActions", ex);
+                }
+            }
+
+            foreach (string macroId in macroIds)
+            {
+                string from = PathOf(macroId);
+                if (!File.Exists(from)) continue;
+                try
+                {
+                    string to = Path.Combine(target, "macros", macroId + ".json");
+                    Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+                    File.Move(from, to, overwrite: true);
+                }
+                catch (Exception ex)
+                {
+                    CrashLog.Write("MacroStore.RetireLegacyMacroActions", ex);
+                }
+            }
+
+            AppLog.Warn("Macro", $"旧版宏动作 {actionDirs.Count} 个已移进 trash/{stamp}/legacy-macro（请重新录制）");
+            return actionDirs.Count;
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("MacroStore.RetireLegacyMacroActions", ex);
+            return 0;
+        }
+    }
+
+    /// <summary>旧版宏动作文件判定（只读 <c>Type</c> / <c>MacroId</c> 两个字段，不按新模型反序列化）。</summary>
+    private static bool IsLegacyMacroFile(string path, out string? macroId)
+    {
+        macroId = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path, Encoding.UTF8));
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return false;
+            if (!doc.RootElement.TryGetProperty("Type", out var type)) return false;
+            if (type.ValueKind != JsonValueKind.String
+                || !string.Equals(type.GetString(), "macro", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (doc.RootElement.TryGetProperty("MacroId", out var id) && id.ValueKind == JsonValueKind.String)
+                macroId = id.GetString();
+            return true;
+        }
+        catch
+        {
+            return false;   // 读不出来就别动它（可能是别的问题，交给 ActionStore 记录）
+        }
     }
 
     // ============ 引用回收 ============
 
     /// <summary>
-    /// 按引用回收宏文件：删除「不被任何键鼠宏动作 / 组合步骤引用」的 <c>macros/*.json</c> 与元数据。
-    /// 一宏一动作——删除宏动作后它的宏文件自动消失，用户不需要（也没有入口）手工管理宏文件。
+    /// 按引用回收宏文件：删除「不被任何动作步骤引用」的 <c>macros/*.json</c> 与元数据。
+    /// 录制即生成一个「回放宏」动作，删除该动作后它的宏文件自动消失，
+    /// 用户不需要（也没有入口）手工管理宏文件。
     /// </summary>
     /// <returns>删除的宏文件数。</returns>
     public static int CollectGarbage()
     {
         try
         {
+            Invalidate();
             var live = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var a in ActionRegistry.All) CollectRefs(a);
-
-            void CollectRefs(ActionDto a)
-            {
-                if (a.Type == ActionType.macro && !string.IsNullOrWhiteSpace(a.MacroId))
-                    live.Add(a.MacroId!);
-
-                // 所有单元的 macroId 参数（含动作内子动作与内联取值步骤）
+            foreach (var a in ActionRegistry.All)
                 foreach (var step in ProgramWalker.AllSteps(a.Program))
                     if (ProgramWalker.LiteralText(step, "macroId") is { } id && id.Trim().Length > 0)
                         live.Add(id.Trim());
-            }
 
             Ensure();
             int removed = 0;
@@ -235,6 +409,7 @@ internal static class MacroStore
                 if (!string.IsNullOrEmpty(macros.LastMacroId) && !live.Contains(macros.LastMacroId))
                     macros.LastMacroId = null;
             });
+            Invalidate();
             return removed;
         }
         catch (Exception ex)

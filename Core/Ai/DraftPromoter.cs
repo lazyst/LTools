@@ -109,7 +109,6 @@ internal static class DraftPromoter
                 {
                     Name = title,
                     Icon = string.IsNullOrWhiteSpace(program.Icon) ? IconCatalog.Default : program.Icon,
-                    Type = ActionType.composite,
                     Program = program,
                 };
                 if (!ConfigStore.AddAction(action)) throw new ActionException("新建动作失败（名称不能为空）");

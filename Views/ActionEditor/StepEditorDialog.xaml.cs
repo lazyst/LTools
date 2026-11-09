@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using LTools.Core.Actions;
+using LTools.Features;
 using LTools.Features.Script;
 using LTools.Views.Controls;
 using Microsoft.Win32;
@@ -409,6 +410,55 @@ public partial class StepEditorDialog : Window
                 // 没有 region / rect 的单元（如「文字识别」）什么也不做。
                 picker.Captured += ApplyPickedRegion;
                 return picker;
+            }
+
+            case InputEditor.macro:
+            {
+                var combo = new ComboBox { MinHeight = 28, MinWidth = 180 };
+                var macros = MacroStore.List();
+                foreach (var m in macros)
+                    combo.Items.Add(new ComboBoxItem
+                    {
+                        Content = $"{m.Name}（{m.DurationText} · {m.EventCount} 事件）",
+                        Tag = m.Id,
+                    });
+
+                string want = current?.Literal.AsText() ?? "";
+                int index = -1;
+                for (int i = 0; i < macros.Count; i++)
+                {
+                    if (!string.Equals(macros[i].Id, want, StringComparison.Ordinal)) continue;
+                    index = i;
+                    break;
+                }
+
+                // 宏文件被删 / 换机器后配置里还留着旧 Id：原样显示，别静默落到别的宏上。
+                if (index < 0 && want.Length > 0)
+                {
+                    combo.Items.Add(new ComboBoxItem { Content = want + "（宏文件缺失）", Tag = want });
+                    index = combo.Items.Count - 1;
+                }
+                combo.SelectedIndex = index >= 0 ? index : (combo.Items.Count > 0 ? 0 : -1);
+
+                read = () => StepArg.FromText(
+                    ((combo.SelectedItem as ComboBoxItem)?.Tag as string) ?? "");
+                combo.SelectionChanged += (_, _) => OnEdited();
+
+                if (macros.Count > 0) return combo;
+
+                // 一个宏都没录过：下拉是空的，得告诉用户去哪儿录。
+                var empty = new TextBlock
+                {
+                    Text = "还没有录制过宏。按录制热键（默认 Ctrl+F2）开始 / 停止，或在「设置 → 键鼠宏」里录。",
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = (System.Windows.Media.Brush)FindResource("SecondaryTextBrush"),
+                    FontSize = (double)FindResource("FontSizeHint"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                var host = new StackPanel { Orientation = Orientation.Vertical };
+                host.Children.Add(combo);
+                host.Children.Add(empty);
+                return host;
             }
 
             case InputEditor.region:
