@@ -5,8 +5,10 @@ using LTools.Native;
 namespace LTools.Features;
 
 /// <summary>
-/// 窗口置顶（对应原版 lib/WindowPin.ahk）。CapsLock+右键 切换光标下窗口置顶/取消。
-/// 桌面窗口（Progman/WorkerW）、任务栏工具窗口不置顶；其余直接切换，无全屏确认层。
+/// 窗口置顶：切换光标下窗口的置顶状态（对应原版 lib/WindowPin.ahk）。
+/// 桌面窗口（Progman/WorkerW）、工具窗口不置顶；其余直接切换，无全屏确认层。
+/// 入口只有内置功能 <c>common.windowPin</c>（绑快捷键 / 放面板 / 放悬浮）——
+/// 2026-11 起钩子里不再有 <c>CapsLock+右键</c> 写死手势。
 /// </summary>
 internal static class WindowPin
 {

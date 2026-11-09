@@ -27,7 +27,7 @@ namespace LTools.Views;
 /// <summary>
 /// 设置 GUI（阶段 3 重构为左导航 + 多页面）。页面：通用 / 动作管理 / 子动作库 / 快捷键 / 超级面板 / AI / 终端路径 / 日志 / 备份与恢复。
 /// 沿用 v2.1.0 防抖自动保存（800ms），扩展到动作 / 快捷键 / 超级面板编辑。
-/// 两个全局开关（CapsLock 键功能 / 超级面板）即时落盘，重启不丢失。
+/// 三个全局开关（CapsLock 修饰键 / 边缘滚轮音量 / 超级面板）即时落盘，重启不丢失。
 /// </summary>
 public partial class ConfigHelperWindow : Window
 {
@@ -103,8 +103,7 @@ public partial class ConfigHelperWindow : Window
         {
             _initializing = true;
             // 开关状态
-            CapsLockEnabledBox.IsChecked = AppState.IsToolEnabled;
-            SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
+            PopulateToggles();
             PopulateRunNotice();
             // 自启状态：任务计划 COM 首次激活要百毫秒级，放线程池避免窗口白屏。
             // 查询期间保持 _initializing，免得用户此刻点开关与查询结果互相覆盖。
@@ -427,8 +426,7 @@ public partial class ConfigHelperWindow : Window
         {
             // 开关可能在「面板管理」页被改过，切回来时同步显示
             _initializing = true;
-            CapsLockEnabledBox.IsChecked = AppState.IsToolEnabled;
-            SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
+            PopulateToggles();
             PopulateRunNotice();
             _initializing = false;
         }
@@ -484,11 +482,52 @@ public partial class ConfigHelperWindow : Window
     }
 
     // ============ 通用：开关 ============
-    private void CapsLockEnabledBox_Changed(object sender, RoutedEventArgs e)
+
+    /// <summary>把「工具开关」三个开关的状态刷到控件（调用方负责 <c>_initializing</c>）。</summary>
+    private void PopulateToggles()
+    {
+        CapsLockModifierBox.IsChecked = AppState.CapsLockModifier;
+        EdgeWheelVolumeBox.IsChecked = AppState.EdgeWheelVolume;
+        EdgeWheelEdgeCombo.SelectedIndex = (WheelVolumeEdge)AppState.EdgeWheelVolumeEdge switch
+        {
+            WheelVolumeEdge.top => 1,
+            WheelVolumeEdge.both => 2,
+            _ => 0,
+        };
+        SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
+        ApplyEdgeWheelVisibility();
+    }
+
+    /// <summary>边缘滚轮关掉时把「算哪条边」与说明一起收起，只留一行干净的开关。</summary>
+    private void ApplyEdgeWheelVisibility()
+    {
+        var v = EdgeWheelVolumeBox.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        EdgeWheelEdgeRow.Visibility = v;
+        EdgeWheelVolumeHint.Visibility = v;
+    }
+
+    private void CapsLockModifierBox_Changed(object sender, RoutedEventArgs e)
     {
         if (_initializing) return;
-        bool on = CapsLockEnabledBox.IsChecked == true;
-        Settings.SetCapsLockEnabled(on);
+        Settings.SetCapsLockModifier(CapsLockModifierBox.IsChecked == true);
+    }
+
+    private void EdgeWheelVolumeBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_initializing) return;
+        ApplyEdgeWheelVisibility();
+        Settings.SetEdgeWheelVolume(EdgeWheelVolumeBox.IsChecked == true);
+    }
+
+    private void EdgeWheelEdge_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_initializing) return;
+        Settings.SetEdgeWheelVolumeEdge(EdgeWheelEdgeCombo.SelectedIndex switch
+        {
+            1 => WheelVolumeEdge.top,
+            2 => WheelVolumeEdge.both,
+            _ => WheelVolumeEdge.bottom,
+        });
     }
 
     private void SuperPanelEnabledBox_Changed(object sender, RoutedEventArgs e)
@@ -950,7 +989,9 @@ public partial class ConfigHelperWindow : Window
             PopulateSuperPanel();
             // 全局开关在 AppState，启动时从配置读取；导入新配置后重新应用，避免要重启才生效
             var cfg = ConfigStore.LoadConfig();
-            AppState.IsToolEnabled = cfg.CapsLockEnabled;
+            AppState.CapsLockModifier = cfg.CapsLockModifier;
+            AppState.EdgeWheelVolume = cfg.EdgeWheelVolume;
+            AppState.EdgeWheelVolumeEdge = (int)cfg.EdgeWheelVolumeEdge;
             AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
             AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
             MacroSettings.Load(cfg);
@@ -958,8 +999,7 @@ public partial class ConfigHelperWindow : Window
             var logCfg = cfg.Logging ?? new LogConfig();
             AppLog.Configure(logCfg.Enabled, logCfg.Level, logCfg.RetentionDays);
             _initializing = true;
-            CapsLockEnabledBox.IsChecked = AppState.IsToolEnabled;
-            SuperPanelEnabledBox.IsChecked = AppState.IsSuperPanelEnabled;
+            PopulateToggles();
             _initializing = false;
             ShowStatus("导入完成", ok: true);
             BackupStatusText.Text = "导入完成（旧数据已备份为 .bak-时间戳）";

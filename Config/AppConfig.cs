@@ -100,10 +100,17 @@ public sealed class AppConfig
     public Dictionary<string, string> TerminalPaths { get; set; } = new();
 
     /// <summary>
-    /// CapsLock 键功能总开关（CapsLock 修饰键 + 快捷键 / 鼠标手势等）。
-    /// 与 <see cref="SuperPanel.Enabled"/> 相互独立，均可在设置「通用」页或托盘菜单切换。
+    /// CapsLock 当快捷键修饰键：轻按发 Esc，按住配合其它键（<c>CapsLock+字母</c> 等）触发快捷键。
+    /// 关闭后 CapsLock 走原生大小写切换，带 CapsLock 前缀的绑定也随之不匹配。
+    /// 与 <see cref="SuperPanel.Enabled"/> 相互独立。
     /// </summary>
-    public bool CapsLockEnabled { get; set; } = true;
+    public bool CapsLockModifier { get; set; } = true;
+
+    /// <summary>鼠标停在屏幕边缘（<see cref="EdgeWheelVolumeEdge"/>）时滚轮调系统音量。</summary>
+    public bool EdgeWheelVolume { get; set; } = true;
+
+    /// <summary>边缘滚轮音量算哪条边（底部 / 顶部 / 上下）。</summary>
+    public WheelVolumeEdge EdgeWheelVolumeEdge { get; set; } = WheelVolumeEdge.bottom;
 
     /// <summary>设置窗口上次所在的导航页（general/actions/hotkeys/superpanel/terminals/logs/backup），下次打开恢复。</summary>
     public string LastNavPage { get; set; } = "actions";

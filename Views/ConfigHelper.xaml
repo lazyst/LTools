@@ -184,15 +184,34 @@
                         <TextBlock Style="{StaticResource SectionLabel}" Text="工具开关" Margin="0,0,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>
-                                <CheckBox x:Name="CapsLockEnabledBox" Content="启用 CapsLock 键功能"
-                                          Checked="CapsLockEnabledBox_Changed" Unchecked="CapsLockEnabledBox_Changed"/>
+                                <CheckBox x:Name="CapsLockModifierBox" Content="CapsLock 可作为快捷键修饰键"
+                                          Checked="CapsLockModifierBox_Changed" Unchecked="CapsLockModifierBox_Changed"/>
                                 <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,12"
-                                           Text="CapsLock 作为修饰键：轻按发 Esc，按住即可配合其它键（CapsLock+字母 等）触发「快捷键」页里配好的动作。关闭后 CapsLock 恢复原生大小写切换，带 CapsLock 前缀的快捷键也随之停用。"
+                                           Text="按住 CapsLock 配合其它键（CapsLock+字母 等）触发「快捷键」页里配好的动作，轻按发 Esc，灯保持关闭（Ctrl+CapsLock 可手动开关大写锁定）。关闭后 CapsLock 恢复原生大小写切换，带 CapsLock 前缀的绑定也随之不触发。"
                                            TextWrapping="Wrap"/>
+                                <CheckBox x:Name="EdgeWheelVolumeBox" Content="屏幕边缘滚轮调音量"
+                                          Checked="EdgeWheelVolumeBox_Changed" Unchecked="EdgeWheelVolumeBox_Changed"/>
+                                <Grid x:Name="EdgeWheelEdgeRow" Margin="22,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="算哪条边" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="EdgeWheelEdgeCombo" MinHeight="32"
+                                              SelectionChanged="EdgeWheelEdge_Changed">
+                                        <ComboBoxItem Content="屏幕底部"/>
+                                        <ComboBoxItem Content="屏幕顶部"/>
+                                        <ComboBoxItem Content="上下都算"/>
+                                    </ComboBox>
+                                </Grid>
+                                <TextBlock x:Name="EdgeWheelVolumeHint" Style="{StaticResource HintLabel}"
+                                           Margin="22,6,0,12" TextWrapping="Wrap"
+                                           Text="鼠标停在光标所在显示器边缘 8px 内滚动滚轮 → 系统音量 ±1 档；其它位置的滚轮不受影响。多显示器只认光标所在的那块屏。"/>
                                 <CheckBox x:Name="SuperPanelEnabledBox" Content="启用超级面板"
                                           Checked="SuperPanelEnabledBox_Changed" Unchecked="SuperPanelEnabledBox_Changed"/>
                                 <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,0"
-                                           Text="按住右键（长按）唤起 4×4 动作面板。与上面的 CapsLock 开关相互独立。"
+                                           Text="按住右键（长按）唤起动作面板。与上面的开关相互独立。"
                                            TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>

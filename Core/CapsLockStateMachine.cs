@@ -8,8 +8,8 @@ namespace LTools.Core;
 /// </summary>
 /// <remarks>
 /// <para>
-/// - CapsLock keydown：记录按下态；启用时吞掉（灯恒灭），禁用时放行恢复原生大小写切换。
-/// - CapsLock keyup：启用时吞掉；轻按（&lt;300ms 且期间没按别的键）发 Esc。
+/// - CapsLock keydown：记录按下态；修饰键启用时吞掉（灯恒灭），关闭时放行恢复原生大小写切换。
+/// - CapsLock keyup：修饰键启用时吞掉；轻按（&lt;300ms 且期间没按别的键）发 Esc。
 /// - Ctrl+CapsLock：手动切换大写锁定灯。
 /// </para>
 /// <para>
@@ -58,7 +58,7 @@ internal static class CapsLockStateMachine
                 AppState.OtherKeyPressed = false;
             }
 
-            if (AppState.IsToolEnabled)
+            if (AppState.CapsLockModifier)
             {
                 // 启用态：吞掉 CapsLock（不传系统，灯不变），并确保灯灭
                 if (!AppState.CapsLockManuallyEnabled && LightOn())
@@ -78,7 +78,7 @@ internal static class CapsLockStateMachine
             int duration = Environment.TickCount - AppState.CapsLockPressTime;
             AppState.CapsLockIsDown = false;
 
-            if (!AppState.IsToolEnabled)
+            if (!AppState.CapsLockModifier)
             {
                 // 禁用态：放行 keyup，让系统完成原生 toggle
                 if (duration < ClickThresholdMs && !AppState.OtherKeyPressed)
@@ -121,7 +121,7 @@ internal static class CapsLockStateMachine
     /// <summary>看门狗 tick（对应 AHK CheckCapsLockState 的 1s 定时）：启用态且非手动且灯亮 → 灭灯。</summary>
     public static void WatchdogTick()
     {
-        if (!AppState.IsToolEnabled) return;
+        if (!AppState.CapsLockModifier) return;
         if (AppState.CapsLockManuallyEnabled) return;
         if (LightOn()) InputHelper.Tap((ushort)Win32.VkCapital);
     }

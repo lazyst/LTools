@@ -10,11 +10,16 @@ namespace LTools.Hooks;
 
 /// <summary>
 /// 低级鼠标钩子（WH_MOUSE_LL）。在主线程安装，消息循环泵送。
-/// 职责（跟随全局启用开关与 CapsLock 按下态）：
-/// - 屏幕底部 5px 滚轮 → 系统音量调节（<see cref="Volume"/>）
-/// - CapsLock 按住 + 右键按下 → 切换光标下窗口置顶（<see cref="WindowPin"/>）
-/// - CapsLock 按住 + 左键按下 → 资源管理器选中文件重命名（F2，对应 lib/Workspace.ahk）
+/// 职责：
+/// - 屏幕边缘滚轮 → 系统音量调节（<see cref="Volume"/>；开关与边见设置「通用」）
+/// - 裸右键长按 → 唤起超级面板；短按还原原生右键菜单
+/// - 面板 / 悬浮窗菜单的点外关闭
 /// </summary>
+/// <remarks>
+/// 窗口置顶（<see cref="WindowPin"/>）曾在这里有一条 <c>CapsLock+右键</c> 写死手势，
+/// 2026-11 删除：同一个功能在内置功能目录里是 <c>common.windowPin</c>，绑快捷键 / 放面板即可，
+/// 钩子里不再保留按设备写死的手势。
+/// </remarks>
 /// <remarks>
 /// 与 <see cref="KeyboardHook"/> 一样，忽略 <see cref="Win32.LlmhfInjected"/> 事件防止递归
 /// （自己注入的点击/按键不触发本钩子逻辑）。
@@ -82,13 +87,13 @@ internal static class MouseHook
             if ((ms.Flags & Win32.LlmhfInjected) != 0 || ms.ExtraInfo == InjectedTag)
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
 
-            // 自动化运行期间：LTools 的鼠标手势（音量 / 裸右键长按面板 / 窗口置顶）全部让路，
+            // 自动化运行期间：LTools 的鼠标手势（边缘滚轮音量 / 裸右键长按面板）全部让路，
             // 物理鼠标事件原样交给目标应用；注入事件已在上方过滤。
             if (AutomationRunner.IsRunning)
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
 
-            // 录制透明模式：只观察并放行，跳过音量 / 超级面板 / 窗口置顶 / 资源管理器重命名
-            // 等全部 LTools 鼠标功能——保证「录到的鼠标事件 = 目标应用实际收到的」。
+            // 录制透明模式：只观察并放行，跳过边缘滚轮音量 / 超级面板等全部 LTools 鼠标功能
+            // ——保证「录到的鼠标事件 = 目标应用实际收到的」。
             if (MacroRecorder.IsRecording)
             {
                 MacroRecorder.ObserveMouse((int)wParam, ms.Pt.X, ms.Pt.Y, (int)ms.MouseData, ms.Time);
@@ -105,14 +110,6 @@ internal static class MouseHook
 
                 case Win32.WmRbuttondown:
                 case Win32.WmRbuttonup:
-                    // 优先级（§5.2）：CapsLock 按下 → 走窗口置顶，整组吞掉（down+up），否则
-                    // WM_RBUTTONUP 仍会合成 WM_CONTEXTMENU 弹出原生菜单。AHK 原版 RButton:: 吞 down+up。
-                    if (AppState.IsToolEnabled && AppState.IsCapsLockDown)
-                    {
-                        if ((int)wParam == Win32.WmRbuttondown)
-                            WindowPin.ToggleAtCursor(ms.Pt.X, ms.Pt.Y);
-                        return (IntPtr)1; // 吞掉
-                    }
                     // 长按收尾：计时器已触发 → 吞掉随后的 up 阻止原生菜单。
                     // 必须先于「面板未打开」判断——面板可能已由 Show() 的 BeginInvoke 在 up 到达前创建，
                     // 此时 IsOpen=true，若把该判断挪进下面分支会漏吞 up 致原生菜单泄漏。

@@ -20,11 +20,20 @@ internal static class AppState
     /// <summary>是否手动启用大写锁定（Ctrl+CapsLock 切换）。</summary>
     public static bool CapsLockManuallyEnabled;
 
-    // —— 工具总开关 ——
-    /// <summary>CapsLock 键功能是否启用（设置「通用」页 / 托盘菜单切换；关闭后 CapsLock 恢复原生大小写）。</summary>
-    public static volatile bool IsToolEnabled = true;
+    // —— 功能开关 ——
+    /// <summary>CapsLock 当快捷键修饰键（短按发 Esc）；关闭后 CapsLock 走原生大小写切换。</summary>
+    public static volatile bool CapsLockModifier = true;
 
-    /// <summary>超级面板是否启用（与 <see cref="IsToolEnabled"/> 相互独立）。</summary>
+    /// <summary>鼠标停在屏幕边缘时滚轮调系统音量。</summary>
+    public static volatile bool EdgeWheelVolume = true;
+
+    /// <summary>
+    /// 边缘滚轮音量算哪条边，取 <see cref="Core.WheelVolumeEdge"/> 的整数值。
+    /// 存 int 而不是枚举字段：钩子回调（当前线程）要无锁读，枚举字段没法标 volatile。
+    /// </summary>
+    public static volatile int EdgeWheelVolumeEdge = (int)WheelVolumeEdge.bottom;
+
+    /// <summary>超级面板是否启用（与上面的开关相互独立）。</summary>
     public static volatile bool IsSuperPanelEnabled = true;
 
     /// <summary>超级面板长按阈值（ms，可调 100–800）。裸右键按住超过此值弹面板（计划 §5.1，阶段 5）。</summary>

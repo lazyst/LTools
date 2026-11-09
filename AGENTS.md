@@ -38,7 +38,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 
 - `App.xaml.cs` — 入口：单实例互斥体 → 托盘 → 装钩子 → 加载配置 → 看门狗
 - `Hooks/` — `WH_KEYBOARD_LL` / `WH_MOUSE_LL`，纯 P/Invoke，框架无关
-- `Native/` — Win32 调用、InputHelper、NativeClipboard、FolderPicker
+- `Native/` — Win32 调用、InputHelper、NativeClipboard、StaRunner
 - `Core/` — AppState(全局状态)、CapsLockStateMachine、ConfigLocator、TrayService、CrashLog、AutoStartService（任务计划自启 + 路径自愈）
 - `Features/` — 功能模块（QuickNote、SuperPanel、Magnifier、Volume 等），非 UI 逻辑；`ActionLibrary`（动作内存清单 + 落盘）、`HotkeySeeding`（CapsLock 经典预设组播种）
 - `Features/Builtin/` — **内置功能目录**（`FeatureCatalog`：常用功能 `common.*` + LTools 功能 `ltools.*`）：不是步骤单元、不进动作编辑器左栏，只放在面板 / 快捷键 / 悬浮里。常用功能含系统类入口与**光标移动 / 文本选择 / 删除与撤销**这组预设按键（`common.key.*` / `common.select.*` / `common.edit.*`，一次模拟按键）。`FeatureDef` 声明参数（文本 / 数字 / 下拉 / 区域），`FeatureRef` 编解码 `id#key=value&…`（存进现有字符串字段，**不升 schema**；动作 Id 永远不带 `#`），`FeatureRunner` 后台执行、失败常驻 toast，`BindingRef` 是面板 / 快捷键 / 悬浮显示名与存活判断的唯一入口。**功能 Id 就是唯一身份，没有别名表**：改名就全链路改（`FeatureCatalog.Defs` + 老配置里的引用），别为旧 Id 留 `Aliases`。新增一条功能只在 `FeatureCatalog.Defs` 加一行；**别再为它新建步骤单元，也别在 UI 里另写一套名称 / 图标查找**
@@ -58,6 +58,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - 吞掉某键的 keydown 必须同时吞掉配对 keyup（保持事件平衡，见 `AppState.SwallowedVks`）
 - **CapsLock 只有两种结局**：轻按（没按别的键）= 发 Esc；按住 = 当修饰键（`AppState.CapsLockIsDown`），配合其它键交给 `HotkeyRegistry` 匹配。按住期间按了任何别的键都要 `AppState.OtherKeyPressed = true`，松开时不再补 Esc——否则会「先跳一下再执行」。`CapsLockStateMachine` 只保留「轻按 Esc / 长按修饰 / Ctrl+CapsLock 切灯 / 灯保持关闭」，**别再往里加手势**（旧手势全部改成动作 + 快捷键）
 - 前台进程 / 窗口标题这类信息**只在 `ForegroundAppCache` 的后台线程取**（`SetWinEventHook` 只负责通知换窗口）；钩子回调碰 `Process` / `GetWindowText` 会在慢应用上卡住消息泵
+- **鼠标钩子里不再有「CapsLock + 鼠标」手势**：窗口置顶是内置功能 `common.windowPin`（绑快捷键 / 放面板 / 放悬浮都行，别再写回 `MouseHook`）。`MouseHook` 只保留两件事：裸右键长按 = 面板、屏幕边缘滚轮 = 音量（开关与边在 `settings.json` 的 `EdgeWheelVolume` / `EdgeWheelVolumeEdge`；边缘判定按光标所在显示器的 `rcMonitor`，别用主屏 `GetDeviceCaps(VERTRES)`）
 
 ## 配置
 

@@ -106,7 +106,9 @@ public partial class App : Application
             TrayService.Notify("配置文件读取失败：原文件已保留，本次使用默认配置（详见运行日志）");
         }
 
-        AppState.IsToolEnabled = cfg.CapsLockEnabled;
+        AppState.CapsLockModifier = cfg.CapsLockModifier;
+        AppState.EdgeWheelVolume = cfg.EdgeWheelVolume;
+        AppState.EdgeWheelVolumeEdge = (int)cfg.EdgeWheelVolumeEdge;
         AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
         AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
         ConfigStore.Initialize(cfgPath);
@@ -169,7 +171,7 @@ public partial class App : Application
         _macroMenuItem = NewItem("开始 / 停止录制宏", () => MacroRecorder.Toggle());
         _macroMenuItemText = (TextBlock)((StackPanel)_macroMenuItem.Header).Children[1];
         menu.Items.Add(new Separator());
-        menu.Items.Add(NewItem("启用 CapsLock 增强", Settings.ToggleCapsLock, () => AppState.IsToolEnabled));
+        menu.Items.Add(NewItem("启用 CapsLock 修饰键", Settings.ToggleCapsLockModifier, () => AppState.CapsLockModifier));
         menu.Items.Add(NewItem("启用超级面板", Settings.ToggleSuperPanel, () => AppState.IsSuperPanelEnabled));
         menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("关闭所有悬浮项", FloatingManager.CloseAll));

@@ -12,8 +12,14 @@ public sealed class SettingsFile
 {
     public int SchemaVersion { get; set; } = ConfigBundle.SchemaVersion;
 
-    /// <summary>CapsLock 键功能总开关。</summary>
-    public bool CapsLockEnabled { get; set; } = true;
+    /// <summary>CapsLock 当快捷键修饰键（短按发 Esc）。</summary>
+    public bool CapsLockModifier { get; set; } = true;
+
+    /// <summary>鼠标停在屏幕边缘时滚轮调系统音量。</summary>
+    public bool EdgeWheelVolume { get; set; } = true;
+
+    /// <summary>边缘滚轮音量算哪条边。</summary>
+    public WheelVolumeEdge EdgeWheelVolumeEdge { get; set; } = WheelVolumeEdge.bottom;
 
     /// <summary>终端路径覆盖（如 gitbash）。</summary>
     public Dictionary<string, string> TerminalPaths { get; set; } = new();

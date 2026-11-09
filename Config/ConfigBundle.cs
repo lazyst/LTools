@@ -98,7 +98,9 @@ internal static class ConfigBundle
 
         var settings = Read<SettingsFile>(SettingsPath(anchorPath), ctx);
         if (settings == null) settings = ToSettings(ctx.GetSeed());
-        cfg.CapsLockEnabled = settings.CapsLockEnabled;
+        cfg.CapsLockModifier = settings.CapsLockModifier;
+        cfg.EdgeWheelVolume = settings.EdgeWheelVolume;
+        cfg.EdgeWheelVolumeEdge = settings.EdgeWheelVolumeEdge;
         cfg.TerminalPaths = settings.TerminalPaths ?? new();
         cfg.RunNotice = settings.RunNotice;
         cfg.ToastPosition = settings.ToastPosition;
@@ -317,7 +319,9 @@ internal static class ConfigBundle
 
     internal static SettingsFile ToSettings(AppConfig cfg) => new()
     {
-        CapsLockEnabled = cfg.CapsLockEnabled,
+        CapsLockModifier = cfg.CapsLockModifier,
+        EdgeWheelVolume = cfg.EdgeWheelVolume,
+        EdgeWheelVolumeEdge = cfg.EdgeWheelVolumeEdge,
         TerminalPaths = cfg.TerminalPaths ?? new(),
         RunNotice = cfg.RunNotice,
         ToastPosition = cfg.ToastPosition,

@@ -105,7 +105,7 @@ internal static class HotkeyRegistry
         bool shift = Down(0xA0) || Down(0xA1) || Down(0x10);
         bool alt = Down(0xA4) || Down(0xA5) || Down(0x12);
         bool win = Down(0x5B) || Down(0x5C);
-        bool caps = AppState.CapsLockIsDown && AppState.IsToolEnabled;
+        bool caps = AppState.CapsLockIsDown && AppState.CapsLockModifier;
 
         return ctrl == chord.HasCtrl
             && shift == chord.HasShift

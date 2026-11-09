@@ -17,7 +17,7 @@ namespace LTools.Features;
 /// <remarks>
 /// 线程模型：回放线程是普通后台线程，绝不在钩子回调里 Sleep / 注入。
 /// 注入事件带 <c>LLKHF_INJECTED</c> / <c>LLMHF_INJECTED</c>，会被 LTools 自己的钩子忽略，
-/// 因此回放不会再次触发 LTools 的 CapsLock 增强或录制，天然防递归。
+/// 因此回放不会再次触发 LTools 的 CapsLock 修饰键行为或录制，天然防递归。
 /// </remarks>
 internal static class MacroPlayer
 {
