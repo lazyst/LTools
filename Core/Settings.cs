@@ -4,11 +4,11 @@ namespace LTools.Core;
 
 /// <summary>
 /// 两个全局开关（CapsLock 键功能 / 超级面板）的统一切换入口。
-/// 设置「通用」页、托盘右键菜单、CapsLock+Esc 手势都经由此改状态 + 持久化，避免多处实现漂移。
+/// 设置「通用」页、托盘右键菜单都经由此改状态 + 持久化，避免多处实现漂移。
 /// </summary>
 internal static class Settings
 {
-    /// <summary>启用 / 禁用 CapsLock 键功能（CapsLock+Esc 手势、菜单、鼠标模式等）。立即生效并落盘。</summary>
+    /// <summary>启用 / 禁用 CapsLock 键功能（修饰键 + 快捷键、鼠标手势、鼠标模式等）。立即生效并落盘。</summary>
     public static void SetCapsLockEnabled(bool enabled)
     {
         AppState.IsToolEnabled = enabled;

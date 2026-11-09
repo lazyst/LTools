@@ -3,7 +3,6 @@ using LTools.Features.Units.Apps;
 using LTools.Features.Units.Data;
 using LTools.Features.Units.Files;
 using LTools.Features.Units.Input;
-using LTools.Features.Units.Internal;
 using LTools.Features.Units.Screen;
 using LTools.Features.Units.Script;
 using LTools.Features.Units.Text;
@@ -88,9 +87,6 @@ public static class BuiltInUnits
         registry.Register(new JsonUnit());
         registry.Register(new CalcUnit());
         registry.Register(new TimeUnit());
-
-        // —— 内部 ——
-        registry.Register(new InvokeInternalUnit());
         registry.Register(new LastErrorUnit());
     }
 }

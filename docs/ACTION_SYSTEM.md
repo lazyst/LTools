@@ -265,7 +265,7 @@ sealed class SubActionDef {
 
 ### 3.6 单元清单（W2/W3 已实现）
 
-> 分类名以代码 `UnitSpec.Category` 为准：2026-11 起重排为「键鼠与输入 / 流程 / 文本与数据 / 剪贴板 / 文件 / 窗口与程序 / 屏幕 / 界面 / LTools 内置功能 / 脚本」（顺序见 `Core/Actions/UnitCategories`）。下表保留当初实现时的分组。
+> 分类名以代码 `UnitSpec.Category` 为准：2026-11 起重排为「键鼠与输入 / 流程 / 文本与数据 / 剪贴板 / 文件 / 窗口与程序 / 屏幕 / 界面 / 脚本」（顺序见 `Core/Actions/UnitCategories`）。下表保留当初实现时的分组。
 
 | 分类 | 单元（W2 已实现） | 对应今天的 |
 |---|---|---|
@@ -320,7 +320,10 @@ sealed class SubActionDef {
 | | `data.time` 当前时间/格式化/偏移 | 新增 |
 | **界面** | `ui.toast` 提示 | toast |
 | | `ui.input` 弹输入框 | Probe.user |
-| **内部** | `internal.invoke` 内部命令 | internal |
+
+> 打开面板 / 设置 / 速记、截图、调音量这类「一下就完事」的入口**不是步骤单元**，见 `Features/Builtin/`
+> 的 `FeatureCatalog`（常用功能 / LTools 功能）。它们只出现在面板、快捷键、悬浮里，
+> 动作编辑器左栏不再有「LTools 内置功能」分类。
 
 **粒度原则**：能用一个 `operation` 参数区分的微操作，合并在同一个单元里
 （`text.process`、`file.operation`、`window.operate`、`data.list`、`data.calc`），
@@ -439,8 +442,7 @@ sealed class SubActionDef {
   值下面一行提示列出缺少的项（按 `Required` + `VisibleWhen` 推导），填完变「改参数…」；
   没有参数的单元收起按钮。新切到取值单元默认 `text.selection`（常用、参数少）。
 - 参数表单在**构造函数里**就建好（`StepEditorDialog(step, inline, program, variableNames)`）：
-  `sub.run` 的「子动作」是下拉（本动作 + 全局库），`internal.invoke` 的「功能」是枚举下拉
-  （速记窗口 / 快速搜索 / 放大镜 / 窗口置顶，存英文命令键）；`Program` / 变量名必须作为构造参数
+  `sub.run` 的「子动作」是下拉（本动作 + 全局库）；`Program` / 变量名必须作为构造参数
   传入，放到对象初始化器会晚一步（表单按 null 建好，子动作退化成手填 id 的文本框）。
   下拉遇到不在 `Options` 里的旧值原样保留并标「未知选项」，不静默改成第一项。
 - 变量面板：名称 / 类型 / 默认值；步骤输出用到的新变量自动登记。

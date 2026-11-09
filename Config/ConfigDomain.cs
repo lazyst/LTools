@@ -20,8 +20,8 @@ internal enum ConfigDomain
     /// <summary><c>configs/ui.json</c>：界面状态。</summary>
     ui = 1 << 1,
 
-    /// <summary><c>configs/menus.json</c>：快捷菜单组。</summary>
-    menus = 1 << 2,
+    /// <summary><c>configs/hotkeys.json</c>：全局快捷键（预设组 + 绑定 + 默认名单）。</summary>
+    hotkeys = 1 << 2,
 
     /// <summary><c>configs/panel.json</c>：超级面板。</summary>
     panel = 1 << 3,
@@ -35,5 +35,5 @@ internal enum ConfigDomain
     /// <summary><c>actions/&lt;id&gt;/action.json</c>：动作目录（写回经 <c>ActionStore.SaveAll</c>）。</summary>
     actions = 1 << 6,
 
-    all = settings | ui | menus | panel | floating | macros | actions,
+    all = settings | ui | hotkeys | panel | floating | macros | actions,
 }

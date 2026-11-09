@@ -188,7 +188,7 @@ public sealed class StepDto
 
 /// <summary>
 /// 动作数据模型（对应计划 §2）。一个 Action = 全局动作清单中的一项，
-/// 超级面板格子与 CapsLock+数字菜单项都只引用其 <see cref="Id"/>。
+/// 超级面板格子、快捷键绑定与悬浮项都只引用其 <see cref="Id"/>。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -212,6 +212,12 @@ public sealed class ActionDto : ActionDtoLegacy
 
     /// <summary>内置图标 Id（见 <see cref="IconCatalog"/>），可为空。</summary>
     public string? Icon { get; set; }
+
+    /// <summary>
+    /// 预设动作：由程序播种（快捷键的默认绑定等）。默认不进动作选择器 / 面板来源列表，
+    /// 但动作管理里照常可见可编辑；用户删掉后不会在升级时被塞回来（见 <c>HotkeyFile.SeedVersion</c>）。
+    /// </summary>
+    public bool Preset { get; set; }
 
     /// <summary>
     /// 动作类型。新动作是 <see cref="ActionType.composite"/>（宏动作是 <see cref="ActionType.macro"/>）。
@@ -279,6 +285,7 @@ public sealed class ActionDto : ActionDtoLegacy
             Name = Name,
             Icon = Icon,
             Type = Type,
+            Preset = Preset,
             MacroId = MacroId,
             Program = Program?.Clone(),
         };

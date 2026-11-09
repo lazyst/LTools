@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -6,7 +7,9 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
+using LTools.Features.Builtin;
 using LTools.Features.Panel;
+using LTools.Views;
 
 namespace LTools.Features.Floating;
 
@@ -48,23 +51,36 @@ internal static class FloatingMenus
             Add(menu, $"悬浮分组「{(string.IsNullOrWhiteSpace(item.Name) ? "未命名" : item.Name)}」· {item.Members.Count} 个动作", null);
             var run = Submenu(menu, "运行");
             foreach (var member in item.Members)
-            {
-                var action = ActionRegistry.FindById(member.ActionId);
-                AddItem(run, action?.Name ?? "（动作已删除）", () => Run(member.ActionId));
-            }
+                AddItem(run, BindingRef.Describe(member.ActionId), () => Run(member.ActionId));
         }
         else
         {
-            string name = ActionRegistry.FindById(item.Members[0].ActionId)?.Name ?? "（动作已删除）";
+            string name = BindingRef.Describe(item.Members[0].ActionId);
             Add(menu, $"运行「{name}」", () => Run(item.Members[0].ActionId));
         }
 
-        var edit = Submenu(menu, group ? "编辑成员…" : "编辑动作…");
-        foreach (var member in item.Members)
+        // 内置功能不是动作：只给「参数…」，不给「编辑动作」
+        var actionMembers = item.Members
+            .Where(m => !BindingRef.IsFeature(m.ActionId))
+            .ToList();
+        if (actionMembers.Count > 0)
         {
-            string id = member.ActionId;
-            var action = ActionRegistry.FindById(id);
-            AddItem(edit, action?.Name ?? "（动作已删除）", () => EditAction(id));
+            var edit = Submenu(menu, "编辑动作…");
+            foreach (var member in actionMembers)
+                AddItem(edit, BindingRef.Name(member.ActionId), () => EditAction(member.ActionId));
+        }
+
+        var paramMembers = item.Members
+            .Where(m => FeatureCatalog.Find(FeatureRef.IdOf(m.ActionId)) is { HasParams: true })
+            .ToList();
+        if (paramMembers.Count > 0)
+        {
+            var param = Submenu(menu, "功能参数…");
+            foreach (var member in paramMembers)
+            {
+                string id = member.ActionId;
+                AddItem(param, BindingRef.Describe(id), () => EditFeatureParams(item, id));
+            }
         }
 
         menu.Items.Add(new Separator());
@@ -123,7 +139,7 @@ internal static class FloatingMenus
             foreach (var member in item.Members)
             {
                 string id = member.ActionId;
-                string name = ActionRegistry.FindById(id)?.Name ?? "（动作已删除）";
+                string name = BindingRef.Name(id);
                 AddItem(one, name, () => SplitOne(item, id, name));
             }
 
@@ -172,7 +188,7 @@ internal static class FloatingMenus
     /// 所以同时挂上 Click：点开和悬停都是即时的。
     /// </para>
     /// </remarks>
-    private static MenuItem Submenu(ContextMenu menu, string header)
+    internal static MenuItem Submenu(ItemsControl menu, string header)
     {
         var mi = new MenuItem { Header = header };
         mi.Click += (_, _) => mi.IsSubmenuOpen = true;
@@ -258,21 +274,33 @@ internal static class FloatingMenus
 
     private static void Run(string actionId)
     {
-        var action = ActionRegistry.FindById(actionId);
-        if (action == null)
+        if (!BindingRef.Exists(actionId))
         {
-            ToastService.Show("动作不存在：" + actionId);
+            ToastService.Show("动作 / 功能不存在：" + actionId);
             FloatingManager.RefreshAll();
             return;
         }
-        AppLog.Info("Floating", $"菜单运行动作：{action.Name}");
-        ActionExecutor.Run(action);
+        AppLog.Info("Floating", $"菜单运行：{BindingRef.Describe(actionId)}");
+        ActionExecutor.RunRef(actionId, 0, 0);
     }
 
     private static void EditAction(string actionId)
     {
         if (!PanelActionOps.Edit(null, actionId)) return;
         FloatingManager.RefreshAll();
+    }
+
+    /// <summary>改悬浮按钮上这一处引用的参数（同一个功能可以在别处用别的参数）。</summary>
+    private static void EditFeatureParams(FloatingItemDto item, string reference)
+    {
+        string? updated = FeatureParamsDialog.Show(null, reference);
+        if (string.IsNullOrEmpty(updated) || updated == reference) return;
+
+        foreach (var member in item.Members)
+        {
+            if (member.ActionId == reference) member.ActionId = updated;
+        }
+        FloatingManager.RefreshItem(item.Id);
     }
 
     private static void SetSize(FloatingItemDto item, double size)

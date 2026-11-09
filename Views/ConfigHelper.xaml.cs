@@ -26,8 +26,8 @@ using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 namespace LTools.Views;
 
 /// <summary>
-/// 设置 GUI（阶段 3 重构为左导航 + 多页面）。页面：通用 / 动作管理 / CapsLock快捷菜单 / 超级面板 / 终端路径 / 备份与恢复。
-/// 沿用 v2.1.0 防抖自动保存（800ms），扩展到动作 / 菜单 / 超级面板编辑。
+/// 设置 GUI（阶段 3 重构为左导航 + 多页面）。页面：通用 / 动作管理 / 子动作库 / 快捷键 / 超级面板 / AI / 终端路径 / 日志 / 备份与恢复。
+/// 沿用 v2.1.0 防抖自动保存（800ms），扩展到动作 / 快捷键 / 超级面板编辑。
 /// 两个全局开关（CapsLock 键功能 / 超级面板）即时落盘，重启不丢失。
 /// </summary>
 public partial class ConfigHelperWindow : Window
@@ -37,8 +37,6 @@ public partial class ConfigHelperWindow : Window
     private const string FamilyAi = "ai";
 
     private readonly DispatcherTimer _saveDebounce;
-    private readonly ObservableCollection<string> _groups = new();
-    private readonly ObservableCollection<string> _items = new();
     private readonly ObservableCollection<ActionRow> _actionRows = new();
     private bool _initializing = true;   // 初始化设 IsChecked 会触发事件，用此标志跳过
     private bool _loadingList;           // 列表重建期间抑制选择事件
@@ -64,32 +62,12 @@ public partial class ConfigHelperWindow : Window
         ConfigStore.Initialize(configPath);
         ConfigPath = configPath;
 
-        GroupList.ItemsSource = _groups;
-        ItemList.ItemsSource = _items;
         ActionList.ItemsSource = _actionRows;
-
-        _groupVisuals = new DragVisuals(this, GhostLayer);
-        _itemDrag = new ListDragSort(
-            this, GhostLayer, ItemList,
-            () => _items.Count,
-            MoveItemPreview,
-            TakeItemSnapshot,
-            RestoreItemSnapshot,
-            MarkDirty,
-            _ => MenuSystem.GetGroup(SelectedSlot) != null);
-
-        PreviewKeyDown += (_, e) =>
-        {
-            if (e.Key != Key.Escape || !_groupDragging) return;
-            EndGroupDrag();
-            e.Handled = true;
-        };
 
         _saveDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         _saveDebounce.Tick += (_, _) => { _saveDebounce.Stop(); SaveNow(); };
 
         PopulateActions();
-        PopulateGroupList();
         PopulateSuperPanel();
         PopulateTerminals();
         PopulateLogging();
@@ -225,6 +203,7 @@ public partial class ConfigHelperWindow : Window
     private static string NormalizeSavedNav(string? tag)
     {
         if (string.IsNullOrEmpty(tag)) return "actions";
+        if (tag == "menus") return "hotkeys";   // 旧「CapsLock 快捷菜单」页已并入快捷键
         if (tag is "ai-prompt" or "ai-knowledge" or "ai-stash") return "ai-connect";
         string? family = NavFamilyOf(tag);
         if (family != null && tag == family)
@@ -424,7 +403,7 @@ public partial class ConfigHelperWindow : Window
         Page_General.Visibility = tag == "general" ? Visibility.Visible : Visibility.Collapsed;
         Page_Actions.Visibility = tag == "actions" ? Visibility.Visible : Visibility.Collapsed;
         Page_SubActions.Visibility = tag == "subactions" ? Visibility.Visible : Visibility.Collapsed;
-        Page_Menus.Visibility = tag == "menus" ? Visibility.Visible : Visibility.Collapsed;
+        Page_Hotkeys.Visibility = tag == "hotkeys" ? Visibility.Visible : Visibility.Collapsed;
         Page_SuperPanel.Visibility = superPanel ? Visibility.Visible : Visibility.Collapsed;
         Page_Terminals.Visibility = tag == "terminals" ? Visibility.Visible : Visibility.Collapsed;
         Page_Logs.Visibility = tag == "logs" ? Visibility.Visible : Visibility.Collapsed;
@@ -458,7 +437,7 @@ public partial class ConfigHelperWindow : Window
         if (tag == "actions") PopulateActions();
         if (tag == "subactions") Page_SubActions.Reload();
         if (ai) Page_Ai.Reload();
-        if (tag == "menus") PopulateGroupList();
+        if (tag == "hotkeys") Page_Hotkeys.Reload();
         if (superPanel) PopulateSuperPanel();
     }
 
@@ -660,372 +639,25 @@ public partial class ConfigHelperWindow : Window
         if (cur != null) DeleteAction(cur.Id);
     }
 
-    /// <summary>删除动作：确认后落盘，并清理菜单项 / 面板入口中的引用。</summary>
+    /// <summary>删除动作：确认后落盘，并清理快捷键 / 面板入口中的引用。</summary>
     private void DeleteAction(string id)
     {
         if (!ConfirmDialog.Confirm(this, "删除动作",
-            $"确定删除「{ActionRegistry.DisplayName(id)}」吗？\n\n面板引用：{PanelLibrary.DescribeReferences(id)}\n菜单项 / 组合步骤中的引用也会一并清除。",
+            $"确定删除「{ActionRegistry.DisplayName(id)}」吗？\n\n面板引用：{PanelLibrary.DescribeReferences(id)}\n快捷键 / 组合步骤中的引用也会一并清除。",
             danger: true)) return;
 
-        ConfigStore.RemoveAction(id);   // 内含清菜单项、组合步骤、面板引用
+        ConfigStore.RemoveAction(id);   // 内含清快捷键、组合步骤、面板引用
         PopulateActions();
-        PopulateGroupList();
+        Page_Hotkeys.Reload();
         Page_SuperPanel.Reload();
         MarkDirty();
     }
 
-    // ============ CapsLock快捷菜单 ============
-    private int SelectedSlot => GroupList.SelectedIndex + 1;
-
-    private void PopulateGroupList()
-    {
-        _loadingList = true;
-        int sel = GroupList.SelectedIndex;
-        _groups.Clear();
-        for (int i = 1; i <= MenuSystem.GroupCount; i++)
-        {
-            var g = MenuSystem.GetGroup(i);
-            string seq = (i % 10).ToString();   // 1-9→"1"~"9"，10→"0"
-            _groups.Add($"{seq}. {g?.Name ?? "(空)"}");
-        }
-        if (sel >= 0 && sel < _groups.Count) GroupList.SelectedIndex = sel;
-        _loadingList = false;
-        PopulateItemList();
-    }
-
-    private void GroupList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_loadingList) return;
-        PopulateItemList();
-    }
-
-    private void PopulateItemList()
-    {
-        _loadingList = true;
-        int sel = ItemList.SelectedIndex;
-        _items.Clear();
-        var g = MenuSystem.GetGroup(SelectedSlot);
-        if (g != null)
-        {
-            for (int i = 0; i < g.Items.Count; i++)
-                _items.Add($"{i + 1}. {ActionRegistry.DisplayName(g.Items[i])}");
-        }
-        if (sel >= 0 && sel < _items.Count) ItemList.SelectedIndex = sel;
-        _loadingList = false;
-    }
-
-    private void ItemList_SelectionChanged(object sender, SelectionChangedEventArgs e) { }
-
-    private void ItemList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点 ✕ 不触发
-        // 双击菜单项 → 编辑该菜单项所引用的动作本身（而非换一个动作引用，那是「修改」按钮的职责）
-        if (ItemList.SelectedIndex >= 0) EditItemAction_Click(sender, e);
-    }
-
-    private void EditGroup_Click(object sender, RoutedEventArgs e)
-    {
-        var g = MenuSystem.GetGroup(SelectedSlot);
-        string currentName = g?.Name ?? "";
-        var (ok, name) = InputDialog.Show(this, "编辑菜单组", "请输入菜单组名称:", currentName);
-        if (!ok || string.IsNullOrWhiteSpace(name)) return;
-        if (g == null)
-        {
-            int slot = MenuSystem.AddGroup(name.Trim());
-            if (slot < 0) { ConfirmDialog.Info(this, "设置", "菜单组已满（最多10组）"); return; }
-            PopulateGroupList();
-            GroupList.SelectedIndex = slot - 1;
-        }
-        else
-        {
-            MenuSystem.EditGroup(SelectedSlot, name.Trim());
-            PopulateGroupList();
-        }
-        MarkDirty();
-    }
-
-    /// <summary>行内 hover ✕：删除该菜单组（单条）。</summary>
-    private void GroupRowDelete_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button b) return;
-        int idx = RowIndex(GroupList, b);
-        if (idx < 0) return;
-        int slot = idx + 1;
-        if (MenuSystem.GetGroup(slot) == null) return;
-        if (!ConfirmDialog.Confirm(this, "删除菜单组", "确定要删除选中的菜单组吗？", danger: true)) return;
-        MenuSystem.DeleteGroup(slot);
-        PopulateGroupList();
-        MarkDirty();
-    }
-
-    /// <summary>编辑菜单项前确保有菜单组：当前槽为空则新建「新组」并选中。</summary>
-    private bool EnsureGroupForEdit()
-    {
-        if (MenuSystem.GetGroup(SelectedSlot) != null) return true;
-        int slot = MenuSystem.AddGroup("新组");
-        if (slot < 0) { ConfirmDialog.Info(this, "设置", "菜单组已满（最多10组）"); return false; }
-        PopulateGroupList();
-        GroupList.SelectedIndex = slot - 1;
-        return true;
-    }
-
-    private void AddItem_Click(object sender, RoutedEventArgs e)
-    {
-        if (!EnsureGroupForEdit()) return;
-        var picker = new ActionPoolPicker(this, "添加菜单项 — 选择动作") { Owner = this };
-        picker.ShowDialog();
-        if (picker.Result == null) return;
-        MenuSystem.AddItem(SelectedSlot, picker.Result);
-        PopulateItemList();
-        var g2 = MenuSystem.GetGroup(SelectedSlot);
-        if (g2 != null) ItemList.SelectedIndex = g2.Items.Count - 1;
-        MarkDirty();
-    }
-
-    /// <summary>在菜单页新建一个动作并加入当前菜单组（无组则先建组）。</summary>
-    private void NewActionFromMenu_Click(object sender, RoutedEventArgs e)
-    {
-        if (!EnsureGroupForEdit()) return;
-        var dto = ActionEditor.Show(this, "新建动作", null);
-        if (dto == null) return;
-        ConfigStore.AddAction(dto);
-        MenuSystem.AddItem(SelectedSlot, dto.Id);
-        PopulateActions();          // 动作池新增了动作，刷新动作管理列表
-        PopulateItemList();
-        var g = MenuSystem.GetGroup(SelectedSlot);
-        if (g != null) ItemList.SelectedIndex = g.Items.Count - 1;
-        MarkDirty();
-    }
-
-    private void EditItem_Click(object sender, RoutedEventArgs e)
-    {
-        var g = MenuSystem.GetGroup(SelectedSlot);
-        int idx = ItemList.SelectedIndex;
-        if (g == null || idx < 0 || idx >= g.Items.Count) return;
-        string currentId = g.Items[idx];
-        var picker = new ActionPoolPicker(this, "修改菜单项 — 选择动作", currentId) { Owner = this };
-        picker.ShowDialog();
-        if (picker.Result == null) return;
-        MenuSystem.EditItem(SelectedSlot, idx, picker.Result);
-        PopulateItemList();
-        ItemList.SelectedIndex = idx;
-        MarkDirty();
-    }
-
-    /// <summary>双击菜单项 → 编辑该菜单项所引用的动作本身（打开动作编辑窗口），
-    /// 而非「修改菜单项」换一个动作引用（那是 <see cref="EditItem_Click"/> 的职责）。
-    /// 引用的动作已被删（引用悬空）时回退到 <see cref="EditItem_Click"/> 重新选一个。</summary>
-    private void EditItemAction_Click(object sender, RoutedEventArgs e)
-    {
-        var g = MenuSystem.GetGroup(SelectedSlot);
-        int idx = ItemList.SelectedIndex;
-        if (g == null || idx < 0 || idx >= g.Items.Count) return;
-        var cur = ActionRegistry.FindById(g.Items[idx]);
-        if (cur == null) { EditItem_Click(sender, e); return; }   // 引用悬空 → 回退换选
-        var dto = ActionEditor.Show(this, "编辑动作", cur);
-        if (dto == null) return;
-        dto.Id = cur.Id;   // 保留原 Id（编辑不换 Id，与 EditAction_Click 一致）
-        ConfigStore.UpdateAction(dto);
-        PopulateItemList();          // 动作名 / 图标可能改了，刷新菜单项显示
-        ItemList.SelectedIndex = idx;
-        MarkDirty();
-    }
-
-    /// <summary>行内 hover ✕：删除该菜单项（单条）。</summary>
-    private void ItemRowDelete_Click(object sender, RoutedEventArgs e)
-    {
-        if (MenuSystem.GetGroup(SelectedSlot) == null) return;
-        if (sender is not Button b) return;
-        int idx = RowIndex(ItemList, b);
-        if (idx < 0) return;
-        MenuSystem.DeleteItem(SelectedSlot, idx);
-        PopulateItemList();
-        if (_items.Count > 0) ItemList.SelectedIndex = Math.Min(idx, _items.Count - 1);
-        MarkDirty();
-    }
-
-    // —— 菜单组 / 菜单项拖动排序 ——
-    // 统一规格（照 Quicker）：快照幽灵跟随光标 + 源行虚线占位 + 让位动画 + Esc 取消。
-    // 菜单组是固定 1..10 槽位（交换语义）；菜单项是插入语义（实时预览，松手落定）。
-    private readonly DragVisuals _groupVisuals;
-    private readonly ListDragSort _itemDrag;
-
-    private Point _menuDragOrigin;
-    private int _groupDragFrom = -1;              // 组拖动源 index（0-based，对应 1..10 槽）
-    private bool _groupDragging;
-    private ListBoxItem? _groupSrcRow;
-    private FrameworkElement? _groupHole;
-    private int _groupHover = -1;                 // 组拖动目标行（高亮）
-    private List<string>? _itemSnapshot;          // 菜单项拖动前的顺序（Esc 还原）
-
-    /// <summary>visual tree 上溯找最近的 <typeparamref name="T"/> 祖先（命中 ListBoxItem 用）。</summary>
+    /// <summary>visual tree 上溯找最近的 <typeparamref name="T"/> 祖先。</summary>
     private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
     {
         while (d != null && d is not T) d = VisualTreeHelper.GetParent(d);
         return d as T;
-    }
-
-    /// <summary>按钮所在行的索引（供行内 ✕ 删除定位行）。</summary>
-    private static int RowIndex(ListBox list, DependencyObject src)
-    {
-        var lbi = FindAncestor<ListBoxItem>(src);
-        return lbi != null ? list.ItemContainerGenerator.IndexFromContainer(lbi) : -1;
-    }
-
-    // —— 组拖动（交换语义；源槽虚线占位 + 目标行高亮）——
-
-    private void GroupList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        _groupDragFrom = -1;
-        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点 ✕ 不启动拖动
-        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not { } lbi) return;
-        int idx = GroupList.ItemContainerGenerator.IndexFromContainer(lbi);
-        if (idx < 0 || MenuSystem.GetGroup(idx + 1) == null) return;   // 空槽不参与拖动
-        _groupDragFrom = idx;
-        _menuDragOrigin = e.GetPosition(this);
-        _groupDragging = false;
-    }
-
-    private void GroupList_PreviewMouseMove(object sender, MouseEventArgs e)
-    {
-        if (_groupDragFrom < 0) return;
-        if (e.LeftButton != MouseButtonState.Pressed) { EndGroupDrag(); return; }
-
-        var pos = e.GetPosition(this);
-        if (!_groupDragging)
-        {
-            if (Math.Abs(pos.X - _menuDragOrigin.X) < SystemParameters.MinimumHorizontalDragDistance
-                && Math.Abs(pos.Y - _menuDragOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-            if (!StartGroupDrag(pos)) return;
-        }
-
-        _groupVisuals.MoveGhost(pos);
-        if (_groupHole != null
-            && GroupList.ItemContainerGenerator.ContainerFromIndex(_groupDragFrom) is ListBoxItem row)
-            DragFx.PlaceOver(GhostLayer, _groupHole, row, this);
-
-        HighlightGroupTarget(HitTestRow(GroupList, pos));
-        e.Handled = true;
-    }
-
-    private bool StartGroupDrag(Point pos)
-    {
-        if (GroupList.ItemContainerGenerator.ContainerFromIndex(_groupDragFrom) is not ListBoxItem row)
-            return false;
-
-        _groupVisuals.ShowGhost(row, pos);
-        _groupHole = DragFx.CreateHole(6);
-        GhostLayer.Children.Add(_groupHole);
-        row.Opacity = 0;
-        _groupSrcRow = row;
-        DragFx.PlaceOver(GhostLayer, _groupHole, row, this);
-        _groupDragging = true;
-        GroupList.CaptureMouse();   // 拖出列表也能收到移动 / 释放
-        return true;
-    }
-
-    private void GroupList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        if (!_groupDragging) { _groupDragFrom = -1; return; }
-        int from = _groupDragFrom;
-        int to = HitTestRow(GroupList, e.GetPosition(this));
-        var old = DragFx.CaptureByIndex(GroupList);
-        EndGroupDrag();
-
-        if (to < 0 || to == from) return;
-        if (!MenuSystem.SwapGroups(from + 1, to + 1)) return;
-        PopulateGroupList();
-        GroupList.SelectedIndex = to;
-        DragFx.AnimateReorderByIndex(GroupList, old, i => DragFx.OldIndexOfSwap(i, from, to));
-        MarkDirty();
-        e.Handled = true;
-    }
-
-    private void EndGroupDrag()
-    {
-        if (_groupHole != null) { GhostLayer.Children.Remove(_groupHole); _groupHole = null; }
-        _groupVisuals.End();
-        GroupList.ReleaseMouseCapture();
-        if (_groupSrcRow != null) { _groupSrcRow.Opacity = 1; _groupSrcRow = null; }
-        // 列表马上会重建，容器可能被回收复用：逐行复位，避免残留隐形行
-        for (int i = 0; i < GroupList.Items.Count; i++)
-            if (GroupList.ItemContainerGenerator.ContainerFromIndex(i) is ListBoxItem c) c.Opacity = 1;
-        ClearGroupHover();
-        _groupDragging = false;
-        _groupDragFrom = -1;
-    }
-
-    // —— 项拖动（插入语义；实时让位，松手落定）——
-
-    private void ItemList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点 ✕ 不启动拖动
-        if (MenuSystem.GetGroup(SelectedSlot) == null) return;
-        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not { } lbi) return;
-        int idx = ItemList.ItemContainerGenerator.IndexFromContainer(lbi);
-        if (idx < 0) return;
-        _itemDrag.Press(idx, e.GetPosition(this));
-    }
-
-    /// <summary>实时预览：把源项移到插入位置，返回它的新下标（-1 = 没有变化）。</summary>
-    private int MoveItemPreview(int from, int insertAt)
-    {
-        int to = insertAt > from ? insertAt - 1 : insertAt;   // 移除源后索引前移
-        if (to == from) return -1;
-
-        var old = DragFx.CaptureByIndex(ItemList);
-        if (!MenuSystem.MoveItemTo(SelectedSlot, from, to)) return -1;
-        PopulateItemList();
-        ItemList.SelectedIndex = to;
-        DragFx.AnimateReorderByIndex(ItemList, old, i => DragFx.OldIndexOfMove(i, from, to));
-        return to;
-    }
-
-    private void TakeItemSnapshot()
-    {
-        var g = MenuSystem.GetGroup(SelectedSlot);
-        _itemSnapshot = g != null ? new List<string>(g.Items) : null;
-    }
-
-    private void RestoreItemSnapshot()
-    {
-        var g = MenuSystem.GetGroup(SelectedSlot);
-        if (g != null && _itemSnapshot != null)
-        {
-            g.Items.Clear();
-            g.Items.AddRange(_itemSnapshot);
-        }
-        PopulateItemList();
-    }
-
-    // —— 菜单拖动命中 / 指示 ——
-
-    /// <summary>光标命中的 ListBox 行 index；列表外或未命中行返回 -1。</summary>
-    private int HitTestRow(ListBox list, Point windowPos)
-    {
-        var rel = TranslatePoint(windowPos, list);
-        if (rel.X < 0 || rel.Y < 0 || rel.X > list.ActualWidth || rel.Y > list.ActualHeight) return -1;
-        if (list.InputHitTest(rel) is not DependencyObject d) return -1;
-        var lbi = FindAncestor<ListBoxItem>(d);
-        return lbi != null ? list.ItemContainerGenerator.IndexFromContainer(lbi) : -1;
-    }
-
-    /// <summary>组拖动目标行高亮（交换语义）；源行本身不高亮。</summary>
-    private void HighlightGroupTarget(int idx)
-    {
-        if (idx == _groupDragFrom) idx = -1;
-        if (idx == _groupHover) return;
-        ClearGroupHover();
-        _groupHover = idx;
-        if (idx >= 0 && GroupList.ItemContainerGenerator.ContainerFromIndex(idx) is ListBoxItem lbi)
-            lbi.Background = (Brush)FindResource("SurfaceAltBrush");
-    }
-
-    private void ClearGroupHover()
-    {
-        if (_groupHover >= 0 && GroupList.ItemContainerGenerator.ContainerFromIndex(_groupHover) is ListBoxItem lbi)
-            lbi.ClearValue(BackgroundProperty);
-        _groupHover = -1;
     }
 
     // ============ 面板管理 ============
@@ -1315,14 +947,13 @@ public partial class ConfigHelperWindow : Window
             await Task.Run(() => BackupService.Import(preview));
             ConfigStore.Reload();
             PopulateActions();
-            PopulateGroupList();
+            Page_Hotkeys.Reload();
             PopulateSuperPanel();
-            // 全局开关 / 鼠标速度在 AppState，启动时从配置读取；导入新配置后重新应用，避免要重启才生效
+            // 全局开关在 AppState，启动时从配置读取；导入新配置后重新应用，避免要重启才生效
             var cfg = ConfigStore.LoadConfig();
             AppState.IsToolEnabled = cfg.CapsLockEnabled;
             AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
             AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
-            AppState.MouseModeSpeed = cfg.MouseModeSpeed;
             MacroSettings.Load(cfg);
             PopulateLogging();
             var logCfg = cfg.Logging ?? new LogConfig();
@@ -1354,7 +985,7 @@ public partial class ConfigHelperWindow : Window
         ConfigStore.Reload();
         MacroSettings.Load(ConfigStore.LoadConfig());
         PopulateActions();
-        PopulateGroupList();
+        Page_Hotkeys.Reload();
         PopulateSuperPanel();
         Page_Ai.Reload();
         ShowStatus("已重新加载", ok: true);

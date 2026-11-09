@@ -86,46 +86,6 @@
             <Setter Property="Margin" Value="0,0,0,12"/>
         </Style>
 
-        <!-- 菜单组列表项：名称 + hover 删除 -->
-        <DataTemplate x:Key="GroupRowTemplate">
-            <Grid Margin="0,4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <Button Grid.Column="1" x:Name="DelBtn" Style="{StaticResource BtnGhostDanger}" Content="✕"
-                        Padding="0" Width="24" Height="24" Margin="6,0,0,0"
-                        VerticalAlignment="Center" ToolTip="删除"
-                        Click="GroupRowDelete_Click" Visibility="Hidden"/>
-            </Grid>
-            <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=ListBoxItem}, Path=IsMouseOver}" Value="True">
-                    <Setter TargetName="DelBtn" Property="Visibility" Value="Visible"/>
-                </DataTrigger>
-            </DataTemplate.Triggers>
-        </DataTemplate>
-
-        <!-- 菜单项列表项：名称 + hover 删除 -->
-        <DataTemplate x:Key="ItemRowTemplate">
-            <Grid Margin="0,4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <Button Grid.Column="1" x:Name="DelBtn" Style="{StaticResource BtnGhostDanger}" Content="✕"
-                        Padding="0" Width="24" Height="24" Margin="6,0,0,0"
-                        VerticalAlignment="Center" ToolTip="删除"
-                        Click="ItemRowDelete_Click" Visibility="Hidden"/>
-            </Grid>
-            <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=ListBoxItem}, Path=IsMouseOver}" Value="True">
-                    <Setter TargetName="DelBtn" Property="Visibility" Value="Visible"/>
-                </DataTrigger>
-            </DataTemplate.Triggers>
-        </DataTemplate>
-
     </Window.Resources>
 
     <Grid>
@@ -156,8 +116,8 @@
                                      Checked="Nav_Changed" Tag="actions"/>
                         <RadioButton Style="{StaticResource NavRow}" Content="子动作库"
                                      Checked="Nav_Changed" Tag="subactions"/>
-                        <RadioButton Style="{StaticResource NavRow}" Content="CapsLock快捷菜单"
-                                     Checked="Nav_Changed" Tag="menus"/>
+                        <RadioButton x:Name="NavHotkeys" Style="{StaticResource NavRow}" Content="快捷键"
+                                     Checked="Nav_Changed" Tag="hotkeys"/>
                         <!-- 面板管理：点它进「常规」主页面，并在下方展开二级下拉导航 -->
                         <RadioButton x:Name="NavSuperPanel" Style="{StaticResource NavRow}"
                                      Checked="Nav_Changed" Tag="superpanel"
@@ -227,7 +187,7 @@
                                 <CheckBox x:Name="CapsLockEnabledBox" Content="启用 CapsLock 键功能"
                                           Checked="CapsLockEnabledBox_Changed" Unchecked="CapsLockEnabledBox_Changed"/>
                                 <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,12"
-                                           Text="CapsLock 作为修饰键：CapsLock+数字菜单、鼠标模式、vim 编辑等。关闭后 CapsLock 恢复原生大小写切换（CapsLock+Esc 手势亦可切换）。"
+                                           Text="CapsLock 作为修饰键：轻按发 Esc，按住即可配合其它键（CapsLock+字母 等）触发「快捷键」页里配好的动作。关闭后 CapsLock 恢复原生大小写切换，带 CapsLock 前缀的快捷键也随之停用。"
                                            TextWrapping="Wrap"/>
                                 <CheckBox x:Name="SuperPanelEnabledBox" Content="启用超级面板"
                                           Checked="SuperPanelEnabledBox_Changed" Unchecked="SuperPanelEnabledBox_Changed"/>
@@ -377,58 +337,8 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- ============ CapsLock快捷菜单 ============ -->
-                <Grid x:Name="Page_Menus" Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="230" MinWidth="180"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="*" MinWidth="260"/>
-                    </Grid.ColumnDefinitions>
-
-                    <Grid Grid.Column="0" Margin="20,14,0,14">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="CapsLock快捷菜单（CapsLock+1~0）"
-                                   Margin="0,0,0,8"/>
-                        <ListBox Grid.Row="1" x:Name="GroupList"
-                                 ItemTemplate="{StaticResource GroupRowTemplate}"
-                                 SelectionChanged="GroupList_SelectionChanged"
-                                 PreviewMouseLeftButtonDown="GroupList_PreviewMouseLeftButtonDown"
-                                 PreviewMouseMove="GroupList_PreviewMouseMove"
-                                 PreviewMouseLeftButtonUp="GroupList_PreviewMouseLeftButtonUp"/>
-                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button Style="{StaticResource BtnGhost}" Content="重命名" Click="EditGroup_Click"/>
-                        </StackPanel>
-                    </Grid>
-
-                    <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
-                                  VerticalAlignment="Stretch"/>
-
-                    <Grid Grid.Column="2" Margin="0,14,20,14">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}" Text="菜单项"
-                                   Margin="0,0,0,8"/>
-                        <ListBox Grid.Row="1" x:Name="ItemList"
-                                 ItemTemplate="{StaticResource ItemRowTemplate}"
-                                 SelectionChanged="ItemList_SelectionChanged"
-                                 MouseDoubleClick="ItemList_MouseDoubleClick"
-                                 PreviewMouseLeftButtonDown="ItemList_PreviewMouseLeftButtonDown"/>
-                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button Style="{StaticResource BtnGhost}" Content="从动作池添加…" Click="AddItem_Click"/>
-                            <Button Style="{StaticResource BtnPrimary}" Content="新建动作…" MinWidth="84"
-                                    Margin="6,0,0,0" Click="NewActionFromMenu_Click"
-                                    ToolTip="新建一个动作并加入本菜单组"/>
-                            <Button Style="{StaticResource BtnGhost}" Content="修改" Margin="6,0,0,0" Click="EditItem_Click"/>
-                        </StackPanel>
-                    </Grid>
-                </Grid>
+                <!-- ============ 快捷键 ============ -->
+                <controls:HotkeysView x:Name="Page_Hotkeys" Visibility="Collapsed"/>
 
                 <!-- ============ 子动作库 ============ -->
                 <controls:SubActionLibraryView x:Name="Page_SubActions" Visibility="Collapsed"/>
@@ -597,8 +507,5 @@
                         Click="Reload_Click"/>
             </DockPanel>
         </Border>
-
-        <!-- 拖动幽灵 / 占位层（覆盖全窗口，不挡鼠标） -->
-        <Canvas x:Name="GhostLayer" Grid.RowSpan="3" IsHitTestVisible="False"/>
     </Grid>
 </Window>

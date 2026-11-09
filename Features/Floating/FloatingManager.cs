@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using LTools.Config;
 using LTools.Core;
+using LTools.Features.Builtin;
 using LTools.Native;
 using LTools.Views;
 
@@ -54,20 +55,20 @@ internal static class FloatingManager
     {
         if (string.IsNullOrWhiteSpace(actionId)) return;
 
-        var action = ActionRegistry.FindById(actionId);
-        if (action == null)
+        if (!BindingRef.Exists(actionId))
         {
-            ToastService.Show("动作不存在，无法悬浮");
+            ToastService.Show("动作 / 功能不存在，无法悬浮");
             return;
         }
 
+        string name = BindingRef.Name(actionId);
         var existing = FloatingLibrary.FindByAction(actionId);
         if (existing != null)
         {
             if (!Windows.ContainsKey(existing.Id))
             {
                 CreateWindow(existing);
-                ToastService.Show($"已显示悬浮「{action.Name}」");
+                ToastService.Show($"已显示悬浮「{name}」");
                 return;
             }
 
@@ -80,7 +81,7 @@ internal static class FloatingManager
             {
                 Close(existing.Id);
             }
-            ToastService.Show($"已取消悬浮「{action.Name}」");
+            ToastService.Show($"已取消悬浮「{name}」");
             return;
         }
 
@@ -93,7 +94,7 @@ internal static class FloatingManager
         }
 
         CreateWindow(item);
-        ToastService.Show($"已悬浮「{action.Name}」");
+        ToastService.Show($"已悬浮「{name}」");
     }
 
     /// <summary>「悬浮此分组」：把分组里的动作一起放上桌面（已在别处悬浮的动作会跳过）。</summary>
@@ -227,7 +228,7 @@ internal static class FloatingManager
     // 悬浮窗不是前台窗口，它的 ContextMenu popup 拿不到**有效**的鼠标捕获：
     // Windows 只让前台窗口捕获「窗口之外」的点击，所以 WPF 自己那套
     // 「点外部关菜单」在悬浮窗上永远不触发（实测点外部一条鼠标消息都收不到）。
-    // 只能照 SuperPanel / MenuSystem 的做法，用全局鼠标钩子按坐标判定。
+    // 只能照 SuperPanel 的做法，用全局鼠标钩子按坐标判定。
 
     /// <summary>有没有悬浮窗的右键菜单开着。</summary>
     internal static bool IsMenuOpen => Windows.Values.Any(w => w.IsMenuOpen);

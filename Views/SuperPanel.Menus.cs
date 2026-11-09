@@ -12,6 +12,7 @@ using LTools.Config;
 using LTools.Core;
 using LTools.Core.Ai;
 using LTools.Features;
+using LTools.Features.Builtin;
 using LTools.Features.Floating;
 using LTools.Features.Panel;
 using LTools.Native;
@@ -29,6 +30,8 @@ public partial class SuperPanelWindow
     private ContextMenu BuildFilledMenu(PanelTileRef tref)
     {
         string id = tref.ActionId!;
+        if (FeatureCatalog.IsFeatureRef(id)) return BuildFeatureMenu(tref);
+
         var menu = new ContextMenu();
         AddMenuItem(menu, "编辑…", () => EditAction(tref));
         AddMenuItem(menu, "复制", () => DuplicateAction(tref));
@@ -44,6 +47,58 @@ public partial class SuperPanelWindow
         AddMenuItem(menu, "从此组移除", () => RemoveFromGroup(tref));
         AddMenuItem(menu, "删除动作…", () => DeleteAction(tref.ActionId!));
         return menu;
+    }
+
+    /// <summary>内置功能的磁贴菜单：功能只读，能改的只有参数与悬浮 / 移除。</summary>
+    private ContextMenu BuildFeatureMenu(PanelTileRef tref)
+    {
+        string id = tref.ActionId!;
+        var def = FeatureCatalog.Find(FeatureRef.IdOf(id));
+        var menu = new ContextMenu();
+
+        if (def is { HasParams: true })
+            AddMenuItem(menu, "参数…", () => EditFeatureParams(tref));
+
+        string summary = FeatureCatalog.ParamSummary(id);
+        var info = new MenuItem
+        {
+            Header = summary.Length > 0 ? $"当前参数：{summary}" : "没有可调参数",
+            IsEnabled = false,
+            ToolTip = def?.Description,
+        };
+        menu.Items.Add(info);
+        menu.Items.Add(new Separator());
+
+        bool floating = FloatingLibrary.IsFloating(id);
+        string label = !floating ? "悬浮此功能"
+            : FloatingManager.IsOnDesktop(id) ? "取消悬浮" : "显示悬浮";
+        AddMenuItem(menu, label, () => ToggleFloat(id));
+        menu.Items.Add(new Separator());
+        AddMenuItem(menu, "从此组移除", () => RemoveFromGroup(tref));
+        return menu;
+    }
+
+    /// <summary>改功能参数：面板先关（隐藏的 Topmost 窗口会让对话框闪黑），改完写回槽位引用。</summary>
+    private void EditFeatureParams(PanelTileRef tref)
+    {
+        if (tref.ActionId == null) return;
+        string oldRef = tref.ActionId;
+        Features.SuperPanel.Close();
+
+        string? updated = FeatureParamsDialog.Show(null, oldRef);
+        if (string.IsNullOrEmpty(updated) || updated == oldRef) return;
+
+        var actions = tref.Group.Actions;
+        if (tref.Index >= 0 && tref.Index < actions.Count && actions[tref.Index] == oldRef)
+            actions[tref.Index] = updated;
+        else
+        {
+            int i = actions.IndexOf(oldRef);
+            if (i >= 0) actions[i] = updated;
+        }
+
+        PanelLibrary.Save();
+        RebuildAll();
     }
 
     /// <summary>
@@ -67,10 +122,43 @@ public partial class SuperPanelWindow
         var menu = new ContextMenu();
         AddMenuItem(menu, "新建动作…", () => NewActionFor(group));
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
+        menu.Items.Add(new Separator());
+        AddFeatureMenus(menu, group);
         TrackInteract(menu);
         menu.PlacementTarget = target;
         menu.Placement = target != null ? PlacementMode.Bottom : PlacementMode.MousePoint;
         menu.IsOpen = true;
+    }
+
+    /// <summary>「常用功能 ▸」/「LTools 功能 ▸」：常用功能再按分类分一层，点叶子直接加一颗磁贴。</summary>
+    private void AddFeatureMenus(ItemsControl menu, PanelGroupDto group)
+    {
+        var common = FloatingMenus.Submenu(menu, "常用功能");
+        foreach (var byCategory in FeatureCatalog.InGroup(FeatureGroup.Common)
+                     .GroupBy(d => d.Category))
+        {
+            var cat = FloatingMenus.Submenu(common, byCategory.Key);
+            foreach (var def in byCategory) AddFeatureItem(cat, group, def);
+        }
+
+        var ltools = FloatingMenus.Submenu(menu, "LTools 功能");
+        foreach (var def in FeatureCatalog.InGroup(FeatureGroup.Ltools))
+            AddFeatureItem(ltools, group, def);
+    }
+
+    private void AddFeatureItem(ItemsControl parent, PanelGroupDto group, FeatureDef def)
+    {
+        var item = new MenuItem { Header = def.Name, ToolTip = def.Description };
+        item.Click += (_, _) => AddFeatureToGroup(group, def.DefaultReference);
+        parent.Items.Add(item);
+    }
+
+    private void AddFeatureToGroup(PanelGroupDto group, string reference)
+    {
+        group.Actions.Add(reference);
+        PanelLibrary.Save();
+        RebuildAll();
+        ToastService.Show($"已加入「{group.Name}」", BindingRef.Name(reference), 2000, ToastKind.success);
     }
 
     private ContextMenu NewTrackedMenu()
@@ -86,6 +174,8 @@ public partial class SuperPanelWindow
         var menu = NewTrackedMenu();
         AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(group));
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
+        menu.Items.Add(new Separator());
+        AddFeatureMenus(menu, group);
         menu.Items.Add(new Separator());
         AddFloatGroupItem(menu, group);
         menu.Items.Add(new Separator());
@@ -121,6 +211,8 @@ public partial class SuperPanelWindow
         {
             AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(target));
             AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(target));
+            menu.Items.Add(new Separator());
+            AddFeatureMenus(menu, target);
             menu.Items.Add(new Separator());
         }
 

@@ -47,7 +47,6 @@ internal static class AutomationRunner
         AppState.CapsLockIsDown = false;
         AppState.CapsLockPressTime = 0;
         AppState.OtherKeyPressed = false;
-        AppState.CapsLockEscPressed = false;
     }
 
     /// <summary>执行一个动作（在后台线程里跑，异常在此记录并提示，不再上抛）。</summary>

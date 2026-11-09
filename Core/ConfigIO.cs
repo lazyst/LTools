@@ -10,7 +10,7 @@ namespace LTools.Core;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 日常修改走 <c>Config/DomainStores.cs</c> 里的 <c>SettingsStore</c> / <c>UiStore</c> / <c>MenuStore</c>
+/// 日常修改走 <c>Config/DomainStores.cs</c> 里的 <c>SettingsStore</c> / <c>UiStore</c> / <c>HotkeyStore</c>
 /// / <c>PanelStore</c> / <c>FloatingStore</c> / <c>MacroFileStore</c>：它们的 <see cref="ModifyDomain{T}"/>
 /// **只写自己那一个域文件**，改一个开关不会再扫 <c>actions/</c> 或重写其它域。
 /// </para>

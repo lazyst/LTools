@@ -27,7 +27,7 @@ internal static class QuickSearch
         var orig = BackupClipboard();
         NativeClipboard.Clear();
         InputHelper.Combo((ushort)Win32.VkControl, (ushort)'C');
-        Thread.Sleep(50); // 选区建立时序（同 ClipboardIndependent / SymbolJump）
+        Thread.Sleep(50); // 选区建立时序（先等目标应用把选区写进剪贴板）
         if (!ClipWait(300))
         {
             RestoreClipboard(orig);

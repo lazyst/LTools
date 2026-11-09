@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.Builtin;
 using LTools.Features.Floating;
 using LTools.Features.Panel;
 
@@ -1184,8 +1185,9 @@ public partial class PanelManageView : UserControl
     }
 
     /// <summary>磁贴内容（图标 chip + 标题）；磁贴与拖动幽灵共用。</summary>
-    private static StackPanel TileContent(ActionDto? a)
+    private static StackPanel TileContent(string? reference)
     {
+        bool exists = BindingRef.Exists(reference);
         var content = new StackPanel
         {
             HorizontalAlignment = HorizontalAlignment.Center,
@@ -1202,55 +1204,78 @@ public partial class PanelManageView : UserControl
             HorizontalAlignment = HorizontalAlignment.Center,
             Child = new TextBlock
             {
-                Text = a != null ? IconCatalog.GetGlyph(a.Icon) : "\uE783",
+                Text = exists ? IconCatalog.GetGlyph(BindingRef.Icon(reference)) : "\uE783",
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
                 FontSize = 16,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = (Brush)Application.Current.FindResource(a != null ? "TextBrush" : "DangerBrush"),
+                Foreground = (Brush)Application.Current.FindResource(exists ? "TextBrush" : "DangerBrush"),
             },
         });
         content.Children.Add(new TextBlock
         {
-            Text = a != null ? a.Name : "缺失",
+            Text = exists ? BindingRef.Name(reference) : "缺失",
             Margin = new Thickness(0, 4, 0, 0),
             FontSize = 11,
             MaxWidth = 92,
             TextTrimming = TextTrimming.CharacterEllipsis,
             TextAlignment = TextAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Foreground = (Brush)Application.Current.FindResource(a != null ? "SecondaryTextBrush" : "DangerBrush"),
+            Foreground = (Brush)Application.Current.FindResource(exists ? "SecondaryTextBrush" : "DangerBrush"),
         });
         return content;
     }
 
     private Button BuildTile(PanelGroupDto group, int index, string id)
     {
-        var a = ActionRegistry.FindById(id);
+        bool feature = FeatureCatalog.IsFeatureRef(id);
         var btn = new Button
         {
             Style = (Style)FindResource("PanelTileBtn"),
             Tag = new PanelTileRef { Group = group, Index = index, ActionId = id },
+            ToolTip = BindingRef.Describe(id),
         };
 
-        var content = TileContent(a);
+        var content = TileContent(id);
         btn.Content = content;
 
         AttachTileDrag(btn);
-        btn.Click += (_, _) =>
-        {
-            if (PanelActionOps.Edit(Window.GetWindow(this), id)) RefreshAll();
-        };
 
         var menu = new ContextMenu();
-        var edit = new MenuItem { Header = "编辑…" };
-        edit.Click += (_, _) => { if (PanelActionOps.Edit(Window.GetWindow(this), id)) RefreshAll(); };
         var remove = new MenuItem { Header = "从此组移除" };
         remove.Click += (_, _) =>
         {
             PanelActionOps.RemoveFromGroup(group, index);
             RefreshAll();
         };
+
+        if (feature)
+        {
+            var def = FeatureCatalog.Find(FeatureRef.IdOf(id));
+            if (def is { HasParams: true })
+            {
+                var param = new MenuItem { Header = "参数…" };
+                param.Click += (_, _) => EditFeatureParams(group, index, id);
+                menu.Items.Add(param);
+                menu.Items.Add(new Separator());
+            }
+            menu.Items.Add(remove);
+            btn.ContextMenu = menu;
+            btn.Click += (_, _) =>
+            {
+                if (def is { HasParams: true }) EditFeatureParams(group, index, id);
+            };
+            return btn;
+        }
+
+        var a = ActionRegistry.FindById(id);
+        btn.Click += (_, _) =>
+        {
+            if (PanelActionOps.Edit(Window.GetWindow(this), id)) RefreshAll();
+        };
+
+        var edit = new MenuItem { Header = "编辑…" };
+        edit.Click += (_, _) => { if (PanelActionOps.Edit(Window.GetWindow(this), id)) RefreshAll(); };
         menu.Items.Add(edit);
         if (a != null)
         {
@@ -1268,6 +1293,24 @@ public partial class PanelManageView : UserControl
         }
         btn.ContextMenu = menu;
         return btn;
+    }
+
+    /// <summary>改内置功能的参数：替换分组里的那一处引用（同一个功能可以在不同位置带不同参数）。</summary>
+    private void EditFeatureParams(PanelGroupDto group, int index, string reference)
+    {
+        string? updated = FeatureParamsDialog.Show(Window.GetWindow(this), reference);
+        if (string.IsNullOrEmpty(updated) || updated == reference) return;
+
+        if (index >= 0 && index < group.Actions.Count && group.Actions[index] == reference)
+            group.Actions[index] = updated;
+        else
+        {
+            int i = group.Actions.IndexOf(reference);
+            if (i >= 0) group.Actions[i] = updated;
+        }
+
+        PanelLibrary.Save();
+        RefreshAll();
     }
 
     private Button BuildAddTile(PanelGroupDto group)
@@ -1333,7 +1376,7 @@ public partial class PanelManageView : UserControl
             {
                 GhostBody = tref => tref.ActionId == null
                     ? null
-                    : TileContent(ActionRegistry.FindById(tref.ActionId)),
+                    : TileContent(tref.ActionId),
                 Finished = RefreshAll,
             };
         }

@@ -61,7 +61,7 @@ public abstract class ActionDtoLegacy
 
     // —— internal ——
 
-    /// <summary>internal: 内部命令键（如 "quickNote.toggle"，见 <see cref="InternalActionRegistry"/>）。</summary>
+    /// <summary>internal: 内部命令键（如 "quickNote.toggle"，见「LTools 内置功能」单元）。</summary>
     public string? Command { get; set; }
 
     // —— sendText / setClipboard ——

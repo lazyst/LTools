@@ -24,6 +24,7 @@ internal static class MigrationRunner
     {
         new SplitDomainsStep(),
         new ActionDirectoriesStep(),
+        new HotkeysStep(),
     };
 
     /// <summary>推进到当前版本；返回结束时的版本（用于日志 / 自检）。</summary>

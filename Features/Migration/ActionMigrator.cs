@@ -365,8 +365,7 @@ public static class ActionMigrator
             "macro" => Step.Of("input.macro")
                 .WithText("macroId", action.MacroId),
 
-            "internal" => Step.Of("internal.invoke")
-                .WithText("command", action.Command),
+            "internal" => BuildLegacyInternal(action, ctx),
 
             _ => null,
         };
@@ -395,8 +394,34 @@ public static class ActionMigrator
         return steps;
     }
 
-    private static Step BuildRunCommand(ActionDto action)
+    /// <summary>
+    /// v1 的「内置功能」（<c>internal</c> 类型）已随 <c>internal.*</c> 单元一起下线：
+    /// 迁成一条提示步骤，告诉用户改去面板右键的「常用功能 / LTools 功能」。
+    /// </summary>
+    private static Step BuildLegacyInternal(ActionDto action, Context ctx)
     {
+        string command = (action.Command ?? "").Trim();
+        string label = command switch
+        {
+            "quickNote.toggle" => "速记",
+            "quickSearch.run" => "快速搜索",
+            "magnifier.toggle" => "放大镜",
+            "windowPin.toggle" => "窗口置顶",
+            "panel.toggle" => "超级面板",
+            "settings.toggle" => "设置",
+            _ => command.Length > 0 ? command : "内置功能",
+        };
+
+        ctx.Warn($"「{action.Name}」用的是已移除的「内置功能」步骤（{label}），" +
+                 "已改成一条提示；请改用面板右键的「常用功能 / LTools 功能」重新添加");
+
+        return Step.Of("ui.toast")
+            .WithText("text", $"旧「内置功能：{label}」已停用，请改用面板右键的「常用功能 / LTools 功能」")
+            .WithText("title", action.Name)
+            .WithText("durationMs", "6000");
+    }
+
+    private static Step BuildRunCommand(ActionDto action)    {
         // 旧实现：填了输出变量才捕获输出（否则打开终端窗口），这里保持一致。
         bool capture = !string.IsNullOrWhiteSpace(action.OutputVar);
 

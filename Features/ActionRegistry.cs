@@ -3,9 +3,9 @@ using System.Collections.Generic;
 namespace LTools.Features;
 
 /// <summary>
-/// 全局动作清单（对应计划 §2）。超级面板格子、CapsLock+数字菜单项、组合步骤
+/// 全局动作清单（对应计划 §2）。超级面板格子、快捷键绑定、悬浮项、子步骤
 /// 都只存「动作 Id 引用」，执行时通过本表解析为 <see cref="ActionDto"/>。
-/// 启动时从 <c>AppConfig.Actions</c> 加载（阶段 2）；阶段 1 由冒烟测试直接注册。
+/// 启动时由 <see cref="ActionLibrary"/> 从 <c>actions/&lt;id&gt;/action.json</c> 加载。
 /// </summary>
 internal static class ActionRegistry
 {

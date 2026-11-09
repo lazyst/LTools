@@ -4,7 +4,7 @@ namespace LTools.Features;
 
 /// <summary>
 /// 设置（对应原版 lib/ConfigHelper.ahk）。CapsLock+\ 切换配置窗口；
-/// UI 见 <see cref="Views.ConfigHelperWindow"/>，逻辑委托 <see cref="MenuSystem"/> 的 CRUD。
+/// UI 见 <see cref="Views.ConfigHelperWindow"/>，逻辑委托 <see cref="ActionLibrary"/> / <see cref="HotkeyRegistry"/>。
 /// </summary>
 internal static class ConfigHelper
 {

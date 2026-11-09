@@ -91,8 +91,14 @@ public sealed class LogConfig
 
 public sealed class AppConfig
 {
-    /// <summary>菜单组（长度固定 10，下标 0..9 对应 CapsLock+1~0；null=空组）。</summary>
+    /// <summary>
+    /// 3 及更早版本的「CapsLock 快捷菜单」组（只读：启动迁移会把它并成 hotkeys 里的
+    /// 一个「旧菜单」预设组，之后不再写回）。保留字段只是为了让旧 <c>LTools.json</c> 还能当迁移种子。
+    /// </summary>
     public List<MenuGroupDto?> MenuGroups { get; set; } = new();
+
+    /// <summary>全局快捷键（预设组 + 绑定 + 默认名单），落在 <c>configs/hotkeys.json</c>。</summary>
+    public HotkeyFile Hotkeys { get; set; } = new();
 
     /// <summary>全局动作清单（计划 §2）。超级面板与菜单组都引用这里的 Id。</summary>
     public List<ActionDto> Actions { get; set; } = new();
@@ -118,16 +124,13 @@ public sealed class AppConfig
     /// <summary>终端路径覆盖（如 gitbash）。</summary>
     public Dictionary<string, string> TerminalPaths { get; set; } = new();
 
-    /// <summary>鼠标模式速度 1..20。</summary>
-    public int MouseModeSpeed { get; set; } = 1;
-
     /// <summary>
-    /// CapsLock 键功能总开关（CapsLock+Esc 手势 / CapsLock+数字菜单 / 鼠标模式等）。
+    /// CapsLock 键功能总开关（CapsLock 修饰键 + 快捷键 / 鼠标手势等）。
     /// 与 <see cref="SuperPanel.Enabled"/> 相互独立，均可在设置「通用」页或托盘菜单切换。
     /// </summary>
     public bool CapsLockEnabled { get; set; } = true;
 
-    /// <summary>设置窗口上次所在的导航页（general/actions/menus/superpanel/terminals/logs/backup），下次打开恢复。</summary>
+    /// <summary>设置窗口上次所在的导航页（general/actions/hotkeys/superpanel/terminals/logs/backup），下次打开恢复。</summary>
     public string LastNavPage { get; set; } = "actions";
 
     /// <summary>
@@ -239,9 +242,6 @@ public sealed class AppConfig
 
         var gb = IniFile.ReadValue(iniPath, "TerminalPaths", "gitbash")?.Trim();
         if (!string.IsNullOrEmpty(gb)) cfg.TerminalPaths["gitbash"] = gb;
-
-        var sp = IniFile.ReadValue(iniPath, "MouseMode", "Speed");
-        if (int.TryParse(sp, out var s)) cfg.MouseModeSpeed = s;
 
         return cfg;
     }

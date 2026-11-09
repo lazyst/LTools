@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.Builtin;
 using LTools.Native;
 
 namespace LTools.Hooks;
@@ -128,29 +129,39 @@ internal static class KeyboardHook
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
             }
 
-            // 分发到状态机/功能模块（阶段1+ 实现）
+            // 全局快捷键（含 CapsLock 前缀）：命中就吞键并在后台线程跑动作。
+            // 放在状态机之前：CapsLock+字母 不再走旧的 vim 分发，统一由「快捷键」配置决定。
+            if (isDown)
+            {
+                if (HotkeyRegistry.Suspended)
+                {
+                    // 正在录入快捷键：按键全部交给录入框，只把 CapsLock 的「有其它键」标上，
+                    // 免得 CapsLock 快速点一下就在录入框里发出一个 Esc。
+                    if (vk != Win32.VkCapital) AppState.OtherKeyPressed = true;
+                }
+                else
+                {
+                    string? hotkeyAction = HotkeyRegistry.TryFire(vk);
+                    if (hotkeyAction != null && BindingRef.Exists(hotkeyAction))
+                    {
+                        AppState.OtherKeyPressed = true;
+                        MarkSwallowed(vk);
+                        ActionExecutor.RunRef(hotkeyAction, 0, 0);
+                        return (IntPtr)1;
+                    }
+                }
+            }
+            else if (isUp) HotkeyRegistry.KeyUp(vk);
+
+            // CapsLock 按住期间按了别的键 → 这次不算「轻按」，keyup 不发 Esc。
+            // 未绑定快捷键的键也走这里（它们照常传给前台程序，只是不再算单击）。
+            if (isDown && vk != Win32.VkCapital && AppState.CapsLockIsDown)
+                AppState.OtherKeyPressed = true;
+
+            // 分发到状态机（CapsLock 单击 Esc / Ctrl+CapsLock 切灯）
             if (CapsLockStateMachine.TryHandle(vk, isDown, isUp, out bool swallow))
             {
                 return swallow ? (IntPtr)1 : Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
-            }
-
-            // 菜单打开期间：数字键选项 / Esc 关菜单由钩子路由（不依赖窗口焦点，对齐 AHK #HotIf WinActive(menu)）
-            if (isDown && MenuSystem.IsMenuOpen)
-            {
-                // CapsLock 按住 + 数字键 → 关闭当前菜单并切换到新组（而非在当前组内选项）
-                if (AppState.IsCapsLockDown && vk >= '0' && vk <= '9')
-                {
-                    MenuSystem.Dispatch(vk); // 内部先 CloseCurrent() 再 Show 新组
-                    AppState.OtherKeyPressed = true;
-                    MarkSwallowed(vk);
-                    return (IntPtr)1;
-                }
-                if (MenuSystem.HandleMenuKey(vk, isDown))
-                {
-                    AppState.OtherKeyPressed = true;
-                    MarkSwallowed(vk);
-                    return (IntPtr)1;
-                }
             }
 
             // 动作面板打开期间：只拦 Esc（钩子路由，不依赖窗口焦点），其余按键全部放行，
@@ -172,55 +183,11 @@ internal static class KeyboardHook
                 AppState.SwallowedVks.Remove((int)vk);
                 return (IntPtr)1;
             }
-
-            // 鼠标模式激活：路由鼠标键（e/d/s/f/q/a/w/r/j/k/h/l/Esc/Space）到 MouseMode
-            if (AppState.MouseModeActive && MouseMode.IsMouseKey(vk))
-            {
-                MouseMode.OnKey(vk, isDown);
-                return (IntPtr)1; // 鼠标模式键一律吞掉
-            }
-
-            // CapsLock 按住 + 工具启用期间：CapsLock+Space 进入鼠标模式 + vim 分发
-            if (isDown && AppState.IsCapsLockDown && AppState.IsToolEnabled)
-            {
-                AppState.OtherKeyPressed = true;
-                if (kb.Vk == Win32.VkSpace) { MouseMode.Enter(); return (IntPtr)1; }
-
-                // 超级面板备用热键（CapsLock+T）：阶段5 已接入长按右键手势，此热键保留为备用入口
-                if (vk == 'T' && AppState.IsSuperPanelEnabled)
-                {
-                    SuperPanel.Toggle();
-                    MarkSwallowed(vk);
-                    return (IntPtr)1;
-                }
-
-                // 阶段4：帮助面板（SC029 扫描码，布局无关）+ 菜单系统（CapsLock+1~0）
-                if (kb.Scan == 0x29) { HelpPanel.Toggle(); MarkSwallowed(vk); return (IntPtr)1; }
-                if (vk >= '0' && vk <= '9')
-                {
-                    MenuSystem.Dispatch(vk);
-                    MarkSwallowed(vk);
-                    return (IntPtr)1;
-                }
-
-                if (TextEditor.TryHandle(vk))
-                {
-                    MarkSwallowed(vk);
-                    return (IntPtr)1;
-                }
-
-                // 阶段5：杂项热键（放大镜/空置键/双引号花括号/快速搜索/速记/设置）
-                if (MiscKeys.TryHandle(vk))
-                {
-                    MarkSwallowed(vk);
-                    return (IntPtr)1;
-                }
-            }
-            }
-            catch (System.Exception ex)
-            {
-                CrashLog.Write("KeyboardHook", ex);
-            }
+        }
+        catch (System.Exception ex)
+        {
+            CrashLog.Write("KeyboardHook", ex);
+        }
         }
         return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
     }

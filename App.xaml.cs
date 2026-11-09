@@ -113,7 +113,6 @@ public partial class App : Application
             TrayService.Notify("配置文件读取失败：原文件已保留，本次使用默认配置（详见运行日志）");
         }
 
-        AppState.MouseModeSpeed = cfg.MouseModeSpeed;
         AppState.IsToolEnabled = cfg.CapsLockEnabled;
         AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
         AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
@@ -133,7 +132,6 @@ public partial class App : Application
         MacroHotkey.Initialize();
 
         // —— 内部动作注册（动作系统 §7）——
-        InternalActionRegistry.RegisterDefaults();
         RemoveObsoleteActions();
 
         // 一宏一动作：回收不再被任何动作 / 组合步骤引用的宏文件（含旧版本遗留的孤儿文件）。
@@ -164,12 +162,14 @@ public partial class App : Application
         catch (Win32Exception ex) { CrashLog.Write("KeyboardHookInstall", ex); }
         try { MouseHook.Install(); AppLog.Info("Hook", "鼠标钩子已安装"); }
         catch (Win32Exception ex) { CrashLog.Write("MouseHookInstall", ex); }
+
+        // 快捷键白 / 黑名单：跟踪前台窗口变化，进程解析放在后台线程（钩子回调里只做字符串比较）。
+        ForegroundAppCache.Start();
     }
 
     private void BuildTray()
     {
         var menu = new ContextMenu();
-        menu.Items.Add(NewItem("帮助面板 (CapsLock+`)", () => HelpPanel.Toggle()));
         menu.Items.Add(NewItem("速记 (CapsLock+N)", () => QuickNote.Toggle()));
         menu.Items.Add(NewItem("动作面板 (CapsLock+T)", () => Features.SuperPanel.Toggle()));
         menu.Items.Add(NewItem("设置 (CapsLock+\\)", () => ConfigHelper.Toggle()));
@@ -184,7 +184,7 @@ public partial class App : Application
         menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("退出 LTools", ExitApplication));
 
-        // 状态点每次打开菜单时刷新：状态可能经 CapsLock+Esc 手势或设置页更改，托盘菜单要跟随
+        // 状态点每次打开菜单时刷新：状态可能经设置页或托盘切换，托盘菜单要跟随
         menu.Opened += (_, _) => { RefreshStatusDots(); RefreshMacroMenuItem(); };
 
         _tray = new TaskbarIcon
@@ -328,6 +328,14 @@ public partial class App : Application
         e.Handled = true;
     }
 
+    /// <summary>内置功能「退出 LTools」用：从任意线程安全地走一遍正常退出流程。</summary>
+    internal static void RequestExit()
+    {
+        if (Application.Current is not App app) return;
+        if (app.Dispatcher.CheckAccess()) app.ExitApplication();
+        else app.Dispatcher.Invoke(app.ExitApplication);
+    }
+
     private void ExitApplication()
     {
         AppLog.Info("App", "退出 LTools");
@@ -335,6 +343,7 @@ public partial class App : Application
         // 只管「别再收请求」并把关停排到后台：绝不在 UI 线程上等 ASP.NET Core 关停（会永久卡死托盘）。
         McpServer.Stop();
         FloatingManager.Shutdown();
+        ForegroundAppCache.Stop();
         KeyboardHook.Uninstall();
         MouseHook.Uninstall();
         _tray?.Dispose();

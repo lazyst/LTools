@@ -1,0 +1,85 @@
+<Window x:Class="LTools.Views.HotkeyEditDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:LTools.Views.Controls"
+        Title="编辑快捷键" Width="470" ResizeMode="NoResize" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="36"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <controls:TitleBar Grid.Row="0" ShowMinimize="False" ShowMaximize="False"/>
+
+        <StackPanel Grid.Row="1" Margin="20,12,20,16">
+            <!-- 快捷键 -->
+            <TextBlock Style="{StaticResource SectionLabel}" Text="快捷键" Margin="0,0,0,4"/>
+            <TextBox x:Name="ChordBox" MinHeight="32" IsReadOnly="True" Cursor="Hand"
+                     ToolTip="点击后直接按下组合键：可以先按住 CapsLock / Ctrl 等修饰键；Esc 取消，Backspace 清空"/>
+            <TextBlock x:Name="ChordError" FontSize="{StaticResource FontSizeHint}"
+                       Margin="0,3,0,0" Foreground="{StaticResource DangerBrush}" Visibility="Collapsed"/>
+            <TextBlock Style="{StaticResource HintLabel}" Margin="0,3,0,0"
+                       Text="点一下输入框，然后直接按组合键（可带 CapsLock 前缀）；Backspace 清空，Esc 取消"/>
+
+            <!-- 动作 -->
+            <TextBlock Style="{StaticResource SectionLabel}" Text="动作" Margin="0,12,0,4"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="ActionBox" IsReadOnly="True" MinHeight="30"/>
+                <Button x:Name="ParamBtn" Grid.Column="1" Style="{StaticResource BtnGhost}" Content="参数…"
+                        MinWidth="70" Margin="8,0,0,0" Visibility="Collapsed" Click="EditParams_Click"/>
+                <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="选择动作…"
+                        MinWidth="86" Margin="8,0,0,0" Click="PickAction_Click"/>
+            </Grid>
+
+            <!-- 生效范围 -->
+            <TextBlock Style="{StaticResource SectionLabel}" Text="生效范围" Margin="0,12,0,4"/>
+            <ComboBox x:Name="ScopeBox" MinHeight="30" SelectionChanged="Scope_Changed">
+                <ComboBoxItem Content="跟随全局默认" Tag="inherit"/>
+                <ComboBoxItem Content="全部窗口（忽略默认名单）" Tag="all"/>
+                <ComboBoxItem Content="仅白名单里的程序" Tag="whitelist"/>
+                <ComboBoxItem Content="排除黑名单里的程序" Tag="blacklist"/>
+            </ComboBox>
+
+            <StackPanel x:Name="FilterPanel" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource SectionLabel}" Text="进程（每行一个，支持 * ?）"
+                           Margin="0,10,0,4" FontSize="{StaticResource FontSizeHint}"/>
+                <TextBox x:Name="ProcessBox" MinHeight="48" AcceptsReturn="True" TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"
+                         ToolTip="chrome.exe / Code.exe / C:\Program Files\...\app.exe"/>
+                <TextBlock Style="{StaticResource SectionLabel}" Text="窗口标题（每行一个，按包含匹配）"
+                           Margin="0,8,0,4" FontSize="{StaticResource FontSizeHint}"/>
+                <TextBox x:Name="TitleBox" MinHeight="40" AcceptsReturn="True" TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"/>
+                <TextBlock Style="{StaticResource SectionLabel}" Text="窗口类名（每行一个）"
+                           Margin="0,8,0,4" FontSize="{StaticResource FontSizeHint}"/>
+                <TextBox x:Name="ClassBox" MinHeight="32" AcceptsReturn="True" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <!-- 备注 -->
+            <TextBlock Style="{StaticResource SectionLabel}" Text="备注" Margin="0,12,0,4"/>
+            <TextBox x:Name="NoteBox" MinHeight="30"/>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button Style="{StaticResource BtnGhost}" Content="取消" MinWidth="74"
+                        IsCancel="True" Click="Cancel_Click"/>
+                <Button Style="{StaticResource BtnPrimary}" Content="确定" MinWidth="74"
+                        Margin="8,0,0,0" IsDefault="True" Click="Ok_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>

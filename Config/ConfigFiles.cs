@@ -18,9 +18,6 @@ public sealed class SettingsFile
     /// <summary>终端路径覆盖（如 gitbash）。</summary>
     public Dictionary<string, string> TerminalPaths { get; set; } = new();
 
-    /// <summary>鼠标模式速度 1..20。</summary>
-    public int MouseModeSpeed { get; set; } = 1;
-
     /// <summary>动作运行结束后的提示策略。</summary>
     public RunNoticeMode RunNotice { get; set; } = RunNoticeMode.onFailure;
 
@@ -66,7 +63,7 @@ public sealed class ActionLibraryFile
     public List<MenuGroupDto?> MenuGroups { get; set; } = new();
 }
 
-/// <summary><c>configs/menus.json</c>：快捷菜单组（10 个槽位，项为动作 Id 引用）。</summary>
+/// <summary><c>configs/menus.json</c>：**3 及更早版本**的快捷菜单组（只用于迁移成 <c>hotkeys.json</c>）。</summary>
 public sealed class MenuFile
 {
     public int SchemaVersion { get; set; } = ConfigBundle.SchemaVersion;

@@ -11,6 +11,7 @@ using LTools.Config;
 using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Features;
+using LTools.Features.Builtin;
 using LTools.Features.Migration.Legacy;
 using LTools.Features.Panel;
 
@@ -89,7 +90,9 @@ public partial class ActionPoolPicker : Window
     private void BuildRows()
     {
         _all.Clear();
-        foreach (var a in ActionRegistry.All.OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase))
+        foreach (var a in ActionRegistry.All
+                     .Where(x => !x.Preset)   // 预设动作（CapsLock 播种）只在动作管理里出现
+                     .OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase))
         {
             // 只用已经迁移好的动作体：旧格式动作在这里不触发迁移（避免「看一眼就改写配置」）
             ActionProgram? program = a.Program;
@@ -117,6 +120,27 @@ public partial class ActionPoolPicker : Window
             row.Summary = BuildSearchText(row);
             _all.Add(row);
         }
+
+        // 内置功能（常用功能 / LTools 功能）：不是动作、不可编辑，选中后直接放进面板 / 快捷键
+        foreach (var def in FeatureCatalog.All)
+        {
+            var row = new ActionRow
+            {
+                Id = def.DefaultReference,
+                Name = def.Name,
+                Glyph = IconCatalog.GetGlyph(def.Icon),
+                TypeLabel = def.Group == FeatureGroup.Ltools ? "LTools 功能" : "功能 · " + def.Category,
+                Description = def.Description,
+                IsFeature = true,
+                Section = def.Group == FeatureGroup.Ltools
+                    ? "LTools 功能"
+                    : "常用功能 · " + def.Category,
+            };
+            foreach (var p in def.Params) row.Params.Add($"{p.Label}：{p.Default}");
+            row.RightText = def.HasParams ? $"{def.Params.Length} 个参数" : "";
+            row.Summary = BuildSearchText(row);
+            _all.Add(row);
+        }
     }
 
     /// <summary>搜索匹配的文本：名称 + 说明 + 类型 + 每步的标题与参数 + 变量名。</summary>
@@ -128,6 +152,7 @@ public partial class ActionPoolPicker : Window
         foreach (var (title, detail) in row.Steps)
             text.Append(' ').Append(title).Append(' ').Append(detail);
         foreach (string key in row.Variables) text.Append(' ').Append(key);
+        foreach (string param in row.Params) text.Append(' ').Append(param);
         return text.ToString();
     }
 
@@ -151,10 +176,11 @@ public partial class ActionPoolPicker : Window
             }
 
             var rest = _all.Where(x => !recentIds.Contains(x.Id)).ToList();
-            string group = $"全部动作 · {rest.Count}";
+            int actionCount = rest.Count(x => !x.IsFeature);
+            string actionsGroup = $"全部动作 · {actionCount}";
             foreach (var row in rest)
             {
-                row.Group = group;
+                row.Group = row.IsFeature ? row.Section : actionsGroup;
                 rows.Add(row);
             }
         }
@@ -171,7 +197,7 @@ public partial class ActionPoolPicker : Window
         _view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ActionRow.Group)));
         ActionList.ItemsSource = _view;
 
-        CountText.Text = kw.Length == 0 ? $"{_all.Count} 个动作" : $"匹配 {rows.Count} / {_all.Count}";
+        CountText.Text = kw.Length == 0 ? $"{_all.Count} 项" : $"匹配 {rows.Count} / {_all.Count}";
         EmptyHint.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
             ? Visibility.Visible
@@ -245,6 +271,40 @@ public partial class ActionPoolPicker : Window
             });
         }
 
+        if (_current.IsFeature)
+        {
+            var def = FeatureCatalog.Find(FeatureRef.IdOf(_current.Id));
+            AddSection(def is { HasParams: true } ? $"参数（{def.Params.Length}）" : "参数");
+            if (def is not { HasParams: true })
+            {
+                AddMuted("这个功能没有可调参数，放到面板 / 快捷键后点一下就直接执行。");
+            }
+            else
+            {
+                foreach (var p in def.Params)
+                {
+                    string value = p.Default.Length > 0 ? p.Default : "（空）";
+                    string detail = p.Kind switch
+                    {
+                        FeatureParamKind.Choice => p.Options?
+                            .FirstOrDefault(o => o.Value == p.Default)?.Label ?? value,
+                        _ => value,
+                    };
+                    PreviewHost.Children.Add(new TextBlock
+                    {
+                        Text = $"· {p.Label}：{detail}",
+                        Margin = new Thickness(0, 2, 0, 2),
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        ToolTip = p.Hint,
+                    });
+                }
+                AddMuted("加到面板 / 快捷键时会先弹出这个参数表，可以按位置填不同值。");
+            }
+
+            AddPickerHint();
+            return;
+        }
+
         AddSection(_current.StepCount > 0 ? $"步骤（{_current.StepCount}）" : "步骤");
         if (_current.Steps.Count == 0)
         {
@@ -268,14 +328,16 @@ public partial class ActionPoolPicker : Window
             PreviewHost.Children.Add(wrap);
         }
 
-        PreviewHost.Children.Add(new TextBlock
-        {
-            Text = "双击列表项可直接确定，↑↓ 切换",
-            Margin = new Thickness(0, 18, 0, 0),
-            FontSize = 11.5,
-            Foreground = Res("HintTextBrush"),
-        });
+        AddPickerHint();
     }
+
+    private void AddPickerHint() => PreviewHost.Children.Add(new TextBlock
+    {
+        Text = "双击列表项可直接确定，↑↓ 切换",
+        Margin = new Thickness(0, 18, 0, 0),
+        FontSize = 11.5,
+        Foreground = Res("HintTextBrush"),
+    });
 
     private UIElement BuildHeader(ActionRow row)
     {
@@ -515,7 +577,21 @@ public partial class ActionPoolPicker : Window
             return;
         }
 
-        SaveRecent(Result!);
+        string result = Result!;
+        // 内置功能带参数：先让用户确认 / 修改，再作为引用返回（取消就留在选择器里）
+        if (FeatureCatalog.IsFeatureRef(result))
+        {
+            var def = FeatureCatalog.Find(FeatureRef.IdOf(result));
+            if (def is { HasParams: true })
+            {
+                string? updated = FeatureParamsDialog.Show(this, result);
+                if (updated == null) return;
+                result = updated;
+            }
+        }
+
+        Result = result;
+        SaveRecent(result);
         _accepted = true;
         DialogResult = true;
     }
@@ -570,9 +646,12 @@ public partial class ActionPoolPicker : Window
         public string RightText { get; set; } = "";
         public string Summary { get; set; } = "";
         public string Group { get; set; } = "";
+        public string Section { get; set; } = "";
         public bool IsMacro { get; set; }
+        public bool IsFeature { get; set; }
         public int StepCount { get; set; }
         public List<(string Title, string Detail)> Steps { get; } = new();
         public List<string> Variables { get; } = new();
+        public List<string> Params { get; } = new();
     }
 }

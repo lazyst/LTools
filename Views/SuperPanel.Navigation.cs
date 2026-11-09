@@ -12,6 +12,7 @@ using LTools.Config;
 using LTools.Core;
 using LTools.Core.Ai;
 using LTools.Features;
+using LTools.Features.Builtin;
 using LTools.Features.Floating;
 using LTools.Features.Panel;
 using LTools.Native;
@@ -123,14 +124,13 @@ public partial class SuperPanelWindow
 
     private void ExecuteAction(string id)
     {
-        var action = ActionRegistry.FindById(id);
-        if (action == null)
+        if (!BindingRef.Exists(id))
         {
-            ToastService.Show("动作不存在：" + id);
+            ToastService.Show(BindingRef.IsFeature(id) ? "功能不存在：" + id : "动作不存在：" + id);
             return;
         }
         Features.SuperPanel.Close();
-        ActionExecutor.Run(action, _invokeX, _invokeY);
+        ActionExecutor.RunRef(id, _invokeX, _invokeY);
     }
 
     // ============ 磁贴拖动（实现见 Views/Controls/TileDragSort.cs） ============

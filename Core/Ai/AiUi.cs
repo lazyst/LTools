@@ -7,7 +7,7 @@ namespace LTools.Core.Ai;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <c>ActionRegistry</c> / <c>ConfigStore</c> / <c>MenuSystem</c> 与 WPF 对象都不是线程安全的，
+/// <c>ActionRegistry</c> / <c>ConfigStore</c> / <c>HotkeyRegistry</c> 与 WPF 对象都不是线程安全的，
 /// HTTP / MCP 回调线程上直接碰会炸（字典并发写、跨线程访问 DispatcherObject）。
 /// 所有这类访问都走这里投递到 UI 线程再取结果；**不要在 UI 线程上等 HTTP 结果**（会死锁）。
 /// </para>

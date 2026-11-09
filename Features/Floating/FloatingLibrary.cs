@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LTools.Config;
 using LTools.Core;
+using LTools.Features.Builtin;
 using LTools.Views;
 
 namespace LTools.Features.Floating;
@@ -286,7 +287,7 @@ internal static class FloatingLibrary
         bool changed = false;
         foreach (var item in Items.ToList())
         {
-            int removed = item.Members.RemoveAll(m => ActionRegistry.FindById(m.ActionId) == null);
+            int removed = item.Members.RemoveAll(m => !BindingRef.Exists(m.ActionId));
             if (removed > 0) changed = true;
             if (item.Members.Count == 0)
             {

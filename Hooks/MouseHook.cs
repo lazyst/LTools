@@ -121,7 +121,7 @@ internal static class MouseHook
                         _suppressRButtonUp = false;
                         return (IntPtr)1; // 吞掉 up（不注入）
                     }
-                    // 点外关闭——右键版（三处覆盖式弹层：超级面板 / 菜单组 / 帮助面板）。
+                    // 点外关闭——右键版（覆盖式弹层：超级面板 / 悬浮项菜单）。
                     // 与左键分支同样只在面板外部触发（右键菜单/对话框打开期间 SuperPanel.IsInteracting 不介入）。
                     //
                     // ⚠️ down/up 必须同进同出：若放行 down 却吞 up，目标窗口收不到配对的 up，
@@ -151,10 +151,6 @@ internal static class MouseHook
                         bool overSuperMenu = SuperPanel.IsOpen && SuperPanel.PointInOpenMenu(ms.Pt.X, ms.Pt.Y);
                         bool overSuper = SuperPanel.IsOpen && !SuperPanel.IsPinned && !overSuperMenu
                                          && !SuperPanel.PointInWindowRect(ms.Pt.X, ms.Pt.Y);
-                        bool overMenu = MenuSystem.IsMenuOpen
-                                        && !MenuSystem.PointInMenuRect(ms.Pt.X, ms.Pt.Y);
-                        bool overHelp = HelpPanel.IsOpen
-                                        && !HelpPanel.PointInWindowRect(ms.Pt.X, ms.Pt.Y);
                         // 悬浮窗的右键菜单：popup 拿不到有效捕获（悬浮窗永远不是前台窗口，
                         // Windows 只让前台窗口捕获「窗口之外」的点击），WPF 那套「点外部关闭」
                         // 在它身上根本不触发，所以只能在这里按坐标关。
@@ -169,12 +165,9 @@ internal static class MouseHook
                             break; // 不吞：右键点面板外部照常交给光标下窗口
                         }
 
-                        if (overMenu || overHelp || overFloatMenu)
+                        if (overFloatMenu)
                         {
-                            if (overMenu) MenuSystem.CloseCurrent();
-                            else if (overFloatMenu) FloatingManager.CloseOpenMenu();
-                            else HelpPanel.Close();
-
+                            FloatingManager.CloseOpenMenu();
                             _rightCloseUpPending = true;
                             return (IntPtr)1; // 吞 down，并提前退出（不进长按手势分支）
                         }
@@ -211,8 +204,8 @@ internal static class MouseHook
                         FloatingManager.CloseMenuIfOutside(ms.Pt.X, ms.Pt.Y);
                         break; // 菜单开着时不参与其它鼠标手势
                     }
-                    // 超级面板打开时：点击面板外部 → 关闭面板并放行点击（坐标判定，与 MenuPopup/HelpPanel
-                    // 同思路）。**面板自己的右键菜单在场也算**（用户要求）：点菜单外就关面板，
+                    // 超级面板打开时：点击面板外部 → 关闭面板并放行点击（坐标判定）。
+                    // **面板自己的右键菜单在场也算**（用户要求）：点菜单外就关面板，
                     // 菜单随面板一起销毁；点在菜单里则由菜单自己处理（子菜单也是独立 popup，一起算）。
                     if (SuperPanel.IsOpen && !SuperPanel.IsPinned
                         && !SuperPanel.PointInWindowRect(ms.Pt.X, ms.Pt.Y)
@@ -220,31 +213,6 @@ internal static class MouseHook
                     {
                         SuperPanel.Close();
                         break; // 不吞点击：放行给光标下窗口
-                    }
-                    // 菜单打开时：点击面板外部 → 关闭菜单并放行点击（与 HelpPanel 同思路，
-                    // 用坐标判定确定性关闭，不依赖 Deactivated/前台状态，避免切换组后与
-                    // 旧窗口淡出动画的激活竞态导致点击外部不触发关闭）。点击放行给下层窗口。
-                    if (MenuSystem.IsMenuOpen && !MenuSystem.PointInMenuRect(ms.Pt.X, ms.Pt.Y))
-                    {
-                        MenuSystem.CloseCurrent();
-                        break; // 不吞点击：放行给光标下窗口
-                    }
-                    // 帮助面板打开时：点击面板外部 → 关闭面板并放行点击。
-                    // 不依赖 Deactivated/前台状态——Activate() 因前台权限/时序竞争会间歇性失败，
-                    // 导致面板非活动窗口时点击外部不触发 Deactivated。改用坐标判定确定性关闭，
-                    // 对应 AHK 轮询前台窗口的“点击外部即关”语义。点击放行给下层窗口。
-                    if (HelpPanel.IsOpen && !HelpPanel.PointInWindowRect(ms.Pt.X, ms.Pt.Y))
-                    {
-                        HelpPanel.Close();
-                        break; // 不吞点击：放行给光标下窗口
-                    }
-                    if (AppState.IsToolEnabled && AppState.IsCapsLockDown
-                        && !MenuSystem.IsMenuOpen && !HelpPanel.IsOpen && !SuperPanel.IsOpen)
-                    {
-                        // 吞掉左键，异步执行点击+重命名（对应 lib/Workspace.ahk LButton 热键）
-                        AppState.OtherKeyPressed = true;
-                        StartRenameSequence(ms.Pt);
-                        return (IntPtr)1;
                     }
                     break;
             }
@@ -333,87 +301,5 @@ internal static class MouseHook
             catch { /* 静默降级 */ }
         }) { IsBackground = true };
         t.Start();
-    }
-
-    // —— 资源管理器重命名（对应 lib/Workspace.ahk：LButton / PerformClick / LButtonRenamer）——
-
-    private static void StartRenameSequence(Win32.Point cursorAtTrigger)
-    {
-        // 触发瞬间捕获前台窗口与光标下窗口的类名（决定是否需要先激活）
-        string activeClass = GetWindowClass(Win32.GetForegroundWindow());
-        IntPtr mouseWin = TopLevelFromPoint(cursorAtTrigger);
-        string mouseClass = GetWindowClass(mouseWin);
-        bool needActivate = IsExplorerBrowserOwnerCase(activeClass, mouseClass);
-
-        var t = new Thread(() =>
-        {
-            try
-            {
-                if (needActivate)
-                {
-                    // 先激活光标下窗口，再点击，再重命名
-                    Win32.SetForegroundWindow(mouseWin);
-                    Thread.Sleep(40);
-                    DoLeftClick();
-                    Thread.Sleep(20);
-                    TryRenameUnderCursor();
-                }
-                else
-                {
-                    DoLeftClick();
-                    Thread.Sleep(20);
-                    TryRenameUnderCursor();
-                }
-            }
-            catch { /* 重命名失败静默降级 */ }
-        }) { IsBackground = true };
-        t.Start();
-    }
-
-    /// <summary>注入一次左键点击（mouse_event；注入事件被本钩子忽略，不递归）。</summary>
-    private static void DoLeftClick()
-    {
-        Win32.mouse_event(Win32.MouseeventfLeftdown, 0, 0, 0, IntPtr.Zero);
-        Win32.mouse_event(Win32.MouseeventfLeftup, 0, 0, 0, IntPtr.Zero);
-    }
-
-    /// <summary>取当前光标下窗口的类名；若为资源管理器/桌面类 → 注入 F2 进入重命名。</summary>
-    private static void TryRenameUnderCursor()
-    {
-        Win32.GetCursorPos(out var pt);
-        IntPtr hwnd = TopLevelFromPoint(pt);
-        if (hwnd == IntPtr.Zero) return;
-        string cls = GetWindowClass(hwnd);
-        if (cls == "CabinetWClass" || cls == "ExploreWClass" ||
-            cls == "Progman" || cls == "WorkerW" || cls == "ExplorerBrowserOwner")
-        {
-            InputHelper.Tap((ushort)Win32.VkF2);
-        }
-    }
-
-    /// <summary>取光标下顶层拥有者窗口（<see cref="Win32.WindowFromPoint"/> 返回子控件如列表视图，
-    /// 需上溯到顶层；否则类名是子控件类名而非 CabinetWClass/Progman 等，重命名判定永不命中）。
-    /// 对应 AHK <c>MouseGetPos</c> 第三输出返回的顶层窗口。</summary>
-    private static IntPtr TopLevelFromPoint(Win32.Point pt)
-    {
-        var raw = Win32.WindowFromPoint(pt);
-        if (raw == IntPtr.Zero) return IntPtr.Zero;
-        var root = Win32.GetAncestor(raw, Win32.GaRootOwner);
-        return root != IntPtr.Zero ? root : raw;
-    }
-
-    private static bool IsExplorerBrowserOwnerCase(string activeClass, string mouseClass)
-    {
-        bool a = activeClass == "ExplorerBrowserOwner";
-        bool m = mouseClass == "ExplorerBrowserOwner";
-        return a ^ m; // 恰好一方是 ExplorerBrowserOwner
-    }
-
-    private static string GetWindowClass(IntPtr hWnd)
-    {
-        if (hWnd == IntPtr.Zero) return "";
-        var sb = new StringBuilder(256);
-        Win32.GetClassName(hWnd, sb, sb.Capacity);
-        return sb.ToString();
     }
 }

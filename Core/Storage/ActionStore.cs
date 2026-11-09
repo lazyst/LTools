@@ -151,7 +151,7 @@ internal static class ActionStore
             }
         }
 
-        // 与 MenuSystem.SaveToConfig 的落盘顺序一致：按 Id 序数排序，避免读目录顺序影响 diff。
+        // 与 ActionLibrary.Save 的落盘顺序一致：按 Id 序数排序，避免读目录顺序影响 diff。
         actions.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
         return (actions, failed);
     }

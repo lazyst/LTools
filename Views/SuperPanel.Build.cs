@@ -12,6 +12,7 @@ using LTools.Config;
 using LTools.Core;
 using LTools.Core.Ai;
 using LTools.Features;
+using LTools.Features.Builtin;
 using LTools.Features.Floating;
 using LTools.Features.Panel;
 using LTools.Native;
@@ -547,21 +548,22 @@ public partial class SuperPanelWindow
     }
 
     /// <summary>
-    /// 搜索只匹配动作名称（忽略大小写）。**不匹配内部 Id**——否则搜 "1" 会命中 a1 之类的编号；
-    /// 缺失动作没有名称，只在未搜索时显示。
+    /// 搜索只匹配名称（动作名 / 内置功能名，忽略大小写）。**不匹配内部 Id**——否则搜 "1" 会命中 a1 之类的编号；
+    /// 缺失引用没有名称，只在未搜索时显示。
     /// </summary>
     private bool MatchesQuery(string id, string query)
     {
         if (query.Length == 0) return true;
-        return ActionRegistry.FindById(id) is { } a
-               && a.Name.Contains(query, StringComparison.OrdinalIgnoreCase);
+        return BindingRef.Exists(id)
+               && BindingRef.Name(id).Contains(query, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
     /// 磁贴内容（图标 chip + 标题）。磁贴与拖动幽灵共用一份，保证幽灵和磁贴长得一模一样。
     /// </summary>
-    private static StackPanel TileContent(ActionDto? a, bool compact)
+    private static StackPanel TileContent(string? reference, bool compact)
     {
+        bool exists = BindingRef.Exists(reference);
         var content = new StackPanel
         {
             HorizontalAlignment = HorizontalAlignment.Center,
@@ -578,24 +580,24 @@ public partial class SuperPanelWindow
             HorizontalAlignment = HorizontalAlignment.Center,
             Child = new TextBlock
             {
-                Text = a != null ? IconCatalog.GetGlyph(a.Icon) : "\uE783",
+                Text = exists ? IconCatalog.GetGlyph(BindingRef.Icon(reference)) : "\uE783",
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
                 FontSize = compact ? 15 : 19,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = Res(a != null ? "TextBrush" : "DangerBrush"),
+                Foreground = Res(exists ? "TextBrush" : "DangerBrush"),
             },
         });
         content.Children.Add(new TextBlock
         {
-            Text = a != null ? a.Name : "缺失",
+            Text = exists ? BindingRef.Name(reference) : "缺失",
             Margin = new Thickness(0, 4, 0, 0),
             FontSize = compact ? 12 : 11,
             MaxWidth = 100,
             TextTrimming = TextTrimming.CharacterEllipsis,
             TextAlignment = TextAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Foreground = Res(a != null ? "SecondaryTextBrush" : "DangerBrush"),
+            Foreground = Res(exists ? "SecondaryTextBrush" : "DangerBrush"),
         });
         return content;
     }
@@ -604,14 +606,12 @@ public partial class SuperPanelWindow
     private static FrameworkElement? TileGhostBody(PanelTileRef tref)
     {
         if (tref.ActionId == null) return null;
-        return TileContent(
-            ActionRegistry.FindById(tref.ActionId),
-            PanelLibrary.Current.Preferences.CompactTiles);
+        return TileContent(tref.ActionId, PanelLibrary.Current.Preferences.CompactTiles);
     }
 
     private Button BuildTile(PanelGroupDto group, int index, string id, TileDragSort drag)
     {
-        var a = ActionRegistry.FindById(id);
+        bool exists = BindingRef.Exists(id);
         bool compact = PanelLibrary.Current.Preferences.CompactTiles;
 
         var btn = new Button
@@ -623,8 +623,9 @@ public partial class SuperPanelWindow
         };
 
         // 照 Quicker：36px 图标 chip（淡底 + 1px 内描边）+ 11px 次要色标题，垂直居中
-        var content = TileContent(a, compact);
+        var content = TileContent(id, compact);
         btn.Content = content;
+        btn.ToolTip = BindingRef.Describe(id);
 
         var tref = (PanelTileRef)btn.Tag;
         drag.Attach(btn);
@@ -633,7 +634,7 @@ public partial class SuperPanelWindow
             if (tref.ActionId != null) ExecuteAction(tref.ActionId);
         };
 
-        var menu = a != null ? BuildFilledMenu(tref) : BuildMissingMenu(tref);
+        var menu = exists ? BuildFilledMenu(tref) : BuildMissingMenu(tref);
         TrackInteract(menu);
         btn.ContextMenu = menu;
 

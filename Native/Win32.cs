@@ -84,6 +84,20 @@ internal static class Win32
 
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
+    // —— 前台窗口变化事件（热键名单缓存用）——
+    public delegate void WinEventProc(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
+        WinEventProc lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    public static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+
+    public const uint EventSystemForeground = 0x0003;
+    public const uint WineventOutofcontext = 0x0000;
+
     /// <summary>在父窗口的直接子窗口里按点查找（按 z 序），用于从顶层窗口往下钻。</summary>
     [DllImport("user32.dll")]
     public static extern IntPtr ChildWindowFromPointEx(IntPtr hWndParent, Point pt, uint flags);
@@ -259,6 +273,7 @@ internal static class Win32
     public const int VkDelete = 0x2E;
     public const int VkVolumeUp = 0xAF;
     public const int VkVolumeDown = 0xAE;
+    public const int VkVolumeMute = 0xAD;
 
     // —— 方向/导航键 ——
     public const int VkLeft = 0x25;

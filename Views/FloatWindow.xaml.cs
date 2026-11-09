@@ -9,6 +9,7 @@ using System.Windows.Media;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.Builtin;
 using LTools.Features.Floating;
 using LTools.Native;
 
@@ -139,17 +140,17 @@ public partial class FloatWindow : Window
 
         foreach (var member in _item.Members)
         {
-            var action = ActionRegistry.FindById(member.ActionId);
-            string name = action?.Name ?? "动作已删除";
+            bool exists = BindingRef.Exists(member.ActionId);
+            string name = exists ? BindingRef.Name(member.ActionId) : "已删除";
 
             var stack = new StackPanel { Orientation = Orientation.Vertical };
             stack.Children.Add(new TextBlock
             {
-                Text = action != null ? IconCatalog.GetGlyph(action.Icon) : "\uE783",
+                Text = exists ? IconCatalog.GetGlyph(BindingRef.Icon(member.ActionId)) : "\uE783",
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
                 FontSize = Math.Round(size * 0.38),
                 HorizontalAlignment = HorizontalAlignment.Center,
-                Foreground = (Brush)FindResource(action != null ? "TextBrush" : "DangerBrush"),
+                Foreground = (Brush)FindResource(exists ? "TextBrush" : "DangerBrush"),
             });
             stack.Children.Add(new TextBlock
             {
@@ -162,7 +163,7 @@ public partial class FloatWindow : Window
                 MaxWidth = Math.Max(1, side - 8),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = (Brush)FindResource(action != null ? "SecondaryTextBrush" : "DangerBrush"),
+                Foreground = (Brush)FindResource(exists ? "SecondaryTextBrush" : "DangerBrush"),
             });
 
             var btn = new Button
@@ -175,7 +176,7 @@ public partial class FloatWindow : Window
                 Style = (Style)FindResource("FloatBtn"),
                 Tag = member.ActionId,
                 Content = stack,
-                ToolTip = tooltip ? name : null,
+                ToolTip = tooltip ? BindingRef.Describe(member.ActionId) : null,
             };
 
             AttachInteraction(btn, member.ActionId, preview: true);
@@ -408,17 +409,16 @@ public partial class FloatWindow : Window
     private void RunAction(string? actionId)
     {
         if (string.IsNullOrEmpty(actionId)) return;
-        var action = ActionRegistry.FindById(actionId);
-        if (action == null)
+        if (!BindingRef.Exists(actionId))
         {
-            ToastService.Show("动作不存在：" + actionId);
+            ToastService.Show("动作 / 功能不存在：" + actionId);
             FloatingManager.RefreshAll();
             return;
         }
 
-        AppLog.Info("Floating", $"点击悬浮按钮：{action.Name}");
-        // 运行只投递到后台（ActionExecutor 自己 spawn），这里是钩子/UI 线程，不能阻塞
-        ActionExecutor.Run(action);
+        AppLog.Info("Floating", $"点击悬浮按钮：{BindingRef.Describe(actionId)}");
+        // 运行只投递到后台（ActionExecutor / FeatureRunner 自己 spawn），这里是钩子/UI 线程，不能阻塞
+        ActionExecutor.RunRef(actionId, 0, 0);
     }
 
     // —— 外观 ——

@@ -48,7 +48,7 @@ ai/                      令牌 / 审计 / 知识包
 configs/
   settings.json      全局行为：CapsLock 开关、终端路径、鼠标速度、运行提示、提示位置、日志
   ui.json            界面状态：导航页、展开的分组、最近使用、OCR 偏好、编辑器折叠态
-  menus.json         快捷菜单组（10 个槽位，项为动作 Id 引用）
+  hotkeys.json       快捷键：预设组 + 「快捷键 → 动作」绑定 + 全局默认白 / 黑名单
   panel.json         超级面板：开关 / 长按阈值 / 场景与分组 / 尺寸 / 上次页
   floating.json      悬浮项偏好（悬浮项本身仍然不落盘）
   macros.json        宏设置 + 宏元数据（事件仍在 macros/<id>.json）
@@ -68,7 +68,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | --- | --- | --- |
 | `configs/settings.json` | `SettingsStore` | 设置页、托盘、钩子 |
 | `configs/ui.json` | `UiStore` | 设置页、选择器、编辑器 |
-| `configs/menus.json` | `MenuStore`（经 `MenuSystem.SaveToConfig`） | `MenuSystem`、备份 |
+| `configs/hotkeys.json` | `HotkeyStore`（经 `HotkeyRegistry.Load` / 快捷键页） | `HotkeyRegistry`、`HotkeysView`、备份 |
 | `configs/panel.json` | `PanelStore`（经 `PanelLibrary.Save`） | 面板、设置页 |
 | `configs/floating.json` | `FloatingStore`（经 `FloatingLibrary.SavePreferences`） | 悬浮窗、设置页 |
 | `configs/macros.json` | `MacroFileStore`（经 `MacroStore`） | 宏菜单、编辑器 |
@@ -92,7 +92,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 ### P2 · 一个动作一个目录（已完成）
 
 - 新增 `Core/Storage/ActionStore.cs`：`actions/<id>/action.json` + `actions/<id>/files/`；
-  菜单组独立成 `configs/menus.json`，动作清单不再进配置文件。
+  动作清单不再进配置文件（P4 起菜单组也改成了 `hotkeys.json`）。
 - 迁移：仍以旧 `configs/actions.json` 为种子，首存后归档 `actions.json.migrated`；
   **`actions/` 目录存在（含空）即权威**，所以删光动作不会被旧清单复活。
 - 写回只碰变了的动作：`ActionStore.SaveAll` 逐条比较 `action.json` 内容，没变不写；
@@ -107,18 +107,18 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 
 ### P3 · 存储层收口（已完成）
 
-- 新增 `Config/ConfigDomain.cs` + `Config/DomainStores.cs`：`SettingsStore` / `UiStore` / `MenuStore` /
+- 新增 `Config/ConfigDomain.cs` + `Config/DomainStores.cs`：`SettingsStore` / `UiStore` / `HotkeyStore` /
   `PanelStore` / `FloatingStore` / `MacroFileStore`；每个 store 只读改写自己那个域文件
   （`ConfigIO.ModifyDomain` 一把锁 + 严格读，写仍走 `WriteIfChanged`）。
-- 15 处 `ConfigIO.Modify` 全部改成域写入；跨域只剩「菜单组 + 动作清单」
-  （`ConfigIO.Modify(ConfigDomain.menus | ConfigDomain.actions, …)`，`MenuSystem.SaveToConfig` 用）。
+- 15 处 `ConfigIO.Modify` 全部改成域写入；跨域只剩「动作清单 + 快捷键」与「动作清单 + 面板」
+  （`ConfigIO.Modify(ConfigDomain.actions | ConfigDomain.hotkeys, …)`，`HotkeySeeding` / `ActionLibrary` 用）。
 - 迁移收尾：域文件不全时第一次写入自动扩成整份（6 个域 + `actions/`）并归档旧文件；
   分域完成后改一个开关只动目标 `configs/*.json`，不再扫动作目录、不再重写别的域。
-- 删除动作收口到 `Core/Storage/ActionRemoval`：顺序固定「内存清单 / 菜单项 → 面板槽位 →
-  菜单组 + 动作目录 → 宏 / 模板图 / 悬浮项回收」；启动时按磁盘动作目录幂等清掉菜单与面板里的
-  悬空引用（在 `MenuSystem` / `PanelLibrary` 加载之前跑，没悬空就不写盘）。
+- 删除动作收口到 `Core/Storage/ActionRemoval`：顺序固定「内存清单 → 快捷键绑定 + 面板槽位 →
+  动作目录 → 宏 / 模板图 / 悬浮项回收」；启动时按磁盘动作目录幂等清掉快捷键与面板里的
+  悬空引用（在 `ActionLibrary` / `PanelLibrary` 加载之前跑，没悬空就不写盘）。
 - 验收：Debug/Release 0/0；用自检程序逐个域写入，只有目标文件 mtime 变化、`actions/*.json` 不动；
-  人为塞一个不存在的动作 Id 进菜单 / 面板，启动修复只重写这两个文件。回滚：文件格式不变，退回旧版本即可。
+  人为塞一个不存在的动作 Id 进快捷键 / 面板，启动修复只重写这两个文件。回滚：文件格式不变，退回旧版本即可。
 
 ### P4 · 代码结构（已完成）
 
@@ -135,8 +135,8 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 - 单元实现按分类分文件（`Features/Units/<分类>/<XxxUnit>.cs`，一个单元一个文件），
   共用的静态小工具留在同目录（`FileText.cs` / `Crc32.cs`）；新增单元仍只在 `BuiltInUnits` 加一行。
 - 迁移入口统一到 `Core/Storage/Migrations`：`ConfigSchema` 从磁盘现状推断版本
-  （0 旧文件名 / 1 单文件 / 2 六域 / 3 动作目录），`MigrationRunner.RunPending` 在启动时逐级执行
-  `SplitDomainsStep` → `ActionDirectoriesStep`（`LegacyFileStep` 在定位配置路径时处理改名 / ini 转换）；
+  （0 旧文件名 / 1 单文件 / 2 六域 / 3 动作目录 / 4 快捷键），`MigrationRunner.RunPending` 在启动时逐级执行
+  `SplitDomainsStep` → `ActionDirectoriesStep` → `HotkeysStep`（`LegacyFileStep` 在定位配置路径时处理改名 / ini 转换）；
   每一步只做一件事、可重入，失败只记录并在下次启动从同一版本重试，不再散在读写路径里。
 
 ### P5 · 资源与备份（已完成）
@@ -160,6 +160,29 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 - **导出单个动作**：`BackupService.ExportAction` 打一个 `.ltact`（`manifest.json` + `action.json` + `files/…`），
   入口在面板磁贴右键与「动作管理」磁贴右键（`PanelActionOps.Export`，后台导出 + toast 报路径）。
 
+### P6 · 全局快捷键（已完成）
+
+- CapsLock 从「写死的手势表」变成「动作 + 快捷键」：`Config/Hotkeys.cs` 定义 `HotkeyFile` /
+  `HotkeyGroup` / `HotkeyBinding` / `AppFilter` / `HotkeyScope`，域文件 `configs/hotkeys.json`
+  （旧的 `menus` 槽位改名成 `hotkeys`，仍是 6 个域；旧 `menus.json` 由 `HotkeysStep` 并成一个
+  「旧菜单」组后归档为 `menus.json.migrated`）。
+- 匹配在 `Hooks/KeyboardHook` 里、录制透明分支之后、`CapsLockStateMachine.TryHandle` 之前：
+  `HotkeyRegistry.TryFire` 按「组顺序 → 绑定顺序」精确比较修饰键（`RegisterHotKey` 不支持
+  CapsLock 修饰键，所以不用它）；命中就吞掉并投递动作，没命中的键照常下传。
+- 白 / 黑名单：钩子回调里只做字符串比较，前台 HWND 由 `ForegroundAppCache`
+  （`SetWinEventHook(EVENT_SYSTEM_FOREGROUND)` + 后台线程解析进程名 / 标题 / 类名）维护；
+  取不到时放行，LTools 自己的窗口不触发。
+- 预设动作：`Features/HotkeySeeding` 首次启动播种「CapsLock 经典」（SeedVersion = 2，
+  5 条直接绑内置功能引用 + 15 条 `input.sendKeys` 动作）；动作带 `Preset = true`，
+  默认不进面板 / 动作选择器，`HotkeyFile.SeedVersion` 保证删掉后不复活。
+- **内置功能目录**（P7）：`Features/Builtin/FeatureCatalog` 提供「常用功能 `common.*`」与
+  「LTools 功能 `ltools.*`」两套只读入口，参数声明在 `FeatureDef`，引用编码成 `id#key=value&…`
+  （`FeatureRef`），直接存进面板 / 快捷键 / 悬浮原有的字符串字段，**不升 schema**；存活判断与
+  显示名统一走 `BindingRef`。它们不是步骤单元（`internal.*` 七个单元已删），动作编辑器左栏不再有
+  「LTools 内置功能」分类；`CapsLock+Space`（旧鼠标模式）留空。
+- 旧的 10 个数字菜单组、帮助面板、独立剪贴板、符号定位、词跳词选等手势与实现一并删除，
+  不再有第二套解释器。
+
 ## 4. 每阶段验收与回滚
 
 | 阶段 | 验收 | 回滚 |
@@ -169,6 +192,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | P3 | 逐个域写入只有目标 `configs/*.json` 的 mtime 变化、`actions/*.json` 不动；并发保存不互相覆盖；菜单 / 面板里的悬空动作 Id 在启动时被清掉 | 域文件格式不变，退回旧版本仍能读 |
 | P4 | 窗口拆完后交互与原版一致（面板建窗 / 切暂存区 / 编辑器载入动作均正常）；单元清单数量不变；迁移沙盒覆盖版本 0/1/2/3，版本 3 启动零写入 | 纯代码改动，git revert |
 | P5 | 截图落在 `cache/screenshots/` 且下次运行 / 重启后被清空；同内容图采纳到第二个动作时 `fsutil hardlink list` 显示两份名字、改内容只影响一个动作；孤儿图移入 `trash/orphans/`、动态引用动作不动；备份 manifest 的 `includes` 与 zip 条目一致、`cache/` 不出现；`.ltact` 含 manifest + action.json + files/ | 纯代码 + 目录迁移，退回旧版本仍能读写（`cache/` 只是多了个目录） |
+| P6 | 3→4 迁移只把 `menus.json` 并成 `hotkeys.json` 后归档；删掉预置动作 / 绑定重启不复活；`CapsLock+S` 不在 `CapsLock+Ctrl+S` 时触发；名单里的程序与 LTools 自己的窗口不触发；快捷键页改完立即生效（不必重启） | 删 `configs/hotkeys.json`、把 `menus.json.migrated` 改回 `menus.json`，退回旧版本 |
 
 ## 5. 明确不做
 

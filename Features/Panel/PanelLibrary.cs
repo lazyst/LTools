@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LTools.Config;
 using LTools.Core;
+using LTools.Features.Builtin;
 
 namespace LTools.Features.Panel;
 
@@ -178,7 +179,7 @@ internal static class PanelLibrary
         bool changed = false;
         foreach (var group in GroupsOf(panel))
         {
-            if (group.Actions.RemoveAll(id => !liveIds.Contains(id)) > 0) changed = true;
+            if (group.Actions.RemoveAll(id => !BindingRef.IsLive(id, liveIds)) > 0) changed = true;
         }
         return changed;
     }
@@ -199,20 +200,23 @@ internal static class PanelLibrary
     /// <summary>某个动作被哪些面板位置引用。</summary>
     public sealed record PanelReference(string Area, string? SceneId, string SceneName, string GroupId, string GroupName);
 
-    /// <summary>查出动作的所有引用位置。</summary>
+    /// <summary>查出动作 / 内置功能的所有引用位置（功能按 Id 匹配，参数不同也算同一个）。</summary>
     public static List<PanelReference> FindReferences(string actionId)
     {
         var list = new List<PanelReference>();
+        bool Has(PanelGroupDto g) => g.Actions.Any(a =>
+            string.Equals(FeatureRef.IdOf(a), actionId, StringComparison.Ordinal));
+
         foreach (var s in Current.Global.Scenes)
             foreach (var g in s.Groups)
-                if (g.Actions.Contains(actionId))
+                if (Has(g))
                     list.Add(new PanelReference("全局", s.Id, s.Name, g.Id, g.Name));
         foreach (var s in Current.Context.Scenes)
             foreach (var g in s.Groups)
-                if (g.Actions.Contains(actionId))
+                if (Has(g))
                     list.Add(new PanelReference("上下文", s.Id, s.Name, g.Id, g.Name));
         foreach (var g in Current.Context.Common)
-            if (g.Actions.Contains(actionId))
+            if (Has(g))
                 list.Add(new PanelReference("上下文", null, "通用", g.Id, g.Name));
         return list;
     }

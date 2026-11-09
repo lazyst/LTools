@@ -188,8 +188,6 @@ internal static class MacroRecorder
             // Owner=面板 的模态窗，关闭 owner 会把对话框一起销毁（表现为「点录制后窗口直接没了」）。
             // HideForRecording 会在有对话框时改为临时隐藏，停止录制后恢复。
             SuperPanel.HideForRecording();
-            MenuSystem.CloseCurrent();
-            HelpPanel.Close();
             RecordingIndicatorWindow.ShowIndicator();
         });
 

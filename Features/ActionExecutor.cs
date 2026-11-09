@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LTools.Core;
 using LTools.Core.Actions;
+using LTools.Features.Builtin;
 using LTools.Features.Migration;
 
 namespace LTools.Features;
@@ -26,6 +27,21 @@ internal static class ActionExecutor
 {
     /// <summary>执行动作（后台线程，不阻塞调用方）。光标坐标默认取当前位置。</summary>
     public static void Run(ActionDto action) => Run(action, 0, 0);
+
+    /// <summary>
+    /// 按「绑定引用」运行：内置功能（<c>common.*</c> / <c>ltools.*</c>）交给
+    /// <see cref="FeatureRunner"/>，动作（<c>a1</c>）走原有路径。返回是否找到并投递。
+    /// </summary>
+    public static bool RunRef(string reference, int cursorX, int cursorY)
+    {
+        if (string.IsNullOrWhiteSpace(reference)) return false;
+        if (FeatureRunner.TryRun(reference, cursorX, cursorY)) return true;
+
+        var action = ActionRegistry.FindById(reference);
+        if (action == null) return false;
+        Run(action, cursorX, cursorY);
+        return true;
+    }
 
     /// <summary>
     /// 执行动作（spawn 后台线程，不阻塞调用方）。cursorX/cursorY 为面板唤起时记录的光标坐标

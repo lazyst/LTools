@@ -13,8 +13,8 @@ namespace LTools.Core;
 /// <remarks>
 /// 版本 0 的改名 / ini 转换见 <see cref="LegacyFileStep"/>；拆域与动作目录化由
 /// <see cref="MigrationRunner"/> 在拿到锚点后执行（启动时调用）。
-/// 统一此处后，App / MenuSystem / TerminalLauncher / MouseMode 不再各自拼路径
-/// （原先 App 上溯 3 级、MouseMode 上溯 5 级，规则不一致）。
+/// 统一此处后，App / TerminalLauncher 不再各自拼路径
+/// （原先 App 上溯 3 级、功能模块上溯 5 级，规则不一致）。
 /// </remarks>
 internal static class ConfigLocator
 {

@@ -30,7 +30,6 @@ internal static class UnitCategories
         "窗口与程序",
         "屏幕",
         "界面",
-        "LTools 内置功能",
         "脚本",
     };
 

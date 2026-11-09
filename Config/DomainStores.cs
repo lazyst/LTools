@@ -36,14 +36,14 @@ internal static class UiStore
         => ConfigIO.ModifyDomain(path, ConfigDomain.ui, ConfigBundle.ToUi, change, ConfigBundle.WriteUi);
 }
 
-/// <summary><c>configs/menus.json</c>：快捷菜单组（项是动作 Id 引用）。</summary>
-internal static class MenuStore
+/// <summary><c>configs/hotkeys.json</c>：预设组 + 绑定 + 默认名单（绑定只存动作 Id）。</summary>
+internal static class HotkeyStore
 {
-    public static void Modify(Action<MenuFile> change)
-        => ConfigIO.ModifyDomain(ConfigDomain.menus, ConfigBundle.ToMenus, change, ConfigBundle.WriteMenus);
+    public static void Modify(Action<HotkeyFile> change)
+        => ConfigIO.ModifyDomain(ConfigDomain.hotkeys, ConfigBundle.ToHotkeys, change, ConfigBundle.WriteHotkeys);
 
-    public static void Modify(string path, Action<MenuFile> change)
-        => ConfigIO.ModifyDomain(path, ConfigDomain.menus, ConfigBundle.ToMenus, change, ConfigBundle.WriteMenus);
+    public static void Modify(string path, Action<HotkeyFile> change)
+        => ConfigIO.ModifyDomain(path, ConfigDomain.hotkeys, ConfigBundle.ToHotkeys, change, ConfigBundle.WriteHotkeys);
 }
 
 /// <summary><c>configs/panel.json</c>：超级面板开关 / 长按阈值 / 场景与偏好。</summary>
