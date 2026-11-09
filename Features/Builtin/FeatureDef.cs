@@ -83,7 +83,7 @@ internal sealed class FeatureDef
 
     public required FeatureGroup Group { get; init; }
 
-    /// <summary>常用功能下的分类（工具 / 剪贴板 / 系统 / 媒体 / 屏幕）；LTools 功能留空。</summary>
+    /// <summary>常用功能下的分类（工具 / 光标移动 / 文本选择 / 删除与撤销 / 剪贴板 / 系统 / 媒体 / 屏幕）；LTools 功能留空。</summary>
     public string Category { get; init; } = "";
 
     public required string Name { get; init; }

@@ -172,9 +172,10 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 - 白 / 黑名单：钩子回调里只做字符串比较，前台 HWND 由 `ForegroundAppCache`
   （`SetWinEventHook(EVENT_SYSTEM_FOREGROUND)` + 后台线程解析进程名 / 标题 / 类名）维护；
   取不到时放行，LTools 自己的窗口不触发。
-- 预设动作：`Features/HotkeySeeding` 首次启动播种「CapsLock 经典」（SeedVersion = 2，
-  5 条直接绑内置功能引用 + 15 条 `input.sendKeys` 动作）；动作带 `Preset = true`，
-  默认不进面板 / 动作选择器，`HotkeyFile.SeedVersion` 保证删掉后不复活。
+- 预设：`Features/HotkeySeeding` 首次启动播种「CapsLock 经典」（SeedVersion = 3），
+  20 条**全部是内置功能引用**（5 个入口 + 光标移动 / 文本选择 / 删除与撤销 15 条）；
+  不再生成预置动作，用户能把同一批条目放进面板 / 悬浮 / 换键。
+  `HotkeyFile.SeedVersion` 保证删掉的条目不会复活；功能改名只加 `FeatureCatalog.Aliases`。
 - **内置功能目录**（P7）：`Features/Builtin/FeatureCatalog` 提供「常用功能 `common.*`」与
   「LTools 功能 `ltools.*`」两套只读入口，参数声明在 `FeatureDef`，引用编码成 `id#key=value&…`
   （`FeatureRef`），直接存进面板 / 快捷键 / 悬浮原有的字符串字段，**不升 schema**；存活判断与

@@ -5,6 +5,7 @@ using LTools.Config;
 using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Features.Builtin;
+using LTools.Features.Panel;
 
 namespace LTools.Features;
 
@@ -13,58 +14,67 @@ namespace LTools.Features;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 高频入口直接绑到内置功能引用（<c>ltools.*</c> / <c>common.*</c>），不再生成预置动作：
-/// 内置功能不是步骤单元，绑在面板 / 快捷键 / 悬浮里和动作共用同一套引用字段（见 <see cref="FeatureRef"/>）。
-/// 光标移动这类拆得出的手势仍是一个 <c>input.sendKeys</c> 预置动作。
+/// **种子全部是内置功能引用**（<c>ltools.*</c> / <c>common.*</c>）：打开面板 / 速记 / 设置这类入口、
+/// 光标移动 / 选择 / 删除这些模拟按键，都在 <see cref="FeatureCatalog"/> 里有对应条目。
+/// 所以预设组里不再生成预置动作——同一份条目用户也能放进面板、悬浮、绑别的键。
 /// </para>
 /// <para>
-/// 幂等：预置动作按「<see cref="ActionDto.Preset"/> + 同名」复用，绑定按「组内同快捷键」复用；
-/// 播种完成后写 <see cref="HotkeyFile.SeedVersion"/>，用户删掉的条目不会再被塞回来。
+/// 幂等：绑定按「组内同快捷键」复用；播种完成后写 <see cref="HotkeyFile.SeedVersion"/>，
+/// 用户删掉的条目不会再被塞回来。功能改名由 <see cref="FeatureCatalog.Canonical"/> 兜底。
 /// </para>
 /// </remarks>
 internal static class HotkeySeeding
 {
-    private const int Version = 2;
+    private const int Version = 3;
 
     private const string GroupName = "CapsLock 经典";
 
-    /// <summary>一条功能种子：快捷键 → 内置功能引用（参数用默认值）。</summary>
+    /// <summary>一条种子：快捷键 → 内置功能引用（参数用默认值）。</summary>
     private sealed record FeatureSeed(string Chord, string Reference, string Note);
-
-    /// <summary>一条动作种子：快捷键 + 动作名 + 图标 + 模拟按键。</summary>
-    private sealed record KeySeed(string Chord, string Name, string Icon, string[] Keys);
 
     private static readonly FeatureSeed[] FeatureSeeds =
     {
+        // —— CapsLock 高频入口 ——
         new("capslock+t", "ltools.panel", "预置：打开超级面板"),
-        new("capslock+n", "common.note", "预置：打开速记"),
+        new("capslock+n", "ltools.note", "预置：打开速记"),
         new("capslock+q", "common.quickSearch", "预置：快速搜索"),
         new("capslock+tab", "common.magnifier", "预置：切换放大镜"),
         new("capslock+backslash", "ltools.settings", "预置：打开设置"),
         // capslock+space 故意留空（旧「鼠标模式」已移除）。
-    };
 
-    private static readonly KeySeed[] KeySeeds =
-    {
-        // —— 光标移动与选择（模拟按键一步到位）——
-        new("capslock+s", "CapsLock · 左移一字符", "keyboard", new[] { "left" }),
-        new("capslock+d", "CapsLock · 下移一行", "keyboard", new[] { "down" }),
-        new("capslock+e", "CapsLock · 上移一行", "keyboard", new[] { "up" }),
-        new("capslock+f", "CapsLock · 右移一字符", "keyboard", new[] { "right" }),
-        new("capslock+w", "CapsLock · 移到行首", "keyboard", new[] { "home" }),
-        new("capslock+r", "CapsLock · 移到行尾", "keyboard", new[] { "end" }),
-        new("capslock+j", "CapsLock · 选中左一字符", "keyboard", new[] { "shift+left" }),
-        new("capslock+k", "CapsLock · 选中下一行", "keyboard", new[] { "shift+down" }),
-        new("capslock+i", "CapsLock · 选中上一行", "keyboard", new[] { "shift+up" }),
-        new("capslock+l", "CapsLock · 选中右一字符", "keyboard", new[] { "shift+right" }),
+        // —— 光标移动 ——
+        new("capslock+s", "common.key.left", "预置：左移一字符"),
+        new("capslock+d", "common.key.down", "预置：下移一行"),
+        new("capslock+e", "common.key.up", "预置：上移一行"),
+        new("capslock+f", "common.key.right", "预置：右移一字符"),
+        new("capslock+w", "common.key.home", "预置：移到行首"),
+        new("capslock+r", "common.key.end", "预置：移到行尾"),
+
+        // —— 文本选择 ——
+        new("capslock+j", "common.select.left", "预置：选中左一字符"),
+        new("capslock+k", "common.select.down", "预置：选中下一行"),
+        new("capslock+i", "common.select.up", "预置：选中上一行"),
+        new("capslock+l", "common.select.right", "预置：选中右一字符"),
 
         // —— 删除与撤销 ——
-        new("capslock+comma", "CapsLock · 退格", "keyboard", new[] { "backspace" }),
-        new("capslock+period", "CapsLock · 删除", "keyboard", new[] { "delete" }),
-        new("capslock+backspace", "CapsLock · 删除整行", "keyboard",
-            new[] { "home", "shift+end", "delete" }),
-        new("capslock+z", "CapsLock · 撤销", "keyboard", new[] { "ctrl+z" }),
-        new("capslock+y", "CapsLock · 重做", "keyboard", new[] { "ctrl+y" }),
+        new("capslock+comma", "common.edit.backspace", "预置：退格"),
+        new("capslock+period", "common.edit.delete", "预置：删除"),
+        new("capslock+backspace", "common.edit.deleteLine", "预置：删除整行"),
+        new("capslock+z", "common.edit.undo", "预置：撤销"),
+        new("capslock+y", "common.edit.redo", "预置：重做"),
+    };
+
+    /// <summary>
+    /// v1 / v2 播下的预置动作名（`input.sendKeys` 单步）。v3 起这些手势改成内置功能，
+    /// 旧动作在升级时清掉；只有**内容仍是原样**的才清，用户改过的留着。
+    /// </summary>
+    private static readonly HashSet<string> LegacyKeySeedNames = new(StringComparer.Ordinal)
+    {
+        "CapsLock · 左移一字符", "CapsLock · 下移一行", "CapsLock · 上移一行",
+        "CapsLock · 右移一字符", "CapsLock · 移到行首", "CapsLock · 移到行尾",
+        "CapsLock · 选中左一字符", "CapsLock · 选中下一行", "CapsLock · 选中上一行",
+        "CapsLock · 选中右一字符", "CapsLock · 退格", "CapsLock · 删除",
+        "CapsLock · 删除整行", "CapsLock · 撤销", "CapsLock · 重做",
     };
 
     /// <summary>播种（已播过就什么都不做）。</summary>
@@ -82,18 +92,13 @@ internal static class HotkeySeeding
 
             var actions = c.Actions ?? new List<ActionDto>();
 
-            // v1 播下的「LTools 内置功能」预置动作（internal.* 单元）已随单元一起下线，一次性清掉。
+            // v1 的「LTools 内置功能」单元、v2 的 15 条按键预置动作都已下线，一次性清掉。
             // 只有预置动作会被清，用户自己建的动作不动（哪怕引用了旧单元也留给他们自己改）。
             var obsolete = actions
-                .Where(a => a.Preset && UsesRemovedUnit(a))
+                .Where(a => a.Preset && (UsesRemovedUnit(a) || IsLegacyKeySeed(a)))
                 .Select(a => a.Id)
                 .ToHashSet(StringComparer.Ordinal);
             if (obsolete.Count > 0) actions.RemoveAll(a => obsolete.Contains(a.Id));
-
-            var presetByName = actions
-                .Where(a => a.Preset && !string.IsNullOrWhiteSpace(a.Name))
-                .GroupBy(a => a.Name, StringComparer.Ordinal)
-                .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
             var group = file.Groups.FirstOrDefault(g => g.Name == GroupName);
             if (group == null)
@@ -102,21 +107,19 @@ internal static class HotkeySeeding
                 file.Groups.Add(group);
             }
 
-            foreach (var seed in KeySeeds)
-            {
-                if (!presetByName.TryGetValue(seed.Name, out var action))
-                {
-                    action = BuildAction(NextActionId(actions), seed);
-                    actions.Add(action);
-                    presetByName[seed.Name] = action;
-                }
-
-                Bind(group, file, seed.Chord, action.Id, "预置，可在动作管理里改", obsolete);
-            }
-
             foreach (var seed in FeatureSeeds)
-            {
                 Bind(group, file, seed.Chord, seed.Reference, seed.Note, obsolete);
+
+            // 旧功能 Id 就地改名（如 common.note → ltools.note），面板里的引用同样处理。
+            foreach (var binding in file.Groups.SelectMany(g => g.Bindings))
+                binding.ActionId = FeatureCatalog.Canonical(binding.ActionId);
+            if (c.Panel != null)
+            {
+                foreach (var panelGroup in PanelLibrary.GroupsOf(c.Panel))
+                {
+                    for (int i = 0; i < panelGroup.Actions.Count; i++)
+                        panelGroup.Actions[i] = FeatureCatalog.Canonical(panelGroup.Actions[i]);
+                }
             }
 
             file.SeedVersion = Version;
@@ -131,7 +134,7 @@ internal static class HotkeySeeding
         ActionLibrary.LoadFrom(reloaded);
         HotkeyRegistry.Load(reloaded);
         AppLog.Info("Hotkeys",
-            $"已播种预设组「{GroupName}」（{FeatureSeeds.Length} 条功能 + {KeySeeds.Length} 条按键）");
+            $"已播种预设组「{GroupName}」（{FeatureSeeds.Length} 条内置功能绑定）");
     }
 
     /// <summary>组内按快捷键复用绑定；空引用 / 指向已下线预置动作的绑定就地补上。</summary>
@@ -182,39 +185,19 @@ internal static class HotkeySeeding
         return false;
     }
 
-    private static ActionDto BuildAction(string id, KeySeed seed)
+    /// <summary>v2 播下的按键预置动作、内容没被改过（仍是单步 input.sendKeys）。</summary>
+    private static bool IsLegacyKeySeed(ActionDto action)
     {
-        var program = new ActionProgram
-        {
-            Id = id,
-            Name = seed.Name,
-            Icon = seed.Icon,
-            Description = "LTools 预置的 CapsLock 快捷键动作（可编辑 / 可删除）",
-        };
+        if (!LegacyKeySeedNames.Contains(action.Name)) return false;
 
-        var step = Step.Of("input.sendKeys");
-        step.WithText("keys", string.Join("\n", seed.Keys));
-        program.Steps.Add(step);
+        var steps = action.Program?.Steps;
+        if (steps == null || steps.Count != 1) return false;
 
-        return new ActionDto
-        {
-            Id = id,
-            Name = seed.Name,
-            Icon = seed.Icon,
-            Type = ActionType.composite,
-            Preset = true,
-            Program = program,
-        };
-    }
-
-    private static string NextActionId(List<ActionDto> actions)
-    {
-        int max = 0;
-        foreach (var action in actions)
-        {
-            if (action.Id.Length > 1 && action.Id[0] == 'a' && int.TryParse(action.Id[1..], out int n) && n > max)
-                max = n;
-        }
-        return "a" + (max + 1);
+        var step = steps[0];
+        return step.Unit == "input.sendKeys"
+               && !step.Disabled
+               && step.Then.Count == 0
+               && step.Else.Count == 0
+               && step.Body.Count == 0;
     }
 }

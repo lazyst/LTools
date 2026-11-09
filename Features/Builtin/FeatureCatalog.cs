@@ -13,12 +13,17 @@ using LTools.Views;
 namespace LTools.Features.Builtin;
 
 /// <summary>
-/// 内置功能目录：**常用功能**（作用于系统）+ **LTools 功能**（作用于 LTools 自身）。
+/// 内置功能目录：**常用功能**（作用于系统 / 编辑） + **LTools 功能**（作用于 LTools 自身）。
 /// </summary>
 /// <remarks>
 /// <para>
 /// 这些不是步骤单元，也不进动作编辑器左栏：它们只能被放到面板 / 绑到快捷键 / 悬浮。
 /// 动作里想用同样的效果，请用对应的步骤单元（截图 / 等待 / 模拟按键…）自己拼。
+/// </para>
+/// <para>
+/// 常用功能里除了系统类入口，还有一组「光标移动 / 文本选择 / 删除与撤销」的预设按键
+/// （<c>common.key.*</c> / <c>common.select.*</c> / <c>common.edit.*</c>）：它们就是一次
+/// 模拟按键，和以前那些预置动作等价，但因为是功能，可以直接放进面板 / 悬浮 / 换键。
 /// </para>
 /// <para>
 /// 新增一条只需在 <see cref="Defs"/> 里加一行；参数声明写在 <see cref="FeatureParam"/> 上，
@@ -36,6 +41,9 @@ internal static class FeatureCatalog
         L("ltools.stash", "打开暂存区", "note",
             "打开超级面板并切到暂存区（AI 草稿所在页）",
             () => Ui(() => SuperPanel.ShowStash())),
+        L("ltools.note", "打开速记", "note",
+            "打开速记窗口，随手记一段文字",
+            () => Ui(() => QuickNote.Toggle())),
         L("ltools.settings", "打开设置", "settings",
             "打开 LTools 设置窗口",
             () => Ui(() => ConfigHelper.Toggle())),
@@ -62,12 +70,46 @@ internal static class FeatureCatalog
         C("common.quickSearch", "工具", "快速搜索", "search",
             "搜索当前选中的文本：网址直接打开、路径直接打开、其余走 Bing",
             () => QuickSearch.Start()),
-        C("common.note", "工具", "打开速记", "note",
-            "打开速记窗口，随手记一段文字",
-            () => Ui(() => QuickNote.Toggle())),
         C("common.windowPin", "工具", "窗口置顶", "pin",
             "把鼠标位置所在的窗口切换置顶",
             ctx => WindowPin.ToggleAtCursor(Cursor(ctx).X, Cursor(ctx).Y)),
+
+        // ============ 常用功能 · 光标移动 ============
+        C("common.key.left", "光标移动", "左移一字符", "keyboard",
+            "光标左移一个字符（←）", () => Keys("left")),
+        C("common.key.down", "光标移动", "下移一行", "keyboard",
+            "光标下移一行（↓）", () => Keys("down")),
+        C("common.key.up", "光标移动", "上移一行", "keyboard",
+            "光标上移一行（↑）", () => Keys("up")),
+        C("common.key.right", "光标移动", "右移一字符", "keyboard",
+            "光标右移一个字符（→）", () => Keys("right")),
+        C("common.key.home", "光标移动", "移到行首", "keyboard",
+            "移到当前行行首（Home）", () => Keys("home")),
+        C("common.key.end", "光标移动", "移到行尾", "keyboard",
+            "移到当前行行尾（End）", () => Keys("end")),
+
+        // ============ 常用功能 · 文本选择 ============
+        C("common.select.left", "文本选择", "选中左一字符", "keyboard",
+            "向左选中一个字符（Shift+←）", () => Keys("shift+left")),
+        C("common.select.down", "文本选择", "选中下一行", "keyboard",
+            "向下选中一行（Shift+↓）", () => Keys("shift+down")),
+        C("common.select.up", "文本选择", "选中上一行", "keyboard",
+            "向上选中一行（Shift+↑）", () => Keys("shift+up")),
+        C("common.select.right", "文本选择", "选中右一字符", "keyboard",
+            "向右选中一个字符（Shift+→）", () => Keys("shift+right")),
+
+        // ============ 常用功能 · 删除与撤销 ============
+        C("common.edit.backspace", "删除与撤销", "退格", "keyboard",
+            "删除光标前一个字符（Backspace）", () => Keys("backspace")),
+        C("common.edit.delete", "删除与撤销", "删除", "keyboard",
+            "删除光标后一个字符（Delete）", () => Keys("delete")),
+        C("common.edit.deleteLine", "删除与撤销", "删除整行", "keyboard",
+            "从行首选中到行尾再删除（Home → Shift+End → Delete）",
+            () => Keys("home", "shift+end", "delete")),
+        C("common.edit.undo", "删除与撤销", "撤销", "keyboard",
+            "撤销上一次编辑（Ctrl+Z）", () => Keys("ctrl+z")),
+        C("common.edit.redo", "删除与撤销", "重做", "keyboard",
+            "重做被撤销的编辑（Ctrl+Y）", () => Keys("ctrl+y")),
 
         // ============ 常用功能 · 剪贴板 ============
         C("common.clipboard.history", "剪贴板", "剪贴板历史", "paste",
@@ -130,10 +172,33 @@ internal static class FeatureCatalog
     private static readonly Dictionary<string, FeatureDef> ById =
         Defs.ToDictionary(d => d.Id, StringComparer.Ordinal);
 
+    /// <summary>
+    /// 旧 Id → 现在的 Id。功能改名时在这里留一条，**不迁移已写进配置的引用**：
+    /// 面板 / 快捷键里的老引用照样能跑（<see cref="Find"/> 会翻过去），播种时再顺手改写成新 Id。
+    /// </summary>
+    private static readonly Dictionary<string, string> Aliases = new(StringComparer.Ordinal)
+    {
+        // 「打开速记」从常用功能挪到 LTools 功能（2026-11）。
+        ["common.note"] = "ltools.note",
+    };
+
     public static IReadOnlyList<FeatureDef> All => Defs;
 
-    public static FeatureDef? Find(string? id) =>
-        !string.IsNullOrEmpty(id) && ById.TryGetValue(id, out var d) ? d : null;
+    public static FeatureDef? Find(string? id)
+    {
+        if (string.IsNullOrEmpty(id)) return null;
+        if (Aliases.TryGetValue(id, out string? canonical)) id = canonical;
+        return ById.TryGetValue(id, out var d) ? d : null;
+    }
+
+    /// <summary>把旧 Id 的引用换成新 Id（参数保留）；已经是新 Id / 不是功能就原样返回。</summary>
+    public static string Canonical(string? reference)
+    {
+        if (string.IsNullOrWhiteSpace(reference)) return reference ?? "";
+        string id = FeatureRef.IdOf(reference);
+        if (!Aliases.TryGetValue(id, out string? target)) return reference;
+        return FeatureRef.Build(target, FeatureRef.Parse(reference));
+    }
 
     /// <summary>是不是一个功能引用（动作 Id 永远不带 <c>#</c>、也不在目录里）。</summary>
     public static bool IsFeatureRef(string? reference) =>
@@ -253,6 +318,22 @@ internal static class FeatureCatalog
         int steps = Math.Clamp(ctx.GetInt("steps", 3), 1, 30);
         for (int i = 0; i < steps; i++)
             InputHelper.Tap((ushort)(up ? Win32.VkVolumeUp : Win32.VkVolumeDown));
+    }
+
+    /// <summary>
+    /// 依次发送按键（写法与「模拟按键」步骤一致：<c>ctrl+z</c> / <c>shift+left</c>…）。
+    /// 常用功能里的光标 / 选择 / 删除就是这一串预设按键，和以前预置动作里那一步完全等价。
+    /// </summary>
+    private static void Keys(params string[] strokes)
+    {
+        for (int i = 0; i < strokes.Length; i++)
+        {
+            if (!KeyStroke.TryParse(strokes[i], out var vks, out string error))
+                throw new InvalidOperationException($"按键「{strokes[i]}」无法解析：{error}");
+
+            InputHelper.Combo(vks.ToArray());
+            if (i + 1 < strokes.Length) Thread.Sleep(15);
+        }
     }
 
     // ============ 截图 ============
