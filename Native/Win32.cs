@@ -96,6 +96,7 @@ internal static class Win32
     public static extern bool UnhookWinEvent(IntPtr hWinEventHook);
 
     public const uint EventSystemForeground = 0x0003;
+    public const uint EventObjectLocationChange = 0x800B;
     public const uint WineventOutofcontext = 0x0000;
 
     /// <summary>在父窗口的直接子窗口里按点查找（按 z 序），用于从顶层窗口往下钻。</summary>
@@ -176,6 +177,9 @@ internal static class Win32
 
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     public static extern bool IsIconic(IntPtr hWnd);

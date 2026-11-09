@@ -321,7 +321,7 @@
 
                     <Button x:Name="SettingsBtn" Style="{StaticResource BtnGhost}"
                             Width="30" Height="28" Padding="0" Margin="0,0,1,0"
-                            Click="Settings_Click" ToolTip="面板管理 (CapsLock+\)">
+                            Click="Settings_Click" ToolTip="设置 (CapsLock+\)">
                         <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="15"/>
                     </Button>
                     <Button x:Name="PinBtn" Style="{StaticResource BtnGhost}"

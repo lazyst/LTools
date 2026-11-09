@@ -160,6 +160,12 @@ internal readonly struct HotkeyChord
         >= 0x70 and <= 0x87 => "F" + (vk - 0x6F),
         >= 'A' and <= 'Z' => ((char)vk).ToString(),
         >= '0' and <= '9' => ((char)vk).ToString(),
+        >= 0x60 and <= 0x69 => "NumPad" + (vk - 0x60),
+        0x6A => "NumPad*",
+        0x6B => "NumPad+",
+        0x6D => "NumPad-",
+        0x6E => "NumPad.",
+        0x6F => "NumPad/",
         _ => NamedName(vk),
     };
 
@@ -168,6 +174,13 @@ internal readonly struct HotkeyChord
         >= 0x70 and <= 0x87 => "f" + (vk - 0x6F),
         >= 'A' and <= 'Z' => ((char)vk).ToString().ToLowerInvariant(),
         >= '0' and <= '9' => ((char)vk).ToString(),
+        // 规范名不能带 +（会破坏 capslock+numpadadd 的解析），所以用英文单词
+        >= 0x60 and <= 0x69 => "numpad" + (vk - 0x60),
+        0x6A => "numpadmul",
+        0x6B => "numpadadd",
+        0x6D => "numpadsub",
+        0x6E => "numpaddot",
+        0x6F => "numpaddiv",
         _ => NamedName(vk).ToLowerInvariant(),
     };
 

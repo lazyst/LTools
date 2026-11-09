@@ -100,11 +100,9 @@ public partial class HotkeysView : UserControl
                 _rows.Add(new BindingRow(binding, _file, conflicts.Contains(binding.Id)));
         }
 
-        int index = -1;
-        if (_group != null && _keepBindingId != null)
-            index = _group.Bindings.FindIndex(b => b.Id == _keepBindingId);
-        if (index < 0) index = _rows.Count > 0 ? 0 : -1;
-        BindingGrid.SelectedIndex = index;
+        // 按 Id 选中（表格可能被搜索过滤，行下标和 _group.Bindings 不再一一对应）
+        var target = _rows.FirstOrDefault(r => r.Source.Id == _keepBindingId) ?? _rows.FirstOrDefault();
+        BindingGrid.SelectedItem = target;
 
         ConflictText.Text = conflicts.Count == 0
             ? ""
@@ -283,10 +281,7 @@ public partial class HotkeysView : UserControl
 
     // ============ 绑定 ============
 
-    private HotkeyBinding? SelectedBinding() =>
-        BindingGrid.SelectedIndex >= 0 && _group != null && BindingGrid.SelectedIndex < _group.Bindings.Count
-            ? _group.Bindings[BindingGrid.SelectedIndex]
-            : null;
+    private HotkeyBinding? SelectedBinding() => (BindingGrid.SelectedItem as BindingRow)?.Source;
 
     private HotkeyGroup EnsureGroup()
     {
@@ -367,11 +362,21 @@ public partial class HotkeysView : UserControl
         Dispatcher.BeginInvoke(new Action(() => Save(_group?.Id, row?.Source.Id)));
     }
 
-    private void BindingGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    private void BindingGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (FindAncestor<CheckBox>(e.OriginalSource as DependencyObject) != null) return;
-        if (FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject) == null) return;
-        EditBinding_Click(sender, e);
+        if (e.ClickCount != 2) return;
+        var source = e.OriginalSource as DependencyObject;
+        if (FindAncestor<CheckBox>(source) != null) return;
+
+        var row = FindAncestor<DataGridRow>(source);
+        if (row == null) return;   // 表头 / 空白区域
+
+        // DataGridCell 会把第一次按下的 MouseDown 标记为已处理，MouseDoubleClick 就不会再合成
+        // （表现是「第一次双击没反应，第二次才行」）。所以直接从预览事件认 ClickCount == 2，
+        // 并把弹窗推到本次鼠标事件结束之后，避免拖动 / 捕获还挂在表格上。
+        e.Handled = true;
+        BindingGrid.SelectedItem = row.Item;
+        Dispatcher.BeginInvoke(new Action(() => EditBinding_Click(sender, e)));
     }
 
     // ============ 全局默认名单 ============

@@ -46,6 +46,22 @@ internal static class KeyStroke
         ["down"] = 0x28,
         ["left"] = 0x25,
         ["right"] = 0x27,
+        // —— 小键盘（NumLock 打开时才是这些 VK；关掉时系统给的是方向 / Home…）——
+        ["numpad0"] = 0x60, ["num0"] = 0x60,
+        ["numpad1"] = 0x61, ["num1"] = 0x61,
+        ["numpad2"] = 0x62, ["num2"] = 0x62,
+        ["numpad3"] = 0x63, ["num3"] = 0x63,
+        ["numpad4"] = 0x64, ["num4"] = 0x64,
+        ["numpad5"] = 0x65, ["num5"] = 0x65,
+        ["numpad6"] = 0x66, ["num6"] = 0x66,
+        ["numpad7"] = 0x67, ["num7"] = 0x67,
+        ["numpad8"] = 0x68, ["num8"] = 0x68,
+        ["numpad9"] = 0x69, ["num9"] = 0x69,
+        ["numpadmul"] = 0x6A, ["numpadmultiply"] = 0x6A,
+        ["numpadadd"] = 0x6B, ["numpadplus"] = 0x6B,
+        ["numpadsub"] = 0x6D, ["numpadminus"] = 0x6D,
+        ["numpaddot"] = 0x6E, ["numpaddecimal"] = 0x6E,
+        ["numpaddiv"] = 0x6F, ["numpaddivide"] = 0x6F,
         ["apps"] = 0x5D,   // 右键菜单键
         ["pause"] = 0x13,
         ["printscreen"] = 0x2A, ["prtsc"] = 0x2A, ["snapshot"] = 0x2A,
@@ -150,6 +166,13 @@ internal static class KeyStroke
         // 字母 / 数字
         if (vk >= 'A' && vk <= 'Z') return ((char)vk).ToString().ToLowerInvariant();
         if (vk >= '0' && vk <= '9') return ((char)vk).ToString();
+        // 小键盘（与 TryParse / NamedKeys 的写法一致）
+        if (vk >= 0x60 && vk <= 0x69) return "numpad" + (vk - 0x60);
+        if (vk == 0x6A) return "numpadmul";
+        if (vk == 0x6B) return "numpadadd";
+        if (vk == 0x6D) return "numpadsub";
+        if (vk == 0x6E) return "numpaddot";
+        if (vk == 0x6F) return "numpaddiv";
         // 反查命名表（取第一个别名）
         foreach (var kv in NamedKeys)
             if (kv.Value == vk) return kv.Key;

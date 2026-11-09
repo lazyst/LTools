@@ -213,7 +213,9 @@ public partial class SuperPanelWindow
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
         Features.SuperPanel.Close();
-        ConfigHelper.OpenPanelScene(PanelLibrary.ActiveGlobalScene()?.Id);
+        // 和 CapsLock+\ / 托盘「设置」一致：打开设置，停在上次记住的导航页
+        // （面板里的「面板设置…」才是显式跳到面板管理 → 场景）。
+        ConfigHelper.Open();
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Features.SuperPanel.Close();

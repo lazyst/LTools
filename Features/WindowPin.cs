@@ -36,11 +36,14 @@ internal static class WindowPin
         if (isPinned)
         {
             Win32.SetWindowPos(hwnd, HwndNoTopmost, 0, 0, 0, 0, SwpNomove | SwpNosize);
+            WindowPinFrames.Remove(hwnd);
             Notify("已取消置顶");
         }
         else
         {
             Win32.SetWindowPos(hwnd, HwndTopmost, 0, 0, 0, 0, SwpNomove | SwpNosize);
+            // 置顶状态本身在窗口管理器里看不出来，配一条高亮边框提示「这个窗口被钉住了」
+            WindowPinFrames.Add(hwnd);
             Notify("已置顶窗口");
         }
     }

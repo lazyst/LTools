@@ -148,9 +148,16 @@ internal static class MacroSettings
     };
 
     /// <summary>把配置里的热键字符串格式化为显示文本：<c>ctrl+f2</c> → <c>Ctrl+F2</c>。</summary>
+    /// <remarks>
+    /// 能解析就交给 <see cref="HotkeyChord.Format"/>：功能键 / 小键盘（<c>NumPad5</c>）与快捷键页
+    /// 共用一套习惯名，录入框预览不会和表格里写成两种样子。
+    /// </remarks>
     public static string FormatHotkey(string text)
     {
-        var parts = text.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string pretty = HotkeyChord.Format(text);
+        if (pretty != text) return pretty;
+
+        var parts = (text ?? "").Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return string.Join("+", parts.Select(p =>
             p.Length == 1 ? p.ToUpperInvariant() : char.ToUpperInvariant(p[0]) + p[1..]));
     }

@@ -110,7 +110,7 @@
                           IsReadOnly="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
                           Background="Transparent" BorderThickness="0"
                           SelectionMode="Single" SelectionUnit="FullRow"
-                          MouseDoubleClick="BindingGrid_MouseDoubleClick">
+                          PreviewMouseLeftButtonDown="BindingGrid_PreviewMouseLeftButtonDown">
                     <DataGrid.Columns>
                         <DataGridTemplateColumn Header="启用" Width="46">
                             <DataGridTemplateColumn.CellTemplate>

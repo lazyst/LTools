@@ -23,9 +23,32 @@ internal static class ConfigHelper
             _window = null;
             return;
         }
-        _window = new ConfigHelperWindow(_configPath ?? "");
-        _window.Closed += (_, _) => _window = null;
-        _window.Show();
+        EnsureWindow();
+    }
+
+    /// <summary>
+    /// 打开设置，停在上次记住的导航页；已经打开就激活并提到最前。
+    /// 面板齿轮 / 托盘 / 功能的普通「设置」入口走这里——要强制跳页才用
+    /// <see cref="OpenPanelScene"/> / <see cref="OpenAi"/>。
+    /// </summary>
+    public static void Open()
+    {
+        var window = EnsureWindow();
+        window.Activate();
+        // 面板 / 悬浮都是 Topmost，被它们盖住时 Activate 不会自己浮上来，借 Topmost 抬一次
+        window.Topmost = true;
+        window.Topmost = false;
+    }
+
+    private static ConfigHelperWindow EnsureWindow()
+    {
+        if (_window != null) return _window;
+
+        var window = new ConfigHelperWindow(_configPath ?? "");
+        window.Closed += (_, _) => _window = null;
+        _window = window;
+        window.Show();
+        return window;
     }
 
     /// <summary>
@@ -34,24 +57,12 @@ internal static class ConfigHelper
     /// </summary>
     public static void OpenPanelScene(string? sceneId = null)
     {
-        if (_window == null)
-        {
-            _window = new ConfigHelperWindow(_configPath ?? "");
-            _window.Closed += (_, _) => _window = null;
-            _window.Show();
-        }
-        _window.NavigateToPanelScene(sceneId);
+        EnsureWindow().NavigateToPanelScene(sceneId);
     }
 
     /// <summary>打开设置并切到「AI 接入」（面板暂存区的「AI 接入设置」入口用）。</summary>
     public static void OpenAi()
     {
-        if (_window == null)
-        {
-            _window = new ConfigHelperWindow(_configPath ?? "");
-            _window.Closed += (_, _) => _window = null;
-            _window.Show();
-        }
-        _window.NavigateToAi();
+        EnsureWindow().NavigateToAi();
     }
 }
