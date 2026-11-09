@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using LTools.Config;
 using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Features;
@@ -248,10 +249,103 @@ public partial class ActionEditorWindow
 
     // ============ 工具箱 ============
 
+    /// <summary>
+    /// 左栏「添加单元」里已折叠的分类。**进程内共享 + 落盘 <c>ui.json</c>**：
+    /// 在 A 动作里折好的分组，换编辑 B 动作、重开编辑器都还是那个样子（全局记忆，不跟着动作走）。
+    /// </summary>
+    private static HashSet<string>? _toolboxCollapsed;
+
+    private static HashSet<string> CollapsedToolboxGroups
+    {
+        get
+        {
+            if (_toolboxCollapsed != null) return _toolboxCollapsed;
+
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            try
+            {
+                foreach (string key in ConfigStore.LoadConfig().ToolboxCollapsedGroups)
+                    if (!string.IsNullOrWhiteSpace(key)) set.Add(key);
+            }
+            catch (Exception ex)
+            {
+                // 读不到就按「全部展开」走，不影响编辑动作
+                AppLog.Warn("Editor", "读取左栏折叠状态失败：" + ex.Message);
+            }
+
+            return _toolboxCollapsed = set;
+        }
+    }
+
+    /// <summary>折叠 / 展开一个分类，并立刻写回 ui.json（只动这一个字段）。</summary>
+    private void ToggleToolboxGroup(string category)
+    {
+        if (!CollapsedToolboxGroups.Remove(category)) CollapsedToolboxGroups.Add(category);
+        SaveToolboxCollapsed();
+    }
+
+    private void ExpandAllGroups_Click(object sender, RoutedEventArgs e) => SetToolboxCollapsed(Array.Empty<string>());
+
+    private void CollapseAllGroups_Click(object sender, RoutedEventArgs e) =>
+        SetToolboxCollapsed(ToolboxCategories());
+
+    /// <summary>一次设定折叠集合（全部展开 / 全部收起）。</summary>
+    private void SetToolboxCollapsed(IEnumerable<string> categories)
+    {
+        HashSet<string> set = CollapsedToolboxGroups;
+        set.Clear();
+        foreach (string key in categories) set.Add(key);
+        SaveToolboxCollapsed();
+    }
+
+    /// <summary>注册表里出现过的分类（用于「全部收起」与按钮可用性）。</summary>
+    private static List<string> ToolboxCategories() => StepRegistry.Default.Units
+        .Select(u => u.Spec.Category ?? "")
+        .Distinct(StringComparer.Ordinal)
+        .ToList();
+
+    /// <summary>写盘（只动 ui.json 的这一个字段）+ 重建左栏，并把滚动位置放回原处。</summary>
+    private void SaveToolboxCollapsed()
+    {
+        try
+        {
+            List<string> snapshot = CollapsedToolboxGroups
+                .OrderBy(x => x, StringComparer.Ordinal)
+                .ToList();
+            // 显式给锚点：ConfigStore 的路径就是本进程实际用的配置（不靠 ConfigLocator 再猜一次）
+            if (string.IsNullOrEmpty(ConfigStore.ConfigPath))
+                UiStore.Modify(ui => ui.ToolboxCollapsedGroups = snapshot);
+            else
+                UiStore.Modify(ConfigStore.ConfigPath, ui => ui.ToolboxCollapsedGroups = snapshot);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Editor", "保存左栏折叠状态失败：" + ex.Message);
+        }
+
+        // 重建后把滚动位置放回原处：折一个靠上的分组不该把视图弹回顶部
+        ScrollViewer? scroller = FindAncestor<ScrollViewer>(Toolbox);
+        double offset = scroller?.VerticalOffset ?? 0;
+        BuildToolbox();
+        if (scroller != null)
+        {
+            Toolbox.UpdateLayout();
+            scroller.ScrollToVerticalOffset(offset);
+        }
+    }
+
     private void BuildToolbox()
     {
         string query = (SearchBox?.Text ?? "").Trim();
+        bool searching = query.Length > 0;
         Toolbox.Children.Clear();
+
+        // 「全部展开 / 全部收起」：搜索时分类一定全展开，按钮没有意义
+        List<string> categories = ToolboxCategories();
+        bool anyCollapsed = categories.Any(CollapsedToolboxGroups.Contains);
+        bool allCollapsed = categories.Count > 0 && categories.All(CollapsedToolboxGroups.Contains);
+        if (ExpandAllButton != null) ExpandAllButton.IsEnabled = !searching && anyCollapsed;
+        if (CollapseAllButton != null) CollapseAllButton.IsEnabled = !searching && !allCollapsed;
 
         var groups = StepRegistry.Default.Units
             .Where(u => Match(u.Spec, query))
@@ -273,16 +367,79 @@ public partial class ActionEditorWindow
 
         foreach (var group in groups)
         {
-            Toolbox.Children.Add(new TextBlock
-            {
-                Text = group.Key.Length == 0 ? "其它" : group.Key,
-                Style = (Style)FindResource("SectionLabel"),
-                Margin = new Thickness(2, 10, 0, 4),
-            });
+            // 搜索时一律展开：搜到了却被折叠挡住，等于没搜到
+            bool collapsed = !searching && CollapsedToolboxGroups.Contains(group.Key);
+            Toolbox.Children.Add(BuildToolboxHeader(group.Key, group.Count(), collapsed, searching));
+            if (collapsed) continue;
 
             foreach (var unit in group.OrderBy(u => u.Spec.Name, StringComparer.CurrentCulture))
                 Toolbox.Children.Add(BuildToolboxButton(unit.Spec));
         }
+    }
+
+    /// <summary>分类标题：带底色的分组条 + 箭头 + 名称 + 数量，整条可点（点哪都折叠 / 展开）。</summary>
+    private Button BuildToolboxHeader(string category, int count, bool collapsed, bool searching)
+    {
+        string name = category.Length == 0 ? "其它" : category;
+
+        var content = new StackPanel { Orientation = Orientation.Horizontal };
+        content.Children.Add(new TextBlock
+        {
+            Text = collapsed ? "\uE76C" : "\uE70D",     // ChevronRight / ChevronDown
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 9,
+            Width = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (Brush)FindResource("HintTextBrush"),
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = name,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = (double)FindResource("FontSizeSecondary"),
+            FontWeight = FontWeights.Medium,
+            Foreground = (Brush)FindResource("TextBrush"),
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = count.ToString(),
+            Margin = new Thickness(6, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = (double)FindResource("FontSizeSecondary"),
+            Foreground = (Brush)FindResource("SecondaryTextBrush"),
+        });
+
+        var header = new Button
+        {
+            Style = (Style)FindResource("Btn"),            // Btn 的悬停底色走 Tag，这里换成比分组条深一档
+            Content = content,
+            Background = (Brush)FindResource("SurfaceAltBrush"),
+            BorderBrush = (Brush)FindResource("BorderBrush"),
+            BorderThickness = new Thickness(1),
+            Tag = (Brush)FindResource("PressedBgBrush"),
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            MinHeight = 26,
+            Padding = new Thickness(6, 0, 6, 0),
+            Margin = new Thickness(0, 8, 2, 4),
+            FontSize = (double)FindResource("FontSizeSecondary"),
+            ToolTip = searching
+                ? "搜索时分类自动展开"
+                : collapsed ? $"展开「{name}」（{count} 个单元）" : $"折叠「{name}」",
+        };
+
+        if (searching)
+        {
+            // 搜索时分组恒展开，标题只当标签：不弹手型、不悬停变色、点了也没反应
+            header.IsHitTestVisible = false;
+            header.Focusable = false;
+            header.Cursor = Cursors.Arrow;
+        }
+        else
+        {
+            header.Click += (_, _) => ToggleToolboxGroup(category);
+        }
+
+        return header;
     }
 
     private Button BuildToolboxButton(UnitSpec spec)

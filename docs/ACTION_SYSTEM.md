@@ -265,7 +265,7 @@ sealed class SubActionDef {
 
 ### 3.6 单元清单（W2/W3 已实现）
 
-> 分类名以代码 `UnitSpec.Category` 为准：2026-11 起重排为「流程 / 键鼠与输入 / 剪贴板 / 文本与数据 / 屏幕 / 文件 / 窗口与程序 / 界面 / LTools 内置功能 / 脚本」（顺序见 `Core/Actions/UnitCategories`）。下表保留当初实现时的分组。
+> 分类名以代码 `UnitSpec.Category` 为准：2026-11 起重排为「键鼠与输入 / 流程 / 文本与数据 / 剪贴板 / 文件 / 窗口与程序 / 屏幕 / 界面 / LTools 内置功能 / 脚本」（顺序见 `Core/Actions/UnitCategories`）。下表保留当初实现时的分组。
 
 | 分类 | 单元（W2 已实现） | 对应今天的 |
 |---|---|---|

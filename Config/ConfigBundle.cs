@@ -117,7 +117,7 @@ internal static class ConfigBundle
         cfg.LastNavPage = string.IsNullOrWhiteSpace(ui.LastNavPage) ? "actions" : ui.LastNavPage;
         cfg.NavExpandedGroups = ui.NavExpandedGroups;
         cfg.LastOcrEngine = ui.LastOcrEngine;
-        cfg.CompositeCollapsedGroups = ui.CompositeCollapsedGroups ?? new();
+        cfg.ToolboxCollapsedGroups = ui.ToolboxCollapsedGroups ?? new();
         cfg.RecentActionIds = ui.RecentActionIds;
 
         bool hasStore = ActionStore.HasStore(anchorPath);
@@ -400,7 +400,7 @@ internal static class ConfigBundle
         LastNavPage = cfg.LastNavPage,
         NavExpandedGroups = cfg.NavExpandedGroups,
         LastOcrEngine = cfg.LastOcrEngine,
-        CompositeCollapsedGroups = cfg.CompositeCollapsedGroups ?? new(),
+        ToolboxCollapsedGroups = cfg.ToolboxCollapsedGroups ?? new(),
         RecentActionIds = cfg.RecentActionIds,
     };
 

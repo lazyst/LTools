@@ -142,8 +142,11 @@ public sealed class AppConfig
     /// </summary>
     public string? LastOcrEngine { get; set; }
 
-    /// <summary>组合动作编辑器左栏已折叠的分组 key（basic / internal / pool），下次打开恢复。</summary>
-    public List<string> CompositeCollapsedGroups { get; set; } = new();
+    /// <summary>
+    /// 动作编辑器左栏「添加单元」里已折叠的分类名（如 <c>流程</c> / <c>剪贴板</c>）。
+    /// **全局记忆**：换一个动作编辑、重开编辑器都沿用；只写 <c>configs/ui.json</c>。
+    /// </summary>
+    public List<string> ToolboxCollapsedGroups { get; set; } = new();
 
     /// <summary>
     /// 动作选择器（<c>ActionPoolPicker</c>）里「最近使用」的动作 Id，最新的在前，最多 6 条。

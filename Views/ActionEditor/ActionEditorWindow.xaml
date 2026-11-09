@@ -131,10 +131,26 @@
             <Border Grid.Column="0" Background="{StaticResource SurfaceAltBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
                 <DockPanel Margin="0,8,0,8">
-                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionLabel}"
-                               Text="工具箱" Margin="12,0,0,4"/>
+                    <Grid DockPanel.Dock="Top" Margin="12,0,12,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="工具箱" VerticalAlignment="Center"
+                                   ToolTip="点一下填参数 · 拖到步骤里插入 · 右键直接添加"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="ExpandAllButton" Content="全部展开" Style="{StaticResource BtnGhost}"
+                                    FontSize="11" Padding="4,0" MinHeight="20" MinWidth="0"
+                                    ToolTip="展开所有分类" Click="ExpandAllGroups_Click"/>
+                            <Button x:Name="CollapseAllButton" Content="全部收起" Style="{StaticResource BtnGhost}"
+                                    FontSize="11" Padding="4,0" MinHeight="20" MinWidth="0" Margin="2,0,0,0"
+                                    ToolTip="收起所有分类" Click="CollapseAllGroups_Click"/>
+                        </StackPanel>
+                    </Grid>
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintLabel}"
-                               Text="点一下填参数 · 拖到步骤里插入 · 右键直接添加" Margin="12,0,12,6" TextWrapping="Wrap"/>
+                               Text="点一下填参数 · 拖进步骤 · 右键添加" Margin="12,0,12,6"
+                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                               ToolTip="点一下单元填参数插入 · 拖到步骤列表里插入 · 右键单元还有「直接添加 / 添加到末尾」"/>
                     <TextBox DockPanel.Dock="Top" x:Name="SearchBox" Margin="12,0,12,8"
                              MinHeight="30" TextChanged="SearchBox_TextChanged"
                              ToolTip="按名称 / 分类 / 单元键搜索"/>

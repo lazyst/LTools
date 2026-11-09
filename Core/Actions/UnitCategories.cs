@@ -16,16 +16,19 @@ namespace LTools.Core.Actions;
 /// </remarks>
 internal static class UnitCategories
 {
-    /// <summary>按「用户先想干什么」排：先控制流程，再输入，再内容处理，最后是系统与扩展。</summary>
+    /// <summary>
+    /// 按「动手 → 判断 → 加工 → 取材」排：先键鼠输入，再流程控制与内容处理，
+    /// 文件 / 屏幕 / 窗口这类「用到才找」的往后放，脚本与内置功能最后。
+    /// </summary>
     private static readonly string[] Order =
     {
-        "流程",
         "键鼠与输入",
-        "剪贴板",
+        "流程",
         "文本与数据",
-        "屏幕",
+        "剪贴板",
         "文件",
         "窗口与程序",
+        "屏幕",
         "界面",
         "LTools 内置功能",
         "脚本",
