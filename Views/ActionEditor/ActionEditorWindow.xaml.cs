@@ -156,6 +156,7 @@ public partial class ActionEditorWindow : Window
 
         PreviewMouseMove += OnUnitDragMove;
         PreviewMouseLeftButtonUp += OnUnitDragUp;
+        PreviewKeyDown += OnEditorKeyDown;
 
         BuildVariableRows();
         BuildToolbox();

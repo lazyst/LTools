@@ -264,6 +264,7 @@ public partial class ActionEditorWindow
         if (ReferenceEquals(from, list) && insert > fromIndex) insert--;
         if (ReferenceEquals(from, list) && insert == fromIndex) return;
 
+        PushUndo("拖动步骤");
         from.RemoveAt(fromIndex);
         list.Insert(Math.Clamp(insert, 0, list.Count), step);
         ReloadRows(step);

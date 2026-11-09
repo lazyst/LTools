@@ -26,7 +26,10 @@ public partial class ActionEditorWindow
 
     private void ReloadRows(Step? select = null)
     {
-        Step? keep = select ?? SelectedRow()?.Step;
+        // 多选：按步骤引用记住选中项，重建列表后恢复（不传 select 时保留当前多选）
+        List<Step> keep = select != null
+            ? new List<Step> { select }
+            : SelectedRows().Select(r => r.Step!).ToList();
 
         _rows.Clear();
         _number = 0;
@@ -36,15 +39,16 @@ public partial class ActionEditorWindow
         EmptyHint.Visibility = total == 0 ? Visibility.Visible : Visibility.Collapsed;
         StepCountText.Text = total == 0 ? "" : $"{total} 步";
 
-        if (keep != null)
+        StepList.SelectedItems.Clear();
+        StepRow? first = null;
+        foreach (Step step in keep)
         {
-            var target = _rows.FirstOrDefault(r => ReferenceEquals(r.Step, keep));
-            if (target != null)
-            {
-                StepList.SelectedItem = target;
-                StepList.ScrollIntoView(target);
-            }
+            var target = _rows.FirstOrDefault(r => ReferenceEquals(r.Step, step));
+            if (target == null) continue;
+            StepList.SelectedItems.Add(target);
+            first ??= target;
         }
+        if (first != null) StepList.ScrollIntoView(first);
 
         EnsureOutputVariables();
     }
@@ -125,6 +129,13 @@ public partial class ActionEditorWindow
     };
 
     private StepRow? SelectedRow() => StepList.SelectedItem as StepRow;
+
+    /// <summary>当前选中的所有步骤行（按列表顺序）；标记行 / 空分支占位行不算。</summary>
+    private List<StepRow> SelectedRows() =>
+        StepList.SelectedItems.OfType<StepRow>()
+            .Where(r => r.Step != null && r.Owner != null)
+            .OrderBy(r => _rows.IndexOf(r))
+            .ToList();
 
     private static UnitSpec? SpecOf(Step step) =>
         StepRegistry.Default.TryGet(step.Unit, out var unit) ? unit.Spec : null;
@@ -278,6 +289,7 @@ public partial class ActionEditorWindow
             step = dlg.Result;
         }
 
+        PushUndo($"添加「{StepSummary.Title(unitKey)}」");
         list.Insert(Math.Clamp(index, 0, list.Count), step);
         ReloadRows(step);
     }
@@ -328,6 +340,7 @@ public partial class ActionEditorWindow
         var dlg = CreateStepDialog(row.Step);
         if (dlg.ShowDialog() != true || dlg.Result == null) return;
 
+        PushUndo($"编辑「{StepSummary.Title(row.Step)}」");
         row.Owner[row.Index] = dlg.Result;
         ReloadRows(dlg.Result);
     }
@@ -356,6 +369,7 @@ public partial class ActionEditorWindow
         Step? next = index + 1 < owner.Count ? owner[index + 1]
             : index > 0 ? owner[index - 1] : null;
 
+        PushUndo($"删除「{StepSummary.Title(row.Step)}」");
         owner.RemoveAt(index);
         ReloadRows(next);
     }
@@ -377,6 +391,7 @@ public partial class ActionEditorWindow
         int target = row.Index + delta;
         if (target < 0 || target >= row.Owner.Count) return;
 
+        PushUndo("移动步骤");
         (row.Owner[row.Index], row.Owner[target]) = (row.Owner[target], row.Owner[row.Index]);
         ReloadRows(row.Step);
     }
@@ -390,24 +405,31 @@ public partial class ActionEditorWindow
         {
             switch (e.Key)
             {
-                case Key.C when row?.Step != null:
-                    _stepClipboard = row.Step.Clone();
+                case Key.C:
+                    CopySelected();
                     e.Handled = true;
                     return;
                 case Key.V:
                     PasteToSelection();
                     e.Handled = true;
                     return;
-                case Key.D when row?.Step != null:
-                    DuplicateRow(row);
+                case Key.D:
+                    DuplicateSelected();
                     e.Handled = true;
                     return;
             }
         }
 
-        if (e.Key == Key.Delete && row?.Step != null)
+        if (e.Key == Key.Delete)
         {
-            DeleteRow(row);
+            DeleteSelected();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Space)
+        {
+            ToggleDisabledSelected();
             e.Handled = true;
             return;
         }

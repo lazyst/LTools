@@ -10,13 +10,17 @@ using LTools.Features;
 namespace LTools.Views;
 
 /// <summary>
-/// 步骤行 / 工具箱单元的右键菜单。菜单每次现建（和悬浮窗一致），
-/// 项的状态直接读当前行，不维护一份"菜单状态"。
+/// 步骤行 / 工具箱单元的右键菜单与多选批量操作。
 /// </summary>
+/// <remarks>
+/// 菜单每次现建（和悬浮窗一致），项的状态直接读当前行与选中项，不维护一份「菜单状态」。
+/// 右键点在某一行上时：这一行已在多选里就保留整组，否则先把它单独选中——
+/// 菜单里说的「选中的 N 步」与列表高亮永远一致。
+/// </remarks>
 public partial class ActionEditorWindow
 {
-    /// <summary>进程内步骤剪贴板：复制即覆盖，可跨动作窗口粘贴。</summary>
-    private static Step? _stepClipboard;
+    /// <summary>进程内步骤剪贴板：复制即覆盖，可跨动作窗口粘贴（按行顺序存多步）。</summary>
+    private static readonly List<Step> _stepClipboard = new();
 
     private void StepList_ContextMenuOpening(object sender, ContextMenuEventArgs e) =>
         StepList.ContextMenu = BuildStepMenu(RowAt(e.OriginalSource as DependencyObject));
@@ -24,50 +28,66 @@ public partial class ActionEditorWindow
     /// <summary>按当前行现建一份菜单（冒烟也直接调它，不用伪造右键事件）。</summary>
     private ContextMenu BuildStepMenu(StepRow? row)
     {
-        var menu = new ContextMenu();
-
-        if (row?.Step != null && row.Owner != null)
+        if (row?.Step != null && !StepList.SelectedItems.Contains(row))
         {
-            // 右键先选中，菜单项和列表高亮指的是同一行
+            StepList.SelectedItems.Clear();
             StepList.SelectedItem = row;
+        }
 
+        var menu = new ContextMenu();
+        List<StepRow> selected = SelectedRows();
+        bool multi = row?.Step != null && selected.Count > 1 && selected.Contains(row);
+
+        if (multi)
+        {
+            int count = selected.Count;
+            Item(menu, $"复制选中的 {count} 步", CopySelected, "Ctrl+C");
+            Item(menu, $"复制一份选中的 {count} 步", DuplicateSelected, "Ctrl+D");
+            Item(menu, AllDisabled(selected) ? $"启用选中的 {count} 步" : $"跳过选中的 {count} 步",
+                ToggleDisabledSelected, "Space");
+            menu.Items.Add(new Separator());
+            menu.Items.Add(InsertUnitMenu("在上方插入单元", row!.Owner!, row.Index));
+            menu.Items.Add(InsertUnitMenu("在下方插入单元", row.Owner!, row.Index + 1));
+            menu.Items.Add(new Separator());
+            Item(menu, $"删除选中的 {count} 步", DeleteSelected);
+        }
+        else if (row?.Step != null && row.Owner != null)
+        {
             Item(menu, "编辑…", () => EditSelected(row), "Enter");
             menu.Items.Add(new Separator());
-            Item(menu, "复制一份", () => DuplicateRow(row), "Ctrl+D");
-            Item(menu, "复制", () => _stepClipboard = row.Step.Clone(), "Ctrl+C");
+            Item(menu, "复制一份", DuplicateSelected, "Ctrl+D");
+            Item(menu, "复制", CopySelected, "Ctrl+C");
             Item(menu, "粘贴到下方", () => PasteAt(row.Owner!, row.Index + 1),
-                "Ctrl+V", _stepClipboard != null);
+                "Ctrl+V", _stepClipboard.Count > 0);
             menu.Items.Add(new Separator());
             menu.Items.Add(InsertUnitMenu("在上方插入单元", row.Owner, row.Index));
             menu.Items.Add(InsertUnitMenu("在下方插入单元", row.Owner, row.Index + 1));
             menu.Items.Add(new Separator());
             Item(menu, "从此行试运行", () =>
             {
+                StepList.SelectedItems.Clear();
                 StepList.SelectedItem = row;
                 StartRun(fromSelected: true);
             }, enabled: ReferenceEquals(row.Owner, _program.Steps));
-            Item(menu, row.Step.Disabled ? "启用这一步" : "跳过这一步", () =>
-            {
-                row.Step.Disabled = !row.Step.Disabled;
-                ReloadRows(row.Step);
-            });
+            Item(menu, AllDisabled(selected) ? "启用这一步" : "跳过这一步",
+                ToggleDisabledSelected, "Space");
             menu.Items.Add(new Separator());
             Item(menu, "上移", () => MoveRow(row, -1), enabled: row.Index > 0);
             Item(menu, "下移", () => MoveRow(row, 1), enabled: row.Index + 1 < row.Owner.Count);
             menu.Items.Add(new Separator());
-            Item(menu, "删除（含子步骤）", () => DeleteRow(row));
+            Item(menu, "删除（含子步骤）", DeleteSelected, "Delete");
         }
         else if (row?.Owner != null)
         {
             // 否则 / 结束如果 / 结束循环 / 空分支占位：只有「往这个位置加」有意义
             Item(menu, "粘贴到此处", () => PasteAt(row.Owner!, row.Index),
-                "Ctrl+V", _stepClipboard != null);
+                "Ctrl+V", _stepClipboard.Count > 0);
             menu.Items.Add(InsertUnitMenu("插入单元到此处", row.Owner, row.Index));
         }
         else
         {
             Item(menu, "粘贴到末尾", () => PasteAt(_program.Steps, _program.Steps.Count),
-                "Ctrl+V", _stepClipboard != null);
+                "Ctrl+V", _stepClipboard.Count > 0);
             menu.Items.Add(InsertUnitMenu("在末尾插入单元", _program.Steps, _program.Steps.Count));
         }
 
@@ -131,21 +151,132 @@ public partial class ActionEditorWindow
         menu.Items.Add(item);
     }
 
-    // ============ 复制 / 粘贴 / 复制一份 ============
+    // ============ 复制 / 粘贴 / 复制一份 / 批量删除与跳过 ============
 
-    private void DuplicateRow(StepRow row)
+    private static bool AllDisabled(IReadOnlyList<StepRow> rows) =>
+        rows.Count > 0 && rows.All(r => r.Step!.Disabled);
+
+    private void CopySelected()
     {
-        if (row.Step == null || row.Owner == null) return;
-        Step copy = row.Step.Clone();
-        row.Owner.Insert(Math.Clamp(row.Index + 1, 0, row.Owner.Count), copy);
-        ReloadRows(copy);
+        List<StepRow> rows = SelectedRows();
+        if (rows.Count == 0) return;
+
+        _stepClipboard.Clear();
+        foreach (StepRow row in rows) _stepClipboard.Add(row.Step!.Clone());
+        SetStatus($"已复制 {rows.Count} 步", hint: true);
+    }
+
+    private void DuplicateSelected()
+    {
+        List<StepRow> rows = SelectedRows();
+        if (rows.Count == 0) return;
+
+        PushUndo(rows.Count == 1 ? "复制一份" : $"复制一份（{rows.Count} 步）");
+
+        var copies = new List<Step>();
+        // 从后往前插，前面的行下标不会被打乱
+        for (int i = rows.Count - 1; i >= 0; i--)
+        {
+            StepRow row = rows[i];
+            Step copy = row.Step!.Clone();
+            row.Owner!.Insert(Math.Min(row.Index + 1, row.Owner.Count), copy);
+            copies.Insert(0, copy);
+        }
+
+        SelectSteps(copies);
     }
 
     private void PasteAt(List<Step> list, int index)
     {
-        if (_stepClipboard == null) return;
-        Step copy = _stepClipboard.Clone();
-        list.Insert(Math.Clamp(index, 0, list.Count), copy);
-        ReloadRows(copy);
+        if (_stepClipboard.Count == 0) return;
+
+        PushUndo(_stepClipboard.Count == 1 ? "粘贴步骤" : $"粘贴 {_stepClipboard.Count} 步");
+
+        int at = Math.Clamp(index, 0, list.Count);
+        var inserted = new List<Step>();
+        foreach (Step step in _stepClipboard)
+        {
+            Step copy = step.Clone();
+            list.Insert(at++, copy);
+            inserted.Add(copy);
+        }
+
+        SelectSteps(inserted);
+    }
+
+    private void ToggleDisabledSelected()
+    {
+        List<StepRow> rows = SelectedRows();
+        if (rows.Count == 0) return;
+
+        bool disable = !AllDisabled(rows);
+        PushUndo(disable ? "跳过步骤" : "启用步骤");
+        foreach (StepRow row in rows) row.Step!.Disabled = disable;
+        ReloadRows();
+    }
+
+    /// <summary>删除选中的步骤（含子步骤）。被另一个选中步骤包含的后代只删一次。</summary>
+    private void DeleteSelected()
+    {
+        List<StepRow> rows = SelectedRows();
+        if (rows.Count == 0)
+        {
+            StepRow? single = SelectedRow();
+            if (single?.Step != null && single.Owner != null) rows.Add(single);
+        }
+        if (rows.Count == 0) return;
+
+        List<StepRow> roots = rows
+            .Where(r => !rows.Any(o => !ReferenceEquals(o, r) && ContainsStep(o.Step!, r.Step!)))
+            .ToList();
+
+        int withChildren = roots.Count(r =>
+            r.Step!.Body.Count + r.Step.Then.Count + r.Step.Else.Count > 0);
+
+        string message = roots.Count == 1
+            ? $"「{StepSummary.Title(roots[0].Step!)}」带有子步骤，会一起删除。"
+            : $"选中的 {roots.Count} 步会被删除"
+              + (withChildren > 0 ? $"，其中 {withChildren} 步带有子步骤。" : "。");
+
+        // 单步且没子步骤时直接删（和以前一样），只有批量或带子步骤才确认
+        if ((roots.Count > 1 || withChildren > 0)
+            && !ConfirmDialog.Confirm(this, "删除步骤", message, danger: true)) return;
+
+        PushUndo(roots.Count == 1 ? "删除步骤" : $"删除 {roots.Count} 步");
+
+        foreach (var group in roots.GroupBy(r => r.Owner!))
+            foreach (StepRow row in group.OrderByDescending(r => r.Index))
+                group.Key.Remove(row.Step!);
+
+        ReloadRows();
+    }
+
+    /// <summary>重建列表后把这几步一起选中（粘贴 / 复制一份后）。</summary>
+    private void SelectSteps(IReadOnlyList<Step> steps)
+    {
+        ReloadRows(steps.Count > 0 ? steps[0] : null);
+        for (int i = 1; i < steps.Count; i++)
+        {
+            var row = _rows.FirstOrDefault(r => ReferenceEquals(r.Step, steps[i]));
+            if (row != null) StepList.SelectedItems.Add(row);
+        }
+    }
+
+    /// <summary><paramref name="ancestor"/> 的分支里（任意深度）有没有 <paramref name="candidate"/>。</summary>
+    private static bool ContainsStep(Step ancestor, Step candidate)
+    {
+        foreach (Step child in ancestor.Then)
+        {
+            if (ReferenceEquals(child, candidate) || ContainsStep(child, candidate)) return true;
+        }
+        foreach (Step child in ancestor.Else)
+        {
+            if (ReferenceEquals(child, candidate) || ContainsStep(child, candidate)) return true;
+        }
+        foreach (Step child in ancestor.Body)
+        {
+            if (ReferenceEquals(child, candidate) || ContainsStep(child, candidate)) return true;
+        }
+        return false;
     }
 }
