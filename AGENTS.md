@@ -36,7 +36,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - `Core/` — AppState(全局状态)、CapsLockStateMachine、ConfigLocator、TrayService、CrashLog、AutoStartService（任务计划自启 + 路径自愈）
 - `Features/` — 功能模块（TextEditor、MouseMode、MenuSystem、QuickNote 等），非 UI 逻辑
   - 键鼠宏：`MacroRecorder`（录制）/ `MacroPlayer`（回放）/ `MacroStore`（`macros/*.json` 事件 + `Macros.Items` 元数据）/ `MacroSettings`（热键与全局参数）/ `MacroHotkey`（录制 / 回放期间的系统热键）/ `HotkeyCapture`（录制式热键录入）
-- `Features/Units/` — 功能单元（`<分类>/<XxxUnit>.cs`，**一个单元一个文件**；共用的静态小工具如 `FileText` / `Crc32` 放同目录），注册统一在 `BuiltInUnits.RegisterAll`，新增单元只加一行
+- `Features/Units/` — 功能单元（`<实现领域>/<XxxUnit>.cs`，**一个单元一个文件**；共用的静态小工具如 `FileText` / `Crc32` 放同目录），注册统一在 `BuiltInUnits.RegisterAll`，新增单元只加一行。**目录按实现领域分（Text / Files / Screen…），编辑器里的分类是 `UnitSpec.Category`**，两者不必一致（如剪贴板的实现散在 Text / Files，界面上统一在「剪贴板」）；分类顺序只在 `Core/Actions/UnitCategories` 里定，左栏与「内联取值」下拉共用
 - `Views/` — WPF 窗体（XAML + code-behind）；`Views/Controls/` 为共用控件（`TitleBar`、`ActionKindSwitch` 等）
 - `Themes/Modern.xaml` — ResourceDictionary 配色与控件样式
 - `Config/` — AppConfig(JSON 模型)、IniFile(仅旧 ini 迁移用)

@@ -15,7 +15,7 @@ namespace LTools.Core.Ai;
 ///   format.md   动作 JSON 格式与工作流（手写，稳定）
 ///   units.md    从 StepRegistry 自动生成的单元目录
 ///   examples.md 3 个完整示例（手写）
-///   .version    生成版本（程序集版本 + 单元键哈希），变了才重写 units.md
+///   .version    生成版本（程序集版本 + 单元「键 / 分类」哈希），变了才重写 units.md
 /// </code>
 /// </para>
 /// <para>
@@ -92,20 +92,22 @@ internal static class KnowledgePack
     private static string CurrentVersion()
     {
         string assembly = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
-        var keys = StepRegistry.Default.Units
-            .Select(u => u.Spec.Key)
+        // 分类也算内容：分类重排后 units.md 的「分类」行会变，只哈希 key 的话文件会一直是旧的。
+        var entries = StepRegistry.Default.Units
+            .Select(u => $"{u.Spec.Key}|{u.Spec.Category}")
             .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         byte[] hash = System.Security.Cryptography.SHA256.HashData(
-            Encoding.UTF8.GetBytes(string.Join("\n", keys)));
-        return $"{assembly}|{keys.Count}|{Convert.ToHexString(hash)[..16].ToLowerInvariant()}";
+            Encoding.UTF8.GetBytes(string.Join("\n", entries)));
+        return $"{assembly}|{entries.Count}|{Convert.ToHexString(hash)[..16].ToLowerInvariant()}";
     }
 
     private static string BuildUnitsMarkdown()
     {
         var units = StepRegistry.Default.Units
-            .OrderBy(u => u.Spec.Category, StringComparer.Ordinal)
+            .OrderBy(u => UnitCategories.Rank(u.Spec.Category))
+            .ThenBy(u => u.Spec.Category, StringComparer.Ordinal)
             .ThenBy(u => u.Spec.Key, StringComparer.OrdinalIgnoreCase)
             .ToList();
 

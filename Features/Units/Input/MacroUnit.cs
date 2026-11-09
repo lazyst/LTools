@@ -11,7 +11,7 @@ public sealed class MacroUnit : IStepUnit
     {
         Key = "input.macro",
         Name = "回放宏",
-        Category = "输入",
+        Category = "键鼠与输入",
         Icon = "macro",
         Description = "同步回放一个已录制的键鼠宏",
         Inputs = new[]

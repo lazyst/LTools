@@ -11,7 +11,7 @@ public sealed class TimeUnit : IStepUnit
     {
         Key = "data.time",
         Name = "时间",
-        Category = "数据",
+        Category = "文本与数据",
         Icon = "clock",
         Description = "取当前时间并按格式输出；可加偏移毫秒",
         Kind = UnitKind.pure,

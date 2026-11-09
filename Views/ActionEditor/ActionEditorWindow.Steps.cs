@@ -234,22 +234,7 @@ public partial class ActionEditorWindow
             || (spec.Description ?? "").Contains(query, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static int CategoryOrder(string category) => category switch
-    {
-        "文本" => 0,
-        "文件" => 1,
-        "屏幕" => 2,
-        "输入" => 3,
-        "窗口" => 4,
-        "程序" => 5,
-        "脚本" => 6,
-        "数据" => 7,
-        "界面" => 8,
-        "内部" => 9,
-        "流程" => 10,
-        "子动作" => 11,
-        _ => 12,
-    };
+    private static int CategoryOrder(string category) => UnitCategories.Rank(category);
 
     // ============ 增删改 ============
 

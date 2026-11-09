@@ -11,7 +11,7 @@ public sealed class NoteWriteUnit : IStepUnit
     {
         Key = "data.noteWrite",
         Name = "写速记",
-        Category = "数据",
+        Category = "文本与数据",
         Icon = "note",
         Description = "把正文存进速记；标题留空时取正文第一行，分类留空 = 未分类",
         Inputs = new[]

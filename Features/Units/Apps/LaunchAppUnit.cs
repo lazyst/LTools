@@ -11,7 +11,7 @@ public sealed class LaunchAppUnit : IStepUnit
     {
         Key = "app.launch",
         Name = "启动程序",
-        Category = "程序",
+        Category = "窗口与程序",
         Icon = "play",
         Description = "启动一个可执行文件；相对路径按数据根 / 工作目录解析",
         Inputs = new[]

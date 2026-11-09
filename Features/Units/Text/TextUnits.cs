@@ -11,7 +11,7 @@ public sealed class SelectionUnit : IStepUnit
     {
         Key = "text.selection",
         Name = "读取选中文本",
-        Category = "文本",
+        Category = "键鼠与输入",
         Icon = "selection",
         Description = "读取前台应用里当前选中的文本；没有选中时返回空文本",
         Kind = UnitKind.pure,
@@ -45,7 +45,7 @@ public sealed class SendTextUnit : IStepUnit
     {
         Key = "text.send",
         Name = "发送文本",
-        Category = "文本",
+        Category = "键鼠与输入",
         Icon = "keyboard",
         Description = "把文本发送到当前焦点窗口；自动模式不碰剪贴板、不受输入法影响",
         Inputs = new[]
@@ -96,7 +96,7 @@ public sealed class ProcessTextUnit : IStepUnit
     {
         Key = "text.process",
         Name = "文本处理",
-        Category = "文本",
+        Category = "文本与数据",
         Icon = "text",
         Description = "去空白、改大小写、替换、截取、拆分、拼接、查找",
         Kind = UnitKind.pure,
@@ -232,7 +232,7 @@ public sealed class RegexUnit : IStepUnit
     {
         Key = "text.regex",
         Name = "正则提取",
-        Category = "文本",
+        Category = "文本与数据",
         Icon = "filter",
         Description = "找出全部命中（或其中某一组）放进列表；没命中只是「找到」为假",
         Kind = UnitKind.pure,

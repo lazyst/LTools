@@ -16,7 +16,7 @@ public sealed class ClipboardUnit : IStepUnit
     {
         Key = "text.clipboard",
         Name = "剪贴板",
-        Category = "文本",
+        Category = "剪贴板",
         Icon = "clipboard",
         Description = "读取或写入系统剪贴板（纯文本 / HTML / RTF）",
         Inputs = new[]

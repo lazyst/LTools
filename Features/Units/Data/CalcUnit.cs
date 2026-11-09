@@ -29,7 +29,7 @@ public sealed class CalcUnit : IStepUnit
     {
         Key = "data.calc",
         Name = "计算",
-        Category = "数据",
+        Category = "文本与数据",
         Icon = "calc",
         Description = "加减乘除、取余、幂、最值、绝对值、四舍五入",
         Kind = UnitKind.pure,

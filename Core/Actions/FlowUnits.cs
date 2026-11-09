@@ -397,7 +397,7 @@ internal static class FlowUnits
         {
             Key = "sub.run",
             Name = "调用子动作",
-            Category = "子动作",
+            Category = "流程",
             Icon = "sub",
             Description = "调用动作内或全局子动作；参数名 = 子动作的输入变量名，输出按 out 映射写回",
             DynamicInputs = true,

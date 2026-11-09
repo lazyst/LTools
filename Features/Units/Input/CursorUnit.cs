@@ -11,7 +11,7 @@ public sealed class CursorUnit : IStepUnit
     {
         Key = "input.cursor",
         Name = "光标位置",
-        Category = "输入",
+        Category = "键鼠与输入",
         Icon = "cursor",
         Description = "读取当前光标在虚拟桌面上的坐标，不移动光标",
         Kind = UnitKind.pure,

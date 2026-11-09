@@ -11,7 +11,7 @@ public sealed class ClickImageUnit : IStepUnit
     {
         Key = "input.clickImage",
         Name = "图片点击",
-        Category = "输入",
+        Category = "键鼠与输入",
         Icon = "imageClick",
         Description = "在区域里找模板图并点击命中位置；找不到就是这一步失败",
         Inputs = new[]

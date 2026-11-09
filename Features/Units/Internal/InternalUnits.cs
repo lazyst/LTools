@@ -26,7 +26,7 @@ public sealed class InvokeInternalUnit : IStepUnit
     {
         Key = "internal.invoke",
         Name = "内置功能",
-        Category = "内部",
+        Category = "LTools 内置功能",
         Icon = "internal",
         Description = "触发一个程序内置的功能入口（速记窗口 / 快速搜索 / 放大镜 / 窗口置顶）",
         Inputs = new[]
@@ -71,7 +71,7 @@ public sealed class LastErrorUnit : IStepUnit
     {
         Key = "flow.lastError",
         Name = "上一步的错误",
-        Category = "流程",
+        Category = "文本与数据",
         Icon = "warning",
         Description = "取本次运行里最近一次被「失败继续」吞掉的错误文本",
         Kind = UnitKind.pure,

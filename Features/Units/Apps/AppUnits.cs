@@ -13,7 +13,7 @@ public sealed class RunCommandUnit : IStepUnit
     {
         Key = "app.runCommand",
         Name = "运行命令",
-        Category = "程序",
+        Category = "窗口与程序",
         Icon = "terminal",
         Description = "执行命令行；捕获模式下返回 stdout / stderr / 退出码，不打开窗口",
         Inputs = new[]
@@ -82,7 +82,7 @@ public sealed class ProcessUnit : IStepUnit
     {
         Key = "app.process",
         Name = "进程",
-        Category = "程序",
+        Category = "窗口与程序",
         Icon = "process",
         Description = "按进程名（不含 .exe）查询数量 / 进程号，或结束进程",
         Kind = UnitKind.pure,

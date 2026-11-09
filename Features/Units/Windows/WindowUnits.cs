@@ -11,7 +11,7 @@ public sealed class FindWindowUnit : IStepUnit
     {
         Key = "window.find",
         Name = "查找窗口",
-        Category = "窗口",
+        Category = "窗口与程序",
         Icon = "window",
         Description = "标题包含 + 类名精确，命中最上面的可见窗口",
         Kind = UnitKind.pure,
@@ -56,7 +56,7 @@ public sealed class ForegroundWindowUnit : IStepUnit
     {
         Key = "window.foreground",
         Name = "前台窗口",
-        Category = "窗口",
+        Category = "窗口与程序",
         Icon = "foreground",
         Description = "读取当前前台窗口的标题与进程名",
         Kind = UnitKind.pure,
@@ -116,7 +116,7 @@ public sealed class OperateWindowUnit : IStepUnit
     {
         Key = "window.operate",
         Name = "窗口操作",
-        Category = "窗口",
+        Category = "窗口与程序",
         Icon = "windowAction",
         Description = "按标题 / 类名找到窗口后切前台、最大化、最小化、还原或调整大小；读回真实状态",
         Inputs = new[]

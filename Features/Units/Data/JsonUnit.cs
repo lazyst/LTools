@@ -11,7 +11,7 @@ public sealed class JsonUnit : IStepUnit
     {
         Key = "data.json",
         Name = "JSON",
-        Category = "数据",
+        Category = "文本与数据",
         Icon = "file",
         Description = "把 JSON 文本解析成值，可按 a.b[0] 取出列表 / 字段；语法错误直接失败，取不到只是「找到」为假",
         Kind = UnitKind.pure,

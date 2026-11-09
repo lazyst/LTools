@@ -11,7 +11,7 @@ public sealed class ClickTextUnit : IStepUnit
     {
         Key = "input.clickText",
         Name = "文字点击",
-        Category = "输入",
+        Category = "键鼠与输入",
         Icon = "clickText",
         Description = "在区域里识别文字，点击命中的文字；找不到就是这一步失败",
         Inputs = new[]

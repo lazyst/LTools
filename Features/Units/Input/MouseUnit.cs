@@ -14,7 +14,7 @@ public sealed class MouseUnit : IStepUnit
     {
         Key = "input.mouse",
         Name = "鼠标操作",
-        Category = "输入",
+        Category = "键鼠与输入",
         Icon = "mouse",
         Description = "移动光标到坐标并点击 / 滚轮；坐标留空表示当前位置",
         Inputs = new[]

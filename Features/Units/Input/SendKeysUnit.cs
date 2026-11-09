@@ -11,7 +11,7 @@ public sealed class SendKeysUnit : IStepUnit
     {
         Key = "input.sendKeys",
         Name = "模拟按键",
-        Category = "输入",
+        Category = "键鼠与输入",
         Icon = "keyboard",
         Description = "依次发送按键组合、短文本或等待；条目写法 ctrl+s / text:你好 / sleep:200",
         Inputs = new[]

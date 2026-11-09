@@ -32,7 +32,8 @@ public partial class ValueSourceEditor : UserControl
         UnitBox.ItemsSource = StepRegistry.Default.Units
             .Where(u => u.Spec.Kind == UnitKind.pure)
             .Select(u => new UnitChoice(u.Spec.Key, u.Spec.Category, u.Spec.Name))
-            .OrderBy(c => c.Category, StringComparer.CurrentCulture)
+            .OrderBy(c => UnitCategories.Rank(c.Category))
+            .ThenBy(c => c.Category, StringComparer.CurrentCulture)
             .ThenBy(c => c.Name, StringComparer.CurrentCulture)
             .ToList();
     }

@@ -11,7 +11,7 @@ public sealed class NoteReadUnit : IStepUnit
     {
         Key = "data.noteRead",
         Name = "读速记",
-        Category = "数据",
+        Category = "文本与数据",
         Icon = "noteRead",
         Description = "按分类与关键字取最近修改的一条；没有匹配时 found = false",
         Kind = UnitKind.pure,

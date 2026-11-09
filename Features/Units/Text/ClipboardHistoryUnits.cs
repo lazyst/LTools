@@ -18,7 +18,7 @@ public sealed class ClipboardHistoryUnit : IStepUnit
     {
         Key = "clipboard.history",
         Name = "剪贴板历史",
-        Category = "文本",
+        Category = "剪贴板",
         Icon = "clipboard",
         Description = "读取 Windows 剪贴板历史（Win+V）的最近记录，或删掉其中一条；需要系统开启剪贴板历史",
         Inputs = new[]
@@ -115,7 +115,7 @@ public sealed class ClipboardClearUnit : IStepUnit
     {
         Key = "clipboard.clear",
         Name = "清空剪贴板",
-        Category = "文本",
+        Category = "剪贴板",
         Icon = "delete",
         Description = "清空当前剪贴板内容；可一并清掉 Windows 剪贴板历史（Win+V）",
         Inputs = new[]

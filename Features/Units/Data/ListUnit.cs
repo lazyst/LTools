@@ -17,7 +17,7 @@ public sealed class ListUnit : IStepUnit
     {
         Key = "data.list",
         Name = "列表操作",
-        Category = "数据",
+        Category = "文本与数据",
         Icon = "list",
         Description = "取项、拼接、拆分、查找、排序、去重、反转、追加、删除",
         Kind = UnitKind.pure,

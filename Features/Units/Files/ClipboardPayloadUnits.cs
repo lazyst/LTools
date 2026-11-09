@@ -20,7 +20,7 @@ public sealed class ClipboardFilesUnit : IStepUnit
     {
         Key = "clipboard.files",
         Name = "剪贴板文件",
-        Category = "文件",
+        Category = "剪贴板",
         Icon = "paste",
         Description = "读取剪贴板里复制的文件 / 文件夹路径，或把路径放进剪贴板（可剪切）",
         Inputs = new[]
@@ -105,7 +105,7 @@ public sealed class ClipboardImageUnit : IStepUnit
     {
         Key = "clipboard.image",
         Name = "剪贴板图片",
-        Category = "文件",
+        Category = "剪贴板",
         Icon = "image",
         Description = "把剪贴板里的图片存成 png（或把图片文件放进剪贴板）",
         Inputs = new[]
