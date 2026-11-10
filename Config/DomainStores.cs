@@ -75,3 +75,13 @@ internal static class MacroFileStore
     public static void Modify(string path, Action<MacroFile> change)
         => ConfigIO.ModifyDomain(path, ConfigDomain.macros, ConfigBundle.ToMacros, change, ConfigBundle.WriteMacros);
 }
+
+/// <summary><c>configs/triggers.json</c>：自动触发规则（只存动作 Id / 内置功能引用）。</summary>
+internal static class TriggerStore
+{
+    public static void Modify(Action<TriggersFile> change)
+        => ConfigIO.ModifyDomain(ConfigDomain.triggers, ConfigBundle.ToTriggers, change, ConfigBundle.WriteTriggers);
+
+    public static void Modify(string path, Action<TriggersFile> change)
+        => ConfigIO.ModifyDomain(path, ConfigDomain.triggers, ConfigBundle.ToTriggers, change, ConfigBundle.WriteTriggers);
+}

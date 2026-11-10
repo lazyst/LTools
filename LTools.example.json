@@ -130,5 +130,9 @@
     "Enabled": true,
     "Level": "info",
     "RetentionDays": 14
+  },
+  "Triggers": {
+    "Enabled": false,
+    "Rules": []
   }
 }

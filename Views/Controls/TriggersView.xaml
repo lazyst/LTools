@@ -1,0 +1,167 @@
+<UserControl x:Class="LTools.Views.Controls.TriggersView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
+    <UserControl.Resources>
+        <!-- 底部 / 操作列的小按钮（照 HotkeysView 的 MiniBtn） -->
+        <Style x:Key="MiniBtn" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Padding" Value="9,1"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="MinWidth" Value="0"/>
+        </Style>
+
+        <!-- 单元格文字：单行 + 停用行整体浅灰（DataGrid 全局行高写死 30，别堆两行） -->
+        <Style x:Key="CellText" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Source.Enabled}" Value="False">
+                    <Setter Property="Foreground" Value="{StaticResource HintTextBrush}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="20,14,20,14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- 页头 -->
+            <RowDefinition Height="Auto"/>   <!-- 工具条 -->
+            <RowDefinition Height="*"/>      <!-- 表格 -->
+            <RowDefinition Height="Auto"/>   <!-- 底部 -->
+        </Grid.RowDefinitions>
+
+        <!-- ============ 页头：标题 + 总开关 + 术语定义 ============ -->
+        <Grid Grid.Row="0" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="自动触发" FontSize="{StaticResource FontSizeTitle}" FontWeight="SemiBold"/>
+                <TextBlock Style="{StaticResource HintLabel}" Margin="0,3,0,0" TextWrapping="Wrap"
+                           Text="不需要按键或点面板，由时间或系统里发生的事满足设定要求后运行动作。"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                <TextBlock x:Name="MasterLabel" Style="{StaticResource HintLabel}" Text="总开关 · 已关闭"
+                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <CheckBox x:Name="MasterBox" VerticalAlignment="Center" Focusable="False"
+                          ToolTip="全局总开关（默认关）：关闭时任何规则都不生效"
+                          Checked="MasterBox_Changed" Unchecked="MasterBox_Changed"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- ============ 工具条 ============ -->
+        <Grid Grid.Row="1" Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="SearchBox" Grid.Column="0" MinHeight="30"
+                     ToolTip="按说明 / 动作 / 触发方式 / 条件筛选"
+                     TextChanged="SearchBox_TextChanged"/>
+            <Button Grid.Column="2" Style="{StaticResource BtnPrimary}" Content="＋ 新建规则…"
+                    MinWidth="110" Margin="10,0,0,0" Click="AddRule_Click"/>
+        </Grid>
+
+        <!-- ============ 规则表 ============ -->
+        <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6">
+            <DataGrid x:Name="RuleGrid"
+                      AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                      CanUserResizeRows="False" CanUserSortColumns="False" CanUserReorderColumns="False"
+                      IsReadOnly="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                      Background="Transparent" BorderThickness="0"
+                      SelectionMode="Single" SelectionUnit="FullRow"
+                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                      PreviewMouseLeftButtonDown="RuleGrid_PreviewMouseLeftButtonDown">
+                <DataGrid.Columns>
+                    <!-- 每列都写 MinWidth：窗口变窄时 DataGrid 会把列按比例压扁，压到很窄时
+                         启用勾选框会被裁成空矩形（点不到、也看不见），宁可出横向滚动条。 -->
+                    <DataGridTemplateColumn Header="启用" Width="44" MinWidth="44">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" Focusable="False"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          ToolTip="这一条是否生效（总开关关闭时一律不生效）"
+                                          Click="RuleEnabled_Click"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="说明" Width="2*" MinWidth="140">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Style="{StaticResource CellText}" Text="{Binding Note}"
+                                           ToolTip="{Binding Note}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="触发方式" Width="120" MinWidth="108">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="2,0">
+                                    <TextBlock Style="{StaticResource CellText}" Text="{Binding KindText}" Margin="0"/>
+                                    <Border Background="{StaticResource SurfaceAltBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                            CornerRadius="4" Padding="4,0" Margin="6,0,0,0"
+                                            Visibility="{Binding EventBadgeVisibility}">
+                                        <TextBlock Text="二期" Style="{StaticResource HintLabel}"/>
+                                    </Border>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="条件摘要" Width="2*" MinWidth="160">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Style="{StaticResource CellText}" Text="{Binding Summary}"
+                                           ToolTip="{Binding Summary}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="动作" Width="1.6*" MinWidth="130">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Style="{StaticResource CellText}" Text="{Binding ActionName}"
+                                           ToolTip="{Binding ActionName}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="" Width="52" MinWidth="52">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="⋯" Style="{StaticResource MiniBtn}" Width="30" Height="24"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        ToolTip="编辑 / 复制 / 删除 / 上移 / 下移"
+                                        Click="RowMenu_Click"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <!-- ============ 底部 ============ -->
+        <Grid Grid.Row="3" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="HintText" Grid.Column="0" Style="{StaticResource HintLabel}"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       Text="总开关关闭时全部不生效"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button x:Name="EmergencyButton" Style="{StaticResource MiniBtn}" Content="紧急禁用…"
+                        Click="Emergency_Click" ToolTip="暂停 / 恢复全部自动触发（数据根下的空文件）"/>
+                <Button Style="{StaticResource MiniBtn}" Content="复制" Margin="6,0,0,0" Click="CopyRule_Click"/>
+                <Button Style="{StaticResource MiniBtn}" Content="粘贴" Margin="6,0,0,0" Click="PasteRule_Click"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

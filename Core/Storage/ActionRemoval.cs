@@ -19,8 +19,9 @@ namespace LTools.Core.Storage;
 /// </para>
 /// <list type="number">
 /// <item>内存清单（<see cref="ActionLibrary.Remove"/>，顺带清组合步骤引用）；</item>
-/// <item>快捷键绑定 + 超级面板槽位（<see cref="HotkeyStore"/> / <see cref="PanelLibrary.RemoveActionReferences"/>，
-///       只写 <c>hotkeys.json</c> 与 <c>panel.json</c>）；</item>
+/// <item>快捷键绑定 + 超级面板槽位 + 自动触发引用（<see cref="HotkeyStore"/> /
+///       <see cref="PanelLibrary.RemoveActionReferences"/> / <see cref="TriggerStore"/>，
+///       只写 <c>hotkeys.json</c> / <c>panel.json</c> / <c>triggers.json</c>）；</item>
 /// <item>动作目录（<see cref="ConfigStore.Save"/>，写 <c>actions/</c>）；</item>
 /// <item>宏文件 / 模板图 / 悬浮项按引用回收（行动作目录已经不在，回收不会误伤别的动作）。</item>
 /// </list>
@@ -37,10 +38,11 @@ internal static class ActionRemoval
         if (string.IsNullOrWhiteSpace(id)) return false;
         if (!ActionLibrary.Remove(id)) return false;      // 清清单（内存）
 
-        // 清快捷键绑定（落盘 hotkeys.json）与超级面板槽位（落盘 panel.json）。
+        // 清快捷键绑定（hotkeys.json）、超级面板槽位（panel.json）与自动触发引用（triggers.json）。
         string path = string.IsNullOrWhiteSpace(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
         HotkeyStore.Modify(path, file => RemoveFromHotkeys(file, id));
         SuperPanel.RemoveActionReferences(id);
+        TriggerStore.Modify(path, file => RemoveFromTriggers(file, id));
 
         ConfigStore.Save();                               // 先落「动作没了」，再做回收
 
@@ -50,6 +52,8 @@ internal static class ActionRemoval
         ImageLibrary.CollectGarbage();
         // 悬浮项按引用回收：动作没了，按钮也跟着消失（分组空了整项移除）。
         FloatingManager.RefreshAll();
+        // 运行期触发表立即重建（否则删掉的动作仍会被定时投递，直到重启）。
+        TriggerService.ReloadFromDisk(path);
         return true;
     }
 
@@ -58,6 +62,12 @@ internal static class ActionRemoval
     {
         foreach (var group in file.Groups)
             group.Bindings.RemoveAll(b => string.Equals(b.ActionId, actionId, StringComparison.Ordinal));
+    }
+
+    /// <summary>把引用该动作的规则从自动触发里去掉（对齐快捷键：只删引用该 Id 的规则）。</summary>
+    internal static void RemoveFromTriggers(TriggersFile file, string actionId)
+    {
+        file.Rules.RemoveAll(r => string.Equals(r.ActionRef, actionId, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -101,6 +111,18 @@ internal static class ActionRemoval
                 });
                 repaired = true;
                 AppLog.Info("ActionRemoval", "已清掉超级面板里指向不存在动作的槽位");
+            }
+
+            // 自动触发：清掉指向已删动作的规则（内置功能引用恒存活，IsLive 会留着它们；
+            // 空 ActionRef 是「规则建好还没选动作」的合法状态，也不清）。
+            bool triggersChanged = cfg.Triggers.Rules.Any(r =>
+                !string.IsNullOrWhiteSpace(r.ActionRef) && !BindingRef.IsLive(r.ActionRef, live));
+            if (triggersChanged)
+            {
+                TriggerStore.Modify(path, file => file.Rules.RemoveAll(r =>
+                    !string.IsNullOrWhiteSpace(r.ActionRef) && !BindingRef.IsLive(r.ActionRef, live)));
+                repaired = true;
+                AppLog.Info("ActionRemoval", "已清掉自动触发里指向不存在动作的规则");
             }
 
             return repaired;

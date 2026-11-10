@@ -66,6 +66,9 @@ LTools.json.migrated*
 /trash/
 CapsLock++.json   # 改名前旧配置
 
+# 自动触发紧急禁用：数据根下的空文件（存在即暂停全部自动触发，与托盘菜单同源）
+/disable-auto-trigger.txt
+
 publish/
 
 # 按需下载的 OCR 模型（PP-OCRv6 高精度），dev 落在仓库根

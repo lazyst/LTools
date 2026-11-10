@@ -132,6 +132,8 @@
                                      Checked="Nav_Changed" Tag="hotkeys"/>
                         <RadioButton Style="{StaticResource NavRow}" Content="键鼠宏"
                                      Checked="Nav_Changed" Tag="macros"/>
+                        <RadioButton Style="{StaticResource NavRow}" Content="自动触发"
+                                     Checked="Nav_Changed" Tag="triggers"/>
                         <!-- 面板管理：点它进「常规」主页面，并在下方展开二级下拉导航 -->
                         <RadioButton x:Name="NavSuperPanel" Style="{StaticResource NavRow}"
                                      Checked="Nav_Changed" Tag="superpanel"
@@ -534,6 +536,9 @@
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
+
+                <!-- ============ 自动触发 ============ -->
+                <controls:TriggersView x:Name="Page_Triggers" Visibility="Collapsed"/>
 
                 <!-- ============ AI 接入 ============ -->
                 <controls:AiView x:Name="Page_Ai" Visibility="Collapsed"/>

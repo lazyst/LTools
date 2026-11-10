@@ -50,6 +50,12 @@ internal static class AutoStartService
 {
     private const string TaskName = "LTools";
 
+    /// <summary>
+    /// 自启任务专用的启动参数：LTools 据此判断本次是不是由任务计划拉起
+    /// （「自动触发」里「仅开机自启时」规则的判定依据）。手动双击 / 命令行启动都不带它。
+    /// </summary>
+    public const string AutoStartArgument = "--autostart";
+
     /// <summary>当前 exe 全路径（任务计划 Command）。</summary>
     private static string ExePath => Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName ?? "";
 
@@ -80,15 +86,44 @@ internal static class AutoStartService
     public static void HealIfStale()
     {
         var info = Query();
-        if (info.State != AutoStartState.Stale) return;
+        // 用户根本没开自启：别动它（更不能为了补参数把自启又打开）。
+        if (!info.TaskExists) return;
+        // 旧版本注册的任务没有 --autostart 参数：补写一次，否则「仅开机自启时」永远判不出来自启。
+        if (info.State == AutoStartState.Enabled && TaskHasAutoStartArgument()) return;
 
         var exe = ExePath;
         if (string.IsNullOrEmpty(exe) || !File.Exists(exe)) return;
 
         if (Enable())
-            AppLog.Info("Startup", $"自启任务已改为指向当前程序：{info.RegisteredPath} → {exe}");
+            AppLog.Info("Startup", info.State == AutoStartState.Stale
+                ? $"自启任务已改为指向当前程序：{info.RegisteredPath} → {exe}"
+                : $"自启任务已补上 {AutoStartArgument} 启动参数");
         else
-            AppLog.Warn("Startup", $"自启任务仍指向 {info.RegisteredPath}，改写失败（可能缺少管理员权限）");
+            AppLog.Warn("Startup", $"自启任务路径 / 启动参数对齐失败（可能缺少管理员权限）：{info.RegisteredPath}");
+    }
+
+    /// <summary>
+    /// 任务动作是否已带 <see cref="AutoStartArgument"/>。旧版本注册的任务没有，需要自愈补写；
+    /// 单独走 COM 读 Arguments（读失败只当「没带」，不影响 <see cref="Query"/> 的路径判断）。
+    /// </summary>
+    private static bool TaskHasAutoStartArgument()
+    {
+        try
+        {
+            var type = Type.GetTypeFromProgID("Schedule.Service");
+            if (type is null) return false;
+            dynamic service = Activator.CreateInstance(type)!;
+            service.Connect();
+            dynamic task = service.GetFolder("\\").GetTask(TaskName);
+            dynamic actions = task.Definition.Actions;
+            if ((int)actions.Count < 1) return false;
+            dynamic action = actions.Item(1);
+            if ((int)action.Type != 0) return false;
+            object? raw = action.Arguments;
+            string args = raw as string ?? "";
+            return args.Contains(AutoStartArgument, StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
     }
 
     /// <summary>
@@ -204,6 +239,7 @@ internal static class AutoStartService
           <Actions Context="Author">
             <Exec>
               <Command>{{SecurityElement.Escape(exe)}}</Command>
+              <Arguments>{{AutoStartArgument}}</Arguments>
             </Exec>
           </Actions>
         </Task>

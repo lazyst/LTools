@@ -1,0 +1,146 @@
+<Window x:Class="LTools.Views.TriggerRuleEditDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:LTools.Views.Controls"
+        Title="编辑自动触发规则" Width="470" ResizeMode="NoResize" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="36"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <controls:TitleBar Grid.Row="0" ShowMinimize="False" ShowMaximize="False"/>
+
+        <StackPanel Grid.Row="1" Margin="20,12,20,16">
+            <!-- 说明 -->
+            <TextBlock Style="{StaticResource SectionLabel}" Text="说明" Margin="0,0,0,4"/>
+            <TextBox x:Name="NoteBox" MinHeight="30" ToolTip="给这条规则起个名字，列表里按它显示"/>
+            <CheckBox x:Name="EnabledBox" Content="启用此规则" Margin="0,8,0,0" IsChecked="True"/>
+
+            <!-- 触发方式 -->
+            <TextBlock Style="{StaticResource SectionLabel}" Text="触发方式" Margin="0,12,0,4"/>
+            <ComboBox x:Name="KindBox" MinHeight="30" SelectionChanged="Kind_Changed">
+                <ComboBoxItem Content="定时" Tag="timer"/>
+                <ComboBoxItem Content="启动后" Tag="startup"/>
+                <ComboBoxItem Content="事件（二期开放）" Tag="event"/>
+            </ComboBox>
+
+            <!-- 参数区：定时 -->
+            <StackPanel x:Name="TimerPanel" Margin="0,4,0,0">
+                <TextBlock Style="{StaticResource HintLabel}" Text="间隔与每天时刻二选一：填了间隔就按间隔重复，否则按每天的时刻。" TextWrapping="Wrap"/>
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="每" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox x:Name="IntervalBox" Grid.Column="1" MinHeight="30" ToolTip="间隔分钟数，留空表示不用间隔"/>
+                    <TextBlock Grid.Column="2" Style="{StaticResource SectionLabel}" Text="分钟　·　每天" VerticalAlignment="Center" Margin="10,0,6,0"/>
+                    <TextBox x:Name="DailyBox" Grid.Column="3" MinHeight="30" ToolTip="HH:mm，如 09:00；留空表示不用每天时刻"/>
+                </Grid>
+            </StackPanel>
+
+            <!-- 参数区：启动后 -->
+            <StackPanel x:Name="StartupPanel" Margin="0,4,0,0" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource HintLabel}" Text="LTools 启动后延迟这段时间运行一次。" TextWrapping="Wrap"/>
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="延迟" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox x:Name="DelaySecondsBox" Grid.Column="1" MinHeight="30" ToolTip="秒数，0 = 启动即运行"/>
+                </Grid>
+                <CheckBox x:Name="OnlyFirstStartBox" Content="仅每日第一次启动时运行" Margin="0,10,0,0"
+                          ToolTip="同一天内多次启动 LTools，只有第一次启动才运行这条规则"/>
+                <CheckBox x:Name="OnlyOnAutoStartBox" Content="仅由开机自启任务拉起时运行" Margin="0,6,0,0"
+                          ToolTip="手动启动 LTools 时不运行；仅登录时由任务计划拉起才运行"/>
+            </StackPanel>
+
+            <!-- 参数区：事件（二期） -->
+            <StackPanel x:Name="EventPanel" Margin="0,8,0,0" Visibility="Collapsed">
+                <Border Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="6" Padding="10,8">
+                    <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                               Text="事件触发（窗口 / 进程切换、剪贴板变化、文件系统变化）将在二期开放。一期请选「定时」或「启动后」。"/>
+                </Border>
+            </StackPanel>
+
+            <!-- 动作 -->
+            <TextBlock Style="{StaticResource SectionLabel}" Text="动作" Margin="0,12,0,4"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="ActionBox" IsReadOnly="True" MinHeight="30"/>
+                <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="选择动作…"
+                        MinWidth="86" Margin="8,0,0,0" Click="PickAction_Click"/>
+            </Grid>
+            <TextBlock Style="{StaticResource HintLabel}" Margin="0,6,0,0" TextWrapping="Wrap"
+                       Text="无人值守时，动作里注入键鼠或弹出界面可能打断你正在做的事。"/>
+
+            <!-- 作用范围（可选）：留空 = 不过滤，复用快捷键那套名单匹配 -->
+            <Expander x:Name="ScopeExpander" Margin="0,12,0,0" Foreground="{StaticResource TextBrush}">
+                <Expander.Header>
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="作用范围（可选）" Margin="0"/>
+                </Expander.Header>
+                <StackPanel Margin="0,6,0,0">
+                    <TextBlock Style="{StaticResource HintLabel}" Text="留空 = 任何时候都触发；填了 = 仅当这些程序 / 窗口在前台时触发。" TextWrapping="Wrap"/>
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="进程（每行一个，支持 * ?）" Margin="0,8,0,4" FontSize="{StaticResource FontSizeHint}"/>
+                    <TextBox x:Name="ProcessBox" MinHeight="40" AcceptsReturn="True" TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" ToolTip="chrome.exe / Code.exe"/>
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="窗口标题（每行一个，按包含匹配）" Margin="0,6,0,4" FontSize="{StaticResource FontSizeHint}"/>
+                    <TextBox x:Name="TitleBox" MinHeight="36" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="窗口类名（每行一个）" Margin="0,6,0,4" FontSize="{StaticResource FontSizeHint}"/>
+                    <TextBox x:Name="ClassBox" MinHeight="32" AcceptsReturn="True" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Expander>
+
+            <!-- 高级参数：设过非默认值才自动展开（照 InputSpec.Advanced 的做法） -->
+            <Expander x:Name="AdvExpander" Margin="0,8,0,0" Foreground="{StaticResource TextBrush}">
+                <Expander.Header>
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="高级参数" Margin="0"/>
+                </Expander.Header>
+                <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="延迟" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                    <TextBox x:Name="DelayMsBox" Grid.Column="1" MinHeight="28" ToolTip="命中后延迟执行（毫秒）"/>
+                    <TextBlock Grid.Column="2" Style="{StaticResource SectionLabel}" Text="防抖" VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    <TextBox x:Name="DebounceBox" Grid.Column="3" MinHeight="28" ToolTip="这段时间内重复命中只算一次（毫秒）"/>
+                    <TextBlock Grid.Column="4" Style="{StaticResource SectionLabel}" Text="节流" VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    <TextBox x:Name="ThrottleBox" Grid.Column="5" MinHeight="28" ToolTip="两次执行之间的最短间隔（毫秒）"/>
+                </Grid>
+            </Expander>
+
+            <TextBlock x:Name="ErrorText" Style="{StaticResource HintLabel}" Margin="0,8,0,0"
+                       Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" Visibility="Collapsed"/>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button Style="{StaticResource BtnGhost}" Content="取消" MinWidth="74"
+                        IsCancel="True" Click="Cancel_Click"/>
+                <Button Style="{StaticResource BtnPrimary}" Content="确定" MinWidth="74"
+                        Margin="8,0,0,0" IsDefault="True" Click="Ok_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -14,7 +14,7 @@ namespace LTools.Config;
 
 /// <summary>
 /// 配置分域读写（见 <c>docs/ARCHITECTURE.md</c> P1 / P2）：
-/// 全局配置拆成 <c>configs/</c> 下的 6 个域文件，动作各自一个目录 <c>actions/&lt;id&gt;/</c>。
+/// 全局配置拆成 <c>configs/</c> 下的 7 个域文件，动作各自一个目录 <c>actions/&lt;id&gt;/</c>。
 /// （目录名用复数的 <c>configs</c>：Windows 大小写不敏感，单数会撞上源码目录 <c>Config/</c>。）
 /// </summary>
 /// <remarks>
@@ -24,7 +24,7 @@ namespace LTools.Config;
 /// （因此改导航页只会动 <c>ui.json</c>，改一个动作只重写它自己的 <c>action.json</c>）。
 /// </para>
 /// <para>
-/// 首次启动：<c>configs/</c> 不存在时从同目录的 <c>LTools.example.json</c> 读种子，补齐六个域；
+/// 首次启动：<c>configs/</c> 不存在时从同目录的 <c>LTools.example.json</c> 读种子，补齐七个域；
 /// 第一次保存就把域文件与 <c>actions/</c> 动作目录一起写出来，之后各域各自读写。
 /// </para>
 /// <para>
@@ -62,8 +62,9 @@ internal static class ConfigBundle
     private static string PanelPath(string a) => Path.Combine(ConfigDir(a), "panel.json");
     private static string FloatingPath(string a) => Path.Combine(ConfigDir(a), "floating.json");
     private static string MacrosPath(string a) => Path.Combine(ConfigDir(a), "macros.json");
+    private static string TriggersPath(string a) => Path.Combine(ConfigDir(a), "triggers.json");
 
-    /// <summary>6 个域文件（顺序固定，便于诊断）。</summary>
+    /// <summary>7 个域文件（顺序固定，便于诊断）。</summary>
     public static IReadOnlyList<string> DomainPaths(string anchorPath) => new[]
     {
         SettingsPath(anchorPath),
@@ -72,9 +73,10 @@ internal static class ConfigBundle
         PanelPath(anchorPath),
         FloatingPath(anchorPath),
         MacrosPath(anchorPath),
+        TriggersPath(anchorPath),
     };
 
-    /// <summary>6 个域文件都在（首装 / 备份导入缺文件时用来决定是否整份补齐）。</summary>
+    /// <summary>7 个域文件都在（首装 / 备份导入缺文件时用来决定是否整份补齐）。</summary>
     public static bool IsFullySplit(string anchorPath) => DomainPaths(anchorPath).All(File.Exists);
 
     private static string BaseDir(string anchorPath)
@@ -143,6 +145,11 @@ internal static class ConfigBundle
         var macros = Read<MacroFile>(MacrosPath(anchorPath), ctx);
         if (macros == null) macros = ToMacros(ctx.GetSeed());
         cfg.Macros = macros.Macros ?? new MacroConfig();
+
+        var triggers = Read<TriggersFile>(TriggersPath(anchorPath), ctx);
+        if (triggers == null) triggers = ToTriggers(ctx.GetSeed());
+        cfg.Triggers = triggers;
+        cfg.Triggers.Normalize();
 
         cfg.LoadFailed = ctx.Failed;
         return cfg;
@@ -248,7 +255,7 @@ internal static class ConfigBundle
     /// </summary>
     /// <remarks>
     /// <para>
-    /// 六个域文件还不齐（首装 / 备份导入只带回一部分）时，这一次写入自动扩成整份：
+    /// 七个域文件还不齐（首装 / 备份导入只带回一部分）时，这一次写入自动扩成整份：
     /// 否则只改一个界面开关会留下半个配置目录，缺的域永远补不上。
     /// </para>
     /// <para>
@@ -268,6 +275,7 @@ internal static class ConfigBundle
         if (domains.HasFlag(ConfigDomain.panel)) WriteIfChanged(PanelPath(anchorPath), ToPanel(cfg));
         if (domains.HasFlag(ConfigDomain.floating)) WriteIfChanged(FloatingPath(anchorPath), ToFloating(cfg));
         if (domains.HasFlag(ConfigDomain.macros)) WriteIfChanged(MacrosPath(anchorPath), ToMacros(cfg));
+        if (domains.HasFlag(ConfigDomain.triggers)) WriteIfChanged(TriggersPath(anchorPath), ToTriggers(cfg));
 
         // 动作一个目录一个（内容没变的 action.json 不重写；清单里没有的目录移入 trash/）。
         if (domains.HasFlag(ConfigDomain.actions) || !ActionStore.HasStore(anchorPath))
@@ -293,6 +301,9 @@ internal static class ConfigBundle
 
     public static void WriteMacros(string anchorPath, MacroFile file)
         => WriteDomain(MacrosPath(anchorPath), file);
+
+    public static void WriteTriggers(string anchorPath, TriggersFile file)
+        => WriteDomain(TriggersPath(anchorPath), file);
 
     private static void WriteDomain<T>(string path, T file)
     {
@@ -349,6 +360,8 @@ internal static class ConfigBundle
 
     internal static MacroFile ToMacros(AppConfig cfg) => new() { Macros = cfg.Macros ?? new MacroConfig() };
 
+    internal static TriggersFile ToTriggers(AppConfig cfg) => cfg.Triggers ?? new TriggersFile();
+
     // ============ 坏文件备份 ============
 
     /// <summary>把不可读 / 损坏的文件复制为 <c>.bad-时间戳</c>（复制而非改名：万一随后被覆盖，备份仍可恢复）。</summary>
@@ -388,4 +401,3 @@ internal static class ConfigBundle
         foreach (string path in DomainPaths(anchorPath)) PruneBrokenBackups(path, keep);
     }
 }
-

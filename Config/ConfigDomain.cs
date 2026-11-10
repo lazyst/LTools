@@ -35,5 +35,8 @@ internal enum ConfigDomain
     /// <summary><c>actions/&lt;id&gt;/action.json</c>：动作目录（写回经 <c>ActionStore.SaveAll</c>）。</summary>
     actions = 1 << 6,
 
-    all = settings | ui | hotkeys | panel | floating | macros | actions,
+    /// <summary><c>configs/triggers.json</c>：自动触发规则（见 <c>docs/AUTO_TRIGGER.md</c>）。</summary>
+    triggers = 1 << 7,
+
+    all = settings | ui | hotkeys | panel | floating | macros | actions | triggers,
 }

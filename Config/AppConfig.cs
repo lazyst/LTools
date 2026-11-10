@@ -93,6 +93,9 @@ public sealed class AppConfig
     /// <summary>键鼠宏录制配置。</summary>
     public MacroConfig Macros { get; set; } = new();
 
+    /// <summary>自动触发规则（<c>configs/triggers.json</c>，见 <c>docs/AUTO_TRIGGER.md</c>）。</summary>
+    public TriggersFile Triggers { get; set; } = new();
+
     /// <summary>运行日志配置。</summary>
     public LogConfig Logging { get; set; } = new();
 
@@ -112,7 +115,7 @@ public sealed class AppConfig
     /// <summary>边缘滚轮音量算哪条边（底部 / 顶部 / 上下）。</summary>
     public WheelVolumeEdge EdgeWheelVolumeEdge { get; set; } = WheelVolumeEdge.bottom;
 
-    /// <summary>设置窗口上次所在的导航页（general/actions/hotkeys/superpanel/terminals/logs/backup），下次打开恢复。</summary>
+    /// <summary>设置窗口上次所在的导航页（general/actions/subactions/hotkeys/macros/triggers/superpanel/terminals/logs/ai/backup，或 superpanel-* / ai-* 具体子页），下次打开恢复。</summary>
     public string LastNavPage { get; set; } = "actions";
 
     /// <summary>
@@ -160,7 +163,7 @@ public sealed class AppConfig
     private const int ReadRetryDelayMs = 200;
 
     /// <summary>
-    /// 加载配置：合并 <c>configs/</c> 下的 6 个域文件（路径按 <paramref name="path"/> 同级的 <c>configs/</c> 解析）。
+    /// 加载配置：合并 <c>configs/</c> 下的 7 个域文件（路径按 <paramref name="path"/> 同级的 <c>configs/</c> 解析）。
     /// 域文件不存在时从旧 <c>LTools.json</c> / 同目录示例回填；已有文件读失败（占用）会退避重试，
     /// 仍失败则按域回退默认值并置 <see cref="LoadFailed"/>——**写盘必须走 <see cref="LoadStrict"/>**
     /// （<see cref="ConfigIO"/> 与各域 store 都已如此），绝不把回退值写回磁盘。

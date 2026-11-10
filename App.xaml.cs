@@ -28,6 +28,7 @@ public partial class App : Application
     private DispatcherTimer? _watchdog;
     private MenuItem? _macroMenuItem;      // 托盘「开始 / 停止录制宏」：标题随录制状态变化
     private TextBlock? _macroMenuItemText;
+    private TextBlock? _triggerMenuItemText;   // 托盘「暂停 / 恢复自动触发」：标题随紧急禁用状态变化
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -167,6 +168,13 @@ public partial class App : Application
 
         // 快捷键白 / 黑名单：跟踪前台窗口变化，进程解析放在后台线程（钩子回调里只做字符串比较）。
         ForegroundAppCache.Start();
+
+        // 自动触发：配置 / 动作库 / 前台缓存都就绪后再启动（Start 内部重新读盘拿修过引用的规则）。
+        // 总开关默认关闭：即使有规则也不会投递，直到用户在「自动触发」页主动打开。
+        // 只有开机自启任务拉起时才带 --autostart（「仅开机自启时」规则的判定依据）。
+        bool launchedByAutoStart = Array.Exists(e.Args,
+            a => string.Equals(a, AutoStartService.AutoStartArgument, StringComparison.OrdinalIgnoreCase));
+        TriggerService.Start(cfgPath, launchedByAutoStart);
     }
 
     private void BuildTray()
@@ -183,13 +191,16 @@ public partial class App : Application
         menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("启用 CapsLock 修饰键", Settings.ToggleCapsLockModifier, () => AppState.CapsLockModifier));
         menu.Items.Add(NewItem("启用超级面板", Settings.ToggleSuperPanel, () => AppState.IsSuperPanelEnabled));
+        var triggerMenuItem = NewItem("暂停自动触发（紧急禁用）", ToggleTriggerEmergency);
+        _triggerMenuItemText = (TextBlock)((StackPanel)triggerMenuItem.Header).Children[1];
+        menu.Items.Add(triggerMenuItem);
         menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("关闭所有悬浮项", FloatingManager.CloseAll));
         menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("退出 LTools", ExitApplication));
 
         // 状态点每次打开菜单时刷新：状态可能经设置页或托盘切换，托盘菜单要跟随
-        menu.Opened += (_, _) => { RefreshStatusDots(); RefreshMacroMenuItem(); };
+        menu.Opened += (_, _) => { RefreshStatusDots(); RefreshMacroMenuItem(); RefreshTriggerMenuItem(); };
 
         _tray = new TaskbarIcon
         {
@@ -255,6 +266,21 @@ public partial class App : Application
         _macroMenuItemText.Text = MacroRecorder.IsRecording
             ? $"■ 停止录制宏（{MacroSettings.RecordHotkeyDisplay}）"
             : $"● 开始录制宏（{MacroSettings.RecordHotkeyDisplay}）";
+    }
+
+    /// <summary>托盘「暂停自动触发」：切换紧急禁用空文件（数据根下），标题随状态变化。</summary>
+    private void ToggleTriggerEmergency()
+    {
+        TriggerService.SetEmergencyDisabled(!TriggerService.EmergencyDisabled);
+        RefreshTriggerMenuItem();
+    }
+
+    private void RefreshTriggerMenuItem()
+    {
+        if (_triggerMenuItemText == null) return;
+        _triggerMenuItemText.Text = TriggerService.EmergencyDisabled
+            ? "▶ 恢复自动触发"
+            : "⏸ 暂停自动触发（紧急禁用）";
     }
 
     private const double StatusDotSize = 9;
@@ -343,6 +369,7 @@ public partial class App : Application
         McpServer.Stop();
         FloatingManager.Shutdown();
         ForegroundAppCache.Stop();
+        TriggerService.Stop();
         KeyboardHook.Uninstall();
         MouseHook.Uninstall();
         _tray?.Dispose();
@@ -355,6 +382,7 @@ public partial class App : Application
     {
         McpServer.Stop();
         FloatingManager.Shutdown();
+        TriggerService.Stop();   // 幂等：托盘退出时已 Stop 过一次
         AppLog.Shutdown();
         base.OnExit(e);
     }

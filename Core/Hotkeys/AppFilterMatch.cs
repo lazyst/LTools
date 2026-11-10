@@ -41,6 +41,18 @@ internal static class AppFilterMatch
         };
     }
 
+    /// <summary>
+    /// 自动触发的作用范围判定（包一层给 <c>TriggerService</c> 用，见 <c>docs/AUTO_TRIGGER.md</c> §8）：
+    /// 名单为空 = 不过滤；取不到前台程序 = 放行；否则按名单匹配（进程 / 标题 / 类名）。
+    /// 与快捷键不同，这里不排除 LTools 自己的窗口——自动触发不是按键驱动的，名单为空时本就全放行。
+    /// </summary>
+    internal static bool AllowsScope(AppFilter? filter, ForegroundApp? app)
+    {
+        if (filter == null || filter.IsEmpty) return true;
+        if (app == null) return true;   // 取不到前台程序时放行（与白 / 黑名单一致）
+        return Matches(filter, app);
+    }
+
     static bool Matches(AppFilter? filter, ForegroundApp app)
     {
         if (filter == null || filter.IsEmpty) return false;

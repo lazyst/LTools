@@ -1,6 +1,6 @@
 # 自动触发（阶段方案）
 
-> 状态：路线已定，**待实现**。本文只写规格，不含实现代码。
+> 状态：**一期已实现**（定时 / 启动后 + 地基，见 §3），§11 的一期取舍已定、事件源留二期。本文只写规格，不含实现代码。
 > 决策（2026-11-11）：分两期 · 首批事件源「窗口/进程切换、剪贴板变化、文件系统变化」· 叫「自动触发」· 安全用「总开关 + 紧急禁用」。
 > UI（2026-11-11）：单页表格（页头总开关 + `DataGrid` + 独立编辑对话框），见 §9。
 > 参照研究：本机 Quicker 2.3.33.0（`Quicker.dll` SHA-256 `646c6fb4…`）的 REA 静态分析 + Quicker 官方文档。
@@ -11,7 +11,7 @@
 - 只做自动触发。手动触发（组合键 / 面板 / 悬浮项 / 内置功能入口）已有，不在本模块内；外部启动（命令行、URI、Windows 计划任务）不在本期。
 - 一次动作仍叫**运行**，别用「触发」代指（「运行」词条已禁用）。
 - 代码标识符统一用 `Trigger*` / `triggers`（`TriggerRule`、`TriggerRegistry`…），与术语一致。
-- **待补词条**（暂用、确认后再进 `CONTEXT.md`）：触发规则、事件源、触发方式。别在需求 / 文档里给它们起第二种叫法。
+- **词条已定稿**（见 `CONTEXT.md`）：触发规则、事件源、触发方式、条件摘要。别在需求 / 文档里给它们起第二种叫法。
 
 ## 2. 参照：Quicker 的自动触发（研究结论）
 
@@ -68,6 +68,8 @@ TriggerRule（一期定义完整，UI 分期暴露）
 ├─ IntervalMs      int?           Timer：固定间隔
 ├─ DailyAt         string?        Timer：每天 HH:mm
 ├─ DelaySeconds    int            Startup：启动后延迟
+├─ OnlyFirstStartToday bool       Startup：仅每日第一次启动时运行
+├─ OnlyOnAutoStart     bool       Startup：仅由开机自启任务拉起时运行
 ├─ Cron            string?        待决项 1，先留空
 ├─ EventType       string?        二期：事件类型
 ├─ Params          dict?          二期：事件源各自的参数
@@ -84,6 +86,7 @@ TriggerRule（一期定义完整，UI 分期暴露）
 - 触发目标与快捷键 / 面板 / 悬浮一致：只存 Id（或内置功能引用），动作本体在 `actions/`。
 - **作用范围**复用已有 `AppFilter`，不另写一套匹配（面板场景那套 `PanelMatchDto` 语义不同，别混）。
 - 一期不引第三方 Cron 库；「固定间隔 + 每天时刻」由后台计时器算下次触发时间。
+- 两个启动选项由 `Core/AutoStartService.cs` 的任务 XML 加 `--autostart` 参数（旧任务由 `HealIfStale` 补写）与 `state/auto-trigger-last-start.txt` 的当天日期判定；`TriggerScheduler.Rebuild` 里条件不满足整条不排程，两条件同时勾选是 AND。
 
 ## 5. 配置域 `triggers`
 
@@ -152,14 +155,14 @@ Fire(rule)          → ActionExecutor.RunRef(rule.ActionRef, 0, 0)
 
 - 页头：标题「自动触发」+ 右侧**总开关**（`TriggersFile.Enabled`，默认关，关时显示「已关闭」）+ 一行灰字说明（用术语定义，别写成教程）。
 - 工具条：搜索框（按说明 / 动作 / 触发方式筛选）+ 右侧 `BtnPrimary`「＋ 新建规则…」。
-- `DataGrid`（白卡 `CornerMd` 6 + 1px 边框）：列固定为 **启用 / 说明 / 触发方式 / 条件摘要 / 动作 / 操作**，列表顺序即规则优先级。
+- `DataGrid`（白卡 `CornerMd` 6 + 1px 边框）：列固定为 **启用 / 说明 / 触发方式 / 条件摘要 / 动作 / 操作**，列表顺序即展示顺序（优先级留给二期 `SkipFurther`，见 §11）。
   - 行高沿用全局 **30**；**每行只一行文字**（名称 + 条件摘要同行靠 `TextTrimming` + `ToolTip` 裁），别堆两行（动作管理表格踩过）。
   - **每列写 `MinWidth`**，`ScrollViewer.HorizontalScrollBarVisibility="Auto"`；否则「启用」列被压成空矩形，看不见也点不到。
   - 「启用」勾选框照 `HotkeysView` 的 `BindingEnabled_Click`：在 `PreviewMouseLeftButtonDown` 里先 `cell.Focus()`，按 `IsChecked` 直接写回 `TriggerRule.Enabled` 再 `Save()`，别只靠 TwoWay 绑定的更新时机。
   - 「触发方式」列显示「定时 / 启动后 / 事件」；二期事件行带灰徽标「事件 · 二期」，停用行整体浅灰。
   - 「条件摘要」由规则字段拼单行文本（间隔 30 分钟 / 延迟 10 秒 · 仅每日首次 / 剪贴板内容变化），照 `StepSummary` 的写法。
   - 「操作」列 `⋯` 菜单：编辑 / 复制 / 删除 / 上移 / 下移。
-- 底部：灰字提示「规则按列表顺序匹配 · 总开关关闭时全部不生效」+ `MiniBtn`（26 高）「紧急禁用…」「复制」「粘贴」。
+- 底部：灰字提示「总开关关闭时全部不生效」+ `MiniBtn`（26 高）「紧急禁用…」「复制」「粘贴」。
 
 ### 编辑对话框（470 宽、`SizeToContent=Height`、`TitleBar` + `BtnGhost` / `BtnPrimary`）
 
@@ -169,8 +172,8 @@ Fire(rule)          → ActionExecutor.RunRef(rule.ActionRef, 0, 0)
 2. **触发方式** `ComboBox`（定时 / 启动后 / 事件）——按 `VisibleWhen` 语义收起其它参数区；枚举**只翻译显示层**（`OptionLabels`），存英文键
 3. **参数区**（随触发方式切换）：定时 = 间隔分钟 / 每天 HH:mm；启动后 = 延迟秒数 + 「仅每日第一次启动」「仅开机自启时」；事件（二期）= 事件类型下拉 + 对应参数
 4. **动作**：只读框 + 「选择动作…」→ 复用 `Views/ActionPoolPicker.xaml(.cs)`（左列表 + 右预览），别另写选择器
-5. **作用范围**：直接复用 `HotkeyEditDialog` 的 `ScopeBox` + `FilterPanel`（跟随全局默认 / 全部窗口 / 白名单 / 黑名单 + 进程 / 标题 / 类名），不另写一套匹配
-6. **高级参数（N）** 折叠：延迟 / 防抖 / 节流 / 命中后不再判断后续规则（照 `InputSpec.Advanced` 的「设过才自动展开」）
+5. **作用范围**：折叠区里填进程 / 窗口标题 / 类名（每行一个，复用 `AppFilter`），留空 = 不过滤；命中时由 `AppFilterMatch.AllowsScope` 比对前台程序快照，不另写一套匹配
+6. **高级参数（N）** 折叠：延迟 / 防抖 / 节流（照 `InputSpec.Advanced` 的「设过才自动展开」）；`SkipFurther` 一期不启用，见 §11
 7. 灰字提示 + 底部右对齐「取消 / 确定」
 
 - 二期切到「事件」时，**同一个对话框**里按事件类型收起 / 展开三种参数表单（窗口/进程切换、剪贴板变化、文件系统变化），不另建窗口。
@@ -186,20 +189,22 @@ Fire(rule)          → ActionExecutor.RunRef(rule.ActionRef, 0, 0)
 - `Core/Storage/ActionRemoval.cs` 的 `Remove(id)` 顺序固定「内存清单 → **快捷键绑定 + 面板槽位 + 触发规则** → 动作目录 → 宏 / 模板图 / 悬浮回收」；`RepairReferences` 里按磁盘动作清单幂等清掉悬空触发引用（`Features/Builtin/BindingRef.cs` 的 `IsLive` 判内置功能引用是否还活着）。
 - `configs/` 无条件进备份，`BackupService` 不用改；删规则不留孤儿。
 
-## 11. 待决项（不擅自定）
+## 11. 一期取舍（2026-11-11 决策，全部按推荐项定稿）
 
-1. **Cron**：一期只做「固定间隔 + 每天 HH:mm」，还是引入 `Cronos` / 自实现 6 段 Cron？Quicker 用 `Cronos.CronExpression`。
-2. **动作参数 / 事件输出参数**：`ActionParam` 怎么传、事件输出怎么进动作变量（扩展 `ActionRunOptions`？新增取值器？）。
-3. **规则优先级与 `SkipFurther`**：是否按列表顺序取第一条命中即停；哪些事件源不适用（Quicker 说目录监控 / 空闲 / 定时重复不适合）。
-4. **紧急禁用的形式**：空文件 / 托盘菜单 / 热键，还是都要；文件放数据根还是固定路径。
-5. **Quicker 那几个启动选项**：「仅每日第一次启动」「仅开机自启时」「限定主机」要不要照搬。
-6. **动作内容限制**：自动触发的动作是否允许注入键鼠 / 弹界面（无人值守时可能打断用户）。
-7. **触发记录与调试入口**：要不要、放哪。
-8. **待补词条**：触发规则 / 事件源 / 触发方式（确认后进 `CONTEXT.md`）。
+一期实现范围以本节为准；字段留在模型里、UI 分期暴露。
+
+1. **Cron**：一期不引入，只做「固定间隔 + 每天 HH:mm」；`Cron` 字段留空。真要完整 Cron 放二期（`Cronos` 或自实现 6 段，另开一轮）。
+2. **动作参数 / 事件输出参数**：一期不做。`ActionParam` 与事件输出字段留着，二期和三个事件源一起定「初始变量」入口（扩展 `ActionRunOptions`）。
+3. **规则优先级与 `SkipFurther`**：一期不启用。定时 / 启动后各自独立到期；字段留着，二期按事件类型定适用范围（Quicker 说目录监控 / 空闲 / 定时重复不适合）。
+4. **紧急禁用的形式**：保持现状 = 数据根空文件 `disable-auto-trigger.txt` + 托盘菜单同源切换；不加勾选框样式、不加切换热键。
+5. **Quicker 启动选项**：「仅每日第一次启动」「仅开机自启时」已实现（`OnlyFirstStartToday` / `OnlyOnAutoStart`，两条件 AND）；「限定主机」不照搬。
+6. **动作内容限制**：不硬限制，执行链不拦截；编辑对话框给一句灰字提示「无人值守时，动作里注入键鼠或弹出界面可能打断你正在做的事」。
+7. **触发记录与调试入口**：一期不做。运行期已有 `AppLog`（启动状态 / 跳过原因）+ 失败常驻提示 + `last-failure.log`。
+8. **术语**：触发规则 / 事件源 / 触发方式 / 条件摘要 四个叫法定稿，已补进 `CONTEXT.md`，`AGENTS.md` 与代码标识符同步。
 
 ## 12. 验收
 
 - 构建 **0 错 0 警**（构建前 `Stop-Process -Name LTools`）；Debug 用 `-p:NoWin32Manifest=true`。
 - 七个域文件齐全；改自动触发只动 `configs/triggers.json`，其它域 mtime 不变。
-- 真机：最小间隔定时、每天时刻、启动后延迟、全局总开关关闭、紧急禁用生效、删动作后触发引用被清掉、连续命中不炸（并发单飞）。
+- 真机：最小间隔定时、每天时刻、启动后延迟、**仅每日第一次启动 / 仅开机自启时**、`--autostart` 旧任务补写、全局总开关关闭、紧急禁用生效、删动作后触发引用被清掉、连续命中不炸（并发单飞）。
 - 二期：三个事件源各一个最小用例（切窗口、复制文本、新建文件），且不会因 LTools 自己的剪贴板写入自触发。

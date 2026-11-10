@@ -52,6 +52,7 @@ configs/
   panel.json         超级面板：开关 / 长按阈值 / 场景与分组 / 尺寸 / 上次页
   floating.json      悬浮项偏好（悬浮项本身仍然不落盘）
   macros.json        宏设置 + 宏元数据（事件仍在 macros/<id>.json）
+  triggers.json      自动触发：总开关 + 规则列表（见 docs/AUTO_TRIGGER.md）
 actions/<id>/
   action.json        动作体（名称 / 图标 / 说明 / 变量 / 步骤）
   files/             该动作自己的模板图与脚本（P2）
@@ -83,6 +84,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | `configs/panel.json` | `PanelStore`（经 `PanelLibrary.Save`） | 面板、设置页 |
 | `configs/floating.json` | `FloatingStore`（经 `FloatingLibrary.SavePreferences`） | 悬浮窗、设置页 |
 | `configs/macros.json` | `MacroFileStore`（经 `MacroStore`） | 宏菜单、编辑器 |
+| `configs/triggers.json` | `TriggerStore`（经 `TriggerRegistry.Load` / 自动触发页） | 自动触发运行期、设置页、备份 |
 | `actions/<id>/…` | `ActionStore`（经 `ConfigBundle` / `ConfigStore`） | 引擎、面板、编辑器、AI 工具 |
 
 所有单域写入经 `ConfigIO.ModifyDomain`（一把锁 + 严格读）；读仍合并整份聚合，所以首次升级能带上
@@ -92,13 +94,13 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 
 ### P1 · 配置分域（已完成）
 
-- 新增 `Config/ConfigBundle.cs` + `Config/ConfigFiles.cs`：把 `AppConfig` 的字段拆成 6 个域文件，
+- 新增 `Config/ConfigBundle.cs` + `Config/ConfigFiles.cs` + `Config/Triggers.cs`：把 `AppConfig` 的字段拆成 7 个域文件，
   每个文件带 `schemaVersion`；`AppConfig.Load/Save` 改为「合并读 / 只写变更的域」。
 - 种子：`configs/` 不存在时从同目录的 `LTools.example.json` 读种子；**不做旧文件迁移**——旧 `LTools.json`、
   旧域文件、`.migrated` 归档一律不再读，缺哪个域就用示例默认值补哪个域。
 - 原子写：先写 `<file>.tmp` 再 `File.Move(overwrite)`；坏文件按域备份为 `<file>.bad-<时间戳>`（每域只留 3 份）。
 - 备份：导出打包 `configs/`；导入只认 `configs/`（旧版单文件备份不再支持）。
-- 验收：启动后 6 个文件齐全；改导航页只改 `ui.json`；删 `configs/` 后重启按示例重新播种。
+- 验收：启动后 7 个文件齐全；改导航页只改 `ui.json`；删 `configs/` 后重启按示例重新播种。
 
 ### P2 · 一个动作一个目录（已完成）
 
@@ -119,11 +121,11 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 ### P3 · 存储层收口（已完成）
 
 - 新增 `Config/ConfigDomain.cs` + `Config/DomainStores.cs`：`SettingsStore` / `UiStore` / `HotkeyStore` /
-  `PanelStore` / `FloatingStore` / `MacroFileStore`；每个 store 只读改写自己那个域文件
+  `PanelStore` / `FloatingStore` / `MacroFileStore` / `TriggerStore`；每个 store 只读改写自己那个域文件
   （`ConfigIO.ModifyDomain` 一把锁 + 严格读，写仍走 `WriteIfChanged`）。
 - 15 处 `ConfigIO.Modify` 全部改成域写入；跨域只剩「动作清单 + 快捷键」与「动作清单 + 面板」
   （`ConfigIO.Modify(ConfigDomain.actions | ConfigDomain.hotkeys, …)`，`HotkeySeeding` / `ActionLibrary` 用）。
-- 首装兜底：域文件不全时第一次写入自动扩成整份（6 个域 + `actions/`）；不归档、不改名任何旧文件。
+- 首装兜底：域文件不全时第一次写入自动扩成整份（7 个域 + `actions/`）；不归档、不改名任何旧文件。
   分域完成后改一个开关只动目标 `configs/*.json`，不再扫动作目录、不再重写别的域。
 - 删除动作收口到 `Core/Storage/ActionRemoval`：顺序固定「内存清单 → 快捷键绑定 + 面板槽位 →
   动作目录 → 宏 / 模板图 / 悬浮项回收」；启动时按磁盘动作目录幂等清掉快捷键与面板里的
@@ -196,7 +198,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 
 | 阶段 | 验收 | 回滚 |
 | --- | --- | --- |
-| P1 | Debug/Release 0/0；6 个文件生成；只改一个域时其它文件 mtime 不变；删 `configs/` 后按示例重新播种 | 删 `configs/`，重启（示例即默认值） |
+| P1 | Debug/Release 0/0；7 个文件生成；只改一个域时其它文件 mtime 不变；删 `configs/` 后按示例重新播种 | 删 `configs/`，重启（示例即默认值） |
 | P2 | 采纳草稿后 `actions/<id>/files/` 里直接有图、引用仍是 `files/x.png`；删动作进 `trash/`；改一个动作只重写它自己的 `action.json`；删光动作后重启不复活 | 删 `actions/`（下次启动按示例重建）+ git revert |
 | P3 | 逐个域写入只有目标 `configs/*.json` 的 mtime 变化、`actions/*.json` 不动；并发保存不互相覆盖；菜单 / 面板里的悬空动作 Id 在启动时被清掉 | 域文件格式不变，退回旧版本仍能读 |
 | P4 | 窗口拆完后交互与原版一致（面板建窗 / 切暂存区 / 编辑器载入动作均正常）；单元清单数量不变；启动时没有任何迁移扫描 | 纯代码改动，git revert |

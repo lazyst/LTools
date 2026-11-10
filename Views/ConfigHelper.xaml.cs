@@ -206,7 +206,7 @@ public partial class ConfigHelperWindow : Window
     /// <summary>一级导航的 tag（与 <c>ConfigHelper.xaml</c> 的 RadioButton 一一对应）。</summary>
     private static readonly HashSet<string> FirstLevelNav = new(StringComparer.Ordinal)
     {
-        "general", "actions", "subactions", "hotkeys", "macros", "terminals", "logs", "backup",
+        "general", "actions", "subactions", "hotkeys", "macros", "triggers", "terminals", "logs", "backup",
     };
 
     /// <summary>把某个二级下拉设为展开 / 收起，并记住这个状态。</summary>
@@ -403,6 +403,7 @@ public partial class ConfigHelperWindow : Window
         Page_SubActions.Visibility = tag == "subactions" ? Visibility.Visible : Visibility.Collapsed;
         Page_Hotkeys.Visibility = tag == "hotkeys" ? Visibility.Visible : Visibility.Collapsed;
         Page_Macros.Visibility = tag == "macros" ? Visibility.Visible : Visibility.Collapsed;
+        Page_Triggers.Visibility = tag == "triggers" ? Visibility.Visible : Visibility.Collapsed;
         Page_SuperPanel.Visibility = superPanel ? Visibility.Visible : Visibility.Collapsed;
         Page_Terminals.Visibility = tag == "terminals" ? Visibility.Visible : Visibility.Collapsed;
         Page_Logs.Visibility = tag == "logs" ? Visibility.Visible : Visibility.Collapsed;
@@ -437,6 +438,7 @@ public partial class ConfigHelperWindow : Window
         if (ai) Page_Ai.Reload();
         if (tag == "hotkeys") Page_Hotkeys.Reload();
         if (tag == "macros") Page_Macros.Reload();
+        if (tag == "triggers") Page_Triggers.Reload();
         if (superPanel) PopulateSuperPanel();
     }
 
