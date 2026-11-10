@@ -1,0 +1,156 @@
+<UserControl x:Class="LTools.Views.ValueField"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 文本 / 数字 / 多行：一个框搞定，文本里的 ${变量} 由运行时替换 -->
+            <TextBox x:Name="Box" MinHeight="30" VerticalContentAlignment="Center"
+                     TextChanged="Box_TextChanged"/>
+
+            <!-- 图片：缩略图 + 文件名，点一下打开来源（框选 / 换图 / 预览 / 变量） -->
+            <Border x:Name="ImagePanel" MinHeight="30" Visibility="Collapsed"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CornerSm}" Padding="5,2"
+                    Cursor="Hand" MouseLeftButtonUp="Image_Click">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="38" Height="26" Background="{StaticResource SurfaceAltBrush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                            CornerRadius="3" Margin="0,0,8,0">
+                        <Image x:Name="Thumb" Stretch="Uniform"/>
+                    </Border>
+                    <TextBlock x:Name="ImageName" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextBrush}"/>
+                    <TextBlock x:Name="ImageSize" VerticalAlignment="Center" Margin="8,0,0,0"
+                               FontSize="{StaticResource FontSizeHint}"
+                               Foreground="{StaticResource HintTextBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 屏幕区域：一块胶囊，点它直接重新框选 -->
+            <Border x:Name="RegionPanel" MinHeight="30" Visibility="Collapsed"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CornerSm}" Padding="8,2"
+                    Cursor="Hand" MouseLeftButtonUp="Region_Click">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="▣" Margin="0,0,6,0" Foreground="{StaticResource SecondaryTextBrush}"/>
+                    <TextBlock x:Name="RegionText" VerticalAlignment="Center"
+                               FontFamily="{StaticResource MonoFont}" FontSize="{StaticResource FontSizeHint}"/>
+                    <TextBlock Text="重新框选" Margin="10,0,0,0" VerticalAlignment="Center"
+                               FontSize="{StaticResource FontSizeHint}"
+                               Foreground="{StaticResource HintTextBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 内联取值：运行到这里时现场取一个值 -->
+            <Border x:Name="InlinePanel" MinHeight="30" Visibility="Collapsed"
+                    Background="{StaticResource SurfaceAltBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CornerSm}" Padding="8,2">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="InlineText" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"/>
+                    <Button x:Name="InlineSetupBtn" Grid.Column="1" Content="改参数…"
+                            Style="{StaticResource BtnGhost}" MinHeight="24" Padding="8,1"
+                            Margin="8,0,0,0" Click="InlineSetup_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- 一个入口：变量 / 选择文件·窗口·进程 / 屏幕取点 / 取值单元 -->
+            <Button x:Name="SourceButton" Grid.Column="1" Content="▾"
+                    Style="{StaticResource BtnGhost}" Width="30" MinHeight="30"
+                    Padding="0" Margin="6,0,0,0" Focusable="False"
+                    Click="Source_Click"
+                    ToolTip="这个值从哪来：变量、选择文件 / 窗口 / 进程、屏幕取点、取值单元"/>
+        </Grid>
+
+        <!-- 状态行：该填什么 / 当前值来自哪里 -->
+        <TextBlock x:Name="StatusText" Grid.Row="1" Style="{StaticResource HintLabel}"
+                   TextWrapping="Wrap" Margin="0,3,0,0"/>
+
+        <!-- 来源面板：StaysOpen=True 后由 ValueField 自己管关闭（点外部 / 滚动 / 移窗 / 失焦） -->
+        <Popup x:Name="Menu" PlacementTarget="{Binding ElementName=SourceButton}"
+               Placement="Bottom" StaysOpen="True" AllowsTransparency="True"
+               PopupAnimation="Fade" Focusable="False">
+            <Border Style="{StaticResource MenuCard}" Width="336" Padding="6"
+                    Margin="0,4,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 面包屑：主列表写「来源」，二级页（取值单元）露出 ‹ 返回 -->
+                    <Grid Margin="2,0,2,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="BackButton" Content="‹" Width="20" Height="20"
+                                Padding="0" Focusable="False" Visibility="Collapsed"
+                                Style="{StaticResource BtnGhost}" Click="Back_Click"
+                                FontSize="{StaticResource FontSizeHint}"
+                                ToolTip="返回上一页（变量 / 选择 / 取值）"/>
+                        <TextBlock x:Name="CrumbText" Grid.Column="1" Text="来源"
+                                   VerticalAlignment="Center" Margin="4,0,0,0"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource HintTextBrush}"/>
+                    </Grid>
+
+                    <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                            CornerRadius="{StaticResource CornerSm}" Padding="6,3" Margin="0,0,0,4">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="⌕" Margin="0,0,6,0" VerticalAlignment="Center"
+                                       Foreground="{StaticResource HintTextBrush}"/>
+                            <TextBox x:Name="SearchBox" Grid.Column="1" BorderThickness="0"
+                                     Background="Transparent" MinHeight="22" Padding="0"
+                                     VerticalContentAlignment="Center"
+                                     TextChanged="Search_Changed"
+                                     PreviewKeyDown="Search_PreviewKeyDown"/>
+                        </Grid>
+                    </Border>
+
+                    <ScrollViewer x:Name="MenuScroll" Grid.Row="2" MaxHeight="330"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="MenuList"/>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Popup>
+
+        <!-- 录按键：按一下组合键就追加一行 -->
+        <Popup x:Name="KeyPopup" PlacementTarget="{Binding ElementName=SourceButton}"
+               Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+               PopupAnimation="Fade">
+            <Border Style="{StaticResource MenuCard}" Width="260" Padding="12" Margin="0,4,0,0">
+                <StackPanel>
+                    <TextBlock Text="按下要发送的组合键" FontWeight="SemiBold"/>
+                    <TextBox x:Name="KeyBox" MinHeight="30" Margin="0,8,0,0"/>
+                    <TextBlock Text="Esc 取消；录到的写法与「模拟按键」一致（ctrl+s）"
+                               Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                </StackPanel>
+            </Border>
+        </Popup>
+    </Grid>
+</UserControl>

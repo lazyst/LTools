@@ -160,7 +160,7 @@ internal static class AiToolHandlers
                 ["key"] = output.Key,
                 ["label"] = output.Label,
                 ["type"] = output.Type?.ToString(),
-                ["defaultVariable"] = output.DefaultVariable,
+                ["defaultVariable"] = OutputNaming.Suggest(spec.Key, output),
                 ["description"] = output.Description,
             }).ToList(),
         };

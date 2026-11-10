@@ -398,7 +398,7 @@
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionLabel}" Text="变量" Margin="0,0,0,2"/>
                         <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                                   Text="给步骤的输出变量起名后会自动登记在这里。"/>
+                                   Text="步骤写出的变量（输出、设置变量）会自动登记在这里，参数框右侧 ▾ 里也能选到。"/>
 
                         <Grid x:Name="VariableHeader" Margin="0,8,0,2">
                             <Grid.ColumnDefinitions>

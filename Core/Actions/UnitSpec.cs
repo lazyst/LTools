@@ -85,6 +85,11 @@ public enum BodyKind
 /// true = 调优参数（超时、轮询间隔、相似度、焦点延时…），参数表单把它们收进「高级参数」里，
 /// 默认折叠；已经设过值的会自动展开，不会把用户填过的参数藏起来。
 /// </param>
+/// <param name="Pickers">
+/// 输入框右侧「▾ 来源」里能选的取值方式（<see cref="PickerKind"/>）。不写时按
+/// <see cref="InputEditor"/> 推默认（文本 → 变量 / 取值单元，文件 → 再加「文件…」），
+/// 只在默认不够时补，例如窗口标题加 <see cref="PickerKind.window"/>。
+/// </param>
 public sealed record InputSpec(
     string Key,
     string Label,
@@ -97,7 +102,12 @@ public sealed record InputSpec(
     IReadOnlyDictionary<string, string>? Labels = null,
     bool Raw = false,
     string? Description = null,
-    bool Advanced = false);
+    bool Advanced = false,
+    PickerKind? Pickers = null)
+{
+    /// <summary>这个输入框实际能用的来源（<see cref="Pickers"/> 为空时按编辑器形态推）。</summary>
+    public PickerKind PickerSet => Pickers ?? PickerDefaults.For(this);
+}
 
 /// <summary>一个输出参数的声明。输出要写哪个变量由步骤的 <c>out</c> 映射决定。</summary>
 /// <param name="Key">输出键。</param>

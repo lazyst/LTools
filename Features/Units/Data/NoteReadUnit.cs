@@ -17,7 +17,8 @@ public sealed class NoteReadUnit : IStepUnit
         Kind = UnitKind.pure,
         Inputs = new[]
         {
-            new InputSpec("category", "分类", ValueKind.text),
+            new InputSpec("category", "分类", ValueKind.text,
+                Pickers: PickerKind.variable | PickerKind.noteCategory | PickerKind.inline | PickerKind.clear),
             new InputSpec("filter", "关键字", ValueKind.text),
         },
         Outputs = new[]

@@ -27,6 +27,7 @@ public sealed class SelectFileUnit : IStepUnit
                 Required: true, Default: Value.FromText("openFile"), Options: Kinds),
             new InputSpec("title", "标题", ValueKind.text),
             new InputSpec("filter", "文件类型", ValueKind.text,
+                Pickers: PickerKind.variable | PickerKind.fileFilter | PickerKind.inline | PickerKind.clear,
                 Default: Value.FromText("所有文件|*.*")),
             new InputSpec("initialDir", "起始目录", ValueKind.text, InputEditor.folder),
         },

@@ -25,13 +25,23 @@ public partial class ActionEditorWindow
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
+        if (!Commit()) return;
+        DialogResult = true;
+    }
+
+    /// <summary>
+    /// 把编辑器里当前的内容收进 <see cref="Result"/> / <see cref="SubResult"/>。
+    /// 「确定」与关闭时选「保存」共用这一条路径；校验不过返回 false（留在编辑器里，别关掉丢改动）。
+    /// </summary>
+    private bool Commit()
+    {
         string name = (NameBox.Text ?? "").Trim();
         if (name.Length == 0)
         {
             ConfirmDialog.Info(this, _isSubAction ? "子动作" : "动作",
                 _isSubAction ? "给子动作起一个名字。" : "给动作起一个名字。");
             NameBox.Focus();
-            return;
+            return false;
         }
 
         _program.Name = name;
@@ -39,20 +49,20 @@ public partial class ActionEditorWindow
 
         _program.Variables.Clear();
         var variables = ReadVariables();
-        if (variables == null) return;
+        if (variables == null) return false;
         foreach (var variable in variables) _program.Variables.Add(variable);
 
-        // 输出变量永远在变量表里（写配置的人不用再手动补声明）。
-        // 子动作不自动补：那里「本地 / 输出」是刻意标记的，补一条反而要用户再改。
+        // 写出的变量永远在变量表里（写配置的人不用再手动补声明）：输出映射与设置变量的目标名都算，
+        // 判定见 VariableWrites。子动作不自动补：那里「本地 / 输出」是刻意标记的，补一条反而要用户再改。
         if (!_isSubAction)
         {
             var declared = new HashSet<string>(
                 _program.Variables.Select(v => v.Key), StringComparer.OrdinalIgnoreCase);
             foreach (var step in _program.Steps.SelectMany(s => s.SelfAndDescendants()))
             {
-                foreach (string raw in step.Out.Values)
+                foreach (var write in VariableWrites.Of(step))
                 {
-                    string key = (raw ?? "").Trim();
+                    string key = write.TrimmedName;
                     if (key.Length == 0 || !declared.Add(key)) continue;
                     _program.Variables.Add(new VariableDef { Key = key, Type = ValueKind.text });
                 }
@@ -72,8 +82,8 @@ public partial class ActionEditorWindow
             foreach (var step in _program.Steps) def.Steps.Add(step);
 
             SubResult = def;
-            DialogResult = true;
-            return;
+            _saved = true;
+            return true;
         }
 
         _program.Id = _draft!.Id ?? "";
@@ -83,7 +93,8 @@ public partial class ActionEditorWindow
         _draft.Program = _program;
 
         Result = _draft;
-        DialogResult = true;
+        _saved = true;
+        return true;
     }
 
     // ============ 试运行 ============

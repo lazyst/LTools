@@ -14,7 +14,7 @@ public partial class ConfirmDialog : Window
     /// <param name="danger">危险动作（如删除）→ 确认按钮用红色 BtnDanger。</param>
     /// <param name="okText">确认按钮文案（默认：danger 时「确认删除」，否则「确认」）。导出/导入等非删除动作应显式传入。</param>
     /// <param name="info">仅提示（单按钮）→ 隐藏取消，确认按钮文案「确定」。</param>
-    /// <param name="discard">速记保存三选 → 显示「取消 / 不保存 / 保存」。</param>
+    /// <param name="discard">三选（保存 / 不保存 / 取消）→ 显示「取消 / 不保存 / 保存」。</param>
     private ConfirmDialog(string title, string message, bool danger, bool info, bool discard, string? okText)
     {
         InitializeComponent();
@@ -64,7 +64,7 @@ public partial class ConfirmDialog : Window
         dlg.ShowDialog();
     }
 
-    /// <summary>速记保存三选：保存 / 不保存 / 取消。</summary>
+    /// <summary>三选：保存 / 不保存 / 取消（速记、动作编辑器关闭时共用）。</summary>
     public static SaveConfirmResult ConfirmDiscard(Window? owner, string title, string message)
     {
         var dlg = new ConfirmDialog(title, message, false, false, true, null);
@@ -90,5 +90,5 @@ public partial class ConfirmDialog : Window
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 }
 
-/// <summary>速记保存确认结果。</summary>
+/// <summary>保存 / 不保存 / 取消的三选结果。</summary>
 public enum SaveConfirmResult { Save, Discard, Cancel }

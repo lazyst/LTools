@@ -53,6 +53,17 @@ public sealed class StepArg
     /// <summary>内联的取值步骤（<see cref="StepArgKind.inline"/>）。</summary>
     public Step? InlineStep { get; }
 
+    /// <summary>
+    /// 「等于没填」：空文本、空变量名、没挂取值步骤。
+    /// 必填校验与「取值单元还缺哪些参数」共用这一条，别各写一套。
+    /// </summary>
+    public bool IsEmpty => Kind switch
+    {
+        StepArgKind.variable => VariablePath.Trim().Length == 0,
+        StepArgKind.inline => InlineStep == null,
+        _ => Literal.Kind == ValueKind.text && Literal.AsText().Length == 0,
+    };
+
     public static StepArg FromText(string? text) => new(StepArgKind.literal, Value.FromText(text));
 
     public static StepArg FromNumber(double number) => new(StepArgKind.literal, Value.FromNumber(number));

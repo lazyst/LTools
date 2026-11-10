@@ -28,7 +28,9 @@ public sealed class ListUnit : IStepUnit
             new InputSpec("list", "列表", ValueKind.list),
             new InputSpec("index", "下标", ValueKind.number, InputEditor.number, Default: Value.FromNumber(0)),
             new InputSpec("value", "值", Editor: InputEditor.text),
-            new InputSpec("separator", "分隔符", ValueKind.text, Default: Value.FromText(",")),
+            new InputSpec("separator", "分隔符", ValueKind.text,
+                Pickers: PickerKind.variable | PickerKind.separator | PickerKind.inline | PickerKind.clear,
+                Default: Value.FromText(",")),
         },
         Outputs = new[]
         {

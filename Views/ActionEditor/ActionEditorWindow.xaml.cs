@@ -167,6 +167,7 @@ public partial class ActionEditorWindow : Window
         BuildVariableRows();
         BuildToolbox();
         ReloadRows();
+        CaptureBaseline();
 
         TraceList.ItemsSource = _traceRows;
         SnapshotList.ItemsSource = _snapshotRows;

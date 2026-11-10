@@ -17,8 +17,10 @@ public sealed class PixelUnit : IStepUnit
         Kind = UnitKind.pure,
         Inputs = new[]
         {
-            new InputSpec("x", "X", ValueKind.number, InputEditor.number, Required: true),
-            new InputSpec("y", "Y", ValueKind.number, InputEditor.number, Required: true),
+            new InputSpec("x", "X", ValueKind.number, InputEditor.number, Required: true,
+                Pickers: PickerKind.variable | PickerKind.point | PickerKind.inline | PickerKind.clear),
+            new InputSpec("y", "Y", ValueKind.number, InputEditor.number, Required: true,
+                Pickers: PickerKind.variable | PickerKind.point | PickerKind.inline | PickerKind.clear),
         },
         Outputs = new[]
         {

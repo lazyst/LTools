@@ -239,12 +239,28 @@ public partial class ActionEditorWindow
     }
 
     private StepEditorDialog CreateStepDialog(Step step) =>
-        new(step, program: _program, variableNames: VariableNames, resourceRoot: ResourceRoot) { Owner = this };
+        new(step, program: _program, variableNames: VariableNames,
+            resourceRoot: ResourceRoot, variableInfos: VariableInfos) { Owner = this };
 
     private IEnumerable<string> VariableNames() =>
         _variables.Select(v => v.Name.Text.Trim())
             .Where(n => n.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    /// <summary>带类型与来源的变量表：参数框的 ▾ 菜单据此显示「文本 · 第 2 步写」。</summary>
+    private IReadOnlyList<VariableInfo> VariableInfos() =>
+        _variables
+            .Select(v => new
+            {
+                Name = v.Name.Text.Trim(),
+                Kind = (v.Type.SelectedItem as KindChoice)?.Kind ?? ValueKind.text,
+                v.Origin,
+            })
+            .Where(v => v.Name.Length > 0)
+            .GroupBy(v => v.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new VariableInfo(g.Key, g.First().Kind, g.First().Origin))
+            .OrderBy(v => v.Name, StringComparer.CurrentCulture)
             .ToList();
 
     // ============ 工具箱 ============

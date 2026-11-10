@@ -21,8 +21,10 @@ public sealed class MouseUnit : IStepUnit
         {
             new InputSpec("operation", "操作", ValueKind.text, InputEditor.enumList,
                 Required: true, Default: Value.FromText("click"), Options: Operations),
-            new InputSpec("x", "X", ValueKind.number, InputEditor.number),
-            new InputSpec("y", "Y", ValueKind.number, InputEditor.number),
+            new InputSpec("x", "X", ValueKind.number, InputEditor.number,
+                Pickers: PickerKind.variable | PickerKind.point | PickerKind.inline | PickerKind.clear),
+            new InputSpec("y", "Y", ValueKind.number, InputEditor.number,
+                Pickers: PickerKind.variable | PickerKind.point | PickerKind.inline | PickerKind.clear),
             new InputSpec("wheel", "滚轮格数", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(3),
                 VisibleWhen: "operation == 'wheelUp' || operation == 'wheelDown'"),

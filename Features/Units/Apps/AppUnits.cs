@@ -88,7 +88,8 @@ public sealed class ProcessUnit : IStepUnit
         Kind = UnitKind.pure,
         Inputs = new[]
         {
-            new InputSpec("name", "进程名", ValueKind.text, Required: true),
+            new InputSpec("name", "进程名", ValueKind.text, Required: true,
+                Pickers: PickerKind.variable | PickerKind.process | PickerKind.inline | PickerKind.clear),
             new InputSpec("operation", "操作", ValueKind.text, InputEditor.enumList,
                 Required: true, Default: Value.FromText("count"), Options: Operations),
         },

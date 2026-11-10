@@ -145,28 +145,26 @@ internal static class ActionValidator
 
         foreach (var (step, path, label, _) in allSteps)
         {
-            foreach (string output in step.Out.Values)
+            // 输出映射 + 设置变量的目标名（判定见 VariableWrites）。
+            foreach (var write in VariableWrites.Of(step))
             {
-                string name = RootName(output);
+                string name = RootName(write.Name);
                 if (name.Length == 0)
                 {
-                    issues.Add(new ActionIssue($"{path}/out", label, step.Unit, "",
-                        "有 out 映射写到了空变量名", IssueSeverity.error));
+                    if (write.IsOutput)
+                        issues.Add(new ActionIssue($"{path}/out", label, step.Unit, "",
+                            "有 out 映射写到了空变量名", IssueSeverity.error));
                     continue;
                 }
 
                 produced.Add(name);
-                if (!declared.Contains(name))
+                if (write.IsOutput && !declared.Contains(name))
                 {
                     issues.Add(new ActionIssue($"{path}/out", label, step.Unit, name,
                         $"写出了变量「{name}」，但它不在变量表里（运行时能创建，只是变量表里看不到它）",
                         IssueSeverity.warning));
                 }
             }
-
-            if (step.Unit.Equals("flow.set", StringComparison.OrdinalIgnoreCase) &&
-                ProgramWalker.LiteralText(step, "name") is { Length: > 0 } written)
-                produced.Add(RootName(written));
         }
 
         foreach (var (step, path, label, depth) in allSteps)

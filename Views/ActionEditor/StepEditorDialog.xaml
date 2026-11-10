@@ -3,7 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:controls="clr-namespace:LTools.Views.Controls"
-        Title="步骤" Width="640" Height="660" MinWidth="520" MinHeight="420"
+        Title="编辑步骤" Width="640" MinWidth="520" MinHeight="360" MaxHeight="780"
+        SizeToContent="Height"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
@@ -25,7 +26,17 @@
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="18,10,18,12">
             <StackPanel>
-                <TextBlock x:Name="HeaderText" FontSize="16" FontWeight="SemiBold"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="HeaderText" FontSize="16" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                    <Border x:Name="CategoryBadge" Margin="8,0,0,0" VerticalAlignment="Center"
+                            Background="{StaticResource SurfaceAltBrush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                            CornerRadius="{StaticResource CornerSm}" Padding="5,0">
+                        <TextBlock x:Name="CategoryText" FontSize="11.5"
+                                   Foreground="{StaticResource SecondaryTextBrush}"/>
+                    </Border>
+                </StackPanel>
                 <TextBlock x:Name="DescText" Style="{StaticResource HintLabel}"
                            TextWrapping="Wrap" Margin="0,3,0,0"/>
 
@@ -35,9 +46,10 @@
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
                         Padding="0,12,0,0">
                     <StackPanel>
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="输出变量" Margin="0,0,0,3"/>
+                        <TextBlock x:Name="OutputHeader" Style="{StaticResource SectionLabel}"
+                                   Text="输出变量" Margin="0,0,0,3"/>
                         <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                                   Text="勾选后把这项结果存进变量，后面的步骤用 ${变量} 取用。类型由单元声明（徽标），不必自己记；主结果排在最前。"/>
+                                   Text="勾选后把这项结果存进变量，后面的步骤用 ${变量} 取用；类型由单元声明（徽标）。名字默认带单元前缀，不会和别的步骤撞。"/>
                         <StackPanel x:Name="Outputs" Margin="0,6,0,0"/>
                     </StackPanel>
                 </Border>
@@ -88,6 +100,10 @@
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <TextBlock x:Name="ProblemText" VerticalAlignment="Center"
+                               Foreground="{StaticResource DangerBrush}"
+                               TextTrimming="CharacterEllipsis" MaxWidth="340"
+                               Margin="0,0,12,0" Visibility="Collapsed"/>
                     <Button Style="{StaticResource BtnGhost}" Content="取消" IsCancel="True"
                             Width="88" MinHeight="32" Margin="0,0,8,0" Click="Cancel_Click"/>
                     <Button Style="{StaticResource BtnPrimary}" Content="确定" IsDefault="True"

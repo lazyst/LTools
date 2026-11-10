@@ -190,7 +190,7 @@ internal static class KnowledgePack
                     $"`{output.Key}`",
                     Cell(output.Label),
                     TypeName(output.Type),
-                    output.DefaultVariable == null ? "" : $"`{output.DefaultVariable}`",
+                    $"`{OutputNaming.Suggest(spec.Key, output)}`",
                     Cell(output.Description ?? ""),
                 }) + " |");
             }

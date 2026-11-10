@@ -17,6 +17,7 @@ public sealed class SendKeysUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("keys", "按键", Editor: InputEditor.multiline, Required: true,
+                Pickers: PickerKind.variable | PickerKind.keys | PickerKind.inline | PickerKind.clear,
                 Description: "ctrl+s / text:文字 / sleep:200，每行一项"),
             new InputSpec("focusDelayMs", "焦点延时毫秒", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(50), Advanced: true,

@@ -18,7 +18,8 @@ public sealed class NoteWriteUnit : IStepUnit
         {
             new InputSpec("body", "正文", ValueKind.text, InputEditor.multiline, Required: true),
             new InputSpec("title", "标题", ValueKind.text),
-            new InputSpec("category", "分类", ValueKind.text),
+            new InputSpec("category", "分类", ValueKind.text,
+                Pickers: PickerKind.variable | PickerKind.noteCategory | PickerKind.inline | PickerKind.clear),
         },
         Outputs = new[]
         {

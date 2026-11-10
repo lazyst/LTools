@@ -276,8 +276,8 @@ public partial class ActionEditorWindow
 
     private static void ScanReferences(Step step, string name, ref int reads, ref int writes)
     {
-        foreach (string target in step.Out.Values)
-            if (NameEquals(target, name)) writes++;
+        foreach (var write in VariableWrites.Of(step))
+            if (NameEquals(write.Name, name)) writes++;
 
         foreach (StepArg arg in step.In.Values) ScanArgReferences(arg, name, ref reads);
     }
@@ -323,6 +323,9 @@ public partial class ActionEditorWindow
             step.Out[key] = newName;
             count++;
         }
+
+        // 「设置变量」的目标名藏在参数里，也要跟着改（否则变量表改名后那一步会写进不存在的名字）。
+        count += VariableWrites.RenameTarget(step, oldName, newName);
 
         foreach (string key in step.In.Keys.ToList())
         {
@@ -484,8 +487,9 @@ public partial class ActionEditorWindow
     }
 
     /// <summary>
-    /// 步骤输出用到、还没声明的变量补进变量表；类型取单元声明（旧版本一律登记成文本，那是错的）。
-    /// 已在表里的只校正「类型没被用户改过」的行；来源写进行提示，方便看出这个变量是谁写的。
+    /// 步骤写出、还没声明的变量补进变量表（输出映射 + 设置变量的目标名，见 <see cref="VariableWrites"/>）；
+    /// 类型取单元声明（旧版本一律登记成文本，那是错的）。已在表里的只校正「类型没被用户改过」的行；
+    /// 来源写进行提示，方便看出这个变量是谁写的。
     /// </summary>
     private void EnsureOutputVariables()
     {
@@ -499,16 +503,20 @@ public partial class ActionEditorWindow
         foreach (var (step, _) in AllSteps())
         {
             StepRow? stepRow = _rows.FirstOrDefault(r => ReferenceEquals(r.Step, step));
+            string where = stepRow == null
+                ? StepSummary.Title(step)
+                : $"第 {stepRow.Number} 步 · {stepRow.Title}";
 
-            foreach (var pair in step.Out)
+            // 输出映射 + 设置变量的目标名（两条写变量的路都要看，见 VariableWrites）。
+            foreach (var write in VariableWrites.Of(step))
             {
-                string key = (pair.Value ?? "").Trim();
+                string key = write.TrimmedName;
                 if (key.Length == 0) continue;
 
-                ValueKind? declared = OutputType(step, pair.Key);
-                string origin = stepRow == null
-                    ? $"{StepSummary.Title(step)}（输出 {pair.Key}）"
-                    : $"第 {stepRow.Number} 步 · {stepRow.Title}（输出 {pair.Key}）";
+                ValueKind? declared = write.IsOutput ? OutputType(step, write.Key) : null;
+                string origin = write.IsOutput
+                    ? $"{where}（输出 {write.Key}）"
+                    : $"{where} → {key}";
 
                 if (known.TryGetValue(key, out var existing))
                 {

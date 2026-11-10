@@ -36,7 +36,7 @@ public sealed class FindImageUnit : IStepUnit
         {
             new OutputSpec("x", "X", ValueKind.number, "matchX", Description: "命中中心 X（屏幕坐标）"),
             new OutputSpec("y", "Y", ValueKind.number, "matchY", Description: "命中中心 Y（屏幕坐标）"),
-            new OutputSpec("score", "相似度", ValueKind.number, Description: "最高相似度（0–1）"),
+            new OutputSpec("score", "相似度", ValueKind.number, "matchScore", Description: "最高相似度（0–1）"),
             new OutputSpec("found", "找到", ValueKind.@bool, "matchFound", Description: "是否找到模板图；没找到不是错误"),
             new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },

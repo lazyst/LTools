@@ -27,13 +27,13 @@ internal static class InputHint
             InputEditor.multiline => "多行文本；可用 ${变量} 引用变量",
             InputEditor.code => "代码原样传入，不解析 ${变量}",
             InputEditor.number => "数字（整数或小数）；可用 ${变量}",
-            InputEditor.file => "文件路径；可写 ${变量}，也可点「浏览…」",
-            InputEditor.folder => "文件夹路径；可写 ${变量}，也可点「浏览…」",
-            InputEditor.image => "图片文件路径（png / jpg）；可写 ${变量}",
+            InputEditor.file => "文件路径；点右侧 ▾ 选文件，或写 ${变量}",
+            InputEditor.folder => "文件夹路径；点右侧 ▾ 选文件夹，或写 ${变量}",
+            InputEditor.image => "图片文件路径（png / jpg）；点右侧 ▾ 框选 / 换图，或写 ${变量}",
             InputEditor.macro => "选择一个已录制的宏（在「设置 → 键鼠宏」里录制）",
-            InputEditor.region => "屏幕区域 x,y,w,h；点「框选…」直接拖一块",
+            InputEditor.region => "屏幕区域 x,y,w,h；点右侧 ▾ 框选一块",
             InputEditor.variable => "变量名（只填名字，不用 ${}）",
-            InputEditor.condition => "要比较的值：文本模板 / 变量 / 取值单元",
+            InputEditor.condition => "写文本、用 ${变量}，或点右侧 ▾ 换成变量 / 取值单元",
             _ => input.Type switch
             {
                 ValueKind.number => "数字；可用 ${变量}",
