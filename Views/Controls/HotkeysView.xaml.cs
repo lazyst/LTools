@@ -358,14 +358,24 @@ public partial class HotkeysView : UserControl
     private void BindingEnabled_Click(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
-        var row = (sender as FrameworkElement)?.DataContext as BindingRow;
-        Dispatcher.BeginInvoke(new Action(() => Save(_group?.Id, row?.Source.Id)));
+        if (sender is not CheckBox box || box.DataContext is not BindingRow row) return;
+
+        // 直接按勾选框的状态写回，不依赖 TwoWay 绑定的更新时机（否则会「勾上了、存盘还是旧值」）。
+        row.Enabled = box.IsChecked == true;
+        Dispatcher.BeginInvoke(new Action(() => Save(_group?.Id, row.Source.Id)));
     }
 
     private void BindingGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount != 2) return;
         var source = e.OriginalSource as DependencyObject;
+
+        // DataGridCell 在「自己还没有键盘焦点」时会把这一下 MouseDown 标记成已处理（先给自己抢焦点），
+        // 单元格里 Focusable="False" 的启用勾选框就收不到点击（表现为「点几次都没反应」）。
+        // 在预览阶段先把单元格焦点给上，DataGridCell 自己就不再吞这一下。
+        var cell = FindAncestor<DataGridCell>(source);
+        if (cell != null && !cell.IsKeyboardFocusWithin) cell.Focus();
+
+        if (e.ClickCount != 2) return;
         if (FindAncestor<CheckBox>(source) != null) return;
 
         var row = FindAncestor<DataGridRow>(source);
@@ -474,7 +484,7 @@ public partial class HotkeysView : UserControl
         }
     }
 
-    public sealed class BindingRow
+    public sealed class BindingRow : INotifyPropertyChanged
     {
         private readonly HotkeyFile _file;
 
@@ -485,6 +495,8 @@ public partial class HotkeysView : UserControl
             Conflict = conflict;
         }
 
+        public event PropertyChangedEventHandler? PropertyChanged;
+
         public HotkeyBinding Source { get; }
 
         public bool Conflict { get; }
@@ -492,7 +504,12 @@ public partial class HotkeysView : UserControl
         public bool Enabled
         {
             get => Source.Enabled;
-            set => Source.Enabled = value;
+            set
+            {
+                if (Source.Enabled == value) return;
+                Source.Enabled = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Enabled)));
+            }
         }
 
         public string Chord

@@ -713,29 +713,71 @@ public partial class ConfigHelperWindow : Window
     {
         var rows = new List<PathRow>();
         foreach (var key in TerminalLauncher.ResolvableTerminals)
-            rows.Add(new PathRow(TerminalLauncher.DisplayLabel(key), TerminalLauncher.Resolve(key) ?? "（未检测到）"));
+            rows.Add(new PathRow(key, TerminalLauncher.DisplayLabel(key)));
+
         PathsGrid.ItemsSource = rows;
-        GitBashBox.Text = TerminalLauncher.GetGitBashPath() ?? "";
+        foreach (var row in rows) row.Refresh();
     }
 
-    private void BrowseGitBash_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// DataGridCell 在「自己还没有键盘焦点」时会把这一下 MouseDown 标记成已处理（先给自己抢焦点），
+    /// 单元格里的输入框 / 「浏览…」第一下就会落空。预览阶段先把单元格焦点给上，它就不再吞。
+    /// </summary>
+    private void PathsGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        var cell = FindAncestor<DataGridCell>(e.OriginalSource as DependencyObject);
+        if (cell != null && !cell.IsKeyboardFocusWithin) cell.Focus();
+    }
+
+    /// <summary>输入框失焦：保存这一行的覆盖（空 = 恢复自动探测）。</summary>
+    private void TerminalOverride_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox box && box.DataContext is PathRow row) SaveTerminalRow(row, box.Text);
+    }
+
+    /// <summary>回车：同样保存，然后把焦点交出去（不然改了看不到「已保存」）。</summary>
+    private void TerminalOverride_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || sender is not TextBox box || box.DataContext is not PathRow row) return;
+        e.Handled = true;
+        SaveTerminalRow(row, box.Text);
+        box.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+    }
+
+    /// <summary>挑一个 exe 当这一行的覆盖路径，选完即保存。</summary>
+    private void BrowseTerminal_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement el || el.DataContext is not PathRow row) return;
+
         var ofd = new OpenFileDialog
         {
-            Filter = "bash.exe|bash.exe|可执行文件 (*.exe)|*.exe|所有文件 (*.*)|*.*",
-            FileName = "bash.exe",
-            Title = "选择 Git Bash 可执行文件",
+            Filter = "可执行文件 (*.exe)|*.exe|所有文件 (*.*)|*.*",
+            Title = $"选择「{row.Label}」的可执行文件",
+            FileName = row.Override.Length > 0 ? row.Override : row.Path,
         };
-        if (ofd.ShowDialog(this) == true)
-            GitBashBox.Text = ofd.FileName;
+        if (ofd.ShowDialog(this) != true) return;
+
+        SaveTerminalRow(row, ofd.FileName);
     }
 
-    private void SaveGitBash_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// 保存一行的覆盖并刷新「实际路径」。和已存的值一样就不写盘——
+    /// 绑定的 <c>UpdateSourceTrigger=PropertyChanged</c> 已经把文字写进 <see cref="PathRow.Override"/>，
+    /// 所以比较的是**配置里**的值，不是行对象上的值。
+    /// </summary>
+    private void SaveTerminalRow(PathRow row, string? text)
     {
-        ConfigStore.SaveGitBashPath(GitBashBox.Text.Trim());
-        PopulateTerminals();
-        TrayService.Notify("终端路径已保存");
-        ShowStatus("终端路径已保存", ok: true);
+        string value = (text ?? "").Trim();
+        string saved = TerminalLauncher.GetOverride(row.Key) ?? "";
+
+        if (!string.Equals(saved, value, StringComparison.OrdinalIgnoreCase))
+        {
+            row.Override = value;
+            TerminalLauncher.SavePath(row.Key, value);
+            ShowStatus($"{row.Label} 路径已保存", ok: true);
+        }
+
+        row.Refresh();
     }
 
     // ============ 运行提示（通用页） ============
@@ -975,5 +1017,61 @@ public partial class ConfigHelperWindow : Window
         }
     }
 
-    private sealed record PathRow(string Label, string Path);
+    /// <summary>终端路径表的一行：覆盖值 / 实际路径变了要通知界面刷新。</summary>
+    private sealed class PathRow : System.ComponentModel.INotifyPropertyChanged
+    {
+        private string _override;
+        private string _path = "";
+
+        public PathRow(string key, string label)
+        {
+            Key = key;
+            Label = label;
+            _override = TerminalLauncher.GetOverride(key) ?? "";
+        }
+
+        public string Key { get; }
+
+        public string Label { get; }
+
+        /// <summary>配置里的覆盖（界面直接编辑它；空 = 自动探测）。</summary>
+        public string Override
+        {
+            get => _override;
+            set
+            {
+                if (_override == value) return;
+                _override = value;
+                Raise(nameof(Override));
+            }
+        }
+
+        /// <summary>当前生效的路径：覆盖优先，否则自动探测。</summary>
+        public string Path
+        {
+            get => _path;
+            private set
+            {
+                if (_path == value) return;
+                _path = value;
+                Raise(nameof(Path));
+            }
+        }
+
+        public void Refresh()
+        {
+            string? live = TerminalLauncher.Resolve(Key);
+            string? over = TerminalLauncher.GetOverride(Key);
+            bool overBroken = over != null && !string.Equals(over, live, StringComparison.OrdinalIgnoreCase);
+
+            Path = live == null
+                ? (overBroken ? "（未检测到；覆盖的路径不存在）" : "（未检测到）")
+                : overBroken ? $"{live}（覆盖的路径不存在，已回退）" : live;
+        }
+
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+        private void Raise(string name)
+            => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
+    }
 }

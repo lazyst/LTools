@@ -110,10 +110,12 @@
                           IsReadOnly="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
                           Background="Transparent" BorderThickness="0"
                           SelectionMode="Single" SelectionUnit="FullRow"
-                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
                           PreviewMouseLeftButtonDown="BindingGrid_PreviewMouseLeftButtonDown">
                     <DataGrid.Columns>
-                        <DataGridTemplateColumn Header="启用" Width="46">
+                        <!-- 每列都写 MinWidth：窗口变窄时 DataGrid 会把列按比例压扁，压到 20 时
+                             启用勾选框会被裁成空矩形（点不到、也看不见），所以宁可出横向滚动条。 -->
+                        <DataGridTemplateColumn Header="启用" Width="44" MinWidth="44">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" Focusable="False"
@@ -124,7 +126,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="快捷键" Width="140">
+                        <DataGridTemplateColumn Header="快捷键" Width="140" MinWidth="120">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Chord}" Margin="2,0"
@@ -146,7 +148,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="动作" Width="*" MinWidth="160">
+                        <DataGridTemplateColumn Header="动作" Width="*" MinWidth="110">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding ActionName}" Margin="2,0"
@@ -156,7 +158,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="生效范围" Width="130">
+                        <DataGridTemplateColumn Header="生效范围" Width="100" MinWidth="80">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding ScopeText}" Margin="2,0"
@@ -168,7 +170,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="备注" Width="130">
+                        <DataGridTemplateColumn Header="备注" Width="96" MinWidth="80">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Note}" Margin="2,0"

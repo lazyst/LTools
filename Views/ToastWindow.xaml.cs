@@ -42,6 +42,24 @@ public partial class ToastWindow : Window
     private Action? _clickAction;
     private string _actionText = "";
 
+    /// <summary>这一轮倒计时的总时长（ms；0 = 不自动关闭）。</summary>
+    private int _countdownMs;
+
+    /// <summary>到期时刻；鼠标停在卡片上时它会被不断往后推（剩余时间冻住）。</summary>
+    private DateTime _deadline;
+
+    /// <summary>还没走完的停留时间（悬停期间保持不变）。</summary>
+    private TimeSpan _remaining;
+
+    /// <summary>上一个心跳时光标是否在卡片上（用来认出「刚离开」那一下）。</summary>
+    private bool _wasInside;
+
+    /// <summary>倒计时心跳间隔：按光标是否在卡片上决定要不要继续走，150ms 足够跟手。</summary>
+    private const int TickMs = 150;
+
+    /// <summary>鼠标移开后再给的最短停留：不然只剩 100ms 时一走开就没了。</summary>
+    private static readonly TimeSpan MinResume = TimeSpan.FromMilliseconds(1200);
+
     /// <summary>创建一条卡片（由 <see cref="ToastService"/> 统一 Show / 定位）。</summary>
     /// <param name="title">标题，可空（空则整行不占位）。</param>
     /// <param name="message">正文。</param>
@@ -62,8 +80,8 @@ public partial class ToastWindow : Window
 
         Card.RenderTransform = _slide;
 
-        _countdown = new DispatcherTimer();
-        _countdown.Tick += (_, _) => Dismiss();
+        _countdown = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(TickMs) };
+        _countdown.Tick += (_, _) => OnCountdownTick();
 
         Loaded += (_, _) => PlayIntro();
         SourceInitialized += (_, _) => MakeNonActivating();
@@ -120,13 +138,73 @@ public partial class ToastWindow : Window
         TitleText.Visibility = Visibility.Visible;
     }
 
-    /// <summary>开始倒计时；<paramref name="milliseconds"/> ≤ 0 表示不自动关闭。</summary>
+    /// <summary>
+    /// 开始倒计时；<paramref name="milliseconds"/> ≤ 0 表示不自动关闭。
+    /// 鼠标停在卡片上时剩余时间冻住（见 <see cref="OnCountdownTick"/>），离开后接着走。
+    /// </summary>
     public void StartCountdown(int milliseconds)
     {
         _countdown.Stop();
+        _countdownMs = milliseconds;
         if (milliseconds <= 0) return;
-        _countdown.Interval = TimeSpan.FromMilliseconds(milliseconds);
+
+        _remaining = TimeSpan.FromMilliseconds(milliseconds);
+        _deadline = DateTime.UtcNow + _remaining;
+        _wasInside = false;
         _countdown.Start();
+    }
+
+    /// <summary>
+    /// 倒计时心跳：鼠标在卡片上就**冻住**剩余时间（正在读，别抢走），移开接着走完。
+    /// </summary>
+    /// <remarks>
+    /// 用「光标坐标 vs 窗口矩形」而不是 WPF 的 <see cref="UIElement.IsMouseOver"/>：
+    /// 卡片可能正好出现在静止的光标下面，那样既收不到 MouseEnter 也收不到 MouseLeave，
+    /// 一旦按 IsMouseOver 判断就会永远停在那儿（实测）。
+    /// </remarks>
+    private void OnCountdownTick()
+    {
+        if (_countdownMs <= 0)
+        {
+            _countdown.Stop();
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+
+        if (PointerInside())
+        {
+            _deadline = now + _remaining;
+            _wasInside = true;
+            return;
+        }
+
+        // 刚离开：至少再留一会儿，别一走开就没了。
+        if (_wasInside)
+        {
+            _wasInside = false;
+            if (_deadline - now < MinResume) _deadline = now + MinResume;
+        }
+
+        if (now >= _deadline)
+        {
+            Dismiss();
+            return;
+        }
+
+        _remaining = _deadline - now;
+    }
+
+    /// <summary>光标是否落在这张卡片上（物理像素比窗口矩形，避开多屏 DPI 换算）。</summary>
+    private bool PointerInside()
+    {
+        if (!Win32.GetCursorPos(out var pt)) return false;
+
+        IntPtr hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !Win32.GetWindowRect(hwnd, out var rect)) return false;
+
+        return pt.X >= rect.Left && pt.X < rect.Right
+            && pt.Y >= rect.Top && pt.Y < rect.Bottom;
     }
 
     /// <summary>立刻关闭（重复调用安全）。</summary>

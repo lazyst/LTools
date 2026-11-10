@@ -105,8 +105,8 @@ internal static class MacroSettings
     /// 复用 <see cref="KeyStroke"/> 的解析器，保证与「模拟按键」动作同一套键名。
     /// </summary>
     /// <remarks>
-    /// 允许不带修饰键，但只限不产生字符的键（F1–F24、Pause、PrintScreen、Insert、Home、End、
-    /// PageUp/PageDown）。单独用字母 / 数字 / 空格做全局热键会干扰正常打字，故直接拒绝。
+    /// 单键也允许（<c>f2</c>、<c>a</c> 都行）：宏的录制 / 停止回放热键与快捷键页同一套规则，
+    /// 但单键命中会吞掉那个按键，界面上要提示一次风险（见 <c>HotkeyEditDialog</c>）。
     /// </remarks>
     public static bool TryParseHotkey(string text, out ushort vk, out ushort[] modifiers, out string error)
     {
@@ -124,11 +124,6 @@ internal static class MacroSettings
         if (vks.Count == 1)
         {
             vk = vks[0];
-            if (!IsBareHotkeyAllowed(vk))
-            {
-                error = "该键不能单独使用，请加 Ctrl / Shift / Alt / Win，或改用 F1–F24 等功能键";
-                return false;
-            }
             modifiers = Array.Empty<ushort>();
             return true;
         }
@@ -137,15 +132,6 @@ internal static class MacroSettings
         modifiers = vks.Take(vks.Count - 1).ToArray();
         return true;
     }
-
-    /// <summary>无修饰键热键允许的主键：不产生字符、不参与日常输入的功能 / 导航键。</summary>
-    public static bool IsBareHotkeyAllowed(ushort vk) => vk switch
-    {
-        >= 0x70 and <= 0x87 => true,                              // F1..F24
-        0x13 or 0x2C or 0x91 => true,                             // Pause / PrintScreen / ScrollLock
-        0x2D or 0x24 or 0x23 or 0x21 or 0x22 => true,             // Insert / Home / End / PageUp / PageDown
-        _ => false,
-    };
 
     /// <summary>把配置里的热键字符串格式化为显示文本：<c>ctrl+f2</c> → <c>Ctrl+F2</c>。</summary>
     /// <remarks>

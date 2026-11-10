@@ -127,6 +127,9 @@
                                    Margin="12,0,0,0" VerticalAlignment="Center"
                                    Text="回放期间按下即停（只在回放时占用）"/>
                     </Grid>
+
+                    <TextBlock Style="{StaticResource HintLabel}" Margin="150,0,0,4" TextWrapping="Wrap"
+                               Text="热键也可以只按一个键（如 F8、Pause）。单键会在所有程序里吞掉那个按键——用字母 / 数字时请只在临时场景下用，默认的 Ctrl+F2 / Ctrl+F3 更安全。"/>
                 </StackPanel>
             </Border>
 

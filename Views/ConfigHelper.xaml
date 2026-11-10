@@ -381,35 +381,48 @@
                 <ScrollViewer x:Name="Page_Terminals" VerticalScrollBarVisibility="Auto"
                               Visibility="Collapsed" Padding="20,14,20,14">
                     <StackPanel>
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="终端探测状态" Margin="0,0,0,8"/>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="终端路径" Margin="0,0,0,8"/>
+                        <TextBlock Style="{StaticResource HintLabel}" Margin="0,0,0,8" TextWrapping="Wrap"
+                                   Text="「运行命令」选终端时按这里的路径启动。「实际路径」是现在生效的那个；某一行找不到、或想用另一份副本（便携版 / 非默认目录），就在「覆盖」里填它的 exe——留空 = 继续自动探测，改完离开输入框即保存；填了但文件不存在会在「实际路径」里标出来并回退到自动探测。"/>
                         <Border Style="{StaticResource CardBox}">
-                            <DataGrid x:Name="PathsGrid" Height="180"
+                            <DataGrid x:Name="PathsGrid" Height="220"
                                       AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
                                       CanUserSortColumns="False" CanUserResizeColumns="False" CanUserResizeRows="False"
-                                      IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                                      SelectionMode="Single" SelectionUnit="FullRow">
+                                      HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                                      SelectionMode="Single" SelectionUnit="FullRow"
+                                      PreviewMouseLeftButtonDown="PathsGrid_PreviewMouseLeftButtonDown">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="终端" Binding="{Binding Label}" Width="140"/>
-                                    <DataGridTextColumn Header="解析路径" Binding="{Binding Path}" Width="*"/>
+                                    <DataGridTextColumn Header="终端" Binding="{Binding Label}" Width="140" IsReadOnly="True"/>
+                                    <DataGridTemplateColumn Header="实际路径" Width="*">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Path}" Margin="2,0"
+                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                           ToolTip="{Binding Path}" ToolTipService.ShowDuration="20000"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="覆盖" Width="240">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Override, UpdateSourceTrigger=PropertyChanged}"
+                                                         MinHeight="24" Margin="0,2" VerticalContentAlignment="Center"
+                                                         ToolTip="留空 = 自动探测；填 exe 路径则优先用它（文件存在才算）"
+                                                         LostFocus="TerminalOverride_LostFocus"
+                                                         KeyDown="TerminalOverride_KeyDown"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="" Width="Auto">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button Style="{StaticResource BtnGhost}" Content="浏览…"
+                                                        MinWidth="64" Margin="6,2,0,2" Click="BrowseTerminal_Click"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
-                        </Border>
-
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="Git Bash 路径覆盖" Margin="0,4,0,8"/>
-                        <Border Style="{StaticResource CardBox}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBox Grid.Column="0" x:Name="GitBashBox" MinHeight="30" Margin="0,0,8,0"
-                                         ToolTip="留空则自动探测常见安装位置"/>
-                                <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="浏览…"
-                                        MinWidth="72" Margin="0,0,8,0" Click="BrowseGitBash_Click"/>
-                                <Button Grid.Column="2" Style="{StaticResource BtnPrimary}" Content="保存"
-                                        MinWidth="72" Click="SaveGitBash_Click"/>
-                            </Grid>
                         </Border>
                     </StackPanel>
                 </ScrollViewer>

@@ -51,7 +51,7 @@ AppConfig.Floating : FloatingConfig?          // null = 从没用过悬浮（偏
     MiddleClickClose     = true    // 中键关闭
     ShowTooltip          = true    // 悬停显示动作名（名称被截断时有用）
     SnapToEdges          = true    // 拖动吸附屏幕边缘
-    SnapDistance         = 12      // 靠近合并 / 贴边吸附阈值（DIP）
+    SnapDistance         = 12      // 靠近合并阈值（DIP；贴边另有 EdgeSnapDistance = 24）
     DefaultSize          = 44      // 新项按钮边长
     DefaultOpacity       = 1.0
     MaxItems             = 32      // 防呆上限
@@ -111,7 +111,7 @@ FloatingItemDto
 |---|---|
 | 左键单击按钮 | 运行该动作 |
 | 左键按住拖动 > 4px | 移动窗口（拖动本身由 `DragMove` 泵消息） |
-| 松手 | 吸附屏幕边缘（阈值 12 DIP）→ **靠近**（矩形间距 ≤ 12 DIP）或压住（重叠 > 被拖项 50%）另一个悬浮项则**合并成组** |
+| 松手 | 贴到**窗口所在那块显示器**的工作区边缘（离边 ≤ 24 DIP 就吸；贴的是可见卡片，透明阴影让到屏幕外）→ **靠近**（矩形间距 ≤ 12 DIP）或压住（重叠 > 被拖项 50%）另一个悬浮项则**合并成组** |
 | 中键 | 关闭该悬浮项（可在设置里关掉） |
 | 右键 | 弹出菜单 |
 
@@ -218,9 +218,13 @@ SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)` 顶回最前面。`SWP_NOACTIVATE` �
 
 ## 6. 已知限制
 
-- **多屏 / 混合 DPI**：位置按 DIP 存在虚拟桌面坐标系里，夹取与吸附用
-  `SystemParameters.VirtualScreen*`（DIP 近似）。不同缩放的多屏下贴边可能差几个像素；
-  125% 缩放下 62 DIP = 77.5 px，窗口尺寸取整后回算成 62.4 DIP（正方形关系不变）。
+- **多屏 / 混合 DPI**：位置按 DIP 存在虚拟桌面坐标系里；贴边按窗口中心所在显示器的 `rcWork`
+  （`MonitorFromPoint` + `GetMonitorInfo`，物理像素 → 窗口自己的 DIP 换算）算，多屏时中间那条边界
+  也能吸；`rcWork` 天然避开任务栏。125% 缩放下 62 DIP = 77.5 px，窗口尺寸取整后回算成 62.4 DIP（正方形关系不变）。
+- **贴边留白**：窗口四周留 6 DIP 透明阴影（`FloatWindow.Shadow`），所以贴边时窗口坐标会往屏幕外让
+  这 6 DIP（`FloatingManager.CardInset`），贴住屏幕的是可见卡片而不是阴影。
+- **拖出屏幕也会吸回来**：贴边距离是**有符号**的（`dLeft = 窗口 Left − 贴边位置`），越过边缘算 0 距离，
+  所以把按钮推到屏幕外松手照样贴回边；只有「离边还差一点」才看 `EdgeSnapDistance = 24`。
 - 拖出成员变独立项没做（用右键「拆分为独立悬浮」）。
 - 方向只对分组有意义：单按钮横竖一样，菜单里不出现「方向」。
 - 悬浮项没有「吸附到一起后一起移动」（Quicker 的 `BtnSnapLink`）：靠近直接合并成分组。

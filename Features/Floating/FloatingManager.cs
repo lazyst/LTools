@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Media;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features.Builtin;
@@ -405,29 +408,68 @@ internal static class FloatingManager
                 Math.Clamp(y, vt, Math.Max(vt, vb - height)));
     }
 
-    /// <summary>吸附到屏幕工作区边缘（窗口在哪个显示器由位置决定，这里用虚拟桌面 + 主屏工作区）。</summary>
+    /// <summary>松手时离边缘多近才吸附（DIP）。比合并阈值大一些，否则很难「吸上」。</summary>
+    private const double EdgeSnapDistance = 24;
+
+    /// <summary>
+    /// 窗口边到可见卡片边的距离：窗口四周留的是透明阴影（<see cref="FloatWindow.Shadow"/>），
+    /// 卡片（含它自己 1px 边框）就从那里开始。贴边时坐标要让出这么多，
+    /// 否则只是阴影贴住屏幕，卡片本身还悬在屏幕边外一条缝。
+    /// </summary>
+    private const double CardInset = FloatWindow.Shadow;
+
+    /// <summary>
+    /// 吸附到**窗口所在那块显示器**的工作区边缘（多屏时中间那条边界也算「边」）。
+    /// 只有松手时离边缘够近才动；贴的是可见卡片，不是窗口外那圈透明阴影——
+    /// 所以左边 / 上边把窗口往屏幕外让 <see cref="CardInset"/>，右边 / 下边往屏幕里让。
+    /// </summary>
     private static void SnapToEdges(FloatWindow window)
     {
         if (!FloatingLibrary.Prefs.SnapToEdges) return;
+        if (!TryMonitor(window, out Win32.Rect rect, out Win32.Rect work)) return;
 
-        double d = FloatingLibrary.Prefs.SnapDistance;
-        double left = SystemParameters.VirtualScreenLeft;
-        double top = SystemParameters.VirtualScreenTop;
-        double right = left + SystemParameters.VirtualScreenWidth;
-        double bottom = top + SystemParameters.VirtualScreenHeight;
+        var dpi = VisualTreeHelper.GetDpi(window);
+        double scaleX = dpi.DpiScaleX > 0 ? dpi.DpiScaleX : 1;
+        double scaleY = dpi.DpiScaleY > 0 ? dpi.DpiScaleY : 1;
 
-        var wa = SystemParameters.WorkArea;
-        if (window.Top >= wa.Top && window.Top <= wa.Bottom)
-        {
-            top = Math.Max(top, wa.Top);
-            bottom = Math.Min(bottom, wa.Bottom);
-        }
+        // GetWindowRect 与 rcWork 都是物理像素，换成窗口自己的 DIP 再和 Left / Top 比。
+        double left = window.Left + (work.Left - rect.Left) / scaleX;
+        double top = window.Top + (work.Top - rect.Top) / scaleY;
+        double right = window.Left + (work.Right - rect.Left) / scaleX - window.Width;
+        double bottom = window.Top + (work.Bottom - rect.Top) / scaleY - window.Height;
 
-        if (Math.Abs(window.Left - left) < d) window.Left = left;
-        else if (Math.Abs(right - (window.Left + window.Width)) < d) window.Left = right - window.Width;
+        // 距离取**有符号**的：越过边缘（被拖出屏幕）也算「已经贴住」，负数一律吸回来。
+        // 只比绝对值的话，把按钮推出屏幕就再也触发不了吸附（用户报过：图标挂在屏幕外不吸）。
+        double dLeft = window.Left - left;
+        double dRight = right - window.Left;
+        double dTop = window.Top - top;
+        double dBottom = bottom - window.Top;
 
-        if (Math.Abs(window.Top - top) < d) window.Top = top;
-        else if (Math.Abs(bottom - (window.Top + window.Height)) < d) window.Top = bottom - window.Height;
+        if (dLeft <= EdgeSnapDistance) window.Left = left - CardInset;
+        else if (dRight <= EdgeSnapDistance) window.Left = right + CardInset;
+
+        if (dTop <= EdgeSnapDistance) window.Top = top - CardInset;
+        else if (dBottom <= EdgeSnapDistance) window.Top = bottom + CardInset;
+    }
+
+    /// <summary>窗口矩形与它所在显示器的工作区（都是物理像素）；拿不到返回 false（那就别乱吸）。</summary>
+    private static bool TryMonitor(FloatWindow window, out Win32.Rect rect, out Win32.Rect work)
+    {
+        rect = default;
+        work = default;
+
+        IntPtr hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero || !Win32.GetWindowRect(hwnd, out rect)) return false;
+
+        var center = new Win32.Point { X = (rect.Left + rect.Right) / 2, Y = (rect.Top + rect.Bottom) / 2 };
+        IntPtr monitor = Win32.MonitorFromPoint(center, Win32.MonitorDefaultToNearest);
+        if (monitor == IntPtr.Zero) return false;
+
+        var info = new Win32.MonitorInfo { cbSize = Marshal.SizeOf<Win32.MonitorInfo>() };
+        if (!Win32.GetMonitorInfo(monitor, ref info)) return false;
+
+        work = info.rcWork;
+        return true;
     }
 
     /// <summary>

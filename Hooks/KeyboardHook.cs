@@ -73,6 +73,10 @@ internal static class KeyboardHook
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
             }
 
+            // 按键抬起先清「已触发」锁存，必须排在下面所有分支之前：自动化运行 / 录入 / 录制
+            // 这些分支会提前 return，keyup 就再也走不到热键分支，单键快捷键会「隔一次才触发」。
+            if (isUp) HotkeyRegistry.KeyUp(vk);
+
             // 自动化 / 宏回放期间按配置的停止热键停止（热键注册失败时的兜底；成对吞掉 keydown / keyup）。
             // 放在录入拦截之前：即使正在录入热键，也保留这个安全出口。
             if (AutomationRunner.IsRunning
@@ -156,7 +160,6 @@ internal static class KeyboardHook
                     }
                 }
             }
-            else if (isUp) HotkeyRegistry.KeyUp(vk);
 
             // CapsLock 按住期间按了别的键 → 这次不算「轻按」，keyup 不发 Esc。
             // 未绑定快捷键的键也走这里（它们照常传给前台程序，只是不再算单击）。

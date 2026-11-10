@@ -13,35 +13,49 @@ namespace LTools.Features;
 /// workdir 为空默认应用目录、相对路径按数据根解析（见 <see cref="AppPaths.ResolveWorkdir"/>）。钩子回调在 UI 线程，执行 spawn 到后台线程。</summary>
 internal static class TerminalLauncher
 {
-    private static string? _gitBashOverride; // 配置中的 git bash 路径；空=自动探测
+    /// <summary>配置里的路径覆盖（键 = terminal key，如 <c>gitbash</c>）；没有条目 = 自动探测。</summary>
+    private static readonly Dictionary<string, string> Overrides = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>从 AppConfig 加载终端路径覆盖（启动时调用一次）。</summary>
     public static void LoadFromConfig(AppConfig cfg)
     {
-        if (cfg.TerminalPaths.TryGetValue("gitbash", out var v) && !string.IsNullOrWhiteSpace(v))
-            _gitBashOverride = v.Trim();
-        else
-            _gitBashOverride = null;
+        Overrides.Clear();
+        foreach (var kv in cfg.TerminalPaths)
+        {
+            if (!string.IsNullOrWhiteSpace(kv.Value)) Overrides[kv.Key] = kv.Value.Trim();
+        }
     }
 
-    /// <summary>写回 Git Bash 路径到配置（终端路径对话框保存调用）。</summary>
-    public static void SaveGitBashPath(string path)
+    /// <summary>写回某个终端的路径覆盖（空 = 恢复自动探测）。</summary>
+    public static void SavePath(string terminal, string? path)
     {
-        _gitBashOverride = string.IsNullOrWhiteSpace(path) ? null : path.Trim();
+        string? p = string.IsNullOrWhiteSpace(path) ? null : path.Trim();
+        if (p == null) Overrides.Remove(terminal);
+        else Overrides[terminal] = p;
+
         SettingsStore.Modify(s =>
         {
-            if (_gitBashOverride == null) s.TerminalPaths.Remove("gitbash");
-            else s.TerminalPaths["gitbash"] = _gitBashOverride;
+            if (p == null) s.TerminalPaths.Remove(terminal);
+            else s.TerminalPaths[terminal] = p;
         });
     }
 
-    /// <summary>当前 Git Bash 路径（配置或探测；探测不到返回 null）。</summary>
-    public static string? GetGitBashPath() => ResolveGitBash();
+    /// <summary>配置里的覆盖值（原样返回，可能指向已不存在的文件）；没设过返回 null。</summary>
+    public static string? GetOverride(string terminal)
+        => Overrides.TryGetValue(terminal, out var v) ? v : null;
 
-    /// <summary>各终端探测状态（终端路径对话框展示用）。键=terminal key，值=路径或 null。</summary>
+    /// <summary>各终端探测状态（终端路径页展示用）。键=terminal key，值=路径或 null。</summary>
     public static readonly string[] ResolvableTerminals = { "pwsh7", "pwsh5", "cmd", "gitbash", "wslbash", "wt" };
 
-    public static string? Resolve(string terminal) => terminal switch
+    /// <summary>当前生效的路径：配置覆盖优先（文件真的存在才算），否则自动探测。</summary>
+    public static string? Resolve(string terminal)
+    {
+        if (Overrides.TryGetValue(terminal, out var path) && File.Exists(path)) return path;
+        return Probe(terminal);
+    }
+
+    /// <summary>自动探测（不读覆盖）：常见安装位置 + PATH。</summary>
+    private static string? Probe(string terminal) => terminal switch
     {
         "pwsh7" => ResolvePwsh7(),
         "pwsh5" => ResolvePwsh5(),
@@ -80,7 +94,7 @@ internal static class TerminalLauncher
         string? shell = Resolve(terminal);
         if (shell == null || !File.Exists(shell))
             return new LaunchResult(false, null, null, workdir2,
-                $"未安装 {DisplayLabel(terminal)}，请在「终端路径」中配置或安装后重试。");
+                $"未安装 {DisplayLabel(terminal)}：在设置 →「终端路径」里指定它的路径，或先安装再试。");
 
         string shellToken = QuoteIfNeeded(shell);
         bool empty = string.IsNullOrWhiteSpace(cmd);
@@ -88,7 +102,7 @@ internal static class TerminalLauncher
         // 空命令 → 仅打开 shell 交互（优先 wt 包装，wt 可用时始终走 wt）
         if (empty)
         {
-            string? wt0 = ResolveWt();
+            string? wt0 = Resolve("wt");
             if (wt0 != null && File.Exists(wt0))
                 // wt 新标签页不继承父进程 CWD（用的是 profile 默认目录），必须 --startingDirectory 显式指定，
                 // 即使工作目录留空（workdir2 已解析为默认工作目录）。路径里的 ';' 需转义（wt 不尊重引号）。
@@ -100,7 +114,7 @@ internal static class TerminalLauncher
         if (!TryBuildShellArgs(terminal, keepWindow, cmd, shell, out string shellArgs))
             return new LaunchResult(false, null, null, workdir2, $"不支持的终端: {terminal}");
 
-        string? wt = ResolveWt();
+        string? wt = Resolve("wt");
         if (wt != null && File.Exists(wt))
         {
             // wt 包装：exe=wt，args="new-tab --startingDirectory <dir> <shell> <shellArgs>"。
@@ -220,10 +234,7 @@ internal static class TerminalLauncher
 
     private static string? ResolveGitBash()
     {
-        // 1) INI 配置覆盖
-        if (!string.IsNullOrWhiteSpace(_gitBashOverride) && File.Exists(_gitBashOverride))
-            return _gitBashOverride;
-        // 2) 常见安装位置
+        // 常见安装位置
         string[] candidates =
         {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Git", "bin", "bash.exe"),
@@ -234,7 +245,7 @@ internal static class TerminalLauncher
             candidates = candidates.Append(Path.Combine(local, "Programs", "Git", "bin", "bash.exe")).ToArray();
         foreach (var c in candidates)
             if (File.Exists(c)) return c;
-        // 3) PATH
+        // PATH
         return FindOnPath("bash.exe");
     }
 

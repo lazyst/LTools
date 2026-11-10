@@ -73,7 +73,14 @@ internal static class HotkeyRegistry
     /// </summary>
     public static string? TryFire(ushort vk)
     {
-        if (Fired.Contains(vk)) return null;
+        if (Fired.Contains(vk))
+        {
+            // 物理键已经抬起 = 上一次按下的锁存没被清（keyup 被别的分支提前吞掉 / 没送到钩子）。
+            // 就地自愈，否则这条单键会一直「隔一次才触发」。
+            if (!Down(vk)) Fired.Remove(vk);
+            else return null;
+        }
+
         if (_entries.Length == 0) return null;
 
         foreach (var entry in _entries)

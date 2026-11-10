@@ -42,11 +42,17 @@ internal readonly struct HotkeyChord
     public bool HasAlt => Has(0xA4);
     public bool HasWin => Has(0x5B);
 
+    /// <summary>
+    /// 是不是「单键」（没有任何修饰键，也没有 CapsLock 前缀）。单键会在所有程序里吞掉那个键，
+    /// 录入 / 保存时要提示一次风险。
+    /// </summary>
+    public bool IsBare => Modifiers.Length == 0 && !CapsLock;
+
     private bool Has(ushort vk) => Modifiers.Contains(vk);
 
     /// <summary>
-    /// 解析快捷键字符串。允许单键，但只限不产生字符的键（F1–F24、Pause、PrintScreen、Insert、
-    /// Home、End、PageUp/PageDown）；单字母 / 单数字会干扰正常打字，直接拒绝。
+    /// 解析快捷键字符串。允许单键（<c>f9</c>、<c>a</c>、<c>space</c> 都行）——单键会在所有程序里
+    /// **吞掉**那个键，所以界面上录入单键时会提示一次风险，但不再拒绝。
     /// </summary>
     public static bool TryParse(string? text, out HotkeyChord chord, out string error)
     {
@@ -100,12 +106,6 @@ internal readonly struct HotkeyChord
         }
 
         ushort vk = vks[0];
-        if (parts.Length == 1 && !MacroSettings.IsBareHotkeyAllowed(vk))
-        {
-            error = "单键会干扰正常打字，请加 Ctrl / Shift / Alt / Win / CapsLock，或改用 F1–F24 等功能键";
-            return false;
-        }
-
         chord = new HotkeyChord(vk, modifiers.ToArray(), caps);
         return true;
 

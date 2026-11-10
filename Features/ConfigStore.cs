@@ -96,18 +96,4 @@ internal static class ConfigStore
         ActionLibrary.Add(copy);
         return copy;
     }
-
-    // —— 终端路径 ——
-
-    /// <summary>保存 Git Bash 路径覆盖（空字符串=恢复自动探测）。</summary>
-    public static void SaveGitBashPath(string gitBashPath)
-    {
-        var p = string.IsNullOrWhiteSpace(gitBashPath) ? null : gitBashPath.Trim();
-        SettingsStore.Modify(ConfigPath, s =>
-        {
-            if (p == null) s.TerminalPaths.Remove("gitbash");
-            else s.TerminalPaths["gitbash"] = p;
-        });
-        TerminalLauncher.LoadFromConfig(AppConfig.Load(ConfigPath));
-    }
 }
