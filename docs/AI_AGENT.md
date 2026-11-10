@@ -214,7 +214,7 @@ ai/
     format.md                  # 动作 JSON 格式（手写，稳定）
     units.md                   # 单元目录（启动时从 StepRegistry 生成）
     examples.md                # 3~5 个完整示例（手写）
-    .version                   # 生成版本（升级后自动重生成）
+    .version                   # 生成版本（程序集版本 + 单元数 + units.md 正文哈希）
   audit.log                    # 每次工具调用的审计行（轮转，最多 2MB）
   mcp-debug.log                # 只有 MCP SDK 的 Warning 以上（排错用，轮转 1MB）
 staging/
@@ -413,7 +413,7 @@ mode=replace  → 校验 draft.baseActionId 仍存在、baseSourceHash 未变（
    运行时按该目录解析；别再往共享池写「只有草稿知道」的路径。
 7. **试运行会真的动键鼠**：UI 上要能一眼看到「AI 正在试运行」，并保留停止热键；MCP 侧返回 `busy` 而不是排队。
 8. **token 只存本地、只显示一次以上**：设置页可复制，不进日志、不进错误消息、不进 `health` 回执。
-9. **`units.md` 会随单元变化漂移**：用 `.version`（程序集版本 + 单元「键 / 分类」哈希）控制重生成，别手工维护。
+9. **`units.md` 会随单元变化漂移**：用 `.version`（程序集版本 + 单元数 + `BuildUnitsMarkdown()` 正文的 SHA-256）控制重生成，别手工维护；只哈希「键 / 分类」会让单元参数重构后的知识包停在旧内容。
 10. **管理员权限**：LTools 以管理员运行，MCP 服务天然也是高权限。HTTP 必须只听 127.0.0.1 + token，
     并且默认关；否则等于给本机任意进程一个提权后门。
 

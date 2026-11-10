@@ -5,32 +5,35 @@ LTools（原 CapsLock-Pro / CapsLock++）：Windows 桌面工具，把 CapsLock 
 ## 术语与文档
 
 - **`CONTEXT.md` 是术语表的唯一来源**（面板 / 悬浮 / 场景 / 分组 / 动作 / 步骤 / 单元 / 内置功能 / 草稿 / 采纳…）：每个词叫什么、边界在哪写在那里。需求、代码、提交信息、文档一律用它的叫法；**需求里出现表里没有的词，或同一个东西的第二种叫法，先确认一句再当场补进去**（不攒、不擅自换词），改了词要全链路（`CONTEXT.md` → 本文件 → 代码标识符）。
-- `AGENTS.md`（本文件）：怎么实现、约束与踩过的坑。
-- `docs/`：设计规格与长文档；`docs/adr/`：难回退、反直觉的选择。术语定义不散写进这两处。
+- `docs/`：设计规格与阶段方案——`ARCHITECTURE.md`（数据布局）、`ACTION_SYSTEM.md`（动作系统）、`FLOATING.md`（悬浮）、`AI_AGENT.md`（MCP）。术语只进 `CONTEXT.md`，实现约束与踩过的坑只进本文件。
 
 ## 构建
 
 ```bash
-# 开发构建（Debug，免提权快速启动）
+# 开发构建（Debug，剥掉 requireAdministrator 清单，免提权快速启动）
 dotnet build -p:NoWin32Manifest=true
 
-# Release 构建（带 requireAdministrator 清单，全局钩子需管理员）
+# Release 构建（带提权清单，全局钩子需管理员）
 dotnet build -c Release
 
-# 发布独立部署（内嵌运行时，用户免装 .NET）
-dotnet publish -c Release -r win-x64 --self-contained true -o publish
+# 发布独立部署（内嵌运行时，用户免装 .NET）；必须显式写 LTools.csproj
+dotnet publish LTools.csproj -c Release -r win-x64 --self-contained true -o publish
 ```
 
-- 输出：`bin/Debug/net10.0-windows10.0.19041.0/LTools.exe`
-- TFM 带 Windows SDK 投影（`net10.0-windows10.0.19041.0`），OCR 用 `Windows.Media.Ocr`；改动 TFM 会改变输出目录
-- 全局钩子需管理员权限；Debug 加 `-p:NoWin32Manifest=true` 免提权调试
+- **构建前先停掉正在运行的 LTools**（pwsh：`Stop-Process -Name LTools`）：输出 exe 被占用会刷一长串 `MSB3026` 重试、最终 `MSB3027` 失败，也破坏「0 警」标准
+- **发布命令必须带 `LTools.csproj`**：仓库同时有 `LTools.sln` 与 `LTools.csproj`，省略时 dotnet 会去构建 sln，配 `-o` 触发 `NETSDK1194` 警告（`release.yml` 就是显式指定的）
+- 输出：`bin/Debug/net10.0-windows10.0.19041.0/LTools.exe`；TFM 带 Windows SDK 投影（`net10.0-windows10.0.19041.0`，OCR 用 `Windows.Media.Ocr`），改 TFM 会改变输出目录
 - 构建必须 **0 错 0 警**
-- 无测试项目，不要找 `dotnet test`
+- **没有测试项目**，不要找 `dotnet test`。UI 验收靠仓库外的临时无头冒烟工程（`%TEMP%\opencode\lpanel-smoke` / `floating-smoke`，反射驱动 `LTools.dll`，见 `docs/FLOATING.md` 与 `docs/ACTION_SYSTEM.md`），不在 CI 里；日常回归 = 构建 0 警 + 真机点一遍相关路径
 
 ## CI
 
-- `build.yml`：push/PR 到 `master` → `dotnet build -c Release`
-- `release.yml`：打 `v*` tag → 自包含发布 zip 上传到 GitHub Release
+- `build.yml`：push / PR 到 `master`（`windows-latest` + .NET 10.0.x）→ `dotnet restore` → `dotnet build -c Release --no-restore`，只验证不产出
+- `release.yml`：push `v*` tag → `dotnet publish LTools.csproj … -o publish` → 打包 `LTools-<tag>-win-x64.zip` 上传到该 tag 的 GitHub Release（`generate_release_notes` 自动取 commits）。发版靠打 tag，别手工传 zip
+
+## 协作
+
+- **提交前先给改动清单 + 提交信息，等用户批准**；`git push` 与打 tag / 发版各自还要单独批准。
 
 ## 架构
 
@@ -44,7 +47,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - `Features/Builtin/` — **内置功能目录**（`FeatureCatalog`：常用功能 `common.*` + LTools 功能 `ltools.*`）：不是步骤单元、不进动作编辑器左栏，只放在面板 / 快捷键 / 悬浮里。常用功能含系统类入口与**光标移动 / 文本选择 / 删除与撤销**这组预设按键（`common.key.*` / `common.select.*` / `common.edit.*`，一次模拟按键）。`FeatureDef` 声明参数（文本 / 数字 / 下拉 / 区域），`FeatureRef` 编解码 `id#key=value&…`（存进现有字符串字段，**不升 schema**；动作 Id 永远不带 `#`），`FeatureRunner` 后台执行、失败常驻 toast，`BindingRef` 是面板 / 快捷键 / 悬浮显示名与存活判断的唯一入口。**功能 Id 就是唯一身份，没有别名表**：改名就全链路改（`FeatureCatalog.Defs` + 老配置里的引用），别为旧 Id 留 `Aliases`。新增一条功能只在 `FeatureCatalog.Defs` 加一行；**别再为它新建步骤单元，也别在 UI 里另写一套名称 / 图标查找**
   - 键鼠宏：`MacroAction`（宏 ↔ 动作的唯一桥梁：识别 / 挂成动作 / 放进面板）/ `MacroRecorder`（录制）/ `MacroPlayer`（回放）/ `MacroStore`（`macros/*.json` 事件 + `Macros.Items` 元数据）/ `MacroSettings`（热键与全局参数）/ `MacroHotkey`（录制 / 回放期间的系统热键）/ `HotkeyCapture`（录制式热键录入）；界面是 `Views/Controls/MacroView`（设置 →「键鼠宏」）+ 动作编辑器的宏横幅
 - `Features/Units/` — 功能单元（`<实现领域>/<XxxUnit>.cs`，**一个单元一个文件**；共用的静态小工具如 `FileText` / `Crc32` 放同目录），注册统一在 `BuiltInUnits.RegisterAll`，新增单元只加一行。**目录按实现领域分（Text / Files / Screen…），编辑器里的分类是 `UnitSpec.Category`**，两者不必一致（如剪贴板的实现散在 Text / Files，界面上统一在「剪贴板」）；分类顺序只在 `Core/Actions/UnitCategories` 里定，左栏与「内联取值」下拉共用
-- `Views/` — WPF 窗体（XAML + code-behind）；`Views/Controls/` 为共用控件（`TitleBar`、`ActionKindSwitch` 等）
+- `Views/` — WPF 窗体（XAML + code-behind）；`Views/Controls/` 为共用控件（`TitleBar`、`MenuFx`、`ComboBoxAssist`、`TileDragSort` 等）
 - `Themes/Modern.xaml` — ResourceDictionary 配色与控件样式
 - `Config/` — AppConfig（JSON 模型）、ConfigBundle（分域读写）、DomainStores（按域写）、ConfigFiles（域文件形状）
 
@@ -81,7 +84,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - **全局子动作只有一条路（`Core/Actions/SubActionStore.cs`）**：`subactions/<id>.json`，**一个子动作一个文件、文件名就是 id**——没有动作内子动作（`ActionProgram.SubActions` 已删）、没有嵌套、没有别名。`Load(id)` 是唯一解析入口（进程内索引缓存；本类之外改了 `subactions/`（导入备份、资源管理器改文件）要 `Invalidate()`），`Save` 先写 `.tmp` 再替换，坏文件改名成 `*.json.bad-时间戳`（留 3 份）并由 `BrokenFiles()` 提示。参数名 = 输入变量名、输出按 `out` 映射写回；`flow.return` 只用于子动作（结束它，已赋值的输出照常带回），`break` / `continue` 不许穿透到调用方（转成明确错误）。删除前列引用（`FindReferences` / `ReferenceIndex`，按「动作名 · 步骤标签」）；**备份的 `subactions` 域与资源回收（`ImageLibrary` / `MacroStore`）都要带上全局子动作**，别只扫动作。试运行走 `Features/SubActionRunner`（摊平成 `ActionProgram` 复用 `AutomationRunner.TryRunProgram`），输入值由 `Views/SubActionInputDialog` 收集。
   - **互转（`Core/Actions/SubActionTransfer.cs`）**：子动作 ↔ 动作两边同构（变量表 + 步骤），变量方向**一律归 `local`**（自动猜输入 / 输出只会猜错，让用户在编辑器里改），只搬变量与步骤、不搬 id 与图片。入口：子动作库右键「另存为动作…」（`PanelActionOps.ToAction`）、面板与动作管理磁贴右键「另存为子动作…」（`PanelActionOps.ToSubAction`）；两边都先开对应编辑器让用户确认名称 / 标方向，确定后才落盘。
   - **AI 写子动作**：`ltools_subactions_check / write / delete`（与 promote / delete 同一套两道闸 `RequireWrites` + `RequireConfirm`）。写前跑 `ActionValidator.ValidateSubAction`（有 error 直接拒），`expectedRevision` 可选、= `SubActionStore.Revision(id)`（文件内容 sha256）做 CAS。**校验规则别只写在动作那边**：`flow.return` 出现在动作 / 草稿里是 error（只能用在子动作里），子动作的输出变量没人赋值是 warning，自调用成环要按「正在写的这一份」算（`FindCallCycle` 可注入 resolver），否则没落盘的自调用查不出来。
-- **备份是「目录白名单 + manifest 声明」**（`Core/BackupService.cs` 的 `BackupDomain` 表）：导出内容、体积估算（`EstimateSize`）与 manifest 的 `includes` 同源，`cache/` `ai/` `logs/` `trash/` 这类运行数据永不进包；**新增要备份的目录只加一行**，别再散写判断。导出先写 `.part-*` 再替换，失败不留半个 zip。**导出单个动作**走 `ExportAction`（`.ltact` = `manifest.json` + `action.json` + `files/`），入口是 `PanelActionOps.Export`（面板磁贴 / 动作管理磁贴右键「导出动作…」）；`.ltact` 不是完整备份，`Inspect` 会按格式标识拒绝它
+- **备份是「目录白名单 + manifest 声明」**（`Core/BackupService.cs` 的 `BackupDomain` 表）：导出内容、体积估算（`EstimateSize`）与 manifest 的 `includes` 同源，`cache/` `ai/` `logs/` `trash/` 这类运行数据永不进包；**新增要备份的目录只加一行**，别再散写判断。`configs/` 无条件带上，`actions/` / `subactions/` / `state/` / `macros/` / `staging/` 目录存在就带上，全部**不受导出页勾选框控制**；**只有 `resources/` 与 `速记/` 是可选的**。导入按 `includes` 整体替换（不是只替换勾选项）。导出先写 `.part-*` 再替换，失败不留半个 zip。**导出单个动作**走 `ExportAction`（`.ltact` = `manifest.json` + `action.json` + `files/`），入口是 `PanelActionOps.Export`（面板磁贴 / 动作管理磁贴右键「导出动作…」）；`.ltact` 不是完整备份，`Inspect` 会按格式标识拒绝它
 
 ## WPF 约定
 
@@ -111,7 +114,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - **动作编辑器的宏横幅（`Views/ActionEditor/ActionEditorWindow.Macro.cs` + XAML `MacroPanel`）**：`ReloadRows` 末尾按 `MacroAction.MacroIdOf(_program)` 决定显示，写明宏名 / 时长 / 事件数，给「● 重新录制…」与「键鼠宏设置」两个入口。重录沿用同一个宏 Id（`MacroRecorder.StartInto`），面板 / 快捷键上的引用不用重建；`MacroSaved` 回来后 `ReloadRows()` 刷一次摘要。关窗时若还在重录（窗口是藏起来的），先 `MacroRecorder.Stop(force: true)` 再关，别留下无界面的录制。
 - **面板空白拖动 + 右键菜单（`Views/SuperPanel.xaml.cs`）**：照 Quicker——左键在空白处（不在磁贴 / 按钮 / 输入框 / 滚动条 / 分割条上）按下并移动 >4px 就 `DragMove()`；中键点空白关闭面板。右键统一走 `ContextMenuOpening` 兜底：空白 / 分组 → 区菜单或分组菜单（新建动作、新建分组、重命名 / 删除分组、管理场景、钉住、设置、关闭），场景标签 → 编辑 / 新建 / 删除场景，标题栏 / 左栏 → 面板菜单。**有自己菜单的控件（磁贴、场景标签、分组导航条）继续挂 `ContextMenu`**，`FindContextMenuOwner` 保证不抢它们的菜单；新增空白区域时只改窗口兜底，别再给每个容器重复挂菜单。分组改名在面板内就地完成（`BeginRenameGroup`：Enter 保存 / Esc 取消 / 失焦保存）
 - **桌面悬浮（`Features/Floating/*` + `Views/FloatWindow.xaml(.cs)`，规格见 `docs/FLOATING.md`）**：悬浮项 = **成员列表**——单成员是单按钮、多成员是分组，所以成组只是往成员里加、拆组只是拆成员（`FloatingLibrary` 的 `FloatAction` / `FloatGroup` / `Merge` / `Split` / `SplitMember`），别再为「分组」另写一套窗口或布局。**一个动作只允许一个悬浮实例**（`Normalize` 按动作 Id 去重）。**悬浮项无状态**（照 Quicker）：只在内存 `FloatingLibrary.Items`，**不写 `LTools.json`、启动不恢复**；落盘的只有 `Floating.Preferences`（`SavePreferences`），别再引入 `SaveSoon` / `Flush` / `Items` 持久化，也别加「启动时恢复」勾选。删除动作时 `ConfigStore.RemoveAction → FloatingManager.RefreshAll → CollectGarbage` 仍要即时摘掉失效成员（与宏文件 / 模板截图同一套按引用回收）。按钮是**统一正方形 = 图标 + 底下动作名**（照 Quicker）：边长 `size + LabelHeight(18)`（44 → 62），**名称不参与量宽**、超宽 `TextTrimming` 截断 + ToolTip（按名称量宽会让短名扁、长名宽，用户实测「只有第一个正常」）；**窗口尺寸只算一处**（`FloatWindow.MemberSide` / `MeasureItem` / `Footprint`），管理器定位、`Split` 落点与冒烟都调它；`Vertical` 只影响排列方向（横排 146×82 / 竖排 82×146），单按钮忽略。`Chrome` 必须含**卡片边框 1×2**（阴影 6×2 + 内边距 3×2 + 边框 1×2 = 20），漏了内容正好把窗口撑满、右边框和下边框被 `UseLayoutRounding` 舍掉（截图上是右下角圆角消失）。悬浮项**全局常驻**，不做绑定进程 / 前台轮询（用户明确不要）。**悬浮项永远显示在超级面板前面**（照 Quicker）：两边都是 `Topmost`，同一层里谁最后 `SetWindowPos` 谁在前，面板一显示 / 一激活就会盖住悬浮按钮，所以 `SuperPanel.Show`、面板的 `Activated`（含录制后 `RestoreAfterRecording`）、面板 `PreviewMouseDown`（点一下会把面板提到最前，哪怕它已经是活动窗口，这时没有 `Activated`）、面板菜单 `Closed` 都调 `FloatingManager.RaiseAllAbove()` 把悬浮项顶回去（`FloatWindow.RaiseToTop` = `SetWindowPos(HWND_TOPMOST, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE)`，不抢焦点）。**悬浮窗右键菜单的「点外部关闭」只能走 `MouseHook` 的坐标判定**（`FloatingManager.IsMenuOpen` / `MenuContains` / `CloseMenuIfOutside`）：悬浮窗永远不是前台窗口，popup 拿不到「窗口之外」的有效捕获，WPF 自带的点外关闭在它身上一条鼠标消息都收不到。**悬浮窗绝对不能抢焦点**：`WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW` + `ShowActivated=False`（`SourceInitialized` 里补 ex-style），否则点一下按钮前台就变成悬浮窗自己、随后注入的键鼠全打在自己身上；点击只 `ActionExecutor.Run` 投递到后台线程，UI 线程不许阻塞。拖动必须**先置 `_dragging` 再 `Mouse.Capture(null)`**（释放捕获会同步派发挂起的 `MouseMove`，会重复进拖动）；按钮挂 `Preview*`、卡片底板挂**冒泡**事件（用 Preview 会把按钮的点击吞掉）。右键菜单每次现建、旧的先关（连点会堆出多个 popup，每个都挂着自己的 capture，点哪个都没反应），窗口 `Closed` / 隐藏时要一起关掉；**靠近就合并成分组**（`FindMergeTarget`：矩形最短间距 ≤ `Prefs.SnapDistance`，或重叠 > 被拖项一半），新项落点走 `DefaultPosition`：**鼠标指针处、窗口左上角 = 指针 − 40 DIP**（照 Quicker 的 `GetTopLeftScreenPositionBasedOnMouseAndVisualOffset`，`GetCursorPos` 按该显示器 DPI 换 DIP），被占就按格子右移 / 下移错开，**不做一建出来就合并**；从面板悬浮后面板**不关**（照 Quicker，`ToggleFloat` / `FloatGroupToDesktop` 别加 `Close()`）。菜单卡片 `MenuCard` **不要加 `DropShadowEffect`**（hover 变色会让整卡重做模糊，实测 5.1ms/帧 vs 1.7ms/帧，菜单跟手变慢），层次感用 1px `BorderStrongBrush` 描边。**拖动吸附按窗口中心所在显示器的 `rcWork`**（`FloatingManager.SnapToEdges`：`GetWindowRect` + `MonitorFromPoint` / `GetMonitorInfo` 全用物理像素，再按 `VisualTreeHelper.GetDpi(window)` 换成窗口自己的 DIP；多屏时中间那条边界也算边，`rcWork` 天然避开任务栏），阈值是独立常量 `EdgeSnapDistance = 24`（合并仍用 `Prefs.SnapDistance`）；**距离取有符号值**——越过边缘（拖出屏幕）算 0 距离、一律吸回来（只比绝对值的话把按钮推出屏幕就再也吸不上，用户报过）；贴边时让出 `CardInset = FloatWindow.Shadow`（6 DIP 透明阴影）——左边 / 上边把窗口往屏幕外让，右边 / 下边往屏幕里让，**贴住屏幕的必须是可见卡片**，只让阴影贴边看起来就是「没吸住」（用户报过）。只在松手时吸，不做拖动中磁吸
-- **`Themes/Modern.xaml` 的 `MenuItem` 模板必须保留 `PART_Popup`**：它被简化成只有一个 `Border + ContentPresenter` 时，WPF 只能把 `IsSubmenuOpen` 置 true，**子菜单永远不显示**——全应用所有带子菜单的菜单项（悬浮窗的「运行 / 按钮大小 / 不透明度」、面板与托盘菜单）都变成「点了没反应」，`IsCheckable` 也没有任何勾选视觉。模板里三样缺一不可：`PART_Popup`（`IsOpen` 用 `{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}` 双向绑定）、勾选列（`IsChecked` → ✓）、箭头列（`HasItems` → ›）。另外 WPF 的父项**默认只在悬停时展开子菜单**，点一下毫无反应，所以代码里建子菜单父项一律走 `Views/Controls/MenuFx.cs` 的 `MenuFx.Submenu()` `Click → IsSubmenuOpen = true`，**并在 `MouseEnter` 里直接展开**（`HoverOpenMs = 0`；WPF 走系统菜单延迟 `SPI_GETMENUSHOWDELAY`，默认 400ms，滑过去要等半秒。想留一点「扫过父项不闪开」的容错就把常量调到 60~100，走同一个旋钮）；改菜单项外观时先跑一遍 `floating-smoke`（它有一条断言直接查 `PART_Popup` + 真实鼠标点击子项 + 悬停后必须已经展开）。**收起也要自己管**（`MenuFx` 里的 `CollapseIfPointerOutside`）：WPF 对「子菜单已展开」的项把「离开→撤高亮 + 收子菜单」挂在 `MenuShowDelay`（默认 400ms）计时器上，指针直接移出**整个菜单**时连计时器都不起（高亮和子菜单一直挂着）。所以按坐标判断指针还在不在「父项 + 自己的子菜单」里（子菜单是独立 popup，`IsMouseOver` 覆盖不到，用 `Mouse.GetPosition` 算），不在就立刻 `IsSubmenuOpen = false` 并补发一次 `MouseLeave` 让 WPF 立刻撤销 `IsSelected`；`HoverPhase` 有四条真实鼠标断言守着（移出整个菜单那条修好前是红的）
+- **`Themes/Modern.xaml` 的 `MenuItem` 模板必须保留 `PART_Popup`**：它被简化成只有一个 `Border + ContentPresenter` 时，WPF 只能把 `IsSubmenuOpen` 置 true，**子菜单永远不显示**——全应用所有带子菜单的菜单项（悬浮窗的「运行 / 按钮大小 / 不透明度」、面板与托盘菜单）都变成「点了没反应」，`IsCheckable` 也没有任何勾选视觉。模板里三样缺一不可：`PART_Popup`（`IsOpen` 用 `{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}` 双向绑定）、勾选列（`IsChecked` → ✓）、箭头列（`HasItems` → ›）。另外 WPF 的父项**默认只在悬停时展开子菜单**，点一下毫无反应，所以代码里建子菜单父项一律走 `Views/Controls/MenuFx.cs` 的 `MenuFx.Submenu()`（挂 `Click → IsSubmenuOpen = true`），**并在 `MouseEnter` 里直接展开**（`HoverOpenMs = 0`；WPF 走系统菜单延迟 `SPI_GETMENUSHOWDELAY`，默认 400ms，滑过去要等半秒。想留一点「扫过父项不闪开」的容错就把常量调到 60~100，走同一个旋钮）；改菜单项外观时先跑一遍 `floating-smoke`（它有一条断言直接查 `PART_Popup` + 真实鼠标点击子项 + 悬停后必须已经展开）。**收起也要自己管**（`MenuFx` 里的 `CollapseIfPointerOutside`）：WPF 对「子菜单已展开」的项把「离开→撤高亮 + 收子菜单」挂在 `MenuShowDelay`（默认 400ms）计时器上，指针直接移出**整个菜单**时连计时器都不起（高亮和子菜单一直挂着）。所以按坐标判断指针还在不在「父项 + 自己的子菜单」里（子菜单是独立 popup，`IsMouseOver` 覆盖不到，用 `Mouse.GetPosition` 算），不在就立刻 `IsSubmenuOpen = false` 并补发一次 `MouseLeave` 让 WPF 立刻撤销 `IsSelected`；`HoverPhase` 有四条真实鼠标断言守着（移出整个菜单那条修好前是红的）
 - **面板上下文取「按下时鼠标下的窗口」并先把它激活（`Hooks/MouseHook.cs` + `Features/SuperPanel.cs` + `Native/Win32.cs`）**：右键**不会自动激活后台窗口**，所以前台可能还停在别的程序上——典型场景是全屏播放器在后面、资源管理器在前面（前台），在播放器露出的区域长按右键，Quicker 会把**播放器**激活并显示它的上下文（此时 `GetForegroundWindow()` 给的是资源管理器）。做法：长按手势在 `WmRbuttondown` 那一刻用 `Win32.TopLevelWindowAtCursor()`（`WindowFromPoint` + `GetAncestor(GA_ROOT)`）记下句柄；`SuperPanel.Show(hwnd)` 先 `WindowAction.ActivateNoWait(hwnd)` 激活目标（面板关掉后焦点回到它、后续动作也作用在它身上），再按它解析场景。要点：①短按不走这条路径（注入的原生右键本来就会激活）；②键盘入口（CapsLock+T）传 `IntPtr.Zero`，仍用前台窗口（光标可能停在无关窗口上）；③桌面 / 任务栏（`Progman` / `WorkerW` / `Shell_TrayWnd`…）只当上下文、不激活（`ForegroundApp.IsShellWindow`）；④激活目标后前台锁可能让面板抢不回前台，`Show` 末尾要再用 `ActivateNoWait(面板句柄)` 兜底一次；⑤`ActivateNoWait` **不等待**（`Thread.Sleep` 会卡住 UI / 钩子），不要换成 `WindowAction.Activate` 那套轮询版
 - **分组导航（`Views/SuperPanel.xaml.cs` 的 `FillZone` / `ScrollToGroup` / `UpdateZonePad` / `SyncRail`）**：面板每个区的分组是**从上到下连续平铺**的，左缘那一列小横条**只是滚动锚点**（照 Quicker）：悬停某一条就把那个分组的**标题滚到视图顶部**，不切页、不重建、不写盘；高亮由 `SyncRail` 按「视口顶部所在分组」同步（滚到底算最后一个）。导航条末尾「＋」新建分组。四个坑：①导航条重建后光标可能正好落在新条目上（点「＋」时整列下移），MouseEnter 会在 250ms 内被忽略；②内容装得下时**最后一个分组本来滚不到顶部**（`ScrollableHeight` 不够），所以 `FillZone` 在每个区末尾塞一块 `Border` 留白（`UpdateZonePad`：留白 = 视口高 − 最后一块高），单分组 / 搜索时高度归零，否则会平白多一条滚动条；③刚新建的分组还没量好高度时 `ScrollableHeight` 是 0，滚动目标会被夹成 0，只能**重试一次**（50ms 定时器）；**绝对不要用 `BeginInvoke` 把自己排回队列**——内容一直装得下（不可滚动）时会在 Loaded 优先级无限自我排队，消息泵再也空闲不下来，表现就是「悬停锚点 UI 直接卡死」；④留白高度依赖布局结果，`ScrollToGroup` 在读数前**再算一次**，窗口尺寸变化（`SizeChanged`）也重算。**搜索时导航条隐藏**（筛选后分组位置会变，锚点没有意义）
 - **拖动排序统一规格（`Views/Controls/TileDragSort.cs` + `DragFx.cs` / `DragVisuals.cs`）**：4px 起拖阈值、源位置虚线占位、幽灵跟随、实时插入、220ms 让位、Esc 取消；面板磁贴与面板管理磁贴都走这套，别再各写一份（动作编辑器的步骤列表是重建的扁平行，另有轻量实现：幽灵 + 插入线，松手才提交）。两条踩过的坑：①`Window.ReleaseMouseCapture()` 会**同步派发挂起的 MouseMove** → 清理状态必须放在释放捕获**之前**，提交 / 结束要有 `_finishing` 重入保护，否则一次松手会提交两次（把后面的磁贴也挪走）；②磁贴幽灵**不要用 `RenderTargetBitmap` 快照**（个别环境会得到空白图），由 `TileGhostBody` 用 `TileContent` 现建同款内容
@@ -170,11 +173,12 @@ dotnet publish -c Release -r win-x64 --self-contained true -o publish
 - **暂存区在面板左栏，不在设置里**（`Views/Controls/StashPane.xaml(.cs)` + `Views/SuperPanel.xaml(.cs)`）：左栏第二个图标 = 暂存区页（第一个是动作面板），卡片 = 草稿（`DraftStore.List()`）；**单击卡片直接运行**（照 Quicker，编辑在右键「在编辑器中打开」），右键还给试运行 / 采纳为新动作 / 覆盖原动作 / 删除，页头「更多」与空白右键给刷新 / 打开目录 / 清空暂存区 / AI 接入设置。**要弹模态框的操作一律先 `Features.SuperPanel.Close()`**——隐藏的 Topmost 面板会让模态框闪黑，而且面板仍算「已打开」会拦住长按右键手势；采纳（新建）不弹确认、面板不关，失败用常驻 toast 而非 MessageBox。页面可见时 1 秒轮询，签名必须含 `program.json` / `files` 的写入时间（agent 用自己的 fs 工具改文件时 `draft.json` 不变）。设置页「AI 接入」是二级下拉 2 页（连接〔含「给 AI 的说明」与知识包〕/ 审计；`AiView` 里 2 个同层 `ScrollViewer` + `ShowPage("connect" | "audit")`，切页只切可见性；`ConfigHelper.OpenAi()` 进来停在 `CurrentPage`，暂存区页已删，草稿只在面板左栏）；「动作管理」顶部 `暂存区（N）` 走 `SuperPanel.ShowStash()`。
 - **`McpServer.Stop()` 绝不能在调用线程上等关停**（`Core/Ai/McpServer.cs`）：`StopAsync` / `DisposeAsync` 内部有 `await`，UI 线程上 `GetAwaiter().GetResult()` 会让续体排在 Dispatcher 里等一个被阻塞的线程 —— 开着 MCP 服务从托盘「退出 LTools」会永久卡死、托盘菜单点不动（实测）。`Stop()` 只把关停排到后台任务（`_stopTask` 链），退出不等它（进程结束即释放端口）；`Apply()` 由后台线程调，先有界等待旧实例真正释放端口再启新实例。
 - **「给 AI 的说明」是一句提示词，HTTP / stdio 两份**（`Views/Controls/AiView.xaml(.cs)` 的 `BuildPrompt`，与连接设置同页，卡片右上「方式」下拉切换）：HTTP 版给地址 `http://127.0.0.1:<端口>/mcp`（Streamable HTTP / 无状态）+ 令牌 `Authorization: Bearer`（另给 `X-LTools-Token` / `?token=` 备选）；stdio 版给命令 `"<exe>" --mcp-stdio`（command / args，桥自己读本机令牌，不需要 URL 与 Bearer）。两版都只说「先 `ltools_health`、写动作前读 `format` / `units_list`、写完去面板采纳」。**别再往里塞客户端 JSON 或逐条工作清单**——JSON 归「复制配置」按钮（`ClientConfigJson`，下拉最后一项「stdio（命令行）」只给一行命令），细节归知识包。改端口 / 重置令牌要重算；`隐藏令牌` 只把令牌换成 `<令牌>`（stdio 版没有令牌，切过去时置灰）。
+- **知识包 `ai/knowledge/units.md` 由 `Core/Ai/KnowledgePack.cs` 自动生成**：版本串 `程序集版本 | 单元数 | BuildUnitsMarkdown() 正文的 SHA-256`，单元参数 / 说明 / 选项任何一处变了都会重写；改 `UnitSpec` 后别手工改 `units.md`，启动 `Ensure()` 会刷。只哈希「键 + 分类」会让参数重构后的知识包停在旧内容，agent 照旧参数写步骤会全失败。
 - **验收路径**：`ltools_health` → `units_list/get` → `staging_create/write/check/save/run` → `promote`；面板暂存区卡片按 `program.json` / `files` 的写入时间自动刷新（agent 直接改文件也能看到），不用手点刷新。
 
 ## 其他
 
-- `速记/`（速记文件）、`logs/`、`cache/`、`trash/` 运行时生成，已 gitignore
+- 源码 UTF-8 **无 BOM**；仓库没有 `.gitattributes` / `.editorconfig`，git 里存的是 LF，工作区是 CRLF 还是 LF 都不影响提交（`git ls-files --eol` 的提示不必手工改回）。数据根（dev = 仓库根）下的 `configs/` `actions/` `subactions/` `staging/` `state/` `速记/` `macros/` `logs/` `cache/` `trash/` `ai/` 都是运行时数据，已 gitignore
 - UIA 走 `FlaUI.UIA3`（托管包）：.NET Core 的 MSBuild 不支持 `COMReference`/`ResolveComReference`，不要再加 `UIAutomationClient` 的 COM 引用
 - `app.manifest`：`requireAdministrator` + 声明 Win10/11 兼容 + `PerMonitorV2` DPI 感知
 - **DPI 感知双轨**：Release 由 `app.manifest` 在进程创建时设 PerMonitorV2；Debug 用 `-p:NoWin32Manifest=true` 剥了清单（免 UAC），改由 `Core/DpiInitializer.cs` 的 `[ModuleInitializer]` 在 Main 前、WPF 加载前 `SetProcessDpiAwarenessContext(-4)` 补设。修「全屏游戏切分辨率后托盘右键菜单错位」。

@@ -15,7 +15,7 @@ namespace LTools.Core.Ai;
 ///   format.md   动作 JSON 格式与工作流（手写，稳定）
 ///   units.md    从 StepRegistry 自动生成的单元目录
 ///   examples.md 3 个完整示例（手写）
-///   .version    生成版本（程序集版本 + 单元「键 / 分类」哈希），变了才重写 units.md
+///   .version    生成版本（程序集版本 + 单元数 + units.md 正文哈希），变了才重写 units.md
 /// </code>
 /// </para>
 /// <para>
