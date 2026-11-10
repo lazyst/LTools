@@ -51,7 +51,6 @@ public partial class ConfigHelperWindow : Window
         [FamilyAi] = "connect",
     };
     private bool _backupBusy;            // 备份 / 导入进行中，禁用重复点击
-    private bool _loadingLog;            // 日志页控件回填期间抑制保存事件
     private bool _loadingRunNotice;      // 通用页「运行提示」回填期间抑制保存事件
 
     public ConfigHelperWindow(string configPath)
@@ -787,127 +786,6 @@ public partial class ConfigHelperWindow : Window
                 _ => ToastPosition.bottomRight,
             };
         });
-    }
-
-    // ============ 运行日志 ============
-
-    /// <summary>把配置里的日志设置回填到控件（回填期间不触发保存）。</summary>
-    private void PopulateLogging()
-    {
-        var log = ConfigStore.LoadConfig().Logging ?? new LogConfig();
-
-        _loadingLog = true;
-        LogEnabledBox.IsChecked = log.Enabled;
-        LogLevelCombo.SelectedIndex = log.Level switch
-        {
-            LogLevel.error => 0,
-            LogLevel.debug => 2,
-            _ => 1,
-        };
-        LogRetentionCombo.SelectedIndex = log.RetentionDays switch
-        {
-            3 => 0,
-            7 => 1,
-            14 => 2,
-            30 => 3,
-            0 => 4,
-            _ => 2,
-        };
-        _loadingLog = false;
-        RefreshLogPage(log);
-    }
-
-    private void LogOption_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_loadingLog) return;
-
-        var cfg = new LogConfig
-        {
-            Enabled = LogEnabledBox.IsChecked == true,
-            Level = LogLevelCombo.SelectedIndex switch
-            {
-                0 => LogLevel.error,
-                2 => LogLevel.debug,
-                _ => LogLevel.info,
-            },
-            RetentionDays = LogRetentionCombo.SelectedIndex switch
-            {
-                0 => 3,
-                1 => 7,
-                2 => 14,
-                3 => 30,
-                _ => 0,
-            },
-        };
-
-        SettingsStore.Modify(ConfigPath, s => s.Logging = cfg);
-        AppLog.Configure(cfg.Enabled, cfg.Level, cfg.RetentionDays);
-        if (cfg.Enabled)
-            AppLog.Info("Settings", $"日志已更新：级别={cfg.Level}，保留={cfg.RetentionDays} 天");
-        RefreshLogPage(cfg);
-        ShowStatus(cfg.Enabled ? "日志设置已保存" : "运行日志已关闭", ok: true);
-    }
-
-    private void RefreshLogPage(LogConfig log)
-    {
-        string dir = AppPaths.LogsDir;
-        LogPathText.Text = "文件夹：" + dir
-                           + "\n今天的日志：" + Path.Combine(dir, $"ltools-{DateTime.Now:yyyyMMdd}.log");
-        string level = log.Level switch
-        {
-            LogLevel.error => "仅错误",
-            LogLevel.debug => "详细（含变量值）",
-            _ => "常规",
-        };
-        string keep = log.RetentionDays > 0 ? $"{log.RetentionDays} 天" : "不自动清理";
-        LogStatusText.Text = log.Enabled
-            ? $"当前：已启用 · 级别 {level} · 保留 {keep}"
-            : "当前：已关闭，不会写入新的日志（已有文件保留）。";
-        LogLevelHint.Text = log.Level == LogLevel.debug
-            ? "详细级别会记录每一步的执行细节与取值结果，可能包含剪贴板 / 选中文本等敏感内容；只在本机 logs 文件夹里。"
-            : "常规级别记录动作与流程的执行、设置变更和异常，不记录文本正文；排查具体某一步时再临时改用「详细」。";
-    }
-
-    private void OpenLogFolder_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            Directory.CreateDirectory(AppPaths.LogsDir);
-            Process.Start(new ProcessStartInfo("explorer.exe", AppPaths.LogsDir) { UseShellExecute = true });
-            ShowStatus("已打开日志文件夹", ok: true);
-        }
-        catch (Exception ex)
-        {
-            ConfirmDialog.Info(this, "运行日志", "打开日志文件夹失败：" + ex.Message);
-        }
-    }
-
-    private void OpenTodayLog_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            Directory.CreateDirectory(AppPaths.LogsDir);
-            string file = Path.Combine(AppPaths.LogsDir, $"ltools-{DateTime.Now:yyyyMMdd}.log");
-            if (!File.Exists(file)) File.WriteAllText(file, "");
-            Process.Start(new ProcessStartInfo(file) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            ConfirmDialog.Info(this, "运行日志", "打开日志文件失败：" + ex.Message);
-        }
-    }
-
-    private void CopyLogPath_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            Clipboard.SetText(AppPaths.LogsDir);
-            ShowStatus("日志文件夹路径已复制", ok: true);
-        }
-        catch (Exception ex)
-        {
-            ConfirmDialog.Info(this, "运行日志", "复制失败：" + ex.Message);
-        }
     }
 
     // ============ 备份 / 恢复 ============

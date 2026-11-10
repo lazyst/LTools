@@ -35,8 +35,9 @@ public enum LogLevel
 /// 也方便开发时复现问题。
 /// </para>
 /// <para>
-/// <b>不阻塞</b>：写入走后台线程 + 无界队列，调用方只做一次入队；钩子回调路径上可以安全调用。
-/// 文件按天分，启动时按保留天数清理旧文件。日志只落在本机，不上传。
+/// <b>不阻塞</b>：写入走后台线程 + 有界队列（2 万行，满了丢新行并记数），调用方只做一次入队；
+/// 钩子回调路径上可以安全调用。文件按天分、单文件 20 MB 滚动，启动时按保留天数清理旧文件。
+/// 日志只落在本机，不上传。
 /// </para>
 /// <para>
 /// 详细级别（debug）会记录变量值 / 取值结果，可能包含剪贴板或选中文本等内容；
@@ -45,7 +46,15 @@ public enum LogLevel
 /// </remarks>
 internal static class AppLog
 {
-    private static readonly BlockingCollection<string> Queue = new(new ConcurrentQueue<string>());
+    /// <summary>
+    /// 队列上限（行）。日志是异步写的，磁盘慢 / 被占用时队列会涨；不设上限等于把内存交给
+    /// 「一个在循环里狂写日志的动作」。满了丢新行并记数，队列追平后补一行说明丢了多少。
+    /// </summary>
+    private const int MaxQueueLines = 20_000;
+
+    private static readonly BlockingCollection<string> Queue =
+        new(new ConcurrentQueue<string>(), MaxQueueLines);
+
     private static readonly object Gate = new();
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
@@ -56,6 +65,12 @@ internal static class AppLog
     private static string _directory = "";
     private static int _closed;
 
+    /// <summary>队列满时丢弃的行数（写线程追平后一次性报出来）。</summary>
+    private static long _dropped;
+
+    /// <summary>当前这次运行的短 id（<c>run-3f2a</c>）；不在运行期为空串。</summary>
+    private static volatile string _runId = "";
+
     /// <summary>日志是否启用。</summary>
     public static bool Enabled => _enabled;
 
@@ -64,6 +79,9 @@ internal static class AppLog
 
     /// <summary>日志目录（数据根下的 logs）。</summary>
     public static string Directory => _directory;
+
+    /// <summary>当前运行的 id（没在跑动作为 null）；失败报告按它过滤日志行。</summary>
+    public static string? CurrentRunId => _runId.Length == 0 ? null : _runId;
 
     /// <summary>今天对应的日志文件路径（未启用时也返回路径，便于设置页展示）。</summary>
     public static string CurrentFile => string.IsNullOrEmpty(_directory)
@@ -94,6 +112,27 @@ internal static class AppLog
     public static void Error(string source, string message) => Write(LogLevel.error, source, message, null);
     public static void Error(string source, string message, Exception ex) => Write(LogLevel.error, source, message, ex);
 
+    /// <summary>
+    /// 标记「从现在起属于这次运行」：之后写的每一行都带 <c>[run-xxxxxx]</c>。
+    /// 返回的对象释放时恢复上一层（没有就是清空），所以真实运行 / 试运行都写
+    /// <c>using var scope = AppLog.BeginRun(id);</c>。
+    /// </summary>
+    /// <remarks>
+    /// 用静态字段而不是 AsyncLocal：自动化同一时刻只允许跑一个（<c>AutomationRunner</c> 的互斥），
+    /// 而日志来自钩子、窗口、后台线程各处，用 AsyncLocal 反而会漏掉那些行。
+    /// </remarks>
+    public static IDisposable BeginRun(string runId)
+    {
+        string previous = _runId;
+        _runId = (runId ?? "").Trim();
+        return new RunScope(previous);
+    }
+
+    private sealed class RunScope(string previous) : IDisposable
+    {
+        public void Dispose() => _runId = previous;
+    }
+
     /// <summary>把队列写完并关闭后台线程（退出时调用，可重复调用）。</summary>
     public static void Shutdown()
     {
@@ -107,13 +146,13 @@ internal static class AppLog
     {
         if (!_enabled || (int)level > _level || Volatile.Read(ref _closed) != 0) return;
 
-        string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [{Tag(level)}] [{source}] {message}";
+        string run = _runId.Length > 0 ? $"[{_runId}] " : "";
+        string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {run}[{Tag(level)}] [{source}] {message}";
         if (ex != null)
             line += Environment.NewLine + ex;
 
-        try { Queue.Add(line); }
-        catch (InvalidOperationException) { /* 队列已关闭 */ }
-        catch { /* 日志自身永不抛出 */ }
+        // 队列满就丢新行并记数（写线程追平后补一行说明），绝不阻塞调用方——钩子路径也会调这里。
+        if (!Queue.TryAdd(line)) Interlocked.Increment(ref _dropped);
     }
 
     private static string Tag(LogLevel level) => level switch
@@ -123,6 +162,18 @@ internal static class AppLog
         LogLevel.info => "INFO ",
         _ => "DEBUG",
     };
+
+    /// <summary>
+    /// 等异步队列写完（最多 <paramref name="timeoutMs"/> 毫秒）。写失败报告前调一次，
+    /// 否则报告里「这次运行的相关日志」会落后最后几行。
+    /// </summary>
+    public static void Flush(int timeoutMs = 500)
+    {
+        if (!_enabled) return;
+        long deadline = Environment.TickCount64 + Math.Max(0, timeoutMs);
+        while (Queue.Count > 0 && Environment.TickCount64 < deadline)
+            Thread.Sleep(10);
+    }
 
     private static void EnsureWriter()
     {
@@ -159,7 +210,26 @@ internal static class AppLog
                         { AutoFlush = true };
                         day = today;
                     }
+
                     writer.WriteLine(line);
+
+                    // 队列满时丢过行：等追平了补一句，别让「日志少了」变成没人知道的谜。
+                    if (Volatile.Read(ref _dropped) > 0 && Queue.Count == 0)
+                    {
+                        long dropped = Interlocked.Exchange(ref _dropped, 0);
+                        if (dropped > 0)
+                            writer.WriteLine($"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [WARN ] [Log] " +
+                                             $"日志队列已满，丢弃 {dropped} 行（上限 {MaxQueueLines} 行）");
+                    }
+
+                    // 单文件到上限就滚动成 name.1.log（.2、.3 顺延），下一条会重开今天的文件。
+                    if (writer.BaseStream.Length >= LogFiles.MaxBytes)
+                    {
+                        string current = Path.Combine(_directory, FileName(DateTime.Now));
+                        writer.Dispose();
+                        writer = null;
+                        LogFiles.Roll(current);
+                    }
                 }
                 catch
                 {
@@ -175,17 +245,19 @@ internal static class AppLog
 
     private static string FileName(DateTime day) => $"ltools-{day:yyyyMMdd}.log";
 
-    /// <summary>删除超过保留天数的日志文件（后台线程执行）。</summary>
+    /// <summary>删除超过保留天数的日志文件（后台线程执行）。应用 / 动作 / 失败报告一起清。</summary>
     private static void Cleanup(int days)
     {
         try
         {
             if (string.IsNullOrEmpty(_directory) || !System.IO.Directory.Exists(_directory)) return;
             DateTime cutoff = DateTime.Now.Date.AddDays(-days);
-            foreach (string file in System.IO.Directory.EnumerateFiles(_directory, "ltools-*.log"))
+            foreach (string file in System.IO.Directory.EnumerateFiles(_directory, "*.log"))
             {
                 try
                 {
+                    // 只认 ltools-* / action-* / last-failure*（含滚动出来的 .1.log），用户自己放进 logs 的文件不动。
+                    if (!LogFiles.IsLogFile(Path.GetFileName(file))) continue;
                     if (File.GetLastWriteTime(file) < cutoff) File.Delete(file);
                 }
                 catch { /* 单个文件被占用时跳过 */ }

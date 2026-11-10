@@ -97,11 +97,16 @@ public sealed class LogUnit : IStepUnit
         };
 
         string[] lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        string run = AppLog.CurrentRunId is { Length: > 0 } id ? $"[{id}] " : "";
         var sb = new StringBuilder();
-        sb.Append(DateTime.Now.ToString("HH:mm:ss.fff")).Append(" [").Append(tag).Append("] [")
+        sb.Append(DateTime.Now.ToString("HH:mm:ss.fff")).Append(' ').Append(run)
+          .Append('[').Append(tag).Append("] [")
           .Append(source).Append("] ").AppendLine(lines[0]);
         for (int i = 1; i < lines.Length; i++)
             sb.Append("    ").AppendLine(lines[i]);
+
+        // 单个文件到上限就滚动（.1、.2 顺延），否则「循环里写日志」能把 logs 撑到几个 GB。
+        LogFiles.Roll(path);
 
         File.AppendAllText(path, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         return path;

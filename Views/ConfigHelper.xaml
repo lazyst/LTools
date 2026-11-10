@@ -478,6 +478,47 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="最近日志" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox Grid.Column="0" x:Name="LogPreviewLevelCombo" Width="104" MinHeight="30"
+                                              SelectedIndex="0"
+                                              ToolTip="只看某一级别" SelectionChanged="LogPreview_Changed">
+                                        <ComboBoxItem Content="全部"/>
+                                        <ComboBoxItem Content="错误"/>
+                                        <ComboBoxItem Content="警告"/>
+                                        <ComboBoxItem Content="信息"/>
+                                        <ComboBoxItem Content="调试"/>
+                                    </ComboBox>
+                                    <TextBox Grid.Column="1" x:Name="LogPreviewSearchBox" MinHeight="30" Margin="8,0"
+                                             ToolTip="按文本过滤（包含匹配，忽略大小写）"
+                                             TextChanged="LogPreview_Changed"/>
+                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="刷新"
+                                            MinWidth="60" Margin="0,0,8,0" Click="LogPreviewRefresh_Click"/>
+                                    <Button Grid.Column="3" Style="{StaticResource BtnGhost}" Content="打开失败报告"
+                                            MinWidth="104" Margin="0,0,8,0" Click="OpenFailureReport_Click"/>
+                                    <Button Grid.Column="4" Style="{StaticResource BtnGhost}" Content="复制诊断信息"
+                                            MinWidth="104" Click="CopyDiagnostics_Click"/>
+                                </Grid>
+                                <TextBox x:Name="LogPreviewBox" Margin="0,10,0,0" Height="260"
+                                         IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                         VerticalContentAlignment="Top"
+                                         FontFamily="Consolas" FontSize="{StaticResource FontSizeSecondary}"
+                                         ToolTip="今天的运行日志；只读，刷新看最新内容"/>
+                                <TextBlock x:Name="LogPreviewHint" Style="{StaticResource HintLabel}"
+                                           TextWrapping="Wrap" Margin="0,6,0,0"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
 

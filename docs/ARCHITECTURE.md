@@ -63,6 +63,16 @@ state/values.json    跨动作状态（「存状态 / 读状态」单元；随�
 staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 ```
 
+**`logs/` 里有什么**
+
+| 文件 | 谁写 | 说明 |
+| --- | --- | --- |
+| `ltools-yyyyMMdd.log` | `AppLog`（异步队列，上限 2 万行） | 应用日志，行首带 `[run-xxxxxx]`；单文件 20 MB 滚动成 `.1` / `.2` |
+| `action-yyyyMMdd.log` | 「输出日志」单元 | 用户自己写的日志（始终写），同样 20 MB 滚动 |
+| `last-failure.log`（+ `.1`…`.4`） | `FailureLog` | 最近 5 次失败的逐步轨迹 + 按 run id 过滤的日志；失败 toast 点开的就是它 |
+
+清理（按修改时间，天数来自 `configs/settings.json` 的 `Logging.RetentionDays`）、滚动、读尾巴、前缀判定都只在 `Core/LogFiles` 一处，只认 `ltools-*` / `action-*` / `last-failure*`。
+
 **属主表**
 
 | 文件 | 唯一写入者 | 读方 |

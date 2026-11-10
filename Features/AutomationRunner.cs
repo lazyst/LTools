@@ -30,6 +30,9 @@ namespace LTools.Features;
 /// </remarks>
 internal static class AutomationRunner
 {
+    /// <summary>失败报告里最多保留多少步轨迹（循环几千次的动作不该把报告撑爆）。</summary>
+    private const int MaxTraces = 5000;
+
     private static int _running;
     private static volatile CancellationTokenSource? _cts;   // Stop() 从钩子 / UI 线程读取
     private static bool _stopKeySwallowed;
@@ -112,7 +115,22 @@ internal static class AutomationRunner
         long started = Environment.TickCount64;
         int steps = 0;
 
+        // 每次运行一个短 id：行首带 [run-3f2a]，失败报告按它把「这次运行」的日志捞出来。
+        string runId = "run-" + Guid.NewGuid().ToString("N")[..6];
+        using var runScope = AppLog.BeginRun(runId);
+
+        // 轨迹始终收一份（编辑器试运行也会拿到同一份）：失败时写进 logs/last-failure.log，
+        // 否则「第 7 步为什么算出空值」只能开 debug 重跑，而很多场景根本重不了。
+        var traces = new List<StepTrace>(64);
+        void OnTrace(StepTrace t)
+        {
+            if (traces.Count < MaxTraces) traces.Add(t);
+            trace?.Invoke(t);
+        }
+
         AppLog.Info("Flow", $"开始执行「{name}」· 光标 ({cursorX},{cursorY})");
+
+        bool reported = false;
 
         try
         {
@@ -127,7 +145,7 @@ internal static class AutomationRunner
                 CursorX = cursorX,
                 CursorY = cursorY,
                 StartPath = startPath,
-                StepTrace = trace,
+                StepTrace = OnTrace,
                 ResourceRoot = resourceRoot,
                 Log = message => AppLog.Debug("Flow", message),
                 StepStarted = step =>
@@ -138,6 +156,13 @@ internal static class AutomationRunner
             };
 
             ActionRunResult result = new ActionEngine(StepRegistry.Default).Run(program, options);
+
+            // 先落报告再提示：失败 toast 点开的就是这份文件，别让人点了个还没写出来的路径。
+            if (!result.Completed && !result.Stopped)
+            {
+                FailureLog.Write(runId, name, result, traces);
+                reported = true;
+            }
 
             if (notify || noticeOverride != null) NotifyFinished(name, result, noticeOverride);
 
@@ -162,16 +187,25 @@ internal static class AutomationRunner
             if (ex.UserCancelled)
                 AppLog.Info("Flow", $"已停止「{name}」· {steps} 步");
             else
-                AppLog.Warn("Flow", $"中止「{name}」：{ex.Message} · {steps} 步");
+                // 失败用 Error：级别选「仅错误」的用户也得能看到动作失败，别让它只出现在 Warn 里。
+                AppLog.Error("Flow", $"中止「{name}」：{ex.Message} · {steps} 步");
         }
         catch (Exception ex)
         {
             AppLog.Error("Flow", $"失败「{name}」第 {steps} 步", ex);
             CrashLog.Write($"Flow[{name}] 第{steps}步", ex);
 
+            // 引擎之外抛的异常（启动失败、回调崩了）也留一份报告，内容只有错误与环境。
+            if (!reported)
+                FailureLog.Write(runId, name,
+                    ActionRunResult.Failure(new Dictionary<string, Value>(), steps,
+                        TimeSpan.FromMilliseconds(Environment.TickCount64 - started),
+                        ex.Message, ex, stopped: false),
+                    traces);
+
             if (notify || noticeOverride != null)
                 ToastService.Show($"「{name}」启动失败：{ex.Message}", "动作失败",
-                    ToastService.StickyMs, ToastKind.error, key: "run:" + name, onClick: OpenLogsFolder);
+                    ToastService.StickyMs, ToastKind.error, key: "run:" + name, onClick: OpenFailureReport);
         }
         finally
         {
@@ -235,7 +269,7 @@ internal static class AutomationRunner
                 : "动作失败";
 
             ToastService.Show(body, $"{title}（{name}）",
-                ToastService.StickyMs, ToastKind.error, key, OpenLogsFolder, position);
+                ToastService.StickyMs, ToastKind.error, key, OpenFailureReport, position);
             return;
         }
 
@@ -247,7 +281,30 @@ internal static class AutomationRunner
         }
     }
 
-    /// <summary>失败提示的「点击查看详情」：打开运行日志目录（运行记录面板做好后换成它）。</summary>
+    /// <summary>
+    /// 失败提示的「点击查看详情」：优先打开 <c>logs/last-failure.log</c>
+    /// （这次运行的轨迹 + 相关日志），没有这份文件就退回日志目录。
+    /// </summary>
+    private static void OpenFailureReport()
+    {
+        try
+        {
+            string report = FailureLog.LatestPath;
+            if (File.Exists(report))
+            {
+                Process.Start(new ProcessStartInfo { FileName = report, UseShellExecute = true });
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Flow", $"打开失败报告失败：{ex.Message}");
+        }
+
+        OpenLogsFolder();
+    }
+
+    /// <summary>打开运行日志目录（失败报告不存在时的退路）。</summary>
     private static void OpenLogsFolder()
     {
         try
