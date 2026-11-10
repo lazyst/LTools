@@ -14,7 +14,7 @@ namespace LTools.Core.Storage;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 引用来源是步骤的 <c>image</c> 参数（含动作内子动作、嵌套块、内联取值步骤）。出现动态引用
+/// 引用来源是步骤的 <c>image</c> 参数（含嵌套块、内联取值步骤）。出现动态引用
 /// （<c>${变量}</c>、<c>{"var": …}</c>、内联取值单元）时**整个动作跳过**——算不准就不动它。
 /// </para>
 /// <para>
@@ -99,9 +99,6 @@ internal static class OrphanFiles
         // 变量默认值也可能直接写死一张模板图（步骤里用 {"var": "img"} 传）。
         foreach (var variable in program.Variables)
             if (!TryAddVariableDefault(variable, referenced)) return false;
-        foreach (var sub in ProgramWalker.AllSubActions(program))
-            foreach (var variable in sub.Variables)
-                if (!TryAddVariableDefault(variable, referenced)) return false;
 
         foreach (var step in ProgramWalker.AllSteps(program))
         {

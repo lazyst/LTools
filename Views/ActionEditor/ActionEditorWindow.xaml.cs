@@ -96,7 +96,7 @@ public partial class ActionEditorWindow : Window
     public static ActionEditorWindow ForSubAction(string title, SubActionDef? existing)
     {
         var def = existing?.Clone() ?? new SubActionDef();
-        if (string.IsNullOrWhiteSpace(def.Id)) def.Id = NewSubActionId();
+        if (string.IsNullOrWhiteSpace(def.Id)) def.Id = SubActionStore.NewId();
         return new ActionEditorWindow(title, null, def);
     }
 
@@ -120,7 +120,6 @@ public partial class ActionEditorWindow : Window
             };
             foreach (var variable in subAction.Variables) _program.Variables.Add(variable.Clone());
             foreach (var step in subAction.Steps) _program.Steps.Add(step.Clone());
-            foreach (var child in subAction.SubActions) _program.SubActions.Add(child.Clone());
             _draft = null;
 
             IconSection.Visibility = Visibility.Collapsed;
@@ -199,9 +198,6 @@ public partial class ActionEditorWindow : Window
 
     /// <summary>子动作模式下的结果；取消时为 null。</summary>
     public SubActionDef? SubResult { get; private set; }
-
-    private static string NewSubActionId() =>
-        "sub-" + Guid.NewGuid().ToString("N")[..8];
 
     public sealed record KindChoice(ValueKind Kind, string Label)
     {

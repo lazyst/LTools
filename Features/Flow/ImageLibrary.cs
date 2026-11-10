@@ -322,6 +322,11 @@ internal static class ImageLibrary
             var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var a in ActionRegistry.All) CollectAction(a, live);
 
+            // 全局子动作也在用模板图：漏了它们，只有子动作引用的截图会被当成孤儿删掉。
+            foreach (var def in SubActionStore.LoadAll())
+                foreach (var step in ProgramWalker.AllSteps(def))
+                    AddRef(ProgramWalker.LiteralText(step, "image"), live);
+
             int removed = 0;
             foreach (string file in Directory.GetFiles(Dir, ShotPrefix + "*.png"))
             {
@@ -345,7 +350,7 @@ internal static class ImageLibrary
     {
         if (a == null) return;
 
-        // 所有单元的 image 参数（含动作内子动作与内联取值步骤）
+        // 所有单元的 image 参数（含嵌套块与内联取值步骤）
         foreach (var step in ProgramWalker.AllSteps(a.Program))
             AddRef(ProgramWalker.LiteralText(step, "image"), live);
     }

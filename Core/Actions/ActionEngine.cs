@@ -45,7 +45,6 @@ public sealed class ActionRunOptions
 
     /// <summary>
     /// 全局子动作解析（id → 定义）；缺省从数据根 <c>subactions/</c> 读取。
-    /// 动作内子动作（<see cref="ActionProgram.SubActions"/>）总是优先。
     /// </summary>
     public Func<string, SubActionDef?>? SubActionResolver { get; init; }
 
@@ -166,6 +165,11 @@ public sealed class ActionEngine
             return ActionRunResult.Failure(root.Snapshot(), state.StepCount, started.Elapsed,
                 "「继续下一次」只能出现在循环体里", null, stopped: false);
         }
+        catch (ReturnSignal)
+        {
+            return ActionRunResult.Failure(root.Snapshot(), state.StepCount, started.Elapsed,
+                "「返回」只能出现在子动作里", null, stopped: false);
+        }
         catch (StepFailureException ex)
         {
             return ActionRunResult.Failure(root.Snapshot(), state.StepCount, started.Elapsed,
@@ -230,6 +234,11 @@ public sealed class ActionEngine
                 throw;
             }
             catch (ContinueSignal)
+            {
+                Trace(parent, step, path, label, ctx, StepTraceStatus.ok, started, null);
+                throw;
+            }
+            catch (ReturnSignal)
             {
                 Trace(parent, step, path, label, ctx, StepTraceStatus.ok, started, null);
                 throw;
@@ -299,16 +308,14 @@ public sealed class ActionEngine
     /// <summary>子动作递归深度上限。</summary>
     public const int MaxSubActionDepth = 8;
 
-    /// <summary>按 id 找子动作：动作内（含嵌套）优先，其次全局库。</summary>
+    /// <summary>按 id 找子动作：缺省从全局库读（进程内缓存，见 <see cref="SubActionStore"/>）。</summary>
     internal SubActionDef? ResolveSubAction(ActionRunState state, string id)
     {
         id = (id ?? "").Trim();
         if (id.Length == 0) return null;
 
-        if (FindSubAction(state.Program.SubActions, id) is { } local) return local;
-
-        var globals = state.Options.SubActionResolver ?? SubActionStore.Load;
-        return globals(id);
+        var resolver = state.Options.SubActionResolver ?? SubActionStore.Load;
+        return resolver(id);
     }
 
     /// <summary>调用一个子动作：新作用域、按输入变量名传值、输出按步骤的 out 映射写回。</summary>
@@ -348,7 +355,10 @@ public sealed class ActionEngine
                 Label = caller.Label.Length == 0 ? $"子动作「{label}」" : $"{caller.Label} › 子动作「{label}」",
                 Depth = caller.Depth + 1,
             };
-            RunSteps(def.Steps, ctx);
+
+            // 「返回」是子动作自己的正常出口：吞掉信号，输出照常写回。
+            try { RunSteps(def.Steps, ctx); }
+            catch (ReturnSignal) { }
 
             foreach (var variable in def.Variables)
             {
@@ -360,8 +370,17 @@ public sealed class ActionEngine
         }
         catch (ActionAbortedException) { throw; }
         catch (StopSignal) { throw; }
-        catch (BreakSignal) { throw; }
-        catch (ContinueSignal) { throw; }
+        // 跳出循环 / 继续下一次只对子动作自己的循环有效：跑到调用方的循环上是语义错误，说清楚。
+        catch (BreakSignal)
+        {
+            throw new ActionException(
+                $"子动作「{label}」里用了「跳出循环」，但它不在子动作自己的循环里（不会作用到调用方）");
+        }
+        catch (ContinueSignal)
+        {
+            throw new ActionException(
+                $"子动作「{label}」里用了「继续下一次」，但它不在子动作自己的循环里（不会作用到调用方）");
+        }
         catch (StepFailureException) { throw; }   // 里面已经带好位置（含「子动作「x」」）
         catch (ActionException ex)
         {
@@ -371,18 +390,6 @@ public sealed class ActionEngine
         {
             caller.State.SubActionDepth--;
         }
-    }
-
-    private static SubActionDef? FindSubAction(IEnumerable<SubActionDef> defs, string id)
-    {
-        foreach (var def in defs)
-        {
-            if (string.Equals((def.Id ?? "").Trim(), id, StringComparison.OrdinalIgnoreCase))
-                return def;
-            if (FindSubAction(def.SubActions, id) is { } nested) return nested;
-        }
-
-        return null;
     }
 
     /// <summary>求值一个内联取值步骤（Pure 单元）。</summary>

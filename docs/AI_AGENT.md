@@ -235,16 +235,21 @@ staging/
 - 草稿不进正式配置。备份打包 `configs/` + `actions/` + `resources/` + `速记/` + `macros/` + `staging/`
   （见 `Core/BackupService.cs` 的 manifest `includes`），换机后未采纳的草稿不会丢。
 
-### 5.2 MCP 工具清单（v1，18 个）
+### 5.2 MCP 工具清单（v1，27 个）
 
 | 工具 | 作用 | 写 | 审批 |
 |---|---|---|---|
 | `ltools_health` | 版本 / 开关 / 审批模式 / 草稿数 / 最近错误 | | |
 | `ltools_docs_get(name)` | `format` / `units` / `examples` | | |
 | `ltools_units_list(query?)` | 单元摘要列表（74 条，可过滤） | | |
-| `ltools_units_get(key)` | 单个单元的完整 Input/Output 规格 | | |
+| `ltools_units_get(key)` | 单个单元的完整 Input/Output 规格（`sub.run` 附带全部子动作签名） | | |
 | `ltools_actions_list(query?, limit?)` | 正式动作列表（Id/名称/图标/步骤数/来源） | | |
 | `ltools_actions_get(id)` | 正式动作的完整 Program（只读） | | |
+| `ltools_subactions_list(query?, limit?)` | 全局子动作列表（id / 名称 / 输入 / 输出 / 步数） | | |
+| `ltools_subactions_get(id)` | 子动作完整定义 + revision（只读） | | |
+| `ltools_subactions_check(program)` | 子动作静态校验（与编辑器「校验」同一套） | | |
+| `ltools_subactions_write(program, expectedRevision?)` | 新建 / 整份写入子动作（CAS，写前自动校验） | ✓ | 人工确认 |
+| `ltools_subactions_delete(id)` | 删除子动作（先列出调用位置） | ✓ | 人工确认 |
 | `ltools_staging_list()` | 草稿列表 + 状态 | | |
 | `ltools_staging_create(title, description?, copyFromActionId?)` | 新建草稿（带复制来源） | ✓ | |
 | `ltools_staging_open(draftId)` | 草稿元数据 + program + 文件清单 + revision + **绝对目录** | | |
@@ -259,6 +264,8 @@ staging/
 | `ltools_staging_promote(draftId, mode:"new"\|"replace", expectedRevision)` | 草稿 → 正式动作 | ✓ | 人工确认（`full` 直通） |
 
 刻意**不做**的工具：删除/改写正式动作、改设置、执行任意命令、读写任意磁盘路径。
+全局子动作是唯一的例外：它不是用户的正式动作，另有独立的 `subactions_check / write / delete`
+（同样要写入开关 + 审批），改它影响所有调用方，所以覆盖前用 `expectedRevision` 做 CAS。
 
 ### 5.3 审批模型
 

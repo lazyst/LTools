@@ -18,6 +18,7 @@ internal static class FlowUnits
         registry.Register(new BreakUnit());
         registry.Register(new ContinueUnit());
         registry.Register(new StopUnit());
+        registry.Register(new ReturnUnit());
         registry.Register(new DelayUnit());
         registry.Register(new SubRunUnit());
     }
@@ -390,7 +391,22 @@ internal static class FlowUnits
         public void Execute(StepContext ctx, StepArgs args) => throw new StopSignal();
     }
 
-    /// <summary>调用一个子动作（动作内 / 全局）：按输入变量名传值，输出按 out 映射写回。</summary>
+    /// <summary>子动作里的提前返回：<c>flow.return</c>。</summary>
+    private sealed class ReturnUnit : IStepUnit
+    {
+        public UnitSpec Spec { get; } = new()
+        {
+            Key = "flow.return",
+            Name = "返回",
+            Category = "流程",
+            Icon = "return",
+            Description = "结束当前子动作，已赋值的输出照常带回调用方；只能用在子动作里",
+        };
+
+        public void Execute(StepContext ctx, StepArgs args) => throw new ReturnSignal();
+    }
+
+    /// <summary>调用一个全局子动作：按输入变量名传值，输出按 out 映射写回。</summary>
     private sealed class SubRunUnit : IStepUnit
     {
         public UnitSpec Spec { get; } = new()
@@ -399,7 +415,7 @@ internal static class FlowUnits
             Name = "调用子动作",
             Category = "流程",
             Icon = "sub",
-            Description = "调用动作内或全局子动作；参数名 = 子动作的输入变量名，输出按 out 映射写回",
+            Description = "调用全局子动作（子动作库）；参数名 = 子动作的输入变量名，输出按 out 映射写回",
             DynamicInputs = true,
             Inputs = new[]
             {

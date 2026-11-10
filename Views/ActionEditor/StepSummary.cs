@@ -31,7 +31,7 @@ internal static class StepSummary
         if (!StepRegistry.Default.TryGet(step.Unit, out var unit)) return "";
 
         if (step.Unit is "flow.if" or "flow.while") return ConditionText(step);
-        if (step.Unit == "sub.run") return Text(step, "subAction");
+        if (step.Unit == "sub.run") return SubActionText(step);
         if (step.Unit == MacroAction.UnitKey) return MacroText(step);
 
         var parts = new List<string>();
@@ -92,9 +92,6 @@ internal static class StepSummary
             ? OptionLabels.For(input, arg.Literal.AsText())
             : ArgText(arg);
 
-    private static string Text(Step step, string key) =>
-        step.In.TryGetValue(key, out var arg) ? ArgText(arg) : "";
-
     /// <summary>
     /// 「回放宏」步骤的摘要：宏名字 + 时长（比裸宏 Id 有用）。宏文件没了就说清楚，
     /// 而不是显示一个看不懂的 Id。
@@ -110,6 +107,37 @@ internal static class StepSummary
         var meta = MacroStore.MetaOf(id);
         if (meta == null) return "宏文件缺失";
         return $"{meta.Name} · {meta.DurationText}";
+    }
+
+    /// <summary>
+    /// 「调用子动作」步骤的摘要：子动作名字 + 前两个输入（比裸 id 有用）。
+    /// 子动作被删了就直说，而不是显示一个看不懂的 id。
+    /// </summary>
+    private static string SubActionText(Step step)
+    {
+        if (!step.In.TryGetValue("subAction", out var arg)) return "";
+        if (arg.Kind != StepArgKind.literal) return ArgText(arg);
+
+        string id = arg.Literal.AsText().Trim();
+        if (id.Length == 0) return "（未选择子动作）";
+
+        var def = SubActionStore.Load(id);
+        if (def == null) return $"⚠ 找不到：{id}";
+
+        string name = string.IsNullOrWhiteSpace(def.Name) ? id : def.Name;
+        var parts = new List<string>();
+        foreach (var variable in def.Variables)
+        {
+            if (variable.Direction != VariableDirection.input) continue;
+            string key = (variable.Key ?? "").Trim();
+            if (key.Length == 0 || !step.In.TryGetValue(key, out var value)) continue;
+            if (IsEmpty(value)) continue;
+
+            parts.Add($"{key} {ArgText(value)}");
+            if (parts.Count >= 2) break;
+        }
+
+        return parts.Count == 0 ? name : $"{name}（{string.Join("，", parts)}）";
     }
 
     private static bool IsEmpty(StepArg arg) =>

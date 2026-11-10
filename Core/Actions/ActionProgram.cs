@@ -55,7 +55,9 @@ public sealed class VariableDef
     };
 }
 
-/// <summary>动作内子动作（跟随动作保存）。全局子动作另存于数据根 <c>subactions/</c>。</summary>
+/// <summary>
+/// 子动作：一段可复用的步骤 + 带方向的变量。全局子动作存在数据根 <c>subactions/&lt;id&gt;.json</c>。
+/// </summary>
 public sealed class SubActionDef
 {
     [JsonPropertyName("id")]
@@ -78,11 +80,7 @@ public sealed class SubActionDef
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Populate)]
     public List<Step> Steps { get; } = new();
 
-    [JsonPropertyName("subActions")]
-    [JsonObjectCreationHandling(JsonObjectCreationHandling.Populate)]
-    public List<SubActionDef> SubActions { get; } = new();
-
-    /// <summary>深拷贝（变量、步骤、嵌套子动作全部复制）。</summary>
+    /// <summary>深拷贝（变量、步骤全部复制）。</summary>
     public SubActionDef Clone()
     {
         var clone = new SubActionDef
@@ -95,7 +93,6 @@ public sealed class SubActionDef
 
         foreach (var variable in Variables) clone.Variables.Add(variable.Clone());
         foreach (var step in Steps) clone.Steps.Add(step.Clone());
-        foreach (var child in SubActions) clone.SubActions.Add(child.Clone());
 
         return clone;
     }
@@ -126,12 +123,7 @@ public sealed class ActionProgram
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Populate)]
     public List<Step> Steps { get; } = new();
 
-    /// <summary>动作内子动作。</summary>
-    [JsonPropertyName("subActions")]
-    [JsonObjectCreationHandling(JsonObjectCreationHandling.Populate)]
-    public List<SubActionDef> SubActions { get; } = new();
-
-    /// <summary>深拷贝（变量、步骤、动作内子动作全部复制）。</summary>
+    /// <summary>深拷贝（变量、步骤全部复制）。</summary>
     public ActionProgram Clone()
     {
         var clone = new ActionProgram
@@ -144,7 +136,6 @@ public sealed class ActionProgram
 
         foreach (var variable in Variables) clone.Variables.Add(variable.Clone());
         foreach (var step in Steps) clone.Steps.Add(step.Clone());
-        foreach (var child in SubActions) clone.SubActions.Add(child.Clone());
 
         return clone;
     }

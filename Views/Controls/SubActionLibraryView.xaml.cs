@@ -1,12 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using LTools.Core;
 using LTools.Core.Actions;
+using LTools.Features;
+using LTools.Features.Panel;
 
 namespace LTools.Views.Controls;
 
@@ -16,6 +20,7 @@ namespace LTools.Views.Controls;
 /// <remarks>
 /// 编辑复用 <see cref="ActionEditorWindow.ForSubAction"/>——子动作与动作同构，
 /// 只多一列「方向」（输入 / 本地 / 输出），所以没必要再写一个编辑器。
+/// 试运行走 <see cref="SubActionRunner"/>，输入值由 <see cref="SubActionInputDialog"/> 收集。
 /// </remarks>
 public partial class SubActionLibraryView : UserControl
 {
@@ -32,24 +37,61 @@ public partial class SubActionLibraryView : UserControl
     {
         string? keep = SelectedRow()?.Id;
 
+        // 设置页是「刷新」入口：用户在资源管理器里改过文件也能看到。
+        SubActionStore.Invalidate();
+
+        var references = SubActionStore.ReferenceIndex();
         _rows = SubActionStore.LoadAll()
-            .OrderBy(d => d.Name, StringComparer.CurrentCulture)
-            .ThenBy(d => d.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(d => new SubActionRow(d))
+            .Select(d => new SubActionRow(d,
+                references.TryGetValue(d.Id, out var list) ? list : Array.Empty<SubActionReference>()))
             .ToList();
 
-        List.ItemsSource = _rows;
-        EmptyHint.Visibility = _rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        if (keep != null)
-        {
-            var target = _rows.FirstOrDefault(r =>
-                string.Equals(r.Id, keep, StringComparison.OrdinalIgnoreCase));
-            if (target != null) List.SelectedItem = target;
-        }
+        ApplyFilter(keep);
+        ShowBrokenFiles();
     }
 
     private SubActionRow? SelectedRow() => List.SelectedItem as SubActionRow;
+
+    // ============ 筛选 ============
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) =>
+        ApplyFilter(SelectedRow()?.Id);
+
+    private void ApplyFilter(string? keep)
+    {
+        string filter = (SearchBox.Text ?? "").Trim();
+
+        var visible = filter.Length == 0
+            ? _rows.ToList()
+            : _rows.Where(r => r.Matches(filter)).ToList();
+
+        List.ItemsSource = visible;
+
+        EmptyHint.Visibility = _rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        NoMatchHint.Visibility = _rows.Count > 0 && visible.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        if (keep == null) return;
+        var target = visible.FirstOrDefault(r =>
+            string.Equals(r.Id, keep, StringComparison.OrdinalIgnoreCase));
+        if (target != null) List.SelectedItem = target;
+    }
+
+    private void ShowBrokenFiles()
+    {
+        var broken = SubActionStore.BrokenFiles();
+        if (broken.Count == 0)
+        {
+            BrokenHint.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        BrokenHint.Visibility = Visibility.Visible;
+        BrokenHint.Text = $"有 {broken.Count} 个子动作文件读不出来（已改名成 .bad-* 留在 subactions/ 里，最多保留 3 份）："
+                          + string.Join("、", broken.Take(3).Select(Path.GetFileName))
+                          + "。修好内容后把文件名改回 <id>.json 即可。";
+    }
 
     // ============ 增删改 ============
 
@@ -76,12 +118,26 @@ public partial class SubActionLibraryView : UserControl
         Edit(copy);
     }
 
+    /// <summary>子动作 → 新动作（转过去后变量一律是「本地」，由用户在动作编辑器里再调）。</summary>
+    private void ToAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedRow() is not { } row) return;
+        PanelActionOps.ToAction(Window.GetWindow(this), row.Def);
+    }
+
     private void Delete_Click(object sender, RoutedEventArgs e)
     {
         if (SelectedRow() is not { } row) return;
 
-        if (!ConfirmDialog.Confirm(Window.GetWindow(this), "删除子动作",
-                $"「{row.Name}」会被删除。调用它的动作之后会提示找不到子动作。",
+        // 引用清单：删除前让用户看到「哪些动作的哪一步会坏」，而不是一句通用警告。
+        var refs = SubActionStore.FindReferences(row.Id);
+        string detail = refs.Count == 0
+            ? $"「{row.Name}」会被删除。目前没有动作在调用它。"
+            : $"「{row.Name}」会被删除，下面 {refs.Count} 处调用之后会报「找不到子动作」：\n\n"
+              + string.Join("\n", refs.Take(8).Select(r => $"· {r.ActionName} · {r.Where}"))
+              + (refs.Count > 8 ? $"\n…还有 {refs.Count - 8} 处" : "");
+
+        if (!ConfirmDialog.Confirm(Window.GetWindow(this), "删除子动作", detail,
                 danger: true, okText: "删除"))
             return;
 
@@ -98,6 +154,13 @@ public partial class SubActionLibraryView : UserControl
     private void List_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (SelectedRow() is { } row) Edit(row.Def);
+    }
+
+    private void List_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // 右键先选中这一行，菜单项才知道操作的是谁。
+        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is { } item)
+            item.IsSelected = true;
     }
 
     private void Edit(SubActionDef? def)
@@ -124,7 +187,102 @@ public partial class SubActionLibraryView : UserControl
         if (saved != null) List.SelectedItem = saved;
     }
 
-    private void OpenFolder_Click(object sender, RoutedEventArgs e)
+    // ============ 右键菜单 ============
+
+    private void Run_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedRow() is not { } row) return;
+
+        var inputs = SubActionInputDialog.Ask(Window.GetWindow(this), row.Name, row.Def.Variables);
+        if (inputs == null) return;
+
+        if (!SubActionRunner.TryRun(row.Def, inputs, result => OnRunCompleted(row, result)))
+            ConfirmDialog.Info(Window.GetWindow(this), "试运行", "已有动作正在运行，先等它结束或按停止。");
+    }
+
+    /// <summary>试运行结束（后台线程）：回到 UI 线程把输出变量的值列出来。</summary>
+    private void OnRunCompleted(SubActionRow row, ActionRunResult result)
+    {
+        if (Dispatcher.HasShutdownStarted) return;
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!IsLoaded) return;
+            ConfirmDialog.Info(Window.GetWindow(this), "试运行结果", DescribeResult(row, result));
+        }));
+    }
+
+    private static string DescribeResult(SubActionRow row, ActionRunResult result)
+    {
+        if (result.Stopped) return $"已停止 · 共 {result.Steps} 步";
+
+        if (!result.Completed)
+        {
+            string where = string.IsNullOrEmpty(result.FailedStepLabel) ? "" : result.FailedStepLabel + "\n";
+            return where + (result.Error ?? "执行失败");
+        }
+
+        var lines = new List<string> { $"完成 · {result.Steps} 步 · {result.Elapsed.TotalMilliseconds:0} ms" };
+        var outputs = row.Def.Variables.Where(v => v.Direction == VariableDirection.output).ToList();
+
+        if (outputs.Count == 0)
+        {
+            lines.Add("");
+            lines.Add("（这个子动作没有输出变量）");
+            return string.Join("\n", lines);
+        }
+
+        lines.Add("");
+        foreach (var variable in outputs)
+        {
+            string key = (variable.Key ?? "").Trim();
+            string text = result.Variables.TryGetValue(key, out var value) ? SafeText(value) : "（未赋值）";
+            lines.Add($"{key} = {text}");
+        }
+        return string.Join("\n", lines);
+    }
+
+    private static string SafeText(Value value)
+    {
+        try
+        {
+            string text = value.AsText();
+            return text.Length > 300 ? text[..300] + "…" : text;
+        }
+        catch
+        {
+            return "(无法显示)";
+        }
+    }
+
+    private void CopyId_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedRow() is not { } row) return;
+        try { Clipboard.SetText(row.Id); }
+        catch (Exception ex) { CrashLog.Write("SubActionLibrary.CopyId", ex); }
+    }
+
+    private void Reveal_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedRow() is not { } row) return;
+
+        string file = Path.Combine(SubActionStore.DirectoryPath, row.Id + ".json");
+        try
+        {
+            if (File.Exists(file))
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{file}\"") { UseShellExecute = true });
+            else
+                OpenFolder();
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("SubActionLibrary.Reveal", ex);
+        }
+    }
+
+    private void OpenFolder_Click(object sender, RoutedEventArgs e) => OpenFolder();
+
+    private void OpenFolder()
     {
         Directory.CreateDirectory(SubActionStore.DirectoryPath);
         Process.Start(new ProcessStartInfo("explorer.exe", SubActionStore.DirectoryPath)
@@ -133,21 +291,51 @@ public partial class SubActionLibraryView : UserControl
         });
     }
 
-    /// <summary>列表行；<see cref="Def"/> 保留完整定义供编辑 / 复制。</summary>
+    private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
+    {
+        while (source != null)
+        {
+            if (source is T match) return match;
+            source = source is Visual || source is System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(source)
+                : LogicalTreeHelper.GetParent(source);
+        }
+        return null;
+    }
+
+    /// <summary>列表行；<see cref="Def"/> 保留完整定义供编辑 / 复制 / 试运行。</summary>
     public sealed class SubActionRow
     {
-        public SubActionRow(SubActionDef def)
+        private readonly string _search;
+
+        public SubActionRow(SubActionDef def, IReadOnlyList<SubActionReference> references)
         {
             Def = def;
             Id = def.Id;
             Name = string.IsNullOrWhiteSpace(def.Name) ? def.Id : def.Name;
+            Glyph = IconCatalog.GetGlyph(def.Icon);
             Summary = Summarize(def);
+
+            RefText = references.Count == 0 ? "" : $"被 {references.Count} 处引用";
+            RefTip = references.Count == 0
+                ? "还没有动作调用它"
+                : string.Join("\n", references.Select(r => $"{r.ActionName} · {r.Where}"));
+
+            _search = (Id + " " + Name + " " + string.Join(" ", def.Variables.Select(v => v.Key)))
+                .ToLowerInvariant();
         }
 
         public SubActionDef Def { get; }
         public string Id { get; }
         public string Name { get; }
+        public string Glyph { get; }
         public string Summary { get; }
+        public string RefText { get; }
+        public string RefTip { get; }
+
+        /// <summary>名称 / id / 输入变量名，任一处包含筛选词就算命中（大小写不敏感）。</summary>
+        public bool Matches(string filter) =>
+            _search.Contains(filter.ToLowerInvariant(), StringComparison.Ordinal);
 
         private static string Summarize(SubActionDef def)
         {

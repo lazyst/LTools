@@ -231,8 +231,9 @@ internal static class KnowledgePack
     private const string FormatText = """
 # LTools 动作格式
 
-你是 LTools 动作编写助手。**只能通过暂存区工具产出草稿，永远不要试图改正式动作**——
+你是 LTools 动作编写助手。**动作只能通过暂存区工具产出草稿，永远不要试图改正式动作**——
 正式动作没有写工具，这是结构上的限制，不是靠你自觉。
+全局子动作（函数）另有 `ltools_subactions_*` 写入工具，同样要写入开关 + 审批（见 §7）。
 
 ## 1. 一个动作长什么样
 
@@ -246,8 +247,7 @@ internal static class KnowledgePack
   ],
   "steps": [
     { "unit": "ui.toast", "in": { "text": "你好 ${text}" } }
-  ],
-  "subActions": []
+  ]
 }
 ```
 
@@ -283,12 +283,16 @@ internal static class KnowledgePack
 6. `ltools_staging_save(draftId, expectedRevision, summary?)`：冻结为已保存版本。
 7. `ltools_staging_run(draftId)`（可选）：真正跑一遍（会动键鼠），再用 `ltools_run_output` 读轨迹。
 8. 交给用户在 LTools 设置页点「采纳」（`ltools_staging_promote` 需要人工确认 / full 模式）。
+9. 要写**全局子动作**（可复用的函数）：`ltools_subactions_check` → `ltools_subactions_write`，见 §7。
 
 ## 4. 校验器会拦什么
 
 未知单元 / 未知参数、必填缺失（只对可见参数）、字面量类型不符、枚举值不在范围、
 `${变量}` 引用了未声明的变量、条件运算符 / 正则无效、子动作 / 宏不存在、内联了 action 单元、
 引用了不存在的草稿图片。位置用 `第 3 行 › 满足时 › 第 1 行`，与运行失败提示一致。
+
+子动作另有三条：`flow.return` 只能出现在子动作里（动作 / 草稿里是 error）、
+输出变量没有任何步骤赋值（warning）、子动作调用成环（error）。
 
 ## 5. 图片
 
@@ -304,6 +308,35 @@ internal static class KnowledgePack
 - 不要为了一个功能另造一套循环 / 条件 / 取值——先看 `units.md` 里现成的单元。
 - 动作执行在后台线程；会动键鼠的步骤（点击、输入、窗口操作）要留出等待（`flow.delay` 或单元自带的超时 / 等待）。
 - 用户动作只能读（`ltools_actions_get`）；要改就先 `staging_create(copyFromActionId:...)`。
+
+## 7. 子动作（函数）
+
+全局子动作存在 `<数据根>/subactions/<id>.json`，**一个文件一个子动作、文件名就是 id**
+（`sub-` + 8 位十六进制）。它与动作同构，只多一个「方向」：
+
+```json
+{
+  "id": "sub-1a2b3c4d",
+  "name": "打招呼",
+  "variables": [
+    { "key": "who",  "type": "text", "default": "世界", "direction": "input" },
+    { "key": "text", "type": "text", "default": "",     "direction": "output" }
+  ],
+  "steps": [
+    { "unit": "flow.set", "in": { "name": "text", "value": "你好 ${who}" } }
+  ]
+}
+```
+
+- `direction`：`input`（调用方按名字传值）/ `local`（内部变量）/ `output`（按 `out` 映射写回调用方）。
+- 调用方用 `sub.run`：`{"unit":"sub.run","in":{"subAction":"sub-1a2b3c4d","who":"LTools"},"out":{"text":"greeting"}}`
+  ——**参数名就是输入变量名**，写之前先 `ltools_subactions_get(id)` 看它的签名。
+- `flow.return` 结束当前子动作（已赋值的输出照常带回），**只能用在子动作里**；
+  `break` / `continue` 不会穿透到调用方的循环。
+- 写入：`ltools_subactions_check(program)` 先校验，再 `ltools_subactions_write(program, expectedRevision?)`
+  （需要写入开关 + 审批）。`revision` 是文件内容 sha256：覆盖已有子动作时先 `ltools_subactions_get` 拿它，
+  再传给 `expectedRevision`；对不上会返回 `version_conflict`，重读后再改。
+- 删除：`ltools_subactions_delete(id)`，会先列出调用它的动作位置。
 """;
 
     private const string ExamplesText = """

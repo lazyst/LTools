@@ -378,6 +378,12 @@ internal static class MacroStore
                     if (ProgramWalker.LiteralText(step, "macroId") is { } id && id.Trim().Length > 0)
                         live.Add(id.Trim());
 
+            // 全局子动作里也可能回放宏：只扫动作会把它们引用的宏文件删掉。
+            foreach (var def in SubActionStore.LoadAll())
+                foreach (var step in ProgramWalker.AllSteps(def))
+                    if (ProgramWalker.LiteralText(step, "macroId") is { } id && id.Trim().Length > 0)
+                        live.Add(id.Trim());
+
             Ensure();
             int removed = 0;
             foreach (var file in Directory.GetFiles(Dir, "*.json"))

@@ -122,7 +122,7 @@ public sealed class ActionDto
     /// <summary>内置图标 Id（见 <see cref="IconCatalog"/>），可为空。</summary>
     public string? Icon { get; set; }
 
-    /// <summary>动作体（变量表 + 步骤 + 动作内子动作）。</summary>
+    /// <summary>动作体（变量表 + 步骤）。</summary>
     public ActionProgram? Program { get; set; }
 
     /// <summary>深拷贝（含动作体深拷贝）。</summary>

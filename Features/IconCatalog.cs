@@ -26,6 +26,7 @@ internal static class IconCatalog
         ["help"]       = "\uE897",  // 帮助
         ["settings"]   = "\uE713",  // 设置齿轮
         ["composite"]  = "\uE72C",  // 刷新/流程
+        ["sub"]        = "\uE8F1",  // 库（子动作）
         ["send"]       = "\uE724",  // 纸飞机（发送文本）
         ["keyboard"]   = "\uE765",  // 键盘（模拟按键）
         ["mouse"]      = "\uE962",  // 鼠标（鼠标操作）
@@ -34,6 +35,7 @@ internal static class IconCatalog
         ["play"]       = "\uE768",  // 播放
         ["pause"]      = "\uE769",  // 暂停
         ["stop"]       = "\uE71A",  // 停止
+        ["return"]     = "\uE72B",  // 返回
 
         // —— 通用导航 ——
         ["home"]       = "\uE80F",

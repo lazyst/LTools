@@ -48,6 +48,7 @@ public partial class SuperPanelWindow
         // 照 Quicker「以暂存区方式编辑」：正式动作只读，先复制一份到暂存区再改
         AddMenuItem(menu, "在暂存区编辑…", () => EditInStash(id));
         AddMenuItem(menu, "导出动作…", () => ExportAction(tref));
+        AddMenuItem(menu, "另存为子动作…", () => ToSubAction(tref));
         menu.Items.Add(new Separator());
         bool floating = FloatingLibrary.IsFloating(id);
         string label = !floating ? "悬浮此动作"
@@ -663,5 +664,13 @@ public partial class SuperPanelWindow
         if (tref.ActionId == null) return;
         Features.SuperPanel.Close();
         PanelActionOps.Export(null, tref.ActionId);
+    }
+
+    /// <summary>动作另存为子动作：同样先关面板，再开子动作编辑器让用户标输入 / 输出。</summary>
+    private void ToSubAction(PanelTileRef tref)
+    {
+        if (tref.ActionId == null) return;
+        Features.SuperPanel.Close();
+        PanelActionOps.ToSubAction(null, tref.ActionId);
     }
 }

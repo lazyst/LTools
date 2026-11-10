@@ -71,7 +71,71 @@ internal static class ActionValidator
     /// 编辑器校验传 false，找不到只报 warning（可能引用共享模板或用户素材）。
     /// </param>
     public static ActionValidationResult Validate(ActionProgram? program, string? revision = null,
-        string? resourceRoot = null, bool draftCheck = false)
+        string? resourceRoot = null, bool draftCheck = false) =>
+        ValidateCore(program, revision, resourceRoot, draftCheck, allowReturn: false, resolveSubAction: null);
+
+    /// <summary>
+    /// 校验一个子动作定义（写盘前 / AI 写入前）：动作那一套规则，加上子动作自己的规则。
+    /// </summary>
+    /// <remarks>
+    /// 差别只有三处：<c>flow.return</c> 合法；输出变量必须有人写；调用成环要把「正在写的这一份」算进去
+    /// （它还没落盘，<see cref="SubActionStore"/> 里查不到，自调用会漏过去）。
+    /// </remarks>
+    public static ActionValidationResult ValidateSubAction(SubActionDef? def, string? revision = null)
+    {
+        var issues = new List<ActionIssue>();
+        if (def == null)
+        {
+            issues.Add(new ActionIssue("", "", "", "", "子动作定义是空的", IssueSeverity.error));
+            return new ActionValidationResult { Revision = revision, Issues = issues };
+        }
+
+        string id = (def.Id ?? "").Trim();
+        if (id.Length == 0)
+            issues.Add(new ActionIssue("", "", "", "id", "子动作缺少 id（文件名就是 id）", IssueSeverity.error));
+
+        // 子动作与动作同构：包成 ActionProgram 就能复用整套步骤 / 变量校验。
+        var program = new ActionProgram
+        {
+            Id = id,
+            Name = def.Name,
+            Icon = def.Icon,
+            Description = def.Description,
+        };
+        foreach (var variable in def.Variables) program.Variables.Add(variable.Clone());
+        foreach (var step in def.Steps) program.Steps.Add(step.Clone());
+
+        SubActionDef? Resolve(string target) =>
+            string.Equals(target, id, StringComparison.OrdinalIgnoreCase) ? def : SubActionStore.Load(target);
+
+        var result = ValidateCore(program, revision, resourceRoot: null, draftCheck: false,
+            allowReturn: true, resolveSubAction: Resolve);
+        issues.AddRange(result.Issues);
+
+        // 输出变量没人写：调用方拿到的永远是默认值（多半是忘了赋值，或把方向写成了「输出」却当本地用）。
+        var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var steps = new List<(Step Step, string Path, string Label, int Depth)>();
+        ProgramWalker.CollectSteps(def.Steps, "/steps", "", 1, steps);
+        foreach (var (step, _, _, _) in steps)
+            foreach (var write in VariableWrites.Of(step))
+                written.Add(RootName(write.Name));
+
+        foreach (var variable in def.Variables)
+        {
+            if (variable.Direction != VariableDirection.output) continue;
+            string key = (variable.Key ?? "").Trim();
+            if (key.Length == 0 || written.Contains(key)) continue;
+
+            issues.Add(new ActionIssue("/variables", "变量表", "", key,
+                $"输出「{key}」在步骤里没有被赋值，调用方拿到的会是默认值", IssueSeverity.warning));
+        }
+
+        return new ActionValidationResult { Revision = revision, Issues = issues };
+    }
+
+    private static ActionValidationResult ValidateCore(ActionProgram? program, string? revision,
+        string? resourceRoot, bool draftCheck, bool allowReturn,
+        Func<string, SubActionDef?>? resolveSubAction)
     {
         var issues = new List<ActionIssue>();
         if (program == null)
@@ -81,9 +145,9 @@ internal static class ActionValidator
         }
 
         if (string.IsNullOrWhiteSpace(program.Name))
-            issues.Add(new ActionIssue("", "", "", "name", "动作没有名称（AI 那边叫「未命名动作」也能跑）", IssueSeverity.warning));
+            issues.Add(new ActionIssue("", "", "", "name", "没有名称（列表里会显示 id，仍能运行）", IssueSeverity.warning));
 
-        ValidateScope(program, null, resourceRoot, draftCheck, issues);
+        ValidateScope(program, resourceRoot, draftCheck, allowReturn, resolveSubAction, issues);
 
         if (program.Steps.Count == 0)
             issues.Add(new ActionIssue("/steps", "", "", "steps",
@@ -92,22 +156,14 @@ internal static class ActionValidator
         return new ActionValidationResult { Revision = revision, Issues = issues };
     }
 
-    /// <summary>校验一个子动作（设置页「子动作库」也可以接这个）。</summary>
-    public static ActionValidationResult ValidateSubAction(ActionProgram owner, SubActionDef sub)
-    {
-        var issues = new List<ActionIssue>();
-        ValidateScope(owner, sub, null, false, issues);
-        return new ActionValidationResult { Issues = issues };
-    }
-
     // ============ 作用域 ============
 
-    /// <summary><paramref name="sub"/> 为 null 时校验整个动作（含全部子动作）。</summary>
-    private static void ValidateScope(ActionProgram program, SubActionDef? sub, string? resourceRoot,
-        bool draftCheck, List<ActionIssue> issues)
+    private static void ValidateScope(ActionProgram program, string? resourceRoot,
+        bool draftCheck, bool allowReturn, Func<string, SubActionDef?>? resolveSubAction,
+        List<ActionIssue> issues)
     {
         var declared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        IEnumerable<VariableDef> variables = sub?.Variables ?? program.Variables;
+        IEnumerable<VariableDef> variables = program.Variables;
 
         foreach (var variable in variables)
         {
@@ -125,23 +181,12 @@ internal static class ActionValidator
 
         // 运行时会创建 out 写到的变量与 flow.set 写到的变量，引用它们不算未定义。
         var produced = new HashSet<string>(declared, StringComparer.OrdinalIgnoreCase);
-        if (sub == null)
-        {
-            foreach (var def in ProgramWalker.AllSubActions(program))
-            {
-                foreach (var v in def.Variables)
-                {
-                    string key = (v.Key ?? "").Trim();
-                    if (key.Length > 0) produced.Add(key);
-                }
-            }
-        }
 
-        string rootPath = sub == null ? "/steps" : $"/subActions/{SubIndex(program, sub)}/steps";
-        string rootLabel = sub == null ? "" : $"子动作「{(string.IsNullOrWhiteSpace(sub.Name) ? sub.Id : sub.Name)}」";
+        const string rootPath = "/steps";
+        const string rootLabel = "";
 
         var allSteps = new List<(Step Step, string Path, string Label, int Depth)>();
-        CollectSteps(sub?.Steps ?? program.Steps, rootPath, rootLabel, 1, allSteps);
+        ProgramWalker.CollectSteps(program.Steps, rootPath, rootLabel, 1, allSteps);
 
         foreach (var (step, path, label, _) in allSteps)
         {
@@ -168,66 +213,19 @@ internal static class ActionValidator
         }
 
         foreach (var (step, path, label, depth) in allSteps)
-            ValidateStep(program, step, path, label, depth, produced, resourceRoot, draftCheck, issues);
-
-        // 子动作 id 不能重复（含嵌套）。
-        if (sub == null) ValidateSubActionIds(program, issues);
+            ValidateStep(program, step, path, label, depth, produced, resourceRoot, draftCheck, allowReturn,
+                resolveSubAction, issues);
 
         if (allSteps.Count > LargeStepCount)
             issues.Add(new ActionIssue(rootPath, rootLabel, "", "steps",
                 $"步骤很多（{allSteps.Count} 步），静态校验和运行都会比较慢", IssueSeverity.warning));
     }
 
-    private static void CollectSteps(IEnumerable<Step> steps, string pathPrefix, string labelPrefix, int depth,
-        List<(Step, string, string, int)> output)
-    {
-        int index = 0;
-        foreach (var step in steps)
-        {
-            string path = $"{pathPrefix}/{index}";
-            string label = labelPrefix.Length == 0 ? $"第 {index + 1} 行" : $"{labelPrefix} › 第 {index + 1} 行";
-            output.Add((step, path, label, depth));
-
-            CollectSteps(step.Body, path + "/body", label + " › 循环体", depth + 1, output);
-            CollectSteps(step.Then, path + "/then", label + " › 满足时", depth + 1, output);
-            CollectSteps(step.Else, path + "/else", label + " › 否则", depth + 1, output);
-            index++;
-        }
-    }
-
-    private static void ValidateSubActionIds(ActionProgram program, List<ActionIssue> issues)
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        void Walk(IEnumerable<SubActionDef> defs, string path)
-        {
-            int index = 0;
-            foreach (var def in defs)
-            {
-                string id = (def.Id ?? "").Trim();
-                if (id.Length == 0)
-                {
-                    issues.Add(new ActionIssue($"{path}/{index}", "子动作", "", "",
-                        "子动作没有 id", IssueSeverity.error));
-                }
-                else if (!seen.Add(id))
-                {
-                    issues.Add(new ActionIssue($"{path}/{index}", "子动作", "", id,
-                        $"子动作 id「{id}」重复", IssueSeverity.error));
-                }
-
-                Walk(def.SubActions, $"{path}/{index}/subActions");
-                index++;
-            }
-        }
-
-        Walk(program.SubActions, "/subActions");
-    }
-
     // ============ 单步 ============
 
     private static void ValidateStep(ActionProgram program, Step step, string path, string label, int depth,
-        HashSet<string> produced, string? resourceRoot, bool draftCheck, List<ActionIssue> issues)
+        HashSet<string> produced, string? resourceRoot, bool draftCheck, bool allowReturn,
+        Func<string, SubActionDef?>? resolveSubAction, List<ActionIssue> issues)
     {
         var registry = StepRegistry.Default;
         if (!registry.TryGet(step.Unit, out var unit))
@@ -245,6 +243,14 @@ internal static class ActionValidator
 
         if (step.Disabled)
             return;
+
+        // 「返回」只结束子动作；放在动作里运行时直接报错，静态就能拦。
+        if (!allowReturn && step.Unit.Equals("flow.return", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.Add(new ActionIssue(path, label, step.Unit, "",
+                "「返回」只能用在子动作里（结束当前子动作）；动作要提前结束请用「停止」",
+                IssueSeverity.error));
+        }
 
         // —— 未知参数 ——
         foreach (string key in step.In.Keys)
@@ -272,14 +278,15 @@ internal static class ActionValidator
                 continue;
             }
 
-            ValidateArg(program, step, path, label, input, arg, produced, resourceRoot, draftCheck, issues);
+            ValidateArg(program, step, path, label, input, arg, produced, resourceRoot, draftCheck, allowReturn,
+                resolveSubAction, issues);
         }
 
         // —— 条件 ——
         ValidateCondition(step, path, label, produced, issues);
 
         // —— 子动作 / 宏 ——
-        ValidateReference(program, step, path, label, issues);
+        ValidateReference(step, path, label, resolveSubAction, issues);
 
         // —— 预算：无界循环 ——
         if (step.Unit.Equals("flow.while", StringComparison.OrdinalIgnoreCase))
@@ -288,7 +295,8 @@ internal static class ActionValidator
     }
 
     private static void ValidateArg(ActionProgram program, Step step, string path, string label, InputSpec input,
-        StepArg arg, HashSet<string> produced, string? resourceRoot, bool draftCheck, List<ActionIssue> issues)
+        StepArg arg, HashSet<string> produced, string? resourceRoot, bool draftCheck, bool allowReturn,
+        Func<string, SubActionDef?>? resolveSubAction, List<ActionIssue> issues)
     {
         string issuePath = $"{path}/in/{input.Key}";
 
@@ -318,7 +326,8 @@ internal static class ActionValidator
             }
             else
             {
-                ValidateStep(program, arg.InlineStep, issuePath, label, 1, produced, resourceRoot, draftCheck, issues);
+                ValidateStep(program, arg.InlineStep, issuePath, label, 1, produced, resourceRoot, draftCheck,
+                    allowReturn, resolveSubAction, issues);
             }
         }
 
@@ -487,8 +496,8 @@ internal static class ActionValidator
         }
     }
 
-    private static void ValidateReference(ActionProgram program, Step step, string path, string label,
-        List<ActionIssue> issues)
+    private static void ValidateReference(Step step, string path, string label,
+        Func<string, SubActionDef?>? resolveSubAction, List<ActionIssue> issues)
     {
         if (step.Unit.Equals("sub.run", StringComparison.OrdinalIgnoreCase))
         {
@@ -501,9 +510,15 @@ internal static class ActionValidator
                 return;
             }
 
-            if (SubActionStore.Resolve(program, id) == null)
+            var def = ResolveSubAction(id, resolveSubAction);
+            if (def == null)
+            {
                 issues.Add(new ActionIssue($"{path}/in/subAction", label, step.Unit, "subAction",
                     $"找不到子动作：{id}", IssueSeverity.error));
+                return;
+            }
+
+            ValidateSubActionCall(def, step, path, label, resolveSubAction, issues);
         }
 
         if (step.Unit.Equals("input.macro", StringComparison.OrdinalIgnoreCase))
@@ -522,6 +537,126 @@ internal static class ActionValidator
                     $"宏不存在：{id}", IssueSeverity.error));
         }
     }
+
+    /// <summary>
+    /// 调用一个存在的子动作：参数名、没传值的输入、输出名、调用成环。
+    /// 这些在运行时会直接失败（或撞上递归上限），能静态看出来就别等跑起来。
+    /// </summary>
+    private static void ValidateSubActionCall(SubActionDef def, Step step, string path, string label,
+        Func<string, SubActionDef?>? resolveSubAction, List<ActionIssue> issues)
+    {
+        string name = string.IsNullOrWhiteSpace(def.Name) ? def.Id : def.Name;
+        var declared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var variable in def.Variables)
+        {
+            string key = (variable.Key ?? "").Trim();
+            if (key.Length > 0) declared.Add(key);
+        }
+
+        // 运行时 <see cref="ActionEngine.RunSubAction"/> 对未知参数直接抛错。
+        foreach (string key in step.In.Keys)
+        {
+            if (string.Equals(key, "subAction", StringComparison.OrdinalIgnoreCase)) continue;
+            if (declared.Contains(key)) continue;
+
+            issues.Add(new ActionIssue($"{path}/in/{key}", label, step.Unit, key,
+                $"子动作「{name}」没有输入「{key}」（检查拼写，或子动作改过变量名）", IssueSeverity.error));
+        }
+
+        foreach (var variable in def.Variables)
+        {
+            if (variable.Direction != VariableDirection.input) continue;
+            string key = (variable.Key ?? "").Trim();
+            if (key.Length == 0 || step.In.ContainsKey(key)) continue;
+            if (!IsEmptyValue(variable.Seed())) continue;
+
+            issues.Add(new ActionIssue($"{path}/in/{key}", label, step.Unit, key,
+                $"子动作「{name}」的输入「{key}」既没有传值，也没有默认值（运行时是空的）",
+                IssueSeverity.warning));
+        }
+
+        var outputs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var variable in def.Variables)
+        {
+            if (variable.Direction != VariableDirection.output) continue;
+            string key = (variable.Key ?? "").Trim();
+            if (key.Length > 0) outputs.Add(key);
+        }
+
+        foreach (string key in step.Out.Keys)
+        {
+            if (outputs.Contains(key)) continue;
+
+            issues.Add(new ActionIssue($"{path}/out/{key}", label, step.Unit, key,
+                $"子动作「{name}」没有输出「{key}」（检查拼写，或子动作改过变量名）", IssueSeverity.warning));
+        }
+
+        if (FindCallCycle(def.Id, resolveSubAction) is { Count: > 0 } chain)
+        {
+            issues.Add(new ActionIssue($"{path}/in/subAction", label, step.Unit, "subAction",
+                $"子动作调用成环：{string.Join(" → ", chain)}（运行时会撞到层数上限）",
+                IssueSeverity.error));
+        }
+    }
+
+    /// <summary>从 <paramref name="start"/> 顺着 <c>sub.run</c> 找回到自己的路径；没成环返回 null。</summary>
+    /// <param name="resolveSubAction">
+    /// 按 id 取子动作定义；null = 只查 <see cref="SubActionStore"/>。写盘前的校验要传一个
+    /// 「正在写的这一份优先」的解析器，否则还没落盘的自调用查不出来。
+    /// </param>
+    internal static List<string>? FindCallCycle(string start, Func<string, SubActionDef?>? resolveSubAction = null)
+    {
+        if (string.IsNullOrWhiteSpace(start)) return null;
+
+        var chain = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        List<string>? Walk(string id)
+        {
+            if (chain.Count > 0 && string.Equals(id, start, StringComparison.OrdinalIgnoreCase))
+            {
+                var found = new List<string>(chain) { start };
+                return found;
+            }
+
+            if (!seen.Add(id)) return null;
+            var def = ResolveSubAction(id, resolveSubAction);
+            if (def == null) return null;
+
+            chain.Add(id);
+            foreach (string next in CalledSubActions(def))
+                if (Walk(next) is { } cycle) return cycle;
+
+            chain.RemoveAt(chain.Count - 1);
+            return null;
+        }
+
+        return Walk(start);
+    }
+
+    private static SubActionDef? ResolveSubAction(string id, Func<string, SubActionDef?>? resolveSubAction) =>
+        resolveSubAction != null ? resolveSubAction(id) : SubActionStore.Load(id);
+
+    private static IEnumerable<string> CalledSubActions(SubActionDef def)
+    {
+        var steps = new List<(Step Step, string Path, string Label, int Depth)>();
+        ProgramWalker.CollectSteps(def.Steps, "/steps", "", 1, steps);
+
+        foreach (var (step, _, _, _) in steps)
+        {
+            if (!step.Unit.Equals("sub.run", StringComparison.OrdinalIgnoreCase)) continue;
+            string? id = ProgramWalker.LiteralText(step, "subAction")?.Trim();
+            if (!string.IsNullOrEmpty(id)) yield return id;
+        }
+    }
+
+    private static bool IsEmptyValue(Value value) => value.Kind switch
+    {
+        ValueKind.text => value.AsText().Length == 0,
+        ValueKind.list => value.Items.Count == 0,
+        ValueKind.@object => value.Members.Count == 0,
+        _ => false,
+    };
 
     private static void ValidateImage(string image, string issuePath, string label, string unit,
         string? resourceRoot, bool draftCheck, List<ActionIssue> issues)
@@ -585,13 +720,6 @@ internal static class ActionValidator
     }
 
     // ============ 工具 ============
-
-    private static int SubIndex(ActionProgram program, SubActionDef sub)
-    {
-        for (int i = 0; i < program.SubActions.Count; i++)
-            if (ReferenceEquals(program.SubActions[i], sub)) return i;
-        return 0;
-    }
 
     /// <summary>变量路径 / 模板路径的根名字（<c>a.b[0]</c> → <c>a</c>）。</summary>
     private static string RootName(string? path)

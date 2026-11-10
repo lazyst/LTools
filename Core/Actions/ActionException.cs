@@ -25,3 +25,6 @@ internal sealed class ContinueSignal : Exception { }
 
 /// <summary>流程里的 <c>flow.stop</c>：正常结束，不算失败。</summary>
 internal sealed class StopSignal : Exception { }
+
+/// <summary>子动作里的 <c>flow.return</c>：结束当前子动作，已赋值的输出照常带回调用方。</summary>
+internal sealed class ReturnSignal : Exception { }

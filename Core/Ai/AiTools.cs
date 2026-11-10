@@ -49,6 +49,41 @@ public sealed class AiTools
         [Description("动作 Id，如 a3")] string id) =>
         AiToolHandlers.Call("ltools_actions_get", id, () => AiToolHandlers.ActionsGet(id));
 
+    [McpServerTool(Name = "ltools_subactions_list"), Description(
+        "列出全局子动作（只读）：id / 名称 / 输入 / 输出 / 步数。动作里用 sub.run 调用，参数名 = 输入变量名。")]
+    public static string SubActionsList(
+        [Description("可选：按名称 / id / 变量名过滤")] string? query = null,
+        [Description("最多返回多少条，默认 100")] int limit = 100) =>
+        AiToolHandlers.Call("ltools_subactions_list", null, () => AiToolHandlers.SubActionsList(query, limit));
+
+    [McpServerTool(Name = "ltools_subactions_get"), Description(
+        "读一个全局子动作的完整定义（变量方向 + 步骤，只读）。用 sub.run 调用它，out 映射写回输出。")]
+    public static string SubActionsGet(
+        [Description("子动作 id（subactions/ 下的文件名）")] string id) =>
+        AiToolHandlers.Call("ltools_subactions_get", id, () => AiToolHandlers.SubActionsGet(id));
+
+    [McpServerTool(Name = "ltools_subactions_check"), Description(
+        "校验一份子动作定义（不落盘）：与编辑器「校验」同一套规则，返回 ok / issues / errors / warnings。")]
+    public static string SubActionsCheck(
+        [Description("完整子动作定义（JSON 对象或 JSON 字符串：id / name / variables / steps）")]
+        JsonElement program) =>
+        AiToolHandlers.Call("ltools_subactions_check", null, () => AiToolHandlers.SubActionsCheck(program));
+
+    [McpServerTool(Name = "ltools_subactions_write"), Description(
+        "新建或整份写入一个全局子动作（需要写入开关 + 审批）。写前自动静态校验，有 error 就拒绝；" +
+        "expectedRevision 给了就按 CAS 校验（文件内容 sha256，先用 subactions_get 拿）。")]
+    public static string SubActionsWrite(
+        [Description("完整子动作定义（id 就是文件名，如 sub-1a2b3c4d）")] JsonElement program,
+        [Description("可选：期望的当前 revision（覆盖已有子动作时用）")] string? expectedRevision = null) =>
+        AiToolHandlers.Call("ltools_subactions_write", null,
+            () => AiToolHandlers.SubActionsWrite(program, expectedRevision));
+
+    [McpServerTool(Name = "ltools_subactions_delete"), Description(
+        "删除一个全局子动作（需要写入开关 + 审批）。会先列出调用它的动作位置。")]
+    public static string SubActionsDelete(
+        [Description("子动作 id")] string id) =>
+        AiToolHandlers.Call("ltools_subactions_delete", id, () => AiToolHandlers.SubActionsDelete(id));
+
     [McpServerTool(Name = "ltools_staging_list"), Description(
         "列出暂存区草稿：标题、来源动作、更新时间、状态（草稿 / 已保存 / 已采纳）。")]
     public static string StagingList() =>

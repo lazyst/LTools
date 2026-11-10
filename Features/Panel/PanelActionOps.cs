@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using LTools.Config;
 using LTools.Core;
+using LTools.Core.Actions;
 using LTools.Views;
 
 namespace LTools.Features.Panel;
@@ -104,6 +105,56 @@ internal static class PanelActionOps
                 ToastService.Show($"已导出到 {dest}", name, 3000, ToastKind.success);
             }
         }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    /// <summary>
+    /// 子动作 → 新动作：先转成动作草稿，再在动作编辑器里让用户确认名称 / 图标后保存。
+    /// 变量方向一律归「本地」（子动作的输入 / 输出是它独有的概念，见 <see cref="SubActionTransfer"/>）。
+    /// </summary>
+    public static bool ToAction(Window? owner, SubActionDef def)
+    {
+        var dto = SubActionTransfer.ToAction(def);
+        dto.Id = ActionRegistry.NextId();
+
+        var saved = ActionEditor.Show(owner, "子动作另存为动作", dto);
+        if (saved == null) return false;
+
+        if (!ConfigStore.AddAction(saved)) return false;
+        ConfigStore.Save();
+
+        ToastService.Show($"已新建动作「{saved.Name}」，在动作管理里能看到它。",
+            "另存为动作", 3000, ToastKind.success);
+        return true;
+    }
+
+    /// <summary>
+    /// 动作 → 新子动作：先转成子动作定义（变量归「本地」），再在子动作编辑器里让用户标输入 / 输出。
+    /// 动作本体不动，两边之后各走各的。
+    /// </summary>
+    public static bool ToSubAction(Window? owner, string id)
+    {
+        var action = ActionRegistry.FindById(id);
+        if (action == null) return false;
+
+        var def = SubActionTransfer.FromAction(action, SubActionStore.NewId());
+        var dlg = ActionEditorWindow.ForSubAction("动作另存为子动作", def);
+        dlg.Owner = owner;
+        if (dlg.ShowDialog() != true || dlg.SubResult == null) return false;
+
+        try
+        {
+            SubActionStore.Save(dlg.SubResult);
+        }
+        catch (ActionException ex)
+        {
+            ConfirmDialog.Info(owner, "另存为子动作", ex.Message);
+            return false;
+        }
+
+        ToastService.Show(
+            $"已新建子动作「{dlg.SubResult.Name}」（{dlg.SubResult.Id}），在设置 → 子动作库里能看到它。",
+            "另存为子动作", 3000, ToastKind.success);
+        return true;
     }
 
     /// <summary>文件名里去掉 Windows 不允许的字符（动作名可能带 <c>/</c>、冒号等）。</summary>

@@ -161,10 +161,23 @@ public partial class ActionEditorWindow
         string name = (NameBox.Text ?? "").Trim();
         if (name.Length == 0) name = "未命名动作";
 
+        // 子动作的「输入」就是变量：试运行前让用户填一次，没填的沿用默认值。
+        // 真实调用时这些值由调用方的参数传入（RunSubAction），这里只影响这一次试运行。
+        IReadOnlyDictionary<string, Value>? inputs = null;
+        if (_isSubAction)
+        {
+            var declared = ReadVariables();
+            if (declared == null) return;   // 默认值填错，ReadVariables 已经提示过
+
+            string subName = string.IsNullOrWhiteSpace(_program.Name) ? "子动作" : _program.Name;
+            inputs = SubActionInputDialog.Ask(this, subName, declared);
+            if (inputs == null) return;     // 用户取消
+        }
+
         // 顶层选择按原下标补齐（未选中的顶层步骤变成跳过），这样轨迹里的「第 N 行」仍是编辑器里的行号；
         // 选中里含分支步骤时没法补，压紧成临时动作（行号以这次运行为准）。
         bool topLevelOnly = selection?.All(r => ReferenceEquals(r.Owner, _program.Steps)) == true;
-        ActionProgram? program = BuildRunProgram(selection, topLevelOnly);
+        ActionProgram? program = BuildRunProgram(selection, topLevelOnly, inputs);
         if (program == null) return;
 
         PrepareTraceTargets(selection == null || topLevelOnly ? null : SourcePaths(selection!));
@@ -219,7 +232,8 @@ public partial class ActionEditorWindow
     /// <paramref name="only"/> 非空时只保留这些步骤：全是顶层时按原下标补齐（未选中的顶层步骤置为跳过），
     /// 否则按显示顺序压紧成临时动作。
     /// </summary>
-    private ActionProgram? BuildRunProgram(List<StepRow>? only = null, bool keepIndex = false)
+    private ActionProgram? BuildRunProgram(List<StepRow>? only = null, bool keepIndex = false,
+        IReadOnlyDictionary<string, Value>? inputs = null)
     {
         var variables = ReadVariables();
         if (variables == null) return null;   // 默认值填错，ReadVariables 已经提示过
@@ -227,6 +241,16 @@ public partial class ActionEditorWindow
         ActionProgram program = _program.Clone();
         program.Variables.Clear();
         foreach (var variable in variables) program.Variables.Add(variable.Clone());
+
+        // 子动作试运行时填的输入值写进这一次运行的默认值（不改编辑器里的变量表）。
+        if (inputs != null)
+        {
+            foreach (var variable in program.Variables)
+            {
+                string key = (variable.Key ?? "").Trim();
+                if (key.Length > 0 && inputs.TryGetValue(key, out var value)) variable.Default = value;
+            }
+        }
 
         if (only == null) return program;
 
@@ -451,7 +475,7 @@ public partial class ActionEditorWindow
         _program.Name = (NameBox.Text ?? "").Trim();
         _program.Icon = IconPicker.SelectedIcon ?? "";
 
-        var result = ActionValidator.Validate(_program, null, ResourceRoot);
+        var result = ValidateCurrent();
         if (result.Issues.Count == 0)
         {
             SetStatus("校验通过：没有发现问题", hint: true);
@@ -467,8 +491,29 @@ public partial class ActionEditorWindow
         SetStatus($"校验：{result.Errors} 个错误 / {result.Warnings} 个提醒",
             hint: result.Ok, danger: !result.Ok);
         MessageBox.Show(detail,
-            $"LTools · 动作校验（{result.Errors} 个错误 / {result.Warnings} 个提醒）",
+            $"LTools · {(_isSubAction ? "子动作" : "动作")}校验（{result.Errors} 个错误 / {result.Warnings} 个提醒）",
             MessageBoxButton.OK, result.Ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
+    }
+
+    /// <summary>
+    /// 子动作模式要按子动作的规则校验（<c>flow.return</c> 在那边合法、输出变量必须有人赋值），
+    /// 别拿动作那套去报一堆假错。
+    /// </summary>
+    private ActionValidationResult ValidateCurrent()
+    {
+        if (!_isSubAction) return ActionValidator.Validate(_program, null, ResourceRoot);
+
+        var def = _subDef!.Clone();
+        def.Name = _program.Name;
+        def.Icon = _program.Icon;
+
+        def.Variables.Clear();
+        foreach (var variable in _program.Variables) def.Variables.Add(variable.Clone());
+
+        def.Steps.Clear();
+        foreach (var step in _program.Steps) def.Steps.Add(step);
+
+        return ActionValidator.ValidateSubAction(def, null);
     }
 
     private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject

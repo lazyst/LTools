@@ -752,28 +752,13 @@ public partial class StepEditorDialog : Window
     private List<SubChoice> SubActionChoices()
     {
         var list = new List<SubChoice>();
-        if (Program != null)
-        {
-            foreach (var def in Flatten(Program.SubActions))
-                list.Add(new SubChoice(def.Id, $"本动作 · {Label(def)}"));
-        }
-
         foreach (var def in SubActionStore.LoadAll())
-            list.Add(new SubChoice(def.Id, $"全局 · {Label(def)}"));
+            list.Add(new SubChoice(def.Id, Label(def)));
 
         return list;
     }
 
-    private static IEnumerable<SubActionDef> Flatten(IEnumerable<SubActionDef> defs)
-    {
-        foreach (var def in defs)
-        {
-            yield return def;
-            foreach (var child in Flatten(def.SubActions)) yield return child;
-        }
-    }
-
-    private SubActionDef? ResolveSubAction(string id) => SubActionStore.Resolve(Program, id);
+    private static SubActionDef? ResolveSubAction(string id) => SubActionStore.Load(id);
 
     private static string Label(SubActionDef def) =>
         string.IsNullOrWhiteSpace(def.Name) ? def.Id : def.Name;

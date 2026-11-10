@@ -6,7 +6,7 @@
 > `actions/<id>/`（P2），运行期截图改落 `cache/screenshots/`、采纳时素材按内容哈希硬链接去重、
 > 启动时回收动作目录孤儿图、备份改为「目录白名单 + manifest」并支持导出单个动作 `.ltact`（P5）。
 > 本文下面关于 `LTools.json` 的段落是当时的实现记录；备份现在总是打包
-> `configs/` + `actions/`，再按勾选加 `resources/` + `速记/`，另有 `macros/` 与 `staging/`；**不再兼容旧单文件备份**
+> `configs/` + `actions/`，再按勾选加 `resources/` + `速记/`，另有 `macros/`、`staging/`、`state/`、`subactions/`；**不再兼容旧单文件备份**
 > （导入只认 `configs/`，旧版 `LTools.json` 备份会被 `Inspect` 拒绝）。
 >
 > **背景**：用户希望在应用目录下放一个「资源目录」存放脚本 / 程序等，`runCommand` 动作可用相对路径引用；并新增配置备份的导出 / 导入，一个包同时备份设置与资源目录（含速记）。
@@ -93,6 +93,7 @@ resources/...         （勾选「资源目录」时）
 macros/...            （存在宏时）
 staging/...           （存在未采纳草稿时）
 state/...             （存在跨动作状态时）
+subactions/<id>.json  （存在全局子动作时）
 ```
 
 **目录白名单**（`BackupService.BackupDomain`）是唯一来源：导出内容、体积估算、manifest 的
@@ -107,11 +108,11 @@ state/...             （存在跨动作状态时）
   "formatVersion": 1,
   "appVersion": "2.5.0",
   "createdAt": "2026-11-09T12:00:00",
-  "includes": ["config", "actions", "resources", "notes", "macros", "staging", "state"]
+  "includes": ["config", "actions", "resources", "notes", "macros", "staging", "state", "subactions"]
 }
 ```
 
-- 始终含 `config`；`actions` / `macros` / `staging` / `state` 存在就带；`resources` / `notes` 按勾选。
+- 始终含 `config`；`actions` / `macros` / `staging` / `state` / `subactions` 存在就带；`resources` / `notes` 按勾选。
 - `includes` 只声明**实际打进包里**的域；导入按它整体替换（缺目录 = 该域是空的）。
 - zip 条目名 UTF-8（`ZipFile` 默认），保留中文路径。
 - `formatVersion` 预留向后兼容；导入端只认 `1`，高于则提示版本不支持。
@@ -134,7 +135,7 @@ state/...             （存在跨动作状态时）
 3. 后台线程执行（避免阻塞钩子 / UI）：
    - 按目录白名单（见 §4）收集：`configs/`（**不存在**——全新安装、从未保存过——时先按内存配置
      写出一份，manifest 已声明含 `config`，不能产出「声称含配置、实际没有」的备份）；
-     `actions/`、`macros/`、`staging/` 存在就带；`resources/`、`速记/` 按勾选（跳过 `.bak-*` 等现场备份）。
+     `actions/`、`macros/`、`staging/`、`state/`、`subactions/` 存在就带；`resources/`、`速记/` 按勾选（跳过 `.bak-*` 等现场备份）。
    - 写 `manifest.json` + 各条目到临时 zip（`.part-随机`），完成后移到目标路径——导出到一半失败不会留下半个 zip。
 4. 体积 > 50 MB 时导出前确认（确认按钮为「确认导出」，非红色）。
 5. 完成后用 `ToastService` 提示路径（不再走托盘气泡）。

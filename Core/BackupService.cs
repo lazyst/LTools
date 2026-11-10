@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Config;
+using LTools.Core.Actions;
 using LTools.Core.Ai;
 using LTools.Core.Storage;
 using LTools.Features;
@@ -98,6 +99,9 @@ internal static class BackupService
         public bool HasStaging { get; init; }
         public bool HasActions { get; init; }
         public bool HasState { get; init; }
+
+        /// <summary>备份里带了 <c>subactions/</c> 全局子动作库。</summary>
+        public bool HasSubActions { get; init; }
     }
 
     /// <summary>导入预检结果：解压到临时目录后的扫描信息；调用方确认后由 <see cref="Import"/> 执行替换。</summary>
@@ -118,6 +122,9 @@ internal static class BackupService
 
         /// <summary>备份里带了 <c>actions/</c> 动作目录。</summary>
         public bool IncludeActions { get; init; }
+
+        /// <summary>备份里带了 <c>subactions/</c> 全局子动作库。</summary>
+        public bool IncludeSubActions { get; init; }
         public int ExecutableCount { get; init; }
         public List<string> ResourceActionRefs { get; init; } = new(); // "名称 — 片段"
         public long SizeBytes { get; init; }
@@ -155,6 +162,9 @@ internal static class BackupService
             plan.Domains.Add(new BackupDomain("staging", "staging", DraftStore.Root));
         if (Directory.Exists(AppPaths.StateDir))
             plan.Domains.Add(new BackupDomain("state", "state", AppPaths.StateDir));
+        // 子动作库：动作里的 sub.run 只存 id，漏了这个目录换机后全部报「找不到子动作」。
+        if (Directory.Exists(SubActionStore.DirectoryPath))
+            plan.Domains.Add(new BackupDomain("subactions", "subactions", SubActionStore.DirectoryPath));
         return plan;
     }
 
@@ -254,6 +264,8 @@ internal static class BackupService
             bool hasMacros = includes.Contains("macros", StringComparer.OrdinalIgnoreCase);
             bool hasStaging = includes.Contains("staging", StringComparer.OrdinalIgnoreCase);
             bool hasState = includes.Contains("state", StringComparer.OrdinalIgnoreCase);
+            bool hasSubActions = includes.Contains("subactions", StringComparer.OrdinalIgnoreCase)
+                                 || Directory.Exists(Path.Combine(staging, "subactions"));
             bool hasActions = includes.Contains("actions", StringComparer.OrdinalIgnoreCase)
                               || Directory.Exists(Path.Combine(staging, "actions"));
 
@@ -295,6 +307,7 @@ internal static class BackupService
                     HasStaging = hasStaging,
                     HasActions = hasActions,
                     HasState = hasState,
+                    HasSubActions = hasSubActions,
                 },
                 IncludeResources = hasResources,
                 IncludeNotes = hasNotes,
@@ -303,6 +316,7 @@ internal static class BackupService
                 IncludeState = hasState,
                 IncludeConfig = hasConfigDir,
                 IncludeActions = hasActions,
+                IncludeSubActions = hasSubActions,
                 ExecutableCount = execCount,
                 ResourceActionRefs = refs,
                 SizeBytes = DirSize(staging),
@@ -361,6 +375,14 @@ internal static class BackupService
             // 6) 跨动作状态（「存状态 / 读状态」单元写的那张表）
             if (preview.IncludeState)
                 ReplaceDir(Path.Combine(preview.StagingDir, "state"), AppPaths.StateDir, ts, restores);
+
+            // 7) 全局子动作库（动作里的 sub.run 只存 id，缺了就是一片「找不到子动作」）
+            if (preview.IncludeSubActions)
+            {
+                ReplaceDir(Path.Combine(preview.StagingDir, "subactions"),
+                    SubActionStore.DirectoryPath, ts, restores);
+                SubActionStore.Invalidate();
+            }
         }
         catch
         {

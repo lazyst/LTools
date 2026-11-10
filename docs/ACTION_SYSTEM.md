@@ -3,7 +3,7 @@
 > 目标：把现在「一个 `ActionDto` 装下所有类型 + 一个 300 行 switch」的结构，换成
 > **功能单元（Unit）→ 步骤（Step）→ 动作（Action）** 三层，变量带类型，并引入可复用的子动作（函数）。
 >
-> 已定方向：**一次性重写** / 子动作 = **全局库 + 动作内** / 变量 = **5 种类型**。
+> 已定方向：**一次性重写** / 子动作 = **全局库**（动作内子动作已于 2026-11-10 删除，见 §3.5）/ 变量 = **5 种类型**。
 > 本文件是方案与施工图，不含实现。证据见 §2。
 >
 > **状态（2026-11-07）**：W1 内核 + W2 全量单元已落地（`Core/Actions/` + `Features/Units/`，
@@ -226,8 +226,7 @@ interface IStepUnit {
     { "unit": "flow.if",
       "in": { "left": { "var": "n" }, "op": "greater", "right": 0 },
       "then": [ { "unit": "ui.toast", "in": { "text": "已整理 ${n} 个文件" } } ] }
-  ],
-  "subActions": [ /* 动作内子动作，见 §3.5 */ ]
+  ]
 }
 ```
 
@@ -236,24 +235,21 @@ interface IStepUnit {
 
 ### 3.5 子动作（函数）
 
-**两个存放位置，同一个模型**：
+**只有一个存放位置：全局库**（`<数据根>/subactions/<id>.json`，`SubActionStore`，
+与 `macros/*.json` 同一套约定：文件名就是 id，元数据都在文件内，没有嵌套）。
 
 ```csharp
 sealed class SubActionDef {
-    string Id;                 // 全局 "s1" / 动作内 "local:xxx"
+    string Id;                     // 全局 "s1"（= 文件名）
     string Name, Icon, Description;
     List<VariableDef> Variables;   // 带 Direction: input / output / local
     List<Step> Steps;
-    List<SubActionDef> SubActions; // 允许嵌套（可选）
 }
 ```
 
-> 存放位置决定「动作内 / 全局」，模型里不再另设 `IsLocal` 字段。
-
-| 位置 | 存储 | 可见性 |
-|---|---|---|
-| **全局库** | `<数据根>/subactions/<id>.json`（`SubActionStore`，与 `macros/*.json` 同一套约定） | 所有动作可见 |
-| **动作内** | `ActionProgram.SubActions[]` | 仅当前动作可见；可「升级为全局」 |
+动作内子动作（`ActionProgram.SubActions[]`）与「子动作里再嵌子动作」都已删除：
+它们没有编辑入口，却让读取子动作要先扫动作体、再递归找嵌套。现在
+`ActionProgram` 里只有变量表与步骤，`SubActionStore.Load(id)` 是唯一的解析入口。
 
 调用单元 `sub.run`：**参数名就是子动作的输入变量名**（`DynamicInputs`），
 输出按步骤的 `out` 映射写回调用方：
@@ -264,10 +260,29 @@ sealed class SubActionDef {
   "out": { "output": "clean" } }                             // output = Direction=output 的变量
 ```
 
-- 每次调用新建作用域，内部变量初始化；列表/对象**按引用传递**（与 Quicker 一致）。
+- 每次调用新建作用域，内部变量初始化；**值语义**（`Value` 不可变，列表 / 对象也是复制一份传进去，
+  与 Quicker 的「按引用」不同）——要带回改动就声明成输出变量。
 - 调用栈 + 递归深度上限（默认 8）；错误信息带 `动作 → 子动作 → 子动作`。
-- 编辑全局子动作影响所有调用方（这是「函数」应有的语义）；动作内子动作跟着动作走。
-- 删除前列出引用位置；「升级为全局」= 写文件 + 把 `local:` 引用改成全局 id。
+- 编辑全局子动作影响所有调用方（这是「函数」应有的语义）。
+- 删除前列出引用位置（`SubActionStore.FindReferences` / `ReferenceIndex`，按「动作名 · 步骤标签」）。
+- 子动作里的 `flow.return`（返回）结束当前子动作，已赋值的输出照常带回调用方；
+  它只能出现在子动作里，跑到动作顶层是明确报错（静态校验也会拦）。
+- 子动作里的 `flow.break` / `flow.continue` 只对子动作自己的循环有效：跑到调用方的循环上
+  会转成「不在子动作自己的循环里」的错误，不会悄悄穿透。
+
+**与动作互转**（`Core/Actions/SubActionTransfer.cs`）：两边同构，差别只在变量的「方向」。
+两个方向都把变量统一成 `local`——自动猜「哪些是输入 / 哪些是输出」只会猜错（同一个变量常常既读又写），
+让用户在变量表里改更省事；id 与图片不搬（子动作没有自己的 `files/`）。
+
+- 子动作 → 动作：子动作库右键「另存为动作…」→ 打开动作编辑器（名称 / 图标可改）→ 新建动作。
+- 动作 → 子动作：面板 / 动作管理磁贴右键「另存为子动作…」→ 打开子动作编辑器（标输入 / 输出）→ 落 `subactions/`。
+- 两边都是「另存一份」，原对象不动，之后各走各的。
+
+**AI 写入**（MCP）：`ltools_subactions_check(program)` / `ltools_subactions_write(program, expectedRevision?)` /
+`ltools_subactions_delete(id)`，与 `staging_promote` 同一套两道闸（`AllowWrites` + 审批模式）。
+写前跑 `ActionValidator.ValidateSubAction`（有 error 拒绝），`expectedRevision` = 文件内容 sha256（CAS）。
+校验在动作那套规则之外补三条：`flow.return` 只能出现在子动作里、输出变量必须有人赋值（warning）、
+自调用成环（按「正在写的这一份」算，不必先落盘）。
 
 ### 3.6 单元清单（W2/W3 已实现）
 
@@ -490,7 +505,7 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
   否则只有 `found` / `count` / `path` / `value` 这类通用词才加单元前缀，避免跨步骤互相覆盖）；
   名字和已有变量同名但类型不同时当场标红提醒。
 - 参数表单在**构造函数里**就建好（`StepEditorDialog(step, inline, program, variableNames, resourceRoot, variableInfos)`）：
-  `sub.run` 的「子动作」是下拉（本动作 + 全局库）；`Program` / 变量名 / 变量表必须作为构造参数
+  `sub.run` 的「子动作」是下拉（全局子动作库）；`Program` / 变量名 / 变量表必须作为构造参数
   传入，放到对象初始化器会晚一步（表单按 null 建好，子动作退化成手填 id 的文本框）。
   下拉遇到不在 `Options` 里的旧值原样保留并标「未知选项」，不静默改成第一项。
 - 变量面板：名称 / 类型 / 默认值；步骤**写出的**变量自动登记——`Core/Actions/VariableWrites` 是
@@ -498,9 +513,11 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
   保存时补声明与静态校验共用同一份。
 - 关闭编辑器时拿打开时的快照（名称 / 图标 / 变量表 / 步骤树）比对：有没保存的改动就三选一
   （保存 / 不保存 / 取消）；「保存」走与「确定」同一个 `Commit()`，校验不过就留在编辑器里。
-- **子动作库**（设置 → 子动作库）：列表 + 新建 / 编辑 / 复制 / 删除 / 打开目录。
-  编辑复用 `ActionEditorWindow.ForSubAction`——子动作与动作同构，只多一列「方向」
-  （输入 / 本地 / 输出），id 自动生成且不可手改（它是对外调用名）。
+- **子动作库**（设置 → 子动作库）：列表（名称 / id / 摘要 / 被引用次数）+ 搜索 + 新建 / 编辑 / 复制 /
+  删除 / 试运行 / 打开目录。编辑复用 `ActionEditorWindow.ForSubAction`——子动作与动作同构，只多一列
+  「方向」（输入 / 本地 / 输出）；id 由新建时生成、之后不可改（它是对外调用名）。
+  试运行走 `SubActionRunner`（摊平成一份 `ActionProgram` 复用编辑器试运行链路），输入值由
+  `SubActionInputDialog` 收集；删除前列出「哪个动作的哪一步」会坏。
 - 执行桥：`ActionDto.Program` + `Features/Migration/ActionPrograms.For`（懒迁移并缓存）；
   `ActionExecutor` 在 `Program != null` 时改走 `ActionEngine`，旧格式到 W5 再说。
 - 动作管理列表：`Program` 动作显示「动作 · N 步」（旧格式仍按原类型显示）。
@@ -550,7 +567,7 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 - 旧字段的只读用法集中到 legacy：`LegacyActionSummary`（设置页动作清单摘要、
   `BackupService` 的 `resources` 引用预览）、`ObsoleteActionCleanup`（已取消动作的清理）。
 - 资源回收改读新动作体：新增 `Core/Actions/ProgramWalker`，`ImageLibrary` / `MacroStore`
-  扫所有步骤（含动作内子动作、内联取值步骤）的 `image` / `macroId` 参数；旧字段只兜底未迁移动作。
+  扫动作与全局子动作的所有步骤（含嵌套块、内联取值步骤）的 `image` / `macroId` 参数；旧字段只兜底未迁移动作。
 - 删除无调用的 `Features/Flow/ActionMaterializer`、`ActionResults`、`FlowVariables`；
   `Views/Controls/VariableList` 只收变量名（不再列属性后缀）。
 
@@ -581,7 +598,7 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
   改为按单元声明登记，并校正已有行——用户手改过类型的行不再被覆盖。
 - 变量表每行补一行小字：来源（`第 2 步 · 截图（输出 file）`）；删除仍被步骤写入的变量时提示先改步骤，
   否则下次同步又会自动加回来。
-- `SubActionStore.Resolve(program, id)`：编辑器与执行器共用「动作内优先、再查全局库」。
+- `SubActionStore.Load(id)`：编辑器与执行器共用同一个解析入口（进程内索引缓存 + 坏文件隔离）。
 
 **验收**：构建 0 错 0 警；`ActionSmoke` 601 项断言；`PanelSmoke` 全绿（含参数对话框截图）。
 

@@ -539,7 +539,7 @@ public partial class ActionEditorWindow
         if (step.Unit == "sub.run")
         {
             string id = step.In.TryGetValue("subAction", out var arg) ? arg.Literal.AsText() : "";
-            var def = SubActionStore.Resolve(_program, id);
+            var def = SubActionStore.Load(id);
             return def?.Variables.FirstOrDefault(v =>
                 string.Equals(v.Key, key, StringComparison.OrdinalIgnoreCase))?.Type;
         }
