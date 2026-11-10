@@ -98,7 +98,8 @@ internal static class PanelActionOps
             {
                 string msg = t.Exception?.GetBaseException().Message ?? "未知错误";
                 ToastService.Show($"导出失败：{msg}", name, ToastService.StickyMs, ToastKind.error,
-                    onClick: () => { try { System.Diagnostics.Process.Start("explorer.exe", AppPaths.DataRoot); } catch { } });
+                    onClick: () => { try { System.Diagnostics.Process.Start("explorer.exe", AppPaths.DataRoot); } catch { } },
+                    actionText: "打开数据目录");
             }
             else
             {

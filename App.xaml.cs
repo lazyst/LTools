@@ -290,7 +290,7 @@ public partial class App : Application
                 string where = group == null ? "已在面板里" : $"已放进面板「{group}」";
                 ToastService.Show($"{name}\n{where} · 右键磁贴可试放 / 重新录制",
                     "键鼠宏已录好", 6000, ToastKind.success, key: "macro:saved",
-                    onClick: ConfigHelper.OpenMacros);
+                    onClick: ConfigHelper.OpenMacros, actionText: "打开键鼠宏设置");
             }
             catch (Exception ex)
             {

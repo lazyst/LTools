@@ -23,6 +23,11 @@ namespace LTools.Views;
 /// 靠 <c>WS_EX_NOACTIVATE</c> + <c>ShowActivated=false</c>，点击只是关掉卡片，焦点还留在原来的窗口。
 /// </para>
 /// <para>
+/// **正文不执行回调**：带 <see cref="ClickAction"/> 的提示（失败要看日志、宏录好要开设置）
+/// 在底部给一个写明动作的按钮 + 「关闭」，右上角 ✕ 只关闭。点正文 / 点 ✕ 永远不会把日志顶出来，
+/// 想关掉就一定能干净关掉。
+/// </para>
+/// <para>
 /// 同一个去重键的提示会被就地刷新（<see cref="SetContent"/>）并累加次数（<see cref="Bump"/>），
 /// 循环里的「正在处理第 3 个」因此只占一条卡片。
 /// </para>
@@ -35,6 +40,7 @@ public partial class ToastWindow : Window
     private string _title = "";
     private int _repeat;
     private Action? _clickAction;
+    private string _actionText = "";
 
     /// <summary>创建一条卡片（由 <see cref="ToastService"/> 统一 Show / 定位）。</summary>
     /// <param name="title">标题，可空（空则整行不占位）。</param>
@@ -66,19 +72,34 @@ public partial class ToastWindow : Window
     /// <summary>这条卡片占的位置（同一位置的卡片一起堆叠）。</summary>
     public ToastPosition Position { get; }
 
-    /// <summary>点击整张卡片时执行（例如打开运行记录）；为空 = 只是关闭。</summary>
+    /// <summary>
+    /// 底部主操作按钮要执行的动作（例如打开运行记录）；为空 = 只有关闭。
+    /// 正文点击**不会**执行它，必须点按钮。
+    /// </summary>
     public Action? ClickAction
     {
         get => _clickAction;
         set
         {
             _clickAction = value;
-            DetailText.Visibility = value != null ? Visibility.Visible : Visibility.Collapsed;
+            ApplyActionChrome();
+        }
+    }
+
+    /// <summary>主操作按钮上的文字（「查看日志」「打开键鼠宏设置」…）；为空时用「查看详情」。</summary>
+    public string ActionText
+    {
+        get => _actionText;
+        set
+        {
+            _actionText = value ?? "";
+            ApplyActionChrome();
         }
     }
 
     /// <summary>就地更新内容（同一个去重键重复提示时用）。</summary>
-    public void SetContent(string? title, string message, ToastKind kind, Action? onClick = null)
+    public void SetContent(string? title, string message, ToastKind kind,
+        Action? onClick = null, string? actionText = null)
     {
         _title = title ?? "";
         TitleText.Text = _title;
@@ -86,6 +107,7 @@ public partial class ToastWindow : Window
         MessageText.Text = message;
         ApplyKind(kind);
 
+        _actionText = actionText ?? "";
         ClickAction = onClick;
     }
 
@@ -122,12 +144,45 @@ public partial class ToastWindow : Window
         Card.BeginAnimation(OpacityProperty, fade);
     }
 
-    /// <summary>点一下卡片：先执行回调（打开详情），再关掉这张卡片。</summary>
+    /// <summary>
+    /// 点正文：只有「没什么可打开」的普通提示才顺手关掉；带操作按钮的提示正文不响应，
+    /// 免得用户想关掉却把日志顶出来（那是按钮的事）。
+    /// </summary>
     private void Card_Click(object sender, MouseButtonEventArgs e)
     {
-        Dismiss();
-        try { ClickAction?.Invoke(); } catch { /* 详情打不开也不该让提示卡住 */ }
         e.Handled = true;
+        if (_clickAction != null) return;
+        Dismiss();
+    }
+
+    /// <summary>右上角 ✕ / 底部「关闭」：只关卡片，不执行任何回调。</summary>
+    private void Close_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        Dismiss();
+    }
+
+    /// <summary>底部主操作按钮：先收起卡片，再执行回调（打开日志 / 设置）。</summary>
+    private void Action_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        var action = _clickAction;
+        Dismiss();
+        try { action?.Invoke(); } catch { /* 详情打不开也不该让提示卡住 */ }
+    }
+
+    /// <summary>有回调 → 显出「主操作 + 关闭」并收起角落的 ✕；没有 → 只剩 ✕ 和「点一下关掉」。</summary>
+    private void ApplyActionChrome()
+    {
+        bool hasAction = _clickAction != null;
+
+        ActionButton.Content = string.IsNullOrWhiteSpace(_actionText) ? "查看详情" : _actionText;
+        Actions.Visibility = hasAction ? Visibility.Visible : Visibility.Collapsed;
+        CloseMark.Visibility = hasAction ? Visibility.Collapsed : Visibility.Visible;
+
+        // 没有操作时整块可点关闭，鼠标也给出这个暗示；有操作时别让正文看起来能点。
+        Card.Cursor = hasAction ? Cursors.Arrow : Cursors.Hand;
+        Card.ToolTip = hasAction ? null : "点击关闭";
     }
 
     /// <summary>按等级换左侧色条；失败 / 成功一眼能分清。</summary>

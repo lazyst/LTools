@@ -40,7 +40,9 @@ public enum ToastPosition
 /// </para>
 /// <para>
 /// 运行结果提示带 <see cref="ToastKind"/> 与可选的 <c>key</c>：同一个 key 的提示会**就地更新**
-/// 并累加次数（循环里反复提示同一句话不会刷屏），点一下可以执行一个回调（打开详情 / 运行记录）。
+/// 并累加次数（循环里反复提示同一句话不会刷屏）；需要「打开日志 / 设置」这类后续动作时，
+/// 用 <c>onClick</c> 给底部一个写明动作的按钮（<c>actionText</c>），**正文点击只关闭、不执行回调**——
+/// 想关掉就一定能干净关掉。
 /// </para>
 /// </remarks>
 internal static class ToastService
@@ -66,12 +68,14 @@ internal static class ToastService
     public static void Show(string text, string? title = null, int durationMs = DefaultDurationMs) =>
         Show(text, title, durationMs, ToastKind.info);
 
-    /// <summary>显示一条带等级 / 位置 / 去重键 / 点击回调的提示。</summary>
+    /// <summary>显示一条带等级 / 位置 / 去重键 / 操作按钮的提示。</summary>
     /// <param name="durationMs">≤ 0 = 不自动关闭（失败提示用这个）。</param>
     /// <param name="key">去重键：同一个键的提示就地更新并累计次数。</param>
-    /// <param name="onClick">点一下提示时执行（例如打开运行记录）。</param>
+    /// <param name="onClick">底部主操作按钮执行什么（例如打开运行记录）。<b>正文点击不会执行它</b>。</param>
+    /// <param name="actionText">主操作按钮上的文字（「查看日志」「打开键鼠宏设置」…）；为空用「查看详情」。</param>
     public static void Show(string text, string? title, int durationMs, ToastKind kind,
-        string? key = null, Action? onClick = null, ToastPosition position = ToastPosition.bottomRight)
+        string? key = null, Action? onClick = null, string? actionText = null,
+        ToastPosition position = ToastPosition.bottomRight)
     {
         if (string.IsNullOrEmpty(text)) return;
 
@@ -83,10 +87,10 @@ internal static class ToastService
             if (!app.Dispatcher.CheckAccess())
             {
                 app.Dispatcher.BeginInvoke(
-                    () => SafeShowCore(text, title, durationMs, kind, key, onClick, position));
+                    () => SafeShowCore(text, title, durationMs, kind, key, onClick, actionText, position));
                 return;
             }
-            SafeShowCore(text, title, durationMs, kind, key, onClick, position);
+            SafeShowCore(text, title, durationMs, kind, key, onClick, actionText, position);
         }
         catch (Exception ex)
         {
@@ -128,19 +132,19 @@ internal static class ToastService
     }
 
     private static void SafeShowCore(string text, string? title, int durationMs, ToastKind kind,
-        string? key, Action? onClick, ToastPosition position)
+        string? key, Action? onClick, string? actionText, ToastPosition position)
     {
-        try { ShowCore(text, title, durationMs, kind, key, onClick, position); }
+        try { ShowCore(text, title, durationMs, kind, key, onClick, actionText, position); }
         catch (Exception ex) { AppLog.Warn("Toast", $"提示弹窗显示失败：{ex.Message}"); }
     }
 
     private static void ShowCore(string text, string? title, int durationMs, ToastKind kind,
-        string? key, Action? onClick, ToastPosition position)
+        string? key, Action? onClick, string? actionText, ToastPosition position)
     {
         // 同一个 key：就地更新内容 + 次数，不新开一条（循环里的提示不会刷满屏幕）。
         if (!string.IsNullOrEmpty(key) && ByKey.TryGetValue(key, out var existing) && Visible.Contains(existing))
         {
-            existing.SetContent(title, text, kind, onClick);
+            existing.SetContent(title, text, kind, onClick, actionText);
             existing.Bump();
             existing.StartCountdown(durationMs);
             Reflow();
@@ -155,7 +159,11 @@ internal static class ToastService
             oldest.Dismiss();
         }
 
-        var toast = new ToastWindow(title, text, kind, position) { ClickAction = onClick };
+        var toast = new ToastWindow(title, text, kind, position)
+        {
+            ActionText = actionText ?? "",
+            ClickAction = onClick,
+        };
         toast.Closed += (_, _) =>
         {
             Visible.Remove(toast);

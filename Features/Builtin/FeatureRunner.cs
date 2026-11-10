@@ -48,7 +48,8 @@ internal static class FeatureRunner
                                 { UseShellExecute = true });
                         }
                         catch { /* 打不开就算了 */ }
-                    });
+                    },
+                    actionText: "查看日志");
             }
         });
         return true;

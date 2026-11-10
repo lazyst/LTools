@@ -42,7 +42,7 @@ public sealed class ToastUnit : IStepUnit
         string key = args.Text("key").Trim();
 
         ToastService.Show(text, title.Length == 0 ? null : title, duration, ToastKind.info,
-            key.Length == 0 ? null : key, onClick: null, ResolvePosition(args.Text("position")));
+            key.Length == 0 ? null : key, onClick: null, position: ResolvePosition(args.Text("position")));
     }
 
     /// <summary>位置键 → 枚举；「跟随设置」读配置里的默认落点（带 10 秒缓存，循环里不会反复读盘）。</summary>

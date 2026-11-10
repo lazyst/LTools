@@ -8,7 +8,70 @@
         Focusable="False" ShowActivated="False" WindowStartupLocation="Manual"
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
     <!-- 提示弹窗的卡片：置顶、不抢焦点、不阻塞调用方（流程继续往下跑）。
-         自动化进行中时它可能出现在鼠标附近，所以整块都可点关闭，且不会激活本窗口。 -->
+         卡片正文**不执行回调**：要打开日志 / 设置这类操作，走底部那个明确的按钮，
+         这样点空白处永远只是关闭，不会「想关掉却弹出日志」。 -->
+    <Window.Resources>
+        <!-- 卡片是深色底，按钮不走主题的浅色 Btn 样式，配色就地写；三档圆角仍用全局的 CornerSm。 -->
+        <Style x:Key="ToastButton" TargetType="Button">
+            <Setter Property="Foreground" Value="#E4E4E7"/>
+            <Setter Property="Background" Value="#33FFFFFF"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" Background="{TemplateBinding Background}"
+                                CornerRadius="{StaticResource CornerSm}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#59FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#7AFFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 「关闭」是次要动作：默认透明，悬停才浮出色块，不会跟主操作抢眼睛。 -->
+        <Style x:Key="ToastQuietButton" TargetType="Button" BasedOn="{StaticResource ToastButton}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#9CA3AF"/>
+        </Style>
+
+        <!-- 右上角 ✕：**只关闭**，任何时候都不会打开日志。 -->
+        <Style x:Key="ToastCloseMark" TargetType="Button">
+            <Setter Property="Foreground" Value="#8A8A94"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Width" Value="22"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" Background="Transparent" CornerRadius="{StaticResource CornerSm}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#1FFFFFFF"/>
+                                <Setter Property="Foreground" Value="#F4F4F5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <Border x:Name="Card" Background="#F51B1B1F" CornerRadius="{StaticResource CornerLg}" Padding="0"
             BorderBrush="#33FFFFFF" BorderThickness="1" Cursor="Hand"
             MouseLeftButtonUp="Card_Click" ToolTip="点击关闭">
@@ -29,13 +92,20 @@
                            TextWrapping="Wrap" Visibility="Collapsed" Margin="0,0,0,3"/>
                 <TextBlock x:Name="MessageText" Foreground="#E4E4E7" TextWrapping="Wrap"
                            MaxHeight="260" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="DetailText" Text="点击查看详情" Foreground="#9CA3AF" FontSize="11"
-                           Margin="0,5,0,0" Visibility="Collapsed"/>
+
+                <!-- 有回调才有这一行：主操作（打开日志 / 设置…）+ 关闭。 -->
+                <StackPanel x:Name="Actions" Orientation="Horizontal" HorizontalAlignment="Right"
+                            Margin="0,9,0,0" Visibility="Collapsed">
+                    <Button x:Name="ActionButton" Style="{StaticResource ToastButton}" Click="Action_Click"/>
+                    <Button Style="{StaticResource ToastQuietButton}" Content="关闭"
+                            Margin="8,0,0,0" Click="Close_Click"/>
+                </StackPanel>
             </StackPanel>
 
-            <!-- 关闭按钮只是视觉提示：整块都能点 -->
-            <TextBlock Grid.Column="2" Text="✕" Foreground="#8A8A94" FontSize="11"
-                       VerticalAlignment="Top" Margin="0,10,12,0" IsHitTestVisible="False"/>
+            <!-- 有操作按钮时收起来，避免和「关闭」重复。 -->
+            <Button x:Name="CloseMark" Grid.Column="2" Content="✕" Style="{StaticResource ToastCloseMark}"
+                    VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,6,6,0"
+                    ToolTip="关闭" Click="Close_Click"/>
         </Grid>
     </Border>
 </Window>
