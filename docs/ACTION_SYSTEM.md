@@ -325,7 +325,7 @@ sealed class SubActionDef {
 | | `window.operate` 切前台/最大化/最小化/还原/改尺寸 | window |
 | **屏幕** | `screen.capture` 截图 → 对象 | Probe.screenshot |
 | | `screen.findImage` 找图 → 对象 | Probe.image |
-| | `screen.ocr` 文字识别 → 文本 | Probe.ocr |
+| | `screen.ocr` 文字识别 → 文本（也可选前台窗口 / 整个屏幕 / 固定区域，运行时现截一块，不落盘） | Probe.ocr |
 | | `screen.findText` 找文字 → 对象 | Probe.textSearch |
 | | `screen.pixel` 取色 → 对象 | Probe.color |
 | **流程** | `flow.set` 赋值/追加 | FlowNode.set |

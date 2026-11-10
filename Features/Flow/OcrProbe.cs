@@ -38,14 +38,25 @@ internal static class OcrProbe
 
         string path = ResolveImagePath(probe, ctx);
 
-        PaddleOcr.Tier? tier = PaddleOcr.ParseTier(probe.OcrEngine);
+        using Bitmap image = LoadImage(path);
+        return RecognizeImage(image, probe.OcrEngine);
+    }
+
+    /// <summary>
+    /// 识别一张已经在内存里的位图（「文字识别」选屏幕区域时先截一块再认字，不落盘）。
+    /// 引擎选择、语言包检查与结果整形与读文件那条路完全一致。
+    /// </summary>
+    public static VarValue RecognizeImage(Bitmap image, string? engine)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+
+        PaddleOcr.Tier? tier = PaddleOcr.ParseTier(engine);
 
         // 系统 OCR 的引擎不保证可跨线程，每次现建；PP-OCRv6 由 PaddleOcr 懒加载并跨步骤复用。
         OcrEngine? windows = tier == null ? OcrLayout.CreateEngine() : null;
         if (tier == null && windows == null)
             throw new FlowException("系统没有可用的 OCR 语言包，请在 Windows 设置里安装「中文(简体)」或「English」的 OCR 组件。");
 
-        using Bitmap image = LoadImage(path);
         return Recognize(tier, windows, image);
     }
 

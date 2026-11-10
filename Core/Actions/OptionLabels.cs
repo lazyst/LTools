@@ -99,6 +99,9 @@ internal static class OptionLabels
         ["screen"] = "整个屏幕",
         ["rect"] = "固定区域",
 
+        // —— 图片来源（文字识别）——
+        ["image"] = "图片",
+
         // —— 识别引擎 ——
         ["windows"] = "Windows 自带",
         ["v6tiny"] = "PP-OCRv6 快速",
