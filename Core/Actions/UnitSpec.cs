@@ -33,6 +33,15 @@ public enum InputEditor
     folder,
     image,
 
+    /// <summary>
+    /// 按键：两级下拉（分类 → 键），候选来自 <c>Features/KeyCatalog</c>。
+    /// 值仍是英文键名（<c>enter</c> / <c>f5</c> / <c>a</c> / <c>numpad0</c>），与 <c>KeyStroke</c> 一致。
+    /// </summary>
+    key,
+
+    /// <summary>多选（存 <c>a+b</c>，按 <see cref="InputSpec.Options"/> 的顺序拼），画成一排勾选框。</summary>
+    flags,
+
     /// <summary>键鼠宏：下拉列出已录制的宏（值仍是宏 Id）。</summary>
     macro,
     /// <summary>

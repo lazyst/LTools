@@ -47,12 +47,13 @@ public sealed class SendTextUnit : IStepUnit
         Name = "发送文本",
         Category = "键鼠与输入",
         Icon = "keyboard",
-        Description = "把文本发送到当前焦点窗口；自动模式不碰剪贴板、不受输入法影响",
+        Description = "把文本发送到当前焦点窗口；自动模式单行用注入、多行用粘贴，都不受输入法影响",
         Inputs = new[]
         {
             new InputSpec("text", "文本", ValueKind.text, InputEditor.multiline, Required: true),
             new InputSpec("mode", "方式", ValueKind.text, InputEditor.enumList,
-                Default: Value.FromText("auto"), Options: Modes),
+                Default: Value.FromText("auto"), Options: Modes,
+                Description: "自动：单行注入、含换行走粘贴；逐字输入：模拟真实按键（受输入法影响）；粘贴：总是走剪贴板"),
             new InputSpec("appendEnter", "末尾回车", ValueKind.@bool, InputEditor.boolean,
                 Default: Value.FromBool(false)),
             new InputSpec("focusDelayMs", "焦点延时毫秒", ValueKind.number, InputEditor.number,

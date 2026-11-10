@@ -336,8 +336,10 @@ internal static class ActionValidator
         Value value = arg.Literal;
         string text = value.AsText();
 
-        // 枚举值（保留旧值的只警告）
-        if (input.Options is { Count: > 0 } && text.Trim().Length > 0 && !text.Contains("${"))
+        // 枚举值（保留旧值的只警告）。多值编辑器（flags 存 a+b）没法拿整串比，
+        // 按键由 KeyStroke 在运行时给明确报错，两者都不在这里查。
+        if (input.Editor == InputEditor.enumList
+            && input.Options is { Count: > 0 } && text.Trim().Length > 0 && !text.Contains("${"))
         {
             if (!input.Options.Any(o => string.Equals(o, text.Trim(), StringComparison.OrdinalIgnoreCase)))
             {

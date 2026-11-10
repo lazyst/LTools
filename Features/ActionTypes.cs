@@ -55,13 +55,13 @@ public enum WindowActionKind
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum SendTextMode
 {
-    /// <summary>自动：纯 ASCII 且 ≤100 字符 → 键入；否则剪贴板粘贴（默认）。</summary>
+    /// <summary>自动：单行 → Unicode 注入（不碰剪贴板）；含换行 → 剪贴板粘贴（默认）。</summary>
     auto,
 
     /// <summary>强制模拟键入（非 ASCII 字符无法用 VkKeyScanW 映射，执行时预检报错，不静默粘贴）。</summary>
     type,
 
-    /// <summary>强制剪贴板粘贴（写剪贴板 → Ctrl+V → 150ms 后恢复原剪贴板文本，§12 修订）。</summary>
+    /// <summary>强制剪贴板粘贴（写剪贴板 → Ctrl+V → 150ms 后整块还原原剪贴板）。</summary>
     paste,
 }
 

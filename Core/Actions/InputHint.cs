@@ -24,6 +24,7 @@ internal static class InputHint
         return input.Editor switch
         {
             InputEditor.enumList or InputEditor.boolean => "",
+            InputEditor.key or InputEditor.flags => "",
             InputEditor.multiline => "多行文本；可用 ${变量} 引用变量",
             InputEditor.code => "代码原样传入，不解析 ${变量}",
             InputEditor.number => "数字（整数或小数）；可用 ${变量}",

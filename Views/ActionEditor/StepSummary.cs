@@ -33,6 +33,7 @@ internal static class StepSummary
         if (step.Unit is "flow.if" or "flow.while") return ConditionText(step);
         if (step.Unit == "sub.run") return SubActionText(step);
         if (step.Unit == MacroAction.UnitKey) return MacroText(step);
+        if (step.Unit == "input.sendKeys") return KeyText(step);
 
         var parts = new List<string>();
         foreach (var input in unit.Spec.Inputs)
@@ -91,6 +92,44 @@ internal static class StepSummary
         arg.Kind == StepArgKind.literal
             ? OptionLabels.For(input, arg.Literal.AsText())
             : ArgText(arg);
+
+    /// <summary>
+    /// 「模拟按键」的摘要：<c>短按 Ctrl+S</c> / <c>按下 Shift</c> / <c>抬起 Shift</c>。
+    /// 三个参数（按键 / 动作 / 修饰键）拼成一句话，比「按键 S · 动作 短按」好读。
+    /// </summary>
+    private static string KeyText(Step step)
+    {
+        if (!step.In.TryGetValue("key", out var keyArg)) return "";
+        if (keyArg.Kind != StepArgKind.literal) return ArgText(keyArg);
+
+        string key = keyArg.Literal.AsText().Trim();
+        if (key.Length == 0) return "（未选择按键）";
+
+        string action = step.In.TryGetValue("action", out var actionArg)
+                        && actionArg.Kind == StepArgKind.literal
+            ? actionArg.Literal.AsText().Trim()
+            : "tap";
+        string verb = action switch
+        {
+            "down" => "按下",
+            "up" => "抬起",
+            _ => "短按",
+        };
+
+        var parts = new List<string>();
+        if (step.In.TryGetValue("mods", out var modsArg) && modsArg.Kind == StepArgKind.literal)
+        {
+            foreach (string mod in modsArg.Literal.AsText()
+                         .Split('+', StringSplitOptions.RemoveEmptyEntries))
+            {
+                string label = KeyCatalog.LabelOf(mod.Trim());
+                if (label.Length > 0) parts.Add(label);
+            }
+        }
+        parts.Add(KeyCatalog.LabelOf(key));
+
+        return $"{verb} {string.Join("+", parts)}";
+    }
 
     /// <summary>
     /// 「回放宏」步骤的摘要：宏名字 + 时长（比裸宏 Id 有用）。宏文件没了就说清楚，

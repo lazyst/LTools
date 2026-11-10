@@ -321,6 +321,127 @@ public partial class StepEditorDialog : Window
                 return combo;
             }
 
+            case InputEditor.key:
+            {
+                // 一个下拉、分类是子菜单：点开 → 悬停 / 点分类 → 该组里的键。
+                // 111 个键平铺成一个下拉太长，分 8 类后每组最多 26 项，翻两下就找到了。
+                // 存的仍是英文键名（与 KeyStroke 一致）。
+                var groups = KeyCatalog.Groups.ToList();
+
+                string selected = current?.Literal.AsText() ?? input.Default?.AsText() ?? "";
+
+                // 老配置 / 手写的键不在这 8 组里时不能静默落到第一项（点一次确定就把值改掉了）：
+                // 临时补一个「其它」组，把原值放进去并勾上。
+                if (selected.Trim().Length > 0 && KeyCatalog.GroupOf(selected) == null)
+                    groups.Insert(0, new KeyGroup("其它", new[] { new KeyChoice(selected, selected) }));
+
+                var caption = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+                var button = new Button
+                {
+                    Style = (Style)FindResource("Btn"),
+                    MinHeight = 30,
+                    MinWidth = 200,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Padding = new Thickness(10, 0, 8, 0),
+                };
+                var buttonContent = new StackPanel { Orientation = Orientation.Horizontal };
+                buttonContent.Children.Add(caption);
+                buttonContent.Children.Add(new TextBlock
+                {
+                    Text = "▾",
+                    Margin = new Thickness(8, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (System.Windows.Media.Brush)FindResource("SecondaryTextBrush"),
+                });
+                button.Content = buttonContent;
+
+                var menu = new ContextMenu { PlacementTarget = button, Placement = PlacementMode.Bottom };
+                var keyItems = new List<(string Value, MenuItem Item)>();
+                foreach (var group in groups)
+                {
+                    var parent = MenuFx.Submenu(menu, group.Name);
+                    foreach (var choice in group.Keys)
+                    {
+                        var item = new MenuItem { Header = choice.Label, IsCheckable = true };
+                        item.Click += (_, _) =>
+                        {
+                            selected = choice.Value;
+                            SyncCaption();
+                            OnEdited();
+                        };
+                        parent.Items.Add(item);
+                        keyItems.Add((choice.Value, item));
+                    }
+                }
+
+                void SyncCaption()
+                {
+                    bool empty = selected.Trim().Length == 0;
+                    caption.Text = empty ? "（未选择）" : KeyCatalog.LabelOf(selected);
+                    caption.Foreground = (System.Windows.Media.Brush)FindResource(
+                        empty ? "HintTextBrush" : "TextBrush");
+
+                    foreach (var (value, item) in keyItems)
+                        item.IsChecked = string.Equals(value, selected, StringComparison.OrdinalIgnoreCase);
+                }
+
+                SyncCaption();
+
+                button.Click += (_, _) =>
+                {
+                    // 每次打开前重算勾选（值也可能被别的行改过）。
+                    SyncCaption();
+                    menu.PlacementTarget = button;
+                    menu.IsOpen = true;
+                };
+
+                _enumSetters[input.Key] = value =>
+                {
+                    selected = value;
+                    SyncCaption();
+                };
+
+                read = () => StepArg.FromText(selected);
+                return button;
+            }
+
+            case InputEditor.flags:
+            {
+                // 多选（修饰键）：一排勾选框，存 a+b 形式。
+                var wrap = new WrapPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                var boxes = new List<(string Key, CheckBox Box)>();
+                var selected = new HashSet<string>(
+                    (current?.Literal.AsText() ?? "")
+                        .Split('+', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(s => s.Trim())
+                        .Where(s => s.Length > 0),
+                    StringComparer.OrdinalIgnoreCase);
+
+                foreach (string option in input.Options ?? Array.Empty<string>())
+                {
+                    var check = new CheckBox
+                    {
+                        Content = OptionLabels.For(input, option),
+                        IsChecked = selected.Contains(option),
+                        Margin = new Thickness(0, 0, 16, 0),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    check.Checked += (_, _) => OnEdited();
+                    check.Unchecked += (_, _) => OnEdited();
+                    boxes.Add((option, check));
+                    wrap.Children.Add(check);
+                }
+
+                read = () => StepArg.FromText(string.Join("+",
+                    boxes.Where(b => b.Box.IsChecked == true).Select(b => b.Key)));
+                return wrap;
+            }
+
             case InputEditor.macro:
             {
                 var combo = new ComboBox { MinHeight = 28, MinWidth = 180 };

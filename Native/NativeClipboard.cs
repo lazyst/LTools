@@ -30,6 +30,7 @@ internal static class NativeClipboard
     [DllImport("user32.dll", SetLastError = true)] private static extern bool EmptyClipboard();
     [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr GetClipboardData(uint uFormat);
     [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
+    [DllImport("user32.dll", SetLastError = true)] private static extern uint EnumClipboardFormats(uint format);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "RegisterClipboardFormatW")]
     private static extern uint RegisterClipboardFormat(string format);
     [DllImport("kernel32.dll")] private static extern IntPtr GlobalLock(IntPtr h);
@@ -43,6 +44,16 @@ internal static class NativeClipboard
     private const uint CF_DIBV5 = 17;
     private const uint GMEM_MOVEABLE = 0x0002;
     private const uint GMEM_ZEROINIT = 0x0040;
+
+    // —— 句柄型格式（不是 HGLOBAL 字节，没法按原样存 / 还原）——
+    private const uint CF_BITMAP = 2;
+    private const uint CF_METAFILEPICT = 3;
+    private const uint CF_PALETTE = 9;
+    private const uint CF_ENHMETAFILE = 14;
+    private const uint CF_OWNERDISPLAY = 0x0080;
+    private const uint CF_DSPBITMAP = 0x0082;
+    private const uint CF_DSPMETAFILEPICT = 0x0083;
+    private const uint CF_DSPENHMETAFILE = 0x008E;
 
     /// <summary><c>Preferred DropEffect</c>：资源管理器据此判断粘贴是复制还是剪切。</summary>
     private const int DropEffectCopy = 1;
@@ -576,4 +587,79 @@ internal static class NativeClipboard
         finally { GlobalUnlock(hMem); }
         return hMem;
     }
+
+    // ============ 整块快照 / 还原 ============
+
+    /// <summary>剪贴板里的一种格式：格式号 + Win32 层的原始字节。</summary>
+    internal sealed class ClipboardFormat
+    {
+        public required uint Format { get; init; }
+        public required byte[] Data { get; init; }
+    }
+
+    /// <summary>
+    /// 剪贴板整块快照：粘贴前 <see cref="Capture"/>、粘贴后 <see cref="Restore"/>，
+    /// 用户原来复制的图片 / 文件列表 / HTML 不会因为一次粘贴就没了。
+    /// </summary>
+    /// <remarks>
+    /// 只按「格式号 + 原始字节」存，不做语义解析——同一个格式号写回去就是原样，
+    /// 新出现的注册格式（浏览器 / 编辑器自定义的）也不用逐个适配。
+    /// 位图 / 元文件这类**句柄型**格式存不了，见 <see cref="IsByteFormat"/>。
+    /// </remarks>
+    internal sealed class ClipboardSnapshot
+    {
+        public List<ClipboardFormat> Formats { get; } = new();
+        public bool IsEmpty => Formats.Count == 0;
+    }
+
+    /// <summary>把剪贴板当前所有能按字节保存的格式整块读下来。剪贴板被占用时返回 null。</summary>
+    public static ClipboardSnapshot? Capture()
+    {
+        if (!OpenWithRetry()) return null;
+
+        try
+        {
+            var snapshot = new ClipboardSnapshot();
+            uint format = 0;
+            while ((format = EnumClipboardFormats(format)) != 0)
+            {
+                if (!IsByteFormat(format)) continue;
+                byte[]? data = ReadAll(GetClipboardData(format));
+                if (data == null || data.Length == 0) continue;
+                snapshot.Formats.Add(new ClipboardFormat { Format = format, Data = data });
+            }
+            return snapshot;
+        }
+        finally { CloseClipboard(); }
+    }
+
+    /// <summary>把快照整块写回剪贴板（先清空）。空快照 = 恢复成「剪贴板为空」。</summary>
+    public static bool Restore(ClipboardSnapshot snapshot)
+    {
+        if (!OpenWithRetry()) return false;
+
+        try
+        {
+            EmptyClipboard();
+            if (snapshot.IsEmpty) return true;
+
+            bool ok = true;
+            foreach (var item in snapshot.Formats)
+                if (!SetBytes(item.Format, item.Data)) ok = false;
+            return ok;
+        }
+        finally { CloseClipboard(); }
+    }
+
+    /// <summary>
+    /// 只有 HGLOBAL 字节格式能按原样存回；位图 / 元文件 / 调色板是 GDI 句柄，
+    /// owner-draw 格式只有拥有它的窗口能解释，都跳过（还原后这些格式会丢，其余格式照常）。
+    /// </summary>
+    private static bool IsByteFormat(uint format) => format switch
+    {
+        CF_BITMAP or CF_METAFILEPICT or CF_PALETTE or CF_ENHMETAFILE => false,
+        CF_OWNERDISPLAY or CF_DSPBITMAP or CF_DSPMETAFILEPICT or CF_DSPENHMETAFILE => false,
+        >= 0x0300 and <= 0x03FF => false,   // GDI 对象句柄区间
+        _ => true,
+    };
 }

@@ -92,15 +92,12 @@ internal static class KnowledgePack
     private static string CurrentVersion()
     {
         string assembly = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
-        // 分类也算内容：分类重排后 units.md 的「分类」行会变，只哈希 key 的话文件会一直是旧的。
-        var entries = StepRegistry.Default.Units
-            .Select(u => $"{u.Spec.Key}|{u.Spec.Category}")
-            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
+        // 直接哈希**生成出来的正文**：单元参数 / 说明 / 选项任何一处变了都要重写。
+        // 只哈希「键 + 分类」的话，给某个单元换了一套参数（例如「模拟按键」重构）
+        // 版本号不变，units.md 就一直停在旧内容，agent 照着旧参数写步骤会全部失败。
         byte[] hash = System.Security.Cryptography.SHA256.HashData(
-            Encoding.UTF8.GetBytes(string.Join("\n", entries)));
-        return $"{assembly}|{entries.Count}|{Convert.ToHexString(hash)[..16].ToLowerInvariant()}";
+            Encoding.UTF8.GetBytes(BuildUnitsMarkdown()));
+        return $"{assembly}|{StepRegistry.Default.Units.Count}|{Convert.ToHexString(hash)[..16].ToLowerInvariant()}";
     }
 
     private static string BuildUnitsMarkdown()

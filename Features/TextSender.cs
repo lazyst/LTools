@@ -1,4 +1,6 @@
+using System;
 using System.Threading;
+using LTools.Core;
 using LTools.Native;
 
 namespace LTools.Features;
@@ -7,28 +9,23 @@ namespace LTools.Features;
 /// 发送文本的共用实现（自动 / 键入 / 粘贴三种模式）。
 /// </summary>
 /// <remarks>
-/// 「发送文本」单元与旧 <see cref="ActionExecutor"/> 的 sendText / sendKeys 共用，
-/// 语义见旧实现的注释：auto 走 Unicode 注入（不碰剪贴板）、type 走真实按键（受输入法影响）、
-/// paste 走剪贴板 + 150ms 后恢复。
+/// 语义：auto 单行走 Unicode 注入（不碰剪贴板）、多行走剪贴板粘贴；
+/// type 走真实按键（受输入法影响）；paste 走剪贴板 + 150ms 后还原。
 /// </remarks>
 internal static class TextSender
 {
     /// <summary>按模式发送文本；不含焦点延时、不含追加回车。</summary>
     public static void Dispatch(string text, SendTextMode mode, string label = "")
     {
+        // 自动模式下**含换行就改走粘贴**：Unicode 注入的 \n 是真正的 Enter 键，
+        // 在「按 Enter 就发送 / 确认」的对话框里会被拆成好几段分别发出去（用户报过）。
+        // 粘贴是一次 Ctrl+V，目标窗口自己决定换行怎么落地。
+        if (mode == SendTextMode.auto && (text.Contains('\n') || text.Contains('\r')))
+            mode = SendTextMode.paste;
+
         if (mode == SendTextMode.paste)
         {
-            // 先备份原剪贴板文本（非文本内容如图片无法经文本接口恢复——粘贴模式必然覆盖）。
-            bool hadOld = NativeClipboard.TryGetText(out var oldText);
-            if (!NativeClipboard.SetText(text))
-                throw new InvalidOperationException($"写剪贴板失败: {label}");
-
-            InputHelper.Combo((ushort)Win32.VkControl, (ushort)'V');
-            // 等目标窗口读走剪贴板再恢复，否则粘到原内容；150ms 对前台应用足够。
-            Thread.Sleep(150);
-            // 仅当剪贴板仍是我们写入的文本（用户未在此期间复制新内容）才恢复，避免覆盖新复制。
-            if (hadOld && NativeClipboard.TryGetText(out var now) && now == text)
-                NativeClipboard.SetText(oldText);
+            PasteText(text, label);
             return;
         }
 
@@ -39,6 +36,34 @@ internal static class TextSender
         }
 
         InputHelper.SendUnicodeText(text);
+    }
+
+    /// <summary>
+    /// 剪贴板粘贴：写入 → Ctrl+V → 等目标窗口读走 → 把剪贴板**整块还原**。
+    /// </summary>
+    /// <remarks>
+    /// 粘贴必然覆盖剪贴板，所以先按格式整块快照（文本 / 文件列表 / 图片 / HTML / RTF…），
+    /// 粘完再原样写回——只还原文本的话，用户原来复制的图片 / 文件会凭空消失。
+    /// 还原前确认剪贴板里还是我们写进去的那段文本：用户中途自己复制了别的东西就别覆盖。
+    /// </remarks>
+    private static void PasteText(string text, string label)
+    {
+        var snapshot = NativeClipboard.Capture();
+        if (snapshot == null)
+            AppLog.Warn("Text", "粘贴前读剪贴板失败，粘贴后不会还原原内容");
+
+        if (!NativeClipboard.SetText(text))
+            throw new InvalidOperationException($"写剪贴板失败: {label}");
+
+        InputHelper.Combo((ushort)Win32.VkControl, (ushort)'V');
+        // 等目标窗口读走剪贴板再恢复，否则粘到原内容；150ms 对前台应用足够。
+        Thread.Sleep(150);
+
+        if (snapshot == null) return;
+        if (!NativeClipboard.TryGetText(out var now) || now != text) return;
+
+        if (!NativeClipboard.Restore(snapshot))
+            AppLog.Warn("Text", "粘贴后还原剪贴板失败（可能被别的程序占用）");
     }
 
     /// <summary>

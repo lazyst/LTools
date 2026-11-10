@@ -136,6 +136,18 @@ internal static class KeyStroke
         return null;
     }
 
+    /// <summary>
+    /// 单个键名 → VK。与 <see cref="TryParse"/> 的末段同一套写法，另外**允许修饰键本身**
+    /// （<c>ctrl</c> / <c>shift</c> / <c>alt</c> / <c>win</c>）——「模拟按键」要能单独按下 / 抬起修饰键。
+    /// </summary>
+    public static bool TryResolveKey(string? name, out ushort vk)
+    {
+        string key = (name ?? "").Trim().ToLowerInvariant();
+        if (key.Length == 0) { vk = 0; return false; }
+        if (Modifiers.TryGetValue(key, out vk)) return true;
+        return TryVk(key, out vk);
+    }
+
     private static bool TryVk(string name, out ushort vk)
     {
         // 功能键 F1..F24

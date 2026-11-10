@@ -191,15 +191,15 @@ public partial class SuperPanelWindow
     /// <summary>「常用功能 ▸」/「LTools 功能 ▸」：常用功能再按分类分一层，点叶子直接加一颗磁贴。</summary>
     private void AddFeatureMenus(ItemsControl menu, PanelGroupDto group)
     {
-        var common = FloatingMenus.Submenu(menu, "常用功能");
+        var common = MenuFx.Submenu(menu, "常用功能");
         foreach (var byCategory in FeatureCatalog.InGroup(FeatureGroup.Common)
                      .GroupBy(d => d.Category))
         {
-            var cat = FloatingMenus.Submenu(common, byCategory.Key);
+            var cat = MenuFx.Submenu(common, byCategory.Key);
             foreach (var def in byCategory) AddFeatureItem(cat, group, def);
         }
 
-        var ltools = FloatingMenus.Submenu(menu, "LTools 功能");
+        var ltools = MenuFx.Submenu(menu, "LTools 功能");
         foreach (var def in FeatureCatalog.InGroup(FeatureGroup.Ltools))
             AddFeatureItem(ltools, group, def);
     }

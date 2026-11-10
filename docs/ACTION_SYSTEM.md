@@ -314,7 +314,7 @@ sealed class SubActionDef {
 | | `app.runCommand` 运行命令（→ 退出码/stdout/stderr） | runCommand |
 | | `app.process` 进程数量/进程号/结束进程 | Probe.process |
 | **脚本** | `script.ahk` 运行 AutoHotkey v2 脚本（随包运行时） | 新增（W7） |
-| **输入** | `input.sendKeys` 模拟按键 | sendKeys |
+| **输入** | `input.sendKeys` 模拟按键（键 + 短按 / 按下 / 抬起 + 修饰键） | sendKeys |
 | | `input.mouse` 鼠标操作 | mouse |
 | | `input.cursor` 读取光标位置（Pure） | 面板唤起坐标 |
 | | `input.clickText` 文字点击 | clickText |
@@ -404,7 +404,7 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 | `Node.DelayMs` | 前置 `flow.delay`（旧语义是执行**前**等待） |
 | `OnFail` / `CompositeOnFail` 缺省 | 显式写 `onFail: "continue"`（旧默认；新引擎默认 `stop`） |
 | `runCommand` 无 `OutputVar` | `capture: false`（旧行为是打开终端窗口） |
-| `sendKeys.Items` | 摊平成 `keys[]`：stroke → 原样、text → `text:…`、sleep → `sleep:…` |
+| `sendKeys.Items` | 键 → `input.sendKeys`（`key` + `action` + `mods`）、文本 → `text.send`、等待 → `flow.delay` |
 | `mouse.WheelDelta`（120/格） | `wheel` = 格数 |
 | `ProbeKind.ocr / textSearch` 的 `OcrEngine == null` | `engine: "windows"`（新单元默认 PP-OCRv6） |
 | `CompareOp.nearColor` | `equals` + 告警（容差无对应单元） |

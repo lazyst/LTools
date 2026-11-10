@@ -77,6 +77,7 @@ internal static class PickerDefaults
         PickerKind kind = input.Editor switch
         {
             InputEditor.enumList or InputEditor.boolean or InputEditor.macro => PickerKind.none,
+            InputEditor.key or InputEditor.flags => PickerKind.none,
 
             // 「变量名」输入框：名字本身是数据，不能再嵌变量。
             InputEditor.variable when input.Type == ValueKind.text => PickerKind.none,
