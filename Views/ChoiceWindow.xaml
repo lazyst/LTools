@@ -1,0 +1,43 @@
+<Window x:Class="LTools.Views.ChoiceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:LTools.Views.Controls"
+        Width="480" MinWidth="360" MaxHeight="640"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="False" Topmost="True"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="36"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <controls:TitleBar Grid.Row="0" x:Name="Bar"/>
+
+        <!-- 正文：确认框只有一段话；选择器上面是提示、下面是候选列表 -->
+        <TextBlock x:Name="MessageText" Grid.Row="1" Margin="16,10,16,0"
+                   TextWrapping="Wrap" LineHeight="20"/>
+
+        <Border x:Name="ListHost" Grid.Row="2" Margin="16,10,16,0" Visibility="Collapsed"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6">
+            <ListBox x:Name="OptionList" BorderThickness="0" Background="Transparent"
+                     MaxHeight="360" Padding="4"
+                     MouseDoubleClick="OptionList_DoubleClick"/>
+        </Border>
+
+        <Border Grid.Row="3" Background="{StaticResource SurfaceAltBrush}" Padding="16,10" Margin="0,16,0,0">
+            <StackPanel x:Name="ButtonHost" Orientation="Horizontal" HorizontalAlignment="Right"/>
+        </Border>
+    </Grid>
+</Window>

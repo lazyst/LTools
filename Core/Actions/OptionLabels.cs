@@ -104,6 +104,12 @@ internal static class OptionLabels
         ["v6tiny"] = "PP-OCRv6 快速",
         ["v6small"] = "PP-OCRv6 高精度",
 
+        // —— 图片格式（image.transform）——
+        ["png"] = "PNG（保留透明）",
+        ["jpg"] = "JPG（有损、体积小）",
+        ["bmp"] = "BMP（无压缩）",
+        ["webp"] = "WebP（有损、更小）",
+
         // —— 剪贴板 / 发送文本 ——
         ["read"] = "读取剪贴板",
         ["write"] = "写入剪贴板",

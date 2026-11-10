@@ -97,6 +97,7 @@ internal static class BackupService
         public bool HasMacros { get; init; }
         public bool HasStaging { get; init; }
         public bool HasActions { get; init; }
+        public bool HasState { get; init; }
     }
 
     /// <summary>导入预检结果：解压到临时目录后的扫描信息；调用方确认后由 <see cref="Import"/> 执行替换。</summary>
@@ -108,6 +109,9 @@ internal static class BackupService
         public bool IncludeNotes { get; init; }
         public bool IncludeMacros { get; init; }
         public bool IncludeStaging { get; init; }
+
+        /// <summary>备份里带了 <c>state/</c> 跨动作状态。</summary>
+        public bool IncludeState { get; init; }
 
         /// <summary>备份里带了 <c>configs/</c> 配置目录。</summary>
         public bool IncludeConfig { get; init; }
@@ -149,6 +153,8 @@ internal static class BackupService
             plan.Domains.Add(new BackupDomain("macros", "macros", MacroStore.Dir));
         if (Directory.Exists(DraftStore.Root))
             plan.Domains.Add(new BackupDomain("staging", "staging", DraftStore.Root));
+        if (Directory.Exists(AppPaths.StateDir))
+            plan.Domains.Add(new BackupDomain("state", "state", AppPaths.StateDir));
         return plan;
     }
 
@@ -247,6 +253,7 @@ internal static class BackupService
             bool hasNotes = includes.Contains("notes", StringComparer.OrdinalIgnoreCase);
             bool hasMacros = includes.Contains("macros", StringComparer.OrdinalIgnoreCase);
             bool hasStaging = includes.Contains("staging", StringComparer.OrdinalIgnoreCase);
+            bool hasState = includes.Contains("state", StringComparer.OrdinalIgnoreCase);
             bool hasActions = includes.Contains("actions", StringComparer.OrdinalIgnoreCase)
                               || Directory.Exists(Path.Combine(staging, "actions"));
 
@@ -287,11 +294,13 @@ internal static class BackupService
                     HasMacros = hasMacros,
                     HasStaging = hasStaging,
                     HasActions = hasActions,
+                    HasState = hasState,
                 },
                 IncludeResources = hasResources,
                 IncludeNotes = hasNotes,
                 IncludeMacros = hasMacros,
                 IncludeStaging = hasStaging,
+                IncludeState = hasState,
                 IncludeConfig = hasConfigDir,
                 IncludeActions = hasActions,
                 ExecutableCount = execCount,
@@ -348,6 +357,10 @@ internal static class BackupService
             // 5) AI 暂存区草稿（含 history；排除 ai/ 里的令牌）
             if (preview.IncludeStaging)
                 ReplaceDir(Path.Combine(preview.StagingDir, "staging"), DraftStore.Root, ts, restores);
+
+            // 6) 跨动作状态（「存状态 / 读状态」单元写的那张表）
+            if (preview.IncludeState)
+                ReplaceDir(Path.Combine(preview.StagingDir, "state"), AppPaths.StateDir, ts, restores);
         }
         catch
         {

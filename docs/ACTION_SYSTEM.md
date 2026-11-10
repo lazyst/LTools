@@ -271,7 +271,7 @@ sealed class SubActionDef {
 
 ### 3.6 单元清单（W2/W3 已实现）
 
-> 分类名以代码 `UnitSpec.Category` 为准：2026-11 起重排为「键鼠与输入 / 流程 / 文本与数据 / 剪贴板 / 文件 / 窗口与程序 / 屏幕 / 界面 / 脚本」（顺序见 `Core/Actions/UnitCategories`）。下表保留当初实现时的分组。
+> 分类名以代码 `UnitSpec.Category` 为准：2026-11 起重排为「键鼠与输入 / 流程 / 文本与数据 / 剪贴板 / 文件 / 网络 / 窗口与程序 / 屏幕 / 界面 / 脚本」（顺序见 `Core/Actions/UnitCategories`）。下表保留当初实现时的分组。
 
 | 分类 | 单元（W2 已实现） | 对应今天的 |
 |---|---|---|
@@ -334,6 +334,36 @@ sealed class SubActionDef {
 **粒度原则**：能用一个 `operation` 参数区分的微操作，合并在同一个单元里
 （`text.process`、`file.operation`、`window.operate`、`data.list`、`data.calc`），
 否则工具箱会变成今天 Quicker 的 119 项。`text.format` 已并入模板 + `text.process join`。
+
+#### 3.6.1 对照 Quicker 补的 13 个单元（2026-11）
+
+按 Quicker 的功能清单逐项对过一遍：主线（键鼠 / 窗口 / 文本 / 文件 / 屏幕 / 剪贴板 / 流程）已经够用，
+整块缺的是**网络、图片处理、用户交互、事件等待**四块。专用软件控制（Photoshop / AutoCAD /
+Excel COM 那类）不做——那些用「运行脚本」或外部工具接，不值得为每个软件写一个单元。
+
+| 分类 | 单元 | 补的是什么 |
+|---|---|---|
+| **网络** | `web.request` | GET/POST/PUT/PATCH/DELETE、自定义请求头、响应存文件、JSON 顺手解析成对象。静态 `HttpClient` + 停止令牌串联，按停止热键能立刻中断请求 |
+| **文本与数据** | `text.encode` | Base64 / URL / HTML 编解码。Base64 能直接读整个文件（图片转 Base64）或把结果写成文件（反过来） |
+| | `data.random` | 随机整数（闭区间）/ 随机字符串 / GUID / 从列表抽一项 |
+| | `state.set` / `state.get` | 跨动作、跨重启的持久状态（`<数据根>/state/values.json`，保留列表 / 对象类型，进备份） |
+| **流程** | `app.log` | 往 `logs/action-yyyyMMdd.log` 写一行（**始终写**），同时进运行日志 |
+| **键鼠与输入** | `input.waitKey` | 等用户按一个键 / 组合键（留空 = 任意键）；只吞命中的那个键，超时是 `found = false` 不是失败 |
+| **文件** | `path.parts` | 按字符串拆路径（目录 / 文件名 / 主名 / 扩展名 / 根）或拼接，不碰磁盘 |
+| | `file.zip` | 压缩文件夹 / 文件成 zip，或解压；目标已存在且没勾「覆盖」直接失败 |
+| **窗口与程序** | `window.message` | 发 Windows 消息（`WM_CLOSE` / 自定义消息）；默认 `SendMessageTimeout` 带超时，也可以只投递 |
+| **屏幕** | `image.transform` | 裁剪 / 缩放 / 旋转 / 灰度 / 翻转 / 转格式；不填目标路径时输出到 `cache/screenshots/` |
+| **界面** | `ui.confirm` | 确认框，按钮可自定义（`确定\|取消`、`保存\|不保存\|取消`），第一个按钮算「肯定」 |
+| | `ui.select` | 从候选列表里挑一项（列表值 / 文件列表 / 正则结果），取消是 `found = false` |
+
+两处实现细节值得记住：
+
+- **`ui.confirm` / `ui.select` 不用 `ShowDialog`**（和文本窗口同一条理由）：模态对话框会把 UI 线程
+  卡在它自己的消息循环里，停止热键就中止不了流程。走 `Features/ChoiceWindowService` 的
+  「`Show` + 后台线程轮询」，超时 / 停止都能把窗口关掉。
+- **`input.waitKey` 不是钩子里的手势**：自动化运行期间键盘钩子只保留停止热键，其余按键原样放行。
+  等待者由 `Features/KeyWaiter` 临时挂上，钩子见到按键先问它，命中就吞掉（连同自动重复与抬起）。
+  修饰键从不吞——吞了会让系统认为 Ctrl 一直按着。
 
 ### 3.7 迁移规则（已删除）
 

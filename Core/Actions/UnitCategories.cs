@@ -18,7 +18,7 @@ internal static class UnitCategories
 {
     /// <summary>
     /// 按「动手 → 判断 → 加工 → 取材」排：先键鼠输入，再流程控制与内容处理，
-    /// 文件 / 屏幕 / 窗口这类「用到才找」的往后放，脚本与内置功能最后。
+    /// 文件 / 网络 / 屏幕 / 窗口这类「用到才找」的往后放，脚本与内置功能最后。
     /// </summary>
     private static readonly string[] Order =
     {
@@ -27,6 +27,7 @@ internal static class UnitCategories
         "文本与数据",
         "剪贴板",
         "文件",
+        "网络",
         "窗口与程序",
         "屏幕",
         "界面",

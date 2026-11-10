@@ -247,6 +247,10 @@ internal static class Win32
     public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam,
         uint flags, uint timeout, out IntPtr result);
 
+    /// <summary>投递消息后立刻返回（不等目标处理；目标卡死也不会拖住调用线程）。</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
     /// <summary>SendMessageTimeout 的 SMTO_ABORTIFHUNG。</summary>
     public const uint SmtoAbortIfHung = 0x0002;
 

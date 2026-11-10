@@ -7,6 +7,7 @@ using LTools.Features.Units.Screen;
 using LTools.Features.Units.Script;
 using LTools.Features.Units.Text;
 using LTools.Features.Units.Ui;
+using LTools.Features.Units.Web;
 using LTools.Features.Units.Windows;
 
 namespace LTools.Features.Units;
@@ -25,6 +26,8 @@ public static class BuiltInUnits
         // —— 界面 / 文本 ——
         registry.Register(new ToastUnit());
         registry.Register(new UserInputUnit());
+        registry.Register(new ConfirmUnit());
+        registry.Register(new SelectUnit());
         registry.Register(new TextWindowUnit());
         registry.Register(new ClipboardUnit());
         registry.Register(new ClipboardHistoryUnit());
@@ -33,6 +36,7 @@ public static class BuiltInUnits
         registry.Register(new SendTextUnit());
         registry.Register(new ProcessTextUnit());
         registry.Register(new RegexUnit());
+        registry.Register(new EncodeUnit());
 
         // —— 文件 ——
         registry.Register(new OpenPathUnit());
@@ -41,6 +45,8 @@ public static class BuiltInUnits
         registry.Register(new WriteFileUnit());
         registry.Register(new FileOperationUnit());
         registry.Register(new PathInfoUnit());
+        registry.Register(new PathPartsUnit());
+        registry.Register(new ZipUnit());
         registry.Register(new ListFolderUnit());
         registry.Register(new ExplorerUnit());
         registry.Register(new ClipboardFilesUnit());
@@ -56,12 +62,14 @@ public static class BuiltInUnits
         registry.Register(new LaunchAppUnit());
         registry.Register(new RunCommandUnit());
         registry.Register(new ProcessUnit());
+        registry.Register(new LogUnit());
 
         // —— 脚本 ——
         registry.Register(new AhkScriptUnit());
 
         // —— 输入 ——
         registry.Register(new SendKeysUnit());
+        registry.Register(new WaitKeyUnit());
         registry.Register(new MouseUnit());
         registry.Register(new CursorUnit());
         registry.Register(new ClickTextUnit());
@@ -72,6 +80,7 @@ public static class BuiltInUnits
         registry.Register(new FindWindowUnit());
         registry.Register(new ForegroundWindowUnit());
         registry.Register(new OperateWindowUnit());
+        registry.Register(new MessageUnit());
 
         // —— 屏幕 ——
         registry.Register(new CaptureScreenUnit());
@@ -79,6 +88,7 @@ public static class BuiltInUnits
         registry.Register(new OcrUnit());
         registry.Register(new FindTextUnit());
         registry.Register(new PixelUnit());
+        registry.Register(new ImageTransformUnit());
 
         // —— 数据 ——
         registry.Register(new NoteWriteUnit());
@@ -87,6 +97,12 @@ public static class BuiltInUnits
         registry.Register(new JsonUnit());
         registry.Register(new CalcUnit());
         registry.Register(new TimeUnit());
+        registry.Register(new RandomUnit());
+        registry.Register(new StateSetUnit());
+        registry.Register(new StateGetUnit());
         registry.Register(new LastErrorUnit());
+
+        // —— 网络 ——
+        registry.Register(new WebRequestUnit());
     }
 }

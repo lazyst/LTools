@@ -85,6 +85,11 @@ internal static class KeyboardHook
             // 避免切换大小写或让状态机进入按下态。停止热键已在上方优先处理。
             if (AutomationRunner.IsRunning)
             {
+                // 「等待按键」（input.waitKey）：命中的键连同它的自动重复 / 抬起一起吞掉，
+                // 其余按键照常放行（用户仍可在别的窗口打字）。放在 CapsLock 之前，
+                // 让「等 CapsLock」也能命中。
+                if (KeyWaiter.HandleKey(vk, isDown, isUp)) return (IntPtr)1;
+
                 if (isUp && AppState.SwallowedVks.Remove((int)vk)) return (IntPtr)1;
                 if (vk == Win32.VkCapital)
                 {

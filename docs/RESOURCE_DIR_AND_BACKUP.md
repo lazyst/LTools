@@ -92,6 +92,7 @@ resources/...         （勾选「资源目录」时）
 速记/...              （勾选「速记」时）
 macros/...            （存在宏时）
 staging/...           （存在未采纳草稿时）
+state/...             （存在跨动作状态时）
 ```
 
 **目录白名单**（`BackupService.BackupDomain`）是唯一来源：导出内容、体积估算、manifest 的
@@ -106,11 +107,11 @@ staging/...           （存在未采纳草稿时）
   "formatVersion": 1,
   "appVersion": "2.5.0",
   "createdAt": "2026-11-09T12:00:00",
-  "includes": ["config", "actions", "resources", "notes", "macros", "staging"]
+  "includes": ["config", "actions", "resources", "notes", "macros", "staging", "state"]
 }
 ```
 
-- 始终含 `config`；`actions` / `macros` / `staging` 存在就带；`resources` / `notes` 按勾选。
+- 始终含 `config`；`actions` / `macros` / `staging` / `state` 存在就带；`resources` / `notes` 按勾选。
 - `includes` 只声明**实际打进包里**的域；导入按它整体替换（缺目录 = 该域是空的）。
 - zip 条目名 UTF-8（`ZipFile` 默认），保留中文路径。
 - `formatVersion` 预留向后兼容；导入端只认 `1`，高于则提示版本不支持。

@@ -32,6 +32,9 @@ internal static class AppPaths
     /// <summary>全局子动作库，位于数据根下（一个子动作一个 JSON 文件）。</summary>
     public static string SubActionsDir => Path.Combine(DataRoot, "subactions");
 
+    /// <summary>跨动作状态目录（「存状态 / 读状态」单元），位于数据根下，进备份。</summary>
+    public static string StateDir => Path.Combine(DataRoot, "state");
+
     /// <summary>
     /// 动作未指定工作目录时的默认值：数据根（目录不可用时回退桌面）。
     /// launchApp / runCommand 共用，避免两个功能各自默认到不同目录。

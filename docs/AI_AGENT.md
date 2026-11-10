@@ -241,7 +241,7 @@ staging/
 |---|---|---|---|
 | `ltools_health` | 版本 / 开关 / 审批模式 / 草稿数 / 最近错误 | | |
 | `ltools_docs_get(name)` | `format` / `units` / `examples` | | |
-| `ltools_units_list(query?)` | 单元摘要列表（62 条，可过滤） | | |
+| `ltools_units_list(query?)` | 单元摘要列表（74 条，可过滤） | | |
 | `ltools_units_get(key)` | 单个单元的完整 Input/Output 规格 | | |
 | `ltools_actions_list(query?, limit?)` | 正式动作列表（Id/名称/图标/步骤数/来源） | | |
 | `ltools_actions_get(id)` | 正式动作的完整 Program（只读） | | |

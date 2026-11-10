@@ -6,6 +6,20 @@
 
 ### ✨ 新增
 
+- **13 个新功能单元**（照 Quicker 的功能清单逐项对过一遍：主线已经够用，整块缺的是「网络 / 图片处理 / 用户交互 / 事件等待」四块）
+  - `web.request` 发 HTTP 请求：GET/POST/PUT/PATCH/DELETE、自定义请求头、响应直接存文件、JSON 顺手解析成对象；按停止热键能立刻中断请求，不用等超时
+  - `text.encode` Base64 / URL / HTML 编解码：Base64 能直接读整个文件（图片转 Base64），也能把结果写成文件（反过来）
+  - `data.random` 随机整数（含两端）/ 随机字符串 / GUID / 从列表里抽一项
+  - `state.set` / `state.get` 跨动作、跨重启的持久状态（`state/values.json`，保留列表 / 对象类型，纳入备份）
+  - `app.log` 往 `logs/action-日期.log` 写一行（**始终写**），同时进运行日志
+  - `input.waitKey` 等用户按一个键 / 组合键（留空 = 任意键）；只吞命中的那个键，超时是 `found = false` 而不是失败
+  - `path.parts` 按字符串拆 / 拼路径（目录 / 文件名 / 主名 / 扩展名 / 根），不碰磁盘
+  - `file.zip` 把文件夹或文件压成 zip、把 zip 解压到目录；目标已存在且没勾「覆盖」直接失败
+  - `window.message` 向窗口发 Windows 消息（`WM_CLOSE` / 自定义消息）：默认带超时不卡流程，也可以只投递
+  - `image.transform` 裁剪 / 缩放 / 旋转 / 灰度 / 翻转 / 转格式；不填目标路径时输出到运行期缓存
+  - `ui.confirm` 确认框（按钮可自定义，第一个算「肯定」）、`ui.select` 从候选列表里挑一项；都**不用模态对话框**（后台线程轮询），停止热键能关窗并中止
+  - 编辑器左栏新增「网络」分类；`state/` 纳入备份域
+
 - **全局快捷键：预设组 + 白 / 黑名单**（设置 →「快捷键」，取代旧的「CapsLock+数字」快捷菜单）
   - **左预设组 + 右热键表**：组和条目都能增删改、启停、上下移（组顺序 = 匹配优先级），可以同时启用多个组；重复的组合键在表里标红，只有排在前面的那条会触发
   - **组合键可以带 CapsLock**：走低级键盘钩子匹配（`RegisterHotKey` 不支持 CapsLock 修饰键），修饰键**精确匹配**——`CapsLock+S` 不会在 `CapsLock+Ctrl+S` 时触发；单键（无修饰键）只允许 F1–F24 / Insert / Home / End / PageUp / PageDown / Pause / PrintScreen / ScrollLock

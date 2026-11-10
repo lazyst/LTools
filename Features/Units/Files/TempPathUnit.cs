@@ -44,7 +44,9 @@ public sealed class TempPathUnit : IStepUnit
         while (File.Exists(path) || Directory.Exists(path));
 
         ctx.SetOutput("path", Value.FromText(path));
-        ctx.SetOutput("folder", Value.FromText(folder));
+        // folder 去掉末尾的分隔符，与「路径信息 / 拆解路径」的 dir、以及「系统文件夹」的 temp 一致；
+        // 否则用户写 ${folder}\a.txt 会拼出双反斜杠（能用但很难看）。
+        ctx.SetOutput("folder", Value.FromText(Path.TrimEndingDirectorySeparator(folder)));
     }
 
     private static string NormalizeExtension(string raw)

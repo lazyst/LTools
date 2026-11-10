@@ -31,7 +31,8 @@ internal static class FileText
         else File.WriteAllText(path, text, enc);
     }
 
-    private static Encoding GetEncoding(string name)
+    /// <summary>按名字取编码；「编解码」单元也用它，别在别处再写一套编码映射。</summary>
+    public static Encoding GetEncoding(string name)
     {
         switch ((name ?? "").Trim().ToLowerInvariant())
         {

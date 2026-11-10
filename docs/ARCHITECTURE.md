@@ -59,6 +59,7 @@ resources/
   images/            共享 / 历史模板图（P2 起新增的模板图优先放动作目录）
   user/              用户素材（永不自动删）
 trash/<时间戳>/<id>/  删除的动作目录（保留 30 天，可手工捞回）
+state/values.json    跨动作状态（「存状态 / 读状态」单元；随备份走）
 staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 ```
 
