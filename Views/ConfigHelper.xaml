@@ -552,7 +552,7 @@
                                           Content="速记" IsChecked="True"
                                           Margin="0,0,0,8"/>
                                 <TextBlock Style="{StaticResource HintLabel}"
-                                           Text="配置（LTools.json）、宏（macros）与 AI 暂存区草稿（staging）始终包含；AI 访问令牌不在备份里。"
+                                           Text="动作（actions）、全局子动作（subactions）、配置（configs）、宏（macros）、跨动作状态（state）与 AI 暂存区草稿（staging）始终包含，无需勾选；AI 访问令牌不在备份里。"
                                            TextWrapping="Wrap" Margin="0,0,0,8"/>
                                 <StackPanel Orientation="Horizontal">
                                     <Button Style="{StaticResource BtnPrimary}" Content="导出…"
@@ -565,7 +565,7 @@
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>
                                 <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                                           Text="导入会整体替换当前配置与所选目录（旧数据自动备份为 .bak-时间戳）。备份含可执行文件，导入后可能以管理员权限执行——仅导入来源可信的备份。"
+                                           Text="导入会整体替换备份里包含的内容（动作、全局子动作、配置、宏、暂存区草稿、状态，以及导出时勾选的目录），旧数据自动备份为 .bak-时间戳。备份含可执行文件，导入后可能以管理员权限执行——仅导入来源可信的备份。"
                                            Margin="0,0,0,8"/>
                                 <StackPanel Orientation="Horizontal">
                                     <Button Style="{StaticResource BtnPrimary}" Content="导入…"
