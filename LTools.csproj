@@ -11,8 +11,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- exe 嵌入图标 -->
     <ApplicationIcon>Icon\LTools.ico</ApplicationIcon>
-    <Version>2.6.0</Version>
-    <AssemblyVersion>2.6.0.0</AssemblyVersion>
+    <Version>2.6.1</Version>
+    <AssemblyVersion>2.6.1.0</AssemblyVersion>
     <AssemblyName>LTools</AssemblyName>
     <RootNamespace>LTools</RootNamespace>
   </PropertyGroup>
