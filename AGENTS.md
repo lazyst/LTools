@@ -5,7 +5,7 @@ LTools（原 CapsLock-Pro / CapsLock++）：Windows 桌面工具，把 CapsLock 
 ## 术语与文档
 
 - **`CONTEXT.md` 是术语表的唯一来源**（面板 / 悬浮 / 场景 / 分组 / 动作 / 步骤 / 单元 / 内置功能 / 草稿 / 采纳…）：每个词叫什么、边界在哪写在那里。需求、代码、提交信息、文档一律用它的叫法；**需求里出现表里没有的词，或同一个东西的第二种叫法，先确认一句再当场补进去**（不攒、不擅自换词），改了词要全链路（`CONTEXT.md` → 本文件 → 代码标识符）。
-- `docs/`：设计规格与阶段方案——`ARCHITECTURE.md`（数据布局）、`ACTION_SYSTEM.md`（动作系统）、`FLOATING.md`（悬浮）、`AI_AGENT.md`（MCP）。术语只进 `CONTEXT.md`，实现约束与踩过的坑只进本文件。
+- `docs/`：设计规格与阶段方案——`ARCHITECTURE.md`（数据布局）、`ACTION_SYSTEM.md`（动作系统）、`FLOATING.md`（悬浮）、`AI_AGENT.md`（MCP）、`AUTO_TRIGGER.md`（自动触发）。术语只进 `CONTEXT.md`，实现约束与踩过的坑只进本文件。
 
 ## 构建
 
