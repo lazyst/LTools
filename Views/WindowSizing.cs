@@ -76,6 +76,26 @@ public static class WindowSizing
     private static bool GetSizeApplied(Window w) => (bool)w.GetValue(SizeAppliedProperty);
     private static void SetSizeApplied(Window w, bool v) => w.SetValue(SizeAppliedProperty, v);
 
+    /// <summary>
+    /// <c>Main</c> 窗口在正常态的几何（宽 / 高 / 左 / 上）。状态切换（最大化 → 还原）后据此原样恢复，
+    /// 让 <see cref="Clamp"/> 对「状态切换」幂等——修「最大化再还原一次尺寸位置就变一次、两轮才稳定」。
+    /// </summary>
+    private static readonly DependencyProperty NormalBoundsProperty = DependencyProperty.RegisterAttached(
+        "NormalBounds", typeof(Rect?), typeof(WindowSizing), new PropertyMetadata(null));
+
+    private static Rect? GetNormalBounds(Window w) => (Rect?)w.GetValue(NormalBoundsProperty);
+    private static void SetNormalBounds(Window w, Rect? r) => w.SetValue(NormalBoundsProperty, r);
+
+    /// <summary>上一次是否处于最大化 / 最小化（用来识别「刚恢复正常态」）。</summary>
+    private static readonly DependencyProperty WasNonNormalProperty = DependencyProperty.RegisterAttached(
+        "WasNonNormal", typeof(bool), typeof(WindowSizing), new PropertyMetadata(false));
+
+    private static bool GetWasNonNormal(Window w) => (bool)w.GetValue(WasNonNormalProperty);
+    private static void SetWasNonNormal(Window w, bool v) => w.SetValue(WasNonNormalProperty, v);
+
+    /// <summary>把 NaN / 无穷（未设置的尺寸）归一成 0。</summary>
+    private static double Num(double v) => double.IsNaN(v) || double.IsInfinity(v) ? 0 : v;
+
     /// <summary>在 <c>App.OnStartup</c> 里调用一次，之后新建的窗口自动生效。</summary>
     public static void Attach()
     {
@@ -89,13 +109,64 @@ public static class WindowSizing
     {
         if (sender is not Window window) return;
         window.LocationChanged += (_, _) => Clamp(window);
-        window.StateChanged += (_, _) => Clamp(window);
+        window.StateChanged += (_, _) => OnStateChanged(window);
         Clamp(window);
     }
 
     private static void OnSizeChanged(object sender, RoutedEventArgs e)
     {
         if (sender is Window window) Clamp(window);
+    }
+
+    /// <summary>
+    /// 状态切换（最大化 / 最小化 ↔ 正常）时 WPF 会改写窗口几何，而 <see cref="Clamp"/> 若在还原那一拍
+    /// 用滞后的 <c>ActualWidth/ActualHeight</c> 再夹一次，就会把尺寸 / 位置改掉——表现为
+    /// 「最大化再还原一次，窗口尺寸和位置就变一次，要两轮才稳定」。
+    /// 这里在进入非 Normal 态前记下正常态几何，回到 Normal 时先原样恢复，再走夹取，使状态切换对几何幂等；
+    /// 用户手动拖过的大 / 小也照样保留（记的就是最大化前的实际值，不是首次默认值）。
+    /// </summary>
+    private static void OnStateChanged(Window window)
+    {
+        WindowSizeMode mode = Resolve(window);
+        if (mode != WindowSizeMode.Main) { Clamp(window); return; }
+
+        if (window.WindowState != WindowState.Normal)
+        {
+            // 基准由最后一次正常态 Clamp 记录（见下），这里不读几何：状态切换那一拍的
+            // Width/Height/Left/Top 可能已被改写成全屏值，读进来会把基准本身弄坏。
+            SetWasNonNormal(window, true);
+            return;                         // 最大化 / 最小化期间不夹取
+        }
+        if (GetWasNonNormal(window))
+        {
+            SetWasNonNormal(window, false);
+            RestoreNormalBounds(window);    // 还原那一拍先把几何拉回正常态基准
+        }
+        Clamp(window);
+    }
+
+    /// <summary>记下当前正常态几何（只在 <see cref="Clamp"/> 的正常态末尾调用）。</summary>
+    private static void SaveNormalBounds(Window window)
+    {
+        double w = Num(window.Width), h = Num(window.Height);
+        double l = window.Left, t = window.Top;
+        if (w <= 0 || h <= 0 || double.IsNaN(l) || double.IsNaN(t)) return;
+        SetNormalBounds(window, new Rect(l, t, w, h));
+    }
+
+    /// <summary>把几何原样恢复成 <see cref="SaveNormalBounds"/> 记下的正常态值（_busy 挡住联动事件）。</summary>
+    private static void RestoreNormalBounds(Window window)
+    {
+        if (GetNormalBounds(window) is not { } r) return;
+        _busy = true;
+        try
+        {
+            if (Math.Abs(Num(window.Width) - r.Width) > 0.5) window.Width = r.Width;
+            if (Math.Abs(Num(window.Height) - r.Height) > 0.5) window.Height = r.Height;
+            if (Math.Abs(window.Left - r.Left) > 0.5) window.Left = r.Left;
+            if (Math.Abs(window.Top - r.Top) > 0.5) window.Top = r.Top;
+        }
+        finally { _busy = false; }
     }
 
     /// <summary>
@@ -139,25 +210,46 @@ public static class WindowSizing
                 if (window.Height > maxH) window.Height = maxH;
             }
 
-            double h = window.ActualHeight > 0 ? window.ActualHeight : window.Height;
-            double w = window.ActualWidth > 0 ? window.ActualWidth : window.Width;
+            // Main 用显式 Width/Height：最大化 / 还原那一拍 ActualWidth/ActualHeight 还是全屏值，
+            // 拿它算边界会把 maxTop/maxLeft 压到下限，Left/Top 被夹到工作区左上角，而 Math.Clamp
+            // 不会把已在范围内的小值推回中心 → 窗口再回不来。Dialog 是 SizeToContent（Height 为 NaN），
+            // 仍按内容的 Actual* 算，行为不变。
+            double h, w;
+            if (mode == WindowSizeMode.Main)
+            {
+                h = Num(window.Height) > 0 ? window.Height : window.ActualHeight;
+                w = Num(window.Width) > 0 ? window.Width : window.ActualWidth;
+            }
+            else
+            {
+                h = window.ActualHeight > 0 ? window.ActualHeight : Num(window.Height);
+                w = window.ActualWidth > 0 ? window.ActualWidth : Num(window.Width);
+            }
             if (double.IsNaN(h) || h <= 0) h = Math.Min(400, maxH);
             if (double.IsNaN(w) || w <= 0) w = Math.Min(400, maxW);
 
-            double minTop = work.Top + Margin;
-            double maxTop = Math.Max(minTop, work.Bottom - h - Margin);
-            double minLeft = work.Left + Margin;
-            double maxLeft = Math.Max(minLeft, work.Right - w - Margin);
-
-            double top = Math.Clamp(window.Top, minTop, maxTop);
-            double left = Math.Clamp(window.Left, minLeft, maxLeft);
+            var (top, left) = ClampPosition(work, w, h, window.Top, window.Left);
             if (Math.Abs(top - window.Top) > 0.5) window.Top = top;
             if (Math.Abs(left - window.Left) > 0.5) window.Left = left;
+
+            // 正常态的几何就是「还原基准」：用户手动拖过的大 / 小也在这里更新，状态切换不丢。
+            if (mode == WindowSizeMode.Main) SaveNormalBounds(window);
         }
         finally
         {
             _busy = false;
         }
+    }
+
+    /// <summary>按工作区把位置夹回可视区（纯函数，便于无头冒烟直接断言滞后尺寸会把窗口夹到左上角）。</summary>
+    internal static (double Top, double Left) ClampPosition(
+        Rect work, double w, double h, double top, double left)
+    {
+        double minTop = work.Top + Margin;
+        double maxTop = Math.Max(minTop, work.Bottom - h - Margin);
+        double minLeft = work.Left + Margin;
+        double maxLeft = Math.Max(minLeft, work.Right - w - Margin);
+        return (Math.Clamp(top, minTop, maxTop), Math.Clamp(left, minLeft, maxLeft));
     }
 
     /// <summary>
@@ -177,7 +269,6 @@ public static class WindowSizing
         SetSizeApplied(window, true);
         if (window.WindowStartupLocation == WindowStartupLocation.Manual) return;
 
-        double Num(double v) => double.IsNaN(v) ? 0 : v;
         double w = Math.Max(work.Width * MainFillRatio,
             Math.Max(Num(window.Width), Num(window.MinWidth)));
         double h = Math.Max(work.Height * MainFillRatio,
@@ -208,6 +299,9 @@ public static class WindowSizing
         double top = Math.Clamp(cy - window.Height / 2, work.Top + Margin, work.Bottom - window.Height - Margin);
         window.Left = left;
         window.Top = top;
+
+        // 首帧几何也作为「正常态基准」：之后最大化 → 还原据此原样恢复（见 OnStateChanged）。
+        SetNormalBounds(window, new Rect(left, top, window.Width, window.Height));
     }
 
     private static WindowSizeMode Resolve(Window window)

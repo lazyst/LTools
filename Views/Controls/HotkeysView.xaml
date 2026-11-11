@@ -18,6 +18,7 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <CheckBox Grid.Column="0" IsChecked="{Binding Enabled, Mode=TwoWay}"
                           VerticalAlignment="Center" Margin="0,0,7,0" Focusable="False"
@@ -27,14 +28,30 @@
                            TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
                 <TextBlock Grid.Column="2" Text="{Binding Count}" VerticalAlignment="Center"
                            Style="{StaticResource HintLabel}" FontSize="{StaticResource FontSizeHint}"
-                           Margin="6,0,2,0"/>
+                           Margin="6,0,2,0" ToolTip="{Binding Count}"/>
+                <!-- 常驻小图标：重命名 / 删除 / 上移 / 下移。动作标识走 CommandParameter，
+                     别用 Tag——BtnGhost 把 Tag 当悬停色；点按钮不会选中行，分发器按 DataContext 认行。 -->
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="4,0,0,0">
+                    <Button Content="✎" CommandParameter="rename" Style="{StaticResource BtnGhost}"
+                            Width="20" Height="20" Padding="0" FontSize="12" Focusable="False"
+                            FontFamily="Segoe UI Symbol" ToolTip="重命名这个组" Click="GroupRowAction_Click"/>
+                    <Button Content="✕" CommandParameter="delete" Style="{StaticResource BtnGhostDanger}"
+                            Width="20" Height="20" Padding="0" Margin="2,0,0,0" FontSize="12" Focusable="False"
+                            FontFamily="Segoe UI Symbol" ToolTip="删除这个组" Click="GroupRowAction_Click"/>
+                    <Button Content="↑" CommandParameter="up" Style="{StaticResource BtnGhost}"
+                            Width="20" Height="20" Padding="0" Margin="2,0,0,0" FontSize="12" Focusable="False"
+                            FontFamily="Segoe UI Symbol" ToolTip="整组上移（排在前面的组优先匹配）" Click="GroupRowAction_Click"/>
+                    <Button Content="↓" CommandParameter="down" Style="{StaticResource BtnGhost}"
+                            Width="20" Height="20" Padding="0" Margin="2,0,0,0" FontSize="12" Focusable="False"
+                            FontFamily="Segoe UI Symbol" ToolTip="整组下移" Click="GroupRowAction_Click"/>
+                </StackPanel>
             </Grid>
         </DataTemplate>
     </UserControl.Resources>
 
     <Grid Margin="20,14,20,14">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="236" MinWidth="180"/>
+            <ColumnDefinition Width="268" MinWidth="220"/>
             <ColumnDefinition Width="10"/>
             <ColumnDefinition Width="*" MinWidth="320"/>
         </Grid.ColumnDefinitions>
@@ -67,15 +84,9 @@
                          Padding="6,6"/>
             </Border>
 
-            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
-                <Button Style="{StaticResource MiniBtn}" Content="重命名" Click="RenameGroup_Click"/>
-                <Button Style="{StaticResource MiniBtn}" Content="删除" Margin="6,0,0,0"
-                        Click="DeleteGroup_Click"/>
-                <Button Style="{StaticResource MiniBtn}" Content="↑" Margin="6,0,0,0" Width="28"
-                        ToolTip="整组上移（排在前面的组优先匹配）" Click="GroupUp_Click"/>
-                <Button Style="{StaticResource MiniBtn}" Content="↓" Width="28"
-                        ToolTip="整组下移" Click="GroupDown_Click"/>
-            </StackPanel>
+            <TextBlock Grid.Row="2" Style="{StaticResource HintLabel}" Margin="0,8,0,0"
+                       TextTrimming="CharacterEllipsis"
+                       Text="双击组名也能重命名；行右侧是 重命名 / 删除 / 上移 / 下移。"/>
         </Grid>
 
         <!-- ============ 右：热键表 ============ -->
@@ -181,20 +192,38 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
+
+                        <!-- 操作列：编辑 / 删除 / 上移 / 下移，照 TriggersView 的 RowAction_Click 套路。
+                             双击整行已有编辑（BindingGrid_PreviewMouseLeftButtonDown 里认 ClickCount == 2）。 -->
+                        <DataGridTemplateColumn Header="操作" Width="120" MinWidth="120">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Button Content="✎" CommandParameter="edit" Style="{StaticResource BtnGhost}"
+                                                Width="24" Height="24" Padding="0" FontSize="14" Focusable="False"
+                                                FontFamily="Segoe UI Symbol" ToolTip="编辑这条快捷键" Click="BindingRowAction_Click"/>
+                                        <Button Content="✕" CommandParameter="delete" Style="{StaticResource BtnGhostDanger}"
+                                                Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14" Focusable="False"
+                                                FontFamily="Segoe UI Symbol" ToolTip="删除这条快捷键" Click="BindingRowAction_Click"/>
+                                        <Button Content="↑" CommandParameter="up" Style="{StaticResource BtnGhost}"
+                                                Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14" Focusable="False"
+                                                FontFamily="Segoe UI Symbol" ToolTip="上移（同一组合键出现多次时，排在前面的优先）" Click="BindingRowAction_Click"/>
+                                        <Button Content="↓" CommandParameter="down" Style="{StaticResource BtnGhost}"
+                                                Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14" Focusable="False"
+                                                FontFamily="Segoe UI Symbol" ToolTip="下移" Click="BindingRowAction_Click"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
             </Border>
 
             <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
-                <Button Style="{StaticResource MiniBtn}" Content="编辑" Click="EditBinding_Click"/>
-                <Button Style="{StaticResource MiniBtn}" Content="删除" Margin="6,0,0,0"
-                        Click="DeleteBinding_Click"/>
-                <Button Style="{StaticResource MiniBtn}" Content="↑" Margin="6,0,0,0" Width="28"
-                        ToolTip="上移（同一组合键出现多次时，排在前面的优先）" Click="BindingUp_Click"/>
-                <Button Style="{StaticResource MiniBtn}" Content="↓" Width="28"
-                        ToolTip="下移" Click="BindingDown_Click"/>
                 <TextBlock x:Name="HintText" Style="{StaticResource HintLabel}" VerticalAlignment="Center"
-                           Margin="12,0,0,0" TextTrimming="CharacterEllipsis"/>
+                           TextTrimming="CharacterEllipsis"/>
+                <TextBlock Style="{StaticResource HintLabel}" VerticalAlignment="Center"
+                           Margin="12,0,0,0" Text="双击一行也能编辑；行右侧是 编辑 / 删除 / 上移 / 下移。"/>
             </StackPanel>
 
             <!-- 全局默认名单：每条绑定默认跟随这里，也可以在单条里覆盖 -->

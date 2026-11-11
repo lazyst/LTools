@@ -352,13 +352,13 @@ mode=replace  → 校验 draft.baseActionId 仍存在、baseSourceHash 未变（
   1. **连接**（默认页，一页装完三块）：
      - 服务：总开关、端口、令牌（显示/复制/重置）、允许写入、审批模式、状态灯（运行中/端口可达/最近调用）。
        「复制配置」下拉（opencode / Claude Code / Codex / Cursor）生成对应 JSON/命令；最后一项「stdio（命令行）」只复制 `"<exe>" --mcp-stdio`（填 command / args，桥自己读令牌），照 Quicker 的「AI 自动配置」。
-     - 给 AI 的说明：只读多行框 + `复制这段说明` + `隐藏令牌`，右上「方式」下拉在 **HTTP / stdio 两份提示词**之间切换。每份**只有一句提示词**——
+     - 让 agent 帮你连接：只读多行框 + `复制连接说明` + `隐藏令牌`，右上「方式」下拉在 **HTTP / stdio 两份提示词**之间切换。每份**只有一句提示词**——
        HTTP：地址 `http://127.0.0.1:<端口>/mcp`（Streamable HTTP、无状态）、令牌 `Authorization: Bearer <令牌>`（`X-LTools-Token` / `?token=` 备选）；
        stdio：命令 `"<exe>" --mcp-stdio`（command / args，桥自己读本机令牌，不需要 URL 和 Bearer）；
        两版都以「接上后先 `ltools_health`，写动作前读 `docs_get("format")` 和 `units_list`，写完我去面板采纳」收尾。
        **别再往里塞客户端 JSON 和逐条工作清单**（JSON 归「复制配置」，细节归知识包），改端口 / 重置令牌会重算；stdio 版没有令牌，`隐藏令牌` 置灰。
      - 知识包：路径、「重新生成 units.md」、打开目录（内容太少，不单开一页）。
-  2. **审计**：最近 20 条工具调用（时间 / 工具 / 结果 / 耗时），点条目打开 `ai/audit.log`。
+  2. **审计**：最近 20 条工具调用，5 列表格（时间 / 工具 / 草稿 / 结果 / 耗时，表头即 DataGrid 列头；行由 `AiAudit.TailEntries` 解析定宽日志得到），「打开审计日志」按钮看完整 `ai/audit.log`。
 - **面板左栏「暂存区」页**（`Views/Controls/StashPane.xaml`，左栏第二个图标，第一项是动作面板）：
   - 卡片网格：图标 chip + 名称（超宽截断，ToolTip 给全名）+ 状态行 `草稿 / 已保存 / 已采纳 · N 步`；
     空态一句「暂存区是空的 / 让 AI 助手写一个动作…」。
@@ -384,7 +384,7 @@ mode=replace  → 校验 draft.baseActionId 仍存在、baseSourceHash 未变（
 | `Core/Ai/McpServer.cs`（新） | `ModelContextProtocol.AspNetCore` + `WebApplication`，后台线程，全部 `Dispatcher.InvokeAsync` |
 | `Core/Ai/AiSettings.cs`（新） | `ai/mcp.json` 读写，token 生成 |
 | `Config/AppConfig.cs` | 只加 `LastNavPage` / `NavExpandedGroups` 两个导航字段，别把 AI 配置塞进 `configs/` |
-| `Views/ConfigHelper.xaml(.cs)` + `Views/Controls/AiView.xaml(.cs)`（新） | §5.7 设置页二级下拉的两页（连接〔含给 AI 的说明 + 知识包〕/ 审计） |
+| `Views/ConfigHelper.xaml(.cs)` + `Views/Controls/AiView.xaml(.cs)`（新） | §5.7 设置页二级下拉的两页（连接〔含「让 agent 帮你连接」+ 知识包〕/ 审计） |
 | `Views/Controls/StashPane.xaml(.cs)`（新）+ `Views/SuperPanel.xaml(.cs)` | §5.7 面板暂存区页面（卡片 / 右键菜单 / 轮询） |
 | `Views/ActionEditor/ActionEditorWindow.xaml.cs` | 支持「打开草稿」（复用现有 `_program` 加载路径） |
 | `Features/ConfigStore.cs` | 只经它写动作（promote 复用它，别绕过） |

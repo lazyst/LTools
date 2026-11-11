@@ -153,14 +153,52 @@ public partial class SubActionLibraryView : UserControl
 
     private void List_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;  // 点行内图标不弹编辑器
         if (SelectedRow() is { } row) Edit(row.Def);
     }
 
-    private void List_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    /// <summary>
+    /// 行右侧 5 个图标的分发器：按 <c>DataContext</c> 认行（点按钮不会自动选中这一行），
+    /// 设为选中项后复用既有的试运行 / 编辑 / 复制 / 删除；第 5 个 ⋯ 弹低频 3 项。
+    /// </summary>
+    private void SubActionRowAction_Click(object sender, RoutedEventArgs e)
     {
-        // 右键先选中这一行，菜单项才知道操作的是谁。
-        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is { } item)
-            item.IsSelected = true;
+        if (sender is not FrameworkElement el || el.DataContext is not SubActionRow row) return;
+        List.SelectedItem = row;
+        switch ((el as Button)?.CommandParameter as string)
+        {
+            case "run": Run_Click(sender, e); break;
+            case "edit": Edit_Click(sender, e); break;
+            case "copy": Duplicate_Click(sender, e); break;
+            case "delete": Delete_Click(sender, e); break;
+            case "more": ShowRowMore(el, row); break;
+        }
+    }
+
+    /// <summary>每行 ⋯ 的低频菜单：另存为动作 / 复制 id / 在文件夹中显示。</summary>
+    private void ShowRowMore(FrameworkElement anchor, SubActionRow row)
+    {
+        var menu = new ContextMenu
+        {
+            PlacementTarget = anchor,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+        };
+        AddRowMenuItem(menu, "另存为动作…", row, ToAction_Click);
+        AddRowMenuItem(menu, "复制 id", row, CopyId_Click);
+        AddRowMenuItem(menu, "在文件夹中显示", row, Reveal_Click);
+        menu.IsOpen = true;
+    }
+
+    private void AddRowMenuItem(ContextMenu menu, string header, SubActionRow row,
+        RoutedEventHandler handler)
+    {
+        var item = new MenuItem { Header = header };
+        item.Click += (_, _) =>
+        {
+            List.SelectedItem = row;
+            handler(this, new RoutedEventArgs());
+        };
+        menu.Items.Add(item);
     }
 
     private void Edit(SubActionDef? def)

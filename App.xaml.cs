@@ -124,6 +124,7 @@ public partial class App : Application
         AppState.EdgeWheelVolumeEdge = (int)cfg.EdgeWheelVolumeEdge;
         AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
         AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
+        AppState.TrayDoubleClick = cfg.TrayDoubleClick;
         ConfigStore.Initialize(cfgPath);
         FloatingLibrary.Initialize(cfgPath);
         QuickNote.Initialize(cfgPath);
@@ -195,7 +196,10 @@ public partial class App : Application
         menu.Items.Add(new Separator());
         menu.Items.Add(NewItem("启用 CapsLock 修饰键", Settings.ToggleCapsLockModifier, () => AppState.CapsLockModifier));
         menu.Items.Add(NewItem("启用超级面板", Settings.ToggleSuperPanel, () => AppState.IsSuperPanelEnabled));
-        var triggerMenuItem = NewItem("暂停自动触发（紧急禁用）", ToggleTriggerEmergency);
+        // 和上面两个开关项同一套状态点列：运行中绿点、紧急禁用橙点（不再用暂停 / 播放字符图标，
+        // 那个字形在 Segoe UI 下会渲染成带方框的 emoji，和灰阶菜单、绿点列都不搭）。
+        var triggerMenuItem = NewItem("暂停自动触发（紧急禁用）", ToggleTriggerEmergency,
+            () => !TriggerService.EmergencyDisabled, PausedDotBrush);
         _triggerMenuItemText = (TextBlock)((StackPanel)triggerMenuItem.Header).Children[1];
         menu.Items.Add(triggerMenuItem);
         menu.Items.Add(new Separator());
@@ -212,6 +216,9 @@ public partial class App : Application
             IconSource = LoadIconSource(),
             ContextMenu = menu,
         };
+        // 左键双击托盘图标：按设置 →「通用」的行为打开设置窗口（停上次页 / 跳指定页）。
+        // 右键单击仍是上面的 ContextMenu，两者互不干扰；回调只读 AppState.TrayDoubleClick（零磁盘 IO）。
+        _tray.TrayLeftMouseDoubleClick += (_, _) => ConfigHelper.OpenOnTrayDoubleClick();
         // ⚠️ 必须显式传 false：ForceCreate 的 enablesEfficiencyMode 默认 true，
         // 会把整个进程设为 IDLE 优先级 + EcoQoS（降频/调度到能效核）。
         // 本应用是全局低级键鼠钩子工具，实时性就是生命线——进程被降级后，长时间空闲再右键托盘图标时，
@@ -222,10 +229,12 @@ public partial class App : Application
     /// <summary>
     /// 托盘菜单项：标题左侧统一留出状态点列（做法同系统菜单的勾选列，保证各行文字对齐）。
     /// <paramref name="isOn"/> 非空即开关项：启用 → 该列显示绿色状态点（SuccessColor #16A34A），
-    /// 禁用 → 列保留但不显示圆点，文字不因开关状态左右跳动。
+    /// 禁用 → 有 <paramref name="offBrush"/> 就显示它（如紧急禁用的橙点），否则透明但不收列，
+    /// 文字不因开关状态左右跳动。
     /// 注意：本项目 MenuItem 模板只呈现 Header 不呈现 Icon，故状态点必须放进 Header。
     /// </summary>
-    private MenuItem NewItem(string header, Action onClick, Func<bool>? isOn = null)
+    private MenuItem NewItem(string header, Action onClick, Func<bool>? isOn = null,
+        System.Windows.Media.Brush? offBrush = null)
     {
         var dot = new System.Windows.Shapes.Ellipse
         {
@@ -250,15 +259,15 @@ public partial class App : Application
             RefreshStatusDots();
         };
         if (isOn != null)
-            _statusDots.Add((dot, isOn));
+            _statusDots.Add((dot, isOn, offBrush));
         return mi;
     }
 
     /// <summary>按各开关的当前状态刷新状态点（打开菜单时 + 点击菜单项后调用）。</summary>
     private void RefreshStatusDots()
     {
-        foreach (var (dot, isOn) in _statusDots)
-            dot.Fill = isOn() ? EnabledDotBrush : System.Windows.Media.Brushes.Transparent;
+        foreach (var (dot, isOn, off) in _statusDots)
+            dot.Fill = isOn() ? EnabledDotBrush : (off ?? System.Windows.Media.Brushes.Transparent);
     }
 
     /// <summary>
@@ -282,21 +291,32 @@ public partial class App : Application
     private void RefreshTriggerMenuItem()
     {
         if (_triggerMenuItemText == null) return;
+        // 状态由左侧圆点表达（绿 = 运行中，橙 = 已暂停），文字只说「点了会做什么」。
         _triggerMenuItemText.Text = TriggerService.EmergencyDisabled
-            ? "▶ 恢复自动触发"
-            : "⏸ 暂停自动触发（紧急禁用）";
+            ? "恢复自动触发"
+            : "暂停自动触发（紧急禁用）";
     }
 
     private const double StatusDotSize = 9;
     private const double StatusDotGap = 7;
-    private readonly List<(System.Windows.Shapes.Ellipse Dot, Func<bool> IsOn)> _statusDots = new();
+    private readonly List<(System.Windows.Shapes.Ellipse Dot, Func<bool> IsOn, System.Windows.Media.Brush? OffBrush)> _statusDots = new();
     private static readonly System.Windows.Media.Brush EnabledDotBrush = CreateEnabledDotBrush();
+    private static readonly System.Windows.Media.Brush PausedDotBrush = CreatePausedDotBrush();
 
     private static System.Windows.Media.Brush CreateEnabledDotBrush()
     {
         // 与 Themes/Modern.xaml 的 SuccessColor (#16A34A) 保持一致
         var brush = new System.Windows.Media.SolidColorBrush(
             System.Windows.Media.Color.FromRgb(0x16, 0xA3, 0x4A));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static System.Windows.Media.Brush CreatePausedDotBrush()
+    {
+        // 紧急禁用是「暂停」不是「出错」，用橙而不是 DangerColor 红
+        var brush = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(0xEA, 0x58, 0x0C));
         brush.Freeze();
         return brush;
     }

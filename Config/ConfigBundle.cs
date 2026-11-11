@@ -106,6 +106,7 @@ internal static class ConfigBundle
         cfg.TerminalPaths = settings.TerminalPaths ?? new();
         cfg.RunNotice = settings.RunNotice;
         cfg.ToastPosition = settings.ToastPosition;
+        cfg.TrayDoubleClick = settings.TrayDoubleClick;
         cfg.Logging = settings.Logging ?? new LogConfig();
 
         var ui = Read<UiStateFile>(UiPath(anchorPath), ctx);
@@ -336,6 +337,7 @@ internal static class ConfigBundle
         TerminalPaths = cfg.TerminalPaths ?? new(),
         RunNotice = cfg.RunNotice,
         ToastPosition = cfg.ToastPosition,
+        TrayDoubleClick = cfg.TrayDoubleClick,
         Logging = cfg.Logging ?? new LogConfig(),
     };
 

@@ -179,7 +179,7 @@ public partial class AiView : UserControl
         }
 
         if (restart) RestartServer();
-        RefreshPrompt();   // 端口 / 令牌变了，粘贴给 AI 的说明要跟着换
+        RefreshPrompt();   // 端口 / 令牌变了，「让 agent 帮你连接」的说明要跟着换
     }
 
     private void RestartServer() => _ = Task.Run(McpServer.Apply);
@@ -258,7 +258,7 @@ public partial class AiView : UserControl
         }
     }
 
-    // ============ 给 AI 的说明（一句提示词，直接粘给客户端） ============
+    // ============ 让 agent 帮你连接（一句提示词，直接粘给客户端） ============
 
     private string SelectedClientKind() =>
         (ClientKindBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "opencode";
@@ -294,7 +294,7 @@ public partial class AiView : UserControl
     }
 
     /// <summary>
-    /// 生成给 AI 的接入提示词：**只要一句**——怎么连、接上后先干什么。
+    /// 生成「让 agent 帮你连接」的接入提示词：**只要一句**——怎么连、接上后先干什么。
     /// HTTP / stdio 各一份（下拉切换）；客户端 JSON 不塞进正文（那是「复制配置」按钮的事），
     /// 工作细节让 AI 自己读知识包。
     /// </summary>
@@ -333,7 +333,7 @@ public partial class AiView : UserControl
         {
             Clipboard.SetText(PromptBox.Text ?? "");
             PromptHint.Text = "已复制，粘给 AI 即可";
-            ToastService.Show("给 AI 的说明已复制", "AI 接入", 2500, ToastKind.success);
+            ToastService.Show("连接说明已复制", "AI 接入", 2500, ToastKind.success);
         }
         catch (Exception ex)
         {
@@ -366,9 +366,9 @@ public partial class AiView : UserControl
 
     private void RefreshAudit()
     {
-        var lines = AiAudit.Tail(20).Reverse().ToList();
-        AuditList.ItemsSource = lines;
-        AuditEmpty.Visibility = lines.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var rows = AiAudit.TailEntries(20).Reverse().ToList();
+        AuditGrid.ItemsSource = rows;
+        AuditEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OpenAudit_Click(object sender, RoutedEventArgs e)

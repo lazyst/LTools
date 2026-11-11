@@ -163,8 +163,30 @@
                         </Border>
                         <RadioButton Style="{StaticResource NavRow}" Content="终端路径"
                                      Checked="Nav_Changed" Tag="terminals"/>
-                        <RadioButton Style="{StaticResource NavRow}" Content="运行日志"
-                                     Checked="Nav_Changed" Tag="logs"/>
+                        <!-- 运行日志：第三个带二级下拉的父项（设置 / 最近日志），
+                             与面板管理 / AI 接入共用 NavFamilyOf / SyncNavGroup / AnimateSubNav 一套机制 -->
+                        <RadioButton x:Name="NavLogs" Style="{StaticResource NavRow}"
+                                     Checked="Nav_Changed" Tag="logs"
+                                     PreviewMouseLeftButtonUp="NavLogs_MouseUp">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="运行日志" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="NavLogsChevron" Text="&#xE76C;"
+                                           FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                           Margin="6,1,0,0" VerticalAlignment="Center"
+                                           RenderTransformOrigin="0.5,0.5"
+                                           Foreground="{StaticResource HintTextBrush}"/>
+                            </StackPanel>
+                        </RadioButton>
+                        <Border x:Name="LogsSubNavHost" Visibility="Collapsed" ClipToBounds="True"
+                                Margin="22,0,0,6" Padding="6,2,0,2"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="2,0,0,0">
+                            <StackPanel x:Name="LogsSubNav">
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-logs"
+                                             Content="设置" Checked="Nav_Changed" Tag="logs-settings"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-logs"
+                                             Content="最近日志" Checked="Nav_Changed" Tag="logs-recent"/>
+                            </StackPanel>
+                        </Border>
                         <RadioButton x:Name="NavAi" Style="{StaticResource NavRow}"
                                      Checked="Nav_Changed" Tag="ai"
                                      PreviewMouseLeftButtonUp="NavAi_MouseUp">
@@ -282,6 +304,33 @@
                                            Text="失败提示常驻（点一下关，下一次运行自动替换），标题带「第 3 行 › 否则 › 第 1 行」这样的位置；按停止也会给一条。成功提示 2.5 秒后自动消失。「提示弹窗」步骤里位置选「跟随设置」时用这里的落点。"/>
                             </StackPanel>
                         </Border>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="托盘图标" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="左键双击" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="TrayDoubleClickCombo" MinHeight="32"
+                                              SelectionChanged="TrayDoubleClick_Changed"
+                                              ToolTip="左键双击托盘图标时打开设置窗口并停到所选页面">
+                                        <ComboBoxItem Content="打开设置"/>
+                                        <ComboBoxItem Content="打开动作管理"/>
+                                        <ComboBoxItem Content="打开快捷键"/>
+                                        <ComboBoxItem Content="打开键鼠宏"/>
+                                        <ComboBoxItem Content="打开自动触发"/>
+                                        <ComboBoxItem Content="打开面板管理"/>
+                                    </ComboBox>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="120,6,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="「打开设置」停在上次看的页面，其余直接跳到对应页面；「打开面板管理」停在该分组上次停留的子页。右键单击仍是托盘菜单。"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -316,9 +365,11 @@
                               CanUserResizeRows="False" CanUserSortColumns="False" CanUserReorderColumns="False"
                               IsReadOnly="True" HeadersVisibility="Column"
                               GridLinesVisibility="Horizontal" SelectionMode="Single" SelectionUnit="FullRow"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              PreviewMouseLeftButtonDown="ActionList_PreviewMouseLeftButtonDown"
                               MouseDoubleClick="ActionList_MouseDoubleClick">
                         <DataGrid.Columns>
-                            <DataGridTemplateColumn Header="动作" Width="1.6*">
+                            <DataGridTemplateColumn Header="动作" Width="1.6*" MinWidth="220">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <!-- 单行：名称（深色）+ 摘要（浅色小字）同行，行高沿用 30 不裁切 -->
@@ -344,13 +395,38 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="类型" Binding="{Binding TypeLabel}" Width="110"/>
-                            <DataGridTemplateColumn Header="引用位置" Width="1.2*">
+                            <DataGridTextColumn Header="类型" Binding="{Binding TypeLabel}" Width="110" MinWidth="90"/>
+                            <DataGridTemplateColumn Header="引用位置" Width="1.2*" MinWidth="140">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding References}" ToolTip="{Binding References}"
                                                    TextTrimming="CharacterEllipsis" Margin="2,0"
                                                    VerticalAlignment="Center"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- 操作列：照 TriggersView 的常驻小图标（CommandParameter 分发、不用 Tag——
+                                 BtnGhost 把 Tag 当悬停色）。双击整行也能编辑。
+                                 ActionList_PreviewMouseLeftButtonDown 先给 cell 焦点，否则第一次点图标
+                                 会被 DataGridCell 吞掉（HotkeysView 踩过）。 -->
+                            <DataGridTemplateColumn Header="操作" Width="96" MinWidth="96">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <Button Content="✎" CommandParameter="edit" Style="{StaticResource BtnGhost}"
+                                                    Width="24" Height="24" Padding="0" FontSize="14"
+                                                    FontFamily="Segoe UI Symbol" Focusable="False"
+                                                    ToolTip="编辑这个动作" Click="ActionRowAction_Click"/>
+                                            <Button Content="⧉" CommandParameter="copy" Style="{StaticResource BtnGhost}"
+                                                    Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14"
+                                                    FontFamily="Segoe UI Symbol" Focusable="False"
+                                                    ToolTip="复制这个动作" Click="ActionRowAction_Click"/>
+                                            <Button Content="✕" CommandParameter="delete" Style="{StaticResource BtnGhostDanger}"
+                                                    Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14"
+                                                    FontFamily="Segoe UI Symbol" Focusable="False"
+                                                    ToolTip="删除这个动作" Click="ActionRowAction_Click"/>
+                                        </StackPanel>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
@@ -360,12 +436,8 @@
                     <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
                         <Button Style="{StaticResource BtnPrimary}" Content="新建动作…" MinWidth="104"
                                 Click="NewAction_Click"/>
-                        <Button Style="{StaticResource BtnGhost}" Content="编辑" MinWidth="64"
-                                Margin="8,0,0,0" Click="EditAction_Click"/>
-                        <Button Style="{StaticResource BtnGhost}" Content="复制" MinWidth="64"
-                                Margin="6,0,0,0" Click="DuplicateAction_Click"/>
-                        <Button Style="{StaticResource BtnGhostDanger}" Content="删除" MinWidth="64"
-                                Margin="6,0,0,0" Click="DeleteAction_Click"/>
+                        <TextBlock Style="{StaticResource HintLabel}" VerticalAlignment="Center"
+                                   Margin="12,0,0,0" Text="双击一行也能编辑；行右侧是编辑 / 复制 / 删除。"/>
                     </StackPanel>
                 </Grid>
 
@@ -431,11 +503,11 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- ============ 运行日志 ============ -->
-                <ScrollViewer x:Name="Page_Logs" VerticalScrollBarVisibility="Auto"
+                <!-- ============ 运行日志 → 设置（二级子页） ============ -->
+                <ScrollViewer x:Name="Page_LogsSettings" VerticalScrollBarVisibility="Auto"
                               Visibility="Collapsed" Padding="20,14,20,14">
                     <StackPanel>
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="运行日志" Margin="0,0,0,8"/>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="运行日志 · 设置" Margin="0,0,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>
                                 <CheckBox x:Name="LogEnabledBox" Content="记录运行日志"
@@ -496,48 +568,76 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="最近日志" Margin="0,4,0,8"/>
-                        <Border Style="{StaticResource CardBox}">
-                            <StackPanel>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <ComboBox Grid.Column="0" x:Name="LogPreviewLevelCombo" Width="104" MinHeight="30"
-                                              SelectedIndex="0"
-                                              ToolTip="只看某一级别" SelectionChanged="LogPreview_Changed">
-                                        <ComboBoxItem Content="全部"/>
-                                        <ComboBoxItem Content="错误"/>
-                                        <ComboBoxItem Content="警告"/>
-                                        <ComboBoxItem Content="信息"/>
-                                        <ComboBoxItem Content="调试"/>
-                                    </ComboBox>
-                                    <TextBox Grid.Column="1" x:Name="LogPreviewSearchBox" MinHeight="30" Margin="8,0"
-                                             ToolTip="按文本过滤（包含匹配，忽略大小写）"
-                                             TextChanged="LogPreview_Changed"/>
-                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="刷新"
-                                            MinWidth="60" Margin="0,0,8,0" Click="LogPreviewRefresh_Click"/>
-                                    <Button Grid.Column="3" Style="{StaticResource BtnGhost}" Content="打开失败报告"
-                                            MinWidth="104" Margin="0,0,8,0" Click="OpenFailureReport_Click"/>
-                                    <Button Grid.Column="4" Style="{StaticResource BtnGhost}" Content="复制诊断信息"
-                                            MinWidth="104" Click="CopyDiagnostics_Click"/>
-                                </Grid>
-                                <TextBox x:Name="LogPreviewBox" Margin="0,10,0,0" Height="260"
-                                         IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
-                                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                                         VerticalContentAlignment="Top"
-                                         FontFamily="Consolas" FontSize="{StaticResource FontSizeSecondary}"
-                                         ToolTip="今天的运行日志；只读，刷新看最新内容"/>
-                                <TextBlock x:Name="LogPreviewHint" Style="{StaticResource HintLabel}"
-                                           TextWrapping="Wrap" Margin="0,6,0,0"/>
-                            </StackPanel>
-                        </Border>
                     </StackPanel>
                 </ScrollViewer>
+
+                <!-- ============ 运行日志 → 最近日志（二级子页） ============ -->
+                <!-- 单独成页后日志框用 * 行撑满可用高度（不再挤在设置页底部固定 260）。
+                     默认自动贴底：向上滚动取消、滚到底恢复；⤓ 按钮一键回底。见 ConfigHelper.Logs.cs。 -->
+                <Grid x:Name="Page_LogsRecent" Visibility="Collapsed" Margin="20,14,20,14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                   Text="运行日志 · 最近日志" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" x:Name="AutoScrollBtn" Style="{StaticResource BtnGhost}"
+                                Content="⤓ 自动贴底" MinWidth="110" Click="AutoScrollBtn_Click"
+                                ToolTip="默认自动贴底；向上滚动会暂停，滚到底自动恢复。点它回到最新并恢复贴底。"/>
+                    </Grid>
+
+                    <Border Grid.Row="1" Style="{StaticResource CardBox}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <ComboBox Grid.Column="0" x:Name="LogPreviewLevelCombo" Width="104" MinHeight="30"
+                                          SelectedIndex="0"
+                                          ToolTip="只看某一级别" SelectionChanged="LogPreview_Changed">
+                                    <ComboBoxItem Content="全部"/>
+                                    <ComboBoxItem Content="错误"/>
+                                    <ComboBoxItem Content="警告"/>
+                                    <ComboBoxItem Content="信息"/>
+                                    <ComboBoxItem Content="调试"/>
+                                </ComboBox>
+                                <TextBox Grid.Column="1" x:Name="LogPreviewSearchBox" MinHeight="30" Margin="8,0"
+                                         ToolTip="按文本过滤（包含匹配，忽略大小写）"
+                                         TextChanged="LogPreview_Changed"/>
+                                <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="刷新"
+                                        MinWidth="60" Margin="0,0,8,0" Click="LogPreviewRefresh_Click"/>
+                                <Button Grid.Column="3" Style="{StaticResource BtnGhost}" Content="打开失败报告"
+                                        MinWidth="104" Margin="0,0,8,0" Click="OpenFailureReport_Click"/>
+                                <Button Grid.Column="4" Style="{StaticResource BtnGhost}" Content="复制诊断信息"
+                                        MinWidth="104" Click="CopyDiagnostics_Click"/>
+                            </Grid>
+                            <TextBox Grid.Row="1" x:Name="LogPreviewBox" Margin="0,10,0,0" MinHeight="240"
+                                     IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                     VerticalContentAlignment="Top"
+                                     ScrollViewer.ScrollChanged="LogPreview_ScrollChanged"
+                                     FontFamily="Consolas" FontSize="{StaticResource FontSizeSecondary}"
+                                     ToolTip="今天的运行日志；只读。默认自动贴底，向上滚动暂停，滚到底恢复"/>
+                            <TextBlock Grid.Row="2" x:Name="LogPreviewHint" Style="{StaticResource HintLabel}"
+                                       TextWrapping="Wrap" Margin="0,6,0,0"/>
+                        </Grid>
+                    </Border>
+                </Grid>
 
                 <!-- ============ 自动触发 ============ -->
                 <controls:TriggersView x:Name="Page_Triggers" Visibility="Collapsed"/>

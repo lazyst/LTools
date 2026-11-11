@@ -131,6 +131,7 @@
     "Level": "info",
     "RetentionDays": 14
   },
+  "TrayDoubleClick": "settings",
   "Triggers": {
     "Enabled": false,
     "Rules": []

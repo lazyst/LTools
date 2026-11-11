@@ -48,6 +48,14 @@ internal static class Settings
     /// <summary>切换超级面板开关（托盘菜单用）。</summary>
     public static void ToggleSuperPanel() => SetSuperPanelEnabled(!AppState.IsSuperPanelEnabled);
 
+    /// <summary>改「双击托盘图标」行为。立即生效（同步 <see cref="AppState.TrayDoubleClick"/>）并落盘。</summary>
+    public static void SetTrayDoubleClick(TrayDoubleClickAction action)
+    {
+        AppState.TrayDoubleClick = action;
+        AppLog.Info("Settings", $"双击托盘图标 = {action}");
+        Save(() => SettingsStore.Modify(s => s.TrayDoubleClick = action));
+    }
+
     /// <summary>把改动写回配置（读磁盘→改一个字段→只写该域）。
     /// 落盘放后台线程：这些入口可能在钩子回调路径上被调用，
     /// 钩子回调不得阻塞（&gt;300ms 系统会卸载钩子）；状态本身已同步改完。

@@ -151,6 +151,9 @@ public sealed class AppConfig
     /// <summary>「提示弹窗」没指定位置时的默认落点（右下角，与系统通知一致）。</summary>
     public ToastPosition ToastPosition { get; set; } = ToastPosition.bottomRight;
 
+    /// <summary>左键双击托盘图标的行为（打开设置窗口并停在某页）。见 <see cref="TrayDoubleClickAction"/>。</summary>
+    public TrayDoubleClickAction TrayDoubleClick { get; set; } = TrayDoubleClickAction.settings;
+
     /// <summary>
     /// 本次加载是否因用户配置不可读 / 损坏而回退到默认值。回退值只用于本次运行，
     /// 写盘前必须重新用 <see cref="LoadStrict"/> 读取，避免覆盖用户原文件。

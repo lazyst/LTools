@@ -49,16 +49,12 @@
                 <ColumnDefinition Width="200"/>
             </Grid.ColumnDefinitions>
 
+            <!-- 顶部只留「页面级」操作；一行自己的操作全在行右侧（4 个常驻图标 + ⋯ 收低频），
+                 不再有「顶部一套 + 右键一套」两个入口。 -->
             <StackPanel Orientation="Horizontal">
                 <Button Style="{StaticResource BtnPrimary}" Content="新建子动作" MinWidth="104"
                         Click="New_Click"/>
-                <Button Style="{StaticResource BtnGhost}" Content="编辑" MinWidth="64" Margin="8,0,0,0"
-                        Click="Edit_Click"/>
-                <Button Style="{StaticResource BtnGhost}" Content="复制" MinWidth="64" Margin="6,0,0,0"
-                        Click="Duplicate_Click"/>
-                <Button Style="{StaticResource BtnGhostDanger}" Content="删除" MinWidth="64" Margin="6,0,0,0"
-                        Click="Delete_Click"/>
-                <Button Style="{StaticResource BtnGhost}" Content="打开目录" MinWidth="84" Margin="6,0,0,0"
+                <Button Style="{StaticResource BtnGhost}" Content="打开目录" MinWidth="84" Margin="8,0,0,0"
                         Click="OpenFolder_Click"/>
             </StackPanel>
 
@@ -79,21 +75,12 @@
                    TextWrapping="Wrap" Margin="2,6,0,0" Visibility="Collapsed"
                    Text="没有匹配的子动作。"/>
 
+        <!-- 右键菜单已拆成行右侧的常驻图标（见 ItemTemplate 的 SubActionRowAction_Click）：
+             高频 4 个直接点，低频 3 个收进每行的 ⋯，不再有隐藏入口。 -->
         <ListBox x:Name="List" BorderThickness="0" Background="Transparent"
                  HorizontalContentAlignment="Stretch"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                 MouseDoubleClick="List_MouseDoubleClick"
-                 PreviewMouseRightButtonDown="List_PreviewMouseRightButtonDown">
-            <ListBox.ContextMenu>
-                <ContextMenu>
-                    <MenuItem Header="试运行…" Click="Run_Click"/>
-                    <MenuItem Header="编辑…" Click="Edit_Click"/>
-                    <MenuItem Header="另存为动作…" Click="ToAction_Click"/>
-                    <MenuItem Header="复制 id" Click="CopyId_Click"/>
-                    <Separator/>
-                    <MenuItem Header="在文件夹中显示" Click="Reveal_Click"/>
-                </ContextMenu>
-            </ListBox.ContextMenu>
+                 MouseDoubleClick="List_MouseDoubleClick">
 
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
@@ -109,6 +96,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
@@ -136,6 +124,33 @@
                                        Margin="10,0,0,0" ToolTip="{Binding RefTip}"
                                        FontSize="{StaticResource FontSizeHint}"
                                        Foreground="{StaticResource HintTextBrush}"/>
+
+                            <!-- 行右侧常驻图标：试运行 / 编辑 / 复制 / 删除 / ⋯（低频 3 项）。
+                                 动作标识走 CommandParameter，别用 Tag（BtnGhost 把 Tag 当悬停色）。
+                                 分发器按 DataContext 认行——点按钮不会自动选中这一行。 -->
+                            <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="10,0,0,0"
+                                        VerticalAlignment="Center">
+                                <Button Content="▶" CommandParameter="run" Style="{StaticResource BtnGhost}"
+                                        Width="24" Height="24" Padding="0" FontSize="13" Focusable="False"
+                                        FontFamily="Segoe UI Symbol" ToolTip="试运行这个子动作"
+                                        Click="SubActionRowAction_Click"/>
+                                <Button Content="✎" CommandParameter="edit" Style="{StaticResource BtnGhost}"
+                                        Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14" Focusable="False"
+                                        FontFamily="Segoe UI Symbol" ToolTip="编辑这个子动作"
+                                        Click="SubActionRowAction_Click"/>
+                                <Button Content="⧉" CommandParameter="copy" Style="{StaticResource BtnGhost}"
+                                        Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14" Focusable="False"
+                                        FontFamily="Segoe UI Symbol" ToolTip="复制这个子动作"
+                                        Click="SubActionRowAction_Click"/>
+                                <Button Content="✕" CommandParameter="delete" Style="{StaticResource BtnGhostDanger}"
+                                        Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14" Focusable="False"
+                                        FontFamily="Segoe UI Symbol" ToolTip="删除这个子动作"
+                                        Click="SubActionRowAction_Click"/>
+                                <Button Content="⋯" CommandParameter="more" Style="{StaticResource BtnGhost}"
+                                        Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="15" Focusable="False"
+                                        FontFamily="Segoe UI Symbol" ToolTip="更多：另存为动作 / 复制 id / 在文件夹中显示"
+                                        Click="SubActionRowAction_Click"/>
+                            </StackPanel>
                         </Grid>
                     </Button>
                 </DataTemplate>

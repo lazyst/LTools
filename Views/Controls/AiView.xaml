@@ -20,7 +20,7 @@
 
     <!-- 子页同层：由设置左栏「AI 接入」的二级下拉切换（ShowPage） -->
     <Grid>
-        <!-- ============ 连接（含「给 AI 的说明」与知识包） ============ -->
+        <!-- ============ 连接（含「让 agent 帮你连接」与知识包） ============ -->
         <ScrollViewer x:Name="Page_Connect" VerticalScrollBarVisibility="Auto"
                       Visibility="Collapsed" Padding="20,14,20,14">
             <StackPanel>
@@ -126,7 +126,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 给 AI 的说明：一句提示词，粘过去就能配好并开始写动作 -->
+                <!-- 让 agent 帮你连接：一句提示词，粘过去 agent 就会自己接好并开始写动作 -->
                 <Border Style="{StaticResource AiCard}" Margin="0,0,0,14">
                     <StackPanel>
                         <Grid>
@@ -134,7 +134,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="给 AI 的说明"
+                            <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="让 agent 帮你连接"
                                        VerticalAlignment="Center"/>
                             <ComboBox Grid.Column="1" x:Name="ModeBox" Width="150" SelectedIndex="0"
                                       VerticalAlignment="Center" ToolTip="接入方式；两种都能用，HTTP 少一层转发"
@@ -154,7 +154,7 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Button Grid.Column="0" Style="{StaticResource MiniBtn}" Content="复制这段说明"
+                            <Button Grid.Column="0" Style="{StaticResource MiniBtn}" Content="复制连接说明"
                                     Click="CopyPrompt_Click"/>
                             <CheckBox Grid.Column="1" x:Name="HideTokenBox" Content="隐藏令牌"
                                       Margin="12,0,0,0" VerticalAlignment="Center"
@@ -204,17 +204,28 @@
                 </Grid>
                 <Border Style="{StaticResource AiCard}">
                     <StackPanel>
-                        <ItemsControl x:Name="AuditList">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding}" FontFamily="Consolas"
-                                               FontSize="{StaticResource FontSizeHint}"
-                                               Foreground="{StaticResource SecondaryTextBrush}"
-                                               TextWrapping="Wrap" Margin="0,1"/>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <!-- 表头即列头：AiAudit.TailEntries 把定宽日志行解析成 5 列，别再整行塞一个 TextBlock。
+                             只读、不排序；纵向交给外层 Page_Audit 的 ScrollViewer，避免嵌套滚动条。
+                             每列都写 MinWidth（照 HotkeysView / TriggersView 的踩坑），窄窗口宁可出横向滚动条。 -->
+                        <DataGrid x:Name="AuditGrid"
+                                  AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                                  CanUserResizeRows="False" CanUserSortColumns="False" CanUserReorderColumns="False"
+                                  IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                                  Background="Transparent" BorderThickness="0"
+                                  SelectionMode="Single" SelectionUnit="FullRow"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                  ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                  FontFamily="Consolas" FontSize="{StaticResource FontSizeHint}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="时间" Binding="{Binding Time}" Width="150" MinWidth="130"/>
+                                <DataGridTextColumn Header="工具" Binding="{Binding Tool}" Width="*" MinWidth="160"/>
+                                <DataGridTextColumn Header="草稿" Binding="{Binding Draft}" Width="110" MinWidth="90"/>
+                                <DataGridTextColumn Header="结果" Binding="{Binding Result}" Width="80" MinWidth="70"/>
+                                <DataGridTextColumn Header="耗时" Binding="{Binding Elapsed}" Width="80" MinWidth="70"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
                         <TextBlock x:Name="AuditEmpty" Style="{StaticResource HintLabel}"
+                                   Margin="0,8,0,0" Visibility="Collapsed"
                                    Text="还没有工具调用记录。"/>
                     </StackPanel>
                 </Border>

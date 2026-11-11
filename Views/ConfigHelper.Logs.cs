@@ -6,6 +6,8 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Core.Ai;
@@ -30,6 +32,68 @@ public partial class ConfigHelperWindow
     private const int PreviewScanLines = 5000;
 
     private bool _loadingLog;            // 日志页控件回填期间抑制保存事件
+
+    /// <summary>「最近日志」页的自动贴底：1.5 秒读一次日志尾部，只在贴底状态为真时卷到最下。</summary>
+    private readonly DispatcherTimer _logPoll = new() { Interval = TimeSpan.FromMilliseconds(1500) };
+    private bool _logAutoScroll = true;
+    private bool _logProgrammaticScroll;   // 区分「程序 ScrollToEnd」与「用户滚」的 ScrollChanged
+
+    // ============ 自动贴底（默认开 / 上滚暂停 / 滚到底恢复） ============
+
+    /// <summary>由主构造函数调一次：挂轮询、窗口卸载时停，并把 ⤓ 按钮初始化成「自动贴底」。</summary>
+    private void InitLogAutoScroll()
+    {
+        _logPoll.Tick += (_, _) =>
+        {
+            if (Page_LogsRecent.Visibility == Visibility.Visible) RefreshLogPreview();
+        };
+        Unloaded += (_, _) => _logPoll.Stop();
+        SetLogAutoScroll(true);
+    }
+
+    /// <summary>切到「最近日志」页就开轮询；切走就停（<c>ApplyNavPage</c> 调）。</summary>
+    private void OnLogPageChanged(bool recentVisible)
+    {
+        if (recentVisible) _logPoll.Start();
+        else _logPoll.Stop();
+    }
+
+    private void SetLogAutoScroll(bool on)
+    {
+        _logAutoScroll = on;
+        if (AutoScrollBtn == null) return;
+        AutoScrollBtn.Content = on ? "⤓ 自动贴底" : "⤓ 回到最新";
+        AutoScrollBtn.ToolTip = on
+            ? "已贴底：新日志会自动卷到最下面。向上滚动会暂停，滚到底自动恢复。"
+            : "已暂停贴底（你在往回看）。点它回到最新并恢复自动贴底，或把日志滚到底也会自动恢复。";
+    }
+
+    /// <summary>程序滚动：置标志，免得 ScrollChanged 把「自动贴底」又当成用户滚动改掉。</summary>
+    private void ScrollLogToEnd()
+    {
+        if (LogPreviewBox == null) return;
+        _logProgrammaticScroll = true;
+        try { LogPreviewBox.ScrollToEnd(); }
+        finally { _logProgrammaticScroll = false; }
+    }
+
+    /// <summary>
+    /// 用户滚动判定：内容高度变了 = 程序刷新（不动状态）；内容没变而 offset 变了 = 用户滚的。
+    /// 不在底部就暂停贴底，滚到底就恢复——程序 ScrollToEnd 即使异步触发这一拍，判出来的也是「在底部」，不会误伤。
+    /// </summary>
+    private void LogPreview_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (_loadingLog || _logProgrammaticScroll) return;
+        if (e.ExtentHeightChange != 0) return;
+        bool atBottom = e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - 2;
+        SetLogAutoScroll(atBottom);
+    }
+
+    private void AutoScrollBtn_Click(object sender, RoutedEventArgs e)
+    {
+        SetLogAutoScroll(true);
+        ScrollLogToEnd();
+    }
 
     // ============ 设置回填与保存 ============
 
@@ -150,12 +214,31 @@ public partial class ConfigHelperWindow
         int total = kept.Count;
         if (kept.Count > PreviewLines) kept = kept.Skip(kept.Count - PreviewLines).ToList();
 
-        LogPreviewBox.Text = kept.Count > 0
+        string text = kept.Count > 0
             ? string.Join(Environment.NewLine, kept)
             : lines.Length == 0
                 ? "（今天还没有日志）"
                 : "（没有匹配的日志行）";
-        LogPreviewBox.ScrollToEnd();
+
+        // 轮询每 1.5 秒都会进来：整体重设 Text 会把「往回看」的视图抢回顶部。
+        // 日志只在末尾追加，所以能接在旧文本后面就 AppendText（不重置滚动位置）；
+        // 只有筛选 / 级别变了、文本不再是旧文本的前缀时才整体重设。
+        string current = LogPreviewBox.Text;
+        if (string.Equals(current, text, StringComparison.Ordinal))
+        {
+            // 内容没变：连 Text 都不碰，视图完全不动。
+        }
+        else if (text.StartsWith(current, StringComparison.Ordinal))
+        {
+            LogPreviewBox.AppendText(text[current.Length..]);
+        }
+        else
+        {
+            LogPreviewBox.Text = text;
+        }
+
+        // 只在贴底状态为真时卷到最下：用户往回看时刷新 / 轮询都不许把视图抢走。
+        if (_logAutoScroll) ScrollLogToEnd();
 
         string scope = (tag.Length > 0 || search.Length > 0) ? $"匹配 {total} 行" : $"共 {lines.Length} 行";
         LogPreviewHint.Text = $"{scope}，显示最后 {kept.Count} 行（最多 {PreviewLines} 行）。"

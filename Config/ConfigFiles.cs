@@ -30,6 +30,9 @@ public sealed class SettingsFile
     /// <summary>「提示弹窗」的默认落点。</summary>
     public ToastPosition ToastPosition { get; set; } = ToastPosition.bottomRight;
 
+    /// <summary>左键双击托盘图标的行为（存 <see cref="TrayDoubleClickAction"/> 的英文键）。</summary>
+    public TrayDoubleClickAction TrayDoubleClick { get; set; } = TrayDoubleClickAction.settings;
+
     /// <summary>运行日志配置。</summary>
     public LogConfig Logging { get; set; } = new();
 }

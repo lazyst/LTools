@@ -213,9 +213,24 @@ public partial class HotkeysView : UserControl
         finally { _loading = false; }
     }
 
+    /// <summary>预设组行右侧 4 个图标的分发器：按 DataContext 认行（点按钮不会选中行），再复用既有逻辑。</summary>
+    private void GroupRowAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement el || el.DataContext is not GroupRow row) return;
+        GroupList.SelectedItem = row;
+        switch ((el as Button)?.CommandParameter as string)
+        {
+            case "rename": RenameGroup_Click(sender, e); break;
+            case "delete": DeleteGroup_Click(sender, e); break;
+            case "up": GroupUp_Click(sender, e); break;
+            case "down": GroupDown_Click(sender, e); break;
+        }
+    }
+
     private void GroupList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (FindAncestor<CheckBox>(e.OriginalSource as DependencyObject) != null) return;
+        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点行内图标不弹重命名
         RenameGroup_Click(sender, e);
     }
 
@@ -282,6 +297,20 @@ public partial class HotkeysView : UserControl
     // ============ 绑定 ============
 
     private HotkeyBinding? SelectedBinding() => (BindingGrid.SelectedItem as BindingRow)?.Source;
+
+    /// <summary>热键表行右侧 4 个图标的分发器：按 DataContext 认行（点按钮不会选中行），再复用既有逻辑。</summary>
+    private void BindingRowAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement el || el.DataContext is not BindingRow row) return;
+        BindingGrid.SelectedItem = row;
+        switch ((el as Button)?.CommandParameter as string)
+        {
+            case "edit": EditBinding_Click(sender, e); break;
+            case "delete": DeleteBinding_Click(sender, e); break;
+            case "up": BindingUp_Click(sender, e); break;
+            case "down": BindingDown_Click(sender, e); break;
+        }
+    }
 
     private HotkeyGroup EnsureGroup()
     {

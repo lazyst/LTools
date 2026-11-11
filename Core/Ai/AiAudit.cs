@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using LTools.Core;
 
 namespace LTools.Core.Ai;
@@ -71,4 +72,49 @@ internal static class AiAudit
             return Array.Empty<string>();
         }
     }
+
+    /// <summary>最近 <paramref name="count"/> 行解析成结构化记录（设置页 5 列表格用）。</summary>
+    public static IReadOnlyList<AuditEntry> TailEntries(int count)
+    {
+        var list = new List<AuditEntry>();
+        foreach (string line in Tail(count)) list.Add(Parse(line));
+        return list;
+    }
+
+    // 写入格式固定：时间(19) + 2 空格 + tool(-28) + 2 空格 + draft(-14) + 2 空格 +
+    // result(-8) + 2 空格 + elapsedMs(6) + " ms"。各字段都不含空格，用「2+ 空格」切最稳。
+    private static readonly Regex EntryRe = new(
+        @"^(?<t>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s{2,}(?<tool>\S+)\s{2,}(?<draft>\S+)\s{2,}(?<result>\S+)\s{2,}(?<ms>\d+)\s+ms\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// 解析一行审计日志。旧格式 / 手改过、解析不了的行整条塞进 <see cref="AuditEntry.Tool"/>，
+    /// 保证表格不丢数据（也不因为一行坏日志整页空掉）。
+    /// </summary>
+    public static AuditEntry Parse(string? line)
+    {
+        string raw = line ?? "";
+        var m = EntryRe.Match(raw);
+        if (!m.Success) return new AuditEntry { Tool = raw, Raw = raw };
+        return new AuditEntry
+        {
+            Time = m.Groups["t"].Value,
+            Tool = m.Groups["tool"].Value,
+            Draft = m.Groups["draft"].Value,
+            Result = m.Groups["result"].Value,
+            Elapsed = m.Groups["ms"].Value + " ms",
+            Raw = raw,
+        };
+    }
+}
+
+/// <summary>一行审计记录（<see cref="AiAudit.TailEntries"/> 的行模型，供设置页表格绑定）。</summary>
+internal sealed class AuditEntry
+{
+    public string Time { get; init; } = "";
+    public string Tool { get; init; } = "";
+    public string Draft { get; init; } = "";
+    public string Result { get; init; } = "";
+    public string Elapsed { get; init; } = "";
+    public string Raw { get; init; } = "";
 }

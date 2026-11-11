@@ -39,6 +39,9 @@ internal static class AppState
     /// <summary>超级面板长按阈值（ms，可调 100–800）。裸右键按住超过此值弹面板（计划 §5.1，阶段 5）。</summary>
     public static volatile int SuperPanelThresholdMs = 250;
 
+    /// <summary>左键双击托盘图标的行为。读配置落在这里，双击回调（UI 线程）零磁盘 IO；设置页改值经 <see cref="Settings.SetTrayDoubleClick"/> 同步。</summary>
+    public static TrayDoubleClickAction TrayDoubleClick = TrayDoubleClickAction.settings;
+
     // —— 已吞键集合：快捷键 / CapsLock 组合键被吞后，其 keyup 也要吞，保持事件平衡 ——
     // HashSet<int>：钩子回调对每次 keyup 做 Contains/Remove，O(1) 且无 int 装箱；
     // 旧 ArrayList 为 O(n) 且每次装箱（虽集合通常很小，热路径零成本更好）。
