@@ -67,6 +67,10 @@ public partial class App : Application
         // 窗口圆角：注册一次，之后所有非分层窗口由 DWM 画小圆角（Win10 上自动不生效）
         Views.WindowCorners.Attach();
 
+        // 统一窗口尺寸 / 位置约束：注册一次，按窗口分类（Dialog / Main / Overlay）
+        // 动态夹回所在显示器工作区，切换内容 / 改缩放后都不会被任务栏挡住
+        Views.WindowSizing.Attach();
+
         // 启动确保 CapsLock 灯灭
         CapsLockStateMachine.EnsureLightOff();
 

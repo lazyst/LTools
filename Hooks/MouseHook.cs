@@ -42,6 +42,9 @@ internal static class MouseHook
     // 面板的上下文场景必须按这个句柄解析（照 Quicker）
     private static IntPtr _superPanelContextHwnd;
 
+    /// <summary>「点击窗口选取」遮罩显示期间：裸右键长按手势让路，鼠标事件原样交给遮罩。</summary>
+    private static bool _windowPickerActive;
+
     /// <summary>本类注入鼠标事件的 dwExtraInfo 魔法标记；钩子开头据此跳过，杜绝注入回流递归。</summary>
     private static readonly IntPtr InjectedTag = (IntPtr)0x1234ABCD;
 
@@ -85,6 +88,12 @@ internal static class MouseHook
             // 忽略注入事件（防递归：本类注入的左/右键点击不重新触发逻辑）。
             // 除 LLMHF_INJECTED 外，再用 dwExtraInfo 魔法标记兜底——双保险杜绝注入回流本钩子。
             if ((ms.Flags & Win32.LlmhfInjected) != 0 || ms.ExtraInfo == InjectedTag)
+                return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
+
+            // 「点击窗口选取」遮罩期间：所有鼠标事件原样放行（不吞、不注入、不启动长按手势）。
+            // 否则裸右键长按手势会吞掉 down/up 再注入一次右键，遮罩要连点两次才收得到一次取消；
+            // 左键选中与滚轮也不该被 LTools 自己的功能截走。
+            if (_windowPickerActive)
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
 
             // 自动化运行期间：LTools 的鼠标手势（边缘滚轮音量 / 裸右键长按面板）全部让路，
@@ -266,6 +275,23 @@ internal static class MouseHook
         _rightCloseUpPending = false;
         _rightPassUpPending = false;
         _superPanelContextHwnd = IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// 「点击窗口选取」遮罩显示 / 关闭时切换让路状态（见 <c>Views/WindowPickOverlay</c>）。
+    /// 进入时顺手清掉可能残留的长按 / 待吞 up 标志，避免上一轮的 pending 误吞点选器的第一次右键。
+    /// </summary>
+    public static void SetWindowPickerActive(bool active)
+    {
+        if (active)
+        {
+            _windowPickerActive = true;
+            CancelPendingGesture();
+        }
+        else
+        {
+            _windowPickerActive = false;
+        }
     }
 
     /// <summary>长按成立：光标处弹面板（上下文取按下时光标下的窗口），并标记吞掉随后的右键 up 阻止原生菜单。</summary>

@@ -1,12 +1,14 @@
 <Window x:Class="LTools.Views.MouseTipWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:LTools.Views"
         Title="MouseTip"
         SizeToContent="WidthAndHeight"
         WindowStyle="None" AllowsTransparency="True" Topmost="True"
         ShowInTaskbar="False" ResizeMode="NoResize" Focusable="False"
         WindowStartupLocation="Manual"
-        Background="Transparent" ShowActivated="False">
+        Background="Transparent" ShowActivated="False"
+        views:WindowSizing.Mode="Overlay">
     <Border Background="#18181B" CornerRadius="6" Padding="12,7"
             BorderBrush="#00000000" BorderThickness="0" MaxWidth="380">
         <TextBlock x:Name="TipText" Foreground="White" FontSize="{StaticResource FontSizeBody}"

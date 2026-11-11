@@ -224,19 +224,46 @@
                         <TextBlock Style="{StaticResource HintLabel}" Margin="120,0,0,6"
                                    TextWrapping="Wrap"
                                    Text="每条快捷键还可以单独指定范围（编辑对话框里的「生效范围」）。LTools 自己的窗口、取不到前台程序时一律不触发 / 照常触发。"/>
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="进程（每行一个，支持 * ?）"
-                                   FontSize="{StaticResource FontSizeHint}" Margin="0,0,0,4"/>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="进程（每行一个，支持 * ?）"
+                                       FontSize="{StaticResource FontSizeHint}" Margin="0" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="选择进程…"
+                                    MinWidth="0" Padding="8,2" FontSize="{StaticResource FontSizeHint}"
+                                    Click="DefaultProcess_Click" ToolTip="点击屏幕上的窗口，把它的进程名追加一行"/>
+                        </Grid>
                         <TextBox x:Name="DefaultProcessBox" MinHeight="44" AcceptsReturn="True"
                                  TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
                                  ToolTip="chrome.exe / Code.exe / 完整路径"
                                  LostFocus="DefaultFilter_LostFocus"/>
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="窗口标题（每行一个，按包含匹配）"
-                                   FontSize="{StaticResource FontSizeHint}" Margin="0,6,0,4"/>
+                        <Grid Margin="0,6,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="窗口标题（每行一个，按包含匹配）"
+                                       FontSize="{StaticResource FontSizeHint}" Margin="0" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="选择窗口…"
+                                    MinWidth="0" Padding="8,2" FontSize="{StaticResource FontSizeHint}"
+                                    Click="DefaultTitle_Click" ToolTip="点击屏幕上的窗口，把标题追加一行"/>
+                        </Grid>
                         <TextBox x:Name="DefaultTitleBox" MinHeight="38" AcceptsReturn="True"
                                  TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
                                  LostFocus="DefaultFilter_LostFocus"/>
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="窗口类名（每行一个）"
-                                   FontSize="{StaticResource FontSizeHint}" Margin="0,6,0,4"/>
+                        <Grid Margin="0,6,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="窗口类名（每行一个）"
+                                       FontSize="{StaticResource FontSizeHint}" Margin="0" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="选择窗口…"
+                                    MinWidth="0" Padding="8,2" FontSize="{StaticResource FontSizeHint}"
+                                    Click="DefaultClass_Click" ToolTip="点击屏幕上的窗口，把类名追加一行"/>
+                        </Grid>
                         <TextBox x:Name="DefaultClassBox" MinHeight="30" AcceptsReturn="True"
                                  TextWrapping="Wrap"
                                  LostFocus="DefaultFilter_LostFocus"/>

@@ -6,19 +6,19 @@ namespace LTools.Config;
 /// <summary>触发方式（存英文键；界面显示名由本地表翻译，别往配置里写中文）。</summary>
 public enum TriggerKind
 {
-    /// <summary>按固定间隔 / 每天某时刻运行。</summary>
+    /// <summary>按固定间隔 / 每天某时刻 / Cron 运行。</summary>
     timer,
 
     /// <summary>LTools 启动后延迟运行。</summary>
     startup,
 
-    /// <summary>系统里发生的事（二期事件源，一期不产生）。</summary>
+    /// <summary>系统里发生的事（由窗口 / 剪贴板 / 文件三个事件源产生）。</summary>
     @event,
 }
 
 /// <summary>
 /// 一条自动触发规则（见 <c>docs/AUTO_TRIGGER.md</c> §4）。
-/// 一期只用 <see cref="TriggerKind.timer"/> / <see cref="TriggerKind.startup"/>，字段一次留全，二期不返工。
+/// 三种触发方式（定时 / 启动后 / 事件）共用这一份字段，按类型分流、不按类型分表。
 /// </summary>
 public sealed class TriggerRule
 {
@@ -34,13 +34,13 @@ public sealed class TriggerRule
     public TriggerKind Kind { get; set; } = TriggerKind.timer;
 
     // —— 定时 ——
-    /// <summary>固定间隔（毫秒）；与 <see cref="DailyAt"/> 二选一。</summary>
+    /// <summary>固定间隔（毫秒）；与 <see cref="DailyAt"/> / <see cref="Cron"/> 三选一。</summary>
     public int? IntervalMs { get; set; }
 
     /// <summary>每天 HH:mm（24 小时，本地时区）。</summary>
     public string? DailyAt { get; set; }
 
-    /// <summary>完整 Cron 表达式（一期留空，见 docs/AUTO_TRIGGER.md 待决项 1）。</summary>
+    /// <summary>完整 Cron 表达式（5 段或 6 段含秒，见 docs/AUTO_TRIGGER.md §13.8）；与间隔 / 每天时刻三选一。</summary>
     public string? Cron { get; set; }
 
     // —— 启动后 ——
@@ -53,17 +53,17 @@ public sealed class TriggerRule
     /// <summary>仅当由开机自启任务拉起时运行。</summary>
     public bool OnlyOnAutoStart { get; set; }
 
-    // —— 事件（二期） ——
+    // —— 事件 ——
     public string? EventType { get; set; }
 
-    /// <summary>事件源各自的参数（窗口/进程切换、剪贴板变化、文件系统变化）。</summary>
+    /// <summary>事件源各自的参数（窗口切换、剪贴板变化、文件系统变化）。</summary>
     public Dictionary<string, string>? Params { get; set; }
 
     // —— 目标与条件 ——
     /// <summary>动作 Id 或内置功能引用（<c>id#key=value</c>）；只存引用，不存动作本体。</summary>
     public string ActionRef { get; set; } = "";
 
-    /// <summary>传给动作的参数（待决项 2，一期不实现）。</summary>
+    /// <summary>传给动作的参数模板（${键} 插值成 triggerParam，见 docs/AUTO_TRIGGER.md §13.3）。</summary>
     public string? ActionParam { get; set; }
 
     /// <summary>作用范围；null / 空 = 不过滤。复用快捷键的 <see cref="AppFilter"/>。</summary>

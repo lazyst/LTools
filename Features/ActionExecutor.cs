@@ -27,14 +27,23 @@ internal static class ActionExecutor
     /// 按「绑定引用」运行：内置功能（<c>common.*</c> / <c>ltools.*</c>）交给
     /// <see cref="FeatureRunner"/>，动作（<c>a1</c>）走原有路径。返回是否找到并投递。
     /// </summary>
-    public static bool RunRef(string reference, int cursorX, int cursorY)
+    public static bool RunRef(string reference, int cursorX, int cursorY) =>
+        RunRef(reference, cursorX, cursorY, null);
+
+    /// <summary>
+    /// 按引用运行，并带上初始变量（自动触发的事件输出 / <c>ActionParam</c>）。
+    /// 内置功能引用（<c>common.*</c> / <c>ltools.*</c>）走 <see cref="FeatureRunner"/>，
+    /// 不接变量：<paramref name="initialVariables"/> 只对动作有效。见 <c>docs/AUTO_TRIGGER.md</c> §13.3。
+    /// </summary>
+    public static bool RunRef(string reference, int cursorX, int cursorY,
+        IReadOnlyDictionary<string, Value>? initialVariables)
     {
         if (string.IsNullOrWhiteSpace(reference)) return false;
         if (FeatureRunner.TryRun(reference, cursorX, cursorY)) return true;
 
         var action = ActionRegistry.FindById(reference);
         if (action == null) return false;
-        Run(action, cursorX, cursorY);
+        Run(action, cursorX, cursorY, initialVariables);
         return true;
     }
 
@@ -46,12 +55,17 @@ internal static class ActionExecutor
     /// 动作只有一种形状（<see cref="ActionDto.Program"/>），所以这里不做类型分支：
     /// 一律交给 <see cref="AutomationRunner"/>（单实例保护、停止热键、运行指示器、结果提示）。
     /// </remarks>
-    public static void Run(ActionDto action, int cursorX, int cursorY)
+    public static void Run(ActionDto action, int cursorX, int cursorY) =>
+        Run(action, cursorX, cursorY, null);
+
+    /// <summary>带初始变量的运行入口（自动触发专用；其余入口走上面那个三参重载）。</summary>
+    public static void Run(ActionDto action, int cursorX, int cursorY,
+        IReadOnlyDictionary<string, Value>? initialVariables)
     {
         // 从 CapsLock 菜单启动时 CapsLock 仍可能处于按下态；运行期间钩子会屏蔽 CapsLock，
         // 若不在启动前清掉，状态机可能一直认为它按着（见 AutomationRunner.PrepareToRun）。
         AutomationRunner.PrepareToRun();
-        Task.Run(() => AutomationRunner.Run(action, cursorX, cursorY));
+        Task.Run(() => AutomationRunner.Run(action, cursorX, cursorY, initialVariables));
     }
 
     /// <summary>

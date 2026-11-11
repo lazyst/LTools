@@ -28,6 +28,15 @@ internal static class ForegroundAppCache
     private static int _resolving;
     private static IntPtr _hook;
     private static Win32.WinEventProc? _proc;   // 保住委托，别被 GC
+    private static IntPtr _notifiedHwnd;        // 上次已通知订阅者的前台窗口；同一窗口不重复通知
+
+    /// <summary>
+    /// 前台窗口**切换**并解析完成后触发（后台线程）：参数是「新窗口 / 上一个窗口」，都可能为 null。
+    /// 自动触发的窗口切换事件源订阅它；启动时的初始解析不通知——那不是一次「切换」，
+    /// 否则用户一开 LTools 就会白跑一次动作。同一窗口的补解析（<see cref="Current"/> 触发）
+    /// 与系统重复发的 WinEvent 也按窗口句柄去重，不再重复通知。
+    /// </summary>
+    public static event Action<ForegroundApp?, ForegroundApp?>? ForegroundChanged;
 
     /// <summary>当前前台窗口的信息；还没解析出来时为 null。</summary>
     public static ForegroundApp? Current
@@ -59,6 +68,7 @@ internal static class ForegroundAppCache
             _hwnd = Win32.GetForegroundWindow();
             _pending = _hwnd;
             _app = null;
+            _notifiedHwnd = _hwnd;   // 启动时的前台窗口不算「切换」：初始解析静默
         }
         ScheduleResolve();
 
@@ -110,10 +120,33 @@ internal static class ForegroundAppCache
                     }
                 }
 
-                var app = ForegroundApp.FromHandle(hwnd);
+                ForegroundApp? app;
+                try { app = ForegroundApp.FromHandle(hwnd); }
+                catch (Exception ex)
+                {
+                    // 不能让单个坏窗口把解析循环打断：_resolving 会一直卡在 1，缓存再也不更新。
+                    AppLog.Warn("Foreground", "解析前台窗口失败：" + ex.Message);
+                    app = null;
+                }
+
+                ForegroundApp? previous;
+                bool notify;
                 lock (Gate)
                 {
-                    if (_hwnd == hwnd) _app = app;
+                    previous = _app;
+                    bool stillCurrent = _hwnd == hwnd;   // 解析期间又切了窗口，旧结果就别用
+                    if (stillCurrent) _app = app;
+                    // 只有「前台窗口真的换了 + 解析出快照」才通知一次：Current 的补解析、
+                    // 系统对同一窗口重复发的 WinEvent 都不再惊动订阅者（自动触发的
+                    // window.foreground 曾因此在没换程序时反复误触发）。
+                    notify = stillCurrent && app != null && hwnd != _notifiedHwnd;
+                    if (notify) _notifiedHwnd = hwnd;
+                }
+                if (notify)
+                {
+                    // 订阅者抛异常同样不能拖垮循环（照上面 FromHandle 的坑）。
+                    try { ForegroundChanged?.Invoke(app, previous); }
+                    catch (Exception ex) { AppLog.Warn("Foreground", "前台切换订阅者异常：" + ex.Message); }
                 }
             }
         });

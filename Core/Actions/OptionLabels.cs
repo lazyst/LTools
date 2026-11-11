@@ -173,6 +173,11 @@ internal static class OptionLabels
         ["notFound"] = "未找到",
         ["active"] = "已激活",
         ["notActive"] = "未激活",
+
+        // —— 自动触发：事件类型（docs/AUTO_TRIGGER.md §13.6；表格「触发方式」列用短名）——
+        ["window.foreground"] = "窗口切换",
+        ["clipboard.change"] = "剪贴板",
+        ["file.change"] = "文件",
     };
 
     /// <summary>键对应的中文名；没有登记就原样返回（不吞掉未知值）。</summary>

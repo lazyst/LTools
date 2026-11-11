@@ -30,6 +30,7 @@
             <RowDefinition Height="Auto"/>   <!-- 工具条 -->
             <RowDefinition Height="*"/>      <!-- 表格 -->
             <RowDefinition Height="Auto"/>   <!-- 底部 -->
+            <RowDefinition Height="Auto"/>   <!-- 触发记录（默认折叠，不影响单页表格主布局） -->
         </Grid.RowDefinitions>
 
         <!-- ============ 页头：标题 + 总开关 + 术语定义 ============ -->
@@ -75,7 +76,8 @@
                       Background="Transparent" BorderThickness="0"
                       SelectionMode="Single" SelectionUnit="FullRow"
                       ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                      PreviewMouseLeftButtonDown="RuleGrid_PreviewMouseLeftButtonDown">
+                      PreviewMouseLeftButtonDown="RuleGrid_PreviewMouseLeftButtonDown"
+                      MouseDoubleClick="RuleGrid_MouseDoubleClick">
                 <DataGrid.Columns>
                     <!-- 每列都写 MinWidth：窗口变窄时 DataGrid 会把列按比例压扁，压到很窄时
                          启用勾选框会被裁成空矩形（点不到、也看不见），宁可出横向滚动条。 -->
@@ -102,15 +104,7 @@
                     <DataGridTemplateColumn Header="触发方式" Width="120" MinWidth="108">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="2,0">
-                                    <TextBlock Style="{StaticResource CellText}" Text="{Binding KindText}" Margin="0"/>
-                                    <Border Background="{StaticResource SurfaceAltBrush}"
-                                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                            CornerRadius="4" Padding="4,0" Margin="6,0,0,0"
-                                            Visibility="{Binding EventBadgeVisibility}">
-                                        <TextBlock Text="二期" Style="{StaticResource HintLabel}"/>
-                                    </Border>
-                                </StackPanel>
+                                <TextBlock Style="{StaticResource CellText}" Text="{Binding KindText}"/>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
@@ -133,13 +127,34 @@
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
 
-                    <DataGridTemplateColumn Header="" Width="52" MinWidth="52">
+                    <!-- 操作列：⋯ 菜单拆成 5 个常驻小图标（双击整行也能编辑，见 RuleGrid_MouseDoubleClick）。
+                         动作标识走 CommandParameter，别用 Tag——BtnGhost 把 Tag 当悬停色用，占用会弄坏悬停样式。
+                         图标字形走 Segoe UI Symbol，覆盖 ✎ / ⧉ / ✕ / ↑ / ↓ 这些 Dingbats。 -->
+                    <DataGridTemplateColumn Header="操作" Width="146" MinWidth="146">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <Button Content="⋯" Style="{StaticResource MiniBtn}" Width="30" Height="24"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                                        ToolTip="编辑 / 复制 / 删除 / 上移 / 下移"
-                                        Click="RowMenu_Click"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Button Content="✎" CommandParameter="edit" Style="{StaticResource BtnGhost}"
+                                            Width="24" Height="24" Padding="0" FontSize="14"
+                                            FontFamily="Segoe UI Symbol" Focusable="False"
+                                            ToolTip="编辑这条规则" Click="RowAction_Click"/>
+                                    <Button Content="⧉" CommandParameter="copy" Style="{StaticResource BtnGhost}"
+                                            Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14"
+                                            FontFamily="Segoe UI Symbol" Focusable="False"
+                                            ToolTip="复制这条规则（再点底部「粘贴」插入副本）" Click="RowAction_Click"/>
+                                    <Button Content="✕" CommandParameter="delete" Style="{StaticResource BtnGhostDanger}"
+                                            Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14"
+                                            FontFamily="Segoe UI Symbol" Focusable="False"
+                                            ToolTip="删除这条规则" Click="RowAction_Click"/>
+                                    <Button Content="↑" CommandParameter="up" Style="{StaticResource BtnGhost}"
+                                            Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14"
+                                            FontFamily="Segoe UI Symbol" Focusable="False"
+                                            ToolTip="上移（提前匹配优先级）" Click="RowAction_Click"/>
+                                    <Button Content="↓" CommandParameter="down" Style="{StaticResource BtnGhost}"
+                                            Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14"
+                                            FontFamily="Segoe UI Symbol" Focusable="False"
+                                            ToolTip="下移" Click="RowAction_Click"/>
+                                </StackPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
@@ -163,5 +178,39 @@
                 <Button Style="{StaticResource MiniBtn}" Content="粘贴" Margin="6,0,0,0" Click="PasteRule_Click"/>
             </StackPanel>
         </Grid>
+
+        <!-- ============ 触发记录（只读，默认折叠；见 docs/AUTO_TRIGGER.md §13.9） ============ -->
+        <Expander Grid.Row="4" Margin="0,10,0,0" Foreground="{StaticResource TextBrush}"
+                  Expanded="History_Expanded">
+            <Expander.Header>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="触发记录" Margin="0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="HistoryCount" Style="{StaticResource HintLabel}" Margin="8,0,0,0"
+                               VerticalAlignment="Center" Text=""/>
+                </StackPanel>
+            </Expander.Header>
+            <Grid Margin="0,6,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <DataGrid Grid.Row="0" x:Name="HistoryGrid" MaxHeight="210" MinHeight="60"
+                          AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False"
+                          CanUserDeleteRows="False" CanUserResizeRows="False" HeadersVisibility="Column"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="时间" Binding="{Binding Time}" Width="140" MinWidth="120"/>
+                        <DataGridTextColumn Header="规则" Binding="{Binding Rule}" Width="1.4*" MinWidth="110"/>
+                        <DataGridTextColumn Header="事件类型" Binding="{Binding Event}" Width="1.2*" MinWidth="100"/>
+                        <DataGridTextColumn Header="结果" Binding="{Binding Result}" Width="*" MinWidth="140"/>
+                        <DataGridTextColumn Header="耗时" Binding="{Binding Elapsed}" Width="70" MinWidth="60"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+                    <Button Style="{StaticResource MiniBtn}" Content="刷新" Click="HistoryRefresh_Click"/>
+                    <Button Style="{StaticResource MiniBtn}" Content="清空" Margin="6,0,0,0" Click="HistoryClear_Click"/>
+                </StackPanel>
+            </Grid>
+        </Expander>
     </Grid>
 </UserControl>

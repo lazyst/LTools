@@ -10,6 +10,7 @@ using System.Windows.Data;
 using System.Windows.Media;
 using LTools.Config;
 using LTools.Core;
+using LTools.Core.Actions;
 using LTools.Features;
 using LTools.Features.Builtin;
 
@@ -25,12 +26,14 @@ namespace LTools.Views.Controls;
 /// <see cref="TriggerStore"/> 只写 <c>configs/triggers.json</c>（照 HotkeysView.Save）。
 /// </para>
 /// <para>
-/// 一期只让界面产生「定时 / 启动后」规则；事件规则（模型里预留）在表格里带「二期」灰徽标。
+/// 三种触发方式（定时 / 启动后 / 事件）都在表格里显示；事件规则的参数由编辑对话框按
+/// <c>docs/AUTO_TRIGGER.md</c> §13.5 动态生成；三个事件源（窗口 / 剪贴板 / 文件）已接入。
 /// </para>
 /// </remarks>
 public partial class TriggersView : UserControl
 {
     private readonly ObservableCollection<RuleRow> _rows = new();
+    private readonly ObservableCollection<HistoryRow> _history = new();
     private TriggersFile _file = new();
     private bool _loading;
     private bool _loaded;
@@ -42,6 +45,7 @@ public partial class TriggersView : UserControl
     {
         InitializeComponent();
         RuleGrid.ItemsSource = _rows;
+        HistoryGrid.ItemsSource = _history;
         if (CollectionViewSource.GetDefaultView(_rows) is { } view) view.Filter = FilterRow;
 
         Loaded += (_, _) =>
@@ -63,6 +67,7 @@ public partial class TriggersView : UserControl
         finally { _loading = false; }
         PopulateRows();
         UpdateEmergency();
+        LoadHistory();
     }
 
     private void PopulateRows(string? keepId = null)
@@ -97,6 +102,28 @@ public partial class TriggersView : UserControl
     private void UpdateEmergency()
     {
         EmergencyButton.Content = TriggerService.EmergencyDisabled ? "恢复自动触发…" : "紧急禁用…";
+    }
+
+    // ============ 触发记录（只读） ============
+
+    /// <summary>从 <c>state/trigger-history.jsonl</c> 读倒序快照填表。</summary>
+    private void LoadHistory()
+    {
+        _history.Clear();
+        foreach (var r in TriggerHistory.Load()) _history.Add(new HistoryRow(r));
+        HistoryCount.Text = $"（{_history.Count} 条 · 最多 {TriggerHistory.MaxRecords} 条）";
+    }
+
+    private void History_Expanded(object sender, RoutedEventArgs e) => LoadHistory();
+
+    private void HistoryRefresh_Click(object sender, RoutedEventArgs e) => LoadHistory();
+
+    private void HistoryClear_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ConfirmDialog.Confirm(Window.GetWindow(this), "清空触发记录",
+                "确定清空全部触发记录吗？（只删记录，不影响规则）", danger: true)) return;
+        TriggerHistory.Clear();
+        LoadHistory();
     }
 
     // ============ 保存 ============
@@ -238,27 +265,41 @@ public partial class TriggersView : UserControl
         if (cell != null && !cell.IsKeyboardFocusWithin) cell.Focus();
     }
 
-    // ============ 操作列 ⋯ 菜单 ============
+    // ============ 操作列：5 个常驻图标 + 双击整行编辑 ============
 
-    private void RowMenu_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// 5 个图标共用这个分发器：动作标识走 <c>CommandParameter</c>（不是 Tag——Tag 被 BtnGhost
+    /// 当悬停色用）。菜单时代要「推迟到菜单关掉之后再弹模态框」，现在没有菜单，直接执行即可。
+    /// </summary>
+    private void RowAction_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement el || el.DataContext is not RuleRow row) return;
-        var menu = new ContextMenu { PlacementTarget = el, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
-        Add(menu, "编辑…", () => EditRule(row));
-        Add(menu, "复制", () => CopyRule(row));
-        Add(menu, "删除", () => DeleteRule(row));
-        menu.Items.Add(new Separator());
-        Add(menu, "上移", () => MoveRule(row, -1));
-        Add(menu, "下移", () => MoveRule(row, 1));
-        menu.IsOpen = true;
+        switch ((el as Button)?.CommandParameter as string)
+        {
+            case "edit": EditRule(row); break;
+            case "copy": CopyRule(row); break;
+            case "delete": DeleteRule(row); break;
+            case "up": MoveRule(row, -1); break;
+            case "down": MoveRule(row, 1); break;
+        }
     }
 
-    /// <summary>菜单项点击往往要弹模态框：推迟到菜单关掉之后的 Dispatcher 周期。</summary>
-    private void Add(ContextMenu menu, string header, Action invoke)
+    /// <summary>双击整行 = 编辑（用户嫌「⋯ 要小心翼翼点」）。</summary>
+    private void RuleGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        var item = new MenuItem { Header = header };
-        item.Click += (_, _) => Dispatcher.InvokeAsync(invoke);
-        menu.Items.Add(item);
+        if (DoubleClickEditRow(e.OriginalSource as DependencyObject) is { } row) EditRule(row);
+    }
+
+    /// <summary>
+    /// 双击是否落在「可编辑的数据行」上：避开「启用」勾选框、操作列图标按钮，
+    /// 表头 / 空白取不到 <see cref="DataGridRow"/> 也一律返回 null。
+    /// 抽成纯函数方便无头冒烟直接断言，不用伪造鼠标事件 / 弹模态框。
+    /// </summary>
+    internal static RuleRow? DoubleClickEditRow(DependencyObject? src)
+    {
+        if (src == null) return null;
+        if (FindAncestor<CheckBox>(src) != null || FindAncestor<Button>(src) != null) return null;
+        return FindAncestor<DataGridRow>(src)?.DataContext as RuleRow;
     }
 
     // ============ 搜索 ============
@@ -309,12 +350,14 @@ public partial class TriggersView : UserControl
         public string KindText => Source.Kind switch
         {
             TriggerKind.startup => "启动后",
-            TriggerKind.@event => "事件",
+            TriggerKind.@event => "事件 · " + EventTypeName,
             _ => "定时",
         };
 
-        public Visibility EventBadgeVisibility =>
-            Source.Kind == TriggerKind.@event ? Visibility.Visible : Visibility.Collapsed;
+        /// <summary>事件类型中文短名（配置存英文键，显示名在 <see cref="OptionLabels"/>）。</summary>
+        private string EventTypeName => string.IsNullOrWhiteSpace(Source.EventType)
+            ? "未设类型"
+            : OptionLabels.Of(Source.EventType);
 
         /// <summary>条件摘要：把规则字段拼成一行短文本（照 StepSummary 的写法）。</summary>
         public string Summary
@@ -325,7 +368,10 @@ public partial class TriggersView : UserControl
                 switch (Source.Kind)
                 {
                     case TriggerKind.timer:
-                        if (Source.IntervalMs is > 0)
+                        // 摘要优先级与 TriggerScheduler.FirstDue 一致：Cron > 间隔 > 每天时刻。
+                        if (!string.IsNullOrWhiteSpace(Source.Cron))
+                            parts.Add("Cron " + Source.Cron);
+                        else if (Source.IntervalMs is > 0)
                             parts.Add("间隔 " + (Source.IntervalMs.Value / 60000.0).ToString(CultureInfo.InvariantCulture) + " 分钟");
                         else if (!string.IsNullOrWhiteSpace(Source.DailyAt))
                             parts.Add("每天 " + Source.DailyAt);
@@ -337,12 +383,69 @@ public partial class TriggersView : UserControl
                         if (Source.OnlyFirstStartToday) parts.Add("仅每日首次");
                         if (Source.OnlyOnAutoStart) parts.Add("仅开机自启时");
                         break;
-                    default:
-                        parts.Add(string.IsNullOrWhiteSpace(Source.EventType) ? "事件触发（二期）" : Source.EventType!);
+                    default:   // @event：事件名 + 按 §13.5 拼的参数 + 命中即停
+                        parts.Add(EventTypeName);
+                        parts.AddRange(EventParamSummary());
+                        if (Source.SkipFurther) parts.Add("命中即停");
                         break;
                 }
                 return string.Join(" · ", parts);
             }
+        }
+
+        /// <summary>
+        /// 按 <c>docs/AUTO_TRIGGER.md</c> §13.5 把事件参数拼成几段短文本。
+        /// 只列「条件类」参数：<c>excludeOwn</c> / <c>ignoreOwnWrites</c> / <c>includeSubdirectories</c>
+        /// 这类布尔默认项不进摘要（否则每行都挂一串 true，反而看不出用户设了什么）。
+        /// </summary>
+        private IEnumerable<string> EventParamSummary()
+        {
+            var p = Source.Params;
+            if (p == null || p.Count == 0) yield break;
+            string Val(string key) => p.TryGetValue(key, out string? v) ? (v ?? "").Trim() : "";
+
+            switch ((Source.EventType ?? "").ToLowerInvariant())
+            {
+                case "window.foreground":
+                    if (Val("title") is { Length: > 0 } t) yield return "标题含 " + t;
+                    if (Val("process") is { Length: > 0 } pr) yield return "进程 " + pr;
+                    if (Val("class") is { Length: > 0 } c) yield return "类名 " + c;
+                    if (Val("prevTitle") is { Length: > 0 } pt) yield return "前窗含 " + pt;
+                    if (Val("prevProcess") is { Length: > 0 } pp) yield return "前窗进程 " + pp;
+                    break;
+                case "clipboard.change":
+                    if (Val("text") is { Length: > 0 } ct) yield return "文本含 " + ct;
+                    if (Val("formats") is { Length: > 0 } f) yield return "格式 " + f;
+                    break;
+                case "file.change":
+                    string dir = Val("path"), filter = Val("filter");
+                    if (dir.Length > 0)
+                        yield return (filter.Length > 0 && filter != "*.*")
+                            ? dir.TrimEnd('\\', '/') + "\\" + filter : dir;
+                    if (Val("events") is { Length: > 0 } ev) yield return FileEventNames(ev);
+                    if (Val("pathMatch") is { Length: > 0 } pm) yield return "路径含 " + pm;
+                    break;
+            }
+        }
+
+        /// <summary>created;changed;deleted;renamed → 新建·修改·删除·重命名（未知键原样保留）。</summary>
+        private static string FileEventNames(string value)
+        {
+            var names = new List<string>();
+            foreach (string raw in value.Split(';'))
+            {
+                string key = raw.Trim().ToLowerInvariant();
+                if (key.Length == 0) continue;
+                names.Add(key switch
+                {
+                    "created" => "新建",
+                    "changed" => "修改",
+                    "deleted" => "删除",
+                    "renamed" => "重命名",
+                    _ => raw.Trim(),
+                });
+            }
+            return string.Join("·", names);
         }
 
         public string ActionName => string.IsNullOrWhiteSpace(Source.ActionRef)
@@ -354,5 +457,24 @@ public partial class TriggersView : UserControl
             || KindText.Contains(query, StringComparison.OrdinalIgnoreCase)
             || Summary.Contains(query, StringComparison.OrdinalIgnoreCase)
             || ActionName.Contains(query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>触发记录表格的一行（只读显示模型，不写回）。</summary>
+    public sealed class HistoryRow
+    {
+        internal HistoryRow(TriggerRecord r)
+        {
+            Time = r.Time;
+            Rule = string.IsNullOrWhiteSpace(r.Note) ? r.RuleId : r.Note;
+            Event = string.IsNullOrWhiteSpace(r.EventType) ? "定时 / 启动后" : OptionLabels.Of(r.EventType);
+            Result = r.Ran ? "运行" : "丢弃 · " + r.Reason;
+            Elapsed = r.ElapsedMs > 0 ? r.ElapsedMs + " ms" : "—";
+        }
+
+        public string Time { get; }
+        public string Rule { get; }
+        public string Event { get; }
+        public string Result { get; }
+        public string Elapsed { get; }
     }
 }

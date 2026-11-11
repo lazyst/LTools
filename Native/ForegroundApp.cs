@@ -57,10 +57,17 @@ internal sealed record ForegroundApp(
     public static bool IsShellWindow(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero) return true;
-        return ReadClassName(hwnd) is
-            "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd"
-            or "NotifyIconOverflowWindow";
+        return IsShellClassName(ReadClassName(hwnd));
     }
+
+    /// <summary>
+    /// 按窗口类名判断是不是 shell 窗口（桌面 / 任务栏 / 开始菜单 / 通知区域溢出窗）。
+    /// 前台切换事件源直接用 <see cref="ForegroundApp.ClassName"/> 调它，省一次 Win32 查询；
+    /// 与 <see cref="IsShellWindow(IntPtr)"/> 共用同一份名单，别各写一套。
+    /// </summary>
+    public static bool IsShellClassName(string className) =>
+        className is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd"
+            or "NotifyIconOverflowWindow";
 
     /// <summary>
     /// 从已经记录的窗口句柄补全进程 / 标题 / 类名。

@@ -6,7 +6,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using LTools.Config;
 using LTools.Core;
+using LTools.Core.Actions;
 using LTools.Features.Builtin;
+using LTools.Native;
 
 namespace LTools.Features;
 
@@ -18,7 +20,7 @@ namespace LTools.Features;
 /// <para>
 /// 唯一执行入口是 <see cref="ActionExecutor.RunRef"/>（后台 spawn、不阻塞调用方）；
 /// 这里绝不 <c>Task.Wait</c>、不调同步版 <c>Execute</c>。所有投递都发生在后台线程
-/// （<see cref="TriggerScheduler"/> 的 Timer 回调 / 二期事件源线程），不碰 WPF。
+/// （<see cref="TriggerScheduler"/> 的 Timer 回调 / 事件源线程），不碰 WPF。
 /// </para>
 /// <para>
 /// 并发：<see cref="AutomationRunner"/> 的 <c>_running</c> 在已有运行时会静默丢弃，
@@ -30,7 +32,8 @@ internal static class TriggerService
 {
     private static readonly object Gate = new();
     private static TriggerScheduler? _scheduler;
-    private static readonly List<ITriggerSource> _sources = new();   // 一期为空；二期在此注册
+    // 三个事件源在 Start 里按 §13.2 顺序注册；Reload / Stop / Start 都遍历它。
+    private static readonly List<ITriggerSource> _sources = new();
     private static bool _started;
 
     // 本次进程的启动状态（进程级常量）：传给 TriggerScheduler 过滤「启动后」规则。
@@ -130,7 +133,15 @@ internal static class TriggerService
             TriggerRegistry.Load(AppConfig.Load(configPath));
             _scheduler = new TriggerScheduler(_firstStartToday, _launchedByAutoStart);
             _scheduler.Start(Fire);
-            foreach (var source in _sources) source.Start(Fire);
+            // 三个事件源按 §13.2 顺序注册（窗口 → 剪贴板 → 文件）。只建一次，
+            // Stop 后再 Start 复用实例（各实现的 Start 会重建订阅）。
+            if (_sources.Count == 0)
+            {
+                _sources.Add(new WindowForegroundSource());
+                _sources.Add(new ClipboardSource());
+                _sources.Add(new FileSource());
+            }
+            foreach (var source in _sources) source.Start(FireEvent);
             _started = true;
 
             int active = TriggerRegistry.Active.Count;
@@ -163,70 +174,148 @@ internal static class TriggerService
     public static void Reload(TriggersFile file)
     {
         TriggerRegistry.Load(file);
-        lock (Gate) _scheduler?.Rebuild();
+        lock (Gate)
+        {
+            _scheduler?.Rebuild();
+            // 事件源按新规则重建订阅（窗口 / 剪贴板 / 文件三个实现；空列表时无操作）。
+            // 设置页保存 / 导入备份 / 删动作后都经这里，不必重启。
+            foreach (var source in _sources)
+            {
+                try { source.Reload(); }
+                catch (Exception ex) { AppLog.Warn("Triggers", "事件源重建订阅失败：" + ex.Message); }
+            }
+        }
     }
 
     /// <summary>用磁盘配置重新加载（导入备份 / 外部改动 configs/triggers.json 后调用）。</summary>
     public static void ReloadFromDisk(string configPath) => Reload(AppConfig.Load(configPath).Triggers ?? new());
 
+    /// <summary>定时 / 启动后的单条投递（<see cref="TriggerScheduler"/> 的回调）。</summary>
+    internal static void Fire(TriggerRule rule) => FireRule(rule, null, null);
+
     /// <summary>
-    /// 统一投递点：定时 / 启动后 / 二期事件源都经这里。后台线程调用，绝不阻塞。
+    /// 事件源的统一入口（§13.3）：一次事件按 <see cref="TriggerRegistry.Active"/> 顺序
+    /// 筛出所有匹配的事件规则，逐条走同一套安全检查；某条 <c>SkipFurther</c> = true
+    /// 且成功投递后停止遍历后续规则。定时 / 启动后规则不受影响。
     /// </summary>
-    /// <remarks>
-    /// 检查顺序即安全策略：总开关 → 紧急禁用 → 单条启用 → 作用范围 → 防抖 → 节流 → 延迟 → 单飞投递。
-    /// </remarks>
-    internal static void Fire(TriggerRule rule)
+    internal static void FireEvent(TriggerEvent ev)
     {
-        // 每次 Fire 都重新读总开关与紧急禁用（可能刚被设置页 / 托盘改掉）。
-        if (!TriggerRegistry.Enabled) return;
-        if (EmergencyDisabled) return;
-        if (!rule.Enabled) return;
-        if (string.IsNullOrWhiteSpace(rule.ActionRef)) return;
+        // 通用变量在这里统一补，事件源只管自己那几个（§13.4）。
+        var baseVars = new Dictionary<string, Value>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in ev.Values) baseVars[key] = value;
+        baseVars["triggerEventType"] = Value.FromText(ev.EventType);
+        baseVars["triggerEventTime"] = Value.FromText(
+            ev.OccurredAt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
 
-        // 作用范围：名单为空放行；否则看当前前台程序（ForegroundAppCache 后台解析的快照）。
-        if (!AppFilterMatch.AllowsScope(rule.Scope, ForegroundAppCache.Current)) return;
-
-        long now = Environment.TickCount64;
-        string id = string.IsNullOrEmpty(rule.Id) ? rule.ActionRef : rule.Id;
-
-        // 防抖：DebounceMs 窗口内的重复命中只算一次（保留第一次，丢弃窗口内的后续）。
-        // 节流：ThrottleMs 内不重复执行。两者都在锁内判定，避免并发命中一起放行。
-        lock (Gate)
+        foreach (var rule in TriggerRegistry.Active)
         {
-            if (!_started) return;
-            if (rule.DebounceMs > 0 && _lastHit.TryGetValue(id, out long hit) && now - hit < rule.DebounceMs)
-            {
-                _lastHit[id] = now;   // 抖动期内刷新命中时间，静默期过后才再触发
-                return;
-            }
-            _lastHit[id] = now;
-
-            if (rule.ThrottleMs > 0 && _lastFired.TryGetValue(id, out long fired) && now - fired < rule.ThrottleMs)
-                return;
-            _lastFired[id] = now;
-        }
-
-        // 命中后延迟执行（后台等待，不阻塞 Timer 回调）。
-        if (rule.DelayMs > 0)
-        {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await Task.Delay(rule.DelayMs).ConfigureAwait(false);
-                    Dispatch(rule);
-                }
-                catch (Exception ex) { AppLog.Warn("Triggers", $"延迟投递失败：{ex.Message}"); }
-            });
-        }
-        else
-        {
-            Dispatch(rule);
+            if (rule.Kind != TriggerKind.@event) continue;
+            if (!EventMatcher.Matches(rule, ev)) continue;
+            var vars = WithActionParam(rule, baseVars);
+            if (FireRule(rule, vars, ev.Foreground) && rule.SkipFurther) break;
         }
     }
 
-    /// <summary>真正把动作投出去：并发单飞 + 唯一执行入口 RunRef。</summary>
-    private static void Dispatch(TriggerRule rule)
+    /// <summary>
+    /// 把 <c>ActionParam</c> 的文本模板按事件输出变量插值，作为 <c>triggerParam</c> 一并注入（§13.3）。
+    /// 只做 <c>${键}</c> 的字面替换——事件输出变量都是扁平文本，不需要成员路径解析。
+    /// </summary>
+    private static IReadOnlyDictionary<string, Value> WithActionParam(
+        TriggerRule rule, IReadOnlyDictionary<string, Value> baseVars)
+    {
+        if (string.IsNullOrEmpty(rule.ActionParam)) return baseVars;
+
+        string text = rule.ActionParam;
+        foreach (var (key, value) in baseVars)
+            text = text.Replace("${" + key + "}", value.AsText(), StringComparison.OrdinalIgnoreCase);
+
+        var vars = new Dictionary<string, Value>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in baseVars) vars[key] = value;
+        vars["triggerParam"] = Value.FromText(text);
+        return vars;
+    }
+
+    /// <summary>
+    /// 统一的单条投递。检查顺序即安全策略：总开关 → 紧急禁用 → 单条启用 → 作用范围
+    /// → 防抖 → 节流 → 延迟 → 单飞投递。后台线程调用，绝不阻塞。
+    /// </summary>
+    /// <param name="vars">事件输出变量（定时 / 启动后为 null）。</param>
+    /// <param name="scopeApp">事件命中时的前台快照；null = 用 <see cref="ForegroundAppCache.Current"/>。</param>
+    /// <returns>是否成功投递（供 <c>SkipFurther</c> 判断；延迟投递算已排队）。</returns>
+    private static bool FireRule(TriggerRule rule,
+        IReadOnlyDictionary<string, Value>? vars, ForegroundApp? scopeApp)
+    {
+        long start = Environment.TickCount64;
+        string reason = "运行";
+        bool ok = false;
+        try
+        {
+            // 每次 Fire 都重新读总开关与紧急禁用（可能刚被设置页 / 托盘改掉）。
+            if (!TriggerRegistry.Enabled) { reason = "总开关关闭"; return false; }
+            if (EmergencyDisabled) { reason = "紧急禁用"; return false; }
+            if (!rule.Enabled) { reason = "规则未启用"; return false; }
+            if (string.IsNullOrWhiteSpace(rule.ActionRef)) { reason = "未选动作"; return false; }
+
+            // 作用范围：名单为空放行；否则看前台程序快照（窗口切换用事件自带的，其余用缓存）。
+            if (!AppFilterMatch.AllowsScope(rule.Scope, scopeApp ?? ForegroundAppCache.Current))
+            { reason = "作用范围不允许"; return false; }
+
+            long now = Environment.TickCount64;
+            string id = string.IsNullOrEmpty(rule.Id) ? rule.ActionRef : rule.Id;
+
+            // 防抖：DebounceMs 窗口内的重复命中只算一次（保留第一次，丢弃窗口内的后续）。
+            // 节流：ThrottleMs 内不重复执行。两者都在锁内判定，避免并发命中一起放行。
+            lock (Gate)
+            {
+                if (!_started) { reason = "模块未启动"; return false; }
+                if (rule.DebounceMs > 0 && _lastHit.TryGetValue(id, out long hit) && now - hit < rule.DebounceMs)
+                {
+                    _lastHit[id] = now;   // 抖动期内刷新命中时间，静默期过后才再触发
+                    reason = "防抖丢弃"; return false;
+                }
+                _lastHit[id] = now;
+
+                if (rule.ThrottleMs > 0 && _lastFired.TryGetValue(id, out long fired) && now - fired < rule.ThrottleMs)
+                { reason = "节流丢弃"; return false; }
+                _lastFired[id] = now;
+            }
+
+            // 命中后延迟执行（后台等待，不阻塞 Timer 回调 / 事件源回调）。
+            if (rule.DelayMs > 0)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(rule.DelayMs).ConfigureAwait(false);
+                        Dispatch(rule, vars);
+                    }
+                    catch (Exception ex) { AppLog.Warn("Triggers", $"延迟投递失败：{ex.Message}"); }
+                });
+                ok = true;   // 已排队
+                return true;
+            }
+            ok = Dispatch(rule, vars);
+            if (!ok) reason = "投递失败（已有运行 / 引用无效）";
+            return ok;
+        }
+        finally
+        {
+            // 触发记录：运行 / 丢弃 + 原因都记（§13.9）。记日志失败不能反过来影响投递结果。
+            try
+            {
+                TriggerHistory.Record(
+                    string.IsNullOrEmpty(rule.Id) ? rule.ActionRef : rule.Id,
+                    rule.Note,
+                    rule.Kind == TriggerKind.@event ? rule.EventType : null,
+                    ok, reason, Environment.TickCount64 - start);
+            }
+            catch (Exception ex) { AppLog.Warn("Triggers", "写触发记录失败：" + ex.Message); }
+        }
+    }
+
+    /// <summary>真正把动作投出去：并发单飞 + 唯一执行入口 RunRef（带事件输出变量）。</summary>
+    private static bool Dispatch(TriggerRule rule, IReadOnlyDictionary<string, Value>? vars)
     {
         // 引擎的单实例锁在已有运行时会静默丢弃并弹「已有自动化正在运行」；
         // 自动触发是无人值守的，那条提示没人看，故自己先查并记日志（内置功能不受该锁限制）。
@@ -234,17 +323,22 @@ internal static class TriggerService
         if (!isFeature && AutomationRunner.IsRunning)
         {
             AppLog.Warn("Triggers", $"已有自动化正在运行，跳过规则「{rule.Note}」");
-            return;
+            return false;
         }
 
         try
         {
-            if (!ActionExecutor.RunRef(rule.ActionRef, 0, 0))
+            if (!ActionExecutor.RunRef(rule.ActionRef, 0, 0, vars))
+            {
                 AppLog.Warn("Triggers", $"规则「{rule.Note}」的动作引用无效：{rule.ActionRef}");
+                return false;
+            }
+            return true;
         }
         catch (Exception ex)
         {
             AppLog.Error("Triggers", $"规则「{rule.Note}」投递失败", ex);
+            return false;
         }
     }
 }

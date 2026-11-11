@@ -51,8 +51,13 @@ internal static class AutomationRunner
         AppState.OtherKeyPressed = false;
     }
 
-    /// <summary>执行一个动作（在后台线程里跑，异常在此记录并提示，不再上抛）。</summary>
-    public static void Run(ActionDto action, int cursorX, int cursorY)
+    /// <summary>
+    /// 执行一个动作（在后台线程里跑，异常在此记录并提示，不再上抛）。
+    /// <paramref name="initialVariables"/> 是自动触发注入的事件输出变量，只有从
+    /// <c>ActionExecutor.RunRef</c> 的四参重载进来时才非 null；编辑器试运行 / 面板 / 快捷键都不传。
+    /// </summary>
+    public static void Run(ActionDto action, int cursorX, int cursorY,
+        IReadOnlyDictionary<string, Value>? initialVariables = null)
     {
         ActionProgram? program = action.Program;
         if (program == null)
@@ -72,7 +77,7 @@ internal static class AutomationRunner
 
         Task.Run(() => RunCore(program, action.Name, cursorX, cursorY,
             startPath: null, trace: null, notify: true, noticeOverride: null, completed: null,
-            resourceRoot: ActionStore.ResourceRootFor(action.Id)));
+            resourceRoot: ActionStore.ResourceRootFor(action.Id), initialVariables: initialVariables));
     }
 
     /// <summary>
@@ -103,7 +108,8 @@ internal static class AutomationRunner
     /// </param>
     private static void RunCore(ActionProgram program, string name, int cursorX, int cursorY,
         string? startPath, Action<StepTrace>? trace, bool notify, RunNoticeMode? noticeOverride,
-        Action<ActionRunResult>? completed, string? resourceRoot = null)
+        Action<ActionRunResult>? completed, string? resourceRoot = null,
+        IReadOnlyDictionary<string, Value>? initialVariables = null)
     {
         // 运行期截图（变量 .file）只服务一次运行：开始新一次就整体清空上一轮的缓存目录。
         // resources/images 里仍可能有「剪贴板图片」等程序生成图，按引用 + 时间界线回收。
@@ -148,6 +154,7 @@ internal static class AutomationRunner
                 StartPath = startPath,
                 StepTrace = OnTrace,
                 ResourceRoot = resourceRoot,
+                InitialVariables = initialVariables,
                 Log = message => AppLog.Debug("Flow", message),
                 StepStarted = step =>
                 {

@@ -232,6 +232,16 @@ public partial class HotkeyEditDialog : Window
 
     private void Scope_Changed(object sender, SelectionChangedEventArgs e) => UpdateFilterVisibility();
 
+    // 名单三行都能从系统里点选（与触发规则「作用范围」共用同一套），不用手抄进程名 / 标题 / 类名。
+    private void ScopeProcess_Click(object sender, RoutedEventArgs e)
+        => SystemPickerDialog.AppendLine(ProcessBox, SystemPickerDialog.PickProcess(this));
+
+    private void ScopeTitle_Click(object sender, RoutedEventArgs e)
+        => SystemPickerDialog.AppendLine(TitleBox, SystemPickerDialog.PickWindow(this)?.Title);
+
+    private void ScopeClass_Click(object sender, RoutedEventArgs e)
+        => SystemPickerDialog.AppendLine(ClassBox, SystemPickerDialog.PickWindow(this)?.ClassName);
+
     private void UpdateFilterVisibility()
     {
         string tag = (ScopeBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "inherit";

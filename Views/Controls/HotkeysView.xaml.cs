@@ -404,6 +404,28 @@ public partial class HotkeysView : UserControl
         Save();
     }
 
+    // 全局默认名单三行也能从系统里点选；直接改 Text 不会走 LostFocus，手动触发一次保存。
+    private void DefaultProcess_Click(object sender, RoutedEventArgs e)
+    {
+        SystemPickerDialog.AppendLine(DefaultProcessBox,
+            SystemPickerDialog.PickProcess(Window.GetWindow(this)));
+        DefaultFilter_LostFocus(sender, e);
+    }
+
+    private void DefaultTitle_Click(object sender, RoutedEventArgs e)
+    {
+        SystemPickerDialog.AppendLine(DefaultTitleBox,
+            SystemPickerDialog.PickWindow(Window.GetWindow(this))?.Title);
+        DefaultFilter_LostFocus(sender, e);
+    }
+
+    private void DefaultClass_Click(object sender, RoutedEventArgs e)
+    {
+        SystemPickerDialog.AppendLine(DefaultClassBox,
+            SystemPickerDialog.PickWindow(Window.GetWindow(this))?.ClassName);
+        DefaultFilter_LostFocus(sender, e);
+    }
+
     private void DefaultFilter_LostFocus(object sender, RoutedEventArgs e)
     {
         if (_loading) return;

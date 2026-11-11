@@ -61,6 +61,8 @@ resources/
   user/              用户素材（永不自动删）
 trash/<时间戳>/<id>/  删除的动作目录（保留 30 天，可手工捞回）
 state/values.json    跨动作状态（「存状态 / 读状态」单元；随备份走）
+state/trigger-history.jsonl  自动触发的运行 / 丢弃记录（500 条上限；state/ 是备份域，随备份走）
+state/auto-trigger-last-start.txt  「仅每日第一次启动」的当天日期（别放 cache/）
 staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 ```
 
@@ -162,8 +164,9 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
   再比 SHA-256；命中别的动作已有的同内容文件就用**硬链接**（`Native/FileLinks`）指向它，失败回退复制。
   写目标文件前一律先删旧名字（硬链接共享内容，就地覆盖会连带改掉另一个动作的模板图）。
 - **备份目录白名单**：`Core/BackupService` 的 `BackupDomain` 表列出唯一允许进包的目录
-  （配置 / `actions` / `resources` / `速记` / `macros` / `staging`），`Export`、`EstimateSize`、
+  （配置 / `actions` / `resources` / `速记` / `macros` / `staging` / `state` / `subactions`），`Export`、`EstimateSize`、
   manifest 的 `includes` 都从同一张表生成；新增一类目录只加一行，`cache/`、`ai/`、`logs/` 永远不进来。
+  `configs/` 无条件带上，`state/`（含 `values.json` 与自动触发的 `trigger-history.jsonl`）等目录存在即带、不受导出页勾选框控制。
   导出先写 `.part-*` 再替换，失败不留半个 zip。
 - **启动孤儿检查**：`Core/Storage/OrphanFiles.Collect`（`ConfigStore.Initialize` 里调用）扫
   `actions/<id>/files/` 的图片，把没有任何 `image` 参数引用的移进 `trash/<时间戳>/orphans/<id>/`（只搬不删）。

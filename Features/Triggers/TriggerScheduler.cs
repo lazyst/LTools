@@ -11,13 +11,13 @@ namespace LTools.Features;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 一期只排「定时（固定间隔 / 每天时刻）」与「启动后（延迟一次性）」两类；事件源由
+/// 排「定时（Cron / 固定间隔 / 每天时刻）」与「启动后（延迟一次性）」两类；事件源由
 /// <see cref="ITriggerSource"/> 投递，不进这张表。<see cref="TriggerRegistry.Active"/> 已按优先级排好，
-/// 到期列表沿用该顺序。
+/// 到期列表沿用该顺序。Cron 解析统一走 <see cref="CronSchedule"/>（§13.8）。
 /// </para>
 /// <para>
-/// <c>SkipFurther</c>（命中后不再判断后续规则）是一期不参与：定时 / 启动后各自独立到期，
-/// Quicker 也把「定时重复」列为不适合该选项的事件源（规格待决项 3），留给二期事件源再定。
+/// <c>SkipFurther</c>（命中后不再判断后续规则）只适用于事件规则：定时 / 启动后各自独立到期，
+/// Quicker 也把「定时重复」列为不适合该选项的事件源，故这里不参与。
 /// </para>
 /// </remarks>
 internal sealed class TriggerScheduler
@@ -70,6 +70,8 @@ internal sealed class TriggerScheduler
         var list = new List<Entry>();
         foreach (var rule in TriggerRegistry.Active)
         {
+            // 事件规则由事件源投递，不进排程表（§13.3）。
+            if (rule.Kind == TriggerKind.@event) continue;
             // 「启动后」的两个启动选项在本次启动不满足时整条不排程（不是命中时再丢）。
             if (!StartupAllowed(rule)) continue;
             var next = FirstDue(rule, now);
@@ -109,14 +111,15 @@ internal sealed class TriggerScheduler
                 return now.AddSeconds(Math.Max(0, r.DelaySeconds));
 
             case TriggerKind.timer:
+                // 三种时间源互斥且优先级 Cron > 间隔 > 每天时刻（§13.8）。
+                if (!string.IsNullOrWhiteSpace(r.Cron)) return CronSchedule.Next(r.Cron, now);
                 if (r.IntervalMs is > 0) return now.AddMilliseconds(r.IntervalMs.Value);
                 if (TryDaily(r.DailyAt, out int hh, out int mm))
                 {
                     DateTime today = now.Date.AddHours(hh).AddMinutes(mm);
                     return today > now ? today : today.AddDays(1);
                 }
-                // 只有 Cron（一期不做，规格待决项 1）或没填任何时间：不排程
-                return null;
+                return null;   // 没填任何时间：不排程
 
             default:
                 return null;   // 事件源由 ITriggerSource 投递
@@ -126,6 +129,8 @@ internal sealed class TriggerScheduler
     /// <summary>命中后推进到再下一次（一次性规则不走这里）。</summary>
     private static DateTime Advance(TriggerRule r, DateTime now)
     {
+        if (!string.IsNullOrWhiteSpace(r.Cron))
+            return CronSchedule.Next(r.Cron, now) ?? now.AddDays(1);
         if (r.IntervalMs is > 0) return now.AddMilliseconds(r.IntervalMs.Value);
         if (TryDaily(r.DailyAt, out int hh, out int mm))
         {

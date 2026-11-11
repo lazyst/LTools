@@ -91,7 +91,7 @@ internal static class ScreenPicker
     }
 
     /// <summary>光标所在的显示器（物理像素）；取不到时退回整个虚拟桌面。</summary>
-    private static System.Drawing.Rectangle MonitorUnderCursor()
+    internal static System.Drawing.Rectangle MonitorUnderCursor()
     {
         if (Win32.GetCursorPos(out var pt))
         {

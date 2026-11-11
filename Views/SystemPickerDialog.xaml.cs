@@ -47,8 +47,32 @@ public partial class SystemPickerDialog : Window
 
     // ============ 对外入口 ============
 
-    /// <summary>挑一个当前打开的窗口；取消返回 null。</summary>
+    /// <summary>
+    /// 把一次选择结果追加成名单的一行（去重、保留已有内容）。
+    /// 供触发规则「作用范围」、快捷键「生效范围 / 全局默认名单」共用，别各写一份。
+    /// </summary>
+    public static void AppendLine(System.Windows.Controls.TextBox box, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        var lines = box.Text.Replace("\r\n", "\n").Split('\n')
+            .Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
+        if (!lines.Contains(value, StringComparer.OrdinalIgnoreCase)) lines.Add(value);
+        box.Text = string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>
+    /// 挑一个窗口：默认**点击窗口选取**（边缘渐变高亮，见 <see cref="WindowPickOverlay"/>）；
+    /// 用户点「从列表选…」时才退回下面的可搜索列表。取消返回 null。
+    /// </summary>
     public static WindowInfo? PickWindow(Window? owner)
+    {
+        var (info, wantsList) = WindowPickOverlay.Pick(owner);
+        if (info != null) return info;
+        return wantsList ? PickWindowFromList(owner) : null;
+    }
+
+    /// <summary>原「从列表挑窗口」实现：点选器的次要入口（无窗口 / 精确挑窗口时用）。</summary>
+    private static WindowInfo? PickWindowFromList(Window? owner)
     {
         var rows = new List<PickerRow>();
         Win32.EnumWindows((hwnd, _) =>
@@ -92,8 +116,19 @@ public partial class SystemPickerDialog : Window
             : null;
     }
 
-    /// <summary>挑一个正在运行的进程名；取消返回 null。</summary>
+    /// <summary>
+    /// 挑一个进程名：默认点击窗口选取，用选中窗口的 PID 解析进程名；
+    /// 没有可见窗口的后台进程走「从列表选…」或手填。取消返回 null。
+    /// </summary>
     public static string? PickProcess(Window? owner)
+    {
+        var (info, wantsList) = WindowPickOverlay.Pick(owner);
+        if (info != null) return string.IsNullOrWhiteSpace(info.ProcessName) ? null : info.ProcessName;
+        return wantsList ? PickProcessFromList(owner) : null;
+    }
+
+    /// <summary>原「从列表挑进程」实现：点选器的次要入口（后台进程时用）。</summary>
+    private static string? PickProcessFromList(Window? owner)
     {
         // 先枚举一次可见窗口，得到「进程 → 主窗口标题」。
         // 不要逐个 Process.MainWindowTitle：那会对每个进程都做一次窗口枚举，

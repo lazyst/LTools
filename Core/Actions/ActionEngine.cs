@@ -49,6 +49,13 @@ public sealed class ActionRunOptions
     public Func<string, SubActionDef?>? SubActionResolver { get; init; }
 
     /// <summary>
+    /// 运行开始前注入的初始变量（自动触发的事件输出 / <c>ActionParam</c>）。
+    /// 只覆盖变量表里**已声明**的同名变量，按声明类型 Coerce；未声明的忽略并记一条诊断日志。
+    /// 编辑器试运行不传，行为不变。见 <c>docs/AUTO_TRIGGER.md</c> §13.3。
+    /// </summary>
+    public IReadOnlyDictionary<string, Value>? InitialVariables { get; init; }
+
+    /// <summary>
     /// 本次运行的资源根（草稿试运行时是草稿的 <c>files/</c> 目录）。
     /// 图片的相对路径先在它下面找，再走常规顺序（见 <c>ImageLibrary.Resolve</c>）；
     /// 正式运行为空，解析规则完全不变。
@@ -138,6 +145,7 @@ public sealed class ActionEngine
         {
             ValidateProgram(program);
             SeedVariables(program.Variables, root);
+            ApplyInitialVariables(opt.InitialVariables, program, root, opt.Log);
             RunSteps(program.Steps, ctx);
 
             // 「从选中行开始」给了个对不上的路径：说清楚，别悄悄跑了个空动作。
@@ -553,6 +561,32 @@ public sealed class ActionEngine
     {
         foreach (var variable in variables)
             scope.Set(variable.Key, variable.Seed());
+    }
+
+    /// <summary>
+    /// 把外部给的初始变量盖到根作用域上：只认变量表里已声明的同名变量，按声明类型 Coerce；
+    /// 未声明的忽略（老动作不因事件源加了变量而失败）。单个变量出错只记日志、不中断整次运行。
+    /// </summary>
+    private static void ApplyInitialVariables(
+        IReadOnlyDictionary<string, Value>? initial, ActionProgram program,
+        VariableScope scope, Action<string>? log)
+    {
+        if (initial == null || initial.Count == 0) return;
+
+        var declared = new Dictionary<string, VariableDef>(StringComparer.OrdinalIgnoreCase);
+        foreach (var v in program.Variables)
+            if (!string.IsNullOrWhiteSpace(v.Key)) declared[v.Key.Trim()] = v;
+
+        foreach (var (key, value) in initial)
+        {
+            if (!declared.TryGetValue(key, out var def))
+            {
+                log?.Invoke($"初始变量「{key}」在变量表里没有声明，已忽略");
+                continue;
+            }
+            try { scope.Set(def.Key, value.Coerce(def.Type)); }
+            catch (Exception ex) { log?.Invoke($"初始变量「{key}」类型转换失败：{ex.Message}"); }
+        }
     }
 }
 

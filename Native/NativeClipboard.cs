@@ -81,6 +81,53 @@ internal static class NativeClipboard
         ? _dropEffectFormat
         : _dropEffectFormat = RegisterClipboardFormat("Preferred DropEffect");
 
+    /// <summary>
+    /// 「LTools 自己写过剪贴板」的时间戳（<c>Environment.TickCount64</c>）。自动触发的剪贴板
+    /// 事件源用它判 <c>ignoreOwnWrites</c>（默认开）：写入后一小段窗口内收到的
+    /// <c>WM_CLIPBOARDUPDATE</c> 视为自触发，避免「发送文本 / 粘贴」自己触发自己。
+    /// 只在 <see cref="EmptyOwn"/> 里更新，读路径不碰。
+    /// </summary>
+    private static long _lastOwnWriteTick;
+    internal static long LastOwnWriteTick => Interlocked.Read(ref _lastOwnWriteTick);
+
+    /// <summary>清空剪贴板并打一次「自己写过」的标记。所有写路径统一走这里，别再直接调 EmptyClipboard。</summary>
+    private static bool EmptyOwn()
+    {
+        if (!EmptyClipboard()) return false;
+        Interlocked.Exchange(ref _lastOwnWriteTick, Environment.TickCount64);
+        return true;
+    }
+
+    /// <summary>
+    /// 剪贴板当前的逻辑格式清单（<c>text</c> / <c>image</c> / <c>files</c>，分号分隔）。
+    /// 自动触发的剪贴板事件源用它填 <c>Fields["formats"]</c> 与 <c>triggerClipboardFormats</c>；
+    /// HTML / RTF 按 <c>text</c> 归类（§13.5 只认三种），PNG 按 <c>image</c>。
+    /// </summary>
+    public static string FormatTags()
+    {
+        if (!OpenWithRetry()) return "";
+        try
+        {
+            bool text = false, image = false, files = false;
+            uint fmt = 0;
+            while ((fmt = EnumClipboardFormats(fmt)) != 0)
+            {
+                if (fmt == CF_UNICODETEXT || fmt == 1) text = true;          // CF_UNICODETEXT / CF_TEXT
+                else if (fmt == CF_HDROP) files = true;
+                else if (fmt is CF_BITMAP or CF_METAFILEPICT or CF_DIB or CF_DIBV5 or CF_ENHMETAFILE
+                         or CF_DSPBITMAP or CF_DSPMETAFILEPICT or CF_DSPENHMETAFILE) image = true;
+                else if (fmt == HtmlFormat || fmt == RtfFormat) text = true;
+                else if (fmt == PngFormat) image = true;
+            }
+            var tags = new List<string>();
+            if (text) tags.Add("text");
+            if (image) tags.Add("image");
+            if (files) tags.Add("files");
+            return string.Join(";", tags);
+        }
+        finally { CloseClipboard(); }
+    }
+
     private static bool OpenWithRetry()
     {
         for (int i = 0; i < OpenRetries; i++)
@@ -98,7 +145,7 @@ internal static class NativeClipboard
 
         try
         {
-            EmptyClipboard();
+            EmptyOwn();
             return true;
         }
         finally
@@ -142,7 +189,7 @@ internal static class NativeClipboard
         if (!OpenWithRetry()) return false;
         try
         {
-            EmptyClipboard();
+            EmptyOwn();
             // 空串只清空
             if (string.IsNullOrEmpty(text)) return true;
             var hMem = AllocText(text);
@@ -238,7 +285,7 @@ internal static class NativeClipboard
         if (!OpenWithRetry()) return false;
         try
         {
-            EmptyClipboard();
+            EmptyOwn();
 
             IntPtr h = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, (UIntPtr)bytes);
             if (h == IntPtr.Zero) return false;
@@ -350,7 +397,7 @@ internal static class NativeClipboard
         if (!OpenWithRetry()) return false;
         try
         {
-            EmptyClipboard();
+            EmptyOwn();
             bool any = false;
             if (png != null) any |= SetBytes(PngFormat, png);
             if (dib != null) any |= SetBytes(CF_DIB, dib);
@@ -545,7 +592,7 @@ internal static class NativeClipboard
         if (!OpenWithRetry()) return false;
         try
         {
-            EmptyClipboard();
+            EmptyOwn();
             return SetBytes(format, data);
         }
         finally { CloseClipboard(); }
@@ -640,7 +687,7 @@ internal static class NativeClipboard
 
         try
         {
-            EmptyClipboard();
+            EmptyOwn();
             if (snapshot.IsEmpty) return true;
 
             bool ok = true;

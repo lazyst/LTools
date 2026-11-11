@@ -74,6 +74,10 @@ internal static class Win32
     [DllImport("shcore.dll")]
     public static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
 
+    /// <summary>窗口所在显示器的 DPI（Win10 1607+）；拿不到返回 0，调用方回落 GetDpiForMonitor。</summary>
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(IntPtr hwnd);
+
     /// <summary>MonitorFromPoint：取最近的显示器（坐标不在任何显示器内时也不返回空）。</summary>
     public const uint MonitorDefaultToNearest = 2;
 
@@ -148,6 +152,16 @@ internal static class Win32
     public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out Rect pvAttribute, int cbAttribute);
 
     public const int DwmwaExtendedFrameBounds = 9;
+
+    /// <summary>
+    /// DWM 窗口属性：窗口是否被壳隐藏（cloaked）。UWP / 输入面板这类窗口平时看不见，
+    /// 但 <see cref="IsWindowVisible"/> 仍为 true、<c>GetWindowRect</c> 还给一大块矩形；
+    /// 按 z 序挑窗口时不先排除它们，就会「鼠标指哪都选到同一个壳窗口」。
+    /// </summary>
+    [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
+    public static extern int DwmGetWindowAttributeInt(IntPtr hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
+
+    public const int DwmwaCloaked = 14;
 
     [DllImport("user32.dll")]
     public static extern IntPtr WindowFromPoint(Point pt);
@@ -256,6 +270,16 @@ internal static class Win32
 
     /// <summary>WM_COPY：让窗口把当前选区复制到剪贴板（标准消息，不是按键模拟）。</summary>
     public const uint WmCopy = 0x0301;
+
+    // —— 剪贴板变化监听（自动触发 P2.2 的 clipboard.change 事件源）——
+    /// <summary>WM_CLIPBOARDUPDATE：剪贴板内容变化（需先 AddClipboardFormatListener）。</summary>
+    public const int WmClipboardUpdate = 0x031D;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool AddClipboardFormatListener(IntPtr hwnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
 
     [DllImport("user32.dll")]
     public static extern bool GetGUIThreadInfo(uint idThread, ref Guithreadinfo lpgui);

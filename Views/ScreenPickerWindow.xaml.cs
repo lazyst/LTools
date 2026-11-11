@@ -1168,7 +1168,7 @@ public partial class ScreenPickerWindow : Window
     }
 
     /// <summary>取显示器有效 DPI（换算成 WPF DIP 的缩放比）；取不到时按 100%。</summary>
-    private static (double X, double Y) MonitorScale(System.Drawing.Rectangle monitor)
+    internal static (double X, double Y) MonitorScale(System.Drawing.Rectangle monitor)
     {
         try
         {

@@ -28,6 +28,8 @@
     <PackageReference Include="RapidOcrNet" Version="4.2.0" />
     <!-- 本机 MCP（外部 agent 帮写动作）：官方 C# SDK，HTTP 传输；只用 127.0.0.1 + 令牌。 -->
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
+    <!-- 自动触发二期：完整 Cron 解析 / 排程（Quicker 同款引擎，支持 5 段与 6 段含秒、CronFormat.IncludeSeconds） -->
+    <PackageReference Include="Cronos" Version="0.13.0" />
   </ItemGroup>
 
   <ItemGroup>

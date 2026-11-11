@@ -17,7 +17,7 @@ namespace LTools.Features;
 /// </para>
 /// <para>
 /// <see cref="Active"/> 是「可参与排程 / 投递」的规则快照：总开关开、单条启用、有目标引用。
-/// 规则顺序就是优先级（保留 <c>Rules</c> 的列表顺序），<see cref="TriggerScheduler"/> 与二期事件源
+/// 规则顺序就是优先级（保留 <c>Rules</c> 的列表顺序），<see cref="TriggerScheduler"/> 与三个事件源
 /// 都只读这份快照，不碰 <see cref="File"/> 里的可编辑对象。
 /// </para>
 /// </remarks>
@@ -44,15 +44,16 @@ internal static class TriggerRegistry
         Rebuild();
     }
 
-    /// <summary>按当前 <see cref="File"/> 重建可投递规则表（保存配置后调用）。</summary>
+    /// <summary>
+    /// 按当前 <see cref="File"/> 重建可投递规则表（保存配置后调用）。
+    /// <c>Kind</c> 只用于**分流**：<see cref="TriggerScheduler"/> 排 <c>timer</c> / <c>startup</c>，
+    /// 事件源投 <c>event</c>；这里不再按 Kind 过滤，事件规则也要在快照里（§13.3）。
+    /// </summary>
     public static void Rebuild()
     {
         _active = _file.Enabled
             ? _file.Rules
-                .Where(r => r.Enabled
-                            && !string.IsNullOrWhiteSpace(r.ActionRef)
-                            // 一期只排程定时 / 启动后；事件源二期接入后从这里放行。
-                            && r.Kind is TriggerKind.timer or TriggerKind.startup)
+                .Where(r => r.Enabled && !string.IsNullOrWhiteSpace(r.ActionRef))
                 .ToArray()
             : Array.Empty<TriggerRule>();
     }
