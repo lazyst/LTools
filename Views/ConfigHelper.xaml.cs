@@ -251,29 +251,36 @@ public partial class ConfigHelperWindow : Window
 
     /// <summary>「面板管理」父项点击：已在该分组里时 = 展开 / 收起。</summary>
     private void NavSuperPanel_MouseUp(object sender, MouseButtonEventArgs e) =>
-        ToggleNavGroup(FamilySuperPanel, e);
+        ToggleNavGroup(FamilySuperPanel);
 
     /// <summary>「AI 接入」父项点击：已在该分组里时 = 展开 / 收起。</summary>
     private void NavAi_MouseUp(object sender, MouseButtonEventArgs e) =>
-        ToggleNavGroup(FamilyAi, e);
+        ToggleNavGroup(FamilyAi);
 
     /// <summary>「键鼠宏」父项点击：已在该分组里时 = 展开 / 收起。</summary>
     private void NavMacros_MouseUp(object sender, MouseButtonEventArgs e) =>
-        ToggleNavGroup(FamilyMacros, e);
+        ToggleNavGroup(FamilyMacros);
 
     /// <summary>「运行日志」父项点击：已在该分组里时 = 展开 / 收起。</summary>
     private void NavLogs_MouseUp(object sender, MouseButtonEventArgs e) =>
-        ToggleNavGroup(FamilyLogs, e);
+        ToggleNavGroup(FamilyLogs);
 
     /// <summary>
     /// 父项已经选中（正在这个分组里）时，再点它就是展开 / 收起，不换页；
     /// 没选中时不动它，交给 RadioButton 的 Checked → <see cref="ApplyNavPage"/> 进该分组。
     /// </summary>
-    private void ToggleNavGroup(string family, MouseButtonEventArgs e)
+    /// <remarks>
+    /// **这里绝不能 <c>e.Handled = true</c>**（2026-11-13 修「点哪儿都在触发这个导航」）：
+    /// 本方法挂在 <c>PreviewMouseLeftButtonUp</c> 上，把 mouseup 吞掉后
+    /// <c>ButtonBase.OnMouseLeftButtonUp</c> 不会执行，<c>ReleaseMouseCapture()</c> 与
+    /// <c>IsPressed</c> 复位全被跳过，鼠标捕获会卡在这个 RadioButton 上 —— 之后点窗口任意
+    /// 位置都被它吃掉，每次都重新跑一遍展开 / 收起。父项已选中时 <c>IsChecked</c> 不变、
+    /// <c>Checked</c> 本来就不会再发，所以「不换页」不需要靠吞事件实现。
+    /// </remarks>
+    private void ToggleNavGroup(string family)
     {
         if (!_pagesReady || _syncingNav) return;
         if (NavGroupItem(family).IsChecked != true) return;
-        e.Handled = true;
         SetNavGroupExpanded(family, !_expandedGroups.Contains(family), animate: true);
         ScheduleNavPersist();
     }
