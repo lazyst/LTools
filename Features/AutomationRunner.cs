@@ -124,7 +124,7 @@ internal static class AutomationRunner
         int steps = 0;
 
         // 每次运行一个短 id：行首带 [run-3f2a]，失败报告按它把「这次运行」的日志捞出来。
-        string runId = "run-" + Guid.NewGuid().ToString("N")[..6];
+        string runId = "run-" + IdFactory.ShortId(3);
         using var runScope = AppLog.BeginRun(runId);
 
         // 轨迹始终收一份（编辑器试运行也会拿到同一份）：失败时写进 logs/last-failure.log，

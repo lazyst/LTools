@@ -142,7 +142,7 @@ internal static class PanelActionOps
 
         try
         {
-            SubActionStore.Save(dlg.SubResult);
+            SubActionStore.Save(dlg.SubResult, createNew: true);
         }
         catch (ActionException ex)
         {

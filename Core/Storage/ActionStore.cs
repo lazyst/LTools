@@ -24,7 +24,7 @@ namespace LTools.Core.Storage;
 /// 不再回落到 <c>configs/actions.json</c>——否则「删光所有动作」会在下次启动时被旧清单复活。
 /// </para>
 /// <para>
-/// 目录名就是动作 Id（<see cref="ActionDto.Id"/>，<c>a1..aN</c>），菜单 / 面板 / 悬浮都按 Id 引用，
+/// 目录名就是动作 Id（<see cref="ActionDto.Id"/>，ULID），菜单 / 面板 / 悬浮都按 Id 引用，
 /// 因此不存在「改名要同步改引用」的问题。<see cref="SaveAll"/> 只写内容变了的文件，
 /// 并把不在清单里的目录移进 <c>trash/</c>；删除动作因此只是「从清单消失」。
 /// </para>
@@ -70,6 +70,13 @@ internal static class ActionStore
     /// <summary>动作目录是否已经建立（含空目录）——是则动作清单以目录为权威。</summary>
     public static bool HasStore(string anchorPath) => Directory.Exists(Root(anchorPath));
 
+    /// <summary>当前锚点下某个 Id 的动作目录是否已存在（供 <c>IdFactory.NewId</c> 排重）。</summary>
+    public static bool HasActionDir(string id) =>
+        !string.IsNullOrWhiteSpace(id)
+        && !string.IsNullOrEmpty(Anchor)
+        && IsSafeId(id)
+        && Directory.Exists(ActionDir(Anchor, id));
+
     /// <summary>当前动作的额外资源根（<c>files/</c> 存在时返回绝对路径，否则 null）。</summary>
     /// <remarks>
     /// 正式运行与编辑器都经由此处传入 <c>ResourceRoot</c>；草稿试运行由调用方另行指定。
@@ -92,7 +99,7 @@ internal static class ActionStore
         return Path.GetDirectoryName(full) ?? AppPaths.DataRoot;
     }
 
-    /// <summary>目录名 / 文件名安全：拒绝空、<c>.</c>、<c>..</c> 与非法字符（正常 Id 是 <c>a1</c>）。</summary>
+    /// <summary>目录名 / 文件名安全：拒绝空、<c>.</c>、<c>..</c> 与非法字符（正常 Id 是 26 位 ULID）。</summary>
     private static bool IsSafeId(string id) =>
         !string.IsNullOrWhiteSpace(id)
         && id != "."
@@ -151,7 +158,7 @@ internal static class ActionStore
             }
         }
 
-        // 与 ActionLibrary.Save 的落盘顺序一致：按 Id 序数排序，避免读目录顺序影响 diff。
+        // 与 ActionLibrary.Save 的落盘顺序一致：按 Id 字符串排序（ULID 天然按生成时间有序），避免读目录顺序影响 diff。
         actions.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
         return (actions, failed);
     }

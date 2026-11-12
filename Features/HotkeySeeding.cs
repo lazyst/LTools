@@ -81,7 +81,7 @@ internal static class HotkeySeeding
             var group = file.Groups.FirstOrDefault(g => g.Name == GroupName);
             if (group == null)
             {
-                group = new HotkeyGroup { Id = file.NewId("g"), Name = GroupName, Enabled = true };
+                group = new HotkeyGroup { Id = file.NewId(), Name = GroupName, Enabled = true };
                 file.Groups.Add(group);
             }
 
@@ -111,7 +111,7 @@ internal static class HotkeySeeding
         {
             group.Bindings.Add(new HotkeyBinding
             {
-                Id = file.NewId("b"),
+                Id = file.NewId(),
                 Enabled = true,
                 Chord = chord,
                 ActionId = reference,

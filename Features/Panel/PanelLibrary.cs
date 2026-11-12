@@ -100,11 +100,11 @@ internal static class PanelLibrary
         return s;
     }
 
-    /// <summary>新建一个空场景 Id。</summary>
-    public static string NewSceneId() => "s" + Guid.NewGuid().ToString("N")[..8];
+    /// <summary>新建一个空场景 Id（ULID）。</summary>
+    public static string NewSceneId() => IdFactory.NewId();
 
-    /// <summary>新建一个空分组 Id。</summary>
-    public static string NewGroupId() => "g" + Guid.NewGuid().ToString("N")[..8];
+    /// <summary>新建一个空分组 Id（ULID）。</summary>
+    public static string NewGroupId() => IdFactory.NewId();
 
     /// <summary>创建一个空分组。</summary>
     public static PanelGroupDto NewGroup(string name = "未分组") =>

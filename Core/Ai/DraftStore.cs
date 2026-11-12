@@ -12,7 +12,7 @@ namespace LTools.Core.Ai;
 /// <summary>草稿的宿主状态（存在 <c>staging/&lt;id&gt;/draft.json</c>，agent 不要改它）。</summary>
 internal sealed class DraftMeta
 {
-    /// <summary>12 位小写十六进制，同时是目录名。</summary>
+    /// <summary>26 位小写 ULID，同时是目录名（见 <c>Core/Ids.cs</c>）。</summary>
     public string Id { get; set; } = "";
 
     /// <summary>显示标题（可以随时被 staging_write 里的 program.name 覆盖）。</summary>
@@ -170,6 +170,8 @@ internal static class DraftStore
         var list = new List<DraftMeta>();
         foreach (string dir in System.IO.Directory.EnumerateDirectories(Root))
         {
+            // 不做向后兼容：旧 12 位 hex 草稿目录不是新格式，不进暂存区列表。
+            if (!IsValidId(Path.GetFileName(dir))) continue;
             string metaPath = Path.Combine(dir, "draft.json");
             if (!File.Exists(metaPath)) continue;
             try
@@ -321,8 +323,8 @@ internal static class DraftStore
             Origin = origin,
         };
 
-        WriteJson(MetaPath(id), meta);
-        WriteJson(ProgramPath(id), program);
+        WriteJson(MetaPath(id), meta, createNew: true);
+        WriteJson(ProgramPath(id), program, createNew: true);
         AppLog.Info("Ai", $"新建草稿 {id}：{title}{(source != null ? $"（复制自 {source.Id}）" : "")}");
         return meta;
     }
@@ -621,14 +623,14 @@ internal static class DraftStore
         }
     }
 
-    private static void WriteJson<T>(string path, T value)
+    private static void WriteJson<T>(string path, T value, bool createNew = false)
     {
         string dir = Path.GetDirectoryName(path) ?? "";
         if (dir.Length > 0) System.IO.Directory.CreateDirectory(dir);
 
         string tmp = path + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(value, Json), new UTF8Encoding(false));
-        File.Move(tmp, path, overwrite: true);
+        File.Move(tmp, path, overwrite: !createNew);
     }
 
     private static void HashSegment(SHA256 sha, string name, byte[] content)
@@ -665,21 +667,11 @@ internal static class DraftStore
         return rel;
     }
 
-    /// <summary>12 位小写十六进制 id。</summary>
-    public static string NewId()
-    {
-        Span<byte> bytes = stackalloc byte[6];
-        RandomNumberGenerator.Fill(bytes);
-        return Convert.ToHexString(bytes).ToLowerInvariant();
-    }
+    /// <summary>新草稿 Id：ULID（不做向后兼容，不再用 12 位 hex）。</summary>
+    public static string NewId() => IdFactory.NewId(id => System.IO.Directory.Exists(DirectoryOf(id)));
 
-    /// <summary>id 只允许 6–32 位十六进制（目录名，绝不能带路径字符）。</summary>
-    public static bool IsValidId(string? id)
-    {
-        string value = (id ?? "").Trim();
-        if (value.Length is < 6 or > 32) return false;
-        return value.All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
-    }
+    /// <summary>id 只认 26 位小写 ULID（目录名，绝不能带路径字符）。</summary>
+    public static bool IsValidId(string? id) => IdFactory.IsValid(id);
 
     private static string NormalizeId(string? id)
     {

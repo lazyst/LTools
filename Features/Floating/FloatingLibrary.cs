@@ -81,8 +81,8 @@ internal static class FloatingLibrary
         }
     }
 
-    /// <summary>新建一个悬浮项 Id。</summary>
-    public static string NewItemId() => "f" + Guid.NewGuid().ToString("N")[..8];
+    /// <summary>新建一个悬浮项 Id（ULID，生成时顺手排掉内存里已有的项）。</summary>
+    public static string NewItemId() => IdFactory.NewId(id => Items.Any(i => i.Id == id));
 
     // —— 查询 ——
 

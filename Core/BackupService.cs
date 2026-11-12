@@ -229,7 +229,7 @@ internal static class BackupService
     public static ImportPreview Inspect(string srcPath)
     {
         if (!File.Exists(srcPath)) throw new FileNotFoundException("备份文件不存在", srcPath);
-        string staging = Path.Combine(Path.GetTempPath(), "ltools-import-" + Guid.NewGuid().ToString("N")[..8]);
+        string staging = Path.Combine(Path.GetTempPath(), "ltools-import-" + IdFactory.ShortId(4));
         try
         {
             // .NET 的 ExtractToDirectory 内置 zip-slip（路径越界）校验，越界条目会抛异常
@@ -427,7 +427,7 @@ internal static class BackupService
     /// </summary>
     private static void WriteZip(string destPath, Action<ZipArchive> write)
     {
-        string tmp = destPath + ".part-" + Guid.NewGuid().ToString("N")[..8];
+        string tmp = destPath + ".part-" + IdFactory.ShortId(4);
         try
         {
             using (var zip = ZipFile.Open(tmp, ZipArchiveMode.Create)) write(zip);

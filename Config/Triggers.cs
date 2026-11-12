@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using LTools.Core;
 
 namespace LTools.Config;
 
@@ -150,13 +151,7 @@ public sealed class TriggersFile
         }
     }
 
-    /// <summary>生成一个不与现有规则冲突的新 Id（<c>t1..tN</c>）。</summary>
-    public string NewId()
-    {
-        var used = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var r in Rules ?? new List<TriggerRule>()) used.Add(r.Id);
-        int n = 1;
-        while (used.Contains("t" + n)) n++;
-        return "t" + n;
-    }
+    /// <summary>生成不与现有规则冲突的新 Id（ULID，见 <c>Core/Ids.cs</c>）。</summary>
+    public string NewId() => IdFactory.NewId(id =>
+        (Rules ?? new List<TriggerRule>()).Any(r => string.Equals(r.Id, id, System.StringComparison.Ordinal)));
 }

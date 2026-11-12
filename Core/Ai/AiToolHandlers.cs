@@ -314,7 +314,7 @@ internal static class AiToolHandlers
                 ? $"AI 要覆盖子动作「{def.Name}」（{def.Id}），调用它的动作会一起变。"
                 : $"AI 要新建子动作「{def.Name}」（{def.Id}），共 {def.Steps.Count} 步。");
 
-        SubActionStore.Save(def);
+            SubActionStore.Save(def, createNew: !exists);
 
         return new Dictionary<string, object?>
         {

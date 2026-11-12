@@ -227,7 +227,7 @@ staging/
       files/
 ```
 
-- `draftId` = 12 位小写 base32/hex，同时是目录名；与动作 Id（`a1` 这类）无关。
+- `draftId` = 26 位小写 ULID（`Core/Ids.cs` 的 `IdFactory`），同时是目录名；与动作 Id 同一套生成器、互相独立。旧 12 位 hex 草稿按「不做向后兼容」不认、不迁移。
 - 工作副本**只有一个内容文件** `program.json`：`ActionProgram` 已包含 Name/Icon/Description，
   不需要再维护一份 `action.json`，避免两个真源。
 - `revision` = `sha256(program.json 规范化字节 + 排序后的 files 清单与内容哈希)`；任何一路写入

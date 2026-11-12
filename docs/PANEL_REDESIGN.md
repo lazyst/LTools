@@ -172,32 +172,32 @@
   "Global": {
     "Scenes": [
       {
-        "Id": "s1",
+        "Id": "01c5m7p9q2r4s6t8v0w2x4y6z8",
         "Name": "默认",
         "Icon": "app",
         "Enabled": true,
         "ParentId": null,
         "Match": { "Path": null, "Exe": null, "TitleContains": null, "ClassName": null },
         "Groups": [
-          { "Id": "g1", "Name": "未分组", "Actions": ["a1", "a3"] }
+          { "Id": "01d7p9q2r4s6t8v0w2x4y6z8b3", "Name": "未分组", "Actions": ["01arz3ndektsv4rrffq69g5fav", "01b3k7m9p2q4r6s8t0v2w4x6y8"] }
         ]
       }
     ],
-    "ActiveSceneId": "s1"
+    "ActiveSceneId": "01c5m7p9q2r4s6t8v0w2x4y6z8"
   },
   "Context": {
     "Scenes": [
       {
-        "Id": "s2",
+        "Id": "01f2r4s6t8v0w2x4y6z8b3d5e7",
         "Name": "微信",
         "Icon": "app",
         "Enabled": true,
         "ParentId": null,
         "Match": { "Path": null, "Exe": "WeChat.exe", "TitleContains": null, "ClassName": null },
-        "Groups": [ { "Id": "g2", "Name": "常用", "Actions": [] } ]
+        "Groups": [ { "Id": "01g4s6t8v0w2x4y6z8b3d5e7f9", "Name": "常用", "Actions": [] } ]
       }
     ],
-    "Common": [ { "Id": "g3", "Name": "常用", "Actions": [] } ]
+    "Common": [ { "Id": "01h6t8v0w2x4y6z8b3d5e7f9g2", "Name": "常用", "Actions": [] } ]
   },
   "Blocked": [ "game.exe" ],
   "HintDismissed": false

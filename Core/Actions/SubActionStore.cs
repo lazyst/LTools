@@ -35,8 +35,8 @@ public static class SubActionStore
     /// <summary>全局子动作目录。</summary>
     public static string DirectoryPath => AppPaths.SubActionsDir;
 
-    /// <summary>新的子动作 id（就是文件名）：<c>sub-</c> + 8 位十六进制。</summary>
-    public static string NewId() => "sub-" + Guid.NewGuid().ToString("N")[..8];
+    /// <summary>新的子动作 id（就是文件名）：ULID，见 <c>Core/Ids.cs</c>。</summary>
+    public static string NewId() => IdFactory.NewId(id => File.Exists(PathFor(id)));
 
     private static readonly char[] InvalidIdChars = { '\\', '/', ':', '*', '?', '"', '<', '>', '|' };
 
@@ -67,8 +67,9 @@ public static class SubActionStore
             .ThenBy(d => d.Id, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-    /// <summary>写入全局子动作（id 为空 / 含路径分隔符时报错）。先写 <c>.tmp</c> 再替换，写一半崩了不会毁掉旧文件。</summary>
-    public static void Save(SubActionDef def)
+    /// <summary>写入全局子动作（id 为空 / 含路径分隔符时报错）。先写 <c>.tmp</c> 再替换，写一半崩了不会毁掉旧文件。
+    /// <paramref name="createNew"/> = true 时目标文件已存在直接报错，避免新生成的 Id 撞车静默覆盖。</summary>
+    public static void Save(SubActionDef def, bool createNew = false)
     {
         if (def == null) throw new ArgumentNullException(nameof(def));
 
@@ -82,9 +83,11 @@ public static class SubActionStore
         Directory.CreateDirectory(DirectoryPath);
 
         string file = PathFor(id);
+        if (createNew && File.Exists(file))
+            throw new ActionException($"子动作 id 已存在：{id}");
         string tmp = file + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(def, Opt), new UTF8Encoding(false));
-        File.Move(tmp, file, overwrite: true);
+        File.Move(tmp, file, overwrite: !createNew);
 
         Invalidate();
     }

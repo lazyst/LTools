@@ -208,7 +208,7 @@ interface IStepUnit {
 
 ```jsonc
 {
-  "id": "a1", "name": "整理下载目录", "icon": "folder",
+  "id": "01arz3ndektsv4rrffq69g5fav", "name": "整理下载目录", "icon": "folder",
   "variables": [
     { "key": "files", "type": "list",   "default": [] },
     { "key": "n",     "type": "number", "default": 0 }

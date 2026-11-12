@@ -1,11 +1,11 @@
 {
   "Actions": [
     {
-      "Id": "a1",
+      "Id": "01arz3ndektsv4rrffq69g5fav",
       "Name": "ipconfig",
       "Icon": "terminal",
       "Program": {
-        "id": "a1",
+        "id": "01arz3ndektsv4rrffq69g5fav",
         "name": "ipconfig",
         "icon": "terminal",
         "description": "",
@@ -33,11 +33,11 @@
       }
     },
     {
-      "Id": "a3",
+      "Id": "01b3k7m9p2q4r6s8t0v2w4x6y8",
       "Name": "提示",
       "Icon": "note",
       "Program": {
-        "id": "a3",
+        "id": "01b3k7m9p2q4r6s8t0v2w4x6y8",
         "name": "提示",
         "icon": "note",
         "description": "",
@@ -77,7 +77,7 @@
     "Global": {
       "Scenes": [
         {
-          "Id": "s-default",
+          "Id": "01c5m7p9q2r4s6t8v0w2x4y6z8",
           "Name": "默认",
           "Icon": "app",
           "Enabled": true,
@@ -85,17 +85,17 @@
           "Match": {},
           "Groups": [
             {
-              "Id": "g-default",
+              "Id": "01d7p9q2r4s6t8v0w2x4y6z8b3",
               "Name": "未分组",
               "Actions": [
-                "a1",
-                "a3"
+                "01arz3ndektsv4rrffq69g5fav",
+                "01b3k7m9p2q4r6s8t0v2w4x6y8"
               ]
             }
           ]
         }
       ],
-      "ActiveSceneId": "s-default",
+      "ActiveSceneId": "01c5m7p9q2r4s6t8v0w2x4y6z8",
       "Common": []
     },
     "Context": {
@@ -103,7 +103,7 @@
       "ActiveSceneId": null,
       "Common": [
         {
-          "Id": "g-common",
+          "Id": "01e9q2r4s6t8v0w2x4y6z8b3d5",
           "Name": "常用",
           "Actions": []
         }

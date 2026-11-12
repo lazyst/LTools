@@ -4,7 +4,7 @@
 >
 > 背景：引入统一 **Action** 抽象，让「超级面板」（裸右键长按）与「CapsLock+数字菜单」共用一个全局动作池。参考 Quicker 的面板/动作模型，但精简为个人工具所需的范围。
 
-> ⚠️ **本文是阶段 1–11 的历史方案 / 实施记录**。凡「钩子回调在主 UI / STA 线程派发」「计时器用 `DispatcherTimer`（与钩子回调同线程）」「同一钩子线程」等说法（尤其 §5 阶段 5 的长按计时、短按注入，以及「收尾：稳定性与性能全面加固」里的钩子 try/catch、`MouseHook` 结构体拷贝 / `Volume.OnWheel` 取舍），记录的是 **2026-11 阶段 2 之前**的线程模型：现已改为 `HookDispatcher` 专用线程，长按计时改 `System.Threading.Timer`，回调里不碰 WPF。这些历史结论在新模型下大多仍成立（「别阻塞回调」甚至更该遵守），但**别把「回调与 UI 同线程」照抄进新代码**。当前口径见 `docs/THREADING.md`。
+> ⚠️ **本文是阶段 1–11 的历史方案 / 实施记录**。凡「钩子回调在主 UI / STA 线程派发」「计时器用 `DispatcherTimer`（与钩子回调同线程）」「同一钩子线程」等说法（尤其 §5 阶段 5 的长按计时、短按注入，以及「收尾：稳定性与性能全面加固」里的钩子 try/catch、`MouseHook` 结构体拷贝 / `Volume.OnWheel` 取舍），记录的是 **2026-11 阶段 2 之前**的线程模型：现已改为 `HookDispatcher` 专用线程，长按计时改 `System.Threading.Timer`，回调里不碰 WPF。这些历史结论在新模型下大多仍成立（「别阻塞回调」甚至更该遵守），但**别把「回调与 UI 同线程」照抄进新代码**。当前口径见 `docs/THREADING.md`。同理，本文示例里的 `a1` / `Type` 字段是旧设计：现行 Id 一律 ULID、动作 JSON 没有 `Type`，见 `CONTEXT.md` 与 `LTools.example.json`。
 
 ---
 

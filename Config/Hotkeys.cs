@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using LTools.Core;
 
 namespace LTools.Config;
 
@@ -149,25 +150,25 @@ public sealed class HotkeyFile
         DefaultFilter.Normalize();
         Groups ??= new List<HotkeyGroup>();
 
-        var groupIds = new HashSet<string>(StringComparer.Ordinal);
+        // taken = 文件里出现过的所有 Id（防止新生成的 ULID 撞上后面还没遍历到的项）；
+        // seen  = 本次遍历已确认保留的 Id（判空 / 判重）。两者别合成一个集合：预装所有 Id
+        // 会让每个已有 Id 都命中「重复」，每次 Normalize 都把组 / 绑定 Id 换一遍（引用就断了）。
+        var taken = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var group in Groups)
+            foreach (var id in IdsOf(group)) taken.Add(id);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
         foreach (var group in Groups)
         {
-            if (string.IsNullOrWhiteSpace(group.Id) || !groupIds.Add(group.Id))
-            {
-                group.Id = NewId("g");
-                groupIds.Add(group.Id);
-            }
+            if (string.IsNullOrWhiteSpace(group.Id) || !seen.Add(group.Id))
+                group.Id = FreshId(taken, seen);
             group.Name = string.IsNullOrWhiteSpace(group.Name) ? "未命名组" : group.Name.Trim();
 
-            var bindingIds = new HashSet<string>(StringComparer.Ordinal);
             group.Bindings ??= new List<HotkeyBinding>();
             foreach (var binding in group.Bindings)
             {
-                if (string.IsNullOrWhiteSpace(binding.Id) || !bindingIds.Add(binding.Id))
-                {
-                    binding.Id = NewId("b");
-                    bindingIds.Add(binding.Id);
-                }
+                if (string.IsNullOrWhiteSpace(binding.Id) || !seen.Add(binding.Id))
+                    binding.Id = FreshId(taken, seen);
                 binding.Chord = Core.HotkeyChord.Normalize(binding.Chord);
                 binding.ActionId = (binding.ActionId ?? "").Trim();
                 binding.Note ??= "";
@@ -176,18 +177,28 @@ public sealed class HotkeyFile
         }
     }
 
-    /// <summary>生成一个不与现有 Id 冲突的新 Id（组 / 绑定共用前缀）。</summary>
-    public string NewId(string prefix)
+    /// <summary>生成不与本文件里任何组 / 绑定冲突的新 Id（ULID，见 <c>Core/Ids.cs</c>）。</summary>
+    public string NewId() => IdFactory.NewId(id => UsedIds().Contains(id));
+
+    private HashSet<string> UsedIds()
     {
         var used = new HashSet<string>(StringComparer.Ordinal);
         foreach (var group in Groups ?? new List<HotkeyGroup>())
-        {
-            used.Add(group.Id);
-            foreach (var binding in group.Bindings ?? new List<HotkeyBinding>()) used.Add(binding.Id);
-        }
+            foreach (var id in IdsOf(group)) used.Add(id);
+        return used;
+    }
 
-        int n = 1;
-        while (used.Contains(prefix + n)) n++;
-        return prefix + n;
+    private static IEnumerable<string> IdsOf(HotkeyGroup group)
+    {
+        yield return group.Id;
+        foreach (var binding in group.Bindings ?? new List<HotkeyBinding>()) yield return binding.Id;
+    }
+
+    private static string FreshId(HashSet<string> taken, HashSet<string> seen)
+    {
+        string id = IdFactory.NewId(taken.Contains);
+        taken.Add(id);
+        seen.Add(id);
+        return id;
     }
 }

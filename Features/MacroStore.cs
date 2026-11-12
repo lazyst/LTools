@@ -45,16 +45,8 @@ internal static class MacroStore
     public static bool Exists(string id) =>
         !string.IsNullOrWhiteSpace(id) && File.Exists(PathOf(id));
 
-    /// <summary>生成不与现有文件冲突的新 Id。</summary>
-    public static string NewId()
-    {
-        string id;
-        do
-        {
-            id = "m" + DateTime.Now.ToString("yyyyMMddHHmmss") + "-" + Guid.NewGuid().ToString("N")[..4];
-        } while (File.Exists(PathOf(id)));
-        return id;
-    }
+    /// <summary>生成不与现有文件冲突的新 Id（ULID，见 <c>Core/Ids.cs</c>）。</summary>
+    public static string NewId() => IdFactory.NewId(id => File.Exists(PathOf(id)));
 
     /// <summary>读取宏；不存在 / 解析失败返回 null。</summary>
     public static MacroDto? Load(string id)

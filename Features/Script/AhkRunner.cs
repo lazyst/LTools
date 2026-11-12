@@ -202,7 +202,7 @@ internal static class AhkRunner
         {
             Directory = System.IO.Path.Combine(
                 System.IO.Path.GetTempPath(), "LTools", "script",
-                Guid.NewGuid().ToString("N")[..8]),
+                IdFactory.ShortId(4)),
         };
         System.IO.Directory.CreateDirectory(file.Directory);
         file.Path = System.IO.Path.Combine(file.Directory, "script.ahk");

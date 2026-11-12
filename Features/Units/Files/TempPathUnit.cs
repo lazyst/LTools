@@ -39,7 +39,7 @@ public sealed class TempPathUnit : IStepUnit
         string path;
         do
         {
-            path = Path.Combine(folder, $"ltools-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}" + ext);
+            path = Path.Combine(folder, $"ltools-{DateTime.Now:yyyyMMdd-HHmmss}-{IdFactory.ShortId(4)}" + ext);
         }
         while (File.Exists(path) || Directory.Exists(path));
 

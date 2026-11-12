@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using LTools.Core;
+using LTools.Core.Storage;
 
 namespace LTools.Features;
 
@@ -47,14 +49,10 @@ internal static class ActionRegistry
     /// <summary>从清单移除；返回是否确实存在并移除。</summary>
     public static bool Remove(string id) => _byId.TryRemove(id, out _);
 
-    /// <summary>生成不与现有 Id 冲突的新 Id（a1, a2, ...）。</summary>
-    public static string NextId()
-    {
-        int max = 0;
-        foreach (var k in _byId.Keys)
-        {
-            if (k.Length > 1 && k[0] == 'a' && int.TryParse(k[1..], out var n) && n > max) max = n;
-        }
-        return "a" + (max + 1);
-    }
+    /// <summary>生成不与现有 Id / 磁盘目录冲突的新 Id（ULID，见 <c>Core/Ids.cs</c>）。</summary>
+    /// <remarks>不再扫内存里的 <c>a&lt;N&gt;</c> 求最大值：删掉最大号后重启会复用，
+    /// 且磁盘上手工建的目录 / trash 里的旧目录都不在内存表里。ULID 随机 + 双重判定，
+    /// 既不会复用，也不会撞到磁盘上已存在但没加载进来的目录。</remarks>
+    public static string NextId() => IdFactory.NewId(id =>
+        _byId.ContainsKey(id) || ActionStore.HasActionDir(id));
 }

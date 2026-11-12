@@ -309,11 +309,11 @@ internal static class KnowledgePack
 ## 7. 子动作（函数）
 
 全局子动作存在 `<数据根>/subactions/<id>.json`，**一个文件一个子动作、文件名就是 id**
-（`sub-` + 8 位十六进制）。它与动作同构，只多一个「方向」：
+（26 位小写 ULID，见 `Core/Ids.cs`）。它与动作同构，只多一个「方向」：
 
 ```json
 {
-  "id": "sub-1a2b3c4d",
+  "id": "01j2k4m6p8q0r2s4t6v8w0x2y4",
   "name": "打招呼",
   "variables": [
     { "key": "who",  "type": "text", "default": "世界", "direction": "input" },
@@ -326,7 +326,7 @@ internal static class KnowledgePack
 ```
 
 - `direction`：`input`（调用方按名字传值）/ `local`（内部变量）/ `output`（按 `out` 映射写回调用方）。
-- 调用方用 `sub.run`：`{"unit":"sub.run","in":{"subAction":"sub-1a2b3c4d","who":"LTools"},"out":{"text":"greeting"}}`
+- 调用方用 `sub.run`：`{"unit":"sub.run","in":{"subAction":"01j2k4m6p8q0r2s4t6v8w0x2y4","who":"LTools"},"out":{"text":"greeting"}}`
   ——**参数名就是输入变量名**，写之前先 `ltools_subactions_get(id)` 看它的签名。
 - `flow.return` 结束当前子动作（已赋值的输出照常带回），**只能用在子动作里**；
   `break` / `continue` 不会穿透到调用方的循环。

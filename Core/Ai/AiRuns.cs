@@ -145,10 +145,5 @@ internal static class AiRuns
         return true;
     }
 
-    private static string NewId()
-    {
-        Span<byte> bytes = stackalloc byte[4];
-        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
-        return "run_" + Convert.ToHexString(bytes).ToLowerInvariant();
-    }
+    private static string NewId() => "run_" + IdFactory.ShortId(4);
 }
