@@ -7,7 +7,7 @@ using LTools.Core;
 namespace LTools.Features;
 
 /// <summary>
-/// 全局动作清单的读写入口：面板 / 菜单（已移除）/ 快捷键 / 组合步骤都只存动作 Id。
+/// 全局动作清单的读写入口：面板 / 快捷键 / 自动触发 / 悬浮都只存动作 Id（旧菜单系统已移除）。
 /// </summary>
 /// <remarks>
 /// 内存里就是 <see cref="ActionRegistry"/>；落盘走 <see cref="ConfigIO.Modify(string?, ConfigDomain, Action{AppConfig})"/>

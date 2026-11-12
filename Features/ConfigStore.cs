@@ -80,7 +80,7 @@ internal static class ConfigStore
         ActionLibrary.Replace(action);
     }
 
-    /// <summary>从清单删除动作（同时清掉快捷键 / 面板 / 悬浮项三处引用）。</summary>
+    /// <summary>从清单删除动作（同时清掉快捷键 / 面板 / 触发规则 / 悬浮引用，并回收宏与模板图）。</summary>
     public static bool RemoveAction(string id) => ActionRemoval.Remove(id);
 
     /// <summary>复制动作（新 Id + 名称追加「副本」）。</summary>

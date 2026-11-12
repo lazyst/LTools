@@ -295,7 +295,7 @@ public partial class MacroView : UserControl
         if ((sender as FrameworkElement)?.Tag is not MacroRow row) return;
 
         var window = Window.GetWindow(this);
-        string message = $"删除宏「{row.Name}」？\n\n引用它的动作（面板 / 快捷键上的那一项）也会一起删掉。";
+        string message = $"删除宏「{row.Name}」？\n\n引用它的动作也会一起删掉，面板磁贴、快捷键绑定、触发规则与悬浮项中的引用会一并清除。";
         if (!ConfirmDialog.Confirm(window, "删除宏", message, danger: true, okText: "删除")) return;
 
         int removed = MacroStore.Delete(row.Id);

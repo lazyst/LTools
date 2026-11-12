@@ -65,14 +65,14 @@ public enum SendTextMode
     paste,
 }
 
-/// <summary>组合步骤失败策略（对应计划 §4）。</summary>
+/// <summary>步骤失败策略（对应计划 §4）。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum OnFailStrategy
 {
     /// <summary>继续执行下一步（默认）。</summary>
     @continue,
 
-    /// <summary>中止整个组合。</summary>
+    /// <summary>中止整个动作。</summary>
     abort,
 }
 

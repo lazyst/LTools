@@ -14,16 +14,16 @@ namespace LTools.Core.Storage;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 一个动作被快捷键 / 超级面板 / 悬浮项 / 组合步骤同时引用，但分布在三个文件里。
+/// 一个动作会同时被面板磁贴 / 快捷键绑定 / 触发规则 / 悬浮项引用，分散在几个配置域与内存状态里。
 /// 不做分布式事务，只把**顺序**固定下来，让最坏情况是「多留一个空槽」而不是「指向不存在的动作」：
 /// </para>
 /// <list type="number">
-/// <item>内存清单（<see cref="ActionLibrary.Remove"/>，顺带清组合步骤引用）；</item>
-/// <item>快捷键绑定 + 超级面板槽位 + 自动触发引用（<see cref="HotkeyStore"/> /
+/// <item>内存清单（<see cref="ActionLibrary.Remove"/>）；</item>
+/// <item>快捷键绑定 + 面板磁贴 + 自动触发规则（<see cref="HotkeyStore"/> /
 ///       <see cref="PanelLibrary.RemoveActionReferences"/> / <see cref="TriggerStore"/>，
 ///       只写 <c>hotkeys.json</c> / <c>panel.json</c> / <c>triggers.json</c>）；</item>
 /// <item>动作目录（<see cref="ConfigStore.Save"/>，写 <c>actions/</c>）；</item>
-/// <item>宏文件 / 模板图 / 悬浮项按引用回收（行动作目录已经不在，回收不会误伤别的动作）。</item>
+/// <item>宏 / 模板图 / 悬浮项按引用回收（动作目录已经不在，回收不会误伤别的动作）。</item>
 /// </list>
 /// <para>
 /// 若在第 2 步之后崩溃：面板少了槽位、动作还在——用户重新加回槽位即可（不会指向不存在的动作）。
@@ -32,13 +32,22 @@ namespace LTools.Core.Storage;
 /// </remarks>
 internal static class ActionRemoval
 {
+    /// <summary>删除确认框的文案：面板与设置两个入口共用，清理范围变了只改这里。</summary>
+    public static string ConfirmMessage(string id)
+    {
+        string name = ActionRegistry.DisplayName(id);
+        string refs = PanelLibrary.DescribeReferences(id);
+        return $"确定删除「{name}」吗？\n\n面板引用：{refs}\n" +
+               "删除会一并清掉面板磁贴、快捷键绑定、触发规则与悬浮项，并回收不再被引用的宏与模板图。";
+    }
+
     /// <summary>删除动作；返回是否确实存在。顺序见类型注释。</summary>
     public static bool Remove(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) return false;
         if (!ActionLibrary.Remove(id)) return false;      // 清清单（内存）
 
-        // 清快捷键绑定（hotkeys.json）、超级面板槽位（panel.json）与自动触发引用（triggers.json）。
+        // 清快捷键绑定（hotkeys.json）、面板磁贴（panel.json）与自动触发规则（triggers.json）。
         string path = string.IsNullOrWhiteSpace(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
         HotkeyStore.Modify(path, file => RemoveFromHotkeys(file, id));
         SuperPanel.RemoveActionReferences(id);
@@ -46,9 +55,9 @@ internal static class ActionRemoval
 
         ConfigStore.Save();                               // 先落「动作没了」，再做回收
 
-        // 一宏一动作：动作删除后按引用回收宏文件（仍被组合步骤引用的宏会保留）。
+        // 一宏一动作：动作删除后按引用回收宏文件（仍被其它动作 / 子动作引用的宏会保留）。
         MacroStore.CollectGarbage();
-        // 模板截图同理：被删动作 / 组合步骤独占的 shot-*.png 立刻回收，不必等下次启动。
+        // 模板图同理：被删动作独占的 shot-*.png 立刻回收，不必等下次启动。
         ImageLibrary.CollectGarbage();
         // 悬浮项按引用回收：动作没了，按钮也跟着消失（分组空了整项移除）。
         FloatingManager.RefreshAll();

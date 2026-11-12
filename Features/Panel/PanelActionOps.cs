@@ -5,6 +5,7 @@ using System.Windows;
 using LTools.Config;
 using LTools.Core;
 using LTools.Core.Actions;
+using LTools.Core.Storage;
 using LTools.Views;
 
 namespace LTools.Features.Panel;
@@ -60,11 +61,7 @@ internal static class PanelActionOps
     /// <summary>删除动作（确认框列出面板引用位置）；返回是否删除。</summary>
     public static bool Delete(Window? owner, string id)
     {
-        string name = ActionRegistry.DisplayName(id);
-        string refs = PanelLibrary.DescribeReferences(id);
-        if (!ConfirmDialog.Confirm(owner, "删除动作",
-            $"确定删除「{name}」吗？\n\n面板引用：{refs}\n菜单项 / 组合步骤中的引用也会一并清除。",
-            danger: true))
+        if (!ConfirmDialog.Confirm(owner, "删除动作", ActionRemoval.ConfirmMessage(id), danger: true))
             return false;
 
         ConfigStore.RemoveAction(id);

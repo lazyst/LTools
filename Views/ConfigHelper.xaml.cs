@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using LTools.Config;
 using LTools.Core;
 using LTools.Core.Ai;
+using LTools.Core.Storage;
 using LTools.Features;
 using LTools.Features.Panel;
 using LTools.Views.Controls;
@@ -936,14 +937,12 @@ public partial class ConfigHelperWindow : Window
         if (cur != null) DeleteAction(cur.Id);
     }
 
-    /// <summary>删除动作：确认后落盘，并清理快捷键 / 面板入口中的引用。</summary>
+    /// <summary>删除动作：确认后落盘，并清理快捷键 / 面板 / 自动触发 / 悬浮中的引用。</summary>
     private void DeleteAction(string id)
     {
-        if (!ConfirmDialog.Confirm(this, "删除动作",
-            $"确定删除「{ActionRegistry.DisplayName(id)}」吗？\n\n面板引用：{PanelLibrary.DescribeReferences(id)}\n快捷键 / 组合步骤中的引用也会一并清除。",
-            danger: true)) return;
+        if (!ConfirmDialog.Confirm(this, "删除动作", ActionRemoval.ConfirmMessage(id), danger: true)) return;
 
-        ConfigStore.RemoveAction(id);   // 内含清快捷键、组合步骤、面板引用
+        ConfigStore.RemoveAction(id);   // 内含清快捷键 / 面板 / 触发规则 / 悬浮引用与资源回收
         PopulateActions();
         RefreshCreatedPages();          // 只刷已经建出来的页，别为没打开过的页强建视图
         MarkDirty();
