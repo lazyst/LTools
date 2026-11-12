@@ -76,7 +76,7 @@ internal static class ConfigHelper
     /// <summary>
     /// 左键双击托盘图标：按 <see cref="AppState.TrayDoubleClick"/> 打开设置窗口并停到对应页。
     /// <c>settings</c> = 普通打开（停上次记住的页），其余跳到指定导航 tag；
-    /// <c>superpanel</c> 是二级分组的父项 tag，<see cref="ConfigHelperWindow.NavigateTo"/> 会落在该组上次停留的子页。
+    /// <c>superpanel</c> / <c>macros</c> 是二级分组的父项 tag，<see cref="ConfigHelperWindow.NavigateTo"/> 会落在该组上次停留的子页。
     /// 6 个行为与设置「通用」页下拉、<see cref="TrayDoubleClickAction"/> 的枚举值一一对应，改一处要三处同步。
     /// </summary>
     public static void OpenOnTrayDoubleClick()

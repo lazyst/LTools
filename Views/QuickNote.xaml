@@ -75,7 +75,9 @@
                 <Grid Grid.Row="2">
                     <ListBox x:Name="NoteList"
                              PreviewMouseLeftButtonUp="NoteList_Click"
-                             PreviewMouseRightButtonUp="NoteList_RightClick">
+                             PreviewMouseRightButtonUp="NoteList_RightClick"
+                             MouseDoubleClick="NoteList_MouseDoubleClick"
+                             ToolTip="单击切换到这条速记；双击把焦点拉回正文，接着写">
                         <ListBox.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="删除" Click="DeleteNote_Click"/>

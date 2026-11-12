@@ -156,6 +156,29 @@ internal static class ConfigBundle
         return cfg;
     }
 
+    /// <summary>
+    /// 只读 <c>configs/settings.json</c>（不读其它域、不扫 <c>actions/</c>）。
+    /// 设置页切页回填「运行提示 / 日志设置」这类纯 settings 域控件时用：整份
+    /// <see cref="AppConfig.Load"/> 会把动作目录也解析一遍，UI 线程与低级鼠标钩子共用，
+    /// 每次切页都做会顿一下。缺文件时的回落与 <see cref="LoadCore"/> 一致。
+    /// </summary>
+    internal static SettingsFile ReadSettings(string anchorPath)
+    {
+        var ctx = new LoadContext { Anchor = anchorPath, Strict = false };
+        return Read<SettingsFile>(SettingsPath(anchorPath), ctx) ?? ToSettings(ctx.GetSeed());
+    }
+
+    /// <summary>
+    /// 只读 <c>configs/ui.json</c>（不读其它域、不扫 <c>actions/</c>）。设置窗口构造时恢复
+    /// <c>LastNavPage</c> / <c>NavExpandedGroups</c> 用：整份 <see cref="AppConfig.Load"/> 会把动作
+    /// 目录也解析一遍，窗口还没 Show 出来就压在 UI 线程上。缺文件回落与 <see cref="LoadCore"/> 一致。
+    /// </summary>
+    internal static UiStateFile ReadUi(string anchorPath)
+    {
+        var ctx = new LoadContext { Anchor = anchorPath, Strict = false };
+        return Read<UiStateFile>(UiPath(anchorPath), ctx) ?? ToUi(ctx.GetSeed());
+    }
+
     /// <summary>一次读取里的共享状态：严格模式、是否已回退过、惰性加载的种子。</summary>
     private sealed class LoadContext
     {

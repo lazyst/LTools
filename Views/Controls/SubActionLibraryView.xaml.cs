@@ -151,9 +151,18 @@ public partial class SubActionLibraryView : UserControl
             List.SelectedItem = row;
     }
 
+    /// <summary>
+    /// 双击是否落在行右侧的小图标上。整行卡片本身也是一个 Button（<c>SubActionRowBtn</c>），
+    /// 但它的 <c>CommandParameter</c> 是 null；行内图标（run / edit / copy / delete / more）都带
+    /// 非 null 的 CommandParameter。只按「有没有 Button 祖先」判断会连整行卡片一起挡掉——
+    /// 于是双击整行永远没反应（旧的坏实现）。
+    /// </summary>
+    internal static bool IsRowIconDoubleClick(Button? ancestor) => ancestor is { CommandParameter: not null };
+
     private void List_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;  // 点行内图标不弹编辑器
+        // 双击整行 / 文字 = 编辑；只有点行内图标才不弹编辑器（那些图标自己有单击语义）。
+        if (IsRowIconDoubleClick(FindAncestor<Button>(e.OriginalSource as DependencyObject))) return;
         if (SelectedRow() is { } row) Edit(row.Def);
     }
 

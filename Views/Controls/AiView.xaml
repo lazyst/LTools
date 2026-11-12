@@ -206,7 +206,9 @@
                     <StackPanel>
                         <!-- 表头即列头：AiAudit.TailEntries 把定宽日志行解析成 5 列，别再整行塞一个 TextBlock。
                              只读、不排序；纵向交给外层 Page_Audit 的 ScrollViewer，避免嵌套滚动条。
-                             每列都写 MinWidth（照 HotkeysView / TriggersView 的踩坑），窄窗口宁可出横向滚动条。 -->
+                             每列都写 MinWidth（照 HotkeysView / TriggersView 的踩坑），窄窗口宁可出横向滚动条。
+                             PreviewMouseWheel 把滚轮在隧道阶段转交给 Page_Audit：内层 DataGrid 的 ScrollViewer
+                             即使纵向 Disabled 也会把 MouseWheel 标 Handled（自己滚 0 像素），不接管就滚不动页面。 -->
                         <DataGrid x:Name="AuditGrid"
                                   AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
                                   CanUserResizeRows="False" CanUserSortColumns="False" CanUserReorderColumns="False"
@@ -215,7 +217,8 @@
                                   SelectionMode="Single" SelectionUnit="FullRow"
                                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                   ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                                  FontFamily="Consolas" FontSize="{StaticResource FontSizeHint}">
+                                  FontFamily="Consolas" FontSize="{StaticResource FontSizeHint}"
+                                  PreviewMouseWheel="AuditGrid_PreviewMouseWheel">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="时间" Binding="{Binding Time}" Width="150" MinWidth="130"/>
                                 <DataGridTextColumn Header="工具" Binding="{Binding Tool}" Width="*" MinWidth="160"/>

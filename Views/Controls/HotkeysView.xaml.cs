@@ -39,6 +39,7 @@ public partial class HotkeysView : UserControl
     private string? _keepBindingId;
     private bool _loading;
     private bool _loaded;
+    private int _renderedRevision = -1;   // 本页最后一次重建时 HotkeyRegistry.Revision 的值
 
     public HotkeysView()
     {
@@ -58,15 +59,31 @@ public partial class HotkeysView : UserControl
 
     // ============ 载入 / 重建 ============
 
-    /// <summary>从运行期热键表重新载入（切到本页 / 导入配置 / 动作改名后调用）。</summary>
+    /// <summary>从运行期热键表重新载入（导入配置 / 动作改名 / 手动重载后调用）。</summary>
     public void Reload()
     {
+        _renderedRevision = HotkeyRegistry.Revision;
+        _loaded = true;
         _file = HotkeyRegistry.File.Clone();
         _keepGroupId ??= _group?.Id;
         _keepBindingId ??= SelectedBinding()?.Id;
         PopulateGroups();
         PopulateDefault();
     }
+
+    /// <summary>
+    /// 切到本页时调用：运行期热键表没变就不重建。低级鼠标钩子与 WPF 共用 UI 线程，
+    /// 每次切页都 Clear/Add 两个 ObservableCollection 再 Refresh() 会把光标顶住一下；
+    /// 数据真变了（保存 / 导入 / 播种 / 删动作）走 <see cref="Reload"/> 或 <see cref="Invalidate"/>。
+    /// </summary>
+    public void RefreshIfNeeded()
+    {
+        if (_loaded && _renderedRevision == HotkeyRegistry.Revision) return;
+        Reload();
+    }
+
+    /// <summary>动作改名 / 新建 / 删除后调用：让下次切到本页重读一次（不立刻重建当前页面）。</summary>
+    public void Invalidate() => _renderedRevision = -1;
 
     /// <summary>按当前 <see cref="_file"/> 重建左组列表与右表。</summary>
     private void PopulateGroups()
@@ -112,7 +129,8 @@ public partial class HotkeysView : UserControl
         else
             ConflictText.ClearValue(TextBlock.ForegroundProperty);
 
-        CollectionViewSource.GetDefaultView(_rows)?.Refresh();
+        // _rows.Clear() 的 Reset + 逐条 Add 已经让带 Filter 的默认视图同步（Add 时按当前搜索词筛过）；
+        // 再 Refresh() 会强制整表二次重建，还会丢掉上面刚设好的选中项。只有搜索框那处需要显式 Refresh。
     }
 
     private void PopulateDefault()
@@ -167,6 +185,8 @@ public partial class HotkeysView : UserControl
 
         _file.Normalize();
         HotkeyRegistry.Load(_file);   // 钩子立即生效（不必重启）
+        // 本页紧接着就按 _file 重建，记下新 revision，免得下次切回来又白重建一次
+        _renderedRevision = HotkeyRegistry.Revision;
         Persist(_file);
         PopulateGroups();
     }

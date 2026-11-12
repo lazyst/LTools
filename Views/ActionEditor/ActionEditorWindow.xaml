@@ -337,7 +337,9 @@
                                                FontSize="{StaticResource FontSizeHint}"
                                                Foreground="{StaticResource HintTextBrush}" Margin="0,0,0,2"/>
                                     <ListView x:Name="SnapshotList" BorderThickness="0" Background="Transparent"
-                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                              MouseDoubleClick="SnapshotList_MouseDoubleClick"
+                                              ToolTip="双击一行复制该变量的值">
                                         <ListView.ItemContainerStyle>
                                             <Style TargetType="ListViewItem">
                                                 <Setter Property="Padding" Value="0"/>

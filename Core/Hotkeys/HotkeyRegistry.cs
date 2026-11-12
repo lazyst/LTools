@@ -26,6 +26,14 @@ internal static class HotkeyRegistry
 {
     private static HotkeyFile _file = new();
     private static HotkeyEntry[] _entries = Array.Empty<HotkeyEntry>();
+    private static int _revision;
+
+    /// <summary>
+    /// 每次 <see cref="Load(LTools.Config.HotkeyFile)"/> 自增。界面（<c>HotkeysView</c>）用它做
+    /// 「运行期热键表换没换」的廉价判定，避免每次切到「快捷键」页都整表重建拖住 UI 线程。
+    /// 读的是纯 int，钩子路径不增加任何开销。
+    /// </summary>
+    public static int Revision => System.Threading.Volatile.Read(ref _revision);
 
     /// <summary>本次按下已经触发过的键：按住不放时系统会重复 keydown，不能连发。</summary>
     private static readonly HashSet<ushort> Fired = new();
@@ -43,6 +51,7 @@ internal static class HotkeyRegistry
 
     public static void Load(HotkeyFile file)
     {
+        System.Threading.Interlocked.Increment(ref _revision);
         _file = file ?? new HotkeyFile();
         _file.Normalize();
         Rebuild();

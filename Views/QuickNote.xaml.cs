@@ -215,6 +215,33 @@ public partial class QuickNoteWindow : Window
         if (item?.DataContext is NoteRow) NoteList.SelectedItem = item.DataContext;
     }
 
+    /// <summary>双击是否命中一条速记（抽成纯函数便于无头冒烟直接断言）。</summary>
+    internal static bool NoteDoubleClickFocusBody(ListBoxItem? item) => item?.DataContext is NoteRow;
+
+    /// <summary>
+    /// 双击速记列表项 = 把焦点拉回正文接着写。单击（<see cref="NoteList_Click"/>）已经负责
+    /// 切换 / 载入，点在当前条目上会直接 return；双击补一个「回到编辑」的常用入口，
+    /// 不重复载入、不动未保存的改动。
+    /// </summary>
+    private void NoteList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var item = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+        if (!NoteDoubleClickFocusBody(item)) return;
+        var row = (NoteRow)item!.DataContext;
+
+        if (_current == null || !string.Equals(_current.Path, row.Path, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!EnsureSavedOrDiscarded()) return;
+            var entry = _repo.Load(row.Path);
+            if (entry == null) { ReloadList(); return; }
+            LoadEntry(entry);
+        }
+        NoteList.SelectedItem = row;
+        BodyBox.Focus();
+        BodyBox.CaretIndex = BodyBox.Text.Length;
+        e.Handled = true;
+    }
+
     private void LoadEntry(NoteEntry entry)
     {
         _loading = true;

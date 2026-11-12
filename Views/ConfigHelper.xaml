@@ -132,8 +132,29 @@
                                      Checked="Nav_Changed" Tag="subactions"/>
                         <RadioButton x:Name="NavHotkeys" Style="{StaticResource NavRow}" Content="快捷键"
                                      Checked="Nav_Changed" Tag="hotkeys"/>
-                        <RadioButton Style="{StaticResource NavRow}" Content="键鼠宏"
-                                     Checked="Nav_Changed" Tag="macros"/>
+                        <!-- 键鼠宏：第四个带二级下拉的父项（录制的宏 / 设置），与面板管理 / AI / 日志共用一套机制 -->
+                        <RadioButton x:Name="NavMacros" Style="{StaticResource NavRow}"
+                                     Checked="Nav_Changed" Tag="macros"
+                                     PreviewMouseLeftButtonUp="NavMacros_MouseUp">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="键鼠宏" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="NavMacrosChevron" Text="&#xE76C;"
+                                           FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                           Margin="6,1,0,0" VerticalAlignment="Center"
+                                           RenderTransformOrigin="0.5,0.5"
+                                           Foreground="{StaticResource HintTextBrush}"/>
+                            </StackPanel>
+                        </RadioButton>
+                        <Border x:Name="MacrosSubNavHost" Visibility="Collapsed" ClipToBounds="True"
+                                Margin="22,0,0,6" Padding="6,2,0,2"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="2,0,0,0">
+                            <StackPanel x:Name="MacrosSubNav">
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-macros"
+                                             Content="录制的宏" Checked="Nav_Changed" Tag="macros-list"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-macros"
+                                             Content="设置" Checked="Nav_Changed" Tag="macros-settings"/>
+                            </StackPanel>
+                        </Border>
                         <RadioButton Style="{StaticResource NavRow}" Content="自动触发"
                                      Checked="Nav_Changed" Tag="triggers"/>
                         <!-- 面板管理：点它进「常规」主页面，并在下方展开二级下拉导航 -->
@@ -441,17 +462,26 @@
                     </StackPanel>
                 </Grid>
 
+                <!-- ============ 惰性页 ============
+                     6 个重量级 UserControl 不再在 InitializeComponent() 里一次性建出来：
+                     这里只放空的 ContentControl 宿主，窗口首次切到该页时才由 code-behind 的
+                     Page_* 惰性属性 new 出视图、塞进 Host.Content。低级鼠标钩子与 WPF 共用
+                     UI 线程，一次建 6 棵可视树会让「从超级面板打开设置」顿一下。
+                     可见性设在宿主上（不触发创建）；数据/方法走 Page_*（触发创建）。
+                     Page_General / Page_Actions / Page_Terminals / Page_Logs* / Page_Backup
+                     是内联的轻量 ScrollViewer / Grid，保持现状。 -->
+
                 <!-- ============ 快捷键 ============ -->
-                <controls:HotkeysView x:Name="Page_Hotkeys" Visibility="Collapsed"/>
+                <ContentControl x:Name="Host_Hotkeys" Visibility="Collapsed"/>
 
                 <!-- ============ 键鼠宏 ============ -->
-                <controls:MacroView x:Name="Page_Macros" Visibility="Collapsed"/>
+                <ContentControl x:Name="Host_Macros" Visibility="Collapsed"/>
 
                 <!-- ============ 子动作库 ============ -->
-                <controls:SubActionLibraryView x:Name="Page_SubActions" Visibility="Collapsed"/>
+                <ContentControl x:Name="Host_SubActions" Visibility="Collapsed"/>
 
                 <!-- ============ 面板管理 ============ -->
-                <controls:PanelManageView x:Name="Page_SuperPanel" Visibility="Collapsed"/>
+                <ContentControl x:Name="Host_SuperPanel" Visibility="Collapsed"/>
 
                 <!-- ============ 终端路径 ============ -->
                 <ScrollViewer x:Name="Page_Terminals" VerticalScrollBarVisibility="Auto"
@@ -466,7 +496,10 @@
                                       CanUserSortColumns="False" CanUserResizeColumns="False" CanUserResizeRows="False"
                                       HeadersVisibility="Column" GridLinesVisibility="Horizontal"
                                       SelectionMode="Single" SelectionUnit="FullRow"
-                                      PreviewMouseLeftButtonDown="PathsGrid_PreviewMouseLeftButtonDown">
+                                      PreviewMouseLeftButtonDown="PathsGrid_PreviewMouseLeftButtonDown"
+                                      PreviewMouseWheel="PathsGrid_PreviewMouseWheel"
+                                      MouseDoubleClick="PathsGrid_MouseDoubleClick"
+                                      ToolTip="双击一行直接编辑「覆盖」路径">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="终端" Binding="{Binding Label}" Width="140" IsReadOnly="True"/>
                                     <DataGridTemplateColumn Header="实际路径" Width="*">
@@ -640,10 +673,10 @@
                 </Grid>
 
                 <!-- ============ 自动触发 ============ -->
-                <controls:TriggersView x:Name="Page_Triggers" Visibility="Collapsed"/>
+                <ContentControl x:Name="Host_Triggers" Visibility="Collapsed"/>
 
                 <!-- ============ AI 接入 ============ -->
-                <controls:AiView x:Name="Page_Ai" Visibility="Collapsed"/>
+                <ContentControl x:Name="Host_Ai" Visibility="Collapsed"/>
 
                 <!-- ============ 备份与恢复 ============ -->
                 <ScrollViewer x:Name="Page_Backup" VerticalScrollBarVisibility="Auto"

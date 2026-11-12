@@ -24,10 +24,24 @@
                             <ContentPresenter HorizontalAlignment="Stretch"/>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
+                            <!-- 高亮画在卡片自己身上（照 StepRowTemplate），范围正好是可见卡片：
+                                 全局 ListItemTemplate 把 hover / selected 画在 ListBoxItem 容器上，
+                                 会被这张不透明卡片完全挡住，且容器含 6px 下边距 → 高亮比卡片高一截。
+                                 容器模板已改成透明 ContentPresenter（见下面 ItemContainerStyle）。 -->
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True"/>
+                                    <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="False"/>
+                                </MultiDataTrigger.Conditions>
                                 <Setter TargetName="bd" Property="Background"
                                         Value="{StaticResource SurfaceAltBrush}"/>
-                            </Trigger>
+                            </MultiDataTrigger>
+                            <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                <Setter TargetName="bd" Property="Background"
+                                        Value="{StaticResource PressedBgBrush}"/>
+                                <Setter TargetName="bd" Property="BorderBrush"
+                                        Value="{StaticResource PrimaryBrush}"/>
+                            </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -83,10 +97,22 @@
                  MouseDoubleClick="List_MouseDoubleClick">
 
             <ListBox.ItemContainerStyle>
-                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                <!-- 不继承全局 ListItemTemplate：它把 hover / selected 画在 ListBoxItem 的 bd 上，
+                     被下面那张不透明卡片挡住（选中看不见），矩形还含卡片 6px 下边距（高亮比卡片高）。
+                     高亮改由卡片自己的 DataTrigger 负责，这里只承载内容、不画任何底色。 -->
+                <Style TargetType="ListBoxItem">
                     <Setter Property="Padding" Value="0"/>
                     <Setter Property="Margin" Value="0"/>
                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <ContentPresenter HorizontalAlignment="Stretch"/>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
                 </Style>
             </ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate>

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using LTools.Core;
@@ -376,6 +377,24 @@ public partial class AiView : UserControl
         string path = AiAudit.FilePath;
         if (File.Exists(path)) OpenPath(path, selectFile: true);
         else OpenPath(Path.GetDirectoryName(path)!);
+    }
+
+    /// <summary>
+    /// 把审计表格里的滚轮转交给外层页面。DataGrid 模板内的 ScrollViewer 即使纵向 Disabled，
+    /// 也会在冒泡阶段把 MouseWheel 标成 Handled（自己滚 0 像素），外层 Page_Audit 就收不到，
+    /// 表现为「鼠标停在表格里页面滚不动」。隧道阶段先接管（挡住内层），再从 Page_Audit
+    /// 重新发一条 MouseWheel 冒泡事件，让它的 ScrollViewer 用原生滚轮逻辑滚页面。
+    /// 表格外的滚轮不经过这个处理器，照常冒泡给 Page_Audit，不受影响。
+    /// </summary>
+    private void AuditGrid_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Handled) return;
+        e.Handled = true;
+        Page_Audit.RaiseEvent(new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+        {
+            RoutedEvent = UIElement.MouseWheelEvent,
+            Source = Page_Audit,
+        });
     }
 
     // ============ 小工具 ============

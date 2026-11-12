@@ -13,12 +13,18 @@ using LTools.Features;
 namespace LTools.Views.Controls;
 
 /// <summary>
-/// 设置 → 键鼠宏：录制入口 + 已录制的宏 + 回放默认值。
+/// 设置 → 键鼠宏：二级导航的两页（「录制的宏」/「设置」），由 <see cref="ShowPage"/> 切可见性。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 一个宏就是一个「1 步 · 回放宏」的动作（<see cref="MacroAction"/>），所以这里只列宏文件，
+/// 一个宏就是一个「1 步 · 回放宏」的动作（<see cref="MacroAction"/>），所以「录制的宏」页只列宏文件，
 /// 面板 / 快捷键 / 悬浮上的那一项由录制完成时自动挂出来；删除宏会连带删掉引用它的动作。
+/// </para>
+/// <para>
+/// 「录制的宏」页是 Grid：页头固定、<c>MacroList</c> 占满 <c>*</c> 行自己滚，**不套外层 ScrollViewer**。
+/// 原来整页一个 ScrollViewer + 被 StackPanel 撑开的 ListBox，内层 ScrollViewer 会把 MouseWheel 标
+/// Handled 吞掉、页面滚不动（用户报过）；拆页后没有嵌套，滚轮由列表自己处理。设置页全是单行输入 /
+/// 复选 / Expander，没有内层列表控件（ComboBox 另由 ComboBoxAssist 全局转发），正常滚动。
 /// </para>
 /// <para>
 /// 录制从本页发起时窗口会先藏起来（录制期间钩子透明，窗口上的点击也会被录进去），
@@ -64,6 +70,14 @@ public partial class MacroView : UserControl
             MacroRecorder.RecordingStopped -= OnRecordingStopped;
             MacroRecorder.MacroSaved -= OnMacroSaved;
         };
+    }
+
+    /// <summary>二级导航切子页：「录制的宏」(list) /「设置」(settings)，只切可见性，不重建数据。</summary>
+    public void ShowPage(string page)
+    {
+        bool list = page != "settings";
+        Page_List.Visibility = list ? Visibility.Visible : Visibility.Collapsed;
+        Page_Settings.Visibility = list ? Visibility.Collapsed : Visibility.Visible;
     }
 
     // ============ 载入 ============

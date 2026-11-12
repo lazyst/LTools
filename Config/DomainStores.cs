@@ -19,6 +19,9 @@ namespace LTools.Config;
 /// </remarks>
 internal static class SettingsStore
 {
+    /// <summary>只读 settings 域（不扫 <c>actions/</c>），供设置页切页回填用。</summary>
+    public static SettingsFile Read(string path) => ConfigBundle.ReadSettings(path);
+
     public static void Modify(Action<SettingsFile> change)
         => ConfigIO.ModifyDomain(ConfigDomain.settings, ConfigBundle.ToSettings, change, ConfigBundle.WriteSettings);
 
@@ -29,6 +32,9 @@ internal static class SettingsStore
 /// <summary><c>configs/ui.json</c>：导航页 / 最近使用 / OCR 偏好等界面记忆。</summary>
 internal static class UiStore
 {
+    /// <summary>只读 ui 域（不扫 <c>actions/</c>），供设置窗口构造时恢复导航状态用。</summary>
+    public static UiStateFile Read(string path) => ConfigBundle.ReadUi(path);
+
     public static void Modify(Action<UiStateFile> change)
         => ConfigIO.ModifyDomain(ConfigDomain.ui, ConfigBundle.ToUi, change, ConfigBundle.WriteUi);
 

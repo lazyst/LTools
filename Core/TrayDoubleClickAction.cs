@@ -7,7 +7,7 @@ namespace LTools.Core;
 /// <remarks>
 /// 值按设置页下拉顺序固定（显式赋值，别靠声明顺序），存进 <c>configs/settings.json</c> 的英文键；
 /// 界面文案由 <c>Views/ConfigHelper.xaml</c> 的 ComboBox 负责，别把中文写进配置。
-/// 「面板管理」是二级下拉分组，跳父项 tag（<c>superpanel</c>）会落到该组上次停留的子页。
+/// 「面板管理」「键鼠宏」是二级下拉分组，跳父项 tag（<c>superpanel</c> / <c>macros</c>）会落到该组上次停留的子页。
 /// </remarks>
 public enum TrayDoubleClickAction
 {
@@ -20,7 +20,7 @@ public enum TrayDoubleClickAction
     /// <summary>打开设置并跳到「快捷键」。</summary>
     hotkeys = 2,
 
-    /// <summary>打开设置并跳到「键鼠宏」。</summary>
+    /// <summary>打开设置并跳到「键鼠宏」（二级分组，默认停在「录制的宏」）。</summary>
     macros = 3,
 
     /// <summary>打开设置并跳到「自动触发」。</summary>

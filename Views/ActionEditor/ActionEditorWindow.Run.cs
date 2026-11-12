@@ -423,6 +423,24 @@ public partial class ActionEditorWindow
         }
     }
 
+    /// <summary>双击变量快照行取到要复制的值（表头 / 空白 / 非 SnapshotRow 一律 null）。</summary>
+    internal static string? SnapshotDoubleClickValue(object? item) => (item as SnapshotRow)?.Value;
+
+    /// <summary>双击变量快照的一行 = 复制该变量运行结束时的值，方便粘到别处排查。</summary>
+    private void SnapshotList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var row = FindAncestor<ListViewItem>(e.OriginalSource as DependencyObject);
+        string? value = SnapshotDoubleClickValue(row?.DataContext);
+        if (value == null) return;
+        try
+        {
+            Clipboard.SetText(value);
+            SetStatus($"已复制变量值（{value.Length} 字）", hint: true);
+        }
+        catch { /* 剪贴板被别的程序占着就算了，别打断编辑 */ }
+        e.Handled = true;
+    }
+
     /// <summary>失败定位：按<strong>步骤路径</strong>找回编辑器里的那一行（嵌套步骤也能对上）。</summary>
     private void SelectTraceRow(string? label)
     {

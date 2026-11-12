@@ -97,10 +97,10 @@ public partial class ConfigHelperWindow
 
     // ============ 设置回填与保存 ============
 
-    /// <summary>把配置里的日志设置回填到控件（回填期间不触发保存）。</summary>
+    /// <summary>把配置里的日志设置回填到控件（回填期间不触发保存）。只读 settings 域，别整份读配置拖慢切页。</summary>
     private void PopulateLogging()
     {
-        var log = ConfigStore.LoadConfig().Logging ?? new LogConfig();
+        var log = SettingsStore.Read(ConfigPath).Logging ?? new LogConfig();
 
         _loadingLog = true;
         LogEnabledBox.IsChecked = log.Enabled;
