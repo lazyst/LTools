@@ -16,6 +16,48 @@ internal static class MouseOps
     /// <summary>把光标移到虚拟桌面物理坐标（与截图 / 找图坐标系一致）。</summary>
     public static void Move(int x, int y) => InputHelper.MoveToScreen(x, y, Tag);
 
+    /// <summary>相对当前光标移动（可为负）；SendInput 相对量不经鼠标加速。</summary>
+    public static void MoveRelative(int dx, int dy) => InputHelper.MoveRelative(dx, dy, Tag);
+
+    /// <summary>
+    /// 按下鼠标键（1=左 2=右 3=中 4=X1 5=X2），**不自动抬起**。
+    /// 配对由调用方（拖动用 try/finally）或运行结束的 <see cref="InputHoldState.ReleaseAll"/> 兜底。
+    /// </summary>
+    public static void Down(int button)
+    {
+        int b = Normalize(button);
+        uint flags = b switch
+        {
+            2 => Win32.MouseeventfRightdown,
+            3 => Win32.MouseeventfMiddledown,
+            4 => Win32.MouseeventfXdown,
+            5 => Win32.MouseeventfXdown,
+            _ => Win32.MouseeventfLeftdown,
+        };
+        uint data = b switch { 4 => (uint)Win32.Xbutton1, 5 => (uint)Win32.Xbutton2, _ => 0 };
+        Win32.mouse_event(flags, 0, 0, data, Tag);
+        InputHoldState.MouseDown(b);
+    }
+
+    /// <summary>抬起鼠标键（编号同 <see cref="Down"/>）；已抬起时重复调用无害。</summary>
+    public static void Up(int button)
+    {
+        int b = Normalize(button);
+        uint flags = b switch
+        {
+            2 => Win32.MouseeventfRightup,
+            3 => Win32.MouseeventfMiddleup,
+            4 => Win32.MouseeventfXup,
+            5 => Win32.MouseeventfXup,
+            _ => Win32.MouseeventfLeftup,
+        };
+        uint data = b switch { 4 => (uint)Win32.Xbutton1, 5 => (uint)Win32.Xbutton2, _ => 0 };
+        Win32.mouse_event(flags, 0, 0, data, Tag);
+        InputHoldState.MouseUp(b);
+    }
+
+    private static int Normalize(int button) => button is >= 1 and <= 5 ? button : 1;
+
     /// <summary>在当前光标处执行一个鼠标动作；滚轮按 <paramref name="wheelDelta"/> 刻度（120 = 一格）。</summary>
     public static void Perform(MouseActionKind kind, int wheelDelta = 120)
     {
@@ -47,22 +89,10 @@ internal static class MouseOps
         }
     }
 
-    /// <summary>按下并释放一个鼠标键（1=左 2=右 3=中）。</summary>
+    /// <summary>按下并释放一个鼠标键（点击类操作走这里，状态不会残留）。</summary>
     private static void Click(int button)
     {
-        uint down = button switch
-        {
-            2 => Win32.MouseeventfRightdown,
-            3 => Win32.MouseeventfMiddledown,
-            _ => Win32.MouseeventfLeftdown,
-        };
-        uint up = button switch
-        {
-            2 => Win32.MouseeventfRightup,
-            3 => Win32.MouseeventfMiddleup,
-            _ => Win32.MouseeventfLeftup,
-        };
-        Win32.mouse_event(down, 0, 0, 0, Tag);
-        Win32.mouse_event(up, 0, 0, 0, Tag);
+        Down(button);
+        Up(button);
     }
 }

@@ -249,6 +249,28 @@ internal static class InputHelper
         MoveAbsolute(x, y, left, top, width, height, extraInfo);
     }
 
+    /// <summary>相对当前光标移动一段像素（可为负），原样送到目标程序。</summary>
+    /// <remarks>
+    /// 别用 <c>mouse_event</c> 的相对移动：那条路径会经过系统鼠标加速曲线，
+    /// <c>dx=100</c> 不一定真走 100 像素。这里与 <see cref="MoveAbsolute"/> 走同一条
+    /// <c>SendInput</c> 路径（相对量不经加速），同样带 <c>extraInfo</c> 标记让钩子忽略注入。
+    /// </remarks>
+    public static void MoveRelative(int dx, int dy, IntPtr extraInfo = default)
+    {
+        var buf = new[]
+        {
+            new MouseInput
+            {
+                Type = 0,   // INPUT_MOUSE
+                Dx = dx,
+                Dy = dy,
+                Flags = Win32.MouseeventfMove | Win32.MouseeventfMoveNocoalesce,
+                ExtraInfo = extraInfo,
+            },
+        };
+        SendInput(1, buf, Marshal.SizeOf<MouseInput>());
+    }
+
     /// <summary>
     /// 把光标绝对移动到虚拟桌面坐标 (x, y)。
     /// 走 <c>SendInput</c> + <c>MOUSEEVENTF_MOVE|ABSOLUTE|VIRTUALDESK</c>：

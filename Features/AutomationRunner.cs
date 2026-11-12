@@ -219,6 +219,10 @@ internal static class AutomationRunner
         }
         finally
         {
+            // 跨步骤「按下 / 抬起」的兜底：无论正常结束、失败还是被停止热键打断，
+            // 都把仍按着的鼠标键与键盘键释放掉（正式运行 / 编辑器试运行 / 草稿试运行共用这里）。
+            InputHoldState.ReleaseAll();
+
             _cts = null;
             cts.Dispose();
             Volatile.Write(ref _running, 0);

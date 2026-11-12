@@ -86,12 +86,16 @@ internal static class OptionLabels
 
         // —— 鼠标 / 点击 ——
         ["move"] = "移动到",
+        ["relativeMove"] = "相对移动",
         ["click"] = "单击",
         ["doubleClick"] = "双击",
         ["rightClick"] = "右键单击",
         ["middleClick"] = "中键单击",
         ["wheelUp"] = "向上滚动",
         ["wheelDown"] = "向下滚动",
+        ["down"] = "按下",
+        ["up"] = "抬起",
+        ["drag"] = "拖动",
 
         // —— 屏幕区域 ——
         ["interactive"] = "手动框选",

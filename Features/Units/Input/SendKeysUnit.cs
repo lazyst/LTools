@@ -93,15 +93,21 @@ public sealed class SendKeysUnit : IStepUnit
 
         if (action == "down")
         {
-            foreach (ushort mod in mods) InputHelper.Down(mod);
+            foreach (ushort mod in mods) { InputHelper.Down(mod); InputHoldState.KeyDown(mod); }
             InputHelper.Down(vk);
+            InputHoldState.KeyDown(vk);
             return;
         }
 
         if (action == "up")
         {
             InputHelper.Up(vk);
-            for (int i = mods.Count - 1; i >= 0; i--) InputHelper.Up(mods[i]);
+            InputHoldState.KeyUp(vk);
+            for (int i = mods.Count - 1; i >= 0; i--)
+            {
+                InputHelper.Up(mods[i]);
+                InputHoldState.KeyUp(mods[i]);
+            }
             return;
         }
 
