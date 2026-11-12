@@ -82,7 +82,7 @@
             <Line x:Name="CrossV" Stroke="#E6FFFFFF" StrokeThickness="1"
                   Visibility="Collapsed" IsHitTestVisible="False"/>
 
-            <!-- 放大镜：8 倍，中心十字（只在取点时显示） -->
+            <!-- 放大镜：8 倍，中心十字（只在取色时显示；取点不显示，免得黑框挡住目标） -->
             <Border x:Name="MagBox" Width="132" Height="132" CornerRadius="6"
                     BorderBrush="#FFFFFF" BorderThickness="2" Background="#0B0B0E"
                     Visibility="Collapsed" IsHitTestVisible="False">

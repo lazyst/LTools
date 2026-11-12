@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -752,8 +753,21 @@ public partial class ValueField : UserControl
     private void Activate(MenuRow row)
     {
         if (row.Invoke == null) return;
-        if (!row.Nav) Menu.IsOpen = false;
+        if (!row.Nav) CloseMenuImmediately();
         row.Invoke();
+    }
+
+    /// <summary>
+    /// 立刻收起来源弹层：紧随其后的入口（屏幕取点 / 框选 / 点窗口）会在同一 UI 线程里
+    /// Thread.Sleep 等桌面重绘再截图，Fade 淡出动画要等渲染帧才跑得完——否则弹层会被
+    /// 拍进冻结画面、或浮在取点窗口上。普通关闭（Esc / 点外部 / 失焦）仍走淡出动画。
+    /// </summary>
+    private void CloseMenuImmediately()
+    {
+        if (!Menu.IsOpen) return;
+        Menu.PopupAnimation = PopupAnimation.None;
+        Menu.IsOpen = false;
+        Menu.PopupAnimation = PopupAnimation.Fade;
     }
 
     private void SetActive(MenuRow? row)
@@ -1070,7 +1084,7 @@ public partial class ValueField : UserControl
 
     private void PickPoint()
     {
-        if (!ScreenPicker.TryPickPoint(Window.GetWindow(this), out int x, out int y, out _)) return;
+        if (!ScreenPicker.TryPickPoint(Window.GetWindow(this), out int x, out int y)) return;
 
         if (PointPicked != null) PointPicked(x, y);
         else SetLiteral(string.Equals(_spec?.Key, "y", StringComparison.OrdinalIgnoreCase)
@@ -1080,7 +1094,7 @@ public partial class ValueField : UserControl
 
     private void PickColor()
     {
-        if (!ScreenPicker.TryPickPoint(Window.GetWindow(this), out _, out _, out string hex)) return;
+        if (!ScreenPicker.TryPickColor(Window.GetWindow(this), out string hex)) return;
         if (hex.Length > 0) SetLiteral(hex);
     }
 

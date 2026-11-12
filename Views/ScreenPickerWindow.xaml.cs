@@ -87,6 +87,9 @@ public partial class ScreenPickerWindow : Window
     /// <summary>取点处的颜色 <c>#RRGGBB</c>。</summary>
     public string Hex { get; private set; } = "";
 
+    /// <summary>十字准线已经落到画面上（取点 / 取色都可以确认）。</summary>
+    private bool _hasPoint;
+
     /// <summary>用户是否确认（关闭 / Esc / 右键取消时为 false）。</summary>
     public bool Confirmed { get; private set; }
 
@@ -117,7 +120,8 @@ public partial class ScreenPickerWindow : Window
         if (pointMode)
         {
             HintText.Text = wantColor ? "单击取色 · 右键 / Esc 取消" : "单击取点 · 右键 / Esc 取消";
-            MagBox.Visibility = Visibility.Visible;
+            // 放大镜只在取色时显示：取点只要十字准线 + 坐标，132×132 的黑框会把要点的目标挡住。
+            MagBox.Visibility = ShowMagnifier(pointMode, wantColor) ? Visibility.Visible : Visibility.Collapsed;
             DimPath.Visibility = Visibility.Collapsed;
             ActionBar.Visibility = Visibility.Collapsed;
         }
@@ -204,7 +208,7 @@ public partial class ScreenPickerWindow : Window
             return;
         }
 
-        if (_pointMode) { if (e.Key == Key.Enter && Hex.Length > 0) { ConfirmPoint(); e.Handled = true; } return; }
+        if (_pointMode) { if (e.Key == Key.Enter && _hasPoint) { ConfirmPoint(); e.Handled = true; } return; }
 
         // Ctrl+A：整屏（当前显示器）。很多人用惯了截图工具的「截全屏」。
         if (e.Key == Key.A && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
@@ -482,6 +486,16 @@ public partial class ScreenPickerWindow : Window
 
     // ============ 取点 ============
 
+    /// <summary>
+    /// 放大镜只在「屏幕取色」时显示：取点只要十字准线 + 坐标，
+    /// 那个 132×132 的黑框会压住要点的目标（纯判定，冒烟可直接断言）。
+    /// </summary>
+    internal static bool ShowMagnifier(bool pointMode, bool wantColor) => pointMode && wantColor;
+
+    /// <summary>信息行：取点只报坐标；取色把色值放在前面（纯函数，冒烟可直接断言）。</summary>
+    internal static string PointInfoText(bool wantColor, string hex, int x, int y) =>
+        wantColor ? $"{hex}   {x}, {y}" : $"{x}, {y}";
+
     private void UpdateCrosshair(Point dip)
     {
         var (ix, iy) = ToImage(dip);
@@ -496,17 +510,16 @@ public partial class ScreenPickerWindow : Window
         Hex = SampleHex(ix, iy);
         PointX = _monitor.X + ix;
         PointY = _monitor.Y + iy;
+        _hasPoint = true;
 
-        InfoText.Text = _wantColor
-            ? $"{Hex}   {PointX}, {PointY}"
-            : $"{PointX}, {PointY}   {Hex}";
+        InfoText.Text = PointInfoText(_wantColor, Hex, PointX, PointY);
         PlaceInfo(dip);
-        PlaceMagnifier(dip, ix, iy);
+        if (ShowMagnifier(_pointMode, _wantColor)) PlaceMagnifier(dip, ix, iy);
     }
 
     private void ConfirmPoint()
     {
-        if (Hex.Length == 0) return;
+        if (!_hasPoint) return;
         Confirmed = true;
         Close();
     }

@@ -55,8 +55,15 @@ internal static class ScreenPicker
         }
     }
 
-    /// <summary>在屏幕上单击取点（可同时取该点颜色）。</summary>
-    public static bool TryPickPoint(Window? owner, out int x, out int y, out string hex)
+    /// <summary>在屏幕上单击取点：只留十字准线与坐标，不显示放大镜。</summary>
+    public static bool TryPickPoint(Window? owner, out int x, out int y)
+        => PickPoint(owner, wantColor: false, out x, out y, out _);
+
+    /// <summary>在屏幕上单击取色：显示放大镜，成功时 <paramref name="hex"/> 是 <c>#RRGGBB</c>。</summary>
+    public static bool TryPickColor(Window? owner, out string hex)
+        => PickPoint(owner, wantColor: true, out _, out _, out hex);
+
+    private static bool PickPoint(Window? owner, bool wantColor, out int x, out int y, out string hex)
     {
         x = y = 0;
         hex = "";
@@ -69,7 +76,7 @@ internal static class ScreenPicker
             using var bmp = ScreenCapture.Capture(monitor.X, monitor.Y, monitor.Width, monitor.Height);
             var shot = ToBitmapSource(bmp);
 
-            var picker = new ScreenPickerWindow(shot, monitor, pointMode: true, wantColor: false);
+            var picker = new ScreenPickerWindow(shot, monitor, pointMode: true, wantColor: wantColor);
             picker.ShowDialog();
             if (!picker.Confirmed) return false;
 
