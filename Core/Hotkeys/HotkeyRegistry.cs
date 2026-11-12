@@ -24,9 +24,18 @@ internal sealed record HotkeyEntry(HotkeyGroup Group, HotkeyBinding Binding, Hot
 /// </remarks>
 internal static class HotkeyRegistry
 {
+    // 阶段 2：Load / Rebuild 由主 UI 线程写，TryFire / KeyUp 由钩子线程读。
+    // 两份引用都用 Volatile 保证「换表」对钩子线程立即可见；引用赋值本身是原子的，
+    // 钩子里的 foreach 拿的是循环开始时的快照，换表不会打断当前这次匹配。
     private static HotkeyFile _file = new();
     private static HotkeyEntry[] _entries = Array.Empty<HotkeyEntry>();
     private static int _revision;
+    private static volatile bool _suspended;
+
+    /// <summary>本次按下已经触发过的键：按住不放时系统会重复 keydown，不能连发。</summary>
+    /// <remarks>UI 线程的 Rebuild / ClearLatches 会碰它，钩子线程也会碰，全部走 <see cref="FiredGate"/>。</remarks>
+    private static readonly HashSet<ushort> Fired = new();
+    private static readonly object FiredGate = new();
 
     /// <summary>
     /// 每次 <see cref="Load(LTools.Config.HotkeyFile)"/> 自增。界面（<c>HotkeysView</c>）用它做
@@ -35,33 +44,32 @@ internal static class HotkeyRegistry
     /// </summary>
     public static int Revision => System.Threading.Volatile.Read(ref _revision);
 
-    /// <summary>本次按下已经触发过的键：按住不放时系统会重复 keydown，不能连发。</summary>
-    private static readonly HashSet<ushort> Fired = new();
-
     /// <summary>当前生效的配置（界面直接改它再 <see cref="Rebuild"/>）。</summary>
-    public static HotkeyFile File => _file;
+    public static HotkeyFile File => System.Threading.Volatile.Read(ref _file);
 
     /// <summary>热键录入期间为 true：钩子跳过匹配，否则刚录的组合键会立刻触发动作。</summary>
-    public static bool Suspended { get; set; }
+    public static bool Suspended { get => _suspended; set => _suspended = value; }
 
     /// <summary>可命中的绑定（按优先级排序）。</summary>
-    public static IReadOnlyList<HotkeyEntry> Entries => _entries;
+    public static IReadOnlyList<HotkeyEntry> Entries => System.Threading.Volatile.Read(ref _entries);
 
     public static void Load(AppConfig cfg) => Load(cfg.Hotkeys ?? new HotkeyFile());
 
     public static void Load(HotkeyFile file)
     {
         System.Threading.Interlocked.Increment(ref _revision);
-        _file = file ?? new HotkeyFile();
-        _file.Normalize();
+        var f = file ?? new HotkeyFile();
+        f.Normalize();
+        System.Threading.Volatile.Write(ref _file, f);
         Rebuild();
     }
 
     /// <summary>按当前 <see cref="File"/> 重建匹配表（保存配置后调用）。</summary>
     public static void Rebuild()
     {
+        var current = File;
         var list = new List<HotkeyEntry>();
-        foreach (var group in _file.Groups)
+        foreach (var group in current.Groups)
         {
             if (!group.Enabled) continue;
             foreach (var binding in group.Bindings)
@@ -72,8 +80,8 @@ internal static class HotkeyRegistry
                 list.Add(new HotkeyEntry(group, binding, chord));
             }
         }
-        _entries = list.ToArray();
-        Fired.Clear();
+        System.Threading.Volatile.Write(ref _entries, list.ToArray());
+        lock (FiredGate) Fired.Clear();
     }
 
     /// <summary>
@@ -82,24 +90,29 @@ internal static class HotkeyRegistry
     /// </summary>
     public static string? TryFire(ushort vk)
     {
-        if (Fired.Contains(vk))
+        lock (FiredGate)
         {
-            // 物理键已经抬起 = 上一次按下的锁存没被清（keyup 被别的分支提前吞掉 / 没送到钩子）。
-            // 就地自愈，否则这条单键会一直「隔一次才触发」。
-            if (!Down(vk)) Fired.Remove(vk);
-            else return null;
+            if (Fired.Contains(vk))
+            {
+                // 物理键已经抬起 = 上一次按下的锁存没被清（keyup 被别的分支提前吞掉 / 没送到钩子）。
+                // 就地自愈，否则这条单键会一直「隔一次才触发」。
+                if (!Down(vk)) Fired.Remove(vk);
+                else return null;
+            }
         }
 
-        if (_entries.Length == 0) return null;
+        var entries = Entries;
+        if (entries.Count == 0) return null;
+        var current = File;
 
-        foreach (var entry in _entries)
+        foreach (var entry in entries)
         {
             if (entry.Chord.Vk != vk) continue;
             if (!ModifiersMatch(entry.Chord)) continue;
 
-            if (!AppFilterMatch.Allows(entry.Binding, _file, ForegroundAppCache.Current)) return null;
+            if (!AppFilterMatch.Allows(entry.Binding, current, ForegroundAppCache.Current)) return null;
 
-            Fired.Add(vk);
+            lock (FiredGate) Fired.Add(vk);
             return entry.Binding.ActionId;
         }
         return null;
@@ -108,11 +121,11 @@ internal static class HotkeyRegistry
     /// <summary>按键抬起：清掉「已触发」锁存，下一次按下才能再触发。</summary>
     public static void KeyUp(ushort vk)
     {
-        if (Fired.Count > 0) Fired.Remove(vk);
+        lock (FiredGate) { if (Fired.Count > 0) Fired.Remove(vk); }
     }
 
     /// <summary>窗口切换 / 停止动作时清空锁存（防止 keyup 被别的窗口吃掉后卡住）。</summary>
-    public static void ClearLatches() => Fired.Clear();
+    public static void ClearLatches() { lock (FiredGate) Fired.Clear(); }
 
     /// <summary>修饰键是否与这条组合键**完全一致**（多按一个 Ctrl 就不算命中）。</summary>
     private static bool ModifiersMatch(HotkeyChord chord)
@@ -136,7 +149,7 @@ internal static class HotkeyRegistry
     /// 同一条快捷键在「已启用的组」里出现多次 → 返回这些绑定 Id。
     /// 界面用来标红并提示「运行期只会触发排在前面的那条」。
     /// </summary>
-    public static HashSet<string> FindConflicts() => FindConflicts(_file);
+    public static HashSet<string> FindConflicts() => FindConflicts(File);
 
     /// <summary>同一条快捷键在「已启用的组」里出现多次 → 返回这些绑定 Id（界面标红用）。</summary>
     public static HashSet<string> FindConflicts(HotkeyFile file)

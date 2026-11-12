@@ -26,15 +26,21 @@ public partial class SubActionLibraryView : UserControl
 {
     private IReadOnlyList<SubActionRow> _rows = Array.Empty<SubActionRow>();
 
+    private bool _loaded;
+
     public SubActionLibraryView()
     {
         InitializeComponent();
-        Loaded += (_, _) => Reload();
+        Loaded += (_, _) =>
+        {
+            if (!_loaded) Reload();
+        };
     }
 
     /// <summary>重新读取 <c>subactions/</c> 并刷新列表。</summary>
     public void Reload()
     {
+        _loaded = true;
         string? keep = SelectedRow()?.Id;
 
         // 设置页是「刷新」入口：用户在资源管理器里改过文件也能看到。
@@ -48,6 +54,15 @@ public partial class SubActionLibraryView : UserControl
 
         ApplyFilter(keep);
         ShowBrokenFiles();
+    }
+
+    /// <summary>
+    /// 切到本页时调用：已建页且数据没变就不重建（首次建页时 Loaded 与 ApplyNavPage 只让
+    /// 第一次真正 Reload）；数据真变时（导入 / 编辑 / 删除）调用方仍直接调 <see cref="Reload"/>。
+    /// </summary>
+    public void RefreshIfNeeded()
+    {
+        if (!_loaded) Reload();
     }
 
     private SubActionRow? SelectedRow() => List.SelectedItem as SubActionRow;

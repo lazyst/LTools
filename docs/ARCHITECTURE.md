@@ -213,3 +213,14 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 - 不做跨文件事务 / 数据库：单进程 + 每域单写者 + 启动修复引用，够用且可读。
 - 不做向后兼容：不写配置 / 动作迁移器、不认旧字段与旧文件名、不留 `.migrated` 归档、不维护功能 Id 别名表。
 - 不把 `速记/`、`logs/`、`ai/` 收进 `configs/`：它们不是一个域，且速记是用户资产。
+
+## 6. 线程模型（2026-11 阶段 2 起）
+
+数据布局与线程模型是两件事，别混。当前是**两条 STA 线程**：
+
+- 主 UI 线程（WPF Dispatcher）：全部窗口 / 菜单 / Popup、托盘、动作库与 `configs/*.json` 读写、`ForegroundAppCache` 分发、看门狗。
+- `HookDispatcher` 专用线程（纯 Win32 `GetMessage` 泵）：安装并派发 `WH_KEYBOARD_LL` / `WH_MOUSE_LL`，只做同步吞 / 放判定。
+
+`Hooks/*.cs` 的回调里绝不碰 WPF：`Ui.Post`（只排队不等待）把副作用排回主 UI 线程，`HookMirror` 提供只读的 `PanelSnapshot` / `FloatSnapshot`，`HookDispatcher.Post` 把 UI 发起的状态改动串回钩子线程。`AppState` 标量、`HotkeyRegistry`、`ActionRegistry`、`MacroRecorder` 已按双线程归属补 `volatile` / 锁。
+
+改 `Hooks/` 或钩子回调路径上的代码前，先读 `docs/THREADING.md`（原因、阶段 0/1/2 的 `--perf` 同尺数据、阶段 3「独立 UI 线程 / 进程」暂不实施的决策与触发条件、真机回归清单）与 `AGENTS.md` 的「钩子关键约束」。

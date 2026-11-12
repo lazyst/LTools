@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace LTools.Features;
 
@@ -7,9 +9,14 @@ namespace LTools.Features;
 /// 都只存「动作 Id 引用」，执行时通过本表解析为 <see cref="ActionDto"/>。
 /// 启动时由 <see cref="ActionLibrary"/> 从 <c>actions/&lt;id&gt;/action.json</c> 加载。
 /// </summary>
+/// <remarks>
+/// 阶段 2：钩子线程经 <c>BindingRef.Exists</c> 读本表，主 UI 线程在导入 / 删动作时整表重建，
+/// 所以用 <see cref="ConcurrentDictionary{TKey,TValue}"/>；<see cref="All"/> 拿的是一次快照，
+/// 遍历期间改表不会抛「集合已修改」。
+/// </remarks>
 internal static class ActionRegistry
 {
-    private static readonly Dictionary<string, ActionDto> _byId = new();
+    private static readonly ConcurrentDictionary<string, ActionDto> _byId = new();
 
     /// <summary>清空清单（重新加载前调用）。</summary>
     public static void Clear() => _byId.Clear();
@@ -34,11 +41,11 @@ internal static class ActionRegistry
         return a != null ? a.Name : $"({id})";
     }
 
-    /// <summary>全部已注册动作（供编辑器列表展示）。</summary>
-    public static IReadOnlyCollection<ActionDto> All => _byId.Values;
+    /// <summary>全部已注册动作（供编辑器列表展示）。取一次快照，遍历期间改表不会抛异常。</summary>
+    public static IReadOnlyCollection<ActionDto> All => _byId.Values.ToArray();
 
     /// <summary>从清单移除；返回是否确实存在并移除。</summary>
-    public static bool Remove(string id) => _byId.Remove(id);
+    public static bool Remove(string id) => _byId.TryRemove(id, out _);
 
     /// <summary>生成不与现有 Id 冲突的新 Id（a1, a2, ...）。</summary>
     public static string NextId()

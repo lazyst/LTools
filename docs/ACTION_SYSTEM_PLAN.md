@@ -4,6 +4,8 @@
 >
 > 背景：引入统一 **Action** 抽象，让「超级面板」（裸右键长按）与「CapsLock+数字菜单」共用一个全局动作池。参考 Quicker 的面板/动作模型，但精简为个人工具所需的范围。
 
+> ⚠️ **本文是阶段 1–11 的历史方案 / 实施记录**。凡「钩子回调在主 UI / STA 线程派发」「计时器用 `DispatcherTimer`（与钩子回调同线程）」「同一钩子线程」等说法（尤其 §5 阶段 5 的长按计时、短按注入，以及「收尾：稳定性与性能全面加固」里的钩子 try/catch、`MouseHook` 结构体拷贝 / `Volume.OnWheel` 取舍），记录的是 **2026-11 阶段 2 之前**的线程模型：现已改为 `HookDispatcher` 专用线程，长按计时改 `System.Threading.Timer`，回调里不碰 WPF。这些历史结论在新模型下大多仍成立（「别阻塞回调」甚至更该遵守），但**别把「回调与 UI 同线程」照抄进新代码**。当前口径见 `docs/THREADING.md`。
+
 ---
 
 ## 1. 目标与范围
@@ -638,7 +640,7 @@ ActionExecutor.Run(ActionDto action)
 - ✅ 吞 up 的判定**必须先于**「面板未打开（`!SuperPanel.IsOpen`）」判断——面板可能已由 `Show()` 的 `BeginInvoke` 在 up 到达前创建，若先判 `IsOpen` 会漏吞 up 导致原生菜单泄漏。
 - ✅ 阈值运行态存于 `AppState.SuperPanelThresholdMs`（volatile int）：启动自配置载入、设置页滑块**即时同步**（不等 800ms 防抖落盘）；钩子回调只读内存，无文件 I/O；`MouseHook.ClampThreshold` 夹到 100–800ms。
 - ✅ 手势独立于 `CapsLockEnabled`（CapsLock+Esc 总开关），仅受 `SuperPanel.Enabled` 门控（§5.1「单独全局开关」）。
-- ✅ 计时器用 `DispatcherTimer`（主线程，与钩子回调同线程），复用单例、每次 down 重置 `Interval` 并 restart。
+- ✅ 计时器用 `DispatcherTimer`（主线程，与钩子回调同线程），复用单例、每次 down 重置 `Interval` 并 restart。〔阶段 2 起已改 `System.Threading.Timer` + `_gesturePending`，钩子回调不在 UI 线程；见 `docs/THREADING.md`〕
 - ✅ 保留阶段 4 的 `CapsLock+T` 为**备用入口**（本阶段不随手势接入而移除）。
 - ✅ **实测修正**（重新定义短按语义）：裸右键改为**整组吞 down/up**，短按**注入一次原生右键（down+up）**还原菜单。原「放行 down + 吞 up」会让目标窗口收到 down 收不到 up、鼠标捕获不释放 → 右键「卡住」（须再点一次右键才解除）。注入事件带 `LLMHF_INJECTED`，被本钩子忽略，不递归。
 - ✅ **实测修正**（面板定位）：`SuperPanelWindow.PlaceAtCursor` 改按「**可见边框**」贴合光标（gap=2），而非窗口外框。原 `gap=16` + XAML `Border.Margin=10` 使可见边框距光标 ~32px（125% 缩放下），观感不紧贴。
@@ -852,6 +854,8 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **冒烟 4 项全过**：菜单页 `ListGhost`/`InsertLine` 存在 + `AllowDrop=False`（DoDragDrop 已移除）✓；`DragFx` 交换 API 在真实 GroupList 跑通 ✓；「新建组合动作…」按钮存在 ✓；面板格 `AnimateSwap` 跑通 ✓；内存经 `ConfigStore.Reload` 还原。
 
 ### 收尾：稳定性与性能全面加固
+
+> 〔2026-11 阶段 2 注〕本段「两个低级钩子回调体加 try/catch」「`MouseMode.SaveSpeed` 改后台落盘」与性能段「`MouseHook` 结构体拷贝」「`Volume.OnWheel` 在钩子内同步 `SendInput`」的取舍仍成立，但现在回调跑在 `HookDispatcher` 专用线程、`MouseHook` 计时器是 `System.Threading.Timer`；`DispatcherUnhandledException` 只兜主 UI 线程，钩子线程异常由回调内 try/catch + `CrashLog` 兜。见 `docs/THREADING.md`。
 
 **稳定性（降低崩溃概率）**
 

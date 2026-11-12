@@ -61,6 +61,7 @@ public partial class TriggersView : UserControl
     /// <summary>从运行期规则表重新载入（切到本页 / 导入配置 / 删动作后调用）。</summary>
     public void Reload()
     {
+        _loaded = true;
         _file = TriggerRegistry.File.Clone();
         _loading = true;
         try { MasterBox.IsChecked = _file.Enabled; }
@@ -68,6 +69,15 @@ public partial class TriggersView : UserControl
         PopulateRows();
         UpdateEmergency();
         LoadHistory();
+    }
+
+    /// <summary>
+    /// 切到本页时调用：已建页且数据没变就不重建（首次建页时 Loaded 与 ApplyNavPage 只让
+    /// 第一次真正 Reload）；数据真变时（导入 / 保存 / 删动作）调用方仍直接调 <see cref="Reload"/>。
+    /// </summary>
+    public void RefreshIfNeeded()
+    {
+        if (!_loaded) Reload();
     }
 
     private void PopulateRows(string? keepId = null)

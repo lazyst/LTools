@@ -2,23 +2,24 @@ namespace LTools.Core;
 
 /// <summary>
 /// 全局应用状态（对应原版 lib/Globals.ahk 的全局变量）。
-/// 大多数字段只在主线程（低级钩子回调 + 托盘 UI）访问；
-/// 独立剪贴板字段会被工作线程访问，已用 <see cref="volatile"/> 或独立锁保护。
+/// 2026-11 阶段 2 起：低级键鼠钩子回调跑在专用线程（<c>Hooks/HookDispatcher</c>），托盘 / 设置 UI
+/// 在主 UI 线程，自动化流程在后台线程。这里的标量一律 <c>volatile</c>（状态机字段会被
+/// HotkeyEditDialog / AutomationRunner 从别的线程读写）；集合 / 字典由各自的所有者线程独占。
 /// </summary>
 internal static class AppState
 {
-    // —— CapsLock 状态机（主线程访问）——
+    // —— CapsLock 状态机（钩子线程写；设置页 HotkeyEditDialog 与自动化停止时会读）——
     /// <summary>CapsLock 是否处于按下态。</summary>
-    public static bool CapsLockIsDown;
+    public static volatile bool CapsLockIsDown;
 
     /// <summary>CapsLock 按下时刻（Environment.TickCount）。</summary>
-    public static int CapsLockPressTime;
+    public static volatile int CapsLockPressTime;
 
     /// <summary>CapsLock 按住期间是否按了其他键（影响单击→Esc 判定）。</summary>
-    public static bool OtherKeyPressed;
+    public static volatile bool OtherKeyPressed;
 
     /// <summary>是否手动启用大写锁定（Ctrl+CapsLock 切换）。</summary>
-    public static bool CapsLockManuallyEnabled;
+    public static volatile bool CapsLockManuallyEnabled;
 
     // —— 功能开关 ——
     /// <summary>CapsLock 当快捷键修饰键（短按发 Esc）；关闭后 CapsLock 走原生大小写切换。</summary>

@@ -43,7 +43,8 @@ internal static class HotkeyCapture
         public string Value = "";
     }
 
-    private static State? _active;
+    // 阶段 2：Begin / End / Cancel 由 UI 线程写，IsCapturing 由钩子线程读 → volatile 保证可见。
+    private static volatile State? _active;
 
     /// <summary>是否有热键框正在等待 / 接收按键（键盘钩子回调只读）。</summary>
     public static bool IsCapturing => _active != null;

@@ -489,14 +489,35 @@ public partial class SuperPanelWindow
 
     private void TrackInteract(ContextMenu menu)
     {
-        menu.Opened += (_, _) => { _openMenu = menu; _interactCount++; };
+        menu.Opened += (_, _) =>
+        {
+            _openMenu = menu;
+            _interactCount++;
+            PublishPanelMirror();
+        };
         menu.Closed += (_, _) =>
         {
             if (_openMenu == menu) _openMenu = null;
             if (_interactCount > 0) _interactCount--;
             // 菜单关掉后焦点回到面板，Windows 可能顺手把面板提到最前；悬浮项要一直盖在面板上面。
             FloatingManager.RaiseAllAbove();
+            PublishPanelMirror();
         };
+        // 子菜单展开 / 收起会改变「点在菜单里」的矩形集合。它们是 Bubble 路由事件，从任意
+        // MenuItem 冒泡到根 ContextMenu，用 AddHandler 监听就不用管菜单项何时加入——
+        // NewTrackedMenu() 是先 TrackInteract 再填 Items，逐个挂事件会漏掉。
+        menu.AddHandler(MenuItem.SubmenuOpenedEvent, new RoutedEventHandler((_, _) => PublishPanelMirror()));
+        menu.AddHandler(MenuItem.SubmenuClosedEvent, new RoutedEventHandler((_, _) => PublishPanelMirror()));
+    }
+
+    /// <summary>
+    /// 阶段 2：面板交互态 / 菜单矩形变化后重推钩子镜像。同步一次让 Interacting 立刻生效，
+    /// 再排到 Background 一拍，等 Popup 的 HWND 建好后把根菜单 + 子菜单矩形补全。
+    /// </summary>
+    private void PublishPanelMirror()
+    {
+        Features.SuperPanel.PublishMirror();
+        Dispatcher.BeginInvoke(new Action(Features.SuperPanel.PublishMirror), DispatcherPriority.Background);
     }
 
     /// <summary>
@@ -549,6 +570,38 @@ public partial class SuperPanelWindow
             && screenY >= rect.Top && screenY < rect.Bottom;
     }
 
+    /// <summary>
+    /// 当前打开的右键菜单（含已展开子菜单）的物理屏幕矩形，供钩子线程的纯数据镜像使用
+    /// （阶段 2）。只能在 UI 线程调用；钩子线程读的是这里算好后发布的不可变数组，绝不碰 WPF 对象。
+    /// </summary>
+    internal HookMirror.Rect[] OpenMenuRects()
+    {
+        var menu = _openMenu;
+        if (menu == null || !menu.IsOpen) return Array.Empty<HookMirror.Rect>();
+        var list = new List<HookMirror.Rect>();
+        try
+        {
+            if (ScreenRectOf(menu) is { } root) list.Add(root);
+            foreach (var item in MenuDescendants(menu.Items))
+            {
+                if (!item.IsSubmenuOpen) continue;
+                if (item.Template?.FindName("PART_Popup", item) is Popup { Child: Visual child }
+                    && ScreenRectOf(child) is { } sub) list.Add(sub);
+            }
+        }
+        catch { /* 拿不到矩形就按空数组处理，钩子不会误判成「点在菜单里」 */ }
+        return list.ToArray();
+    }
+
+    private static HookMirror.Rect? ScreenRectOf(Visual visual)
+    {
+        if (PresentationSource.FromVisual(visual) is not System.Windows.Interop.HwndSource source
+            || source.Handle == IntPtr.Zero)
+            return null;
+        if (!Win32.GetWindowRect(source.Handle, out Win32.Rect r)) return null;
+        return new HookMirror.Rect(r.Left, r.Top, r.Right, r.Bottom);
+    }
+
     /// <summary>菜单在场时点击面板其它位置：只关菜单，**这一下点击照常交给面板内容**（不再吞）。</summary>
     private void OnWindowMouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -558,6 +611,7 @@ public partial class SuperPanelWindow
             var m = _openMenu!;
             _openMenu = null;
             if (m.IsOpen) m.IsOpen = false;
+            PublishPanelMirror();   // 阶段 2：手动关菜单后撤掉镜像里的菜单矩形 / 交互态
         }
 
         // 空白处按下：记住起点，移动超过 4px 才拖窗口（磁贴 / 按钮等交互元素不参与）

@@ -31,26 +31,42 @@ namespace LTools.Views.Controls;
 /// </remarks>
 public partial class AiView : UserControl
 {
-    private readonly DispatcherTimer _timer;
+    private DispatcherTimer? _timer;
     private AiSettings _settings = new();
     private bool _loading;
+    private bool _loaded;
     private string _page = "connect";
 
     public AiView()
     {
         InitializeComponent();
 
-        _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _timer.Tick += (_, _) => AutoRefresh();
-
         ShowPage("connect");
 
         Loaded += (_, _) =>
         {
-            Reload();
-            _timer.Start();
+            if (!_loaded) Reload();
         };
-        Unloaded += (_, _) => _timer.Stop();
+        Unloaded += (_, _) => _timer?.Stop();
+    }
+
+    /// <summary>
+    /// 页面是否可见：1 秒状态刷新只在「AI」页可见时跑，窗口开着但停在别的页（Collapsed）
+    /// 不常驻；由 <c>ConfigHelperWindow.ApplyNavPage</c> 切页时驱动。
+    /// </summary>
+    public void SetActive(bool active)
+    {
+        if (!active) { _timer?.Stop(); return; }
+        EnsureTimer();
+        _timer?.Start();
+    }
+
+    /// <summary>计时器只建一次、Tick 只挂一次（照原来构造里的 1 秒设置）。</summary>
+    private void EnsureTimer()
+    {
+        if (_timer != null) return;
+        _timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1) };
+        _timer.Tick += (_, _) => AutoRefresh();
     }
 
     /// <summary>当前子页（connect / audit）。</summary>
@@ -75,6 +91,7 @@ public partial class AiView : UserControl
     /// <summary>设置页导航到「AI」时调用：重读配置。</summary>
     public void Reload()
     {
+        _loaded = true;
         _loading = true;
         try
         {
@@ -106,6 +123,15 @@ public partial class AiView : UserControl
         {
             _loading = false;
         }
+    }
+
+    /// <summary>
+    /// 切到本页时调用：已建页就不重复 Reload（首次建页时 Loaded 与 ApplyNavPage 只让
+    /// 第一次真正 Reload）；数据真变时调用方仍直接调 <see cref="Reload"/>。
+    /// </summary>
+    public void RefreshIfNeeded()
+    {
+        if (!_loaded) Reload();
     }
 
     // ============ 周期刷新 ============

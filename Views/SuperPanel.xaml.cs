@@ -133,7 +133,7 @@ public partial class SuperPanelWindow : Window
         }
         catch { LogoFallback.Visibility = Visibility.Visible; }
 
-        SetPinned(false);
+        SetPinned(false);   // 内部会推面板镜像（构造期 _window 尚未赋值 → Empty，Show 后再推有效快照）
         RebuildAll();
 
         // 暂存区页（照 Quicker：AI 写好的草稿就在面板左栏，不在设置里）

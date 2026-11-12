@@ -4,6 +4,8 @@
 >
 > 状态：**Phase 0~6 完成（整体重写落地）** — 决策已锁定：托盘 `H.NotifyIcon.Wpf`；整体重写；允许必要的轻量库。提交：`c3404bf`（WPF 整体重写）、`53df8cf`（关闭重入崩溃修复）。全部 6 个窗口经 RenderTargetBitmap 截图核验忠实还原原版浅色主题。Phase 7（NativeAOT/收尾）待后续。
 
+> ⚠️ **本文是 WinForms → WPF 迁移当时的历史记录**。文中「主线程 (STA) = UI 线程」「`HookCallback(nCode, wParam, lParam)` ← 在主 UI 线程执行」「WPF 下无需改线程模型」等结论记录的是迁移当时；**2026-11 阶段 2 起低级键鼠钩子回调已搬到 `HookDispatcher` 专用 STA 线程**，不要照抄进新代码。当前口径见 `docs/THREADING.md`。
+
 ---
 
 ## 1. 目标与范围
@@ -66,7 +68,7 @@
 3. 钩子忽略 `LLKHF_INJECTED`（防自注入递归）。
 4. 注入选中键与复制键之间 `Sleep >= 50ms`；同键连续注入外部应用 `Sleep(20)`。
 
-**迁移影响**：WPF 的 `Application` / `Dispatcher` 同样在主 STA 线程泵送 Win32 消息，低级钩子回调**仍在本线程派发**——所以「钩子回调里直接 `window.Show()`」的模型在 WPF 下成立，无需改线程模型。✅
+**迁移影响**：WPF 的 `Application` / `Dispatcher` 同样在主 STA 线程泵送 Win32 消息，低级钩子回调**仍在本线程派发**——所以「钩子回调里直接 `window.Show()`」的模型在 WPF 下成立，无需改线程模型。✅〔阶段 2 已推翻：钩子回调现跑在 `HookDispatcher` 专用线程，回调里不能直接 `window.Show()`，一律 `Ui.Post`；见 `docs/THREADING.md`〕
 
 ### 2.3 UI 与逻辑的耦合度评估
 

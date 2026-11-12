@@ -5,7 +5,7 @@ LTools（原 CapsLock-Pro / CapsLock++）：Windows 桌面工具，把 CapsLock 
 ## 术语与文档
 
 - **`CONTEXT.md` 是术语表的唯一来源**（面板 / 悬浮 / 场景 / 分组 / 动作 / 步骤 / 单元 / 内置功能 / 草稿 / 采纳…）：每个词叫什么、边界在哪写在那里。需求、代码、提交信息、文档一律用它的叫法；**需求里出现表里没有的词，或同一个东西的第二种叫法，先确认一句再当场补进去**（不攒、不擅自换词），改了词要全链路（`CONTEXT.md` → 本文件 → 代码标识符）。
-- `docs/`：设计规格与阶段方案——`ARCHITECTURE.md`（数据布局）、`ACTION_SYSTEM.md`（动作系统）、`FLOATING.md`（悬浮）、`AI_AGENT.md`（MCP）、`AUTO_TRIGGER.md`（自动触发）。术语只进 `CONTEXT.md`，实现约束与踩过的坑只进本文件。
+- `docs/`：设计规格与阶段方案——`ARCHITECTURE.md`（数据布局）、`ACTION_SYSTEM.md`（动作系统）、`THREADING.md`（线程模型与输入链路量化）、`FLOATING.md`（悬浮）、`AI_AGENT.md`（MCP）、`AUTO_TRIGGER.md`（自动触发）；`INPUT_LATENCY_PLAYBOOK.md` 是跨项目可复用的输入卡顿排查手册（通用经验，非本项目规格）。术语只进 `CONTEXT.md`，实现约束与踩过的坑只进本文件。
 
 ## 构建
 
@@ -37,13 +37,13 @@ dotnet publish LTools.csproj -c Release -r win-x64 --self-contained true -o publ
 
 ## 架构
 
-单 STA 线程模型：WPF Dispatcher 泵送 Win32 消息，低级钩子回调在主 UI 线程派发（模型不变，勿改线程模型）。
+两条 STA 线程（2026-11 阶段 2 起，见 `docs/THREADING.md`）：主 UI 线程（WPF Dispatcher，全部窗体 / 托盘 / 动作库 / 配置）与 `HookDispatcher` 专用线程（纯 Win32 消息泵，安装并派发两个低级钩子）。钩子回调**不再**跑在主 UI 线程——别改回去，也别在回调里同步等 UI。
 
-- `App.xaml.cs` — 入口：单实例互斥体 → 托盘 → 装钩子 → 加载配置 → 看门狗
-- `Hooks/` — `WH_KEYBOARD_LL` / `WH_MOUSE_LL`，纯 P/Invoke，框架无关
-- `Native/` — Win32 调用、InputHelper、NativeClipboard、StaRunner
-- `Core/` — AppState(全局状态)、CapsLockStateMachine、ConfigLocator、TrayService、CrashLog、AutoStartService（任务计划自启 + 路径自愈）
-- `Features/` — 功能模块（QuickNote、SuperPanel、Magnifier、Volume 等），非 UI 逻辑；`ActionLibrary`（动作内存清单 + 落盘）、`HotkeySeeding`（CapsLock 经典预设组播种）
+- `App.xaml.cs` — 入口：单实例互斥体 → `Ui.Initialize` → 托盘 → `HookDispatcher.Start()` → 加载配置 → 看门狗；退出走 `HookDispatcher.Stop()`（绝不在调用线程上等关停）
+- `Hooks/` — `WH_KEYBOARD_LL` / `WH_MOUSE_LL`，纯 P/Invoke，框架无关；`HookDispatcher` 是安装 / 派发它们的专用 STA 线程（命令队列 + `PostThreadMessage`）
+- `Native/` — Win32 调用、InputHelper、NativeClipboard、StaRunner、消息泵 P/Invoke（`Msg` / `GetMessage` / `PeekMessage` / `PostThreadMessage`）
+- `Core/` — AppState(全局状态)、CapsLockStateMachine、ConfigLocator、TrayService、CrashLog、AutoStartService（任务计划自启 + 路径自愈）、`Ui`（主 UI Dispatcher 的 `Post`）、`PerfProbe` / `PerfRunner`（`--perf` 量化探针）
+- `Features/` — 功能模块（QuickNote、SuperPanel、Magnifier、Volume 等），非 UI 逻辑；`ActionLibrary`（动作内存清单 + 落盘）、`HotkeySeeding`（CapsLock 经典预设组播种）、`HookMirror`（钩子线程用的 UI 状态镜像）
 - `Features/Builtin/` — **内置功能目录**（`FeatureCatalog`：常用功能 `common.*` + LTools 功能 `ltools.*`）：不是步骤单元、不进动作编辑器左栏，只放在面板 / 快捷键 / 悬浮里。常用功能含系统类入口与**光标移动 / 文本选择 / 删除与撤销**这组预设按键（`common.key.*` / `common.select.*` / `common.edit.*`，一次模拟按键）。`FeatureDef` 声明参数（文本 / 数字 / 下拉 / 区域），`FeatureRef` 编解码 `id#key=value&…`（存进现有字符串字段，**不升 schema**；动作 Id 永远不带 `#`），`FeatureRunner` 后台执行、失败常驻 toast，`BindingRef` 是面板 / 快捷键 / 悬浮显示名与存活判断的唯一入口。**功能 Id 就是唯一身份，没有别名表**：改名就全链路改（`FeatureCatalog.Defs` + 老配置里的引用），别为旧 Id 留 `Aliases`。新增一条功能只在 `FeatureCatalog.Defs` 加一行；**别再为它新建步骤单元，也别在 UI 里另写一套名称 / 图标查找**
   - 键鼠宏：`MacroAction`（宏 ↔ 动作的唯一桥梁：识别 / 挂成动作 / 放进面板）/ `MacroRecorder`（录制）/ `MacroPlayer`（回放）/ `MacroStore`（`macros/*.json` 事件 + `Macros.Items` 元数据）/ `MacroSettings`（热键与全局参数）/ `MacroHotkey`（录制 / 回放期间的系统热键）/ `HotkeyCapture`（录制式热键录入）；界面是 `Views/Controls/MacroView`（设置 →「键鼠宏」）+ 动作编辑器的宏横幅
 - `Features/Units/` — 功能单元（`<实现领域>/<XxxUnit>.cs`，**一个单元一个文件**；共用的静态小工具如 `FileText` / `Crc32` 放同目录），注册统一在 `BuiltInUnits.RegisterAll`，新增单元只加一行。**目录按实现领域分（Text / Files / Screen…），编辑器里的分类是 `UnitSpec.Category`**，两者不必一致（如剪贴板的实现散在 Text / Files，界面上统一在「剪贴板」）；分类顺序只在 `Core/Actions/UnitCategories` 里定，左栏与「内联取值」下拉共用
@@ -55,6 +55,7 @@ dotnet publish LTools.csproj -c Release -r win-x64 --self-contained true -o publ
 
 修改 `Hooks/` 或在钩子回调路径上调用代码时必须遵守：
 
+- **回调跑在 `HookDispatcher` 专用 STA 线程**：`Hooks/*.cs` 里绝不碰 WPF 对象（窗口 / 菜单 / Popup 跨线程访问会抛「另一个线程拥有该对象」），也绝不 `Invoke` / 等 UI 线程；WPF 副作用一律 `Ui.Post`（只排队不等待），只读 UI 状态走 `HookMirror` 的不可变快照，改钩子线程自己的状态走 `HookDispatcher.Post`。`MouseHook` 长按计时用 `System.Threading.Timer`（钩子线程没有 Dispatcher 泵），看门狗仍在主 UI 线程。新增面板 / 悬浮状态入口要同步补 `PublishMirror()`，否则钩子拿旧快照判错。见 `docs/THREADING.md`
 - 回调**不得阻塞 >300ms**（否则系统自动卸载钩子）
 - 阻塞操作（SendInput / Sleep / 剪贴板）走后台线程
 - 忽略 `LLKHF_INJECTED` 事件（防自注入递归）

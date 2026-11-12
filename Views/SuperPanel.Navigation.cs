@@ -208,6 +208,9 @@ public partial class SuperPanelWindow
         PinIcon.Text = pinned ? "\uE842" : "\uE840";
         PinBtn.Foreground = Res(pinned ? "PrimaryBrush" : "SecondaryTextBrush");
         PinBtn.ToolTip = pinned ? "取消钉住（当前：点击外部不关闭）" : "钉住：点击外部不关闭";
+        // 阶段 2：钉住态是钩子判 Esc / 点外关闭的依据，工具栏 Pin_Click 与右键菜单「钉住面板」
+        // 都汇到这里，一处推送覆盖两个入口（构造期 _window 还没赋值会推 Empty，Show 后再推有效快照）。
+        Features.SuperPanel.PublishMirror();
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e)

@@ -16,9 +16,11 @@ namespace LTools.Features;
 /// 保证「录到的输入 = 目标应用实际收到的输入」。
 /// </summary>
 /// <remarks>
-/// 线程模型：钩子回调在主 UI 线程，录制状态与事件列表也只在 UI 线程读写
-/// （起始 / 停止由托盘、面板、设置页或录制热键触发，同样在 UI 线程），故热路径无需加锁。
-/// 停止时在 UI 线程做一次不可变快照，落盘交给后台线程。
+/// 线程模型（2026-11 阶段 2）：钩子回调跑在专用 <c>HookDispatcher</c> 线程，它调用
+/// <see cref="IsRecording"/> / <see cref="HandleHotkey"/> / <see cref="ObserveKey"/> /
+/// <see cref="ObserveMouse"/>；开始 / 停止仍可能由托盘、设置页、面板从主 UI 线程发起。
+/// 所以录制状态与事件列表统一由 <see cref="Gate"/> 保护，所有 WPF 副作用、系统热键注册、
+/// 生命周期事件一律经 <see cref="Ui.Post"/> 排回主 UI 线程（只排队、不等待）。
 /// 录制热键是**全局**的：按一次开始录一个新宏，再按一次停止（见 <see cref="HandleHotkey"/>）。
 /// </remarks>
 internal static class MacroRecorder
@@ -27,22 +29,26 @@ internal static class MacroRecorder
     private static readonly Dictionary<ushort, uint> _downKeys = new();   // vk → 扩展键标志
     private static readonly HashSet<int> _downButtons = new();
     private static readonly Stopwatch _clock = new();
+    /// <summary>钩子线程写事件、UI 线程起停并做快照：二者串行化，避免「停止时还在追加」。</summary>
+    private static readonly object Gate = new();
 
     private static uint _startRaw;
-    private static int _lastEventMs;
+    private static volatile int _lastEventMs;
     private static int _lastMoveMs = -1000;
     private static int _lastX;
     private static int _lastY;
     private static bool _haveMove;
-    private static bool _recording;
-    private static bool _capsSwallowedDown;   // 录制中吞掉的 CapsLock 仍处于按下状态
+    private static volatile bool _recording;
+    // 钩子线程独占读（HandleCapsLock / ShouldHandleCapsLock），StartCore 在 Gate 内重置：volatile 保证跨线程可见。
+    private static volatile bool _capsSwallowedDown;   // 录制中吞掉的 CapsLock 仍处于按下状态
+    private static bool _stopScheduled;               // 达事件上限后只排一次 Stop（Gate 内读写）
 
     // 录制目标：非空表示覆盖同一宏（「重新录制」）；null 表示新建宏。
     private static string? _recordTargetId;
     private static string? _recordName;          // 覆盖录制时保留原名称；null = 用默认时间戳名
 
     // —— 录制状态事件（供设置页 / 指示器同步）——
-    // 均在触发录制 / 停止的线程（通常是 UI 线程）同步触发；保存完成事件来自后台线程。
+    // 由 Raise / RaiseSaved 统一 Ui.Post 到主 UI 线程触发；宏保存完成事件来自后台线程，同样经 Post。
     public static event Action? RecordingStarted;
     public static event Action? RecordingStopped;
 
@@ -80,7 +86,7 @@ internal static class MacroRecorder
     }
 
     /// <summary>当前录制的事件数（供指示器显示）。</summary>
-    public static int EventCount => _events.Count;
+    public static int EventCount { get { lock (Gate) return _events.Count; } }
 
     /// <summary>录制已进行的毫秒数（供指示器显示）。</summary>
     public static int ElapsedMs => _recording ? (int)_clock.ElapsedMilliseconds : _lastEventMs;
@@ -112,6 +118,7 @@ internal static class MacroRecorder
         if (_recording) return;
 
         // 拒绝原因要说清楚：热键 / 按钮都没反应时用户只能猜。
+        // TrayService / ToastService 都是「任意线程可调、内部自派发」，钩子线程也能直接调。
         if (!MacroSettings.Enabled)
         {
             TrayService.Notify("键鼠宏已停用，无法录制（在设置 → 键鼠宏里打开）");
@@ -128,35 +135,40 @@ internal static class MacroRecorder
             return;
         }
 
-        _events.Clear();
-        _downKeys.Clear();
-        _downButtons.Clear();
-        _capsSwallowedDown = false;
-        _recordTargetId = string.IsNullOrWhiteSpace(targetId) ? null : targetId;
-        _recordName = string.IsNullOrWhiteSpace(name) ? null : name;
-        // 以热键事件的系统 tick 作为零点：录制开始后到第一个输入的停顿也会被回放。
-        _startRaw = rawTime != 0 ? rawTime : unchecked((uint)Environment.TickCount);
-        _lastEventMs = 0;
-        _lastMoveMs = -1000;
-        _lastX = _lastY = 0;
-        _haveMove = false;
-        _clock.Restart();
-        _recording = true;
+        lock (Gate)
+        {
+            // 与 UI 线程 / 钩子线程同时发起开始：只让一次生效。
+            if (_recording) return;
+            _events.Clear();
+            _downKeys.Clear();
+            _downButtons.Clear();
+            _capsSwallowedDown = false;
+            _recordTargetId = string.IsNullOrWhiteSpace(targetId) ? null : targetId;
+            _recordName = string.IsNullOrWhiteSpace(name) ? null : name;
+            // 以热键事件的系统 tick 作为零点：录制开始后到第一个输入的停顿也会被回放。
+            _startRaw = rawTime != 0 ? rawTime : unchecked((uint)Environment.TickCount);
+            _lastEventMs = 0;
+            _lastMoveMs = -1000;
+            _lastX = _lastY = 0;
+            _haveMove = false;
+            _stopScheduled = false;
+            _clock.Restart();
+            _deskLeft = Win32.GetSystemMetrics(Win32.SmXVirtualscreen);
+            _deskTop = Win32.GetSystemMetrics(Win32.SmYVirtualscreen);
+            _deskWidth = Win32.GetSystemMetrics(Win32.SmCxVirtualscreen);
+            _deskHeight = Win32.GetSystemMetrics(Win32.SmCyVirtualscreen);
+            _recording = true;
+        }
 
-        // 兜底停止通道：系统级热键，钩子被摘 / 修饰键判定异常时仍能停下录制。
-        MacroHotkey.Register();
+        // 兜底停止通道：系统级热键要碰 HwndSource，必须回 UI 线程注册。
+        Ui.Post(MacroHotkey.Register);
         Trace($"start target={targetId ?? "-"}");
         AppLog.Info("Macro", $"开始录制（{(string.IsNullOrEmpty(targetId) ? "新建" : "覆盖 " + targetId)}）");
-
-        _deskLeft = Win32.GetSystemMetrics(Win32.SmXVirtualscreen);
-        _deskTop = Win32.GetSystemMetrics(Win32.SmYVirtualscreen);
-        _deskWidth = Win32.GetSystemMetrics(Win32.SmCxVirtualscreen);
-        _deskHeight = Win32.GetSystemMetrics(Win32.SmCyVirtualscreen);
 
         // 创建窗口可能触发 WPF 首帧初始化，放到消息泵之后，避免占用钩子回调。
         // 同时清掉可能残留的面板 / 右键长按手势状态：录制期间钩子透明，这些待处理状态
         // 若不清掉会在录制结束后误作用（例如吞掉下一次右键 up）。
-        Application.Current?.Dispatcher.BeginInvoke(() =>
+        Ui.Post(() =>
         {
             Hooks.MouseHook.CancelPendingGesture();
             // 注意：不能在这里无条件 SuperPanel.Close()——从超级面板新建的动作编辑器是
@@ -171,66 +183,92 @@ internal static class MacroRecorder
 
     /// <summary>停止录制：补齐未释放的键/鼠标键，快照后自动命名并保存（不弹命名框）。</summary>
     /// <param name="force">跳过开录防抖（会话结束等必须收尾的场景）。</param>
+    /// <remarks>
+    /// 阶段 2：可能被 UI 线程（托盘 / 设置页）或钩子线程（录制热键 / 事件上限）同时调用。
+    /// <see cref="Gate"/> 内只做「翻状态 + 补齐 + 拷快照」，与钩子线程的 ObserveKey/ObserveMouse
+    /// 严格串行；日志、UI 副作用、生命周期事件、后台落盘全部移到锁外，且 WPF 副作用走
+    /// <see cref="Ui.Post"/> 只排队不等待，绝不占用钩子回调。
+    /// </remarks>
     public static void Stop(bool force = false)
     {
         if (!_recording) return;
 
-        // 防抖：刚开录 600ms 内收到的「停止」一律忽略——最常见的原因是同一个点击被处理了两次
-        // （按钮双击 / 鼠标抖动 / 热键与系统热键先后到达），表现为「一点录制就提示已停止」。
-        if (!force && _clock.ElapsedMilliseconds < 600)
+        MacroDto? snapshot = null;
+        string? targetId = null;
+        int elapsedMs, eventCount;
+        bool debounced;
+
+        lock (Gate)
         {
-            Trace($"stop-ignored(debounce) elapsed={_clock.ElapsedMilliseconds}\n{ShortStack()}");
+            if (!_recording) return;   // 双检：UI / 钩子同时发起停止，只让一次生效
+            elapsedMs = (int)_clock.ElapsedMilliseconds;
+
+            // 防抖：刚开录 600ms 内收到的「停止」一律忽略——最常见的原因是同一个点击被处理了两次
+            // （按钮双击 / 鼠标抖动 / 热键与系统热键先后到达），表现为「一点录制就提示已停止」。
+            debounced = !force && elapsedMs < 600;
+            if (!debounced)
+            {
+                _recording = false;
+                _clock.Stop();
+                int closeAt = _lastEventMs;
+
+                // 补齐仍按下的键与鼠标键，避免回放时 Ctrl / 左键卡住。
+                foreach (var kv in _downKeys)
+                    _events.Add(new MacroEvent { TimeMs = closeAt, Kind = MacroEventKind.KeyUp, Vk = kv.Key, Flags = kv.Value });
+                _downKeys.Clear();
+                foreach (var b in _downButtons)
+                    _events.Add(new MacroEvent { TimeMs = closeAt, Kind = MacroEventKind.MouseUp, Data = b });
+                _downButtons.Clear();
+
+                eventCount = _events.Count;
+                targetId = _recordTargetId;
+                string? recordName = _recordName;
+                _recordTargetId = null;
+                _recordName = null;
+
+                if (eventCount > 0)
+                {
+                    snapshot = new MacroDto
+                    {
+                        Id = "",   // Id 在后台落盘线程生成（避免在钩子回调里做 File.Exists）
+                        Name = recordName ?? ("录制 " + DateTime.Now.ToString("MM-dd HH:mm:ss")),
+                        CreatedAt = DateTime.Now.ToString("O"),
+                        DurationMs = closeAt,
+                        DesktopLeft = _deskLeft,
+                        DesktopTop = _deskTop,
+                        DesktopWidth = _deskWidth,
+                        DesktopHeight = _deskHeight,
+                        Events = new List<MacroEvent>(_events),
+                    };
+                }
+            }
+            else eventCount = _events.Count;
+        }
+
+        if (debounced)
+        {
+            Trace($"stop-ignored(debounce) elapsed={elapsedMs}\n{ShortStack()}");
             return;
         }
 
-        Trace($"stop elapsed={_clock.ElapsedMilliseconds} events={_events.Count} force={force}\n{ShortStack()}");
-        AppLog.Info("Macro", $"停止录制 · {_clock.ElapsedMilliseconds} ms · {_events.Count} 个事件");
+        // ↓ 锁外：日志 / UI 副作用 / 事件 / 后台落盘，都不占用钩子回调。
+        Trace($"stop elapsed={elapsedMs} events={eventCount} force={force}\n{ShortStack()}");
+        AppLog.Info("Macro", $"停止录制 · {elapsedMs} ms · {eventCount} 个事件");
 
-        _recording = false;
-        _clock.Stop();
-        MacroHotkey.Unregister();
-
-        int closeAt = _lastEventMs;
-
-        // 补齐仍按下的键与鼠标键，避免回放时 Ctrl / 左键卡住。
-        foreach (var kv in _downKeys)
-            _events.Add(new MacroEvent { TimeMs = closeAt, Kind = MacroEventKind.KeyUp, Vk = kv.Key, Flags = kv.Value });
-        _downKeys.Clear();
-
-        foreach (var b in _downButtons)
-            _events.Add(new MacroEvent { TimeMs = closeAt, Kind = MacroEventKind.MouseUp, Data = b });
-        _downButtons.Clear();
-
-        Application.Current?.Dispatcher.BeginInvoke(() =>
+        // 系统热键注销、指示器隐藏、面板恢复都是 WPF 副作用：统一排回 UI 线程。
+        Ui.Post(MacroHotkey.Unregister);
+        Ui.Post(() =>
         {
             RecordingIndicatorWindow.HideIndicator();
             SuperPanel.RestoreAfterRecording();   // 录制期间让开屏幕的面板（若有）显示回来
         });
-        Raise(RecordingStopped);
+        Raise(RecordingStopped);   // Raise 内部 Ui.Post，订阅者一定在 UI 线程收到
 
-        string? targetId = _recordTargetId;
-        string? recordName = _recordName;
-        _recordTargetId = null;
-        _recordName = null;
-
-        if (_events.Count == 0)
+        if (snapshot == null)
         {
             TrayService.Notify("宏录制已停止：没有录制到内容");
             return;
         }
-
-        var snapshot = new MacroDto
-        {
-            Id = "",   // Id 在后台落盘线程生成（避免在钩子回调里做 File.Exists）
-            Name = recordName ?? ("录制 " + DateTime.Now.ToString("MM-dd HH:mm:ss")),
-            CreatedAt = DateTime.Now.ToString("O"),
-            DurationMs = closeAt,
-            DesktopLeft = _deskLeft,
-            DesktopTop = _deskTop,
-            DesktopWidth = _deskWidth,
-            DesktopHeight = _deskHeight,
-            Events = new List<MacroEvent>(_events),
-        };
 
         Task.Run(() =>
         {
@@ -239,7 +277,7 @@ internal static class MacroRecorder
                 snapshot.Id = string.IsNullOrEmpty(targetId) ? MacroStore.NewId() : targetId;
                 MacroStore.Save(snapshot);
                 AppLog.Info("Macro", $"宏已保存「{snapshot.Name}」({snapshot.Id}) · {snapshot.Events.Count} 个事件");
-                RaiseSaved(snapshot.Id);
+                RaiseSaved(snapshot.Id);   // 同样经 Ui.Post 回 UI 线程
             }
             catch (Exception ex)
             {
@@ -292,82 +330,95 @@ internal static class MacroRecorder
     }
 
     /// <summary>钩子回调内调用：记录键盘事件（只追加内存，不做 IO / 序列化）。</summary>
+    /// <remarks>整个方法在 <see cref="Gate"/> 内执行，与 UI 线程的 Stop 快照严格互斥。</remarks>
     public static void ObserveKey(ushort vk, bool down, uint rawTime, uint flags)
     {
         if (!_recording) return;
+        lock (Gate)
+        {
+            if (!_recording) return;   // Stop 已翻状态：迟到的事件不进快照
+            if (down)
+            {
+                _downKeys[vk] = flags & Win32.LlkhfExtended;
+            }
+            else if (!_downKeys.Remove(vk))
+            {
+                // 录制开始前就按下的键，丢弃它迟到的 keyup，避免宏以「无配对的抬起」开头。
+                return;
+            }
 
-        if (down)
-        {
-            _downKeys[vk] = flags & Win32.LlkhfExtended;
+            Add(new MacroEvent
+            {
+                TimeMs = ToRelativeMs(rawTime),
+                Kind = down ? MacroEventKind.KeyDown : MacroEventKind.KeyUp,
+                Vk = vk,
+                Flags = flags & Win32.LlkhfExtended,
+            });
         }
-        else if (!_downKeys.Remove(vk))
-        {
-            // 录制开始前就按下的键，丢弃它迟到的 keyup，避免宏以「无配对的抬起」开头。
-            return;
-        }
-
-        Add(new MacroEvent
-        {
-            TimeMs = ToRelativeMs(rawTime),
-            Kind = down ? MacroEventKind.KeyDown : MacroEventKind.KeyUp,
-            Vk = vk,
-            Flags = flags & Win32.LlkhfExtended,
-        });
     }
 
     /// <summary>钩子回调内调用：记录鼠标事件（只追加内存）。</summary>
+    /// <remarks>
+    /// 整个方法在 <see cref="Gate"/> 内执行；<c>AddButton</c> / <c>Add</c> / <c>ToRelativeMs</c>
+    /// 都由本方法持锁调用，绝不在钩子回调里做 IO 或碰 WPF。
+    /// </remarks>
     public static void ObserveMouse(int msg, int x, int y, int data, uint rawTime)
     {
         if (!_recording) return;
-        int t = ToRelativeMs(rawTime);
-
-        switch (msg)
+        lock (Gate)
         {
-            case Win32.WmMousemove:
-                if (!_haveMove)
-                {
-                    _haveMove = true;
+            if (!_recording) return;   // Stop 已翻状态：迟到的事件不进快照
+            int t = ToRelativeMs(rawTime);
+
+            switch (msg)
+            {
+                case Win32.WmMousemove:
+                    if (!_haveMove)
+                    {
+                        _haveMove = true;
+                        _lastMoveMs = t;
+                        _lastX = x;
+                        _lastY = y;
+                        Add(new MacroEvent { TimeMs = t, Kind = MacroEventKind.MouseMove, X = x, Y = y });
+                        break;
+                    }
+                    if (MacroSettings.MouseSampleMs > 0 && t - _lastMoveMs < MacroSettings.MouseSampleMs) return;
+                    if (MacroSettings.MouseSamplePx > 0 &&
+                        Math.Abs(x - _lastX) < MacroSettings.MouseSamplePx &&
+                        Math.Abs(y - _lastY) < MacroSettings.MouseSamplePx) return;
                     _lastMoveMs = t;
                     _lastX = x;
                     _lastY = y;
                     Add(new MacroEvent { TimeMs = t, Kind = MacroEventKind.MouseMove, X = x, Y = y });
                     break;
-                }
-                if (MacroSettings.MouseSampleMs > 0 && t - _lastMoveMs < MacroSettings.MouseSampleMs) return;
-                if (MacroSettings.MouseSamplePx > 0 &&
-                    Math.Abs(x - _lastX) < MacroSettings.MouseSamplePx &&
-                    Math.Abs(y - _lastY) < MacroSettings.MouseSamplePx) return;
-                _lastMoveMs = t;
-                _lastX = x;
-                _lastY = y;
-                Add(new MacroEvent { TimeMs = t, Kind = MacroEventKind.MouseMove, X = x, Y = y });
-                break;
 
-            case Win32.WmLbuttondown: AddButton(t, MacroEventKind.MouseDown, 1); break;
-            case Win32.WmLbuttonup: AddButton(t, MacroEventKind.MouseUp, 1); break;
-            case Win32.WmRbuttondown: AddButton(t, MacroEventKind.MouseDown, 2); break;
-            case Win32.WmRbuttonup: AddButton(t, MacroEventKind.MouseUp, 2); break;
-            case Win32.WmMbuttondown: AddButton(t, MacroEventKind.MouseDown, 3); break;
-            case Win32.WmMbuttonup: AddButton(t, MacroEventKind.MouseUp, 3); break;
+                case Win32.WmLbuttondown: AddButton(t, MacroEventKind.MouseDown, 1); break;
+                case Win32.WmLbuttonup: AddButton(t, MacroEventKind.MouseUp, 1); break;
+                case Win32.WmRbuttondown: AddButton(t, MacroEventKind.MouseDown, 2); break;
+                case Win32.WmRbuttonup: AddButton(t, MacroEventKind.MouseUp, 2); break;
+                case Win32.WmMbuttondown: AddButton(t, MacroEventKind.MouseDown, 3); break;
+                case Win32.WmMbuttonup: AddButton(t, MacroEventKind.MouseUp, 3); break;
 
-            case Win32.WmXbuttondown:
-            case Win32.WmXbuttonup:
-                int button = ((data >> 16) & 0xFFFF) == Win32.Xbutton1 ? 4 : 5;
-                AddButton(t, msg == Win32.WmXbuttondown ? MacroEventKind.MouseDown : MacroEventKind.MouseUp, button);
-                break;
+                case Win32.WmXbuttondown:
+                case Win32.WmXbuttonup:
+                    int button = ((data >> 16) & 0xFFFF) == Win32.Xbutton1 ? 4 : 5;
+                    AddButton(t, msg == Win32.WmXbuttondown ? MacroEventKind.MouseDown : MacroEventKind.MouseUp, button);
+                    break;
 
-            case Win32.WmMousewheel:
-            case Win32.WmMousehwheel:
-                Add(new MacroEvent
-                {
-                    TimeMs = t,
-                    Kind = msg == Win32.WmMousewheel ? MacroEventKind.Wheel : MacroEventKind.HWheel,
-                    Data = (short)((data >> 16) & 0xFFFF),
-                });
-                break;
+                case Win32.WmMousewheel:
+                case Win32.WmMousehwheel:
+                    Add(new MacroEvent
+                    {
+                        TimeMs = t,
+                        Kind = msg == Win32.WmMousewheel ? MacroEventKind.Wheel : MacroEventKind.HWheel,
+                        Data = (short)((data >> 16) & 0xFFFF),
+                    });
+                    break;
+            }
         }
     }
 
+    /// <summary>调用方必须持有 <see cref="Gate"/>。</summary>
     private static void AddButton(int timeMs, MacroEventKind kind, int button)
     {
         if (kind == MacroEventKind.MouseDown)
@@ -383,15 +434,18 @@ internal static class MacroRecorder
         Add(new MacroEvent { TimeMs = timeMs, Kind = kind, Data = button });
     }
 
+    /// <summary>追加一条事件；调用方必须持有 <see cref="Gate"/>。</summary>
     private static void Add(MacroEvent e)
     {
         _lastEventMs = e.TimeMs;
         _events.Add(e);
 
-        if (_events.Count >= MacroSettings.MaxEvents)
+        if (_events.Count >= MacroSettings.MaxEvents && !_stopScheduled)
         {
-            // 达到上限自动停止（Stop 只做快照 + 后台落盘，仍不阻塞钩子回调）。
-            Stop();
+            // 达到上限自动停止：只排一次，且排到 UI 线程（此刻还在 Gate 内，Stop 不能重入抢锁）。
+            // force 跳过开录防抖——这是容量保护，不是用户多点了一下。
+            _stopScheduled = true;
+            Ui.Post(() => Stop(force: true));
         }
     }
 
@@ -429,25 +483,36 @@ internal static class MacroRecorder
         return string.Join("\n", lines.Take(8)).TrimEnd();
     }
 
+    /// <summary>
+    /// 录制生命周期事件统一排回 UI 线程触发（订阅者是 WPF 控件 / 指示器 / 面板窗口）。
+    /// 阶段 2 前它在「触发录制的那条线程」同步触发，钩子线程触发录制时会跨线程碰 WPF。
+    /// </summary>
     private static void Raise(Action? evt)
     {
         if (evt == null) return;
-        foreach (Action h in evt.GetInvocationList())
+        Ui.Post(() =>
         {
-            try { h(); } catch (Exception ex) { CrashLog.Write("MacroRecorder.Event", ex); }
-        }
+            foreach (Action h in evt.GetInvocationList())
+            {
+                try { h(); } catch (Exception ex) { CrashLog.Write("MacroRecorder.Event", ex); }
+            }
+        });
     }
 
     private static void RaiseSaved(string id)
     {
         var evt = MacroSaved;
         if (evt == null) return;
-        foreach (Action<string> h in evt.GetInvocationList())
+        Ui.Post(() =>
         {
-            try { h(id); } catch (Exception ex) { CrashLog.Write("MacroRecorder.MacroSaved", ex); }
-        }
+            foreach (Action<string> h in evt.GetInvocationList())
+            {
+                try { h(id); } catch (Exception ex) { CrashLog.Write("MacroRecorder.MacroSaved", ex); }
+            }
+        });
     }
 
+    /// <summary>调用方必须持有 <see cref="Gate"/>（读 _startRaw，首次事件惰性定零点）。</summary>
     private static int ToRelativeMs(uint raw)
     {
         if (_startRaw == 0) _startRaw = raw;

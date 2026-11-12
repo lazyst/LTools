@@ -121,7 +121,10 @@ public partial class ConfigHelperWindow
         };
         _loadingLog = false;
         RefreshLogPage(log);
-        RefreshLogPreview();
+        // 日志预览要 ReadTail(5000) 整份扫一遍日志文件；「日志设置」子页可见时预览框并不显示，
+        // 别白读。切到「最近日志」页时 ApplyNavPage 会再调一次 PopulateLogging，那时才首刷，
+        // 之后由 1.5s 轮询增量追加（见 InitLogAutoScroll）。
+        if (Page_LogsRecent.Visibility == Visibility.Visible) RefreshLogPreview();
     }
 
     private void LogOption_Changed(object sender, RoutedEventArgs e)

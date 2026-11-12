@@ -49,10 +49,10 @@ public partial class PanelManageView : UserControl
         };
 
         // 构造时可能还没挂到窗口上（Window.GetWindow 为 null），那时拖动挂不上。
-        // 首次 Loaded 再补一次：只重建详情区，空转说明已经挂好了。
+        // 首次 Loaded 只补建拖动实例，不重建详情区（切页 / 导入由 Reload 重建，避免首次建页刷两遍）。
         Loaded += (_, _) =>
         {
-            if (_tileDrag == null) RenderDetail();
+            if (_tileDrag == null) EnsureTileDrag();
         };
 
         // 空白处右键（照 Quicker）：列表空白新建场景，详情空白新建分组 / 添加动作
@@ -1375,21 +1375,26 @@ public partial class PanelManageView : UserControl
 
     // ============ 辅助 ============
 
+    /// <summary>拖动实例只建一次：构造时窗口还没挂上，首次 Loaded / 首次建磁贴时补建。</summary>
+    private void EnsureTileDrag()
+    {
+        if (_tileDrag != null) return;
+        var win = Window.GetWindow(this);
+        if (win == null) return;   // 还没挂到窗口上：等下一次 Reload
+        _tileDrag = new TileDragSort(win, GhostLayer, DetailHost)
+        {
+            GhostBody = tref => tref.ActionId == null
+                ? null
+                : TileContent(tref.ActionId),
+            Finished = RefreshAll,
+        };
+    }
+
     /// <summary>磁贴拖动：与动作面板同一套（快照幽灵 + 虚线占位 + 实时让位 + Esc 取消）。</summary>
     private void AttachTileDrag(Button btn)
     {
-        if (_tileDrag == null)
-        {
-            var win = Window.GetWindow(this);
-            if (win == null) return;   // 还没挂到窗口上：等下一次 Reload
-            _tileDrag = new TileDragSort(win, GhostLayer, DetailHost)
-            {
-                GhostBody = tref => tref.ActionId == null
-                    ? null
-                    : TileContent(tref.ActionId),
-                Finished = RefreshAll,
-            };
-        }
+        EnsureTileDrag();
+        if (_tileDrag == null) return;   // 还没挂到窗口上：等下一次 Reload
         _tileDrag.Attach(btn);
     }
 

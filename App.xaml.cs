@@ -17,7 +17,10 @@ namespace LTools;
 /// <summary>
 /// WPF 应用入口（替代旧 WinForms <c>TrayAppContext</c>）。
 /// OnStartup：单实例互斥体 → H.NotifyIcon 托盘 → 装/卸钩子 → 初始化菜单/速记/设置 → 看门狗。
-/// 主 STA 线程由 WPF Dispatcher 泵送，低级键盘/鼠标钩子回调仍在本线程派发（模型不变）。
+/// 主 UI STA 线程由 WPF Dispatcher 泵送，只负责托盘与所有 WPF 窗口。
+/// 2026-11 阶段 2 起：低级键盘 / 鼠标钩子装在另一条专用 STA 线程（<see cref="Hooks.HookDispatcher"/>），
+/// 回调在那里同步派发、只做纯数据判定与吞 / 放；WPF 副作用经 <see cref="Ui.Post"/> 排回本线程。
+/// 这样设置窗口首帧渲染 / 切页这类同步重活不再把输入消息顶在队列里（见 cache/perf 基线）。
 /// </summary>
 public partial class App : Application
 {
@@ -33,6 +36,9 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // 主 UI Dispatcher 先登记：钩子专用线程上的一切 WPF 副作用都靠它投递（见 Core/Ui.cs）。
+        Ui.Initialize(Dispatcher);
 
         // —— stdio 桥（LTools.exe --mcp-stdio）：只转发 JSON-RPC，不建托盘 / 钩子 / 单实例互斥体 ——
         if (McpStdioBridge.IsRequested(e.Args))
@@ -163,13 +169,10 @@ public partial class App : Application
         // —— 悬浮项无状态：启动不恢复任何按钮（等用户从面板悬浮），只把偏好准备好 ——
         FloatingManager.Initialize();
 
-        // —— 钩子：先预热回调 JIT（把首次 JIT 编译提前到无钩子阶段），再安装 ——
-        KeyboardHook.WarmUp();
-        MouseHook.WarmUp();
-        try { KeyboardHook.Install(); AppLog.Info("Hook", "键盘钩子已安装"); }
-        catch (Win32Exception ex) { CrashLog.Write("KeyboardHookInstall", ex); }
-        try { MouseHook.Install(); AppLog.Info("Hook", "鼠标钩子已安装"); }
-        catch (Win32Exception ex) { CrashLog.Write("MouseHookInstall", ex); }
+        // —— 钩子装到专用 STA 线程：HookDispatcher 自己预热 JIT、安装两个钩子并泵消息 ——
+        // 主 UI 线程从此只负责 WPF，开窗首帧 / 切页再重也不会把输入消息顶在队列里。
+        // 卸载同样由该线程在泵收尾时做（见 ExitApplication → HookDispatcher.Stop）。
+        HookDispatcher.Start();
 
         // 快捷键白 / 黑名单：跟踪前台窗口变化，进程解析放在后台线程（钩子回调里只做字符串比较）。
         ForegroundAppCache.Start();
@@ -180,6 +183,10 @@ public partial class App : Application
         bool launchedByAutoStart = Array.Exists(e.Args,
             a => string.Equals(a, AutoStartService.AutoStartArgument, StringComparison.OrdinalIgnoreCase));
         TriggerService.Start(cfgPath, launchedByAutoStart);
+
+        // 诊断模式：钩子与各模块就绪后，自动跑「开窗 / 切页」采样，导出结果即退出。
+        // 默认关闭；产品路径上只多一次 e.Args 扫描。
+        if (PerfRunner.IsRequested(e.Args)) PerfRunner.Start();
     }
 
     private void BuildTray()
@@ -394,8 +401,7 @@ public partial class App : Application
         FloatingManager.Shutdown();
         ForegroundAppCache.Stop();
         TriggerService.Stop();
-        KeyboardHook.Uninstall();
-        MouseHook.Uninstall();
+        HookDispatcher.Stop();   // 卸载排在钩子线程自己的泵里，UI 线程不等它
         _tray?.Dispose();
         _singleInstanceMutex?.ReleaseMutex();
         Shutdown();
@@ -407,6 +413,7 @@ public partial class App : Application
         McpServer.Stop();
         FloatingManager.Shutdown();
         TriggerService.Stop();   // 幂等：托盘退出时已 Stop 过一次
+        HookDispatcher.Stop();   // 幂等：系统注销 / 直接关进程时也得让钩子线程收尾卸载
         AppLog.Shutdown();
         base.OnExit(e);
     }

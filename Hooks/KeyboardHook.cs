@@ -7,7 +7,8 @@ using LTools.Native;
 namespace LTools.Hooks;
 
 /// <summary>
-/// 低级键盘钩子（WH_KEYBOARD_LL）。在主线程安装，由 <see cref="Application.Run"/> 消息循环泵送。
+/// 低级键盘钩子（WH_KEYBOARD_LL）。2026-11 阶段 2 起由 <see cref="HookDispatcher"/> 在专用 STA 线程
+/// 安装并泵消息；回调里只做纯数据判定与同步吞 / 放，WPF 副作用经 <see cref="Ui.Post"/> 排回主 UI 线程。
 /// </summary>
 /// <remarks>
 /// 回调返回非零值即吞掉该按键（阻止传递）。设计要点（与原 AHK 一致）：
@@ -22,7 +23,7 @@ internal static class KeyboardHook
     // 防止委托被 GC 回收（SetWindowsHookEx 只存弱引用）
     private static GCHandle _procHandle;
 
-    /// <summary>安装钩子。必须在主线程调用。</summary>
+    /// <summary>安装钩子。必须在 <see cref="HookDispatcher"/> 线程上调用。</summary>
     public static void Install()
     {
         if (_handle != IntPtr.Zero) return;
@@ -173,9 +174,9 @@ internal static class KeyboardHook
             }
 
             // 动作面板打开期间：只拦 Esc（钩子路由，不依赖窗口焦点），其余按键全部放行，
-            // 让搜索框正常输入 / 使用 IME；右键菜单或对话框打开时 IsInteracting 为 true，
-            // 连 Esc 也交回 WPF / 对话框处理。
-            if (isDown && SuperPanel.IsOpen && !SuperPanel.IsInteracting)
+            // 让搜索框正常输入 / 使用 IME；右键菜单或对话框打开时 Interacting 为 true，
+            // 连 Esc 也交回 WPF / 对话框处理。这里读的是 UI 线程发布的纯数据镜像，不碰 WPF 窗口。
+            if (isDown && HookMirror.Panel.Open && !HookMirror.Panel.Interacting)
             {
                 if (SuperPanel.HandleKey(vk, isDown))
                 {

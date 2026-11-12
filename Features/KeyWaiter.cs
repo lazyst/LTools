@@ -24,7 +24,8 @@ internal static class KeyWaiter
 {
     private static readonly object Gate = new();
 
-    private static Waiter? _active;
+    // 阶段 2：Arm / Disarm 由动作后台线程在 Gate 内写，HandleKey 由钩子线程无锁读 → volatile 保证可见。
+    private static volatile Waiter? _active;
 
     /// <summary>
     /// 已经吞掉 keydown、正在等它抬起的键（自动重复也要继续吞）。

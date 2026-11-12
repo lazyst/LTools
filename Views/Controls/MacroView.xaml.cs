@@ -85,6 +85,7 @@ public partial class MacroView : UserControl
     /// <summary>从配置与宏目录重建整页（切到本页 / 导入配置 / 录制结束后调用）。</summary>
     public void Reload()
     {
+        _loaded = true;
         var m = ConfigStore.LoadConfig().Macros ?? new MacroConfig();
 
         _loading = true;
@@ -105,6 +106,15 @@ public partial class MacroView : UserControl
         MacroStore.Invalidate();
         PopulateRows();
         UpdateRecordState();
+    }
+
+    /// <summary>
+    /// 切到本页时调用：已建页且数据没变就不重建（首次建页时 Loaded 与 ApplyNavPage 只让
+    /// 第一次真正 Reload）；数据真变时（导入 / 录制结束 / 删除）调用方仍直接调 <see cref="Reload"/>。
+    /// </summary>
+    public void RefreshIfNeeded()
+    {
+        if (!_loaded) Reload();
     }
 
     private void PopulateRows()

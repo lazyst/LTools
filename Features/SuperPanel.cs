@@ -48,6 +48,34 @@ internal static class SuperPanel
     /// <summary>面板是否已钉住——钉住时点击外部不关闭（钩子不介入外部点击）。</summary>
     public static bool IsPinned => _window?.IsPinned == true;
 
+    /// <summary>
+    /// 把当前面板状态发布给钩子线程的纯数据镜像（阶段 2）。只能在主 UI 线程调用。
+    /// 钩子线程不能碰 WPF 窗口 / 菜单，它读 <see cref="HookMirror.Panel"/> 做同步吞 / 放判定；
+    /// 窗口矩形不进镜像（钩子自己按 HWND 调 GetWindowRect），所以拖动 / 缩放不必推送。
+    /// 面板建窗、关闭、钉住、菜单开合、子菜单展开、交互计数变化、激活态变化都要调一次。
+    /// </summary>
+    internal static void PublishMirror()
+    {
+        var w = _window;
+        if (w == null)
+        {
+            HookMirror.PublishPanel(HookMirror.PanelSnapshot.Empty);
+            return;
+        }
+        IntPtr hwnd = IntPtr.Zero;
+        try { hwnd = new WindowInteropHelper(w).Handle; }
+        catch { /* 窗口刚建好还没句柄：按 0 处理，下次布局事件会补推 */ }
+        HookMirror.PublishPanel(new HookMirror.PanelSnapshot
+        {
+            Open = true,
+            Pinned = w.IsPinned,
+            Interacting = w.InteractCount > 0,
+            Active = w.IsActive,
+            Hwnd = hwnd,
+            MenuRects = w.OpenMenuRects(),
+        });
+    }
+
     /// <summary>面板上是否开着可见的子对话框（<c>Owner = 面板</c>）。</summary>
     public static bool HasOpenDialog
     {
@@ -190,18 +218,21 @@ internal static class SuperPanel
             win.Closed += (_, _) =>
             {
                 if (_window == win) _window = null;
+                PublishMirror();
             };
             _window = win;
             _hiddenForRecording = false;
             // 悬浮项要永远盖在面板前面（照 Quicker）：两边都是 Topmost，同一层里谁最后
             // SetWindowPos 谁在前，面板一显示 / 一激活就会把悬浮按钮盖住。面板每次激活都把
             // 悬浮项重新顶回去（悬浮窗是 WS_EX_NOACTIVATE，不会把焦点从面板抢走）。
-            win.Activated += (_, _) => FloatingManager.RaiseAllAbove();
+            win.Activated += (_, _) => { FloatingManager.RaiseAllAbove(); PublishMirror(); };
+            win.Deactivated += (_, _) => PublishMirror();
             // 在面板里按下鼠标时，Windows 会把面板提到 topmost 带的最前面——即使它已经是活动窗口
             // （这时不会再触发 Activated）。悬浮项要一直盖在面板上面，所以每次按下都顶一次；
             // 只改 z 序（SWP_NOACTIVATE），不会把焦点从面板抢走。
             win.PreviewMouseDown += (_, _) => FloatingManager.RaiseAllAbove();
             win.Show();
+            PublishMirror();   // 建窗后才有 HWND，这时推第一份镜像
             if (openOnStash) win.ShowStashPage();
             win.Activate();
             FloatingManager.RaiseAllAbove();
@@ -221,22 +252,25 @@ internal static class SuperPanel
         if (w == null) return;
         _window = null;
         _hiddenForRecording = false;
+        PublishMirror();   // 先撤镜像：钩子线程立刻知道面板已关，不必等窗口真的 Close()
         try { w.Close(); } catch { /* 静默 */ }
     }
 
-    /// <summary>钩子键路由（不依赖窗口焦点）：Esc 关面板；其余按键放行（搜索框要正常输入）。</summary>
+    /// <summary>
+    /// 钩子键路由（不依赖窗口焦点）：Esc 关面板；其余按键放行（搜索框要正常输入）。
+    /// 阶段 2：判定只读 <see cref="HookMirror.Panel"/> 纯数据镜像，同步返回是否吞键；
+    /// 「关面板」这个 WPF 动作单独 <see cref="Ui.Post"/> 排回主 UI 线程，绝不等待。
+    /// </summary>
     /// <returns>true=已处理（吞掉该键）；false=不处理（交下层）。</returns>
     public static bool HandleKey(ushort vk, bool isDown)
     {
-        if (!IsOpen || !isDown || IsInteracting) return false;
-        var w = _window;
-        if (w == null) return false;
-
+        var s = HookMirror.Panel;
+        if (!s.Open || !isDown || s.Interacting) return false;
         // 钉住后用户去别的窗口工作：键盘归前台窗口，不能继续全局吞 Esc
-        if (w.IsPinned && !w.IsActive) return false;
-
-        if (vk == Win32.VkEscape) { w.RequestEscape(); return true; }
-        return false;
+        if (s.Pinned && !s.Active) return false;
+        if (vk != Win32.VkEscape) return false;
+        Ui.Post(() => _window?.RequestEscape());
+        return true;
     }
 
     /// <summary>删除动作引用：从所有面板分组里移除（由 <see cref="ConfigStore.RemoveAction"/> 调用）。</summary>

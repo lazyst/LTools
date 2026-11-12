@@ -18,7 +18,35 @@ internal static class MacroSettings
     /// <summary>恢复默认时使用的停止回放热键（与 <see cref="MacroConfig.PlaybackStopHotkey"/> 默认值一致）。</summary>
     public const string DefaultPlaybackStopHotkey = "ctrl+f3";
 
-    public static bool Enabled { get; private set; } = true;
+    // —— 阶段 2：钩子专用线程热路径会读的字段一律 volatile ——
+    // Load() 由 UI / 后台线程整体写一次，钩子回调（HandleHotkey / ObserveMouse / Add /
+    // HandleStopHotkey）每次输入都读；引用类型的数组整体替换、内容不再改，volatile 即可保证可见性。
+    // 只在「设置页改设置 → 下次操作」才变的 string / double / 倒计时 / 循环数保持自动属性
+    //（double 不能标 volatile，且这些都不在钩子热路径上）。
+    private static volatile bool _enabled = true;
+    public static bool Enabled => _enabled;
+
+    private static volatile int _mouseSampleMs = 8;
+    /// <summary>鼠标移动最小采样间隔（ms）。0 = 不按时间抽稀。</summary>
+    public static int MouseSampleMs => _mouseSampleMs;
+
+    private static volatile int _mouseSamplePx = 1;
+    /// <summary>鼠标移动最小位移（px）。0 = 不按距离抽稀。</summary>
+    public static int MouseSamplePx => _mouseSamplePx;
+
+    private static volatile int _maxEvents = 200_000;
+    /// <summary>单个宏最大事件数，达到后自动停止录制。</summary>
+    public static int MaxEvents => _maxEvents;
+
+    private static volatile ushort _recordHotkeyVk;
+    public static ushort RecordHotkeyVk => _recordHotkeyVk;
+    private static volatile ushort[] _recordHotkeyModifiers = Array.Empty<ushort>();
+    public static ushort[] RecordHotkeyModifiers => _recordHotkeyModifiers;
+
+    private static volatile ushort _playbackStopVk;
+    public static ushort PlaybackStopVk => _playbackStopVk;
+    private static volatile ushort[] _playbackStopModifiers = Array.Empty<ushort>();
+    public static ushort[] PlaybackStopModifiers => _playbackStopModifiers;
 
     /// <summary>停止录制热键（录制期间临时注册，开始录制用面板按钮 / 托盘）。</summary>
     public static string RecordHotkey { get; private set; } = DefaultRecordHotkey;
@@ -29,27 +57,11 @@ internal static class MacroSettings
     /// <summary>回放前倒计时的全局默认值（ms，0 = 立即回放；宏元数据未设置时使用）。</summary>
     public static int PlaybackCountdownMs { get; private set; }
 
-    /// <summary>鼠标移动最小采样间隔（ms）。0 = 不按时间抽稀。</summary>
-    public static int MouseSampleMs { get; private set; } = 8;
-
-    /// <summary>鼠标移动最小位移（px）。0 = 不按距离抽稀。</summary>
-    public static int MouseSamplePx { get; private set; } = 1;
-
-    /// <summary>单个宏最大事件数，达到后自动停止录制。</summary>
-    public static int MaxEvents { get; private set; } = 200_000;
-
-    /// <summary>默认回放速度倍率（宏未设置专属速度时使用）。</summary>
+    /// <summary>默认回放速度倍率（宏未设置专属速度时使用）。double 不能标 volatile，且只在回放后台线程读。</summary>
     public static double DefaultSpeed { get; private set; } = 1.0;
 
     /// <summary>默认回放循环次数（宏未单独设置时使用，1–99）。</summary>
     public static int PlayLoops { get; private set; } = 1;
-
-    // —— 预解析后的热键（供钩子 O(1) 比较）——
-    public static ushort RecordHotkeyVk { get; private set; }
-    public static ushort[] RecordHotkeyModifiers { get; private set; } = Array.Empty<ushort>();
-
-    public static ushort PlaybackStopVk { get; private set; }
-    public static ushort[] PlaybackStopModifiers { get; private set; } = Array.Empty<ushort>();
 
     public static string RecordHotkeyDisplay => FormatHotkey(RecordHotkey);
 
@@ -59,13 +71,13 @@ internal static class MacroSettings
     public static void Load(AppConfig cfg)
     {
         var m = cfg.Macros ?? new MacroConfig();
-        Enabled = m.Enabled;
+        _enabled = m.Enabled;
         RecordHotkey = NormalizeHotkey(string.IsNullOrWhiteSpace(m.RecordHotkey) ? DefaultRecordHotkey : m.RecordHotkey);
         PlaybackStopHotkey = NormalizeHotkey(string.IsNullOrWhiteSpace(m.PlaybackStopHotkey) ? DefaultPlaybackStopHotkey : m.PlaybackStopHotkey);
         PlaybackCountdownMs = Math.Clamp(m.CountdownMs, 0, 10_000);
-        MouseSampleMs = Math.Clamp(m.MouseSampleMs, 0, 100);
-        MouseSamplePx = Math.Clamp(m.MouseSamplePx, 0, 20);
-        MaxEvents = Math.Clamp(m.MaxEvents, 1_000, 2_000_000);
+        _mouseSampleMs = Math.Clamp(m.MouseSampleMs, 0, 100);
+        _mouseSamplePx = Math.Clamp(m.MouseSamplePx, 0, 20);
+        _maxEvents = Math.Clamp(m.MaxEvents, 1_000, 2_000_000);
         DefaultSpeed = Math.Clamp(m.DefaultSpeed, 0.1, 5.0);
         PlayLoops = Math.Clamp(m.Loops, 1, 99);
 
@@ -82,8 +94,8 @@ internal static class MacroSettings
             rv = (ushort)0x71;                       // F2
             rm = new ushort[] { 0xA2 };              // Ctrl
         }
-        RecordHotkeyVk = rv;
-        RecordHotkeyModifiers = rm;
+        _recordHotkeyVk = rv;
+        _recordHotkeyModifiers = rm;
 
         if (!TryParseHotkey(PlaybackStopHotkey, out var pv, out var pm, out var perr))
         {
@@ -96,8 +108,8 @@ internal static class MacroSettings
             pv = (ushort)0x72;                       // F3
             pm = new ushort[] { 0xA2 };              // Ctrl
         }
-        PlaybackStopVk = pv;
-        PlaybackStopModifiers = pm;
+        _playbackStopVk = pv;
+        _playbackStopModifiers = pm;
     }
 
     /// <summary>

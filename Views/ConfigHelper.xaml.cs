@@ -74,6 +74,8 @@ public partial class ConfigHelperWindow : Window
 
     public ConfigHelperWindow(string configPath)
     {
+        // 诊断采样：覆盖整个构造期（XAML 解析 / 内联页 / 数据回填 / 导航恢复排队）
+        using var perfSeg = PerfProbe.Measure("ctor:total");
         InitializeComponent();
         WindowChromeHelper.FixMaximize(this);
         // App.OnStartup 已经 Initialize 过（同一锚点）：只有锚点真变了才重做，否则每次打开设置
@@ -90,10 +92,12 @@ public partial class ConfigHelperWindow : Window
         _navPersistTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _navPersistTimer.Tick += (_, _) => { _navPersistTimer.Stop(); FlushNavPersist(); };
 
-        PopulateActions();
-        PopulateTerminals();
         InitLogAutoScroll();
-        PopulateLogging();
+        // 「动作管理 / 终端路径 / 日志设置」的回填延后到页面真正可见时：下面排到 Background 的
+        // ApplyNavPage(startupNav) 会按启动页调用对应的 Populate*，用户中途切页也由 ApplyNavPage 补。
+        // 构造期无条件跑三份（尤其 PopulateLogging 会 ReadTail(5000) 扫一遍日志文件），
+        // 启动页不是它们时全是白工；这三类回填没有构造期必须完成的初始化副作用。
+        // InitLogAutoScroll 只挂 timer / 初始化按钮，必须留在构造期。
 
         _pagesReady = true;
         // 恢复导航状态只读 ui 单域（原来整份 LoadConfig 会顺带扫一遍 actions/）。
@@ -554,6 +558,9 @@ public partial class ConfigHelperWindow : Window
 
     private void ApplyNavPage(string tag)
     {
+        // 诊断采样：单个 tag 的整次切页（含惰性建页 / Reload / 动画注册）
+        using var perfSeg = PerfProbe.Measure("nav:" + tag);
+
         // 父项（superpanel / ai / macros / logs）落到该分组上次所在的子页
         if (tag is FamilySuperPanel or FamilyAi or FamilyMacros or FamilyLogs) tag = NavTagOf(tag, _lastSubPage[tag]);
 
@@ -599,17 +606,21 @@ public partial class ConfigHelperWindow : Window
         if (!_restoringNav) ScheduleNavPersist();
 
         // 只实例化 + 载入「当前显示的那一页」：其余惰性页一律不碰（B 方案）。
-        // 二级子页（superpanel / macros / ai）由 ShowPage 触发创建，Reload 复用同一实例。
+        // 二级子页（superpanel / macros / ai）由 ShowPage 触发创建，首次载入走 RefreshIfNeeded
+        // （已建过就跳过，数据真变时由 RefreshCreatedPages 统一 Reload），避免每次切页整表重建。
         if (superPanel) Page_SuperPanel.ShowPage(page);
         if (ai) Page_Ai.ShowPage(page);
         if (macros) Page_Macros.ShowPage(page);
         if (tag == "actions") PopulateActions();
-        if (tag == "subactions") Page_SubActions.Reload();
-        if (ai) Page_Ai.Reload();
+        if (tag == "subactions") Page_SubActions.RefreshIfNeeded();
+        if (ai) Page_Ai.RefreshIfNeeded();
         if (tag == "hotkeys") Page_Hotkeys.RefreshIfNeeded();
-        if (macros) Page_Macros.Reload();
-        if (tag == "triggers") Page_Triggers.Reload();
+        if (macros) Page_Macros.RefreshIfNeeded();
+        if (tag == "triggers") Page_Triggers.RefreshIfNeeded();
         if (superPanel) Page_SuperPanel.Reload();
+        // AI 页的 1 秒状态刷新只在可见时跑；用字段访问，别为没打开过的页强建视图。
+        // 放在 ShowPage / RefreshIfNeeded 之后：首次进入时实例刚建好，SetActive(true) 才生效。
+        _pageAi?.SetActive(ai);
     }
 
     /// <summary>记住当前导航页与二级下拉的展开状态（只动 ui.json 的这两个字段）。</summary>
@@ -631,6 +642,8 @@ public partial class ConfigHelperWindow : Window
 
     private void ScheduleNavPersist()
     {
+        // 诊断采样会反复切页，不能把用户记住的导航页覆盖掉，也不该在采样里混进后台写盘。
+        if (PerfProbe.Enabled) return;
         _pendingNav = string.IsNullOrEmpty(_currentNav) ? "actions" : _currentNav;
         _pendingGroups = _expandedGroups.ToList();
         _navDirty = true;

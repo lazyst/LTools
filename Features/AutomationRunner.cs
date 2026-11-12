@@ -35,7 +35,8 @@ internal static class AutomationRunner
 
     private static int _running;
     private static volatile CancellationTokenSource? _cts;   // Stop() 从钩子 / UI 线程读取
-    private static bool _stopKeySwallowed;
+    // 阶段 2：HandleStopHotkey 在钩子线程成对读写（keydown 置位、keyup 清位），补 volatile 明确可见性。
+    private static volatile bool _stopKeySwallowed;
 
     /// <summary>是否有自动化正在运行（钩子 / 宏热键读取）。</summary>
     public static bool IsRunning => Volatile.Read(ref _running) != 0;

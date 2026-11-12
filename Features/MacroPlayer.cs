@@ -26,10 +26,13 @@ internal static class MacroPlayer
 
     private static readonly ManualResetEventSlim _wake = new(false);
     private static volatile bool _stop;
+    // 阶段 2：PlaySync 在动作后台线程写、KeyboardHook / MacroRecorder 从钩子线程读。
+    // 不标 volatile（否则 Interlocked.Exchange(ref ...) 报 CS0420），读写一律走 Volatile / Interlocked：
+    // 写 1 = Interlocked.Exchange，写 0 = Volatile.Write，读 = Volatile.Read。
     private static int _playing;
-    private static bool _stopKeySwallowed;   // 停止热键的 keydown 已吞，配套 keyup 也要吞
+    private static volatile bool _stopKeySwallowed;   // 停止热键的 keydown 已吞，配套 keyup 也要吞
 
-    public static bool IsPlaying => _playing != 0;
+    public static bool IsPlaying => Volatile.Read(ref _playing) != 0;
 
     /// <summary>同步回放（供 <see cref="ActionExecutor"/> 在后台线程按步骤顺序调用）。</summary>
     public static void PlaySync(MacroDto macro) => PlaySync(macro, MacroStore.PlaybackOf(macro.Id));
@@ -66,7 +69,7 @@ internal static class MacroPlayer
         catch (Exception ex)
         {
             AppLog.Error("Macro", $"回放失败「{macro.Name}」", ex);
-            _playing = 0;
+            Volatile.Write(ref _playing, 0);
             throw;
         }
         finally
@@ -96,7 +99,7 @@ internal static class MacroPlayer
     /// <summary>请求停止回放；回放线程会在下一个等待点退出并释放按键。</summary>
     public static void Stop()
     {
-        if (_playing != 0) AppLog.Info("Macro", "收到停止回放请求");
+        if (Volatile.Read(ref _playing) != 0) AppLog.Info("Macro", "收到停止回放请求");
         _stop = true;
         _wake.Set();
     }
@@ -170,7 +173,7 @@ internal static class MacroPlayer
             foreach (var b in buttons)
                 MouseUp(b);
 
-            _playing = 0;
+            Volatile.Write(ref _playing, 0);
             _wake.Reset();
         }
     }

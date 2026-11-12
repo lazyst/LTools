@@ -180,7 +180,7 @@ agent/
   **这就是现成的机器可读目录**，不需要另写一份 YAML。
 - 运行入口唯一：`AutomationRunner.TryRunProgram(name, program, startPath, trace, completed)`，
   已有单实例互斥、停止热键、Toast 收尾、`StepTrace`（路径 + 人话标签）。
-- 线程模型：单 STA，钩子在 UI 线程派发。**任何 MCP 写操作都必须 `Dispatcher.InvokeAsync`**。
+- 线程模型（2026-11 阶段 2 起，见 `docs/THREADING.md`）：两条 STA 线程——主 UI 线程（WPF Dispatcher）与 `HookDispatcher` 专用线程（纯 Win32 消息泵）。低级键鼠钩子回调跑在后者，**不碰任何 WPF 对象**，只读 `HookMirror` 快照、WPF 副作用走 `Ui.Post`。动作库 / 配置 / 全体 WPF 窗口仍只属于主 UI 线程，**任何 MCP 写操作都必须回主 UI 线程**（`AiUi.Run` / `Dispatcher.InvokeAsync`）；不要在 UI 线程上等 HTTP 结果（死锁）。
 - 资源回收：`ImageLibrary.CollectGarbage` 只扫 `resources/images/shot-*.png`，按 `ProgramWalker` 收集的
   `image` 字面量判活；`resources/user/` 永不回收。
 - 动作私有资源在 `actions/<id>/files/`：随动作目录删除 / 备份，不参与上面的按引用回收。

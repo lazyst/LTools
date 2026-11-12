@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using LTools.Config;
 using LTools.Core;
+using LTools.Features;
 using LTools.Features.Builtin;
 using LTools.Native;
 using LTools.Views;
@@ -47,6 +48,7 @@ internal static class FloatingManager
             try { w.Close(); } catch { /* 已在关闭 */ }
         }
         Windows.Clear();
+        PublishMirror();
     }
 
     // —— 菜单入口 ——
@@ -143,6 +145,7 @@ internal static class FloatingManager
             try { window.Close(); } catch { /* 已关 */ }
         }
         FloatingLibrary.RemoveItem(itemId);
+        PublishMirror();
     }
 
     /// <summary>关闭所有悬浮项（托盘 / 右键菜单）。</summary>
@@ -157,6 +160,7 @@ internal static class FloatingManager
             }
             Windows.Clear();
             FloatingLibrary.Items.Clear();
+            PublishMirror();
             if (any) ToastService.Show("已关闭全部悬浮项");
         });
     }
@@ -169,6 +173,7 @@ internal static class FloatingManager
             FloatingLibrary.CollectGarbage();
             foreach (var item in FloatingLibrary.Items.ToList())
                 RefreshItem(item.Id);
+            PublishMirror();
         });
     }
 
@@ -191,6 +196,7 @@ internal static class FloatingManager
             {
                 Windows.Remove(itemId);
                 try { window.Close(); } catch { /* 已关 */ }
+                PublishMirror();
                 return;
             }
 
@@ -210,6 +216,7 @@ internal static class FloatingManager
     {
         if (Windows.TryGetValue(window.ItemId, out var existing) && ReferenceEquals(existing, window))
             Windows.Remove(window.ItemId);
+        PublishMirror();
     }
 
     /// <summary>
@@ -233,6 +240,26 @@ internal static class FloatingManager
     // 「点外部关菜单」在悬浮窗上永远不触发（实测点外部一条鼠标消息都收不到）。
     // 只能照 SuperPanel 的做法，用全局鼠标钩子按坐标判定。
 
+    /// <summary>
+    /// 把当前所有悬浮菜单状态发布给钩子线程的纯数据镜像（阶段 2）。
+    /// 读的是 WPF 窗口 / Popup，**只能在主 UI 线程跑**；从后台 / 钩子线程调进来时自动排回 UI 线程。
+    /// </summary>
+    internal static void PublishMirror()
+    {
+        if (!Ui.IsUiThread)
+        {
+            Ui.Post(PublishMirror);
+            return;
+        }
+
+        var windows = Windows.Values.ToList();
+        HookMirror.PublishFloat(new HookMirror.FloatSnapshot
+        {
+            MenuOpen = windows.Any(w => w.IsMenuOpen),
+            MenuRects = windows.SelectMany(w => w.OpenMenuRects()).ToArray(),
+        });
+    }
+
     /// <summary>有没有悬浮窗的右键菜单开着。</summary>
     internal static bool IsMenuOpen => Windows.Values.Any(w => w.IsMenuOpen);
 
@@ -244,6 +271,7 @@ internal static class FloatingManager
     internal static void CloseOpenMenu()
     {
         foreach (var w in Windows.Values.ToList()) w.CloseMenuNow();
+        PublishMirror();
     }
 
     /// <summary>
@@ -254,6 +282,7 @@ internal static class FloatingManager
     {
         if (!IsMenuOpen || MenuContains(screenX, screenY)) return false;
         CloseOpenMenu();
+        PublishMirror();   // 阶段 2：成功关掉菜单后再推一次，钩子镜像立刻清掉矩形
         return true;
     }
 
@@ -287,6 +316,7 @@ internal static class FloatingManager
             {
                 Windows.Remove(window.ItemId);
                 try { window.Close(); } catch { /* 已关 */ }
+                PublishMirror();
                 SnapToEdges(target);
                 target.SyncPosition();
                 RefreshItem(target.ItemId);
@@ -310,6 +340,7 @@ internal static class FloatingManager
         var window = new FloatWindow(item);
         Windows[item.Id] = window;
         window.Show();
+        PublishMirror();
         return window;
     }
 

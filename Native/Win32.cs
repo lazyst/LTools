@@ -445,4 +445,45 @@ internal static class Win32
     public const int SwMinimize = 6;
     public const int SwRestore = 9;
     public const uint WmClose = 0x0010;
+
+    // —— 专用钩子线程的消息泵（见 Hooks/HookDispatcher.cs）——
+    // WH_*_LL 的回调由「安装它的那条线程」的消息循环派发，所以那条线程必须自己泵消息。
+    // 用纯 Win32 泵而不是 WPF Dispatcher：钩子线程一个 WPF 对象都不碰，命令靠
+    // PostThreadMessage 唤醒 + ConcurrentQueue 排空，回调与命令在同一条线程上串行执行。
+
+    /// <summary>MSG（x64）。末尾多留一个 DWORD，保证结构不小于系统实际的 MSG，GetMessage 不会写越界。</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Msg
+    {
+        public IntPtr Hwnd;
+        public uint Message;
+        public IntPtr WParam;
+        public IntPtr LParam;
+        public uint Time;
+        public int PtX;
+        public int PtY;
+        public uint LPrivate;
+    }
+
+    /// <summary>唤醒消息：PostThreadMessage 用它让阻塞在 GetMessage 的泵回来排空命令队列。</summary>
+    public const uint WmAppHookCommand = 0x8001;   // WM_APP + 1
+    public const uint PmNoremove = 0x0000;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern int GetMessage(out Msg lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [DllImport("user32.dll")]
+    public static extern bool PeekMessage(out Msg lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, uint wRemoveMsg);
+
+    [DllImport("user32.dll")]
+    public static extern bool TranslateMessage(ref Msg lpMsg);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr DispatchMessage(ref Msg lpMsg);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern void PostQuitMessage(int nExitCode);
 }

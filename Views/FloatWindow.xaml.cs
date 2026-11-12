@@ -6,6 +6,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features;
@@ -306,12 +307,26 @@ public partial class FloatWindow : Window
         menu.Closed += (_, _) =>
         {
             if (ReferenceEquals(_menu, menu)) _menu = null;
+            FloatingManager.PublishMirror();
         };
+        // 阶段 2：菜单开合 / 子菜单展开都要把矩形重推给钩子镜像（钩子线程只读纯数据快照）。
+        // Popup 的 HWND 可能晚一拍才建好，所以排到 Background 再量；到时读的仍是当前状态。
+        menu.Opened += (_, _) => PublishMenuMirror();
+        foreach (var item in Descendants(menu.Items))
+        {
+            item.SubmenuOpened += (_, _) => PublishMenuMirror();
+            item.SubmenuClosed += (_, _) => PublishMenuMirror();
+        }
 
         _menu = menu;
         menu.IsOpen = true;
+        PublishMenuMirror();
         AppLog.Info("Floating", $"打开悬浮菜单：{_item.Id}");
     }
+
+    /// <summary>菜单状态变化：等 Popup 窗口建好后再重推钩子镜像（只在主 UI 线程）。</summary>
+    private void PublishMenuMirror() =>
+        Dispatcher.BeginInvoke(new Action(FloatingManager.PublishMirror), DispatcherPriority.Background);
 
     private void CloseMenu()
     {
@@ -319,6 +334,7 @@ public partial class FloatWindow : Window
         _menu = null;
         if (menu == null) return;
         try { menu.IsOpen = false; } catch { /* 已关闭 */ }
+        FloatingManager.PublishMirror();   // 阶段 2：菜单关掉，立刻撤掉镜像里的矩形
     }
 
     /// <summary>右键菜单现在是否开着（鼠标钩子的「点外关闭」要用）。</summary>
@@ -392,6 +408,37 @@ public partial class FloatWindow : Window
         if (!Win32.GetWindowRect(source.Handle, out Win32.Rect rect)) return false;
         return screenX >= rect.Left && screenX < rect.Right
             && screenY >= rect.Top && screenY < rect.Bottom;
+    }
+
+    /// <summary>
+    /// 当前打开的右键菜单（含已展开子菜单）的物理屏幕像素矩形，供钩子线程的纯数据镜像使用
+    /// （阶段 2）。只能在主 UI 线程调用；拿不到窗口矩形就跳过那一项。
+    /// </summary>
+    internal HookMirror.Rect[] OpenMenuRects()
+    {
+        var menu = _menu;
+        if (menu == null || !menu.IsOpen) return Array.Empty<HookMirror.Rect>();
+        var list = new List<HookMirror.Rect>();
+        try
+        {
+            if (ScreenRectOf(menu) is { } root) list.Add(root);
+            foreach (var item in Descendants(menu.Items))
+            {
+                if (!item.IsSubmenuOpen) continue;
+                if (item.Template?.FindName("PART_Popup", item) is Popup { Child: Visual child }
+                    && ScreenRectOf(child) is { } sub) list.Add(sub);
+            }
+        }
+        catch { /* 拿不到矩形就跳过，别让整份快照失败 */ }
+        return list.ToArray();
+    }
+
+    private static HookMirror.Rect? ScreenRectOf(Visual visual)
+    {
+        var source = PresentationSource.FromVisual(visual) as HwndSource;
+        if (source == null || source.Handle == IntPtr.Zero) return null;
+        if (!Win32.GetWindowRect(source.Handle, out Win32.Rect r)) return null;
+        return new HookMirror.Rect(r.Left, r.Top, r.Right, r.Bottom);
     }
 
     /// <summary>由鼠标钩子调用：点外部时关掉菜单。</summary>

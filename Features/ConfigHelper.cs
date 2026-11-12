@@ -45,6 +45,8 @@ internal static class ConfigHelper
     {
         if (_window != null) return _window;
 
+        // 诊断采样：把 new + Show() 整段算作「开窗」（阶段 0 量化 / 阶段 2 复测同一把尺子）
+        using var perfSeg = PerfProbe.Measure("open:total");
         var window = new ConfigHelperWindow(_configPath ?? "");
         window.Closed += (_, _) => _window = null;
         _window = window;
@@ -92,5 +94,15 @@ internal static class ConfigHelper
         };
         if (tag == null) Open();
         else EnsureWindow().NavigateTo(tag);
+    }
+
+    // —— 诊断采样入口（仅 --perf 使用；不参与产品路径） ——
+    internal static void PerfOpen() => EnsureWindow();
+    internal static void PerfNavigate(string tag) => _window?.NavigateTo(tag);
+    internal static void PerfClose()
+    {
+        var window = _window;
+        _window = null;
+        window?.Close();
     }
 }
