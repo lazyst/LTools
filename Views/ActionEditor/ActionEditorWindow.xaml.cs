@@ -85,6 +85,7 @@ public partial class ActionEditorWindow : Window
     private bool _suppressUnitClick;
     private DropSpot? _unitDrop;
     private DispatcherTimer? _unitScroll;
+    private readonly SearchDebounce _toolboxSearchDebounce;
 
     public ActionEditorWindow(string title, ActionDto? existing)
         : this(title, existing, null) { }
@@ -104,6 +105,7 @@ public partial class ActionEditorWindow : Window
     {
         InitializeComponent();
         WindowChromeHelper.FixMaximize(this);
+        _toolboxSearchDebounce = new SearchDebounce(150, BuildToolbox);
 
         _subDef = subAction;
         _isSubAction = subAction != null;
@@ -174,6 +176,7 @@ public partial class ActionEditorWindow : Window
         // 关窗时别把正在跑的试运行留在后台（它会继续操作键鼠）。
         Closed += (_, _) =>
         {
+            _toolboxSearchDebounce.Cancel();
             _traceFlush?.Stop();
             if (_running) AutomationRunner.Stop();
             MacroRecorder.RecordingStopped -= OnMacroRecordingStopped;

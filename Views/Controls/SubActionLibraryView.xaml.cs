@@ -235,7 +235,7 @@ public partial class SubActionLibraryView : UserControl
 
         try
         {
-            SubActionStore.Save(dlg.SubResult);
+            SubActionStore.Save(dlg.SubResult, createNew: def == null || string.IsNullOrWhiteSpace(def.Id));
         }
         catch (ActionException ex)
         {

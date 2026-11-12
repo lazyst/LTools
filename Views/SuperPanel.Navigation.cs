@@ -37,9 +37,16 @@ public partial class SuperPanelWindow
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        _searchDebounce.Signal();
+    }
+
+    /// <summary>
+    /// 防抖落定后才重建面板：RebuildAll 会重造上下两区全部磁贴 / 分组 / 导航条，
+    /// 每敲一键都跑会顶住鼠标（低级鼠标钩子与 UI 共用线程）。
+    /// ↑↓ / Enter 在 <see cref="SearchBox_PreviewKeyDown"/> 里先 Flush，拿到的仍是最新结果。
+    /// </summary>
+    private void ApplyPanelSearch()
+    {
         RebuildAll();
         GlobalScroll.ScrollToTop();
         ContextScroll.ScrollToTop();
@@ -48,6 +55,7 @@ public partial class SuperPanelWindow
 
     private void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key is Key.Down or Key.Up or Key.Enter) _searchDebounce.Flush();
         switch (e.Key)
         {
             case Key.Escape:

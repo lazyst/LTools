@@ -1,6 +1,7 @@
 <UserControl x:Class="LTools.Views.ValueField"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LTools.Views.Controls"
              FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
     <Grid>
         <Grid.RowDefinitions>
@@ -126,6 +127,7 @@
                             <TextBox x:Name="SearchBox" Grid.Column="1" BorderThickness="0"
                                      Background="Transparent" MinHeight="22" Padding="0"
                                      VerticalContentAlignment="Center"
+                                     controls:TextBoxPlaceholder.Text="搜索…"
                                      TextChanged="Search_Changed"
                                      PreviewKeyDown="Search_PreviewKeyDown"/>
                         </Grid>

@@ -40,12 +40,17 @@ public partial class HotkeysView : UserControl
     private bool _loading;
     private bool _loaded;
     private int _renderedRevision = -1;   // 本页最后一次重建时 HotkeyRegistry.Revision 的值
+    private string _searchText = "";      // 防抖落定时算一次，FilterRow 不再每行读 TextBox / 重算行显示串
+    private readonly SearchDebounce _searchDebounce;
 
     public HotkeysView()
     {
         InitializeComponent();
         GroupList.ItemsSource = _groups;
         BindingGrid.ItemsSource = _rows;
+
+        _searchDebounce = new SearchDebounce(150, ApplySearch);
+        Unloaded += (_, _) => _searchDebounce.Cancel();
 
         if (CollectionViewSource.GetDefaultView(_rows) is { } view) view.Filter = FilterRow;
 
@@ -266,7 +271,7 @@ public partial class HotkeysView : UserControl
         var (ok, name) = InputDialog.Show(Window.GetWindow(this), "新建预设组", "名称：", "新预设组");
         if (!ok || string.IsNullOrWhiteSpace(name)) return;
 
-        var group = new HotkeyGroup { Id = _file.NewId("g"), Name = name.Trim(), Enabled = true };
+        var group = new HotkeyGroup { Id = _file.NewId(), Name = name.Trim(), Enabled = true };
         _file.Groups.Add(group);
         Save(group.Id, null);
     }
@@ -336,7 +341,7 @@ public partial class HotkeysView : UserControl
     {
         if (_group != null) return _group;
 
-        var group = new HotkeyGroup { Id = _file.NewId("g"), Name = "我的快捷键", Enabled = true };
+        var group = new HotkeyGroup { Id = _file.NewId(), Name = "我的快捷键", Enabled = true };
         _file.Groups.Add(group);
         _group = group;
         return group;
@@ -349,7 +354,7 @@ public partial class HotkeysView : UserControl
         var result = HotkeyEditDialog.Show(Window.GetWindow(this), draft);
         if (result == null) return;
 
-        result.Id = _file.NewId("b");
+        result.Id = _file.NewId();
         group.Bindings.Add(result);
         Save(group.Id, result.Id);
     }
@@ -509,15 +514,24 @@ public partial class HotkeysView : UserControl
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_loading) return;
-        CollectionViewSource.GetDefaultView(_rows)?.Refresh();
+        _searchDebounce.Signal();
+    }
+
+    /// <summary>
+    /// 防抖落定后才刷筛选视图：一次 Refresh 会重跑所有行并让 DataGrid 重新布局，
+    /// 每敲一键都跑会顶住鼠标（钩子与 UI 共用线程）。量化埋点走 PerfProbe（默认关）。
+    /// </summary>
+    private void ApplySearch()
+    {
+        _searchText = SearchBox.Text.Trim();
+        using (PerfProbe.Measure("hotkeys:search"))
+            CollectionViewSource.GetDefaultView(_rows)?.Refresh();
     }
 
     private bool FilterRow(object item)
     {
         if (item is not BindingRow row) return false;
-        string query = SearchBox.Text.Trim();
-        if (query.Length == 0) return true;
-        return row.Matches(query);
+        return _searchText.Length == 0 || row.Matches(_searchText);
     }
 
     private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
@@ -564,7 +578,13 @@ public partial class HotkeysView : UserControl
             Source = binding;
             _file = file;
             Conflict = conflict;
+            // 搜索文本建行时算一次：Chord / ActionName / ScopeText 都是格式化后的显示串，
+            // 原来 FilterRow 每敲一键对每行重算四次；拼成一串后只做一次 Contains。
+            SearchText = string.Join('\n', Chord, ActionName, ScopeText, Note);
         }
+
+        /// <summary>搜索用的预算文本（不是值，不参与保存）。</summary>
+        public string SearchText { get; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -607,9 +627,6 @@ public partial class HotkeysView : UserControl
         public string Note => Source.Note;
 
         public bool Matches(string query) =>
-            Chord.Contains(query, StringComparison.OrdinalIgnoreCase)
-            || ActionName.Contains(query, StringComparison.OrdinalIgnoreCase)
-            || ScopeText.Contains(query, StringComparison.OrdinalIgnoreCase)
-            || Note.Contains(query, StringComparison.OrdinalIgnoreCase);
+            SearchText.Contains(query, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -13,6 +13,7 @@ using LTools.Core.Actions;
 using LTools.Features;
 using LTools.Features.Builtin;
 using LTools.Features.Panel;
+using LTools.Views.Controls;
 
 namespace LTools.Views;
 
@@ -37,6 +38,7 @@ public partial class ActionPoolPicker : Window
     private ListCollectionView? _view;
     private List<string> _recent = new();
     private ActionRow? _current;
+    private readonly SearchDebounce _searchDebounce;
 
     /// <summary>打开时指定的动作已不在池里：不自动改选，免得按一次确定就把槽位换掉。</summary>
     private bool _preselectMissing;
@@ -59,6 +61,8 @@ public partial class ActionPoolPicker : Window
         Topmost = owner?.Topmost ?? true;
 
         _recent = LoadRecent();
+        _searchDebounce = new SearchDebounce(150, ApplySearch);
+        Closed += (_, _) => _searchDebounce.Cancel();
         BuildRows();
         ApplyFilter("");
 
@@ -199,9 +203,6 @@ public partial class ActionPoolPicker : Window
 
         CountText.Text = kw.Length == 0 ? $"{_all.Count} 项" : $"匹配 {rows.Count} / {_all.Count}";
         EmptyHint.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
     }
 
     /// <summary>筛选后保持选中：原选中还在就留着，否则选第一项（没有动作时清空预览）。</summary>
@@ -490,9 +491,15 @@ public partial class ActionPoolPicker : Window
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        _searchDebounce.Signal();
+    }
+
+    /// <summary>
+    /// 防抖落定后才重建 ListCollectionView：每敲一键都 new 一个视图 + 让列表重新分组布局，
+    /// 会把光标顶住一下；↑↓ / Enter 由 <c>OnPreviewKeyDown</c> 先 Flush，拿到的仍是最新结果。
+    /// </summary>
+    private void ApplySearch()
+    {
         ApplyFilter(SearchBox.Text);
         EnsureSelection();
     }
@@ -519,6 +526,9 @@ public partial class ActionPoolPicker : Window
     /// <summary>搜索框里的 ↑↓ 换选中行，Enter 确定（焦点留在搜索框里可以继续打字）。</summary>
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // 防抖可能还没落定：任何按结果导航 / 确定的按键都先把待执行的筛选立刻落下。
+        if (e.Key is Key.Down or Key.Up or Key.Enter or Key.Escape) _searchDebounce.Flush();
+
         if (e.Key is Key.Down or Key.Up && SearchBox.IsKeyboardFocusWithin)
         {
             MoveSelection(e.Key == Key.Down ? 1 : -1);
@@ -570,7 +580,7 @@ public partial class ActionPoolPicker : Window
 
         BuildRows();
         if (!string.IsNullOrEmpty(SearchBox.Text)) SearchBox.Clear();   // 否则新动作可能被筛掉
-        else ApplyFilter("");
+        _searchDebounce.Now();   // 立刻把新行投影出来（不等 150ms 防抖），再按 Id 选中
         SelectById(dto.Id);
     }
 

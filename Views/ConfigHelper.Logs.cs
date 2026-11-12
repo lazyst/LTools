@@ -12,6 +12,7 @@ using LTools.Config;
 using LTools.Core;
 using LTools.Core.Ai;
 using LTools.Features;
+using LTools.Views.Controls;
 
 namespace LTools.Views;
 
@@ -35,6 +36,7 @@ public partial class ConfigHelperWindow
 
     /// <summary>「最近日志」页的自动贴底：1.5 秒读一次日志尾部，只在贴底状态为真时卷到最下。</summary>
     private readonly DispatcherTimer _logPoll = new() { Interval = TimeSpan.FromMilliseconds(1500) };
+    private SearchDebounce? _logFilterDebounce;   // 级别 / 关键字每键变更 → 150ms 后才 ReadTail(5000)
     private bool _logAutoScroll = true;
     private bool _logProgrammaticScroll;   // 区分「程序 ScrollToEnd」与「用户滚」的 ScrollChanged
 
@@ -48,6 +50,8 @@ public partial class ConfigHelperWindow
             if (Page_LogsRecent.Visibility == Visibility.Visible) RefreshLogPreview();
         };
         Unloaded += (_, _) => _logPoll.Stop();
+        _logFilterDebounce = new SearchDebounce(150, RefreshLogPreview);
+        Unloaded += (_, _) => _logFilterDebounce?.Cancel();
         SetLogAutoScroll(true);
     }
 
@@ -184,7 +188,8 @@ public partial class ConfigHelperWindow
     private void LogPreview_Changed(object sender, RoutedEventArgs e)
     {
         if (_loadingLog || LogPreviewBox == null) return;
-        RefreshLogPreview();
+        // ReadTail(5000) 每键扫一遍日志文件（可能几 MB）；停手 150ms 再刷一次。
+        _logFilterDebounce?.Signal();
     }
 
     private void LogPreviewRefresh_Click(object sender, RoutedEventArgs e)

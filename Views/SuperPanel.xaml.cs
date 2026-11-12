@@ -59,6 +59,7 @@ public partial class SuperPanelWindow : Window
     // 拖动排序（两个区各一个：互不跨区移动）
     private readonly TileDragSort _globalDrag;
     private readonly TileDragSort _contextDrag;
+    private readonly SearchDebounce _searchDebounce;
 
     // 上下两区高度比例（0.15~0.85），关闭时记忆
     private double _globalRatio;
@@ -82,6 +83,8 @@ public partial class SuperPanelWindow : Window
     internal SuperPanelWindow(ForegroundApp? foreground, int invokeX, int invokeY)
     {
         InitializeComponent();
+        _searchDebounce = new SearchDebounce(150, ApplyPanelSearch);
+        Closed += (_, _) => _searchDebounce.Cancel();
         _foreground = foreground;
         _invokeX = invokeX;
         _invokeY = invokeY;

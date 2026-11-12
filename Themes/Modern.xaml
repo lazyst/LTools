@@ -394,6 +394,15 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
+                            <!-- 占位文字画在文本区下层：空框 / 可编辑 / 启用 / 有文案时才由 Triggers 显示 -->
+                            <TextBlock x:Name="PART_Placeholder" Grid.Column="0" Focusable="False"
+                                       Text="{Binding Path=(controls:TextBoxPlaceholder.Text), RelativeSource={RelativeSource TemplatedParent}}"
+                                       Margin="{TemplateBinding Padding}"
+                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                       HorizontalAlignment="Left" IsHitTestVisible="False"
+                                       Foreground="{StaticResource HintTextBrush}"
+                                       FontSize="{TemplateBinding FontSize}"
+                                       TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
                             <ScrollViewer x:Name="PART_ContentHost" Grid.Column="0" Focusable="False"
                                           HorizontalScrollBarVisibility="{TemplateBinding HorizontalScrollBarVisibility}"
                                           VerticalScrollBarVisibility="{TemplateBinding VerticalScrollBarVisibility}"/>
@@ -429,6 +438,22 @@
                         <Trigger Property="controls:TextBoxClear.Attach" Value="False">
                             <Setter TargetName="PART_ClearButton" Property="Visibility" Value="Collapsed"/>
                         </Trigger>
+                        <!-- 占位文字：四个条件同时成立才显示；下面两个 Trigger 负责关掉没文案 / 被排除的输入框 -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="Text" Value=""/>
+                                <Condition Property="IsReadOnly" Value="False"/>
+                                <Condition Property="IsEnabled" Value="True"/>
+                                <Condition Property="controls:TextBoxPlaceholder.Attach" Value="True"/>
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="PART_Placeholder" Property="Visibility" Value="Visible"/>
+                        </MultiTrigger>
+                        <Trigger Property="controls:TextBoxPlaceholder.Text" Value="">
+                            <Setter TargetName="PART_Placeholder" Property="Visibility" Value="Collapsed"/>
+                        </Trigger>
+                        <Trigger Property="controls:TextBoxPlaceholder.Attach" Value="False">
+                            <Setter TargetName="PART_Placeholder" Property="Visibility" Value="Collapsed"/>
+                        </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
@@ -452,6 +477,15 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
+                            <!-- 与普通 TextBox 同一套占位文字（见上方 TextBox 模板的说明） -->
+                            <TextBlock x:Name="PART_Placeholder" Grid.Column="0" Focusable="False"
+                                       Text="{Binding Path=(controls:TextBoxPlaceholder.Text), RelativeSource={RelativeSource TemplatedParent}}"
+                                       Margin="{TemplateBinding Padding}"
+                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                       HorizontalAlignment="Left" IsHitTestVisible="False"
+                                       Foreground="{StaticResource HintTextBrush}"
+                                       FontSize="{TemplateBinding FontSize}"
+                                       TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
                             <ScrollViewer x:Name="PART_ContentHost" Grid.Column="0" Focusable="False"
                                           HorizontalScrollBarVisibility="{TemplateBinding HorizontalScrollBarVisibility}"
                                           VerticalScrollBarVisibility="{TemplateBinding VerticalScrollBarVisibility}"/>
@@ -498,6 +532,22 @@
                         </Trigger>
                         <Trigger Property="HasVariables" Value="False">
                             <Setter TargetName="PART_VarButton" Property="Visibility" Value="Collapsed"/>
+                        </Trigger>
+                        <!-- 占位文字：与普通 TextBox 模板同款四个条件 + 两个隐藏 Trigger -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="Text" Value=""/>
+                                <Condition Property="IsReadOnly" Value="False"/>
+                                <Condition Property="IsEnabled" Value="True"/>
+                                <Condition Property="controls:TextBoxPlaceholder.Attach" Value="True"/>
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="PART_Placeholder" Property="Visibility" Value="Visible"/>
+                        </MultiTrigger>
+                        <Trigger Property="controls:TextBoxPlaceholder.Text" Value="">
+                            <Setter TargetName="PART_Placeholder" Property="Visibility" Value="Collapsed"/>
+                        </Trigger>
+                        <Trigger Property="controls:TextBoxPlaceholder.Attach" Value="False">
+                            <Setter TargetName="PART_Placeholder" Property="Visibility" Value="Collapsed"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -590,7 +640,7 @@
                                  FontFamily="{TemplateBinding FontFamily}" FontSize="{TemplateBinding FontSize}"
                                  Focusable="True" Visibility="Collapsed"
                                  IsReadOnly="{TemplateBinding IsReadOnly}"
-                                 controls:TextBoxClear.Attach="False"/>
+                                 controls:TextBoxClear.Attach="False" controls:TextBoxPlaceholder.Attach="False"/>
                         <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True"
                                Focusable="False" PopupAnimation="Fade"
                                IsOpen="{TemplateBinding IsDropDownOpen}">

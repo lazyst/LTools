@@ -63,12 +63,10 @@
                             Click="NewNote_Click" Margin="8,0,0,0"/>
                 </Grid>
 
-                <!-- 搜索 -->
+                <!-- 搜索（占位文字走全局 TextBoxPlaceholder，别再叠一层 TextBlock） -->
                 <Grid Grid.Row="1" Margin="0,8,0,8">
-                    <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged" Padding="8,5"/>
-                    <TextBlock x:Name="SearchPlaceholder" Text="搜索…" IsHitTestVisible="False"
-                               Foreground="{StaticResource HintTextBrush}" FontSize="{StaticResource FontSizeBody}"
-                               VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0"/>
+                    <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged" Padding="8,5"
+                             controls:TextBoxPlaceholder.Text="搜索速记…"/>
                 </Grid>
 
                 <!-- 速记列表 -->
@@ -126,20 +124,16 @@
                 <Grid Grid.Row="0">
                     <TextBox x:Name="TitleBox" FontSize="{StaticResource FontSizeTitle}" FontWeight="SemiBold"
                              BorderThickness="0" Padding="0,2" Background="Transparent"
+                             controls:TextBoxPlaceholder.Text="标题"
                              TextChanged="TitleBox_TextChanged"/>
-                    <TextBlock x:Name="TitlePlaceholder" Text="标题" IsHitTestVisible="False"
-                               Foreground="{StaticResource HintTextBrush}" FontSize="{StaticResource FontSizeTitle}"
-                               FontWeight="SemiBold" VerticalAlignment="Top" Margin="0,4,0,0"/>
                 </Grid>
                 <Border Grid.Row="1" Height="1" Background="{StaticResource BorderBrush}" Margin="0,8"/>
                 <Grid Grid.Row="2">
                     <TextBox x:Name="BodyBox" AcceptsReturn="True" AcceptsTab="True"
                              VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"
                              VerticalContentAlignment="Top" BorderThickness="0" Background="Transparent"
-                             Padding="0,4" TextChanged="BodyBox_TextChanged"/>
-                    <TextBlock x:Name="BodyPlaceholder" Text="正文" IsHitTestVisible="False"
-                               Foreground="{StaticResource HintTextBrush}"
-                               VerticalAlignment="Top" Margin="0,6,0,0"/>
+                             Padding="0,4" controls:TextBoxPlaceholder.Text="正文"
+                             TextChanged="BodyBox_TextChanged"/>
                 </Grid>
             </Grid>
         </Grid>

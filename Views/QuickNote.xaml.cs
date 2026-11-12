@@ -130,7 +130,6 @@ public partial class QuickNoteWindow : Window
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         _filter = SearchBox.Text ?? "";
-        SearchPlaceholder.Visibility = string.IsNullOrEmpty(_filter) ? Visibility.Visible : Visibility.Collapsed;
         // 防抖：停顿 300ms 后重扫一次，避免每键都全量扫目录+读文件
         _searchDebounce.Stop();
         _searchDebounce.Start();
@@ -253,7 +252,6 @@ public partial class QuickNoteWindow : Window
         BodyBox.ScrollToHome();
         StatusBar.Text = "正在编辑「" + entry.Title + "」";
         UpdateSaveBadge();
-        UpdatePlaceholders();
         BodyBox.Focus();
         BodyBox.CaretIndex = BodyBox.Text.Length;
     }
@@ -304,28 +302,19 @@ public partial class QuickNoteWindow : Window
         BodyBox.ScrollToHome();
         StatusBar.Text = "输入标题与正文后 Ctrl+S 保存";
         UpdateSaveBadge();
-        UpdatePlaceholders();
         TitleBox.Focus();
     }
 
     private void TitleBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        UpdatePlaceholders();
         if (_loading) return;
         MarkDirty();
     }
 
     private void BodyBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        UpdatePlaceholders();
         if (_loading) return;
         MarkDirty();
-    }
-
-    private void UpdatePlaceholders()
-    {
-        TitlePlaceholder.Visibility = string.IsNullOrEmpty(TitleBox.Text) ? Visibility.Visible : Visibility.Collapsed;
-        BodyPlaceholder.Visibility = string.IsNullOrEmpty(BodyBox.Text) ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void MarkDirty()

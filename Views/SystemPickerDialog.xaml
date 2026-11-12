@@ -33,6 +33,7 @@
             </Grid.ColumnDefinitions>
             <TextBox Grid.Column="0" x:Name="SearchBox" MinHeight="32"
                      ToolTip="按标题 / 进程 / 类名筛选"
+                     controls:TextBoxPlaceholder.Text="搜索窗口 / 进程 / 类名…"
                      TextChanged="Search_Changed"/>
             <TextBlock Grid.Column="1" x:Name="CountText" Style="{StaticResource HintLabel}"
                        VerticalAlignment="Center" Margin="12,0,0,0"/>

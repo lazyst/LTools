@@ -90,10 +90,8 @@
             </Grid.ColumnDefinitions>
             <Grid Grid.Column="0" Width="300" HorizontalAlignment="Left">
                 <TextBox x:Name="SearchBox" MinHeight="32" ToolTip="按名称或步骤内容筛选"
+                         controls:TextBoxPlaceholder.Text="搜索动作名称或步骤内容…"
                          TextChanged="SearchBox_TextChanged"/>
-                <TextBlock x:Name="SearchPlaceholder" Text="搜索动作名称或步骤内容…"
-                           Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
-                           Foreground="{StaticResource HintTextBrush}"/>
             </Grid>
             <TextBlock x:Name="CountText" Grid.Column="1" Style="{StaticResource HintLabel}"
                        VerticalAlignment="Center" Margin="0,0,12,0"/>

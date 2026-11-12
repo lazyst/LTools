@@ -1,6 +1,7 @@
 <UserControl x:Class="LTools.Views.Controls.HotkeysView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LTools.Views.Controls"
              FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
     <UserControl.Resources>
         <!-- 小按钮：组 / 绑定列表下方的操作条 -->
@@ -106,6 +107,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBox Grid.Column="0" x:Name="SearchBox" MinHeight="30"
                          ToolTip="按快捷键 / 动作名 / 备注筛选"
+                         controls:TextBoxPlaceholder.Text="搜索组合键 / 动作名 / 备注…"
                          TextChanged="SearchBox_TextChanged"/>
                 <TextBlock Grid.Column="1" x:Name="ConflictText" Style="{StaticResource HintLabel}"
                            VerticalAlignment="Center" Margin="10,0" TextTrimming="CharacterEllipsis"/>

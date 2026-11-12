@@ -47,6 +47,10 @@ public partial class ConfigHelperWindow : Window
     private string _pendingNav = "actions";
     private List<string> _pendingGroups = new();
     private readonly ObservableCollection<ActionRow> _actionRows = new();
+    private readonly List<ActionRow> _allActionRows = new();   // 全量行，筛选只做投影，不重新建行
+    private string _actionRefFilterKey = ActionReferenceIndex.All;
+    private bool _buildingActionRows;                          // 重建下拉时抑制 SelectionChanged 回灌
+    private readonly SearchDebounce _actionFilterDebounce;
     private bool _initializing = true;   // 初始化设 IsChecked 会触发事件，用此标志跳过
     private bool _loadingList;           // 列表重建期间抑制选择事件
     private bool _pagesReady;            // 页面全部构建完成前抑制导航切换
@@ -91,6 +95,9 @@ public partial class ConfigHelperWindow : Window
 
         _saveDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         _saveDebounce.Tick += (_, _) => { _saveDebounce.Stop(); SaveNow(); };
+
+        // 动作管理：搜索每敲一键只重启 150ms 计时，停手后投影一次（不重新建行 / 读配置）。
+        _actionFilterDebounce = new SearchDebounce(150, ApplyActionFilter);
 
         // 一次业务操作可能连着发好几条通知（删宏 → 删动作 → 回收），150ms 合批只刷一次。
         _refreshDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
@@ -169,6 +176,7 @@ public partial class ConfigHelperWindow : Window
             // 先退订：窗口关掉后还收通知会对已卸载的控件 Reload，也会一直持有这个窗口
             ConfigStore.Changed -= OnConfigChanged;
             _refreshDebounce.Stop();
+            _actionFilterDebounce.Cancel();
             // 只在防抖还没落盘时补写一次：用户打开设置什么都没改就关掉，不该覆盖记住的页
             if (_navDirty)
             {
@@ -207,6 +215,8 @@ public partial class ConfigHelperWindow : Window
     /// </summary>
     private void RefreshCreatedPages()
     {
+        // 动作管理是内联页（永远建着），也要跟着数据变：面板 / 别处删动作时表格与引用位置下拉即时刷新。
+        PopulateActions();
         if (_pageHotkeys != null) _pageHotkeys.Reload();
         if (_pageSuperPanel != null) _pageSuperPanel.Reload();
         if (_pageAi != null) _pageAi.Reload();
@@ -843,21 +853,65 @@ public partial class ConfigHelperWindow : Window
     }
 
     // ============ 动作管理 ============
+
+    /// <summary>
+    /// 数据真变时重建全量行 + 「引用位置」下拉，再投影一次。
+    /// 建行很贵（每行 DescribeReferences 扫全部场景分组 + 宏摘要 + 步骤数），
+    /// 所以搜索 / 下拉切换只走 <see cref="ApplyActionFilter"/>，不重新建行、不读配置。
+    /// </summary>
     private void PopulateActions()
     {
+        _buildingActionRows = true;
+        try
+        {
+            _allActionRows.Clear();
+            foreach (var a in ActionRegistry.All.OrderBy(x => x.Name, StringComparer.CurrentCulture))
+                _allActionRows.Add(new ActionRow(a, PanelLibrary.DescribeReferences(a.Id)));
+
+            // 暂存区入口带上草稿数：AI 写完的东西在这里先看一眼，再决定是否采纳。
+            try { OpenStagingButton.Content = $"暂存区（{DraftStore.List().Count}）"; }
+            catch { OpenStagingButton.Content = "暂存区"; }
+
+            // 建行就是「数据变了」的信号：引用位置索引的缓存跟着失效，下拉选项取最新。
+            ActionReferenceIndex.Invalidate();
+            RefreshActionRefFilter();
+        }
+        finally { _buildingActionRows = false; }
+
+        ApplyActionFilter();
+    }
+
+    /// <summary>重建「引用位置」下拉；当前选中的场景 / 分组被删掉时回落到「全部」。</summary>
+    private void RefreshActionRefFilter()
+    {
+        var options = ActionReferenceIndex.Options();
+        if (!options.Any(o => o.Key == _actionRefFilterKey))
+            _actionRefFilterKey = ActionReferenceIndex.All;
+        ActionRefFilterCombo.ItemsSource = options;
+        ActionRefFilterCombo.SelectedValue = _actionRefFilterKey;
+    }
+
+    /// <summary>搜索文本 + 引用位置下拉 → 投影到表格（不重新建行、不读配置）。</summary>
+    private void ApplyActionFilter()
+    {
+        if (_buildingActionRows) return;
         int sel = ActionList.SelectedIndex;
         string filter = ActionFilterBox?.Text?.Trim() ?? "";
-        int total = ActionRegistry.All.Count;
-
-        // 暂存区入口带上草稿数：AI 写完的东西在这里先看一眼，再决定是否采纳。
-        try { OpenStagingButton.Content = $"暂存区（{DraftStore.List().Count}）"; }
-        catch { OpenStagingButton.Content = "暂存区"; }
+        string key = _actionRefFilterKey;
+        IReadOnlyDictionary<string, HashSet<string>>? map = null;
+        int total = _allActionRows.Count;
 
         _loadingList = true;
         _actionRows.Clear();
-        foreach (var a in ActionRegistry.All.OrderBy(x => x.Name, StringComparer.CurrentCulture))
+        foreach (var row in _allActionRows)
         {
-            var row = new ActionRow(a, PanelLibrary.DescribeReferences(a.Id));
+            if (key != ActionReferenceIndex.All)
+            {
+                // 只有真的按引用位置筛选才建 / 取索引：默认「全部」时切页不该白扫一遍引用。
+                map ??= ActionReferenceIndex.Map();
+                if (!(map.TryGetValue(row.Id, out var keys) && keys.Contains(key)))
+                    continue;
+            }
             if (filter.Length > 0
                 && !row.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
                 && !row.TypeLabel.Contains(filter, StringComparison.OrdinalIgnoreCase)
@@ -867,7 +921,9 @@ public partial class ConfigHelperWindow : Window
         }
         _loadingList = false;
         if (sel >= 0 && sel < _actionRows.Count) ActionList.SelectedIndex = sel;
-        ActionCountText.Text = filter.Length > 0
+
+        bool filtering = filter.Length > 0 || key != ActionReferenceIndex.All;
+        ActionCountText.Text = filtering
             ? $"显示 {_actionRows.Count} / {total} 个动作"
             : $"共 {total} 个动作";
     }
@@ -875,7 +931,17 @@ public partial class ConfigHelperWindow : Window
     private void ActionFilter_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_loadingList) return;
-        PopulateActions();
+        _actionFilterDebounce.Signal();
+    }
+
+    /// <summary>引用位置下拉：切换立即生效，不等文本搜索的防抖。</summary>
+    private void ActionRefFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // 程序化填选项 / 选中值由 _buildingActionRows 挡掉；_initializing 只护「通用」页的全局开关，
+        // 不该让打开窗口瞬间（自启查询那百毫秒）的下拉点击被吞。
+        if (_buildingActionRows) return;
+        _actionRefFilterKey = ActionRefFilterCombo.SelectedValue as string ?? ActionReferenceIndex.All;
+        _actionFilterDebounce.Now();
     }
 
     /// <summary>动作管理页顶部「暂存区（N）」：打开面板的暂存区页（草稿不在设置里）。</summary>
@@ -965,8 +1031,7 @@ public partial class ConfigHelperWindow : Window
         if (!ConfirmDialog.Confirm(this, "删除动作", ActionRemoval.ConfirmMessage(id), danger: true)) return;
 
         ConfigStore.RemoveAction(id);   // 内含清快捷键 / 面板 / 触发规则 / 悬浮引用与资源回收
-        PopulateActions();
-        RefreshCreatedPages();          // 只刷已经建出来的页，别为没打开过的页强建视图
+        RefreshCreatedPages();          // 只刷已经建出来的页（含动作管理），别为没打开过的页强建视图
         MarkDirty();
     }
 
@@ -1270,7 +1335,6 @@ public partial class ConfigHelperWindow : Window
             BackupStatusText.Text = "正在导入…";
             await Task.Run(() => BackupService.Import(preview));
             ConfigStore.Reload();
-            PopulateActions();
             RefreshCreatedPages();
             // 全局开关在 AppState，启动时从配置读取；导入新配置后重新应用，避免要重启才生效
             var cfg = ConfigStore.LoadConfig();
@@ -1308,7 +1372,6 @@ public partial class ConfigHelperWindow : Window
         _saveDebounce.Stop();
         ConfigStore.Reload();
         MacroSettings.Load(ConfigStore.LoadConfig());
-        PopulateActions();
         RefreshCreatedPages();
         ShowStatus("已重新加载", ok: true);
     }

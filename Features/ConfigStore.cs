@@ -70,7 +70,11 @@ internal static class ConfigStore
     internal static event Action? Changed;
 
     /// <summary>业务操作完成后发一次变更通知（可能在后台线程，订阅端必须走 <c>Ui.Post</c>）。</summary>
-    public static void NotifyChanged() => Changed?.Invoke();
+    public static void NotifyChanged()
+    {
+        ActionReferenceIndex.Invalidate();
+        Changed?.Invoke();
+    }
 
     /// <summary>新建一个动作（自动生成 Id、图标默认为 app）。</summary>
     public static bool AddAction(ActionDto action)

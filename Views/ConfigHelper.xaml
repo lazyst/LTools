@@ -365,17 +365,25 @@
 
                     <Grid Grid.Row="0" Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBox Grid.Column="0" x:Name="ActionFilterBox" Width="260" MinHeight="30"
+                        <TextBox Grid.Column="0" x:Name="ActionFilterBox" Width="240" MinHeight="30"
                                  HorizontalAlignment="Left"
-                                 ToolTip="按动作名称 / 类型筛选"
+                                 ToolTip="按动作名称 / 类型 / 步骤筛选"
+                                 controls:TextBoxPlaceholder.Text="搜索动作名称、类型或步骤…"
                                  TextChanged="ActionFilter_TextChanged"/>
-                        <TextBlock Grid.Column="1" x:Name="ActionCountText" Style="{StaticResource HintLabel}"
-                                   VerticalAlignment="Center"/>
-                        <Button Grid.Column="2" x:Name="OpenStagingButton" Style="{StaticResource BtnGhost}"
+                        <!-- 引用位置：选项由 ActionReferenceIndex.Options() 填，按场景·分组 / 快捷键 / 悬浮项 / 触发规则收窄 -->
+                        <ComboBox Grid.Column="1" x:Name="ActionRefFilterCombo" Width="180" MinHeight="30"
+                                  Margin="8,0,0,0" HorizontalAlignment="Left"
+                                  ToolTip="按引用位置筛选（面板场景 / 快捷键 / 悬浮项 / 触发规则）"
+                                  DisplayMemberPath="Label" SelectedValuePath="Key"
+                                  SelectionChanged="ActionRefFilter_SelectionChanged"/>
+                        <TextBlock Grid.Column="2" x:Name="ActionCountText" Style="{StaticResource HintLabel}"
+                                   VerticalAlignment="Center" Margin="12,0,0,0"/>
+                        <Button Grid.Column="3" x:Name="OpenStagingButton" Style="{StaticResource BtnGhost}"
                                 Content="暂存区" MinWidth="0" Height="28" Padding="10,2" FontSize="12"
                                 Margin="12,0,0,0" ToolTip="AI 写出来的动作草稿都在那里"
                                 Click="OpenStagingPage_Click"/>
@@ -651,6 +659,7 @@
                                 </ComboBox>
                                 <TextBox Grid.Column="1" x:Name="LogPreviewSearchBox" MinHeight="30" Margin="8,0"
                                          ToolTip="按文本过滤（包含匹配，忽略大小写）"
+                                         controls:TextBoxPlaceholder.Text="过滤日志文本…"
                                          TextChanged="LogPreview_Changed"/>
                                 <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="刷新"
                                         MinWidth="60" Margin="0,0,8,0" Click="LogPreviewRefresh_Click"/>

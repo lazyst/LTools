@@ -308,14 +308,11 @@
                             BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                             CornerRadius="{StaticResource CornerMd}" Padding="9,0,7,0">
                         <Grid>
-                            <TextBlock x:Name="SearchPlaceholder" Text="搜索动作…" IsHitTestVisible="False"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource HintTextBrush}"
-                                       FontSize="{StaticResource FontSizeSecondary}"/>
                             <TextBox x:Name="SearchBox" Background="Transparent" BorderThickness="0"
                                      Padding="0" VerticalContentAlignment="Center"
                                      Foreground="{StaticResource TextBrush}"
                                      FontSize="{StaticResource FontSizeSecondary}"
+                                     controls:TextBoxPlaceholder.Text="搜索动作…"
                                      TextChanged="SearchBox_TextChanged"
                                      PreviewKeyDown="SearchBox_PreviewKeyDown"/>
                         </Grid>

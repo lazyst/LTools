@@ -155,6 +155,7 @@
                                ToolTip="点一下单元填参数插入 · 拖到步骤列表里插入 · 右键单元还有「直接添加 / 添加到末尾」"/>
                     <TextBox DockPanel.Dock="Top" x:Name="SearchBox" Margin="12,0,12,8"
                              MinHeight="30" TextChanged="SearchBox_TextChanged"
+                              controls:TextBoxPlaceholder.Text="搜索单元（名称 / 分类 / 单元键）…"
                              ToolTip="按名称 / 分类 / 单元键搜索"/>
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="Toolbox" Margin="10,0,8,0"/>
@@ -186,23 +187,10 @@
                     <!-- 搜步骤：只在现有列表里定位（不筛选，避免打乱嵌套结构）；Enter 下一处、Shift+Enter 上一处、Esc 清空 -->
                     <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
                         <TextBox x:Name="StepSearchBox" MinHeight="28" Padding="6,3"
+                                 controls:TextBoxPlaceholder.Text="搜索步骤…"
                                  TextChanged="StepSearchBox_TextChanged"
                                  PreviewKeyDown="StepSearchBox_PreviewKeyDown"
                                  ToolTip="搜索步骤（名称 / 摘要 / 单元键 / 参数文本）；Enter 跳到下一处，Shift+Enter 上一处，Esc 清空。当前折叠的块会自动展开"/>
-                        <TextBlock IsHitTestVisible="False" Margin="8,0" VerticalAlignment="Center"
-                                   FontSize="{StaticResource FontSizeHint}"
-                                   Foreground="{StaticResource HintTextBrush}" Text="搜索步骤…">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Text, ElementName=StepSearchBox}" Value="">
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
                         <TextBlock x:Name="StepSearchInfo" IsHitTestVisible="False"
                                    HorizontalAlignment="Right" VerticalAlignment="Center"
                                    Margin="0,0,8,0" FontSize="{StaticResource FontSizeHint}"

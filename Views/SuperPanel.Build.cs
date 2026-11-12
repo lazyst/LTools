@@ -36,9 +36,6 @@ public partial class SuperPanelWindow
         BuildSceneTabs();
         BuildGlobal();
         BuildContext();
-        SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
     }
 
     private void BuildSceneTabs()

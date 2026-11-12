@@ -775,6 +775,8 @@ public partial class ActionEditorWindow
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (IsInitialized) BuildToolbox();
+        // BuildToolbox 每次都重建整个左栏可视树（几十个分类头 + 单元按钮）；
+        // 每敲一键都跑会顶住鼠标，停手 150ms 再建一次。
+        if (IsInitialized) _toolboxSearchDebounce.Signal();
     }
 }
