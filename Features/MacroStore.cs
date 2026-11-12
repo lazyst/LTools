@@ -119,6 +119,7 @@ internal static class MacroStore
         // 让钩子 / 托盘立即读到新值（LastMacroId 等），无需重启。
         MacroSettings.Load(AppConfig.Load(cfgPath));
         Invalidate();
+        ConfigStore.NotifyChanged();   // 录制完成：已打开的设置页要看到新宏
     }
 
     /// <summary>某个宏的元数据；不存在返回 null。</summary>
@@ -128,9 +129,12 @@ internal static class MacroStore
         return Items().FirstOrDefault(m => m.Id == id);
     }
 
-    /// <summary>全部宏的元数据（最近录的在前），供「键鼠宏」页与宏下拉使用。</summary>
+    /// <summary>全部可用宏的元数据（最近录的在前），供「键鼠宏」页与宏下拉使用。</summary>
+    /// <remarks>事件文件不在的元数据不进列表：删动作会回收宏文件，外部手工删 / 写盘中断时
+    /// 也不该留下「能点但点不动」的幽灵行。孤儿元数据仍由 <see cref="CollectGarbage"/> 清理。</remarks>
     public static List<MacroMeta> List() => Items()
         .Where(m => !string.IsNullOrWhiteSpace(m.Id))
+        .Where(m => Exists(m.Id))
         .OrderByDescending(m => m.UpdatedAt, StringComparer.Ordinal)
         .ThenByDescending(m => m.Id, StringComparer.Ordinal)
         .ToList();
@@ -202,6 +206,7 @@ internal static class MacroStore
             if (file.Macros.LastMacroId == id) file.Macros.LastMacroId = null;
         });
         Invalidate();
+        ConfigStore.NotifyChanged();   // 没有引用它的动作时，上面不会经 RemoveAction 发广播
         return removedActions;
     }
 
@@ -257,6 +262,7 @@ internal static class MacroStore
             if (!string.IsNullOrWhiteSpace(name)) item.Name = name.Trim();
         });
         Invalidate();
+        ConfigStore.NotifyChanged();   // 列表行的回放参数后缀要跟着变
     }
 
     // ============ 旧数据 ============

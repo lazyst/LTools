@@ -230,7 +230,7 @@ public partial class MacroView : UserControl
         var macro = MacroStore.Load(row.Id);
         if (macro == null)
         {
-            ToastService.Show("宏文件不存在（可能被手工删掉了），请重新录制", "键鼠宏",
+            ToastService.Show("宏文件已不存在（通常随引用它的动作一起删除），请重新录制", "键鼠宏",
                 ToastService.StickyMs, ToastKind.error, key: "macro:play:hint");
             return;
         }
@@ -417,7 +417,7 @@ public partial class MacroView : UserControl
             OriginalName = meta.Name;
             Meta = MacroStore.Exists(meta.Id)
                 ? $"{meta.DurationText} · {meta.EventCount} 事件 · {meta.UpdatedAt}{PlaybackSuffix(meta)}"
-                : $"{meta.DurationText} · 宏文件缺失（重新录制或删除）";
+                : $"{meta.DurationText} · 宏文件已不存在（可能随动作一起删除）";
         }
 
         /// <summary>

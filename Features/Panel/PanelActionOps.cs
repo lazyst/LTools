@@ -41,6 +41,7 @@ internal static class PanelActionOps
         if (picker.Result == null) return false;
         group.Actions.Add(picker.Result);
         PanelLibrary.Save();
+        ConfigStore.NotifyChanged();   // 面板结构变了，已打开的设置页要跟着刷
         return true;
     }
 
@@ -149,6 +150,7 @@ internal static class PanelActionOps
             return false;
         }
 
+        ConfigStore.NotifyChanged();   // 子动作库已建页时跟着刷新
         ToastService.Show(
             $"已新建子动作「{dlg.SubResult.Name}」（{dlg.SubResult.Id}），在设置 → 子动作库里能看到它。",
             "另存为子动作", 3000, ToastKind.success);

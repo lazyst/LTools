@@ -136,7 +136,7 @@ public partial class SuperPanelWindow
         var macro = MacroStore.Load(macroId);
         if (macro == null)
         {
-            ToastService.Show("宏文件不存在（可能被手工删掉了），请重新录制", "键鼠宏",
+            ToastService.Show("宏文件已不存在（通常随引用它的动作一起删除），请重新录制", "键鼠宏",
                 ToastService.StickyMs, ToastKind.error, key: "macro:play:hint");
             return;
         }

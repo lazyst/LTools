@@ -60,7 +60,17 @@ internal static class ConfigStore
     /// <summary>保存动作清单（只写 actions/）。</summary>
     public static void Save() => ActionLibrary.Save(ConfigPath);
 
-    // —— 动作 CRUD ——
+    // —— 动作 CRUD 与变更广播 ——
+
+    /// <summary>
+    /// 动作 / 宏数据在设置窗口之外被改动（面板删除、录制完成、AI 采纳、删宏…）。
+    /// 一次业务操作只发一次，别在每次落盘 / 切页时发（否则又回到「切页整表重建」）。
+    /// 订阅者自行切到 UI 线程；本事件可能从后台线程触发。
+    /// </summary>
+    internal static event Action? Changed;
+
+    /// <summary>业务操作完成后发一次变更通知（可能在后台线程，订阅端必须走 <c>Ui.Post</c>）。</summary>
+    public static void NotifyChanged() => Changed?.Invoke();
 
     /// <summary>新建一个动作（自动生成 Id、图标默认为 app）。</summary>
     public static bool AddAction(ActionDto action)
@@ -69,6 +79,7 @@ internal static class ConfigStore
         if (string.IsNullOrEmpty(action.Name)) return false;
         if (string.IsNullOrEmpty(action.Icon)) action.Icon = IconCatalog.Default;
         ActionLibrary.Add(action);
+        NotifyChanged();
         return true;
     }
 
@@ -78,10 +89,17 @@ internal static class ConfigStore
         if (string.IsNullOrEmpty(action.Id)) return;
         if (string.IsNullOrEmpty(action.Icon)) action.Icon = IconCatalog.Default;
         ActionLibrary.Replace(action);
+        NotifyChanged();
     }
 
     /// <summary>从清单删除动作（同时清掉快捷键 / 面板 / 触发规则 / 悬浮引用，并回收宏与模板图）。</summary>
-    public static bool RemoveAction(string id) => ActionRemoval.Remove(id);
+    /// <remarks>用 finally 保证通知在 <see cref="ActionRemoval.Remove"/> 全部收尾（含宏回收）之后发出，
+    /// 订阅者读到的才是新数据；回收中途抛异常也别让已建设置页停在旧快照上。</remarks>
+    public static bool RemoveAction(string id)
+    {
+        try { return ActionRemoval.Remove(id); }
+        finally { NotifyChanged(); }
+    }
 
     /// <summary>复制动作（新 Id + 名称追加「副本」）。</summary>
     public static ActionDto? DuplicateAction(string id)
@@ -94,6 +112,7 @@ internal static class ConfigStore
         copy.Name = src.Name + " 副本";
         if (string.IsNullOrEmpty(copy.Icon)) copy.Icon = IconCatalog.Default;
         ActionLibrary.Add(copy);
+        NotifyChanged();
         return copy;
     }
 }

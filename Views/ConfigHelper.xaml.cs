@@ -39,6 +39,8 @@ public partial class ConfigHelperWindow : Window
     private const string FamilyMacros = "macros";
 
     private readonly DispatcherTimer _saveDebounce;
+    // 别处改了动作 / 宏（面板删除、录制完成、AI 采纳…）：合批后只刷已建页，避免一次操作反复 Reload
+    private readonly DispatcherTimer _refreshDebounce;
     // 导航页记忆：切页只记下待写的值，短防抖后丢线程池写盘（见 ScheduleNavPersist）
     private readonly DispatcherTimer _navPersistTimer;
     private bool _navDirty;                 // 有过切页 / 展开收起才需要关窗时补写一次
@@ -89,6 +91,11 @@ public partial class ConfigHelperWindow : Window
 
         _saveDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         _saveDebounce.Tick += (_, _) => { _saveDebounce.Stop(); SaveNow(); };
+
+        // 一次业务操作可能连着发好几条通知（删宏 → 删动作 → 回收），150ms 合批只刷一次。
+        _refreshDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _refreshDebounce.Tick += (_, _) => { _refreshDebounce.Stop(); RefreshCreatedPages(); };
+        ConfigStore.Changed += OnConfigChanged;
 
         _navPersistTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _navPersistTimer.Tick += (_, _) => { _navPersistTimer.Stop(); FlushNavPersist(); };
@@ -159,6 +166,9 @@ public partial class ConfigHelperWindow : Window
         };
         Closed += (_, _) =>
         {
+            // 先退订：窗口关掉后还收通知会对已卸载的控件 Reload，也会一直持有这个窗口
+            ConfigStore.Changed -= OnConfigChanged;
+            _refreshDebounce.Stop();
             // 只在防抖还没落盘时补写一次：用户打开设置什么都没改就关掉，不该覆盖记住的页
             if (_navDirty)
             {
@@ -203,6 +213,18 @@ public partial class ConfigHelperWindow : Window
         if (_pageMacros != null) _pageMacros.Reload();
         if (_pageSubActions != null) _pageSubActions.Reload();
         if (_pageTriggers != null) _pageTriggers.Reload();
+    }
+
+    /// <summary>别处改了动作 / 宏：切回 UI 线程并合批刷新（事件可能来自录制 / AI 采纳的后台线程）。</summary>
+    /// <remarks>只在数据真变时发，不在切页 / 导航记忆写盘时发，保住阶段 1 惰性建页的减负成果。</remarks>
+    private void OnConfigChanged()
+    {
+        Ui.Post(() =>
+        {
+            if (!IsLoaded) return;   // 窗口还没显示 / 已关闭，下次开窗自然会重读新数据
+            _refreshDebounce.Stop();
+            _refreshDebounce.Start();
+        });
     }
 
     // ============ 导航切换 ============
