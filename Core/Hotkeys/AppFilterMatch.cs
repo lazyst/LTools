@@ -12,7 +12,10 @@ namespace LTools.Core;
 /// <remarks>
 /// <para>
 /// 「取不到前台程序」时一律放行：宁可按了有效，也不要按了没反应。
-/// LTools 自己的窗口（设置 / 面板 / 编辑器 / 速记…）一律不触发，免得在设置里按 Ctrl+S 跑动作。
+/// **不再硬排除 LTools 自己的窗口**（2026-11-12 取消该设计）：设置 / 面板 / 编辑器 / 速记里
+/// 同样按名单判定，默认「所有窗口」时快捷键照常触发。要挡自己的窗口，就把黑名单写成
+/// <c>LTools.exe</c> / 窗口标题 / 类名；单键绑定也会吞掉自己窗口里的正常输入，绑之前先想清楚。
+/// 动作注入的按键由 <c>LLKHF_INJECTED</c> 在钩子入口过滤，不会递归触发快捷键。
 /// </para>
 /// <para>
 /// 没写通配符的规则按「包含」算：进程填 <c>chrome</c> 能命中 <c>chrome.exe</c>，
@@ -24,8 +27,7 @@ internal static class AppFilterMatch
     public static bool Allows(HotkeyBinding binding, HotkeyFile file, ForegroundApp? app)
     {
         if (app == null) return true;
-        // 自己的窗口不触发：在设置 / 编辑器里按 Ctrl+S 不该跑动作，也避免动作注入的按键回环。
-        if (ForegroundApp.IsOwnWindow(app.Hwnd)) return false;
+        // 自己的窗口不再短路：和别的程序走同一份名单判定（见类注释）。
 
         return binding.Scope switch
         {
@@ -44,7 +46,8 @@ internal static class AppFilterMatch
     /// <summary>
     /// 自动触发的作用范围判定（包一层给 <c>TriggerService</c> 用，见 <c>docs/AUTO_TRIGGER.md</c> §8）：
     /// 名单为空 = 不过滤；取不到前台程序 = 放行；否则按名单匹配（进程 / 标题 / 类名）。
-    /// 与快捷键不同，这里不排除 LTools 自己的窗口——自动触发不是按键驱动的，名单为空时本就全放行。
+    /// 自己的窗口由事件源的 <c>excludeOwn</c> 单独控制，这里只按名单判定；名单为空时全放行
+    /// （快捷键侧也不再硬排除自己的窗口，两边都不靠 <c>IsOwnWindow</c> 短路）。
     /// </summary>
     internal static bool AllowsScope(AppFilter? filter, ForegroundApp? app)
     {

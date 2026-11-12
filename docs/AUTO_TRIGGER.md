@@ -142,7 +142,7 @@ Fire(rule)          → ActionExecutor.RunRef(rule.ActionRef, 0, 0)
 
 | 事件源 | 复用 | 需新增 | 坑 |
 | --- | --- | --- | --- |
-| 窗口 / 进程切换 | `Core/Hotkeys/ForegroundAppCache.cs`（唯一窗口切换来源）、`Native/ForegroundApp.cs`、`Core/Hotkeys/AppFilterMatch.cs` | 给它暴露静态订阅事件（在后台解析完成后触发），或另挂一条 `SetWinEventHook`（照 `Features/WindowPinFrames.cs`）；把 `AppFilterMatch.Matches` 提为 internal 或包一层 | 回调 private 不可订阅；`Current == null` 表示解析没跟上，要定义放行语义；`IsOwnWindow` 一律排除；WinEvent 回调不查 `Process.MainModule`；委托字段防 GC、退出 `UnhookWinEvent` |
+| 窗口 / 进程切换 | `Core/Hotkeys/ForegroundAppCache.cs`（唯一窗口切换来源）、`Native/ForegroundApp.cs`、`Core/Hotkeys/AppFilterMatch.cs` | 给它暴露静态订阅事件（在后台解析完成后触发），或另挂一条 `SetWinEventHook`（照 `Features/WindowPinFrames.cs`）；把 `AppFilterMatch.Matches` 提为 internal 或包一层 | 回调 private 不可订阅；`Current == null` 表示解析没跟上，要定义放行语义；自己的窗口由事件源的 `excludeOwn` 排除（快捷键侧已不再一律排除）；WinEvent 回调不查 `Process.MainModule`；委托字段防 GC、退出 `UnhookWinEvent` |
 | 剪贴板变化 | `Features/MacroHotkey.cs` 的 `HwndSource` + `HWND_MESSAGE` 消息窗、`Native/NativeClipboard.cs` | `AddClipboardFormatListener` / `WM_CLIPBOARDUPDATE` P/Invoke 到 `Native/Win32.cs` | 必须忽略 LTools 自己写入引起的变更（在 `NativeClipboard` 写路径打标 / 时间窗）；剪贴板全局独占，`OpenClipboard` 已有 5×15ms 重试；别在消息回调里同步读剪贴板内容做重活 |
 | 文件系统变化 | `Views/Controls/StashPane.xaml.cs`（轮询 + 签名） | `FileSystemWatcher`（或轮询）；`Params` 里放路径 / 筛选器 / 包含子目录 | 路径不存在 / 无权限时规则直接停用并提示，不要静默失败；事件洪泛靠 `DebounceMs` 收；网络盘 / 回收站移动要防抖 |
 
@@ -315,7 +315,7 @@ Fire(rule)          → ActionExecutor.RunRef(rule.ActionRef, 0, 0)
 
 | 事件源 | 复用 | 需新增 | 坑 |
 | --- | --- | --- | --- |
-| P2.1 窗口 / 进程切换 | `ForegroundAppCache` 的 `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`、`Native/ForegroundApp.cs`、`AppFilterMatch` | 在 `ForegroundAppCache` 暴露**静态订阅事件**（后台解析完成后触发，带新旧 `ForegroundApp?`）；`AppFilterMatch.Matches` 提为 internal 或包一层给条件筛选 | WinEvent 回调不准查 `Process.MainModule`、不阻塞 >300ms；委托字段防 GC、退出 `UnhookWinEvent`；`Current == null`（解析没跟上）时按放行；`IsOwnWindow` 默认排除；**「切换」按进程判定**（`now.ExeName != _last.ExeName`），shell 窗口透明、`ForegroundAppCache.ForegroundChanged` 按 hwnd 去重，否则 `explorer.exe`（既是 Shell 又是文件管理器）会在没换程序时反复命中 `prevProcess`；「上一个真实应用」由事件源自己记 `_last` 快照 |
+| P2.1 窗口 / 进程切换 | `ForegroundAppCache` 的 `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`、`Native/ForegroundApp.cs`、`AppFilterMatch` | 在 `ForegroundAppCache` 暴露**静态订阅事件**（后台解析完成后触发，带新旧 `ForegroundApp?`）；`AppFilterMatch.Matches` 提为 internal 或包一层给条件筛选 | WinEvent 回调不准查 `Process.MainModule`、不阻塞 >300ms；委托字段防 GC、退出 `UnhookWinEvent`；`Current == null`（解析没跟上）时按放行；自己的窗口由 `excludeOwn` 默认排除（快捷键侧已取消硬排除）；**「切换」按进程判定**（`now.ExeName != _last.ExeName`），shell 窗口透明、`ForegroundAppCache.ForegroundChanged` 按 hwnd 去重，否则 `explorer.exe`（既是 Shell 又是文件管理器）会在没换程序时反复命中 `prevProcess`；「上一个真实应用」由事件源自己记 `_last` 快照 |
 | P2.2 剪贴板变化 | `Features/MacroHotkey.cs` 的 `HwndSource` + `HWND_MESSAGE` 消息窗（或另建一个专用消息窗）、`Native/NativeClipboard.cs` | `Native/Win32.cs` 加 `AddClipboardFormatListener` / `RemoveClipboardFormatListener` / `WM_CLIPBOARDUPDATE` P/Invoke；`NativeClipboard` 写路径打标（或时间窗）以忽略自写入 | 剪贴板全局独占，`OpenClipboard` 已有 5×15ms 重试；**别在消息回调里同步读剪贴板内容做重活**，投递到后台线程；退出要 `RemoveClipboardFormatListener` + 释放 HwndSource |
 | P2.3 文件系统变化 | —（`StashPane` 的 `DispatcherTimer` 轮询签名**不适用**：那是 UI 线程，与「事件源走后台」冲突） | `FileSystemWatcher`（后台线程），`Params` 按 §13.5 映射；路径失效 / 无权限 → 规则停用 + 提示 | 事件洪泛靠 `DebounceMs` 收；网络盘 / 回收站移动 / 一次保存产生多次 `changed` 要合并；`IncludeSubdirectories` 开在大目录上要限流；退出 `Dispose` |
 

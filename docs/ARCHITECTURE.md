@@ -184,7 +184,8 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
   CapsLock 修饰键，所以不用它）；命中就吞掉并投递动作，没命中的键照常下传。
 - 白 / 黑名单：钩子回调里只做字符串比较，前台 HWND 由 `ForegroundAppCache`
   （`SetWinEventHook(EVENT_SYSTEM_FOREGROUND)` + 后台线程解析进程名 / 标题 / 类名）维护；
-  取不到时放行，LTools 自己的窗口不触发。
+  取不到时放行；LTools 自己的窗口不再硬排除，同样按名单判定（默认「所有窗口」时照常触发，
+  要挡就把黑名单写成 `LTools.exe` / 窗口标题 / 类名）。
 - 预设：`Features/HotkeySeeding` 首次启动播种「CapsLock 经典」（SeedVersion = 3），
   20 条**全部是内置功能引用**（5 个入口 + 光标移动 / 文本选择 / 删除与撤销 15 条）；
   不再生成预置动作，用户能把同一批条目放进面板 / 悬浮 / 换键。
@@ -206,7 +207,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | P3 | 逐个域写入只有目标 `configs/*.json` 的 mtime 变化、`actions/*.json` 不动；并发保存不互相覆盖；菜单 / 面板里的悬空动作 Id 在启动时被清掉 | 域文件格式不变，退回旧版本仍能读 |
 | P4 | 窗口拆完后交互与原版一致（面板建窗 / 切暂存区 / 编辑器载入动作均正常）；单元清单数量不变；启动时没有任何迁移扫描 | 纯代码改动，git revert |
 | P5 | 截图落在 `cache/screenshots/` 且下次运行 / 重启后被清空；同内容图采纳到第二个动作时 `fsutil hardlink list` 显示两份名字、改内容只影响一个动作；孤儿图移入 `trash/orphans/`、动态引用动作不动；备份 manifest 的 `includes` 与 zip 条目一致、`cache/` 不出现；`.ltact` 含 manifest + action.json + files/ | 纯代码 + 目录调整，退回旧版本仍能读写（`cache/` 只是多了个目录） |
-| P6 | 删掉绑定重启不复活；`CapsLock+S` 不在 `CapsLock+Ctrl+S` 时触发；名单里的程序与 LTools 自己的窗口不触发；快捷键页改完立即生效（不必重启） | 删 `configs/hotkeys.json`，重启按示例 / 播种重建 |
+| P6 | 删掉绑定重启不复活；`CapsLock+S` 不在 `CapsLock+Ctrl+S` 时触发；名单里的程序不触发、LTools 自己的窗口按名单判定（默认名单为空时照常触发，黑名单写 `LTools.exe` 才挡）；快捷键页改完立即生效（不必重启） | 删 `configs/hotkeys.json`，重启按示例 / 播种重建 |
 
 ## 5. 明确不做
 
