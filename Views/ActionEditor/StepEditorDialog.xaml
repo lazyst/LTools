@@ -51,7 +51,7 @@
                         <TextBlock x:Name="OutputHeader" Style="{StaticResource SectionLabel}"
                                    Text="输出变量" Margin="0,0,0,3"/>
                         <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                                   Text="勾选后把这项结果存进变量，后面的步骤用 ${变量} 取用；类型由单元声明（徽标）。名字默认带单元前缀，不会和别的步骤撞。"/>
+                                   Text="勾选后把这项结果存进变量，后面的步骤用 ${变量} 取用；类型由动作单元声明（徽标）。名字默认带动作单元前缀，不会和别的步骤撞。"/>
                         <StackPanel x:Name="Outputs" Margin="0,6,0,0"/>
                     </StackPanel>
                 </Border>

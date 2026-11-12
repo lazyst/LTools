@@ -120,7 +120,7 @@ public sealed class ClipboardImageUnit : IStepUnit
         Outputs = new[]
         {
             new OutputSpec("path", "图片文件", ValueKind.text, "clipImage",
-                Description: "png 路径，可交给「图片信息」「打开文件」「写入文件」"),
+                Description: "png 路径，可交给「图片信息」「用默认程序打开文件」「写入文件」"),
             new OutputSpec("width", "宽", ValueKind.number, Description: "图片宽度（像素）"),
             new OutputSpec("height", "高", ValueKind.number, Description: "图片高度（像素）"),
             new OutputSpec("found", "有图片", ValueKind.@bool, Description: "剪贴板里是否有图片 / 是否写入成功"),

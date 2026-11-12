@@ -32,7 +32,7 @@ internal static class AppPaths
     /// <summary>全局子动作库，位于数据根下（一个子动作一个 JSON 文件）。</summary>
     public static string SubActionsDir => Path.Combine(DataRoot, "subactions");
 
-    /// <summary>跨动作状态目录（「存状态 / 读状态」单元），位于数据根下，进备份。</summary>
+    /// <summary>跨动作状态目录（「存状态 / 读状态」动作单元），位于数据根下，进备份。</summary>
     public static string StateDir => Path.Combine(DataRoot, "state");
 
     /// <summary>

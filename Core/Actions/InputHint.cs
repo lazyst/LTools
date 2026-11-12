@@ -5,8 +5,8 @@ namespace LTools.Core.Actions;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 单元声明里写了 <see cref="InputSpec.Description"/> 就用它；没写时按 <see cref="InputSpec.Type"/> /
-/// <see cref="InputSpec.Editor"/> 给一句默认说明——这样每个输入框旁边都有类型提示，而单元作者
+/// 动作单元声明里写了 <see cref="InputSpec.Description"/> 就用它；没写时按 <see cref="InputSpec.Type"/> /
+/// <see cref="InputSpec.Editor"/> 给一句默认说明——这样每个输入框旁边都有类型提示，而动作单元作者
 /// 只需要为「默认说法不够」的参数补一句（单位、格式、可填哪些值）。
 /// </para>
 /// <para>
@@ -34,7 +34,7 @@ internal static class InputHint
             InputEditor.macro => "选择一个已录制的宏（在「设置 → 键鼠宏」里录制）",
             InputEditor.region => "屏幕区域 x,y,w,h；点右侧 ▾ 框选一块",
             InputEditor.variable => "变量名（只填名字，不用 ${}）",
-            InputEditor.condition => "写文本、用 ${变量}，或点右侧 ▾ 换成变量 / 取值单元",
+            InputEditor.condition => "写文本、用 ${变量}，或点右侧 ▾ 换成变量 / 取值动作单元",
             _ => input.Type switch
             {
                 ValueKind.number => "数字；可用 ${变量}",

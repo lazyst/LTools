@@ -65,7 +65,7 @@ internal static class ImageClickAction
 }
 
 /// <summary>
-/// 「图片点击」的入参。功能单元把参数求值后装成它，不再为了复用这套实现去拼一个
+/// 「图片点击」的入参。动作单元把参数求值后装成它，不再为了复用这套实现去拼一个
 /// <see cref="ActionDto"/>。
 /// </summary>
 internal sealed record ImageClickRequest

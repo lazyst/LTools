@@ -155,7 +155,7 @@ internal static class AhkRunner
 
             if (result.Cancelled) throw new ActionAbortedException("已停止", userCancelled: true);
 
-            // 失败时也把变量收回来：调用方可以用来看脚本跑到哪一步了（写不写回由单元决定）
+            // 失败时也把变量收回来：调用方可以用来看脚本跑到哪一步了（写不写回由动作单元决定）
             Dictionary<string, string> values = ReadVariables(file.OutPath);
 
             string? error = ReadRuntimeError(file.ErrPath, file);

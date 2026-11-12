@@ -7,8 +7,8 @@ namespace LTools.Features;
 /// 启动进程的共用实现：构造 <see cref="ProcessStartInfo"/>、拆分命令行、直接运行。
 /// </summary>
 /// <remarks>
-/// 「启动程序」单元、旧 <see cref="ActionExecutor"/> 的 launchApp / runCommand、
-/// 以及新的「运行命令」单元共用这里，避免三处各写一套参数解析。
+/// 「启动程序」动作单元、旧 <see cref="ActionExecutor"/> 的 launchApp / runCommand、
+/// 以及新的「运行命令」动作单元共用这里，避免三处各写一套参数解析。
 /// </remarks>
 internal static class ProcessLauncher
 {

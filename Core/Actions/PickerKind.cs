@@ -9,7 +9,7 @@ namespace LTools.Core.Actions;
 /// 只声明「这个参数可以怎么填」，具体界面由 <c>Views/ActionEditor/ValueField</c> 实现：
 /// 变量、选择文件 / 图片 / 窗口 / 进程、屏幕取点、录制按键…都从同一个入口进。
 /// 没写 <see cref="InputSpec.Pickers"/> 时按 <see cref="InputEditor"/> 推一个合理默认
-/// （见 <see cref="PickerDefaults.For"/>），单元作者只在默认不够时补一条。
+/// （见 <see cref="PickerDefaults.For"/>），动作单元作者只在默认不够时补一条。
 /// </remarks>
 [Flags]
 public enum PickerKind
@@ -59,7 +59,7 @@ public enum PickerKind
     /// <summary>剪贴板历史里的一条记录（填它的 Id）。</summary>
     clipboardRecord = 1 << 15,
 
-    /// <summary>内联取值单元（读剪贴板 / 截图 / 找图…），运行到这里时现场取一个值。</summary>
+    /// <summary>内联取值动作单元（读剪贴板 / 截图 / 找图…），运行到这里时现场取一个值。</summary>
     inline = 1 << 16,
 
     /// <summary>清空当前值。</summary>

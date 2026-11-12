@@ -19,21 +19,21 @@ public sealed class AiTools
     public static string Health() => AiToolHandlers.Call("ltools_health", null, AiToolHandlers.Health);
 
     [McpServerTool(Name = "ltools_docs_get"), Description(
-        "读随包分发的知识文件：format（动作 JSON 格式与工作流）/ units（全部单元目录）/ examples（完整示例）。")]
+        "读随包分发的知识文件：format（动作 JSON 格式与工作流）/ units（全部动作单元目录）/ examples（完整示例）。")]
     public static string DocsGet(
         [Description("format / units / examples")] string name) =>
         AiToolHandlers.Call("ltools_docs_get", null, () => AiToolHandlers.DocsGet(name));
 
     [McpServerTool(Name = "ltools_units_list"), Description(
-        "列出功能单元（可按 key / 名称 / 分类 / 说明过滤）。先用它确认能力存在，别臆造单元键。")]
+        "列出动作单元（可按 key / 名称 / 分类 / 说明过滤）。先用它确认能力存在，别臆造动作单元键。")]
     public static string UnitsList(
         [Description("可选：过滤词")] string? query = null) =>
         AiToolHandlers.Call("ltools_units_list", null, () => AiToolHandlers.UnitsList(query));
 
     [McpServerTool(Name = "ltools_units_get"), Description(
-        "取一个单元的完整规格：输入（类型 / 必填 / 默认 / 可见条件 / 枚举选项）、输出、子步骤。")]
+        "取一个动作单元的完整规格：输入（类型 / 必填 / 默认 / 可见条件 / 枚举选项）、输出、子步骤。")]
     public static string UnitsGet(
-        [Description("单元键，如 ui.toast")] string key) =>
+        [Description("动作单元键，如 ui.toast")] string key) =>
         AiToolHandlers.Call("ltools_units_get", null, () => AiToolHandlers.UnitsGet(key));
 
     [McpServerTool(Name = "ltools_actions_list"), Description(

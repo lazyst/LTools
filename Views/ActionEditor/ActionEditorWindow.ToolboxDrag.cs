@@ -11,7 +11,7 @@ using LTools.Core.Actions;
 namespace LTools.Views;
 
 /// <summary>
-/// 从工具箱把单元拖进步骤列表：落到行间 / 空分支 / 末尾，松手按默认参数直接插入。
+/// 从工具箱把动作单元拖进步骤列表：落到行间 / 空分支 / 末尾，松手按默认参数直接插入。
 /// </summary>
 /// <remarks>
 /// 与步骤拖动共用同一套落点计算（<see cref="TryResolveDrop"/>）和插入线，所以「拖到哪」在两处含义一致；
@@ -19,7 +19,7 @@ namespace LTools.Views;
 /// </remarks>
 public partial class ActionEditorWindow
 {
-    /// <summary>按下工具箱里的单元：先记着，移动超过 4px 才算拖动（点击仍然走「填参数」）。</summary>
+    /// <summary>按下工具箱里的动作单元：先记着，移动超过 4px 才算拖动（点击仍然走「填参数」）。</summary>
     private void BeginUnitPress(FrameworkElement source, UnitSpec spec, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
@@ -54,7 +54,7 @@ public partial class ActionEditorWindow
             _unitDragging = true;
 
             // 按钮在按下时捕获了鼠标；窗口层把 mouseup 吞掉后它永远等不到释放，
-            // 于是**下一次点击**会被它当成自己的松手，补一个 Click（弹出该单元的参数表单）。
+            // 于是**下一次点击**会被它当成自己的松手，补一个 Click（弹出该动作单元的参数表单）。
             // 进入拖动就交还捕获，并让这次按下不再算点击。
             _suppressUnitClick = true;
             Mouse.Capture(null);

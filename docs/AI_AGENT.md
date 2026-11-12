@@ -24,10 +24,10 @@
    打开一个正式动作准备编辑时，Quicker 会自动为它建/取一份 draft，**正式动作本体不会被直接改写**。
 3. 外部 MCP 的默认姿态是「只读 + 沙箱确认」：`AllowWrites=false`、`ApprovalMode="sandbox_confirm"`；删动作有「一次最多一个」「超过一个要用户手打确认语」这类硬限制；**授权开关本身（`agent.mcp.*` / `agent.approvalMode`）只能由用户在设置窗口里改**，模型改不了。
 4. 知识不是塞进系统提示词的，而是**随包分发的明文文件**（`agent/skills/*/SKILL.md`、`agent/knowledge/**`、按需生成的 `catalog/*.yaml`），agent 用 grep/read_file 按需检索。这一条最值得照抄。
-5. LTools 的形态比 Quicker 简单得多（62 个功能单元、无脚本动作、动作模型就是 `ActionProgram` 的 JSON），
+5. LTools 的形态比 Quicker 简单得多（62 个动作单元、无脚本动作、动作模型就是 `ActionProgram` 的 JSON），
    所以**不需要** Quicker 那套 C# 脚本 / 场景 / 触发器 / 浏览器插件的知识量；
    但 LTools 的 `InputSpec` / `OutputSpec` / `VisibleWhen` / `OptionLabels` 已经是机器可读的元数据，
-   可以**自动生成**出比 Quicker 手写 YAML 更准的单元目录，这是我们的优势。
+   可以**自动生成**出比 Quicker 手写 YAML 更准的动作单元目录，这是我们的优势。
 
 推荐方案：**B —— 暂存区三层 + 静态校验闭环 + 外部 MCP**（见 §4），分 4 期落地，约 6–9 个工作日。
 
@@ -175,7 +175,7 @@ agent/
 
 - 动作模型：`ActionDto`（Id/Name/Icon/Type/Program）+ `ActionProgram`（Name/Icon/Description/Variables/Steps/SubActions），
   一个动作一个目录 `actions/<id>/action.json`（P2 起；更早是一份 `LTools.json` / `configs/actions.json` 的数组）；`Program` 是纯数据，天然可序列化。
-- 62 个功能单元，全部有 `UnitSpec`：`Key/Name/Category/Kind/Body/Inputs/Outputs/Description`；
+- 62 个动作单元，全部有 `UnitSpec`：`Key/Name/Category/Kind/Body/Inputs/Outputs/Description`；
   `InputSpec` 带 `Type/Editor/Required/Default/VisibleWhen/Options/Labels/Raw/Description`。
   **这就是现成的机器可读目录**，不需要另写一份 YAML。
 - 运行入口唯一：`AutomationRunner.TryRunProgram(name, program, startPath, trace, completed)`，
@@ -197,7 +197,7 @@ agent/
 | 校验 | 无（跑到一半才炸） | `check` 静态校验 + 精确定位 + 可试运行 | 同 B |
 | 误改正式动作 | 靠模型自觉 | 结构上不可能：写入口只有草稿 | 同 B |
 | 工作量 | 1–2 天 | 6–9 天 | +2–3 周 |
-| 风险 | 生成坏动作、用户不敢用 | 校验器要覆盖 62 个单元 | 长期维护成本高 |
+| 风险 | 生成坏动作、用户不敢用 | 校验器要覆盖 62 个动作单元 | 长期维护成本高 |
 
 **推荐 B**：把 Quicker 的三层结构和 `check/save` 契约搬过来，去掉内置对话和脚本能力。
 
@@ -212,9 +212,9 @@ ai/
   mcp.json                     # 服务配置（人可读，token 打码显示）
   knowledge/
     format.md                  # 动作 JSON 格式（手写，稳定）
-    units.md                   # 单元目录（启动时从 StepRegistry 生成）
+    units.md                   # 动作单元目录（启动时从 StepRegistry 生成）
     examples.md                # 3~5 个完整示例（手写）
-    .version                   # 生成版本（程序集版本 + 单元数 + units.md 正文哈希）
+    .version                   # 生成版本（程序集版本 + 动作单元数 + units.md 正文哈希）
   audit.log                    # 每次工具调用的审计行（轮转，最多 2MB）
   mcp-debug.log                # 只有 MCP SDK 的 Warning 以上（排错用，轮转 1MB）
 staging/
@@ -241,8 +241,8 @@ staging/
 |---|---|---|---|
 | `ltools_health` | 版本 / 开关 / 审批模式 / 草稿数 / 最近错误 | | |
 | `ltools_docs_get(name)` | `format` / `units` / `examples` | | |
-| `ltools_units_list(query?)` | 单元摘要列表（74 条，可过滤） | | |
-| `ltools_units_get(key)` | 单个单元的完整 Input/Output 规格（`sub.run` 附带全部子动作签名） | | |
+| `ltools_units_list(query?)` | 动作单元摘要列表（74 条，可过滤） | | |
+| `ltools_units_get(key)` | 单个动作单元的完整 Input/Output 规格（`sub.run` 附带全部子动作签名） | | |
 | `ltools_actions_list(query?, limit?)` | 正式动作列表（Id/名称/图标/步骤数/来源） | | |
 | `ltools_actions_get(id)` | 正式动作的完整 Program（只读） | | |
 | `ltools_subactions_list(query?, limit?)` | 全局子动作列表（id / 名称 / 输入 / 输出 / 步数） | | |
@@ -284,7 +284,7 @@ staging/
 
 这是本方案的核心增量，也是「AI 写出来的动作敢不敢用」的答案。规则：
 
-1. 未知单元键 / 未知参数键（对照 `UnitSpec.Inputs` + `DynamicInputs`）
+1. 未知动作单元键 / 未知参数键（对照 `UnitSpec.Inputs` + `DynamicInputs`）
 2. 必填缺失（**只对 `VisibleWhen` 判定为可见的参数**，与引擎 / 对话框同一条规则）
 3. 字面量类型不符（按 `InputSpec.Type` 试 `Coerce`）
 4. 枚举值不在 `Options` 里（保留旧值的情况只警告）
@@ -294,7 +294,7 @@ staging/
 8. `files/` 里引用的图片不存在；引用了草稿外的绝对路径给警告
 9. 子动作调用指向不存在的 `SubActions` / 全局 `subactions`
 10. 宏引用不存在
-11. 内联 Pure 单元不能是 `action` 类型（会阻塞取值）
+11. 内联 Pure 动作单元不能是 `action` 类型（会阻塞取值）
 12. 预算：步数 / 嵌套深度 / 循环无界（`flow.while` 没有超时）给警告
 
 输出形状照 Quicker：`{ ok, revision, issues:[{path:"steps/2/then/0", label:"第 3 行 › 满足时 › 第 1 行", key, message, severity}], warnings }`
@@ -396,7 +396,7 @@ mode=replace  → 校验 draft.baseActionId 仍存在、baseSourceHash 未变（
 | 期 | 内容 | 出口标准 |
 |---|---|---|
 | W1 | `DraftStore` + `ActionValidator` + 设置页「暂存区」只读列表 | 手工放一个草稿目录能列出、能校验出错误 |
-| W2 | MCP 骨架（HTTP + token + `health` / `units_*` / `docs_get` / `actions_*`）+ 设置页「连接」段 | opencode 能连上，列出 62 个单元、读到正式动作 |
+| W2 | MCP 骨架（HTTP + token + `health` / `units_*` / `docs_get` / `actions_*`）+ 设置页「连接」段 | opencode 能连上，列出 62 个动作单元、读到正式动作 |
 | W3 | 写工具：`staging_create/open/write/read_file/check/save/reset/delete` + `run` | 端到端：一句话 → 草稿 → check 通过 → 试运行 |
 | W4 | `promote` + 审批 + 审计 + `examples.md` + 编辑器打开草稿 | 用户点「采纳」得到正式动作，重启后仍在 |
 | 可选 | stdio 桥（已实现：`LTools.exe --mcp-stdio` 把 stdio 逐行转发到本机 HTTP 服务，不复制状态）、YAML 语法糖、多草稿 diff | |
@@ -413,7 +413,7 @@ mode=replace  → 校验 draft.baseActionId 仍存在、baseSourceHash 未变（
    运行时按该目录解析；别再往共享池写「只有草稿知道」的路径。
 7. **试运行会真的动键鼠**：UI 上要能一眼看到「AI 正在试运行」，并保留停止热键；MCP 侧返回 `busy` 而不是排队。
 8. **token 只存本地、只显示一次以上**：设置页可复制，不进日志、不进错误消息、不进 `health` 回执。
-9. **`units.md` 会随单元变化漂移**：用 `.version`（程序集版本 + 单元数 + `BuildUnitsMarkdown()` 正文的 SHA-256）控制重生成，别手工维护；只哈希「键 / 分类」会让单元参数重构后的知识包停在旧内容。
+9. **`units.md` 会随动作单元变化漂移**：用 `.version`（程序集版本 + 动作单元数 + `BuildUnitsMarkdown()` 正文的 SHA-256）控制重生成，别手工维护；只哈希「键 / 分类」会让动作单元参数重构后的知识包停在旧内容。
 10. **管理员权限**：LTools 以管理员运行，MCP 服务天然也是高权限。HTTP 必须只听 127.0.0.1 + token，
     并且默认关；否则等于给本机任意进程一个提权后门。
 
@@ -424,8 +424,8 @@ mode=replace  → 校验 draft.baseActionId 仍存在、baseSourceHash 未变（
 ```
 你是 LTools 动作编写助手。只能通过 staging_* 工具产出草稿，永远不要试图改正式动作。
 动作 = { name, icon, description, variables[], steps[] }；步骤 = { unit, in{}, out{}, body/then/else }。
-参数三态：字面量（文本支持 ${变量} 模板）/ {"var":"名字"} / 内联取值单元 {"unit":..., "in":{...}}。
+参数三态：字面量（文本支持 ${变量} 模板）/ {"var":"名字"} / 内联取值动作单元 {"unit":..., "in":{...}}。
 流程：units_list → units_get → staging_create → staging_write → staging_check（改到 ok）→
       staging_save → staging_run（可选）→ 交给用户点「采纳」。
-找不到能力就说不支持，不要臆造单元键。
+找不到能力就说不支持，不要臆造动作单元键。
 ```

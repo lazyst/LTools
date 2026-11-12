@@ -26,7 +26,7 @@ namespace LTools.Views;
 /// </para>
 /// <para>
 /// 工具箱完全由 <see cref="StepRegistry"/> 的 <see cref="UnitSpec"/> 生成：
-/// 新增一个单元不需要改这个窗口（W4 验收）。
+/// 新增一个动作单元不需要改这个窗口（W4 验收）。
 /// </para>
 /// <para>保存契约不变：<see cref="Result"/> 由调用方 <c>ConfigStore.AddAction</c> / <c>UpdateAction</c> 落盘。</para>
 /// </remarks>
@@ -75,7 +75,7 @@ public partial class ActionEditorWindow : Window
     private Border? _insertLine;
     private (List<Step> List, int Index)? _dropTarget;
 
-    // 从工具箱拖单元进步骤列表（松手按默认参数直接插入）
+    // 从工具箱拖动作单元进步骤列表（松手按默认参数直接插入）
     private UnitSpec? _unitSpec;
     private FrameworkElement? _unitSource;
     private Point _unitOrigin;
@@ -127,7 +127,7 @@ public partial class ActionEditorWindow : Window
             IconSection.Visibility = Visibility.Collapsed;
             CodeHint.Text = "调用名：" + _program.Id;
             CodeHint.Visibility = Visibility.Visible;
-            EmptyHint.Text = "（空子动作）从左侧点一个单元开始，例如：设置变量 → 提示弹窗";
+            EmptyHint.Text = "（空子动作）从左侧点一个动作单元开始，例如：设置变量 → 提示弹窗";
             // 多一列「方向」，右栏放宽一点，否则默认值、图标会被挤没
             RightColumn.Width = new GridLength(360);
         }
@@ -224,7 +224,7 @@ public partial class ActionEditorWindow : Window
         /// <summary>这个变量是谁写进来的（「第 2 步 · 截图（输出 file）」/「手动创建」）。</summary>
         public string Origin = "";
 
-        /// <summary>类型由单元声明决定（用户改过类型就为 false，不再被步骤覆盖）。</summary>
+        /// <summary>类型由动作单元声明决定（用户改过类型就为 false，不再被步骤覆盖）。</summary>
         public bool AutoType;
 
         /// <summary>上一次确认过的变量名（改名时用它找出要同步的 ${旧名}）。</summary>

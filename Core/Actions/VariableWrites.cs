@@ -9,7 +9,7 @@ namespace LTools.Core.Actions;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 写变量有两条路：普通单元把输出键映射到变量名（<c>out</c>），设置变量把目标名放在参数里、
+/// 写变量有两条路：普通动作单元把输出键映射到变量名（<c>out</c>），设置变量把目标名放在参数里、
 /// 运行时直接 <c>Scope.Set</c>。编辑器变量表 / 引用统计 / 改名同步 / 保存时补声明 / 静态校验
 /// 都必须看全这两条，漏掉设置变量就会出现「明明设置了变量，变量表里却没有它、▾ 里也选不到」。
 /// </para>
@@ -20,7 +20,7 @@ namespace LTools.Core.Actions;
 /// </remarks>
 internal static class VariableWrites
 {
-    /// <summary>「设置变量」的单元键。</summary>
+    /// <summary>「设置变量」的动作单元键。</summary>
     public const string SetUnitKey = "flow.set";
 
     /// <summary>「设置变量」放目标变量名的参数键。</summary>

@@ -156,7 +156,7 @@ public partial class App : Application
         // 运行期截图只在上一轮运行里有意义：启动时整体清空 cache/screenshots（外部程序也不该跨重启依赖它）。
         ImageLibrary.ClearCaptures();
 
-        // AI 接入：知识包随单元清单变化重建（后台线程，别拖住启动）；MCP 服务默认关闭，
+        // AI 接入：知识包随动作单元清单变化重建（后台线程，别拖住启动）；MCP 服务默认关闭，
         // 只有用户在设置里打开才会在后台起 HTTP 服务（启动失败只记配置里的 LastError）。
         _ = Task.Run(KnowledgePack.Ensure);
         _ = Task.Run(McpServer.Apply);

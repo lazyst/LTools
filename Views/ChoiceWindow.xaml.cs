@@ -13,7 +13,7 @@ namespace LTools.Views;
 /// <remarks>
 /// <para>
 /// 由 <c>ui.confirm</c> / <c>ui.select</c> 经 <see cref="Features.ChoiceWindowService"/> 打开，
-/// 单元自己轮询结果——和文本窗口一样**不用 <c>ShowDialog</c>**：模态对话框会卡住 UI 线程，
+/// 动作单元自己轮询结果——和文本窗口一样**不用 <c>ShowDialog</c>**：模态对话框会卡住 UI 线程，
 /// 停止热键就中止不了流程了。
 /// </para>
 /// <para>
@@ -26,7 +26,7 @@ public partial class ChoiceWindow : Window
     private readonly IReadOnlyList<string> _options;
     private readonly bool _selectMode;
 
-    /// <summary>窗口是否已经关掉（单元轮询它决定何时继续）。</summary>
+    /// <summary>窗口是否已经关掉（动作单元轮询它决定何时继续）。</summary>
     public bool IsClosed { get; private set; }
 
     /// <summary>用户是否给出了答案（关窗 / 取消 / 超时都是 false）。</summary>
@@ -113,7 +113,7 @@ public partial class ChoiceWindow : Window
             return;
         }
 
-        // 确认框：按钮就是答案，第一个按钮是「肯定」（单元据此给出 confirmed）。
+        // 确认框：按钮就是答案，第一个按钮是「肯定」（动作单元据此给出 confirmed）。
         Accepted = true;
         Index = buttonIndex;
         Value = (ButtonHost.Children[buttonIndex] as Button)?.Content as string ?? "";

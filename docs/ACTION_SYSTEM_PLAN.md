@@ -704,7 +704,7 @@ ActionExecutor.Run(ActionDto action)
   - 单行时把手/序号/徽标/延迟/失败策略/按钮的 `Auto` 列总和约 **378px**，而中栏最小可用仅约 **256px**（窗口 940 时也已贴边）——**WPF `Grid` 的 `Auto` 列不会因空间不足收缩**，溢出从最右侧开始裁，删除按钮首当其冲；单行无法靠压缩字段解决（实测压到极限仍无余量）。故按 `ListBox.ActualWidth` 切换两种形态（`WidthAtLeastConverter`，阈值 **520px**，见 `StepRowTemplate` 底部 `DataTrigger`）：
     - **宽（≥520）→ 单行**：序号 + 徽标 + 名称(`*`) + 延迟 + 失败策略 + 编辑 + 删除，参数在行内，名称吃掉全部剩余空间、随窗口拉宽而变长；
     - **窄（<520）→ 两行**：上行仅 172px 固定件（序号+徽标+名称`*`+按钮）→ 按钮恒可见；下行 = 延迟 + 失败策略独占整行 → **仍可行内编辑**；把手跨两行。
-    - 两份参数区共用**同一份 XAML**：`ContentPresenter` + `ContentTemplate={StaticResource ParamsTemplate}`，同 `DataContext` 双向绑定天然同步，切换只改 `Visibility`（避免重复 XAML，也避免"单元素跨 `Grid.Row/Column` 切换"引发的跨列 `Auto` 分配玄学）。
+    - 两份参数区共用**同一份 XAML**：`ContentPresenter` + `ContentTemplate={StaticResource ParamsTemplate}`，同 `DataContext` 双向绑定天然同步，切换只改 `Visibility`（避免重复 XAML，也避免"动作单元素跨 `Grid.Row/Column` 切换"引发的跨列 `Auto` 分配玄学）。
   - **兜底**：极窄时下行溢出只裁自己（独立内容区），上行按钮所在的内层 `Grid` 不受影响——这正是"常驻"的保证。
 - ✅ **修：拉宽窗口后步骤行不变宽（`ListBox` 只有内容自然宽）**——根因是中间列 `DockPanel` 的**子元素顺序**：`EmptyHint`(`Dock="Bottom"`) 排在 `ListBox` 之后，成了最后子元素 → `LastChildFill` 让它填满剩余，而 `ListBox` 落到**默认 `Dock="Left"`**，宽度变成内容自然宽（并被可用宽 clamp）。于是窄窗口 = 可用宽（内容溢出裁掉右侧按钮）、宽窗口 = 内容自然宽 460px（**永不拉宽**）。**修复**：`EmptyHint` 移到 `ListBox` **之前**，让 `ListBox` 成为最后子元素。诊断数据：修复前 `ListBox=460`（窗口 1400 / 中间列 880），修复后 `854`。
 - ✅ **修：单行态步骤行内容偏上不居中（把手 `RowSpan` 跨行分配坑）**——表象：宽态合并为一行后，行卡片下半留白、内容偏上。实测诊断（逐层打印 y/h/DesiredSize）：外层容器 39.3 = 上行 30 + **Row1 残留 9.3**，而 Row1 唯一子级 `ParamsBelow` 已 `Collapsed`（des=0）却仍占 9.3。根因：**把手 `Grid.RowSpan="2"`（把手 `≡` 高 18.6）跨两个 Auto 行，WPF Grid 的跨行测量会把把手 DesiredSize 的一部分分摊进行高**——18.6/2 = 9.3 正好落进折叠后的 Row1。对照实验坐实：`RowSpan=1` → 外层 Grid 39.3→30、卡片 53.3→44；`Row1` 固定 `Height=0` → Grid 反而 48.6（把手 18.6 全部落入 Row0）。**修复**：卡片内容重构为 `DockPanel`——把手 `DockPanel.Dock="Left" Width="18"`（`LastChildFill` 拉伸至全行高，窄态跨两行的视觉与拖拽体验不变），右侧填两行 `Grid`；把手完全退出行测量，行高由内容独占。副作用检查：拖拽排序（`Grip_PreviewMouseLeftButtonDown`）只用 `sender` 自身作鼠标捕获载体、不依赖父级 `Grid`，无需改动。宽/窄两端复测通过（宽：Grid 30 / 把手全高 30 / 内容 y 与卡片内边距严格对称；窄：Grid 64.3 = 30 + 34.3，把手全高 64.3）。
@@ -842,7 +842,7 @@ ActionExecutor.Run(ActionDto action)
 - ✅ **需求1：动作管理页「新建组合动作…」按钮样式对齐「新建动作…」**——`BtnGhost` → `BtnPrimary`（XAML 一行）。
 - ✅ **需求2：所有拖动排序统一为「幽灵跟随 + 源占位 + 目标指示 + 松手位移动画」**（用户确认动画形态=松手后滑动到位、占位形态=源半透明+目标插入线）。新增共享 `Views/Controls/DragFx.cs`：
   - `CaptureByIndex` / `AnimateReorderByIndex`（ListBox 项让位动画，160ms CubicEase 缓出）；
-  - `AnimateSwap`（格子交换：两格内容从对方位置滑入）；`Slide`（单元素滑回）。
+  - `AnimateSwap`（格子交换：两格内容从对方位置滑入）；`Slide`（动作单元素滑回）。
   - **位置匹配用「新索引→旧索引」映射**（`OldIndexOfMove` / `OldIndexOfSwap`），不用对象身份——菜单项列表显示文本含序号（`$"{i+1}. {name}"`）重排后整体重建字符串，身份型匹配必失效（踩坑记录）。
 - ✅ **5 个场景全覆盖**：
   1. **超级面板格子**（SuperPanel）：`ShowGhost` 设源格 `Opacity=0.35`，`EndDragVisuals` 恢复；同页交换后 `AnimateSwap(新源格, 新目标格)`（跨页交换目标格不在同 visual tree，跳过动画）。

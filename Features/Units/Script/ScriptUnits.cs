@@ -73,7 +73,7 @@ public sealed class AhkScriptUnit : IStepUnit
         AhkRunResult result = AhkRunner.Run(
             code, variables, timeoutMs, args.Text("workdir"), ctx);
 
-        // LT_Set 的语义就是「写运行变量」：与「设置变量」单元一样直接落到当前作用域，
+        // LT_Set 的语义就是「写运行变量」：与「设置变量」动作单元一样直接落到当前作用域，
         // 后续步骤用 ${名字} 就能取到；失败时也写，方便看脚本跑到哪一步。
         foreach (var pair in result.Variables)
             ctx.Scope.Set(pair.Key, Value.FromText(pair.Value));

@@ -152,11 +152,11 @@
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintLabel}"
                                Text="点一下填参数 · 拖进步骤 · 右键添加" Margin="12,0,12,6"
                                TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                               ToolTip="点一下单元填参数插入 · 拖到步骤列表里插入 · 右键单元还有「直接添加 / 添加到末尾」"/>
+                               ToolTip="点一下动作单元填参数插入 · 拖到步骤列表里插入 · 右键动作单元还有「直接添加 / 添加到末尾」"/>
                     <TextBox DockPanel.Dock="Top" x:Name="SearchBox" Margin="12,0,12,8"
                              MinHeight="30" TextChanged="SearchBox_TextChanged"
-                              controls:TextBoxPlaceholder.Text="搜索单元（名称 / 分类 / 单元键）…"
-                             ToolTip="按名称 / 分类 / 单元键搜索"/>
+                              controls:TextBoxPlaceholder.Text="搜索动作单元（名称 / 分类 / 动作单元键）…"
+                             ToolTip="按名称 / 分类 / 动作单元键搜索"/>
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="Toolbox" Margin="10,0,8,0"/>
                     </ScrollViewer>
@@ -190,7 +190,7 @@
                                  controls:TextBoxPlaceholder.Text="搜索步骤…"
                                  TextChanged="StepSearchBox_TextChanged"
                                  PreviewKeyDown="StepSearchBox_PreviewKeyDown"
-                                 ToolTip="搜索步骤（名称 / 摘要 / 单元键 / 参数文本）；Enter 跳到下一处，Shift+Enter 上一处，Esc 清空。当前折叠的块会自动展开"/>
+                                 ToolTip="搜索步骤（名称 / 摘要 / 动作单元键 / 参数文本）；Enter 跳到下一处，Shift+Enter 上一处，Esc 清空。当前折叠的块会自动展开"/>
                         <TextBlock x:Name="StepSearchInfo" IsHitTestVisible="False"
                                    HorizontalAlignment="Right" VerticalAlignment="Center"
                                    Margin="0,0,8,0" FontSize="{StaticResource FontSizeHint}"
@@ -229,7 +229,7 @@
 
                     <TextBlock x:Name="EmptyHint" DockPanel.Dock="Bottom"
                                Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
-                               Text="（空动作）从左侧点一个单元开始，例如：读取选中文本 → 文本处理 → 提示弹窗"/>
+                               Text="（空动作）从左侧点一个动作单元开始，例如：读取选中文本 → 文本处理 → 提示弹窗"/>
 
                     <!-- 试运行：不用先保存，跑的就是编辑器里现在的内容；轨迹按步骤路径回填到下面的列表 -->
                     <Border x:Name="RunBar" DockPanel.Dock="Bottom" Margin="0,6,0,0"

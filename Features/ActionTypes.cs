@@ -5,7 +5,7 @@ using LTools.Core.Actions;
 
 namespace LTools.Features;
 
-/// <summary>鼠标动作的子类型（旧 <c>mouse</c> 动作 / 新「鼠标操作」单元）。</summary>
+/// <summary>鼠标动作的子类型（旧 <c>mouse</c> 动作 / 新「鼠标操作」动作单元）。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum MouseActionKind
 {
@@ -31,7 +31,7 @@ public enum MouseActionKind
     wheelDown,
 }
 
-/// <summary>窗口操作子类型（旧 <c>window</c> 动作 / 新「窗口操作」单元）。</summary>
+/// <summary>窗口操作子类型（旧 <c>window</c> 动作 / 新「窗口操作」动作单元）。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum WindowActionKind
 {

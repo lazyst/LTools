@@ -14,7 +14,7 @@ public enum FailMode
     @continue,
 }
 
-/// <summary>一个参数值的来源：字面量 / 变量 / 内联取值单元。</summary>
+/// <summary>一个参数值的来源：字面量 / 变量 / 内联取值动作单元。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum StepArgKind
 {
@@ -28,7 +28,7 @@ public enum StepArgKind
 /// <list type="bullet">
 /// <item><c>"文本"</c> / <c>42</c> / <c>true</c> / 数组 / 对象 — 字面量（文本支持 <c>${...}</c> 模板）</item>
 /// <item><c>{"var": "name"}</c> — 取变量（保留类型）</item>
-/// <item><c>{"unit": "screen.findImage", "in": {...}}</c> — 内联 Pure 单元</item>
+/// <item><c>{"unit": "screen.findImage", "in": {...}}</c> — 内联 Pure 动作单元</item>
 /// </list>
 /// </summary>
 [JsonConverter(typeof(StepArgConverter))]
@@ -55,7 +55,7 @@ public sealed class StepArg
 
     /// <summary>
     /// 「等于没填」：空文本、空变量名、没挂取值步骤。
-    /// 必填校验与「取值单元还缺哪些参数」共用这一条，别各写一套。
+    /// 必填校验与「取值动作单元还缺哪些参数」共用这一条，别各写一套。
     /// </summary>
     public bool IsEmpty => Kind switch
     {
@@ -120,7 +120,7 @@ public sealed class StepArg
 }
 
 /// <summary>
-/// 步骤：单元的一次使用。纯数据，可序列化。
+/// 步骤：动作单元的一次使用。纯数据，可序列化。
 /// </summary>
 /// <remarks>
 /// 控制流不是节点图：<c>if</c> / 循环就是普通步骤，分支体放在 <see cref="Then"/> /

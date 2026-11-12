@@ -42,9 +42,9 @@ internal sealed class ActionValidationResult
 /// </summary>
 /// <remarks>
 /// <para>
-/// 规则来自 <see cref="UnitSpec"/> 的机器可读元数据（不是另写一份 YAML）：未知单元 / 未知参数、
+/// 规则来自 <see cref="UnitSpec"/> 的机器可读元数据（不是另写一份 YAML）：未知动作单元 / 未知参数、
 /// 必填缺失（只对 <see cref="VisibleWhen"/> 判定为可见的参数，与引擎 / 参数对话框同一条规则）、
-/// 字面量类型、枚举值、变量引用、条件运算符 / 正则、子动作与宏引用、内联取值单元、预算。
+/// 字面量类型、枚举值、变量引用、条件运算符 / 正则、子动作与宏引用、内联取值动作单元、预算。
 /// </para>
 /// <para>
 /// 校验器<b>不执行</b>动作，也不做会阻塞的事（宏 / 子动作只读文件）。
@@ -231,7 +231,7 @@ internal static class ActionValidator
         if (!registry.TryGet(step.Unit, out var unit))
         {
             issues.Add(new ActionIssue(path, label, step.Unit, "",
-                string.IsNullOrWhiteSpace(step.Unit) ? "步骤缺少单元键" : $"未知的功能单元：{step.Unit}",
+                string.IsNullOrWhiteSpace(step.Unit) ? "步骤缺少动作单元键" : $"未知的动作单元：{step.Unit}",
                 IssueSeverity.error));
             return;
         }
@@ -304,7 +304,7 @@ internal static class ActionValidator
         if (arg.Kind == StepArgKind.variable)
             CheckVariable(arg.VariablePath, issuePath, label, input, produced, issues, isOutput: false);
 
-        // 内联取值单元
+        // 内联取值动作单元
         if (arg.Kind == StepArgKind.inline)
         {
             if (arg.InlineStep == null)
@@ -317,12 +317,12 @@ internal static class ActionValidator
             if (!StepRegistry.Default.TryGet(arg.InlineStep.Unit, out var inlineUnit))
             {
                 issues.Add(new ActionIssue(issuePath, label, arg.InlineStep.Unit, input.Key,
-                    $"内联取值引用了未知单元：{arg.InlineStep.Unit}", IssueSeverity.error));
+                    $"内联取值引用了未知动作单元：{arg.InlineStep.Unit}", IssueSeverity.error));
             }
             else if (inlineUnit.Spec.Kind != UnitKind.pure)
             {
                 issues.Add(new ActionIssue(issuePath, label, arg.InlineStep.Unit, input.Key,
-                    $"「{inlineUnit.Spec.Name}」不是取值单元，不能内联在值的位置", IssueSeverity.error));
+                    $"「{inlineUnit.Spec.Name}」不是取值动作单元，不能内联在值的位置", IssueSeverity.error));
             }
             else
             {

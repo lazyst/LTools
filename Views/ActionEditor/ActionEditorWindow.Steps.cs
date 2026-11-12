@@ -266,7 +266,7 @@ public partial class ActionEditorWindow
     // ============ 工具箱 ============
 
     /// <summary>
-    /// 左栏「添加单元」里已折叠的分类。**进程内共享 + 落盘 <c>ui.json</c>**：
+    /// 左栏「添加动作单元」里已折叠的分类。**进程内共享 + 落盘 <c>ui.json</c>**：
     /// 在 A 动作里折好的分组，换编辑 B 动作、重开编辑器都还是那个样子（全局记忆，不跟着动作走）。
     /// </summary>
     private static HashSet<string>? _toolboxCollapsed;
@@ -374,7 +374,7 @@ public partial class ActionEditorWindow
         {
             Toolbox.Children.Add(new TextBlock
             {
-                Text = "没有匹配的单元",
+                Text = "没有匹配的动作单元",
                 Style = (Style)FindResource("HintLabel"),
                 Margin = new Thickness(2, 8, 0, 0),
             });
@@ -440,7 +440,7 @@ public partial class ActionEditorWindow
             FontSize = (double)FindResource("FontSizeSecondary"),
             ToolTip = searching
                 ? "搜索时分类自动展开"
-                : collapsed ? $"展开「{name}」（{count} 个单元）" : $"折叠「{name}」",
+                : collapsed ? $"展开「{name}」（{count} 个动作单元）" : $"折叠「{name}」",
         };
 
         if (searching)
@@ -533,7 +533,7 @@ public partial class ActionEditorWindow
     }
 
     /// <summary>
-    /// 把单元插到指定位置。<paramref name="direct"/> = 按默认参数直接插（拖拽 / Ctrl+点击 / 右键「直接添加」）；
+    /// 把动作单元插到指定位置。<paramref name="direct"/> = 按默认参数直接插（拖拽 / Ctrl+点击 / 右键「直接添加」）；
     /// 有必填项没默认值时退回参数表单，别插出一个跑不了的步骤。
     /// </summary>
     private void AddStepAt(string unitKey, List<Step> list, int index, bool direct)
@@ -541,7 +541,7 @@ public partial class ActionEditorWindow
         Step? step = direct ? BuildDefaultStep(unitKey) : null;
         if (step == null)
         {
-            // 「保存并继续添加」：保存这一步后原地再开一个同单元的空表单，适合连着加一串。
+            // 「保存并继续添加」：保存这一步后原地再开一个同动作单元的空表单，适合连着加一串。
             int at = Math.Clamp(index, 0, list.Count);
             while (true)
             {
@@ -566,7 +566,7 @@ public partial class ActionEditorWindow
 
     /// <summary>
     /// 只套 <see cref="InputSpec.Default"/> 建一步；有可见的必填参数没默认值时返回 null。
-    /// 与参数表单共用同一份声明，新增单元不用改这里。
+    /// 与参数表单共用同一份声明，新增动作单元不用改这里。
     /// </summary>
     private static Step? BuildDefaultStep(string unitKey)
     {
@@ -775,7 +775,7 @@ public partial class ActionEditorWindow
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        // BuildToolbox 每次都重建整个左栏可视树（几十个分类头 + 单元按钮）；
+        // BuildToolbox 每次都重建整个左栏可视树（几十个分类头 + 动作单元按钮）；
         // 每敲一键都跑会顶住鼠标，停手 150ms 再建一次。
         if (IsInitialized) _toolboxSearchDebounce.Signal();
     }

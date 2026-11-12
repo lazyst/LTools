@@ -51,7 +51,7 @@ public sealed class UiStateFile
     /// <summary>上次选用的文字识别引擎。</summary>
     public string? LastOcrEngine { get; set; }
 
-    /// <summary>动作编辑器左栏已折叠的单元分类。</summary>
+    /// <summary>动作编辑器左栏已折叠的动作单元分类。</summary>
     public List<string> ToolboxCollapsedGroups { get; set; } = new();
 
     /// <summary>动作选择器的「最近使用」。</summary>

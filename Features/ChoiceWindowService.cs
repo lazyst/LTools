@@ -9,7 +9,7 @@ namespace LTools.Features;
 /// </summary>
 /// <remarks>
 /// 不用 <c>ShowDialog</c>：模态对话框会把 UI 线程卡在它自己的消息循环里，停止热键就中止不了流程。
-/// 这里窗口照常 Show，单元用 <see cref="Wait"/> 轮询，超时 / 停止都能把窗口关掉。
+/// 这里窗口照常 Show，动作单元用 <see cref="Wait"/> 轮询，超时 / 停止都能把窗口关掉。
 /// </remarks>
 internal static class ChoiceWindowService
 {

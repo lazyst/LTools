@@ -183,7 +183,7 @@ internal static class ImageLibrary
 
     /// <summary>
     /// 运行期截图（「截图」步骤的输出）存进 <see cref="CaptureDir"/>：本次运行内一直可用
-    /// （文字识别 / 打开文件 / 剪贴板都还能读），下一次运行开始或程序启动时整体清空。
+    /// （文字识别 / 用默认程序打开文件 / 剪贴板都还能读），下一次运行开始或程序启动时整体清空。
     /// </summary>
     public static string SaveCapture(System.Windows.Media.Imaging.BitmapSource image)
     {
@@ -350,7 +350,7 @@ internal static class ImageLibrary
     {
         if (a == null) return;
 
-        // 所有单元的 image 参数（含嵌套块与内联取值步骤）
+        // 所有动作单元的 image 参数（含嵌套块与内联取值步骤）
         foreach (var step in ProgramWalker.AllSteps(a.Program))
             AddRef(ProgramWalker.LiteralText(step, "image"), live);
     }

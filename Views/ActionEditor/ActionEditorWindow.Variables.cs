@@ -488,7 +488,7 @@ public partial class ActionEditorWindow
 
     /// <summary>
     /// 步骤写出、还没声明的变量补进变量表（输出映射 + 设置变量的目标名，见 <see cref="VariableWrites"/>）；
-    /// 类型取单元声明（旧版本一律登记成文本，那是错的）。已在表里的只校正「类型没被用户改过」的行；
+    /// 类型取动作单元声明（旧版本一律登记成文本，那是错的）。已在表里的只校正「类型没被用户改过」的行；
     /// 来源写进行提示，方便看出这个变量是谁写的。
     /// </summary>
     private void EnsureOutputVariables()

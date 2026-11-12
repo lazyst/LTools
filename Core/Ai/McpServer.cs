@@ -170,7 +170,7 @@ internal static class McpServer
                     Version = typeof(McpServer).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
                 };
                 options.ServerInstructions =
-                    "先读 ltools_docs_get(\"format\")，再用 ltools_units_list / ltools_units_get 确认单元键。" +
+                    "先读 ltools_docs_get(\"format\")，再用 ltools_units_list / ltools_units_get 确认动作单元键。" +
                     "只能改暂存区草稿（ltools_staging_*）；正式动作只读，采纳要先得到用户确认。";
             })
             .WithHttpTransport(options => options.Stateless = true)

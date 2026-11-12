@@ -68,7 +68,7 @@ internal sealed class FeatureRunContext
 }
 
 /// <summary>
-/// 一个内置功能：可放到面板 / 绑快捷键 / 悬浮，但**不是动作、不是步骤单元**。
+/// 一个内置功能：可放到面板 / 绑快捷键 / 悬浮，但**不是动作、不是动作单元**。
 /// </summary>
 /// <remarks>
 /// <para>

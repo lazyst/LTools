@@ -128,7 +128,7 @@ internal static class AiToolHandlers
     {
         key = (key ?? "").Trim();
         if (!StepRegistry.Default.TryGet(key, out var unit))
-            throw new AiToolException("unknown_unit", $"未知的功能单元：{key}（先用 ltools_units_list 查）");
+            throw new AiToolException("unknown_unit", $"未知的动作单元：{key}（先用 ltools_units_list 查）");
 
         var spec = unit.Spec;
         var payload = new Dictionary<string, object?>
@@ -166,7 +166,7 @@ internal static class AiToolHandlers
         };
 
         // 「调用子动作」的参数名来自用户的子动作库（参数名 = 输入变量名），
-        // 单元声明里只有一个 subAction，不一起给出签名就只能瞎猜。
+        // 动作单元声明里只有一个 subAction，不一起给出签名就只能瞎猜。
         if (string.Equals(spec.Key, "sub.run", StringComparison.OrdinalIgnoreCase))
             payload["subActions"] = SubActionStore.LoadAll().Select(Signature).ToList();
 
@@ -356,8 +356,8 @@ internal static class AiToolHandlers
     }
 
     /// <summary>
-    /// 子动作的签名（id / 名称 / 输入 / 输出）。给 <c>sub.run</c> 的单元规格一起返回，
-    /// agent 才知道该传哪些参数名——这些名字不在单元声明里，是每个子动作自己的变量。
+    /// 子动作的签名（id / 名称 / 输入 / 输出）。给 <c>sub.run</c> 的动作单元规格一起返回，
+    /// agent 才知道该传哪些参数名——这些名字不在动作单元声明里，是每个子动作自己的变量。
     /// </summary>
     private static Dictionary<string, object?> Signature(SubActionDef def) => new()
     {

@@ -1,11 +1,11 @@
 namespace LTools.Core.Actions;
 
 /// <summary>
-/// 功能单元的分类顺序（编辑器左栏与「内联取值」下拉共用一份）。
+/// 动作单元的分类顺序（编辑器左栏与「内联取值」下拉共用一份）。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 单元自己的 <see cref="UnitSpec.Category"/> 只决定「属于哪一类」；「哪一类排前面」在这里统一决定。
+/// 动作单元自己的 <see cref="UnitSpec.Category"/> 只决定「属于哪一类」；「哪一类排前面」在这里统一决定。
 /// 以前左栏用 <c>switch</c>、取值下拉按分类字符串的文化序排，同一个分类在两处位置不一样，
 /// 新增分类还容易漏改一处——现在都走 <see cref="Rank"/>。
 /// </para>

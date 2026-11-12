@@ -10,7 +10,7 @@ namespace LTools.Views;
 
 /// <summary>
 /// 步骤的一行摘要（编辑器列表 / 工具箱提示共用）。
-/// 只依赖 <see cref="UnitSpec"/> 与步骤数据，新单元不需要改这里就能显示出像样的摘要。
+/// 只依赖 <see cref="UnitSpec"/> 与步骤数据，新动作单元不需要改这里就能显示出像样的摘要。
 /// </summary>
 internal static class StepSummary
 {
@@ -25,7 +25,7 @@ internal static class StepSummary
     public static string Title(string unitKey) =>
         StepRegistry.Default.TryGet(unitKey, out var unit) ? unit.Spec.Name : unitKey;
 
-    /// <summary>参数摘要（不含单元名）。</summary>
+    /// <summary>参数摘要（不含动作单元名）。</summary>
     public static string Describe(Step step)
     {
         if (!StepRegistry.Default.TryGet(step.Unit, out var unit)) return "";

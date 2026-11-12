@@ -17,7 +17,7 @@ namespace LTools.Views.Controls;
 /// <item><see cref="CreateHole"/>：原位置的虚线占位框（主色 55% 虚线 + 10% 填充）；</item>
 /// <item><see cref="CapturePositions"/> / <see cref="AnimateFrom"/>：重排前后按元素身份做 FLIP 让位动画；</item>
 /// <item><see cref="CaptureByIndex"/> / <see cref="AnimateReorderByIndex"/>：按索引映射的 ListBox 让位动画；</item>
-/// <item><see cref="Slide"/>：单元素从指定偏移滑回原位。</item>
+/// <item><see cref="Slide"/>：动作单元素从指定偏移滑回原位。</item>
 /// </list>
 /// </summary>
 internal static class DragFx
@@ -287,7 +287,7 @@ internal static class DragFx
         Slide(b, pa.X - pb.X, pa.Y - pb.Y, durationMs);
     }
 
-    /// <summary>单元素从指定偏移滑回原位（dx/dy 为起始偏移，目标 0）。</summary>
+    /// <summary>动作单元素从指定偏移滑回原位（dx/dy 为起始偏移，目标 0）。</summary>
     public static void Slide(
         UIElement el, double dx, double dy, int durationMs = DefaultDurationMs,
         IEasingFunction? ease = null)

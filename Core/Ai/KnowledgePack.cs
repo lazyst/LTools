@@ -5,7 +5,7 @@ using LTools.Core.Actions;
 namespace LTools.Core.Ai;
 
 /// <summary>
-/// 随包分发的「单元知识」：给外部 agent 按需检索的明文文件，而不是一次性塞进它看不到的系统提示词。
+/// 随包分发的「动作单元知识」：给外部 agent 按需检索的明文文件，而不是一次性塞进它看不到的系统提示词。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -13,14 +13,14 @@ namespace LTools.Core.Ai;
 /// <code>
 /// ai/knowledge/
 ///   format.md   动作 JSON 格式与工作流（手写，稳定）
-///   units.md    从 StepRegistry 自动生成的单元目录
+///   units.md    从 StepRegistry 自动生成的动作单元目录
 ///   examples.md 3 个完整示例（手写）
-///   .version    生成版本（程序集版本 + 单元数 + units.md 正文哈希），变了才重写 units.md
+///   .version    生成版本（程序集版本 + 动作单元数 + units.md 正文哈希），变了才重写 units.md
 /// </code>
 /// </para>
 /// <para>
-/// 单元目录不手写：<see cref="UnitSpec"/> 的 Input / Output / VisibleWhen / Options 已经是机器可读的，
-/// 这里只负责排版。新增单元时不需要改这个文件，启动后 <see cref="Ensure"/> 会自动刷新。
+/// 动作单元目录不手写：<see cref="UnitSpec"/> 的 Input / Output / VisibleWhen / Options 已经是机器可读的，
+/// 这里只负责排版。新增动作单元时不需要改这个文件，启动后 <see cref="Ensure"/> 会自动刷新。
 /// </para>
 /// </remarks>
 internal static class KnowledgePack
@@ -35,7 +35,7 @@ internal static class KnowledgePack
 
     private static string VersionPath => Path.Combine(Dir, ".version");
 
-    /// <summary>确保知识包存在且与当前单元清单一致。可在后台线程调用。</summary>
+    /// <summary>确保知识包存在且与当前动作单元清单一致。可在后台线程调用。</summary>
     public static void Ensure()
     {
         try
@@ -57,11 +57,11 @@ internal static class KnowledgePack
         }
         catch (Exception ex)
         {
-            AppLog.Warn("Ai", $"生成单元知识失败：{ex.Message}");
+            AppLog.Warn("Ai", $"生成动作单元知识失败：{ex.Message}");
         }
     }
 
-    /// <summary>强制重写 units.md（设置页「重新生成」）。返回写入的单元数。</summary>
+    /// <summary>强制重写 units.md（设置页「重新生成」）。返回写入的动作单元数。</summary>
     public static int RegenerateUnits()
     {
         System.IO.Directory.CreateDirectory(Dir);
@@ -92,8 +92,8 @@ internal static class KnowledgePack
     private static string CurrentVersion()
     {
         string assembly = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
-        // 直接哈希**生成出来的正文**：单元参数 / 说明 / 选项任何一处变了都要重写。
-        // 只哈希「键 + 分类」的话，给某个单元换了一套参数（例如「模拟按键」重构）
+        // 直接哈希**生成出来的正文**：动作单元参数 / 说明 / 选项任何一处变了都要重写。
+        // 只哈希「键 + 分类」的话，给某个动作单元换了一套参数（例如「模拟按键」重构）
         // 版本号不变，units.md 就一直停在旧内容，agent 照着旧参数写步骤会全部失败。
         byte[] hash = System.Security.Cryptography.SHA256.HashData(
             Encoding.UTF8.GetBytes(BuildUnitsMarkdown()));
@@ -109,12 +109,12 @@ internal static class KnowledgePack
             .ToList();
 
         var md = new StringBuilder();
-        md.AppendLine("# 单元目录");
+        md.AppendLine("# 动作单元目录");
         md.AppendLine();
         md.AppendLine("> 本文件由 LTools 从 `StepRegistry` 自动生成，**不要手改**；升级后可能整份重写。");
-        md.AppendLine("> 只需要查某个单元时，用 `ltools_units_get(key)` 拿它的完整规格；这里适合整段读 / grep。");
+        md.AppendLine("> 只需要查某个动作单元时，用 `ltools_units_get(key)` 拿它的完整规格；这里适合整段读 / grep。");
         md.AppendLine();
-        md.AppendLine($"共 {units.Count} 个单元。`pure` = 取值单元，可以内联在参数或条件里；`action` = 有副作用的普通步骤。");
+        md.AppendLine($"共 {units.Count} 个动作单元。`pure` = 取值动作单元，可以内联在参数或条件里；`action` = 有副作用的普通步骤。");
         md.AppendLine();
 
         // 索引
@@ -250,7 +250,7 @@ internal static class KnowledgePack
 
 - `variables` 声明变量（`type` 是 `text` / `number` / `bool` / `list` / `object`）；运行时也能由步骤的输出创建新变量，但写进变量表更清楚。
 - `steps` 是普通数组。控制流不是节点图：`flow.if` / `flow.repeat` / `flow.forEach` / `flow.while` 就是普通步骤，分支体放在 `then` / `else` / `body` 里。
-- 步骤字段：`unit`（单元键）、`in`（参数）、`out`（输出键 → 变量名）、`body` / `then` / `else`、`note`、`disabled`、`onFail`（`stop` / `continue`）、`delayMs`。
+- 步骤字段：`unit`（动作单元键）、`in`（参数）、`out`（输出键 → 变量名）、`body` / `then` / `else`、`note`、`disabled`、`onFail`（`stop` / `continue`）、`delayMs`。
 
 ## 2. 参数三态
 
@@ -264,12 +264,12 @@ internal static class KnowledgePack
 
 - 字面量：字符串 / 数字 / 布尔 / 数组 / 对象。**文本里的 `${变量}` 会在运行时求值**（`$$` 转义成 `$`）。
 - `{"var": "名字"}`：保留变量的原始类型（列表、对象都行），路径可写 `a.b[0]`。
-- `{"unit": ..., "in": {...}}`：内联一个 **pure** 取值单元，`action` 单元不能内联。
+- `{"unit": ..., "in": {...}}`：内联一个 **pure** 取值动作单元，`action` 动作单元不能内联。
 - 例外：`Raw: true` 的代码参数（`script.ahk` 的 `code`）原样传入，里面的 `${…}` 不要求值。
 
 ## 3. 工作流（工具名见 MCP）
 
-1. `ltools_units_list` / `ltools_units_get`：先确认能力存在，别臆造单元键。
+1. `ltools_units_list` / `ltools_units_get`：先确认能力存在，别臆造动作单元键。
 2. `ltools_staging_create(title, description?, copyFromActionId?)`：新草稿。改用户已有动作时传 `copyFromActionId`（只读复制到草稿）。
 3. `ltools_staging_open(draftId)`：读 `program` + `files` + `revision` + 绝对目录。
 4. 写草稿的两条路，选一条即可：
@@ -284,8 +284,8 @@ internal static class KnowledgePack
 
 ## 4. 校验器会拦什么
 
-未知单元 / 未知参数、必填缺失（只对可见参数）、字面量类型不符、枚举值不在范围、
-`${变量}` 引用了未声明的变量、条件运算符 / 正则无效、子动作 / 宏不存在、内联了 action 单元、
+未知动作单元 / 未知参数、必填缺失（只对可见参数）、字面量类型不符、枚举值不在范围、
+`${变量}` 引用了未声明的变量、条件运算符 / 正则无效、子动作 / 宏不存在、内联了 action 动作单元、
 引用了不存在的草稿图片。位置用 `第 3 行 › 满足时 › 第 1 行`，与运行失败提示一致。
 
 子动作另有三条：`flow.return` 只能出现在子动作里（动作 / 草稿里是 error）、
@@ -301,9 +301,9 @@ internal static class KnowledgePack
 
 ## 6. 纪律
 
-- 找不到能力就说不支持，**不要臆造单元键**，也不要试图写配置文件或 `actions/` 目录（正式动作只经用户采纳写入）。
-- 不要为了一个功能另造一套循环 / 条件 / 取值——先看 `units.md` 里现成的单元。
-- 动作执行在后台线程；会动键鼠的步骤（点击、输入、窗口操作）要留出等待（`flow.delay` 或单元自带的超时 / 等待）。
+- 找不到能力就说不支持，**不要臆造动作单元键**，也不要试图写配置文件或 `actions/` 目录（正式动作只经用户采纳写入）。
+- 不要为了一个功能另造一套循环 / 条件 / 取值——先看 `units.md` 里现成的动作单元。
+- 动作执行在后台线程；会动键鼠的步骤（点击、输入、窗口操作）要留出等待（`flow.delay` 或动作单元自带的超时 / 等待）。
 - 用户动作只能读（`ltools_actions_get`）；要改就先 `staging_create(copyFromActionId:...)`。
 
 ## 7. 子动作（函数）

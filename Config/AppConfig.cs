@@ -131,7 +131,7 @@ public sealed class AppConfig
     public string? LastOcrEngine { get; set; }
 
     /// <summary>
-    /// 动作编辑器左栏「添加单元」里已折叠的分类名（如 <c>流程</c> / <c>剪贴板</c>）。
+    /// 动作编辑器左栏「添加动作单元」里已折叠的分类名（如 <c>流程</c> / <c>剪贴板</c>）。
     /// **全局记忆**：换一个动作编辑、重开编辑器都沿用；只写 <c>configs/ui.json</c>。
     /// </summary>
     public List<string> ToolboxCollapsedGroups { get; set; } = new();

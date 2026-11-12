@@ -11,8 +11,8 @@ namespace LTools.Views;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 由「文本窗口」单元（<c>ui.textWindow</c>）经 <see cref="Features.TextWindowService"/> 打开，
-/// 单元自己负责轮询结果——窗口**不是**模态的，这样流程停止热键仍然有效（模态对话框会卡住 UI 线程）。
+/// 由「文本窗口」动作单元（<c>ui.textWindow</c>）经 <see cref="Features.TextWindowService"/> 打开，
+/// 动作单元自己负责轮询结果——窗口**不是**模态的，这样流程停止热键仍然有效（模态对话框会卡住 UI 线程）。
 /// </para>
 /// <para>
 /// 显示模式：只读、不抢焦点（<see cref="Window.ShowActivated"/> = false），用户点进来仍能选中复制；
@@ -46,7 +46,7 @@ public partial class TextViewWindow : Window
     /// <summary>读取模式下用户是否点了「确定」。</summary>
     public bool Confirmed { get; private set; }
 
-    /// <summary>窗口是否已经关掉（单元轮询它决定何时继续）。</summary>
+    /// <summary>窗口是否已经关掉（动作单元轮询它决定何时继续）。</summary>
     public bool IsClosed { get; private set; }
 
     /// <summary>窗口里的当前内容；只能在 UI 线程读。</summary>

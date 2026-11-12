@@ -30,7 +30,7 @@ public sealed class CaptureScreenUnit : IStepUnit
             new OutputSpec("y", "Y", ValueKind.number, "shotY", Description: "截图区域左上角 Y（屏幕坐标）"),
             new OutputSpec("w", "宽", ValueKind.number, "shotW", Description: "截图宽度"),
             new OutputSpec("h", "高", ValueKind.number, "shotH", Description: "截图高度"),
-            new OutputSpec("file", "图片文件", ValueKind.text, "shot", Description: "截图 png 的路径，可交给「文字识别」「打开文件」或剪贴板"),
+            new OutputSpec("file", "图片文件", ValueKind.text, "shot", Description: "截图 png 的路径，可交给「文字识别」「用默认程序打开文件」或剪贴板"),
             new OutputSpec("found", "取到图", ValueKind.@bool, Description: "是否取到图"),
             new OutputSpec("value", "完整结果", ValueKind.@object, Description: "整步结果（含以上各项），一般不需要，除非要整体传给子动作或打印调试"),
         },

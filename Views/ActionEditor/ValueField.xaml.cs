@@ -24,7 +24,7 @@ public sealed record VariableInfo(string Name, ValueKind Kind, string Origin);
 /// </summary>
 /// <remarks>
 /// <para>
-/// 取代旧的「文本模板 / 变量 / 取值单元」三态下拉 + 右侧「变量」按钮：来源全部收进 ▾ 菜单，
+/// 取代旧的「文本模板 / 变量 / 取值动作单元」三态下拉 + 右侧「变量」按钮：来源全部收进 ▾ 菜单，
 /// 菜单里只列这个参数适用的项（由 <see cref="InputSpec.PickerSet"/> 决定），不适用的根本不出现。
 /// </para>
 /// <para>
@@ -55,7 +55,7 @@ public partial class ValueField : UserControl
     /// <summary>当前是否被标成「必填但还空着」（改动内容后自动恢复）。</summary>
     private bool _missing;
 
-    /// <summary>菜单里一行：条目 / 分组标题 / 分隔线；<c>Page</c> 0 = 主列表、1 = 取值单元。</summary>
+    /// <summary>菜单里一行：条目 / 分组标题 / 分隔线；<c>Page</c> 0 = 主列表、1 = 取值动作单元。</summary>
     private enum MenuRowKind { item, header, separator }
 
     private sealed record MenuRow(
@@ -467,8 +467,8 @@ public partial class ValueField : UserControl
     }
 
     /// <summary>
-    /// 两页一次建好（主列表 + 取值单元）：换页只切可见性——不关弹层、不改高度。
-    /// 搜索时跨页匹配，所以在单元页也能输入变量名。
+    /// 两页一次建好（主列表 + 取值动作单元）：换页只切可见性——不关弹层、不改高度。
+    /// 搜索时跨页匹配，所以在动作单元页也能输入变量名。
     /// </summary>
     private void BuildMenuCore()
     {
@@ -485,10 +485,10 @@ public partial class ValueField : UserControl
         if (Pickers.HasFlag(PickerKind.inline))
         {
             AddHeader("取值", 0);
-            AddItem("▷", "取值单元…", "运行到这里时现场取一个值",
-                "取值单元 inline 取值", () => ShowMenuPage(true), page: 0, nav: true);
+            AddItem("▷", "取值动作单元…", "运行到这里时现场取一个值",
+                "取值动作单元 inline 取值", () => ShowMenuPage(true), page: 0, nav: true);
 
-            AddHeader("取值单元", 1);
+            AddHeader("取值动作单元", 1);
             AddUnitItems();
         }
 
@@ -637,7 +637,7 @@ public partial class ValueField : UserControl
         }
     }
 
-    /// <summary>取值单元（第二页）：运行时现场取值的纯单元。</summary>
+    /// <summary>取值动作单元（第二页）：运行时现场取值的纯动作单元。</summary>
     private void AddUnitItems()
     {
         var units = StepRegistry.Default.Units
@@ -780,7 +780,7 @@ public partial class ValueField : UserControl
 
     /// <summary>
     /// 按当前页 / 搜索词决定哪些行可见：没搜索时只看当前页；**搜索时跨页匹配**
-    /// （在「取值单元」页也能直接搜到变量和选择方式）。
+    /// （在「取值动作单元」页也能直接搜到变量和选择方式）。
     /// </summary>
     private void ApplyFilter(string query)
     {
@@ -796,7 +796,7 @@ public partial class ValueField : UserControl
                 ? row.Search.Contains(query, StringComparison.OrdinalIgnoreCase)
                 : row.Page == (_showingUnits ? 1 : 0);
 
-            // 「取值单元…」是换页入口：只在主列表、且没搜索时出现（搜索时单元自己就在结果里）。
+            // 「取值动作单元…」是换页入口：只在主列表、且没搜索时出现（搜索时动作单元自己就在结果里）。
             if (row.Nav) visible = !searching && !_showingUnits;
 
             row.Host.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
@@ -821,14 +821,14 @@ public partial class ValueField : UserControl
         MoveActive(1);
     }
 
-    /// <summary>面包屑：主列表写「来源」，二级页写「取值单元」并露出返回。</summary>
+    /// <summary>面包屑：主列表写「来源」，二级页写「取值动作单元」并露出返回。</summary>
     private void UpdateCrumb()
     {
-        CrumbText.Text = _showingUnits ? "取值单元" : "来源";
+        CrumbText.Text = _showingUnits ? "取值动作单元" : "来源";
         BackButton.Visibility = _showingUnits ? Visibility.Visible : Visibility.Collapsed;
         SearchBox.ToolTip = _showingUnits
-            ? "在取值单元里搜索（会连变量一起找）；点 ‹ 返回"
-            : "搜索变量、选择方式、取值单元";
+            ? "在取值动作单元里搜索（会连变量一起找）；点 ‹ 返回"
+            : "搜索变量、选择方式、取值动作单元";
     }
 
     private void Search_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -1126,7 +1126,7 @@ public partial class ValueField : UserControl
     // ============ 杂项 ============
 
     /// <summary>
-    /// 取值单元还缺哪些必填参数：新用户从状态行就知道要先去点「改参数…」，
+    /// 取值动作单元还缺哪些必填参数：新用户从状态行就知道要先去点「改参数…」，
     /// 而不是运行到一半才发现没填。
     /// </summary>
     private static List<string> MissingRequired(Step step, UnitSpec? spec)
@@ -1194,8 +1194,8 @@ public partial class ValueField : UserControl
     };
 
     /// <summary>
-    /// 新切到「取值单元」时默认选中的单元：挑最常用、参数最少的一个，
-    /// 别让新用户一进来就撞上「进程」这种要填进程名、说明又长的单元。
+    /// 新切到「取值动作单元」时默认选中的动作单元：挑最常用、参数最少的一个，
+    /// 别让新用户一进来就撞上「进程」这种要填进程名、说明又长的动作单元。
     /// </summary>
     private static readonly string[] PreferredDefaults =
     {

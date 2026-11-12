@@ -13,7 +13,7 @@ using LTools.Views.Controls;
 namespace LTools.Views;
 
 /// <summary>
-/// 按 <see cref="UnitSpec"/> 生成的步骤参数表单：一个单元一个对话框，不写任何按单元分支的代码。
+/// 按 <see cref="UnitSpec"/> 生成的步骤参数表单：一个动作单元一个对话框，不写任何按动作单元分支的代码。
 /// </summary>
 /// <remarks>
 /// 输入行来自 <see cref="UnitSpec.Inputs"/>，编辑器形态由 <see cref="InputSpec.Editor"/> 决定；
@@ -68,7 +68,7 @@ public partial class StepEditorDialog : Window
         WindowChromeHelper.FixMaximize(this);
 
         // 必须在 BuildInputs 之前就位：「调用子动作」的子动作下拉、`InputEditor.variable`
-        // 的候选名、取值单元里再嵌一层编辑器都依赖它们。放在对象初始化器里会在构造
+        // 的候选名、取值动作单元里再嵌一层编辑器都依赖它们。放在对象初始化器里会在构造
         // 之后才赋值，表单已经按 null 建好（子动作就退化成只能手填 id 的空文本框）。
         Program = program;
         VariableNameSource = variableNames;
@@ -79,7 +79,7 @@ public partial class StepEditorDialog : Window
         _spec = StepRegistry.Default.Get(_step.Unit).Spec;
         _inline = inline;
 
-        // 标题栏只说「在做什么」，单元名 + 分类放在正文抬头——以前两处都是单元名，重复一遍。
+        // 标题栏只说「在做什么」，动作单元名 + 分类放在正文抬头——以前两处都是动作单元名，重复一遍。
         Title = inline ? "编辑取值" : "编辑步骤";
         HeaderText.Text = _spec.Name;
         CategoryText.Text = _spec.Category ?? "";
@@ -108,7 +108,7 @@ public partial class StepEditorDialog : Window
     /// <summary>-1 / +1 = 用户点了上一步 / 下一步（编辑器据此打开相邻步骤）；0 = 正常确定。</summary>
     public int NavigateDelta { get; private set; }
 
-    /// <summary>「保存并继续添加」：添加流程里再开一个同单元的空表单。</summary>
+    /// <summary>「保存并继续添加」：添加流程里再开一个同动作单元的空表单。</summary>
     public bool ContinueAdding { get; private set; }
 
     /// <summary>编辑器在 ShowDialog 之前调用：显示上一步 / 下一步（没有相邻步骤时对应按钮隐藏）。</summary>
@@ -271,7 +271,7 @@ public partial class StepEditorDialog : Window
             {
                 var combo = new ComboBox { MinHeight = 28, MinWidth = 180 };
                 var options = input.Options ?? Array.Empty<string>();
-                // 显示中文名，Tag 里留英文键——存进步骤的仍是键，老配置与单元实现不受影响。
+                // 显示中文名，Tag 里留英文键——存进步骤的仍是键，老配置与动作单元实现不受影响。
                 foreach (string option in options)
                     combo.Items.Add(new ComboBoxItem
                     {
@@ -668,7 +668,7 @@ public partial class StepEditorDialog : Window
 
         var rectSpec = _spec.Inputs.FirstOrDefault(i =>
             string.Equals(i.Key, "rect", StringComparison.OrdinalIgnoreCase));
-        if (rectSpec == null) return;   // 这个单元没有固定区域参数（如「文字识别」）
+        if (rectSpec == null) return;   // 这个动作单元没有固定区域参数（如「文字识别」）
 
         if (_rectSetters.TryGetValue(rectSpec.Key, out var setRect)) setRect(rect);
 
@@ -731,8 +731,8 @@ public partial class StepEditorDialog : Window
                 all[variable.Key] = value;
             }
 
-            // 声明之外的参数只有动态参数单元（sub.run）才保留；
-            // 其它单元的未知键会在运行时被判为拼写错误，顺手清掉。
+            // 声明之外的参数只有动态参数动作单元（sub.run）才保留；
+            // 其它动作单元的未知键会在运行时被判为拼写错误，顺手清掉。
             var extra = _spec.DynamicInputs
                 ? _step.In.Where(p => !_spec.Inputs.Any(i =>
                     string.Equals(i.Key, p.Key, StringComparison.OrdinalIgnoreCase))).ToList()

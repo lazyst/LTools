@@ -6,7 +6,7 @@ namespace LTools.Core.Actions;
 /// 极简模板：把 <c>${name}</c> 替换成变量值，<c>$$</c> 转义为字面 <c>$</c>。
 /// </summary>
 /// <remarks>
-/// 不提供表达式 / 函数调用——需要计算结果时用「计算」单元。
+/// 不提供表达式 / 函数调用——需要计算结果时用「计算」动作单元。
 /// 路径支持对象成员与列表下标，见 <see cref="VariableScope.Resolve"/>。
 /// </remarks>
 public static class TextTemplate

@@ -4,7 +4,7 @@ namespace LTools.Features;
 
 // ============================================================================
 // 取值器的数据模型（截图 / 找图 / 识字 / 读速记…共用一套 Probe 参数包）。
-// 步骤单元（Core/Actions）按自己的参数构造 Probe，交给 Features/Flow 下的实现执行。
+// 动作单元（Core/Actions）按自己的参数构造 Probe，交给 Features/Flow 下的实现执行。
 // ============================================================================
 
 /// <summary>取值器种类。</summary>
@@ -96,7 +96,7 @@ public enum ScreenshotMode
 
 /// <summary>
 /// 取值器参数。这是一个**参数包**（按 <see cref="Kind"/> 使用其中一部分字段）：
-/// 步骤单元按自己的参数构造它，再由 <c>Features/Flow</c> 下的对应实现执行。
+/// 动作单元按自己的参数构造它，再由 <c>Features/Flow</c> 下的对应实现执行。
 /// </summary>
 public sealed class Probe
 {

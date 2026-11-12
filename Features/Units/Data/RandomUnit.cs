@@ -7,7 +7,7 @@ namespace LTools.Features.Units.Data;
 /// 随机值：整数 / 随机字符串 / GUID / 从列表里抽一项（<c>data.random</c>）。
 /// </summary>
 /// <remarks>
-/// 四种用途共用一个单元，靠「方式」区分——比在工具箱里摆四个只有一行实现的单元清楚。
+/// 四种用途共用一个动作单元，靠「方式」区分——比在工具箱里摆四个只有一行实现的动作单元清楚。
 /// 整数区间是<b>闭区间</b>（含 min 和 max），符合「1 到 6 点」这种直觉；
 /// GUID 走 <see cref="Guid.NewGuid"/>，随机串走 <see cref="Random.Shared"/>（线程安全）。
 /// </remarks>

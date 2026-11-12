@@ -39,7 +39,7 @@ internal static class KeyWaiter
     /// <summary>吞键后最多再等这么久的抬起；超时说明抬起丢了（拔键盘 / 切换会话），别再吞。</summary>
     private const long CaptureLifetimeMs = 3000;
 
-    /// <summary>一次等待。由单元创建，钩子回调写入结果。</summary>
+    /// <summary>一次等待。由动作单元创建，钩子回调写入结果。</summary>
     public sealed class Waiter
     {
         internal Waiter(string expected, bool swallow)

@@ -12,7 +12,7 @@ namespace LTools.Native;
 /// <remarks>
 /// <b>为何不用 WinForms Clipboard（OLE）？</b>——独立剪贴板/符号跳转的工作线程是裸 STA（无消息泵），
 /// WinForms Clipboard 的 OLE 读取（<c>OleGetClipboard</c>→<c>GetData</c>）在跨进程复制后调用会
-/// <b>长时间阻塞</b>（实测单次 5 秒，因 OLE 跨单元回 marshaling 需要消息泵而工作线程不泵送），
+/// <b>长时间阻塞</b>（实测单次 5 秒，因 OLE 跨动作单元回 marshaling 需要消息泵而工作线程不泵送），
 /// 导致 ClipWait 的 500ms 超时形同虚设、整条搜索链超时。
 /// 原始 <c>OpenClipboard</c>/<c>GetClipboardData</c> 直接读 Win32 剪贴板层，不经 OLE，<b>不阻塞</b>，
 /// 且与目标应用 <c>SetDataObject(text, copy:true)</c> 触发的 <c>OleFlushClipboard</c> 落到 Win32 层的数据一致。

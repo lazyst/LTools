@@ -60,7 +60,7 @@ resources/
   images/            共享 / 历史模板图（P2 起新增的模板图优先放动作目录）
   user/              用户素材（永不自动删）
 trash/<时间戳>/<id>/  删除的动作目录（保留 30 天，可手工捞回）
-state/values.json    跨动作状态（「存状态 / 读状态」单元；随备份走）
+state/values.json    跨动作状态（「存状态 / 读状态」动作单元；随备份走）
 state/trigger-history.jsonl  自动触发的运行 / 丢弃记录（500 条上限；state/ 是备份域，随备份走）
 state/auto-trigger-last-start.txt  「仅每日第一次启动」的当天日期（别放 cache/）
 staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
@@ -71,7 +71,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | 文件 | 谁写 | 说明 |
 | --- | --- | --- |
 | `ltools-yyyyMMdd.log` | `AppLog`（异步队列，上限 2 万行） | 应用日志，行首带 `[run-xxxxxx]`；单文件 20 MB 滚动成 `.1` / `.2` |
-| `action-yyyyMMdd.log` | 「输出日志」单元 | 用户自己写的日志（始终写），同样 20 MB 滚动 |
+| `action-yyyyMMdd.log` | 「输出日志」动作单元 | 用户自己写的日志（始终写），同样 20 MB 滚动 |
 | `last-failure.log`（+ `.1`…`.4`） | `FailureLog` | 最近 5 次失败的逐步轨迹 + 按 run id 过滤的日志；失败 toast 点开的就是它 |
 
 清理（按修改时间，天数来自 `configs/settings.json` 的 `Logging.RetentionDays`）、滚动、读尾巴、前缀判定都只在 `Core/LogFiles` 一处，只认 `ltools-*` / `action-*` / `last-failure*`。
@@ -147,8 +147,8 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
     `ActionEditorWindow.DragSort.cs`（拖动排序）、
     `ActionEditorWindow.Variables.cs`（变量表）、
     `ActionEditorWindow.Run.cs`（保存 + 试运行）。
-- 单元实现按分类分文件（`Features/Units/<分类>/<XxxUnit>.cs`，一个单元一个文件），
-  共用的静态小工具留在同目录（`FileText.cs` / `Crc32.cs`）；新增单元仍只在 `BuiltInUnits` 加一行。
+- 动作单元实现按分类分文件（`Features/Units/<分类>/<XxxUnit>.cs`，一个动作单元一个文件），
+  共用的静态小工具留在同目录（`FileText.cs` / `Crc32.cs`）；新增动作单元仍只在 `BuiltInUnits` 加一行。
 - **不做迁移层**：配置 / 动作结构变化时直接改读写代码与 `LTools.example.json`，`SchemaVersion` 只作标注；
   启动时没有 `MigrationRunner` / `ConfigSchema` 这类版本分支（曾经有，已随「不要向后兼容」删除）。
 
@@ -193,7 +193,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 - **内置功能目录**（P7）：`Features/Builtin/FeatureCatalog` 提供「常用功能 `common.*`」与
   「LTools 功能 `ltools.*`」两套只读入口，参数声明在 `FeatureDef`，引用编码成 `id#key=value&…`
   （`FeatureRef`），直接存进面板 / 快捷键 / 悬浮原有的字符串字段，**不升 schema**；存活判断与
-  显示名统一走 `BindingRef`。它们不是步骤单元（`internal.*` 七个单元已删），动作编辑器左栏不再有
+  显示名统一走 `BindingRef`。它们不是动作单元（`internal.*` 七个动作单元已删），动作编辑器左栏不再有
   「LTools 内置功能」分类；`CapsLock+Space`（旧鼠标模式）留空。
 - 旧的 10 个数字菜单组、帮助面板、独立剪贴板、符号定位、词跳词选等手势与实现一并删除，
   不再有第二套解释器。
@@ -205,7 +205,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | P1 | Debug/Release 0/0；7 个文件生成；只改一个域时其它文件 mtime 不变；删 `configs/` 后按示例重新播种 | 删 `configs/`，重启（示例即默认值） |
 | P2 | 采纳草稿后 `actions/<id>/files/` 里直接有图、引用仍是 `files/x.png`；删动作进 `trash/`；改一个动作只重写它自己的 `action.json`；删光动作后重启不复活 | 删 `actions/`（下次启动按示例重建）+ git revert |
 | P3 | 逐个域写入只有目标 `configs/*.json` 的 mtime 变化、`actions/*.json` 不动；并发保存不互相覆盖；菜单 / 面板里的悬空动作 Id 在启动时被清掉 | 域文件格式不变，退回旧版本仍能读 |
-| P4 | 窗口拆完后交互与原版一致（面板建窗 / 切暂存区 / 编辑器载入动作均正常）；单元清单数量不变；启动时没有任何迁移扫描 | 纯代码改动，git revert |
+| P4 | 窗口拆完后交互与原版一致（面板建窗 / 切暂存区 / 编辑器载入动作均正常）；动作单元清单数量不变；启动时没有任何迁移扫描 | 纯代码改动，git revert |
 | P5 | 截图落在 `cache/screenshots/` 且下次运行 / 重启后被清空；同内容图采纳到第二个动作时 `fsutil hardlink list` 显示两份名字、改内容只影响一个动作；孤儿图移入 `trash/orphans/`、动态引用动作不动；备份 manifest 的 `includes` 与 zip 条目一致、`cache/` 不出现；`.ltact` 含 manifest + action.json + files/ | 纯代码 + 目录调整，退回旧版本仍能读写（`cache/` 只是多了个目录） |
 | P6 | 删掉绑定重启不复活；`CapsLock+S` 不在 `CapsLock+Ctrl+S` 时触发；名单里的程序不触发、LTools 自己的窗口按名单判定（默认名单为空时照常触发，黑名单写 `LTools.exe` 才挡）；快捷键页改完立即生效（不必重启） | 删 `configs/hotkeys.json`，重启按示例 / 播种重建 |
 

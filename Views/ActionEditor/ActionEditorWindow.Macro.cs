@@ -11,7 +11,7 @@ namespace LTools.Views;
 /// </summary>
 /// <remarks>
 /// 判定用 <see cref="MacroAction.MacroIdOf(ActionProgram)"/>（结构判定），所以它随步骤列表一起刷新：
-/// 用户把唯一那步改成别的单元、或换了一个宏，横幅立刻跟着消失 / 更新。
+/// 用户把唯一那步改成别的动作单元、或换了一个宏，横幅立刻跟着消失 / 更新。
 /// 重录沿用同一个宏 Id，动作与面板 / 快捷键上的引用都不用重建。
 /// </remarks>
 public partial class ActionEditorWindow

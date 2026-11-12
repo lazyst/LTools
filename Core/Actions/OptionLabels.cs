@@ -9,12 +9,12 @@ namespace LTools.Core.Actions;
 /// <remarks>
 /// <para>
 /// 参数里存的一律是英文键（<c>trim</c> / <c>foreground</c> / <c>read</c> …）——配置、
-/// 单元实现都按它工作。界面只负责把它翻译给用户看：
+/// 动作单元实现都按它工作。界面只负责把它翻译给用户看：
 /// 参数对话框的下拉、步骤行摘要都走这里，别在各处再写一份 switch。
 /// </para>
 /// <para>
-/// 同一个键在不同单元里含义不同时（比如 <c>add</c> 在列表里是「追加一项」、在计算里是「加法」），
-/// 由该参数自己的 <see cref="InputSpec.Labels"/> 覆盖，不要为了迁就一个单元去改全局表。
+/// 同一个键在不同动作单元里含义不同时（比如 <c>add</c> 在列表里是「追加一项」、在计算里是「加法」），
+/// 由该参数自己的 <see cref="InputSpec.Labels"/> 覆盖，不要为了迁就一个动作单元去改全局表。
 /// </para>
 /// </remarks>
 internal static class OptionLabels

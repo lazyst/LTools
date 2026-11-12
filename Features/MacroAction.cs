@@ -18,14 +18,14 @@ namespace LTools.Features;
 /// 现在没有第二种形状：宏动作就是普通动作，只是步骤列表恰好只有 <c>input.macro</c> 一步。
 /// </para>
 /// <para>
-/// 识别方式是结构判定（<see cref="MacroIdOf(ActionDto)"/>）：单步 + 单元是 <c>input.macro</c>
+/// 识别方式是结构判定（<see cref="MacroIdOf(ActionDto)"/>）：单步 + 动作单元是 <c>input.macro</c>
 /// + <c>macroId</c> 是字面量。判定只用于界面（显示宏卡片、摘要、试放、重录），
 /// 执行不区分——它本来就是普通动作。
 /// </para>
 /// </remarks>
 internal static class MacroAction
 {
-    /// <summary>回放宏的单元键。</summary>
+    /// <summary>回放宏的动作单元键。</summary>
     public const string UnitKey = "input.macro";
 
     /// <summary>宏动作的默认图标。</summary>
@@ -34,7 +34,7 @@ internal static class MacroAction
     /// <summary>动作是不是「一个宏」：返回它引用的宏 Id，不是则返回 null。</summary>
     public static string? MacroIdOf(ActionDto? action) => MacroIdOf(action?.Program);
 
-    /// <summary>动作体是不是「一个宏」：单步 + 回放宏单元 + 字面量 macroId。</summary>
+    /// <summary>动作体是不是「一个宏」：单步 + 回放宏动作单元 + 字面量 macroId。</summary>
     public static string? MacroIdOf(ActionProgram? program)
     {
         if (program is not { Steps.Count: 1 }) return null;

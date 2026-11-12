@@ -2,7 +2,7 @@ using LTools.Core.Actions;
 
 namespace LTools.Features.Units.Screen;
 
-/// <summary>屏幕类单元共用的区域参数解析（前台窗口 / 整个屏幕 / 固定矩形）。</summary>
+/// <summary>屏幕类动作单元共用的区域参数解析（前台窗口 / 整个屏幕 / 固定矩形）。</summary>
 internal static class ScreenArgs
 {
     public static readonly string[] Regions = { "foreground", "screen", "rect" };

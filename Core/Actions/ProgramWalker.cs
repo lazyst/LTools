@@ -4,7 +4,7 @@ namespace LTools.Core.Actions;
 /// 遍历一个动作体（<see cref="ActionProgram"/>）里的全部步骤，以及带位置标签的步骤清单。
 /// </summary>
 /// <remarks>
-/// 步骤不只是在 <see cref="ActionProgram.Steps"/> 里：参数里的内联取值单元也是步骤
+/// 步骤不只是在 <see cref="ActionProgram.Steps"/> 里：参数里的内联取值动作单元也是步骤
 /// （<see cref="StepArg.InlineStep"/>）。资源回收（模板图 / 宏文件）、引用统计与静态校验
 /// 都要看全，漏掉任何一层就会误删还在用的文件。
 /// </remarks>

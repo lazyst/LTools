@@ -25,7 +25,7 @@ public sealed class JsonUnit : IStepUnit
         Outputs = new[]
         {
             new OutputSpec("value", "结果", null,
-                Description: "取到的值（保持原本类型，可直接交给别的单元）"),
+                Description: "取到的值（保持原本类型，可直接交给别的动作单元）"),
             new OutputSpec("text", "文本", ValueKind.text, Description: "结果的文本形式（列表是 [a, b]）"),
             new OutputSpec("list", "列表", ValueKind.list, "list",
                 Description: "结果是数组时才有：其中的每一项"),

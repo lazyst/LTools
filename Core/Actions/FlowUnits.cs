@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace LTools.Core.Actions;
 
 /// <summary>
-/// 内置流程单元。控制流不是节点图：<c>if</c> / 循环本身就是普通步骤，
+/// 内置流程动作单元。控制流不是节点图：<c>if</c> / 循环本身就是普通步骤，
 /// 分支体放在步骤的 <c>then</c> / <c>else</c> / <c>body</c> 里。
 /// </summary>
 internal static class FlowUnits

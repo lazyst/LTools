@@ -88,7 +88,7 @@ public partial class ActionEditorWindow
 
     /// <summary>
     /// 按执行顺序找命中（含折叠块）。多个关键词用空格分开，全部命中才算命中；
-    /// 匹配范围：单元名 / 单元键 / 摘要 / 备注 / 参数文本 / 输出变量名。
+    /// 匹配范围：动作单元名 / 动作单元键 / 摘要 / 备注 / 参数文本 / 输出变量名。
     /// </summary>
     private List<(Step Step, List<Step> Ancestors)> FindStepMatches(string query)
     {

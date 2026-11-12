@@ -24,7 +24,7 @@ internal sealed record ClipboardHistoryEntry(string Id, string Kind, string Text
 /// </para>
 /// <para>
 /// 历史条数上限由系统决定（默认 25 条），用户关掉「剪贴板历史记录」后接口返回
-/// <c>AccessDenied</c> / <c>ClipboardDisabled</c>，这里把它翻成能照着做的提示，交给单元抛错。
+/// <c>AccessDenied</c> / <c>ClipboardDisabled</c>，这里把它翻成能照着做的提示，交给动作单元抛错。
 /// </para>
 /// <para>
 /// WinRT 的异步方法在这里同步等待：动作线程是后台 MTA 线程，没有同步上下文，不会死锁。

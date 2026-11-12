@@ -171,7 +171,7 @@
                 <Border Style="{StaticResource AiCard}">
                     <StackPanel>
                         <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                                   Text="AI 写动作前会读这几份文档：格式说明、单元目录（从程序里的单元定义自动生成）和示例。升级后自动重建。"/>
+                                   Text="AI 写动作前会读这几份文档：格式说明、动作单元目录（从程序里的动作单元定义自动生成）和示例。升级后自动重建。"/>
                         <TextBlock x:Name="KnowledgePathText" Margin="0,8,0,0" FontFamily="Consolas"
                                    FontSize="{StaticResource FontSizeSecondary}" TextWrapping="Wrap"/>
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">

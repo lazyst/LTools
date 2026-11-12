@@ -7,7 +7,7 @@ namespace LTools.Features;
 /// 动作里可能指向数据根 <c>resources/</c> 的路径（备份导入预览用来提示「包里有可执行文件被动作引用」）。
 /// </summary>
 /// <remarks>
-/// 路径在动作体的步骤参数里（启动程序 / 运行命令 / 打开文件）。
+/// 路径在动作体的步骤参数里（启动程序 / 运行命令 / 用默认程序打开文件）。
 /// 只认字面量参数：变量 / 内联取值的实际值要运行后才知道。
 /// </remarks>
 internal static class ActionReferences
@@ -21,7 +21,7 @@ internal static class ActionReferences
             {
                 "app.launch" => ProgramWalker.LiteralText(step, "target"),
                 "app.runCommand" => ProgramWalker.LiteralText(step, "command"),
-                "file.open" => ProgramWalker.LiteralText(step, "path"),
+                "file.openFile" => ProgramWalker.LiteralText(step, "path"),
                 _ => null,
             };
 

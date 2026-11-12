@@ -115,10 +115,10 @@ public sealed class ActionRunResult
 }
 
 /// <summary>
-/// 动作执行引擎：按步骤顺序执行单元，处理作用域、子步骤递归、停止信号与失败策略。
+/// 动作执行引擎：按步骤顺序执行动作单元，处理作用域、子步骤递归、停止信号与失败策略。
 /// </summary>
 /// <remarks>
-/// 引擎不碰 WPF，只在后台线程上跑；需要 UI 的单元（提示 / 输入框）自己投递到 UI 线程。
+/// 引擎不碰 WPF，只在后台线程上跑；需要 UI 的动作单元（提示 / 输入框）自己投递到 UI 线程。
 /// 变量只在本次运行内有效，不落盘。
 /// </remarks>
 public sealed class ActionEngine
@@ -400,13 +400,13 @@ public sealed class ActionEngine
         }
     }
 
-    /// <summary>求值一个内联取值步骤（Pure 单元）。</summary>
+    /// <summary>求值一个内联取值步骤（Pure 动作单元）。</summary>
     internal Value EvaluateInline(Step step, StepContext parent)
     {
         var unit = _registry.Get(step.Unit);
         if (unit.Spec.Kind != UnitKind.pure)
             throw new ActionException(
-                $"「{unit.Spec.Name}」不是取值单元，不能内联在值的位置");
+                $"「{unit.Spec.Name}」不是取值动作单元，不能内联在值的位置");
 
         var collected = new Dictionary<string, Value>(StringComparer.OrdinalIgnoreCase);
         var ctx = parent.ForStep(step, step.Out, (key, value) => collected[key] = value);
@@ -430,7 +430,7 @@ public sealed class ActionEngine
 
         if (collected.Count > 0) return collected.Values.First();
 
-        throw new ActionException($"取值单元「{unit.Spec.Name}」没有返回结果");
+        throw new ActionException($"取值动作单元「{unit.Spec.Name}」没有返回结果");
     }
 
     internal StepArgs ResolveArgs(Step step, UnitSpec spec, StepContext ctx)
@@ -550,7 +550,7 @@ public sealed class ActionEngine
         var unit = _registry.Get(step.Unit);
         if (unit.Spec.Kind != UnitKind.pure)
             throw new ActionException(
-                $"「{unit.Spec.Name}」不是取值单元，不能内联在值的位置");
+                $"「{unit.Spec.Name}」不是取值动作单元，不能内联在值的位置");
 
         foreach (var arg in step.In.Values)
             if (arg.Kind == StepArgKind.inline)
@@ -740,7 +740,7 @@ public sealed class StepContext
     /// <summary>写出一个输出；如果步骤没有把它映射到变量，则什么也不做（内联取值时收集起来）。</summary>
     public void SetOutput(string key, Value value) => _emit(key, value ?? Value.Empty);
 
-    /// <summary>该输出是否映射到了变量（循环单元可用它避免无意义的赋值）。</summary>
+    /// <summary>该输出是否映射到了变量（循环动作单元可用它避免无意义的赋值）。</summary>
     public bool HasOutput(string key) => _outputMap.ContainsKey(key);
 
     /// <summary>执行当前步骤的子步骤（循环体 / 分支体）。子步骤的路径挂在当前步骤下面。</summary>

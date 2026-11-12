@@ -10,7 +10,7 @@ using LTools.Features;
 namespace LTools.Views;
 
 /// <summary>
-/// 步骤行 / 工具箱单元的右键菜单与多选批量操作。
+/// 步骤行 / 工具箱动作单元的右键菜单与多选批量操作。
 /// </summary>
 /// <remarks>
 /// 菜单每次现建（和悬浮窗一致），项的状态直接读当前行与选中项，不维护一份「菜单状态」。
@@ -56,8 +56,8 @@ public partial class ActionEditorWindow
             Item(menu, AllDisabled(selected) ? $"启用选中的 {count} 步" : $"跳过选中的 {count} 步",
                 ToggleDisabledSelected, "Space");
             menu.Items.Add(new Separator());
-            menu.Items.Add(InsertUnitMenu("在上方插入单元", row!.Owner!, row.Index));
-            menu.Items.Add(InsertUnitMenu("在下方插入单元", row.Owner!, row.Index + 1));
+            menu.Items.Add(InsertUnitMenu("在上方插入动作单元", row!.Owner!, row.Index));
+            menu.Items.Add(InsertUnitMenu("在下方插入动作单元", row.Owner!, row.Index + 1));
             menu.Items.Add(new Separator());
             Item(menu, $"删除选中的 {count} 步", DeleteSelected);
         }
@@ -70,8 +70,8 @@ public partial class ActionEditorWindow
             Item(menu, "粘贴到下方", () => PasteAt(row.Owner!, row.Index + 1),
                 "Ctrl+V", _stepClipboard.Count > 0);
             menu.Items.Add(new Separator());
-            menu.Items.Add(InsertUnitMenu("在上方插入单元", row.Owner, row.Index));
-            menu.Items.Add(InsertUnitMenu("在下方插入单元", row.Owner, row.Index + 1));
+            menu.Items.Add(InsertUnitMenu("在上方插入动作单元", row.Owner, row.Index));
+            menu.Items.Add(InsertUnitMenu("在下方插入动作单元", row.Owner, row.Index + 1));
             menu.Items.Add(new Separator());
             Item(menu, "只运行这一步", RunSelected);
             Item(menu, "从此行试运行", () =>
@@ -104,13 +104,13 @@ public partial class ActionEditorWindow
             // 否则 / 结束如果 / 结束循环 / 空分支占位：只有「往这个位置加」有意义
             Item(menu, "粘贴到此处", () => PasteAt(row.Owner!, row.Index),
                 "Ctrl+V", _stepClipboard.Count > 0);
-            menu.Items.Add(InsertUnitMenu("插入单元到此处", row.Owner, row.Index));
+            menu.Items.Add(InsertUnitMenu("插入动作单元到此处", row.Owner, row.Index));
         }
         else
         {
             Item(menu, "粘贴到末尾", () => PasteAt(_program.Steps, _program.Steps.Count),
                 "Ctrl+V", _stepClipboard.Count > 0);
-            menu.Items.Add(InsertUnitMenu("在末尾插入单元", _program.Steps, _program.Steps.Count));
+            menu.Items.Add(InsertUnitMenu("在末尾插入动作单元", _program.Steps, _program.Steps.Count));
             menu.Items.Add(new Separator());
             Item(menu, "全部展开", ExpandAll, enabled: _collapsed.Count > 0);
             Item(menu, "折叠所有块", CollapseAll, enabled: _program.Steps.Count > 0);
@@ -119,7 +119,7 @@ public partial class ActionEditorWindow
         return menu;
     }
 
-    /// <summary>工具箱里某个单元的小菜单：填参数添加 / 直接按默认添加。</summary>
+    /// <summary>工具箱里某个动作单元的小菜单：填参数添加 / 直接按默认添加。</summary>
     private ContextMenu BuildUnitMenu(UnitSpec spec)
     {
         var menu = new ContextMenu();
@@ -135,7 +135,7 @@ public partial class ActionEditorWindow
         return menu;
     }
 
-    /// <summary>按分类列全部单元，点了就插到 <paramref name="list"/> 的第 <paramref name="index"/> 项之前。</summary>
+    /// <summary>按分类列全部动作单元，点了就插到 <paramref name="list"/> 的第 <paramref name="index"/> 项之前。</summary>
     private static MenuItem InsertUnitMenu(string header, List<Step> list, int index)
     {
         var root = new MenuItem { Header = header };

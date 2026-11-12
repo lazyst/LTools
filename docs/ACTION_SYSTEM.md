@@ -1,13 +1,13 @@
-# 动作系统重构方案：功能单元 · 类型化变量 · 子动作
+# 动作系统重构方案：动作单元 · 类型化变量 · 子动作
 
 > 目标：把现在「一个 `ActionDto` 装下所有类型 + 一个 300 行 switch」的结构，换成
-> **功能单元（Unit）→ 步骤（Step）→ 动作（Action）** 三层，变量带类型，并引入可复用的子动作（函数）。
+> **动作单元（Unit）→ 步骤（Step）→ 动作（Action）** 三层，变量带类型，并引入可复用的子动作（函数）。
 >
 > 已定方向：**一次性重写** / 子动作 = **全局库**（动作内子动作已于 2026-11-10 删除，见 §3.5）/ 变量 = **5 种类型**。
 > 本文件是方案与施工图，不含实现。证据见 §2。
 >
-> **状态（2026-11-07）**：W1 内核 + W2 全量单元已落地（`Core/Actions/` + `Features/Units/`，
-> 36 个功能单元 + 9 个流程单元），无头冒烟 395 项断言通过，面板 UI 冒烟无回归。
+> **状态（2026-11-07）**：W1 内核 + W2 全量动作单元已落地（`Core/Actions/` + `Features/Units/`，
+> 36 个动作单元 + 9 个流程动作单元），无头冒烟 395 项断言通过，面板 UI 冒烟无回归。
 >
 > **状态（2026-11-10）**：旧格式迁移层已整体删除（见 §3.7 的说明）。本文 W3 / W5a / W5b 里出现的
 > `Features/Migration/*`、`ActionDtoLegacy`、`LegacyType`、`FlowTypes` / `FlowMigration`、
@@ -20,12 +20,12 @@
 
 ## 0. 结论先行
 
-1. **值得抄 Quicker 的**：单元声明式元数据（输入/输出规格 → 由它生成 UI 和校验）、
+1. **值得抄 Quicker 的**：动作单元声明式元数据（输入/输出规格 → 由它生成 UI 和校验）、
    `步骤.输入参数 = 字面量 | 变量` 的两态、控制流用「嵌套子步骤数组」而不是节点图、
    子程序 = 变量打 `IsInput/IsOutput` 标记、模块粒度停在「一类操作 + operation 参数」。
 2. **不要抄的**：19 种变量类型、`$$`/`$=` 两套求值语法并存、表格/窗体/自定义类型、
    网络共享子程序、调试器级观测事件。
-3. **路线：一次性重写**，但要有一个「切流点」：新内核、单元、迁移、编辑器全部做完并通过
+3. **路线：一次性重写**，但要有一个「切流点」：新内核、动作单元、迁移、编辑器全部做完并通过
    等价性验收后，**一个提交切换**，随后删除旧实现。开发期旧代码不动、应用始终可构建。
 4. 重写后的模型只有**一个联合**（`Value`），而不是今天的四个
    （`ActionDto` / `FlowNode` / `Probe` / `VarValue`）。
@@ -135,11 +135,11 @@ Integer, Table, FormForDict, Specified, Object, Any, NA, CreateVar`
 
 | 层 | 是什么 | 谁负责 |
 |---|---|---|
-| **Unit（功能单元）** | 一类操作的**定义**：键、名称、分类、图标、输入规格、输出规格、执行函数 | 每个单元一个类 + 一份声明，`Features/Units/<分类>/` |
-| **Step（步骤）** | 单元的**一次使用**：`unit` + 参数（字面量/变量/内联取值）+ 输出映射 + 子步骤 | 纯数据，可序列化 |
+| **Unit（动作单元）** | 一类操作的**定义**：键、名称、分类、图标、输入规格、输出规格、执行函数 | 每个动作单元一个类 + 一份声明，`Features/Units/<分类>/` |
+| **Step（步骤）** | 动作单元的**一次使用**：`unit` + 参数（字面量/变量/内联取值）+ 输出映射 + 子步骤 | 纯数据，可序列化 |
 | **Action（动作）** | 触发器 + 变量表 + 步骤列表（+ 元数据） | 组合而非继承 |
 
-单元内部再分「操作变体」（`window` 的 activate/maximize/resize）——**一个单元 = 一类操作**。
+动作单元内部再分「操作变体」（`window` 的 activate/maximize/resize）——**一个动作单元 = 一类操作**。
 
 ### 3.2 变量与值
 
@@ -160,14 +160,14 @@ sealed class Value {
   `{ x, y, w, h, cx, cy, found, score }`；属性访问统一 `${m.x}`。
 - 变量声明带类型 + 默认值；运行期 `RunContext` 里是 `Dictionary<string, Value>`。
 - 对象的隐式取用：`AsText()` 取 `text`、`AsNumber()` 取 `number`、`AsBool()` 取 `found` / `flag`，
-  所以「有结果」的单元都带 `text` 成员时，`${变量}` 与旧 `VarValue.Text` 一致。
+  所以「有结果」的动作单元都带 `text` 成员时，`${变量}` 与旧 `VarValue.Text` 一致。
 - 表达式只支持**模板 + 成员/下标访问**（`${a.b}`、`${list[0]}`、`${list.count}`），
-  不引入完整表达式语言；需要计算结果时用「计算」单元。
+  不引入完整表达式语言；需要计算结果时用「计算」动作单元。
 - 列表写进文本只有一套规则（`Core/Actions/ListText.cs`）：换行 / 逗号都算分隔符
   （`a,b` 与每行一项等价），项里要带逗号或要嵌套就写 JSON 数组；**绑定时才拆成列表**，
   `${列表}` 仍是引用、不会被再拆一次；空文本 = 空列表。
 
-### 3.3 单元声明（关键接口）
+### 3.3 动作单元声明（关键接口）
 
 ```csharp
 sealed record InputSpec(
@@ -193,16 +193,16 @@ interface IStepUnit {
 }
 ```
 
-编辑器、参数校验、步骤摘要全部由 `Spec` 生成；**新增一个单元 = 新增一个类 + 一行注册**。
+编辑器、参数校验、步骤摘要全部由 `Spec` 生成；**新增一个动作单元 = 新增一个类 + 一行注册**。
 
-**参数说明**：每个输入框下方都有一行「该填什么」（`Core/Actions/InputHint`）。单元写了
+**参数说明**：每个输入框下方都有一行「该填什么」（`Core/Actions/InputHint`）。动作单元写了
 `Description` 就用它（单位、格式、可填哪些值），没写时按 `Type` / `Editor` 给默认说明
 （文本 / 数字 / 文件路径 / 屏幕区域…）；下拉与开关本身说明了选项，默认不加说明。
 
-**取值单元（Pure）**：今天的「取值器」并入这套模型，但标记为 `UnitKind.Pure`，
+**取值动作单元（Pure）**：今天的「取值器」并入这套模型，但标记为 `UnitKind.Pure`，
 可以出现在任何「值」的位置（参数、条件左右值），不需要先落成一个步骤。
 这解决了「条件怎么写」：条件 = `左值(值源) + 比较符 + 右值(值源)`，
-值源可以是变量、字面量，或一个内联的 Pure 单元（找图 / 找文字 / 取色…）。
+值源可以是变量、字面量，或一个内联的 Pure 动作单元（找图 / 找文字 / 取色…）。
 
 ### 3.4 存储格式（schema v2）
 
@@ -251,7 +251,7 @@ sealed class SubActionDef {
 它们没有编辑入口，却让读取子动作要先扫动作体、再递归找嵌套。现在
 `ActionProgram` 里只有变量表与步骤，`SubActionStore.Load(id)` 是唯一的解析入口。
 
-调用单元 `sub.run`：**参数名就是子动作的输入变量名**（`DynamicInputs`），
+调用动作单元 `sub.run`：**参数名就是子动作的输入变量名**（`DynamicInputs`），
 输出按步骤的 `out` 映射写回调用方：
 
 ```jsonc
@@ -284,23 +284,23 @@ sealed class SubActionDef {
 校验在动作那套规则之外补三条：`flow.return` 只能出现在子动作里、输出变量必须有人赋值（warning）、
 自调用成环（按「正在写的这一份」算，不必先落盘）。
 
-### 3.6 单元清单（W2/W3 已实现）
+### 3.6 动作单元清单（W2/W3 已实现）
 
 > 分类名以代码 `UnitSpec.Category` 为准：2026-11 起重排为「键鼠与输入 / 流程 / 文本与数据 / 剪贴板 / 文件 / 网络 / 窗口与程序 / 屏幕 / 界面 / 脚本」（顺序见 `Core/Actions/UnitCategories`）。下表保留当初实现时的分组。
 
-| 分类 | 单元（W2 已实现） | 对应今天的 |
+| 分类 | 动作单元（W2 已实现） | 对应今天的 |
 |---|---|---|
 | **文本** | `text.selection` 取选中文字 | Probe.selection |
 | | `text.clipboard` 读写剪贴板（纯文本 / HTML / RTF） | setClipboard / Probe.clipboard |
 | | `text.send` 发送文本 | sendText |
 | | `text.process` 去空白/大小写/替换/截取/分割/拼接/查找 | 新增（合并零碎操作） |
 | | `text.regex` 正则全部命中（可指定分组）→ 列表 | 新增（W8） |
-| **文件** | `file.open` 打开文件/文件夹/网址 | openFile/openFolder/openUrl |
+| **文件** | `file.openFile` 用默认程序打开文件（旧的三合一 `file.open` 已退役） | openFile |
 | | `file.select` 选择文件/文件夹 | 新增 |
 | | `file.read` / `file.write` 读写文本 | 新增 |
 | | `file.operation` 复制/移动/删除/建目录/重命名 | 新增 |
 | | `file.exists` 存在/类型/大小/修改时间/创建时间/只读·隐藏·系统/目录文件数/快捷方式目标 | 新增 |
-| | `file.explorer` 在资源管理器中定位 | 新增 |
+| | `file.explorer` 在资源管理器中定位 / 打开文件夹 | openFolder |
 | | `file.list` 列目录 → 路径列表（通配符 / 递归 / 只文件或文件夹） | 新增（W8） |
 | | `file.selection` 选中的文件（资源管理器 COM / 桌面 UIA）→ 路径列表 | 新增（W9） |
 | | `file.explorerPath` 资源管理器当前目录 + 全部已打开目录 | 新增（W9） |
@@ -310,6 +310,7 @@ sealed class SubActionDef {
 | | `clipboard.files` 剪贴板文件列表（读写，可剪切） | 新增（W9） |
 | | `clipboard.image` 剪贴板图片（→ png 文件 / png 写回剪贴板） | 新增（W9） |
 | | `image.info` 图片宽高 / 格式 / EXIF 方向与拍摄时间 | 新增（W9） |
+| **网络** | `web.open` 用浏览器打开网址 | openUrl |
 | **程序** | `app.launch` 启动程序 | launchApp |
 | | `app.runCommand` 运行命令（→ 退出码/stdout/stderr） | runCommand |
 | | `app.process` 进程数量/进程号/结束进程 | Probe.process |
@@ -342,21 +343,24 @@ sealed class SubActionDef {
 | **界面** | `ui.toast` 提示 | toast |
 | | `ui.input` 弹输入框 | Probe.user |
 
-> 打开面板 / 设置 / 速记、截图、调音量这类「一下就完事」的入口**不是步骤单元**，见 `Features/Builtin/`
+> 打开面板 / 设置 / 速记、截图、调音量这类「一下就完事」的入口**不是动作单元**，见 `Features/Builtin/`
 > 的 `FeatureCatalog`（常用功能 / LTools 功能）。它们只出现在面板、快捷键、悬浮里，
 > 动作编辑器左栏不再有「LTools 内置功能」分类。
 
-**粒度原则**：能用一个 `operation` 参数区分的微操作，合并在同一个单元里
+**粒度原则**：能用一个 `operation` 参数区分的**同类微操作**，合并在同一个动作单元里
 （`text.process`、`file.operation`、`window.operate`、`data.list`、`data.calc`），
-否则工具箱会变成今天 Quicker 的 119 项。`text.format` 已并入模板 + `text.process join`。
+否则工具箱会变成今天 Quicker 的 119 项。**但目标语义不同类时不合并**：2026-11-12 把旧的
+`file.open`（文件 / 文件夹 / 网址三合一）拆成 `file.openFile` / `file.explorer` / `web.open`
+三个动作单元，网址归「网络」分类——一个 `operation` 混三种目标时，名称、参数编辑器、输出与分类
+都会失真。`text.format` 已并入模板 + `text.process join`。
 
-#### 3.6.1 对照 Quicker 补的 13 个单元（2026-11）
+#### 3.6.1 对照 Quicker 补的 13 个动作单元（2026-11）
 
 按 Quicker 的功能清单逐项对过一遍：主线（键鼠 / 窗口 / 文本 / 文件 / 屏幕 / 剪贴板 / 流程）已经够用，
 整块缺的是**网络、图片处理、用户交互、事件等待**四块。专用软件控制（Photoshop / AutoCAD /
-Excel COM 那类）不做——那些用「运行脚本」或外部工具接，不值得为每个软件写一个单元。
+Excel COM 那类）不做——那些用「运行脚本」或外部工具接，不值得为每个软件写一个动作单元。
 
-| 分类 | 单元 | 补的是什么 |
+| 分类 | 动作单元 | 补的是什么 |
 |---|---|---|
 | **网络** | `web.request` | GET/POST/PUT/PATCH/DELETE、自定义请求头、响应存文件、JSON 顺手解析成对象。静态 `HttpClient` + 停止令牌串联，按停止热键能立刻中断请求 |
 | **文本与数据** | `text.encode` | Base64 / URL / HTML 编解码。Base64 能直接读整个文件（图片转 Base64）或把结果写成文件（反过来） |
@@ -386,17 +390,17 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 > `ActionDtoLegacy` / `LegacyActionSummary`）、`ActionDto.RawType` / `SourceType` 与 `FlowTypes` /
 > `FlowMigration` 全部删除。`ActionDto` 只写 `Type`（`composite` / `macro`）+ `Program`，
 > v1 类型名（`runCommand` / `sendText` / `internal` …）解析不了就是坏文件。下面这张表只作历史对照，
-> 程序不再读 v1 动作；新写单元 / 步骤时别按它去「兼容」。
+> 程序不再读 v1 动作；新写动作单元 / 步骤时别按它去「兼容」。
 
 历史对照：
 
 | 旧 | 新 |
 |---|---|
 | `ActionDto { Type=launchApp, Target, Args, Workdir }` | `steps:[{unit:"app.launch", in:{target,args,workdir}}]` |
-| `openFile / openFolder / openUrl` | `file.open` + `operation = file / folder / url` |
+| `openFile / openFolder / openUrl` | `file.openFile` / `file.explorer`（`operation=open`） / `web.open`；旧的三合一 `file.open` 已整体退役 |
 | `composite.Steps[]`（内嵌快照） | 逐个铺平成 `steps[]`；`OnFail` → 步骤的 `onFail` |
-| `composite.Flow[]` | `flow.*` 单元；`Then/Else/Body` → `then/else/body` |
-| `Probe`（条件 / set 右值） | 字面量 / `{var}` / 内联 Pure 单元 `{unit, in}` |
+| `composite.Flow[]` | `flow.*` 动作单元；`Then/Else/Body` → `then/else/body` |
+| `Probe`（条件 / set 右值） | 字面量 / `{var}` / 内联 Pure 动作单元 `{unit, in}` |
 | `Condition` | `flow.if` / `flow.while` 的 `left` / `op` / `right` / `negate` |
 | `Condition.Bind` | 先 `flow.set` 存进变量，条件改用 `{var}` |
 | `ActionDto.OutputVar` | 该步骤 `out: { "value": 变量 }` |
@@ -406,10 +410,10 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 | `runCommand` 无 `OutputVar` | `capture: false`（旧行为是打开终端窗口） |
 | `sendKeys.Items` | 键 → `input.sendKeys`（`key` + `action` + `mods`）、文本 → `text.send`、等待 → `flow.delay` |
 | `mouse.WheelDelta`（120/格） | `wheel` = 格数 |
-| `ProbeKind.ocr / textSearch` 的 `OcrEngine == null` | `engine: "windows"`（新单元默认 PP-OCRv6） |
-| `CompareOp.nearColor` | `equals` + 告警（容差无对应单元） |
+| `ProbeKind.ocr / textSearch` 的 `OcrEngine == null` | `engine: "windows"`（新动作单元默认 PP-OCRv6） |
+| `CompareOp.nearColor` | `equals` + 告警（容差无对应动作单元） |
 
-**结果对象约定**：有结果的单元除具名输出外还写一个 `value` 对象输出（`{text, found, x, y, …}`），
+**结果对象约定**：有结果的动作单元除具名输出外还写一个 `value` 对象输出（`{text, found, x, y, …}`），
 迁移的 `OutputVar` 统一映射到它；内联求值时优先返回 `value`，因此
 `${变量}` = 旧 `VarValue.Text`（PID / stdout / 路径 / 坐标串），`${变量.x}` 等照旧可用。
 
@@ -450,9 +454,9 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 
 **验收**：无头测试跑通「取值 → 赋值 → 条件 → 循环 → 提示」五步动作。
 
-### W2 全量单元 ✅
+### W2 全量动作单元 ✅
 
-- `Features/Units/<分类>/*.cs`，每类一个文件，每个单元一个类 + `IStepUnit` 实现。
+- `Features/Units/<分类>/*.cs`，每类一个文件，每个动作单元一个类 + `IStepUnit` 实现。
 - 逻辑从 `ActionExecutor` / `ProbeEvaluator` / `FlowRunner` **搬**过来（不重写行为），
   共享代码下沉到 `Features/`（`TextSender`、`CommandRunner`、`ProcessLauncher`）与
   既有工具类（`WindowFinder`、`MouseOps`、`TextLocator`、`ImageProbe`、`ScreenshotProbe`）。
@@ -469,7 +473,7 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 - `Features/Migration/ActionMigrator.cs`：旧 `ActionDto` → v2（旧 DTO 都在 `Features/`，不放 `Core/`）。
 - 覆盖：17 种动作、16 种取值、7 种流程节点、`StepDto` 快照、`OutputVar`，以及 `sub.run` 调用。
 - 未知字段 / 无法表达的语义：告警列表 + 原 JSON 备份，不静默丢。
-- 顺带补齐：`input.cursor` 取值单元、`flow.if` / `flow.while` 的 `negate`、
+- 顺带补齐：`input.cursor` 取值动作单元、`flow.if` / `flow.while` 的 `negate`、
   条件比较新增 `found` / `notFound` / `active` / `notActive`、`SubActionStore`（全局子动作库）、
   结构化结果统一的 `value` 输出（内联求值优先返回它）。
 
@@ -480,7 +484,7 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 
 - `Views/ActionEditor/ActionEditorWindow`：三栏（工具箱 / 步骤 / 变量 + 动作属性）。
 - 工具箱完全由 `StepRegistry` 的 `UnitSpec` 生成（分类 + 搜索）；点一下插到选中行之后。
-  新增单元**不用改 UI 代码**即可出现并能编辑。
+  新增动作单元**不用改 UI 代码**即可出现并能编辑。
 - 步骤行：图标 + 名称 + 一行摘要 + 输出变量 chip；缩进表示嵌套，
   「否则 / 结束如果 / 结束循环」是标记行，空分支有一行可选的占位行。
   增删改、上下移（`↑` / `↓`，或 `Alt+↑ / Alt+↓`）。
@@ -494,17 +498,17 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
   `sub.run` 的按名参数由子动作变量表（`DynamicInputs`）生成。
 - 值源 `Views/ActionEditor/ValueField`：一个输入框 + 右侧「▾ 来源」，弹层里是变量（名字 / 类型 / 来源）、
   选择文件 / 文件夹 / 图片 / 窗口 / 进程、屏幕区域 / 取点 / 取色、录制按键、速记分类 / 时间格式 /
-  文件筛选 / 分隔符、取值单元（二级页）与清空；输入即筛选。**只列这个参数适用的项**
+  文件筛选 / 分隔符、取值动作单元（二级页）与清空；输入即筛选。**只列这个参数适用的项**
   （`InputSpec.Pickers` / `PickerKind`，没声明时按 `InputEditor` 推默认）。
   其中「选择窗口 / 进程」统一走 `Views/WindowPickOverlay` 的点击窗口选取（边缘渐变高亮），
   由 `Views/SystemPickerDialog` 提供共享入口；原可搜索列表仅作「从列表选…」次要 fallback。
-  值的三态没变：字面量（可含 `${变量}`）/ 变量 / 取值单元；整串 `${名}` 才存成变量引用（保留类型）。
-  内联单元用同一个步骤表单继续编辑（递归到任意深度）；缺必填参数时状态行写「还缺必填参数：…」，
-  填完变成「点『改参数…』调整它」；没有参数的单元收起按钮。新切到取值单元默认 `text.selection`
+  值的三态没变：字面量（可含 `${变量}`）/ 变量 / 取值动作单元；整串 `${名}` 才存成变量引用（保留类型）。
+  内联动作单元用同一个步骤表单继续编辑（递归到任意深度）；缺必填参数时状态行写「还缺必填参数：…」，
+  填完变成「点『改参数…』调整它」；没有参数的动作单元收起按钮。新切到取值动作单元默认 `text.selection`
   （常用、参数少）。
 - 输出变量：标题带「已勾 N / M」，每行「☑ 标签 [类型] → 变量名 ▾」，`value`（完整结果）有别的输出时
   收进末尾「其它字段」折叠区。默认名由 `OutputNaming.Suggest` 推（`DefaultVariable` 优先，
-  否则只有 `found` / `count` / `path` / `value` 这类通用词才加单元前缀，避免跨步骤互相覆盖）；
+  否则只有 `found` / `count` / `path` / `value` 这类通用词才加动作单元前缀，避免跨步骤互相覆盖）；
   名字和已有变量同名但类型不同时当场标红提醒。
 - 参数表单在**构造函数里**就建好（`StepEditorDialog(step, inline, program, variableNames, resourceRoot, variableInfos)`）：
   `sub.run` 的「子动作」是下拉（全局子动作库）；`Program` / 变量名 / 变量表必须作为构造参数
@@ -530,7 +534,7 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
   「一行摘要」改成「每个参数一个小 chip」，否则整行都变成输入框，选中 / 拖动全废。
   对话框已经默认聚焦第一个参数、Enter 即确定，所以暂不为此改行结构。
 
-**验收**：新增一个单元**不改任何 UI 代码**即可出现在工具箱并能编辑。
+**验收**：新增一个动作单元**不改任何 UI 代码**即可出现在工具箱并能编辑。
 `PanelSmoke` 真实构造三栏窗口 + 生成的参数表单 + 子动作编辑器 / 子动作库页并截图，
 还验证了跨分支拖动与「自嵌套拦截」；`ActionSmoke` 覆盖
 迁移缓存 / 深拷贝 / JSON 往返 / `Program` 执行桥（共 601 项断言）。
@@ -552,8 +556,8 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 - 入口清理：「新建组合动作」从设置动作管理页、快捷菜单页、超级面板右键菜单、面板管理页全部移除
   （新建动作一律走三栏编辑器，不再有「普通 / 组合」两种新建入口）。
 - 保留：`FlowTypes` / `FlowMigration`（迁移器读旧 JSON 用）、`RunContext`
-  （旧取值实现与新单元的过渡层 `Features/Units/LegacyFlow`）、`Features/Flow/*Probe` /
-  `TextLocator` / `NoteActions`（新单元的底层实现）。`FlowVariables` / `ActionResults` /
+  （旧取值实现与新动作单元的过渡层 `Features/Units/LegacyFlow`）、`Features/Flow/*Probe` /
+  `TextLocator` / `NoteActions`（新动作单元的底层实现）。`FlowVariables` / `ActionResults` /
   `ActionMaterializer` 已无调用，W5b-1 删除。
 
 **验收**：仓库构建 0 错 0 警；`ActionSmoke` 601 项断言通过；`PanelSmoke` 全绿
@@ -597,7 +601,7 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
   `☑ 标签 [类型] → 变量名`，下一行「写入 ${变量}：××」；说明行**不看勾选状态**都显示
   （先读到「退出码是否为 0」才知道值不值得勾）。
 - 主结果（`value`）排最前。`EnsureOutputVariables` 原来把步骤输出**一律登记成 `text`**（错的），
-  改为按单元声明登记，并校正已有行——用户手改过类型的行不再被覆盖。
+  改为按动作单元声明登记，并校正已有行——用户手改过类型的行不再被覆盖。
 - 变量表每行补一行小字：来源（`第 2 步 · 截图（输出 file）`）；删除仍被步骤写入的变量时提示先改步骤，
   否则下次同步又会自动加回来。
 - `SubActionStore.Load(id)`：编辑器与执行器共用同一个解析入口（进程内索引缓存 + 坏文件隔离）。
@@ -610,8 +614,8 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 
 - 新增 `Core/Actions/OptionLabels.cs`：英文键 → 中文名（唯一映射），参数对话框下拉与步骤行摘要共用。
 - `InputSpec.Labels`（可选）给单个参数覆盖全局表：`data.calc` 的 `add` 是「加法」，`data.list` 的是「追加一项」；
-  `file.explorer` 的 `open` 是「打开文件夹」，`file.open` 的才是「用默认程序打开」。
-- **只翻译显示层**：`Options` 里仍是英文键，`VisibleWhen`、迁移器、单元实现、老配置一律按英文比较；
+  `file.explorer` 的 `open` 是「打开文件夹」，与「用默认程序打开文件」分属两个动作单元；旧的三合一 `file.open` 已整体退役。
+- **只翻译显示层**：`Options` 里仍是英文键，`VisibleWhen`、迁移器、动作单元实现、老配置一律按英文比较；
   下拉项把英文键放在 `Tag` 里读回，摘要只翻字面量（变量 / 内联取值原样显示）。
 
 **验收**：构建 0 错 0 警；`ActionSmoke` 601 项断言；`PanelSmoke` 全绿（参数对话框下拉与摘要均为中文）。
@@ -620,7 +624,7 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 
 用户反馈：「需要用户输入区域的功能，应该能截图框选填入，而不是手填坐标」。
 
-- 受影响的 5 个单元：`screen.capture`（`mode` + `rect`）、`screen.findImage` / `screen.findText` /
+- 受影响的 5 个动作单元：`screen.capture`（`mode` + `rect`）、`screen.findImage` / `screen.findText` /
   `input.clickText` / `input.clickImage`（`region` + `rect`）。
 - 新编辑器 `InputEditor.region`：文本输入右侧多一个「框选…」（`ScreenPicker.TryPickRegion`），
   框完写 `x,y,w,h`。配套枚举行（区域 / 取图方式）本身也挂一个「框选…」
@@ -676,7 +680,7 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
   跑 `_program.Clone()` + 现读变量表，**不必先保存**，关窗即停。
 - 与真实运行共用 `AutomationRunner` 的互斥锁、停止热键与运行指示器（`TryRunProgram`），
   两套键鼠注入不会打架。
-- 轨迹列表按 `Path` 聚合（同一步骤循环多次只一行，`×N`）：状态图标 / 行号 / 单元 / 耗时 /
+- 轨迹列表按 `Path` 聚合（同一步骤循环多次只一行，`×N`）：状态图标 / 行号 / 动作单元 / 耗时 /
   错误或写入的变量；点行跳到左侧步骤，失败自动选中。右侧「变量（运行结束后）」是快照。
 - 轨迹从后台线程入队、120ms 定时器攒批上屏（循环几千步也不卡）。
 
@@ -685,18 +689,18 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 
 ### W6.6 表单与步骤列表的可用性修补 ✅
 
-用户反馈：新用户不知道「取值单元」怎么用、四个字还显示不全；「内置功能」「调用子动作」
+用户反馈：新用户不知道「取值动作单元」怎么用、四个字还显示不全；「内置功能」「调用子动作」
 只有空文本框，不知道填什么；删掉两步动作的第二步时按钮「没反应」。
 
-- 值源三态改为 **文本模板 / 变量 / 取值单元**；模式下拉不再写死 76px。
-  取值单元缺必填参数时按钮显示「填参数…」、值下面一行提示（红字）列出缺少的项；
-  填完变「改参数…」，无参数单元收起按钮。新切到取值单元默认 `text.selection`。
+- 值源三态改为 **文本模板 / 变量 / 取值动作单元**；模式下拉不再写死 76px。
+  取值动作单元缺必填参数时按钮显示「填参数…」、值下面一行提示（红字）列出缺少的项；
+  填完变「改参数…」，无参数动作单元收起按钮。新切到取值动作单元默认 `text.selection`。
 - `StepEditorDialog` 的 `Program` / 变量名改为**构造参数**（表单在构造函数里就建好）：
   「调用子动作」恢复成子动作下拉（本动作 + 全局库，没有可选项时给提示），
   `InputEditor.variable` 也有候选名了。
 - 「内置功能」的 `command` 改成枚举下拉（速记窗口 / 快速搜索 / 放大镜 / 窗口置顶）；
   下拉遇到 `Options` 之外的旧值原样保留并标「未知选项」，不再静默改成第一项。
-- 没有输出的单元不再显示空的「输出变量」区（内置功能 / 还没选子动作）。
+- 没有输出的动作单元不再显示空的「输出变量」区（内置功能 / 还没选子动作）。
 - 步骤行内的删除 / 编辑按钮改为按按钮自己的 `DataContext` 找行；删除后自动选中下一行
   （没有则上一行），连点删除一直有效。
 
@@ -707,9 +711,9 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 
 ---
 
-### W7 脚本单元：AutoHotkey v2
+### W7 脚本动作单元：AutoHotkey v2
 
-第一个脚本单元 `script.ahk`（分类「脚本」，图标 `script`）。运行时**随包分发**
+第一个脚本动作单元 `script.ahk`（分类「脚本」，图标 `script`）。运行时**随包分发**
 （`runtime\autohotkey\AutoHotkey64.exe`，2.0.31），不依赖用户机器上装没装 AHK；
 许可证与源码出处放 `licenses\`（GPL-2.0），更新用 `tools\fetch-autohotkey.ps1`。
 
@@ -720,7 +724,7 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
   错误红字显示，行号按用户代码算。
 - **`Raw` 是必须的**：代码里的 `${…}` 不能被 `TextTemplate` 当变量求值，否则脚本里
   的模板字符串会整步失败。`ActionEngine.ResolveArgs` 按 `InputSpec.Raw` 传
-  `renderLiteral: false`；这是「原样传参」唯一的开关，别在单元里另写一套。
+  `renderLiteral: false`；这是「原样传参」唯一的开关，别在动作单元里另写一套。
 - 另有两个普通参数：`workdir`（进程工作目录 = `A_WorkingDir`）、`timeoutMs`
   （默认 60000，0 = 不超时；上限 1 小时）。
 
@@ -732,7 +736,7 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 | `LT_Set(name, value)` | 写回运行变量（与「设置变量」一样直接落到当前作用域，后续 `${名字}` 可见） |
 | `LT_Print(text)` | 往标准输出写一行（UTF-8） |
 
-输出声明沿用命令单元的命名：`stdout` / `stderr` / `exit` / `ok` / `value`
+输出声明沿用命令动作单元的命名：`stdout` / `stderr` / `exit` / `ok` / `value`
 （`value` 里额外带上 `LT_Set` 写回的变量）。
 
 **错误怎么融进同一条调试链（关键）**
@@ -765,7 +769,7 @@ AHK 默认用**模态对话框**显示运行时错误、以及 `#Warn` 警告；
 - `#Include` 按**生成脚本所在临时目录**解析，用户目录里的相对 include 找不到；
   要用就写绝对路径（`A_WorkingDir` 可用于普通文件操作）。
 - 脚本里的 `MsgBox` / `InputBox` 仍会阻塞，直到超时或用户手动关掉；流程内提示
-  仍应使用「提示弹窗」单元。
+  仍应使用「提示弹窗」动作单元。
 - AHK 的报错消息是英文（AHK 自己的本地化取决于系统，未做翻译）。
 
 **验收**：构建 0 错 0 警；`ActionSmoke` 647 项（新增：正常脚本 / 变量进出 /
@@ -782,9 +786,9 @@ AHK 默认用**模态对话框**显示运行时错误、以及 `#Warn` 警告；
 （`flow.forEach`、`${列表.count}`、`${列表.0}`、拼接 / 去重 / 排序），缺的是**产出**
 以及两处写法（变量默认值存不进去、参数里没法内联列表）。
 
-**产出（三个新单元）**
+**产出（三个新动作单元）**
 
-| 单元 | 用途 |
+| 动作单元 | 用途 |
 |---|---|
 | `file.list` | 目录 + 通配符（`*.txt;*.log`）+ 是否递归 + 只文件 / 只文件夹 → 路径列表；`最多项数` 填 0 = 不限，超出置 `truncated` |
 | `data.json` | JSON 文本 → 值；`取值路径` 支持 `a.b[0]`，结果是数组时同时给 `list`；语法错误直接失败，路径不存在只是 `found = false` |
@@ -814,12 +818,12 @@ JSON 取值与错误 / 正则分组与错误）；
 ### W9 剪贴板载荷 / 文件 / 图片（「从选中获取路径」）✅
 
 反馈：「想要『从选中的文件获取路径』『从剪贴板读文件 / 图片』这类编写效率功能」。
-按 Quicker 的对应单元（REA 核对 `sys.clipboard*` / `sys.fileOperation` / `sys.image` 的参数与输出）
-补齐成一套完整的剪贴板 / 文件 / 图片工具，共 10 个新单元 + 2 处扩展。
+按 Quicker 的对应动作单元（REA 核对 `sys.clipboard*` / `sys.fileOperation` / `sys.image` 的参数与输出）
+补齐成一套完整的剪贴板 / 文件 / 图片工具，共 10 个新动作单元 + 2 处扩展。
 
-**新增单元**
+**新增动作单元**
 
-| 单元 | 用途 | 输出 |
+| 动作单元 | 用途 | 输出 |
 |---|---|---|
 | `clipboard.files` | 读 / 写剪贴板里的文件列表（CF_HDROP），`cut` = 粘贴后移动 | `list` `count` `first` `names` `text` `cut` `found` |
 | `clipboard.image` | 剪贴板图片 → png 文件；png 文件 → 剪贴板（PNG + CF_DIB） | `path` `width` `height` `found` |
@@ -873,7 +877,7 @@ JSON 取值与错误 / 正则分组与错误）；
 HTML·RTF 往返 / `file.hash` 已知值 / `file.exists` 新字段 / 临时路径 / 系统文件夹 / 图片信息 /
 前台为资源管理器时读到当前目录与真实选中项 / 降级时不动剪贴板；另加剪贴板历史的列出形状、
 删不存在的记录、清空当前剪贴板）；
-`PanelSmoke` 全绿（新增断言：工具箱出现这 10 个单元）；`UnitShots` 21 个参数对话框全绿。
+`PanelSmoke` 全绿（新增断言：工具箱出现这 10 个动作单元）；`UnitShots` 21 个参数对话框全绿。
 
 ---
 
@@ -889,8 +893,8 @@ HTML·RTF 往返 / `file.hash` 已知值 / `file.exists` 新字段 / 临时路�
 └─────────────────┴───────────────────────────┴───────────────┘
 ```
 
-- **步骤行**：图标 + 单元名 + 一行摘要（关键参数内联可改）+ 输出变量 chip。
-- **参数编辑器**：由 `InputSpec` 生成；每个参数右侧是「取值」按钮（选变量 / 选取值单元）。
+- **步骤行**：图标 + 动作单元名 + 一行摘要（关键参数内联可改）+ 输出变量 chip。
+- **参数编辑器**：由 `InputSpec` 生成；每个参数右侧是「取值」按钮（选变量 / 选取值动作单元）。
 - **输出区**：每行 `☑ 标签 [类型] → 变量名` + 一行说明（`OutputSpec.Description`），主结果（`value`）置顶；
   说明不看勾选状态都显示，用户先读到语义再决定勾不勾。
 - **条件**：保留「值 + 比较 + 值」的表单形态（易用），底层存 `flow.if` 的输入；
@@ -906,7 +910,7 @@ HTML·RTF 往返 / `file.hash` 已知值 / `file.exists` 新字段 / 临时路�
 |---|---|
 | 一次切换回归面大 | 切流前完成等价性冒烟；切流提交只换装配；旧代码保留到验收通过再删 |
 | 迁移丢字段 | 显式映射表 + 未知字段告警 + `.bak-*` 备份 |
-| 单元过细导致工具箱爆炸 | 粒度定在「一类操作 + operation 参数」，目标 ~40 个 |
+| 动作单元过细导致工具箱爆炸 | 粒度定在「一类操作 + operation 参数」，目标 ~40 个 |
 | 类型化后旧用法报错 | 文本是万能输入：绑定参数时按需解析，失败才报错 |
 | 子动作改动影响面大 | 删除前列引用；全局改动只改行为，不改调用方数据 |
 | 组合动作旧语义（快照） | 明确取舍：改为**引用**；需要独立副本时用「复制为子动作」 |
@@ -921,7 +925,7 @@ HTML·RTF 往返 / `file.hash` 已知值 / `file.exists` 新字段 / 临时路�
 - `UnitsTest`：反射遍历 `IStepUnit`，断言 Key 唯一、Spec 完整、默认值类型匹配。
 - `MigrateTest`：旧动作迁移后执行结果与旧执行器逐项比对。
 - `SubActionTest`：全局 + 动作内两种调用、三层嵌套、递归保护、删除引用提示。
-- `EditorTest`：由 Spec 生成的表单能打开并保存每个单元。
+- `EditorTest`：由 Spec 生成的表单能打开并保存每个动作单元。
 
 ---
 

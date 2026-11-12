@@ -337,7 +337,7 @@ public partial class AiView : UserControl
                 命令："{exe}" --mcp-stdio
                 （客户端的 command / args 填这个；桥自己读本机令牌，不需要 URL 和 Bearer）
 
-                接上后先调 ltools_health；写动作前读 ltools_docs_get("format") 和 ltools_units_list，按单元定义写、别猜单元名。
+                接上后先调 ltools_health；写动作前读 ltools_docs_get("format") 和 ltools_units_list，按动作单元定义写、别猜动作单元名。
                 """;
         }
 
@@ -350,7 +350,7 @@ public partial class AiView : UserControl
             地址：{url}（Streamable HTTP、无状态）
             令牌：Authorization: Bearer {token}（也接受 X-LTools-Token 或 ?token=）
 
-            接上后先调 ltools_health；写动作前读 ltools_docs_get("format") 和 ltools_units_list，按单元定义写、别猜单元名。
+            接上后先调 ltools_health；写动作前读 ltools_docs_get("format") 和 ltools_units_list，按动作单元定义写、别猜动作单元名。
             """;
     }
 
@@ -375,7 +375,7 @@ public partial class AiView : UserControl
         try
         {
             int count = KnowledgePack.RegenerateUnits();
-            ToastService.Show($"units.md 已重建（{count} 个单元）", "知识包", 2500, ToastKind.success);
+            ToastService.Show($"units.md 已重建（{count} 个动作单元）", "知识包", 2500, ToastKind.success);
         }
         catch (Exception ex)
         {

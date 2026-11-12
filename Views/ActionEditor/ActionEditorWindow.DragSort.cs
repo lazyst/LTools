@@ -185,7 +185,7 @@ public partial class ActionEditorWindow
     private readonly record struct DropSpot(List<Step> List, int Index, int Depth, ListBoxItem? Container, bool After);
 
     /// <summary>
-    /// 由窗口坐标算出落点（拖步骤与从工具箱拖单元共用）。<paramref name="moving"/> 是正在被拖的步骤，
+    /// 由窗口坐标算出落点（拖步骤与从工具箱拖动作单元共用）。<paramref name="moving"/> 是正在被拖的步骤，
     /// 用来拦住「把一步拖进它自己的分支」（整组拖动时任一命中就拒绝）；从工具箱拖时为 null。
     /// </summary>
     private bool TryResolveDrop(Point windowPoint, IReadOnlyCollection<Step>? moving, out DropSpot spot)

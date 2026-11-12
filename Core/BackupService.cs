@@ -372,7 +372,7 @@ internal static class BackupService
             if (preview.IncludeStaging)
                 ReplaceDir(Path.Combine(preview.StagingDir, "staging"), DraftStore.Root, ts, restores);
 
-            // 6) 跨动作状态（「存状态 / 读状态」单元写的那张表）
+            // 6) 跨动作状态（「存状态 / 读状态」动作单元写的那张表）
             if (preview.IncludeState)
                 ReplaceDir(Path.Combine(preview.StagingDir, "state"), AppPaths.StateDir, ts, restores);
 

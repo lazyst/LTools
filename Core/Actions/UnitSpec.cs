@@ -2,14 +2,14 @@ using System.Text.Json.Serialization;
 
 namespace LTools.Core.Actions;
 
-/// <summary>单元种类。<see cref="pure"/> = 只算值，可以内联在任何「值」的位置。</summary>
+/// <summary>动作单元种类。<see cref="pure"/> = 只算值，可以内联在任何「值」的位置。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum UnitKind
 {
     /// <summary>有副作用的普通步骤。</summary>
     action,
 
-    /// <summary>取值单元：找图 / 取剪贴板 / 读窗口…可以内联在参数或条件里。</summary>
+    /// <summary>取值动作单元：找图 / 取剪贴板 / 读窗口…可以内联在参数或条件里。</summary>
     pure,
 }
 
@@ -22,7 +22,7 @@ public enum InputEditor
 
     /// <summary>
     /// 代码：等宽多行编辑器 + 「检查语法」按钮。配 <see cref="InputSpec.Raw"/> 用，
-    /// 内容原样交给单元（不做 <c>${变量}</c> 模板渲染，否则脚本里的花括号会被当成取值）。
+    /// 内容原样交给动作单元（不做 <c>${变量}</c> 模板渲染，否则脚本里的花括号会被当成取值）。
     /// </summary>
     code,
 
@@ -79,7 +79,7 @@ public enum BodyKind
 /// <param name="Options">枚举选项（<see cref="InputEditor.enumList"/> 用），存的是英文键。</param>
 /// <param name="Labels">
 /// 该参数私有的选项中文名，优先于 <see cref="OptionLabels"/> 的全局表。
-/// 只在同一个键于不同单元含义不同时才用（如 <c>add</c>：列表里是「追加一项」、计算里是「加法」）。
+/// 只在同一个键于不同动作单元含义不同时才用（如 <c>add</c>：列表里是「追加一项」、计算里是「加法」）。
 /// </param>
 /// <param name="Raw">
 /// true = 字面量**原样**传入，不做 <c>${变量}</c> 模板渲染。代码类参数（<see cref="InputEditor.code"/>）
@@ -96,7 +96,7 @@ public enum BodyKind
 /// </param>
 /// <param name="Pickers">
 /// 输入框右侧「▾ 来源」里能选的取值方式（<see cref="PickerKind"/>）。不写时按
-/// <see cref="InputEditor"/> 推默认（文本 → 变量 / 取值单元，文件 → 再加「文件…」），
+/// <see cref="InputEditor"/> 推默认（文本 → 变量 / 取值动作单元，文件 → 再加「文件…」），
 /// 只在默认不够时补，例如窗口标题加 <see cref="PickerKind.window"/>。
 /// </param>
 public sealed record InputSpec(
@@ -125,7 +125,7 @@ public sealed record InputSpec(
 /// <param name="DefaultVariable">新建步骤时建议的变量名。</param>
 /// <param name="Description">
 /// 一句话说明「这个变量装的是什么」（含空值 / 前置条件等坑）。
-/// 参数表单的提示行、变量插入菜单和将来的单元文档都由它派生，别再另写一份文案。
+/// 参数表单的提示行、变量插入菜单和将来的动作单元文档都由它派生，别再另写一份文案。
 /// </param>
 public sealed record OutputSpec(
     string Key,
@@ -134,7 +134,7 @@ public sealed record OutputSpec(
     string? DefaultVariable = null,
     string? Description = null);
 
-/// <summary>功能单元的静态声明：键、名称、分类、输入/输出规格、是否携带子步骤。</summary>
+/// <summary>动作单元的静态声明：键、名称、分类、输入/输出规格、是否携带子步骤。</summary>
 public sealed class UnitSpec
 {
     public required string Key { get; init; }
@@ -161,29 +161,29 @@ public sealed class UnitSpec
 
     public IReadOnlyList<OutputSpec> Outputs { get; init; } = Array.Empty<OutputSpec>();
 
-    /// <summary>校验声明自身是否完整；注册时调用，避免坏单元漏到运行时。</summary>
+    /// <summary>校验声明自身是否完整；注册时调用，避免坏动作单元漏到运行时。</summary>
     public void Validate()
     {
         if (string.IsNullOrWhiteSpace(Key))
-            throw new ActionException("单元缺少 Key");
+            throw new ActionException("动作单元缺少 Key");
 
         if (string.IsNullOrWhiteSpace(Name))
-            throw new ActionException($"单元「{Key}」缺少 Name");
+            throw new ActionException($"动作单元「{Key}」缺少 Name");
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var input in Inputs)
         {
             if (string.IsNullOrWhiteSpace(input.Key))
-                throw new ActionException($"单元「{Key}」有输入缺少 Key");
+                throw new ActionException($"动作单元「{Key}」有输入缺少 Key");
             if (!seen.Add(input.Key))
-                throw new ActionException($"单元「{Key}」的输入「{input.Key}」重复");
+                throw new ActionException($"动作单元「{Key}」的输入「{input.Key}」重复");
             if (input.Default != null && input.Type != null && input.Default.Kind != input.Type)
             {
                 try { input.Default.Coerce(input.Type); }
                 catch (ActionException ex)
                 {
                     throw new ActionException(
-                        $"单元「{Key}」的输入「{input.Key}」默认值类型不对：{ex.Message}", ex);
+                        $"动作单元「{Key}」的输入「{input.Key}」默认值类型不对：{ex.Message}", ex);
                 }
             }
         }
@@ -192,9 +192,9 @@ public sealed class UnitSpec
         foreach (var output in Outputs)
         {
             if (string.IsNullOrWhiteSpace(output.Key))
-                throw new ActionException($"单元「{Key}」有输出缺少 Key");
+                throw new ActionException($"动作单元「{Key}」有输出缺少 Key");
             if (!seen.Add(output.Key))
-                throw new ActionException($"单元「{Key}」的输出「{output.Key}」重复");
+                throw new ActionException($"动作单元「{Key}」的输出「{output.Key}」重复");
         }
     }
 }

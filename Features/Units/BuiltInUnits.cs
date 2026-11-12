@@ -13,11 +13,11 @@ using LTools.Features.Units.Windows;
 namespace LTools.Features.Units;
 
 /// <summary>
-/// 随程序分发的功能单元注册入口。
+/// 随程序分发的动作单元注册入口。
 /// </summary>
 /// <remarks>
-/// 新增单元只需在这里加一行 <c>registry.Register(new XxxUnit())</c>。
-/// 流程单元（if / 循环 / 赋值…）由 <see cref="LTools.Core.Actions.FlowUnits"/> 注册。
+/// 新增动作单元只需在这里加一行 <c>registry.Register(new XxxUnit())</c>。
+/// 流程动作单元（if / 循环 / 赋值…）由 <see cref="LTools.Core.Actions.FlowUnits"/> 注册。
 /// </remarks>
 public static class BuiltInUnits
 {
@@ -39,7 +39,7 @@ public static class BuiltInUnits
         registry.Register(new EncodeUnit());
 
         // —— 文件 ——
-        registry.Register(new OpenPathUnit());
+        registry.Register(new OpenFileUnit());
         registry.Register(new SelectFileUnit());
         registry.Register(new ReadFileUnit());
         registry.Register(new WriteFileUnit());
@@ -103,6 +103,7 @@ public static class BuiltInUnits
         registry.Register(new LastErrorUnit());
 
         // —— 网络 ——
+        registry.Register(new OpenUrlUnit());
         registry.Register(new WebRequestUnit());
     }
 }

@@ -1,10 +1,10 @@
 namespace LTools.Core.Actions;
 
 /// <summary>
-/// 功能单元：一类操作的声明 + 执行函数。
+/// 动作单元：一类操作的声明 + 执行函数。
 /// </summary>
 /// <remarks>
-/// 新增一个单元 = 新建一个实现类 + 在 <c>BuiltInUnits</c> 里注册一行；
+/// 新增一个动作单元 = 新建一个实现类 + 在 <c>BuiltInUnits</c> 里注册一行；
 /// 参数表单、校验、摘要全部由 <see cref="Spec"/> 派生，不需要改 UI 的按类型分支。
 /// </remarks>
 public interface IStepUnit

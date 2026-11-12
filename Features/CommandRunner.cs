@@ -39,7 +39,7 @@ internal sealed class CommandOutcome
 
 /// <summary>
 /// 运行命令的共用实现：终端路由（复用 <see cref="TerminalLauncher"/>）或后台捕获输出。
-/// 旧 <see cref="ActionExecutor"/> 与新的「运行命令」单元共用。
+/// 旧 <see cref="ActionExecutor"/> 与新的「运行命令」动作单元共用。
 /// </summary>
 internal static class CommandRunner
 {
