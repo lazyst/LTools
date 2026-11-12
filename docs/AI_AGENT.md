@@ -133,6 +133,8 @@ create ─→ 工作副本(slot, revision=内容哈希) ─check→ 诊断
 
 ### 2.4 审批与安全（外部 MCP）
 
+> 下表是调研 Quicker 时记录的观察值（旧名 `full_control` / `sandbox_confirm`），本项目实现口径以 §5.3 为准。
+
 | 机制 | 观察到的行为 |
 |---|---|
 | `AllowWrites` | 总闸；关着时外部 MCP 只有读能力 |
@@ -274,7 +276,7 @@ staging/
 - `AllowWrites`（默认 **false**）：总闸，关着时所有 `✓` 工具直接拒绝（错误码 `writes_disabled`）。
 - `ApprovalMode`：
   - `readOnly`：只读（与关总闸等价，便于一键切回）
-  - `sandbox`（默认）：草稿 CRUD / save / run 放行；`promote`、`delete` 由 LTools 弹原生确认
+  - `sandbox`（默认）：草稿 CRUD / save / run 放行；`promote`、`delete` 由 LTools 弹项目统一确认框（`ConfirmDialog`，经 `AiUi.Confirm` 从 MCP 线程投递到 UI 线程；无 Owner 时自动置顶）
   - `full`：都放行（`promote` 仍写审计）
 - 令牌：首次启用时生成 `lt_` + 32 字节随机串，只在设置页可见/可复制/可重置；比较用定长时间；**日志里永远打码**。
 - 绑定 `127.0.0.1`，校验 `Origin`/`Host`，拒绝非 `application/json`，请求体大小上限（如 1MB）。
@@ -366,8 +368,8 @@ mode=replace  → 校验 draft.baseActionId 仍存在、baseSourceHash 未变（
   - 单击卡片 → **直接运行**这份草稿（照 Quicker）；要改内容走右键「在编辑器中打开」。
   - 右键卡片 → 在编辑器中打开 / 试运行 / 采纳为新动作（再采纳）/ 覆盖原动作（仅 `baseActionId` 的草稿）/ 打开草稿目录 / 删除草稿 / 刷新。
   - 右键空白 → 刷新 / 打开暂存目录 / 清空暂存区 / AI 接入设置。
-  - 采纳（新建）不弹确认（点菜单就是确认），面板不关，页内卡片立刻变「已采纳」；失败用常驻提示。
-  - 需要模态框的（编辑器、试运行、覆盖原动作、删除、清空）**先关面板再弹**（隐藏的 Topmost 面板会让模态框闪黑并挡住长按右键手势）。
+  - 采纳（新建）不弹确认（点菜单就是确认），面板不关，页内卡片立刻变「已采纳」；两种采纳失败都用常驻提示（`ToastService`，按草稿 id 去重），不弹原生框。
+  - 需要交互 / 确认的（编辑器、覆盖原动作、删除、清空、试运行的校验确认）**先关面板再弹**（隐藏的 Topmost 面板会让模态框闪黑并挡住长按右键手势）；读草稿失败的页内轻提示留着面板，确认框传 null Owner、靠 `ShouldTopmost` 自己置顶。
   - 面板可见时 1 秒轮询草稿目录，签名含 `program.json` / `files` 的写入时间（agent 直接改文件也能看到）。
 - 配置里 `LastNavPage` 仍是设置页的导航（存**具体子页** tag：`ai-connect` / `ai-audit`，旧值 `ai` / `superpanel` 与已并页的 `ai-prompt` / `ai-knowledge` / `ai-stash` 会自动归一到连接 / 常规）；
   两个二级下拉的展开状态另存 `NavExpandedGroups`（为空 = 都没展开；当前页所在组启动时一定展开）。

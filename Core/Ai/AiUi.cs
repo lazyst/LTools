@@ -1,4 +1,5 @@
 using System.Windows;
+using LTools.Views;
 
 namespace LTools.Core.Ai;
 
@@ -30,14 +31,16 @@ internal static class AiUi
         return true;
     });
 
-    /// <summary>原生确认框（沙箱模式下采纳 / 删除草稿用）。用户点「否」返回 false。</summary>
-    public static bool Confirm(string title, string message)
+    /// <summary>
+    /// 项目统一确认框（sandbox 下采纳 / 删除草稿、设置页重置令牌、暂存区页操作用）。取消 / 关闭返回 false。
+    /// </summary>
+    /// <remarks>
+    /// MCP 回调线程经 <c>Run</c> 同步取结果，那一刻可能没有任何前台窗口：<see cref="ConfirmDialog"/>
+    /// 在无 Owner 时自己置顶（见 <c>ShouldTopmost</c>），所以这里固定传 null Owner——
+    /// 别拿隐藏的 Topmost 面板当 Owner，那样会闪黑并挡住长按右键手势。
+    /// </remarks>
+    public static bool Confirm(string title, string message, bool danger = false, string? okText = null)
     {
-        return Run(() => MessageBox.Show(
-            message,
-            "LTools · " + title,
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question,
-            MessageBoxResult.No) == MessageBoxResult.Yes);
+        return Run(() => ConfirmDialog.Confirm(null, "LTools · " + title, message, danger, okText));
     }
 }

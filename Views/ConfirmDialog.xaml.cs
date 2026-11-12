@@ -4,6 +4,10 @@ namespace LTools.Views;
 
 /// <summary>通用确认/提示对话框（替代原生 MessageBox）。危险动作用红按钮；
 /// 速记保存场景支持「保存 / 不保存 / 取消」三选。</summary>
+/// <remarks>
+/// 无 Owner（托盘 / MCP 回调 / 面板已关闭）时自动置顶，免得确认框被别的窗口盖住，见 <see cref="ShouldTopmost"/>。
+/// 全项目除启动期单实例提示（WPF 还没起来）外一律走这里，别再调 <c>MessageBox</c>。
+/// </remarks>
 public partial class ConfirmDialog : Window
 {
     private bool _ok;
@@ -51,7 +55,7 @@ public partial class ConfirmDialog : Window
     public static bool Confirm(Window? owner, string title, string message, bool danger = false, string? okText = null)
     {
         var dlg = new ConfirmDialog(title, message, danger, false, false, okText);
-        if (owner != null) { dlg.Owner = owner; dlg.Topmost = owner.Topmost; }
+        ApplyOwner(dlg, owner);
         dlg.ShowDialog();
         return dlg._ok;
     }
@@ -60,7 +64,7 @@ public partial class ConfirmDialog : Window
     public static void Info(Window? owner, string title, string message)
     {
         var dlg = new ConfirmDialog(title, message, false, true, false, null);
-        if (owner != null) { dlg.Owner = owner; dlg.Topmost = owner.Topmost; }
+        ApplyOwner(dlg, owner);
         dlg.ShowDialog();
     }
 
@@ -68,11 +72,23 @@ public partial class ConfirmDialog : Window
     public static SaveConfirmResult ConfirmDiscard(Window? owner, string title, string message)
     {
         var dlg = new ConfirmDialog(title, message, false, false, true, null);
-        if (owner != null) { dlg.Owner = owner; dlg.Topmost = owner.Topmost; }
+        ApplyOwner(dlg, owner);
         dlg.ShowDialog();
         if (dlg._ok) return SaveConfirmResult.Save;
         if (dlg._discard) return SaveConfirmResult.Discard;
         return SaveConfirmResult.Cancel;
+    }
+
+    /// <summary>
+    /// 确认框该不该置顶：有 Owner 就跟随它（面板是 Topmost 时别掉到它后面）；
+    /// <b>没有 Owner</b>（托盘 / MCP 回调 / 面板已关闭）就自己置顶——那时没有任何 LTools 窗口能把它带上来。
+    /// </summary>
+    internal static bool ShouldTopmost(Window? owner) => owner?.Topmost ?? true;
+
+    private static void ApplyOwner(ConfirmDialog dlg, Window? owner)
+    {
+        if (owner != null) dlg.Owner = owner;
+        dlg.Topmost = ShouldTopmost(owner);
     }
 
     private void Ok_Click(object sender, RoutedEventArgs e)

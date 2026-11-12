@@ -187,7 +187,7 @@ public sealed class AiTools
 
     [McpServerTool(Name = "ltools_staging_promote"), Description(
         "把草稿采纳为正式动作：mode=new 新建 / mode=replace 覆盖来源动作（来源动作被改过时拒绝）。" +
-        "沙箱模式下由 LTools 弹原生确认；full 模式直通。")]
+        "沙箱模式下由 LTools 弹项目统一确认框；full 模式直通。")]
     public static string StagingPromote(
         [Description("草稿 id")] string draftId,
         [Description("new 或 replace")] string mode,

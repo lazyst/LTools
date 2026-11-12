@@ -244,8 +244,5 @@ public partial class FeatureParamsDialog : Window
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
-    private void Warn(string message)
-    {
-        MessageBox.Show(this, message, "功能参数", MessageBoxButton.OK, MessageBoxImage.Information);
-    }
+    private void Warn(string message) => ConfirmDialog.Info(this, "功能参数", message);
 }

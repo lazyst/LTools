@@ -10,6 +10,7 @@ using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Core.Ai;
 using LTools.Features;
+using LTools.Views;
 
 namespace LTools.Views.Controls;
 
@@ -19,8 +20,9 @@ namespace LTools.Views.Controls;
 /// <remarks>
 /// <para>
 /// 卡片来自 <see cref="DraftStore"/>（AI / 用户写进 <c>staging/</c> 的草稿）。**单击卡片直接运行**（照 Quicker），
-/// 右键菜单才是「在编辑器中打开 / 采纳为新动作 / 覆盖原动作 / 删除」等。**所有会弹对话框的操作先关面板**
+/// 右键菜单才是「在编辑器中打开 / 采纳为新动作 / 覆盖原动作 / 删除」等。**会弹模态框的操作先关面板**
 /// （见 AGENTS.md：隐藏的 Topmost 面板当 Owner 会让模态框闪黑，而且面板仍算「已打开」会拦住长按右键手势）。
+/// 读草稿失败这类页内轻提示不关面板、也不拿面板当 Owner：<see cref="ConfirmDialog"/> 无 Owner 时自己置顶。
 /// </para>
 /// <para>
 /// 刷新按「草稿元数据 + program.json / files 的写入时间」签名判断：agent 用自己的 fs 工具直接改文件时
@@ -321,15 +323,15 @@ public sealed partial class StashPane : UserControl
             var snapshot = DraftStore.Read(id);
             if (snapshot.Program == null)
             {
-                MessageBox.Show(snapshot.Error ?? "草稿内容不完整，先让 AI 重新写一遍。",
-                    "LTools · 打开草稿", MessageBoxButton.OK, MessageBoxImage.Warning);
+                ConfirmDialog.Info(null, "打开草稿",
+                    snapshot.Error ?? "草稿内容不完整，先让 AI 重新写一遍。");
                 return;
             }
             program = snapshot.Program;
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "LTools · 打开草稿", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ConfirmDialog.Info(null, "打开草稿", ex.Message);
             return;
         }
 
@@ -352,7 +354,7 @@ public sealed partial class StashPane : UserControl
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "LTools · 保存草稿失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ConfirmDialog.Info(null, "保存草稿失败", ex.Message);
         }
     }
 
@@ -366,8 +368,8 @@ public sealed partial class StashPane : UserControl
             var snapshot = DraftStore.Read(id);
             if (snapshot.Program == null)
             {
-                MessageBox.Show(snapshot.Error ?? "草稿内容不完整，无法试运行。",
-                    "LTools · 试运行", MessageBoxButton.OK, MessageBoxImage.Warning);
+                ConfirmDialog.Info(null, "试运行",
+                    snapshot.Error ?? "草稿内容不完整，无法试运行。");
                 return;
             }
             program = snapshot.Program;
@@ -376,7 +378,7 @@ public sealed partial class StashPane : UserControl
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "LTools · 试运行", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ConfirmDialog.Info(null, "试运行", ex.Message);
             return;
         }
 
@@ -408,7 +410,8 @@ public sealed partial class StashPane : UserControl
             Features.SuperPanel.Close();
             if (!AiUi.Confirm("覆盖原动作",
                     $"用草稿「{title}」覆盖来源动作 {meta.BaseActionId}？\n\n" +
-                    "覆盖前会再确认来源动作自复制以来没有被改过；改过就只允许另存为新动作。"))
+                    "覆盖前会再确认来源动作自复制以来没有被改过；改过就只允许另存为新动作。",
+                    okText: "覆盖"))
                 return;
         }
 
@@ -426,9 +429,9 @@ public sealed partial class StashPane : UserControl
         }
         catch (Exception ex)
         {
-            // 采纳（新建）时面板还开着：用常驻提示而不是 MessageBox，免得模态框被 Topmost 面板挡在后面
-            if (replace) MessageBox.Show(ex.Message, "LTools · 采纳失败", MessageBoxButton.OK, MessageBoxImage.Warning);
-            else ToastService.Show(ex.Message, "采纳失败", ToastService.StickyMs, ToastKind.error, key: "stash:" + id);
+            // 采纳失败一律用常驻提示：新建时面板还开着，模态框会被 Topmost 面板挡住；
+            // 覆盖时同样不弹框，按草稿 id 去重，连点不会刷屏。
+            ToastService.Show(ex.Message, "采纳失败", ToastService.StickyMs, ToastKind.error, key: "stash:" + id);
         }
 
         Reload(force: true);
@@ -442,7 +445,8 @@ public sealed partial class StashPane : UserControl
         Features.SuperPanel.Close();
         if (!AiUi.Confirm("删除草稿",
                 $"删除草稿「{DisplayName(meta, null)}」？\n\n草稿目录（program.json / files / history）会一起删掉，" +
-                "不可恢复；已经采纳出去的正式动作不受影响。"))
+                "不可恢复；已经采纳出去的正式动作不受影响。",
+                danger: true))
             return;
 
         try
@@ -452,7 +456,7 @@ public sealed partial class StashPane : UserControl
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "LTools · 删除草稿失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ConfirmDialog.Info(null, "删除草稿失败", ex.Message);
         }
     }
 
@@ -467,7 +471,8 @@ public sealed partial class StashPane : UserControl
 
         Features.SuperPanel.Close();
         if (!AiUi.Confirm("清空暂存区",
-                $"删除全部 {metas.Count} 份草稿？\n\n草稿目录会一起删掉，不可恢复；已经采纳出去的正式动作不受影响。"))
+                $"删除全部 {metas.Count} 份草稿？\n\n草稿目录会一起删掉，不可恢复；已经采纳出去的正式动作不受影响。",
+                danger: true))
             return;
 
         int deleted = 0;
@@ -493,12 +498,11 @@ public sealed partial class StashPane : UserControl
 
         if (!allowContinue)
         {
-            MessageBox.Show(detail, "LTools · " + title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            ConfirmDialog.Info(null, title, detail);
             return false;
         }
 
-        return MessageBox.Show($"{detail}\n\n仍然继续？", "LTools · " + title,
-            MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
+        return ConfirmDialog.Confirm(null, title, $"{detail}\n\n仍然继续？", okText: "仍然继续");
     }
 
     private static string FormatTime(string value)

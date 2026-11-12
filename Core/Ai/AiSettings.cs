@@ -14,7 +14,7 @@ internal enum AiApprovalMode
     /// <summary>只读：即使 <see cref="AiSettings.AllowWrites"/> 打开也不放行写操作。</summary>
     readOnly,
 
-    /// <summary>沙箱（默认）：草稿 CRUD / save / run 放行；采纳与删除由 LTools 弹原生确认。</summary>
+    /// <summary>沙箱（默认）：草稿 CRUD / save / run 放行；采纳与删除由 LTools 弹项目统一确认框。</summary>
     sandbox,
 
     /// <summary>全部放行（采纳与删除仍写审计）。只建议用户自己临时打开。</summary>

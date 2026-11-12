@@ -508,9 +508,9 @@ public partial class ActionEditorWindow
 
         SetStatus($"校验：{result.Errors} 个错误 / {result.Warnings} 个提醒",
             hint: result.Ok, danger: !result.Ok);
-        MessageBox.Show(detail,
-            $"LTools · {(_isSubAction ? "子动作" : "动作")}校验（{result.Errors} 个错误 / {result.Warnings} 个提醒）",
-            MessageBoxButton.OK, result.Ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        ConfirmDialog.Info(this,
+            $"{(_isSubAction ? "子动作" : "动作")}校验（{result.Errors} 个错误 / {result.Warnings} 个提醒）",
+            detail);
     }
 
     /// <summary>

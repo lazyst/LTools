@@ -277,7 +277,7 @@ public partial class HotkeyEditDialog : Window
         }
         if (string.IsNullOrWhiteSpace(_actionId) || !BindingRef.Exists(_actionId))
         {
-            MessageBox.Show(this, "请选择一个存在的动作或功能。", "快捷键", MessageBoxButton.OK, MessageBoxImage.Information);
+            ConfirmDialog.Info(this, "快捷键", "请选择一个存在的动作或功能。");
             return;
         }
 

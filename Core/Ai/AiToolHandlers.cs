@@ -312,7 +312,8 @@ internal static class AiToolHandlers
         RequireConfirm(exists ? "修改子动作" : "新建子动作",
             exists
                 ? $"AI 要覆盖子动作「{def.Name}」（{def.Id}），调用它的动作会一起变。"
-                : $"AI 要新建子动作「{def.Name}」（{def.Id}），共 {def.Steps.Count} 步。");
+                : $"AI 要新建子动作「{def.Name}」（{def.Id}），共 {def.Steps.Count} 步。",
+            okText: exists ? "覆盖" : "新建");
 
             SubActionStore.Save(def, createNew: !exists);
 
@@ -343,7 +344,7 @@ internal static class AiToolHandlers
             : $"确定删除子动作「{name}」（{id}）？下面 {refs.Count} 处调用之后会报「找不到子动作」：\n"
               + string.Join("\n", refs.Take(8).Select(r => $"· {r.ActionName} · {r.Where}"));
 
-        RequireConfirm("删除子动作", detail);
+        RequireConfirm("删除子动作", detail, danger: true);
         SubActionStore.Delete(id);
 
         return new Dictionary<string, object?>
@@ -560,7 +561,7 @@ internal static class AiToolHandlers
     {
         RequireWrites();
         var meta = DraftStore.Find(draftId) ?? throw new AiToolException("not_found", $"草稿不存在：{draftId}");
-        RequireConfirm("删除草稿", $"确定删除草稿「{meta.Title ?? meta.Id}」（{meta.Id}）？此操作不可恢复。");
+        RequireConfirm("删除草稿", $"确定删除草稿「{meta.Title ?? meta.Id}」（{meta.Id}）？此操作不可恢复。", danger: true);
         DraftStore.Delete(draftId);
         return new Dictionary<string, object?> { ["deleted"] = true, ["draftId"] = draftId };
     }
@@ -657,7 +658,8 @@ internal static class AiToolHandlers
         var meta = DraftStore.Find(draftId) ?? throw new AiToolException("not_found", $"草稿不存在：{draftId}");
         RequireConfirm(
             mode == "replace" ? "覆盖正式动作" : "采纳为新动作",
-            $"把草稿「{meta.Title ?? meta.Id}」（{meta.Id}）{(mode == "replace" ? "覆盖来源正式动作" : "采纳为一个新的正式动作")}？");
+            $"把草稿「{meta.Title ?? meta.Id}」（{meta.Id}）{(mode == "replace" ? "覆盖来源正式动作" : "采纳为一个新的正式动作")}？",
+            okText: mode == "replace" ? "覆盖动作" : "采纳");
 
         var result = DraftPromoter.Promote(draftId, mode, expectedRevision);
         return new Dictionary<string, object?>
@@ -743,11 +745,11 @@ internal static class AiToolHandlers
         }
     }
 
-    private static void RequireConfirm(string action, string detail)
+    private static void RequireConfirm(string action, string detail, bool danger = false, string? okText = null)
     {
         var settings = AiSettings.Load();
         if (settings.ApprovalMode == AiApprovalMode.full) return;
-        if (!AiUi.Confirm(action, detail))
+        if (!AiUi.Confirm(action, detail, danger, okText))
             throw new AiToolException("denied", "用户拒绝了这次操作");
     }
 
