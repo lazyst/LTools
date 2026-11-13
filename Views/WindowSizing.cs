@@ -151,6 +151,12 @@ public static class WindowSizing
         double w = Num(window.Width), h = Num(window.Height);
         double l = window.Left, t = window.Top;
         if (w <= 0 || h <= 0 || double.IsNaN(l) || double.IsNaN(t)) return;
+
+        // 正常态不可能比窗口的最小尺寸还小。最小化那一拍 WPF 会把 Width/Height 改写成
+        // 「只剩标题栏」的小尺寸（实测 1400×768 → 159×27），小于 Min 的一定是过渡期的临时值，
+        // 别拿它污染还原基准（否则最小化 → 还原一次，窗口就小一圈）。
+        if (w + 0.5 < Num(window.MinWidth) || h + 0.5 < Num(window.MinHeight)) return;
+
         SetNormalBounds(window, new Rect(l, t, w, h));
     }
 
@@ -179,6 +185,13 @@ public static class WindowSizing
         WindowSizeMode mode = Resolve(window);
         if (mode == WindowSizeMode.Overlay) return;
         if (window.WindowState is WindowState.Maximized or WindowState.Minimized) return;
+
+        // 最小化 → 还原的过渡期里不夹取，也不记基准：WPF 还原那一刻先把 Window.Width/Height
+        // 写成「只剩标题栏」的小尺寸（实测 1400×768 → 159×27），而 LocationChanged 比
+        // StateChanged 先到、此时 WindowState 已经是 Normal——照旧夹取会把那个小尺寸当成
+        // 正常态几何存下来，于是「框选截图 / 屏幕取点之后编辑器窗口变小，而且一次比一次小」。
+        // 等 StateChanged 回到 Normal（那里会先 RestoreNormalBounds 再 Clamp）才用真实几何。
+        if (GetWasNonNormal(window)) return;
 
         Rect work = WorkArea(window);
         if (work.Width < 240 || work.Height < 200) return;   // 拿不到 / 极小屏，别乱动
