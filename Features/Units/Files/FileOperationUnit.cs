@@ -23,10 +23,15 @@ public sealed class FileOperationUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("operation", "操作", ValueKind.text, InputEditor.enumList,
-                Required: true, Default: Value.FromText("copy"), Options: Operations),
+                Required: true, Default: Value.FromText("copy"), Options: Operations,
+                OptionParams: OptionMap.Of(
+                    ("copy", ["target", "overwrite"]),
+                    ("move", ["target", "overwrite"]),
+                    ("rename", ["target", "overwrite"]),
+                    ("delete", []),
+                    ("mkdir", []))),
             new InputSpec("path", "源路径", ValueKind.text, InputEditor.file, Required: true),
-            new InputSpec("target", "目标路径", ValueKind.text, InputEditor.file,
-                VisibleWhen: "operation == 'copy' || operation == 'move' || operation == 'rename'"),
+            new InputSpec("target", "目标路径", ValueKind.text, InputEditor.file),
             new InputSpec("overwrite", "覆盖已有", ValueKind.@bool, InputEditor.boolean,
                 Default: Value.FromBool(false)),
             new InputSpec("workdir", "工作目录", ValueKind.text, InputEditor.folder),

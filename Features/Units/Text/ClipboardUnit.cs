@@ -22,12 +22,12 @@ public sealed class ClipboardUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("operation", "操作", ValueKind.text, InputEditor.enumList,
-                Required: true, Default: Value.FromText("read"), Options: Operations),
+                Required: true, Default: Value.FromText("read"), Options: Operations,
+                OptionParams: OptionMap.Of(("write", ["text"]))),
             new InputSpec("format", "格式", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("text"), Options: Formats,
                 Description: "纯文本 / HTML / RTF；读写都按这个格式"),
             new InputSpec("text", "文本", ValueKind.text, InputEditor.multiline,
-                VisibleWhen: "operation == 'write'",
                 Description: "要写进剪贴板的内容；HTML 写片段即可，RTF 写完整的 {\\rtf1…}"),
         },
         Outputs = new[]

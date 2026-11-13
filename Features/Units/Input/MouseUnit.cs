@@ -22,15 +22,6 @@ namespace LTools.Features.Units.Input;
 /// </remarks>
 public sealed class MouseUnit : IStepUnit
 {
-    /// <summary>
-    /// x/y 只对「需要坐标」的操作显示。VisibleWhen 没有 <c>!=</c>，
-    /// 只能用 OR 把需要坐标的 operation 枚举出来，让「按下 / 抬起」不带坐标参数。
-    /// </summary>
-    private const string CoordOps =
-        "operation == 'move' || operation == 'relativeMove' || operation == 'click' || " +
-        "operation == 'doubleClick' || operation == 'rightClick' || operation == 'middleClick' || " +
-        "operation == 'wheelUp' || operation == 'wheelDown' || operation == 'drag'";
-
     private static readonly string[] Operations =
     {
         "move", "relativeMove", "click", "doubleClick", "rightClick", "middleClick",
@@ -59,34 +50,42 @@ public sealed class MouseUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("operation", "操作", ValueKind.text, InputEditor.enumList,
-                Required: true, Default: Value.FromText("click"), Options: Operations),
+                Required: true, Default: Value.FromText("click"), Options: Operations,
+                OptionParams: OptionMap.Of(
+                    ("move", ["x", "y", "gradual"]),
+                    ("relativeMove", ["x", "y", "dx", "dy", "gradual"]),
+                    ("click", ["x", "y"]),
+                    ("doubleClick", ["x", "y"]),
+                    ("rightClick", ["x", "y"]),
+                    ("middleClick", ["x", "y"]),
+                    ("wheelUp", ["x", "y", "wheel"]),
+                    ("wheelDown", ["x", "y", "wheel"]),
+                    ("down", ["button"]),
+                    ("up", ["button"]),
+                    ("drag", ["x", "y", "dx", "dy", "button"]))),
             // x/y 刻意不给 Default：默认 0 会把「留空 = 当前位置」变成「移到 (0,0)」。
             // 读取有 hasX 保护 + Num 兜底，不会被空文本触发「「」不是数字」。
             new InputSpec("x", "X", ValueKind.number, InputEditor.number,
-                VisibleWhen: CoordOps,
                 Pickers: PickerKind.variable | PickerKind.point | PickerKind.inline | PickerKind.clear,
                 Description: "屏幕绝对坐标 X；relativeMove / drag 时表示先定位到这个起点；按下 / 抬起不读坐标"),
             new InputSpec("y", "Y", ValueKind.number, InputEditor.number,
-                VisibleWhen: CoordOps,
                 Pickers: PickerKind.variable | PickerKind.point | PickerKind.inline | PickerKind.clear,
                 Description: "屏幕绝对坐标 Y；与 X 要同时填或同时留空"),
             new InputSpec("dx", "X 偏移", ValueKind.number, InputEditor.number,
-                VisibleWhen: "operation == 'relativeMove' || operation == 'drag'",
                 Default: Value.FromNumber(0),
                 Pickers: PickerKind.variable | PickerKind.inline | PickerKind.clear,
                 Description: "相对当前光标的水平位移，可为负；拖动时它是拖动的位移"),
             new InputSpec("dy", "Y 偏移", ValueKind.number, InputEditor.number,
-                VisibleWhen: "operation == 'relativeMove' || operation == 'drag'",
                 Default: Value.FromNumber(0),
                 Pickers: PickerKind.variable | PickerKind.inline | PickerKind.clear,
                 Description: "相对当前光标的垂直位移，可为负；拖动时它是拖动的位移"),
             new InputSpec("button", "按键", ValueKind.text, InputEditor.enumList,
-                VisibleWhen: "operation == 'down' || operation == 'up' || operation == 'drag'",
                 Default: Value.FromText("left"), Options: Buttons, Labels: ButtonLabels),
             new InputSpec("gradual", "逐渐移动到目标", ValueKind.@bool, InputEditor.boolean,
-                VisibleWhen: "operation == 'move' || operation == 'relativeMove'",
                 Default: Value.FromBool(false),
                 Description: "把一次瞬移拆成多步小移动，让目标程序收到中间的鼠标移动（拖动 / 悬停需要）"),
+            // steps / stepMs 的「gradual == true」是布尔附加条件，不能进 OptionParams，
+            // 否则「移动 + 逐渐」时会被 operation 门槛判成不可见。
             new InputSpec("steps", "插值步数", ValueKind.number, InputEditor.number,
                 VisibleWhen: "gradual == true || operation == 'drag'",
                 Default: Value.FromNumber(20), Advanced: true,
@@ -97,7 +96,7 @@ public sealed class MouseUnit : IStepUnit
                 Description: "每步之间等多久，可被停止热键中断；0 = 尽快发完"),
             new InputSpec("wheel", "滚轮格数", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(3),
-                VisibleWhen: "operation == 'wheelUp' || operation == 'wheelDown'"),
+                Description: "滚动多少格；正数向上 / 向前，负数向下 / 向后"),
         },
         Outputs = new[]
         {

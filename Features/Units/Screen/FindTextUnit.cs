@@ -21,9 +21,12 @@ public sealed class FindTextUnit : IStepUnit
         {
             new InputSpec("text", "要找的文字", ValueKind.text, Required: true),
             new InputSpec("region", "区域", ValueKind.text, InputEditor.enumList,
-                Default: Value.FromText("foreground"), Options: ScreenArgs.Regions),
-            new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region,
-                VisibleWhen: "region == 'rect'"),
+                Default: Value.FromText("foreground"), Options: ScreenArgs.Regions,
+                OptionParams: OptionMap.Of(
+                    ("foreground", []),
+                    ("screen", []),
+                    ("rect", ["rect"]))),
+            new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region),
             new InputSpec("engine", "识别引擎", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("v6tiny"), Options: Engines),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,

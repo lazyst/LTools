@@ -41,6 +41,12 @@ public sealed class WebRequestUnit : IStepUnit
                 Description: "完整地址，要带 http:// 或 https://；可以拼变量"),
             new InputSpec("method", "方法", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("get"), Options: Methods,
+                OptionParams: OptionMap.Of(
+                    ("get", []),
+                    ("post", ["body", "contentType"]),
+                    ("put", ["body", "contentType"]),
+                    ("patch", ["body", "contentType"]),
+                    ("delete", ["body", "contentType"])),
                 Labels: new Dictionary<string, string>
                 {
                     ["get"] = "GET 取",
@@ -50,10 +56,8 @@ public sealed class WebRequestUnit : IStepUnit
                     ["delete"] = "DELETE 删除",
                 }),
             new InputSpec("body", "请求体", ValueKind.text, InputEditor.multiline,
-                VisibleWhen: "method == 'post' || method == 'put' || method == 'patch' || method == 'delete'",
                 Description: "JSON / 表单原文；GET 不带请求体"),
             new InputSpec("contentType", "内容类型", ValueKind.text,
-                VisibleWhen: "method == 'post' || method == 'put' || method == 'patch' || method == 'delete'",
                 Default: Value.FromText("application/json"),
                 Description: "请求体的 Content-Type；表单用 application/x-www-form-urlencoded"),
             new InputSpec("headers", "请求头", ValueKind.text, InputEditor.multiline,

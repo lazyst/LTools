@@ -27,12 +27,13 @@ public sealed class ClipboardFilesUnit : IStepUnit
         {
             new InputSpec("operation", "操作", ValueKind.text, InputEditor.enumList,
                 Required: true, Default: Value.FromText("read"), Options: Operations,
-                Labels: OperationLabels),
+                Labels: OperationLabels,
+                OptionParams: OptionMap.Of(("write", ["list", "cut"]))),
             new InputSpec("list", "文件列表", ValueKind.list,
-                Required: true, VisibleWhen: "operation == 'write'",
+                Required: true,
                 Description: "要放进剪贴板的文件 / 文件夹路径；用列表变量或每行一个，路径必须存在"),
             new InputSpec("cut", "剪切", ValueKind.@bool, InputEditor.boolean,
-                Default: Value.FromBool(false), VisibleWhen: "operation == 'write'",
+                Default: Value.FromBool(false),
                 Description: "开启后资源管理器里粘贴是「移动」；关掉是「复制」"),
         },
         Outputs = new[]
@@ -112,9 +113,9 @@ public sealed class ClipboardImageUnit : IStepUnit
         {
             new InputSpec("operation", "操作", ValueKind.text, InputEditor.enumList,
                 Required: true, Default: Value.FromText("read"), Options: Operations,
-                Labels: OperationLabels),
+                Labels: OperationLabels,
+                OptionParams: OptionMap.Of(("write", ["path"]))),
             new InputSpec("path", "图片文件", Editor: InputEditor.image, Required: true,
-                VisibleWhen: "operation == 'write'",
                 Description: "要写进剪贴板的图片；读取时不用填"),
         },
         Outputs = new[]

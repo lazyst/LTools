@@ -39,7 +39,11 @@ public sealed class MessageUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("operation", "方式", ValueKind.text, InputEditor.enumList,
-                Default: Value.FromText("send"), Options: Operations, Labels: OperationLabels),
+                Default: Value.FromText("send"), Options: Operations, Labels: OperationLabels,
+                OptionParams: OptionMap.Of(
+                    ("send", ["message", "wParam", "lParam", "timeoutMs"]),
+                    ("post", ["message", "wParam", "lParam"]),
+                    ("close", []))),
             new InputSpec("title", "窗口标题", ValueKind.text,
                 Pickers: PickerKind.variable | PickerKind.window | PickerKind.inline | PickerKind.clear,
                 Description: "按标题包含匹配，取最上面那个；留空则只看类名"),
@@ -47,18 +51,14 @@ public sealed class MessageUnit : IStepUnit
                 Pickers: PickerKind.variable | PickerKind.windowClass | PickerKind.inline | PickerKind.clear,
                 Description: "精确匹配；标题和类名都填时两个都要满足"),
             new InputSpec("message", "消息号", ValueKind.text,
-                VisibleWhen: "operation == 'send' || operation == 'post'",
                 Default: Value.FromText("0x0010"),
                 Description: "十进制或 0x 开头的十六进制；0x0010 = WM_CLOSE，0x000F = WM_PAINT"),
             new InputSpec("wParam", "wParam", ValueKind.text,
-                VisibleWhen: "operation == 'send' || operation == 'post'",
                 Default: Value.FromText("0"), Description: "同样支持十进制 / 0x 十六进制"),
             new InputSpec("lParam", "lParam", ValueKind.text,
-                VisibleWhen: "operation == 'send' || operation == 'post'",
                 Default: Value.FromText("0"), Description: "同样支持十进制 / 0x 十六进制"),
             new InputSpec("timeoutMs", "超时毫秒", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(1000), Advanced: true,
-                VisibleWhen: "operation == 'send'",
                 Description: "目标没响应就放弃并让这一步失败（投递方式不需要）"),
         },
         Outputs = new[]

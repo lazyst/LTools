@@ -37,12 +37,13 @@ public sealed class CalcUnit : IStepUnit
         {
             new InputSpec("operation", "运算", ValueKind.text, InputEditor.enumList,
                 Required: true, Default: Value.FromText("add"), Options: Operations,
-                Labels: OperationLabels),
+                Labels: OperationLabels,
+                OptionParams: OptionMap.Of(("round", ["digits"]))),
             new InputSpec("a", "A", ValueKind.number, InputEditor.number, Required: true),
             new InputSpec("b", "B", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(0)),
             new InputSpec("digits", "小数位", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(0), VisibleWhen: "operation == 'round'"),
+                Default: Value.FromNumber(0)),
         },
         Outputs = new[]
         {

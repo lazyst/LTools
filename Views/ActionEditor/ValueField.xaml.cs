@@ -21,6 +21,12 @@ namespace LTools.Views;
 public sealed record VariableInfo(string Name, ValueKind Kind, string Origin);
 
 /// <summary>
+/// 「从列表选…」里的一项：<see cref="Value"/> 是存进步骤的字面量，
+/// <see cref="Label"/> 是界面上看到的名字，<see cref="Group"/> 只作副标题 / 搜索词。
+/// </summary>
+internal sealed record StepChoice(string Value, string Label, string Group = "");
+
+/// <summary>
 /// 一个参数值 = 一个输入框 + 右侧「▾ 来源」。
 /// </summary>
 /// <remarks>
@@ -142,6 +148,12 @@ public partial class ValueField : UserControl
     /// <summary>带类型 / 来源的变量表；没有时退回只有名字的 <see cref="VariableNameSource"/>。</summary>
     internal Func<IReadOnlyList<VariableInfo>>? VariableInfoSource { get; set; }
 
+    /// <summary>
+    /// 「从列表选…」的候选（按键分组 / 已录制的宏 / 子动作库）。
+    /// 只在 <see cref="PickerKind.choices"/> 出现在 <see cref="Pickers"/> 里时用。
+    /// </summary>
+    internal Func<IEnumerable<StepChoice>>? ChoiceSource { get; set; }
+
     /// <summary>草稿资源根（缩略图认 <c>files/x.png</c>）。</summary>
     internal string? ResourceRoot { get; set; }
 
@@ -199,26 +211,12 @@ public partial class ValueField : UserControl
     /// <summary>把光标放进输入框（宿主打开对话框时用）。</summary>
     public void FocusEditor()
     {
-        if (_inline != null) InlineSetupBtn.Focus();
-        else Box.Focus();
+        // 输入框永远在（内联取值时是只读描述），点它就能切回写字。
+        Box.Focus();
     }
 
     private void ApplySpec()
     {
-        bool image = _spec?.Editor == InputEditor.image;
-        bool region = _spec?.Editor == InputEditor.region;
-
-        if (image)
-        {
-            Box.Visibility = Visibility.Collapsed;
-            ImagePanel.Visibility = Visibility.Visible;
-        }
-        else if (region)
-        {
-            Box.Visibility = Visibility.Collapsed;
-            RegionPanel.Visibility = Visibility.Visible;
-        }
-
         SourceButton.Visibility = Pickers == PickerKind.none ? Visibility.Collapsed : Visibility.Visible;
         UpdatePanels();
     }
@@ -263,20 +261,20 @@ public partial class ValueField : UserControl
 
     private void UpdatePanels()
     {
-        bool bound = _boundVariable != null;
         bool inline = _inline != null;
         bool image = _spec?.Editor == InputEditor.image;
-        bool region = _spec?.Editor == InputEditor.region;
 
-        Box.Visibility = !inline && ((bound && (image || region)) || (!image && !region))
-            ? Visibility.Visible : Visibility.Collapsed;
-        ImagePanel.Visibility = !inline && !bound && image ? Visibility.Visible : Visibility.Collapsed;
-        RegionPanel.Visibility = !inline && !bound && region ? Visibility.Visible : Visibility.Collapsed;
-        InlinePanel.Visibility = inline ? Visibility.Visible : Visibility.Collapsed;
+        // 输入框永远可见：字面量 / 变量 / 内联取值都在这一个框里表达，
+        // 图片缩略图、区域框选、取值动作单元都不再把它换掉。
+        Box.Visibility = Visibility.Visible;
+        Box.IsReadOnly = inline;
+        Box.Cursor = inline ? Cursors.Arrow : Cursors.IBeam;
 
-        if (image && !inline) UpdateImage();
-        if (region && !inline) UpdateRegion();
+        ThumbPanel.Visibility = image && !inline ? Visibility.Visible : Visibility.Collapsed;
+
         if (inline) UpdateInline();
+        else if (image) UpdateImage();
+
         UpdateStatus();
     }
 
@@ -303,7 +301,7 @@ public partial class ValueField : UserControl
             StatusText.Text = missing.Count > 0
                 ? $"取值：{name} · 还缺必填参数：{string.Join("、", missing)}"
                 : spec is { Inputs.Count: > 0 }
-                    ? $"取值：{name} · 点「改参数…」调整它"
+                    ? $"取值：{name} · 点 ▾ 里的「改参数…」调整它"
                     : $"取值：{name}（不需要参数）";
             return;
         }
@@ -331,22 +329,43 @@ public partial class ValueField : UserControl
             return;
         }
 
-        StatusText.Text = hint;
+        string selected = ChoiceLabelOf(literal);
+        StatusText.Text = selected.Length == 0
+            ? hint
+            : hint.Length == 0 ? selected : selected + " · " + hint;
     }
 
-    private void UpdateRegion()
+    /// <summary>
+    /// 当前值正好是某个候选项（宏 / 子动作存的是 Id）：状态行补一句「已选 …」，
+    /// 输入框里仍然是真实存进步骤的值，不玩「显示名 ≠ 存的值」。
+    /// </summary>
+    private string ChoiceLabelOf(string literal)
     {
-        string text = (Box.Text ?? "").Trim();
-        RegionText.Text = text.Length == 0 ? "还没框选（点这块或右侧 ▾）" : text;
-        RegionText.Foreground = (Brush)FindResource(text.Length == 0 ? "HintTextBrush" : "TextBrush");
+        if (literal.Length == 0 || ChoiceSource == null || !Pickers.HasFlag(PickerKind.choices))
+            return "";
+
+        try
+        {
+            var match = ChoiceSource().FirstOrDefault(c =>
+                string.Equals(c.Value, literal, StringComparison.OrdinalIgnoreCase));
+            return match == null ? "" : "已选「" + match.Label + "」";
+        }
+        catch
+        {
+            return "";
+        }
     }
 
+    /// <summary>内联取值：输入框只读显示「取哪个值」，改参数 / 切回文本都在 ▾ 里。</summary>
     private void UpdateInline()
     {
         var spec = StepRegistry.Default.TryGet(_inline!.Unit, out var unit) ? unit.Spec : null;
-        InlineText.Text = "▷ " + (spec?.Name ?? _inline.Unit);
-        InlineSetupBtn.Content = spec is { Inputs.Count: > 0 } ? "改参数…" : "";
-        InlineSetupBtn.Visibility = spec is { Inputs.Count: > 0 } ? Visibility.Visible : Visibility.Collapsed;
+        string text = "取值：" + (spec?.Name ?? _inline.Unit);
+
+        bool wasLoading = _loading;
+        _loading = true;
+        try { Box.Text = text; }
+        finally { _loading = wasLoading; }
     }
 
     private void UpdateImage()
@@ -414,6 +433,16 @@ public partial class ValueField : UserControl
     }
 
     /// <summary>
+    /// 内联取值时输入框是只读描述：点一下就是「我要自己写字」，切回文本态
+    /// （清掉取值动作单元，光标落进空框，接着打字即可）。
+    /// </summary>
+    private void Box_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_inline == null) return;
+        LeaveInline();
+    }
+
+    /// <summary>
     /// 标出「必填但还空着」：状态行换成红字。用状态行而不是红框——输入框的边框
     /// 归主题样式（悬停 / 焦点各有自己的颜色），就地改会盖掉那套视觉。
     /// </summary>
@@ -428,12 +457,6 @@ public partial class ValueField : UserControl
     {
         e.Handled = true;
         OpenMenu();
-    }
-
-    private void Region_Click(object sender, MouseButtonEventArgs e)
-    {
-        e.Handled = true;
-        PickRegion();
     }
 
     // ============ 来源菜单 ============
@@ -481,7 +504,22 @@ public partial class ValueField : UserControl
             AddSelectionPickers();
         }
 
+        AddChoices();
         AddSuggestions();
+
+        if (_inline != null && Pickers.HasFlag(PickerKind.inline))
+        {
+            var inlineSpec = StepRegistry.Default.TryGet(_inline.Unit, out var inlineUnit)
+                ? inlineUnit.Spec
+                : null;
+
+            AddHeader("当前取值", 0);
+            AddItem("▷", "改参数…",
+                inlineSpec is { Inputs.Count: > 0 } ? "调整这个取值动作单元的参数" : "这个取值不需要参数",
+                "取值 改参数 inline", EditInline);
+            AddItem("✎", "切回文本", "清掉取值动作单元，改成直接写字",
+                "取值 切回文本 inline 文本", LeaveInline);
+        }
 
         if (Pickers.HasFlag(PickerKind.inline))
         {
@@ -585,6 +623,29 @@ public partial class ValueField : UserControl
 
         if (Pickers.HasFlag(PickerKind.keys))
             AddItem("⌨", "录制按键…", "按一下组合键，追加一行", "按键 录制 keys", RecordKey);
+    }
+
+    /// <summary>
+    /// 「从列表选…」：按键 / 宏 / 子动作这类候选随用户数据变化，收进 ▾ 之后就不再在行内
+    /// 摆一个下拉；副标题写分组（键盘分区 / 宏时长 / 子动作来源）。
+    /// </summary>
+    private void AddChoices()
+    {
+        if (!Pickers.HasFlag(PickerKind.choices) || ChoiceSource == null) return;
+
+        List<StepChoice> choices;
+        try { choices = ChoiceSource().ToList(); }
+        catch { return; }
+        if (choices.Count == 0) return;
+
+        AddHeader("从列表选", 0);
+        foreach (var choice in choices)
+        {
+            string label = choice.Label.Length > 0 ? choice.Label : choice.Value;
+            AddItem("·", label, choice.Group,
+                label + " " + choice.Group + " " + choice.Value,
+                () => SetLiteral(choice.Value));
+        }
     }
 
     private void AddSuggestions()
@@ -905,7 +966,7 @@ public partial class ValueField : UserControl
     private void MenuWindow_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (!Menu.IsOpen || Menu.Child.IsMouseOver) return;
-        if (SourceButton.IsMouseOver || ImagePanel.IsMouseOver) return;
+        if (SourceButton.IsMouseOver || ThumbPanel.IsMouseOver) return;
         Menu.IsOpen = false;
     }
 
@@ -922,6 +983,9 @@ public partial class ValueField : UserControl
 
     private void InsertVariable(string name)
     {
+        // 插入变量 = 用户要的是一个值，不再是「现场取值的动作单元」。
+        _inline = null;
+
         if (VariableNameMode)
         {
             Box.Text = name;
@@ -963,6 +1027,8 @@ public partial class ValueField : UserControl
 
         // 整串正好是一个变量 → 存成引用，保留 list / object / number 类型。
         _boundVariable = string.Equals(Box.Text.Trim(), token, StringComparison.Ordinal) ? name : null;
+        Box.IsReadOnly = false;
+        UpdatePanels();
         Box.Focus();
         Changed?.Invoke();
     }
@@ -1100,6 +1166,7 @@ public partial class ValueField : UserControl
 
     private void RecordKey()
     {
+        _inline = null;
         HotkeyCapture.SetHotkey(KeyBox, "");
         KeyPopup.IsOpen = true;
         Dispatcher.BeginInvoke(new Action(() => KeyBox.Focus()), DispatcherPriority.Input);
@@ -1113,13 +1180,36 @@ public partial class ValueField : UserControl
         string text = (Box.Text ?? "").TrimEnd();
         Box.Text = text.Length == 0 ? chord : text + Environment.NewLine + chord;
         Box.CaretIndex = Box.Text.Length;
+        Box.IsReadOnly = false;
+        UpdatePanels();
         Box.Focus();
         Changed?.Invoke();
     }
 
     // ============ 内联取值 ============
 
-    private void InlineSetup_Click(object sender, RoutedEventArgs e)
+    /// <summary>切回文本态：丢掉取值动作单元，输入框恢复可编辑并清空。</summary>
+    private void LeaveInline()
+    {
+        if (_inline == null) return;
+
+        _loading = true;
+        try
+        {
+            _inline = null;
+            _boundVariable = null;
+            _listLiteral = null;
+            Box.Text = "";
+        }
+        finally { _loading = false; }
+
+        Box.IsReadOnly = false;
+        UpdatePanels();
+        Box.Focus();
+        Changed?.Invoke();
+    }
+
+    private void EditInline()
     {
         if (_inline == null) return;
 

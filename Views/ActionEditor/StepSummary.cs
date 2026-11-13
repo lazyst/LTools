@@ -215,4 +215,11 @@ internal static class StepSummary
     /// </summary>
     public static bool TryGetVisibleRule(InputSpec input, out string key, out string value) =>
         VisibleWhen.TryGetRule(input, out key, out value);
+
+    /// <summary>
+    /// 找到「哪个枚举选项会显示这个参数」：参数走 <see cref="InputSpec.OptionParams"/> 时没有
+    /// <see cref="InputSpec.VisibleWhen"/>，框选后要靠它把配套枚举切到该选项（如 <c>rect</c>）。
+    /// </summary>
+    public static bool TryGetOptionFor(InputSpec input, UnitSpec spec, out string key, out string value) =>
+        VisibleWhen.TryGetOptionFor(input, spec, out key, out value);
 }

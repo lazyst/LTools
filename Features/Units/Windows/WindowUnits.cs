@@ -124,15 +124,21 @@ public sealed class OperateWindowUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("operation", "操作", ValueKind.text, InputEditor.enumList,
-                Required: true, Default: Value.FromText("activate"), Options: Operations),
+                Required: true, Default: Value.FromText("activate"), Options: Operations,
+                OptionParams: OptionMap.Of(
+                    ("activate", []),
+                    ("maximize", []),
+                    ("minimize", []),
+                    ("restore", []),
+                    ("resize", ["x", "y", "w", "h"]))),
             new InputSpec("title", "标题包含", ValueKind.text,
                 Pickers: PickerKind.variable | PickerKind.window | PickerKind.inline | PickerKind.clear),
             new InputSpec("class", "类名", ValueKind.text,
                 Pickers: PickerKind.variable | PickerKind.windowClass | PickerKind.inline | PickerKind.clear),
-            new InputSpec("x", "X", ValueKind.number, InputEditor.number, VisibleWhen: "operation == 'resize'"),
-            new InputSpec("y", "Y", ValueKind.number, InputEditor.number, VisibleWhen: "operation == 'resize'"),
-            new InputSpec("w", "宽", ValueKind.number, InputEditor.number, VisibleWhen: "operation == 'resize'"),
-            new InputSpec("h", "高", ValueKind.number, InputEditor.number, VisibleWhen: "operation == 'resize'"),
+            new InputSpec("x", "X", ValueKind.number, InputEditor.number),
+            new InputSpec("y", "Y", ValueKind.number, InputEditor.number),
+            new InputSpec("w", "宽", ValueKind.number, InputEditor.number),
+            new InputSpec("h", "高", ValueKind.number, InputEditor.number),
         },
         Outputs = new[]
         {

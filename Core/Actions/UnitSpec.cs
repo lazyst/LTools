@@ -99,6 +99,12 @@ public enum BodyKind
 /// <see cref="InputEditor"/> 推默认（文本 → 变量 / 取值动作单元，文件 → 再加「文件…」），
 /// 只在默认不够时补，例如窗口标题加 <see cref="PickerKind.window"/>。
 /// </param>
+/// <param name="OptionParams">
+/// 选项可见参数：写在**枚举驱动参数**上，键 = 选项值（英文键），值 = 该选项启用哪些参数键。
+/// 用户选了这个选项，只显示集合里的参数输入框。一个动作单元最多一个驱动键；没被任何选项列出的
+/// 参数不归它管（始终可见）。布尔 / 跨键的附加条件仍写 <see cref="VisibleWhen"/>，两者按 AND 求值。
+/// 规格见 <c>docs/PARAM_FORM.md</c>。
+/// </param>
 public sealed record InputSpec(
     string Key,
     string Label,
@@ -112,10 +118,27 @@ public sealed record InputSpec(
     bool Raw = false,
     string? Description = null,
     bool Advanced = false,
-    PickerKind? Pickers = null)
+    PickerKind? Pickers = null,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? OptionParams = null)
 {
     /// <summary>这个输入框实际能用的来源（<see cref="Pickers"/> 为空时按编辑器形态推）。</summary>
     public PickerKind PickerSet => Pickers ?? PickerDefaults.For(this);
+}
+
+/// <summary>
+/// 「选项可见参数」（<see cref="InputSpec.OptionParams"/>）的简写构造：
+/// <c>OptionMap.Of(("click", ["x", "y"]), ("drag", ["x", "y", "dx", "dy"]))</c>。
+/// 键 = 选项值（英文键），值 = 该选项启用哪些参数键。
+/// </summary>
+internal static class OptionMap
+{
+    public static IReadOnlyDictionary<string, IReadOnlyList<string>> Of(
+        params (string Option, string[] Keys)[] rows)
+    {
+        var map = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (option, keys) in rows) map[option] = keys;
+        return map;
+    }
 }
 
 /// <summary>一个输出参数的声明。输出要写哪个变量由步骤的 <c>out</c> 映射决定。</summary>
@@ -195,6 +218,55 @@ public sealed class UnitSpec
                 throw new ActionException($"动作单元「{Key}」有输出缺少 Key");
             if (!seen.Add(output.Key))
                 throw new ActionException($"动作单元「{Key}」的输出「{output.Key}」重复");
+        }
+
+        ValidateOptionParams();
+    }
+
+    /// <summary>
+    /// 校验「选项可见参数」（<see cref="InputSpec.OptionParams"/>）声明：
+    /// 只允许写在 <see cref="InputEditor.enumList"/> 参数上、键必须在该参数的 <see cref="InputSpec.Options"/> 里、
+    /// 值里出现的参数键必须真实存在、一个动作单元最多一个驱动键。
+    /// 拼错要在注册时就报出来，别等运行时「某个参数永远不显示」。
+    /// </summary>
+    private void ValidateOptionParams()
+    {
+        var keys = new HashSet<string>(Inputs.Select(i => i.Key), StringComparer.OrdinalIgnoreCase);
+        InputSpec? driver = null;
+
+        foreach (var input in Inputs)
+        {
+            if (input.OptionParams is not { Count: > 0 }) continue;
+
+            if (input.Editor != InputEditor.enumList)
+                throw new ActionException(
+                    $"动作单元「{Key}」的参数「{input.Key}」写了 OptionParams，但它不是 enumList 参数");
+
+            if (input.Options is not { Count: > 0 })
+                throw new ActionException(
+                    $"动作单元「{Key}」的参数「{input.Key}」写了 OptionParams，却没有声明 Options");
+
+            if (driver != null)
+                throw new ActionException(
+                    $"动作单元「{Key}」有多个选项驱动键：「{driver.Key}」与「{input.Key}」（只允许一个）");
+            driver = input;
+
+            foreach (var pair in input.OptionParams!)
+            {
+                if (!input.Options.Contains(pair.Key, StringComparer.OrdinalIgnoreCase))
+                    throw new ActionException(
+                        $"动作单元「{Key}」的参数「{input.Key}」的 OptionParams 里有未知选项「{pair.Key}」");
+
+                foreach (string target in pair.Value)
+                {
+                    if (string.Equals(target, input.Key, StringComparison.OrdinalIgnoreCase))
+                        throw new ActionException(
+                            $"动作单元「{Key}」的参数「{input.Key}」的 OptionParams 把驱动键自己列了进去");
+                    if (!keys.Contains(target))
+                        throw new ActionException(
+                            $"动作单元「{Key}」的参数「{input.Key}」的 OptionParams 引用了不存在的参数「{target}」");
+                }
+            }
         }
     }
 }

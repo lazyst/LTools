@@ -10,8 +10,9 @@ namespace LTools.Core.Actions;
 /// 只需要为「默认说法不够」的参数补一句（单位、格式、可填哪些值）。
 /// </para>
 /// <para>
-/// 下拉（<see cref="InputEditor.enumList"/>）与开关（<see cref="InputEditor.boolean"/>）本身已经
-/// 说明了能选什么，默认不加说明，避免每行都挂一句废话；要补特殊说明时照常写 Description。
+/// 下拉（<see cref="InputEditor.enumList"/>）、开关（<see cref="InputEditor.boolean"/>）与修饰键多选
+/// （<see cref="InputEditor.flags"/>）本身已经说明了能选什么，默认不加说明，避免每行都挂一句废话；
+/// 要补特殊说明时照常写 Description。
 /// </para>
 /// </remarks>
 internal static class InputHint
@@ -23,15 +24,15 @@ internal static class InputHint
 
         return input.Editor switch
         {
-            InputEditor.enumList or InputEditor.boolean => "",
-            InputEditor.key or InputEditor.flags => "",
+            InputEditor.enumList or InputEditor.boolean or InputEditor.flags => "",
+            InputEditor.key => "按键名（enter / f5 / a…）；点右侧 ▾ →「从列表选…」按键盘分区挑",
             InputEditor.multiline => "多行文本；可用 ${变量} 引用变量",
             InputEditor.code => "代码原样传入，不解析 ${变量}",
             InputEditor.number => "数字（整数或小数）；可用 ${变量}",
             InputEditor.file => "文件路径；点右侧 ▾ 选文件，或写 ${变量}",
             InputEditor.folder => "文件夹路径；点右侧 ▾ 选文件夹，或写 ${变量}",
             InputEditor.image => "图片文件路径（png / jpg）；点右侧 ▾ 框选 / 换图，或写 ${变量}",
-            InputEditor.macro => "选择一个已录制的宏（在「设置 → 键鼠宏」里录制）",
+            InputEditor.macro => "宏 Id；点右侧 ▾ →「从列表选…」挑一个（在「设置 → 键鼠宏」里录制）",
             InputEditor.region => "屏幕区域 x,y,w,h；点右侧 ▾ 框选一块",
             InputEditor.variable => "变量名（只填名字，不用 ${}）",
             InputEditor.condition => "写文本、用 ${变量}，或点右侧 ▾ 换成变量 / 取值动作单元",

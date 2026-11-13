@@ -64,6 +64,12 @@ public enum PickerKind
 
     /// <summary>清空当前值。</summary>
     clear = 1 << 17,
+
+    /// <summary>
+    /// 从候选列表里挑一项（按键 / 宏 / 子动作）。候选随用户数据变化（录了新宏、建了新子动作就变），
+    /// 所以收进「▾ 来源 → 从列表选…」，不在行内再摆一个下拉。
+    /// </summary>
+    choices = 1 << 18,
 }
 
 /// <summary>没声明 <see cref="InputSpec.Pickers"/> 时，按编辑器形态推出的可用来源。</summary>
@@ -76,8 +82,12 @@ internal static class PickerDefaults
 
         PickerKind kind = input.Editor switch
         {
-            InputEditor.enumList or InputEditor.boolean or InputEditor.macro => PickerKind.none,
-            InputEditor.key or InputEditor.flags => PickerKind.none,
+            InputEditor.enumList or InputEditor.boolean => PickerKind.none,
+            // 按键 / 宏的候选会随用户数据变化：文本框 + ▾（从列表选…），不是纯枚举下拉。
+            // 按键只要「一个键」（组合键的修饰键是另一个参数），所以不挂「录制按键」。
+            InputEditor.key => PickerKind.variable | PickerKind.choices,
+            InputEditor.macro => PickerKind.variable | PickerKind.choices | PickerKind.inline,
+            InputEditor.flags => PickerKind.none,
 
             // 「变量名」输入框：名字本身是数据，不能再嵌变量。
             InputEditor.variable when input.Type == ValueKind.text => PickerKind.none,

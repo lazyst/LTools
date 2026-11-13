@@ -49,6 +49,9 @@ public sealed class EncodeUnit : IStepUnit
             new InputSpec("operation", "方式", ValueKind.text, InputEditor.enumList,
                 Required: true, Default: Value.FromText("base64"),
                 Options: Operations, Labels: OperationLabels,
+                OptionParams: OptionMap.Of(
+                    ("base64", ["charset"]),
+                    ("unbase64", ["charset"])),
                 Description: "编码把内容变成一串字符，解码把一串字符还原成内容"),
             new InputSpec("text", "文本", ValueKind.text, InputEditor.multiline,
                 Description: "要编码的文本，或要解码的 Base64 / URL / HTML 文本"),
@@ -56,7 +59,6 @@ public sealed class EncodeUnit : IStepUnit
                 Description: "编码：读这个文件的字节（图片、压缩包都行）；解码：把还原出的字节写到这个文件。留空 = 只处理上面的文本"),
             new InputSpec("charset", "字符集", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("utf8"), Options: Charsets,
-                VisibleWhen: "operation == 'base64' || operation == 'unbase64'",
                 Description: "文本 ↔ 字节按哪个字符集换算；处理文件字节时无关"),
         },
         Outputs = new[]

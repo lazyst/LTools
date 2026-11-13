@@ -24,7 +24,7 @@ namespace LTools.Views;
 /// </remarks>
 public partial class StepEditorDialog : Window
 {
-    private sealed record Row(InputSpec Spec, FrameworkElement Host, Func<StepArg?> Read);
+    private sealed record Row(InputSpec Spec, FrameworkElement Host, FrameworkElement Editor, Func<StepArg?> Read);
 
     /// <summary>输出区的一行：勾选 + 类型徽标 + 变量名（+ 换成已有变量的 ▾）+ 说明。</summary>
     private sealed record OutputRow(string Key, CheckBox Toggle, TextBox Box, Button Pick,
@@ -59,6 +59,9 @@ public partial class StepEditorDialog : Window
         new(StringComparer.OrdinalIgnoreCase);
 
     private bool _syncing;
+
+    /// <summary>上一次生成动态输入 / 输出时用的子动作 Id（换了才重建）。</summary>
+    private string _dynamicSubAction = "";
 
     public StepEditorDialog(Step step, bool inline = false,
         ActionProgram? program = null, Func<IEnumerable<string>>? variableNames = null,
@@ -153,7 +156,7 @@ public partial class StepEditorDialog : Window
             }
 
             FrameworkElement editor = BuildEditor(input, out var read);
-            _rows.Add(new Row(input, AddRow(Form, input, editor), read));
+            _rows.Add(new Row(input, AddRow(Form, input, editor), editor, read));
         }
 
         Form.Children.Add(_dynamicPanel);
@@ -193,7 +196,7 @@ public partial class StepEditorDialog : Window
         foreach (var input in advanced)
         {
             FrameworkElement editor = BuildEditor(input, out var read);
-            _rows.Add(new Row(input, AddRow(_advancedPanel, input, editor), read));
+            _rows.Add(new Row(input, AddRow(_advancedPanel, input, editor), editor, read));
         }
     }
 
@@ -209,45 +212,6 @@ public partial class StepEditorDialog : Window
     private FrameworkElement BuildEditor(InputSpec input, out Func<StepArg?> read)
     {
         StepArg? current = CurrentArg(input);
-
-        if (_step.Unit == "sub.run" && input.Key == "subAction" && Program != null)
-        {
-            var combo = new ComboBox
-            {
-                MinHeight = 28,
-                MinWidth = 240,
-                ToolTip = "「本动作 · …」是当前动作里定义的子动作，「全局 · …」来自设置 → 子动作库",
-            };
-            var choices = SubActionChoices();
-            string id = current?.Literal.AsText() ?? "";
-            if (id.Length > 0 && choices.All(c =>
-                    !string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase)))
-                choices.Add(new SubChoice(id, id + "（未找到）"));
-            if (choices.Count == 0 && id.Length == 0)
-                choices.Add(new SubChoice("",
-                    "（还没有子动作：先到 设置 → 子动作库 新建一个）"));
-
-            // 先把候选补齐再设 ItemsSource：普通 List 不通知集合变化，先绑定再加会少一项。
-            combo.ItemsSource = choices;
-            combo.DisplayMemberPath = nameof(SubChoice.Display);
-
-            combo.SelectedItem = choices.FirstOrDefault(c =>
-                string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase))
-                ?? choices.FirstOrDefault();
-            if (combo.SelectedItem == null && choices.Count > 0) combo.SelectedIndex = 0;
-
-            read = () => StepArg.FromText((combo.SelectedItem as SubChoice)?.Id ?? "");
-            combo.SelectionChanged += (_, _) =>
-            {
-                if (_syncing) return;
-                SyncStepArgs();
-                DropUnknownDynamicArgs();
-                RebuildDynamic();
-                BuildOutputs();
-                OnEdited();
-            };
-            return combo;
-        }
 
         switch (input.Editor)
         {
@@ -321,91 +285,6 @@ public partial class StepEditorDialog : Window
                 return combo;
             }
 
-            case InputEditor.key:
-            {
-                // 一个下拉、分类是子菜单：点开 → 悬停 / 点分类 → 该组里的键。
-                // 111 个键平铺成一个下拉太长，分 8 类后每组最多 26 项，翻两下就找到了。
-                // 存的仍是英文键名（与 KeyStroke 一致）。
-                var groups = KeyCatalog.Groups.ToList();
-
-                string selected = current?.Literal.AsText() ?? input.Default?.AsText() ?? "";
-
-                // 老配置 / 手写的键不在这 8 组里时不能静默落到第一项（点一次确定就把值改掉了）：
-                // 临时补一个「其它」组，把原值放进去并勾上。
-                if (selected.Trim().Length > 0 && KeyCatalog.GroupOf(selected) == null)
-                    groups.Insert(0, new KeyGroup("其它", new[] { new KeyChoice(selected, selected) }));
-
-                var caption = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
-                var button = new Button
-                {
-                    Style = (Style)FindResource("Btn"),
-                    MinHeight = 30,
-                    MinWidth = 200,
-                    HorizontalAlignment = HorizontalAlignment.Left,
-                    HorizontalContentAlignment = HorizontalAlignment.Left,
-                    Padding = new Thickness(10, 0, 8, 0),
-                };
-                var buttonContent = new StackPanel { Orientation = Orientation.Horizontal };
-                buttonContent.Children.Add(caption);
-                buttonContent.Children.Add(new TextBlock
-                {
-                    Text = "▾",
-                    Margin = new Thickness(8, 0, 0, 0),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = (System.Windows.Media.Brush)FindResource("SecondaryTextBrush"),
-                });
-                button.Content = buttonContent;
-
-                var menu = new ContextMenu { PlacementTarget = button, Placement = PlacementMode.Bottom };
-                var keyItems = new List<(string Value, MenuItem Item)>();
-                foreach (var group in groups)
-                {
-                    var parent = MenuFx.Submenu(menu, group.Name);
-                    foreach (var choice in group.Keys)
-                    {
-                        var item = new MenuItem { Header = choice.Label, IsCheckable = true };
-                        item.Click += (_, _) =>
-                        {
-                            selected = choice.Value;
-                            SyncCaption();
-                            OnEdited();
-                        };
-                        parent.Items.Add(item);
-                        keyItems.Add((choice.Value, item));
-                    }
-                }
-
-                void SyncCaption()
-                {
-                    bool empty = selected.Trim().Length == 0;
-                    caption.Text = empty ? "（未选择）" : KeyCatalog.LabelOf(selected);
-                    caption.Foreground = (System.Windows.Media.Brush)FindResource(
-                        empty ? "HintTextBrush" : "TextBrush");
-
-                    foreach (var (value, item) in keyItems)
-                        item.IsChecked = string.Equals(value, selected, StringComparison.OrdinalIgnoreCase);
-                }
-
-                SyncCaption();
-
-                button.Click += (_, _) =>
-                {
-                    // 每次打开前重算勾选（值也可能被别的行改过）。
-                    SyncCaption();
-                    menu.PlacementTarget = button;
-                    menu.IsOpen = true;
-                };
-
-                _enumSetters[input.Key] = value =>
-                {
-                    selected = value;
-                    SyncCaption();
-                };
-
-                read = () => StepArg.FromText(selected);
-                return button;
-            }
-
             case InputEditor.flags:
             {
                 // 多选（修饰键）：一排勾选框，存 a+b 形式。
@@ -440,55 +319,6 @@ public partial class StepEditorDialog : Window
                 read = () => StepArg.FromText(string.Join("+",
                     boxes.Where(b => b.Box.IsChecked == true).Select(b => b.Key)));
                 return wrap;
-            }
-
-            case InputEditor.macro:
-            {
-                var combo = new ComboBox { MinHeight = 28, MinWidth = 180 };
-                var macros = MacroStore.List();
-                foreach (var m in macros)
-                    combo.Items.Add(new ComboBoxItem
-                    {
-                        Content = $"{m.Name}（{m.DurationText} · {m.EventCount} 事件）",
-                        Tag = m.Id,
-                    });
-
-                string want = current?.Literal.AsText() ?? "";
-                int index = -1;
-                for (int i = 0; i < macros.Count; i++)
-                {
-                    if (!string.Equals(macros[i].Id, want, StringComparison.Ordinal)) continue;
-                    index = i;
-                    break;
-                }
-
-                // 宏文件被删 / 换机器后配置里还留着旧 Id：原样显示，别静默落到别的宏上。
-                if (index < 0 && want.Length > 0)
-                {
-                    combo.Items.Add(new ComboBoxItem { Content = want + "（宏文件缺失）", Tag = want });
-                    index = combo.Items.Count - 1;
-                }
-                combo.SelectedIndex = index >= 0 ? index : (combo.Items.Count > 0 ? 0 : -1);
-
-                read = () => StepArg.FromText(
-                    ((combo.SelectedItem as ComboBoxItem)?.Tag as string) ?? "");
-                combo.SelectionChanged += (_, _) => OnEdited();
-
-                if (macros.Count > 0) return combo;
-
-                // 一个宏都没录过：下拉是空的，得告诉用户去哪儿录。
-                var empty = new TextBlock
-                {
-                    Text = "还没有录制过宏。按录制热键（默认 Ctrl+F2）开始 / 停止，或在「设置 → 键鼠宏」里录。",
-                    TextWrapping = TextWrapping.Wrap,
-                    Foreground = (System.Windows.Media.Brush)FindResource("SecondaryTextBrush"),
-                    FontSize = (double)FindResource("FontSizeHint"),
-                    VerticalAlignment = VerticalAlignment.Center,
-                };
-                var host = new StackPanel { Orientation = Orientation.Vertical };
-                host.Children.Add(combo);
-                host.Children.Add(empty);
-                return host;
             }
 
             case InputEditor.code:
@@ -589,6 +419,11 @@ public partial class StepEditorDialog : Window
                 field.Captured += ApplyPickedRegion;
                 field.PointPicked += (x, y) => ApplyPickedPoint(input, x, y);
 
+                // 候选型参数（按键 / 宏 / 子动作）：候选随用户数据变化，收进 ▾ 的「从列表选…」，
+                // 行内不再摆下拉。
+                var choices = ChoiceSourceFor(input);
+                if (choices != null) field.ChoiceSource = choices;
+
                 _fieldSetters[input.Key] = text => field.LiteralText = text;
                 if (input.Editor == InputEditor.region)
                     _rectSetters[input.Key] = text => field.LiteralText = text;
@@ -598,6 +433,31 @@ public partial class StepEditorDialog : Window
             }
         }
     }
+
+    /// <summary>
+    /// 「从列表选…」的候选来源：按键（按键盘分区）、已录制的宏、子动作库。
+    /// 返回 null = 这个参数不是候选型。
+    /// </summary>
+    private Func<IEnumerable<StepChoice>>? ChoiceSourceFor(InputSpec input)
+    {
+        if (input.Editor == InputEditor.key)
+            return () => KeyCatalog.Groups.SelectMany(group =>
+                group.Keys.Select(key =>
+                    new StepChoice(key.Value, key.Label, group.Name)));
+
+        if (input.Editor == InputEditor.macro)
+            return () => MacroStore.List().Select(m =>
+                new StepChoice(m.Id, m.Name, $"{m.DurationText} · {m.EventCount} 事件"));
+
+        if (_step.Unit == "sub.run" && string.Equals(input.Key, "subAction", StringComparison.OrdinalIgnoreCase))
+            return () => SubActionChoices().Select(c => new StepChoice(c.Id, c.Display, SubActionSource(c.Id)));
+
+        return null;
+    }
+
+    /// <summary>子动作在哪儿定义的（副标题用）。</summary>
+    private static string SubActionSource(string id) =>
+        SubActionStore.Load(id) == null ? "未找到" : "全局子动作库";
 
     private StepArg? CurrentArg(InputSpec input)
     {
@@ -672,9 +532,12 @@ public partial class StepEditorDialog : Window
 
         if (_rectSetters.TryGetValue(rectSpec.Key, out var setRect)) setRect(rect);
 
-        if (StepSummary.TryGetVisibleRule(rectSpec, out string key, out string value)
-            && _enumSetters.TryGetValue(key, out var setEnum))
-            setEnum(value);
+        if (StepSummary.TryGetOptionFor(rectSpec, _spec, out string key, out string value)
+            || StepSummary.TryGetVisibleRule(rectSpec, out key, out value))
+        {
+            if (_enumSetters.TryGetValue(key, out var setEnum))
+                setEnum(value);
+        }
 
         OnEdited();
     }
@@ -742,11 +605,11 @@ public partial class StepEditorDialog : Window
             foreach (var pair in extra) _step.In[pair.Key] = pair.Value;
             foreach (var pair in all) _step.In[pair.Key] = pair.Value;
 
-            // 隐藏的参数（如 operation=read 时的 text）保存时丢掉，避免留下无关字段。
+            // 隐藏的参数（当前枚举选项之外的、布尔附加条件不满足的）保存时丢掉，
+            // 避免切过操作之后留下 x/y / 轮询间隔这类无关字段。
             foreach (var row in _rows)
             {
-                if (row.Spec.VisibleWhen != null
-                    && !StepSummary.IsVisible(row.Spec, _step, _spec))
+                if (!StepSummary.IsVisible(row.Spec, _step, _spec))
                     _step.In.Remove(row.Spec.Key);
             }
         }
@@ -757,6 +620,20 @@ public partial class StepEditorDialog : Window
     {
         if (_syncing) return;
         SyncStepArgs();
+
+        // 「调用子动作」换了子动作：动态输入 / 输出跟着换（以前绑在下拉的 SelectionChanged 上，
+        // 现在子动作是文本框 + ▾，按值变没变来判断）。
+        if (_step.Unit == "sub.run" && _spec.DynamicInputs)
+        {
+            string id = _step.In.TryGetValue("subAction", out var arg) ? arg.Literal.AsText() : "";
+            if (!string.Equals(id, _dynamicSubAction, StringComparison.OrdinalIgnoreCase))
+            {
+                DropUnknownDynamicArgs();
+                RebuildDynamic();
+                BuildOutputs();
+            }
+        }
+
         UpdateVisibility();
     }
 
@@ -806,6 +683,7 @@ public partial class StepEditorDialog : Window
 
         string id = _step.In.TryGetValue("subAction", out var arg) ? arg.Literal.AsText() : "";
         var def = ResolveSubAction(id);
+        _dynamicSubAction = id;
 
         _dynamicPanel.Children.Add(new TextBlock
         {
@@ -1178,15 +1056,14 @@ public partial class StepEditorDialog : Window
     private void FocusFirstEditor()
     {
         var first = _rows.FirstOrDefault(r => r.Host.Visibility == Visibility.Visible);
-        if (first?.Host is not null)
+        if (first == null) return;
+
+        if (first.Editor is ValueField value) value.FocusEditor();
+        else if (first.Editor is TextBox box) { box.Focus(); box.SelectAll(); }
+        else if (first.Editor is Panel panel && FindEditorBox(panel) is { } inner)
         {
-            if (first.Host is TextBox box) { box.Focus(); box.SelectAll(); }
-            else if (first.Host is ValueField value) value.FocusEditor();
-            else if (first.Host is Panel panel && FindEditorBox(panel) is { } inner)
-            {
-                inner.Focus();
-                if (first.Spec.Editor == InputEditor.code) inner.CaretIndex = 0;
-            }
+            inner.Focus();
+            if (first.Spec.Editor == InputEditor.code) inner.CaretIndex = 0;
         }
     }
 
@@ -1265,7 +1142,7 @@ public partial class StepEditorDialog : Window
             if (_step.In.TryGetValue(row.Spec.Key, out var arg) && !arg.IsEmpty) continue;
 
             missing.Add(row.Spec);
-            if (row.Host is ValueField field) field.MarkMissing(true);
+            if (row.Editor is ValueField field) field.MarkMissing(true);
         }
 
         if (missing.Count > 0)
@@ -1280,7 +1157,7 @@ public partial class StepEditorDialog : Window
         }
 
         foreach (var row in _rows)
-            if (row.Host is ValueField field) field.MarkMissing(false);
+            if (row.Editor is ValueField field) field.MarkMissing(false);
         ProblemText.Visibility = Visibility.Collapsed;
 
         _step.Out.Clear();

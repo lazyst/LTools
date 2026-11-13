@@ -18,9 +18,12 @@ public sealed class ClickImageUnit : IStepUnit
         {
             new InputSpec("image", "模板图", ValueKind.text, InputEditor.image, Required: true),
             new InputSpec("region", "区域", ValueKind.text, InputEditor.enumList,
-                Default: Value.FromText("foreground"), Options: LTools.Features.Units.Screen.ScreenArgs.Regions),
-            new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region,
-                VisibleWhen: "region == 'rect'"),
+                Default: Value.FromText("foreground"), Options: LTools.Features.Units.Screen.ScreenArgs.Regions,
+                OptionParams: OptionMap.Of(
+                    ("foreground", []),
+                    ("screen", []),
+                    ("rect", ["rect"]))),
+            new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region),
             new InputSpec("minScore", "最低相似度", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(0.85), Advanced: true),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,

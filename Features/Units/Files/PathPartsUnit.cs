@@ -36,15 +36,15 @@ public sealed class PathPartsUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("operation", "方式", ValueKind.text, InputEditor.enumList,
-                Default: Value.FromText("parse"), Options: Operations, Labels: OperationLabels),
+                Default: Value.FromText("parse"), Options: Operations, Labels: OperationLabels,
+                OptionParams: OptionMap.Of(
+                    ("parse", ["path"]),
+                    ("combine", ["dir", "name"]))),
             new InputSpec("path", "路径", ValueKind.text, InputEditor.text,
-                VisibleWhen: "operation == 'parse'",
                 Description: "要拆的路径；相对路径原样拆，不会解析成绝对路径"),
             new InputSpec("dir", "目录", ValueKind.text, InputEditor.folder,
-                VisibleWhen: "operation == 'combine'",
                 Description: "拼在前面的一段；留空 = 只用文件名"),
             new InputSpec("name", "文件名", ValueKind.text,
-                VisibleWhen: "operation == 'combine'",
                 Description: "文件名（可以带子目录，如 sub\\a.txt）"),
         },
         Outputs = new[]

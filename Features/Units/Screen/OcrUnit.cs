@@ -25,11 +25,14 @@ public sealed class OcrUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("source", "图片来源", ValueKind.text, InputEditor.enumList,
-                Default: Value.FromText("image"), Options: Sources),
-            new InputSpec("image", "图片", Editor: InputEditor.image, Required: true,
-                VisibleWhen: "source == 'image'"),
-            new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region,
-                VisibleWhen: "source == 'rect'"),
+                Default: Value.FromText("image"), Options: Sources,
+                OptionParams: OptionMap.Of(
+                    ("image", ["image"]),
+                    ("foreground", []),
+                    ("screen", []),
+                    ("rect", ["rect"]))),
+            new InputSpec("image", "图片", Editor: InputEditor.image, Required: true),
+            new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region),
             new InputSpec("engine", "识别引擎", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("v6tiny"), Options: Engines),
         },

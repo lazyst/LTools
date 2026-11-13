@@ -7,82 +7,52 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
+        <!-- 输入行：严格两列。非开关类参数都直接在这里写字面量 / ${变量} / 文本模板；
+             图片缩略图、区域框选、取值动作单元都不再换掉这个框。 -->
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- 文本 / 数字 / 多行：一个框搞定，文本里的 ${变量} 由运行时替换 -->
             <TextBox x:Name="Box" MinHeight="30" VerticalContentAlignment="Center"
-                     TextChanged="Box_TextChanged"/>
+                     TextChanged="Box_TextChanged"
+                     PreviewMouseLeftButtonDown="Box_PreviewMouseLeftButtonDown"/>
 
-            <!-- 图片：缩略图 + 文件名，点一下打开来源（框选 / 换图 / 预览 / 变量） -->
-            <Border x:Name="ImagePanel" MinHeight="30" Visibility="Collapsed"
-                    Background="{StaticResource SurfaceBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                    CornerRadius="{StaticResource CornerSm}" Padding="5,2"
-                    Cursor="Hand" MouseLeftButtonUp="Image_Click">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Width="38" Height="26" Background="{StaticResource SurfaceAltBrush}"
-                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                            CornerRadius="3" Margin="0,0,8,0">
-                        <Image x:Name="Thumb" Stretch="Uniform"/>
-                    </Border>
-                    <TextBlock x:Name="ImageName" VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextBrush}"/>
-                    <TextBlock x:Name="ImageSize" VerticalAlignment="Center" Margin="8,0,0,0"
-                               FontSize="{StaticResource FontSizeHint}"
-                               Foreground="{StaticResource HintTextBrush}"/>
-                </StackPanel>
-            </Border>
-
-            <!-- 屏幕区域：一块胶囊，点它直接重新框选 -->
-            <Border x:Name="RegionPanel" MinHeight="30" Visibility="Collapsed"
-                    Background="{StaticResource SurfaceBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                    CornerRadius="{StaticResource CornerSm}" Padding="8,2"
-                    Cursor="Hand" MouseLeftButtonUp="Region_Click">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="▣" Margin="0,0,6,0" Foreground="{StaticResource SecondaryTextBrush}"/>
-                    <TextBlock x:Name="RegionText" VerticalAlignment="Center"
-                               FontFamily="{StaticResource MonoFont}" FontSize="{StaticResource FontSizeHint}"/>
-                    <TextBlock Text="重新框选" Margin="10,0,0,0" VerticalAlignment="Center"
-                               FontSize="{StaticResource FontSizeHint}"
-                               Foreground="{StaticResource HintTextBrush}"/>
-                </StackPanel>
-            </Border>
-
-            <!-- 内联取值：运行到这里时现场取一个值 -->
-            <Border x:Name="InlinePanel" MinHeight="30" Visibility="Collapsed"
-                    Background="{StaticResource SurfaceAltBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                    CornerRadius="{StaticResource CornerSm}" Padding="8,2">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="InlineText" VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis"/>
-                    <Button x:Name="InlineSetupBtn" Grid.Column="1" Content="改参数…"
-                            Style="{StaticResource BtnGhost}" MinHeight="24" Padding="8,1"
-                            Margin="8,0,0,0" Click="InlineSetup_Click"/>
-                </Grid>
-            </Border>
-
-            <!-- 一个入口：变量 / 选择文件·窗口·进程 / 屏幕取点 / 取值动作单元 -->
+            <!-- 一个入口：变量 / 选择文件·窗口·进程 / 屏幕区域·取点·取色 / 从列表选 / 取值动作单元 -->
             <Button x:Name="SourceButton" Grid.Column="1" Content="▾"
                     Style="{StaticResource BtnGhost}" Width="30" MinHeight="30"
                     Padding="0" Margin="6,0,0,0" Focusable="False"
                     Click="Source_Click"
-                    ToolTip="这个值从哪来：变量、选择文件 / 窗口 / 进程、屏幕取点、取值动作单元"/>
+                    ToolTip="这个值从哪来：变量、选择文件 / 窗口 / 进程、屏幕区域 / 取点 / 取色、从列表选、取值动作单元"/>
         </Grid>
 
+        <!-- 图片缩略图：唯一多一行的参数形态，落在输入行下方；只读预览，点一下打开来源 -->
+        <Border x:Name="ThumbPanel" Grid.Row="1" Visibility="Collapsed" Margin="0,4,0,0"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CornerSm}" Padding="5,2"
+                Cursor="Hand" MouseLeftButtonUp="Image_Click"
+                ToolTip="点一下框选 / 换图 / 预览">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Border Width="38" Height="26" Background="{StaticResource SurfaceAltBrush}"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="3" Margin="0,0,8,0">
+                    <Image x:Name="Thumb" Stretch="Uniform"/>
+                </Border>
+                <TextBlock x:Name="ImageName" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextBrush}"/>
+                <TextBlock x:Name="ImageSize" VerticalAlignment="Center" Margin="8,0,0,0"
+                           FontSize="{StaticResource FontSizeHint}"
+                           Foreground="{StaticResource HintTextBrush}"/>
+            </StackPanel>
+        </Border>
+
         <!-- 状态行：该填什么 / 当前值来自哪里 -->
-        <TextBlock x:Name="StatusText" Grid.Row="1" Style="{StaticResource HintLabel}"
+        <TextBlock x:Name="StatusText" Grid.Row="2" Style="{StaticResource HintLabel}"
                    TextWrapping="Wrap" Margin="0,3,0,0"/>
 
         <!-- 来源面板：StaysOpen=True 后由 ValueField 自己管关闭（点外部 / 滚动 / 移窗 / 失焦） -->

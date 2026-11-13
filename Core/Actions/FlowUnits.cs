@@ -419,7 +419,8 @@ internal static class FlowUnits
             DynamicInputs = true,
             Inputs = new[]
             {
-                new InputSpec("subAction", "子动作", ValueKind.text, InputEditor.text, Required: true),
+                new InputSpec("subAction", "子动作", ValueKind.text, InputEditor.text, Required: true,
+                    Pickers: PickerKind.variable | PickerKind.choices | PickerKind.inline | PickerKind.clear),
             },
         };
 

@@ -19,9 +19,12 @@ public sealed class FindImageUnit : IStepUnit
         {
             new InputSpec("image", "模板图", Editor: InputEditor.image, Required: true),
             new InputSpec("region", "区域", ValueKind.text, InputEditor.enumList,
-                Default: Value.FromText("foreground"), Options: ScreenArgs.Regions),
-            new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region,
-                VisibleWhen: "region == 'rect'"),
+                Default: Value.FromText("foreground"), Options: ScreenArgs.Regions,
+                OptionParams: OptionMap.Of(
+                    ("foreground", []),
+                    ("screen", []),
+                    ("rect", ["rect"]))),
+            new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region),
             new InputSpec("minScore", "最低相似度", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(0.85), Advanced: true,
                 Description: "0–1，越高越严格；找不到时可降到 0.7 左右再试"),

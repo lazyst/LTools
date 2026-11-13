@@ -24,12 +24,14 @@ public sealed class ClipboardHistoryUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("operation", "操作", ValueKind.text, InputEditor.enumList,
-                Required: true, Default: Value.FromText("list"), Options: Operations),
+                Required: true, Default: Value.FromText("list"), Options: Operations,
+                OptionParams: OptionMap.Of(
+                    ("list", ["limit"]),
+                    ("delete", ["id"]))),
             new InputSpec("limit", "最多条数", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(25), VisibleWhen: "operation == 'list'",
+                Default: Value.FromNumber(25),
                 Description: "系统默认只留 25 条；填 0 = 能读多少读多少"),
             new InputSpec("id", "记录 ID", ValueKind.text,
-                VisibleWhen: "operation == 'delete'",
                 Description: "从「记录 ID」输出里挑一条；留空 = 删最新一条"),
         },
         Outputs = new[]

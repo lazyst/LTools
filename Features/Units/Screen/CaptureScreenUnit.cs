@@ -20,9 +20,13 @@ public sealed class CaptureScreenUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("mode", "取图方式", ValueKind.text, InputEditor.enumList,
-                Required: true, Default: Value.FromText("interactive"), Options: Modes),
-            new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region,
-                VisibleWhen: "mode == 'rect'"),
+                Required: true, Default: Value.FromText("interactive"), Options: Modes,
+                OptionParams: OptionMap.Of(
+                    ("interactive", []),
+                    ("foreground", []),
+                    ("screen", []),
+                    ("rect", ["rect"]))),
+            new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region),
         },
         Outputs = new[]
         {
