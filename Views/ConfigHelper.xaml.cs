@@ -964,7 +964,7 @@ public partial class ConfigHelperWindow : Window
     }
 
     /// <summary>
-    /// 动作行右侧 3 个图标的分发器：按 <c>DataContext</c> 认行（点按钮不会自动选中那一行），
+    /// 动作行右侧图标的分发器：按 <c>DataContext</c> 认行（点按钮不会自动选中那一行），
     /// 把它设为选中项后复用既有的编辑 / 复制 / 删除逻辑，别另写一套。
     /// </summary>
     private void ActionRowAction_Click(object sender, RoutedEventArgs e)
@@ -975,8 +975,29 @@ public partial class ConfigHelperWindow : Window
         {
             case "edit": EditAction_Click(sender, e); break;
             case "copy": DuplicateAction_Click(sender, e); break;
+            case "history": OpenActionHistory_Click(sender, e); break;
             case "delete": DeleteAction_Click(sender, e); break;
         }
+    }
+
+    /// <summary>
+    /// 历史版本：选一份「保存前的样子」，右侧看它和当前的差异，确认后写回。
+    /// 快照由 <c>ActionStore</c> 自动存（每次内容真变了才存一份），恢复本身也会留一份，
+    /// 所以「恢复错了」还能再退回来。
+    /// </summary>
+    private void OpenActionHistory_Click(object sender, RoutedEventArgs e)
+    {
+        var cur = SelectedAction();
+        if (cur == null) return;
+
+        var dlg = new ActionHistoryDialog(this, cur);
+        if (dlg.ShowDialog() != true || dlg.Result == null) return;
+
+        ConfigStore.UpdateAction(dlg.Result);
+        PopulateActions();
+        MarkDirty();
+        ToastService.Show($"已恢复「{cur.Name}」的历史版本（恢复前的版本也进了历史）",
+            "动作历史", 3200, ToastKind.success);
     }
 
     private void ActionList_MouseDoubleClick(object sender, MouseButtonEventArgs e)

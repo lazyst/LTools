@@ -408,11 +408,17 @@ public sealed partial class StashPane : UserControl
         if (replace)
         {
             Features.SuperPanel.Close();
-            if (!AiUi.Confirm("覆盖原动作",
-                    $"用草稿「{title}」覆盖来源动作 {meta.BaseActionId}？\n\n" +
-                    "覆盖前会再确认来源动作自复制以来没有被改过；改过就只允许另存为新动作。",
-                    okText: "覆盖"))
-                return;
+
+            // 采纳前先看清楚：草稿和来源动作的步骤级差异（新增 / 删除 / 改参数 / 子步骤）。
+            // 以前只有一句「覆盖原动作？」，用户只能「信」；这个对话框就是本来的确认框，
+            // 顺带把「来源动作自复制以来被改过」的影响面摆出来（真正的一致性校验仍在 DraftPromoter）。
+            var baseAction = ActionRegistry.FindById(meta.BaseActionId ?? "");
+            var draft = DraftStore.Read(id).Program;
+            var diff = new ProgramDiffDialog(null,
+                "覆盖原动作",
+                $"用草稿「{title}」覆盖动作「{baseAction?.Name ?? meta.BaseActionId}」：",
+                baseAction?.Program, draft, "覆盖");
+            if (diff.ShowDialog() != true) return;
         }
 
         try

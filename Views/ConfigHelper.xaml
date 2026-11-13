@@ -439,7 +439,7 @@
                                  BtnGhost 把 Tag 当悬停色）。双击整行也能编辑。
                                  ActionList_PreviewMouseLeftButtonDown 先给 cell 焦点，否则第一次点图标
                                  会被 DataGridCell 吞掉（HotkeysView 踩过）。 -->
-                            <DataGridTemplateColumn Header="操作" Width="96" MinWidth="96">
+                            <DataGridTemplateColumn Header="操作" Width="124" MinWidth="124">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -451,6 +451,11 @@
                                                     Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14"
                                                     FontFamily="Segoe UI Symbol" Focusable="False"
                                                     ToolTip="复制这个动作" Click="ActionRowAction_Click"/>
+                                            <Button Content="🕘" CommandParameter="history" Style="{StaticResource BtnGhost}"
+                                                    Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="13"
+                                                    FontFamily="Segoe UI Symbol" Focusable="False"
+                                                    ToolTip="历史版本（每次保存前的样子，可恢复）"
+                                                    Click="ActionRowAction_Click"/>
                                             <Button Content="✕" CommandParameter="delete" Style="{StaticResource BtnGhostDanger}"
                                                     Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14"
                                                     FontFamily="Segoe UI Symbol" Focusable="False"
@@ -466,7 +471,7 @@
                         <Button Style="{StaticResource BtnPrimary}" Content="新建动作…" MinWidth="104"
                                 Click="NewAction_Click"/>
                         <TextBlock Style="{StaticResource HintLabel}" VerticalAlignment="Center"
-                                   Margin="12,0,0,0" Text="双击一行也能编辑；行右侧是编辑 / 复制 / 删除。"/>
+                                   Margin="12,0,0,0" Text="双击一行也能编辑；行右侧是编辑 / 复制 / 历史版本 / 删除。"/>
                     </StackPanel>
                 </Grid>
 

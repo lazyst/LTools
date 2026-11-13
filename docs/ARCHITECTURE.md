@@ -56,6 +56,7 @@ configs/
 actions/<id>/
   action.json        动作体（名称 / 图标 / 说明 / 变量 / 步骤）
   files/             该动作自己的模板图与脚本（P2）
+  history/           每次内容变化前的自动快照（最近 10 份，只存 action.json）
 resources/
   images/            共享 / 历史模板图（P2 起新增的模板图优先放动作目录）
   user/              用户素材（永不自动删）
@@ -112,6 +113,9 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
   **`actions/` 目录存在（含空）即权威**，所以删光动作不会被示例复活。
 - 写回只碰变了的动作：`ActionStore.SaveAll` 逐条比较 `action.json` 内容，没变不写；
   清单里没有的目录移入 `trash/<时间戳>/`（保留 30 天，启动时清理过期项）。
+- 自动快照（P0-5）：`WriteIfChanged` 发现内容真变了，先把**旧的那份** `action.json` 存进
+  `actions/<id>/history/<yyyyMMdd-HHmmss-fff>-<内容哈希8>.json`（`Core/Storage/ActionHistory.cs`，留最近 10 份）。
+  只存步骤与变量、**不复制 `files/`**（图片以动作目录当前的为准）；快照失败只记日志，不挡保存。
 - 采纳草稿 = 把 `staging/<id>/files/*` 复制进 `actions/<id>/files/`，动作里的 `files/x.png` **原样保留**，
   不再改写路径、也不再搬进共享的 `resources/images`。
 - 运行期资源根：正式运行（`AutomationRunner.Run`）与编辑器（`ActionEditor.Show`）都传该动作的 `files/`

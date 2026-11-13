@@ -216,14 +216,27 @@ internal static class ActionStore
     }
 
     /// <summary>先写临时文件再整体替换，避免写到一半崩溃留下半个 JSON。</summary>
+    /// <remarks>
+    /// 内容真的变了才写；写之前把旧的那份存进 <c>history/</c>（<see cref="ActionHistory"/>），
+    /// 于是「改坏了想退回去」有地方可退。所有写入路径（编辑器 / AI 采纳 / 宏挂载 / 导入）
+    /// 都经过这里，别在别处另存快照。
+    /// </remarks>
     private static void WriteIfChanged(string path, ActionDto action)
     {
         string json = JsonSerializer.Serialize(action, ConfigBundle.Options);
-        try
+        string previous = "";
+        if (File.Exists(path))
         {
-            if (File.Exists(path) && File.ReadAllText(path, Encoding.UTF8) == json) return;
+            try
+            {
+                previous = File.ReadAllText(path, Encoding.UTF8);
+                // 同一份动作在本次保存里可能被写两次（清单 + 单条更新），以文件现状为准。
+                if (previous == json) return;
+            }
+            catch { /* 读不出来（被占用）就照常写，也不留快照 */ }
         }
-        catch { /* 读不出来（被占用）就照常写 */ }
+
+        if (previous.Length > 0) ActionHistory.CaptureBeforeChange(path, previous);
 
         string tmp = path + ".tmp";
         File.WriteAllText(tmp, json, new UTF8Encoding(false));

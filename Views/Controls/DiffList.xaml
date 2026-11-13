@@ -1,0 +1,33 @@
+<UserControl x:Class="LTools.Views.Controls.DiffList"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- 差异清单：+ 新增（绿）/ − 删除（红）/ ~ 修改（琥珀），缩进表示嵌套层级。
+         外面套固定高度（ListView 自己滚），别塞进会被撑开的 StackPanel 里当无限高用。 -->
+    <ListBox x:Name="List" BorderThickness="0" Background="Transparent"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+             VirtualizingPanel.IsVirtualizing="False">
+        <ListBox.ItemContainerStyle>
+            <Style TargetType="ListBoxItem">
+                <Setter Property="Padding" Value="2,1"/>
+                <Setter Property="MinHeight" Value="20"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            </Style>
+        </ListBox.ItemContainerStyle>
+        <ListBox.ItemTemplate>
+            <DataTemplate>
+                <Grid Margin="{Binding Indent}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="14"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding Glyph}" FontFamily="Consolas" FontWeight="Bold"
+                               Foreground="{Binding Brush}"
+                               FontSize="{StaticResource FontSizeHint}" VerticalAlignment="Top"/>
+                    <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap"
+                               Foreground="{Binding Brush}"
+                               FontSize="{StaticResource FontSizeSecondary}"/>
+                </Grid>
+            </DataTemplate>
+        </ListBox.ItemTemplate>
+    </ListBox>
+</UserControl>
