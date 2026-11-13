@@ -84,6 +84,15 @@ internal static class Win32
     /// <summary>GetDpiForMonitor 的 MDT_EFFECTIVE_DPI。</summary>
     public const int MdtEffectiveDpi = 0;
 
+    /// <summary>MONITORINFOF_PRIMARY：这是主显示器。</summary>
+    public const uint MonitorInfofPrimary = 0x00000001;
+
+    /// <summary>枚举显示器（<paramref name="lprcMonitor"/> 是该显示器的物理矩形）。</summary>
+    [DllImport("user32.dll")]
+    public static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
+
+    public delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref Rect lprcMonitor, IntPtr dwData);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct MonitorInfo
     {

@@ -15,7 +15,9 @@ namespace LTools.Core.Ai;
 public sealed class AiTools
 {
     [McpServerTool(Name = "ltools_health"), Description(
-        "检查 LTools 的 AI 接入状态：版本、开关、端口、审批模式、草稿数、最近错误。不返回令牌。")]
+        "检查 LTools 的 AI 接入状态：版本、开关、端口、审批模式、草稿数、最近错误，以及环境信息" +
+        "（操作系统 / 是否提权 / 每块屏幕的物理矩形与工作区与 DPI / 虚拟桌面 / 光标位置 / 常用目录 / 默认 OCR 引擎）。" +
+        "写坐标类动作（鼠标操作、屏幕区域、截图、图片点击）前先看它，别猜屏幕大小。不返回令牌。")]
     public static string Health() => AiToolHandlers.Call("ltools_health", null, AiToolHandlers.Health);
 
     [McpServerTool(Name = "ltools_docs_get"), Description(

@@ -369,8 +369,11 @@ internal static class KnowledgePack
 
 ## 3. 工作流（工具名见 MCP）
 
+0. `ltools_health`：写**坐标类**动作（鼠标操作 / 屏幕区域 / 截图 / 图片点击）之前先看 `environment`——
+   每块屏幕的物理矩形与工作区、DPI 缩放、虚拟桌面、光标位置、常用目录、默认 OCR 引擎。
+   坐标一律**物理像素**（与截图 / 找图 / 鼠标注入同一套），DIP 用 `scale` 换算；多屏时 `left` / `top` 可能是负数。
 1. `ltools_units_list` / `ltools_units_get`：先确认能力存在，别臆造动作单元键。
-   `units_get` 里 `optionParams` / `visibleFor` 说明「哪个选项要哪些参数」（`units.md` 里有同样的选项表），
+   `units_get` 里 `optionParams` / `enabledWhen` 说明「哪个选项要哪些参数」（`units.md` 里有同样的选项表），
    **按当前选项只填需要的参数**，别把别的操作的参数堆进去（运行会忽略，`check` 会给 warning）。
 2. `ltools_staging_create(title, description?, copyFromActionId?)`：新草稿。改用户已有动作时传 `copyFromActionId`（只读复制到草稿）。
 3. `ltools_staging_open(draftId)`：读 `program` + `files` + `revision` + 绝对目录。

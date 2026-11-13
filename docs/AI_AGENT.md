@@ -242,7 +242,7 @@ staging/
 
 | 工具 | 作用 | 写 | 审批 |
 |---|---|---|---|
-| `ltools_health` | 版本 / 开关 / 审批模式 / 草稿数 / 最近错误 | | |
+| `ltools_health` | 版本 / 开关 / 审批模式 / 草稿数 / 最近错误 + **环境信息**（OS / 提权 / 每块屏幕的物理矩形与工作区与 DPI / 虚拟桌面 / 光标 / 常用目录 / 默认 OCR 引擎） | | |
 | `ltools_docs_get(name)` | `format` / `units` / `examples` | | |
 | `ltools_units_list(query?)` | 动作单元摘要列表（74 条，可过滤） | | |
 | `ltools_units_get(key)` | 单个动作单元的完整 Input/Output 规格（`sub.run` 附带全部子动作签名）；每个参数带 `optionParams` / `enabledWhen`，说清「哪个选项要哪些参数」 | | |

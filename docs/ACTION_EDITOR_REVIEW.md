@@ -229,7 +229,7 @@
 
 | 项 | 做什么 | 为什么 |
 |---|---|---|
-| P2-1 | AI 工具面：截图 / UIA 树 / dry-run / JSON Schema / `health` 环境信息 | A4 / A5 / A7 |
+| P2-1 | AI 工具面：截图 / UIA 树 / dry-run / JSON Schema / `health` 环境信息 | A4 / A5 / A7 | 🚧 分三步：`health` 环境信息已完成（6.13），dry-run、截图 / UIA 树待做 |
 | P2-2 | 运行历史与失败分析（最近 N 次的成功 / 失败、耗时、失败步骤分布） | 现在只有单个 `last-failure.log` |
 | P2-3 | 步骤文本化（可复制 / 粘贴的 DSL），方便与 AI 往返 | 截取片段、分享、贴进对话都靠它 |
 
@@ -508,6 +508,32 @@
   动作编辑器显示方向列（两项）/ 右栏 360 / 载入已有输入方向 / 保存时方向与显示名都不丢 / 抽屉收起仍是 360。
 - 真机待点：编辑器里给一个变量把方向改成「输入」→ 面板点这个磁贴应弹参数框（列表 / 数字框形态正确），
   填完点「运行」跑起来；再从快捷键触发同一个动作，参数框应预填上次的值；点「取消」不应跑（托盘无提示、动作没执行）。
+
+---
+
+### 6.13 实施记录（2026-11-13，P2-1 第一步：`health` 带环境信息）
+
+agent 看不见用户的屏幕，「鼠标操作 / 屏幕区域 / 截图 / 图片点击」这类坐标动作只能靠猜（A7）。
+`ltools_health` 回执新增 `environment`：
+
+| 字段 | 内容 |
+|---|---|
+| `os` / `is64BitProcess` / `elevated` | 系统版本、位数、是否提权（UIA 读提权窗口要提权，普通权限拿到的是空树） |
+| `virtualScreen` | 虚拟桌面整体矩形（<c>ScreenCapture.Virtual*</c>，物理像素） |
+| `screens[]` | 每块屏的 `left` / `top` / `width` / `height` / `dpi` / `scale` / `primary` + `workArea`（`rcWork`，已排除任务栏） |
+| `cursor` | 当前光标位置（拿不到就不给这个键） |
+| `directories` | `dataRoot` / `actions` / `staging` / `images` / `userResources` / `notes` / `subactions` / `knowledge` / `logs` |
+| `defaultOcrEngine` | 新建 OCR 步骤会预选的引擎（`windows` = 系统 OCR） |
+
+- 显示器枚举是新加的 `Native/Screens.cs` + `Win32.EnumDisplayMonitors`：坐标一律**物理像素**，与截图 / 找图 / 鼠标注入同一套；DIP 用 `scale`（96 DPI = 1.0）换算。多屏时 `left` / `top` 可能是负数。`GetDpiForMonitor` 在 Win10 以下拿不到就当 96，不让整块信息失败。
+- 目录走现成的 `AppPaths` / `ActionStore.Root(锚点)` / `DraftStore.Root` / `ImageLibrary.Dir`，**不在这里另拼路径**。
+- `format.md` 的「工作流」前面加了一步 0：写坐标类动作前先看 `environment`；顺手修了里面把 `enabledWhen` 写成 `visibleFor` 的老错。
+- 工具说明（`AiTools.Health`）与 `docs/AI_AGENT.md` §5.2 一并更新，agent 才想得起来去调它。
+
+**验收**：构建 0 错 0 警；无头冒烟 **194 项全过**（本项 28 项，含 `screens` 形状、工作区不越界、
+`dpi` 与 `scale` 一致、虚拟桌面不小于任一屏、目录齐全且 `actions` 指向 `actions`、整份能序列化回执、
+`format.md` 指向 health 且用 `enabledWhen`）。真机待点：设置 → AI 接入页让 agent 调一次 `ltools_health`，
+回执里应能看到本机分辨率 / 缩放（例如 `1920x1080` @ `1.25`）与数据根路径。
 
 ---
 

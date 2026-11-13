@@ -1,8 +1,12 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Core.Actions;
+using LTools.Core.Storage;
 using LTools.Features;
+using LTools.Native;
 
 namespace LTools.Core.Ai;
 
@@ -80,7 +84,87 @@ internal static class AiToolHandlers
             ["stagingRoot"] = DraftStore.Root,
             ["knowledgeDir"] = KnowledgePack.Dir,
             ["lastError"] = McpServer.LastError ?? settings.LastError,
+            ["environment"] = EnvironmentInfo(),
         };
+    }
+
+    /// <summary>
+    /// 环境信息：屏幕 / DPI / 光标 / 常用目录。
+    /// </summary>
+    /// <remarks>
+    /// 坐标类动作（「鼠标操作」「屏幕区域」「截图」「图片点击」）写偏最多人抱怨，而 agent 看不见用户的屏幕：
+    /// 不告诉它「1920×1080 单屏、100% 缩放」它就只敢猜 <c>0.5, 0.5</c>。这里给的都是**物理像素**，
+    /// 与截图 / 找图 / 鼠标注入同一套坐标系；DIP 由 <c>scale</c> 换算。
+    /// </remarks>
+    private static Dictionary<string, object?> EnvironmentInfo()
+    {
+        var screens = Screens.All();
+        var payload = new Dictionary<string, object?>
+        {
+            ["os"] = RuntimeInformation.OSDescription,
+            ["is64BitProcess"] = Environment.Is64BitProcess,
+            ["elevated"] = IsElevated(),
+            ["virtualScreen"] = new Dictionary<string, object?>
+            {
+                ["left"] = ScreenCapture.VirtualLeft,
+                ["top"] = ScreenCapture.VirtualTop,
+                ["width"] = ScreenCapture.VirtualWidth,
+                ["height"] = ScreenCapture.VirtualHeight,
+            },
+            ["screens"] = screens.Select(screen => (object?)new Dictionary<string, object?>
+            {
+                ["left"] = screen.Left,
+                ["top"] = screen.Top,
+                ["width"] = screen.Width,
+                ["height"] = screen.Height,
+                ["dpi"] = screen.Dpi,
+                ["scale"] = screen.Scale,
+                ["primary"] = screen.Primary,
+                ["workArea"] = new Dictionary<string, object?>
+                {
+                    ["left"] = screen.WorkLeft,
+                    ["top"] = screen.WorkTop,
+                    ["width"] = screen.WorkWidth,
+                    ["height"] = screen.WorkHeight,
+                },
+            }).ToList(),
+        };
+
+        if (Win32.GetCursorPos(out var cursor))
+            payload["cursor"] = new Dictionary<string, object?> { ["x"] = cursor.X, ["y"] = cursor.Y };
+
+        // 常用目录：agent 自己拼路径最容易写错（dev 落仓库根、发布落 exe 同级，还可能被便携目录挪走）。
+        var anchor = string.IsNullOrWhiteSpace(ConfigStore.ConfigPath)
+            ? ConfigLocator.FindPath()
+            : ConfigStore.ConfigPath;
+        payload["directories"] = new Dictionary<string, object?>
+        {
+            ["dataRoot"] = AppPaths.DataRoot,
+            ["actions"] = ActionStore.Root(anchor),
+            ["staging"] = DraftStore.Root,
+            ["images"] = ImageLibrary.Dir,
+            ["userResources"] = ImageLibrary.UserDir,
+            ["notes"] = AppPaths.NotesDir,
+            ["subactions"] = AppPaths.SubActionsDir,
+            ["knowledge"] = KnowledgePack.Dir,
+            ["logs"] = AppPaths.LogsDir,
+        };
+
+        try { payload["defaultOcrEngine"] = OcrEnginePreference.DefaultForNewProbe ?? "windows"; }
+        catch (Exception ex) { AppLog.Warn("Ai", "读取默认 OCR 引擎失败：" + ex.Message); }
+
+        return payload;
+    }
+
+    /// <summary>进程是否提权（UIA 读提权窗口需要，普通权限会拿到空树）。</summary>
+    private static bool IsElevated()
+    {
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+        }
+        catch { return false; }
     }
 
     public static Dictionary<string, object?> DocsGet(string name)
