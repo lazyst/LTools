@@ -129,7 +129,7 @@ public sealed class ProcessTextUnit : IStepUnit
             new InputSpec("separator", "分隔符", ValueKind.text,
                 Pickers: PickerKind.variable | PickerKind.separator | PickerKind.inline | PickerKind.clear,
                 Default: Value.FromText(","),
-                Description: "拆分 / 拼接用的分隔符，例如 , 或 \\n"),
+                Description: "拆分 / 拼接用的分隔符；换行写 \\n、制表符写 \\t，例如 , 或 \\r\\n"),
             new InputSpec("start", "起始位置", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(0),
                 Description: "从 0 开始数；超过文本长度会报错"),
@@ -150,7 +150,7 @@ public sealed class ProcessTextUnit : IStepUnit
         string op = args.Text("operation").Trim().ToLowerInvariant();
         string text = args.Text("text");
         string find = args.Text("find");
-        string separator = args.Text("separator");
+        string separator = TextEscapes.Unescape(args.Text("separator"));
 
         string result = text;
         IReadOnlyList<Value>? list = null;

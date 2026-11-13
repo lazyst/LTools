@@ -689,11 +689,16 @@ public partial class ValueField : UserControl
 
         if (Pickers.HasFlag(PickerKind.separator))
         {
+            // 存的是 \n / \t 转义写法（不是看不见的真字符）：单行框里能看见自己填了什么，
+            // 「文本处理」「列表操作」读分隔符时会还原成真正的换行 / 制表符（TextEscapes）。
             AddHeader("常用分隔符", 0);
             foreach (var (label, value) in new (string, string)[]
                      {
                          ("逗号 ,", ","), ("分号 ;", ";"), ("竖线 |", "|"),
-                         ("空格", " "), ("换行", "\n"), ("Tab", "\t"),
+                         ("空格", " "),
+                         ("换行 \\n", "\\n"),
+                         ("Windows 换行 \\r\\n", "\\r\\n"),
+                         ("Tab \\t", "\\t"),
                      })
                 AddItem("·", label, "", "分隔符 separator " + label, () => SetLiteral(value));
         }

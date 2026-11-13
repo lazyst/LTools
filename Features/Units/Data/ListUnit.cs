@@ -45,7 +45,8 @@ public sealed class ListUnit : IStepUnit
                 Description: "拆分时是要拆的文本；追加 / 查找时是那一项"),
             new InputSpec("separator", "分隔符", ValueKind.text,
                 Pickers: PickerKind.variable | PickerKind.separator | PickerKind.inline | PickerKind.clear,
-                Default: Value.FromText(",")),
+                Default: Value.FromText(","),
+                Description: "拆分 / 拼接用的分隔符；换行写 \\n、制表符写 \\t，例如 , 或 \\r\\n"),
         },
         Outputs = new[]
         {
@@ -61,7 +62,7 @@ public sealed class ListUnit : IStepUnit
         string op = args.Text("operation").Trim().ToLowerInvariant();
         var items = args.Has("list") ? args.List("list").ToList() : new List<Value>();
         int index = (int)Math.Round(args.Number("index"));
-        string separator = args.Text("separator");
+        string separator = TextEscapes.Unescape(args.Text("separator"));
         if (separator.Length == 0) separator = ",";
         Value value = args.Has("value") ? args.Get("value") : Value.Empty;
 
