@@ -143,6 +143,18 @@ public sealed class AppConfig
     public List<string>? RecentActionIds { get; set; }
 
     /// <summary>
+    /// 动作编辑器左栏「收藏」的动作单元键（<c>UnitSpec.Key</c>，如 <c>text.process</c>）。
+    /// 收藏的分组固定排在最上面，全局生效（不属于某个动作）。
+    /// </summary>
+    public List<string> FavoriteUnits { get; set; } = new();
+
+    /// <summary>
+    /// 动作编辑器左栏「最近使用」的动作单元键，最近的在前（最多 8 条）。
+    /// 真正插进动作时记一次；只在 <c>configs/ui.json</c> 里，丢了不影响功能。
+    /// </summary>
+    public List<string> RecentUnits { get; set; } = new();
+
+    /// <summary>
     /// 动作运行结束后的提示策略：不提示 / 只在失败时（默认）/ 成功也提示。
     /// 失败提示是常驻的（点一下关，下一次运行自动替换）。
     /// </summary>

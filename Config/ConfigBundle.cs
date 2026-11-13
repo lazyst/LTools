@@ -116,6 +116,8 @@ internal static class ConfigBundle
         cfg.LastOcrEngine = ui.LastOcrEngine;
         cfg.ToolboxCollapsedGroups = ui.ToolboxCollapsedGroups ?? new();
         cfg.RecentActionIds = ui.RecentActionIds;
+        cfg.FavoriteUnits = ui.FavoriteUnits ?? new();
+        cfg.RecentUnits = ui.RecentUnits ?? new();
 
         bool hasStore = ActionStore.HasStore(anchorPath);
         if (hasStore)
@@ -371,6 +373,8 @@ internal static class ConfigBundle
         LastOcrEngine = cfg.LastOcrEngine,
         ToolboxCollapsedGroups = cfg.ToolboxCollapsedGroups ?? new(),
         RecentActionIds = cfg.RecentActionIds,
+        FavoriteUnits = cfg.FavoriteUnits ?? new(),
+        RecentUnits = cfg.RecentUnits ?? new(),
     };
 
     internal static HotkeyFile ToHotkeys(AppConfig cfg) => cfg.Hotkeys ?? new HotkeyFile();

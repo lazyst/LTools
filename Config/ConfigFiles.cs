@@ -56,6 +56,12 @@ public sealed class UiStateFile
 
     /// <summary>动作选择器的「最近使用」。</summary>
     public List<string>? RecentActionIds { get; set; }
+
+    /// <summary>动作编辑器左栏收藏的动作单元键（<c>UnitSpec.Key</c>）。</summary>
+    public List<string>? FavoriteUnits { get; set; }
+
+    /// <summary>动作编辑器左栏「最近使用」的动作单元键，最近的在前。</summary>
+    public List<string>? RecentUnits { get; set; }
 }
 
 /// <summary><c>configs/panel.json</c>：超级面板（开关 / 长按阈值 / 面板结构）。</summary>

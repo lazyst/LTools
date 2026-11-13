@@ -271,6 +271,7 @@ public partial class ActionEditorWindow
             PushUndo($"添加「{StepSummary.Title(frame.UnitKey)}」");
             int at = Math.Clamp(frame.Index, 0, owner.Count);
             owner.Insert(at, result);
+            NoteUnitUsed(frame.UnitKey);
             ReloadRows(result);
 
             if (!allowContinue || !frame.Form.ContinueAdding)

@@ -199,8 +199,8 @@
                                ToolTip="点一下动作单元填参数插入 · 拖到步骤列表里插入 · 右键动作单元还有「直接添加 / 添加到末尾」"/>
                     <TextBox DockPanel.Dock="Top" x:Name="SearchBox" Margin="12,0,12,8"
                              MinHeight="30" TextChanged="SearchBox_TextChanged"
-                              controls:TextBoxPlaceholder.Text="搜索动作单元（名称 / 分类 / 动作单元键）…"
-                             ToolTip="按名称 / 分类 / 动作单元键搜索"/>
+                              controls:TextBoxPlaceholder.Text="搜索动作单元（名称 / 键 / 拼音首字母）…"
+                             ToolTip="按名称 / 分类 / 动作单元键搜索，也可以打拼音首字母：jt = 截图、wbcl = 文本处理"/>
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="Toolbox" Margin="10,0,8,0"/>
                     </ScrollViewer>
@@ -273,7 +273,7 @@
 
                     <TextBlock x:Name="EmptyHint" DockPanel.Dock="Bottom"
                                Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
-                               Text="（空动作）从左侧点一个动作单元开始，例如：读取选中文本 → 文本处理 → 提示弹窗"/>
+                               Text="提示：双击步骤改参数；Ctrl+点击左侧动作单元可以直接插入；拖到步骤之间可以调顺序"/>
 
                     <!-- 校验诊断：点一条就选中并滚到对应步骤（错误 / 提醒都列，步骤行上也有标记） -->
                     <Border x:Name="DiagnosticBar" DockPanel.Dock="Bottom" Visibility="Collapsed"
@@ -477,6 +477,7 @@
                         </StackPanel>
                     </Border>
 
+                    <Grid>
                     <ListBox x:Name="StepList" HorizontalContentAlignment="Stretch"
                              BorderThickness="0" Background="Transparent" SelectionMode="Extended"
                              ItemTemplate="{StaticResource StepRowTemplate}"
@@ -492,6 +493,22 @@
                             </Style>
                         </ListBox.ItemContainerStyle>
                     </ListBox>
+
+                    <!-- 空动作的起步模板：点一下就把几步现成步骤插进来（之后照常改参数）。
+                         只在一步都没有时出现，有步骤了不占地方。 -->
+                    <StackPanel x:Name="TemplatePanel" Visibility="Collapsed"
+                                VerticalAlignment="Top" HorizontalAlignment="Left"
+                                Margin="2,8,2,0" MaxWidth="440">
+                        <TextBlock x:Name="TemplateTitle" Text="从模板开始"
+                                   FontSize="{StaticResource FontSizeHint}" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextBrush}" Margin="0,0,0,2"/>
+                        <TextBlock Text="点一下插入几步现成的步骤，再按需要改参数；也可以直接从左边工具箱挑。"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource HintTextBrush}"
+                                   TextWrapping="Wrap" Margin="0,0,0,6"/>
+                        <StackPanel x:Name="TemplateList"/>
+                    </StackPanel>
+                    </Grid>
                 </DockPanel>
 
                 <!-- 拖动排序的幽灵 + 插入线（不吃鼠标事件） -->

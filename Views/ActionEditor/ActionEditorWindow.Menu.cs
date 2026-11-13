@@ -132,6 +132,9 @@ public partial class ActionEditorWindow
         menu.Items.Add(new Separator());
         Item(menu, "添加到末尾…（填参数）",
             () => AddStepAt(spec.Key, _program.Steps, _program.Steps.Count, direct: false));
+        menu.Items.Add(new Separator());
+        Item(menu, IsFavorite(spec.Key) ? "取消收藏" : "收藏（置顶）",
+            () => ToggleFavorite(spec.Key));
         return menu;
     }
 
