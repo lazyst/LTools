@@ -26,6 +26,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="16"/>
                             <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="14"/>
                             <ColumnDefinition Width="24"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
@@ -34,7 +35,7 @@
                         </Grid.ColumnDefinitions>
 
                         <!-- 选中指示：最左侧 3px 主色竖条（压在内边距上，不挤布局） -->
-                        <Border x:Name="AccentBar" Grid.ColumnSpan="7" Width="3"
+                        <Border x:Name="AccentBar" Grid.ColumnSpan="8" Width="3"
                                 HorizontalAlignment="Left" CornerRadius="1.5" Margin="-5,0,0,0"
                                 Background="Transparent" IsHitTestVisible="False" Panel.ZIndex="1"/>
 
@@ -48,11 +49,20 @@
                         <TextBlock Grid.Column="1" Text="{Binding Number}" VerticalAlignment="Center"
                                    FontSize="{StaticResource FontSizeSecondary}"
                                    Foreground="{StaticResource SecondaryTextBrush}"/>
-                        <TextBlock Grid.Column="2" Text="{Binding Glyph}" VerticalAlignment="Center"
+
+                        <!-- 校验标记：✕ = 错误、！ = 提醒（悬停看具体是哪些问题） -->
+                        <TextBlock x:Name="IssueMark" Grid.Column="2" Text="{Binding IssueMark}"
+                                   VerticalAlignment="Center" FontWeight="SemiBold"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{Binding IssueBrush}"
+                                   Visibility="{Binding IssueVisibility}"
+                                   ToolTip="{Binding IssueTip}"/>
+
+                        <TextBlock Grid.Column="3" Text="{Binding Glyph}" VerticalAlignment="Center"
                                    FontFamily="Segoe MDL2 Assets" FontSize="14"
                                    Foreground="{StaticResource SecondaryTextBrush}"/>
 
-                        <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="4,0,6,0">
+                        <StackPanel Grid.Column="4" VerticalAlignment="Center" Margin="4,0,6,0">
                             <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
                                        FontSize="{StaticResource FontSizeSecondary}"
                                        TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}"/>
@@ -62,7 +72,7 @@
                                        ToolTip="{Binding Summary}"/>
                         </StackPanel>
 
-                        <Border Grid.Column="4" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3"
+                        <Border Grid.Column="5" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3"
                                 Padding="6,1" VerticalAlignment="Center" Margin="0,0,6,0"
                                 Visibility="{Binding OutputVisibility}" ToolTip="输出变量">
                             <TextBlock Text="{Binding Output}" FontSize="{StaticResource FontSizeHint}"
@@ -70,11 +80,11 @@
                                        Foreground="{StaticResource SecondaryTextBrush}"/>
                         </Border>
 
-                        <Button Grid.Column="5" Style="{StaticResource BtnGhost}" Content="✎" Padding="0"
+                        <Button Grid.Column="6" Style="{StaticResource BtnGhost}" Content="✎" Padding="0"
                                 Width="24" Height="24" FontSize="{StaticResource FontSizeSecondary}"
                                 VerticalAlignment="Center" ToolTip="编辑（双击行亦可）"
                                 Visibility="{Binding ButtonVisibility}" Click="EditStep_Click"/>
-                        <Button Grid.Column="6" Style="{StaticResource BtnGhost}" Content="✕" Padding="0"
+                        <Button Grid.Column="7" Style="{StaticResource BtnGhost}" Content="✕" Padding="0"
                                 Width="24" Height="24" FontSize="{StaticResource FontSizeHint}"
                                 VerticalAlignment="Center" ToolTip="删除（含子步骤）"
                                 Visibility="{Binding ButtonVisibility}" Click="DeleteStep_Click"/>
@@ -230,6 +240,65 @@
                     <TextBlock x:Name="EmptyHint" DockPanel.Dock="Bottom"
                                Style="{StaticResource HintLabel}" TextWrapping="Wrap" Margin="0,6,0,0"
                                Text="（空动作）从左侧点一个动作单元开始，例如：读取选中文本 → 文本处理 → 提示弹窗"/>
+
+                    <!-- 校验诊断：点一条就选中并滚到对应步骤（错误 / 提醒都列，步骤行上也有标记） -->
+                    <Border x:Name="DiagnosticBar" DockPanel.Dock="Bottom" Visibility="Collapsed"
+                            Margin="0,6,0,0" Background="{StaticResource SurfaceAltBrush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                            Padding="0,6,0,0">
+                        <DockPanel>
+                            <Grid DockPanel.Dock="Top">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="DiagnosticTitle" FontSize="{StaticResource FontSizeHint}"
+                                           FontWeight="SemiBold" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="✕"
+                                        Width="22" Height="22" Padding="0" Margin="6,0,0,0"
+                                        FontSize="{StaticResource FontSizeHint}" Focusable="False"
+                                        ToolTip="收起诊断列表（步骤行上的标记保留，改完再点「校验」）"
+                                        Click="DiagnosticClose_Click"/>
+                            </Grid>
+
+                            <ListView x:Name="DiagnosticList" MaxHeight="132" Margin="0,4,0,0"
+                                      BorderThickness="0" Background="Transparent"
+                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="Padding" Value="2,1"/>
+                                        <Setter Property="MinHeight" Value="20"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        <EventSetter Event="PreviewMouseLeftButtonUp" Handler="DiagnosticRow_Click"/>
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="16"/>
+                                                <ColumnDefinition Width="160"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Glyph}" Foreground="{Binding Brush}"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="{StaticResource FontSizeHint}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Where}"
+                                                       ToolTip="{Binding Where}"
+                                                       FontSize="{StaticResource FontSizeHint}"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Message}"
+                                                       ToolTip="{Binding Message}"
+                                                       FontSize="{StaticResource FontSizeHint}"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </DockPanel>
+                    </Border>
 
                     <!-- 试运行：不用先保存，跑的就是编辑器里现在的内容；轨迹按步骤路径回填到下面的列表 -->
                     <Border x:Name="RunBar" DockPanel.Dock="Bottom" Margin="0,6,0,0"

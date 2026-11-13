@@ -47,6 +47,8 @@
 
     <!-- 状态 -->
     <Color x:Key="SuccessColor">#16A34A</Color>
+    <!-- 校验提醒（warning）：琥珀色，和错误的红分开；只用于文字 / 小标记，不做大底块 -->
+    <Color x:Key="WarningColor">#B45309</Color>
 
     <!-- 滚动条 -->
     <Color x:Key="ScrollThumbColor">#CBCBD1</Color>
@@ -76,6 +78,7 @@
     <SolidColorBrush x:Key="DangerSoftBrush" Color="{StaticResource DangerSoftColor}"/>
     <SolidColorBrush x:Key="DangerHoverBgBrush" Color="{StaticResource DangerHoverBgColor}"/>
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
     <SolidColorBrush x:Key="ScrollThumbBrush" Color="{StaticResource ScrollThumbColor}"/>
     <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="{StaticResource ScrollThumbHoverColor}"/>
 

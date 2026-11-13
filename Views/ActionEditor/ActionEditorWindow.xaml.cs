@@ -279,6 +279,17 @@ public sealed class StepRow
     public Visibility ButtonVisibility =>
         Step != null ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>校验标记：<c>✕</c> = 这一步有错误、<c>！</c> = 只有提醒；空 = 没问题。</summary>
+    public string IssueMark { get; init; } = "";
+
+    public Brush IssueBrush { get; init; } = Brushes.Transparent;
+
+    /// <summary>悬停提示：这一步的全部问题逐行列出。</summary>
+    public string IssueTip { get; init; } = "";
+
+    public Visibility IssueVisibility =>
+        IssueMark.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+
     public Thickness Indent => new(Depth * 18, 0, 0, 0);
 
     public Thickness MarkerIndent => new(Depth * 18 + 44, 0, 0, 1);

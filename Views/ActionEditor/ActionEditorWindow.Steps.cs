@@ -133,6 +133,8 @@ public partial class ActionEditorWindow
             summary = summary.Length == 0 ? folded : $"{summary} · {folded}";
         }
 
+        var (mark, markBrush, markTip) = IssueMarkFor(step, includeDescendants: collapsed);
+
         return new StepRow
         {
             Step = step,
@@ -146,6 +148,9 @@ public partial class ActionEditorWindow
             Output = StepSummary.OutputText(step),
             HasChildren = hasChildren,
             IsCollapsed = collapsed,
+            IssueMark = mark,
+            IssueBrush = markBrush,
+            IssueTip = markTip,
         };
     }
 

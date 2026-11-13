@@ -484,56 +484,6 @@ public partial class ActionEditorWindow
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
-    /// <summary>
-    /// 静态校验：与 AI 草稿的 <c>ltools_staging_check</c> 用同一个 <see cref="ActionValidator"/>，
-    /// 免得编辑器和 MCP 两套规则长期分叉。
-    /// </summary>
-    private void Validate_Click(object sender, RoutedEventArgs e)
-    {
-        _program.Name = (NameBox.Text ?? "").Trim();
-        _program.Icon = IconPicker.SelectedIcon ?? "";
-
-        var result = ValidateCurrent();
-        if (result.Issues.Count == 0)
-        {
-            SetStatus("校验通过：没有发现问题", hint: true);
-            return;
-        }
-
-        const int maxShown = 12;
-        string detail = string.Join("\n", result.Issues.Take(maxShown).Select(i =>
-            (i.Severity == IssueSeverity.error ? "✕ " : "！ ") + i.Label + i.Message));
-        if (result.Issues.Count > maxShown)
-            detail += $"\n…还有 {result.Issues.Count - maxShown} 条，修完刷新后再看";
-
-        SetStatus($"校验：{result.Errors} 个错误 / {result.Warnings} 个提醒",
-            hint: result.Ok, danger: !result.Ok);
-        ConfirmDialog.Info(this,
-            $"{(_isSubAction ? "子动作" : "动作")}校验（{result.Errors} 个错误 / {result.Warnings} 个提醒）",
-            detail);
-    }
-
-    /// <summary>
-    /// 子动作模式要按子动作的规则校验（<c>flow.return</c> 在那边合法、输出变量必须有人赋值），
-    /// 别拿动作那套去报一堆假错。
-    /// </summary>
-    private ActionValidationResult ValidateCurrent()
-    {
-        if (!_isSubAction) return ActionValidator.Validate(_program, null, ResourceRoot);
-
-        var def = _subDef!.Clone();
-        def.Name = _program.Name;
-        def.Icon = _program.Icon;
-
-        def.Variables.Clear();
-        foreach (var variable in _program.Variables) def.Variables.Add(variable.Clone());
-
-        def.Steps.Clear();
-        foreach (var step in _program.Steps) def.Steps.Add(step);
-
-        return ActionValidator.ValidateSubAction(def, null);
-    }
-
     private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
     {
         while (source != null)
