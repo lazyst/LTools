@@ -229,7 +229,7 @@
 
 | 项 | 做什么 | 为什么 |
 |---|---|---|
-| P2-1 | AI 工具面：截图 / UIA 树 / dry-run / JSON Schema / `health` 环境信息 | A4 / A5 / A7 | 🚧 分三步：`health` 环境信息已完成（6.13），dry-run、截图 / UIA 树待做 |
+| P2-1 | AI 工具面：截图 / UIA 树 / dry-run / JSON Schema / `health` 环境信息 | A4 / A5 / A7 | 🚧 分三步：`health` 环境信息（6.13）、dry-run（6.14）已完成，截图 / UIA 树待做 |
 | P2-2 | 运行历史与失败分析（最近 N 次的成功 / 失败、耗时、失败步骤分布） | 现在只有单个 `last-failure.log` |
 | P2-3 | 步骤文本化（可复制 / 粘贴的 DSL），方便与 AI 往返 | 截取片段、分享、贴进对话都靠它 |
 
@@ -534,6 +534,29 @@ agent 看不见用户的屏幕，「鼠标操作 / 屏幕区域 / 截图 / 图�
 `dpi` 与 `scale` 一致、虚拟桌面不小于任一屏、目录齐全且 `actions` 指向 `actions`、整份能序列化回执、
 `format.md` 指向 health 且用 `enabledWhen`）。真机待点：设置 → AI 接入页让 agent 调一次 `ltools_health`，
 回执里应能看到本机分辨率 / 缩放（例如 `1920x1080` @ `1.25`）与数据根路径。
+
+---
+
+### 6.14 实施记录（2026-11-13，P2-1 第二步：dry-run）
+
+真试运行要抢用户的键鼠（A5），成本高到 agent 宁可「不跑就交付」。现在
+`ltools_staging_run(draftId, dryRun: true)` 只解析参数 + 跑取值动作单元，**不注入键鼠、不弹窗口**。
+
+| 部分 | 说明 |
+|---|---|
+| 判定 | `UnitSpec.DryRun`（`bool?`）+ `RunsInDryRun`：不写就按 `Kind` 推（`pure` 照跑、`action` 跳过）。流程控制（`flow.set` / `if` / `repeat` / `forEach` / `while` / `break` / `continue` / `stop` / `return`）与 `sub.run` 显式 `true`——不跑它们，干跑里连一个变量都求不出来 |
+| 例外 | `ui.input` / `file.select` 是 `pure` 但会弹模态框，显式 `false`；`screen.capture` 照跑，但**交互框选退化成整屏截图**（`ctx.DryRun` 判断），否则干跑会糊用户一脸遮罩 |
+| 引擎 | `ActionRunOptions.DryRun` → `StepContext.DryRun`；`RunSteps` 里参数照常解析（轨迹带 `inputs`），跳过的记 `StepTraceStatus.skipped`（新状态），干跑也不等 `step.DelayMs` |
+| 运行层 | `AutomationRunner.TryRunProgram(..., dryRun)`：干跑不清空 / 不回收运行期截图（那是副作用），也不给结果提示（别让它看起来像真跑了一遍） |
+| 工具面 | `ltools_staging_run` 加 `dryRun`；`ltools_run_output` 多 `dryRun` / `skipped` 两个字段，每条轨迹的 `status` 可能是 `skipped` |
+| 诚实边界 | 跳过步骤的输出是空的，依赖它的步骤可能报错——`format.md` 与工具说明都写明了「那是预期」 |
+
+**验收**：构建 0 错 0 警；无头冒烟 **219 项全过**（本项 25 项）——12 条动作单元判定（流程 / 取值照跑，
+按键 / 鼠标 / 发送文本 / 弹窗 / 输入框 / 选择文件 / 延迟跳过）；一份含「设置变量 → 模拟按键（带 5 秒延迟）
+→ 如果（读设置出来的变量）→ 提示弹窗 → 文本处理」的动作干跑：整体成功、分支走进去、按键与弹窗 `skipped`、
+跳过那步仍带解析后的参数、5 秒延迟没有等；`AiRuns.Start(..., dryRun: true)` 那条链路跑完 `dryRun = true`、
+`skipped = 1`。真机待点：让 agent 对一份含「模拟按键」的草稿干跑一次——鼠标键盘不应被动过，
+`ltools_run_output` 里那一步应是 `skipped` 且带 `inputs`。
 
 ---
 

@@ -89,14 +89,18 @@ internal static class AutomationRunner
     /// 轨迹回调在后台线程上同步触发；调用方要自己投递到 UI 线程并攒批。
     /// 试运行是调试态，结束**一定**给提示（成功也弹，2.5 秒消失；失败常驻）——
     /// 否则「改一步、跑一下」时只能盯着状态行，看不到真实运行时的样子。
+    /// 干跑（<paramref name="dryRun"/>）例外：它不该看起来像「真跑了一遍」，所以不给提示，
+    /// 调用方自己读轨迹（MCP 的 <c>ltools_run_output</c>）。
     /// </remarks>
     public static bool TryRunProgram(string name, ActionProgram program, string? startPath,
-        Action<StepTrace>? trace, Action<ActionRunResult>? completed, string? resourceRoot = null)
+        Action<StepTrace>? trace, Action<ActionRunResult>? completed, string? resourceRoot = null,
+        bool dryRun = false)
     {
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return false;
 
         Task.Run(() => RunCore(program, name, 0, 0,
-            startPath, trace, notify: false, noticeOverride: RunNoticeMode.always, completed, resourceRoot));
+            startPath, trace, notify: false, noticeOverride: dryRun ? null : RunNoticeMode.always,
+            completed, resourceRoot, dryRun: dryRun));
         return true;
     }
 
@@ -107,15 +111,23 @@ internal static class AutomationRunner
     /// 额外资源根：草稿是 <c>staging/&lt;id&gt;/files</c>，正式动作是 <c>actions/&lt;id&gt;/files</c>；
     /// 图片相对路径先在这里找。
     /// </param>
+    /// <param name="dryRun">
+    /// 干跑：只解析参数 + 跑取值动作单元，不注入键鼠（见 <see cref="ActionRunOptions.DryRun"/>）。
+    /// 干跑**不动**运行期截图目录（清空 / 回收都是副作用），也不改任何运行期状态。
+    /// </param>
     private static void RunCore(ActionProgram program, string name, int cursorX, int cursorY,
         string? startPath, Action<StepTrace>? trace, bool notify, RunNoticeMode? noticeOverride,
         Action<ActionRunResult>? completed, string? resourceRoot = null,
-        IReadOnlyDictionary<string, Value>? initialVariables = null)
+        IReadOnlyDictionary<string, Value>? initialVariables = null, bool dryRun = false)
     {
         // 运行期截图（变量 .file）只服务一次运行：开始新一次就整体清空上一轮的缓存目录。
         // resources/images 里仍可能有「剪贴板图片」等程序生成图，按引用 + 时间界线回收。
-        ImageLibrary.ClearCaptures();
-        ImageLibrary.CollectGarbage(DateTime.Now);
+        // 干跑不算一次运行：删掉用户 / 上一次运行的截图是副作用，跳过。
+        if (!dryRun)
+        {
+            ImageLibrary.ClearCaptures();
+            ImageLibrary.CollectGarbage(DateTime.Now);
+        }
 
         _stopKeySwallowed = false;
         var cts = new CancellationTokenSource();
@@ -156,6 +168,7 @@ internal static class AutomationRunner
                 StepTrace = OnTrace,
                 ResourceRoot = resourceRoot,
                 InitialVariables = initialVariables,
+                DryRun = dryRun,
                 Log = message => AppLog.Debug("Flow", message),
                 StepStarted = step =>
                 {

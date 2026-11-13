@@ -61,6 +61,14 @@ public sealed class ActionRunOptions
     /// 正式运行为空，解析规则完全不变。
     /// </summary>
     public string? ResourceRoot { get; init; }
+
+    /// <summary>
+    /// 干跑：只解析参数 + 跑取值动作单元，**不注入键鼠、不弹窗口**。
+    /// MCP <c>ltools_staging_run(dryRun: true)</c> 用，让 agent 敢试；哪些动作单元照跑由
+    /// <see cref="UnitSpec.RunsInDryRun"/> 决定（流程控制 / 取值照跑，普通步骤跳过并记一条
+    /// <see cref="StepTraceStatus.skipped"/> 轨迹）。
+    /// </summary>
+    public bool DryRun { get; init; }
 }
 
 /// <summary>一次运行的结果。失败不抛异常，由调用方按 <see cref="Error"/> 处理。</summary>
@@ -222,10 +230,12 @@ public sealed class ActionEngine
 
             long started = Environment.TickCount64;
             StepArgs? args = null;
+            // 干跑：参数照常解析（轨迹里能看到展开后的值），但会动键鼠 / 弹窗口的步骤不执行。
+            bool dryRunSkip = ctx.DryRun && !unit.Spec.RunsInDryRun;
             try
             {
                 args = ResolveArgs(step, unit.Spec, ctx);
-                unit.Execute(ctx, args);
+                if (!dryRunSkip) unit.Execute(ctx, args);
             }
             catch (ActionAbortedException ex)
             {
@@ -272,9 +282,10 @@ public sealed class ActionEngine
                     $"{label}「{unit.Spec.Name}」失败：{ex.Message}", ex);
             }
 
-            Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.ok, started, null);
+            Trace(parent, step, unit.Spec, path, label, ctx, args,
+                dryRunSkip ? StepTraceStatus.skipped : StepTraceStatus.ok, started, null);
 
-            if (step.DelayMs > 0 && !parent.State.Wait(step.DelayMs))
+            if (!ctx.DryRun && step.DelayMs > 0 && !parent.State.Wait(step.DelayMs))
                 throw new ActionAbortedException("已停止", userCancelled: true);
         }
     }
@@ -752,6 +763,9 @@ public sealed class StepContext
 
     /// <summary>本次运行的资源根（草稿的 <c>files/</c>）；正式运行为空。</summary>
     public string? ResourceRoot => State.Options.ResourceRoot;
+
+    /// <summary>干跑（不注入键鼠、不弹窗口），见 <see cref="ActionRunOptions.DryRun"/>。</summary>
+    public bool DryRun => State.Options.DryRun;
 
     /// <summary>本次运行最近一次被「失败继续」吞掉的错误文本。</summary>
     public string LastError => State.LastError;

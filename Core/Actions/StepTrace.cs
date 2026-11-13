@@ -14,6 +14,9 @@ public enum StepTraceStatus
 
     /// <summary>执行途中被停止（停止热键 / <c>flow.stop</c>）。</summary>
     aborted,
+
+    /// <summary>干跑（dry-run）跳过：这一步会动键鼠 / 弹窗口，只解析了参数、没有执行。</summary>
+    skipped,
 }
 
 /// <summary>

@@ -15,6 +15,8 @@ public sealed class UserInputUnit : IStepUnit
         Icon = "input",
         Description = "弹出输入框向用户要一段文本；取消时 found = false",
         Kind = UnitKind.pure,
+        // 会弹模态框：干跑时跳过（问用户不是「解析参数」能算出来的）。
+        DryRun = false,
         Inputs = new[]
         {
             new InputSpec("prompt", "提示", ValueKind.text, Default: Value.FromText("请输入")),

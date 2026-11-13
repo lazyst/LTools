@@ -42,10 +42,16 @@ public sealed class CaptureScreenUnit : IStepUnit
 
     public void Execute(StepContext ctx, StepArgs args)
     {
+        ScreenshotMode mode = ParseMode(args.Text("mode"));
+
+        // 干跑（MCP dryRun）别弹框选遮罩：交互取图退化成整屏截图，
+        // 下游的「文字识别」「找图」照样能验坐标，用户不被打断。
+        if (ctx.DryRun && mode == ScreenshotMode.interactive) mode = ScreenshotMode.screen;
+
         var probe = new Probe
         {
             Kind = ProbeKind.screenshot,
-            ScreenshotMode = ParseMode(args.Text("mode")),
+            ScreenshotMode = mode,
             ScreenshotRect = args.Text("rect").Trim(),
         };
 

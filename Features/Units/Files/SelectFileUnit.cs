@@ -21,6 +21,8 @@ public sealed class SelectFileUnit : IStepUnit
         Icon = "folder",
         Description = "弹出文件 / 文件夹选择框；取消时 found = false",
         Kind = UnitKind.pure,
+        // 会弹系统对话框：干跑时跳过。
+        DryRun = false,
         Inputs = new[]
         {
             new InputSpec("kind", "选择", ValueKind.text, InputEditor.enumList,

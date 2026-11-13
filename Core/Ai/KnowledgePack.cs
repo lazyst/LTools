@@ -383,7 +383,10 @@ internal static class KnowledgePack
    哪条都行：`revision` 从文件内容重算，写之前拿最新 revision 再改。
 5. `ltools_staging_check(draftId)`：改到 `ok: true`（`issues` 里的 `error` 必须清零，`warning` 可以留）。
 6. `ltools_staging_save(draftId, expectedRevision, summary?)`：冻结为已保存版本。
-7. `ltools_staging_run(draftId)`（可选）：真正跑一遍（会动键鼠），再用 `ltools_run_output` 读轨迹。
+7. `ltools_staging_run(draftId, startPath?, dryRun?)`：先 `dryRun: true` 干跑——只解析参数 + 跑取值动作单元
+   （找图 / 识字 / 读文件 / 截图），**会动键鼠或弹窗口的步骤跳过**（轨迹里 `status = skipped`）；
+   确认参数与分支对了再去掉 `dryRun` 真跑一遍（真的动键鼠）。两种都用 `ltools_run_output` 读轨迹：
+   `inputs` 是**变量展开后**的参数，`status = skipped` 的步骤输出是空的，依赖它们的步骤可能报错，那是预期。
 8. 交给用户在 LTools 设置页点「采纳」（`ltools_staging_promote` 需要人工确认 / full 模式）。
 9. 要写**全局子动作**（可复用的函数）：`ltools_subactions_check` → `ltools_subactions_write`，见 §7。
 

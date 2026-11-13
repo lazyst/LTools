@@ -174,6 +174,7 @@ internal static class FlowUnits
         public UnitSpec Spec { get; } = new()
         {
             Key = "flow.set",
+            DryRun = true,
             Name = "设置变量",
             Category = "流程",
             Icon = "set",
@@ -209,6 +210,7 @@ internal static class FlowUnits
         public UnitSpec Spec { get; } = new()
         {
             Key = "flow.if",
+            DryRun = true,
             Name = "如果",
             Category = "流程",
             Icon = "if",
@@ -231,6 +233,7 @@ internal static class FlowUnits
         public UnitSpec Spec { get; } = new()
         {
             Key = "flow.repeat",
+            DryRun = true,
             Name = "重复",
             Category = "流程",
             Icon = "repeat",
@@ -271,6 +274,7 @@ internal static class FlowUnits
         public UnitSpec Spec { get; } = new()
         {
             Key = "flow.forEach",
+            DryRun = true,
             Name = "遍历列表",
             Category = "流程",
             Icon = "foreach",
@@ -312,6 +316,7 @@ internal static class FlowUnits
         public UnitSpec Spec { get; } = new()
         {
             Key = "flow.while",
+            DryRun = true,
             Name = "条件循环",
             Category = "流程",
             Icon = "while",
@@ -354,6 +359,7 @@ internal static class FlowUnits
         public UnitSpec Spec { get; } = new()
         {
             Key = "flow.break",
+            DryRun = true,
             Name = "跳出循环",
             Category = "流程",
             Icon = "break",
@@ -368,6 +374,7 @@ internal static class FlowUnits
         public UnitSpec Spec { get; } = new()
         {
             Key = "flow.continue",
+            DryRun = true,
             Name = "继续下一次",
             Category = "流程",
             Icon = "continue",
@@ -382,6 +389,7 @@ internal static class FlowUnits
         public UnitSpec Spec { get; } = new()
         {
             Key = "flow.stop",
+            DryRun = true,
             Name = "停止",
             Category = "流程",
             Icon = "stop",
@@ -397,6 +405,7 @@ internal static class FlowUnits
         public UnitSpec Spec { get; } = new()
         {
             Key = "flow.return",
+            DryRun = true,
             Name = "返回",
             Category = "流程",
             Icon = "return",
@@ -412,6 +421,7 @@ internal static class FlowUnits
         public UnitSpec Spec { get; } = new()
         {
             Key = "sub.run",
+            DryRun = true,
             Name = "调用子动作",
             Category = "流程",
             Icon = "sub",

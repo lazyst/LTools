@@ -166,16 +166,21 @@ public sealed class AiTools
         AiToolHandlers.Call("ltools_staging_delete", draftId, () => AiToolHandlers.StagingDelete(draftId));
 
     [McpServerTool(Name = "ltools_staging_run"), Description(
-        "后台试运行草稿（会真的动键鼠）。已有自动化在跑时返回 busy，不排队。返回 runId。")]
+        "后台试运行草稿（会真的动键鼠）。已有自动化在跑时返回 busy，不排队。返回 runId。" +
+        "dryRun=true 只解析参数 + 跑取值动作单元（找图 / 识字 / 读文件 / 截图），" +
+        "会动键鼠或弹窗口的步骤跳过（轨迹里 status = skipped）——先用它验证参数与流程，确认没问题再真跑。")]
     public static string StagingRun(
         [Description("草稿 id")] string draftId,
         [Description("可选：只从某个顶层步骤路径开始，如 /steps/2")] string? startPath = null,
-        [Description("可选：期望的当前 revision")] string? expectedRevision = null) =>
+        [Description("可选：期望的当前 revision")] string? expectedRevision = null,
+        [Description("可选：干跑（不注入键鼠、不弹窗口），默认 false")] bool dryRun = false) =>
         AiToolHandlers.Call("ltools_staging_run", draftId,
-            () => AiToolHandlers.StagingRun(draftId, startPath, expectedRevision));
+            () => AiToolHandlers.StagingRun(draftId, startPath, expectedRevision, dryRun));
 
     [McpServerTool(Name = "ltools_run_output"), Description(
-        "按 cursor 分页读试运行轨迹与结果。next 是下一次的 cursor。")]
+        "按 cursor 分页读试运行轨迹与结果。next 是下一次的 cursor。" +
+        "每条 trace 的 inputs 是**变量展开后的参数**（排查坐标 / 文本为什么不对就看它）；" +
+        "status = skipped 表示干跑跳过了这一步（会动键鼠或弹窗口）。")]
     public static string RunOutput(
         [Description("runId")] string runId,
         [Description("上次回执的 next，默认 0")] int cursor = 0,

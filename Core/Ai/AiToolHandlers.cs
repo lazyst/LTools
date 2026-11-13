@@ -672,7 +672,8 @@ internal static class AiToolHandlers
         return new Dictionary<string, object?> { ["deleted"] = true, ["draftId"] = draftId };
     }
 
-    public static Dictionary<string, object?> StagingRun(string draftId, string? startPath, string? expectedRevision)
+    public static Dictionary<string, object?> StagingRun(string draftId, string? startPath,
+        string? expectedRevision, bool dryRun = false)
     {
         var snapshot = DraftStore.Read(draftId);
         if (snapshot.Program == null)
@@ -697,7 +698,7 @@ internal static class AiToolHandlers
 
         // 草稿里的图写在 files/x.png：把草稿目录当资源根，试运行就不用写绝对路径。
         var run = AiRuns.Start(draftId, name, snapshot.Program.Clone(), startPath,
-            DraftStore.FilesDir(draftId));
+            DraftStore.FilesDir(draftId), notify: false, dryRun: dryRun);
         if (run == null)
             throw new AiToolException("busy", "已有自动化正在运行，等它结束再试（不排队，避免两套键鼠注入打架）");
 
@@ -707,6 +708,7 @@ internal static class AiToolHandlers
             ["draftId"] = draftId,
             ["state"] = run.State,
             ["revision"] = snapshot.Revision,
+            ["dryRun"] = run.DryRun,
         };
     }
 
@@ -722,7 +724,9 @@ internal static class AiToolHandlers
             ["name"] = run.Name,
             ["state"] = run.State,
             ["finished"] = run.Finished,
+            ["dryRun"] = run.DryRun,
             ["steps"] = run.Steps,
+            ["skipped"] = run.Skipped,
             ["elapsedMs"] = Math.Round(run.ElapsedMs),
             ["error"] = run.Error,
             ["traces"] = items.Select(item => new Dictionary<string, object?>

@@ -262,7 +262,7 @@ staging/
 | `ltools_staging_save(draftId, expectedRevision, summary?)` | 冻结为已保存版本（CAS） | ✓ | |
 | `ltools_staging_reset(draftId)` | 回到最近保存版本 | ✓ | |
 | `ltools_staging_delete(draftId)` | 删草稿（一次一个） | ✓ | 人工确认 |
-| `ltools_staging_run(draftId, expectedRevision?)` | 后台运行工作副本，返回 `runId` | | |
+| `ltools_staging_run(draftId, startPath?, dryRun?)` | 后台运行工作副本，返回 `runId`；`dryRun: true` 只解析参数 + 跑取值动作单元，不动键鼠 / 不弹窗口 | | |
 | `ltools_run_output(runId, cursor?)` / `ltools_run_stop(runId)` | 读轨迹 / 停止 | | |
 | `ltools_staging_promote(draftId, mode:"new"\|"replace", expectedRevision)` | 草稿 → 正式动作 | ✓ | 人工确认（`full` 直通） |
 
@@ -331,6 +331,11 @@ staging/
   正式运行时传动作自己的 `actions/<id>/files`（`ActionStore.ResourceRootFor`），解析规则相同。
   面板试运行与编辑器的「▶ 测试 / 校验」走同一套根。
 - 已有运行在跑时返回 `busy`（不要排队，用户可能正在用键鼠）。
+- **干跑**（`dryRun: true`）走同一条链路，只是 `ActionRunOptions.DryRun = true`：参数照常解析（轨迹里能看到
+  展开后的值）、流程控制与取值动作单元照跑、会动键鼠或弹窗口的步骤不执行并记 `status = skipped`。
+  哪些动作单元照跑由 `UnitSpec.RunsInDryRun` 按 `Kind` 推（`pure` 照跑、`action` 跳过），流程控制与
+  `sub.run` 显式 `true`，`ui.input` / `file.select` 显式 `false`；`screen.capture` 的交互框选在干跑时
+  退化成整屏截图。干跑不动运行期截图目录（不清空、不回收），也不给结果提示。
 - 停止走 `AutomationRunner.Stop()`；停止热键不变。
 - 轨迹回执带 `StepTrace` 的 `Path` / `Label` / `Status` / `Error` / `Inputs` / `Outputs` / 耗时，支持 cursor 分页。
   `inputs` 是**变量展开后**的参数（被选项收起的参数不在里面），`outputs` 是这一步写回的变量——排查「为什么点错地方」看 `inputs`。

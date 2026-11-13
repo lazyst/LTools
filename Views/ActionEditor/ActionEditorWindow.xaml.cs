@@ -391,6 +391,8 @@ public sealed class TraceRow : INotifyPropertyChanged
             StepTraceStatus.ok => ("✓", false, Done),
             StepTraceStatus.failed => ("✕", true, Fail),
             StepTraceStatus.continued => ("!", true, Warn),
+            // 干跑跳过：不是成功也不是失败，用淡色的「–」。
+            StepTraceStatus.skipped => ("–", false, Muted),
             _ => ("■", false, Muted),
         };
 
@@ -411,6 +413,7 @@ public sealed class TraceRow : INotifyPropertyChanged
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"{trace.Label}　{trace.UnitName}");
+        if (trace.Status == StepTraceStatus.skipped) sb.AppendLine("干跑：这一步会动键鼠 / 弹窗口，没有执行");
         sb.AppendLine($"耗时 {trace.ElapsedMs} ms" + (count > 1 ? $"（同一行执行了 {count} 次）" : ""));
         AppendSection(sb, "参数（解析后）", trace.Inputs);
         AppendSection(sb, "输出", trace.Outputs);

@@ -180,6 +180,17 @@ public sealed class UnitSpec
     /// </summary>
     public bool DynamicInputs { get; init; }
 
+    /// <summary>
+    /// 干跑（<see cref="ActionRunOptions.DryRun"/>）时要不要真的执行这一种步骤。
+    /// 不写 = 按 <see cref="Kind"/> 推：取值动作单元（<see cref="UnitKind.pure"/>）照跑，普通步骤跳过。
+    /// 显式 <c>true</c> 给「action 但不动键鼠」的（流程控制、调用子动作），
+    /// 显式 <c>false</c> 给「pure 但会弹窗口」的（<c>ui.input</c> / <c>file.select</c>）。
+    /// </summary>
+    public bool? DryRun { get; init; }
+
+    /// <summary>干跑时是否真的执行（没声明 <see cref="DryRun"/> 时按 <see cref="Kind"/> 推）。</summary>
+    public bool RunsInDryRun => DryRun ?? Kind == UnitKind.pure;
+
     public IReadOnlyList<InputSpec> Inputs { get; init; } = Array.Empty<InputSpec>();
 
     public IReadOnlyList<OutputSpec> Outputs { get; init; } = Array.Empty<OutputSpec>();

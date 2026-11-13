@@ -12,6 +12,12 @@ internal sealed class AiRun
 
     public required string Name { get; init; }
 
+    /// <summary>干跑：只解析参数 + 跑取值动作单元，没有注入键鼠。</summary>
+    public bool DryRun { get; init; }
+
+    /// <summary>被干跑跳过的步骤数（轨迹里 <c>status = skipped</c>）。</summary>
+    public int Skipped { get; set; }
+
     public DateTime StartedAt { get; init; } = DateTime.Now;
 
     /// <summary>running / ok / failed / stopped。</summary>
@@ -52,10 +58,14 @@ internal static class AiRuns
     /// 跑完给个结果提示（面板里点「试运行」时用）。MCP 的 agent 自己会读 <c>ltools_run_output</c>，
     /// 不传这个参数，免得 agent 每次试运行都给用户弹提示。
     /// </param>
+    /// <param name="dryRun">
+    /// 干跑：只解析参数 + 跑取值动作单元，会动键鼠 / 弹窗口的步骤跳过（轨迹里 <c>status = skipped</c>）。
+    /// 让 agent 敢试——真试运行要抢用户的键鼠，成本太高。
+    /// </param>
     public static AiRun? Start(string draftId, string name, ActionProgram program, string? startPath,
-                               string? resourceRoot = null, bool notify = false)
+                               string? resourceRoot = null, bool notify = false, bool dryRun = false)
     {
-        var run = new AiRun { Id = NewId(), DraftId = draftId, Name = name };
+        var run = new AiRun { Id = NewId(), DraftId = draftId, Name = name, DryRun = dryRun };
 
         bool started = AutomationRunner.TryRunProgram(
             name,
@@ -67,6 +77,7 @@ internal static class AiRuns
                 {
                     if (run.Traces.Count >= MaxTraces) return;
                     run.Traces.Add(trace);
+                    if (trace.Status == StepTraceStatus.skipped) run.Skipped++;
                 }
             },
             result =>
@@ -82,7 +93,8 @@ internal static class AiRuns
 
                 if (notify) NotifyResult(run);
             },
-            resourceRoot);
+            resourceRoot,
+            dryRun);
 
         if (!started) return null;
 
@@ -93,7 +105,7 @@ internal static class AiRuns
                 Runs.Remove(old);
         }
 
-        AppLog.Info("Ai", $"AI 试运行 {run.Id}：{name}（草稿 {draftId}）");
+        AppLog.Info("Ai", $"AI 试运行 {run.Id}：{name}（草稿 {draftId}）{(dryRun ? " · 干跑" : "")}");
         return run;
     }
 
