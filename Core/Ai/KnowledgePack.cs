@@ -372,6 +372,7 @@ internal static class KnowledgePack
 0. `ltools_health`：写**坐标类**动作（鼠标操作 / 屏幕区域 / 截图 / 图片点击）之前先看 `environment`——
    每块屏幕的物理矩形与工作区、DPI 缩放、虚拟桌面、光标位置、常用目录、默认 OCR 引擎。
    坐标一律**物理像素**（与截图 / 找图 / 鼠标注入同一套），DIP 用 `scale` 换算；多屏时 `left` / `top` 可能是负数。
+   还看不清屏幕就 `ltools_screenshot`（见 §5）：整屏 / 前台窗口 / 固定区域，图片会直接回到你的上下文里。
 1. `ltools_units_list` / `ltools_units_get`：先确认能力存在，别臆造动作单元键。
    `units_get` 里 `optionParams` / `enabledWhen` 说明「哪个选项要哪些参数」（`units.md` 里有同样的选项表），
    **按当前选项只填需要的参数**，别把别的操作的参数堆进去（运行会忽略，`check` 会给 warning）。
@@ -420,6 +421,13 @@ internal static class KnowledgePack
 `files/xxx.png` 与裸 `xxx.png` 都先在那里找。
 采纳时整个 `files/` 会复制进 `actions/<动作id>/files/`，引用原样保留；正式运行时以该目录为资源根。
 其它类型文件 v1 直接拒绝。
+
+要**产出**模板图就用 `ltools_screenshot`，别自己画：传 `draftId` 时它写进草稿 `files/`（返回 `files/shot-….png`），
+`source` = `screen`（整块虚拟桌面）/ `foreground`（前台窗口）/ `region`（固定区域，要 `x,y,w,h`）。
+图片本身会连同「截取矩形 + 缩略比」一起回到你的上下文里：照着图里要点的东西框一块 `region` 再截一次，
+就是「找图 / 图片点击」能用的模板图。坐标换算：屏幕物理像素 = 图片像素 ÷ `thumbnail.scale` + `bounds.left` / `bounds.top`。
+不传 `draftId` 时写进 `resources/images/`，返回值是文件名，正式动作的 `image` 也能直接用。
+写文件需要打开「允许写入」（与 `ltools_staging_write` 同一道闸）。
 
 ## 6. 纪律
 

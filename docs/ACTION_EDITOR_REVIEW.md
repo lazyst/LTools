@@ -229,7 +229,7 @@
 
 | 项 | 做什么 | 为什么 |
 |---|---|---|
-| P2-1 | AI 工具面：截图 / UIA 树 / dry-run / JSON Schema / `health` 环境信息 | A4 / A5 / A7 | 🚧 分三步：`health` 环境信息（6.13）、dry-run（6.14）已完成，截图 / UIA 树待做 |
+| P2-1 | AI 工具面：截图 / UIA 树 / dry-run / JSON Schema / `health` 环境信息 | A4 / A5 / A7 | 🚧 分三步：`health` 环境信息（6.13）、dry-run（6.14）、截图（6.15）已完成，UIA 树待做 |
 | P2-2 | 运行历史与失败分析（最近 N 次的成功 / 失败、耗时、失败步骤分布） | 现在只有单个 `last-failure.log` |
 | P2-3 | 步骤文本化（可复制 / 粘贴的 DSL），方便与 AI 往返 | 截取片段、分享、贴进对话都靠它 |
 
@@ -557,6 +557,32 @@ agent 看不见用户的屏幕，「鼠标操作 / 屏幕区域 / 截图 / 图�
 跳过那步仍带解析后的参数、5 秒延迟没有等；`AiRuns.Start(..., dryRun: true)` 那条链路跑完 `dryRun = true`、
 `skipped = 1`。真机待点：让 agent 对一份含「模拟按键」的草稿干跑一次——鼠标键盘不应被动过，
 `ltools_run_output` 里那一步应是 `skipped` 且带 `inputs`。
+
+---
+
+### 6.15 实施记录（2026-11-13，P2-1 第三步之一：截图工具）
+
+agent 看不见用户的屏幕（A4）：「找图」「图片点击」需要模板图、「鼠标操作」需要坐标，它以前只能猜。
+新增 MCP 工具 `ltools_screenshot(draftId?, source?, region?, name?, maxWidth?)`——
+**图片本身随回执返回**（`CallToolResult` 的 `ImageContentBlock`），同时把 png 落盘：
+
+| 部分 | 说明 |
+|---|---|
+| 取图 | `Core/Ai/AiScreen.cs`：`source` = `screen`（整块虚拟桌面）/ `foreground`（前台窗口，取不到退回整屏）/ `region`（固定区域 `x,y,w,h`）。坐标系与截图 / 找图 / 鼠标注入同一套（物理像素，多屏时 `left` / `top` 可为负） |
+| 落盘 | 传 `draftId` → `DraftStore.WriteFile` 进草稿 `files/`，返回 `files/x.png`（找图 / 图片点击的 `image` 直接写这个字面量）；不传 → `resources/images/`（`AiScreen.SaveToImages`，重名加序号），返回文件名，正式动作也能用 |
+| 回执 | `ok` / `source` / `file` / `path` / `bytes` / `width` / `height` / `bounds`（截取矩形）/ `thumbnail`（`width` / `height` / `scale`）/ `coords`（换算式）/ `draftId` / `revision`。agent 靠「图片像素 ÷ scale + bounds.left/top」把看到的点换算成屏幕坐标 |
+| 附带图片 | 按 `maxWidth`（默认 1600，0 = 原图）等比缩小，**落盘的仍是原分辨率**；缩小用高质量插值，避免小字糊成一团 |
+| 门槛 | `RequireWrites()`（与 `staging_write` 同口径），**不弹确认框**：截的只是草稿文件，采纳才进正式动作 |
+| 复用 | 异常翻译抽成 `AiToolHandlers.Describe`，`Call` 与 `Screenshot` 共用一份（顺手让审计里的结果码与回执里的 `error` 码一致） |
+
+**验收**：构建 0 错 0 警；无头冒烟 **259 项全过**（本项 40 项）——整屏尺寸 = 虚拟桌面、固定区域左上角与尺寸精确、
+`region` 解析不了 / 尺寸为 0 → `invalid_region`、`source` 写错 → `invalid_source`；缩略图等比（400×200 → 200×100、
+`maxWidth = 0` 给原图）、png 魔数、换算比 0.5；文件名收拾（空 → `shot-时间戳.png`、非法字符换 `-`、超长截断、`.png` 不重复）；
+工具声明能被 MCP SDK `McpServerTool.Create` 建出来且五个参数都在、全部可选；写入没开 → `writes_disabled`；
+开启后落盘 + 回执两块（文本 + `image/png` 图片）+ 尺寸与 `bounds` 与缩略比对、文件真的是 png；
+给 `draftId` 时返回 `files/find-x.png`、文件落盘、带 `revision`；草稿不存在 → `not_found` 且不写文件。
+真机待点：设置 → AI 里让 agent 调一次 `ltools_screenshot`（给它一个草稿 id）——对话里应看到当前屏幕，
+草稿 `files/` 下多出那张 png，且把它的 `files/x.png` 填进「找图」的 `image` 能干跑通过。
 
 ---
 

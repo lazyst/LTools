@@ -7,6 +7,7 @@ using LTools.Core.Actions;
 using LTools.Core.Storage;
 using LTools.Features;
 using LTools.Native;
+using ModelContextProtocol.Protocol;
 
 namespace LTools.Core.Ai;
 
@@ -36,32 +37,28 @@ internal static class AiToolHandlers
             AiAudit.Write(tool, draftId, "ok", Environment.TickCount64 - started);
             return Serialize(payload);
         }
-        catch (AiToolException ex)
-        {
-            AiAudit.Write(tool, draftId, ex.Code, Environment.TickCount64 - started);
-            return Error(ex.Code, ex.Message);
-        }
-        catch (DraftConflictException ex)
-        {
-            AiAudit.Write(tool, draftId, "conflict", Environment.TickCount64 - started);
-            return Error("version_conflict", ex.Message);
-        }
-        catch (ActionException ex)
-        {
-            AiAudit.Write(tool, draftId, "invalid", Environment.TickCount64 - started);
-            return Error("invalid_action", ex.Message);
-        }
-        catch (FileNotFoundException ex)
-        {
-            AiAudit.Write(tool, draftId, "missing", Environment.TickCount64 - started);
-            return Error("not_found", ex.Message);
-        }
         catch (Exception ex)
         {
-            AppLog.Error("Ai", $"工具 {tool} 失败", ex);
-            AiAudit.Write(tool, draftId, "error", Environment.TickCount64 - started);
-            return Error("internal_error", ex.Message);
+            var (code, message) = Describe(ex, tool);
+            AiAudit.Write(tool, draftId, code, Environment.TickCount64 - started);
+            return Error(code, message);
         }
+    }
+
+    /// <summary>异常 → 回执里的 <c>error</c> 码 + 人话。所有工具（含带图片的回执）共用这一份。</summary>
+    private static (string Code, string Message) Describe(Exception ex, string tool) => ex switch
+    {
+        AiToolException e => (e.Code, e.Message),
+        DraftConflictException e => ("version_conflict", e.Message),
+        ActionException e => ("invalid_action", e.Message),
+        FileNotFoundException e => ("not_found", e.Message),
+        _ => Logged(ex, tool),
+    };
+
+    private static (string Code, string Message) Logged(Exception ex, string tool)
+    {
+        AppLog.Error("Ai", $"工具 {tool} 失败", ex);
+        return ("internal_error", ex.Message);
     }
 
     // ============ 读 ============
@@ -780,6 +777,109 @@ internal static class AiToolHandlers
             ["importedImages"] = result.ImportedImages,
             ["draftId"] = draftId,
         };
+    }
+
+    // ============ 截图 ============
+
+    /// <summary>
+    /// 截一张屏幕图：落盘到草稿 <c>files/</c>（或 <c>resources/images/</c>），并把图片**本身**附在回执里。
+    /// </summary>
+    /// <remarks>
+    /// 返回 <see cref="CallToolResult"/> 而不是 JSON 文本，是为了带一个 <c>image</c> 内容块：
+    /// agent 看不见用户的屏幕（A4），不给它图就只能瞎猜坐标，也做不出「找图」的模板图。
+    /// 写入草稿与 <c>staging_write</c> 同口径（只要 <c>allowWrites</c>，不弹确认框）——
+    /// 截的图只是草稿文件，要用户采纳才会进正式动作。
+    /// </remarks>
+    public static CallToolResult Screenshot(string? draftId, string? source, string? region,
+        string? name, int maxWidth)
+    {
+        const string Tool = "ltools_screenshot";
+        long started = Environment.TickCount64;
+        try
+        {
+            RequireWrites();
+            var shot = ScreenshotPayload(draftId, source, region, name, maxWidth);
+            AiAudit.Write(Tool, draftId, "ok", Environment.TickCount64 - started);
+            return new CallToolResult
+            {
+                Content = new List<ContentBlock>
+                {
+                    new TextContentBlock { Text = Serialize(shot.Payload) },
+                    ImageContentBlock.FromBytes(shot.Thumbnail, "image/png"),
+                },
+            };
+        }
+        catch (Exception ex)
+        {
+            var (code, message) = Describe(ex, Tool);
+            AiAudit.Write(Tool, draftId, code, Environment.TickCount64 - started);
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = new List<ContentBlock> { new TextContentBlock { Text = Error(code, message) } },
+            };
+        }
+    }
+
+    private sealed record Shot(Dictionary<string, object?> Payload, byte[] Thumbnail);
+
+    private static Shot ScreenshotPayload(string? draftId, string? source, string? region,
+        string? name, int maxWidth)
+    {
+        string id = (draftId ?? "").Trim();
+        if (id.Length > 0 && DraftStore.Find(id) == null)
+            throw new AiToolException("not_found", $"草稿不存在：{id}");
+
+        using var frame = AiScreen.Capture(source, region);
+
+        byte[] full = AiScreen.EncodePng(frame.Bitmap);
+        var (thumbnail, thumbWidth, thumbHeight) = AiScreen.Thumbnail(frame.Bitmap, maxWidth);
+
+        string fileName = AiScreen.SafeFileName(name);
+        string stored;
+        string fullPath;
+        string? revision = null;
+
+        if (id.Length > 0)
+        {
+            // 写草稿 files/：路径写成 files/x.png，找图 / 图片点击直接用这个字面量，不用绝对路径。
+            fullPath = DraftStore.WriteFile(id, fileName, full);
+            stored = "files/" + fileName;
+            revision = DraftStore.ComputeRevision(id);
+        }
+        else
+        {
+            fullPath = AiScreen.SaveToImages(full, fileName);
+            stored = ImageLibrary.ToStoredPath(fullPath);
+        }
+
+        return new Shot(new Dictionary<string, object?>
+        {
+            ["ok"] = true,
+            ["source"] = string.IsNullOrWhiteSpace(source) ? "screen" : source!.Trim().ToLowerInvariant(),
+            ["file"] = stored,
+            ["path"] = fullPath,
+            ["bytes"] = full.Length,
+            ["width"] = frame.Width,
+            ["height"] = frame.Height,
+            ["bounds"] = new Dictionary<string, object?>
+            {
+                ["left"] = frame.Left,
+                ["top"] = frame.Top,
+                ["width"] = frame.Width,
+                ["height"] = frame.Height,
+            },
+            ["thumbnail"] = new Dictionary<string, object?>
+            {
+                ["width"] = thumbWidth,
+                ["height"] = thumbHeight,
+                ["scale"] = frame.Width == thumbWidth ? 1d
+                    : Math.Round(thumbWidth / (double)frame.Width, 4),
+            },
+            ["coords"] = "屏幕物理像素 = 图片像素 ÷ thumbnail.scale + bounds.left/top",
+            ["draftId"] = id.Length > 0 ? id : null,
+            ["revision"] = revision,
+        }, thumbnail);
     }
 
     // ============ 内部 ============

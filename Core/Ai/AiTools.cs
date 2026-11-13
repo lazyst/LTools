@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace LTools.Core.Ai;
@@ -37,6 +38,20 @@ public sealed class AiTools
     public static string UnitsGet(
         [Description("动作单元键，如 ui.toast")] string key) =>
         AiToolHandlers.Call("ltools_units_get", null, () => AiToolHandlers.UnitsGet(key));
+
+    [McpServerTool(Name = "ltools_screenshot"), Description(
+        "截一张屏幕图，**图片会直接附在回执里**（你能看见），同时存成 png 并返回可写进「找图」「图片点击」" +
+        "image 参数的路径。source = screen（整块虚拟桌面，默认）/ foreground（前台窗口）/ region（固定区域，" +
+        "要 region = x,y,w,h，物理像素）。传 draftId 就写进草稿 files/（返回 files/xxx.png）；不传写进 " +
+        "resources/images/（返回文件名）。坐标换算：屏幕物理像素 = 图片像素 ÷ thumbnail.scale + bounds.left/top。" +
+        "写文件需要打开「允许写入」。")]
+    public static CallToolResult Screenshot(
+        [Description("可选：目标草稿 id；给了就写进它的 files/")] string? draftId = null,
+        [Description("screen / foreground / region，默认 screen")] string? source = null,
+        [Description("source = region 时的 x,y,w,h（虚拟桌面物理像素）")] string? region = null,
+        [Description("可选：文件名，默认 shot-时间戳.png")] string? name = null,
+        [Description("附带回执的图片最大宽度，默认 1600；0 = 不缩（原图）")] int maxWidth = 1600) =>
+        AiToolHandlers.Screenshot(draftId, source, region, name, maxWidth);
 
     [McpServerTool(Name = "ltools_actions_list"), Description(
         "列出用户的正式动作（只读）。改动作必须先 staging_create(copyFromActionId:...) 复制到暂存区。")]
