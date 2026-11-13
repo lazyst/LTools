@@ -1,0 +1,108 @@
+<UserControl x:Class="LTools.Views.StepFormView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- 步骤参数表单：只放表单本体与按钮栏，标题栏 / 外框交给宿主
+         （抽屉里是编辑器右栏，无窗口上下文时是 StepEditorDialog）。
+         改布局时注意：所有 x:Name 都被 code-behind 直接引用，别改名。 -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="14,10,14,12">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="HeaderText" FontSize="16" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                    <Border x:Name="CategoryBadge" Margin="8,0,0,0" VerticalAlignment="Center"
+                            Background="{StaticResource SurfaceAltBrush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                            CornerRadius="{StaticResource CornerSm}" Padding="5,0">
+                        <TextBlock x:Name="CategoryText" FontSize="11.5"
+                                   Foreground="{StaticResource SecondaryTextBrush}"/>
+                    </Border>
+                </StackPanel>
+                <TextBlock x:Name="DescText" Style="{StaticResource HintLabel}"
+                           TextWrapping="Wrap" Margin="0,3,0,0"/>
+
+                <StackPanel x:Name="Form" Margin="0,12,0,0"/>
+
+                <Border x:Name="OutputSection" Margin="0,16,0,0"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                        Padding="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock x:Name="OutputHeader" Style="{StaticResource SectionLabel}"
+                                   Text="输出变量" Margin="0,0,0,3"/>
+                        <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                                   Text="勾选后把这项结果存进变量，后面的步骤用 ${变量} 取用；类型由动作单元声明（徽标）。名字默认带动作单元前缀，不会和别的步骤撞。"/>
+                        <StackPanel x:Name="Outputs" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="OptionSection" Margin="0,16,0,0"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                        Padding="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="步骤选项" Margin="0,0,0,6"/>
+                        <WrapPanel>
+                            <TextBlock Text="失败时" VerticalAlignment="Center"
+                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                            <ComboBox x:Name="FailBox" MinWidth="110" MinHeight="28" Margin="8,0,18,0">
+                                <ComboBoxItem Content="停止整个动作"/>
+                                <ComboBoxItem Content="记录后继续"/>
+                            </ComboBox>
+
+                            <TextBlock Text="之后等待" VerticalAlignment="Center"
+                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                            <TextBox x:Name="DelayBox" Width="76" MinHeight="28" Margin="8,0,4,0"/>
+                            <TextBlock Text="毫秒" VerticalAlignment="Center"
+                                       Foreground="{StaticResource HintTextBrush}"/>
+                        </WrapPanel>
+
+                        <CheckBox x:Name="DisabledBox" Content="跳过这一步（保留配置）" Margin="0,10,0,0"/>
+
+                        <TextBlock Text="备注" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,10,0,4"/>
+                        <TextBox x:Name="NoteBox" MinHeight="28"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="1" Background="{StaticResource SurfaceAltBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="10,8">
+            <StackPanel>
+                <!-- 必填提示单独占一行：抽屉只有 400 多宽，和按钮挤一行会把按钮顶出去 -->
+                <TextBlock x:Name="ProblemText" Foreground="{StaticResource DangerBrush}"
+                           TextWrapping="Wrap" Margin="0,0,0,6" Visibility="Collapsed"/>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel x:Name="NavPanel" Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="Collapsed">
+                        <Button x:Name="PrevButton" Style="{StaticResource BtnGhost}" Content="‹ 上一步"
+                                MinHeight="30" Padding="8,2" Margin="0,0,6,0" Visibility="Collapsed"
+                                ToolTip="保存这一步并编辑上一步（Alt+←）" Click="Prev_Click"/>
+                        <Button x:Name="NextButton" Style="{StaticResource BtnGhost}" Content="下一步 ›"
+                                MinHeight="30" Padding="8,2" Margin="0,0,6,0" Visibility="Collapsed"
+                                ToolTip="保存这一步并继续编辑下一步（Alt+→）" Click="Next_Click"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="ContinueButton" Style="{StaticResource BtnGhost}" Content="保存并继续添加"
+                                MinHeight="30" Padding="8,2" Margin="0,0,6,0" Visibility="Collapsed"
+                                ToolTip="保存这一步，再开一个同样的空表单接着加" Click="Continue_Click"/>
+                        <Button Style="{StaticResource BtnGhost}" Content="取消"
+                                Width="72" MinHeight="30" Margin="0,0,6,0" Click="Cancel_Click"/>
+                        <Button Style="{StaticResource BtnPrimary}" Content="确定"
+                                Width="72" MinHeight="30" Click="Ok_Click"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

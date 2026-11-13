@@ -36,7 +36,11 @@ public partial class ActionEditorWindow
     /// <summary>载入完成后记基线：此刻的样子就是「没改过」。</summary>
     private void CaptureBaseline() => _baseline = Snapshot();
 
-    private bool IsDirty() => !string.Equals(_baseline, Snapshot(), StringComparison.Ordinal);
+    /// <summary>
+    /// 有没有改动。右栏抽屉里还开着没保存的表单也算「有」——
+    /// 不然点 ✕ 会静默丢掉正在编辑的那一步（表单里的内容还没进 <see cref="_program"/>）。
+    /// </summary>
+    private bool IsDirty() => DrawerOpen || !string.Equals(_baseline, Snapshot(), StringComparison.Ordinal);
 
     /// <summary>
     /// 当前内容的一份可比较快照。取的就是保存会写进去的东西：

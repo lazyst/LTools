@@ -35,6 +35,9 @@ public partial class ActionEditorWindow
     /// </summary>
     private bool Commit()
     {
+        // 抽屉里还开着一步表单：先按它自己的「确定」收尾（校验不过就留在编辑器里）。
+        if (!TryCommitDrawer()) return false;
+
         string name = (NameBox.Text ?? "").Trim();
         if (name.Length == 0)
         {
@@ -483,7 +486,11 @@ public partial class ActionEditorWindow
             danger ? "DangerBrush" : hint ? "HintTextBrush" : "TextBrush");
     }
 
-    private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        DiscardDrawer();
+        DialogResult = false;
+    }
 
     private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
     {

@@ -59,7 +59,7 @@ v2.6.6，本轮从干净基线重新做。
 **只列这个参数适用的项**，由 `InputSpec.Pickers` / `PickerKind` 声明，默认按 `InputEditor` 推。
 
 `region` 参数不再有胶囊面板，框选入口只在「▾ 来源 → 屏幕区域…」；框完仍由
-`StepEditorDialog.ApplyPickedRegion` 先写 `rect` 文本、再把配套枚举切到 `rect`。
+`StepFormView.ApplyPickedRegion` 先写 `rect` 文本、再把配套枚举切到 `rect`。
 
 ## 4. 可见性：选项可见参数
 

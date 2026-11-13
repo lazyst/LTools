@@ -4,7 +4,7 @@
         xmlns:views="clr-namespace:LTools.Views"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:controls="clr-namespace:LTools.Views.Controls"
-        Title="动作" Width="1140" Height="720" MinWidth="900" MinHeight="560"
+        Title="动作" Width="1140" Height="720" MinWidth="1046" MinHeight="560"
         WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
@@ -121,6 +121,40 @@
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
+
+        <!-- 右栏的两页 tab（变量 / 参数）：选中项是「白底卡片」，未选中的只是可点的文字。
+             右栏底色是 SurfaceAlt，白底能一眼分出当前页；不加下划线动画，切页要快。 -->
+        <Style x:Key="RightTab" TargetType="RadioButton">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSecondary}"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="bd" Background="Transparent" BorderThickness="1"
+                                BorderBrush="Transparent" CornerRadius="{StaticResource CornerSm}"
+                                Padding="10,2">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background"
+                                        Value="{StaticResource NavHoverBgBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bd" Property="Background"
+                                        Value="{StaticResource SurfaceBrush}"/>
+                                <Setter TargetName="bd" Property="BorderBrush"
+                                        Value="{StaticResource BorderBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -465,10 +499,28 @@
                 </Grid>
             </Border>
 
-            <!-- ============ 右：变量 + 动作属性 ============ -->
+            <!-- ============ 右：变量 + 动作属性 / 步骤参数（抽屉） ============ -->
             <Border Grid.Column="2" Background="{StaticResource SurfaceAltBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,8,12,8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 两页共用一条 tab：编辑步骤时切到「参数」，关抽屉自己切回「变量」。
+                         用户手动点也算数（抽屉里的表单不会被丢掉，只是暂时看不见）。 -->
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="12,8,12,4">
+                        <RadioButton x:Name="VariablesTab" Style="{StaticResource RightTab}"
+                                     GroupName="righttab" Content="变量" IsChecked="True"
+                                     Checked="RightTab_Checked"/>
+                        <RadioButton x:Name="ParamsTab" Style="{StaticResource RightTab}"
+                                     GroupName="righttab" Content="参数"
+                                     Checked="RightTab_Checked"/>
+                    </StackPanel>
+
+                    <ScrollViewer x:Name="VariablesPage" Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto" Padding="12,4,12,8">
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionLabel}" Text="变量" Margin="0,0,0,2"/>
                         <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
@@ -512,7 +564,20 @@
                             <controls:IconPicker x:Name="IconPicker" Margin="0,0,0,8"/>
                         </StackPanel>
                     </StackPanel>
-                </ScrollViewer>
+                    </ScrollViewer>
+
+                    <!-- 步骤参数抽屉：面包屑（可点回上一级）+ 表单本体（StepFormView）。
+                         表单与 StepEditorDialog 是同一份控件，这里只是换个宿主。 -->
+                    <Grid x:Name="ParamsPage" Grid.Row="1" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel x:Name="DrawerBreadcrumb" Orientation="Horizontal"
+                                    Margin="12,0,12,4" Visibility="Collapsed"/>
+                        <ContentControl x:Name="DrawerHost" Grid.Row="1"/>
+                    </Grid>
+                </Grid>
             </Border>
         </Grid>
 

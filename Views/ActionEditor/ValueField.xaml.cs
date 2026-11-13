@@ -1218,18 +1218,34 @@ public partial class ValueField : UserControl
     {
         if (_inline == null) return;
 
+        // 宿主（抽屉）接管：推入一层新表单，面包屑多一段；回来时由宿主调 ApplyInlineEdit。
+        if (InlineEditor != null)
+        {
+            InlineEditor(this, _inline, _spec?.Label ?? "参数");
+            return;
+        }
+
         var dlg = new StepEditorDialog(_inline, inline: true,
             program: Program, variableNames: VariableNameSource, resourceRoot: ResourceRoot,
             variableInfos: VariableInfoSource)
         {
             Owner = Window.GetWindow(this),
         };
-        if (dlg.ShowDialog() == true && dlg.Result != null)
-        {
-            _inline = dlg.Result;
-            UpdatePanels();
-            Changed?.Invoke();
-        }
+        if (dlg.ShowDialog() == true && dlg.Result != null) ApplyInlineEdit(dlg.Result);
+    }
+
+    /// <summary>
+    /// 宿主接管内联编辑的钩子：参数是「发起请求的字段 / 现有内联步骤 / 参数标签」。
+    /// 抽屉里由编辑器推入一层，回来后调 <see cref="ApplyInlineEdit"/>。
+    /// </summary>
+    internal Action<ValueField, Step, string>? InlineEditor { get; set; }
+
+    /// <summary>把编辑好的取值步骤写回来（宿主在下一层保存后调用）。</summary>
+    internal void ApplyInlineEdit(Step step)
+    {
+        _inline = step;
+        UpdatePanels();
+        Changed?.Invoke();
     }
 
     // ============ 杂项 ============
