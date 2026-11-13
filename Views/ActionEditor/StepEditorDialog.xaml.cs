@@ -225,10 +225,10 @@ public partial class StepEditorDialog : Window
                     VerticalAlignment = VerticalAlignment.Center,
                     // 标签列已经写了参数名（「追加到末尾」「递归」…），再挂一个「启用」是废话。
                 };
-                read = () => StepArg.FromBool(check.IsChecked == true);
                 check.Checked += (_, _) => OnEdited();
                 check.Unchecked += (_, _) => OnEdited();
-                return check;
+                return FreezeIfDynamic(current, check,
+                    () => StepArg.FromBool(check.IsChecked == true), out read);
             }
 
             case InputEditor.enumList:
@@ -264,10 +264,12 @@ public partial class StepEditorDialog : Window
                     index = combo.Items.Count - 1;
                 }
 
-                combo.SelectedIndex = index >= 0 ? index : 0;
+                // 值来自变量 / 取值：下拉里的选项都不是它（以前 `index >= 0 ? index : 0`
+                // 会兜底选中第一项，打开一次再确定就把引用改成了固定值）。
+                // 这里留空、由 FreezeIfDynamic 说明来源；用户点「改用固定值」才落到第一项。
+                bool dynamicValue = current != null && current.Kind != StepArgKind.literal;
+                combo.SelectedIndex = dynamicValue ? -1 : index >= 0 ? index : 0;
 
-                read = () => StepArg.FromText(
-                    ((combo.SelectedItem as ComboBoxItem)?.Tag as string) ?? "");
                 combo.SelectionChanged += (_, _) => OnEdited();
 
                 // 让别的行能按英文键改这一行的选中项（框选区域后自动切到「固定区域」）。
@@ -282,12 +284,15 @@ public partial class StepEditorDialog : Window
                     }
                 };
 
-                return combo;
+                return FreezeIfDynamic(current, combo,
+                    () => StepArg.FromText(((combo.SelectedItem as ComboBoxItem)?.Tag as string) ?? ""),
+                    out read,
+                    () => { if (combo.SelectedIndex < 0) combo.SelectedIndex = 0; });
             }
 
             case InputEditor.flags:
             {
-                // 多选（修饰键）：一排勾选框，存 a+b 形式。
+                // 多选存成 a+b：一排勾选框。
                 var wrap = new WrapPanel
                 {
                     Orientation = Orientation.Horizontal,
@@ -316,9 +321,10 @@ public partial class StepEditorDialog : Window
                     wrap.Children.Add(check);
                 }
 
-                read = () => StepArg.FromText(string.Join("+",
-                    boxes.Where(b => b.Box.IsChecked == true).Select(b => b.Key)));
-                return wrap;
+                return FreezeIfDynamic(current, wrap,
+                    () => StepArg.FromText(string.Join("+",
+                        boxes.Where(b => b.Box.IsChecked == true).Select(b => b.Key))),
+                    out read);
             }
 
             case InputEditor.code:
@@ -433,6 +439,84 @@ public partial class StepEditorDialog : Window
             }
         }
     }
+
+    /// <summary>
+    /// 布尔 / 选项 / 多选参数的值来自变量或取值时的只读处理：控件置灰、旁边写清值从哪儿来，
+    /// <c>read</c> 原样返回那个引用；再给一个「改用固定值」按钮当出口。
+    /// </summary>
+    /// <remarks>
+    /// 这三种控件只能表达字面量（勾 / 不勾、下拉里的某一项、几个勾的组合）。以前遇到变量 / 取值时
+    /// 会兜底成「第一项 / false / 全不勾」，用户打开一次参数对话框再确定，那一步的值就被悄悄改掉了。
+    /// 现在**保留原引用**，只有用户明确点「改用固定值」才换成控件当前的值（勾选框状态 / 第一项 / 空）；
+    /// 校验器把这种写法标成 error（要按条件选不同值请用「如果」）。
+    /// </remarks>
+    private FrameworkElement FreezeIfDynamic(StepArg? current, FrameworkElement control,
+        Func<StepArg?> literalRead, out Func<StepArg?> read, Action? thaw = null)
+    {
+        if (current == null || current.Kind == StepArgKind.literal)
+        {
+            read = literalRead;
+            return control;
+        }
+
+        StepArg preserved = current;
+        bool frozen = true;
+        read = () => frozen ? preserved : literalRead();
+
+        control.IsEnabled = false;
+        control.ToolTip = $"这个参数的值来自{DynamicSource(preserved)}——要改请改那一处，"
+                          + "或点旁边的「改用固定值」。";
+
+        var hint = new TextBlock
+        {
+            Text = $"来自{DynamicSource(preserved)}",
+            Foreground = (System.Windows.Media.Brush)FindResource("SecondaryTextBrush"),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(10, 0, 0, 0),
+        };
+
+        var convert = new Button
+        {
+            Content = "改用固定值",
+            Style = (Style)FindResource("BtnGhost"),
+            FontSize = 12,
+            Padding = new Thickness(8, 1, 8, 1),
+            Margin = new Thickness(10, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "丢掉这个变量 / 取值引用，改成在这里直接选的值",
+        };
+        convert.Click += (_, _) =>
+        {
+            frozen = false;
+            control.IsEnabled = true;
+            control.ToolTip = null;
+            hint.Visibility = Visibility.Collapsed;
+            convert.Visibility = Visibility.Collapsed;
+            thaw?.Invoke();
+            OnEdited();
+        };
+
+        var panel = new Grid();
+        panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        panel.Children.Add(control);
+        Grid.SetColumn(hint, 1);
+        panel.Children.Add(hint);
+        Grid.SetColumn(convert, 2);
+        panel.Children.Add(convert);
+        return panel;
+    }
+
+    /// <summary>「这个值从哪儿来」：<c>变量 ${x}</c> / <c>取值「截图」</c>。</summary>
+    private static string DynamicSource(StepArg arg) => arg.Kind switch
+    {
+        StepArgKind.variable => "变量 ${" + arg.VariablePath + "}",
+        StepArgKind.inline => "取值「" + StepSummary.Title(arg.InlineStep?.Unit ?? "") + "」",
+        _ => "固定值",
+    };
 
     /// <summary>
     /// 「从列表选…」的候选来源：按键（按键盘分区）、已录制的宏、子动作库。

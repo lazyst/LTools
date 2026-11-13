@@ -262,6 +262,24 @@ internal static class ActionValidator
                 $"「{spec.Name}」没有参数「{key}」（检查拼写）", IssueSeverity.error));
         }
 
+        // —— 当前操作不支持的参数 ——
+        // 编辑器保存时会按可见性丢掉这些行，但 AI 写的 / 手改的 / 导入的动作可能带着。
+        // 引擎现在也不再读它们（ResolveArgs 只解析可见参数），所以这里只提醒，不算错误。
+        string optionContext = OptionContext(spec, step.In);
+        foreach (var input in spec.Inputs)
+        {
+            if (!step.In.ContainsKey(input.Key)) continue;
+            if (VisibleWhen.IsVisible(input, step.In, spec)) continue;
+
+            // 被选项收起 vs 被自己的 VisibleWhen 收起：前者能说清「操作 = 单击」，后者只能说「当前组合」。
+            string where = IsGoverned(input, spec) && optionContext.Length > 0
+                ? optionContext
+                : "当前参数组合下";
+            issues.Add(new ActionIssue($"{path}/in/{input.Key}", label, step.Unit, input.Key,
+                $"「{input.Label}」在{where}不会生效；这里写的值会被忽略（运行按默认值）",
+                IssueSeverity.warning));
+        }
+
         // —— 必填 / 类型 / 枚举 ——
         foreach (var input in spec.Inputs)
         {
@@ -282,6 +300,9 @@ internal static class ActionValidator
                 resolveSubAction, issues);
         }
 
+        // —— 输出映射 ——
+        ValidateOutputs(program, step, spec, path, label, issues);
+
         // —— 条件 ——
         ValidateCondition(step, path, label, produced, issues);
 
@@ -293,6 +314,99 @@ internal static class ActionValidator
             issues.Add(new ActionIssue(path, label, step.Unit, "",
                 "条件循环没有次数上限（运行时最多 2 万轮，但可能长时间占用键鼠）", IssueSeverity.warning));
     }
+
+    /// <summary>
+    /// 输出映射：<c>out</c> 的键必须真的存在于该动作单元的输出声明里。
+    /// </summary>
+    /// <remarks>
+    /// 拼错一个字母（<c>out: {"txt": "v"}</c>）以前既不报错也不写变量：<see cref="StepContext.SetOutput"/>
+    /// 只按动作单元自己调的键写入，映射里多出来的键永远匹配不上，变量停在默认值上。
+    /// 这类「校验通过、运行却什么都没写」最难排查，所以按 error 拦。
+    /// 输出映射是动态的动作单元（<c>sub.run</c>）由 <see cref="ValidateSubActionCall"/> 按子动作签名单独校验。
+    /// </remarks>
+    private static void ValidateOutputs(ActionProgram program, Step step, UnitSpec spec,
+        string path, string label, List<ActionIssue> issues)
+    {
+        if (step.Out.Count == 0 || spec.DynamicInputs) return;
+
+        foreach (string key in step.Out.Keys)
+        {
+            if (spec.Outputs.Any(o => string.Equals(o.Key, key, StringComparison.OrdinalIgnoreCase))) continue;
+
+            issues.Add(new ActionIssue($"{path}/out/{key}", label, step.Unit, key,
+                $"「{spec.Name}」没有输出「{key}」（检查拼写；拼错时这个变量会一直停在默认值）",
+                IssueSeverity.error));
+        }
+
+        // 列表 / 对象写进数字 / 布尔变量：运行时不会帮你转，${变量} 取用时基本都会失败。
+        // 反过来（对象写进文本变量）是常见且可用的写法，不报。
+        var declared = DeclaredTypes(program);
+        foreach (var output in spec.Outputs)
+        {
+            if (output.Type is not (ValueKind.list or ValueKind.@object)) continue;
+            if (!step.Out.TryGetValue(output.Key, out string? target)) continue;
+
+            string name = RootName(target);
+            if (name.Length == 0) continue;
+            if (!declared.TryGetValue(name, out ValueKind kind)) continue;
+            if (kind is not (ValueKind.number or ValueKind.@bool)) continue;
+
+            string shape = output.Type == ValueKind.list ? "列表" : "对象";
+            issues.Add(new ActionIssue($"{path}/out/{output.Key}", label, step.Unit, output.Key,
+                $"输出「{output.Label}」是{shape}，变量「{name}」声明成{KindName(kind)}——" +
+                $"取用时多半会失败（把变量类型改成列表 / 对象，或改存到文本变量）",
+                IssueSeverity.warning));
+        }
+    }
+
+    /// <summary>变量表里声明的名字 → 类型（名字按大小写不敏感，与运行时一致）。</summary>
+    private static Dictionary<string, ValueKind> DeclaredTypes(ActionProgram program)
+    {
+        var map = new Dictionary<string, ValueKind>(StringComparer.OrdinalIgnoreCase);
+        foreach (var variable in program.Variables)
+        {
+            string key = (variable.Key ?? "").Trim();
+            if (key.Length > 0) map[key] = variable.Type;
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// 「当前是哪个选项」——校验消息里说人话，例如 <c>「操作 = 单击」</c>，别只写「不可见」。
+    /// 驱动键不是字面量（变量 / 取值）时返回空串（那种写法另有一条 error）。
+    /// </summary>
+    private static string OptionContext(UnitSpec spec, IReadOnlyDictionary<string, StepArg> args)
+    {
+        var driver = spec.Inputs.FirstOrDefault(input => input.OptionParams is { Count: > 0 });
+        if (driver == null) return "";
+
+        string value = "";
+        if (args.TryGetValue(driver.Key, out var arg))
+        {
+            if (arg.Kind != StepArgKind.literal) return "";
+            value = arg.Literal.AsText().Trim();
+        }
+
+        if (value.Length == 0) value = driver.Default?.AsText().Trim() ?? "";
+        if (value.Length == 0) return "";
+
+        return $"「{driver.Label} = {OptionLabels.For(driver, value)}」";
+    }
+
+    private static string KindName(ValueKind kind) => kind switch
+    {
+        ValueKind.text => "文本",
+        ValueKind.number => "数字",
+        ValueKind.@bool => "布尔",
+        ValueKind.list => "列表",
+        _ => "对象",
+    };
+
+    /// <summary>这个参数是不是由某个选项的 <see cref="InputSpec.OptionParams"/> 管（决定提示怎么写）。</summary>
+    private static bool IsGoverned(InputSpec input, UnitSpec spec) =>
+        spec.Inputs.FirstOrDefault(i => i.OptionParams is { Count: > 0 })?.OptionParams
+            ?.Values.Any(keys => keys.Any(k =>
+                string.Equals(k, input.Key, StringComparison.OrdinalIgnoreCase))) == true;
 
     private static void ValidateArg(ActionProgram program, Step step, string path, string label, InputSpec input,
         StepArg arg, HashSet<string> produced, string? resourceRoot, bool draftCheck, bool allowReturn,
@@ -329,6 +443,18 @@ internal static class ActionValidator
                 ValidateStep(program, arg.InlineStep, issuePath, label, 1, produced, resourceRoot, draftCheck,
                     allowReturn, resolveSubAction, issues);
             }
+        }
+
+        // 选项 / 多选参数只能存确定的值：编辑器的下拉与勾选组只认字面量，
+        // 用变量 / 取值驱动时那一行只能整行置灰（要靠「改用固定值」才能改）。
+        // 这条按 error 拦，和 docs/PARAM_FORM.md 的决策 2 对齐。
+        if (arg.Kind != StepArgKind.literal && input.Editor is InputEditor.enumList or InputEditor.flags)
+        {
+            string shape = input.Editor == InputEditor.enumList ? "选项" : "多选";
+            issues.Add(new ActionIssue(issuePath, label, step.Unit, input.Key,
+                $"「{input.Label}」是{shape}参数，只能是确定的值；" +
+                "用变量 / 取值会让这一步在编辑器里没法显示和修改（要按条件选不同值请用「如果」）",
+                IssueSeverity.error));
         }
 
         if (arg.Kind != StepArgKind.literal) return;

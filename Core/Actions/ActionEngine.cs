@@ -440,8 +440,13 @@ public sealed class ActionEngine
 
         foreach (var input in spec.Inputs)
         {
+            // 不可见参数不解析用户写的值：它只对别的选项有意义（「单击」里的 dx/dy、
+            // 「截图」之外的轮询间隔…），残留的 ${变量} / 取值不该把这一步拖失败。
+            // 运行按 Default 处理，与编辑器保存时丢掉隐藏行同口径（校验器只提醒不报错）。
+            bool visible = VisibleWhen.IsVisible(input, step.In, spec);
+
             Value value;
-            if (step.In.TryGetValue(input.Key, out var arg))
+            if (visible && step.In.TryGetValue(input.Key, out var arg))
             {
                 provided.Add(input.Key);
                 try { value = arg.Resolve(ctx, renderLiteral: !input.Raw); }
@@ -455,7 +460,7 @@ public sealed class ActionEngine
                 provided.Add(input.Key);
                 value = input.Default;
             }
-            else if (input.Required && VisibleWhen.IsVisible(input, step.In, spec))
+            else if (input.Required && visible)
             {
                 throw new ActionException($"「{spec.Name}」缺少必填参数「{input.Label}」");
             }
