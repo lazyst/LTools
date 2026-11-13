@@ -213,9 +213,9 @@ agent/
 ai/
   mcp.json                     # 服务配置（人可读，token 打码显示）
   knowledge/
-    format.md                  # 动作 JSON 格式（手写，稳定）
+    format.md                  # 动作 JSON 格式 + 校验器规则（内置常量，随程序重写）
     units.md                   # 动作单元目录（启动时从 StepRegistry 生成）
-    examples.md                # 3~5 个完整示例（手写）
+    examples.md                # 3 个完整示例（内置常量，随程序重写）
     .version                   # 生成版本（程序集版本 + 动作单元数 + units.md 正文哈希）
   audit.log                    # 每次工具调用的审计行（轮转，最多 2MB）
   mcp-debug.log                # 只有 MCP SDK 的 Warning 以上（排错用，轮转 1MB）
@@ -229,6 +229,7 @@ staging/
       files/
 ```
 
+- **三份知识文件都按内容比对重写，内置内容永远赢**（`KnowledgePack.Ensure`）：手改过的、旧版本留下的都会在下次启动被恢复。AI 面向的规则必须与当前二进制一致——留着旧规则只会让 agent 写出程序不再接受的步骤（以前 `format.md` / `examples.md` 只在文件缺失时写，升级后会永久停在旧版）。设置页「重新生成知识包」调 `KnowledgePack.Regenerate()`，三份一起写。
 - `draftId` = 26 位小写 ULID（`Core/Ids.cs` 的 `IdFactory`），同时是目录名；与动作 Id 同一套生成器、互相独立。旧 12 位 hex 草稿按「不做向后兼容」不认、不迁移。
 - 工作副本**只有一个内容文件** `program.json`：`ActionProgram` 已包含 Name/Icon/Description，
   不需要再维护一份 `action.json`，避免两个真源。
@@ -244,7 +245,7 @@ staging/
 | `ltools_health` | 版本 / 开关 / 审批模式 / 草稿数 / 最近错误 | | |
 | `ltools_docs_get(name)` | `format` / `units` / `examples` | | |
 | `ltools_units_list(query?)` | 动作单元摘要列表（74 条，可过滤） | | |
-| `ltools_units_get(key)` | 单个动作单元的完整 Input/Output 规格（`sub.run` 附带全部子动作签名） | | |
+| `ltools_units_get(key)` | 单个动作单元的完整 Input/Output 规格（`sub.run` 附带全部子动作签名）；每个参数带 `optionParams` / `enabledWhen`，说清「哪个选项要哪些参数」 | | |
 | `ltools_actions_list(query?, limit?)` | 正式动作列表（Id/名称/图标/步骤数/来源） | | |
 | `ltools_actions_get(id)` | 正式动作的完整 Program（只读） | | |
 | `ltools_subactions_list(query?, limit?)` | 全局子动作列表（id / 名称 / 输入 / 输出 / 步数） | | |
@@ -304,6 +305,11 @@ staging/
     编辑器保存时丢掉——校验器只提醒，不拦运行
 15. 枚举 / 多选参数用变量或取值 = error：下拉 / 勾选组只表达字面量，那种写法在编辑器里既显示不出
     也改不了（见 `PARAM_FORM.md` 决策 2）；要按条件选不同值请用「如果」
+
+**规则 14 的「应该填什么」在知识包里**：`UnitSpec.Inputs[].OptionParams` 声明「选项值 → 生效参数」，
+`units.md` 里排成「选项 → 生效参数」表、参数表的「可见条件」写 `operation in (relativeMove, drag)`，
+`ltools_units_get` 的每个参数带 `optionParams`（驱动键）与 `enabledWhen`（`{key, in}`）。
+三处同源（`KnowledgePack.OptionDriver` / `EnabledOptions`），agent 按它只填需要的参数就不会撞上这条 warning。
 
 **「可见性」只有一个判定**：校验器（必填 / 参数是否生效）、引擎（`ResolveArgs` 解析哪些参数、
 是否报缺参）、参数对话框（显示哪几行）都调 `VisibleWhen.IsVisible`，别再各写一套。
@@ -390,7 +396,7 @@ mode=replace  → 校验 draft.baseActionId 仍存在、baseSourceHash 未变（
 | 新增/改动 | 说明 |
 |---|---|
 | `Core/Ai/DraftStore.cs`（新） | 草稿目录读写、revision 计算、CAS、history 轮转 |
-| `Core/Ai/KnowledgePack.cs`（新） | 从 `StepRegistry` 生成 `units.md`，版本变化才重写 |
+| `Core/Ai/KnowledgePack.cs`（新） | 从 `StepRegistry` 生成 `units.md`（含「选项 → 生效参数」表）；`format.md` / `examples.md` 是内置常量；三份都按内容比对重写 |
 | `Core/Actions/ActionValidator.cs`（新） | §5.4 的规则 |
 | `Core/Ai/McpServer.cs`（新） | `ModelContextProtocol.AspNetCore` + `WebApplication`，后台线程，全部 `Dispatcher.InvokeAsync` |
 | `Core/Ai/AiSettings.cs`（新） | `ai/mcp.json` 读写，token 生成 |

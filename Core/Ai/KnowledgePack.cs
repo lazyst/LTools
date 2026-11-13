@@ -12,15 +12,19 @@ namespace LTools.Core.Ai;
 /// 目录见 <c>docs/AI_AGENT.md</c> §5.1：
 /// <code>
 /// ai/knowledge/
-///   format.md   动作 JSON 格式与工作流（手写，稳定）
+///   format.md   动作 JSON 格式与工作流（内置常量）
 ///   units.md    从 StepRegistry 自动生成的动作单元目录
-///   examples.md 3 个完整示例（手写）
-///   .version    生成版本（程序集版本 + 动作单元数 + units.md 正文哈希），变了才重写 units.md
+///   examples.md 3 个完整示例（内置常量）
+///   .version    生成版本（程序集版本 + 动作单元数 + units.md 正文哈希）
 /// </code>
 /// </para>
 /// <para>
-/// 动作单元目录不手写：<see cref="UnitSpec"/> 的 Input / Output / VisibleWhen / Options 已经是机器可读的，
-/// 这里只负责排版。新增动作单元时不需要改这个文件，启动后 <see cref="Ensure"/> 会自动刷新。
+/// 三份文件都**按内容比对重写**（<see cref="Ensure"/>）：手改过的、旧版本留下的都会恢复成本程序内置的内容。
+/// AI 面向的规则必须和当前二进制一致，留着旧规则只会让 agent 写出程序不再接受的步骤。
+/// </para>
+/// <para>
+/// 动作单元目录不手写：<see cref="UnitSpec"/> 的 Input / Output / VisibleWhen / Options / OptionParams
+/// 已经是机器可读的，这里只负责排版。新增动作单元时不需要改这个文件，启动后 <see cref="Ensure"/> 会自动刷新。
 /// </para>
 /// </remarks>
 internal static class KnowledgePack
@@ -35,25 +39,27 @@ internal static class KnowledgePack
 
     private static string VersionPath => Path.Combine(Dir, ".version");
 
-    /// <summary>确保知识包存在且与当前动作单元清单一致。可在后台线程调用。</summary>
+    /// <summary>确保知识包存在且与当前程序一致。可在后台线程调用。</summary>
+    /// <remarks>
+    /// 以前只写缺失的文件：手改 / 旧版本留下的 <c>format.md</c>、<c>examples.md</c> 会一直生效，
+    /// agent 照着过时的规则写动作，而程序已经不再接受那套写法。现在三份都按内容比对，
+    /// **内置版本永远赢**（只多一次读文件的开销，几毫秒）。
+    /// </remarks>
     public static void Ensure()
     {
         try
         {
             System.IO.Directory.CreateDirectory(Dir);
 
-            string version = CurrentVersion();
+            string units = BuildUnitsMarkdown();
+            WriteIfDifferent(UnitsPath, units);
+            WriteIfDifferent(FormatPath, FormatText);
+            WriteIfDifferent(ExamplesPath, ExamplesText);
+
+            string version = CurrentVersion(units);
             string previous = File.Exists(VersionPath) ? File.ReadAllText(VersionPath, Encoding.UTF8).Trim() : "";
-            bool needsUnits = !File.Exists(UnitsPath) || !string.Equals(previous, version, StringComparison.Ordinal);
-
-            if (needsUnits)
-            {
-                File.WriteAllText(UnitsPath, BuildUnitsMarkdown(), Utf8);
+            if (!string.Equals(previous, version, StringComparison.Ordinal))
                 File.WriteAllText(VersionPath, version, Utf8);
-            }
-
-            if (!File.Exists(FormatPath)) File.WriteAllText(FormatPath, FormatText, Utf8);
-            if (!File.Exists(ExamplesPath)) File.WriteAllText(ExamplesPath, ExamplesText, Utf8);
         }
         catch (Exception ex)
         {
@@ -61,13 +67,35 @@ internal static class KnowledgePack
         }
     }
 
-    /// <summary>强制重写 units.md（设置页「重新生成」）。返回写入的动作单元数。</summary>
-    public static int RegenerateUnits()
+    /// <summary>强制重写三份知识文件（设置页「重新生成」）。返回写入的动作单元数。</summary>
+    public static int Regenerate()
     {
         System.IO.Directory.CreateDirectory(Dir);
-        File.WriteAllText(UnitsPath, BuildUnitsMarkdown(), Utf8);
-        File.WriteAllText(VersionPath, CurrentVersion(), Utf8);
+        string units = BuildUnitsMarkdown();
+        File.WriteAllText(UnitsPath, units, Utf8);
+        File.WriteAllText(FormatPath, FormatText, Utf8);
+        File.WriteAllText(ExamplesPath, ExamplesText, Utf8);
+        File.WriteAllText(VersionPath, CurrentVersion(units), Utf8);
         return StepRegistry.Default.Units.Count;
+    }
+
+    /// <summary>内容不同才写：避免每次启动都重写三份文件（也保住文件的修改时间）。</summary>
+    private static void WriteIfDifferent(string path, string content)
+    {
+        if (File.Exists(path))
+        {
+            try
+            {
+                if (string.Equals(File.ReadAllText(path, Encoding.UTF8), content, StringComparison.Ordinal))
+                    return;
+            }
+            catch (IOException)
+            {
+                // 读不了就照写（被占用 / 权限问题时下面那次写入会给出真正的错误）。
+            }
+        }
+
+        File.WriteAllText(path, content, Utf8);
     }
 
     /// <summary>读一个知识文件（<c>format</c> / <c>units</c> / <c>examples</c>），不存在时先补齐。</summary>
@@ -89,14 +117,13 @@ internal static class KnowledgePack
 
     // ============ units.md ============
 
-    private static string CurrentVersion()
+    private static string CurrentVersion(string unitsMarkdown)
     {
         string assembly = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
-        // 直接哈希**生成出来的正文**：动作单元参数 / 说明 / 选项任何一处变了都要重写。
+        // 直接哈希**生成出来的正文**：动作单元参数 / 说明 / 选项 / 选项参数任何一处变了都要重写。
         // 只哈希「键 + 分类」的话，给某个动作单元换了一套参数（例如「模拟按键」重构）
         // 版本号不变，units.md 就一直停在旧内容，agent 照着旧参数写步骤会全部失败。
-        byte[] hash = System.Security.Cryptography.SHA256.HashData(
-            Encoding.UTF8.GetBytes(BuildUnitsMarkdown()));
+        byte[] hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(unitsMarkdown));
         return $"{assembly}|{StepRegistry.Default.Units.Count}|{Convert.ToHexString(hash)[..16].ToLowerInvariant()}";
     }
 
@@ -115,6 +142,10 @@ internal static class KnowledgePack
         md.AppendLine("> 只需要查某个动作单元时，用 `ltools_units_get(key)` 拿它的完整规格；这里适合整段读 / grep。");
         md.AppendLine();
         md.AppendLine($"共 {units.Count} 个动作单元。`pure` = 取值动作单元，可以内联在参数或条件里；`action` = 有副作用的普通步骤。");
+        md.AppendLine();
+        md.AppendLine("有选项参数的动作单元会先给一张「选项 → 生效参数」表；参数表的「可见条件」列写 " +
+                      "`operation in (drag)` 这种形式。**只填当前选项那一行需要的参数**——" +
+                      "别的选项的参数留着不会生效（运行按默认值，`check` 给 warning）。");
         md.AppendLine();
 
         // 索引
@@ -154,6 +185,8 @@ internal static class KnowledgePack
             md.AppendLine();
         }
 
+        WriteOptionGroups(md, spec);
+
         if (spec.Inputs.Count > 0)
         {
             md.AppendLine("| 参数 | 名称 | 类型 | 必填 | 默认 | 可见条件 | 说明 |");
@@ -167,7 +200,7 @@ internal static class KnowledgePack
                     TypeName(input.Type),
                     input.Required ? "是" : "",
                     input.Default == null ? "" : $"`{Cell(input.Default.AsText())}`",
-                    input.VisibleWhen == null ? "" : $"`{Cell(input.VisibleWhen)}`",
+                    VisibilityCell(input, spec),
                     Cell(Describe(input)),
                 }) + " |");
             }
@@ -193,6 +226,67 @@ internal static class KnowledgePack
             }
             md.AppendLine();
         }
+    }
+
+    /// <summary>
+    /// 「哪个选项要哪些参数」——<see cref="InputSpec.OptionParams"/> 驱动的可见性在参数表里只有
+    /// 「可见条件」一列，反过来（选了这个选项要填哪几行）看不出来。agent 会在「单击」里写
+    /// <c>dx</c>、在「去空白」里写 <c>separator</c>，而运行时会直接忽略这些值。
+    /// </summary>
+    private static void WriteOptionGroups(StringBuilder md, UnitSpec spec)
+    {
+        InputSpec? driver = OptionDriver(spec);
+        if (driver?.OptionParams == null) return;
+
+        md.AppendLine($"选项「`{driver.Key}`」（{driver.Label}）决定这些参数是否生效；" +
+                      "**不在表里的参数在任何选项下都可以填**（填了也不一定被用到）：");
+        md.AppendLine();
+        md.AppendLine("| 选项 | 生效参数 |");
+        md.AppendLine("|---|---|");
+        foreach (var pair in driver.OptionParams)
+        {
+            string option = $"`{pair.Key}`（{OptionLabels.For(driver, pair.Key)}）";
+            string inputs = pair.Value.Count == 0
+                ? "（无）"
+                : string.Join(" / ", pair.Value.Select(key => $"`{key}`"));
+            md.AppendLine($"| {option} | {inputs} |");
+        }
+        md.AppendLine();
+    }
+
+    /// <summary>
+    /// 参数表的「可见条件」：自己的 <see cref="InputSpec.VisibleWhen"/> 原样写；
+    /// 由选项参数管的写成 <c>operation in (drag)</c> 这种能直接对照选项表的形式。
+    /// </summary>
+    private static string VisibilityCell(InputSpec input, UnitSpec spec)
+    {
+        if (!string.IsNullOrWhiteSpace(input.VisibleWhen))
+            return $"`{Cell(input.VisibleWhen)}`";
+
+        IReadOnlyList<string> options = EnabledOptions(input, spec);
+        if (options.Count == 0) return "";
+
+        return $"`{OptionDriver(spec)!.Key} in ({string.Join(", ", options)})`";
+    }
+
+    /// <summary>驱动键 = 声明了 <see cref="InputSpec.OptionParams"/> 的那个枚举参数（每个动作单元最多一个）。</summary>
+    internal static InputSpec? OptionDriver(UnitSpec spec) =>
+        spec.Inputs.FirstOrDefault(input => input.OptionParams is { Count: > 0 });
+
+    /// <summary>
+    /// 这个参数由驱动键的哪些选项值启用（空 = 不受选项参数管，任何选项下都可见）。
+    /// <c>units.md</c>、<c>ltools_units_get</c> 与校验器消息共用这一条，别再各算一遍。
+    /// </summary>
+    internal static IReadOnlyList<string> EnabledOptions(InputSpec input, UnitSpec spec)
+    {
+        InputSpec? driver = OptionDriver(spec);
+        if (driver?.OptionParams == null) return Array.Empty<string>();
+
+        return driver.OptionParams
+            .Where(pair => pair.Value.Any(key =>
+                string.Equals(key, input.Key, StringComparison.OrdinalIgnoreCase)))
+            .Select(pair => pair.Key)
+            .ToList();
     }
 
     private static string Describe(InputSpec input)
@@ -227,6 +321,9 @@ internal static class KnowledgePack
 
     private const string FormatText = """
 # LTools 动作格式
+
+> 本文件随 LTools 分发，**每次启动按程序内置内容重写**：手改会在下次启动被覆盖。
+> 规则要改请改 LTools 源码（`Core/Ai/KnowledgePack.cs` 的 `FormatText`）。
 
 你是 LTools 动作编写助手。**动作只能通过暂存区工具产出草稿，永远不要试图改正式动作**——
 正式动作没有写工具，这是结构上的限制，不是靠你自觉。
@@ -270,6 +367,8 @@ internal static class KnowledgePack
 ## 3. 工作流（工具名见 MCP）
 
 1. `ltools_units_list` / `ltools_units_get`：先确认能力存在，别臆造动作单元键。
+   `units_get` 里 `optionParams` / `visibleFor` 说明「哪个选项要哪些参数」（`units.md` 里有同样的选项表），
+   **按当前选项只填需要的参数**，别把别的操作的参数堆进去（运行会忽略，`check` 会给 warning）。
 2. `ltools_staging_create(title, description?, copyFromActionId?)`：新草稿。改用户已有动作时传 `copyFromActionId`（只读复制到草稿）。
 3. `ltools_staging_open(draftId)`：读 `program` + `files` + `revision` + 绝对目录。
 4. 写草稿的两条路，选一条即可：
@@ -284,9 +383,23 @@ internal static class KnowledgePack
 
 ## 4. 校验器会拦什么
 
-未知动作单元 / 未知参数、必填缺失（只对可见参数）、字面量类型不符、枚举值不在范围、
-`${变量}` 引用了未声明的变量、条件运算符 / 正则无效、子动作 / 宏不存在、内联了 action 动作单元、
-引用了不存在的草稿图片。位置用 `第 3 行 › 满足时 › 第 1 行`，与运行失败提示一致。
+`error`（必须清零才能保存草稿）：
+
+- 未知动作单元 / 未知参数
+- 必填缺失（只对可见参数）
+- 字面量类型不符；枚举值不在 `options` 里
+- **枚举 / 多选参数写了变量或取值**：这两类只能填确定的值（要按条件选不同值，用 `flow.if` 分支写两套步骤）
+- `${变量}` 引用了未声明的变量
+- **`out` 的键不是该动作单元声明的输出键**（拼错时运行不会写任何东西，变量一直停在默认值）
+- 条件运算符 / 正则无效；子动作 / 宏不存在；内联了 `action` 动作单元；引用了不存在的草稿图片
+
+`warning`（不拦，但值得改）：
+
+- 当前选项不支持的参数：例如「单击」里写了 `dx` / `dy`（那是「拖动」才用的）——
+  运行时**根本不读它**，按默认值处理
+- 列表 / 对象输出写进声明成 `number` / `bool` 的变量
+
+位置用 `第 3 行 › 满足时 › 第 1 行`，与运行失败提示一致。
 
 子动作另有三条：`flow.return` 只能出现在子动作里（动作 / 草稿里是 error）、
 输出变量没有任何步骤赋值（warning）、子动作调用成环（error）。
@@ -338,6 +451,8 @@ internal static class KnowledgePack
 
     private const string ExamplesText = """
 # 完整示例
+
+> 本文件随 LTools 分发，**每次启动按程序内置内容重写**：手改会在下次启动被覆盖。
 
 下面三个例子都可以直接作为草稿的 `program.json`（省略了 `id` 字段；草稿由 LTools 自己管 id）。
 

@@ -173,15 +173,15 @@
 - 工具面里**没有写正式动作的入口**，只能写草稿（`staging/*`）；改动作要先 `copyFromActionId`。
 - `revision` 从文件内容重算，agent 用 fs 工具改完也能被 `check` / `save` 识别。
 - `check` 的位置文案复用引擎的「第 3 行 › 满足时 › 第 1 行」，与运行失败提示一致。
-- `units.md` 从 `StepRegistry` 自动生成，版本串含正文哈希，改参数会重写。
+- `units.md` 从 `StepRegistry` 自动生成，版本串含正文哈希，改参数会重写；`format.md` / `examples.md` 同版本重写（P0-3）。
 - 采纳走人工确认；写子动作另有一套闸门与 CAS。
 
 ### 5.2 问题清单
 
 | # | 问题 | 证据 | 影响 |
 |---|---|---|---|
-| A1 | `units_get` / `units.md` **不输出 `OptionParams`**，只给 `visibleWhen` | `AiToolHandlers.UnitsGet` 只序列化 `visibleWhen`；`KnowledgePack.WriteUnit` 表列同样没有 | agent 不知道 `click` 只吃 `x/y`、`drag` 才吃 `dx/dy`，写出「结构合法、运行空转」的步骤，而 `check` 返回 `ok` |
-| A2 | `format.md` / `examples.md` 只在**文件不存在**时写，版本只跟踪 `units.md` | `KnowledgePack.Ensure` | 老安装升级后，格式说明永久停留在旧版 |
+| A1 | `units_get` / `units.md` **不输出 `OptionParams`**，只给 `visibleWhen` | `AiToolHandlers.UnitsGet` 只序列化 `visibleWhen`；`KnowledgePack.WriteUnit` 表列同样没有 | agent 不知道 `click` 只吃 `x/y`、`drag` 才吃 `dx/dy`，写出「结构合法、运行空转」的步骤，而 `check` 返回 `ok`。**P0-3 已修**（6.6） |
+| A2 | `format.md` / `examples.md` 只在**文件不存在**时写，版本只跟踪 `units.md` | `KnowledgePack.Ensure` | 老安装升级后，格式说明永久停留在旧版。**P0-3 已修**（6.6） |
 | A3 | 示例只有 3 个（启动程序 / 截图 + OCR / 遍历列表） | `KnowledgePack.ExamplesText` | 文件、文本处理、窗口、剪贴板、找图、`ui.confirm` / `ui.select`、子动作调用都没有范例 |
 | A4 | 没有截图 / UIA 工具 | `AiTools` 工具清单 | 找图、图片点击、按控件点击这类动作，agent 无法自己产出模板图或锚点 |
 | A5 | 没有 dry-run | `staging_run` 直接 `AutomationRunner` 真的动键鼠 | 验证成本高、风险高，agent 倾向「不跑就交」 |
@@ -192,8 +192,8 @@
 ### 5.3 方向
 
 - **知识包与工具面同源补全**（A1 / A2 / A3）：把 `OptionParams`、每选项的必填集、
-  输入说明一起导出成「按操作分组的参数表」；`format.md` / `examples.md` 也纳入版本校验
-  （缺失或哈希变化就重写，手写部分与生成部分分开存放）。
+  输入说明一起导出成「按操作分组的参数表」；`format.md` / `examples.md` 也纳入校验
+  （三份都按内容比对重写，手写部分与生成部分分开存放在同一份内置常量里）。
 - **补工具**（A4 / A5 / A7）：截图（用户确认后写入草稿 `files/`）、UIA 控件树快照、
   `dryRun`（只解析参数、执行取值动作单元、不注入键鼠）、`health` 附屏幕 / DPI / 常用目录。
 - **补信任手段**（A6 / A8）：采纳前给步骤级 diff（新增 / 删除 / 改参数），
@@ -212,7 +212,7 @@
 |---|---|---|---|
 | P0-1 | 校验器补 `out` 键 / 可见性 / 输出类型三条规则；运行时对不可见参数与校验同口径 | R2 / R3 / R4，同时是 A1 的放大器 | ✅ 已实施：`out` 键拼错 = error、不可见参数 = warning、列表 / 对象写进数字 / 布尔变量 = warning；试运行与校验一致（详见 6.5） |
 | P0-2 | 校验结果改成可点击诊断列表（步骤行角标 + 定位跳转） | U5 | 点任意一条诊断能选中并滚动到对应步骤；步骤行有红 / 黄标记 |
-| P0-3 | `units.md` / `units_get` 输出 `OptionParams`；`format.md` / `examples.md` 纳入版本校验 | A1 / A2 | 同一句话让 agent 写「输入鼠标点击」，一次通过 `check`；手改 `format.md` 后启动会恢复成当前版本 |
+| P0-3 | `units.md` / `units_get` 输出 `OptionParams`；`format.md` / `examples.md` 纳入版本校验 | A1 / A2 | ✅ 已实施：`units.md` 每个带选项参数的动作单元先给「选项 → 生效参数」表，参数表「可见条件」写 `operation in (…)`；`units_get` 每个参数多出 `optionParams` / `enabledWhen`；三份知识文件按内容比对重写（详见 6.6） |
 | P0-4 | 枚举参数非字面量不再静默改写 | R5 / R7 | ✅ 已实施：打开含变量驱动枚举 / 开关 / 多选的步骤 → 取消 / 确定都不改值（控件置灰只读）；校验给 error |
 | P0-5 | 动作保存自动快照 + 采纳前 diff | R6 / A6 | 改坏动作能从历史版本恢复；草稿采纳前能看到步骤级差异 |
 
@@ -269,7 +269,7 @@
 **验收**
 
 - 构建：`dotnet build -p:NoWin32Manifest=true` 与 `dotnet build -c Release` 均 0 错 0 警。
-- 仓库外无头冒烟 `%TEMP%\opencode\validator-smoke`：22 项全过 —— 干净步骤零问题、`out` 拼错 error、列表写进数字变量 warning、不可见参数 warning（且不产生 error）、枚举用变量 error；运行侧「不可见参数残留坏值不再失败」「不可见数字参数回落到默认值」「可见参数拼错仍然失败」；对话框侧三种控件遇到变量都置灰且保留引用、字面量照旧能改、点「改用固定值」才落地成第一项；**真实动作库（`actions/` 7 个动作）跑一遍，三条新规则 0 误报**（只报出既有的未知动作单元 / 缺子动作 / 缺图）。
+- 仓库外无头冒烟 `%TEMP%\opencode\validator-smoke`：本项落地时 22 项全过 —— 干净步骤零问题、`out` 拼错 error、列表写进数字变量 warning、不可见参数 warning（且不产生 error）、枚举用变量 error；运行侧「不可见参数残留坏值不再失败」「不可见数字参数回落到默认值」「可见参数拼错仍然失败」；对话框侧三种控件遇到变量都置灰且保留引用、字面量照旧能改、点「改用固定值」才落地成第一项；**真实动作库（`actions/` 7 个动作）跑一遍，三条新规则 0 误报**（只报出既有的未知动作单元 / 缺子动作 / 缺图）。加上 6.6 的知识包用例后共 35 项全过。
 - 真机待点：面板 → 编辑一个含 `input.mouse` 的动作 → 把「操作」切成「单击」再保存 → 校验应给 `dx/dy` 的 warning 而不是 error；试运行表现为忽略该值。
 
 **与原方案的偏差（按实现收敛，已写进 AGENTS.md）**
@@ -277,6 +277,37 @@
 - 原写「`click` 带 `dx` 被拦」：定为 **warning** 而非 error——运行会忽略它，老动作不该因此跑不了。
 - 原写「对象写进文本变量被拦」：不报。`Value` 只在列表 / 对象写进数字 / 布尔时才必然失败。
 - 原写「枚举非字面量只在对话框保留」：同时升为 error，因为那种写法在编辑器里改不了；对话框为此加了「改用固定值」出口（点一下才落地成固定值，不点就原样保留）。
+
+---
+
+### 6.6 实施记录（2026-11-13，P0-3）
+
+只动知识包的生成与工具输出，没有改运行期语义；配套的是 P0-1 的可见性口径——agent 得先知道「哪个选项要哪些参数」，才不会把值写进被忽略的行。
+
+**知识包（`Core/Ai/KnowledgePack.cs`）**
+
+| 改动 | 之前 | 现在 |
+|---|---|---|
+| 三份文件的写入门槛 | 只按 `.version` 重写 `units.md`；`format.md` / `examples.md` 仅当文件**不存在**时写 | `Ensure()` 统一走 `WriteIfDifferent`，三份都按内容比对、**内置内容永远赢**：手改过的、旧版本留下的都会在下次启动恢复 |
+| 版本串 | `CurrentVersion()` 内部自己再算一遍正文 | `CurrentVersion(unitsMarkdown)`，一次生成一次哈希（版本文件的内容与含义不变，仍是 `程序集版本\|动作单元数\|正文哈希16位`） |
+| 选项参数 | 参数表只有「可见条件」一列，`OptionParams` 完全不导出 | 每个带 `OptionParams` 的动作单元先给一张「选项 → 生效参数」表；参数表「可见条件」由选项参数管的写成 `operation in (relativeMove, drag)`，能直接对照选项表 |
+| `format.md` | 没有校验器规则清单 | 顶部加「每次启动按程序内置内容重写，手改会被覆盖」；新增「校验器会拦什么」（error / warning 分类，含枚举必须字面量、`out` 键、不可见参数不生效） |
+| `examples.md` | 无提示 | 同样是「会被覆盖」的提示 |
+
+- `RegenerateUnits()` 改名 `Regenerate()`：设置页按钮不再只是重建 `units.md`，而是三份一起写（按钮文案与 toast 同步改成「重新生成知识包」）。
+- 共享判定收在 `internal static OptionDriver` / `EnabledOptions`：`units.md` 的选项表、`units_get` 的 `enabledWhen` 与校验器说的是同一件事，别再各算一遍。
+- `format.md` 里写明「`optionParams` / `enabledWhen` 说明哪个选项要哪些参数，**按当前选项只填需要的参数**」。
+
+**工具面（`Core/Ai/AiToolHandlers.cs`）**
+
+- `units_get` 的每个 input 多两个字段：`optionParams`（只有驱动键有：`{选项 → 参数键列表}`）与 `enabledWhen`（`{key, in}`，`null` = 不受选项管，任何选项下都可见）。
+- 与 `units.md` 同源（`KnowledgePack.EnabledOptions`），避免文档说一套、工具说一套。
+
+**验收**
+
+- 构建：`dotnet build -p:NoWin32Manifest=true` 与 `dotnet build -c Release` 均 0 错 0 警。
+- 仓库外无头冒烟 `validator-smoke`：35 项全过。知识包 13 项：`Ensure` 写出三份 + `.version`；`units.md` 有选项表、拖动行列出 `x/y/dx/dy/button`、参数表写 `operation in (relativeMove, drag)`；`units_get("input.mouse")` 的 `dx` = `operation in (relativeMove, drag)`、`button` = `down/up/drag`、`x` 由 9 个带坐标的选项共用、`operation` 自己带 `optionParams`；把三份文件手改成废话后 `Ensure()` 全部恢复且 `.version` 不变；再 `Ensure()` 一次不重写（修改时间不动）。
+- 真机待点：设置 → AI 接入 → 「重新生成知识包」应提示「format / units / examples · N 个动作单元」，打开目录能看到选项表；改一行 `format.md` 再重启程序，文件被恢复。
 
 ---
 

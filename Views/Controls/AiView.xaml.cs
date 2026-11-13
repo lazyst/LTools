@@ -374,8 +374,8 @@ public partial class AiView : UserControl
     {
         try
         {
-            int count = KnowledgePack.RegenerateUnits();
-            ToastService.Show($"units.md 已重建（{count} 个动作单元）", "知识包", 2500, ToastKind.success);
+            int count = KnowledgePack.Regenerate();
+            ToastService.Show($"知识包已重建（format / units / examples · {count} 个动作单元）", "知识包", 2500, ToastKind.success);
         }
         catch (Exception ex)
         {

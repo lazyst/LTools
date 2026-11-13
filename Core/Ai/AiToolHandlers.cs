@@ -154,6 +154,12 @@ internal static class AiToolHandlers
                 ["raw"] = input.Raw,
                 ["description"] = input.Description,
                 ["hint"] = InputHint.Of(input),
+                // 选项参数：驱动键本身给出「选项 → 启用了哪些参数」，其余参数给出「我由哪些选项启用」。
+                // 以前这里一个字段都没有，agent 只能猜「单击要不要写 dx」。
+                ["optionParams"] = input.OptionParams is { Count: > 0 }
+                    ? input.OptionParams.ToDictionary(p => p.Key, p => (object?)p.Value.ToList())
+                    : null,
+                ["enabledWhen"] = OptionScope(input, spec),
             }).ToList(),
             ["outputs"] = spec.Outputs.Select(output => new Dictionary<string, object?>
             {
@@ -171,6 +177,22 @@ internal static class AiToolHandlers
             payload["subActions"] = SubActionStore.LoadAll().Select(Signature).ToList();
 
         return payload;
+    }
+
+    /// <summary>
+    /// 这个参数由「哪个选项参数的哪些值」启用（<c>null</c> = 不受选项管，任何选项下都可见）。
+    /// 与 <c>units.md</c> 的选项表同源（<see cref="KnowledgePack.EnabledOptions"/>），别各算一遍。
+    /// </summary>
+    private static Dictionary<string, object?>? OptionScope(InputSpec input, UnitSpec spec)
+    {
+        var options = KnowledgePack.EnabledOptions(input, spec);
+        if (options.Count == 0) return null;
+
+        return new Dictionary<string, object?>
+        {
+            ["key"] = KnowledgePack.OptionDriver(spec)?.Key,
+            ["in"] = options,
+        };
     }
 
     public static Dictionary<string, object?> ActionsList(string? query, int limit)
