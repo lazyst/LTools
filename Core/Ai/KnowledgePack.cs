@@ -346,6 +346,9 @@ internal static class KnowledgePack
 ```
 
 - `variables` 声明变量（`type` 是 `text` / `number` / `bool` / `list` / `object`）；运行时也能由步骤的输出创建新变量，但写进变量表更清楚。
+- 变量可以写 `"direction": "input"`：这个动作就**带参数**——用户从面板 / 快捷键 / 悬浮运行前会被问一次
+  （填过的值会记住），值以初始变量注入本次运行；不写就是 `local`（不问，直接用 `default`）。
+  `output` 只在子动作里有意义（见 §7）。
 - `steps` 是普通数组。控制流不是节点图：`flow.if` / `flow.repeat` / `flow.forEach` / `flow.while` 就是普通步骤，分支体放在 `then` / `else` / `body` 里。
 - 步骤字段：`unit`（动作单元键）、`in`（参数）、`out`（输出键 → 变量名）、`body` / `then` / `else`、`note`、`disabled`、`onFail`（`stop` / `continue`）、`delayMs`。
 

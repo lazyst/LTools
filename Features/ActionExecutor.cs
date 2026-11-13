@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using LTools.Core;
@@ -27,8 +28,58 @@ internal static class ActionExecutor
     /// 按「绑定引用」运行：内置功能（<c>common.*</c> / <c>ltools.*</c>）交给
     /// <see cref="FeatureRunner"/>，动作（<c>a1</c>）走原有路径。返回是否找到并投递。
     /// </summary>
-    public static bool RunRef(string reference, int cursorX, int cursorY) =>
-        RunRef(reference, cursorX, cursorY, null);
+    /// <remarks>
+    /// 这是**用户手动触发**的入口（面板磁贴 / 快捷键 / 悬浮按钮）：动作声明了「输入」变量时，
+    /// 先在 UI 线程上问一次参数（见 <see cref="RunInteractive"/>）。自动触发走四参重载，不弹窗。
+    /// </remarks>
+    public static bool RunRef(string reference, int cursorX, int cursorY)
+    {
+        if (string.IsNullOrWhiteSpace(reference)) return false;
+        if (FeatureRunner.TryRun(reference, cursorX, cursorY)) return true;
+
+        var action = ActionRegistry.FindById(reference);
+        if (action == null) return false;
+        RunInteractive(action, cursorX, cursorY);
+        return true;
+    }
+
+    /// <summary>
+    /// 用户手动触发的运行：有「输入」变量就先问一次参数，没有就立刻投递（与以前完全一致）。
+    /// </summary>
+    /// <remarks>
+    /// 问参数**只能在 UI 线程**（WPF 对话框），而这里可能是钩子线程（快捷键），
+    /// 所以一律 <see cref="Ui.Post"/>：钩子回调不能等对话框。问参数期间临时挂起快捷键，
+    /// 否则单键绑定会把用户输进框里的字母再当成一次触发。
+    /// </remarks>
+    private static void RunInteractive(ActionDto action, int cursorX, int cursorY)
+    {
+        // 已有自动化在跑：不弹参数框（问完也跑不了），直接交给 Run 去报「已有自动化正在运行」。
+        if (!ActionParams.NeedsAsk(action) || AutomationRunner.IsRunning)
+        {
+            Run(action, cursorX, cursorY);
+            return;
+        }
+
+        Ui.Post(() =>
+        {
+            bool suspended = HotkeyRegistry.Suspended;
+            HotkeyRegistry.Suspended = true;
+            IReadOnlyDictionary<string, Value>? values;
+            try
+            {
+                values = ActionParams.Ask(null, action.Id, action.Name + " · 参数",
+                    ActionParams.InputsOf(action.Program),
+                    "填好点「运行」；这些值会记住，下次运行还是它们。");
+            }
+            finally
+            {
+                HotkeyRegistry.Suspended = suspended;
+            }
+
+            if (values == null) return;   // 取消 = 这次不跑
+            Run(action, cursorX, cursorY, values);
+        });
+    }
 
     /// <summary>
     /// 按引用运行，并带上初始变量（自动触发的事件输出 / <c>ActionParam</c>）。

@@ -61,6 +61,8 @@ internal static class ActionRemoval
         ImageLibrary.CollectGarbage();
         // 悬浮项按引用回收：动作没了，按钮也跟着消失（分组空了整项移除）。
         FloatingManager.RefreshAll();
+        // 「上次填过的参数」跟着动作一起清（state/action-params.json）。
+        ActionParamMemory.Forget(id);
         // 运行期触发表立即重建（否则删掉的动作仍会被定时投递，直到重启）。
         TriggerService.ReloadFromDisk(path);
         return true;

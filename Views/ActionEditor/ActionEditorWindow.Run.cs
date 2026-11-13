@@ -173,8 +173,19 @@ public partial class ActionEditorWindow
             if (declared == null) return;   // 默认值填错，ReadVariables 已经提示过
 
             string subName = string.IsNullOrWhiteSpace(_program.Name) ? "子动作" : _program.Name;
-            inputs = SubActionInputDialog.Ask(this, subName, declared);
+            inputs = ParamInputDialog.Ask(this, subName + " · 输入", declared);
             if (inputs == null) return;     // 用户取消
+        }
+        else
+        {
+            // 动作的「输入」变量：试运行也问一次（与面板运行同一个口径），填过的记住。
+            var paramInputs = ActionParams.InputsOf(_program);
+            if (paramInputs.Count > 0)
+            {
+                inputs = ActionParams.Ask(this, _draft?.Id ?? "", name + " · 参数", paramInputs,
+                    "只影响这次试运行；面板运行时问你的是同一批变量。");
+                if (inputs == null) return;
+            }
         }
 
         // 顶层选择按原下标补齐（未选中的顶层步骤变成跳过），这样轨迹里的「第 N 行」仍是编辑器里的行号；

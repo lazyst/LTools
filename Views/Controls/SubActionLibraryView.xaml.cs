@@ -20,7 +20,7 @@ namespace LTools.Views.Controls;
 /// <remarks>
 /// 编辑复用 <see cref="ActionEditorWindow.ForSubAction"/>——子动作与动作同构，
 /// 只多一列「方向」（输入 / 本地 / 输出），所以没必要再写一个编辑器。
-/// 试运行走 <see cref="SubActionRunner"/>，输入值由 <see cref="SubActionInputDialog"/> 收集。
+/// 试运行走 <see cref="SubActionRunner"/>，输入值由 <see cref="ParamInputDialog"/> 收集。
 /// </remarks>
 public partial class SubActionLibraryView : UserControl
 {
@@ -255,7 +255,7 @@ public partial class SubActionLibraryView : UserControl
     {
         if (SelectedRow() is not { } row) return;
 
-        var inputs = SubActionInputDialog.Ask(Window.GetWindow(this), row.Name, row.Def.Variables);
+        var inputs = ParamInputDialog.Ask(Window.GetWindow(this), row.Name + " · 输入", row.Def.Variables);
         if (inputs == null) return;
 
         if (!SubActionRunner.TryRun(row.Def, inputs, result => OnRunCompleted(row, result)))

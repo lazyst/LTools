@@ -39,6 +39,15 @@ public partial class ActionEditorWindow
         (VariableDirection.output, "输出"),
     };
 
+    /// <summary>
+    /// 动作（不是子动作）的方向只有两项：输入 = 运行前问你并记住，「输出」在动作里没有落点。
+    /// </summary>
+    private static readonly (VariableDirection Direction, string Label)[] ActionDirections =
+    {
+        (VariableDirection.input, "输入"),
+        (VariableDirection.local, "本地"),
+    };
+
     private void BuildVariableRows()
     {
         VariableRows.Children.Clear();
@@ -63,10 +72,7 @@ public partial class ActionEditorWindow
         var grid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(82) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition
-        {
-            Width = _isSubAction ? new GridLength(76) : new GridLength(0),
-        });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -144,20 +150,21 @@ public partial class ActionEditorWindow
         Grid.SetColumn(row.Default, 3);
         grid.Children.Add(row.Default);
 
-        if (_isSubAction)
+        // 每一种编辑器都要「方向」：子动作是 输入 / 本地 / 输出，动作只有 输入 / 本地
+        // （输入 = 运行前问你，见 Features/ActionParams）。
+        row.Direction = new ComboBox
         {
-            row.Direction = new ComboBox
-            {
-                MinHeight = 26,
-                Margin = new Thickness(0, 0, 4, 0),
-                FontSize = (double)FindResource("FontSizeHint"),
-                ItemsSource = Directions.Select(d => new DirectionChoice(d.Direction, d.Label)).ToList(),
-            };
-            row.Direction.SelectedItem = ((List<DirectionChoice>)row.Direction.ItemsSource)
-                .FirstOrDefault(d => d.Direction == direction);
-            Grid.SetColumn(row.Direction, 2);
-            grid.Children.Add(row.Direction);
-        }
+            MinHeight = 26,
+            Margin = new Thickness(0, 0, 4, 0),
+            FontSize = (double)FindResource("FontSizeHint"),
+            ItemsSource = (_isSubAction ? Directions : ActionDirections)
+                .Select(d => new DirectionChoice(d.Direction, d.Label))
+                .ToList(),
+        };
+        row.Direction.SelectedItem = ((List<DirectionChoice>)row.Direction.ItemsSource)
+            .FirstOrDefault(d => d.Direction == direction);
+        Grid.SetColumn(row.Direction, 2);
+        grid.Children.Add(row.Direction);
 
         Grid.SetColumn(remove, 4);
         grid.Children.Add(remove);
@@ -591,6 +598,10 @@ public partial class ActionEditorWindow
                 Default = value,
                 Direction = (row.Direction?.SelectedItem as DirectionChoice)?.Direction
                     ?? VariableDirection.local,
+                // 显示名没有编辑框（AI 写的 / 文件里手写的有），保存时别把它抹掉。
+                Label = _program.Variables
+                    .FirstOrDefault(v => string.Equals((v.Key ?? "").Trim(), key, StringComparison.OrdinalIgnoreCase))
+                    ?.Label ?? "",
             });
         }
 

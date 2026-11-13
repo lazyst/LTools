@@ -41,6 +41,9 @@ public partial class ActionEditorWindow : Window
     private readonly DragVisuals _dragGhost;
     private int _number;
 
+    /// <summary>右栏（变量页）宽度：抽屉收起时回到这个值。动作与子动作都有「方向」列，统一 360。</summary>
+    private const double VariablesColumnWidth = 360;
+
     /// <summary>
     /// 编辑草稿时的资源根（<c>staging/&lt;id&gt;/files</c>）：试运行与校验把它交给图片解析，
     /// 所以 <c>files/x.png</c> 能直接找到。正式动作 / 新建为 null。
@@ -131,24 +134,30 @@ public partial class ActionEditorWindow : Window
             CodeHint.Text = "调用名：" + _program.Id;
             CodeHint.Visibility = Visibility.Visible;
             EmptyHint.Text = "（空子动作）从左侧点一个动作单元开始，例如：设置变量 → 提示弹窗";
-            // 多一列「方向」，右栏放宽一点，否则默认值、图标会被挤没
-            RightColumn.Width = new GridLength(360);
         }
         else if (existing != null)
         {
             _draft = existing.Clone();
             _program = _draft.Program?.Clone() ?? new ActionProgram();
             _draft.Program = _program;
-            DirectionColumn.Width = new GridLength(0);
-            DirectionHeader.Visibility = Visibility.Collapsed;
         }
         else
         {
             _draft = new ActionDto { Icon = IconCatalog.Default };
             _program = new ActionProgram();
             _draft.Program = _program;
-            DirectionColumn.Width = new GridLength(0);
-            DirectionHeader.Visibility = Visibility.Collapsed;
+        }
+
+        // 「方向」列两种编辑器都有，但含义不同：子动作是 输入 / 本地 / 输出（子动作的参数与回传），
+        // 动作只有 输入 / 本地——输入 = 运行前问你（面板 / 快捷键 / 悬浮都会弹参数框，填过的记住），
+        // 输出在动作里没有落点，所以不给这个选项。右栏因此都用 360，否则默认值那一列会被挤没。
+        RightColumn.Width = new GridLength(VariablesColumnWidth);
+        if (!_isSubAction)
+        {
+            DirectionHeader.ToolTip = "输入 = 运行前问你（填过的会记住）；本地 = 不问，直接用默认值";
+            VariablesHint.Text =
+                "步骤写出的变量（输出、设置变量）会自动登记在这里。方向选「输入」的变量会在运行前问你，" +
+                "填过的值会记住；「本地」直接用默认值。";
         }
 
         if (!string.IsNullOrWhiteSpace(title)) Title = title;

@@ -188,7 +188,7 @@ public partial class ActionEditorWindow
         DrawerBreadcrumb.Visibility = Visibility.Collapsed;
         ParamsPage.Visibility = Visibility.Collapsed;
         VariablesPage.Visibility = Visibility.Visible;
-        RightColumn.Width = new GridLength(286);
+        RightColumn.Width = new GridLength(VariablesColumnWidth);
 
         if (VariablesTab.IsChecked != true) VariablesTab.IsChecked = true;
     }

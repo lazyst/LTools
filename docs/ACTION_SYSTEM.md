@@ -525,7 +525,11 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
   `sub.run` 的「子动作」、`input.sendKeys` 的按键、`input.macro` 的宏都不再在行内摆下拉，
   候选收进「▾ 来源 → 从列表选…」；枚举下拉遇到不在 `Options` 里的旧值原样保留并标「未知选项」，
   不静默改成第一项。图片参数的缩略图放在输入行下方单独一行，输入行本身始终两列。
-- 变量面板：名称 / 类型 / 默认值；步骤**写出的**变量自动登记——`Core/Actions/VariableWrites` 是
+- 变量面板：名称 / 类型 / 方向 / 默认值；**方向 = 输入**的变量就是**动作参数**——面板磁贴、
+  快捷键、悬浮按钮运行前会弹一次参数框（预填上次填的值，取消 = 这次不跑），值经
+  `ActionRunOptions.InitialVariables` 注入，与自动触发的事件变量同一条路；自动触发不弹窗。
+  记忆在 `<数据根>/state/action-params.json`（`Features/ActionParams.cs`）。
+  步骤**写出的**变量自动登记——`Core/Actions/VariableWrites` 是
   「这一步写了哪个变量」的唯一判定（`Step.Out` + 设置变量的 `name`），变量表、引用统计、改名同步、
   保存时补声明与静态校验共用同一份。
 - 关闭编辑器时拿打开时的快照（名称 / 图标 / 变量表 / 步骤树）比对：有没保存的改动就三选一
@@ -534,7 +538,7 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
   删除 / 试运行 / 打开目录。编辑复用 `ActionEditorWindow.ForSubAction`——子动作与动作同构，只多一列
   「方向」（输入 / 本地 / 输出）；id 由新建时生成、之后不可改（它是对外调用名）。
   试运行走 `SubActionRunner`（摊平成一份 `ActionProgram` 复用编辑器试运行链路），输入值由
-  `SubActionInputDialog` 收集；删除前列出「哪个动作的哪一步」会坏。
+  `ParamInputDialog` 收集（与动作参数共用一个框）；删除前列出「哪个动作的哪一步」会坏。
 - 执行桥：`ActionDto.Program` + `Features/Migration/ActionPrograms.For`（懒迁移并缓存）；
   `ActionExecutor` 在 `Program != null` 时改走 `ActionEngine`，旧格式到 W5 再说。
 - 动作管理列表：`Program` 动作显示「动作 · N 步」（旧格式仍按原类型显示）。
