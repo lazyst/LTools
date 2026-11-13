@@ -53,6 +53,9 @@ public partial class ActionEditorWindow : Window
     private readonly List<StepTrace> _pendingTraces = new();
     private readonly Dictionary<string, TraceRow> _traceRowsByPath = new(StringComparer.Ordinal);
     private readonly Dictionary<string, StepRow> _traceTargets = new(StringComparer.Ordinal);
+
+    /// <summary>上一次试运行结束时各变量的完整文本（「本次 / 上次」对比用，关窗即丢）。</summary>
+    private readonly Dictionary<string, string> _previousValues = new(StringComparer.OrdinalIgnoreCase);
     private DispatcherTimer? _traceFlush;
     private bool _running;
 
@@ -308,6 +311,7 @@ public sealed class TraceRow : INotifyPropertyChanged
     private Brush _brush = Brushes.Gray;
     private string _elapsed = "";
     private string _detail = "";
+    private string _toolTip = "";
     private bool _isFailed;
     private int _count = 1;
 
@@ -347,11 +351,18 @@ public sealed class TraceRow : INotifyPropertyChanged
         private set => Set(ref _elapsed, value, nameof(Elapsed));
     }
 
-    /// <summary>错误信息优先，其次是本步写入的变量（<c>text = 你好</c>）。</summary>
+    /// <summary>错误信息优先，其次本步写入的变量（<c>text = 你好</c>），最后是实际拿到的参数。</summary>
     public string Detail
     {
         get => _detail;
         private set => Set(ref _detail, value, nameof(Detail));
+    }
+
+    /// <summary>悬停看全文：位置 / 耗时 / 解析后的参数 / 输出 / 错误（单行 Detail 放不下这些）。</summary>
+    public string ToolTip
+    {
+        get => _toolTip;
+        private set => Set(ref _toolTip, value, nameof(ToolTip));
     }
 
     /// <summary>是否失败（失败定位用）。</summary>
@@ -376,9 +387,44 @@ public sealed class TraceRow : INotifyPropertyChanged
 
         Elapsed = _count > 1 ? $"{trace.ElapsedMs} ms ×{_count}" : $"{trace.ElapsedMs} ms";
 
-        Detail = !string.IsNullOrEmpty(trace.Error)
-            ? trace.Error!
-            : string.Join(" · ", trace.Outputs.Select(p => $"{p.Key} = {Short(p.Value)}"));
+        if (!string.IsNullOrEmpty(trace.Error)) Detail = trace.Error!;
+        else if (trace.Outputs.Count > 0) Detail = Compact(trace.Outputs);
+        else Detail = Compact(trace.Inputs);
+
+        ToolTip = BuildToolTip(trace, _count);
+    }
+
+    /// <summary>参数 / 输出的单行摘要（每项值压缩到 80 字，整行由界面再截断）。</summary>
+    internal static string Compact(IReadOnlyDictionary<string, Value> values) =>
+        string.Join(" · ", values.Select(p => $"{p.Key} = {Short(p.Value)}"));
+
+    private static string BuildToolTip(StepTrace trace, int count)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"{trace.Label}　{trace.UnitName}");
+        sb.AppendLine($"耗时 {trace.ElapsedMs} ms" + (count > 1 ? $"（同一行执行了 {count} 次）" : ""));
+        AppendSection(sb, "参数（解析后）", trace.Inputs);
+        AppendSection(sb, "输出", trace.Outputs);
+        if (trace.Error is { Length: > 0 }) sb.AppendLine($"错误：{trace.Error}");
+        return sb.ToString().TrimEnd();
+    }
+
+    private static void AppendSection(System.Text.StringBuilder sb,
+        string title, IReadOnlyDictionary<string, Value> values)
+    {
+        if (values.Count == 0) return;
+
+        sb.AppendLine(title);
+        int shown = 0;
+        foreach (var pair in values)
+        {
+            if (shown++ >= 16)
+            {
+                sb.AppendLine($"  …（还有 {values.Count - 16} 项）");
+                break;
+            }
+            sb.AppendLine($"  {pair.Key} = {Short(pair.Value)}");
+        }
     }
 
     private static string Short(Value value)
@@ -411,5 +457,67 @@ public sealed class TraceRow : INotifyPropertyChanged
     }
 }
 
-/// <summary>变量快照的一行（运行结束时的值）。</summary>
-public sealed record SnapshotRow(string Name, string Value);
+/// <summary>
+/// 变量快照的一行：本次运行结束时的值，以及上一次试运行的值（变了才加粗 + 圆点）。
+/// </summary>
+/// <remarks>
+/// 「上次」只在同一个编辑器窗口里记（关掉就没了）：要回答的是「改了一处，再跑一次，哪个变量变了」，
+/// 不是长期历史——长期要看动作历史（<see cref="LTools.Core.Storage.ActionHistory"/>）。
+/// </remarks>
+public sealed class SnapshotRow
+{
+    public SnapshotRow(string name, string value, string previous, bool changed)
+    {
+        Name = name;
+        Value = value;
+        Previous = previous;
+        Changed = changed;
+    }
+
+    public string Name { get; }
+
+    public string Value { get; }
+
+    /// <summary>上一次试运行结束时的值；第一次运行是空串。</summary>
+    public string Previous { get; }
+
+    public bool Changed { get; }
+
+    /// <summary>变过的行前面点一个圆点（灰阶主题里比颜色更可靠）。</summary>
+    public string Marker => Changed ? "•" : "";
+
+    public FontWeight Weight => Changed ? FontWeights.SemiBold : FontWeights.Normal;
+
+    public string ValueTip => Previous.Length == 0
+        ? Value
+        : $"本次：{Value}\n上次：{Previous}";
+
+    /// <summary>
+    /// 生成整张表：按变量名排序，碰上「上次」就比一次（按完整文本比，不是按显示用的截断串）。
+    /// 抽成纯函数是为了能直接断言，不依赖窗口。
+    /// </summary>
+    internal static List<SnapshotRow> Build(IReadOnlyDictionary<string, Value> variables,
+        IReadOnlyDictionary<string, string>? previous)
+    {
+        var rows = new List<SnapshotRow>();
+        foreach (var pair in variables.OrderBy(p => p.Key, StringComparer.CurrentCultureIgnoreCase))
+        {
+            string full = TextOf(pair.Value);
+            string? was = null;
+            previous?.TryGetValue(pair.Key, out was);
+            bool changed = was != null && !string.Equals(was, full, StringComparison.Ordinal);
+            rows.Add(new SnapshotRow(pair.Key, Clip(full), was == null ? "" : Clip(was), changed));
+        }
+
+        return rows;
+    }
+
+    /// <summary>变量值取文本；取不出来给占位，别让一个变量毁掉整张表。</summary>
+    internal static string TextOf(Value value)
+    {
+        try { return value.AsText(); }
+        catch { return "(无法显示)"; }
+    }
+
+    private static string Clip(string text) => text.Length > 300 ? text[..300] + "…" : text;
+}

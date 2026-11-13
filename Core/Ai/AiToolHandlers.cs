@@ -652,6 +652,7 @@ internal static class AiToolHandlers
                 ["status"] = item.Trace.Status.ToString(),
                 ["elapsedMs"] = item.Trace.ElapsedMs,
                 ["error"] = item.Trace.Error,
+                ["inputs"] = item.Trace.Inputs,
                 ["outputs"] = item.Trace.Outputs,
             }).ToList(),
             ["next"] = next,

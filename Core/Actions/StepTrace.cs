@@ -23,6 +23,8 @@ public enum StepTraceStatus
 /// <see cref="Path"/> 是编辑器里的**步骤路径**（<c>/steps/2/then/0</c>），与运行时步数无关：
 /// 循环跑十轮，同一行的路径始终一样，所以面板能直接按它定位到左侧的步骤行。
 /// <see cref="Label"/> 是给人看的同义文本（<c>第 3 行 › 否则 › 第 1 行</c>），失败提示里用它。
+/// <see cref="Inputs"/> 是这一步**实际拿到的参数**（<c>${变量}</c> 已展开、按声明类型转换过；
+/// 被选项收起的参数不在里面），排查「为什么点错了地方」时看的是它，不是编辑器里写的原文。
 /// 轨迹在**后台线程**上同步回调，接收方不要在这里做重活（面板会自己攒批再上屏）。
 /// </remarks>
 public sealed record StepTrace(
@@ -34,4 +36,5 @@ public sealed record StepTrace(
     StepTraceStatus Status,
     long ElapsedMs,
     string? Error,
-    IReadOnlyDictionary<string, Value> Outputs);
+    IReadOnlyDictionary<string, Value> Outputs,
+    IReadOnlyDictionary<string, Value> Inputs);

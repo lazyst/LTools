@@ -332,7 +332,8 @@ staging/
   面板试运行与编辑器的「▶ 测试 / 校验」走同一套根。
 - 已有运行在跑时返回 `busy`（不要排队，用户可能正在用键鼠）。
 - 停止走 `AutomationRunner.Stop()`；停止热键不变。
-- 轨迹回执带 `StepTrace` 的 `Path` / `Label` / `Status` / `Error` / `Outputs` / 耗时，支持 cursor 分页。
+- 轨迹回执带 `StepTrace` 的 `Path` / `Label` / `Status` / `Error` / `Inputs` / `Outputs` / 耗时，支持 cursor 分页。
+  `inputs` 是**变量展开后**的参数（被选项收起的参数不在里面），`outputs` 是这一步写回的变量——排查「为什么点错地方」看 `inputs`。
 
 ### 5.6 采纳（promote）
 

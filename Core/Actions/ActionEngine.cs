@@ -221,34 +221,35 @@ public sealed class ActionEngine
             ctx.Depth = parent.Depth + 1;
 
             long started = Environment.TickCount64;
+            StepArgs? args = null;
             try
             {
-                var args = ResolveArgs(step, unit.Spec, ctx);
+                args = ResolveArgs(step, unit.Spec, ctx);
                 unit.Execute(ctx, args);
             }
             catch (ActionAbortedException ex)
             {
-                Trace(parent, step, path, label, ctx, StepTraceStatus.aborted, started, ex.Message);
+                Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.aborted, started, ex.Message);
                 throw;
             }
             catch (StopSignal)
             {
-                Trace(parent, step, path, label, ctx, StepTraceStatus.aborted, started, "已停止");
+                Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.aborted, started, "已停止");
                 throw;
             }
             catch (BreakSignal)
             {
-                Trace(parent, step, path, label, ctx, StepTraceStatus.ok, started, null);
+                Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.ok, started, null);
                 throw;
             }
             catch (ContinueSignal)
             {
-                Trace(parent, step, path, label, ctx, StepTraceStatus.ok, started, null);
+                Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.ok, started, null);
                 throw;
             }
             catch (ReturnSignal)
             {
-                Trace(parent, step, path, label, ctx, StepTraceStatus.ok, started, null);
+                Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.ok, started, null);
                 throw;
             }
             catch (Exception ex)
@@ -257,12 +258,12 @@ public sealed class ActionEngine
                 {
                     parent.State.RecordError(unit, ex);
                     parent.State.FailedStepLabel ??= label;
-                    Trace(parent, step, path, label, ctx, StepTraceStatus.continued, started, ex.Message);
+                    Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.continued, started, ex.Message);
                     continue;
                 }
 
                 parent.State.FailedStepLabel ??= label;
-                Trace(parent, step, path, label, ctx, StepTraceStatus.failed, started, ex.Message);
+                Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.failed, started, ex.Message);
 
                 // 内层步骤已经带了「第几行」前缀（例如循环体里那一步），外层别再套一层。
                 if (ex is StepFailureException) throw;
@@ -271,7 +272,7 @@ public sealed class ActionEngine
                     $"{label}「{unit.Spec.Name}」失败：{ex.Message}", ex);
             }
 
-            Trace(parent, step, path, label, ctx, StepTraceStatus.ok, started, null);
+            Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.ok, started, null);
 
             if (step.DelayMs > 0 && !parent.State.Wait(step.DelayMs))
                 throw new ActionAbortedException("已停止", userCancelled: true);
@@ -279,22 +280,37 @@ public sealed class ActionEngine
     }
 
     /// <summary>发一条轨迹；<c>StepTrace</c> 回调抛异常时吞掉（调试信息不该毁掉动作）。</summary>
-    private static void Trace(StepContext parent, Step step, string path, string label,
-        StepContext ctx, StepTraceStatus status, long started, string? error)
+    private static void Trace(StepContext parent, Step step, UnitSpec spec, string path, string label,
+        StepContext ctx, StepArgs? args, StepTraceStatus status, long started, string? error)
     {
         var callback = parent.State.Options.StepTrace;
         if (callback == null) return;
 
         try
         {
-            callback(new StepTrace(path, label, ctx.Depth, step.Unit,
-                parent.Engine.Registry.Get(step.Unit).Spec.Name, status,
-                Environment.TickCount64 - started, error, CaptureOutputs(step, ctx)));
+            callback(new StepTrace(path, label, ctx.Depth, step.Unit, spec.Name, status,
+                Environment.TickCount64 - started, error,
+                CaptureOutputs(step, ctx), CaptureInputs(args)));
         }
         catch
         {
             // 面板已经关掉 / 回调自己出错：不影响执行
         }
+    }
+
+    /// <summary>
+    /// 这一步实际拿到的参数（按参数声明顺序）。只收「有值」的：
+    /// 没填又没默认值的参数运行时就是空值，列出来只会把有用的那几项挤掉。
+    /// 参数求值本身失败时 <paramref name="args"/> 为 null，此时记空表——错误信息已经说明问题。
+    /// </summary>
+    private static IReadOnlyDictionary<string, Value> CaptureInputs(StepArgs? args)
+    {
+        if (args == null) return EmptyOutputs;
+
+        var values = new Dictionary<string, Value>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in args.Values)
+            if (args.Has(pair.Key)) values[pair.Key] = pair.Value;
+        return values;
     }
 
     private static IReadOnlyDictionary<string, Value> CaptureOutputs(Step step, StepContext ctx)

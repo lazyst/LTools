@@ -10,7 +10,7 @@ namespace LTools.Core;
 /// <remarks>
 /// <para>
 /// 日志一天一个文件、多个动作交错，事后很难从几千行里捞出「这次到底跑了哪几行」；
-/// 而 <see cref="StepTrace"/>（逐步耗时 / 输出 / 失败位置）原本只有编辑器试运行与 MCP
+/// 而 <see cref="StepTrace"/>（逐步耗时 / 解析后的参数 / 输出 / 失败位置）原本只有编辑器试运行与 MCP
 /// 拿得到，跑完就没了。这里把两者合起来单独落一份：用户点失败提示直接打开它，
 /// 贴给 AI 的也是这一份。
 /// </para>
@@ -91,8 +91,22 @@ internal static class FailureLog
         if (trace.Error is { Length: > 0 })
             sb.AppendLine($"         └ {trace.Error}");
 
-        // 输出只在失败那一步展开：成功的步骤输出可能很大，报告要能一眼看完。
-        if (trace.Status != StepTraceStatus.failed || trace.Outputs.Count == 0) return;
+        // 参数 / 输出只在失败那一步展开：成功的步骤输出可能很大，报告要能一眼看完。
+        // 参数是**变量展开后**的值（<see cref="StepTrace.Inputs"/>），排查时看的就该是这个。
+        if (trace.Status != StepTraceStatus.failed) return;
+
+        int shownInputs = 0;
+        foreach (var (key, value) in trace.Inputs)
+        {
+            if (shownInputs++ >= 8)
+            {
+                sb.AppendLine($"         └ 参数…（还有 {trace.Inputs.Count - 8} 项）");
+                break;
+            }
+            sb.AppendLine($"         └ {key} = {Shorten(SafeText(value))}");
+        }
+
+        if (trace.Outputs.Count == 0) return;
 
         int shown = 0;
         foreach (var (key, value) in trace.Outputs)
@@ -102,8 +116,14 @@ internal static class FailureLog
                 sb.AppendLine($"         └ …（还有 {trace.Outputs.Count - 12} 项）");
                 break;
             }
-            sb.AppendLine($"         └ {key} = {Shorten(value.AsText())}");
+            sb.AppendLine($"         └ {key} = {Shorten(SafeText(value))}");
         }
+    }
+
+    private static string SafeText(Value value)
+    {
+        try { return value.AsText(); }
+        catch { return "(无法显示)"; }
     }
 
     /// <summary>按 run id 过滤今天日志里的相关行（最多 200 行），放在报告末尾。</summary>

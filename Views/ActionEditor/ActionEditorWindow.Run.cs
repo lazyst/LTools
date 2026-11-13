@@ -409,18 +409,19 @@ public partial class ActionEditorWindow
         }));
     }
 
+    /// <summary>
+    /// 填「变量（本次 / 上次）」：本次 = 这次运行结束时的值，上次 = 上一次试运行的值（变了加粗 + 圆点）。
+    /// 对比只在这个窗口里记，关掉即丢。
+    /// </summary>
     private void FillSnapshot(ActionRunResult result)
     {
         _snapshotRows.Clear();
-        foreach (var pair in result.Variables.OrderBy(p => p.Key, StringComparer.CurrentCultureIgnoreCase))
-        {
-            string text;
-            try { text = pair.Value.AsText(); }
-            catch { text = "(无法显示)"; }
+        foreach (SnapshotRow row in SnapshotRow.Build(result.Variables, _previousValues))
+            _snapshotRows.Add(row);
 
-            if (text.Length > 300) text = text[..300] + "…";
-            _snapshotRows.Add(new SnapshotRow(pair.Key, text));
-        }
+        _previousValues.Clear();
+        foreach (var pair in result.Variables)
+            _previousValues[pair.Key] = SnapshotRow.TextOf(pair.Value);
     }
 
     /// <summary>双击变量快照行取到要复制的值（表头 / 空白 / 非 SnapshotRow 一律 null）。</summary>

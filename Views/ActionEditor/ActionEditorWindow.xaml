@@ -382,7 +382,7 @@
                                                                FontSize="{StaticResource FontSizeHint}"
                                                                Foreground="{StaticResource HintTextBrush}"
                                                                TextTrimming="CharacterEllipsis"
-                                                               ToolTip="{Binding Detail}"/>
+                                                               ToolTip="{Binding ToolTip}"/>
                                                 </Grid>
                                             </DataTemplate>
                                         </ListView.ItemTemplate>
@@ -390,13 +390,13 @@
                                 </DockPanel>
 
                                 <DockPanel Grid.Column="1">
-                                    <TextBlock DockPanel.Dock="Top" Text="变量（运行结束后）"
+                                    <TextBlock DockPanel.Dock="Top" Text="变量（本次 / 上次试运行）"
                                                FontSize="{StaticResource FontSizeHint}"
                                                Foreground="{StaticResource HintTextBrush}" Margin="0,0,0,2"/>
                                     <ListView x:Name="SnapshotList" BorderThickness="0" Background="Transparent"
                                               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                               MouseDoubleClick="SnapshotList_MouseDoubleClick"
-                                              ToolTip="双击一行复制该变量的值">
+                                              ToolTip="双击一行复制本次的值；加粗 + • = 和上一次试运行不同">
                                         <ListView.ItemContainerStyle>
                                             <Style TargetType="ListViewItem">
                                                 <Setter Property="Padding" Value="0"/>
@@ -409,18 +409,31 @@
                                             <DataTemplate>
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="84"/>
+                                                        <ColumnDefinition Width="10"/>
+                                                        <ColumnDefinition Width="74"/>
                                                         <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="84"/>
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{Binding Name}"
+                                                    <TextBlock Text="{Binding Marker}"
+                                                               FontSize="{StaticResource FontSizeHint}"
+                                                               Foreground="{StaticResource WarningBrush}"
+                                                               ToolTip="和上一次试运行不同"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Name}"
                                                                FontFamily="{StaticResource MonoFont}"
                                                                FontSize="{StaticResource FontSizeHint}"
                                                                TextTrimming="CharacterEllipsis"/>
-                                                    <TextBlock Grid.Column="1" Text="{Binding Value}"
+                                                    <TextBlock Grid.Column="2" Text="{Binding Value}"
                                                                FontSize="{StaticResource FontSizeHint}"
+                                                               FontWeight="{Binding Weight}"
                                                                Foreground="{StaticResource SecondaryTextBrush}"
                                                                TextTrimming="CharacterEllipsis"
-                                                               ToolTip="{Binding Value}"/>
+                                                               ToolTip="{Binding ValueTip}"/>
+                                                    <TextBlock Grid.Column="3" Text="{Binding Previous}"
+                                                               FontFamily="{StaticResource MonoFont}"
+                                                               FontSize="{StaticResource FontSizeHint}"
+                                                               Foreground="{StaticResource HintTextBrush}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip="{Binding ValueTip}"/>
                                                 </Grid>
                                             </DataTemplate>
                                         </ListView.ItemTemplate>
