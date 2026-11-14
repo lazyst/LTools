@@ -39,6 +39,14 @@ internal static class EngineSuite
         cases.Add(new("engine", "同一行慢步骤只报一次", SlowStepOncePerPath));
         cases.Add(new("engine", "快步骤不报警", SlowStepFast));
         cases.Add(new("engine", "关掉看门狗不报警", SlowStepOff));
+        cases.Add(new("engine", "重试后成功", RetrySucceeds));
+        cases.Add(new("engine", "重试用尽按失败策略收尾", RetryExhausted));
+        cases.Add(new("engine", "重试间隔里按停止立刻响应", RetryWaitCancellable));
+        cases.Add(new("engine", "干跑不重试", RetryDryRun));
+        cases.Add(new("engine", "等待条件立即成立", WaitForImmediate));
+        cases.Add(new("engine", "等待条件每轮重新取值", WaitForReevaluates));
+        cases.Add(new("engine", "等待条件超时", WaitForTimeout));
+        cases.Add(new("engine", "干跑里条件不成立不算失败", WaitForDryRun));
     }
 
     // ============ 用例 ============
@@ -502,8 +510,176 @@ internal static class EngineSuite
         Check.Equal(0, reports.Count, "SlowStepWarn = 0 时不该有任何回调");
     }
 
-    // ============ 工具 ============
+    // ============ 失败重试（P2） ============
 
+    private static void RetrySucceeds()
+    {
+        FakeUnit unit = TestRegistry.Flaky(failures: 2);
+        var traces = new List<StepTrace>();
+        var options = new ActionRunOptions { StepTrace = t => { lock (traces) traces.Add(t); } };
+
+        Step step = Step.Of("test.flaky").WithText("message", "还没出现");
+        step.Retry = 2;
+        step.RetryDelayMs = 10;
+
+        ActionRunResult result = Run(Program(step), TestRegistry.Create(unit), options);
+
+        Check.True(result.Ok, "前两次失败、第三次应成功：" + result.Error);
+        Check.Equal(3, unit.Calls, "应尝试 3 次");
+        Check.Equal(1, traces.Count, "一步只发一条轨迹（中间的重试不各自成行）");
+
+        if (traces.Count == 0) return;
+        Check.Equal(StepTraceStatus.ok, traces[0].Status, "最终状态是成功");
+        Check.Equal(3, traces[0].Attempt, "轨迹记第几次尝试");
+        Check.Equal(3, traces[0].MaxAttempts, "retry = 2 → 最多 3 次");
+    }
+
+    private static void RetryExhausted()
+    {
+        var traces = new List<StepTrace>();
+        var options = new ActionRunOptions { StepTrace = t => { lock (traces) traces.Add(t); } };
+
+        FakeUnit stopUnit = TestRegistry.Flaky(failures: 99);
+        Step stopStep = Step.Of("test.flaky").WithText("message", "一直没好");
+        stopStep.Retry = 2;
+        stopStep.RetryDelayMs = 5;
+
+        ActionRunResult stop = Run(Program(stopStep), TestRegistry.Create(stopUnit), options);
+
+        Check.False(stop.Ok, "一直失败、默认策略是中止");
+        Check.Equal(3, stopUnit.Calls, "1 次 + 重试 2 次");
+        Check.True(traces.Count > 0, "应有一条轨迹");
+        if (traces.Count > 0)
+        {
+            Check.Equal(StepTraceStatus.failed, traces[^1].Status, "最终状态是失败");
+            Check.Equal(3, traces[^1].Attempt, "最后一次尝试");
+        }
+
+        FakeUnit continueUnit = TestRegistry.Flaky(failures: 99);
+        Step continueStep = Step.Of("test.flaky").WithText("message", "一直没好");
+        continueStep.Retry = 1;
+        continueStep.RetryDelayMs = 5;
+        continueStep.OnFail = FailMode.@continue;
+
+        ActionRunResult cont = Run(Program(continueStep), TestRegistry.Create(continueUnit));
+
+        Check.True(cont.Ok, "「失败继续」时整体仍算成功：" + cont.Error);
+        Check.Equal(2, continueUnit.Calls, "retry = 1 → 共尝试 2 次");
+    }
+
+    private static void RetryWaitCancellable()
+    {
+        using var cts = new CancellationTokenSource();
+        var unit = new FakeUnit("test.cancel", "取消测试", run: (_, _) =>
+        {
+            cts.Cancel();
+            throw new ActionException("先失败一次");
+        });
+
+        Step step = Step.Of("test.cancel");
+        step.Retry = 5;
+        step.RetryDelayMs = 30_000;   // 真等下去自测会卡半分钟
+
+        long started = Environment.TickCount64;
+        ActionRunResult result = Run(Program(step), TestRegistry.Create(unit),
+            new ActionRunOptions { Token = cts.Token });
+        long elapsed = Environment.TickCount64 - started;
+
+        Check.True(result.Stopped, "重试等待期间被停止应算「已停止」");
+        Check.Equal(1, unit.Calls, "停止后不再重试");
+        Check.True(elapsed < 5000, $"不该等满 30 秒（实际 {elapsed} ms）");
+    }
+
+    private static void RetryDryRun()
+    {
+        FakeUnit unit = TestRegistry.Flaky(failures: 99);
+        Step step = Step.Of("test.flaky").WithText("message", "干跑");
+        step.Retry = 3;
+        step.RetryDelayMs = 5;
+
+        ActionRunResult result = Run(Program(step), TestRegistry.Create(unit),
+            new ActionRunOptions { DryRun = true });
+
+        Check.True(result.Ok, "干跑跳过会动键鼠的步骤，不该因为重试失败：" + result.Error);
+        Check.Equal(0, unit.Calls, "干跑不执行动作单元");
+    }
+
+    // ============ 等待条件（flow.waitFor，P2） ============
+
+    private static void WaitForImmediate()
+    {
+        Step step = Step.Of("flow.waitFor")
+            .With("left", StepArg.FromText("abc"))
+            .WithText("op", "contains")
+            .With("right", StepArg.FromText("b"))
+            .With("timeoutMs", StepArg.FromNumber(1000))
+            .Output("ok", "waitOk")
+            .Output("elapsed", "waited");
+
+        ActionRunResult result = Run(Program(step));
+
+        Check.True(result.Ok, "条件本来就成立应立即成功：" + result.Error);
+        Check.True(result.Variables["waitOk"].AsBool(), "输出 ok = true");
+        Check.True(result.Variables["waited"].AsNumber() >= 0, "输出等了多少毫秒");
+        Check.Equal(1, result.Steps, "只算一步");
+    }
+
+    private static void WaitForReevaluates()
+    {
+        int tick = 0;
+        var counter = new FakeUnit("test.tick", "递增", UnitKind.pure,
+            outputs: new[] { new OutputSpec("value", "值", ValueKind.number) },
+            run: (ctx, _) => ctx.SetOutput("value", Value.FromNumber(++tick)));
+
+        Step inline = Step.Of("test.tick");
+        Step step = Step.Of("flow.waitFor")
+            .With("left", StepArg.FromInline(inline))
+            .WithText("op", "greaterOrEqual")
+            .With("right", StepArg.FromNumber(3))
+            .With("timeoutMs", StepArg.FromNumber(2000))
+            .With("intervalMs", StepArg.FromNumber(20))
+            .Output("ok", "waitOk");
+
+        ActionRunResult result = Run(Program(step), TestRegistry.Create(counter));
+
+        Check.True(result.Ok, "条件在超时前应成立：" + result.Error);
+        Check.True(counter.Calls >= 3, $"条件每轮都应重新求值（取值执行了 {counter.Calls} 次）");
+        Check.True(result.Variables["waitOk"].AsBool(), "输出 ok = true");
+    }
+
+    private static void WaitForTimeout()
+    {
+        Step step = Step.Of("flow.waitFor")
+            .WithText("left", "a")
+            .WithText("op", "equals")
+            .WithText("right", "b")
+            .With("timeoutMs", StepArg.FromNumber(150))
+            .With("intervalMs", StepArg.FromNumber(50))
+            .Output("ok", "waitOk");
+
+        ActionRunResult result = Run(Program(step));
+
+        Check.False(result.Ok, "一直不成立应超时失败");
+        Check.Contains(result.Error, "超时");
+        Check.False(result.Variables["waitOk"].AsBool(), "超时时也要把 ok = false 写进变量");
+    }
+
+    private static void WaitForDryRun()
+    {
+        Step step = Step.Of("flow.waitFor")
+            .WithText("left", "a")
+            .WithText("op", "equals")
+            .WithText("right", "b")
+            .With("timeoutMs", StepArg.FromNumber(5000))
+            .Output("ok", "waitOk");
+
+        ActionRunResult result = Run(Program(step), null, new ActionRunOptions { DryRun = true });
+
+        Check.True(result.Ok, "干跑里条件不成立不该算失败（也不该真的等 5 秒）：" + result.Error);
+        Check.False(result.Variables["waitOk"].AsBool(), "ok = false");
+    }
+
+    // ============ 工具 ============
     private static ActionRunResult Run(ActionProgram program, StepRegistry? registry = null, ActionRunOptions? options = null) =>
         new ActionEngine(registry ?? TestRegistry.Create()).Run(program, options);
 

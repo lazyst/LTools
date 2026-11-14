@@ -15,6 +15,7 @@ internal static class ModelSuite
         cases.Add(new("model", "空值按空文本读", NullArgBecomesEmptyText));
         cases.Add(new("model", "不认识的键当对象字面量", UnknownObjectIsLiteral));
         cases.Add(new("model", "程序整体往返", ProgramRoundTrip));
+        cases.Add(new("model", "重试设置随克隆复制", RetrySurvivesClone));
     }
 
     private static void ArgKindsRoundTrip()
@@ -116,6 +117,8 @@ internal static class ModelSuite
         loop.DelayMs = 20;
         loop.Disabled = true;
         loop.OnFail = FailMode.@continue;
+        loop.Retry = 2;
+        loop.RetryDelayMs = 800;
         loop.Body.Add(Step.Of("test.echo").WithText("text", "${cur}").Output("text", "last"));
         loop.Then.Add(Step.Of("flow.break"));
 
@@ -136,7 +139,23 @@ internal static class ModelSuite
         Check.Equal(1, back.Steps[1].Else.Count, "条件分支（else）");
         Check.Equal(FailMode.@continue, back.Steps[0].OnFail, "失败策略");
         Check.Equal(20, back.Steps[0].DelayMs, "步骤延迟");
+        Check.Equal(2, back.Steps[0].Retry, "重试次数");
+        Check.Equal(800, back.Steps[0].RetryDelayMs, "重试间隔");
         Check.True(back.Steps[0].Disabled, "跳过标记");
         Check.Equal("遍历", back.Steps[0].Note, "备注");
+    }
+
+    /// <summary>重试设置要随 <see cref="Step.Clone"/> 一起复制（编辑器「复制一份」/ 撤销快照都靠它）。</summary>
+    private static void RetrySurvivesClone()
+    {
+        Step step = Step.Of("test.echo").WithText("text", "x");
+        step.Retry = 3;
+        step.RetryDelayMs = 1200;
+
+        Step copy = step.Clone();
+
+        Check.Equal(3, copy.Retry, "克隆应带上重试次数");
+        Check.Equal(1200, copy.RetryDelayMs, "克隆应带上重试间隔");
+        Check.Equal(Step.DefaultRetryDelayMs, Step.Of("test.echo").RetryDelayMs, "默认间隔");
     }
 }

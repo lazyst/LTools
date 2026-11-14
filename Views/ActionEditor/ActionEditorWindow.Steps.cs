@@ -132,6 +132,8 @@ public partial class ActionEditorWindow
         if (step.Disabled) title += "（跳过）";
 
         string summary = StepSummary.Describe(step);
+        string retry = StepSummary.RetryText(step);
+        if (retry.Length > 0) summary = summary.Length == 0 ? retry : $"{summary} · {retry}";
         if (collapsed)
         {
             string folded = $"已折叠 {DescendantCount(step)} 步";

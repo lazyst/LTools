@@ -185,6 +185,23 @@ public sealed class Step
     [JsonPropertyName("delayMs")]
     public int DelayMs { get; set; }
 
+    /// <summary>
+    /// 失败后最多再试几次（0 = 不重试，默认）。只重试**这一步自己**抛的错：
+    /// 被停止、<c>flow.break</c> / <c>continue</c> / <c>return</c> 这类控制信号从不重试。
+    /// </summary>
+    [JsonPropertyName("retry")]
+    public int Retry { get; set; }
+
+    /// <summary>两次尝试之间等待的毫秒数（可被停止热键打断）。</summary>
+    [JsonPropertyName("retryDelayMs")]
+    public int RetryDelayMs { get; set; } = DefaultRetryDelayMs;
+
+    /// <summary>重试间隔的默认值（`retryDelayMs` 缺省时）。</summary>
+    public const int DefaultRetryDelayMs = 500;
+
+    /// <summary>单步最多重试几次（超过就不拦、但校验会报错；引擎按它夹取）。</summary>
+    public const int MaxRetry = 10;
+
     public static Step Of(string unit) => new() { Unit = unit };
 
     /// <summary>设置一个参数（链式写法，便于构造测试用例）。</summary>
@@ -226,6 +243,8 @@ public sealed class Step
             Disabled = Disabled,
             OnFail = OnFail,
             DelayMs = DelayMs,
+            Retry = Retry,
+            RetryDelayMs = RetryDelayMs,
         };
 
         foreach (var pair in In) clone.In[pair.Key] = pair.Value.Clone();

@@ -1185,6 +1185,10 @@ public partial class StepFormView : UserControl
         FailBox.SelectedIndex = _step.OnFail == FailMode.@continue ? 1 : 0;
         DelayBox.Text = _step.DelayMs > 0
             ? _step.DelayMs.ToString(CultureInfo.InvariantCulture) : "";
+        RetryBox.Text = _step.Retry > 0
+            ? _step.Retry.ToString(CultureInfo.InvariantCulture) : "";
+        RetryDelayBox.Text = _step.RetryDelayMs == Step.DefaultRetryDelayMs
+            ? "" : _step.RetryDelayMs.ToString(CultureInfo.InvariantCulture);
         DisabledBox.IsChecked = _step.Disabled;
         NoteBox.Text = _step.Note ?? "";
     }
@@ -1331,6 +1335,31 @@ public partial class StepFormView : UserControl
             if (row.Editor is ValueField field) field.MarkMissing(false);
         ProblemText.Visibility = Visibility.Collapsed;
 
+        // 重试次数 / 间隔：填错了就地拦下（否则存进 JSON 只能靠校验器报）。
+        string retryText = (RetryBox.Text ?? "").Trim();
+        int retry = 0;
+        if (retryText.Length > 0 &&
+            (!int.TryParse(retryText, NumberStyles.Integer, CultureInfo.InvariantCulture, out retry)
+             || retry < 0 || retry > Step.MaxRetry))
+        {
+            ProblemText.Text = $"重试次数要在 0–{Step.MaxRetry} 之间（填的是「{retryText}」）";
+            ProblemText.ToolTip = ProblemText.Text;
+            ProblemText.Visibility = Visibility.Visible;
+            return false;
+        }
+
+        string retryDelayText = (RetryDelayBox.Text ?? "").Trim();
+        int retryDelay = Step.DefaultRetryDelayMs;
+        if (retryDelayText.Length > 0 &&
+            (!int.TryParse(retryDelayText, NumberStyles.Integer, CultureInfo.InvariantCulture, out retryDelay)
+             || retryDelay < 0))
+        {
+            ProblemText.Text = $"重试间隔要写非负整数毫秒（填的是「{retryDelayText}」）";
+            ProblemText.ToolTip = ProblemText.Text;
+            ProblemText.Visibility = Visibility.Visible;
+            return false;
+        }
+
         _step.Out.Clear();
         foreach (var row in _outputs.Concat(_dynamicOutputs))
         {
@@ -1343,6 +1372,8 @@ public partial class StepFormView : UserControl
         _step.DelayMs = int.TryParse((DelayBox.Text ?? "").Trim(),
             NumberStyles.Integer, CultureInfo.InvariantCulture, out int delay)
             ? Math.Max(0, delay) : 0;
+        _step.Retry = retry;
+        _step.RetryDelayMs = retryDelay;
         _step.Disabled = DisabledBox.IsChecked == true;
         _step.Note = string.IsNullOrWhiteSpace(NoteBox.Text) ? null : NoteBox.Text.Trim();
 

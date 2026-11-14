@@ -58,6 +58,15 @@
                             <TextBox x:Name="DelayBox" Width="76" MinHeight="28" Margin="8,0,4,0"/>
                             <TextBlock Text="毫秒" VerticalAlignment="Center"
                                        Foreground="{StaticResource HintTextBrush}"/>
+
+                            <TextBlock Text="失败时重试" VerticalAlignment="Center" Margin="0,8,0,0"
+                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                            <TextBox x:Name="RetryBox" Width="52" MinHeight="28" Margin="8,8,4,0"/>
+                            <TextBlock Text="次，每次间隔" VerticalAlignment="Center" Margin="0,8,0,0"
+                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                            <TextBox x:Name="RetryDelayBox" Width="66" MinHeight="28" Margin="8,8,4,0"/>
+                            <TextBlock Text="毫秒" VerticalAlignment="Center" Margin="0,8,0,0"
+                                       Foreground="{StaticResource HintTextBrush}"/>
                         </WrapPanel>
 
                         <CheckBox x:Name="DisabledBox" Content="跳过这一步（保留配置）" Margin="0,10,0,0"/>

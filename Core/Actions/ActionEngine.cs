@@ -253,56 +253,96 @@ public sealed class ActionEngine
             long started = Environment.TickCount64;
             StepArgs? args = null;
             // 干跑：参数照常解析（轨迹里能看到展开后的值），但会动键鼠 / 弹窗口的步骤不执行。
+            // 干跑不重试：没真跑就没什么可重试的。
             bool dryRunSkip = ctx.DryRun && !unit.Spec.RunsInDryRun;
+            int maxAttempts = dryRunSkip ? 1 : Math.Clamp(step.Retry, 0, Step.MaxRetry) + 1;
+            int attempt = 1;
+            bool continued = false;
             parent.State.PushStep(path, label, unit);
             try
             {
-                args = ResolveArgs(step, unit.Spec, ctx);
-                if (!dryRunSkip) unit.Execute(ctx, args);
-            }
-            catch (ActionAbortedException ex)
-            {
-                Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.aborted, started, ex.Message);
-                throw;
-            }
-            catch (StopSignal)
-            {
-                Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.aborted, started, "已停止");
-                throw;
-            }
-            catch (BreakSignal)
-            {
-                Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.ok, started, null);
-                throw;
-            }
-            catch (ContinueSignal)
-            {
-                Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.ok, started, null);
-                throw;
-            }
-            catch (ReturnSignal)
-            {
-                Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.ok, started, null);
-                throw;
-            }
-            catch (Exception ex)
-            {
-                if (step.OnFail == FailMode.@continue)
+                while (true)
                 {
-                    parent.State.RecordError(unit, ex);
-                    parent.State.FailedStepLabel ??= label;
-                    Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.continued, started, ex.Message);
-                    continue;
+                    try
+                    {
+                        args = ResolveArgs(step, unit.Spec, ctx);
+                        if (!dryRunSkip) unit.Execute(ctx, args);
+                        break;
+                    }
+                    catch (ActionAbortedException ex)
+                    {
+                        Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.aborted,
+                            started, ex.Message, attempt, maxAttempts);
+                        throw;
+                    }
+                    catch (StopSignal)
+                    {
+                        Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.aborted,
+                            started, "已停止", attempt, maxAttempts);
+                        throw;
+                    }
+                    catch (BreakSignal)
+                    {
+                        Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.ok,
+                            started, null, attempt, maxAttempts);
+                        throw;
+                    }
+                    catch (ContinueSignal)
+                    {
+                        Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.ok,
+                            started, null, attempt, maxAttempts);
+                        throw;
+                    }
+                    catch (ReturnSignal)
+                    {
+                        Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.ok,
+                            started, null, attempt, maxAttempts);
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        // 走到这里只剩「这一步真的失败了」：还有次数就等一会儿再来一次。
+                        // 停止 / 跳出 / 继续 / 返回都是控制信号，在上面的分支里已经直接抛出，绝不重试。
+                        if (attempt < maxAttempts)
+                        {
+                            int wait = Math.Max(0, step.RetryDelayMs);
+                            parent.State.Options.Log?.Invoke(
+                                $"{label}「{unit.Spec.Name}」第 {attempt} 次失败，{wait} 毫秒后重试" +
+                                $"（最多 {maxAttempts} 次）：{ex.Message}");
+
+                            // 重试间隔必须可取消：按停止热键不该再等完这几百毫秒。
+                            if (!parent.State.Wait(wait))
+                            {
+                                Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.aborted,
+                                    started, "已停止", attempt, maxAttempts);
+                                throw new ActionAbortedException("已停止", userCancelled: true);
+                            }
+
+                            attempt++;
+                            continue;
+                        }
+
+                        if (step.OnFail == FailMode.@continue)
+                        {
+                            parent.State.RecordError(unit, ex);
+                            parent.State.FailedStepLabel ??= label;
+                            Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.continued,
+                                started, ex.Message, attempt, maxAttempts);
+                            continued = true;
+                            break;
+                        }
+
+                        parent.State.FailedStepLabel ??= label;
+                        Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.failed,
+                            started, ex.Message, attempt, maxAttempts);
+
+                        // 内层步骤已经带了「第几行」前缀（例如循环体里那一步），外层别再套一层。
+                        if (ex is StepFailureException) throw;
+
+                        throw new StepFailureException(
+                            $"{label}「{unit.Spec.Name}」失败：{ex.Message}", ex);
+                    }
                 }
-
-                parent.State.FailedStepLabel ??= label;
-                Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.failed, started, ex.Message);
-
-                // 内层步骤已经带了「第几行」前缀（例如循环体里那一步），外层别再套一层。
-                if (ex is StepFailureException) throw;
-
-                throw new StepFailureException(
-                    $"{label}「{unit.Spec.Name}」失败：{ex.Message}", ex);
             }
             finally
             {
@@ -310,8 +350,10 @@ public sealed class ActionEngine
                 parent.State.PopStep();
             }
 
+            if (continued) continue;
+
             Trace(parent, step, unit.Spec, path, label, ctx, args,
-                dryRunSkip ? StepTraceStatus.skipped : StepTraceStatus.ok, started, null);
+                dryRunSkip ? StepTraceStatus.skipped : StepTraceStatus.ok, started, null, attempt, maxAttempts);
 
             if (!ctx.DryRun && step.DelayMs > 0 && !parent.State.Wait(step.DelayMs))
                 throw new ActionAbortedException("已停止", userCancelled: true);
@@ -320,7 +362,8 @@ public sealed class ActionEngine
 
     /// <summary>发一条轨迹；<c>StepTrace</c> 回调抛异常时吞掉（调试信息不该毁掉动作）。</summary>
     private static void Trace(StepContext parent, Step step, UnitSpec spec, string path, string label,
-        StepContext ctx, StepArgs? args, StepTraceStatus status, long started, string? error)
+        StepContext ctx, StepArgs? args, StepTraceStatus status, long started, string? error,
+        int attempt = 1, int maxAttempts = 1)
     {
         var callback = parent.State.Options.StepTrace;
         if (callback == null) return;
@@ -329,7 +372,7 @@ public sealed class ActionEngine
         {
             callback(new StepTrace(path, label, ctx.Depth, step.Unit, spec.Name, status,
                 Environment.TickCount64 - started, error,
-                CaptureOutputs(step, ctx), CaptureInputs(args)));
+                CaptureOutputs(step, ctx), CaptureInputs(args), attempt, maxAttempts));
         }
         catch
         {

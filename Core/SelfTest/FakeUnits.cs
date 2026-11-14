@@ -55,7 +55,7 @@ internal static class TestRegistry
         var byKey = new Dictionary<string, IStepUnit>(StringComparer.OrdinalIgnoreCase);
         foreach (IStepUnit unit in new IStepUnit[]
                  {
-                     Echo(), Fail(), Mark(), WriteScope(), Pure(), Slow(),
+                     Echo(), Fail(), Mark(), WriteScope(), Pure(), Slow(), Flaky(0),
                  })
             byKey[unit.Spec.Key] = unit;
 
@@ -94,6 +94,22 @@ internal static class TestRegistry
     /// <summary>只是记一次调用（<see cref="FakeUnit.Calls"/>）。</summary>
     public static FakeUnit Mark(string key = "test.mark", string name = "计数测试") =>
         new(key, name, inputs: new[] { new InputSpec("label", "标签") });
+
+    /// <summary>前 <paramref name="failures"/> 次失败、之后成功（步骤重试用）。</summary>
+    public static FakeUnit Flaky(int failures)
+    {
+        FakeUnit? self = null;
+        var unit = new FakeUnit("test.flaky", "时好时坏测试",
+            inputs: new[] { new InputSpec("message", "消息") },
+            run: (_, args) =>
+            {
+                if (self!.Calls <= failures)
+                    throw new ActionException(args.TryGet("message")?.AsText() ?? "一会儿再试");
+            });
+
+        self = unit;
+        return unit;
+    }
 
     /// <summary>直接写当前作用域（验证作用域隔离 / 循环条件用，不依赖任何真实单元）。</summary>
     public static FakeUnit WriteScope() => new("test.scope", "写作用域测试",

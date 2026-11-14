@@ -21,6 +21,8 @@ internal static class ValidatorSuite
         cases.Add(new("validator", "编辑器缺图片只是提醒", MissingImageEditor));
         cases.Add(new("validator", "返回只能用在子动作里", ReturnInAction));
         cases.Add(new("validator", "子动作自调用成环", SubActionCycle));
+        cases.Add(new("validator", "重试次数超范围", RetryOutOfRange));
+        cases.Add(new("validator", "块步骤上重试给提醒", RetryOnBlock));
         cases.Add(new("validator", "超大动作给提醒", LargeAction));
     }
 
@@ -137,6 +139,36 @@ internal static class ValidatorSuite
         ActionValidationResult result = ActionValidator.ValidateSubAction(def);
 
         Check.False(result.Ok, "子动作调用自己应是错误：" + Describe(result));
+    }
+
+    private static void RetryOutOfRange()
+    {
+        Step tooMany = Step.Of("flow.set").WithText("name", "v").WithText("value", "1");
+        tooMany.Retry = Step.MaxRetry + 1;
+
+        ActionValidationResult result = Validate(Program(Var("v", ValueKind.text), tooMany));
+
+        Check.False(result.Ok, "重试次数超上限应是错误：" + Describe(result));
+        Check.True(Has(result, IssueSeverity.error, "/steps/0"), "位置应指向那一步：" + Describe(result));
+
+        Step negative = Step.Of("flow.set").WithText("name", "v").WithText("value", "1");
+        negative.RetryDelayMs = -1;
+
+        ActionValidationResult badDelay = Validate(Program(Var("v", ValueKind.text), negative));
+
+        Check.False(badDelay.Ok, "负的重试间隔应是错误：" + Describe(badDelay));
+    }
+
+    private static void RetryOnBlock()
+    {
+        Step loop = Step.Of("flow.repeat").With("count", StepArg.FromNumber(2));
+        loop.Retry = 1;
+        loop.Body.Add(Step.Of("flow.set").WithText("name", "v").WithText("value", "1"));
+
+        ActionValidationResult result = Validate(Program(Var("v", ValueKind.text), loop));
+
+        Check.True(result.Ok, "块步骤上重试只是提醒，不该拦：" + Describe(result));
+        Check.True(Has(result, IssueSeverity.warning, "/steps/0"), "位置应指向那一步：" + Describe(result));
     }
 
     private static void LargeAction()

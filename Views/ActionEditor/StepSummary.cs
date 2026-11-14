@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -30,7 +31,7 @@ internal static class StepSummary
     {
         if (!StepRegistry.Default.TryGet(step.Unit, out var unit)) return "";
 
-        if (step.Unit is "flow.if" or "flow.while") return ConditionText(step);
+        if (FlowUnits.Compare.IsConditionUnit(step.Unit)) return ConditionText(step);
         if (step.Unit == "sub.run") return SubActionText(step);
         if (step.Unit == MacroAction.UnitKey) return MacroText(step);
         if (step.Unit == "input.sendKeys") return KeyText(step);
@@ -198,8 +199,27 @@ internal static class StepSummary
         bool negate = step.In.TryGetValue("negate", out var n)
             && n.Kind == StepArgKind.literal
             && n.Literal.AsBool();
-        return negate ? "非（" + text + "）" : text;
+        text = negate ? "非（" + text + "）" : text;
+
+        // 等待条件：补上「最多等多久」，否则摘要跟「如果」长得一样。
+        if (step.Unit != "flow.waitFor") return text;
+
+        string wait = step.In.TryGetValue("timeoutMs", out var t)
+            && t.Kind == StepArgKind.literal
+            ? t.Literal.AsText()
+            : "10000";
+
+        return double.TryParse(wait, NumberStyles.Float, CultureInfo.InvariantCulture, out double ms)
+            ? $"{text}（最多等 {ms / 1000:0.#} 秒）"
+            : $"{text}（最多等 {wait} 毫秒）";
     }
+
+    /// <summary>
+    /// 步骤行上的重试标记（<c>⟳3</c>）：<c>retry</c> 为 0 时是空串。
+    /// 与「跳过 / 失败继续 / 延迟」的标记一起拼在行尾（P3 收成 chip）。
+    /// </summary>
+    public static string RetryText(Step step) =>
+        step.Retry > 0 ? $"⟳{step.Retry}" : "";
 
     // —— VisibleWhen ——
 

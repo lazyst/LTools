@@ -320,3 +320,39 @@ UIA / OCR / OpenCV），按 P1 决策只做可观测。所以这一阶段的产�
 **验收**：`--selftest` 74 例 / 2486 断言全绿；4 个慢步骤用例覆盖「报 / 不重复报 / 不报 / 关掉」；
 真机跑一个长动作能同时看到指示器、日志与 toast；按停止后指示器立刻切「正在停止」。
 
+### 9.3 P2 · 失败语义（2026-11-14）
+
+**落地内容**
+
+| 位置 | 内容 |
+|---|---|
+| `Step` | `Retry`（默认 0 = 不重试）+ `RetryDelayMs`（默认 `DefaultRetryDelayMs` = 500）+ 常量 `MaxRetry = 10`；`Clone` 一起复制 |
+| `ActionEngine.RunSteps` | `while` 重试循环：`maxAttempts = Math.Clamp(Retry, 0, MaxRetry) + 1`；**控制信号（停止 / `break` / `continue` / `return`）在各自 `catch` 里直接抛出、绝不重试**；重试间隔走 `parent.State.Wait`（按停止热键立刻返回）；`fail` / `continued` 分支才对 `onFail` 求值 |
+| `StepTrace` | 尾部加 `Attempt` / `MaxAttempts`（`1/1` = 没配重试）；**一步只发一条轨迹**，带的是最终结果 |
+| `flow.waitFor`（新单元） | `left` / `op` / `right` / `negate` + `timeoutMs`（默认 10000，0 = 只判断一次）+ `intervalMs`（默认 250，`Advanced`）；条件**每轮用 `ctx.ResolveArgs()` 重新求值**；输出 `ok` → `waitOk` / `elapsed` → `waitElapsed`；超时算这一步失败但 `ok` 已写（配「失败继续」做兜底判断） |
+| `FlowUnits.Compare` | 新增 `ConditionUnits` / `IsConditionUnit`：条件类单元的唯一判定，校验器与步骤摘要共用（不再各自硬编码 `flow.if` / `flow.while`） |
+| `ActionValidator` | `ValidateCondition` 改认 `IsConditionUnit`；`Retry` 超范围（< 0 / > `MaxRetry`）= error，`RetryDelayMs` < 0 = error，块步骤上配重试 = warning（提示把重试写在里面的那一行） |
+| `StepText` | 读写 `@retry=` / `@retryDelay=`（`@retryDelay` 等于默认值时不写）；未知属性提示同步 |
+| `StepSummary` | `ConditionText` 支持 `flow.waitFor`（补「最多等 X 秒」）；新增 `RetryText` → 步骤行摘要后缀 `⟳3` |
+| 编辑器 | 选项区加「失败时重试 N 次，每次间隔 X 毫秒」（`RetryBox` / `RetryDelayBox`，`TrySave` 就地拦范围）；`TraceRow` 显示 `⟳n` + tooltip「重试：第 N 次尝试（最多 M 次）」；`ProgramDiff` 比对 `Retry` / `RetryDelayMs` |
+| 运行历史 | `RunRecord.Attempts` 取自失败轨迹，列表失败位置显示「· 第 N 次尝试」 |
+| `KnowledgePack` | `format.md` 步骤字段补 `retry` / `retryDelayMs` + 「窗口还没出来先试 retry / waitFor」 |
+| `AGENTS.md` | DSL 形状补 `@retry=3 @retryDelay=800`；新增「失败重试与等待条件是两件事（P2）」条 |
+| 自测 | `engine` +9（重试后成功 / 重试用尽按失败策略 / 重试间隔可停止 / 干跑不重试 / `waitFor` 立即成立 / 每轮重新取值 / 超时 / 干跑不成立不算失败）、`model` +1（克隆带上重试）、`steptext` +1（`@retry` 往返与错误）、`validator` +2（超范围 / 块步骤提醒） |
+
+**验收**：`--selftest` 86 例 / 2570 断言全绿（约 5.4 秒），Debug 构建 0 错 0 警，动作单元 77 个。
+「前两次失败第三次成功」的用例断言了调用次数 = 3、轨迹 1 条且 `Attempt = 3 / MaxAttempts = 3`；
+「一直失败」分别验证了 `stop`（整体失败、位置指向那一步）与 `continue`（整体成功、尝试次数 = 1 + retry）；
+「重试间隔 30 秒 + 立即停止」的用例断言实际耗时 < 5 秒。
+
+**与计划不一致的地方**
+
+1. **`retryOn` 没做**：它要按错误类型分流，而错误类型（`ActionErrorKind`）是 P5 的产出，
+   现在先「任何失败都重试」，P5 落地后再补「只重试某几类」。
+2. **干跑不重试、`waitFor` 干跑只判断一次**：干跑没真跑就没有可重试的；条件当时不成立是正常结果，
+   若按超时算失败，草稿试运行会给出假红。两条都写成了断言。
+3. **轨迹只发一条**：中间的重试不各自成行（否则循环里一个「时好时坏」的步骤会把轨迹刷满），
+   失败 / 成功那条带 `Attempt` 说明是第几次。
+4. **没有新的「失败继续」语义**：`onFail = continue` 仍然是「记错误、继续下一步」，
+   只是现在它作用在**重试用尽之后**；要让后续步骤判断成败继续用 `flow.lastError`。
+

@@ -28,6 +28,8 @@ public enum StepTraceStatus
 /// <see cref="Label"/> 是给人看的同义文本（<c>第 3 行 › 否则 › 第 1 行</c>），失败提示里用它。
 /// <see cref="Inputs"/> 是这一步**实际拿到的参数**（<c>${变量}</c> 已展开、按声明类型转换过；
 /// 被选项收起的参数不在里面），排查「为什么点错了地方」时看的是它，不是编辑器里写的原文。
+/// <see cref="Attempt"/> / <see cref="MaxAttempts"/> 是这次运行里这一步用的是第几次尝试
+/// （<c>retry</c> 重试才有：第一次成功是 1/1，第三次才成功是 3/3），编辑器据此显示 <c>⟳3</c>。
 /// 轨迹在**后台线程**上同步回调，接收方不要在这里做重活（面板会自己攒批再上屏）。
 /// </remarks>
 public sealed record StepTrace(
@@ -40,4 +42,6 @@ public sealed record StepTrace(
     long ElapsedMs,
     string? Error,
     IReadOnlyDictionary<string, Value> Outputs,
-    IReadOnlyDictionary<string, Value> Inputs);
+    IReadOnlyDictionary<string, Value> Inputs,
+    int Attempt = 1,
+    int MaxAttempts = 1);

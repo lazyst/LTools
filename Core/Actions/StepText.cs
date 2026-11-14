@@ -31,12 +31,12 @@ namespace LTools.Core.Actions;
 /// </para>
 /// <para>
 /// 输出写 <c>-&gt; 输出键=变量名</c>，属性写 <c>@note="…"</c> / <c>@disabled</c> /
-/// <c>@onFail=continue</c> / <c>@delay=500</c>。子步骤靠缩进：循环体与「如果」的真分支各缩进一级，
+/// <c>@onFail=continue</c> / <c>@delay=500</c> / <c>@retry=3 @retryDelay=800</c>。子步骤靠缩进：循环体与「如果」的真分支各缩进一级，
 /// <c>else</c> 与自己那一行对齐（分支为空就不写内容）。
 /// </para>
 /// <para>
 /// 往返（<c>TryParse(Write(x))</c>）保真：动作单元、参数三态、输出映射、四种子步骤、
-/// 备注 / 跳过 / 失败策略 / 延迟。<b>唯一的例外</b>是「未知动作单元带子步骤」——它的
+/// 备注 / 跳过 / 失败策略 / 延迟 / 重试。<b>唯一的例外</b>是「未知动作单元带子步骤」——它的
 /// <see cref="BodyKind"/> 查不到，只能按循环体（<c>body</c>）猜。
 /// </para>
 /// </remarks>
@@ -106,6 +106,9 @@ public static class StepText
         }
         if (step.OnFail != FailMode.stop) sb.Append(" @onFail=").Append(step.OnFail);
         if (step.DelayMs > 0) sb.Append(" @delay=").Append(step.DelayMs.ToString(CultureInfo.InvariantCulture));
+        if (step.Retry != 0) sb.Append(" @retry=").Append(step.Retry.ToString(CultureInfo.InvariantCulture));
+        if (step.RetryDelayMs != Step.DefaultRetryDelayMs)
+            sb.Append(" @retryDelay=").Append(step.RetryDelayMs.ToString(CultureInfo.InvariantCulture));
         if (step.Disabled) sb.Append(" @disabled");
 
         if (comment && StepRegistry.Default.TryGet(step.Unit, out var unit))
@@ -497,8 +500,36 @@ public static class StepText
                 step.DelayMs = delay;
                 return true;
 
+            case "retry":
+                if (!hasValue)
+                {
+                    error = "重试要写成 @retry=次数";
+                    return false;
+                }
+                if (!int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int retry))
+                {
+                    error = $"@retry 要写整数（写的是「{value}」）";
+                    return false;
+                }
+                step.Retry = retry;
+                return true;
+
+            case "retrydelay":
+                if (!hasValue)
+                {
+                    error = "重试间隔要写成 @retryDelay=毫秒";
+                    return false;
+                }
+                if (!int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int retryDelay))
+                {
+                    error = $"@retryDelay 要写整数毫秒（写的是「{value}」）";
+                    return false;
+                }
+                step.RetryDelayMs = retryDelay;
+                return true;
+
             default:
-                error = $"不认识的属性 @{name}（只有 note / disabled / onFail / delay）";
+                error = $"不认识的属性 @{name}（只有 note / disabled / onFail / delay / retry / retryDelay）";
                 return false;
         }
     }

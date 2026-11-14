@@ -119,7 +119,8 @@ public partial class ConfigHelperWindow
             Elapsed = r.ElapsedMs + " ms";
             Step = r.Step.Length == 0
                 ? "—"
-                : r.Step + (r.Unit.Length == 0 ? "" : $"「{r.Unit}」");
+                : r.Step + (r.Unit.Length == 0 ? "" : $"「{r.Unit}」")
+                  + (r.Attempts > 1 ? $" · 第 {r.Attempts} 次尝试" : "");
             Error = r.Error.Length == 0 ? "—" : r.Error;
 
             Detail = $"{r.Time} · {Result} · {r.ElapsedMs} ms · 「{r.Action}」· {Source}"

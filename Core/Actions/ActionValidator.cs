@@ -309,6 +309,31 @@ internal static class ActionValidator
         // —— 子动作 / 宏 ——
         ValidateReference(step, path, label, resolveSubAction, issues);
 
+        // —— 步骤重试（retry） ——
+        // 默认 0 = 旧语义（不重试），所以这里只拦真正的错值。
+        if (step.Retry < 0)
+        {
+            issues.Add(new ActionIssue(path, label, step.Unit, "retry",
+                $"重试次数不能是负数（当前 {step.Retry}）", IssueSeverity.error));
+        }
+        else if (step.Retry > Step.MaxRetry)
+        {
+            issues.Add(new ActionIssue(path, label, step.Unit, "retry",
+                $"重试次数最多 {Step.MaxRetry} 次（当前 {step.Retry}）", IssueSeverity.error));
+        }
+        else if (step.Retry > 0 && spec.Body != BodyKind.none)
+        {
+            issues.Add(new ActionIssue(path, label, step.Unit, "retry",
+                "在「如果 / 循环」这一步上重试会把整个子步骤再跑一遍；要重试里面的某一步，把重试设在那一行上",
+                IssueSeverity.warning));
+        }
+
+        if (step.RetryDelayMs < 0)
+        {
+            issues.Add(new ActionIssue(path, label, step.Unit, "retryDelayMs",
+                $"重试间隔不能是负数（当前 {step.RetryDelayMs} 毫秒）", IssueSeverity.error));
+        }
+
         // —— 预算：无界循环 ——
         if (step.Unit.Equals("flow.while", StringComparison.OrdinalIgnoreCase))
             issues.Add(new ActionIssue(path, label, step.Unit, "",
@@ -573,9 +598,7 @@ internal static class ActionValidator
     private static void ValidateCondition(Step step, string path, string label,
         HashSet<string> produced, List<ActionIssue> issues)
     {
-        if (!step.Unit.Equals("flow.if", StringComparison.OrdinalIgnoreCase) &&
-            !step.Unit.Equals("flow.while", StringComparison.OrdinalIgnoreCase))
-            return;
+        if (!FlowUnits.Compare.IsConditionUnit(step.Unit)) return;
 
         string op = ProgramWalker.LiteralText(step, "op")?.Trim() ?? "";
         if (op.Length == 0)

@@ -16,6 +16,7 @@ internal static class StepTextSuite
         cases.Add(new("steptext", "注释与空行忽略", CommentsIgnored));
         cases.Add(new("steptext", "未知单元原样保留", UnknownUnit));
         cases.Add(new("steptext", "值里的井号不切注释", HashInsideValue));
+        cases.Add(new("steptext", "重试属性往返与错误", RetryAttribute));
         cases.Add(new("steptext", "真实动作库逐份往返", RealActionLibrary));
     }
 
@@ -27,6 +28,8 @@ internal static class StepTextSuite
         Check.Contains(text, "@note=", "备注应写成属性");
         Check.Contains(text, "@onFail=continue", "失败策略应写成属性");
         Check.Contains(text, "@delay=50", "步骤延迟应写成属性");
+        Check.Contains(text, "@retry=2", "重试次数应写成属性");
+        Check.Contains(text, "@retryDelay=800", "重试间隔应写成属性");
         Check.Contains(text, "@disabled", "跳过应写成属性");
         Check.Contains(text, "\n  ", "子步骤应缩进");
 
@@ -128,8 +131,23 @@ internal static class StepTextSuite
         Check.Note($"真实动作库往返 {checkedActions} 份");
     }
 
-    // ============ 工具 ============
+    private static void RetryAttribute()
+    {
+        Check.True(StepText.TryParse("test.mark @retry=3 @retryDelay=200\n",
+            out List<Step> steps, out string? error), "应能读：" + error);
+        Check.Equal(3, steps[0].Retry, "重试次数");
+        Check.Equal(200, steps[0].RetryDelayMs, "重试间隔");
+        Check.Equal("test.mark @retry=3 @retryDelay=200\n", StepText.Write(steps), "写回应与原文一致");
 
+        Check.False(StepText.TryParse("test.mark @retry=abc\n", out _, out string? bad),
+            "重试次数写成非整数应报错");
+        Check.Contains(bad, "@retry");
+
+        Check.True(StepText.TryParse("test.mark\n", out List<Step> plain, out _), "应能读");
+        Check.False(StepText.Write(plain).Contains("@retry"), "没设重试时不写重试属性");
+    }
+
+    // ============ 工具 ============
     private static List<Step> Fixture()
     {
         Step branch = Step.Of("flow.if")
@@ -148,6 +166,8 @@ internal static class StepTextSuite
         loop.Note = "带 \"引号\" 与\n换行";
         loop.OnFail = FailMode.@continue;
         loop.DelayMs = 50;
+        loop.Retry = 2;
+        loop.RetryDelayMs = 800;
         loop.Disabled = true;
 
         Step inline = Step.Of("flow.set")

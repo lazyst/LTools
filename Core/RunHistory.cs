@@ -68,6 +68,9 @@ internal sealed class RunRecord
     /// <summary>失败那一步的动作单元名（失败步骤分布按它汇总）。</summary>
     public string Unit { get; set; } = "";
 
+    /// <summary>失败那一步用的是第几次尝试（<c>retry</c> 才有意义；0 = 没有轨迹）。</summary>
+    public int Attempts { get; set; }
+
     public string Error { get; set; } = "";
 }
 
@@ -173,6 +176,7 @@ internal static class RunHistory
                 Step = result?.FailedStepLabel ?? failed?.Label ?? "",
                 Path = failed?.Path ?? "",
                 Unit = failed?.UnitName ?? "",
+                Attempts = failed?.Attempt ?? 0,
                 Error = Limit(result?.Error ?? fatalError ?? ""),
             };
 

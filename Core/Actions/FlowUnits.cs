@@ -20,12 +20,25 @@ internal static class FlowUnits
         registry.Register(new StopUnit());
         registry.Register(new ReturnUnit());
         registry.Register(new DelayUnit());
+        registry.Register(new WaitForUnit());
         registry.Register(new SubRunUnit());
     }
 
-    /// <summary>条件比较（<c>flow.if</c> / <c>flow.while</c> 共用）。</summary>
+    /// <summary>条件比较（<c>flow.if</c> / <c>flow.while</c> / <c>flow.waitFor</c> 共用）。</summary>
     internal static class Compare
     {
+        /// <summary>带条件参数（<c>left</c> / <c>op</c> / <c>right</c> / <c>negate</c>）的动作单元。</summary>
+        /// <remarks>
+        /// 校验器与步骤摘要靠它认「这是不是一个条件」，别再各处硬编码单元键——
+        /// 新增一个用同样四个参数的动作单元时只改这一处。
+        /// </remarks>
+        public static readonly string[] ConditionUnits = { "flow.if", "flow.while", "flow.waitFor" };
+
+        /// <summary>这个动作单元是不是用 <c>left</c> / <c>op</c> / <c>right</c> / <c>negate</c> 判条件。</summary>
+        public static bool IsConditionUnit(string? unit) =>
+            !string.IsNullOrEmpty(unit) &&
+            ConditionUnits.Contains(unit, StringComparer.OrdinalIgnoreCase);
+
         /// <summary>需要「右值」的比较方式（其余是一元判断，右值不显示）。</summary>
         public static readonly string[] BinaryOps =
         {
@@ -463,6 +476,98 @@ internal static class FlowUnits
             int ms = (int)Math.Clamp(args.Number("ms"), 0, 600_000);
             if (!ctx.Wait(ms))
                 throw new ActionAbortedException("已停止", userCancelled: true);
+        }
+    }
+
+    /// <summary>
+    /// 等条件成立：<c>flow.waitFor</c>。桌面自动化最常见的失败是「窗口 / 文字还没出来」，
+    /// 用它代替手搭「循环 + 延迟 + 计数」。
+    /// </summary>
+    /// <remarks>
+    /// 条件在**每一轮重新求值**（<see cref="StepContext.ResolveArgs"/>），所以 <c>${变量}</c>
+    /// 能看到别的东西刚写进去的值；等待走 <see cref="StepContext.Wait"/>，按停止热键立刻返回。
+    /// 超时 = 这一步失败（交给「失败时」策略：默认停止，也可以「记录后继续」继续往下跑），
+    /// 但成立与否已经写进 <c>ok</c> 输出，用「失败继续」时后面照样能判断。
+    /// </remarks>
+    private sealed class WaitForUnit : IStepUnit
+    {
+        public UnitSpec Spec { get; } = new()
+        {
+            Key = "flow.waitFor",
+            DryRun = true,
+            Name = "等待条件",
+            Category = "流程",
+            Icon = "clock",
+            Description = "每隔一段时间检查一次条件，成立就继续；超时算这一步失败",
+            Inputs = new[]
+            {
+                ConditionLeft(),
+                ConditionOp(),
+                ConditionRight(),
+                ConditionNegate(),
+                new InputSpec("timeoutMs", "最多等", ValueKind.number, InputEditor.number,
+                    Default: Value.FromNumber(10_000),
+                    Description: "最多等多少毫秒；0 = 只判断一次、不等待"),
+                new InputSpec("intervalMs", "检查间隔", ValueKind.number, InputEditor.number,
+                    Default: Value.FromNumber(250), Advanced: true,
+                    Description: "多久检查一次（毫秒），最短 20"),
+            },
+            Outputs = new[]
+            {
+                new OutputSpec("ok", "是否成立", ValueKind.@bool, "waitOk",
+                    Description: "条件在超时前是否成立（超时那一步失败时也会写，配合「失败继续」看）"),
+                new OutputSpec("elapsed", "等了多久", ValueKind.number, "waitElapsed",
+                    Description: "从开始等到条件成立（或超时）的毫秒数"),
+            },
+        };
+
+        public void Execute(StepContext ctx, StepArgs args)
+        {
+            long started = Environment.TickCount64;
+            int timeout = ctx.DryRun ? 0 : (int)Math.Clamp(args.Number("timeoutMs"), 0, 3_600_000);
+            int interval = (int)Math.Clamp(args.Number("intervalMs"), 20, 60_000);
+
+            while (true)
+            {
+                ctx.EnterIteration();
+
+                // 每轮重新取值：条件里的变量可能刚被别的东西改掉。
+                StepArgs now = ctx.ResolveArgs();
+                bool ok = Compare.Test(now.Get("left"), now.Text("op"), now.Get("right"));
+                if (now.Bool("negate")) ok = !ok;
+
+                long elapsed = Environment.TickCount64 - started;
+                ctx.SetOutput("ok", Value.FromBool(ok));
+                ctx.SetOutput("elapsed", Value.FromNumber(elapsed));
+
+                if (ok) return;
+
+                // 干跑只判断一次：条件当时不成立是正常结果，不该让草稿试运行报「超时」。
+                if (ctx.DryRun) return;
+
+                if (elapsed >= timeout)
+                {
+                    throw new ActionException(
+                        $"等了 {elapsed} 毫秒条件还没成立（{Describe(now)}），已超时");
+                }
+
+                int step = (int)Math.Min(interval, Math.Max(1, timeout - elapsed));
+                if (!ctx.Wait(step))
+                    throw new ActionAbortedException("已停止", userCancelled: true);
+            }
+        }
+
+        /// <summary>超时提示里那句条件（<c>${变量} 等于 "确定"</c>），不用另写一套摘要。</summary>
+        private static string Describe(StepArgs args)
+        {
+            string left = args.Has("left") ? args.Text("left") : "";
+            string right = args.Has("right") ? args.Text("right") : "";
+            string op = args.Has("op") ? args.Text("op") : "equals";
+            string label = OptionLabels.Of(op);
+
+            bool binary = Compare.BinaryOps.Contains(op, StringComparer.OrdinalIgnoreCase);
+            string text = binary ? $"{left} {label} {right}" : $"{left} {label}";
+            return args.Has("negate") && args.Bool("negate") ? "非（" + text + "）" : text;
         }
     }
 }

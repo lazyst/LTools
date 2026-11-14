@@ -397,6 +397,7 @@ public sealed class TraceRow : INotifyPropertyChanged
         };
 
         Elapsed = _count > 1 ? $"{trace.ElapsedMs} ms ×{_count}" : $"{trace.ElapsedMs} ms";
+        if (trace.Attempt > 1) Elapsed += $" ⟳{trace.Attempt}";
 
         if (!string.IsNullOrEmpty(trace.Error)) Detail = trace.Error!;
         else if (trace.Outputs.Count > 0) Detail = Compact(trace.Outputs);
@@ -415,6 +416,8 @@ public sealed class TraceRow : INotifyPropertyChanged
         sb.AppendLine($"{trace.Label}　{trace.UnitName}");
         if (trace.Status == StepTraceStatus.skipped) sb.AppendLine("干跑：这一步会动键鼠 / 弹窗口，没有执行");
         sb.AppendLine($"耗时 {trace.ElapsedMs} ms" + (count > 1 ? $"（同一行执行了 {count} 次）" : ""));
+        if (trace.Attempt > 1 || trace.MaxAttempts > 1)
+            sb.AppendLine($"重试：第 {trace.Attempt} 次尝试（这一步最多 {trace.MaxAttempts} 次）");
         AppendSection(sb, "参数（解析后）", trace.Inputs);
         AppendSection(sb, "输出", trace.Outputs);
         if (trace.Error is { Length: > 0 }) sb.AppendLine($"错误：{trace.Error}");

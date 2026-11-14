@@ -152,6 +152,14 @@ internal static class ProgramDiff
             lines.Add(new DiffLine(DiffKind.changed, depth,
                 $"{title}：延迟 {before.DelayMs} → {after.DelayMs} 毫秒"));
 
+        if (before.Retry != after.Retry)
+            lines.Add(new DiffLine(DiffKind.changed, depth,
+                $"{title}：失败重试 {before.Retry} → {after.Retry} 次"));
+
+        if (before.RetryDelayMs != after.RetryDelayMs)
+            lines.Add(new DiffLine(DiffKind.changed, depth,
+                $"{title}：重试间隔 {before.RetryDelayMs} → {after.RetryDelayMs} 毫秒"));
+
         if (before.Disabled != after.Disabled)
             lines.Add(new DiffLine(DiffKind.changed, depth,
                 $"{title}：{(after.Disabled ? "改成跳过" : "恢复执行")}"));
