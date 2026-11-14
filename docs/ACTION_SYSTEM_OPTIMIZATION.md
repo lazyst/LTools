@@ -356,3 +356,38 @@ UIA / OCR / OpenCV），按 P1 决策只做可观测。所以这一阶段的产�
 4. **没有新的「失败继续」语义**：`onFail = continue` 仍然是「记错误、继续下一步」，
    只是现在它作用在**重试用尽之后**；要让后续步骤判断成败继续用 `flow.lastError`。
 
+---
+
+### 9.4 P3 · 编辑体验（2026-11-14）
+
+**落地内容**
+
+| 位置 | 内容 |
+|---|---|
+| `Views/ActionEditor/StepRowChips.cs`（新） | `StepChip(Text, Tip, Warn)` + `StepRowChips.Describe(Step)`：跳过 → 失败继续 → `⟳3` → 延迟 → 备注，**纯数据、不带 Brush**（颜色由 XAML `DataTrigger` 按 `Warn` 决定，自测能直接断言）；`Duration(ms)` = `500ms` / `1s` / `1.5s` |
+| 行模板 | `StepRow.Chips` / `ChipsVisibility` + 第 6 列 `ItemsControl`（`Warn` → `WarningBrush`）；`MakeRow` 不再把「（跳过）」拼进标题、也不再把 `⟳3` 拼进摘要 |
+| `StepSummary` | 摘要参数上限 2 → **3**（状态类信息搬去 chip，摘要只回答「这一步在做什么」）；删掉 `RetryText`（行模板不再用，别留着两套拼法） |
+| 说明 | `ActionEditorWindow.xaml` 变量页名称下方新增 `DescriptionBox`（多行，占位文字说明它会出现在面板 / 悬浮的悬停提示里）；ctor 回填、`Commit` 写 `_program.Description` / `def.Description`、`Snapshot()` 参与脏检查；`BindingRef.Detail`（名称 + 说明）给 `SuperPanel` / `FloatWindow` / `PanelManageView` 三处 tooltip，菜单标题与日志仍走 `Describe` |
+| 撤销 | `Views/ActionEditor/EditorUndoState.cs`（新）：`VariableDraft`（存**原文**：名称 / 类型 / 方向 / 默认值文本 / 来源 / AutoType / LastName）+ `EditorUndoState(Steps, Variables, Label)` + `DeepClone`；`History.cs` 改 `CaptureState` / `ApplyState`；变量表的「新建变量 / 删除变量」也 `PushUndo` |
+| 自动存盘 | `Views/ActionEditor/EditorAutosave.cs`（新）：`DirFor` / `FileFor` / `Write`（`.tmp` 再替换）/ `TryRead`（坏文件删掉）/ `IsNewerThan`（正式文件更新 = 过期）/ `Delete` / `TimeText`；`ActionEditorWindow.Autosave.cs`：10 秒 `DispatcherTimer`（`AutosaveIntervalSeconds`）、`CaptureProgram`、`TryRestoreAutosave`（`Loaded` 里 `DispatcherPriority.Background`）、`ApplyProgram`、`ForgetAutosave` |
+| 自动存盘接线 | 三个收尾点都清副本：`Commit` 两条成功路径、`Cancel_Click`、`OnClosing` 的 Discard 与「不脏」分支；`ReadVariables(tolerant: true)` 让填错的默认值按原文存（自动存盘不该被一个填错的值整份丢掉） |
+| 抽屉宽度 | 中栏右缘 `GridSplitter`（`ResizeBehavior=CurrentAndNext`、`DragCompleted`）+ `DefaultDrawerWidth` 440 / `MinDrawerWidth` 300 / `MaxDrawerWidth` 720；只记「抽屉打开时」的宽度到 `configs/ui.json` 的 `EditorDrawerWidth`（`UiStateFile` / `AppConfig` / `ToUi` / `LoadCore` 四处），收起仍回 360 |
+| `Ctrl+Enter` | `StepFormView_PreviewKeyDown` 在「修饰键一律早退」之前处理 `Ctrl+Enter` = 保存这一步（多行框里 Enter 让给换行，但它得有个确定的出口） |
+| `AGENTS.md` | 新增「步骤状态是 chip（P3）」「撤销快照含变量原文」「自动存盘只在 cache/editor」三条约定 |
+| 自测 | `purity` +6 例 / 64 断言：chip 矩阵与顺序、`Duration` 格式、摘要取 3 个参数（`web.request` 4 个可见参数截到 3）、自动存盘写入 / 读回 / 删除 / Id 为空、过期判定（无正式文件 / 更旧 / 更新 / 无副本 / 空路径）、`EditorUndoState.DeepClone` 深拷贝 |
+
+**验收**：`--selftest` 92 例 / 2634 断言全绿（约 5.4 秒），Debug 构建 0 错 0 警，动作单元 77 个。
+自动存盘的三条路径都由断言覆盖（用自测自己的临时 root，不碰 `cache/editor/`）；
+过期判定四条分支都断言了（正式文件不存在 / 更旧 / 更新 / 副本不存在）。
+
+**与计划不一致的地方**
+
+1. **新动作不自动存盘**：新建的动作在保存前还没有 Id（`IdFactory` 在落盘时才发），拿不到稳定的文件名。
+   与其猜一个临时名（恢复时还要多问「这算哪个动作」），不如只对**已有 Id** 的动作 / 子动作生效。
+2. **抽屉宽度只在抽屉打开时记**：抽屉关着时拖的是「变量页」（固定 360），把它记成抽屉宽度会让下次打开时宽得莫名其妙。
+3. **自动存盘恢复后仍算脏**：恢复是「把内容灌回编辑器」，按「确定」才落盘；恢复前 `PushUndo("恢复自动存盘")`，
+   所以后悔可以 Ctrl+Z 回到打开时看到的版本。
+4. **`Description` 放在变量页而不是步骤页**：动作 / 子动作各一份说明，和名称 / 图标是同一类「动作属性」。
+5. **`RetryText` 删除**：`StepRowChips` 是行内状态的唯一来源；纯文本摘要里真要 `⟳3` 时直接拼 `$"⟳{step.Retry}"`（差异框之类少数出口），别在行模板里再拼一次。
+
+

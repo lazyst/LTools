@@ -47,6 +47,7 @@ internal static class SelfTestRunner
         HelperSuite.Register(cases);
         TemplateSuite.Register(cases);
         DeclarationSuite.Register(cases);
+        PuritySuite.Register(cases);
 
         var lines = new List<string>();
         var stopwatch = Stopwatch.StartNew();

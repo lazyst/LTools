@@ -50,7 +50,10 @@ internal static class StepSummary
                 ? OptionText(input, arg)
                 : ArgText(arg);
             parts.Add(input.Editor == InputEditor.enumList ? value : $"{input.Label} {value}");
-            if (parts.Count >= 2) break;
+
+            // 状态类信息（跳过 / 重试 / 延迟 / 备注）不占摘要：它们是行尾的 chip（StepRowChips），
+            // 摘要只回答「这一步在做什么」，所以这里能放 3 个参数而不是 2 个。
+            if (parts.Count >= 3) break;
         }
 
         return string.Join(" · ", parts);
@@ -213,13 +216,6 @@ internal static class StepSummary
             ? $"{text}（最多等 {ms / 1000:0.#} 秒）"
             : $"{text}（最多等 {wait} 毫秒）";
     }
-
-    /// <summary>
-    /// 步骤行上的重试标记（<c>⟳3</c>）：<c>retry</c> 为 0 时是空串。
-    /// 与「跳过 / 失败继续 / 延迟」的标记一起拼在行尾（P3 收成 chip）。
-    /// </summary>
-    public static string RetryText(Step step) =>
-        step.Retry > 0 ? $"⟳{step.Retry}" : "";
 
     // —— VisibleWhen ——
 

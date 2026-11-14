@@ -62,6 +62,9 @@ public sealed class UiStateFile
 
     /// <summary>动作编辑器左栏「最近使用」的动作单元键，最近的在前。</summary>
     public List<string>? RecentUnits { get; set; }
+
+    /// <summary>动作编辑器右栏「参数抽屉」的宽度（DIP）；0 / 缺省 = 默认 440。</summary>
+    public double EditorDrawerWidth { get; set; }
 }
 
 /// <summary><c>configs/panel.json</c>：超级面板（开关 / 长按阈值 / 面板结构）。</summary>

@@ -54,4 +54,21 @@ internal static class BindingRef
         string summary = FeatureCatalog.IsFeatureRef(reference) ? FeatureCatalog.ParamSummary(reference) : "";
         return summary.Length == 0 ? name : $"{name} · {summary}";
     }
+
+    /// <summary>
+    /// 悬停提示用：在 <see cref="Describe"/> 之后补上动作自己的**说明**（<c>description</c>）。
+    /// </summary>
+    /// <remarks>
+    /// 只给 tooltip 用，菜单标题 / 日志仍走 <see cref="Describe"/>——把说明塞进菜单项会让每个
+    /// 菜单项长成两行。说明为空时与 <see cref="Describe"/> 完全相同。
+    /// </remarks>
+    public static string Detail(string? reference)
+    {
+        if (string.IsNullOrWhiteSpace(reference)) return "";
+        if (FeatureCatalog.IsFeatureRef(reference)) return Describe(reference);
+
+        string name = Name(reference);
+        string description = ActionRegistry.FindById(reference)?.Program?.Description?.Trim() ?? "";
+        return description.Length == 0 ? name : $"{name}\n{description}";
+    }
 }

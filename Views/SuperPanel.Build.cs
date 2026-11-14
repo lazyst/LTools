@@ -622,7 +622,7 @@ public partial class SuperPanelWindow
         // 照 Quicker：36px 图标 chip（淡底 + 1px 内描边）+ 11px 次要色标题，垂直居中
         var content = TileContent(id, compact);
         btn.Content = content;
-        btn.ToolTip = BindingRef.Describe(id);
+        btn.ToolTip = BindingRef.Detail(id);
 
         var tref = (PanelTileRef)btn.Tag;
         drag.Attach(btn);

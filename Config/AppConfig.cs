@@ -155,6 +155,12 @@ public sealed class AppConfig
     public List<string> RecentUnits { get; set; } = new();
 
     /// <summary>
+    /// 动作编辑器右栏「参数抽屉」的宽度（DIP；0 = 用默认 440）。
+    /// 拖动中间那条分隔条时记下来，下次打开编辑器沿用；只在 <c>configs/ui.json</c> 里。
+    /// </summary>
+    public double EditorDrawerWidth { get; set; }
+
+    /// <summary>
     /// 动作运行结束后的提示策略：不提示 / 只在失败时（默认）/ 成功也提示。
     /// 失败提示是常驻的（点一下关，下一次运行自动替换）。
     /// </summary>

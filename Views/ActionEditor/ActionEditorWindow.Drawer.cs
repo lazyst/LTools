@@ -3,7 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using LTools.Config;
+using LTools.Core;
 using LTools.Core.Actions;
+using LTools.Features;
 
 namespace LTools.Views;
 
@@ -21,7 +25,8 @@ namespace LTools.Views;
 /// 没有任何 <c>ShowDialog</c>：以前的模态循环会把步骤列表完全遮住，用户不知道自己改的是哪一步。
 /// </para>
 /// <para>
-/// 右栏宽度是「跟着抽屉走」的：打开时 440（够放下参数行），收起回到 360（`VariablesColumnWidth`，
+/// 右栏宽度是「跟着抽屉走」的：打开时用记住的抽屉宽度（默认 440，够放下参数行；拖动中间的分隔条可改，
+/// 记在 <c>configs/ui.json</c> 的 <c>EditorDrawerWidth</c>），收起回到 360（`VariablesColumnWidth`，
 /// 与「变量」页同宽，切页时中间那栏不跳）。窗口的 <c>MinWidth</c> 1046 是给「左栏 242 + 中栏 360 +
 /// 右栏 440」留的余量，别再调回 900。
 /// </para>
@@ -68,6 +73,53 @@ public partial class ActionEditorWindow
     }
 
     private readonly List<DrawerFrame> _drawer = new();
+
+    /// <summary>抽屉默认宽度：够放下参数行，又不把步骤列表挤没。窗口 <c>MinWidth</c> 按它留的余量。</summary>
+    private const double DefaultDrawerWidth = 440;
+
+    /// <summary>抽屉宽度可拖动的范围（拖太窄 / 太宽都夹回这里）。</summary>
+    private const double MinDrawerWidth = 300;
+    private const double MaxDrawerWidth = 720;
+
+    /// <summary>抽屉打开时右栏的宽度；用户拖过分隔条就记住（<c>configs/ui.json</c> 的 <c>EditorDrawerWidth</c>）。</summary>
+    private double _drawerWidth = DefaultDrawerWidth;
+
+    /// <summary>构造时读一次记住的抽屉宽度（读不出来就用默认值，不挡打开编辑器）。</summary>
+    private void SetupDrawerWidth()
+    {
+        try
+        {
+            string path = string.IsNullOrWhiteSpace(ConfigStore.ConfigPath)
+                ? ConfigLocator.FindPath()
+                : ConfigStore.ConfigPath;
+            double saved = UiStore.Read(path).EditorDrawerWidth;
+            if (saved >= MinDrawerWidth && saved <= MaxDrawerWidth) _drawerWidth = saved;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Editor", $"读抽屉宽度失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>拖完分隔条：只记「抽屉打开时」的宽度（关着抽屉拖的是变量页，仍按 360 收）。</summary>
+    private void RightSplitter_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (!DrawerOpen) return;
+
+        double width = Math.Clamp(RightColumn.ActualWidth, MinDrawerWidth, MaxDrawerWidth);
+        if (Math.Abs(width - _drawerWidth) < 0.5) return;
+
+        _drawerWidth = width;
+        try
+        {
+            UiStore.Modify(ui => ui.EditorDrawerWidth = width);
+        }
+        catch (Exception ex)
+        {
+            // 记不住宽度不是错误：这次照样是用户拖出来的宽度，下次回到默认值而已。
+            AppLog.Warn("Editor", $"记抽屉宽度失败：{ex.Message}");
+        }
+    }
 
     /// <summary>保存过程中重入保护（保存会重建步骤列表，行事件可能再回来一次）。</summary>
     private bool _drawerBusy;
@@ -177,7 +229,7 @@ public partial class ActionEditorWindow
         VariablesPage.Visibility = Visibility.Collapsed;
         if (ParamsTab.IsChecked != true) ParamsTab.IsChecked = true;
 
-        RightColumn.Width = new GridLength(440);
+        RightColumn.Width = new GridLength(_drawerWidth);
     }
 
     /// <summary>收起抽屉：右栏回到「变量」与原来的宽度。</summary>

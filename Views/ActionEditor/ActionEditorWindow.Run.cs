@@ -49,6 +49,7 @@ public partial class ActionEditorWindow
 
         _program.Name = name;
         _program.Icon = IconPicker.SelectedIcon ?? "";
+        _program.Description = (DescriptionBox.Text ?? "").Trim();
 
         _program.Variables.Clear();
         var variables = ReadVariables();
@@ -77,6 +78,7 @@ public partial class ActionEditorWindow
             var def = _subDef!;
             def.Name = name;
             def.Icon = _program.Icon;
+            def.Description = _program.Description;
 
             def.Variables.Clear();
             foreach (var variable in _program.Variables) def.Variables.Add(variable);
@@ -86,6 +88,7 @@ public partial class ActionEditorWindow
 
             SubResult = def;
             _saved = true;
+            ForgetAutosave();
             return true;
         }
 
@@ -97,6 +100,7 @@ public partial class ActionEditorWindow
 
         Result = _draft;
         _saved = true;
+        ForgetAutosave();
         return true;
     }
 
@@ -515,6 +519,8 @@ public partial class ActionEditorWindow
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
         DiscardDrawer();
+        // 取消 = 明确放弃这次编辑：自动存盘也一起清掉，别下次打开又冒出来问「恢复吗」。
+        ForgetAutosave();
         DialogResult = false;
     }
 

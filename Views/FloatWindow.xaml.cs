@@ -177,7 +177,7 @@ public partial class FloatWindow : Window
                 Style = (Style)FindResource("FloatBtn"),
                 Tag = member.ActionId,
                 Content = stack,
-                ToolTip = tooltip ? BindingRef.Describe(member.ActionId) : null,
+                ToolTip = tooltip ? BindingRef.Detail(member.ActionId) : null,
             };
 
             AttachInteraction(btn, member.ActionId, preview: true);

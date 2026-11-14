@@ -1239,7 +1239,7 @@ public partial class PanelManageView : UserControl
         {
             Style = (Style)FindResource("PanelTileBtn"),
             Tag = new PanelTileRef { Group = group, Index = index, ActionId = id },
-            ToolTip = BindingRef.Describe(id),
+            ToolTip = BindingRef.Detail(id),
         };
 
         var content = TileContent(id);

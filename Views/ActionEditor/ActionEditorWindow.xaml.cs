@@ -152,6 +152,7 @@ public partial class ActionEditorWindow : Window
         // 动作只有 输入 / 本地——输入 = 运行前问你（面板 / 快捷键 / 悬浮都会弹参数框，填过的记住），
         // 输出在动作里没有落点，所以不给这个选项。右栏因此都用 360，否则默认值那一列会被挤没。
         RightColumn.Width = new GridLength(VariablesColumnWidth);
+        SetupDrawerWidth();
         if (!_isSubAction)
         {
             DirectionHeader.ToolTip = "输入 = 运行前问你（填过的会记住）；本地 = 不问，直接用默认值";
@@ -162,6 +163,7 @@ public partial class ActionEditorWindow : Window
 
         if (!string.IsNullOrWhiteSpace(title)) Title = title;
         NameBox.Text = _isSubAction ? _program.Name : _draft!.Name;
+        DescriptionBox.Text = _program.Description ?? "";
         string? icon = _isSubAction ? _program.Icon : _draft!.Icon;
         IconPicker.SelectedIcon = string.IsNullOrWhiteSpace(icon) ? IconCatalog.Default : icon;
 
@@ -181,6 +183,7 @@ public partial class ActionEditorWindow : Window
         BuildToolbox();
         ReloadRows();
         CaptureBaseline();
+        SetupAutosave();
 
         TraceList.ItemsSource = _traceRows;
         SnapshotList.ItemsSource = _snapshotRows;
@@ -190,6 +193,7 @@ public partial class ActionEditorWindow : Window
         {
             _toolboxSearchDebounce.Cancel();
             _traceFlush?.Stop();
+            _autosaveTimer?.Stop();
             if (_running) AutomationRunner.Stop();
             MacroRecorder.RecordingStopped -= OnMacroRecordingStopped;
             MacroRecorder.MacroSaved -= OnMacroSavedRefresh;
@@ -205,7 +209,13 @@ public partial class ActionEditorWindow : Window
         MacroRecorder.RecordingStopped += OnMacroRecordingStopped;
         MacroRecorder.MacroSaved += OnMacroSavedRefresh;
 
-        Loaded += (_, _) => NameBox.Focus();
+        Loaded += (_, _) =>
+        {
+            NameBox.Focus();
+
+            // 自动存盘要在窗口显示之后再问（对话框要宿主窗口），而且让 Show 先返回，打开动作不卡。
+            Dispatcher.BeginInvoke(new Action(TryRestoreAutosave), DispatcherPriority.Background);
+        };
     }
 
     /// <summary>确定后的动作；取消时为 null。</summary>
@@ -284,6 +294,12 @@ public sealed class StepRow
     public string Summary { get; init; } = "";
 
     public string Output { get; init; } = "";
+
+    /// <summary>状态 chip（跳过 / 失败继续 / ⟳3 / 延迟 / 备注），空列表 = 不占地方。</summary>
+    public IReadOnlyList<StepChip> Chips { get; init; } = Array.Empty<StepChip>();
+
+    public Visibility ChipsVisibility =>
+        Chips.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility OutputVisibility =>
         Output.Length > 0 ? Visibility.Visible : Visibility.Collapsed;

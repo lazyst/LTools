@@ -8,31 +8,36 @@ using LTools.Core.Actions;
 namespace LTools.Views;
 
 /// <summary>
-/// 步骤树的撤销 / 重做。
+/// 步骤树 + 变量表的撤销 / 重做。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 快照 = 步骤树的深拷贝（<see cref="Step.Clone"/>）；变量表不在快照里——它有自己的编辑入口，
-/// 撤销一次步骤不该把用户刚改的变量默认值一起吞掉。每次结构性改动（增 / 删 / 移 / 粘贴 /
-/// 复制一份 / 编辑 / 跳过）之前记一笔，最多留 50 步。
+/// 快照 = 步骤树的深拷贝（<see cref="Step.Clone"/>）**加上变量表每行的原文**
+/// （<see cref="EditorUndoState"/>）。只快照步骤时，「删除步骤」「插入模板」「拖动排序」
+/// 撤销回来以后，变量表还停在改完之后的样子（多出来的声明 / 少掉的声明都得手工改）。
 /// </para>
 /// <para>
-/// 撤销 / 重做只重建列表，不动 <c>_program</c> 的引用（菜单、试运行、保存都指着它）。
+/// 每次结构性改动（增 / 删 / 移 / 粘贴 / 复制一份 / 编辑 / 跳过 / 新建与删除变量）之前记一笔，
+/// 最多留 50 步。撤销 / 重做只重建列表，不动 <c>_program</c> 的引用（菜单、试运行、保存都指着它）。
 /// </para>
 /// </remarks>
 public partial class ActionEditorWindow
 {
-    private readonly List<(List<Step> Steps, string Label)> _undo = new();
-    private readonly List<(List<Step> Steps, string Label)> _redo = new();
+    private readonly List<EditorUndoState> _undo = new();
+    private readonly List<EditorUndoState> _redo = new();
     private const int UndoLimit = 50;
 
     /// <summary>改动前记一笔；<paramref name="label"/> 会出现在「已撤销：…」提示里。</summary>
     private void PushUndo(string label)
     {
-        _undo.Add((CloneSteps(_program.Steps), label));
+        _undo.Add(CaptureState(label));
         if (_undo.Count > UndoLimit) _undo.RemoveAt(0);
         _redo.Clear();
     }
+
+    /// <summary>当前内容的一份撤销快照。</summary>
+    private EditorUndoState CaptureState(string label) =>
+        new(CloneSteps(_program.Steps), CaptureVariables(), label);
 
     private void Undo()
     {
@@ -42,11 +47,11 @@ public partial class ActionEditorWindow
             return;
         }
 
-        var (steps, label) = _undo[^1];
+        EditorUndoState state = _undo[^1];
         _undo.RemoveAt(_undo.Count - 1);
-        _redo.Add((CloneSteps(_program.Steps), label));
-        ApplySteps(steps);
-        SetStatus($"已撤销：{label}", hint: true);
+        _redo.Add(CaptureState(state.Label));
+        ApplyState(state);
+        SetStatus($"已撤销：{state.Label}", hint: true);
     }
 
     private void Redo()
@@ -57,11 +62,11 @@ public partial class ActionEditorWindow
             return;
         }
 
-        var (steps, label) = _redo[^1];
+        EditorUndoState state = _redo[^1];
         _redo.RemoveAt(_redo.Count - 1);
-        _undo.Add((CloneSteps(_program.Steps), label));
-        ApplySteps(steps);
-        SetStatus($"已重做：{label}", hint: true);
+        _undo.Add(CaptureState(state.Label));
+        ApplyState(state);
+        SetStatus($"已重做：{state.Label}", hint: true);
     }
 
     private void Undo_Click(object sender, System.Windows.RoutedEventArgs e) => Undo();
@@ -93,10 +98,12 @@ public partial class ActionEditorWindow
         return copy;
     }
 
-    private void ApplySteps(List<Step> steps)
+    /// <summary>恢复一份快照：步骤树与变量表一起回到当时的样子。</summary>
+    private void ApplyState(EditorUndoState state)
     {
         _program.Steps.Clear();
-        foreach (Step step in steps) _program.Steps.Add(step.Clone());
+        foreach (Step step in state.Steps) _program.Steps.Add(step.Clone());
+        RestoreVariables(state.Variables);
         ReloadRows();
     }
 }

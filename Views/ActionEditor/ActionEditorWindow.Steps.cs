@@ -129,11 +129,8 @@ public partial class ActionEditorWindow
     {
         UnitSpec? spec = SpecOf(step);
         string title = spec?.Name ?? step.Unit;
-        if (step.Disabled) title += "（跳过）";
 
         string summary = StepSummary.Describe(step);
-        string retry = StepSummary.RetryText(step);
-        if (retry.Length > 0) summary = summary.Length == 0 ? retry : $"{summary} · {retry}";
         if (collapsed)
         {
             string folded = $"已折叠 {DescendantCount(step)} 步";
@@ -153,6 +150,7 @@ public partial class ActionEditorWindow
             Title = title,
             Summary = summary,
             Output = StepSummary.OutputText(step),
+            Chips = StepRowChips.Describe(step),
             HasChildren = hasChildren,
             IsCollapsed = collapsed,
             IssueMark = mark,

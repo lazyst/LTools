@@ -118,6 +118,7 @@ internal static class ConfigBundle
         cfg.RecentActionIds = ui.RecentActionIds;
         cfg.FavoriteUnits = ui.FavoriteUnits ?? new();
         cfg.RecentUnits = ui.RecentUnits ?? new();
+        cfg.EditorDrawerWidth = ui.EditorDrawerWidth;
 
         bool hasStore = ActionStore.HasStore(anchorPath);
         if (hasStore)
@@ -375,6 +376,7 @@ internal static class ConfigBundle
         RecentActionIds = cfg.RecentActionIds,
         FavoriteUnits = cfg.FavoriteUnits ?? new(),
         RecentUnits = cfg.RecentUnits ?? new(),
+        EditorDrawerWidth = cfg.EditorDrawerWidth,
     };
 
     internal static HotkeyFile ToHotkeys(AppConfig cfg) => cfg.Hotkeys ?? new HotkeyFile();

@@ -1252,12 +1252,13 @@ public partial class StepFormView : UserControl
     }
 
     /// <summary>
-    /// Enter = 确定、Esc = 取消、Alt+← / Alt+→ = 上一步 / 下一步。
+    /// Enter = 确定、Ctrl+Enter = 保存这一步、Esc = 取消、Alt+← / Alt+→ = 上一步 / 下一步。
     /// </summary>
     /// <remarks>
     /// 抽屉里没有「窗口级默认按钮」可以靠（<c>IsDefault</c> / <c>IsCancel</c> 会落到动作编辑器窗口自己的
     /// 确定 / 取消上，一按 Enter 就把整个动作存了），所以在表单自己这里收。
-    /// 多行输入框里的 Enter 是换行，必须让给它（<see cref="TextBox.AcceptsReturn"/>）；
+    /// 多行输入框里的 Enter 是换行，必须让给它（<see cref="TextBox.AcceptsReturn"/>）——
+    /// 那种情况下用 <b>Ctrl+Enter</b> 保存这一步（多行框里 Ctrl+Enter 本来就没人用）。
     /// ▾ 来源菜单与录制按键在 Popup 里，键事件走它们自己的树，不会跑到这里来。
     /// </remarks>
     private void StepFormView_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -1276,6 +1277,21 @@ public partial class StepFormView : UserControl
                 e.Handled = true;
             }
 
+            return;
+        }
+
+        // Ctrl+Enter = 保存这一步：多行框里 Enter 让给换行，但它要有个「确定」的出口。
+        if (e.Key == System.Windows.Input.Key.Enter
+            && (modifiers & System.Windows.Input.ModifierKeys.Control) != 0)
+        {
+            if (TrySave())
+            {
+                NavigateDelta = 0;
+                ContinueAdding = false;
+                Saved?.Invoke();
+            }
+
+            e.Handled = true;
             return;
         }
 

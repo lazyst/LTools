@@ -51,6 +51,7 @@ public partial class ActionEditorWindow
         var sb = new StringBuilder();
         sb.Append(NameBox.Text ?? "").Append('\n');
         sb.Append(IconPicker.SelectedIcon ?? "").Append('\n');
+        sb.Append(DescriptionBox.Text ?? "").Append('\n');
 
         foreach (var row in _variables)
         {
@@ -72,6 +73,8 @@ public partial class ActionEditorWindow
     {
         if (_saved || !IsDirty())
         {
+            // 没有未保存的改动（或已经保存过）：自动存盘与正式文件一致，留着只会下次多问一句。
+            ForgetAutosave();
             base.OnClosing(e);
             return;
         }
@@ -104,6 +107,8 @@ public partial class ActionEditorWindow
                 return;
 
             case SaveConfirmResult.Discard:
+                // 明确不保存：这份自动存盘也该作废，否则下次打开还会问一遍。
+                ForgetAutosave();
                 base.OnClosing(e);
                 return;
 

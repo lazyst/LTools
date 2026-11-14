@@ -59,8 +59,39 @@ public partial class ActionEditorWindow
 
     private void AddVariable_Click(object sender, RoutedEventArgs e)
     {
+        PushUndo("新建变量");
         AddVariableRow("", ValueKind.text, null, VariableDirection.local);
         _variables[^1].Name.Focus();
+    }
+
+    /// <summary>变量表现状（原文，不解析）——撤销快照用。</summary>
+    private List<VariableDraft> CaptureVariables() =>
+        _variables.Select(row => new VariableDraft(
+            row.Name.Text ?? "",
+            (row.Type.SelectedItem as KindChoice)?.Kind ?? ValueKind.text,
+            (row.Direction?.SelectedItem as DirectionChoice)?.Direction ?? VariableDirection.local,
+            row.Default.Text ?? "",
+            row.Origin,
+            row.AutoType,
+            row.LastName)).ToList();
+
+    /// <summary>按撤销快照重建变量表（整表替换，连同「谁写进来的」小字一起回去）。</summary>
+    private void RestoreVariables(List<VariableDraft> drafts)
+    {
+        VariableRows.Children.Clear();
+        _variables.Clear();
+
+        foreach (VariableDraft draft in drafts)
+        {
+            VariableRowUi row = AddVariableRow(draft.Name, draft.Kind, null, draft.Direction,
+                draft.Origin, draft.AutoType);
+
+            // 默认值写回原文：列表 / 对象是多行文本，重新解析再格式化会把用户写的形状改掉。
+            row.Default.Text = draft.Default;
+            row.LastName = draft.LastName;
+        }
+
+        RefreshVariableTips();
     }
 
     private VariableRowUi AddVariableRow(string key, ValueKind kind, Value? defaultValue,
@@ -140,6 +171,7 @@ public partial class ActionEditorWindow
                 return;
             }
 
+            PushUndo("删除变量");
             _variables.Remove(row);
             VariableRows.Children.Remove(grid);
         };
@@ -568,7 +600,12 @@ public partial class ActionEditorWindow
         finally { _syncingKinds = false; }
     }
 
-    private List<VariableDef>? ReadVariables()
+    /// <summary>
+    /// 变量表 → 声明列表。
+    /// <paramref name="tolerant"/> = true 时「默认值填错」不弹框、按类型给空值
+    /// （自动存盘用：一个填错的默认值不该让整份副本丢掉）。
+    /// </summary>
+    private List<VariableDef>? ReadVariables(bool tolerant = false)
     {
         var list = new List<VariableDef>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -584,11 +621,18 @@ public partial class ActionEditorWindow
             // 现在按类型解析；填错就提示并拦住保存，不静默丢值。
             if (!ListText.TryParseDefault(kind, row.Default.Text, out Value? value, out string error))
             {
-                ConfirmDialog.Info(this, "变量默认值",
-                    $"「{key}」的默认值填得不对：\n{error}");
-                row.Default.Focus();
-                row.Default.SelectAll();
-                return null;
+                if (!tolerant)
+                {
+                    ConfirmDialog.Info(this, "变量默认值",
+                        $"「{key}」的默认值填得不对：\n{error}");
+                    row.Default.Focus();
+                    row.Default.SelectAll();
+                    return null;
+                }
+
+                // 自动存盘：原样留着用户填的文本（下次恢复能看见自己写了什么），
+                // 真正保存时照样会被拦下来重新填。
+                value = Value.FromText(row.Default.Text ?? "");
             }
 
             list.Add(new VariableDef

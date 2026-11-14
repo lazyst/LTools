@@ -30,12 +30,13 @@
                             <ColumnDefinition Width="24"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="26"/>
                             <ColumnDefinition Width="26"/>
                         </Grid.ColumnDefinitions>
 
                         <!-- 选中指示：最左侧 3px 主色竖条（压在内边距上，不挤布局） -->
-                        <Border x:Name="AccentBar" Grid.ColumnSpan="8" Width="3"
+                        <Border x:Name="AccentBar" Grid.ColumnSpan="9" Width="3"
                                 HorizontalAlignment="Left" CornerRadius="1.5" Margin="-5,0,0,0"
                                 Background="Transparent" IsHitTestVisible="False" Panel.ZIndex="1"/>
 
@@ -80,11 +81,37 @@
                                        Foreground="{StaticResource SecondaryTextBrush}"/>
                         </Border>
 
-                        <Button Grid.Column="6" Style="{StaticResource BtnGhost}" Content="✎" Padding="0"
+                        <!-- 状态 chip：跳过 / 失败继续 / ⟳3 / 延迟 / 备注（判定见 StepRowChips） -->
+                        <ItemsControl Grid.Column="6" ItemsSource="{Binding Chips}" VerticalAlignment="Center"
+                                      Margin="0,0,4,0" Visibility="{Binding ChipsVisibility}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{StaticResource SurfaceAltBrush}" CornerRadius="3"
+                                            Padding="5,1" Margin="0,0,4,0" ToolTip="{Binding Tip}">
+                                        <TextBlock x:Name="ChipText" Text="{Binding Text}"
+                                                   FontSize="{StaticResource FontSizeHint}"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"/>
+                                    </Border>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding Warn}" Value="True">
+                                            <Setter TargetName="ChipText" Property="Foreground"
+                                                    Value="{StaticResource WarningBrush}"/>
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Button Grid.Column="7" Style="{StaticResource BtnGhost}" Content="✎" Padding="0"
                                 Width="24" Height="24" FontSize="{StaticResource FontSizeSecondary}"
                                 VerticalAlignment="Center" ToolTip="编辑（双击行亦可）"
                                 Visibility="{Binding ButtonVisibility}" Click="EditStep_Click"/>
-                        <Button Grid.Column="7" Style="{StaticResource BtnGhost}" Content="✕" Padding="0"
+                        <Button Grid.Column="8" Style="{StaticResource BtnGhost}" Content="✕" Padding="0"
                                 Width="24" Height="24" FontSize="{StaticResource FontSizeHint}"
                                 VerticalAlignment="Center" ToolTip="删除（含子步骤）"
                                 Visibility="{Binding ButtonVisibility}" Click="DeleteStep_Click"/>
@@ -516,6 +543,15 @@
                 </Grid>
             </Border>
 
+            <!-- 中栏 / 右栏之间的分隔条：只在「参数抽屉」打开时记宽度（见 RightSplitter_DragCompleted）。
+                 贴在右栏左缘（覆盖的是右栏内边距，不是步骤列表的滚动条），不额外占一列，
+                 所以窗口 MinWidth 的余量算法不变。 -->
+            <GridSplitter Grid.Column="2" Width="5" HorizontalAlignment="Left"
+                          ResizeBehavior="PreviousAndCurrent" ResizeDirection="Columns"
+                          Background="Transparent" Cursor="SizeWE" Panel.ZIndex="10"
+                          ToolTip="拖动调整右侧参数栏的宽度"
+                          DragCompleted="RightSplitter_DragCompleted"/>
+
             <!-- ============ 右：变量 + 动作属性 / 步骤参数（抽屉） ============ -->
             <Border Grid.Column="2" Background="{StaticResource SurfaceAltBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
@@ -572,6 +608,13 @@
 
                         <TextBlock Style="{StaticResource SectionLabel}" Text="名称" Margin="0,0,0,4"/>
                         <TextBox x:Name="NameBox" MinHeight="32" Margin="0,0,0,12"/>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="说明" Margin="0,0,0,4"/>
+                        <TextBox x:Name="DescriptionBox" MinHeight="52" MaxHeight="132"
+                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto" Margin="0,0,0,12"
+                                 controls:TextBoxPlaceholder.Text="这个动作做什么、什么时候用（面板 / 悬浮的悬停提示会显示）"
+                                 ToolTip="可选。写上之后，面板磁贴与悬浮按钮的悬停提示会把这句话一起显示"/>
 
                         <TextBlock x:Name="CodeHint" Style="{StaticResource HintLabel}"
                                    TextWrapping="Wrap" Visibility="Collapsed" Margin="0,-6,0,12"/>
