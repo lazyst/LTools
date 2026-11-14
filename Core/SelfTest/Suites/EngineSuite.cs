@@ -51,6 +51,9 @@ internal static class EngineSuite
         cases.Add(new("engine", "等待条件每轮重新取值", WaitForReevaluates));
         cases.Add(new("engine", "等待条件超时", WaitForTimeout));
         cases.Add(new("engine", "干跑里条件不成立不算失败", WaitForDryRun));
+        cases.Add(new("engine", "等待窗口：至少填标题或类名", WindowWaitNeedsTarget));
+        cases.Add(new("engine", "等待窗口：等不到不算失败", WindowWaitMissingIsNotFailure));
+        cases.Add(new("engine", "等待窗口：干跑不真的等", WindowWaitDryRunDoesNotBlock));
     }
 
     // ============ 用例 ============
@@ -745,6 +748,62 @@ internal static class EngineSuite
 
         Check.True(result.Ok, "干跑里条件不成立不该算失败（也不该真的等 5 秒）：" + result.Error);
         Check.False(result.Variables["waitOk"].AsBool(), "ok = false");
+    }
+
+    // ============ 等待窗口（window.wait，P5-B） ============
+
+    private static void WindowWaitNeedsTarget()
+    {
+        var registry = new StepRegistry();
+        registry.Register(new LTools.Features.Units.Windows.WindowWaitUnit());
+
+        ActionRunResult result = Run(Program(Step.Of("window.wait")), registry);
+
+        Check.False(result.Ok, "标题和类名都没填应当报错");
+        Check.Equal(ActionErrorKind.precondition, result.ErrorKind, "缺参数是前置条件");
+        Check.Contains(result.Error, "标题包含");
+    }
+
+    private static void WindowWaitMissingIsNotFailure()
+    {
+        var registry = new StepRegistry();
+        registry.Register(new LTools.Features.Units.Windows.WindowWaitUnit());
+
+        Step step = Step.Of("window.wait")
+            .WithText("title", "LTools 自测里不存在的窗口标题 0xNOPE")
+            .With("timeoutMs", StepArg.FromNumber(0))
+            .With("intervalMs", StepArg.FromNumber(20))
+            .Output("found", "waitFound")
+            .Output("title", "waitTitle")
+            .Output("handle", "waitHandle")
+            .Output("elapsed", "waitElapsed");
+
+        ActionRunResult result = Run(Program(step), registry);
+
+        Check.True(result.Ok, "等不到窗口只是 found = false，不该失败：" + result.Error);
+        Check.False(result.Variables["waitFound"].AsBool(), "found = false");
+        Check.Equal("", result.Variables["waitTitle"].AsText(), "没找到时标题为空");
+        Check.Equal(0, result.Variables["waitHandle"].AsNumber(), "没找到时句柄为 0");
+        Check.True(result.Variables["waitElapsed"].AsNumber() >= 0, "等了多久要写出来（超时也是 0 起算）");
+    }
+
+    private static void WindowWaitDryRunDoesNotBlock()
+    {
+        var registry = new StepRegistry();
+        registry.Register(new LTools.Features.Units.Windows.WindowWaitUnit());
+
+        Step step = Step.Of("window.wait")
+            .WithText("title", "LTools 自测里不存在的窗口标题 0xNOPE")
+            .With("timeoutMs", StepArg.FromNumber(30_000))
+            .Output("found", "waitFound");
+
+        long started = Environment.TickCount64;
+        ActionRunResult result = Run(Program(step), registry, new ActionRunOptions { DryRun = true });
+        long elapsed = Environment.TickCount64 - started;
+
+        Check.True(result.Ok, "干跑不该失败：" + result.Error);
+        Check.False(result.Variables["waitFound"].AsBool(), "干跑查一次就是没找到");
+        Check.True(elapsed < 3000, $"干跑不该真的等 30 秒（实际 {elapsed} ms）");
     }
 
     // ============ 工具 ============

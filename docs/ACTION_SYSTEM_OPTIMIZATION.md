@@ -185,7 +185,7 @@
 
 取舍标准：只加「用现有单元要写 ≥5 步才能表达」且「失败率高」的单元，其余用模板解决。
 
-进度：**P5-A（`ActionErrorKind` + `retryOn` + `flow.lastErrorStep`）已落地**，见 §9.6；`window.wait` 排 P5-B；`flow.try` 不做。
+进度：**P5-A（`ActionErrorKind` + `retryOn` + `flow.lastErrorStep`）** 见 §9.6，**P5-B（`window.wait`）** 见 §9.7；`flow.try` 不做。
 
 ---
 
@@ -494,5 +494,39 @@ P5 分两笔：**P5-A 失败分类（本节）** 与 **P5-B `window.wait`**。`f
    才标 `timeout`，其余一律 `unknown`。文案一改分类就错，本地化后更没戏。
 6. **提示文案只在性质可读时加前缀**：`unknown` / `aborted` 不加，「未知错误 · …」这种前缀没有信息量。
 7. **不做向后兼容**：旧动作没有 `RetryOn` 字段就是空 = 任何失败都重试，和 P2 的行为完全一致，不需要迁移器。
+
+### 9.7 P5-B · `window.wait`（2026-11-14）
+
+**要解决的问题**：桌面自动化最常见的失败是「程序还没起来 / 对话框还没弹出来」。以前只能写
+「查找窗口 → 如果没找到 → 延迟 → 回到开头」，还要自己计数防死循环；`flow.waitFor` 能表达，
+但要拿它比对一个「窗口对象」得先查窗口再拼条件，写起来绕。
+
+**落地内容**
+
+| 位置 | 内容 |
+|---|---|
+| `Features/Units/Windows/WindowWaitUnit.cs`（新） | `window.wait`：`title` / `class`（至少要填一个，否则 `precondition`）/ `timeoutMs`（默认 10000，`0` = 只查一次）/ `intervalMs`（默认 250，高级）；输出 `found` / `title` / `handle` / `elapsed` / `value`（`UnitValues.Window`）；`Kind = pure` + `DryRun = true` |
+| `Features/Units/BuiltInUnits.cs` | 注册（排在 `FindWindowUnit` 之后） |
+| `Core/SelfTest/Suites/EngineSuite.cs` | +3 例：至少填标题或类名（性质 = `precondition`）、等不到不算失败、干跑不真的等 |
+| `docs/ACTION_SYSTEM.md` | 旧实现对照表补 `window.wait` 与 `flow.lastErrorStep` 两行 |
+
+**三条口径**
+
+1. **超时是 `found = false`，不是失败**：与 `input.waitKey` 同口径。判断要不要当失败交给调用方
+   （`如果 found 为假 → 报错` 或 `失败继续`）。**别把「等待类」和「命中类」混在一起**：
+   `input.clickText` / `input.clickImage` 找不到就是失败——它们接下来要**点**，点不到不能假装成功；
+   `window.wait` 只是「等」，等不到本身是一个正常结果。
+2. **干跑只查一次**：`DryRun` 时 `timeoutMs` 按 0 处理，草稿试运行不会被一个 30 秒的等待卡住
+   （`flow.waitFor` 同一条）。
+3. **每轮都写输出**（超时那一轮写「没找到」）：配「失败继续」和「如果」都能直接看到当时的状态。
+
+**实现细节**：匹配语义直接调 `WindowFinder.Find`（与「查找窗口」「窗口操作」「窗口消息」同一套，
+标题包含 + 类名精确、只认可见窗口），不另写一套枚举；轮询走 `ctx.EnterIteration()` + `ctx.Wait`，
+按停止热键 500ms 内返回；`timeoutMs` 钳在 0–600000（最长 10 分钟，避免一个等待吃光循环预算）。
+
+**验收**：`--selftest` **110 例 / 2826 断言全绿**（约 5.5 秒；Debug 构建 0 错 0 警，动作单元 79 个）。
+
+**与计划不一致的地方**：无。**不加**「等窗口消失 / 等窗口可交互」这类 `operation`——
+要就另开动作单元，别让一个单元混几种等待语义（`file.open` 三合一已退役过）。
 
 

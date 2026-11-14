@@ -324,6 +324,7 @@ sealed class SubActionDef {
 | **窗口** | `window.find` 查找窗口 → 对象 | 新增（复用 WindowFinder） |
 | | `window.foreground` 前台窗口信息 | Probe.window |
 | | `window.operate` 切前台/最大化/最小化/还原/改尺寸 | window |
+| | `window.wait` 等窗口出现（超时 `found = false`，不是失败） | window |
 | **屏幕** | `screen.capture` 截图 → 对象 | Probe.screenshot |
 | | `screen.findImage` 找图 → 对象 | Probe.image |
 | | `screen.ocr` 文字识别 → 文本（也可选前台窗口 / 整个屏幕 / 固定区域，运行时现截一块，不落盘） | Probe.ocr |
@@ -334,6 +335,7 @@ sealed class SubActionDef {
 | | `flow.repeat` / `flow.forEach` / `flow.while` 循环 | FlowNode.loop |
 | | `flow.break` / `flow.continue` / `flow.stop` / `flow.delay` | 同名节点 / DelayMs |
 | | `flow.lastError` 上一步的错误 | RunContext.LastError |
+| | `flow.lastErrorStep` 上一次失败的步骤（位置 / 动作单元 / 性质） | 新增（P5-A） |
 | **子动作** | `sub.run` 调用子动作（W3） | 新增 |
 | **数据** | `data.noteWrite` / `data.noteRead` 速记 | quickNote / Probe.note |
 | | `data.list` 列表增删改查/排序/去重 | 新增 |

@@ -78,6 +78,7 @@ public static class BuiltInUnits
 
         // —— 窗口 ——
         registry.Register(new FindWindowUnit());
+        registry.Register(new WindowWaitUnit());
         registry.Register(new ForegroundWindowUnit());
         registry.Register(new OperateWindowUnit());
         registry.Register(new MessageUnit());
