@@ -882,6 +882,12 @@ internal static class AiToolHandlers
         }, thumbnail);
     }
 
+    // ============ 控件树 ============
+
+    /// <summary>读一个窗口的 UI Automation 控件树快照（只读，不改任何东西）。</summary>
+    public static Dictionary<string, object?> UiaTree(string? title, string? className, int depth, int limit) =>
+        AiUia.Snapshot(title, className, depth, limit);
+
     // ============ 内部 ============
 
     private static ActionProgram ParseProgram(JsonElement element)

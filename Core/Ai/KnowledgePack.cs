@@ -373,6 +373,8 @@ internal static class KnowledgePack
    每块屏幕的物理矩形与工作区、DPI 缩放、虚拟桌面、光标位置、常用目录、默认 OCR 引擎。
    坐标一律**物理像素**（与截图 / 找图 / 鼠标注入同一套），DIP 用 `scale` 换算；多屏时 `left` / `top` 可能是负数。
    还看不清屏幕就 `ltools_screenshot`（见 §5）：整屏 / 前台窗口 / 固定区域，图片会直接回到你的上下文里。
+   要知道「那个按钮叫什么 / 在哪儿」就 `ltools_uia_tree`：控件树给 name / 控件类型 / automationId / 屏幕矩形，
+   把 `name` 填进「文字点击」的文本，或把 `bounds` 中心当「鼠标操作」的坐标——**别靠猜**。
 1. `ltools_units_list` / `ltools_units_get`：先确认能力存在，别臆造动作单元键。
    `units_get` 里 `optionParams` / `enabledWhen` 说明「哪个选项要哪些参数」（`units.md` 里有同样的选项表），
    **按当前选项只填需要的参数**，别把别的操作的参数堆进去（运行会忽略，`check` 会给 warning）。
@@ -434,6 +436,8 @@ internal static class KnowledgePack
 - 找不到能力就说不支持，**不要臆造动作单元键**，也不要试图写配置文件或 `actions/` 目录（正式动作只经用户采纳写入）。
 - 不要为了一个功能另造一套循环 / 条件 / 取值——先看 `units.md` 里现成的动作单元。
 - 动作执行在后台线程；会动键鼠的步骤（点击、输入、窗口操作）要留出等待（`flow.delay` 或动作单元自带的超时 / 等待）。
+- 点不动就是没找对：先用 `ltools_uia_tree` 看控件树（名字 / 类型 / 矩形），再用 `ltools_screenshot` 看形状，
+  **别靠猜坐标**加偏移硬凑。
 - 用户动作只能读（`ltools_actions_get`）；要改就先 `staging_create(copyFromActionId:...)`。
 
 ## 7. 子动作（函数）

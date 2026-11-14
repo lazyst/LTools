@@ -247,6 +247,7 @@ staging/
 | `ltools_units_list(query?)` | 动作单元摘要列表（74 条，可过滤） | | |
 | `ltools_units_get(key)` | 单个动作单元的完整 Input/Output 规格（`sub.run` 附带全部子动作签名）；每个参数带 `optionParams` / `enabledWhen`，说清「哪个选项要哪些参数」 | | |
 | `ltools_screenshot(draftId?, source?, region?, name?, maxWidth?)` | 截屏（整屏 / 前台窗口 / 固定区域），**图片随回执返回**；传 `draftId` 写进草稿 `files/`，不传写 `resources/images/`。回执含 `bounds`（截取矩形）与 `thumbnail.scale`，用来把图片坐标换算成屏幕物理像素 | ✓ | |
+| `ltools_uia_tree(title?, className?, depth?, limit?)` | 窗口的 UI Automation 控件树快照（名字 / 控件类型 / automationId / 类名 / 屏幕矩形 / 是否启用，扁平清单带 `path` 与 `depth`）；不传窗口用前台。给「文字点击」找名字、给「鼠标操作」找坐标 | | |
 | `ltools_actions_list(query?, limit?)` | 正式动作列表（Id/名称/图标/步骤数/来源） | | |
 | `ltools_actions_get(id)` | 正式动作的完整 Program（只读） | | |
 | `ltools_subactions_list(query?, limit?)` | 全局子动作列表（id / 名称 / 输入 / 输出 / 步数） | | |

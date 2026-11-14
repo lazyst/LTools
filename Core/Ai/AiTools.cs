@@ -53,6 +53,21 @@ public sealed class AiTools
         [Description("附带回执的图片最大宽度，默认 1600；0 = 不缩（原图）")] int maxWidth = 1600) =>
         AiToolHandlers.Screenshot(draftId, source, region, name, maxWidth);
 
+    [McpServerTool(Name = "ltools_uia_tree"), Description(
+        "读一个窗口的 UI Automation 控件树快照（只读）：名称 / 控件类型 / automationId / 类名 / 屏幕矩形 / " +
+        "是否启用，每个元素带 path 与 depth。不传窗口就用前台窗口；找不到就退回前台并在 note 里说明。" +
+        "用它找「按名字点」的目标：把元素的 name 填进「文字点击」，或把 bounds 中心当「鼠标操作」的坐标。" +
+        "depth 默认 12（上限 12；想省 token 就调小，Chromium 类应用要 8–10 层才到真正的内容），" +
+        "limit 默认 300（上限 1000）；被截断时 truncated = true，note 里写着是深度还是数量截的。" +
+        "提权窗口要 LTools 也以管理员运行，否则读到的是空树（uia_unavailable）。")]
+    public static string UiaTree(
+        [Description("可选：窗口标题包含（不传 = 前台窗口）")] string? title = null,
+        [Description("可选：窗口类名（精确）")] string? className = null,
+        [Description("往下几层，默认 12 = 上限（0 也是默认）")] int depth = 0,
+        [Description("最多多少个元素，默认 300，上限 1000")] int limit = 0) =>
+        AiToolHandlers.Call("ltools_uia_tree", null,
+            () => AiToolHandlers.UiaTree(title, className, depth, limit));
+
     [McpServerTool(Name = "ltools_actions_list"), Description(
         "列出用户的正式动作（只读）。改动作必须先 staging_create(copyFromActionId:...) 复制到暂存区。")]
     public static string ActionsList(

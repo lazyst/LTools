@@ -229,7 +229,7 @@
 
 | 项 | 做什么 | 为什么 |
 |---|---|---|
-| P2-1 | AI 工具面：截图 / UIA 树 / dry-run / JSON Schema / `health` 环境信息 | A4 / A5 / A7 | 🚧 分三步：`health` 环境信息（6.13）、dry-run（6.14）、截图（6.15）已完成，UIA 树待做 |
+| P2-1 | AI 工具面：截图 / UIA 树 / dry-run / JSON Schema / `health` 环境信息 | A4 / A5 / A7 | ✅ 已完成：`health` 环境信息（6.13）、dry-run（6.14）、截图（6.15）、控件树（6.16）；JSON Schema 由 MCP SDK 从方法签名生成 |
 | P2-2 | 运行历史与失败分析（最近 N 次的成功 / 失败、耗时、失败步骤分布） | 现在只有单个 `last-failure.log` |
 | P2-3 | 步骤文本化（可复制 / 粘贴的 DSL），方便与 AI 往返 | 截取片段、分享、贴进对话都靠它 |
 
@@ -583,6 +583,34 @@ agent 看不见用户的屏幕（A4）：「找图」「图片点击」需要模
 给 `draftId` 时返回 `files/find-x.png`、文件落盘、带 `revision`；草稿不存在 → `not_found` 且不写文件。
 真机待点：设置 → AI 里让 agent 调一次 `ltools_screenshot`（给它一个草稿 id）——对话里应看到当前屏幕，
 草稿 `files/` 下多出那张 png，且把它的 `files/x.png` 填进「找图」的 `image` 能干跑通过。
+
+---
+
+### 6.16 实施记录（2026-11-13，P2-1 第三步之二：控件树工具）
+
+有截图能看到形状，但 agent 还是不知道「那个按钮叫什么、矩形在哪儿」（A4）。
+新增 `ltools_uia_tree(title?, className?, depth?, limit?)`：把一个窗口的 UI Automation 子树摊平成清单。
+
+| 部分 | 说明 |
+|---|---|
+| 选窗口 | 不传就用前台窗口；传 `title` / `className` 时按 `WindowFinder` 找（与「窗口」条件同一套匹配：标题包含 + 类名精确，命中最上面那个），找不到退回前台并在 `note` 里说明 |
+| 遍历 | `Core/Ai/AiUia.cs` 广度优先：`depth` 默认 12 = 上限（**Chromium 类应用要 8–10 层才到真正的内容**，浅了只有一串空 Pane）、`limit` 默认 300 / 上限 1000、每个父节点最多 200 个孩子、整棵树 4 秒预算 |
+| 元素 | 扁平清单：`path`（`0.2.1`）/ `depth` / `controlType`（英文 `ControlType` 名）/ `name` / `automationId` / `className` / `bounds` / `enabled` / `offscreen`；空字段省掉 |
+| 诚实截断 | `truncated` 只在**真还有内容没读完**时为 true：到深度上限时会再查一次「有没有孩子」；`note` 写明是深度还是数量 / 时间截的 |
+| 失败 | `FromHandle` 拿不到根 → `uia_unavailable`，提示「提权窗口要以管理员运行 LTools」并指向「截图 + 文字点击」这条退路；单个属性读取各自 try/catch（慢应用的 COM 调用会超时，坏一个不该让整棵树失败） |
+| 线程 | 自己的 `Lazy<UIA3Automation>`（与框选探测同一套 300 / 400ms 超时），**MCP 请求线程（MTA）直接调**，不包 `StaRunner` |
+| 门槛 | 只读，**不接写入闸** |
+
+不引入「按控件点击」这种新动作单元：动作单元是用户的东西，工具只提供观察能力——
+把 `name` 填进「文字点击」的文本、或把 `bounds` 中心当「鼠标操作」的坐标，两条现成的路都够用。
+
+**验收**：构建 0 错 0 警；无头冒烟 **279 项全过**（本项 20 项）——默认 `depth` 12 / `limit` 300、
+超上限夹到 12 / 1000、`depth = 0` 时只有窗口自己、`depth = 1` 不越层、找不到窗口退回前台并写 `note`、
+每个元素 `controlType` 非空且 `path` 从 `0` 起、`bounds` 四件套齐全、`count` 与清单一致、`truncated` 是布尔；
+工具声明能被 MCP SDK `McpServerTool.Create` 建出来且四个参数都在。调用点在 `Task.Run` 里（复现 MCP 的线程池路径）。
+真实窗口实测（本机 OpenChamber 窗口）：79 个元素，含 `Button · 新建会话` / `Edit · 搜索会话` / `Document · … [RootWebArea]`。
+真机待点：打开记事本 / 计算器，让 agent 调 `ltools_uia_tree`——回执里应能看到按钮名字与矩形；
+把某个按钮的 `name` 填进「文字点击」应能点中。
 
 ---
 
