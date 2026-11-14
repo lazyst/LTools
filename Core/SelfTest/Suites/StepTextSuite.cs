@@ -99,6 +99,7 @@ internal static class StepTextSuite
         }
 
         int checkedActions = 0;
+        int emptyActions = 0;
         foreach (string actionDir in Directory.GetDirectories(dir))
         {
             string file = Path.Combine(actionDir, "action.json");
@@ -117,6 +118,14 @@ internal static class StepTextSuite
 
             if (dto?.Program == null) continue;
 
+            // 新建了还没加步骤的动作是合法状态（编辑器里刚建完）：空步骤写出来是空文本，
+            // 而 TryParse 会拒空文本（粘贴空文本本来就该什么都不发生），这里跳过、单独计数。
+            if (dto.Program.Steps.Count == 0)
+            {
+                emptyActions++;
+                continue;
+            }
+
             string text = StepText.Write(dto.Program.Steps);
             if (!StepText.TryParse(text, out List<Step> back, out string? error))
             {
@@ -128,7 +137,8 @@ internal static class StepTextSuite
             checkedActions++;
         }
 
-        Check.Note($"真实动作库往返 {checkedActions} 份");
+        Check.Note($"真实动作库往返 {checkedActions} 份" +
+            (emptyActions > 0 ? $"（另有 {emptyActions} 份空动作跳过）" : ""));
     }
 
     private static void RetryAttribute()

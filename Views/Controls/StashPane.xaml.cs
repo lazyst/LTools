@@ -213,7 +213,7 @@ public sealed partial class StashPane : UserControl
         AutomationProperties.SetName(btn, title);
         // 照 Quicker：单击卡片直接运行（编辑在右键菜单里）
         btn.Click += (_, _) => RunDraft(meta.Id);
-        btn.ContextMenu = BuildCardMenu(meta);
+        btn.ContextMenu = BuildCardMenu(meta, program);
         return btn;
     }
 
@@ -246,13 +246,16 @@ public sealed partial class StashPane : UserControl
 
     // ============ 菜单 ============
 
-    private ContextMenu BuildCardMenu(DraftMeta meta)
+    private ContextMenu BuildCardMenu(DraftMeta meta, ActionProgram? program)
     {
         var menu = new ContextMenu();
         Track(menu);
 
         Add(menu, "在编辑器中打开", () => OpenDraft(meta.Id));
         Add(menu, "试运行", () => RunDraft(meta.Id));
+        // 草稿名与它采纳后的动作同名（都取 program.Name），Id 是草稿目录名。
+        Add(menu, "复制名称", () => ClipboardCopy.Text(DisplayName(meta, program), "StashPane.CopyName"));
+        Add(menu, "复制 Id", () => ClipboardCopy.Text(meta.Id, "StashPane.CopyId"));
         menu.Items.Add(new Separator());
 
         Add(menu, meta.Status == DraftStatus.promoted ? "再次采纳为新动作…" : "采纳为新动作…",

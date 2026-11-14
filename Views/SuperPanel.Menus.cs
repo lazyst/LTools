@@ -50,6 +50,10 @@ public partial class SuperPanelWindow
         AddMenuItem(menu, "导出动作…", () => ExportAction(tref));
         AddMenuItem(menu, "另存为子动作…", () => ToSubAction(tref));
         menu.Items.Add(new Separator());
+        // 名字与 Id 是「拿出去用」的两样东西（写文档 / 贴给 AI / 绑别的东西），复制完面板不关。
+        AddMenuItem(menu, "复制名称", () => ClipboardCopy.Text(action?.Name ?? id, "SuperPanel.CopyName"));
+        AddMenuItem(menu, "复制 Id", () => ClipboardCopy.Text(id, "SuperPanel.CopyId"));
+        menu.Items.Add(new Separator());
         bool floating = FloatingLibrary.IsFloating(id);
         string label = !floating ? "悬浮此动作"
             : FloatingManager.IsOnDesktop(id) ? "取消悬浮" : "显示悬浮";
