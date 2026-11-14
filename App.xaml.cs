@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Core.Ai;
+using LTools.Core.SelfTest;
 using LTools.Features;
 using LTools.Features.Floating;
 using LTools.Hooks;
@@ -39,6 +40,17 @@ public partial class App : Application
 
         // 主 UI Dispatcher 先登记：钩子专用线程上的一切 WPF 副作用都靠它投递（见 Core/Ui.cs）。
         Ui.Initialize(Dispatcher);
+
+        // —— 自测（LTools.exe --selftest）：只跑纯逻辑，不建托盘 / 钩子 / 单实例互斥体 ——
+        // 与 --mcp-stdio 同一套「分流 + Shutdown(exitCode)」模式，CI 直接跑构建产物。
+        if (SelfTestRunner.IsRequested(e.Args))
+        {
+            int exitCode = SelfTestRunner.Run(e.Args);
+            // 生成的 Main 不返回 Application.Run 的值，退出码只能靠 Environment.ExitCode 带出去（CI 只看它）。
+            Environment.ExitCode = exitCode;
+            Shutdown(exitCode);
+            return;
+        }
 
         // —— stdio 桥（LTools.exe --mcp-stdio）：只转发 JSON-RPC，不建托盘 / 钩子 / 单实例互斥体 ——
         if (McpStdioBridge.IsRequested(e.Args))

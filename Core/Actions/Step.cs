@@ -242,6 +242,12 @@ public sealed class Step
 /// <summary><see cref="StepArg"/> 的三态 JSON 转换。</summary>
 public sealed class StepArgConverter : JsonConverter<StepArg>
 {
+    /// <summary>
+    /// JSON 里写 <c>null</c> 时也要走 <see cref="Read"/>（默认 <c>false</c> 会让字典里留下 null，
+    /// 运行期读参数直接空引用）。手写 / AI 生成的 JSON 里 <c>"a": null</c> 很常见，按空文本收下。
+    /// </summary>
+    public override bool HandleNull => true;
+
     public override StepArg Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.String)

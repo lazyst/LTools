@@ -1,6 +1,6 @@
 name: build
 
-# push 到 master / PR 时跑构建验证，不产生发布物
+# push 到 master / PR 时跑构建验证 + 自测，不产生发布物
 on:
   push:
     branches: [master]
@@ -17,3 +17,16 @@ jobs:
           dotnet-version: '10.0.x'
       - run: dotnet restore
       - run: dotnet build -c Release --no-restore
+      # 回归门禁：跑构建产物里的自测入口（纯逻辑，不碰键鼠 / 网络 / 用户配置）。
+      # 失败时把报告打到日志里，否则只能看到一个退出码（见 docs/ACTION_SYSTEM_OPTIMIZATION.md P0）。
+      - name: selftest
+        shell: pwsh
+        run: |
+          $exe = 'bin/Release/net10.0-windows10.0.19041.0/LTools.exe'
+          $report = Join-Path $env:TEMP 'ltools-selftest/report.txt'
+          $proc = Start-Process -FilePath $exe -ArgumentList '--selftest' -Wait -PassThru -NoNewWindow
+          if (Test-Path $report) { Get-Content $report }
+          if ($proc.ExitCode -ne 0) {
+            Write-Error "selftest 失败（退出码 $($proc.ExitCode)）"
+            exit $proc.ExitCode
+          }

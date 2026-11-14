@@ -5,7 +5,7 @@ LTools（原 CapsLock-Pro / CapsLock++）：Windows 桌面工具，把 CapsLock 
 ## 术语与文档
 
 - **`CONTEXT.md` 是术语表的唯一来源**（面板 / 悬浮 / 场景 / 分组 / 动作 / 步骤 / 动作单元 / 内置功能 / 草稿 / 采纳…）：每个词叫什么、边界在哪写在那里。需求、代码、提交信息、文档一律用它的叫法；**需求里出现表里没有的词，或同一个东西的第二种叫法，先确认一句再当场补进去**（不攒、不擅自换词），改了词要全链路（`CONTEXT.md` → 本文件 → 代码标识符）。
-- `docs/`：设计规格与阶段方案——`ARCHITECTURE.md`（数据布局）、`ACTION_SYSTEM.md`（动作系统）、`ACTION_EDITOR_REVIEW.md`（动作编辑器评审：12 项问题 / 方案 / 实施记录）、`THREADING.md`（线程模型与输入链路量化）、`FLOATING.md`（悬浮）、`AI_AGENT.md`（MCP）、`AUTO_TRIGGER.md`（自动触发）；`INPUT_LATENCY_PLAYBOOK.md` 是跨项目可复用的输入卡顿排查手册（通用经验，非本项目规格）。术语只进 `CONTEXT.md`，实现约束与踩过的坑只进本文件。
+- `docs/`：设计规格与阶段方案——`ARCHITECTURE.md`（数据布局）、`ACTION_SYSTEM.md`（动作系统）、`ACTION_EDITOR_REVIEW.md`（动作编辑器评审：12 项问题 / 方案 / 实施记录）、`ACTION_SYSTEM_OPTIMIZATION.md`（动作系统深度优化计划：P0 门禁 / P1 可中断 / P2 失败语义 / P3 编辑体验 / P4 结构统一 / P5 能力补齐，含验收与实施记录）、`THREADING.md`（线程模型与输入链路量化）、`FLOATING.md`（悬浮）、`AI_AGENT.md`（MCP）、`AUTO_TRIGGER.md`（自动触发）；`INPUT_LATENCY_PLAYBOOK.md` 是跨项目可复用的输入卡顿排查手册（通用经验，非本项目规格）。术语只进 `CONTEXT.md`，实现约束与踩过的坑只进本文件。
 - 新增术语 **Id / 引用位置 / 占位文字 / 筛选** 见 `CONTEXT.md`：代码标识符分别走 `Id` / `References` / `Placeholder` / `Filter`，别再写「编号 / 落位 / 水印 / 过滤」。改 Id 形状要同步 `LTools.example.json` 与 `docs/` 示例；**不做向后兼容**，不写迁移器、不认旧字段、不留别名。
 
 ## 构建
@@ -25,11 +25,12 @@ dotnet publish LTools.csproj -c Release -r win-x64 --self-contained true -o publ
 - **发布命令必须带 `LTools.csproj`**：仓库同时有 `LTools.sln` 与 `LTools.csproj`，省略时 dotnet 会去构建 sln，配 `-o` 触发 `NETSDK1194` 警告（`release.yml` 就是显式指定的）
 - 输出：`bin/Debug/net10.0-windows10.0.19041.0/LTools.exe`；TFM 带 Windows SDK 投影（`net10.0-windows10.0.19041.0`，OCR 用 `Windows.Media.Ocr`），改 TFM 会改变输出目录
 - 构建必须 **0 错 0 警**
-- **没有测试项目**，不要找 `dotnet test`。UI 验收靠仓库外的临时无头冒烟工程（`%TEMP%\opencode\lpanel-smoke` / `floating-smoke`，反射驱动 `LTools.dll`，见 `docs/FLOATING.md` 与 `docs/ACTION_SYSTEM.md`），不在 CI 里；日常回归 = 构建 0 警 + 真机点一遍相关路径
+- **没有测试项目**，不要找 `dotnet test`。回归门禁是程序内的 `LTools.exe --selftest`（`Core/SelfTest`，纯逻辑断言：引擎 / 校验器 / 步骤文本 / 声明 / 模板 / 辅助函数；`--filter <组名或用例名>` 只跑一部分、`--verbose` 连通过的用例一起列、报告写到 `%TEMP%\ltools-selftest\report.txt`，退出码非 0 即失败）。**改引擎 / 校验器 / `StepText` / 动作单元声明时先加或改断言**，别只靠点一遍。UI 验收仍靠仓库外的临时无头冒烟工程（`%TEMP%\opencode\lpanel-smoke` / `floating-smoke`，反射驱动 `LTools.dll`，见 `docs/FLOATING.md` 与 `docs/ACTION_SYSTEM.md`），不在 CI 里；日常回归 = 构建 0 警 + `--selftest` 全绿 + 真机点一遍相关路径
+- `--selftest` 跑在 WPF 启动的 `OnStartup` 里、在托盘 / 钩子 / 单实例互斥体之前分流（与 `--mcp-stdio` 同一套）；生成的 `Main` 不返回 `Application.Run` 的值，所以退出码要写 `Environment.ExitCode` 再 `Shutdown(code)`，只 `Shutdown(code)` 在 CI 里永远是 0
 
 ## CI
 
-- `build.yml`：push / PR 到 `master`（`windows-latest` + .NET 10.0.x）→ `dotnet restore` → `dotnet build -c Release --no-restore`，只验证不产出
+- `build.yml`：push / PR 到 `master`（`windows-latest` + .NET 10.0.x）→ `dotnet restore` → `dotnet build -c Release --no-restore` → `LTools.exe --selftest`（退出码非 0 即 job 失败，失败时先打印 `%TEMP%\ltools-selftest\report.txt`），只验证不产出
 - `release.yml`：push `v*` tag → `dotnet publish LTools.csproj … -o publish` → 打包 `LTools-<tag>-win-x64.zip` 上传到该 tag 的 GitHub Release（`generate_release_notes` 自动取 commits）。发版靠打 tag，别手工传 zip
 
 ## 协作
