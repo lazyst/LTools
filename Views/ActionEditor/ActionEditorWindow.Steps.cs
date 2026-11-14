@@ -423,6 +423,22 @@ public partial class ActionEditorWindow
         StepRow? row = SelectedRow();
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
 
+        // 文本形式（DSL）：Ctrl+Shift+C / V 与普通复制粘贴分开，普通 Ctrl+C 仍是内部格式
+        if (ctrl && (Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+        {
+            switch (e.Key)
+            {
+                case Key.C:
+                    CopyStepsAsText();
+                    e.Handled = true;
+                    return;
+                case Key.V:
+                    PasteStepsFromText();
+                    e.Handled = true;
+                    return;
+            }
+        }
+
         if (ctrl)
         {
             switch (e.Key)

@@ -52,6 +52,7 @@ public partial class ActionEditorWindow
             Item(menu, $"运行选中的 {count} 步", RunSelected);
             menu.Items.Add(new Separator());
             Item(menu, $"复制选中的 {count} 步", CopySelected, "Ctrl+C");
+            Item(menu, $"复制选中的 {count} 步为文本", CopyStepsAsText, "Ctrl+Shift+C");
             Item(menu, $"复制一份选中的 {count} 步", DuplicateSelected, "Ctrl+D");
             Item(menu, AllDisabled(selected) ? $"启用选中的 {count} 步" : $"跳过选中的 {count} 步",
                 ToggleDisabledSelected, "Space");
@@ -67,8 +68,11 @@ public partial class ActionEditorWindow
             menu.Items.Add(new Separator());
             Item(menu, "复制一份", DuplicateSelected, "Ctrl+D");
             Item(menu, "复制", CopySelected, "Ctrl+C");
+            Item(menu, "复制为文本", CopyStepsAsText, "Ctrl+Shift+C");
             Item(menu, "粘贴到下方", () => PasteAt(row.Owner!, row.Index + 1),
                 "Ctrl+V", _stepClipboard.Count > 0);
+            Item(menu, "粘贴步骤（文本）", PasteStepsFromText,
+                "Ctrl+Shift+V", ClipboardHasText());
             menu.Items.Add(new Separator());
             menu.Items.Add(InsertUnitMenu("在上方插入动作单元", row.Owner, row.Index));
             menu.Items.Add(InsertUnitMenu("在下方插入动作单元", row.Owner, row.Index + 1));
@@ -104,12 +108,18 @@ public partial class ActionEditorWindow
             // 否则 / 结束如果 / 结束循环 / 空分支占位：只有「往这个位置加」有意义
             Item(menu, "粘贴到此处", () => PasteAt(row.Owner!, row.Index),
                 "Ctrl+V", _stepClipboard.Count > 0);
+            Item(menu, "粘贴步骤（文本）到此处", PasteStepsFromText,
+                "Ctrl+Shift+V", ClipboardHasText());
             menu.Items.Add(InsertUnitMenu("插入动作单元到此处", row.Owner, row.Index));
         }
         else
         {
             Item(menu, "粘贴到末尾", () => PasteAt(_program.Steps, _program.Steps.Count),
                 "Ctrl+V", _stepClipboard.Count > 0);
+            Item(menu, "粘贴步骤（文本）到末尾", PasteStepsFromText,
+                "Ctrl+Shift+V", ClipboardHasText());
+            Item(menu, "复制整份动作为文本", CopyStepsAsText, "Ctrl+Shift+C",
+                _program.Steps.Count > 0);
             menu.Items.Add(InsertUnitMenu("在末尾插入动作单元", _program.Steps, _program.Steps.Count));
             menu.Items.Add(new Separator());
             Item(menu, "全部展开", ExpandAll, enabled: _collapsed.Count > 0);
@@ -214,15 +224,22 @@ public partial class ActionEditorWindow
         SelectSteps(copies);
     }
 
-    private void PasteAt(List<Step> list, int index)
-    {
-        if (_stepClipboard.Count == 0) return;
+    private void PasteAt(List<Step> list, int index) =>
+        InsertSteps(_stepClipboard, list, index, null);
 
-        PushUndo(_stepClipboard.Count == 1 ? "粘贴步骤" : $"粘贴 {_stepClipboard.Count} 步");
+    /// <summary>
+    /// 把一组步骤插到 <paramref name="list"/> 的第 <paramref name="index"/> 项之前
+    /// （步骤剪贴板与「粘贴步骤（文本）」共用这一条路：Undo + 插入 + 选中）。
+    /// </summary>
+    private void InsertSteps(IReadOnlyList<Step> steps, List<Step> list, int index, string? label)
+    {
+        if (steps.Count == 0) return;
+
+        PushUndo(label ?? (steps.Count == 1 ? "粘贴步骤" : $"粘贴 {steps.Count} 步"));
 
         int at = Math.Clamp(index, 0, list.Count);
         var inserted = new List<Step>();
-        foreach (Step step in _stepClipboard)
+        foreach (Step step in steps)
         {
             Step copy = step.Clone();
             list.Insert(at++, copy);
