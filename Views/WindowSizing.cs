@@ -34,7 +34,13 @@ public enum WindowSizeMode
 /// 旧机制只限高、**不限位置**：<c>SizeToContent=Height</c> 的对话框在内容动态变高时，
 /// WPF 保持 <see cref="Window.Top"/> 不变向下扩展，底部跑出工作区被任务栏挡住，
 /// 常驻的「确定 / 取消」按钮栏也跟着看不见。这里在 <c>Loaded / SizeChanged / LocationChanged /
-/// StateChanged</c> 每次都按**所在显示器工作区**同时夹尺寸与位置，按钮栏永远可见。
+/// StateChanged</c> 每次都按**所在显示器工作区**重新算尺寸与位置。
+/// </para>
+/// <para>
+/// 位置有<b>两种夹法</b>：<b>整块</b>（打开、Dialog 内容变高）与<b>宽松</b>（用户拖动、Main 改尺寸 /
+/// 状态切换）——宽松只要求「至少留 <see cref="KeepVisible"/> DIP 在工作区里 + 标题栏不出工作区顶边」，
+/// 允许窗口停在屏幕外一部分（桌面工具经常要贴着别的窗口摆）。两种都保住「按钮栏不会被顶到任务栏下面」，
+/// 因为 Dialog 的内容增长永远走整块那支。
 /// </para>
 /// <para>
 /// <see cref="Mode"/> 用附加属性声明：<c>Dialog</c> 设 MaxHeight/MaxWidth（持久硬约束，
@@ -52,6 +58,12 @@ public static class WindowSizing
 {
     /// <summary>四周留白，别顶到工作区 / 任务栏边缘。</summary>
     private const double Margin = 24;
+
+    /// <summary>
+    /// 拖动时窗口至少留在工作区里的可见量（DIP）。允许把窗口拖到屏幕外一半，
+    /// 但不能整个推出去——总有一块能点回来。
+    /// </summary>
+    private const double KeepVisible = 80;
 
     /// <summary>
     /// <c>Main</c> 窗口首次显示时的默认尺寸 = 工作区 × 此比例（0.75 ≈ 屏的 3/4）。
@@ -108,14 +120,19 @@ public static class WindowSizing
     private static void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (sender is not Window window) return;
-        window.LocationChanged += (_, _) => Clamp(window);
+        // 拖动归拖动：允许一部分出界（见 Apply 的 moving）。打开时仍整块夹进工作区。
+        window.LocationChanged += (_, _) => Apply(window, moving: true);
         window.StateChanged += (_, _) => OnStateChanged(window);
         Clamp(window);
     }
 
     private static void OnSizeChanged(object sender, RoutedEventArgs e)
     {
-        if (sender is Window window) Clamp(window);
+        if (sender is not Window window) return;
+        // Main：尺寸变化只来自用户（窗体内部用 ScrollViewer 吸收），宽松夹取——把窗口拖到边上再改大小
+        // 不该被弹回屏幕中间。Dialog：Height 由 SizeToContent 跟着内容走，必须整块夹回工作区，
+        // 否则「切到某类参数后窗口变高、确定 / 取消被顶到任务栏下面」（这个 bug 就是这么修的）。
+        Apply(window, moving: Resolve(window) == WindowSizeMode.Main);
     }
 
     /// <summary>
@@ -142,7 +159,9 @@ public static class WindowSizing
             SetWasNonNormal(window, false);
             RestoreNormalBounds(window);    // 还原那一拍先把几何拉回正常态基准
         }
-        Clamp(window);
+        // 宽松夹取：用户把窗口停在屏幕外一半再最大化 → 还原，几何要原样回来，不能被拽回屏幕内。
+        // 尺寸仍受工作区上限约束（只是位置那一支宽松），所以「还原后按钮栏被顶出屏幕」不会发生。
+        Apply(window, moving: true);
     }
 
     /// <summary>记下当前正常态几何（只在 <see cref="Clamp"/> 的正常态末尾调用）。</summary>
@@ -179,7 +198,16 @@ public static class WindowSizing
     /// 按窗口所在显示器工作区夹取尺寸与位置。动态内容变高 / 切显示器 / 改缩放后会自动重算，
     /// 也可由调用方主动调一次（如切换触发方式、展开 Expander）。
     /// </summary>
-    public static void Clamp(Window window)
+    /// <remarks>
+    /// 这是「整块」那支：尺寸与位置一起夹进工作区（含 24 DIP 留白），常驻按钮栏不会被内容变高顶到
+    /// 任务栏下面。**拖动不走它**——拖动走 <see cref="Apply"/> 的宽松那支（<c>moving</c>），
+    /// 允许窗口停在屏幕外一部分，否则屏幕上像有一堵看不见的墙。
+    /// </remarks>
+    public static void Clamp(Window window) => Apply(window, moving: false);
+
+    /// <param name="moving">true = 用户拖动 / Main 改尺寸 / 状态切换还原：只保「至少有一块留在工作区」，
+    /// 不把位置整块夹回；false = 打开窗口 / Dialog 内容变高：整块夹进工作区。</param>
+    private static void Apply(Window window, bool moving)
     {
         if (_busy) return;
         WindowSizeMode mode = Resolve(window);
@@ -241,11 +269,14 @@ public static class WindowSizing
             if (double.IsNaN(h) || h <= 0) h = Math.Min(400, maxH);
             if (double.IsNaN(w) || w <= 0) w = Math.Min(400, maxW);
 
-            var (top, left) = ClampPosition(work, w, h, window.Top, window.Left);
+            var (top, left) = moving
+                ? ClampMovedPosition(work, w, h, window.Top, window.Left)
+                : ClampPosition(work, w, h, window.Top, window.Left);
             if (Math.Abs(top - window.Top) > 0.5) window.Top = top;
             if (Math.Abs(left - window.Left) > 0.5) window.Left = left;
 
-            // 正常态的几何就是「还原基准」：用户手动拖过的大 / 小也在这里更新，状态切换不丢。
+            // 正常态的几何就是「还原基准」：用户手动拖过的大 / 小 / 停在屏幕外一半也在这里更新，
+            // 状态切换不丢（还原时走宽松夹取，不会把它拽回屏幕中间）。
             if (mode == WindowSizeMode.Main) SaveNormalBounds(window);
         }
         finally
@@ -262,6 +293,31 @@ public static class WindowSizing
         double maxTop = Math.Max(minTop, work.Bottom - h - Margin);
         double minLeft = work.Left + Margin;
         double maxLeft = Math.Max(minLeft, work.Right - w - Margin);
+        return (Math.Clamp(top, minTop, maxTop), Math.Clamp(left, minLeft, maxLeft));
+    }
+
+    /// <summary>
+    /// 拖动时的宽松夹取（纯函数）：允许窗口一部分在屏幕外，但至少要留 <see cref="KeepVisible"/> DIP
+    /// 在工作区里，而且**标题栏不许跑到工作区顶边之上**（否则鼠标再也点不到它，只能靠任务栏去捞）。
+    /// </summary>
+    /// <remarks>
+    /// 为什么不像 <see cref="ClampPosition"/> 那样整块夹进来：桌面工具经常要「停在边上」——
+    /// 旁边留一块参考窗口、把速记推到屏幕右缘之外只露一条，都是正常用法。整块夹取会让屏幕上
+    /// 像有一堵看不见的墙，拖到边缘就弹回来。内容变高那一类自动变化仍走整块夹取，所以
+    /// 「确定 / 取消被顶到任务栏下面」那个老问题不会回来。
+    /// </remarks>
+    internal static (double Top, double Left) ClampMovedPosition(
+        Rect work, double w, double h, double top, double left)
+    {
+        // 比 80 还小的窗口就按它自己的大小算，别算出「留 80 但窗口只有 40」的矛盾区间。
+        double keepX = Math.Min(KeepVisible, Math.Max(1, w));
+        double keepY = Math.Min(KeepVisible, Math.Max(1, h));
+
+        double minTop = work.Top;
+        double maxTop = Math.Max(minTop, work.Bottom - keepY);
+        double minLeft = work.Left - w + keepX;
+        double maxLeft = Math.Max(minLeft, work.Right - keepX);
+
         return (Math.Clamp(top, minTop, maxTop), Math.Clamp(left, minLeft, maxLeft));
     }
 
