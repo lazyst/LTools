@@ -138,7 +138,7 @@ public partial class SuperPanelWindow
             return;
         }
         Features.SuperPanel.Close();
-        ActionExecutor.RunRef(id, _invokeX, _invokeY);
+        ActionExecutor.RunRef(id, _invokeX, _invokeY, RunSource.Panel);
     }
 
     // ============ 磁贴拖动（实现见 Views/Controls/TileDragSort.cs） ============

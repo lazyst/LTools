@@ -333,7 +333,7 @@ public partial class ConfigHelperWindow : Window
         "superpanel" or "superpanel-general" or "superpanel-scenes" or "superpanel-blocked" => FamilySuperPanel,
         "ai" or "ai-connect" or "ai-audit" => FamilyAi,
         "macros" or "macros-list" or "macros-settings" => FamilyMacros,
-        "logs" or "logs-settings" or "logs-recent" => FamilyLogs,
+        "logs" or "logs-settings" or "logs-recent" or "logs-history" => FamilyLogs,
         _ => null,
     };
 
@@ -348,6 +348,7 @@ public partial class ConfigHelperWindow : Window
         (FamilyMacros, "macros-settings") => "settings",
         (FamilyMacros, _) => "list",
         (FamilyLogs, "logs-recent") => "recent",
+        (FamilyLogs, "logs-history") => "history",
         _ => "settings",
     };
 
@@ -589,9 +590,10 @@ public partial class ConfigHelperWindow : Window
         Host_Triggers.Visibility = tag == "triggers" ? Visibility.Visible : Visibility.Collapsed;
         Host_SuperPanel.Visibility = superPanel ? Visibility.Visible : Visibility.Collapsed;
         Page_Terminals.Visibility = tag == "terminals" ? Visibility.Visible : Visibility.Collapsed;
-        // 「运行日志」拆成两个同层 ScrollViewer：设置（记录设置 + 日志文件）/ 最近日志
+        // 「运行日志」拆成三个同层页：设置（记录设置 + 日志文件）/ 最近日志 / 运行历史（P2-2）
         Page_LogsSettings.Visibility = logs && page == "settings" ? Visibility.Visible : Visibility.Collapsed;
         Page_LogsRecent.Visibility = logs && page == "recent" ? Visibility.Visible : Visibility.Collapsed;
+        Page_LogsHistory.Visibility = logs && page == "history" ? Visibility.Visible : Visibility.Collapsed;
         Host_Ai.Visibility = ai ? Visibility.Visible : Visibility.Collapsed;
         Page_Backup.Visibility = tag == "backup" ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -631,6 +633,8 @@ public partial class ConfigHelperWindow : Window
 
         if (tag == "terminals") PopulateTerminals();
         if (logs) PopulateLogging();
+        // 只有「运行历史」页可见时才读历史文件（500 条 JSONL，别在别的页白读）
+        if (logs && page == "history") LoadRunHistory();
         // 只在「最近日志」页轮询 + 自动贴底；切走就停（见 ConfigHelper.Logs.cs）
         OnLogPageChanged(logs && page == "recent");
         if (tag == "general")

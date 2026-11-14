@@ -156,7 +156,7 @@ internal static class KeyboardHook
                     {
                         AppState.OtherKeyPressed = true;
                         MarkSwallowed(vk);
-                        ActionExecutor.RunRef(hotkeyAction, 0, 0);
+                        ActionExecutor.RunRef(hotkeyAction, 0, 0, RunSource.Hotkey);
                         return (IntPtr)1;
                     }
                 }

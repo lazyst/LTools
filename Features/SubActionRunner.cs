@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using LTools.Core;
 using LTools.Core.Actions;
 
 namespace LTools.Features;
@@ -38,6 +39,7 @@ internal static class SubActionRunner
         foreach (var step in def.Steps) program.Steps.Add(step.Clone());
 
         string name = string.IsNullOrWhiteSpace(def.Name) ? def.Id : def.Name;
-        return AutomationRunner.TryRunProgram(name, program, null, null, completed, null);
+        return AutomationRunner.TryRunProgram(name, program, null, null, completed, null,
+            source: RunSource.SubAction);
     }
 }

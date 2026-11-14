@@ -32,14 +32,15 @@ internal static class ActionExecutor
     /// 这是**用户手动触发**的入口（面板磁贴 / 快捷键 / 悬浮按钮）：动作声明了「输入」变量时，
     /// 先在 UI 线程上问一次参数（见 <see cref="RunInteractive"/>）。自动触发走四参重载，不弹窗。
     /// </remarks>
-    public static bool RunRef(string reference, int cursorX, int cursorY)
+    public static bool RunRef(string reference, int cursorX, int cursorY,
+        RunSource source = RunSource.Manual)
     {
         if (string.IsNullOrWhiteSpace(reference)) return false;
         if (FeatureRunner.TryRun(reference, cursorX, cursorY)) return true;
 
         var action = ActionRegistry.FindById(reference);
         if (action == null) return false;
-        RunInteractive(action, cursorX, cursorY);
+        RunInteractive(action, cursorX, cursorY, source);
         return true;
     }
 
@@ -51,12 +52,12 @@ internal static class ActionExecutor
     /// 所以一律 <see cref="Ui.Post"/>：钩子回调不能等对话框。问参数期间临时挂起快捷键，
     /// 否则单键绑定会把用户输进框里的字母再当成一次触发。
     /// </remarks>
-    private static void RunInteractive(ActionDto action, int cursorX, int cursorY)
+    private static void RunInteractive(ActionDto action, int cursorX, int cursorY, RunSource source)
     {
         // 已有自动化在跑：不弹参数框（问完也跑不了），直接交给 Run 去报「已有自动化正在运行」。
         if (!ActionParams.NeedsAsk(action) || AutomationRunner.IsRunning)
         {
-            Run(action, cursorX, cursorY);
+            Run(action, cursorX, cursorY, null, source);
             return;
         }
 
@@ -77,7 +78,7 @@ internal static class ActionExecutor
             }
 
             if (values == null) return;   // 取消 = 这次不跑
-            Run(action, cursorX, cursorY, values);
+            Run(action, cursorX, cursorY, values, source);
         });
     }
 
@@ -94,7 +95,7 @@ internal static class ActionExecutor
 
         var action = ActionRegistry.FindById(reference);
         if (action == null) return false;
-        Run(action, cursorX, cursorY, initialVariables);
+        Run(action, cursorX, cursorY, initialVariables, RunSource.Trigger);
         return true;
     }
 
@@ -111,12 +112,13 @@ internal static class ActionExecutor
 
     /// <summary>带初始变量的运行入口（自动触发专用；其余入口走上面那个三参重载）。</summary>
     public static void Run(ActionDto action, int cursorX, int cursorY,
-        IReadOnlyDictionary<string, Value>? initialVariables)
+        IReadOnlyDictionary<string, Value>? initialVariables,
+        RunSource source = RunSource.Manual)
     {
         // 从 CapsLock 菜单启动时 CapsLock 仍可能处于按下态；运行期间钩子会屏蔽 CapsLock，
         // 若不在启动前清掉，状态机可能一直认为它按着（见 AutomationRunner.PrepareToRun）。
         AutomationRunner.PrepareToRun();
-        Task.Run(() => AutomationRunner.Run(action, cursorX, cursorY, initialVariables));
+        Task.Run(() => AutomationRunner.Run(action, cursorX, cursorY, initialVariables, source));
     }
 
     /// <summary>

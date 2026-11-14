@@ -58,7 +58,8 @@ internal static class AutomationRunner
     /// <c>ActionExecutor.RunRef</c> 的四参重载进来时才非 null；编辑器试运行 / 面板 / 快捷键都不传。
     /// </summary>
     public static void Run(ActionDto action, int cursorX, int cursorY,
-        IReadOnlyDictionary<string, Value>? initialVariables = null)
+        IReadOnlyDictionary<string, Value>? initialVariables = null,
+        RunSource source = RunSource.Manual)
     {
         ActionProgram? program = action.Program;
         if (program == null)
@@ -78,7 +79,8 @@ internal static class AutomationRunner
 
         Task.Run(() => RunCore(program, action.Name, cursorX, cursorY,
             startPath: null, trace: null, notify: true, noticeOverride: null, completed: null,
-            resourceRoot: ActionStore.ResourceRootFor(action.Id), initialVariables: initialVariables));
+            resourceRoot: ActionStore.ResourceRootFor(action.Id), initialVariables: initialVariables,
+            source: source));
     }
 
     /// <summary>
@@ -94,13 +96,13 @@ internal static class AutomationRunner
     /// </remarks>
     public static bool TryRunProgram(string name, ActionProgram program, string? startPath,
         Action<StepTrace>? trace, Action<ActionRunResult>? completed, string? resourceRoot = null,
-        bool dryRun = false)
+        bool dryRun = false, RunSource source = RunSource.Manual)
     {
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return false;
 
         Task.Run(() => RunCore(program, name, 0, 0,
             startPath, trace, notify: false, noticeOverride: dryRun ? null : RunNoticeMode.always,
-            completed, resourceRoot, dryRun: dryRun));
+            completed, resourceRoot, dryRun: dryRun, source: source));
         return true;
     }
 
@@ -115,10 +117,14 @@ internal static class AutomationRunner
     /// 干跑：只解析参数 + 跑取值动作单元，不注入键鼠（见 <see cref="ActionRunOptions.DryRun"/>）。
     /// 干跑**不动**运行期截图目录（清空 / 回收都是副作用），也不改任何运行期状态。
     /// </param>
+    /// <param name="source">
+    /// 谁发起的（面板 / 快捷键 / 悬浮 / 自动触发 / 编辑器 / AI / 子动作），只写进运行历史的「来源」列。
+    /// </param>
     private static void RunCore(ActionProgram program, string name, int cursorX, int cursorY,
         string? startPath, Action<StepTrace>? trace, bool notify, RunNoticeMode? noticeOverride,
         Action<ActionRunResult>? completed, string? resourceRoot = null,
-        IReadOnlyDictionary<string, Value>? initialVariables = null, bool dryRun = false)
+        IReadOnlyDictionary<string, Value>? initialVariables = null, bool dryRun = false,
+        RunSource source = RunSource.Manual)
     {
         // 运行期截图（变量 .file）只服务一次运行：开始新一次就整体清空上一轮的缓存目录。
         // resources/images 里仍可能有「剪贴板图片」等程序生成图，按引用 + 时间界线回收。
@@ -151,6 +157,8 @@ internal static class AutomationRunner
         AppLog.Info("Flow", $"开始执行「{name}」· 光标 ({cursorX},{cursorY})");
 
         bool reported = false;
+        ActionRunResult? result = null;   // 运行历史要用（引擎之外抛异常时保持 null）
+        string? fatal = null;
 
         try
         {
@@ -177,7 +185,7 @@ internal static class AutomationRunner
                 },
             };
 
-            ActionRunResult result = new ActionEngine(StepRegistry.Default).Run(program, options);
+            result = new ActionEngine(StepRegistry.Default).Run(program, options);
 
             // 先落报告再提示：失败 toast 点开的就是这份文件，别让人点了个还没写出来的路径。
             if (!result.Completed && !result.Stopped)
@@ -214,6 +222,7 @@ internal static class AutomationRunner
         }
         catch (Exception ex)
         {
+            fatal = ex.Message;
             AppLog.Error("Flow", $"失败「{name}」第 {steps} 步", ex);
             CrashLog.Write($"Flow[{name}] 第{steps}步", ex);
 
@@ -232,6 +241,13 @@ internal static class AutomationRunner
         }
         finally
         {
+            // 运行历史（P2-2）：每次运行结束记一行（时间 / 动作 / 来源 / 结果 / 耗时 / 失败位置）。
+            // 干跑不记——它不注入键鼠，不代表「真的跑过一次」，混进来会把统计搅乱。
+            // 写失败只留一条警告，不能影响运行结果（所以这里自己 try/catch，别靠调用方）。
+            if (!dryRun)
+                RunHistory.Record(runId, name, source, result, traces,
+                    Environment.TickCount64 - started, steps, fatal);
+
             // 跨步骤「按下 / 抬起」的兜底：无论正常结束、失败还是被停止热键打断，
             // 都把仍按着的鼠标键与键盘键释放掉（正式运行 / 编辑器试运行 / 草稿试运行共用这里）。
             InputHoldState.ReleaseAll();

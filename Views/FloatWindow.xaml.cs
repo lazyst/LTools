@@ -465,7 +465,7 @@ public partial class FloatWindow : Window
 
         AppLog.Info("Floating", $"点击悬浮按钮：{BindingRef.Describe(actionId)}");
         // 运行只投递到后台（ActionExecutor / FeatureRunner 自己 spawn），这里是钩子/UI 线程，不能阻塞
-        ActionExecutor.RunRef(actionId, 0, 0);
+        ActionExecutor.RunRef(actionId, 0, 0, RunSource.Floating);
     }
 
     // —— 外观 ——

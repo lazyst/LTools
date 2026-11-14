@@ -206,6 +206,8 @@
                                              Content="设置" Checked="Nav_Changed" Tag="logs-settings"/>
                                 <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-logs"
                                              Content="最近日志" Checked="Nav_Changed" Tag="logs-recent"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-logs"
+                                             Content="运行历史" Checked="Nav_Changed" Tag="logs-history"/>
                             </StackPanel>
                         </Border>
                         <RadioButton x:Name="NavAi" Style="{StaticResource NavRow}"
@@ -684,6 +686,105 @@
                                        TextWrapping="Wrap" Margin="0,6,0,0"/>
                         </Grid>
                     </Border>
+                </Grid>
+
+                <!-- ============ 运行日志 → 运行历史（二级子页，P2-2） ============ -->
+                <!-- 一次运行的薄记录（时间 / 动作 / 来源 / 结果 / 耗时 / 失败位置）+ 失败步骤分布。
+                     完整轨迹仍在「最近日志 → 打开失败报告」里，两者别混成一份。见 ConfigHelper.RunHistory.cs。 -->
+                <Grid x:Name="Page_LogsHistory" Visibility="Collapsed" Margin="20,14,20,14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" VerticalAlignment="Center"
+                                   Text="运行日志 · 运行历史"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Button Style="{StaticResource BtnGhost}" Content="刷新" MinWidth="60"
+                                    Margin="0,0,8,0" Click="RunHistoryRefresh_Click"/>
+                            <Button Style="{StaticResource BtnGhost}" Content="复制摘要" MinWidth="80"
+                                    Margin="0,0,8,0" Click="RunHistoryCopy_Click"
+                                    ToolTip="把统计、失败步骤分布与最近 50 条明细复制成 markdown（可直接贴给 AI 或提 issue）"/>
+                            <Button Style="{StaticResource BtnGhost}" Content="清空" MinWidth="60"
+                                    Click="RunHistoryClear_Click"
+                                    ToolTip="只删运行历史，不动失败报告与日志文件"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Grid.Row="1" x:Name="RunHistoryStats" Style="{StaticResource HintLabel}"
+                               TextWrapping="Wrap" Margin="0,0,0,8" Text="（还没有运行过）"/>
+
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="300"/>
+                        </Grid.ColumnDefinitions>
+
+                        <DataGrid Grid.Column="0" x:Name="RunHistoryGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                                  CanUserAddRows="False" CanUserDeleteRows="False" CanUserResizeRows="False"
+                                  HeadersVisibility="Column" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  MouseDoubleClick="RunHistoryGrid_MouseDoubleClick"
+                                  ToolTip="双击一行复制这条记录（含错误全文），方便贴给 AI">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="时间" Binding="{Binding Time}" Width="140" MinWidth="130"/>
+                                <DataGridTextColumn Header="动作" Binding="{Binding Action}" Width="1.2*" MinWidth="120"/>
+                                <DataGridTextColumn Header="来源" Binding="{Binding Source}" Width="80" MinWidth="70"/>
+                                <DataGridTextColumn Header="结果" Binding="{Binding Result}" Width="70" MinWidth="60">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="VerticalAlignment" Value="Center"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Result}" Value="失败">
+                                                    <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="耗时" Binding="{Binding Elapsed}" Width="80" MinWidth="70"/>
+                                <DataGridTextColumn Header="失败位置" Binding="{Binding Step}" Width="1.4*" MinWidth="140"/>
+                                <DataGridTextColumn Header="错误" Binding="{Binding Error}" Width="*" MinWidth="160"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <Border Grid.Column="1" Style="{StaticResource CardBox}" Margin="12,0,0,0" Padding="12,10">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionLabel}" Text="失败步骤分布"/>
+                                    <TextBlock x:Name="RunHistoryDistHint" Style="{StaticResource HintLabel}"
+                                               TextWrapping="Wrap" Margin="0,2,0,6" Text=""/>
+                                    <ItemsControl x:Name="RunHistoryDist">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,4,0,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding Count}" MinWidth="26"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{StaticResource DangerBrush}"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap"
+                                                               ToolTip="{Binding Text}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <TextBlock Grid.Row="3" x:Name="RunHistoryHint" Style="{StaticResource HintLabel}"
+                               TextWrapping="Wrap" Margin="0,6,0,0"/>
                 </Grid>
 
                 <!-- ============ 自动触发 ============ -->

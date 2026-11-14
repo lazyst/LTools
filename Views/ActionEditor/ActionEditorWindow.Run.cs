@@ -212,7 +212,8 @@ public partial class ActionEditorWindow
             _ => "试运行中",
         }, hint: true);
 
-        if (!AutomationRunner.TryRunProgram(name, program, startPath, OnTrace, OnRunCompleted, ResourceRoot))
+        if (!AutomationRunner.TryRunProgram(name, program, startPath, OnTrace, OnRunCompleted, ResourceRoot,
+                source: RunSource.Editor))
         {
             SetStatus("已有动作正在运行，先等它结束或按停止", hint: false);
             return;

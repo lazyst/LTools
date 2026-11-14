@@ -167,7 +167,7 @@ internal static class FloatingMenus
             return;
         }
         AppLog.Info("Floating", $"菜单运行：{BindingRef.Describe(actionId)}");
-        ActionExecutor.RunRef(actionId, 0, 0);
+        ActionExecutor.RunRef(actionId, 0, 0, RunSource.Floating);
     }
 
     private static void EditAction(string actionId)

@@ -94,7 +94,8 @@ internal static class AiRuns
                 if (notify) NotifyResult(run);
             },
             resourceRoot,
-            dryRun);
+            dryRun,
+            RunSource.Mcp);
 
         if (!started) return null;
 
