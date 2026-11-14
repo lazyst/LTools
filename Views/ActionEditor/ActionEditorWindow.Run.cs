@@ -38,6 +38,14 @@ public partial class ActionEditorWindow
         // 抽屉里还开着一步表单：先按它自己的「确定」收尾（校验不过就留在编辑器里）。
         if (!TryCommitDrawer()) return false;
 
+        // 子步骤只属于「如果」/ 循环：别的步骤下面挂着步骤时引擎不会执行它们，
+        // 保存前就拦下来（粘贴、导入、手改 JSON 都可能带进来）。
+        if (StepBody.FirstProblem(_program.Steps) is string bodyProblem)
+        {
+            ConfirmDialog.Info(this, _isSubAction ? "子动作" : "动作", bodyProblem);
+            return false;
+        }
+
         string name = (NameBox.Text ?? "").Trim();
         if (name.Length == 0)
         {

@@ -629,6 +629,9 @@ public sealed class ActionEngine
                 throw new ActionException($"变量「{key}」重复声明");
         }
 
+        if (StepBody.FirstProblem(program.Steps) is string bodyProblem)
+            throw new ActionException(bodyProblem);
+
         ValidateSteps(program.Steps);
     }
 
@@ -654,6 +657,10 @@ public sealed class ActionEngine
         if (unit.Spec.Kind != UnitKind.pure)
             throw new ActionException(
                 $"「{unit.Spec.Name}」不是取值动作单元，不能内联在值的位置");
+
+        // 内联取值只是一次算值，带子步骤同样没人执行（与步骤层的规则一致）。
+        if (StepBody.Problem(step, unit.Spec) is string inlineBody)
+            throw new ActionException(inlineBody);
 
         foreach (var arg in step.In.Values)
             if (arg.Kind == StepArgKind.inline)

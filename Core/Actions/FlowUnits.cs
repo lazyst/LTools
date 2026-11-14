@@ -53,6 +53,24 @@ internal static class FlowUnits
             "lessOrEqual", "isTrue", "isFalse", "found", "notFound", "active", "notActive",
         };
 
+        /// <summary>
+        /// 「右值」的可见性声明（P4）：选项 → 启用的参数。二元比较启用 <c>right</c>，
+        /// 一元判断（为真 / 为空 / 找到…）不启用——写进 <see cref="InputSpec.OptionParams"/> 后
+        /// 知识包里也能导出成「选项 → 生效参数」表格，不再是一长串 <c>op == 'x' || …</c>。
+        /// </summary>
+        public static IReadOnlyDictionary<string, IReadOnlyList<string>> OptionMap()
+        {
+            var map = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (string op in Ops)
+            {
+                map[op] = BinaryOps.Contains(op, StringComparer.OrdinalIgnoreCase)
+                    ? new[] { "right" }
+                    : Array.Empty<string>();
+            }
+
+            return map;
+        }
+
         public static bool Test(Value left, string op, Value right)
         {
             op = (op ?? "").Trim();
@@ -165,21 +183,17 @@ internal static class FlowUnits
 
     private static InputSpec ConditionOp() =>
         new("op", "比较", ValueKind.text, InputEditor.enumList, Required: true,
-            Default: Value.FromText("equals"), Options: Compare.Ops);
+            Default: Value.FromText("equals"), Options: Compare.Ops,
+            OptionParams: Compare.OptionMap());
 
     private static InputSpec ConditionRight() =>
         new("right", "右值", Editor: InputEditor.condition,
-            VisibleWhen: RightVisibleWhen(),
             Description: "拿左值跟它比。同样可以点「变量」按钮 / 切到「变量」来比较另一个变量");
 
     private static InputSpec ConditionNegate() =>
         new("negate", "对结果取反", ValueKind.@bool, InputEditor.boolean,
             Default: Value.FromBool(false),
             Description: "勾上就把比较结果反过来：成立变不成立、不成立变成立");
-
-    /// <summary>右值只在二元比较时显示（为真 / 为空 / 找到 这类一元判断不需要右值）。</summary>
-    private static string RightVisibleWhen() =>
-        string.Join(" || ", Compare.BinaryOps.Select(op => $"op == '{op}'"));
 
     /// <summary>赋值 / 追加：<c>flow.set</c>。</summary>
     private sealed class SetUnit : IStepUnit

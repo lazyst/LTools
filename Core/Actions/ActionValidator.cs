@@ -241,6 +241,12 @@ internal static class ActionValidator
             issues.Add(new ActionIssue(path, label, step.Unit, "",
                 $"嵌套层数较深（第 {depth} 层），排查起来会很费劲", IssueSeverity.warning));
 
+        // —— 子步骤归属 ——
+        // 带了声明之外的子列表（手改 JSON / AI 写的动作会有）：引擎读都不读，
+        // 表现就是「里面那几步没跑」，所以静态就按 error 拦下来。
+        if (StepBody.Problem(step, spec) is string bodyProblem)
+            issues.Add(new ActionIssue(path, label, step.Unit, "", bodyProblem, IssueSeverity.error));
+
         if (step.Disabled)
             return;
 

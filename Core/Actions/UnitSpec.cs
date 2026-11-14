@@ -195,6 +195,16 @@ public sealed class UnitSpec
 
     public IReadOnlyList<OutputSpec> Outputs { get; init; } = Array.Empty<OutputSpec>();
 
+    /// <summary>
+    /// 参数可见性模型（选项门槛 + 附加条件）：第一次求值时建一次并缓存。
+    /// 声明在对象初始化器里才赋完，所以只能延迟建（<see cref="Lazy{T}"/>，线程安全）。
+    /// </summary>
+    private readonly Lazy<VisibilityModel> _visibility;
+
+    internal VisibilityModel Visibility => _visibility.Value;
+
+    public UnitSpec() => _visibility = new Lazy<VisibilityModel>(() => new VisibilityModel(this));
+
     /// <summary>校验声明自身是否完整；注册时调用，避免坏动作单元漏到运行时。</summary>
     public void Validate()
     {
@@ -232,6 +242,47 @@ public sealed class UnitSpec
         }
 
         ValidateOptionParams();
+        ValidateVisibility();
+    }
+
+    /// <summary>
+    /// 校验可见性声明（P4）：<see cref="InputSpec.VisibleWhen"/> 的每一段都要能解析、
+    /// 引用的键必须真实存在、带引号的枚举字面量必须在该参数的 <see cref="InputSpec.Options"/> 里。
+    /// </summary>
+    /// <remarks>
+    /// 拼错的可见条件最难查：运行期只是「某个参数永远不显示」，不会报错。所以注册时就拦下，
+    /// 和 <see cref="ValidateOptionParams"/> 同一个口径。枚举驱动的可见性请优先写
+    /// <see cref="InputSpec.OptionParams"/>（它有结构、能导出成知识包表格）。
+    /// </remarks>
+    private void ValidateVisibility()
+    {
+        var byKey = new Dictionary<string, InputSpec>(StringComparer.OrdinalIgnoreCase);
+        foreach (var input in Inputs)
+            if (!byKey.ContainsKey(input.Key)) byKey[input.Key] = input;
+
+        foreach (var input in Inputs)
+        {
+            if (string.IsNullOrWhiteSpace(input.VisibleWhen)) continue;
+
+            string where = $"动作单元「{Key}」的参数「{input.Key}」的 VisibleWhen「{input.VisibleWhen}」";
+            List<VisibilityTerm> terms = VisibilityModel.ParseRule(input.VisibleWhen, out string[] unparsed);
+
+            if (unparsed.Length > 0)
+                throw new ActionException($"{where}解析不了：「{unparsed[0]}」（支持 key == '值' / key in ('a','b') / 用 || 连接）");
+
+            foreach (VisibilityTerm term in terms)
+            {
+                if (!byKey.TryGetValue(term.Key, out var driver))
+                    throw new ActionException($"{where}引用了不存在的参数「{term.Key}」");
+
+                // 带引号的枚举字面量必须在 Options 里；裸值（true / false）是布尔，不查。
+                if (!term.Quoted || driver.Options is not { Count: > 0 } options) continue;
+
+                foreach (string value in term.Values)
+                    if (!options.Contains(value, StringComparer.OrdinalIgnoreCase))
+                        throw new ActionException($"{where}里的「{value}」不是「{term.Key}」的选项");
+            }
+        }
     }
 
     /// <summary>
