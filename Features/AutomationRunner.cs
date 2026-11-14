@@ -96,13 +96,13 @@ internal static class AutomationRunner
     /// </remarks>
     public static bool TryRunProgram(string name, ActionProgram program, string? startPath,
         Action<StepTrace>? trace, Action<ActionRunResult>? completed, string? resourceRoot = null,
-        bool dryRun = false, RunSource source = RunSource.Manual)
+        bool dryRun = false, RunSource source = RunSource.Manual, Action<SlowStepInfo>? slowStep = null)
     {
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return false;
 
         Task.Run(() => RunCore(program, name, 0, 0,
             startPath, trace, notify: false, noticeOverride: dryRun ? null : RunNoticeMode.always,
-            completed, resourceRoot, dryRun: dryRun, source: source));
+            completed, resourceRoot, dryRun: dryRun, source: source, slowStep: slowStep));
         return true;
     }
 
@@ -120,11 +120,14 @@ internal static class AutomationRunner
     /// <param name="source">
     /// 谁发起的（面板 / 快捷键 / 悬浮 / 自动触发 / 编辑器 / AI / 子动作），只写进运行历史的「来源」列。
     /// </param>
+    /// <param name="slowStep">
+    /// 慢步骤回调（编辑器用它把「第 N 行已运行 42 秒」写在状态行上）；日志与运行指示器由本类统一处理。
+    /// </param>
     private static void RunCore(ActionProgram program, string name, int cursorX, int cursorY,
         string? startPath, Action<StepTrace>? trace, bool notify, RunNoticeMode? noticeOverride,
         Action<ActionRunResult>? completed, string? resourceRoot = null,
         IReadOnlyDictionary<string, Value>? initialVariables = null, bool dryRun = false,
-        RunSource source = RunSource.Manual)
+        RunSource source = RunSource.Manual, Action<SlowStepInfo>? slowStep = null)
     {
         // 运行期截图（变量 .file）只服务一次运行：开始新一次就整体清空上一轮的缓存目录。
         // resources/images 里仍可能有「剪贴板图片」等程序生成图，按引用 + 时间界线回收。
@@ -183,6 +186,7 @@ internal static class AutomationRunner
                     steps = step;
                     if ((step % 5) == 0) RecordingIndicatorWindow.ShowAutomation(IndicatorText(step));
                 },
+                OnSlowStep = info => ReportSlowStep(name, info, notify, slowStep),
             };
 
             result = new ActionEngine(StepRegistry.Default).Run(program, options);
@@ -326,6 +330,39 @@ internal static class AutomationRunner
     }
 
     /// <summary>
+    /// 一步跑得太久（默认 30 秒）：写一条警告日志、把运行指示器改成「第 N 行已运行 X 秒」，
+    /// 真实运行再给一条 8 秒的提示；编辑器试运行把文案交给状态行。**不杀线程**。
+    /// </summary>
+    private static void ReportSlowStep(string name, SlowStepInfo info, bool notify,
+        Action<SlowStepInfo>? forward)
+    {
+        int seconds = Math.Max(1, (int)Math.Round(info.Elapsed.TotalSeconds));
+
+        AppLog.Warn("Flow",
+            $"「{name}」{info.Label}「{info.UnitName}」已运行 {seconds} 秒，仍在执行（没有可打断的等待点）");
+
+        try
+        {
+            RecordingIndicatorWindow.ShowAutomation(
+                $"自动化中 · {info.Label} 已运行 {seconds} 秒 · {MacroSettings.PlaybackStopHotkeyDisplay} 停止");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Debug("Flow", $"更新运行指示器失败：{ex.Message}");
+        }
+
+        try { forward?.Invoke(info); }
+        catch (Exception ex) { AppLog.Debug("Flow", $"慢步骤回调失败：{ex.Message}"); }
+
+        if (!notify) return;
+
+        ToastService.Show(
+            $"{info.Label}「{info.UnitName}」已运行 {seconds} 秒，仍在这一步里。",
+            "动作有点慢", 8000, ToastKind.warning, key: "slow:" + name,
+            onClick: OpenLogsFolder, actionText: "查看日志");
+    }
+
+    /// <summary>
     /// 失败提示的「查看日志」按钮：优先打开 <c>logs/last-failure.log</c>
     /// （这次运行的轨迹 + 相关日志），没有这份文件就退回日志目录。
     /// </summary>
@@ -369,7 +406,23 @@ internal static class AutomationRunner
     /// <summary>请求停止运行（停止热键 / 钩子兜底）。</summary>
     public static void Stop()
     {
-        if (_cts != null) AppLog.Info("Flow", "收到停止请求");
+        if (_cts != null)
+        {
+            AppLog.Info("Flow", "收到停止请求");
+
+            // 让用户看见「按了、正在等当前步骤返回」：不可取消的长调用（UIA / OCR / 大文件）
+            // 只能等它自己收尾，光按停止没有任何视觉反馈会让人以为键没生效。
+            try
+            {
+                RecordingIndicatorWindow.ShowAutomation(
+                    $"正在停止 · 等待当前步骤返回 · {MacroSettings.PlaybackStopHotkeyDisplay}");
+            }
+            catch (Exception ex)
+            {
+                AppLog.Debug("Flow", $"更新运行指示器失败：{ex.Message}");
+            }
+        }
+
         try { _cts?.Cancel(); } catch { /* 已释放 */ }
         MacroPlayer.Stop();   // 动作里的宏步骤也要停
     }

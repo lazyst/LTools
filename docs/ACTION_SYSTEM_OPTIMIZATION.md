@@ -23,6 +23,8 @@
 
 **一句话目标**：把「稳」从运行时扩展到「改得动」，把「能跑」扩展到「不用写循环也能跑稳」。
 
+> 上表是 2026-11-14 起草计划时的现状；落地进度看 §9（P0 / P1 已实施）。
+
 **六阶段**（顺序不可换，详见 §3 / §4）：
 
 | 阶段 | 主题 | 核心交付 |
@@ -118,7 +120,8 @@
   `ActionRunState` 记当前步骤的标签与起始 tick。
 - `Run()` 里挂一个 1 秒 `System.Threading.Timer`，超阈值回调一次（同一步只报一次），
   `finally` 里 `Dispose`。**不杀线程**（强杀会让注入中的键鼠状态失控）。
-- 轨迹旁路记一条「耗时异常」（不污染 `StepTraceStatus` 四态）。
+- 轨迹旁路：慢步骤走独立回调 `SlowStepInfo`（**不塞进 `StepTrace`**，`StepTraceStatus` 保持四态），
+  warning 日志随 run 作用域自动进失败报告。
 - UI：失败提示 / 编辑器显示「第 7 行已运行 42 秒」；停止按钮进入「正在停止（等待当前步骤返回）」态。
 - **取消审计**：带内部循环的单元一律走 `ctx.Wait` / `EnterIteration`；新增约定写进 `AGENTS.md`。
 
@@ -285,4 +288,35 @@
 - `LTools.exe --selftest` 退出码 0，报告 `%TEMP%\ltools-selftest\report.txt`；
 - 故意失败的回合里退出码为 1（实施过程中先后红了 4 轮，逐条修到绿）；
 - 自测不建窗口、不装钩子、不建托盘、不碰键鼠 / 网络 / 用户配置（只读本机 `actions/` 做文本往返，没有就跳过）。
+
+### 9.2 P1 · 可中断性（2026-11-14）
+
+**落地内容**
+
+| 位置 | 内容 |
+|---|---|
+| `ActionRunOptions` | `SlowStepWarn`（默认 30 秒，≤ 0 关闭）+ `OnSlowStep` + `SlowStepInfo(Path, Label, UnitKey, UnitName, Elapsed)` |
+| `ActionRunState` | `PushStep` / `PopStep` 维护步骤栈（子动作 / 内联取值只盯最里面那一步）、1 秒 `Timer` 心跳、按**步骤路径**去重，超阈值回调一次 |
+| `ActionEngine.Run` | `using var slowWatch = state.StartSlowWatch()`，成功 / 失败 / 停止都释放；`RunSteps` 的 `try` 加 `finally { PopStep(); }`（失败继续 / 抛出都不漏） |
+| `AutomationRunner` | `ReportSlowStep`：warning 日志（自动进 `logs/last-failure.log` 的 run 作用域）+ 运行指示器「第 N 行已运行 X 秒」+ 真实运行一条 8 秒 warning toast；`Stop()` 把指示器改成「正在停止 · 等待当前步骤返回」；`TryRunProgram` 增 `slowStep` 回调 |
+| 编辑器 | 状态行显示「第 7 行「…」已运行 42 秒（仍在执行）」，停止按钮文案改「正在停止…（等待当前步骤返回）」 |
+| `AGENTS.md` | 新增「单步看门狗只看见、不打断」条，含 `PushStep` / `PopStep` 成对与「不可分割阻塞调用允许不可取消」 |
+| 自测 | `engine` 组 +4 例：慢步骤报一次 / 同一行只报一次 / 快步骤不报 / `SlowStepWarn = 0` 不报 |
+
+**取消审计结果**：`ctx.Wait` / `ctx.EnterIteration` / `ctx.Token` 的 9 个文件（`MouseUnit` / `SendKeysUnit` /
+`TextUnits` / `WaitKeyUnit` / `TextWindowUnit` / `OcrUnit` / `WebRequestUnit` + `ImageProbe` / `TextLocator` /
+`ScreenshotProbe`）已覆盖全部轮询与等待；其余长耗时都是**单次不可分割调用**（`File.Copy`、`ZipFile.CreateFromDirectory`、
+UIA / OCR / OpenCV），按 P1 决策只做可观测。所以这一阶段的产出是「看得见」，不是「按一下就断」。
+
+**与计划不一致的地方**
+
+1. **没往 `StepTrace` 里塞「耗时异常」条目**：`StepTraceStatus` 保持四态，慢步骤走独立回调 `OnSlowStep`；
+   日志那条 warning 自动落进失败报告，不用另存一份轨迹。
+2. **「同一步只报一次」按步骤路径去重**：循环 200 轮的同一步只报一次，避免每秒刷提示；
+   代价是「同一步每轮都很慢」只会提示一次。
+3. **阈值暂时没有设置项**：先用默认 30 秒（`ActionRunOptions.SlowStepWarn`），有真实抱怨再加配置字段。
+4. **自测因此变慢**：慢步骤用例要真等 1 秒心跳，`--selftest` 从 0.25 秒变成约 5 秒（仍远低于 90 秒预算）。
+
+**验收**：`--selftest` 74 例 / 2486 断言全绿；4 个慢步骤用例覆盖「报 / 不重复报 / 不报 / 关掉」；
+真机跑一个长动作能同时看到指示器、日志与 toast；按停止后指示器立刻切「正在停止」。
 

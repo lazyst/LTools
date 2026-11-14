@@ -69,7 +69,27 @@ public sealed class ActionRunOptions
     /// <see cref="StepTraceStatus.skipped"/> 轨迹）。
     /// </summary>
     public bool DryRun { get; init; }
+
+    /// <summary>
+    /// 单步运行超过这个时长就回调一次 <see cref="OnSlowStep"/>（默认 30 秒；≤ 0 = 关掉）。
+    /// 只是**看得见**，不杀线程：真正卡在 UIA / OCR / 大文件里的调用只能等它自己返回。
+    /// </summary>
+    public TimeSpan SlowStepWarn { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// 慢步骤回调：在计时器线程上触发，同一步（按步骤路径）每次运行只报一次。
+    /// **不要在这里做重活**，抛出的异常会被引擎吞掉。
+    /// </summary>
+    public Action<SlowStepInfo>? OnSlowStep { get; init; }
 }
+
+/// <summary>一步运行得太久的信号（<see cref="ActionRunOptions.OnSlowStep"/>）。</summary>
+/// <param name="Path">步骤路径（<c>/steps/2/then/0</c>），同一行循环多轮也只报一次。</param>
+/// <param name="Label">给人看的位置（<c>第 3 行 › 否则 › 第 1 行</c>）。</param>
+/// <param name="UnitKey">动作单元键。</param>
+/// <param name="UnitName">动作单元名（提示文案里用）。</param>
+/// <param name="Elapsed">从这一步开始到回调时的时长。</param>
+public sealed record SlowStepInfo(string Path, string Label, string UnitKey, string UnitName, TimeSpan Elapsed);
 
 /// <summary>一次运行的结果。失败不抛异常，由调用方按 <see cref="Error"/> 处理。</summary>
 public sealed class ActionRunResult
@@ -147,6 +167,8 @@ public sealed class ActionEngine
         var started = Stopwatch.StartNew();
         var root = new VariableScope();
         var state = new ActionRunState(opt, program);
+        // 慢步骤看门狗：跑完（成功 / 失败 / 停止）都会 Dispose，不留下后台计时器。
+        using IDisposable? slowWatch = state.StartSlowWatch();
         var ctx = new StepContext(this, state, root, new Step { Unit = "<root>" });
 
         try
@@ -232,6 +254,7 @@ public sealed class ActionEngine
             StepArgs? args = null;
             // 干跑：参数照常解析（轨迹里能看到展开后的值），但会动键鼠 / 弹窗口的步骤不执行。
             bool dryRunSkip = ctx.DryRun && !unit.Spec.RunsInDryRun;
+            parent.State.PushStep(path, label, unit);
             try
             {
                 args = ResolveArgs(step, unit.Spec, ctx);
@@ -280,6 +303,11 @@ public sealed class ActionEngine
 
                 throw new StepFailureException(
                     $"{label}「{unit.Spec.Name}」失败：{ex.Message}", ex);
+            }
+            finally
+            {
+                // 无论成功 / 失败 / 「失败继续」/ 被停止，都要退一层（否则看门狗会一直盯着旧的那一步）。
+                parent.State.PopStep();
             }
 
             Trace(parent, step, unit.Spec, path, label, ctx, args,
@@ -672,6 +700,65 @@ internal sealed class ActionRunState
 
     /// <summary>是否已经越过 <see cref="ActionRunOptions.StartPath"/>。</summary>
     public bool Started { get; private set; }
+
+    // ============ 慢步骤看门狗 ============
+
+    private readonly object _slowLock = new();
+    private readonly List<StepFrame> _slowFrames = new();
+    private readonly HashSet<string> _slowReported = new(StringComparer.Ordinal);
+
+    private readonly record struct StepFrame(string Path, string Label, string UnitKey, string UnitName, long Started);
+
+    /// <summary>
+    /// 进入一步（用于慢步骤看门狗）；嵌套调用（子动作 / 内联取值）只报最里面那一步。
+    /// 没开看门狗时不做任何记录。
+    /// </summary>
+    public void PushStep(string path, string label, IStepUnit unit)
+    {
+        if (_options.OnSlowStep == null || _options.SlowStepWarn <= TimeSpan.Zero) return;
+
+        lock (_slowLock)
+            _slowFrames.Add(new StepFrame(path, label, unit.Spec.Key, unit.Spec.Name, Environment.TickCount64));
+    }
+
+    /// <summary>离开一步。</summary>
+    public void PopStep()
+    {
+        lock (_slowLock)
+        {
+            if (_slowFrames.Count > 0) _slowFrames.RemoveAt(_slowFrames.Count - 1);
+        }
+    }
+
+    /// <summary>起一个 1 秒计时器查「这一步是不是太久了」；没开看门狗时返回 null。</summary>
+    public IDisposable? StartSlowWatch()
+    {
+        if (_options.OnSlowStep == null || _options.SlowStepWarn <= TimeSpan.Zero) return null;
+
+        // 心跳 1 秒：阈值默认 30 秒，所以发现延迟最多 1 秒左右，不会因为「每 32 步才看一次钟」而漏掉。
+        return new Timer(_ => CheckSlowStep(), null, dueTime: 1000, period: 1000);
+    }
+
+    private void CheckSlowStep()
+    {
+        SlowStepInfo info;
+        lock (_slowLock)
+        {
+            if (_slowFrames.Count == 0) return;
+
+            StepFrame frame = _slowFrames[^1];
+            TimeSpan elapsed = TimeSpan.FromMilliseconds(Environment.TickCount64 - frame.Started);
+            if (elapsed < _options.SlowStepWarn) return;
+
+            // 同一路径（循环里的同一行）每次运行只报一次，别 30 秒后每秒刷一条。
+            if (!_slowReported.Add(frame.Path)) return;
+
+            info = new SlowStepInfo(frame.Path, frame.Label, frame.UnitKey, frame.UnitName, elapsed);
+        }
+
+        try { _options.OnSlowStep?.Invoke(info); }
+        catch { /* 提示失败不该毁掉动作 */ }
+    }
 
     public void EnterStep()
     {

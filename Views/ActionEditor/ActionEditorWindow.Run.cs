@@ -132,7 +132,7 @@ public partial class ActionEditorWindow
     private void StopRun_Click(object sender, RoutedEventArgs e)
     {
         AutomationRunner.Stop();
-        RunStatus.Text = "正在停止…";
+        RunStatus.Text = "正在停止…（等待当前步骤返回）";
     }
 
     /// <summary>
@@ -213,7 +213,7 @@ public partial class ActionEditorWindow
         }, hint: true);
 
         if (!AutomationRunner.TryRunProgram(name, program, startPath, OnTrace, OnRunCompleted, ResourceRoot,
-                source: RunSource.Editor))
+                source: RunSource.Editor, slowStep: OnSlowStep))
         {
             SetStatus("已有动作正在运行，先等它结束或按停止", hint: false);
             return;
@@ -489,6 +489,20 @@ public partial class ActionEditorWindow
         RunFromButton.IsEnabled = !running;
         StopRunButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         if (running) SetStatus("试运行中…（真的会操作鼠标键盘）", hint: false);
+    }
+
+    /// <summary>
+    /// 慢步骤（默认 30 秒）：只写在状态行上，**不打断**试运行——不可取消的长调用只能等它返回。
+    /// 运行已经结束时（哪怕回调刚好晚到）不再改状态行，免得把结果覆盖掉。
+    /// </summary>
+    private void OnSlowStep(SlowStepInfo info)
+    {
+        int seconds = Math.Max(1, (int)Math.Round(info.Elapsed.TotalSeconds));
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (_running)
+                SetStatus($"{info.Label}「{info.UnitName}」已运行 {seconds} 秒（仍在执行）", hint: false);
+        });
     }
 
     private void SetStatus(string text, bool hint, bool danger = false)

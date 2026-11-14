@@ -35,6 +35,10 @@ internal static class EngineSuite
         cases.Add(new("engine", "流程停止正常收尾", FlowStop));
         cases.Add(new("engine", "返回只能用在子动作里", ReturnAtTop));
         cases.Add(new("engine", "未知动作单元报错", UnknownUnit));
+        cases.Add(new("engine", "慢步骤报警一次", SlowStepReported));
+        cases.Add(new("engine", "同一行慢步骤只报一次", SlowStepOncePerPath));
+        cases.Add(new("engine", "快步骤不报警", SlowStepFast));
+        cases.Add(new("engine", "关掉看门狗不报警", SlowStepOff));
     }
 
     // ============ 用例 ============
@@ -420,6 +424,82 @@ internal static class EngineSuite
 
         Check.False(result.Ok, "未知动作单元应失败");
         Check.Contains(result.Error, "未知的动作单元");
+    }
+
+    // ============ 慢步骤看门狗（P1） ============
+
+    private static void SlowStepReported()
+    {
+        var reports = new List<SlowStepInfo>();
+        var options = new ActionRunOptions
+        {
+            SlowStepWarn = TimeSpan.FromMilliseconds(250),
+            OnSlowStep = info => { lock (reports) reports.Add(info); },
+        };
+
+        Step step = Step.Of("test.slow").With("ms", StepArg.FromNumber(1500));
+        ActionRunResult result = Run(Program(step), null, options);
+
+        Check.True(result.Ok, "慢步骤本身应正常跑完：" + result.Error);
+        Check.Equal(1, reports.Count, "1.5 秒的步骤应恰好报一次");
+        if (reports.Count == 0) return;
+
+        Check.Equal("/steps/0", reports[0].Path, "步骤路径");
+        Check.Contains(reports[0].Label, "第 1 行");
+        Check.Equal("test.slow", reports[0].UnitKey, "动作单元键");
+        Check.True(reports[0].Elapsed >= TimeSpan.FromSeconds(1), "报告时的耗时应该已经超过 1 秒");
+    }
+
+    private static void SlowStepOncePerPath()
+    {
+        var reports = new List<SlowStepInfo>();
+        var options = new ActionRunOptions
+        {
+            SlowStepWarn = TimeSpan.FromMilliseconds(250),
+            OnSlowStep = info => { lock (reports) reports.Add(info); },
+        };
+
+        Step loop = Step.Of("flow.repeat").With("count", StepArg.FromNumber(3));
+        loop.Body.Add(Step.Of("test.slow").With("ms", StepArg.FromNumber(700)));
+
+        ActionRunResult result = Run(Program(loop), null, options);
+
+        Check.True(result.Ok, "循环应正常跑完：" + result.Error);
+        Check.Equal(1, reports.Count, "同一行循环多轮只报一次（按步骤路径去重）");
+        if (reports.Count > 0)
+            Check.Equal("/steps/0/body/0", reports[0].Path, "报的是循环体里那一行");
+    }
+
+    private static void SlowStepFast()
+    {
+        var reports = new List<SlowStepInfo>();
+        var options = new ActionRunOptions
+        {
+            SlowStepWarn = TimeSpan.FromMilliseconds(200),
+            OnSlowStep = info => { lock (reports) reports.Add(info); },
+        };
+
+        Step step = Step.Of("test.slow").With("ms", StepArg.FromNumber(20));
+        ActionRunResult result = Run(Program(step), null, options);
+
+        Check.True(result.Ok, "快步骤应成功：" + result.Error);
+        Check.Equal(0, reports.Count, "20 毫秒的步骤不该报慢");
+    }
+
+    private static void SlowStepOff()
+    {
+        var reports = new List<SlowStepInfo>();
+        var options = new ActionRunOptions
+        {
+            SlowStepWarn = TimeSpan.Zero,   // 0 = 关掉看门狗
+            OnSlowStep = info => { lock (reports) reports.Add(info); },
+        };
+
+        Step step = Step.Of("test.slow").With("ms", StepArg.FromNumber(1200));
+        ActionRunResult result = Run(Program(step), null, options);
+
+        Check.True(result.Ok, "关掉看门狗后慢步骤照常跑完：" + result.Error);
+        Check.Equal(0, reports.Count, "SlowStepWarn = 0 时不该有任何回调");
     }
 
     // ============ 工具 ============
