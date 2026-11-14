@@ -1,4 +1,5 @@
 using LTools.Core.Actions;
+using LTools.Views;
 
 namespace LTools.Core.SelfTest;
 
@@ -18,6 +19,8 @@ internal static class StructureSuite
         cases.Add(new("structure", "子步骤：步骤文本解析拒绝", BodyStepText));
         cases.Add(new("structure", "子步骤：校验器报 error", BodyValidator));
         cases.Add(new("structure", "子步骤：引擎不静默忽略", BodyEngine));
+        cases.Add(new("structure", "参数冻结：三态与改用固定值", ArgFreezeStates));
+        cases.Add(new("structure", "参数冻结：来源文案", ArgFreezeSources));
     }
 
     // ============ 可见性 ============
@@ -216,6 +219,49 @@ internal static class StructureSuite
         fine.Steps.Add(loop);
         ActionRunResult ok = new ActionEngine(StepRegistry.Default).Run(fine, new ActionRunOptions());
         Check.True(ok.Ok, "循环体照常执行：" + ok.Error);
+    }
+
+    // ============ 参数冻结（布尔 / 选项 / 多选遇到变量或取值） ============
+
+    private static void ArgFreezeStates()
+    {
+        // 字面量：可编辑，读回控件当前值。
+        var literal = new ArgFreezeState(StepArg.FromText("abc"));
+        Check.False(literal.Frozen, "字面量不冻结");
+        Check.Equal("x", literal.Read(() => StepArg.FromText("x"))?.Literal.AsText(), "不冻结时读控件当前值");
+
+        // 变量引用：冻结，读回原引用（控件里选什么都不算数）。
+        var variable = new ArgFreezeState(StepArg.FromVar("n"));
+        Check.True(variable.Frozen, "变量引用冻结");
+        Check.Equal("n", variable.Read(() => StepArg.FromText("x"))?.VariablePath, "冻结时读回原引用");
+
+        // 取值动作单元：冻结，且原样返回同一个对象。
+        StepArg inline = StepArg.FromInline(Step.Of("data.time"));
+        var inlineState = new ArgFreezeState(inline);
+        Check.True(inlineState.Frozen, "取值冻结");
+        Check.True(ReferenceEquals(inline, inlineState.Read(() => StepArg.FromText("x"))),
+            "冻结时返回同一个引用对象");
+
+        // 点「改用固定值」之后：读控件当前值，引用丢掉。
+        variable.Thaw();
+        Check.False(variable.Frozen, "解冻后不再冻结");
+        Check.Equal("x", variable.Read(() => StepArg.FromText("x"))?.Literal.AsText(), "解冻后读控件当前值");
+
+        // 空值与非文本字面量都不该冻结（数字 / 开关照常可编辑）。
+        Check.False(new ArgFreezeState(null).Frozen, "空值不冻结");
+        Check.False(ArgFreezeState.IsFrozen(StepArg.FromNumber(1)), "数字字面量不冻结");
+        Check.False(ArgFreezeState.IsFrozen(StepArg.FromBool(false)), "开关字面量不冻结");
+    }
+
+    private static void ArgFreezeSources()
+    {
+        Check.Equal("变量 ${n}", ArgFreeze.Source(StepArg.FromVar("n")), "变量的来源文案");
+        Check.Equal("固定值", ArgFreeze.Source(StepArg.FromText("x")), "字面量的来源文案");
+
+        string inline = ArgFreeze.Source(StepArg.FromInline(Step.Of("data.time")));
+        Check.Contains(inline, "取值「", "取值的来源文案");
+        Check.Contains(inline, "」", "取值文案要收口，别把整句话拼坏");
+        Check.False(inline.Contains("${", StringComparison.Ordinal), "取值不是变量，不该带 ${}");
     }
 
     // ============ 夹具 ============

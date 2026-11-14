@@ -390,4 +390,51 @@ UIA / OCR / OpenCV），按 P1 决策只做可观测。所以这一阶段的产�
 4. **`Description` 放在变量页而不是步骤页**：动作 / 子动作各一份说明，和名称 / 图标是同一类「动作属性」。
 5. **`RetryText` 删除**：`StepRowChips` 是行内状态的唯一来源；纯文本摘要里真要 `⟳3` 时直接拼 `$"⟳{step.Retry}"`（差异框之类少数出口），别在行模板里再拼一次。
 
+---
+
+### 9.5 P4 · 结构统一（2026-11-14）
+
+P4 分两笔落地：**P4-A/B（`b90ef69`，可见性单一模型 + 子步骤归属）** 与 **P4-C（参数表单按职责拆 + `IArgEditor` + 冻结状态机）**。
+
+**落地内容 · P4-A/B**
+
+| 位置 | 内容 |
+|---|---|
+| `Core/Actions/VisibilityModel.cs`（新） | `VisibilityTerm`（键 / 来源 / 允许值 / 取反）+ `VisibilityModel`：把「选项门槛」（驱动键的 `OptionParams`）与「附加条件」（参数自己的 `VisibleWhen`）解析成 term 列表，运行期只做比较；`TryGetOptionFor` 找参数属于哪个选项，`ParseRule` 只解析一次 |
+| `Core/Actions/VisibleWhen.cs` | 收成薄门面：`IsVisible(input, args, spec)` 签名不变（调用方 0 改动），内部转给 `spec.Visibility`；解析不了的规则仍按可见处理 |
+| `Core/Actions/UnitSpec.cs` | 新增 `Lazy<VisibilityModel> Visibility`（首次求值时解析、之后复用）+ `ValidateVisibility()`：每段可解析、`VisibleWhen` 引用的键必须存在、带引号的枚举字面量必须在 `Options` 里；`DeclarationSuite` 遍历全部 77 个单元跑它 |
+| `Core/Actions/FlowUnits.cs` | `flow.if` / `flow.while` / `flow.waitFor` 的右值可见性改走 `Compare.OptionMap()`（由 `BinaryOps` 生成 `OptionParams`），删 `RightVisibleWhen()` 那套字符串拼接 |
+| `Core/Actions/StepBody.cs`（新） | `BodyKind`（none / body / thenElse）+ `Problem` / `FirstProblem`：声明之外带了子列表 = error，位置按 `第 2 行 › 满足时 › 第 1 行` 给 |
+| 四处接线 | `ActionEngine.ValidateProgram` / `ValidateInline`（不再静默忽略没地方执行的子步骤）、`ActionValidator.ValidateStep`（error 级）、`ActionEditorWindow.Commit()`（保存前拦）、`StepText` 解析（归属照同一份判定） |
+
+**落地内容 · P4-C**
+
+| 位置 | 内容 |
+|---|---|
+| `Views/ActionEditor/ArgEditor.cs`（新） | `IArgEditor`（`Element` / `Read()` / `Field` / `MarkMissing`）+ `ArgEditorContext`（声明 / 当前值 / 宿主 / 刷新 / 三个反填注册 / 候选 / 变量表 / 资源根 / 框选与取点回调） |
+| 五个形态实现（新） | `BooleanArgEditor` / `EnumArgEditor` / `FlagsArgEditor` / `CodeArgEditor` / `ValueArgEditor`：各管自己怎么建控件、怎么读回值；`StepFormView.Editors.cs` 的 `BuildEditor` 只剩「装配上下文 + 分发」 |
+| `Views/ActionEditor/ArgFreeze.cs`（新） | `ArgFreezeState`（`IsFrozen` / `Preserved` / `Frozen` / `Read(literal)` / `Thaw()`）+ `ArgFreeze.Decorate`（置灰 + 「来自变量 ${x}」+ 「改用固定值」）+ `ArgFreeze.Source`（来源文案唯一一处）+ `FrozenEditor` |
+| `StepFormView.xaml.cs` | 1407 行 → **11 个 partial**：主 204、`Inputs` 230、`Editors` 43、`Freeze` 46、`Region` 68、`Dynamic` 126、`Outputs` 124、`OutputRow` 184、`Options` 65、`Keys` 118、`Save` 104；`Row` 从四元组收成 `(Spec, Host, IArgEditor Editor)` |
+| `ValueField.xaml.cs` | 1335 行 → **9 个 partial**：主 224、`State` 256、`Status` 163、`Units` 50、`Image` 132、`Menu` 292、`MenuRows` 235、`MenuDismiss` 75、`Pickers` 112 |
+| 调用点 | `RewireInlineEditors` / `SyncStepArgs` / `TrySave` / `FocusFirstEditor` 全改走 `row.Editor`（`Field` 为空时说明这个形态没有三态）；`MarkMissing` 由 `IArgEditor` 的默认实现兜住 |
+| `Core/SelfTest/Suites/StructureSuite.cs` | P4-A/B +8 例（可见性求值 / 声明 lint / 右值只给二元比较 / 子步骤四处口径），P4-C +2 例（`ArgFreezeStates` / `ArgFreezeSources`） |
+| `AGENTS.md` | 新增「结构统一」一条（可见性两类声明 / 子步骤归属 / 参数编辑器按形态一个类 / 单文件 < 300 行），并把 `InputHint` 拆成独立条、可见性条指向 `VisibilityModel`、冻结条改成 `ArgFreezeState` |
+
+**验收**：`--selftest` 102 例 / 2730 断言全绿（约 5.5 秒，Debug 构建 0 错 0 警，动作单元 77 个）；
+外部 UI 冒烟 `param-form-smoke` 180 断言 / 0 失败（改的只是它读 `Row` 的方式：`Editor` 现在是 `IArgEditor`、取控件走 `.Element`）。
+**断言一条没改**（P0–P3 的用例原样通过），拆分全部是搬代码，没有行为分支变化。
+
+**与计划不一致的地方（都是实施时改的判据）**
+
+1. **`IArgEditor` 只覆盖 5 种控件形态**，不是「所有参数」。其余一律落到 `ValueArgEditor`（值字段）——
+   它是唯一能表达三态、也唯一带「该填什么」状态行的控件，再按 `InputEditor` 细分十几个类只会把同一份逻辑复制十几份。
+2. **`ValueField` / `StepFormView` 按「职责」拆，不是按「形态」拆**。计划里写的是「按控件形态拆成 `IArgEditor` 实现 + `ArgRow` 宿主」，
+   实际做的时候发现表单里形态之外还有四块独立职责（状态行、来源弹层、选择入口、图片），按形态切会把它们全塞进一个文件。
+   所以两层：**形态**进 `IArgEditor` 实现（只有 5 个），**职责**进 partial（状态 / 弹层 / 行 / 关闭 / 选择器 / 子动作 / 输出…）。
+3. **`Row` 从四元组变三元组**（`Read` 移进 `IArgEditor`）：`BuildEditor` 不再 `out Func<StepArg?> read`，
+   读值只经过一个入口，省掉「控件与读法可能对不上」的那一类错误。
+4. **没有单独的「可见性 lint 清单」**：`ValidateVisibility()` 跟着 `DeclarationSuite` 遍历全部注册单元自动覆盖，手写清单会漏改。
+5. **计划里说「`VisibleWhen` 只保留布尔附加条件」**，实际保留了 `key == 'value'` / `||` / `in (...)` 全部语法——
+   它们表达能力更强、且已有配置在用；真正收口的是**枚举驱动必须写 `OptionParams`**，`VisibleWhen` 只做它表达不了的附加条件。
+
 
