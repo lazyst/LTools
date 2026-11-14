@@ -102,14 +102,31 @@ public sealed class StepArg
         _ => Value.Empty,
     };
 
-    private static Value RenderLiteral(Value value, VariableScope scope) => value.Kind switch
+    /// <summary>
+    /// 渲染字面量文本里的 <c>${…}</c>；整串恰好只有一个变量引用时直接取那个变量（保留列表 / 对象类型）。
+    /// </summary>
+    /// <remarks>
+    /// 「整串只有一个 <c>${名}</c>」= 引用，不是「拼一段文本」：界面上写参数（<c>ValueField</c>）与
+    /// 步骤文本（<c>StepText</c>）本来就是这么存的（`{"var": "名"}`），只有直写 JSON / 构造模板时
+    /// 才会留下字面量。不认这条的话，列表会被 <see cref="Value.AsText"/> 压成 <c>[a, b, c]</c> 这种
+    /// 「看着像 JSON 其实不是」的形状，再按参数类型解析就炸（列表参数当 JSON 数组解析、报的是 JSON 语法错）。
+    /// 嵌套项（字面量列表 / 对象里的文本）同样按这条走，规则只有一处。
+    /// </remarks>
+    private static Value RenderLiteral(Value value, VariableScope scope)
     {
-        ValueKind.text => Value.FromText(TextTemplate.Render(value.AsText(), scope)),
-        ValueKind.list => Value.FromList(value.Items.Select(item => RenderLiteral(item, scope))),
-        ValueKind.@object => Value.FromObject(value.Members.Select(kv =>
-            new KeyValuePair<string, Value>(kv.Key, RenderLiteral(kv.Value, scope)))),
-        _ => value,
-    };
+        if (value.Kind == ValueKind.text &&
+            TextTemplate.TrySingleVariable(value.AsText(), out string path))
+            return scope.Resolve(path);
+
+        return value.Kind switch
+        {
+            ValueKind.text => Value.FromText(TextTemplate.Render(value.AsText(), scope)),
+            ValueKind.list => Value.FromList(value.Items.Select(item => RenderLiteral(item, scope))),
+            ValueKind.@object => Value.FromObject(value.Members.Select(kv =>
+                new KeyValuePair<string, Value>(kv.Key, RenderLiteral(kv.Value, scope)))),
+            _ => value,
+        };
+    }
 
     public override string ToString() => Kind switch
     {

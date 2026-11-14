@@ -74,7 +74,7 @@ internal static class ActionTemplates
             Build = () => new[]
             {
                 Body(Step.Of("flow.forEach")
-                        .In("items", "${items}")
+                        .WithVar("items", "items")
                         .Out("item", "item"),
                     Step.Of("ui.toast").In("text", "${item}")),
             },
