@@ -84,7 +84,10 @@ public sealed class AhkScriptUnit : IStepUnit
         ctx.SetOutput("ok", Value.FromBool(result.Error == null));
         ctx.SetOutput("value", BuildValue(result));
 
-        if (result.Error != null) throw new ActionException(result.Error);
+        if (result.Error != null)
+            throw result.TimedOut
+                ? ActionErrors.Timeout(result.Error)
+                : new ActionException(result.Error);
     }
 
     /// <summary>整步结果对象：命令结果的那套成员 + LT_Set 写回的变量。</summary>

@@ -185,6 +185,8 @@
 
 取舍标准：只加「用现有单元要写 ≥5 步才能表达」且「失败率高」的单元，其余用模板解决。
 
+进度：**P5-A（`ActionErrorKind` + `retryOn` + `flow.lastErrorStep`）已落地**，见 §9.6；`window.wait` 排 P5-B；`flow.try` 不做。
+
 ---
 
 ## 4. 顺序与依赖
@@ -436,5 +438,61 @@ P4 分两笔落地：**P4-A/B（`b90ef69`，可见性单一模型 + 子步骤归
 4. **没有单独的「可见性 lint 清单」**：`ValidateVisibility()` 跟着 `DeclarationSuite` 遍历全部注册单元自动覆盖，手写清单会漏改。
 5. **计划里说「`VisibleWhen` 只保留布尔附加条件」**，实际保留了 `key == 'value'` / `||` / `in (...)` 全部语法——
    它们表达能力更强、且已有配置在用；真正收口的是**枚举驱动必须写 `OptionParams`**，`VisibleWhen` 只做它表达不了的附加条件。
+
+### 9.6 P5-A · 失败分类 + 只重试某类失败（2026-11-14）
+
+P5 分两笔：**P5-A 失败分类（本节）** 与 **P5-B `window.wait`**。`flow.try` 按原计划不做
+（加子列表要同时动 `Step` / `StepText` / 校验 / 编辑器四处，收益不抵）。
+
+**要解决的问题**：P2 的重试只有「次数」，没有「哪一类失败」。找窗口 / 等图这种「等一会儿可能就有了」的失败，
+配 3 次重试很合理；可参数写错、前置条件不满足这一类，重试 3 次只是白白拖慢失败，还会把错误信息刷三遍。
+另外「上一次被吞掉的错误」（`flow.lastError`）只给一整串文本，想按「卡在哪一步 / 是不是超时」分流还得自己切字符串。
+
+**落地内容**
+
+| 位置 | 内容 |
+|---|---|
+| `Core/Actions/ActionErrorKind.cs`（新） | `ActionErrorKind`（`unknown` / `timeout` / `notFound` / `precondition` / `aborted`）+ `ActionErrors`：`NotFound` / `Timeout` / `Precondition` 三个工厂、`KindOf`（`StepFailureException` 往下看内层、`ActionAbortedException` = `aborted`）、`Label`（中文名）、`KeyOf` / `Keys`（配置里的键）、`TryParse` / `Normalize`（固定顺序去重）、`Describe`（chip 文案）、`ShouldRetry`（唯一的重试判定） |
+| `Core/Actions/ActionException.cs` | `ActionException` 加 `Kind`（默认 `unknown`）+ 两个带 `Kind` 的构造函数；普通 `new ActionException(…)` 一处不用改 |
+| `Core/Actions/ActionEngine.cs` | `StepFailureException` 带 `Kind`（从内层异常带上，外层步骤不再套错）；`ActionRunResult.ErrorKind` 在四条 catch 分支分别填；重试循环改由 `ActionErrors.ShouldRetry` 门禁，不命中时打一条「不在重试范围（仅未找到·超时），直接按失败处理」的日志；`ActionRunState` 新增 `LastErrorLabel` / `LastErrorUnit` / `LastErrorKind`，`RecordError(unit, ex, label)` 一起记下；`StepContext` 暴露 `LastErrorStep` / `LastErrorStepUnit` / `LastErrorKind` |
+| `Core/Actions/Step.cs` | `RetryOn`（`string?`，JSON `retryOn`，空 = 任何失败都重试），`Clone` 复制 |
+| `Features/Units/Data/LastErrorStepUnit.cs`（新） | `flow.lastErrorStep`：输出 `label`（第几行）/ `unit`（动作单元名）/ `kind`（失败性质），归「流程」分类 |
+| `Features/Units/ProbeContext.cs` | `Evaluate` 翻译取值实现的异常：`FlowAbortException` → `ActionAbortedException`、`FlowException` → `ActionException`（见下「计划外修正」） |
+| `Core/Actions/StepText.cs` | 读写 `@retryOn=notFound,timeout`（写时 `Normalize`，读时校验键，认不出就报「第 N 行」） |
+| `Core/Actions/ActionValidator.cs` | `retryOn` 三条：认不出的键 = **error**、写了但不含任何有效类 = warning、有条件但重试次数 0 = warning |
+| `Views/ActionEditor/StepRowChips.cs` | 有重试条件时多一个 chip（`仅未找到` / `仅未找到·超时`），顺序在 `⟳3` 之后 |
+| `Views/ActionEditor/StepFormView.{xaml,Options,Save}.cs` | 「只重试」= 可编辑 `ComboBox`（预设 `notFound` / `timeout` / `notFound,timeout` / `precondition`，也能直接写组合）；`TrySave` 遇到认不出的键就地拦下 |
+| `Core/FailureLog.cs` | 失败报告加一行「性质: 未找到」 |
+| `Features/AutomationRunner.cs` | 失败 toast 正文在性质可读（未找到 / 超时 / 前置条件）且正文还没这么说时补一个短前缀 |
+
+**动作单元的性质标注**（只在语义明确处标，其余保持 `unknown`）
+
+| 文件 | 标注 |
+|---|---|
+| `Features/TextClickAction.cs` | 没填要点的文字 = `precondition`；区域里没认到 = `notFound` |
+| `Features/ImageClickAction.cs` | 没选模板图 = `precondition`；没匹配上 = `notFound` |
+| `Features/WindowAction.cs` | 没指定窗口 / 调不到前台 / 没最大化 / 没最小化 / 没还原 / 没填大小 = `precondition`；找不到窗口 = `notFound` |
+| `Features/Units/Windows/MessageUnit.cs` | 没找到窗口 = `notFound`；`SendMessageTimeout` 没响应 = `timeout` |
+| `Features/Units/Web/WebRequestUnit.cs` | 请求 / 读响应超时 = `timeout` |
+| `Features/Script/AhkRunner.cs` + `Features/Units/Script/ScriptUnits.cs` | 运行撞 `timeoutMs` = `timeout`（`AhkRunResult.TimedOut`），其它脚本失败仍 `unknown` |
+| `ExplorerUnit` / `FileOperationUnit`（3 处）/ `ListFolderUnit` / `ZipUnit`（2 处）/ `MacroUnit` / `ImageTransformUnit` | 路径 / 源文件 / 目录 / 宏 / 图片不存在 = `notFound` |
+
+**验收**：`--selftest` **107 例 / 2785 断言全绿**（约 5.5 秒；Debug 构建 0 错 0 警，动作单元 78 个）。
+新增断言：`EngineSuite` 4 例（`RetryOnMatches` / `RetryOnSkips` / `RetryOnEmptyRetriesAny` / `LastErrorStepRecorded`）、
+`StructureSuite` 1 例（`ErrorKinds`：解析 / 规范化 / 文案 / 性质判定 / 重试判定）、`StepTextSuite` 扩了 `@retryOn` 的往返与报错。
+
+**与计划不一致的地方**
+
+1. **`window.wait` 拆到 P5-B**：它要复用 `WindowFinder.Find` + `ctx.Wait`、超时不报错（`found = false`），
+   单独一笔更好在真机上验（等待类动作的语义容易被「没找到就是失败」的直觉带偏）。
+2. **`aborted` 只做内部信号**：`ActionErrors.Keys` 里刻意没有它，`TryParse` 也不认——「停止」不是一种可以配进重试条件的失败。
+3. **`AhkRunResult` 新增 `TimedOut` 字段**：AHK 失败只有一字符串，不加这个字段就只能按文本猜超时（计划里明确写了不按文案猜）。
+4. **`ProbeContext.Evaluate` 的异常翻译属计划外修正**：取值实现（`ImageProbe` / `OcrProbe` / `TextLocator`…）抛的是
+   `Features/Flow` 自己的 `FlowAbortException` / `FlowException`，引擎两个都不认识——于是「等待图片期间按停止热键」
+   会被记成**这一步失败**（错误文本「已停止」），配上重试还会再等一轮。翻译之后停止是停止、取值错误是普通 `ActionException`。
+5. **不按错误文本猜性质**：只有本来就有明确超时信号的地方（HTTP 超时、`SendMessageTimeout`、AHK 超时、等待类动作的 `TimeoutMs`）
+   才标 `timeout`，其余一律 `unknown`。文案一改分类就错，本地化后更没戏。
+6. **提示文案只在性质可读时加前缀**：`unknown` / `aborted` 不加，「未知错误 · …」这种前缀没有信息量。
+7. **不做向后兼容**：旧动作没有 `RetryOn` 字段就是空 = 任何失败都重试，和 P2 的行为完全一致，不需要迁移器。
 
 

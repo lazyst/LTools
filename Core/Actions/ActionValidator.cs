@@ -340,6 +340,29 @@ internal static class ActionValidator
                 $"重试间隔不能是负数（当前 {step.RetryDelayMs} 毫秒）", IssueSeverity.error));
         }
 
+        // —— 重试条件（retryOn）：只认 ActionErrors.Keys ——
+        if (!string.IsNullOrWhiteSpace(step.RetryOn))
+        {
+            if (!ActionErrors.TryParse(step.RetryOn, out var kinds))
+            {
+                issues.Add(new ActionIssue(path, label, step.Unit, "retryOn",
+                    $"重试条件只认 {string.Join(" / ", ActionErrors.Keys)}（用逗号分隔，当前「{step.RetryOn}」）",
+                    IssueSeverity.error));
+            }
+            else if (kinds.Count == 0)
+            {
+                issues.Add(new ActionIssue(path, label, step.Unit, "retryOn",
+                    "重试条件写了但不含任何有效的失败类型，等于「任何失败都重试」",
+                    IssueSeverity.warning));
+            }
+            else if (step.Retry <= 0)
+            {
+                issues.Add(new ActionIssue(path, label, step.Unit, "retryOn",
+                    "设了重试条件，但重试次数是 0（不会重试）；要生效请把「失败时重试」填上",
+                    IssueSeverity.warning));
+            }
+        }
+
         // —— 预算：无界循环 ——
         if (step.Unit.Equals("flow.while", StringComparison.OrdinalIgnoreCase))
             issues.Add(new ActionIssue(path, label, step.Unit, "",

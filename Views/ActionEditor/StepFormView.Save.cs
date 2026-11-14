@@ -86,6 +86,27 @@ public partial class StepFormView
             ? Math.Max(0, delay) : 0;
         _step.Retry = retry;
         _step.RetryDelayMs = retryDelay;
+
+        // 重试条件：只认 ActionErrors.Keys，写错就地拦下（等于让用户在这里看懂有哪些类）。
+        string retryOnText = (RetryOnBox.Text ?? "").Trim();
+        if (!ActionErrors.TryParse(retryOnText, out var retryKinds))
+        {
+            ProblemText.Text =
+                $"「只重试」只认 {string.Join(" / ", ActionErrors.Keys)}（用逗号分隔，填的是「{retryOnText}」）";
+            ProblemText.ToolTip = ProblemText.Text;
+            ProblemText.Visibility = Visibility.Visible;
+            return false;
+        }
+
+        _step.RetryOn = retryKinds.Count == 0 ? null : ActionErrors.Normalize(retryOnText);
+        if (retryKinds.Count > 0 && retry <= 0)
+        {
+            ProblemText.Text = "设了「只重试」的条件，但重试次数是 0（不会重试）";
+            ProblemText.ToolTip = ProblemText.Text;
+            ProblemText.Visibility = Visibility.Visible;
+            return false;
+        }
+
         _step.Disabled = DisabledBox.IsChecked == true;
         _step.Note = string.IsNullOrWhiteSpace(NoteBox.Text) ? null : NoteBox.Text.Trim();
 

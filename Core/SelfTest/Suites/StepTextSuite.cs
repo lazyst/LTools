@@ -145,6 +145,16 @@ internal static class StepTextSuite
 
         Check.True(StepText.TryParse("test.mark\n", out List<Step> plain, out _), "应能读");
         Check.False(StepText.Write(plain).Contains("@retry"), "没设重试时不写重试属性");
+
+        // 重试条件（P5）：认键、规范成固定顺序，写出来也是规范形状。
+        Check.True(StepText.TryParse("test.mark @retry=3 @retryOn=timeout,notFound\n",
+            out List<Step> only, out string? onlyError), "应能读重试条件" + onlyError);
+        Check.Equal("notFound,timeout", only[0].RetryOn, "存盘形状按固定顺序");
+        Check.Contains(StepText.Write(only), "@retryOn=notFound,timeout", "写出来也是规范形状");
+
+        Check.False(StepText.TryParse("test.mark @retryOn=notfound2\n", out _, out string? badOn),
+            "认不出的重试条件应报错");
+        Check.Contains(badOn, "@retryOn");
     }
 
     // ============ 工具 ============

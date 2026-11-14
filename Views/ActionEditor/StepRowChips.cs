@@ -20,7 +20,8 @@ public sealed record StepChip(string Text, string Tip, bool Warn);
 /// 摘要只剩「这一步在做什么」，状态一眼能扫到。
 /// </para>
 /// <para>
-/// 顺序固定：跳过 → 失败继续 → 重试 → 延迟 → 备注（从「最影响执行结果」到「只是备注」）。
+/// 顺序固定：跳过 → 失败继续 → 重试 → 重试条件（<c>仅未找到</c>）→ 延迟 → 备注
+/// （从「最影响执行结果」到「只是备注」）。
 /// </para>
 /// </remarks>
 internal static class StepRowChips
@@ -40,6 +41,13 @@ internal static class StepRowChips
         {
             chips.Add(new StepChip($"⟳{step.Retry}",
                 $"失败后最多再试 {step.Retry} 次，每次间隔 {step.RetryDelayMs} 毫秒", true));
+        }
+
+        string only = ActionErrors.Describe(step.RetryOn);
+        if (only.Length > 0)
+        {
+            chips.Add(new StepChip(only,
+                $"{only}的失败才重试，其余失败直接按失败策略处理", false));
         }
 
         if (step.DelayMs > 0)

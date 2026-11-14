@@ -21,6 +21,7 @@ internal static class StructureSuite
         cases.Add(new("structure", "子步骤：引擎不静默忽略", BodyEngine));
         cases.Add(new("structure", "参数冻结：三态与改用固定值", ArgFreezeStates));
         cases.Add(new("structure", "参数冻结：来源文案", ArgFreezeSources));
+        cases.Add(new("structure", "失败分类：解析 / 规范化 / 重试判定", ErrorKinds));
     }
 
     // ============ 可见性 ============
@@ -262,6 +263,45 @@ internal static class StructureSuite
         Check.Contains(inline, "取值「", "取值的来源文案");
         Check.Contains(inline, "」", "取值文案要收口，别把整句话拼坏");
         Check.False(inline.Contains("${", StringComparison.Ordinal), "取值不是变量，不该带 ${}");
+    }
+
+    // ============ 失败分类（P5：retryOn / 提示文案） ============
+
+    private static void ErrorKinds()
+    {
+        // 解析：认键、大小写不敏感、空白不算内容。
+        Check.True(ActionErrors.TryParse(" notFound , TIMEOUT ", out var kinds), "认这些键");
+        Check.Equal(2, kinds.Count, "两个键");
+        Check.False(ActionErrors.TryParse("notfound2", out _), "认不出的键要报错");
+        Check.True(ActionErrors.TryParse("", out var none) && none.Count == 0, "空 = 没条件");
+        Check.True(ActionErrors.TryParse(null, out var blank) && blank.Count == 0, "null = 没条件");
+
+        // 规范化：固定顺序（notFound → timeout → precondition → unknown），去重、去空白。
+        Check.Equal("notFound,timeout", ActionErrors.Normalize(" timeout , notFound "), "存盘形状按固定顺序");
+        Check.Equal("notFound", ActionErrors.Normalize("notfound"), "大小写归一");
+        Check.Equal("", ActionErrors.Normalize("  "), "空还是空");
+        Check.Equal("", ActionErrors.Normalize("bogus"), "认不出的键不写进存盘形状");
+
+        // 可读文案（编辑器 chip）：只列命中的那些类。
+        Check.Equal("仅未找到", ActionErrors.Describe("notFound"), "单条件文案");
+        Check.Equal("仅未找到·超时", ActionErrors.Describe("timeout,notFound"), "按固定顺序拼");
+        Check.Equal("", ActionErrors.Describe(null), "没条件时没有文案");
+
+        // 性质判定的唯一入口。
+        Check.Equal(ActionErrorKind.notFound, ActionErrors.KindOf(ActionErrors.NotFound("x")), "普通异常");
+        Check.Equal(ActionErrorKind.timeout,
+            ActionErrors.KindOf(new StepFailureException("第 1 行失败", ActionErrors.Timeout("t"))),
+            "包了一层的步骤失败要往下看内层");
+        Check.Equal(ActionErrorKind.aborted,
+            ActionErrors.KindOf(new ActionAbortedException("已停止", userCancelled: true)), "已停止");
+        Check.Equal(ActionErrorKind.unknown, ActionErrors.KindOf(new InvalidOperationException("x")), "没分类");
+
+        // 重试判定：空条件 = 任何失败；写了条件只认命中的；已停止永不重试。
+        Check.True(ActionErrors.ShouldRetry(null, ActionErrors.Precondition("p")), "没写条件时任何失败都重试");
+        Check.True(ActionErrors.ShouldRetry("notFound,timeout", ActionErrors.NotFound("n")), "命中范围");
+        Check.False(ActionErrors.ShouldRetry("notFound,timeout", ActionErrors.Precondition("p")), "不在范围");
+        Check.False(ActionErrors.ShouldRetry("", new ActionAbortedException("已停止")), "已停止永不重试");
+        Check.True(ActionErrors.ShouldRetry("unknown", new InvalidOperationException("x")), "unknown 也是一类");
     }
 
     // ============ 夹具 ============

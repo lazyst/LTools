@@ -51,6 +51,7 @@ internal static class TestRegistry
         var registry = new StepRegistry();
         FlowUnits.RegisterAll(registry);
         registry.Register(new LastErrorUnit());
+        registry.Register(new LastErrorStepUnit());
 
         var byKey = new Dictionary<string, IStepUnit>(StringComparer.OrdinalIgnoreCase);
         foreach (IStepUnit unit in new IStepUnit[]
@@ -96,7 +97,7 @@ internal static class TestRegistry
         new(key, name, inputs: new[] { new InputSpec("label", "标签") });
 
     /// <summary>前 <paramref name="failures"/> 次失败、之后成功（步骤重试用）。</summary>
-    public static FakeUnit Flaky(int failures)
+    public static FakeUnit Flaky(int failures, ActionErrorKind kind = ActionErrorKind.unknown)
     {
         FakeUnit? self = null;
         var unit = new FakeUnit("test.flaky", "时好时坏测试",
@@ -104,7 +105,7 @@ internal static class TestRegistry
             run: (_, args) =>
             {
                 if (self!.Calls <= failures)
-                    throw new ActionException(args.TryGet("message")?.AsText() ?? "一会儿再试");
+                    throw new ActionException(args.TryGet("message")?.AsText() ?? "一会儿再试", kind);
             });
 
         self = unit;

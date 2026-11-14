@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using LTools.Core;
+using LTools.Core.Actions;
 using LTools.Native;
 
 namespace LTools.Features;
@@ -32,11 +33,11 @@ internal static class WindowAction
         string title = (request.Title ?? "").Trim();
         string cls = (request.Class ?? "").Trim();
         if (title.Length == 0 && cls.Length == 0)
-            throw new InvalidOperationException($"「{request.Name}」还没有指定目标窗口");
+            throw ActionErrors.Precondition($"「{request.Name}」还没有指定目标窗口");
 
         IntPtr hwnd = WindowFinder.Find(title, cls, out string matched);
         if (hwnd == IntPtr.Zero)
-            throw new InvalidOperationException(
+            throw ActionErrors.NotFound(
                 $"找不到窗口：{WindowFinder.Describe(title, cls)}（可能已关闭，或标题变了）");
 
         WindowActionKind op = request.Op;
@@ -46,26 +47,26 @@ internal static class WindowAction
         {
             case WindowActionKind.activate:
                 if (!Activate(hwnd))
-                    throw new InvalidOperationException(
+                    throw ActionErrors.Precondition(
                         $"没能把「{label}」切到前台：系统前台锁拒绝了这次切换（常见于另一个程序正全屏、窗口在别的虚拟桌面，或目标进程无响应）");
                 break;
 
             case WindowActionKind.maximize:
                 Win32.ShowWindow(hwnd, Win32.SwMaximize);
                 if (!Settle(() => Win32.IsZoomed(hwnd)))
-                    throw new InvalidOperationException($"「{label}」没有最大化（窗口可能自己禁止了最大化）");
+                    throw ActionErrors.Precondition($"「{label}」没有最大化（窗口可能自己禁止了最大化）");
                 break;
 
             case WindowActionKind.minimize:
                 Win32.ShowWindow(hwnd, Win32.SwMinimize);
                 if (!Settle(() => Win32.IsIconic(hwnd)))
-                    throw new InvalidOperationException($"「{label}」没有最小化（窗口可能自己禁止了最小化）");
+                    throw ActionErrors.Precondition($"「{label}」没有最小化（窗口可能自己禁止了最小化）");
                 break;
 
             case WindowActionKind.restore:
                 Win32.ShowWindow(hwnd, Win32.SwRestore);
                 if (!Settle(() => !Win32.IsIconic(hwnd) && !Win32.IsZoomed(hwnd)))
-                    throw new InvalidOperationException($"「{label}」没有还原");
+                    throw ActionErrors.Precondition($"「{label}」没有还原");
                 break;
 
             case WindowActionKind.resize:
@@ -174,7 +175,7 @@ internal static class WindowAction
     {
         int[]? rect = request.Rect;
         if (rect == null || rect.Length < 4)
-            throw new InvalidOperationException($"「{request.Name}」还没有设置目标大小");
+            throw ActionErrors.Precondition($"「{request.Name}」还没有设置目标大小");
 
         int x = rect[0], y = rect[1];
         int w = Math.Max(1, rect[2]), h = Math.Max(1, rect[3]);

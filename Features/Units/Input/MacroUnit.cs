@@ -31,7 +31,7 @@ public sealed class MacroUnit : IStepUnit
         if (id.Length == 0) throw new ActionException("回放宏没有指定宏");
 
         var macro = MacroStore.Load(id)
-            ?? throw new ActionException($"宏不存在：{id}");
+            ?? throw ActionErrors.NotFound($"宏不存在：{id}");
 
         MacroPlayer.PlaySync(macro);
     }

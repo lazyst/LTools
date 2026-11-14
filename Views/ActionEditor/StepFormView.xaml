@@ -67,6 +67,14 @@
                             <TextBox x:Name="RetryDelayBox" Width="66" MinHeight="28" Margin="8,8,4,0"/>
                             <TextBlock Text="毫秒" VerticalAlignment="Center" Margin="0,8,0,0"
                                        Foreground="{StaticResource HintTextBrush}"/>
+
+                            <TextBlock Text="只重试" VerticalAlignment="Center" Margin="0,8,0,0"
+                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                            <ComboBox x:Name="RetryOnBox" IsEditable="True" MinWidth="150" MinHeight="28"
+                                      Margin="8,8,4,0"
+                                      ToolTip="留空 = 任何失败都重试；也可以直接写 notFound,timeout（失败性质：notFound 未找到 / timeout 超时 / precondition 前置条件 / unknown 其它）"/>
+                            <TextBlock Text="（留空 = 任何失败）" VerticalAlignment="Center" Margin="0,8,0,0"
+                                       Foreground="{StaticResource HintTextBrush}"/>
                         </WrapPanel>
 
                         <CheckBox x:Name="DisabledBox" Content="跳过这一步（保留配置）" Margin="0,10,0,0"/>

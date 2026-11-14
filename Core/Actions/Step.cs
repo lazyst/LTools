@@ -196,6 +196,13 @@ public sealed class Step
     [JsonPropertyName("retryDelayMs")]
     public int RetryDelayMs { get; set; } = DefaultRetryDelayMs;
 
+    /// <summary>
+    /// 只重试这几类失败（逗号分隔的 <see cref="ActionErrors.Keys"/>，如 <c>notFound,timeout</c>）；
+    /// 空 = 任何失败都重试（默认）。停止 / 预算耗尽永不重试。
+    /// </summary>
+    [JsonPropertyName("retryOn")]
+    public string? RetryOn { get; set; }
+
     /// <summary>重试间隔的默认值（`retryDelayMs` 缺省时）。</summary>
     public const int DefaultRetryDelayMs = 500;
 
@@ -245,6 +252,7 @@ public sealed class Step
             DelayMs = DelayMs,
             Retry = Retry,
             RetryDelayMs = RetryDelayMs,
+            RetryOn = RetryOn,
         };
 
         foreach (var pair in In) clone.In[pair.Key] = pair.Value.Clone();

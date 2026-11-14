@@ -27,6 +27,9 @@ internal sealed class AhkRunResult
 
     /// <summary>失败说明（已带「第 N 行」，行号按用户代码算）；null = 成功。</summary>
     public string? Error { get; init; }
+
+    /// <summary>失败是不是因为运行超过 <c>timeoutMs</c>（重试条件 <c>timeout</c> 用）。</summary>
+    public bool TimedOut { get; init; }
 }
 
 /// <summary>语法检查结果；<see cref="Message"/> 只失败时有内容。</summary>
@@ -175,6 +178,7 @@ internal static class AhkRunner
                 Stderr = result.Stderr.TrimEnd('\r', '\n'),
                 Variables = values,
                 Error = error,
+                TimedOut = result.TimedOut,
             };
         }
         finally

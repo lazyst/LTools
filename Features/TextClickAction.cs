@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using LTools.Core;
+using LTools.Core.Actions;
 
 namespace LTools.Features;
 
@@ -28,14 +29,14 @@ internal static class TextClickAction
     {
         string needle = (request.Text ?? "").Trim();
         if (needle.Length == 0)
-            throw new InvalidOperationException($"「{request.Name}」还没有指定要点击的文字");
+            throw ActionErrors.Precondition($"「{request.Name}」还没有指定要点击的文字");
 
         int timeout = Math.Clamp(request.TimeoutMs, 0, 600_000);
         var result = TextLocator.Locate(needle, request.Region, request.Rect, request.OcrEngine,
             timeout, TextLocator.DefaultIntervalMs, ctx);
 
         if (!result.Found)
-            throw new InvalidOperationException(TextLocator.MissMessage(request.Name, needle, result.Seen, timeout));
+            throw ActionErrors.NotFound(TextLocator.MissMessage(request.Name, needle, result.Seen, timeout));
 
         int x = result.X, y = result.Y;
         MouseOps.Move(x, y);

@@ -311,6 +311,15 @@ internal static class AutomationRunner
                 && body.StartsWith(failedAt, StringComparison.Ordinal))
                 body = body[failedAt.Length..].TrimStart('：', ' ');
 
+            // 失败性质（未找到 / 超时 / 前置条件）：正文里还没这么说时补一个短前缀，
+            // 让人一眼分得清「没等到」和「参数写错」。
+            if (result.ErrorKind is ActionErrorKind.notFound or ActionErrorKind.timeout
+                or ActionErrorKind.precondition)
+            {
+                string kind = ActionErrors.Label(result.ErrorKind);
+                if (!body.Contains(kind, StringComparison.Ordinal)) body = $"{kind} · {body}";
+            }
+
             string title = result.FailedStepLabel is { Length: > 0 } label
                 ? $"动作失败 · {label}"
                 : "动作失败";

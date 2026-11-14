@@ -79,7 +79,7 @@ public sealed class ZipUnit : IStepUnit
     {
         bool isDir = Directory.Exists(source);
         if (!isDir && !File.Exists(source))
-            throw new ActionException($"源不存在：{source}");
+            throw ActionErrors.NotFound($"源不存在：{source}");
 
         string zipPath = target.Length > 0
             ? FileText.Resolve(target, "")
@@ -114,7 +114,7 @@ public sealed class ZipUnit : IStepUnit
 
     private static void Unzip(StepContext ctx, string zipPath, string target, bool overwrite)
     {
-        if (!File.Exists(zipPath)) throw new ActionException($"文件不存在：{zipPath}");
+        if (!File.Exists(zipPath)) throw ActionErrors.NotFound($"文件不存在：{zipPath}");
         if (target.Length == 0) throw new ActionException("解压要填目标目录");
 
         string dir = FileText.Resolve(target, "");

@@ -56,6 +56,8 @@ internal static class FailureLog
         sb.AppendLine($"动作: {actionName}");
         if (!string.IsNullOrWhiteSpace(result.FailedStepLabel))
             sb.AppendLine($"位置: {result.FailedStepLabel}");
+        if (result.ErrorKind != ActionErrorKind.unknown && result.ErrorKind != ActionErrorKind.aborted)
+            sb.AppendLine($"性质: {ActionErrors.Label(result.ErrorKind)}");
         sb.AppendLine($"错误: {result.Error ?? "（无错误文本）"}");
         sb.AppendLine($"步数: {result.Steps} · 耗时: {result.Elapsed.TotalMilliseconds:0} ms");
 

@@ -94,7 +94,7 @@ public sealed class ImageTransformUnit : IStepUnit
     public void Execute(StepContext ctx, StepArgs args)
     {
         string path = ImageLibrary.Resolve(ScreenArgs.ImagePath(args), ctx.ResourceRoot);
-        if (!File.Exists(path)) throw new ActionException($"图片不存在：{path}");
+        if (!File.Exists(path)) throw ActionErrors.NotFound($"图片不存在：{path}");
 
         string op = args.Text("operation").Trim().ToLowerInvariant();
 

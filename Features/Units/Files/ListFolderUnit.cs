@@ -54,7 +54,7 @@ public sealed class ListFolderUnit : IStepUnit
     {
         string root = FileText.Resolve(args.Text("path"), args.Text("workdir"));
         if (!Directory.Exists(root))
-            throw new ActionException($"目录不存在：{root}");
+            throw ActionErrors.NotFound($"目录不存在：{root}");
 
         string include = args.Text("include").Trim().ToLowerInvariant();
         if (Array.IndexOf(Includes, include) < 0)

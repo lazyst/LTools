@@ -104,6 +104,9 @@ public sealed class ActionRunResult
     /// <summary>失败发生在哪一行（<c>第 3 行 › 否则 › 第 1 行</c>）；不是步骤失败时为 null。</summary>
     public string? FailedStepLabel { get; private init; }
 
+    /// <summary>失败的性质（P5）：提示文案用；成功 / 停止时为 <see cref="ActionErrorKind.unknown"/>。</summary>
+    public ActionErrorKind ErrorKind { get; private init; }
+
     public Exception? Exception { get; private init; }
 
     public IReadOnlyDictionary<string, Value> Variables { get; private init; } =
@@ -128,7 +131,8 @@ public sealed class ActionRunResult
 
     internal static ActionRunResult Failure(
         IReadOnlyDictionary<string, Value> variables, int steps, TimeSpan elapsed,
-        string error, Exception? exception, bool stopped, string? failedStepLabel = null) =>
+        string error, Exception? exception, bool stopped, string? failedStepLabel = null,
+        ActionErrorKind kind = ActionErrorKind.unknown) =>
         new()
         {
             Completed = false,
@@ -139,6 +143,7 @@ public sealed class ActionRunResult
             Error = error,
             Exception = exception,
             FailedStepLabel = failedStepLabel,
+            ErrorKind = kind,
         };
 }
 
@@ -191,7 +196,7 @@ public sealed class ActionEngine
         catch (ActionAbortedException ex)
         {
             return ActionRunResult.Failure(root.Snapshot(), state.StepCount, started.Elapsed,
-                ex.Message, ex, stopped: true);
+                ex.Message, ex, stopped: true, kind: ActionErrorKind.aborted);
         }
         catch (BreakSignal)
         {
@@ -211,17 +216,17 @@ public sealed class ActionEngine
         catch (StepFailureException ex)
         {
             return ActionRunResult.Failure(root.Snapshot(), state.StepCount, started.Elapsed,
-                ex.Message, ex.InnerException ?? ex, stopped: false, state.FailedStepLabel);
+                ex.Message, ex.InnerException ?? ex, stopped: false, state.FailedStepLabel, ex.Kind);
         }
         catch (ActionException ex)
         {
             return ActionRunResult.Failure(root.Snapshot(), state.StepCount, started.Elapsed,
-                ex.Message, ex, stopped: false, state.FailedStepLabel);
+                ex.Message, ex, stopped: false, state.FailedStepLabel, ex.Kind);
         }
         catch (Exception ex)
         {
             return ActionRunResult.Failure(root.Snapshot(), state.StepCount, started.Elapsed,
-                ex.Message, ex, stopped: false, state.FailedStepLabel);
+                ex.Message, ex, stopped: false, state.FailedStepLabel, ActionErrors.KindOf(ex));
         }
     }
 
@@ -303,7 +308,16 @@ public sealed class ActionEngine
                     {
                         // 走到这里只剩「这一步真的失败了」：还有次数就等一会儿再来一次。
                         // 停止 / 跳出 / 继续 / 返回都是控制信号，在上面的分支里已经直接抛出，绝不重试。
-                        if (attempt < maxAttempts)
+                        bool retryable = ActionErrors.ShouldRetry(step.RetryOn, ex);
+                        if (attempt < maxAttempts && !retryable)
+                        {
+                            // 配了重试次数、但这一类失败不在重试范围：说清楚，别让人以为重试没生效。
+                            parent.State.Options.Log?.Invoke(
+                                $"{label}「{unit.Spec.Name}」失败（{ActionErrors.Label(ActionErrors.KindOf(ex))}）" +
+                                $"不在重试范围（{ActionErrors.Describe(step.RetryOn)}），直接按失败处理");
+                        }
+
+                        if (attempt < maxAttempts && retryable)
                         {
                             int wait = Math.Max(0, step.RetryDelayMs);
                             parent.State.Options.Log?.Invoke(
@@ -324,7 +338,7 @@ public sealed class ActionEngine
 
                         if (step.OnFail == FailMode.@continue)
                         {
-                            parent.State.RecordError(unit, ex);
+                            parent.State.RecordError(unit, ex, label);
                             parent.State.FailedStepLabel ??= label;
                             Trace(parent, step, unit.Spec, path, label, ctx, args, StepTraceStatus.continued,
                                 started, ex.Message, attempt, maxAttempts);
@@ -735,6 +749,13 @@ internal sealed class ActionRunState
 
     public string LastError { get; private set; } = "";
 
+    /// <summary>最近一次被「失败继续」吞掉的错误：位置、动作单元名、性质（<c>flow.lastErrorStep</c> 用）。</summary>
+    public string LastErrorLabel { get; private set; } = "";
+
+    public string LastErrorUnit { get; private set; } = "";
+
+    public ActionErrorKind LastErrorKind { get; private set; } = ActionErrorKind.unknown;
+
     /// <summary>最近一次失败所在的步骤位置（<c>第 3 行</c>），由 <see cref="ActionEngine"/> 写入。</summary>
     public string? FailedStepLabel { get; set; }
 
@@ -844,9 +865,12 @@ internal sealed class ActionRunState
         return !Token.WaitHandle.WaitOne(milliseconds);
     }
 
-    public void RecordError(IStepUnit unit, Exception ex)
+    public void RecordError(IStepUnit unit, Exception ex, string label = "")
     {
         LastError = ex.Message;
+        LastErrorLabel = label;
+        LastErrorUnit = unit.Spec.Name;
+        LastErrorKind = ActionErrors.KindOf(ex);
         _options.Log?.Invoke($"「{unit.Spec.Name}」失败但继续：{ex.Message}");
     }
 }
@@ -906,6 +930,15 @@ public sealed class StepContext
 
     /// <summary>本次运行最近一次被「失败继续」吞掉的错误文本。</summary>
     public string LastError => State.LastError;
+
+    /// <summary>最近一次被吞掉的错误发生在哪一行（<c>第 3 行</c>）；没有错误时为空。</summary>
+    public string LastErrorStep => State.LastErrorLabel;
+
+    /// <summary>最近一次被吞掉的错误是哪个动作单元（名字）。</summary>
+    public string LastErrorStepUnit => State.LastErrorUnit;
+
+    /// <summary>最近一次被吞掉的错误属于哪一类。</summary>
+    public ActionErrorKind LastErrorKind => State.LastErrorKind;
 
     internal ActionRunState State { get; }
 
@@ -981,6 +1014,13 @@ public sealed class StepContext
 /// </remarks>
 internal sealed class StepFailureException : Exception
 {
-    public StepFailureException(string message, Exception inner) : base(message, inner) { }
+    public StepFailureException(string message, Exception inner) : base(message, inner)
+        => Kind = ActionErrors.KindOf(inner);
+
+    public StepFailureException(string message, Exception inner, ActionErrorKind kind) : base(message, inner)
+        => Kind = kind;
+
+    /// <summary>这一步失败的性质（从内层异常带上来，供提示文案与重试条件使用）。</summary>
+    public ActionErrorKind Kind { get; }
 }
 

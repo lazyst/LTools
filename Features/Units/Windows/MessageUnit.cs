@@ -82,7 +82,7 @@ public sealed class MessageUnit : IStepUnit
 
         IntPtr hwnd = WindowFinder.Find(title, className, out string matched);
         if (hwnd == IntPtr.Zero)
-            throw new ActionException($"没找到窗口：{WindowFinder.Describe(title, className)}");
+            throw ActionErrors.NotFound($"没找到窗口：{WindowFinder.Describe(title, className)}");
 
         string op = args.Text("operation").Trim().ToLowerInvariant();
         bool sent;
@@ -107,7 +107,7 @@ public sealed class MessageUnit : IStepUnit
                     Win32.SmtoAbortIfHung, timeout, out IntPtr returned);
 
                 if (ok == IntPtr.Zero)
-                    throw new ActionException($"窗口「{matched}」{timeout} ms 内没有响应");
+                    throw ActionErrors.Timeout($"窗口「{matched}」{timeout} ms 内没有响应");
 
                 sent = true;
                 result = returned.ToInt64();

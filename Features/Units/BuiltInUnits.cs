@@ -101,6 +101,7 @@ public static class BuiltInUnits
         registry.Register(new StateSetUnit());
         registry.Register(new StateGetUnit());
         registry.Register(new LastErrorUnit());
+        registry.Register(new LastErrorStepUnit());
 
         // —— 网络 ——
         registry.Register(new OpenUrlUnit());

@@ -29,6 +29,19 @@ internal static class ProbeContext
     public static Value Evaluate(StepContext ctx, Func<RunContext, VarValue> probe)
     {
         var run = Of(ctx);
-        return UnitValues.FromVarValue(probe(run));
+        try
+        {
+            return UnitValues.FromVarValue(probe(run));
+        }
+        catch (FlowAbortException ex)
+        {
+            // 取值实现里按停止热键会抛它：翻译成引擎认识的「已停止」，别记成步骤失败（也不进重试）。
+            throw new ActionAbortedException(ex.Message, ex.UserCancelled);
+        }
+        catch (FlowException ex)
+        {
+            // 取值实现的用户可读错误统一成 ActionException：提示文案与「失败继续」口径一致。
+            throw new ActionException(ex.Message, ex);
+        }
     }
 }

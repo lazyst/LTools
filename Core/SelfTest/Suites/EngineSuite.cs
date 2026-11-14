@@ -43,6 +43,10 @@ internal static class EngineSuite
         cases.Add(new("engine", "重试用尽按失败策略收尾", RetryExhausted));
         cases.Add(new("engine", "重试间隔里按停止立刻响应", RetryWaitCancellable));
         cases.Add(new("engine", "干跑不重试", RetryDryRun));
+        cases.Add(new("engine", "重试条件：命中的才重试", RetryOnMatches));
+        cases.Add(new("engine", "重试条件：不在范围不重试", RetryOnSkips));
+        cases.Add(new("engine", "重试条件：空 = 任何失败", RetryOnEmptyRetriesAny));
+        cases.Add(new("engine", "上一次失败的步骤", LastErrorStepRecorded));
         cases.Add(new("engine", "等待条件立即成立", WaitForImmediate));
         cases.Add(new("engine", "等待条件每轮重新取值", WaitForReevaluates));
         cases.Add(new("engine", "等待条件超时", WaitForTimeout));
@@ -602,6 +606,70 @@ internal static class EngineSuite
 
         Check.True(result.Ok, "干跑跳过会动键鼠的步骤，不该因为重试失败：" + result.Error);
         Check.Equal(0, unit.Calls, "干跑不执行动作单元");
+    }
+
+    // ============ 重试条件（retryOn，P5） ============
+
+    private static void RetryOnMatches()
+    {
+        FakeUnit unit = TestRegistry.Flaky(failures: 2, kind: ActionErrorKind.notFound);
+        Step step = Step.Of("test.flaky").WithText("message", "还没出来");
+        step.Retry = 2;
+        step.RetryDelayMs = 5;
+        step.RetryOn = "notFound,timeout";
+
+        ActionRunResult result = Run(Program(step), TestRegistry.Create(unit));
+
+        Check.True(result.Ok, "「未找到」在重试范围里，应该重试到成功：" + result.Error);
+        Check.Equal(3, unit.Calls, "应该试 3 次");
+    }
+
+    private static void RetryOnSkips()
+    {
+        FakeUnit unit = TestRegistry.Flaky(failures: 99, kind: ActionErrorKind.precondition);
+        Step step = Step.Of("test.flaky").WithText("message", "参数不对");
+        step.Retry = 5;
+        step.RetryDelayMs = 5;
+        step.RetryOn = "notFound,timeout";
+
+        ActionRunResult result = Run(Program(step), TestRegistry.Create(unit));
+
+        Check.False(result.Ok, "前置条件不在重试范围，应该直接失败");
+        Check.Equal(1, unit.Calls, "不在重试范围时只试一次，别白等 5 次");
+        Check.Equal(ActionErrorKind.precondition, result.ErrorKind, "失败性质要带上来");
+    }
+
+    private static void RetryOnEmptyRetriesAny()
+    {
+        FakeUnit unit = TestRegistry.Flaky(failures: 1, kind: ActionErrorKind.precondition);
+        Step step = Step.Of("test.flaky").WithText("message", "再来一次就好");
+        step.Retry = 1;
+        step.RetryDelayMs = 5;
+
+        ActionRunResult result = Run(Program(step), TestRegistry.Create(unit));
+
+        Check.True(result.Ok, "没写重试条件 = 任何失败都重试（老行为）：" + result.Error);
+        Check.Equal(2, unit.Calls, "应该试 2 次");
+    }
+
+    private static void LastErrorStepRecorded()
+    {
+        Step failing = Step.Of("test.flaky").WithText("message", "没找到窗口");
+        failing.OnFail = FailMode.@continue;
+
+        Step read = Step.Of("flow.lastErrorStep")
+            .Output("label", "where")
+            .Output("unit", "who")
+            .Output("kind", "why");
+
+        var options = new ActionRunOptions();
+        ActionRunResult result = Run(Program(failing, read), TestRegistry.Create(
+            TestRegistry.Flaky(failures: 99, kind: ActionErrorKind.notFound)), options);
+
+        Check.True(result.Ok, "失败继续之后这一步应该能读到结果：" + result.Error);
+        Check.Equal("第 1 行", result.Variables["where"].AsText(), "位置要指到失败的那一行");
+        Check.Equal("时好时坏测试", result.Variables["who"].AsText(), "动作单元名");
+        Check.Equal("未找到", result.Variables["why"].AsText(), "失败性质");
     }
 
     // ============ 等待条件（flow.waitFor，P2） ============

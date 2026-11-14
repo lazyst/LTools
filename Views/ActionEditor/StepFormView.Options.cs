@@ -28,6 +28,13 @@ public partial class StepFormView
             ? _step.Retry.ToString(CultureInfo.InvariantCulture) : "";
         RetryDelayBox.Text = _step.RetryDelayMs == Step.DefaultRetryDelayMs
             ? "" : _step.RetryDelayMs.ToString(CultureInfo.InvariantCulture);
+
+        // 「只重试」是可编辑下拉：常用组合一点就有，特殊的组合（precondition,unknown）可以直接写。
+        RetryOnBox.Items.Clear();
+        foreach (string preset in new[] { "notFound", "timeout", "notFound,timeout", "precondition" })
+            RetryOnBox.Items.Add(preset);
+        RetryOnBox.Text = ActionErrors.Normalize(_step.RetryOn);
+
         DisabledBox.IsChecked = _step.Disabled;
         NoteBox.Text = _step.Note ?? "";
     }

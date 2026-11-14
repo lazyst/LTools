@@ -71,7 +71,7 @@ public sealed class FileOperationUnit : IStepUnit
             case "delete":
                 if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
                 else if (File.Exists(path)) File.Delete(path);
-                else throw new ActionException($"要删除的路径不存在：{path}");
+                else throw ActionErrors.NotFound($"要删除的路径不存在：{path}");
                 break;
 
             case "mkdir":
@@ -99,7 +99,7 @@ public sealed class FileOperationUnit : IStepUnit
             return;
         }
 
-        if (!File.Exists(source)) throw new ActionException($"源文件不存在：{source}");
+        if (!File.Exists(source)) throw ActionErrors.NotFound($"源文件不存在：{source}");
         EnsureParent(target);
         File.Copy(source, target, overwrite);
     }
@@ -115,7 +115,7 @@ public sealed class FileOperationUnit : IStepUnit
         EnsureParent(target);
         if (Directory.Exists(source)) Directory.Move(source, target);
         else if (File.Exists(source)) File.Move(source, target, overwrite);
-        else throw new ActionException($"源路径不存在：{source}");
+        else throw ActionErrors.NotFound($"源路径不存在：{source}");
     }
 
     private static void EnsureParent(string target)

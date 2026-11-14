@@ -153,7 +153,7 @@ public sealed class WebRequestUnit : IStepUnit
             }
             catch (OperationCanceledException) when (!ctx.Token.IsCancellationRequested)
             {
-                throw new ActionException($"读取响应超时（{timeoutMs} ms）：{url}");
+                throw ActionErrors.Timeout($"读取响应超时（{timeoutMs} ms）：{url}");
             }
 
             size = bytes.Length;
@@ -181,7 +181,7 @@ public sealed class WebRequestUnit : IStepUnit
         }
         catch (OperationCanceledException)
         {
-            throw new ActionException($"请求超时（{timeoutMs} ms）：{url}");
+            throw ActionErrors.Timeout($"请求超时（{timeoutMs} ms）：{url}");
         }
         catch (HttpRequestException ex)
         {

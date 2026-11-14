@@ -5,6 +5,18 @@ public sealed class ActionException : Exception
 {
     public ActionException(string message) : base(message) { }
     public ActionException(string message, Exception inner) : base(message, inner) { }
+
+    public ActionException(string message, ActionErrorKind kind) : base(message) => Kind = kind;
+
+    public ActionException(string message, Exception inner, ActionErrorKind kind) : base(message, inner)
+        => Kind = kind;
+
+    /// <summary>
+    /// 失败的性质（P5）：只用于「重试哪些失败」与提示文案。默认 <see cref="ActionErrorKind.unknown"/>，
+    /// 语义明确的地方用 <see cref="ActionErrors.NotFound"/> / <see cref="ActionErrors.Timeout"/> /
+    /// <see cref="ActionErrors.Precondition"/> 构造。
+    /// </summary>
+    public ActionErrorKind Kind { get; } = ActionErrorKind.unknown;
 }
 
 /// <summary>中止整个动作（用户停止 / 步数或时间超预算）。</summary>

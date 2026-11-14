@@ -53,7 +53,7 @@ public sealed class ExplorerUnit : IStepUnit
         string path = FileText.Resolve(args.Text("path"), "");
 
         if (!File.Exists(path) && !Directory.Exists(path))
-            throw new ActionException($"路径不存在：{path}");
+            throw ActionErrors.NotFound($"路径不存在：{path}");
 
         if (op == "open")
         {

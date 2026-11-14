@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using LTools.Core;
+using LTools.Core.Actions;
 using LTools.Views;
 
 namespace LTools.Features;
@@ -25,7 +26,7 @@ internal static class ImageClickAction
     public static VarValue Run(ImageClickRequest request, RunContext? ctx)
     {
         if (string.IsNullOrWhiteSpace(request.Image))
-            throw new InvalidOperationException($"「{request.Name}」还没有选择模板图片");
+            throw ActionErrors.Precondition($"「{request.Name}」还没有选择模板图片");
 
         var probe = new Probe
         {
@@ -50,7 +51,7 @@ internal static class ImageClickAction
         }
 
         if (match.Flag != true)
-            throw new InvalidOperationException(
+            throw ActionErrors.NotFound(
                 $"「{request.Name}」在区域里没有找到模板图（最高相似度 {(match.Score ?? 0):0.00}）；" +
                 "可以调低「最低相似度」，或重新框选模板图");
 
