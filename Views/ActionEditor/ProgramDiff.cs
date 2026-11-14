@@ -76,13 +76,13 @@ internal static class ProgramDiff
             VariableDef? previous = old.FirstOrDefault(v => SameKey(v.Key, variable.Key));
             if (previous == null)
             {
-                lines.Add(new DiffLine(DiffKind.added, 0, $"变量「{variable.Key}」（{TypeName(variable.Type)}）"));
+                lines.Add(new DiffLine(DiffKind.added, 0, $"变量「{variable.Key}」（{ValueKindText.Of(variable.Type)}）"));
                 continue;
             }
 
             if (previous.Type != variable.Type)
                 lines.Add(new DiffLine(DiffKind.changed, 0,
-                    $"变量「{variable.Key}」：类型 {TypeName(previous.Type)} → {TypeName(variable.Type)}"));
+                    $"变量「{variable.Key}」：类型 {ValueKindText.Of(previous.Type)} → {ValueKindText.Of(variable.Type)}"));
 
             string was = previous.Default?.AsText() ?? "";
             string isNow = variable.Default?.AsText() ?? "";
@@ -225,15 +225,6 @@ internal static class ProgramDiff
 
     private static bool SameKey(string? a, string? b) =>
         string.Equals(a ?? "", b ?? "", StringComparison.OrdinalIgnoreCase);
-
-    private static string TypeName(ValueKind kind) => kind switch
-    {
-        ValueKind.text => "文本",
-        ValueKind.number => "数字",
-        ValueKind.@bool => "布尔",
-        ValueKind.list => "列表",
-        _ => "对象",
-    };
 
     private static string DirectionName(VariableDirection direction) => direction switch
     {

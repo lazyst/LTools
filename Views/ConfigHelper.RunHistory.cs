@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using LTools.Core;
 
@@ -83,12 +84,17 @@ public partial class ConfigHelperWindow
         ShowStatus("运行历史已清空", ok: true);
     }
 
-    /// <summary>双击判定：只有真选中一行才复制（表头 / 空白处不做事；冒烟直接调这个）。</summary>
-    internal static RunRow? DoubleClickRunRow(object? selected) => selected as RunRow;
+    /// <summary>
+    /// 双击是否落在一条运行记录上：取命中的 <see cref="DataGridRow"/>，
+    /// 表头 / 空白处取不到行就返回 null（不复制上一次选中的那条）。
+    /// 抽成纯函数方便无头冒烟直接断言，不用伪造鼠标事件。
+    /// </summary>
+    internal static RunRow? DoubleClickRunRow(DependencyObject? src) =>
+        src == null ? null : FindAncestor<DataGridRow>(src)?.DataContext as RunRow;
 
     private void RunHistoryGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (DoubleClickRunRow(RunHistoryGrid.SelectedItem) is not { } row) return;
+        if (DoubleClickRunRow(e.OriginalSource as DependencyObject) is not { } row) return;
 
         try
         {

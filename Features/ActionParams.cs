@@ -84,7 +84,7 @@ internal static class ActionParamMemory
     /// <summary>空表的新实例（调用方可能持有 / 修改返回值，别共享同一个）。</summary>
     private static Dictionary<string, Value> Empty() => new(StringComparer.OrdinalIgnoreCase);
 
-    public static string Dir => Path.Combine(AppPaths.DataRoot, "state");
+    public static string Dir => AppPaths.StateDir;
 
     public static string FilePath => Path.Combine(Dir, "action-params.json");
 

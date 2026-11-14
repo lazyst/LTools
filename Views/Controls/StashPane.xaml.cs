@@ -413,11 +413,28 @@ public sealed partial class StashPane : UserControl
             // 以前只有一句「覆盖原动作？」，用户只能「信」；这个对话框就是本来的确认框，
             // 顺带把「来源动作自复制以来被改过」的影响面摆出来（真正的一致性校验仍在 DraftPromoter）。
             var baseAction = ActionRegistry.FindById(meta.BaseActionId ?? "");
+            if (baseAction == null)
+            {
+                // 来源动作已经不在了：没有可比的老版本，硬弹差异框会显示成「整份都是新增」。
+                // 这种情况本来也覆盖不了，直接告诉用户该换「采纳为新动作」。
+                ConfirmDialog.Info(null, "覆盖原动作",
+                    $"草稿的来源动作「{meta.BaseActionId}」已经不存在了，只能「采纳为新动作」。");
+                return;
+            }
+
             var draft = DraftStore.Read(id).Program;
+            if (draft == null)
+            {
+                // program.json 读不出来（被删 / 改坏 / 正在被 agent 写）：不能拿 null 去做差异，
+                // 那会显示成「整份都删掉」，正好是这个确认框要防的误判。
+                ConfirmDialog.Info(null, "覆盖原动作", "这份草稿的内容读不出来（program.json 缺失或损坏），先刷新暂存区再试。");
+                return;
+            }
+
             var diff = new ProgramDiffDialog(null,
                 "覆盖原动作",
-                $"用草稿「{title}」覆盖动作「{baseAction?.Name ?? meta.BaseActionId}」：",
-                baseAction?.Program, draft, "覆盖");
+                $"用草稿「{title}」覆盖动作「{baseAction.Name}」：",
+                baseAction.Program, draft, "覆盖");
             if (diff.ShowDialog() != true) return;
         }
 

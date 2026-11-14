@@ -845,7 +845,7 @@ public partial class StepFormView : UserControl
         foreach (var variable in def.Variables.Where(v => v.Direction == VariableDirection.input))
         {
             var spec = new InputSpec(variable.Key,
-                $"{variable.Key}（{KindLabel(variable.Type)}）", variable.Type);
+                $"{variable.Key}（{ValueKindText.Of(variable.Type)}）", variable.Type);
             var editor = new ValueField
             {
                 Spec = spec,
@@ -909,18 +909,6 @@ public partial class StepFormView : UserControl
 
     private static string Label(SubActionDef def) =>
         string.IsNullOrWhiteSpace(def.Name) ? def.Id : def.Name;
-
-    private static string KindLabel(ValueKind? kind) => kind == null ? "任意" : KindLabel(kind.Value);
-
-    private static string KindLabel(ValueKind kind) => kind switch
-    {
-        ValueKind.text => "文本",
-        ValueKind.number => "数字",
-        ValueKind.@bool => "布尔",
-        ValueKind.list => "列表",
-        ValueKind.@object => "对象",
-        _ => "任意",
-    };
 
     // ============ 输出 ============
 
@@ -1058,7 +1046,7 @@ public partial class StepFormView : UserControl
             VerticalAlignment = VerticalAlignment.Center,
             Child = new TextBlock
             {
-                Text = KindLabel(type),
+                Text = ValueKindText.Of(type),
                 FontSize = 11.5,
                 Foreground = (System.Windows.Media.Brush)FindResource("SecondaryTextBrush"),
             },
@@ -1130,7 +1118,7 @@ public partial class StepFormView : UserControl
             {
                 string from = string.IsNullOrWhiteSpace(existing.Origin)
                     ? "" : "（" + existing.Origin + "）";
-                hint.Text = $"已有变量 {name} 是「{KindLabel(existing.Kind)}」{from}；" +
+                hint.Text = $"已有变量 {name} 是「{ValueKindText.Of(existing.Kind)}」{from}；" +
                             "同名不同类型会互相覆盖，换个名字";
                 hint.Foreground = (System.Windows.Media.Brush)FindResource("DangerBrush");
                 box.BorderBrush = (System.Windows.Media.Brush)FindResource("DangerBorderBrush");
@@ -1167,7 +1155,7 @@ public partial class StepFormView : UserControl
                 string name = info.Name;
                 var item = new MenuItem
                 {
-                    Header = name + "（" + KindLabel(info.Kind) + "）",
+                    Header = name + "（" + ValueKindText.Of(info.Kind) + "）",
                     ToolTip = string.IsNullOrWhiteSpace(info.Origin) ? null : info.Origin,
                 };
                 item.Click += (_, _) =>

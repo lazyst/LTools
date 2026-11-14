@@ -310,7 +310,7 @@ public partial class ValueField : UserControl
         {
             var info = VariableInfos().FirstOrDefault(v =>
                 string.Equals(v.Name, _boundVariable, StringComparison.OrdinalIgnoreCase));
-            string type = info == null ? "" : "（" + KindLabel(info.Kind) + "）";
+            string type = info == null ? "" : "（" + ValueKindText.Of(info.Kind) + "）";
             string from = string.IsNullOrWhiteSpace(info?.Origin) ? "" : " · " + info!.Origin;
             StatusText.Text = $"来自变量 {_boundVariable}{type}{from}";
             return;
@@ -575,7 +575,7 @@ public partial class ValueField : UserControl
         AddHeader("变量", 0);
         foreach (var info in infos)
         {
-            string detail = KindLabel(info.Kind);
+            string detail = ValueKindText.Of(info.Kind);
             if (!string.IsNullOrWhiteSpace(info.Origin)) detail += " · " + info.Origin;
             AddItem("·", info.Name, detail,
                 info.Name + " " + detail,
@@ -1308,15 +1308,6 @@ public partial class ValueField : UserControl
             return Array.Empty<string>();
         }
     }
-
-    private static string KindLabel(ValueKind kind) => kind switch
-    {
-        ValueKind.number => "数字",
-        ValueKind.@bool => "开关",
-        ValueKind.list => "列表",
-        ValueKind.@object => "对象",
-        _ => "文本",
-    };
 
     /// <summary>
     /// 新切到「取值动作单元」时默认选中的动作单元：挑最常用、参数最少的一个，

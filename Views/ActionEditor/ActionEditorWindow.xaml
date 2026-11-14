@@ -170,7 +170,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="242" MinWidth="200"/>
                 <ColumnDefinition Width="*" MinWidth="360"/>
-                <ColumnDefinition x:Name="RightColumn" Width="286" MinWidth="240"/>
+                <ColumnDefinition x:Name="RightColumn" Width="360" MinWidth="240"/>
             </Grid.ColumnDefinitions>
 
             <!-- ============ 左：工具箱 ============ -->

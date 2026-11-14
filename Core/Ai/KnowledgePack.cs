@@ -197,7 +197,7 @@ internal static class KnowledgePack
                 {
                     $"`{input.Key}`",
                     Cell(input.Label),
-                    TypeName(input.Type),
+                    MachineName(input.Type),
                     input.Required ? "是" : "",
                     input.Default == null ? "" : $"`{Cell(input.Default.AsText())}`",
                     VisibilityCell(input, spec),
@@ -219,7 +219,7 @@ internal static class KnowledgePack
                 {
                     $"`{output.Key}`",
                     Cell(output.Label),
-                    TypeName(output.Type),
+                    MachineName(output.Type),
                     $"`{OutputNaming.Suggest(spec.Key, output)}`",
                     Cell(output.Description ?? ""),
                 }) + " |");
@@ -302,14 +302,18 @@ internal static class KnowledgePack
         return hint;
     }
 
-    private static string TypeName(ValueKind? kind) => kind switch
+    /// <summary>
+    /// 给 agent 看的类型名（`text` / `number` / `bool` / …），写进 `units.md` 的参数表。
+    /// 界面上那一套中文名在 <see cref="ValueKindText"/>，两者是给不同读者看的，别合并。
+    /// </summary>
+    private static string MachineName(ValueKind? kind) => kind switch
     {
         ValueKind.text => "text",
         ValueKind.number => "number",
         ValueKind.@bool => "bool",
         ValueKind.list => "list",
         ValueKind.@object => "object",
-        _ => "任意",
+        _ => "any",
     };
 
     private static string Cell(string? text) =>

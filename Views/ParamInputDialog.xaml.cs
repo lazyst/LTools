@@ -92,7 +92,7 @@ public partial class ParamInputDialog : Window
 
             Inputs.Children.Add(new TextBlock
             {
-                Text = $"{caption} · {KindLabel(variable.Type)}",
+                Text = $"{caption} · {ValueKindText.Of(variable.Type)}",
                 Style = (Style)FindResource("SectionLabel"),
                 Margin = new Thickness(0, _rows.Count == 0 ? 0 : 10, 0, 4),
             });
@@ -153,13 +153,4 @@ public partial class ParamInputDialog : Window
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
-
-    private static string KindLabel(ValueKind kind) => kind switch
-    {
-        ValueKind.number => "数字",
-        ValueKind.@bool => "布尔",
-        ValueKind.list => "列表",
-        ValueKind.@object => "对象",
-        _ => "文本",
-    };
 }

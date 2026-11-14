@@ -27,7 +27,7 @@ internal static class Pinyin
         ('a', "按"),
         ('b', "别变板标步本表遍编"),
         ('c', "出拆存次查程错操窗重处"),
-        ('d', "动定打待弹的等读点调"),
+        ('d', "动定打待的等读点调"),
         ('f', "发复放返"),
         ('g', "光果管"),
         ('h', "哈宏回环"),
@@ -60,6 +60,24 @@ internal static class Pinyin
 
     /// <summary>表里有几个字（冒烟用来确认没人把某一行的字删重了）。</summary>
     internal static int Count => Table.Count;
+
+    /// <summary>
+    /// 写了不止一次的字有几个（冒烟用）。一个字母一行，同一个字出现在两行时后一行会**静默覆盖**前一行，
+    /// 搜「那个音」就永远不命中——多音字按所在词只留一个读音，别两行都写。
+    /// </summary>
+    internal static int DuplicateCount
+    {
+        get
+        {
+            var seen = new HashSet<char>();
+            int duplicates = 0;
+            foreach (var (_, chars) in Groups)
+                foreach (char ch in chars)
+                    if (!seen.Add(ch))
+                        duplicates++;
+            return duplicates;
+        }
+    }
 
     /// <summary>这个汉字有没有拼音首字母（冒烟用；正文不需要问）。</summary>
     internal static bool Knows(char ch) => Table.ContainsKey(ch);

@@ -353,7 +353,7 @@ internal static class ActionValidator
 
             string shape = output.Type == ValueKind.list ? "列表" : "对象";
             issues.Add(new ActionIssue($"{path}/out/{output.Key}", label, step.Unit, output.Key,
-                $"输出「{output.Label}」是{shape}，变量「{name}」声明成{KindName(kind)}——" +
+                $"输出「{output.Label}」是{shape}，变量「{name}」声明成{ValueKindText.Of(kind)}——" +
                 $"取用时多半会失败（把变量类型改成列表 / 对象，或改存到文本变量）",
                 IssueSeverity.warning));
         }
@@ -392,15 +392,6 @@ internal static class ActionValidator
 
         return $"「{driver.Label} = {OptionLabels.For(driver, value)}」";
     }
-
-    private static string KindName(ValueKind kind) => kind switch
-    {
-        ValueKind.text => "文本",
-        ValueKind.number => "数字",
-        ValueKind.@bool => "布尔",
-        ValueKind.list => "列表",
-        _ => "对象",
-    };
 
     /// <summary>这个参数是不是由某个选项的 <see cref="InputSpec.OptionParams"/> 管（决定提示怎么写）。</summary>
     private static bool IsGoverned(InputSpec input, UnitSpec spec) =>

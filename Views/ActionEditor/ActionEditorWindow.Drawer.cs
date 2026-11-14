@@ -21,8 +21,9 @@ namespace LTools.Views;
 /// 没有任何 <c>ShowDialog</c>：以前的模态循环会把步骤列表完全遮住，用户不知道自己改的是哪一步。
 /// </para>
 /// <para>
-/// 右栏宽度是「跟着抽屉走」的：打开时 440（够放下参数行），收起回到 286。
-/// 窗口的 <c>MinWidth</c> 也因此按 242 + 360 + 440 提上去了，别再调回 900。
+/// 右栏宽度是「跟着抽屉走」的：打开时 440（够放下参数行），收起回到 360（`VariablesColumnWidth`，
+/// 与「变量」页同宽，切页时中间那栏不跳）。窗口的 <c>MinWidth</c> 1046 是给「左栏 242 + 中栏 360 +
+/// 右栏 440」留的余量，别再调回 900。
 /// </para>
 /// </remarks>
 public partial class ActionEditorWindow
