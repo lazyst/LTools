@@ -108,6 +108,32 @@ public static class WindowSizing
     /// <summary>把 NaN / 无穷（未设置的尺寸）归一成 0。</summary>
     private static double Num(double v) => double.IsNaN(v) || double.IsInfinity(v) ? 0 : v;
 
+    /// <summary>
+    /// 几何正在被状态切换改写（最大化 / 最小化 / 还原的那一拍）：此时的 <c>Left</c> / <c>Top</c> /
+    /// <c>Width</c> / <c>Height</c> 都不是真值，既不能拿来夹取，也不能记成「正常态基准」。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 两种来源：① WPF 的最小化 / 最大化在 <c>StateChanged</c> 之前就把几何改写成「只剩标题栏」
+    /// 的小尺寸（实测 1400×768 → 159×27），由 <see cref="WasNonNormal"/> 记着；
+    /// ② 任务栏收起走的是 Win32 <c>ShowWindow(SW_MINIMIZE)</c>，它先把窗口挪到
+    /// <c>(-32000, -32000)</c> 的哨兵坐标再发 <c>LocationChanged</c>，此刻
+    /// <see cref="Window.WindowState"/> **还是 <c>Normal</c>**、<c>StateChanged</c> 还没来，
+    /// 只有 Win32 的 <c>IsIconic</c> 已经是 true（实测）。
+    /// </para>
+    /// <para>
+    /// **别看 <c>WindowState</c> 就以为挡得住**（它滞后一整拍）；也**别写死 -32000 这类阈值**——
+    /// <c>Left</c> 是 DIP，同一个物理坐标在不同缩放下数值不同（100% 是 -32000、125% 是 -25600），
+    /// 写死必然在某台机器上漏掉。
+    /// </para>
+    /// </remarks>
+    private static bool InStateTransition(Window window)
+    {
+        if (GetWasNonNormal(window)) return true;
+        IntPtr hwnd = new WindowInteropHelper(window).Handle;
+        return hwnd != IntPtr.Zero && Win32.IsIconic(hwnd);
+    }
+
     /// <summary>在 <c>App.OnStartup</c> 里调用一次，之后新建的窗口自动生效。</summary>
     public static void Attach()
     {
@@ -214,12 +240,11 @@ public static class WindowSizing
         if (mode == WindowSizeMode.Overlay) return;
         if (window.WindowState is WindowState.Maximized or WindowState.Minimized) return;
 
-        // 最小化 → 还原的过渡期里不夹取，也不记基准：WPF 还原那一刻先把 Window.Width/Height
-        // 写成「只剩标题栏」的小尺寸（实测 1400×768 → 159×27），而 LocationChanged 比
-        // StateChanged 先到、此时 WindowState 已经是 Normal——照旧夹取会把那个小尺寸当成
-        // 正常态几何存下来，于是「框选截图 / 屏幕取点之后编辑器窗口变小，而且一次比一次小」。
-        // 等 StateChanged 回到 Normal（那里会先 RestoreNormalBounds 再 Clamp）才用真实几何。
-        if (GetWasNonNormal(window)) return;
+        // 状态切换那一拍不夹取、也不记基准：那时几何被临时改成「只剩标题栏」或 -32000 哨兵坐标，
+        // 且 LocationChanged 比 StateChanged 先到。照旧夹一次就会把假值当正常态几何存下来——
+        // 「框选截图 / 屏幕取点之后窗口一次比一次小」与「任务栏收起再打开跑到屏幕左缘」都是这么来的。
+        // 等 StateChanged 回到 Normal（那里先 RestoreNormalBounds 再 Clamp）才用真实几何。
+        if (InStateTransition(window)) return;
 
         Rect work = WorkArea(window);
         if (work.Width < 240 || work.Height < 200) return;   // 拿不到 / 极小屏，别乱动
