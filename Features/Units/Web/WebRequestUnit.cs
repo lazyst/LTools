@@ -26,7 +26,8 @@ public sealed class WebRequestUnit : IStepUnit
     private static readonly string[] Methods = { "get", "post", "put", "patch", "delete" };
     private static readonly string[] Charsets = { "auto", "utf8", "gbk" };
 
-    private static readonly HttpClient Client = CreateClient();
+    /// <summary>共享连接池；<c>web.download</c> 复用同一个客户端，不另建网络栈。</summary>
+    internal static readonly HttpClient Client = CreateClient();
 
     public UnitSpec Spec { get; } = new()
     {
@@ -168,7 +169,8 @@ public sealed class WebRequestUnit : IStepUnit
         ctx.SetOutput("size", Value.FromNumber(size));
     }
 
-    private static HttpResponseMessage Send(HttpRequestMessage request, CancellationTokenSource cts,
+    /// <summary>发请求并统一翻译「停止 / 超时 / 网络错误」；<c>web.download</c> 复用。</summary>
+    internal static HttpResponseMessage Send(HttpRequestMessage request, CancellationTokenSource cts,
         StepContext ctx, int timeoutMs, string url)
     {
         try
@@ -189,7 +191,8 @@ public sealed class WebRequestUnit : IStepUnit
         }
     }
 
-    private static void ApplyHeaders(HttpRequestMessage request, string headers)
+    /// <summary>每行一条「名字: 值」；<c>web.download</c> 复用。</summary>
+    internal static void ApplyHeaders(HttpRequestMessage request, string headers)
     {
         foreach (string raw in headers.Replace("\r\n", "\n").Split('\n'))
         {

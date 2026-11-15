@@ -73,7 +73,9 @@ public sealed class CalcUnit : IStepUnit
             "min" => Math.Min(a, b),
             "max" => Math.Max(a, b),
             "abs" => Math.Abs(a),
-            "round" => Math.Round(a, (int)Math.Clamp(args.Number("digits"), 0, 15)),
+            // 与 data.number 共用同一套舍入规则；"banker" = Math.Round 的默认（ToEven），
+            // 保持 data.calc 原有语义不变，别再各写一份。
+            "round" => NumberUnit.Round(a, (int)Math.Clamp(args.Number("digits"), 0, 15), "banker"),
             _ => throw new ActionException($"未知运算：{op}"),
         };
 

@@ -101,6 +101,7 @@ public static class BuiltInUnits
         registry.Register(new ListUnit());
         registry.Register(new JsonUnit());
         registry.Register(new CalcUnit());
+        registry.Register(new NumberUnit());
         registry.Register(new CryptoEncryptUnit());
         registry.Register(new CryptoDecryptUnit());
         registry.Register(new TimeUnit());
@@ -113,5 +114,6 @@ public static class BuiltInUnits
         // —— 网络 ——
         registry.Register(new OpenUrlUnit());
         registry.Register(new WebRequestUnit());
+        registry.Register(new WebDownloadUnit());
     }
 }

@@ -195,8 +195,9 @@
 
 **S3-0 依赖评审（先于 S3-2 / S3-3）**：二维码库（ZXing.Net / QRCoder）与 HTML 库
 （HtmlAgilityPack / AngleSharp）过 G6，含许可证、包体积、是否需要 csproj 清理 target
-（参照 OpenCvSharp 的 `opencv_videoio_ffmpeg` target 做法）。
-**验收**：结论入 `AGENTS.md` 第三方依赖清单；**未过则对应项降级为「脚本层覆盖」，不阻塞其它项**。
+（参照 OpenCvSharp 的 `opencv_videoio_ffmpeg` target 做法）。结论见 §9.4。
+**验收**：结论入本文 §9.4；`AGENTS.md` 第三方依赖清单在 S3-B 真正加包时同步（S3-A 零新依赖）；
+**未过则对应项降级为「脚本层覆盖」，不阻塞其它项**。
 
 | 批次 | 步骤要点 | 验收标准 |
 |---|---|---|
@@ -458,6 +459,65 @@
 
 ---
 
+### 9.4 S3-A · 依赖评审 + `data.number` / `web.download`（2026-11-15，已实现）
+
+**S3-0 依赖评审结论**（本批只评审、不加包；§3 S3-0 验收口径已同步）
+
+| 包 | 版本 / 许可证 / 体积 | 结论 |
+|---|---|---|
+| ZXing.Net | 0.16.11 · Apache-2.0 · 约 9.96 MB | 生成 + 识别一个包够用；net5.0+ 主包**只含核心类**，写 PNG 需要 binding 包或直接用 `PixelData` 自己编码。S3-B 落地时二选一，不引第二个条码库 |
+| HtmlAgilityPack | 1.13.1 · MIT · 约 1.37 MB | 原生 XPath + 容错 HTML，正好对应 `web.html` 的「命中 / 未命中 / 语法错」三语义；无需清理 target |
+
+两个包都过 G6（许可证宽松、体积可控），**不降级为脚本层**。本批零新依赖，`LTools.csproj` 未变；
+`AGENTS.md` 第三方依赖清单等 S3-B 真正加包时再同步。
+
+**验收**
+
+| 项 | 结果 |
+|---|---|
+| 构建 | `dotnet build -p:NoWin32Manifest=true` **0 错 0 警**（10.83 s） |
+| `--selftest` | **130 例 / 3313 断言全绿**，9438 ms，退出码 0；动作单元 **87** 个（+2） |
+| 新增自检 | `s3a` 组 **6 例 / 102 断言**（`--filter s3a --verbose` 实测）；另 102 条来自 `declaration` 组对 2 个新单元的自动覆盖，合计 +204 断言 |
+| 向量 | 进制：255→FF / FF→255 / 1010₂→10 / 10→1010₂ / 255→377₈ / 15→F；`OptionParams` 收起；三种舍入 + 与 `Math.Round` 逐点一致；千分位 / 百分比；四类前置条件；下载声明；`GuessName` / `SanitizeFileName` / `UniquePath` 纯判定 |
+| 零新依赖 | `data.number` 走 `System.Globalization`，`web.download` 走既有 `HttpClient` / `System.Security.Cryptography`；`LTools.csproj` 未变 |
+| 共用网络栈 | `web.download` 调 `WebRequestUnit.Send`（内部 `HttpCompletionOption.ResponseHeadersRead`）/ `ApplyHeaders` / 共享 `Client`；**不给 `web.request` 加 `operation`**（自检断言），`web.request` 仍是唯一 HTTP 出口 |
+| 舍入规则统一 | `CalcUnit` 的 `round` 改为委托 `NumberUnit.Round(a, digits, "banker")`；banker = `Math.Round` 默认（ToEven），自检逐点比对 `Math.Round`，**`data.calc` 语义不变**。`data.number` 默认 `round45`（中文「四舍五入」= 0.5 进位），另给 `banker` / `truncate` |
+| 下载写盘 | 80 KB 分块流式写 + `IncrementalHash` 算 MD5，每块 `ctx.EnterIteration()` 响应停止；先写 `.ltools-part`、成了才 `File.Move`（`autoRename=false` 即覆盖）；失败 `finally` 删半成品，**不留半个文件** |
+| 失败性质 | 404 → `NotFound`、其它非 2xx → `Precondition`、超时 → `Timeout`、停止 → `ActionAbortedException`；非法地址 / 空目录 → `Precondition` |
+| 声明 / 可见性 | `OptionParams` 让 `base` 只在进制转换、`digits` / `rounding` 只在取整格式化下显示；`Spec.Validate()` 与 `declaration` 组覆盖 87 个单元全过 |
+| 知识包 / 摘要 | 2 个单元进 `StepRegistry.Default`，`units.md` 启动期自动重生；步骤摘要走通用 `StepSummary`，未加特例 |
+
+**落地内容**
+
+| 文件 | 作用 |
+|---|---|
+| `Features/Units/Data/NumberUnit.cs` | `data.number`：进制转换 / 取整 / 千分位 / 百分比；`Compute` / `Round` 纯函数供自检直调 |
+| `Features/Units/Data/CalcUnit.cs` | `round` 委托 `NumberUnit.Round(..., "banker")`，统一舍入规则、语义不变 |
+| `Features/Units/Web/WebDownloadUnit.cs` | `web.download`：流式下载 + MD5 / ETag / 自动改名；`GuessName` / `SanitizeFileName` / `UniquePath` 纯判定 |
+| `Features/Units/Web/WebRequestUnit.cs` | `Client` / `Send` / `ApplyHeaders` 改 `internal static` 供同程序集复用（行为不变） |
+| `Features/Units/BuiltInUnits.cs` | 注册 2 行 |
+| `Core/SelfTest/Suites/S3ASuite.cs` / `SelfTestRunner.cs` | 新增 `s3a` 组 6 例并注册 |
+
+**偏差 / 决策变更**
+
+- **`skipCertVerify` 未实现**：Quicker 的下载步允许跳过证书校验；LTools 共用 `SocketsHttpHandler` 的默认校验，
+  不为下载单独开一个「不安全」旁路（`web.request` 也没有这个开关）。自签名站点走系统信任根，不写进动作单元。
+- **`data.number` 输入合并成一个 `value`**（改了 §3 S3-1 的设计）：Quicker 把「数字」与「进制串」分成两个输入框，
+  本项目参数表单里会出现两个含义重叠的框；这里一个 `value` 通吃（`FF` / `1010` / `1234.5`），输出仍按
+  「数值 + 文本 + hex + binary」四份给。
+- **`timeoutMs` 收进「高级参数」**（与 `web.request` 一致）：它是 HTTP 超时（两值夹 1000–600000），
+  不是等待类单元的「`0` 只判一次 / `-1` 一直等」三值；`param-form-smoke` 的 `[wait]` 只管 5 个等待类单元，
+  不覆盖这里。
+- **`ACTION_SYSTEM.md` 未改**：其 §3.6 / W* 表格是历史批次清单，本批没改变动作系统模型；
+  新单元事实记在本文 §9.4，权威来源是 `StepRegistry.Default`。
+- **真机点验仍欠**（G3 / G4）：本批为无头构建，自检不碰网络；「大文件流式不 OOM」「按停止热键立即中断」
+  「404 / 超时 / 重名自动改名 / 覆盖」「`etag` / `md5` 与实际文件一致」待用户真机点一遍。
+  S1 / S2 欠的真机点验也仍挂着。
+- 首轮自检发现 `Path.GetFileName("a:b.txt")` 在 Windows 把 `a:` 当盘符、只留 `b.txt`；
+  `SanitizeFileName` 改为**先换冒号再去目录**，已补断言「非法字符换下划线」守着。
+
+---
+
 （后续批次按上方模板追加。）
 
 ---
@@ -469,7 +529,8 @@
 | S0 基线与评审 | 实测完成、评审通过（见 §9.1）；版本 / 术语建议值待确认 |
 | S1 `script.csharp` | **已实现，见 §9.2**；真机点验（G3 / G4）待做 |
 | S2 P0（2 项） | **已实现，见 §9.3**；真机点验待做 |
-| S3 P1（5 项） | 下一步（未开始） |
+| S3-A P1（依赖评审 + `data.number` / `web.download`） | **已实现，见 §9.4**；真机点验待做 |
+| S3-B P1（二维码 / HTML / UIA，3 项） | 下一步（未开始）；S3-0 依赖评审已过，见 §9.4 |
 | S4 P2（触发式） | 未开始 |
 
 > 本文只给规划与验收口径，**不包含已批准的实现排期**；提交按 `AGENTS.md` 走
