@@ -691,8 +691,9 @@ HAP 的非法 XPath 抛 `System.Xml.XPath.XPathException`（"Expression must eva
   `710a7d9` / `c644b17`；**无 `git push` / tag / merge / release**。
 - 回归门禁：构建 0 警 + `--selftest` **136 例 / 3547 断言** + 动作单元 **91**；
   发布包 **356,767,867 B / 639 文件**。
-- **未做**：真机点验（§11.3）、S4 任何代码、两份调研文档
-  `docs/QUICKER_UNITS_SURVEY.md` / `QUICKER_UNITS_ADOPTION.md` 的版本纳入（仍未跟踪）。
+- **未做**：真机点验（§11.3）、S4 任何代码。
+- 两份调研文档 `docs/QUICKER_UNITS_SURVEY.md` / `QUICKER_UNITS_ADOPTION.md` 收口时仍未跟踪，
+  随后已单独纳入版本（见后续提交）。
 - 下一步只有两种触发：① 用户点 §11.2 的某一项；② 用户回 §11.3 的点验结果。
 
 > 本文只给规划与验收口径，**不包含已批准的实现排期**；提交按 `AGENTS.md` 走
