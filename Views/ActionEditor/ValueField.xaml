@@ -23,11 +23,17 @@
                      PreviewMouseLeftButtonDown="Box_PreviewMouseLeftButtonDown"/>
 
             <!-- 一个入口：变量 / 选择文件·窗口·进程 / 屏幕区域·取点·取色 / 从列表选 / 取值动作单元 -->
-            <Button x:Name="SourceButton" Grid.Column="1" Content="▾"
+            <Button x:Name="SourceButton" Grid.Column="1"
                     Style="{StaticResource BtnGhost}" Width="30" MinHeight="30"
                     Padding="0" Margin="6,0,0,0" Focusable="False"
                     Click="Source_Click"
-                    ToolTip="这个值从哪来：变量、选择文件 / 窗口 / 进程、屏幕区域 / 取点 / 取色、从列表选、取值动作单元"/>
+                    ToolTip="这个值从哪来：变量、选择文件 / 窗口 / 进程、屏幕区域 / 取点 / 取色、从列表选、取值动作单元">
+                <!-- 与下拉框同一条折线（ChevronDownGeometry），不是正文里的 ▾ 字符 -->
+                <Path Data="{StaticResource ChevronDownGeometry}"
+                      Stroke="{StaticResource SecondaryTextBrush}" StrokeThickness="1.4"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Button>
         </Grid>
 
         <!-- 图片缩略图：唯一多一行的参数形态，落在输入行下方；只读预览，点一下打开来源 -->

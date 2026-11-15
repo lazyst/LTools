@@ -117,6 +117,11 @@
     <CornerRadius x:Key="CornerMd">6</CornerRadius>
     <CornerRadius x:Key="CornerLg">8</CornerRadius>
 
+    <!-- 下拉折线箭头（8×4 的 V）**只有这一份**：ComboBox、参数框的「▾ 来源」、
+         输出行的「换成已有变量」三处都用它。别再写 Content="▾"——正文里的那个字符
+         在 UI 字体下又小又偏，和框里的箭头也不像一家人。描边跟随各处的前景色。 -->
+    <Geometry x:Key="ChevronDownGeometry">M 0,0 L 4,4 L 8,0</Geometry>
+
     <!-- 细线分隔 -->
     <Style x:Key="Divider" TargetType="Border">
         <Setter Property="Background" Value="{StaticResource BorderBrush}"/>
@@ -566,7 +571,7 @@
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="{StaticResource CornerSm}"
                 SnapsToDevicePixels="True">
             <Path x:Name="arrow" HorizontalAlignment="Right" VerticalAlignment="Center"
-                  Margin="0,0,10,0" Data="M 0,0 L 4,4 L 8,0"
+                  Margin="0,0,10,0" Data="{StaticResource ChevronDownGeometry}"
                   Stroke="{StaticResource SecondaryTextBrush}" StrokeThickness="1.4"
                   StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
         </Border>

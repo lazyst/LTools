@@ -71,9 +71,19 @@ public partial class StepFormView
         };
 
         // 换成一个已有的变量：想复用上一步的结果时不用去变量表里抄名字。
+        // 图标与下拉框同一条折线（ChevronDownGeometry），不是正文里的 ▾ 字符。
         var pick = new Button
         {
-            Content = "▾",
+            Content = new System.Windows.Shapes.Path
+            {
+                Data = (System.Windows.Media.Geometry)FindResource("ChevronDownGeometry"),
+                Stroke = (System.Windows.Media.Brush)FindResource("SecondaryTextBrush"),
+                StrokeThickness = 1.4,
+                StrokeStartLineCap = System.Windows.Media.PenLineCap.Round,
+                StrokeEndLineCap = System.Windows.Media.PenLineCap.Round,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
             Style = (Style)FindResource("BtnGhost"),
             Width = 26,
             MinHeight = 28,
