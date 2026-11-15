@@ -33,6 +33,11 @@
     <!-- C# 脚本动作单元（script.csharp）：进程内 Roslyn 脚本层，MIT，net10.0 兼容。
          固定引用集见 Features/Script/CSharpRunner.cs，不开放任意 AddReferences。 -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
+    <!-- 二维码生成 / 识别（image.qrcodeGen / image.qrcodeRead）：net5.0+ 主包只含核心类，
+         PNG 由本项目自己画 / 存（ImageLibrary），不引 ZXing.Net.Bindings.* 的 System.Drawing 绑定包。 -->
+    <PackageReference Include="ZXing.Net" Version="0.16.11" />
+    <!-- HTML DOM + XPath（web.html）：容错 HTML 解析，MIT；与 web.request 串成「请求 → 提取」两步。 -->
+    <PackageReference Include="HtmlAgilityPack" Version="1.13.1" />
   </ItemGroup>
 
   <ItemGroup>

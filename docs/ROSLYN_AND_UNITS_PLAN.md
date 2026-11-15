@@ -195,17 +195,17 @@
 
 **S3-0 依赖评审（先于 S3-2 / S3-3）**：二维码库（ZXing.Net / QRCoder）与 HTML 库
 （HtmlAgilityPack / AngleSharp）过 G6，含许可证、包体积、是否需要 csproj 清理 target
-（参照 OpenCvSharp 的 `opencv_videoio_ffmpeg` target 做法）。结论见 §9.4。
-**验收**：结论入本文 §9.4；`AGENTS.md` 第三方依赖清单在 S3-B 真正加包时同步（S3-A 零新依赖）；
-**未过则对应项降级为「脚本层覆盖」，不阻塞其它项**。
+（参照 OpenCvSharp 的 `opencv_videoio_ffmpeg` target 做法）。评审结论见 §9.4、落地实测见 §9.5。
+**验收**：结论入本文 §9.4 / §9.5；`AGENTS.md` 第三方依赖清单已随 S3-B 加包同步；
+**未过则对应项降级为「脚本层覆盖」，不阻塞其它项**（两个包都过 G6，未降级）。
 
 | 批次 | 步骤要点 | 验收标准 |
 |---|---|---|
 | S3-1 `data.number` | 纯函数零依赖；`OptionParams` 表达「哪个 operation 显示哪些参数」；`rounding` 规则与 `data.calc.round` 统一 | `--selftest` 进制 / 取整 / 千分位 / 百分比向量全绿；两处 `round` 行为一致；不新建分类，归「文本与数据」 |
-| S3-2 `image.qrcodeGen` / `image.qrcodeRead` | 拆两个单元；生成输出 png 路径并传 `ctx.ResourceRoot`；识别 `found = false` 不报错、**不加在线识别兜底**；在 `ImageLibrary.CollectAction` / `ProgramWalker` 按参数名接上引用回收 | 生成 → 识别往返成功；**删动作后生成图 / 模板图不成孤儿**；`units_list` 两条目 |
+| S3-2 `image.qrcodeGen` / `image.qrcodeRead` | 拆两个单元；生成输出 png 路径，**识别侧**把 `ctx.ResourceRoot` 传给 `ImageLibrary.Resolve`；识别 `found = false` 不报错、**不加在线识别兜底**；入参命名 `image`，`ImageLibrary.CollectAction` 按 `ProgramWalker.LiteralText(step,"image")` 自动覆盖引用回收（零改动） | 生成 → 识别往返成功；**删动作后生成图不成孤儿**（生成图落 `cache/screenshots/`，运行期清空）；`units_list` 两条目 |
 | S3-3 `web.html` | 复用 `web.request` 的文本输出、**不给 `web.request` 加 `operation`**（保持「唯一 HTTP 出口」）；输出 `value` / `list` / `count` / `found` | XPath 命中 / 未命中 / 语法错三语义分明（找不到 `found = false`、语法错才抛）；与 `web.request` 串成两步 |
 | S3-4 `web.download` | 复用 `web.request` 的静态 `HttpClient` + `HttpCompletionOption.ResponseHeadersRead` + 与 `ctx.Token` 串联的令牌；失败按 HTTP / 超时标 `ActionErrors` 性质 | 大文件流式不 OOM、按停止立即中断；`etag` / `md5` / `autoRename` 输出正确；不另建网络栈 |
-| S3-5 `ui.uia` | 先只做 `Name` + `AutomationId` + 深度限制精确匹配，XPath 留到有真实需求再加；复用 `Core/Ai/AiUia.cs` / `Views/ScreenSnapTargets` / `Features/Flow/TextLocator`；MTA 直调**不包 `StaRunner`**；`ctx.Wait`；找不到按 `ActionErrors.NotFound` 标性质 | 真机点一次按钮；`timeoutMs` 可见；找不到按性质标且能配 `RetryOn = notFound`；`ltools_uia_tree` 不受影响 |
+| S3-5 `ui.uia` | 先只做 `Name` + `AutomationId` + 深度限制精确匹配，XPath / `expand` / `invoke` / `toggle` 留到有真实需求再加；复用 `Core/Ai/AiUia.cs` 的共享 `UIA3Automation` 与限深 / 限量口径、`Features/MouseOps`；MTA 直调**不包 `StaRunner`**；`ctx.EnterIteration` + `ctx.Wait`；找不到按 `ActionErrors.NotFound` 标性质 | 真机点一次按钮；`timeoutMs` 可见且三值齐全；找不到按性质标且能配 `RetryOn = notFound`；`ltools_uia_tree` 不受影响 |
 
 **每批出口**（沿用 `QUICKER_UNITS_ADOPTION.md` §8 原话）：
 新增单元 → 注册 → 自检断言 → 构建 0 警 → `--selftest` 全绿 → 真机点一遍。
@@ -518,6 +518,92 @@
 
 ---
 
+### 9.5 S3-B · 二维码 / HTML 提取 / UIA 控件操作（2026-11-15，已实现）
+
+**依赖落地实测（修正 §9.4 的体积口径）**
+
+§9.4 评审表里的 9.96 MB / 1.37 MB 是 **NuGet 包体积（含多个 TFM 的 dll）**，不是本项目输出增量。
+`%TEMP%\opencode\zxing-probe` 探针 + 实际构建 / 发布后的数字：
+
+| 项 | 实测 |
+|---|---|
+| `zxing.dll` | **516,096 B**（主包 373 个类型：`QRCodeWriter` / `MultiFormatReader` / `RGBLuminanceSource` / `HybridBinarizer` / `BitMatrix` / `ErrorCorrectionLevel` 全在） |
+| `HtmlAgilityPack.dll` | **170,496 B** |
+| 卫星资源 / 原生库 | **0**（`*.resources.dll` 无新增）→ **不需要加 csproj 清理 target** |
+| `publish` | `dotnet publish LTools.csproj -c Release -r win-x64 --self-contained true -o publish` → **356,767,867 B / 639 文件**（S1 基线 356,007,204 B / 633 → **+760,663 B / +6 文件**） |
+
+ZXing 关键坑（探针实测）：`RGBLuminanceSource.BitmapFormat` 是**嵌套枚举** `ZXing.RGBLuminanceSource+BitmapFormat`；
+3 参构造 `RGBLuminanceSource(byte[],w,h)` 按 24bpp 解释、喂 32bpp 数据 `decode` 返回 `NULL`，
+**必须显式传 `BGRA32`**（= 8）。中文二维码在 `CHARACTER_SET=UTF-8` + `POSSIBLE_FORMATS` +
+`TRY_HARDER` 下往返 `MATCH`；空白图 `decode` 返回 `NULL`（正好对应「找不到不报错」）；
+`MultiFormatReader` / `QRCodeReader` **没有 `decodeMultiple`**（反射确认），只有 `decode` / `decodeWithState`。
+HAP 的非法 XPath 抛 `System.Xml.XPath.XPathException`（"Expression must evaluate to a node-set."）。
+
+**验收**
+
+| 项 | 结果 |
+|---|---|
+| 构建 | `dotnet build -p:NoWin32Manifest=true` **0 错 0 警**（9.90 s） |
+| `--selftest` | **136 例 / 3547 断言全绿**，9743 ms，退出码 0；动作单元 **91** 个（+4） |
+| 新增自检 | `s3b` 组 **6 例 / 77 断言**（`--filter s3b --verbose` 实测 255 ms）；另 157 条来自 `declaration` 等组对 4 个新单元的自动覆盖，合计 +234 断言 |
+| 向量 | 二维码英文 / 中文往返（内存位图，不落盘）、空白图识别不到、四种纠错等级、声明与 `image` 参数名；HTML 命中 / 未命中 / 属性 / `&amp;` 实体解码 / 非法 XPath 抛 `XPathException` / 空 XPath 抛 `Precondition`；`web.html` 与 `ui.uia` 声明、`OptionParams` 收起 `value`、`timeoutMs` 可见、窗口点选器入口；Pinyin 4 个名称首字母串 + `DuplicateCount == 0` |
+| 拆开而非三合一 | 4 个独立单元，**参数里没有 `operation` 混不同目标对象**；`Spec.Validate()` 与 `declaration` 组覆盖 91 个单元全过 |
+| 引用回收零改动 | `image.qrcodeRead` 的入参就叫 `image`，`ImageLibrary.CollectAction` / `CollectGarbage` / `OrphanFiles` 按 `ProgramWalker.LiteralText(step,"image")` 全量扫描，删动作后引用的图自动按引用回收 |
+| `ctx.ResourceRoot` | 识别侧 `ImageLibrary.Resolve(ScreenArgs.ImagePath(args), ctx.ResourceRoot)`，草稿 `files/x.png` 先在草稿资源根找、正式动作先在 `actions/<id>/files/` 找 |
+| 唯一 HTTP 出口 | `web.html` 只吃「HTTP 请求」的 `${response}` 文本，`web.request` 未加 `operation`（自检断言）；两步串起来 |
+| UIA 复用 | `AiUia.Uia` 提为 `internal` 共享 `UIA3Automation`，`ui.uia` MTA 直调、不包 `StaRunner`；限深 12 / 限量 1000 / 每层 200 / 4 秒预算，`ctx.EnterIteration()` + `ctx.Wait`；`ltools_uia_tree` 语义不变 |
+| 失败语义 | `web.html` 语法错 → `Precondition`，未命中 → `found=false`；`ui.uia` 超时 → `NotFound`（可配 `RetryOn=notFound`）、停止 → `ActionAbortedException`；`image.qrcodeRead` 找不到 → `found=false`，文件不存在 → `NotFound` |
+| 知识包 / 摘要 / Pinyin | 4 个单元进 `StepRegistry.Default`，`units.md` 启动期自动重生；补「生 / 成 / 二 / 维 / 控」5 字与 `e` 行，自检断言首字母串 |
+
+**落地内容**
+
+| 文件 | 作用 |
+|---|---|
+| `LTools.csproj` | 加 `ZXing.Net` 0.16.11 / `HtmlAgilityPack` 1.13.1 两行；**无清理 target**（实测无多余文件） |
+| `Features/Units/Screen/QrCodeAlgorithms.cs` | 两个二维码单元共用纯计算：`BitMatrix` → GDI+ `Bitmap`（BGRA32）、`Bitmap` → `RGBLuminanceSource` → 文本；`Generate` / `Read` / `LevelOf` 供自检直调 |
+| `Features/Units/Screen/QrCodeGenUnit.cs` / `QrCodeReadUnit.cs` | `image.qrcodeGen` / `image.qrcodeRead` 两个独立单元 |
+| `Features/Units/Web/HtmlUnit.cs` | `web.html`；`Extract` 纯函数供执行与自检共用 |
+| `Features/Units/Ui/UiaUnit.cs` | `ui.uia`：BFS 限深 / 限量精确匹配 + `MouseOps` / `ValuePattern` 操作 |
+| `Core/Ai/AiUia.cs` | `Uia` 提为 `internal` 共享实例（行为不变） |
+| `Features/Units/BuiltInUnits.cs` | 注册 4 行（界面 / 屏幕 / 网络三段） |
+| `Core/Pinyin.cs` | 补新单元名称用字，注释里写死的「160 个」改掉 |
+| `Core/SelfTest/Suites/S3BSuite.cs` / `SelfTestRunner.cs` | 新增 `s3b` 组 6 例并注册 |
+| `AGENTS.md` | 第三方依赖清单同步（G6） |
+| `docs/ROSLYN_AND_UNITS_PLAN.md` | §9.5 + §3 S3-0 / S3-2 / S3-5 / §10 同步 |
+
+**偏差 / 决策变更**
+
+- **多码识别未做**：ZXing.Net 0.16.11 没有 `decodeMultiple`（探针反射确认）。`image.qrcodeRead` 仍按采纳文档
+  声明 `list` / `count`，但本批最多 1 项；单元 `<remarks>` 与本节都写明，不假装支持。
+- **不引 `ZXing.Net.Bindings.*`**：主包只含核心类，`BitMatrix` 画 png、读图都走 `QrCodeAlgorithms`
+  的 GDI+ 位图（项目已有 `System.Drawing`），避开 System.Drawing.Common / SkiaSharp 绑定包与额外 dll。
+- **`image.qrcodeGen` 本批不做 `darkColor` / `lightColor` / `icon`**（采纳文档 §5.3 列过）：黑白二维码
+  够日常用，颜色串与中心图标的叠加规则要另定，留到有真实需求；参数表因此只有
+  `text` / `size` / `margin` / `level` / `target`。
+- **生成图落 `cache/screenshots/`**（`ImageLibrary.SaveCapture`）而非 `resources/images/`：照采纳文档
+  §5.3「按运行期截图生命周期处理」，下次运行开始 / 启动整体清空、不进备份；删动作后不留孤儿。
+  只有用户填了 `target` 才写到指定路径。这与「截图」步骤的输出共用同一套生命周期，没有第二套。
+- **`web.html` 不设 `mode` / `encoding`**：`value` = 第一个命中、`list` = 全部命中，少一个语义分叉；
+  传进来的已经是解码好的文本。三语义仍是「未命中 `found=false` / 语法错 `Precondition` / 命中」。
+- **`ui.uia` 的 action 收窄**为 `click` / `doubleClick` / `rightClick` / `getText` / `setValue` / `focus`；
+  采纳文档 §5.6 列的 `expand` / `invoke` / `toggle` 与 XPath 定位留到有真实需求（计划 §3 S3-5 本就要求
+  「先只做 Name + AutomationId + 深度限制精确匹配」）。`action` 是「对同一个控件做的不同操作」——
+  目标一致、失败语义一致（找不到即失败），与 `file.open` 三合一退役时「混三种打开目标」不是一回事。
+- **干跑**：`ui.uia` 是 `UnitKind.action`，按框架默认在 MCP `dryRun` **整步跳过**（不注入键鼠）；
+  `image.qrcodeRead` / `web.html` 是 `pure`，干跑照跑（纯内存计算，安全）。
+- **`ACTION_SYSTEM.md` / `LTools.example.json` 未改**：前者 §3.6 / W* 表格是历史批次清单，本批没改
+  动作系统模型；后者无新配置字段。新单元事实记在本文 §9.5，权威来源是 `StepRegistry.Default`。
+- **未新增术语**：「二维码 / 控件 / XPath」是通用技术词，不是 LTools 专有概念，也没有第二种叫法，
+  不进 `CONTEXT.md`（沿用 S2「哈希 / 加解密」、S3-A「进制 / 下载」同一判断）。若要把「控件」升格为
+  正式术语，再补 `CONTEXT.md` → `AGENTS.md` → 代码标识符。
+- **真机点验仍欠**（G3 / G4）：本批为无头构建，自检不碰真实 UIA 树 / 网络 / 磁盘图片路径；
+  「真机点一次按钮」「落盘路径的生成 → 识别往返」「删动作后生成图不成孤儿」「`ui.uia` 超时
+  `NotFound` + `RetryOn=notFound`」「`ltools_uia_tree` 不受影响」待用户点一遍。
+  S1 / S2 / S3-A 欠的真机点验也仍挂着。
+- 首轮构建抓到 `ControlType` 是**值类型**、不能用 `?.`（CS0023），照 `AiUia` 改成 `.ToString()`。
+
+---
+
 （后续批次按上方模板追加。）
 
 ---
@@ -530,8 +616,8 @@
 | S1 `script.csharp` | **已实现，见 §9.2**；真机点验（G3 / G4）待做 |
 | S2 P0（2 项） | **已实现，见 §9.3**；真机点验待做 |
 | S3-A P1（依赖评审 + `data.number` / `web.download`） | **已实现，见 §9.4**；真机点验待做 |
-| S3-B P1（二维码 / HTML / UIA，3 项） | 下一步（未开始）；S3-0 依赖评审已过，见 §9.4 |
-| S4 P2（触发式） | 未开始 |
+| S3-B P1（二维码 / HTML / UIA，4 个单元） | **已实现，见 §9.5**；真机点验待做 |
+| S4 P2（触发式） | 下一步：按真实需求单项触发，默认不产生代码 |
 
 > 本文只给规划与验收口径，**不包含已批准的实现排期**；提交按 `AGENTS.md` 走
 > 「改动清单 + 提交信息待批准」，`git push` / 打 tag 各自单独批准。

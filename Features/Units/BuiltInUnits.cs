@@ -29,6 +29,7 @@ public static class BuiltInUnits
         registry.Register(new ConfirmUnit());
         registry.Register(new SelectUnit());
         registry.Register(new TextWindowUnit());
+        registry.Register(new UiaUnit());
         registry.Register(new ClipboardUnit());
         registry.Register(new ClipboardHistoryUnit());
         registry.Register(new ClipboardClearUnit());
@@ -94,6 +95,8 @@ public static class BuiltInUnits
         registry.Register(new FindTextUnit());
         registry.Register(new PixelUnit());
         registry.Register(new ImageTransformUnit());
+        registry.Register(new QrCodeGenUnit());
+        registry.Register(new QrCodeReadUnit());
 
         // —— 数据 ——
         registry.Register(new NoteWriteUnit());
@@ -115,5 +118,6 @@ public static class BuiltInUnits
         registry.Register(new OpenUrlUnit());
         registry.Register(new WebRequestUnit());
         registry.Register(new WebDownloadUnit());
+        registry.Register(new HtmlUnit());
     }
 }

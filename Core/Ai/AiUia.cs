@@ -44,6 +44,12 @@ internal static class AiUia
     });
 
     /// <summary>
+    /// 共享的 UIA3 实例：<c>ui.uia</c> 动作单元复用，避免各建一条 COM 连接。
+    /// <c>ltools_uia_tree</c> 本身只读，多一个消费者不改变它的语义。
+    /// </summary>
+    internal static UIA3Automation Uia => Automation.Value;
+
+    /// <summary>
     /// 取一个窗口的控件树快照。不传窗口名就用前台窗口；找不到匹配的窗口也退回前台窗口（回执里写明）。
     /// </summary>
     /// <param name="title">窗口标题包含（空 = 不限）。</param>
