@@ -12,7 +12,7 @@ namespace LTools.Views;
 /// </remarks>
 public partial class ProgramDiffDialog : Window
 {
-    /// <param name="owner">宿主窗口；空 = 置顶（面板已关 / 无窗口上下文时用，照 <c>ActionEditor.Show</c> 的约定）。</param>
+    /// <param name="owner">宿主窗口；空 = 置顶（面板已关 / 无窗口上下文时用，规则同 <c>ConfirmDialog.ShouldTopmost</c>：无 Owner 才置顶）。</param>
     /// <param name="title">窗标题。</param>
     /// <param name="summary">一句话说明这次对比的是哪两份内容。</param>
     /// <param name="okText">确认按钮文案（「覆盖」/「恢复此版本」）。</param>
