@@ -192,6 +192,7 @@ public partial class ActionEditorWindow : Window
         Closed += (_, _) =>
         {
             _toolboxSearchDebounce.Cancel();
+            StopCategoryNavTimers();   // 别让「等布局再滚」的一次性计时器去碰已经关掉的窗口
             _traceFlush?.Stop();
             _autosaveTimer?.Stop();
             if (_running) AutomationRunner.Stop();

@@ -16,6 +16,53 @@
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
+        <!-- 分类导航：左栏最左缘的一列小图标。点一下把对应分类滚到视图顶部（只定位，不切页）；
+             第一项「全部分类」就是默认平铺页。高亮是「你在哪一段」，不改内容、不写盘。 -->
+        <Style x:Key="CategoryNavBtn" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Margin" Value="3,1,3,1"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{StaticResource SubtleFocusVisual}"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="200"/>
+            <Setter Property="ToolTipService.Placement" Value="Right"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" CornerRadius="{StaticResource CornerSm}"
+                                Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
+                                SnapsToDevicePixels="True">
+                            <Grid>
+                                <!-- 左缘 3px 主色竖条：选中态（压在边框上，不挤字形） -->
+                                <Border x:Name="accent" Width="3" HorizontalAlignment="Left"
+                                        CornerRadius="1.5" Margin="-1,4,0,4"
+                                        Background="Transparent" IsHitTestVisible="False"/>
+                                <TextBlock x:Name="glyph" Text="{TemplateBinding Content}"
+                                           FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                           Foreground="{TemplateBinding Foreground}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{StaticResource HoverBgBrush}"/>
+                                <Setter TargetName="glyph" Property="Foreground" Value="{StaticResource TextBrush}"/>
+                            </Trigger>
+                            <!-- 当前分类：浅底 + 主色竖条 + 字形加深（放在悬停之后，悬停当前项不会变淡） -->
+                            <Trigger Property="Tag" Value="Active">
+                                <Setter TargetName="bd" Property="Background" Value="{StaticResource PressedBgBrush}"/>
+                                <Setter TargetName="glyph" Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                <Setter TargetName="accent" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 步骤行：缩进表示嵌套；标记行（否则 / 结束如果 / 结束循环 / 空分支）不可编辑。 -->
         <DataTemplate x:Key="StepRowTemplate">
             <Grid>
@@ -200,38 +247,59 @@
                 <ColumnDefinition x:Name="RightColumn" Width="360" MinWidth="240"/>
             </Grid.ColumnDefinitions>
 
-            <!-- ============ 左：工具箱 ============ -->
+            <!-- ============ 左：分类导航 + 工具箱 ============ -->
             <Border Grid.Column="0" Background="{StaticResource SurfaceAltBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
-                <DockPanel Margin="0,8,0,8">
-                    <Grid DockPanel.Dock="Top" Margin="12,0,12,4">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="工具箱" VerticalAlignment="Center"
-                                   ToolTip="点一下填参数 · 拖到步骤里插入 · 右键直接添加"/>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button x:Name="ExpandAllButton" Content="全部展开" Style="{StaticResource BtnGhost}"
-                                    FontSize="11" Padding="4,0" MinHeight="20" MinWidth="0"
-                                    ToolTip="展开所有分类" Click="ExpandAllGroups_Click"/>
-                            <Button x:Name="CollapseAllButton" Content="全部收起" Style="{StaticResource BtnGhost}"
-                                    FontSize="11" Padding="4,0" MinHeight="20" MinWidth="0" Margin="2,0,0,0"
-                                    ToolTip="收起所有分类" Click="CollapseAllGroups_Click"/>
-                        </StackPanel>
-                    </Grid>
-                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintLabel}"
-                               Text="点一下填参数 · 拖进步骤 · 右键添加" Margin="12,0,12,6"
-                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                               ToolTip="点一下动作单元填参数插入 · 拖到步骤列表里插入 · 右键动作单元还有「直接添加 / 添加到末尾」"/>
-                    <TextBox DockPanel.Dock="Top" x:Name="SearchBox" Margin="12,0,12,8"
-                             MinHeight="30" TextChanged="SearchBox_TextChanged"
-                              controls:TextBoxPlaceholder.Text="搜索动作单元（名称 / 键 / 拼音首字母）…"
-                             ToolTip="按名称 / 分类 / 动作单元键搜索，也可以打拼音首字母：jt = 截图、wbcl = 文本处理"/>
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="Toolbox" Margin="10,0,8,0"/>
-                    </ScrollViewer>
-                </DockPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <!-- 分类导航约 34px：正文仍是 242 − 34 = 208px，窗口拖到最窄时也不挤没 -->
+                        <ColumnDefinition Width="34"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 分类导航：一列小图标，点一下把对应分类滚到视图顶部（只定位，不切页、不筛选）。
+                         Hidden：条目放不下时自身可滚（滚轮），但不显示滚动条把 28px 图标挤窄。 -->
+                    <Border Grid.Column="0" Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+                        <ScrollViewer x:Name="CategoryNavScroll" VerticalScrollBarVisibility="Hidden"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="CategoryNavHost" Margin="0,8,0,8"/>
+                        </ScrollViewer>
+                    </Border>
+
+                    <DockPanel Grid.Column="1" Margin="0,8,0,8">
+                        <Grid DockPanel.Dock="Top" Margin="8,0,8,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource SectionLabel}" Text="工具箱" VerticalAlignment="Center"
+                                       ToolTip="点一下填参数 · 拖到步骤里插入 · 右键直接添加"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button x:Name="ExpandAllButton" Content="全部展开" Style="{StaticResource BtnGhost}"
+                                        FontSize="11" Padding="4,0" MinHeight="20" MinWidth="0"
+                                        ToolTip="展开所有分类" Click="ExpandAllGroups_Click"/>
+                                <Button x:Name="CollapseAllButton" Content="全部收起" Style="{StaticResource BtnGhost}"
+                                        FontSize="11" Padding="4,0" MinHeight="20" MinWidth="0" Margin="2,0,0,0"
+                                        ToolTip="收起所有分类" Click="CollapseAllGroups_Click"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintLabel}"
+                                   Text="点一下填参数 · 拖进步骤 · 右键添加" Margin="8,0,8,6"
+                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                   ToolTip="点一下动作单元填参数插入 · 拖到步骤列表里插入 · 右键动作单元还有「直接添加 / 添加到末尾」"/>
+                        <TextBox DockPanel.Dock="Top" x:Name="SearchBox" Margin="8,0,8,8"
+                                 MinHeight="30" TextChanged="SearchBox_TextChanged"
+                                  controls:TextBoxPlaceholder.Text="搜索动作单元（名称 / 键 / 拼音首字母）…"
+                                 ToolTip="按名称 / 分类 / 动作单元键搜索，也可以打拼音首字母：jt = 截图、wbcl = 文本处理"/>
+                        <!-- 滚动时同步分类导航高亮；视口变了重算末尾留白（让最后一个分类也能滚到顶部） -->
+                        <ScrollViewer x:Name="ToolboxScroll" VerticalScrollBarVisibility="Auto"
+                                      ScrollChanged="ToolboxScroll_ScrollChanged"
+                                      SizeChanged="ToolboxScroll_SizeChanged">
+                            <StackPanel x:Name="Toolbox" Margin="6,0,6,0"/>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Grid>
             </Border>
 
             <!-- ============ 中：步骤 ============ -->

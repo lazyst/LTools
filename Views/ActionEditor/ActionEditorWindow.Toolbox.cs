@@ -24,6 +24,12 @@ namespace LTools.Views;
 /// 搜什么就出什么），分类自动全展开。
 /// </para>
 /// <para>
+/// 左缘那一列小图标是**分类导航**（<see cref="CategoryNav"/>，实现在
+/// <c>ActionEditorWindow.CategoryNav.cs</c>）：只把对应分类滚到视图顶部，**不切页、不筛选**；
+/// 第一项「全部分类」就是这里的平铺页。每次重建都把分类标题登记成锚点，
+/// <see cref="FinishToolboxBuild"/> 负责留白 / 重建图标条 / 同步高亮。
+/// </para>
+/// <para>
 /// 收藏与最近都只写 <c>configs/ui.json</c>（<see cref="UiStore"/>），进程内用静态集合缓存一份——
 /// 换动作编辑、重开编辑器都沿用，不需要每次都读配置。
 /// </para>
@@ -243,6 +249,7 @@ public partial class ActionEditorWindow
         string query = Pinyin.NormalizeQuery(SearchBox?.Text);
         bool searching = query.Length > 0;
         Toolbox.Children.Clear();
+        _categoryAnchors.Clear();   // 分类导航的锚点：左栏重建了，标题元素也换了
 
         // 「全部展开 / 全部收起」：搜索时分类一定全展开，按钮没有意义
         List<string> categories = ToolboxCategories();
@@ -275,19 +282,25 @@ public partial class ActionEditorWindow
                 Style = (Style)FindResource("HintLabel"),
                 Margin = new Thickness(2, 8, 0, 0),
             });
-            return;
         }
-
-        foreach (var group in groups)
+        else
         {
-            // 搜索时一律展开：搜到了却被折叠挡住，等于没搜到
-            bool collapsed = !searching && CollapsedToolboxGroups.Contains(group.Key);
-            Toolbox.Children.Add(BuildToolboxHeader(group.Key, group.Count(), collapsed, searching));
-            if (collapsed) continue;
+            foreach (var group in groups)
+            {
+                // 搜索时一律展开：搜到了却被折叠挡住，等于没搜到
+                bool collapsed = !searching && CollapsedToolboxGroups.Contains(group.Key);
+                Button header = BuildToolboxHeader(group.Key, group.Count(), collapsed, searching);
+                Toolbox.Children.Add(header);
+                _categoryAnchors.Add((group.Key, header));   // 分类导航按分类键找这个标题定位
+                if (collapsed) continue;
 
-            foreach (var unit in group.OrderBy(u => u.Spec.Name, StringComparer.CurrentCulture))
-                Toolbox.Children.Add(BuildToolboxButton(unit.Spec));
+                foreach (var unit in group.OrderBy(u => u.Spec.Name, StringComparer.CurrentCulture))
+                    Toolbox.Children.Add(BuildToolboxButton(unit.Spec));
+            }
         }
+
+        // 分类导航：末尾留白 + 重建图标条 + 同步高亮（+ 搜索态清搜索后的定位）
+        FinishToolboxBuild(searching);
     }
 
     /// <summary>收藏 / 最近使用那两段的标题：不可折叠（条目少，折了反而要多点一下）。</summary>
