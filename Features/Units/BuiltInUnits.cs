@@ -66,6 +66,7 @@ public static class BuiltInUnits
 
         // —— 脚本 ——
         registry.Register(new AhkScriptUnit());
+        registry.Register(new CSharpScriptUnit());
 
         // —— 输入 ——
         registry.Register(new SendKeysUnit());

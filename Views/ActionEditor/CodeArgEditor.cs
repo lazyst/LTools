@@ -10,12 +10,18 @@ namespace LTools.Views;
 /// <summary>
 /// 代码参数（<see cref="InputEditor.code"/>）：等宽多行编辑器 + 「检查语法」。
 /// 内容原样交给动作单元（声明里配 <see cref="InputSpec.Raw"/>，不走 <c>${变量}</c> 模板）。
+/// 「检查语法」按动作单元键分流：<c>script.ahk</c> 起 AHK /validate 进程，
+/// <c>script.csharp</c> 走进程内 Roslyn 编译（同步、无外部进程）。
 /// </summary>
 internal sealed class CodeArgEditor : IArgEditor
 {
+    private const string CSharpUnitKey = "script.csharp";
+
     public CodeArgEditor(ArgEditorContext context)
     {
         FrameworkElement owner = context.Owner;
+        bool isCSharp = string.Equals(context.UnitKey, CSharpUnitKey, StringComparison.Ordinal);
+
         var box = new TextBox
         {
             Text = context.Current?.Literal.AsText() ?? "",
@@ -28,7 +34,9 @@ internal sealed class CodeArgEditor : IArgEditor
             MinHeight = 260,
             Padding = new Thickness(8, 6, 8, 6),
             VerticalContentAlignment = VerticalAlignment.Top,
-            ToolTip = "AHK v2 代码。LT_Var 读变量、LT_Set 写回变量、LT_Print 写标准输出。",
+            ToolTip = isCSharp
+                ? "C# 代码。vars.Text(\"名\") 读变量、vars.SetText(\"名\", 值) 写回、vars.Print 输出、vars.CheckStop 响应停止热键。"
+                : "AHK v2 代码。LT_Var 读变量、LT_Set 写回变量、LT_Print 写标准输出。",
         };
 
         var check = new Button
@@ -56,8 +64,17 @@ internal sealed class CodeArgEditor : IArgEditor
             check.IsEnabled = false;
             try
             {
-                AhkCheckResult result = AhkRunner.Check(box.Text ?? "");
-                Status(status, result.Ok, result.Ok ? "语法没问题" : result.Message);
+                string text = box.Text ?? "";
+                if (isCSharp)
+                {
+                    CSharpCheckResult result = CSharpRunner.Check(text);
+                    Status(status, result.Ok, result.Ok ? "语法没问题" : result.Message);
+                }
+                else
+                {
+                    AhkCheckResult result = AhkRunner.Check(text);
+                    Status(status, result.Ok, result.Ok ? "语法没问题" : result.Message);
+                }
             }
             catch (Exception ex)
             {

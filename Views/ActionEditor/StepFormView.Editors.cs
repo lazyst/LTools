@@ -28,6 +28,7 @@ public partial class StepFormView
             ResourceRoot = ResourceRoot,
             Captured = ApplyPickedRegion,
             PointPicked = (x, y) => ApplyPickedPoint(input, x, y),
+            UnitKey = _spec.Key,
         };
 
         // 不认识的形态一律落到值字段——它是唯一能表达三态、也唯一带「该填什么」状态行的控件。

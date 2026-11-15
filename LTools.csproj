@@ -30,6 +30,9 @@
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
     <!-- 自动触发二期：完整 Cron 解析 / 排程（Quicker 同款引擎，支持 5 段与 6 段含秒、CronFormat.IncludeSeconds） -->
     <PackageReference Include="Cronos" Version="0.13.0" />
+    <!-- C# 脚本动作单元（script.csharp）：进程内 Roslyn 脚本层，MIT，net10.0 兼容。
+         固定引用集见 Features/Script/CSharpRunner.cs，不开放任意 AddReferences。 -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -96,6 +99,24 @@
       <_OpenCvFfmpegPublish Include="$(PublishDir)runtimes\**\opencv_videoio_ffmpeg*_64.dll" />
     </ItemGroup>
     <Delete Files="@(_OpenCvFfmpegPublish)" />
+  </Target>
+
+  <!-- Microsoft.CodeAnalysis.CSharp.Scripting 带 13 种语言的诊断消息卫星程序集
+       （publish\<lang>\Microsoft.CodeAnalysis*.resources.dll，约 7 MB）。脚本层只用
+       InvariantCulture 取英文诊断，缺卫星程序集时 .NET 自动回退主程序集里的中性资源，
+       不会抛异常；与 OpenCV ffmpeg / OCR v5 模型同一套「构建 / 发布后删掉」做法。 -->
+  <Target Name="RemoveRoslynSatelliteResources" AfterTargets="Build">
+    <ItemGroup>
+      <_RoslynSatellites Include="$(TargetDir)**\Microsoft.CodeAnalysis*.resources.dll" />
+    </ItemGroup>
+    <Delete Files="@(_RoslynSatellites)" />
+  </Target>
+
+  <Target Name="RemoveRoslynSatelliteResourcesOnPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <ItemGroup>
+      <_RoslynSatellitesPublish Include="$(PublishDir)**\Microsoft.CodeAnalysis*.resources.dll" />
+    </ItemGroup>
+    <Delete Files="@(_RoslynSatellitesPublish)" />
   </Target>
 
 </Project>

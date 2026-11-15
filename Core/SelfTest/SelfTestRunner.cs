@@ -49,6 +49,7 @@ internal static class SelfTestRunner
         DeclarationSuite.Register(cases);
         PuritySuite.Register(cases);
         StructureSuite.Register(cases);
+        CSharpSuite.Register(cases);
 
         var lines = new List<string>();
         var stopwatch = Stopwatch.StartNew();

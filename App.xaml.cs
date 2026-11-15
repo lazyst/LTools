@@ -199,6 +199,10 @@ public partial class App : Application
         // 诊断模式：钩子与各模块就绪后，自动跑「开窗 / 切页」采样，导出结果即退出。
         // 默认关闭；产品路径上只多一次 e.Args 扫描。
         if (PerfRunner.IsRequested(e.Args)) PerfRunner.Start();
+
+        // Roslyn 脚本层：启动时后台 JIT 预热一次空脚本（S0 实测冷 Compile = 1074 ms，
+        // 同步跑会卡住 UI 线程约 1 秒，故只排队、不等它）。
+        System.Threading.Tasks.Task.Run(LTools.Features.Script.CSharpRunner.Warmup);
     }
 
     private void BuildTray()

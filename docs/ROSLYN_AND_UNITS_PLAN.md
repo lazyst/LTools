@@ -138,7 +138,8 @@
 
 **验收**（G1–G8 + 下列专属项）
 - 进程内执行、**不产生任何外部进程**，无随包 exe / 无 GPL 运行时。
-- 停止热键 500ms 内中断；长循环脚本按停止立刻抛 `ActionAbortedException`。
+- 停止热键 500ms 内中断：编译 / 求值阶段与脚本主动调用 `vars.CheckStop()` 的检查点生效，
+  抛 `ActionAbortedException`（不是失败）。**纯 CPU 紧密循环 Roslyn 无法强制中断**（见 §9.2 已知限制）。
 - 「检查语法」同步返回、非法代码给带行号 diagnostics、**不执行脚本且无副作用**；
   后台预热完成后冷启动不再出现 >100 ms 的 UI 线程阻塞（`--perf` 复核）。
 - 类型保真：脚本写 list / object / number，后续 `${变量}` 读到对应类型。
@@ -247,7 +248,7 @@
 | 停止响应（可取消单元 / 脚本） | < 500ms |
 | Roslyn 冷编译（首次 `Compile`） | 实测 **1074 ms**（5.9.0 临时探针）→ **不得在 UI 线程同步跑**；S1 必须后台 JIT 预热，预热后 ≤ 30 ms |
 | Roslyn 热编译 / 求值 | 实测 **20–25 ms**；「检查语法」走缓存 + 后台，UI 线程无可感卡顿 |
-| 发布包体积增量 | 实测 4 个 `Microsoft.CodeAnalysis*.dll` 共 **10,354,376 B（≈9.9 MB）**，对基线 329.6 MB 约 **+3%** → 阈值 **≤ 15 MB** |
+| 发布包体积增量 | S0 只量到 4 个主 dll = 10,354,376 B；**S1 实测 +10,381,304 B（≈9.9 MB / +3%）**（清掉 13 语言卫星资源后）→ 阈值 **≤ 15 MB** |
 | S0 实测基线 | 构建 0 错 0 警（12.77 s）；`--selftest` **112 例 / 2867 断言**（5590 ms，退出码 0）；动作单元 **80**；`publish` **345,625,900 B（≈329.6 MB）/ 633 文件** |
 | 切页 / 开窗 | 无可感卡顿（对齐 19ms → 0.06ms 口径，`--perf` 量化） |
 | `--selftest` | 例数 / 断言数只增不减；新增单元 100% 进 `declaration` 覆盖清单 |
@@ -276,6 +277,8 @@
 | 依赖评审不过 | 二维码 / HTML 项降级为「脚本层覆盖 + 单元留空」，不阻塞其它项 |
 | `script.ahk` 受影响 | 全程保留、并存；任何时刻可回退 |
 | 「检查语法」编译阻塞 UI 线程 | S0 实测冷 `Compile` = 1074 ms；结果按代码哈希缓存 + **启动时后台 JIT 预热**，「检查语法」只走 20–25 ms 热路径，G7 复核 |
+| Roslyn 卫星资源把发布包撑大 | S1 实测 13 语言 `Microsoft.CodeAnalysis*.resources.dll` 约 7 MB；照 OpenCV ffmpeg 先例加 `RemoveRoslynSatelliteResources` target，构建 / 发布后删。诊断只用 `InvariantCulture`，缺卫星程序集时 .NET 自动回退主程序集里的中性资源，不抛异常 |
+| 纯 CPU 紧密循环无法被停止热键中断 | 实测 `while(true)` 不响应 `CancellationToken`；`timeoutMs` 用 `Task.Wait` 超时保护 + `vars.CheckStop()` 协作式检查点。超时后动作返回失败，但脚本线程可能继续占 CPU 直到进程退出——Roslyn 无 `Thread.Abort`，进程隔离又违背「进程内」目标，作为已知限制接受 |
 
 ---
 
@@ -292,6 +295,8 @@
 | 2026-11-15 | Roslyn 版本建议 **5.9.0** | S0 评审：稳定版（2026-08-17 / 86 万下载）、MIT、net10.0 兼容；5.12.0 发布仅 2 天，暂不取；5.3.0 作保守备选 |
 | 2026-11-15 | S1 必须后台 JIT 预热 | S0 实测冷 `Compile` = 1074 ms，同步跑会卡 UI 线程约 1 秒；改了 §3 S1 步骤 9 与验收 |
 | 2026-11-15 | 不新增术语 | 照 `script.ahk`「AutoHotkey 脚本」先例叫「C# 脚本」、沿用现有「脚本」分类；`CONTEXT.md` 的「脚本」是「动作 / 宏」的**别名禁用**，不是禁止动作单元名称 |
+| 2026-11-15 | 清掉 Roslyn 卫星资源 | S1 实测 13 语言 `*.resources.dll` 约 7 MB；诊断只用 `InvariantCulture`，缺资源自动回退中性资源；加 csproj target 后增量从 16.9 MB 降到 9.9 MB |
+| 2026-11-15 | 停止改协作式 + 超时保护 | 实测 Roslyn 不强制中断纯 CPU 循环；`vars.CheckStop()` + `Task.Wait(timeout)`，§3 S1 验收口径与 §7 风险表相应调整 |
 
 ---
 
@@ -359,6 +364,56 @@
 
 ---
 
+### 9.2 S1 · `script.csharp`（2026-11-15，已实现）
+
+**验收**
+
+| 项 | 结果 |
+|---|---|
+| 构建 | `dotnet build -p:NoWin32Manifest=true` **0 错 0 警**（4.44 s） |
+| `--selftest` | **118 例 / 2917 断言全绿**，9371 ms，退出码 0；真实动作库往返 9 份；动作单元 **81** 个（+1） |
+| 新增自检 | `csharp` 组 6 例 / 50 断言：声明完整、语法检查（合法 / 非法 / 不执行）、返回值类型保真、变量读写、编译错误行号、停止点 |
+| 进程内 | `CSharpRunner` 直接 `CSharpScript.Create/RunAsync`，**无外部进程、无随包 exe、无 GPL 运行时** |
+| 「检查语法」 | `CodeArgEditor` 按 `UnitKey` 分流：`script.csharp` → `CSharpRunner.Check`（进程内 `Compile()`，同步、无 `CheckTimeoutMs`）；`script.ahk` 仍走 `AhkRunner.Check` |
+| 类型保真 | `ToValue` 把任意 .NET 对象经 `ValueJsonConverter.FromElement` 转成 5 种值；自检断言 list / number / bool 不被压成文本，`vars.Set` 写回的 list 保真 |
+| 失败语义 | 编译错误带**用户代码行号**（Roslyn 直接给，无 `UserLineOffset`）；运行时错误从堆栈提 `:line N`；超时 → `ActionErrors.Timeout`；停止 → `ActionAbortedException` |
+| 静态分析未动 | `git diff` 不含 `StepArg` / `StepText` / `ActionValidator` / `VisibleWhen` / `ArgFreeze` 的行为分支改动；`code` 走既有 `Raw: true`，`DryRun = false` |
+| 发布包增量 | **+10,381,304 B（≈9.9 MB / +3%）** ≤ §5 阈值 15 MB；13 语言卫星资源清 0 残留 |
+| 后台预热 | `App.OnStartup` 末尾 `Task.Run(CSharpRunner.Warmup)`，只排队不等；`Warmup` 编译一次空脚本吃掉冷 JIT |
+| 知识包 | `script.csharp` 已进 `StepRegistry.Default`（`declaration` 组覆盖 81 个单元）；`units.md` 由启动时 `KnowledgePack.Ensure()` 按内容比对自动重生，不手改 |
+
+**落地内容**
+
+| 文件 | 作用 |
+|---|---|
+| `LTools.csproj` | 加 `Microsoft.CodeAnalysis.CSharp.Scripting` 5.9.0；加 `RemoveRoslynSatelliteResources` / `...OnPublish` 两个清理 target |
+| `Features/Script/CSharpRunner.cs` | 固定 `ScriptOptions`（白名单引用集 + 默认 using）、`CSharpGlobals` / `CSharpHost`（`vars` 读写变量 / 输出 / `CheckStop`）、`Run` / `Check` / `Warmup` / `ToValue` |
+| `Features/Units/Script/CSharpScriptUnit.cs` | `script.csharp` 声明与执行；`code`（`Raw: true`）+ 可见 `timeoutMs`，5 个输出 |
+| `Features/Units/BuiltInUnits.cs` | 注册一行 |
+| `Views/ActionEditor/ArgEditor.cs` / `StepFormView.Editors.cs` | `ArgEditorContext.UnitKey`，构造时传 `_spec.Key` |
+| `Views/ActionEditor/CodeArgEditor.cs` | 按 `UnitKey` 分流「检查语法」与工具提示 |
+| `App.xaml.cs` | 启动末尾后台 JIT 预热 |
+| `Core/SelfTest/Suites/CSharpSuite.cs` / `SelfTestRunner.cs` | 新增 `csharp` 组 6 例并注册 |
+| `AGENTS.md` | 第三方依赖清单同步（G6） |
+
+**已知限制 / 偏差（改了 §3 S1 验收与 §7 风险表）**
+
+- **纯 CPU 紧密循环无法强制中断**：两次临时探针（`while(true)`）均不响应 `CancellationToken`，
+  且失控线程会拖住进程。Roslyn 没有 `Thread.Abort`，进程隔离又违背「进程内」目标。
+  实现改为 `vars.CheckStop()` 协作式检查点 + `Task.Wait(timeoutMs)` 超时保护；超时后动作返回
+  `ActionErrors.Timeout`，但脚本线程可能在后台继续占 CPU 直到进程退出。
+  编译 / 求值阶段与主动检查点的停止响应 < 500ms，**不调用检查点的紧密循环不在保证范围**。
+- **S0 体积估算不完整**：S0 只量了临时 console 工程 bin 里的 4 个主 dll（9.9 MB），
+  漏了 13 语言卫星资源；publish 首测 **+16.9 MB 超阈值**。加清理 target 后降到 **+9.9 MB**。
+  §5 阈值 ≤ 15 MB 保持不变，卫星资源清理写进 §7 / §8。
+- **编译结果缓存未做**：`ScriptOptions` 静态缓存，但每次 `Run` / `Check` 仍新建 `Script` 并 `Compile()`
+  （热路径 20–25 ms）。冷 JIT 由后台预热解决，按代码哈希缓存编译结果留到有实测需求再加。
+- **`script.ahk` 真机回归 / 参数表单真机点验 / 「检查语法」UI 分流**：本批为无头构建，
+  未做真机点一遍（G3 / G4），待用户点验；`script.ahk` 全程保留、并存不互斥。
+- `--selftest` 耗时 5590 → 9371 ms（+3.8 s，Roslyn 冷 JIT + 6 例编译），仍远低于 90 秒门禁。
+
+---
+
 （后续批次按上方模板追加。）
 
 ---
@@ -368,8 +423,8 @@
 | 阶段 | 状态 |
 |---|---|
 | S0 基线与评审 | 实测完成、评审通过（见 §9.1）；版本 / 术语建议值待确认 |
-| S1 `script.csharp` | 未开始 |
-| S2 P0（2 项） | 未开始 |
+| S1 `script.csharp` | **已实现，见 §9.2**；真机点验（G3 / G4）待做 |
+| S2 P0（2 项） | 下一步（未开始） |
 | S3 P1（5 项） | 未开始 |
 | S4 P2（触发式） | 未开始 |
 

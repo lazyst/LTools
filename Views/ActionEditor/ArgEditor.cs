@@ -47,6 +47,9 @@ internal sealed class ArgEditorContext
     /// <summary>当前值（步骤里存的，取不到就是声明的默认值）。</summary>
     public required StepArg? Current { get; init; }
 
+    /// <summary>当前步骤所属的动作单元键（代码编辑器按它分流「检查语法」）。</summary>
+    public string? UnitKey { get; init; }
+
     /// <summary>宿主表单：<c>FindResource</c> 走它的资源树。</summary>
     public required FrameworkElement Owner { get; init; }
 
