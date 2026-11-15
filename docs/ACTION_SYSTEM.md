@@ -326,6 +326,7 @@ sealed class SubActionDef {
 | | `window.operate` 切前台/最大化/最小化/还原/改尺寸 | window |
 | | `window.wait` 等窗口出现（超时 `found = false`，不是失败） | window |
 | **屏幕** | `screen.capture` 截图 → 对象 | Probe.screenshot |
+| | `screen.pickPoint` 屏幕取点（运行期弹取点遮罩 → x/y；取消 `found = false`；`hint` 给遮罩加一句自定义提示，留空用默认） | 新增（ScreenPicker） |
 | | `screen.findImage` 找图 → 对象 | Probe.image |
 | | `screen.ocr` 文字识别 → 文本（也可选前台窗口 / 整个屏幕 / 固定区域，运行时现截一块，不落盘） | Probe.ocr |
 | | `screen.findText` 找文字 → 对象 | Probe.textSearch |

@@ -37,7 +37,22 @@ public partial class StepFormView
 
         DisabledBox.IsChecked = _step.Disabled;
         NoteBox.Text = _step.Note ?? "";
+        SyncRetryOnRow();
     }
+
+    /// <summary>
+    /// 「只重试」只在真的会重试时才显示：次数留空 / 0 时这一组没有意义，
+    /// 也省得那一行把「步骤选项」撑成两行（窄抽屉里最容易变形的地方）。
+    /// </summary>
+    private void SyncRetryOnRow()
+        => RetryOnRow.Visibility = RetryCount() > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>当前填的重试次数（读不懂 = 0，由保存时的校验去提示）。</summary>
+    private int RetryCount()
+        => int.TryParse(RetryBox.Text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int n)
+            ? Math.Max(0, n) : 0;
+
+    private void RetryBox_TextChanged(object sender, TextChangedEventArgs e) => SyncRetryOnRow();
 
     private void FocusFirstEditor()
     {

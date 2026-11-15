@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
+using LTools.Core.Actions;
 using LTools.Native;
 using OpenCvSharp;
 using CvPoint = OpenCvSharp.Point;
@@ -38,7 +39,7 @@ internal static class ImageProbe
             throw new FlowException($"图像无法读取（可能不是 PNG/JPG）：{path}");
 
         var (rx, ry, rw, rh) = ScreenRegion.Resolve(probe);
-        int timeout = Math.Clamp(probe.TimeoutMs, 0, 600_000);
+        int timeout = Timeouts.Loop(probe.TimeoutMs);
         int interval = Math.Clamp(probe.IntervalMs, 50, 5000);
         double minScore = Math.Clamp(probe.MinScore, 0.30, 0.99);
         long deadline = Environment.TickCount64 + timeout;

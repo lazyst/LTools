@@ -34,7 +34,8 @@ internal static class ImageClickAction
             Image = request.Image,
             Region = request.Region,
             Rect = request.Rect,
-            TimeoutMs = Math.Clamp(request.TimeoutMs, 0, 600_000),
+            TimeoutMs = Timeouts.Normalize(request.TimeoutMs),
+            IntervalMs = Math.Clamp(request.IntervalMs, 50, 5_000),
             MinScore = Math.Clamp(request.MinScore, 0.30, 0.99),
         };
 
@@ -83,8 +84,11 @@ internal sealed record ImageClickRequest
     /// <summary><see cref="ImageRegion.rect"/> 时的区域 [x, y, w, h]（虚拟桌面物理像素）。</summary>
     public int[]? Rect { get; init; }
 
-    /// <summary>等目标出现的最长时间（ms，0 = 只找一次）。</summary>
+    /// <summary>等目标出现的最长时间（ms，0 = 只找一次，-1 = 一直等）。</summary>
     public int TimeoutMs { get; init; }
+
+    /// <summary>两次匹配之间的间隔（ms）。</summary>
+    public int IntervalMs { get; init; } = 200;
 
     /// <summary>最低相似度（0..1，默认 0.85）。</summary>
     public double MinScore { get; init; } = 0.85;

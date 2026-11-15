@@ -545,7 +545,7 @@ agent 看不见用户的屏幕，「鼠标操作 / 屏幕区域 / 截图 / 图�
 | 部分 | 说明 |
 |---|---|
 | 判定 | `UnitSpec.DryRun`（`bool?`）+ `RunsInDryRun`：不写就按 `Kind` 推（`pure` 照跑、`action` 跳过）。流程控制（`flow.set` / `if` / `repeat` / `forEach` / `while` / `break` / `continue` / `stop` / `return`）与 `sub.run` 显式 `true`——不跑它们，干跑里连一个变量都求不出来 |
-| 例外 | `ui.input` / `file.select` 是 `pure` 但会弹模态框，显式 `false`；`screen.capture` 照跑，但**交互框选退化成整屏截图**（`ctx.DryRun` 判断），否则干跑会糊用户一脸遮罩 |
+| 例外 | `ui.input` / `file.select` 是 `pure` 但会弹模态框，显式 `false`；`screen.capture` 照跑，但**交互框选退化成整屏截图**（`ctx.DryRun` 判断），否则干跑会糊用户一脸遮罩；`screen.pickPoint` 同理，干跑退回「当前光标位置」 |
 | 引擎 | `ActionRunOptions.DryRun` → `StepContext.DryRun`；`RunSteps` 里参数照常解析（轨迹带 `inputs`），跳过的记 `StepTraceStatus.skipped`（新状态），干跑也不等 `step.DelayMs` |
 | 运行层 | `AutomationRunner.TryRunProgram(..., dryRun)`：干跑不清空 / 不回收运行期截图（那是副作用），也不给结果提示（别让它看起来像真跑了一遍） |
 | 工具面 | `ltools_staging_run` 加 `dryRun`；`ltools_run_output` 多 `dryRun` / `skipped` 两个字段，每条轨迹的 `status` 可能是 `skipped` |

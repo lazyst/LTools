@@ -1,6 +1,7 @@
 <UserControl x:Class="LTools.Views.StepFormView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LTools.Views.Controls">
     <!-- 步骤参数表单：只放表单本体与按钮栏，标题栏 / 外框交给宿主
          （抽屉里是编辑器右栏，无窗口上下文时是 StepEditorDialog）。
          改布局时注意：所有 x:Name 都被 code-behind 直接引用，别改名。 -->
@@ -45,37 +46,82 @@
                         Padding="0,12,0,0">
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionLabel}" Text="步骤选项" Margin="0,0,0,6"/>
-                        <WrapPanel>
-                            <TextBlock Text="失败时" VerticalAlignment="Center"
-                                       Foreground="{StaticResource SecondaryTextBrush}"/>
-                            <ComboBox x:Name="FailBox" MinWidth="110" MinHeight="28" Margin="8,0,18,0">
-                                <ComboBoxItem Content="停止整个动作"/>
-                                <ComboBoxItem Content="记录后继续"/>
-                            </ComboBox>
+                        <!-- 每条语义选项独占一行：左列标签（宽度用 SharedSizeGroup 对齐）+ 右列控件。
+                             以前是平铺 + 每个元素自带 Margin 假装第二行，「失败时 X 之后等待 N 毫秒」
+                             被读成一句话——可「之后等待」其实是**这一步成功跑完后**的延迟（`Step.DelayMs`，
+                             失败走的是「重试间隔」），粘在「失败时」前面就是误导（用户报过）。
+                             数字框一律关掉清除 ×：20+4 的按钮会吃掉窄框的文字区（46 宽只剩 6px）。 -->
+                        <StackPanel Grid.IsSharedSizeScope="True">
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="StepOptionLabel"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="失败时" VerticalAlignment="Center" Margin="0,0,12,0"
+                                           Foreground="{StaticResource SecondaryTextBrush}"/>
+                                <ComboBox x:Name="FailBox" Grid.Column="1" HorizontalAlignment="Left"
+                                          MinWidth="110" MinHeight="28">
+                                    <ComboBoxItem Content="停止整个动作"/>
+                                    <ComboBoxItem Content="记录后继续"/>
+                                </ComboBox>
+                            </Grid>
 
-                            <TextBlock Text="之后等待" VerticalAlignment="Center"
-                                       Foreground="{StaticResource SecondaryTextBrush}"/>
-                            <TextBox x:Name="DelayBox" Width="76" MinHeight="28" Margin="8,0,4,0"/>
-                            <TextBlock Text="毫秒" VerticalAlignment="Center"
-                                       Foreground="{StaticResource HintTextBrush}"/>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="StepOptionLabel"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="执行后等待" VerticalAlignment="Center" Margin="0,0,12,0"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           ToolTip="这一步成功跑完之后等这么久再执行下一步；失败不会走这里（失败后等的是下面的「重试间隔」）"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBox x:Name="DelayBox" Width="64" MinHeight="28"
+                                             controls:TextBoxClear.Attach="False"
+                                             controls:TextBoxPlaceholder.Text="0"/>
+                                    <TextBlock Text="毫秒" VerticalAlignment="Center" Margin="6,0,0,0"
+                                               Foreground="{StaticResource HintTextBrush}"/>
+                                </StackPanel>
+                            </Grid>
 
-                            <TextBlock Text="失败时重试" VerticalAlignment="Center" Margin="0,8,0,0"
-                                       Foreground="{StaticResource SecondaryTextBrush}"/>
-                            <TextBox x:Name="RetryBox" Width="52" MinHeight="28" Margin="8,8,4,0"/>
-                            <TextBlock Text="次，每次间隔" VerticalAlignment="Center" Margin="0,8,0,0"
-                                       Foreground="{StaticResource SecondaryTextBrush}"/>
-                            <TextBox x:Name="RetryDelayBox" Width="66" MinHeight="28" Margin="8,8,4,0"/>
-                            <TextBlock Text="毫秒" VerticalAlignment="Center" Margin="0,8,0,0"
-                                       Foreground="{StaticResource HintTextBrush}"/>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="StepOptionLabel"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="失败时重试" VerticalAlignment="Center" Margin="0,0,12,0"
+                                           Foreground="{StaticResource SecondaryTextBrush}"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBox x:Name="RetryBox" Width="64" MinHeight="28"
+                                             controls:TextBoxClear.Attach="False"
+                                             controls:TextBoxPlaceholder.Text="0"
+                                             TextChanged="RetryBox_TextChanged"/>
+                                    <TextBlock Text="次，间隔" VerticalAlignment="Center" Margin="6,0,0,0"
+                                               Foreground="{StaticResource SecondaryTextBrush}"/>
+                                    <TextBox x:Name="RetryDelayBox" Width="72" MinHeight="28" Margin="6,0,0,0"
+                                             controls:TextBoxClear.Attach="False"
+                                             controls:TextBoxPlaceholder.Text="500"/>
+                                    <TextBlock Text="毫秒" VerticalAlignment="Center" Margin="6,0,0,0"
+                                               Foreground="{StaticResource HintTextBrush}"/>
+                                </StackPanel>
+                            </Grid>
 
-                            <TextBlock Text="只重试" VerticalAlignment="Center" Margin="0,8,0,0"
-                                       Foreground="{StaticResource SecondaryTextBrush}"/>
-                            <ComboBox x:Name="RetryOnBox" IsEditable="True" MinWidth="150" MinHeight="28"
-                                      Margin="8,8,4,0"
-                                      ToolTip="留空 = 任何失败都重试；也可以直接写 notFound,timeout（失败性质：notFound 未找到 / timeout 超时 / precondition 前置条件 / unknown 其它）"/>
-                            <TextBlock Text="（留空 = 任何失败）" VerticalAlignment="Center" Margin="0,8,0,0"
-                                       Foreground="{StaticResource HintTextBrush}"/>
-                        </WrapPanel>
+                            <!-- 次数为 0 时整行收起：没有重试时「只重试什么」没有意义 -->
+                            <Grid x:Name="RetryOnRow" Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="StepOptionLabel"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="只重试" VerticalAlignment="Center" Margin="0,0,12,0"
+                                           Foreground="{StaticResource SecondaryTextBrush}"/>
+                                <WrapPanel Grid.Column="1" Orientation="Horizontal">
+                                    <ComboBox x:Name="RetryOnBox" IsEditable="True" MinWidth="130" MinHeight="28"
+                                              Margin="0,0,6,0"
+                                              ToolTip="留空 = 任何失败都重试；也可以直接写 notFound,timeout（失败性质：notFound 未找到 / timeout 超时 / precondition 前置条件 / unknown 其它）"/>
+                                    <TextBlock Text="（留空 = 任何失败）" VerticalAlignment="Center"
+                                               Foreground="{StaticResource HintTextBrush}"/>
+                                </WrapPanel>
+                            </Grid>
+                        </StackPanel>
 
                         <CheckBox x:Name="DisabledBox" Content="跳过这一步（保留配置）" Margin="0,10,0,0"/>
 

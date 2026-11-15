@@ -50,6 +50,7 @@ internal static class EngineSuite
         cases.Add(new("engine", "等待条件立即成立", WaitForImmediate));
         cases.Add(new("engine", "等待条件每轮重新取值", WaitForReevaluates));
         cases.Add(new("engine", "等待条件超时", WaitForTimeout));
+        cases.Add(new("engine", "等待条件：-1 一直等到成立、0 只判断一次", WaitForUnlimited));
         cases.Add(new("engine", "干跑里条件不成立不算失败", WaitForDryRun));
         cases.Add(new("engine", "等待窗口：至少填标题或类名", WindowWaitNeedsTarget));
         cases.Add(new("engine", "等待窗口：等不到不算失败", WindowWaitMissingIsNotFailure));
@@ -733,6 +734,44 @@ internal static class EngineSuite
         Check.False(result.Ok, "一直不成立应超时失败");
         Check.Contains(result.Error, "超时");
         Check.False(result.Variables["waitOk"].AsBool(), "超时时也要把 ok = false 写进变量");
+    }
+
+    /// <summary>
+    /// 「最多等」是三值：<c>-1</c> = 一直等到成立（按停止热键结束）、<c>0</c> = 只判断一次。
+    /// 老实现 `Math.Clamp(…, 0, 1 小时)` 会把 -1 悄悄变成 0，写「一直等」的步骤当场失败。
+    /// </summary>
+    private static void WaitForUnlimited()
+    {
+        int tick = 0;
+        var counter = new FakeUnit("test.tick", "递增", UnitKind.pure,
+            outputs: new[] { new OutputSpec("value", "值", ValueKind.number) },
+            run: (ctx, _) => ctx.SetOutput("value", Value.FromNumber(++tick)));
+
+        Step waiting = Step.Of("flow.waitFor")
+            .With("left", StepArg.FromInline(Step.Of("test.tick")))
+            .WithText("op", "greaterOrEqual")
+            .With("right", StepArg.FromNumber(3))
+            .With("timeoutMs", StepArg.FromNumber(-1))
+            .With("intervalMs", StepArg.FromNumber(20))
+            .Output("ok", "waitOk");
+
+        ActionRunResult unlimited = Run(Program(waiting), TestRegistry.Create(counter));
+
+        Check.True(unlimited.Ok, "-1 应一直等到条件成立：" + unlimited.Error);
+        Check.True(counter.Calls >= 3, $"应等到第 3 轮（取值执行了 {counter.Calls} 次）");
+        Check.True(unlimited.Variables["waitOk"].AsBool(), "输出 ok = true");
+
+        Step once = Step.Of("flow.waitFor")
+            .WithText("left", "a")
+            .WithText("op", "equals")
+            .WithText("right", "b")
+            .With("timeoutMs", StepArg.FromNumber(0))
+            .Output("ok", "waitOk");
+
+        ActionRunResult single = Run(Program(once));
+
+        Check.False(single.Ok, "0 = 只判断一次，不成立就失败");
+        Check.Contains(single.Error, "只判断了一次");
     }
 
     private static void WaitForDryRun()

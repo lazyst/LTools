@@ -30,9 +30,11 @@ public sealed class FindTextUnit : IStepUnit
             new InputSpec("engine", "识别引擎", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("v6tiny"), Options: Engines),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(0), Advanced: true),
+                Default: Value.FromNumber(0),
+                Description: "最多等多久（毫秒）：0 = 只查一次；-1 = 一直等到找到（按停止热键结束）；最多 10 分钟"),
             new InputSpec("intervalMs", "轮询间隔毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(300), Advanced: true),
+                Default: Value.FromNumber(300), Advanced: true,
+                Description: "等待期间每隔多久再识别一次（50–5000）"),
         },
         Outputs = new[]
         {
@@ -53,7 +55,7 @@ public sealed class FindTextUnit : IStepUnit
             args, ScreenArgs.ParseRegion(args.Text("region")), ScreenArgs.ParseRect(args));
         probe.Kind = ProbeKind.textSearch;
         probe.Text = needle;
-        probe.TimeoutMs = (int)Math.Clamp(args.Number("timeoutMs"), 0, 600_000);
+        probe.TimeoutMs = Timeouts.Normalize(args.Number("timeoutMs"));
         probe.IntervalMs = (int)Math.Clamp(args.Number("intervalMs"), 50, 5_000);
         probe.OcrEngine = args.Text("engine").Trim();
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Text;
 using System.Threading;
+using LTools.Core.Actions;
 using LTools.Native;
 using LTools.Views;
 
@@ -56,7 +57,7 @@ internal static class TextLocator
         if (rw <= 0 || rh <= 0)
             throw new FlowException($"找字区域无效：{rx},{ry} · {rw}×{rh}");
 
-        timeoutMs = Math.Clamp(timeoutMs, 0, 600_000);
+        timeoutMs = Timeouts.Loop(timeoutMs);
         intervalMs = Math.Clamp(intervalMs, 50, 5_000);
         long deadline = Environment.TickCount64 + timeoutMs;
         IReadOnlyList<string> seen = Array.Empty<string>();
@@ -235,7 +236,7 @@ internal static class TextLocator
             if (joined.Length > 80) { joined.Append('…'); break; }
         }
 
-        string wait = timeoutMs > 0 ? $"，等了 {timeoutMs} 毫秒" : "";
+        string wait = Timeouts.DescribeWait(timeoutMs);
         string got = joined.Length > 0 ? $"；识别到的文字：{joined}" : "；区域里没有识别到文字";
         return $"「{name}」在区域里没有找到「{needle}」{wait}{got}";
     }

@@ -47,6 +47,7 @@ public partial class ScreenPickerWindow : Window
     private readonly System.Drawing.Rectangle _monitor;
     private readonly bool _pointMode;
     private readonly bool _wantColor;
+    private readonly string _pickHint = "";   // 取点时调用方给的提示文字（「屏幕取点」的 hint 参数）
     private readonly List<Rectangle> _grips = new();
 
     // —— 窗口 / 控件探测（框选模式）——
@@ -97,13 +98,15 @@ public partial class ScreenPickerWindow : Window
 
     private enum Handle { None, Move, Left, Top, Right, Bottom, TopLeft, TopRight, BottomLeft, BottomRight }
 
-    public ScreenPickerWindow(BitmapSource shot, System.Drawing.Rectangle monitor, bool pointMode, bool wantColor)
+    public ScreenPickerWindow(BitmapSource shot, System.Drawing.Rectangle monitor, bool pointMode, bool wantColor,
+        string hint = "")
     {
         InitializeComponent();
         _shot = shot;
         _monitor = monitor;
         _pointMode = pointMode;
         _wantColor = wantColor;
+        _pickHint = (hint ?? "").Trim();
 
         Shot.Source = shot;
         MagImage.Source = shot;
@@ -119,7 +122,7 @@ public partial class ScreenPickerWindow : Window
 
         if (pointMode)
         {
-            HintText.Text = wantColor ? "单击取色 · 右键 / Esc 取消" : "单击取点 · 右键 / Esc 取消";
+            HintText.Text = PointHint();
             // 放大镜只在取色时显示：取点只要十字准线 + 坐标，132×132 的黑框会把要点的目标挡住。
             MagBox.Visibility = ShowMagnifier(pointMode, wantColor) ? Visibility.Visible : Visibility.Collapsed;
             DimPath.Visibility = Visibility.Collapsed;
@@ -619,6 +622,16 @@ public partial class ScreenPickerWindow : Window
     }
 
     /// <summary>
+    /// 取点 / 取色时顶部那句提示。调用方给了提示文字（「屏幕取点」的 <c>hint</c> 参数）就放在最前面，
+    /// 后面仍跟着「怎么操作」——只写自定义那句话会让人不知道怎么确认 / 取消。
+    /// </summary>
+    private string PointHint() => _wantColor
+        ? "单击取色 · 右键 / Esc 取消"
+        : _pickHint.Length > 0
+            ? _pickHint + " · 单击取点 · 右键 / Esc 取消"
+            : "单击取点 · 右键 / Esc 取消";
+
+    /// <summary>
     /// 顶部提示行：把「当前能做什么」和「控件识别到了没有」放在一句话里，
     /// 识别中 / 识别不到都要说出来——静默降级会让人以为这程序不支持吸附。
     /// </summary>
@@ -626,7 +639,7 @@ public partial class ScreenPickerWindow : Window
     {
         if (_pointMode)
         {
-            HintText.Text = _wantColor ? "单击取色 · 右键 / Esc 取消" : "单击取点 · 右键 / Esc 取消";
+            HintText.Text = PointHint();
             return;
         }
 

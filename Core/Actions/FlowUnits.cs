@@ -521,7 +521,7 @@ internal static class FlowUnits
                 ConditionNegate(),
                 new InputSpec("timeoutMs", "最多等", ValueKind.number, InputEditor.number,
                     Default: Value.FromNumber(10_000),
-                    Description: "最多等多少毫秒；0 = 只判断一次、不等待"),
+                    Description: "最多等多久（毫秒）：0 = 只判断一次；-1 = 一直等到成立（按停止热键结束）；最多 10 分钟"),
                 new InputSpec("intervalMs", "检查间隔", ValueKind.number, InputEditor.number,
                     Default: Value.FromNumber(250), Advanced: true,
                     Description: "多久检查一次（毫秒），最短 20"),
@@ -538,7 +538,8 @@ internal static class FlowUnits
         public void Execute(StepContext ctx, StepArgs args)
         {
             long started = Environment.TickCount64;
-            int timeout = ctx.DryRun ? 0 : (int)Math.Clamp(args.Number("timeoutMs"), 0, 3_600_000);
+            int timeout = ctx.DryRun ? 0 : Timeouts.Normalize(args.Number("timeoutMs"));
+            long limit = Timeouts.Loop(timeout);
             int interval = (int)Math.Clamp(args.Number("intervalMs"), 20, 60_000);
 
             while (true)
@@ -559,13 +560,13 @@ internal static class FlowUnits
                 // 干跑只判断一次：条件当时不成立是正常结果，不该让草稿试运行报「超时」。
                 if (ctx.DryRun) return;
 
-                if (elapsed >= timeout)
+                if (elapsed >= limit)
                 {
                     throw new ActionException(
-                        $"等了 {elapsed} 毫秒条件还没成立（{Describe(now)}），已超时");
+                        $"等了 {elapsed} 毫秒条件还没成立（{Describe(now)}），{DescribeTimeout(timeout)}");
                 }
 
-                int step = (int)Math.Min(interval, Math.Max(1, timeout - elapsed));
+                int step = (int)Math.Min(interval, Math.Max(1, limit - elapsed));
                 if (!ctx.Wait(step))
                     throw new ActionAbortedException("已停止", userCancelled: true);
             }
@@ -583,5 +584,9 @@ internal static class FlowUnits
             string text = binary ? $"{left} {label} {right}" : $"{left} {label}";
             return args.Has("negate") && args.Bool("negate") ? "非（" + text + "）" : text;
         }
+
+        /// <summary>超时那句话的后半句：<c>0</c> 是「只判断一次」，其余是「已超时」。</summary>
+        private static string DescribeTimeout(int timeoutMs)
+            => timeoutMs <= 0 ? "只判断了一次、不等待" : "已超时";
     }
 }

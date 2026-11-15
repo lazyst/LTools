@@ -46,7 +46,7 @@ internal static class ScreenArgs
             Kind = ProbeKind.image,
             Region = region,
             Rect = rect,
-            TimeoutMs = (int)Math.Clamp(args.Has("timeoutMs") ? args.Number("timeoutMs") : 0, 0, 600_000),
+            TimeoutMs = Timeouts.Normalize(args.Has("timeoutMs") ? args.Number("timeoutMs") : 0),
             IntervalMs = (int)Math.Clamp(
                 args.Has("intervalMs") ? args.Number("intervalMs") : 200, 50, 5_000),
             MinScore = Math.Clamp(args.Has("minScore") ? args.Number("minScore") : 0.85, 0.30, 0.99),

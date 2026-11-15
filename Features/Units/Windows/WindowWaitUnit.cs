@@ -41,7 +41,7 @@ public sealed class WindowWaitUnit : IStepUnit
                 Pickers: PickerKind.variable | PickerKind.windowClass | PickerKind.inline | PickerKind.clear),
             new InputSpec("timeoutMs", "最多等", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(10_000),
-                Description: "最多等多少毫秒；0 = 只查一次、不等待"),
+                Description: "最多等多久（毫秒）：0 = 只查一次；-1 = 一直等到出现（按停止热键结束）；最多 10 分钟"),
             new InputSpec("intervalMs", "检查间隔", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(250), Advanced: true,
                 Description: "多久查一次（毫秒），最短 20"),
@@ -67,7 +67,8 @@ public sealed class WindowWaitUnit : IStepUnit
             throw ActionErrors.Precondition("等待窗口至少要填「标题包含」或「类名」");
 
         long started = Environment.TickCount64;
-        int timeout = ctx.DryRun ? 0 : (int)Math.Clamp(args.Number("timeoutMs"), 0, 600_000);
+        int timeout = ctx.DryRun ? 0 : Timeouts.Normalize(args.Number("timeoutMs"));
+        long limit = Timeouts.Loop(timeout);
         int interval = (int)Math.Clamp(args.Number("intervalMs"), 20, 60_000);
 
         while (true)
@@ -90,9 +91,9 @@ public sealed class WindowWaitUnit : IStepUnit
             if (found) return;
 
             // 超时只是 found = false，不抛错：要不要当失败由调用方用「如果」决定。
-            if (elapsed >= timeout) return;
+            if (elapsed >= limit) return;
 
-            int slice = (int)Math.Min(interval, Math.Max(1, timeout - elapsed));
+            int slice = (int)Math.Min(interval, Math.Max(1, limit - elapsed));
             if (!ctx.Wait(slice))
                 throw new ActionAbortedException("已停止", userCancelled: true);
         }

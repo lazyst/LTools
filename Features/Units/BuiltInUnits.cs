@@ -85,6 +85,7 @@ public static class BuiltInUnits
 
         // —— 屏幕 ——
         registry.Register(new CaptureScreenUnit());
+        registry.Register(new PickPointUnit());
         registry.Register(new FindImageUnit());
         registry.Register(new OcrUnit());
         registry.Register(new FindTextUnit());

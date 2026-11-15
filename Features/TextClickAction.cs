@@ -31,9 +31,10 @@ internal static class TextClickAction
         if (needle.Length == 0)
             throw ActionErrors.Precondition($"「{request.Name}」还没有指定要点击的文字");
 
-        int timeout = Math.Clamp(request.TimeoutMs, 0, 600_000);
+        // 提示文案用原始值（-1 = 一直等），等待循环用换算后的期限。
+        int timeout = request.TimeoutMs;
         var result = TextLocator.Locate(needle, request.Region, request.Rect, request.OcrEngine,
-            timeout, TextLocator.DefaultIntervalMs, ctx);
+            Timeouts.Loop(timeout), request.IntervalMs, ctx);
 
         if (!result.Found)
             throw ActionErrors.NotFound(TextLocator.MissMessage(request.Name, needle, result.Seen, timeout));
@@ -69,8 +70,11 @@ internal sealed record TextClickRequest
     /// <summary>识别引擎（<c>null</c> / <c>windows</c> = 系统 OCR；<c>v6tiny</c> / <c>v6small</c> = PP-OCRv6）。</summary>
     public string? OcrEngine { get; init; }
 
-    /// <summary>等目标出现的最长时间（ms，0 = 只找一次）。</summary>
+    /// <summary>等目标出现的最长时间（ms，0 = 只找一次，-1 = 一直等）。</summary>
     public int TimeoutMs { get; init; }
+
+    /// <summary>两次查找之间的间隔（ms）。</summary>
+    public int IntervalMs { get; init; } = TextLocator.DefaultIntervalMs;
 
     /// <summary>命中后的鼠标动作（默认单击）。</summary>
     public MouseActionKind MouseAction { get; init; } = MouseActionKind.click;

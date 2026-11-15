@@ -27,7 +27,11 @@ public sealed class ClickImageUnit : IStepUnit
             new InputSpec("minScore", "最低相似度", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(0.85), Advanced: true),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(0), Advanced: true),
+                Default: Value.FromNumber(0),
+                Description: "最多等多久（毫秒）：0 = 只找一次；-1 = 一直等到找到（按停止热键结束）；最多 10 分钟"),
+            new InputSpec("intervalMs", "轮询间隔毫秒", ValueKind.number, InputEditor.number,
+                Default: Value.FromNumber(200), Advanced: true,
+                Description: "两次匹配之间隔多久（50–5000）；太小费 CPU，太大反应慢"),
             new InputSpec("mouseAction", "点击方式", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("click"),
                 Options: new[] { "click", "doubleClick", "rightClick", "middleClick" }),
@@ -50,7 +54,8 @@ public sealed class ClickImageUnit : IStepUnit
             Region = LTools.Features.Units.Screen.ScreenArgs.ParseRegion(args.Text("region")),
             Rect = LTools.Features.Units.Screen.ScreenArgs.ParseRect(args),
             MinScore = Math.Clamp(args.Number("minScore"), 0.30, 0.99),
-            TimeoutMs = (int)Math.Clamp(args.Number("timeoutMs"), 0, 600_000),
+            TimeoutMs = Timeouts.Normalize(args.Number("timeoutMs")),
+            IntervalMs = (int)Math.Clamp(args.Number("intervalMs"), 50, 5_000),
             MouseAction = ClickTextUnit.ParseMouse(args.Text("mouseAction")),
         }, ProbeContext.Of(ctx));
 

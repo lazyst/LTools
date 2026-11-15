@@ -14,6 +14,26 @@ internal static class HelperSuite
         cases.Add(new("helpers", "分隔符转义", TextEscapesRules));
         cases.Add(new("helpers", "值转换与真值", ValueRules));
         cases.Add(new("helpers", "变量路径解析", ScopePaths));
+        cases.Add(new("helpers", "等待上限：0 / -1 / 有限", TimeoutRules));
+    }
+
+    /// <summary>「最多等待毫秒」的三种语义（<see cref="Timeouts"/>）：-1 是不限，0 是只做一次。</summary>
+    private static void TimeoutRules()
+    {
+        Check.Equal(0, Timeouts.Normalize(0), "0 = 只做一次");
+        Check.Equal(Timeouts.Unlimited, Timeouts.Normalize(-1), "-1 = 一直等");
+        Check.Equal(Timeouts.Unlimited, Timeouts.Normalize(-90), "任何负数都当不限");
+        Check.Equal(250, Timeouts.Normalize(250), "正常值原样");
+        Check.Equal(Timeouts.MaxMs, Timeouts.Normalize(9_999_999), "超过 10 分钟夹到上限");
+        Check.Equal(Timeouts.MaxMs, Timeouts.Normalize(600_000), "上限本身保留");
+
+        Check.Equal(0, Timeouts.Loop(0), "循环期限：0 立刻到点");
+        Check.Equal(int.MaxValue, Timeouts.Loop(-1), "循环期限：不限不会先到");
+        Check.Equal(1000, Timeouts.Loop(1000), "循环期限：有限值原样");
+
+        Check.Contains(Timeouts.DescribeWait(-1), "一直等");
+        Check.Contains(Timeouts.DescribeWait(1500), "1500");
+        Check.Equal("", Timeouts.DescribeWait(0), "只做一次时不说等了多久");
     }
 
     private static void CompareMatrix()
