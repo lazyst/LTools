@@ -174,13 +174,14 @@
 **步骤**
 1. `Features/Units/Input/WaitClipboardUnit.cs`。
 2. `timeoutMs` **可见参数**（不 `Advanced`），走 `Timeouts` 三值（`0` 只判一次 / `-1` 一直等 /
-   有限值夹 1–600000）+ `Timeouts.Loop`；`intervalMs` / `includeRecentMs` 收进高级区。
+   有限值夹 1–600000）+ `Timeouts.Loop`；`intervalMs` 收进高级区。
+   `includeRecentMs` 本批未实现（见 §9.3）。
 3. 循环 `ctx.EnterIteration()` + `ctx.Wait`；干跑只判一次。
 4. 读剪贴板走 `Native/NativeClipboard`（原始 Win32），**不用** WinForms / OLE。
 5. 输出 `changed`（bool）/ `text` / `elapsed` / `found`；**超时 = `changed = false`，不报错**
    （等待类口径，照 `window.wait` / `input.waitKey`）。
 6. `Description` 写明「等待结束后 Ctrl/C 可能还没抬起，后续模拟按键前建议加 100–200ms 延迟」。
-7. 自检：超时 / 命中 / 停止 / 干跑各一条。
+7. 自检：声明、`Timeouts` 三值、命中 / 未命中纯判定各一条；完整等待循环走真机 G3。
 
 **验收**
 - 停止热键 500ms 内返回；`timeoutMs` 三态正确。
@@ -414,6 +415,49 @@
 
 ---
 
+### 9.3 S2 · P0 两项（2026-11-15，已实现）
+
+**验收**
+
+| 项 | 结果 |
+|---|---|
+| 构建 | `dotnet build -p:NoWin32Manifest=true` **0 错 0 警**（22.52 s） |
+| `--selftest` | **124 例 / 3109 断言全绿**，9345 ms，退出码 0；动作单元 **85** 个（+4） |
+| 新增自检 | `s2` 组 6 例 / 192 断言：哈希 4 条标准向量 + Base64 + HMAC、`OptionParams` 收起 iv、AES/DES 往返（含 hex 密钥）、RSA PEM 往返、三类前置条件、等待类声明与 `Timeouts` 三值 |
+| 无新依赖 | 全部走 `System.Security.Cryptography` / `NativeClipboard` / `Timeouts`，`LTools.csproj` 未变 |
+| 拆开而非三合一 | `text.hash` / `crypto.encrypt` / `crypto.decrypt` 三个独立单元，**参数里没有 `operation`**；`Spec.Validate()` 全过 |
+| 加密声明 | `algorithm` 用私有 `Labels` 给中文名，`OptionParams` 让 `iv` 只在 AES / DES 下可见（RSA 下不可见时引擎不解析、不报缺参）；`declaration` 组覆盖 85 个单元 |
+| 失败性质 | 密钥 / IV 长度不对、密文不是 Base64 → `ActionErrors.Precondition`（自检断言 `Kind`） |
+| 等待类 | `input.waitClipboard` 超时返回 `changed = false` **不抛异常**；`ctx.EnterIteration()` + `ctx.Wait`；干跑只判一次；读剪贴板走 `NativeClipboard.TryGetText` |
+| 知识包 / 摘要 | 4 个单元进 `StepRegistry.Default`（`declaration` 覆盖）；`units.md` 启动期自动重生；步骤摘要走通用 `StepSummary`，未加特例 |
+
+**落地内容**
+
+| 文件 | 作用 |
+|---|---|
+| `Features/Units/Text/HashUnit.cs` | `text.hash`：MD5 / SHA-1 / SHA-256 / SHA-512 + 可选 HMAC，hex / Base64 输出；`Compute` 纯函数供自检直调 |
+| `Features/Units/Data/CryptoAlgorithms.cs` | 加解密共用纯计算：密钥解码（utf8 / hex / base64）、AES / DES 对称、RSA PEM |
+| `Features/Units/Data/CryptoEncryptUnit.cs` / `CryptoDecryptUnit.cs` | `crypto.encrypt` / `crypto.decrypt`；`OptionParams` 收起 iv |
+| `Features/Units/Input/WaitClipboardUnit.cs` | `input.waitClipboard`；`Changed` 纯判定供自检直调 |
+| `Features/Units/BuiltInUnits.cs` | 注册 4 行 |
+| `Core/SelfTest/Suites/S2Suite.cs` / `SelfTestRunner.cs` | 新增 `s2` 组 6 例并注册 |
+
+**偏差 / 决策变更**
+
+- **`includeRecentMs` 本批未实现**（改了 §3 S2-2 步骤 2 / 7）：Quicker 的语义是回溯「等待开始前
+  N 毫秒内的变化」，而 `NativeClipboard` 只暴露 `LastOwnWriteTick`（本程序自己的写入时刻），
+  没有通用的剪贴板变化时间戳，可靠实现需要另建监听。本批只做 `timeoutMs` + `intervalMs`，
+  留到有真实需求时补，不假装支持。
+- **完整等待循环未跑真机**（G3 / G4）：自检只覆盖声明、`Timeouts` 三值与命中 / 未命中纯判定；
+  「停止热键 500ms 内返回」「复制 → 等待 → 读到新内容」「超时不抛异常」待用户真机点一遍。
+- `docs/ACTION_SYSTEM.md` 未改：其 §3.6 / W* 表格是历史批次清单（W2/W3、2026-11 补的 13 个单元等），
+  本批没改变动作系统模型，不往历史记录里插；新单元事实记在本文 §9.2 / §9.3，权威来源是 `StepRegistry.Default`。
+- 对称算法要求**精确字节长度**的密钥 / IV（AES 16/24/32、DES 8），长度不对按
+  `ActionErrors.Precondition` 报错并说明可用 hex / base64 给精确字节；不做「密码自动派生」，
+  避免加密端与解密端语义分叉。
+
+---
+
 （后续批次按上方模板追加。）
 
 ---
@@ -424,8 +468,8 @@
 |---|---|
 | S0 基线与评审 | 实测完成、评审通过（见 §9.1）；版本 / 术语建议值待确认 |
 | S1 `script.csharp` | **已实现，见 §9.2**；真机点验（G3 / G4）待做 |
-| S2 P0（2 项） | 下一步（未开始） |
-| S3 P1（5 项） | 未开始 |
+| S2 P0（2 项） | **已实现，见 §9.3**；真机点验待做 |
+| S3 P1（5 项） | 下一步（未开始） |
 | S4 P2（触发式） | 未开始 |
 
 > 本文只给规划与验收口径，**不包含已批准的实现排期**；提交按 `AGENTS.md` 走

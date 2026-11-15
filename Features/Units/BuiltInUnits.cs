@@ -37,6 +37,7 @@ public static class BuiltInUnits
         registry.Register(new ProcessTextUnit());
         registry.Register(new RegexUnit());
         registry.Register(new EncodeUnit());
+        registry.Register(new HashUnit());
 
         // —— 文件 ——
         registry.Register(new OpenFileUnit());
@@ -71,6 +72,7 @@ public static class BuiltInUnits
         // —— 输入 ——
         registry.Register(new SendKeysUnit());
         registry.Register(new WaitKeyUnit());
+        registry.Register(new WaitClipboardUnit());
         registry.Register(new MouseUnit());
         registry.Register(new CursorUnit());
         registry.Register(new ClickTextUnit());
@@ -99,6 +101,8 @@ public static class BuiltInUnits
         registry.Register(new ListUnit());
         registry.Register(new JsonUnit());
         registry.Register(new CalcUnit());
+        registry.Register(new CryptoEncryptUnit());
+        registry.Register(new CryptoDecryptUnit());
         registry.Register(new TimeUnit());
         registry.Register(new RandomUnit());
         registry.Register(new StateSetUnit());
