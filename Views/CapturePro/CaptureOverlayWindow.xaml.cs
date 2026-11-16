@@ -44,6 +44,14 @@ public partial class CaptureOverlayWindow : Window
     private Point _origin;                 // 本次拖动起点
     private Rect _originRect;              // 本次拖动开始时的选区
 
+    private SelectionMode _shape = SelectionMode.Rect;   // 下一次拖框画什么形状（每次打开都从矩形开始）
+    private Point[]? _polyDip;                           // 已确定的自由 / 折线选区（窗口 DIP，隐含闭合）
+    private Point[]? _originPoly;                        // 本次拖动开始时的点列（移动 / 缩放用）
+    private readonly List<Point> _lasso = new();         // 套索补点（按住拖动时）
+    private readonly List<Point> _selPoly = new();       // 折线选区的点（逐点单击）
+    private Point? _selPolyCursor;                       // 折线还没落下的那一段（跟手虚线）
+    private bool _selPolyActive;
+
     /// <summary>导出用的成品（按选区重绘）。确认之前为 null。</summary>
     public BitmapSource? ResultImage { get; private set; }
 
@@ -164,7 +172,8 @@ public partial class CaptureOverlayWindow : Window
 
         if (e.Key == Key.Enter)
         {
-            if (_polyActive) CompletePolyline();                 // 折线：Enter 收尾
+            if (_selPolyActive) CompleteSelectionPolyline();     // 折线选区：Enter 收尾
+            else if (_polyActive) CompletePolyline();            // 折线：Enter 收尾
             else if (_sel is Rect enterSel && IsValid(enterSel)) Accept(FinishKind.Copy);
             else if (_hoverTarget is SnapBox hover)
             {
@@ -228,6 +237,8 @@ public partial class CaptureOverlayWindow : Window
         if (ctrl && e.Key == Key.A)
         {
             _drag = DragMode.None;
+            CancelSelectionPolyline();
+            _polyDip = null;                     // 全屏 = 矩形选区
             _sel = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
             UpdateChrome();
             e.Handled = true;
@@ -273,6 +284,9 @@ public partial class CaptureOverlayWindow : Window
         if (delta == default) return;
 
         _sel = MoveTo(sel, delta);
+        if (_polyDip is { Length: >= SelectionShape.MinPoints } poly && _sel is Rect moved)
+            _polyDip = SelectionShape.Offset(poly, new Vector(moved.X - sel.X, moved.Y - sel.Y));
+
         UpdateChrome();
         e.Handled = true;
     }

@@ -284,6 +284,13 @@ public partial class CaptureOverlayWindow
     /// <summary>切工具 / 开始别的动作时，把画到一半的东西丢掉。</summary>
     private void CancelGesture()
     {
+        if (_selPolyActive)
+        {
+            CancelSelectionPolyline();
+            UpdateChrome();
+            return;
+        }
+
         if (_polyActive)
         {
             CancelPolyline();
@@ -291,6 +298,13 @@ public partial class CaptureOverlayWindow
         }
 
         if (_drag == DragMode.None) return;
+
+        // 改框 / 套索画到一半：还原成按下前的选区（也要把已落的点丢掉）
+        if (_drag is DragMode.New or DragMode.Move or DragMode.Resize or DragMode.Lasso)
+        {
+            CancelDrag();
+            return;
+        }
 
         if (_drag == DragMode.Mark) CancelMarkDrag();
         else

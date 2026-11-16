@@ -31,11 +31,21 @@ internal sealed class CaptureCanvas : FrameworkElement
     private static readonly SolidColorBrush HandleFill = Frozen(Colors.White);
     private static readonly Pen HandleEdge = FrozenPen(Color.FromRgb(0x18, 0x18, 0x1B), 1);
 
+    /// <summary>正在圈 / 正在点的选区：白色虚线 + 深色底描边（浅底上也看得见）。</summary>
+    private static readonly Pen PendingPen = FrozenDashPen(Colors.White, 1.5);
+    private static readonly Pen PendingShadow = FrozenDashPen(Color.FromArgb(0xAA, 0, 0, 0), 3);
+
     /// <summary>内容真源（底图 + 标注列表）。</summary>
     public CaptureDocument? Document { get; set; }
 
     /// <summary>选区（窗口 DIP）；空 = 还没框选。</summary>
     public Rect Selection { get; set; } = Rect.Empty;
+
+    /// <summary>选区是多边形时它的顶点（窗口 DIP，隐含首尾闭合）；空 = 矩形选区。</summary>
+    public Point[]? SelectionPolygon { get; set; }
+
+    /// <summary>正在圈（套索）/ 正在点（折线）的选区，还没闭合；空 = 没有。</summary>
+    public Point[]? PendingPolygon { get; set; }
 
     /// <summary>悬停命中的窗口 / 控件（窗口 DIP）；只在还没选区时显示。</summary>
     public Rect Hover { get; set; } = Rect.Empty;
@@ -66,9 +76,10 @@ internal sealed class CaptureCanvas : FrameworkElement
         var canvas = doc.Canvas;
         dc.DrawImage(doc.Base, canvas);
 
-        // 标注：裁到选区，显示与导出看到的是同一块内容
+        // 标注：裁到选区，显示与导出看到的是同一块内容（自由 / 折线选区按多边形裁）
         bool hasSelection = Selection.Width >= 0.5 && Selection.Height >= 0.5;
-        if (hasSelection) dc.PushClip(new RectangleGeometry(Selection));
+        Geometry? selectionGeo = hasSelection ? SelectionGeometry() : null;
+        if (selectionGeo != null) dc.PushClip(selectionGeo);
         for (int i = 0; i < doc.Marks.Count; i++)
         {
             if (i == SkipIndex) continue;
@@ -88,22 +99,59 @@ internal sealed class CaptureCanvas : FrameworkElement
             }
         }
 
-        if (hasSelection) dc.Pop();
+        if (selectionGeo != null) dc.Pop();
 
         // 压暗：EvenOdd 挖洞，选区（或悬停命中的元素）保持原亮度
         var full = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
-        var hole = hasSelection ? Selection : Hover.Width >= 0.5 && Hover.Height >= 0.5 ? Hover : (Rect?)null;
+        Geometry? hole = hasSelection
+            ? selectionGeo
+            : Hover.Width >= 0.5 && Hover.Height >= 0.5
+                ? new RectangleGeometry(Hover)
+                : null;
         var geo = new GeometryGroup { FillRule = FillRule.EvenOdd };
         geo.Children.Add(new RectangleGeometry(full));
-        if (hole is Rect h) geo.Children.Add(new RectangleGeometry(h));
+        if (hole != null) geo.Children.Add(hole);
         geo.Freeze();
         dc.DrawGeometry(DimBrush, null, geo);
 
-        // 选区框：外面一层深色描边保证浅底上也看得清
-        if (!hasSelection) return;
-        dc.DrawRectangle(null, FrameShadow, Selection);
-        dc.DrawRectangle(null, FramePen, Selection);
+        // 选区框：外面一层深色描边保证浅底上也看得清；多边形按点列画，矩形还是画矩形
+        if (hasSelection && selectionGeo != null)
+        {
+            if (selectionGeo is RectangleGeometry rect)
+            {
+                dc.DrawRectangle(null, FrameShadow, rect.Rect);
+                dc.DrawRectangle(null, FramePen, rect.Rect);
+            }
+            else
+            {
+                dc.DrawGeometry(null, FrameShadow, selectionGeo);
+                dc.DrawGeometry(null, FramePen, selectionGeo);
+            }
+        }
+
+        // 正在圈 / 正在点的选区：白色虚线跟手（深色底描边先画）；
+        // 折线刚点下第一个点时还没有线段，画个小圆圈给个落点
+        if (PendingPolygon is { Length: > 0 } pending)
+        {
+            if (pending.Length == 1)
+            {
+                dc.DrawEllipse(null, PendingShadow, pending[0], 4, 4);
+                dc.DrawEllipse(null, PendingPen, pending[0], 4, 4);
+            }
+            else
+            {
+                var line = SelectionShape.Geometry(pending, closed: false);
+                dc.DrawGeometry(null, PendingShadow, line);
+                dc.DrawGeometry(null, PendingPen, line);
+            }
+        }
     }
+
+    /// <summary>选区的几何：多边形时按点列，矩形时按 <see cref="Selection"/>。</summary>
+    private Geometry SelectionGeometry() => SelectionPolygon is { Length: >= SelectionShape.MinPoints } poly
+        ? SelectionShape.Geometry(poly, closed: true)
+        : new RectangleGeometry(Selection);
+
 
     private static SolidColorBrush Frozen(Color color)
     {

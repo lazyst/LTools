@@ -50,6 +50,31 @@
             <Setter Property="Background" Value="#33FFFFFF"/>
             <Setter Property="Foreground" Value="#F4F4F5"/>
         </Style>
+
+        <!-- 选区形状的小胶囊：选中是白底黑字，未选中是透明底 -->
+        <Style x:Key="ShapeBtn" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#E4E4E7"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="4" Padding="10,4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#33FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FFFFFF"/>
+                                <Setter Property="Foreground" Value="#18181B"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid x:Name="Root" Background="#0B0B0E" ClipToBounds="True">
@@ -73,6 +98,23 @@
             <Border x:Name="HintBox" Background="#D9101014" CornerRadius="4" Padding="14,7"
                     IsHitTestVisible="False">
                 <TextBlock x:Name="HintText" Foreground="#E4E4E7" FontSize="13" TextWrapping="Wrap"/>
+            </Border>
+
+            <!-- 选区形状（还没框选时才出现）：矩形 / 自由（按住圈）/ 折线（逐点单击）。
+                 框过之后形状就定了；想换就右键取消选区，这块条会再出现。 -->
+            <Border x:Name="ShapeBar" Panel.ZIndex="15" Background="#D9101014" CornerRadius="6"
+                    Padding="4" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="ShapeRect" Style="{StaticResource ShapeBtn}" Content="矩形"
+                                 GroupName="capShape" IsChecked="True" Tag="Rect" Click="Shape_Click"
+                                 ToolTip="拖出一个矩形（默认）"/>
+                    <RadioButton x:Name="ShapeLasso" Style="{StaticResource ShapeBtn}" Content="自由"
+                                 GroupName="capShape" Tag="Lasso" Click="Shape_Click"
+                                 ToolTip="按住拖动，随手圈出要截的区域"/>
+                    <RadioButton x:Name="ShapePolyline" Style="{StaticResource ShapeBtn}" Content="折线"
+                                 GroupName="capShape" Tag="Polyline" Click="Shape_Click"
+                                 ToolTip="逐点单击围出区域，双击 / Enter 结束"/>
+                </StackPanel>
             </Border>
 
             <!-- 完成动作栏：贴在选区下方、与右边缘对齐；下方放不下时翻到上方。 -->

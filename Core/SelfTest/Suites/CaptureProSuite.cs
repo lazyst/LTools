@@ -32,6 +32,7 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "文档：换底图（翻采集历史）", SwapBase));
         cases.Add(new("capturePro", "保存：格式 / 尺寸 / 编码", SaveFormats));
         cases.Add(new("capturePro", "文档：选区换算与导出", Selection));
+        cases.Add(new("capturePro", "选区形状：自由 / 折线的几何与导出", SelectionShapes));
         cases.Add(new("capturePro", "文档：比例是「物理 ÷ DIP」", DocScale));
         cases.Add(new("capturePro", "文字：量宽随字号增长", TextMetrics));
         cases.Add(new("capturePro", "样式：底色对比取字色", Contrast));
@@ -446,6 +447,84 @@ internal static class CaptureProSuite
         var image = doc.Render();
         Check.Equal(4, image.PixelWidth, "导出宽 = 选区物理宽");
         Check.Equal(4, image.PixelHeight, "导出高 = 选区物理高");
+    }
+
+    /// <summary>
+    /// 自由 / 折线选区：补点阈值、外接框、平移 / 缩放、DIP → 图像像素、闭合成几何，
+    /// 以及「导出按多边形裁」（形状内不透明、形状外透明）。
+    /// </summary>
+    private static void SelectionShapes()
+    {
+        // 补点阈值：鼠标没动也有事件，太近的点丢掉
+        var points = new List<Point>();
+        SelectionShape.Append(points, new Point(0, 0));
+        SelectionShape.Append(points, new Point(SelectionShape.MinStep / 2, 0));
+        Check.Equal(1, points.Count, "比阈值近的点丢掉");
+        SelectionShape.Append(points, new Point(SelectionShape.MinStep, 0));
+        Check.Equal(2, points.Count, "够远才补一个点");
+
+        // 外接框（点列的框，不是矩形选区）
+        var tri = new[] { new Point(2, 3), new Point(8, 3), new Point(5, 9) };
+        Check.Equal(new Rect(2, 3, 6, 6), SelectionShape.Bounds(tri), "点列外接框");
+        Check.Equal(Rect.Empty, SelectionShape.Bounds(Array.Empty<Point>()), "空点列 = 空框");
+
+        // 够不够成一个选区：至少三个点 + 外接框到了最小边长
+        Check.False(SelectionShape.IsUsable(tri.Take(2).ToArray(), 4), "两个点不是一个面");
+        Check.True(SelectionShape.IsUsable(tri, 4), "三个点 + 框够大 = 可用");
+        Check.False(SelectionShape.IsUsable(new[] { new Point(0, 0), new Point(1, 0), new Point(0, 1) }, 4),
+            "框太小不算选区");
+        Check.Equal(3, SelectionShape.MinPoints, "最少三个点（三角形才是面）");
+
+        // 平移 / 外接框缩放（与标注缩放同一口径：按框的比例变形点列）
+        var square = new[] { new Point(0, 0), new Point(10, 0), new Point(10, 10), new Point(0, 10) };
+        Check.Equal(new Point(3, -2), SelectionShape.Offset(square, new Vector(3, -2))[0], "整体平移");
+        var doubled = SelectionShape.Scale(square, new Rect(0, 0, 10, 10), new Rect(5, 5, 20, 20));
+        Check.Equal(new Point(5, 5), doubled[0], "缩放：左上跟着框的左上");
+        Check.Equal(new Point(25, 25), doubled[2], "缩放：右下按框的比例放大");
+
+        // DIP → 图像像素（相对底图左上角，四舍五入）
+        var image = SelectionShape.ToImage(new[] { new Point(10, 10), new Point(5.2, 5.2) },
+            new Point(5, 5), 2.0);
+        Check.Equal(new Point(10, 10), image[0], "偏移 + 比例换算");
+        Check.Equal(new Point(0, 0), image[1], "0.4 像素四舍五入到 0");
+
+        // 闭合成几何：首尾相连、内部填满；命中测试用射线法
+        var closed = SelectionShape.Geometry(square, closed: true);
+        Check.True(closed.FillContains(new Point(5, 5)), "闭合几何内部填满");
+        Check.False(closed.FillContains(new Point(15, 5)), "闭合几何外面不填");
+        Check.True(SelectionShape.Contains(square, new Point(5, 5)), "多边形命中：里面");
+        Check.False(SelectionShape.Contains(square, new Point(15, 5)), "多边形命中：外面");
+        Check.False(SelectionShape.Contains(square.Take(2).ToArray(), new Point(5, 5)), "点数不够不算面");
+
+        // 导出按多边形裁：形状内保留底图，形状外透明
+        var pixels = new byte[8 * 8 * 4];
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = 0xFF; pixels[i + 1] = 0xFF; pixels[i + 2] = 0xFF; pixels[i + 3] = 0xFF;
+        }
+        var white = BitmapSource.Create(8, 8, 96, 96, PixelFormats.Pbgra32, null, pixels, 8 * 4);
+        white.Freeze();
+
+        var doc = new CaptureDocument(white, new Int32Rect(100, 100, 8, 8), 2.0);
+        doc.Area = new Int32Rect(100, 100, 8, 8);
+        Check.False(doc.HasPolygon, "矩形选区没有点列");
+
+        doc.Polygon = new[] { new Point(1, 1), new Point(7, 1), new Point(7, 7), new Point(1, 7) };
+        Check.True(doc.HasPolygon, "写了点列就是多边形选区");
+
+        var shot = doc.Render();
+        var outPixels = new byte[8 * 8 * 4];
+        shot.CopyPixels(outPixels, 8 * 4, 0);
+        Check.Equal((byte)0xFF, outPixels[(3 * 8 + 3) * 4 + 3], "形状内保留底图（不透明）");
+        Check.Equal((byte)0, outPixels[0 * 4 + 3], "左上角在形状外 = 透明");
+        Check.Equal((byte)0, outPixels[(7 * 8 + 7) * 4 + 3], "右下角在形状外 = 透明");
+
+        // 点列换成矩形（重新框选）：导出不再裁
+        doc.Polygon = null;
+        var rectShot = doc.Render();
+        var rectPixels = new byte[8 * 8 * 4];
+        rectShot.CopyPixels(rectPixels, 8 * 4, 0);
+        Check.Equal((byte)0xFF, rectPixels[0 * 4 + 3], "矩形选区整块不透明");
     }
 
     private static void TextMetrics()

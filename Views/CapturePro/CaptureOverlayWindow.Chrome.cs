@@ -9,6 +9,8 @@ using System.Windows.Shapes;
 using LTools.Features.CapturePro;
 using LTools.Native;
 
+using SelectionMode = LTools.Features.CapturePro.SelectionMode;
+
 namespace LTools.Views.CapturePro;
 
 /// <summary>
@@ -48,21 +50,34 @@ public partial class CaptureOverlayWindow
     /// <summary>按当前选区重画画面、把手、尺寸条、悬停高亮、动作栏与顶部提示。</summary>
     private void UpdateChrome()
     {
-        bool hasSelection = _sel is Rect current && IsValid(current);
+        // 折线选区还没围起来：这不是「已选区」，别出把手 / 动作栏（_sel 只是点列的外接框）
+        bool pending = SelectionPending;
+        bool hasSelection = !pending && _sel is Rect current && IsValid(current);
         Rect sel = hasSelection ? _sel!.Value : Rect.Empty;
 
         // 悬停高亮只在「还没选区」时出现；有选区时用户在看边角，不需要再跳候选
         Rect hover = Rect.Empty;
-        if (!hasSelection && _hoverTarget is SnapBox hb)
+        if (!hasSelection && !pending && _hoverTarget is SnapBox hb)
         {
             var hr = ToDipRect(hb.Bounds);
             if (hr.Width >= 2 && hr.Height >= 2) hover = hr;
         }
 
         Surface.Selection = sel;
+        Surface.SelectionPolygon = ClosedPolygon();
+        Surface.PendingPolygon = PendingShape();
         Surface.Hover = hover;
         Surface.ShowHandles = ShowsMarkHandles;
         Surface.InvalidateVisual();
+
+        // 形状条：还没选区、不在拖动 / 画折线、不是贴图内标注、不在翻历史时才露出来
+        bool shapeBar = !hasSelection && !pending && _drag == DragMode.None && !EditOnly && !BrowsingHistory;
+        ShapeBar.Visibility = shapeBar ? Visibility.Visible : Visibility.Collapsed;
+        if (shapeBar)
+        {
+            SyncShapeButtons();
+            PlaceShapeBar();
+        }
 
         if (!hasSelection)
         {
@@ -90,7 +105,7 @@ public partial class CaptureOverlayWindow
         ShowSizeInfo(sel, barAbove);
 
         // 工具栏：改框期间先收起来，免得被拖到指头底下；画标注时留着（随时能换工具）
-        if (_drag is DragMode.New or DragMode.Move or DragMode.Resize) Toolbar.Visibility = Visibility.Collapsed;
+        if (_drag is DragMode.New or DragMode.Move or DragMode.Resize or DragMode.Lasso) Toolbar.Visibility = Visibility.Collapsed;
         else ShowToolbar();
         Toolbar.SetUndo(_doc.CanUndo, _doc.CanRedo);
 
@@ -184,7 +199,9 @@ public partial class CaptureOverlayWindow
         int x = Math.Min(x1, x2), y = Math.Min(y1, y2);
         int w = Math.Abs(x2 - x1) + 1, h = Math.Abs(y2 - y1) + 1;
 
-        InfoText.Text = $"{w} × {h} px   {_doc.Monitor.X + x}, {_doc.Monitor.Y + y}";
+        // 尺寸仍报外接框（存进配置的就是它），形状另说一句
+        string shape = _polyDip != null ? "自由选区 · " : "";
+        InfoText.Text = $"{shape}{w} × {h} px   {_doc.Monitor.X + x}, {_doc.Monitor.Y + y}";
         InfoBox.Visibility = Visibility.Visible;
         InfoBox.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         double iw = InfoBox.DesiredSize.Width;
@@ -236,6 +253,16 @@ public partial class CaptureOverlayWindow
         Canvas.SetTop(HintBox, 26);
     }
 
+    /// <summary>形状条居中摆在提示下面（提示会按窗口宽度换行，所以每次都现量）。</summary>
+    private void PlaceShapeBar()
+    {
+        ShapeBar.InvalidateMeasure();
+        ShapeBar.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double w = ShapeBar.DesiredSize.Width;
+        Canvas.SetLeft(ShapeBar, Math.Max(12, (ActualWidth - w) / 2));
+        Canvas.SetTop(ShapeBar, 64);
+    }
+
     /// <summary>顶部提示：把「现在能做什么」和「识别到了没有」放在一句话里。</summary>
     private void RefreshHint()
     {
@@ -257,6 +284,13 @@ public partial class CaptureOverlayWindow
             return;
         }
 
+        // 折线选区正在逐点单击：说清怎么收尾（不然只会一直加点）
+        if (_selPolyActive)
+        {
+            HintText.Text = $"折线选区 · 已点 {_selPoly.Count} 个点 · 双击 / Enter / 点回起点结束 · Esc 取消";
+            return;
+        }
+
         if (_sel is Rect s && IsValid(s))
         {
             if (_tool != CaptureTool.Select)
@@ -266,19 +300,32 @@ public partial class CaptureOverlayWindow
                 return;
             }
 
-            HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· 点标注拖动 / Delete 删除 · 右键取消选区 · Ctrl+Z 撤销 · Enter 复制 · Ctrl+T 贴图 · Ctrl+R 识别 · Ctrl+L 长截图 · , / . 翻历史";
+            string shape = _polyDip != null ? "自由选区 · " : "";
+            HintText.Text = shape + "拖动边角微调 · 方向键 1px（Shift 10px）· 点标注拖动 / Delete 删除 · 右键取消选区 · Ctrl+Z 撤销 · Enter 复制 · Ctrl+T 贴图 · Ctrl+R 识别 · Ctrl+L 长截图 · , / . 翻历史";
             return;
         }
 
         if (_hoverTarget is SnapBox hover)
         {
-            HintText.Text = $"单击选中「{hover.Label}」· 也可直接拖动框选 · 滚轮换层级 · 右键 / Esc 取消";
+            string extra = _shape switch
+            {
+                SelectionMode.Lasso => " · 或按住自由圈选",
+                SelectionMode.Polyline => " · 或逐点折线围选",
+                _ => " · 也可直接拖动框选",
+            };
+            HintText.Text = $"单击选中「{hover.Label}」{extra} · 滚轮换层级 · 右键 / Esc 取消";
             return;
         }
 
-        string text = _windowTargets.Count > 0
-            ? "拖动框选区域 · 单击选窗口 / 控件 · 滚轮换层级 · , / . 翻历史 · 右键 / Esc 取消"
-            : "拖动框选区域 · , / . 翻历史 · 右键 / Esc 取消";
+        string text = _shape switch
+        {
+            SelectionMode.Lasso => "按住拖动圈出区域 · 松开自动闭合",
+            SelectionMode.Polyline => "逐点单击围出区域 · 双击 / Enter 结束",
+            _ => "拖动框选区域",
+        };
+
+        if (_windowTargets.Count > 0) text += " · 单击选窗口 / 控件 · 滚轮换层级";
+        text += " · , / . 翻历史 · 右键 / Esc 取消";
 
         if (_uiaPending != IntPtr.Zero) text += " · 识别控件中…";
         else if (_uiaTargets.Count == 0 && _windowTargets.Count > 0) text += " · 未检测到控件，可直接拖拽框选";

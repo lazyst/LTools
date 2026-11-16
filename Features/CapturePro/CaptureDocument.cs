@@ -68,6 +68,7 @@ internal sealed class CaptureDocument
         _redo.Clear();
         _serial = 0;
         Area = default;
+        Polygon = null;
         Dirty = false;
     }
 
@@ -83,6 +84,16 @@ internal sealed class CaptureDocument
 
     /// <summary>选区（物理像素，屏幕绝对坐标）。未框选时宽高为 0。</summary>
     public Int32Rect Area { get; set; }
+
+    /// <summary>
+    /// 自由 / 折线选区的多边形（**图像像素，相对底图左上角**，隐含首尾闭合）；null = 矩形选区。
+    /// 显示用的是窗口里的 DIP 点列（<c>CaptureOverlayWindow</c>），这里只在导出时按它裁透明。
+    /// 它的外接框必须与 <see cref="Area"/> 对得上（都由 <c>SyncArea</c> 从同一份点列算出来）。
+    /// </summary>
+    public Point[]? Polygon { get; set; }
+
+    /// <summary>是不是非矩形选区（点数够成一个面）。</summary>
+    public bool HasPolygon => Polygon is { Length: >= SelectionShape.MinPoints };
 
     public bool HasArea => Area.Width >= 2 && Area.Height >= 2;
 
@@ -239,8 +250,16 @@ internal sealed class CaptureDocument
         {
             dc.PushTransform(new ScaleTransform(Scale, Scale));               // DIP → 物理像素
             dc.PushTransform(new TranslateTransform(-dx / Scale - Origin.X, -dy / Scale - Origin.Y)); // 平移到选区左上角
+
+            // 自由 / 折线选区：按多边形裁（形状外留透明）。几何写的是「相对选区左上角的图像像素」，
+            // 跟着上面两层变换一起进输出像素；矩形选区不用裁（位图本身就是它的尺寸）。
+            Geometry? clip = PolygonClip(dx, dy);
+            if (clip != null) dc.PushClip(clip);
+
             dc.DrawImage(Base, Canvas);
             MarkRenderer.DrawAll(dc, _marks, Base, Canvas, Scale);
+
+            if (clip != null) dc.Pop();
             dc.Pop();
             dc.Pop();
         }
@@ -250,5 +269,21 @@ internal sealed class CaptureDocument
         bitmap.Render(visual);
         bitmap.Freeze();
         return bitmap;
+    }
+
+    /// <summary>
+    /// 非矩形选区的裁剪几何：坐标是「相对选区左上角的图像像素」，跟着渲染的
+    /// <c>Scale + Translate</c> 两层变换一起落到输出像素上。矩形选区返回 null（不用裁）。
+    /// </summary>
+    private Geometry? PolygonClip(double dx, double dy)
+    {
+        if (Polygon is not { Length: >= SelectionShape.MinPoints } points) return null;
+
+        double s = Scale > 0 ? Scale : 1;
+        var local = new Point[points.Length];
+        for (int i = 0; i < points.Length; i++)
+            local[i] = new Point((points[i].X - dx) / s, (points[i].Y - dy) / s);
+
+        return SelectionShape.Geometry(local, closed: true);
     }
 }

@@ -59,6 +59,7 @@ public partial class CaptureOverlayWindow
     private void StepBack(bool preferSelection = false)
     {
         if (BrowsingHistory) ExitHistory();
+        else if (_selPolyActive) { CancelSelectionPolyline(); UpdateChrome(); }
         else if (_polyActive) CancelPolyline();
         else if (_drag != DragMode.None) CancelDrag();
         else if (_selectedIndex >= 0) ClearMarkSelection();
@@ -75,9 +76,14 @@ public partial class CaptureOverlayWindow
     private void ClearSelection()
     {
         _sel = null;
-        _doc.Area = default;             // 选区也没了：别让「有区域、没框」的中间态留在文档里
-        _doc.ClearMarks();
+        _polyDip = null;
+        _originPoly = null;
+        _lasso.Clear();
+        CancelSelectionPolyline();
         SetTool(CaptureTool.Select);     // 工具也回到「选择」：再框一块就是从头开始
+        _doc.Area = default;             // 选区也没了：别让「有区域、没框」的中间态留在文档里
+        _doc.Polygon = null;
+        _doc.ClearMarks();
         UpdateCursorForTool();
         UpdateChrome();                  // 收起动作栏 / 尺寸条 / 工具栏，提示改回「拖动框选」
 
