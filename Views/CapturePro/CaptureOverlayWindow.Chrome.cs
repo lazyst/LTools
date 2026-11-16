@@ -239,7 +239,7 @@ public partial class CaptureOverlayWindow
                 return;
             }
 
-            HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· 点标注拖动 / Delete 删除 · Ctrl+Z 撤销 · Enter 复制 · Ctrl+T 贴图";
+            HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· 点标注拖动 / Delete 删除 · Ctrl+Z 撤销 · Enter 复制 · Ctrl+T 贴图 · Ctrl+R 识别";
             return;
         }
 

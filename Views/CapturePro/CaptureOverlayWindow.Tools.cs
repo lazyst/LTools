@@ -29,6 +29,7 @@ public partial class CaptureOverlayWindow
         Toolbar.RedoRequested += () => { _doc.Redo(); RefreshMarks(); };
         Toolbar.CopyRequested += () => Accept(FinishKind.Copy);
         Toolbar.PinRequested += () => Accept(FinishKind.Pin);
+        Toolbar.RecognizeRequested += () => Accept(FinishKind.Recognize);
         Toolbar.SaveRequested += () => Accept(FinishKind.Save);
         Toolbar.CancelRequested += Cancel;
     }

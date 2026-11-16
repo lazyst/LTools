@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using LTools.Features;
 using LTools.Features.CapturePro;
 
 namespace LTools.Core.SelfTest;
@@ -28,6 +29,7 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "工具：目录 / 参数格 / 默认样式", Tools));
         cases.Add(new("capturePro", "取色：像素颜色与文本", Picker));
         cases.Add(new("capturePro", "贴图：缩放 / 不透明度 / 锚点", Pin));
+        cases.Add(new("capturePro", "识别：表格聚类 / TSV / HTML", Recognize));
     }
 
     private static void Geometry()
@@ -281,6 +283,106 @@ internal static class CaptureProSuite
         var placed = PinMath.PlaceAt(new Rect(200, 100, 400, 300), 2);
         Check.Equal(new Rect(100, 50, 200, 150), placed, "物理矩形 ÷ 缩放 = DIP 落点");
         Check.Equal(1d, PinMath.PlaceAt(new Rect(0, 0, 0, 0), 1).Width, "空区域至少 1 DIP（窗口不能是 0 尺寸）");
+    }
+
+    /// <summary>
+    /// 识别：词框 → 近似表格（行 / 列聚类、中文逐字拼接、TSV / HTML），
+    /// 以及「引擎名字」与「成品位图转 GDI+」这两处胶水。
+    /// </summary>
+    private static void Recognize()
+    {
+        // 词框只关心「横向位置 + 宽度」，纵向由 Line 统一给（模拟同一行）
+        static OcrWordBox Word(string text, int x, int w = 60) =>
+            new() { Text = text, X = x, Y = 0, W = w, H = 30 };
+
+        static OcrLineBox Line(int y, params OcrWordBox[] words)
+        {
+            var placed = words
+                .Select(w => new OcrWordBox { Text = w.Text, X = w.X, Y = y, W = w.W, H = w.H })
+                .ToArray();
+
+            return new OcrLineBox
+            {
+                Text = string.Join(" ", words.Select(w => w.Text)),
+                X = placed[0].X, Y = y, W = 300, H = 30,
+                Confident = true,
+                Words = placed,
+            };
+        }
+
+        // 2 行 × 2 列（列间距 10 以上才会分成两列）
+        var table = OcrTable.Build(new[]
+        {
+            Line(0, Word("名称", 10), Word("数量", 130)),
+            Line(40, Word("苹果", 10), Word("12", 130)),
+        });
+
+        Check.True(table.HasTable, "2 行 2 列算表格");
+        Check.Equal(2, table.RowCount, "两行");
+        Check.Equal(2, table.Columns, "两列");
+        Check.Equal("名称", table.Rows[0][0], "第一行第一列");
+        Check.Equal("数量", table.Rows[0][1], "第一行第二列");
+        Check.Equal("苹果", table.Rows[1][0], "第二行第一列");
+        Check.Equal("12", table.Rows[1][1], "第二行第二列");
+        Check.Equal("名称\t数量\r\n苹果\t12", table.ToTsv(), "TSV：单元格制表符、行换行");
+        Check.True(table.ToHtml().Contains("<td>苹果</td>"), "HTML 单元格");
+        Check.True(table.ToHtml().StartsWith("<table>"), "HTML 以 <table> 开头");
+
+        // 单列 / 单行只是普通文字，不该硬排成表格
+        var column = OcrTable.Build(new[]
+        {
+            Line(0, Word("上", 10)),
+            Line(40, Word("下", 10)),
+        });
+        Check.Equal(1, column.Columns, "同一列只有一个格子列");
+        Check.False(column.HasTable, "单列不算表格");
+
+        var single = OcrTable.Build(new[] { Line(0, Word("只有一行", 10)) });
+        Check.False(single.HasTable, "单行不算表格");
+
+        // 中文逐字框要贴在一起（间距小于字高），英文词之间有空格才补空格
+        var join = OcrTable.Build(new[]
+        {
+            Line(0, Word("中", 0, 28), Word("文", 30, 28)),
+            Line(40, Word("a", 0, 10), Word("b", 26, 10)),
+        });
+        Check.Equal("中文", join.Rows[0][0], "相邻中文字框直接拼接（不加空格）");
+
+        // 没有词框时把整行当一个格子（系统 OCR 偶尔只给行）
+        var fallback = OcrTable.Build(new[]
+        {
+            new OcrLineBox { Text = "第一行", X = 0, Y = 0, W = 120, H = 30, Confident = true },
+            new OcrLineBox { Text = "第二行", X = 0, Y = 40, W = 120, H = 30, Confident = true },
+        });
+        Check.Equal(2, fallback.RowCount, "整行退化成格子");
+        Check.Equal("第一行", fallback.Rows[0][0], "整行文本原样进格子");
+
+        Check.False(OcrTable.Build(Array.Empty<OcrLineBox>()).HasTable, "没有行 → 没有表格");
+        Check.Equal("没有表格", OcrTable.Describe(TableGrid.Empty), "空表格的描述");
+
+        // HTML 转义（截图里的表格可能真有尖括号）
+        var escape = OcrTable.Build(new[]
+        {
+            Line(0, Word("<a&b>", 10), Word("x", 130)),
+            Line(40, Word("y", 10), Word("z", 130)),
+        });
+        Check.True(escape.ToHtml().Contains("&lt;a&amp;b&gt;"), "HTML 转义 & < >");
+
+        // 引擎名字（与设置页下拉的叫法一致）
+        Check.Equal("系统 OCR", CaptureRecognize.EngineLabel(null), "null = 系统 OCR");
+        Check.Equal("系统 OCR", CaptureRecognize.EngineLabel("windows"), "windows = 系统 OCR");
+        Check.Equal("PP-OCRv6 快速", CaptureRecognize.EngineLabel("v6tiny"), "v6tiny 的显示名");
+        Check.Equal("PP-OCRv6 精确", CaptureRecognize.EngineLabel("v6small"), "v6small 的显示名");
+
+        // 成品位图 → GDI+ 位图（OCR 与二维码两套底层都吃 Bitmap）
+        var pixels = new byte[4 * 3 * 4];
+        var image = BitmapSource.Create(4, 3, 96, 96, PixelFormats.Bgra32, null, pixels, 16);
+        image.Freeze();
+        using (var bitmap = CaptureRecognize.ToBitmap(image))
+        {
+            Check.Equal(4, bitmap.Width, "转出来的宽不变");
+            Check.Equal(3, bitmap.Height, "转出来的高不变");
+        }
     }
 
     /// <summary>8×8 像素的假底图 + 缩放 2 的文档（不开窗口）。</summary>

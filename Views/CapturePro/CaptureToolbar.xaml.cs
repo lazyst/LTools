@@ -43,6 +43,7 @@ public partial class CaptureToolbar : UserControl
     public event Action? RedoRequested;
     public event Action? CopyRequested;
     public event Action? PinRequested;
+    public event Action? RecognizeRequested;
     public event Action? SaveRequested;
     public event Action? CancelRequested;
 
@@ -176,6 +177,7 @@ public partial class CaptureToolbar : UserControl
 
         AddAction("IconCopy", "复制到剪贴板（Enter）", () => CopyRequested?.Invoke());
         AddAction("IconPin", "贴图到屏幕（Ctrl+T）", () => PinRequested?.Invoke());
+        AddAction("IconRecognize", "识别文字 / 表格 / 二维码（Ctrl+R）", () => RecognizeRequested?.Invoke());
         AddAction("IconSave", "另存为…", () => SaveRequested?.Invoke());
         AddAction("IconClose", "取消（Esc）", () => CancelRequested?.Invoke());
     }

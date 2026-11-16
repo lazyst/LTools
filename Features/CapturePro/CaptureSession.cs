@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using LTools.Core;
+using LTools.Features;
 using LTools.Hooks;
 using LTools.Native;
 using LTools.Views;
@@ -32,6 +33,10 @@ internal static class CaptureSession
         MouseHook.SetWindowPickerActive(true);
         HotkeyRegistry.Suspended = true;
 
+        CaptureResult? result = null;
+        bool pin = false, recognize = false;
+        double scale = 1;
+
         try
         {
             System.Threading.Thread.Sleep(TransientMinimize.SettleMs);   // 等最小化动画结束、桌面重绘完
@@ -45,12 +50,10 @@ internal static class CaptureSession
             bool? ok = overlay.ShowDialog();
             if (ok != true || overlay.ResultImage == null) return null;
 
-            var result = new CaptureResult(overlay.Document.Area, overlay.ResultImage);
-
-            // 「贴图」出口：覆盖层已经关掉，现在把成品钉到屏幕上（正好盖住刚才截的那块）
-            if (overlay.PinRequested) CapturePinManager.Pin(result.Image, result.Area, overlay.MonitorScale);
-
-            return result;
+            result = new CaptureResult(overlay.Document.Area, overlay.ResultImage);
+            pin = overlay.PinRequested;
+            recognize = overlay.RecognizeRequested;
+            scale = overlay.MonitorScale;
         }
         catch (Exception ex)
         {
@@ -64,5 +67,14 @@ internal static class CaptureSession
             MouseHook.SetWindowPickerActive(false);
             restore();
         }
+
+        // 两个「关掉覆盖层之后才做」的出口：这时自己的窗口已经还原，不会被一起收走。
+        if (result == null) return null;
+
+        if (pin) CapturePinManager.Pin(result.Image, result.Area, scale);
+        if (recognize)
+            CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe);
+
+        return result;
     }
 }

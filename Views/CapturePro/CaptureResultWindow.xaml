@@ -1,0 +1,136 @@
+<Window x:Class="LTools.Views.CapturePro.CaptureResultWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:LTools.Views"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:LTools.Views.Controls"
+        Title="识别结果" Width="780" ResizeMode="NoResize" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
+        MaxHeight="900" MaxWidth="1200"
+        views:WindowSizing.Mode="Dialog">
+    <!-- 识别结果窗：一次截图的三样结论（文字 / 近似表格 / 二维码），每页各自可复制。
+         三页签用 RadioButton 自绘（主题里没有 TabControl 样式，别退回系统那套灰边框）。 -->
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <Style x:Key="ResultTab" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent"
+                                BorderThickness="1" CornerRadius="{StaticResource CornerSm}" Padding="14,4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PressedBgBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BorderStrongBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <controls:DialogShell>
+        <controls:DialogShell.Footer>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="20,10,20,16">
+                <Button Style="{StaticResource BtnGhost}" Content="关闭" MinWidth="78"
+                        Margin="0,0,8,0" IsCancel="True" Click="Close_Click"/>
+                <Button x:Name="CopyBtn" Style="{StaticResource BtnPrimary}" Content="复制文字"
+                        MinWidth="110" IsDefault="True" Click="Copy_Click"/>
+            </StackPanel>
+        </controls:DialogShell.Footer>
+
+        <StackPanel Margin="20,14,20,10">
+            <TextBlock x:Name="StatusText" TextWrapping="Wrap" Text="正在识别…"/>
+            <TextBlock x:Name="DetailText" Margin="0,4,0,0" TextWrapping="Wrap"
+                       FontSize="{StaticResource FontSizeHint}"
+                       Foreground="{StaticResource SecondaryTextBrush}"/>
+
+            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                <RadioButton x:Name="TabText" Style="{StaticResource ResultTab}" GroupName="resultTab"
+                             Content="文字" IsChecked="True" Tag="text" Checked="Tab_Changed"/>
+                <RadioButton x:Name="TabTable" Style="{StaticResource ResultTab}" GroupName="resultTab"
+                             Content="表格" Tag="table" Checked="Tab_Changed"/>
+                <RadioButton x:Name="TabQr" Style="{StaticResource ResultTab}" GroupName="resultTab"
+                             Content="二维码" Tag="qr" Checked="Tab_Changed"/>
+            </StackPanel>
+
+            <Border Height="380" Margin="0,8,0,0" Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CornerMd}" Padding="10">
+                <Grid>
+                    <!-- 文字 -->
+                    <TextBox x:Name="TextView" BorderThickness="0" Background="Transparent"
+                             IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                             controls:TextBoxPlaceholder.Text="没有识别到文字"
+                             controls:TextBoxClear.Attach="False"/>
+
+                    <!-- 表格：本地近似表格（按词框聚类），可复制 TSV / HTML -->
+                    <Grid x:Name="TablePage" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <DataGrid x:Name="TableView" IsReadOnly="True" AutoGenerateColumns="False"
+                                  CanUserAddRows="False" CanUserDeleteRows="False"
+                                  HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  BorderThickness="0" Background="Transparent"/>
+
+                        <TextBlock x:Name="TableEmpty" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                   Text="没有识别出表格（至少要 2 行 × 2 列）"/>
+
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button x:Name="CopyTsvBtn" Style="{StaticResource BtnGhost}" Content="复制 TSV"
+                                    MinWidth="92" Click="CopyTsv_Click"/>
+                            <Button x:Name="CopyHtmlBtn" Style="{StaticResource BtnGhost}" Content="复制 HTML"
+                                    MinWidth="92" Margin="8,0,0,0" Click="CopyHtml_Click"/>
+                            <TextBlock x:Name="TableInfo" Margin="12,0,0,0" VerticalAlignment="Center"
+                                       FontSize="{StaticResource FontSizeHint}"
+                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 二维码 -->
+                    <Grid x:Name="QrPage" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBox x:Name="QrView" BorderThickness="0" Background="Transparent"
+                                 IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 controls:TextBoxPlaceholder.Text="没有找到二维码"
+                                 controls:TextBoxClear.Attach="False"/>
+
+                        <TextBlock x:Name="QrInfo" Grid.Row="1" Margin="0,8,0,0" TextWrapping="Wrap"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource SecondaryTextBrush}"/>
+                    </Grid>
+                </Grid>
+            </Border>
+        </StackPanel>
+    </controls:DialogShell>
+</Window>

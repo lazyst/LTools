@@ -83,6 +83,8 @@
                             Click="Copy_Click"/>
                     <Button x:Name="PinBtn" Style="{StaticResource OverlayBtnGhost}" Content="贴图"
                             Margin="8,0,0,0" Click="Pin_Click" ToolTip="贴到屏幕上（Ctrl+T）"/>
+                    <Button x:Name="RecognizeBtn" Style="{StaticResource OverlayBtnGhost}" Content="识别"
+                            Margin="8,0,0,0" Click="Recognize_Click" ToolTip="识别文字 / 表格 / 二维码（Ctrl+R）"/>
                     <Button x:Name="SaveBtn" Style="{StaticResource OverlayBtnGhost}" Content="另存为…"
                             Margin="8,0,0,0" Click="Save_Click"/>
                     <Button Style="{StaticResource OverlayBtnGhost}" Content="取消" Margin="8,0,0,0"

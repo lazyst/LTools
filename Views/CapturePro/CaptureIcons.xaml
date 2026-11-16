@@ -17,7 +17,8 @@
     <PathGeometry x:Key="IconEraser" Figures="M 3,14 L 11,4 L 17,9 L 9,18 Z M 7,18 H 18"/>
     <PathGeometry x:Key="IconPicker" Figures="M 10,2.4 C 10,2.4 4.6,8.6 4.6,12.4 A 5.4,5.4 0 0 0 15.4,12.4 C 15.4,8.6 10,2.4 10,2.4 Z M 10,10.4 A 2,2 0 1 0 10,14.4 A 2,2 0 1 0 10,10.4"/>
     <PathGeometry x:Key="IconPin" Figures="M 8.4,3 H 15.6 L 13.4,6.4 V 10.4 L 16,12.4 H 8 L 10.6,10.4 V 6.4 Z M 12,12.4 V 18"/>
-    <PathGeometry x:Key="IconUndo" Figures="M 6,5 L 2,9 L 6,13 M 2,9 H 12 A 4.5,4.5 0 0 1 12,18"/>
+    <!-- 识别：扫描框四角 + 中间一道线（与「矩形」区分开，别只画个方框） -->
+    <PathGeometry x:Key="IconRecognize" Figures="M 3,7 V 3 H 7 M 13,3 H 17 V 7 M 17,13 V 17 H 13 M 7,17 H 3 V 13 M 6,10 H 14"/>    <PathGeometry x:Key="IconUndo" Figures="M 6,5 L 2,9 L 6,13 M 2,9 H 12 A 4.5,4.5 0 0 1 12,18"/>
     <PathGeometry x:Key="IconRedo" Figures="M 14,5 L 18,9 L 14,13 M 18,9 H 8 A 4.5,4.5 0 0 0 8,18"/>
     <PathGeometry x:Key="IconCopy" Figures="M 3,10 L 8,15 L 17,4"/>
     <PathGeometry x:Key="IconSave" Figures="M 4,4 H 14 L 16,6 V 16 H 4 Z M 7,4 V 8 H 13 V 4 M 6,16 V 11 H 14 V 16"/>
