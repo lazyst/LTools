@@ -175,15 +175,38 @@ internal static class AiToolHandlers
         };
     }
 
-    public static Dictionary<string, object?> UnitsList(string? query)
+    /// <summary>
+    /// 动作单元索引。<c>in</c> / <c>out</c> 是这个单元的输入 / 输出**类型**（去重、排序，兼作数量），
+    /// <c>produces</c> / <c>consumes</c> 按类型反查（「谁会产数字」「谁能吃文本」）。
+    /// 类型名与 <c>units_get</c> 的 <c>type</c> 字段同一套（<see cref="KnowledgePack.MachineName"/>），
+    /// 类型不明写 <c>any</c>。
+    /// </summary>
+    /// <remarks>
+    /// 反查是 <b>OR</b>：写 <c>produces: "number,list"</c> = 产数字**或**产列表。与 <paramref name="query"/> 是 AND。
+    /// 这里刻意不返回参数级细节（名字 / 必填 / 默认值）——那是 <c>ltools_units_get</c> 的活，
+    /// 索引只回答「去哪儿找」，回答得越多越像一份要全量读的目录。
+    /// </remarks>
+    public static Dictionary<string, object?> UnitsList(
+        string? query, string? produces = null, string? consumes = null)
     {
         query = (query ?? "").Trim();
+        HashSet<string> wantProduced = ParseTypes(produces);
+        HashSet<string> wantConsumed = ParseTypes(consumes);
+
         var units = StepRegistry.Default.Units
             .Where(u => query.Length == 0
                         || u.Spec.Key.Contains(query, StringComparison.OrdinalIgnoreCase)
                         || u.Spec.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
                         || u.Spec.Category.Contains(query, StringComparison.OrdinalIgnoreCase)
                         || u.Spec.Description.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Select(u => new
+            {
+                Spec = u.Spec,
+                In = Types(u.Spec.Inputs.Select(i => i.Type)),
+                Out = Types(u.Spec.Outputs.Select(o => o.Type)),
+            })
+            .Where(u => wantProduced.Count == 0 || u.Out.Any(wantProduced.Contains))
+            .Where(u => wantConsumed.Count == 0 || u.In.Any(wantConsumed.Contains))
             .OrderBy(u => u.Spec.Category, StringComparer.Ordinal)
             .ThenBy(u => u.Spec.Key, StringComparer.OrdinalIgnoreCase)
             .Select(u => new Dictionary<string, object?>
@@ -193,8 +216,8 @@ internal static class AiToolHandlers
                 ["category"] = u.Spec.Category,
                 ["kind"] = u.Spec.Kind.ToString(),
                 ["description"] = u.Spec.Description,
-                ["inputs"] = u.Spec.Inputs.Count,
-                ["outputs"] = u.Spec.Outputs.Count,
+                ["in"] = u.In,
+                ["out"] = u.Out,
             })
             .ToList();
 
@@ -204,6 +227,24 @@ internal static class AiToolHandlers
             ["units"] = units,
         };
     }
+
+    /// <summary>把 <c>"number, list"</c> 解析成类型名集合（大小写不敏感，<c>,</c> / <c>|</c> / 空白都认）。</summary>
+    private static HashSet<string> ParseTypes(string? text)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(text)) return set;
+
+        foreach (string part in text.Split(new[] { ',', '|', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries))
+            set.Add(part.Trim());
+        return set;
+    }
+
+    /// <summary>一组声明类型 → 去重排序的类型名（类型不明按 <c>any</c>）。</summary>
+    private static List<string> Types(IEnumerable<ValueKind?> kinds) =>
+        kinds.Select(KnowledgePack.MachineName)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
 
     public static Dictionary<string, object?> UnitsGet(string key)
     {

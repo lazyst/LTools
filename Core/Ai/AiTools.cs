@@ -28,10 +28,17 @@ public sealed class AiTools
         AiToolHandlers.Call("ltools_docs_get", null, () => AiToolHandlers.DocsGet(name));
 
     [McpServerTool(Name = "ltools_units_list"), Description(
-        "列出动作单元（可按 key / 名称 / 分类 / 说明过滤）。先用它确认能力存在，别臆造动作单元键。")]
+        "动作单元索引：每行给 key / 名称 / 分类 / kind / 说明，以及 in、out 两组**类型**" +
+        "（text number bool list object any，去重后就是参数个数）。可按关键词、也可按类型反查：" +
+        "produces = 它产得出这个类型（「谁会产数字」「谁会产列表」），consumes = 它有参数吃这个类型" +
+        "（「谁能吃文本」）；多值用逗号，命中任一即可；any = 声明没限定类型（原样收发），不参与具体类型的命中，" +
+        "要它就写 any。写动作前先用它把候选缩到两三个，再 units_get 看细节。")]
     public static string UnitsList(
-        [Description("可选：过滤词")] string? query = null) =>
-        AiToolHandlers.Call("ltools_units_list", null, () => AiToolHandlers.UnitsList(query));
+        [Description("可选：过滤词（key / 名称 / 分类 / 说明）")] string? query = null,
+        [Description("可选：只留产得出这个类型的单元，如 number 或 number,list")] string? produces = null,
+        [Description("可选：只留有参数吃这个类型的单元，如 text")] string? consumes = null) =>
+        AiToolHandlers.Call("ltools_units_list", null,
+            () => AiToolHandlers.UnitsList(query, produces, consumes));
 
     [McpServerTool(Name = "ltools_units_get"), Description(
         "取一个动作单元的完整规格：输入（类型 / 必填 / 默认 / 可见条件 / 枚举选项）、输出、子步骤。")]

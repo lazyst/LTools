@@ -306,7 +306,7 @@ internal static class KnowledgePack
     /// 给 agent 看的类型名（`text` / `number` / `bool` / …），写进 `units.md` 的参数表。
     /// 界面上那一套中文名在 <see cref="ValueKindText"/>，两者是给不同读者看的，别合并。
     /// </summary>
-    private static string MachineName(ValueKind? kind) => kind switch
+    internal static string MachineName(ValueKind? kind) => kind switch
     {
         ValueKind.text => "text",
         ValueKind.number => "number",
@@ -375,6 +375,44 @@ internal static class KnowledgePack
 - `{"unit": ..., "in": {...}}`：内联一个 **pure** 取值动作单元，`action` 动作单元不能内联。
 - 例外：`Raw: true` 的代码参数（`script.ahk` 的 `code`）原样传入，里面的 `${…}` 不要求值。
 
+### 2.1 参数类型与隐式转换
+
+`units.md` 参数表里的「类型」是**目标类型**，不是你写进去的值必须长成那样：引擎在绑定参数时按目标类型转换一次，
+转不了才报「参数「X」类型不对」。所以**别为了凑类型多写一步转换**：
+
+- **文本 → 数字**：纯数字文本可以直接喂数字参数（正则提取出的 `2.7` 给 `data.calc` 的 `a` 就行）。
+  解析是严格的：只认不变文化的 `double.TryParse`（`NumberStyles.Float`），`12元` / `1,234` / `￥12` 会失败；
+  先让正则只取数字部分（`\d+(\.\d+)?`）通常最省事。
+- **文本 → 布尔**：`true/false`、`1/0`、`yes/no`、`on/off`（忽略大小写）。
+- **文本 → 列表**：只在**步骤参数绑定**时发生，按换行或逗号拆、以 `[` 开头按 JSON 数组解析（`ListText`）；
+  变量默认值的解析走同一套，但别把它当成「运行时会随时转换」。
+- **列表 / 对象 → 文本**：`${列表}` 当文本用得到 `[a, b]`，对象是 `{k=v}` 或它的 `text` 成员——**都不是 JSON**。
+  反方向（JSON 文本 → 列表 / 对象）用 `data.json`（`text` + 可选 `path`）；
+  **没有「值 → JSON 文本」的动作单元**，要序列化就用 `script.csharp`（`vars` 直接读写变量）。
+- **整串 `${名}` / `{"var":"名"}` 保留原类型**：列表、对象不会被压成文本；夹在文本里（`"共 ${n} 项"`）才是拼接。
+
+完整的转换表（行 = 你手上的值，列 = 那个参数声明的类型；「不转」= 这一步会报类型错）：
+
+| 手上的值 ＼ 参数要 | text | number | bool | list | object |
+|---|---|---|---|---|---|
+| text | 原样 | 纯数字才成；`12元` / `1,234` / `￥12` 失败 | true/false、1/0、yes/no/y/n/on/off；空文本 = false | 按行 / 逗号拆；`[…]` = JSON 数组 | 不转（要 JSON 先用 `data.json`） |
+| number | `2.7`（最多 12 位小数） | 原样 | 非 0 = true | 不转 | 不转 |
+| bool | `true` / `false` | 1 / 0 | 原样 | 不转 | 不转 |
+| list | `[a, b]`（**不是 JSON**） | 不转（要逐项） | 不转 | 原样 | 不转 |
+| object | 有 `text` 成员就用它，否则 `{k=v}` | 有 `number` 成员就用它 | 有 `found` / `flag` 成员就用它 | 不转 | 原样 |
+
+反查「谁会产这个类型 / 谁能吃这个类型」用索引，别逐个 `units_get`：
+`ltools_units_list(produces:"number")`、`ltools_units_list(consumes:"text")`（多值逗号，命中任一）。
+
+三条边界先想清楚，能省掉一轮试探：
+
+- **列表不能直接喂数字参数**（`data.calc` 的 `a` 收到列表会报「值不是数字（实际是 list）」）。
+  逐项算 = `flow.forEach` 里用 `data.calc` 把结果写回同一个变量；
+  **别用 `flow.set` 的 `append` 当累加器**，它是文本拼接。
+- **累加变量要先有值**（`flow.set` 写 0，或写进 `variables` 的默认值），否则 `${sum}` 报「未定义变量」。
+- **没有专门的「类型转换」动作单元**：常规转换靠上面这些隐式规则 + `data.json` / `text.process` / `data.list`；
+  要清洗货币符号 / 千分位、或对一列数字求和，用 `script.csharp`（`vars` 直接读写变量、类型保真）。
+
 ## 3. 工作流（工具名见 MCP）
 
 0. `ltools_health`：写**坐标类**动作（鼠标操作 / 屏幕区域 / 截图 / 图片点击）之前先看 `environment`——
@@ -384,6 +422,8 @@ internal static class KnowledgePack
    要知道「那个按钮叫什么 / 在哪儿」就 `ltools_uia_tree`：控件树给 name / 控件类型 / automationId / 屏幕矩形，
    把 `name` 填进「文字点击」的文本，或把 `bounds` 中心当「鼠标操作」的坐标——**别靠猜**。
 1. `ltools_units_list` / `ltools_units_get`：先确认能力存在，别臆造动作单元键。
+   列表每行的 `in` / `out` 是这个单元的输入 / 输出**类型**（去重后就是个数），所以先按类型把候选缩到两三个：
+   「谁产数字」`produces:"number"`、「谁能吃文本」`consumes:"text"`；**不要拉全量 91 条再读**。
    `units_get` 里 `optionParams` / `enabledWhen` 说明「哪个选项要哪些参数」（`units.md` 里有同样的选项表），
    **按当前选项只填需要的参数**，别把别的操作的参数堆进去（运行会忽略，`check` 会给 warning）。
 2. `ltools_staging_create(title, description?, copyFromActionId?)`：新草稿。改用户已有动作时传 `copyFromActionId`（只读复制到草稿）。
@@ -398,7 +438,9 @@ internal static class KnowledgePack
    （找图 / 识字 / 读文件 / 截图），**会动键鼠或弹窗口的步骤跳过**（轨迹里 `status = skipped`）；
    确认参数与分支对了再去掉 `dryRun` 真跑一遍（真的动键鼠）。两种都用 `ltools_run_output` 读轨迹：
    `inputs` 是**变量展开后**的参数，`status = skipped` 的步骤输出是空的，依赖它们的步骤可能报错，那是预期。
-8. 交给用户在 LTools 设置页点「采纳」（`ltools_staging_promote` 需要人工确认 / full 模式）。
+8. 交给用户采纳：在**超级面板左栏的暂存区**右键草稿卡片选「采纳为新动作」/「覆盖原动作」
+   （`ltools_staging_promote` 需要人工确认 / full 模式）。**暂存区不在设置页**——
+   设置页「AI 接入」只放连接与审计，「动作管理」顶部的「暂存区（N）」只是个跳转按钮。
 9. 要写**全局子动作**（可复用的函数）：`ltools_subactions_check` → `ltools_subactions_write`，见 §7。
 
 ## 4. 校验器会拦什么
@@ -407,7 +449,9 @@ internal static class KnowledgePack
 
 - 未知动作单元 / 未知参数
 - 必填缺失（只对可见参数）
-- 字面量类型不符；枚举值不在 `options` 里
+- **字面量**类型不符（写死的字符串 / 数字 / 布尔）；枚举值不在 `options` 里
+  - `${变量}` / `{"var":…}` **不**在这里查类型：运行时按参数声明类型转换（见 §2.1），
+    「文本数字喂数字参数」是合法写法，不用先转一次
 - **枚举 / 多选参数写了变量或取值**：这两类只能填确定的值（要按条件选不同值，用 `flow.if` 分支写两套步骤）
 - `${变量}` 引用了未声明的变量
 - **`out` 的键不是该动作单元声明的输出键**（拼错时运行不会写任何东西，变量一直停在默认值）
@@ -543,5 +587,66 @@ internal static class KnowledgePack
 ```
 
 `key` 相同会在原位更新（带 ×N），循环里不会刷屏。
+
+## 4. 百分比相加并写回剪贴板
+
+从剪贴板读一段文本，把里面的百分比数字（`2.7%` / `-3.6%`）相加，结果写回剪贴板。
+`data.calc` 的 `a` / `b` 声明是数字，**正则提取出的文本直接喂进去就行**——引擎会按目标类型把 `2.7`
+解析成 2.7（见 `format.md` §2.1），不用先写一步转换。`group: 1` 用来从 `2.7%` 里只取数字部分。
+
+```json
+{
+  "name": "百分比相加并写回剪贴板",
+  "description": "读取剪贴板文本，把其中的百分比数字相加，结果写回剪贴板",
+  "variables": [
+    { "key": "sum", "type": "number", "default": 0 },
+    { "key": "raw", "type": "text", "default": "" },
+    { "key": "nums", "type": "list", "default": [] },
+    { "key": "n", "type": "text", "default": "" },
+    { "key": "rounded", "type": "text", "default": "" }
+  ],
+  "steps": [
+    { "unit": "text.clipboard", "in": { "operation": "read" }, "out": { "text": "raw" } },
+    { "unit": "text.regex",
+      "in": { "text": { "var": "raw" }, "pattern": "(-?\\d+(?:\\.\\d+)?)\\s*%", "group": 1 },
+      "out": { "list": "nums" } },
+    {
+      "unit": "flow.forEach",
+      "in": { "items": { "var": "nums" } },
+      "out": { "item": "n" },
+      "body": [
+        { "unit": "data.calc",
+          "in": { "operation": "add", "a": { "var": "sum" }, "b": { "var": "n" } },
+          "out": { "number": "sum" } }
+      ]
+    },
+    { "unit": "data.number",
+      "in": { "value": { "var": "sum" }, "operation": "round", "digits": 1 },
+      "out": { "text": "rounded" } },
+    { "unit": "text.clipboard", "in": { "operation": "write", "text": "百分比合计：${rounded}%" } }
+  ]
+}
+```
+
+`sum` 先由 `variables` 的默认值 0 初始化；循环里 `data.calc` 把结果写回**同一个**变量实现累加
+（`flow.set` 的 `append` 是文本拼接，不能当累加器）。没有百分比时 `nums` 为空列表，循环不执行，结果是 `0%`。
+
+## 5. 常用链路（照抄，不用先想类型）
+
+一行一条：左是「想做的事」，右是拼法。类型转换不用插步骤（见 `format.md` §2.1）；
+拿不准谁能吃 / 谁能产某个类型，用 `ltools_units_list(produces:"list")` / `(consumes:"number")` 反查。
+
+| 想做的事 | 步骤链 | 要点 |
+|---|---|---|
+| 剪贴板里一列数字求和 | `text.clipboard(read)` → `text.regex(group: 1)` → `flow.forEach` + `data.calc(add)` → `text.clipboard(write)` | 正则抓到的是文本，直接喂 `data.calc` 的 `a` / `b`；要小数点格式再串一个 `data.number` |
+| 一列数字求平均 | 同上，最后 `data.calc(divide)`：`a` = 和，`b` = `text.regex` 的 `count` | 累加变量记得在 `variables` 里给默认值 `0` |
+| 网页正文 → 一段文字 | `web.request(text)` → `web.html(html: ${response}, xpath: "//p")` → `ui.toast` | `xpath` 必填；`text` 输出就是拼好的正文，`list` 是每一条 |
+| 接口 JSON → 取字段 | `web.request` 的 `json` 输出（object）→ `${data.user.name}` | 已经是对象，**不用**再 `data.json`；返回是纯文本时才 `data.json(text)` |
+| 列表 / 对象 → JSON 文本 | `script.csharp`（`vars` 读写变量，`JsonSerializer` 随便用） | **没有这个动作单元**，别找 `data.json`（它只解析） |
+| 目录里的文件 → 逐个处理 | `file.list(path)` → `flow.forEach` → `file.read` / `path.parts` | `list` 是完整路径，`names` 只要文件名 |
+| 选中的文件 → 打开第一个 | `file.selection` → `file.openFile(path: ${选中的.first})` | 没选中只是 `found = false`，不报错 |
+| 等窗口 / 等文字出来 | `window.wait(title)` → `flow.if`；或直接 `screen.findText(timeoutMs: -1)` | 等待类超时是 `found = false`，要不要算失败由「如果」判 |
+| 数字 → 展示文本 | `data.number(operation: "round" / "thousands" / "percent", digits)` | 数字拼进文本本来就自动成形，只有要固定小数位 / 千分位 / 进制才用它 |
+| 列表去重 / 排序 | `data.list(operation: "unique" / "sort")` | 没有「求和 / 平均」操作，见上面两行 |
 """;
 }

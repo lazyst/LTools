@@ -51,7 +51,7 @@ public sealed class NumberUnit : IStepUnit
         Inputs = new[]
         {
             new InputSpec("value", "数值", ValueKind.text, Required: true,
-                Description: "数字文本；「按 N 进制解析」时可写 FF / 1010 这类"),
+                Description: "数字文本；「按 N 进制解析」时可写 FF / 1010 这类。纯数字文本直接给即可（不做货币符号 / 千分位清洗）"),
             new InputSpec("operation", "方式", ValueKind.text, InputEditor.enumList,
                 Required: true, Default: Value.FromText("toBase"),
                 Options: Operations, Labels: OperationLabels,

@@ -244,7 +244,7 @@ staging/
 |---|---|---|---|
 | `ltools_health` | 版本 / 开关 / 审批模式 / 草稿数 / 最近错误 + **环境信息**（OS / 提权 / 每块屏幕的物理矩形与工作区与 DPI / 虚拟桌面 / 光标 / 常用目录 / 默认 OCR 引擎） | | |
 | `ltools_docs_get(name)` | `format` / `units` / `examples` | | |
-| `ltools_units_list(query?)` | 动作单元摘要列表（74 条，可过滤） | | |
+| `ltools_units_list(query?, produces?, consumes?)` | 动作单元索引：每行带 `in` / `out` 两组**类型**（text / number / bool / list / object / any，去重后兼作数量），可按关键词过滤，也可按类型反查——`produces` = 它产得出这个类型，`consumes` = 它有参数吃这个类型（多值逗号 = 命中任一；`any` 只表示声明没限定类型，不参与具体类型命中） | | |
 | `ltools_units_get(key)` | 单个动作单元的完整 Input/Output 规格（`sub.run` 附带全部子动作签名）；每个参数带 `optionParams` / `enabledWhen`，说清「哪个选项要哪些参数」 | | |
 | `ltools_screenshot(draftId?, source?, region?, name?, maxWidth?)` | 截屏（整屏 / 前台窗口 / 固定区域），**图片随回执返回**；传 `draftId` 写进草稿 `files/`，不传写 `resources/images/`。回执含 `bounds`（截取矩形）与 `thumbnail.scale`，用来把图片坐标换算成屏幕物理像素 | ✓ | |
 | `ltools_uia_tree(title?, className?, depth?, limit?)` | 窗口的 UI Automation 控件树快照（名字 / 控件类型 / automationId / 类名 / 屏幕矩形 / 是否启用，扁平清单带 `path` 与 `depth`）；不传窗口用前台。给「文字点击」找名字、给「鼠标操作」找坐标 | | |
