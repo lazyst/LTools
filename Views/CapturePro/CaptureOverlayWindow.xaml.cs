@@ -299,6 +299,10 @@ public partial class CaptureOverlayWindow : Window
 
     private void Window_Cancel(object sender, MouseButtonEventArgs e)
     {
+        // 右键落在浮动工具栏上：那是它的布局菜单（格子 / 收起来的工具），不是「取消」。
+        // 这里必须**不**置 Handled：置了隧道路由就断在窗口这一层，工具栏收不到这次右键。
+        if (IsOnToolbar(e.OriginalSource as DependencyObject)) return;
+
         e.Handled = true;
 
         // 打字中右键 = 放弃这段文字；其余逐级往回退（右键在有选区时直接取消这次框选）

@@ -38,6 +38,7 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "工具：目录 / 参数格 / 默认样式", Tools));
         cases.Add(new("capturePro", "取色：像素颜色与文本", Picker));
         cases.Add(new("capturePro", "贴图：缩放 / 不透明度 / 锚点", Pin));
+        cases.Add(new("capturePro", "工具栏：格子布局 / 收起 / 落盘往返", ToolLayouts));
         cases.Add(new("capturePro", "识别：表格聚类 / TSV / HTML", Recognize));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
@@ -796,6 +797,71 @@ internal static class CaptureProSuite
             "矮一点也不给");
         Check.False(PinMath.ShowsHoverButtons(PinMath.ThumbnailSide, PinMath.ThumbnailSide, true),
             "缩略图里一律不给（83 已过尺寸门槛，拦它的是「缩略图」这条）");
+    }
+
+    /// <summary>
+    /// 工具栏布局：一格多工具（并到左边 / 拆出来）、收起与放回、落盘往返、脏数据与新工具。
+    /// </summary>
+    private static void ToolLayouts()
+    {
+        int all = ToolCatalog.All.Length;
+
+        var def = ToolLayout.Default();
+        Check.Equal(all, def.Groups.Count, "默认布局：每个工具一格");
+        Check.Equal(0, def.HiddenTools.Count, "默认布局没有收起来的工具");
+
+        // 并到左边一格：格内顺序保持原样，第一格不再动
+        var merge = def.MergeLeft(CaptureTool.Pen);
+        Check.Equal(all - 1, merge.Groups.Count, "并到左边一格：少一格");
+        Check.Equal(CaptureTool.Select, merge.Groups[0][0], "第一格还是「选择」");
+        Check.Equal(CaptureTool.Pen, merge.Groups[0][1], "「画笔」并进第一格（顺序不变）");
+        Check.True(merge.MergeLeft(CaptureTool.Select).SameAs(merge), "第一格左边没东西：并过去什么都不变");
+
+        // 拆出来：回到默认的格数与位置
+        var split = merge.Split(CaptureTool.Pen);
+        Check.Equal(all, split.Groups.Count, "拆成单独一格：格子数回到默认");
+        Check.Equal(1, split.Groups[1].Count, "拆出来的格子里只有它自己");
+        Check.Equal(CaptureTool.Pen, split.Groups[1][0], "拆出来的格子落在原位置");
+
+        // 收起 / 放回
+        var hidden = def.Hide(CaptureTool.Eraser);
+        Check.True(hidden.IsHidden(CaptureTool.Eraser), "收起「橡皮」");
+        Check.Equal(-1, hidden.CellOf(CaptureTool.Eraser), "收起后它不在任何格子里");
+        Check.Equal(all - 1, hidden.Groups.Count, "收起一个工具就少一格");
+        Check.Equal("Eraser", hidden.ToHidden()[0], "落盘写的是工具键");
+
+        var back = hidden.Insert(CaptureTool.Eraser);
+        Check.False(back.IsHidden(CaptureTool.Eraser), "放回去就不再是收起的");
+        Check.Equal(all, back.Groups.Count, "放回去还是单独一格");
+        var ranks = back.Groups.Select(g => g[0]).ToList();
+        Check.Equal(CaptureTool.Spotlight, ranks[ranks.IndexOf(CaptureTool.Eraser) - 1],
+            "放回去落在默认顺序的位置上（聚光后面）");
+
+        // 落盘往返：写出去再读回来必须是同一份
+        Check.True(ToolLayout.Parse(merge.ToLines(), merge.ToHidden()).SameAs(merge),
+            "落盘再读回来是同一份布局");
+        Check.Equal("Select,Pen", merge.ToLines()[0], "一行一格、格内逗号分隔工具键");
+
+        // 目录里新增、两处都没提到的工具：自动补回来（不许被老布局一直藏着）
+        var lines = merge.ToLines().Where(l => !l.Contains("Eraser", StringComparison.Ordinal)).ToList();
+        var grown = ToolLayout.Parse(lines, merge.ToHidden());
+        Check.False(grown.IsHidden(CaptureTool.Eraser), "老布局里没有的新工具自动补回（可见）");
+        Check.Equal(all - 1, grown.Groups.Count, "补回来的新工具占单独一格");
+
+        // 脏数据：未知键丢掉、空行丢掉、同格重复只留一次；其余工具按默认补回
+        var dirty = ToolLayout.Parse(new List<string> { "pen,pen", "nope,select", "" }, null);
+        Check.Equal(CaptureTool.Pen, dirty.Groups[0][0], "未知键丢掉，留下的工具按行序排");
+        Check.Equal(1, dirty.Groups[0].Count, "同一格里的重复工具只留一次");
+        Check.Equal(CaptureTool.Select, dirty.Groups[1][0], "未知键「nope」不会变成一格");
+        Check.Equal(all, dirty.Groups.Count, "其余工具按默认补回（一个工具都不会丢）");
+        Check.True(ToolLayout.Parse(dirty.ToLines(), dirty.ToHidden()).SameAs(dirty),
+            "脏数据修好之后往返稳定");
+
+        // 大小写不敏感（手工改过配置也别崩）
+        var lower = ToolLayout.Parse(new List<string> { "PEN,Highlighter" }, null);
+        int at = lower.CellOf(CaptureTool.Pen);
+        Check.True(at >= 0 && lower.Groups[at].SequenceEqual(new[] { CaptureTool.Pen, CaptureTool.Highlighter }),
+            "工具键大小写不敏感（同一格仍在同一格）");
     }
 
     /// <summary>

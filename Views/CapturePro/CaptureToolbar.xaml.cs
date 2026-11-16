@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -7,6 +8,8 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using LTools.Features.CapturePro;
+using LTools.Views.Controls;
+using ShapePath = System.Windows.Shapes.Path;
 
 namespace LTools.Views.CapturePro;
 
@@ -14,17 +17,42 @@ namespace LTools.Views.CapturePro;
 /// 截图覆盖层的浮动工具栏：工具切换、样式参数、撤销 / 重做与完成动作。
 /// </summary>
 /// <remarks>
-/// 工具按钮按 <see cref="ToolCatalog.All"/> 生成、参数格按 <see cref="ToolCatalog.Uses"/> 显隐：
-/// 新增工具只改目录表，**别在这里另写一份清单**。
-/// 工具栏自身只改 <see cref="ToolStyle"/> 并抛事件，文档与画面由覆盖层负责。
+/// <para>
+/// 工具格子按 <see cref="ToolCatalog.All"/> + <see cref="ToolLayout"/> 生成、参数格按
+/// <see cref="ToolCatalog.Uses"/> 显隐：新增工具只改目录表，**别在这里另写一份清单**。
+/// </para>
+/// <para>
+/// 一格可以放多个工具（同格再点一次循环切换，右下角一个小点表示「这里不止一个」），
+/// 不用的工具可以收起来（右键格子 / 右键工具栏空白），布局只在 <c>configs/ui.json</c> 里
+/// （<see cref="ToolLayoutStore"/>）。工具栏自身只改 <see cref="ToolStyle"/> 并抛事件，
+/// 文档与画面由覆盖层负责。
+/// </para>
 /// </remarks>
 public partial class CaptureToolbar : UserControl
 {
-    private readonly Dictionary<CaptureTool, RadioButton> _toolButtons = new();
+    /// <summary>一个格子：组内的工具 + 当前显示哪一个 + 图标。</summary>
+    private sealed class ToolCell
+    {
+        public ToolCell(List<CaptureTool> tools, RadioButton button, ShapePath icon)
+        {
+            Tools = tools;
+            Button = button;
+            Icon = icon;
+            Current = tools[0];
+        }
+
+        public List<CaptureTool> Tools { get; }
+        public RadioButton Button { get; }
+        public ShapePath Icon { get; }
+        public CaptureTool Current { get; set; }
+    }
+
+    private readonly List<ToolCell> _cells = new();
     private readonly Dictionary<ToolParam, FrameworkElement> _paramHosts = new();
     private readonly List<Action> _refreshers = new();
     private readonly List<RadioButton> _colorChips = new();
 
+    private ToolLayout _layout = ToolLayout.Default();
     private ToolStyle? _style;
     private bool _built;
     private bool _syncing;
@@ -66,7 +94,7 @@ public partial class CaptureToolbar : UserControl
         _built = true;
         _style = style;
 
-        BuildTools();
+        BuildCells(ToolLayoutStore.Current);
         BuildActions();
         BuildParams();
 
@@ -79,8 +107,16 @@ public partial class CaptureToolbar : UserControl
     {
         CurrentTool = tool;
 
+        // 选中哪个工具，它所在的那一格就显示哪个（同格里切换时图标跟着换）
+        var cell = CellOf(tool);
+        if (cell != null) cell.Current = tool;
+
         _syncing = true;
-        if (_toolButtons.TryGetValue(tool, out var button)) button.IsChecked = true;
+        foreach (var c in _cells)
+        {
+            ShowCellIcon(c);
+            c.Button.IsChecked = ReferenceEquals(c, cell);
+        }
         _syncing = false;
 
         foreach (var (param, host) in _paramHosts)
@@ -88,6 +124,17 @@ public partial class CaptureToolbar : UserControl
 
         ParamBar.Visibility = ToolCatalog.Of(tool).Params.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         RefreshValues();
+    }
+
+    /// <summary>换一份布局（右键菜单 / 自检夹具调）：重建格子，当前工具的选中态跟着走。</summary>
+    internal void ApplyLayout(ToolLayout layout)
+    {
+        foreach (var cell in _cells) ToolRow.Children.Remove(cell.Button);
+        _cells.Clear();
+
+        BuildCells(layout);
+        Sync(CurrentTool);
+        Remeasure();
     }
 
     /// <summary>撤销 / 重做按钮的可用状态。</summary>
@@ -153,31 +200,179 @@ public partial class CaptureToolbar : UserControl
 
     // ============ 构建 ============
 
-    private void BuildTools()
+    /// <summary>按布局建格子（插在 <c>ToolRow</c> 最前面；动作按钮与分隔条在后面）。</summary>
+    private void BuildCells(ToolLayout layout)
     {
-        foreach (var info in ToolCatalog.All)
+        _layout = layout;
+        int index = 0;
+
+        foreach (var group in layout.Groups)
         {
-            var icon = new System.Windows.Shapes.Path
+            var tools = group.ToList();
+            var icon = new ShapePath { Style = (Style)FindResource("IconPath") };
+
+            // 同格不止一个工具：右下角一个灰点（别用数字——小图标里认不出是几）
+            var badge = new Ellipse
             {
-                Data = (Geometry)FindResource("Icon" + info.Icon),
-                Style = (Style)FindResource("IconPath"),
+                Width = 5,
+                Height = 5,
+                Margin = new Thickness(0, 0, 1, 1),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Fill = new SolidColorBrush(Color.FromRgb(0xA1, 0xA1, 0xAA)),
+                Visibility = tools.Count > 1 ? Visibility.Visible : Visibility.Collapsed,
+                IsHitTestVisible = false,
             };
+
+            var grid = new Grid();
+            grid.Children.Add(icon);
+            grid.Children.Add(badge);
+
             var button = new RadioButton
             {
                 Style = (Style)FindResource("ToolBtn"),
                 GroupName = "captureTool",
-                ToolTip = $"{info.Name}（{info.Shortcut}）\n{info.Hint}",
-                Tag = info.Tool,
-                Content = icon,
+                Content = grid,
             };
-            button.Checked += (_, _) =>
+
+            var cell = new ToolCell(tools, button, icon);
+            button.Tag = cell;
+            button.Click += (_, _) => OnCellClick(cell);
+
+            // 右键在按下时装菜单（与贴图同一个坑：ContextMenuOpening 里现赋第一次弹不出来）
+            button.PreviewMouseRightButtonDown += (_, e) =>
             {
-                if (_syncing) return;
-                ToolChanged?.Invoke((CaptureTool)button.Tag);
+                e.Handled = true;
+                OpenCellMenu(cell, button);
             };
-            _toolButtons[info.Tool] = button;
-            ToolRow.Children.Add(button);
+
+            _cells.Add(cell);
+            ToolRow.Children.Insert(index++, button);
+            ShowCellIcon(cell);
         }
+    }
+
+    /// <summary>格子的图标与提示跟着「这一格现在显示哪个工具」走。</summary>
+    private void ShowCellIcon(ToolCell cell)
+    {
+        var info = ToolCatalog.Of(cell.Current);
+        cell.Icon.Data = (Geometry)FindResource("Icon" + info.Icon);
+        cell.Button.ToolTip = cell.Tools.Count <= 1
+            ? $"{info.Name}（{info.Shortcut}）\n{info.Hint}"
+            : $"{info.Name}（{info.Shortcut}）· 这一格还有 " + string.Join(" / ",
+                cell.Tools.Where(t => t != cell.Current)
+                    .Select(t => ToolCatalog.Of(t).Name + "（" + ToolCatalog.Of(t).Shortcut + "）"))
+              + "，再点一次切换\n" + info.Hint;
+    }
+
+    /// <summary>点格子：单工具直接切；同格再点一次循环到组内下一个。</summary>
+    private void OnCellClick(ToolCell cell)
+    {
+        if (cell.Tools.Count > 1 && CurrentTool == cell.Current)
+            cell.Current = cell.Tools[(cell.Tools.IndexOf(cell.Current) + 1) % cell.Tools.Count];
+
+        ToolChanged?.Invoke(cell.Current);
+    }
+
+    private ToolCell? CellOf(CaptureTool tool) => _cells.FirstOrDefault(c => c.Tools.Contains(tool));
+
+    // ============ 布局编辑（堆叠 / 收起） ============
+
+    /// <summary>改布局：落盘 → 重建格子 → 当前工具被收起来时退回「选择」（别拿着一个看不见的工具）。</summary>
+    private void ChangeLayout(Func<ToolLayout, ToolLayout> change)
+    {
+        var next = change(_layout);
+        if (next.SameAs(_layout)) return;
+
+        ToolLayoutStore.Save(next);
+        ApplyLayout(next);
+
+        if (next.IsHidden(CurrentTool)) ToolChanged?.Invoke(CaptureTool.Select);
+    }
+
+    /// <summary>格子右键：收起这个工具 / 拆成单独一格 / 并到左边一格 / 恢复默认。</summary>
+    /// <remarks>
+    /// 返回菜单是为了让冒烟能直接检查条目；<paramref name="open"/> = false 只建菜单不弹出
+    /// （冒烟的环境里不该留下悬着的弹层）。
+    /// </remarks>
+    private ContextMenu OpenCellMenu(ToolCell cell, FrameworkElement target, bool open = true)
+    {
+        var tool = cell.Current;
+        var info = ToolCatalog.Of(tool);
+        var menu = new ContextMenu { PlacementTarget = target };
+
+        var hide = new MenuItem { Header = $"收起「{info.Name}」" };
+        hide.Click += (_, _) => ChangeLayout(l => l.Hide(tool));
+        menu.Items.Add(hide);
+
+        if (cell.Tools.Count > 1)
+        {
+            var split = new MenuItem { Header = $"把「{info.Name}」拆成单独一格" };
+            split.Click += (_, _) => ChangeLayout(l => l.Split(tool));
+            menu.Items.Add(split);
+        }
+
+        var merge = new MenuItem
+        {
+            Header = "并到左边一格",
+            IsEnabled = _cells.IndexOf(cell) > 0,      // 第一格左边没东西
+        };
+        merge.Click += (_, _) => ChangeLayout(l => l.MergeLeft(tool));
+        menu.Items.Add(merge);
+
+        menu.Items.Add(new Separator());
+        menu.Items.Add(ResetItem());
+
+        if (open) menu.IsOpen = true;
+        return menu;
+    }
+
+    /// <summary>工具栏空白处右键：把收起来的工具放回去 / 恢复默认。</summary>
+    /// <remarks>
+    /// 返回菜单是为了让冒烟能直接检查条目；<paramref name="open"/> = false 只建菜单不弹出
+    /// （冒烟的环境里不该留下悬着的弹层）。
+    /// </remarks>
+    private ContextMenu OpenBackgroundMenu(FrameworkElement target, bool open = true)
+    {
+        var menu = new ContextMenu { PlacementTarget = target };
+
+        var hidden = _layout.HiddenTools;
+        if (hidden.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "（没有收起来的工具）", IsEnabled = false });
+        }
+        else
+        {
+            var restore = MenuFx.Submenu(menu, $"收起来的工具（{hidden.Count}）");
+            foreach (var tool in hidden)
+            {
+                var info = ToolCatalog.Of(tool);
+                var item = new MenuItem { Header = $"{info.Name}（{info.Shortcut}）" };
+                item.Click += (_, _) => ChangeLayout(l => l.Insert(tool));
+                restore.Items.Add(item);
+            }
+        }
+
+        menu.Items.Add(new Separator());
+        menu.Items.Add(ResetItem());
+
+        if (open) menu.IsOpen = true;
+        return menu;
+    }
+
+    private MenuItem ResetItem()
+    {
+        var reset = new MenuItem { Header = "恢复默认工具栏" };
+        reset.Click += (_, _) => ChangeLayout(_ => ToolLayout.Default());
+        return reset;
+    }
+
+    /// <summary>工具栏空白处右键 = 布局菜单（点在格子上时是格子自己的菜单）。</summary>
+    private void Chrome_RightDown(object sender, MouseButtonEventArgs e)
+    {
+        if (IsOnControl(e.OriginalSource as DependencyObject)) return;
+        e.Handled = true;
+        OpenBackgroundMenu(this);
     }
 
     private void BuildActions()

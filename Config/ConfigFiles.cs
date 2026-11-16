@@ -65,6 +65,15 @@ public sealed class UiStateFile
 
     /// <summary>动作编辑器右栏「参数抽屉」的宽度（DIP）；0 / 缺省 = 默认 440。</summary>
     public double EditorDrawerWidth { get; set; }
+
+    /// <summary>
+    /// 截图工具栏的格子布局：一行一格、格内逗号分隔工具键（如 <c>pen,highlighter</c>）；
+    /// null = 全新安装（按 <c>ToolCatalog</c> 默认，每个工具一格）。
+    /// </summary>
+    public List<string>? CaptureToolGroups { get; set; }
+
+    /// <summary>截图工具栏里被收起来的工具键（不占格子，可在「隐藏的工具」里放回去）。</summary>
+    public List<string>? CaptureToolHidden { get; set; }
 }
 
 /// <summary><c>configs/panel.json</c>：超级面板（开关 / 长按阈值 / 面板结构）。</summary>
