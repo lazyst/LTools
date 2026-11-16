@@ -117,6 +117,42 @@ internal static class CaptureSession
         return result;
     }
 
+    /// <summary>
+    /// 「贴图内标注」：把一张已有的图交给覆盖层编辑（覆盖层正好盖在那张贴图上），
+    /// 返回标注完的成品；取消 = null。
+    /// </summary>
+    /// <remarks>
+    /// 热键挂起 + 鼠标钩子让路与 <see cref="TryCapture"/> 是同一套（漏一处就是「标注时按一下字母触发了别的动作」），
+    /// 所以入口收在这里，别在贴图窗口里另写一份。**不记采集历史**：标的是已有的图，不是新采集。
+    /// </remarks>
+    public static BitmapSource? TryEdit(BitmapSource image, Int32Rect area)
+    {
+        if (image == null || area.Width < 2 || area.Height < 2) return null;
+
+        bool wasSuspended = HotkeyRegistry.Suspended;
+        MouseHook.SetWindowPickerActive(true);
+        HotkeyRegistry.Suspended = true;
+
+        try
+        {
+            var (sx, sy) = ScreenPickerWindow.MonitorScale(ScreenShot.ToRectangle(area));
+            var overlay = new CaptureOverlayWindow(image, ScreenShot.ToRectangle(area), sx, sy, editOnly: true);
+            bool? ok = overlay.ShowDialog();
+            return ok == true ? overlay.ResultImage : null;
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("CapturePro.TryEdit", ex);
+            TrayService.Notify("标注失败：" + ex.Message);
+            return null;
+        }
+        finally
+        {
+            HotkeyRegistry.Suspended = wasSuspended;
+            MouseHook.SetWindowPickerActive(false);
+        }
+    }
+
     /// <summary>采集历史里的「完成动作」文案（与覆盖层动作栏的叫法一致）。</summary>
     private static string SourceOf(CaptureOverlayWindow.FinishKind kind) => kind switch
     {

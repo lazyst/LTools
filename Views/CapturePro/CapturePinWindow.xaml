@@ -19,7 +19,8 @@
          点它、滚它都不该让前台程序变成自己，否则接着注入的键鼠全打在贴图上。
          拖动 / 滚轮缩放 / Ctrl+滚轮不透明度 / 双击关闭 / 右键菜单都在 code-behind。
          局部显示时这里是取景框：内容按 PanTransform 平移，超出部分由 Surface 裁掉，
-         所以缩放即「放大看细节」，窗口尺寸不再跟图走。 -->
+         所以缩放即「放大看细节」，窗口尺寸不再跟图走。
+         缩略图模式复用同一个布局：Shot 的 Stretch 切 Uniform，整张图等比塞进小方块。 -->
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>

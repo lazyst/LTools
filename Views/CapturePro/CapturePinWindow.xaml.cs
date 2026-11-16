@@ -14,7 +14,7 @@ using LTools.Views.Controls;
 namespace LTools.Views.CapturePro;
 
 /// <summary>
-/// 贴图窗口：把截下来的图钉在屏幕上，可拖动 / 缩放 / 调不透明度 / 置顶 / 锁定 / 局部显示。
+/// 贴图窗口：把截下来的图钉在屏幕上，可拖动 / 缩放 / 调不透明度 / 置顶 / 锁定 / 局部显示 / 缩略图 / 标注。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,18 +31,25 @@ namespace LTools.Views.CapturePro;
 /// 长截图钉在屏幕上时它比屏幕还大，整张缩到能看又太小；切到局部显示就能在 100% 下拖着一块块看。
 /// 此时拖动 = 平移内容，按住 <c>Ctrl</c> 拖才是移动窗口（取景框也得能挪地方）。
 /// </para>
+/// <para>
+/// **缩略图**（<see cref="SetThumbnail"/>）：缩成 <see cref="PinMath.ThumbnailSide"/> 的小方块让开路，
+/// 与局部显示互斥；方块里双击 = 还原（不是关闭）。**标注**（<see cref="AnnotateContent"/>）复用截图覆盖层
+/// （<c>editOnly</c>），标完把结果换回这张贴图。
+/// </para>
 /// </remarks>
 public partial class CapturePinWindow : Window
 {
-    private readonly BitmapSource _image;
+    private BitmapSource _content;
     private readonly double _scale;
-    private readonly double _baseWidth;      // 100% 时的 DIP 宽 / 高
-    private readonly double _baseHeight;
+    private double _baseWidth;               // 100% 时的 DIP 宽 / 高
+    private double _baseHeight;
 
     private IntPtr _hwnd;
     private double _zoom = 1;
     private bool _locked;
     private bool _viewport;
+    private bool _thumb;                     // 缩略图模式（固定边长的小方块）
+    private bool _hovering;
     private Vector _pan;                     // 局部显示里内容相对取景框的偏移（DIP）
 
     private bool _dragging;
@@ -57,7 +64,7 @@ public partial class CapturePinWindow : Window
     {
         InitializeComponent();
 
-        _image = image;
+        _content = image;
         _scale = scale > 0 ? scale : 1;
         Shot.Source = image;
 
@@ -78,8 +85,8 @@ public partial class CapturePinWindow : Window
     /// <summary>这张贴图是哪块屏幕区域截下来的（物理像素）。</summary>
     public Int32Rect Area { get; }
 
-    /// <summary>贴的图（导出 / 复制用）。</summary>
-    public BitmapSource Image => _image;
+    /// <summary>贴的图（导出 / 复制用；标注之后就是标完的那张）。</summary>
+    public BitmapSource Image => _content;
 
     /// <summary>相对 100% 的缩放倍率。</summary>
     public double Zoom => _zoom;
@@ -89,6 +96,9 @@ public partial class CapturePinWindow : Window
 
     /// <summary>局部显示开着没有（窗口是固定大小的取景框）。</summary>
     public bool Viewport => _viewport;
+
+    /// <summary>缩略图模式开着没有（窗口是 83 DIP 的小方块）。</summary>
+    public bool Thumbnail => _thumb;
 
     /// <summary>局部显示里内容的偏移（DIP，负 = 往左 / 上拖过）。</summary>
     public Vector Pan => _pan;
@@ -132,6 +142,7 @@ public partial class CapturePinWindow : Window
     public void SetViewport(bool on)
     {
         if (_viewport == on) return;
+        if (on && _thumb) SetThumbnail(false);        // 两种特殊形态互斥
         _viewport = on;
 
         var content = ContentSize;
@@ -151,7 +162,7 @@ public partial class CapturePinWindow : Window
         ApplyContent();
         ApplyFrame();
         ApplyCursor();
-        ViewHint.Visibility = _viewport && IsMouseOver ? Visibility.Visible : Visibility.Collapsed;
+        RefreshHoverChrome();
     }
 
     /// <summary>改窗口尺寸但守住中心（进入 / 退出取景框、缩小到工作区里都用它）。</summary>
@@ -171,9 +182,19 @@ public partial class CapturePinWindow : Window
         Top = box.Top + delta.Y;
     }
 
-    /// <summary>把内容尺寸与偏移写到界面（缩放 / 平移 / 进出取景框都只调它）。</summary>
+    /// <summary>把内容尺寸与偏移写到界面（缩放 / 平移 / 进出取景框 / 缩略图都只调它）。</summary>
     private void ApplyContent()
     {
+        if (_thumb)
+        {
+            // 缩略图：整张图等比塞进方块（按 100% 铺的话只能看见左上角一块）
+            Shot.Width = Math.Max(1, Width);
+            Shot.Height = Math.Max(1, Height);
+            PanTransform.X = 0;
+            PanTransform.Y = 0;
+            return;
+        }
+
         var content = ContentSize;
         Shot.Width = content.Width;
         Shot.Height = content.Height;
@@ -184,10 +205,92 @@ public partial class CapturePinWindow : Window
     /// <summary>关掉局部显示后窗口还该多大：整张图的尺寸（滚轮 / 菜单换缩放时用）。</summary>
     private void FitWindowToContent()
     {
-        if (_viewport) return;
+        if (_viewport || _thumb) return;
         var content = ContentSize;
         Width = content.Width;
         Height = content.Height;
+    }
+
+    // ============ 缩略图模式 ============
+
+    /// <summary>
+    /// 缩略图模式：缩成一个 <see cref="PinMath.ThumbnailSide"/> 的小方块（图等比放进去），再点一次还原。
+    /// 与局部显示互斥（一个是「只露一块」、一个是「整张缩小」）；开关放在右键菜单里，双击也能还原。
+    /// </summary>
+    public void SetThumbnail(bool on)
+    {
+        if (_thumb == on) return;
+
+        if (on)
+        {
+            if (_viewport) SetViewport(false);        // 两种特殊形态互斥
+            _thumb = true;
+            Shot.Stretch = Stretch.Uniform;
+            ResizeCentered(new Size(PinMath.ThumbnailSide, PinMath.ThumbnailSide));
+            _pan = default;
+        }
+        else
+        {
+            _thumb = false;
+            Shot.Stretch = Stretch.Fill;
+            ResizeCentered(ContentSize);              // 回到整张图（缩放与位置都不变）
+        }
+
+        ApplyContent();
+        ApplyFrame();
+        ApplyCursor();
+        RefreshHoverChrome();
+    }
+
+    // ============ 标注 ============
+
+    /// <summary>
+    /// 标注这张贴图：覆盖层开在贴图上面（冻结画面就是它自己），标完的结果换回这张贴图。
+    /// 热键 / 鼠标钩子的让路在 <see cref="CaptureSession.TryEdit"/> 里，别在这里另写一份。
+    /// </summary>
+    private void AnnotateContent()
+    {
+        // 覆盖层只能把图按「像素 1:1」铺开，所以标注前先回到整张图的 100%：
+        // 缩略图 / 取景框里都只看得见一部分，缩放 200% 时覆盖层与贴图本身对不上。
+        if (_thumb) SetThumbnail(false);
+        if (_viewport) SetViewport(false);
+        if (Math.Abs(_zoom - 1) > 0.001) SetZoom(1);
+
+        var result = CaptureSession.TryEdit(_content, PhysicalArea());
+        if (result == null) return;                   // 取消 = 什么都不变
+
+        ReplaceContent(result);
+    }
+
+    /// <summary>窗口现在占着的屏幕物理像素矩形（被拖到别的显示器时按当前 DPI 算）。</summary>
+    private Int32Rect PhysicalArea()
+    {
+        double sx = _scale, sy = _scale;
+        if (PresentationSource.FromVisual(this)?.CompositionTarget is { } target)
+        {
+            var ttd = target.TransformToDevice;
+            if (ttd.M11 > 0) sx = ttd.M11;
+            if (ttd.M22 > 0) sy = ttd.M22;
+        }
+
+        return new Int32Rect(
+            (int)Math.Round(Left * sx), (int)Math.Round(Top * sy),
+            Math.Max(2, (int)Math.Round(Width * sx)), Math.Max(2, (int)Math.Round(Height * sy)));
+    }
+
+    /// <summary>换掉贴的内容（标注之后）：回到 100% 并按新图尺寸贴合窗口。</summary>
+    private void ReplaceContent(BitmapSource image)
+    {
+        _content = image;
+        Shot.Source = image;
+        _zoom = 1;
+        _baseWidth = Math.Max(1, image.PixelWidth / _scale);
+        _baseHeight = Math.Max(1, image.PixelHeight / _scale);
+
+        if (!_viewport && !_thumb) ResizeCentered(ContentSize);
+        ApplyContent();
+        ApplyCursor();
+        RefreshHoverChrome();
     }
 
     // ============ 鼠标 ============
@@ -203,10 +306,12 @@ public partial class CapturePinWindow : Window
         // Click 不会触发——用户得连点好几次、凑巧双击才关得掉（实测）。
         if (IsOnButton(e.OriginalSource as DependencyObject)) return;
 
-        // 双击 = 关闭（比右键菜单快一步；锁定也允许，它不会改位置）
+        // 双击：缩略图里 = 还原成整张图（不是关掉，83px 的小方块太容易误关）；
+        // 普通贴图 = 关闭（比右键菜单快一步；锁定也允许，它不会改位置）
         if (e.ClickCount == 2)
         {
-            Close();
+            if (_thumb) SetThumbnail(false);
+            else Close();
             e.Handled = true;
             return;
         }
@@ -321,6 +426,8 @@ public partial class CapturePinWindow : Window
             return;
         }
 
+        if (_thumb) return;      // 缩略图里滚轮不改缩放（要改先双击还原）
+
         double next = PinMath.NextZoom(_zoom, e.Delta);
         if (Math.Abs(next - _zoom) < 0.0001) return;
 
@@ -349,6 +456,7 @@ public partial class CapturePinWindow : Window
     /// <summary>换缩放（滚轮与右键菜单共用；菜单点完按窗口中心锚定）。</summary>
     public void SetZoom(double zoom)
     {
+        if (_thumb) SetThumbnail(false);      // 缩略图里改缩放 = 先还原（方块里缩放没有意义）
         double target = PinMath.ClampZoom(zoom);
 
         if (_viewport)
@@ -381,18 +489,42 @@ public partial class CapturePinWindow : Window
 
     private void Window_MouseEnter(object sender, MouseEventArgs e)
     {
-        CloseBtn.Visibility = Visibility.Visible;
-        if (_viewport)
-        {
-            ViewHintText.Text = "局部显示 · 拖动看别处 · Ctrl 拖动移窗口";
-            ViewHint.Visibility = Visibility.Visible;
-        }
+        _hovering = true;
+        RefreshHoverChrome();
     }
 
     private void Window_MouseLeave(object sender, MouseEventArgs e)
     {
-        CloseBtn.Visibility = Visibility.Collapsed;
-        ViewHint.Visibility = Visibility.Collapsed;
+        _hovering = false;
+        RefreshHoverChrome();
+    }
+
+    /// <summary>
+    /// 悬停界面（右上角 ✕、左下角状态提示）的显隐。
+    /// 小窗口与缩略图里按钮会盖住内容，<see cref="PinMath.ShowsHoverButtons"/> 直接不给
+    /// （出口仍在：双击、右键菜单）；提示只在局部显示时出现，退回去就收起。
+    /// </summary>
+    /// <remarks>
+    /// 判「悬停」要写成 <c>_hovering || IsMouseOver</c>：无头冒烟里 <c>MouseEnter</c> 是反射调的，
+    /// <c>IsMouseOver</c> 恒为 false，只看它的话冒烟永远看不到按钮。
+    /// </remarks>
+    private void RefreshHoverChrome()
+    {
+        bool hover = _hovering || IsMouseOver;
+
+        CloseBtn.Visibility = hover && PinMath.ShowsHoverButtons(Width, Height, _thumb)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        if (hover && _viewport && !_thumb)
+        {
+            ViewHintText.Text = "局部显示 · 拖动看别处 · Ctrl 拖动移窗口";
+            ViewHint.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            ViewHint.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void CloseBtn_Click(object sender, RoutedEventArgs e) => Close();
@@ -436,8 +568,19 @@ public partial class CapturePinWindow : Window
         menu.Items.Add(copy);
 
         var save = new MenuItem { Header = "另存为…" };
-        save.Click += (_, _) => CaptureSave.TrySave(null, _image);
+        save.Click += (_, _) => CaptureSave.TrySave(null, _content);
         menu.Items.Add(save);
+
+        // 标注这张贴图：覆盖层开在它上面，标完换回内容（菜单必须先收起，ShowDialog 挂在开着
+        // 的 Popup 上会让菜单看不见也点不动）
+        var annotate = new MenuItem { Header = "标注…" };
+        annotate.Click += (_, _) =>
+        {
+            _menu?.IsOpen = false;
+            Dispatcher.BeginInvoke(new Action(AnnotateContent),
+                System.Windows.Threading.DispatcherPriority.Background);
+        };
+        menu.Items.Add(annotate);
 
         var zoom = MenuFx.Submenu(menu, "缩放");
         AddZoom(zoom, "100%", 1);
@@ -469,6 +612,11 @@ public partial class CapturePinWindow : Window
         var viewport = new MenuItem { Header = "局部显示", IsCheckable = true, IsChecked = _viewport };
         viewport.Click += (_, _) => SetViewport(!_viewport);
         menu.Items.Add(viewport);
+
+        // 缩略图模式：缩成一个小方块让开路（与局部显示互斥，双击方块可还原）
+        var thumb = new MenuItem { Header = "缩略图模式", IsCheckable = true, IsChecked = _thumb };
+        thumb.Click += (_, _) => SetThumbnail(!_thumb);
+        menu.Items.Add(thumb);
 
         // 成组移动：只有一张时没有「组」，置灰（开关本身记着，等第二张贴上来才生效）
         var group = new MenuItem
@@ -526,7 +674,7 @@ public partial class CapturePinWindow : Window
 
     private void CopyImage()
     {
-        if (NativeClipboard.SetImage(_image)) ToastService.Show("贴图已复制", "贴图", 1600);
+        if (NativeClipboard.SetImage(_content)) ToastService.Show("贴图已复制", "贴图", 1600);
         else ToastService.Show("复制贴图失败", "贴图", 0, ToastKind.error);
     }
 

@@ -100,6 +100,7 @@ public partial class CaptureToolbar : UserControl
     /// <summary>放到屏幕底部中间（第一次显示与双击标题栏时用）。</summary>
     public void PlaceDefault(double width, double height)
     {
+        FitWidth(width);
         Remeasure();
         double left = Math.Max(8, (width - What(ActualWidth, DesiredSize.Width)) / 2);
         double top = Math.Max(8, height - What(ActualHeight, DesiredSize.Height) - 20);
@@ -111,6 +112,16 @@ public partial class CaptureToolbar : UserControl
     }
 
     /// <summary>
+    /// 窗口比工具栏还窄时按窗口收窄，上排的 <c>WrapPanel</c> 才会折成两行 / 多行。
+    /// 画布里的子元素不限宽：不收的话右边那几个按钮被窗口裁掉（贴图内标注的小窗口实测）。
+    /// </summary>
+    private void FitWidth(double width)
+    {
+        double cap = Math.Max(240, width - 16);
+        if (double.IsNaN(MaxWidth) || Math.Abs(MaxWidth - cap) > 0.5) MaxWidth = cap;
+    }
+
+    /// <summary>
     /// 把工具栏收回可见区。切工具会改高度（「只有一排」↔「再加参数条」），
     /// 不变高的那一次放置会让底部那截被画布裁掉。
     /// </summary>
@@ -118,6 +129,7 @@ public partial class CaptureToolbar : UserControl
     {
         if (Parent is not Canvas) return;
 
+        FitWidth(width);
         Remeasure();
         double w = What(ActualWidth, DesiredSize.Width);
         double h = What(ActualHeight, DesiredSize.Height);

@@ -783,6 +783,19 @@ internal static class CaptureProSuite
 
         Check.Equal(new Vector(10, 10), PinMath.ConstrainGroupMove(new Vector(10, 10),
             Array.Empty<Rect>(), desktop, margin), "一张都没有就没有约束（调用方自己判断要不要动）");
+
+        // ============ 缩略图模式：固定小方块，悬停按钮在小窗口 / 方块里都不给 ============
+        Check.Equal(83d, PinMath.ThumbnailSide, "缩略图边长固定 83 DIP（照 Snow Shot）");
+
+        Check.True(PinMath.ShowsHoverButtons(400, 300, false), "正常贴图悬停时给 ✕ / 标注");
+        Check.True(PinMath.ShowsHoverButtons(PinMath.HoverButtonMinSide, 80, false),
+            "正好卡在最小边长（含）仍给按钮");
+        Check.False(PinMath.ShowsHoverButtons(PinMath.HoverButtonMinSide - 1, 80, false),
+            "窄一点就不给（按钮会盖住内容）");
+        Check.False(PinMath.ShowsHoverButtons(80, PinMath.HoverButtonMinSide - 1, false),
+            "矮一点也不给");
+        Check.False(PinMath.ShowsHoverButtons(PinMath.ThumbnailSide, PinMath.ThumbnailSide, true),
+            "缩略图里一律不给（83 已过尺寸门槛，拦它的是「缩略图」这条）");
     }
 
     /// <summary>

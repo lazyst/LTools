@@ -83,7 +83,8 @@ public partial class CaptureOverlayWindow
         PositionGrips(sel, true);
 
         // 拖动过程中先别跳出来，松手后再给按钮（否则动作栏会跟着手一起抖）
-        bool showBar = _drag == DragMode.None;
+        // 「贴图内标注」没有出口栏：完成是 Enter / 双击，结果交回那张贴图
+        bool showBar = _drag == DragMode.None && !EditOnly;
         ActionBar.Visibility = showBar ? Visibility.Visible : Visibility.Collapsed;
         bool barAbove = showBar && PositionActionBar(sel);
         ShowSizeInfo(sel, barAbove);
@@ -220,6 +221,15 @@ public partial class CaptureOverlayWindow
     /// <summary>顶部提示居中。</summary>
     private void PlaceHint()
     {
+        // 提示是单行不换行的长句：窗口窄（贴图内标注的覆盖层、小选区）时先按窗口收窄，
+        // 否则它会从右边伸出去（用户看到半句话）。
+        HintText.MaxWidth = Math.Max(160, ActualWidth - 24);
+
+        // 文本刚换过就量的话，Measure 会拿到上一次（甚至是空文本）的量，居中会算偏到右边——
+        // 先显式作废再量（实测：先 PlaceHint 再换文本的那一次，DesiredSize 停在 28）。
+        HintText.InvalidateMeasure();
+        HintBox.InvalidateMeasure();
+
         HintBox.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         double w = HintBox.DesiredSize.Width;
         Canvas.SetLeft(HintBox, Math.Max(12, (ActualWidth - w) / 2));
@@ -229,6 +239,12 @@ public partial class CaptureOverlayWindow
     /// <summary>顶部提示：把「现在能做什么」和「识别到了没有」放在一句话里。</summary>
     private void RefreshHint()
     {
+        if (EditOnly)
+        {
+            HintText.Text = "标注这张贴图 · Enter 换回贴图 · Esc 取消 · 右键退回";
+            return;
+        }
+
         if (BrowsingHistory)
         {
             HintText.Text = HistoryHint();

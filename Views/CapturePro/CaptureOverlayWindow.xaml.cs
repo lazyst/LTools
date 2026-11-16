@@ -62,7 +62,8 @@ public partial class CaptureOverlayWindow : Window
     /// <summary>内容真源：底图 + 选区 + 标注 + 撤销栈。</summary>
     internal CaptureDocument Document => _doc;
 
-    public CaptureOverlayWindow(BitmapSource shot, System.Drawing.Rectangle area, double sx, double sy)
+    public CaptureOverlayWindow(BitmapSource shot, System.Drawing.Rectangle area, double sx, double sy,
+        bool editOnly = false)
     {
         InitializeComponent();
 
@@ -72,6 +73,7 @@ public partial class CaptureOverlayWindow : Window
         _sy = sy > 0 ? sy : 1;
         _doc = new CaptureDocument(shot, new Int32Rect(area.Left, area.Top, area.Width, area.Height), _sx);
         Surface.Document = _doc;
+        EditOnly = editOnly;
 
         // 按目标显示器的 DPI 把物理矩形换算成 DIP：窗口正好盖住它（Loaded 里再按物理像素钉一次）
         Left = area.Left / _sx;
@@ -79,11 +81,24 @@ public partial class CaptureOverlayWindow : Window
         Width = Math.Max(1, area.Width / _sx);
         Height = Math.Max(1, area.Height / _sy);
 
+        // 「贴图内标注」：图就是这张贴图，没有框选这一步——选区一开始就框满整张
+        if (editOnly)
+        {
+            _doc.Area = new Int32Rect(area.Left, area.Top, area.Width, area.Height);
+            _sel = new Rect(0, 0, Width, Height);
+        }
+
         BuildGrips();
         WireToolbar();
         DpiChanged += (_, _) => { PinToMonitor(); SyncDocumentScale(); };
         UpdateCursorForTool();
     }
+
+    /// <summary>
+    /// 「贴图内标注」：覆盖层只当这张图的编辑器——动作栏收起，完成时只把成品交回调用方
+    /// （不复制、不贴图、不识别、不记采集历史，见 <see cref="CaptureSession.TryEdit"/>）。
+    /// </summary>
+    internal bool EditOnly { get; }
 
     // ============ 生命周期 ============
 
@@ -294,6 +309,9 @@ public partial class CaptureOverlayWindow : Window
     /// <summary>先按当前选区重绘成品，再按出口复制 / 贴图 / 识别 / 另存为；任一步失败都留在覆盖层里继续改。</summary>
     private void Accept(FinishKind kind)
     {
+        // 「贴图内标注」只有「完成」一个出口：别的（另存为 / 打印 / 贴图 / 识别 / 长截图）在这里没意义
+        if (EditOnly && kind != FinishKind.Copy) return;
+
         if (_sel is not Rect sel || !IsValid(sel)) return;
         SyncArea();
         if (!_doc.HasArea) return;
@@ -307,6 +325,17 @@ public partial class CaptureOverlayWindow : Window
         {
             CrashLog.Write("CapturePro.Render", ex);
             TrayService.Notify("截图导出失败：" + ex.Message);
+            return;
+        }
+
+        if (EditOnly)
+        {
+            // 贴图内标注：只把成品交回调用方（不复制 / 不贴图 / 不识别 / 不记历史）
+            ResultImage = image;
+            Finish = kind;
+            _confirmed = true;
+            try { DialogResult = true; }
+            catch (InvalidOperationException) { Close(); }
             return;
         }
 

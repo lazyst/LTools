@@ -117,6 +117,22 @@ internal static class PinMath
         => new(Math.Max(1, Math.Min(content.Width, Math.Max(1, desktop.Width))),
                Math.Max(1, Math.Min(content.Height, Math.Max(1, desktop.Height))));
 
+    // ============ 缩略图模式 ============
+
+    /// <summary>缩略图模式的窗口边长（DIP）：一个固定的小方块，内容等比缩进去（照 Snow Shot 的 83px）。</summary>
+    public const double ThumbnailSide = 83;
+
+    /// <summary>
+    /// 悬停按钮（✕）在小窗口里会盖住内容：窗口小于这个尺寸就干脆不显示，
+    /// 出口仍留着（双击 / 右键菜单）。
+    /// </summary>
+    public const double HoverButtonMinSide = 56;
+
+    /// <summary>这个尺寸的贴图要不要在悬停时显示右上角的按钮（缩略图里一律不显示：会盖住内容）。</summary>
+    public static bool ShowsHoverButtons(double width, double height, bool thumbnail) =>
+        !thumbnail && width >= HoverButtonMinSide && height >= HoverButtonMinSide;
+
+
     // ============ 成组移动 ============
 
     /// <summary>
