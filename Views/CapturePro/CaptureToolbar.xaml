@@ -138,6 +138,35 @@
                 </Setter>
             </Style>
 
+            <!-- 枚举型参数（序号形状 / 数字写法 / 滤镜类型）的小胶囊：文字比图形省地方 -->
+            <Style x:Key="ChoiceChip" TargetType="RadioButton">
+                <Setter Property="Height" Value="18"/>
+                <Setter Property="Margin" Value="1,0"/>
+                <Setter Property="Padding" Value="7,0"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="Foreground" Value="#C7C7CE"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="RadioButton">
+                            <Border x:Name="Chip" Background="Transparent" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Chip" Property="Background" Value="#22FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Chip" Property="Background" Value="#3B82F6"/>
+                                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <Style x:Key="SeparatorBar" TargetType="Border">
                 <Setter Property="Width" Value="1"/>
                 <Setter Property="Height" Value="20"/>

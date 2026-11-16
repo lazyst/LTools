@@ -237,23 +237,30 @@ internal abstract class Mark
         public override bool HitTest(Point point, double tolerance) => Box.Contains(point);
     }
 
-    /// <summary>序号：圆形 / 方形徽标 + 数字，序号由文档递增分配，删除不重排。</summary>
+    /// <summary>序号：圆形 / 方形 / 圆角方徽标 + 数字，序号由文档递增分配，删除不重排。</summary>
     public sealed class Serial : Mark
     {
-        public Serial(Point center, int number, Color color, bool square)
+        public Serial(Point center, int number, Color color, SerialShape shape, SerialNumbering numbering)
         {
             Center = center;
             Number = number;
             Color = color;
-            Square = square;
+            BadgeShape = shape;
+            Numbering = numbering;
         }
 
         public Point Center { get; }
         public int Number { get; }
         public Color Color { get; }
 
-        /// <summary>方形徽标（false = 圆形）。</summary>
-        public bool Square { get; }
+        /// <summary>徽标形状。</summary>
+        public SerialShape BadgeShape { get; }
+
+        /// <summary>数字写法（阿拉伯 / 罗马 / 字母 / 中文）。</summary>
+        public SerialNumbering Numbering { get; }
+
+        /// <summary>徽标上要画的字（罗马、中文比数字长，字号由渲染按长度收）。</summary>
+        public string Label => SerialLabel.Of(Number, Numbering);
 
         public const double Radius = 13;
 
@@ -264,10 +271,10 @@ internal abstract class Mark
         /// <summary>徽标直径是固定的（数字要看得清），所以它只有移动、没有缩放。</summary>
         public override bool CanScale => false;
 
-        public override Mark MoveBy(Vector delta) => new Serial(Center + delta, Number, Color, Square);
+        public override Mark MoveBy(Vector delta) => new Serial(Center + delta, Number, Color, BadgeShape, Numbering);
 
         public override Mark ScaleTo(Rect from, Rect to) =>
-            new Serial(MarkGeometry.MapPoint(Center, from, to), Number, Color, Square);
+            new Serial(MarkGeometry.MapPoint(Center, from, to), Number, Color, BadgeShape, Numbering);
 
         public override bool HitTest(Point point, double tolerance)
         {
@@ -302,6 +309,46 @@ internal abstract class Mark
         public override Mark ScaleTo(Rect from, Rect to) => new Mosaic(
             MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(B, from, to),
             Math.Max(2, Block * MarkGeometry.ScaleOf(from, to)));
+
+        public override bool HitTest(Point point, double tolerance)
+        {
+            var r = Rect;
+            r.Inflate(tolerance, tolerance);
+            return r.Contains(point);
+        }
+    }
+
+    /// <summary>
+    /// 矩形滤镜：把一块区域按类型处理（模糊 / 灰度 / 反相 / 浮雕 / 亮度）。
+    /// 与马赛克分开：马赛克只是「打码」，滤镜是可选择的处理方式。
+    /// </summary>
+    public sealed class Filter : Mark
+    {
+        public Filter(Point a, Point b, FilterKind kind, double strength)
+        {
+            A = a;
+            B = b;
+            Kind = kind;
+            Strength = strength;
+        }
+
+        public Point A { get; }
+        public Point B { get; }
+
+        /// <summary>处理方式。</summary>
+        public FilterKind Kind { get; }
+
+        /// <summary>强度 0–100（模糊 = 半径、亮度 = 50 是原样、其余忽略）。</summary>
+        public double Strength { get; }
+
+        public Rect Rect => MarkGeometry.RectOf(A, B);
+
+        public override Rect Bounds => Rect;
+
+        public override Mark MoveBy(Vector delta) => new Filter(A + delta, B + delta, Kind, Strength);
+
+        public override Mark ScaleTo(Rect from, Rect to) => new Filter(
+            MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(B, from, to), Kind, Strength);
 
         public override bool HitTest(Point point, double tolerance)
         {

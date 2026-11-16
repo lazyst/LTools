@@ -31,6 +31,8 @@ public partial class CaptureOverlayWindow
         Toolbar.PinRequested += () => Accept(FinishKind.Pin);
         Toolbar.RecognizeRequested += () => Accept(FinishKind.Recognize);
         Toolbar.SaveRequested += () => Accept(FinishKind.Save);
+        Toolbar.QuickSaveRequested += () => Accept(FinishKind.QuickSave);
+        Toolbar.PrintRequested += () => Accept(FinishKind.Print);
         Toolbar.CancelRequested += Cancel;
     }
 

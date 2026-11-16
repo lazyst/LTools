@@ -45,6 +45,8 @@ public partial class CaptureToolbar : UserControl
     public event Action? PinRequested;
     public event Action? RecognizeRequested;
     public event Action? SaveRequested;
+    public event Action? QuickSaveRequested;
+    public event Action? PrintRequested;
     public event Action? CancelRequested;
 
     internal CaptureTool CurrentTool { get; private set; } = CaptureTool.Select;
@@ -178,7 +180,10 @@ public partial class CaptureToolbar : UserControl
         AddAction("IconCopy", "复制到剪贴板（Enter）", () => CopyRequested?.Invoke());
         AddAction("IconPin", "贴图到屏幕（Ctrl+T）", () => PinRequested?.Invoke());
         AddAction("IconRecognize", "识别文字 / 表格 / 二维码（Ctrl+R）", () => RecognizeRequested?.Invoke());
-        AddAction("IconSave", "另存为…", () => SaveRequested?.Invoke());
+        AddAction("IconSave", "另存为…（Ctrl+S）", () => SaveRequested?.Invoke());
+        AddAction("IconQuickSave", "快速保存到图片\\LTools 截图，不弹框（Ctrl+Shift+S）",
+            () => QuickSaveRequested?.Invoke());
+        AddAction("IconPrint", "打印（Ctrl+P）", () => PrintRequested?.Invoke());
         AddAction("IconClose", "取消（Esc）", () => CancelRequested?.Invoke());
     }
 
@@ -230,19 +235,90 @@ public partial class CaptureToolbar : UserControl
         // 线宽 / 字号 / 块大小 / 透明度
         AddHost(ToolParam.Width, Step("线宽", 1, 50, 1,
             () => _style?.Width ?? 4, v => { if (_style != null) _style.Width = v; },
-            v => v.ToString("0")));
+            v => v.ToString("0"), 4));
 
         AddHost(ToolParam.FontSize, Step("字号", 8, 72, 2,
             () => _style?.FontSize ?? 20, v => { if (_style != null) _style.FontSize = v; },
-            v => v.ToString("0")));
+            v => v.ToString("0"), 20));
 
         AddHost(ToolParam.Block, Step("块大小", 4, 24, 2,
             () => _style?.Block ?? 8, v => { if (_style != null) _style.Block = v; },
-            v => v.ToString("0")));
+            v => v.ToString("0"), 8));
 
         AddHost(ToolParam.Opacity, Step("透明度", 10, 90, 5,
             () => (_style?.Opacity ?? 0.35) * 100, v => { if (_style != null) _style.Opacity = v / 100; },
-            v => v.ToString("0") + "%"));
+            v => v.ToString("0") + "%", 35));
+
+        // 序号的形状与数字写法（枚举用文字胶囊：图标认不出「圆角方 / 罗马数字」）
+        AddHost(ToolParam.Shape, Chips("形状",
+            new[] { SerialShape.Circle, SerialShape.Square, SerialShape.Rounded },
+            () => _style?.Shape ?? SerialShape.Circle,
+            v => { if (_style != null) _style.Shape = v; },
+            SerialLabel.Name, v => "徽标形状：" + SerialLabel.Name(v)));
+
+        AddHost(ToolParam.Numbering, Chips("编号",
+            new[]
+            {
+                SerialNumbering.Arabic, SerialNumbering.RomanUpper, SerialNumbering.RomanLower,
+                SerialNumbering.AlphaUpper, SerialNumbering.AlphaLower, SerialNumbering.Chinese,
+            },
+            () => _style?.Numbering ?? SerialNumbering.Arabic,
+            v => { if (_style != null) _style.Numbering = v; },
+            SerialLabel.Chip, v => "数字写法：" + SerialLabel.Of(8, v)));
+
+        // 滤镜类型与强度
+        AddHost(ToolParam.FilterKind, Chips("类型",
+            new[] { FilterKind.Blur, FilterKind.Grayscale, FilterKind.Invert, FilterKind.Emboss, FilterKind.Brighten },
+            () => _style?.FilterMode ?? FilterKind.Blur,
+            v => { if (_style != null) _style.FilterMode = v; },
+            SerialLabel.Name, v => "滤镜：" + SerialLabel.Name(v)));
+
+        AddHost(ToolParam.FilterStrength, Step("强度", 0, 100, 5,
+            () => _style?.FilterStrength ?? 40, v => { if (_style != null) _style.FilterStrength = v; },
+            v => v.ToString("0"), 40));
+    }
+
+    /// <summary>
+    /// 枚举型参数：一排文字胶囊，点了就换（单选）。
+    /// 与颜色胶囊同一套「_syncing 防回环」写法，别让刷新把用户刚点的值又切回去。
+    /// </summary>
+    private FrameworkElement Chips<T>(string label, T[] values, Func<T> get, Action<T> set,
+        Func<T, string> text, Func<T, string> tip)
+    {
+        var host = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        host.Children.Add(Label(label));
+
+        var chips = new List<(RadioButton Button, T Value)>();
+        foreach (var value in values)
+        {
+            var chip = new RadioButton
+            {
+                Style = (Style)FindResource("ChoiceChip"),
+                GroupName = "captureChoice" + label,
+                Content = text(value),
+                ToolTip = tip(value),
+                Tag = value,
+            };
+            chip.Checked += (_, _) =>
+            {
+                if (_syncing) return;
+                set(value);
+                StyleChanged?.Invoke();
+            };
+            chips.Add((chip, value));
+            host.Children.Add(chip);
+        }
+
+        _refreshers.Add(() =>
+        {
+            var current = get();
+            _syncing = true;
+            foreach (var (button, value) in chips)
+                button.IsChecked = EqualityComparer<T>.Default.Equals(value, current);
+            _syncing = false;
+        });
+
+        return host;
     }
 
     private void AddHost(ToolParam param, FrameworkElement host)
@@ -261,9 +337,15 @@ public partial class CaptureToolbar : UserControl
     };
 
     private FrameworkElement Step(string label, double min, double max, double step,
-        Func<double> get, Action<double> set, Func<double, string> format)
+        Func<double> get, Action<double> set, Func<double, string> format, double reset)
     {
-        var host = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        // 透明底色：整格（不只是字形）都能滚轮 / 点击，不然「点在数字旁边空白处」没反应
+        var host = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = Brushes.Transparent,
+        };
         host.Children.Add(Label(label));
 
         var value = new TextBlock
@@ -273,6 +355,9 @@ public partial class CaptureToolbar : UserControl
             MinWidth = 40,
             TextAlignment = TextAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
+            Background = Brushes.Transparent,
+            Cursor = Cursors.SizeWE,
+            ToolTip = $"滚轮微调（{step:0.##}）· 点一下复位到 {format(reset)}",
         };
 
         Button Minus() => new()
@@ -296,6 +381,25 @@ public partial class CaptureToolbar : UserControl
             set(Math.Min(max, Math.Round(get() + step)));
             RefreshValues();
             StyleChanged?.Invoke();
+        };
+
+        // 滚轮在数值上直接微调（照 Snow Shot：光标停在参数上滚就是调它）；
+        // 点一下数值复位——「调过头了」比「找不到恢复按钮」常见得多。
+        host.MouseWheel += (_, e) =>
+        {
+            double next = Math.Clamp(Math.Round(get() + (e.Delta > 0 ? step : -step)), min, max);
+            if (Math.Abs(next - get()) < 1e-9) return;
+            set(next);
+            RefreshValues();
+            StyleChanged?.Invoke();
+            e.Handled = true;
+        };
+        value.MouseLeftButtonUp += (_, e) =>
+        {
+            set(reset);
+            RefreshValues();
+            StyleChanged?.Invoke();
+            e.Handled = true;
         };
 
         host.Children.Add(minus);

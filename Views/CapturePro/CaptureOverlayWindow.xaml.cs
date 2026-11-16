@@ -159,9 +159,23 @@ public partial class CaptureOverlayWindow : Window
             return;
         }
 
+        if (ctrl && e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+        {
+            Accept(FinishKind.QuickSave);
+            e.Handled = true;
+            return;
+        }
+
         if (ctrl && e.Key == Key.S)
         {
             Accept(FinishKind.Save);
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.P)
+        {
+            Accept(FinishKind.Print);
             e.Handled = true;
             return;
         }
@@ -241,7 +255,7 @@ public partial class CaptureOverlayWindow : Window
 
     // ============ 完成动作 ============
 
-    internal enum FinishKind { Copy, Save, Pin, Recognize, Scroll }
+    internal enum FinishKind { Copy, Save, QuickSave, Print, Pin, Recognize, Scroll }
 
     /// <summary>「✓ 复制」= Enter / 双击的默认出口（P0 不加配置域字段，默认就是复制）。</summary>
     private void Copy_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Copy);
@@ -291,6 +305,15 @@ public partial class CaptureOverlayWindow : Window
         {
             case FinishKind.Save:
                 if (!CaptureSave.TrySave(this, image)) return;   // 取消另存为 = 留在覆盖层，继续改
+                break;
+
+            case FinishKind.QuickSave:
+                // 快速保存不弹框：失败就留在覆盖层（提示已经由 CaptureSave 发出）
+                if (!CaptureSave.TryQuickSave(image)) return;
+                break;
+
+            case FinishKind.Print:
+                if (!CaptureSave.TryPrint(this, image)) return;   // 取消打印 = 留在覆盖层
                 break;
 
             case FinishKind.Pin:

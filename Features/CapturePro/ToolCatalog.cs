@@ -18,6 +18,7 @@ internal enum CaptureTool
     Text,
     Serial,
     Mosaic,
+    Filter,
     Spotlight,
     Eraser,
     Picker,
@@ -31,6 +32,18 @@ internal enum ToolParam
     FontSize,
     Block,
     Opacity,
+
+    /// <summary>序号的徽标形状。</summary>
+    Shape,
+
+    /// <summary>序号的数字写法。</summary>
+    Numbering,
+
+    /// <summary>滤镜的类型。</summary>
+    FilterKind,
+
+    /// <summary>滤镜的强度。</summary>
+    FilterStrength,
 }
 
 /// <summary>一个工具的名字 / 图标 / 说明 / 用到哪几格参数 / 快捷键（工具栏与自检共用）。</summary>
@@ -56,8 +69,11 @@ internal static class ToolCatalog
         new(CaptureTool.Arrow, "箭头", "Arrow", "从起点拖到目标", Stroke, Key.A),
         new(CaptureTool.Polyline, "折线", "Polyline", "逐点单击，双击 / Enter 结束", Stroke, Key.L),
         new(CaptureTool.Text, "文字", "Text", "单击输入文字，Enter 结束（Shift+Enter 换行）", new[] { ToolParam.Color, ToolParam.FontSize }, Key.T),
-        new(CaptureTool.Serial, "序号", "Serial", "单击添加序号，自动递增（删除不重排）", new[] { ToolParam.Color }, Key.N),
+        new(CaptureTool.Serial, "序号", "Serial", "单击添加序号，自动递增（删除不重排）",
+            new[] { ToolParam.Color, ToolParam.Shape, ToolParam.Numbering }, Key.N),
         new(CaptureTool.Mosaic, "马赛克", "Mosaic", "拖出要打码的矩形", new[] { ToolParam.Block }, Key.M),
+        new(CaptureTool.Filter, "滤镜", "Filter", "拖出矩形，按参数行选的类型处理这一块（模糊 / 灰度 / 反相 / 浮雕 / 亮度）",
+            new[] { ToolParam.FilterKind, ToolParam.FilterStrength }, Key.F),
         new(CaptureTool.Spotlight, "聚光", "Spotlight", "拖出保持原样的矩形，其余压暗", new[] { ToolParam.Opacity }, Key.S),
         new(CaptureTool.Eraser, "橡皮", "Eraser", "点一下去掉整条标注", None, Key.X),
         new(CaptureTool.Picker, "取色", "Picker", "鼠标下的颜色，单击复制 #RRGGBB", None, Key.C),
@@ -107,6 +123,21 @@ internal sealed class ToolStyle
 
     /// <summary>荧光笔的不透明度；聚光用它换算压暗程度。</summary>
     public double Opacity { get; set; } = 0.35;
+
+    /// <summary>序号徽标的形状。</summary>
+    public SerialShape Shape { get; set; } = SerialShape.Circle;
+
+    /// <summary>序号的数字写法。</summary>
+    public SerialNumbering Numbering { get; set; } = SerialNumbering.Arabic;
+
+    /// <summary>矩形滤镜的处理方式。</summary>
+    public FilterKind FilterMode { get; set; } = FilterKind.Blur;
+
+    /// <summary>
+    /// 滤镜强度 0–100：模糊按它算半径、亮度按它算倍数（50 = 原样），
+    /// 灰度 / 反相 / 浮雕不看它。
+    /// </summary>
+    public double FilterStrength { get; set; } = 40;
 
     /// <summary>荧光笔的笔头比普通画笔粗，否则看着就是一条普通线。</summary>
     public double WidthFor(CaptureTool tool) => tool == CaptureTool.Highlighter ? Math.Max(Width, 10) : Width;

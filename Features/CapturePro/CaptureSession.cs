@@ -121,6 +121,8 @@ internal static class CaptureSession
     private static string SourceOf(CaptureOverlayWindow.FinishKind kind) => kind switch
     {
         CaptureOverlayWindow.FinishKind.Save => "另存为",
+        CaptureOverlayWindow.FinishKind.QuickSave => "快速保存",
+        CaptureOverlayWindow.FinishKind.Print => "打印",
         CaptureOverlayWindow.FinishKind.Pin => "贴图",
         CaptureOverlayWindow.FinishKind.Recognize => "识别",
         CaptureOverlayWindow.FinishKind.Scroll => "长截图",

@@ -6,7 +6,7 @@ using LTools.Features.CapturePro;
 namespace LTools.Views.CapturePro;
 
 /// <summary>
-/// 标注手势：拖一类（画笔 / 荧光笔 / 矩形 / 椭圆 / 箭头 / 马赛克 / 聚光）、
+/// 标注手势：拖一类（画笔 / 荧光笔 / 矩形 / 椭圆 / 箭头 / 马赛克 / 滤镜 / 聚光）、
 /// 点一类（序号 / 文字 / 折线）、擦除，「选择」工具下的移动，以及拖手柄缩放。
 /// </summary>
 /// <remarks>
@@ -38,7 +38,7 @@ public partial class CaptureOverlayWindow
                 return true;
 
             case CaptureTool.Serial:
-                _doc.Add(new Mark.Serial(p, _doc.NextSerial(), _style.Color, false));
+                _doc.Add(new Mark.Serial(p, _doc.NextSerial(), _style.Color, _style.Shape, _style.Numbering));
                 RefreshMarks();
                 return true;
 
@@ -114,6 +114,9 @@ public partial class CaptureOverlayWindow
 
             case CaptureTool.Mosaic:
                 return new Mark.Mosaic(_toolStart, current, _style.Block);
+
+            case CaptureTool.Filter:
+                return new Mark.Filter(_toolStart, current, _style.FilterMode, _style.FilterStrength);
 
             case CaptureTool.Spotlight:
                 return new Mark.Spotlight(_toolStart, current, _style.Dim);

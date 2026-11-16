@@ -27,6 +27,8 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "标注：把手命中与等比缩放", MarkScale));
         cases.Add(new("capturePro", "文档：撤销 / 重做 / 上限", UndoRedo));
         cases.Add(new("capturePro", "文档：序号撤销后不跳号", SerialNumbers));
+        cases.Add(new("capturePro", "标注：序号写法与徽标字号", SerialTexts));
+        cases.Add(new("capturePro", "标注：矩形滤镜与像素处理", FilterMark));
         cases.Add(new("capturePro", "文档：选区换算与导出", Selection));
         cases.Add(new("capturePro", "文档：比例是「物理 ÷ DIP」", DocScale));
         cases.Add(new("capturePro", "文字：量宽随字号增长", TextMetrics));
@@ -192,7 +194,7 @@ internal static class CaptureProSuite
         var spot = new Mark.Spotlight(new Point(10, 10), new Point(50, 40), 0.5);
         Check.Equal(to, ((Mark.Spotlight)spot.ScaleTo(spot.Frame, to)).Frame, "聚光框搬过去");
 
-        var serial = new Mark.Serial(new Point(30, 30), 3, Colors.Red, false);
+        var serial = new Mark.Serial(new Point(30, 30), 3, Colors.Red, SerialShape.Circle, SerialNumbering.Arabic);
         Check.False(serial.CanScale, "序号徽标固定尺寸，不给手柄");
         Check.Equal(new Point(40, 30),
             ((Mark.Serial)serial.ScaleTo(serial.Frame, to)).Center, "序号只跟着搬位置");
@@ -225,7 +227,7 @@ internal static class CaptureProSuite
         var doc = NewDocument();
         Check.False(doc.CanUndo, "新文档不能撤销");
 
-        doc.Add(new Mark.Serial(new Point(20, 20), doc.NextSerial(), Colors.Red, false));
+        doc.Add(new Mark.Serial(new Point(20, 20), doc.NextSerial(), Colors.Red, SerialShape.Circle, SerialNumbering.Arabic));
         doc.Add(new Mark.Arrow(new Point(0, 0), new Point(10, 10), Colors.Red, 2));
         Check.Equal(2, doc.Marks.Count, "加了两条");
 
@@ -245,7 +247,7 @@ internal static class CaptureProSuite
         // 上限：只留最近 MaxUndo 份快照
         var many = NewDocument();
         for (int i = 0; i < CaptureDocument.MaxUndo + 10; i++)
-            many.Add(new Mark.Serial(new Point(10, 10), many.NextSerial(), Colors.Red, false));
+            many.Add(new Mark.Serial(new Point(10, 10), many.NextSerial(), Colors.Red, SerialShape.Circle, SerialNumbering.Arabic));
         Check.Equal(CaptureDocument.MaxUndo + 10, many.Marks.Count, "都加进去了");
         for (int i = 0; i < CaptureDocument.MaxUndo + 10; i++) many.Undo();
         Check.False(many.CanUndo, "撤销栈到底");
@@ -256,14 +258,84 @@ internal static class CaptureProSuite
     {
         var doc = NewDocument();
         int first = doc.NextSerial();
-        doc.Add(new Mark.Serial(new Point(20, 20), first, Colors.Red, false));
+        doc.Add(new Mark.Serial(new Point(20, 20), first, Colors.Red, SerialShape.Circle, SerialNumbering.Arabic));
         int second = doc.NextSerial();
-        doc.Add(new Mark.Serial(new Point(40, 20), second, Colors.Red, false));
+        doc.Add(new Mark.Serial(new Point(40, 20), second, Colors.Red, SerialShape.Circle, SerialNumbering.Arabic));
         Check.Equal(1, first, "从 1 开始");
         Check.Equal(2, second, "递增");
 
         doc.Undo();
         Check.Equal(2, doc.NextSerial(), "撤销之后下一个序号接着用 2，不跳号");
+    }
+
+    /// <summary>
+    /// 序号的五种写法都要有确定结果（罗马 / 字母 / 中文各有自己的边界），
+    /// 以及长写法的字号收缩——别等真机上看见「VIII」顶破圆圈才发现。
+    /// </summary>
+    private static void SerialTexts()
+    {
+        Check.Equal("1", SerialLabel.Of(1, SerialNumbering.Arabic), "阿拉伯数字原样");
+        Check.Equal("IV", SerialLabel.Of(4, SerialNumbering.RomanUpper), "4 → IV");
+        Check.Equal("ix", SerialLabel.Of(9, SerialNumbering.RomanLower), "9 → ix（小写罗马）");
+        Check.Equal("A", SerialLabel.Of(1, SerialNumbering.AlphaUpper), "1 → A");
+        Check.Equal("z", SerialLabel.Of(26, SerialNumbering.AlphaLower), "26 → z");
+        Check.Equal("AA", SerialLabel.Of(27, SerialNumbering.AlphaUpper), "27 → AA（表格列名式）");
+        Check.Equal("十", SerialLabel.Of(10, SerialNumbering.Chinese), "10 读「十」而不是「一十」");
+        Check.Equal("二十一", SerialLabel.Of(21, SerialNumbering.Chinese), "21 → 二十一");
+        Check.Equal("一百零五", SerialLabel.Of(105, SerialNumbering.Chinese), "105 → 一百零五（中间补零）");
+        Check.Equal("4000", SerialLabel.Of(4000, SerialNumbering.RomanUpper), "超范围退回阿拉伯数字，不留空");
+
+        double shortSize = MarkRenderer.SerialFontSize(1, "1");
+        double longSize = MarkRenderer.SerialFontSize(8, "VIII");
+        Check.True(longSize < shortSize, "长写法的字号比单数字小");
+        Check.True(longSize >= 7, "再小也留得下（不会塌成 0）");
+
+        var serial = new Mark.Serial(new Point(10, 10), 2, Colors.Red,
+            SerialShape.Rounded, SerialNumbering.RomanUpper);
+        var moved = (Mark.Serial)serial.MoveBy(new Vector(5, 5));
+        Check.Equal(SerialShape.Rounded, moved.BadgeShape, "移动不改徽标形状");
+        Check.Equal(SerialNumbering.RomanUpper, moved.Numbering, "移动不改数字写法");
+        Check.Equal("II", moved.Label, "标签跟着写法走");
+    }
+
+    /// <summary>
+    /// 矩形滤镜：框的语义与别的一致（移动 / 缩放 / 命中），像素处理是纯函数直接断言方向。
+    /// </summary>
+    private static void FilterMark()
+    {
+        var filter = new Mark.Filter(new Point(10, 10), new Point(50, 40), FilterKind.Grayscale, 40);
+        Check.Equal(new Rect(10, 10, 40, 30), filter.Frame, "滤镜框就是拖出来的矩形");
+        Check.True(filter.HitTest(new Point(20, 20), 0), "框内命中");
+        Check.False(filter.HitTest(new Point(60, 20), 0), "框外不命中");
+
+        var moved = (Mark.Filter)filter.MoveBy(new Vector(4, 6));
+        Check.Equal(new Point(14, 16), moved.A, "移动跟着走");
+        Check.Equal(FilterKind.Grayscale, moved.Kind, "移动不改类型");
+        Check.Equal(new Rect(0, 0, 80, 60),
+            ((Mark.Filter)filter.ScaleTo(filter.Frame, new Rect(0, 0, 80, 60))).Frame, "拉手柄改的是框");
+
+        // 1×1 像素：B=0 G=64 R=128 A=255
+        var inverted = new byte[] { 0x00, 0x40, 0x80, 0xFF };
+        MarkRenderer.Process(FilterKind.Invert, 0, inverted, 1, 1, 1);
+        Check.Equal((byte)0xFF, inverted[0], "反相：B 0 → 255");
+        Check.Equal((byte)0x7F, inverted[2], "反相：R 128 → 127");
+
+        var gray = new byte[] { 0x00, 0x40, 0x80, 0xFF };
+        MarkRenderer.Process(FilterKind.Grayscale, 0, gray, 1, 1, 1);
+        Check.Equal(gray[0], gray[2], "灰度：三个通道取同一个值");
+        Check.Equal((byte)Math.Round(0.299 * 0x80 + 0.587 * 0x40), gray[0], "灰度按亮度加权");
+
+        var same = new byte[] { 0x10, 0x20, 0x40, 0xFF };
+        MarkRenderer.Process(FilterKind.Brighten, 50, same, 1, 1, 1);       // 50 = 原样
+        Check.Equal((byte)0x40, same[2], "亮度 50 不变");
+
+        var half = new byte[] { 0x10, 0x20, 0x40, 0xFF };
+        MarkRenderer.Process(FilterKind.Brighten, 25, half, 1, 1, 1);
+        Check.Equal((byte)0x20, half[2], "亮度 25 → 一半");
+
+        var blurred = new byte[] { 0x10, 0x20, 0x40, 0xFF };
+        MarkRenderer.Process(FilterKind.Blur, 100, blurred, 1, 1, 1);
+        Check.Equal((byte)0xFF, blurred[3], "模糊不动透明度");
     }
 
     private static void Selection()
@@ -343,6 +415,24 @@ internal static class CaptureProSuite
         Check.False(ToolCatalog.Uses(CaptureTool.Eraser, ToolParam.Color), "擦除不用任何参数格");
         Check.False(ToolCatalog.Uses(CaptureTool.Select, ToolParam.Width), "选择不用任何参数格");
         Check.Equal(0, ToolCatalog.Of(CaptureTool.Picker).Params.Length, "取色不用任何参数格");
+
+        // 新增的两族参数：序号要形状 / 写法，滤镜要类型 / 强度（马赛克的块大小不给滤镜）
+        Check.True(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.Shape), "序号有徽标形状");
+        Check.True(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.Numbering), "序号有数字写法");
+        Check.False(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.Width), "序号没有线宽");
+        Check.True(ToolCatalog.Uses(CaptureTool.Filter, ToolParam.FilterKind), "滤镜有类型");
+        Check.True(ToolCatalog.Uses(CaptureTool.Filter, ToolParam.FilterStrength), "滤镜有强度");
+        Check.False(ToolCatalog.Uses(CaptureTool.Filter, ToolParam.Block), "滤镜没有马赛克块大小");
+        Check.False(ToolCatalog.Uses(CaptureTool.Mosaic, ToolParam.FilterKind), "马赛克没有滤镜类型（两个工具别混）");
+        Check.Equal(CaptureTool.Filter, ToolCatalog.ForKey(System.Windows.Input.Key.F), "F = 滤镜");
+
+        // 每种滤镜都有自己的名字（参数行 chip 与 tooltip 共用，别留空）
+        foreach (var kind in Enum.GetValues<FilterKind>())
+            Check.True(!string.IsNullOrWhiteSpace(SerialLabel.Name(kind)), kind + " 有中文名");
+        foreach (var numbering in Enum.GetValues<SerialNumbering>())
+            Check.True(!string.IsNullOrWhiteSpace(SerialLabel.Chip(numbering)), numbering + " 有 chip 标签");
+        foreach (var shape in Enum.GetValues<SerialShape>())
+            Check.True(!string.IsNullOrWhiteSpace(SerialLabel.Name(shape)), shape + " 有中文名");
 
         // 光标：只有选择和文字不是十字
         Check.False(ToolCatalog.WantsCrossCursor(CaptureTool.Select), "选择用箭头");
