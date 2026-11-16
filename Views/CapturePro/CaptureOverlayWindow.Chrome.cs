@@ -50,28 +50,34 @@ public partial class CaptureOverlayWindow
     /// <summary>按当前选区重画画面、把手、尺寸条、悬停高亮、动作栏与顶部提示。</summary>
     private void UpdateChrome()
     {
-        // 折线选区还没围起来：这不是「已选区」，别出把手 / 动作栏（_sel 只是点列的外接框）
+        // 折线选区还没围起来：这不是「已选区」，别出把手 / 动作栏（_sel 只是外接框）
         bool pending = SelectionPending;
-        bool hasSelection = !pending && _sel is Rect current && IsValid(current);
+
+        // 多块 / 自由 / 折线 / 挖洞都按合起来的几何画（与导出同一份 SelectionSet 规则）；
+        // 减区把选区挖空 = null：没有可导出的内容，别出把手 / 动作栏。
+        // 折线还在逐点单击时几何里本来就没有它（见 LiveRegions），已有选区照旧留在画面上。
+        Geometry? geometry = SelectionGeometry();
+        bool hasSelection = !pending && geometry != null && _sel is Rect current && IsValid(current);
         Rect sel = hasSelection ? _sel!.Value : Rect.Empty;
 
         // 悬停高亮只在「还没选区」时出现；有选区时用户在看边角，不需要再跳候选
         Rect hover = Rect.Empty;
-        if (!hasSelection && !pending && _hoverTarget is SnapBox hb)
+        if (!hasSelection && !pending && _regions.Count == 0 && _hoverTarget is SnapBox hb)
         {
             var hr = ToDipRect(hb.Bounds);
             if (hr.Width >= 2 && hr.Height >= 2) hover = hr;
         }
 
         Surface.Selection = sel;
-        Surface.SelectionPolygon = ClosedPolygon();
+        Surface.SelectionGeometry = geometry;
         Surface.PendingPolygon = PendingShape();
         Surface.Hover = hover;
         Surface.ShowHandles = ShowsMarkHandles;
         Surface.InvalidateVisual();
 
-        // 形状条：还没选区、不在拖动 / 画折线、不是贴图内标注、不在翻历史时才露出来
-        bool shapeBar = !hasSelection && !pending && _drag == DragMode.None && !EditOnly && !BrowsingHistory;
+        // 形状条 = 「下一块的形状」，**框过之后也常驻**：加区 / 减区也要先选形状。
+        // 只在拖动 / 画标注、折线待收尾、贴图内标注、翻历史、打字时收起来。
+        bool shapeBar = !pending && _drag == DragMode.None && !_textEditing && !EditOnly && !BrowsingHistory;
         ShapeBar.Visibility = shapeBar ? Visibility.Visible : Visibility.Collapsed;
         if (shapeBar)
         {
@@ -199,9 +205,8 @@ public partial class CaptureOverlayWindow
         int x = Math.Min(x1, x2), y = Math.Min(y1, y2);
         int w = Math.Abs(x2 - x1) + 1, h = Math.Abs(y2 - y1) + 1;
 
-        // 尺寸仍报外接框（存进配置的就是它），形状另说一句
-        string shape = _polyDip != null ? "自由选区 · " : "";
-        InfoText.Text = $"{shape}{w} × {h} px   {_doc.Monitor.X + x}, {_doc.Monitor.Y + y}";
+        // 尺寸仍报外接框（存进配置的就是它），形状 / 块数另说一句
+        InfoText.Text = $"{SelectionLabel()}{w} × {h} px   {_doc.Monitor.X + x}, {_doc.Monitor.Y + y}";
         InfoBox.Visibility = Visibility.Visible;
         InfoBox.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         double iw = InfoBox.DesiredSize.Width;
@@ -291,6 +296,13 @@ public partial class CaptureOverlayWindow
             return;
         }
 
+        // 减区把选区挖空了：说清「松手不并这一块」，别让人以为选区无缘无故没了
+        if (_regions.Count > 0 && SelectionGeometry() == null)
+        {
+            HintText.Text = "减区把选区挖空了 · 松手这一块不并进去 · 再拖一块加区 / 右键取消选区";
+            return;
+        }
+
         if (_sel is Rect s && IsValid(s))
         {
             if (_tool != CaptureTool.Select)
@@ -300,8 +312,8 @@ public partial class CaptureOverlayWindow
                 return;
             }
 
-            string shape = _polyDip != null ? "自由选区 · " : "";
-            HintText.Text = shape + "拖动边角微调 · 方向键 1px（Shift 10px）· 点标注拖动 / Delete 删除 · 右键取消选区 · Ctrl+Z 撤销 · Enter 复制 · Ctrl+T 贴图 · Ctrl+R 识别 · Ctrl+L 长截图 · , / . 翻历史";
+            HintText.Text = SelectionLabel() +
+                "拖动边角微调 · Shift 拖 = 加区 · Alt 拖 = 减区 · 方向键 1px（Shift 10px）· 点标注拖动 / Delete 删除 · 右键取消选区 · Ctrl+Z 撤销 · Enter 复制 · Ctrl+T 贴图 · Ctrl+R 识别 · Ctrl+L 长截图 · , / . 翻历史";
             return;
         }
 
@@ -330,6 +342,14 @@ public partial class CaptureOverlayWindow
         if (_uiaPending != IntPtr.Zero) text += " · 识别控件中…";
         else if (_uiaTargets.Count == 0 && _windowTargets.Count > 0) text += " · 未检测到控件，可直接拖拽框选";
         HintText.Text = text;
+    }
+
+    /// <summary>尺寸条 / 提示里的选区说明：多块报「N 块」，自由 / 折线报「自由选区」。</summary>
+    private string SelectionLabel()
+    {
+        var live = LiveRegions();
+        if (live.Count > 1) return $"{live.Count} 块 · ";
+        return live.Count == 1 && live[0].IsPolygon ? "自由选区 · " : "";
     }
 
     /// <summary>标注变了（撤销 / 重做 / 预览）：重画画面与界面。</summary>

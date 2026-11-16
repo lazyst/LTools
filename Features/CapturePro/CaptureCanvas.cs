@@ -41,8 +41,11 @@ internal sealed class CaptureCanvas : FrameworkElement
     /// <summary>选区（窗口 DIP）；空 = 还没框选。</summary>
     public Rect Selection { get; set; } = Rect.Empty;
 
-    /// <summary>选区是多边形时它的顶点（窗口 DIP，隐含首尾闭合）；空 = 矩形选区。</summary>
-    public Point[]? SelectionPolygon { get; set; }
+    /// <summary>
+    /// 选区合起来的几何（窗口 DIP）：多块、自由 / 折线、挖洞都按它裁；空 = 一整块矩形，看 <see cref="Selection"/>。
+    /// 由 <c>CaptureOverlayWindow.SelectionGeometry</c> 给出，和导出用的是同一份 <see cref="SelectionSet"/> 规则。
+    /// </summary>
+    public Geometry? SelectionGeometry { get; set; }
 
     /// <summary>正在圈（套索）/ 正在点（折线）的选区，还没闭合；空 = 没有。</summary>
     public Point[]? PendingPolygon { get; set; }
@@ -76,9 +79,11 @@ internal sealed class CaptureCanvas : FrameworkElement
         var canvas = doc.Canvas;
         dc.DrawImage(doc.Base, canvas);
 
-        // 标注：裁到选区，显示与导出看到的是同一块内容（自由 / 折线选区按多边形裁）
-        bool hasSelection = Selection.Width >= 0.5 && Selection.Height >= 0.5;
-        Geometry? selectionGeo = hasSelection ? SelectionGeometry() : null;
+        // 标注：裁到选区，显示与导出看到的是同一块内容（多块 / 自由 / 折线 / 挖洞按合并几何裁）
+        Geometry? selectionGeo = SelectionGeometry;
+        if (selectionGeo == null && Selection.Width >= 0.5 && Selection.Height >= 0.5)
+            selectionGeo = new RectangleGeometry(Selection);
+
         if (selectionGeo != null) dc.PushClip(selectionGeo);
         for (int i = 0; i < doc.Marks.Count; i++)
         {
@@ -103,19 +108,16 @@ internal sealed class CaptureCanvas : FrameworkElement
 
         // 压暗：EvenOdd 挖洞，选区（或悬停命中的元素）保持原亮度
         var full = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
-        Geometry? hole = hasSelection
-            ? selectionGeo
-            : Hover.Width >= 0.5 && Hover.Height >= 0.5
-                ? new RectangleGeometry(Hover)
-                : null;
+        Geometry? hole = selectionGeo
+            ?? (Hover.Width >= 0.5 && Hover.Height >= 0.5 ? new RectangleGeometry(Hover) : null);
         var geo = new GeometryGroup { FillRule = FillRule.EvenOdd };
         geo.Children.Add(new RectangleGeometry(full));
         if (hole != null) geo.Children.Add(hole);
         geo.Freeze();
         dc.DrawGeometry(DimBrush, null, geo);
 
-        // 选区框：外面一层深色描边保证浅底上也看得清；多边形按点列画，矩形还是画矩形
-        if (hasSelection && selectionGeo != null)
+        // 选区框：外面一层深色描边保证浅底上也看得清；一整块矩形走双描边，其它几何按路径描边
+        if (selectionGeo != null)
         {
             if (selectionGeo is RectangleGeometry rect)
             {
@@ -146,12 +148,6 @@ internal sealed class CaptureCanvas : FrameworkElement
             }
         }
     }
-
-    /// <summary>选区的几何：多边形时按点列，矩形时按 <see cref="Selection"/>。</summary>
-    private Geometry SelectionGeometry() => SelectionPolygon is { Length: >= SelectionShape.MinPoints } poly
-        ? SelectionShape.Geometry(poly, closed: true)
-        : new RectangleGeometry(Selection);
-
 
     private static SolidColorBrush Frozen(Color color)
     {

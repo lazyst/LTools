@@ -28,8 +28,8 @@ public partial class CaptureOverlayWindow
     /// <summary>进历史之前的那一份现场（退出时原样放回）。</summary>
     private sealed record HistoryLive(
         System.Windows.Media.Imaging.BitmapSource Base, Int32Rect Monitor, double Scale, Point Origin,
-        Int32Rect Area, Point[]? Polygon, Point[]? PolygonDip, Mark[] Marks, Rect? Selection,
-        CaptureTool Tool, int Selected);
+        Int32Rect Area, SelectionRegion[]? Regions, SelectionRegion[] RegionsDip, Mark[] Marks,
+        Rect? Selection, CaptureTool Tool, int Selected);
 
     private HistoryLive? _live;
     private List<CaptureEntry> _history = new();
@@ -76,7 +76,7 @@ public partial class CaptureOverlayWindow
     private void EnterHistory()
     {
         _live = new HistoryLive(_doc.Base, _doc.Monitor, _doc.Scale, _doc.Origin, _doc.Area,
-            _doc.Polygon, _polyDip, _doc.Marks.ToArray(), _sel, _tool, _selectedIndex);
+            _doc.Regions, _regions.ToArray(), _doc.Marks.ToArray(), _sel, _tool, _selectedIndex);
 
         SetHover(null);
         _hoverCandidates.Clear();
@@ -111,10 +111,8 @@ public partial class CaptureOverlayWindow
 
         _doc.LoadBase(image, new Int32Rect(0, 0, image.PixelWidth, image.PixelHeight), scale, origin);
         _doc.Area = new Int32Rect(0, 0, image.PixelWidth, image.PixelHeight);
-        _polyDip = null;                 // 历史图是矩形整张：点列对不上别的图
-        _originPoly = null;
-        _lasso.Clear();
-        _sel = new Rect(origin.X, origin.Y, w, h);
+        _doc.Regions = null;             // 历史图是矩形整张：多块 / 点列对不上别的图
+        SetSingleRect(new Rect(origin.X, origin.Y, w, h));
 
         _tool = CaptureTool.Select;
         Toolbar.Sync(_tool);
@@ -135,9 +133,12 @@ public partial class CaptureOverlayWindow
 
         _doc.LoadBase(live.Base, live.Monitor, live.Scale, live.Origin);
         _doc.Area = live.Area;
-        _doc.Polygon = live.Polygon;     // LoadBase 会清掉，这里原样放回
-        _polyDip = live.PolygonDip;
-        _originPoly = null;
+        _doc.Regions = live.Regions;     // LoadBase 会清掉，这里原样放回
+        _regions.Clear();
+        _regions.AddRange(live.RegionsDip);
+        _originRegions = null;
+        _liveRect = null;
+        _replaceOnCommit = false;
         _lasso.Clear();
         _doc.ResetMarks(live.Marks);
         _sel = live.Selection;

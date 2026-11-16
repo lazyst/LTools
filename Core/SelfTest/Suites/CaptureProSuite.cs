@@ -507,10 +507,14 @@ internal static class CaptureProSuite
 
         var doc = new CaptureDocument(white, new Int32Rect(100, 100, 8, 8), 2.0);
         doc.Area = new Int32Rect(100, 100, 8, 8);
-        Check.False(doc.HasPolygon, "矩形选区没有点列");
+        Check.False(doc.HasRegions, "一整块矩形没有区域数据（不用裁）");
 
-        doc.Polygon = new[] { new Point(1, 1), new Point(7, 1), new Point(7, 7), new Point(1, 7) };
-        Check.True(doc.HasPolygon, "写了点列就是多边形选区");
+        doc.Regions = new[]
+        {
+            SelectionRegion.FromPoints(RegionMode.Add,
+                new[] { new Point(1, 1), new Point(7, 1), new Point(7, 7), new Point(1, 7) }),
+        };
+        Check.True(doc.HasRegions, "写了区域就按合起来的几何裁");
 
         var shot = doc.Render();
         var outPixels = new byte[8 * 8 * 4];
@@ -519,12 +523,67 @@ internal static class CaptureProSuite
         Check.Equal((byte)0, outPixels[0 * 4 + 3], "左上角在形状外 = 透明");
         Check.Equal((byte)0, outPixels[(7 * 8 + 7) * 4 + 3], "右下角在形状外 = 透明");
 
-        // 点列换成矩形（重新框选）：导出不再裁
-        doc.Polygon = null;
+        // 选区换成矩形（重新框选）：导出不再裁
+        doc.Regions = null;
         var rectShot = doc.Render();
         var rectPixels = new byte[8 * 8 * 4];
         rectShot.CopyPixels(rectPixels, 8 * 4, 0);
         Check.Equal((byte)0xFF, rectPixels[0 * 4 + 3], "矩形选区整块不透明");
+
+        // ============ 多区域：加区 / 减区 ============
+        var add = SelectionRegion.FromRect(RegionMode.Add, new Rect(0, 0, 10, 10));
+        var add2 = SelectionRegion.FromRect(RegionMode.Add, new Rect(20, 4, 6, 6));
+        var cut = SelectionRegion.FromRect(RegionMode.Subtract, new Rect(2, 2, 4, 4));
+        var set = new[] { add, cut, add2 };
+
+        Check.Equal(new Rect(0, 0, 26, 10), SelectionSet.Bounds(set), "外接框只并加区（减区不扩大取景）");
+        Check.Equal(Rect.Empty, SelectionSet.Bounds(new[] { cut }), "只有减区 = 空外接框");
+        Check.True(SelectionSet.Contains(set, new Point(1, 1)), "加区里 = 在选区里");
+        Check.False(SelectionSet.Contains(set, new Point(4, 4)), "挖掉的洞里 = 不在选区里");
+        Check.True(SelectionSet.Contains(set, new Point(22, 6)), "第二块加区里 = 在选区里");
+
+        var covered = new[]
+        {
+            SelectionRegion.FromRect(RegionMode.Add, new Rect(0, 0, 10, 10)),
+            SelectionRegion.FromRect(RegionMode.Subtract, new Rect(-1, -1, 20, 20)),
+        };
+        Check.True(SelectionSet.Combine(covered) == null, "减区把加区整个挖空 = 没有可导出的内容");
+        Check.True(SelectionSet.Combine(new[] { cut }) == null, "只有减区 = 什么都不剩");
+
+        // 平移 / 缩放 / DIP → 像素 / 夹到底图里
+        var moved = add.Offset(new Vector(3, 4));
+        Check.Equal(new Rect(3, 4, 10, 10), moved.Bounds, "整块平移");
+        Check.Equal(RegionMode.Add, moved.Mode, "平移不改加 / 减");
+        Check.Equal(new Rect(0, 0, 20, 30), add.Scale(new Rect(0, 0, 10, 10), new Rect(0, 0, 20, 30)).Bounds,
+            "按外接框缩放");
+        Check.Equal(new Rect(0, 0, 21, 21), add.ToImage(new Point(0, 0), 2).Bounds,
+            "矩形换算成像素：含两端像素（0..20 = 21 个）");
+        var polyPixels = SelectionRegion.FromPoints(RegionMode.Add,
+            new[] { new Point(0, 0), new Point(10, 0), new Point(0, 10) }).ToImage(new Point(0, 0), 2);
+        Check.Equal(new Point(20, 0), polyPixels.Points![1], "点列按点换算成像素");
+        Check.Equal(new Rect(0, 0, 8, 8), add.ToImage(new Point(0, 0), 1).Clamp(8, 8).Bounds, "夹到底图里");
+
+        // 多区域导出：加区整块 + 中间挖一个洞
+        var holeDoc = new CaptureDocument(white, new Int32Rect(100, 100, 8, 8), 2.0);
+        holeDoc.Area = new Int32Rect(100, 100, 8, 8);
+        holeDoc.Regions = new[]
+        {
+            SelectionRegion.FromRect(RegionMode.Add, new Rect(0, 0, 8, 8)),
+            SelectionRegion.FromRect(RegionMode.Subtract, new Rect(2, 2, 4, 4)),
+        };
+        var holePixels = new byte[8 * 8 * 4];
+        holeDoc.Render().CopyPixels(holePixels, 8 * 4, 0);
+        Check.Equal((byte)0xFF, holePixels[(0 * 8 + 0) * 4 + 3], "多区域：加区里保留底图");
+        Check.Equal((byte)0, holePixels[(3 * 8 + 3) * 4 + 3], "多区域：减区挖出来的洞里透明");
+
+        // 有偏移的选区：裁剪切**不许**再减一次选区偏移（减了右边 / 下边会被裁成透明）
+        var offsetDoc = new CaptureDocument(white, new Int32Rect(0, 0, 8, 8), 2.0);
+        offsetDoc.Area = new Int32Rect(2, 2, 4, 4);
+        offsetDoc.Regions = new[] { SelectionRegion.FromRect(RegionMode.Add, new Rect(2, 2, 4, 4)) };
+        var offsetPixels = new byte[4 * 4 * 4];
+        offsetDoc.Render().CopyPixels(offsetPixels, 4 * 4, 0);
+        Check.Equal((byte)0xFF, offsetPixels[(0 * 4 + 0) * 4 + 3], "有偏移的选区：左上不透明");
+        Check.Equal((byte)0xFF, offsetPixels[(3 * 4 + 3) * 4 + 3], "有偏移的选区：右下也不透明");
     }
 
     private static void TextMetrics()

@@ -45,9 +45,13 @@ public partial class CaptureOverlayWindow : Window
     private Rect _originRect;              // 本次拖动开始时的选区
 
     private SelectionMode _shape = SelectionMode.Rect;   // 下一次拖框画什么形状（每次打开都从矩形开始）
-    private Point[]? _polyDip;                           // 已确定的自由 / 折线选区（窗口 DIP，隐含闭合）
-    private Point[]? _originPoly;                        // 本次拖动开始时的点列（移动 / 缩放用）
-    private readonly List<Point> _lasso = new();         // 套索补点（按住拖动时）
+    private readonly List<SelectionRegion> _regions = new();   // 已确定的选区（窗口 DIP；加区并、减区挖）
+    private List<SelectionRegion>? _originRegions;       // 本次移动 / 缩放开始时的每一块（取消时还原）
+    private RegionMode _mode;                            // 本次拖出来的是加区还是减区
+    private Rect? _liveRect;                             // 正在拖的那一块矩形（窗口 DIP）
+    private bool _squareDrag;                            // 还没有选区时 Shift 锁正方形
+    private bool _replaceOnCommit;                       // 无修饰键拖到选区外 = 松手整块重换
+    private readonly List<Point> _lasso = new();         // 自由选区的点（按住拖动时）
     private readonly List<Point> _selPoly = new();       // 折线选区的点（逐点单击）
     private Point? _selPolyCursor;                       // 折线还没落下的那一段（跟手虚线）
     private bool _selPolyActive;
@@ -93,7 +97,7 @@ public partial class CaptureOverlayWindow : Window
         if (editOnly)
         {
             _doc.Area = new Int32Rect(area.Left, area.Top, area.Width, area.Height);
-            _sel = new Rect(0, 0, Width, Height);
+            SetSingleRect(new Rect(0, 0, Width, Height));
         }
 
         BuildGrips();
@@ -178,7 +182,7 @@ public partial class CaptureOverlayWindow : Window
             else if (_hoverTarget is SnapBox hover)
             {
                 // 还没框选时按 Enter = 选中当前高亮的窗口 / 控件，再按一次才确定
-                _sel = ToDipRect(hover.Bounds);
+                SetSingleRect(ToDipRect(hover.Bounds));
                 UpdateChrome();
             }
             e.Handled = true;
@@ -238,8 +242,7 @@ public partial class CaptureOverlayWindow : Window
         {
             _drag = DragMode.None;
             CancelSelectionPolyline();
-            _polyDip = null;                     // 全屏 = 矩形选区
-            _sel = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
+            SetSingleRect(new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight)));   // 全屏 = 一块矩形
             UpdateChrome();
             e.Handled = true;
             return;
@@ -283,9 +286,10 @@ public partial class CaptureOverlayWindow : Window
         };
         if (delta == default) return;
 
-        _sel = MoveTo(sel, delta);
-        if (_polyDip is { Length: >= SelectionShape.MinPoints } poly && _sel is Rect moved)
-            _polyDip = SelectionShape.Offset(poly, new Vector(moved.X - sel.X, moved.Y - sel.Y));
+        var moved = MoveTo(sel, delta);
+        var shift = new Vector(moved.X - sel.X, moved.Y - sel.Y);
+        for (int i = 0; i < _regions.Count; i++) _regions[i] = _regions[i].Offset(shift);
+        _sel = moved;
 
         UpdateChrome();
         e.Handled = true;
@@ -331,6 +335,15 @@ public partial class CaptureOverlayWindow : Window
         if (EditOnly && kind != FinishKind.Copy) return;
 
         if (_sel is not Rect sel || !IsValid(sel)) return;
+
+        // 减区把选区挖空了：没有可导出的内容，说清楚而不是导出一张全透明的图
+        if (SelectionGeometry() == null)
+        {
+            ToastService.Show("选区被减区挖空了，没有能导出的内容：再拖一块加区，或右键取消选区",
+                "截图", 2600, ToastKind.warning, key: "capture-region-empty");
+            return;
+        }
+
         SyncArea();
         if (!_doc.HasArea) return;
 

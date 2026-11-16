@@ -68,7 +68,7 @@ internal sealed class CaptureDocument
         _redo.Clear();
         _serial = 0;
         Area = default;
-        Polygon = null;
+        Regions = null;
         Dirty = false;
     }
 
@@ -86,14 +86,14 @@ internal sealed class CaptureDocument
     public Int32Rect Area { get; set; }
 
     /// <summary>
-    /// 自由 / 折线选区的多边形（**图像像素，相对底图左上角**，隐含首尾闭合）；null = 矩形选区。
-    /// 显示用的是窗口里的 DIP 点列（<c>CaptureOverlayWindow</c>），这里只在导出时按它裁透明。
-    /// 它的外接框必须与 <see cref="Area"/> 对得上（都由 <c>SyncArea</c> 从同一份点列算出来）。
+    /// 多区域选区（**图像像素，相对底图左上角**）：加区并、减区挖，导出时按它裁透明。
+    /// null = 一整块矩形（位图本身就是选区尺寸，不用裁）。
+    /// 外接框必须与 <see cref="Area"/> 对得上——两者由 <c>SyncArea</c> 从同一份选区算出来。
     /// </summary>
-    public Point[]? Polygon { get; set; }
+    public SelectionRegion[]? Regions { get; set; }
 
-    /// <summary>是不是非矩形选区（点数够成一个面）。</summary>
-    public bool HasPolygon => Polygon is { Length: >= SelectionShape.MinPoints };
+    /// <summary>是不是需要按形状裁（多块 / 自由 / 折线 / 挖洞）。</summary>
+    public bool HasRegions => Regions is { Length: > 0 };
 
     public bool HasArea => Area.Width >= 2 && Area.Height >= 2;
 
@@ -251,9 +251,9 @@ internal sealed class CaptureDocument
             dc.PushTransform(new ScaleTransform(Scale, Scale));               // DIP → 物理像素
             dc.PushTransform(new TranslateTransform(-dx / Scale - Origin.X, -dy / Scale - Origin.Y)); // 平移到选区左上角
 
-            // 自由 / 折线选区：按多边形裁（形状外留透明）。几何写的是「相对选区左上角的图像像素」，
-            // 跟着上面两层变换一起进输出像素；矩形选区不用裁（位图本身就是它的尺寸）。
-            Geometry? clip = PolygonClip(dx, dy);
+            // 多区域 / 自由 / 折线选区：按合起来的几何裁（形状外留透明）。几何写的是「相对底图左上角的 DIP」，
+            // 跟上面两层变换同一个坐标系；一整块矩形不用裁（位图本身就是它的尺寸）。
+            Geometry? clip = RegionClip();
             if (clip != null) dc.PushClip(clip);
 
             dc.DrawImage(Base, Canvas);
@@ -272,18 +272,34 @@ internal sealed class CaptureDocument
     }
 
     /// <summary>
-    /// 非矩形选区的裁剪几何：坐标是「相对选区左上角的图像像素」，跟着渲染的
-    /// <c>Scale + Translate</c> 两层变换一起落到输出像素上。矩形选区返回 null（不用裁）。
+    /// 选区的裁剪几何：把「图像像素」换成「相对底图左上角的 DIP」，与渲染的两层变换同一坐标系
+    /// （<c>Scale + Translate</c>）。**别再减选区的 dx / dy**：那等于把裁剪框又挪了一个选区的位置，
+    /// 形状外一大片被裁成透明（2026-11-17 修，导出的图右边 / 下边被切掉）。一整块矩形返回 null（不用裁）。
     /// </summary>
-    private Geometry? PolygonClip(double dx, double dy)
+    private Geometry? RegionClip()
     {
-        if (Polygon is not { Length: >= SelectionShape.MinPoints } points) return null;
+        if (Regions is not { Length: > 0 } regions) return null;
 
         double s = Scale > 0 ? Scale : 1;
-        var local = new Point[points.Length];
-        for (int i = 0; i < points.Length; i++)
-            local[i] = new Point((points[i].X - dx) / s, (points[i].Y - dy) / s);
+        var local = new SelectionRegion[regions.Length];
+        for (int i = 0; i < regions.Length; i++)
+        {
+            var region = regions[i];
+            var box = new Rect(
+                region.Box.X / s + Origin.X, region.Box.Y / s + Origin.Y,
+                region.Box.Width / s, region.Box.Height / s);
 
-        return SelectionShape.Geometry(local, closed: true);
+            Point[]? points = null;
+            if (region.Points is { } source)
+            {
+                points = new Point[source.Length];
+                for (int j = 0; j < source.Length; j++)
+                    points[j] = new Point(source[j].X / s + Origin.X, source[j].Y / s + Origin.Y);
+            }
+
+            local[i] = new SelectionRegion(region.Mode, box, points);
+        }
+
+        return SelectionSet.Combine(local);
     }
 }

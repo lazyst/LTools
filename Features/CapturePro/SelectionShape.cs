@@ -19,7 +19,7 @@ internal enum SelectionMode
 /// </summary>
 /// <remarks>
 /// 点列一律存**窗口 DIP**（与选区框、把手同一套坐标），只在导出前换成「图像像素」写进
-/// <see cref="CaptureDocument.Polygon"/>。矩形选区不用这里的东西——它仍然是 <see cref="Rect"/>。
+/// <see cref="SelectionRegion"/> 里的点列。矩形选区不用这里的东西——它仍然是 <see cref="Rect"/>。
 /// </remarks>
 internal static class SelectionShape
 {

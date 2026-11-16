@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -8,7 +9,7 @@ using LTools.Features.CapturePro;
 namespace LTools.Views.CapturePro;
 
 /// <summary>
-/// 框选与标注的鼠标总入口：拖新选区、拖内部移动、拖八个把手缩放、画标注、拖已有标注。
+/// 框选与标注的鼠标总入口：拖新选区（加区 / 减区）、拖内部移动、拖八个把手缩放、画标注、拖已有标注。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -17,8 +18,13 @@ namespace LTools.Views.CapturePro;
 /// </para>
 /// <para>
 /// 按下时的判断顺序固定为：工具栏 / 动作栏 / 文字输入框让路 → 把手（任何工具都能改框）
-/// → 选区内（选择工具拖标注，其余工具画标注）→ 选区外（重新框选）。
+/// → 选区内（选择工具拖标注，其余工具画标注）→ 选区外（加区 / 减区 / 整块重框）。
 /// 具体怎么画在 <c>.Annotate.cs</c>，工具状态在 <c>.Tools.cs</c>。
+/// </para>
+/// <para>
+/// 选区是**多块**的（<see cref="SelectionRegion"/> + <see cref="SelectionSet"/>）：已经有选区时
+/// **Shift 拖 = 加区、Alt 拖 = 减区**，无修饰键拖到选区外 = 整块重框；还没有选区时 Shift 仍是「锁正方形」。
+/// 画面上「是几块、挖了哪些洞」全按合起来的几何算，导出也一样。
 /// </para>
 /// <para>
 /// 拖动期间只认「按下那一刻」算出来的吸附线：后台窗口的边不该把框吸走，移动中重算也会让手感发飘。
@@ -71,9 +77,10 @@ public partial class CaptureOverlayWindow
         }
 
         FrameHandle hit = HitTest(p);
-        // 自由 / 折线选区按点列判「在不在里面」：外接框的四个角是空的，点在那里等于点在外面（重新框）
-        bool inside = _sel is Rect area && IsValid(area) && area.Contains(p) &&
-                      (_polyDip is not { Length: >= SelectionShape.MinPoints } poly || SelectionShape.Contains(poly, p));
+
+        // 在不在选区里按**合起来的几何**判：外接框的四个角、挖掉的洞都是空的，
+        // 点在那里等于点在外面（加区 / 减区 / 整块重框）。
+        bool inside = IsValid(_sel) && SelectionSet.Contains(_regions, p);
 
         _pressAt = p;
         _pressMoved = false;
@@ -96,8 +103,7 @@ public partial class CaptureOverlayWindow
         //    「选区外 = 重新框选」——松手时框太小被清掉，看着就是「按住拖动退出了截图」。
         if (hit is not (FrameHandle.None or FrameHandle.Move))
         {
-            _originRect = _sel!.Value;
-            _originPoly = _polyDip;
+            BeginFrameChange(_sel!.Value);
             _drag = DragMode.Resize;
             _handle = hit;
             RebuildSnapLines();
@@ -126,8 +132,7 @@ public partial class CaptureOverlayWindow
                     return;
                 }
 
-                _originRect = _sel!.Value;
-                _originPoly = _polyDip;
+                BeginFrameChange(_sel!.Value);
                 _drag = DragMode.Move;
                 _handle = FrameHandle.Move;
                 RebuildSnapLines();
@@ -144,11 +149,38 @@ public partial class CaptureOverlayWindow
             return;
         }
 
-        // 3. 选区外 / 还没选区：按当前形状重新框选；松手时几乎没动就选中光标下的窗口 / 控件
+        // 3. 选区外 / 还没选区：按当前形状加区 / 减区 / 整块重框；松手时几乎没动就选中光标下的窗口 / 控件
         _pressTarget = _hoverTarget;
         _handle = FrameHandle.None;
-        _originRect = _sel ?? default;   // Esc 放弃这次拖动时还原成原来的选区
-        _originPoly = _polyDip;
+        BeginFrameChange(_sel ?? default);
+
+        bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+        bool alt = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
+
+        // 还没有选区时 Shift 仍然是「锁正方形」（等价于新建）；有选区之后 Shift / Alt 才是加区 / 减区。
+        _squareDrag = false;
+        if (_regions.Count == 0)
+        {
+            _mode = RegionMode.Add;
+            _squareDrag = shift;
+        }
+        else if (alt)
+        {
+            _mode = RegionMode.Subtract;
+        }
+        else if (shift)
+        {
+            _mode = RegionMode.Add;
+        }
+        else
+        {
+            // 无修饰键拖到选区外 = 整块重框：**松手才换**，中途 Esc / 右键还回得去
+            _mode = RegionMode.Add;
+            _replaceOnCommit = true;
+        }
+
+        _liveRect = new Rect(p, p);
+        _lasso.Clear();
 
         if (_shape == SelectionMode.Polyline)
         {
@@ -162,10 +194,7 @@ public partial class CaptureOverlayWindow
         if (_shape == SelectionMode.Lasso)
         {
             // 自由：按住拖一圈，松手就闭合（不吸附：形状是随手画的，吸附反而拽手）
-            _lasso.Clear();
             SelectionShape.Append(_lasso, p);
-            _polyDip = null;
-            _sel = new Rect(p, p);
             _drag = DragMode.Lasso;
             SetHover(null);
             StartDrag(e, Cursors.Cross);
@@ -173,8 +202,6 @@ public partial class CaptureOverlayWindow
         }
 
         _drag = DragMode.New;
-        _polyDip = null;
-        _sel = new Rect(p, p);
         SetHover(null);
 
         RebuildSnapLines();   // 用按下那一刻的命中做吸附，拖动期间不再重算
@@ -188,6 +215,15 @@ public partial class CaptureOverlayWindow
         CaptureMouse();
         UpdateChrome();
         e.Handled = true;
+    }
+
+    /// <summary>改框（移动 / 缩放）前的现场：外接框 + 每一块选区，取消时原样退回。</summary>
+    private void BeginFrameChange(Rect box)
+    {
+        _originRect = box;
+        _originRegions = new List<SelectionRegion>(_regions);
+        _replaceOnCommit = false;
+        _liveRect = null;
     }
 
     private void Window_MouseMove(object sender, MouseEventArgs e)
@@ -230,26 +266,23 @@ public partial class CaptureOverlayWindow
         {
             case DragMode.New:
             {
-                // 拖出来的边角吸附到附近窗口 / 控件的边（Ctrl 临时关闭）；Shift 锁正方形
+                // 拖出来的边角吸附到附近窗口 / 控件的边（Ctrl 临时关闭）；还没有选区时 Shift 锁正方形
                 Point end = SnapPoint(p);
-                if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) end = SquareOf(_origin, end);
-                _sel = RectFrom(_origin, end);
+                if (_squareDrag) end = SquareOf(_origin, end);
+                _liveRect = RectFrom(_origin, end);
+                RefreshSelection();
                 break;
             }
             case DragMode.Lasso:
                 // 自由选区：补点 + 外接框跟着走（画面上画的是那条虚线，不是这个框）
                 SelectionShape.Append(_lasso, p);
-                _sel = SelectionShape.Bounds(_lasso);
+                RefreshSelection();
                 break;
             case DragMode.Move:
-                _sel = SnapMove(MoveTo(_originRect, p - _origin));
-                if (_originPoly != null && _sel is Rect moved)
-                    _polyDip = SelectionShape.Offset(_originPoly, new Vector(moved.X - _originRect.X, moved.Y - _originRect.Y));
+                MoveFrame(SnapMove(MoveTo(_originRect, p - _origin)));
                 break;
             case DragMode.Resize:
-                _sel = SnapResize(ResizeFrom(_originRect, _handle, p - _origin), _handle);
-                if (_originPoly != null && _sel is Rect scaled)
-                    _polyDip = SelectionShape.Scale(_originPoly, _originRect, scaled);
+                ResizeFrame(SnapResize(ResizeFrom(_originRect, _handle, p - _origin), _handle));
                 break;
             case DragMode.Draw:
                 UpdateToolDrag(p);
@@ -283,10 +316,15 @@ public partial class CaptureOverlayWindow
         switch (mode)
         {
             case DragMode.New:
-                // 几乎没移动 = 单击：选中光标下的窗口 / 控件；拖动了就是自由框选，不抢
-                if (!_pressMoved && _pressTarget is SnapBox target) _sel = ToDipRect(target.Bounds);
-                else if (!IsValid(_sel)) _sel = null;   // 误点 / 太小：清掉重来，不关闭窗口
+            {
+                var box = _liveRect ?? Rect.Empty;
+                _liveRect = null;
+
+                // 几乎没移动 = 单击：选中光标下的窗口 / 控件（整块换掉）；拖动了就是框选
+                if (!_pressMoved && _pressTarget is SnapBox target) SetSingleRect(ToDipRect(target.Bounds));
+                else if (!CommitBox(box)) RefreshSelection();   // 太小 / 挖空 / 点空白：保留原选区
                 break;
+            }
 
             case DragMode.Lasso:
                 CommitLasso();
@@ -306,6 +344,8 @@ public partial class CaptureOverlayWindow
         }
 
         _pressTarget = null;
+        _originRegions = null;
+        _replaceOnCommit = false;
         RefreshCursor(p);
         UpdateChrome();
         e.Handled = true;
@@ -325,12 +365,7 @@ public partial class CaptureOverlayWindow
         _handle = FrameHandle.None;
         _pressTarget = null;
 
-        if (wasFrame)
-        {
-            _sel = _originRect != default ? _originRect : null;
-            _polyDip = _originPoly;
-            if (_sel is Rect back && !IsValid(back)) _sel = null;
-        }
+        if (wasFrame) RestoreRegions();
 
         try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
         UpdateCursorForTool();
@@ -385,7 +420,7 @@ public partial class CaptureOverlayWindow
 
     // ============ 选区形状：矩形 / 自由 / 折线 ============
 
-    /// <summary>形状条上的一下：换形状 = 从头框（旧选区的点列对不上新形状）。</summary>
+    /// <summary>形状条上的一下：换「下一块的形状」（已有选区不动，加区 / 减区可以是不同形状）。</summary>
     private void Shape_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: string tag }) return;
@@ -397,8 +432,7 @@ public partial class CaptureOverlayWindow
     {
         if (_shape == mode) return;
         _shape = mode;
-        CancelSelectionPolyline();
-        if (IsValid(_sel)) ClearSelection();
+        CancelSelectionPolyline();      // 正在点的折线还没成选区，跟着换形状作废
         UpdateChrome();
     }
 
@@ -413,17 +447,6 @@ public partial class CaptureOverlayWindow
         var list = new List<Point>(_selPoly);
         if (_selPolyCursor is Point cursor) list.Add(cursor);
         return list.Count >= 1 ? list.ToArray() : null;
-    }
-
-    /// <summary>
-    /// 画面要按形状画的那份选区：自由 / 折线选区给点列，矩形给 null。
-    /// 套索拖动中也给已落的点——不然压暗挖的洞是个跟着手变大的方框。
-    /// </summary>
-    private Point[]? ClosedPolygon()
-    {
-        if (_polyDip is { Length: >= SelectionShape.MinPoints } poly) return poly;
-        if (_drag == DragMode.Lasso && _lasso.Count >= SelectionShape.MinPoints) return _lasso.ToArray();
-        return null;
     }
 
     /// <summary>形状条上点亮当前形状（程序化改 IsChecked 不会触发 Click）。</summary>
@@ -446,11 +469,7 @@ public partial class CaptureOverlayWindow
             return;
         }
 
-        if (!_selPolyActive)
-        {
-            _selPoly.Clear();
-            _polyDip = null;
-        }
+        if (!_selPolyActive) _selPoly.Clear();   // 这一串点属于同一块，加 / 减由按下时的修饰键定
 
         // 点回第一个点附近 = 闭合（截图 / 画图工具的习惯，省得去双击）
         if (_selPoly.Count >= SelectionShape.MinPoints && (p - _selPoly[0]).Length <= 6)
@@ -462,7 +481,6 @@ public partial class CaptureOverlayWindow
         _selPoly.Add(p);
         _selPolyCursor = null;
         _selPolyActive = true;
-        _sel = SelectionShape.Bounds(_selPoly);
         UpdateChrome();
     }
 
@@ -474,16 +492,16 @@ public partial class CaptureOverlayWindow
         _selPoly.Clear();
         _selPolyCursor = null;
         _selPolyActive = false;
+        Surface.PendingPolygon = null;
 
         if (ok)
         {
-            _polyDip = points;
-            _sel = SelectionShape.Bounds(points);
+            Commit(SelectionRegion.FromPoints(_mode, points));
         }
         else
         {
-            _polyDip = null;
-            _sel = null;
+            _replaceOnCommit = false;      // 这一笔作废，别把「整块重框」留给下一次
+            RefreshSelection();
             ToastService.Show("折线选区至少要围出一小块：多点几个点再双击结束", null, 2000,
                 ToastKind.info, key: "capture-shape-small");
         }
@@ -494,31 +512,146 @@ public partial class CaptureOverlayWindow
     /// <summary>丢掉正在点的折线选区（Esc / 换形状 / 翻历史）。</summary>
     private void CancelSelectionPolyline()
     {
+        _replaceOnCommit = false;
         if (!_selPolyActive) return;
         _selPoly.Clear();
         _selPolyCursor = null;
         _selPolyActive = false;
-        _sel = null;
         Surface.PendingPolygon = null;
         Surface.InvalidateVisual();
+        RefreshSelection();
     }
 
-    /// <summary>套索松手：够大就闭合（形状按点列裁），太小就当没框过。</summary>
+    /// <summary>套索松手：够大就并进选区（形状按点列裁），太小就当没框过。</summary>
     private void CommitLasso()
     {
         var points = _lasso.ToArray();
         _lasso.Clear();
 
-        if (SelectionShape.IsUsable(points, MinSize))
-        {
-            _polyDip = points;
-            _sel = SelectionShape.Bounds(points);
-        }
+        if (SelectionShape.IsUsable(points, MinSize)) Commit(SelectionRegion.FromPoints(_mode, points));
         else
         {
-            _polyDip = null;
-            _sel = null;
+            _replaceOnCommit = false;
+            RefreshSelection();
         }
+    }
+
+    // ============ 多区域选区：加区 / 减区 ============
+
+    /// <summary>
+    /// 画面 / 导出该按哪几块算：已确定的选区 + 正在拖的那一块（矩形 / 自由圈）。
+    /// 折线还在逐点单击时不算（它画的是 <see cref="PendingShape"/> 那条虚线）；
+    /// 「整块重框」的手势里先不带上旧选区，松手才换。
+    /// </summary>
+    private List<SelectionRegion> LiveRegions()
+    {
+        var list = new List<SelectionRegion>(_regions.Count + 1);
+
+        if (!_replaceOnCommit) list.AddRange(_regions);
+
+        if (_drag == DragMode.New && _liveRect is Rect rect && rect.Width >= 0.5 && rect.Height >= 0.5)
+            list.Add(SelectionRegion.FromRect(_mode, rect));
+
+        if (_drag == DragMode.Lasso && _lasso.Count >= SelectionShape.MinPoints)
+            list.Add(SelectionRegion.FromPoints(_mode, _lasso));
+
+        return list;
+    }
+
+    /// <summary>
+    /// 选区合起来的几何（窗口 DIP，含正在拖的那块）：加区并、减区挖。
+    /// 减区把选区挖空 = null（画面不再挖洞，导出也拿不到内容）。
+    /// </summary>
+    private Geometry? SelectionGeometry() => SelectionSet.Combine(LiveRegions());
+
+    /// <summary>按选区重算外接框（把手 / 尺寸条 / 动作栏都挂在它上面）。</summary>
+    private void RefreshSelection()
+    {
+        Rect box = SelectionSet.Bounds(LiveRegions());
+        _sel = box.IsEmpty || box.Width < 0.5 || box.Height < 0.5 ? null : box;
+    }
+
+    /// <summary>把选区退回按下那一刻的样子（取消拖动 / 换工具 / 翻历史）。</summary>
+    private void RestoreRegions()
+    {
+        if (_originRegions != null)
+        {
+            _regions.Clear();
+            _regions.AddRange(_originRegions);
+        }
+
+        _originRegions = null;
+        _replaceOnCommit = false;
+        _liveRect = null;
+        _lasso.Clear();
+        RefreshSelection();
+    }
+
+    /// <summary>
+    /// 把一块并进选区。<paramref name="region"/> 是减区且会把选区挖空时**不并、返回 false**——
+    /// 别留下「有选区、却什么都导不出来」的状态。
+    /// </summary>
+    private bool Commit(SelectionRegion region)
+    {
+        if (region.Mode == RegionMode.Subtract && WouldEmpty(region))
+        {
+            ToastService.Show("减区把选区挖空了，这一块没并进去", null, 2200, ToastKind.warning,
+                key: "capture-region-empty");
+            return false;
+        }
+
+        if (_replaceOnCommit) _regions.Clear();     // 无修饰键拖到选区外 = 整块重框
+        _replaceOnCommit = false;
+        _regions.Add(region);
+        RefreshSelection();
+        return true;
+    }
+
+    /// <summary>落一块矩形选区：太小 / 减区挖空都不落。</summary>
+    private bool CommitBox(Rect box) => IsValid(box) && Commit(SelectionRegion.FromRect(_mode, box));
+
+    /// <summary>这一块减区会不会把选区整个挖空。</summary>
+    private bool WouldEmpty(SelectionRegion region)
+    {
+        var probe = new List<SelectionRegion>(_regions.Count + 1);
+        probe.AddRange(_regions);
+        probe.Add(region);
+        return SelectionSet.Combine(probe) == null;
+    }
+
+    /// <summary>整块换成一块矩形选区（单击选中窗口 / 控件、Ctrl+A 全屏、退出历史都用它）。</summary>
+    private void SetSingleRect(Rect rect)
+    {
+        _originRegions = null;
+        _replaceOnCommit = false;
+        _liveRect = null;
+        _lasso.Clear();
+        _selPoly.Clear();
+        _selPolyCursor = null;
+        _selPolyActive = false;
+        Surface.PendingPolygon = null;
+
+        _regions.Clear();
+        _regions.Add(SelectionRegion.FromRect(RegionMode.Add, rect));
+        RefreshSelection();
+    }
+
+    /// <summary>把每一块选区整体平移到目标框（按下那一刻的框 → 目标框）。</summary>
+    private void MoveFrame(Rect target)
+    {
+        var delta = new Vector(target.X - _originRect.X, target.Y - _originRect.Y);
+        ApplyFrame(target, region => region.Offset(delta));
+    }
+
+    /// <summary>按外接框的变形缩放每一块选区（与标注缩放同一口径）。</summary>
+    private void ResizeFrame(Rect target) => ApplyFrame(target, region => region.Scale(_originRect, target));
+
+    private void ApplyFrame(Rect target, Func<SelectionRegion, SelectionRegion> transform)
+    {
+        _regions.Clear();
+        if (_originRegions != null)
+            foreach (var region in _originRegions) _regions.Add(transform(region));
+        _sel = target;      // 目标框就是新的外接框（再按几何算一次只会差浮点尾数）
     }
 
     // ============ 选区计算 ============
@@ -526,39 +659,49 @@ public partial class CaptureOverlayWindow
     private bool IsValid(Rect? r) => r is Rect s && s.Width >= MinSize && s.Height >= MinSize;
 
     /// <summary>
-    /// 把窗口 DIP 选区同步成「屏幕物理像素」写进文档（导出按它裁）。
-    /// 自由 / 折线选区同时把点列换成图像像素写进 <see cref="CaptureDocument.Polygon"/>——
-    /// 外接框与点列必须是**同一次换算**的产物，否则裁出来的边会差一两个像素。
+    /// 把窗口 DIP 选区同步成「屏幕物理像素 + 图像像素」写进文档（导出按它裁）。
+    /// 一整块矩形只写 <see cref="CaptureDocument.Area"/>（位图本身就是它，不用裁）；
+    /// 多块 / 自由 / 折线 / 挖洞写 <see cref="CaptureDocument.Regions"/>，外接框取**加区**的并集。
+    /// 外接框与几何必须是**同一次换算**的产物，否则裁出来的边会差一两个像素。
     /// </summary>
     private void SyncArea()
     {
-        if (_sel is not Rect s) return;
+        if (_regions.Count == 0) return;
 
-        if (_polyDip is { Length: >= SelectionShape.MinPoints } poly)
+        // 一整块矩形：老路（包含两端像素 +1，导出不裁）
+        if (_regions.Count == 1 && _regions[0] is { Mode: RegionMode.Add, IsPolygon: false } only)
         {
-            var image = SelectionShape.ToImage(poly, _doc.Origin, _doc.Scale);
-            for (int i = 0; i < image.Length; i++)
-                image[i] = new Point(
-                    Math.Clamp(image[i].X, 0, _doc.Base.PixelWidth - 1),
-                    Math.Clamp(image[i].Y, 0, _doc.Base.PixelHeight - 1));
+            var s = only.Box;
+            var (x1, y1) = ToImage(s.TopLeft);
+            var (x2, y2) = ToImage(s.BottomRight);
+            int x = Math.Min(x1, x2), y = Math.Min(y1, y2);
+            int w = Math.Min(Math.Abs(x2 - x1) + 1, _doc.Base.PixelWidth - x);
+            int h = Math.Min(Math.Abs(y2 - y1) + 1, _doc.Base.PixelHeight - y);
+            if (w < 2 || h < 2) return;
 
-            Rect box = SelectionShape.Bounds(image);
-            _doc.Polygon = image;
-            _doc.Area = new Int32Rect(_doc.Monitor.X + (int)box.X, _doc.Monitor.Y + (int)box.Y,
-                Math.Max(2, (int)box.Width + 1), Math.Max(2, (int)box.Height + 1));
+            _doc.Regions = null;
+            _doc.Area = new Int32Rect(_doc.Monitor.X + x, _doc.Monitor.Y + y, w, h);
             return;
         }
 
-        _doc.Polygon = null;
+        int width = _doc.Base.PixelWidth, height = _doc.Base.PixelHeight;
+        var regions = new SelectionRegion[_regions.Count];
+        Rect box = Rect.Empty;
+        for (int i = 0; i < _regions.Count; i++)
+        {
+            var image = _regions[i].ToImage(_doc.Origin, _doc.Scale).Clamp(width, height);
+            regions[i] = image;
+            if (image.Mode == RegionMode.Add) box.Union(image.Bounds);
+        }
 
-        var (x1, y1) = ToImage(s.TopLeft);
-        var (x2, y2) = ToImage(s.BottomRight);
-        int x = Math.Min(x1, x2), y = Math.Min(y1, y2);
-        int w = Math.Min(Math.Abs(x2 - x1) + 1, _doc.Base.PixelWidth - x);
-        int h = Math.Min(Math.Abs(y2 - y1) + 1, _doc.Base.PixelHeight - y);
-        if (w < 2 || h < 2) return;
+        if (box.IsEmpty) return;
+        int bw = Math.Max(2, (int)Math.Round(box.Width));
+        int bh = Math.Max(2, (int)Math.Round(box.Height));
+        int bx = Math.Min((int)Math.Round(box.X), Math.Max(0, width - bw));
+        int by = Math.Min((int)Math.Round(box.Y), Math.Max(0, height - bh));
 
-        _doc.Area = new Int32Rect(_doc.Monitor.X + x, _doc.Monitor.Y + y, w, h);
+        _doc.Regions = regions;
+        _doc.Area = new Int32Rect(_doc.Monitor.X + bx, _doc.Monitor.Y + by, bw, bh);
     }
 
     private FrameHandle HitTest(Point p) =>

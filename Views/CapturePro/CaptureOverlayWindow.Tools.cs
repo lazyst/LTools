@@ -75,14 +75,16 @@ public partial class CaptureOverlayWindow
     /// </summary>
     private void ClearSelection()
     {
-        _sel = null;
-        _polyDip = null;
-        _originPoly = null;
+        _regions.Clear();
+        _originRegions = null;
+        _liveRect = null;
+        _replaceOnCommit = false;
         _lasso.Clear();
+        _sel = null;
         CancelSelectionPolyline();
         SetTool(CaptureTool.Select);     // 工具也回到「选择」：再框一块就是从头开始
         _doc.Area = default;             // 选区也没了：别让「有区域、没框」的中间态留在文档里
-        _doc.Polygon = null;
+        _doc.Regions = null;
         _doc.ClearMarks();
         UpdateCursorForTool();
         UpdateChrome();                  // 收起动作栏 / 尺寸条 / 工具栏，提示改回「拖动框选」
