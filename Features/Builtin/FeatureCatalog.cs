@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using LTools.Core;
+using LTools.Features.CapturePro;
 using LTools.Native;
 using LTools.Views;
 
@@ -363,11 +364,7 @@ internal static class FeatureCatalog
         string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
         try
         {
-            return app.Dispatcher.Invoke(() =>
-            {
-                bool ok = ScreenPicker.TryPickRegion(null, out _, out var image);
-                return ok ? image : null;
-            });
+            return app.Dispatcher.Invoke(() => CaptureSession.TryCapture(null)?.Image);
         }
         finally
         {

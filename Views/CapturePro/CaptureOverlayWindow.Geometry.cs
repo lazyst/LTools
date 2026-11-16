@@ -1,0 +1,162 @@
+using System;
+using System.Collections.Generic;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Interop;
+using LTools.Native;
+
+namespace LTools.Views.CapturePro;
+
+/// <summary>
+/// 覆盖层的坐标换算与吸附：窗口 DIP ↔ 画面像素 ↔ 屏幕物理像素。
+/// </summary>
+/// <remarks>
+/// 冻结画面就是显示器 1:1 的物理像素，所以 DIP→像素一律按 <c>ActualWidth / PixelWidth</c> 现算，
+/// 不写死显示器缩放比：混合 DPI 下 WPF 的 <c>Left/Top</c> 与真实像素可能差几个像素。
+/// </remarks>
+public partial class CaptureOverlayWindow
+{
+    private List<double> _snapXs = new();
+    private List<double> _snapYs = new();
+
+    private Point Clamp(Point p) => new(
+        Math.Clamp(p.X, 0, Math.Max(0, ActualWidth - 1)),
+        Math.Clamp(p.Y, 0, Math.Max(0, ActualHeight - 1)));
+
+    /// <summary>窗口 DIP → 屏幕物理像素（吸附目标用物理像素记录）。</summary>
+    private System.Drawing.Point ToScreen(Point dip)
+    {
+        var (ix, iy) = ToImage(dip);
+        return new System.Drawing.Point(_monitor.X + ix, _monitor.Y + iy);
+    }
+
+    /// <summary>屏幕物理像素矩形 → 窗口 DIP。</summary>
+    private Rect ToDipRect(System.Drawing.Rectangle b)
+    {
+        double sx = ActualWidth > 0 ? ActualWidth / _shot.PixelWidth : 1;
+        double sy = ActualHeight > 0 ? ActualHeight / _shot.PixelHeight : 1;
+        return new Rect(
+            (b.X - _monitor.X) * sx,
+            (b.Y - _monitor.Y) * sy,
+            b.Width * sx,
+            b.Height * sy);
+    }
+
+    /// <summary>DIP → 冻结画面像素。</summary>
+    private (int X, int Y) ToImage(Point dip)
+    {
+        double sx = ActualWidth > 0 ? _shot.PixelWidth / ActualWidth : 1;
+        double sy = ActualHeight > 0 ? _shot.PixelHeight / ActualHeight : 1;
+        int x = (int)Math.Round(dip.X * sx);
+        int y = (int)Math.Round(dip.Y * sy);
+        return (Math.Clamp(x, 0, _shot.PixelWidth - 1), Math.Clamp(y, 0, _shot.PixelHeight - 1));
+    }
+
+    /// <summary>物理屏幕坐标 → 窗口 DIP。</summary>
+    private bool TryToDip(Win32.Point screen, out Point dip)
+    {
+        dip = default;
+        if (ActualWidth <= 0 || ActualHeight <= 0) return false;
+        double sx = (double)ActualWidth / _shot.PixelWidth;
+        double sy = (double)ActualHeight / _shot.PixelHeight;
+        dip = new Point((screen.X - _monitor.X) * sx, (screen.Y - _monitor.Y) * sy);
+        return true;
+    }
+
+    /// <summary>收集吸附值（DIP）：只取光标下最上层窗口及子控件的边 + 屏幕四边。</summary>
+    private void RebuildSnapLines()
+    {
+        var xs = new List<double>(_windowTargets.Count * 2 + 16);
+        var ys = new List<double>(_windowTargets.Count * 2 + 16);
+
+        IntPtr hwnd = _hwnd != IntPtr.Zero ? _hwnd : new WindowInteropHelper(this).Handle;
+        IntPtr top = IntPtr.Zero;
+        if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out _))
+            top = ScreenSnapTargets.TopWindowAtPoint(hwnd, new System.Drawing.Point(cursor.X, cursor.Y));
+
+        void Add(System.Drawing.Rectangle b)
+        {
+            var r = ToDipRect(b);
+            if (r.Width < 1 || r.Height < 1) return;
+            xs.Add(r.Left); xs.Add(r.Right);
+            ys.Add(r.Top); ys.Add(r.Bottom);
+        }
+
+        // 后台窗口的边也吸的话，框会被「看不见的窗口」拽住——只吸看得见的那个
+        foreach (var box in _windowTargets)
+            if (OwnedBy(box, top)) Add(box.Bounds);
+        foreach (var box in _uiaTargets)
+            if (OwnedBy(box, top)) Add(box.Bounds);
+        xs.Add(0); xs.Add(ActualWidth);
+        ys.Add(0); ys.Add(ActualHeight);
+
+        _snapXs = Dedup(xs);
+        _snapYs = Dedup(ys);
+    }
+
+    private static List<double> Dedup(List<double> values)
+    {
+        values.Sort();
+        var result = new List<double>(values.Count);
+        foreach (double v in values)
+            if (result.Count == 0 || Math.Abs(v - result[^1]) > 0.5) result.Add(v);
+        return result;
+    }
+
+    /// <summary>候选是否属于光标下最上层的那个窗口（拿不到顶层窗口时不过滤）。</summary>
+    private static bool OwnedBy(SnapBox box, IntPtr top) =>
+        top == IntPtr.Zero || box.Owner == IntPtr.Zero || box.Owner == top;
+
+    /// <summary>是否启用吸附：有候选边，且用户没有按住 Ctrl 临时关闭。</summary>
+    private bool SnapEnabled =>
+        _snapXs.Count > 0 && (Keyboard.Modifiers & ModifierKeys.Control) == 0;
+
+    private Point SnapPoint(Point p) => SnapEnabled
+        ? new Point(SnapValue(p.X, _snapXs), SnapValue(p.Y, _snapYs))
+        : p;
+
+    private Rect SnapMove(Rect r)
+    {
+        if (!SnapEnabled) return r;
+        double dx = NearestDelta(new[] { r.Left, r.Right }, _snapXs);
+        double dy = NearestDelta(new[] { r.Top, r.Bottom }, _snapYs);
+        return new Rect(r.X + dx, r.Y + dy, r.Width, r.Height);
+    }
+
+    private Rect SnapResize(Rect r, Handle handle)
+    {
+        if (!SnapEnabled) return r;
+
+        double left = r.Left, top = r.Top, right = r.Right, bottom = r.Bottom;
+        if (handle is Handle.Left or Handle.TopLeft or Handle.BottomLeft) left = SnapValue(left, _snapXs);
+        if (handle is Handle.Right or Handle.TopRight or Handle.BottomRight) right = SnapValue(right, _snapXs);
+        if (handle is Handle.Top or Handle.TopLeft or Handle.TopRight) top = SnapValue(top, _snapYs);
+        if (handle is Handle.Bottom or Handle.BottomLeft or Handle.BottomRight) bottom = SnapValue(bottom, _snapYs);
+
+        if (right - left < MinSize || bottom - top < MinSize) return r;
+        return new Rect(left, top, right - left, bottom - top);
+    }
+
+    private static double SnapValue(double v, List<double> lines)
+    {
+        double best = v, bestDelta = SnapDistance;
+        foreach (double line in lines)
+        {
+            double d = Math.Abs(line - v);
+            if (d < bestDelta) { bestDelta = d; best = line; }
+        }
+        return best;
+    }
+
+    private static double NearestDelta(double[] values, List<double> lines)
+    {
+        double bestDelta = 0, best = SnapDistance;
+        foreach (double v in values)
+            foreach (double line in lines)
+            {
+                double d = Math.Abs(line - v);
+                if (d < best) { best = d; bestDelta = line - v; }
+            }
+        return bestDelta;
+    }
+}

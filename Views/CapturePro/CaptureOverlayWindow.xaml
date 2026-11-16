@@ -1,0 +1,91 @@
+<Window x:Class="LTools.Views.CapturePro.CaptureOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:LTools.Views"
+        xmlns:cap="clr-namespace:LTools.Features.CapturePro"
+        Title="截图" WindowStyle="None" ResizeMode="NoResize"
+        ShowInTaskbar="False" Topmost="True" WindowStartupLocation="Manual"
+        Background="#0B0B0E" Cursor="Cross" UseLayoutRounding="True"
+        SnapsToDevicePixels="True" Focusable="True"
+        PreviewKeyDown="Window_KeyDown"
+        PreviewMouseMove="Window_MouseMove"
+        PreviewMouseLeftButtonDown="Window_MouseDown"
+        PreviewMouseLeftButtonUp="Window_MouseUp"
+        PreviewMouseRightButtonDown="Window_Cancel"
+        PreviewMouseWheel="Window_Wheel"
+        Loaded="Window_Loaded"
+        views:WindowSizing.Mode="Overlay">
+    <!-- 冻结画面 + 框选 + 标注。窗口正好盖住光标所在的显示器，
+         所有坐标最终换算成「显示器物理像素 + 左上角偏移」，与截图 / 鼠标注入同一坐标系。
+         画面（底图 / 标注 / 压暗 / 选区框）由 cap:CaptureCanvas 一次画完；
+         这里只放把手、提示、尺寸条与完成动作栏这些「窗口层」元素。 -->
+    <Window.Resources>
+        <Style x:Key="OverlayBtn" TargetType="Button">
+            <Setter Property="Foreground" Value="#18181B"/>
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E4E4E7"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#D4D4D8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="OverlayBtnGhost" TargetType="Button" BasedOn="{StaticResource OverlayBtn}">
+            <Setter Property="Background" Value="#33FFFFFF"/>
+            <Setter Property="Foreground" Value="#F4F4F5"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="Root" Background="#0B0B0E" ClipToBounds="True">
+        <cap:CaptureCanvas x:Name="Surface" IsHitTestVisible="False"/>
+
+        <Canvas x:Name="Layer" Background="Transparent" ClipToBounds="True">
+            <!-- 悬停探测到的窗口 / 控件（琥珀色，和框选取图一致） -->
+            <Rectangle x:Name="DetectRect" Stroke="#F59E0B" StrokeThickness="2"
+                       Visibility="Collapsed" IsHitTestVisible="False"/>
+            <Border x:Name="DetectLabel" Background="#F59E0B" CornerRadius="3" Padding="6,2"
+                    Visibility="Collapsed" IsHitTestVisible="False">
+                <TextBlock x:Name="DetectText" Foreground="#18181B" FontSize="12" FontWeight="SemiBold"/>
+            </Border>
+
+            <!-- 尺寸 / 坐标（物理像素，就是最终会存进配置的数字） -->
+            <Border x:Name="InfoBox" Background="#D9101014" CornerRadius="4" Padding="8,4"
+                    Visibility="Collapsed" IsHitTestVisible="False">
+                <TextBlock x:Name="InfoText" Foreground="#F4F4F5" FontFamily="Consolas" FontSize="13"/>
+            </Border>
+
+            <Border x:Name="HintBox" Background="#D9101014" CornerRadius="4" Padding="14,7"
+                    IsHitTestVisible="False">
+                <TextBlock x:Name="HintText" Foreground="#E4E4E7" FontSize="13"/>
+            </Border>
+
+            <!-- 完成动作栏：贴在选区下方、与右边缘对齐；下方放不下时翻到上方。 -->
+            <Border x:Name="ActionBar" Panel.ZIndex="20" Background="#E6101014" CornerRadius="8"
+                    Padding="12,9" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="CopyBtn" Style="{StaticResource OverlayBtn}" Content="✓ 复制"
+                            Click="Copy_Click"/>
+                    <Button x:Name="SaveBtn" Style="{StaticResource OverlayBtnGhost}" Content="另存为…"
+                            Margin="8,0,0,0" Click="Save_Click"/>
+                    <Button Style="{StaticResource OverlayBtnGhost}" Content="取消" Margin="8,0,0,0"
+                            Click="Cancel_Click"/>
+                </StackPanel>
+            </Border>
+        </Canvas>
+    </Grid>
+</Window>

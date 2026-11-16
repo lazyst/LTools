@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Windows;
 using LTools.Core;
+using LTools.Features.CapturePro;
 using LTools.Native;
 using LTools.Views;
 
@@ -64,21 +65,21 @@ internal static class ScreenshotProbe
         string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
         try
         {
-            var (ok, area, image) = app.Dispatcher.Invoke(() =>
+            var result = app.Dispatcher.Invoke(() =>
             {
                 // owner 必须在 UI 线程上找：Application.Windows 属于 UI 线程。
                 Window? owner = app.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? app.MainWindow;
-                bool picked = ScreenPicker.TryPickRegion(owner, out var a, out var img);
-                return (picked, a, picked ? img : null);
+                return CaptureSession.TryCapture(owner);
             });
 
-            if (!ok || image == null)
+            if (result == null)
             {
                 AppLog.Info("Probe", "截图：用户取消");
                 return new VarValue { Text = "", Flag = false };
             }
 
-            string file = ImageLibrary.SaveCapture(image);
+            string file = ImageLibrary.SaveCapture(result.Image);
+            var area = result.Area;
             AppLog.Info("Probe", $"截图 · 交互框选：{area.X},{area.Y} · {area.Width} × {area.Height} → {file}");
             return VarValue.FromRegion(area.X, area.Y, area.Width, area.Height, file);
         }

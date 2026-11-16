@@ -181,10 +181,10 @@ Selected --Enter/双击/✓--> 完成（复制）
 
 | 位置 | 改动 |
 |---|---|
-| `Features/Flow/ScreenshotProbe.cs` | `interactive` 分支改调 `CaptureSession.RunInteractive`（在 UI 线程 `Dispatcher.Invoke` 里开窗），其余三种模式不动 |
+| `Features/Flow/ScreenshotProbe.cs` | `interactive` 分支改调 `CaptureSession.TryCapture`（在 UI 线程 `Dispatcher.Invoke` 里开窗），其余三种模式不动；取消仍是 `found = false` |
 | `Features/Units/Screen/CaptureScreenUnit.cs` | 不动（参数与输出都不变；交互模式只是「取图方式」的一种） |
-| `Features/Builtin/FeatureCatalog.cs` | 新增 `ltools.capture`：截一张图并复制，失败只 toast |
-| `Features/HotkeySeeding.cs` | `SeedVersion` 3 → 4，补一条 `CapsLock+Shift+A`（避开已占用的组合键） |
+| `Features/Builtin/FeatureCatalog.cs` | 「截图」功能（`common.capture`）的范围=框选改走同一个覆盖层；**不新增 `ltools.capture`**：功能 Id 是唯一身份，同一件事不挂两个 Id |
+| `Features/HotkeySeeding.cs` | `SeedVersion` 3 → 4，把「截图」加进种子（避开已占用的组合键） |
 | `Features/Flow/ImageLibrary.cs` | 不改；成品仍走 `SaveCapture`（`cache/screenshots/`，下次运行清空） |
 | 数据根 | P0 **不新增**目录；`captures/` 随 P2 的采集历史一起加 |
 
@@ -220,3 +220,17 @@ Selected --Enter/双击/✓--> 完成（复制）
 7. **鼠标捕获**：拖动结束后要 `ReleaseMouseCapture()`，且清理状态要放在释放**之前**（释放会同步派发挂起的
    `MouseMove`，与 `TileDragSort` 那个坑同源）。
 8. **马赛克缓存**：不缓存会导致拖动时每帧重建 `CroppedBitmap`，大图上明显掉帧。
+
+## 12. 实施记录
+
+- **P0 覆盖层骨架**（`Features/CapturePro/CaptureSession.cs`、`CaptureCanvas.cs`；
+  `Views/CapturePro/CaptureOverlayWindow.*.cs`）：冻结抓帧 → 全屏窗（`WindowSizing.Mode=Overlay`）→
+  框选（吸附 / 把手 / 内部移动 / 方向键 / Shift 锁正方形 / Ctrl 关吸附 / Ctrl+A 整屏）→
+  尺寸条按物理像素 → `Enter` / 双击 / 「✓ 复制」= 复制并关闭，「另存为…」= 存 png，`Esc` / 右键逐级退出。
+  打开前 `TransientMinimize` + `MouseHook.SetWindowPickerActive(true)` + `HotkeyRegistry.Suspended`，
+  `finally` 成对还原；导出仍走 `CaptureDocument.Render`（按选区重绘）。
+- **入口已接**：`screen.capture` 的交互模式与内置功能「截图」（范围=框选）都开这个覆盖层；
+  `common.capture` 的整屏 / 前台窗口 / 固定区域三条不经过覆盖层（它们是纯取图）。
+- **冒烟**：仓库外 `%TEMP%\opencode\capture-overlay-smoke`（假冻结画面 + 真窗口）：
+  窗口按物理像素盖住显示器、选区后动作栏 / 尺寸条 / 八个把手出现、导出尺寸 = 选区物理尺寸，
+  并渲染 `out/overlay.png` 供人眼对照。

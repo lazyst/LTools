@@ -1,0 +1,265 @@
+using System;
+using System.Collections.Generic;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
+using LTools.Core;
+using LTools.Features.CapturePro;
+using LTools.Native;
+
+namespace LTools.Views.CapturePro;
+
+/// <summary>
+/// 截图覆盖层：冻结画面 + 框选 + 标注 + 完成动作。
+/// </summary>
+/// <remarks>
+/// <para>
+/// 窗口正好盖住**光标所在的那台显示器**（P0 不做跨屏选区）：所有坐标在窗口里是 DIP，
+/// 交出去之前统一换算成「显示器物理像素 + 左上角偏移」，与截图 / 找图 / 鼠标注入同一套坐标系。
+/// 画面部分见 <see cref="CaptureCanvas"/>，标注模型见 <see cref="CaptureDocument"/>。
+/// </para>
+/// <para>
+/// 本文件只放生命周期、键盘、完成动作；框选拖动在 <c>.Selection.cs</c>，
+/// 窗口 / 控件探测在 <c>.Hover.cs</c>，界面元素的摆放与显隐在 <c>.Chrome.cs</c>。
+/// </para>
+/// </remarks>
+public partial class CaptureOverlayWindow : Window
+{
+    private const double MinSize = 4;      // 选区最小边长（DIP）
+
+    private readonly BitmapSource _shot;
+    private readonly System.Drawing.Rectangle _monitor;
+    private readonly double _sx, _sy;      // 物理像素 / DIP
+    private readonly CaptureDocument _doc;
+    private readonly List<Rectangle> _grips = new();
+
+    private IntPtr _hwnd;
+
+    private Rect? _sel;                    // 选区（窗口 DIP）
+    private DragMode _drag;
+    private Handle _handle;
+    private Point _origin;                 // 本次拖动起点
+    private Rect _originRect;              // 本次拖动开始时的选区
+
+    /// <summary>导出用的成品（按选区重绘）。确认之前为 null。</summary>
+    public BitmapSource? ResultImage { get; private set; }
+
+    /// <summary>内容真源：底图 + 选区 + 标注 + 撤销栈。</summary>
+    internal CaptureDocument Document => _doc;
+
+    public CaptureOverlayWindow(BitmapSource shot, System.Drawing.Rectangle monitor, double sx, double sy)
+    {
+        InitializeComponent();
+
+        _shot = shot;
+        _monitor = monitor;
+        _sx = sx > 0 ? sx : 1;
+        _sy = sy > 0 ? sy : 1;
+        _doc = new CaptureDocument(shot, new Int32Rect(monitor.Left, monitor.Top, monitor.Width, monitor.Height), _sx);
+        Surface.Document = _doc;
+
+        // 按目标显示器的 DPI 把物理矩形换算成 DIP：窗口正好盖住它
+        Left = monitor.Left / _sx;
+        Top = monitor.Top / _sy;
+        Width = Math.Max(1, monitor.Width / _sx);
+        Height = Math.Max(1, monitor.Height / _sy);
+
+        BuildGrips();
+        DpiChanged += (_, _) => PinToMonitor();
+    }
+
+    // ============ 生命周期 ============
+
+    private void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        _hwnd = new WindowInteropHelper(this).Handle;
+        PinToMonitor();
+
+        Activate();
+        Focus();
+
+        UpdateLayout();
+        PlaceHint();
+
+        // 窗口树枚举很快（几百个句柄），打开时一次即可；UIA 的那一层在悬停时按需补
+        try
+        {
+            _windowTargets.AddRange(ScreenSnapTargets.FromWindows(_monitor));
+            RebuildSnapLines();
+        }
+        catch { /* 探测失败不影响手动框选 */ }
+
+        UpdateChrome();
+
+        // 打开时鼠标本来就停在某个窗口上：先算一次悬停，省得用户要动一下才看见高亮
+        if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out var dip))
+            UpdateHover(Clamp(dip));
+    }
+
+    private void Window_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            // 拖动中按 Esc 只放弃这一次拖动（和框选 / 截图工具的惯例一致），再按一次才退出
+            if (_drag != DragMode.None) CancelDrag();
+            else Cancel();
+            e.Handled = true;
+            return;
+        }
+
+        bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+
+        if (e.Key == Key.Enter)
+        {
+            if (_sel is Rect enterSel && IsValid(enterSel)) Accept(FinishKind.Copy);
+            else if (_hoverTarget is SnapBox hover)
+            {
+                // 还没框选时按 Enter = 选中当前高亮的窗口 / 控件，再按一次才确定
+                _sel = ToDipRect(hover.Bounds);
+                UpdateChrome();
+            }
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.A)
+        {
+            _drag = DragMode.None;
+            _sel = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
+            UpdateChrome();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.Z)
+        {
+            _doc.Undo();
+            RefreshMarks();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.Y)
+        {
+            _doc.Redo();
+            RefreshMarks();
+            e.Handled = true;
+            return;
+        }
+
+        if (_sel is not Rect sel || _drag != DragMode.None) return;
+
+        // 方向键逐像素微调；按住 Shift 每次 10px
+        double step = (Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? 10 : 1;
+        Vector delta = e.Key switch
+        {
+            Key.Left => new Vector(-step, 0),
+            Key.Right => new Vector(step, 0),
+            Key.Up => new Vector(0, -step),
+            Key.Down => new Vector(0, step),
+            _ => default,
+        };
+        if (delta == default) return;
+
+        _sel = MoveTo(sel, delta);
+        UpdateChrome();
+        e.Handled = true;
+    }
+
+    // ============ 完成动作 ============
+
+    private enum FinishKind { Copy, Save }
+
+    /// <summary>「✓ 复制」= Enter / 双击的默认出口（P0 不加配置域字段，默认就是复制）。</summary>
+    private void Copy_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Copy);
+
+    private void Save_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Save);
+
+    private void Cancel_Click(object sender, RoutedEventArgs e) => Cancel();
+
+    private void Window_Cancel(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        Cancel();
+    }
+
+    /// <summary>先按当前选区重绘成品，再按出口复制 / 另存为；任一步失败都留在覆盖层里继续改。</summary>
+    private void Accept(FinishKind kind)
+    {
+        if (_sel is not Rect sel || !IsValid(sel)) return;
+        SyncArea();
+        if (!_doc.HasArea) return;
+
+        BitmapSource image;
+        try
+        {
+            image = _doc.Render();
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("CapturePro.Render", ex);
+            TrayService.Notify("截图导出失败：" + ex.Message);
+            return;
+        }
+
+        if (kind == FinishKind.Save)
+        {
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Filter = "PNG 图片 (*.png)|*.png",
+                DefaultExt = ".png",
+                FileName = $"截图-{DateTime.Now:yyyyMMdd-HHmmss}.png",
+                InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+                OverwritePrompt = true,
+            };
+            if (dialog.ShowDialog(this) != true) return;   // 取消另存为 = 留在覆盖层，继续改
+
+            try
+            {
+                using var stream = File.Create(dialog.FileName);
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(image));
+                encoder.Save(stream);
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write("CapturePro.Save", ex);
+                TrayService.Notify("保存截图失败：" + ex.Message);
+                return;
+            }
+        }
+        else
+        {
+            try
+            {
+                NativeClipboard.SetImage(image);
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write("CapturePro.Copy", ex);
+                TrayService.Notify("复制截图失败：" + ex.Message);
+                return;
+            }
+        }
+
+        ResultImage = image;
+        _confirmed = true;
+        try { DialogResult = true; }
+        catch (InvalidOperationException) { Close(); }   // 非模态打开时 DialogResult 不可用
+    }
+
+    private bool _confirmed;
+
+    private void Cancel()
+    {
+        _confirmed = false;
+        try { DialogResult = false; }
+        catch (InvalidOperationException) { Close(); }
+    }
+
+    /// <summary>确认过（不是 Esc / 右键退出）。</summary>
+    public bool Confirmed => _confirmed;
+}
