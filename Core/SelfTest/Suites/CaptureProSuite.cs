@@ -34,6 +34,7 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
         cases.Add(new("capturePro", "长截图：行位移检测", ScrollShift));
         cases.Add(new("capturePro", "长截图：拼接与面板落点", ScrollBuild));
+        cases.Add(new("capturePro", "选字：候选切分", ScreenTextSplit));
     }
 
     private static void Geometry()
@@ -593,6 +594,52 @@ internal static class CaptureProSuite
         var full = ScrollLayout.Place(new Int32Rect(0, 0, 1920, 1040), work, 1, panel);
         Check.True(full.Right <= 1920 && full.Bottom <= 1040, "选区占满 → 塞回工作区里");
         Check.True(full.IntersectsWith(new Rect(0, 0, 1920, 1040)), "这时只能与选区重叠（抓帧时靠透明度让开）");
+
+        // 屏幕选字的候选条画在覆盖层窗口里：同一套规则，坐标已经是窗口 DIP
+        var view = new Size(1920, 1040);
+        var bar = new Size(400, 320);
+        var inRight = ScrollLayout.PlaceIn(new Rect(100, 100, 800, 600), bar, view);
+        Check.True(inRight.Left >= 900, $"候选条放选区右侧（Left={inRight.Left:0}）");
+        Check.Equal(100d, inRight.Top, "与选区顶边对齐");
+
+        var inBelow = ScrollLayout.PlaceIn(new Rect(0, 0, 400, 300), bar, new Size(420, 1040));
+        Check.Equal(0d, inBelow.Left, "右侧不够 → 放到下方");
+        Check.Equal(312d, inBelow.Top, "下方留出间距");
+
+        var inClamp = ScrollLayout.PlaceIn(new Rect(0, 0, 1920, 1040), bar, view);
+        Check.True(inClamp.Right <= 1920 && inClamp.Bottom <= 1040, "窗口放满 → 夹回右下角");
+    }
+
+    /// <summary>
+    /// 屏幕选字的候选切分：按句末标点、逗号、长度上限逐级切，空白与完全重复的候选丢掉；
+    /// 切完的字符总数不变（不许「切着切着少字」）。
+    /// </summary>
+    private static void ScreenTextSplit()
+    {
+        var sentences = ScreenTextCandidates.Build(new[] { "第一句话。第二句话！", "  ", "第三行" });
+        Check.Equal(3, sentences.Count, "空白行丢掉");
+        Check.Equal("第一句话。", sentences[0], "按句末标点切开、标点留在句尾");
+        Check.Equal("第二句话！", sentences[1], "第二句照切");
+        Check.Equal("第三行", sentences[2], "没有标点的整行就是一条");
+
+        var burst = ScreenTextCandidates.Build(new[] { "真的吗？！不会吧。" });
+        Check.Equal("真的吗？！", burst[0], "连续标点算同一句的结尾");
+        Check.Equal("不会吧。", burst[1], "后半句照切");
+
+        var dup = ScreenTextCandidates.Build(new[] { "重复", "重复", "不同" });
+        Check.Equal(2, dup.Count, "完全相同的候选只留一条");
+        Check.Equal("重复", dup[0], "先出现的留着");
+
+        // 超长：先按逗号切，仍超长就硬切；切完不丢字（内容互不相同，免得撞上「相同候选去重」）
+        var longLine = new string(Enumerable.Range(0, 300).Select(i => (char)(0x4E00 + i)).ToArray()) + "，后半句";
+        var pieces = ScreenTextCandidates.Build(new[] { longLine }, 50);
+        Check.True(pieces.Count >= 6, $"超长行切成了 {pieces.Count} 条");
+        Check.True(pieces.All(p => p.Length <= 50), $"每条不超过上限（最长 {pieces.Max(p => p.Length)}）");
+        Check.Equal(304, pieces.Sum(p => p.Length), "切完字符总数不变");
+
+        Check.Equal(0, ScreenTextCandidates.Build(Array.Empty<string>()).Count, "没有文字 → 没有候选");
+        Check.Equal(0, ScreenTextCandidates.Build(new[] { "   ", "\t" }).Count, "只有空白 → 没有候选");
+        Check.Equal(1, ScreenTextCandidates.Build(new[] { "a,b" }, 50).Count, "逗号只在超长时才切");
     }
 
     /// <summary>长截图的「屏幕」高度：一次看到多少行。</summary>

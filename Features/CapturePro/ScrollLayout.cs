@@ -31,10 +31,28 @@ internal static class ScrollLayout
         var selection = new Rect(area.X / scale, area.Y / scale,
             Math.Max(1, area.Width) / scale, Math.Max(1, area.Height) / scale);
 
+        return PlaceAround(selection, screen, panel);
+    }
+
+    /// <summary>
+    /// 同一个落点规则，但坐标已经是**窗口自己的 DIP**（屏幕选字的候选条画在覆盖层窗口里，
+    /// 不需要再换一次物理像素）。<paramref name="view"/> 是窗口内容矩形。
+    /// </summary>
+    public static Rect PlaceIn(Rect selection, Size panel, Size view)
+    {
+        if (panel.Width <= 0 || panel.Height <= 0 || view.Width <= 0 || view.Height <= 0)
+            return new Rect(0, 0, 0, 0);
+
+        return PlaceAround(selection, new Rect(0, 0, view.Width, view.Height), panel);
+    }
+
+    /// <summary>「右侧 → 下方 → 上方 → 左侧」，都放不下才塞进右下角。</summary>
+    private static Rect PlaceAround(Rect selection, Rect screen, Size panel)
+    {
         var spots = new[]
         {
-            new Point(selection.Right + Gap, selection.Top),                       // 右侧
-            new Point(selection.Left, selection.Bottom + Gap),                     // 下方
+            new Point(selection.Right + Gap, selection.Top),                        // 右侧
+            new Point(selection.Left, selection.Bottom + Gap),                      // 下方
             new Point(selection.Left, selection.Top - Gap - panel.Height),          // 上方
             new Point(selection.Left - Gap - panel.Width, selection.Top),           // 左侧
         };

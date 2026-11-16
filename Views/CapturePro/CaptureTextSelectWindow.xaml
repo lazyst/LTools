@@ -1,0 +1,150 @@
+<Window x:Class="LTools.Views.CapturePro.CaptureTextSelectWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:LTools.Views"
+        Title="屏幕选字" WindowStyle="None" ResizeMode="NoResize"
+        ShowInTaskbar="False" Topmost="True" WindowStartupLocation="Manual"
+        Background="#0B0B0E" Cursor="Cross" UseLayoutRounding="True"
+        SnapsToDevicePixels="True" Focusable="True"
+        PreviewKeyDown="Window_KeyDown"
+        PreviewMouseMove="Window_MouseMove"
+        PreviewMouseLeftButtonDown="Window_MouseDown"
+        PreviewMouseLeftButtonUp="Window_MouseUp"
+        PreviewMouseRightButtonDown="Window_Cancel"
+        Loaded="Window_Loaded"
+        views:WindowSizing.Mode="Overlay">
+    <!-- 屏幕选字：冻结整块桌面 → 拖一个框 → 识别框里的文字 → 候选条里点一条复制。
+         盖住**所有显示器的并集**（与截图覆盖层同一套取景），坐标仍是物理像素。
+         压暗由四块矩形拼出来（选区那块保持原亮度）；候选条也画在这个窗口里，
+         所以不用第二个窗口、Esc 始终有效。 -->
+    <Window.Resources>
+        <Style x:Key="TextBarPrimaryBtn" TargetType="Button">
+            <Setter Property="Foreground" Value="#18181B"/>
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="Padding" Value="12,5"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E4E4E7"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#D4D4D8"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#3F3F46"/>
+                                <Setter Property="Foreground" Value="#71717A"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TextBarGhostBtn" TargetType="Button" BasedOn="{StaticResource TextBarPrimaryBtn}">
+            <Setter Property="Background" Value="#33FFFFFF"/>
+            <Setter Property="Foreground" Value="#F4F4F5"/>
+        </Style>
+
+        <!-- 一条候选：整行可点，长文本省略 + ToolTip -->
+        <Style x:Key="CandidateBtn" TargetType="Button">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="4" Padding="7,5">
+                            <TextBlock Text="{TemplateBinding Content}" Foreground="#E4E4E7"
+                                       FontSize="12" TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#22FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#33FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="Root" Background="#0B0B0E" ClipToBounds="True">
+        <Image x:Name="Shot" Stretch="Fill" IsHitTestVisible="False"
+               RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+
+        <Canvas x:Name="Layer" Background="Transparent" ClipToBounds="True">
+            <!-- 压暗：选区以外四块，选区那块留空 -->
+            <Rectangle x:Name="VeilTop" Fill="#8C000000" IsHitTestVisible="False"/>
+            <Rectangle x:Name="VeilBottom" Fill="#8C000000" IsHitTestVisible="False"/>
+            <Rectangle x:Name="VeilLeft" Fill="#8C000000" IsHitTestVisible="False"/>
+            <Rectangle x:Name="VeilRight" Fill="#8C000000" IsHitTestVisible="False"/>
+
+            <Rectangle x:Name="SelRect" Stroke="#3B82F6" StrokeThickness="2"
+                       Visibility="Collapsed" IsHitTestVisible="False"/>
+
+            <Border x:Name="HintBox" Background="#D9101014" CornerRadius="4" Padding="14,7"
+                    IsHitTestVisible="False">
+                <TextBlock x:Name="HintText" Foreground="#E4E4E7" FontSize="13"/>
+            </Border>
+
+            <!-- 候选条：贴在选区外面（右侧 → 下方 → 上方 → 左侧） -->
+            <Border x:Name="ResultBar" Panel.ZIndex="20" Width="400"
+                    Background="#F2141418" BorderBrush="#38FFFFFF" BorderThickness="1"
+                    CornerRadius="8" Padding="12" Visibility="Collapsed">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <Ellipse Width="8" Height="8" Fill="#3B82F6" VerticalAlignment="Center"/>
+                        <TextBlock Text="屏幕选字" Foreground="#F4F4F5" FontSize="13" FontWeight="SemiBold"
+                                   Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="EngineText" Foreground="#71717A" FontSize="11"
+                                   Margin="10,0,0,0" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <TextBlock x:Name="StatusText" Text="正在识别…" Foreground="#A1A1AA" FontSize="12"
+                               TextWrapping="Wrap" Margin="0,0,0,6"/>
+
+                    <ScrollViewer x:Name="CandidateScroll" MaxHeight="210" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl x:Name="CandidateList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource CandidateBtn}" Content="{Binding}"
+                                            Tag="{Binding}" Click="Candidate_Click" ToolTip="{Binding}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <!-- 整段文字：可在这里拖选一部分再 Ctrl+C（候选条负责「一句话」的快捷复制） -->
+                    <TextBox x:Name="FullTextBox" Visibility="Collapsed" IsReadOnly="True"
+                             Height="86" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                             Background="#0B0B0E" Foreground="#D4D4D8" BorderBrush="#26FFFFFF"
+                             BorderThickness="1" Padding="6" FontSize="12" Margin="0,6,0,0"/>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                        <Button x:Name="CopyAllBtn" Style="{StaticResource TextBarPrimaryBtn}"
+                                Content="复制全部" Click="CopyAll_Click" IsEnabled="False"
+                                ToolTip="把识别到的整段文字复制走"/>
+                        <Button Style="{StaticResource TextBarGhostBtn}" Content="重新框选"
+                                Margin="8,0,0,0" Click="Reselect_Click"/>
+                        <Button Style="{StaticResource TextBarGhostBtn}" Content="关闭"
+                                Margin="8,0,0,0" Click="Cancel_Click"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Canvas>
+    </Grid>
+</Window>

@@ -168,6 +168,9 @@ internal static class FeatureCatalog
             new FeatureParam("region", "区域", FeatureParamKind.Region, "",
                 Hint: "x,y,w,h；也可以点「框选…」，只在「固定区域」时生效",
                 VisibleWhenKey: "source", VisibleWhenValue: "region")),
+        C("common.screenText", "屏幕", "屏幕选字", "edit",
+            "拖选屏幕上的文字并识别，点候选复制",
+            ScreenText),
     };
 
     private static readonly Dictionary<string, FeatureDef> ById =
@@ -365,6 +368,20 @@ internal static class FeatureCatalog
         try
         {
             return app.Dispatcher.Invoke(() => CaptureSession.TryCapture(null)?.Image);
+        }
+        finally
+        {
+            RecordingIndicatorWindow.RestoreAutomation(indicator);
+        }
+    }
+
+    private static void ScreenText(FeatureRunContext ctx)
+    {
+        // 自动化指示器是置顶窗口，会被截进冻结画面：先收起，结束再恢复。
+        string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
+        try
+        {
+            ScreenTextSession.PickOnUi(null);
         }
         finally
         {
