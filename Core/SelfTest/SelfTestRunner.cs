@@ -55,6 +55,7 @@ internal static class SelfTestRunner
         S3BSuite.Register(cases);
         CategoryNavSuite.Register(cases);
         KnowledgeSuite.Register(cases);
+        ListSuite.Register(cases);
 
         var lines = new List<string>();
         var stopwatch = Stopwatch.StartNew();

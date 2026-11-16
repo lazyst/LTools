@@ -37,6 +37,8 @@ internal static class OptionLabels
 
         // —— 列表 / 文本：共有 ——
         ["count"] = "统计数量",
+        ["sum"] = "求和",
+        ["avg"] = "平均值",
         ["get"] = "取指定项",
         ["join"] = "拼成文本",
         ["split"] = "拆成列表",

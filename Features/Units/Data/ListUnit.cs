@@ -9,7 +9,7 @@ public sealed class ListUnit : IStepUnit
 {
     private static readonly string[] Operations =
     {
-        "count", "get", "join", "split", "indexOf", "contains",
+        "count", "sum", "avg", "get", "join", "split", "indexOf", "contains",
         "sort", "unique", "reverse", "add", "removeAt",
     };
 
@@ -19,7 +19,7 @@ public sealed class ListUnit : IStepUnit
         Name = "列表操作",
         Category = "文本与数据",
         Icon = "list",
-        Description = "取项、拼接、拆分、查找、排序、去重、反转、追加、删除",
+        Description = "取项、拼接、拆分、查找、排序、去重、反转、追加、删除、求和 / 平均",
         Kind = UnitKind.pure,
         Inputs = new[]
         {
@@ -27,6 +27,8 @@ public sealed class ListUnit : IStepUnit
                 Required: true, Default: Value.FromText("count"), Options: Operations,
                 OptionParams: OptionMap.Of(
                     ("count", ["list"]),
+                    ("sum", ["list"]),
+                    ("avg", ["list"]),
                     ("get", ["list", "index"]),
                     ("join", ["list", "separator"]),
                     ("split", ["value", "separator", "list"]),
@@ -51,8 +53,8 @@ public sealed class ListUnit : IStepUnit
         Outputs = new[]
         {
             new OutputSpec("list", "列表", ValueKind.list, "list", Description: "操作后的列表（排序 / 去重 / 反转 / 追加 / 删除 / 拆分）"),
-            new OutputSpec("text", "文本", ValueKind.text, "text", Description: "取出的那一项，或拼接出来的文本"),
-            new OutputSpec("number", "数值", ValueKind.number, Description: "数量或下标（count / split / indexOf 等）"),
+            new OutputSpec("text", "文本", ValueKind.text, "text", Description: "取出的那一项，或拼接出来的文本；求和 / 平均时是数字的文本形式"),
+            new OutputSpec("number", "数值", ValueKind.number, Description: "数量、下标，或求和 / 平均的结果（count / split / indexOf / sum / avg 等）"),
             new OutputSpec("found", "成立", ValueKind.@bool, Description: "contains / indexOf 是否命中"),
         },
     };
@@ -72,6 +74,17 @@ public sealed class ListUnit : IStepUnit
                 ctx.SetOutput("number", Value.FromNumber(items.Count));
                 ctx.SetOutput("list", Value.FromList(items));
                 return;
+
+            case "sum":
+            case "avg":
+            {
+                double result = Aggregate(items, op);
+
+                ctx.SetOutput("number", Value.FromNumber(result));
+                ctx.SetOutput("text", Value.FromText(result.ToString("0.############", CultureInfo.InvariantCulture)));
+                ctx.SetOutput("list", Value.FromList(items));
+                return;
+            }
 
             case "get":
                 if (index < 0 || index >= items.Count)
@@ -151,6 +164,33 @@ public sealed class ListUnit : IStepUnit
 
             default:
                 throw new ActionException($"未知列表操作：{op}");
+        }
+    }
+
+    /// <summary>
+    /// 求和 / 平均（<c>sum</c> / <c>avg</c>）：纯函数，动作单元只负责把结果写进输出。
+    /// </summary>
+    /// <remarks>
+    /// 空列表：两者都是 0，不报错——「没数据」很常见，要不要当失败由调用方按 <c>count</c> 判断。
+    /// 有非数字项：**整步失败**并指出第几项（静默跳过会给出一个错的和）。
+    /// </remarks>
+    internal static double Aggregate(IReadOnlyList<Value> items, string op)
+    {
+        double total = 0;
+        for (int i = 0; i < items.Count; i++) total += ItemNumber(items[i], i);
+
+        return op == "avg" && items.Count > 0 ? total / items.Count : total;
+    }
+
+    /// <summary>
+    /// 列表项 → 数字（与参数绑定的隐式转换同一套规则：文本按不变文化解析，布尔 true = 1）。
+    /// </summary>
+    private static double ItemNumber(Value item, int position)
+    {
+        try { return item.AsNumber(); }
+        catch (ActionException ex)
+        {
+            throw new ActionException($"第 {position + 1} 项「{item.AsText()}」不是数字", ex);
         }
     }
 }

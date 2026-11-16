@@ -398,7 +398,7 @@ internal static class KnowledgePack
 | text | 原样 | 纯数字才成；`12元` / `1,234` / `￥12` 失败 | true/false、1/0、yes/no/y/n/on/off；空文本 = false | 按行 / 逗号拆；`[…]` = JSON 数组 | 不转（要 JSON 先用 `data.json`） |
 | number | `2.7`（最多 12 位小数） | 原样 | 非 0 = true | 不转 | 不转 |
 | bool | `true` / `false` | 1 / 0 | 原样 | 不转 | 不转 |
-| list | `[a, b]`（**不是 JSON**） | 不转（要逐项） | 不转 | 原样 | 不转 |
+| list | `[a, b]`（**不是 JSON**） | 不转（求和 / 平均用 `data.list` 的 `sum` / `avg`） | 不转 | 原样 | 不转 |
 | object | 有 `text` 成员就用它，否则 `{k=v}` | 有 `number` 成员就用它 | 有 `found` / `flag` 成员就用它 | 不转 | 原样 |
 
 反查「谁会产这个类型 / 谁能吃这个类型」用索引，别逐个 `units_get`：
@@ -407,11 +407,12 @@ internal static class KnowledgePack
 三条边界先想清楚，能省掉一轮试探：
 
 - **列表不能直接喂数字参数**（`data.calc` 的 `a` 收到列表会报「值不是数字（实际是 list）」）。
-  逐项算 = `flow.forEach` 里用 `data.calc` 把结果写回同一个变量；
+  一列数字求和 / 平均**一步就有**：`data.list(operation: "sum" / "avg")`（空列表 = 0，有非数字项整步失败）；
+  别的逐项算法才用 `flow.forEach` + `data.calc` 把结果写回同一个变量，
   **别用 `flow.set` 的 `append` 当累加器**，它是文本拼接。
 - **累加变量要先有值**（`flow.set` 写 0，或写进 `variables` 的默认值），否则 `${sum}` 报「未定义变量」。
 - **没有专门的「类型转换」动作单元**：常规转换靠上面这些隐式规则 + `data.json` / `text.process` / `data.list`；
-  要清洗货币符号 / 千分位、或对一列数字求和，用 `script.csharp`（`vars` 直接读写变量、类型保真）。
+  要清洗货币符号 / 千分位，用 `script.csharp`（`vars` 直接读写变量、类型保真）。
 
 ## 3. 工作流（工具名见 MCP）
 
@@ -630,6 +631,7 @@ internal static class KnowledgePack
 
 `sum` 先由 `variables` 的默认值 0 初始化；循环里 `data.calc` 把结果写回**同一个**变量实现累加
 （`flow.set` 的 `append` 是文本拼接，不能当累加器）。没有百分比时 `nums` 为空列表，循环不执行，结果是 `0%`。
+纯求和不需要循环：`data.list(sum)` 一步就够（见 §5），这个例子保留是为了演示「循环里累加」。
 
 ## 5. 常用链路（照抄，不用先想类型）
 
@@ -638,8 +640,8 @@ internal static class KnowledgePack
 
 | 想做的事 | 步骤链 | 要点 |
 |---|---|---|
-| 剪贴板里一列数字求和 | `text.clipboard(read)` → `text.regex(group: 1)` → `flow.forEach` + `data.calc(add)` → `text.clipboard(write)` | 正则抓到的是文本，直接喂 `data.calc` 的 `a` / `b`；要小数点格式再串一个 `data.number` |
-| 一列数字求平均 | 同上，最后 `data.calc(divide)`：`a` = 和，`b` = `text.regex` 的 `count` | 累加变量记得在 `variables` 里给默认值 `0` |
+| 剪贴板里一列数字求和 | `text.clipboard(read)` → `text.regex(group: 1)` → `data.list(sum)` → `text.clipboard(write)` | `sum` 的 `text` 输出就是格式化好的数字；正则抓到的是文本，直接当列表用 |
+| 一列数字求平均 | 同上，把 `sum` 换成 `avg` | 空列表两者都是 0，不报错；要不要当失败按 `count` 判 |
 | 网页正文 → 一段文字 | `web.request(text)` → `web.html(html: ${response}, xpath: "//p")` → `ui.toast` | `xpath` 必填；`text` 输出就是拼好的正文，`list` 是每一条 |
 | 接口 JSON → 取字段 | `web.request` 的 `json` 输出（object）→ `${data.user.name}` | 已经是对象，**不用**再 `data.json`；返回是纯文本时才 `data.json(text)` |
 | 列表 / 对象 → JSON 文本 | `script.csharp`（`vars` 读写变量，`JsonSerializer` 随便用） | **没有这个动作单元**，别找 `data.json`（它只解析） |
@@ -647,6 +649,6 @@ internal static class KnowledgePack
 | 选中的文件 → 打开第一个 | `file.selection` → `file.openFile(path: ${选中的.first})` | 没选中只是 `found = false`，不报错 |
 | 等窗口 / 等文字出来 | `window.wait(title)` → `flow.if`；或直接 `screen.findText(timeoutMs: -1)` | 等待类超时是 `found = false`，要不要算失败由「如果」判 |
 | 数字 → 展示文本 | `data.number(operation: "round" / "thousands" / "percent", digits)` | 数字拼进文本本来就自动成形，只有要固定小数位 / 千分位 / 进制才用它 |
-| 列表去重 / 排序 | `data.list(operation: "unique" / "sort")` | 没有「求和 / 平均」操作，见上面两行 |
+| 列表去重 / 排序 / 聚合 | `data.list(operation: "unique" / "sort" / "sum" / "avg")` | 聚合结果在 `number`（格式化文本在 `text`），其余操作给 `list` |
 """;
 }
