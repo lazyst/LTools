@@ -28,6 +28,7 @@ public partial class CaptureResultWindow : Window
 {
     private readonly BitmapSource? _image;
     private readonly string? _engine;
+    private readonly CaptureEntry? _entry;
     private readonly bool _runOnLoad;
 
     private RecognizeResult? _result;
@@ -35,11 +36,12 @@ public partial class CaptureResultWindow : Window
     private bool _started;
 
     /// <summary>正常打开：先显示「正在识别…」，Loaded 之后在后台跑识别。</summary>
-    public CaptureResultWindow(BitmapSource image, string? engine)
+    internal CaptureResultWindow(BitmapSource image, string? engine, CaptureEntry? entry = null)
     {
         InitializeComponent();
         _image = image;
         _engine = engine;
+        _entry = entry;
         _runOnLoad = true;
         Loaded += (_, _) => Start();
     }
@@ -53,9 +55,9 @@ public partial class CaptureResultWindow : Window
     }
 
     /// <summary>打开结果窗（非模态：用户慢慢复制，流程该干嘛干嘛）。</summary>
-    public static void Show(BitmapSource image, string? engine)
+    internal static void Show(BitmapSource image, string? engine, CaptureEntry? entry = null)
     {
-        var window = new CaptureResultWindow(image, engine);
+        var window = new CaptureResultWindow(image, engine, entry);
         window.Show();
         window.Activate();
     }
@@ -84,9 +86,13 @@ public partial class CaptureResultWindow : Window
         catch (Exception ex)
         {
             CrashLog.Write("CapturePro.Result", ex);
+            if (_entry != null) CaptureCatalog.SetText(_entry.Id, "");
             Fail(ex.Message);
             return;
         }
+
+        // 采集历史里的文字回填与窗口是否还开着无关：用户关掉结果窗也不该一直显示「识别中…」
+        if (_entry != null) CaptureCatalog.SetText(_entry.Id, result.Text);
 
         if (!IsVisible) return;   // 用户已经关掉窗口
         Apply(result);

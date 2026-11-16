@@ -9,6 +9,7 @@ using LTools.Core.Actions;
 using LTools.Core.Ai;
 using LTools.Core.Storage;
 using LTools.Features;
+using LTools.Features.CapturePro;
 
 namespace LTools.Core;
 
@@ -165,6 +166,9 @@ internal static class BackupService
         // 子动作库：动作里的 sub.run 只存 id，漏了这个目录换机后全部报「找不到子动作」。
         if (Directory.Exists(SubActionStore.DirectoryPath))
             plan.Domains.Add(new BackupDomain("subactions", "subactions", SubActionStore.DirectoryPath));
+        // 采集历史：截图 / 识别的成品图与文字，属于用户资产。
+        if (Directory.Exists(CaptureCatalog.Root))
+            plan.Domains.Add(new BackupDomain("captures", "captures", CaptureCatalog.Root));
         return plan;
     }
 

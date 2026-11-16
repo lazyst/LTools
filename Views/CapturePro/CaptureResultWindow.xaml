@@ -18,33 +18,7 @@
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
-    <Window.Resources>
-        <Style x:Key="ResultTab" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Margin" Value="0,0,6,0"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent"
-                                BorderThickness="1" CornerRadius="{StaticResource CornerSm}" Padding="14,4">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PressedBgBrush}"/>
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BorderStrongBrush}"/>
-                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Resources>
+    <Window.Resources/>
 
     <controls:DialogShell>
         <controls:DialogShell.Footer>
@@ -63,11 +37,11 @@
                        Foreground="{StaticResource SecondaryTextBrush}"/>
 
             <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                <RadioButton x:Name="TabText" Style="{StaticResource ResultTab}" GroupName="resultTab"
+                <RadioButton x:Name="TabText" Style="{StaticResource CaptureTab}" GroupName="resultTab"
                              Content="文字" IsChecked="True" Tag="text" Checked="Tab_Changed"/>
-                <RadioButton x:Name="TabTable" Style="{StaticResource ResultTab}" GroupName="resultTab"
+                <RadioButton x:Name="TabTable" Style="{StaticResource CaptureTab}" GroupName="resultTab"
                              Content="表格" Tag="table" Checked="Tab_Changed"/>
-                <RadioButton x:Name="TabQr" Style="{StaticResource ResultTab}" GroupName="resultTab"
+                <RadioButton x:Name="TabQr" Style="{StaticResource CaptureTab}" GroupName="resultTab"
                              Content="二维码" Tag="qr" Checked="Tab_Changed"/>
             </StackPanel>
 

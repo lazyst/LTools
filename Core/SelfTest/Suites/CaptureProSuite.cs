@@ -30,6 +30,7 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "取色：像素颜色与文本", Picker));
         cases.Add(new("capturePro", "贴图：缩放 / 不透明度 / 锚点", Pin));
         cases.Add(new("capturePro", "识别：表格聚类 / TSV / HTML", Recognize));
+        cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
     }
 
     private static void Geometry()
@@ -252,6 +253,87 @@ internal static class CaptureProSuite
         Check.Equal("#FF8000", PickerColor.Hex(sample), "十六进制大写补零");
         Check.Equal("rgb(255, 128, 0)", PickerColor.Rgb(sample), "rgb 文本");
         Check.Equal("#000000 · rgb(0, 0, 0)", PickerColor.Describe(Colors.Black), "提示条正文 = 两种写法");
+    }
+
+    /// <summary>
+    /// 采集历史：保留策略（数量 + 天数）、缩略图尺寸、列表文案。
+    /// 全是纯函数——真正落盘的读写由窗口 / 冒烟验证，自检不碰 <c>captures/</c>。
+    /// </summary>
+    private static void Catalog()
+    {
+        static CaptureEntry Entry(string id, string createdAt, string kind = CaptureCatalog.KindShot) => new()
+        {
+            Id = id,
+            CreatedAt = createdAt,
+            Kind = kind,
+            Width = 1200,
+            Height = 800,
+            Source = "复制",
+            State = "done",
+        };
+
+        var now = new DateTimeOffset(2026, 11, 16, 12, 0, 0, TimeSpan.Zero);
+        var items = new[]
+        {
+            Entry("a", "2026-11-16T11:00:00"),
+            Entry("b", "2026-11-16T10:00:00"),
+            Entry("c", "2026-11-15T10:00:00"),
+            Entry("d", "2026-11-10T10:00:00"),
+            Entry("e", "2026-09-01T10:00:00"),   // 超过 30 天
+        };
+
+        var (keep, drop) = CaptureCatalog.PlanPrune(items, now, 3, 30);
+        Check.Equal(3, keep.Count, "最多保留 3 条");
+        Check.Equal("a,b,c", string.Join(",", keep.Select(e => e.Id)), "按时间倒序保留最新的三条");
+        Check.Equal("d,e", string.Join(",", drop.Select(e => e.Id)), "超量 / 超龄都进丢弃");
+
+        var (keepAll, dropOld) = CaptureCatalog.PlanPrune(items, now, 200, 30);
+        Check.Equal(4, keepAll.Count, "没超量时只丢超龄的");
+        Check.Equal("e", string.Join(",", dropOld.Select(e => e.Id)), "9 月那条超龄");
+
+        var (noLimit, dropNone) = CaptureCatalog.PlanPrune(items, now, 200, 0);
+        Check.Equal(0, dropNone.Count, "天数为 0 = 不按天数剪");
+
+        // 缩略图：长边缩到 240，小图不放大
+        var big = CaptureCatalog.ThumbnailSize(1200, 800, 240);
+        Check.Equal(240, big.Width, "横图缩到长边 240");
+        Check.Equal(160, big.Height, "高度按比例");
+        var tall = CaptureCatalog.ThumbnailSize(1000, 3000, 240);
+        Check.Equal(80, tall.Width, "竖图宽度按比例");
+        Check.Equal(240, tall.Height, "竖图缩到长边 240");
+        var small = CaptureCatalog.ThumbnailSize(100, 50, 240);
+        Check.Equal(100, small.Width, "小图不放大");
+        Check.Equal(50, small.Height, "小图高度不变");
+        var empty = CaptureCatalog.ThumbnailSize(0, 50, 240);
+        Check.Equal(0, empty.Width, "空尺寸返回 0");
+        Check.Equal(0, empty.Height, "空尺寸返回 0");
+
+        // 文案
+        Check.Equal("截图", CaptureCatalog.KindLabel(CaptureCatalog.KindShot), "shot 的中文名");
+        Check.Equal("识别", CaptureCatalog.KindLabel(CaptureCatalog.KindRecognize), "recognize 的中文名");
+        Check.Equal("1200 × 800", CaptureCatalog.FormatSize(1200, 800), "尺寸文案");
+        Check.Equal("11-16 11:00",
+            CaptureCatalog.FormatTime("2026-11-16T11:00:00", new DateTime(2026, 11, 16)), "今年的时间只写月日时分");
+        Check.Equal("2025-11-16 11:00",
+            CaptureCatalog.FormatTime("2025-11-16T11:00:00", new DateTime(2026, 11, 16)), "跨年补上年份");
+
+        var shot = Entry("s", "2026-11-16T11:00:00");
+        Check.Equal("复制", CaptureCatalog.SummaryOf(shot), "截图摘要 = 完成动作");
+
+        var recognize = Entry("r", "2026-11-16T11:00:00", CaptureCatalog.KindRecognize);
+        recognize.Text = "第一行文字\r\n第二行";
+        Check.Equal("第一行文字", CaptureCatalog.SummaryOf(recognize), "识别摘要 = 第一行");
+
+        recognize.Text = "";
+        recognize.State = "pending";
+        Check.Equal("识别中…", CaptureCatalog.SummaryOf(recognize), "还没算完的文件说识别中");
+
+        recognize.State = "done";
+        Check.Equal("（没有识别到文字）", CaptureCatalog.SummaryOf(recognize), "算完但没字");
+
+        // 长文本截断（列表一行放不下）
+        recognize.Text = new string('长', 60);
+        Check.True(CaptureCatalog.SummaryOf(recognize).EndsWith("…"), "长文本截断");
     }
 
     /// <summary>

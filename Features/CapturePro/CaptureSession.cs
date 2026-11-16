@@ -36,6 +36,7 @@ internal static class CaptureSession
         CaptureResult? result = null;
         bool pin = false, recognize = false;
         double scale = 1;
+        var finish = CaptureOverlayWindow.FinishKind.Copy;
 
         try
         {
@@ -54,6 +55,7 @@ internal static class CaptureSession
             pin = overlay.PinRequested;
             recognize = overlay.RecognizeRequested;
             scale = overlay.MonitorScale;
+            finish = overlay.Finish;
         }
         catch (Exception ex)
         {
@@ -71,10 +73,28 @@ internal static class CaptureSession
         // 两个「关掉覆盖层之后才做」的出口：这时自己的窗口已经还原，不会被一起收走。
         if (result == null) return null;
 
+        // 采集历史：先记一条（只写 catalog.json），图片丢后台写；识别文字稍后由结果窗回填。
+        var entry = CaptureCatalog.Create(
+            result.Image.PixelWidth, result.Image.PixelHeight,
+            recognize ? CaptureCatalog.KindRecognize : CaptureCatalog.KindShot,
+            SourceOf(finish));
+
+        var image = result.Image;
+        System.Threading.Tasks.Task.Run(() => CaptureCatalog.SaveAssets(entry, image));
+
         if (pin) CapturePinManager.Pin(result.Image, result.Area, scale);
         if (recognize)
-            CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe);
+            CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry);
 
         return result;
     }
+
+    /// <summary>采集历史里的「完成动作」文案（与覆盖层动作栏的叫法一致）。</summary>
+    private static string SourceOf(CaptureOverlayWindow.FinishKind kind) => kind switch
+    {
+        CaptureOverlayWindow.FinishKind.Save => "另存为",
+        CaptureOverlayWindow.FinishKind.Pin => "贴图",
+        CaptureOverlayWindow.FinishKind.Recognize => "识别",
+        _ => "复制",
+    };
 }

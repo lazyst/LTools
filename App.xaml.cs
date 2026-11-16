@@ -203,6 +203,9 @@ public partial class App : Application
         // Roslyn 脚本层：启动时后台 JIT 预热一次空脚本（S0 实测冷 Compile = 1074 ms，
         // 同步跑会卡住 UI 线程约 1 秒，故只排队、不等它）。
         System.Threading.Tasks.Task.Run(LTools.Features.Script.CSharpRunner.Warmup);
+
+        // 采集历史按保留策略剪枝（最多 200 条 / 30 天）：目录不存在时直接返回。
+        System.Threading.Tasks.Task.Run(LTools.Features.CapturePro.CaptureCatalog.Maintain);
     }
 
     private void BuildTray()
@@ -212,6 +215,7 @@ public partial class App : Application
         menu.Items.Add(NewItem("动作面板 (CapsLock+T)", () => Features.SuperPanel.Toggle()));
         menu.Items.Add(NewItem("设置 (CapsLock+\\)", () => ConfigHelper.Toggle()));
         menu.Items.Add(NewItem("辅助工具…", () => Views.InfoHelperWindow.Toggle()));
+        menu.Items.Add(NewItem("采集历史…", () => Views.CapturePro.CaptureHistoryWindow.Toggle()));
         menu.Items.Add(new Separator());
         _macroMenuItem = NewItem("开始 / 停止录制宏", () => MacroRecorder.Toggle());
         _macroMenuItemText = (TextBlock)((StackPanel)_macroMenuItem.Header).Children[1];

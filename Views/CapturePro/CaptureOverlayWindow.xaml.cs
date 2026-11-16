@@ -53,6 +53,9 @@ public partial class CaptureOverlayWindow : Window
     /// <summary>完成动作选了「识别」：覆盖层关掉之后由 <see cref="CaptureSession"/> 开识别结果窗。</summary>
     public bool RecognizeRequested { get; private set; }
 
+    /// <summary>这一次是怎么完成的（采集历史记「完成动作」用）。</summary>
+    internal FinishKind Finish { get; private set; } = FinishKind.Copy;
+
     /// <summary>这块显示器的物理像素 / DIP（贴图按它把物理矩形换算回 DIP）。</summary>
     public double MonitorScale => _sx;
 
@@ -230,7 +233,7 @@ public partial class CaptureOverlayWindow : Window
 
     // ============ 完成动作 ============
 
-    private enum FinishKind { Copy, Save, Pin, Recognize }
+    internal enum FinishKind { Copy, Save, Pin, Recognize }
 
     /// <summary>「✓ 复制」= Enter / 双击的默认出口（P0 不加配置域字段，默认就是复制）。</summary>
     private void Copy_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Copy);
@@ -305,6 +308,7 @@ public partial class CaptureOverlayWindow : Window
         }
 
         ResultImage = image;
+        Finish = kind;
         _confirmed = true;
         try { DialogResult = true; }
         catch (InvalidOperationException) { Close(); }   // 非模态打开时 DialogResult 不可用
