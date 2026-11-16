@@ -29,6 +29,8 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "文档：序号撤销后不跳号", SerialNumbers));
         cases.Add(new("capturePro", "标注：序号写法与徽标字号", SerialTexts));
         cases.Add(new("capturePro", "标注：矩形滤镜与像素处理", FilterMark));
+        cases.Add(new("capturePro", "文档：换底图（翻采集历史）", SwapBase));
+        cases.Add(new("capturePro", "保存：格式 / 尺寸 / 编码", SaveFormats));
         cases.Add(new("capturePro", "文档：选区换算与导出", Selection));
         cases.Add(new("capturePro", "文档：比例是「物理 ÷ DIP」", DocScale));
         cases.Add(new("capturePro", "文字：量宽随字号增长", TextMetrics));
@@ -336,6 +338,96 @@ internal static class CaptureProSuite
         var blurred = new byte[] { 0x10, 0x20, 0x40, 0xFF };
         MarkRenderer.Process(FilterKind.Blur, 100, blurred, 1, 1, 1);
         Check.Equal((byte)0xFF, blurred[3], "模糊不动透明度");
+    }
+
+    /// <summary>
+    /// 换底图（覆盖层里 <c>,</c> / <c>.</c> 翻采集历史）：标注 / 撤销栈 / 序号 / 选区一起重来，
+    /// 底图可以摆在窗口中间（<see cref="CaptureDocument.Origin"/>），返回时再原样放回。
+    /// </summary>
+    private static void SwapBase()
+    {
+        var doc = NewDocument();                       // 8×8 底图，monitor = (100,100,8,8)，scale = 2
+        doc.Area = new Int32Rect(100, 100, 8, 8);
+        doc.Add(new Mark.Shape(new Point(1, 1), new Point(3, 3), Colors.Red, 2, false, false));
+        int first = doc.NextSerial();
+        doc.Add(new Mark.Serial(new Point(4, 4), first, Colors.White, SerialShape.Circle, SerialNumbering.Arabic));
+        Check.True(doc.CanUndo, "换之前有撤销可退");
+
+        // 换一张 16×20 的历史图，摆在窗口里的 (5,7)，缩放仍是 2
+        var history = NewPage(20);
+        doc.LoadBase(history, new Int32Rect(0, 0, 16, 20), 2, new Point(5, 7));
+
+        Check.Equal(0, doc.Marks.Count, "换底图清空标注");
+        Check.False(doc.CanUndo, "换底图清空撤销栈");
+        Check.False(doc.CanRedo, "换底图也清空重做栈");
+        Check.False(doc.HasArea, "换底图清空选区");
+        Check.Equal(Rect.Empty, doc.SelectionDip, "没有选区时 DIP 矩形为空");
+        Check.Equal(new Rect(5, 7, 8, 10), doc.Canvas, "Canvas 尺寸只由底图算，左上角是 Origin");
+        Check.Equal(1, doc.NextSerial(), "换底图后序号从 1 重新开始");
+
+        // 历史图与屏幕没有位置关系：选区相对新底图（0,0），DIP 还要再加 Origin
+        doc.Area = new Int32Rect(2, 4, 6, 8);
+        Check.Equal(new Rect(6, 9, 3, 4), doc.SelectionDip, "选区按 Origin 偏移换算成 DIP");
+
+        var image = doc.Render();
+        Check.Equal(6, image.PixelWidth, "导出宽只看选区（与 Origin 无关）");
+        Check.Equal(8, image.PixelHeight, "导出高只看选区（与 Origin 无关）");
+
+        // 退回实时截图：把刚才那份标注放回来，序号接着最大的那个
+        doc.ResetMarks(new Mark[]
+        {
+            new Mark.Serial(new Point(4, 4), 3, Colors.White, SerialShape.Circle, SerialNumbering.Arabic),
+            new Mark.Serial(new Point(8, 4), 7, Colors.White, SerialShape.Square, SerialNumbering.RomanUpper),
+        });
+        Check.Equal(2, doc.Marks.Count, "ResetMarks 原样放回");
+        Check.False(doc.CanUndo, "放回标注不产生撤销记录");
+        Check.Equal(8, doc.NextSerial(), "序号接着最大的那个（7 → 8）");
+    }
+
+    /// <summary>
+    /// 保存对话框背后的纯函数：尺寸百分比、编码格式（文件头）与缩小后的像素尺寸。
+    /// </summary>
+    private static void SaveFormats()
+    {
+        var page = NewPage(4);                          // 16×4
+
+        Check.Equal((16, 4), CaptureSave.OutputSize(page, 100), "100% 就是原尺寸");
+        Check.Equal((8, 2), CaptureSave.OutputSize(page, 50), "50% 四舍五入");
+        Check.Equal((4, 1), CaptureSave.OutputSize(page, 25), "25% 至少留 1 像素");
+        Check.Equal((16, 4), CaptureSave.OutputSize(page, 0), "0% 按原尺寸兜底");
+        Check.True(ReferenceEquals(page, CaptureSave.Scaled(page, 100)), "100% 不复制位图");
+        Check.Equal(8, CaptureSave.Scaled(page, 50).PixelWidth, "缩放真的缩小了");
+
+        static bool StartsWith(byte[] bytes, params byte[] head)
+        {
+            if (bytes.Length < head.Length) return false;
+            for (int i = 0; i < head.Length; i++)
+                if (bytes[i] != head[i]) return false;
+            return true;
+        }
+
+        Check.True(StartsWith(CaptureSave.EncodeBytes(page, SaveFormat.Png), 0x89, 0x50, 0x4E, 0x47),
+            "PNG 文件头");
+        Check.True(StartsWith(CaptureSave.EncodeBytes(page, SaveFormat.Jpeg), 0xFF, 0xD8, 0xFF),
+            "JPEG 文件头");
+        Check.True(StartsWith(CaptureSave.EncodeBytes(page, SaveFormat.Bmp), 0x42, 0x4D),
+            "BMP 文件头");
+        Check.True(StartsWith(CaptureSave.EncodeBytes(page, SaveFormat.Tiff), 0x49, 0x49, 0x2A, 0x00) ||
+                   StartsWith(CaptureSave.EncodeBytes(page, SaveFormat.Tiff), 0x4D, 0x4D, 0x00, 0x2A),
+            "TIFF 文件头");
+
+        Check.Equal(".png", CaptureSave.Extension(SaveFormat.Png), "PNG 扩展名");
+        Check.Equal(".jpg", CaptureSave.Extension(SaveFormat.Jpeg), "JPEG 扩展名");
+        Check.Equal(".bmp", CaptureSave.Extension(SaveFormat.Bmp), "BMP 扩展名");
+        Check.Equal(".tiff", CaptureSave.Extension(SaveFormat.Tiff), "TIFF 扩展名");
+        Check.Equal("PNG", CaptureSave.Label(SaveFormat.Png), "格式胶囊文字");
+
+        // 50% 编码出来的 png 解回来就是缩小后的尺寸
+        byte[] png = CaptureSave.EncodeBytes(page, SaveFormat.Png, 90, 50);
+        using var stream = new MemoryStream(png);
+        var decoded = BitmapFrame.Create(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+        Check.Equal(8, decoded.PixelWidth, "50% 的 png 解回来宽 8");
+        Check.Equal(2, decoded.PixelHeight, "50% 的 png 解回来高 2");
     }
 
     private static void Selection()

@@ -28,39 +28,38 @@ public partial class CaptureOverlayWindow
     private System.Drawing.Point ToScreen(Point dip)
     {
         var (ix, iy) = ToImage(dip);
-        return new System.Drawing.Point(_area.X + ix, _area.Y + iy);
+        return new System.Drawing.Point(_doc.Monitor.X + ix, _doc.Monitor.Y + iy);
     }
 
     /// <summary>屏幕物理像素矩形 → 窗口 DIP。</summary>
     private Rect ToDipRect(System.Drawing.Rectangle b)
     {
-        double sx = ActualWidth > 0 ? ActualWidth / _shot.PixelWidth : 1;
-        double sy = ActualHeight > 0 ? ActualHeight / _shot.PixelHeight : 1;
+        double s = _doc.Scale > 0 ? _doc.Scale : 1;
         return new Rect(
-            (b.X - _area.X) * sx,
-            (b.Y - _area.Y) * sy,
-            b.Width * sx,
-            b.Height * sy);
+            _doc.Origin.X + (b.X - _doc.Monitor.X) / s,
+            _doc.Origin.Y + (b.Y - _doc.Monitor.Y) / s,
+            b.Width / s,
+            b.Height / s);
     }
 
-    /// <summary>DIP → 冻结画面像素。</summary>
+    /// <summary>DIP → 画面像素（底图可能被 <see cref="CaptureDocument.Origin"/> 挪过位置）。</summary>
     private (int X, int Y) ToImage(Point dip)
     {
-        double sx = ActualWidth > 0 ? _shot.PixelWidth / ActualWidth : 1;
-        double sy = ActualHeight > 0 ? _shot.PixelHeight / ActualHeight : 1;
-        int x = (int)Math.Round(dip.X * sx);
-        int y = (int)Math.Round(dip.Y * sy);
-        return (Math.Clamp(x, 0, _shot.PixelWidth - 1), Math.Clamp(y, 0, _shot.PixelHeight - 1));
+        double s = _doc.Scale > 0 ? _doc.Scale : 1;
+        int x = (int)Math.Round((dip.X - _doc.Origin.X) * s);
+        int y = (int)Math.Round((dip.Y - _doc.Origin.Y) * s);
+        return (Math.Clamp(x, 0, _doc.Base.PixelWidth - 1), Math.Clamp(y, 0, _doc.Base.PixelHeight - 1));
     }
 
-    /// <summary>物理屏幕坐标 → 窗口 DIP。</summary>
+    /// <summary>物理屏幕坐标 → 窗口 DIP（用文档的「物理 ÷ DIP」，与底图大小无关）。</summary>
     private bool TryToDip(Win32.Point screen, out Point dip)
     {
         dip = default;
         if (ActualWidth <= 0 || ActualHeight <= 0) return false;
-        double sx = (double)ActualWidth / _shot.PixelWidth;
-        double sy = (double)ActualHeight / _shot.PixelHeight;
-        dip = new Point((screen.X - _area.X) * sx, (screen.Y - _area.Y) * sy);
+        double s = _doc.Scale > 0 ? _doc.Scale : 1;
+        dip = new Point(
+            _doc.Origin.X + (screen.X - _doc.Monitor.X) / s,
+            _doc.Origin.Y + (screen.Y - _doc.Monitor.Y) / s);
         return true;
     }
 
@@ -69,6 +68,9 @@ public partial class CaptureOverlayWindow
     {
         var xs = new List<double>(_windowTargets.Count * 2 + 16);
         var ys = new List<double>(_windowTargets.Count * 2 + 16);
+
+        // 历史图的底图与屏幕内容无关：吸附和悬停都别掺进来
+        if (BrowsingHistory) { _snapXs = xs; _snapYs = ys; return; }
 
         IntPtr hwnd = _hwnd != IntPtr.Zero ? _hwnd : new WindowInteropHelper(this).Handle;
         IntPtr top = IntPtr.Zero;

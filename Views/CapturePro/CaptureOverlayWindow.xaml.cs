@@ -126,6 +126,15 @@ public partial class CaptureOverlayWindow : Window
             return;
         }
 
+        // , / . 翻采集历史（Snow Shot 的「上一张 / 下一张」）；带 Ctrl 时留给别的用途
+        if (e.Key is Key.OemComma or Key.OemPeriod &&
+            (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) == 0)
+        {
+            StepHistory(e.Key == Key.OemPeriod ? 1 : -1);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key is Key.Delete or Key.Back)
         {
             if (_selectedIndex >= 0)

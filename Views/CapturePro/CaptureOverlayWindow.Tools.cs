@@ -58,7 +58,8 @@ public partial class CaptureOverlayWindow
     /// </param>
     private void StepBack(bool preferSelection = false)
     {
-        if (_polyActive) CancelPolyline();
+        if (BrowsingHistory) ExitHistory();
+        else if (_polyActive) CancelPolyline();
         else if (_drag != DragMode.None) CancelDrag();
         else if (_selectedIndex >= 0) ClearMarkSelection();
         else if (preferSelection && IsValid(_sel)) ClearSelection();

@@ -319,11 +319,11 @@ public partial class CaptureOverlayWindow
         var (x1, y1) = ToImage(s.TopLeft);
         var (x2, y2) = ToImage(s.BottomRight);
         int x = Math.Min(x1, x2), y = Math.Min(y1, y2);
-        int w = Math.Min(Math.Abs(x2 - x1) + 1, _shot.PixelWidth - x);
-        int h = Math.Min(Math.Abs(y2 - y1) + 1, _shot.PixelHeight - y);
+        int w = Math.Min(Math.Abs(x2 - x1) + 1, _doc.Base.PixelWidth - x);
+        int h = Math.Min(Math.Abs(y2 - y1) + 1, _doc.Base.PixelHeight - y);
         if (w < 2 || h < 2) return;
 
-        _doc.Area = new Int32Rect(_area.X + x, _area.Y + y, w, h);
+        _doc.Area = new Int32Rect(_doc.Monitor.X + x, _doc.Monitor.Y + y, w, h);
     }
 
     private FrameHandle HitTest(Point p) =>

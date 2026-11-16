@@ -143,7 +143,7 @@ public partial class CaptureHistoryWindow : Window
     {
         if (_thumbs.TryGetValue(entry.Id, out var cached)) return cached;
 
-        var thumb = LoadImage(CaptureCatalog.ThumbPath(entry.Id), CaptureCatalog.ThumbSide);
+        var thumb = CaptureCatalog.LoadImage(CaptureCatalog.ThumbPath(entry.Id), CaptureCatalog.ThumbSide);
         if (thumb != null) _thumbs[entry.Id] = thumb;
         return thumb;
     }
@@ -249,7 +249,7 @@ public partial class CaptureHistoryWindow : Window
             : $"{row!.Entry.KindLabel} · {row.Entry.TimeText} · {row.Entry.SizeText}"
               + $" · 完成动作：{row.Entry.SourceText}";
 
-        var image = LoadImage(CaptureCatalog.AssetPath(row.Entry.Id), 1600);
+        var image = CaptureCatalog.LoadImage(CaptureCatalog.AssetPath(row.Entry.Id), 1600);
         if (image == null)
         {
             PreviewEmpty.Text = record ? "封面帧不见了" : "图片文件不见了";
@@ -348,7 +348,7 @@ public partial class CaptureHistoryWindow : Window
         var row = SelectedRow;
         if (row == null) return;
 
-        var image = LoadImage(CaptureCatalog.AssetPath(row.Entry.Id), 0);
+        var image = CaptureCatalog.LoadImage(CaptureCatalog.AssetPath(row.Entry.Id), 0);
         if (image == null)
         {
             ToastService.Show("图片文件不见了", "采集历史", 1800, ToastKind.error);
@@ -378,7 +378,7 @@ public partial class CaptureHistoryWindow : Window
             return;
         }
 
-        var image = LoadImage(CaptureCatalog.AssetPath(row.Entry.Id), 0);
+        var image = CaptureCatalog.LoadImage(CaptureCatalog.AssetPath(row.Entry.Id), 0);
         if (image == null)
         {
             ToastService.Show("图片文件不见了", "采集历史", 1800, ToastKind.error);
@@ -460,30 +460,6 @@ public partial class CaptureHistoryWindow : Window
     }
 
     // ============ 位图 ============
-
-    /// <summary>读一张 png；<paramref name="decodeWidth"/> = 0 表示原分辨率。</summary>
-    private static BitmapSource? LoadImage(string path, int decodeWidth)
-    {
-        try
-        {
-            if (!File.Exists(path)) return null;
-
-            var image = new BitmapImage();
-            image.BeginInit();
-            image.CacheOption = BitmapCacheOption.OnLoad;
-            image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-            if (decodeWidth > 0) image.DecodePixelWidth = decodeWidth;
-            image.UriSource = new Uri(path, UriKind.Absolute);
-            image.EndInit();
-            image.Freeze();
-            return image;
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warn("CaptureHistory.LoadImage", "读图失败：" + ex.Message);
-            return null;
-        }
-    }
 
     private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
     {

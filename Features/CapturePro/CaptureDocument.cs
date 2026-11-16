@@ -29,13 +29,19 @@ internal sealed class CaptureDocument
     }
 
     /// <summary>冻结的整屏图像（物理像素，左上角 = <see cref="Monitor"/> 的左上角）。</summary>
-    public BitmapSource Base { get; }
+    public BitmapSource Base { get; private set; }
 
     /// <summary>这块显示器的物理像素矩形（屏幕绝对坐标）。</summary>
-    public Int32Rect Monitor { get; }
+    public Int32Rect Monitor { get; private set; }
 
     /// <summary>物理像素 / DIP。跨屏 + 混合 DPI 时以窗口真正显示时的比例为准（见 <see cref="SetScale"/>）。</summary>
     public double Scale { get; private set; }
+
+    /// <summary>
+    /// 底图左上角在窗口 DIP 里的位置。实时截图恒为 <c>(0,0)</c>（窗口正好盖住屏幕）；
+    /// 翻采集历史时把那张图摆在窗口中间（见 <see cref="LoadBase"/>）。
+    /// </summary>
+    public Point Origin { get; private set; }
 
     /// <summary>
     /// 窗口真正显示之后校准缩放比（<c>像素宽 / ActualWidth</c>，方向是**物理 ÷ DIP**）：跨屏时
@@ -46,6 +52,35 @@ internal sealed class CaptureDocument
         if (scale > 0 && Math.Abs(scale - Scale) > 1e-6) Scale = scale;
     }
 
+    /// <summary>
+    /// 换一张底图（翻采集历史）：标注、撤销栈、序号、选区一起清空，坐标原点按 <paramref name="origin"/>
+    /// 摆在窗口里的某个位置（历史图居中）。**这是唯一会改底图的入口**——别在别处给 <see cref="Base"/> 赋值。
+    /// </summary>
+    public void LoadBase(BitmapSource image, Int32Rect monitor, double scale, Point origin)
+    {
+        Base = image;
+        Monitor = monitor;
+        Scale = scale <= 0 ? 1.0 : scale;
+        Origin = origin;
+
+        _marks.Clear();
+        _undo.Clear();
+        _redo.Clear();
+        _serial = 0;
+        Area = default;
+        Dirty = false;
+    }
+
+    /// <summary>把一份标注快照原样放回来（从历史翻页退回实时截图时用），序号接着最大的那个。</summary>
+    public void ResetMarks(IReadOnlyList<Mark> marks)
+    {
+        _marks.Clear();
+        _marks.AddRange(marks);
+        _undo.Clear();
+        _redo.Clear();
+        _serial = _marks.OfType<Mark.Serial>().Select(s => s.Number).DefaultIfEmpty(0).Max();
+    }
+
     /// <summary>选区（物理像素，屏幕绝对坐标）。未框选时宽高为 0。</summary>
     public Int32Rect Area { get; set; }
 
@@ -54,8 +89,8 @@ internal sealed class CaptureDocument
     /// <summary>标注列表，顺序即绘制顺序（后画的在上面）。</summary>
     public IReadOnlyList<Mark> Marks => _marks;
 
-    /// <summary>底图在 DIP 下的整块矩形。</summary>
-    public Rect Canvas => new(0, 0, Base.PixelWidth / Scale, Base.PixelHeight / Scale);
+    /// <summary>底图在 DIP 下的整块矩形（左上角是 <see cref="Origin"/>）。</summary>
+    public Rect Canvas => new(Origin.X, Origin.Y, Base.PixelWidth / Scale, Base.PixelHeight / Scale);
 
     /// <summary>选区在窗口 DIP 坐标下的矩形（绘制与命中用）。</summary>
     public Rect SelectionDip
@@ -63,7 +98,7 @@ internal sealed class CaptureDocument
         get
         {
             if (!HasArea) return Rect.Empty;
-            return new Rect((Area.X - Monitor.X) / Scale, (Area.Y - Monitor.Y) / Scale,
+            return new Rect(Origin.X + (Area.X - Monitor.X) / Scale, Origin.Y + (Area.Y - Monitor.Y) / Scale,
                 Area.Width / Scale, Area.Height / Scale);
         }
     }
@@ -195,7 +230,7 @@ internal sealed class CaptureDocument
         var area = Area;
         if (!HasArea) throw new InvalidOperationException("还没有选区，不能导出");
 
-        // 选区相对这块屏的左上角（物理像素）
+        // 选区相对这块屏的左上角（物理像素）；历史翻页时底图还整个偏了 Origin，一起抵掉
         double dx = area.X - Monitor.X;
         double dy = area.Y - Monitor.Y;
 
@@ -203,7 +238,7 @@ internal sealed class CaptureDocument
         using (var dc = visual.RenderOpen())
         {
             dc.PushTransform(new ScaleTransform(Scale, Scale));               // DIP → 物理像素
-            dc.PushTransform(new TranslateTransform(-dx / Scale, -dy / Scale)); // 平移到选区左上角
+            dc.PushTransform(new TranslateTransform(-dx / Scale - Origin.X, -dy / Scale - Origin.Y)); // 平移到选区左上角
             dc.DrawImage(Base, Canvas);
             MarkRenderer.DrawAll(dc, _marks, Base, Canvas, Scale);
             dc.Pop();

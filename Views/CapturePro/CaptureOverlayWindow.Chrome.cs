@@ -183,7 +183,7 @@ public partial class CaptureOverlayWindow
         int x = Math.Min(x1, x2), y = Math.Min(y1, y2);
         int w = Math.Abs(x2 - x1) + 1, h = Math.Abs(y2 - y1) + 1;
 
-        InfoText.Text = $"{w} × {h} px   {_area.X + x}, {_area.Y + y}";
+        InfoText.Text = $"{w} × {h} px   {_doc.Monitor.X + x}, {_doc.Monitor.Y + y}";
         InfoBox.Visibility = Visibility.Visible;
         InfoBox.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         double iw = InfoBox.DesiredSize.Width;
@@ -229,6 +229,12 @@ public partial class CaptureOverlayWindow
     /// <summary>顶部提示：把「现在能做什么」和「识别到了没有」放在一句话里。</summary>
     private void RefreshHint()
     {
+        if (BrowsingHistory)
+        {
+            HintText.Text = HistoryHint();
+            return;
+        }
+
         if (_tool == CaptureTool.Picker)
         {
             HintText.Text = "取色 · 单击复制 #RRGGBB · 色卡跟着光标 · Esc 退出取色";
@@ -244,7 +250,7 @@ public partial class CaptureOverlayWindow
                 return;
             }
 
-            HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· 点标注拖动 / Delete 删除 · 右键取消选区 · Ctrl+Z 撤销 · Enter 复制 · Ctrl+T 贴图 · Ctrl+R 识别 · Ctrl+L 长截图";
+            HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· 点标注拖动 / Delete 删除 · 右键取消选区 · Ctrl+Z 撤销 · Enter 复制 · Ctrl+T 贴图 · Ctrl+R 识别 · Ctrl+L 长截图 · , / . 翻历史";
             return;
         }
 
@@ -255,8 +261,8 @@ public partial class CaptureOverlayWindow
         }
 
         string text = _windowTargets.Count > 0
-            ? "拖动框选区域 · 单击选窗口 / 控件 · 滚轮换层级 · 右键 / Esc 取消"
-            : "拖动框选区域 · 右键 / Esc 取消";
+            ? "拖动框选区域 · 单击选窗口 / 控件 · 滚轮换层级 · , / . 翻历史 · 右键 / Esc 取消"
+            : "拖动框选区域 · , / . 翻历史 · 右键 / Esc 取消";
 
         if (_uiaPending != IntPtr.Zero) text += " · 识别控件中…";
         else if (_uiaTargets.Count == 0 && _windowTargets.Count > 0) text += " · 未检测到控件，可直接拖拽框选";

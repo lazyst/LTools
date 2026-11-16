@@ -4,47 +4,108 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using LTools.Core;
+using LTools.Views.CapturePro;
 
 namespace LTools.Features.CapturePro;
 
+/// <summary>另存为支持的图片格式（WPF 自带编码器里这四种够用，WebP / AVIF / PDF 不做）。</summary>
+internal enum SaveFormat
+{
+    Png,
+    Jpeg,
+    Bmp,
+    Tiff,
+}
+
 /// <summary>
-/// 「另存为 png」的唯一实现：覆盖层的完成动作与贴图窗口的右键菜单都走这里。
+/// 截图落盘的唯一实现：另存为对话框、快速保存、打印，贴图窗口的右键菜单也走这里。
 /// </summary>
 /// <remarks>
 /// 取消 / 失败都返回 false，调用方自己决定留在原地还是继续；
 /// 失败只 toast（<c>logs/ltools-*.log</c> 里有堆栈），不弹阻塞框。
+/// 编码是纯函数（<see cref="Encode"/> / <see cref="Scaled"/>），<c>--selftest</c> 直接断言文件头与像素尺寸。
 /// </remarks>
 internal static class CaptureSave
 {
-    /// <summary>弹另存为框并写 png；返回 true = 真的存下去了。</summary>
+    /// <summary>弹「另存为」对话框（预览 + 格式 / 尺寸 / 质量）；返回 true = 真的存下去了。</summary>
     public static bool TrySave(Window? owner, BitmapSource image)
     {
-        var dialog = new Microsoft.Win32.SaveFileDialog
+        var dialog = new CaptureSaveWindow(image);
+        if (owner != null) dialog.Owner = owner;
+
+        bool? ok = dialog.ShowDialog();
+        if (ok != true || !dialog.Saved) return false;   // 取消 = 留在覆盖层继续改
+
+        ToastService.Show($"{Path.GetFileName(dialog.SavedPath)} · {CaptureCatalog.FormatBytes(new FileInfo(dialog.SavedPath).Length)}",
+            "已保存", 3000, ToastKind.success, key: "capture-save",
+            onClick: () => RevealInExplorer(dialog.SavedPath), actionText: "打开文件夹");
+        return true;
+    }
+
+    /// <summary>默认落点（「图片」文件夹）。</summary>
+    public static string DefaultFolder => Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+
+    /// <summary>默认文件名（不含扩展名）。</summary>
+    public static string DefaultName => $"截图-{DateTime.Now:yyyyMMdd-HHmmss}";
+
+    /// <summary>扩展名（带点，小写）。</summary>
+    public static string Extension(SaveFormat format) => format switch
+    {
+        SaveFormat.Jpeg => ".jpg",
+        SaveFormat.Bmp => ".bmp",
+        SaveFormat.Tiff => ".tiff",
+        _ => ".png",
+    };
+
+    public static string Label(SaveFormat format) => format switch
+    {
+        SaveFormat.Jpeg => "JPEG",
+        SaveFormat.Bmp => "BMP",
+        SaveFormat.Tiff => "TIFF",
+        _ => "PNG",
+    };
+
+    /// <summary>按百分比算出输出像素尺寸（至少 1×1）；100% 就是原尺寸。</summary>
+    public static (int Width, int Height) OutputSize(BitmapSource image, double percent)
+    {
+        double factor = percent > 0 ? percent / 100 : 1;
+        return (Math.Max(1, (int)Math.Round(image.PixelWidth * factor)),
+            Math.Max(1, (int)Math.Round(image.PixelHeight * factor)));
+    }
+
+    /// <summary>按百分比缩小（100% 原样返回同一个实例，不白复制一份）。</summary>
+    public static BitmapSource Scaled(BitmapSource image, double percent)
+    {
+        if (percent >= 99.5 || percent <= 0) return image;
+
+        var scaled = new TransformedBitmap(image, new ScaleTransform(percent / 100, percent / 100));
+        scaled.Freeze();
+        return scaled;
+    }
+
+    /// <summary>编码写进流：格式决定编码器，<paramref name="quality"/> 只对 JPEG 生效。</summary>
+    public static void Encode(Stream stream, BitmapSource image, SaveFormat format, int quality, double percent)
+    {
+        var output = Scaled(image, percent);
+
+        BitmapEncoder encoder = format switch
         {
-            Filter = "PNG 图片 (*.png)|*.png",
-            DefaultExt = ".png",
-            FileName = $"截图-{DateTime.Now:yyyyMMdd-HHmmss}.png",
-            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
-            OverwritePrompt = true,
+            SaveFormat.Jpeg => new JpegBitmapEncoder { QualityLevel = Math.Clamp(quality, 1, 100) },
+            SaveFormat.Bmp => new BmpBitmapEncoder(),
+            SaveFormat.Tiff => new TiffBitmapEncoder { Compression = TiffCompressOption.Zip },
+            _ => new PngBitmapEncoder(),
         };
 
-        bool? ok = owner != null ? dialog.ShowDialog(owner) : dialog.ShowDialog();
-        if (ok != true) return false;
+        encoder.Frames.Add(BitmapFrame.Create(output));
+        encoder.Save(stream);
+    }
 
-        try
-        {
-            using var stream = File.Create(dialog.FileName);
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(image));
-            encoder.Save(stream);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            CrashLog.Write("CapturePro.Save", ex);
-            TrayService.Notify("保存截图失败：" + ex.Message);
-            return false;
-        }
+    /// <summary>编码到内存（自检断言文件头用；也是「估算大小」的现成实现）。</summary>
+    public static byte[] EncodeBytes(BitmapSource image, SaveFormat format, int quality = 90, double percent = 100)
+    {
+        using var stream = new MemoryStream();
+        Encode(stream, image, format, quality, percent);
+        return stream.ToArray();
     }
 
     /// <summary>快速保存目录：<c>图片\LTools 截图</c>（不读配置，装完就能用）。</summary>

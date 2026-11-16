@@ -41,6 +41,7 @@ public partial class CaptureOverlayWindow
     /// <summary>光标移动时更新悬停候选（窗口树即时，控件子树按窗口缓存、异步取一次）。</summary>
     private void UpdateHover(Point p)
     {
+        if (BrowsingHistory) { SetHover(null); return; }
         if (IsValid(_sel)) { SetHover(null); return; }
 
         IntPtr hwnd = _hwnd != IntPtr.Zero ? _hwnd : new WindowInteropHelper(this).Handle;

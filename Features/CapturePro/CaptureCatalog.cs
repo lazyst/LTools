@@ -163,6 +163,33 @@ internal static class CaptureCatalog
         return ext.Length > 1 ? ext[1..].ToLowerInvariant() : "";
     }
 
+    /// <summary>
+    /// 读一张采集图（<paramref name="decodeWidth"/> = 0 表示原分辨率）；文件不存在 / 读不动返回 null。
+    /// 覆盖层翻历史与采集历史窗共用这一份——别各自再写一遍 <c>BitmapImage</c> 的开档参数。
+    /// </summary>
+    public static BitmapSource? LoadImage(string path, int decodeWidth = 0)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
+
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+            if (decodeWidth > 0) image.DecodePixelWidth = decodeWidth;
+            image.UriSource = new Uri(path, UriKind.Absolute);
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("CaptureCatalog.LoadImage", "读图失败：" + ex.Message);
+            return null;
+        }
+    }
+
     private static string NormalizeExtension(string? extension) =>
         string.Equals(extension?.Trim(), "gif", StringComparison.OrdinalIgnoreCase) ? "gif" : "mp4";
 
