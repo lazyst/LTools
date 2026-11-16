@@ -58,7 +58,7 @@ public sealed class CryptoEncryptUnit : IStepUnit
         {
             new OutputSpec("text", "密文", ValueKind.text, "encrypted", Description: "Base64 密文"),
             new OutputSpec("hex", "十六进制", ValueKind.text, Description: "小写十六进制密文"),
-            new OutputSpec("found", "成功", ValueKind.@bool, Description: "是否加密成功"),
+            new OutputSpec("found", "成功", ValueKind.@bool, Description: "加密成功即真；失败整步报错，不会留假"),
         },
     };
 

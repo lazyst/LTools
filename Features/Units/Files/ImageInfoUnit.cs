@@ -20,7 +20,7 @@ public sealed class ImageInfoUnit : IStepUnit
         Kind = UnitKind.pure,
         Inputs = new[]
         {
-            new InputSpec("path", "图片文件", Editor: InputEditor.image, Required: true,
+            new InputSpec("path", "图片文件", ValueKind.text, Editor: InputEditor.image, Required: true,
                 Description: "png / jpg / bmp / gif / tiff；可写 ${变量}"),
         },
         Outputs = new[]

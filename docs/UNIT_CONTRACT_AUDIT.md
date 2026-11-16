@@ -106,6 +106,17 @@ flow.if op=found left=${hasX} ...
 不新增机制），B 只对 `data.list` 的 `found` 做一次一致性选择（`indexOf` / `contains` 之外也写
 `false`），A 不进本轮。
 
+### 实施（2026-11-16）
+
+- C：`data.list` / `text.process` 的四个 `OutputSpec.Description` 逐个写清「哪个 operation 写它」。
+- B 扩到两个单元：`data.list` 每步都先写 `found = false`；`text.process` 收尾统一 `found = found ?? false`
+  （顺手补上 `indexOf` 写 `found` 这一处不一致）。A（引擎预清）仍未做。
+- 顺带发现一个**真缺陷**：`data.list` / `text.process` / `ui.uia` 三个单元在读参数时
+  `ToLowerInvariant()`，`switch` 的标签却是声明的驼峰值（`indexOf` / `removeAt` / `startsWith` /
+  `endsWith` / `doubleClick` / `rightClick` / `getText` / `setValue`），于是**这 8 个选项永远匹配不上**，
+  一跑就报「未知操作」。修法是把 `case` 标签写成小写（选项值仍是驼峰、配置不用改），
+  `--selftest` 的 `contract` 组「枚举选项值都能被派发」守着。
+
 ## 4. 参数命名：不改
 
 | 输入键 | 用在几个单元 | 说明 |
@@ -136,17 +147,21 @@ flow.if op=found left=${hasX} ...
 | 单元 | 语义 | `found` 什么时候会 `false` |
 |---|---|---|
 | `crypto.encrypt` | 加密成功即返回 | 从不 |
-| `state.set` | 写入成功即返回 | 从不 |
 | `web.download` | 下载成功即返回 | 从不 |
 | `ui.uia` | 命中类：找不到就按「未找到」失败 | 从不（声明说明里已写「不会给假」） |
-| `ui.textWindow` | `show` / `close` 一定成功；`read` 看 `confirmed` | `show` / `close` 从不 |
+| `ui.textWindow` | `show` / `close` 一定成功；`read` 看「已确定」 | `show` / `close` 从不 |
+
+（`state.set` 没有 `found`：它的输出是 `value` / `replaced`，原表写错，实施时校正。）
 
 判定：这是**命中类的正常形态** —— 「没找到」已经是失败，没有中间态可报。
-`ui.uia` 的说明写得对，其余 4 个的说明没解释。
+`ui.uia` 的说明写得对，其余 3 个的说明没解释。
 
-建议：只有一处要动 —— 在这 4 个单元的 `found` 说明里补一句
-「这一步成功就返回 `true`；失败会整步报错，不会有 `false`」，
+建议：只有一处要动 —— 在这 3 个单元的 `found` 说明里补一句
+「成功即真；失败会整步报错，不会有假」，
 让 agent 不把它当返回值用。**不删输出**：删了会让已保存的动作里 `${xxxFound}` 断链。
+
+实施：`crypto.encrypt` / `ui.textWindow` 补了说明；`web.download` 原本就写着
+「失败直接抛错，不会留半个文件」，未改。
 
 ## 6. 类型声明
 
@@ -192,18 +207,18 @@ flow.if op=found left=${hasX} ...
 - 不拆 `data.list` / `text.process` 的 operation：同一份数据的操作，拆开只让步数变多。
 - 不在校验器里加 info 级提示：「能跑但有更好写法」的建议会淹掉 error / warning。
 
-## 9. 建议清单（按收益 / 风险排序，逐条待拍板）
+## 9. 建议清单（按收益 / 风险排序）
 
-| # | 建议 | 代价 | 风险 | 收益 |
-|---|---|---|---|---|
-| 1 | `data.list` / `text.process` 的输出说明写清「哪个 operation 写哪个输出」 | 两个文件里的 `OutputSpec.Description` + `units.md` 自动同步 | 无 | agent 不再赌「`${found}` 有没有更新」 |
-| 2 | `data.list` 的 `found` 保持一致（`indexOf` / `contains` 之外的 operation 写 `false`） | 一处改动 + 2 条断言 | 低（值上更诚实） | 「读了旧值」不会静默发生 |
-| 3 | `text.process` 的 `indexOf` 补写 `found`（与 `data.list` 对齐） | 一处改动 + 1 条断言 | 低 | 两个同名操作行为一致 |
-| 4 | `file.operation` 的 `move` 加 `Labels` 覆盖 | 一行 | 无 | 下拉不再显示「移动到」 |
-| 5 | 4 个恒 `true` 的 `found` 补说明 | 4 行 | 无 | agent 不把它当返回值 |
-| 6 | `clipboard.image.path` / `image.info.path` 收紧成 `text` | 2 行 | 无（行为等价） | `consumes:"text"` 能反查到 |
-| 7 | `app.process` 的 `kill` 读回进程是否真的退出（现在 `catch {}` 吞掉失败） | 一处改动 | 中（有些进程杀了会残留子进程 / 权限拒绝） | 不假装成功 |
-| 8 | 引擎在步骤执行前预清 `out` 映射到的变量 | 引擎核心 + 全量回归 | 高 | 彻底消除旧值；但要先确认 `flow.set` 自我赋值、循环里累加不受影响 |
+| # | 建议 | 代价 | 风险 | 收益 | 状态 |
+|---|---|---|---|---|---|
+| 1 | `data.list` / `text.process` 的输出说明写清「哪个 operation 写哪个输出」 | 两个文件里的 `OutputSpec.Description` + `units.md` 自动同步 | 无 | agent 不再赌「`${found}` 有没有更新」 | 已实施 |
+| 2 | `data.list` 的 `found` 保持一致（`indexOf` / `contains` 之外的 operation 写 `false`） | 一处改动 + 2 条断言 | 低（值上更诚实） | 「读了旧值」不会静默发生 | 已实施 |
+| 3 | `text.process` 的 `indexOf` 补写 `found`（与 `data.list` 对齐） | 一处改动 + 1 条断言 | 低 | 两个同名操作行为一致 | 已实施 |
+| 4 | `file.operation` 的 `move` 加 `Labels` 覆盖 | 一行 | 无 | 下拉不再显示「移动到」 | 已实施 |
+| 5 | 4 个恒 `true` 的 `found` 补说明 | 4 行 | 无 | agent 不把它当返回值 | 已实施（`web.download` 原本就写了） |
+| 6 | `clipboard.image.path` / `image.info.path` 收紧成 `text` | 2 行 | 无（行为等价） | `consumes:"text"` 能反查到 | 已实施 |
+| 7 | `app.process` 的 `kill` 读回进程是否真的退出（现在 `catch {}` 吞掉失败） | 一处改动 | 中（有些进程杀了会残留子进程 / 权限拒绝） | 不假装成功 | 待拍板 |
+| 8 | 引擎在步骤执行前预清 `out` 映射到的变量 | 引擎核心 + 全量回归 | 高 | 彻底消除旧值；但要先确认 `flow.set` 自我赋值、循环里累加不受影响 | 待拍板 |
 
-第 1~6 条都是「声明层」，合计不到 10 行改动、不动运行时语义；
-第 7、8 条动行为，建议单独一轮。
+第 1~6 条都是「声明层」，合计不到 10 行改动、不动运行时语义，已全部落地
+（`--selftest` 的 `contract` 组守着）；第 7、8 条动行为，建议单独一轮。

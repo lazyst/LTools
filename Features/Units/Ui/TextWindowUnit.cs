@@ -69,7 +69,7 @@ public sealed class TextWindowUnit : IStepUnit
             new OutputSpec("text", "窗口内容", ValueKind.text, "text",
                 Description: "显示：窗口里的完整内容；读取：用户确定的内容（取消为空）；关闭：空"),
             new OutputSpec("found", "已确定", ValueKind.@bool,
-                Description: "读取：用户是否点了确定；显示 / 关闭：恒为真"),
+                Description: "读取：用户是否点了确定；显示 / 关闭：成功即真（失败整步报错）"),
             new OutputSpec("changed", "内容有改动", ValueKind.@bool,
                 Description: "读取：用户是否改过预填内容"),
         },

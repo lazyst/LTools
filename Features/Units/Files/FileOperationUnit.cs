@@ -13,6 +13,14 @@ public sealed class FileOperationUnit : IStepUnit
 {
     private static readonly string[] Operations = { "copy", "move", "delete", "mkdir", "rename" };
 
+    // 全局 OptionLabels 里 move 登记了两次（文件操作「移动」/ 鼠标「移动到」），
+    // 后者覆盖前者，这里按本单元的含义覆盖回来。
+    private static readonly IReadOnlyDictionary<string, string> OperationLabels =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["move"] = "移动",
+        };
+
     public UnitSpec Spec { get; } = new()
     {
         Key = "file.operation",
@@ -24,6 +32,7 @@ public sealed class FileOperationUnit : IStepUnit
         {
             new InputSpec("operation", "操作", ValueKind.text, InputEditor.enumList,
                 Required: true, Default: Value.FromText("copy"), Options: Operations,
+                Labels: OperationLabels,
                 OptionParams: OptionMap.Of(
                     ("copy", ["target", "overwrite"]),
                     ("move", ["target", "overwrite"]),

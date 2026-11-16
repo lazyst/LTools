@@ -115,7 +115,7 @@ public sealed class ClipboardImageUnit : IStepUnit
                 Required: true, Default: Value.FromText("read"), Options: Operations,
                 Labels: OperationLabels,
                 OptionParams: OptionMap.Of(("write", ["path"]))),
-            new InputSpec("path", "图片文件", Editor: InputEditor.image, Required: true,
+            new InputSpec("path", "图片文件", ValueKind.text, Editor: InputEditor.image, Required: true,
                 Description: "要写进剪贴板的图片；读取时不用填"),
         },
         Outputs = new[]

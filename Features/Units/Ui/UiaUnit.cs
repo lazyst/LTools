@@ -172,13 +172,13 @@ public sealed class UiaUnit : IStepUnit
         switch (action)
         {
             case "click":
-            case "doubleClick":
-            case "rightClick":
+            case "doubleclick":
+            case "rightclick":
                 MouseOps.Move(cx, cy);
                 MouseOps.Perform(action switch
                 {
-                    "doubleClick" => MouseActionKind.doubleClick,
-                    "rightClick" => MouseActionKind.rightClick,
+                    "doubleclick" => MouseActionKind.doubleClick,
+                    "rightclick" => MouseActionKind.rightClick,
                     _ => MouseActionKind.click,
                 });
                 break;
@@ -187,7 +187,7 @@ public sealed class UiaUnit : IStepUnit
                 element.Focus();
                 break;
 
-            case "getText":
+            case "gettext":
             {
                 IValuePattern? pattern = Safe(
                     () => element.Patterns.Value.PatternOrDefault, (IValuePattern?)null);
@@ -196,7 +196,7 @@ public sealed class UiaUnit : IStepUnit
                 break;
             }
 
-            case "setValue":
+            case "setvalue":
             {
                 IValuePattern? pattern = Safe(
                     () => element.Patterns.Value.PatternOrDefault, (IValuePattern?)null);

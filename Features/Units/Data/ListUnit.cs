@@ -52,10 +52,14 @@ public sealed class ListUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("list", "列表", ValueKind.list, "list", Description: "操作后的列表（排序 / 去重 / 反转 / 追加 / 删除 / 拆分）"),
-            new OutputSpec("text", "文本", ValueKind.text, "text", Description: "取出的那一项，或拼接出来的文本；求和 / 平均时是数字的文本形式"),
-            new OutputSpec("number", "数值", ValueKind.number, Description: "数量、下标，或求和 / 平均的结果（count / split / indexOf / sum / avg 等）"),
-            new OutputSpec("found", "成立", ValueKind.@bool, Description: "contains / indexOf 是否命中"),
+            new OutputSpec("list", "列表", ValueKind.list, "list",
+                Description: "操作后的列表：count / sum / avg / get / split / sort / unique / reverse / add / removeAt 都写"),
+            new OutputSpec("text", "文本", ValueKind.text, "text",
+                Description: "get 取出的那一项、join 拼出的文本、sum / avg 的结果文本；其余操作不写"),
+            new OutputSpec("number", "数值", ValueKind.number,
+                Description: "项数（count / split / sort / unique / reverse / add / removeAt）、indexOf 的下标（-1 = 没找到）、sum / avg 的结果；其余操作不写"),
+            new OutputSpec("found", "成立", ValueKind.@bool,
+                Description: "indexOf / contains 是否命中；其余操作一律写 false"),
         },
     };
 
@@ -67,6 +71,10 @@ public sealed class ListUnit : IStepUnit
         string separator = TextEscapes.Unescape(args.Text("separator"));
         if (separator.Length == 0) separator = ",";
         Value value = args.Has("value") ? args.Get("value") : Value.Empty;
+
+        // found 只对 indexOf / contains 有意义；其余操作先写 false，
+        // 免得 ${found} 读到上一步留下的旧值（引擎不预清输出变量）。
+        ctx.SetOutput("found", Value.FromBool(false));
 
         switch (op)
         {
@@ -108,7 +116,7 @@ public sealed class ListUnit : IStepUnit
                 return;
             }
 
-            case "indexOf":
+            case "indexof":
             {
                 string needle = value.AsText();
                 int found = items.FindIndex(v =>
@@ -154,7 +162,7 @@ public sealed class ListUnit : IStepUnit
                 ctx.SetOutput("number", Value.FromNumber(items.Count));
                 return;
 
-            case "removeAt":
+            case "removeat":
                 if (index < 0 || index >= items.Count)
                     throw new ActionException($"列表下标越界：{index}（共 {items.Count} 项）");
                 items.RemoveAt(index);

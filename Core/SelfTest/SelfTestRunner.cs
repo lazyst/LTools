@@ -57,6 +57,7 @@ internal static class SelfTestRunner
         KnowledgeSuite.Register(cases);
         ListSuite.Register(cases);
         JsonSuite.Register(cases);
+        ContractSuite.Register(cases);
 
         var lines = new List<string>();
         var stopwatch = Stopwatch.StartNew();

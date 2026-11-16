@@ -138,10 +138,14 @@ public sealed class ProcessTextUnit : IStepUnit
         },
         Outputs = new[]
         {
-            new OutputSpec("text", "结果文本", ValueKind.text, "text", Description: "处理后的文本"),
-            new OutputSpec("list", "结果列表", ValueKind.list, Description: "拆分 / 排序后的列表"),
-            new OutputSpec("number", "数值", ValueKind.number, Description: "长度或位置等数值结果"),
-            new OutputSpec("found", "成立", ValueKind.@bool, Description: "查找是否命中"),
+            new OutputSpec("text", "结果文本", ValueKind.text, "text",
+                Description: "处理后的文本（每个操作都会写）"),
+            new OutputSpec("list", "结果列表", ValueKind.list,
+                Description: "split 拆出的列表，可直接给「遍历列表」；其余操作不写"),
+            new OutputSpec("number", "数值", ValueKind.number,
+                Description: "length 的字符数、split 的项数、indexOf 的位置（-1 = 没找到）；其余操作不写"),
+            new OutputSpec("found", "成立", ValueKind.@bool,
+                Description: "contains / startsWith / endsWith / indexOf 是否命中；其余操作一律写 false"),
         },
     };
 
@@ -214,17 +218,18 @@ public sealed class ProcessTextUnit : IStepUnit
                 result = found.Value ? "true" : "false";
                 break;
 
-            case "indexOf":
+            case "indexof":
                 number = text.IndexOf(find, StringComparison.OrdinalIgnoreCase);
+                found = number.Value >= 0;
                 result = number.Value.ToString("0");
                 break;
 
-            case "startsWith":
+            case "startswith":
                 found = text.StartsWith(find, StringComparison.OrdinalIgnoreCase);
                 result = found.Value ? "true" : "false";
                 break;
 
-            case "endsWith":
+            case "endswith":
                 found = text.EndsWith(find, StringComparison.OrdinalIgnoreCase);
                 result = found.Value ? "true" : "false";
                 break;
@@ -236,7 +241,10 @@ public sealed class ProcessTextUnit : IStepUnit
         ctx.SetOutput("text", Value.FromText(result));
         if (list != null) ctx.SetOutput("list", Value.FromList(list));
         if (number != null) ctx.SetOutput("number", Value.FromNumber(number.Value));
-        if (found != null) ctx.SetOutput("found", Value.FromBool(found.Value));
+
+        // found 只对查找类操作有意义；其余操作写 false，
+        // 免得 ${found} 读到上一步留下的旧值（引擎不预清输出变量）。
+        ctx.SetOutput("found", Value.FromBool(found ?? false));
     }
 }
 
