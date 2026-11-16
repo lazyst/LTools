@@ -647,26 +647,12 @@
                         <TextBlock x:Name="VariablesHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
                                    Text="步骤写出的变量（输出、设置变量）会自动登记在这里，参数框右侧 ▾ 里也能选到。"/>
 
-                        <Grid x:Name="VariableHeader" Margin="0,8,0,2">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="82"/>
-                                <ColumnDefinition Width="72"/>
-                                <ColumnDefinition x:Name="DirectionColumn" Width="76"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="24"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="名称" FontSize="{StaticResource FontSizeHint}"
-                                       Foreground="{StaticResource HintTextBrush}"/>
-                            <TextBlock Grid.Column="1" Text="类型" FontSize="{StaticResource FontSizeHint}"
-                                       Foreground="{StaticResource HintTextBrush}"/>
-                            <TextBlock x:Name="DirectionHeader" Grid.Column="2" Text="方向"
-                                       FontSize="{StaticResource FontSizeHint}"
-                                       Foreground="{StaticResource HintTextBrush}"/>
-                            <TextBlock Grid.Column="3" Text="默认值" FontSize="{StaticResource FontSizeHint}"
-                                       Foreground="{StaticResource HintTextBrush}"/>
-                        </Grid>
-
-                        <StackPanel x:Name="VariableRows"/>
+                        <!-- 变量行是「两行卡片」：名称独占第一行（长变量名不截断），
+                             类型 / 方向 / 默认值在第二行，来源小字在第三行。
+                             以前全挤一行、名称列固定 82 宽，扣掉内边距与框内清除 × 只剩 36，
+                             「number」只看得见「umber」。第二行不再有全局表头——
+                             下拉与默认值框的占位文字自己说明身份。 -->
+                        <StackPanel x:Name="VariableRows" Margin="0,10,0,0"/>
 
                         <Button Style="{StaticResource BtnGhost}" Content="＋ 新建变量"
                                 HorizontalAlignment="Left" MinHeight="28" Padding="8,2"

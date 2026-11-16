@@ -100,14 +100,20 @@ public partial class ActionEditorWindow
     {
         var row = new VariableRowUi();
 
-        var grid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(82) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        // 两行卡片：名称独占第一行（宽度随面板走，长变量名不截断），
+        // 类型 / 方向 / 默认值在第二行，来源小字在第三行。
+        var card = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+        card.ColumnDefinitions.Add(new ColumnDefinition());
+        card.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
+        card.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        card.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        card.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        // 第二行：类型 / 方向固定 70（两个中文标签 + 箭头刚好放得下），剩下的都给默认值。
+        var meta = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+        meta.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
+        meta.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
+        meta.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         row.Name = new TextBox
         {
@@ -117,12 +123,15 @@ public partial class ActionEditorWindow
             FontFamily = (FontFamily)FindResource("MonoFont"),
             FontSize = (double)FindResource("FontSizeHint"),
         };
+        // 表头没了，空名字的框要自己说清要填什么。
+        TextBoxPlaceholder.SetText(row.Name, "变量名");
 
         row.Type = new ComboBox
         {
             MinHeight = 26,
             Margin = new Thickness(0, 0, 4, 0),
             FontSize = (double)FindResource("FontSizeHint"),
+            VerticalAlignment = VerticalAlignment.Top,
             ItemsSource = Kinds.Select(k => new KindChoice(k.Kind, k.Label)).ToList(),
         };
         row.Type.SelectedItem = ((List<KindChoice>)row.Type.ItemsSource)
@@ -141,18 +150,25 @@ public partial class ActionEditorWindow
             MinHeight = 26,
             Text = ListText.Display(defaultValue),
             FontSize = (double)FindResource("FontSizeHint"),
+            VerticalAlignment = VerticalAlignment.Top,
+            // 没有全局表头了，默认值这一格自己说明身份。
+            ToolTip = "变量的默认值（留空按类型的空值）",
         };
+        TextBoxPlaceholder.SetText(row.Default, "默认值（可选）");
         SyncDefaultEditor(row);
 
         var remove = new Button
         {
-            Style = (Style)FindResource("BtnGhost"),
+            // 删除用「危险」样式：名字框里本来就有个清除 ✕，两个并排时靠悬停变红区分。
+            Style = (Style)FindResource("BtnGhostDanger"),
             Content = "✕",
             Width = 22,
             Height = 22,
             Padding = new Thickness(0),
             FontSize = (double)FindResource("FontSizeHint"),
-            Margin = new Thickness(2, 0, 0, 0),
+            Margin = new Thickness(0),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
             ToolTip = "删除变量声明；仍被步骤使用的会先提示",
         };
         remove.Click += (_, _) =>
@@ -173,14 +189,19 @@ public partial class ActionEditorWindow
 
             PushUndo("删除变量");
             _variables.Remove(row);
-            VariableRows.Children.Remove(grid);
+            VariableRows.Children.Remove(card);
         };
 
-        grid.Children.Add(row.Name);
-        Grid.SetColumn(row.Type, 1);
-        grid.Children.Add(row.Type);
-        Grid.SetColumn(row.Default, 3);
-        grid.Children.Add(row.Default);
+        card.Children.Add(row.Name);
+
+        Grid.SetColumn(row.Type, 0);
+        meta.Children.Add(row.Type);
+        Grid.SetColumn(row.Default, 2);
+        meta.Children.Add(row.Default);
+
+        Grid.SetRow(meta, 1);
+        Grid.SetColumnSpan(meta, 2);
+        card.Children.Add(meta);
 
         // 每一种编辑器都要「方向」：子动作是 输入 / 本地 / 输出，动作只有 输入 / 本地
         // （输入 = 运行前问你，见 Features/ActionParams）。
@@ -189,32 +210,36 @@ public partial class ActionEditorWindow
             MinHeight = 26,
             Margin = new Thickness(0, 0, 4, 0),
             FontSize = (double)FindResource("FontSizeHint"),
+            VerticalAlignment = VerticalAlignment.Top,
+            // 以前这段解释挂在全局表头上，表头没了就挂在每一行的下拉上（悬停看得到）。
+            ToolTip = _isSubAction
+                ? "输入 = 调用时传入；本地 = 内部计算；输出 = 随「返回」交回调用方"
+                : "输入 = 运行前问你（填过的会记住）；本地 = 不问，直接用默认值",
             ItemsSource = (_isSubAction ? Directions : ActionDirections)
                 .Select(d => new DirectionChoice(d.Direction, d.Label))
                 .ToList(),
         };
         row.Direction.SelectedItem = ((List<DirectionChoice>)row.Direction.ItemsSource)
             .FirstOrDefault(d => d.Direction == direction);
-        Grid.SetColumn(row.Direction, 2);
-        grid.Children.Add(row.Direction);
+        Grid.SetColumn(row.Direction, 1);
+        meta.Children.Add(row.Direction);
 
-        Grid.SetColumn(remove, 4);
-        grid.Children.Add(remove);
+        Grid.SetColumn(remove, 1);
+        card.Children.Add(remove);
 
-        // 第二行小字：这个变量是谁写进来的。窄面板放不下独立列，就放行下。
+        // 第三行小字：这个变量是谁写进来的。
         row.OriginText = new TextBlock
         {
             FontSize = 11,
             Foreground = (Brush)FindResource("HintTextBrush"),
             TextTrimming = TextTrimming.CharacterEllipsis,
-            Margin = new Thickness(0, 1, 0, 3),
+            Margin = new Thickness(0, 3, 0, 0),
         };
-        Grid.SetRow(row.OriginText, 1);
-        Grid.SetColumn(row.OriginText, 0);
-        Grid.SetColumnSpan(row.OriginText, 4);
-        grid.Children.Add(row.OriginText);
+        Grid.SetRow(row.OriginText, 2);
+        Grid.SetColumnSpan(row.OriginText, 2);
+        card.Children.Add(row.OriginText);
 
-        row.Host = grid;
+        row.Host = card;
         row.Origin = origin;
         row.AutoType = autoType;
         row.LastName = key;
@@ -245,7 +270,7 @@ public partial class ActionEditorWindow
             ReloadRows();
         };
         _variables.Add(row);
-        VariableRows.Children.Add(grid);
+        VariableRows.Children.Add(card);
         RefreshVariableTips();
         return row;
     }
@@ -285,7 +310,8 @@ public partial class ActionEditorWindow
             string name = row.Name.Text.Trim();
             if (name.Length == 0)
             {
-                row.OriginText.Text = row.Origin;
+                // 空行的小字位不空着（刚点「新建变量」时的那一行）：说明它为什么不会保存。
+                row.OriginText.Text = "名字为空，保存时会忽略这一行";
                 row.Host.ToolTip = "名字为空，保存时会忽略这一行";
                 continue;
             }

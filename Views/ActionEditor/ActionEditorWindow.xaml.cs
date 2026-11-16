@@ -148,14 +148,13 @@ public partial class ActionEditorWindow : Window
             _draft.Program = _program;
         }
 
-        // 「方向」列两种编辑器都有，但含义不同：子动作是 输入 / 本地 / 输出（子动作的参数与回传），
+        // 「方向」两种编辑器都有，但含义不同：子动作是 输入 / 本地 / 输出（子动作的参数与回传），
         // 动作只有 输入 / 本地——输入 = 运行前问你（面板 / 快捷键 / 悬浮都会弹参数框，填过的记住），
-        // 输出在动作里没有落点，所以不给这个选项。右栏因此都用 360，否则默认值那一列会被挤没。
+        // 输出在动作里没有落点，所以不给这个选项。方向解释挂在每行的下拉上（见 AddVariableRow）。
         RightColumn.Width = new GridLength(VariablesColumnWidth);
         SetupDrawerWidth();
         if (!_isSubAction)
         {
-            DirectionHeader.ToolTip = "输入 = 运行前问你（填过的会记住）；本地 = 不问，直接用默认值";
             VariablesHint.Text =
                 "步骤写出的变量（输出、设置变量）会自动登记在这里。方向选「输入」的变量会在运行前问你，" +
                 "填过的值会记住；「本地」直接用默认值。";
