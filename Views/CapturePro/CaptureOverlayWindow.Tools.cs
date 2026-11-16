@@ -45,14 +45,41 @@ public partial class CaptureOverlayWindow
         UpdateChrome();
     }
 
-    /// <summary>Esc / 右键：一级一级往回退（折线 → 手势 → 选中的标注 → 工具 → 退出）。</summary>
-    private void StepBack()
+    /// <summary>
+    /// Esc / 右键：一级一级往回退（折线 → 手势 → 选中的标注 → 工具 → **选区** → 退出）。
+    /// 「有选区」单独占一档：像别的截图工具一样，框完右键先把这次框选取消掉，
+    /// 覆盖层留着让用户重新框；没选区时再按一次才关掉覆盖层。
+    /// </summary>
+    /// <param name="preferSelection">
+    /// 右键传 true：**有选区就直接取消这次框选**（截图工具里右键的惯常含义：Snipaste / 微信截图都这样），
+    /// 不必先退回选择工具。Esc 不传，仍先退回选择工具（提示里写的是「Esc 逐级退出」）。
+    /// </param>
+    private void StepBack(bool preferSelection = false)
     {
         if (_polyActive) CancelPolyline();
         else if (_drag != DragMode.None) CancelDrag();
         else if (_selectedIndex >= 0) ClearMarkSelection();
+        else if (preferSelection && IsValid(_sel)) ClearSelection();
         else if (_tool != CaptureTool.Select) SetTool(CaptureTool.Select);
+        else if (IsValid(_sel)) ClearSelection();
         else Cancel();
+    }
+
+    /// <summary>
+    /// 取消这次框选：选区与它的标注一起清掉（标注只对这块选区有意义），
+    /// 覆盖层留着、光标回到十字，鼠标还在原处时把悬停高亮算回来。
+    /// </summary>
+    private void ClearSelection()
+    {
+        _sel = null;
+        _doc.Area = default;             // 选区也没了：别让「有区域、没框」的中间态留在文档里
+        _doc.ClearMarks();
+        SetTool(CaptureTool.Select);     // 工具也回到「选择」：再框一块就是从头开始
+        UpdateCursorForTool();
+        UpdateChrome();                  // 收起动作栏 / 尺寸条 / 工具栏，提示改回「拖动框选」
+
+        if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out var dip))
+            UpdateHover(Clamp(dip));     // 悬停高亮只有没选区时才出现，现在该露出来了
     }
 
     private void UpdateCursorForTool()

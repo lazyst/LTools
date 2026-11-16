@@ -12,7 +12,7 @@ namespace LTools.Views.CapturePro;
 /// 覆盖层的坐标换算与吸附：窗口 DIP ↔ 画面像素 ↔ 屏幕物理像素。
 /// </summary>
 /// <remarks>
-/// 冻结画面就是显示器 1:1 的物理像素，所以 DIP→像素一律按 <c>ActualWidth / PixelWidth</c> 现算，
+/// 冻结画面就是显示器 1:1 的物理像素，所以 DIP→像素一律按 <c>PixelWidth / ActualWidth</c> 现算，
 /// 不写死显示器缩放比：混合 DPI 下 WPF 的 <c>Left/Top</c> 与真实像素可能差几个像素。
 /// </remarks>
 public partial class CaptureOverlayWindow

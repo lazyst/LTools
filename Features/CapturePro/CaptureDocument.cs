@@ -38,8 +38,8 @@ internal sealed class CaptureDocument
     public double Scale { get; private set; }
 
     /// <summary>
-    /// 窗口真正显示之后校准缩放比（<c>ActualWidth / 像素宽</c>）：跨屏时窗口落在哪块显示器上、
-    /// 系统给的 DPI 是多少，只有这时才知道。只影响 DIP 换算，导出的像素尺寸不变。
+    /// 窗口真正显示之后校准缩放比（<c>像素宽 / ActualWidth</c>，方向是**物理 ÷ DIP**）：跨屏时
+    /// 窗口落在哪块显示器上、系统给的 DPI 是多少，只有这时才知道。只影响 DIP 换算，导出的像素尺寸不变。
     /// </summary>
     public void SetScale(double scale)
     {
@@ -99,6 +99,17 @@ internal sealed class CaptureDocument
         _marks.RemoveAt(index);
         Dirty = true;
         return true;
+    }
+
+    /// <summary>
+    /// 丢掉所有标注（右键取消这次框选时用）。进撤销栈，所以误清还能 <c>Ctrl+Z</c> 找回来。
+    /// </summary>
+    public void ClearMarks()
+    {
+        if (_marks.Count == 0) return;
+        Push();
+        _marks.Clear();
+        Dirty = true;
     }
 
     /// <summary>最上面一个命中的标注下标（没有 = -1）。</summary>

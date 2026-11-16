@@ -244,7 +244,7 @@ public partial class CaptureOverlayWindow
                 return;
             }
 
-            HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· 点标注拖动 / Delete 删除 · Ctrl+Z 撤销 · Enter 复制 · Ctrl+T 贴图 · Ctrl+R 识别 · Ctrl+L 长截图";
+            HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· 点标注拖动 / Delete 删除 · 右键取消选区 · Ctrl+Z 撤销 · Enter 复制 · Ctrl+T 贴图 · Ctrl+R 识别 · Ctrl+L 长截图";
             return;
         }
 
@@ -291,10 +291,16 @@ public partial class CaptureOverlayWindow
     /// 跨屏时窗口落在哪块显示器、系统给什么 DPI，只有窗口出来之后才知道；
     /// 校不准会让底图按错的比例铺开（右边 / 下边露出一截窗口底色）。
     /// </summary>
+    /// <remarks>
+    /// 方向是**物理像素 ÷ DIP**（= 125% 屏上得到 1.25）：<see cref="CaptureDocument.Canvas"/> 拿它
+    /// 把底图从像素换算成 DIP，写反了（DIP ÷ 像素 = 0.8）底图会被铺成 1.56 倍大、只看得见左上角，
+    /// 而导出用的是同一份比例的倒数关系（<see cref="CaptureDocument.Render"/> 里
+    /// <c>Canvas = 像素 / Scale</c> 再乘回 <c>Scale</c>），所以剪贴板里的图看起来还是对的。
+    /// </remarks>
     private void SyncDocumentScale()
     {
         if (ActualWidth <= 0 || _shot.PixelWidth <= 0) return;
-        double scale = ActualWidth / _shot.PixelWidth;
+        double scale = _shot.PixelWidth / ActualWidth;
         if (Math.Abs(scale - _doc.Scale) < 1e-6) return;
 
         _doc.SetScale(scale);

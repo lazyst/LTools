@@ -28,6 +28,7 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "文档：撤销 / 重做 / 上限", UndoRedo));
         cases.Add(new("capturePro", "文档：序号撤销后不跳号", SerialNumbers));
         cases.Add(new("capturePro", "文档：选区换算与导出", Selection));
+        cases.Add(new("capturePro", "文档：比例是「物理 ÷ DIP」", DocScale));
         cases.Add(new("capturePro", "文字：量宽随字号增长", TextMetrics));
         cases.Add(new("capturePro", "样式：底色对比取字色", Contrast));
         cases.Add(new("capturePro", "工具：目录 / 参数格 / 默认样式", Tools));
@@ -113,6 +114,17 @@ internal static class CaptureProSuite
 
         Check.Equal(FrameHandle.TopLeft, MarkGeometry.HitFrame(frame, new Point(2, 1), 8), "角上 8 DIP 内命中");
         Check.Equal(FrameHandle.Right, MarkGeometry.HitFrame(frame, new Point(98, 25), 8), "边上命中");
+        // 把手命中半径是 8 DIP：从框**外侧**抓边也得算把手。覆盖层原来还要求 `inside`，
+        // 于是光标已经变成 SizeWE、一按却进了「选区外 = 重新框选」，松手时框太小被清掉
+        // （用户报的「按住拖动退出了截图」）。
+        Check.Equal(FrameHandle.Right, MarkGeometry.HitFrame(frame, new Point(104, 25), 8),
+            "贴着 right 边界外 4 DIP 仍是拖右边");
+        Check.Equal(FrameHandle.Bottom, MarkGeometry.HitFrame(frame, new Point(50, 54), 8),
+            "贴着 bottom 边界外仍是拖下边");
+        Check.Equal(FrameHandle.BottomRight, MarkGeometry.HitFrame(frame, new Point(105, 53), 8),
+            "右下角外侧仍是拖角");
+        Check.Equal(FrameHandle.None, MarkGeometry.HitFrame(frame, new Point(110, 25), 8),
+            "离边 10 DIP 就出了命中半径");
         Check.Equal(FrameHandle.Move, MarkGeometry.HitFrame(frame, new Point(50, 25), 8), "框内给「移动」");
         Check.Equal(FrameHandle.None, MarkGeometry.HitFrame(frame, new Point(300, 300), 8), "框外不算");
 
@@ -186,6 +198,28 @@ internal static class CaptureProSuite
             ((Mark.Serial)serial.ScaleTo(serial.Frame, to)).Center, "序号只跟着搬位置");
     }
 
+    /// <summary>
+    /// 「物理像素 / DIP」的方向：<see cref="CaptureDocument.Scale"/> 是物理**除以** DIP
+    /// （125% 屏 = 1.25），`Canvas = 像素 / Scale`。
+    /// 写反了底图会被铺成 1/s² 倍大——125% 屏上 1.56 倍、只看得见屏幕左上角，
+    /// 而导出因为「先除以 Scale 再乘回 Scale」看着还是对的（2026-11-17 的真机 bug）。
+    /// </summary>
+    private static void DocScale()
+    {
+        var doc = NewDocument();                 // 8×8 像素、Scale = 2
+        Check.Equal(2.0, doc.Scale, "构造时给的就是「物理 ÷ DIP」");
+        Check.Equal(new Rect(0, 0, 4, 4), doc.Canvas, "8 像素 ÷ 2 = 4 DIP");
+
+        doc.SetScale(1.25);
+        Check.Equal(new Rect(0, 0, 6.4, 6.4), doc.Canvas, "125% 屏：8 像素 ÷ 1.25 = 6.4 DIP");
+
+        doc.Area = new Int32Rect(102, 102, 4, 4);
+        Check.Equal(new Rect(1.6, 1.6, 3.2, 3.2), doc.SelectionDip, "选区也从物理像素 ÷ Scale 换算");
+
+        doc.SetScale(0.8);                       // 反过来（DIP ÷ 物理）—— 正是那个缩放 bug
+        Check.Equal(new Rect(0, 0, 10, 10), doc.Canvas, "比例写反时底图被铺大（1.25 倍屏 → 1.56 倍）");
+    }
+
     private static void UndoRedo()
     {
         var doc = NewDocument();
@@ -200,6 +234,13 @@ internal static class CaptureProSuite
         Check.True(doc.CanRedo, "可以重做");
         doc.Redo();
         Check.Equal(2, doc.Marks.Count, "重做回来");
+
+        // 右键取消框选时清标注：进撤销栈，误清还能退回来
+        doc.ClearMarks();
+        Check.Equal(0, doc.Marks.Count, "清空标注");
+        Check.True(doc.CanUndo, "清空是可撤销的一步");
+        doc.Undo();
+        Check.Equal(2, doc.Marks.Count, "撤销把标注找回来");
 
         // 上限：只留最近 MaxUndo 份快照
         var many = NewDocument();

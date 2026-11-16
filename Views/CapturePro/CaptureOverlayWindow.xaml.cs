@@ -263,9 +263,9 @@ public partial class CaptureOverlayWindow : Window
     {
         e.Handled = true;
 
-        // 打字中右键 = 放弃这段文字；其余和 Esc 一样逐级往回退
+        // 打字中右键 = 放弃这段文字；其余逐级往回退（右键在有选区时直接取消这次框选）
         if (_textEditing) CancelText();
-        else StepBack();
+        else StepBack(preferSelection: true);
     }
 
     /// <summary>先按当前选区重绘成品，再按出口复制 / 贴图 / 识别 / 另存为；任一步失败都留在覆盖层里继续改。</summary>

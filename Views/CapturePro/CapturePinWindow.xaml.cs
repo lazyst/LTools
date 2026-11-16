@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -46,7 +47,8 @@ public partial class CapturePinWindow : Window
 
     private bool _dragging;
     private bool _panning;
-    private Point _dragStart;
+    private Point _dragStart;                // 平移：按下的**窗口内**位置（窗口不动，够用）
+    private Point _moveStart;                // 移动窗口：按下的**屏幕**位置（DIP）
     private Vector _panStart;
 
     private ContextMenu? _menu;
@@ -196,6 +198,11 @@ public partial class CapturePinWindow : Window
 
         RaiseToTop();
 
+        // 点在自己的按钮上（右上角 ✕）就交给按钮：这个处理器在隧道阶段先到，
+        // 要是照常走「按下 = 开始拖动」并 CaptureMouse()，按钮永远收不到 MouseUp、
+        // Click 不会触发——用户得连点好几次、凑巧双击才关得掉（实测）。
+        if (IsOnButton(e.OriginalSource as DependencyObject)) return;
+
         // 双击 = 关闭（比右键菜单快一步；锁定也允许，它不会改位置）
         if (e.ClickCount == 2)
         {
@@ -206,18 +213,20 @@ public partial class CapturePinWindow : Window
 
         if (_locked) return;
 
-        _dragStart = e.GetPosition(this);
-
-        // 局部显示里拖动是「平移内容」；按住 Ctrl 才是移动窗口（否则取景框再也挪不动）
+        // 局部显示里拖动是「平移内容」：窗口不动，用窗口内坐标；
+        // 移动窗口必须用**屏幕**坐标——窗口跟着走时窗口内坐标会互相抵消，
+        // 每帧只落下最后一个增量，看着就是拖影 / 追不上手（见 DragTo）。
         if (IsPanGesture())
         {
             _panning = true;
+            _dragStart = e.GetPosition(this);
             _panStart = _pan;
             Cursor = Cursors.ScrollAll;
         }
         else
         {
             _dragging = true;
+            _moveStart = CursorScreenDip();
             CapturePinManager.BeginMove(this);
             Cursor = Cursors.SizeAll;
         }
@@ -228,14 +237,55 @@ public partial class CapturePinWindow : Window
 
     private bool IsPanGesture() => _viewport && (Keyboard.Modifiers & ModifierKeys.Control) == 0;
 
+    /// <summary>
+    /// 拖到光标的这个**屏幕**位置（DIP）。位移一律是「现在 − 按下时」，
+    /// 与 <see cref="Window.Left"/> / <see cref="Window.Top"/> 同一坐标系，
+    /// 所以窗口正好停在光标带走的那段距离上，不会一顿一顿地回弹。
+    /// </summary>
+    internal void DragTo(Point screenDip)
+    {
+        CapturePinManager.MoveBy(this, screenDip.X - _moveStart.X, screenDip.Y - _moveStart.Y);
+    }
+
+    /// <summary>
+    /// 光标在「屏幕 DIP」里的位置：<c>GetCursorPos</c> 给物理像素，
+    /// 按窗口自己的 <c>TransformFromDevice</c> 换成 DIP（与 <c>Left/Top</c> 同一套换算）。
+    /// </summary>
+    private Point CursorScreenDip()
+    {
+        if (!Win32.GetCursorPos(out var pt)) return new Point(Left, Top);
+
+        double sx = 1, sy = 1;
+        var src = PresentationSource.FromVisual(this);
+        if (src != null)
+        {
+            var tfd = src.CompositionTarget.TransformFromDevice;
+            if (tfd.M11 > 0) sx = tfd.M11;
+            if (tfd.M22 > 0) sy = tfd.M22;
+        }
+        return new Point(pt.X * sx, pt.Y * sy);
+    }
+
+    /// <summary>事件源是不是某个按钮（贴图里的 ✕）：按钮的点击不能当成拖动。</summary>
+    private static bool IsOnButton(DependencyObject? source)
+    {
+        while (source != null)
+        {
+            if (source is ButtonBase) return true;
+            source = source is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(source)
+                : LogicalTreeHelper.GetParent(source);
+        }
+        return false;
+    }
+
     private void Window_MouseMove(object sender, MouseEventArgs e)
     {
         if (!_dragging && !_panning) return;
 
-        Point at = e.GetPosition(this);
-
         if (_panning)
         {
+            Point at = e.GetPosition(this);
             _pan = PinMath.ClampPan(_panStart + (at - _dragStart), ContentSize, new Size(Width, Height));
             ApplyContent();
             e.Handled = true;
@@ -243,7 +293,7 @@ public partial class CapturePinWindow : Window
         }
 
         // 移动窗口一律交给登记处：单张时它只夹自己，成组移动时按「整组一个位移」夹
-        CapturePinManager.MoveBy(this, at.X - _dragStart.X, at.Y - _dragStart.Y);
+        DragTo(CursorScreenDip());
         e.Handled = true;
     }
 

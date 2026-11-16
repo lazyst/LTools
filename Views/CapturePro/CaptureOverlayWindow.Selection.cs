@@ -78,8 +78,11 @@ public partial class CaptureOverlayWindow
             return;
         }
 
-        // 1. 八个把手优先：任何工具下都能改框
-        if (inside && hit is not (FrameHandle.None or FrameHandle.Move))
+        // 1. 八个把手优先：任何工具下都能改框。
+        //    这里**不能**再要求 `inside`：把手的命中半径是 8 DIP，用户常常从框**外侧**那圈
+        //    抓边（光标已经变成 SizeWE / SizeNS），这时 `Rect.Contains` 是 false，会被当成
+        //    「选区外 = 重新框选」——松手时框太小被清掉，看着就是「按住拖动退出了截图」。
+        if (hit is not (FrameHandle.None or FrameHandle.Move))
         {
             _originRect = _sel!.Value;
             _drag = DragMode.Resize;
