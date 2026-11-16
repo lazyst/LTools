@@ -149,6 +149,33 @@ internal sealed class CaptureDocument
     // ============ 导出 ============
 
     /// <summary>
+    /// 把当前标注叠到另一张图上（长截图的拼接结果）。
+    /// 标注坐标本来就以选区左上角为原点，所以长图直接当底图铺一遍即可（马赛克也从这张图取色）。
+    /// 没有标注时原样返回。只在 UI 线程调用。
+    /// </summary>
+    public BitmapSource RenderOnto(BitmapSource baseImage)
+    {
+        if (_marks.Count == 0 || baseImage.PixelWidth < 1 || baseImage.PixelHeight < 1) return baseImage;
+
+        var canvas = new Rect(0, 0, baseImage.PixelWidth / Scale, baseImage.PixelHeight / Scale);
+
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            dc.PushTransform(new ScaleTransform(Scale, Scale));   // DIP → 物理像素
+            dc.DrawImage(baseImage, canvas);
+            MarkRenderer.DrawAll(dc, _marks, baseImage, canvas, Scale);
+            dc.Pop();
+        }
+
+        var bitmap = new RenderTargetBitmap(baseImage.PixelWidth, baseImage.PixelHeight,
+            96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(visual);
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    /// <summary>
     /// 按选区导出成品：从底图 + 标注**重绘**，不是截屏再裁。
     /// 只在 UI 线程调用（<see cref="RenderTargetBitmap"/> 要求）。
     /// </summary>

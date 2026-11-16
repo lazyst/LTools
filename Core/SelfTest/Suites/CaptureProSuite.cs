@@ -32,6 +32,8 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "识别：表格聚类 / TSV / HTML", Recognize));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
+        cases.Add(new("capturePro", "长截图：行位移检测", ScrollShift));
+        cases.Add(new("capturePro", "长截图：拼接与面板落点", ScrollBuild));
     }
 
     private static void Geometry()
@@ -508,6 +510,146 @@ internal static class CaptureProSuite
             Check.Equal(4, bitmap.Width, "转出来的宽不变");
             Check.Equal(3, bitmap.Height, "转出来的高不变");
         }
+    }
+
+    /// <summary>
+    /// 长截图的行位移检测：合成的「整页内容」按不同 offset 截两帧，位移必须认得出；
+    /// 没动 = 0，内容完全对不上 = 认不出（不能瞎接）。
+    /// </summary>
+    private static void ScrollShift()
+    {
+        var page = NewPage(400);
+
+        Check.Equal(50, ScrollStitch.FindShift(RowsOf(page, 0), RowsOf(page, 50)) ?? -1, "位移 50 行");
+        Check.Equal(5, ScrollStitch.FindShift(RowsOf(page, 0), RowsOf(page, 5)) ?? -1, "小幅位移 5 行");
+        Check.Equal(0, ScrollStitch.FindShift(RowsOf(page, 0), RowsOf(page, 0)) ?? -1, "没动 = 0");
+
+        // 完全不同的两帧：认不出（null 才会让循环收尾，不会把两张无关的图接起来）
+        Check.True(ScrollStitch.FindShift(RowsOf(page, 0), RowsOf(NewPage(400, seed: 7), 0)) == null,
+            "内容对不上 → 认不出");
+
+        // 高度不一致（换了窗口 / 变了尺寸）也认不出
+        Check.True(ScrollStitch.FindShift(RowsOf(page, 0), RowsOf(page, 0)[..100]) == null,
+            "高度不一致 → 认不出");
+
+        // 底下一截固定页脚（滚动时不动）：把两帧的最后 4 行改成同一片死色，位移照样认得出。
+        // 页脚只要落在跳过的区间里（8%）就不参与对齐。
+        var a = RowsOf(page, 20);
+        var b = RowsOf(page, 50);
+        for (int i = ViewHeight - 4; i < ViewHeight; i++)
+        {
+            Array.Fill(a[i], (byte)0x10);
+            Array.Fill(b[i], (byte)0x10);
+        }
+        Check.Equal(30, ScrollStitch.FindShift(a, b) ?? -1, "页脚不动也能认出位移");
+    }
+
+    /// <summary>
+    /// 长截图：拼接只接新露出来的行、预览按比例缩、上限会自己停；面板优先落在选区外面。
+    /// </summary>
+    private static void ScrollBuild()
+    {
+        var page = NewPage(420);
+        var stitch = new ScrollStitch();
+        stitch.Start(Frame(page, 0));
+
+        Check.Equal(ViewHeight, stitch.Height, "起点 = 第一帧高度");
+        Check.Equal(16, stitch.Width, "宽度 = 帧宽");
+        Check.Equal(50, stitch.Append(Frame(page, 50)) ?? -1, "第二帧位移 50");
+        Check.Equal(ViewHeight + 50, stitch.Height, "只接了新露出来的 50 行");
+        Check.Equal(40, stitch.Append(Frame(page, 90)) ?? -1, "第三帧位移 40");
+        Check.Equal(ViewHeight + 90, stitch.Height, "再接 40 行");
+        Check.Equal(0, stitch.Append(Frame(page, 90)) ?? -1, "重复帧（到底）位移 0");
+        Check.Equal(ViewHeight + 90, stitch.Height, "没动就不接");
+
+        var longImage = stitch.Render();
+        Check.Equal(ViewHeight + 90, longImage.PixelHeight, "拼出来的长图高度");
+        var preview = stitch.Preview(30, 200);
+        Check.True(preview.PixelWidth <= 30 && preview.PixelHeight <= 200, "预览装进框里");
+        Check.True(preview.PixelHeight >= 100, $"预览按比例缩小（{longImage.PixelHeight} 行 → {preview.PixelHeight}）");
+
+        // 高度上限：到顶就 Full，调用方据此收尾（一直滚下去也不会吃满内存）
+        var tall = NewPage(16200);
+        var limited = new ScrollStitch();
+        limited.Start(Frame(tall, 0));
+        for (int offset = 100; !limited.Full && offset < 16100; offset += 100)
+        {
+            if (limited.Append(Frame(tall, offset)) is null) break;
+        }
+        Check.True(limited.Full, "滚到高度上限后 Full = true");
+        Check.True(limited.Height >= ScrollStitch.MaxRows, $"停在 {limited.Height} 行（上限 {ScrollStitch.MaxRows}）");
+
+        // 面板落点：右侧放得下就放右侧，都放不下塞工作区右下角
+        var work = new Int32Rect(0, 0, 1920, 1040);
+        var panel = new Size(268, 372);
+        var right = ScrollLayout.Place(new Int32Rect(100, 100, 800, 600), work, 1, panel);
+        Check.True(right.Left >= 900, $"选区右侧有地方 → 放右侧（Left={right.Left:0}）");
+        Check.Equal(100d, right.Top, "与选区顶边对齐");
+
+        var narrow = ScrollLayout.Place(new Int32Rect(0, 0, 400, 300), new Int32Rect(0, 0, 420, 1040), 1, panel);
+        Check.Equal(0d, narrow.Left, "右边不够 → 落到下方（仍与左边对齐）");
+        Check.Equal(312d, narrow.Top, "在选区下方留出间距");
+
+        var full = ScrollLayout.Place(new Int32Rect(0, 0, 1920, 1040), work, 1, panel);
+        Check.True(full.Right <= 1920 && full.Bottom <= 1040, "选区占满 → 塞回工作区里");
+        Check.True(full.IntersectsWith(new Rect(0, 0, 1920, 1040)), "这时只能与选区重叠（抓帧时靠透明度让开）");
+    }
+
+    /// <summary>长截图的「屏幕」高度：一次看到多少行。</summary>
+    private const int ViewHeight = 240;
+
+    /// <summary>合成一页「整页内容」：每行颜色固定，按 offset 截出来就是滚动中的某一帧。</summary>
+    private static BitmapSource NewPage(int height, int seed = 0)
+    {
+        const int width = 16;
+        int stride = width * 4;
+        var pixels = new byte[stride * height];
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int i = y * stride + x * 4;
+                pixels[i] = (byte)((y * 7 + seed) & 0xFF);
+                pixels[i + 1] = (byte)((x * 11 + y * 3) & 0xFF);
+                pixels[i + 2] = (byte)((y * 13) & 0xFF);
+                pixels[i + 3] = 0xFF;
+            }
+        }
+
+        var image = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
+        image.Freeze();
+        return image;
+    }
+
+    /// <summary>从整页里截出 offset 开始的 <see cref="ViewHeight"/> 行（= 滚到那里时屏幕上看得到的那一帧）。</summary>
+    private static BitmapSource Frame(BitmapSource page, int offset)
+    {
+        int stride = page.PixelWidth * 4;
+        var pixels = new byte[stride * ViewHeight];
+        page.CopyPixels(new Int32Rect(0, offset, page.PixelWidth, ViewHeight), pixels, stride, 0);
+
+        var frame = BitmapSource.Create(page.PixelWidth, ViewHeight, 96, 96,
+            PixelFormats.Bgra32, null, pixels, stride);
+        frame.Freeze();
+        return frame;
+    }
+
+    /// <summary>把一帧拆成行字节（<see cref="ScrollStitch.FindShift"/> 的入参形状）。</summary>
+    private static byte[][] RowsOf(BitmapSource page, int offset)
+    {
+        var frame = Frame(page, offset);
+        int stride = frame.PixelWidth * 4;
+        var pixels = new byte[stride * frame.PixelHeight];
+        frame.CopyPixels(pixels, stride, 0);
+
+        var rows = new byte[frame.PixelHeight][];
+        for (int y = 0; y < rows.Length; y++)
+        {
+            rows[y] = new byte[stride];
+            Array.Copy(pixels, y * stride, rows[y], 0, stride);
+        }
+        return rows;
     }
 
     /// <summary>8×8 像素的假底图 + 缩放 2 的文档（不开窗口）。</summary>

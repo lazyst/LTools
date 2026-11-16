@@ -4,6 +4,7 @@ using System.Windows.Media.Imaging;
 using LTools.Core;
 using LTools.Features;
 using LTools.Hooks;
+using LTools.Native;
 using LTools.Views;
 using LTools.Views.CapturePro;
 
@@ -34,7 +35,7 @@ internal static class CaptureSession
         HotkeyRegistry.Suspended = true;
 
         CaptureResult? result = null;
-        bool pin = false, recognize = false;
+        bool pin = false, recognize = false, scroll = false;
         var finish = CaptureOverlayWindow.FinishKind.Copy;
 
         try
@@ -50,10 +51,22 @@ internal static class CaptureSession
             bool? ok = overlay.ShowDialog();
             if (ok != true || overlay.ResultImage == null) return null;
 
-            result = new CaptureResult(overlay.Document.Area, overlay.ResultImage);
+            var captured = overlay.ResultImage;
             pin = overlay.PinRequested;
             recognize = overlay.RecognizeRequested;
+            scroll = overlay.ScrollRequested;
             finish = overlay.Finish;
+
+            // 长截图在覆盖层关掉之后、自己的窗口还原之前跑：收起的窗口不会被滚进画面，
+            // 热键 / 鼠标钩子也还没恢复，自动滚屏不会撞上它们。
+            if (scroll)
+            {
+                var stitched = CaptureScrollWindow.Run(overlay.Document);
+                if (stitched == null) return null;   // 用户取消了长截图
+                captured = stitched;
+            }
+
+            result = new CaptureResult(overlay.Document.Area, captured);
         }
         catch (Exception ex)
         {
@@ -70,6 +83,23 @@ internal static class CaptureSession
 
         // 两个「关掉覆盖层之后才做」的出口：这时自己的窗口已经还原，不会被一起收走。
         if (result == null) return null;
+
+        // 长截图：拼接结果默认直接复制走（覆盖层那边不复制，只有这里知道最终的长图）
+        if (scroll)
+        {
+            try
+            {
+                NativeClipboard.SetImage(result.Image);
+                ToastService.Show(
+                    $"{result.Image.PixelWidth} × {result.Image.PixelHeight} px 已复制到剪贴板",
+                    "长截图", 3000, ToastKind.success);
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write("CapturePro.ScrollCopy", ex);
+                TrayService.Notify("长截图复制失败：" + ex.Message);
+            }
+        }
 
         // 采集历史：先记一条（只写 catalog.json），图片丢后台写；识别文字稍后由结果窗回填。
         var entry = CaptureCatalog.Create(
@@ -93,6 +123,7 @@ internal static class CaptureSession
         CaptureOverlayWindow.FinishKind.Save => "另存为",
         CaptureOverlayWindow.FinishKind.Pin => "贴图",
         CaptureOverlayWindow.FinishKind.Recognize => "识别",
+        CaptureOverlayWindow.FinishKind.Scroll => "长截图",
         _ => "复制",
     };
 }

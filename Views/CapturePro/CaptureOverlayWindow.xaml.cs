@@ -53,6 +53,9 @@ public partial class CaptureOverlayWindow : Window
     /// <summary>完成动作选了「识别」：覆盖层关掉之后由 <see cref="CaptureSession"/> 开识别结果窗。</summary>
     public bool RecognizeRequested { get; private set; }
 
+    /// <summary>完成动作选了「长截图」：覆盖层关掉之后由 <see cref="CaptureSession"/> 滚屏拼接。</summary>
+    public bool ScrollRequested { get; private set; }
+
     /// <summary>这一次是怎么完成的（采集历史记「完成动作」用）。</summary>
     internal FinishKind Finish { get; private set; } = FinishKind.Copy;
 
@@ -177,6 +180,13 @@ public partial class CaptureOverlayWindow : Window
             return;
         }
 
+        if (ctrl && e.Key == Key.L)
+        {
+            Accept(FinishKind.Scroll);
+            e.Handled = true;
+            return;
+        }
+
         if (ctrl && e.Key == Key.A)
         {
             _drag = DragMode.None;
@@ -231,7 +241,7 @@ public partial class CaptureOverlayWindow : Window
 
     // ============ 完成动作 ============
 
-    internal enum FinishKind { Copy, Save, Pin, Recognize }
+    internal enum FinishKind { Copy, Save, Pin, Recognize, Scroll }
 
     /// <summary>「✓ 复制」= Enter / 双击的默认出口（P0 不加配置域字段，默认就是复制）。</summary>
     private void Copy_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Copy);
@@ -241,6 +251,9 @@ public partial class CaptureOverlayWindow : Window
 
     /// <summary>「识别」= 文字 / 表格 / 二维码，结果窗在覆盖层关掉之后开（Ctrl+R）。</summary>
     private void Recognize_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Recognize);
+
+    /// <summary>「长截图」= 滚屏拼接，循环在覆盖层关掉之后跑（Ctrl+L）。</summary>
+    private void Scroll_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Scroll);
 
     private void Save_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Save);
 
@@ -289,6 +302,11 @@ public partial class CaptureOverlayWindow : Window
             case FinishKind.Recognize:
                 // 识别结果窗同理：覆盖层关掉、还原自己的窗口之后再开（识别本身在窗口里跑）
                 RecognizeRequested = true;
+                break;
+
+            case FinishKind.Scroll:
+                // 长截图：滚屏要一段一段来，同样等覆盖层关掉之后再跑（见 CaptureSession）
+                ScrollRequested = true;
                 break;
 
             default:
