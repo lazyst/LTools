@@ -211,6 +211,7 @@ public partial class App : Application
         menu.Items.Add(NewItem("速记 (CapsLock+N)", () => QuickNote.Toggle()));
         menu.Items.Add(NewItem("动作面板 (CapsLock+T)", () => Features.SuperPanel.Toggle()));
         menu.Items.Add(NewItem("设置 (CapsLock+\\)", () => ConfigHelper.Toggle()));
+        menu.Items.Add(NewItem("辅助工具…", () => Views.InfoHelperWindow.Toggle()));
         menu.Items.Add(new Separator());
         _macroMenuItem = NewItem("开始 / 停止录制宏", () => MacroRecorder.Toggle());
         _macroMenuItemText = (TextBlock)((StackPanel)_macroMenuItem.Header).Children[1];

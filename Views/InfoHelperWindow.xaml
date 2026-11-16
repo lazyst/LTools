@@ -1,0 +1,228 @@
+<Window x:Class="LTools.Views.InfoHelperWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:LTools.Views"
+        xmlns:controls="clr-namespace:LTools.Views.Controls"
+        xmlns:helper="clr-namespace:LTools.Features.InfoHelper"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="辅助工具"
+        Width="720" Height="640" MinWidth="560" MinHeight="420"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
+        views:WindowSizing.Mode="Dialog">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <!-- 取值方块：白底卡片样式，悬停变浅灰（BtnTemplate 用 Tag 当悬停底色） -->
+        <Style x:Key="InfoTile" TargetType="Button" BasedOn="{StaticResource Btn}">
+            <Setter Property="Height" Value="64"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="Tag" Value="{StaticResource PressedBgBrush}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
+        </Style>
+
+        <Style x:Key="InfoChip" TargetType="Button" BasedOn="{StaticResource Btn}">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="Margin" Value="0,0,8,6"/>
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="Tag" Value="{StaticResource PressedBgBrush}"/>
+        </Style>
+
+        <!-- 卡片右侧的小图标按钮：字形走 Segoe UI Symbol，标识走 CommandParameter（不占 Tag） -->
+        <Style x:Key="CardIconButton" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontFamily" Value="Segoe UI Symbol"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <Style x:Key="CardIconButtonDanger" TargetType="Button" BasedOn="{StaticResource BtnGhostDanger}">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontFamily" Value="Segoe UI Symbol"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <!-- 卡片正文：只读多行文本框，可以自己划选、只复制挑中的几行。
+             不另写一套两列渲染——显示的就是 ⧉ 复制的那段文本（一份内容两个出口）。
+             只读态的浅灰底由主题的 IsReadOnly Trigger 给，这里只去掉边框、收紧内边距。 -->
+        <Style x:Key="CardBody" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="AcceptsReturn" Value="True"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalContentAlignment" Value="Top"/>
+            <Setter Property="VerticalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="Cursor" Value="IBeam"/>
+            <Setter Property="ToolTip" Value="可以直接划选，Ctrl+C 复制挑中的几行"/>
+        </Style>
+
+        <DataTemplate DataType="{x:Type helper:InfoCard}">
+            <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel>
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                   Margin="0,0,0,6" ToolTip="{Binding Title}"/>
+                        <TextBox Style="{StaticResource CardBody}" Text="{Binding Text, Mode=OneWay}"/>
+                        <Image Source="{Binding Preview}" MaxHeight="140" Margin="0,8,0,0"
+                               HorizontalAlignment="Left" Stretch="Uniform"
+                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top"
+                                Margin="10,0,0,0">
+                        <Button Style="{StaticResource CardIconButton}" Content="&#x21BB;"
+                                ToolTip="再取（窗口按原句柄、截图按原矩形）"
+                                CommandParameter="{Binding}" Click="RefreshCard_Click"/>
+                        <Button Style="{StaticResource CardIconButton}" Content="&#x29C9;"
+                                ToolTip="复制这张卡的全部文本"
+                                CommandParameter="{Binding}" Click="CopyCard_Click"/>
+                        <Button Style="{StaticResource CardIconButtonDanger}" Content="&#x2715;"
+                                ToolTip="删除这张卡"
+                                CommandParameter="{Binding}" Click="DeleteCard_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="36"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <controls:TitleBar Grid.Row="0" x:Name="Bar" ShowMaximize="False"/>
+
+        <!-- 头部：单位说明 + 三个主方块 + 一排 chips -->
+        <Border Grid.Row="1" Background="{StaticResource SurfaceAltBrush}" Padding="14,10,14,4">
+            <StackPanel>
+                <TextBlock x:Name="UnitHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                           Margin="0,0,0,10"/>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button Grid.Column="0" Style="{StaticResource InfoTile}" Click="Window_Click"
+                            ToolTip="点击屏幕上的一个窗口，读出标题 / 类名 / 进程 / 矩形">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="&#xE8A7;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                                       Margin="0,0,10,0" VerticalAlignment="Center"
+                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                            <StackPanel>
+                                <TextBlock Text="窗口信息" FontWeight="SemiBold"/>
+                                <TextBlock Text="标题 · 类名 · 进程 · 矩形" Style="{StaticResource HintLabel}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Grid.Column="2" Style="{StaticResource InfoTile}" Click="Region_Click"
+                            ToolTip="在屏幕上框选一块区域，得到坐标与「x,y,w,h」参数">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="&#xE8B9;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                                       Margin="0,0,10,0" VerticalAlignment="Center"
+                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                            <StackPanel>
+                                <TextBlock Text="屏幕区域" FontWeight="SemiBold"/>
+                                <TextBlock Text="框选 · x,y,w,h" Style="{StaticResource HintLabel}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Grid.Column="4" Style="{StaticResource InfoTile}" Click="Point_Click"
+                            ToolTip="在屏幕上单击取一个坐标">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="&#xE962;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                                       Margin="0,0,10,0" VerticalAlignment="Center"
+                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                            <StackPanel>
+                                <TextBlock Text="屏幕坐标" FontWeight="SemiBold"/>
+                                <TextBlock Text="单击取点 · x,y" Style="{StaticResource HintLabel}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+
+                <WrapPanel Margin="0,8,0,0">
+                    <Button Style="{StaticResource InfoChip}" Content="屏幕取色" Click="Color_Click"
+                            ToolTip="单击屏幕上任意一点，读出 #RRGGBB"/>
+                    <Button Style="{StaticResource InfoChip}" Content="屏幕环境" Click="Screen_Click"
+                            ToolTip="虚拟桌面 / 每块显示器的矩形与工作区 / 光标位置"/>
+                    <Button x:Name="ShotBtn" Style="{StaticResource InfoChip}" Content="截图 ▾"
+                            Click="Shot_Click" ToolTip="截一张 png 并给出文件路径">
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="整个屏幕" Click="ShotFull_Click"/>
+                                <MenuItem Header="框选区域" Click="ShotRegion_Click"/>
+                                <MenuItem Header="选一个窗口" Click="ShotWindow_Click"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                    <Button x:Name="SelectionBtn" Style="{StaticResource InfoChip}" Content="选中的文件"
+                            Click="Selection_Click"
+                            ToolTip="资源管理器 / 桌面里当前选中的文件或文件夹（不看前台窗口）"/>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- 卡片列表：只存在内存里 -->
+        <Grid Grid.Row="2" Margin="14,10,14,0">
+            <ScrollViewer x:Name="CardScroll" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl x:Name="CardList"/>
+            </ScrollViewer>
+            <TextBlock x:Name="EmptyHint" TextWrapping="Wrap" TextAlignment="Center"
+                       VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="440"
+                       Style="{StaticResource HintLabel}"
+                       Text="还没有取值。点上面的按钮取一个：卡片正文可以直接划选、只复制挑中的几行，右上角的 ⧉ 复制整张卡。&#x0a;卡片只在这个窗口里有效，关掉就清空了。"/>
+        </Grid>
+
+        <!-- 底栏：状态 + 页面级操作 -->
+        <Border Grid.Row="3" Background="{StaticResource SurfaceAltBrush}" Padding="14,8">
+            <Grid>
+                <TextBlock x:Name="StatusText" Style="{StaticResource HintLabel}"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           Margin="0,0,150,0"
+                           Text="卡片正文可以直接划选、Ctrl+C 复制挑中的行；⧉ 复制整张卡。截图存 cache/info-helper，保留最近 30 张。"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="CopyAllBtn" Style="{StaticResource BtnGhost}" Content="复制全部"
+                            Margin="0,0,8,0" Click="CopyAll_Click"
+                            ToolTip="把所有卡片按顺序拼成一段文本复制"/>
+                    <Button x:Name="ClearBtn" Style="{StaticResource BtnGhostDanger}" Content="清空"
+                            Click="Clear_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

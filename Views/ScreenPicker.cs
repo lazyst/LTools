@@ -68,6 +68,10 @@ internal static class ScreenPicker
     public static bool TryPickColor(Window? owner, out string hex)
         => PickPoint(owner, wantColor: true, "", out _, out _, out hex);
 
+    /// <summary>同上，并带回取色点的屏幕坐标（「辅助工具」的取色卡要一起给出 x / y）。</summary>
+    public static bool TryPickColor(Window? owner, out string hex, out int x, out int y)
+        => PickPoint(owner, wantColor: true, "", out x, out y, out hex);
+
     private static bool PickPoint(Window? owner, bool wantColor, string hint, out int x, out int y, out string hex)
     {
         x = y = 0;
@@ -124,7 +128,7 @@ internal static class ScreenPicker
     }
 
     /// <summary>GDI 位图 → 96 DPI 的 BitmapSource（1 像素 = 1 DIP，放大镜与坐标换算都按像素来）。</summary>
-    private static BitmapSource ToBitmapSource(System.Drawing.Bitmap bitmap)
+    internal static BitmapSource ToBitmapSource(System.Drawing.Bitmap bitmap)
     {
         var rect = new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height);
         BitmapData data = bitmap.LockBits(rect, ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);

@@ -18,8 +18,12 @@ namespace LTools.Views;
 /// </remarks>
 public partial class SystemPickerDialog : Window
 {
-    /// <summary>选中的窗口：标题（按包含匹配）、类名（精确匹配）、进程名。</summary>
-    public sealed record WindowInfo(string Title, string ClassName, string ProcessName);
+    /// <summary>选中的窗口：标题（按包含匹配）、类名（精确匹配）、进程名、窗口句柄。</summary>
+    /// <remarks>
+    /// 句柄只给「要拿窗口本身」的调用方用（辅助工具读矩形 / 客户区 / 状态，或直接截这个窗口）；
+    /// 填配置的入口只看前三个字符串。点选器与列表两条路径都会带上它。
+    /// </remarks>
+    public sealed record WindowInfo(string Title, string ClassName, string ProcessName, IntPtr Handle = default);
 
     private readonly List<PickerRow> _all;
     private List<PickerRow> _rows = new();
@@ -102,6 +106,7 @@ public partial class SystemPickerDialog : Window
                 Value = title,
                 Extra = className,
                 Search = title + " " + process + " " + className,
+                Handle = hwnd,
             });
             return true;
         }, IntPtr.Zero);
@@ -112,7 +117,7 @@ public partial class SystemPickerDialog : Window
             "按窗口标题 / 进程 / 类名筛选",
             rows, owner);
         return dialog.ShowDialog() == true && dialog.SelectedRow is { } row
-            ? new WindowInfo(row.Value ?? "", row.Extra ?? "", "")
+            ? new WindowInfo(row.Value ?? "", row.Extra ?? "", "", row.Handle)
             : null;
     }
 
@@ -258,5 +263,8 @@ public partial class SystemPickerDialog : Window
         public string? Value { get; init; }
         public string? Extra { get; init; }
         public string Search { get; init; } = "";
+
+        /// <summary>这一行对应的窗口句柄（窗口列表才有；进程列表为 <see cref="IntPtr.Zero"/>）。</summary>
+        public IntPtr Handle { get; init; }
     }
 }

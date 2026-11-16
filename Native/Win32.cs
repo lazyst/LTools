@@ -64,6 +64,10 @@ internal static class Win32
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out Rect lpRect);
 
+    /// <summary>客户区矩形（相对窗口左上角；配合 <see cref="ClientToScreen"/> 换成屏幕坐标）。</summary>
+    [DllImport("user32.dll")]
+    public static extern bool GetClientRect(IntPtr hWnd, out Rect lpRect);
+
     [DllImport("user32.dll")]
     public static extern IntPtr MonitorFromPoint(Point pt, uint dwFlags);
 

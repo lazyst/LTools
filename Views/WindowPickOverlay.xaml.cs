@@ -238,7 +238,7 @@ public partial class WindowPickOverlay : Window
         if (_finished) return;
         _finished = true;
         WantsList = wantsList;
-        if (accept) Result = new SystemPickerDialog.WindowInfo(_title, _class, _process);
+        if (accept) Result = new SystemPickerDialog.WindowInfo(_title, _class, _process, _current);
         try { DialogResult = accept; }
         catch { Close(); }
     }

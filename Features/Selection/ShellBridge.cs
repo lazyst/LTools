@@ -75,6 +75,27 @@ internal static class ShellBridge
         }
     }
 
+    /// <summary>
+    /// 任意资源管理器窗口 / 桌面里当前选中的项——**不看前台窗口**。
+    /// </summary>
+    /// <remarks>
+    /// 「辅助工具」自己占着前台，<see cref="Foreground"/> 拿到的永远是 LTools，
+    /// 所以这里按 z 序（<c>EnumWindows</c> 的顺序）从最上面往下找第一个**确实有选中项**的资源管理器窗口；
+    /// 都没选中时退回桌面选中项；再没有就返回 <c>null</c>。
+    /// </remarks>
+    public static ShellSelection? SelectedAny()
+    {
+        try
+        {
+            return StaRunner.Run(QueryAnySelection, 2500, "shell-selection-any");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Selection", $"读任意资源管理器选择失败：{ex.Message}");
+            return null;
+        }
+    }
+
     // ============ COM（在 STA 线程上跑） ============
 
     private static ShellSelection? Query(IntPtr hwnd, string title, bool desktop)
@@ -182,6 +203,46 @@ internal static class ShellBridge
         }
 
         return new ShellSelection(folder, paths);
+    }
+
+    /// <summary>
+    /// 按 z 序（最上面的优先）找第一个有选中项的资源管理器窗口；都没有就退回桌面选中项。
+    /// </summary>
+    private static ShellSelection? QueryAnySelection()
+    {
+        dynamic? shell = CreateShell();
+        if (shell == null) return null;
+
+        try
+        {
+            foreach (IntPtr hwnd in ExplorerWindowsByZOrder())
+            {
+                ShellSelection? selection = QueryExplorer(shell, hwnd, WindowTitle(hwnd));
+                if (selection != null && selection.Paths.Count > 0) return selection;
+            }
+
+            // 桌面不在 ShellWindows 里：走另一条 UIA 路径。
+            ShellSelection? desktop = QueryDesktop(shell);
+            return desktop != null && desktop.Paths.Count > 0 ? desktop : null;
+        }
+        finally
+        {
+            Release(shell);
+        }
+    }
+
+    /// <summary>可见的资源管理器窗口句柄，按 z 序从前往后（<c>EnumWindows</c> 就是这个顺序）。</summary>
+    private static List<IntPtr> ExplorerWindowsByZOrder()
+    {
+        var list = new List<IntPtr>();
+        Win32.EnumWindows((hwnd, _) =>
+        {
+            if (!Win32.IsWindowVisible(hwnd)) return true;
+            if (string.Equals(WindowFinder.GetClass(hwnd), "CabinetWClass", StringComparison.OrdinalIgnoreCase))
+                list.Add(hwnd);
+            return true;
+        }, IntPtr.Zero);
+        return list;
     }
 
     private static IReadOnlyList<string> QueryAllFolders()
