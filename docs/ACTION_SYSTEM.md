@@ -341,6 +341,7 @@ sealed class SubActionDef {
 | **数据** | `data.noteWrite` / `data.noteRead` 速记 | quickNote / Probe.note |
 | | `data.list` 列表增删改查/排序/去重/求和·平均 | 新增 |
 | | `data.json` JSON 文本 → 值 / 列表，支持 `a.b[0]` 取值路径 | 新增（W8） |
+| | `data.jsonEncode` 值 / 列表 / 对象 → JSON 文本（`indented` 缩进） | 新增 |
 | | `data.calc` 数值计算 | 新增 |
 | | `data.time` 当前时间/格式化/偏移 | 新增 |
 | **界面** | `ui.toast` 提示 | toast |

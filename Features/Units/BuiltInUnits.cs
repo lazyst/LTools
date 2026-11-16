@@ -103,6 +103,7 @@ public static class BuiltInUnits
         registry.Register(new NoteReadUnit());
         registry.Register(new ListUnit());
         registry.Register(new JsonUnit());
+        registry.Register(new JsonEncodeUnit());
         registry.Register(new CalcUnit());
         registry.Register(new NumberUnit());
         registry.Register(new CryptoEncryptUnit());

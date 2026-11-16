@@ -387,8 +387,8 @@ internal static class KnowledgePack
 - **文本 → 列表**：只在**步骤参数绑定**时发生，按换行或逗号拆、以 `[` 开头按 JSON 数组解析（`ListText`）；
   变量默认值的解析走同一套，但别把它当成「运行时会随时转换」。
 - **列表 / 对象 → 文本**：`${列表}` 当文本用得到 `[a, b]`，对象是 `{k=v}` 或它的 `text` 成员——**都不是 JSON**。
-  反方向（JSON 文本 → 列表 / 对象）用 `data.json`（`text` + 可选 `path`）；
-  **没有「值 → JSON 文本」的动作单元**，要序列化就用 `script.csharp`（`vars` 直接读写变量）。
+  结构化互转就两个单元：`data.json`（JSON 文本 → 值，`text` + 可选 `path`）、
+  `data.jsonEncode`（值 → JSON 文本，`value` + `indented`，结果在 `text`）。别为这个去写脚本。
 - **整串 `${名}` / `{"var":"名"}` 保留原类型**：列表、对象不会被压成文本；夹在文本里（`"共 ${n} 项"`）才是拼接。
 
 完整的转换表（行 = 你手上的值，列 = 那个参数声明的类型；「不转」= 这一步会报类型错）：
@@ -398,8 +398,8 @@ internal static class KnowledgePack
 | text | 原样 | 纯数字才成；`12元` / `1,234` / `￥12` 失败 | true/false、1/0、yes/no/y/n/on/off；空文本 = false | 按行 / 逗号拆；`[…]` = JSON 数组 | 不转（要 JSON 先用 `data.json`） |
 | number | `2.7`（最多 12 位小数） | 原样 | 非 0 = true | 不转 | 不转 |
 | bool | `true` / `false` | 1 / 0 | 原样 | 不转 | 不转 |
-| list | `[a, b]`（**不是 JSON**） | 不转（求和 / 平均用 `data.list` 的 `sum` / `avg`） | 不转 | 原样 | 不转 |
-| object | 有 `text` 成员就用它，否则 `{k=v}` | 有 `number` 成员就用它 | 有 `found` / `flag` 成员就用它 | 不转 | 原样 |
+| list | `[a, b]`（**不是 JSON**，要 JSON 用 `data.jsonEncode`） | 不转（求和 / 平均用 `data.list` 的 `sum` / `avg`） | 不转 | 原样 | 不转 |
+| object | 有 `text` 成员就用它，否则 `{k=v}`（要 JSON 用 `data.jsonEncode`） | 有 `number` 成员就用它 | 有 `found` / `flag` 成员就用它 | 不转 | 原样 |
 
 反查「谁会产这个类型 / 谁能吃这个类型」用索引，别逐个 `units_get`：
 `ltools_units_list(produces:"number")`、`ltools_units_list(consumes:"text")`（多值逗号，命中任一）。
@@ -411,7 +411,8 @@ internal static class KnowledgePack
   别的逐项算法才用 `flow.forEach` + `data.calc` 把结果写回同一个变量，
   **别用 `flow.set` 的 `append` 当累加器**，它是文本拼接。
 - **累加变量要先有值**（`flow.set` 写 0，或写进 `variables` 的默认值），否则 `${sum}` 报「未定义变量」。
-- **没有专门的「类型转换」动作单元**：常规转换靠上面这些隐式规则 + `data.json` / `text.process` / `data.list`；
+- **没有通用的「类型转换」动作单元**：转换就发生在上表这些边界（绑定参数 / 变量初始化），
+  结构化互转用 `data.json` / `data.jsonEncode`；
   要清洗货币符号 / 千分位，用 `script.csharp`（`vars` 直接读写变量、类型保真）。
 
 ## 3. 工作流（工具名见 MCP）
@@ -644,7 +645,7 @@ internal static class KnowledgePack
 | 一列数字求平均 | 同上，把 `sum` 换成 `avg` | 空列表两者都是 0，不报错；要不要当失败按 `count` 判 |
 | 网页正文 → 一段文字 | `web.request(text)` → `web.html(html: ${response}, xpath: "//p")` → `ui.toast` | `xpath` 必填；`text` 输出就是拼好的正文，`list` 是每一条 |
 | 接口 JSON → 取字段 | `web.request` 的 `json` 输出（object）→ `${data.user.name}` | 已经是对象，**不用**再 `data.json`；返回是纯文本时才 `data.json(text)` |
-| 列表 / 对象 → JSON 文本 | `script.csharp`（`vars` 读写变量，`JsonSerializer` 随便用） | **没有这个动作单元**，别找 `data.json`（它只解析） |
+| 列表 / 对象 → JSON 文本 | `data.jsonEncode(value)` | 结果在 `text`；`indented: true` 给人看，默认紧凑一行 |
 | 目录里的文件 → 逐个处理 | `file.list(path)` → `flow.forEach` → `file.read` / `path.parts` | `list` 是完整路径，`names` 只要文件名 |
 | 选中的文件 → 打开第一个 | `file.selection` → `file.openFile(path: ${选中的.first})` | 没选中只是 `found = false`，不报错 |
 | 等窗口 / 等文字出来 | `window.wait(title)` → `flow.if`；或直接 `screen.findText(timeoutMs: -1)` | 等待类超时是 `found = false`，要不要算失败由「如果」判 |
