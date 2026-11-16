@@ -32,7 +32,10 @@ internal sealed class CaptureRow
 
     public string Title => $"{Entry.KindLabel} · {Entry.TimeText}";
 
-    public string Info => $"{Entry.SizeText} · {Entry.SourceText}";
+    /// <summary>录屏第一行写时长与尺寸（它没有「完成动作」那么要紧），其它写尺寸 + 完成动作。</summary>
+    public string Info => Entry.IsRecord
+        ? $"{Entry.DurationText} · {Entry.SizeText}"
+        : $"{Entry.SizeText} · {Entry.SourceText}";
 
     public string Summary => CaptureCatalog.SummaryOf(Entry);
 }
@@ -164,7 +167,7 @@ public partial class CaptureHistoryWindow : Window
 
         EmptyHint.Visibility = filtered.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         EmptyHint.Text = _all.Count == 0
-            ? "还没有采集记录。用「截图」框选完成后，这里会出现成品图和识别文字。"
+            ? "还没有采集记录。截图、识别、录屏完成后，这里会出现成品图 / 文字 / 视频。"
             : "没有符合条件的记录。";
 
         var target = selectId == null ? null : filtered.FirstOrDefault(r => r.Entry.Id == selectId);
@@ -214,11 +217,16 @@ public partial class CaptureHistoryWindow : Window
     {
         var row = SelectedRow;
         bool has = row != null;
+        bool record = has && row!.Entry.IsRecord;
 
-        CopyImageBtn.IsEnabled = has;
+        CopyImageBtn.IsEnabled = has && !record;
+        CopyImageBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
+        PlayBtn.IsEnabled = record;
+        PlayBtn.Visibility = record ? Visibility.Visible : Visibility.Collapsed;
         SaveAsBtn.IsEnabled = has;
         DeleteBtn.IsEnabled = has;
         CopyTextBtn.IsEnabled = has && !string.IsNullOrEmpty(row!.Entry.Text);
+        CopyTextBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
 
         TextPanel.Visibility = has && row!.Entry.IsRecognize ? Visibility.Visible : Visibility.Collapsed;
         TextPreview.Text = has ? row!.Entry.Text : "";
@@ -234,13 +242,17 @@ public partial class CaptureHistoryWindow : Window
             return;
         }
 
-        PreviewInfo.Text = $"{row!.Entry.KindLabel} · {row.Entry.TimeText} · {row.Entry.SizeText}"
-            + $" · 完成动作：{row.Entry.SourceText}";
+        PreviewInfo.Text = record
+            ? $"{row!.Entry.KindLabel} · {row.Entry.TimeText} · {row.Entry.DurationText}"
+              + $" · {row.Entry.SizeText} · {row.Entry.FormatText}"
+              + $" · 文件 {FileSizeText(row.Entry)}"
+            : $"{row!.Entry.KindLabel} · {row.Entry.TimeText} · {row.Entry.SizeText}"
+              + $" · 完成动作：{row.Entry.SourceText}";
 
         var image = LoadImage(CaptureCatalog.AssetPath(row.Entry.Id), 1600);
         if (image == null)
         {
-            PreviewEmpty.Text = "图片文件不见了";
+            PreviewEmpty.Text = record ? "封面帧不见了" : "图片文件不见了";
             PreviewEmpty.Visibility = Visibility.Visible;
             return;
         }
@@ -250,10 +262,30 @@ public partial class CaptureHistoryWindow : Window
         PreviewEmpty.Visibility = Visibility.Collapsed;
     }
 
+    /// <summary>录屏成品的文件大小（<c>3.4 MB</c>）；读不到返回「—」。</summary>
+    private static string FileSizeText(CaptureEntry entry)
+    {
+        try
+        {
+            string path = CaptureCatalog.FilePath(entry);
+            if (path.Length == 0 || !File.Exists(path)) return "—";
+            string text = CaptureCatalog.FormatBytes(new FileInfo(path).Length);
+            return text.Length > 0 ? text : "—";
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("CaptureHistory.FileSize", "读文件大小失败：" + ex.Message);
+            return "—";
+        }
+    }
+
     private void HistoryList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (!ShouldCopyOnDoubleClick(e.OriginalSource as DependencyObject)) return;
-        CopySelectedImage();
+
+        // 录屏双击 = 播放（复制封面没意义，视频本身才是内容）
+        if (SelectedRow?.Entry.IsRecord == true) PlaySelected();
+        else CopySelectedImage();
     }
 
     private void HistoryList_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -267,12 +299,13 @@ public partial class CaptureHistoryWindow : Window
         }
         else if (e.Key == Key.Enter)
         {
-            CopySelectedImage();
+            if (SelectedRow.Entry.IsRecord) PlaySelected();
+            else CopySelectedImage();
             e.Handled = true;
         }
     }
 
-    /// <summary>双击整行 = 复制图片；滚动条 / 行内按钮 / 表头空白都不算。</summary>
+    /// <summary>双击整行 = 复制图片 / 播放录屏；滚动条 / 行内按钮 / 表头空白都不算。</summary>
     internal static bool ShouldCopyOnDoubleClick(DependencyObject? source)
     {
         if (source == null) return false;
@@ -282,6 +315,31 @@ public partial class CaptureHistoryWindow : Window
     }
 
     // ============ 操作 ============
+
+    private void Play_Click(object sender, RoutedEventArgs e) => PlaySelected();
+
+    /// <summary>用系统默认播放器打开录屏成品。</summary>
+    private void PlaySelected()
+    {
+        var row = SelectedRow;
+        if (row == null) return;
+
+        string path = CaptureCatalog.FilePath(row.Entry);
+        if (path.Length == 0 || !File.Exists(path))
+        {
+            ToastService.Show("录制文件不见了", "采集历史", 2200, ToastKind.error);
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            ToastService.Show("打不开录制文件：" + ex.Message, "采集历史", 0, ToastKind.error);
+        }
+    }
 
     private void CopyImage_Click(object sender, RoutedEventArgs e) => CopySelectedImage();
 
@@ -305,6 +363,20 @@ public partial class CaptureHistoryWindow : Window
     {
         var row = SelectedRow;
         if (row == null) return;
+
+        // 录屏：另存的是视频本身；截图 / 识别：另存 png
+        if (row.Entry.IsRecord)
+        {
+            string path = CaptureCatalog.FilePath(row.Entry);
+            if (path.Length == 0 || !File.Exists(path))
+            {
+                ToastService.Show("录制文件不见了", "采集历史", 2200, ToastKind.error);
+                return;
+            }
+
+            CaptureSave.TrySaveFile(this, path, CaptureCatalog.ExtensionOf(path));
+            return;
+        }
 
         var image = LoadImage(CaptureCatalog.AssetPath(row.Entry.Id), 0);
         if (image == null)

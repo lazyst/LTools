@@ -17,6 +17,13 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # 录屏用的 ffmpeg 不进仓库（约 100 MB），发布前临时下载到 runtime/ffmpeg/
+      # 再由 csproj 的 Content 通配拷进输出目录。下载失败就直接让 job 失败：
+      # 少这一份的包会让「录屏」在用户机器上报错。
+      - name: Fetch ffmpeg
+        shell: pwsh
+        run: ./tools/fetch-ffmpeg.ps1
+
       # 独立部署：内嵌 .NET 运行时，用户免装 .NET 即可运行
       # 显式指定 csproj：目录里同时有 .sln 与 .csproj，不指定时 dotnet 会去构建 sln，
       # 搭配 -o 会触发 NETSDK1194（“--output 不支持构建 solution”）

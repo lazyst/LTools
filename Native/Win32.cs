@@ -160,6 +160,16 @@ internal static class Win32
     /// <summary>点了也不抢焦点（提示弹窗用：自动化正在往别的窗口输入时不能抢前台）。</summary>
     public const long WsExNoactivate = 0x08000000;
 
+    /// <summary>
+    /// 让这个窗口不出现在屏幕捕获里（Win10 2004+）。录屏时用：录制条 / 倒计时自己入镜就太怪了。
+    /// 失败（老系统）返回 false，调用方忽略即可——那时窗口会照常被拍进去。
+    /// </summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
+    /// <summary>只有这个窗口本身被排除；桌面其余部分正常捕获。</summary>
+    public const uint WdaExcludeFromCapture = 0x00000011;
+
     /// <summary>DWM 窗口属性：实际可见边框（不含不可见的阴影边距）。</summary>
     [DllImport("dwmapi.dll")]
     public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out Rect pvAttribute, int cbAttribute);

@@ -45,4 +45,41 @@ internal static class CaptureSave
             return false;
         }
     }
+
+    /// <summary>弹另存为框把录屏成品（mp4 / gif）复制出去；返回 true = 真的存下去了。</summary>
+    public static bool TrySaveFile(Window? owner, string source, string extension)
+    {
+        if (!File.Exists(source))
+        {
+            TrayService.Notify("录制文件不在了：" + source);
+            return false;
+        }
+
+        string ext = string.IsNullOrWhiteSpace(extension) ? "mp4" : extension.Trim().ToLowerInvariant();
+        string label = ext == "gif" ? "GIF 动图 (*.gif)|*.gif" : "MP4 视频 (*.mp4)|*.mp4";
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = label,
+            DefaultExt = "." + ext,
+            FileName = $"录屏-{DateTime.Now:yyyyMMdd-HHmmss}.{ext}",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
+            OverwritePrompt = true,
+        };
+
+        bool? ok = owner != null ? dialog.ShowDialog(owner) : dialog.ShowDialog();
+        if (ok != true) return false;
+
+        try
+        {
+            File.Copy(source, dialog.FileName, overwrite: true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("CapturePro.SaveFile", ex);
+            TrayService.Notify("保存录屏失败：" + ex.Message);
+            return false;
+        }
+    }
 }

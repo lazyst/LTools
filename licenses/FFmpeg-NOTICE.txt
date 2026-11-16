@@ -1,0 +1,27 @@
+FFmpeg（录屏用的外部程序，未内嵌）
+====================================
+
+LTools 的「录屏」功能（内置功能 common.record）需要 ffmpeg 做编码：抓帧后把原始
+BGRA 像素通过管道喂给它，编成 MP4（H.264）或 GIF。ffmpeg 不是本项目的代码，
+LTools 只是调用它。
+
+运行时怎么找
+------------
+1. 随包目录 runtime\ffmpeg\ffmpeg.exe（发布包里有；由 tools/fetch-ffmpeg.ps1 放进去）
+2. 找不到就用系统 PATH 里的 ffmpeg.exe
+两处都没有时，录屏会直接报错并提示运行 tools/fetch-ffmpeg.ps1。
+
+许可证
+------
+FFmpeg 本体：GNU General Public License v3.0（并启用 --enable-gpl / --enable-version3，
+libx264 同样是 GPL）。随包分发的二进制是 gyan.dev「essentials」构建的**未修改**
+单文件版本，构建信息与源码出处：
+
+  项目主页    https://ffmpeg.org/
+  预编译构建  https://www.gyan.dev/ffmpeg/builds/
+  对应源码    https://ffmpeg.org/download.html#get-sources
+              https://code.videolan.org/videolan/x264
+  （亦可向 LTools 维护者索取该构建的完整源码）
+
+仓库里**不存这份二进制**（.gitignore 的 /runtime/ffmpeg/），所以本文件只声明来源；
+具体随包版本号由 tools/fetch-ffmpeg.ps1 在下载时写进在它自己生成的那份 NOTICE。

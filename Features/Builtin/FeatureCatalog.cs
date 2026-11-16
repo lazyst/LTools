@@ -171,6 +171,29 @@ internal static class FeatureCatalog
         C("common.screenText", "屏幕", "屏幕选字", "edit",
             "拖选屏幕上的文字并识别，点候选复制",
             ScreenText),
+        C("common.record", "屏幕", "录屏", "record",
+            "录屏（选区 / 主屏 / 全部屏幕 / 前台窗口），存成 MP4 或 GIF",
+            Record,
+            new FeatureParam("source", "范围", FeatureParamKind.Choice, "pick",
+                Options: new[]
+                {
+                    new FeatureOption("pick", "框选区域"),
+                    new FeatureOption("primary", "主屏"),
+                    new FeatureOption("all", "全部屏幕"),
+                    new FeatureOption("window", "前台窗口"),
+                },
+                Hint: "框选时按 Esc 取消"),
+            new FeatureParam("format", "格式", FeatureParamKind.Choice, "mp4",
+                Options: new[]
+                {
+                    new FeatureOption("mp4", "MP4 视频"),
+                    new FeatureOption("gif", "GIF 动图"),
+                },
+                Hint: "GIF 帧率最高 15、宽度最多 960"),
+            new FeatureParam("fps", "帧率", FeatureParamKind.Number, "30",
+                Hint: "5–60；GIF 取 min(帧率, 15)", Unit: "fps"),
+            new FeatureParam("countdown", "倒计时", FeatureParamKind.Number, "3",
+                Hint: "开始前等几秒，0 = 立刻开始", Unit: "秒")),
     };
 
     private static readonly Dictionary<string, FeatureDef> ById =
@@ -387,6 +410,19 @@ internal static class FeatureCatalog
         {
             RecordingIndicatorWindow.RestoreAutomation(indicator);
         }
+    }
+
+    // ============ 录屏 ============
+
+    private static void Record(FeatureRunContext ctx)
+    {
+        var plan = RecordPlan.FromValues(
+            ctx.Get("source"),
+            ctx.Get("format"),
+            ctx.GetInt("fps", RecordPlan.DefaultFps),
+            ctx.GetInt("countdown", RecordPlan.DefaultCountdown));
+
+        RecordSession.TryRun(null, plan);
     }
 
     private static BitmapSource ToSource(System.Drawing.Bitmap bitmap)

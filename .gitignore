@@ -76,3 +76,6 @@ publish/
 # 按需下载的 OCR 模型（PP-OCRv6 高精度），dev 落在仓库根
 ocr-models/
 
+# 随包 ffmpeg（约 100 MB，录屏用），由 tools/fetch-ffmpeg.ps1 下载，不进仓库
+/runtime/ffmpeg/
+

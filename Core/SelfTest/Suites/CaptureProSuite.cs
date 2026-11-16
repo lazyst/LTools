@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.IO;
+using System.Threading;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -35,6 +38,8 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "长截图：行位移检测", ScrollShift));
         cases.Add(new("capturePro", "长截图：拼接与面板落点", ScrollBuild));
         cases.Add(new("capturePro", "选字：候选切分", ScreenTextSplit));
+        cases.Add(new("capturePro", "录屏：参数 / 命令行 / 定位", Record));
+        cases.Add(new("capturePro", "录屏：暂停计时与历史文案", RecordBookkeeping));
     }
 
     private static void Geometry()
@@ -697,6 +702,148 @@ internal static class CaptureProSuite
             Array.Copy(pixels, y * stride, rows[y], 0, stride);
         }
         return rows;
+    }
+
+    // ============ 录屏 ============
+
+    /// <summary>
+    /// 录屏参数 + ffmpeg 命令行 + 定位顺序。
+    /// 命令行是「拼错了要录半天才发现」的那类东西，关键参数逐条断言（顺序也守着）。
+    /// </summary>
+    private static void Record()
+    {
+        var plan = RecordPlan.FromValues("window", "gif", 120, 99);
+        Check.Equal(RecordMode.Window, plan.Mode, "范围按取值解析");
+        Check.Equal(RecordFormat.Gif, plan.Format, "格式按取值解析");
+        Check.Equal(RecordPlan.MaxFps, plan.EffectiveFps, "帧率夹到上限");
+        Check.Equal(RecordPlan.MaxCountdown, plan.Countdown, "倒计时夹到上限");
+
+        Check.Equal(RecordMode.Region, RecordPlan.FromValues("???", null, 0, -5).Mode, "认不出的范围退回框选");
+        Check.Equal(RecordFormat.Mp4, RecordPlan.FromValues(null, "webm", 0, 0).Format, "认不出的格式退回 MP4");
+        Check.Equal(RecordPlan.DefaultFps, RecordPlan.FromValues(null, null, 0, 0).EffectiveFps, "帧率 0 = 默认值");
+        Check.Equal(RecordPlan.MinFps, RecordPlan.FromValues(null, null, 1, 0).EffectiveFps, "帧率太小夹到下限");
+        Check.Equal(0, RecordPlan.FromValues(null, null, 30, -5).Countdown, "倒计时负数夹到 0");
+
+        Check.Equal(RecordPlan.GifMaxFps, RecordPlan.FromValues(null, "gif", 60, 0).GifFps, "GIF 帧率最多 15");
+        Check.Equal("gif", RecordPlan.FromValues(null, "gif", 30, 0).Extension, "GIF 扩展名");
+        Check.Equal("mp4", RecordPlan.FromValues(null, null, 30, 0).Extension, "MP4 扩展名");
+
+        Check.Equal("选区", RecordPlan.ModeLabel(RecordMode.Region), "范围文案");
+        Check.Equal("全部屏幕", RecordPlan.ModeLabel(RecordMode.All), "全部屏幕文案");
+        Check.Equal("MP4", RecordPlan.FormatLabel("mp4"), "格式文案");
+        Check.Equal("GIF", RecordPlan.FormatLabel("GIF"), "格式文案不分大小写");
+        Check.Equal("00:07", RecordPlan.FormatClock(7000), "不足一分钟");
+        Check.Equal("01:02", RecordPlan.FormatClock(62000), "超过一分钟");
+        Check.Equal("1:00:00", RecordPlan.FormatClock(3600000), "超过一小时");
+
+        // MP4：原始 BGRA 从管道进来 → libx264 / yuv420p，奇数尺寸补成偶数，moov 前置
+        var mp4 = RecordPlan.Mp4Args(new Int32Rect(0, 0, 1921, 1081), 30, "out.mp4");
+        string mp4Line = string.Join(" ", mp4);
+        Check.True(mp4Line.Contains("rawvideo") && mp4Line.Contains("bgra"), "原始帧格式是 bgra");
+        Check.True(mp4Line.Contains("1921x1081"), "尺寸原样交给编码器");
+        Check.True(mp4Line.Contains("-framerate 30"), "帧率写进命令行");
+        Check.True(mp4Line.Contains("pipe:0"), "从标准输入读原始帧");
+        Check.True(mp4Line.Contains("libx264") && mp4Line.Contains("yuv420p"), "H.264 + yuv420p");
+        Check.True(mp4Line.Contains("pad=ceil(iw/2)*2:ceil(ih/2)*2"), "奇数宽高补成偶数");
+        Check.True(mp4Line.Contains("+faststart"), "moov 前置（边下边看）");
+        Check.Equal("out.mp4", mp4[^1], "输出路径是最后一个参数");
+
+        // GIF：两遍（调色板 → 编码），帧率与宽度都压下来
+        var palette = RecordPlan.GifPaletteArgs("in.mp4", "p.png", 60);
+        string paletteLine = string.Join(" ", palette);
+        Check.True(paletteLine.Contains("fps=15"), "GIF 抽帧压到 15");
+        Check.True(paletteLine.Contains("palettegen"), "第一遍做调色板");
+        Check.True(paletteLine.Contains("min(960,iw)"), "宽度上限 960");
+        Check.Equal("p.png", palette[^1], "调色板文件是最后一个参数");
+
+        var gif = RecordPlan.GifEncodeArgs("in.mp4", "p.png", "out.gif", 60);
+        string gifLine = string.Join(" ", gif);
+        Check.True(gifLine.Contains("paletteuse"), "第二遍用调色板");
+        Check.True(gifLine.Contains("-loop 0"), "无限循环");
+        Check.Equal("out.gif", gif[^1], "GIF 输出是最后一个参数");
+
+        // 定位：随包优先，其次 PATH（要剥引号），都没有返回 null
+        string bundled = Path.Combine("C:\\app", "runtime", "ffmpeg", "ffmpeg.exe");
+        Check.Equal(bundled, RecordPlan.Locate("C:\\app", "D:\\tools", p => p == bundled), "随包优先");
+
+        string fromPath = Path.Combine("D:\\tools", "ffmpeg.exe");
+        Check.Equal(fromPath, RecordPlan.Locate("C:\\app", "D:\\tools", p => p == fromPath), "没有随包就用 PATH");
+
+        string quoted = Path.Combine("D:\\with space", "ffmpeg.exe");
+        Check.Equal(quoted,
+            RecordPlan.Locate("", "D:\\none;\"D:\\with space\"", p => p == quoted), "PATH 里的引号要剥掉");
+
+        Check.True(RecordPlan.Locate("C:\\app", "D:\\none", _ => false) == null, "都没有就返回 null");
+    }
+
+    /// <summary>
+    /// 暂停不计时 + 采集历史里录屏条目的形状 / 文案。
+    /// 计时断言只比「墙钟 − 活动时长 ≥ 暂停时长」，不给机器快慢留坑。
+    /// </summary>
+    private static void RecordBookkeeping()
+    {
+        var wall = Stopwatch.StartNew();
+        var controller = new RecordController();
+        Thread.Sleep(25);
+        controller.Pause();
+        Thread.Sleep(120);
+        controller.Resume();
+        Thread.Sleep(25);
+
+        long total = wall.ElapsedMilliseconds;
+        long active = controller.ElapsedMs;
+        Check.True(total - active >= 100, $"暂停的 120ms 不算进活动时长（差 {total - active}ms）");
+        Check.True(active >= 20, "活动时长照常累计");
+
+        Check.False(controller.Finished, "还没结束");
+        Check.False(controller.Cancelled, "完成不是取消");
+        Check.True(controller.TogglePause(), "切一次变暂停");
+        Check.True(controller.IsPaused, "确实是暂停态");
+        Check.False(controller.TogglePause(), "再切回继续");
+
+        controller.Stop();
+        Check.True(controller.Finished, "点完成后就结束");
+        Check.False(controller.Cancelled, "完成 != 取消");
+
+        // 采集历史的录屏条目
+        var record = new CaptureEntry
+        {
+            Id = "r1",
+            Kind = CaptureCatalog.KindRecord,
+            CreatedAt = "2026-11-16T11:00:00",
+            Width = 1920,
+            Height = 1080,
+            Source = "录屏",
+            File = "records/r1.mp4",
+            DurationMs = 62000,
+            State = "done",
+        };
+
+        Check.Equal("录屏", CaptureCatalog.KindLabel(CaptureCatalog.KindRecord), "record 的中文名");
+        Check.True(record.IsRecord && !record.IsRecognize, "kind 判定");
+        Check.Equal("MP4 · 录屏", CaptureCatalog.SummaryOf(record), "录屏摘要 = 格式 + 完成动作");
+        Check.Equal("01:02", record.DurationText, "时长文案");
+        Check.Equal("MP4", record.FormatText, "格式文案");
+        Check.Equal("records/r1.mp4", CaptureCatalog.RecordRelative("r1", "mp4"), "条目里的相对路径");
+        Check.True(CaptureCatalog.FilePath(record).EndsWith("records\\r1.mp4"), "绝对路径拼在数据根下");
+
+        var gif = new CaptureEntry { File = "records/r2.gif", Kind = CaptureCatalog.KindRecord };
+        Check.Equal("GIF", gif.FormatText, "GIF 条目");
+        Check.Equal("GIF", CaptureCatalog.SummaryOf(gif), "没有完成动作就只写格式");
+        Check.Equal("", new CaptureEntry { Kind = CaptureCatalog.KindShot }.FormatText, "截图没有格式");
+
+        Check.Equal("gif", CaptureCatalog.ExtensionOf("shots/a.GIF"), "扩展名统一小写");
+        Check.Equal("mp4", CaptureCatalog.ExtensionOf("C:\\a\\b.MP4"), "大写扩展名也认");
+        Check.Equal("", CaptureCatalog.ExtensionOf(""), "没有文件名就没有扩展名");
+
+        Check.Equal("820 KB", CaptureCatalog.FormatBytes(840_000), "不到 1 MB 用 KB");
+        Check.Equal("3.4 MB", CaptureCatalog.FormatBytes(3_600_000), "MB 保留一位");
+        Check.Equal("", CaptureCatalog.FormatBytes(0), "0 字节不写文案");
+
+        // 录屏条目也进保留策略（与截图同一条路）
+        var (keep, _) = CaptureCatalog.PlanPrune(
+            new[] { record }, new DateTimeOffset(2026, 11, 16, 12, 0, 0, TimeSpan.Zero), 200, 30);
+        Check.Equal(1, keep.Count, "当天的录屏不会被剪掉");
     }
 
     /// <summary>8×8 像素的假底图 + 缩放 2 的文档（不开窗口）。</summary>

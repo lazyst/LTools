@@ -38,8 +38,8 @@
 | 7 | 橡皮 | 整笔删除（删掉整个标注元素），不做像素级擦除 |
 | 8 | 贴图 | P1 已落地：无激活 / 拖动 / 滚轮缩放 / 不透明度 / 置顶 / 锁定 + 贴图组登记处；**局部显示与成组移动留后续** |
 | 9 | 识别 | P2-1 已落地：文字 + 二维码 + 本地近似表格（PP-OCRv6 词框聚类出 TSV/HTML），**不做公式与翻译** |
-| 10 | 录屏 | P4，随包 ffmpeg（与 AutoHotkey 同一套：`runtime/` + `tools/fetch-*.ps1` + `licenses/`） |
-| 11 | 采集历史 | P2，新数据根 `captures/`（`catalog.json` + `assets/` + `thumbnails/`），进备份域白名单 |
+| 10 | 录屏 | P4 已落地：随包 ffmpeg（与 AutoHotkey 同一套：`runtime/` + `tools/fetch-*.ps1` + `licenses/`），**不录音频** |
+| 11 | 采集历史 | P2，新数据根 `captures/`（`catalog.json` + `assets/` + `thumbnails/` + `records/`），进备份域白名单 |
 
 ## 2. 覆盖层结构
 
@@ -285,23 +285,28 @@ Selected --取色工具 + 单击--> 复制颜色（留在覆盖层）
   **不另写识别实现**；表格聚类是纯函数 `OcrTable.Build`（`Features/CapturePro/OcrTable.cs`）。
 - 不做公式识别与翻译（Quicker 那两条都靠云）。
 
-## 11. 采集历史（P2-2）
+## 11. 采集历史（P2-2 / P4）
 
-截图 / 识别的落点：数据根 `captures/`（`catalog.json` + `assets/<id>.png` + `thumbnails/<id>.png`），
-进备份域白名单（`BackupService.BuildPlan`），换机后历史还在。
+截图 / 识别 / 录屏的落点：数据根 `captures/`（`catalog.json` + `assets/<id>.png` + `thumbnails/<id>.png`
++ 录屏的 `records/<id>.mp4|gif`），进备份域白名单（`BackupService.BuildPlan`），换机后历史还在。
 
-- 一条 = 一次**已经完成**的截图：`Kind` = `shot`（复制 / 贴图 / 另存为）或 `recognize`（识别）；
-  `Source` 记完成动作（复制 / 贴图 / 识别 / 另存为），`CreatedAt` 固定 `yyyy-MM-ddTHH:mm:ss`，
-  `Width` / `Height` 是成品图的物理像素。
-- 取消覆盖层不记；另存为在对话框里取消也不记（那一次没完成）。
+- 一条 = 一次**已经完成**的采集：`Kind` = `shot`（复制 / 贴图 / 另存为）/ `recognize`（识别）/ `record`（录屏）；
+  `Source` 记完成动作（复制 / 贴图 / 识别 / 另存为 / 录屏），`CreatedAt` 固定 `yyyy-MM-ddTHH:mm:ss`，
+  `Width` / `Height` 是成品图（录屏是录制区域）的物理像素；录屏另有 `File`（相对 `captures/` 的
+  `records/x.mp4`）与 `DurationMs`。
+- 取消覆盖层不记；另存为在对话框里取消也不记（那一次没完成）；录屏在框选 / 倒计时 / 控制条上取消也不记。
 - 识别条目先记一条 `State = pending`（列表显示「识别中…」），识别结果窗算完后 `SetText` 回填文字并改成
   `done`；用户提前关掉结果窗也照样回填。程序中途退出留下的 `pending` 十分钟后按「没有识别到文字」显示。
-- **保留策略**：最多 200 条、最多 30 天，超出连同两张图一起删；启动时后台 `Maintain()` 一次，
-  每次新增也顺带剪枝。纯函数 `PlanPrune` / `ThumbnailSize` 由 `--selftest` 直接断言。
+- **保留策略**：最多 200 条、最多 30 天，超出连同两张图（录屏再连带视频文件）一起删；启动时后台 `Maintain()` 一次，
+  每次新增也顺带剪枝。纯函数 `PlanPrune` / `ThumbnailSize` / `FormatBytes` 由 `--selftest` 直接断言。
 - 缩略图长边 240（小图不放大）；预览按宽 1600 解码，复制 / 另存为时再读原图，列表不把整张大图常驻内存。
-- 窗口（`Views/CapturePro/CaptureHistoryWindow`）：三页签（全部 / 截图 / 识别）+ 搜索（150ms 防抖，认识别文字）
-  + 左列表 + 右预览 + 识别文字只读框；操作：复制图片 / 另存为… / 复制识别文字 / 删除 / 清空全部 / 打开目录 / 关闭。
-  双击整行 = 复制图片（`ShouldCopyOnDoubleClick` 纯判定，滚动条 / 行内按钮 / 表头空白都不算）。
+  录屏的缩略图 / 预览是**第一帧封面**（录制时抓到的），视频本身不进内存。
+- 窗口（`Views/CapturePro/CaptureHistoryWindow`）：四页签（全部 / 截图 / 识别 / 录屏）+ 搜索（150ms 防抖，
+  认识别文字与类型名）+ 左列表 + 右预览 + 识别文字只读框；操作：复制图片 / 另存为… / 复制识别文字 /
+  播放 / 删除 / 清空全部 / 打开目录 / 关闭。录屏条目把「播放」「另存为…」换成视频（另存为复制视频文件），
+  预览信息多写时长 / 格式 / 文件大小。
+  双击整行 = 复制图片（截图 / 识别）或播放（录屏），`ShouldCopyOnDoubleClick` 纯判定，滚动条 / 行内按钮 /
+  表头空白都不算。
 - 入口：托盘菜单「采集历史…」（单实例，再点一次激活已开的窗口）。
 
 ## 12. 长截图（P3-2）
@@ -349,7 +354,43 @@ Selected --取色工具 + 单击--> 复制颜色（留在覆盖层）
 - 已知限制：引擎识不出的字（艺术字 / 图标字体 / 低分辨率）就是识不出；屏幕选字**不进采集历史**
   （它只产出文字，没有成品图）。
 
-## 14. 阶段路线
+## 14. 录屏（P4）
+
+入口 = 内置功能「录屏」（`common.record`，屏幕分类）：放面板 / 绑快捷键 / 悬浮都行，没有动作单元。
+参数：范围（框选区域 / 主屏 / 全部屏幕 / 前台窗口）、格式（MP4 / GIF）、帧率（5–60）、倒计时（0–10 秒）。
+
+- 一次会话（`Features/CapturePro/RecordSession.cs`，跑在后台线程；同一时间只允许一次）：
+  定区域 → 倒计时 → 控制条 + 抓帧编码 → 进采集历史。框选会开覆盖层，与截图同一套三道闸
+  （`TransientMinimize.MinimizeAll` / `MouseHook.SetWindowPickerActive` / `HotkeyRegistry.Suspended`），
+  `finally` 成对还原。倒计时期间也让鼠标钩子让路——右键是它唯一的取消口。
+- 抓帧 + 编码（`RecordEngine.cs`）：按帧率抓屏幕那一块，原始 BGRA 直接从 `pipe:0` 喂 ffmpeg
+  （`libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -movflags +faststart`，`pad` 保证宽高是偶数），
+  **不落中间帧**。某帧抓慢了补写上一帧（最多 4 帧），落后太多就对齐当前时刻，成品时长与现实一致
+  而不是「掉帧后跑快」。收尾关管道（EOF）再等 ffmpeg 写完容器；退出码非 0 时把 stderr 尾部当报错。
+  帧源是字段（`FrameSource`）：冒烟注入合成画面，不录用户桌面。
+- 控制条（`Views/CapturePro/CaptureRecordWindow`）：红点脉冲 + 计时 + 规格（格式 / 帧率 / 尺寸），
+  三个鼠标出口（暂停 / 继续、完成、取消）。**不抢焦点**（`ShowActivated=False` +
+  `WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW`，录制时用户还要在别的程序里操作），并用
+  `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` 自己不入镜。代价是收不到 `Esc`，所以出口全是鼠标按钮。
+- 暂停只停计时与抓帧（`RecordController` 用活动时钟扣掉暂停），恢复后接着录，成品里没有一段空白；
+  暂停期间控制条上的计时冻住。
+- 倒计时（`RecordCountdownWindow`）：盖住要录的那块区域，同样不抢焦点 / 不入镜；数到 0 自己关，
+  右键或「取消」按钮放弃这一次（`OnClosing` 兜底当取消，别让会话等一个永远不结束的倒计时）。
+- 成品与历史：先落 `cache/record/`（`cache/` 不进备份），成功后由 `CaptureCatalog.CreateRecord`
+  **搬进** `captures/records/<id>.mp4|gif` 并记一条 `Kind = record`（带 `File` 与 `DurationMs`）；
+  封面 = 第一帧，走 `assets/<id>.png` + 缩略图。历史窗口多一个「录屏」页签：预览封面 + 时长 / 尺寸 /
+  格式 / 文件大小，按钮是「播放」「另存为…」（复制视频文件）「删除」，双击整行 = 播放；
+  删记录 / 清空 / 剪枝都连带删视频文件。
+- GIF：先录成临时 mp4，再两遍转码（`palettegen` + `paletteuse sierra2_4a`），帧率 ≤ 15、宽 ≤ 960，
+  无限循环。**转码失败退回 MP4 并给一条 warning**——已经录到的东西不能因为压 GIF 失败就丢掉。
+- ffmpeg 从哪来（`RecordPlan.FindFfmpeg`）：先找随包的 `runtime\ffmpeg\ffmpeg.exe`，其次 `PATH`。
+  二进制**不进仓库**：`tools/fetch-ffmpeg.ps1` 下载 gyan.dev essentials（约 100 MB），
+  `release.yml` 在 publish 前跑一次；csproj 用通配 `runtime\ffmpeg\**\*`（目录不存在不报错），
+  许可证与源码出处见 `licenses/FFmpeg-NOTICE.txt`。两处都找不到时报错并指向那个脚本。
+- 已知限制：不录音频；录制期间全局热键照常（不挂起——按快捷键的动作会被录进去）；
+  `WDA_EXCLUDEFROMCAPTURE` 要 Win10 2004+，老系统上控制条 / 倒计时会入镜（录制内容本身不受影响）。
+
+## 15. 阶段路线
 
 | 阶段 | 模块 | 内容 |
 |---|---|---|
@@ -360,9 +401,9 @@ Selected --取色工具 + 单击--> 复制颜色（留在覆盖层）
 | **P3-1** ✅ | — | 跨屏选区：覆盖层盖住所有显示器的并集，逐块抓帧拼一张冻结画面 |
 | **P3-2** ✅ | ⑤ | 长截图（滚动触发 + 重叠检测 + 拼接 + 预览窗） |
 | **P3-3** ✅ | ⑧ | 屏幕选字（拖选识别 + 候选条） |
-| **P4** | ⑥ | 录屏（选区 / 主屏 / 全屏 + 倒计时 + 暂停继续 + MP4/GIF）+ 录屏历史 |
+| **P4** ✅ | ⑥ | 录屏（选区 / 主屏 / 全屏 / 前台窗口 + 倒计时 + 暂停继续 + MP4/GIF）+ 录屏历史 |
 
-## 15. 验收
+## 16. 验收
 
 - `--selftest` 的 `capturePro` 组：标注几何（箭头端点、折线命中、序号递增、马赛克块计算、
   聚光排除几何）、撤销栈（含重做与上限）、导出尺寸 = 选区物理像素、工具 ↔ 参数条映射、工具栏布局项、
@@ -373,7 +414,10 @@ Selected --取色工具 + 单击--> 复制颜色（留在覆盖层）
   长截图（行位移检测：正常位移 / 小幅位移 / 没动 / 内容对不上 / 高度不一致 / 页脚不动；
   拼接只接新露的行、预览按比例缩、到高度上限自己停；面板落点右侧 → 下方 → 塞回工作区）、
   屏幕选字（按句末标点 / 逗号 / 长度上限切候选、空白与完全重复丢掉、切完字符总数不变、
-  候选条落点右侧 → 下方 → 夹回窗口右下角）。
+  候选条落点右侧 → 下方 → 夹回窗口右下角）、
+  录屏（参数解析与夹紧、MP4 的 rawvideo/bgra/尺寸/帧率/pipe:0/libx264/pad/faststart/输出末位、
+  GIF 两遍与帧率 ≤ 15 / 宽 ≤ 960 / 无限循环、ffmpeg 定位的随包优先与 PATH 引号、暂停不计时、
+  录屏条目的时长 / 格式 / 文件大小 / 绝对路径 / 摘要文案、录屏条目照常参与保留策略）。
 - 仓库外 `capture-overlay-smoke`：真窗口里框选 → 选矩形工具画一个 → 撤销 → 导出，断言导出的像素
   （按颜色找得到矩形的描边、画之前找不到）与尺寸，并验工具栏 13 个按钮 / 动作栏 6 个按钮（含贴图 / 识别 / 长截图）/
   文字工具开框提交 / 清选区后收起；
@@ -386,7 +430,11 @@ Selected --取色工具 + 单击--> 复制颜色（留在覆盖层）
   长截图：动作栏 6 个按钮（含「长截图」）、用合成帧驱动整套「滚一屏 → 抓帧 → 认重叠 → 拼接」到 200×900 且逐行
   对得上、取消时没有结果、面板视觉截图、面板落在选区右侧（`Left = 选区右 + 12`）；
   屏幕选字：灌一份识别结果后候选条 3 条 / 整段文字进只读框 / 条落在选区右侧并对齐顶边 / 视觉截图，
-  点一条候选复制的是那一条、复制全部拿到整段、取消不算完成。
+  点一条候选复制的是那一条、复制全部拿到整段、取消不算完成；
+  录屏：控制条（计时归零 / 写明 320 × 240 与 30 fps / 点暂停变「继续」且计时不动 / 取消标记）+ 视觉截图；
+  用合成帧真抓一小段编成 mp4（ffmpeg 解码零告警、帧数与封面帧齐），再走 `CreateRecord` 搬进
+  `captures/records`：临时文件搬走、摘要「MP4 · 录屏」、历史「录屏」页签与「播放」按钮出现、
+  「复制图片」「复制识别文字」收起、预览信息写时长 / 格式 / 文件大小、删记录连带删视频。
 - 真机：三个入口（`screen.capture` 交互 / 快捷键 / 面板）都能唤出；`Esc` 逐级退出不卡；
   覆盖层期间按单键绑定不会触发别的动作；框选里输入的字母能正常用（不会被钩子吞）。
 - 真机（P1）：点贴图不改变前台（紧接着的注入仍打在原程序上）；滚轮缩放时**光标下的内容不动**；
@@ -406,9 +454,15 @@ Selected --取色工具 + 单击--> 复制颜色（留在覆盖层）
 - 真机（P3-3）：把「屏幕选字」绑一个键，在浏览器 / 聊天窗口 / 图片上拖一块文字，
   候选条出现在选区外面、点一条就粘贴得出来；「复制全部」拿到整段；拖选只读框里的两行按 `Ctrl+C`
   只复制那两行；`Esc` / 右键能退出；拖到副屏或跨屏也能框。
+- 真机（P4）：把「录屏」绑一个键 / 放面板，框一块区域录 10 秒：倒计时看得见但**不抢前台**，
+  录制期间照常操作目标程序；控制条不出现在成品画面里；暂停 3 秒再继续，成品里那 3 秒不在了、
+  计时在暂停期间不动；点「完成」后 mp4 能在系统播放器里播、时长约 10 秒、画面不卡不跳；
+  「另存为」复制出来的文件能播；采集历史「录屏」页签里点「播放」能直接打开；
+  换成 GIF 再录一次（≤ 15 fps、宽 ≤ 960、循环播放）；删掉那条记录后 `captures/records/` 里也没了；
+  `runtime\ffmpeg\` 挪走且 PATH 里没有 ffmpeg 时给一句明确的报错。
 - 构建 0 错 0 警。
 
-## 16. 坑（实现时逐条对照）
+## 17. 坑（实现时逐条对照）
 
 1. **DPI**：窗口尺寸按 `物理 / scale` 给 WPF，但选区与标注存物理像素；只有 `ToDip`/`ToPhysical` 能乘除。
 2. **钩子**：打开前 `SetWindowPickerActive(true)` + `HotkeyRegistry.Suspended = true`，`finally` 里成对还原；
@@ -479,9 +533,38 @@ Selected --取色工具 + 单击--> 复制颜色（留在覆盖层）
 28. **候选条画在覆盖层窗口里，别另开第二个窗口**：`Esc` 只需要挂一次（窗口 PreviewKeyDown），
     点候选条也不会被当成新框选（`IsOnBar` 沿视觉树往上找 `ResultBar`）；第二个窗口要么抢焦点、
     要么得自己同步关闭，反而更容易点不中。
+29. **录制控制条既不能抢焦点也不能入镜**：抢焦点会把前台换给自己（之后注入的键鼠、菜单展开状态全变），
+    所以 `ShowActivated=False` + `WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW`；又因为它就压在录制区域上，
+    必须 `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` 才不会录进成品（Win10 2004+，失败忽略）。
+    同理**别在倒计时窗口里 `Activate()` / `Focus()`**——录「展开的菜单」时一抢焦点菜单就收了。
+30. **时间轴靠「活动时钟」，不是墙钟**：`RecordController` 用 `Stopwatch` 记总时长、扣掉暂停段，
+    抓帧循环按 `ActiveTicks` 排下一帧。直接用墙钟会让暂停的几十秒在成品里变成一段空白，
+    播放器上看着像「卡住了」。
+31. **抓帧慢了要补帧、但不能无限补**：一帧抓慢了补写上一帧（最多 4 帧）让时长对齐现实；
+    连续落后说明机器跟不上，直接 `frame = ceil(active / ticksPerFrame)` 对齐，别补到雪崩
+    （越补越慢，最后一直在追进度）。
+32. **`CaptureEntry.File` 相对的是 `captures/`，不是数据根**：`FilePath` 拼 `Root`（`captures`），
+    写成 `AppPaths.DataRoot` 会得到 `records/x.mp4` 这种少一层目录的路径——文件明明搬进去了却「找不到」
+    （冒烟第一轮就是这么红的）。
+33. **GIF 转码失败不能当整次录制失败**：mp4 已经录好了，压 GIF 失败就退回 mp4 + 一条 warning；
+    反过来把临时 mp4 删掉才是真的丢东西。同理 `CreateRecord` 搬文件失败要报错并删临时文件，
+    绝不能留下「有条目、没文件」的坏记录。
+34. **录制期间全局热键不挂起，倒计时才挂鼠标钩子**：录制时用户可能真想按快捷键（动作也会被录进去，
+    这是预期）；但倒计时的右键取消必须先 `MouseHook.SetWindowPickerActive(true)` 让「裸右键长按 = 面板」
+    让路，否则那一下右键被吞掉、又注入一次，等于取消不掉。
 
-## 17. 实施记录
+## 18. 实施记录
 
+- **P4 录屏**（`Features/CapturePro/RecordPlan.cs`、`RecordEngine.cs`、`RecordController.cs`、
+  `RecordSession.cs`；`Views/CapturePro/CaptureRecordWindow.xaml(.cs)`、`RecordCountdownWindow.xaml(.cs)`；
+  入口是内置功能 `common.record`）：四段拆开——参数与命令行（纯函数）、抓帧编码、暂停计时、会话编排。
+  抓帧原始 BGRA 走 `pipe:0` 直编 MP4（不落中间帧，慢了补帧），GIF 走两遍调色板转码（失败退回 MP4）；
+  控制条与倒计时都不抢焦点、都 `WDA_EXCLUDEFROMCAPTURE` 不入镜；暂停用活动时钟扣掉，成品里没有空白段。
+  成品先落 `cache/record/`，成功后搬进 `captures/records/` 并记 `Kind = record`（封面 = 第一帧）；
+  历史窗口加「录屏」页签、「播放」按钮、时长 / 格式 / 文件大小，删记录连带删视频。
+  ffmpeg 随包但不进仓库（`tools/fetch-ffmpeg.ps1` + `release.yml` 的 fetch 步骤 + `licenses/FFmpeg-NOTICE.txt`），
+  运行时先找随包再找 PATH。
+  自检补「录屏：参数 / 命令行 / 定位」「录屏：暂停计时与历史文案」；冒烟补控制条 + 合成帧真编码 + 录屏历史。
 - **P3-3 屏幕选字**（`Features/CapturePro/ScreenTextCandidates.cs`、`ScreenTextSession.cs`；
   `Views/CapturePro/CaptureTextSelectWindow.xaml(.cs)`；入口是内置功能 `common.screenText`）：
   冻结整块桌面（与截图覆盖层同一套取景）→ 拖框 → `OcrLayout` 在后台识别 → 候选条画在同一个窗口里
