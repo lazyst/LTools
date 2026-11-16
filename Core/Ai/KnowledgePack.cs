@@ -358,6 +358,9 @@ internal static class KnowledgePack
   `retry`（失败后最多再试几次，默认 0）+ `retryDelayMs`（两次尝试之间等多少毫秒，默认 500）。
   「窗口 / 文字还没出来」这类问题优先用它，别手搭「循环 + 延迟 + 计数」；不想重试某一步而想等条件成立，
   用 `flow.waitFor`（条件 + `timeoutMs` + `intervalMs`，输出 `ok` / `elapsed`）。
+- 步骤执行前，`out` 映射到的变量会先被清成**该输出类型的零值**（`bool` → false、`number` → 0、
+  `list` → 空、`object` → 空、`text` → 空）。所以「这次 operation 没写」的输出读到的是空值，
+  不是上一步留下的旧值；参数在清空之前求值，`${同一个变量}` 当输入照常能读到旧值。
 
 ## 2. 参数三态
 

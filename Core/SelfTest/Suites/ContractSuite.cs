@@ -5,12 +5,14 @@ using LTools.Features.Units.Text;
 namespace LTools.Core.SelfTest;
 
 /// <summary>
-/// 动作单元契约（<c>docs/UNIT_CONTRACT_AUDIT.md</c> 建议 1-6）：说明写清「哪个 operation 写哪个输出」，
-/// 声明了 <c>found</c> 的单元每步都写它，恒真的 <c>found</c> 说明失败语义。
+/// 动作单元契约（<c>docs/UNIT_CONTRACT_AUDIT.md</c> 建议 1-8）：说明写清「哪个 operation 写哪个输出」，
+/// 声明了 <c>found</c> 的单元每步都写它，恒真的 <c>found</c> 说明失败语义，
+/// 引擎在每一步执行前把 <c>out</c> 映射到的变量清成零值。
 /// </summary>
 /// <remarks>
-/// 引擎**不预清**输出变量：没有写过的输出会保留上一步的值，不报错。所以这里不光断言文案，
-/// 还用真单元跑一遍「先命中、再跑不命中的操作」，确认 <c>found</c> 被写成 false 而不是读到旧值。
+/// 引擎从建议 8 起会预清输出变量，所以「读到上一步的旧值」已经不可能发生；
+/// 这里改成从**轨迹**确认单元真的写了 <c>found</c>（没写就不会出现在 <c>Outputs</c> 里），
+/// 两条一起才说明「值对」而不是「靠预清兜住的」。
 /// </remarks>
 internal static class ContractSuite
 {
@@ -23,6 +25,8 @@ internal static class ContractSuite
         cases.Add(new("contract", "恒真的 found 说明了失败语义", AlwaysTrueFoundDocs));
         cases.Add(new("contract", "图片路径参数声明成文本", ImagePathTypes));
         cases.Add(new("contract", "枚举选项值都能被派发", OptionDispatch));
+        cases.Add(new("contract", "执行前把 out 变量清成零值", OutputsCleared));
+        cases.Add(new("contract", "预清不影响自我赋值与追加", AppendStillWorks));
     }
 
     private static void ListOutputDocs()
@@ -59,11 +63,16 @@ internal static class ContractSuite
         program.Steps.Add(Step.Of("data.list")
             .WithText("operation", "count").WithVar("list", "l").Output("found", "hit"));
 
-        ActionRunResult result = new ActionEngine(registry).Run(program);
+        var outputs = new Dictionary<string, IReadOnlyDictionary<string, Value>>();
+        ActionRunResult result = new ActionEngine(registry).Run(program, new ActionRunOptions
+        {
+            StepTrace = t => { lock (outputs) outputs[t.Path] = t.Outputs; },
+        });
 
         Check.True(result.Ok, "三步都该成功：" + result.Error);
-        Check.Equal(false, result.Variables["hit"].AsBool(),
-            "count 不查找，found 必须被写成 false（读到上一步的 true 就是没写）");
+        Check.Equal(false, result.Variables["hit"].AsBool(), "count 不查找，found 应是 false");
+        Check.True(outputs.TryGetValue("/steps/2", out var written) && written.ContainsKey("found"),
+            "count 也要**自己写** found（靠预清兜住的 false 不算数）");
     }
 
     private static void TextFoundWritten()
@@ -78,12 +87,17 @@ internal static class ContractSuite
         program.Steps.Add(Step.Of("text.process")
             .WithText("operation", "trim").WithText("text", " x ").Output("found", "hit"));
 
-        ActionRunResult result = new ActionEngine(registry).Run(program);
+        var outputs = new Dictionary<string, IReadOnlyDictionary<string, Value>>();
+        ActionRunResult result = new ActionEngine(registry).Run(program, new ActionRunOptions
+        {
+            StepTrace = t => { lock (outputs) outputs[t.Path] = t.Outputs; },
+        });
 
         Check.True(result.Ok, "两步都该成功：" + result.Error);
         Check.Equal(1d, result.Variables["pos"].AsNumber(), "indexOf 的位置（从 0 数）");
-        Check.Equal(false, result.Variables["hit"].AsBool(),
-            "trim 不查找，found 必须被写成 false");
+        Check.Equal(false, result.Variables["hit"].AsBool(), "trim 不查找，found 应是 false");
+        Check.True(outputs.TryGetValue("/steps/1", out var written) && written.ContainsKey("found"),
+            "trim 也要自己写 found");
     }
 
     private static void FileOperationLabels()
@@ -148,6 +162,65 @@ internal static class ContractSuite
             Check.False((result.Error ?? "").Contains("未知"),
                 $"text.process 的「{option}」是声明过的选项，必须能派发：" + result.Error);
         }
+    }
+
+    private static void OutputsCleared()
+    {
+        var partial = new FakeUnit("test.partial", "部分输出测试",
+            inputs: new[] { new InputSpec("text", "文本") },
+            outputs: new[]
+            {
+                new OutputSpec("text", "文本", ValueKind.text),
+                new OutputSpec("found", "成立", ValueKind.@bool),
+                new OutputSpec("number", "数值", ValueKind.number),
+                new OutputSpec("list", "列表", ValueKind.list),
+            },
+            run: (ctx, args) => ctx.SetOutput("text", args.TryGet("text") ?? Value.Empty));
+
+        var program = new ActionProgram { Name = "预清输出" };
+        program.Variables.Add(Var("t", ValueKind.text));
+        program.Variables.Add(Var("hit", ValueKind.@bool));
+        program.Variables.Add(Var("n", ValueKind.number));
+        program.Variables.Add(Var("items", ValueKind.list));
+
+        // 先把四个变量都写成非零值，再跑一个只写 text 的步骤。
+        program.Steps.Add(Step.Of("test.scope").WithText("name", "hit").With("value", StepArg.FromBool(true)));
+        program.Steps.Add(Step.Of("test.scope").WithText("name", "n").With("value", StepArg.FromNumber(7)));
+        program.Steps.Add(Step.Of("test.scope").WithText("name", "items")
+            .With("value", StepArg.FromValue(Value.FromList([Value.FromText("a")]))));
+        program.Steps.Add(Step.Of("test.partial").WithText("text", "x")
+            .Output("text", "t").Output("found", "hit").Output("number", "n").Output("list", "items"));
+
+        ActionRunResult result = new ActionEngine(TestRegistry.Create(partial)).Run(program);
+
+        Check.True(result.Ok, "四步都该成功：" + result.Error);
+        Check.Equal("x", result.Variables["t"].AsText(), "写了的输出照常");
+        Check.Equal(false, result.Variables["hit"].AsBool(), "没写的布尔输出 = false");
+        Check.Equal(0d, result.Variables["n"].AsNumber(), "没写的数字输出 = 0");
+        Check.Equal(0, result.Variables["items"].AsList().Count, "没写的列表输出 = 空列表");
+    }
+
+    private static void AppendStillWorks()
+    {
+        var program = new ActionProgram { Name = "自我赋值" };
+        program.Variables.Add(Var("a", ValueKind.text, Value.FromText("x")));
+        program.Variables.Add(Var("l", ValueKind.list,
+            Value.FromList([Value.FromText("a"), Value.FromText("b")])));
+
+        // 参数在清空**之前**求值：追加读到的还是旧值。
+        program.Steps.Add(Step.Of("flow.set").WithText("name", "a").WithText("value", "${a}")
+            .With("append", StepArg.FromBool(true)));
+
+        // 同一个变量既当输入又当输出：输入解析在清空之前，列表不该丢。
+        program.Steps.Add(Step.Of("data.list").WithText("operation", "add")
+            .WithVar("list", "l").WithText("value", "c").Output("list", "l"));
+
+        ActionRunResult result = new ActionEngine(TestRegistry.Create(new ListUnit())).Run(program);
+
+        Check.True(result.Ok, "两步都该成功：" + result.Error);
+        Check.Equal("xx", result.Variables["a"].AsText(), "flow.set 追加仍读到旧值");
+        Check.Equal("a,b,c", string.Join(",", result.Variables["l"].AsList().Select(v => v.AsText())),
+            "既当输入又当输出的列表不该被清空吃掉");
     }
 
     private static string Doc(UnitSpec spec, string key) =>

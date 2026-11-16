@@ -242,8 +242,9 @@ public sealed class ProcessTextUnit : IStepUnit
         if (list != null) ctx.SetOutput("list", Value.FromList(list));
         if (number != null) ctx.SetOutput("number", Value.FromNumber(number.Value));
 
-        // found 只对查找类操作有意义；其余操作写 false，
-        // 免得 ${found} 读到上一步留下的旧值（引擎不预清输出变量）。
+        // found 只对查找类操作有意义；其余操作写 false。
+        // 引擎会把 out 映射到的变量清零（建议 8），这里再显式写一次，
+        // 让轨迹的 Outputs 与嵌套取值也拿到确定的值。
         ctx.SetOutput("found", Value.FromBool(found ?? false));
     }
 }

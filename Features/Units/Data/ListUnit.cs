@@ -72,8 +72,9 @@ public sealed class ListUnit : IStepUnit
         if (separator.Length == 0) separator = ",";
         Value value = args.Has("value") ? args.Get("value") : Value.Empty;
 
-        // found 只对 indexOf / contains 有意义；其余操作先写 false，
-        // 免得 ${found} 读到上一步留下的旧值（引擎不预清输出变量）。
+        // found 只对 indexOf / contains 有意义；其余操作先写 false。
+        // 引擎会把 out 映射到的变量清零（建议 8），这里再显式写一次，
+        // 让轨迹的 Outputs 与嵌套取值也拿到确定的值。
         ctx.SetOutput("found", Value.FromBool(false));
 
         switch (op)

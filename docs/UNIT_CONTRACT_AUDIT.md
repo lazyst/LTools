@@ -12,7 +12,7 @@
   共用输入键名、由 `OptionParams` 收起无关参数，agent 只需记 1 个单元名 + 2 个参数名。
   拆开只会让步数变多、索引变长。
 - 真正该修的是**「声明的输出 vs 实际写几个」**：一个单元声明 4 个输出，
- 每个 operation 只写其中 1~3 个，**没写的不会清空**（引擎不预清），
+ 每个 operation 只写其中 1~3 个，**没写的不会清空**（扫描时引擎还不预清；2026-11-16 起已预清，见 §3 / §9 第 8 条），
   于是 `${found}` 读到的是上一步留下的旧值。这是 agent 最容易踩、也最难自查的坑。
 - 其次：5 个单元的 `found` 恒为 `true`（命中类没有「没找到」这一态）、
   19 个输入不限类型（其中 2 个可以收紧成文本）、
@@ -65,7 +65,7 @@
 
 引擎在步骤执行前**不预清**输出变量（`ActionEngine.ForStep` 只在动作单元
 `SetOutput` 时才写回 `Scope`），所以「声明了但这次 operation 没写」的输出，
-读到的是**这一步之前**的值。
+读到的是**这一步之前**的值。（这是扫描时的状态；建议 8 落地后引擎会预清零值，见下。）
 
 | 单元 | 输出 | 写它的 operation | 不写它的 |
 |---|---|---|---|
@@ -94,7 +94,7 @@ flow.if op=found left=${hasX} ...
 或者把 `get` 的 `found` 映射给同一个变量，`${hasX}` 就变成上一步的旧值 —— 而且**不报错**。
 运行时看起来「条件判断忽然不生效」，排查方向会跑到表达式上。
 
-### 三个选项（待拍板）
+### 三个选项（A 后来也落地了，见下）
 
 | 方案 | 做法 | 代价 |
 |---|---|---|
@@ -110,7 +110,11 @@ flow.if op=found left=${hasX} ...
 
 - C：`data.list` / `text.process` 的四个 `OutputSpec.Description` 逐个写清「哪个 operation 写它」。
 - B 扩到两个单元：`data.list` 每步都先写 `found = false`；`text.process` 收尾统一 `found = found ?? false`
-  （顺手补上 `indexOf` 写 `found` 这一处不一致）。A（引擎预清）仍未做。
+  （顺手补上 `indexOf` 写 `found` 这一处不一致）。
+- A 也做了（建议 8）：引擎在 `unit.Execute` 前把这一步 `out` 映射到的变量清成**该输出类型的零值**
+  （布尔 false / 数字 0 / 列表空 / 对象空 / 文本空）。参数在清空**之前**求值，所以
+  `flow.set` 的自我赋值 / 追加、以及「变量同时当输入又当输出」（`data.list add` 的 `list`）都不受影响；
+  干跑跳过的步骤不清。`contract` 组的「执行前把 out 变量清成零值」「预清不影响自我赋值与追加」守着这两点。
 - 顺带发现一个**真缺陷**：`data.list` / `text.process` / `ui.uia` 三个单元在读参数时
   `ToLowerInvariant()`，`switch` 的标签却是声明的驼峰值（`indexOf` / `removeAt` / `startsWith` /
   `endsWith` / `doubleClick` / `rightClick` / `getText` / `setValue`），于是**这 8 个选项永远匹配不上**，
@@ -217,8 +221,17 @@ flow.if op=found left=${hasX} ...
 | 4 | `file.operation` 的 `move` 加 `Labels` 覆盖 | 一行 | 无 | 下拉不再显示「移动到」 | 已实施 |
 | 5 | 4 个恒 `true` 的 `found` 补说明 | 4 行 | 无 | agent 不把它当返回值 | 已实施（`web.download` 原本就写了） |
 | 6 | `clipboard.image.path` / `image.info.path` 收紧成 `text` | 2 行 | 无（行为等价） | `consumes:"text"` 能反查到 | 已实施 |
-| 7 | `app.process` 的 `kill` 读回进程是否真的退出（现在 `catch {}` 吞掉失败） | 一处改动 | 中（有些进程杀了会残留子进程 / 权限拒绝） | 不假装成功 | 待拍板 |
-| 8 | 引擎在步骤执行前预清 `out` 映射到的变量 | 引擎核心 + 全量回归 | 高 | 彻底消除旧值；但要先确认 `flow.set` 自我赋值、循环里累加不受影响 | 待拍板 |
+| 7 | `app.process` 的 `kill` 读回进程是否真的退出（现在 `catch {}` 吞掉失败） | 一处改动 | 中（有些进程杀了会残留子进程 / 权限拒绝） | 不假装成功 | 已实施 |
+| 8 | 引擎在步骤执行前预清 `out` 映射到的变量 | 引擎核心 + 全量回归 | 高 | 彻底消除旧值；但要先确认 `flow.set` 自我赋值、循环里累加不受影响 | 已实施 |
 
-第 1~6 条都是「声明层」，合计不到 10 行改动、不动运行时语义，已全部落地
-（`--selftest` 的 `contract` 组守着）；第 7、8 条动行为，建议单独一轮。
+第 1~6 条都是「声明层」，合计不到 10 行改动、不动运行时语义；第 7、8 条动行为。
+
+### 7 与 8 的实施（2026-11-16）
+
+- **7**：`ProcessUnit` 的 `kill` 逐个发 `Kill(entireProcessTree: true)`，再用 `HasExited` 轮询读回
+  （3 秒期限，轮询走 `ctx.Wait` 所以停止热键照样能中止）；调用前就已经退出的进程算「目标已达成」，
+  异常与超时收集成一句「有 N 个没成功：PID x：原因」并**整步报错**。`count` / `found` 保持杀之前的口径
+  （说明里写明）。`--selftest` 的 `process` 组拿一份自己名字的 PING 副本当靶子跑真杀。
+- **8**：`ActionEngine.RunSteps` 在 `unit.Execute` 前调 `ClearOutputs`，按 `OutputSpec.Type` 落零值；
+  `ResolveArgs` 在清空之前，所以自我赋值 / 追加 / 「既当输入又当输出」都不受影响；干跑跳过的步骤不清。
+  回归：全量 `--selftest`（含引擎的循环累加、`flow.set append`、子动作）4735 断言全绿。

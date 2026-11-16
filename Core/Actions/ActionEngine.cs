@@ -271,7 +271,11 @@ public sealed class ActionEngine
                     try
                     {
                         args = ResolveArgs(step, unit.Spec, ctx);
-                        if (!dryRunSkip) unit.Execute(ctx, args);
+                        if (!dryRunSkip)
+                        {
+                            ClearOutputs(step, unit.Spec, ctx);
+                            unit.Execute(ctx, args);
+                        }
                         break;
                     }
                     catch (ActionAbortedException ex)
@@ -373,6 +377,38 @@ public sealed class ActionEngine
                 throw new ActionAbortedException("已停止", userCancelled: true);
         }
     }
+
+    /// <summary>
+    /// 执行前把这一步 <c>out</c> 映射到的变量清成该输出类型的零值。
+    /// </summary>
+    /// <remarks>
+    /// 「声明了但这个 operation 没写」的输出以前会读到**上一步的旧值**，而且不报错
+    /// （<c>docs/UNIT_CONTRACT_AUDIT.md</c> §3）。参数在清空**之前**求值，所以把变量同时当输入、
+    /// 或 <c>flow.set</c> 的自我赋值 / 追加都不受影响；干跑跳过的步骤不清（没执行就不该看起来像写了空）。
+    /// </remarks>
+    private static void ClearOutputs(Step step, UnitSpec spec, StepContext ctx)
+    {
+        foreach (var pair in step.Out)
+        {
+            string variable = pair.Value;
+            if (string.IsNullOrWhiteSpace(variable)) continue;
+
+            ValueKind? kind = spec.Outputs
+                .FirstOrDefault(o => string.Equals(o.Key, pair.Key, StringComparison.OrdinalIgnoreCase))?.Type;
+
+            ctx.Scope.Set(variable, Zero(kind));
+        }
+    }
+
+    /// <summary>某个输出类型的「空值」：布尔 false、数字 0、列表空、对象空、文本 / 任意为空文本。</summary>
+    private static Value Zero(ValueKind? kind) => kind switch
+    {
+        ValueKind.@bool => Value.FromBool(false),
+        ValueKind.number => Value.FromNumber(0),
+        ValueKind.list => Value.FromList(),
+        ValueKind.@object => Value.Object(),
+        _ => Value.Empty,
+    };
 
     /// <summary>发一条轨迹；<c>StepTrace</c> 回调抛异常时吞掉（调试信息不该毁掉动作）。</summary>
     private static void Trace(StepContext parent, Step step, UnitSpec spec, string path, string label,
