@@ -92,6 +92,105 @@ internal static class MarkGeometry
     /// <summary>序号徽标里数字的字号。</summary>
     public static double SerialFontSize(int number) => number >= 100 ? 11 : number >= 10 ? 13 : 15;
 
+    // ============ 八个把手：选区与标注共用 ============
+
+    /// <summary>八个把手（点中判定按这个顺序：角优先，角比边更好按）。</summary>
+    public static readonly FrameHandle[] Handles =
+    {
+        FrameHandle.TopLeft, FrameHandle.TopRight, FrameHandle.BottomLeft, FrameHandle.BottomRight,
+        FrameHandle.Top, FrameHandle.Bottom, FrameHandle.Left, FrameHandle.Right,
+    };
+
+    /// <summary>把手方块边长（DIP）：选区与标注共用同一个尺寸，看着才是同一套。</summary>
+    public const double HandleSize = 9;
+
+    /// <summary>把手在框上的位置。</summary>
+    public static Point GripPoint(Rect frame, FrameHandle handle)
+    {
+        double cx = frame.X + frame.Width / 2;
+        double cy = frame.Y + frame.Height / 2;
+        return handle switch
+        {
+            FrameHandle.TopLeft => new Point(frame.Left, frame.Top),
+            FrameHandle.TopRight => new Point(frame.Right, frame.Top),
+            FrameHandle.BottomLeft => new Point(frame.Left, frame.Bottom),
+            FrameHandle.BottomRight => new Point(frame.Right, frame.Bottom),
+            FrameHandle.Top => new Point(cx, frame.Top),
+            FrameHandle.Bottom => new Point(cx, frame.Bottom),
+            FrameHandle.Left => new Point(frame.Left, cy),
+            FrameHandle.Right => new Point(frame.Right, cy),
+            _ => new Point(cx, cy),
+        };
+    }
+
+    /// <summary>点中哪个把手；都不中且在框里就是 <see cref="FrameHandle.Move"/>。</summary>
+    public static FrameHandle HitFrame(Rect frame, Point point, double gripHit)
+    {
+        foreach (var handle in Handles)
+        {
+            Point at = GripPoint(frame, handle);
+            if (Math.Abs(point.X - at.X) <= gripHit && Math.Abs(point.Y - at.Y) <= gripHit) return handle;
+        }
+
+        return frame.Contains(point) ? FrameHandle.Move : FrameHandle.None;
+    }
+
+    /// <summary>
+    /// 拖把手之后的新框：只动被拖的那条边 / 角，夹在 <paramref name="limit"/> 里，
+    /// 小于 <paramref name="min"/> 时原样退回（既不把框拖成 0，也不让它翻过来）。
+    /// </summary>
+    public static Rect ResizeFrame(Rect frame, FrameHandle handle, Vector delta, double min, Rect limit)
+    {
+        double left = frame.Left, top = frame.Top, right = frame.Right, bottom = frame.Bottom;
+
+        if (handle is FrameHandle.Left or FrameHandle.TopLeft or FrameHandle.BottomLeft) left += delta.X;
+        if (handle is FrameHandle.Right or FrameHandle.TopRight or FrameHandle.BottomRight) right += delta.X;
+        if (handle is FrameHandle.Top or FrameHandle.TopLeft or FrameHandle.TopRight) top += delta.Y;
+        if (handle is FrameHandle.Bottom or FrameHandle.BottomLeft or FrameHandle.BottomRight) bottom += delta.Y;
+
+        left = Math.Clamp(left, limit.Left, limit.Right);
+        right = Math.Clamp(right, limit.Left, limit.Right);
+        top = Math.Clamp(top, limit.Top, limit.Bottom);
+        bottom = Math.Clamp(bottom, limit.Top, limit.Bottom);
+
+        if (right - left < min || bottom - top < min) return frame;
+        return new Rect(left, top, right - left, bottom - top);
+    }
+
+    // ============ 标注的缩放 ============
+
+    /// <summary>选中框在标注外接框外再让多少（DIP）：贴着描边画会让「选中了」看不出来。</summary>
+    public const double FramePad = 3;
+
+    /// <summary>画选中框 / 摆手柄用的矩形（判定与绘制都取它，看到的就是按得到的）。</summary>
+    public static Rect PaddedFrame(Rect frame) => Inflate(frame, FramePad);
+
+    /// <summary>
+    /// 旧框 → 新框时「线宽 / 字号 / 块大小」的倍数：取两个方向的几何平均，
+    /// 这样只横向拉长时不会把线画成一条歪斜的纸条。
+    /// </summary>
+    public static double ScaleOf(Rect from, Rect to)
+    {
+        double sx = from.Width > 0.01 ? to.Width / from.Width : 1;
+        double sy = from.Height > 0.01 ? to.Height / from.Height : 1;
+        return Math.Max(0.05, Math.Sqrt(Math.Abs(sx * sy)));
+    }
+
+    /// <summary>把框里的点按比例搬进新框（两个方向各算各的，所以能拉伸）。</summary>
+    public static Point MapPoint(Point point, Rect from, Rect to)
+    {
+        double tx = from.Width > 0.01 ? (point.X - from.Left) / from.Width : 0;
+        double ty = from.Height > 0.01 ? (point.Y - from.Top) / from.Height : 0;
+        return new Point(to.Left + tx * to.Width, to.Top + ty * to.Height);
+    }
+
+    public static List<Point> MapAll(IReadOnlyList<Point> points, Rect from, Rect to)
+    {
+        var list = new List<Point>(points.Count);
+        foreach (var p in points) list.Add(MapPoint(p, from, to));
+        return list;
+    }
+
     // —— 下面三个给渲染用：把「形状描述」变成可画的几何 ——
 
     /// <summary>折线 → 可描边的 PathGeometry。</summary>

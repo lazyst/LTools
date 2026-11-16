@@ -24,6 +24,7 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "几何：矩形 / 外接框 / 折线命中", Geometry));
         cases.Add(new("capturePro", "几何：箭头三角头", ArrowHead));
         cases.Add(new("capturePro", "标注：移动返回新实例", ImmutableMarks));
+        cases.Add(new("capturePro", "标注：把手命中与等比缩放", MarkScale));
         cases.Add(new("capturePro", "文档：撤销 / 重做 / 上限", UndoRedo));
         cases.Add(new("capturePro", "文档：序号撤销后不跳号", SerialNumbers));
         cases.Add(new("capturePro", "文档：选区换算与导出", Selection));
@@ -94,6 +95,95 @@ internal static class CaptureProSuite
         var movedText = (Mark.Text)text.MoveBy(new Vector(10, 10));
         Check.Equal(new Point(10, 10), movedText.Origin, "文字移动");
         Check.Equal(text.Measured, movedText.Measured, "移动不改排版尺寸");
+    }
+
+    /// <summary>
+    /// 标注的缩放手柄：八个把手的命中 / 改框纯函数，以及各标注「按旧框 → 新框」的变形。
+    /// 拉成扁的就是扁的（变形），线宽 / 字号 / 块大小按两方向的几何平均放大。
+    /// </summary>
+    private static void MarkScale()
+    {
+        // 八个把手：角在四角、边在中点
+        Check.Equal(8, MarkGeometry.Handles.Length, "八个把手");
+        var frame = new Rect(0, 0, 100, 50);
+        Check.Equal(new Point(0, 0), MarkGeometry.GripPoint(frame, FrameHandle.TopLeft), "左上角");
+        Check.Equal(new Point(100, 50), MarkGeometry.GripPoint(frame, FrameHandle.BottomRight), "右下角");
+        Check.Equal(new Point(50, 0), MarkGeometry.GripPoint(frame, FrameHandle.Top), "上边中点");
+        Check.Equal(new Point(100, 25), MarkGeometry.GripPoint(frame, FrameHandle.Right), "右边中点");
+
+        Check.Equal(FrameHandle.TopLeft, MarkGeometry.HitFrame(frame, new Point(2, 1), 8), "角上 8 DIP 内命中");
+        Check.Equal(FrameHandle.Right, MarkGeometry.HitFrame(frame, new Point(98, 25), 8), "边上命中");
+        Check.Equal(FrameHandle.Move, MarkGeometry.HitFrame(frame, new Point(50, 25), 8), "框内给「移动」");
+        Check.Equal(FrameHandle.None, MarkGeometry.HitFrame(frame, new Point(300, 300), 8), "框外不算");
+
+        // 改框：只动被拖的那条边，夹在窗口里，小于最小尺寸原样退回
+        var room = new Rect(0, 0, 1000, 1000);
+        Check.Equal(new Rect(0, 0, 120, 50),
+            MarkGeometry.ResizeFrame(frame, FrameHandle.Right, new Vector(20, 0), 4, room), "拖右边只动右边");
+        Check.Equal(new Rect(20, 10, 80, 40),
+            MarkGeometry.ResizeFrame(frame, FrameHandle.TopLeft, new Vector(20, 10), 4, room), "拖左上角只动左上");
+        Check.Equal(frame,
+            MarkGeometry.ResizeFrame(frame, FrameHandle.Right, new Vector(-200, 0), 4, room),
+            "拖过头不翻面（原样退回）");
+        Check.Equal(new Rect(0, 0, 120, 50),
+            MarkGeometry.ResizeFrame(frame, FrameHandle.Right, new Vector(500, 0), 4, new Rect(0, 0, 120, 50)),
+            "越过窗口边被夹回来");
+        Check.Equal(frame,
+            MarkGeometry.ResizeFrame(frame, FrameHandle.Move, new Vector(30, 30), 4, room),
+            "「移动」不归改框管");
+
+        // 选中框 = 外接框外扩 FramePad；绘制与命中取同一个矩形
+        Check.Equal(new Rect(-3, -3, 106, 56), MarkGeometry.PaddedFrame(frame), "选中框外扩 3 DIP");
+
+        // ScaleOf：两方向几何平均，零宽按 1 算
+        Check.Equal(2.0, MarkGeometry.ScaleOf(new Rect(0, 0, 100, 50), new Rect(0, 0, 200, 100)),
+            "等比放大一倍 → 线宽 ×2");
+        Check.True(Math.Abs(MarkGeometry.ScaleOf(new Rect(0, 0, 100, 50), new Rect(0, 0, 200, 50)) - Math.Sqrt(2)) < 1e-9,
+            "只横向拉长 → 线宽 ×√2（不是 ×2）");
+        Check.Equal(1.0, MarkGeometry.ScaleOf(new Rect(0, 0, 0, 50), new Rect(0, 0, 50, 50)),
+            "退化框（宽 0）不炸");
+
+        // MapPoint：框内相对位置不变
+        Check.Equal(new Point(150, 75),
+            MarkGeometry.MapPoint(new Point(50, 25), new Rect(0, 0, 100, 50), new Rect(50, 25, 200, 100)),
+            "中点映射到中点");
+
+        var to = new Rect(0, 0, 80, 60);
+
+        var shape = new Mark.Shape(new Point(10, 10), new Point(50, 40), Colors.Red, 2, false, false);
+        Check.True(shape.Bounds.Width > shape.Frame.Width, "外接框含描边，把手框贴着笔迹");
+        var scaledShape = (Mark.Shape)shape.ScaleTo(shape.Frame, to);
+        Check.Equal(to, scaledShape.Frame, "矩形按新框变形");
+        Check.Equal(4.0, scaledShape.Width, "线宽跟着放大一倍");
+        Check.True(shape.CanScale, "矩形能缩放");
+        Check.Equal(new Rect(10, 10, 40, 30), shape.Frame, "原实例不动（撤销栈靠这个）");
+
+        var arrow = new Mark.Arrow(new Point(10, 10), new Point(50, 40), Colors.Red, 2);
+        var scaledArrow = (Mark.Arrow)arrow.ScaleTo(arrow.Frame, to);
+        Check.Equal(new Point(0, 0), scaledArrow.Start, "箭头起点搬进新框");
+        Check.Equal(new Point(80, 60), scaledArrow.End, "箭头终点搬进新框");
+
+        var stroke = new Mark.Stroke(new[] { new Point(0, 0), new Point(10, 10) }, Colors.Red, 3, false, 1);
+        Check.Equal(new Point(20, 20),
+            ((Mark.Stroke)stroke.ScaleTo(stroke.Frame, new Rect(0, 0, 20, 20))).Points[1], "笔迹点按比例搬");
+
+        var text = new Mark.Text(new Point(10, 10), "截图", 20, Colors.White, 0, Colors.Black, 0, 4);
+        var textBox = text.Frame;
+        var textTarget = new Rect(0, 0, textBox.Width * 2, textBox.Height * 2);
+        var scaledText = (Mark.Text)text.ScaleTo(textBox, textTarget);
+        Check.Equal(40.0, scaledText.FontSize, "文字放大是字号变大（不是拉歪）");
+        Check.True(textTarget.Contains(scaledText.Origin), "文字原点落在新框里");
+
+        var mosaic = new Mark.Mosaic(new Point(10, 10), new Point(50, 40), 8);
+        Check.Equal(16.0, ((Mark.Mosaic)mosaic.ScaleTo(mosaic.Frame, to)).Block, "马赛克方块跟着放大");
+
+        var spot = new Mark.Spotlight(new Point(10, 10), new Point(50, 40), 0.5);
+        Check.Equal(to, ((Mark.Spotlight)spot.ScaleTo(spot.Frame, to)).Frame, "聚光框搬过去");
+
+        var serial = new Mark.Serial(new Point(30, 30), 3, Colors.Red, false);
+        Check.False(serial.CanScale, "序号徽标固定尺寸，不给手柄");
+        Check.Equal(new Point(40, 30),
+            ((Mark.Serial)serial.ScaleTo(serial.Frame, to)).Center, "序号只跟着搬位置");
     }
 
     private static void UndoRedo()

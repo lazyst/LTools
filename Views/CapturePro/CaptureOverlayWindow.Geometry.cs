@@ -128,15 +128,15 @@ public partial class CaptureOverlayWindow
         return new Rect(r.X + dx, r.Y + dy, r.Width, r.Height);
     }
 
-    private Rect SnapResize(Rect r, Handle handle)
+    private Rect SnapResize(Rect r, FrameHandle handle)
     {
         if (!SnapEnabled) return r;
 
         double left = r.Left, top = r.Top, right = r.Right, bottom = r.Bottom;
-        if (handle is Handle.Left or Handle.TopLeft or Handle.BottomLeft) left = SnapValue(left, _snapXs);
-        if (handle is Handle.Right or Handle.TopRight or Handle.BottomRight) right = SnapValue(right, _snapXs);
-        if (handle is Handle.Top or Handle.TopLeft or Handle.TopRight) top = SnapValue(top, _snapYs);
-        if (handle is Handle.Bottom or Handle.BottomLeft or Handle.BottomRight) bottom = SnapValue(bottom, _snapYs);
+        if (handle is FrameHandle.Left or FrameHandle.TopLeft or FrameHandle.BottomLeft) left = SnapValue(left, _snapXs);
+        if (handle is FrameHandle.Right or FrameHandle.TopRight or FrameHandle.BottomRight) right = SnapValue(right, _snapXs);
+        if (handle is FrameHandle.Top or FrameHandle.TopLeft or FrameHandle.TopRight) top = SnapValue(top, _snapYs);
+        if (handle is FrameHandle.Bottom or FrameHandle.BottomLeft or FrameHandle.BottomRight) bottom = SnapValue(bottom, _snapYs);
 
         if (right - left < MinSize || bottom - top < MinSize) return r;
         return new Rect(left, top, right - left, bottom - top);

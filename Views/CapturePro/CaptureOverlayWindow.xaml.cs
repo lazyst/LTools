@@ -40,7 +40,7 @@ public partial class CaptureOverlayWindow : Window
 
     private Rect? _sel;                    // 选区（窗口 DIP）
     private DragMode _drag;
-    private Handle _handle;
+    private FrameHandle _handle;
     private Point _origin;                 // 本次拖动起点
     private Rect _originRect;              // 本次拖动开始时的选区
 

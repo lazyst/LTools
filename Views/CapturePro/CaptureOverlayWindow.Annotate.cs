@@ -7,11 +7,11 @@ namespace LTools.Views.CapturePro;
 
 /// <summary>
 /// 标注手势：拖一类（画笔 / 荧光笔 / 矩形 / 椭圆 / 箭头 / 马赛克 / 聚光）、
-/// 点一类（序号 / 文字 / 折线）、擦除，以及「选择」工具的移动。
+/// 点一类（序号 / 文字 / 折线）、擦除，「选择」工具下的移动，以及拖手柄缩放。
 /// </summary>
 /// <remarks>
 /// 预览一律画在 <see cref="CaptureCanvas.Preview"/>，只在松手（或结束折线）时写进文档；
-/// 拖动已有标注时用 <see cref="CaptureCanvas.SkipIndex"/> 把原件藏起来、用预览代画，
+/// 拖动已有标注 / 拉手柄时用 <see cref="CaptureCanvas.SkipIndex"/> 把原件藏起来、用预览代画，
 /// 松手才 <c>ReplaceAt</c>——这样拖动过程不会往撤销栈里塞几十帧。
 /// </remarks>
 public partial class CaptureOverlayWindow
@@ -166,6 +166,71 @@ public partial class CaptureOverlayWindow
         Surface.InvalidateVisual();
     }
 
+    // ============ 选择：拖手柄改大小 ============
+
+    private Mark? _resizeMark;
+    private int _resizeMarkIndex = -1;
+    private Rect _resizeFrame;               // 按下时的选中框（已含 FramePad）
+    private FrameHandle _resizeHandle;
+
+    private void BeginMarkResize(Point p, FrameHandle handle)
+    {
+        _resizeMarkIndex = _selectedIndex;
+        _resizeMark = _doc.Marks[_selectedIndex];
+        _resizeFrame = MarkGeometry.PaddedFrame(_resizeMark.Frame);
+        _resizeHandle = handle;
+        _origin = p;
+        _drag = DragMode.MarkResize;
+        Surface.SkipIndex = _resizeMarkIndex;   // 原件藏起来，由预览代画（松手才提交，不刷撤销栈）
+        Surface.InvalidateVisual();
+    }
+
+    /// <summary>
+    /// 把手拖到哪 → 新的选中框（收回 FramePad 那几像素）→ 让标注自己按比例变形。
+    /// 最小尺寸按「收回之后还剩 4 DIP」算，别把标注拖成一条看不见的线。
+    /// </summary>
+    private void UpdateMarkResize(Point p)
+    {
+        if (_resizeMark == null) return;
+
+        var limit = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
+        Rect padded = MarkGeometry.ResizeFrame(_resizeFrame, _resizeHandle, p - _origin,
+            MarkGeometry.FramePad * 2 + 4, limit);
+        Rect target = MarkGeometry.Inflate(padded, -MarkGeometry.FramePad);
+
+        Surface.Preview = _resizeMark.ScaleTo(_resizeMark.Frame, target);
+        Surface.InvalidateVisual();
+    }
+
+    private void CommitMarkResize(Point p)
+    {
+        UpdateMarkResize(p);                    // 保证预览就是松手那一下的形状
+
+        var preview = Surface.Preview;
+        Surface.Preview = null;
+        Surface.SkipIndex = -1;
+
+        // 回到原样就不记这一笔（撤销栈里不留「拖了又拖回来」的空步）
+        if (preview != null && _resizeMark != null && preview.Frame != _resizeMark.Frame &&
+            _resizeMarkIndex >= 0)
+            _doc.ReplaceAt(_resizeMarkIndex, preview);
+
+        _resizeMark = null;
+        _resizeMarkIndex = -1;
+        _resizeHandle = FrameHandle.None;
+        RefreshMarks();
+    }
+
+    private void CancelMarkResize()
+    {
+        Surface.Preview = null;
+        Surface.SkipIndex = -1;
+        _resizeMark = null;
+        _resizeMarkIndex = -1;
+        _resizeHandle = FrameHandle.None;
+        Surface.InvalidateVisual();
+    }
+
     // ============ 橡皮 ============
 
     private void EraseAt(Point p)
@@ -232,7 +297,7 @@ public partial class CaptureOverlayWindow
         }
 
         _drag = DragMode.None;
-        _handle = Handle.None;
+        _handle = FrameHandle.None;
         try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
         UpdateCursorForTool();
     }

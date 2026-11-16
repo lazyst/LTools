@@ -14,6 +14,22 @@ internal abstract class Mark
     /// <summary>外接矩形（命中、裁剪、选中框用）。</summary>
     public abstract Rect Bounds { get; }
 
+    /// <summary>
+    /// 选中框 / 缩放手柄用的矩形：外接框去掉描边的一半（选中框贴着**笔迹**而不是笔迹外的空当）。
+    /// 改成缩放时看到的和拖到的是同一个框。
+    /// </summary>
+    public virtual Rect Frame => Bounds;
+
+    /// <summary>能不能拖手柄改大小（序号徽标是固定尺寸的，只能移动）。</summary>
+    public virtual bool CanScale => true;
+
+    /// <summary>
+    /// 按「旧框 → 新框」缩放这一条：各自的定义点按 <see cref="MarkGeometry.MapPoint"/> 搬过去，
+    /// 线宽 / 字号 / 块大小乘 <see cref="MarkGeometry.ScaleOf"/>。所以拉成扁的它就是扁的（变形），
+    /// 不是「在新位置重画一遍原样」。
+    /// </summary>
+    public abstract Mark ScaleTo(Rect from, Rect to);
+
     /// <summary>整体平移；用于「选择」工具拖动。</summary>
     public abstract Mark MoveBy(Vector delta);
 
@@ -46,8 +62,14 @@ internal abstract class Mark
 
         public override Rect Bounds => MarkGeometry.BoundsOf(Points, Width);
 
+        public override Rect Frame => MarkGeometry.BoundsOf(Points, 0);
+
         public override Mark MoveBy(Vector delta) =>
             new Stroke(MarkGeometry.Shift(Points, delta), Color, Width, Highlighter, Opacity);
+
+        public override Mark ScaleTo(Rect from, Rect to) => new Stroke(
+            MarkGeometry.MapAll(Points, from, to), Color,
+            Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)), Highlighter, Opacity);
 
         public override bool HitTest(Point point, double tolerance) =>
             MarkGeometry.NearPolyline(Points, point, Width / 2 + tolerance);
@@ -77,8 +99,14 @@ internal abstract class Mark
 
         public override Rect Bounds => MarkGeometry.Inflate(Rect, Width / 2);
 
+        public override Rect Frame => Rect;
+
         public override Mark MoveBy(Vector delta) =>
             new Shape(A + delta, B + delta, Color, Width, Dashed, Ellipse);
+
+        public override Mark ScaleTo(Rect from, Rect to) => new Shape(
+            MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(B, from, to), Color,
+            Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)), Dashed, Ellipse);
 
         public override bool HitTest(Point point, double tolerance)
         {
@@ -112,8 +140,14 @@ internal abstract class Mark
         public override Rect Bounds => MarkGeometry.Inflate(
             MarkGeometry.RectOf(Start, End), Width + MarkGeometry.HeadSize(Width));
 
+        public override Rect Frame => MarkGeometry.RectOf(Start, End);
+
         public override Mark MoveBy(Vector delta) =>
             new Arrow(Start + delta, End + delta, Color, Width);
+
+        public override Mark ScaleTo(Rect from, Rect to) => new Arrow(
+            MarkGeometry.MapPoint(Start, from, to), MarkGeometry.MapPoint(End, from, to), Color,
+            Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)));
 
         public override bool HitTest(Point point, double tolerance) =>
             MarkGeometry.NearSegment(point, Start, End, Width / 2 + tolerance);
@@ -137,8 +171,14 @@ internal abstract class Mark
 
         public override Rect Bounds => MarkGeometry.BoundsOf(Points, Width);
 
+        public override Rect Frame => MarkGeometry.BoundsOf(Points, 0);
+
         public override Mark MoveBy(Vector delta) =>
             new Polyline(MarkGeometry.Shift(Points, delta), Color, Width, Dashed);
+
+        public override Mark ScaleTo(Rect from, Rect to) => new Polyline(
+            MarkGeometry.MapAll(Points, from, to), Color,
+            Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)), Dashed);
 
         public override bool HitTest(Point point, double tolerance) =>
             MarkGeometry.NearPolyline(Points, point, Width / 2 + tolerance);
@@ -188,6 +228,12 @@ internal abstract class Mark
         public override Mark MoveBy(Vector delta) => new Text(Origin + delta, Content, FontSize, Color,
             OutlineWidth, OutlineColor, BackgroundOpacity, Radius);
 
+        /// <summary>改字号而不是改行数：文字不会被拉成歪的，放大就是字变大。</summary>
+        public override Mark ScaleTo(Rect from, Rect to) => new Text(
+            MarkGeometry.MapPoint(Origin, from, to), Content,
+            Math.Max(6, FontSize * MarkGeometry.ScaleOf(from, to)), Color,
+            OutlineWidth, OutlineColor, BackgroundOpacity, Radius);
+
         public override bool HitTest(Point point, double tolerance) => Box.Contains(point);
     }
 
@@ -215,7 +261,13 @@ internal abstract class Mark
 
         public override Rect Bounds => Box;
 
+        /// <summary>徽标直径是固定的（数字要看得清），所以它只有移动、没有缩放。</summary>
+        public override bool CanScale => false;
+
         public override Mark MoveBy(Vector delta) => new Serial(Center + delta, Number, Color, Square);
+
+        public override Mark ScaleTo(Rect from, Rect to) =>
+            new Serial(MarkGeometry.MapPoint(Center, from, to), Number, Color, Square);
 
         public override bool HitTest(Point point, double tolerance)
         {
@@ -247,6 +299,10 @@ internal abstract class Mark
 
         public override Mark MoveBy(Vector delta) => new Mosaic(A + delta, B + delta, Block);
 
+        public override Mark ScaleTo(Rect from, Rect to) => new Mosaic(
+            MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(B, from, to),
+            Math.Max(2, Block * MarkGeometry.ScaleOf(from, to)));
+
         public override bool HitTest(Point point, double tolerance)
         {
             var r = Rect;
@@ -276,6 +332,9 @@ internal abstract class Mark
         public override Rect Bounds => Rect;
 
         public override Mark MoveBy(Vector delta) => new Spotlight(A + delta, B + delta, Dim);
+
+        public override Mark ScaleTo(Rect from, Rect to) => new Spotlight(
+            MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(B, from, to), Dim);
 
         public override bool HitTest(Point point, double tolerance)
         {

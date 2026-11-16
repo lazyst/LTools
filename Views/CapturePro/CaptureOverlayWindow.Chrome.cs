@@ -21,17 +21,13 @@ namespace LTools.Views.CapturePro;
 /// </remarks>
 public partial class CaptureOverlayWindow
 {
-    private const double GripSize = 9;     // 把手方块尺寸（DIP）
+    private const double GripSize = MarkGeometry.HandleSize;   // 把手方块尺寸（DIP，与标注手柄同一个值）
     private const double GripHit = 8;      // 把手命中半径（DIP）
 
     /// <summary>选区上的八个把手（框选模式下创建）。</summary>
     private void BuildGrips()
     {
-        foreach (Handle h in new[]
-                 {
-                     Handle.TopLeft, Handle.TopRight, Handle.BottomLeft, Handle.BottomRight,
-                     Handle.Top, Handle.Bottom, Handle.Left, Handle.Right,
-                 })
+        foreach (var h in MarkGeometry.Handles)
         {
             var grip = new Rectangle
             {
@@ -65,6 +61,7 @@ public partial class CaptureOverlayWindow
 
         Surface.Selection = sel;
         Surface.Hover = hover;
+        Surface.ShowHandles = ShowsMarkHandles;
         Surface.InvalidateVisual();
 
         if (!hasSelection)
@@ -153,17 +150,25 @@ public partial class CaptureOverlayWindow
         Canvas.SetTop(DetectLabel, Math.Clamp(top, 8, Math.Max(8, ActualHeight - lh - 8)));
     }
 
+    /// <summary>
+    /// 选中标注的八个缩放手柄要不要露出来：只有「选择」工具下、选中了、且这一条能缩放。
+    /// 序号徽标是固定尺寸的（数字要看得清），不给它手柄。
+    /// </summary>
+    private bool ShowsMarkHandles =>
+        _tool == CaptureTool.Select && _selectedIndex >= 0 && _selectedIndex < _doc.Marks.Count &&
+        _doc.Marks[_selectedIndex].CanScale;
+
     private void PositionGrips(Rect s, bool visible)
     {
         foreach (var grip in _grips)
         {
-            if (!visible || grip.Tag is not Handle h)
+            if (!visible || grip.Tag is not FrameHandle h)
             {
                 grip.Visibility = Visibility.Collapsed;
                 continue;
             }
 
-            Point at = GripPoint(s, h);
+            Point at = MarkGeometry.GripPoint(s, h);
             Canvas.SetLeft(grip, at.X - GripSize / 2);
             Canvas.SetTop(grip, at.Y - GripSize / 2);
             grip.Visibility = Visibility.Visible;

@@ -66,12 +66,12 @@ public partial class CaptureOverlayWindow
         else Cursor = _tool == CaptureTool.Text ? Cursors.IBeam : Cursors.Cross;
     }
 
-    /// <summary>选中最上面一条命中的标注（-1 = 没选中）；画面上的虚线框跟着走。</summary>
+    /// <summary>选中最上面一条命中的标注（-1 = 没选中）；画面上的虚线框与缩放手柄跟着走。</summary>
     private void SelectMark(int index)
     {
-        if (_selectedIndex == index && Surface.SelectedIndex == index) return;
         _selectedIndex = index;
         Surface.SelectedIndex = index;
+        Surface.ShowHandles = ShowsMarkHandles;
         Surface.InvalidateVisual();
     }
 

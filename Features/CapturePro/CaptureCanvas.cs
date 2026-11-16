@@ -27,6 +27,10 @@ internal sealed class CaptureCanvas : FrameworkElement
     /// <summary>选中标注的虚线框（和工具栏的选中色一致）。</summary>
     private static readonly Pen SelectPen = FrozenDashPen(Color.FromRgb(0x3B, 0x82, 0xF6), 1.2);
 
+    /// <summary>标注缩放手柄的填充 / 描边（与选区的八个把手同款）。</summary>
+    private static readonly SolidColorBrush HandleFill = Frozen(Colors.White);
+    private static readonly Pen HandleEdge = FrozenPen(Color.FromRgb(0x18, 0x18, 0x1B), 1);
+
     /// <summary>内容真源（底图 + 标注列表）。</summary>
     public CaptureDocument? Document { get; set; }
 
@@ -44,6 +48,12 @@ internal sealed class CaptureCanvas : FrameworkElement
 
     /// <summary>被选中的标注下标（-1 = 没有）；画一圈虚线框，告诉用户 Delete 会删哪一条。</summary>
     public int SelectedIndex { get; set; } = -1;
+
+    /// <summary>
+    /// 选中的标注要不要画八个缩放手柄：只有「选择」工具下、且这一条能缩放（序号徽标是固定尺寸的）。
+    /// 判定用 <see cref="MarkGeometry.PaddedFrame"/>，拖手柄也按它算，看到的就是按得到的。
+    /// </summary>
+    public bool ShowHandles { get; set; }
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -66,14 +76,15 @@ internal sealed class CaptureCanvas : FrameworkElement
         }
         if (Preview != null) MarkRenderer.Draw(dc, Preview, doc.Base, canvas, doc.Scale);
 
-        // 选中的那条：一圈虚线，不参与导出（导出只看标注本身）
+        // 选中的那条：一圈虚线 + 八个把手，不参与导出（导出只看标注本身）
         if (SelectedIndex >= 0 && SelectedIndex < doc.Marks.Count && SelectedIndex != SkipIndex)
         {
-            var box = doc.Marks[SelectedIndex].Bounds;
+            var mark = doc.Marks[SelectedIndex];
+            var box = MarkGeometry.PaddedFrame(mark.Frame);
             if (!box.IsEmpty)
             {
-                box.Inflate(3, 3);
                 dc.DrawRectangle(null, SelectPen, box);
+                if (ShowHandles && mark.CanScale) DrawHandles(dc, box);
             }
         }
 
@@ -99,6 +110,18 @@ internal sealed class CaptureCanvas : FrameworkElement
         var brush = new SolidColorBrush(color);
         brush.Freeze();
         return brush;
+    }
+
+    /// <summary>标注的缩放手柄：白底深边的小方块（与选区那八个把手同尺寸、同一套位置）。</summary>
+    private static void DrawHandles(DrawingContext dc, Rect box)
+    {
+        const double size = MarkGeometry.HandleSize;
+        foreach (var handle in MarkGeometry.Handles)
+        {
+            var at = MarkGeometry.GripPoint(box, handle);
+            dc.DrawRectangle(HandleFill, HandleEdge,
+                new Rect(at.X - size / 2, at.Y - size / 2, size, size));
+        }
     }
 
     private static Pen FrozenPen(Color color, double width)

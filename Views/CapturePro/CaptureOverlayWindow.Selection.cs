@@ -34,9 +34,7 @@ public partial class CaptureOverlayWindow
     private bool _pressMoved;
     private SnapBox? _pressTarget;
 
-    private enum DragMode { None, New, Move, Resize, Draw, Erase, Mark }
-
-    private enum Handle { None, Move, Left, Top, Right, Bottom, TopLeft, TopRight, BottomLeft, BottomRight }
+    private enum DragMode { None, New, Move, Resize, Draw, Erase, Mark, MarkResize }
 
     private void Window_MouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -62,7 +60,7 @@ public partial class CaptureOverlayWindow
             return;
         }
 
-        Handle hit = HitTest(p);
+        FrameHandle hit = HitTest(p);
         bool inside = _sel is Rect area && IsValid(area) && area.Contains(p);
 
         _pressAt = p;
@@ -70,8 +68,18 @@ public partial class CaptureOverlayWindow
         _pressTarget = null;
         _origin = p;
 
+        // 0. 选中标注的把手优先：用户刚把它选上，这一下的意图就是改它的大小
+        //    （框选的八个把手仍在，只是让位给「正在编辑的那一条」）
+        FrameHandle markHandle = MarkHandleAt(p);
+        if (markHandle is not (FrameHandle.None or FrameHandle.Move))
+        {
+            BeginMarkResize(p, markHandle);
+            StartDrag(e, CursorFor(markHandle));
+            return;
+        }
+
         // 1. 八个把手优先：任何工具下都能改框
-        if (inside && hit is not (Handle.None or Handle.Move))
+        if (inside && hit is not (FrameHandle.None or FrameHandle.Move))
         {
             _originRect = _sel!.Value;
             _drag = DragMode.Resize;
@@ -104,7 +112,7 @@ public partial class CaptureOverlayWindow
 
                 _originRect = _sel!.Value;
                 _drag = DragMode.Move;
-                _handle = Handle.Move;
+                _handle = FrameHandle.Move;
                 RebuildSnapLines();
                 StartDrag(e, Cursors.SizeAll);
                 return;
@@ -122,7 +130,7 @@ public partial class CaptureOverlayWindow
         // 3. 选区外 / 还没选区：重新框选；松手时几乎没动就选中光标下的窗口 / 控件
         _pressTarget = _hoverTarget;
         _drag = DragMode.New;
-        _handle = Handle.None;
+        _handle = FrameHandle.None;
         _originRect = _sel ?? default;   // Esc 放弃这次拖动时还原成原来的选区
         _sel = new Rect(p, p);
         SetHover(null);
@@ -192,6 +200,9 @@ public partial class CaptureOverlayWindow
             case DragMode.Mark:
                 UpdateMarkDrag(p);
                 break;
+            case DragMode.MarkResize:
+                UpdateMarkResize(p);
+                break;
         }
 
         UpdateChrome();
@@ -206,7 +217,7 @@ public partial class CaptureOverlayWindow
         DragMode mode = _drag;
 
         _drag = DragMode.None;
-        _handle = Handle.None;
+        _handle = FrameHandle.None;
         try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
 
         switch (mode)
@@ -224,6 +235,10 @@ public partial class CaptureOverlayWindow
             case DragMode.Mark:
                 CommitMarkDrag(p);
                 break;
+
+            case DragMode.MarkResize:
+                CommitMarkResize(p);
+                break;
         }
 
         _pressTarget = null;
@@ -238,10 +253,11 @@ public partial class CaptureOverlayWindow
         bool wasFrame = _drag is DragMode.New or DragMode.Move or DragMode.Resize;
 
         if (_drag == DragMode.Mark) CancelMarkDrag();
+        else if (_drag == DragMode.MarkResize) CancelMarkResize();
         else if (_drag is DragMode.Draw or DragMode.Erase) Surface.Preview = null;
 
         _drag = DragMode.None;
-        _handle = Handle.None;
+        _handle = FrameHandle.None;
         _pressTarget = null;
 
         if (wasFrame)
@@ -260,10 +276,14 @@ public partial class CaptureOverlayWindow
     {
         if (_textEditing) return;
 
-        Handle hit = HitTest(p);
+        FrameHandle hit = HitTest(p);
+        FrameHandle markHit = MarkHandleAt(p);
+
         Cursor = _tool switch
         {
-            CaptureTool.Select when hit != Handle.None => CursorFor(hit),
+            // 选中标注的把手比框选的把手更「当前」：先把光标摆对，不然看不出能拉
+            CaptureTool.Select when markHit is not (FrameHandle.None or FrameHandle.Move) => CursorFor(markHit),
+            CaptureTool.Select when hit != FrameHandle.None => CursorFor(hit),
             CaptureTool.Select when !IsValid(_sel) => Cursors.Cross,
             CaptureTool.Select => _doc.HitTest(p, MarkHitSlop) >= 0 ? Cursors.SizeAll : Cursors.Arrow,
             CaptureTool.Text => Cursors.IBeam,
@@ -303,48 +323,31 @@ public partial class CaptureOverlayWindow
         _doc.Area = new Int32Rect(_area.X + x, _area.Y + y, w, h);
     }
 
-    private Handle HitTest(Point p)
+    private FrameHandle HitTest(Point p) =>
+        _sel is Rect s ? MarkGeometry.HitFrame(s, p, GripHit) : FrameHandle.None;
+
+    /// <summary>
+    /// 选中标注的八个把手（只在「选择」工具下、且这一条能缩放时才给）。
+    /// 框内返回 <see cref="FrameHandle.Move"/>，由调用方决定是拖动还是交给框选。
+    /// </summary>
+    private FrameHandle MarkHandleAt(Point p)
     {
-        if (_sel is not Rect s) return Handle.None;
+        if (_tool != CaptureTool.Select) return FrameHandle.None;
+        if (_selectedIndex < 0 || _selectedIndex >= _doc.Marks.Count) return FrameHandle.None;
 
-        foreach (var h in new[]
-                 {
-                     Handle.TopLeft, Handle.TopRight, Handle.BottomLeft, Handle.BottomRight,
-                     Handle.Top, Handle.Bottom, Handle.Left, Handle.Right,
-                 })
-        {
-            Point at = GripPoint(s, h);
-            if (Math.Abs(p.X - at.X) <= GripHit && Math.Abs(p.Y - at.Y) <= GripHit) return h;
-        }
+        var mark = _doc.Marks[_selectedIndex];
+        if (!mark.CanScale) return FrameHandle.None;
 
-        return s.Contains(p) ? Handle.Move : Handle.None;
+        return MarkGeometry.HitFrame(MarkGeometry.PaddedFrame(mark.Frame), p, GripHit);
     }
 
-    private static Point GripPoint(Rect r, Handle h)
+    private static Cursor CursorFor(FrameHandle h) => h switch
     {
-        double cx = r.X + r.Width / 2;
-        double cy = r.Y + r.Height / 2;
-        return h switch
-        {
-            Handle.TopLeft => new Point(r.Left, r.Top),
-            Handle.TopRight => new Point(r.Right, r.Top),
-            Handle.BottomLeft => new Point(r.Left, r.Bottom),
-            Handle.BottomRight => new Point(r.Right, r.Bottom),
-            Handle.Top => new Point(cx, r.Top),
-            Handle.Bottom => new Point(cx, r.Bottom),
-            Handle.Left => new Point(r.Left, cy),
-            Handle.Right => new Point(r.Right, cy),
-            _ => new Point(cx, cy),
-        };
-    }
-
-    private static Cursor CursorFor(Handle h) => h switch
-    {
-        Handle.TopLeft or Handle.BottomRight => Cursors.SizeNWSE,
-        Handle.TopRight or Handle.BottomLeft => Cursors.SizeNESW,
-        Handle.Top or Handle.Bottom => Cursors.SizeNS,
-        Handle.Left or Handle.Right => Cursors.SizeWE,
-        Handle.Move => Cursors.SizeAll,
+        FrameHandle.TopLeft or FrameHandle.BottomRight => Cursors.SizeNWSE,
+        FrameHandle.TopRight or FrameHandle.BottomLeft => Cursors.SizeNESW,
+        FrameHandle.Top or FrameHandle.Bottom => Cursors.SizeNS,
+        FrameHandle.Left or FrameHandle.Right => Cursors.SizeWE,
+        FrameHandle.Move => Cursors.SizeAll,
         _ => Cursors.Cross,
     };
 
@@ -355,25 +358,9 @@ public partial class CaptureOverlayWindow
         return new Rect(x, y, r.Width, r.Height);
     }
 
-    private Rect ResizeFrom(Rect r, Handle h, Vector d)
-    {
-        double left = r.Left, top = r.Top, right = r.Right, bottom = r.Bottom;
-
-        if (h is Handle.Left or Handle.TopLeft or Handle.BottomLeft) left += d.X;
-        if (h is Handle.Right or Handle.TopRight or Handle.BottomRight) right += d.X;
-        if (h is Handle.Top or Handle.TopLeft or Handle.TopRight) top += d.Y;
-        if (h is Handle.Bottom or Handle.BottomLeft or Handle.BottomRight) bottom += d.Y;
-
-        left = Math.Clamp(left, 0, ActualWidth);
-        right = Math.Clamp(right, 0, ActualWidth);
-        top = Math.Clamp(top, 0, ActualHeight);
-        bottom = Math.Clamp(bottom, 0, ActualHeight);
-
-        // 小于最小尺寸时保持上一次的选区，避免框被拖成 0
-        if (right - left < MinSize || bottom - top < MinSize) return r;
-
-        return new Rect(left, top, right - left, bottom - top);
-    }
+    /// <summary>选区改框：纯几何在 <see cref="MarkGeometry.ResizeFrame"/>，这里只补「别跑出窗口」。</summary>
+    private Rect ResizeFrom(Rect r, FrameHandle h, Vector d) =>
+        MarkGeometry.ResizeFrame(r, h, d, MinSize, new Rect(0, 0, ActualWidth, ActualHeight));
 
     private static Rect RectFrom(Point a, Point b) => new(
         Math.Min(a.X, b.X), Math.Min(a.Y, b.Y),
