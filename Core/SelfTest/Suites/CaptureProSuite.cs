@@ -39,6 +39,7 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "工具：目录 / 参数格 / 默认样式", Tools));
         cases.Add(new("capturePro", "取色：像素颜色与文本", Picker));
         cases.Add(new("capturePro", "贴图：缩放 / 不透明度 / 锚点", Pin));
+        cases.Add(new("capturePro", "贴图：分组名与批量另存", PinGrouping));
         cases.Add(new("capturePro", "工具栏：格子布局 / 收起 / 落盘往返", ToolLayouts));
         cases.Add(new("capturePro", "识别：表格聚类 / TSV / HTML", Recognize));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
@@ -935,6 +936,69 @@ internal static class CaptureProSuite
             "矮一点也不给");
         Check.False(PinMath.ShowsHoverButtons(PinMath.ThumbnailSide, PinMath.ThumbnailSide, true),
             "缩略图里一律不给（83 已过尺寸门槛，拦它的是「缩略图」这条）");
+    }
+
+    /// <summary>
+    /// 贴图分组与批量：组名清洗 / 忽略大小写判重、批量另存落盘（不覆盖同名）。
+    /// </summary>
+    private static void PinGrouping()
+    {
+        Check.Equal("默认", PinGroups.Default, "默认组名");
+        Check.Equal(16, PinGroups.MaxName, "组名最多 16 字");
+
+        Check.Equal("外部", PinGroups.Clean("  外部  "), "去首尾空白");
+        Check.Equal("外部 素材", PinGroups.Clean("外部   素材"), "内部连续空白压成一个");
+        Check.True(PinGroups.Clean("   ") == null, "全是空白 = 没有名字");
+        Check.True(PinGroups.Clean("") == null, "空串 = 没有名字");
+        Check.True(PinGroups.Clean(null) == null, "null = 没有名字");
+        Check.Equal("一二三四五六七八九十一二三四五六", PinGroups.Clean("一二三四五六七八九十一二三四五六七八"),
+            "超长截到 16 字");
+
+        Check.True(PinGroups.Same("External", "external"), "判重忽略大小写");
+        Check.False(PinGroups.Same("外部", "外部2"), "不同名不是一组");
+
+        var groups = new[] { "默认", "外部", "素材" };
+        Check.Equal("外部", PinGroups.Find("外部", groups), "查到就返回它原本的写法");
+        Check.Equal("素材", PinGroups.Find(" 素材 ", groups), "传进来的名字先清洗，带空白也认得出");
+        Check.Equal("外部", PinGroups.Find("外部", new[] { "默认", "外部" }), "多个组里挑对那个");
+        Check.True(PinGroups.Find("不存在", groups) == null, "没有就是 null");
+        Check.True(PinGroups.Find(null, groups) == null, "null 不匹配任何组");
+
+        // 批量另存：一个文件夹里逐个写 png，同名不覆盖
+        string dir = Path.Combine(Path.GetTempPath(), "ltools-selftest-pin-" + Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            var first = NewPage(4);                    // 16×4
+            var second = NewPage(6);                   // 16×6
+
+            var saved = CaptureSave.SaveManyTo(dir, new[] { first, second });
+            Check.Equal(2, saved.Count, "两张各写一个文件");
+            Check.True(saved.All(File.Exists), "文件真的落盘了");
+            Check.True(saved.All(Path.IsPathRooted), "返回的是完整路径");
+            Check.True(saved[0].EndsWith("-1.png", StringComparison.Ordinal) &&
+                       saved[1].EndsWith("-2.png", StringComparison.Ordinal), "按序号命名");
+
+            using (var stream = File.OpenRead(saved[0]))
+            {
+                var decoded = BitmapFrame.Create(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                Check.Equal(16, decoded.PixelWidth, "写出来的是 png（宽 16）");
+                Check.Equal(4, decoded.PixelHeight, "第一张高 4");
+            }
+
+            using (var stream = File.OpenRead(saved[1]))
+            {
+                var decoded = BitmapFrame.Create(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                Check.Equal(6, decoded.PixelHeight, "第二张高 6（不是把同一张写两遍）");
+            }
+
+            var again = CaptureSave.SaveManyTo(dir, new[] { first });
+            Check.True(again[0] != saved[0], "同一秒再存一次自动错开名字");
+            Check.True(File.Exists(saved[0]) && File.Exists(again[0]), "前一张没被覆盖");
+        }
+        finally
+        {
+            try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { /* 清理失败不影响断言 */ }
+        }
     }
 
     /// <summary>

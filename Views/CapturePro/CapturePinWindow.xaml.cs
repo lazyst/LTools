@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -58,6 +59,12 @@ public partial class CapturePinWindow : Window
     private Point _moveStart;                // 移动窗口：按下的**屏幕**位置（DIP）
     private Vector _panStart;
 
+    private bool _maybeSelect;                // Ctrl 按下但还没挪动：松手算「多选」，挪了算「拖」
+    private Point _selectAt;                  // 上面那一下按下的屏幕位置（DIP）
+
+    private string _group = PinGroups.Default;
+    private bool _selected;
+
     private ContextMenu? _menu;
 
     public CapturePinWindow(BitmapSource image, Int32Rect area, double scale)
@@ -102,6 +109,12 @@ public partial class CapturePinWindow : Window
 
     /// <summary>局部显示里内容的偏移（DIP，负 = 往左 / 上拖过）。</summary>
     public Vector Pan => _pan;
+
+    /// <summary>这张贴图在哪个分组（只在内存，见 <see cref="CapturePinManager"/>）。</summary>
+    public string Group => _group;
+
+    /// <summary>在多选里没有（<c>Ctrl</c>+单击切换）。</summary>
+    public bool Selected => _selected;
 
     /// <summary>内容当前的实际尺寸（100% 尺寸 × 缩放）。</summary>
     private Size ContentSize => new(Math.Max(1, _baseWidth * _zoom), Math.Max(1, _baseHeight * _zoom));
@@ -240,6 +253,7 @@ public partial class CapturePinWindow : Window
         ApplyFrame();
         ApplyCursor();
         RefreshHoverChrome();
+        RefreshBadges();                              // 方块里不挂徽标
     }
 
     // ============ 标注 ============
@@ -316,15 +330,34 @@ public partial class CapturePinWindow : Window
             return;
         }
 
+        // Ctrl+单击 = 多选（贴图不抢焦点、收不到键盘，这是唯一的选择入口）。
+        // 先不动手：取景框里 Ctrl 拖动是「移动窗口」，得看松手前有没有挪过再定。
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        {
+            _maybeSelect = true;
+            _selectAt = CursorScreenDip();
+            CaptureMouse();
+            e.Handled = true;
+            return;
+        }
+
         if (_locked) return;
 
+        BeginGesture(e.GetPosition(this));
+        CaptureMouse();
+        e.Handled = true;
+    }
+
+    /// <summary>按下后真正开始的那一下手势：取景框里平移内容，其余情况移动窗口（含成组 / 多选）。</summary>
+    private void BeginGesture(Point windowPos)
+    {
         // 局部显示里拖动是「平移内容」：窗口不动，用窗口内坐标；
         // 移动窗口必须用**屏幕**坐标——窗口跟着走时窗口内坐标会互相抵消，
         // 每帧只落下最后一个增量，看着就是拖影 / 追不上手（见 DragTo）。
         if (IsPanGesture())
         {
             _panning = true;
-            _dragStart = e.GetPosition(this);
+            _dragStart = windowPos;
             _panStart = _pan;
             Cursor = Cursors.ScrollAll;
         }
@@ -335,9 +368,6 @@ public partial class CapturePinWindow : Window
             CapturePinManager.BeginMove(this);
             Cursor = Cursors.SizeAll;
         }
-
-        CaptureMouse();
-        e.Handled = true;
     }
 
     private bool IsPanGesture() => _viewport && (Keyboard.Modifiers & ModifierKeys.Control) == 0;
@@ -386,6 +416,25 @@ public partial class CapturePinWindow : Window
 
     private void Window_MouseMove(object sender, MouseEventArgs e)
     {
+        // Ctrl 按下还没挪：挪过 4 DIP 就作废「多选」，改判成拖动 / 平移
+        if (_maybeSelect)
+        {
+            Point now = CursorScreenDip();
+            if (Math.Abs(now.X - _selectAt.X) < 4 && Math.Abs(now.Y - _selectAt.Y) < 4)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            _maybeSelect = false;
+            if (_locked)                  // 锁着的贴图不跟着走，这一下什么都不做
+            {
+                try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
+                return;
+            }
+            BeginGesture(e.GetPosition(this));
+        }
+
         if (!_dragging && !_panning) return;
 
         if (_panning)
@@ -404,6 +453,15 @@ public partial class CapturePinWindow : Window
 
     private void Window_MouseUp(object sender, MouseButtonEventArgs e)
     {
+        if (_maybeSelect)
+        {
+            _maybeSelect = false;
+            CapturePinManager.ToggleSelect(this);
+            try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
+            e.Handled = true;
+            return;
+        }
+
         if (!_dragging && !_panning) return;
 
         _dragging = false;
@@ -535,14 +593,54 @@ public partial class CapturePinWindow : Window
     /// </summary>
     private void ApplyCursor() => Cursor = !_locked && _viewport ? Cursors.ScrollAll : Cursors.Arrow;
 
-    /// <summary>边框颜色同时表达两种状态：锁定（亮蓝）优先，其次局部显示（淡蓝）。</summary>
+    /// <summary>边框颜色同时表达三种状态：多选（2px 亮蓝）优先，其次锁定（亮蓝），再次局部显示（淡蓝）。</summary>
     private void ApplyFrame()
     {
+        if (_selected)
+        {
+            // 2px 描边是「压在图上」画的（见 XAML 里 Frame 的注释），加粗不会挤动内容
+            Frame.BorderThickness = new Thickness(2);
+            Frame.BorderBrush = new SolidColorBrush(Color.FromRgb(0x3B, 0x82, 0xF6));
+            return;
+        }
+
+        Frame.BorderThickness = new Thickness(1);
         Frame.BorderBrush = new SolidColorBrush(_locked
             ? Color.FromRgb(0x3B, 0x82, 0xF6)
             : _viewport
                 ? Color.FromArgb(0x66, 0x3B, 0x82, 0xF6)
                 : Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF));
+    }
+
+    // ============ 分组 / 多选 ============
+
+    /// <summary>换分组（由 <see cref="CapturePinManager.MoveToGroup"/> 调；只管显示，藏 / 显在那边）。</summary>
+    internal void SetGroup(string group)
+    {
+        _group = string.IsNullOrWhiteSpace(group) ? PinGroups.Default : group;
+        RefreshBadges();
+    }
+
+    /// <summary>多选状态（由 <see cref="CapturePinManager"/> 调）。</summary>
+    internal void SetSelected(bool on)
+    {
+        if (_selected == on) return;
+        _selected = on;
+        ApplyFrame();
+        RefreshBadges();
+    }
+
+    /// <summary>
+    /// 左上角两枚徽标：已选 + 分组名（默认组不显示，免得每张都挂一行）。
+    /// 缩略图方块里一律收起——83 DIP 的方块会被盖掉一半。
+    /// </summary>
+    private void RefreshBadges()
+    {
+        SelectionBadge.Visibility = _selected && !_thumb ? Visibility.Visible : Visibility.Collapsed;
+
+        bool named = !_thumb && !PinGroups.Same(_group, PinGroups.Default);
+        GroupBadgeText.Text = _group;
+        GroupBadge.Visibility = named ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ============ 右键菜单 ============
@@ -593,6 +691,11 @@ public partial class CapturePinWindow : Window
         AddOpacity(opacity, "80%", 0.8);
         AddOpacity(opacity, "60%", 0.6);
         AddOpacity(opacity, "40%", 0.4);
+
+        menu.Items.Add(new Separator());
+
+        AddGroupMenu(menu);
+        AddBatchMenu(menu);
 
         menu.Items.Add(new Separator());
 
@@ -650,6 +753,147 @@ public partial class CapturePinWindow : Window
         parent.Items.Add(item);
     }
 
+    /// <summary>
+    /// 「分组」子菜单：先「移到」（勾的是这张图现在的组），再「只看」（勾的是当前的过滤），
+    /// 中间夹「新建分组并移入…」（建完直接挪过去，省一步）。
+    /// </summary>
+    private void AddGroupMenu(ContextMenu menu)
+    {
+        var root = MenuFx.Submenu(menu, "分组");
+
+        foreach (var name in CapturePinManager.Groups)
+        {
+            string target = name;
+            var item = new MenuItem
+            {
+                Header = $"移到「{name}」",
+                IsCheckable = true,
+                IsChecked = PinGroups.Same(target, _group),
+            };
+            item.Click += (_, _) => MoveToGroup(target);
+            root.Items.Add(item);
+        }
+
+        var create = new MenuItem { Header = "新建分组并移入…" };
+        create.Click += (_, _) =>
+        {
+            _menu?.IsOpen = false;      // 模态输入框不能挂在开着的 popup 上
+            Dispatcher.BeginInvoke(new Action(NewGroupAndMove),
+                System.Windows.Threading.DispatcherPriority.Background);
+        };
+        root.Items.Add(create);
+
+        root.Items.Add(new Separator());
+
+        var all = new MenuItem
+        {
+            Header = "显示全部分组",
+            IsCheckable = true,
+            IsChecked = CapturePinManager.ActiveGroup == null,
+        };
+        all.Click += (_, _) => CapturePinManager.SetActiveGroup(null);
+        root.Items.Add(all);
+
+        foreach (var name in CapturePinManager.Groups)
+        {
+            string target = name;
+            var item = new MenuItem
+            {
+                Header = $"只看「{name}」",
+                IsCheckable = true,
+                IsChecked = PinGroups.Same(target, CapturePinManager.ActiveGroup),
+            };
+            item.Click += (_, _) => CapturePinManager.SetActiveGroup(target);
+            root.Items.Add(item);
+        }
+    }
+
+    /// <summary>挪到某个分组；挪出当前正看着的组会当场藏起来，给一句 toast 免得像「贴图丢了」。</summary>
+    private void MoveToGroup(string group)
+    {
+        CapturePinManager.MoveToGroup(this, group);
+        if (!IsVisible && CapturePinManager.ActiveGroup != null)
+            ToastService.Show($"已移到「{_group}」，当前只看「{CapturePinManager.ActiveGroup}」",
+                "贴图分组", 2600, ToastKind.info, key: "pin-group");
+    }
+
+    /// <summary>弹输入框建一个新分组并把这张图挪进去（贴图是 Topmost 且不抢焦点，框必须自己置顶）。</summary>
+    private void NewGroupAndMove()
+    {
+        var (ok, value) = InputDialog.Show(null, "新建分组",
+            $"分组名（最多 {PinGroups.MaxName} 字）", "", topmost: true);
+        if (!ok) return;
+
+        string? name = CapturePinManager.CreateGroup(value);
+        if (name == null)
+        {
+            ToastService.Show("分组名不能为空", "贴图分组", 2400, ToastKind.warning);
+            return;
+        }
+
+        MoveToGroup(name);
+    }
+
+    /// <summary>
+    /// 「批量」子菜单：全选 / 取消 / 关闭 / 另存 / 锁定 / 缩略图，全部作用在多选上。
+    /// 一张没选时后四项置灰；贴图不抢焦点、收不到键盘，所以底部留一句「Ctrl+单击」的提示。
+    /// </summary>
+    private void AddBatchMenu(ContextMenu menu)
+    {
+        int count = CapturePinManager.Selected.Count;
+        var root = MenuFx.Submenu(menu, count > 0 ? $"批量（已选 {count} 张）" : "批量");
+
+        var all = new MenuItem { Header = "全选", IsEnabled = CapturePinManager.Visible.Count > 0 };
+        all.Click += (_, _) => CapturePinManager.SelectAll();
+        root.Items.Add(all);
+
+        var none = new MenuItem { Header = "取消选择", IsEnabled = count > 0 };
+        none.Click += (_, _) => CapturePinManager.ClearSelection();
+        root.Items.Add(none);
+
+        root.Items.Add(new Separator());
+
+        var close = new MenuItem
+        {
+            Header = count > 0 ? $"关闭所选（{count} 张）" : "关闭所选",
+            IsEnabled = count > 0,
+        };
+        close.Click += (_, _) => CapturePinManager.CloseSelected();
+        root.Items.Add(close);
+
+        // 另存要弹文件夹选择，先收起菜单（模态框挂在开着的 popup 上会点不动）
+        var save = new MenuItem { Header = "另存所选…", IsEnabled = count > 0 };
+        save.Click += (_, _) =>
+        {
+            var images = CapturePinManager.Selected.Select(p => p.Image).ToArray();
+            _menu?.IsOpen = false;
+            Dispatcher.BeginInvoke(new Action(() => CaptureSave.TrySaveMany(null, images)),
+                System.Windows.Threading.DispatcherPriority.Background);
+        };
+        root.Items.Add(save);
+
+        bool allLocked = count > 0 && CapturePinManager.Selected.All(p => p.Locked);
+        var locked = new MenuItem
+        {
+            Header = allLocked ? "解锁所选" : "锁定所选",
+            IsEnabled = count > 0,
+        };
+        locked.Click += (_, _) => CapturePinManager.SetSelectedLocked(!allLocked);
+        root.Items.Add(locked);
+
+        bool allThumb = count > 0 && CapturePinManager.Selected.All(p => p.Thumbnail);
+        var thumb = new MenuItem
+        {
+            Header = allThumb ? "还原所选" : "缩略图所选",
+            IsEnabled = count > 0,
+        };
+        thumb.Click += (_, _) => CapturePinManager.SetSelectedThumbnail(!allThumb);
+        root.Items.Add(thumb);
+
+        root.Items.Add(new Separator());
+        root.Items.Add(new MenuItem { Header = "按住 Ctrl 再单击可多选", IsEnabled = false });
+    }
+
     private void AddOpacity(ItemsControl parent, string header, double opacity)
     {
         var item = new MenuItem { Header = header };
@@ -662,10 +906,11 @@ public partial class CapturePinWindow : Window
     {
         _locked = locked;
         ApplyFrame();
-        if (locked && (_dragging || _panning))
+        if (locked && (_dragging || _panning || _maybeSelect))
         {
             _dragging = false;
             _panning = false;
+            _maybeSelect = false;
             CapturePinManager.EndMove();
             try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
         }

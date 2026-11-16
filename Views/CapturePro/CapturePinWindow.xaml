@@ -27,6 +27,15 @@
                 <ResourceDictionary Source="CaptureIcons.xaml"/>
             </ResourceDictionary.MergedDictionaries>
 
+            <Style x:Key="PinBadge" TargetType="Border">
+                <Setter Property="Background" Value="#C9101014"/>
+                <Setter Property="BorderBrush" Value="#40FFFFFF"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="4"/>
+                <Setter Property="Padding" Value="6,1"/>
+                <Setter Property="Margin" Value="0,0,4,0"/>
+            </Style>
+
             <Style x:Key="PinCloseBtn" TargetType="Button">
                 <Setter Property="Width" Value="22"/>
                 <Setter Property="Height" Value="22"/>
@@ -68,6 +77,19 @@
         <!-- 边框画在图上而不是当外层 Border 的 BorderThickness：
              那样内容区会小 1px，局部显示里内容比取景框大一点时右下会多露一条空白。 -->
         <Border x:Name="Frame" BorderThickness="1" IsHitTestVisible="False" BorderBrush="#26FFFFFF"/>
+
+        <!-- 左上角两枚小徽标：已选（多选）/ 分组名（不在默认组才显示）。
+             缩略图方块太小，两枚一起收起（见 RefreshBadges）。 -->
+        <StackPanel x:Name="BadgeRow" Orientation="Horizontal" Margin="5"
+                    HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False">
+            <Border x:Name="SelectionBadge" Style="{StaticResource PinBadge}"
+                    Background="#E63B82F6" BorderBrush="#66FFFFFF" Visibility="Collapsed">
+                <TextBlock Text="✓ 已选" FontSize="11" Foreground="#FFFFFF"/>
+            </Border>
+            <Border x:Name="GroupBadge" Style="{StaticResource PinBadge}" Visibility="Collapsed">
+                <TextBlock x:Name="GroupBadgeText" FontSize="11" Foreground="#E4E4E7"/>
+            </Border>
+        </StackPanel>
 
         <Button x:Name="CloseBtn" Style="{StaticResource PinCloseBtn}"
                 HorizontalAlignment="Right" VerticalAlignment="Top"

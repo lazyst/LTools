@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
@@ -146,6 +147,67 @@ internal static class CaptureSave
             TrayService.Notify("快速保存失败：" + ex.Message);
             return false;
         }
+    }
+
+    /// <summary>
+    /// 批量另存：选一个文件夹，逐个写成 png（贴图多选后的「另存所选」）。
+    /// 返回 true = 真的存下去了；取消 / 失败都留在原地。
+    /// </summary>
+    public static bool TrySaveMany(Window? owner, IReadOnlyList<BitmapSource> images)
+    {
+        if (images.Count == 0) return false;
+
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "另存所选贴图到文件夹",
+            InitialDirectory = DefaultFolder,
+            Multiselect = false,
+        };
+
+        bool? ok = owner != null ? dialog.ShowDialog(owner) : dialog.ShowDialog();
+        if (ok != true || string.IsNullOrWhiteSpace(dialog.FolderName)) return false;
+
+        try
+        {
+            var saved = SaveManyTo(dialog.FolderName, images);
+            ToastService.Show($"已保存 {saved.Count} 张到 {Path.GetFileName(dialog.FolderName)}",
+                "批量另存", 3000, ToastKind.success, key: "capture-save-many",
+                onClick: () => RevealInExplorer(saved[0]), actionText: "打开文件夹");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("CapturePro.SaveMany", ex);
+            TrayService.Notify("批量另存失败：" + ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 批量另存的落盘部分（不弹框）：<paramref name="dir"/> 下按「贴图-时间戳-N.png」逐个写，
+    /// 同秒重名自动加序号。返回落盘的路径，异常交给调用方（<c>--selftest</c> 直接断言文件与尺寸）。
+    /// </summary>
+    public static IReadOnlyList<string> SaveManyTo(string dir, IReadOnlyList<BitmapSource> images)
+    {
+        Directory.CreateDirectory(dir);
+
+        string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var saved = new List<string>(images.Count);
+
+        for (int i = 0; i < images.Count; i++)
+        {
+            string file = UniquePath(dir, $"贴图-{stamp}-{i + 1}.png");
+            using (var stream = File.Create(file))
+            {
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(images[i]));
+                encoder.Save(stream);
+            }
+
+            saved.Add(file);
+        }
+
+        return saved;
     }
 
     /// <summary>同目录下不重名的路径（同一秒连按两次不会覆盖前一张）。</summary>

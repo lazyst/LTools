@@ -54,12 +54,19 @@ public partial class InputDialog : Window
         Loaded += (_, _) => { ValueBox.Focus(); ValueBox.SelectAll(); };
     }
 
-    /// <summary>弹出模态输入框。owner 可空；<paramref name="variables"/> 非空时提供变量插入按钮。</summary>
+    /// <summary>
+    /// 弹出模态输入框。owner 可空；<paramref name="variables"/> 非空时提供变量插入按钮。
+    /// </summary>
+    /// <param name="topmost">
+    /// 强制置顶：宿主是没有 Owner 的置顶小窗（贴图是 <c>Topmost</c> 且不抢焦点）时，
+    /// 不置顶的输入框会被它自己盖住。
+    /// </param>
     public static (bool ok, string value) Show(Window? owner, string title, string prompt, string defaultValue = "",
-        IReadOnlyList<string>? variables = null, bool multiline = false)
+        IReadOnlyList<string>? variables = null, bool multiline = false, bool topmost = false)
     {
         var dlg = new InputDialog(title, prompt, defaultValue, variables, multiline);
         if (owner != null) { dlg.Owner = owner; dlg.Topmost = owner.Topmost; }
+        if (topmost) dlg.Topmost = true;
         dlg.ShowDialog();
         return (dlg._ok, dlg.Value);
     }
