@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using LTools.Features.CapturePro;
 using LTools.Native;
 
 namespace LTools.Views.CapturePro;
@@ -27,7 +28,7 @@ public partial class CaptureOverlayWindow
     private System.Drawing.Point ToScreen(Point dip)
     {
         var (ix, iy) = ToImage(dip);
-        return new System.Drawing.Point(_monitor.X + ix, _monitor.Y + iy);
+        return new System.Drawing.Point(_area.X + ix, _area.Y + iy);
     }
 
     /// <summary>屏幕物理像素矩形 → 窗口 DIP。</summary>
@@ -36,8 +37,8 @@ public partial class CaptureOverlayWindow
         double sx = ActualWidth > 0 ? ActualWidth / _shot.PixelWidth : 1;
         double sy = ActualHeight > 0 ? ActualHeight / _shot.PixelHeight : 1;
         return new Rect(
-            (b.X - _monitor.X) * sx,
-            (b.Y - _monitor.Y) * sy,
+            (b.X - _area.X) * sx,
+            (b.Y - _area.Y) * sy,
             b.Width * sx,
             b.Height * sy);
     }
@@ -59,7 +60,7 @@ public partial class CaptureOverlayWindow
         if (ActualWidth <= 0 || ActualHeight <= 0) return false;
         double sx = (double)ActualWidth / _shot.PixelWidth;
         double sy = (double)ActualHeight / _shot.PixelHeight;
-        dip = new Point((screen.X - _monitor.X) * sx, (screen.Y - _monitor.Y) * sy);
+        dip = new Point((screen.X - _area.X) * sx, (screen.Y - _area.Y) * sy);
         return true;
     }
 
@@ -87,6 +88,10 @@ public partial class CaptureOverlayWindow
             if (OwnedBy(box, top)) Add(box.Bounds);
         foreach (var box in _uiaTargets)
             if (OwnedBy(box, top)) Add(box.Bounds);
+
+        // 每块显示器的边：跨屏拖框时能贴住屏幕交界，也能直接框住某一块屏
+        foreach (var monitor in ScreenShot.Monitors()) Add(ScreenShot.ToRectangle(monitor));
+
         xs.Add(0); xs.Add(ActualWidth);
         ys.Add(0); ys.Add(ActualHeight);
 

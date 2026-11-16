@@ -29,9 +29,10 @@ internal static class CapturePinManager
     public static IReadOnlyList<CapturePinWindow> All => Pins;
 
     /// <summary>把一张图贴到屏幕上（正好盖住它截下来的那块区域）。</summary>
-    public static CapturePinWindow Pin(BitmapSource image, Int32Rect area, double scale)
+    public static CapturePinWindow Pin(BitmapSource image, Int32Rect area)
     {
-        var pin = new CapturePinWindow(image, area, scale);
+        // 缩放比按这块区域所在显示器算：跨屏选区时不能用「覆盖层那块屏」的比例
+        var pin = new CapturePinWindow(image, area, ScreenShot.ScaleOf(area));
         Pins.Add(pin);
         pin.Show();          // 无激活窗口：ShowActivated=False + WS_EX_NOACTIVATE
         pin.RaiseToTop();

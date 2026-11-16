@@ -110,7 +110,7 @@ public partial class CaptureOverlayWindow
         if (_uiaPending == top) return;   // 已经有人在查这个窗口了
         _uiaPending = top;
 
-        var monitor = _monitor;
+        var monitor = _area;
         Task.Run(() => ScreenSnapTargets.FromWindowTree(top, monitor))
             .ContinueWith(t =>
             {

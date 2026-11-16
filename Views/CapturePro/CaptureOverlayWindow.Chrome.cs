@@ -178,7 +178,7 @@ public partial class CaptureOverlayWindow
         int x = Math.Min(x1, x2), y = Math.Min(y1, y2);
         int w = Math.Abs(x2 - x1) + 1, h = Math.Abs(y2 - y1) + 1;
 
-        InfoText.Text = $"{w} × {h} px   {_monitor.X + x}, {_monitor.Y + y}";
+        InfoText.Text = $"{w} × {h} px   {_area.X + x}, {_area.Y + y}";
         InfoBox.Visibility = Visibility.Visible;
         InfoBox.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         double iw = InfoBox.DesiredSize.Width;
@@ -269,7 +269,7 @@ public partial class CaptureOverlayWindow
     }
 
     /// <summary>
-    /// 按物理像素把窗口钉死在显示器矩形上。
+    /// 按物理像素把窗口钉死在覆盖区域上（多屏时是整个虚拟桌面）。
     /// 混合 DPI 下 WPF 的 DIP→像素换算可能差几个像素，用 Win32 再确认一次，
     /// 保证冻结画面与屏幕 1:1 对齐。
     /// </summary>
@@ -278,6 +278,22 @@ public partial class CaptureOverlayWindow
         if (_hwnd == IntPtr.Zero) _hwnd = new WindowInteropHelper(this).Handle;
         if (_hwnd == IntPtr.Zero) return;
         Win32.SetWindowPos(_hwnd, Win32.HwndTopmost,
-            _monitor.X, _monitor.Y, _monitor.Width, _monitor.Height, Win32.SwpNoactivate);
+            _area.X, _area.Y, _area.Width, _area.Height, Win32.SwpNoactivate);
+    }
+
+    /// <summary>
+    /// 用窗口真正显示时的比例校准文档的「物理像素 / DIP」。
+    /// 跨屏时窗口落在哪块显示器、系统给什么 DPI，只有窗口出来之后才知道；
+    /// 校不准会让底图按错的比例铺开（右边 / 下边露出一截窗口底色）。
+    /// </summary>
+    private void SyncDocumentScale()
+    {
+        if (ActualWidth <= 0 || _shot.PixelWidth <= 0) return;
+        double scale = ActualWidth / _shot.PixelWidth;
+        if (Math.Abs(scale - _doc.Scale) < 1e-6) return;
+
+        _doc.SetScale(scale);
+        Surface.InvalidateVisual();
+        UpdateChrome();
     }
 }

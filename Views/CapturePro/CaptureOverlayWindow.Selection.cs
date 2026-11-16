@@ -300,7 +300,7 @@ public partial class CaptureOverlayWindow
         int h = Math.Min(Math.Abs(y2 - y1) + 1, _shot.PixelHeight - y);
         if (w < 2 || h < 2) return;
 
-        _doc.Area = new Int32Rect(_monitor.X + x, _monitor.Y + y, w, h);
+        _doc.Area = new Int32Rect(_area.X + x, _area.Y + y, w, h);
     }
 
     private Handle HitTest(Point p)

@@ -4,7 +4,6 @@ using System.Windows.Media.Imaging;
 using LTools.Core;
 using LTools.Features;
 using LTools.Hooks;
-using LTools.Native;
 using LTools.Views;
 using LTools.Views.CapturePro;
 
@@ -21,6 +20,7 @@ internal sealed record CaptureResult(Int32Rect Area, BitmapSource Image);
 /// ① <see cref="TransientMinimize"/>（不收起自己的窗口会把自己截进去，也会挡住框选）；
 /// ② <see cref="MouseHook.SetWindowPickerActive"/>（否则「裸右键长按 = 面板」会吞掉右键，用户要按两次 Esc）；
 /// ③ <see cref="HotkeyRegistry.Suspended"/>（单键绑定会吞掉框选里的按键，<c>Enter</c> / <c>Esc</c> 就没了）。
+/// 冻结范围是**所有显示器的并集**（<see cref="ScreenShot.Bounds"/>），所以框选可以跨屏拖；
 /// 图片走 <see cref="CaptureDocument.Render"/>：按选区**重绘**，不是截屏再裁。
 /// </remarks>
 internal static class CaptureSession
@@ -35,26 +35,24 @@ internal static class CaptureSession
 
         CaptureResult? result = null;
         bool pin = false, recognize = false;
-        double scale = 1;
         var finish = CaptureOverlayWindow.FinishKind.Copy;
 
         try
         {
             System.Threading.Thread.Sleep(TransientMinimize.SettleMs);   // 等最小化动画结束、桌面重绘完
 
-            var monitor = ScreenPicker.MonitorUnderCursor();
-            using var bmp = ScreenCapture.Capture(monitor.X, monitor.Y, monitor.Width, monitor.Height);
-            var shot = ScreenPicker.ToBitmapSource(bmp);
-            var (sx, sy) = ScreenPickerWindow.MonitorScale(monitor);
+            // 覆盖层盖住**所有显示器**（跨屏选区）：冻结画面逐块抓再拼，坐标仍是物理像素
+            var area = ScreenShot.Bounds();
+            var shot = ScreenShot.Capture(area);
+            var (sx, sy) = ScreenPickerWindow.MonitorScale(ScreenShot.ToRectangle(area));
 
-            var overlay = new CaptureOverlayWindow(shot, monitor, sx, sy);
+            var overlay = new CaptureOverlayWindow(shot, ScreenShot.ToRectangle(area), sx, sy);
             bool? ok = overlay.ShowDialog();
             if (ok != true || overlay.ResultImage == null) return null;
 
             result = new CaptureResult(overlay.Document.Area, overlay.ResultImage);
             pin = overlay.PinRequested;
             recognize = overlay.RecognizeRequested;
-            scale = overlay.MonitorScale;
             finish = overlay.Finish;
         }
         catch (Exception ex)
@@ -82,7 +80,7 @@ internal static class CaptureSession
         var image = result.Image;
         System.Threading.Tasks.Task.Run(() => CaptureCatalog.SaveAssets(entry, image));
 
-        if (pin) CapturePinManager.Pin(result.Image, result.Area, scale);
+        if (pin) CapturePinManager.Pin(result.Image, result.Area);
         if (recognize)
             CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry);
 

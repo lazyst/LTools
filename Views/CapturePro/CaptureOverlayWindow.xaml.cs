@@ -17,8 +17,8 @@ namespace LTools.Views.CapturePro;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 窗口正好盖住**光标所在的那台显示器**（P0 不做跨屏选区）：所有坐标在窗口里是 DIP，
-/// 交出去之前统一换算成「显示器物理像素 + 左上角偏移」，与截图 / 找图 / 鼠标注入同一套坐标系。
+/// 窗口正好盖住**所有显示器的并集**（跨屏选区）：所有坐标在窗口里是 DIP，
+/// 交出去之前统一换算成「屏幕物理像素 + 左上角偏移」，与截图 / 找图 / 鼠标注入同一套坐标系。
 /// 画面部分见 <see cref="CaptureCanvas"/>，标注模型见 <see cref="CaptureDocument"/>。
 /// </para>
 /// <para>
@@ -31,7 +31,7 @@ public partial class CaptureOverlayWindow : Window
     private const double MinSize = 4;      // 选区最小边长（DIP）
 
     private readonly BitmapSource _shot;
-    private readonly System.Drawing.Rectangle _monitor;
+    private readonly System.Drawing.Rectangle _area;   // 覆盖的物理矩形（多屏时是整个虚拟桌面）
     private readonly double _sx, _sy;      // 物理像素 / DIP
     private readonly CaptureDocument _doc;
     private readonly List<Rectangle> _grips = new();
@@ -56,32 +56,29 @@ public partial class CaptureOverlayWindow : Window
     /// <summary>这一次是怎么完成的（采集历史记「完成动作」用）。</summary>
     internal FinishKind Finish { get; private set; } = FinishKind.Copy;
 
-    /// <summary>这块显示器的物理像素 / DIP（贴图按它把物理矩形换算回 DIP）。</summary>
-    public double MonitorScale => _sx;
-
     /// <summary>内容真源：底图 + 选区 + 标注 + 撤销栈。</summary>
     internal CaptureDocument Document => _doc;
 
-    public CaptureOverlayWindow(BitmapSource shot, System.Drawing.Rectangle monitor, double sx, double sy)
+    public CaptureOverlayWindow(BitmapSource shot, System.Drawing.Rectangle area, double sx, double sy)
     {
         InitializeComponent();
 
         _shot = shot;
-        _monitor = monitor;
+        _area = area;
         _sx = sx > 0 ? sx : 1;
         _sy = sy > 0 ? sy : 1;
-        _doc = new CaptureDocument(shot, new Int32Rect(monitor.Left, monitor.Top, monitor.Width, monitor.Height), _sx);
+        _doc = new CaptureDocument(shot, new Int32Rect(area.Left, area.Top, area.Width, area.Height), _sx);
         Surface.Document = _doc;
 
-        // 按目标显示器的 DPI 把物理矩形换算成 DIP：窗口正好盖住它
-        Left = monitor.Left / _sx;
-        Top = monitor.Top / _sy;
-        Width = Math.Max(1, monitor.Width / _sx);
-        Height = Math.Max(1, monitor.Height / _sy);
+        // 按目标显示器的 DPI 把物理矩形换算成 DIP：窗口正好盖住它（Loaded 里再按物理像素钉一次）
+        Left = area.Left / _sx;
+        Top = area.Top / _sy;
+        Width = Math.Max(1, area.Width / _sx);
+        Height = Math.Max(1, area.Height / _sy);
 
         BuildGrips();
         WireToolbar();
-        DpiChanged += (_, _) => PinToMonitor();
+        DpiChanged += (_, _) => { PinToMonitor(); SyncDocumentScale(); };
         UpdateCursorForTool();
     }
 
@@ -91,6 +88,7 @@ public partial class CaptureOverlayWindow : Window
     {
         _hwnd = new WindowInteropHelper(this).Handle;
         PinToMonitor();
+        SyncDocumentScale();
 
         Activate();
         Focus();
@@ -101,7 +99,7 @@ public partial class CaptureOverlayWindow : Window
         // 窗口树枚举很快（几百个句柄），打开时一次即可；UIA 的那一层在悬停时按需补
         try
         {
-            _windowTargets.AddRange(ScreenSnapTargets.FromWindows(_monitor));
+            _windowTargets.AddRange(ScreenSnapTargets.FromWindows(_area));
             RebuildSnapLines();
         }
         catch { /* 探测失败不影响手动框选 */ }

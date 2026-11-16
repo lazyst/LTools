@@ -31,6 +31,7 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "贴图：缩放 / 不透明度 / 锚点", Pin));
         cases.Add(new("capturePro", "识别：表格聚类 / TSV / HTML", Recognize));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
+        cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
     }
 
     private static void Geometry()
@@ -253,6 +254,48 @@ internal static class CaptureProSuite
         Check.Equal("#FF8000", PickerColor.Hex(sample), "十六进制大写补零");
         Check.Equal("rgb(255, 128, 0)", PickerColor.Rgb(sample), "rgb 文本");
         Check.Equal("#000000 · rgb(0, 0, 0)", PickerColor.Describe(Colors.Black), "提示条正文 = 两种写法");
+    }
+
+    /// <summary>
+    /// 跨屏选区：取景范围 = 所有显示器的并集，逐块抓帧的交集。
+    /// 坐标是物理像素，主屏左侧 / 上方的副屏会让 Left / Top 变成负数。
+    /// </summary>
+    private static void ScreenArea()
+    {
+        var single = ScreenShot.Union(new[] { new Int32Rect(0, 0, 1920, 1080) });
+        Check.Equal(new Int32Rect(0, 0, 1920, 1080), single, "单屏 = 自己");
+
+        // 副屏在右边（高矮不同）
+        var side = ScreenShot.Union(new[]
+        {
+            new Int32Rect(0, 0, 1920, 1080),
+            new Int32Rect(1920, 0, 1280, 1024),
+        });
+        Check.Equal(new Int32Rect(0, 0, 3200, 1080), side, "并集取外接矩形");
+
+        // 副屏在左边：Left 为负
+        var left = ScreenShot.Union(new[]
+        {
+            new Int32Rect(0, 0, 1920, 1080),
+            new Int32Rect(-1280, -200, 1280, 1024),
+        });
+        Check.Equal(new Int32Rect(-1280, -200, 3200, 1280), left, "左 / 上方的副屏 → 负坐标");
+
+        // 空表 / 空矩形
+        Check.Equal(Int32Rect.Empty, ScreenShot.Union(Array.Empty<Int32Rect>()), "没有显示器 → 空矩形");
+        Check.Equal(Int32Rect.Empty,
+            ScreenShot.Union(new[] { new Int32Rect(0, 0, 0, 100) }), "宽 0 当空矩形");
+
+        // 交集：逐块抓帧时用
+        Check.Equal(new Int32Rect(1800, 500, 120, 580),
+            ScreenShot.Intersect(new Int32Rect(0, 0, 1920, 1080), new Int32Rect(1800, 500, 500, 584)),
+            "选区跨到副屏 → 主屏只抓相交的那块");
+        Check.Equal(new Int32Rect(0, 0, 1920, 1080),
+            ScreenShot.Intersect(new Int32Rect(0, 0, 1920, 1080), new Int32Rect(-100, -100, 3000, 3000)),
+            "选区比屏幕大 → 取屏幕那一块");
+        Check.Equal(Int32Rect.Empty,
+            ScreenShot.Intersect(new Int32Rect(0, 0, 1920, 1080), new Int32Rect(1920, 0, 100, 100)),
+            "贴边不算相交");
     }
 
     /// <summary>

@@ -34,8 +34,17 @@ internal sealed class CaptureDocument
     /// <summary>这块显示器的物理像素矩形（屏幕绝对坐标）。</summary>
     public Int32Rect Monitor { get; }
 
-    /// <summary>物理像素 / DIP。</summary>
-    public double Scale { get; }
+    /// <summary>物理像素 / DIP。跨屏 + 混合 DPI 时以窗口真正显示时的比例为准（见 <see cref="SetScale"/>）。</summary>
+    public double Scale { get; private set; }
+
+    /// <summary>
+    /// 窗口真正显示之后校准缩放比（<c>ActualWidth / 像素宽</c>）：跨屏时窗口落在哪块显示器上、
+    /// 系统给的 DPI 是多少，只有这时才知道。只影响 DIP 换算，导出的像素尺寸不变。
+    /// </summary>
+    public void SetScale(double scale)
+    {
+        if (scale > 0 && Math.Abs(scale - Scale) > 1e-6) Scale = scale;
+    }
 
     /// <summary>选区（物理像素，屏幕绝对坐标）。未框选时宽高为 0。</summary>
     public Int32Rect Area { get; set; }
