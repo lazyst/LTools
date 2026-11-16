@@ -72,6 +72,8 @@ public partial class CaptureOverlayWindow
             PositionGrips(sel, false);
             InfoBox.Visibility = Visibility.Collapsed;
             ActionBar.Visibility = Visibility.Collapsed;
+            HideToolbar();
+            ClearMarkSelection();
             if (hover != Rect.Empty) DrawDetect(hover, _hoverTarget!.Value.Label);
             else HideDetect();
 
@@ -89,8 +91,34 @@ public partial class CaptureOverlayWindow
         bool barAbove = showBar && PositionActionBar(sel);
         ShowSizeInfo(sel, barAbove);
 
+        // 工具栏：改框期间先收起来，免得被拖到指头底下；画标注时留着（随时能换工具）
+        if (_drag is DragMode.New or DragMode.Move or DragMode.Resize) Toolbar.Visibility = Visibility.Collapsed;
+        else ShowToolbar();
+        Toolbar.SetUndo(_doc.CanUndo, _doc.CanRedo);
+
         RefreshHint();
         PlaceHint();
+    }
+
+    /// <summary>第一次出现时放到底部中间；用户没拖过就每次都按当前高度重算（切工具会变高）。</summary>
+    private void ShowToolbar()
+    {
+        Toolbar.Visibility = Visibility.Visible;
+
+        if (!_toolbarPlaced || !Toolbar.UserMoved)
+        {
+            _toolbarPlaced = true;
+            Toolbar.PlaceDefault(ActualWidth, ActualHeight);
+        }
+
+        // 兜底：拖到边上 / 高度变化时别让参数条被画布裁掉
+        Toolbar.ClampInside(ActualWidth, ActualHeight);
+    }
+
+    private void HideToolbar()
+    {
+        Toolbar.Visibility = Visibility.Collapsed;
+        _toolbarPlaced = false;
     }
 
     private void HideDetect()
@@ -198,7 +226,14 @@ public partial class CaptureOverlayWindow
     {
         if (_sel is Rect s && IsValid(s))
         {
-            HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· Ctrl+A 整屏 · Enter / 双击 = 复制 · 右键 / Esc 取消";
+            if (_tool != CaptureTool.Select)
+            {
+                var info = ToolCatalog.Of(_tool);
+                HintText.Text = $"{info.Name} · {info.Hint} · Esc 逐级退出";
+                return;
+            }
+
+            HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· 点标注可拖动 / Delete 删除 · Ctrl+Z 撤销 · Enter / 双击 = 复制";
             return;
         }
 
@@ -221,6 +256,8 @@ public partial class CaptureOverlayWindow
     private void RefreshMarks()
     {
         Surface.Preview = null;
+        Surface.SkipIndex = -1;
+        if (_selectedIndex >= _doc.Marks.Count) SelectMark(-1);
         Surface.InvalidateVisual();
         UpdateChrome();
     }

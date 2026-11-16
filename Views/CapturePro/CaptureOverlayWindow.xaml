@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:LTools.Views"
         xmlns:cap="clr-namespace:LTools.Features.CapturePro"
+        xmlns:cp="clr-namespace:LTools.Views.CapturePro"
         Title="截图" WindowStyle="None" ResizeMode="NoResize"
         ShowInTaskbar="False" Topmost="True" WindowStartupLocation="Manual"
         Background="#0B0B0E" Cursor="Cross" UseLayoutRounding="True"
@@ -18,7 +19,7 @@
     <!-- 冻结画面 + 框选 + 标注。窗口正好盖住光标所在的显示器，
          所有坐标最终换算成「显示器物理像素 + 左上角偏移」，与截图 / 鼠标注入同一坐标系。
          画面（底图 / 标注 / 压暗 / 选区框）由 cap:CaptureCanvas 一次画完；
-         这里只放把手、提示、尺寸条与完成动作栏这些「窗口层」元素。 -->
+         这里只放把手、提示、尺寸条、完成动作栏、浮动工具栏与文字输入框这些「窗口层」元素。 -->
     <Window.Resources>
         <Style x:Key="OverlayBtn" TargetType="Button">
             <Setter Property="Foreground" Value="#18181B"/>
@@ -86,6 +87,17 @@
                             Click="Cancel_Click"/>
                 </StackPanel>
             </Border>
+
+            <!-- 浮动工具栏（框选完成才出现）：上排 12 个标注工具 + 撤销 / 完成动作，下排样式。
+                 可拖、双击复位；鼠标事件由覆盖层让路（见 IsOnToolbar）。 -->
+            <cp:CaptureToolbar x:Name="Toolbar" Panel.ZIndex="30" Visibility="Collapsed"/>
+
+            <!-- 文字工具的就地输入框：Enter 结束，Shift+Enter 换行，Esc 放弃。 -->
+            <TextBox x:Name="TextEntry" Panel.ZIndex="25" Visibility="Collapsed"
+                     AcceptsReturn="True" TextWrapping="NoWrap" MinWidth="80" MaxWidth="480"
+                     Background="#E6101014" Foreground="#F4F4F5" BorderBrush="#3B82F6"
+                     BorderThickness="1" Padding="4,2" FontFamily="Microsoft YaHei UI"
+                     PreviewKeyDown="TextEntry_KeyDown" LostFocus="TextEntry_LostFocus"/>
         </Canvas>
     </Grid>
 </Window>

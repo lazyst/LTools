@@ -68,7 +68,9 @@ public partial class CaptureOverlayWindow : Window
         Height = Math.Max(1, monitor.Height / _sy);
 
         BuildGrips();
+        WireToolbar();
         DpiChanged += (_, _) => PinToMonitor();
+        UpdateCursorForTool();
     }
 
     // ============ 生命周期 ============
@@ -101,12 +103,23 @@ public partial class CaptureOverlayWindow : Window
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
+        // 文字输入中：Enter / Esc / 方向键都归输入框（本处理器在隧道阶段，比输入框先到）
+        if (_textEditing) return;
+
         if (e.Key == Key.Escape)
         {
-            // 拖动中按 Esc 只放弃这一次拖动（和框选 / 截图工具的惯例一致），再按一次才退出
-            if (_drag != DragMode.None) CancelDrag();
-            else Cancel();
+            StepBack();
             e.Handled = true;
+            return;
+        }
+
+        if (e.Key is Key.Delete or Key.Back)
+        {
+            if (_selectedIndex >= 0)
+            {
+                DeleteSelectedMark();
+                e.Handled = true;
+            }
             return;
         }
 
@@ -114,13 +127,28 @@ public partial class CaptureOverlayWindow : Window
 
         if (e.Key == Key.Enter)
         {
-            if (_sel is Rect enterSel && IsValid(enterSel)) Accept(FinishKind.Copy);
+            if (_polyActive) CompletePolyline();                 // 折线：Enter 收尾
+            else if (_sel is Rect enterSel && IsValid(enterSel)) Accept(FinishKind.Copy);
             else if (_hoverTarget is SnapBox hover)
             {
                 // 还没框选时按 Enter = 选中当前高亮的窗口 / 控件，再按一次才确定
                 _sel = ToDipRect(hover.Bounds);
                 UpdateChrome();
             }
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.C)
+        {
+            Accept(FinishKind.Copy);
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.S)
+        {
+            Accept(FinishKind.Save);
             e.Handled = true;
             return;
         }
@@ -146,6 +174,14 @@ public partial class CaptureOverlayWindow : Window
         {
             _doc.Redo();
             RefreshMarks();
+            e.Handled = true;
+            return;
+        }
+
+        // 字母选工具（Ctrl 组合已经全部处理完，这里只看裸字母）
+        if (!ctrl && ToolCatalog.ForKey(e.Key) is CaptureTool tool)
+        {
+            SetTool(tool);
             e.Handled = true;
             return;
         }
@@ -183,7 +219,10 @@ public partial class CaptureOverlayWindow : Window
     private void Window_Cancel(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
-        Cancel();
+
+        // 打字中右键 = 放弃这段文字；其余和 Esc 一样逐级往回退
+        if (_textEditing) CancelText();
+        else StepBack();
     }
 
     /// <summary>先按当前选区重绘成品，再按出口复制 / 另存为；任一步失败都留在覆盖层里继续改。</summary>

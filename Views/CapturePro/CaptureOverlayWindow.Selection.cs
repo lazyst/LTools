@@ -2,16 +2,22 @@ using System;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using LTools.Features.CapturePro;
 
 namespace LTools.Views.CapturePro;
 
 /// <summary>
-/// 框选：拖新选区、拖内部移动、拖八个把手缩放、方向键微调、单击选窗口 / 控件。
+/// 框选与标注的鼠标总入口：拖新选区、拖内部移动、拖八个把手缩放、画标注、拖已有标注。
 /// </summary>
 /// <remarks>
 /// <para>
 /// 全部用窗口级 <c>Preview</c> 事件：按下之后 WPF 会把捕获挂到窗口上，之后 <c>MouseMove</c>
 /// 只路由到窗口，挂在 Canvas 上的处理器收不到——框选会「按下就卡住」。
+/// </para>
+/// <para>
+/// 按下时的判断顺序固定为：工具栏 / 动作栏 / 文字输入框让路 → 把手（任何工具都能改框）
+/// → 选区内（选择工具拖标注，其余工具画标注）→ 选区外（重新框选）。
+/// 具体怎么画在 <c>.Annotate.cs</c>，工具状态在 <c>.Tools.cs</c>。
 /// </para>
 /// <para>
 /// 拖动期间只认「按下那一刻」算出来的吸附线：后台窗口的边不该把框吸走，移动中重算也会让手感发飘。
@@ -22,12 +28,13 @@ public partial class CaptureOverlayWindow
 {
     private const double SnapDistance = 8;   // 边 / 角吸附距离（DIP）
     private const double PressSlop = 3;      // 按下后位移小于此值算「单击」而不是拖动
+    private const double MarkHitSlop = 4;    // 点中已有标注的宽容距离（DIP）
 
     private Point _pressAt;
     private bool _pressMoved;
     private SnapBox? _pressTarget;
 
-    private enum DragMode { None, New, Move, Resize }
+    private enum DragMode { None, New, Move, Resize, Draw, Erase, Mark }
 
     private enum Handle { None, Move, Left, Top, Right, Bottom, TopLeft, TopRight, BottomLeft, BottomRight }
 
@@ -35,47 +42,90 @@ public partial class CaptureOverlayWindow
     {
         if (e.ChangedButton != MouseButton.Left) return;
 
-        // 完成动作栏是普通按钮：点它不能当成开始框选
+        // 完成动作栏 / 浮动工具栏都是普通控件：点它们不能当成开始框选或画标注
         if (IsOnActionBar(e.OriginalSource as DependencyObject)) return;
+        if (IsOnToolbar(e.OriginalSource as DependencyObject)) return;
+
+        // 点在文字输入框里 = 只是挪光标
+        if (IsOnTextEntry(e.OriginalSource as DependencyObject)) return;
+
+        // 正在打字：先在原地提交，再按常规处理这一下点击
+        CommitText();
 
         Point p = Clamp(e.GetPosition(Layer));
+        Handle hit = HitTest(p);
+        bool inside = _sel is Rect area && IsValid(area) && area.Contains(p);
 
-        // 双击选区内部 = 确定（和大多数截图工具一致）
-        if (e.ClickCount == 2 && _sel is Rect dbl && dbl.Contains(p))
+        _pressAt = p;
+        _pressMoved = false;
+        _pressTarget = null;
+        _origin = p;
+
+        // 1. 八个把手优先：任何工具下都能改框
+        if (inside && hit is not (Handle.None or Handle.Move))
         {
-            Accept(FinishKind.Copy);
+            _originRect = _sel!.Value;
+            _drag = DragMode.Resize;
+            _handle = hit;
+            RebuildSnapLines();
+            StartDrag(e, CursorFor(hit));
+            return;
+        }
+
+        // 2. 选区内：选择工具拖标注，其余工具画标注
+        if (inside)
+        {
+            if (_tool == CaptureTool.Select)
+            {
+                // 双击（和框选取图一致）= 确定
+                if (e.ClickCount == 2)
+                {
+                    Accept(FinishKind.Copy);
+                    e.Handled = true;
+                    return;
+                }
+
+                int mark = _doc.HitTest(p, MarkHitSlop);
+                if (mark >= 0)
+                {
+                    BeginMarkDrag(p, mark);
+                    StartDrag(e, Cursors.SizeAll);
+                    return;
+                }
+
+                _originRect = _sel!.Value;
+                _drag = DragMode.Move;
+                _handle = Handle.Move;
+                RebuildSnapLines();
+                StartDrag(e, Cursors.SizeAll);
+                return;
+            }
+
+            BeginToolGesture(p, e.ClickCount);
+            bool dragging = _drag is DragMode.Draw or DragMode.Erase;
+            Cursor = _tool == CaptureTool.Text ? Cursors.IBeam : Cursors.Cross;
+            if (dragging) CaptureMouse();
+            UpdateChrome();
             e.Handled = true;
             return;
         }
 
-        Handle hit = HitTest(p);
-        _pressAt = p;
-        _pressMoved = false;
-        _pressTarget = null;
+        // 3. 选区外 / 还没选区：重新框选；松手时几乎没动就选中光标下的窗口 / 控件
+        _pressTarget = _hoverTarget;
+        _drag = DragMode.New;
+        _handle = Handle.None;
+        _originRect = _sel ?? default;   // Esc 放弃这次拖动时还原成原来的选区
+        _sel = new Rect(p, p);
+        SetHover(null);
 
-        if (hit != Handle.None)
-        {
-            _drag = hit == Handle.Move ? DragMode.Move : DragMode.Resize;
-            _handle = hit;
-            _originRect = _sel ?? default;
-        }
-        else
-        {
-            // 空白处按下：先按自由拖动开始；松手时若几乎没动、且光标下有窗口 / 控件，就选中它
-            _pressTarget = _hoverTarget;
-            _drag = DragMode.New;
-            _handle = Handle.None;
-            _originRect = _sel ?? default;   // Esc 放弃这次拖动时还原成原来的选区
-            _sel = new Rect(p, p);
-            SetHover(null);
-        }
+        RebuildSnapLines();   // 用按下那一刻的命中做吸附，拖动期间不再重算
+        StartDrag(e, Cursors.Cross);
+    }
 
-        _origin = p;
-
-        // 吸附线只取「按下时最上层那个窗口」的边，拖动期间不再重算
-        RebuildSnapLines();
-
-        Cursor = _drag == DragMode.New ? Cursors.Cross : CursorFor(_handle);
+    /// <summary>按下之后共用的收尾：改光标、捕获鼠标、刷界面。</summary>
+    private void StartDrag(MouseButtonEventArgs e, Cursor cursor)
+    {
+        Cursor = cursor;
         CaptureMouse();
         UpdateChrome();
         e.Handled = true;
@@ -87,8 +137,11 @@ public partial class CaptureOverlayWindow
 
         if (_drag == DragMode.None)
         {
-            Cursor = CursorFor(HitTest(p));
-            UpdateHover(p);
+            // 光标停在工具栏 / 输入框上时，别去动悬停候选和光标形状
+            if (_textEditing || IsOverToolbar) return;
+
+            RefreshCursor(p);
+            if (!IsValid(_sel)) UpdateHover(p);
             return;
         }
 
@@ -112,6 +165,15 @@ public partial class CaptureOverlayWindow
             case DragMode.Resize:
                 _sel = SnapResize(ResizeFrom(_originRect, _handle, p - _origin), _handle);
                 break;
+            case DragMode.Draw:
+                UpdateToolDrag(p);
+                break;
+            case DragMode.Erase:
+                EraseAt(p);
+                break;
+            case DragMode.Mark:
+                UpdateMarkDrag(p);
+                break;
         }
 
         UpdateChrome();
@@ -122,31 +184,73 @@ public partial class CaptureOverlayWindow
     {
         if (e.ChangedButton != MouseButton.Left || _drag == DragMode.None) return;
 
+        Point p = Clamp(e.GetPosition(Layer));
+        DragMode mode = _drag;
+
         _drag = DragMode.None;
         _handle = Handle.None;
-        ReleaseMouseCapture();
+        try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
 
-        // 几乎没移动 = 单击：选中光标下的窗口 / 控件；拖动了就是自由框选，不抢
-        if (!_pressMoved && _pressTarget is SnapBox target) _sel = ToDipRect(target.Bounds);
-        else if (!IsValid(_sel)) _sel = null;   // 误点 / 太小：清掉重来，不关闭窗口
+        switch (mode)
+        {
+            case DragMode.New:
+                // 几乎没移动 = 单击：选中光标下的窗口 / 控件；拖动了就是自由框选，不抢
+                if (!_pressMoved && _pressTarget is SnapBox target) _sel = ToDipRect(target.Bounds);
+                else if (!IsValid(_sel)) _sel = null;   // 误点 / 太小：清掉重来，不关闭窗口
+                break;
+
+            case DragMode.Draw:
+                FinishToolDrag(p);
+                break;
+
+            case DragMode.Mark:
+                CommitMarkDrag(p);
+                break;
+        }
 
         _pressTarget = null;
-        Cursor = Cursors.Arrow;
+        RefreshCursor(p);
         UpdateChrome();
         e.Handled = true;
     }
 
-    /// <summary>放弃当前拖动：正在拖新选区就清掉，拖把手 / 移动就还原。</summary>
+    /// <summary>放弃当前手势：画到一半的丢掉，改框 / 移动就还原成按下前的选区。</summary>
     private void CancelDrag()
     {
+        bool wasFrame = _drag is DragMode.New or DragMode.Move or DragMode.Resize;
+
+        if (_drag == DragMode.Mark) CancelMarkDrag();
+        else if (_drag is DragMode.Draw or DragMode.Erase) Surface.Preview = null;
+
         _drag = DragMode.None;
         _handle = Handle.None;
         _pressTarget = null;
-        _sel = _sel is Rect s && IsValid(s) && _originRect != default ? _originRect : null;
-        if (_sel is Rect back && !IsValid(back)) _sel = null;
+
+        if (wasFrame)
+        {
+            _sel = _originRect != default ? _originRect : null;
+            if (_sel is Rect back && !IsValid(back)) _sel = null;
+        }
+
         try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
-        Cursor = Cursors.Arrow;
+        UpdateCursorForTool();
         UpdateChrome();
+    }
+
+    /// <summary>光标形状：选择工具看把手 / 标注，文字是 I 形，其余是十字。</summary>
+    private void RefreshCursor(Point p)
+    {
+        if (_textEditing) return;
+
+        Handle hit = HitTest(p);
+        Cursor = _tool switch
+        {
+            CaptureTool.Select when hit != Handle.None => CursorFor(hit),
+            CaptureTool.Select when !IsValid(_sel) => Cursors.Cross,
+            CaptureTool.Select => _doc.HitTest(p, MarkHitSlop) >= 0 ? Cursors.SizeAll : Cursors.Arrow,
+            CaptureTool.Text => Cursors.IBeam,
+            _ => Cursors.Cross,
+        };
     }
 
     /// <summary>事件源是否来自完成动作栏（按钮 / 它的父 Border）。</summary>
@@ -155,7 +259,6 @@ public partial class CaptureOverlayWindow
         while (source != null)
         {
             if (ReferenceEquals(source, ActionBar)) return true;
-            if (source is Button) return true;
             source = source is Visual or System.Windows.Media.Media3D.Visual3D
                 ? VisualTreeHelper.GetParent(source)
                 : LogicalTreeHelper.GetParent(source);

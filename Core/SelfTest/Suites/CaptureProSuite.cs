@@ -25,6 +25,7 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "文档：选区换算与导出", Selection));
         cases.Add(new("capturePro", "文字：量宽随字号增长", TextMetrics));
         cases.Add(new("capturePro", "样式：底色对比取字色", Contrast));
+        cases.Add(new("capturePro", "工具：目录 / 参数格 / 默认样式", Tools));
     }
 
     private static void Geometry()
@@ -154,6 +155,71 @@ internal static class CaptureProSuite
         Check.Equal(Color.FromRgb(0x18, 0x18, 0x1B), MarkRenderer.Contrast(Colors.White), "浅底用深字");
         Check.Equal(Colors.White, MarkRenderer.Contrast(Colors.Black), "深底用白字");
         Check.Equal((byte)128, MarkRenderer.WithAlpha(Colors.Red, 0.5).A, "透明度乘进颜色");
+    }
+
+    /// <summary>
+    /// 工具目录：每个工具都有一行、参数格按用途分配、默认样式与「点一下不留 0 像素标注」的口径。
+    /// 新增工具只改 <see cref="ToolCatalog"/>，这里守住它别漏项。
+    /// </summary>
+    private static void Tools()
+    {
+        var all = ToolCatalog.All;
+        Check.Equal(Enum.GetValues<CaptureTool>().Length, all.Length, "每个工具都在目录里");
+        Check.Equal(all.Length, all.Select(t => t.Tool).Distinct().Count(), "工具不重复");
+        Check.Equal(all.Length, all.Select(t => t.Name).Distinct().Count(), "名字不重复");
+        Check.Equal(all.Length, all.Select(t => t.Icon).Distinct().Count(), "图标键不重复");
+        Check.Equal(all.Length, all.Select(t => t.Shortcut).Distinct().Count(), "字母快捷键不重复");
+
+        // 字母 → 工具（覆盖层在没打字时按它切工具）
+        Check.Equal(CaptureTool.Spotlight, ToolCatalog.ForKey(System.Windows.Input.Key.S), "S = 聚光（Ctrl+S 是另存为，先判 Ctrl）");
+        Check.Equal(CaptureTool.Pen, ToolCatalog.ForKey(System.Windows.Input.Key.P), "P = 画笔");
+        Check.Equal(CaptureTool.Select, ToolCatalog.ForKey(System.Windows.Input.Key.Q), "Q = 选择");
+        Check.True(ToolCatalog.ForKey(System.Windows.Input.Key.Z) == null, "没绑的字母返回 null");
+
+        foreach (var info in all)
+        {
+            Check.True(!string.IsNullOrWhiteSpace(info.Name), info.Tool + " 有名字");
+            Check.True(!string.IsNullOrWhiteSpace(info.Hint), info.Tool + " 有说明（工具栏 ToolTip 用它）");
+            Check.True(!string.IsNullOrWhiteSpace(info.Icon), info.Tool + " 有图标键");
+            // 参数格要么没有，要么不重复（重复会让参数条出现两个一样的加号组）
+            Check.Equal(info.Params.Length, info.Params.Distinct().Count(), info.Tool + " 参数格不重复");
+        }
+
+        // 参数格按工具分：画笔没块大小，马赛克没颜色，文字没线宽，擦除 / 选择一格都不用
+        Check.True(ToolCatalog.Uses(CaptureTool.Pen, ToolParam.Color), "画笔有颜色");
+        Check.True(ToolCatalog.Uses(CaptureTool.Pen, ToolParam.Width), "画笔有线宽");
+        Check.False(ToolCatalog.Uses(CaptureTool.Pen, ToolParam.Block), "画笔没有块大小");
+        Check.True(ToolCatalog.Uses(CaptureTool.Highlighter, ToolParam.Opacity), "荧光笔有透明度");
+        Check.True(ToolCatalog.Uses(CaptureTool.Text, ToolParam.FontSize), "文字有字号");
+        Check.False(ToolCatalog.Uses(CaptureTool.Text, ToolParam.Width), "文字没有线宽");
+        Check.True(ToolCatalog.Uses(CaptureTool.Mosaic, ToolParam.Block), "马赛克有块大小");
+        Check.False(ToolCatalog.Uses(CaptureTool.Mosaic, ToolParam.Color), "马赛克没有颜色");
+        Check.False(ToolCatalog.Uses(CaptureTool.Eraser, ToolParam.Color), "擦除不用任何参数格");
+        Check.False(ToolCatalog.Uses(CaptureTool.Select, ToolParam.Width), "选择不用任何参数格");
+
+        // 光标：只有选择和文字不是十字
+        Check.False(ToolCatalog.WantsCrossCursor(CaptureTool.Select), "选择用箭头");
+        Check.False(ToolCatalog.WantsCrossCursor(CaptureTool.Text), "文字用 I 形");
+        Check.True(ToolCatalog.WantsCrossCursor(CaptureTool.Rect), "矩形用十字");
+
+        // 点一下不该留下 0 像素标注：手绘 1 DIP 就算，形状要 4 DIP
+        Check.Equal(1d, ToolCatalog.MinimumSize(CaptureTool.Pen), "手绘的最小尺寸");
+        Check.Equal(1d, ToolCatalog.MinimumSize(CaptureTool.Highlighter), "荧光笔的最小尺寸");
+        Check.Equal(4d, ToolCatalog.MinimumSize(CaptureTool.Rect), "形状的最小尺寸");
+
+        // 样式：默认值、荧光笔笔头、聚光的压暗换算
+        var style = new ToolStyle();
+        Check.Equal(ToolStyle.Palette[0], style.Color, "默认颜色是调色盘第一格");
+        Check.Equal(4d, style.Width, "默认线宽");
+        Check.Equal(20d, style.FontSize, "默认字号");
+        Check.Equal(8d, style.Block, "默认块大小");
+        Check.Equal(4d, style.WidthFor(CaptureTool.Pen), "画笔用线宽本身");
+        Check.True(style.WidthFor(CaptureTool.Highlighter) >= 10, "荧光笔笔头至少 10（否则看着就是普通线）");
+        Check.Equal(0.65, Math.Round(style.Dim, 6), "透明度 0.35 → 框外压暗 0.65");
+        style.Opacity = 0.95;
+        Check.True(style.Dim <= 0.85, "压暗上限 0.85");
+        style.Opacity = 1;
+        Check.True(style.Dim >= 0, "压暗不为负");
     }
 
     /// <summary>8×8 像素的假底图 + 缩放 2 的文档（不开窗口）。</summary>
