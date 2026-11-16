@@ -42,6 +42,7 @@ public partial class CaptureToolbar : UserControl
     public event Action? UndoRequested;
     public event Action? RedoRequested;
     public event Action? CopyRequested;
+    public event Action? PinRequested;
     public event Action? SaveRequested;
     public event Action? CancelRequested;
 
@@ -174,6 +175,7 @@ public partial class CaptureToolbar : UserControl
         ToolRow.Children.Add(new Border { Style = (Style)FindResource("SeparatorBar") });
 
         AddAction("IconCopy", "复制到剪贴板（Enter）", () => CopyRequested?.Invoke());
+        AddAction("IconPin", "贴图到屏幕（Ctrl+T）", () => PinRequested?.Invoke());
         AddAction("IconSave", "另存为…", () => SaveRequested?.Invoke());
         AddAction("IconClose", "取消（Esc）", () => CancelRequested?.Invoke());
     }

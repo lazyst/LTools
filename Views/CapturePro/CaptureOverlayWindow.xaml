@@ -81,10 +81,23 @@
                 <StackPanel Orientation="Horizontal">
                     <Button x:Name="CopyBtn" Style="{StaticResource OverlayBtn}" Content="✓ 复制"
                             Click="Copy_Click"/>
+                    <Button x:Name="PinBtn" Style="{StaticResource OverlayBtnGhost}" Content="贴图"
+                            Margin="8,0,0,0" Click="Pin_Click" ToolTip="贴到屏幕上（Ctrl+T）"/>
                     <Button x:Name="SaveBtn" Style="{StaticResource OverlayBtnGhost}" Content="另存为…"
                             Margin="8,0,0,0" Click="Save_Click"/>
                     <Button Style="{StaticResource OverlayBtnGhost}" Content="取消" Margin="8,0,0,0"
                             Click="Cancel_Click"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 取色：光标旁一块色卡 + #RRGGBB / rgb()；单击复制十六进制 -->
+            <Border x:Name="PickerChip" Panel.ZIndex="26" Background="#E6101014" CornerRadius="4"
+                    Padding="6,3" Visibility="Collapsed" IsHitTestVisible="False">
+                <StackPanel Orientation="Horizontal">
+                    <Border x:Name="PickerSwatch" Width="14" Height="14" CornerRadius="2"
+                            BorderBrush="#66FFFFFF" BorderThickness="1" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="PickerText" Margin="6,0,0,0" Foreground="#F4F4F5"
+                               FontFamily="Consolas" FontSize="12" VerticalAlignment="Center"/>
                 </StackPanel>
             </Border>
 

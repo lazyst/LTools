@@ -45,7 +45,12 @@ internal static class CaptureSession
             bool? ok = overlay.ShowDialog();
             if (ok != true || overlay.ResultImage == null) return null;
 
-            return new CaptureResult(overlay.Document.Area, overlay.ResultImage);
+            var result = new CaptureResult(overlay.Document.Area, overlay.ResultImage);
+
+            // 「贴图」出口：覆盖层已经关掉，现在把成品钉到屏幕上（正好盖住刚才截的那块）
+            if (overlay.PinRequested) CapturePinManager.Pin(result.Image, result.Area, overlay.MonitorScale);
+
+            return result;
         }
         catch (Exception ex)
         {

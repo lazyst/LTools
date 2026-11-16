@@ -26,6 +26,8 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "文字：量宽随字号增长", TextMetrics));
         cases.Add(new("capturePro", "样式：底色对比取字色", Contrast));
         cases.Add(new("capturePro", "工具：目录 / 参数格 / 默认样式", Tools));
+        cases.Add(new("capturePro", "取色：像素颜色与文本", Picker));
+        cases.Add(new("capturePro", "贴图：缩放 / 不透明度 / 锚点", Pin));
     }
 
     private static void Geometry()
@@ -174,6 +176,7 @@ internal static class CaptureProSuite
         Check.Equal(CaptureTool.Spotlight, ToolCatalog.ForKey(System.Windows.Input.Key.S), "S = 聚光（Ctrl+S 是另存为，先判 Ctrl）");
         Check.Equal(CaptureTool.Pen, ToolCatalog.ForKey(System.Windows.Input.Key.P), "P = 画笔");
         Check.Equal(CaptureTool.Select, ToolCatalog.ForKey(System.Windows.Input.Key.Q), "Q = 选择");
+        Check.Equal(CaptureTool.Picker, ToolCatalog.ForKey(System.Windows.Input.Key.C), "C = 取色（Ctrl+C 是复制，先判 Ctrl）");
         Check.True(ToolCatalog.ForKey(System.Windows.Input.Key.Z) == null, "没绑的字母返回 null");
 
         foreach (var info in all)
@@ -196,6 +199,7 @@ internal static class CaptureProSuite
         Check.False(ToolCatalog.Uses(CaptureTool.Mosaic, ToolParam.Color), "马赛克没有颜色");
         Check.False(ToolCatalog.Uses(CaptureTool.Eraser, ToolParam.Color), "擦除不用任何参数格");
         Check.False(ToolCatalog.Uses(CaptureTool.Select, ToolParam.Width), "选择不用任何参数格");
+        Check.Equal(0, ToolCatalog.Of(CaptureTool.Picker).Params.Length, "取色不用任何参数格");
 
         // 光标：只有选择和文字不是十字
         Check.False(ToolCatalog.WantsCrossCursor(CaptureTool.Select), "选择用箭头");
@@ -220,6 +224,63 @@ internal static class CaptureProSuite
         Check.True(style.Dim <= 0.85, "压暗上限 0.85");
         style.Opacity = 1;
         Check.True(style.Dim >= 0, "压暗不为负");
+    }
+
+    /// <summary>
+    /// 取色：从画面读像素并按 <c>#RRGGBB</c> / <c>rgb()</c> 出文本。
+    /// 越界与没有底图都只是 <c>null</c>（光标在窗口边缘时算出界是正常情况，不该报错）。
+    /// </summary>
+    private static void Picker()
+    {
+        // 2×1 的假图：左边纯红、右边纯蓝（BGRA 字节序）
+        var pixels = new byte[] { 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF };
+        var image = BitmapSource.Create(2, 1, 96, 96, PixelFormats.Bgra32, null, pixels, 8);
+        image.Freeze();
+
+        var left = PickerColor.Read(image, 0, 0);
+        var right = PickerColor.Read(image, 1, 0);
+        Check.True(left.HasValue && left.Value == Color.FromRgb(0xFF, 0x00, 0x00), "左像素是红（BGRA 没读反）");
+        Check.True(right.HasValue && right.Value == Color.FromRgb(0x00, 0x00, 0xFF), "右像素是蓝");
+
+        Check.True(PickerColor.Read(image, 2, 0) == null, "横向越界返回 null");
+        Check.True(PickerColor.Read(image, 0, 1) == null, "纵向越界返回 null");
+        Check.True(PickerColor.Read(null, 0, 0) == null, "没有底图返回 null");
+
+        var sample = Color.FromRgb(0xFF, 0x80, 0x00);
+        Check.Equal("#FF8000", PickerColor.Hex(sample), "十六进制大写补零");
+        Check.Equal("rgb(255, 128, 0)", PickerColor.Rgb(sample), "rgb 文本");
+        Check.Equal("#000000 · rgb(0, 0, 0)", PickerColor.Describe(Colors.Black), "提示条正文 = 两种写法");
+    }
+
+    /// <summary>
+    /// 贴图：缩放 / 不透明度步进与夹紧、滚轮缩放的光标锚点、出场落点。
+    /// **光标下的内容不动**是这里最容易被写成「左上角不动」的一条。
+    /// </summary>
+    private static void Pin()
+    {
+        Check.Equal(1.1, PinMath.NextZoom(1.0, 120), "滚一格放大 10%");
+        Check.Equal(0.9, Math.Round(PinMath.NextZoom(1.0, -120), 4), "反向缩回 10%");
+        Check.Equal(PinMath.ZoomMin, PinMath.NextZoom(0.1, -120), "缩到下限就停");
+        Check.Equal(PinMath.ZoomMax, PinMath.NextZoom(4.0, 120), "放大到上限就停");
+        Check.Equal(1.0, PinMath.NextZoom(1.0, 0), "没有滚动就不动");
+
+        Check.Equal(0.5, Math.Round(PinMath.NextOpacity(0.45, 120), 4), "不透明度一格 5%");
+        Check.Equal(PinMath.OpacityMin, PinMath.NextOpacity(0.2, -120), "不透明度下限");
+        Check.Equal(PinMath.OpacityMax, PinMath.NextOpacity(1.0, 120), "不透明度上限");
+        Check.Equal(1.0, PinMath.NextOpacity(1.0, 0), "没有滚动就不动");
+
+        // 锚点：窗口从 400×300 放大到 800×600，窗口里 (100, 75) 那个点在屏幕上必须还在原处
+        var origin = new Point(100, 200);
+        var at = new Point(100, 75);
+        Point moved = PinMath.AnchoredOrigin(origin, new Size(400, 300), new Size(800, 600), at);
+        Check.Equal(0d, moved.X, "放大一倍：左上角左移，光标下的点不动");
+        Check.Equal(125d, moved.Y, "纵向同理");
+        Check.Equal(origin.X + at.X, moved.X + at.X * 2, "屏幕 X 不变（缩小一半算回去也一样）");
+
+        // 出场落点：物理矩形按屏幕缩放换回 DIP，正好盖住刚截的那块
+        var placed = PinMath.PlaceAt(new Rect(200, 100, 400, 300), 2);
+        Check.Equal(new Rect(100, 50, 200, 150), placed, "物理矩形 ÷ 缩放 = DIP 落点");
+        Check.Equal(1d, PinMath.PlaceAt(new Rect(0, 0, 0, 0), 1).Width, "空区域至少 1 DIP（窗口不能是 0 尺寸）");
     }
 
     /// <summary>8×8 像素的假底图 + 缩放 2 的文档（不开窗口）。</summary>

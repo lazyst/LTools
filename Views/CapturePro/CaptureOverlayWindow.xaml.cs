@@ -47,6 +47,12 @@ public partial class CaptureOverlayWindow : Window
     /// <summary>导出用的成品（按选区重绘）。确认之前为 null。</summary>
     public BitmapSource? ResultImage { get; private set; }
 
+    /// <summary>完成动作选了「贴图」：覆盖层关掉之后由 <see cref="CaptureSession"/> 建贴图窗口。</summary>
+    public bool PinRequested { get; private set; }
+
+    /// <summary>这块显示器的物理像素 / DIP（贴图按它把物理矩形换算回 DIP）。</summary>
+    public double MonitorScale => _sx;
+
     /// <summary>内容真源：底图 + 选区 + 标注 + 撤销栈。</summary>
     internal CaptureDocument Document => _doc;
 
@@ -153,6 +159,13 @@ public partial class CaptureOverlayWindow : Window
             return;
         }
 
+        if (ctrl && e.Key == Key.T)
+        {
+            Accept(FinishKind.Pin);
+            e.Handled = true;
+            return;
+        }
+
         if (ctrl && e.Key == Key.A)
         {
             _drag = DragMode.None;
@@ -207,10 +220,13 @@ public partial class CaptureOverlayWindow : Window
 
     // ============ 完成动作 ============
 
-    private enum FinishKind { Copy, Save }
+    private enum FinishKind { Copy, Save, Pin }
 
     /// <summary>「✓ 复制」= Enter / 双击的默认出口（P0 不加配置域字段，默认就是复制）。</summary>
     private void Copy_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Copy);
+
+    /// <summary>「贴图」= 把成品钉在屏幕上（Ctrl+T）。</summary>
+    private void Pin_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Pin);
 
     private void Save_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Save);
 
@@ -225,7 +241,7 @@ public partial class CaptureOverlayWindow : Window
         else StepBack();
     }
 
-    /// <summary>先按当前选区重绘成品，再按出口复制 / 另存为；任一步失败都留在覆盖层里继续改。</summary>
+    /// <summary>先按当前选区重绘成品，再按出口复制 / 另存为 / 贴图；任一步失败都留在覆盖层里继续改。</summary>
     private void Accept(FinishKind kind)
     {
         if (_sel is not Rect sel || !IsValid(sel)) return;
@@ -244,44 +260,30 @@ public partial class CaptureOverlayWindow : Window
             return;
         }
 
-        if (kind == FinishKind.Save)
+        switch (kind)
         {
-            var dialog = new Microsoft.Win32.SaveFileDialog
-            {
-                Filter = "PNG 图片 (*.png)|*.png",
-                DefaultExt = ".png",
-                FileName = $"截图-{DateTime.Now:yyyyMMdd-HHmmss}.png",
-                InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
-                OverwritePrompt = true,
-            };
-            if (dialog.ShowDialog(this) != true) return;   // 取消另存为 = 留在覆盖层，继续改
+            case FinishKind.Save:
+                if (!CaptureSave.TrySave(this, image)) return;   // 取消另存为 = 留在覆盖层，继续改
+                break;
 
-            try
-            {
-                using var stream = File.Create(dialog.FileName);
-                var encoder = new PngBitmapEncoder();
-                encoder.Frames.Add(BitmapFrame.Create(image));
-                encoder.Save(stream);
-            }
-            catch (Exception ex)
-            {
-                CrashLog.Write("CapturePro.Save", ex);
-                TrayService.Notify("保存截图失败：" + ex.Message);
-                return;
-            }
-        }
-        else
-        {
-            try
-            {
-                NativeClipboard.SetImage(image);
-            }
-            catch (Exception ex)
-            {
-                CrashLog.Write("CapturePro.Copy", ex);
-                TrayService.Notify("复制截图失败：" + ex.Message);
-                return;
-            }
+            case FinishKind.Pin:
+                // 贴图窗口由 CaptureSession 在覆盖层关掉之后建：这里只留出口，
+                // 免得「窗口刚建好就被 ShowDialog 关掉时的还原动作拖走」。
+                PinRequested = true;
+                break;
+
+            default:
+                try
+                {
+                    NativeClipboard.SetImage(image);
+                }
+                catch (Exception ex)
+                {
+                    CrashLog.Write("CapturePro.Copy", ex);
+                    TrayService.Notify("复制截图失败：" + ex.Message);
+                    return;
+                }
+                break;
         }
 
         ResultImage = image;

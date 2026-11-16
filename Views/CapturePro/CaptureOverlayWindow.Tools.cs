@@ -28,6 +28,7 @@ public partial class CaptureOverlayWindow
         Toolbar.UndoRequested += () => { _doc.Undo(); RefreshMarks(); };
         Toolbar.RedoRequested += () => { _doc.Redo(); RefreshMarks(); };
         Toolbar.CopyRequested += () => Accept(FinishKind.Copy);
+        Toolbar.PinRequested += () => Accept(FinishKind.Pin);
         Toolbar.SaveRequested += () => Accept(FinishKind.Save);
         Toolbar.CancelRequested += Cancel;
     }
@@ -38,6 +39,7 @@ public partial class CaptureOverlayWindow
         CancelGesture();
         _tool = tool;
         Toolbar.Sync(tool);
+        if (tool != CaptureTool.Picker) HidePicker();
         UpdateCursorForTool();
         UpdateChrome();
     }
@@ -54,7 +56,12 @@ public partial class CaptureOverlayWindow
 
     private void UpdateCursorForTool()
     {
-        if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out var dip)) RefreshCursor(Clamp(dip));
+        if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out var dip))
+        {
+            var p = Clamp(dip);
+            RefreshCursor(p);
+            if (_tool == CaptureTool.Picker) ShowPickerAt(p);   // 切过去就显示色卡，不用先动一下
+        }
         else Cursor = _tool == CaptureTool.Text ? Cursors.IBeam : Cursors.Cross;
     }
 

@@ -53,6 +53,15 @@ public partial class CaptureOverlayWindow
         CommitText();
 
         Point p = Clamp(e.GetPosition(Layer));
+
+        // 取色：单击就把光标下的颜色复制走，不框选、不落标注、不关覆盖层
+        if (_tool == CaptureTool.Picker)
+        {
+            PickColor(p);
+            e.Handled = true;
+            return;
+        }
+
         Handle hit = HitTest(p);
         bool inside = _sel is Rect area && IsValid(area) && area.Contains(p);
 
@@ -139,6 +148,15 @@ public partial class CaptureOverlayWindow
         {
             // 光标停在工具栏 / 输入框上时，别去动悬停候选和光标形状
             if (_textEditing || IsOverToolbar) return;
+
+            // 取色：光标旁跟一块色卡，不参与吸附 / 悬停探测
+            if (_tool == CaptureTool.Picker)
+            {
+                Cursor = Cursors.Cross;
+                ShowPickerAt(p);
+                return;
+            }
+            HidePicker();
 
             RefreshCursor(p);
             if (!IsValid(_sel)) UpdateHover(p);

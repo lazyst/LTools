@@ -224,6 +224,12 @@ public partial class CaptureOverlayWindow
     /// <summary>顶部提示：把「现在能做什么」和「识别到了没有」放在一句话里。</summary>
     private void RefreshHint()
     {
+        if (_tool == CaptureTool.Picker)
+        {
+            HintText.Text = "取色 · 单击复制 #RRGGBB · 色卡跟着光标 · Esc 退出取色";
+            return;
+        }
+
         if (_sel is Rect s && IsValid(s))
         {
             if (_tool != CaptureTool.Select)
@@ -233,7 +239,7 @@ public partial class CaptureOverlayWindow
                 return;
             }
 
-            HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· 点标注可拖动 / Delete 删除 · Ctrl+Z 撤销 · Enter / 双击 = 复制";
+            HintText.Text = "拖动边角微调 · 方向键 1px（Shift 10px）· 点标注拖动 / Delete 删除 · Ctrl+Z 撤销 · Enter 复制 · Ctrl+T 贴图";
             return;
         }
 

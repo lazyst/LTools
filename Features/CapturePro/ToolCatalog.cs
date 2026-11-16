@@ -20,6 +20,7 @@ internal enum CaptureTool
     Mosaic,
     Spotlight,
     Eraser,
+    Picker,
 }
 
 /// <summary>工具参数条里的一格。</summary>
@@ -59,6 +60,7 @@ internal static class ToolCatalog
         new(CaptureTool.Mosaic, "马赛克", "Mosaic", "拖出要打码的矩形", new[] { ToolParam.Block }, Key.M),
         new(CaptureTool.Spotlight, "聚光", "Spotlight", "拖出保持原样的矩形，其余压暗", new[] { ToolParam.Opacity }, Key.S),
         new(CaptureTool.Eraser, "橡皮", "Eraser", "点一下去掉整条标注", None, Key.X),
+        new(CaptureTool.Picker, "取色", "Picker", "鼠标下的颜色，单击复制 #RRGGBB", None, Key.C),
     };
 
     public static ToolInfo Of(CaptureTool tool) => All.First(t => t.Tool == tool);
