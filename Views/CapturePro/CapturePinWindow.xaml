@@ -17,7 +17,9 @@
     <!-- 贴图窗口：把截下来的图钉在屏幕上。
          不抢焦点（ShowActivated=False + WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW）：
          点它、滚它都不该让前台程序变成自己，否则接着注入的键鼠全打在贴图上。
-         拖动 / 滚轮缩放 / Ctrl+滚轮不透明度 / 双击关闭 / 右键菜单都在 code-behind。 -->
+         拖动 / 滚轮缩放 / Ctrl+滚轮不透明度 / 双击关闭 / 右键菜单都在 code-behind。
+         局部显示时这里是取景框：内容按 PanTransform 平移，超出部分由 Surface 裁掉，
+         所以缩放即「放大看细节」，窗口尺寸不再跟图走。 -->
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -54,13 +56,28 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Border x:Name="Frame" Background="#101014" BorderBrush="#26FFFFFF" BorderThickness="1">
-        <Grid>
-            <Image x:Name="Shot" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality"/>
-            <Button x:Name="CloseBtn" Style="{StaticResource PinCloseBtn}"
-                    HorizontalAlignment="Right" VerticalAlignment="Top"
-                    Visibility="Collapsed" Click="CloseBtn_Click"
-                    ToolTip="关闭（也可以双击）"/>
-        </Grid>
-    </Border>
+    <Grid x:Name="Surface" Background="#101014" ClipToBounds="True">
+        <Image x:Name="Shot" Stretch="Fill" HorizontalAlignment="Left" VerticalAlignment="Top"
+               RenderOptions.BitmapScalingMode="HighQuality">
+            <Image.RenderTransform>
+                <TranslateTransform x:Name="PanTransform"/>
+            </Image.RenderTransform>
+        </Image>
+
+        <!-- 边框画在图上而不是当外层 Border 的 BorderThickness：
+             那样内容区会小 1px，局部显示里内容比取景框大一点时右下会多露一条空白。 -->
+        <Border x:Name="Frame" BorderThickness="1" IsHitTestVisible="False" BorderBrush="#26FFFFFF"/>
+
+        <Button x:Name="CloseBtn" Style="{StaticResource PinCloseBtn}"
+                HorizontalAlignment="Right" VerticalAlignment="Top"
+                Visibility="Collapsed" Click="CloseBtn_Click"
+                ToolTip="关闭（也可以双击）"/>
+
+        <Border x:Name="ViewHint" Background="#CC101014" CornerRadius="6" Padding="8,4" Margin="6"
+                HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                BorderBrush="#40FFFFFF" BorderThickness="1" IsHitTestVisible="False"
+                Visibility="Collapsed">
+            <TextBlock x:Name="ViewHintText" FontSize="11" Foreground="#E4E4E7"/>
+        </Border>
+    </Grid>
 </Window>

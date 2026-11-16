@@ -231,6 +231,9 @@ public static class WindowSizing
     /// </remarks>
     public static void Clamp(Window window) => Apply(window, moving: false);
 
+    /// <summary>窗口所在显示器工作区（DIP）；贴图的「局部显示」按它决定取景框能有多大。</summary>
+    internal static Rect WorkAreaOf(Window window) => WorkArea(window);
+
     /// <param name="moving">true = 用户拖动 / Main 改尺寸 / 状态切换还原：只保「至少有一块留在工作区」，
     /// 不把位置整块夹回；false = 打开窗口 / Dialog 内容变高：整块夹进工作区。</param>
     private static void Apply(Window window, bool moving)

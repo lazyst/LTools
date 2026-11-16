@@ -388,8 +388,10 @@ internal static class CaptureProSuite
     }
 
     /// <summary>
-    /// 贴图：缩放 / 不透明度步进与夹紧、滚轮缩放的光标锚点、出场落点。
-    /// **光标下的内容不动**是这里最容易被写成「左上角不动」的一条。
+    /// 贴图：缩放 / 不透明度步进与夹紧、滚轮缩放的光标锚点、出场落点、
+    /// 局部显示的内容偏移与取景框尺寸、成组移动的位移夹取。
+    /// **光标下的内容不动**是这里最容易被写成「左上角不动」的一条；
+    /// 成组移动写成「各自夹」也看不出来，直到拖到屏幕边上组才散架。
     /// </summary>
     private static void Pin()
     {
@@ -416,6 +418,58 @@ internal static class CaptureProSuite
         var placed = PinMath.PlaceAt(new Rect(200, 100, 400, 300), 2);
         Check.Equal(new Rect(100, 50, 200, 150), placed, "物理矩形 ÷ 缩放 = DIP 落点");
         Check.Equal(1d, PinMath.PlaceAt(new Rect(0, 0, 0, 0), 1).Width, "空区域至少 1 DIP（窗口不能是 0 尺寸）");
+
+        // ============ 局部显示：内容在取景框里平移 ============
+        var big = new Size(800, 600);
+        var view = new Size(400, 300);
+
+        Check.Equal(new Vector(0, 0), PinMath.ClampPan(new Vector(0, 0), big, view), "内容顶到左上时偏移 0");
+        Check.Equal(new Vector(0, 0), PinMath.ClampPan(new Vector(80, 60), big, view),
+            "往右 / 下拖不动（会露出左上空白）");
+        Check.Equal(new Vector(-400, -300), PinMath.ClampPan(new Vector(-900, -900), big, view),
+            "往左 / 上拖到底就停（右下不留空白）");
+        Check.Equal(new Vector(-200, -150), PinMath.CenterPan(big, view), "进局部显示先看中间那块");
+
+        var small = new Size(200, 100);
+        Check.Equal(new Vector(100, 100), PinMath.ClampPan(new Vector(0, 0), small, view),
+            "内容比取景框小就居中");
+        Check.Equal(new Vector(100, 100), PinMath.ClampPan(new Vector(-999, -999), small, view),
+            "小内容也拖不动（居中钉死）");
+
+        // 换缩放时光标下的内容不动（与 AnchoredOrigin 同一件事，只是挪内容而不是挪窗口）
+        Vector anchored = PinMath.ZoomAnchoredPan(new Vector(-200, -150), new Point(200, 150), 1, 2);
+        Check.Equal(new Vector(-600, -450), anchored, "放大一倍：锚点下的内容补偿一半偏移");
+        Check.Equal(200d, anchored.X + 400 * 2, "取景框中心那个点在屏幕上没动");
+
+        Check.Equal(new Size(800, 600), PinMath.ViewportSize(big, new Rect(0, 0, 1000, 700)),
+            "内容装得下就按内容大小");
+        Check.Equal(new Size(1000, 700), PinMath.ViewportSize(new Size(3000, 3000), new Rect(0, 0, 1000, 700)),
+            "内容比工作区大就按工作区");
+
+        // ============ 成组移动：一个位移，谁都不许被推出桌面 ============
+        var desktop = new Rect(0, 0, 1000, 800);
+        double margin = PinMath.KeepVisible;
+
+        Check.Equal(new Vector(50, 50), PinMath.ConstrainGroupMove(new Vector(50, 50),
+            new[] { new Rect(0, 0, 100, 100) }, desktop, margin), "桌面里随便拖就原样走");
+
+        Check.Equal(960d, PinMath.ConstrainGroupMove(new Vector(2000, 0),
+            new[] { new Rect(0, 0, 100, 100) }, desktop, margin).X, "拖到右边界停住（留 40）");
+
+        Check.Equal(-60d, PinMath.ConstrainGroupMove(new Vector(-500, 0),
+            new[] { new Rect(0, 0, 100, 100) }, desktop, margin).X, "拖到左边界停住（留 40）");
+
+        // 两张一左一右：整组共用一个位移，右边那张先到就先停，左边那张跟着一起停（相对位置不变）
+        var nearLeft = new Rect(0, 0, 100, 100);
+        var nearRight = new Rect(900, 0, 100, 100);
+        Vector group = PinMath.ConstrainGroupMove(new Vector(500, 0), new[] { nearLeft, nearRight },
+            desktop, margin);
+        Check.Equal(60d, group.X, "成组移动被最靠边那张卡住");
+        Check.Equal(960d, nearRight.Left + group.X, "右边那张正好停在「留 40」的位置");
+        Check.Equal(60d, nearLeft.Left + group.X, "左边那张跟着走同一个位移（相对位置不变）");
+
+        Check.Equal(new Vector(10, 10), PinMath.ConstrainGroupMove(new Vector(10, 10),
+            Array.Empty<Rect>(), desktop, margin), "一张都没有就没有约束（调用方自己判断要不要动）");
     }
 
     /// <summary>
