@@ -14,12 +14,12 @@ using SelectionMode = LTools.Features.CapturePro.SelectionMode;
 namespace LTools.Views.CapturePro;
 
 /// <summary>
-/// 覆盖层的窗口层元素：把手、尺寸条、悬停标签、顶部提示、完成动作栏。
+/// 覆盖层的窗口层元素：把手、尺寸条、悬停标签、顶部提示、完成动作那一截。
 /// </summary>
 /// <remarks>
 /// 摆放一律按「选区在窗口里的 DIP 矩形」算，尺寸文字用物理像素（那才是最终存进配置的数字）。
 /// 所有 <c>Measure</c> 都在 Canvas 里做：Canvas 用无限约束测量，<c>DesiredSize</c> 就是内容尺寸，
-/// 才能把动作栏「右对齐选区、贴下方」算出来。
+/// 才能把工具条「贴着选区、放不下翻上方」算出来。
 /// </remarks>
 public partial class CaptureOverlayWindow
 {
@@ -47,14 +47,21 @@ public partial class CaptureOverlayWindow
         }
     }
 
-    /// <summary>按当前选区重画画面、把手、尺寸条、悬停高亮、动作栏与顶部提示。</summary>
+    /// <summary>按当前选区重画画面、把手、尺寸条、悬停高亮、工具条与顶部提示。</summary>
     private void UpdateChrome()
     {
-        // 折线选区还没围起来：这不是「已选区」，别出把手 / 动作栏（_sel 只是外接框）
+        // 长截图模式：界面完全是另一套（拼接画面 + 小面板），别再摆框选那一套
+        if (_scrollMode)
+        {
+            ApplyScrollChrome();
+            return;
+        }
+
+        // 折线选区还没围起来：这不是「已选区」，别出把手 / 工具条（_sel 只是外接框）
         bool pending = SelectionPending;
 
         // 多块 / 自由 / 折线 / 挖洞都按合起来的几何画（与导出同一份 SelectionSet 规则）；
-        // 减区把选区挖空 = null：没有可导出的内容，别出把手 / 动作栏。
+        // 减区把选区挖空 = null：没有可导出的内容，别出把手 / 工具条。
         // 折线还在逐点单击时几何里本来就没有它（见 LiveRegions），已有选区照旧留在画面上。
         Geometry? geometry = SelectionGeometry();
         bool hasSelection = !pending && geometry != null && _sel is Rect current && IsValid(current);
@@ -89,7 +96,6 @@ public partial class CaptureOverlayWindow
         {
             PositionGrips(sel, false);
             InfoBox.Visibility = Visibility.Collapsed;
-            ActionBar.Visibility = Visibility.Collapsed;
             HideToolbar();
             ClearMarkSelection();
             if (hover != Rect.Empty) DrawDetect(hover, _hoverTarget!.Value.Label);
@@ -103,31 +109,38 @@ public partial class CaptureOverlayWindow
         HideDetect();
         PositionGrips(sel, true);
 
-        // 拖动过程中先别跳出来，松手后再给按钮（否则动作栏会跟着手一起抖）
-        // 「贴图内标注」没有出口栏：完成是 Enter / 双击，结果交回那张贴图
-        bool showBar = _drag == DragMode.None && !EditOnly;
-        ActionBar.Visibility = showBar ? Visibility.Visible : Visibility.Collapsed;
-        bool barAbove = showBar && PositionActionBar(sel);
-        ShowSizeInfo(sel, barAbove);
+        // 拖动过程中先别跳出来，松手后再给按钮。
+        // 「贴图内标注」没有完成动作：完成是 Enter / 双击，结果交回那张贴图，别摆一排按了会被忽略的按钮。
+        bool showActions = _drag == DragMode.None && !EditOnly;
+        Toolbar.SetActionsVisible(showActions);
 
         // 工具栏：改框期间先收起来，免得被拖到指头底下；画标注时留着（随时能换工具）
         if (_drag is DragMode.New or DragMode.Move or DragMode.Resize or DragMode.Lasso) Toolbar.Visibility = Visibility.Collapsed;
-        else ShowToolbar();
+        else ShowToolbar(sel);
         Toolbar.SetUndo(_doc.CanUndo, _doc.CanRedo);
+
+        // 尺寸提示：主流放在选区左上角外侧，工具条翻到选区上方时让开（别压住它）
+        double toolbarHeight = Toolbar.ActualHeight > 0 ? Toolbar.ActualHeight : Toolbar.DesiredSize.Height;
+        bool toolbarAbove = Toolbar.Visibility == Visibility.Visible &&
+                            Canvas.GetTop(Toolbar) + toolbarHeight <= sel.Top + 1;
+        ShowSizeInfo(sel, toolbarAbove);
 
         RefreshHint();
         PlaceHint();
     }
 
-    /// <summary>第一次出现时放到底部中间；用户没拖过就每次都按当前高度重算（切工具会变高）。</summary>
-    private void ShowToolbar()
+    /// <summary>
+    /// 工具条贴着选区走（照 snow-shot：在框选区域下方居中，放不下翻到上方）。
+    /// 用户自己拖过就停在他放的地方，只做「别拖出窗口」的兜底。
+    /// </summary>
+    private void ShowToolbar(Rect sel)
     {
         Toolbar.Visibility = Visibility.Visible;
 
         if (!_toolbarPlaced || !Toolbar.UserMoved)
         {
             _toolbarPlaced = true;
-            Toolbar.PlaceDefault(ActualWidth, ActualHeight);
+            Toolbar.PlaceNear(sel, ActualWidth, ActualHeight);
         }
 
         // 兜底：拖到边上 / 高度变化时别让参数条被画布裁掉
@@ -197,8 +210,8 @@ public partial class CaptureOverlayWindow
         }
     }
 
-    /// <summary>尺寸提示（物理像素）；主流放在选区左上角外侧。</summary>
-    private void ShowSizeInfo(Rect s, bool barAbove)
+    /// <summary>尺寸提示（物理像素）；主流放在选区左上角外侧，工具条翻上去时改放选区内侧。</summary>
+    private void ShowSizeInfo(Rect s, bool toolbarAbove)
     {
         var (x1, y1) = ToImage(s.TopLeft);
         var (x2, y2) = ToImage(s.BottomRight);
@@ -214,30 +227,9 @@ public partial class CaptureOverlayWindow
 
         double left = Math.Clamp(s.X, 8, Math.Max(8, ActualWidth - iw - 8));
         double top = s.Y - ih - 6;                     // 选区上方
-        if (top < 8 || barAbove) top = s.Y + 6;        // 上方没空间 / 被动作栏占了 → 放进选区左上角
+        if (top < 8 || toolbarAbove) top = s.Y + 6;    // 上方没空间 / 工具条翻上去了 → 放进选区左上角
         Canvas.SetLeft(InfoBox, left);
         Canvas.SetTop(InfoBox, Math.Clamp(top, 8, Math.Max(8, ActualHeight - ih - 8)));
-    }
-
-    /// <summary>动作栏贴到选区下方、与右边缘对齐；下方放不下就翻到上方（返回 true 表示放在了上方）。</summary>
-    private bool PositionActionBar(Rect sel)
-    {
-        ActionBar.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        double w = ActionBar.DesiredSize.Width;
-        double h = ActionBar.DesiredSize.Height;
-        if (w <= 1 || h <= 1) return false;
-
-        double left = Math.Clamp(sel.Right - w, 8, Math.Max(8, ActualWidth - w - 8));
-        double below = sel.Bottom + 8;
-        bool above = below + h > ActualHeight - 8;
-        double top = above ? sel.Top - h - 8 : below;
-
-        // 上下都放不下（选区几乎占满整屏）：贴着选区内部下方，至少不跑到屏幕外
-        if (top < 8) top = Math.Max(8, sel.Bottom - h - 8);
-
-        Canvas.SetLeft(ActionBar, left);
-        Canvas.SetTop(ActionBar, Math.Clamp(top, 8, Math.Max(8, ActualHeight - h - 8)));
-        return above;
     }
 
     /// <summary>顶部提示居中。</summary>

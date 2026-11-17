@@ -4,7 +4,8 @@
         xmlns:views="clr-namespace:LTools.Views"
         Title="贴图" WindowStyle="None" ResizeMode="NoResize"
         ShowInTaskbar="False" ShowActivated="False" Topmost="True"
-        WindowStartupLocation="Manual" Background="#101014" Focusable="False"
+        WindowStartupLocation="Manual" Background="Transparent" AllowsTransparency="True"
+        Focusable="False"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         PreviewMouseLeftButtonDown="Window_MouseDown"
         PreviewMouseLeftButtonUp="Window_MouseUp"
@@ -20,7 +21,12 @@
          拖动 / 滚轮缩放 / Ctrl+滚轮不透明度 / 双击关闭 / 右键菜单都在 code-behind。
          局部显示时这里是取景框：内容按 PanTransform 平移，超出部分由 Surface 裁掉，
          所以缩放即「放大看细节」，窗口尺寸不再跟图走。
-         缩略图模式复用同一个布局：Shot 的 Stretch 切 Uniform，整张图等比塞进小方块。 -->
+         缩略图模式复用同一个布局：Shot 的 Stretch 切 Uniform，整张图等比塞进小方块。
+
+         **分层窗口 + DWM 缩略图**（实时贴图）：普通贴图靠 Backdrop 那块不透明底把窗口填满；
+         实时贴图时 Backdrop 与 Shot 一起收起，整块内容区变成逐像素透明，露出压在下面一层的
+         Native/LiveThumbnail 宿主窗口（DWM 直接把源窗口画在那一层，零抓帧、零延迟）。
+         那层是独立的 HWND，鼠标消息由它转发回来，所以透明区里的点击照样能拖动 / 右键。 -->
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -66,7 +72,10 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid x:Name="Surface" Background="#101014" ClipToBounds="True">
+    <Grid x:Name="Surface" Background="{x:Null}" ClipToBounds="True">
+        <!-- 不透明底：普通贴图 / 局部显示 / 缩略图都靠它；实时贴图时收起（见文件头注释）。 -->
+        <Border x:Name="Backdrop" Background="#101014"/>
+
         <Image x:Name="Shot" Stretch="Fill" HorizontalAlignment="Left" VerticalAlignment="Top"
                RenderOptions.BitmapScalingMode="HighQuality">
             <Image.RenderTransform>
@@ -101,6 +110,17 @@
                 BorderBrush="#40FFFFFF" BorderThickness="1" IsHitTestVisible="False"
                 Visibility="Collapsed">
             <TextBlock x:Name="ViewHintText" FontSize="11" Foreground="#E4E4E7"/>
+        </Border>
+        <!-- 实时贴图的状态徽标（右下角）：跟得住时红点「实时」，源窗口最小化 / 关闭时换成说明。 -->
+        <Border x:Name="LiveBadge" Background="#CC101014" CornerRadius="6" Padding="8,4" Margin="6"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                BorderBrush="#40FFFFFF" BorderThickness="1" IsHitTestVisible="False"
+                Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal">
+                <Ellipse x:Name="LiveDot" Width="6" Height="6" Fill="#EF4444"
+                         VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBlock x:Name="LiveBadgeText" FontSize="11" Foreground="#E4E4E7"/>
+            </StackPanel>
         </Border>
     </Grid>
 </Window>

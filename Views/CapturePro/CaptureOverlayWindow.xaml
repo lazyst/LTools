@@ -15,12 +15,18 @@
         PreviewMouseRightButtonDown="Window_Cancel"
         PreviewMouseWheel="Window_Wheel"
         Loaded="Window_Loaded"
+        Closed="Window_Closed"
         views:WindowSizing.Mode="Overlay">
     <!-- 冻结画面 + 框选 + 标注。窗口正好盖住光标所在的显示器，
          所有坐标最终换算成「显示器物理像素 + 左上角偏移」，与截图 / 鼠标注入同一坐标系。
          画面（底图 / 标注 / 压暗 / 选区框）由 cap:CaptureCanvas 一次画完；
-         这里只放把手、提示、尺寸条、完成动作栏、浮动工具栏与文字输入框这些「窗口层」元素。 -->
+         这里只放把手、提示、尺寸条、浮动工具栏与文字输入框这些「窗口层」元素。 -->
     <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="CaptureIcons.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
         <Style x:Key="OverlayBtn" TargetType="Button">
             <Setter Property="Foreground" Value="#18181B"/>
             <Setter Property="Background" Value="#FFFFFF"/>
@@ -75,6 +81,7 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        </ResourceDictionary>
     </Window.Resources>
 
     <Grid x:Name="Root" Background="#0B0B0E" ClipToBounds="True">
@@ -117,22 +124,47 @@
                 </StackPanel>
             </Border>
 
-            <!-- 完成动作栏：贴在选区下方、与右边缘对齐；下方放不下时翻到上方。 -->
-            <Border x:Name="ActionBar" Panel.ZIndex="20" Background="#E6101014" CornerRadius="8"
-                    Padding="12,9" Visibility="Collapsed">
-                <StackPanel Orientation="Horizontal">
-                    <Button x:Name="CopyBtn" Style="{StaticResource OverlayBtn}" Content="✓ 复制"
-                            Click="Copy_Click"/>
-                    <Button x:Name="PinBtn" Style="{StaticResource OverlayBtnGhost}" Content="贴图"
-                            Margin="8,0,0,0" Click="Pin_Click" ToolTip="贴到屏幕上（Ctrl+T）"/>
-                    <Button x:Name="RecognizeBtn" Style="{StaticResource OverlayBtnGhost}" Content="识别"
-                            Margin="8,0,0,0" Click="Recognize_Click" ToolTip="识别文字 / 表格 / 二维码（Ctrl+R）"/>
-                    <Button x:Name="ScrollBtn" Style="{StaticResource OverlayBtnGhost}" Content="长截图"
-                            Margin="8,0,0,0" Click="Scroll_Click" ToolTip="滚一屏接一屏，拼成一张长图（Ctrl+L）"/>
-                    <Button x:Name="SaveBtn" Style="{StaticResource OverlayBtnGhost}" Content="另存为…"
-                            Margin="8,0,0,0" Click="Save_Click"/>
-                    <Button Style="{StaticResource OverlayBtnGhost}" Content="取消" Margin="8,0,0,0"
-                            Click="Cancel_Click"/>
+            <!-- 长截图：选区里 1:1 播拼接结果的**末尾一屏**（新内容从下面滑进来），
+                 旁边的小面板给整张长图预览 + 完成 / 放弃。
+                 这两块都是覆盖层自己的元素，帧来自目标窗口的 PrintWindow，不会被自己挡进画面。 -->
+            <Canvas x:Name="ScrollPane" Panel.ZIndex="6" Visibility="Collapsed"
+                    IsHitTestVisible="False" ClipToBounds="True">
+                <Image x:Name="ScrollTail" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality">
+                    <Image.RenderTransform>
+                        <TranslateTransform x:Name="ScrollTailShift" Y="0"/>
+                    </Image.RenderTransform>
+                </Image>
+            </Canvas>
+            <Border x:Name="ScrollFrame" Panel.ZIndex="7" BorderBrush="#3B82F6" BorderThickness="2"
+                    Visibility="Collapsed" IsHitTestVisible="False"/>
+
+            <!-- 长截图的小面板：整张长图的缩略预览 + 拼接到的尺寸 + 完成 / 放弃。
+                 摆位走 ScrollLayout.PlaceIn（优选出选区外面），鼠标点击由覆盖层让路。 -->
+            <Border x:Name="ScrollPanel" Panel.ZIndex="22" Background="#E6101014" CornerRadius="8"
+                    BorderBrush="#26FFFFFF" BorderThickness="1" Padding="10"
+                    Effect="{StaticResource BarShadow}" Visibility="Collapsed">
+                <StackPanel Width="212">
+                    <DockPanel LastChildFill="False">
+                        <TextBlock DockPanel.Dock="Left" Text="长截图" Foreground="#F4F4F5" FontSize="13"
+                                   FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button x:Name="ScrollCancelBtn" Style="{StaticResource BarBtn}" Click="ScrollCancel_Click"
+                                    ToolTip="放弃这次长截图（Esc）">
+                                <Path Data="{StaticResource IconClose}" Style="{StaticResource IconPath}"/>
+                            </Button>
+                            <Button x:Name="ScrollDoneBtn" Style="{StaticResource BarBtnPrimary}" Click="ScrollDone_Click"
+                                    ToolTip="完成：交回拼好的长图（Enter / Ctrl+C）">
+                                <Path Data="{StaticResource IconCopy}" Style="{StaticResource IconPath}"/>
+                            </Button>
+                        </StackPanel>
+                    </DockPanel>
+                    <Border x:Name="ScrollPreviewBox" Height="236" Margin="0,8,0,0" Background="#14FFFFFF"
+                            CornerRadius="4" ClipToBounds="True">
+                        <Image x:Name="ScrollPreview" Stretch="Uniform" Margin="4"
+                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                    </Border>
+                    <TextBlock x:Name="ScrollStatus" Margin="0,8,0,0" Foreground="#A1A1AA" FontSize="12"
+                               TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
 

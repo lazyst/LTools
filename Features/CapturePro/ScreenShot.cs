@@ -130,6 +130,103 @@ internal static class ScreenShot
         return sx > 0 ? sx : 1;
     }
 
+    /// <summary>
+    /// 实时贴图的一帧：抓源窗口**整窗**，裁到 <paramref name="area"/> 那块再贴进同尺寸的画布
+    /// （窗口只露一半就只画一半，完全挪开就整张透明）。窗口关了 / 抓不到返回 <c>null</c>。
+    /// </summary>
+    /// <remarks>
+    /// 画布尺寸永远是选区那块矩形，所以贴图窗口的尺寸 / 位置一拍都不变；
+    /// 裁剪与偏移由 <see cref="PinLive.Crop"/> 算（纯函数，<c>--selftest</c> 直接断言）。
+    /// </remarks>
+    public static BitmapSource? CaptureWindow(IntPtr hwnd, Int32Rect area)
+    {
+        if (hwnd == IntPtr.Zero || area.Width <= 0 || area.Height <= 0) return null;
+        if (!Win32.GetWindowRect(hwnd, out var rect)) return null;
+
+        var windowRect = new Int32Rect(rect.Left, rect.Top,
+            Math.Max(0, rect.Right - rect.Left), Math.Max(0, rect.Bottom - rect.Top));
+        if (windowRect.Width <= 0 || windowRect.Height <= 0) return null;
+
+        BitmapSource window;
+        try
+        {
+            using var bitmap = ScreenCapture.CaptureWindow(hwnd);
+            window = ScreenPicker.ToBitmapSource(bitmap);
+        }
+        catch
+        {
+            // 最小化 / 正被销毁 / 提权窗口：这一拍没有内容，调用方保留上一帧
+            return null;
+        }
+
+        int stride = area.Width * 4;
+        var canvas = new byte[stride * area.Height];          // 默认全透明（Bgra32）
+
+        if (PinLive.Crop(windowRect, area) is LiveCrop crop)
+        {
+            BitmapSource source = window.Format == PixelFormats.Bgra32
+                ? window
+                : new FormatConvertedBitmap(window, PixelFormats.Bgra32, null, 0);
+
+            int sourceStride = crop.Source.Width * 4;
+            var buffer = new byte[sourceStride * crop.Source.Height];
+            source.CopyPixels(crop.Source, buffer, sourceStride, 0);
+
+            for (int y = 0; y < crop.Source.Height; y++)
+                Buffer.BlockCopy(buffer, y * sourceStride, canvas,
+                    (crop.Target.Y + y) * stride + crop.Target.X * 4, sourceStride);
+        }
+
+        var composed = BitmapSource.Create(area.Width, area.Height, 96, 96,
+            PixelFormats.Bgra32, null, canvas, stride);
+        composed.Freeze();
+        return composed;
+    }
+
+    /// <summary>
+    /// 长截图的一帧：从**目标窗口**（<c>PrintWindow</c> 整窗）里裁出 <paramref name="area"/> 那块。
+    /// 覆盖层这时盖满全屏，抓屏幕只会抓到自己，所以帧一律从窗口自己取（窗口被挡住也画得出来）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 选区必须**整块落在窗口里**（<see cref="PinLive.Crop"/> 的 source 与 area 等宽等高），
+    /// 否则说明框跨到了别的窗口 / 桌面上，这一帧不可信：返回 <c>null</c>，调用方不接。
+    /// </para>
+    /// <para>
+    /// 窗口最小化 / 关掉 / 抓不到都返回 <c>null</c>（<c>PrintWindow</c> 在这种状态下给不出内容）。
+    /// </para>
+    /// </remarks>
+    public static BitmapSource? CaptureRegion(IntPtr hwnd, Int32Rect area)
+    {
+        if (hwnd == IntPtr.Zero || area.Width <= 0 || area.Height <= 0) return null;
+        if (!Win32.IsWindow(hwnd) || Win32.IsIconic(hwnd)) return null;
+        if (!Win32.GetWindowRect(hwnd, out var rect)) return null;
+
+        var windowRect = new Int32Rect(rect.Left, rect.Top,
+            Math.Max(0, rect.Right - rect.Left), Math.Max(0, rect.Bottom - rect.Top));
+        if (windowRect.Width <= 0 || windowRect.Height <= 0) return null;
+
+        if (PinLive.Crop(windowRect, area) is not LiveCrop crop) return null;
+        if (crop.Source.Width != area.Width || crop.Source.Height != area.Height) return null;
+
+        try
+        {
+            using var bitmap = ScreenCapture.CaptureWindow(hwnd);
+            var window = ScreenPicker.ToBitmapSource(bitmap);
+            BitmapSource source = window.Format == PixelFormats.Bgra32
+                ? window
+                : new FormatConvertedBitmap(window, PixelFormats.Bgra32, null, 0);
+
+            var frame = new CroppedBitmap(source, crop.Source);
+            frame.Freeze();
+            return frame;
+        }
+        catch
+        {
+            return null;    // 正被销毁 / 提权窗口 / 没有可见尺寸：这一帧没有内容
+        }
+    }
+
     /// <summary>物理矩形 → <see cref="System.Drawing.Rectangle"/>（窗口探测那套 API 用它）。</summary>
     public static System.Drawing.Rectangle ToRectangle(Int32Rect rect) =>
         new(rect.X, rect.Y, Math.Max(1, rect.Width), Math.Max(1, rect.Height));

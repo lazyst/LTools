@@ -65,8 +65,11 @@ public partial class CaptureOverlayWindow : Window
     /// <summary>完成动作选了「识别」：覆盖层关掉之后由 <see cref="CaptureSession"/> 开识别结果窗。</summary>
     public bool RecognizeRequested { get; private set; }
 
-    /// <summary>完成动作选了「长截图」：覆盖层关掉之后由 <see cref="CaptureSession"/> 滚屏拼接。</summary>
+    /// <summary>长截图完成：<see cref="ResultImage"/> 就是拼好的长图，覆盖层关掉之后由 <see cref="CaptureSession"/> 复制走。</summary>
     public bool ScrollRequested { get; private set; }
+
+    /// <summary>完成动作选了「实时」：覆盖层关掉之后贴一块跟着源窗口刷新的图。</summary>
+    public bool LiveRequested { get; private set; }
 
     /// <summary>这一次是怎么完成的（采集历史记「完成动作」用）。</summary>
     internal FinishKind Finish { get; private set; } = FinishKind.Copy;
@@ -107,7 +110,7 @@ public partial class CaptureOverlayWindow : Window
     }
 
     /// <summary>
-    /// 「贴图内标注」：覆盖层只当这张图的编辑器——动作栏收起，完成时只把成品交回调用方
+    /// 「贴图内标注」：覆盖层只当这张图的编辑器——完成动作那一截收起，完成时只把成品交回调用方
     /// （不复制、不贴图、不识别、不记采集历史，见 <see cref="CaptureSession.TryEdit"/>）。
     /// </summary>
     internal bool EditOnly { get; }
@@ -145,6 +148,16 @@ public partial class CaptureOverlayWindow : Window
     {
         // 文字输入中：Enter / Esc / 方向键都归输入框（本处理器在隧道阶段，比输入框先到）
         if (_textEditing) return;
+
+        // 长截图模式：只有「完成 / 放弃」两个出口，别的键一律吃掉（别让工具快捷键改状态）
+        if (_scrollMode)
+        {
+            bool ctrlDown = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            if (e.Key == Key.Enter || (ctrlDown && e.Key == Key.C)) FinishScroll();
+            else if (e.Key == Key.Escape) CancelScroll();
+            e.Handled = true;
+            return;
+        }
 
         if (e.Key == Key.Escape)
         {
@@ -224,6 +237,14 @@ public partial class CaptureOverlayWindow : Window
             return;
         }
 
+        // Ctrl+W = 实时贴图（跟着源窗口刷新；与 Ctrl+Shift+S 这类不相邻，避免手误）
+        if (ctrl && e.Key == Key.W)
+        {
+            Accept(FinishKind.Live);
+            e.Handled = true;
+            return;
+        }
+
         if (ctrl && e.Key == Key.R)
         {
             Accept(FinishKind.Recognize);
@@ -233,7 +254,7 @@ public partial class CaptureOverlayWindow : Window
 
         if (ctrl && e.Key == Key.L)
         {
-            Accept(FinishKind.Scroll);
+            StartScrollMode();
             e.Handled = true;
             return;
         }
@@ -297,29 +318,42 @@ public partial class CaptureOverlayWindow : Window
 
     // ============ 完成动作 ============
 
-    internal enum FinishKind { Copy, Save, QuickSave, Print, Pin, Recognize, Scroll }
+    internal enum FinishKind { Copy, Save, QuickSave, Print, Pin, Recognize, Scroll, Live }
 
-    /// <summary>「✓ 复制」= Enter / 双击的默认出口（P0 不加配置域字段，默认就是复制）。</summary>
-    private void Copy_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Copy);
-
-    /// <summary>「贴图」= 把成品钉在屏幕上（Ctrl+T）。</summary>
-    private void Pin_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Pin);
-
-    /// <summary>「识别」= 文字 / 表格 / 二维码，结果窗在覆盖层关掉之后开（Ctrl+R）。</summary>
-    private void Recognize_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Recognize);
-
-    /// <summary>「长截图」= 滚屏拼接，循环在覆盖层关掉之后跑（Ctrl+L）。</summary>
-    private void Scroll_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Scroll);
-
-    private void Save_Click(object sender, RoutedEventArgs e) => Accept(FinishKind.Save);
-
-    private void Cancel_Click(object sender, RoutedEventArgs e) => Cancel();
+    /// <summary>
+    /// 工具条右半边那些完成动作（照 Snow Shot：工具、撤销、完成动作在**一条**里，
+    /// 用竖线分组）。键盘入口（Enter / Ctrl+S…）走各自的快捷键，这里只服务鼠标。
+    /// </summary>
+    private void OnToolbarAction(CaptureToolbar.CaptureAction action)
+    {
+        switch (action)
+        {
+            case CaptureToolbar.CaptureAction.Copy: Accept(FinishKind.Copy); break;            // ✓ = Enter / 双击的默认出口
+            case CaptureToolbar.CaptureAction.Pin: Accept(FinishKind.Pin); break;              // 贴图（Ctrl+T）
+            case CaptureToolbar.CaptureAction.Live: Accept(FinishKind.Live); break;            // 实时贴图（Ctrl+W）
+            case CaptureToolbar.CaptureAction.Recognize: Accept(FinishKind.Recognize); break;  // 识别（Ctrl+R）
+            case CaptureToolbar.CaptureAction.Save: Accept(FinishKind.Save); break;            // 另存为…（Ctrl+S）
+            case CaptureToolbar.CaptureAction.QuickSave: Accept(FinishKind.QuickSave); break;  // 快速保存（Ctrl+Shift+S）
+            case CaptureToolbar.CaptureAction.Print: Accept(FinishKind.Print); break;          // 打印（Ctrl+P）
+            case CaptureToolbar.CaptureAction.Scroll: StartScrollMode(); break;                // 长截图：覆盖层不关，用户自己滚
+            case CaptureToolbar.CaptureAction.Cancel: Cancel(); break;
+        }
+    }
 
     private void Window_Cancel(object sender, MouseButtonEventArgs e)
     {
         // 右键落在浮动工具栏上：那是它的布局菜单（格子 / 收起来的工具），不是「取消」。
         // 这里必须**不**置 Handled：置了隧道路由就断在窗口这一层，工具栏收不到这次右键。
         if (IsOnToolbar(e.OriginalSource as DependencyObject)) return;
+
+        // 长截图模式：右键（面板上除外）= 放弃这次长截图，回到普通框选
+        if (_scrollMode)
+        {
+            if (IsOnScrollPanel(e.OriginalSource as DependencyObject)) return;
+            e.Handled = true;
+            CancelScroll();
+            return;
+        }
 
         e.Handled = true;
 
@@ -396,9 +430,9 @@ public partial class CaptureOverlayWindow : Window
                 RecognizeRequested = true;
                 break;
 
-            case FinishKind.Scroll:
-                // 长截图：滚屏要一段一段来，同样等覆盖层关掉之后再跑（见 CaptureSession）
-                ScrollRequested = true;
+            case FinishKind.Live:
+                // 实时贴图：同样等覆盖层关掉之后再建（要取选区中心下面是哪个窗口）
+                LiveRequested = true;
                 break;
 
             default:

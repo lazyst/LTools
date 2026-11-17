@@ -62,21 +62,21 @@ internal static class ToolCatalog
     public static readonly ToolInfo[] All =
     {
         new(CaptureTool.Select, "选择", "Select", "点选标注后可拖动移动，Delete 删除", None, Key.Q),
-        new(CaptureTool.Pen, "画笔", "Pen", "按住拖动自由绘制", Stroke, Key.P),
-        new(CaptureTool.Highlighter, "荧光笔", "Highlighter", "半透明粗线，给文字打底", new[] { ToolParam.Color, ToolParam.Width, ToolParam.Opacity }, Key.H),
         new(CaptureTool.Rect, "矩形", "Rect", "拖出矩形框", Stroke, Key.R),
         new(CaptureTool.Ellipse, "椭圆", "Ellipse", "拖出椭圆", Stroke, Key.E),
         new(CaptureTool.Arrow, "箭头", "Arrow", "从起点拖到目标", Stroke, Key.A),
         new(CaptureTool.Polyline, "折线", "Polyline", "逐点单击，双击 / Enter 结束", Stroke, Key.L),
+        new(CaptureTool.Pen, "画笔", "Pen", "按住拖动自由绘制", Stroke, Key.P),
+        new(CaptureTool.Picker, "取色", "Picker", "鼠标下的颜色，单击复制 #RRGGBB", None, Key.C),
+        new(CaptureTool.Spotlight, "聚光", "Spotlight", "拖出保持原样的矩形，其余压暗", new[] { ToolParam.Opacity }, Key.S),
+        new(CaptureTool.Highlighter, "荧光笔", "Highlighter", "半透明粗线，给文字打底", new[] { ToolParam.Color, ToolParam.Width, ToolParam.Opacity }, Key.H),
         new(CaptureTool.Text, "文字", "Text", "单击输入文字，Enter 结束（Shift+Enter 换行）", new[] { ToolParam.Color, ToolParam.FontSize }, Key.T),
         new(CaptureTool.Serial, "序号", "Serial", "单击添加序号，自动递增（删除不重排）",
             new[] { ToolParam.Color, ToolParam.Shape, ToolParam.Numbering }, Key.N),
         new(CaptureTool.Mosaic, "马赛克", "Mosaic", "拖出要打码的矩形", new[] { ToolParam.Block }, Key.M),
         new(CaptureTool.Filter, "滤镜", "Filter", "拖出矩形，按参数行选的类型处理这一块（模糊 / 灰度 / 反相 / 浮雕 / 亮度）",
             new[] { ToolParam.FilterKind, ToolParam.FilterStrength }, Key.F),
-        new(CaptureTool.Spotlight, "聚光", "Spotlight", "拖出保持原样的矩形，其余压暗", new[] { ToolParam.Opacity }, Key.S),
         new(CaptureTool.Eraser, "橡皮", "Eraser", "点一下去掉整条标注", None, Key.X),
-        new(CaptureTool.Picker, "取色", "Picker", "鼠标下的颜色，单击复制 #RRGGBB", None, Key.C),
     };
 
     public static ToolInfo Of(CaptureTool tool) => All.First(t => t.Tool == tool);

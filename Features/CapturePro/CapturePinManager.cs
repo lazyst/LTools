@@ -82,6 +82,21 @@ internal static class CapturePinManager
         return pin;
     }
 
+    /// <summary>
+    /// 贴一块**实时**的图：跟住 <paramref name="hwnd"/>，每 200ms 刷新一次内容，
+    /// 窗口尺寸 / 位置仍是 <paramref name="area"/> 那块（源窗口挪开的地方留透明）。
+    /// </summary>
+    /// <remarks>
+    /// 只是 <see cref="Pin"/> 之后多开一次实时刷新，所以分组 / 多选 / 拖动 / 关闭全部
+    /// 与普通贴图完全同一条路径（<see cref="CapturePinWindow.StopLive"/> 之后就是普通贴图）。
+    /// </remarks>
+    public static CapturePinWindow PinLive(BitmapSource image, Int32Rect area, IntPtr hwnd)
+    {
+        var pin = Pin(image, area);
+        pin.StartLive(hwnd);
+        return pin;
+    }
+
     /// <summary>全关（右键菜单「关闭全部贴图」，含被分组藏起来的）。</summary>
     public static void CloseAll()
     {

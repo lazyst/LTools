@@ -25,15 +25,10 @@ public partial class CaptureOverlayWindow
     {
         Toolbar.Init(_style, _tool);
         Toolbar.ToolChanged += SetTool;
+        Toolbar.ActionRequested += OnToolbarAction;
         Toolbar.UndoRequested += () => { _doc.Undo(); RefreshMarks(); };
         Toolbar.RedoRequested += () => { _doc.Redo(); RefreshMarks(); };
-        Toolbar.CopyRequested += () => Accept(FinishKind.Copy);
-        Toolbar.PinRequested += () => Accept(FinishKind.Pin);
-        Toolbar.RecognizeRequested += () => Accept(FinishKind.Recognize);
-        Toolbar.SaveRequested += () => Accept(FinishKind.Save);
-        Toolbar.QuickSaveRequested += () => Accept(FinishKind.QuickSave);
-        Toolbar.PrintRequested += () => Accept(FinishKind.Print);
-        Toolbar.CancelRequested += Cancel;
+        Toolbar.ResetRequested += () => { _toolbarPlaced = false; UpdateChrome(); };
     }
 
     private void SetTool(CaptureTool tool)
@@ -87,7 +82,7 @@ public partial class CaptureOverlayWindow
         _doc.Regions = null;
         _doc.ClearMarks();
         UpdateCursorForTool();
-        UpdateChrome();                  // 收起动作栏 / 尺寸条 / 工具栏，提示改回「拖动框选」
+        UpdateChrome();                  // 收起尺寸条 / 工具栏，提示改回「拖动框选」
 
         if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out var dip))
             UpdateHover(Clamp(dip));     // 悬停高亮只有没选区时才出现，现在该露出来了

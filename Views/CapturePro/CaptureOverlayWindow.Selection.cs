@@ -17,7 +17,7 @@ namespace LTools.Views.CapturePro;
 /// 只路由到窗口，挂在 Canvas 上的处理器收不到——框选会「按下就卡住」。
 /// </para>
 /// <para>
-/// 按下时的判断顺序固定为：工具栏 / 动作栏 / 文字输入框让路 → 把手（任何工具都能改框）
+/// 按下时的判断顺序固定为：工具栏 / 文字输入框让路 → 把手（任何工具都能改框）
 /// → 选区内（选择工具拖标注，其余工具画标注）→ 选区外（加区 / 减区 / 整块重框）。
 /// 具体怎么画在 <c>.Annotate.cs</c>，工具状态在 <c>.Tools.cs</c>。
 /// </para>
@@ -47,8 +47,16 @@ public partial class CaptureOverlayWindow
     {
         if (e.ChangedButton != MouseButton.Left) return;
 
-        // 完成动作栏 / 浮动工具栏 / 选区形状条都是普通控件：点它们不能当成开始框选或画标注
-        if (IsOnActionBar(e.OriginalSource as DependencyObject)) return;
+        // 长截图模式：只有小面板上的按钮能点，别的一律不成开始框选 / 画标注
+        if (_scrollMode)
+        {
+            if (IsOnScrollPanel(e.OriginalSource as DependencyObject)) return;
+            if (e.ClickCount == 2) FinishScroll();      // 双击 = 完成（和普通截图一致）
+            e.Handled = true;
+            return;
+        }
+
+        // 浮动工具栏 / 选区形状条都是普通控件：点它们不能当成开始框选或画标注
         if (IsOnToolbar(e.OriginalSource as DependencyObject)) return;
         if (IsOnShapeBar(e.OriginalSource as DependencyObject)) return;
 
@@ -228,6 +236,9 @@ public partial class CaptureOverlayWindow
 
     private void Window_MouseMove(object sender, MouseEventArgs e)
     {
+        // 长截图模式：光标只是滚轮的位置，别改光标 / 别更新悬停候选
+        if (_scrollMode) return;
+
         Point p = Clamp(e.GetPosition(Layer));
 
         if (_drag == DragMode.None)
@@ -304,6 +315,7 @@ public partial class CaptureOverlayWindow
 
     private void Window_MouseUp(object sender, MouseButtonEventArgs e)
     {
+        if (_scrollMode) return;
         if (e.ChangedButton != MouseButton.Left || _drag == DragMode.None) return;
 
         Point p = Clamp(e.GetPosition(Layer));
@@ -392,19 +404,6 @@ public partial class CaptureOverlayWindow
         };
     }
 
-    /// <summary>事件源是否来自完成动作栏（按钮 / 它的父 Border）。</summary>
-    private bool IsOnActionBar(DependencyObject? source)
-    {
-        while (source != null)
-        {
-            if (ReferenceEquals(source, ActionBar)) return true;
-            source = source is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(source)
-                : LogicalTreeHelper.GetParent(source);
-        }
-        return false;
-    }
-
     /// <summary>事件源是否来自「选区形状」那条（点它不能当成开始框选）。</summary>
     private bool IsOnShapeBar(DependencyObject? source)
     {
@@ -436,7 +435,7 @@ public partial class CaptureOverlayWindow
         UpdateChrome();
     }
 
-    /// <summary>折线选区正在逐点单击（这时还没形成选区，工具栏 / 动作栏都不该出现）。</summary>
+    /// <summary>折线选区正在逐点单击（这时还没形成选区，工具栏不该出现）。</summary>
     private bool SelectionPending => _selPolyActive;
 
     /// <summary>画面上要画的那条「还没闭合」的虚线：折线的已落点 + 跟手的那一段（套索由多边形代画）。</summary>
@@ -564,7 +563,7 @@ public partial class CaptureOverlayWindow
     /// </summary>
     private Geometry? SelectionGeometry() => SelectionSet.Combine(LiveRegions());
 
-    /// <summary>按选区重算外接框（把手 / 尺寸条 / 动作栏都挂在它上面）。</summary>
+    /// <summary>按选区重算外接框（把手 / 尺寸条都挂在它上面）。</summary>
     private void RefreshSelection()
     {
         Rect box = SelectionSet.Bounds(LiveRegions());

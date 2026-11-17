@@ -48,6 +48,8 @@ public partial class CaptureToolbar : UserControl
     }
 
     private readonly List<ToolCell> _cells = new();
+    private readonly List<FrameworkElement> _actionParts = new();   // 完成动作那一截（EditOnly 时整组收起）
+    private Border? _selectSeparator;        // 「选择」与其它工具之间的竖线（照 Snow Shot 的 select-separator）
     private readonly Dictionary<ToolParam, FrameworkElement> _paramHosts = new();
     private readonly List<Action> _refreshers = new();
     private readonly List<RadioButton> _colorChips = new();
@@ -64,18 +66,31 @@ public partial class CaptureToolbar : UserControl
     /// <summary>用户切了工具。</summary>
     internal event Action<CaptureTool>? ToolChanged;
 
+    /// <summary>工具条右半边那些「完成动作」（照 Snow Shot：一条里排完，不再单独一条动作栏）。</summary>
+    public enum CaptureAction
+    {
+        Recognize,
+        Pin,
+        Live,
+        Scroll,
+        Print,
+        QuickSave,
+        Save,
+        Cancel,
+        Copy,
+    }
+
+    /// <summary>点了某个完成动作（由覆盖层决定具体做什么）。</summary>
+    public event Action<CaptureAction>? ActionRequested;
+
     /// <summary>样式（颜色 / 线宽 / 字号 / 块 / 透明度）变了。</summary>
     public event Action? StyleChanged;
 
     public event Action? UndoRequested;
     public event Action? RedoRequested;
-    public event Action? CopyRequested;
-    public event Action? PinRequested;
-    public event Action? RecognizeRequested;
-    public event Action? SaveRequested;
-    public event Action? QuickSaveRequested;
-    public event Action? PrintRequested;
-    public event Action? CancelRequested;
+
+    /// <summary>双击标题条要复位：宿主重新按当前选区摆一次（工具栏自己不知道选区在哪）。</summary>
+    public event Action? ResetRequested;
 
     internal CaptureTool CurrentTool { get; private set; } = CaptureTool.Select;
 
@@ -131,6 +146,7 @@ public partial class CaptureToolbar : UserControl
     {
         foreach (var cell in _cells) ToolRow.Children.Remove(cell.Button);
         _cells.Clear();
+        if (_selectSeparator != null) ToolRow.Children.Remove(_selectSeparator);
 
         BuildCells(layout);
         Sync(CurrentTool);
@@ -144,13 +160,50 @@ public partial class CaptureToolbar : UserControl
         if (_redoBtn != null) _redoBtn.IsEnabled = canRedo;
     }
 
-    /// <summary>放到屏幕底部中间（第一次显示与双击标题栏时用）。</summary>
+    /// <summary>放到屏幕底部中间（没有选区上下文时的兜底；双击标题栏复位也走宿主重新摆）。</summary>
     public void PlaceDefault(double width, double height)
     {
         FitWidth(width);
         Remeasure();
         double left = Math.Max(8, (width - What(ActualWidth, DesiredSize.Width)) / 2);
         double top = Math.Max(8, height - What(ActualHeight, DesiredSize.Height) - 20);
+        if (Parent is Canvas)
+        {
+            Canvas.SetLeft(this, left);
+            Canvas.SetTop(this, top);
+        }
+    }
+
+    /// <summary>
+    /// 贴到选区<b>下方</b>并水平居中（照 snow-shot：工具条跟着框走，不再钉在屏幕底部）。
+    /// 下方放不下就翻到选区上方。
+    /// </summary>
+    /// <param name="selection">选区（窗口 DIP 坐标）。</param>
+    /// <param name="width">窗口宽（DIP）。</param>
+    /// <param name="height">窗口高（DIP）。</param>
+    public void PlaceNear(Rect selection, double width, double height)
+    {
+        FitWidth(width);
+        Remeasure();
+        double w = What(ActualWidth, DesiredSize.Width);
+        double h = What(ActualHeight, DesiredSize.Height);
+
+        const double gap = 8;
+        const double edge = 8;
+
+        double left = selection.Left + (selection.Width - w) / 2;
+        left = Math.Clamp(left, edge, Math.Max(edge, width - w - edge));
+
+        double top = selection.Bottom + gap;
+
+        if (top + h > height - edge)
+        {
+            double above = selection.Top - h - gap;
+            top = above >= edge ? above : top;               // 下方放不下 → 翻到上方
+        }
+
+        top = Math.Clamp(top, edge, Math.Max(edge, height - h - edge));
+
         if (Parent is Canvas)
         {
             Canvas.SetLeft(this, left);
@@ -249,6 +302,14 @@ public partial class CaptureToolbar : UserControl
             _cells.Add(cell);
             ToolRow.Children.Insert(index++, button);
             ShowCellIcon(cell);
+
+            // 「选择」后面一条竖线（照 Snow Shot 的 select-separator）：只建一次，重建时搬位置
+            if (_cells.Count == 1 && layout.Groups.Count > 1)
+            {
+                _selectSeparator ??= new Border { Style = (Style)FindResource("SeparatorBar") };
+                if (_selectSeparator.Parent is Panel old) old.Children.Remove(_selectSeparator);
+                ToolRow.Children.Insert(index++, _selectSeparator);
+            }
         }
     }
 
@@ -375,6 +436,10 @@ public partial class CaptureToolbar : UserControl
         OpenBackgroundMenu(this);
     }
 
+    /// <summary>
+    /// 绘制工具右边排的是撤销 / 重做 + **完成动作**（照 Snow Shot：工具、撤销、完成动作在**一条**里，
+    /// 用竖线分组；以前完成动作另起一条，两条叠在一起看着像两排工具）。
+    /// </summary>
     private void BuildActions()
     {
         ToolRow.Children.Add(new Border { Style = (Style)FindResource("SeparatorBar") });
@@ -382,16 +447,79 @@ public partial class CaptureToolbar : UserControl
         _undoBtn = AddAction("IconUndo", "撤销（Ctrl+Z）", () => UndoRequested?.Invoke());
         _redoBtn = AddAction("IconRedo", "重做（Ctrl+Y）", () => RedoRequested?.Invoke());
 
-        ToolRow.Children.Add(new Border { Style = (Style)FindResource("SeparatorBar") });
+        // 撤销 / 重做与完成动作之间那条线：它属于「完成动作」这一截，整组收起时一起收（
+        // 贴图内标注还要能撤销画上去的那几笔）。
+        var line = new Border { Style = (Style)FindResource("SeparatorBar") };
+        _actionParts.Add(line);
+        ToolRow.Children.Add(line);
 
-        AddAction("IconCopy", "复制到剪贴板（Enter）", () => CopyRequested?.Invoke());
-        AddAction("IconPin", "贴图到屏幕（Ctrl+T）", () => PinRequested?.Invoke());
-        AddAction("IconRecognize", "识别文字 / 表格 / 二维码（Ctrl+R）", () => RecognizeRequested?.Invoke());
-        AddAction("IconSave", "另存为…（Ctrl+S）", () => SaveRequested?.Invoke());
-        AddAction("IconQuickSave", "快速保存到图片\\LTools 截图，不弹框（Ctrl+Shift+S）",
-            () => QuickSaveRequested?.Invoke());
-        AddAction("IconPrint", "打印（Ctrl+P）", () => PrintRequested?.Invoke());
-        AddAction("IconClose", "取消（Esc）", () => CancelRequested?.Invoke());
+        AddGroup(new[]
+        {
+            ActionButton("IconRecognize", "识别文字 / 表格 / 二维码（Ctrl+R）", CaptureAction.Recognize),
+        });
+
+        AddGroup(new[]
+        {
+            ActionButton("IconPin", "贴图到屏幕（Ctrl+T）", CaptureAction.Pin),
+            ActionButton("IconLive", "实时贴图：贴一块跟着这个窗口刷新的图（Ctrl+W）", CaptureAction.Live),
+            ActionButton("IconScroll", "长截图：滚着接成一张长图（Ctrl+L）", CaptureAction.Scroll),
+        });
+
+        AddGroup(new[]
+        {
+            ActionButton("IconPrint", "打印（Ctrl+P）", CaptureAction.Print),
+            ActionButton("IconQuickSave", "快速保存到图片\\LTools 截图，不弹框（Ctrl+Shift+S）", CaptureAction.QuickSave),
+            ActionButton("IconSave", "另存为…（Ctrl+S）", CaptureAction.Save),
+        });
+
+        AddGroup(new[]
+        {
+            ActionButton("IconClose", "取消（Esc）", CaptureAction.Cancel),
+            ActionButton("IconCopy", "复制到剪贴板并关闭（Enter）", CaptureAction.Copy, primary: true),
+        });
+    }
+
+    /// <summary>一组动作按钮前面加一条竖线（第一条不加）；分组同时记进 <see cref="_actionParts"/>，便于整组收起。</summary>
+    private void AddGroup(IReadOnlyList<FrameworkElement> buttons)
+    {
+        if (_actionParts.Count > 0)
+        {
+            var line = new Border { Style = (Style)FindResource("SeparatorBar") };
+            _actionParts.Add(line);
+            ToolRow.Children.Add(line);
+        }
+
+        foreach (var button in buttons)
+        {
+            _actionParts.Add(button);
+            ToolRow.Children.Add(button);
+        }
+    }
+
+    private Button ActionButton(string icon, string tip, CaptureAction action, bool primary = false)
+    {
+        var button = new Button
+        {
+            Style = (Style)FindResource(primary ? "BarBtnPrimary" : "ActBtn"),
+            ToolTip = tip,
+            Content = new ShapePath
+            {
+                Data = (Geometry)FindResource(icon),
+                Style = (Style)FindResource("IconPath"),
+            },
+        };
+        button.Click += (_, _) => ActionRequested?.Invoke(action);
+        return button;
+    }
+
+    /// <summary>
+    /// 「完成动作」这一截显不显示：贴图内标注（`EditOnly`）没有出口栏——完成是 Enter / 双击，
+    /// 结果交回那张贴图，别摆一排按了会被忽略的按钮。
+    /// </summary>
+    internal void SetActionsVisible(bool visible)
+    {
+        var visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var part in _actionParts) part.Visibility = visibility;
     }
 
     private Button? _undoBtn, _redoBtn;
@@ -637,7 +765,8 @@ public partial class CaptureToolbar : UserControl
         if (e.ClickCount == 2)
         {
             UserMoved = false;
-            if (Parent is FrameworkElement parent) PlaceDefault(parent.ActualWidth, parent.ActualHeight);
+            if (ResetRequested != null) ResetRequested();                      // 宿主按选区重新摆
+            else if (Parent is FrameworkElement parent) PlaceDefault(parent.ActualWidth, parent.ActualHeight);
             e.Handled = true;
             return;
         }

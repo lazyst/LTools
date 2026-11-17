@@ -33,9 +33,38 @@ internal sealed class ToolLayout
     /// <summary>每格的工具（格内顺序就是循环切换的顺序）。</summary>
     public IReadOnlyList<IReadOnlyList<CaptureTool>> Groups => _groups;
 
-    /// <summary>默认布局：每个工具一格，顺序 = <see cref="ToolCatalog.All"/>，没有藏起来的。</summary>
-    public static ToolLayout Default() =>
-        new(ToolCatalog.All.Select(i => new List<CaptureTool> { i.Tool }).ToList(), new HashSet<CaptureTool>());
+    /// <summary>
+    /// 默认布局（照 Snow Shot 的分组与顺序）：
+    /// 选择 │ 形状（矩形 / 椭圆）│ 线条（箭头 / 折线）│ 画笔 │
+    /// 放大镜组（取色 / 聚光 / 荧光笔）│ 文字 │ 序号 │ 打码与滤镜（马赛克 / 滤镜）│ 橡皮。
+    /// </summary>
+    /// <remarks>
+    /// 同格的工具**再点一次循环切换**（右下角一个小点表示这里不止一个），
+    /// 与 Snow Shot 把「矩形 / 折线」「箭头 / 距离」收进一格的思路一致。
+    /// 目录里后来新增、这张表没提到的工具自动补在末尾单独一格——新工具不会因为
+    /// 忘了改这张表而看不见。
+    /// </remarks>
+    public static ToolLayout Default()
+    {
+        var groups = new List<List<CaptureTool>>
+        {
+            new() { CaptureTool.Select },
+            new() { CaptureTool.Rect, CaptureTool.Ellipse },
+            new() { CaptureTool.Arrow, CaptureTool.Polyline },
+            new() { CaptureTool.Pen },
+            new() { CaptureTool.Picker, CaptureTool.Spotlight, CaptureTool.Highlighter },
+            new() { CaptureTool.Text },
+            new() { CaptureTool.Serial },
+            new() { CaptureTool.Mosaic, CaptureTool.Filter },
+            new() { CaptureTool.Eraser },
+        };
+
+        var seen = groups.SelectMany(g => g).ToHashSet();
+        foreach (var info in ToolCatalog.All)
+            if (seen.Add(info.Tool)) groups.Add(new List<CaptureTool> { info.Tool });
+
+        return new ToolLayout(groups, new HashSet<CaptureTool>());
+    }
 
     /// <summary>被收起来的工具（按目录顺序，菜单里照着列）。</summary>
     public List<CaptureTool> HiddenTools =>

@@ -4,40 +4,19 @@ using System.Windows;
 namespace LTools.Features.CapturePro;
 
 /// <summary>
-/// 长截图小面板摆在哪儿：优先落在选区**外面**（否则会被滚进自己的画面）。
+/// 长截图的小预览面板摆在哪儿：优先落在选区**外面**（不挡 1:1 的拼接画面）。
 /// </summary>
 /// <remarks>
-/// 纯函数：输入都是物理像素（选区 / 所在显示器工作区）与 DIP 尺寸（面板），返回 DIP 位置。
-/// 顺序固定「右侧 → 下方 → 上方 → 左侧」，一个都放不下时才塞进工作区右下角（与选区重叠，
-/// 这时调用方抓帧前要把面板藏一下，见 <c>CaptureScrollWindow</c>）。
+/// 纯函数：坐标已经是窗口自己的 DIP（预览面板画在覆盖层窗口里，与屏幕选字的候选条同一套规则）。
+/// 顺序固定「右侧 → 下方 → 上方 → 左侧」，一个都放不下时才塞进工作区右下角（与选区重叠：
+/// 面板是覆盖层自己的元素，不会被 <c>PrintWindow</c> 抓进画面，重叠只是挡一点预览）。
 /// </remarks>
 internal static class ScrollLayout
 {
-    /// <summary>面板与选区 / 工作区边缘的距离（DIP）。</summary>
+    /// <summary>面板与选区 / 窗口边缘的距离（DIP）。</summary>
     public const double Gap = 12;
 
-    /// <summary>算面板落点（DIP）。</summary>
-    /// <param name="area">截图选区（物理像素）。</param>
-    /// <param name="work">选区所在显示器的工作区（物理像素，已避开任务栏）。</param>
-    /// <param name="scale">物理像素 / DIP。</param>
-    /// <param name="panel">面板尺寸（DIP）。</param>
-    public static Rect Place(Int32Rect area, Int32Rect work, double scale, Size panel)
-    {
-        if (scale <= 0) scale = 1;
-        if (panel.Width <= 0 || panel.Height <= 0) return new Rect(0, 0, 0, 0);
-
-        var screen = new Rect(work.X / scale, work.Y / scale,
-            Math.Max(1, work.Width) / scale, Math.Max(1, work.Height) / scale);
-        var selection = new Rect(area.X / scale, area.Y / scale,
-            Math.Max(1, area.Width) / scale, Math.Max(1, area.Height) / scale);
-
-        return PlaceAround(selection, screen, panel);
-    }
-
-    /// <summary>
-    /// 同一个落点规则，但坐标已经是**窗口自己的 DIP**（屏幕选字的候选条画在覆盖层窗口里，
-    /// 不需要再换一次物理像素）。<paramref name="view"/> 是窗口内容矩形。
-    /// </summary>
+    /// <summary>算面板落点（DIP）：<paramref name="selection"/> 与 <paramref name="view"/> 都是窗口内坐标。</summary>
     public static Rect PlaceIn(Rect selection, Size panel, Size view)
     {
         if (panel.Width <= 0 || panel.Height <= 0 || view.Width <= 0 || view.Height <= 0)
@@ -63,7 +42,7 @@ internal static class ScrollLayout
             if (screen.Contains(rect)) return rect;
         }
 
-        // 都放不下（选区几乎占满工作区）：塞右下角，抓帧时靠透明度让开
+        // 都放不下（选区几乎占满整屏）：塞右下角
         double left = Math.Max(screen.Left, screen.Right - panel.Width - Gap);
         double top = Math.Max(screen.Top, screen.Bottom - panel.Height - Gap);
         return new Rect(left, top, panel.Width, panel.Height);

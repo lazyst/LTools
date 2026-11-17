@@ -30,6 +30,14 @@ public partial class CaptureOverlayWindow
     /// <summary>滚轮在候选层级之间切换：向上滚 = 父级（更大范围），向下滚 = 更细的控件。</summary>
     private void Window_Wheel(object sender, MouseWheelEventArgs e)
     {
+        // 长截图模式：滚轮全部转发给目标窗口（页面自己动），这里不当「换层级」
+        if (_scrollMode)
+        {
+            e.Handled = true;
+            Scroll_Wheel(e.Delta);
+            return;
+        }
+
         if (IsValid(_sel) || _hoverCandidates.Count < 2) return;
 
         int step = e.Delta > 0 ? 1 : -1;

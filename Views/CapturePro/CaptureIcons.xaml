@@ -20,7 +20,8 @@
     <PathGeometry x:Key="IconPicker" Figures="M 10,2.4 C 10,2.4 4.6,8.6 4.6,12.4 A 5.4,5.4 0 0 0 15.4,12.4 C 15.4,8.6 10,2.4 10,2.4 Z M 10,10.4 A 2,2 0 1 0 10,14.4 A 2,2 0 1 0 10,10.4"/>
     <PathGeometry x:Key="IconPin" Figures="M 8.4,3 H 15.6 L 13.4,6.4 V 10.4 L 16,12.4 H 8 L 10.6,10.4 V 6.4 Z M 12,12.4 V 18"/>
     <!-- 识别：扫描框四角 + 中间一道线（与「矩形」区分开，别只画个方框） -->
-    <PathGeometry x:Key="IconRecognize" Figures="M 3,7 V 3 H 7 M 13,3 H 17 V 7 M 17,13 V 17 H 13 M 7,17 H 3 V 13 M 6,10 H 14"/>    <PathGeometry x:Key="IconUndo" Figures="M 6,5 L 2,9 L 6,13 M 2,9 H 12 A 4.5,4.5 0 0 1 12,18"/>
+    <PathGeometry x:Key="IconRecognize" Figures="M 3,7 V 3 H 7 M 13,3 H 17 V 7 M 17,13 V 17 H 13 M 7,17 H 3 V 13 M 6,10 H 14"/>
+    <PathGeometry x:Key="IconUndo" Figures="M 6,5 L 2,9 L 6,13 M 2,9 H 12 A 4.5,4.5 0 0 1 12,18"/>
     <PathGeometry x:Key="IconRedo" Figures="M 14,5 L 18,9 L 14,13 M 18,9 H 8 A 4.5,4.5 0 0 0 8,18"/>
     <PathGeometry x:Key="IconCopy" Figures="M 3,10 L 8,15 L 17,4"/>
     <PathGeometry x:Key="IconSave" Figures="M 4,4 H 14 L 16,6 V 16 H 4 Z M 7,4 V 8 H 13 V 4 M 6,16 V 11 H 14 V 16"/>
@@ -29,4 +30,121 @@
     <!-- 打印：出纸 + 机身 + 纸盒 -->
     <PathGeometry x:Key="IconPrint" Figures="M 7,3.4 H 13 V 7 M 4.4,7 H 15.6 V 12.6 H 13 M 7,12.6 H 4.4 V 7 M 7,12.6 H 13 V 16.6 H 7 Z"/>
     <PathGeometry x:Key="IconClose" Figures="M 5,5 L 15,15 M 15,5 L 5,15"/>
+    <!-- 实时贴图：一块屏幕 + 右侧信号弧（「跟住这个窗口」，别与「贴图」的图钉混） -->
+    <PathGeometry x:Key="IconLive" Figures="M 3,5 H 13 V 15 H 3 Z M 6,18 H 12 M 16,7.4 A 4.4,4.4 0 0 1 16,12.6 M 19,5 A 8.6,8.6 0 0 1 19,15"/>
+    <!-- 长截图：一页纸 + 向下的箭头（滚下去接着拼） -->
+    <PathGeometry x:Key="IconScroll" Figures="M 6,2.6 H 16 V 17.4 H 6 Z M 11,6 V 12.4 M 8.6,10.4 L 11,12.8 L 13.4,10.4"/>
+
+    <!-- ============ 图标按钮（工具格与工具条右半截的完成动作共用一套尺寸 / 外观） ============
+         尺寸照 Snow Shot 的工具条：按钮 32×32、图标 24、面板内边距 12（横）/ 4（纵）、
+         分隔线 1×16 两侧各留 12、阴影 blur 18 / offsetY 3 / rgba(0,0,0,90)。
+         全部从这一份取（CaptureToolbar 是唯一使用方），别各写一份。 -->
+    <Style x:Key="IconPath" TargetType="Path">
+        <Setter Property="Width" Value="24"/>
+        <Setter Property="Height" Value="24"/>
+        <Setter Property="Stretch" Value="Uniform"/>
+        <Setter Property="Fill" Value="Transparent"/>
+        <Setter Property="StrokeThickness" Value="1.5"/>
+        <Setter Property="StrokeLineJoin" Value="Round"/>
+        <Setter Property="StrokeStartLineCap" Value="Round"/>
+        <Setter Property="StrokeEndLineCap" Value="Round"/>
+        <Setter Property="Stroke"
+                Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ButtonBase}}"/>
+    </Style>
+
+    <Style x:Key="BarBtn" TargetType="Button">
+        <Setter Property="Width" Value="32"/>
+        <Setter Property="Height" Value="32"/>
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="Foreground" Value="#E4E4E7"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="Transparent" CornerRadius="6">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#26FFFFFF"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#40FFFFFF"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="#71717A"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 主按钮（照 Snow Shot 的「✓ 复制」：整格主色、图标白） -->
+    <Style x:Key="BarBtnPrimary" TargetType="Button" BasedOn="{StaticResource BarBtn}">
+        <Setter Property="Foreground" Value="#FFFFFF"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="#3B82F6" CornerRadius="6">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#2F6FE0"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#2560C8"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Background" Value="#2A3040"/>
+                            <Setter Property="Foreground" Value="#7C8598"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 工具格（单选）：选中 = 主色底 -->
+    <Style x:Key="BarToolBtn" TargetType="RadioButton">
+        <Setter Property="Width" Value="32"/>
+        <Setter Property="Height" Value="32"/>
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="Foreground" Value="#E4E4E7"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Bd" Background="Transparent" CornerRadius="6">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#26FFFFFF"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#3B82F6"/>
+                            <Setter Property="Foreground" Value="#FFFFFF"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 分组竖线：1×16，两侧各 12（Snow Shot 的 kSeparator*） -->
+    <Style x:Key="BarSeparator" TargetType="Border">
+        <Setter Property="Width" Value="1"/>
+        <Setter Property="Height" Value="16"/>
+        <Setter Property="Background" Value="#33FFFFFF"/>
+        <Setter Property="Margin" Value="12,0"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- 工具条的浮层阴影（Snow Shot：blur 18、offsetY 3、rgba(0,0,0,90)） -->
+    <DropShadowEffect x:Key="BarShadow" BlurRadius="18" ShadowDepth="3" Direction="270"
+                      Color="#000000" Opacity="0.35"/>
 </ResourceDictionary>

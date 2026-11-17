@@ -40,12 +40,14 @@ internal static class CaptureProSuite
         cases.Add(new("capturePro", "取色：像素颜色与文本", Picker));
         cases.Add(new("capturePro", "贴图：缩放 / 不透明度 / 锚点", Pin));
         cases.Add(new("capturePro", "贴图：分组名与批量另存", PinGrouping));
+        cases.Add(new("capturePro", "贴图：实时状态与裁剪", PinLiveCrop));
         cases.Add(new("capturePro", "工具栏：格子布局 / 收起 / 落盘往返", ToolLayouts));
         cases.Add(new("capturePro", "识别：表格聚类 / TSV / HTML", Recognize));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
         cases.Add(new("capturePro", "长截图：行位移检测", ScrollShift));
         cases.Add(new("capturePro", "长截图：拼接与面板落点", ScrollBuild));
+        cases.Add(new("capturePro", "长截图：固定页脚与就地预览", ScrollSticky));
         cases.Add(new("capturePro", "选字：候选切分", ScreenTextSplit));
         cases.Add(new("capturePro", "录屏：参数 / 命令行 / 定位", Record));
         cases.Add(new("capturePro", "录屏：暂停计时与历史文案", RecordBookkeeping));
@@ -939,6 +941,49 @@ internal static class CaptureProSuite
     }
 
     /// <summary>
+    /// 实时贴图：源窗口状态判定 / 整窗裁到选区那块 / 徽标文案。
+    /// 「窗口挪开多少就透明多少」这里最容易被写成「跟着窗口平移」（贴图自己跑了），
+    /// 判据是 <see cref="LiveCrop.Target"/> 的偏移永远相对**选区**，不是相对窗口。
+    /// </summary>
+    private static void PinLiveCrop()
+    {
+        Check.Equal(LiveState.Live, PinLive.StateOf(true, false), "窗口在、没最小化 = 实时");
+        Check.Equal(LiveState.Minimized, PinLive.StateOf(true, true), "最小化 = 跳过抓帧");
+        Check.Equal(LiveState.Closed, PinLive.StateOf(false, false), "窗口没了 = 关闭贴图");
+        Check.True(PinLive.ShouldCapture(LiveState.Live), "实时才抓帧");
+        Check.False(PinLive.ShouldCapture(LiveState.Minimized), "最小化时不抓帧");
+        Check.False(PinLive.ShouldCapture(LiveState.Closed), "关掉了更不抓");
+
+        Check.Equal("● 实时", PinLive.Badge(LiveState.Live), "徽标：实时");
+        Check.Equal("源窗口已最小化", PinLive.Badge(LiveState.Minimized), "徽标：最小化");
+        Check.Equal("源窗口已关闭", PinLive.Badge(LiveState.Closed), "徽标：关闭");
+
+        var area = new Int32Rect(100, 100, 200, 150);
+
+        // ① 窗口正好盖住选区：整块原样贴
+        Check.Equal(
+            new LiveCrop(new Int32Rect(0, 0, 200, 150), new Int32Rect(0, 0, 200, 150)),
+            PinLive.Crop(new Int32Rect(100, 100, 200, 150), area),
+            "窗口与选区一样大：从 (0,0) 裁、贴到 (0,0)");
+
+        // ② 窗口往右下偏 30 / 20：只画还盖着的那块，偏移相对选区（窗口左上那圈不补）
+        Check.Equal(
+            new LiveCrop(new Int32Rect(0, 0, 170, 130), new Int32Rect(30, 20, 170, 130)),
+            PinLive.Crop(new Int32Rect(130, 120, 200, 150), area),
+            "窗口挪开：裁窗口那一块，贴到选区对应位置");
+
+        // ③ 窗口只压住选区右下角：画布左上留透明
+        Check.Equal(
+            new LiveCrop(new Int32Rect(0, 0, 50, 50), new Int32Rect(150, 100, 50, 50)),
+            PinLive.Crop(new Int32Rect(250, 200, 100, 100), area),
+            "窗口只盖住右下角：其余留透明");
+
+        // ④ 完全挪开 / 空矩形：没有可画的东西（调用方交一张全透明画布）
+        Check.True(PinLive.Crop(new Int32Rect(0, 0, 50, 50), area) == null, "窗口完全挪开 = 不画");
+        Check.True(PinLive.Crop(new Int32Rect(100, 100, 0, 0), area) == null, "空窗口矩形 = 不画");
+    }
+
+    /// <summary>
     /// 贴图分组与批量：组名清洗 / 忽略大小写判重、批量另存落盘（不覆盖同名）。
     /// </summary>
     private static void PinGrouping()
@@ -1009,53 +1054,58 @@ internal static class CaptureProSuite
         int all = ToolCatalog.All.Length;
 
         var def = ToolLayout.Default();
-        Check.Equal(all, def.Groups.Count, "默认布局：每个工具一格");
+        Check.Equal(9, def.Groups.Count, "默认布局：照 Snow Shot 分成 9 格（选择 / 形状 / 线条 / 画笔 / 放大镜组 / 文字 / 序号 / 打码 / 橡皮）");
+        Check.Equal(all, def.Groups.SelectMany(g => g).Distinct().Count(), "每个工具都在某一格里（格数少但一个都不少）");
         Check.Equal(0, def.HiddenTools.Count, "默认布局没有收起来的工具");
+        Check.Equal("Select", def.ToLines()[0], "第一格是「选择」");
+        Check.Equal("Rect,Ellipse", def.ToLines()[1], "第二格是形状（矩形 / 椭圆）");
+        Check.Equal("Arrow,Polyline", def.ToLines()[2], "第三格是线条（箭头 / 折线）");
+        Check.Equal("Mosaic,Filter", def.ToLines()[7], "打码与滤镜同格");
 
         // 并到左边一格：格内顺序保持原样，第一格不再动
         var merge = def.MergeLeft(CaptureTool.Pen);
-        Check.Equal(all - 1, merge.Groups.Count, "并到左边一格：少一格");
+        Check.Equal(8, merge.Groups.Count, "并到左边一格：少一格");
         Check.Equal(CaptureTool.Select, merge.Groups[0][0], "第一格还是「选择」");
-        Check.Equal(CaptureTool.Pen, merge.Groups[0][1], "「画笔」并进第一格（顺序不变）");
+        Check.True(merge.Groups[2].SequenceEqual(new[] { CaptureTool.Arrow, CaptureTool.Polyline, CaptureTool.Pen }),
+            "「画笔」并进左边那格（顺序不变）");
         Check.True(merge.MergeLeft(CaptureTool.Select).SameAs(merge), "第一格左边没东西：并过去什么都不变");
 
         // 拆出来：回到默认的格数与位置
         var split = merge.Split(CaptureTool.Pen);
-        Check.Equal(all, split.Groups.Count, "拆成单独一格：格子数回到默认");
-        Check.Equal(1, split.Groups[1].Count, "拆出来的格子里只有它自己");
-        Check.Equal(CaptureTool.Pen, split.Groups[1][0], "拆出来的格子落在原位置");
+        Check.Equal(9, split.Groups.Count, "拆成单独一格：格子数回到默认");
+        Check.Equal(1, split.Groups[3].Count, "拆出来的格子里只有它自己");
+        Check.Equal(CaptureTool.Pen, split.Groups[3][0], "拆出来的格子落在原位置");
 
         // 收起 / 放回
         var hidden = def.Hide(CaptureTool.Eraser);
         Check.True(hidden.IsHidden(CaptureTool.Eraser), "收起「橡皮」");
         Check.Equal(-1, hidden.CellOf(CaptureTool.Eraser), "收起后它不在任何格子里");
-        Check.Equal(all - 1, hidden.Groups.Count, "收起一个工具就少一格");
+        Check.Equal(8, hidden.Groups.Count, "收起一个工具就少一格");
         Check.Equal("Eraser", hidden.ToHidden()[0], "落盘写的是工具键");
 
         var back = hidden.Insert(CaptureTool.Eraser);
         Check.False(back.IsHidden(CaptureTool.Eraser), "放回去就不再是收起的");
-        Check.Equal(all, back.Groups.Count, "放回去还是单独一格");
-        var ranks = back.Groups.Select(g => g[0]).ToList();
-        Check.Equal(CaptureTool.Spotlight, ranks[ranks.IndexOf(CaptureTool.Eraser) - 1],
-            "放回去落在默认顺序的位置上（聚光后面）");
+        Check.Equal(9, back.Groups.Count, "放回去还是单独一格");
+        Check.Equal(CaptureTool.Eraser, back.Groups[8][0], "放回去落在默认顺序的位置上（最后）");
 
         // 落盘往返：写出去再读回来必须是同一份
         Check.True(ToolLayout.Parse(merge.ToLines(), merge.ToHidden()).SameAs(merge),
             "落盘再读回来是同一份布局");
-        Check.Equal("Select,Pen", merge.ToLines()[0], "一行一格、格内逗号分隔工具键");
+        Check.Equal("Select", merge.ToLines()[0], "一行一格");
+        Check.Equal("Rect,Ellipse", merge.ToLines()[1], "格内逗号分隔工具键");
 
         // 目录里新增、两处都没提到的工具：自动补回来（不许被老布局一直藏着）
         var lines = merge.ToLines().Where(l => !l.Contains("Eraser", StringComparison.Ordinal)).ToList();
         var grown = ToolLayout.Parse(lines, merge.ToHidden());
         Check.False(grown.IsHidden(CaptureTool.Eraser), "老布局里没有的新工具自动补回（可见）");
-        Check.Equal(all - 1, grown.Groups.Count, "补回来的新工具占单独一格");
+        Check.Equal(8, grown.Groups.Count, "补回来的新工具占单独一格");
 
         // 脏数据：未知键丢掉、空行丢掉、同格重复只留一次；其余工具按默认补回
         var dirty = ToolLayout.Parse(new List<string> { "pen,pen", "nope,select", "" }, null);
-        Check.Equal(CaptureTool.Pen, dirty.Groups[0][0], "未知键丢掉，留下的工具按行序排");
-        Check.Equal(1, dirty.Groups[0].Count, "同一格里的重复工具只留一次");
-        Check.Equal(CaptureTool.Select, dirty.Groups[1][0], "未知键「nope」不会变成一格");
-        Check.Equal(all, dirty.Groups.Count, "其余工具按默认补回（一个工具都不会丢）");
+        int penCell = dirty.CellOf(CaptureTool.Pen);
+        Check.Equal(1, dirty.Groups[penCell].Count, "同一格里的重复工具只留一次");
+        Check.Equal(penCell + 1, dirty.CellOf(CaptureTool.Select), "未知键「nope」不会变成一格（选择仍在画笔右边）");
+        Check.Equal(all, dirty.Groups.SelectMany(g => g).Distinct().Count(), "其余工具按默认补回（一个工具都不会丢）");
         Check.True(ToolLayout.Parse(dirty.ToLines(), dirty.ToHidden()).SameAs(dirty),
             "脏数据修好之后往返稳定");
 
@@ -1178,8 +1228,12 @@ internal static class CaptureProSuite
         Check.Equal(5, ScrollStitch.FindShift(RowsOf(page, 0), RowsOf(page, 5)) ?? -1, "小幅位移 5 行");
         Check.Equal(0, ScrollStitch.FindShift(RowsOf(page, 0), RowsOf(page, 0)) ?? -1, "没动 = 0");
 
+        // 大位移（一次滚过半屏）也要认得出来：一格一格滚时偶尔碰上快速滚动 / 大段空白
+        Check.Equal(150, ScrollStitch.FindShift(RowsOf(page, 0), RowsOf(page, 150)) ?? -1,
+            "大位移 150 行");
+
         // 完全不同的两帧：认不出（null 才会让循环收尾，不会把两张无关的图接起来）
-        Check.True(ScrollStitch.FindShift(RowsOf(page, 0), RowsOf(NewPage(400, seed: 7), 0)) == null,
+        Check.True(ScrollStitch.FindShift(RowsOf(NewNoise(400, 1), 0), RowsOf(NewNoise(400, 2), 0)) == null,
             "内容对不上 → 认不出");
 
         // 高度不一致（换了窗口 / 变了尺寸）也认不出
@@ -1196,6 +1250,16 @@ internal static class CaptureProSuite
             Array.Fill(b[i], (byte)0x10);
         }
         Check.Equal(30, ScrollStitch.FindShift(a, b) ?? -1, "页脚不动也能认出位移");
+
+        // 中间一条在动（视频 / 光标闪烁 / 加载中的图）：按「对上的行占多少」打分，照样认得位移
+        var animated = RowsOf(page, 60);
+        for (int i = ViewHeight / 3; i < ViewHeight / 3 + 20; i++) Array.Fill(animated[i], (byte)0xFF);
+        Check.Equal(60, ScrollStitch.FindShift(RowsOf(page, 0), animated) ?? -1, "一段行在动也能认出位移");
+
+        // 整片纯色（没有任何信息）：不瞎接——否则「滚到哪都对得上」，会拼出一堆重复的空白
+        var flat = NewFlat(400);
+        Check.True(ScrollStitch.FindShift(RowsOf(flat, 0), RowsOf(flat, 50)) == null,
+            "整片纯色 → 认不出（不瞎接）");
     }
 
     /// <summary>
@@ -1222,6 +1286,18 @@ internal static class CaptureProSuite
         Check.True(preview.PixelWidth <= 30 && preview.PixelHeight <= 200, "预览装进框里");
         Check.True(preview.PixelHeight >= 100, $"预览按比例缩小（{longImage.PixelHeight} 行 → {preview.PixelHeight}）");
 
+        // 就地预览取的是拼接图的**末尾若干行**（不是整张长图重画）
+        var tail = stitch.Tail(100);
+        Check.Equal(100, tail.PixelHeight, "末尾一屏按行取");
+        Check.Equal(16, tail.PixelWidth, "末尾一屏的宽不变");
+        Check.Equal(ViewHeight + 90, stitch.Tail(longImage.PixelHeight).PixelHeight, "要的行比拼接图还多 → 给整张");
+
+        var tailRow = new byte[16 * 4];
+        tail.CopyPixels(new Int32Rect(0, tail.PixelHeight - 1, 16, 1), tailRow, 16 * 4, 0);
+        var lastRow = new byte[16 * 4];
+        longImage.CopyPixels(new Int32Rect(0, longImage.PixelHeight - 1, 16, 1), lastRow, 16 * 4, 0);
+        Check.True(tailRow.SequenceEqual(lastRow), "末尾一屏的最后一行 = 长图的最后一行");
+
         // 高度上限：到顶就 Full，调用方据此收尾（一直滚下去也不会吃满内存）
         var tall = NewPage(16200);
         var limited = new ScrollStitch();
@@ -1233,22 +1309,7 @@ internal static class CaptureProSuite
         Check.True(limited.Full, "滚到高度上限后 Full = true");
         Check.True(limited.Height >= ScrollStitch.MaxRows, $"停在 {limited.Height} 行（上限 {ScrollStitch.MaxRows}）");
 
-        // 面板落点：右侧放得下就放右侧，都放不下塞工作区右下角
-        var work = new Int32Rect(0, 0, 1920, 1040);
-        var panel = new Size(268, 372);
-        var right = ScrollLayout.Place(new Int32Rect(100, 100, 800, 600), work, 1, panel);
-        Check.True(right.Left >= 900, $"选区右侧有地方 → 放右侧（Left={right.Left:0}）");
-        Check.Equal(100d, right.Top, "与选区顶边对齐");
-
-        var narrow = ScrollLayout.Place(new Int32Rect(0, 0, 400, 300), new Int32Rect(0, 0, 420, 1040), 1, panel);
-        Check.Equal(0d, narrow.Left, "右边不够 → 落到下方（仍与左边对齐）");
-        Check.Equal(312d, narrow.Top, "在选区下方留出间距");
-
-        var full = ScrollLayout.Place(new Int32Rect(0, 0, 1920, 1040), work, 1, panel);
-        Check.True(full.Right <= 1920 && full.Bottom <= 1040, "选区占满 → 塞回工作区里");
-        Check.True(full.IntersectsWith(new Rect(0, 0, 1920, 1040)), "这时只能与选区重叠（抓帧时靠透明度让开）");
-
-        // 屏幕选字的候选条画在覆盖层窗口里：同一套规则，坐标已经是窗口 DIP
+        // 小面板落点（画在覆盖层窗口里）：右侧放得下就放右侧，都放不下塞右下角
         var view = new Size(1920, 1040);
         var bar = new Size(400, 320);
         var inRight = ScrollLayout.PlaceIn(new Rect(100, 100, 800, 600), bar, view);
@@ -1261,6 +1322,53 @@ internal static class CaptureProSuite
 
         var inClamp = ScrollLayout.PlaceIn(new Rect(0, 0, 1920, 1040), bar, view);
         Check.True(inClamp.Right <= 1920 && inClamp.Bottom <= 1040, "窗口放满 → 夹回右下角");
+    }
+
+    /// <summary>
+    /// 长截图：页底那条固定条（置顶 / 置底按钮条）不在中间重复，收尾补一次到整张图最下面；
+    /// 纯色空白（只是空白、不是固定条）不能被当成固定条剪掉。
+    /// </summary>
+    private static void ScrollSticky()
+    {
+        const int footer = 30;
+        var page = NewPage(900);
+
+        var stitch = new ScrollStitch();
+        var first = FooterFrame(page, 0, footer);
+        stitch.Start(first);
+        Check.Equal(0, stitch.StickyBottom, "首帧还不知道有没有固定条");
+
+        var second = FooterFrame(page, 60, footer);
+        Check.Equal(60, stitch.Append(second) ?? -1, "有固定页脚也认得出位移");
+        Check.Equal(footer, stitch.StickyBottom, "认出 30 行的固定页脚");
+        Check.Equal(ViewHeight - footer + 60, stitch.Height, "首帧尾部那条已经剪掉，新内容照接");
+
+        var third = FooterFrame(page, 120, footer);
+        Check.Equal(60, stitch.Append(third) ?? -1, "第三帧位移 60");
+        Check.Equal(ViewHeight - footer + 120, stitch.Height, "每一帧只接固定条上面那一截");
+
+        var footerRow = RowAt(third, ViewHeight - 10);
+        Check.Equal(0, CountRows(stitch.Render(), footerRow), "拼到一半时中间没有重复的固定条");
+
+        stitch.Finish();
+        Check.Equal(ViewHeight - footer + 120 + footer, stitch.Height, "收尾把固定条补到最下面");
+
+        var finished = stitch.Render();
+        Check.Equal(1, CountRows(finished, footerRow), "整张长图里固定条只出现一次");
+        Check.True(RowAt(finished, finished.PixelHeight - 1).SequenceEqual(RowAt(third, ViewHeight - 1)),
+            "最下面那行就是固定条");
+
+        stitch.Finish();
+        Check.Equal(ViewHeight + 120, stitch.Height, "Finish 重复调用不会再补一条");
+
+        // 整片纯色的固定条（比如一条纯色底、没有字的页脚）：认不出「有信息」的行，
+        // 宁可中间重复一遍也不剪内容（剪错的代价比重复大）
+        var plain = new ScrollStitch();
+        plain.Start(FooterFrame(page, 0, footer, flat: true));
+        Check.Equal(60, plain.Append(FooterFrame(page, 60, footer, flat: true)) ?? -1,
+            "纯色页脚在也不影响位移检测");
+        Check.Equal(0, plain.StickyBottom, "纯色页脚不当固定条");
+        Check.Equal(ViewHeight + 60, plain.Height, "没剪内容");
     }
 
     /// <summary>
@@ -1322,6 +1430,39 @@ internal static class CaptureProSuite
         return image;
     }
 
+    /// <summary>一整页纯色（没有任何可用于对齐的信息），验证「不瞎接」。</summary>
+    private static BitmapSource NewFlat(int height)
+    {
+        const int width = 16;
+        int stride = width * 4;
+        var pixels = new byte[stride * height];
+        for (int i = 0; i + 3 < pixels.Length; i += 4)
+        {
+            pixels[i] = 0xF0;
+            pixels[i + 1] = 0xF0;
+            pixels[i + 2] = 0xF0;
+            pixels[i + 3] = 0xFF;
+        }
+
+        var image = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
+        image.Freeze();
+        return image;
+    }
+
+    /// <summary>一整页随机纹理：两张不同的种子之间毫无关系（验证「内容对不上就认不出」）。</summary>
+    private static BitmapSource NewNoise(int height, int seed)
+    {
+        const int width = 16;
+        int stride = width * 4;
+        var pixels = new byte[stride * height];
+        new Random(seed).NextBytes(pixels);
+        for (int i = 3; i < pixels.Length; i += 4) pixels[i] = 0xFF;
+
+        var image = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
+        image.Freeze();
+        return image;
+    }
+
     /// <summary>从整页里截出 offset 开始的 <see cref="ViewHeight"/> 行（= 滚到那里时屏幕上看得到的那一帧）。</summary>
     private static BitmapSource Frame(BitmapSource page, int offset)
     {
@@ -1333,6 +1474,73 @@ internal static class CaptureProSuite
             PixelFormats.Bgra32, null, pixels, stride);
         frame.Freeze();
         return frame;
+    }
+
+    /// <summary>
+    /// 滚到 <paramref name="offset"/> 的一帧，底部 <paramref name="footer"/> 行换成「固定条」：
+    /// 正常是带花纹的一条（有信息，认得出是固定条），<paramref name="flat"/> 时是一整片纯色（空白，不该当固定条）。
+    /// </summary>
+    private static BitmapSource FooterFrame(BitmapSource page, int offset, int footer, bool flat = false)
+    {
+        int stride = page.PixelWidth * 4;
+        var pixels = new byte[stride * ViewHeight];
+        page.CopyPixels(new Int32Rect(0, offset, page.PixelWidth, ViewHeight), pixels, stride, 0);
+
+        for (int y = ViewHeight - footer; y < ViewHeight; y++)
+        {
+            for (int x = 0; x < page.PixelWidth; x++)
+            {
+                int i = y * stride + x * 4;
+                if (flat)
+                {
+                    pixels[i] = 0xF0;
+                    pixels[i + 1] = 0xF0;
+                    pixels[i + 2] = 0xF0;
+                }
+                else
+                {
+                    // 每一行都不一样（同一行里也有灰度跨度）：后面要按「某一行出现了几次」数固定条
+                    pixels[i] = (byte)(0x30 + x * 7);
+                    pixels[i + 1] = (byte)(0x40 + (y - (ViewHeight - footer)) * 5);
+                    pixels[i + 2] = 0xD0;
+                }
+                pixels[i + 3] = 0xFF;
+            }
+        }
+
+        var frame = BitmapSource.Create(page.PixelWidth, ViewHeight, 96, 96,
+            PixelFormats.Bgra32, null, pixels, stride);
+        frame.Freeze();
+        return frame;
+    }
+
+    /// <summary>位图里第 <paramref name="y"/> 行（Bgra32 字节）。</summary>
+    private static byte[] RowAt(BitmapSource image, int y)
+    {
+        int stride = image.PixelWidth * 4;
+        var row = new byte[stride];
+        image.CopyPixels(new Int32Rect(0, y, image.PixelWidth, 1), row, stride, 0);
+        return row;
+    }
+
+    /// <summary>整张图里有多少行与 <paramref name="row"/> 逐字节相同（数固定条重复了几遍）。</summary>
+    private static int CountRows(BitmapSource image, byte[] row)
+    {
+        int stride = image.PixelWidth * 4;
+        var pixels = new byte[stride * image.PixelHeight];
+        image.CopyPixels(pixels, stride, 0);
+
+        int count = 0;
+        for (int y = 0; y < image.PixelHeight; y++)
+        {
+            bool same = true;
+            for (int i = 0; i < stride; i++)
+            {
+                if (pixels[y * stride + i] != row[i]) { same = false; break; }
+            }
+            if (same) count++;
+        }
+        return count;
     }
 
     /// <summary>把一帧拆成行字节（<see cref="ScrollStitch.FindShift"/> 的入参形状）。</summary>

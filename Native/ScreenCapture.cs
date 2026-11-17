@@ -44,6 +44,40 @@ internal static class ScreenCapture
         }
     }
 
+    /// <summary>
+    /// 把一个窗口**整窗**画到位图（<c>PrintWindow</c> + <c>PW_RENDERFULLCONTENT</c>），
+    /// 尺寸 = <c>GetWindowRect</c>（含标题栏 / 边框）。实时贴图拿它按屏幕坐标裁。
+    /// 调用方负责 Dispose；窗口不在了 / 没有可见尺寸时抛异常。
+    /// </summary>
+    public static Bitmap CaptureWindow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || !Win32.IsWindow(hwnd))
+            throw new InvalidOperationException("源窗口已经关闭");
+        if (!Win32.GetWindowRect(hwnd, out var rect))
+            throw new InvalidOperationException("读不到源窗口的位置");
+
+        int width = rect.Right - rect.Left;
+        int height = rect.Bottom - rect.Top;
+        if (width <= 0 || height <= 0)
+            throw new InvalidOperationException("源窗口没有可见尺寸");
+
+        var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+        try
+        {
+            using var g = Graphics.FromImage(bmp);
+            IntPtr hdc = g.GetHdc();
+            try { Win32.PrintWindow(hwnd, hdc, Win32.PwRenderFullContent); }
+            finally { g.ReleaseHdc(hdc); }
+
+            return bmp;
+        }
+        catch
+        {
+            bmp.Dispose();
+            throw;
+        }
+    }
+
     /// <summary>读取屏幕某点颜色（#RRGGBB）；失败抛异常。</summary>
     public static string GetPixel(int x, int y)
     {

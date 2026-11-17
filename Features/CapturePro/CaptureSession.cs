@@ -35,7 +35,7 @@ internal static class CaptureSession
         HotkeyRegistry.Suspended = true;
 
         CaptureResult? result = null;
-        bool pin = false, recognize = false, scroll = false;
+        bool pin = false, recognize = false, scroll = false, live = false;
         var finish = CaptureOverlayWindow.FinishKind.Copy;
 
         try
@@ -55,16 +55,8 @@ internal static class CaptureSession
             pin = overlay.PinRequested;
             recognize = overlay.RecognizeRequested;
             scroll = overlay.ScrollRequested;
+            live = overlay.LiveRequested;
             finish = overlay.Finish;
-
-            // 长截图在覆盖层关掉之后、自己的窗口还原之前跑：收起的窗口不会被滚进画面，
-            // 热键 / 鼠标钩子也还没恢复，自动滚屏不会撞上它们。
-            if (scroll)
-            {
-                var stitched = CaptureScrollWindow.Run(overlay.Document);
-                if (stitched == null) return null;   // 用户取消了长截图
-                captured = stitched;
-            }
 
             result = new CaptureResult(overlay.Document.Area, captured);
         }
@@ -111,10 +103,46 @@ internal static class CaptureSession
         System.Threading.Tasks.Task.Run(() => CaptureCatalog.SaveAssets(entry, image));
 
         if (pin) CapturePinManager.Pin(result.Image, result.Area);
+        if (live) StartLivePin(result);
         if (recognize)
             CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry);
 
         return result;
+    }
+
+    /// <summary>
+    /// 实时贴图：跟住**选区中心下面的顶层窗口**。取不到（桌面 / 任务栏 / 自己的窗口）就退回普通贴图，
+    /// 并说明一句——静默退化成静态图会让人以为「实时没生效」。
+    /// </summary>
+    /// <remarks>
+    /// 必须在覆盖层关掉、自己的窗口还原之后再取：那一拍屏幕上的窗口就是用户框选时看到的那些，
+    /// 覆盖层自己（盖住全屏、句柄在最上面）已经不在。
+    /// </remarks>
+    private static void StartLivePin(CaptureResult result)
+    {
+        var hwnd = WindowAt(result.Area);
+        if (hwnd == IntPtr.Zero)
+        {
+            CapturePinManager.Pin(result.Image, result.Area);
+            ToastService.Show("没找到可跟随的窗口，已贴成普通图片", "实时贴图", 2800,
+                ToastKind.warning, key: "pin-live");
+            return;
+        }
+
+        CapturePinManager.PinLive(result.Image, result.Area, hwnd);
+    }
+
+    /// <summary>选区中心那个顶层窗口；桌面 / 任务栏 / LTools 自己（刚还原的窗口）都不算。</summary>
+    private static IntPtr WindowAt(Int32Rect area)
+    {
+        int x = area.X + area.Width / 2;
+        int y = area.Y + area.Height / 2;
+
+        var hwnd = Win32.TopLevelWindowAtPoint(x, y);
+        if (hwnd == IntPtr.Zero) return IntPtr.Zero;
+        if (ForegroundApp.IsShellWindow(hwnd) || ForegroundApp.IsOwnWindow(hwnd)) return IntPtr.Zero;
+
+        return hwnd;
     }
 
     /// <summary>
@@ -153,7 +181,7 @@ internal static class CaptureSession
         }
     }
 
-    /// <summary>采集历史里的「完成动作」文案（与覆盖层动作栏的叫法一致）。</summary>
+    /// <summary>采集历史里的「完成动作」文案（与覆盖层工具条里的叫法一致）。</summary>
     private static string SourceOf(CaptureOverlayWindow.FinishKind kind) => kind switch
     {
         CaptureOverlayWindow.FinishKind.Save => "另存为",
@@ -162,6 +190,7 @@ internal static class CaptureSession
         CaptureOverlayWindow.FinishKind.Pin => "贴图",
         CaptureOverlayWindow.FinishKind.Recognize => "识别",
         CaptureOverlayWindow.FinishKind.Scroll => "长截图",
+        CaptureOverlayWindow.FinishKind.Live => "实时贴图",
         _ => "复制",
     };
 }

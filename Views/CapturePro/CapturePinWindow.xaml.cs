@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -65,7 +66,20 @@ public partial class CapturePinWindow : Window
     private string _group = PinGroups.Default;
     private bool _selected;
 
+    private IntPtr _liveHwnd;                // 实时贴图跟的源窗口
+    private bool _live;
+    private LiveState _liveState = LiveState.Live;
+    private System.Threading.Timer? _liveTimer;
+    private int _liveBusy;                   // 抓帧防重入（上一拍还没回来就跳过这一拍）
+    private LiveThumbnail? _thumbLayer;      // 实时内容层（DWM 缩略图，零抓帧零延迟）
+    private bool _liveFallback;              // 系统不吃缩略图时退回逐帧抓图（远程桌面 / 老驱动）
+    private IntPtr _liveHook;                // 源窗口位置 / 尺寸变化（缩略图裁剪要跟着重算）
+    private Win32.WinEventProc? _liveHookProc;
+
     private ContextMenu? _menu;
+
+    /// <summary>抓一帧实时画面（默认真抓源窗口；冒烟注入合成帧，不碰真桌面）。</summary>
+    internal Func<IntPtr, Int32Rect, BitmapSource?> LiveFrame = ScreenShot.CaptureWindow;
 
     public CapturePinWindow(BitmapSource image, Int32Rect area, double scale)
     {
@@ -87,6 +101,12 @@ public partial class CapturePinWindow : Window
 
         Area = area;
         SourceInitialized += (_, _) => MakeNonActivating();
+
+        // 实时贴图：本窗口一动 / 一改尺寸 / 一藏，下面那层缩略图宿主就得跟着（否则屏幕上会
+        // 留下一块对不上的画面）。平时它们是空操作。
+        LocationChanged += (_, _) => SyncLiveLayer();
+        SizeChanged += (_, _) => SyncLiveLayer();
+        IsVisibleChanged += (_, _) => _thumbLayer?.SetShown(IsVisible);
     }
 
     /// <summary>这张贴图是哪块屏幕区域截下来的（物理像素）。</summary>
@@ -118,6 +138,12 @@ public partial class CapturePinWindow : Window
 
     /// <summary>内容当前的实际尺寸（100% 尺寸 × 缩放）。</summary>
     private Size ContentSize => new(Math.Max(1, _baseWidth * _zoom), Math.Max(1, _baseHeight * _zoom));
+
+    /// <summary>这是一块实时贴图吗（跟着源窗口刷新）。</summary>
+    public bool Live => _live;
+
+    /// <summary>实时贴图这一拍看到的状态（源窗口最小化 / 关闭都会反映出来）。</summary>
+    public LiveState LiveState => _liveState;
 
     // ============ 出场 ============
 
@@ -154,6 +180,7 @@ public partial class CapturePinWindow : Window
     /// </summary>
     public void SetViewport(bool on)
     {
+        if (_live) return;                    // 实时贴图不切取景框：窗口尺寸一变就和选区那块脱钩了
         if (_viewport == on) return;
         if (on && _thumb) SetThumbnail(false);        // 两种特殊形态互斥
         _viewport = on;
@@ -232,6 +259,7 @@ public partial class CapturePinWindow : Window
     /// </summary>
     public void SetThumbnail(bool on)
     {
+        if (_live && on) return;              // 缩成方块就看不见实时的内容了；退出实时之后随便切
         if (_thumb == on) return;
 
         if (on)
@@ -264,6 +292,8 @@ public partial class CapturePinWindow : Window
     /// </summary>
     private void AnnotateContent()
     {
+        if (_live) return;                    // 实时贴图的内容每 200ms 换一次，标了也留不住
+
         // 覆盖层只能把图按「像素 1:1」铺开，所以标注前先回到整张图的 100%：
         // 缩略图 / 取景框里都只看得见一部分，缩放 200% 时覆盖层与贴图本身对不上。
         if (_thumb) SetThumbnail(false);
@@ -305,6 +335,251 @@ public partial class CapturePinWindow : Window
         ApplyContent();
         ApplyCursor();
         RefreshHoverChrome();
+    }
+
+    // ============ 实时贴图 ============
+
+    /// <summary>
+    /// 开始跟住一个窗口：内容交给 DWM 缩略图实时绘制，我们只管源窗口还在不在、贴图窗口在哪。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 以前每 <see cref="PinLive.IntervalMs"/> 抓一帧 <c>PrintWindow</c>，那是**有延迟的**：
+    /// 抓一帧要几十毫秒、5 fps 的上限摆在那儿，滚动 / 播放 / 拖动都看得出一顿一顿（用户报过）。
+    /// 现在照 Snow Shot 的做法（<c>livewindowpresentation.cpp</c>）改用
+    /// <see cref="LiveThumbnail"/>：DWM 在合成阶段直接把源窗口画到贴图窗口正下方那一层，
+    /// **一帧都不用我们抓**，所以源窗口怎么滚、怎么播放都是同一拍。
+    /// </para>
+    /// <para>
+    /// 缩略图建不起来（远程桌面 / 极老驱动）才退回逐帧抓图（<see cref="_liveFallback"/>），
+    /// 观感差一点，但至少还有画面。
+    /// </para>
+    /// <para>
+    /// 贴图窗口的尺寸 / 位置仍是截图那块矩形：源窗口挪开之后，露出来的地方是透明的
+    /// （与普通贴图同一个坐标系，见 <see cref="PinLive.Crop"/>）。
+    /// </para>
+    /// </remarks>
+    internal void StartLive(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return;
+
+        _liveHwnd = hwnd;
+        if (_live) return;                     // 已经在实时：只换目标窗口
+
+        _live = true;
+        _liveState = LiveState.Live;
+
+        StartLiveLayer();                      // 先试着上 DWM 缩略图（拿不到就是 null）
+        _liveFallback = _thumbLayer == null;
+
+        RefreshLiveChrome();
+        StartLiveHook();
+
+        // due = 0：退回抓帧的路线要马上抓第一帧（别在 UI 线程上等 PrintWindow）；
+        // 缩略图路线这一拍只做状态检查，内容由 DWM 自己画。
+        _liveTimer = new System.Threading.Timer(_ => RefreshLive(), null,
+            0, PinLive.IntervalMs);
+    }
+
+    /// <summary>停止实时：留在屏幕上的是最后一帧，之后的行为与普通贴图完全一样。</summary>
+    public void StopLive()
+    {
+        if (!_live) return;
+        _live = false;
+
+        _liveTimer?.Dispose();
+        _liveTimer = null;
+
+        StopLiveHook();
+        StopLiveLayer();
+
+        _liveFallback = false;
+        RefreshLiveChrome();
+    }
+
+    /// <summary>
+    /// 建内容层：宿主窗口 + DWM 缩略图，贴到本窗口正下方；同时把本窗口的内容区让成透明。
+    /// </summary>
+    private void StartLiveLayer()
+    {
+        StopLiveLayer();
+        if (_hwnd == IntPtr.Zero) return;
+
+        if (!Win32.GetWindowRect(_hwnd, out var shell)) return;
+        var crop = PinLive.Crop(WindowRect(_liveHwnd), ToInt32(shell));
+
+        var layer = LiveThumbnail.Attach(_liveHwnd, _hwnd,
+            ToWin32(crop?.Source ?? default), ToWin32(crop?.Target ?? default));
+        if (layer == null) return;             // 系统不吃缩略图：调用方退回逐帧抓图
+
+        _thumbLayer = layer;
+        layer.SetOpacity(Opacity);
+
+        // 内容区让成逐像素透明：分层窗口里 alpha = 0 的地方鼠标会直接穿过去，
+        // 落到下面那层宿主上，宿主再把消息转发回来（见 LiveThumbnail.WindowProc）。
+        Shot.Visibility = Visibility.Collapsed;
+        Backdrop.Visibility = Visibility.Collapsed;
+        Frame.Visibility = Visibility.Collapsed;   // 实时的画面就是内容，1px 描边会盖在源窗口上
+    }
+
+    private void StopLiveLayer()
+    {
+        if (_thumbLayer != null)
+        {
+            _thumbLayer.Dispose();
+            _thumbLayer = null;
+        }
+
+        Shot.Visibility = Visibility.Visible;
+        Backdrop.Visibility = Visibility.Visible;
+        Frame.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>缩略图的矩形要跟着两边窗口走：挂源窗口的位置变化（源窗口移动 / 改尺寸）。</summary>
+    private void StartLiveHook()
+    {
+        StopLiveHook();
+        if (_liveHwnd == IntPtr.Zero) return;
+
+        _liveHookProc ??= LiveLocationChanged;
+        _liveHook = Win32.SetWinEventHook(Win32.EventObjectLocationChange, Win32.EventObjectLocationChange,
+            IntPtr.Zero, _liveHookProc, 0, 0, Win32.WineventOutofcontext | Win32.WineventSkipownprocess);
+    }
+
+    private void StopLiveHook()
+    {
+        if (_liveHook != IntPtr.Zero)
+        {
+            try { Win32.UnhookWinEvent(_liveHook); } catch { /* 已经没了就算了 */ }
+            _liveHook = IntPtr.Zero;
+        }
+    }
+
+    /// <summary>源窗口挪动 / 改尺寸：重算缩略图该显示哪一块（钩子回调在本窗口的 UI 线程上）。</summary>
+    private void LiveLocationChanged(IntPtr hook, uint eventType, IntPtr hwnd, int idObject,
+        int idChild, uint thread, uint time)
+    {
+        // idObject 0 = 窗口本身；子控件的位置变化也会发这个事件，那些不用管
+        if (hwnd != _liveHwnd || idObject != 0) return;
+        SyncLiveLayer();
+    }
+
+    /// <summary>把缩略图对齐到「本窗口 ∩ 源窗口」：两边任何一边动了都调它。</summary>
+    private void SyncLiveLayer()
+    {
+        var layer = _thumbLayer;
+        if (layer == null || !_live) return;
+        if (!Win32.GetWindowRect(_hwnd, out var shell)) return;
+
+        layer.SyncGeometry();
+
+        var crop = PinLive.Crop(WindowRect(_liveHwnd), ToInt32(shell));
+        layer.UpdateCrop(ToWin32(crop?.Source ?? default), ToWin32(crop?.Target ?? default),
+            _liveState == LiveState.Live && crop.HasValue);
+    }
+
+    /// <summary>抓一拍（定时器调它；冒烟也直接调，便于断言）。返回这一拍看到的状态。</summary>
+    internal LiveState RefreshLive()
+    {
+        if (!_live) return _liveState;
+        if (Interlocked.CompareExchange(ref _liveBusy, 1, 0) != 0) return _liveState;
+
+        try
+        {
+            var state = PinLive.StateOf(Win32.IsWindow(_liveHwnd), Win32.IsIconic(_liveHwnd));
+
+            if (state == LiveState.Closed)
+            {
+                OnUi(() =>
+                {
+                    if (!_live) return;
+                    StopLive();
+                    Close();
+                    ToastService.Show("源窗口已关闭，实时贴图收起来了", "实时贴图", 2800,
+                        ToastKind.info, key: "pin-live");
+                });
+                return LiveState.Closed;
+            }
+
+            if (state != _liveState)
+                OnUi(() =>
+                {
+                    _liveState = state;
+                    RefreshLiveChrome();
+                    SyncLiveLayer();
+                });
+            else
+                OnUi(SyncLiveLayer);           // 兜底：窗口管理器偶尔不发位置事件（Aero Snap 之类）
+
+            // 缩略图路线不抓帧：内容由 DWM 直接画，这里只跑状态。
+            if (!_liveFallback || !PinLive.ShouldCapture(state)) return state;
+
+            BitmapSource? frame = null;
+            try { frame = LiveFrame(_liveHwnd, Area); }
+            catch (Exception ex) { AppLog.Warn("CapturePro.PinLive", ex.Message); }
+
+            if (frame != null)
+                OnUi(() =>
+                {
+                    if (!_live) return;
+                    _content = frame;
+                    Shot.Source = frame;
+                });
+
+            return state;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("CapturePro.PinLive", $"实时抓帧失败：{ex.Message}");
+            return _liveState;
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _liveBusy, 0);
+        }
+    }
+
+    /// <summary>窗口的屏幕矩形（物理像素）；拿不到时给空矩形（缩略图会自己判成「不显示」）。</summary>
+    private static Int32Rect WindowRect(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || !Win32.GetWindowRect(hwnd, out var rect)) return default;
+        return ToInt32(rect);
+    }
+
+    private static Int32Rect ToInt32(Win32.Rect rect) =>
+        new(rect.Left, rect.Top, Math.Max(0, rect.Right - rect.Left), Math.Max(0, rect.Bottom - rect.Top));
+
+    private static Win32.Rect ToWin32(Int32Rect rect) =>
+        new() { Left = rect.X, Top = rect.Y, Right = rect.X + rect.Width, Bottom = rect.Y + rect.Height };
+
+    /// <summary>WPF 副作用统一从这里走：已在 UI 线程就同步做（菜单 / 冒烟），否则排队（定时器线程）。</summary>
+    private void OnUi(Action action)
+    {
+        if (Dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+        Ui.Post(action);
+    }
+
+    /// <summary>
+    /// 右下角状态徽标：实时 = 红点，最小化 = 橙点 + 说明。
+    /// 它不挡拖动（<c>IsHitTestVisible=False</c>），所以小窗口 / 缩略图里也照样显示。
+    /// </summary>
+    private void RefreshLiveChrome()
+    {
+        if (!_live)
+        {
+            LiveBadge.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        LiveBadgeText.Text = PinLive.Badge(_liveState);
+        LiveDot.Fill = new SolidColorBrush(_liveState == LiveState.Live
+            ? Color.FromRgb(0xEF, 0x44, 0x44)
+            : Color.FromRgb(0xF5, 0x9E, 0x0B));
+        LiveBadge.Visibility = Visibility.Visible;
     }
 
     // ============ 鼠标 ============
@@ -481,6 +756,7 @@ public partial class CapturePinWindow : Window
         if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0)
         {
             Opacity = PinMath.NextOpacity(Opacity, e.Delta);
+            _thumbLayer?.SetOpacity(Opacity);
             return;
         }
 
@@ -514,6 +790,7 @@ public partial class CapturePinWindow : Window
     /// <summary>换缩放（滚轮与右键菜单共用；菜单点完按窗口中心锚定）。</summary>
     public void SetZoom(double zoom)
     {
+        if (_live) return;                    // 实时那块永远 100%：缩放会让尺寸与选区对不上
         if (_thumb) SetThumbnail(false);      // 缩略图里改缩放 = 先还原（方块里缩放没有意义）
         double target = PinMath.ClampZoom(zoom);
 
@@ -661,6 +938,15 @@ public partial class CapturePinWindow : Window
 
         var menu = new ContextMenu { PlacementTarget = this };
 
+        // 实时贴图：最上面一个「转成普通贴图」的出口，其余会破坏「跟着刷新」的项一律置灰
+        if (_live)
+        {
+            var stop = new MenuItem { Header = "转为图像（停止实时）" };
+            stop.Click += (_, _) => StopLive();
+            menu.Items.Add(stop);
+            menu.Items.Add(new Separator());
+        }
+
         var copy = new MenuItem { Header = "复制图片" };
         copy.Click += (_, _) => CopyImage();
         menu.Items.Add(copy);
@@ -671,7 +957,7 @@ public partial class CapturePinWindow : Window
 
         // 标注这张贴图：覆盖层开在它上面，标完换回内容（菜单必须先收起，ShowDialog 挂在开着
         // 的 Popup 上会让菜单看不见也点不动）
-        var annotate = new MenuItem { Header = "标注…" };
+        var annotate = new MenuItem { Header = "标注…", IsEnabled = !_live };
         annotate.Click += (_, _) =>
         {
             _menu?.IsOpen = false;
@@ -681,6 +967,7 @@ public partial class CapturePinWindow : Window
         menu.Items.Add(annotate);
 
         var zoom = MenuFx.Submenu(menu, "缩放");
+        zoom.IsEnabled = !_live;
         AddZoom(zoom, "100%", 1);
         AddZoom(zoom, "50%", 0.5);
         AddZoom(zoom, "200%", 2);
@@ -712,12 +999,24 @@ public partial class CapturePinWindow : Window
         menu.Items.Add(locked);
 
         // 局部显示：长截图钉在屏幕上比屏幕还大时用——取景框固定，拖着看
-        var viewport = new MenuItem { Header = "局部显示", IsCheckable = true, IsChecked = _viewport };
+        var viewport = new MenuItem
+        {
+            Header = "局部显示",
+            IsCheckable = true,
+            IsChecked = _viewport,
+            IsEnabled = !_live,
+        };
         viewport.Click += (_, _) => SetViewport(!_viewport);
         menu.Items.Add(viewport);
 
         // 缩略图模式：缩成一个小方块让开路（与局部显示互斥，双击方块可还原）
-        var thumb = new MenuItem { Header = "缩略图模式", IsCheckable = true, IsChecked = _thumb };
+        var thumb = new MenuItem
+        {
+            Header = "缩略图模式",
+            IsCheckable = true,
+            IsChecked = _thumb,
+            IsEnabled = !_live,
+        };
         thumb.Click += (_, _) => SetThumbnail(!_thumb);
         menu.Items.Add(thumb);
 
@@ -760,6 +1059,7 @@ public partial class CapturePinWindow : Window
     private void AddGroupMenu(ContextMenu menu)
     {
         var root = MenuFx.Submenu(menu, "分组");
+        root.IsEnabled = !_live;               // 实时贴图换组 = 藏起来，等于把「跟着看」关掉了
 
         foreach (var name in CapturePinManager.Groups)
         {
@@ -897,7 +1197,13 @@ public partial class CapturePinWindow : Window
     private void AddOpacity(ItemsControl parent, string header, double opacity)
     {
         var item = new MenuItem { Header = header };
-        item.Click += (_, _) => Opacity = PinMath.ClampOpacity(opacity);
+        item.Click += (_, _) =>
+        {
+            // 窗口自己（分层、逐像素）与实时内容层（宿主整窗 alpha）要一起调，否则半透明时
+            // 内容那块还是全不透明的（两层是分开合成的）
+            Opacity = PinMath.ClampOpacity(opacity);
+            _thumbLayer?.SetOpacity(Opacity);
+        };
         parent.Items.Add(item);
     }
 
@@ -925,6 +1231,7 @@ public partial class CapturePinWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        StopLive();                            // 关掉窗口就别再抓帧（定时器不停会一直 PrintWindow）
         _menu?.IsOpen = false;
         _menu = null;
         base.OnClosed(e);

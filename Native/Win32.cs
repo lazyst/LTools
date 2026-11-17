@@ -138,14 +138,41 @@ internal static class Win32
     public const uint EventObjectLocationChange = 0x800B;
     public const uint WineventOutofcontext = 0x0000;
 
+    /// <summary>不关心本进程窗口发的事件（实时贴图盯别人的窗口，本进程那些是噪音）。</summary>
+    public const uint WineventSkipownprocess = 0x0002;
+
     /// <summary>在父窗口的直接子窗口里按点查找（按 z 序），用于从顶层窗口往下钻。</summary>
     [DllImport("user32.dll")]
     public static extern IntPtr ChildWindowFromPointEx(IntPtr hWndParent, Point pt, uint flags);
 
     public const uint CwpSkipinvisible = 0x0001;
+    public const uint CwpSkipdisabled = 0x0002;
     public const uint CwpSkiptransparent = 0x0004;
 
     public const uint GaRoot = 2;
+
+    // —— z 序遍历顶层窗口（长截图的滚轮消息按「选区中心下那个窗口」找）——
+
+    /// <summary>z 序最上面的顶层窗口（<c>hwnd</c> 传 <see cref="IntPtr.Zero"/>）。</summary>
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetTopWindow(IntPtr hwnd);
+
+    /// <summary>按 <c>uCmd</c> 取关联窗口；<see cref="GwHwndnext"/> = z 序下一个。</summary>
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetWindow(IntPtr hwnd, uint uCmd);
+
+    /// <summary>GetWindow 的 GW_HWNDNEXT。</summary>
+    public const uint GwHwndnext = 2;
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowEnabled(IntPtr hwnd);
+
+    /// <summary>屏幕坐标 → 窗口客户区坐标（下钻子窗口用）。</summary>
+    [DllImport("user32.dll")]
+    public static extern bool ScreenToClient(IntPtr hWnd, ref Point lpPoint);
+
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentProcessId();
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
@@ -156,6 +183,12 @@ internal static class Win32
     public const int GwlExstyle = -20;
     public const long WsExTransparent = 0x00000020;
     public const long WsExToolwindow = 0x00000080;
+
+    /// <summary>
+    /// 分层窗口。**只有同时带 <see cref="WsExTransparent"/> 时**才算「鼠标全透过去」——
+    /// 单独一个 WS_EX_TRANSPARENT 对非分层顶层窗口只是绘画顺序，仍然能收输入。
+    /// </summary>
+    public const long WsExLayered = 0x00080000;
 
     /// <summary>点了也不抢焦点（提示弹窗用：自动化正在往别的窗口输入时不能抢前台）。</summary>
     public const long WsExNoactivate = 0x08000000;
@@ -209,6 +242,28 @@ internal static class Win32
         IntPtr root = GetAncestor(hit, GaRoot);
         return root != IntPtr.Zero ? root : hit;
     }
+
+    /// <summary>
+    /// 指定屏幕坐标下的顶层窗口（与 <see cref="TopLevelWindowAtCursor"/> 同一取法）。
+    /// 实时贴图要跟住「选区中心那个窗口」，而那一刻光标可能停在面板 / 菜单上。
+    /// </summary>
+    public static IntPtr TopLevelWindowAtPoint(int x, int y)
+    {
+        IntPtr hit = WindowFromPoint(new Point { X = x, Y = y });
+        if (hit == IntPtr.Zero) return IntPtr.Zero;
+        IntPtr root = GetAncestor(hit, GaRoot);
+        return root != IntPtr.Zero ? root : hit;
+    }
+
+    /// <summary>
+    /// 把一个窗口画到指定的 DC（实时贴图抓源窗口用）。
+    /// <c>PW_RENDERFULLCONTENT</c> 让 Chromium / DirectComposition 类应用也能画出内容；
+    /// 返回 false 只表示窗口没按预期处理这条消息，不少程序仍会画上内容——调用方照收。
+    /// </summary>
+    [DllImport("user32.dll")]
+    public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdcBlt, uint nFlags);
+
+    public const uint PwRenderFullContent = 0x2;
 
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -457,6 +512,9 @@ internal static class Win32
     public const uint MouseeventfAbsolute = 0x8000;
     public const uint MouseeventfMoveNocoalesce = 0x2000;   // SendInput 专用：不合并相邻移动
     public const uint WheelDelta = 120;
+
+    /// <summary>一格的滚轮量（<c>int</c> 版：要取负数表示「往下」，<c>uint</c> 取负会升成 long）。</summary>
+    public const int WheelDeltaRaw = 120;
 
     // XBUTTON（WM_XBUTTONDOWN/UP 的 MouseData 高 16 位）
     public const int Xbutton1 = 0x0001;
