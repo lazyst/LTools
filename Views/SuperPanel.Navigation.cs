@@ -155,6 +155,20 @@ public partial class SuperPanelWindow
     /// <summary>左栏「暂存区」：主区切成草稿卡片页（照 Quicker：暂存区是面板的一页）。</summary>
     private void NavStash_Click(object sender, RoutedEventArgs e) => ShowStashPage();
 
+    /// <summary>
+    /// 左栏底部「截图」：收起面板，再按内置功能 <c>common.capture</c> 走一遍框选（默认范围 = 框选区域）。
+    /// </summary>
+    /// <remarks>
+    /// 它是个**动作**不是一页，所以不参与 <see cref="ApplyPageMode"/> 的选中态；面板必须先关，
+    /// 否则会被 <see cref="Features.CapturePro.CaptureSession"/> 的冻结画面截进去（它会再收起一遍自己的窗口，
+    /// 但面板已经关了更省事，也不会在框选前闪一下）。
+    /// </remarks>
+    private void NavCapture_Click(object sender, RoutedEventArgs e)
+    {
+        Features.SuperPanel.Close();
+        ActionExecutor.RunRef("common.capture", _invokeX, _invokeY, RunSource.Panel);
+    }
+
     /// <summary>切到暂存区页（<see cref="Features.SuperPanel.ShowStash"/> 也从这里进来）。</summary>
     internal void ShowStashPage()
     {

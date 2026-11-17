@@ -276,7 +276,15 @@
                                    HorizontalAlignment="Center" VerticalAlignment="Center"
                                    Foreground="{StaticResource SecondaryTextBrush}" Visibility="Collapsed"/>
                     </Grid>
-                    <StackPanel>
+                    <!-- 左栏底部常驻的「截图」：一眼够得着，点完面板就收起来（它是个动作，不是一页，
+                         所以不参与 ApplyPageMode 的选中态） -->
+                    <Button x:Name="NavCaptureBtn" DockPanel.Dock="Bottom" Margin="5,2,5,10"
+                            Style="{StaticResource RailBtn}" Click="NavCapture_Click"
+                            ToolTip="截图（截图 Pro）：框选 / 标注 / 长截图 / 贴图 / 录屏"
+                            AutomationProperties.Name="截图">
+                        <TextBlock Text="&#xE722;" FontFamily="Segoe MDL2 Assets" FontSize="16"/>
+                    </Button>
+                    <StackPanel DockPanel.Dock="Top">
                         <Button x:Name="NavActionsBtn" Style="{StaticResource RailBtn}"
                                 Tag="Selected" Click="NavActions_Click"
                                 ToolTip="动作面板：这里放常用动作磁贴"
