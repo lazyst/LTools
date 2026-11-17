@@ -324,7 +324,7 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 | 贴图（`Ctrl+T` / 工具条图钉） | 导出 png → 关闭覆盖层 → `CapturePinManager.Pin(...)` 钉到屏幕上（正好盖住选区）；**不动剪贴板** |
 | 识别（`Ctrl+R` / 工具条扫描框） | 导出 png → 关闭覆盖层 → 开识别结果窗（文字 / 表格 / 二维码，见 §10）；**不动剪贴板** |
 | 长截图（`Ctrl+L` / 工具条） | **覆盖层不关** → 进入就地手动拼接（见 §12）：用户自己滚、选区里实时显示末尾一屏、旁边挂整张小预览 → 完成 = 整张长图复制 + toast；`Esc` / 右键放弃、回到普通框选 |
-| 录屏（`Ctrl+Shift+R` / 工具条圆形按钮） | 按**当前选区**录 MP4：关掉覆盖层、还原自己的窗口之后再开录（`RecordSession.TryRun(plan, area)`，**不再弹一次框选**），3 秒倒计时 → `CaptureRecordWindow` 控制条（暂停 / 完成 / 取消）→ 存进采集历史。**这次没有截图成品，也不记一条截图历史**；录屏参数走 `RecordPlan` 默认值（30 fps / MP4），要 GIF / 别的范围用内置功能 `common.record` |
+| 录屏（`Ctrl+Shift+R` / 工具条圆形按钮） | 按**当前选区**录 MP4：关掉覆盖层、还原自己的窗口之后再开录（`RecordSession.TryRun(plan, area)`，**不再弹一次框选**），3 秒倒计时 → `CaptureRecordWindow` 控制条（暂停 / 完成 / 取消）+ 区域边框 → 存进采集历史。`CaptureSession.TryCapture` 的出口是**三态**（`Captured` / `Cancelled` / `Recording`）：交给录屏时返回 null 但**不是取消**，调用方别弹「已取消截图」。**这次没有截图成品，也不记一条截图历史**；录屏参数走 `RecordPlan` 默认值（30 fps / MP4），要 GIF / 跟随鼠标 / 别的范围用内置功能 `common.record` |
 | 保存（`Ctrl+S` / 另存为…） | `CaptureSave.TrySave`：自绘对话框（`CaptureSaveWindow`，左预览、右文件夹 / 文件名 / 格式 / 尺寸 / 质量）→ 关闭；取消 = 留在覆盖层继续改。格式 PNG / JPEG / BMP / TIFF，尺寸 100 / 75 / 50 / 25%，质量只对 JPEG 有效；文件名自己带了扩展名不会存成 `x.jpg.jpg`，同名覆盖前先确认 |
 | 上一张 / 下一张（`,` / `.`） | 采集历史翻页：就地换底图（历史图摆在窗口中间、选区框满整张、标注 / 撤销栈清空、序号从 1 重来），**不弹历史窗、不关覆盖层**；`Esc` / 右键回到刚才这次截图（底图 / 选区 / 标注 / 工具原样放回）；翻页期间悬停探测与吸附关闭 |
 | 快速保存（`Ctrl+Shift+S` / 工具栏下箭头） | `CaptureSave.TryQuickSave`：不弹框，固定落「图片\LTools 截图」，同秒重名加 `-2`；toast 带「打开文件夹」。失败 = 留在覆盖层（提示已由 `CaptureSave` 发出） |
@@ -652,17 +652,34 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 ## 14. 录屏（P4）
 
 入口 = 内置功能「录屏」（`common.record`，屏幕分类）：放面板 / 绑快捷键 / 悬浮都行，没有动作单元。
-参数：范围（框选区域 / 主屏 / 全部屏幕 / 前台窗口）、格式（MP4 / GIF）、帧率（5–60）、倒计时（0–10 秒）。
+参数：范围（框选区域 / 主屏 / 全部屏幕 / 前台窗口）、格式（MP4 / GIF）、帧率（5–60）、倒计时（0–10 秒）、
+跟随鼠标（`follow = off|on`；开 = 选区只决定成品尺寸，画面跟着光标走）。
 
 - 一次会话（`Features/CapturePro/RecordSession.cs`，跑在后台线程；同一时间只允许一次）：
   定区域 → 倒计时 → 控制条 + 抓帧编码 → 进采集历史。框选会开覆盖层，与截图同一套三道闸
   （`TransientMinimize.MinimizeAll` / `MouseHook.SetWindowPickerActive` / `HotkeyRegistry.Suspended`），
   `finally` 成对还原。倒计时期间也让鼠标钩子让路——右键是它唯一的取消口。
 - 抓帧 + 编码（`RecordEngine.cs`）：按帧率抓屏幕那一块，原始 BGRA 直接从 `pipe:0` 喂 ffmpeg
-  （`libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -movflags +faststart`，`pad` 保证宽高是偶数），
+  （`libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -movflags +frag_keyframe+empty_moov`，`pad` 保证宽高是偶数），
   **不落中间帧**。某帧抓慢了补写上一帧（最多 4 帧），落后太多就对齐当前时刻，成品时长与现实一致
   而不是「掉帧后跑快」。收尾关管道（EOF）再等 ffmpeg 写完容器；退出码非 0 时把 stderr 尾部当报错。
   帧源是字段（`FrameSource`）：冒烟注入合成画面，不录用户桌面。
+- **录的过程写分片 MP4（照 Snow Shot）**：进程被杀 / 断电时，已经落下的分片仍能播；
+  正常收尾再用 `RecordPlan.RemuxArgs`（`-c copy -movflags +faststart`）转成普通 faststart MP4。
+  重封装失败**沿用分片文件**（内容完整，别为了格式好看把录到的丢了）。
+  启动时 `RecordRecovery.Sweep()`（`App.OnStartup` 后台任务）把 `cache/record/` 里的残片重新封装、
+  收进采集历史（`Source = 录屏（中断后恢复）`），读不出尺寸的垃圾直接删。
+- **区域边框（`Views/CapturePro/RecordBorderWindow.cs`）**：录制期间围住抓帧视口。
+  颜色照上游：录制红 `#F5222D` / 暂停琥珀 `#FAAD14` / 待机蓝 `#4096FF`；
+  几何照上游：2 **物理**像素边框 + 1 像素透明间隔（编码器补奇数尺寸时多出来的那 1 像素落在缝里）。
+  中间必须是**真的空**：用 `SetWindowRgn` 抠「回」字（分层窗口的排除捕获在个别系统上不生效，别换）；
+  点击穿透（`WS_EX_TRANSPARENT`）+ 不抢焦点 + 自己不入镜（`WDA_EXCLUDEFROMCAPTURE`）。
+- **跟随鼠标（`RecordFollow.cs`，一比一移植 `snow-media/src/follow_mouse.rs`）**：`common.record` 的
+  `follow = on` 时**选区只决定成品尺寸**，视口跟着光标在显示器里平移，抓到的画面缩放到选区尺寸再编码。
+  三条语义：① 视口等比塞进光标所在显示器并夹住；② **抑制抖动**——光标待在目标视口中央 5/6 之内不动，
+  进入外侧 1/12 才重新居中（判定拿「目标」当基准，不是当前位置）；③ **平滑移动**——50 ms 半衰期指数逼近，
+  0.5 像素内吸附，但当帧保证光标仍在视口里（快跳那一帧先追上，再慢慢缓过去）。
+  暂停恢复时 `RestartClock()` 不把暂停时长算进缓动。
 - 控制条（`Views/CapturePro/CaptureRecordWindow`）：红点脉冲 + 计时 + 规格（格式 / 帧率 / 尺寸），
   三个鼠标出口（暂停 / 继续、完成、取消）。**不抢焦点**（`ShowActivated=False` +
   `WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW`，录制时用户还要在别的程序里操作），并用
@@ -684,6 +701,33 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
   许可证与源码出处见 `licenses/FFmpeg-NOTICE.txt`。两处都找不到时报错并指向那个脚本。
 - 已知限制：不录音频；录制期间全局热键照常（不挂起——按快捷键的动作会被录进去）；
   `WDA_EXCLUDEFROMCAPTURE` 要 Win10 2004+，老系统上控制条 / 倒计时会入镜（录制内容本身不受影响）。
+
+### 14.1 与 Snow Shot 录屏的对照（2026-11-18）
+
+复刻的判据是「行为一致」，不是「代码抄一遍」：每一层都有对照物与验收方式。
+
+| 项 | 状态 | 说明 / 落点 |
+|---|---|---|
+| 选区录制 → 成品尺寸 = 选区 | ✅ | `RecordSession.TryRun(plan, area)`，覆盖层「录屏」出口直接带选区 |
+| 3 秒倒计时（可调、右键取消） | ✅ | `RecordCountdownWindow`，`countdown` 参数 0–10 |
+| 录制控制条（计时 / 暂停 / 完成 / 取消，不入镜不抢焦点） | ✅ | `CaptureRecordWindow` |
+| 暂停不计时（成品里没有空白段） | ✅ | `RecordController` 活动时钟 |
+| 区域边框：录制红 / 暂停琥珀 / 待机蓝 | ✅ | `RecordBorderWindow`（2 物理像素 + 1 像素透明缝，「回」字区域） |
+| 跟随鼠标（选区决定成品尺寸，视口跟光标） | ✅ | `RecordFollow.cs`，含「抑制抖动」「平滑移动」两个开关的语义 |
+| 平滑移动按 50ms 半衰期、0.5px 吸附、快跳先追上 | ✅ | 一比一移植，`--selftest` 直接跑上游 7 组用例 |
+| 分片 MP4 + 收尾 remux faststart | ✅ | `RecordPlan.Mp4Args` / `RemuxArgs` |
+| 崩溃 / 断电后的残片恢复 | ✅ | `RecordRecovery.Sweep()`（启动时后台跑，收进采集历史） |
+| 录屏进采集历史（封面 / 时长 / 尺寸 / 播放） | ✅ | `CaptureCatalog.CreateRecord` + 历史窗口「录屏」页签 |
+| GIF 动图 | ➕ LTools 额外 | 上游不产 GIF；两遍调色板转码 |
+| 音频（系统 / 麦克风） | ❌ 未做 | 需要 WASAPI 采集 + 混音 + AAC 编码，另开一轮 |
+| 摄像头画中画 | ❌ 未做 | 同上 |
+| 键鼠特效（激光 / 键盘浮层 / 点击圈） | ❌ 未做 | 上游是 overlay 渲染管线，LTools 没有对应层 |
+| 录完裁剪 / 倍速 / 拼接 | ❌ 未做 | 上游有 `RecordingTrimSession`，LTools 只做整段 |
+| HEVC / 硬件编码 | ❌ 未做 | 统一 libx264（兼容性优先） |
+
+验收：`--selftest` 的 `capturePro` 组（跟随算法 7 组用例 + 残片解析 + 命令行）、
+仓库外 `record-e2e`（真覆盖层 / 真控制条 / 真 ffmpeg，132 条断言，含跟随与残片恢复）、
+`capture-overlay-smoke` 的录屏段（引擎 + 控制条 + 采集历史）。
 
 ## 15. 阶段路线
 

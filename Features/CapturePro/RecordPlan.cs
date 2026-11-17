@@ -57,6 +57,12 @@ internal sealed class RecordPlan
 
     public int Countdown { get; init; } = DefaultCountdown;
 
+    /// <summary>跟随鼠标：选区只决定成品尺寸，画面跟着光标在显示器里平移。</summary>
+    public bool FollowMouse { get; init; }
+
+    /// <summary>跟随鼠标的两个独立开关（平滑移动 / 抑制抖动）。</summary>
+    public RecordFollowOptions FollowOptions { get; init; } = RecordFollowOptions.Default;
+
     public bool IsGif => Format == RecordFormat.Gif;
 
     /// <summary>实际录制帧率（夹到 5–60）。</summary>
@@ -68,12 +74,14 @@ internal sealed class RecordPlan
     /// <summary>成品扩展名（不含点）。</summary>
     public string Extension => IsGif ? "gif" : "mp4";
 
-    public static RecordPlan FromValues(string? mode, string? format, int fps, int countdown) => new()
+    public static RecordPlan FromValues(string? mode, string? format, int fps, int countdown,
+        bool followMouse = false) => new()
     {
         Mode = ParseMode(mode),
         Format = ParseFormat(format),
         Fps = NormalizeFps(fps),
         Countdown = NormalizeCountdown(countdown),
+        FollowMouse = followMouse,
     };
 
     public static RecordMode ParseMode(string? value) => value?.Trim().ToLowerInvariant() switch
@@ -123,6 +131,11 @@ internal sealed class RecordPlan
     /// 边录边编码的 MP4：原始 BGRA 帧从 <c>pipe:0</c> 灌进去，不落中间文件。
     /// <c>pad</c> 保证宽高是偶数（H.264 的 yuv420p 要求），否则奇数尺寸的选区会直接编码失败。
     /// </summary>
+    /// <remarks>
+    /// 录的过程写**分片 MP4**（<c>frag_keyframe+empty_moov</c>）：进程被杀 / 断电时
+    /// 已经写下的那些分片仍然能播，启动时由 <see cref="RecordRecovery"/> 找回。
+    /// 正常收尾后再 <see cref="RemuxArgs"/> 转成普通 faststart MP4（分享 / 上传更省事）。
+    /// </remarks>
     public static IReadOnlyList<string> Mp4Args(Int32Rect size, int fps, string output)
     {
         int width = Math.Max(2, size.Width);
@@ -138,7 +151,19 @@ internal sealed class RecordPlan
             "-an",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
             "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
-            "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            "-pix_fmt", "yuv420p", "-movflags", "+frag_keyframe+empty_moov",
+            output,
+        };
+    }
+
+    /// <summary>把录好的分片 MP4 重新封装成普通 faststart MP4（只搬容器，不重编码）。</summary>
+    public static IReadOnlyList<string> RemuxArgs(string input, string output)
+    {
+        return new[]
+        {
+            "-y", "-hide_banner", "-loglevel", "error", "-nostats",
+            "-i", input,
+            "-c", "copy", "-movflags", "+faststart",
             output,
         };
     }

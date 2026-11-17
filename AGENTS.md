@@ -245,6 +245,8 @@ dotnet publish LTools.csproj -c Release -r win-x64 --self-contained true -o publ
 
 ## 其他
 
+- **截图 Pro 的录屏（`Features/CapturePro/Record*` + `Views/CapturePro/RecordBorderWindow`）照 snow-shot 对齐，四条铁律**：① **出口是三态** `CaptureSession.CaptureExit`（`Captured` / `Cancelled` / `Recording`）——「交给录屏」返回 null 但**不是取消**，调用方（内置功能「截图」/ `ScreenshotProbe`）必须看 `exit` 再决定要不要说「已取消截图」（用户报过「点录屏就提示已取消截图」）；② 录的过程写**分片 MP4**（`+frag_keyframe+empty_moov`），收尾用 `RecordPlan.RemuxArgs`（`-c copy -movflags +faststart`）重封装，重封装失败沿用分片文件；启动时 `RecordRecovery.Sweep()` 把 `cache/record/` 的残片收进采集历史（别把恢复搬进 `RecordSession` 的开场清理里）；③ 区域边框用 **`SetWindowRgn` 抠「回」字**（2 物理像素 + 1 像素透明缝），别换分层窗口——分层窗口的 `WDA_EXCLUDEFROMCAPTURE` 在个别系统上不生效，红边就会进成品；④ 跟随鼠标的算法**只有一份** `Features/CapturePro/RecordFollow.cs`（50ms 半衰期、外侧 1/12 重居中、0.5px 吸附、快跳先追上，`--selftest` 直接跑上游 `snow-media/src/follow_mouse.rs` 的 7 组用例），新加录制入口都走 `RecordPlan.FollowMouse` / `FollowOptions`，别另写一套。验收：`--selftest` 的 `capturePro` + 仓库外 `record-e2e`（真覆盖层 / 真 ffmpeg / 跟随画面逐像素对账 / 残片恢复）
+
 - 源码 UTF-8 **无 BOM**；仓库没有 `.gitattributes` / `.editorconfig`，git 里存的是 LF，工作区是 CRLF 还是 LF 都不影响提交（`git ls-files --eol` 的提示不必手工改回）。数据根（dev = 仓库根）下的 `configs/` `actions/` `subactions/` `staging/` `state/` `速记/` `macros/` `logs/` `cache/` `trash/` `ai/` 都是运行时数据，已 gitignore
 - UIA 走 `FlaUI.UIA3`（托管包）：.NET Core 的 MSBuild 不支持 `COMReference`/`ResolveComReference`，不要再加 `UIAutomationClient` 的 COM 引用
 - `app.manifest`：`requireAdministrator` + 声明 Win10/11 兼容 + `PerMonitorV2` DPI 感知

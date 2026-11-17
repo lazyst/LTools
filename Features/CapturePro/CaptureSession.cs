@@ -26,16 +26,41 @@ internal sealed record CaptureResult(Int32Rect Area, BitmapSource Image);
 /// </remarks>
 internal static class CaptureSession
 {
-    /// <summary>弹出覆盖层框选 + 标注。用户取消时返回 null。</summary>
-    public static CaptureResult? TryCapture(Window? owner)
+    /// <summary>覆盖层交回什么：成品 / 用户取消 / 已交给录屏（**不是**取消）。</summary>
+    internal enum CaptureExit
     {
+        Captured,
+        Cancelled,
+        Recording,
+    }
+
+    /// <summary>弹出覆盖层框选 + 标注。用户取消时返回 null。</summary>
+    public static CaptureResult? TryCapture(Window? owner) => TryCapture(owner, out _);
+
+    /// <summary>
+    /// 弹出覆盖层框选 + 标注。
+    /// </summary>
+    /// <param name="exit">
+    /// 这条出口是什么：<see cref="CaptureExit.Recording"/> 时返回 null 但**不是**取消
+    /// （用户点了「录屏」，录屏已经在后台开跑）。调用方别把这种情况当成「已取消截图」。
+    /// </param>
+    /// <param name="onRecordingFinished">
+    /// 录屏跑完（成功 / 失败 / 取消都算）之后回调一次，跑在录屏的后台线程上。
+    /// 「截图」这个内置功能用它恢复被自己临时收起的自动化指示器。
+    /// </param>
+    public static CaptureResult? TryCapture(Window? owner, out CaptureExit exit,
+        Action? onRecordingFinished = null)
+    {
+        exit = CaptureExit.Cancelled;
+
         var restore = TransientMinimize.MinimizeAll(owner);
         bool wasSuspended = HotkeyRegistry.Suspended;
         MouseHook.SetWindowPickerActive(true);
         HotkeyRegistry.Suspended = true;
 
         CaptureResult? result = null;
-        bool pin = false, recognize = false, scroll = false, live = false, record = false;
+        bool pin = false, recognize = false, scroll = false, live = false;
+        bool record = false;
         var recordArea = Int32Rect.Empty;
         var finish = CaptureOverlayWindow.FinishKind.Copy;
 
@@ -52,25 +77,26 @@ internal static class CaptureSession
             bool? ok = overlay.ShowDialog();
             if (ok != true) return null;
 
-            // 录屏出口**没有成品图**（这次不是截图，只是借覆盖层挑区域）：
-            // 先记下区域，等 finally 把自己的窗口还原之后再开录，免得遮罩被录进去。
             if (overlay.RecordRequested)
             {
+                // 录屏出口**没有成品图**（这次不是截图，只是借覆盖层挑区域）：
+                // 只记下区域，绝不能在这里 return——那会跳过下面的「关掉覆盖层之后才开录」。
                 record = true;
                 recordArea = overlay.Document.Area;
-                return null;
             }
+            else
+            {
+                if (overlay.ResultImage == null) return null;
 
-            if (overlay.ResultImage == null) return null;
+                var captured = overlay.ResultImage;
+                pin = overlay.PinRequested;
+                recognize = overlay.RecognizeRequested;
+                scroll = overlay.ScrollRequested;
+                live = overlay.LiveRequested;
+                finish = overlay.Finish;
 
-            var captured = overlay.ResultImage;
-            pin = overlay.PinRequested;
-            recognize = overlay.RecognizeRequested;
-            scroll = overlay.ScrollRequested;
-            live = overlay.LiveRequested;
-            finish = overlay.Finish;
-
-            result = new CaptureResult(overlay.Document.Area, captured);
+                result = new CaptureResult(overlay.Document.Area, captured);
+            }
         }
         catch (Exception ex)
         {
@@ -89,7 +115,7 @@ internal static class CaptureSession
         // 录屏排在前面：这一次没有截图成品，也不记采集历史。
         if (record)
         {
-            StartRecording(recordArea);
+            if (StartRecording(recordArea, onRecordingFinished)) exit = CaptureExit.Recording;
             return null;
         }
 
@@ -126,6 +152,7 @@ internal static class CaptureSession
         if (recognize)
             CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry);
 
+        exit = CaptureExit.Captured;
         return result;
     }
 
@@ -135,10 +162,15 @@ internal static class CaptureSession
     /// <remarks>
     /// 放后台线程：抓帧 + 编码是重活，而 UI 线程上还挂着低级鼠标钩子。
     /// 失败用**常驻**提示——录屏失败时自己的窗口往往是收起来的，一闪而过的提示看不到。
+    /// 返回 false = 选区太小，没开录（调用方不能把它当成「已经交给录屏」）。
     /// </remarks>
-    private static void StartRecording(Int32Rect area)
+    private static bool StartRecording(Int32Rect area, Action? finished)
     {
-        if (area.Width < 2 || area.Height < 2) return;
+        if (area.Width < 2 || area.Height < 2)
+        {
+            ToastService.Show("选区太小，没法录屏（至少 2 × 2）", "录屏", 2400, ToastKind.warning);
+            return false;
+        }
 
         var plan = new RecordPlan { Mode = RecordMode.Region };
         System.Threading.Tasks.Task.Run(() =>
@@ -152,7 +184,14 @@ internal static class CaptureSession
                 CrashLog.Write("CapturePro.Record", ex);
                 ToastService.Show("录屏失败：" + ex.Message, "录屏", 0, ToastKind.error);
             }
+            finally
+            {
+                try { finished?.Invoke(); }
+                catch (Exception ex) { AppLog.Warn("CapturePro.Record", "录屏收尾回调失败：" + ex.Message); }
+            }
         });
+
+        return true;
     }
 
     /// <summary>

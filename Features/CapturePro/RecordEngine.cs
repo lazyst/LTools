@@ -44,9 +44,18 @@ internal sealed class RecordEngine
     private Stream? _input;
     private volatile string? _error;
 
+    /// <summary>装箱的 <see cref="Int32Rect"/>：引用赋值是原子的，跨线程读不会读到半截。</summary>
+    private volatile object? _currentArea;
+
     /// <summary>抓一帧（默认真抓屏幕那块区域；冒烟注入合成画面）。调用方负责 Dispose。</summary>
     internal Func<Int32Rect, System.Drawing.Bitmap> FrameSource =
         area => ScreenCapture.Capture(area.X, area.Y, area.Width, area.Height);
+
+    /// <summary>
+    /// 跟随鼠标时的「这一帧抓哪儿」（物理像素）。null = 固定抓 <c>area</c>。
+    /// 返回的尺寸可以和成品不同：<see cref="CaptureLoop"/> 会缩放到 <c>area</c> 的尺寸再写进编码器。
+    /// </summary>
+    internal Func<Int32Rect>? FollowArea { get; set; }
 
     public RecordEngine(string ffmpeg, Int32Rect area, int fps, string output, RecordController controller)
     {
@@ -56,6 +65,9 @@ internal sealed class RecordEngine
         _output = output;
         _controller = controller;
     }
+
+    /// <summary>最近一帧实际抓的区域（跟随鼠标时会走）。</summary>
+    public Int32Rect CurrentArea => _currentArea is Int32Rect area ? area : _area;
 
     /// <summary>写进视频的帧数（含补帧）。</summary>
     public int Frames { get; private set; }
@@ -149,7 +161,16 @@ internal sealed class RecordEngine
                 continue;
             }
 
-            if (!Grab(buffer, width, height)) return;
+            // 跟随鼠标：每帧重新算抓哪儿；夹到最小尺寸，别让编码器收到空画面
+            Int32Rect rect = _area;
+            if (FollowArea != null)
+            {
+                var next = FollowArea();
+                if (next.Width >= 2 && next.Height >= 2) rect = next;
+            }
+
+            if (!Grab(buffer, width, height, rect)) return;
+            _currentArea = rect;
 
             Poster ??= ToSource(buffer, width, height);
             last ??= buffer;
@@ -180,32 +201,47 @@ internal sealed class RecordEngine
         }
     }
 
-    /// <summary>抓一帧塞进紧排的 BGRA 缓冲（锁定位图的 stride 可能比 <c>宽 × 4</c> 大）。</summary>
-    private bool Grab(byte[] buffer, int width, int height)
+    /// <summary>
+    /// 抓一帧塞进紧排的 BGRA 缓冲（锁定位图的 stride 可能比 <c>宽 × 4</c> 大）。
+    /// 抓到的尺寸和成品不同（跟随鼠标换到更大的区域 / 显示器比选区小时）先缩放到成品尺寸。
+    /// </summary>
+    private bool Grab(byte[] buffer, int width, int height, Int32Rect rect)
     {
         try
         {
-            using var bitmap = FrameSource(_area);
-            var rect = new System.Drawing.Rectangle(0, 0, width, height);
-            var data = bitmap.LockBits(rect, ImageLockMode.ReadOnly,
-                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using var captured = FrameSource(rect);
+            System.Drawing.Bitmap? resized = captured.Width == width && captured.Height == height
+                ? null
+                : Resize(captured, width, height);
 
             try
             {
-                int stride = width * 4;
-                if (data.Stride == stride)
+                var bitmap = resized ?? captured;
+                var box = new System.Drawing.Rectangle(0, 0, width, height);
+                var data = bitmap.LockBits(box, ImageLockMode.ReadOnly,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+                try
                 {
-                    Marshal.Copy(data.Scan0, buffer, 0, buffer.Length);
+                    int stride = width * 4;
+                    if (data.Stride == stride)
+                    {
+                        Marshal.Copy(data.Scan0, buffer, 0, buffer.Length);
+                    }
+                    else
+                    {
+                        for (int y = 0; y < height; y++)
+                            Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), buffer, y * stride, stride);
+                    }
                 }
-                else
+                finally
                 {
-                    for (int y = 0; y < height; y++)
-                        Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), buffer, y * stride, stride);
+                    bitmap.UnlockBits(data);
                 }
             }
             finally
             {
-                bitmap.UnlockBits(data);
+                resized?.Dispose();
             }
 
             return true;
@@ -215,6 +251,20 @@ internal sealed class RecordEngine
             _error = "抓帧失败：" + ex.Message;
             return false;
         }
+    }
+
+    /// <summary>等比拉伸到成品尺寸（只在跟随鼠标跨显示器 / 选区比屏幕大时用）。</summary>
+    private static System.Drawing.Bitmap Resize(System.Drawing.Bitmap source, int width, int height)
+    {
+        var target = new System.Drawing.Bitmap(width, height,
+            System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+        using var graphics = System.Drawing.Graphics.FromImage(target);
+        graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+        graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
+        graphics.DrawImage(source, new System.Drawing.Rectangle(0, 0, width, height));
+
+        return target;
     }
 
     private bool Write(byte[] buffer)

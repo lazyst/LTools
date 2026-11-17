@@ -193,7 +193,14 @@ internal static class FeatureCatalog
             new FeatureParam("fps", "帧率", FeatureParamKind.Number, "30",
                 Hint: "5–60；GIF 取 min(帧率, 15)", Unit: "fps"),
             new FeatureParam("countdown", "倒计时", FeatureParamKind.Number, "3",
-                Hint: "开始前等几秒，0 = 立刻开始", Unit: "秒")),
+                Hint: "开始前等几秒，0 = 立刻开始", Unit: "秒"),
+            new FeatureParam("follow", "跟随鼠标", FeatureParamKind.Choice, "off",
+                Options: new[]
+                {
+                    new FeatureOption("off", "不跟随"),
+                    new FeatureOption("on", "跟随鼠标（选区决定成品尺寸）"),
+                },
+                Hint: "跟随录屏时画面跟着光标在显示器里平移，成品尺寸仍是选区大小")),
     };
 
     private static readonly Dictionary<string, FeatureDef> ById =
@@ -346,6 +353,8 @@ internal static class FeatureCatalog
     private static void Capture(FeatureRunContext ctx)
     {
         string source = ctx.Get("source");
+        bool recording = false;
+
         BitmapSource? image = source switch
         {
             "screen" => ToSource(ScreenCapture.Capture(
@@ -353,8 +362,11 @@ internal static class FeatureCatalog
                 ScreenCapture.VirtualWidth, ScreenCapture.VirtualHeight)),
             "window" => CaptureForeground(),
             "region" => CaptureRegion(ctx.Get("region")),
-            _ => PickRegion(),
+            _ => PickRegion(out recording),
         };
+
+        // 用户在覆盖层里点了「录屏」：这不是取消，录屏已经在后台开跑，别再弹「已取消截图」。
+        if (recording) return;
 
         if (image == null)
         {
@@ -384,17 +396,33 @@ internal static class FeatureCatalog
         return ToSource(ScreenCapture.Capture(x, y, w, h));
     }
 
-    private static BitmapSource? PickRegion()
+    /// <summary>
+    /// 交互框选。返回 null 有两种完全不同的意思，由 <paramref name="recording"/> 区分：
+    /// 真的取消（要给一句「已取消截图」），还是已经交给录屏（这时什么都不用说）。
+    /// </summary>
+    private static BitmapSource? PickRegion(out bool recording)
     {
         var app = Application.Current ?? throw new InvalidOperationException("界面未初始化，无法截图");
         string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
+        bool handed = false;
+
         try
         {
-            return app.Dispatcher.Invoke(() => CaptureSession.TryCapture(null)?.Image);
+            var image = app.Dispatcher.Invoke(() =>
+            {
+                var captured = CaptureSession.TryCapture(null, out var exit,
+                    // 录屏跑完再恢复指示器：否则它会被录进成品里
+                    () => RecordingIndicatorWindow.RestoreAutomation(indicator));
+                handed = exit == CaptureSession.CaptureExit.Recording;
+                return captured?.Image;
+            });
+
+            recording = handed;
+            return image;
         }
         finally
         {
-            RecordingIndicatorWindow.RestoreAutomation(indicator);
+            if (!handed) RecordingIndicatorWindow.RestoreAutomation(indicator);
         }
     }
 
@@ -420,7 +448,8 @@ internal static class FeatureCatalog
             ctx.Get("source"),
             ctx.Get("format"),
             ctx.GetInt("fps", RecordPlan.DefaultFps),
-            ctx.GetInt("countdown", RecordPlan.DefaultCountdown));
+            ctx.GetInt("countdown", RecordPlan.DefaultCountdown),
+            string.Equals(ctx.Get("follow"), "on", StringComparison.OrdinalIgnoreCase));
 
         RecordSession.TryRun(null, plan);
     }

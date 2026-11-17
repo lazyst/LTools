@@ -42,7 +42,8 @@ try {
     $version = 'unknown'
     try {
         $first = (& (Join-Path $target 'ffmpeg.exe') -hide_banner -version 2>&1 | Select-Object -First 1)
-        if ($first) { $version = ($first -replace '^ffmpeg version ', '').Trim() }
+        # 第一行是「ffmpeg version <版本> Copyright (c) …」：只取版本那个词，别把版权声明也写进 NOTICE
+        if ($first) { $version = (($first -replace '^ffmpeg version ', '') -split '\s+')[0].Trim() }
     }
     catch { Write-Warning "读取 ffmpeg 版本失败：$($_.Exception.Message)" }
 

@@ -100,7 +100,28 @@ internal static class RecordSession
         var bar = ShowBar(area, plan, controller);
 
         var engine = new RecordEngine(ffmpeg, area, plan.EffectiveFps, temp, controller);
-        bool ok = engine.Run();
+
+        // 跟随鼠标：先定「第一帧抓哪儿」的视口（居中到光标、夹在显示器里）；
+        // 成品尺寸仍是选区，抓到的画面按选区尺寸缩放后再编码。
+        RecordFollowMotion? motion = null;
+        var viewport = area;
+        if (plan.FollowMouse) motion = CreateFollow(area, plan, out viewport);
+
+        var border = ShowBorder(viewport);
+        var tracker = new RecordTracker(border, controller, motion, area, viewport);
+        if (motion != null) engine.FollowArea = () => tracker.CurrentArea;
+
+        bool ok;
+        try
+        {
+            ok = engine.Run();
+        }
+        finally
+        {
+            // 抓帧循环不论怎么退出（完成 / 取消 / 异常），看护线程与边框都得收掉
+            tracker.Stop();
+            CloseBorder(border);
+        }
 
         CloseBar(bar);
 
@@ -117,12 +138,12 @@ internal static class RecordSession
             throw new InvalidOperationException("录屏失败：" + (engine.Error ?? "没有录到画面"));
         }
 
-        string file = temp;
+        string file = ToFaststart(ffmpeg, temp);
         string extension = "mp4";
 
         if (plan.IsGif)
         {
-            if (TryConvertToGif(ffmpeg, temp, plan, out string gifPath, out string convertError))
+            if (TryConvertToGif(ffmpeg, file, plan, out string gifPath, out string convertError))
             {
                 DeleteFile(temp);
                 file = gifPath;
@@ -289,6 +310,187 @@ internal static class RecordSession
         }
     }
 
+    // ============ 区域边框 / 跟随鼠标 ============
+
+    /// <summary>
+    /// 摆出录制区域边框（照 Snow Shot：红框告诉用户正在录哪一块）。
+    /// 失败只记日志——边框是提示，不该因为它录不成。
+    /// </summary>
+    private static RecordBorderWindow? ShowBorder(Int32Rect area)
+    {
+        var app = Application.Current;
+        if (app == null) return null;
+
+        RecordBorderWindow? border = null;
+        try
+        {
+            app.Dispatcher.Invoke(() =>
+            {
+                border = new RecordBorderWindow();
+                border.ShowFor(area);
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("CapturePro.Record", "显示录制边框失败：" + ex.Message);
+        }
+
+        return border;
+    }
+
+    private static void CloseBorder(RecordBorderWindow? border)
+    {
+        if (border == null) return;
+
+        try
+        {
+            var app = Application.Current;
+            if (app != null) app.Dispatcher.Invoke(() => border.Close());
+            else border.Close();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("CapturePro.Record", "关录制边框失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 建跟随运动：选区等比塞进**选区中心所在显示器**（放得下就原样），
+    /// 再把视口居中到光标（上游「Capture starts centered on the cursor and clamps to the monitor bounds」）。
+    /// </summary>
+    private static RecordFollowMotion? CreateFollow(Int32Rect selection, RecordPlan plan, out Int32Rect initial)
+    {
+        initial = selection;
+
+        var bounds = MonitorBounds(selection);
+        if (bounds.Width <= 0 || bounds.Height <= 0) return null;
+
+        var viewport = RecordFollowMotion.Fit(selection, bounds);
+        var motion = new RecordFollowMotion(viewport, bounds, plan.FollowOptions, Environment.TickCount64);
+        initial = motion.Viewport;
+
+        if (Win32.GetCursorPos(out var cursor))
+            initial = motion.Center(cursor.X, cursor.Y, Environment.TickCount64);
+
+        return motion;
+    }
+
+    /// <summary>选区中心所在显示器的矩形（物理像素）；找不到就退回光标所在那块。</summary>
+    private static Int32Rect MonitorBounds(Int32Rect area)
+    {
+        int cx = area.X + area.Width / 2;
+        int cy = area.Y + area.Height / 2;
+
+        foreach (var screen in Screens.All())
+        {
+            if (cx >= screen.Left && cx < screen.Left + screen.Width &&
+                cy >= screen.Top && cy < screen.Top + screen.Height)
+                return new Int32Rect(screen.Left, screen.Top, screen.Width, screen.Height);
+        }
+
+        var monitor = ScreenPicker.MonitorUnderCursor();
+        if (monitor.Width > 0 && monitor.Height > 0)
+            return new Int32Rect(monitor.X, monitor.Y, monitor.Width, monitor.Height);
+
+        return new Int32Rect(ScreenCapture.VirtualLeft, ScreenCapture.VirtualTop,
+            Math.Max(1, ScreenCapture.VirtualWidth), Math.Max(1, ScreenCapture.VirtualHeight));
+    }
+
+    /// <summary>
+    /// 录屏期间的看护线程：跟随鼠标推进视口、把边框挪过去、暂停时把边框换成琥珀色。
+    /// </summary>
+    /// <remarks>
+    /// 抓帧循环（<see cref="RecordEngine"/>）与它只通过 <see cref="CurrentArea"/> 说一句话：
+    /// 那个值是装箱的 <see cref="Int32Rect"/>，引用赋值是原子的，抓帧那边不会读到半截坐标。
+    /// 颜色与位置改动一律投递到 UI 线程（<see cref="Dispatcher.BeginInvoke(Delegate)"/>，不等待）。
+    /// </remarks>
+    private sealed class RecordTracker
+    {
+        private const int SampleMs = 15;
+
+        private readonly RecordBorderWindow? _border;
+        private readonly RecordController _controller;
+        private readonly RecordFollowMotion? _motion;
+        private readonly Int32Rect _selection;
+        private readonly Thread _thread;
+
+        private volatile object? _viewport;
+        private volatile int _paused = -1;
+        private volatile bool _stop;
+        private int _warned;
+
+        public RecordTracker(RecordBorderWindow? border, RecordController controller,
+            RecordFollowMotion? motion, Int32Rect selection, Int32Rect viewport)
+        {
+            _border = border;
+            _controller = controller;
+            _motion = motion;
+            _selection = selection;
+            _viewport = viewport;
+
+            _thread = new Thread(Loop) { IsBackground = true, Name = "LTools.RecordTracker" };
+            _thread.Start();
+        }
+
+        /// <summary>这一帧该抓哪儿（物理像素）；跟随关闭时就是选区本身。</summary>
+        public Int32Rect CurrentArea => _viewport is Int32Rect area ? area : _selection;
+
+        public void Stop()
+        {
+            _stop = true;
+            try { if (_thread.IsAlive) _thread.Join(800); } catch { /* 已经退出 */ }
+        }
+
+        private void Loop()
+        {
+            while (!_stop)
+            {
+                try
+                {
+                    SyncPause();
+
+                    if (_motion != null && Win32.GetCursorPos(out var cursor))
+                    {
+                        var viewport = _motion.Advance(cursor.X, cursor.Y, Environment.TickCount64);
+                        _viewport = viewport;
+                        Post(() => _border?.MoveTo(viewport));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (Interlocked.Exchange(ref _warned, 1) == 0)
+                        AppLog.Warn("CapturePro.Record", "跟随鼠标出错（后续只重试不刷日志）：" + ex.Message);
+                }
+
+                Thread.Sleep(SampleMs);
+            }
+        }
+
+        /// <summary>暂停 ↔ 继续：边框红 ↔ 琥珀（这条不依赖跟随，固定区域也要变色）。</summary>
+        private void SyncPause()
+        {
+            int paused = _controller.IsPaused ? 1 : 0;
+            if (paused == _paused) return;
+            _paused = paused;
+            Post(() => _border?.SetPaused(paused == 1));
+        }
+
+        private static void Post(Action action)
+        {
+            var app = Application.Current;
+            if (app == null) return;
+
+            try
+            {
+                if (!app.Dispatcher.HasShutdownStarted) app.Dispatcher.BeginInvoke(action);
+            }
+            catch (Exception)
+            {
+                // 窗口已经关了 / 应用正在退出：这一拍丢掉就行
+            }
+        }
+    }
+
     // ============ GIF ============
 
     /// <summary>把刚录好的 mp4 转成 GIF（两遍：调色板 + 编码）。失败时 <paramref name="gifPath"/> 会删掉。</summary>
@@ -336,7 +538,8 @@ internal static class RecordSession
         }
     }
 
-    private static bool RunFfmpeg(string ffmpeg, IReadOnlyList<string> args, out string error)
+    /// <summary>跑一次 ffmpeg（GIF 转码 / 重封装共用）；超时或非 0 退出返回 false 并带上 stderr 尾巴。</summary>
+    internal static bool RunFfmpeg(string ffmpeg, IReadOnlyList<string> args, out string error)
     {
         error = "";
 
@@ -375,10 +578,31 @@ internal static class RecordSession
 
     // ============ 文件 ============
 
-    private static string TempDir => Path.Combine(AppPaths.DataRoot, "cache", "record");
+    /// <summary>录制缓存目录（与 <see cref="RecordRecovery"/> 共用同一个，恢复残片时才找得到）。</summary>
+    private static string TempDir => RecordRecovery.TempDir;
 
     private static string TempPath(string extension) =>
         Path.Combine(TempDir, "rec-" + IdFactory.ShortId() + "." + extension);
+
+    /// <summary>
+    /// 把录好的分片 MP4 重封装成普通 faststart MP4（只搬容器，不重编码）。
+    /// 失败就沿用分片文件——它本身是完整的，别为了「格式更好」把已经录到的东西丢了。
+    /// </summary>
+    private static string ToFaststart(string ffmpeg, string temp)
+    {
+        string final = Path.Combine(TempDir, "rec-" + IdFactory.ShortId() + ".final.mp4");
+
+        if (!RunFfmpeg(ffmpeg, RecordPlan.RemuxArgs(temp, final), out string error)
+            || !File.Exists(final) || new FileInfo(final).Length == 0)
+        {
+            DeleteFile(final);
+            AppLog.Warn("CapturePro.Record", "重封装 MP4 失败（沿用分片文件）：" + error);
+            return temp;
+        }
+
+        DeleteFile(temp);
+        return final;
+    }
 
     /// <summary>清掉上一次没删干净的临时文件（进程被杀 / 断电）。</summary>
     private static void CleanTemp()

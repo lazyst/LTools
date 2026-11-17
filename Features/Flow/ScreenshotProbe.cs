@@ -65,16 +65,22 @@ internal static class ScreenshotProbe
         string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
         try
         {
+            CaptureSession.CaptureExit exit = CaptureSession.CaptureExit.Cancelled;
             var result = app.Dispatcher.Invoke(() =>
             {
                 // owner 必须在 UI 线程上找：Application.Windows 属于 UI 线程。
                 Window? owner = app.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? app.MainWindow;
-                return CaptureSession.TryCapture(owner);
+                var captured = CaptureSession.TryCapture(owner, out var kind);
+                exit = kind;
+                return captured;
             });
 
             if (result == null)
             {
-                AppLog.Info("Probe", "截图：用户取消");
+                // 「交给录屏」不是取消：那一步本来就没有图，别写成用户取消
+                AppLog.Info("Probe", exit == CaptureSession.CaptureExit.Recording
+                    ? "截图：已交给录屏（这一步没有图）"
+                    : "截图：用户取消");
                 return new VarValue { Text = "", Flag = false };
             }
 

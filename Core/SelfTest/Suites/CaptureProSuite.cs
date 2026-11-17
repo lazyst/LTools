@@ -55,6 +55,8 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "选字：候选切分", ScreenTextSplit));
         cases.Add(new("capturePro", "录屏：参数 / 命令行 / 定位", Record));
         cases.Add(new("capturePro", "录屏：暂停计时与历史文案", RecordBookkeeping));
+        cases.Add(new("capturePro", "录屏：跟随鼠标（移植上游用例）", RecordFollow));
+        cases.Add(new("capturePro", "录屏：中断残片的尺寸 / 时长解析", RecordRecoveryProbe));
     }
 
     private static void Geometry()
@@ -1977,8 +1979,16 @@ internal static partial class CaptureProSuite
         Check.True(mp4Line.Contains("pipe:0"), "从标准输入读原始帧");
         Check.True(mp4Line.Contains("libx264") && mp4Line.Contains("yuv420p"), "H.264 + yuv420p");
         Check.True(mp4Line.Contains("pad=ceil(iw/2)*2:ceil(ih/2)*2"), "奇数宽高补成偶数");
-        Check.True(mp4Line.Contains("+faststart"), "moov 前置（边下边看）");
+        Check.True(mp4Line.Contains("+frag_keyframe+empty_moov"), "录的过程写分片 MP4（崩溃可恢复）");
+        Check.True(!mp4Line.Contains("+faststart"), "边录边写不要求 faststart（收尾再转）");
         Check.Equal("out.mp4", mp4[^1], "输出路径是最后一个参数");
+
+        // 收尾：只搬容器不重编码，转成普通 faststart MP4
+        var remux = RecordPlan.RemuxArgs("in.mp4", "out.mp4");
+        string remuxLine = string.Join(" ", remux);
+        Check.True(remuxLine.Contains("-c copy"), "重封装不重编码");
+        Check.True(remuxLine.Contains("+faststart"), "收尾转成 faststart");
+        Check.Equal("out.mp4", remux[^1], "重封装输出是最后一个参数");
 
         // GIF：两遍（调色板 → 编码），帧率与宽度都压下来
         var palette = RecordPlan.GifPaletteArgs("in.mp4", "p.png", 60);
@@ -2006,6 +2016,174 @@ internal static partial class CaptureProSuite
             RecordPlan.Locate("", "D:\\none;\"D:\\with space\"", p => p == quoted), "PATH 里的引号要剥掉");
 
         Check.True(RecordPlan.Locate("C:\\app", "D:\\none", _ => false) == null, "都没有就返回 null");
+    }
+
+    /// <summary>
+    /// 跟随鼠标：一比一移植 Snow Shot <c>snow-crates/crates/snow-media/src/follow_mouse.rs</c> 的用例
+    /// （immediate_follow / jitter_reduction / clamped_edge / smooth_movement_catches_up /
+    /// smooth_follow_catches_large_jumps / combined_options / easing_resumes）。
+    /// 时间以毫秒显式传入，断言才是确定的；上游用厘米级的 Point 空间，这里全是物理像素，
+    /// 所以「取半」按整像素 floor（与上游 PhysicalPixels 分支一致）。
+    /// </summary>
+    private static void RecordFollow()
+    {
+        var still = new RecordFollowOptions(SmoothMovement: false, ReduceJitter: false);
+        var bounds = new Int32Rect(-200, -400, 1400, 1800);
+
+        // ① 立即跟随：居中取整、夹在显示器里，光标在中间就不动
+        var quick = new RecordFollowMotion(new Int32Rect(-600, 200, 101, 79),
+            new Int32Rect(-800, 0, 600, 400), still, 0);
+
+        Check.Equal(new Int32Rect(-600, 200, 101, 79), quick.Advance(-550, 239, 0),
+            "立即跟随：光标落在正中间就不动");
+        Check.Equal(new Int32Rect(-800, 0, 101, 79), quick.Advance(-799, 1, 0),
+            "立即跟随：夹到左上边界");
+        Check.Equal(new Int32Rect(-301, 321, 101, 79), quick.Advance(-201, 399, 0),
+            "立即跟随：夹到右下边界");
+
+        // ② 抑制抖动：中央 5/6 不动，进了外侧 1/12 才重新居中（两条边都要）
+        var initial = new Int32Rect(150, 160, 120, 84);
+        (int InX, int InY, int EdgeX, int EdgeY)[] jitter =
+        {
+            (161, 201, 160, 201),
+            (259, 201, 260, 201),
+            (211, 168, 211, 167),
+            (211, 236, 211, 237),
+        };
+
+        foreach (var (inX, inY, edgeX, edgeY) in jitter)
+        {
+            var motion = new RecordFollowMotion(initial, bounds, new RecordFollowOptions(false, true), 0);
+            Check.Equal(initial, motion.Advance(inX, inY, 0), $"抑制抖动：({inX},{inY}) 还在中央 5/6 里");
+
+            var changed = motion.Advance(edgeX, edgeY, 0);
+            Check.Equal(new Int32Rect(edgeX - 60, edgeY - 42, 120, 84), changed,
+                $"抑制抖动：({edgeX},{edgeY}) 进了外侧 1/12 就重新居中");
+            Check.Equal(changed, motion.Advance(edgeX, edgeY, 0), "已经居中后同一位置不再抖");
+        }
+
+        // ③ 被夹住的那一轴不会因为另一轴触发而移动（不平滑，目标即位置）
+        var edge = new RecordFollowMotion(new Int32Rect(150, 160, 100, 80), bounds,
+            new RecordFollowOptions(SmoothMovement: false, ReduceJitter: true), 0);
+
+        var centered = edge.Center(-195, 200, 0);
+        Check.Equal(-200, centered.X, "居中时夹到显示器左边界");
+        Check.Equal(centered, edge.Advance(-195, 212, 0), "夹住的那一轴不动，另一轴也还没到边缘");
+
+        var moved = edge.Advance(-195, 234, 0);
+        Check.Equal(-200, moved.X, "横向仍然夹在边界上");
+        Check.Equal(194, moved.Y, "纵向已经重新居中");
+
+        // ④ 平滑移动：按 50ms 半衰期逼近，任何帧率下 1 秒内都收敛到目标
+        foreach (int fps in new[] { 15, 30, 60, 120 })
+        {
+            var smooth = new RecordFollowMotion(new Int32Rect(150, 160, 100, 80), bounds,
+                new RecordFollowOptions(true, false), 0);
+            var start = smooth.Viewport;
+            int at20Percent = 0;
+
+            for (int frame = 1; frame <= fps; frame++)
+            {
+                long now = (long)Math.Round(frame * 1000.0 / fps);
+                var crop = smooth.Advance(240, 200, now);
+
+                if (frame == 1)
+                    Check.True(start.X < crop.X && crop.X < 190, $"{fps} fps：第一帧只走一小段（{crop.X}）");
+
+                if (frame * 5 == fps) at20Percent = crop.X;
+            }
+
+            Check.Equal(190, smooth.Viewport.X, $"{fps} fps：1 秒内收敛到目标");
+            Check.True(Math.Abs(at20Percent - 187.5) <= 1,
+                $"{fps} fps：20% 的时间走完 94%（{at20Percent}）");
+        }
+
+        // ⑤ 快跳：第一帧先把光标拉进视口（右边留 1 像素），之后才慢慢缓过去
+        var jump = new RecordFollowMotion(new Int32Rect(150, 160, 100, 80),
+            new Int32Rect(-400, -300, 1400, 1000), new RecordFollowOptions(true, false), 0);
+
+        var jumped = jump.Advance(750, -200, 16);
+        Check.Equal(new Int32Rect(651, -200, 100, 80), jumped, "快跳：第一帧就把光标包进视口");
+
+        var caught = jump.Advance(760, -200, 16);
+        Check.Equal(new Int32Rect(661, -200, 100, 80), caught, "下一帧补到光标右侧留 1 像素");
+
+        var eased = jump.Advance(760, -200, 66);
+        Check.True(eased.X > caught.X && eased.X < 700, $"追平之后才开始缓动（{eased.X}）");
+        Check.True(eased.Y < jumped.Y && eased.Y > -240, $"纵轴同时在缓动（{eased.Y}）");
+
+        var reversed = jump.Advance(-400, 699, 82);
+        Check.Equal(new Int32Rect(-400, 620, 100, 80), reversed, "反向快跳同样先追上");
+        Check.False(jump.IsMoving, "追上就停住（不再抖）");
+
+        // ⑥ 两个开关一起开：判断看「目标」而不是当前位置
+        var combined = new RecordFollowMotion(new Int32Rect(150, 160, 100, 80), bounds,
+            new RecordFollowOptions(true, true), 0);
+
+        Check.Equal(150, combined.Advance(241, 200, 0).X, "光标还在中央 5/6 里就不动");
+        Check.Equal(171, combined.Advance(242, 200, 50).X, "进外侧 1/12：重新居中并走完一半");
+        Check.True(Math.Abs(combined.Advance(263, 200, 100).X - 181.5) <= 1,
+            "已经处在移动视口的右边缘、但没出目标的中区 → 不重定目标");
+        Check.True(Math.Abs(combined.Advance(284, 200, 150).X - 207.75) <= 1,
+            "出了目标的中区才重定目标");
+        Check.Equal(234, combined.Advance(284, 200, 600).X, "半衰期收敛到新目标");
+
+        // ⑦ 暂停恢复：冻住那一刻的位置接着走，暂停时长不算成缓动
+        var paused = new RecordFollowMotion(new Int32Rect(150, 160, 100, 80), bounds,
+            new RecordFollowOptions(true, false), 0);
+
+        var frozen = paused.Advance(250, 200, 50);
+        Check.Equal(175, frozen.X, "50ms（一个半衰期）走完一半");
+
+        paused.RestartClock();
+        Check.Equal(frozen, paused.Advance(265, 200, 3050), "恢复第一帧仍停在冻结位置");
+        Check.Equal(195, paused.Advance(265, 200, 3100).X, "恢复后按新间隔继续缓动");
+
+        // ⑧ 视口尺寸：放得下原样、放不下等比缩、缩完居中；太小的区域直接拒绝
+        Check.Equal(new Int32Rect(760, 390, 400, 300),
+            RecordFollowMotion.Fit(new Int32Rect(100, 50, 400, 300), new Int32Rect(0, 0, 1920, 1080)),
+            "放得下就只调位置：尺寸不动、居中到显示器里");
+
+        Check.Equal(new Int32Rect(0, 0, 1920, 1080),
+            RecordFollowMotion.Fit(new Int32Rect(0, 0, 3840, 2160), new Int32Rect(0, 0, 1920, 1080)),
+            "比整屏还大就等比缩到整屏");
+
+        Check.Equal(new Int32Rect(760, 390, 400, 300),
+            RecordFollowMotion.Fit(new Int32Rect(5000, 0, 400, 300), new Int32Rect(0, 0, 1920, 1080)),
+            "缩完之后在显示器里居中");
+
+        Check.Equal(Int32Rect.Empty,
+            RecordFollowMotion.Normalize(new Int32Rect(0, 0, 1, 1), new Int32Rect(0, 0, 1920, 1080)),
+            "1 像素的选区直接拒绝");
+
+        var widened = RecordFollowMotion.Normalize(new Int32Rect(10, 10, 4, 300),
+            new Int32Rect(0, 0, 1920, 1080));
+        Check.Equal(RecordFollowMotion.MinimumExtent, widened.Width, "太窄的选区补到最小宽度");
+        Check.Equal(300, widened.Height, "另一边不动");
+    }
+
+    /// <summary>
+    /// 中断残片：从 <c>ffmpeg -i</c> 的 stderr 里读尺寸与时长（启动抢救靠这个判断能不能救）。
+    /// </summary>
+    private static void RecordRecoveryProbe()
+    {
+        const string output =
+            "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'rec.mp4':\n" +
+            "  Metadata:\n" +
+            "    major_brand     : isom\n" +
+            "  Duration: 00:00:12.34, start: 0.000000, bitrate: 812 kb/s\n" +
+            "  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, progressive), 320x240, 812 kb/s, 30 fps";
+
+        Check.True(RecordRecovery.TryParseProbe(output, out int width, out int height, out int durationMs),
+            "从 ffmpeg 输出里读出尺寸与时长");
+        Check.Equal(320, width, "宽度");
+        Check.Equal(240, height, "高度");
+        Check.Equal(12340, durationMs, "时长换成毫秒");
+
+        Check.False(RecordRecovery.TryParseProbe("garbage", out _, out _, out _),
+            "读不出来就返回 false（残片会被清掉）");
+        Check.False(RecordRecovery.TryParseProbe("Duration: 00:00:01.00\n  Stream: Video: h264, 0x0",
+            out _, out _, out _), "尺寸为 0 也算读不出来");
     }
 
     /// <summary>

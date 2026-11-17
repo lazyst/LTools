@@ -9,6 +9,7 @@ using LTools.Core;
 using LTools.Core.Ai;
 using LTools.Core.SelfTest;
 using LTools.Features;
+using LTools.Features.CapturePro;
 using LTools.Features.Floating;
 using LTools.Hooks;
 using H.NotifyIcon;
@@ -172,6 +173,9 @@ public partial class App : Application
         // 只有用户在设置里打开才会在后台起 HTTP 服务（启动失败只记配置里的 LastError）。
         _ = Task.Run(KnowledgePack.Ensure);
         _ = Task.Run(McpServer.Apply);
+        // 录屏写的是分片 MP4：进程被杀 / 断电时已经落下的分片还能播，
+        // 启动时把它们重新封装、收进采集历史（重活，后台跑，别拖住启动）。
+        _ = Task.Run(RecordRecovery.Sweep);
 
         // —— 启动提示：屏幕右下角的 toast（抽屉式从右侧滑入、点一下就关），不再跟着鼠标弹小字。
         //    仍在无钩子阶段同步显示：首个 WPF 窗口的首帧会初始化渲染栈（D3D 等），
