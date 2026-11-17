@@ -350,9 +350,32 @@
 
 ## 10. 滚动截图
 
-- 入口：`L` 或工具栏；要求已有像素选区；默认纵向滚动。
-- 交互：自动向目标窗口发滚轮（可调间隔，单击重置 200ms）；底部缩略图预览条带可拖裁剪手柄去掉首尾；可暂停/继续、结束。
-- 拼接在 Rust 侧做（特征匹配 + 运动估计），失败原因 5 类：重叠不足 / 信息量低 / 歧义 / 参考冲突 / 校验失败。
+- 入口：`L` 或工具栏；要求已有像素选区；默认纵向滚动（可切横向，`ScreenshotScrollingRecognitionMode`）。
+- **默认是用户自己滚，覆盖层让路**：进模式时 `ScreenshotOverlayWindow::setScrollingCaptureMode(true)` 只把覆盖层改成
+  **鼠标穿透**（`setWindowInputTransparent(this, true)` 仅动 `WS_EX_TRANSPARENT`，`screenshotoverlaywindow.cpp:576-581`），
+  滚轮 / 点击直接落到下面的真实窗口上——页面是真的在滚，不是被程序推着滚；画布交互同时关掉
+  （`setInteractionEnabled(false)` / `setCanvasContentVisible(false)`）。
+  覆盖层自己、预览窗、工具栏一起**排除出屏幕捕获**（`WindowCaptureExclusion` + `setWindowExcludedFromCapture`），
+  所以帧是干净的画面，不需要「先藏窗口再抓」。
+- **可选自动滚，默认关**：`autoScrollEnabled = false`（`screenshotscrollingcapturecontroller.cpp:293 / 729`），
+  打开后按 `kScreenshotScrollingAutoScrollIntervalDefault = 200ms`（区间 128–1000ms）定时发一格滚轮；
+  发的方式与手滚无关，仍是下面这套 `sendScrollingWheelStep`。
+- **滚动输入是「投递消息」，不是模拟滚轮**（`snow_shot/src/platform/windows/scrollinput.cpp` 的 `sendScrollingWheelStep`）：
+  `GetTopWindow` + `GetWindow(GW_HWNDNEXT)` 按 z 序找第一个「别的进程 + 可见 + 可用 + 不是同时带
+  `WS_EX_LAYERED|WS_EX_TRANSPARENT` + 矩形盖住选区中心」的顶层窗口 → `ChildWindowFromPointEx`
+  一路钻到最里层子窗口 → `PostMessageW(WM_MOUSEWHEEL)`（lParam = 屏幕坐标、wParam 高位 = delta）。
+  **光标不移动、前台不切换**。连续小步而不是一次滚几屏。
+- **就地显示 + 旁边小预览**（照 Quicker / 用户要的那套）：
+  - 选区里由画布渲染器画**拼接结果**（`ScreenshotCanvasRenderer::setScrollingResultPreview`，
+    `RenderMode::ScrollingCapture`）：画的就是选区那块矩形，看起来是页面在原地长高。
+    每帧只重画变化的那一条（pipeline 的 `ScrollPreviewLayout` / `renderPreviewPatch`），不是整图重绘。
+  - 旁边挂一个**不抢焦点的小预览窗**（`ScreenshotScrollingThumbnailWidget`：
+    `Qt::Tool | FramelessWindowHint | WindowStaysOnTopHint | WindowDoesNotAcceptFocus` + `WA_ShowWithoutActivating`），
+    按选区位置摆（`layoutScrollingThumbnail`，间距 8 / 边距 8）。它带**首尾裁剪手柄**（`ScreenshotScrollingTrimRange`）：
+    悬停某一段会在选区里高亮对应行，拖手柄可去掉拼错的首尾；还有暂停 / 继续 / 结束。
+- 拼接在 Rust 侧做（`snow-crates/crates/snow-stitch-images`：ORB 特征 + tile 覆盖 + 置信度，
+  `min_confidence 0.65`、`max_motion_ratio 0.6`、`tile_size 32`、`max_features 2500`），
+  分支 Append / Prepend / Contained / Skip / NoMovement；失败原因 5 类：重叠不足 / 信息量低 / 歧义 / 参考冲突 / 校验失败。
 - 结束后结果可：复制、保存、分割、进图像编辑器、固定到屏幕。
 - 失败文案区分「显示器配置已更改」「请检查屏幕录制权限」「请在截图设置中启用辅助功能权限（窗口模式）」。
 
@@ -524,7 +547,7 @@
 
 ## 17. 与 LTools 现状的对照（复刻落点）
 
-> LTools 现状：`screen.capture` 交互框选（矩形 / 自由 / 折线 + 多区域加区 / 减区）+ 14 个标注工具 + 复制/贴图/识别/长截图/另存为五个出口 + 贴图窗口（无激活、缩放、不透明度、锁定、局部显示、缩略图、成组移动、分组、多选批量）+ 采集历史。
+> LTools 现状：`screen.capture` 交互框选（矩形 / 自由 / 折线 + 多区域加区 / 减区）+ 14 个标注工具 + 复制/贴图/实时/识别/长截图/另存为出口 + 贴图窗口（无激活、缩放、不透明度、锁定、局部显示、缩略图、成组移动、分组、多选批量、实时贴图）+ 采集历史。
 
 | 能力 | Snow Shot | LTools 现状 | 建议 |
 |---|---|---|---|
@@ -537,10 +560,10 @@
 | 标注模板 | 存一组元素，可复用 | 无 | P2 |
 | 工具面板自定义（堆叠/隐藏/拖拽排序） | 有布局编辑器 | 堆叠组（同格多工具）+ 收起，右键菜单改，落 `ui.json` | 拖拽排序可选 |
 | 完成动作 | 12 种 | 5 种 | P0：快速保存（不弹框）、打印、上一张/下一张历史；P1：上传、翻译、表格/二维码 |
-| 贴图 | 分组、批量、裁剪、标注模式、实时窗口、文本贴图、贴顶隐藏、多选成组 | 基础（缩放/透明度/锁定/局部/成组移动/缩略图/标注）+ 分组与批量（内存分组、`Ctrl`+单击多选、批量关闭/另存/锁定/缩略图） | 已够；贴顶隐藏、实时窗口、文本贴图、裁剪后补 |
+| 贴图 | 分组、批量、裁剪、标注模式、实时窗口、文本贴图、贴顶隐藏、多选成组 | 基础（缩放/透明度/锁定/局部/成组移动/缩略图/标注）+ 分组与批量（内存分组、`Ctrl`+单击多选、批量关闭/另存/锁定/缩略图）+ 实时贴图（DWM 缩略图：源窗口的画面由 DWM 直接合成，**零抓帧、零延迟**；系统不吃缩略图时退回逐帧 `PrintWindow`；最小化 / 关闭有徽标与自动收） | 已够；贴顶隐藏、文本贴图、裁剪后补 |
 | 识别 | 文本/表格/条码/文档/Markdown/HTML/LaTeX + 结果窗 6 层 | 文本识别 | P1：表格与二维码结果 UI；P2：文档/LaTeX |
 | 翻译 | 截图内 + 独立页 | 无 | P2（需服务与网络） |
-| 滚动截图 | 有，带预览条与裁剪 | 有（长截图） | 对齐预览条与失败原因提示 |
+| 滚动截图 | 有：用户手滚（覆盖层鼠标穿透 + 自己排除出捕获）+ 可选自动滚（默认关、200ms）+ 就地显示拼接结果 + 旁边小预览（带首尾裁剪手柄） | 有（长截图：覆盖层不关、用户手滚、滚轮转发给目标窗口、帧走 `PrintWindow`、选区里就地显示末尾一屏 + 旁边整张预览 + 固定条去重） | 已够；首尾裁剪手柄与横向拼接可后补 |
 | 录屏 | 完整（参数/裁剪/动图/摄像头/鼠标效果） | 有（抓帧 + ffmpeg） | P1：控制条与裁剪 |
 | 图像拼接/分割/编辑 | 三个独立窗口 | 无 | P2 |
 | 悬浮工具栏 / 全屏画布 | 有 | 悬浮（不同语义） | 不在截图范围内 |
@@ -552,7 +575,7 @@
 1. **P0 手感层**：右键/`Esc` 语义、把手命中、贴图拖动与关闭（本轮已修）→ 元素橡皮、矩形滤镜、序号类型、参数行与滚轮微调。
 2. **P0 出口层**：快速保存、打印、历史翻页、保存对话框（预览 + 格式/质量）。
 3. **P1 结构层**：堆叠工具面板 ✅、折线/自由选区 ✅、多区域选区 ✅、贴图右键菜单与贴图内标注 ✅。
-4. **P1 资料层**：贴图分组与批量 ✅、识别结果窗（表格/二维码）。
+4. **P1 资料层**：贴图分组与批量 ✅、实时贴图 ✅、识别结果窗（表格/二维码）。
 5. **P2 扩展层**：标注模板、距离/角度/括号/放大镜/水印、录屏控制条与裁剪、拼接/分割。
 
 ---
