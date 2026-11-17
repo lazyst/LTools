@@ -35,7 +35,8 @@ internal static class CaptureSession
         HotkeyRegistry.Suspended = true;
 
         CaptureResult? result = null;
-        bool pin = false, recognize = false, scroll = false, live = false;
+        bool pin = false, recognize = false, scroll = false, live = false, record = false;
+        var recordArea = Int32Rect.Empty;
         var finish = CaptureOverlayWindow.FinishKind.Copy;
 
         try
@@ -49,7 +50,18 @@ internal static class CaptureSession
 
             var overlay = new CaptureOverlayWindow(shot, ScreenShot.ToRectangle(area), sx, sy);
             bool? ok = overlay.ShowDialog();
-            if (ok != true || overlay.ResultImage == null) return null;
+            if (ok != true) return null;
+
+            // 录屏出口**没有成品图**（这次不是截图，只是借覆盖层挑区域）：
+            // 先记下区域，等 finally 把自己的窗口还原之后再开录，免得遮罩被录进去。
+            if (overlay.RecordRequested)
+            {
+                record = true;
+                recordArea = overlay.Document.Area;
+                return null;
+            }
+
+            if (overlay.ResultImage == null) return null;
 
             var captured = overlay.ResultImage;
             pin = overlay.PinRequested;
@@ -74,6 +86,13 @@ internal static class CaptureSession
         }
 
         // 两个「关掉覆盖层之后才做」的出口：这时自己的窗口已经还原，不会被一起收走。
+        // 录屏排在前面：这一次没有截图成品，也不记采集历史。
+        if (record)
+        {
+            StartRecording(recordArea);
+            return null;
+        }
+
         if (result == null) return null;
 
         // 长截图：拼接结果默认直接复制走（覆盖层那边不复制，只有这里知道最终的长图）
@@ -108,6 +127,32 @@ internal static class CaptureSession
             CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry);
 
         return result;
+    }
+
+    /// <summary>
+    /// 「录屏」出口：把覆盖层里框的那一块交给 <see cref="RecordSession"/>（3 秒倒计时后开录）。
+    /// </summary>
+    /// <remarks>
+    /// 放后台线程：抓帧 + 编码是重活，而 UI 线程上还挂着低级鼠标钩子。
+    /// 失败用**常驻**提示——录屏失败时自己的窗口往往是收起来的，一闪而过的提示看不到。
+    /// </remarks>
+    private static void StartRecording(Int32Rect area)
+    {
+        if (area.Width < 2 || area.Height < 2) return;
+
+        var plan = new RecordPlan { Mode = RecordMode.Region };
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                RecordSession.TryRun(null, plan, area);
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write("CapturePro.Record", ex);
+                ToastService.Show("录屏失败：" + ex.Message, "录屏", 0, ToastKind.error);
+            }
+        });
     }
 
     /// <summary>

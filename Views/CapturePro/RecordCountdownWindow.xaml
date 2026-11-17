@@ -12,34 +12,43 @@
     <!-- 录屏前的倒计时：盖住要录的那块区域，中间一个大数字。
          不抢焦点（要录的窗口保持前台），也不入镜（WDA_EXCLUDEFROMCAPTURE）。
          出口：等它数完，或右键 / 「取消」按钮放弃这次录屏。 -->
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 浮层配色（浅色）与其他截图浮层共用一份 -->
+                <ResourceDictionary Source="CaptureChrome.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
     <Grid>
         <Rectangle Fill="#4D000000" IsHitTestVisible="False"/>
 
         <Border HorizontalAlignment="Center" VerticalAlignment="Center"
-                Background="#F2141418" BorderBrush="#38FFFFFF" BorderThickness="1"
+                Background="{StaticResource ChromeBg}" BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1"
                 CornerRadius="10" Padding="34,22">
             <StackPanel HorizontalAlignment="Center">
-                <TextBlock x:Name="CountLabel" Text="3" Foreground="#F4F4F5"
+                <TextBlock x:Name="CountLabel" Text="3" Foreground="{StaticResource ChromeInk}"
                            FontFamily="Consolas" FontSize="56" FontWeight="SemiBold"
                            HorizontalAlignment="Center"/>
                 <TextBlock x:Name="HintText" Text="3 秒后开始录屏 · 右键取消"
-                           Foreground="#A1A1AA" FontSize="12" Margin="0,6,0,0"
+                           Foreground="{StaticResource ChromeInkDim}" FontSize="12" Margin="0,6,0,0"
                            HorizontalAlignment="Center"/>
                 <Button x:Name="CancelBtn" Content="取消" Margin="0,14,0,0" MinWidth="72"
                         HorizontalAlignment="Center" Click="Cancel_Click" Cursor="Hand"
-                        Foreground="#F4F4F5" FontSize="12" Padding="12,5">
+                        Foreground="{StaticResource ChromeInk}" FontSize="12" Padding="12,5">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
-                            <Border x:Name="Bd" Background="#33FFFFFF" CornerRadius="4"
+                            <Border x:Name="Bd" Background="{StaticResource ChromeWell}" CornerRadius="4"
                                     Padding="{TemplateBinding Padding}">
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Bd" Property="Background" Value="#4DFFFFFF"/>
+                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChromeHover}"/>
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="Bd" Property="Background" Value="#66FFFFFF"/>
+                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChromePressed}"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>

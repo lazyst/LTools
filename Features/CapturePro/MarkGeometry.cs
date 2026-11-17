@@ -135,6 +135,55 @@ internal static class MarkGeometry
         return frame.Contains(point) ? FrameHandle.Move : FrameHandle.None;
     }
 
+    /// <summary>选区边框的命中带宽度（DIP）：照 Snow Shot 的 <c>kSelectionEdgeTolerance</c>。</summary>
+    public const double EdgeTolerance = 8;
+
+    /// <summary>
+    /// 选区边框命中（照 Snow Shot 的 <c>screenshotSelectionDragModeForPoint</c>）：
+    /// 离任意一条边不超过容差就算**缩放**（角优先），再往里是 <see cref="FrameHandle.Move"/>，
+    /// 框外超过容差 = 不命中。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 八个「把手」只是画出来给人看的提示；真正能抓的是**整条边**——以前只判八个点周围
+    /// ±8 的方块，边中间那一段按下去会被当成「拖选区」，用户以为边缘拖不动。
+    /// </para>
+    /// <para>
+    /// 判定顺序照上游：先看外扩容差框（远在框外的点不能被算成「抓上边」），再拼四个方向位，
+    /// 角（两位都命中）优先于边。**比容差还窄的小框**按宽 / 高的 1/3 收窄容差，
+    /// 否则四条边的判定带互相重叠、整块都落进「移动」，小选区反而永远改不了大小。
+    /// </para>
+    /// </remarks>
+    public static FrameHandle HitFrameEdge(Rect frame, Point point, double edgeTolerance)
+    {
+        if (frame.Width <= 0 || frame.Height <= 0) return FrameHandle.None;
+
+        // 远在框外的点：位判定只看「离某条边多近」，不加这道闸的话屏幕另一头点一下也算抓上边
+        if (!Inflate(frame, edgeTolerance).Contains(point)) return FrameHandle.None;
+
+        double tx = Math.Min(edgeTolerance, frame.Width / 3);
+        double ty = Math.Min(edgeTolerance, frame.Height / 3);
+
+        int position = 0;
+        if (point.Y <= frame.Top + ty) position |= 0b1000;
+        if (point.X >= frame.Right - tx) position |= 0b0100;
+        if (point.Y >= frame.Bottom - ty) position |= 0b0010;
+        if (point.X <= frame.Left + tx) position |= 0b0001;
+
+        return position switch
+        {
+            0b1001 => FrameHandle.TopLeft,
+            0b1100 => FrameHandle.TopRight,
+            0b0110 => FrameHandle.BottomRight,
+            0b0011 => FrameHandle.BottomLeft,
+            0b1000 => FrameHandle.Top,
+            0b0100 => FrameHandle.Right,
+            0b0010 => FrameHandle.Bottom,
+            0b0001 => FrameHandle.Left,
+            _ => FrameHandle.Move,
+        };
+    }
+
     /// <summary>
     /// 拖把手之后的新框：只动被拖的那条边 / 角，夹在 <paramref name="limit"/> 里，
     /// 小于 <paramref name="min"/> 时原样退回（既不把框拖成 0，也不让它翻过来）。

@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.CapturePro;
 using LTools.Features.Floating;
 using LTools.Native;
 
@@ -48,6 +49,12 @@ internal static class MouseHook
     // 面板的上下文场景必须按这个句柄解析（照 Quicker）
     private static IntPtr _superPanelContextHwnd;
 
+    // 「关窗时还按着的鼠标键」：抬起时吞掉（见 SwallowPendingReleases）。
+    // 只吞 up、绝不配对任何 down——按键是在覆盖层里按下的，下面那个窗口从没见过它。
+    private static bool _swallowLUp;
+    private static bool _swallowRUp;
+    private static bool _swallowMUp;
+
     /// <summary>「点击窗口选取」遮罩显示期间：裸右键长按手势让路，鼠标事件原样交给遮罩。</summary>
     private static bool _windowPickerActive;
 
@@ -94,6 +101,26 @@ internal static class MouseHook
             // 量化诊断必须排在注入过滤之前：探针就是注入事件，靠它量「消息到回调」的排队延迟。
             // 关闭时只有一次 volatile 读；归因按 ms.Time 落在哪个相位窗口（见 PerfProbe）。
             PerfProbe.OnHook(ms.Time);
+
+            // 「关窗那一下的抬起」：覆盖层 / 遮罩在右键 down 里就关了，配对 up 若放行会落到
+            // 下面的程序上（资源管理器直接弹出右键菜单）。只吞 up，且只吞关窗那一刻还按着的键。
+            // 必须排在注入过滤之前：测试注入的 up 与物理 up 走同一条路，否则这条改不了肉眼可见的问题。
+            if (TakePendingRelease((int)wParam))
+                return (IntPtr)1;
+
+            // 长截图期间：全部让路（页面自己收滚轮才滚得动），只把落**在目标窗口里**的滚轮
+            // 「观察」一份交给拼接流程触发抓帧——不吞、不改，页面收到的仍是真正的滚轮。
+            // 必须排在「点击窗口选取」之前：截图会话全程开着那条让路，排在它后面就永远到不了。
+            // 也必须排在注入过滤**之前**：只按 dwExtraInfo 挡自己（自动滚动投出去的真滚轮带
+            // MouseOps.Tag），否则触控板驱动 / 远程桌面 / 脚本发的滚轮（LLMHF_INJECTED 但没标记）
+            // 全部观察不到 → 页面滚了、长图却不长，而且没有任何报错。分支里只「观察 + 放行」，
+            // 不注入、不吞，所以提前于注入过滤不会带回自注入递归。
+            if (ScrollCaptureHookState.Active)
+            {
+                if ((int)wParam == Win32.WmMousewheel && ms.ExtraInfo != InjectedTag)
+                    ScrollCaptureHookState.ObserveWheel(ms.Pt.X, ms.Pt.Y);
+                return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
+            }
 
             // 忽略注入事件（防递归：本类注入的左/右键点击不重新触发逻辑）。
             // 除 LLMHF_INJECTED 外，再用 dwExtraInfo 魔法标记兜底——双保险杜绝注入回流本钩子。
@@ -257,6 +284,63 @@ internal static class MouseHook
         _gesturePending = false;
         _superPanelTimer?.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
         _superPanelContextHwnd = IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// 窗口 / 遮罩关掉时调用：**此刻物理上还按着**的鼠标键，抬起时吞掉。
+    /// </summary>
+    /// <remarks>
+    /// 覆盖层、点选遮罩、屏幕选字的退出都是「右键按下就走」，窗口一关，配对的那一下抬起就落到
+    /// 光标下面的程序上——资源管理器会直接弹右键菜单，编辑器会把光标挪过去。这里只吞 up，
+    /// 不配对任何 down：按键是在遮罩里按下的，下面那个窗口从没见过它，不会因此卡住鼠标。
+    /// 状态在**当前线程**立刻采样（<see cref="Win32.GetAsyncKeyState"/>，窗口刚关、键还按着），
+    /// 再把结果排到钩子线程；反过来让钩子线程稍后再采样，用户手快就会读成「已经松开」而漏吞。
+    /// </remarks>
+    public static void SwallowPendingReleases()
+    {
+        bool left = IsDown(Win32.VkLbutton);
+        bool right = IsDown(Win32.VkRbutton);
+        bool middle = IsDown(Win32.VkMbutton);
+        if (!left && !right && !middle) return;
+
+        HookDispatcher.Post(() =>
+        {
+            _swallowLUp |= left;
+            _swallowRUp |= right;
+            _swallowMUp |= middle;
+        });
+    }
+
+    private static bool IsDown(int vk) => (Win32.GetAsyncKeyState(vk) & 0x8000) != 0;
+
+    /// <summary>这次事件是不是「关窗那一下的抬起」；是就吞掉（只生效一次）。</summary>
+    private static bool TakePendingRelease(int message)
+    {
+        switch (message)
+        {
+            // 先看到 down = 上一次的 up 丢了（窗口被别的路径关掉等），清残留，别误吞下一次抬起
+            case Win32.WmLbuttondown: _swallowLUp = false; return false;
+            case Win32.WmRbuttondown: _swallowRUp = false; return false;
+            case Win32.WmMbuttondown: _swallowMUp = false; return false;
+
+            case Win32.WmLbuttonup:
+                if (!_swallowLUp) return false;
+                _swallowLUp = false;
+                return true;
+
+            case Win32.WmRbuttonup:
+                if (!_swallowRUp) return false;
+                _swallowRUp = false;
+                return true;
+
+            case Win32.WmMbuttonup:
+                if (!_swallowMUp) return false;
+                _swallowMUp = false;
+                return true;
+
+            default:
+                return false;
+        }
     }
 
     /// <summary>清除右键长按手势的待处理状态（进入宏录制透明模式前调用，避免残留标志误吞后续 up）。</summary>

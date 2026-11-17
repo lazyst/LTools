@@ -1,6 +1,5 @@
 using System;
 using System.Windows;
-using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
@@ -192,19 +191,6 @@ public partial class CaptureRecordWindow : Window
     {
         base.OnSourceInitialized(e);
 
-        _hwnd = new WindowInteropHelper(this).Handle;
-        if (_hwnd == IntPtr.Zero) return;
-
-        long ex = Win32.GetWindowLongPtr(_hwnd, Win32.GwlExstyle).ToInt64();
-        Win32.SetWindowLongPtr(_hwnd, Win32.GwlExstyle, (IntPtr)(ex | Win32.WsExNoactivate | Win32.WsExToolwindow));
-
-        // 自己不出现在录制里（老系统失败就算了，不影响录制本身）
-        Win32.SetWindowDisplayAffinity(_hwnd, Win32.WdaExcludeFromCapture);
-
-        Win32.SetWindowPos(_hwnd, Win32.HwndTopmost, 0, 0, 0, 0,
-            Win32.SwpNomove | Win32.SwpNosize | Win32.SwpNoactivate);
+        _hwnd = OverlayShell.MakeNonActivating(this, excludeFromCapture: true);
     }
-
-    /// <summary>冒烟用：不显示窗口，只把计时 / 状态刷一遍。</summary>
-    internal void SyncForTest() => Sync();
 }

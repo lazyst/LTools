@@ -15,20 +15,20 @@
             <Style x:Key="SeparatorBar" TargetType="Border" BasedOn="{StaticResource BarSeparator}"/>
 
             <Style x:Key="StepBtn" TargetType="Button">
-                <Setter Property="Width" Value="20"/>
-                <Setter Property="Height" Value="20"/>
-                <Setter Property="Foreground" Value="#E4E4E7"/>
-                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="Width" Value="18"/>
+                <Setter Property="Height" Value="18"/>
+                <Setter Property="Foreground" Value="{StaticResource ChromeInk}"/>
+                <Setter Property="FontSize" Value="12"/>
                 <Setter Property="Cursor" Value="Hand"/>
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <Border x:Name="Bd" Background="#1FFFFFFF" CornerRadius="4">
+                            <Border x:Name="Bd" Background="{StaticResource ChromeWell}" CornerRadius="4">
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Bd" Property="Background" Value="#33FFFFFF"/>
+                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChromeHover}"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -36,37 +36,22 @@
                 </Setter>
             </Style>
 
-            <Style x:Key="ValueText" TargetType="TextBlock">
-                <Setter Property="Foreground" Value="#E4E4E7"/>
-                <Setter Property="FontSize" Value="12"/>
-                <Setter Property="MinWidth" Value="42"/>
-                <Setter Property="TextAlignment" Value="Center"/>
-                <Setter Property="VerticalAlignment" Value="Center"/>
-            </Style>
-
-            <Style x:Key="ParamLabel" TargetType="TextBlock">
-                <Setter Property="Foreground" Value="#A1A1AA"/>
-                <Setter Property="FontSize" Value="12"/>
-                <Setter Property="Margin" Value="10,0,6,0"/>
-                <Setter Property="VerticalAlignment" Value="Center"/>
-            </Style>
-
             <Style x:Key="ColorChip" TargetType="RadioButton">
-                <Setter Property="Width" Value="16"/>
-                <Setter Property="Height" Value="16"/>
+                <Setter Property="Width" Value="14"/>
+                <Setter Property="Height" Value="14"/>
                 <Setter Property="Margin" Value="2,0"/>
                 <Setter Property="Cursor" Value="Hand"/>
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="RadioButton">
                             <Ellipse x:Name="Chip" Fill="{TemplateBinding Background}"
-                                     Stroke="#55FFFFFF" StrokeThickness="1"/>
+                                     Stroke="{StaticResource ChromeStroke}" StrokeThickness="1"/>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Chip" Property="Stroke" Value="#AAFFFFFF"/>
+                                    <Setter TargetName="Chip" Property="Stroke" Value="#80000000"/>
                                 </Trigger>
                                 <Trigger Property="IsChecked" Value="True">
-                                    <Setter TargetName="Chip" Property="Stroke" Value="#FFFFFF"/>
+                                    <Setter TargetName="Chip" Property="Stroke" Value="{StaticResource ChromeInk}"/>
                                     <Setter TargetName="Chip" Property="StrokeThickness" Value="2"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
@@ -77,11 +62,11 @@
 
             <!-- 枚举型参数（序号形状 / 数字写法 / 滤镜类型）的小胶囊：文字比图形省地方 -->
             <Style x:Key="ChoiceChip" TargetType="RadioButton">
-                <Setter Property="Height" Value="18"/>
+                <Setter Property="Height" Value="16"/>
                 <Setter Property="Margin" Value="1,0"/>
-                <Setter Property="Padding" Value="7,0"/>
+                <Setter Property="Padding" Value="6,0"/>
                 <Setter Property="FontSize" Value="11"/>
-                <Setter Property="Foreground" Value="#C7C7CE"/>
+                <Setter Property="Foreground" Value="{StaticResource ChromeInkDim}"/>
                 <Setter Property="Cursor" Value="Hand"/>
                 <Setter Property="VerticalContentAlignment" Value="Center"/>
                 <Setter Property="Template">
@@ -92,7 +77,7 @@
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Chip" Property="Background" Value="#22FFFFFF"/>
+                                    <Setter TargetName="Chip" Property="Background" Value="{StaticResource ChromeHover}"/>
                                 </Trigger>
                                 <Trigger Property="IsChecked" Value="True">
                                     <Setter TargetName="Chip" Property="Background" Value="#3B82F6"/>
@@ -107,8 +92,9 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <Border x:Name="Chrome" Background="#E6101014" CornerRadius="8" BorderBrush="#26FFFFFF"
-            BorderThickness="1" Padding="11,3" Cursor="SizeAll"
+    <Border x:Name="Chrome" Background="{StaticResource ChromeBg}" CornerRadius="8"
+            BorderBrush="{StaticResource ChromeBorder}"
+            BorderThickness="1" Padding="9,3" Cursor="SizeAll"
             Effect="{StaticResource BarShadow}"
             MouseLeftButtonDown="Chrome_MouseDown"
             MouseMove="Chrome_MouseMove"
@@ -116,7 +102,7 @@
             PreviewMouseRightButtonDown="Chrome_RightDown">
         <StackPanel>
             <WrapPanel x:Name="ToolRow" Orientation="Horizontal"/>
-            <Border x:Name="ParamBar" Background="#0FFFFFFF" CornerRadius="6" Padding="6,3"
+            <Border x:Name="ParamBar" Background="{StaticResource ChromeWell}" CornerRadius="6" Padding="6,2"
                     Margin="0,3,0,0" HorizontalAlignment="Left" Cursor="Arrow">
                 <StackPanel x:Name="ParamRow" Orientation="Horizontal"/>
             </Border>

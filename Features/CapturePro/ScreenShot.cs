@@ -136,7 +136,7 @@ internal static class ScreenShot
     /// </summary>
     /// <remarks>
     /// 画布尺寸永远是选区那块矩形，所以贴图窗口的尺寸 / 位置一拍都不变；
-    /// 裁剪与偏移由 <see cref="PinLive.Crop"/> 算（纯函数，<c>--selftest</c> 直接断言）。
+    /// 裁剪与偏移由 <see cref="PinLive.Intersect"/> 算（纯函数，<c>--selftest</c> 直接断言）。
     /// </remarks>
     public static BitmapSource? CaptureWindow(IntPtr hwnd, Int32Rect area)
     {
@@ -162,7 +162,7 @@ internal static class ScreenShot
         int stride = area.Width * 4;
         var canvas = new byte[stride * area.Height];          // 默认全透明（Bgra32）
 
-        if (PinLive.Crop(windowRect, area) is LiveCrop crop)
+        if (PinLive.Intersect(windowRect, area) is LiveCrop crop)
         {
             BitmapSource source = window.Format == PixelFormats.Bgra32
                 ? window
@@ -189,7 +189,7 @@ internal static class ScreenShot
     /// </summary>
     /// <remarks>
     /// <para>
-    /// 选区必须**整块落在窗口里**（<see cref="PinLive.Crop"/> 的 source 与 area 等宽等高），
+    /// 选区必须**整块落在窗口里**（<see cref="PinLive.Intersect"/> 的 source 与 area 等宽等高），
     /// 否则说明框跨到了别的窗口 / 桌面上，这一帧不可信：返回 <c>null</c>，调用方不接。
     /// </para>
     /// <para>
@@ -206,7 +206,7 @@ internal static class ScreenShot
             Math.Max(0, rect.Right - rect.Left), Math.Max(0, rect.Bottom - rect.Top));
         if (windowRect.Width <= 0 || windowRect.Height <= 0) return null;
 
-        if (PinLive.Crop(windowRect, area) is not LiveCrop crop) return null;
+        if (PinLive.Intersect(windowRect, area) is not LiveCrop crop) return null;
         if (crop.Source.Width != area.Width || crop.Source.Height != area.Height) return null;
 
         try

@@ -1,10 +1,8 @@
 using System;
 using System.Windows;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Threading;
 using LTools.Core;
-using LTools.Native;
 
 namespace LTools.Views.CapturePro;
 
@@ -46,6 +44,9 @@ public partial class RecordCountdownWindow : Window
 
         _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += (_, _) => Tick();
+
+        // 右键取消 = 按下就走：抬起别漏给下面的程序（见 ExitInput）
+        Closed += (_, _) => Features.CapturePro.ExitInput.Swallow();
     }
 
     /// <summary>倒计时走完（或被取消）之后不再变。</summary>
@@ -106,15 +107,6 @@ public partial class RecordCountdownWindow : Window
     {
         base.OnSourceInitialized(e);
 
-        _hwnd = new WindowInteropHelper(this).Handle;
-        if (_hwnd == IntPtr.Zero) return;
-
-        long ex = Win32.GetWindowLongPtr(_hwnd, Win32.GwlExstyle).ToInt64();
-        Win32.SetWindowLongPtr(_hwnd, Win32.GwlExstyle, (IntPtr)(ex | Win32.WsExNoactivate | Win32.WsExToolwindow));
-
-        Win32.SetWindowDisplayAffinity(_hwnd, Win32.WdaExcludeFromCapture);
-
-        Win32.SetWindowPos(_hwnd, Win32.HwndTopmost, 0, 0, 0, 0,
-            Win32.SwpNomove | Win32.SwpNosize | Win32.SwpNoactivate);
+        _hwnd = OverlayShell.MakeNonActivating(this, excludeFromCapture: true);
     }
 }

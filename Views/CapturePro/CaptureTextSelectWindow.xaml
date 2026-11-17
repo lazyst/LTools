@@ -18,65 +18,72 @@
          压暗由四块矩形拼出来（选区那块保持原亮度）；候选条也画在这个窗口里，
          所以不用第二个窗口、Esc 始终有效。 -->
     <Window.Resources>
-        <Style x:Key="TextBarPrimaryBtn" TargetType="Button">
-            <Setter Property="Foreground" Value="#18181B"/>
-            <Setter Property="Background" Value="#FFFFFF"/>
-            <Setter Property="Padding" Value="12,5"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#E4E4E7"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#D4D4D8"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Background" Value="#3F3F46"/>
-                                <Setter Property="Foreground" Value="#71717A"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 浮层配色（浅色）与截图覆盖层同一份 -->
+                <ResourceDictionary Source="CaptureChrome.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
 
-        <Style x:Key="TextBarGhostBtn" TargetType="Button" BasedOn="{StaticResource TextBarPrimaryBtn}">
-            <Setter Property="Background" Value="#33FFFFFF"/>
-            <Setter Property="Foreground" Value="#F4F4F5"/>
-        </Style>
+            <Style x:Key="TextBarPrimaryBtn" TargetType="Button">
+                <Setter Property="Foreground" Value="#FFFFFF"/>
+                <Setter Property="Background" Value="#3B82F6"/>
+                <Setter Property="Padding" Value="12,5"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#2F6FE0"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#2560C8"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Bd" Property="Background" Value="#E4E4E7"/>
+                                    <Setter Property="Foreground" Value="{StaticResource ChromeInkOff}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
 
-        <!-- 一条候选：整行可点，长文本省略 + ToolTip -->
-        <Style x:Key="CandidateBtn" TargetType="Button">
-            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="Transparent" CornerRadius="4" Padding="7,5">
-                            <TextBlock Text="{TemplateBinding Content}" Foreground="#E4E4E7"
-                                       FontSize="12" TextWrapping="NoWrap"
-                                       TextTrimming="CharacterEllipsis"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#22FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#33FFFFFF"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+            <Style x:Key="TextBarGhostBtn" TargetType="Button" BasedOn="{StaticResource TextBarPrimaryBtn}">
+                <Setter Property="Background" Value="{StaticResource ChromeWell}"/>
+                <Setter Property="Foreground" Value="{StaticResource ChromeInk}"/>
+            </Style>
+
+            <!-- 一条候选：整行可点，长文本省略 + ToolTip -->
+            <Style x:Key="CandidateBtn" TargetType="Button">
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" Background="Transparent" CornerRadius="4" Padding="7,5">
+                                <TextBlock Text="{TemplateBinding Content}" Foreground="{StaticResource ChromeInk}"
+                                           FontSize="12" TextWrapping="NoWrap"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChromeHover}"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChromePressed}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
     </Window.Resources>
 
     <Grid x:Name="Root" Background="#0B0B0E" ClipToBounds="True">
@@ -93,26 +100,27 @@
             <Rectangle x:Name="SelRect" Stroke="#3B82F6" StrokeThickness="2"
                        Visibility="Collapsed" IsHitTestVisible="False"/>
 
-            <Border x:Name="HintBox" Background="#D9101014" CornerRadius="4" Padding="14,7"
+            <Border x:Name="HintBox" Background="{StaticResource ChromeBg}" CornerRadius="4" Padding="14,7"
+                    BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1"
                     IsHitTestVisible="False">
-                <TextBlock x:Name="HintText" Foreground="#E4E4E7" FontSize="13"/>
+                <TextBlock x:Name="HintText" Foreground="{StaticResource ChromeInk}" FontSize="13"/>
             </Border>
 
             <!-- 候选条：贴在选区外面（右侧 → 下方 → 上方 → 左侧） -->
             <Border x:Name="ResultBar" Panel.ZIndex="20" Width="400"
-                    Background="#F2141418" BorderBrush="#38FFFFFF" BorderThickness="1"
+                    Background="{StaticResource ChromeBg}" BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1"
                     CornerRadius="8" Padding="12" Visibility="Collapsed">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                         <Ellipse Width="8" Height="8" Fill="#3B82F6" VerticalAlignment="Center"/>
-                        <TextBlock Text="屏幕选字" Foreground="#F4F4F5" FontSize="13" FontWeight="SemiBold"
+                        <TextBlock Text="屏幕选字" Foreground="{StaticResource ChromeInk}" FontSize="13" FontWeight="SemiBold"
                                    Margin="8,0,0,0" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="EngineText" Foreground="#71717A" FontSize="11"
+                        <TextBlock x:Name="EngineText" Foreground="{StaticResource ChromeInkDim}" FontSize="11"
                                    Margin="10,0,0,0" VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
 
-                    <TextBlock x:Name="StatusText" Text="正在识别…" Foreground="#A1A1AA" FontSize="12"
+                    <TextBlock x:Name="StatusText" Text="正在识别…" Foreground="{StaticResource ChromeInkDim}" FontSize="12"
                                TextWrapping="Wrap" Margin="0,0,0,6"/>
 
                     <ScrollViewer x:Name="CandidateScroll" MaxHeight="210" Visibility="Collapsed"
@@ -131,7 +139,8 @@
                     <!-- 整段文字：可在这里拖选一部分再 Ctrl+C（候选条负责「一句话」的快捷复制） -->
                     <TextBox x:Name="FullTextBox" Visibility="Collapsed" IsReadOnly="True"
                              Height="86" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                             Background="#0B0B0E" Foreground="#D4D4D8" BorderBrush="#26FFFFFF"
+                             Background="{StaticResource ChromeFill}" Foreground="{StaticResource ChromeInk}"
+                             BorderBrush="{StaticResource ChromeBorder}"
                              BorderThickness="1" Padding="6" FontSize="12" Margin="0,6,0,0"/>
 
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">

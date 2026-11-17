@@ -1,5 +1,10 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.MergedDictionaries>
+        <!-- 浮层配色（浅色）只在这里定义，工具按钮与各个浮层共用 -->
+        <ResourceDictionary Source="CaptureChrome.xaml"/>
+    </ResourceDictionary.MergedDictionaries>
+
     <!-- 工具栏图标：全部是 20×20 画布里的自绘几何（**别换成 Segoe 码点**：
          没验证过的码点在不同系统上会渲染成空框）。描边在按钮样式里给，这里只给形状。 -->
     <PathGeometry x:Key="IconSelect" Figures="M 4,3 L 4,16 L 8,12 L 11,18 L 13,17 L 10,11 L 15,11 Z"/>
@@ -32,19 +37,35 @@
     <PathGeometry x:Key="IconClose" Figures="M 5,5 L 15,15 M 15,5 L 5,15"/>
     <!-- 实时贴图：一块屏幕 + 右侧信号弧（「跟住这个窗口」，别与「贴图」的图钉混） -->
     <PathGeometry x:Key="IconLive" Figures="M 3,5 H 13 V 15 H 3 Z M 6,18 H 12 M 16,7.4 A 4.4,4.4 0 0 1 16,12.6 M 19,5 A 8.6,8.6 0 0 1 19,15"/>
+    <!-- 源窗口最小化：一个窗口框 + 里面一道短横（最小化占位提示用，别与「关闭」的叉混） -->
+    <PathGeometry x:Key="IconMinimize" Figures="M 3,4.6 H 17 V 15.4 H 3 Z M 7,12 H 13"/>
     <!-- 长截图：一页纸 + 向下的箭头（滚下去接着拼） -->
     <PathGeometry x:Key="IconScroll" Figures="M 6,2.6 H 16 V 17.4 H 6 Z M 11,6 V 12.4 M 8.6,10.4 L 11,12.8 L 13.4,10.4"/>
+    <!-- 自动滚动：一页纸 + 向下箭头 + 右下角「循环」（自己滚下去接着拼，与手滚的长截图区分开） -->
+    <PathGeometry x:Key="IconAutoScroll"
+                  Figures="M 5,2.6 H 13 V 15 H 5 Z M 9,5.6 V 11 M 6.8,9 L 9,11.2 L 11.2,9 M 13.6,14.6 A 3.2,3.2 0 1 0 16.4,10.4 M 16.4,10.4 V 13 M 16.4,10.4 H 13.8"/>
+    <!-- 拼接方向：左右双箭头（纵向 / 横向两种拼接方向共用，亮起来 = 横向） -->
+    <PathGeometry x:Key="IconScrollAxis" Figures="M 3,10 H 17 M 5.6,7.4 L 3,10 L 5.6,12.6 M 14.4,7.4 L 17,10 L 14.4,12.6"/>
+    <!-- 录屏：同心圆（「录」的点 + 外圈），与截图那条里的贴图 / 长截图分开认 -->
+    <PathGeometry x:Key="IconRecord" Figures="M 4,10 A 6,6 0 1 0 16,10 A 6,6 0 1 0 4,10 M 8,10 A 2,2 0 1 0 12,10 A 2,2 0 1 0 8,10"/>
+    <!-- 更多：三个点（低频入口收进菜单：全屏 / 采集历史翻页 / 采集历史窗口） -->
+    <PathGeometry x:Key="IconMore"
+                  Figures="M 4,10 A 1,1 0 1 0 6,10 A 1,1 0 1 0 4,10 M 9,10 A 1,1 0 1 0 11,10 A 1,1 0 1 0 9,10 M 14,10 A 1,1 0 1 0 16,10 A 1,1 0 1 0 14,10"/>
 
     <!-- ============ 图标按钮（工具格与工具条右半截的完成动作共用一套尺寸 / 外观） ============
-         尺寸照 Snow Shot 的工具条：按钮 32×32、图标 24、面板内边距 12（横）/ 4（纵）、
-         分隔线 1×16 两侧各留 12、阴影 blur 18 / offsetY 3 / rgba(0,0,0,90)。
-         全部从这一份取（CaptureToolbar 是唯一使用方），别各写一份。 -->
+         尺寸照 Snow Shot 的工具条，但按浅色底收过一档（2026-11-18 用户嫌「看着不协调」）：
+         按钮 28×28、图标盒 20（**几何 1:1，不再被盒放大**）、面板内边距 9（横）/ 3（纵）、
+         分隔线 1×12 两侧各留 6、阴影 blur 12 / offsetY 2 / 0.16。
+         ⚠ 图标盒是从 24 收到 **20** 的：按钮缩到 28 时如果盒子还留 22，图形只小 1.4、间距却少 4，
+         相邻图标会比原来更挤（实测过）。20 盒 + 1.35 线让「图形宽 / 按钮宽」还是 55%，
+         而且 `Stretch=Uniform` 在 1:1 下不再缩放描边，粗细小数是可控的。
+         全部从这一份取（CaptureToolbar 与长截图面板是使用方），别各写一份。 -->
     <Style x:Key="IconPath" TargetType="Path">
-        <Setter Property="Width" Value="24"/>
-        <Setter Property="Height" Value="24"/>
+        <Setter Property="Width" Value="20"/>
+        <Setter Property="Height" Value="20"/>
         <Setter Property="Stretch" Value="Uniform"/>
         <Setter Property="Fill" Value="Transparent"/>
-        <Setter Property="StrokeThickness" Value="1.5"/>
+        <Setter Property="StrokeThickness" Value="1.35"/>
         <Setter Property="StrokeLineJoin" Value="Round"/>
         <Setter Property="StrokeStartLineCap" Value="Round"/>
         <Setter Property="StrokeEndLineCap" Value="Round"/>
@@ -53,27 +74,27 @@
     </Style>
 
     <Style x:Key="BarBtn" TargetType="Button">
-        <Setter Property="Width" Value="32"/>
-        <Setter Property="Height" Value="32"/>
+        <Setter Property="Width" Value="28"/>
+        <Setter Property="Height" Value="28"/>
         <Setter Property="Margin" Value="0"/>
-        <Setter Property="Foreground" Value="#E4E4E7"/>
+        <Setter Property="Foreground" Value="{StaticResource ChromeInk}"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Focusable" Value="False"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" Background="Transparent" CornerRadius="6">
+                    <Border x:Name="Bd" Background="Transparent" CornerRadius="7">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="#26FFFFFF"/>
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChromeHover}"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="#40FFFFFF"/>
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChromePressed}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Foreground" Value="#71717A"/>
+                            <Setter Property="Foreground" Value="{StaticResource ChromeInkOff}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -87,7 +108,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" Background="#3B82F6" CornerRadius="6">
+                    <Border x:Name="Bd" Background="#3B82F6" CornerRadius="7">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
@@ -98,8 +119,8 @@
                             <Setter TargetName="Bd" Property="Background" Value="#2560C8"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bd" Property="Background" Value="#2A3040"/>
-                            <Setter Property="Foreground" Value="#7C8598"/>
+                            <Setter TargetName="Bd" Property="Background" Value="#E4E4E7"/>
+                            <Setter Property="Foreground" Value="{StaticResource ChromeInkOff}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -109,21 +130,21 @@
 
     <!-- 工具格（单选）：选中 = 主色底 -->
     <Style x:Key="BarToolBtn" TargetType="RadioButton">
-        <Setter Property="Width" Value="32"/>
-        <Setter Property="Height" Value="32"/>
+        <Setter Property="Width" Value="28"/>
+        <Setter Property="Height" Value="28"/>
         <Setter Property="Margin" Value="0"/>
-        <Setter Property="Foreground" Value="#E4E4E7"/>
+        <Setter Property="Foreground" Value="{StaticResource ChromeInk}"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Focusable" Value="False"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
-                    <Border x:Name="Bd" Background="Transparent" CornerRadius="6">
+                    <Border x:Name="Bd" Background="Transparent" CornerRadius="7">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="#26FFFFFF"/>
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChromeHover}"/>
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="#3B82F6"/>
@@ -135,16 +156,17 @@
         </Setter>
     </Style>
 
-    <!-- 分组竖线：1×16，两侧各 12（Snow Shot 的 kSeparator*） -->
+    <!-- 分组竖线：1×12，两侧各 6（原来 1×16 / 12：组内贴住、组间却空出 25，节奏一头挤一头松） -->
     <Style x:Key="BarSeparator" TargetType="Border">
         <Setter Property="Width" Value="1"/>
-        <Setter Property="Height" Value="16"/>
-        <Setter Property="Background" Value="#33FFFFFF"/>
-        <Setter Property="Margin" Value="12,0"/>
+        <Setter Property="Height" Value="12"/>
+        <Setter Property="Background" Value="{StaticResource ChromeBorder}"/>
+        <Setter Property="Margin" Value="6,0"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
-    <!-- 工具条的浮层阴影（Snow Shot：blur 18、offsetY 3、rgba(0,0,0,90)） -->
-    <DropShadowEffect x:Key="BarShadow" BlurRadius="18" ShadowDepth="3" Direction="270"
-                      Color="#000000" Opacity="0.35"/>
+    <!-- 工具条的浮层阴影（Snow Shot：blur 18、offsetY 3；浅底上要比深底更轻，否则看着像一圈灰边。
+         条子矮了一档，阴影也跟着收到 12 / 2） -->
+    <DropShadowEffect x:Key="BarShadow" BlurRadius="12" ShadowDepth="2" Direction="270"
+                      Color="#000000" Opacity="0.16"/>
 </ResourceDictionary>

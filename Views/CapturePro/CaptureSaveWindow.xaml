@@ -10,89 +10,97 @@
         Loaded="Window_Loaded"
         views:WindowSizing.Mode="Dialog">
     <!-- 保存对话框：左边预览、右边路径 / 文件名 / 格式 / 尺寸 / 质量。
-         与覆盖层同一套深色外观（不套 Modern.xaml 的浅色控件），格式与尺寸用文字胶囊省一次下拉。
+         外观跟覆盖层上的浮层同一套浅色（见 CaptureChrome.xaml），格式与尺寸用文字胶囊省一次下拉。
          只在覆盖层里用（Owner = 覆盖层），所以 Topmost 跟着宿主。 -->
     <Window.Resources>
-        <Style x:Key="FieldLabel" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#A1A1AA"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="Margin" Value="0,10,0,4"/>
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="CaptureChrome.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
 
-        <Style x:Key="FieldBox" TargetType="TextBox">
-            <Setter Property="Background" Value="#1F1F26"/>
-            <Setter Property="Foreground" Value="#F4F4F5"/>
-            <Setter Property="BorderBrush" Value="#33FFFFFF"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="7,5"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="CaretBrush" Value="#F4F4F5"/>
-            <Setter Property="SelectionBrush" Value="#3B82F6"/>
-        </Style>
+            <Style x:Key="FieldLabel" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{StaticResource ChromeInkDim}"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="Margin" Value="0,10,0,4"/>
+            </Style>
 
-        <Style x:Key="Chip" TargetType="RadioButton">
-            <Setter Property="Height" Value="22"/>
-            <Setter Property="Margin" Value="0,0,4,0"/>
-            <Setter Property="Padding" Value="9,0"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="Foreground" Value="#C7C7CE"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Bd" Background="#1F1F26" BorderBrush="#33FFFFFF"
-                                BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#2A2A33"/>
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#3B82F6"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#3B82F6"/>
-                                <Setter Property="Foreground" Value="#FFFFFF"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+            <Style x:Key="FieldBox" TargetType="TextBox">
+                <Setter Property="Background" Value="{StaticResource ChromeFill}"/>
+                <Setter Property="Foreground" Value="{StaticResource ChromeInk}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource ChromeBorder}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="7,5"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="CaretBrush" Value="{StaticResource ChromeInk}"/>
+                <Setter Property="SelectionBrush" Value="#3B82F6"/>
+            </Style>
 
-        <Style x:Key="PrimaryBtn" TargetType="Button">
-            <Setter Property="Foreground" Value="#18181B"/>
-            <Setter Property="Background" Value="#FFFFFF"/>
-            <Setter Property="Padding" Value="14,5"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#E4E4E7"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#D4D4D8"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+            <Style x:Key="Chip" TargetType="RadioButton">
+                <Setter Property="Height" Value="22"/>
+                <Setter Property="Margin" Value="0,0,4,0"/>
+                <Setter Property="Padding" Value="9,0"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="Foreground" Value="{StaticResource ChromeInkDim}"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="RadioButton">
+                            <Border x:Name="Bd" Background="{StaticResource ChromeWell}"
+                                    BorderBrush="{StaticResource ChromeStroke}"
+                                    BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChromeHover}"/>
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#3B82F6"/>
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#3B82F6"/>
+                                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
 
-        <Style x:Key="GhostBtn" TargetType="Button" BasedOn="{StaticResource PrimaryBtn}">
-            <Setter Property="Background" Value="#33FFFFFF"/>
-            <Setter Property="Foreground" Value="#F4F4F5"/>
-        </Style>
+            <Style x:Key="PrimaryBtn" TargetType="Button">
+                <Setter Property="Foreground" Value="#FFFFFF"/>
+                <Setter Property="Background" Value="#3B82F6"/>
+                <Setter Property="Padding" Value="14,5"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#2F6FE0"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#2560C8"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="GhostBtn" TargetType="Button" BasedOn="{StaticResource PrimaryBtn}">
+                <Setter Property="Background" Value="{StaticResource ChromeWell}"/>
+                <Setter Property="Foreground" Value="{StaticResource ChromeInk}"/>
+            </Style>
+        </ResourceDictionary>
     </Window.Resources>
 
-    <Border Background="#F2141418" BorderBrush="#38FFFFFF" BorderThickness="1" CornerRadius="8" Padding="14,12">
+    <Border Background="{StaticResource ChromeBg}" BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1"
+            CornerRadius="8" Padding="14,12">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -102,10 +110,10 @@
 
             <!-- 标题 + 输出尺寸（按住标题拖动窗口：自绘卡片没有标题栏） -->
             <Grid Grid.Row="0" Background="Transparent" MouseLeftButtonDown="Header_MouseDown">
-                <TextBlock Text="保存截图" Foreground="#F4F4F5" FontSize="13" FontWeight="SemiBold"
+                <TextBlock Text="保存截图" Foreground="{StaticResource ChromeInk}" FontSize="13" FontWeight="SemiBold"
                            VerticalAlignment="Center"/>
                 <TextBlock x:Name="MetaText" HorizontalAlignment="Right" VerticalAlignment="Center"
-                           Foreground="#71717A" FontSize="11"/>
+                           Foreground="{StaticResource ChromeInkDim}" FontSize="11"/>
             </Grid>
 
             <Grid Grid.Row="1" Margin="0,12,0,0">
@@ -115,8 +123,8 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- 左：预览 -->
-                <Border Background="#0B0B0F" BorderBrush="#26FFFFFF" BorderThickness="1" CornerRadius="6"
-                        Height="248" Padding="6">
+                <Border Background="{StaticResource ChromeWell}" BorderBrush="{StaticResource ChromeBorder}"
+                        BorderThickness="1" CornerRadius="6" Height="248" Padding="6">
                     <Image x:Name="Preview" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
                 </Border>
 
@@ -140,8 +148,8 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBox x:Name="NameBox" Style="{StaticResource FieldBox}"/>
-                        <TextBlock x:Name="ExtensionText" Grid.Column="1" Foreground="#71717A" FontSize="12"
-                                   VerticalAlignment="Center" Margin="6,0,0,0"/>
+                        <TextBlock x:Name="ExtensionText" Grid.Column="1" Foreground="{StaticResource ChromeInkDim}"
+                                   FontSize="12" VerticalAlignment="Center" Margin="6,0,0,0"/>
                     </Grid>
 
                     <TextBlock Text="格式" Style="{StaticResource FieldLabel}"/>
@@ -158,7 +166,7 @@
 
             <!-- 错误 + 按钮 -->
             <Grid Grid.Row="2" Margin="0,12,0,0">
-                <TextBlock x:Name="ErrorText" Foreground="#F87171" FontSize="11" VerticalAlignment="Center"
+                <TextBlock x:Name="ErrorText" Foreground="#DC2626" FontSize="11" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Content="取消" Style="{StaticResource GhostBtn}" MinWidth="66"

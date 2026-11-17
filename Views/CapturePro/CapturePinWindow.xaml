@@ -87,6 +87,25 @@
              那样内容区会小 1px，局部显示里内容比取景框大一点时右下会多露一条空白。 -->
         <Border x:Name="Frame" BorderThickness="1" IsHitTestVisible="False" BorderBrush="#26FFFFFF"/>
 
+        <!-- 源窗口最小化时的占位：实时画面这时没有内容（缩略图整层透明），不铺一块底就会
+             直接透到贴图**后面**的窗口上，看着像贴图坏了。放在 ✕ / 徽标**下面**：
+             最小化期间用户仍要能点右上角关掉它（占位只盖内容，不盖出口）。 -->
+        <Border x:Name="LiveCover" Background="#E8101014" Margin="1" Visibility="Collapsed"
+                IsHitTestVisible="False">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="10">
+                <Path Data="{StaticResource IconMinimize}" Width="22" Height="22"
+                      Stretch="Uniform" Stroke="#A1A1AA" StrokeThickness="1.5"
+                      StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      HorizontalAlignment="Center"/>
+                <TextBlock x:Name="LiveCoverTitle" Text="源窗口已最小化" Margin="0,8,0,2"
+                           FontSize="12" Foreground="#E4E4E7" TextAlignment="Center"
+                           TextWrapping="Wrap"/>
+                <TextBlock x:Name="LiveCoverHint" Text="还原窗口后自动继续实时"
+                           FontSize="11" Foreground="#A1A1AA" TextAlignment="Center"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
         <!-- 左上角两枚小徽标：已选（多选）/ 分组名（不在默认组才显示）。
              缩略图方块太小，两枚一起收起（见 RefreshBadges）。 -->
         <StackPanel x:Name="BadgeRow" Orientation="Horizontal" Margin="5"

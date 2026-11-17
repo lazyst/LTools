@@ -72,6 +72,18 @@ public partial class CaptureOverlayWindow
         return true;
     }
 
+    /// <summary>
+    /// 「更多 → 采集历史窗口…」：先关覆盖层再开窗。覆盖层是 Topmost 全屏遮罩，
+    /// 开着它历史窗会被整块盖住；排在 Background 是等 <see cref="Cancel"/> 的关闭走完。
+    /// 这一次不算截图（不产生成品、也不记采集历史）。
+    /// </summary>
+    private void OpenHistoryWindow()
+    {
+        Cancel();
+        Dispatcher.BeginInvoke(new Action(CaptureHistoryWindow.Toggle),
+            System.Windows.Threading.DispatcherPriority.Background);
+    }
+
     /// <summary>第一次翻页：把实时截图这一份现场存下来（Esc 回来时恢复）。</summary>
     private void EnterHistory()
     {

@@ -51,6 +51,7 @@ public partial class CaptureOverlayWindow : Window
     private Rect? _liveRect;                             // 正在拖的那一块矩形（窗口 DIP）
     private bool _squareDrag;                            // 还没有选区时 Shift 锁正方形
     private bool _replaceOnCommit;                       // 无修饰键拖到选区外 = 松手整块重换
+    private bool _moveFromShadow;                        // 这一下是从压暗的阴影上按下去「挪整块选区」的
     private readonly List<Point> _lasso = new();         // 自由选区的点（按住拖动时）
     private readonly List<Point> _selPoly = new();       // 折线选区的点（逐点单击）
     private Point? _selPolyCursor;                       // 折线还没落下的那一段（跟手虚线）
@@ -70,6 +71,13 @@ public partial class CaptureOverlayWindow : Window
 
     /// <summary>完成动作选了「实时」：覆盖层关掉之后贴一块跟着源窗口刷新的图。</summary>
     public bool LiveRequested { get; private set; }
+
+    /// <summary>
+    /// 完成动作选了「录屏」：这次不是截图，只是借覆盖层挑一块区域。
+    /// 覆盖层关掉之后由 <see cref="CaptureSession"/> 按 <see cref="Document"/> 的区域去开录
+    /// （自己留在画面上会被一起录进去），<b>不记采集历史</b>。
+    /// </summary>
+    public bool RecordRequested { get; private set; }
 
     /// <summary>这一次是怎么完成的（采集历史记「完成动作」用）。</summary>
     internal FinishKind Finish { get; private set; } = FinishKind.Copy;
@@ -149,12 +157,13 @@ public partial class CaptureOverlayWindow : Window
         // 文字输入中：Enter / Esc / 方向键都归输入框（本处理器在隧道阶段，比输入框先到）
         if (_textEditing) return;
 
-        // 长截图模式：只有「完成 / 放弃」两个出口，别的键一律吃掉（别让工具快捷键改状态）
+        // 长截图模式：只有「完成 / 放弃 / 自动滚动」几个出口，别的键一律吃掉（别让工具快捷键改状态）
         if (_scrollMode)
         {
             bool ctrlDown = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
             if (e.Key == Key.Enter || (ctrlDown && e.Key == Key.C)) FinishScroll();
             else if (e.Key == Key.Escape) CancelScroll();
+            else if (e.Key == Key.Space) ToggleAutoScroll();
             e.Handled = true;
             return;
         }
@@ -245,6 +254,13 @@ public partial class CaptureOverlayWindow : Window
             return;
         }
 
+        if (ctrl && e.Key == Key.R && (Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+        {
+            Accept(FinishKind.Record);      // 录屏（Shift 在前，否则会被下面的 Ctrl+R 吃掉）
+            e.Handled = true;
+            return;
+        }
+
         if (ctrl && e.Key == Key.R)
         {
             Accept(FinishKind.Recognize);
@@ -261,10 +277,7 @@ public partial class CaptureOverlayWindow : Window
 
         if (ctrl && e.Key == Key.A)
         {
-            _drag = DragMode.None;
-            CancelSelectionPolyline();
-            SetSingleRect(new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight)));   // 全屏 = 一块矩形
-            UpdateChrome();
+            SelectWholeScreen();
             e.Handled = true;
             return;
         }
@@ -318,7 +331,7 @@ public partial class CaptureOverlayWindow : Window
 
     // ============ 完成动作 ============
 
-    internal enum FinishKind { Copy, Save, QuickSave, Print, Pin, Recognize, Scroll, Live }
+    internal enum FinishKind { Copy, Save, QuickSave, Print, Pin, Recognize, Scroll, Live, Record }
 
     /// <summary>
     /// 工具条右半边那些完成动作（照 Snow Shot：工具、撤销、完成动作在**一条**里，
@@ -336,6 +349,11 @@ public partial class CaptureOverlayWindow : Window
             case CaptureToolbar.CaptureAction.QuickSave: Accept(FinishKind.QuickSave); break;  // 快速保存（Ctrl+Shift+S）
             case CaptureToolbar.CaptureAction.Print: Accept(FinishKind.Print); break;          // 打印（Ctrl+P）
             case CaptureToolbar.CaptureAction.Scroll: StartScrollMode(); break;                // 长截图：覆盖层不关，用户自己滚
+            case CaptureToolbar.CaptureAction.Record: Accept(FinishKind.Record); break;        // 录屏（Ctrl+Shift+R）：选完区域去开录
+            case CaptureToolbar.CaptureAction.FullScreen: SelectWholeScreen(); break;          // 全屏（Ctrl+A）
+            case CaptureToolbar.CaptureAction.HistoryPrev: StepHistory(-1); break;            // 采集历史：上一张（,）
+            case CaptureToolbar.CaptureAction.HistoryNext: StepHistory(1); break;             // 采集历史：下一张（.）
+            case CaptureToolbar.CaptureAction.HistoryWindow: OpenHistoryWindow(); break;      // 采集历史窗口…
             case CaptureToolbar.CaptureAction.Cancel: Cancel(); break;
         }
     }
@@ -381,6 +399,15 @@ public partial class CaptureOverlayWindow : Window
         SyncArea();
         if (!_doc.HasArea) return;
 
+        // 录屏：这次不导出成品（更不记采集历史），只要区域的物理像素矩形；
+        // 覆盖层关掉、自己的窗口还原之后由 CaptureSession 去开录。
+        if (kind == FinishKind.Record)
+        {
+            RecordRequested = true;
+            CloseWithResult(kind, null);
+            return;
+        }
+
         BitmapSource image;
         try
         {
@@ -396,11 +423,7 @@ public partial class CaptureOverlayWindow : Window
         if (EditOnly)
         {
             // 贴图内标注：只把成品交回调用方（不复制 / 不贴图 / 不识别 / 不记历史）
-            ResultImage = image;
-            Finish = kind;
-            _confirmed = true;
-            try { DialogResult = true; }
-            catch (InvalidOperationException) { Close(); }
+            CloseWithResult(kind, image);
             return;
         }
 
@@ -449,6 +472,12 @@ public partial class CaptureOverlayWindow : Window
                 break;
         }
 
+        CloseWithResult(kind, image);
+    }
+
+    /// <summary>确认出口：记下结果并按「对话框 / 非模态」两种方式关窗。</summary>
+    private void CloseWithResult(FinishKind kind, BitmapSource? image)
+    {
         ResultImage = image;
         Finish = kind;
         _confirmed = true;

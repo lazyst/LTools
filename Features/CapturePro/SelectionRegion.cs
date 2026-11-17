@@ -162,4 +162,26 @@ internal static class SelectionSet
     /// <summary>点是不是落在选区里（多块 / 挖洞都算对）。</summary>
     public static bool Contains(IReadOnlyList<SelectionRegion> regions, Point p) =>
         Combine(regions) is { } geometry && geometry.FillContains(p);
+
+    /// <summary>
+    /// 在**选区外**（压暗的阴影上）按下去时，是「拖动整块选区」还是「重新框选」。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 照 Snow Shot：Move 工具下，单块矩形选区外面那圈也算「整块移动」的那片抓手
+    /// （<c>dragModeForVirtualPosition</c> 对外面的点给 <c>All</c>）；多块 / 挖洞 / 自由 / 折线
+    /// 才走「外面 = 重新框选」（上游 <c>outsideClickRecreatesSelection</c>）。
+    /// </para>
+    /// <para>
+    /// 用户报过「选区之后拖阴影部分应该能挪选区，结果又拖出一个新框」——框完了想微调位置，
+    /// 手很自然会落在选区外面那圈压暗的阴影上。加区 / 减区仍然优先：按着 <c>Shift</c> / <c>Alt</c>
+    /// 拖出去就是加 / 减，不是移动。
+    /// </para>
+    /// </remarks>
+    public static bool MovesOnOutsideDrag(
+        IReadOnlyList<SelectionRegion> regions, bool moveTool, bool shift, bool alt) =>
+        moveTool && !shift && !alt &&
+        regions.Count == 1 &&
+        regions[0].Mode == RegionMode.Add &&
+        !regions[0].IsPolygon;
 }

@@ -21,9 +21,6 @@ public partial class CaptureOverlayWindow
     private Point _textOrigin;
     private bool _textEditing;
 
-    /// <summary>正在打字（键盘 / 鼠标手势都要让路）。</summary>
-    private bool IsEditingText => _textEditing;
-
     private void OpenTextEntry(Point at)
     {
         CommitText();   // 正在编辑的那一段先落地，再开新的一段

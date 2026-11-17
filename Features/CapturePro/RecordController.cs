@@ -36,9 +36,6 @@ internal sealed class RecordController
         get { lock (_gate) return _pauseStarted >= 0; }
     }
 
-    /// <summary>用户点了「完成」：正常收尾。</summary>
-    public bool StopRequested => _stop;
-
     /// <summary>用户点了「取消」：把已经录到的丢掉。</summary>
     public bool Cancelled => _cancel;
 

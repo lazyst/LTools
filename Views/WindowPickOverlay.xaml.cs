@@ -237,6 +237,10 @@ public partial class WindowPickOverlay : Window
     {
         if (_finished) return;
         _finished = true;
+
+        // 按下就走（右键取消 / 单击选中）：这一下点击的抬起别漏给下面的程序
+        Features.CapturePro.ExitInput.Swallow();
+
         WantsList = wantsList;
         if (accept) Result = new SystemPickerDialog.WindowInfo(_title, _class, _process, _current);
         try { DialogResult = accept; }

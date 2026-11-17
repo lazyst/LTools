@@ -13,43 +13,52 @@
          并且用 SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE) 自己不入镜。
          代价是收不到 Esc，出口全部做成鼠标可达（暂停 / 完成 / 取消）。 -->
     <Window.Resources>
-        <Style x:Key="RecPrimaryBtn" TargetType="Button">
-            <Setter Property="Foreground" Value="#18181B"/>
-            <Setter Property="Background" Value="#FFFFFF"/>
-            <Setter Property="Padding" Value="13,5"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#E4E4E7"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#D4D4D8"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Background" Value="#3F3F46"/>
-                                <Setter Property="Foreground" Value="#71717A"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 浮层配色（浅色）与其他截图浮层共用一份 -->
+                <ResourceDictionary Source="CaptureChrome.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
 
-        <Style x:Key="RecGhostBtn" TargetType="Button" BasedOn="{StaticResource RecPrimaryBtn}">
-            <Setter Property="Background" Value="#33FFFFFF"/>
-            <Setter Property="Foreground" Value="#F4F4F5"/>
-        </Style>
+            <!-- 主按钮：整格主色、白字（与工具栏的 BarBtnPrimary 同一套观感） -->
+            <Style x:Key="RecPrimaryBtn" TargetType="Button">
+                <Setter Property="Foreground" Value="#FFFFFF"/>
+                <Setter Property="Background" Value="#3B82F6"/>
+                <Setter Property="Padding" Value="13,5"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#2F6FE0"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#2560C8"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Bd" Property="Background" Value="#E4E4E7"/>
+                                    <Setter Property="Foreground" Value="{StaticResource ChromeInkOff}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="RecGhostBtn" TargetType="Button" BasedOn="{StaticResource RecPrimaryBtn}">
+                <Setter Property="Background" Value="{StaticResource ChromeWell}"/>
+                <Setter Property="Foreground" Value="{StaticResource ChromeInk}"/>
+            </Style>
+        </ResourceDictionary>
     </Window.Resources>
 
-    <Border Background="#F2141418" BorderBrush="#38FFFFFF" BorderThickness="1" CornerRadius="8" Padding="12,10">
+    <Border Background="{StaticResource ChromeBg}" BorderBrush="{StaticResource ChromeBorder}"
+            BorderThickness="1" CornerRadius="8" Padding="12,10">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -60,19 +69,19 @@
             <Grid Grid.Row="0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <Ellipse x:Name="Dot" Width="10" Height="10" Fill="#EF4444" VerticalAlignment="Center"/>
-                    <TextBlock Text="录屏" Foreground="#F4F4F5" FontSize="13" FontWeight="SemiBold"
+                    <TextBlock Text="录屏" Foreground="{StaticResource ChromeInk}" FontSize="13" FontWeight="SemiBold"
                                Margin="8,0,0,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="ClockLabel" Text="00:00" Foreground="#F4F4F5" FontSize="18"
+                    <TextBlock x:Name="ClockLabel" Text="00:00" Foreground="{StaticResource ChromeInk}" FontSize="18"
                                FontFamily="Consolas" Margin="12,0,0,0" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <TextBlock x:Name="MetaText" HorizontalAlignment="Right" VerticalAlignment="Center"
-                           Foreground="#71717A" FontSize="11" TextTrimming="CharacterEllipsis"
+                           Foreground="{StaticResource ChromeInkDim}" FontSize="11" TextTrimming="CharacterEllipsis"
                            MaxWidth="150"/>
             </Grid>
 
             <TextBlock x:Name="StatusText" Grid.Row="1" Text="录制中 · 点「完成」保存到采集历史"
-                       Foreground="#A1A1AA" FontSize="12" Margin="0,6,0,0"
+                       Foreground="{StaticResource ChromeInkDim}" FontSize="12" Margin="0,6,0,0"
                        TextTrimming="CharacterEllipsis"/>
 
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">

@@ -72,6 +72,9 @@ public partial class CaptureTextSelectWindow : Window
         Height = Math.Max(1, area.Height / (sy > 0 ? sy : 1));
 
         DpiChanged += (_, _) => { PinToMonitor(); SyncScale(); };
+
+        // 右键 / Esc 关窗：把「那一下」的抬起也吞掉，别漏给下面的程序（见 ExitInput）
+        Closed += (_, _) => ExitInput.Swallow();
     }
 
     // ============ 生命周期 ============

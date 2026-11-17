@@ -76,6 +76,9 @@ internal sealed class LiveThumbnail : IDisposable
     private const int GwlpHwndparent = -8;
     private const uint GwOwner = 4;
 
+    /// <summary>IDC_ARROW（光标类资源是序号，不是字符串）。</summary>
+    private const int IdcArrow = 32512;
+
     private const uint TmeLeave = 0x00000002;
 
     private const uint DwmTnpRectdestination = 0x1;
@@ -148,6 +151,9 @@ internal sealed class LiveThumbnail : IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern ushort RegisterClassEx(ref WndClassEx wndClass);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr LoadCursor(IntPtr instance, IntPtr name);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr CreateWindowEx(int exStyle, string className, string windowName,
         int style, int x, int y, int width, int height, IntPtr parent, IntPtr menu, IntPtr instance,
@@ -197,6 +203,10 @@ internal sealed class LiveThumbnail : IDisposable
     private IntPtr _originalOwner;               // 贴图窗口原来的 owner（拆的时候还回去）
     private Win32.Rect _rcSource;
     private Win32.Rect _rcDestination;
+    private Win32.Rect _hostRect;               // 宿主上一次摆到的矩形（没变就不必再挪）
+    private ThumbnailProperties _appliedProperties;
+    private bool _applied;
+    private byte _alpha = 255;
     private bool _visible = true;
     private bool _shown = true;
     private bool _disposed;
@@ -240,6 +250,7 @@ internal sealed class LiveThumbnail : IDisposable
                     style = 0x0008,                   // CS_DBLCLKS
                     lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_proc),
                     hInstance = Win32.GetModuleHandle(null),
+                    hCursor = LoadCursor(IntPtr.Zero, new IntPtr(IdcArrow)),
                     lpszClassName = ClassName,
                 };
                 _classAtom = RegisterClassEx(ref wc);
@@ -271,13 +282,10 @@ internal sealed class LiveThumbnail : IDisposable
         // 壳窗口变成宿主的 owned 窗口：它永远压在宿主上面，宿主就永远贴在它正下方。
         Win32.SetWindowLongPtr(_shell, GwlpHwndparent, _host);
 
-        // 壳是 topmost（贴图都是），宿主也进 topmost 带；NOOWNERZORDER 别去动 owner 自己的 z 序。
-        Win32.SetWindowPos(_host, Win32.HwndTopmost, 0, 0, 0, 0,
-            SwpNomove | SwpNosize | SwpNoactivate | SwpNoownerzorder);
-
         ApplyCrop();
-        SyncGeometry();
-        return true;
+        // 位置 / 尺寸 / z 序都在这里对齐：宿主插到壳的**正下方**（与 Snow Shot 同一个做法）。
+        // 只靠「把宿主提进 topmost 带」有时会落在壳的上面——那样缩略图会盖住贴图窗口自己的内容。
+        return SyncGeometry();
     }
 
     /// <summary>
@@ -291,6 +299,16 @@ internal sealed class LiveThumbnail : IDisposable
         _rcSource = rcSource;
         _rcDestination = rcDestination;
         _visible = visible;
+        ApplyCrop();
+    }
+
+    /// <summary>
+    /// 下一拍无条件把属性推一遍：源窗口最小化 / 还原之后 DWM 可能把缩略图丢了，
+    /// 靠它把画面接回来（正常的 200ms 那一拍走缓存，不惊动 DWM）。
+    /// </summary>
+    public void Refresh()
+    {
+        _applied = false;
         ApplyCrop();
     }
 
@@ -312,22 +330,59 @@ internal sealed class LiveThumbnail : IDisposable
             fVisible = _visible && !empty,
             fSourceClientAreaOnly = false,
         };
+
+        // 每拍（贴图的实时定时器）都会走到这里，属性没变就别再惊动 DWM。
+        if (_applied && SameProperties(_appliedProperties, properties)) return;
+
         DwmUpdateThumbnailProperties(_thumb, ref properties);
+        _appliedProperties = properties;
+        _applied = true;
     }
 
-    /// <summary>让宿主窗口贴住 <paramref name="shell"/>（尺寸 / 位置；z 序靠 owner 关系，不在这儿抢）。</summary>
-    public void SyncGeometry()
+    private static bool SameProperties(ThumbnailProperties left, ThumbnailProperties right) =>
+        left.dwFlags == right.dwFlags &&
+        left.opacity == right.opacity &&
+        left.fVisible == right.fVisible &&
+        left.fSourceClientAreaOnly == right.fSourceClientAreaOnly &&
+        SameRect(left.rcSource, right.rcSource) &&
+        SameRect(left.rcDestination, right.rcDestination);
+
+    private static bool SameRect(Win32.Rect left, Win32.Rect right) =>
+        left.Left == right.Left && left.Top == right.Top &&
+        left.Right == right.Right && left.Bottom == right.Bottom;
+
+    /// <summary>
+    /// 让宿主窗口贴住 <paramref name="shell"/>：位置 / 尺寸 / 显隐 / z 序。
+    /// </summary>
+    /// <remarks>
+    /// 照 Snow Shot 的 <c>synchronize()</c>：宿主用 <c>SetWindowPos(host, shell, …)</c> 插到壳的**正下方**
+    /// （已经贴着时用 <c>SWP_NOZORDER</c> 不动它，免得每拍都抢一次 z 序把别的 topmost 窗口搅进来）；
+    /// 壳最小化 / 贴图被藏起来时把宿主一起藏掉，否则屏幕上会剩一块点不掉的画面。
+    /// </remarks>
+    public bool SyncGeometry()
     {
-        if (_host == IntPtr.Zero || _disposed) return;
-        if (!Win32.GetWindowRect(_shell, out var rect)) return;
+        if (_host == IntPtr.Zero || _disposed) return false;
+        if (!Win32.GetWindowRect(_shell, out var rect)) return false;
 
         int width = rect.Right - rect.Left;
         int height = rect.Bottom - rect.Top;
-        if (width <= 0 || height <= 0) return;
+        bool show = _shown && width > 0 && height > 0 && !Win32.IsIconic(_shell);
 
-        Win32.SetWindowPos(_host, IntPtr.Zero, rect.Left, rect.Top, width, height,
-            SwpNozorder | SwpNoactivate | SwpNoownerzorder |
-            (_shown ? SwpShowwindow : SwpHidewindow));
+        if (!show)
+        {
+            // 藏起来：位置尺寸都不动，只收起窗口（再显示时照旧贴回去）
+            Win32.SetWindowPos(_host, IntPtr.Zero, 0, 0, 0, 0,
+                SwpNomove | SwpNosize | SwpNozorder | SwpNoactivate | SwpNoownerzorder | SwpHidewindow);
+            return true;
+        }
+
+        uint flags = SwpNoactivate | SwpNoownerzorder | SwpShowwindow;
+        if (Win32.GetWindow(_shell, Win32.GwHwndnext) == _host) flags |= SwpNozorder;
+        if (Win32.IsWindowVisible(_host) && SameRect(_hostRect, rect)) flags |= SwpNomove | SwpNosize;
+
+        if (!Win32.SetWindowPos(_host, _shell, rect.Left, rect.Top, width, height, flags)) return false;
+        _hostRect = rect;
+        return true;
     }
 
     /// <summary>整窗不透明度（0–1）：贴图窗口自己是逐像素 alpha，实时的内容靠这一层调。</summary>
@@ -335,7 +390,8 @@ internal sealed class LiveThumbnail : IDisposable
     {
         if (_host == IntPtr.Zero || _disposed) return;
         byte alpha = (byte)Math.Clamp((int)Math.Round(opacity * 255), 0, 255);
-        SetLayeredWindowAttributes(_host, 0, alpha, LwaAlpha);
+        if (alpha == _alpha) return;
+        if (SetLayeredWindowAttributes(_host, 0, alpha, LwaAlpha)) _alpha = alpha;
     }
 
     /// <summary>贴图窗口被隐藏（分组 / 关闭全部）时整层跟着藏，免得剩一块点不掉的画面。</summary>
@@ -443,7 +499,9 @@ internal sealed class LiveThumbnail : IDisposable
                 return IntPtr.Zero;
 
             case WmSetcursor:
-                return Win32.SendMessage(live._shell, msg, wParam, lParam);
+                // DefWindowProc 可能回头问壳的 owner（也就是宿主）要光标，原样转发会自己转给自己。
+                if (wParam != hwnd) return DefWindowProc(hwnd, msg, wParam, lParam);
+                return Win32.SendMessage(live._shell, msg, live._shell, lParam);
         }
 
         return DefWindowProc(hwnd, msg, wParam, lParam);

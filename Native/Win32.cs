@@ -386,6 +386,9 @@ internal static class Win32
     public const int WmSyskeyup = 0x0105;
 
     // —— 常用虚拟键码 ——
+    public const int VkLbutton = 0x01;   // 鼠标左键（GetAsyncKeyState 用）
+    public const int VkRbutton = 0x02;
+    public const int VkMbutton = 0x04;
     public const int VkCapital = 0x14;   // CapsLock
     public const int VkLshift = 0xA0;
     public const int VkRshift = 0xA1;

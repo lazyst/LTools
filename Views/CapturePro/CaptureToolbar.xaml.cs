@@ -62,6 +62,7 @@ public partial class CaptureToolbar : UserControl
     private bool _dragging;
     private Point _dragStart;
     private double _dragLeft, _dragTop;
+    private IInputElement? _dragCapture;
 
     /// <summary>用户切了工具。</summary>
     internal event Action<CaptureTool>? ToolChanged;
@@ -73,6 +74,11 @@ public partial class CaptureToolbar : UserControl
         Pin,
         Live,
         Scroll,
+        Record,
+        FullScreen,
+        HistoryPrev,
+        HistoryNext,
+        HistoryWindow,
         Print,
         QuickSave,
         Save,
@@ -267,9 +273,9 @@ public partial class CaptureToolbar : UserControl
             // 同格不止一个工具：右下角一个灰点（别用数字——小图标里认不出是几）
             var badge = new Ellipse
             {
-                Width = 5,
-                Height = 5,
-                Margin = new Thickness(0, 0, 1, 1),
+                Width = 4,
+                Height = 4,
+                Margin = new Thickness(0, 0, 3, 3),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Bottom,
                 Fill = new SolidColorBrush(Color.FromRgb(0xA1, 0xA1, 0xAA)),
@@ -463,6 +469,8 @@ public partial class CaptureToolbar : UserControl
             ActionButton("IconPin", "贴图到屏幕（Ctrl+T）", CaptureAction.Pin),
             ActionButton("IconLive", "实时贴图：贴一块跟着这个窗口刷新的图（Ctrl+W）", CaptureAction.Live),
             ActionButton("IconScroll", "长截图：滚着接成一张长图（Ctrl+L）", CaptureAction.Scroll),
+            ActionButton("IconRecord", "录屏：把当前选区录成 MP4（3 秒倒计时后开始，控制条上可暂停 / 完成 / 取消）",
+                CaptureAction.Record),
         });
 
         AddGroup(new[]
@@ -472,11 +480,53 @@ public partial class CaptureToolbar : UserControl
             ActionButton("IconSave", "另存为…（Ctrl+S）", CaptureAction.Save),
         });
 
+        // 「更多」：不常用的入口收进一个菜单（全屏、采集历史翻页 / 历史窗），
+        // 常驻按钮只留高频的那几个，免得工具条横着长成一整排。
+        AddGroup(new[] { MoreButton() });
+
         AddGroup(new[]
         {
             ActionButton("IconClose", "取消（Esc）", CaptureAction.Cancel),
             ActionButton("IconCopy", "复制到剪贴板并关闭（Enter）", CaptureAction.Copy, primary: true),
         });
+    }
+
+    /// <summary>「更多」按钮：点它弹出 <see cref="ShowMoreMenu"/>（本身不直接是个完成动作）。</summary>
+    private Button MoreButton()
+    {
+        var button = new Button
+        {
+            Style = (Style)FindResource("ActBtn"),
+            ToolTip = "更多：全屏（Ctrl+A）/ 采集历史：上一张 · 下一张（, .）/ 采集历史窗口…",
+            Content = new ShapePath
+            {
+                Data = (Geometry)FindResource("IconMore"),
+                Style = (Style)FindResource("IconPath"),
+            },
+        };
+        button.Click += (_, _) => ShowMoreMenu(button);
+        return button;
+    }
+
+    /// <summary>「更多」菜单：只放**低频但已实现**的入口，点完仍旧走 <see cref="ActionRequested"/>。</summary>
+    private void ShowMoreMenu(FrameworkElement target)
+    {
+        var menu = new ContextMenu { PlacementTarget = target, Placement = PlacementMode.Top };
+
+        MenuItem Item(string header, CaptureAction action)
+        {
+            var item = new MenuItem { Header = header };
+            item.Click += (_, _) => ActionRequested?.Invoke(action);
+            return item;
+        }
+
+        menu.Items.Add(Item("全屏（Ctrl+A）", CaptureAction.FullScreen));
+        menu.Items.Add(Item("采集历史：上一张（,）", CaptureAction.HistoryPrev));
+        menu.Items.Add(Item("采集历史：下一张（.）", CaptureAction.HistoryNext));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("采集历史窗口…", CaptureAction.HistoryWindow));
+
+        menu.IsOpen = true;
     }
 
     /// <summary>一组动作按钮前面加一条竖线（第一条不加）；分组同时记进 <see cref="_actionParts"/>，便于整组收起。</summary>
@@ -779,7 +829,13 @@ public partial class CaptureToolbar : UserControl
         _dragTop = Canvas.GetTop(this);
         if (double.IsNaN(_dragLeft)) _dragLeft = 0;
         if (double.IsNaN(_dragTop)) _dragTop = 0;
-        CaptureMouse();
+
+        // 捕获必须落在**接手势的那个元素**上（`Chrome` 那层 Border），不能是本 UserControl：
+        // 捕获之后鼠标消息只发给「被捕获的元素 + 它的祖先」，Border 是它的**子**元素，
+        // `Chrome_MouseMove` 一次都收不到——实测按住工具条拖动时它纹丝不动（像卡住），
+        // 松手又一切正常。捕获 Border 之后消息照常冒泡到本类的方法。
+        _dragCapture = sender as IInputElement ?? this;
+        _dragCapture.CaptureMouse();
         e.Handled = true;
     }
 
@@ -799,7 +855,8 @@ public partial class CaptureToolbar : UserControl
     {
         if (!_dragging) return;
         _dragging = false;
-        ReleaseMouseCapture();
+        _dragCapture?.ReleaseMouseCapture();
+        _dragCapture = null;
         e.Handled = true;
     }
 

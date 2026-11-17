@@ -6,7 +6,7 @@
         xmlns:cp="clr-namespace:LTools.Views.CapturePro"
         Title="截图" WindowStyle="None" ResizeMode="NoResize"
         ShowInTaskbar="False" Topmost="True" WindowStartupLocation="Manual"
-        Background="#0B0B0E" Cursor="Cross" UseLayoutRounding="True"
+        AllowsTransparency="True" Background="Transparent" Cursor="Cross" UseLayoutRounding="True"
         SnapsToDevicePixels="True" Focusable="True"
         PreviewKeyDown="Window_KeyDown"
         PreviewMouseMove="Window_MouseMove"
@@ -57,9 +57,9 @@
             <Setter Property="Foreground" Value="#F4F4F5"/>
         </Style>
 
-        <!-- 选区形状的小胶囊：选中是白底黑字，未选中是透明底 -->
+        <!-- 选区形状的小胶囊：选中 = 主色底白字，未选中是透明底 -->
         <Style x:Key="ShapeBtn" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="#E4E4E7"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeInk}"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
@@ -70,11 +70,11 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#33FFFFFF"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChromeHover}"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FFFFFF"/>
-                                <Setter Property="Foreground" Value="#18181B"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#3B82F6"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -97,19 +97,22 @@
             </Border>
 
             <!-- 尺寸 / 坐标（物理像素，就是最终会存进配置的数字） -->
-            <Border x:Name="InfoBox" Background="#D9101014" CornerRadius="4" Padding="8,4"
+            <Border x:Name="InfoBox" Background="{StaticResource ChromeBg}" CornerRadius="4" Padding="8,4"
+                    BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1"
                     Visibility="Collapsed" IsHitTestVisible="False">
-                <TextBlock x:Name="InfoText" Foreground="#F4F4F5" FontFamily="Consolas" FontSize="13"/>
+                <TextBlock x:Name="InfoText" Foreground="{StaticResource ChromeInk}" FontFamily="Consolas" FontSize="13"/>
             </Border>
 
-            <Border x:Name="HintBox" Background="#D9101014" CornerRadius="4" Padding="14,7"
+            <Border x:Name="HintBox" Background="{StaticResource ChromeBg}" CornerRadius="4" Padding="14,7"
+                    BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1"
                     IsHitTestVisible="False">
-                <TextBlock x:Name="HintText" Foreground="#E4E4E7" FontSize="13" TextWrapping="Wrap"/>
+                <TextBlock x:Name="HintText" Foreground="{StaticResource ChromeInk}" FontSize="13" TextWrapping="Wrap"/>
             </Border>
 
             <!-- 选区形状（还没框选时才出现）：矩形 / 自由（按住圈）/ 折线（逐点单击）。
                  框过之后形状就定了；想换就右键取消选区，这块条会再出现。 -->
-            <Border x:Name="ShapeBar" Panel.ZIndex="15" Background="#D9101014" CornerRadius="6"
+            <Border x:Name="ShapeBar" Panel.ZIndex="15" Background="{StaticResource ChromeBg}" CornerRadius="6"
+                    BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1"
                     Padding="4" Visibility="Collapsed">
                 <StackPanel Orientation="Horizontal">
                     <RadioButton x:Name="ShapeRect" Style="{StaticResource ShapeBtn}" Content="矩形"
@@ -124,28 +127,20 @@
                 </StackPanel>
             </Border>
 
-            <!-- 长截图：选区里 1:1 播拼接结果的**末尾一屏**（新内容从下面滑进来），
-                 旁边的小面板给整张长图预览 + 完成 / 放弃。
-                 这两块都是覆盖层自己的元素，帧来自目标窗口的 PrintWindow，不会被自己挡进画面。 -->
-            <Canvas x:Name="ScrollPane" Panel.ZIndex="6" Visibility="Collapsed"
-                    IsHitTestVisible="False" ClipToBounds="True">
-                <Image x:Name="ScrollTail" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality">
-                    <Image.RenderTransform>
-                        <TranslateTransform x:Name="ScrollTailShift" Y="0"/>
-                    </Image.RenderTransform>
-                </Image>
-            </Canvas>
+            <!-- 长截图：多边形的冻结画面已经收起、只留一块透明壳（见 CaptureOverlayWindow.Scroll.cs 的
+                 EnterScrollShell）——页面自己收滚轮才滚得动，这也是「Chromium 被整个盖住就丢滚轮」的修法。
+                 这里只画选区描边和小面板；两者像素都不透明，其余地方 alpha = 0，鼠标 / 滚轮直接穿透到页面。 -->
             <Border x:Name="ScrollFrame" Panel.ZIndex="7" BorderBrush="#3B82F6" BorderThickness="2"
                     Visibility="Collapsed" IsHitTestVisible="False"/>
 
-            <!-- 长截图的小面板：整张长图的缩略预览 + 拼接到的尺寸 + 完成 / 放弃。
+            <!-- 长截图的小面板：整张长图的缩略预览 + 拼接到的尺寸 + 自动滚动 / 方向 / 完成 / 放弃。
                  摆位走 ScrollLayout.PlaceIn（优选出选区外面），鼠标点击由覆盖层让路。 -->
-            <Border x:Name="ScrollPanel" Panel.ZIndex="22" Background="#E6101014" CornerRadius="8"
-                    BorderBrush="#26FFFFFF" BorderThickness="1" Padding="10"
+            <Border x:Name="ScrollPanel" Panel.ZIndex="22" Background="{StaticResource ChromeBg}" CornerRadius="8"
+                    BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1" Padding="10"
                     Effect="{StaticResource BarShadow}" Visibility="Collapsed">
                 <StackPanel Width="212">
                     <DockPanel LastChildFill="False">
-                        <TextBlock DockPanel.Dock="Left" Text="长截图" Foreground="#F4F4F5" FontSize="13"
+                        <TextBlock DockPanel.Dock="Left" Text="长截图" Foreground="{StaticResource ChromeInk}" FontSize="13"
                                    FontWeight="SemiBold" VerticalAlignment="Center"/>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button x:Name="ScrollCancelBtn" Style="{StaticResource BarBtn}" Click="ScrollCancel_Click"
@@ -158,23 +153,41 @@
                             </Button>
                         </StackPanel>
                     </DockPanel>
-                    <Border x:Name="ScrollPreviewBox" Height="236" Margin="0,8,0,0" Background="#14FFFFFF"
+
+                    <!-- 自动滚动 / 拼接方向：两个常驻开关，亮起来 = 生效中（自动滚动还可按空格切换） -->
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <!-- GroupName 必须各给一个：同一个 StackPanel 里没写 GroupName 的 RadioButton 会归成一组，
+                             亮自动滚动就会把方向那颗顶掉（两颗要能同时亮） -->
+                        <RadioButton x:Name="ScrollAutoBtn" Style="{StaticResource BarToolBtn}" GroupName="scrollAuto"
+                                     Click="ScrollAuto_Click"
+                                     ToolTip="自动滚动：让它自己往下滚着拼（空格）">
+                            <Path Data="{StaticResource IconAutoScroll}" Style="{StaticResource IconPath}"/>
+                        </RadioButton>
+                        <RadioButton x:Name="ScrollAxisBtn" Style="{StaticResource BarToolBtn}" Margin="4,0,0,0"
+                                     GroupName="scrollAxis" Click="ScrollAxis_Click"
+                                     ToolTip="拼接方向：纵向（往下滚）/ 横向（往右拼）">
+                            <Path Data="{StaticResource IconScrollAxis}" Style="{StaticResource IconPath}"/>
+                        </RadioButton>
+                    </StackPanel>
+
+                    <Border x:Name="ScrollPreviewBox" Height="236" Margin="0,8,0,0" Background="{StaticResource ChromeWell}"
                             CornerRadius="4" ClipToBounds="True">
                         <Image x:Name="ScrollPreview" Stretch="Uniform" Margin="4"
                                RenderOptions.BitmapScalingMode="HighQuality"/>
                     </Border>
-                    <TextBlock x:Name="ScrollStatus" Margin="0,8,0,0" Foreground="#A1A1AA" FontSize="12"
+                    <TextBlock x:Name="ScrollStatus" Margin="0,8,0,0" Foreground="{StaticResource ChromeInkDim}" FontSize="12"
                                TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
 
             <!-- 取色：光标旁一块色卡 + #RRGGBB / rgb()；单击复制十六进制 -->
-            <Border x:Name="PickerChip" Panel.ZIndex="26" Background="#E6101014" CornerRadius="4"
+            <Border x:Name="PickerChip" Panel.ZIndex="26" Background="{StaticResource ChromeBg}" CornerRadius="4"
+                    BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1"
                     Padding="6,3" Visibility="Collapsed" IsHitTestVisible="False">
                 <StackPanel Orientation="Horizontal">
                     <Border x:Name="PickerSwatch" Width="14" Height="14" CornerRadius="2"
-                            BorderBrush="#66FFFFFF" BorderThickness="1" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="PickerText" Margin="6,0,0,0" Foreground="#F4F4F5"
+                            BorderBrush="{StaticResource ChromeStroke}" BorderThickness="1" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="PickerText" Margin="6,0,0,0" Foreground="{StaticResource ChromeInk}"
                                FontFamily="Consolas" FontSize="12" VerticalAlignment="Center"/>
                 </StackPanel>
             </Border>
@@ -183,7 +196,9 @@
                  可拖、双击复位；鼠标事件由覆盖层让路（见 IsOnToolbar）。 -->
             <cp:CaptureToolbar x:Name="Toolbar" Panel.ZIndex="30" Visibility="Collapsed"/>
 
-            <!-- 文字工具的就地输入框：Enter 结束，Shift+Enter 换行，Esc 放弃。 -->
+            <!-- 文字工具的就地输入框：Enter 结束，Shift+Enter 换行，Esc 放弃。
+                 **刻意保持深色**：框里显示的就是最终标注的颜色（白字 / 黄字在白底上根本看不见），
+                 所以这块不跟着浮层改浅色。 -->
             <TextBox x:Name="TextEntry" Panel.ZIndex="25" Visibility="Collapsed"
                      AcceptsReturn="True" TextWrapping="NoWrap" MinWidth="80" MaxWidth="480"
                      Background="#E6101014" Foreground="#F4F4F5" BorderBrush="#3B82F6"

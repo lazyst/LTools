@@ -47,6 +47,8 @@ public partial class CaptureOverlayWindow
     {
         if (e.ChangedButton != MouseButton.Left) return;
 
+        _moveFromShadow = false;
+
         // 长截图模式：只有小面板上的按钮能点，别的一律不成开始框选 / 画标注
         if (_scrollMode)
         {
@@ -158,12 +160,25 @@ public partial class CaptureOverlayWindow
         }
 
         // 3. 选区外 / 还没选区：按当前形状加区 / 减区 / 整块重框；松手时几乎没动就选中光标下的窗口 / 控件
+        bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+        bool alt = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
+
+        // 3a. 压暗的阴影上拖动 = 挪整块选区（照 Snow Shot：单块矩形 + 移动工具时，外面那圈也是抓手）。
+        //     多块 / 挖洞 / 自由 / 折线仍然「外面 = 重新框选」，Shift / Alt 仍优先当加区 / 减区。
+        if (SelectionSet.MovesOnOutsideDrag(_regions, _tool == CaptureTool.Select, shift, alt))
+        {
+            _moveFromShadow = true;
+            BeginFrameChange(_sel!.Value);
+            _drag = DragMode.Move;
+            _handle = FrameHandle.Move;
+            RebuildSnapLines();
+            StartDrag(e, Cursors.SizeAll);
+            return;
+        }
+
         _pressTarget = _hoverTarget;
         _handle = FrameHandle.None;
         BeginFrameChange(_sel ?? default);
-
-        bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
-        bool alt = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
 
         // 还没有选区时 Shift 仍然是「锁正方形」（等价于新建）；有选区之后 Shift / Alt 才是加区 / 减区。
         _squareDrag = false;
@@ -342,6 +357,13 @@ public partial class CaptureOverlayWindow
                 CommitLasso();
                 break;
 
+            case DragMode.Move:
+                // 从压暗的阴影上按下去、几乎没移动 = 单击：在阴影上点一下什么都别做
+                // （以前这条路径走「拖出去整块重框」里的单击分支，那里也是保留原选区）。
+                // 没有这句的话，按下时抖的那一两像素会留在选区上。
+                if (!_pressMoved && _moveFromShadow) MoveFrame(_originRect);
+                break;
+
             case DragMode.Draw:
                 FinishToolDrag(p);
                 break;
@@ -356,6 +378,7 @@ public partial class CaptureOverlayWindow
         }
 
         _pressTarget = null;
+        _moveFromShadow = false;
         _originRegions = null;
         _replaceOnCommit = false;
         RefreshCursor(p);
@@ -384,7 +407,7 @@ public partial class CaptureOverlayWindow
         UpdateChrome();
     }
 
-    /// <summary>光标形状：选择工具看把手 / 标注，文字是 I 形，其余是十字。</summary>
+    /// <summary>光标形状：选择工具看边框 / 标注，文字是 I 形，其余是十字。</summary>
     private void RefreshCursor(Point p)
     {
         if (_textEditing) return;
@@ -392,11 +415,27 @@ public partial class CaptureOverlayWindow
         FrameHandle hit = HitTest(p);
         FrameHandle markHit = MarkHandleAt(p);
 
+        // 选中标注的把手比框选的边更「当前」：先把光标摆对，不然看不出能拉
+        if (markHit is not (FrameHandle.None or FrameHandle.Move))
+        {
+            Cursor = CursorFor(markHit);
+            return;
+        }
+
+        // **任何工具**下边框都能抓（按下就改框），光标也就跟着变——否则拿着画笔
+        // 走到边上还是十字，看不出那里能拉伸。
+        if (hit is not (FrameHandle.None or FrameHandle.Move))
+        {
+            Cursor = CursorFor(hit);
+            return;
+        }
+
         Cursor = _tool switch
         {
-            // 选中标注的把手比框选的把手更「当前」：先把光标摆对，不然看不出能拉
-            CaptureTool.Select when markHit is not (FrameHandle.None or FrameHandle.Move) => CursorFor(markHit),
-            CaptureTool.Select when hit != FrameHandle.None => CursorFor(hit),
+            CaptureTool.Select when hit == FrameHandle.Move => Cursors.SizeAll,
+            // 单块矩形 + 选择工具：外面那圈阴影也是「挪整块」的抓手（见 SelectionSet.MovesOnOutsideDrag），
+            // 光标跟着说清楚——否则用户只会看到箭头，不知道那里能拖
+            CaptureTool.Select when SelectionSet.MovesOnOutsideDrag(_regions, true, false, false) => Cursors.SizeAll,
             CaptureTool.Select when !IsValid(_sel) => Cursors.Cross,
             CaptureTool.Select => _doc.HitTest(p, MarkHitSlop) >= 0 ? Cursors.SizeAll : Cursors.Arrow,
             CaptureTool.Text => Cursors.IBeam,
@@ -618,6 +657,18 @@ public partial class CaptureOverlayWindow
         return SelectionSet.Combine(probe) == null;
     }
 
+    /// <summary>
+    /// 全屏：选区换成整块画面（Ctrl+A 与工具条「全屏」共用）。
+    /// 折线还没收尾的先取消，否则下一段点会接到旧折线上。
+    /// </summary>
+    private void SelectWholeScreen()
+    {
+        _drag = DragMode.None;
+        CancelSelectionPolyline();
+        SetSingleRect(new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight)));
+        UpdateChrome();
+    }
+
     /// <summary>整块换成一块矩形选区（单击选中窗口 / 控件、Ctrl+A 全屏、退出历史都用它）。</summary>
     private void SetSingleRect(Rect rect)
     {
@@ -703,8 +754,25 @@ public partial class CaptureOverlayWindow
         _doc.Area = new Int32Rect(_doc.Monitor.X + bx, _doc.Monitor.Y + by, bw, bh);
     }
 
-    private FrameHandle HitTest(Point p) =>
-        _sel is Rect s ? MarkGeometry.HitFrame(s, p, GripHit) : FrameHandle.None;
+    /// <summary>
+    /// 选区边框命中：**整条边都能抓**（照 Snow Shot 的边带判定，见 <see cref="MarkGeometry.HitFrameEdge"/>），
+    /// 不再只有八个「看不见的把手」周围那点方块。
+    /// </summary>
+    /// <remarks>
+    /// 减区挖掉的洞、外接框里的空角不是选区（那里按下等于「框外」：加区 / 减区 / 重框），
+    /// 所以命中点落在洞里的边框一律当没命中，别拿它去改框。
+    /// </remarks>
+    private FrameHandle HitTest(Point p)
+    {
+        if (_sel is not Rect s) return FrameHandle.None;
+
+        FrameHandle hit = MarkGeometry.HitFrameEdge(s, p, GripHit);
+        if (hit is not (FrameHandle.None or FrameHandle.Move) &&
+            s.Contains(p) && !SelectionSet.Contains(_regions, p))
+            return FrameHandle.None;
+
+        return hit;
+    }
 
     /// <summary>
     /// 选中标注的八个把手（只在「选择」工具下、且这一条能缩放时才给）。

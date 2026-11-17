@@ -44,8 +44,14 @@ internal static class RecordSession
     /// <summary>正在录（同一时间只允许一次，避免两条管道抢同一块屏幕）。</summary>
     public static bool IsRecording => Volatile.Read(ref _busy) != 0;
 
-    /// <summary>录一次。用户取消（框选 / 倒计时 / 控制条）时返回未保存的结果。</summary>
-    public static RecordOutcome TryRun(Window? owner, RecordPlan plan)
+    /// <summary>
+    /// 录一次。用户取消（框选 / 倒计时 / 控制条）时返回未保存的结果。
+    /// </summary>
+    /// <param name="area">
+    /// 已经定好的录制区域（屏幕物理像素）。截图覆盖层的「录屏」用它——那一块就是用户刚框的选区，
+    /// 不必再弹一次框选（也不该弹：覆盖层刚关掉）。null = 按 <paramref name="plan"/> 自己定区域。
+    /// </param>
+    public static RecordOutcome TryRun(Window? owner, RecordPlan plan, Int32Rect? area = null)
     {
         if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0)
         {
@@ -55,7 +61,7 @@ internal static class RecordSession
 
         try
         {
-            return RunCore(owner, plan);
+            return RunCore(owner, plan, area);
         }
         finally
         {
@@ -63,7 +69,7 @@ internal static class RecordSession
         }
     }
 
-    private static RecordOutcome RunCore(Window? owner, RecordPlan plan)
+    private static RecordOutcome RunCore(Window? owner, RecordPlan plan, Int32Rect? fixedArea)
     {
         var app = Application.Current;
         if (app == null) throw new InvalidOperationException("界面未初始化，无法录屏");
@@ -74,7 +80,7 @@ internal static class RecordSession
                 "没找到 ffmpeg：发布包里的 runtime\\ffmpeg\\ffmpeg.exe 不在了，也可以装一个 ffmpeg 放进 PATH"
                 + "（开发环境跑 tools\\fetch-ffmpeg.ps1 重新下载）");
 
-        var area = PickArea(app, plan, owner);
+        var area = fixedArea ?? PickArea(app, plan, owner);
         if (area.Width < 2 || area.Height < 2) return new RecordOutcome();   // 用户取消了框选
 
         if (plan.Countdown > 0 && !RunCountdown(area, plan.Countdown)) return new RecordOutcome();

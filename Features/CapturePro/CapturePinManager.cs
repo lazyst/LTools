@@ -108,13 +108,6 @@ internal static class CapturePinManager
         ActiveGroup = null;
     }
 
-    /// <summary>把贴图顶回最前（面板 / 悬浮抢到前面之后调；不抢焦点）。藏起来的不算。</summary>
-    public static void RaiseAll()
-    {
-        foreach (var pin in Pins)
-            if (IsShown(pin)) pin.RaiseToTop();
-    }
-
     // ============ 分组 ============
 
     /// <summary>

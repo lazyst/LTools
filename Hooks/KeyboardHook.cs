@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using LTools.Core;
 using LTools.Features;
 using LTools.Features.Builtin;
+using LTools.Features.CapturePro;
 using LTools.Native;
 
 namespace LTools.Hooks;
@@ -22,6 +23,34 @@ internal static class KeyboardHook
     private static Win32.LowLevelKeyboardProc? _proc;
     // 防止委托被 GC 回收（SetWindowsHookEx 只存弱引用）
     private static GCHandle _procHandle;
+
+    // 「关窗时还按着的键」：抬起时吞掉（见 SwallowPendingReleases）。0 = 没有。
+    private static int _releaseVk;
+
+    /// <summary>
+    /// 窗口 / 遮罩关掉时调用：这些键里**此刻物理上还按着**的那一个，抬起时吞掉。
+    /// </summary>
+    /// <remarks>
+    /// Esc / Enter 在覆盖层里按下就把窗口关了，配对的那一下抬起会落到下面的程序上（对话框里
+    /// 等于凭空按了一下回车）。只吞 up、不配对 down：下面那个窗口从没见过这次按下，不会卡键。
+    /// 状态在当前线程立刻采样（窗口刚关、键还按着），再排到钩子线程；让钩子线程稍后再采样
+    /// 会在用户手快时读成「已经松开」。
+    /// </remarks>
+    public static void SwallowPendingReleases(params int[] vks)
+    {
+        int pending = 0;
+        foreach (int vk in vks)
+        {
+            if ((Win32.GetAsyncKeyState(vk) & 0x8000) != 0)
+            {
+                pending = vk;
+                break;
+            }
+        }
+        if (pending == 0) return;
+
+        HookDispatcher.Post(() => _releaseVk = pending);
+    }
 
     /// <summary>安装钩子。必须在 <see cref="HookDispatcher"/> 线程上调用。</summary>
     public static void Install()
@@ -68,11 +97,23 @@ internal static class KeyboardHook
             bool isDown = msg == Win32.WmKeydown || msg == Win32.WmSyskeydown;
             bool isUp = msg == Win32.WmKeyup || msg == Win32.WmSyskeyup;
 
+            // 「关窗那一下的抬起」：覆盖层 / 遮罩在 keydown 里就关了，配对 up 若放行会落到
+            // 下面的程序上。只吞关窗那一刻按着的那一个键，只生效一次。
+            // 放在注入过滤之前：测试注入的 up 与物理 up 走同一条路，否则这条改不了肉眼可见的问题。
+            if (isUp && vk == _releaseVk)
+            {
+                _releaseVk = 0;
+                return (IntPtr)1;
+            }
+
             // 忽略注入事件（防递归）
             if ((kb.Flags & Win32.LlkhfInjected) != 0)
             {
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
             }
+
+            // 长截图期间：Esc / Enter / 空格归拼接流程（吞掉，别让页面自己响应），其余按键照常。
+            if (ScrollCaptureHookState.HandleKey(vk, isDown, isUp)) return (IntPtr)1;
 
             // 按键抬起先清「已触发」锁存，必须排在下面所有分支之前：自动化运行 / 录入 / 录制
             // 这些分支会提前 return，keyup 就再也走不到热键分支，单键快捷键会「隔一次才触发」。
