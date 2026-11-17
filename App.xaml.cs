@@ -144,6 +144,7 @@ public partial class App : Application
         AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
         AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
         AppState.TrayDoubleClick = cfg.TrayDoubleClick;
+        AppState.Record = (cfg.Record ?? new RecordOptions()).Normalized();
         ConfigStore.Initialize(cfgPath);
         FloatingLibrary.Initialize(cfgPath);
         QuickNote.Initialize(cfgPath);

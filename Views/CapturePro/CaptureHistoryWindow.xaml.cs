@@ -223,6 +223,8 @@ public partial class CaptureHistoryWindow : Window
         CopyImageBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
         PlayBtn.IsEnabled = record;
         PlayBtn.Visibility = record ? Visibility.Visible : Visibility.Collapsed;
+        TrimBtn.IsEnabled = record;
+        TrimBtn.Visibility = record ? Visibility.Visible : Visibility.Collapsed;
         SaveAsBtn.IsEnabled = has;
         DeleteBtn.IsEnabled = has;
         CopyTextBtn.IsEnabled = has && !string.IsNullOrEmpty(row!.Entry.Text);
@@ -317,6 +319,30 @@ public partial class CaptureHistoryWindow : Window
     // ============ 操作 ============
 
     private void Play_Click(object sender, RoutedEventArgs e) => PlaySelected();
+
+    /// <summary>裁剪 / 倍速：开窗口，导出成新文件（原片不动）。</summary>
+    private void Trim_Click(object sender, RoutedEventArgs e)
+    {
+        var row = SelectedRow;
+        if (row == null || !row.Entry.IsRecord) return;
+
+        string path = CaptureCatalog.FilePath(row.Entry);
+        if (path.Length == 0 || !File.Exists(path))
+        {
+            ToastService.Show("录屏文件不在了", "采集历史", 2200, ToastKind.error);
+            return;
+        }
+
+        try
+        {
+            RecordTrimSession.Open(row.Entry);
+        }
+        catch (Exception ex)
+        {
+            ToastService.Show("打开裁剪窗口失败：" + ex.Message, "采集历史", 3200, ToastKind.error);
+            AppLog.Warn("CapturePro.Trim", "打开裁剪窗口失败：" + ex.Message);
+        }
+    }
 
     /// <summary>用系统默认播放器打开录屏成品。</summary>
     private void PlaySelected()

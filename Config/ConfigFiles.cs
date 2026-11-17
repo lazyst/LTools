@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.CapturePro;
 
 namespace LTools.Config;
 
@@ -35,6 +36,9 @@ public sealed class SettingsFile
 
     /// <summary>运行日志配置。</summary>
     public LogConfig Logging { get; set; } = new();
+
+    /// <summary>录屏的默认开关：声音 / 摄像头 / 键鼠特效 / 编码器 / 录完裁剪。</summary>
+    public RecordOptions Record { get; set; } = new();
 }
 
 /// <summary><c>config/ui.json</c>：界面状态（丢了不影响功能，只是记忆丢失）。</summary>

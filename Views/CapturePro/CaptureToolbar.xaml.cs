@@ -75,6 +75,7 @@ public partial class CaptureToolbar : UserControl
         Live,
         Scroll,
         Record,
+        RecordOptions,
         FullScreen,
         HistoryPrev,
         HistoryNext,
@@ -194,7 +195,8 @@ public partial class CaptureToolbar : UserControl
         double w = What(ActualWidth, DesiredSize.Width);
         double h = What(ActualHeight, DesiredSize.Height);
 
-        const double gap = 8;
+        // Snow Shot：工具条贴选区外沿 6px（`kToolbarGap`），不是 8。
+        const double gap = 6;
         const double edge = 8;
 
         double left = selection.Left + (selection.Width - w) / 2;
@@ -486,7 +488,7 @@ public partial class CaptureToolbar : UserControl
 
         AddGroup(new[]
         {
-            ActionButton("IconClose", "取消（Esc）", CaptureAction.Cancel),
+            ActionButton("IconClose", "取消（Esc）", CaptureAction.Cancel, danger: true),
             ActionButton("IconCopy", "复制到剪贴板并关闭（Enter）", CaptureAction.Copy, primary: true),
         });
     }
@@ -524,6 +526,7 @@ public partial class CaptureToolbar : UserControl
         menu.Items.Add(Item("采集历史：上一张（,）", CaptureAction.HistoryPrev));
         menu.Items.Add(Item("采集历史：下一张（.）", CaptureAction.HistoryNext));
         menu.Items.Add(new Separator());
+        menu.Items.Add(Item("录屏选项…（声音 / 摄像头 / 特效 / 编码）", CaptureAction.RecordOptions));
         menu.Items.Add(Item("采集历史窗口…", CaptureAction.HistoryWindow));
 
         menu.IsOpen = true;
@@ -546,11 +549,12 @@ public partial class CaptureToolbar : UserControl
         }
     }
 
-    private Button ActionButton(string icon, string tip, CaptureAction action, bool primary = false)
+    private Button ActionButton(string icon, string tip, CaptureAction action, bool primary = false,
+        bool danger = false)
     {
         var button = new Button
         {
-            Style = (Style)FindResource(primary ? "BarBtnPrimary" : "ActBtn"),
+            Style = (Style)FindResource(primary ? "BarBtnPrimary" : danger ? "BarBtnDanger" : "ActBtn"),
             ToolTip = tip,
             Content = new ShapePath
             {

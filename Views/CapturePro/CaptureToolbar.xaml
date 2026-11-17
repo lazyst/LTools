@@ -14,6 +14,13 @@
             <Style x:Key="ActBtn" TargetType="Button" BasedOn="{StaticResource BarBtn}"/>
             <Style x:Key="SeparatorBar" TargetType="Border" BasedOn="{StaticResource BarSeparator}"/>
 
+            <!-- 面板底：白底 + 圆角 8 + 浮层阴影，与 Snow Shot 的 `createPanel` 一致（不画边框） -->
+            <Style x:Key="BarPanel" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource ChromePanel}"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Effect" Value="{StaticResource BarShadow}"/>
+            </Style>
+
             <Style x:Key="StepBtn" TargetType="Button">
                 <Setter Property="Width" Value="18"/>
                 <Setter Property="Height" Value="18"/>
@@ -51,7 +58,7 @@
                                     <Setter TargetName="Chip" Property="Stroke" Value="#80000000"/>
                                 </Trigger>
                                 <Trigger Property="IsChecked" Value="True">
-                                    <Setter TargetName="Chip" Property="Stroke" Value="{StaticResource ChromeInk}"/>
+                                    <Setter TargetName="Chip" Property="Stroke" Value="{StaticResource CapturePrimary}"/>
                                     <Setter TargetName="Chip" Property="StrokeThickness" Value="2"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
@@ -80,8 +87,8 @@
                                     <Setter TargetName="Chip" Property="Background" Value="{StaticResource ChromeHover}"/>
                                 </Trigger>
                                 <Trigger Property="IsChecked" Value="True">
-                                    <Setter TargetName="Chip" Property="Background" Value="#3B82F6"/>
-                                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                                    <Setter TargetName="Chip" Property="Background" Value="{StaticResource CapturePrimaryBg}"/>
+                                    <Setter Property="Foreground" Value="{StaticResource CapturePrimary}"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -92,20 +99,21 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <Border x:Name="Chrome" Background="{StaticResource ChromeBg}" CornerRadius="8"
-            BorderBrush="{StaticResource ChromeBorder}"
-            BorderThickness="1" Padding="9,3" Cursor="SizeAll"
-            Effect="{StaticResource BarShadow}"
-            MouseLeftButtonDown="Chrome_MouseDown"
-            MouseMove="Chrome_MouseMove"
-            MouseLeftButtonUp="Chrome_MouseUp"
-            PreviewMouseRightButtonDown="Chrome_RightDown">
-        <StackPanel>
+    <!-- 两条独立的面板（照 Snow Shot）：上排工具 / 完成动作，下排当前工具的样式。
+         面板之间隔 6，各有自己的圆角与阴影；参数条只在当前工具有样式时才显示。
+         按钮在 code-behind 里按 ToolCatalog 生成（新增工具只改表），这里只给外观与两个容器。 -->
+    <StackPanel>
+        <Border x:Name="Chrome" Style="{StaticResource BarPanel}" Padding="12,4" Cursor="SizeAll"
+                MouseLeftButtonDown="Chrome_MouseDown"
+                MouseMove="Chrome_MouseMove"
+                MouseLeftButtonUp="Chrome_MouseUp"
+                PreviewMouseRightButtonDown="Chrome_RightDown">
             <WrapPanel x:Name="ToolRow" Orientation="Horizontal"/>
-            <Border x:Name="ParamBar" Background="{StaticResource ChromeWell}" CornerRadius="6" Padding="6,2"
-                    Margin="0,3,0,0" HorizontalAlignment="Left" Cursor="Arrow">
-                <StackPanel x:Name="ParamRow" Orientation="Horizontal"/>
-            </Border>
-        </StackPanel>
-    </Border>
+        </Border>
+
+        <Border x:Name="ParamBar" Style="{StaticResource BarPanel}" Padding="10,4"
+                Margin="0,6,0,0" HorizontalAlignment="Left" Cursor="Arrow">
+            <StackPanel x:Name="ParamRow" Orientation="Horizontal"/>
+        </Border>
+    </StackPanel>
 </UserControl>

@@ -25,6 +25,9 @@ internal sealed class RecordController
     /// <summary>已经结束的暂停总时长（tick）。</summary>
     private long _pausedTicks;
 
+    /// <summary>正式开始录的时刻（tick）；-1 = 面板还在等用户点「录制」。</summary>
+    private long _origin = -1;
+
     /// <summary>当前这段暂停的开始时刻（tick）；-1 = 没在暂停。</summary>
     private long _pauseStarted = -1;
 
@@ -46,7 +49,7 @@ internal sealed class RecordController
     {
         lock (_gate)
         {
-            if (_pauseStarted < 0) _pauseStarted = _clock.ElapsedTicks;
+            if (_pauseStarted < 0) _pauseStarted = Now;
         }
     }
 
@@ -55,7 +58,7 @@ internal sealed class RecordController
         lock (_gate)
         {
             if (_pauseStarted < 0) return;
-            _pausedTicks += _clock.ElapsedTicks - _pauseStarted;
+            _pausedTicks += Now - _pauseStarted;
             _pauseStarted = -1;
         }
     }
@@ -77,6 +80,21 @@ internal sealed class RecordController
 
     public void Cancel() => _cancel = true;
 
+    /// <summary>面板先摆出来时，这一刻才真正开始计时（之后 <see cref="ActiveTicks"/> 才有意义）。</summary>
+    public void Start()
+    {
+        lock (_gate)
+        {
+            if (_origin < 0) _origin = _clock.ElapsedTicks;
+        }
+    }
+
+    /// <summary>已经开始录了（面板据此决定「录制中」的外观）。</summary>
+    public bool HasStarted
+    {
+        get { lock (_gate) return _origin >= 0; }
+    }
+
     /// <summary>活动时长（已经扣掉暂停），单位是 <see cref="Stopwatch"/> tick。</summary>
     public long ActiveTicks
     {
@@ -84,10 +102,22 @@ internal sealed class RecordController
         {
             lock (_gate)
             {
-                long now = _clock.ElapsedTicks;
+                if (_origin < 0) return 0;
+
+                long now = Now;
                 long paused = _pausedTicks + (_pauseStarted >= 0 ? now - _pauseStarted : 0);
                 return Math.Max(0, now - paused);
             }
+        }
+    }
+
+    /// <summary>从「开始录」算起的 tick（没开始就是 0）。调用方不用持锁。</summary>
+    private long Now
+    {
+        get
+        {
+            long ticks = _clock.ElapsedTicks;
+            return _origin < 0 ? 0 : ticks - _origin;
         }
     }
 

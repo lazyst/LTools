@@ -127,6 +127,11 @@ internal static class MouseHook
             if ((ms.Flags & Win32.LlmhfInjected) != 0 || ms.ExtraInfo == InjectedTag)
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
 
+            // 录屏特效：录屏期间把滚轮方向喂给录制线程（「记录鼠标滚动」要它）。
+            // 只入队、不吞键、不改任何 LTools 行为，所以放在所有分支之前也不会带回副作用。
+            if ((int)wParam == Win32.WmMousewheel && RecordWheelFeed.Active)
+                RecordWheelFeed.Push((short)((ms.MouseData >> 16) & 0xFFFF));
+
             // 「点击窗口选取」遮罩期间：所有鼠标事件原样放行（不吞、不注入、不启动长按手势）。
             if (_windowPickerActive)
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);

@@ -203,6 +203,9 @@
                         <Button x:Name="PlayBtn" Style="{StaticResource BtnGhost}" Content="播放"
                                 MinWidth="76" Click="Play_Click" IsEnabled="False"
                                 Visibility="Collapsed" ToolTip="用系统默认播放器打开录屏"/>
+                        <Button x:Name="TrimBtn" Style="{StaticResource BtnGhost}" Content="裁剪 / 倍速…"
+                                MinWidth="104" Margin="8,0,0,0" Click="Trim_Click" IsEnabled="False"
+                                Visibility="Collapsed" ToolTip="裁剪录屏区间、改倍速，导出成新文件（原片不动）"/>
                         <Button x:Name="CopyImageBtn" Style="{StaticResource BtnGhost}" Content="复制图片"
                                 MinWidth="88" Click="CopyImage_Click" IsEnabled="False"/>
                         <Button x:Name="SaveAsBtn" Style="{StaticResource BtnGhost}" Content="另存为…"

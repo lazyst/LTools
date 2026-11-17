@@ -9,6 +9,7 @@ using System.Text.Json.Serialization;
 using LTools.Core;
 using LTools.Core.Storage;
 using LTools.Features;
+using LTools.Features.CapturePro;
 
 namespace LTools.Config;
 
@@ -108,6 +109,7 @@ internal static class ConfigBundle
         cfg.ToastPosition = settings.ToastPosition;
         cfg.TrayDoubleClick = settings.TrayDoubleClick;
         cfg.Logging = settings.Logging ?? new LogConfig();
+        cfg.Record = (settings.Record ?? new RecordOptions()).Normalized();
 
         var ui = Read<UiStateFile>(UiPath(anchorPath), ctx);
         if (ui == null) ui = ToUi(ctx.GetSeed());
@@ -367,6 +369,7 @@ internal static class ConfigBundle
         ToastPosition = cfg.ToastPosition,
         TrayDoubleClick = cfg.TrayDoubleClick,
         Logging = cfg.Logging ?? new LogConfig(),
+        Record = cfg.Record ?? new RecordOptions(),
     };
 
     internal static UiStateFile ToUi(AppConfig cfg) => new()

@@ -200,7 +200,49 @@ internal static class FeatureCatalog
                     new FeatureOption("off", "不跟随"),
                     new FeatureOption("on", "跟随鼠标（选区决定成品尺寸）"),
                 },
-                Hint: "跟随录屏时画面跟着光标在显示器里平移，成品尺寸仍是选区大小")),
+                Hint: "跟随录屏时画面跟着光标在显示器里平移，成品尺寸仍是选区大小"),
+            new FeatureParam("audio", "声音", FeatureParamKind.Choice, "",
+                Options: new[]
+                {
+                    new FeatureOption("", "跟随设置"),
+                    new FeatureOption("off", "不录声音"),
+                    new FeatureOption("system", "系统声音"),
+                    new FeatureOption("mic", "麦克风"),
+                    new FeatureOption("both", "系统声音 + 麦克风"),
+                },
+                Hint: "系统声音走 WASAPI 环回，不需要「立体声混音」设备"),
+            new FeatureParam("camera", "摄像头", FeatureParamKind.Choice, "",
+                Options: new[]
+                {
+                    new FeatureOption("", "跟随设置"),
+                    new FeatureOption("off", "不录摄像头"),
+                    new FeatureOption("on", "画中画（默认摄像头）"),
+                },
+                Hint: "画中画贴在左下角，尺寸 / 形状在「录屏选项」里调"),
+            new FeatureParam("effects", "键鼠特效", FeatureParamKind.Choice, "",
+                Options: new[]
+                {
+                    new FeatureOption("", "跟随设置"),
+                    new FeatureOption("off", "不要特效"),
+                    new FeatureOption("on", "光标高亮 + 点击涟漪 + 拖尾 + 按键"),
+                },
+                Hint: "特效画在成品上，不改变系统鼠标外观"),
+            new FeatureParam("codec", "编码", FeatureParamKind.Choice, "",
+                Options: new[]
+                {
+                    new FeatureOption("", "跟随设置"),
+                    new FeatureOption("auto", "自动（有硬件加速就用）"),
+                    new FeatureOption("h264", "H.264"),
+                    new FeatureOption("hevc", "HEVC（更小，兼容性稍差）"),
+                },
+                Hint: "硬件编码器（NVENC / AMF / QSV）会先探测，开不起来自动退回软件"),
+            new FeatureParam("trim", "录完裁剪", FeatureParamKind.Choice, "",
+                Options: new[]
+                {
+                    new FeatureOption("", "跟随设置"),
+                    new FeatureOption("off", "直接保存"),
+                    new FeatureOption("on", "打开裁剪 / 倍速窗口"),
+                })),
     };
 
     private static readonly Dictionary<string, FeatureDef> ById =
@@ -444,12 +486,18 @@ internal static class FeatureCatalog
 
     private static void Record(FeatureRunContext ctx)
     {
+        // 设置里的默认开关 + 这次参数里点名的覆盖项（没点的项继续跟随设置）
+        var options = RecordOptions.Apply(AppState.Record,
+            ctx.Get("audio"), ctx.Get("camera"), ctx.Get("effects"),
+            ctx.Get("codec"), ctx.Get("trim"));
+
         var plan = RecordPlan.FromValues(
             ctx.Get("source"),
             ctx.Get("format"),
             ctx.GetInt("fps", RecordPlan.DefaultFps),
             ctx.GetInt("countdown", RecordPlan.DefaultCountdown),
-            string.Equals(ctx.Get("follow"), "on", StringComparison.OrdinalIgnoreCase));
+            string.Equals(ctx.Get("follow"), "on", StringComparison.OrdinalIgnoreCase),
+            options);
 
         RecordSession.TryRun(null, plan);
     }

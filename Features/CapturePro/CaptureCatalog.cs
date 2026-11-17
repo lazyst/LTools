@@ -190,8 +190,11 @@ internal static class CaptureCatalog
         }
     }
 
-    private static string NormalizeExtension(string? extension) =>
-        string.Equals(extension?.Trim(), "gif", StringComparison.OrdinalIgnoreCase) ? "gif" : "mp4";
+    private static string NormalizeExtension(string? extension)
+    {
+        string ext = (extension ?? "").Trim().ToLowerInvariant();
+        return ext is "gif" or "apng" or "webp" or "mp4" ? ext : "mp4";
+    }
 
     /// <summary>时长文案（录屏用；与录屏参数共用同一份实现）。</summary>
     public static string FormatClock(int totalMs) => RecordPlan.FormatClock(totalMs);

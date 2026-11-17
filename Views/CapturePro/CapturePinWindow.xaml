@@ -54,9 +54,8 @@
                             <Border x:Name="Bd" Background="#C9101014" CornerRadius="11"
                                     BorderBrush="#40FFFFFF" BorderThickness="1">
                                 <Path Data="{StaticResource IconClose}" Width="10" Height="10"
-                                      Stretch="Uniform" Stroke="{TemplateBinding Foreground}"
-                                      StrokeThickness="1.6" StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round" HorizontalAlignment="Center"
+                                      Stretch="Uniform" Fill="{TemplateBinding Foreground}"
+                                      HorizontalAlignment="Center"
                                       VerticalAlignment="Center"/>
                             </Border>
                             <ControlTemplate.Triggers>
@@ -94,8 +93,7 @@
                 IsHitTestVisible="False">
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="10">
                 <Path Data="{StaticResource IconMinimize}" Width="22" Height="22"
-                      Stretch="Uniform" Stroke="#A1A1AA" StrokeThickness="1.5"
-                      StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      Stretch="Uniform" Fill="#A1A1AA"
                       HorizontalAlignment="Center"/>
                 <TextBlock x:Name="LiveCoverTitle" Text="源窗口已最小化" Margin="0,8,0,2"
                            FontSize="12" Foreground="#E4E4E7" TextAlignment="Center"

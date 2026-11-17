@@ -56,7 +56,11 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "录屏：参数 / 命令行 / 定位", Record));
         cases.Add(new("capturePro", "录屏：暂停计时与历史文案", RecordBookkeeping));
         cases.Add(new("capturePro", "录屏：跟随鼠标（移植上游用例）", RecordFollow));
+        cases.Add(new("capturePro", "录屏：空闲区域框的拖拽几何", RecordRegion));
         cases.Add(new("capturePro", "录屏：中断残片的尺寸 / 时长解析", RecordRecoveryProbe));
+        cases.Add(new("capturePro", "录屏：选项 / 编码器 / 混音参数", RecordOptionsRules));
+        cases.Add(new("capturePro", "录屏：特效几何 / 画中画落点", RecordEffectRules));
+        cases.Add(new("capturePro", "录屏：裁剪 / 倍速 / 导出参数", RecordTrimRules));
     }
 
     private static void Geometry()
@@ -1962,16 +1966,42 @@ internal static partial class CaptureProSuite
         Check.Equal("gif", RecordPlan.FromValues(null, "gif", 30, 0).Extension, "GIF 扩展名");
         Check.Equal("mp4", RecordPlan.FromValues(null, null, 30, 0).Extension, "MP4 扩展名");
 
+        // 四个格式（上游下拉的同四项）：解析 / 扩展名 / 动图判定 / 显示名
+        Check.Equal(RecordFormat.Apng, RecordPlan.ParseFormat("apng"), "APNG 格式解析");
+        Check.Equal(RecordFormat.Webp, RecordPlan.ParseFormat("WebP"), "WebP 格式解析不分大小写");
+        Check.Equal("apng", RecordPlan.FromValues(null, "apng", 30, 0).Extension, "APNG 扩展名");
+        Check.Equal("webp", RecordPlan.FromValues(null, "webp", 30, 0).Extension, "WebP 扩展名");
+        Check.True(RecordPlan.FromValues(null, "gif", 30, 0).IsAnimated, "GIF 是动图");
+        Check.True(RecordPlan.FromValues(null, "apng", 30, 0).IsAnimated, "APNG 是动图");
+        Check.True(RecordPlan.FromValues(null, "webp", 30, 0).IsAnimated, "WebP 是动图");
+        Check.False(RecordPlan.FromValues(null, "mp4", 30, 0).IsAnimated, "MP4 不是动图");
+        Check.Equal(4, RecordPlan.Formats.Count, "格式下拉 4 项");
+        Check.Equal("APNG", RecordPlan.FormatName(RecordFormat.Apng), "APNG 显示名");
+        Check.Equal("WebP", RecordPlan.FormatName(RecordFormat.Webp), "WebP 显示名");
+
+        // 面板时长一律 HH:MM:SS（上游 setRecordingDuration）
+        Check.Equal("00:00:00", RecordPlan.FormatDuration(0), "时钟空闲态");
+        Check.Equal("00:00:59", RecordPlan.FormatDuration(59_999), "时钟未满一分钟");
+        Check.Equal("01:02:03", RecordPlan.FormatDuration(3_723_500), "时钟超过一小时");
+
         Check.Equal("选区", RecordPlan.ModeLabel(RecordMode.Region), "范围文案");
         Check.Equal("全部屏幕", RecordPlan.ModeLabel(RecordMode.All), "全部屏幕文案");
         Check.Equal("MP4", RecordPlan.FormatLabel("mp4"), "格式文案");
         Check.Equal("GIF", RecordPlan.FormatLabel("GIF"), "格式文案不分大小写");
+        Check.Equal("APNG", RecordPlan.FormatLabel("apng"), "APNG 文案");
+        Check.Equal("WebP", RecordPlan.FormatLabel("webp"), "WebP 文案");
+
+        // 采集历史存成品时不能把动图扩展名改回 mp4（否则 .mp4 里装的是 apng / webp）
+        Check.Equal("records/x.apng", CaptureCatalog.RecordRelative("x", "apng"), "APNG 成品保留 .apng");
+        Check.Equal("records/x.webp", CaptureCatalog.RecordRelative("x", "webp"), "WebP 成品保留 .webp");
+        Check.Equal("records/x.gif", CaptureCatalog.RecordRelative("x", "GIF"), "GIF 成品保留 .gif");
+        Check.Equal("records/x.mp4", CaptureCatalog.RecordRelative("x", "bmp"), "不认识的扩展名回到 .mp4");
         Check.Equal("00:07", RecordPlan.FormatClock(7000), "不足一分钟");
         Check.Equal("01:02", RecordPlan.FormatClock(62000), "超过一分钟");
         Check.Equal("1:00:00", RecordPlan.FormatClock(3600000), "超过一小时");
 
         // MP4：原始 BGRA 从管道进来 → libx264 / yuv420p，奇数尺寸补成偶数，moov 前置
-        var mp4 = RecordPlan.Mp4Args(new Int32Rect(0, 0, 1921, 1081), 30, "out.mp4");
+        var mp4 = RecordPlan.Mp4Args(new Int32Rect(0, 0, 1921, 1081), 30, "out.mp4", RecordEncoders.X264);
         string mp4Line = string.Join(" ", mp4);
         Check.True(mp4Line.Contains("rawvideo") && mp4Line.Contains("bgra"), "原始帧格式是 bgra");
         Check.True(mp4Line.Contains("1921x1081"), "尺寸原样交给编码器");
@@ -2003,6 +2033,22 @@ internal static partial class CaptureProSuite
         Check.True(gifLine.Contains("paletteuse"), "第二遍用调色板");
         Check.True(gifLine.Contains("-loop 0"), "无限循环");
         Check.Equal("out.gif", gif[^1], "GIF 输出是最后一个参数");
+
+        // APNG / WebP：单遍转码（不像 GIF 要两遍调色板），同样压帧率 / 宽度，且不带音轨
+        var apng = RecordPlan.AnimatedArgs("in.mp4", "out.apng", RecordFormat.Apng, 60);
+        string apngLine = string.Join(" ", apng);
+        Check.True(apngLine.Contains("fps=15"), "APNG 帧率也压到 15");
+        Check.True(apngLine.Contains("min(960,iw)"), "APNG 宽度上限 960");
+        Check.True(apngLine.Contains("-an"), "动图不带音轨");
+        Check.True(apngLine.Contains("-c:v apng"), "APNG 用 apng 编码器");
+        Check.Equal("out.apng", apng[^1], "APNG 输出是最后一个参数");
+
+        var webp = RecordPlan.AnimatedArgs("in.mp4", "out.webp", RecordFormat.Webp, 30);
+        string webpLine = string.Join(" ", webp);
+        Check.True(webpLine.Contains("libwebp_anim"), "WebP 动图用 libwebp_anim");
+        Check.True(webpLine.Contains("-loop 0"), "WebP 无限循环");
+        Check.True(webpLine.Contains("-an"), "WebP 也不带音轨");
+        Check.Equal("out.webp", webp[^1], "WebP 输出是最后一个参数");
 
         // 定位：随包优先，其次 PATH（要剥引号），都没有返回 null
         string bundled = Path.Combine("C:\\app", "runtime", "ffmpeg", "ffmpeg.exe");
@@ -2163,6 +2209,101 @@ internal static partial class CaptureProSuite
     }
 
     /// <summary>
+    /// 空闲录屏区域框：边缘命中 / 拖拽（含翻面）/ 最小尺寸 / 移动 / 把手度量。
+    /// </summary>
+    /// <remarks>
+    /// 规则抄自上游 <c>screenrecordingareawindow.cpp</c> + <c>resizegeometry.h</c>：
+    /// 6 逻辑像素的抓取带、按住边翻面、最小 10 物理像素、32 逻辑像素的移动把手内缩 8。
+    /// </remarks>
+    private static void RecordRegion()
+    {
+        // ① 窗口比选区四周各大 3 物理像素（2 边框 + 1 透明缝）
+        Check.Equal(new Int32Rect(97, 97, 206, 156),
+            RecordRegionGeometry.FrameBounds(new Int32Rect(100, 100, 200, 150)),
+            "区域框把选区和外面那圈一起盖住");
+
+        // ② 抓边：四边 / 四角 / 中间不抓
+        var area = new Int32Rect(100, 100, 200, 150);
+        Check.Equal(ResizeEdges.Left | ResizeEdges.Top,
+            RecordRegionGeometry.EdgesAt(area, 100, 100, 1), "左上角两条边都抓");
+        Check.Equal(ResizeEdges.Right | ResizeEdges.Bottom,
+            RecordRegionGeometry.EdgesAt(area, 299, 249, 1), "右下角两条边都抓");
+        Check.Equal(ResizeEdges.Left, RecordRegionGeometry.EdgesAt(area, 103, 180, 1), "左边");
+        Check.Equal(ResizeEdges.Right, RecordRegionGeometry.EdgesAt(area, 297, 180, 1), "右边");
+        Check.Equal(ResizeEdges.Top, RecordRegionGeometry.EdgesAt(area, 200, 103, 1), "上边");
+        Check.Equal(ResizeEdges.Bottom, RecordRegionGeometry.EdgesAt(area, 200, 247, 1), "下边");
+        Check.Equal(ResizeEdges.None, RecordRegionGeometry.EdgesAt(area, 200, 175, 1), "中间不抓");
+        Check.Equal(ResizeEdges.Left, RecordRegionGeometry.EdgesAt(area, 98, 180, 1),
+            "可见边框在选区外面那 3 像素也算抓边");
+
+        // 小区域：带宽收窄到 1/4（20 → 5）
+        var small = new Int32Rect(100, 100, 20, 20);
+        Check.Equal(ResizeEdges.Left, RecordRegionGeometry.EdgesAt(small, 104, 110, 1),
+            "小区域带宽收窄到 1/4");
+        Check.Equal(ResizeEdges.None, RecordRegionGeometry.EdgesAt(small, 110, 110, 1),
+            "收窄之后中间留得出来");
+
+        // 125% DPI：6 逻辑像素 = 7.5 物理像素
+        var scaled = new Int32Rect(0, 0, 200, 200);
+        Check.Equal(ResizeEdges.Left, RecordRegionGeometry.EdgesAt(scaled, 7, 100, 1.25),
+            "抓边带宽跟着 DPI 放大");
+        Check.Equal(ResizeEdges.None, RecordRegionGeometry.EdgesAt(scaled, 9, 100, 1.25),
+            "放大后 9 像素已经在里面");
+
+        // ③ 拖右边 / 左边 / 角
+        var right = RecordRegionGeometry.Resize(area, ResizeEdges.Right, 50, 0, ResizeEdges.Right);
+        Check.Equal(new Int32Rect(100, 100, 250, 150), right.Rect, "拖右边：左边不动、变宽");
+        Check.Equal(ResizeEdges.Right, right.Effective, "拖右边仍落在右边");
+
+        var left = RecordRegionGeometry.Resize(area, ResizeEdges.Left, 50, 0, ResizeEdges.Left);
+        Check.Equal(new Int32Rect(150, 100, 150, 150), left.Rect, "拖左边：右边不动、变窄");
+
+        var corner = RecordRegionGeometry.Resize(area, ResizeEdges.Left | ResizeEdges.Top, 20, 10,
+            ResizeEdges.Left | ResizeEdges.Top);
+        Check.Equal(new Int32Rect(120, 110, 180, 140), corner.Rect, "拖左上角：宽高同时收");
+
+        // ④ 拖过对边翻面：贴着哪边就换哪边
+        var flip = RecordRegionGeometry.Resize(area, ResizeEdges.Left, 250, 0, ResizeEdges.Left);
+        Check.Equal(ResizeEdges.Right, flip.Effective, "左边界被拖过右边界 → 换成右边界");
+        Check.Equal(new Int32Rect(300, 100, 50, 150), flip.Rect, "翻面后锚点仍是原来的右边");
+
+        var zero = RecordRegionGeometry.Resize(area, ResizeEdges.Left, 200, 0, ResizeEdges.Left);
+        Check.Equal(ResizeEdges.Left, zero.Effective, "距离正好为 0：保持上一帧的边（不来回抖）");
+
+        // ⑤ 最小 10 物理像素
+        var tiny = RecordRegionGeometry.Resize(area, ResizeEdges.Right, -195, 0, ResizeEdges.Right);
+        Check.Equal(RecordRegionGeometry.MinimumPhysical, tiny.Rect.Width, "窄到极限就停在 10 像素");
+        var tinyCorner = RecordRegionGeometry.Resize(area, ResizeEdges.Right | ResizeEdges.Bottom,
+            -199, -149, ResizeEdges.Right | ResizeEdges.Bottom);
+        Check.Equal(RecordRegionGeometry.MinimumPhysical, tinyCorner.Rect.Width, "角上同样有最小宽");
+        Check.Equal(RecordRegionGeometry.MinimumPhysical, tinyCorner.Rect.Height, "角上同样有最小高");
+
+        // ⑥ 移动：整块平移、尺寸不变
+        Check.Equal(new Int32Rect(80, 130, 200, 150),
+            RecordRegionGeometry.Move(area, -20, 30), "拖把手整块挪");
+
+        // ⑦ 抓取带厚度（DIP = 外面那圈 3 像素 + 往里 6 逻辑像素）
+        Check.Equal(9.0, Math.Round(RecordRegionGeometry.HitBandDip(area, 1, true), 3),
+            "100% 时横向抓取带 3 + 6");
+        Check.Equal(7.5, Math.Round(RecordRegionGeometry.HitBandDip(scaled, 2, false), 3),
+            "200% 时外面那圈折半、往里仍是 6 逻辑像素");
+        Check.Equal(8.0, Math.Round(RecordRegionGeometry.HitBandDip(small, 1, true), 3),
+            "小区域按 1/4 收窄");
+
+        // ⑧ 把手：32 逻辑像素、内缩 8；区域太小跟着缩
+        var handle = RecordRegionGeometry.HandleMetrics(area, 1);
+        Check.Equal(32.0, handle.Side, "把手边长 32");
+        Check.Equal(8.0, handle.Inset, "把手离右下角 8");
+
+        var smallHandle = RecordRegionGeometry.HandleMetrics(small, 1);
+        Check.Equal(20.0, smallHandle.Side, "区域比把手还小时把手跟着缩");
+        Check.Equal(0.0, smallHandle.Inset, "缩到一样大时不再内缩");
+
+        var dpiHandle = RecordRegionGeometry.HandleMetrics(new Int32Rect(0, 0, 200, 200), 2);
+        Check.Equal(32.0, dpiHandle.Side, "200% 时把手仍按逻辑像素算");
+    }
+
+    /// <summary>
     /// 中断残片：从 <c>ffmpeg -i</c> 的 stderr 里读尺寸与时长（启动抢救靠这个判断能不能救）。
     /// </summary>
     private static void RecordRecoveryProbe()
@@ -2194,6 +2335,9 @@ internal static partial class CaptureProSuite
     {
         var wall = Stopwatch.StartNew();
         var controller = new RecordController();
+        Check.False(controller.HasStarted, "建出来还没开始计时（面板在等用户点录制）");
+        Check.Equal(0, controller.ElapsedMs, "没开始时时长就是 0");
+        controller.Start();
         Thread.Sleep(25);
         controller.Pause();
         Thread.Sleep(120);
@@ -2254,6 +2398,414 @@ internal static partial class CaptureProSuite
         var (keep, _) = CaptureCatalog.PlanPrune(
             new[] { record }, new DateTimeOffset(2026, 11, 16, 12, 0, 0, TimeSpan.Zero), 200, 30);
         Check.Equal(1, keep.Count, "当天的录屏不会被剪掉");
+    }
+
+    // ============ 录屏：选项 / 编码器 ============
+
+    /// <summary>
+    /// 录屏选项：夹取、从内置功能参数覆盖、摘要文案；编码器挑选 / 回退 / 参数表；
+    /// 收尾混音参数（无音轨 / 单轨 / 双轨）。
+    /// </summary>
+    private static void RecordOptionsRules()
+    {
+        // ---- 夹取 ----
+        var clamped = new RecordOptions
+        {
+            CameraSize = 5000,
+            CameraOffsetLeft = -30,
+            MouseHighlightRadius = 1,
+            MicrophoneDevice = "  ",
+        }.Normalized();
+
+        Check.Equal(RecordOptions.MaxCameraSize, clamped.CameraSize, "画中画边长夹到上限");
+        Check.Equal(0, clamped.CameraOffsetLeft, "负边距收成 0");
+        Check.Equal(RecordOptions.MinHighlightRadius, clamped.MouseHighlightRadius, "高亮半径夹到下限");
+        Check.True(clamped.MicrophoneDevice == null, "全空白的设备名当没填");
+        Check.Equal(RecordOptions.MinCameraSize,
+            new RecordOptions { CameraSize = 1 }.Normalized().CameraSize, "画中画边长夹到下限");
+
+        // ---- 从参数覆盖：没写 / 认不出的项跟随设置 ----
+        var baseOptions = new RecordOptions
+        {
+            SystemAudio = false,
+            Microphone = false,
+            CameraDevice = -1,
+            ShowCursor = false,
+            MouseHighlight = false,
+            RecordClicks = false,
+            RecordScroll = false,
+            Keystroke = false,
+            LaserColor = "#00000000",
+            ClickColor = "#00000000",
+            Codec = RecordCodec.h264,
+            TrimAfterRecord = false,
+        };
+
+        var both = RecordOptions.Apply(baseOptions, audio: "both");
+        Check.True(both.SystemAudio && both.Microphone, "audio=both 两路都开");
+
+        var mic = RecordOptions.Apply(baseOptions, audio: "MIC");
+        Check.True(!mic.SystemAudio && mic.Microphone, "audio 值不分大小写");
+
+        var untouched = RecordOptions.Apply(baseOptions, audio: "", camera: "???", codec: "???");
+        Check.True(!untouched.SystemAudio && !untouched.Microphone, "空值 / 认不出的值不动原选项");
+        Check.Equal(RecordCodec.h264, untouched.Codec, "认不出的编码保持原值");
+
+        var cameraOn = RecordOptions.Apply(baseOptions, camera: "on", cameraDevice: 2);
+        Check.Equal(2, cameraOn.CameraDevice, "camera=on 用点名设备号");
+
+        var cameraDefault = RecordOptions.Apply(baseOptions, camera: "on");
+        Check.Equal(0, cameraDefault.CameraDevice, "没点名就用 0 号摄像头");
+
+        var cameraOff = RecordOptions.Apply(new RecordOptions { CameraDevice = 1 }, camera: "off");
+        Check.Equal(-1, cameraOff.CameraDevice, "camera=off 关掉画中画");
+
+        var fxOn = RecordOptions.Apply(baseOptions, effects: "on");
+        Check.True(fxOn.HasEffects, "effects=on 打开特效");
+        Check.True(fxOn.ShowCursor && fxOn.MouseHighlight && fxOn.RecordClicks && fxOn.Keystroke,
+            "光标 / 高亮 / 点击 / 按键逐个都开");
+        Check.True(fxOn.HasLaser && fxOn.HasClickRipple, "effects=on 同时给激光笔与点击上色");
+
+        var fxOff = RecordOptions.Apply(new RecordOptions
+        {
+            ShowCursor = true,
+            MouseHighlight = true,
+            RecordClicks = true,
+            RecordScroll = true,
+            Keystroke = true,
+            PostProcessing = true,
+            LaserColor = "#FFFF4040",
+            ClickColor = "#80F5222D",
+        }, effects: "off");
+        Check.False(fxOff.HasEffects, "effects=off 全部关闭");
+        Check.False(fxOff.ShowCursor, "effects=off 连光标覆盖也关");
+
+        Check.Equal(RecordCodec.hevc, RecordOptions.Apply(baseOptions, codec: "h265").Codec,
+            "h265 也认作 HEVC");
+        Check.Equal(RecordCodec.auto, RecordOptions.Apply(baseOptions, codec: "auto").Codec, "auto");
+        Check.True(RecordOptions.Apply(baseOptions, trim: "on").TrimAfterRecord, "trim=on");
+        Check.False(RecordOptions.Apply(new RecordOptions { TrimAfterRecord = true }, trim: "off")
+            .TrimAfterRecord, "trim=off");
+
+        // ---- 摘要 ----
+        Check.Equal("", new RecordOptions { SystemAudio = false }.Summary(), "纯画面没有摘要");
+        Check.Equal("系统声音", new RecordOptions().Summary(), "默认只录系统声音（Snow Shot 默认开）");
+        Check.Equal("系统声音 + 麦克风", new RecordOptions { SystemAudio = true, Microphone = true }.Summary(),
+            "两路声音文案");
+        Check.Equal("麦克风", new RecordOptions { SystemAudio = false, Microphone = true }.Summary(), "单路声音文案");
+        Check.Equal("HEVC", new RecordOptions { SystemAudio = false, Codec = RecordCodec.hevc }.Summary(), "编码进摘要");
+        Check.Equal("录完裁剪", new RecordOptions { SystemAudio = false, TrimAfterRecord = true }.Summary(), "裁剪进摘要");
+
+        var full = new RecordOptions
+        {
+            SystemAudio = true,
+            CameraDevice = 0,
+            MouseHighlight = true,
+            ClickColor = "#80F5222D",
+            Codec = RecordCodec.hevc,
+        }.Summary();
+        Check.True(full.Contains("系统声音") && full.Contains("摄像头 0") && full.Contains("光标高亮")
+            && full.Contains("点击涟漪") && full.Contains("HEVC"), "全开时摘要逐项都在：" + full);
+        Check.True(!full.Contains("麦克风") && !full.Contains("拖尾"), "没开的项不进摘要：" + full);
+        Check.True(!new RecordOptions().IsPlain, "默认带系统声音，不是纯画面");
+        Check.True(new RecordOptions { SystemAudio = false }.IsPlain, "两路都关是纯画面");
+        Check.False(new RecordOptions { Keystroke = true }.IsPlain, "有特效就不是纯画面");
+
+        // ---- 编码器挑选（纯函数：硬件清单注入）----
+        var nvenc = new[] { "h264_nvenc", "hevc_nvenc" };
+
+        Check.Equal("h264_nvenc", RecordEncoders.Pick(RecordCodec.auto, nvenc), "auto 优先 H.264 硬件");
+        Check.Equal("hevc_nvenc", RecordEncoders.Pick(RecordCodec.hevc, nvenc), "指定 HEVC 就用硬件 HEVC");
+        Check.Equal("h264_nvenc", RecordEncoders.Pick(RecordCodec.h264, nvenc), "指定 H.264 就用硬件 H.264");
+        Check.Equal(RecordEncoders.X264, RecordEncoders.Pick(RecordCodec.auto, Array.Empty<string>()),
+            "没有硬件退回 libx264");
+        Check.Equal(RecordEncoders.X265, RecordEncoders.Pick(RecordCodec.hevc, Array.Empty<string>()),
+            "没有硬件退回 libx265");
+        Check.Equal("hevc_nvenc", RecordEncoders.Pick(RecordCodec.auto, new[] { "hevc_nvenc" }),
+            "只有 HEVC 硬件时 auto 也用它（别平白掉回软件）");
+        Check.Equal("h264_amf", RecordEncoders.Pick(RecordCodec.h264, new[] { "h264_qsv", "h264_amf" }),
+            "同代硬件按 NVENC → AMF → QSV 的优先顺序");
+
+        // 回退：硬件开不起来 → 同格式的软件编码器
+        Check.Equal(RecordEncoders.X264, RecordEncoders.Fallback("h264_nvenc"), "NVENC H.264 退回 libx264");
+        Check.Equal(RecordEncoders.X265, RecordEncoders.Fallback("hevc_qsv"), "QSV HEVC 退回 libx265");
+        Check.Equal(RecordEncoders.X264, RecordEncoders.Fallback("h264_amf"), "AMF H.264 退回 libx264");
+
+        Check.True(RecordEncoders.IsHardware("hevc_nvenc"), "硬件编码器判定");
+        Check.False(RecordEncoders.IsHardware(RecordEncoders.X264), "libx264 不算硬件");
+        Check.False(RecordEncoders.IsHardware("made_up"), "认不出的不算硬件");
+        Check.True(RecordEncoders.IsHevc(RecordEncoders.X265), "libx265 是 HEVC");
+        Check.True(RecordEncoders.IsHevc("hevc_amf"), "AMF HEVC 是 HEVC");
+        Check.False(RecordEncoders.IsHevc("h264_nvenc"), "H.264 不是 HEVC");
+
+        // 参数表：编解码器名必须和「用哪个编码器」一致
+        foreach (string encoder in new[]
+                 {
+                     RecordEncoders.X264, RecordEncoders.X265, "h264_nvenc", "hevc_nvenc",
+                     "h264_amf", "hevc_amf", "h264_qsv", "hevc_qsv",
+                 })
+        {
+            var args = RecordEncoders.Arguments(encoder);
+            Check.True(args.Count >= 2, encoder + " 至少有 -c:v 和编码器名");
+            Check.Equal("-c:v", args[0], encoder + " 第一个参数是 -c:v");
+            Check.Equal(encoder, args[1], encoder + " 参数表用的是它自己");
+        }
+
+        Check.True(RecordEncoders.Arguments(RecordEncoders.X265).Contains("hvc1"),
+            "HEVC 打 hvc1 标签（QuickTime / 浏览器才认）");
+        Check.True(RecordEncoders.Arguments("hevc_nvenc").Contains("hvc1"), "硬件 HEVC 也打 hvc1");
+        Check.False(RecordEncoders.Arguments(RecordEncoders.X264).Contains("hvc1"),
+            "H.264 不打 hvc1");
+
+        Check.Equal("H.264", RecordEncoders.Label(RecordEncoders.X264), "软件 H.264 文案");
+        Check.Equal("HEVC · NVENC", RecordEncoders.Label("hevc_nvenc"), "硬件文案带厂商");
+
+        // ---- 收尾混音 ----
+        var mute = RecordPlan.FinalizeArgs("in.mp4", "out.mp4");
+        string muteLine = string.Join(" ", mute);
+        Check.True(muteLine.Contains("-c copy"), "没有音轨就是纯容器搬运");
+        Check.True(muteLine.Contains("+faststart"), "收尾转 faststart");
+        Check.False(muteLine.Contains("-filter_complex"), "没有音轨不用混流");
+        Check.Equal("out.mp4", mute[^1], "输出在最后一个参数");
+
+        var single = RecordPlan.FinalizeArgs("in.mp4", "out.mp4", new[] { "a.wav" });
+        string singleLine = string.Join(" ", single);
+        Check.True(singleLine.Contains("-i in.mp4") && singleLine.Contains("-i a.wav"), "原片 + 一条音轨");
+        Check.True(singleLine.Contains("-map 0:v") && singleLine.Contains("-map 1:a"), "画面取原片、声音取音轨");
+        Check.True(singleLine.Contains("-c:v copy"), "画面不重编码");
+        Check.True(singleLine.Contains("-c:a aac") && singleLine.Contains("-b:a 192k"), "声音编成 AAC 192k");
+        Check.True(singleLine.Contains("-ar 48000") && singleLine.Contains("-ac 2"), "统一成 48kHz 立体声");
+        Check.True(singleLine.Contains("-shortest"), "以画面长度收口");
+        Check.False(singleLine.Contains("amix"), "单音轨不用混音");
+
+        var dual = RecordPlan.FinalizeArgs("in.mp4", "out.mp4", new[] { "sys.wav", "mic.wav" });
+        string dualLine = string.Join(" ", dual);
+        Check.True(dualLine.Contains("amix=inputs=2"), "两路用 amix 混");
+        Check.True(dualLine.Contains("aresample=48000"), "混前先统一采样率（amix 不做格式统一）");
+        Check.True(dualLine.Contains("channel_layouts=stereo"), "混前统一声道");
+        Check.True(dualLine.Contains("-map [aout]"), "混音结果映射成音轨");
+        Check.Equal("out.mp4", dual[^1], "输出在最后一个参数");
+
+        Check.Equal(string.Join(" ", mute), string.Join(" ", RecordPlan.RemuxArgs("in.mp4", "out.mp4")),
+            "RemuxArgs 等价于「没有音轨的收尾」");
+    }
+
+    // ============ 录屏：特效几何 / 画中画 ============
+
+    /// <summary>
+    /// 键鼠特效的纯函数（涟漪 / 拖尾 / 按键 / 坐标映射）+ 摄像头画中画落点。
+    /// 参数照上游 <c>snow-recording-effects</c> 与 <c>snow-recording-model/src/webcam.rs</c>。
+    /// </summary>
+    private static void RecordEffectRules()
+    {
+        // ---- 涟漪：600ms 内 7 → 40 半径，透明度线性降到 0 ----
+        var first = RecordEffectsMath.ClickRipple(0, true);
+        Check.True(first != null, "0ms 还在生命周期里");
+        Check.Equal(RecordEffectsMath.ClickStartRadius, first!.Value.Radius, "起点半径 7");
+        Check.Equal(255, first.Value.Alpha, "起点不透明");
+        Check.Equal(3, first.Value.Thickness, "左键描边 3");
+
+        var mid = RecordEffectsMath.ClickRipple(RecordEffectsMath.ClickDurationMs / 2, false);
+        Check.True(mid != null, "过半还在生命周期里");
+        Check.Equal(23, mid!.Value.Radius, "过半半径 7 + round(16.5) = 23");
+        Check.Equal(2, mid.Value.Thickness, "右键描边 2");
+
+        var last = RecordEffectsMath.ClickRipple(RecordEffectsMath.ClickDurationMs, true);
+        Check.True(last != null, "最后一刻还在");
+        Check.Equal(RecordEffectsMath.ClickEndRadius, last!.Value.Radius, "终点半径 40");
+        Check.Equal(0, last.Value.Alpha, "终点完全透明");
+
+        Check.True(RecordEffectsMath.ClickRipple(RecordEffectsMath.ClickDurationMs + 1, true) == null,
+            "超过 600ms 就没了");
+        Check.True(RecordEffectsMath.ClickRipple(-5, true) == null, "时间倒流当作没有");
+
+        // ---- 拖尾：500ms 线性淡出，上限 50 点 ----
+        Check.Equal(220, RecordEffectsMath.TrailAlpha(0), "刚画的点最深");
+        Check.Equal(110, RecordEffectsMath.TrailAlpha(RecordEffectsMath.LaserLifeMs / 2), "半程一半深");
+        Check.Equal(0, RecordEffectsMath.TrailAlpha(RecordEffectsMath.LaserLifeMs), "到期透明");
+        Check.Equal(0, RecordEffectsMath.TrailAlpha(RecordEffectsMath.LaserLifeMs + 1), "过期透明");
+        Check.Equal(50, RecordEffectsMath.LaserMaxPoints, "最多 50 个点");
+
+        // ---- 按键浮层：先上浮 180ms，停留到 1200ms，再淡出 400ms ----
+        var start = RecordEffectsMath.KeyCapState(0);
+        Check.True(start != null, "刚按下还在");
+        Check.Equal(255, start!.Value.Alpha, "刚按下不透明");
+        Check.Equal(0.0, start.Value.Slide, "刚按下没上浮");
+
+        var risen = RecordEffectsMath.KeyCapState(RecordEffectsMath.KeyMoveMs);
+        Check.Equal(1.0, risen!.Value.Slide, "180ms 时浮到位");
+
+        var hold = RecordEffectsMath.KeyCapState(RecordEffectsMath.KeyHoldMs);
+        Check.Equal(255, hold!.Value.Alpha, "停留期内仍然不透明");
+        Check.Equal(1.0, hold.Value.Slide, "停留期内保持浮起");
+
+        int halfFade = RecordEffectsMath.KeyHoldMs + RecordEffectsMath.KeyFadeMs / 2;
+        Check.True(RecordEffectsMath.KeyCapState(halfFade)!.Value.Alpha is > 100 and < 200,
+            "淡出过半时透明度落在中间");
+
+        Check.True(RecordEffectsMath.KeyCapState(
+            RecordEffectsMath.KeyHoldMs + RecordEffectsMath.KeyFadeMs + 1) == null, "淡出结束就没了");
+        Check.True(RecordEffectsMath.KeyCapState(-1) == null, "时间倒流当作没有");
+
+        // ---- 修饰键组合名 ----
+        Check.Equal("Ctrl+Shift+A",
+            RecordEffectsMath.ComboLabel(new HashSet<int> { 0x11, 0x10 }, "A"), "修饰键拼在前面");
+        Check.Equal("A", RecordEffectsMath.ComboLabel(new HashSet<int>(), "A"), "没有修饰键就是键名");
+        Check.True(RecordEffectsMath.IsModifier(0x11) && RecordEffectsMath.IsModifier(0x5B), "Ctrl / Win 是修饰键");
+        Check.False(RecordEffectsMath.IsModifier(0x41), "字母不是修饰键");
+        Check.True(RecordEffectsMath.WatchedKeys.Count > 60, "要轮询的键有全套（字母 / 数字 / 功能键）");
+
+        // ---- 坐标映射（跟随鼠标换区域后仍对得上）----
+        var area = new Int32Rect(100, 200, 800, 600);
+        var mapped = RecordEffectsMath.Map(500, 500, area, 400, 300);
+        Check.Equal(200, mapped.X, "横向按比例缩到一半");
+        Check.Equal(150, mapped.Y, "纵向按比例缩到一半");
+
+        Check.Equal(0, RecordEffectsMath.Map(100, 200, area, 400, 300).X, "区域左上角映射到 0");
+        Check.Equal(-19, RecordEffectsMath.MapAxis(-40, 800, 400),
+            "区域外的点映射成负数（不夹到边界，画面上自然裁掉）");
+        Check.Equal(7, RecordEffectsMath.MapAxis(7, 0, 400), "源尺寸为 0 时原样返回（不做除法）");
+        Check.Equal(7, RecordEffectsMath.MapAxis(14, 800, 400), "整数四舍五入：14/800*400 = 7");
+
+        // ---- 画中画落点：贴左下，放不下就收进来 ----
+        var corner = RecordOptions.CameraPlacement(1920, 1080, 150, 48, 48);
+        Check.Equal(48, corner.X, "左边距 48");
+        Check.Equal(1080 - 48 - 150, corner.Y, "底边距 48（Y 从上算）");
+        Check.Equal(150, corner.Side, "边长照给的值");
+
+        var tight = RecordOptions.CameraPlacement(100, 100, 400, 48, 48);
+        Check.Equal(100, tight.Side, "画中画不能比画面还大");
+        Check.Equal(0, tight.X, "放不下就贴到左上（不留负边距）");
+        Check.Equal(0, tight.Y, "纵向同理");
+
+        var huge = RecordOptions.CameraPlacement(600, 400, 150, 999, 999);
+        Check.Equal(600 - 150, huge.X, "边距超过画面时收到右下最大位置");
+        Check.Equal(0, huge.Y, "纵向收到 0");
+    }
+
+    // ============ 录屏：裁剪 / 倍速 ============
+
+    /// <summary>
+    /// 裁剪区间夹取、倍速档位、<c>atempo</c> 串联（单级只接受 0.5–2.0）、
+    /// 导出参数与文件名；以及从 ffmpeg 输出里读时长 / 音轨。
+    /// </summary>
+    private static void RecordTrimRules()
+    {
+        // ---- 区间夹取 ----
+        var all = RecordTrim.Normalize(0, 10_000, 1.0, 10_000);
+        Check.Equal(0, all.StartMs, "起点");
+        Check.Equal(10_000, all.EndMs, "终点");
+        Check.Equal(10_000, all.SourceMs, "源时长");
+        Check.Equal(10_000, all.OutputMs, "1.0x 成品时长 = 源时长");
+        Check.True(all.IsFullRange(10_000), "整片 + 1.0x 是全片");
+
+        var flipped = RecordTrim.Normalize(8_000, 2_000, 1.0, 10_000);
+        Check.True(flipped.EndMs > flipped.StartMs, "终点在起点前面时被推开（不会出现负区间）");
+        Check.Equal(RecordTrim.MinDurationMs, flipped.SourceMs, "至少留一帧");
+
+        var past = RecordTrim.Normalize(0, 99_999, 1.0, 10_000);
+        Check.Equal(10_000, past.EndMs, "终点不越过片长");
+
+        var negative = RecordTrim.Normalize(-5_000, 5_000, 1.0, 10_000);
+        Check.Equal(0, negative.StartMs, "起点负数收到 0");
+
+        var fast = RecordTrim.Normalize(0, 6_000, 2.0, 10_000);
+        Check.Equal(3_000, fast.OutputMs, "2.0x 成品时长减半");
+        Check.False(fast.IsFullRange(10_000), "剪过就不是全片");
+
+        var slow = RecordTrim.Normalize(0, 6_000, 0.5, 10_000);
+        Check.Equal(12_000, slow.OutputMs, "0.5x 成品时长翻倍");
+
+        // 倍速夹取 + 吸附到标准档
+        Check.Equal(RecordTrim.MaxSpeed, RecordTrim.Normalize(0, 1000, 99, 1000).Speed, "倍速夹到 3.0");
+        Check.Equal(RecordTrim.MinSpeed, RecordTrim.Normalize(0, 1000, 0.01, 1000).Speed, "倍速夹到 0.25");
+        Check.Equal(1.5, RecordTrim.Normalize(0, 1000, 1.4, 1000).Speed, "1.4 吸附到 1.5");
+        Check.Equal(1.0, RecordTrim.Normalize(0, 1000, double.NaN, 1000).Speed, "NaN 当 1.0");
+
+        // 零长度片（读不出时长的坏文件）也不炸
+        var empty = RecordTrim.Normalize(0, 0, 1.0, 0);
+        Check.True(empty.EndMs >= empty.StartMs, "零长度片不会算出倒置区间");
+
+        // ---- 文案 ----
+        Check.Equal("1.0x", RecordTrim.SpeedText(1.0), "1.0 保留一位");
+        Check.Equal("0.25x", RecordTrim.SpeedText(0.25), "0.25 不补零");
+        Check.Equal("2.0x", RecordTrim.SpeedText(2.0), "2.0 保留一位");
+        Check.Equal("00:00.000", RecordTrim.FormatSeconds(0), "零时码");
+        Check.Equal("01:02.345", RecordTrim.FormatSeconds(62_345), "带毫秒的时间码");
+        Check.Equal("00:16", RecordPlan.FormatClock(16_000), "摘要用整秒时码");
+
+        // ---- atempo 串联：单级只接受 0.5–2.0 ----
+        Check.Equal(0, RecordTrim.AtempoChain(1.0).Count, "1.0x 不挂音频滤镜");
+        Check.Equal("2,1.5", string.Join(",", RecordTrim.AtempoChain(3.0)), "3.0x = 2.0 + 1.5");
+        Check.Equal("0.5,0.5", string.Join(",", RecordTrim.AtempoChain(0.25)), "0.25x = 0.5 + 0.5");
+        Check.Equal("2", string.Join(",", RecordTrim.AtempoChain(2.0)), "2.0x 一级就够");
+        Check.Equal("0.5", string.Join(",", RecordTrim.AtempoChain(0.5)), "0.5x 一级就够");
+        Check.Equal("1.25", string.Join(",", RecordTrim.AtempoChain(1.25)), "1.25x 一级");
+        Check.Equal(0, RecordTrim.AtempoChain(0).Count, "0 不产出（调用方自己判）");
+
+        foreach (double speed in RecordTrim.Speeds)
+        {
+            double product = 1;
+            foreach (double factor in RecordTrim.AtempoChain(speed))
+            {
+                Check.True(factor is >= 0.5 and <= 2.0, $"每级 atempo 都在 0.5–2.0（{speed}x → {factor}）");
+                product *= factor;
+            }
+
+            if (Math.Abs(speed - 1.0) > 0.0001)
+                Check.True(Math.Abs(product - speed) < 0.001, $"{speed}x 的因子乘积等于倍速（{product}）");
+        }
+
+        // ---- 导出参数 ----
+        var cut = RecordTrim.Normalize(2_000, 8_000, 1.0, 10_000);
+        var cutArgs = RecordTrim.ExportArgs("in.mp4", "out.mp4", cut, hasAudio: true);
+        string cutLine = string.Join(" ", cutArgs);
+        Check.True(cutLine.Contains("-ss 2") && cutLine.Contains("-to 8"), "按源时间切（秒）");
+        Check.True(cutLine.IndexOf("-ss", StringComparison.Ordinal)
+            < cutLine.IndexOf("-i in.mp4", StringComparison.Ordinal),
+            "-ss / -to 必须放在 -i 之前（否则时间基准变成输出时间轴，倍速会剪错）");
+        Check.True(cutLine.Contains("-t 6"), "输出侧 -t 按成品时长收口（1.0x 剪 6 秒 = 6 秒）");
+        Check.True(cutLine.IndexOf("-t 6", StringComparison.Ordinal)
+            > cutLine.IndexOf("-i in.mp4", StringComparison.Ordinal),
+            "-t 是输出选项，要放在 -i 之后");
+        Check.True(cutLine.Contains("-c:a aac"), "声音一律重编码（切点不在音频包边界上）");
+        Check.False(cutLine.Contains("setpts"), "1.0x 不改画面时间戳");
+        Check.False(cutLine.Contains("atempo"), "1.0x 不挂 atempo");
+        Check.True(cutLine.Contains("libx264"), "画面重编码（裁剪必须重编）");
+        Check.True(cutLine.Contains("+faststart"), "导出也转 faststart");
+        Check.Equal("out.mp4", cutArgs[^1], "输出在最后一个参数");
+
+        var sped = RecordTrim.Normalize(1_000, 4_000, 2.0, 10_000);
+        var spedArgs = RecordTrim.ExportArgs("in.mp4", "out.mp4", sped, hasAudio: true);
+        string spedLine = string.Join(" ", spedArgs);
+        Check.True(spedLine.Contains("setpts=(PTS-STARTPTS)/2"), "画面按倍速改时间戳");
+        Check.True(spedLine.Contains("atempo=2"), "声音用 atempo 跟速");
+        Check.True(spedLine.Contains("-t 1.5"), "成品时长按倍速换算（3 秒剪成 2 倍 = 1.5 秒）");
+
+        var silent = RecordTrim.ExportArgs("in.mp4", "out.mp4", cut, hasAudio: false);
+        Check.True(string.Join(" ", silent).Contains("-an"), "没有音轨就明确 -an");
+
+        // ---- 导出文件名：永远不覆盖原片 ----
+        string dir = Path.Combine("C:\\v", "records");
+        Check.Equal(Path.Combine(dir, "rec-裁剪.mp4"), RecordTrim.OutputPath(dir, "rec", _ => false),
+            "默认是「原名字-裁剪」");
+        Check.Equal(Path.Combine(dir, "rec-裁剪-2.mp4"),
+            RecordTrim.OutputPath(dir, "rec", p => p.EndsWith("rec-裁剪.mp4", StringComparison.Ordinal)),
+            "已经存在就加序号");
+
+        // ---- ffmpeg 输出解析（老记录 / 外部文件才需要问）----
+        const string info =
+            "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'x.mp4':\n" +
+            "  Duration: 00:01:02.34, start: 0.000000, bitrate: 1200 kb/s\n" +
+            "  Stream #0:0[0x1](und): Video: h264 (High), yuv420p, 1920x1080, 30 fps\n" +
+            "  Stream #0:1[0x2](und): Audio: aac (LC), 48000 Hz, stereo, fltp, 192 kb/s";
+
+        Check.Equal(62_340, RecordTrimSession.ParseDurationMs(info), "从 Duration 行读毫秒");
+        Check.True(RecordTrimSession.HasAudioStream(info), "有 Audio 流");
+        Check.False(RecordTrimSession.HasAudioStream(
+            "  Stream #0:0[0x1](und): Video: h264 (High), yuv420p, 1920x1080, 30 fps"), "只有视频流");
+        Check.Equal(0, RecordTrimSession.ParseDurationMs("garbage"), "读不出时长返回 0");
+        Check.Equal(0, RecordTrimSession.ParseDurationMs("Duration: N/A, start: 0"), "N/A 也返回 0");
     }
 
     /// <summary>8×8 像素的假底图 + 缩放 2 的文档（不开窗口）。</summary>

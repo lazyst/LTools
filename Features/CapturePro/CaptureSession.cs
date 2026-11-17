@@ -172,7 +172,13 @@ internal static class CaptureSession
             return false;
         }
 
-        var plan = new RecordPlan { Mode = RecordMode.Region };
+        // 覆盖层入口照 Snow Shot：先把面板摆出来等用户点「录制」，倒计时在点完之后才开始。
+        var plan = new RecordPlan
+        {
+            Mode = RecordMode.Region,
+            Options = AppState.Record.Normalized(),
+            PromptStart = true,
+        };
         System.Threading.Tasks.Task.Run(() =>
         {
             try

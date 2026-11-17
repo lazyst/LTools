@@ -1,3 +1,5 @@
+using LTools.Features.CapturePro;
+
 namespace LTools.Core;
 
 /// <summary>
@@ -42,6 +44,12 @@ internal static class AppState
 
     /// <summary>左键双击托盘图标的行为。读配置落在这里，双击回调（UI 线程）零磁盘 IO；设置页改值经 <see cref="Settings.SetTrayDoubleClick"/> 同步。</summary>
     public static TrayDoubleClickAction TrayDoubleClick = TrayDoubleClickAction.settings;
+
+    /// <summary>
+    /// 录屏的默认开关（声音 / 摄像头 / 特效 / 编码器 / 录完裁剪）。
+    /// 启动时从 <c>settings.json</c> 灌进来，「录屏选项」窗口保存时换一个新实例（别就地改，读方可能正在用）。
+    /// </summary>
+    public static RecordOptions Record = new();
 
     // —— 已吞键集合：快捷键 / CapsLock 组合键被吞后，其 keyup 也要吞，保持事件平衡 ——
     // HashSet<int>：钩子回调对每次 keyup 做 Contains/Remove，O(1) 且无 int 装箱；

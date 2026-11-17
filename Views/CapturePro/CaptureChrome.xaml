@@ -13,6 +13,24 @@
     <SolidColorBrush x:Key="ChromeInkOff" Color="#A1A1AA"/>     <!-- 禁用文字 -->
     <SolidColorBrush x:Key="ChromeHover" Color="#14000000"/>    <!-- 悬停底（8% 黑） -->
     <SolidColorBrush x:Key="ChromePressed" Color="#26000000"/>  <!-- 按下 / 选中底 -->
+    <SolidColorBrush x:Key="ChromePanel" Color="#FFFFFF"/>      <!-- 工具条面板（antd colorBgElevated） -->
     <SolidColorBrush x:Key="ChromeWell" Color="#0D000000"/>     <!-- 凹槽：参数条 / 预览框 / 小按钮 -->
     <SolidColorBrush x:Key="ChromeStroke" Color="#33000000"/>   <!-- 色卡等小元素的描边 -->
+
+    <!-- Ant Design 浅色 token（Snow Shot 工具条的真实取值，见 ant_design_qt 的 colorMap）。
+         工具条 / 录屏面板的按钮、图标、选中态一律从这里取，别再写 #3B82F6 这类随手色。 -->
+    <SolidColorBrush x:Key="CapturePrimary" Color="#1677FF"/>
+    <SolidColorBrush x:Key="CapturePrimaryHover" Color="#4096FF"/>
+    <SolidColorBrush x:Key="CapturePrimaryActive" Color="#0958D9"/>
+    <SolidColorBrush x:Key="CapturePrimaryBg" Color="#E6F4FF"/>
+    <SolidColorBrush x:Key="CaptureText" Color="#E6000000"/>          <!-- rgba(0,0,0,.88) -->
+    <SolidColorBrush x:Key="CaptureTextSecondary" Color="#A6000000"/> <!-- rgba(0,0,0,.65) -->
+    <SolidColorBrush x:Key="CaptureTextDisabled" Color="#40000000"/>  <!-- rgba(0,0,0,.25) -->
+    <SolidColorBrush x:Key="CaptureBorder" Color="#D9D9D9"/>
+    <SolidColorBrush x:Key="CaptureBorderSecondary" Color="#F0F0F0"/>
+    <SolidColorBrush x:Key="CaptureHover" Color="#0F000000"/>         <!-- 悬停：6% 黑 -->
+    <SolidColorBrush x:Key="CaptureActive" Color="#1F000000"/>        <!-- 按下：12% 黑 -->
+    <SolidColorBrush x:Key="CaptureDanger" Color="#FF4D4F"/>
+    <SolidColorBrush x:Key="CaptureSuccess" Color="#52C41A"/>
+    <SolidColorBrush x:Key="CaptureWarning" Color="#FAAD14"/>
 </ResourceDictionary>

@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.CapturePro;
 
 namespace LTools.Config;
 
@@ -98,6 +99,9 @@ public sealed class AppConfig
 
     /// <summary>运行日志配置。</summary>
     public LogConfig Logging { get; set; } = new();
+
+    /// <summary>录屏的默认开关（声音 / 摄像头 / 特效 / 编码器 / 录完裁剪），见 <c>RecordOptions</c>。</summary>
+    public RecordOptions Record { get; set; } = new();
 
     /// <summary>终端路径覆盖（如 gitbash）。</summary>
     public Dictionary<string, string> TerminalPaths { get; set; } = new();

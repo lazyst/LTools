@@ -350,6 +350,9 @@ public partial class CaptureOverlayWindow : Window
             case CaptureToolbar.CaptureAction.Print: Accept(FinishKind.Print); break;          // 打印（Ctrl+P）
             case CaptureToolbar.CaptureAction.Scroll: StartScrollMode(); break;                // 长截图：覆盖层不关，用户自己滚
             case CaptureToolbar.CaptureAction.Record: Accept(FinishKind.Record); break;        // 录屏（Ctrl+Shift+R）：选完区域去开录
+            case CaptureToolbar.CaptureAction.RecordOptions:                                  // 录屏选项…（默认声音 / 摄像头 / 特效）
+                RecordOptionsWindow.Show(this);
+                break;
             case CaptureToolbar.CaptureAction.FullScreen: SelectWholeScreen(); break;          // 全屏（Ctrl+A）
             case CaptureToolbar.CaptureAction.HistoryPrev: StepHistory(-1); break;            // 采集历史：上一张（,）
             case CaptureToolbar.CaptureAction.HistoryNext: StepHistory(1); break;             // 采集历史：下一张（.）

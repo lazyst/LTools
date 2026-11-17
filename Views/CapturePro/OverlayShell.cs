@@ -22,7 +22,17 @@ internal static class OverlayShell
     public static IntPtr MakeNonActivating(Window window, bool excludeFromCapture)
     {
         IntPtr hwnd = new WindowInteropHelper(window).Handle;
-        if (hwnd == IntPtr.Zero) return hwnd;
+        MakeNonActivating(hwnd, excludeFromCapture);
+        return hwnd;
+    }
+
+    /// <summary>
+    /// 同一套出场设置，但作用在**已经存在的句柄**上：录屏面板的 <c>Popup</c>
+    /// （悬停弹层 / 取色器）是 WPF 自己建的顶层窗口，构造时拿不到句柄，只能在 <c>Opened</c> 里补。
+    /// </summary>
+    public static void MakeNonActivating(IntPtr hwnd, bool excludeFromCapture)
+    {
+        if (hwnd == IntPtr.Zero) return;
 
         long ex = Win32.GetWindowLongPtr(hwnd, Win32.GwlExstyle).ToInt64();
         Win32.SetWindowLongPtr(hwnd, Win32.GwlExstyle,
@@ -33,7 +43,5 @@ internal static class OverlayShell
 
         Win32.SetWindowPos(hwnd, Win32.HwndTopmost, 0, 0, 0, 0,
             Win32.SwpNomove | Win32.SwpNosize | Win32.SwpNoactivate);
-
-        return hwnd;
     }
 }

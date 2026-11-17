@@ -132,6 +132,33 @@
     "RetentionDays": 14
   },
   "TrayDoubleClick": "settings",
+  "Record": {
+    "SystemAudio": true,
+    "Microphone": false,
+    "MicrophoneDevice": null,
+    "CameraDevice": -1,
+    "CameraSize": 150,
+    "CameraShape": "square",
+    "CameraMirrored": true,
+    "CameraOffsetLeft": 48,
+    "CameraOffsetBottom": 48,
+    "ShowCursor": true,
+    "MouseHighlight": false,
+    "MouseHighlightRadius": 41,
+    "RecordClicks": false,
+    "Keystroke": false,
+    "RecordNumberKeys": true,
+    "RecordLetterKeys": true,
+    "RecordControlKeys": true,
+    "PreserveShortcuts": true,
+    "RecordScroll": false,
+    "PostProcessing": false,
+    "PostProcessingProgressBar": true,
+    "LaserColor": "#00000000",
+    "ClickColor": "#00000000",
+    "Codec": "auto",
+    "TrimAfterRecord": false
+  },
   "Triggers": {
     "Enabled": false,
     "Rules": []

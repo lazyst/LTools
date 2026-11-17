@@ -21,6 +21,7 @@
     <PackageReference Include="H.NotifyIcon.Wpf" Version="2.4.1" />
     <!-- UI Automation 客户端：读取选区文本等，不注入按键（FlaUI 是维护中的 .NET UIA 封装） -->
     <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
     <!-- 图像识别：OpenCV 的 .NET 绑定（模板匹配 / 缩放）。native 包只含 win-x64。 -->
     <PackageReference Include="OpenCvSharp4" Version="4.13.0.20260627" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20260627" />

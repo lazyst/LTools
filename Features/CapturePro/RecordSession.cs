@@ -20,6 +20,9 @@ internal sealed class RecordOutcome
 
     public string Path { get; init; } = "";
 
+    /// <summary>真正用上的编码器名（<c>h264_nvenc</c> / <c>libx265</c> …）：硬件开不起来时会回退。</summary>
+    public string Encoder { get; init; } = "";
+
     public bool Saved => Entry != null;
 }
 
@@ -83,8 +86,6 @@ internal static class RecordSession
         var area = fixedArea ?? PickArea(app, plan, owner);
         if (area.Width < 2 || area.Height < 2) return new RecordOutcome();   // 用户取消了框选
 
-        if (plan.Countdown > 0 && !RunCountdown(area, plan.Countdown)) return new RecordOutcome();
-
         string temp = TempPath("mp4");
         try
         {
@@ -97,9 +98,57 @@ internal static class RecordSession
         }
 
         var controller = new RecordController();
-        var bar = ShowBar(area, plan, controller);
+        var gate = plan.PromptStart ? new RecordStartGate() : null;
+        var bar = ShowBar(area, plan, controller, gate);
 
-        var engine = new RecordEngine(ffmpeg, area, plan.EffectiveFps, temp, controller);
+        // 面板先摆着（Snow Shot 的录屏入口）：等用户点那个红圈；点 ✕ / 关窗都算取消。
+        if (gate != null)
+        {
+            while (!gate.Started && !gate.Cancelled && !controller.Finished) Thread.Sleep(30);
+            if (!gate.Started)
+            {
+                CloseBar(bar);
+                return new RecordOutcome();
+            }
+
+            // 空闲期用户可以拖区域框改尺寸 / 挪位置：这里取定稿的选区（Area 只在 UI 线程上写）。
+            var chosen = bar == null ? area : app.Dispatcher.Invoke(() => bar.Area);
+            if (chosen.Width >= 2 && chosen.Height >= 2 && chosen != area)
+            {
+                area = chosen;
+                if (bar != null) app.Dispatcher.Invoke(() => bar.ApplyArea(chosen));
+            }
+        }
+
+        if (plan.Countdown > 0 && !RunCountdown(area, plan.Countdown))
+        {
+            CloseBar(bar);
+            return new RecordOutcome();
+        }
+
+        controller.Start();
+        bar?.BeginRecording();
+
+        // 编码器：先探测这台机器哪些硬件编码器真能开（一次进程只探一次），再按意图挑
+        string encoder = RecordEncoders.Pick(plan.Options.Codec, RecordEncoders.Probe(ffmpeg));
+
+        // 摄像头：打不开只是少个画中画，录制继续
+        var camera = RecordCamera.TryStart(plan.Options, out string? cameraProblem);
+        if (cameraProblem != null)
+            ToastService.Show(cameraProblem + "，只录画面", "录屏", 3200, ToastKind.warning);
+
+        // 声音：同样「打不开就少一路」，不挡录制
+        RecordAudio? audio = null;
+        if (plan.Options.HasAudio)
+        {
+            audio = RecordAudio.Start(TempDir, plan.Options, controller);
+            if (audio.Warning != null && !audio.Any)
+                ToastService.Show("没有录到声音：" + audio.Warning, "录屏", 3600, ToastKind.warning);
+            else if (audio.Warning != null)
+                AppLog.Warn("CapturePro.Record", "部分声音通道打不开：" + audio.Warning);
+        }
+
+        var engine = new RecordEngine(ffmpeg, area, plan, temp, controller, encoder, camera);
 
         // 跟随鼠标：先定「第一帧抓哪儿」的视口（居中到光标、夹在显示器里）；
         // 成品尺寸仍是选区，抓到的画面按选区尺寸缩放后再编码。
@@ -114,13 +163,20 @@ internal static class RecordSession
         bool ok;
         try
         {
+            RecordWheelFeed.SetActive(true);
             ok = engine.Run();
         }
         finally
         {
+            RecordWheelFeed.SetActive(false);
+
             // 抓帧循环不论怎么退出（完成 / 取消 / 异常），看护线程与边框都得收掉
             tracker.Stop();
             CloseBorder(border);
+
+            // 音轨先停：停完才有完整的 WAV（收尾要按活动时长补齐）
+            try { audio?.Stop(); } catch (Exception ex) { AppLog.Warn("CapturePro.Record", "停音轨失败：" + ex.Message); }
+            try { camera?.Dispose(); } catch (Exception ex) { AppLog.Warn("CapturePro.Record", "关摄像头失败：" + ex.Message); }
         }
 
         CloseBar(bar);
@@ -128,6 +184,7 @@ internal static class RecordSession
         if (controller.Cancelled)
         {
             DeleteFile(temp);
+            DeleteAudio(audio);
             ToastService.Show("已取消录屏", "录屏", 1600, ToastKind.info);
             return new RecordOutcome();
         }
@@ -135,30 +192,36 @@ internal static class RecordSession
         if (!ok || engine.Frames == 0)
         {
             DeleteFile(temp);
+            DeleteAudio(audio);
             throw new InvalidOperationException("录屏失败：" + (engine.Error ?? "没有录到画面"));
         }
 
-        string file = ToFaststart(ffmpeg, temp);
+        string file = ToFaststart(ffmpeg, temp, plan.IsAnimated ? Array.Empty<string>() : audio?.Tracks);
         string extension = "mp4";
 
-        if (plan.IsGif)
+        if (plan.IsAnimated)
         {
-            if (TryConvertToGif(ffmpeg, file, plan, out string gifPath, out string convertError))
+            string target = TempPath(plan.Extension);
+            if (TryConvertAnimated(ffmpeg, file, plan, target, out string convertError))
             {
                 DeleteFile(temp);
-                file = gifPath;
-                extension = "gif";
+                file = target;
+                extension = plan.Extension;
             }
             else
             {
-                AppLog.Warn("CapturePro.Record", "GIF 转换失败：" + convertError);
-                ToastService.Show("GIF 转换失败，已保存为 MP4：" + convertError, "录屏",
-                    4200, ToastKind.warning);
+                AppLog.Warn("CapturePro.Record", $"{RecordPlan.FormatName(plan.Format)} 转换失败：" + convertError);
+                ToastService.Show(
+                    $"{RecordPlan.FormatName(plan.Format)} 转换失败，已保存为 MP4：" + convertError,
+                    "录屏", 4200, ToastKind.warning);
             }
         }
 
         var entry = CaptureCatalog.CreateRecord(area.Width, area.Height, "录屏", extension,
             engine.DurationMs, file, engine.Poster);
+
+        // 音轨只是混音素材，成品出来就删
+        DeleteAudio(audio);
 
         if (entry == null)
         {
@@ -166,12 +229,45 @@ internal static class RecordSession
             throw new InvalidOperationException("录制文件保存失败（写不进 captures/records）");
         }
 
+        var extras = new List<string>();
+        string summary = plan.Options.Summary();
+        if (summary.Length > 0) extras.Add(summary);
+        extras.Add(RecordEncoders.Label(engine.Encoder));
+
         ToastService.Show(
-            $"{RecordPlan.FormatClock(engine.DurationMs)} · {area.Width} × {area.Height} · 已存进采集历史",
+            $"{RecordPlan.FormatClock(engine.DurationMs)} · {area.Width} × {area.Height} · {string.Join(" · ", extras)}"
+            + " · 已存进采集历史",
             "录屏", 3600, ToastKind.success,
             onClick: OpenRecordsFolder, actionText: "打开文件夹");
 
-        return new RecordOutcome { Entry = entry, Path = CaptureCatalog.FilePath(entry) };
+        if (plan.Options.TrimAfterRecord && extension == "mp4") OpenTrim(entry);
+
+        return new RecordOutcome
+        {
+            Entry = entry,
+            Path = CaptureCatalog.FilePath(entry),
+            Encoder = engine.Encoder,
+        };
+    }
+
+    /// <summary>录完直接开裁剪 / 倍速窗口（窗口只能在 UI 线程上建，这里只投递不等待）。</summary>
+    private static void OpenTrim(CaptureEntry entry)
+    {
+        try
+        {
+            var app = Application.Current;
+            if (app == null || app.Dispatcher.HasShutdownStarted) return;
+
+            app.Dispatcher.BeginInvoke(() =>
+            {
+                try { RecordTrimSession.Open(entry); }
+                catch (Exception ex) { AppLog.Warn("CapturePro.Trim", "打开裁剪窗口失败：" + ex.Message); }
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("CapturePro.Trim", "投递裁剪窗口失败：" + ex.Message);
+        }
     }
 
     // ============ 区域 ============
@@ -280,7 +376,8 @@ internal static class RecordSession
 
     // ============ 控制条 ============
 
-    private static CaptureRecordWindow? ShowBar(Int32Rect area, RecordPlan plan, RecordController controller)
+    private static CaptureRecordWindow? ShowBar(Int32Rect area, RecordPlan plan,
+        RecordController controller, RecordStartGate? gate)
     {
         var app = Application.Current;
         if (app == null) return null;
@@ -288,7 +385,7 @@ internal static class RecordSession
         CaptureRecordWindow? bar = null;
         app.Dispatcher.Invoke(() =>
         {
-            bar = new CaptureRecordWindow(area, plan, controller);
+            bar = new CaptureRecordWindow(area, plan, controller, gate);
             bar.Show();
         });
         return bar;
@@ -491,36 +588,52 @@ internal static class RecordSession
         }
     }
 
-    // ============ GIF ============
+    // ============ 动图转码 ============
 
-    /// <summary>把刚录好的 mp4 转成 GIF（两遍：调色板 + 编码）。失败时 <paramref name="gifPath"/> 会删掉。</summary>
-    private static bool TryConvertToGif(string ffmpeg, string input, RecordPlan plan,
-        out string gifPath, out string error)
+    /// <summary>
+    /// 把刚录好的 mp4 转成动图：GIF 两遍调色板，APNG / WebP 单遍。
+    /// 失败时目标文件删掉、返回 false（调用方沿用 MP4）。
+    /// </summary>
+    private static bool TryConvertAnimated(string ffmpeg, string input, RecordPlan plan,
+        string output, out string error)
     {
-        gifPath = TempPath("gif");
-        string palette = TempPath("png");
         error = "";
 
         try
         {
-            if (!RunFfmpeg(ffmpeg, RecordPlan.GifPaletteArgs(input, palette, plan.GifFps), out string paletteError))
+            if (plan.Format == RecordFormat.Gif)
             {
-                error = "调色板：" + paletteError;
-                DeleteFile(gifPath);
+                string palette = TempPath("png");
+                try
+                {
+                    if (!RunFfmpeg(ffmpeg, RecordPlan.GifPaletteArgs(input, palette, plan.GifFps), out string paletteError))
+                    {
+                        error = "调色板：" + paletteError;
+                        return false;
+                    }
+
+                    if (!RunFfmpeg(ffmpeg, RecordPlan.GifEncodeArgs(input, palette, output, plan.GifFps), out string encodeError))
+                    {
+                        error = "编码：" + encodeError;
+                        return false;
+                    }
+                }
+                finally
+                {
+                    DeleteFile(palette);
+                }
+            }
+            else if (!RunFfmpeg(ffmpeg,
+                         RecordPlan.AnimatedArgs(input, output, plan.Format, plan.GifFps),
+                         out string convertError))
+            {
+                error = "编码：" + convertError;
                 return false;
             }
 
-            if (!RunFfmpeg(ffmpeg, RecordPlan.GifEncodeArgs(input, palette, gifPath, plan.GifFps), out string encodeError))
+            if (!File.Exists(output) || new FileInfo(output).Length == 0)
             {
-                error = "编码：" + encodeError;
-                DeleteFile(gifPath);
-                return false;
-            }
-
-            if (!File.Exists(gifPath) || new FileInfo(gifPath).Length == 0)
-            {
-                error = "生成的 GIF 是空的";
-                DeleteFile(gifPath);
+                error = $"生成的 {RecordPlan.FormatName(plan.Format)} 是空的";
                 return false;
             }
 
@@ -529,12 +642,11 @@ internal static class RecordSession
         catch (Exception ex)
         {
             error = ex.Message;
-            DeleteFile(gifPath);
             return false;
         }
         finally
         {
-            DeleteFile(palette);
+            if (error.Length > 0) DeleteFile(output);
         }
     }
 
@@ -585,14 +697,14 @@ internal static class RecordSession
         Path.Combine(TempDir, "rec-" + IdFactory.ShortId() + "." + extension);
 
     /// <summary>
-    /// 把录好的分片 MP4 重封装成普通 faststart MP4（只搬容器，不重编码）。
+    /// 把录好的分片 MP4（+ 音轨）重新封装成普通 faststart MP4。
     /// 失败就沿用分片文件——它本身是完整的，别为了「格式更好」把已经录到的东西丢了。
     /// </summary>
-    private static string ToFaststart(string ffmpeg, string temp)
+    private static string ToFaststart(string ffmpeg, string temp, IReadOnlyList<string>? audio)
     {
         string final = Path.Combine(TempDir, "rec-" + IdFactory.ShortId() + ".final.mp4");
 
-        if (!RunFfmpeg(ffmpeg, RecordPlan.RemuxArgs(temp, final), out string error)
+        if (!RunFfmpeg(ffmpeg, RecordPlan.FinalizeArgs(temp, final, audio), out string error)
             || !File.Exists(final) || new FileInfo(final).Length == 0)
         {
             DeleteFile(final);
@@ -602,6 +714,14 @@ internal static class RecordSession
 
         DeleteFile(temp);
         return final;
+    }
+
+    /// <summary>删掉这次录制的音轨（它们是混音素材，不是成品）。</summary>
+    private static void DeleteAudio(RecordAudio? audio)
+    {
+        if (audio == null) return;
+
+        foreach (string track in audio.Tracks) DeleteFile(track);
     }
 
     /// <summary>清掉上一次没删干净的临时文件（进程被杀 / 断电）。</summary>
@@ -620,7 +740,7 @@ internal static class RecordSession
         catch (Exception ex) { AppLog.Warn("CapturePro.Record", "删临时文件失败：" + ex.Message); }
     }
 
-    private static void OpenRecordsFolder()
+    internal static void OpenRecordsFolder()
     {
         try
         {

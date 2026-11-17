@@ -36,6 +36,8 @@ internal sealed class RecordEngine
     private readonly int _fps;
     private readonly string _output;
     private readonly RecordController _controller;
+    private readonly RecordPlan _plan;
+    private readonly RecordCamera? _camera;
 
     private readonly object _errGate = new();
     private readonly StringBuilder _errors = new();
@@ -57,14 +59,23 @@ internal sealed class RecordEngine
     /// </summary>
     internal Func<Int32Rect>? FollowArea { get; set; }
 
-    public RecordEngine(string ffmpeg, Int32Rect area, int fps, string output, RecordController controller)
+    public RecordEngine(string ffmpeg, Int32Rect area, RecordPlan plan, string output,
+        RecordController controller, string encoder, RecordCamera? camera = null)
     {
         _ffmpeg = ffmpeg;
         _area = area;
-        _fps = RecordPlan.NormalizeFps(fps);
+        _fps = RecordPlan.NormalizeFps(plan.EffectiveFps);
         _output = output;
         _controller = controller;
+        _plan = plan;
+        _encoder = encoder;
+        _camera = camera;
     }
+
+    private string _encoder;
+
+    /// <summary>实际用上的编码器（<c>libx264</c> / <c>hevc_nvenc</c> …）。</summary>
+    public string Encoder => _encoder;
 
     /// <summary>最近一帧实际抓的区域（跟随鼠标时会走）。</summary>
     public Int32Rect CurrentArea => _currentArea is Int32Rect area ? area : _area;
@@ -81,7 +92,35 @@ internal sealed class RecordEngine
     public int DurationMs => Frames * 1000 / Math.Max(1, _fps);
 
     /// <summary>跑完整段（阻塞）。返回 true = 成品写好；用户取消时返回 false。</summary>
+    /// <remarks>
+    /// 硬件编码器（NVENC / AMF / QSV）可能在真开的时候才失败（探测通过但驱动被占用 / 显存不够）。
+    /// 这时画面还一帧都没写出去，直接换软件编码器重来一次——对用户来说只是慢了半秒，
+    /// 而不是「录屏失败」。
+    /// </remarks>
     public bool Run()
+    {
+        if (TryRunOnce(_encoder)) return true;
+
+        if (!RecordEncoders.IsHardware(_encoder) || Frames > 0 || _controller.Finished) return false;
+
+        string fallback = RecordEncoders.Fallback(_encoder);
+        AppLog.Warn("CapturePro.Record", $"{_encoder} 打不开（{_error}），改用 {fallback} 重录");
+
+        Reset();
+        _encoder = fallback;
+        return TryRunOnce(fallback);
+    }
+
+    private void Reset()
+    {
+        _error = null;
+        Frames = 0;
+        Poster = null;
+
+        lock (_errGate) _errors.Clear();
+    }
+
+    private bool TryRunOnce(string encoder)
     {
         try
         {
@@ -92,7 +131,7 @@ internal sealed class RecordEngine
                 RedirectStandardInput = true,
                 RedirectStandardError = true,
             };
-            foreach (string arg in RecordPlan.Mp4Args(_area, _fps, _output)) info.ArgumentList.Add(arg);
+            foreach (string arg in RecordPlan.Mp4Args(_area, _fps, _output, encoder)) info.ArgumentList.Add(arg);
 
             _process = new Process { StartInfo = info };
             _process.ErrorDataReceived += (_, e) =>
@@ -141,6 +180,8 @@ internal sealed class RecordEngine
         var buffer = new byte[stride * height];
         byte[]? last = null;
 
+        using var composer = RecordComposer.Create(buffer, width, height, _plan.Options, _camera);
+
         double ticksPerFrame = (double)Stopwatch.Frequency / _fps;
         long frame = 0;
         double nextAt = 0;
@@ -171,6 +212,9 @@ internal sealed class RecordEngine
 
             if (!Grab(buffer, width, height, rect)) return;
             _currentArea = rect;
+
+            // 摄像头画中画 + 键鼠特效都画在这一份帧上，再整帧交给编码器
+            composer?.Apply(rect, (long)(frame * 1000.0 / _fps));
 
             Poster ??= ToSource(buffer, width, height);
             last ??= buffer;

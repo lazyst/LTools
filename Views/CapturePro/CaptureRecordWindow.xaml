@@ -2,96 +2,70 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:LTools.Views"
-        Title="录屏" Width="344" SizeToContent="Height"
+        Title="录屏" SizeToContent="WidthAndHeight"
         WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True"
         ShowInTaskbar="False" ShowActivated="False" Topmost="True" Focusable="False"
         WindowStartupLocation="Manual" Background="Transparent"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         Loaded="Window_Loaded" Closing="Window_Closing"
         views:WindowSizing.Mode="Overlay">
-    <!-- 录屏控制条：不抢焦点（ShowActivated=False + WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW），
-         并且用 SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE) 自己不入镜。
-         代价是收不到 Esc，出口全部做成鼠标可达（暂停 / 完成 / 取消）。 -->
+    <!-- 录屏工具条（照 Snow Shot 的录屏面板）：两行白色圆角面板，第二行是「导出设置」，
+         由第一行那个蓝色开关切显隐。整条**不抢焦点**（ShowActivated=False +
+         WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW），并且用 WDA_EXCLUDEFROMCAPTURE 自己不入镜。
+         按钮全部在 code-behind 里按 RecordTools / RecordOptions 生成，这里只给骨架与外观。 -->
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <!-- 浮层配色（浅色）与其他截图浮层共用一份 -->
-                <ResourceDictionary Source="CaptureChrome.xaml"/>
+                <!-- 图标几何 + 按钮样式 + 浮层配色（与其他截图浮层共用一份） -->
+                <ResourceDictionary Source="CaptureIcons.xaml"/>
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- 主按钮：整格主色、白字（与工具栏的 BarBtnPrimary 同一套观感） -->
-            <Style x:Key="RecPrimaryBtn" TargetType="Button">
-                <Setter Property="Foreground" Value="#FFFFFF"/>
-                <Setter Property="Background" Value="#3B82F6"/>
-                <Setter Property="Padding" Value="13,5"/>
-                <Setter Property="FontSize" Value="12"/>
-                <Setter Property="Cursor" Value="Hand"/>
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="Button">
-                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
-                                    Padding="{TemplateBinding Padding}">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Bd" Property="Background" Value="#2F6FE0"/>
-                                </Trigger>
-                                <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="Bd" Property="Background" Value="#2560C8"/>
-                                </Trigger>
-                                <Trigger Property="IsEnabled" Value="False">
-                                    <Setter TargetName="Bd" Property="Background" Value="#E4E4E7"/>
-                                    <Setter Property="Foreground" Value="{StaticResource ChromeInkOff}"/>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
+            <!-- 面板底：白底 + 圆角 8 + 浮层阴影（Snow Shot `createPanel` 同款，不画边框） -->
+            <Style x:Key="RecPanel" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource ChromePanel}"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Effect" Value="{StaticResource BarShadow}"/>
             </Style>
 
-            <Style x:Key="RecGhostBtn" TargetType="Button" BasedOn="{StaticResource RecPrimaryBtn}">
-                <Setter Property="Background" Value="{StaticResource ChromeWell}"/>
-                <Setter Property="Foreground" Value="{StaticResource ChromeInk}"/>
+            <!-- 录制时长：14 号（`RECORDING_DURATION_FONT_SIZE`）、colorTextSecondary，
+                 宽度按「最宽数字 × 6 + 两个冒号」预留，所以走时不会把面板撑宽。 -->
+            <Style x:Key="RecClock" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="14"/>
+                <Setter Property="Foreground" Value="{StaticResource CaptureTextSecondary}"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="TextAlignment" Value="Center"/>
+                <Setter Property="Width" Value="58"/>
+                <Setter Property="Margin" Value="2,0,2,0"/>
+            </Style>
+
+            <!-- 第二行的下拉式按钮文字（格式选择 / 延迟胶囊） -->
+            <Style x:Key="RecPillText" TargetType="TextBlock">
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="Foreground" Value="{StaticResource CaptureText}"/>
             </Style>
         </ResourceDictionary>
     </Window.Resources>
 
-    <Border Background="{StaticResource ChromeBg}" BorderBrush="{StaticResource ChromeBorder}"
-            BorderThickness="1" CornerRadius="8" Padding="12,10">
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+    <StackPanel x:Name="PanelRoot" HorizontalAlignment="Center">
+        <!-- 第一行：拖动把手 / 导出设置 / 绘制工具 / 撤销重做 / 录制控制 / 收尾动作 -->
+        <Border x:Name="ActionBar" Style="{StaticResource RecPanel}" Padding="12,4"
+                MouseLeftButtonDown="Bar_MouseDown"
+                MouseMove="Bar_MouseMove"
+                MouseLeftButtonUp="Bar_MouseUp"
+                PreviewMouseRightButtonDown="Bar_RightDown">
+            <StackPanel x:Name="ActionRow" Orientation="Horizontal"/>
+        </Border>
 
-            <Grid Grid.Row="0">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Ellipse x:Name="Dot" Width="10" Height="10" Fill="#EF4444" VerticalAlignment="Center"/>
-                    <TextBlock Text="录屏" Foreground="{StaticResource ChromeInk}" FontSize="13" FontWeight="SemiBold"
-                               Margin="8,0,0,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="ClockLabel" Text="00:00" Foreground="{StaticResource ChromeInk}" FontSize="18"
-                               FontFamily="Consolas" Margin="12,0,0,0" VerticalAlignment="Center"/>
-                </StackPanel>
-
-                <TextBlock x:Name="MetaText" HorizontalAlignment="Right" VerticalAlignment="Center"
-                           Foreground="{StaticResource ChromeInkDim}" FontSize="11" TextTrimming="CharacterEllipsis"
-                           MaxWidth="150"/>
-            </Grid>
-
-            <TextBlock x:Name="StatusText" Grid.Row="1" Text="录制中 · 点「完成」保存到采集历史"
-                       Foreground="{StaticResource ChromeInkDim}" FontSize="12" Margin="0,6,0,0"
-                       TextTrimming="CharacterEllipsis"/>
-
-            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                <Button x:Name="PauseBtn" Style="{StaticResource RecGhostBtn}" Content="暂停"
-                        MinWidth="66" Click="Pause_Click" ToolTip="暂停 / 继续（暂停的时间不进成品）"/>
-                <Button x:Name="DoneBtn" Style="{StaticResource RecPrimaryBtn}" Content="完成"
-                        MinWidth="66" Margin="8,0,0,0" Click="Done_Click" ToolTip="停止录制并保存"/>
-                <Button x:Name="CancelBtn" Style="{StaticResource RecGhostBtn}" Content="取消"
-                        MinWidth="66" Margin="8,0,0,0" Click="Cancel_Click" ToolTip="放弃这次录制"/>
-            </StackPanel>
-        </Grid>
-    </Border>
+        <!-- 第二行：导出设置（格式 / 色卡 / 键鼠特效 / 跟随 / 摄像头 / 延迟 / 设置）。
+             上游把它 `AlignRight` 摆在第一行下面（右边缘对齐），行间距 6。 -->
+        <Border x:Name="StyleBar" Style="{StaticResource RecPanel}" Padding="10,4"
+                Margin="0,6,0,0" HorizontalAlignment="Right"
+                MouseLeftButtonDown="Bar_MouseDown"
+                MouseMove="Bar_MouseMove"
+                MouseLeftButtonUp="Bar_MouseUp"
+                PreviewMouseRightButtonDown="Bar_RightDown">
+            <StackPanel x:Name="StyleRow" Orientation="Horizontal"/>
+        </Border>
+    </StackPanel>
 </Window>
