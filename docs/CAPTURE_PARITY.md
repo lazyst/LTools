@@ -26,7 +26,8 @@
 | 测角 Angle（滚轮调角度 / 内角 / 弧度） | `buildAngleFamily` `:2711`、`angle.rs` | `Mark.Angle`（两次拖拽成角，滚轮 ±5° / Shift ±1°）+ 类型有向 360° / **内角 180°**（`>180°` 折成 `2π−sweep`，圆弧与平分线一起翻边）+ 单位度 / 弧度（`°` 无空格、`" rad"` 前导空格）+ 0–3 位小数 | P1 / P2-d1 | ✅ |
 | 括号 Bracket | `buildBracketFamily` `:2633`、`bracket.rs` | `Mark.Bracket` = **花括号**（三点 a/c/b + 四段三次贝塞尔 `BracketInk`）；拖拽 = 首尾落在起点 x 上纵向撑满、尖在终点 x 与中线，**横向拖拽退化为不生成**（与上游同） | P1 / P2-d1 | ✅ |
 | 箭头 Arrow（类型 / 起止端点 / 杆型 / 外描边 / 比例） | `buildArrowFamily` `screenshottoolpalettestylecontrols.cpp:1926`、`arrow/data.rs`、`render_core.rs`、`shaft.rs` | `Mark.Arrow` = 点列 + `ArrowSpec`：**三种类型**（直线 / 曲线 = Catmull-Rom（tension 1，端点自重复）/ 折线 = 拐点 16 DIP 圆角）、**起止端点 14 种**（`ArrowInk`，方向按曲线 t=0.85 切线 / 末段弦）、**箭头比例 0.5–3**、**杆型**（等宽 / 渐宽 = ribbon 半径从次箭头肩宽/4 线性长到主箭头肩宽/4，实线连成一片、虚点线分段）、**外描边**（宽 0–72 + 色 `#FFCCC7`，垫在墨迹下面）；工具栏 11 格 = 色 / 线宽 / 线型 / 笔触 / 类型 / 外描边宽 / 外描边色 / 比例 / 起点 / 杆型 / 终点 | P2-e1 | ✅ |
-| 选中标注后切到该工具的样式族 + 样式实时生效 | 各 `*Family` 的 selection 分支 | 只有「当前工具就是测距 / 测角」时改参数会写回选中的那一条；其余族（形状 / 箭头 / 文字 / 序号…）选中后改参数不写回 | P2-d1 / P2-e2 | 🟡 |
+| 选中标注后切到该工具的样式族 + 样式实时生效 | 各 `*Family` 的 selection 分支、`style.rs` 的 `style_toolbar_source` / `set_shape_style_patch` | `MarkStyler`（标注 ↔ 样式族）+ `ToolStyle.CopyChangedTo`：选中一条标注 → 参数行切到**它自己的样式族**（工具按钮仍停在当前工具）并显示**这一条的值**；改参数 = 整份写回这条标注 + **只把变过的字段**合并进该族的创建样式（看一条旧箭头不会改掉创建默认）；取消选中 / 换工具 = 参数行交还当前工具；18 种标注全覆盖（水印 / 恢复块不归族） | P2-e2 | ✅ |
+| 多选标注 + 混合值显示（框选 / Ctrl 点选，参数行显示「多个值」） | `screenshottoolpalettestylecontrols.cpp` 的 `Mixed` 分支 | 只有单选（`_selectedIndex`）；多选与混合值未做 | P2-e3 | ❌ |
 | 直线 Line | `lineRequested` | `Mark.Line`（可虚线；横向拖拽不会因「高度为 0」被丢） | P1 | ✅ |
 | 画笔 Brush（FreeDraw） | `brushRequested` | `CaptureTool.Pen` | — | ✅ |
 | 矩形高亮 RectangleHighlight | `highlightRequested` | `CaptureTool.HighlightRect` → `Mark.Highlight`（半透明铺块） | P1 | ✅ |
@@ -149,7 +150,8 @@
 | P2-d1 | 端点 / 测距 / 测角 / 括号 / 橡皮：14 种端点（`ArrowInk`）+ 测距单位 · 小数位 · 端点比例 · 实测值换算 + 测角内角 · 弧度 · 小数位 + 括号改花括号（`BracketInk`）+ 橡皮三模式选择器 | ✅ | 构建 0 警；`--selftest` 217 用例 6693 断言全绿（`capturePro` 49 用例 1867 断言，新增「度量」一组）；`capture-overlay-smoke` 688 条全绿（真参数行 7 / 5 / 1 格 + 实测值置灰与显示 + 点「画笔橡皮」换工具 + 默认笔头 30；逐像素：花括号尖 / 肩 / 空脊线、测距无黑底 pill 的纯文字、端点比例 2 的箭头肩线） |
 | P2-d2 | 放大镜（连接方式 / 源轮廓 / 引导线箭头 / 圆角）+ 序号（5 类型 / 5 写法 / 字号 + 字体 / 填充色 + 填充方式 / 描边）+ 水印（字体 + 字号预设 + 模板 + 角度 / 间距 / 不透明度 / 色） | ✅ | 构建 0 警；`--selftest` 218 用例 6795 断言全绿（`capturePro` 50 用例 1969 断言，新增「样式：序号徽标 / 水印模板 / 放大镜几何」一组）；`capture-overlay-smoke` 714 条全绿（真参数行序号 9 格 / 放大镜 9 格 / 水印 8 格 + 落号后「序号」自动 +1 + 放大镜三段拖动语义 + 源轮廓与移动手柄逐像素） |
 | P2-e1 | 箭头族参数：箭头类型（直线 / 曲线 / 折线）+ 起止端点 14 种 + 箭头比例 0.5–3 + 杆型（等宽 / 渐宽）+ 外描边（宽 0–72 + 色）+ 几何照 `arrow/{data,render_core,shaft}.rs`（Catmull-Rom 曲线、拐角圆角、渐宽 ribbon、外描边垫底） | ✅ | 构建 0 警；`--selftest` 219 用例 6866 断言全绿（`capturePro` 51 用例 2040 断言，新增「样式：箭头族」一组）；`capture-overlay-smoke` 749 条全绿（真参数行 11 格 / 三类型胶囊 / 杆型胶囊 / 比例 1.0× / 外描边 0 / 起终点默认值；逐像素：直线杆、终点三角、曲线偏离弦、折线三段、14 种端点、双端箭头、外描边青圈 + 墨迹覆盖、渐宽杆变粗） |
-| P2-e2 | 选中标注后切该工具样式族 + 混合值显示 + 参数实时写回（把 `ApplyStyleToSelection` 从只有测距 / 测角扩到全部族：形状 / 箭头 / 线 / 文字 / 序号 / 放大镜 / 水印 / 滤镜…） | ❌ | 待填 |
+| P2-e2 | 选中标注后切它自己的样式族 + 显示这一条的值 + 参数实时写回（形状 / 箭头 / 线 / 文字 / 序号 / 放大镜 / 测距 / 测角 / 括号 / 滤镜…，且只把变过的字段合并进创建样式） | ✅ | 构建 0 警；`--selftest` 220 用例 7042 断言全绿（`capturePro` 52 用例 2216 断言，新增「样式：选中标注后切族并写回」46 条：18 种标注 → 族 / 工具反向映射、捕获 → 写回逐字段等价、改一项不动几何与种子、`CopyChangedTo` 只搬变过字段且不收序号计数器）；`capture-overlay-smoke` 775 条全绿（真窗口：选中旧箭头时参数行显示它自己的线宽 7 而创建样式仍是 4、工具按钮停在「选择」、改色写回标注且创建样式只合并颜色、滚轮改线宽两个都变、取消选中参数行收起、画笔下选形状切形状族且工具不动、测距「实测值」按那一条自己的系数 2 显示） |
+| P2-e3 | 多选标注（框选 / Ctrl+点选）+ 参数行「多个值」混合显示（`Mixed`） | ❌ | 待填 |
 | P3 | 选区：XYWH / 比例 / 圆角 / 阴影 / 智能选区 / 预设 | ❌ | 待填 |
 | P4 | 识别与转换：OCR 编辑器 / 原文预览 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档 / 翻译 | ❌ | 待填 |
 | P5 | 贴图：管理页 / 取色板 / 文字样式 / 点击穿透 / 抖动隐藏 / 批量保存 / 拖拽导出 / 历史恢复 | ❌ | 待填 |
@@ -237,3 +239,12 @@
   - **外描边**（`arrow_outline_width` 0–72 + `default_arrow_outline_color` `#FFCCC7`）：普通杆用同一批路径（`ShapeInk.StrokePaths`，实线 + 非 Architect 是两遍）配「线宽 + 外描边宽」的笔先垫一遍，端点用 `ArrowInk.Draw(..., grow)` 把形状整体外扩；渐宽杆则先用外描边色把轮廓填大（填色 + 宽 `OutlineWidth` 的笔）再盖墨迹。
   - **参数行**（`buildArrowFamily`）：色 / 线宽 / 线型 / 笔触 / 类型（3 胶囊）/ 外描边宽 / 外描边色 / 箭头比例 / 起点 / 杆型（2 胶囊）/ 终点 = 11 格；出厂默认照上游 `defaults.arrow`：`#FFF5222D`、线宽 2、实线、Architect、曲线、起点无 / 终点三角、比例 1、等宽、外描边 0。
   - 验收：构建 0 错 0 警；`--selftest` 219 用例 / 6866 断言全绿（`capturePro` 51 用例 / 2040 断言，新增 `CaptureProSuite.ArrowFamily.cs` 一组：三种类型点列 / 折线五段与拐角坐标 / 曲线与折线端点方向 / 14 端点顺序 / 渐宽杆轮廓与虚线分段 / 肩宽 ÷ 4 / 命中与平移缩放 / 落盘往返）；`capture-overlay-smoke` 749 条全绿（真参数行 11 格 + 三类型与杆型胶囊 + 比例 1.0× + 外描边 0 + 起终点默认文案；逐像素：直线杆、终点三角、曲线在弦外鼓出且经过控制点、折线横竖三段、14 种端点都落在终点附近、两端同时有箭头、外描边青圈在杆外侧而墨迹盖在上面、渐宽杆末端比起点粗）。
+
+- 2026-11-18：**P2-e2 完成（选中标注后切样式族 + 只合并变过的字段）**。上游 `snow-draw-engine-editor/src/style.rs` 的 `style_toolbar_source`（选中 → 样式来源切到 `Selected*`）+ `set_shape_style_patch`（只 merge `properties` 里的位）。
+  - 新增 `Features/CapturePro/MarkStyler.cs`：`TryFamily`（18 种标注 → 族 / 代表工具，水印是整图效果、恢复块不可选，都不归族）、`Capture`（把这一条的值抄进显示样式）、`Apply`（按显示样式重造标注，**几何与抖动种子原样保留**）。`Mark.Magnifier.WithSpec` 补齐换整套画法的入口。
+  - 新增 `Features/CapturePro/ToolStyleSync.cs`：`Clone` / `CopyChangedTo(target, baseline)` / `DiffersFrom`，46 个样式字段逐个手写，`SerialNumber` 计数器刻意不参与（选中一条旧序号时参数行仍显示下一个号）。
+  - `StyleFamilies.ToolOf(family)` 反向映射；`ToolStyle` 改成 `partial`（`ToolStyleSync.cs` 续写）。
+  - 工具栏：`_styleOverride` / `_toolOverride` / `ParamTool`，参数行改的是「显示样式」，`SyncSelection(tool, style)` 切族、`ClearSelectionStyle()` 交还当前工具；主色改动走 `SetPrimaryColor`（选中态只改副本，合并时再由 `ToolStyleSet.SetColor` 保留「共享颜色」传播）；思考气泡的显隐改按 `ParamTool` 判断。
+  - 覆盖层：`SyncSelectionStyle()` 在 `SelectMark` 里刷新显示样式与基线；`ApplyStyleToSelection()` 改为「只合并变过的字段 → 整份写回这条标注 → 更新基线」；「实测值」提交也走显示样式；换工具 = 放弃选中（参数行交给新工具）。
+  - 验收：构建 0 错 0 警；`--selftest` 220 用例 / 7042 断言全绿（`capturePro` 52 用例 / 2216 断言，新增 `CaptureProSuite.SelectionStyles.cs` 46 条：族反向映射、18 种标注的类型映射与逐字段往返、改一项不动几何 / 种子、`CopyChangedTo` 只搬变过字段）；`capture-overlay-smoke` 775 条全绿（选中旧箭头：参数行显示 7、创建样式仍 4、工具按钮停在「选择」；改色写回标注而创建样式只合并颜色；滚轮改线宽两处都变；取消选中参数行收起；画笔下选形状切形状族而工具不动；测距实测值按那一条自己的系数 2 显示）。
+  - 上游还有「多选标注 + 混合值显示」（框选 / Ctrl 点选，`Mixed` 分支），拆成 **P2-e3**。

@@ -60,8 +60,21 @@ public partial class CaptureToolbar : UserControl
     private ToolLayout _layout = ToolLayout.Default();
     private ToolStyleSet? _styles;
 
-    /// <summary>当前工具的样式（换工具就换一份；<c>_tool</c> 由 <see cref="Sync"/> 维护）。</summary>
-    private ToolStyle? _style => _styles?.For(_tool);
+    /// <summary>
+    /// 当前样式：选中标注时是**那一条的显示样式**（参数行显示它自己的值），
+    /// 否则是当前工具那一族（<c>_tool</c> 由 <see cref="Sync"/> 维护）。
+    /// 选中态的改动只落在临时副本上，由覆盖层合并回该族与那条标注。
+    /// </summary>
+    private ToolStyle? _style => _styleOverride ?? _styles?.For(_tool);
+
+    /// <summary>选中标注时的显示样式（覆盖层给的临时副本；取消选中 / 换工具就丢掉）。</summary>
+    private ToolStyle? _styleOverride;
+
+    /// <summary>选中标注时参数行按哪个工具排（这一族的代表工具；工具按钮仍停在原处）。</summary>
+    private CaptureTool? _toolOverride;
+
+    /// <summary>参数表的主人：选中标注时是那一族的代表工具，否则就是当前工具。</summary>
+    private CaptureTool ParamTool => _toolOverride ?? _tool;
 
     private CaptureTool _tool = CaptureTool.Select;
     private bool _built;
@@ -144,6 +157,10 @@ public partial class CaptureToolbar : UserControl
         _tool = tool;
         CurrentTool = tool;
 
+        // 回到「按工具创建」的样式：选中标注时的临时显示样式作废
+        _styleOverride = null;
+        _toolOverride = null;
+
         // 选中哪个工具，它所在的那一格就显示哪个（同格里切换时图标跟着换）
         var cell = CellOf(tool);
         if (cell != null) cell.Current = tool;
@@ -156,11 +173,51 @@ public partial class CaptureToolbar : UserControl
         }
         _syncing = false;
 
+        ApplyParamVisibility(tool);
+        RefreshValues();
+    }
+
+    /// <summary>
+    /// 选中一条标注：参数行切到它那一族，显示**这一条自己的值**（上游 <c>Selected*</c> 样式来源）。
+    /// 工具按钮**不动**（还停在「选择」），只切参数条——与上游「选中元素时工具不变、样式来源变」一致。
+    /// </summary>
+    internal void SyncSelection(CaptureTool tool, ToolStyle style)
+    {
+        _toolOverride = tool;
+        _styleOverride = style;
+        ApplyParamVisibility(tool);
+        RefreshValues();
+    }
+
+    /// <summary>取消选中：参数行还给当前工具（丢掉临时的显示样式）。</summary>
+    internal void ClearSelectionStyle()
+    {
+        if (_styleOverride == null && _toolOverride == null) return;
+        _styleOverride = null;
+        _toolOverride = null;
+        ApplyParamVisibility(_tool);
+        RefreshValues();
+    }
+
+    /// <summary>参数行按哪几格显示（<paramref name="tool"/> = 参数表的主人，不一定等于当前工具）。</summary>
+    private void ApplyParamVisibility(CaptureTool tool)
+    {
         foreach (var (param, host) in _paramHosts)
             host.Visibility = ToolCatalog.Uses(tool, param) ? Visibility.Visible : Visibility.Collapsed;
 
         ParamBar.Visibility = ToolCatalog.Of(tool).Params.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        RefreshValues();
+    }
+
+    /// <summary>改主色：选中标注时只改显示样式（合并回创建样式由覆盖层做，含「共享颜色」传播）。</summary>
+    private void SetPrimaryColor(Color color)
+    {
+        if (_styleOverride != null)
+        {
+            _styleOverride.Color = color;
+            return;
+        }
+
+        _styles?.SetColor(StyleFamilies.Of(_tool), color);
     }
 
     /// <summary>换一份布局（右键菜单 / 自检夹具调）：重建格子，当前工具的选中态跟着走。</summary>
@@ -615,7 +672,7 @@ public partial class CaptureToolbar : UserControl
         // 主色：共享颜色开着时改一处 = 全改（由 ToolStyleSet 统一处理）
         AddHost(ToolParam.Color, ColorRow("颜色", "captureColor",
             () => _style?.Color ?? ToolStyle.Palette[0],
-            c => _styles?.SetColor(StyleFamilies.Of(_tool), c)));
+            SetPrimaryColor));
 
         // 文字族（上游 buildTextFamily）：字色 → 字号 + 字体族 → 粗 / 斜 → 水平对齐 →
         // 描边宽度 + 描边色 → 背景填充色 + 填充方式 → 背景圆角。
@@ -663,7 +720,7 @@ public partial class CaptureToolbar : UserControl
             v => { if (_style != null) _style.ShapeKind = v; },
             ShapeLabel.Chip, ShapeLabel.Name, "shapeKind",
             // 思考气泡只在气泡工具里出现（上游 buildShapeSelector 的第 4 项）
-            v => v != ShapeKind.ThoughtBubble || _tool == CaptureTool.SpeechBubble));
+            v => v != ShapeKind.ThoughtBubble || ParamTool == CaptureTool.SpeechBubble));
 
         AddHost(ToolParam.StrokeStyle, Chips("描边",
             new[] { StrokeKind.Solid, StrokeKind.Dashed, StrokeKind.Dotted },

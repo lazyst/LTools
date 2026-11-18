@@ -408,9 +408,10 @@ internal static class EraserLabel
 
 /// <summary>
 /// 当前工具样式（颜色 / 线宽 / 字号 / 块大小 / 透明度）。
-/// 工具栏改这里，标注创建时读这里——**只有一份状态**，不给每个工具各存一套。
+/// 每个工具家族一份（<see cref="ToolStyleSet"/>），工具栏改这里、标注创建时读这里。
+/// 选中标注时工具栏改的是一份**显示副本**（<see cref="MarkStyler"/>），只把变过的字段合并回来。
 /// </summary>
-internal sealed class ToolStyle
+internal sealed partial class ToolStyle
 {
     public static readonly Color[] Palette =
     {

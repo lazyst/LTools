@@ -27,6 +27,15 @@ public partial class CaptureOverlayWindow
     private int _selectedIndex = -1;
     private bool _toolbarPlaced;
 
+    /// <summary>选中标注时参数行的临时显示样式（那一族创建样式的副本 + 这一条的值）。</summary>
+    private ToolStyle? _selectionStyle;
+
+    /// <summary>开始编辑那一刻显示样式的快照：合并时只把跟它不一样的字段写回创建样式。</summary>
+    private ToolStyle? _selectionBaseline;
+
+    /// <summary>选中的这条属于哪一族（合并回创建样式用）。</summary>
+    private string? _selectionFamily;
+
     private void WireToolbar()
     {
         Toolbar.Init(_styles, _tool);
@@ -46,31 +55,49 @@ public partial class CaptureOverlayWindow
     }
 
     /// <summary>
-    /// 选中某条测距 / 测角时改参数 = 直接改那一条（上游各 <c>*_style</c> 的 selection 分支）。
-    /// 只在当前工具就是它自己时生效：LTools 的选择工具不切换样式族，
-    /// 用「形状族」的线宽去改一条测距只会得出莫名其妙的结果。
+    /// 选中一条标注时改参数 = 先写回那一条，再把**变过的字段**合并进该族的创建样式
+    /// （上游 <c>set_shape_style_patch</c> 只 merge <c>properties</c> 里的位）。
+    /// 没有选中标注时什么都不做——那时参数行改的就是创建样式本身。
     /// </summary>
     private void ApplyStyleToSelection()
     {
+        if (_selectionStyle == null || _selectionBaseline == null || _selectionFamily == null) return;
         if (_selectedIndex < 0 || _selectedIndex >= _doc.Marks.Count) return;
 
-        switch (_doc.Marks[_selectedIndex])
+        bool colorChanged = _selectionStyle.Color != _selectionBaseline.Color;
+
+        // 只合并变过的字段：不然「选一条旧箭头看一眼」会把创建样式整份换成它的旧值
+        _selectionStyle.CopyChangedTo(_styles.ForFamily(_selectionFamily), _selectionBaseline);
+        if (colorChanged) _styles.SetColor(_selectionFamily, _selectionStyle.Color);   // 含「共享颜色」传播
+
+        _doc.ReplaceAt(_selectedIndex, MarkStyler.Apply(_doc.Marks[_selectedIndex], _selectionStyle));
+        _selectionBaseline = _selectionStyle.Clone();     // 之后的改动继续以「改到这里」为基准
+        RefreshMarks();
+    }
+
+    /// <summary>
+    /// 选中 / 取消选中：参数行切到这条标注的样式族并显示**它自己的值**（上游 <c>Selected*</c> 来源）；
+    /// 取消选中（或选中水印 / 恢复块这种不归族的）就把参数行还给当前工具。
+    /// </summary>
+    private void SyncSelectionStyle()
+    {
+        _selectionStyle = null;
+        _selectionBaseline = null;
+        _selectionFamily = null;
+
+        if (_selectedIndex >= 0 && _selectedIndex < _doc.Marks.Count &&
+            MarkStyler.TryFamily(_doc.Marks[_selectedIndex], out string family, out CaptureTool tool))
         {
-            case Mark.Distance d when _tool == CaptureTool.Distance:
-                _doc.ReplaceAt(_selectedIndex, new Mark.Distance(d.A, d.B, _style.Color,
-                    _style.WidthFor(_tool), _style.DistanceSpecOf()));
-                break;
-
-            case Mark.Angle a when _tool == CaptureTool.Angle:
-                _doc.ReplaceAt(_selectedIndex, new Mark.Angle(a.Vertex, a.Radius, a.Bisector, a.Degrees,
-                    _style.Color, _style.WidthFor(_tool), _style.AngleSpecOf()));
-                break;
-
-            default:
-                return;
+            var display = _styles.ForFamily(family).Clone();
+            MarkStyler.Capture(_doc.Marks[_selectedIndex], display);
+            _selectionStyle = display;
+            _selectionBaseline = display.Clone();
+            _selectionFamily = family;
+            Toolbar.SyncSelection(tool, display);
+            return;
         }
 
-        RefreshMarks();
+        Toolbar.ClearSelectionStyle();
     }
 
     /// <summary>选中的那条测距量出来有多长（屏幕物理像素）；没有可编辑目标 = 0。</summary>
@@ -83,26 +110,37 @@ public partial class CaptureOverlayWindow
 
     /// <summary>
     /// 「实测值」提交：<c>系数 = 值 / 实测长度</c>（上游 <c>setDistanceValue</c>，钳 0.01–1000），
-    /// 只作用在选中的那一条上。
+    /// 只作用在选中的那一条上，并同样把系数合并进测距族的创建样式。
     /// </summary>
     private void OnDistanceValueSubmitted(double value)
     {
         if (_selectedIndex < 0 || _selectedIndex >= _doc.Marks.Count) return;
-        if (_doc.Marks[_selectedIndex] is not Mark.Distance d) return;
+        if (_doc.Marks[_selectedIndex] is not Mark.Distance) return;
 
         double length = MeasuredDistance();
         if (length <= 0 || !double.IsFinite(value) || value <= 0) return;
 
-        _style.DistanceFactor = Math.Clamp(value / length, 0.01, 1000);
-        _doc.ReplaceAt(_selectedIndex, new Mark.Distance(d.A, d.B, d.Color, d.Width, _style.DistanceSpecOf()));
+        double factor = Math.Clamp(value / length, 0.01, 1000);
+
+        if (_selectionStyle == null)
+        {
+            _style.DistanceFactor = factor;
+            _doc.ReplaceAt(_selectedIndex, MarkStyler.Apply(_doc.Marks[_selectedIndex], _style));
+            CaptureStyleStore.SaveSoon();
+            RefreshMarks();
+            return;
+        }
+
+        _selectionStyle.DistanceFactor = factor;
+        ApplyStyleToSelection();
         CaptureStyleStore.SaveSoon();
-        RefreshMarks();
     }
 
     private void SetTool(CaptureTool tool)
     {
         if (_tool == tool) return;
         CancelGesture();
+        if (_selectedIndex >= 0) SelectMark(-1);    // 换工具 = 放弃选中（参数行要交给新工具）
         _tool = tool;
         Toolbar.Sync(tool);
         if (tool != CaptureTool.Picker) HidePicker();
@@ -209,13 +247,17 @@ public partial class CaptureOverlayWindow
         else Cursor = _tool == CaptureTool.Text ? Cursors.IBeam : Cursors.Cross;
     }
 
-    /// <summary>选中最上面一条命中的标注（-1 = 没选中）；画面上的虚线框与缩放手柄跟着走。</summary>
+    /// <summary>
+    /// 选中最上面一条命中的标注（-1 = 没选中）：画面上的虚线框与缩放手柄跟着走，
+    /// 参数行同时切到这一条自己的样式族（见 <see cref="SyncSelectionStyle"/>）。
+    /// </summary>
     private void SelectMark(int index)
     {
         _selectedIndex = index;
         Surface.SelectedIndex = index;
         Surface.ShowHandles = ShowsMarkHandles;
         Surface.InvalidateVisual();
+        SyncSelectionStyle();
         Toolbar.SetMeasuredDistance(MeasuredDistance());
     }
 

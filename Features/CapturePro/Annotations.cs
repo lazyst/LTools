@@ -969,6 +969,10 @@ internal abstract class Mark
         public Mark WithCenters(Point lensCenter, Point sourceCenter) =>
             new Magnifier(lensCenter, SourceWidth, SourceHeight, sourceCenter, Spec, fromLens: false);
 
+        /// <summary>换整套画法（选中后按参数行改样式用；镜头与源的几何都不动）。</summary>
+        public Mark WithSpec(MagnifierSpec spec) =>
+            new Magnifier(LensCenter, SourceWidth, SourceHeight, SourceCenter, spec, fromLens: false);
+
         public override Rect Bounds
         {
             get

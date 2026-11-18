@@ -73,6 +73,34 @@ internal static class StyleFamilies
     };
 
     public static bool IsKnown(string family) => Array.IndexOf(All, family) >= 0;
+
+    /// <summary>
+    /// 这一族的代表工具：选中标注后参数行按它排（<see cref="Of"/> 的反向）。
+    /// 一族里有两个工具的（形状 / 椭圆合成一个「形状」）取最常用的那个，参数表二者相同。
+    /// </summary>
+    public static CaptureTool ToolOf(string family) => family switch
+    {
+        SpeechBubble => CaptureTool.SpeechBubble,
+        Arrow => CaptureTool.Arrow,
+        Line => CaptureTool.Line,
+        Polyline => CaptureTool.Polyline,
+        Pen => CaptureTool.Pen,
+        Highlighter => CaptureTool.Highlighter,
+        HighlightRect => CaptureTool.HighlightRect,
+        Distance => CaptureTool.Distance,
+        Angle => CaptureTool.Angle,
+        Bracket => CaptureTool.Bracket,
+        Magnifier => CaptureTool.Magnifier,
+        Text => CaptureTool.Text,
+        Serial => CaptureTool.Serial,
+        Mosaic => CaptureTool.Mosaic,
+        Filter => CaptureTool.Filter,
+        BrushFilter => CaptureTool.BrushFilter,
+        Spotlight => CaptureTool.Spotlight,
+        Watermark => CaptureTool.Watermark,
+        BrushEraser => CaptureTool.BrushEraser,
+        _ => CaptureTool.Shape,
+    };
 }
 
 /// <summary>

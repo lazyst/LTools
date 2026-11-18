@@ -72,6 +72,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "录屏：特效几何 / 画中画落点", RecordEffectRules));
         cases.Add(new("capturePro", "录屏：裁剪 / 倍速 / 导出参数", RecordTrimRules));
         cases.Add(new("capturePro", "文字族：字号 / 字体 / 粗斜 / 对齐 / 描边 / 背景胶囊", TextStyles));
+        cases.Add(new("capturePro", "样式：选中标注后切族并写回", SelectionStyles));
     }
 
     private static void Geometry()
