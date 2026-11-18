@@ -70,6 +70,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "识别：文字排版 / 标点转换（基线 / 智能分段 / 并集框）", TextTransformCases));
         cases.Add(new("capturePro", "翻译：版面处理 / 译文渲图（并集框 / 中位字号 / 像素）", TranslationImageCases));
         cases.Add(new("capturePro", "LaTeX：公式行识别 / 围栏 / 定界符 / 退回原文", LatexSourceCases));
+        cases.Add(new("capturePro", "贴图历史：剪枝 / 缩略图 / 来源 / 摘要", PinStoreCases));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
         cases.Add(new("capturePro", "长截图：滚动位移识别", ScrollDetection));

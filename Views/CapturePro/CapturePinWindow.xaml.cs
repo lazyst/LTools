@@ -141,6 +141,12 @@ public partial class CapturePinWindow : Window
     /// <summary>这张贴图在哪个分组（只在内存，见 <see cref="CapturePinManager"/>）。</summary>
     public string Group => _group;
 
+    /// <summary>
+    /// 贴图历史里的记录 Id（见 <see cref="PinStore"/>）；空串 = 没记历史（冒烟夹具 / 旧路径）。
+    /// 关闭时按它补上关闭时间与最后落点。
+    /// </summary>
+    internal string PinId { get; set; } = "";
+
     /// <summary>在多选里没有（<c>Ctrl</c>+单击切换）。</summary>
     public bool Selected => _selected;
 

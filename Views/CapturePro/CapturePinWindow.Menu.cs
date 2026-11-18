@@ -159,6 +159,10 @@ public partial class CapturePinWindow
 
         menu.Items.Add(new Separator());
 
+        var manager = new MenuItem { Header = "贴图管理…" };
+        manager.Click += (_, _) => PinManagerWindow.Toggle();
+        menu.Items.Add(manager);
+
         var close = new MenuItem { Header = "关闭" };
         close.Click += (_, _) => Close();
         menu.Items.Add(close);

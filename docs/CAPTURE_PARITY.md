@@ -91,13 +91,13 @@
 | --- | --- | --- | --- | --- |
 | 贴图窗口（拖动 / 缩放 / 旋转 / 缩放快捷键） | `pinned/*` | `CapturePinWindow.*` | — | ✅ |
 | 贴图分组（成组移动 / 只显示某组） | `services/pinnedwindowgroupmanager.cpp` | `PinGroups.cs` + 右键菜单 | — | ✅ |
-| 贴图管理页 | `components/pinnedwindowmanagementpagewidget.cpp` | 只有右键菜单 | P5 | 🟡 |
+| 贴图管理页 | `components/pinnedwindowmanagementpagewidget.cpp` | `Views/CapturePro/PinManagerWindow`（标题 + 计数、来源多选、日期范围、选择栏〔全选本页 / 取消选择 / 批量贴到屏幕 / 删除选中〕、卡片网格〔缩略图 / 时间 / 来源徽标 / 状态 / 分组 · 尺寸 / 贴回 / ⋯ 菜单 / 删除〕、分页 10 / 20 / 50 存 `ui.json` 的 `PinPageSize`、两档空态）+ `Features/CapturePro/PinStore.cs`（`pins/pins.json` + `assets/` + `thumbnails/`，200 条 / 30 天 / `.tmp` 替换 / 进备份域）+ 入口：托盘「贴图管理…」与贴图右键「贴图管理…」 | P5-a / P5-b | ✅ |
 | 贴图颜色取样板（取色 / 色板） | `services/pinnedcolorswatch.cpp` | 无 | P5 | ❌ |
 | 贴图文字样式捕获 | `services/pinnedtextstylecapture.cpp` | 无 | P5 | ❌ |
 | 贴图堆叠与层级协调 | `pinned/pinnedwindowstackingcoordinator.cpp` | `RaiseAllAbove` 部分等价 | P5 | 🟡 |
 | 点击穿透 / 抖动隐藏 | `pinnedwindowselectioncontroller.cpp` | 无 | P5 | ❌ |
 | 批量保存贴图 / 拖拽导出 | `screenshotfilepinbatch.h`、`screenshotcontentdrop.h` | 无 | P5 | ❌ |
-| 贴图历史与恢复位置 | `services/historypinplacement.cpp` | 无 | P5 | ❌ |
+| 贴图历史与恢复位置 | `services/historypinplacement.cpp` | 贴图记录带源区域 / 落点 / 缩放（`PinStore`），管理页「贴回屏幕」走 `CapturePinManager.Restore`（整条记录复用、按记录尺寸与落点复位并夹回可见区）；**采集历史记录**「按原选区 + 选区外观贴回」还没接（归 P7 历史页） | P5-a | 🟡 |
 
 ### 2.5 图片编辑 / 拼图 / 切图（P6）
 
@@ -171,7 +171,7 @@
 | P4-h | 译文渲进原图 / 复制译文图 / 翻译前版面处理（照 `originalImageTranslation`、`copyTranslationResultsAsImage`、`layout_processing`）：`Config/Translation.cs` 加 `OriginalImage` / `CopyAsImage` / `LayoutProcessing`、`TranslationStore` 改成**就地改字段**（不再 `new TranslationFile` 整体替换，否则会抹掉新字段）并加 `SaveWithDisplay` / `SetOriginalImage` / `SetCopyAsImage` / `SetLayout`、`Features/CapturePro/TranslationLayout.cs`（`TranslationOverlay`、`Prepare`（smart 复用 P4-g 的智能分段）/ `ReplaceTexts` / `Normalize` / `LabelOf` / `Describe`）、`OcrTextLine.FontSize`（合并段起始字号，取成员行中位）、`Views/CapturePro/OcrTextPaint.cs`（画布与导图共用的字号拟合 / 颜色 / 折行）、`Views/CapturePro/OcrImageRenderer.cs`（`Render(source, layer, texts, includeSource, fillBackground)`）、`CaptureOcrCanvas` 译文层 / 原图底图、结果窗接线（送段落、段框落点、`RenderTranslationImage`、复制分支、按钮文案）、设置框三项 + `LTools.example.json` | ✅ | 构建 0 警；`--selftest` 全量 **7900 断言全绿**（`capturePro` 77 用例 3074 断言，新增「翻译：版面处理 / 译文渲图（并集框 / 中位字号 / 像素）」）；`capture-overlay-smoke` **1091 条全绿**（真窗口：智能合并只翻 1 段且请求体是整段、译文层 1 行且画在原图上、渲图尺寸 = 源图、框外像素是原图 / 框内是行底色、复制得到剪贴板图片、关掉开关复制文本、改回按原行又是 2 行；落图 `out/result-translate-on-image.png`） |
 | P4-i | LaTeX 源码页（照上游 `screenshotlatexrenderer.cpp` 的源码输入侧 + `streamingLatexSource` 的围栏处理）：`Features/CapturePro/LatexSource.cs`（`LooksLikeFormula`：TeX 命令白名单（避开 `C:\Users` 这类路径）+ 上下标 + `$…$` + `\begin{…}`；`Unfence` 只认 `latex` / `tex` 围栏；`TrimDelimiters` 只脱整行 `$$…$$` / `$…$`；`Extract` / `Build`（挑不到公式时退回整段识别文字）/ `Join` / `Describe`）、`Views/CapturePro/CaptureResultWindow.Latex.cs` + 结果窗「LaTeX」页签（只读 Consolas 源码框、可划选、复制按钮「复制公式源码」、Ctrl+A / Ctrl+C、底栏状态与页脚说明） | ✅ | 构建 0 警；`--selftest` 全量 **7936 断言全绿**（`capturePro` 78 用例 3110 断言，新增「LaTeX：公式行识别 / 围栏 / 定界符 / 退回原文」）；`capture-overlay-smoke` **1103 条全绿**（切到 LaTeX 页 / 只读 / 按钮文案 / 状态行写明不渲染 / 没有公式特征时退回整段文字 / 改成 `$E = mc^2$` 后只挑公式并脱定界符 / 复制整份 / 全选后状态行报字数；落图 `out/result-latex.png`）。**渲染不复刻**（无 MicroTeX 等价引擎，见 §5） |
 | P4 | 识别与转换：OCR 编辑器 / 原文预览 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档 / 翻译 / 排版与标点 / 译文渲图 | ✅ | P4-a … P4-i 全部落地；LaTeX 是**平台差异**（上游视觉模型 + MicroTeX 进程内排版，本地只给公式源码，不做假渲染，见 §5） |
-| P5 | 贴图：管理页 / 取色板 / 文字样式 / 点击穿透 / 抖动隐藏 / 批量保存 / 拖拽导出 / 历史恢复 | ❌ | 待填 |
+| P5 | 贴图：管理页 / 取色板 / 文字样式 / 点击穿透 / 抖动隐藏 / 批量保存 / 拖拽导出 / 历史恢复 | 🟡 | P5-a（贴图历史仓库 `PinStore` + 备份域 + 启动维护）与 P5-b（贴图管理页）已落地；取色板 / 文字样式 / 点击穿透 + 抖动隐藏 / 批量保存 / 拖拽导出待做 |
 | P6 | 图片编辑窗 / 拼图 / 切图 | ❌ | 待填 |
 | P7 | 采集入口与设置：延时 / 固定区域 / 鼠标释放动作 / 全局快捷键 / 导出设置 / 剪贴板外观 / 历史页 | ❌ | 待填 |
 | P8 | 全屏画布 + 录屏剩余：音频增益 / 渲染进度 / 快捷键 / 工具条自动隐藏 | ❌ | 待填 |
@@ -370,3 +370,18 @@
   - 结果窗「LaTeX」页签：只读 Consolas 源码框（`VerticalContentAlignment=Top`，能划选、能只复制挑中的几行）、`复制公式源码` 按钮（有选区复制选区）、`Ctrl+A` / `Ctrl+C` 由窗口补（只读文本框没焦点时自带命令不生效）、底栏状态写明「本地不渲染公式」、页脚说明跟着「挑到公式 / 退回原文」变。源码跟随**当前识别文字**重建（在文字页改过字，切过来就是改后的）。
   - 三个坑：① `TextBox.SelectAll()` 不改文本，只挂 `TextChanged` 的话状态行不会刷新 → 补 `SelectionChanged`；② 页脚占位不能指望 `TextBoxPlaceholder`（它要求 `IsReadOnly=False`），空态说明放页脚 `LatexInfo`；③ 冒烟里 `ReplaceAll` 的**行数必须与层数一致**才不会让画布越界，公式用例只替换成一行 `$E = mc^2$`。
   - 验收：构建 0 错 0 警；`--selftest` 全量 **7936 断言全绿**（`capturePro` 78 用例 3110 断言，新增「LaTeX：公式行识别 / 围栏 / 定界符 / 退回原文」）；`capture-overlay-smoke` **1103 条全绿**（LaTeX 段 10 条 + 落图 `out/result-latex.png`）。
+
+- 2026-11-18：**P5-a 完成（贴图历史仓库 `PinStore`）**。上游贴图不是「关掉就没了」：`PinnedWindowRepository` 把每张贴图（来源 / 分组 / 时间 / 图像尺寸 / 源区域 / 落点 / 是否实时）落盘，管理页与历史恢复都读它。
+  - `Features/CapturePro/PinStore.cs`（新）：`pins/pins.json`（元数据，`.tmp` → 替换）+ `pins/assets/<id>.png`（原图）+ `pins/thumbnails/<id>.png`（列表小图，长边 240）。`PinRecord` 字段照 `PinnedWindowRecord`：`Id`（`IdFactory.NewId`）/ `Group` / `Source`（`screenshot` / `history` / `clipboard` / `files` / `other`）/ `CreatedAt` / `ClosedAt`（空 = 还开着）/ `Width` · `Height` / 源区域 `AreaX…AreaH` + `Scale` / 窗口 `Left` · `Top` · `WinWidth` · `WinHeight` / `Live`。纯函数全在这里，`--selftest` 能直接断言：`PlanPrune`（200 条 / 30 天，两条上限分别裁）、`ThumbnailSize`、`Matches`（来源多选 + 日期两端，按本地日期含两端）、`PageRange` / `PageCount`、`SourceLabel` / `SourceOptions`。
+  - 接线只走 `CapturePinManager`：`Pin(image, area, source)` 建记录（**只写 `pins.json`**）→ 图片丢后台 `SaveAssets`；拖动 / 缩放 / 换分组 / 实时开关都经 `Sync` → `UpdateState`；窗口关闭 `Forget` → `MarkClosed`（补关闭时间与最后落点）；新增 `FindByRecord` / `CloseRecord` / `Restore`（整条记录复用，按记录尺寸与落点复位，越界用 `PinMath.ConstrainGroupMove` 夹回可见区，并 `Reopen` 清掉关闭时间）。`PinLive` 也带记录，`MoveToGroup` / `EndMove` 同步分组与落点。
+  - 生命周期：`Core/BackupService.cs` 的白名单加一行 `pins`（换机后管理页还在），`App.OnStartup` 后台 `PinStore.Maintain()`（上次运行遗留的「还开着」补成关闭，再按保留策略剪枝），`.gitignore` 加 `/pins/`。**贴图本身仍是「关掉就从屏幕消失」**，历史只用于管理页浏览 / 贴回。
+  - 验收：构建 0 错 0 警；`--selftest` 新增「贴图历史」组（剪枝 / 缩略图 / 来源 / 摘要 / 筛选 / 分页 32 断言）；冒烟 `Pin()` 段加 13 条（记录 Id、原图落进 `pins/assets`、来源 / 分组 / 尺寸 / 源区域、关闭补时间与落点、删除连图一起没）。
+
+- 2026-11-18：**P5-b 完成（贴图管理页）**。照上游 `PinnedWindowManagementPageWidget`：标题 + 计数 + 刷新 / 删除全部、来源多选（可清空 = 全部来源）、日期范围（含两端，清除日期）、选择栏（全选本页 / 取消选择 / 批量贴到屏幕 / 删除选中，**有选中项才出现**）、卡片网格、分页 10 / 20 / 50 + 上一页 / 下一页。
+  - `Views/CapturePro/PinManagerWindow.xaml(.cs)`（新）：卡片 = 缩略图（**只解码当前页**，`PinRow.SetThumb` 懒加载）+ 左上勾选框 + 右上来源徽标 + 时间 + 关闭状态（未关闭用主色，已关闭用次要字色）+ 分组 · 尺寸（实时贴图另标「实时」）+ 「贴回屏幕 / 显示」/ `⋯`（另存为… / 复制图片路径 / 在文件夹中显示 / 关闭屏幕上的贴图）/ 删除。两档空态：没有记录「还没有贴图」、筛空了「没有匹配的贴图」。
+  - **批量贴回要求同一分组**（照上游 `selectedGroupId()`）：混组时按钮置灰并在 ToolTip 里说明原因，点下去逐条 `CapturePinManager.Restore`（原记录复用，不新建）；已经在屏幕上的那条改成「显示」并顶到最前。
+  - 删除类操作全部先弹项目统一的 `ConfirmDialog`（危险动作红按钮），删记录时连屏幕上的贴图一起关掉；行内删除单条也走同一个确认。数据全部经 `PinStore` / `CapturePinManager`，窗口自己不写 `pins/`。
+  - 每页条数落 `configs/ui.json` 的 `PinPageSize`（`AppConfig` / `ConfigFiles` / `ConfigBundle` 三处同步）；读写锚点走 `ConfigStore.ConfigPath`（空才回落 `ConfigLocator.FindPath`），与 `ToolLayoutStore` / `TranslationStore` 同一个写法——否则导入备份 / 冒烟把配置指到临时目录后，这里会偷偷写另一份。
+  - 入口两处：托盘菜单「贴图管理…」与贴图右键菜单「贴图管理…」，共用一个 `Toggle()`（开着就激活 / 还原）。
+  - 验收：构建 0 错 0 警；`--selftest` 全量 **247 用例 / 7986 断言全绿**；`capture-overlay-smoke` **1161 条全绿**，新增「贴图管理」段 41 条（三条记录 → 卡片 / 计数 / 分页信息 / 缩略图 / 状态 / 来源徽标 / 空态；来源多选筛剩一条；日期筛空出第二档空态后清除恢复；全选本页 → 选择栏与计数；批量贴回 → 屏幕上三张且记录仍是三条、状态变「未关闭」；混组后按钮置灰并说明；删除选中 → 确认框点「删除」→ 列表 / `pins.json` / 屏幕贴图全清；25 条 + 每页 20 → 切 10 → 三页翻页与置灰；每页条数写进 `ui.json`；刷新留在当前页；贴图右键「贴图管理…」真的打开管理页）与落图 `out/pin-manager.png` / `out/pin-manager-empty.png`。
+  - 拼图 / 切图 / 图片编辑是 P6 的事，这一页**刻意不放**那些入口（不做死按钮）。

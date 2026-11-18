@@ -169,6 +169,9 @@ internal static class BackupService
         // 采集历史：截图 / 识别的成品图与文字，属于用户资产。
         if (Directory.Exists(CaptureCatalog.Root))
             plan.Domains.Add(new BackupDomain("captures", "captures", CaptureCatalog.Root));
+        // 贴图历史：贴到屏幕上的图与落点（管理页 / 历史恢复用），同属用户资产。
+        if (Directory.Exists(PinStore.Root))
+            plan.Domains.Add(new BackupDomain("pins", "pins", PinStore.Root));
         return plan;
     }
 

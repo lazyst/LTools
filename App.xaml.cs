@@ -211,6 +211,8 @@ public partial class App : Application
 
         // 采集历史按保留策略剪枝（最多 200 条 / 30 天）：目录不存在时直接返回。
         System.Threading.Tasks.Task.Run(LTools.Features.CapturePro.CaptureCatalog.Maintain);
+        // 贴图历史：上次没关掉就退出的记录补上关闭时间，再按保留策略剪枝。
+        System.Threading.Tasks.Task.Run(LTools.Features.CapturePro.PinStore.Maintain);
     }
 
     private void BuildTray()
@@ -221,6 +223,7 @@ public partial class App : Application
         menu.Items.Add(NewItem("设置 (CapsLock+\\)", () => ConfigHelper.Toggle()));
         menu.Items.Add(NewItem("辅助工具…", () => Views.InfoHelperWindow.Toggle()));
         menu.Items.Add(NewItem("采集历史…", () => Views.CapturePro.CaptureHistoryWindow.Toggle()));
+        menu.Items.Add(NewItem("贴图管理…", () => Views.CapturePro.PinManagerWindow.Toggle()));
         menu.Items.Add(new Separator());
         _macroMenuItem = NewItem("开始 / 停止录制宏", () => MacroRecorder.Toggle());
         _macroMenuItemText = (TextBlock)((StackPanel)_macroMenuItem.Header).Children[1];

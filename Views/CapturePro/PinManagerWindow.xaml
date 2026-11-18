@@ -1,0 +1,235 @@
+<Window x:Class="LTools.Views.CapturePro.PinManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:LTools.Views"
+        xmlns:controls="clr-namespace:LTools.Views.Controls"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="贴图管理" Width="1080" Height="720" MinWidth="880" MinHeight="560"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
+        views:WindowSizing.Mode="Main">
+    <!-- 贴图管理（照 snow-shot 的 PinnedWindowManagementPageWidget）：
+         标题 + 计数、来源多选 / 日期范围、选择栏（全选本页 / 批量贴回 / 删除）、
+         卡片网格（缩略图 + 时间 + 来源 + 分组 + 关闭状态）、分页（10 / 20 / 50）。 -->
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid Background="{StaticResource BgBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="36"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <controls:TitleBar Grid.Row="0"/>
+
+        <!-- 标题 + 计数 + 页面级操作 -->
+        <Border Grid.Row="1" Padding="16,12,16,4">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="贴图管理" FontSize="{StaticResource FontSizeTitle}"
+                           FontWeight="SemiBold" VerticalAlignment="Center"/>
+
+                <TextBlock x:Name="CountText" Grid.Column="1" Margin="12,0,0,0"
+                           VerticalAlignment="Center"
+                           FontSize="{StaticResource FontSizeHint}"
+                           Foreground="{StaticResource SecondaryTextBrush}"
+                           Text="0 张贴图"/>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="RefreshBtn" Style="{StaticResource BtnGhost}" Content="刷新"
+                            MinWidth="70" ToolTip="重新读 pins/ 里的贴图记录" Click="Refresh_Click"/>
+                    <Button x:Name="DeleteAllBtn" Style="{StaticResource BtnGhostDanger}" Content="删除全部"
+                            MinWidth="86" Margin="8,0,0,0"
+                            ToolTip="删除全部贴图记录与图片（屏幕上的贴图也会关掉）"
+                            Click="DeleteAll_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 筛选：来源多选 + 日期范围 -->
+        <Border Grid.Row="2" Padding="16,4,16,8">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="SourceFilterBtn" Style="{StaticResource BtnGhost}" Content="全部来源"
+                        MinWidth="128" ToolTip="按来源筛选（可多选）" Click="SourceFilter_Click"/>
+
+                <TextBlock Text="日期" Margin="16,0,6,0" VerticalAlignment="Center"
+                           FontSize="{StaticResource FontSizeHint}"
+                           Foreground="{StaticResource SecondaryTextBrush}"/>
+
+                <DatePicker x:Name="StartDate" Width="132" Height="30" VerticalContentAlignment="Center"
+                            SelectedDateChanged="Date_Changed" ToolTip="起始日期（含当天）"/>
+                <TextBlock Text="—" Margin="6,0" VerticalAlignment="Center"
+                           Foreground="{StaticResource SecondaryTextBrush}"/>
+                <DatePicker x:Name="EndDate" Width="132" Height="30" VerticalContentAlignment="Center"
+                            SelectedDateChanged="Date_Changed" ToolTip="结束日期（含当天）"/>
+
+                <Button x:Name="ClearDateBtn" Style="{StaticResource BtnGhost}" Content="清除日期"
+                        MinWidth="84" Margin="8,0,0,0" Click="ClearDate_Click"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 选择栏（有选中项才出现） -->
+        <Border x:Name="SelectionBar" Grid.Row="3" Visibility="Collapsed"
+                Background="{StaticResource SurfaceAltBrush}" Padding="16,6" Margin="0,0,0,4">
+            <Grid>
+                <TextBlock x:Name="SelectionText" VerticalAlignment="Center"
+                           FontSize="{StaticResource FontSizeHint}"
+                           Foreground="{StaticResource SecondaryTextBrush}"
+                           Text="已选 0 项"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource BtnGhost}" Content="全选本页"
+                            MinWidth="86" Click="SelectPage_Click"/>
+                    <Button Style="{StaticResource BtnGhost}" Content="取消选择"
+                            MinWidth="86" Margin="8,0,0,0" Click="Deselect_Click"/>
+                    <Button x:Name="BatchPinBtn" Style="{StaticResource BtnGhost}" Content="批量贴到屏幕"
+                            MinWidth="112" Margin="8,0,0,0"
+                            ToolTip="把选中的贴图重新贴回屏幕（要求同一分组）"
+                            Click="BatchPin_Click"/>
+                    <Button x:Name="DeleteSelectedBtn" Style="{StaticResource BtnGhostDanger}" Content="删除选中"
+                            MinWidth="92" Margin="8,0,0,0" Click="DeleteSelected_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 卡片网格 -->
+        <Grid Grid.Row="4" Margin="16,0,16,0">
+            <ScrollViewer x:Name="CardScroll" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl x:Name="CardList">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border x:Name="Card" Width="250" Margin="0,0,10,10"
+                                    BorderThickness="1"
+                                    CornerRadius="{StaticResource CornerMd}" ClipToBounds="True">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                                        <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Selected}" Value="True">
+                                                <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                                                <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+
+                                <StackPanel>
+                                    <Grid Height="132" Background="{StaticResource SurfaceAltBrush}">
+                                        <Image Source="{Binding Thumb}" Stretch="Uniform"
+                                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        <Border HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                Margin="6" Padding="4,0" CornerRadius="{StaticResource CornerSm}"
+                                                Background="{StaticResource SurfaceBrush}" Opacity="0.92">
+                                            <CheckBox IsChecked="{Binding Selected, Mode=TwoWay}"
+                                                      VerticalAlignment="Center"
+                                                      Click="CardSelect_Click"
+                                                      ToolTip="选择这条（批量操作）"/>
+                                        </Border>
+                                        <Border HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                Margin="6" Padding="6,1" CornerRadius="{StaticResource CornerSm}"
+                                                Background="{StaticResource SurfaceBrush}" Opacity="0.92">
+                                            <TextBlock Text="{Binding SourceText}"
+                                                       FontSize="{StaticResource FontSizeHint}"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                                        </Border>
+                                    </Grid>
+
+                                    <StackPanel Margin="10,8,10,10">
+                                        <DockPanel>
+                                            <TextBlock Text="{Binding StatusText}" DockPanel.Dock="Right"
+                                                       FontSize="{StaticResource FontSizeHint}"
+                                                       Foreground="{Binding StatusBrush}"/>
+                                            <TextBlock Text="{Binding TimeText}" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </DockPanel>
+
+                                        <TextBlock Text="{Binding InfoText}" Margin="0,3,0,0"
+                                                   FontSize="{StaticResource FontSizeHint}"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding InfoText}"/>
+
+                                        <DockPanel Margin="0,8,0,0">
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                <Button Content="⋯" Width="30" Height="26"
+                                                        Style="{StaticResource BtnGhost}"
+                                                        FontFamily="Segoe UI Symbol"
+                                                        ToolTip="更多操作" Click="CardMore_Click"/>
+                                                <Button Content="删除" MinWidth="56" Height="26" Margin="4,0,0,0"
+                                                        Style="{StaticResource BtnGhostDanger}"
+                                                        Click="CardDelete_Click"/>
+                                            </StackPanel>
+                                            <Button Content="{Binding ShowLabel}" MinWidth="76" Height="26"
+                                                    HorizontalAlignment="Left"
+                                                    Style="{StaticResource BtnGhost}"
+                                                    ToolTip="贴回屏幕（按记录里的位置与尺寸）"
+                                                    Click="CardShow_Click"/>
+                                        </DockPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <StackPanel x:Name="EmptyPanel" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Visibility="Collapsed" IsHitTestVisible="False" MaxWidth="360">
+                <TextBlock x:Name="EmptyTitle" Text="还没有贴图" HorizontalAlignment="Center"
+                           FontSize="{StaticResource FontSizeTitle}"
+                           Foreground="{StaticResource SecondaryTextBrush}"/>
+                <TextBlock x:Name="EmptyDescription" Margin="0,8,0,0" TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           FontSize="{StaticResource FontSizeHint}"
+                           Foreground="{StaticResource HintTextBrush}"
+                           Text="贴到屏幕上的图会出现在这里。"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- 分页 -->
+        <Border Grid.Row="5" Background="{StaticResource SurfaceAltBrush}" Padding="16,8" Margin="0,8,0,0">
+            <Grid>
+                <TextBlock x:Name="PageInfo" VerticalAlignment="Center"
+                           FontSize="{StaticResource FontSizeHint}"
+                           Foreground="{StaticResource SecondaryTextBrush}"
+                           Text="0-0 / 共 0 条"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="每页" VerticalAlignment="Center" Margin="0,0,6,0"
+                               FontSize="{StaticResource FontSizeHint}"
+                               Foreground="{StaticResource SecondaryTextBrush}"/>
+                    <ComboBox x:Name="PageSizeBox" Width="70" Height="28" VerticalContentAlignment="Center"
+                              SelectionChanged="PageSize_Changed">
+                        <ComboBoxItem Content="10" Tag="10"/>
+                        <ComboBoxItem Content="20" Tag="20"/>
+                        <ComboBoxItem Content="50" Tag="50"/>
+                    </ComboBox>
+                    <Button x:Name="PrevPageBtn" Style="{StaticResource BtnGhost}" Content="上一页"
+                            MinWidth="76" Margin="12,0,0,0" Click="PrevPage_Click"/>
+                    <Button x:Name="NextPageBtn" Style="{StaticResource BtnGhost}" Content="下一页"
+                            MinWidth="76" Margin="8,0,0,0" Click="NextPage_Click"/>
+                    <Button Style="{StaticResource BtnGhost}" Content="关闭" MinWidth="76" Margin="16,0,0,0"
+                            IsCancel="True" Click="Close_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

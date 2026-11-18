@@ -595,6 +595,50 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 
 纯函数在 `Features/CapturePro/PickerColor.cs`（`Read` / `Hex` / `Rgb` / `Describe`），`--selftest` 直接断言。
 
+### 9.3 贴图历史与贴图管理（P5）
+
+贴图**本身**仍然是「关掉就从屏幕消失」的临时视图（不进配置、重启不自动恢复）；历史只回答「刚才贴过哪些、贴回屏幕」，
+落盘在数据根 `pins/`（照 snow-shot 的 `PinnedWindowRepository`）：
+
+```text
+pins/pins.json              # 元数据（先写 .tmp 再替换）
+pins/assets/<id>.png        # 原图（贴回屏幕用）
+pins/thumbnails/<id>.png    # 列表小图（长边 240）
+```
+
+- **记录字段**（`Features/CapturePro/PinStore.cs` 的 `PinRecord`）：`Id`（`IdFactory.NewId`，ULID）/ `Group` /
+  `Source`（`screenshot` / `history` / `clipboard` / `files` / `other`）/ `CreatedAt` / `ClosedAt`（空 = 还开着）/
+  图像 `Width` · `Height` / 源区域 `AreaX` · `AreaY` · `AreaW` · `AreaH` + `Scale`（截这块时的显示器缩放）/
+  窗口 `Left` · `Top` · `WinWidth` · `WinHeight`（DIP）/ `Live`。
+- **保留策略**：最多 200 条、最多 30 天（`PlanPrune` 两条上限分别裁，先按时间再按条数），缩略图长边 240，
+  分组名上限 128 只是常数（组本身仍不落盘）。启动时 `Maintain()` 把上次运行遗留的「还开着」补成关闭时间，
+  再按策略剪枝；文件损坏按空表继续（记 `AppLog.Warn`，不挡截图）。
+- **备份**：`pins` 进 `BackupService` 的目录白名单（换机后管理页照样能浏览 / 贴回）；`cache/` 那套运行缓存不进备份。
+- **写入口只有 `CapturePinManager`**：`Pin(image, area, source)` 建记录（只写 `pins.json`，快）+ 图片丢后台写；
+  拖动 / 缩放 / 换分组 / 实时开关都经 `Sync` → `UpdateState`；窗口关闭 `Forget` → `MarkClosed`（补关闭时间与最后落点）；
+  `Restore(record)` = 整条记录复用（不新建）：读原图 → 按记录尺寸与落点复位 → 越界用
+  `PinMath.ConstrainGroupMove` 夹回可见区 → `Reopen` 清掉关闭时间。`PinLive` 也带记录。
+- **贴图管理页**（`Views/CapturePro/PinManagerWindow.xaml(.cs)`，照 `PinnedWindowManagementPageWidget`）：
+  - 顶部：标题 + 「N 张贴图」计数 + `刷新` / `删除全部`（危险色，先弹 `ConfirmDialog`）。
+  - 筛选条：`来源` 多选菜单（全部来源 / 逐项勾选，可多选；清空 = 全部）、`日期` 起止两个 `DatePicker`
+    （**含两端**，按本地日期比）+ `清除日期`。
+  - 选择栏（**有选中项才出现**）：`已选 N 项` + `全选本页` / `取消选择` / `批量贴到屏幕` / `删除选中`。
+    **批量贴回要求同一分组**（照上游 `selectedGroupId()`）：混组时按钮置灰并在 ToolTip 里说明原因，
+    否则逐条 `Restore`。
+  - 卡片：250 宽，缩略图（**只解码当前页**，`PinRow.SetThumb` 懒加载）+ 左上勾选框 + 右上来源徽标 +
+    时间 + 右侧状态（`未关闭` 主色 / `已关闭` 次要字色）+ `分组：X · W × H`（实时贴图另标「实时」）+
+    `贴回屏幕`（已经开着就是 `显示`，点一下顶到最前）/ `⋯`（另存为… / 复制图片路径 / 在文件夹中显示 /
+    关闭屏幕上的贴图）/ `删除`。
+  - 分页：`每页 10 / 20 / 50`（默认 20，存 `configs/ui.json` 的 `PinPageSize`）+ `上一页` / `下一页` +
+    左下 `1-20 / 共 N 条`；卡片区自己滚，整页不做嵌套滚动。
+  - 空态两档：一条记录都没有 = 「还没有贴图 / 贴到屏幕上的图会出现在这里。」；筛选后为空 =
+    「没有匹配的贴图 / 换个来源或日期范围再试试。」。
+- **入口两处**：托盘菜单「贴图管理…」与贴图右键菜单「贴图管理…」，共用一个 `Toggle()`（开着就激活 / 还原，
+  最小化先还原）。删记录会把屏幕上的那张一起关掉（`CapturePinManager.CloseRecord`）。
+- **配置锚点**：每页条数的读写走 `ConfigStore.ConfigPath`（空才回落 `ConfigLocator.FindPath`），
+  与 `ToolLayoutStore` / `TranslationStore` 同一个写法——导入备份 / 冒烟把配置指到临时目录时不会偷偷写另一份。
+- 拼图 / 切图 / 图片编辑是 P6 的事，这一页**刻意不放**那些入口（不做死按钮）。
+
 ## 10. 识别（P2 / P4-a / P4-b）
 
 入口三处，行为一致（都先按标注文档重绘成品，再关覆盖层，然后开结果窗）：

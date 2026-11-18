@@ -123,6 +123,7 @@ internal static class ConfigBundle
         cfg.FavoriteUnits = ui.FavoriteUnits ?? new();
         cfg.RecentUnits = ui.RecentUnits ?? new();
         cfg.EditorDrawerWidth = ui.EditorDrawerWidth;
+        cfg.PinPageSize = ui.PinPageSize;
         cfg.CaptureToolGroups = ui.CaptureToolGroups ?? new();
         cfg.CaptureToolHidden = ui.CaptureToolHidden ?? new();
         cfg.CaptureStyles = ui.CaptureStyles ?? new();
@@ -388,6 +389,7 @@ internal static class ConfigBundle
         FavoriteUnits = cfg.FavoriteUnits ?? new(),
         RecentUnits = cfg.RecentUnits ?? new(),
         EditorDrawerWidth = cfg.EditorDrawerWidth,
+        PinPageSize = cfg.PinPageSize,
         CaptureToolGroups = cfg.CaptureToolGroups ?? new(),
         CaptureToolHidden = cfg.CaptureToolHidden ?? new(),
         CaptureStyles = cfg.CaptureStyles ?? new(),

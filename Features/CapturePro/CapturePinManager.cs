@@ -68,19 +68,35 @@ internal static class CapturePinManager
         ActiveGroup == null || PinGroups.Same(pin.Group, ActiveGroup);
 
     /// <summary>把一张图贴到屏幕上（正好盖住它截下来的那块区域）。</summary>
-    public static CapturePinWindow Pin(BitmapSource image, Int32Rect area)
+    /// <param name="source">来源（<see cref="PinStore.SourceScreenshot"/> 等），进贴图历史用。</param>
+    public static CapturePinWindow Pin(BitmapSource image, Int32Rect area,
+        string source = PinStore.SourceScreenshot)
     {
         // 缩放比按这块区域所在显示器算：跨屏选区时不能用「覆盖层那块屏」的比例
-        var pin = new CapturePinWindow(image, area, ScreenShot.ScaleOf(area));
+        double scale = ScreenShot.ScaleOf(area);
+        var pin = new CapturePinWindow(image, area, scale);
 
         // 正只看某个分组时，新贴图落进那个组 —— 否则贴上来立刻被自己藏起来，看着像「贴图没反应」
-        pin.SetGroup(ActiveGroup ?? PinGroups.Default);
+        string group = ActiveGroup ?? PinGroups.Default;
+        pin.SetGroup(group);
+
+        // 贴图历史：先记一条（只写 pins.json），图片丢后台写，别卡 UI 线程
+        var record = PinStore.Create(image.PixelWidth, image.PixelHeight,
+            area.X, area.Y, area.Width, area.Height, scale, source, group, live: false);
+        pin.PinId = record.Id;
 
         Pins.Add(pin);
         pin.Show();          // 无激活窗口：ShowActivated=False + WS_EX_NOACTIVATE
         pin.RaiseToTop();
+        Sync(pin);
+
+        System.Threading.Tasks.Task.Run(() => PinStore.SaveAssets(record, image));
         return pin;
     }
+
+    /// <summary>把窗口当前的落点 / 尺寸 / 分组 / 实时开关写回贴图历史（记录不存在或 Id 为空是空操作）。</summary>
+    internal static void Sync(CapturePinWindow pin) =>
+        PinStore.UpdateState(pin.PinId, pin.Group, pin.Left, pin.Top, pin.Width, pin.Height, pin.Live);
 
     /// <summary>
     /// 贴一块**实时**的图：跟住 <paramref name="hwnd"/>，每 200ms 刷新一次内容，
@@ -94,6 +110,64 @@ internal static class CapturePinManager
     {
         var pin = Pin(image, area);
         pin.StartLive(hwnd);
+        Sync(pin);            // 记成实时贴图（历史里看得见，关闭时改回 false）
+        return pin;
+    }
+
+    /// <summary>找这张贴图当前对应的记录（关掉窗口之后就没有了）。</summary>
+    public static CapturePinWindow? FindByRecord(string id) =>
+        id.Length == 0 ? null : Pins.FirstOrDefault(pin => pin.PinId == id);
+
+    /// <summary>关掉某条记录对应的贴图（管理页删除 / 关闭用）；不在屏幕上返回 false。</summary>
+    public static bool CloseRecord(string id)
+    {
+        var pin = FindByRecord(id);
+        if (pin == null) return false;
+        pin.Close();
+        return true;
+    }
+
+    /// <summary>
+    /// 把历史里的一条重新贴到屏幕上（管理页「贴回屏幕」）：整条记录复用，不新建。
+    /// 图读不出来返回 <c>null</c>（调用方提示「图片文件不见了」）。
+    /// </summary>
+    public static CapturePinWindow? Restore(PinRecord record)
+    {
+        var image = PinStore.LoadAsset(record.Id);
+        if (image == null) return null;
+
+        var area = new Int32Rect(record.AreaX, record.AreaY,
+            record.AreaW > 0 ? record.AreaW : record.Width,
+            record.AreaH > 0 ? record.AreaH : record.Height);
+        var pin = new CapturePinWindow(image, area, record.Scale > 0 ? record.Scale : 1.0)
+        {
+            PinId = record.Id,
+        };
+
+        string group = CapturePinManager.CreateGroup(record.Group) ?? PinGroups.Default;
+        pin.SetGroup(group);
+
+        // 尺寸与落点按记录复位；从没记过落点（0,0）就用默认的「盖住源区域」
+        if (record.WinWidth >= 1 && record.WinHeight >= 1)
+        {
+            pin.Width = record.WinWidth;
+            pin.Height = record.WinHeight;
+        }
+
+        if (record.Left != 0 || record.Top != 0)
+        {
+            var box = new Rect(record.Left, record.Top, pin.Width, pin.Height);
+            Vector delta = PinMath.ConstrainGroupMove(new Vector(0, 0), new[] { box },
+                PinMath.VirtualDesktop, PinMath.KeepVisible);
+            pin.Left = record.Left + delta.X;
+            pin.Top = record.Top + delta.Y;
+        }
+
+        PinStore.Reopen(record.Id);
+        Pins.Add(pin);
+        pin.Show();
+        pin.RaiseToTop();
+        Sync(pin);
         return pin;
     }
 
@@ -134,6 +208,8 @@ internal static class CapturePinManager
 
         pin.SetGroup(name);
         if (!Pins.Contains(pin)) return;
+
+        Sync(pin);            // 分组变了要落进历史（管理页按分组筛）
 
         if (IsShown(pin))
         {
@@ -277,9 +353,12 @@ internal static class CapturePinManager
         }
     }
 
-    /// <summary>松手：丢掉快照（下一次拖动重新取起点）。</summary>
+    /// <summary>松手：丢掉快照（下一次拖动重新取起点）。顺手把落点写回贴图历史。</summary>
     public static void EndMove()
     {
+        foreach (var (pin, _) in MoveBase) Sync(pin);
+        if (_moving != null && MoveBase.Count == 0) Sync(_moving);
+
         _moving = null;
         MoveBase.Clear();
     }
@@ -287,6 +366,10 @@ internal static class CapturePinManager
     /// <summary>窗口关闭时摘掉自己（重复调用无害）：多选 / 拖动快照 / 空分组都跟着收敛。</summary>
     internal static void Forget(CapturePinWindow pin)
     {
+        // 历史先记关闭时间与最后落点（关掉之后窗口属性仍然可读）
+        if (pin.PinId.Length > 0)
+            PinStore.MarkClosed(pin.PinId, pin.Left, pin.Top, pin.Width, pin.Height);
+
         Selection.Remove(pin);
         Pins.Remove(pin);
         MoveBase.RemoveAll(entry => ReferenceEquals(entry.Pin, pin));
