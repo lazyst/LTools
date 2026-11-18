@@ -61,6 +61,9 @@ public partial class ImageEditWindow
         UpdateCropLayer();
         UpdateChrome();
         PlaceOverlay();
+
+        // 尺寸变了：自动打码的识别结果作废，重新扫一遍
+        SyncAutoFilter(detect: true);
     }
 
     /// <summary>把当前条带摆到预览层上（窗口内容区坐标）。</summary>

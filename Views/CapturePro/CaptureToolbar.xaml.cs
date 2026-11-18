@@ -163,7 +163,8 @@ public partial class CaptureToolbar : UserControl
     /// <param name="mode">
     /// <see cref="ToolbarMode.Capture"/> = 截图覆盖层（画标注 + 完成动作）；
     /// <see cref="ToolbarMode.Edit"/> = 图片编辑窗（照上游 <c>editorOptions()</c>：多一个「平移」工具与
-    /// 裁剪行 / 裁剪列两格，完成动作只留复制与贴图，没有识别 / 长截图 / 录屏 / 保存 / 取消）。
+    /// 裁剪行 / 裁剪列两格，完成动作是识别 / 复制 / 贴图 / 打印 / 快速保存 / 另存为，
+    /// 没有长截图 / 录屏 / 取消）。
     /// </param>
     internal void Init(ToolStyleSet styles, CaptureTool current, ToolbarMode mode = ToolbarMode.Capture)
     {
@@ -685,9 +686,13 @@ public partial class CaptureToolbar : UserControl
 
     /// <summary>
     /// 图片编辑窗右半边（照上游 <c>editorOptions()</c>）：裁剪行 / 裁剪列 → 撤销 / 重做 →
-    /// 复制 / 贴到屏幕。没有取消（Esc 只退裁剪）、没有识别 / 长截图 / 录屏 / 打印 / 保存——
-    /// 编辑窗的保存入口在窗口工具栏，那里才有格式 / 尺寸 / 质量选项。
+    /// 识别 → 复制 / 贴到屏幕 → 打印 / 快速保存 / 另存为。没有取消（Esc 只退裁剪）、
+    /// 没有长截图 / 录屏。
     /// </summary>
+    /// <remarks>
+    /// 上游编辑窗把 OCR / 翻译 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档各摆一格工具；
+    /// 本项目这些结果都在同一个结果窗的页签里，所以只留一个「识别」入口（与截图覆盖层同口径）。
+    /// </remarks>
     private void BuildEditActions()
     {
         _cropRowsBtn = AddToolToggle("IconCropRows", "裁剪行：拖一条横带剪掉（减少高度）",
@@ -699,6 +704,11 @@ public partial class CaptureToolbar : UserControl
 
         _undoBtn = AddAction("IconUndo", "撤销（Ctrl+Z）", () => UndoRequested?.Invoke());
         _redoBtn = AddAction("IconRedo", "重做（Ctrl+Y）", () => RedoRequested?.Invoke());
+
+        AddGroup(new[]
+        {
+            ActionButton("IconRecognize", "识别文字 / 表格 / 二维码（Ctrl+R）", CaptureAction.Recognize),
+        });
 
         // 结果动作（照上游 pinned 布局：pin / copy 一组，print / quick-save / save-as 一组）
         AddGroup(new[]

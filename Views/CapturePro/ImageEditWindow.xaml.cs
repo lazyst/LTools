@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using LTools.Core;
+using LTools.Features;
 using LTools.Features.CapturePro;
 using LTools.Features.CapturePro.ImageEdit;
 using LTools.Native;
@@ -69,6 +70,7 @@ public partial class ImageEditWindow : Window
         Toolbar.RedoRequested += Redo;
         Toolbar.ActionRequested += OnToolbarAction;
         Toolbar.StyleChanged += OnToolbarStyleChanged;
+        Toolbar.AutoFilterFillRequested += OnAutoFilterFillRequested;
         Toolbar.ResetRequested += PlaceOverlay;
 
         Loaded += Window_Loaded;
@@ -96,6 +98,7 @@ public partial class ImageEditWindow : Window
         CommitText();
         CancelGesture();
         CancelCropMode();
+        LeaveAutoFilter();
 
         _doc.Clear();
         Canvas.Document = null;
@@ -169,6 +172,7 @@ public partial class ImageEditWindow : Window
         CommitText();
         CancelGesture();
         CancelCropMode();
+        LeaveAutoFilter();
 
         _applying = true;
         _doc.Load(image, fileName ?? "", sourcePath);
@@ -411,6 +415,15 @@ public partial class ImageEditWindow : Window
 
         if (e.ChangedButton != MouseButton.Left) return;
 
+        // 自动打码：左键 = 点亮光标下的区域（拖 = 框选一批），松手统一填一次
+        if (AutoFilterActive)
+        {
+            BeginAutoFilterGesture(ToImage(e.GetPosition(Surface)));
+            Surface.CaptureMouse();
+            e.Handled = true;
+            return;
+        }
+
         if (BeginDrawGesture(ToImage(e.GetPosition(Surface)), e.ClickCount))
         {
             // 文字 / 序号 / 水印 / 折线是「点一下」类：不抓鼠标，免得输入框点不进去
@@ -474,6 +487,15 @@ public partial class ImageEditWindow : Window
             return;
         }
 
+        // 自动打码：拖 = 框选一批，悬停 = 点亮光标下那一块
+        if (AutoFilterActive)
+        {
+            var imagePoint = ToImage(view);
+            if (_autoFilter.GestureActive) UpdateAutoFilterGesture(imagePoint);
+            else UpdateAutoFilterHover(imagePoint);
+            return;
+        }
+
         UpdateHoverCursor(view);
     }
 
@@ -501,12 +523,27 @@ public partial class ImageEditWindow : Window
             FinishDraw(ToImage(e.GetPosition(Surface)));
             Surface.ReleaseMouseCapture();
             e.Handled = true;
+            return;
+        }
+
+        if (AutoFilterActive && _autoFilter.GestureActive && e.ChangedButton == MouseButton.Left)
+        {
+            FinishAutoFilterGesture(ToImage(e.GetPosition(Surface)));
+            Surface.ReleaseMouseCapture();
+            e.Handled = true;
         }
     }
 
     private void Surface_MouseLeave(object sender, MouseEventArgs e)
     {
         if (_panning || _cropping || _drag != EditDrag.None) return;
+
+        if (AutoFilterActive && _autoFilter.HoverId >= 0)
+        {
+            _autoFilter.HoverId = -1;
+            Canvas.InvalidateVisual();
+        }
+
         if (!_cropPointerInside) return;
 
         _cropPointerInside = false;
@@ -579,6 +616,9 @@ public partial class ImageEditWindow : Window
         SelectMarks(_selected.ToArray());
         Canvas.InvalidateVisual();
 
+        // 自动打码：图变过（撤销 / 裁剪 / 填充）就对齐识别结果，对不上就重扫
+        SyncAutoFilter(detect: true);
+
         UpdateChrome();
         PlaceOverlay();
     }
@@ -589,6 +629,7 @@ public partial class ImageEditWindow : Window
     {
         switch (action)
         {
+            case CaptureToolbar.CaptureAction.Recognize: OpenRecognition(); break;
             case CaptureToolbar.CaptureAction.Copy: CopyImage(); break;
             case CaptureToolbar.CaptureAction.Pin: PinImage(); break;
             case CaptureToolbar.CaptureAction.Print: PrintImage(); break;
@@ -601,6 +642,23 @@ public partial class ImageEditWindow : Window
     {
         CaptureStyleStore.SaveSoon();
         ApplyStyleToSelection();
+    }
+
+    /// <summary>
+    /// 识别：把**整张底图**（不带标注，照上游 <c>activate()</c> 用的 <c>document.image()</c>）交给结果窗。
+    /// 文字 / 表格 / 二维码 / Markdown / HTML / 文档 / LaTeX / 翻译都在那一个窗里；
+    /// 上游编辑窗把它们各摆一格工具，本项目只留这一个入口（与截图覆盖层同口径）。
+    /// </summary>
+    private void OpenRecognition()
+    {
+        if (!_doc.HasImage) return;
+
+        // 照上游 activate()：先收起编辑状态（提交文字 / 结束手势 / 退出裁剪 / 退出自动打码）并切回平移
+        EnterPanMode();
+
+        if (_doc.Image is not { } image) return;
+
+        CaptureResultWindow.Show(image, OcrEnginePreference.DefaultForNewProbe);
     }
 
     /// <summary>「水印」工具点一下铺一整张（照覆盖层）。</summary>
@@ -737,6 +795,20 @@ public partial class ImageEditWindow : Window
                 return;
             }
 
+            if (_autoFilter.GestureActive || _autoFilter.Marquee != null)
+            {
+                CancelAutoFilterGesture();
+                e.Handled = true;
+                return;
+            }
+
+            if (AutoFilterActive)
+            {
+                SetTool(CaptureTool.Select);
+                e.Handled = true;
+                return;
+            }
+
             Close();
             e.Handled = true;
             return;
@@ -758,6 +830,7 @@ public partial class ImageEditWindow : Window
             if (e.Key == Key.O) { ChooseImages(); e.Handled = true; return; }
             if (e.Key == Key.P) { PrintImage(); e.Handled = true; return; }
             if (e.Key == Key.T) { PinImage(); e.Handled = true; return; }
+            if (e.Key == Key.R) { OpenRecognition(); e.Handled = true; return; }
 
             if (e.Key == Key.S)
             {

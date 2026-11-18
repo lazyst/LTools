@@ -98,6 +98,9 @@ public partial class ImageEditWindow
         Toolbar.Sync(tool);
         Toolbar.SetPan(false);
 
+        if (tool == CaptureTool.AutoFilter) EnterAutoFilter();
+        else LeaveAutoFilter();
+
         if (tool != CaptureTool.Select) SelectMark(-1);
 
         UpdateCanvasCursor();
@@ -112,6 +115,8 @@ public partial class ImageEditWindow
         CancelGesture();
 
         if (_cropAxis != null) CancelCropMode();
+
+        LeaveAutoFilter();
 
         _panMode = true;
         SelectMark(-1);

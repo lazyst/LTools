@@ -103,7 +103,7 @@
 
 | 上游 | 位置 | LTools 现状 | 批次 | 状态 |
 | --- | --- | --- | --- | --- |
-| 图片编辑窗口（导入已有图片 → 画布标注 → 导出） | `imageediting/*` | `P6-a1` 独立窗口（`Views/CapturePro/ImageEditWindow.*` + `Features/CapturePro/ImageEdit/*` 的 `ImageEditDocument` / `ImageEditGeometry` / `ImageEditBitmap` / `ImageEditSession`）+ 棋盘格透明底 + 打开图片（文件 / 粘贴 / 拖放 / 采集历史「编辑…」/ 贴图右键「在编辑器中打开…」/ 托盘「图片编辑…」）+ 空态 + 适应窗口 / 100% / 滚轮缩放 / 拖动平移 + 行列裁剪（半透明红带 + `N px` + `#4096FF` 虚线导引线）+ 撤销重做 + 未保存确认 + 复制 / 快速保存 / 另存为 / 贴到屏幕 / 打印；`P6-a2` 浮动绘图工具条（锚图片右下 4px，`[平移] [裁剪行][裁剪列] | 绘图 13 格 | [撤销][重做] | [贴图][复制] | [打印][快速保存][另存为]`）+ 画布底部居中缩放条 + 就地文字输入 + 选择 / 拖动 / 框选 / 多选 / 把手改大小 / 橡皮 / 折线 / 测角 / 标注样式回写（复用截图工具与 `MarkFactory`）；`P6-a3` 识别（文字 / 表格 / 二维码）与自动打码 | P6 | 🟡 |
+| 图片编辑窗口（导入已有图片 → 画布标注 → 导出） | `imageediting/*` | `P6-a1` 独立窗口（`Views/CapturePro/ImageEditWindow.*` + `Features/CapturePro/ImageEdit/*` 的 `ImageEditDocument` / `ImageEditGeometry` / `ImageEditBitmap` / `ImageEditSession`）+ 棋盘格透明底 + 打开图片（文件 / 粘贴 / 拖放 / 采集历史「编辑…」/ 贴图右键「在编辑器中打开…」/ 托盘「图片编辑…」）+ 空态 + 适应窗口 / 100% / 滚轮缩放 / 拖动平移 + 行列裁剪（半透明红带 + `N px` + `#4096FF` 虚线导引线）+ 撤销重做 + 未保存确认 + 复制 / 快速保存 / 另存为 / 贴到屏幕 / 打印；`P6-a2` 浮动绘图工具条（锚图片右下 4px，`[平移] [裁剪行][裁剪列] | 绘图 13 格 | [撤销][重做] | [贴图][复制] | [打印][快速保存][另存为]`）+ 画布底部居中缩放条 + 就地文字输入 + 选择 / 拖动 / 框选 / 多选 / 把手改大小 / 橡皮 / 折线 / 测角 / 标注样式回写（复用截图工具与 `MarkFactory`）；`P6-a3` 识别入口（工具条「识别」+ Ctrl+R，把**整张底图**交给结果窗，文字 / 表格 / 二维码 / Markdown / HTML / 文档 / LaTeX / 翻译都在结果窗页签里）+ 自动打码（识别范围 = 整张图，点击 / 框选 / 「填充区域」按类型一次打码，落普通滤镜标注） | P6 | 🟡 |
 | 拼图（多图拼接 / 行 / 间距 / 背景 / PDF） | `collage/*` | 无 | P6-c / P6-d | ❌ |
 | 切图（网格 / 智能布局 / 导出） | `imagesplit/*` | `Features/CapturePro/Stitch` 只有长截图拼接 | P6-b | ❌ |
 | 全屏画布（在任意屏幕讲解 / 贴住） | `globalcanvas/*` | 无 | P8 | ❌ |
@@ -450,6 +450,13 @@
   - **就地文字**（`ImageEditWindow.Text.cs`）：与覆盖层同一套交互，差别是起点为图像像素、输入框字号乘 `_zoom`（敲的时候看到的和落地后一样大），Enter 提交 / Shift+Enter 换行 / Esc 放弃 / 点别处提交。
   - 三个坑：① XAML 里 `x:Name="Canvas"` 会遮住 `Canvas` 类型，`Canvas.SetLeft/SetTop` 必须写全 `System.Windows.Controls.Canvas.…`；② `ToolStyle` 字段名 `Style` 会隐藏 `FrameworkElement.Style`（CS0108），编辑窗里改叫 `CurrentStyle`；③ WPF 不认 `Transform="90,512,512"`（报「分析…时遇到字符串过早终止」），旋转要写 `<GeometryGroup.Transform><RotateTransform …/></GeometryGroup.Transform>`。
   - 验收：构建 0 错 0 警；`--selftest` 全量 **257 用例 14787 断言全绿**（`capturePro` 89 用例 9961 断言）；`capture-overlay-smoke` **1433 条全绿**（`ImageEditSection` 新增 27 条：平移格排在最前、裁剪两格是开关、画一个 120×80 的形状、按描边选中并拖动 (30,20)、空白框选、Delete 删掉、撤销找回、点平移格进平移、选绘图工具离开平移、文字就地输入并原样落盘、裁剪模式里换工具自动退出；落图 `out/imageedit/edit-window.png`）。
+
+- 2026-11-19：**P6-a3 完成（图片编辑窗的识别与自动打码）**。照上游 `ImageEditingWindow` 的 `bindRecognition()` / `activate()` 与 `ScreenshotAutoFilterController`。
+  - **识别只有一个入口，但覆盖上游那一排工具**：上游编辑窗把 OCR / 文字翻译 / 文档 / 表格 / 二维码 / LaTeX / Markdown / HTML 各摆一格工具（`screenshotDrawingToolbarOptions()` 的 `showOcrTool` … `showImageConversionTools`），本项目这些结果本来就在同一个结果窗页签里，所以工具条只加一格「识别」（`CaptureAction.Recognize`，`Ctrl+R`）——点它把**整张底图**（`_doc.Image`，不带标注、不带裁剪层，照上游 `document.image()`）交给 `CaptureResultWindow`，后面的文字层 / 表格 / 二维码 / 文档 / LaTeX / 翻译全部复用 P4 那一套，**没有第二份识别实现**。
+  - **识别前先收起编辑状态**（照上游 `activate()`：`resetEditingStatePreservingTool()` + `setMode(ImageEditingCanvas::Mode::Pan)`）：`OpenRecognition()` 直接走 `EnterPanMode()`——提交就地文字、结束手势、退出裁剪、退出自动打码、取消选中，然后才开结果窗。
+  - **自动打码的识别范围是整张图**：`ImageEditWindow.AutoFilter.cs` 复用覆盖层那套 `AutoFilterState` / `AutoFilterLogic` / `AutoFilterDetector` / `CaptureCanvas.AutoFilter`，只有一处不同——`AutoFilterBounds` = `(0, 0, Width, Height)`（覆盖层是当前选区）。进工具就按整张底图识别（表里资源现取 `BgrImg`，不带标注），识别中画扫描光带、结果到闪红 300ms、悬停点亮光标下最小那一块；**点一下 / 拖框一批松手都是 `toggle = true`**（同类型再点一次撤掉、不同类型替换），「填充区域 → 某类型」是 `toggle = false`（只补不删）；落的是普通 `Mark.Filter`（带 `AutoRegionId`），可撤销 / 可重做 / 跟标注一起导出。
+  - **图一变就对齐**：`RefreshMarks()`（填充 / 撤销 / 重做）与 `CommitCrop()` 之后都调 `SyncAutoFilter(detect: true)`——识别结果还跟当前图对得上就保留，对不上就清掉重扫；换工具 / 换图 / 关窗都 `LeaveAutoFilter()`（停动画计时器、清高亮、`Canvas.AutoFilter = null`）。Esc 第一下只取消进行中的框选，第二下才退出工具（与覆盖层同口径）。
+  - 验收：构建 0 错 0 警；`--selftest` 全量 **257 用例 14787 断言全绿**（`capturePro` 89 用例 9961 断言，自动打码的纯函数早前已在 `AutoFilterLogic` 一组里覆盖，本批没有新增引擎 / 校验器逻辑）；`capture-overlay-smoke` **1449 条全绿**（`ImageEditSection` 新增 16 条：工具条有「识别」按钮、点它真开结果窗且拿的是 300×160 的整张底图、进自动打码画布拿到识别状态、整张图识别在时限内跑完、「填充区域」按可用性置灰 / 可用、点一下落一条带区域 id 的滤镜标注、同类型再点一次撤掉、框选一次填两块、再框一次撤掉、「填充区域」只补不删、换工具后覆盖层与识别结果一起清掉；落图 `out/imageedit/edit-window.png` 里能看到画布与浮动工具条）。
 
 
 
