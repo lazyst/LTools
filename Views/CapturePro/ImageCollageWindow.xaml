@@ -15,9 +15,12 @@
         Drop="Window_Drop" PreviewKeyDown="Window_KeyDown">
     <!-- 图像拼接窗（照 snow-shot 的 ImageStitchingWindow + ImageStitchingEditorWidget）：
          左边是拼接预览画布（棋盘格 + 背景 + 逐图裁剪绘制 + 选中框 / 八把手 + 两条浮动工具条）
-         加一条 108×84 的缩略图；右边固定 340 宽的表单（布局方向 / 图像类型 / 行列 /
-         图像尺寸 / 外边框 / 图像间距 / 背景颜色），底部是「W × H px · 总计 N 张图像」
-         + 取消 / 图像编辑 / 复制 / 保存。 -->
+         加一条 108×84 的缩略图；右边固定 340 宽的表单（图像类型 / 布局方向 / 行列 /
+         图像尺寸 / 外边框 / 图像间距 / 背景颜色 / PDF 设置），底部是「W × H px · 总计 N 张图像」
+         + 取消 / 图像编辑 / 复制 / 保存。
+         输出类型切到「PDF 文档」时（照上游 refresh()）：静态画布 / 缩略图条 / 空态 / 画布工具条
+         全部收起，换成「页面网格」（分页拼接）或「模板画布 + 页面条 + 缩略图条」（模板拼接），
+         表单只留 PDF 设置；页脚改「毫米尺寸 + 共 N 页」，图像编辑 / 复制收起。 -->
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -345,6 +348,269 @@
                             </StackPanel>
                         </Border>
                     </Canvas>
+
+                    <!-- PDF 分页拼接：页面网格（照上游 ImageStitchingPdfPageGrid） -->
+                    <Grid x:Name="PdfGridHost" Visibility="Collapsed" Background="Transparent">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="PdfGridNotice" Margin="16,12,16,0" TextWrapping="Wrap"
+                                   Text="页面预览使用上一次有效的设置" Visibility="Collapsed"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource DangerBrush}"/>
+                        <Grid Grid.Row="1" ClipToBounds="True">
+                            <cp:CollagePdfPageGrid x:Name="PdfGrid"/>
+
+                            <Grid x:Name="PdfGridEmpty" Background="Transparent">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock Text="添加图像以创建 PDF 文档" FontSize="20"
+                                               FontWeight="SemiBold" HorizontalAlignment="Center"
+                                               Foreground="{StaticResource TextBrush}"/>
+                                    <TextBlock Text="将图像文件拖到此处，或选择“添加图像”" Margin="0,8,0,0"
+                                               FontSize="{StaticResource FontSizeHint}"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{StaticResource SecondaryTextBrush}"/>
+                                    <Button x:Name="PdfEmptyAddBtn" Style="{StaticResource BtnPrimary}"
+                                            Content="添加图像" MinWidth="110" Margin="0,16,0,0"
+                                            HorizontalAlignment="Center" Click="AddImages_Click"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <Border x:Name="PdfGridToolbar" Style="{StaticResource FloatPanel}" Padding="3"
+                                    HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                    Margin="0,0,0,16">
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="PdfReverseBtn" Style="{StaticResource CanvasAction}"
+                                            ToolTip="反转页面顺序" Click="Reverse_Click">
+                                        <Path Data="{StaticResource IconSwap}"
+                                              Style="{StaticResource CanvasActionPath}"/>
+                                    </Button>
+                                    <Button x:Name="PdfAddBtn" Style="{StaticResource CanvasAction}"
+                                            ToolTip="添加图像" Click="AddImages_Click">
+                                        <Path Data="{StaticResource IconPlus}"
+                                              Style="{StaticResource CanvasActionPath}"/>
+                                    </Button>
+                                    <Border Width="1" Height="16" Margin="4,0"
+                                            VerticalAlignment="Center"
+                                            Background="{StaticResource CaptureBorder}"/>
+                                    <Button x:Name="PdfClearBtn" Style="{StaticResource BarBtnDanger}"
+                                            Width="30" Height="30" ToolTip="清空" Click="Clear_Click">
+                                        <Path Data="{StaticResource IconTrash}"
+                                              Style="{StaticResource CanvasActionPath}"/>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+
+                            <Canvas x:Name="PdfGridOverlay">
+                                <Border x:Name="PdfCardToolbar" Style="{StaticResource FloatPanel}"
+                                        Padding="3" Visibility="Collapsed" Canvas.Left="0"
+                                        Canvas.Top="0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="PdfRotateCwBtn" Style="{StaticResource CanvasAction}"
+                                                ToolTip="顺时针旋转 90°" Click="RotateCw_Click">
+                                            <Path Data="{StaticResource IconRotateRight}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Button x:Name="PdfRotateCcwBtn" Style="{StaticResource CanvasAction}"
+                                                ToolTip="逆时针旋转 90°" Click="RotateCcw_Click">
+                                            <Path Data="{StaticResource IconRotateLeft}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Button x:Name="PdfFlipHBtn" Style="{StaticResource CanvasAction}"
+                                                ToolTip="水平翻转" Click="FlipH_Click">
+                                            <Path Data="{StaticResource IconFlipHorizontal}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Button x:Name="PdfFlipVBtn" Style="{StaticResource CanvasAction}"
+                                                ToolTip="垂直翻转" Click="FlipV_Click">
+                                            <Path Data="{StaticResource IconFlipVertical}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Button x:Name="PdfResetBtn" Style="{StaticResource CanvasAction}"
+                                                ToolTip="重置变换" Click="ResetTransform_Click">
+                                            <Path Data="{StaticResource IconReload}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Border Width="1" Height="16" Margin="4,0"
+                                                VerticalAlignment="Center"
+                                                Background="{StaticResource CaptureBorder}"/>
+                                        <Button x:Name="PdfReplaceBtn" Style="{StaticResource CanvasAction}"
+                                                ToolTip="替换图像" Click="ReplaceSelected_Click">
+                                            <Path Data="{StaticResource IconReplace}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Button x:Name="PdfPreviewBtn" Style="{StaticResource CanvasAction}"
+                                                ToolTip="预览原图" Click="PreviewOriginal_Click">
+                                            <Path Data="{StaticResource IconEye}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Button x:Name="PdfCardDeleteBtn"
+                                                Style="{StaticResource BarBtnDanger}" Width="30" Height="30"
+                                                ToolTip="删除图像" Click="DeleteSelected_Click">
+                                            <Path Data="{StaticResource IconTrash}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+                            </Canvas>
+                        </Grid>
+                    </Grid>
+
+                    <!-- PDF 模板拼接：模板画布 + 页面条 + 缩略图条（照上游 ImageStitchingPdfTemplateWidget） -->
+                    <Grid x:Name="PdfTemplateHost" Visibility="Collapsed" Background="Transparent">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="PdfTemplateNotice" Margin="16,12,16,0" TextWrapping="Wrap"
+                                   Text="页面预览使用上一次有效的设置" Visibility="Collapsed"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource DangerBrush}"/>
+                        <Grid Grid.Row="1" ClipToBounds="True">
+                            <cp:CollagePdfTemplateCanvas x:Name="PdfTemplateCanvas"/>
+
+                            <Grid x:Name="PdfTemplateEmpty" Background="Transparent">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock Text="添加图像以创建 PDF 文档" FontSize="20"
+                                               FontWeight="SemiBold" HorizontalAlignment="Center"
+                                               Foreground="{StaticResource TextBrush}"/>
+                                    <TextBlock Text="将图像文件拖到此处，或选择“添加图像”" Margin="0,8,0,0"
+                                               FontSize="{StaticResource FontSizeHint}"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{StaticResource SecondaryTextBrush}"/>
+                                    <Button x:Name="PdfTemplateEmptyAddBtn"
+                                            Style="{StaticResource BtnPrimary}" Content="添加图像"
+                                            MinWidth="110" Margin="0,16,0,0"
+                                            HorizontalAlignment="Center" Click="AddImages_Click"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <Border x:Name="PdfTemplateToolbar" Style="{StaticResource FloatPanel}"
+                                    Padding="3" HorizontalAlignment="Center"
+                                    VerticalAlignment="Bottom" Margin="0,0,0,16">
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="PdfTemplateReverseBtn"
+                                            Style="{StaticResource CanvasAction}"
+                                            ToolTip="反转图像顺序" Click="Reverse_Click">
+                                        <Path Data="{StaticResource IconSwap}"
+                                              Style="{StaticResource CanvasActionPath}"/>
+                                    </Button>
+                                    <Button x:Name="PdfTemplateAddBtn" Style="{StaticResource CanvasAction}"
+                                            ToolTip="添加图像" Click="AddImages_Click">
+                                        <Path Data="{StaticResource IconPlus}"
+                                              Style="{StaticResource CanvasActionPath}"/>
+                                    </Button>
+                                    <Border Width="1" Height="16" Margin="4,0"
+                                            VerticalAlignment="Center"
+                                            Background="{StaticResource CaptureBorder}"/>
+                                    <Button x:Name="PdfTemplateFitBtn" Style="{StaticResource CanvasAction}"
+                                            ToolTip="适应画布" Click="PdfTemplateFit_Click">
+                                        <Path Data="{StaticResource IconFit}"
+                                              Style="{StaticResource CanvasActionPath}"/>
+                                    </Button>
+                                    <Button x:Name="PdfTemplateClearBtn"
+                                            Style="{StaticResource BarBtnDanger}" Width="30" Height="30"
+                                            ToolTip="全部清空" Click="Clear_Click">
+                                        <Path Data="{StaticResource IconTrash}"
+                                              Style="{StaticResource CanvasActionPath}"/>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+
+                            <Canvas x:Name="PdfTemplateOverlay">
+                                <Border x:Name="PdfTemplateSelectionToolbar"
+                                        Style="{StaticResource FloatPanel}" Padding="3"
+                                        Visibility="Collapsed" Canvas.Left="0" Canvas.Top="0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="PdfTemplateRotateCwBtn"
+                                                Style="{StaticResource CanvasAction}"
+                                                ToolTip="顺时针旋转 90°" Click="RotateCw_Click">
+                                            <Path Data="{StaticResource IconRotateRight}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Button x:Name="PdfTemplateRotateCcwBtn"
+                                                Style="{StaticResource CanvasAction}"
+                                                ToolTip="逆时针旋转 90°" Click="RotateCcw_Click">
+                                            <Path Data="{StaticResource IconRotateLeft}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Button x:Name="PdfTemplateFlipHBtn"
+                                                Style="{StaticResource CanvasAction}"
+                                                ToolTip="水平翻转" Click="FlipH_Click">
+                                            <Path Data="{StaticResource IconFlipHorizontal}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Button x:Name="PdfTemplateFlipVBtn"
+                                                Style="{StaticResource CanvasAction}"
+                                                ToolTip="垂直翻转" Click="FlipV_Click">
+                                            <Path Data="{StaticResource IconFlipVertical}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Button x:Name="PdfTemplateResetBtn"
+                                                Style="{StaticResource CanvasAction}"
+                                                ToolTip="重置图像" Click="ResetTransform_Click">
+                                            <Path Data="{StaticResource IconReload}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Border Width="1" Height="16" Margin="4,0"
+                                                VerticalAlignment="Center"
+                                                Background="{StaticResource CaptureBorder}"/>
+                                        <Button x:Name="PdfTemplateReplaceBtn"
+                                                Style="{StaticResource CanvasAction}"
+                                                ToolTip="替换图像" Click="ReplaceSelected_Click">
+                                            <Path Data="{StaticResource IconReplace}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Button x:Name="PdfTemplatePreviewBtn"
+                                                Style="{StaticResource CanvasAction}"
+                                                ToolTip="预览原图" Click="PreviewOriginal_Click">
+                                            <Path Data="{StaticResource IconEye}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                        <Button x:Name="PdfTemplateDeleteBtn"
+                                                Style="{StaticResource BarBtnDanger}" Width="30"
+                                                Height="30" ToolTip="删除图像" Click="DeleteSelected_Click">
+                                            <Path Data="{StaticResource IconTrash}"
+                                                  Style="{StaticResource CanvasActionPath}"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+                            </Canvas>
+                        </Grid>
+
+                        <!-- 页面条：上一页 / 第 x 页，共 y 页 / 下一页 -->
+                        <StackPanel x:Name="PdfPageBar" Grid.Row="2" Orientation="Horizontal"
+                                    HorizontalAlignment="Center" Margin="0,6,0,0">
+                            <Button x:Name="PdfPrevPageBtn" Style="{StaticResource CanvasAction}"
+                                    ToolTip="上一页" Click="PdfPrevPage_Click">
+                                <Path Data="{StaticResource IconChevronLeft}"
+                                      Style="{StaticResource CanvasActionPath}"/>
+                            </Button>
+                            <TextBlock x:Name="PdfPageLabel" Text="暂无页面" Margin="10,0"
+                                       VerticalAlignment="Center"
+                                       FontSize="{StaticResource FontSizeHint}"
+                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                            <Button x:Name="PdfNextPageBtn" Style="{StaticResource CanvasAction}"
+                                    ToolTip="下一页" Click="PdfNextPage_Click">
+                                <Path Data="{StaticResource IconChevronRight}"
+                                      Style="{StaticResource CanvasActionPath}"/>
+                            </Button>
+                        </StackPanel>
+
+                        <!-- 输入图像缩略图条（108×84，拖到另一张 = 交换） -->
+                        <Border x:Name="PdfThumbRow" Grid.Row="3" Background="{StaticResource SurfaceAltBrush}"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                                Margin="0,6,0,0">
+                            <ScrollViewer x:Name="PdfThumbScroll" HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Disabled" Height="88">
+                                <StackPanel x:Name="PdfThumbHost" Orientation="Horizontal"
+                                            Margin="2,2,2,2" VerticalAlignment="Center"/>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
                 </Grid>
 
                 <!-- 缩略图条：一格 108×84（照上游 kThumbnailSize），拖到另一格 = 交换 -->
@@ -365,6 +631,23 @@
                 <ScrollViewer x:Name="FormScroll" VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled" Padding="16,16,12,16">
                     <StackPanel x:Name="FormPanel">
+                        <TextBlock Text="图像类型" Style="{StaticResource FormLabel}"/>
+                        <Border Style="{StaticResource SegGroup}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <RadioButton x:Name="OutStatic" Grid.Column="0" Style="{StaticResource SegBtn}"
+                                             GroupName="collageOutputType" Content="静态图像"
+                                             Checked="OutputType_Checked"/>
+                                <RadioButton x:Name="OutPdf" Grid.Column="1" Style="{StaticResource SegBtn}"
+                                             GroupName="collageOutputType" Content="PDF 文档"
+                                             Checked="OutputType_Checked"/>
+                            </Grid>
+                        </Border>
+
+                        <StackPanel x:Name="StaticSection" Margin="0,14,0,0">
                         <TextBlock Text="布局方向" Style="{StaticResource FormLabel}"/>
                         <Border Style="{StaticResource SegGroup}">
                             <Grid>
@@ -527,6 +810,216 @@
                             <Button x:Name="ColorButton" Grid.Column="2" Style="{StaticResource SwatchButton}"
                                     ToolTip="选择背景颜色，可设置透明度" Click="ColorButton_Click"/>
                         </Grid>
+                        </StackPanel>
+
+                        <!-- ============ PDF 设置（照上游 ImageStitchingPdfSettingsWidget） ============ -->
+                        <StackPanel x:Name="PdfSection" Margin="0,14,0,0" Visibility="Collapsed">
+                            <TextBlock Text="拼接方式" Style="{StaticResource FormLabel}"/>
+                            <Border Style="{StaticResource SegGroup}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <RadioButton x:Name="PdfMethodPage" Grid.Column="0"
+                                                 Style="{StaticResource SegBtn}" GroupName="collagePdfMethod"
+                                                 Content="分页拼接" Checked="PdfMethod_Checked"/>
+                                    <RadioButton x:Name="PdfMethodTemplate" Grid.Column="1"
+                                                 Style="{StaticResource SegBtn}" GroupName="collagePdfMethod"
+                                                 Content="模板拼接" Checked="PdfMethod_Checked"/>
+                                </Grid>
+                            </Border>
+                            <TextBlock x:Name="PdfMethodError" Style="{StaticResource FieldError}"/>
+
+                            <!-- 模板：9 个 3×3 小格（照上游 TemplateButton 自绘的纸面 + 格子） -->
+                            <StackPanel x:Name="PdfTemplateRow" Margin="0,14,0,0">
+                                <TextBlock Text="模板" Style="{StaticResource FormLabel}"/>
+                                <UniformGrid Columns="3" Margin="0,0,-6,-6">
+                                    <cp:CollagePdfTemplateButton x:Name="PdfTemplateTwo" Kind="two_images"
+                                                                 Margin="0,0,6,6" ToolTip="两张图像"
+                                                                 Click="PdfTemplate_Click"/>
+                                    <cp:CollagePdfTemplateButton x:Name="PdfTemplateIdCard" Kind="id_card"
+                                                                 Margin="0,0,6,6" ToolTip="身份证"
+                                                                 Click="PdfTemplate_Click"/>
+                                    <cp:CollagePdfTemplateButton x:Name="PdfTemplateThree" Kind="three_images"
+                                                                 Margin="0,0,0,6" ToolTip="三张图像"
+                                                                 Click="PdfTemplate_Click"/>
+                                    <cp:CollagePdfTemplateButton x:Name="PdfTemplateFour" Kind="four_images"
+                                                                 Margin="0,0,6,6" ToolTip="四张图像"
+                                                                 Click="PdfTemplate_Click"/>
+                                    <cp:CollagePdfTemplateButton x:Name="PdfTemplateFive" Kind="five_images"
+                                                                 Margin="0,0,6,6" ToolTip="五张图像"
+                                                                 Click="PdfTemplate_Click"/>
+                                    <cp:CollagePdfTemplateButton x:Name="PdfTemplateSix" Kind="six_images"
+                                                                 Margin="0,0,0,6" ToolTip="六张图像"
+                                                                 Click="PdfTemplate_Click"/>
+                                    <cp:CollagePdfTemplateButton x:Name="PdfTemplateSeven" Kind="seven_images"
+                                                                 Margin="0,0,6,0" ToolTip="七张图像"
+                                                                 Click="PdfTemplate_Click"/>
+                                    <cp:CollagePdfTemplateButton x:Name="PdfTemplateEight" Kind="eight_images"
+                                                                 Margin="0,0,6,0" ToolTip="八张图像"
+                                                                 Click="PdfTemplate_Click"/>
+                                    <cp:CollagePdfTemplateButton x:Name="PdfTemplateNine" Kind="nine_images"
+                                                                 Margin="0" ToolTip="九张图像"
+                                                                 Click="PdfTemplate_Click"/>
+                                </UniformGrid>
+                                <TextBlock x:Name="PdfTemplateError" Style="{StaticResource FieldError}"/>
+                            </StackPanel>
+
+                            <TextBlock Text="纸张大小" Style="{StaticResource FormLabel}" Margin="0,14,0,4"/>
+                            <ComboBox x:Name="PdfPaperBox" Height="30" SelectionChanged="PdfPaper_Changed">
+                                <ComboBoxItem Content="A3" Tag="a3"/>
+                                <ComboBoxItem Content="A4" Tag="a4"/>
+                                <ComboBoxItem Content="A5" Tag="a5"/>
+                                <ComboBoxItem Content="B5" Tag="b5"/>
+                                <ComboBoxItem Content="Letter" Tag="letter"/>
+                                <ComboBoxItem Content="Legal" Tag="legal"/>
+                                <ComboBoxItem Content="自定义" Tag="custom"/>
+                                <ComboBoxItem Content="图像大小" Tag="image_size"/>
+                            </ComboBox>
+                            <TextBlock x:Name="PdfPaperError" Style="{StaticResource FieldError}"/>
+
+                            <StackPanel x:Name="PdfOrientationRow" Margin="0,14,0,0">
+                                <TextBlock Text="纸张方向" Style="{StaticResource FormLabel}"/>
+                                <Border Style="{StaticResource SegGroup}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <RadioButton x:Name="PdfPortrait" Grid.Column="0"
+                                                     Style="{StaticResource SegBtn}"
+                                                     GroupName="collagePdfOrientation" Content="纵向"
+                                                     Checked="PdfOrientation_Checked"/>
+                                        <RadioButton x:Name="PdfLandscape" Grid.Column="1"
+                                                     Style="{StaticResource SegBtn}"
+                                                     GroupName="collagePdfOrientation" Content="横向"
+                                                     Checked="PdfOrientation_Checked"/>
+                                    </Grid>
+                                </Border>
+                                <TextBlock x:Name="PdfOrientationError" Style="{StaticResource FieldError}"/>
+                            </StackPanel>
+
+                            <StackPanel x:Name="PdfCustomRow" Margin="0,14,0,0" Visibility="Collapsed">
+                                <TextBlock Text="自定义纸张" Style="{StaticResource FormLabel}"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="宽度" Style="{StaticResource FormLabel}"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="PdfWidthBox" Style="{StaticResource NumberBox}"
+                                                     LostFocus="Field_LostFocus"
+                                                     PreviewKeyDown="Field_KeyDown"/>
+                                            <TextBlock Grid.Column="1" Text="mm" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="{StaticResource FontSizeHint}"
+                                                       Foreground="{StaticResource HintTextBrush}"/>
+                                        </Grid>
+                                        <TextBlock x:Name="PdfWidthError" Style="{StaticResource FieldError}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="高度" Style="{StaticResource FormLabel}"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="PdfHeightBox" Style="{StaticResource NumberBox}"
+                                                     LostFocus="Field_LostFocus"
+                                                     PreviewKeyDown="Field_KeyDown"/>
+                                            <TextBlock Grid.Column="1" Text="mm" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="{StaticResource FontSizeHint}"
+                                                       Foreground="{StaticResource HintTextBrush}"/>
+                                        </Grid>
+                                        <TextBlock x:Name="PdfHeightError" Style="{StaticResource FieldError}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- 页边距 / 图像间距：同一行（图像间距只在模板拼接时出现） -->
+                            <Grid x:Name="PdfSpacingRow" Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition x:Name="PdfSpacingColumn" Width="0"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="页边距" Style="{StaticResource FormLabel}"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="PdfMarginBox" Style="{StaticResource NumberBox}"
+                                                 LostFocus="Field_LostFocus" PreviewKeyDown="Field_KeyDown"/>
+                                        <TextBlock Grid.Column="1" Text="mm" Margin="8,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="{StaticResource FontSizeHint}"
+                                                   Foreground="{StaticResource HintTextBrush}"/>
+                                    </Grid>
+                                    <TextBlock x:Name="PdfMarginError" Style="{StaticResource FieldError}"/>
+                                </StackPanel>
+                                <StackPanel x:Name="PdfImageSpacingPanel" Grid.Column="2"
+                                            Visibility="Collapsed">
+                                    <TextBlock Text="图像间距" Style="{StaticResource FormLabel}"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="PdfImageSpacingBox"
+                                                 Style="{StaticResource NumberBox}"
+                                                 LostFocus="Field_LostFocus" PreviewKeyDown="Field_KeyDown"/>
+                                        <TextBlock Grid.Column="1" Text="mm" Margin="8,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="{StaticResource FontSizeHint}"
+                                                   Foreground="{StaticResource HintTextBrush}"/>
+                                    </Grid>
+                                    <TextBlock x:Name="PdfImageSpacingError"
+                                               Style="{StaticResource FieldError}"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="导出模式" Style="{StaticResource FormLabel}" Margin="0,14,0,4"/>
+                            <Border Style="{StaticResource SegGroup}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <RadioButton x:Name="PdfExportCombined" Grid.Column="0"
+                                                 Style="{StaticResource SegBtn}" GroupName="collagePdfExport"
+                                                 Content="合并导出" Checked="PdfExport_Checked"/>
+                                    <RadioButton x:Name="PdfExportPerPage" Grid.Column="1"
+                                                 Style="{StaticResource SegBtn}" GroupName="collagePdfExport"
+                                                 Content="逐页导出" Checked="PdfExport_Checked"/>
+                                </Grid>
+                            </Border>
+                            <TextBlock x:Name="PdfExportError" Style="{StaticResource FieldError}"/>
+
+                            <TextBlock Text="质量" Style="{StaticResource FormLabel}" Margin="0,14,0,4"/>
+                            <Slider x:Name="PdfQualitySlider" Minimum="0" Maximum="100"
+                                    IsSnapToTickEnabled="True" TickFrequency="1" SmallChange="1"
+                                    LargeChange="10" ValueChanged="PdfQuality_Changed"/>
+                            <Grid Margin="0,2,0,0">
+                                <TextBlock Text="0%" FontSize="11"
+                                           Foreground="{StaticResource HintTextBrush}"
+                                           HorizontalAlignment="Left"/>
+                                <TextBlock Text="无损" FontSize="11"
+                                           Foreground="{StaticResource HintTextBrush}"
+                                           HorizontalAlignment="Right"/>
+                            </Grid>
+                            <TextBlock x:Name="PdfQualityError" Style="{StaticResource FieldError}"/>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

@@ -227,7 +227,11 @@ public partial class ImageCollageWindow
     /// <summary>焦点还在输入框里、但用户已点了别的控件（分段控件不抢焦点）时先落值。</summary>
     private void CommitPendingFields()
     {
-        foreach (var box in new[] { BorderBox, SpacingBox, RowsBox, ColumnsBox })
+        foreach (var box in new[]
+                 {
+                     BorderBox, SpacingBox, RowsBox, ColumnsBox, PdfWidthBox, PdfHeightBox,
+                     PdfMarginBox, PdfImageSpacingBox,
+                 })
         {
             if (box.IsKeyboardFocusWithin) CommitField(box);
         }
@@ -236,9 +240,16 @@ public partial class ImageCollageWindow
     private void CommitField(TextBox box)
     {
         if (_syncing || _closing) return;
-        if (_loading || _exporting)
+        if (_loading || _exporting || _pdfExporting)
         {
             SyncForm(force: true);
+            SyncPdfForm(force: true);
+            return;
+        }
+
+        if (IsPdfField(box))
+        {
+            CommitPdfField(box);
             return;
         }
 
@@ -278,7 +289,7 @@ public partial class ImageCollageWindow
     /// </summary>
     private void ApplySettings(Func<CollageSettings, CollageSettings> edit, string field)
     {
-        if (_loading || _exporting || _closing)
+        if (_loading || _exporting || _pdfExporting || _closing)
         {
             SyncForm(force: true);
             return;

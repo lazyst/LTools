@@ -120,6 +120,10 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "拼图：设置 / 背景色 / 几何变化", CollageSettingsCases));
         cases.Add(new("capturePro", "拼图：增删换序与宫格规整", CollageDocumentCases));
         cases.Add(new("capturePro", "拼图：成品逐像素渲染", CollageRenderCases));
+        cases.Add(new("capturePro", "拼图 PDF：纸张 / 内容区 / 模板格", CollagePdfPaperCases));
+        cases.Add(new("capturePro", "拼图 PDF：页数 / 校验 / 页面布局 / 合成页", CollagePdfGeometryCases));
+        cases.Add(new("capturePro", "拼图 PDF：像素准备与页面绘制", CollagePdfRenderCases));
+        cases.Add(new("capturePro", "拼图 PDF：导出的真实字节", CollagePdfExportCases));
     }
 
     private static void Geometry()

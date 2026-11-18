@@ -106,6 +106,12 @@
     <!-- 替换图片（照 replace-image.svg 的语义：一张图 + 出图箭头） -->
     <PathGeometry x:Key="IconReplace" FillRule="EvenOdd" Figures="M128,104L672,104A64,64 0 0 1 736,168L736,416L664,416L664,176L136,176L136,600L432,600L432,672L128,672A64,64 0 0 1 64,608L64,168A64,64 0 0 1 128,104ZM200,528L328,400L456,528L456,576L200,576ZM512,824L512,760L896,760L842,706L896,652L1024,780L896,908L842,854L896,800L512,800Z"/>
 
+    <!-- PDF 模板画布的翻页箭头（照上游 icons::Left / icons::Right） -->
+    <PathGeometry x:Key="IconChevronLeft" FillRule="Nonzero"
+                  Figures="M646,164L286,512L646,860L716,790L426,512L716,234Z"/>
+    <PathGeometry x:Key="IconChevronRight" FillRule="Nonzero"
+                  Figures="M378,164L738,512L378,860L308,790L598,512L308,234Z"/>
+
     <!-- ============ 图标盒 ============
          24 = Snow Shot 的 `screenshot_action_toolbar::IconSize`；第二行的样式按钮用 18（`STYLE_ICON_SIZE`）。
          颜色一律跟随所在按钮的 Foreground（选中 / 危险 / 禁用都只改前景色）。 -->

@@ -192,7 +192,20 @@
     "Background": "#FFFFFFFF",
     "Rows": 1,
     "Columns": 1,
-    "CustomGridInitialized": false
+    "CustomGridInitialized": false,
+    "PdfStitchingMethod": "page_based",
+    "PdfTemplateType": "two_images",
+    "PdfImageSpacingMm": 5,
+    "PdfPaperSize": "a4",
+    "PdfOrientation": "portrait",
+    "PdfCustomWidthMm": 210,
+    "PdfCustomHeightMm": 297,
+    "PdfMarginTopMm": 10,
+    "PdfMarginBottomMm": 10,
+    "PdfMarginLeftMm": 10,
+    "PdfMarginRightMm": 10,
+    "PdfExportMode": "combined",
+    "PdfImageQuality": 100
   },
   "Triggers": {
     "Enabled": false,

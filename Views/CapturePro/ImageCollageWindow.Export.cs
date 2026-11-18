@@ -48,7 +48,13 @@ public partial class ImageCollageWindow
     /// <summary>准备成品图（后台）→ 回 UI 线程走对应出口。</summary>
     private void StartExport(ExportKind kind)
     {
-        if (_closing || _loading || _exporting || _confirming) return;
+        if (_closing || _loading || _exporting || _pdfExporting || _confirming) return;
+
+        if (_doc.OutputType == CollageOutputType.PdfDocument)
+        {
+            if (kind != ExportKind.Copy) StartPdfExport();
+            return;
+        }
 
         var layout = _doc.Layout;
         if (!layout.IsValid)

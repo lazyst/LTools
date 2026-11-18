@@ -57,8 +57,71 @@ internal static class CollageStore
         }
     }
 
-    private static CollageFile Read()
+    // ============ PDF 导出 ============
+
+    /// <summary>
+    /// 读 PDF 设置（照上游 <c>readPdf</c>）：单个字段能读就用，**整份校验不过就整体回默认**，
+    /// 所以手改坏的组合不会让导出框一打开就是不可用的形状。
+    /// </summary>
+    public static CollagePdfSettings LoadPdf()
     {
+        CollageFile file = Read();
+        var settings = new CollagePdfSettings(
+            CollagePdfSettings.ParseMethod(file.PdfStitchingMethod),
+            CollagePdfSettings.ParseTemplate(file.PdfTemplateType),
+            Numeric(file.PdfImageSpacingMm, 5),
+            CollagePdfSettings.ParsePaper(file.PdfPaperSize),
+            CollagePdfSettings.ParseOrientation(file.PdfOrientation),
+            Numeric(file.PdfCustomWidthMm, 210),
+            Numeric(file.PdfCustomHeightMm, 297),
+            Numeric(file.PdfMarginTopMm, 10),
+            Numeric(file.PdfMarginTopMm, 10),
+            Numeric(file.PdfMarginTopMm, 10),
+            Numeric(file.PdfMarginTopMm, 10),
+            CollagePdfSettings.ParseExportMode(file.PdfExportMode),
+            file.PdfImageQuality is >= 0 and <= 100 ? file.PdfImageQuality : 100);
+
+        return CollagePdfGeometry.Validate(settings).Count == 0 ? settings : CollagePdfSettings.Default;
+    }
+
+    /// <summary>整份写回 PDF 设置；**校验不过不写**（照上游 <c>writePdf</c>）。</summary>
+    public static void SavePdf(CollagePdfSettings settings)
+    {
+        if (CollagePdfGeometry.Validate(settings).Count > 0) return;
+
+        try
+        {
+            void Apply(SettingsFile file)
+            {
+                file.Collage ??= new CollageFile();
+                file.Collage.PdfStitchingMethod = settings.MethodKey;
+                file.Collage.PdfTemplateType = settings.TemplateKey;
+                file.Collage.PdfImageSpacingMm = settings.ImageSpacingMm;
+                file.Collage.PdfPaperSize = settings.PaperKey;
+                file.Collage.PdfOrientation = settings.OrientationKey;
+                file.Collage.PdfCustomWidthMm = settings.CustomWidthMm;
+                file.Collage.PdfCustomHeightMm = settings.CustomHeightMm;
+                file.Collage.PdfMarginTopMm = settings.MarginMm;
+                file.Collage.PdfMarginBottomMm = settings.MarginMm;
+                file.Collage.PdfMarginLeftMm = settings.MarginMm;
+                file.Collage.PdfMarginRightMm = settings.MarginMm;
+                file.Collage.PdfExportMode = settings.ExportModeKey;
+                file.Collage.PdfImageQuality = Math.Clamp(settings.ImageQuality, 0, 100);
+            }
+
+            if (string.IsNullOrEmpty(ConfigStore.ConfigPath)) SettingsStore.Modify(Apply);
+            else SettingsStore.Modify(ConfigStore.ConfigPath, Apply);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("CapturePro.Collage", "保存 PDF 设置失败：" + ex.Message);
+        }
+    }
+
+    private static double Numeric(double value, double fallback) =>
+        double.IsFinite(value) ? value : fallback;
+
+    private static CollageFile Read()    {
         try
         {
             string path = ConfigStore.ConfigPath;

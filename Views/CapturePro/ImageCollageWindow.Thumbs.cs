@@ -65,13 +65,13 @@ public partial class ImageCollageWindow
     /// <summary>缩略图的「替换图像」：只选一张，换掉这一张的像素（保留位置 / 顺序）。</summary>
     private void PickReplacement(long id)
     {
-        if (_loading || _exporting || _closing) return;
+        if (_loading || _exporting || _pdfExporting || _closing) return;
         if (_doc.Find(id) == null) return;
 
         // 按钮点击还在处理中，等这一拍过去再弹文件框（避免捕获 / 焦点打架）。
         Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
         {
-            if (_loading || _exporting || _closing) return;
+            if (_loading || _exporting || _pdfExporting || _closing) return;
 
             var dialog = new Microsoft.Win32.OpenFileDialog
             {
@@ -89,7 +89,7 @@ public partial class ImageCollageWindow
 
     private void OnThumbnailDragStarted(long id)
     {
-        if (_loading || _exporting || _closing) return;
+        if (_loading || _exporting || _pdfExporting || _closing) return;
 
         var item = _doc.Find(id);
         if (item == null) return;

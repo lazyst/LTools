@@ -34,4 +34,45 @@ public sealed class CollageFile
 
     /// <summary>宫格行列是否已按图片数量自动定过一次（照上游 <c>custom_grid_initialized</c>）。</summary>
     public bool CustomGridInitialized { get; set; }
+
+    // ============ PDF 导出（照上游 collage/pdf_*） ============
+
+    /// <summary>PDF 拼接方式：<c>page_based</c>（分页拼接）/ <c>template_based</c>（模板拼接）。</summary>
+    public string PdfStitchingMethod { get; set; } = "page_based";
+
+    /// <summary>模板：<c>two_images</c> / <c>id_card</c> / <c>three_images</c>…<c>nine_images</c>。</summary>
+    public string PdfTemplateType { get; set; } = "two_images";
+
+    /// <summary>模板拼接的图像间距（毫米）。</summary>
+    public double PdfImageSpacingMm { get; set; } = 5;
+
+    /// <summary>纸张：<c>a3</c> / <c>a4</c> / <c>a5</c> / <c>b5</c> / <c>letter</c> / <c>legal</c> / <c>custom</c> / <c>image_size</c>。</summary>
+    public string PdfPaperSize { get; set; } = "a4";
+
+    /// <summary>纸张方向：<c>portrait</c> / <c>landscape</c>。</summary>
+    public string PdfOrientation { get; set; } = "portrait";
+
+    /// <summary>自定义纸张宽度（毫米）。</summary>
+    public double PdfCustomWidthMm { get; set; } = 210;
+
+    /// <summary>自定义纸张高度（毫米）。</summary>
+    public double PdfCustomHeightMm { get; set; } = 297;
+
+    /// <summary>页边距（毫米，四边同一个值；读盘时也按上游只用这一个）。</summary>
+    public double PdfMarginTopMm { get; set; } = 10;
+
+    /// <summary>页边距（下，跟随 <see cref="PdfMarginTopMm"/>）。</summary>
+    public double PdfMarginBottomMm { get; set; } = 10;
+
+    /// <summary>页边距（左，跟随 <see cref="PdfMarginTopMm"/>）。</summary>
+    public double PdfMarginLeftMm { get; set; } = 10;
+
+    /// <summary>页边距（右，跟随 <see cref="PdfMarginTopMm"/>）。</summary>
+    public double PdfMarginRightMm { get; set; } = 10;
+
+    /// <summary>导出模式：<c>combined</c>（合并导出）/ <c>per_page</c>（逐页导出）。</summary>
+    public string PdfExportMode { get; set; } = "combined";
+
+    /// <summary>图像质量（0–100，100 = 无损）。</summary>
+    public int PdfImageQuality { get; set; } = 100;
 }

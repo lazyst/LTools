@@ -96,6 +96,9 @@ internal sealed class CollageItem
 
     public CollagePlacement Placement { get; internal set; }
 
+    /// <summary>PDF 模板拼接里的手摆（相对格中心的毫米偏移 + 毫米 / 像素比例）。</summary>
+    public CollagePdfPlacement PdfPlacement { get; internal set; }
+
     public (int Width, int Height) SourceSize => (Source.PixelWidth, Source.PixelHeight);
 
     /// <summary>变换后的像素尺寸（布局按这个算）。</summary>

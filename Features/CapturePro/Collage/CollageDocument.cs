@@ -37,6 +37,15 @@ internal sealed class CollageDocument
 
     public CollageSettings Settings { get; private set; }
 
+    /// <summary>输出类型（静态图像 / PDF 文档）；只影响界面显示哪一套设置。</summary>
+    public CollageOutputType OutputType { get; private set; } = CollageOutputType.StaticImage;
+
+    /// <summary>用户当前填的 PDF 设置（可能校验不过，界面要照这个显示提示）。</summary>
+    public CollagePdfSettings PdfSettings { get; private set; } = CollagePdfSettings.Default;
+
+    /// <summary>最后一次校验通过的 PDF 设置（预览 / 页脚 / 保存都用它）。</summary>
+    public CollagePdfSettings LastValidPdfSettings { get; private set; } = CollagePdfSettings.Default;
+
     public long SelectedId => _selected;
 
     public bool IsEmpty => _items.Count == 0;
@@ -105,6 +114,7 @@ internal sealed class CollageDocument
         {
             Transform = previous.Transform,
             Placement = previous.Placement,
+            PdfPlacement = previous.PdfPlacement,
         };
         _items[index] = replaced;
         MarkLayoutDirty();
@@ -167,6 +177,8 @@ internal sealed class CollageDocument
         (_items[a], _items[b]) = (_items[b], _items[a]);
         _items[a].Placement = default;
         _items[b].Placement = default;
+        _items[a].PdfPlacement = default;
+        _items[b].PdfPlacement = default;
         MarkLayoutDirty();
         Changed?.Invoke();
         return true;
@@ -189,11 +201,16 @@ internal sealed class CollageDocument
     }
 
     /// <summary>顺时针 / 逆时针转 90°（照上游 <c>rotate</c>，矩阵右乘）。</summary>
+    /// <remarks>
+    /// 转之前先 <see cref="FreezePdfScale"/>：模板里的图没手调过比例时，把当前自动算出的
+    /// 「毫米 / 像素」固定下来，转完还占同样的物理尺寸（照上游 <c>freezePdfScale</c>）。
+    /// </remarks>
     public bool Rotate(long id, bool clockwise)
     {
         int index = IndexOf(id);
         if (index < 0) return false;
 
+        FreezePdfScale(index);
         var item = _items[index];
         item.Transform = item.Transform.Multiply(clockwise
             ? CollageTransform.Clockwise
@@ -203,12 +220,13 @@ internal sealed class CollageDocument
         return true;
     }
 
-    /// <summary>水平 / 垂直翻转（照上游 <c>flip</c>）。</summary>
+    /// <summary>水平 / 垂直翻转（照上游 <c>flip</c>，同样先固定模板里的物理比例）。</summary>
     public bool Flip(long id, bool horizontal)
     {
         int index = IndexOf(id);
         if (index < 0) return false;
 
+        FreezePdfScale(index);
         var item = _items[index];
         item.Transform = item.Transform.Multiply(horizontal
             ? CollageTransform.MirrorHorizontal
@@ -227,10 +245,12 @@ internal sealed class CollageDocument
         var item = _items[index];
         bool orientation = !item.Transform.IsIdentity;
         bool placed = !item.Placement.IsDefault;
-        if (!orientation && !placed) return true;
+        bool pdfPlaced = !item.PdfPlacement.IsDefault;
+        if (!orientation && !placed && !pdfPlaced) return true;
 
         item.Transform = CollageTransform.Identity;
         item.Placement = default;
+        item.PdfPlacement = default;
         MarkLayoutDirty();
         Changed?.Invoke();
         return true;
@@ -283,6 +303,74 @@ internal sealed class CollageDocument
         return true;
     }
 
+    /// <summary>换输出类型（照上游 <c>setOutputType</c>）。</summary>
+    public bool SetOutputType(CollageOutputType type)
+    {
+        if (type is not (CollageOutputType.StaticImage or CollageOutputType.PdfDocument) ||
+            type == OutputType)
+            return false;
+
+        OutputType = type;
+        Changed?.Invoke();
+        return true;
+    }
+
+    /// <summary>
+    /// 换 PDF 设置（照上游 <c>setPdfSettings</c>）：<see cref="PdfSettings"/> 永远记用户当前填的
+    /// （界面要照它显示哪一项没填对），只有校验通过的才更新 <see cref="LastValidPdfSettings"/>；
+    /// 几何真的变了（模板 / 纸张 / 方向 / 页边距 / 间距）才清空全部 PDF 手摆位置。
+    /// </summary>
+    public bool SetPdfSettings(CollagePdfSettings settings)
+    {
+        if (settings == PdfSettings) return false;
+
+        PdfSettings = settings;
+        if (CollagePdfGeometry.Validate(settings).Count == 0)
+        {
+            if (PdfGeometryChanged(LastValidPdfSettings, settings))
+            {
+                foreach (var item in _items) item.PdfPlacement = default;
+            }
+
+            LastValidPdfSettings = settings;
+        }
+
+        Changed?.Invoke();
+        return true;
+    }
+
+    /// <summary>记下 PDF 模板里的手摆（照上游 <c>setPdfPlacement</c>：比例乘像素溢出 / 非有限值都拒绝）。</summary>
+    public bool SetPdfPlacement(long id, CollagePdfPlacement placement)
+    {
+        int index = IndexOf(id);
+        if (index < 0 || !placement.IsValid) return false;
+
+        var item = _items[index];
+        if (item.PdfPlacement == placement) return false;
+
+        if (placement.MillimetersPerPixel is double scale)
+        {
+            var (width, height) = item.TransformedSize;
+            if (!double.IsFinite(width * scale) || !double.IsFinite(height * scale)) return false;
+        }
+
+        item.PdfPlacement = placement;
+        Changed?.Invoke();
+        return true;
+    }
+
+    /// <summary>PDF 几何比较（照上游 <c>pdfGeometryChanged</c>：导出模式 / 质量不算几何）。</summary>
+    private static bool PdfGeometryChanged(CollagePdfSettings previous, CollagePdfSettings next) =>
+        previous.Template != next.Template || previous.Paper != next.Paper ||
+        previous.Orientation != next.Orientation ||
+        CollagePdfGeometry.PaperMillimeters(previous) !=
+        CollagePdfGeometry.PaperMillimeters(next) ||
+        previous.MarginTopMm != next.MarginTopMm ||
+        previous.MarginBottomMm != next.MarginBottomMm ||
+        previous.MarginLeftMm != next.MarginLeftMm ||
+        previous.MarginRightMm != next.MarginRightMm ||
+        previous.ImageSpacingMm != next.ImageSpacingMm;
+
     /// <summary>选中（0 = 取消选中；不存在的 id 也当取消）。</summary>
     public void Select(long id)
     {
@@ -299,7 +387,40 @@ internal sealed class CollageDocument
     {
         int from = Math.Max(0, first);
         int to = Math.Min(_items.Count, end);
-        for (int i = from; i < to; i++) _items[i].Placement = default;
+        for (int i = from; i < to; i++)
+        {
+            _items[i].Placement = default;
+            _items[i].PdfPlacement = default;
+        }
+    }
+
+    /// <summary>
+    /// 把模板里这一张的自动比例固定成显式的「毫米 / 像素」（照上游 <c>freezePdfScale</c>）：
+    /// 只在模板拼接、还没手调过比例时做一次，之后再转 / 翻都保持同一物理尺寸。
+    /// </summary>
+    private void FreezePdfScale(int index)
+    {
+        if (!LastValidPdfSettings.IsTemplateBased) return;
+        if (index < 0 || index >= _items.Count) return;
+
+        var item = _items[index];
+        if (item.PdfPlacement.MillimetersPerPixel is not null) return;
+
+        int capacity = CollagePdfGeometry.Capacity(LastValidPdfSettings);
+        if (capacity <= 0) return;
+
+        var page = CollagePdfGeometry.ComposedPage(CollagePdfRender.Snapshot(_items),
+            LastValidPdfSettings, index / capacity);
+        if (!page.IsValid || index % capacity >= page.Cells.Count) return;
+
+        var cell = page.Cells[index % capacity];
+        int width = item.TransformedSize.Width;
+        if (width <= 0 || cell.ItemIndex < 0) return;
+
+        item.PdfPlacement = item.PdfPlacement with
+        {
+            MillimetersPerPixel = cell.ImageMillimeters.Width / width,
+        };
     }
 
     private void MarkLayoutDirty() => _layoutDirty = true;

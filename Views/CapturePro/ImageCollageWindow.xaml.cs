@@ -53,6 +53,7 @@ public partial class ImageCollageWindow : Window
 
     private CollageSettings _saved = CollageSettings.Default;
     private CaptureOriginalPreviewWindow? _preview;
+    private long _previewItemId;
 
     /// <summary>同步表单 / 缩略图时不回写文档（照上游 <c>syncing</c>）。</summary>
     private bool _syncing;
@@ -74,6 +75,10 @@ public partial class ImageCollageWindow : Window
 
         _doc.SetSettings(CollageStore.Load());
         _saved = _doc.Settings;
+        _doc.SetPdfSettings(CollageStore.LoadPdf());
+        _savedPdf = _doc.PdfSettings;
+
+        InitPdf();
 
         _doc.Changed += OnDocumentChanged;
         _doc.SelectionChanged += OnSelectionChanged;
@@ -147,7 +152,7 @@ public partial class ImageCollageWindow : Window
 
     private void LoadFiles(IReadOnlyList<string> files)
     {
-        if (_loading || _exporting || _closing || files.Count == 0) return;
+        if (_loading || _exporting || _pdfExporting || _closing || files.Count == 0) return;
 
         int generation = ++_generation;
         int total = files.Count;
@@ -216,7 +221,7 @@ public partial class ImageCollageWindow : Window
     /// <summary>换掉某一张的像素（缩略图 / 工具条的「替换图像」）。</summary>
     private void ReplaceFile(long id, string path)
     {
-        if (_loading || _exporting || _closing) return;
+        if (_loading || _exporting || _pdfExporting || _closing) return;
         if (_doc.Find(id) == null) return;
 
         int generation = ++_generation;
@@ -252,9 +257,21 @@ public partial class ImageCollageWindow : Window
     {
         SyncForm();
         SyncThumbnails();
+        SyncPdfForm(force: true);
+        SyncPdfThumbnails();
         UpdateChrome();
         PositionToolbars();
-        if (_doc.IsEmpty) Preview.Focus();
+        PositionPdfToolbars();
+
+        if (_doc.OutputType == CollageOutputType.PdfDocument)
+        {
+            if (_doc.LastValidPdfSettings.IsTemplateBased) PdfTemplateCanvas.Focus();
+            else PdfGrid.Focus();
+        }
+        else if (_doc.IsEmpty)
+        {
+            Preview.Focus();
+        }
     }
 
     private void OnDocumentChanged()
@@ -262,8 +279,11 @@ public partial class ImageCollageWindow : Window
         if (_closing) return;
         SyncForm();
         SyncThumbnails();
+        SyncPdfForm();
+        SyncPdfThumbnails();
         UpdateChrome();
         PositionToolbars();
+        PositionPdfToolbars();
         SaveSettings();
     }
 
@@ -271,8 +291,10 @@ public partial class ImageCollageWindow : Window
     {
         if (_closing) return;
         SyncThumbnails();
+        SyncPdfThumbnails();
         UpdateChrome();
         PositionToolbars();
+        PositionPdfToolbars();
     }
 
     /// <summary>设置变了才写盘（照上游 <c>settingsEdited</c> 落 <c>collagesettingsstore</c>）。</summary>
@@ -298,56 +320,110 @@ public partial class ImageCollageWindow : Window
         _settingsTimer?.Stop();
 
         var settings = _doc.Settings;
-        if (settings == _saved) return;
+        if (settings != _saved)
+        {
+            _saved = settings;
+            CollageStore.Save(settings);
+        }
 
-        _saved = settings;
-        CollageStore.Save(settings);
+        var pdf = _doc.PdfSettings;
+        if (pdf == _savedPdf) return;
+
+        _savedPdf = pdf;
+        CollageStore.SavePdf(pdf);
     }
 
     // ============ 外观 ============
 
     /// <summary>
-    /// 按文档更新按钮可用性 / 空态 / 页脚（照上游 <c>enabled()</c> + <c>refresh()</c>）。
-    /// **加载与导出期间关掉编辑**，但「取消」永远可用。
+    /// 按文档更新按钮可用性 / 空态 / 页脚（照上游 <c>updateActions</c> + <c>refresh</c>）。
+    /// **加载与导出期间关掉编辑**，但「取消」永远可用；PDF 模式下静态画布 / 缩略图 / 空态收起，
+    /// 换成页面网格或模板画布，页脚改「毫米尺寸 + 共 N 页」、图像编辑 / 复制收起。
     /// </summary>
     private void UpdateChrome()
     {
         var layout = _doc.Layout;
         int count = _doc.Items.Count;
         bool empty = count == 0;
-        bool busy = _loading || _exporting;
-        bool valid = layout.IsValid;
-        bool hasSelection = _doc.SelectedId != 0;
+        bool pdf = _doc.OutputType == CollageOutputType.PdfDocument;
+        bool busy = _loading || _exporting || _pdfExporting;
         bool editing = !busy && !_confirming;
+        bool valid = pdf ? PdfSettingsValid() : layout.IsValid;
+        bool hasSelection = _doc.SelectedId != 0;
+        bool ready = !_closing && !busy && !_confirming && valid;
 
-        EmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
-        Preview.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
-        ThumbnailRow.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
-        CanvasToolbar.Visibility = Visibility.Visible;
+        bool templateMode = pdf && _doc.LastValidPdfSettings.IsTemplateBased;
+        int pageCount = pdf
+            ? CollagePdfGeometry.PageCount(count, _doc.LastValidPdfSettings)
+            : 0;
+
+        EmptyState.Visibility = !pdf && empty ? Visibility.Visible : Visibility.Collapsed;
+        Preview.Visibility = !pdf && !empty ? Visibility.Visible : Visibility.Collapsed;
+        ThumbnailRow.Visibility = !pdf && !empty ? Visibility.Visible : Visibility.Collapsed;
+        CanvasToolbar.Visibility = pdf ? Visibility.Collapsed : Visibility.Visible;
+        OverlayLayer.Visibility = pdf ? Visibility.Collapsed : Visibility.Visible;
+        if (pdf) SelectionToolbar.Visibility = Visibility.Collapsed;
+
+        // 表单只露当前输出类型那一套（照上游 refresh()：静态 / PDF 两段互斥）。
+        StaticSection.Visibility = pdf ? Visibility.Collapsed : Visibility.Visible;
+        PdfSection.Visibility = pdf ? Visibility.Visible : Visibility.Collapsed;
+
+        PdfGridHost.Visibility = pdf && !templateMode ? Visibility.Visible : Visibility.Collapsed;
+        PdfTemplateHost.Visibility = templateMode ? Visibility.Visible : Visibility.Collapsed;
 
         AddBtn.IsEnabled = !busy;
         EmptyAddBtn.IsEnabled = !busy;
-        ClearBtn.IsEnabled = !_exporting && !_confirming && !empty;
+        ClearBtn.IsEnabled = !_exporting && !_pdfExporting && !_confirming && !empty;
         ReverseBtn.IsEnabled = !busy && count > 1;
         FitBtn.IsEnabled = Preview.CanFitToCanvas;
 
-        FormPanel.IsEnabled = !_exporting;
+        FormPanel.IsEnabled = !_exporting && !_pdfExporting;
         Preview.Editing = editing;
         foreach (var card in _cards) card.SetEditing(editing);
+        PdfGrid.Editing = editing;
+        PdfTemplateCanvas.Editing = editing;
 
-        CancelBtn.IsEnabled = !_confirming;
-        EditBtn.IsEnabled = valid && !busy && !_confirming;
-        CopyBtn.IsEnabled = valid && !busy && !_confirming;
-        SaveBtn.IsEnabled = valid && !busy && !_confirming;
-        EditBtn.Visibility = Visibility.Visible;
-        CopyBtn.Visibility = Visibility.Visible;
+        CancelBtn.IsEnabled = !_confirming && !_pdfCancelRequested;
+        CancelBtn.Content = _pdfExporting ? "取消导出" : "取消";
+        EditBtn.Visibility = pdf ? Visibility.Collapsed : Visibility.Visible;
+        CopyBtn.Visibility = pdf ? Visibility.Collapsed : Visibility.Visible;
+        EditBtn.IsEnabled = !pdf && ready;
+        CopyBtn.IsEnabled = ready;
+        SaveBtn.IsEnabled = ready;
 
-        DimensionsText.Text = valid ? $"{layout.Width} × {layout.Height} px" : "";
-        TotalText.Text = $"共 {count} 张图像";
-        TotalText.Visibility = Visibility.Visible;
+        if (pdf)
+        {
+            DimensionsText.Text = PdfDimensionsText();
+            TotalText.Text = $"共 {pageCount} 页";
+            TotalText.Visibility = Visibility.Visible;
+
+            PdfGridEmpty.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+            PdfGridToolbar.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+            PdfTemplateEmpty.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+            PdfTemplateToolbar.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+            PdfPageBar.Visibility = templateMode && pageCount > 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            PdfThumbRow.Visibility = templateMode && !empty
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+            bool stale = !valid;
+            PdfGridNotice.Visibility = stale ? Visibility.Visible : Visibility.Collapsed;
+            PdfTemplateNotice.Visibility = stale ? Visibility.Visible : Visibility.Collapsed;
+
+            SyncPdfPageBar();
+            SyncPdfSelectionToolbar(hasSelection, editing);
+        }
+        else
+        {
+            DimensionsText.Text = valid ? $"{layout.Width} × {layout.Height} px" : "";
+            TotalText.Text = $"共 {count} 张图像";
+            TotalText.Visibility = Visibility.Visible;
+            SyncSelectionToolbarEnabled(hasSelection, editing);
+        }
 
         RefreshStatus();
-        SyncSelectionToolbarEnabled(hasSelection, editing);
     }
 
     private void SyncSelectionToolbarEnabled(bool hasSelection, bool editing)
@@ -390,6 +466,12 @@ public partial class ImageCollageWindow : Window
     private void PositionToolbars()
     {
         if (_closing) return;
+
+        if (_doc.OutputType == CollageOutputType.PdfDocument)
+        {
+            SelectionToolbar.Visibility = Visibility.Collapsed;
+            return;
+        }
 
         var selection = Preview.SelectionFrame;
         bool layoutRecovery = !_doc.Layout.IsValid && _doc.SelectedId != 0;
@@ -434,7 +516,7 @@ public partial class ImageCollageWindow : Window
 
     private void ApplyToSelected(Action<long> action)
     {
-        if (_loading || _exporting || _closing) return;
+        if (_loading || _exporting || _pdfExporting || _closing) return;
         long id = _doc.SelectedId;
         if (id == 0) return;
 
@@ -457,19 +539,28 @@ public partial class ImageCollageWindow : Window
 
     private void Fit_Click(object sender, RoutedEventArgs e) => Preview.FitToCanvas();
 
-    /// <summary>取消 = 关窗；有图时走 <see cref="OnClosing"/> 里的「放弃此图像拼接？」确认。</summary>
-    private void Cancel_Click(object sender, RoutedEventArgs e) => Close();
+    /// <summary>取消 = 关窗；PDF 正在导出时这一下是「取消导出」（照上游）。</summary>
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pdfExporting)
+        {
+            RequestPdfCancellation();
+            return;
+        }
+
+        Close();
+    }
 
     private void Reverse_Click(object sender, RoutedEventArgs e)
     {
-        if (_loading || _exporting || _closing) return;
+        if (_loading || _exporting || _pdfExporting || _closing) return;
         _doc.Reverse();
     }
 
     /// <summary>「添加图像」：多选（照上游 <c>ExistingFiles</c>）。</summary>
     private void AddImages_Click(object sender, RoutedEventArgs e)
     {
-        if (_loading || _exporting || _closing) return;
+        if (_loading || _exporting || _pdfExporting || _closing) return;
 
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
@@ -485,7 +576,7 @@ public partial class ImageCollageWindow : Window
     /// <summary>替换选中的图：只选一张（照上游 <c>ExistingFile</c>）。</summary>
     private void ReplaceSelected_Click(object sender, RoutedEventArgs e)
     {
-        if (_loading || _exporting || _closing) return;
+        if (_loading || _exporting || _pdfExporting || _closing) return;
         long id = _doc.SelectedId;
         if (id == 0) return;
         PickReplacement(id);
@@ -505,24 +596,33 @@ public partial class ImageCollageWindow : Window
         UpdateChrome();
     }
 
-    /// <summary>预览原图（照上游 <c>OriginalPreview</c>：再点一次关掉）。</summary>
-    private void PreviewOriginal_Click(object sender, RoutedEventArgs e)
+    /// <summary>预览原图（照上游 <c>OriginalPreview</c>：再点同一张关掉，换一张就换窗口）。</summary>
+    private void PreviewOriginal_Click(object sender, RoutedEventArgs e) =>
+        ToggleOriginalPreview(_doc.SelectedId);
+
+    private void ToggleOriginalPreview(long id)
     {
         if (_preview != null)
         {
+            bool same = _previewItemId == id;
             _preview.Close();
             _preview = null;
-            return;
+            _previewItemId = 0;
+            if (same) return;
         }
 
-        var item = _doc.Selected;
+        var item = _doc.Find(id);
         if (item == null) return;
 
         double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
         if (!(scale > 0.1)) scale = 1;
 
         var preview = new CaptureOriginalPreviewWindow(item.Source, scale);
-        preview.Closed += (_, _) => _preview = null;
+        preview.Closed += (_, _) =>
+        {
+            _preview = null;
+            _previewItemId = 0;
+        };
         preview.Show();
 
         // 工作区取窗口所在显示器（多屏时按窗口中心判），物理像素再按窗口 DPI 换 DIP。
@@ -548,6 +648,7 @@ public partial class ImageCollageWindow : Window
 
         preview.PlaceBeside(new Rect(Left, Top, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight)), work);
         _preview = preview;
+        _previewItemId = id;
     }
 
     // ============ 拖放 / 粘贴 ============
@@ -573,7 +674,7 @@ public partial class ImageCollageWindow : Window
         DropHint.Visibility = Visibility.Collapsed;
         e.Handled = true;
 
-        if (_loading || _exporting || _closing) return;
+        if (_loading || _exporting || _pdfExporting || _closing) return;
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths) return;
 
         var images = paths.Where(PinFiles.IsImage).ToList();
@@ -589,7 +690,7 @@ public partial class ImageCollageWindow : Window
     /// <summary>Ctrl+V：剪贴板里的图片文件优先，其次位图（照上游 <c>paste</c>）。</summary>
     private void Paste()
     {
-        if (_loading || _exporting || _closing) return;
+        if (_loading || _exporting || _pdfExporting || _closing) return;
 
         if (NativeClipboard.TryGetFileList(out var files))
         {
@@ -629,6 +730,34 @@ public partial class ImageCollageWindow : Window
                 return;
             }
 
+            if (_pdfDragSource != 0)
+            {
+                CancelPdfThumbnailDrag();
+                e.Handled = true;
+                return;
+            }
+
+            if (PdfTemplateCanvas.IsGesturing)
+            {
+                PdfTemplateCanvas.CancelGesture();
+                e.Handled = true;
+                return;
+            }
+
+            if (PdfGrid.IsGesturing)
+            {
+                PdfGrid.CancelDrag();
+                e.Handled = true;
+                return;
+            }
+
+            if (_pdfExporting)
+            {
+                RequestPdfCancellation();
+                e.Handled = true;
+                return;
+            }
+
             if (_confirming) return;
             Close();
             e.Handled = true;
@@ -650,6 +779,14 @@ public partial class ImageCollageWindow : Window
         if (_closing || _confirming)
         {
             base.OnClosing(e);
+            return;
+        }
+
+        if (_pdfExporting)
+        {
+            // 导出正跑着：先停（后台线程会回一句「已取消」），窗口留着让用户看清结果。
+            e.Cancel = true;
+            RequestPdfCancellation();
             return;
         }
 
@@ -690,6 +827,7 @@ public partial class ImageCollageWindow : Window
         if (_preview == null) return;
         _preview.Close();
         _preview = null;
+        _previewItemId = 0;
     }
 
     private static string ImageFilter() =>
