@@ -66,6 +66,18 @@ internal sealed class PinRecord
     /// <summary>是不是实时贴图（跟住某个窗口）。</summary>
     public bool Live { get; set; }
 
+    /// <summary>
+    /// 贴的是什么：<c>image</c> / <c>text</c> / <c>color</c>（颜色取样板）。
+    /// 文字与色卡会把原文留在 <see cref="Text"/> 里，贴回时按它重画（上游也是从文字重渲染）。
+    /// </summary>
+    public string Kind { get; set; } = PinStore.KindImage;
+
+    /// <summary>文字 / 颜色原文（图片贴图是空串）。</summary>
+    public string Text { get; set; } = "";
+
+    /// <summary>色卡宽度（342 / 470；其它贴图是 0），贴回时按原尺寸重画。</summary>
+    public int CardWidth { get; set; }
+
     /// <summary>还开着（没有关闭时间）。</summary>
     [JsonIgnore] public bool IsOpen => ClosedAt.Length == 0;
 
@@ -111,6 +123,15 @@ internal static class PinStore
     public const string SourceClipboard = "clipboard";
     public const string SourceFiles = "files";
     public const string SourceOther = "other";
+
+    /// <summary>贴的是一张图。</summary>
+    public const string KindImage = "image";
+
+    /// <summary>贴的是一段文字（贴图历史里留原文，贴回时重画）。</summary>
+    public const string KindText = "text";
+
+    /// <summary>贴的是颜色取样板（原文 = 那段颜色文本）。</summary>
+    public const string KindColor = "color";
 
     /// <summary>最多留多少条（按创建时间倒序）。</summary>
     public const int MaxEntries = 200;
@@ -181,7 +202,8 @@ internal static class PinStore
     /// <see cref="SaveAssets"/> 丢后台写。顺带按保留策略剪枝。
     /// </summary>
     public static PinRecord Create(int width, int height, int areaX, int areaY, int areaW, int areaH,
-        double scale, string source, string group, bool live)
+        double scale, string source, string group, bool live,
+        string kind = KindImage, string text = "", int cardWidth = 0)
     {
         var now = DateTime.Now;
 
@@ -193,6 +215,9 @@ internal static class PinStore
                 Id = IdFactory.NewId(x => items.Any(e => e.Id == x) || File.Exists(AssetPath(x))),
                 Group = string.IsNullOrWhiteSpace(group) ? PinGroups.Default : group,
                 Source = NormalizeSource(source),
+                Kind = NormalizeKind(kind),
+                Text = text ?? "",
+                CardWidth = Math.Max(0, cardWidth),
                 CreatedAt = now.ToString(TimeFormat, CultureInfo.InvariantCulture),
                 Width = Math.Max(0, width),
                 Height = Math.Max(0, height),
@@ -461,6 +486,17 @@ internal static class PinStore
         SourceScreenshot => SourceScreenshot,
         _ => SourceOther,
     };
+
+    /// <summary>把贴图种类归一（认不出的当图片：老记录没有这个字段）。</summary>
+    public static string NormalizeKind(string? kind) => kind switch
+    {
+        KindText => KindText,
+        KindColor => KindColor,
+        _ => KindImage,
+    };
+
+    /// <summary>是不是「从原文重画」的贴图（文字卡 / 色卡，不依赖 <c>assets/</c> 里的 png）。</summary>
+    public static bool IsTextual(PinRecord record) => NormalizeKind(record.Kind) != KindImage;
 
     /// <summary>管理页的筛选项（照上游「全部 + 五个来源」的顺序；空值 = 全部）。</summary>
     public static IReadOnlyList<(string Key, string Label)> SourceOptions() => new[]

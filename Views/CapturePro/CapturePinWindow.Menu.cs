@@ -77,6 +77,14 @@ public partial class CapturePinWindow
         copy.Click += (_, _) => CopyImage();
         menu.Items.Add(copy);
 
+        // 文字 / 色卡贴图另有「复制原文」：照上游 copyOriginalContent（复制的是原文本，不是渲染出来的图）
+        if (_cardKind != PinContentKind.Image && _cardText.Length > 0)
+        {
+            var copyText = new MenuItem { Header = "复制原文" };
+            copyText.Click += (_, _) => NativeClipboard.SetText(_cardText);
+            menu.Items.Add(copyText);
+        }
+
         var save = new MenuItem { Header = "另存为…" };
         save.Click += (_, _) => CaptureSave.TrySave(null, _content);
         menu.Items.Add(save);

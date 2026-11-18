@@ -86,23 +86,37 @@ public partial class CapturePinWindow : Window
 
     private ContextMenu? _menu;
 
+    private IReadOnlyList<PinCardCopy> _copies = Array.Empty<PinCardCopy>();   // 色卡上的复制热区
+    private PinContentKind _cardKind = PinContentKind.Image;
+    private string _cardText = "";           // 文字 / 色卡原文（「复制原文」与历史重画用）
+
     /// <summary>抓一帧实时画面（默认真抓源窗口；冒烟注入合成帧，不碰真桌面）。</summary>
     internal Func<IntPtr, Int32Rect, BitmapSource?> LiveFrame = ScreenShot.CaptureWindow;
 
     public CapturePinWindow(BitmapSource image, Int32Rect area, double scale)
+        : this(image, area, scale, 1)
+    {
+    }
+
+    internal CapturePinWindow(BitmapSource image, Int32Rect area, double scale, double zoom)
     {
         InitializeComponent();
 
         _content = image;
         _scale = scale > 0 ? scale : 1;
+        _zoom = PinMath.ClampZoom(zoom);
         Shot.Source = image;
 
-        var rect = PinMath.PlaceAt(new Rect(area.X, area.Y, area.Width, area.Height), _scale);
-        _baseWidth = rect.Width;
-        _baseHeight = rect.Height;
+        // 100% 尺寸由「出场矩形 ÷ 屏幕缩放 ÷ 初始缩放」推出来：
+        // 截图贴图 area 就是图占的那块；剪贴板贴图 area 是等比缩小后的落点，初始缩放补回 100%。
+        double zoomForBase = _zoom > 0 ? _zoom : 1;
+        _baseWidth = Math.Max(1, area.Width / _scale / zoomForBase);
+        _baseHeight = Math.Max(1, area.Height / _scale / zoomForBase);
 
-        Width = _baseWidth;
-        Height = _baseHeight;
+        var rect = PinMath.PlaceAt(new Rect(area.X, area.Y, area.Width, area.Height), _scale);
+
+        Width = Math.Max(1, _baseWidth * _zoom);
+        Height = Math.Max(1, _baseHeight * _zoom);
         Left = rect.X;
         Top = rect.Y;
         ApplyContent();
@@ -117,11 +131,38 @@ public partial class CapturePinWindow : Window
         IsVisibleChanged += (_, _) => _thumbLayer?.SetShown(IsVisible);
     }
 
+    /// <summary>
+    /// 文字 / 颜色卡片的构造函数：<paramref name="card"/> 已经按屏幕缩放渲染成位图
+    /// （<see cref="PinCardRenderer"/>），热区坐标是卡片的 100% DIP 坐标。
+    /// </summary>
+    internal CapturePinWindow(PinCardRender card, Int32Rect area, double scale, double zoom, string text)
+        : this(card.Image, area, scale, zoom)
+    {
+        _baseWidth = Math.Max(1, card.Logical.Width);
+        _baseHeight = Math.Max(1, card.Logical.Height);
+        Width = Math.Max(1, _baseWidth * _zoom);
+        Height = Math.Max(1, _baseHeight * _zoom);
+        _copies = card.Copies;
+        _cardKind = card.Kind;
+        _cardText = text ?? "";
+        ApplyContent();
+        RefreshHoverChrome();
+    }
+
     /// <summary>这张贴图是哪块屏幕区域截下来的（物理像素）。</summary>
     public Int32Rect Area { get; }
 
     /// <summary>贴的图（导出 / 复制用；标注之后就是标完的那张）。</summary>
     public BitmapSource Image => _content;
+
+    /// <summary>贴的内容种类（图片 / 文字卡 / 颜色取样板）。</summary>
+    internal PinContentKind CardKind => _cardKind;
+
+    /// <summary>文字 / 颜色卡的原文（图片贴图是空串）。</summary>
+    internal string CardText => _cardText;
+
+    /// <summary>色卡上的复制热区（冒烟直接问命中）。</summary>
+    internal IReadOnlyList<PinCardCopy> Copies => _copies;
 
     /// <summary>相对 100% 的缩放倍率。</summary>
     public double Zoom => _zoom;
@@ -168,8 +209,9 @@ public partial class CapturePinWindow : Window
 
         // 物理像素落位：混合 DPI 下 WPF 的 DIP 换算可能差几个像素，
         // 贴图要正好盖住刚才截的那块，所以再用 Win32 钉一次（与覆盖层同一套）。
-        int w = Math.Max(1, (int)Math.Round(_baseWidth * _scale));
-        int h = Math.Max(1, (int)Math.Round(_baseHeight * _scale));
+        // 尺寸取**当前**窗口尺寸而不是 100% 尺寸：剪贴板贴图出场时可能已经等比缩小。
+        int w = Math.Max(1, (int)Math.Round(Width * _scale));
+        int h = Math.Max(1, (int)Math.Round(Height * _scale));
         Win32.SetWindowPos(_hwnd, Win32.HwndTopmost, Area.X, Area.Y, w, h, Win32.SwpNoactivate);
         RaiseToTop();
 

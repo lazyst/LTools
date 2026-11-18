@@ -30,6 +30,13 @@ public partial class CapturePinWindow
         // Click 不会触发——用户得连点好几次、凑巧双击才关得掉（实测）。
         if (IsOnButton(e.OriginalSource as DependencyObject)) return;
 
+        // 色卡上的复制按钮：点中就把那一行规范 CSS 放进剪贴板（不拖动、不关窗）
+        if (CopyAt(e.GetPosition(this)))
+        {
+            e.Handled = true;
+            return;
+        }
+
         // 双击：缩略图里 = 还原成整张图（不是关掉，83px 的小方块太容易误关）；
         // 普通贴图 = 关闭（比右键菜单快一步；锁定也允许，它不会改位置）
         if (e.ClickCount == 2)
@@ -145,7 +152,15 @@ public partial class CapturePinWindow
             BeginGesture(e.GetPosition(this));
         }
 
-        if (!_dragging && !_panning) return;
+        if (!_dragging && !_panning)
+        {
+            // 悬停在色卡的复制图标上：手型 + 「复制 HEX 颜色值」提示（照上游 PointingHandCursor / setToolTip）
+            var hit = CopyHitAt(e.GetPosition(this));
+            Cursor = hit != null ? Cursors.Hand : !_locked && _viewport ? Cursors.ScrollAll : Cursors.Arrow;
+            string? tip = hit?.Label;
+            if (!Equals(ToolTip, tip)) ToolTip = tip;
+            return;
+        }
 
         if (_panning)
         {

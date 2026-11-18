@@ -92,8 +92,8 @@
 | 贴图窗口（拖动 / 缩放 / 旋转 / 缩放快捷键） | `pinned/*` | `CapturePinWindow.*` | — | ✅ |
 | 贴图分组（成组移动 / 只显示某组） | `services/pinnedwindowgroupmanager.cpp` | `PinGroups.cs` + 右键菜单 | — | ✅ |
 | 贴图管理页 | `components/pinnedwindowmanagementpagewidget.cpp` | `Views/CapturePro/PinManagerWindow`（标题 + 计数、来源多选、日期范围、选择栏〔全选本页 / 取消选择 / 批量贴到屏幕 / 删除选中〕、卡片网格〔缩略图 / 时间 / 来源徽标 / 状态 / 分组 · 尺寸 / 贴回 / ⋯ 菜单 / 删除〕、分页 10 / 20 / 50 存 `ui.json` 的 `PinPageSize`、两档空态）+ `Features/CapturePro/PinStore.cs`（`pins/pins.json` + `assets/` + `thumbnails/`，200 条 / 30 天 / `.tmp` 替换 / 进备份域）+ 入口：托盘「贴图管理…」与贴图右键「贴图管理…」 | P5-a / P5-b | ✅ |
-| 贴图颜色取样板（取色 / 色板） | `services/pinnedcolorswatch.cpp` | 无 | P5 | ❌ |
-| 贴图文字样式捕获 | `services/pinnedtextstylecapture.cpp` | 无 | P5 | ❌ |
+| 贴图颜色取样板（取色 / 色板） | `services/pinnedcolorswatch.cpp`、`tests/pinned_color_swatch_content_tests.h` | 内置功能 `common.pinClipboard`「贴剪贴板」：剪贴板文本能解析成颜色就贴成**颜色取样板**——`Features/CapturePro/ColorSwatch.cs`（hex 3/4/6/8 · `rgb`/`rgba`/`hsl`/`hsla` 逗号与空格斜杠两写法 · 百分比 · alpha 两种写法 · `deg` · HSL 环绕 · 中点四舍五入）+ `Views/CapturePro/PinCardRenderer.cs`（棋盘格 alpha 底 / 色块 / HEX·RGB·HSL 三行 / 三枚复制图标，342×210 紧凑与 470×288 旧版两种度量）+ 三枚复制热区（两笔 `OddEven`，重叠处不算命中，悬停手型 + 「复制 HEX 颜色值」，点一下把那行规范 CSS 写进剪贴板）+ 文字 / 色卡贴图右键「复制原文」+ 贴图历史记 `kind = color` 与原文（贴回按原文重画）。**落点照 `fitPinnedImageOnScreen`**：光标所在显示器的工作区居中，装不下等比缩到四周留 16 DIP。平台差异：上游还会渲染剪贴板里的 `text/html`，本地无 HTML 排版引擎，取 `text/plain`（见 §5） | P5-c | ✅ |
+| 贴图文字样式捕获 | `services/pinnedtextstylecapture.cpp` | `PinTextStyle.Current()` 只取系统字体 + 主题字色 / 底色 + 上游默认值（最大宽 1024 / 内边距 16），用户可配项归 P5-d | P5-d | 🟡 |
 | 贴图堆叠与层级协调 | `pinned/pinnedwindowstackingcoordinator.cpp` | `RaiseAllAbove` 部分等价 | P5 | 🟡 |
 | 点击穿透 / 抖动隐藏 | `pinnedwindowselectioncontroller.cpp` | 无 | P5 | ❌ |
 | 批量保存贴图 / 拖拽导出 | `screenshotfilepinbatch.h`、`screenshotcontentdrop.h` | 无 | P5 | ❌ |
@@ -171,7 +171,7 @@
 | P4-h | 译文渲进原图 / 复制译文图 / 翻译前版面处理（照 `originalImageTranslation`、`copyTranslationResultsAsImage`、`layout_processing`）：`Config/Translation.cs` 加 `OriginalImage` / `CopyAsImage` / `LayoutProcessing`、`TranslationStore` 改成**就地改字段**（不再 `new TranslationFile` 整体替换，否则会抹掉新字段）并加 `SaveWithDisplay` / `SetOriginalImage` / `SetCopyAsImage` / `SetLayout`、`Features/CapturePro/TranslationLayout.cs`（`TranslationOverlay`、`Prepare`（smart 复用 P4-g 的智能分段）/ `ReplaceTexts` / `Normalize` / `LabelOf` / `Describe`）、`OcrTextLine.FontSize`（合并段起始字号，取成员行中位）、`Views/CapturePro/OcrTextPaint.cs`（画布与导图共用的字号拟合 / 颜色 / 折行）、`Views/CapturePro/OcrImageRenderer.cs`（`Render(source, layer, texts, includeSource, fillBackground)`）、`CaptureOcrCanvas` 译文层 / 原图底图、结果窗接线（送段落、段框落点、`RenderTranslationImage`、复制分支、按钮文案）、设置框三项 + `LTools.example.json` | ✅ | 构建 0 警；`--selftest` 全量 **7900 断言全绿**（`capturePro` 77 用例 3074 断言，新增「翻译：版面处理 / 译文渲图（并集框 / 中位字号 / 像素）」）；`capture-overlay-smoke` **1091 条全绿**（真窗口：智能合并只翻 1 段且请求体是整段、译文层 1 行且画在原图上、渲图尺寸 = 源图、框外像素是原图 / 框内是行底色、复制得到剪贴板图片、关掉开关复制文本、改回按原行又是 2 行；落图 `out/result-translate-on-image.png`） |
 | P4-i | LaTeX 源码页（照上游 `screenshotlatexrenderer.cpp` 的源码输入侧 + `streamingLatexSource` 的围栏处理）：`Features/CapturePro/LatexSource.cs`（`LooksLikeFormula`：TeX 命令白名单（避开 `C:\Users` 这类路径）+ 上下标 + `$…$` + `\begin{…}`；`Unfence` 只认 `latex` / `tex` 围栏；`TrimDelimiters` 只脱整行 `$$…$$` / `$…$`；`Extract` / `Build`（挑不到公式时退回整段识别文字）/ `Join` / `Describe`）、`Views/CapturePro/CaptureResultWindow.Latex.cs` + 结果窗「LaTeX」页签（只读 Consolas 源码框、可划选、复制按钮「复制公式源码」、Ctrl+A / Ctrl+C、底栏状态与页脚说明） | ✅ | 构建 0 警；`--selftest` 全量 **7936 断言全绿**（`capturePro` 78 用例 3110 断言，新增「LaTeX：公式行识别 / 围栏 / 定界符 / 退回原文」）；`capture-overlay-smoke` **1103 条全绿**（切到 LaTeX 页 / 只读 / 按钮文案 / 状态行写明不渲染 / 没有公式特征时退回整段文字 / 改成 `$E = mc^2$` 后只挑公式并脱定界符 / 复制整份 / 全选后状态行报字数；落图 `out/result-latex.png`）。**渲染不复刻**（无 MicroTeX 等价引擎，见 §5） |
 | P4 | 识别与转换：OCR 编辑器 / 原文预览 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档 / 翻译 / 排版与标点 / 译文渲图 | ✅ | P4-a … P4-i 全部落地；LaTeX 是**平台差异**（上游视觉模型 + MicroTeX 进程内排版，本地只给公式源码，不做假渲染，见 §5） |
-| P5 | 贴图：管理页 / 取色板 / 文字样式 / 点击穿透 / 抖动隐藏 / 批量保存 / 拖拽导出 / 历史恢复 | 🟡 | P5-a（贴图历史仓库 `PinStore` + 备份域 + 启动维护）与 P5-b（贴图管理页）已落地；取色板 / 文字样式 / 点击穿透 + 抖动隐藏 / 批量保存 / 拖拽导出待做 |
+| P5 | 贴图：管理页 / 取色板 / 文字样式 / 点击穿透 / 抖动隐藏 / 批量保存 / 拖拽导出 / 历史恢复 | 🟡 | P5-a（贴图历史仓库 `PinStore` + 备份域 + 启动维护）、P5-b（贴图管理页）、P5-c（贴剪贴板 / 颜色取样板）已落地；文字样式可配 / 点击穿透 + 抖动隐藏 / 批量保存 / 拖拽导出待做 |
 | P6 | 图片编辑窗 / 拼图 / 切图 | ❌ | 待填 |
 | P7 | 采集入口与设置：延时 / 固定区域 / 鼠标释放动作 / 全局快捷键 / 导出设置 / 剪贴板外观 / 历史页 | ❌ | 待填 |
 | P8 | 全屏画布 + 录屏剩余：音频增益 / 渲染进度 / 快捷键 / 工具条自动隐藏 | ❌ | 待填 |
@@ -198,6 +198,7 @@
 | LaTeX 识别与渲染 | 视觉模型认出公式源码，内置 **MicroTeX** 在进程内排版成预览图（`request(source, viewportSize, dpr, fg, bg)`） | 本地**没有** MicroTeX 等价引擎（.NET 侧没有稳定离线的 TeX 排版），所以不做假渲染：LaTeX 页只给公式源码展示与复制（识别仍走 OCR 行，按 `$…$` / `\begin{…}` 特征筛公式行）；真要渲染得接可配端点，与 Markdown / HTML 的「云端视觉模型」同一条口径 |
 | PDF 导出 | Qt `QPdfWriter` 进程内渲染 | 走系统自带 Edge / Chrome 的 headless `--print-to-pdf`；**没装浏览器时明确报错**（提示改导 Word / HTML），不假装成功 |
 | 主题皮肤 | ant-design-qt 多主题 | 跟随 LTools `Themes/Modern.xaml` 灰阶主题，只复刻度量与交互 |
+| 贴图文字 / 颜色卡的富文本 | 上游把剪贴板里的 `text/html` 交给 Qt 富文本排版再渲染成贴图 | 本地没有等价的 HTML 排版引擎，取 `text/plain`（同样的文字、同样的折行度量，但不保留粗斜 / 颜色 / 链接样式）；要富文本得接一个可配端点，与 Markdown / HTML 同一条口径 |
 | MCP | 上游自带 MCP 服务 | 由 LTools 自身 MCP（`Core/Ai`）承担，截图 Pro 不另开一套 |
 
 ## 6. 变更记录
@@ -385,3 +386,14 @@
   - 入口两处：托盘菜单「贴图管理…」与贴图右键菜单「贴图管理…」，共用一个 `Toggle()`（开着就激活 / 还原）。
   - 验收：构建 0 错 0 警；`--selftest` 全量 **247 用例 / 7986 断言全绿**；`capture-overlay-smoke` **1161 条全绿**，新增「贴图管理」段 41 条（三条记录 → 卡片 / 计数 / 分页信息 / 缩略图 / 状态 / 来源徽标 / 空态；来源多选筛剩一条；日期筛空出第二档空态后清除恢复；全选本页 → 选择栏与计数；批量贴回 → 屏幕上三张且记录仍是三条、状态变「未关闭」；混组后按钮置灰并说明；删除选中 → 确认框点「删除」→ 列表 / `pins.json` / 屏幕贴图全清；25 条 + 每页 20 → 切 10 → 三页翻页与置灰；每页条数写进 `ui.json`；刷新留在当前页；贴图右键「贴图管理…」真的打开管理页）与落图 `out/pin-manager.png` / `out/pin-manager-empty.png`。
   - 拼图 / 切图 / 图片编辑是 P6 的事，这一页**刻意不放**那些入口（不做死按钮）。
+
+- 2026-11-19：**P5-c 完成（贴剪贴板 / 颜色取样板）**。上游的颜色取样板只出现在「贴剪贴板」这一条入口（`textFormat == PlainText`、无 HTML、文本能解析成颜色），所以先补入口再补色板。
+  - **入口**：内置功能 `common.pinClipboard`「贴剪贴板」（`Features/CapturePro/PinClipboard.cs`）= 照 `pinClipboardContentToScreen` 的顺序「先图片（位图 / 剪贴板里的图片文件）后文字」；都没有就给一条 warning toast，不假装贴过。落点照 `fitPinnedImageOnScreen`（`screenshotgeometry.cpp:1005` 的 `fitImageToAvailableGeometry`）：**光标所在显示器的工作区居中**，装不下等比缩到四周留 16 DIP（`PinPlacement.Center`，缩放同时当贴图的初始 `Zoom`），不是跟着鼠标落点。
+  - **解析**：`Features/CapturePro/ColorSwatch.cs` 逐条对齐 `pinnedcolorswatch.cpp` + `pinned_color_swatch_content_tests.h`——hex（3 / 4 / 6 / 8 位，可省 `#`，短写法双写扩展）、`rgb()` / `rgba()` / `hsl()` / `hsla()` 的**逗号与空格斜杠两种写法**、通道百分比与数值可混用、alpha 两种写法（0–1 与百分比）、`deg` 后缀、HSL 色相环绕；通道取整用**中点四舍五入**（`rgb(50%, …)` → 128，不是银行家舍入）。拒的形状（`red` / `#12345` / `value: #7DD353` / 多行 / 越界 / 尾随垃圾）一律当普通文字。三行 `Display` / `Clipboard` / `Labels` 与 alpha 三位小数照上游（半透明时标签变 `RGBA:` / `HSLA:`、复制成 `rgba(…)` / `hsla(…)`）。
+  - **渲染**：`Views/CapturePro/PinCardRenderer.cs` 把卡片按屏幕缩放渲成位图，之后与图片贴图走同一条路径（`CapturePinWindow` 的 `(PinCardRender, area, scale, zoom, text)` 构造）。色卡 342×210（紧凑）/ 470×288（旧版，按 `ScaleFor` 缩排）；alpha < 255 时色块铺棋盘格。复制图标是**两笔 `OddEven`**（`PinCardCopy.Hit` = 两笔异或），重叠处故意不算命中——与上游 `ColorSwatchCopyButton` 同一条判定。
+  - **交互**：`CapturePinWindow.Card.cs` 的 `CopyHitAt` / `CopyAt`（`_pan` / `_zoom` 折回卡片的 100% 坐标），`MouseDown` 先判复制热区（点中就不拖动、不关窗），`MouseMove` 悬停手型 + ToolTip「复制 HEX 颜色值」。右上角 ✕ 与双击关闭仍照旧。文字 / 色卡贴图右键多一项「复制原文」（照 `copyOriginalContent`，复制的是原文本不是渲出来的图）。
+  - **历史**：`PinStore` 加 `KindImage` / `KindText` / `KindColor` + `PinRecord.Kind` / `Text` / `CardWidth`；`NormalizeKind` 把认不出的当图片（老记录没有这个字段），`IsTextual` = 不是图片。`CapturePinManager.Restore` 对文字 / 色卡**按原文重画**（上游同样从 stored text 重渲，不依赖 `assets/` 的 png），贴回后复制热区照样在。
+  - 顺带修掉一个真 bug：`CapturePinWindow` 的 100% 尺寸原来取**图片像素**，剪贴板贴图（大图缩小出场）与「实时贴图合成」用例都会算错；改成由「出场矩形 ÷ 屏幕缩放 ÷ 初始缩放」推出来，图片与卡片两种构造共用。
+  - **平台差异**：上游还会把剪贴板里的 `text/html` 交给 Qt 富文本排版再贴图，本地取 `text/plain`（见 §5）。
+  - 验收：构建 0 错 0 警；`--selftest` 全量 **248 用例 8130 断言全绿**（`capturePro` 80 用例 3304 断言，新增「贴图色卡：认 / 拒颜色 / 三行文案 / 版面 / 出场」一组：参考色与 6 种等价写法、7 种 alpha 写法、拒绝的 19 种形状、紧凑 / 旧版度量与 `ScaleFor`、居中与等比缩小、`NormalizeKind` / `IsTextual`、`OddEven` 热区）；`capture-overlay-smoke` **1184 条全绿**（真剪贴板文本 → 真贴图窗口 → 三行都真鼠标点复制图标并读回剪贴板 = 规范 CSS、历史 `kind = color` 且留原文、关掉再贴回仍有三枚热区、含颜色的整段文字仍按文字卡、剪贴板有图时优先贴图、空剪贴板不贴也不进登记处；落图 `out/color-card.png` / `out/pin-text-card.png`）。
+

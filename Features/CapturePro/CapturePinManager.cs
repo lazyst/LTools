@@ -75,14 +75,58 @@ internal static class CapturePinManager
         // 缩放比按这块区域所在显示器算：跨屏选区时不能用「覆盖层那块屏」的比例
         double scale = ScreenShot.ScaleOf(area);
         var pin = new CapturePinWindow(image, area, scale);
+        return Register(pin, image, area, scale, source, PinStore.KindImage, "", 0);
+    }
 
+    /// <summary>
+    /// 贴剪贴板里的文字 / 颜色：按屏幕缩放渲染成卡片，放在 <paramref name="workArea"/>（DIP）中间，
+    /// 装不下就等比缩小（照上游 <c>fitPinnedImageOnScreen</c>）。
+    /// </summary>
+    public static CapturePinWindow PinText(string text, double scale, Rect workArea,
+        string source = PinStore.SourceClipboard)
+    {
+        double s = scale > 0 ? scale : 1;
+        var style = PinTextStyle.Current();
+        var card = PinCardRenderer.Render(text, style, s);
+
+        var (box, zoom) = PinPlacement.Center(card.Logical, workArea);
+        var area = new Int32Rect(
+            (int)Math.Round(box.X * s), (int)Math.Round(box.Y * s),
+            Math.Max(1, (int)Math.Round(box.Width * s)), Math.Max(1, (int)Math.Round(box.Height * s)));
+
+        var pin = new CapturePinWindow(card, area, s, zoom, text);
+        return Register(pin, card.Image, area, s, source,
+            card.Kind == PinContentKind.Color ? PinStore.KindColor : PinStore.KindText,
+            text, card.Kind == PinContentKind.Color ? (int)card.Logical.Width : 0);
+    }
+
+    /// <summary>贴剪贴板里的一张图：居中放到 <paramref name="workArea"/>（DIP），超大等比缩小。</summary>
+    public static CapturePinWindow PinClipboardImage(BitmapSource image, double scale, Rect workArea,
+        string source = PinStore.SourceClipboard)
+    {
+        double s = scale > 0 ? scale : 1;
+        var logical = new Size(Math.Max(1, image.PixelWidth / s), Math.Max(1, image.PixelHeight / s));
+        var (box, zoom) = PinPlacement.Center(logical, workArea);
+        var area = new Int32Rect(
+            (int)Math.Round(box.X * s), (int)Math.Round(box.Y * s),
+            Math.Max(1, (int)Math.Round(box.Width * s)), Math.Max(1, (int)Math.Round(box.Height * s)));
+
+        var pin = new CapturePinWindow(image, area, s, zoom);
+        return Register(pin, image, area, s, source, PinStore.KindImage, "", 0);
+    }
+
+    /// <summary>出场收尾：分组、历史记录（先写 pins.json）、显示、顶最前，图片丢后台写。</summary>
+    private static CapturePinWindow Register(CapturePinWindow pin, BitmapSource image, Int32Rect area,
+        double scale, string source, string kind, string text, int cardWidth)
+    {
         // 正只看某个分组时，新贴图落进那个组 —— 否则贴上来立刻被自己藏起来，看着像「贴图没反应」
         string group = ActiveGroup ?? PinGroups.Default;
         pin.SetGroup(group);
 
         // 贴图历史：先记一条（只写 pins.json），图片丢后台写，别卡 UI 线程
         var record = PinStore.Create(image.PixelWidth, image.PixelHeight,
-            area.X, area.Y, area.Width, area.Height, scale, source, group, live: false);
+            area.X, area.Y, area.Width, area.Height, scale, source, group, live: false,
+            kind: kind, text: text, cardWidth: cardWidth);
         pin.PinId = record.Id;
 
         Pins.Add(pin);
@@ -133,6 +177,32 @@ internal static class CapturePinManager
     /// </summary>
     public static CapturePinWindow? Restore(PinRecord record)
     {
+        // 文字 / 颜色卡：按原文重画（上游也是从 stored text 重渲染，不依赖图片文件）
+        if (PinStore.IsTextual(record))
+        {
+            double scale = record.Scale > 0 ? record.Scale : 1.0;
+            var card = PinCardRenderer.Render(record.Text, PinTextStyle.Current(), scale, record.CardWidth);
+
+            double width = record.WinWidth >= 1 ? record.WinWidth : card.Logical.Width;
+            double zoom = card.Logical.Width > 0 ? PinMath.ClampZoom(width / card.Logical.Width) : 1;
+
+            var textArea = new Int32Rect(record.AreaX, record.AreaY,
+                Math.Max(1, (int)Math.Round(card.Logical.Width * zoom * scale)),
+                Math.Max(1, (int)Math.Round(card.Logical.Height * zoom * scale)));
+            var textPin = new CapturePinWindow(card, textArea, scale, zoom, record.Text)
+            {
+                PinId = record.Id,
+            };
+
+            if (record.Left != 0 || record.Top != 0)
+            {
+                textPin.Left = record.Left;
+                textPin.Top = record.Top;
+            }
+
+            return FinishRestore(textPin, record);
+        }
+
         var image = PinStore.LoadAsset(record.Id);
         if (image == null) return null;
 
@@ -162,6 +232,15 @@ internal static class CapturePinManager
             pin.Left = record.Left + delta.X;
             pin.Top = record.Top + delta.Y;
         }
+
+        return FinishRestore(pin, record);
+    }
+
+    /// <summary>贴回的共同收尾：分组、记录回到「还开着」、显示、顶最前、同步落点。</summary>
+    private static CapturePinWindow FinishRestore(CapturePinWindow pin, PinRecord record)
+    {
+        string group = CreateGroup(record.Group) ?? PinGroups.Default;
+        pin.SetGroup(group);
 
         PinStore.Reopen(record.Id);
         Pins.Add(pin);

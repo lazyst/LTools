@@ -169,6 +169,7 @@ public partial class CapturePinWindow
         _content = image;
         Shot.Source = image;
         _zoom = 1;
+        _copies = Array.Empty<PinCardCopy>();     // 标注之后卡片上的复制热区对不上了
         _baseWidth = Math.Max(1, image.PixelWidth / _scale);
         _baseHeight = Math.Max(1, image.PixelHeight / _scale);
 

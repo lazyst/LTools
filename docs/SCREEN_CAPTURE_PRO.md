@@ -639,6 +639,42 @@ pins/thumbnails/<id>.png    # 列表小图（长边 240）
   与 `ToolLayoutStore` / `TranslationStore` 同一个写法——导入备份 / 冒烟把配置指到临时目录时不会偷偷写另一份。
 - 拼图 / 切图 / 图片编辑是 P6 的事，这一页**刻意不放**那些入口（不做死按钮）。
 
+### 9.4 贴剪贴板 / 颜色取样板（P5-c）
+
+照上游 `pinClipboardContentToScreen`（`screenshotcontroller.cpp:7205`）+ `pinnedcolorswatch.cpp`：
+内置功能 **`common.pinClipboard`「贴剪贴板」**（`Features/CapturePro/PinClipboard.cs`）把剪贴板内容贴到屏幕上。
+
+- **先后顺序**：先图片（位图 / 剪贴板里带回的图片文件，`NativeClipboard.TryGetImage`）→ 再文字
+  （`TryGetText`）；都没有就一条 warning toast「剪贴板里没有可以贴的内容（图片或文字）」，**不假装贴过**。
+- **落点**照 `fitPinnedImageOnScreen`（`screenshotgeometry.cpp:1005` 的 `fitImageToAvailableGeometry`）：
+  **光标所在显示器的工作区居中**（不是跟着鼠标落点）；装不下等比缩到四周留 **16 DIP**（`PinPlacement.Center` /
+  `PinPlacement.Margin`）。这个缩放同时是贴图的**初始 `Zoom`**：内容仍按 100% 渲染，出场整体按它缩。
+- **颜色取样板**：文本能解析成颜色（`Features/CapturePro/ColorSwatch.cs`）就贴成色卡，否则贴成普通文字卡。
+  解析口径逐条对齐 `pinnedcolorswatch.cpp` + `pinned_color_swatch_content_tests.h`：
+  hex 3 / 4 / 6 / 8 位（可省 `#`，短写法每个字符双写扩展）、`rgb()` / `rgba()` / `hsl()` / `hsla()` 的
+  **逗号写法与空格斜杠写法**、通道百分比与数值可混用、alpha 两种写法（0–1 小数与百分比）、`deg` 后缀、
+  HSL 色相环绕；通道取整是**中点四舍五入**（`rgb(50%, …)` → 128，不是银行家舍入）。`red` / `#12345` /
+  `value: #7DD353` / 多行 / 越界 / 尾随垃圾一律当普通文字，不与用户猜。
+- **三行文案**：`Display`（界面）/ `Clipboard`（复制）/ `Labels`（标签）三份独立成形，alpha 三位小数，
+  半透明时标签变 `RGBA:` / `HSLA:`、复制成 `rgba(…)` / `hsla(…)`；不透明是 `RGB:` / `HSL:` 与
+  `rgb(…)` / `hsl(…)`。色卡度量照上游：**342×210 紧凑**（默认）/ **470×288 旧版**（`ScaleFor` 按 16/22 缩排），
+  alpha < 255 时色块铺棋盘格。
+- **渲染与贴图同一路径**：`Views/CapturePro/PinCardRenderer.cs` 把卡片按屏幕缩放渲成位图，交给
+  `CapturePinWindow(card, area, scale, zoom, text)`；文字卡按最大宽 1024 / 内边距 16 折行，超出屏幕照样等比缩出场。
+- **复制按钮**：每行一枚图标，热区是**两笔 `OddEven`**（`PinCardCopy.Hit` = 两笔异或），重叠处故意不算命中——
+  与上游 `ColorSwatchCopyButton` 同一条判定。`CapturePinWindow.Card.cs` 的 `CopyHitAt` / `CopyAt` 把窗口坐标
+  折回卡片 100% 坐标；点中就把那行规范 CSS 写进剪贴板，**不拖动、不关窗**（`MouseDown` 先判热区），
+  悬停是手型 + ToolTip「复制 HEX 颜色值」。缩略图 / 实时贴图里热区不响应（方块太小，点哪儿都是还原）。
+- **右键「复制原文」**：文字 / 色卡贴图多一项（照 `copyOriginalContent`），复制的是原文本，不是渲出来的图。
+- **历史**：`PinStore` 的 `KindImage` / `KindText` / `KindColor` + `PinRecord.Kind` · `Text` · `CardWidth`；
+  `NormalizeKind` 把认不出的当图片（老记录没这个字段），`IsTextual` = 不是图片。`CapturePinManager.Restore`
+  对文字 / 色卡**按原文重画**（与上游一样从 stored text 重渲，不依赖 `assets/` 的 png），贴回后热区照样在。
+- **100% 尺寸的唯一来源**：`CapturePinWindow` 由「出场矩形 ÷ 屏幕缩放 ÷ 初始缩放」推出 `_baseWidth` / `_baseHeight`，
+  不再取图片像素——大图缩小出场与「实时贴图合成」（图比区域大）两种情形都靠这条。
+- **平台差异**：上游会把剪贴板里的 `text/html` 交给 Qt 富文本排版再贴图，本地取 `text/plain`
+  （文字与折行一致，但不保留粗斜 / 颜色 / 链接样式），见 `docs/CAPTURE_PARITY.md` §5。
+
+
 ## 10. 识别（P2 / P4-a / P4-b）
 
 入口三处，行为一致（都先按标注文档重绘成品，再关覆盖层，然后开结果窗）：
