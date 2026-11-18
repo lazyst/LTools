@@ -809,6 +809,53 @@ internal abstract class Mark
     }
 
     /// <summary>
+    /// 矩形橡皮 / 画笔橡皮落下的「恢复原图」块：把这块像素还原成截图原样，盖掉它下面的标注、
+    /// 滤镜与打码（对齐上游的 <c>RestoreBackground</c> 滤镜，`SnowCanvasTool::RectangleEraser` /
+    /// <c>BrushEraser</c> 各自落的是一条矩形 / 画笔滤镜）。
+    /// <para>
+    /// 上游这种块是**不可选、不可删**的（点不中、旧橡皮也删不掉，只能用 Ctrl+Z 撤销），
+    /// 所以 <see cref="CaptureDocument.HitTest"/> 会跳过它，渲染时它只还原底图像素。
+    /// </para>
+    /// </summary>
+    public sealed class Restore : Mark
+    {
+        /// <summary>矩形橡皮：<paramref name="path"/> 为空，整块都还原。</summary>
+        public Restore(Point a, Point b, IReadOnlyList<Point>? path = null, double width = 0)
+        {
+            A = a;
+            B = b;
+            Path = path;
+            Width = Math.Max(0, width);
+        }
+
+        public Point A { get; }
+        public Point B { get; }
+
+        /// <summary>画笔橡皮的笔迹；为空 = 矩形橡皮（整块还原）。名字不能叫 Stroke，会撞 <see cref="Mark.Stroke"/>。</summary>
+        public IReadOnlyList<Point>? Path { get; }
+        public double Width { get; }
+
+        public Rect Rect => MarkGeometry.RectOf(A, B);
+
+        public override Rect Bounds =>
+            Path == null ? Rect : MarkGeometry.BoundsOf(Path, Width);
+
+        public override Rect Frame => Path == null ? Rect : MarkGeometry.BoundsOf(Path, 0);
+
+        public override Mark MoveBy(Vector delta) => new Restore(
+            A + delta, B + delta,
+            Path == null ? null : MarkGeometry.Shift(Path, delta), Width);
+
+        public override Mark ScaleTo(Rect from, Rect to) => new Restore(
+            MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(B, from, to),
+            Path == null ? null : MarkGeometry.MapAll(Path, from, to),
+            Path == null ? Width : Math.Max(1, Width * MarkGeometry.ScaleOf(from, to)));
+
+        /// <summary>永远点不中：上游的恢复块不参与选择 / 命中。</summary>
+        public override bool HitTest(Point point, double tolerance) => false;
+    }
+
+    /// <summary>
     /// 画笔滤镜：沿笔迹把路过的像素按类型处理（马赛克 / 模糊 / 灰度…）。
     /// 与矩形滤镜同一套 <see cref="FilterKind"/>，只是遮罩来自笔迹而不是矩形。
     /// </summary>

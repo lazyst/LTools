@@ -38,6 +38,8 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "样式：底色对比取字色", Contrast));
         cases.Add(new("capturePro", "工具：目录 / 参数格 / 默认样式", Tools));
         cases.Add(new("capturePro", "标注：P1 新工具（线 / 尺寸 / 气泡 / 镜头 / 水印 / 画笔滤镜）", ParityMarks));
+        cases.Add(new("capturePro", "滤镜：像素级智能擦除（仿射 / 周期 / 多尺度）", SmartEraseCases));
+        cases.Add(new("capturePro", "橡皮：恢复原图块（矩形 / 画笔，不可点中）", RestoreMarks));
         cases.Add(new("capturePro", "取色：像素颜色与文本", Picker));
         cases.Add(new("capturePro", "贴图：缩放 / 不透明度 / 锚点", Pin));
         cases.Add(new("capturePro", "贴图：分组名与批量另存", PinGrouping));
@@ -3001,6 +3003,240 @@ internal static partial class CaptureProSuite
     }
 
     /// <summary>8×8 像素的假底图 + 缩放 2 的文档（不开窗口）。</summary>
+    /// <summary>
+    /// P1-b：像素级智能擦除（对齐上游 <c>FilterType.SmartErase</c>）。
+    /// 三级求解各来一遍：纯色 / 渐变走仿射曲面，条纹走周期纹理，噪声走多尺度块匹配；
+    /// 再加「没有素材 / 没有洞 / 确定性 / 大洞降采样」四条边界。
+    /// </summary>
+    private static void SmartEraseCases()
+    {
+        const int W = 64;
+        const int H = 48;
+
+        // BGRA 缓冲（Alpha 全不透明）
+        byte[] Buffer(Func<int, int, (byte r, byte g, byte b)> color)
+        {
+            var buffer = new byte[W * H * 4];
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                {
+                    var (r, g, b) = color(x, y);
+                    int at = (y * W + x) * 4;
+                    buffer[at] = b;
+                    buffer[at + 1] = g;
+                    buffer[at + 2] = r;
+                    buffer[at + 3] = 0xFF;
+                }
+
+            return buffer;
+        }
+
+        bool[] Hole(int x0, int y0, int x1, int y1)
+        {
+            var mask = new bool[W * H];
+            for (int y = y0; y < y1; y++)
+                for (int x = x0; x < x1; x++)
+                    mask[y * W + x] = true;
+            return mask;
+        }
+
+        int At(byte[] buffer, int x, int y, int channel) => buffer[(y * W + x) * 4 + channel];
+
+        // ---- 第一级：纯色背景（仿射曲面一次命中）----
+        var flat = Buffer((_, _) => ((byte)0x40, (byte)0x80, (byte)0xC0));
+        var flatHole = Hole(20, 16, 44, 32);
+        Check.True(SmartErase.Reconstruct(flat, W, H, flatHole, default), "智能擦除：纯色背景能重建");
+        Check.True(Math.Abs(At(flat, 32, 24, 0) - 0xC0) <= 2, $"纯色洞内还原成同一个蓝色（B={At(flat, 32, 24, 0)}）");
+        Check.True(Math.Abs(At(flat, 32, 24, 1) - 0x80) <= 2, "纯色洞内绿通道一致");
+        Check.True(Math.Abs(At(flat, 32, 24, 2) - 0x40) <= 2, "纯色洞内红通道一致");
+        Check.Equal((byte)0xFF, At(flat, 32, 24, 3), "重建只改颜色，Alpha 一个字节都不动");
+
+        // ---- 第一级：竖直渐变（平面拟合把斜坡接上，不是涂成一块）----
+        var gradient = Buffer((_, y) => ((byte)Math.Clamp(y * 4, 0, 255), 100, 60));
+        var gradientHole = Hole(10, 10, 50, 40);
+        Check.True(SmartErase.Reconstruct(gradient, W, H, gradientHole, default), "智能擦除：渐变能重建");
+        for (int y = 12; y < 38; y += 6)
+            Check.True(Math.Abs(At(gradient, 30, y, 2) - Math.Clamp(y * 4, 0, 255)) <= 6,
+                $"渐变第 {y} 行接上了（R={At(gradient, 30, y, 2)} 期望 {Math.Clamp(y * 4, 0, 255)}）");
+
+        // ---- 第二级：周期条纹（8 像素一格，按周期抄回来）----
+        var stripes = Buffer((x, _) => x % 8 < 4
+            ? ((byte)0xC8, (byte)0xC8, (byte)0xC8)
+            : ((byte)0x28, (byte)0x28, (byte)0x28));
+        var stripeHole = Hole(24, 8, 40, 40);
+        Check.True(SmartErase.Reconstruct(stripes, W, H, stripeHole, default), "智能擦除：周期条纹能重建");
+        int stripeError = 0;
+        for (int x = 24; x < 40; x++)
+        {
+            byte want = x % 8 < 4 ? (byte)0xC8 : (byte)0x28;
+            if (Math.Abs(At(stripes, x, 20, 0) - want) <= 4) continue;
+            stripeError++;
+        }
+
+        Check.Equal(0, stripeError, "条纹按原周期接上（每一列都回到它该有的明暗）");
+
+        // ---- 第三级：噪声纹理（前两级都不命中，交给多尺度块匹配）----
+        byte[] Noise()
+        {
+            uint seed = 12345;
+            return Buffer((x, y) =>
+            {
+                seed = seed * 1664525 + 1013904223;
+                byte value = (byte)(40 + seed % 180);
+                return (value, (byte)(value / 2 + 40), (byte)(x + y % 7));
+            });
+        }
+
+        var noise = Noise();
+        var noiseHole = Hole(18, 14, 46, 34);
+        Check.True(SmartErase.Reconstruct(noise, W, H, noiseHole, default), "智能擦除：噪声纹理能重建");
+        long sum = 0;
+        int count = 0;
+        for (int y = 14; y < 34; y++)
+            for (int x = 18; x < 46; x++)
+            {
+                sum += At(noise, x, y, 0);
+                count++;
+            }
+
+        long expected = 0;
+        int ring = 0;
+        for (int y = 6; y < 42; y++)
+            for (int x = 10; x < 54; x++)
+            {
+                if (x >= 18 && x < 46 && y >= 14 && y < 34) continue;
+                expected += At(noise, x, y, 0);
+                ring++;
+            }
+
+        long mean = sum / Math.Max(1, count);
+        long around = expected / Math.Max(1, ring);
+        Check.True(Math.Abs(mean - around) <= 20,
+            $"噪声洞内均值贴近周围（洞内 {mean} / 周围 {around}）——不是留一片死黑");
+
+        // ---- 确定性：同一输入跑两次，逐字节一致 ----
+        var again = Noise();
+        SmartErase.Reconstruct(again, W, H, noiseHole, default);
+        bool identical = true;
+        for (int i = 0; i < noise.Length; i++)
+            if (noise[i] != again[i])
+            {
+                identical = false;
+                break;
+            }
+
+        Check.True(identical, "同输入同输出（种子固定，不靠随机结果碰运气）");
+
+        // ---- 边界：没有洞 = 什么都不做 ----
+        var untouched = Buffer((x, y) => ((byte)x, (byte)y, 7));
+        var before = (byte[])untouched.Clone();
+        Check.True(SmartErase.Reconstruct(untouched, W, H, new bool[W * H], default), "没有洞：直接算成功");
+        Check.True(before.SequenceEqual(untouched), "没有洞：一个像素都不改");
+
+        // ---- 边界：整块都被遮住 = 没有素材，老实说做不到 ----
+        var all = Buffer((_, _) => (10, 20, 30));
+        var everyPixel = new bool[W * H];
+        Array.Fill(everyPixel, true);
+        Check.False(SmartErase.Reconstruct(all, W, H, everyPixel, default), "没有素材：返回失败（不假装擦掉了）");
+
+        // ---- 大洞：自动降采样，仍然出结果（上游这时会交给 GPU）----
+        const int BW = 160;
+        const int BH = 120;
+        var big = new byte[BW * BH * 4];
+        for (int y = 0; y < BH; y++)
+            for (int x = 0; x < BW; x++)
+            {
+                int at = (y * BW + x) * 4;
+                big[at] = (byte)(x / 2);
+                big[at + 1] = (byte)(y / 2);
+                big[at + 2] = 90;
+                big[at + 3] = 0xFF;
+            }
+
+        var bigHole = new bool[BW * BH];
+        for (int y = 20; y < 100; y++)
+            for (int x = 30; x < 130; x++)
+                bigHole[y * BW + x] = true;
+        Check.True(SmartErase.Reconstruct(big, BW, BH, bigHole, default), "大洞也能重建（自动降采样）");
+        Check.True(big[(60 * BW + 80) * 4 + 3] == 0xFF, "大洞重建保留 Alpha");
+    }
+
+    /// <summary>
+    /// P1-b：两把橡皮落的是「恢复原图」块（对齐上游 <c>RestoreBackground</c>），不是按对象删除。
+    /// 恢复块不可点中（选择 / 点选橡皮都碰不到），渲染时只还原底图像素。
+    /// </summary>
+    private static void RestoreMarks()
+    {
+        const int W = 100, H = 60;
+        var buffer = new byte[W * H * 4];
+        for (int i = 0; i < W * H; i++)
+        {
+            buffer[i * 4] = 0xE0;      // B
+            buffer[i * 4 + 1] = 0x40;  // G
+            buffer[i * 4 + 2] = 0x10;  // R
+            buffer[i * 4 + 3] = 0xFF;
+        }
+
+        var baseImage = BitmapSource.Create(W, H, 96, 96, PixelFormats.Bgra32, null, buffer, W * 4);
+        baseImage.Freeze();
+
+        CaptureDocument NewDoc()
+        {
+            var doc = new CaptureDocument(baseImage, new Int32Rect(0, 0, W, H), 1.0);
+            doc.Area = new Int32Rect(0, 0, W, H);
+            return doc;
+        }
+
+        byte[] Render(CaptureDocument doc)
+        {
+            var frame = doc.Render();
+            var pixels = new byte[frame.PixelWidth * frame.PixelHeight * 4];
+            frame.CopyPixels(pixels, frame.PixelWidth * 4, 0);
+            return pixels;
+        }
+
+        (byte b, byte g, byte r) At(byte[] pixels, int x, int y)
+        {
+            int i = (y * W + x) * 4;
+            return (pixels[i], pixels[i + 1], pixels[i + 2]);
+        }
+
+        // ---- 命中：恢复块永远点不中（上游不可选、旧橡皮也删不掉）----
+        var only = NewDoc();
+        only.Add(new Mark.Restore(new Point(10, 10), new Point(50, 40)));
+        Check.Equal(-1, only.HitTest(new Point(30, 25), 4), "恢复块点不中：选择 / 橡皮都碰不到它");
+
+        // ---- 矩形橡皮：整块还原成原图，块外仍是盖上去的标注 ----
+        var rectDoc = NewDoc();
+        rectDoc.Add(new Mark.Highlight(new Point(0, 0), new Point(W, H), Colors.Magenta, 1));
+        rectDoc.Add(new Mark.Restore(new Point(20, 10), new Point(80, 50)));
+        var rectPixels = Render(rectDoc);
+        var restored = At(rectPixels, 50, 30);
+        var covered = At(rectPixels, 5, 30);
+        Check.True(restored.r < 40 && restored.b > 150, $"恢复块里露出原图（r={restored.r} b={restored.b}）");
+        Check.True(covered.r > 200 && covered.b > 200, $"恢复块外还是盖上去的洋红（r={covered.r} b={covered.b}）");
+
+        // ---- 画笔橡皮：只有笔迹压过的那一条还原 ----
+        var brushDoc = NewDoc();
+        brushDoc.Add(new Mark.Highlight(new Point(0, 0), new Point(W, H), Colors.Magenta, 1));
+        brushDoc.Add(new Mark.Restore(new Point(50, 10), new Point(50, 50),
+            new[] { new Point(50, 10), new Point(50, 50) }, 12));
+        var brushPixels = Render(brushDoc);
+        var wiped = At(brushPixels, 50, 30);
+        var beside = At(brushPixels, 20, 30);
+        Check.True(wiped.r < 40 && wiped.b > 150, $"笔迹压过的地方还原成原图（r={wiped.r} b={wiped.b}）");
+        Check.True(beside.r > 200 && beside.b > 200, $"笔迹旁边的洋红没被抹掉（r={beside.r} b={beside.b}）");
+
+        // ---- 几何：外接框按笔迹 + 线宽，平移搬笔迹，缩放放大线宽 ----
+        var stroke = new Mark.Restore(new Point(0, 0), new Point(0, 0),
+            new[] { new Point(0, 0), new Point(10, 0) }, 4);
+        Check.Equal(new Rect(-2, -2, 14, 4), stroke.Bounds, "画笔恢复块的外接框按笔迹 + 线宽算");
+        var movedStroke = (Mark.Restore)stroke.MoveBy(new Vector(5, 5));
+        Check.Equal(new Point(15, 5), movedStroke.Path![1], "平移把笔迹一起搬走");
+        var scaledStroke = (Mark.Restore)stroke.ScaleTo(new Rect(0, 0, 10, 10), new Rect(0, 0, 20, 20));
+        Check.Equal(8d, scaledStroke.Width, "缩放时线宽跟着放大");
+    }
+
     private static CaptureDocument NewDocument()
     {
         var pixels = new byte[8 * 8 * 4];

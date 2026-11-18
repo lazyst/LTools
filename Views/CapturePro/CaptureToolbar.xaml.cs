@@ -657,7 +657,11 @@ public partial class CaptureToolbar : UserControl
 
         // 滤镜类型与强度
         AddHost(ToolParam.FilterKind, Chips("类型",
-            new[] { FilterKind.Blur, FilterKind.Grayscale, FilterKind.Invert, FilterKind.Emboss, FilterKind.Brighten },
+            new[]
+            {
+                FilterKind.Blur, FilterKind.Grayscale, FilterKind.Invert, FilterKind.Emboss,
+                FilterKind.Brighten, FilterKind.SmartErase,
+            },
             () => _style?.FilterMode ?? FilterKind.Blur,
             v => { if (_style != null) _style.FilterMode = v; },
             SerialLabel.Name, v => "滤镜：" + SerialLabel.Name(v)));

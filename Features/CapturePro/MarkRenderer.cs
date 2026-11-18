@@ -23,6 +23,9 @@ internal static class MarkRenderer
     /// <summary>画笔滤镜的处理结果同样按标注对象缓存。</summary>
     private static readonly ConditionalWeakTable<Mark.BrushFilter, MosaicTile> BrushFilterCache = new();
 
+    /// <summary>「恢复原图」块裁出来的底图同样按标注对象缓存（拖动时不用每帧重新裁）。</summary>
+    private static readonly ConditionalWeakTable<Mark.Restore, MosaicTile> RestoreCache = new();
+
     /// <summary>缓存单元格（位图可能因为底图未就绪而为空）。</summary>
     private sealed class MosaicTile
     {
@@ -92,6 +95,9 @@ internal static class MarkRenderer
                 break;
             case Mark.BrushFilter brush:
                 DrawBrushFilter(dc, brush, baseImage, scale);
+                break;
+            case Mark.Restore restore:
+                DrawRestore(dc, restore, baseImage, scale);
                 break;
         }
     }
@@ -258,6 +264,9 @@ internal static class MarkRenderer
 
     private static BitmapSource? BuildFilter(Mark.Filter f, BitmapSource baseImage, double scale)
     {
+        if (f.Kind == FilterKind.SmartErase)
+            return BuildSmartErase(baseImage, f.Rect, null, 0, scale);
+
         if (!TryCrop(baseImage, f.Rect, scale, out int x, out int y, out int w, out int h)) return null;
 
         try
@@ -577,6 +586,9 @@ internal static class MarkRenderer
 
     private static BitmapSource? BuildBrushFilter(Mark.BrushFilter f, BitmapSource baseImage, double scale)
     {
+        if (f.Kind == FilterKind.SmartErase)
+            return BuildSmartErase(baseImage, f.Bounds, f.Points, f.Width, scale);
+
         if (!TryCrop(baseImage, f.Bounds, scale, out int x, out int y, out int w, out int h)) return null;
 
         try
@@ -604,6 +616,120 @@ internal static class MarkRenderer
             }
 
             var bitmap = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
+            bitmap.Freeze();
+            return bitmap;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 恢复原图：把这块的底图像素原样贴回来（盖掉它下面的标注、滤镜与打码）。
+    /// 对齐上游的 <c>RestoreBackground</c>：矩形橡皮贴整块，画笔橡皮只贴笔迹压过的那一条，
+    /// 所以画笔模式把遮罩外的 Alpha 抹成 0，让下面原来画的东西透出来。
+    /// </summary>
+    private static void DrawRestore(DrawingContext dc, Mark.Restore restore, BitmapSource baseImage, double scale)
+    {
+        var bounds = restore.Bounds;
+        if (bounds.Width < 1 || bounds.Height < 1) return;
+
+        var tile = RestoreCache.GetValue(restore, key => new MosaicTile { Image = BuildRestore(key, baseImage, scale) });
+        if (tile.Image == null) return;
+
+        var drawing = new ImageDrawing(tile.Image, bounds);
+        RenderOptions.SetBitmapScalingMode(drawing, BitmapScalingMode.Linear);
+        dc.DrawDrawing(drawing);
+    }
+
+    private static BitmapSource? BuildRestore(Mark.Restore restore, BitmapSource baseImage, double scale)
+    {
+        if (!TryCrop(baseImage, restore.Bounds, scale, out int x, out int y, out int w, out int h)) return null;
+
+        try
+        {
+            var crop = new CroppedBitmap(baseImage, new Int32Rect(x, y, w, h));
+            BitmapSource source = crop.Format == PixelFormats.Bgra32
+                ? crop
+                : new FormatConvertedBitmap(crop, PixelFormats.Bgra32, null, 0);
+
+            int stride = w * 4;
+            var pixels = new byte[stride * h];
+            source.CopyPixels(pixels, stride, 0);
+
+            if (restore.Path is { Count: > 0 })
+            {
+                var mask = BuildStrokeMask(restore.Path, restore.Width / 2, w, h, x, y, scale);
+                for (int i = 0; i < mask.Length; i++)
+                    if (!mask[i]) pixels[i * 4 + 3] = 0;
+            }
+
+            var bitmap = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
+            bitmap.Freeze();
+            return bitmap;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 智能擦除：把要处理的区域当「洞」，从外面一圈完好的素材重建（对齐上游 <c>FilterType.SmartErase</c>）。
+    /// 素材必须取到洞外（上游 <c>initial_halo</c>：洞短边的一半夹 16–96 再加 32，至少 64），
+    /// 所以这里裁的块比真正要贴回去的那块大一圈，重建完只把内圈贴回去。
+    /// </summary>
+    /// <param name="stroke">画笔滤镜的笔迹；为空 = 矩形滤镜（整块都是洞）。</param>
+    private static BitmapSource? BuildSmartErase(BitmapSource baseImage, Rect area,
+        IReadOnlyList<Point>? stroke, double strokeWidth, double scale)
+    {
+        if (!TryCrop(baseImage, area, scale, out int x, out int y, out int w, out int h)) return null;
+
+        int halo = Math.Clamp(Math.Min(w, h) / 2, 16, 96) + 32;
+        halo = Math.Clamp(halo, 64, 512);
+
+        int ox = Math.Max(0, x - halo);
+        int oy = Math.Max(0, y - halo);
+        int ow = Math.Min(baseImage.PixelWidth, x + w + halo) - ox;
+        int oh = Math.Min(baseImage.PixelHeight, y + h + halo) - oy;
+        if (ow < 3 || oh < 3) return null;
+
+        try
+        {
+            var crop = new CroppedBitmap(baseImage, new Int32Rect(ox, oy, ow, oh));
+            BitmapSource source = crop.Format == PixelFormats.Bgra32
+                ? crop
+                : new FormatConvertedBitmap(crop, PixelFormats.Bgra32, null, 0);
+
+            int stride = ow * 4;
+            var pixels = new byte[stride * oh];
+            source.CopyPixels(pixels, stride, 0);
+
+            bool[] mask;
+            if (stroke == null || stroke.Count == 0)
+            {
+                mask = new bool[ow * oh];
+                for (int py = 0; py < h; py++)
+                {
+                    int row = (y - oy + py) * ow;
+                    for (int px = 0; px < w; px++) mask[row + x - ox + px] = true;
+                }
+            }
+            else
+            {
+                mask = BuildStrokeMask(stroke, strokeWidth / 2, ow, oh, ox, oy, scale);
+            }
+
+            if (!SmartErase.Reconstruct(pixels, ow, oh, mask, System.Threading.CancellationToken.None))
+                return null;
+
+            int innerStride = w * 4;
+            var inner = new byte[innerStride * h];
+            for (int row = 0; row < h; row++)
+                Buffer.BlockCopy(pixels, ((y - oy + row) * ow + (x - ox)) * 4, inner, row * innerStride, innerStride);
+
+            var bitmap = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, inner, innerStride);
             bitmap.Freeze();
             return bitmap;
         }

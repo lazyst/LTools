@@ -33,9 +33,9 @@
 | 放大镜 Magnifier（倍率 / 连接线 / 源框） | `magnifierRequested` + `SnowCanvasMagnifierStyle` | `Mark.Magnifier`：镜头框 + 倍率（1.2–8）已 1:1；**连接线 / 箭头 / 源框轮廓 / 圆角**留 P2 | P1 / P2 | 🟡 |
 | 聚光灯 Spotlight | `spotlightRequested` | `Mark.Spotlight` | — | ✅ |
 | 橡皮 Eraser（点选删除） | `eraserRequested` | `CaptureTool.Eraser` | — | ✅ |
-| 矩形橡皮 RectangleEraser | `rectangleEraserRequested` | `CaptureTool.RectEraser`：**按对象删除**（相交即删） | P1 | 🟡 |
-| 画笔橡皮 BrushEraser | `brushEraserRequested` | `CaptureTool.BrushEraser`：**按对象删除**（笔迹碰到即删） | P1 | 🟡 |
-| 自动打码 AutoFilter（视觉区域检测） | `screenshotautofiltercontroller.cpp` | 无 | P1-b | ❌ |
+| 矩形橡皮 RectangleEraser | `rectangleEraserRequested` | `CaptureTool.RectEraser` → `Mark.Restore`：落一条**恢复原图块**（把这块像素还原成截图原样，盖掉下面的标注 / 滤镜），块本身不可选、不可删，只能撤销 | P1-b | ✅ |
+| 画笔橡皮 BrushEraser | `brushEraserRequested` | `CaptureTool.BrushEraser` → `Mark.Restore`（笔迹遮罩，只有压过的那一条还原） | P1-b | ✅ |
+| 自动打码 AutoFilter（视觉区域检测） | `screenshotautofiltercontroller.cpp` | 无 | P1-c | ❌ |
 | 矩形滤镜 RectangleFilter | `rectangleFilterRequested` | `Mark.Filter` + `CaptureTool.Filter` | — | ✅ |
 | 画笔滤镜 BrushFilter | `brushFilterRequested` | `Mark.BrushFilter`（笔迹遮罩 + 同一套滤镜） | P1 | ✅ |
 | 水印 Watermark（文本 / 模板 / 角度 / 间距 / 不透明度） | `SnowCanvasWatermark*` | `Mark.Watermark`：文字 / 颜色 / 字号 / 角度 / 间距 / 不透明度已 1:1；**图片模板水印**留 P2 | P1 / P2 | 🟡 |
@@ -46,7 +46,7 @@
 | 样式预设 / 默认样式 | `screenshotdefaultstyles.h` | 无 | P2 | ❌ |
 | 描边色 / 描边宽 / 填充 / 虚线 | `SnowCanvasShapeStyle` | 只有色 + 宽 | P2 | 🟡 |
 | 字体族 / 字号 / 粗斜 / 对齐 / 透明度 | `SnowCanvasTextStyle` | 只有字号 | P2 | 🟡 |
-| 滤镜类型与强度 | `SnowCanvasFilterType` | Blur / Grayscale / Invert / Sharpen / Brightness | P2 | 🟡 |
+| 滤镜类型与强度 | `SnowCanvasFilterType` | `FilterKind`：模糊 / 灰度 / 反相 / 浮雕 / 亮度 / **智能擦除**（`SmartErase.cs` 移植上游三级重建）+ 强度 | P1-b | ✅ |
 | 工具栏自定义（显示哪些工具 / 顺序 / 分组） | `screenshotdrawingtoolbaroptions.h` | `ToolLayout` + `ToolLayoutStore` | — | ✅ |
 
 ### 2.2 选区（P3）
@@ -140,7 +140,8 @@
 | --- | --- | --- | --- |
 | P0 | 已完成基线（区域 / 窗口 / 滚动 / 贴图 / 录屏五项 / 两行面板 / 区域框 / 工具布局） | ✅ | 见提交 `a61e15f` |
 | P1 | 绘图工具补齐：气泡 / 直线 / 测距 / 测角 / 括号 / 放大镜 / 水印 / 矩形荧光 / 画笔滤镜 / 矩形橡皮 / 画笔橡皮（工具 14 → 25，默认工具栏 9 → 13 格） | ✅ | 构建 0 警；`--selftest` 209 用例 6210 断言全绿（`capturePro` 41 用例 1379 断言）；`capture-overlay-smoke` 536 条全绿（含 11 个新工具的真手势 + 导出逐像素对账） |
-| P1-b | 橡皮对齐上游：像素级智能擦除（`snow-draw-engine-gpui/src/smart_erase` 的 Lab 引导 + 分块重建）+ 自动打码 AutoFilter（`screenshotautofiltercontroller.cpp` 的视觉区域检测） | ❌ | 待填 |
+| P1-b | 橡皮与滤镜对齐上游：① 像素级智能擦除 `SmartErase` 滤镜（`snow-draw-engine-gpui/src/smart_erase` 的仿射曲面 → 周期纹理 → 多尺度块匹配三级求解）② 两把橡皮改成落 `RestoreBackground` 恢复原图块（`SnowCanvasTool::RectangleEraser` / `BrushEraser`） | ✅ | 构建 0 警；`--selftest` 211 用例 6240 断言全绿（`capturePro` 43 用例 1414 断言）；`capture-overlay-smoke` 549 条全绿 |
+| P1-c | 自动打码 AutoFilter：移植 `visual-region-detector` 的检测管线（canny / 轮廓 / 形态学 / 对齐 / 文字行 / 媒体分类）+ `screenshotautofiltercontroller.cpp` 的闪烁提示与分类填充 | ❌ | 待填 |
 | P2 | 样式系统：每工具样式记忆 + 形状种类 + 描边 / 填充 / 虚线 + 字体 + 序号徽标 + 预设 | ❌ | 待填 |
 | P3 | 选区：XYWH / 比例 / 圆角 / 阴影 / 智能选区 / 预设 | ❌ | 待填 |
 | P4 | 识别与转换：OCR 编辑器 / 原文预览 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档 / 翻译 | ❌ | 待填 |
@@ -170,8 +171,13 @@
 
 ## 6. 变更记录
 
-- 2026-11-18：建立本文件；完成 P0 基线确认（提交 `a61e15f`），开 P1。
+- 2026-11-18：**P0 基线**确认（提交 `a61e15f`），开 P1。
 - 2026-11-18：**P1 完成**。工具 14 → 25：新增直线、测距（中点 px 标签）、测角（两段拖拽 + 滚轮 ±5° / Shift ±1°）、括号、气泡、放大镜（镜头框 + 倍率 1.2–8）、水印（整图斜向平铺，文字 / 角度 / 间距 / 不透明度）、矩形荧光、画笔滤镜（笔迹遮罩 + 同一套滤镜）、矩形橡皮、画笔橡皮。默认工具栏按上游分组重排成 13 格（选择 │ 形状 │ 箭直 │ 自由笔 │ 尺寸 │ 气泡文字 │ 荧光 │ 镜头与聚光 │ 序号 │ 打码 │ 水印 │ 橡皮 │ 取色）。
   - 修掉一处会挡新工具的真 bug：落盘门槛原来要求「宽和高都 ≥ 4 DIP」，水平直线 / 水平测距 / 括号被当成「没拖动」丢掉；现在一维工具（直线 / 测距 / 括号 / 箭头）只判长度（`ToolCatalog.IsLinear`）。
   - 上游「像素级智能擦除」这次没做（两把橡皮都是**按对象删除**），与自动打码一起另列 **P1-b**；放大镜的连接线 / 源框、水印的图片模板留 P2。
   - 验收：构建 0 错 0 警；`--selftest` 209 用例 / 6210 断言全绿；`capture-overlay-smoke` 536 条全绿（真手势画出 11 个新工具 + 合成底图逐像素对账：放大镜把 10×10 绿块放大到约 2 倍面积、画笔滤镜只把笔迹压过的红底反相成青色、测距标签里确有白字、水印左右两半都有白像素）。
+- 2026-11-18：**P1-b 完成（像素级智能擦除 + 两把橡皮对齐）**。
+  - **智能擦除**：`SnowCanvasFilterType::SmartErase` 在 LTools 落地成 `FilterKind.SmartErase`（滤镜类型胶囊多一个「智能」），矩形滤镜与画笔滤镜都走它。新文件 `Features/CapturePro/SmartErase.cs`（约 900 行，纯计算，不碰 WPF）：逐级移植上游 `smart_erase.rs` / `patch.rs` 的 CPU 路径——① 仿射曲面（洞外一圈已知像素拟合平面，5 轮 IRLS，97% 内点、色差 4/255 才算「纯色 / 渐变」）② 周期纹理（X / Y 找 2–64 像素重复周期）③ 多尺度块匹配（≤6 层金字塔、Lab 引导色 + 局部方差、`Dice(0x534e4f57)` 固定种子、32 个随机候选 + 邻域一致性投票）。种子固定 → 同输入同输出。`MarkRenderer.BuildSmartErase` 按上游 `initial_halo`（洞短边一半夹 16–96 再加 32，至少 64）向外扩一圈取素材，重建完**只把内圈贴回**；素材不足返回 null、渲染层不画（不假装擦掉）。与上游唯一差异：上游大洞交给 GPU，这里改用「洞边长 > 96 时降采样到 ≤96 再重建、结果双线性放大」，小洞逐像素一致。
+  - **两把橡皮改成上游语义**：`RectangleEraser` / `BrushEraser` 不是按对象删除，而是各落一条 `RestoreBackground` 滤镜——把这块像素还原成截图原样、盖掉下面的标注 / 滤镜 / 打码。LTools 落成 `Mark.Restore`（矩形 / 笔迹两种），`CaptureDocument.HitTest` 点不中它（上游这种块不可选、旧橡皮也删不掉，只能 Ctrl+Z 撤销）。上一版「相交即删」的写法已删除（`HitByBrush` 一并删掉）。
+  - 验收：构建 0 错 0 警；`--selftest` 211 用例 / 6240 断言全绿（`capturePro` 43 用例 / 1414 断言，新增 `SmartEraseCases` 27 条与 `RestoreMarks` 12 条纯像素断言）；`capture-overlay-smoke` 549 条全绿（滤镜胶囊含「智能」、合成底图逐像素：智能擦除洞左半边续红 / 右半边续蓝 / 洞外不动、恢复块露出原图而块外仍是标注、画笔恢复只还原笔迹压过的那一条）。
+  - 上游自动打码（AutoFilter）依赖 `visual-region-detector`（约 150 KB Rust 检测管线），量大，另列 **P1-c**。

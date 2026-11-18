@@ -107,13 +107,14 @@ internal static class ToolCatalog
         new(CaptureTool.Watermark, "水印", "Watermark", "整张图斜向平铺水印文字，单击落到图上",
             new[] { ToolParam.Color, ToolParam.FontSize, ToolParam.WatermarkText, ToolParam.WatermarkAngle, ToolParam.WatermarkGap, ToolParam.Opacity }, Key.W),
         new(CaptureTool.Mosaic, "马赛克", "Mosaic", "拖出要打码的矩形", new[] { ToolParam.Block }, Key.M),
-        new(CaptureTool.Filter, "矩形滤镜", "Filter", "拖出矩形，按参数行选的类型处理这一块（模糊 / 灰度 / 反相 / 浮雕 / 亮度）",
+        new(CaptureTool.Filter, "矩形滤镜", "Filter", "拖出矩形，按参数行选的类型处理这一块（模糊 / 灰度 / 反相 / 浮雕 / 亮度 / 智能擦除）",
             new[] { ToolParam.FilterKind, ToolParam.FilterStrength }, Key.F),
         new(CaptureTool.BrushFilter, "画笔滤镜", "BrushFilter", "按住涂抹，把经过的像素按滤镜类型处理",
             new[] { ToolParam.Width, ToolParam.FilterKind, ToolParam.FilterStrength }, Key.Y),
         new(CaptureTool.Eraser, "橡皮", "Eraser", "点一下去掉整条标注", None, Key.X),
-        new(CaptureTool.RectEraser, "矩形橡皮", "RectEraser", "拖出矩形，删掉与它相交的标注", None, Key.K),
-        new(CaptureTool.BrushEraser, "画笔橡皮", "BrushEraser", "按住涂抹，删掉碰到的标注", new[] { ToolParam.Width }, Key.U),
+        new(CaptureTool.RectEraser, "矩形橡皮", "RectEraser", "拖出矩形，把这块还原成截图原样（盖掉下面的标注 / 滤镜）", None, Key.K),
+        new(CaptureTool.BrushEraser, "画笔橡皮", "BrushEraser", "按住涂抹，把经过的地方还原成截图原样（盖掉下面的标注 / 滤镜）",
+            new[] { ToolParam.Width }, Key.U),
     };
 
     public static ToolInfo Of(CaptureTool tool) => All.First(t => t.Tool == tool);

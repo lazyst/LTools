@@ -283,61 +283,32 @@ public partial class CaptureOverlayWindow
     }
 
     /// <summary>
-    /// 橡皮类按「对象」删除：与矩形相交 / 被笔迹碰到的标注整条去掉。
-    /// 上游是像素级智能擦除（擦掉一部分并重建底图），这一层留到 P1-b 再对齐；
-    /// 现在的语义与「点选橡皮」一致，只是命中范围更大。
+    /// 橡皮类落一条「恢复原图」块（对齐上游 <c>SnowCanvasTool::RectangleEraser</c> /
+    /// <c>BrushEraser</c> 落的 <c>RestoreBackground</c> 滤镜）：把这块的像素还原成截图原样，
+    /// 盖掉它下面的标注 / 滤镜 / 打码。**不是按对象删除**——那是点选橡皮
+    /// （<see cref="CaptureTool.Eraser"/>）的事。恢复块本身不可选、不可删，只能 Ctrl+Z 撤销。
     /// </summary>
     private void FinishEraseGesture(Point p)
     {
-        int removed = 0;
+        Mark? mark = null;
 
         if (_tool == CaptureTool.RectEraser)
         {
             var rect = MarkGeometry.RectOf(_toolStart, p);
-            if (rect.Width < 1 || rect.Height < 1)
-            {
-                _drag = DragMode.None;
-                Surface.Preview = null;
-                Surface.InvalidateVisual();
-                return;
-            }
-
-            for (int i = _doc.Marks.Count - 1; i >= 0; i--)
-                if (MarkGeometry.Inflate(_doc.Marks[i].Bounds, 2).IntersectsWith(rect) && _doc.RemoveAt(i))
-                    removed++;
+            if (rect.Width >= 1 && rect.Height >= 1) mark = new Mark.Restore(_toolStart, p);
         }
-        else
+        else if (_freehand.Count > 0)
         {
-            for (int i = _doc.Marks.Count - 1; i >= 0; i--)
-                if (HitByBrush(_doc.Marks[i], _freehand, _style.WidthFor(CaptureTool.BrushEraser) / 2 + 2) &&
-                    _doc.RemoveAt(i))
-                    removed++;
+            mark = new Mark.Restore(_freehand[0], _freehand[^1], _freehand.ToArray(),
+                _style.WidthFor(CaptureTool.BrushEraser));
         }
 
         _drag = DragMode.None;
         Surface.Preview = null;
         _freehand.Clear();
-        if (removed > 0) SelectMark(-1);
+        SelectMark(-1);
+        if (mark != null) _doc.Add(mark);
         RefreshMarks();
-    }
-
-    /// <summary>笔迹路径碰到这条标注（点到线段距离）就算命中。</summary>
-    private static bool HitByBrush(Mark mark, IReadOnlyList<Point> path, double radius)
-    {
-        if (path.Count == 0) return false;
-        if (path.Count == 1) return mark.HitTest(path[0], radius);
-
-        foreach (var point in path)
-            if (mark.HitTest(point, radius)) return true;
-
-        // 步子大时逐个采样点可能跨过细标注：再按中点补几刀
-        for (int i = 1; i < path.Count; i++)
-        {
-            var mid = new Point((path[i - 1].X + path[i].X) / 2, (path[i - 1].Y + path[i].Y) / 2);
-            if (mark.HitTest(mid, radius)) return true;
-        }
-
-        return false;
     }
 
     // ============ 选择：拖动已有标注 ============

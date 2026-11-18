@@ -31,6 +31,12 @@ internal enum FilterKind
     Invert,
     Emboss,
     Brighten,
+
+    /// <summary>
+    /// 智能擦除：把这块当洞，从周围完好的像素重建（对应上游 <c>FilterType.SmartErase</c>）。
+    /// 算法在 <see cref="SmartErase"/>。
+    /// </summary>
+    SmartErase,
 }
 
 /// <summary>
@@ -85,6 +91,7 @@ internal static class SerialLabel
         FilterKind.Invert => "反相",
         FilterKind.Emboss => "浮雕",
         FilterKind.Brighten => "亮度",
+        FilterKind.SmartErase => "智能",
         _ => "模糊",
     };
 
