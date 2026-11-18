@@ -66,6 +66,9 @@ public partial class CaptureOverlayWindow : Window
     /// <summary>完成动作选了「识别」：覆盖层关掉之后由 <see cref="CaptureSession"/> 开识别结果窗。</summary>
     public bool RecognizeRequested { get; private set; }
 
+    /// <summary>完成动作选了「识别并复制」：识别结果窗算完直接把全文写进剪贴板。</summary>
+    public bool RecognizeCopyRequested { get; private set; }
+
     /// <summary>长截图完成：<see cref="ResultImage"/> 就是拼好的长图，覆盖层关掉之后由 <see cref="CaptureSession"/> 复制走。</summary>
     public bool ScrollRequested { get; private set; }
 
@@ -94,6 +97,9 @@ public partial class CaptureOverlayWindow : Window
     public enum PendingAction { None, Copy, Pin, Save, QuickSave, Recognize }
 
     private readonly PendingAction _pending;
+
+    /// <summary>右键取消 / 指针动作的「按下武装、抬起才做」（照上游 MouseReleaseActionController）。</summary>
+    private readonly MouseReleaseGate _release;
 
     /// <summary>试过一次了：失败后立刻退回普通编辑（工具条回来，Enter 仍走它自己的出口）。</summary>
     private bool _pendingDone;
@@ -147,6 +153,7 @@ public partial class CaptureOverlayWindow : Window
         WireToolbar();
         InitQr();
         DpiChanged += (_, _) => { PinToMonitor(); SyncDocumentScale(); };
+        _release = new MouseReleaseGate(this);
         UpdateCursorForTool();
     }
 
@@ -415,7 +422,7 @@ public partial class CaptureOverlayWindow : Window
 
     // ============ 完成动作 ============
 
-    internal enum FinishKind { Copy, Save, QuickSave, Print, Pin, Recognize, Scroll, Live, Record }
+    internal enum FinishKind { Copy, Save, QuickSave, Print, Pin, Recognize, RecognizeCopy, Scroll, Live, Record }
 
     /// <summary>
     /// 工具条右半边那些完成动作（照 Snow Shot：工具、撤销、完成动作在**一条**里，
@@ -489,8 +496,55 @@ public partial class CaptureOverlayWindow : Window
         e.Handled = true;
 
         // 打字中右键 = 放弃这段文字；其余逐级往回退（右键在有选区时直接取消这次框选）
-        if (_textEditing) CancelText();
-        else StepBack();
+        if (_textEditing) { CancelText(); return; }
+
+        // 「退出这次截图」是最后一档：和上游一样只**武装**，按钮抬起之后一拍才真的关
+        // （按下就关的话，抬起还没发出去，下一次点击就落到别的窗口上了）。
+        if (StepBack()) _release.Arm(PointerButton.Right, Cancel);
+    }
+
+    /// <summary>
+    /// 指针动作（双击 / 中键）按设置完成这次截图；<see cref="OverlayPointerAction.None"/> = 什么都不做。
+    /// </summary>
+    /// <remarks>
+    /// 照上游 <c>executeConfiguredCompletionAction</c>：<c>ocr_copy</c> 复用识别入口，
+    /// 只是多带一个「算完就复制」的标记；<c>cancel</c> 等于 Esc。
+    /// </remarks>
+    private void CompleteFromPointer(OverlayPointerAction action)
+    {
+        switch (action)
+        {
+            case OverlayPointerAction.None:
+                return;
+
+            case OverlayPointerAction.Cancel:
+                Cancel();
+                return;
+
+            case OverlayPointerAction.Copy:
+                Accept(FinishKind.Copy);
+                return;
+
+            case OverlayPointerAction.Save:
+                Accept(FinishKind.Save);
+                return;
+
+            case OverlayPointerAction.QuickSave:
+                Accept(FinishKind.QuickSave);
+                return;
+
+            case OverlayPointerAction.Pin:
+                Accept(FinishKind.Pin);
+                return;
+
+            case OverlayPointerAction.Ocr:
+                Accept(FinishKind.Recognize);
+                return;
+
+            case OverlayPointerAction.OcrCopy:
+                Accept(FinishKind.RecognizeCopy);
+                return;
+        }
     }
 
     /// <summary>先按当前选区重绘成品，再按出口复制 / 贴图 / 识别 / 另存为；任一步失败都留在覆盖层里继续改。</summary>
@@ -498,7 +552,6 @@ public partial class CaptureOverlayWindow : Window
     {
         // 「贴图内标注」只有「完成」一个出口：别的（另存为 / 打印 / 贴图 / 识别 / 长截图）在这里没意义
         if (EditOnly && kind != FinishKind.Copy) return;
-
         // 用户自己按了出口（Enter / 工具条 / 快捷键）：快捷入口的「选完就做」不再重复执行
         if (_pending != PendingAction.None) _pendingDone = true;
 
@@ -569,6 +622,12 @@ public partial class CaptureOverlayWindow : Window
             case FinishKind.Recognize:
                 // 识别结果窗同理：覆盖层关掉、还原自己的窗口之后再开（识别本身在窗口里跑）
                 RecognizeRequested = true;
+                break;
+
+            case FinishKind.RecognizeCopy:
+                // 「识别并复制」：同一个结果窗，算完之后直接把全文写进剪贴板（照上游 text_recognition_copy）
+                RecognizeRequested = true;
+                RecognizeCopyRequested = true;
                 break;
 
             case FinishKind.Live:

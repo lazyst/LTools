@@ -7,6 +7,7 @@
         WindowStartupLocation="Manual" Background="Transparent" AllowsTransparency="True"
         Focusable="False"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
+        PreviewMouseDown="Window_PointerDown"
         PreviewMouseLeftButtonDown="Window_MouseDown"
         PreviewMouseLeftButtonUp="Window_MouseUp"
         PreviewMouseMove="Window_MouseMove"

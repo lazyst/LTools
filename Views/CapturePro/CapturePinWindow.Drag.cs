@@ -12,7 +12,8 @@ namespace LTools.Views.CapturePro;
 /// 贴图的鼠标手势：拖动 / 平移、滚轮缩放与不透明度、悬停 chrome、光标与边框。
 /// </summary>
 /// <remarks>
-/// 贴图不抢焦点、收不到键盘，所以这里的一切都只用鼠标表达：双击关闭（缩略图里是还原）、
+/// 贴图不抢焦点、收不到键盘，所以这里的一切都只用鼠标表达：双击与中键按设置执行
+/// （默认双击 = 缩略图模式、中键 = 重置缩放，见 <see cref="Features.CapturePro.PointerSettings"/>）、
 /// <c>Ctrl</c>+单击多选、<c>Ctrl</c>+拖动在取景框里移动窗口、滚轮缩放、<c>Ctrl</c>/<c>Shift</c>+滚轮改不透明度。
 /// </remarks>
 public partial class CapturePinWindow
@@ -38,13 +39,12 @@ public partial class CapturePinWindow
             return;
         }
 
-        // 双击：缩略图里 = 还原成整张图（不是关掉，83px 的小方块太容易误关）；
-        // 普通贴图 = 关闭（比右键菜单快一步；锁定也允许，它不会改位置）
+        // 双击：按设置执行（默认缩略图里 = 还原成整张图，再点一次又缩回去）。
+        // 「关闭 / 删除」不是按下就做——先武装，按钮抬起之后一拍才动窗口（照上游）。
         if (e.ClickCount == 2)
         {
-            if (_thumb) SetThumbnail(false);
-            else Close();
             e.Handled = true;
+            InvokePointerAction(PointerSettings.PinDoubleClick, PointerButton.Left);
             return;
         }
 
@@ -64,6 +64,21 @@ public partial class CapturePinWindow
         BeginGesture(e.GetPosition(this));
         CaptureMouse();
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// 中键（<c>PreviewMouseDown</c>）：按设置执行（默认重置缩放）。
+    /// 关闭 / 删除只武装，抬起之后一拍才做。
+    /// </summary>
+    private void Window_PointerDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Middle) return;
+
+        // 点在自己的按钮上就交给按钮（和左键同一个理由）：不吞事件。
+        if (IsOnButton(e.OriginalSource as DependencyObject)) return;
+
+        e.Handled = true;
+        InvokePointerAction(PointerSettings.PinMiddleClick, PointerButton.Middle);
     }
 
     /// <summary>按下后真正开始的那一下手势：取景框里平移内容，其余情况移动窗口（含成组 / 多选）。</summary>
@@ -330,7 +345,7 @@ public partial class CapturePinWindow
         }
     }
 
-    private void CloseBtn_Click(object sender, RoutedEventArgs e) => Close();
+    private void CloseBtn_Click(object sender, RoutedEventArgs e) => RequestUserClose();
 
     /// <summary>
     /// 空闲光标：取景框里用四向箭头暗示「拖 = 平移」，其它情况是普通箭头

@@ -182,7 +182,10 @@
     "BackgroundColor": "system"
   },
   "PinToScreen": {
-    "ShakeWindowToHideOthers": true
+    "ShakeWindowToHideOthers": true,
+    "DoubleClickAction": "thumbnail_mode",
+    "MiddleButtonAction": "reset_zoom",
+    "ConfirmBeforeDestroyingWindow": true
   },
   "Collage": {
     "Direction": "vertical",
@@ -208,7 +211,9 @@
     "PdfImageQuality": 100
   },
   "Screenshot": {
-    "DelaySeconds": 3
+    "DelaySeconds": 3,
+    "DoubleClickAction": "copy",
+    "MiddleButtonAction": "pin"
   },
   "Triggers": {
     "Enabled": false,

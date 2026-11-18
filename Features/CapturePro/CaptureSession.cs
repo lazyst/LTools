@@ -64,7 +64,7 @@ internal static class CaptureSession
 
         CaptureResult? result = null;
         CapturePlacement? placement = null;
-        bool pin = false, recognize = false, scroll = false, live = false;
+        bool pin = false, recognize = false, recognizeCopy = false, scroll = false, live = false;
         bool record = false;
         var recordArea = Int32Rect.Empty;
         var finish = CaptureOverlayWindow.FinishKind.Copy;
@@ -98,6 +98,7 @@ internal static class CaptureSession
                 var captured = overlay.ResultImage;
                 pin = overlay.PinRequested;
                 recognize = overlay.RecognizeRequested;
+                recognizeCopy = overlay.RecognizeCopyRequested;
                 scroll = overlay.ScrollRequested;
                 scrollExit = overlay.ScrollAfter;
                 live = overlay.LiveRequested;
@@ -176,7 +177,8 @@ internal static class CaptureSession
         if (pin) CapturePinManager.Pin(result.Image, result.Area, appearance: result.Appearance);
         if (live) StartLivePin(result);
         if (recognize)
-            CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry, result.Area);
+            CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry, result.Area,
+                recognizeCopy);
 
         exit = CaptureExit.Captured;
         return result;
@@ -327,6 +329,7 @@ internal static class CaptureSession
         CaptureOverlayWindow.FinishKind.Print => "打印",
         CaptureOverlayWindow.FinishKind.Pin => "贴图",
         CaptureOverlayWindow.FinishKind.Recognize => "识别",
+        CaptureOverlayWindow.FinishKind.RecognizeCopy => "识别并复制",
         CaptureOverlayWindow.FinishKind.Scroll => "长截图",
         CaptureOverlayWindow.FinishKind.Live => "实时贴图",
         _ => "复制",

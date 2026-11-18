@@ -47,6 +47,50 @@ public partial class CaptureOverlayWindow
 
     private enum DragMode { None, New, Move, Resize, Draw, Erase, Mark, MarkResize, MagnifierLens, Lasso, Marquee, SmartPress }
 
+    /// <summary>
+    /// 中键：按设置完成当前选区（照上游 <c>handleUnhandledMiddleClick</c>）。
+    /// </summary>
+    /// <remarks>
+    /// 三种不接的情况与上游一致：手势 / 打字进行中不抢；落在工具条、信息条、比例菜单上
+    /// 交给它们自己的控件；没有选区时什么都不做（中键不是框选的起手式）。
+    /// 智能预选态先看点击点是否落在预选块里，在就落定它再执行（默认「贴到屏幕」）。
+    /// </remarks>
+    private void Window_MiddleDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Middle) return;
+
+        if (_scrollMode) { e.Handled = true; return; }
+
+        if (IsOnToolbar(e.OriginalSource as DependencyObject)) return;
+        if (IsOnSelectionBar(e.OriginalSource as DependencyObject)) return;
+        if (IsOnAspectMenu(e.OriginalSource as DependencyObject)) return;
+        if (IsOnQrBubble(e.OriginalSource as DependencyObject) ||
+            IsOnQr(e.OriginalSource as DependencyObject)) return;
+
+        e.Handled = true;
+
+        if (_drag != DragMode.None || _textEditing) return;
+
+        OverlayPointerAction action = PointerSettings.OverlayMiddleClick;
+        if (action == OverlayPointerAction.None) return;
+
+        if (SmartPreviewActive)
+        {
+            if (action == OverlayPointerAction.Cancel) { CompleteFromPointer(action); return; }
+            if (!_smart.HasCurrentSelection) return;
+
+            Rect preview = _smart.CurrentSelection;
+            if (!preview.Contains(Clamp(e.GetPosition(Layer)))) return;   // 点不在这一块上：不动
+            ConfirmSmartSelection(preview);
+        }
+        else if (_sel is not Rect sel || !IsValid(sel))
+        {
+            return;
+        }
+
+        CompleteFromPointer(action);
+    }
+
     private void Window_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
@@ -204,10 +248,12 @@ public partial class CaptureOverlayWindow
 
             if (_tool == CaptureTool.Select)
             {
-                // 双击（和框选取图一致）= 确定
+                // 双击 = 完成：快捷入口（截图并贴图 / 识别…）优先走它自己的默认出口；
+                // 普通截图按设置（默认「复制到剪贴板」，照上游 handleUnhandledLeftDoubleClick）。
                 if (e.ClickCount == 2)
                 {
-                    Accept(DefaultFinish);
+                    if (HasPending) Accept(DefaultFinish);
+                    else CompleteFromPointer(PointerSettings.OverlayDoubleClick);
                     e.Handled = true;
                     return;
                 }

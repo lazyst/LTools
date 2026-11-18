@@ -104,6 +104,7 @@ public partial class CapturePinWindow : Window
     {
         InitializeComponent();
         InitDrop();
+        InitPointerActions();
 
         _content = image;        _scale = scale > 0 ? scale : 1;
         _zoom = PinMath.ClampZoom(zoom);

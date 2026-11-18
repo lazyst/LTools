@@ -783,6 +783,7 @@ public partial class ConfigHelperWindow : Window
         };
         ApplyEdgeWheelVisibility();
         PopulateScreenshotDelay();
+        PopulatePointerActions();
     }
 
     /// <summary>

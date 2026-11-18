@@ -292,6 +292,62 @@
                                 <TextBlock Style="{StaticResource HintLabel}" Margin="120,6,0,0"
                                            TextWrapping="Wrap"
                                            Text="「延时截图」入口（面板 / 快捷键 / 悬浮）点下后先等这笔秒数再弹框选，方便先把菜单、悬停提示摆好。1–10 秒，默认 3 秒。"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="框选后双击" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="ScreenshotDoubleClickCombo" MinHeight="32"
+                                              SelectionChanged="ScreenshotPointer_Changed"
+                                              ToolTip="框选完成后，用选择工具双击做什么"/>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="框选后中键" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="ScreenshotMiddleClickCombo" MinHeight="32"
+                                              SelectionChanged="ScreenshotPointer_Changed"
+                                              ToolTip="框选完成后，中键做什么"/>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="贴图双击" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="PinDoubleClickCombo" MinHeight="32"
+                                              SelectionChanged="PinPointer_Changed"
+                                              ToolTip="在贴图上双击做什么"/>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="贴图中键" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="PinMiddleClickCombo" MinHeight="32"
+                                              SelectionChanged="PinPointer_Changed"
+                                              ToolTip="在贴图上点中键做什么"/>
+                                </Grid>
+
+                                <CheckBox x:Name="PinConfirmDestroyBox" Margin="0,12,0,0"
+                                          Content="删除贴图前先确认"
+                                          Checked="PinConfirmDestroy_Changed" Unchecked="PinConfirmDestroy_Changed"/>
+
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="120,8,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="框选完成后双击 / 中键直接执行这里的动作（默认「复制到剪贴板」/「贴到屏幕」）；快捷入口（截图并贴图 / 识别…）自带动作时以入口为准。贴图的「关闭」只在按钮抬起后生效，「删除」会连贴图历史一起删掉。"/>
                             </StackPanel>
                         </Border>
 

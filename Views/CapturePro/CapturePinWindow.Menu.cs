@@ -249,7 +249,7 @@ public partial class CapturePinWindow
         menu.Items.Add(textStyle);
 
         var close = new MenuItem { Header = "关闭" };
-        close.Click += (_, _) => Close();
+        close.Click += (_, _) => RequestUserClose();
         menu.Items.Add(close);
 
         var closeAll = new MenuItem { Header = "关闭全部贴图" };

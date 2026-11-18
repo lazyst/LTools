@@ -43,6 +43,7 @@ public partial class CaptureResultWindow : Window
     private readonly CaptureEntry? _entry;
     private readonly bool _runOnLoad;
     private readonly Int32Rect _area;
+    private bool _copyWhenReady;
 
     private RecognizeResult? _result;
     private string _tab = "text";
@@ -57,8 +58,11 @@ public partial class CaptureResultWindow : Window
     private bool _documentRendered;
 
     /// <summary>正常打开：先显示「正在识别…」，Loaded 之后在后台跑识别。</summary>
+    /// <param name="copyWhenReady">
+    /// 算完直接把全文写进剪贴板（照上游 <c>text_recognition_copy</c>：识别窗照开，只是省掉「再点一下复制」）。
+    /// </param>
     internal CaptureResultWindow(BitmapSource image, string? engine, CaptureEntry? entry = null,
-        Int32Rect area = default)
+        Int32Rect area = default, bool copyWhenReady = false)
     {
         InitializeComponent();
 
@@ -67,6 +71,7 @@ public partial class CaptureResultWindow : Window
         _entry = entry;
         _area = area;
         _runOnLoad = true;
+        _copyWhenReady = copyWhenReady;
 
         OriginalImage.Source = image;
         FillTranslateTargets();
@@ -103,9 +108,9 @@ public partial class CaptureResultWindow : Window
 
     /// <summary>打开结果窗（非模态：用户慢慢改 / 复制，流程该干嘛干嘛）。</summary>
     internal static void Show(BitmapSource image, string? engine, CaptureEntry? entry = null,
-        Int32Rect area = default)
+        Int32Rect area = default, bool copyWhenReady = false)
     {
-        var window = new CaptureResultWindow(image, engine, entry, area);
+        var window = new CaptureResultWindow(image, engine, entry, area, copyWhenReady);
         window.Show();
         window.Activate();
         window.Focus();
@@ -216,6 +221,17 @@ public partial class CaptureResultWindow : Window
         UpdateTabs();
         UpdateZoom();
         RefreshStatus();
+
+        // 「识别并复制」：识别完直接把全文写进剪贴板（窗口照开，用户还能改 / 看原文）
+        if (_copyWhenReady)
+        {
+            _copyWhenReady = false;
+            if (result.Ok && _model != null)
+            {
+                if (_model.AllText.Length > 0) Copy(_model.AllText, "识别文字");
+                else ToastService.Show("没有识别到文字", "识别结果", 1600, ToastKind.warning);
+            }
+        }
     }
 
     private static int Extent(IReadOnlyList<OcrTextLine> lines, bool horizontal)

@@ -10,6 +10,7 @@
         SnapsToDevicePixels="True" Focusable="True"
         PreviewKeyDown="Window_KeyDown"
         PreviewMouseMove="Window_MouseMove"
+        PreviewMouseDown="Window_MiddleDown"
         PreviewMouseLeftButtonDown="Window_MouseDown"
         PreviewMouseLeftButtonUp="Window_MouseUp"
         PreviewMouseRightButtonDown="Window_Cancel"

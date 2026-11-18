@@ -245,14 +245,18 @@ public partial class CaptureOverlayWindow
     /// 「有选区」单独占一档：像别的截图工具一样，框完右键先把这次框选取消掉，
     /// 覆盖层留着让用户重新框；没选区时再按一次才关掉覆盖层。
     /// </summary>
+    /// <returns>
+    /// true = 这一档是「退出这次截图」。调用方**不要**当场 <see cref="Cancel"/>：
+    /// 照上游把这一下当鼠标释放动作武装起来，按钮抬起之后一拍才真的关。
+    /// </returns>
     /// <remarks>
     /// **Esc 不走这里**：上游（snow-shot）Esc = <c>cancel_screenshot</c>，直接退出这次截图；
     /// 逐级收是右键的事（上游 <c>handleRightClick</c>）。
     /// </remarks>
-    private void StepBack()
+    private bool StepBack()
     {
         // 智能选区预选态：右键直接退出这次截图（上游 preselection 里的 handleRightClick = CancelCapture）
-        if (SmartPreviewActive) { Cancel(); return; }
+        if (SmartPreviewActive) return true;
 
         if (BrowsingHistory) ExitHistory();
         else if (_selPolyActive) { CancelSelectionPolyline(); UpdateChrome(); }
@@ -261,7 +265,9 @@ public partial class CaptureOverlayWindow
         else if (_selectedIndex >= 0) ClearMarkSelection();
         else if (IsValid(_sel)) ClearSelection();
         else if (_tool != CaptureTool.Select) SetTool(CaptureTool.Select);
-        else Cancel();
+        else return true;
+
+        return false;
     }
 
     /// <summary>
