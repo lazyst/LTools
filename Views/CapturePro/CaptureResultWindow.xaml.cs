@@ -70,6 +70,7 @@ public partial class CaptureResultWindow : Window
 
         OriginalImage.Source = image;
         FillTranslateTargets();
+        FillTransformOptions();
         Place();
         Loaded += (_, _) =>
         {
@@ -95,6 +96,7 @@ public partial class CaptureResultWindow : Window
         _runOnLoad = false;
         if (image != null) OriginalImage.Source = image;
         FillTranslateTargets();
+        FillTransformOptions();
         Place();
         Apply(result);
     }
@@ -179,13 +181,19 @@ public partial class CaptureResultWindow : Window
         var model = new OcrTextEditModel();
         model.Load(_layer.Select(line => line.Text));
         model.Changed += RefreshStatus;
+        model.Changed += DropTransformsOnUserEdit;
         _model = model;
 
         int width = _image?.PixelWidth ?? Extent(_layer, true);
         int height = _image?.PixelHeight ?? Extent(_layer, false);
+        _ocrWidth = width;
+        _ocrHeight = height;
         OcrCanvas.Attach(model, _layer, width, height);
         OcrCanvas.SelectionChanged += RefreshStatus;
         OcrCanvas.LineEditRequested += _ => RefreshStatus();
+
+        // 默认排版 / 标点先应用一次（上游 applyInitialTransforms：进文字编辑就生效）
+        ApplyInitialTransforms();
 
         FillTable(result.Table);
         FillQr(result);
@@ -371,6 +379,7 @@ public partial class CaptureResultWindow : Window
 
         // 翻译只服务文字页：别的页签把这一组收起（不放死按钮）
         UpdateTranslateBar();
+        UpdateTransformBar();
 
         // 表格页时贴选区摆好的窗口可能装不下整张表：切过去先把画布宽度对齐视口
         if (_tab == "table")

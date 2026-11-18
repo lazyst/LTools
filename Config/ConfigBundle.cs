@@ -111,6 +111,7 @@ internal static class ConfigBundle
         cfg.Logging = settings.Logging ?? new LogConfig();
         cfg.Record = (settings.Record ?? new RecordOptions()).Normalized();
         cfg.Translation = settings.Translation ?? new TranslationFile();
+        cfg.TextRecognition = settings.TextRecognition ?? new TextRecognitionFile();
 
         var ui = Read<UiStateFile>(UiPath(anchorPath), ctx);
         if (ui == null) ui = ToUi(ctx.GetSeed());
@@ -374,6 +375,7 @@ internal static class ConfigBundle
         Logging = cfg.Logging ?? new LogConfig(),
         Record = cfg.Record ?? new RecordOptions(),
         Translation = cfg.Translation ?? new TranslationFile(),
+        TextRecognition = cfg.TextRecognition ?? new TextRecognitionFile(),
     };
 
     internal static UiStateFile ToUi(AppConfig cfg) => new()

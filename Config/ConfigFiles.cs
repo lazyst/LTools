@@ -42,6 +42,9 @@ public sealed class SettingsFile
 
     /// <summary>识别结果的在线翻译（OpenAI 兼容端点）。空端点 / 空模型 = 没配。</summary>
     public TranslationFile Translation { get; set; } = new();
+
+    /// <summary>文字识别的默认排版 / 标点（进文字编辑时先应用一次）。</summary>
+    public TextRecognitionFile TextRecognition { get; set; } = new();
 }
 
 /// <summary><c>config/ui.json</c>：界面状态（丢了不影响功能，只是记忆丢失）。</summary>

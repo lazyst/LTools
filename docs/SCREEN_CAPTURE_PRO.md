@@ -781,6 +781,31 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 - **失败不假装成功**：401 报「翻译端点拒绝了这个密钥（401）」，连不上报「连不上翻译端点：…」，超时报秒数；
   失败时常驻 toast + 状态行「翻译失败：…」，画布仍是原文。
 
+### 10.8 文字排版与标点（P4-g）
+
+上游文字模式工具条上有两个下拉 + 一个「重置」（`screenshotocrtexttransform.cpp` +
+`ScreenshotOcrTextEditingSession`）：
+
+| 下拉 | 选项（键） | 行为 |
+| --- | --- | --- |
+| 排版 | `none` / `keep` / `remove` / `smart` | 不排版 / 保留换行 / 去掉换行（整段接成一行）/ 智能排版（按版面接回段落） |
+| 标点 | `none` / `half` / `full` | 不转换 / 全角 → 半角 / 半角 → 全角（上游那张 32 字符表：ASCII 的 32 个标点 ↔ 对应的全角字符；表里没有的字符（`。`、`、`、`《`…）一律不动） |
+
+- **基线式变换**：第一次选到非「无」时记一份基线，之后每次变换都**从基线重算**（半角 → 全角 → 半角
+  不会叠加出错）；两个都回到「无」= 恢复基线。**任何手动编辑都会作废变换**（上游 `appendHistory` 里
+  `clearTransforms`）：这里的判定是「文本变了但不是变换改的」→ 丢掉基线、两个下拉静默回「无」，
+  文字保留用户改过的样子。光标 / 选区变化不算编辑。
+- **智能排版**（本地简化版 `mergeOcrLayout`）：纵向间距 > 中位行高 × 0.75、行高差 > 1.6 倍、
+  或以列表记号（`•·-*–` / `1.` `1、` `1)`）开头的行都另起一段；段内合并复用
+  `ConversionDocument.JoinText`（中日韩字符之间不补空格，拉丁之间补一个）。
+- **落点的差别**：上游把新文本塞回 `QTextDocument` 重新排版；本项目的文字层是「模型行 ↔ OCR 行框」
+  一一对应，所以 `OcrTextTransform.Apply` 同时给出**合并后的行框并集**，界面据此重建文字层——
+  否则「去掉换行」后的唯一一行会套在第一行的框里、字号被压得极小。
+- **「重置」** = 上游 `resetTextRequested`：丢掉变换、回到最初的 OCR 文本与行框，两个下拉回「无」；
+  不写默认值。
+- **默认值**：`settings.json` 的 `TextRecognition` 段（`DefaultFormatting` / `DefaultPunctuation`），
+  进文字编辑先应用一次（上游 `applyInitialTransforms`）；在识别窗换下拉即写默认值，下次还是这个。
+
 ## 11. 采集历史（P2-2 / P4）
 
 截图 / 识别 / 录屏的落点：数据根 `captures/`（`catalog.json` + `assets/<id>.png` + `thumbnails/<id>.png`
@@ -1209,6 +1234,7 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
 | **P4-d** ✅ | ④ | 图片转 Markdown / HTML（照 `markdownRequested` / `htmlRequested` + `screenshotimageconversionview` + `screenshotimageconversionclipboard`，云端部分改本地版面派生）：块模型 Heading 1–3 / Paragraph / Bullet / Ordered / Table；标题按行高比 ≥1.9 · 1.45 · 1.2、段落按纵向间距 ≤0.75 中位行高且中日韩不补空格、列表认 `•·-*–` 与 `1. 1、1)`、表格剔去 `TableArea` 内行并裁首尾单格行；Markdown 管道表格 + 单元格转义、HTML `h1–h3`/`p`/`ul`/`ol`/`table+thead+th+tbody+td` + 文本转义；预览用 `FlowDocumentScrollViewer` 可划选，**选了复制选中段、没选复制整份源码**，HTML 另写 `text/html` |
 | **P4-e** ✅ | ④ | 文档识别与导出（照 `documentRequested` / `screenshotdocumentexport` / `screenshotrecognitionfileexport` 的 Document 一族）：结果窗「文档」页签（同一份版面块渲染、可划选）+ 五种导出 `docx`（六 part WordprocessingML + 三级标题 + numbering + 表格）/ `pdf`（系统 Edge·Chrome headless `--print-to-pdf`，无引擎明确报错）/ `md` / `html`（独立页）/ `tex`（`ctex` + `booktabs`）+「打开文档」= 写临时 docx 交默认程序 + 复制富文本（`text/html` + 纯文本，选了复制选中段） |
 | **P4-f** ✅ | ④ | 在线翻译（照 `textTranslationRequested` / `translationservice` / `translationjob` 的 `beginTextTranslation` + overlay translation）：按行翻译、**行数必须对得上**，译文摆回原行框且只读；`TranslationClient`（端点校验 / `ChatUrl` / 请求体 / `ExtractContent` 含分段 content / 围栏 / JSON 数组 → 按行切 → 单行整段 / 状态码人话 / linked 超时与取消）、`TranslationLanguages`（9 门语言 + 按字符族判源语言）、`TranslationStore`（`settings.json` 的 `Translation` 段）、`TranslationSettingsWindow`（端点 / 模型 / 密钥 / 超时 / 源与目标语言 / 真发一条测试连接）+ 结果窗翻译条（目标语言 / 翻译·取消·原文 / ⚙，只在文字页）+ 「复制译文」；上游多家服务与私有云换成**一个 OpenAI 兼容端点**（§5） |
+| **P4-g** ✅ | ④ | 文字排版与标点（照 `screenshotocrtexttransform.cpp` / `screenshotocrtexteditingsession.cpp`）：`OcrTextTransform`（`none/keep/remove/smart` + `none/half/full`、32 字符半↔全角表、**基线式变换**（首次非「无」记基线 → 每次从基线重算 → 都回「无」恢复基线）、智能排版按版面接段落、合并后行框并集）+ `TextRecognitionStore`（`settings.json` 的 `TextRecognition` 段）+ 结果窗文字页第二行的两个下拉与「重置」+ `OcrTextEditModel.ReplaceAll`（保留撤销栈）；手动编辑作废变换、译文态禁用、「重置」= 回到最初 OCR 文本（§10.8） |
 
 ## 16. 验收
 
@@ -2789,3 +2815,25 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   响应解析 / 语言判定」）；`capture-overlay-smoke` **1047 条**（本地真 TCP 假端点端到端：请求体带当前文字层
   两行与模型名、译文摆回画布、复制译文、点「原文」切回、401 报「密钥」且不显示译文、非文字页收起翻译条；
   落图 `out/result-translate.png`）。
+- **文字排版与标点（P4-g，2026-11-18）**：`screenshotocrtexttransform.cpp` 原来被记成「识别结果贴回画布」，
+  实际是文字模式工具条上的**排版 / 标点两个下拉 + 重置**，已按它重写（§10.8）。
+  新文件三个：`Features/CapturePro/OcrTextTransform.cs`、`Config/TextRecognition.cs`、
+  `Features/CapturePro/TextRecognitionStore.cs`，加 `Views/CapturePro/CaptureResultWindow.Transform.cs`。
+  改到的：`ConversionDocument`（把列表记号判定与「补不补空格」暴露成 `StartsListItem` / `JoinText`，
+  智能排版复用同一份规则）、`OcrTextEditModel.ReplaceAll`（整批换行保留撤销栈）、
+  `CaptureResultWindow.xaml(.cs)`（页签行加第二行 `TransformBar`；`Apply` 里先存原图尺寸再
+  `applyInitialTransforms`；`UpdateTabs` 调 `UpdateTransformBar`）、`AppConfig` / `ConfigFiles` /
+  `ConfigBundle` / `LTools.example.json`（`TextRecognition` 段）。
+  三个坑：① `OcrTextEditModel.Changed` 在选区 / 光标变化时也触发，「手动编辑作废变换」只能比对
+  `AllText` 快照；② 变换会改层数，重建文字层要**同时换行框**（合并框），只换文本会让后面几行叠进第一行框；
+  ③ `OcrCanvas.Attach` 会重设 imageWidth/Height，所以要先把原图尺寸存进 `_ocrWidth/_ocrHeight`。
+  顺带修掉两个界面问题：底栏状态行原来是横向 `StackPanel` 的子元素（无限宽 → `TextTrimming` 不生效，
+  长错误文案从「复制文字」底下穿过去）→ 改成独占 `*` 列；翻译设置那个 `⚙` 按钮 26 宽 + 默认内边距把字形
+  切掉半个 → `Padding="0"` + `FontSize=15`。
+  冒烟另修了两处本机偶发假失败：① 直接调私有 `CommitMarkMarquee` 时 `_drag` 还停在 `Marquee`，
+  `Pump` 期间到达的真实鼠标移动会把框重新画出来（提交后补一次 `_drag = None`）；② 二维码复制后立刻读
+  剪贴板会撞 `OpenClipboard` 的偶发失败（改成 3 秒重试）。
+  回归：`--selftest` 全量 **7856 断言**（`capturePro` 76 用例 3030 断言，新增「识别：文字排版 / 标点转换
+  （基线 / 智能分段 / 并集框）」）；`capture-overlay-smoke` **1069 条**（真窗口：下拉项数与默认值、
+  非文字页收起、全角标点、去换行 + 标点一起、回「无」恢复基线、「重置」回最初文本、智能排版接段落、
+  换下拉写默认值、手动编辑作废变换；落图 `out/result-transform.png`）。

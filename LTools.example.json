@@ -167,6 +167,10 @@
     "Source": "auto",
     "TimeoutMs": 30000
   },
+  "TextRecognition": {
+    "DefaultFormatting": "none",
+    "DefaultPunctuation": "none"
+  },
   "Triggers": {
     "Enabled": false,
     "Rules": []

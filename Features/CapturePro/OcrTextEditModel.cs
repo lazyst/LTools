@@ -200,6 +200,39 @@ internal sealed class OcrTextEditModel
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// 整批替换行（排版 / 标点转换用）：走撤销栈，光标与选区夹回合法范围。
+    /// 与 <see cref="Load"/> 的区别是它<b>保留</b>撤销历史（转换能 Ctrl+Z 退回去）。
+    /// </summary>
+    public bool ReplaceAll(IEnumerable<string> lines)
+    {
+        var next = new List<string>();
+        foreach (string line in lines ?? Array.Empty<string>()) next.Add(line ?? "");
+        if (next.Count == 0) next.Add("");
+
+        if (next.Count == _lines.Count)
+        {
+            bool same = true;
+            for (int i = 0; i < next.Count; i++)
+            {
+                if (_lines[i] == next[i]) continue;
+                same = false;
+                break;
+            }
+
+            if (same) return false;
+        }
+
+        PushUndo();
+        _lines.Clear();
+        _lines.AddRange(next);
+        AnchorLine = CaretLine = 0;
+        AnchorChar = CaretChar = 0;
+        ClampSelection();
+        Changed?.Invoke();
+        return true;
+    }
+
     /// <summary>删除选区，没有选区时删光标前一个字符 / 吞掉换行。</summary>
     public void Backspace()
     {

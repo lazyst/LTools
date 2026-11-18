@@ -217,7 +217,7 @@ internal sealed class ConversionDocument
                 if (gap > Math.Max(2, (int)Math.Round(median * 0.75))) break;
                 if (next.H > height * 1.6 || next.H * 1.6 < height) break;
 
-                Join(paragraph, next.Text.Trim());
+                JoinText(paragraph, next.Text.Trim());
                 height = next.H;
                 bottom = next.Y + next.H;
                 index++;
@@ -297,6 +297,14 @@ internal sealed class ConversionDocument
         return 0;
     }
 
+    /// <summary>这一行是不是列表项（行首有 <c>•·-*–</c> 或 <c>1.</c> / <c>1、</c> / <c>1)</c>）。</summary>
+    /// <remarks>智能排版（<c>OcrTextTransform</c>）用它判「列表行自己一段」，别再另写一套记号表。</remarks>
+    internal static bool StartsListItem(string text)
+    {
+        StripListMark((text ?? "").Trim(), out ConversionKind kind);
+        return kind != ConversionKind.Paragraph;
+    }
+
     /// <summary>去掉行首列表记号；返回去掉后的正文。</summary>
     private static string StripListMark(string text, out ConversionKind kind)
     {
@@ -320,7 +328,8 @@ internal sealed class ConversionDocument
     }
 
     /// <summary>接段落：两边都是中日韩字符就直接连（中文没有词间空格），否则补一个空格。</summary>
-    private static void Join(StringBuilder builder, string next)
+    /// <remarks>智能排版（<c>OcrTextTransform</c>）的段落合并共用它，别另写一套「要不要补空格」。</remarks>
+    internal static void JoinText(StringBuilder builder, string next)
     {
         if (builder.Length == 0)
         {

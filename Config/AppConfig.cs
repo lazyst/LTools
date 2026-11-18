@@ -182,6 +182,9 @@ public sealed class AppConfig
     /// <summary>识别结果的在线翻译：OpenAI 兼容端点 / 模型 / 密钥 / 源与目标语言。</summary>
     public TranslationFile Translation { get; set; } = new();
 
+    /// <summary>文字识别的默认排版 / 标点（进文字编辑时先应用一次）。</summary>
+    public TextRecognitionFile TextRecognition { get; set; } = new();
+
     /// <summary>
     /// 动作运行结束后的提示策略：不提示 / 只在失败时（默认）/ 成功也提示。
     /// 失败提示是常驻的（点一下关，下一次运行自动替换）。

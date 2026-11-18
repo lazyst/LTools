@@ -38,6 +38,11 @@
             <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
                     Padding="10,0,10,6">
                 <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
                         <RadioButton x:Name="TabText" Style="{StaticResource CaptureTab}" GroupName="resultTab"
                                      Content="文字" IsChecked="True" Tag="text" Checked="Tab_Changed"/>
@@ -63,8 +68,32 @@
                         <Button x:Name="TranslateBtn" Style="{StaticResource BtnGhost}" Content="翻译"
                                 MinWidth="66" Height="26" Margin="8,0,0,0" Click="Translate_Click"/>
                         <Button x:Name="TranslateSettingsBtn" Style="{StaticResource BtnGhost}"
-                                Content="⚙" Width="26" Height="26" Margin="6,0,0,0" Focusable="False"
+                                Content="⚙" Width="26" Height="26" Padding="0" FontSize="15"
+                                Margin="6,0,0,0" Focusable="False"
                                 ToolTip="翻译设置…" Click="TranslateSettings_Click"/>
+                    </StackPanel>
+
+                    <!-- 排版 / 标点（照上游文字模式工具条的两个下拉 + 重置）：只在文字页露面。
+                         选过非「无」就记基线，之后都从基线重算；两个都回「无」= 恢复基线；
+                         「重置」= 回到最初的 OCR 文本（上游 resetTextRequested）。 -->
+                    <StackPanel x:Name="TransformBar" Grid.Row="1" Orientation="Horizontal"
+                                HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,6,0,0">
+                        <TextBlock Text="排版" VerticalAlignment="Center" Margin="0,0,6,0"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource SecondaryTextBrush}"/>
+                        <ComboBox x:Name="FormattingBox" Width="112" Height="26" Padding="6,0,24,0"
+                                  FontSize="{StaticResource FontSizeHint}"
+                                  SelectionChanged="FormattingBox_Changed"/>
+                        <TextBlock Text="标点" VerticalAlignment="Center" Margin="10,0,6,0"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource SecondaryTextBrush}"/>
+                        <ComboBox x:Name="PunctuationBox" Width="104" Height="26" Padding="6,0,24,0"
+                                  FontSize="{StaticResource FontSizeHint}"
+                                  SelectionChanged="PunctuationBox_Changed"/>
+                        <Button x:Name="TextResetBtn" Style="{StaticResource BtnGhost}" Content="重置"
+                                MinWidth="56" Height="26" Margin="10,0,0,0" Focusable="False"
+                                ToolTip="回到最初的识别文本（会丢掉识别后的编辑）"
+                                Click="TextReset_Click"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -202,25 +231,40 @@
                 </Grid>
             </Border>
 
-            <!-- 底栏：显示原图 / 填充背景 / 原文预览 · 复制 / 关闭 -->
+            <!-- 底栏：显示原图 / 填充背景 / 原文预览 · 状态 · 复制 / 关闭
+                 状态行独占一列（`*`）才能 TextTrimming：横向 StackPanel 给子元素无限宽，
+                 长错误文案会从按钮底下穿过去。 -->
             <Border Grid.Row="3" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
                     Padding="12,8">
                 <Grid>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <CheckBox x:Name="OriginalToggle" Content="显示原图" VerticalAlignment="Center"
-                                  Checked="Original_Changed" Unchecked="Original_Changed"/>
-                        <CheckBox x:Name="FillToggle" Content="填充背景" IsChecked="True"
-                                  VerticalAlignment="Center" Margin="14,0,0,0"
-                                  Checked="Fill_Changed" Unchecked="Fill_Changed"/>
-                        <Button x:Name="PreviewBtn" Style="{StaticResource BtnGhost}" Content="原文预览"
-                                MinWidth="88" Margin="14,0,0,0" Click="Preview_Click"/>
-                        <TextBlock x:Name="StatusText" Margin="12,0,0,0" VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Grid Grid.Column="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <CheckBox x:Name="OriginalToggle" Content="显示原图" VerticalAlignment="Center"
+                                      Checked="Original_Changed" Unchecked="Original_Changed"/>
+                            <CheckBox x:Name="FillToggle" Content="填充背景" IsChecked="True"
+                                      VerticalAlignment="Center" Margin="14,0,0,0"
+                                      Checked="Fill_Changed" Unchecked="Fill_Changed"/>
+                            <Button x:Name="PreviewBtn" Style="{StaticResource BtnGhost}" Content="原文预览"
+                                    MinWidth="88" Margin="14,0,0,0" Click="Preview_Click"/>
+                        </StackPanel>
+
+                        <TextBlock x:Name="StatusText" Grid.Column="1" Margin="12,0,10,0"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                    FontSize="{StaticResource FontSizeHint}"
                                    Foreground="{StaticResource SecondaryTextBrush}"/>
-                    </StackPanel>
+                    </Grid>
 
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button x:Name="CopyBtn" Style="{StaticResource BtnPrimary}" Content="复制文字"
                                 MinWidth="110" Click="Copy_Click"/>
                         <Button Style="{StaticResource BtnGhost}" Content="关闭" MinWidth="78"
