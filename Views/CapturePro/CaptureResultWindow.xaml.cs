@@ -52,6 +52,8 @@ public partial class CaptureResultWindow : Window
     private OcrTextEditModel? _model;
     private IReadOnlyList<OcrTextLine> _layer = Array.Empty<OcrTextLine>();
     private CaptureOriginalPreviewWindow? _preview;
+    private ConversionDocument _conversion = ConversionDocument.Empty;
+    private string _renderedConversion = "";
 
     /// <summary>正常打开：先显示「正在识别…」，Loaded 之后在后台跑识别。</summary>
     internal CaptureResultWindow(BitmapSource image, string? engine, CaptureEntry? entry = null,
@@ -116,6 +118,12 @@ public partial class CaptureResultWindow : Window
     /// <summary>文字层画布。</summary>
     internal CaptureOcrCanvas Canvas => OcrCanvas;
 
+    /// <summary>Markdown / HTML 页的派生内容（冒烟读它做断言）。</summary>
+    internal ConversionDocument Conversion => _conversion;
+
+    /// <summary>Markdown / HTML 页的渲染预览（冒烟读它做断言）。</summary>
+    internal CaptureConversionView ConversionView => ConversionPage;
+
     private async void Start()
     {
         if (!_runOnLoad || _started) return;
@@ -175,6 +183,9 @@ public partial class CaptureResultWindow : Window
 
         FillTable(result.Table);
         FillQr(result);
+
+        // Markdown / HTML 由 OCR 行派生（上游这两页是云模型，本地按版面派生，见 ConversionDocument）
+        _conversion = ConversionDocument.Build(result.Lines, result.Table);
 
         if (!result.Ok)
         {
@@ -296,12 +307,22 @@ public partial class CaptureResultWindow : Window
         }
 
         bool text = _tab == "text";
+        bool conversion = _tab is "markdown" or "html";
         bool original = originalToggle.IsChecked == true;
 
         ocrScroll.Visibility = text && !original ? Visibility.Visible : Visibility.Collapsed;
         OriginalScroll.Visibility = text && original ? Visibility.Visible : Visibility.Collapsed;
         TablePage.Visibility = _tab == "table" ? Visibility.Visible : Visibility.Collapsed;
         QrPage.Visibility = _tab == "qr" ? Visibility.Visible : Visibility.Collapsed;
+        ConversionPage.Visibility = conversion ? Visibility.Visible : Visibility.Collapsed;
+
+        // 只在内容 / 页真的变了时重渲染：翻开关不该把用户刚划好的选区清掉
+        if (conversion &&
+            (!ReferenceEquals(ConversionPage.Content, _conversion) || _renderedConversion != _tab))
+        {
+            ConversionPage.Render(_conversion, html: _tab == "html");
+            _renderedConversion = _tab;
+        }
 
         emptyText.Visibility = text && !original && _layer.Count == 0
             ? Visibility.Visible
@@ -315,8 +336,12 @@ public partial class CaptureResultWindow : Window
         {
             "table" => "复制表格",
             "qr" => "复制二维码内容",
+            "markdown" => "复制 Markdown",
+            "html" => "复制 HTML",
             _ => "复制文字",
         };
+
+        copyBtn.IsEnabled = conversion ? !_conversion.IsEmpty : _result is { Ok: true } || _layer.Count > 0;
 
         // 表格页时贴选区摆好的窗口可能装不下整张表：切过去先把画布宽度对齐视口
         if (_tab == "table")
@@ -366,6 +391,24 @@ public partial class CaptureResultWindow : Window
                 "表格 {0} 行 × {1} 列 · 选中 {2} 格",
                 _tableDocument.RowCount, _tableDocument.ColumnCount,
                 range.IsValid ? range.RowCount * range.ColumnCount : 0);
+            return;
+        }
+
+        if (_tab is "markdown" or "html")
+        {
+            string name = _tab == "html" ? "HTML" : "Markdown";
+            if (_conversion.IsEmpty)
+            {
+                StatusText.Text = name + " · 没有可转换的内容";
+                return;
+            }
+
+            string selected = ConversionPage.SelectedText;
+            StatusText.Text = selected.Length > 0
+                ? string.Format(CultureInfo.CurrentCulture, "{0} · 已选中 {1} 个字符 · 共 {2} 块",
+                    name, selected.Length, _conversion.Blocks.Count)
+                : string.Format(CultureInfo.CurrentCulture, "{0} · {1} 块 · {2} 个字符 · 可划选后复制",
+                    name, _conversion.Blocks.Count, _conversion.Length);
             return;
         }
 
@@ -451,6 +494,25 @@ public partial class CaptureResultWindow : Window
             return;
         }
 
+        // Markdown / HTML：预览自己管滚动与选中，只补 Ctrl+A / Ctrl+C（FlowDocumentScrollViewer 不带全选）
+        if (_tab is "markdown" or "html")
+        {
+            bool control = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            if (control && e.Key == Key.A)
+            {
+                ConversionPage.SelectAllText();
+                e.Handled = true;
+                RefreshStatus();
+            }
+            else if (control && e.Key == Key.C)
+            {
+                CopyCurrent();
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         if (_model == null || !TextEditable) return;
 
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
@@ -533,6 +595,12 @@ public partial class CaptureResultWindow : Window
             case "qr":
                 Copy(_result?.QrText, "二维码内容");
                 break;
+            case "markdown":
+                CopyConversion(asHtml: false);
+                break;
+            case "html":
+                CopyConversion(asHtml: true);
+                break;
             default:
                 // 有选区就复制选中的，没有就整份（与上游识别窗的复制语义一致）
                 if (_model == null)
@@ -559,6 +627,49 @@ public partial class CaptureResultWindow : Window
         if (NativeClipboard.SetText(text)) ToastService.Show($"已复制{what}", "识别结果", 1600);
         else ToastService.Show("复制失败（剪贴板被占用）", "识别结果", 0, ToastKind.error);
     }
+
+    /// <summary>
+    /// 复制 Markdown / HTML（照上游 <c>imageConversionClipboardMimeData</c>）：
+    /// **选了就复制选中那段**，没选就复制整份源码；HTML 另外写一份 text/html 剪贴板格式。
+    /// </summary>
+    private void CopyConversion(bool asHtml)
+    {
+        if (_conversion.IsEmpty)
+        {
+            ToastService.Show("没有可复制的内容", "识别结果", 1600);
+            return;
+        }
+
+        string name = asHtml ? "HTML" : "Markdown";
+        string selected = ConversionPage.SelectedText;
+
+        string text = selected.Length > 0 ? selected : (asHtml ? _conversion.Html : _conversion.Markdown);
+        if (text.Length == 0)
+        {
+            ToastService.Show("没有可复制的内容", "识别结果", 1600);
+            return;
+        }
+
+        bool ok;
+        if (asHtml)
+        {
+            // 选中那段没有富文本结构，包一层段落再当 HTML 写；整份源码本身就是 HTML
+            string html = selected.Length > 0
+                ? "<p>" + EscapeHtml(selected).Replace("\r\n", "<br>").Replace("\n", "<br>") + "</p>"
+                : _conversion.Html;
+            ok = NativeClipboard.SetHtmlAndText(html, text);
+        }
+        else
+        {
+            ok = NativeClipboard.SetText(text);
+        }
+
+        if (ok) ToastService.Show($"已复制{name}", "识别结果", 1600);
+        else ToastService.Show("复制失败（剪贴板被占用）", "识别结果", 0, ToastKind.error);
+    }
+
+    private static string EscapeHtml(string text) => text
+        .Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 
     private void Header_MouseDown(object sender, MouseButtonEventArgs e)
     {

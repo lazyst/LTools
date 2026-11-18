@@ -81,8 +81,34 @@ internal sealed class TableGrid
 internal static class OcrTable
 {
     /// <summary>行聚类：词框中心落在当前行带内就算同一行。</summary>
-    public static TableGrid Build(IReadOnlyList<OcrLineBox> lines)
+    public static TableGrid Build(IReadOnlyList<OcrLineBox> lines) => BuildCore(lines, out _);
+
+    /// <summary>
+    /// 表格在图像里占的矩形（没有 2 行 × 2 列的表格时返回 null）。
+    /// 「图片转 Markdown / HTML」用它把这些行从段落里剔掉——同一批字已经被表格表达了。
+    /// </summary>
+    public static System.Drawing.Rectangle? TableArea(IReadOnlyList<OcrLineBox> lines)
     {
+        TableGrid grid = BuildCore(lines, out List<OcrWordBox> used);
+        if (!grid.HasTable || used.Count == 0) return null;
+
+        int left = int.MaxValue, top = int.MaxValue, right = int.MinValue, bottom = int.MinValue;
+        foreach (OcrWordBox cell in used)
+        {
+            left = Math.Min(left, cell.X);
+            top = Math.Min(top, cell.Y);
+            right = Math.Max(right, cell.X + cell.W);
+            bottom = Math.Max(bottom, cell.Y + cell.H);
+        }
+
+        return right > left && bottom > top
+            ? System.Drawing.Rectangle.FromLTRB(left, top, right, bottom)
+            : null;
+    }
+
+    private static TableGrid BuildCore(IReadOnlyList<OcrLineBox> lines, out List<OcrWordBox> used)
+    {
+        used = new List<OcrWordBox>();
         if (lines == null || lines.Count == 0) return TableGrid.Empty;
 
         var cells = new List<OcrWordBox>();
@@ -133,7 +159,13 @@ internal static class OcrTable
             }
 
             // 整行都是空格的没意义（多半是噪点）
-            if (values.Any(v => v.Trim().Length > 0)) grid.Add(values);
+            if (values.Any(v => v.Trim().Length > 0))
+            {
+                grid.Add(values);
+
+                // 表格区域只认「有两格以上有字」的行：单格的行多半是被误吸收进来的普通段落
+                if (values.Count(v => v.Trim().Length > 0) >= 2) used.AddRange(row);
+            }
         }
 
         return grid.Count == 0 ? TableGrid.Empty : new TableGrid(grid, columns.Count);

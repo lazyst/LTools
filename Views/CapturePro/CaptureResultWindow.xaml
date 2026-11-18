@@ -44,6 +44,10 @@
                                  Content="表格" Tag="table" Checked="Tab_Changed"/>
                     <RadioButton x:Name="TabQr" Style="{StaticResource CaptureTab}" GroupName="resultTab"
                                  Content="二维码" Tag="qr" Checked="Tab_Changed"/>
+                    <RadioButton x:Name="TabMarkdown" Style="{StaticResource CaptureTab}" GroupName="resultTab"
+                                 Content="Markdown" Tag="markdown" Checked="Tab_Changed"/>
+                    <RadioButton x:Name="TabHtml" Style="{StaticResource CaptureTab}" GroupName="resultTab"
+                                 Content="HTML" Tag="html" Checked="Tab_Changed"/>
                 </StackPanel>
             </Border>
 
@@ -129,6 +133,10 @@
                             </WrapPanel>
                         </Border>
                     </Grid>
+
+                    <!-- Markdown / HTML：把 OCR 行派生出的块（标题 / 段落 / 列表 / 表格）渲染成流文档。
+                         渲染与源码出自同一份块列表，划选可复制选中那段。 -->
+                    <local:CaptureConversionView x:Name="ConversionPage" Visibility="Collapsed"/>
 
                     <!-- 二维码 -->
                     <Grid x:Name="QrPage" Visibility="Collapsed">

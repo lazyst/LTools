@@ -703,6 +703,35 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 - **让路**：标记 / 气泡上的鼠标事件不能被当成「开始框选 / 改选区 / 换候选层级」，为此覆盖层有
   `IsOnQr` / `IsOnQrBubble` 两个判定，接进 MouseDown / MouseMove / Wheel / 右键。
 
+### 10.5 图片转 Markdown / HTML（P4-d）
+
+上游这两页（`markdownRequested` / `htmlRequested`）由 Snow Shot 私有云的视觉模型生成，
+**云端不可复刻**（见 §5 的既定口径），本项目改成「按版面派生」：形状齐（标题 / 段落 / 列表 / 表格）、
+两份源码都能直接贴走，但**不做语义理解**（不会替你总结段落、补全代码块）。
+
+- **块模型**（`Features/CapturePro/ConversionDocument.cs`）：`ConversionBlock` + `ConversionKind`
+  = `Heading`（`Level` 1–3）/ `Paragraph` / `Bullet` / `Ordered` / `Table`。
+  **预览与两份源码都出自同一份块列表**，所以渲染与复制永远一致——不去解析自己生成的语法。
+- **判据**（全在 `Build`，纯函数、`--selftest` 直接拿行框断言）：
+  - **标题**：行高 ÷ 中位行高的比值 ≥ 1.9 / 1.45 / 1.2 → 一 / 二 / 三级。
+  - **段落**：与上一行纵向间距 ≤ 0.75 中位行高、行高相近（不超 1.6 倍）就接成一段；
+    **中日韩字符之间不补空格**（补了中文就散），其余补一个空格。
+  - **列表**：行首 `• · - * –`（后面要跟空白，别把「-5 度」当列表）/ `1.` `1、` `1)` `(1)`（`（1）`）。
+  - **表格**：用 `OcrTable` 的聚类结果；先按 `OcrTable.TableArea` 把表格区域里的行从段落里剔掉，
+    再 `TrimTableRows` 裁掉表格首尾「只有一格有字」的行。表格固定放在末尾——OCR 只有行框，
+    判断不了它夹在哪两段之间，硬猜位置更容易误导。
+- **源码出口**：Markdown 走管道表格（单元格里的 `|` 转义成 `\|`、换行压成空格；列表紧凑成连续行）；
+  HTML 出 `h1`–`h3` / `p` / `ul` / `ol` / `table` + `thead/th` + `tbody/td`，文本转义 `& < > "`。
+- **预览**（`Views/CapturePro/CaptureConversionView.cs`）：`FlowDocumentScrollViewer` 画标题（按级别给字号）/
+  段落 / 列表（`Disc` / `Decimal`）/ 表格（表头底色 + 边框），**可划选**；
+  `SelectedText` 与 `SelectAllText` 给窗口用（`FlowDocumentScrollViewer` 自己不带全选，Ctrl+A 由窗口补）。
+- **复制语义**照上游 `imageConversionClipboardMimeData`：**选了就复制选中那段，没选复制整份源码**；
+  HTML 另外写一份 `text/html` 剪贴板格式（`NativeClipboard.SetHtmlAndText`），粘贴到富文本编辑器里是表格而不是源码。
+- 三个坑：① `OcrTable.TableArea` 只能算「两格以上有字」的行——普通段落也会被 OCR 聚类吸成单格行，
+  全算进去会把整段正文当表格区域剔掉；② 表格首尾还得按同一口径再裁一遍（`TrimTableRows`），
+  否则紧贴表格的段落会变成表头；③ `FlowDocumentScrollViewer` 没有 `ScrollToHome()`，
+  换内容后要靠内部 `ScrollViewer` 再滚——换页时视图本来就是新的，这里不滚。
+
 ## 11. 采集历史（P2-2 / P4）
 
 截图 / 识别 / 录屏的落点：数据根 `captures/`（`catalog.json` + `assets/<id>.png` + `thumbnails/<id>.png`
@@ -1128,6 +1157,7 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
 | **P4-a** ✅ | ④ | 识别结果窗照 `screenshotrecognitionwindow` 重写：无边框置顶贴选区、1 源像素 ≈ 1 屏幕物理像素 + **文字层**（逐行估色 `screenshotocrvisuals` / 字号拟合 `screenshotocrtextlayout` / 跨行选区编辑 `screenshotocrtexteditingsession`）+ 「显示原图 / 填充背景 / 原文预览（`screenshotoriginalimagepreviewwindow`）」三开关 + 表格 / 二维码页签 |
 | **P4-b** ✅ | ④ | 表格编辑器（照 `screenshottabledocument` + `screenshottableeditor` + `screenshotrecognitionfileexport`）：槽位 / 锚点模型（256 边 · 16384 格上限）、合并 · 拆分 · 清空 · 选区扩展、粘贴四个出口；自绘网格单击进编辑 / 拖动矩形选区 / Ctrl 并集 / AnyKeyPressed / 方向键 / F2 / Esc / 右键菜单；撤销重做 50 步 + `canUndo/canRedo/canMerge/canSplit/canReset` 可用性；HTML + 文本双格式复制、xlsx 导出（六 part / `inlineStr` / 文本格式 / `mergeCells` / 列宽）、打开表格 = 临时 xlsx 用默认程序打开 |
 | **P4-c** ✅ | ④ | 二维码标记与气泡（照 `screenshotqrcontroller.cpp`）：选区落定 220ms 防抖扫描、识别图降到 1080p 内、贪心白掩码逐枚解码；24×24 圆点标记摆在码中心（只在 `Select` 工具、码四角都在选区里时显示）；悬停 150ms / 离开 250ms 的气泡（圆角卡 + 合成箭头 + blur 18 阴影）、文本区 24 内边距 / 总宽 ≤344 / 高 48–240 且压到可用高 −140、右优先翻左再夹进可用区；复制 / 打开链接后结束截图、Esc 只关气泡并把焦点还给标记；工具条「显示二维码」开关 + `AutoRecognizeQrCode` 设置项 |
+| **P4-d** ✅ | ④ | 图片转 Markdown / HTML（照 `markdownRequested` / `htmlRequested` + `screenshotimageconversionview` + `screenshotimageconversionclipboard`，云端部分改本地版面派生）：块模型 Heading 1–3 / Paragraph / Bullet / Ordered / Table；标题按行高比 ≥1.9 · 1.45 · 1.2、段落按纵向间距 ≤0.75 中位行高且中日韩不补空格、列表认 `•·-*–` 与 `1. 1、1)`、表格剔去 `TableArea` 内行并裁首尾单格行；Markdown 管道表格 + 单元格转义、HTML `h1–h3`/`p`/`ul`/`ol`/`table+thead+th+tbody+td` + 文本转义；预览用 `FlowDocumentScrollViewer` 可划选，**选了复制选中段、没选复制整份源码**，HTML 另写 `text/html` |
 
 ## 16. 验收
 
@@ -2662,3 +2692,18 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   回归：`--selftest` 全量 **7608 断言**（`capturePro` 71 用例 2782 断言，新增二维码缩放 / 网址 / 气泡落点
   与真两枚码检测两组）；`capture-overlay-smoke` **987 条**（二维码段 22 条，含真鼠标悬停弹气泡、单击聚焦、
   Esc 只关气泡、移开 250ms 收起、剪贴板收到码文本且覆盖层关闭）。
+- **图片转 Markdown / HTML（P4-d，2026-11-18）**：上游这两页由 Snow Shot 私有云的视觉模型生成，
+  云端不可复刻（见 §5），本地改成「按版面派生」：形状齐、源码可用，不做语义理解。
+  新文件两个：`Features/CapturePro/ConversionDocument.cs`（`ConversionKind` / `ConversionBlock` /
+  `Build` / `TrimTableRows` / `ToMarkdown` / `ToHtml`）、`Views/CapturePro/CaptureConversionView.cs`
+  （`FlowDocumentScrollViewer` 渲染 + `SelectedText` / `SelectAllText`）。
+  改到的：`Features/CapturePro/OcrTable.cs`（`BuildCore(lines, out used)` + `TableArea(lines)`）、
+  `Views/CapturePro/CaptureResultWindow.xaml(.cs)`（`TabMarkdown` / `TabHtml` / `ConversionPage`、
+  `CopyConversion` / `EscapeHtml`、Ctrl+A · Ctrl+C、状态行与按钮文案）。
+  三个坑：① `OcrTable.TableArea` 只算「两格以上有字」的行，否则普通段落会被当表格区域剔掉；
+  ② 表格首尾还要按同一口径裁一遍（`TrimTableRows`），否则紧贴表格的段落会变成表头；
+  ③ `FlowDocumentScrollViewer` 没有 `ScrollToHome()`（换页时视图本来是新的，不滚）。
+  回归：`--selftest` 全量 **7639 断言**（`capturePro` 73 用例 2813 断言，新增「版面 → 块」与
+  「Markdown / HTML 源码与转义」两组）；`capture-overlay-smoke` **1000 条**（Markdown 页源码含管道表格、
+  状态行、全选后复制选中段；HTML 页未选时复制整份源码且带 `text/html`；落图 `out/result-markdown.png` /
+  `out/result-html.png`）。
