@@ -29,7 +29,7 @@ public partial class CaptureOverlayWindow
     private sealed record HistoryLive(
         System.Windows.Media.Imaging.BitmapSource Base, Int32Rect Monitor, double Scale, Point Origin,
         Int32Rect Area, SelectionRegion[]? Regions, SelectionRegion[] RegionsDip, Mark[] Marks,
-        Rect? Selection, CaptureTool Tool, int Selected);
+        Rect? Selection, CaptureTool Tool, int[] Selected);
 
     private HistoryLive? _live;
     private List<CaptureEntry> _history = new();
@@ -88,7 +88,7 @@ public partial class CaptureOverlayWindow
     private void EnterHistory()
     {
         _live = new HistoryLive(_doc.Base, _doc.Monitor, _doc.Scale, _doc.Origin, _doc.Area,
-            _doc.Regions, _regions.ToArray(), _doc.Marks.ToArray(), _sel, _tool, _selectedIndex);
+            _doc.Regions, _regions.ToArray(), _doc.Marks.ToArray(), _sel, _tool, _selected.ToArray());
 
         SetHover(null);
         _hoverCandidates.Clear();
@@ -128,8 +128,7 @@ public partial class CaptureOverlayWindow
 
         _tool = CaptureTool.Select;
         Toolbar.Sync(_tool);
-        _selectedIndex = -1;
-        Surface.SelectedIndex = -1;
+        SelectMark(-1);
         RefreshMarks();
         UpdateCursorForTool();
     }
@@ -157,10 +156,9 @@ public partial class CaptureOverlayWindow
         _tool = live.Tool;
         Toolbar.Sync(_tool);
 
-        _selectedIndex = -1;
-        Surface.SelectedIndex = -1;
+        SelectMark(-1);
         RefreshMarks();
-        if (live.Selected >= 0 && live.Selected < _doc.Marks.Count) SelectMark(live.Selected);
+        if (live.Selected.Length > 0) SelectMarks(live.Selected, live.Selected[^1]);
         UpdateCursorForTool();
 
         if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out var dip))

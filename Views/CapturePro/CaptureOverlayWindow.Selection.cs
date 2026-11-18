@@ -41,7 +41,11 @@ public partial class CaptureOverlayWindow
     private bool _pressMoved;
     private SnapBox? _pressTarget;
 
-    private enum DragMode { None, New, Move, Resize, Draw, Erase, Mark, MarkResize, MagnifierLens, Lasso }
+    // 框选标注（Shift + 空白拖动）：起点 + 按下时已有的选区（加选）
+    private Point _marqueeStart;
+    private int[]? _marqueeBase;
+
+    private enum DragMode { None, New, Move, Resize, Draw, Erase, Mark, MarkResize, MagnifierLens, Lasso, Marquee }
 
     private void Window_MouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -97,6 +101,8 @@ public partial class CaptureOverlayWindow
         _pressTarget = null;
         _origin = p;
 
+        bool shiftToggle = (Keyboard.Modifiers & ModifierKeys.Shift) != 0 && AllowsShiftToggle(_tool);
+
         // 0. 选中标注的把手优先：用户刚把它选上，这一下的意图就是改它的大小
         //    （框选的八个把手仍在，只是让位给「正在编辑的那一条」）
         FrameHandle markHandle = MarkHandleAt(p);
@@ -133,6 +139,16 @@ public partial class CaptureOverlayWindow
         // 2. 选区内：选择工具拖标注，其余工具画标注
         if (inside)
         {
+            int markHit = _doc.HitTest(p, MarkHitSlop);
+
+            // 2a. Shift+点选标注 = 加入 / 移出选区（上游 toggle_selection；橡皮 / 水印 / 自动打码不让）
+            if (markHit >= 0 && shiftToggle)
+            {
+                ToggleMarkSelection(markHit);
+                e.Handled = true;
+                return;
+            }
+
             if (_tool == CaptureTool.Select)
             {
                 // 双击（和框选取图一致）= 确定
@@ -143,11 +159,19 @@ public partial class CaptureOverlayWindow
                     return;
                 }
 
-                int mark = _doc.HitTest(p, MarkHitSlop);
-                if (mark >= 0)
+                if (markHit >= 0)
                 {
-                    BeginMarkDrag(p, mark);
+                    BeginMarkDrag(p, markHit);
                     StartDrag(e, Cursors.SizeAll);
+                    return;
+                }
+
+                // Shift + 空白拖动 = 框选标注（上游「Select 工具空白拖 = MarqueeSelect」）。
+                // LTools 的「选择」还兼着「拖整个选区窗口」，那一个留给不带修饰键的拖动。
+                if (shiftToggle)
+                {
+                    BeginMarkMarquee(p);
+                    StartDrag(e, Cursors.Cross);
                     return;
                 }
 
@@ -240,7 +264,16 @@ public partial class CaptureOverlayWindow
         StartDrag(e, Cursors.Cross);
     }
 
-    /// <summary>按下之后共用的收尾：改光标、捕获鼠标、刷界面。</summary>
+    /// <summary>
+    /// 上游 <c>ToolPolicy.allow_shift_toggle</c>：这几个工具上 Shift 另有含义（橡皮的吸附 / 水印的配置 /
+    /// 自动打码的整批选择），不给「Shift 加减选区」。internal 是为了让自检直接断言这张表。
+    /// </summary>
+    internal static bool AllowsShiftToggle(CaptureTool tool) =>
+        tool is not (CaptureTool.AutoFilter or CaptureTool.RectEraser or CaptureTool.BrushEraser
+            or CaptureTool.Watermark or CaptureTool.Eraser);
+
+    /// <summary>
+    /// 按下之后共用的收尾：改光标、捕获鼠标、刷界面。</summary>
     private void StartDrag(MouseButtonEventArgs e, Cursor cursor)
     {
         Cursor = cursor;
@@ -256,6 +289,50 @@ public partial class CaptureOverlayWindow
         _originRegions = new List<SelectionRegion>(_regions);
         _replaceOnCommit = false;
         _liveRect = null;
+    }
+
+    // ============ 框选标注（Shift + 空白拖动，上游 MarqueeSelection） ============
+
+    /// <summary>开始框选：记下原有选区（Shift 拖着框选 = 加选），清掉画面上上一次的框。</summary>
+    private void BeginMarkMarquee(Point p)
+    {
+        _marqueeBase = _selected.ToArray();
+        _marqueeStart = p;
+        _drag = DragMode.Marquee;
+        Surface.MarkMarquee = Rect.Empty;
+        Surface.MarqueeHits = Array.Empty<int>();
+        Surface.InvalidateVisual();
+    }
+
+    /// <summary>拖动中：实时把框里（相交即命中）的标注描出候选轮廓，松手才真的选中。</summary>
+    private void UpdateMarkMarquee(Point p)
+    {
+        Rect box = MarkMarquee.RectOf(_marqueeStart, p);
+        Surface.MarkMarquee = box;
+        Surface.MarqueeHits = MarkMarquee.Hits(_doc.Marks, box, _marqueeBase);
+        Surface.InvalidateVisual();
+    }
+
+    /// <summary>松手提交：框里的接上原有选区（加选），主选中项取最后命中的那条。</summary>
+    private void CommitMarkMarquee(Point p)
+    {
+        Rect box = MarkMarquee.RectOf(_marqueeStart, p);
+        var hits = MarkMarquee.Hits(_doc.Marks, box, _marqueeBase);
+
+        Surface.MarkMarquee = Rect.Empty;
+        Surface.MarqueeHits = Array.Empty<int>();
+        _marqueeBase = null;
+
+        if (hits.Count > 0) SelectMarks(hits, hits[^1]);
+        else SelectMark(-1);
+    }
+
+    private void CancelMarkMarquee()
+    {
+        Surface.MarkMarquee = Rect.Empty;
+        Surface.MarqueeHits = Array.Empty<int>();
+        _marqueeBase = null;
+        Surface.InvalidateVisual();
     }
 
     private void Window_MouseMove(object sender, MouseEventArgs e)
@@ -339,6 +416,9 @@ public partial class CaptureOverlayWindow
             case DragMode.MagnifierLens:
                 UpdateMagnifierLensDrag(p);
                 break;
+            case DragMode.Marquee:
+                UpdateMarkMarquee(p);
+                break;
         }
 
         UpdateChrome();
@@ -396,6 +476,10 @@ public partial class CaptureOverlayWindow
             case DragMode.MagnifierLens:
                 CommitMagnifierLensDrag(p);
                 break;
+
+            case DragMode.Marquee:
+                CommitMarkMarquee(p);
+                break;
         }
 
         _pressTarget = null;
@@ -416,6 +500,7 @@ public partial class CaptureOverlayWindow
         if (_drag == DragMode.Mark) CancelMarkDrag();
         else if (_drag == DragMode.MarkResize) CancelMarkResize();
         else if (_drag == DragMode.MagnifierLens) CancelMagnifierLensDrag();
+        else if (_drag == DragMode.Marquee) CancelMarkMarquee();
         else if (_drag is DragMode.Draw or DragMode.Erase) Surface.Preview = null;
         else if (_drag == DragMode.Lasso) _lasso.Clear();
 
@@ -816,6 +901,7 @@ public partial class CaptureOverlayWindow
     private FrameHandle MarkHandleAt(Point p)
     {
         if (_tool != CaptureTool.Select) return FrameHandle.None;
+        if (_selected.Count != 1) return FrameHandle.None;      // 多选不给把手（整体缩放还没做）
         if (_selectedIndex < 0 || _selectedIndex >= _doc.Marks.Count) return FrameHandle.None;
 
         var mark = _doc.Marks[_selectedIndex];

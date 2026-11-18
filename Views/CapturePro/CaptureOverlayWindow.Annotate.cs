@@ -346,44 +346,71 @@ public partial class CaptureOverlayWindow
 
     // ============ 选择：拖动已有标注 ============
 
+    /// <summary>这次拖动牵连的标注（多选时整组一起挪；单条就是它自己）。</summary>
+    private List<(int Index, Mark Mark)>? _dragGroup;
+
     private void BeginMarkDrag(Point p, int index)
     {
+        // 按在选区里任意一条上 = 整组一起挪（上游多选拖动）；按在没选中的那条上 = 只选它再挪
+        if (!IsMarkSelected(index)) SelectMark(index);
+
+        var group = IsMarkSelected(index) && _selected.Count > 1
+            ? _selected.Where(i => i >= 0 && i < _doc.Marks.Count).ToList()
+            : new List<int> { index };
+
+        _dragGroup = group.Select(i => (i, _doc.Marks[i])).ToList();
         _dragMarkIndex = index;
         _dragMark = _doc.Marks[index];
         _origin = p;
         _drag = DragMode.Mark;
-        SelectMark(index);
-        Surface.SkipIndex = index;
+
+        Surface.SkipIndex = group.Count == 1 ? index : -1;
+        Surface.Previews = group.Count > 1 ? _dragGroup.Select(entry => entry.Mark).ToArray() : null;
         Surface.InvalidateVisual();
     }
 
     private void UpdateMarkDrag(Point p)
     {
-        if (_dragMark == null) return;
-        Surface.Preview = _dragMark.MoveBy(p - _origin);
+        if (_dragGroup is not { Count: > 0 }) return;
+
+        var delta = p - _origin;
+        if (_dragGroup.Count == 1) Surface.Preview = _dragGroup[0].Mark.MoveBy(delta);
+        else Surface.Previews = _dragGroup.Select(entry => entry.Mark.MoveBy(delta)).ToArray();
         Surface.InvalidateVisual();
     }
 
     private void CommitMarkDrag(Point p)
     {
-        var preview = Surface.Preview;
+        var delta = p - _origin;
+        var group = _dragGroup;
+
         Surface.Preview = null;
+        Surface.Previews = null;
         Surface.SkipIndex = -1;
-
-        if (preview != null && _dragMarkIndex >= 0 && (p - _origin).Length >= 1)
-            _doc.ReplaceAt(_dragMarkIndex, preview);
-
         _dragMark = null;
         _dragMarkIndex = -1;
+        _dragGroup = null;
+
+        if (group is { Count: > 0 } && delta.Length >= 1)
+        {
+            _doc.EditBatch(list =>
+            {
+                foreach (var (index, mark) in group)
+                    if (index >= 0 && index < list.Count) list[index] = mark.MoveBy(delta);
+            });
+        }
+
         RefreshMarks();
     }
 
     private void CancelMarkDrag()
     {
         Surface.Preview = null;
+        Surface.Previews = null;
         Surface.SkipIndex = -1;
         _dragMark = null;
         _dragMarkIndex = -1;
+        _dragGroup = null;
         Surface.InvalidateVisual();
     }
 

@@ -73,6 +73,12 @@ public partial class CaptureToolbar : UserControl
     /// <summary>选中标注时参数行按哪个工具排（这一族的代表工具；工具按钮仍停在原处）。</summary>
     private CaptureTool? _toolOverride;
 
+    /// <summary>
+    /// 多选时**同一族每一条**各自的显示样式：参数行据此把「各条不一样」的那几项显示成
+    /// 「多个值」（照上游 <c>Mixed</c> 位）。空 / 只有一条 = 没有混合态。
+    /// </summary>
+    private IReadOnlyList<ToolStyle>? _stylePeers;
+
     /// <summary>参数表的主人：选中标注时是那一族的代表工具，否则就是当前工具。</summary>
     private CaptureTool ParamTool => _toolOverride ?? _tool;
 
@@ -160,6 +166,7 @@ public partial class CaptureToolbar : UserControl
         // 回到「按工具创建」的样式：选中标注时的临时显示样式作废
         _styleOverride = null;
         _toolOverride = null;
+        _stylePeers = null;
 
         // 选中哪个工具，它所在的那一格就显示哪个（同格里切换时图标跟着换）
         var cell = CellOf(tool);
@@ -180,21 +187,24 @@ public partial class CaptureToolbar : UserControl
     /// <summary>
     /// 选中一条标注：参数行切到它那一族，显示**这一条自己的值**（上游 <c>Selected*</c> 样式来源）。
     /// 工具按钮**不动**（还停在「选择」），只切参数条——与上游「选中元素时工具不变、样式来源变」一致。
+    /// 多选时 <paramref name="peers"/> 是同一族每一条的显示样式，用来把互相不一样的项显示成「多个值」。
     /// </summary>
-    internal void SyncSelection(CaptureTool tool, ToolStyle style)
+    internal void SyncSelection(CaptureTool tool, ToolStyle style, IReadOnlyList<ToolStyle>? peers = null)
     {
         _toolOverride = tool;
         _styleOverride = style;
+        _stylePeers = peers is { Count: > 1 } ? peers : null;
         ApplyParamVisibility(tool);
         RefreshValues();
     }
 
-    /// <summary>取消选中：参数行还给当前工具（丢掉临时的显示样式）。</summary>
+    /// <summary>取消选中：参数行还给当前工具（丢掉临时的显示样式与混合态）。</summary>
     internal void ClearSelectionStyle()
     {
-        if (_styleOverride == null && _toolOverride == null) return;
+        if (_styleOverride == null && _toolOverride == null && _stylePeers == null) return;
         _styleOverride = null;
         _toolOverride = null;
+        _stylePeers = null;
         ApplyParamVisibility(_tool);
         RefreshValues();
     }
@@ -1840,6 +1850,7 @@ public partial class CaptureToolbar : UserControl
         };
 
         _fillRegionsButton = button;
+        host.Children.Add(button);
         return host;
     }
 
@@ -1949,7 +1960,135 @@ public partial class CaptureToolbar : UserControl
     public void RefreshValues()
     {
         if (_style == null) return;
+        ClearMixedMarks();
         foreach (var refresh in _refreshers) refresh();
+        MarkMixedValues();
+    }
+
+    // ============ 多选：「多个值」（上游 screenshot 工具面板的 Mixed 位） ============
+
+    private const string MixedText = "多个值";
+
+    /// <summary>当前被标成「多个值」的那几个控件（<see cref="RefreshValues"/> 每次重算前会清掉）。</summary>
+    private readonly List<FrameworkElement> _mixedParts = new();
+
+    /// <summary>标记时各控件原来的 ToolTip（清掉混合态要还回去，别把参数自己的说明吃掉）。</summary>
+    private readonly Dictionary<FrameworkElement, object?> _mixedTips = new();
+
+    /// <summary>冒烟 / 自检看「哪几项现在是混合态」。</summary>
+    internal IReadOnlyList<FrameworkElement> MixedParts => _mixedParts;
+
+    /// <summary>
+    /// 参数行里能表达值的那些控件（顺序稳定，逐条比较靠它对上号）：
+    /// 文本块（读数 / 字体名）、按钮（下拉当前值）、开关（勾选态）、输入框（文本）。
+    /// </summary>
+    private List<FrameworkElement> ProbeParts()
+    {
+        var parts = new List<FrameworkElement>();
+        foreach (var host in _paramHosts.Values) Collect(host, parts);
+        return parts;
+
+        static void Collect(DependencyObject node, List<FrameworkElement> into)
+        {
+            int count = VisualTreeHelper.GetChildrenCount(node);
+            for (int i = 0; i < count; i++)
+            {
+                var child = VisualTreeHelper.GetChild(node, i);
+                if (child is FrameworkElement element && IsProbe(element)) into.Add(element);
+                Collect(child, into);
+            }
+        }
+
+        static bool IsProbe(FrameworkElement element) =>
+            element is TextBlock or TextBox or ToggleButton or Button;
+    }
+
+    /// <summary>一个控件现在显示的值（只比这三类，够区分「这一条和那一条不一样」）。</summary>
+    private static string ProbeValue(FrameworkElement part) => part switch
+    {
+        ToggleButton toggle => toggle.IsChecked == true ? "on" : "off",
+        Button button => button.Content as string ?? string.Empty,
+        TextBox box => box.Text,
+        TextBlock text => text.Text,
+        _ => string.Empty,
+    };
+
+    /// <summary>把上一次标的「多个值」还原（刷新前先清，值由各自的 refresher 重新写回）。</summary>
+    private void ClearMixedMarks()
+    {
+        if (_mixedParts.Count == 0) return;
+        foreach (var part in _mixedParts)
+        {
+            if (part is TextBox box) TextBoxPlaceholder.SetText(box, string.Empty);
+            if (_mixedTips.TryGetValue(part, out object? tip)) part.ToolTip = tip;
+        }
+
+        _mixedParts.Clear();
+        _mixedTips.Clear();
+    }
+
+    /// <summary>
+    /// 逐条比较：把显示样式临时换成同族其它成员，重跑一遍 refresher，哪个控件的值变了
+    /// 就说明这一项「各条不一样」，标成「多个值」。比较完复原成显示样式的值。
+    /// </summary>
+    private void MarkMixedValues()
+    {
+        if (_stylePeers is not { Count: > 1 } peers || _style == null) return;
+
+        var parts = ProbeParts();
+        if (parts.Count == 0) return;
+
+        var baseline = parts.Select(ProbeValue).ToArray();
+        var differs = new bool[parts.Count];
+        ToolStyle display = _style;
+
+        try
+        {
+            for (int i = 1; i < peers.Count; i++)
+            {
+                _styleOverride = peers[i];
+                foreach (var refresh in _refreshers) refresh();
+
+                for (int p = 0; p < parts.Count; p++)
+                    if (!differs[p] && ProbeValue(parts[p]) != baseline[p]) differs[p] = true;
+            }
+        }
+        finally
+        {
+            _styleOverride = display;
+            foreach (var refresh in _refreshers) refresh();
+        }
+
+        _syncing = true;
+        for (int p = 0; p < parts.Count; p++)
+            if (differs[p]) MarkMixed(parts[p]);
+        _syncing = false;
+    }
+
+    /// <summary>把这一项显示成「多个值」：选中态清空、读数换成字、输入框留空 + 占位。</summary>
+    private void MarkMixed(FrameworkElement part)
+    {
+        _mixedParts.Add(part);
+        _mixedTips[part] = part.ToolTip;
+
+        switch (part)
+        {
+            case TextBox box:
+                box.Text = string.Empty;
+                TextBoxPlaceholder.SetText(box, MixedText);
+                break;
+            case ToggleButton toggle:
+                toggle.IsChecked = false;
+                break;
+            case Button button:
+                button.Content = MixedText;
+                break;
+            case TextBlock text:
+                text.Text = MixedText;
+                break;
+        }
+
+        part.ToolTip = "多个值：选中的这几条这一项不一样，改了会一起写成同一个值";
     }
 
     /// <summary>按步长取整（步长 &lt; 1 时保留小数，别被 <c>Math.Round</c> 吃掉 0.1）。</summary>

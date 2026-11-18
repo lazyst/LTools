@@ -121,6 +121,86 @@ internal static class MarkStyler
     }
 
     /// <summary>
+    /// 多选时参数行用哪一族：照上游 <c>style_toolbar_source</c> 的顺序在**整个选区**里找
+    /// （气泡 → 画笔滤镜 → 矩形滤镜 → 马赛克 → 文字 → 序号 → 聚光 → 形状 → 矩形荧光 →
+    /// 荧光笔 → 直线 → 折线 → 画笔 → 测距 → 括号 → 测角 → 箭头 → 放大镜）。
+    /// </summary>
+    /// <remarks>
+    /// 上游一律「先看主选中项，再看选区里第一个属于这一族的」：所以点选第二条同类元素不会把
+    /// 参数行换成别人的值。<paramref name="representative"/> 就是参数行显示值的那一条。
+    /// </remarks>
+    public static bool TrySelectionFamily(IReadOnlyList<Mark> marks, IReadOnlyList<int> indices, int primary,
+        out string family, out CaptureTool tool, out int representative)
+    {
+        foreach (string candidate in Priority)
+        {
+            int found = -1;
+            CaptureTool foundTool = CaptureTool.Select;
+
+            foreach (int index in indices)
+            {
+                if (index < 0 || index >= marks.Count) continue;
+                if (!TryFamily(marks[index], out string itemFamily, out CaptureTool itemTool)) continue;
+                if (!string.Equals(itemFamily, candidate, StringComparison.Ordinal)) continue;
+
+                if (index == primary)
+                {
+                    found = index;
+                    foundTool = itemTool;
+                    break;
+                }
+
+                if (found < 0)
+                {
+                    found = index;
+                    foundTool = itemTool;
+                }
+            }
+
+            if (found >= 0)
+            {
+                family = candidate;
+                tool = foundTool;
+                representative = found;
+                return true;
+            }
+        }
+
+        family = string.Empty;
+        tool = CaptureTool.Select;
+        representative = -1;
+        return false;
+    }
+
+    /// <summary>这一条是不是属于这个样式族（多选时「只改同一族的那些」用）。</summary>
+    public static bool InFamily(Mark mark, string family) =>
+        TryFamily(mark, out string itemFamily, out _) &&
+        string.Equals(itemFamily, family, StringComparison.Ordinal);
+
+    /// <summary>选区族优先级（与 <see cref="TrySelectionFamily"/> 的顺序逐字一致）。</summary>
+    private static readonly string[] Priority =
+    {
+        StyleFamilies.SpeechBubble,
+        StyleFamilies.BrushFilter,
+        StyleFamilies.Filter,
+        StyleFamilies.Mosaic,
+        StyleFamilies.Text,
+        StyleFamilies.Serial,
+        StyleFamilies.Spotlight,
+        StyleFamilies.Shape,
+        StyleFamilies.HighlightRect,
+        StyleFamilies.Highlighter,
+        StyleFamilies.Line,
+        StyleFamilies.Polyline,
+        StyleFamilies.Pen,
+        StyleFamilies.Distance,
+        StyleFamilies.Bracket,
+        StyleFamilies.Angle,
+        StyleFamilies.Arrow,
+        StyleFamilies.Magnifier,
+    };
+
+    /// <summary>
     /// 把这条标注的值抄进显示样式（参数行显示它自己的值）。
     /// 只抄这一族参数行里摆得出来的字段，别的字段保持创建样式的值
     /// （序号计数器 <see cref="ToolStyle.SerialNumber"/> 就是故意的：选一条旧序号时仍显示下一个号）。

@@ -80,6 +80,21 @@ internal sealed class CaptureCanvas : FrameworkElement
     public int SelectedIndex { get; set; } = -1;
 
     /// <summary>
+    /// 选中的全部标注（多选：框选 / Shift+点选）。顺序即加入顺序，<see cref="SelectedIndex"/> 是最后那个（主选中项）。
+    /// 空 = 退回只看 <see cref="SelectedIndex"/>（单选 / 冒烟夹具直接设单条）。
+    /// </summary>
+    public IReadOnlyList<int> SelectedIndices { get; set; } = Array.Empty<int>();
+
+    /// <summary>多选整体拖动时的那几条（由预览代画，按 <see cref="SelectedIndices"/> 跳过原件）。</summary>
+    public IReadOnlyList<Mark>? Previews { get; set; }
+
+    /// <summary>正在框选标注的矩形（Shift+拖，照上游 <c>InteractionState::MarqueeSelection</c>）。</summary>
+    public Rect MarkMarquee { get; set; } = Rect.Empty;
+
+    /// <summary>框选过程中已命中的标注（只画候选轮廓，松手才真的选中）。</summary>
+    public IReadOnlyList<int> MarqueeHits { get; set; } = Array.Empty<int>();
+
+    /// <summary>
     /// 选中的标注要不要画八个缩放手柄：只有「选择」工具下、且这一条能缩放（序号徽标是固定尺寸的）。
     /// 判定用 <see cref="MarkGeometry.PaddedFrame"/>，拖手柄也按它算，看到的就是按得到的。
     /// </summary>
@@ -114,30 +129,55 @@ internal sealed class CaptureCanvas : FrameworkElement
             selectionGeo = new RectangleGeometry(Selection);
 
         if (selectionGeo != null) dc.PushClip(selectionGeo);
+        bool dragging = Previews is { Count: > 0 };
         for (int i = 0; i < doc.Marks.Count; i++)
         {
             if (i == SkipIndex) continue;
+            if (dragging && SelectedIndices.Contains(i)) continue;   // 整组拖动：原件让位给预览
             MarkRenderer.Draw(dc, doc.Marks[i], doc.Base, canvas, doc.Scale);
         }
         if (Preview != null) MarkRenderer.Draw(dc, Preview, doc.Base, canvas, doc.Scale);
+        if (Previews != null)
+            foreach (var preview in Previews) MarkRenderer.Draw(dc, preview, doc.Base, canvas, doc.Scale);
 
         DrawAutoFilter(dc);
 
-        // 选中的那条：一圈虚线 + 八个把手，不参与导出（导出只看标注本身）
-        if (SelectedIndex >= 0 && SelectedIndex < doc.Marks.Count && SelectedIndex != SkipIndex)
+        // 选中的那些：各自一圈虚线（与上游 selection_elements 的逐条轮廓一致）；
+        // 八个把手只在**单条**选中时出现（多选整体缩放还没做，见 docs/CAPTURE_PARITY.md）
+        var selection = SelectedIndices.Count > 0
+            ? SelectedIndices
+            : SelectedIndex >= 0 ? new[] { SelectedIndex } : Array.Empty<int>();
+        bool handles = ShowHandles && selection.Count == 1;
+
+        foreach (int index in selection)
         {
-            var mark = doc.Marks[SelectedIndex];
+            if (index < 0 || index >= doc.Marks.Count || index == SkipIndex) continue;
+            var mark = doc.Marks[index];
             var box = MarkGeometry.PaddedFrame(mark.Frame);
             if (!box.IsEmpty)
             {
                 dc.DrawRectangle(null, SelectPen, box);
-                if (ShowHandles && mark.CanScale) DrawHandles(dc, box);
+                if (handles && mark.CanScale) DrawHandles(dc, box);
             }
 
             // 放大镜额外画源轮廓与移动手柄（照上游 overlay_composition 的
             // magnifier_source_outline + magnifier_move_grip）：源轮廓一直看得见，
             // 手柄在镜头下方 24 DIP，抓着它 = 只挪镜头
             if (mark is Mark.Magnifier magnifier) DrawMagnifierChrome(dc, magnifier);
+        }
+
+        // 正在框选标注：蓝色虚线框（与自动打码的框选同一个观感）
+        if (MarkMarquee.Width > 0.5 && MarkMarquee.Height > 0.5)
+        {
+            // 框里已经命中的先描一圈候选轮廓（上游 marquee_candidate_elements 的即时反馈）
+            foreach (int index in MarqueeHits)
+            {
+                if (index < 0 || index >= doc.Marks.Count) continue;
+                var box = MarkGeometry.PaddedFrame(doc.Marks[index].Frame);
+                if (!box.IsEmpty) dc.DrawRectangle(null, SelectPen, box);
+            }
+
+            dc.DrawRectangle(AutoMarqueeFill, AutoMarqueePen, MarkMarquee);
         }
 
         if (selectionGeo != null) dc.Pop();

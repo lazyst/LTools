@@ -25,6 +25,16 @@ public partial class CaptureOverlayWindow
 
     private CaptureTool _tool = CaptureTool.Select;
     private int _selectedIndex = -1;
+
+    /// <summary>
+    /// 选中的标注（多选；顺序即加入顺序，最后一个就是主选中项 <see cref="_selectedIndex"/>）。
+    /// 单选也走它，所以「有没有选中」只有一个真源。
+    /// </summary>
+    private readonly List<int> _selected = new();
+
+    /// <summary>选中的全部下标（只读快照，画布 / 自检看它）。</summary>
+    internal IReadOnlyList<int> SelectedIndices => _selected;
+
     private bool _toolbarPlaced;
 
     /// <summary>选中标注时参数行的临时显示样式（那一族创建样式的副本 + 这一条的值）。</summary>
@@ -35,6 +45,10 @@ public partial class CaptureOverlayWindow
 
     /// <summary>选中的这条属于哪一族（合并回创建样式用）。</summary>
     private string? _selectionFamily;
+
+    /// <summary>选中的每一条各自的显示样式（同一族）：参数行据此显示「多个值」（照上游 Mixed 位）。</summary>
+    private List<ToolStyle>? _selectionPeers;
+
 
     private void WireToolbar()
     {
@@ -55,28 +69,47 @@ public partial class CaptureOverlayWindow
     }
 
     /// <summary>
-    /// 选中一条标注时改参数 = 先写回那一条，再把**变过的字段**合并进该族的创建样式
-    /// （上游 <c>set_shape_style_patch</c> 只 merge <c>properties</c> 里的位）。
+    /// 选中一批标注时改参数 = 先写回**同一族的每一条**，再把**变过的字段**合并进该族的创建样式
+    /// （上游 <c>set_shape_style_patch</c>：只按 <c>properties</c> 里的位 merge，且只作用于
+    /// <c>kind</c> 匹配的那些元素）。整批只占一个撤销位。
     /// 没有选中标注时什么都不做——那时参数行改的就是创建样式本身。
     /// </summary>
     private void ApplyStyleToSelection()
     {
         if (_selectionStyle == null || _selectionBaseline == null || _selectionFamily == null) return;
-        if (_selectedIndex < 0 || _selectedIndex >= _doc.Marks.Count) return;
+        if (_selected.Count == 0) return;
 
-        bool colorChanged = _selectionStyle.Color != _selectionBaseline.Color;
+        ToolStyle display = _selectionStyle;
+        string family = _selectionFamily;
+        bool colorChanged = display.Color != _selectionBaseline.Color;
+
+        var targets = _selected.Where(index => index >= 0 && index < _doc.Marks.Count &&
+                                               MarkStyler.InFamily(_doc.Marks[index], family)).ToArray();
+
+        if (targets.Length > 0)
+        {
+            _doc.EditBatch(list =>
+            {
+                foreach (int index in targets)
+                {
+                    if (index >= list.Count) continue;
+                    list[index] = MarkStyler.Apply(list[index], display);
+                }
+            });
+        }
 
         // 只合并变过的字段：不然「选一条旧箭头看一眼」会把创建样式整份换成它的旧值
-        _selectionStyle.CopyChangedTo(_styles.ForFamily(_selectionFamily), _selectionBaseline);
-        if (colorChanged) _styles.SetColor(_selectionFamily, _selectionStyle.Color);   // 含「共享颜色」传播
+        display.CopyChangedTo(_styles.ForFamily(family), _selectionBaseline);
+        if (colorChanged) _styles.SetColor(family, display.Color);   // 含「共享颜色」传播
 
-        _doc.ReplaceAt(_selectedIndex, MarkStyler.Apply(_doc.Marks[_selectedIndex], _selectionStyle));
-        _selectionBaseline = _selectionStyle.Clone();     // 之后的改动继续以「改到这里」为基准
+        // 写回之后各条的值都变了（「多个值」可能就此消除）：RefreshMarks 会按新的标注重算
         RefreshMarks();
     }
 
     /// <summary>
-    /// 选中 / 取消选中：参数行切到这条标注的样式族并显示**它自己的值**（上游 <c>Selected*</c> 来源）；
+    /// 选中 / 取消选中：参数行切到这一族的样式族并显示**这一条的值**（上游 <c>Selected*</c> 来源）；
+    /// 多选时按上游 <c>style_toolbar_source</c> 的优先顺序选族，取主选中项（或第一个同类成员）的值，
+    /// 同一族里其它成员的值一起交给工具栏算「多个值」。
     /// 取消选中（或选中水印 / 恢复块这种不归族的）就把参数行还给当前工具。
     /// </summary>
     private void SyncSelectionStyle()
@@ -84,16 +117,30 @@ public partial class CaptureOverlayWindow
         _selectionStyle = null;
         _selectionBaseline = null;
         _selectionFamily = null;
+        _selectionPeers = null;
 
-        if (_selectedIndex >= 0 && _selectedIndex < _doc.Marks.Count &&
-            MarkStyler.TryFamily(_doc.Marks[_selectedIndex], out string family, out CaptureTool tool))
+        if (_selected.Count > 0 &&
+            MarkStyler.TrySelectionFamily(_doc.Marks, _selected, _selectedIndex,
+                out string family, out CaptureTool tool, out int representative))
         {
             var display = _styles.ForFamily(family).Clone();
-            MarkStyler.Capture(_doc.Marks[_selectedIndex], display);
+            MarkStyler.Capture(_doc.Marks[representative], display);
             _selectionStyle = display;
             _selectionBaseline = display.Clone();
             _selectionFamily = family;
-            Toolbar.SyncSelection(tool, display);
+
+            var peers = new List<ToolStyle>();
+            foreach (int index in _selected)
+            {
+                if (index < 0 || index >= _doc.Marks.Count) continue;
+                if (!MarkStyler.InFamily(_doc.Marks[index], family)) continue;
+                var peer = _styles.ForFamily(family).Clone();
+                MarkStyler.Capture(_doc.Marks[index], peer);
+                peers.Add(peer);
+            }
+
+            _selectionPeers = peers;
+            Toolbar.SyncSelection(tool, display, peers);
             return;
         }
 
@@ -248,13 +295,53 @@ public partial class CaptureOverlayWindow
     }
 
     /// <summary>
-    /// 选中最上面一条命中的标注（-1 = 没选中）：画面上的虚线框与缩放手柄跟着走，
+    /// 单选一条标注（-1 = 清空）：画面上的虚线框与缩放手柄跟着走，
     /// 参数行同时切到这一条自己的样式族（见 <see cref="SyncSelectionStyle"/>）。
     /// </summary>
     private void SelectMark(int index)
     {
-        _selectedIndex = index;
-        Surface.SelectedIndex = index;
+        _selected.Clear();
+        if (index >= 0 && index < _doc.Marks.Count) _selected.Add(index);
+        PublishSelection();
+    }
+
+    /// <summary>
+    /// 整组选中（框选 / 恢复选中）：<paramref name="primary"/> 是主选中项（排到最后，参数行显示它的值）。
+    /// 越界与重复的下标直接丢掉。
+    /// </summary>
+    private void SelectMarks(IEnumerable<int> indices, int primary)
+    {
+        _selected.Clear();
+        foreach (int index in indices)
+            if (index >= 0 && index < _doc.Marks.Count && !_selected.Contains(index))
+                _selected.Add(index);
+
+        if (primary >= 0 && _selected.Remove(primary)) _selected.Add(primary);
+        PublishSelection();
+    }
+
+    /// <summary>
+    /// Shift+点选（上游 <c>toggle_selection</c>）：已在选区里就摘掉（摘掉的是主选中项时主选中项换成
+    /// 剩下的最后一个），否则追加成新的主选中项。
+    /// </summary>
+    private void ToggleMarkSelection(int index)
+    {
+        if (index < 0 || index >= _doc.Marks.Count) return;
+
+        if (!_selected.Remove(index)) _selected.Add(index);
+        PublishSelection();
+    }
+
+    /// <summary>这一条在不在选区里。</summary>
+    private bool IsMarkSelected(int index) => _selected.Contains(index);
+
+    /// <summary>把选区状态推给画布与工具栏（单选 / 多选都走这里，别再各写一遍）。</summary>
+    private void PublishSelection()
+    {
+        _selectedIndex = _selected.Count > 0 ? _selected[^1] : -1;
+
+        Surface.SelectedIndex = _selectedIndex;
+        Surface.SelectedIndices = _selected.ToArray();
         Surface.ShowHandles = ShowsMarkHandles;
         Surface.InvalidateVisual();
         SyncSelectionStyle();
@@ -263,11 +350,18 @@ public partial class CaptureOverlayWindow
 
     private void ClearMarkSelection() => SelectMark(-1);
 
-    /// <summary>删掉选中的标注（Delete / Backspace）。</summary>
+    /// <summary>删掉选中的标注（Delete / Backspace）；多条一起删只占一个撤销位。</summary>
     private void DeleteSelectedMark()
     {
-        if (_selectedIndex < 0 || _selectedIndex >= _doc.Marks.Count) return;
-        _doc.RemoveAt(_selectedIndex);
+        if (_selected.Count == 0) return;
+
+        var drop = new HashSet<int>(_selected);
+        _doc.EditBatch(list =>
+        {
+            for (int i = list.Count - 1; i >= 0; i--)
+                if (drop.Contains(i)) list.RemoveAt(i);
+        });
+
         SelectMark(-1);
         RefreshMarks();
     }

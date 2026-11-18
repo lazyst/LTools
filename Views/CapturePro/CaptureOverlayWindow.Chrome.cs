@@ -187,11 +187,12 @@ public partial class CaptureOverlayWindow
     }
 
     /// <summary>
-    /// 选中标注的八个缩放手柄要不要露出来：只有「选择」工具下、选中了、且这一条能缩放。
-    /// 序号徽标是固定尺寸的（数字要看得清），不给它手柄。
+    /// 选中标注的八个缩放手柄要不要露出来：只有「选择」工具下、**只选中一条**、且这一条能缩放。
+    /// 序号徽标是固定尺寸的（数字要看得清），不给它手柄；多选整体缩放还没做，所以多选也不给。
     /// </summary>
     private bool ShowsMarkHandles =>
-        _tool == CaptureTool.Select && _selectedIndex >= 0 && _selectedIndex < _doc.Marks.Count &&
+        _tool == CaptureTool.Select && _selected.Count == 1 &&
+        _selectedIndex >= 0 && _selectedIndex < _doc.Marks.Count &&
         _doc.Marks[_selectedIndex].CanScale;
 
     private void PositionGrips(Rect s, bool visible)
@@ -349,12 +350,20 @@ public partial class CaptureOverlayWindow
     private void RefreshMarks()
     {
         Surface.Preview = null;
+        Surface.Previews = null;
         Surface.SkipIndex = -1;
-        if (_selectedIndex >= _doc.Marks.Count) SelectMark(-1);
+
+        // 下标可能已经失效（撤销 / 删除 / 历史翻页）：清掉越界的那几条，主选中项跟着走
+        if (_selected.RemoveAll(index => index < 0 || index >= _doc.Marks.Count) > 0) PublishSelection();
+        else if (_selectedIndex >= _doc.Marks.Count) SelectMark(-1);
+
         if (NeedsWatermarkPreview) Surface.Preview = WatermarkMark;
         Surface.InvalidateVisual();
         UpdateChrome();
         Toolbar.SetMeasuredDistance(MeasuredDistance());
+
+        // 撤销 / 批量改样式之后各条的值都变了：参数行显示值与「多个值」要按新的标注重算
+        SyncSelectionStyle();
     }
 
     /// <summary>
