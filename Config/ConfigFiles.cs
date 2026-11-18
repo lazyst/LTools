@@ -45,6 +45,9 @@ public sealed class SettingsFile
 
     /// <summary>文字识别的默认排版 / 标点（进文字编辑时先应用一次）。</summary>
     public TextRecognitionFile TextRecognition { get; set; } = new();
+
+    /// <summary>贴图文字样式的默认值（最大宽 / 字体 / 字号 / 字色 / 底色）。</summary>
+    public PinTextFile PinText { get; set; } = new();
 }
 
 /// <summary><c>config/ui.json</c>：界面状态（丢了不影响功能，只是记忆丢失）。</summary>

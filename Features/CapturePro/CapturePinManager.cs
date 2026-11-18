@@ -87,6 +87,7 @@ internal static class CapturePinManager
     {
         double s = scale > 0 ? scale : 1;
         var style = PinTextStyle.Current();
+        var snapshot = PinTextSnapshot.Of(style);
         var card = PinCardRenderer.Render(text, style, s);
 
         var (box, zoom) = PinPlacement.Center(card.Logical, workArea);
@@ -97,7 +98,7 @@ internal static class CapturePinManager
         var pin = new CapturePinWindow(card, area, s, zoom, text);
         return Register(pin, card.Image, area, s, source,
             card.Kind == PinContentKind.Color ? PinStore.KindColor : PinStore.KindText,
-            text, card.Kind == PinContentKind.Color ? (int)card.Logical.Width : 0);
+            text, card.Kind == PinContentKind.Color ? (int)card.Logical.Width : 0, snapshot);
     }
 
     /// <summary>贴剪贴板里的一张图：居中放到 <paramref name="workArea"/>（DIP），超大等比缩小。</summary>
@@ -117,7 +118,8 @@ internal static class CapturePinManager
 
     /// <summary>出场收尾：分组、历史记录（先写 pins.json）、显示、顶最前，图片丢后台写。</summary>
     private static CapturePinWindow Register(CapturePinWindow pin, BitmapSource image, Int32Rect area,
-        double scale, string source, string kind, string text, int cardWidth)
+        double scale, string source, string kind, string text, int cardWidth,
+        PinTextSnapshot? textStyle = null)
     {
         // 正只看某个分组时，新贴图落进那个组 —— 否则贴上来立刻被自己藏起来，看着像「贴图没反应」
         string group = ActiveGroup ?? PinGroups.Default;
@@ -126,7 +128,7 @@ internal static class CapturePinManager
         // 贴图历史：先记一条（只写 pins.json），图片丢后台写，别卡 UI 线程
         var record = PinStore.Create(image.PixelWidth, image.PixelHeight,
             area.X, area.Y, area.Width, area.Height, scale, source, group, live: false,
-            kind: kind, text: text, cardWidth: cardWidth);
+            kind: kind, text: text, cardWidth: cardWidth, textStyle: textStyle);
         pin.PinId = record.Id;
 
         Pins.Add(pin);
@@ -181,7 +183,8 @@ internal static class CapturePinManager
         if (PinStore.IsTextual(record))
         {
             double scale = record.Scale > 0 ? record.Scale : 1.0;
-            var card = PinCardRenderer.Render(record.Text, PinTextStyle.Current(), scale, record.CardWidth);
+            var style = record.TextStyle?.ToStyle() ?? PinTextStyle.Current();
+            var card = PinCardRenderer.Render(record.Text, style, scale, record.CardWidth);
 
             double width = record.WinWidth >= 1 ? record.WinWidth : card.Logical.Width;
             double zoom = card.Logical.Width > 0 ? PinMath.ClampZoom(width / card.Logical.Width) : 1;

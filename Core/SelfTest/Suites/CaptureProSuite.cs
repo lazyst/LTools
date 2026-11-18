@@ -72,6 +72,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "LaTeX：公式行识别 / 围栏 / 定界符 / 退回原文", LatexSourceCases));
         cases.Add(new("capturePro", "贴图历史：剪枝 / 缩略图 / 来源 / 摘要", PinStoreCases));
         cases.Add(new("capturePro", "贴图色卡：认 / 拒颜色 / 三行文案 / 版面 / 出场", ColorSwatchCases));
+        cases.Add(new("capturePro", "贴图文字样式：范围 / 颜色 / 字体 / 快照 / 折行", PinTextStyleCases));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
         cases.Add(new("capturePro", "长截图：滚动位移识别", ScrollDetection));

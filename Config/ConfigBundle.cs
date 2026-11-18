@@ -112,6 +112,7 @@ internal static class ConfigBundle
         cfg.Record = (settings.Record ?? new RecordOptions()).Normalized();
         cfg.Translation = settings.Translation ?? new TranslationFile();
         cfg.TextRecognition = settings.TextRecognition ?? new TextRecognitionFile();
+        cfg.PinText = settings.PinText ?? new PinTextFile();
 
         var ui = Read<UiStateFile>(UiPath(anchorPath), ctx);
         if (ui == null) ui = ToUi(ctx.GetSeed());
@@ -377,6 +378,7 @@ internal static class ConfigBundle
         Record = cfg.Record ?? new RecordOptions(),
         Translation = cfg.Translation ?? new TranslationFile(),
         TextRecognition = cfg.TextRecognition ?? new TextRecognitionFile(),
+        PinText = cfg.PinText ?? new PinTextFile(),
     };
 
     internal static UiStateFile ToUi(AppConfig cfg) => new()

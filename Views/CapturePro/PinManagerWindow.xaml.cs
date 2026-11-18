@@ -463,6 +463,9 @@ public partial class PinManagerWindow : Window
         Reload();
     }
 
+    /// <summary>贴图文字的默认样式（只影响新贴的文字，已贴的按记录里的样式重画）。</summary>
+    private void TextStyle_Click(object sender, RoutedEventArgs e) => PinTextStyleWindow.Show(this);
+
     private void DeleteAll_Click(object sender, RoutedEventArgs e)
     {
         int count = _all.Count;

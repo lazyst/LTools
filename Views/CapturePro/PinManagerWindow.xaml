@@ -49,8 +49,12 @@
                            Text="0 张贴图"/>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="TextStyleBtn" Style="{StaticResource BtnGhost}" Content="文字样式…"
+                            MinWidth="96" ToolTip="贴图文字的默认样式（最大宽 / 字体 / 字号 / 字色 / 底色）"
+                            Click="TextStyle_Click"/>
                     <Button x:Name="RefreshBtn" Style="{StaticResource BtnGhost}" Content="刷新"
-                            MinWidth="70" ToolTip="重新读 pins/ 里的贴图记录" Click="Refresh_Click"/>
+                            MinWidth="70" Margin="8,0,0,0" ToolTip="重新读 pins/ 里的贴图记录"
+                            Click="Refresh_Click"/>
                     <Button x:Name="DeleteAllBtn" Style="{StaticResource BtnGhostDanger}" Content="删除全部"
                             MinWidth="86" Margin="8,0,0,0"
                             ToolTip="删除全部贴图记录与图片（屏幕上的贴图也会关掉）"

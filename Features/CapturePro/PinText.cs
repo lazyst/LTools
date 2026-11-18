@@ -60,6 +60,10 @@ internal sealed class PinTextStyle
     /// 取当前主题下的样式（在 UI 线程上调：要读 <c>Themes/Modern.xaml</c> 的笔刷）。
     /// 读不到资源（无头自检 / 启动早期）时退回浅色主题默认值，与上游 <c>QPalette</c> 同一口径。
     /// </summary>
+    /// <remarks>
+    /// 用户改过的默认值（<c>settings.json</c> 的 <c>PinText</c> 段，见 <see cref="PinTextStore"/>）
+    /// 盖在主题值上面：字体 / 字号 / 最大宽直接用，字色 / 底色选了「跟随主题」才用主题色。
+    /// </remarks>
     public static PinTextStyle Current()
     {
         var style = new PinTextStyle
@@ -67,14 +71,21 @@ internal sealed class PinTextStyle
             FontFamily = string.IsNullOrWhiteSpace(SystemFonts.MessageFontFamily?.Source)
                 ? "Segoe UI"
                 : SystemFonts.MessageFontFamily.Source,
-            FontSize = 16,
+            FontSize = PinTextRules.DefaultFontSize,
             Padding = DefaultPadding,
-            MaximumWidth = DefaultMaximumWidth,
+            MaximumWidth = PinTextRules.DefaultMaximumWidth,
         };
 
         if (BrushColor("TextBrush") is { } text) style.TextColor = text;
         if (BrushColor("SurfaceBrush") is { } background) style.BackgroundColor = background;
         if (BrushColor("SecondaryTextBrush") is { } secondary) style.SecondaryColor = secondary;
+
+        var limits = PinTextStore.Limits();
+        style.MaximumWidth = limits.MaximumWidth;
+        style.FontSize = limits.FontSize;
+        if (!string.IsNullOrWhiteSpace(limits.FontFamily)) style.FontFamily = limits.FontFamily;
+        if (limits.TextColor is { } custom) style.TextColor = custom;
+        if (limits.BackgroundColor is { } customBackground) style.BackgroundColor = customBackground;
         return style;
     }
 
@@ -95,6 +106,140 @@ internal sealed class PinTextStyle
         double width = Math.Ceiling(Math.Clamp(idealTextWidth + Padding * 2, 1, Math.Max(1, MaximumWidth)));
         wrapWidth = Math.Max(1, width - Padding * 2);
         return new Size(width, Math.Ceiling(Math.Max(1, textHeight + Padding * 2)));
+    }
+}
+
+/// <summary>
+/// 贴图文字样式默认值的归一规则：范围内的数字、能认的颜色写法、字体族名字。
+/// </summary>
+/// <remarks>
+/// 照上游 <c>pin_to_screen/text_*</c> 的 schema（<c>configurationschema.cpp:1549</c>）：
+/// 最大宽 100–2000（默认 1024）、字号 8–96（默认 16）、颜色 <c>system</c> = 跟随主题。
+/// 全部是纯函数，<c>--selftest</c> 直接断言；读写盘在 <see cref="PinTextStore"/>。
+/// </remarks>
+internal static class PinTextRules
+{
+    /// <summary>最大文字宽的下限（px）。</summary>
+    public const int MinMaximumWidth = 100;
+
+    /// <summary>最大文字宽的上限（px）。</summary>
+    public const int MaxMaximumWidth = 2000;
+
+    /// <summary>最大文字宽的默认值（px，上游 <c>pin_to_screen/text_maximum_width</c>）。</summary>
+    public const int DefaultMaximumWidth = 1024;
+
+    /// <summary>字号的下限（px）。</summary>
+    public const int MinFontSize = 8;
+
+    /// <summary>字号的上限（px）。</summary>
+    public const int MaxFontSize = 96;
+
+    /// <summary>字号的默认值（px，上游 <c>pin_to_screen/text_font_size</c>）。</summary>
+    public const int DefaultFontSize = 16;
+
+    /// <summary>颜色的「跟随主题」写法（上游同名字符串）。</summary>
+    public const string SystemColor = "system";
+
+    /// <summary>字体族名字的长度上限（上游 1024）。</summary>
+    public const int MaxFontFamilyLength = 1024;
+
+    /// <summary>最大宽：缺省 / 越界夹到 100–2000。</summary>
+    public static int NormalizeMaximumWidth(int? value) =>
+        value is not { } v ? DefaultMaximumWidth : Math.Clamp(v, MinMaximumWidth, MaxMaximumWidth);
+
+    /// <summary>字号：缺省 / 越界夹到 8–96。</summary>
+    public static int NormalizeFontSize(int? value) =>
+        value is not { } v ? DefaultFontSize : Math.Clamp(v, MinFontSize, MaxFontSize);
+
+    /// <summary>字体族：去空白；空 / 超长（&gt; 1024）= 系统默认（空串）。</summary>
+    public static string NormalizeFontFamily(string? value)
+    {
+        string text = (value ?? "").Trim();
+        return text.Length > MaxFontFamilyLength ? "" : text;
+    }
+
+    /// <summary>
+    /// 颜色：空 / 缺省 / <c>system</c> = 跟随主题（<c>null</c>）；
+    /// 认 <c>#RRGGBB</c> 与 <c>#AARRGGBB</c>（可省 <c>#</c>），认不出 = 跟随主题。
+    /// </summary>
+    public static Color? ParseColor(string? text)
+    {
+        string value = (text ?? "").Trim();
+        if (value.Length == 0 || string.Equals(value, SystemColor, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        value = value.TrimStart('#');
+        if (value.Length != 6 && value.Length != 8) return null;
+
+        try
+        {
+            byte alpha = value.Length == 8 ? Convert.ToByte(value.Substring(0, 2), 16) : (byte)255;
+            int offset = value.Length == 8 ? 2 : 0;
+            return Color.FromArgb(alpha,
+                Convert.ToByte(value.Substring(offset, 2), 16),
+                Convert.ToByte(value.Substring(offset + 2, 2), 16),
+                Convert.ToByte(value.Substring(offset + 4, 2), 16));
+        }
+        catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>颜色的写法：<c>null</c> = <c>system</c>；不透明写 <c>#RRGGBB</c>、半透明写 <c>#AARRGGBB</c>。</summary>
+    public static string FormatColor(Color? color) => color is not { } c
+        ? SystemColor
+        : c.A == 255
+            ? $"#{c.R:X2}{c.G:X2}{c.B:X2}"
+            : $"#{c.A:X2}{c.R:X2}{c.G:X2}{c.B:X2}";
+
+    /// <summary>归一后的默认值（读盘一次，直接可用）。</summary>
+    public static (int MaximumWidth, int FontSize, string FontFamily, Color? TextColor, Color? BackgroundColor)
+        Normalize(int? width, int? fontSize, string? fontFamily, string? textColor, string? background) =>
+        (NormalizeMaximumWidth(width), NormalizeFontSize(fontSize), NormalizeFontFamily(fontFamily),
+            ParseColor(textColor), ParseColor(background));
+}
+
+/// <summary>
+/// 一张文字 / 颜色贴图**当时用的**样式快照（进贴图历史，贴回时按原样重画）。
+/// </summary>
+/// <remarks>
+/// 照上游 <c>PinnedWindowRepository</c> 的 <c>text_style</c> 对象（<c>pinnedwindowrepository.cpp:597</c>）：
+/// 最大宽 / 字体族 / 字号 / 字色 / 底色都存**具体值**（主题色在贴出那一刻就解析成 <c>#RRGGBB</c>），
+/// 所以之后改默认值不会让已经贴过的文字变样。
+/// </remarks>
+internal sealed class PinTextSnapshot
+{
+    public int MaximumWidth { get; set; } = PinTextRules.DefaultMaximumWidth;
+
+    public string FontFamily { get; set; } = "";
+
+    public double FontSize { get; set; } = PinTextRules.DefaultFontSize;
+
+    public string TextColor { get; set; } = "#18181B";
+
+    public string BackgroundColor { get; set; } = "#FFFFFF";
+
+    /// <summary>把一份样式拍成快照（颜色固定成 <c>#RRGGBB</c> / <c>#AARRGGBB</c>）。</summary>
+    public static PinTextSnapshot Of(PinTextStyle style) => new()
+    {
+        MaximumWidth = PinTextRules.NormalizeMaximumWidth((int)Math.Round(style.MaximumWidth)),
+        FontFamily = PinTextRules.NormalizeFontFamily(style.FontFamily),
+        FontSize = PinTextRules.NormalizeFontSize((int)Math.Round(style.FontSize)),
+        TextColor = PinTextRules.FormatColor(style.TextColor),
+        BackgroundColor = PinTextRules.FormatColor(style.BackgroundColor),
+    };
+
+    /// <summary>按快照还原样式：字体 / 字号 / 最大宽 / 字色 / 底色都取快照里的值。</summary>
+    public PinTextStyle ToStyle()
+    {
+        var style = PinTextStyle.Current();
+        style.MaximumWidth = PinTextRules.NormalizeMaximumWidth(MaximumWidth);
+        style.FontSize = PinTextRules.NormalizeFontSize((int)Math.Round(FontSize));
+        if (!string.IsNullOrWhiteSpace(FontFamily)) style.FontFamily = FontFamily;
+        if (PinTextRules.ParseColor(TextColor) is { } text) style.TextColor = text;
+        if (PinTextRules.ParseColor(BackgroundColor) is { } background) style.BackgroundColor = background;
+        return style;
     }
 }
 

@@ -171,6 +171,15 @@ public partial class CapturePinWindow
         manager.Click += (_, _) => PinManagerWindow.Toggle();
         menu.Items.Add(manager);
 
+        var textStyle = new MenuItem { Header = "文字样式…" };
+        textStyle.Click += (_, _) =>
+        {
+            _menu?.IsOpen = false;      // 模态框不能挂在开着的 popup 上
+            Dispatcher.BeginInvoke(new Action(() => PinTextStyleWindow.Show(null)),
+                System.Windows.Threading.DispatcherPriority.Background);
+        };
+        menu.Items.Add(textStyle);
+
         var close = new MenuItem { Header = "关闭" };
         close.Click += (_, _) => Close();
         menu.Items.Add(close);

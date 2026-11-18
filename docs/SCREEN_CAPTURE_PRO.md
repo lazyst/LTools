@@ -674,6 +674,32 @@ pins/thumbnails/<id>.png    # 列表小图（长边 240）
 - **平台差异**：上游会把剪贴板里的 `text/html` 交给 Qt 富文本排版再贴图，本地取 `text/plain`
   （文字与折行一致，但不保留粗斜 / 颜色 / 链接样式），见 `docs/CAPTURE_PARITY.md` §5。
 
+### 9.5 贴图文字样式（P5-d）
+
+照上游 `pinnedtextstylecapture.cpp` + 设置页 `pinTextStyleItems`（`pin_to_screen/text_*`），五项默认值都可配，
+落 `configs/settings.json` 的 `PinText` 段（`Config/PinText.cs` + `Features/CapturePro/PinTextStore.cs`）：
+
+| 设置 | 范围 / 写法 | 默认 |
+|---|---|---|
+| 最大文字宽 | 100–2000 px（含两侧内边距） | 1024 |
+| 默认字体 | 系统字体名；空 = 系统界面字体 | 空（系统） |
+| 默认字号 | 8–96 px | 16 |
+| 文字颜色 | `#RRGGBB` / `#AARRGGBB`；空 / `system` = 跟随主题 | `system` |
+| 背景颜色 | 同上 | `system` |
+
+- **只影响新贴**：贴出那一刻用 `PinTextSnapshot.Of(style)` 把当时的五项拍成快照写进 `PinRecord.TextStyle`，
+  贴回 / 管理页里显示都按快照重画（`record.TextStyle?.ToStyle() ?? PinTextStyle.Current()`）。
+  改默认值不会让已经在屏幕上或历史里的贴图变样——与上游 `PinnedWindowRepository` 的 `text_style` 同一条语义。
+- **对话框**（`Views/CapturePro/PinTextStyleWindow`）：最大宽 / 字号带范围提示、字体下拉「系统默认」+ 全部系统字体
+  （当前值不在一览里也补一项，不悄悄换成第一项）、两种颜色各有「跟随主题」勾选 + 12 色板 + hex 框
+  （填 hex 自动取消跟随主题；勾回跟随主题时色板与 hex 置灰并显示主题当前色）、
+  中间是**真按当前值渲染**的文字卡预览（与贴到屏幕同一个 `PinCardRenderer.RenderText`）、
+  底部「恢复默认」+ 取消 / 确定；数字填错标红且不保存。
+- **入口**：贴图管理页顶栏「文字样式…」（有宿主）、贴图右键「文字样式…」（无宿主 → 置顶 + 屏幕居中）。
+- **归一规则只有一份**（`PinTextRules`）：范围夹取、字体去空白 / 超长回系统、两种 HEX、`system`；
+  读与写用同一个锚点（`ConfigStore.ConfigPath`，空才回落 `ConfigLocator.FindPath()`），
+  否则导了备份或把配置指到临时目录后会「写一处、读另一处」。
+
 
 ## 10. 识别（P2 / P4-a / P4-b）
 

@@ -78,6 +78,12 @@ internal sealed class PinRecord
     /// <summary>色卡宽度（342 / 470；其它贴图是 0），贴回时按原尺寸重画。</summary>
     public int CardWidth { get; set; }
 
+    /// <summary>
+    /// 文字 / 色卡贴出那一刻用的样式（字体 / 字号 / 字色 / 底色 / 最大宽）。
+    /// 之后改默认值不会让已经贴过的文字变样；图片贴图是 <c>null</c>。
+    /// </summary>
+    public PinTextSnapshot? TextStyle { get; set; }
+
     /// <summary>还开着（没有关闭时间）。</summary>
     [JsonIgnore] public bool IsOpen => ClosedAt.Length == 0;
 
@@ -203,7 +209,7 @@ internal static class PinStore
     /// </summary>
     public static PinRecord Create(int width, int height, int areaX, int areaY, int areaW, int areaH,
         double scale, string source, string group, bool live,
-        string kind = KindImage, string text = "", int cardWidth = 0)
+        string kind = KindImage, string text = "", int cardWidth = 0, PinTextSnapshot? textStyle = null)
     {
         var now = DateTime.Now;
 
@@ -218,6 +224,7 @@ internal static class PinStore
                 Kind = NormalizeKind(kind),
                 Text = text ?? "",
                 CardWidth = Math.Max(0, cardWidth),
+                TextStyle = NormalizeKind(kind) == KindImage ? null : textStyle,
                 CreatedAt = now.ToString(TimeFormat, CultureInfo.InvariantCulture),
                 Width = Math.Max(0, width),
                 Height = Math.Max(0, height),
