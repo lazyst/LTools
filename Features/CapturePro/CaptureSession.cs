@@ -10,8 +10,9 @@ using LTools.Views.CapturePro;
 
 namespace LTools.Features.CapturePro;
 
-/// <summary>一次截图的成品：屏幕矩形（物理像素）+ 按选区重绘出来的图片。</summary>
-internal sealed record CaptureResult(Int32Rect Area, BitmapSource Image);
+/// <summary>一次截图的成品：屏幕矩形（物理像素）+ 按选区重绘出来的图片 + 图里烘进的外观。</summary>
+internal sealed record CaptureResult(Int32Rect Area, BitmapSource Image,
+    PinAppearance Appearance, bool Scrolling);
 
 /// <summary>
 /// 截图覆盖层的唯一入口：收起 LTools 自己的窗口 → 冻结抓帧 → 打开覆盖层 → 交回成品。
@@ -59,6 +60,7 @@ internal static class CaptureSession
         HotkeyRegistry.Suspended = true;
 
         CaptureResult? result = null;
+        CapturePlacement? placement = null;
         bool pin = false, recognize = false, scroll = false, live = false;
         bool record = false;
         var recordArea = Int32Rect.Empty;
@@ -95,7 +97,10 @@ internal static class CaptureSession
                 live = overlay.LiveRequested;
                 finish = overlay.Finish;
 
-                result = new CaptureResult(overlay.Document.Area, captured);
+                placement = CapturePlacement.Of(overlay.Document.Area, overlay.Document.Style,
+                    overlay.Document.Scale, scroll);
+                result = new CaptureResult(overlay.Document.Area, captured,
+                    placement.Appearance, placement.Scrolling);
             }
         }
         catch (Exception ex)
@@ -139,15 +144,16 @@ internal static class CaptureSession
         }
 
         // 采集历史：先记一条（只写 catalog.json），图片丢后台写；识别文字稍后由结果窗回填。
+        // 落位信息一起记：采集历史要能「按原选区 + 原外观」贴回（见 HistoryPinPlacement）。
         var entry = CaptureCatalog.Create(
             result.Image.PixelWidth, result.Image.PixelHeight,
             recognize ? CaptureCatalog.KindRecognize : CaptureCatalog.KindShot,
-            SourceOf(finish));
+            SourceOf(finish), placement);
 
         var image = result.Image;
         System.Threading.Tasks.Task.Run(() => CaptureCatalog.SaveAssets(entry, image));
 
-        if (pin) CapturePinManager.Pin(result.Image, result.Area);
+        if (pin) CapturePinManager.Pin(result.Image, result.Area, appearance: result.Appearance);
         if (live) StartLivePin(result);
         if (recognize)
             CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry, result.Area);
@@ -213,7 +219,7 @@ internal static class CaptureSession
         var hwnd = WindowAt(result.Area);
         if (hwnd == IntPtr.Zero)
         {
-            CapturePinManager.Pin(result.Image, result.Area);
+            CapturePinManager.Pin(result.Image, result.Area, appearance: result.Appearance);
             ToastService.Show("没找到可跟随的窗口，已贴成普通图片", "实时贴图", 2800,
                 ToastKind.warning, key: "pin-live");
             return;

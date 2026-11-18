@@ -64,6 +64,8 @@ public partial class CapturePinWindow : Window
     private string _group = PinGroups.Default;
     private bool _selected;
 
+    private PinAppearance _appearance = PinAppearance.None;   // 图自带的选区外观（圆角 / 阴影 / 边框）
+
     private IntPtr _liveHwnd;                // 实时贴图跟的源窗口
     private uint _livePid;                   // 源窗口属于哪个程序（句柄换了要在同一个程序里找回）
     private string _liveClass = "";          // 源窗口的类名（句柄换了的兜底只认同一个类名）
@@ -189,6 +191,20 @@ public partial class CapturePinWindow : Window
 
     /// <summary>这张贴图在哪个分组（只在内存，见 <see cref="CapturePinManager"/>）。</summary>
     public string Group => _group;
+
+    /// <summary>图自带的选区外观（圆角 / 阴影 / 边框，见 <see cref="PinAppearance"/>）。</summary>
+    internal PinAppearance Appearance => _appearance;
+
+    /// <summary>
+    /// 套上选区外观：图里已经烘进圆角 / 阴影时不再铺不透明底、不再叠窗口描边
+    /// （照上游 <c>PinnedBorderAppearance</c>：效果以图为准，窗口只负责外形）。
+    /// </summary>
+    internal void SetAppearance(PinAppearance? appearance)
+    {
+        _appearance = (appearance ?? PinAppearance.None)
+            .Clamp(_content.PixelWidth, _content.PixelHeight);
+        ApplyChrome();
+    }
 
     /// <summary>
     /// 贴图历史里的记录 Id（见 <see cref="PinStore"/>）；空串 = 没记历史（冒烟夹具 / 旧路径）。

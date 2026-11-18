@@ -66,6 +66,9 @@ public partial class CapturePinWindow
     /// <summary>把内容尺寸与偏移写到界面（缩放 / 平移 / 进出取景框 / 缩略图都只调它）。</summary>
     private void ApplyContent()
     {
+        // 圆角跟着缩放走（图里的圆角是成品图像素，窗口描边要用当前 DIP 半径）
+        Frame.CornerRadius = new CornerRadius(_thumb ? 0 : _appearance.RadiusDip(_scale, _zoom));
+
         if (_thumb)
         {
             // 缩略图：整张图等比塞进方块（按 100% 铺的话只能看见左上角一块）
@@ -120,7 +123,7 @@ public partial class CapturePinWindow
         }
 
         ApplyContent();
-        ApplyFrame();
+        ApplyChrome();
         ApplyCursor();
         RefreshHoverChrome();
         RefreshBadges();                              // 方块里不挂徽标

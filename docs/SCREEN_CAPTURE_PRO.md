@@ -863,6 +863,46 @@ Id 与已经删掉的 Id 都不复活。
 切分组、删记录、`pins.json` 落盘）。
 
 
+### 9.9 采集历史按原选区 + 原外观贴回（P5-h）
+
+照上游 `services/historypinplacement.cpp`、`screenshotcontroller.cpp` 的
+`pinScreenshotHistoryRecord`、`components/screenshothistorypagewidget.cpp`。
+
+**截图时顺手记下落位**：导出前 `CapturePlacement.Of(选区, 样式, 缩放, 长截图)` 算一次，
+写进 `captures/catalog.json`（`SelectionX/Y/W/H`、`RadiusPx`、`EffectPx`、`Decoration`、
+`Scrolling`）。圆角 / 效果宽度是 DIP，换成**成品图像素**保存（图里已经烘进去了，贴图时不再重算）；
+圆角不超过短边的一半，与上游 `std::clamp` 同口径。长截图不记外观——拼出来的长图没有那一圈效果。
+
+**判定**（`Features/CapturePro/HistoryPinPlacement.cs`）：
+
+- `SupportsPin` = 截图 / 识别 + 不是长截图 + 记过一块有效选区。
+- `Selection` 给出当初那块矩形（虚拟桌面物理像素）；`Appearance` 给出圆角 / 效果 / 装饰；
+  `WindowRect` 把带内边距的图摆回去，**内容正好落在原选区**。
+- `MeetsDesktop` 拿选区跟当前显示器列表求交：一块屏都碰不上（拔显示器 / 改分辨率）就**退回居中**，
+  不硬摆到看不见的地方（照上游「Off-desktop selections do not use the live pin's nearest-display
+  fallback」）。老记录（P5-h 之前）没有落位信息，同样只能居中。
+
+**贴回**（`CapturePinManager.PinHistory`）：`source = history`，图片读不出来返回 `null`
+（调用方提示「图片文件不见了」）。能按原位置贴就贴回原选区（窗口按效果内边距往四周让开），
+否则走 `PinClipboardImage` 的「居中贴到光标所在屏」；两种都会把外观交给
+`CapturePinWindow.SetAppearance`。
+
+**窗口外形以图为准**（`CapturePinWindow` 的 `ApplyChrome` / `ApplyFrame`）：
+
+- 图自带圆角 / 阴影（`Appearance.HasShape`）→ 不铺不透明底，透明处留给桌面（不会画成深灰）。
+- 图自带阴影 / 边框（`SuppressesFrame`）→ 不叠窗口自己那圈 1px 描边（那圈内边距也是图的一部分，
+  再包一个方框就成了「画框」）。
+- 只有圆角时窗口描边保留，`Frame.CornerRadius` 跟着贴图缩放走（`Appearance.RadiusDip(scale, zoom)`）。
+
+**记录与恢复**：`PinRecord` 加 `RadiusPx` / `EffectPx` / `Decoration`，`PinStore.Create(..., appearance)`
+落进 `pins/pins.json`；管理页 / 托盘「贴回屏幕」走 `RestoreCore`，`SetAppearance(record.Appearance)`
+让重开的贴图保持同一外形。
+
+回归：`--selftest` 的「采集历史贴回：外观 / 窗口矩形 / 桌面求交」+ 仓库外
+`capture-overlay-smoke` 的 `HistoryPinSection`（真窗口按内边距让开、DIP 落点、Backdrop / Frame 收起、
+长截图与老记录居中、`pins.json` 落盘；落图 `out/history-pin.png`）。
+
+
 ## 10. 识别（P2 / P4-a / P4-b）
 
 入口三处，行为一致（都先按标注文档重绘成品，再关覆盖层，然后开结果窗）：

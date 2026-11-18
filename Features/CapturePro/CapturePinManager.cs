@@ -67,15 +67,25 @@ internal static class CapturePinManager
     public static bool IsShown(CapturePinWindow pin) =>
         ActiveGroup == null || PinGroups.Same(pin.Group, ActiveGroup);
 
-    /// <summary>把一张图贴到屏幕上（正好盖住它截下来的那块区域）。</summary>
+    /// <summary>
+    /// 把一张图贴到屏幕上（内容正好盖住它截下来的那块区域）。
+    /// </summary>
     /// <param name="source">来源（<see cref="PinStore.SourceScreenshot"/> 等），进贴图历史用。</param>
+    /// <param name="appearance">
+    /// 图自带的选区外观（圆角 / 阴影 / 边框）。带效果时图比选区大一圈，
+    /// 窗口按它往四周让出内边距，**内容仍然落在选区上**（照上游 <c>PinnedBorderAppearance</c>）。
+    /// </param>
     public static CapturePinWindow Pin(BitmapSource image, Int32Rect area,
-        string source = PinStore.SourceScreenshot)
+        string source = PinStore.SourceScreenshot, PinAppearance? appearance = null)
     {
+        var look = (appearance ?? PinAppearance.None).Clamp(image.PixelWidth, image.PixelHeight);
+        var box = look.WindowRect(area, image.PixelWidth, image.PixelHeight);
+
         // 缩放比按这块区域所在显示器算：跨屏选区时不能用「覆盖层那块屏」的比例
-        double scale = ScreenShot.ScaleOf(area);
-        var pin = new CapturePinWindow(image, area, scale);
-        return Register(pin, image, area, scale, source, PinStore.KindImage, "", 0);
+        double scale = ScreenShot.ScaleOf(box);
+        var pin = new CapturePinWindow(image, box, scale);
+        pin.SetAppearance(look);
+        return Register(pin, image, box, scale, source, PinStore.KindImage, "", 0, null, look);
     }
 
     /// <summary>
@@ -103,7 +113,7 @@ internal static class CapturePinManager
 
     /// <summary>贴剪贴板里的一张图：居中放到 <paramref name="workArea"/>（DIP），超大等比缩小。</summary>
     public static CapturePinWindow PinClipboardImage(BitmapSource image, double scale, Rect workArea,
-        string source = PinStore.SourceClipboard)
+        string source = PinStore.SourceClipboard, PinAppearance? appearance = null)
     {
         double s = scale > 0 ? scale : 1;
         var logical = new Size(Math.Max(1, image.PixelWidth / s), Math.Max(1, image.PixelHeight / s));
@@ -112,14 +122,48 @@ internal static class CapturePinManager
             (int)Math.Round(box.X * s), (int)Math.Round(box.Y * s),
             Math.Max(1, (int)Math.Round(box.Width * s)), Math.Max(1, (int)Math.Round(box.Height * s)));
 
+        var look = (appearance ?? PinAppearance.None).Clamp(image.PixelWidth, image.PixelHeight);
         var pin = new CapturePinWindow(image, area, s, zoom);
-        return Register(pin, image, area, s, source, PinStore.KindImage, "", 0);
+        pin.SetAppearance(look);
+        return Register(pin, image, area, s, source, PinStore.KindImage, "", 0, null, look);
+    }
+
+    /// <summary>
+    /// 采集历史「贴到屏幕」（照上游 <c>pinScreenshotHistoryRecord</c>）：
+    /// 能按原选区贴回就贴回它当初的位置（内容正好盖住原来那块），
+    /// 不能（长截图 / 老记录 / 那块屏现在没了）就居中贴到光标所在屏。
+    /// </summary>
+    /// <returns>贴上了返回窗口；图片文件读不出来返回 <c>null</c>。</returns>
+    public static CapturePinWindow? PinHistory(CaptureEntry entry)
+    {
+        if (entry == null || entry.IsRecord) return null;
+
+        var image = CaptureCatalog.LoadImage(CaptureCatalog.AssetPath(entry.Id));
+        if (image == null) return null;
+
+        var appearance = HistoryPinPlacement.Appearance(entry);
+
+        // 原位置：选区还在当前桌面上（显示器拔了 / 分辨率改了就不硬摆到看不见的地方）
+        if (HistoryPinPlacement.WindowRect(entry, image.PixelWidth, image.PixelHeight) is Int32Rect at
+            && HistoryPinPlacement.MeetsDesktop(
+                HistoryPinPlacement.Selection(entry) ?? at, ScreenShot.Monitors()))
+        {
+            double scale = ScreenShot.ScaleOf(at);
+            var pin = new CapturePinWindow(image, at, scale);
+            pin.SetAppearance(appearance);
+            return Register(pin, image, at, scale, PinStore.SourceHistory, PinStore.KindImage,
+                "", 0, null, appearance);
+        }
+
+        double fallbackScale = PinClipboard.ScreenScale();
+        var work = PinClipboard.WorkAreaDip(fallbackScale);
+        return PinClipboardImage(image, fallbackScale, work, PinStore.SourceHistory, appearance);
     }
 
     /// <summary>出场收尾：分组、历史记录（先写 pins.json）、显示、顶最前，图片丢后台写。</summary>
     private static CapturePinWindow Register(CapturePinWindow pin, BitmapSource image, Int32Rect area,
         double scale, string source, string kind, string text, int cardWidth,
-        PinTextSnapshot? textStyle = null)
+        PinTextSnapshot? textStyle = null, PinAppearance? appearance = null)
     {
         // 正只看某个分组时，新贴图落进那个组 —— 否则贴上来立刻被自己藏起来，看着像「贴图没反应」
         string group = ActiveGroup ?? PinGroups.Default;
@@ -128,7 +172,8 @@ internal static class CapturePinManager
         // 贴图历史：先记一条（只写 pins.json），图片丢后台写，别卡 UI 线程
         var record = PinStore.Create(image.PixelWidth, image.PixelHeight,
             area.X, area.Y, area.Width, area.Height, scale, source, group, live: false,
-            kind: kind, text: text, cardWidth: cardWidth, textStyle: textStyle);
+            kind: kind, text: text, cardWidth: cardWidth, textStyle: textStyle,
+            appearance: appearance);
         pin.PinId = record.Id;
 
         Pins.Add(pin);
@@ -260,6 +305,7 @@ internal static class CapturePinManager
         {
             PinId = record.Id,
         };
+        pin.SetAppearance(record.Appearance);
 
         string group = CapturePinManager.CreateGroup(record.Group) ?? PinGroups.Default;
         pin.SetGroup(group);

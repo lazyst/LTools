@@ -134,8 +134,7 @@ public partial class CapturePinWindow
         // 内容区让成逐像素透明：分层窗口里 alpha = 0 的地方鼠标会直接穿过去，
         // 落到下面那层宿主上，宿主再把消息转发回来（见 LiveThumbnail.WindowProc）。
         Shot.Visibility = Visibility.Collapsed;
-        Backdrop.Visibility = Visibility.Collapsed;
-        Frame.Visibility = Visibility.Collapsed;   // 实时的画面就是内容，1px 描边会盖在源窗口上
+        ApplyChrome();     // 实时画面就是内容：底色与 1px 描边都收起（会盖在源窗口上）
 
         // 透明不代表「点不到」：WPF 的命中测试要有东西可命中，否则转发回来的 WM_LBUTTONDOWN
         // 会变成「没点到任何元素」，拖动、右键菜单、滚轮一起失灵。给整块 Surface 铺一层
@@ -157,8 +156,7 @@ public partial class CapturePinWindow
         Surface.Background = null;                 // 回到普通贴图：不透明底自己就是命中区
 
         Shot.Visibility = Visibility.Visible;
-        Backdrop.Visibility = Visibility.Visible;
-        Frame.Visibility = Visibility.Visible;
+        ApplyChrome();                             // 底色 / 描边按选区外观恢复（带圆角的图仍不铺底）
     }
 
     /// <summary>缩略图的矩形要跟着两边窗口走：挂源窗口的位置变化（源窗口移动 / 改尺寸）。</summary>

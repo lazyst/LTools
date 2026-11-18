@@ -76,6 +76,16 @@ internal sealed class PinRecord
     public int ClickThroughOpacity { get; set; } = PinClickThrough.DefaultOpacity;
 
     /// <summary>
+    /// 图自带的选区外观（圆角 / 阴影 / 边框，见 <see cref="PinAppearance"/>）。
+    /// 对应上游 <c>PinnedWindowRecord.borderAppearance</c>：贴回时照它决定要不要铺不透明底、画窗口描边。
+    /// </summary>
+    public int RadiusPx { get; set; }
+
+    public int EffectPx { get; set; }
+
+    public string Decoration { get; set; } = PinAppearance.DecorationNone;
+
+    /// <summary>
     /// 贴的是什么：<c>image</c> / <c>text</c> / <c>color</c>（颜色取样板）。
     /// 文字与色卡会把原文留在 <see cref="Text"/> 里，贴回时按它重画（上游也是从文字重渲染）。
     /// </summary>
@@ -95,6 +105,14 @@ internal sealed class PinRecord
 
     /// <summary>还开着（没有关闭时间）。</summary>
     [JsonIgnore] public bool IsOpen => ClosedAt.Length == 0;
+
+    /// <summary>图自带的选区外观（贴回时按它恢复「有没有圆角 / 自带阴影边框」）。</summary>
+    [JsonIgnore] public PinAppearance Appearance => new()
+    {
+        RadiusPx = RadiusPx,
+        EffectPx = EffectPx,
+        Decoration = PinAppearance.NormalizeDecoration(Decoration),
+    };
 
     [JsonIgnore] public string SizeText => CaptureCatalog.FormatSize(Width, Height);
 
@@ -257,9 +275,11 @@ internal static class PinStore
     public static PinRecord Create(int width, int height, int areaX, int areaY, int areaW, int areaH,
         double scale, string source, string group, bool live,
         string kind = KindImage, string text = "", int cardWidth = 0, PinTextSnapshot? textStyle = null,
-        bool clickThrough = false, int clickThroughOpacity = PinClickThrough.DefaultOpacity)
+        bool clickThrough = false, int clickThroughOpacity = PinClickThrough.DefaultOpacity,
+        PinAppearance? appearance = null)
     {
         var now = DateTime.Now;
+        var look = (appearance ?? PinAppearance.None).Clamp(width, height);
 
         lock (Gate)
         {
@@ -286,6 +306,9 @@ internal static class PinStore
                 Live = live,
                 ClickThrough = clickThrough,
                 ClickThroughOpacity = PinClickThrough.NormalizeOpacity(clickThroughOpacity),
+                RadiusPx = look.RadiusPx,
+                EffectPx = look.EffectPx,
+                Decoration = look.Decoration,
             };
 
             items.Insert(0, record);

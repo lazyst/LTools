@@ -206,8 +206,11 @@
                         <Button x:Name="TrimBtn" Style="{StaticResource BtnGhost}" Content="裁剪 / 倍速…"
                                 MinWidth="104" Margin="8,0,0,0" Click="Trim_Click" IsEnabled="False"
                                 Visibility="Collapsed" ToolTip="裁剪录屏区间、改倍速，导出成新文件（原片不动）"/>
+                        <Button x:Name="PinBtn" Style="{StaticResource BtnGhost}" Content="贴到屏幕"
+                                MinWidth="88" Click="Pin_Click" IsEnabled="False"
+                                ToolTip="按原来的选区与外观贴回屏幕；长截图 / 老记录会居中贴到光标所在屏"/>
                         <Button x:Name="CopyImageBtn" Style="{StaticResource BtnGhost}" Content="复制图片"
-                                MinWidth="88" Click="CopyImage_Click" IsEnabled="False"/>
+                                MinWidth="88" Margin="8,0,0,0" Click="CopyImage_Click" IsEnabled="False"/>
                         <Button x:Name="SaveAsBtn" Style="{StaticResource BtnGhost}" Content="另存为…"
                                 MinWidth="88" Margin="8,0,0,0" Click="SaveAs_Click" IsEnabled="False"/>
                         <Button x:Name="CopyTextBtn" Style="{StaticResource BtnGhost}" Content="复制识别文字"

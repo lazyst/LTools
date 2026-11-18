@@ -219,6 +219,11 @@ public partial class CaptureHistoryWindow : Window
         bool has = row != null;
         bool record = has && row!.Entry.IsRecord;
 
+        PinBtn.IsEnabled = has && !record;
+        PinBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
+        PinBtn.ToolTip = has && !row!.Entry.CanPin
+            ? "这张没有记下原选区（长截图 / 老记录）：会居中贴到光标所在屏"
+            : "按原选区与外观贴回屏幕";
         CopyImageBtn.IsEnabled = has && !record;
         CopyImageBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
         PlayBtn.IsEnabled = record;
@@ -383,6 +388,21 @@ public partial class CaptureHistoryWindow : Window
 
         if (NativeClipboard.SetImage(image)) ToastService.Show("已复制图片", "采集历史", 1400);
         else ToastService.Show("复制失败（剪贴板被占用）", "采集历史", 0, ToastKind.error);
+    }
+
+    private void Pin_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedRow is not { } row) return;
+
+        if (CapturePinManager.PinHistory(row.Entry) == null)
+        {
+            ToastService.Show("图片文件不见了，没法贴回屏幕", "采集历史", 2200, ToastKind.error);
+            return;
+        }
+
+        // 按原选区贴回的会正好盖在当初那块；长截图 / 老记录居中贴到光标所在屏
+        ToastService.Show(row.Entry.CanPin ? "已按原选区贴到屏幕" : "已居中贴到屏幕",
+            "采集历史", 1600);
     }
 
     private void SaveAs_Click(object sender, RoutedEventArgs e)

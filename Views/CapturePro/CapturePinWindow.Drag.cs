@@ -341,12 +341,37 @@ public partial class CapturePinWindow
         Cursor = !_clickThrough && !_locked && _viewport ? Cursors.ScrollAll : Cursors.Arrow;
 
     /// <summary>
+    /// 底色 / 描边这两层要不要露：实时贴图让给 DWM 缩略图；缩略图模式要那块不透明底；
+    /// 图自带圆角 / 阴影时不能铺不透明底（透明的地方会画成深灰），自带效果时也不再叠窗口描边。
+    /// </summary>
+    private void ApplyChrome()
+    {
+        bool backdrop = !_live && (_thumb || !_appearance.HasShape);
+        Backdrop.Visibility = backdrop ? Visibility.Visible : Visibility.Collapsed;
+        ApplyFrame();
+    }
+
+    /// <summary>
     /// 边框颜色同时表达几种状态：多选（2px 亮蓝）优先，其次拖入 / 拖出（2px 强调蓝，
     /// 照上游 <c>pin_to_screen/border_active_color</c> 的 #69B1FF），再其次锁定（亮蓝）、
     /// 局部显示（淡蓝），最后是默认的 1px 白边。
     /// </summary>
+    /// <remarks>
+    /// 图里已经烘进阴影 / 边框（<see cref="PinAppearance.SuppressesFrame"/>）时整圈描边收起：
+    /// 那圈内边距也是图的一部分，再包一个方框就成了「画框」。
+    /// 直角 / 只有圆角时描边跟着圆角走（<see cref="PinAppearance.RadiusDip"/>）。
+    /// </remarks>
     private void ApplyFrame()
     {
+        if (_live || _appearance.SuppressesFrame)
+        {
+            Frame.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        Frame.Visibility = Visibility.Visible;
+        Frame.CornerRadius = new CornerRadius(_thumb ? 0 : _appearance.RadiusDip(_scale, _zoom));
+
         if (_selected)
         {
             // 2px 描边是「压在图上」画的（见 XAML 里 Frame 的注释），加粗不会挤动内容

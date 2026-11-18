@@ -51,6 +51,30 @@ internal sealed class CaptureEntry
     /// <summary>录屏时长（毫秒）；其它条目为 0。</summary>
     public int DurationMs { get; set; }
 
+    /// <summary>
+    /// 当初框的选区（虚拟桌面物理像素，与截图 / 找图 / 鼠标注入同一套坐标）。
+    /// 老记录没有落位信息，<see cref="SelectionW"/> / <see cref="SelectionH"/> 是 0。
+    /// </summary>
+    public int SelectionX { get; set; }
+
+    public int SelectionY { get; set; }
+
+    public int SelectionW { get; set; }
+
+    public int SelectionH { get; set; }
+
+    /// <summary>成品图里的圆角半径（图像素；0 = 直角，见 <see cref="PinAppearance"/>）。</summary>
+    public int RadiusPx { get; set; }
+
+    /// <summary>成品图里烘进的效果内边距（阴影 / 外扩边框，图像素；0 = 没有）。</summary>
+    public int EffectPx { get; set; }
+
+    /// <summary>烘进图里的效果：<c>""</c> / <c>shadow</c> / <c>border</c>（见 <see cref="PinAppearance"/>）。</summary>
+    public string Decoration { get; set; } = "";
+
+    /// <summary>是不是长截图（拼出来的长图不按原选区贴回，也没有那一圈效果）。</summary>
+    public bool Scrolling { get; set; }
+
     /// <summary>识别还没跑完（给列表显示「识别中…」用）。</summary>
     [JsonIgnore] public bool Pending => State == "pending";
 
@@ -65,6 +89,9 @@ internal sealed class CaptureEntry
     [JsonIgnore] public bool IsRecognize => Kind == CaptureCatalog.KindRecognize;
 
     [JsonIgnore] public bool IsRecord => Kind == CaptureCatalog.KindRecord;
+
+    /// <summary>能不能在采集历史里「按原选区贴回屏幕」（见 <see cref="HistoryPinPlacement"/>）。</summary>
+    [JsonIgnore] public bool CanPin => HistoryPinPlacement.SupportsPin(this);
 
     /// <summary>录屏时长文案（<c>mm:ss</c>）。</summary>
     [JsonIgnore] public string DurationText => CaptureCatalog.FormatClock(DurationMs);
@@ -255,7 +282,8 @@ internal static class CaptureCatalog
     /// 先记一条（只写 <c>catalog.json</c>，很快），图片由调用方随后
     /// <see cref="SaveAssets"/> 丢后台写。顺带按保留策略剪枝。
     /// </summary>
-    public static CaptureEntry Create(int width, int height, string kind, string source)
+    public static CaptureEntry Create(int width, int height, string kind, string source,
+        CapturePlacement? placement = null)
     {
         var now = DateTime.Now;
 
@@ -272,6 +300,18 @@ internal static class CaptureCatalog
                 Height = Math.Max(0, height),
                 State = kind == KindRecognize ? "pending" : "done",
             };
+
+            if (placement != null)
+            {
+                entry.SelectionX = placement.Selection.X;
+                entry.SelectionY = placement.Selection.Y;
+                entry.SelectionW = Math.Max(0, placement.Selection.Width);
+                entry.SelectionH = Math.Max(0, placement.Selection.Height);
+                entry.RadiusPx = Math.Max(0, placement.Appearance.RadiusPx);
+                entry.EffectPx = Math.Max(0, placement.Appearance.EffectPx);
+                entry.Decoration = PinAppearance.NormalizeDecoration(placement.Appearance.Decoration);
+                entry.Scrolling = placement.Scrolling;
+            }
 
             items.Insert(0, entry);
             var (keep, drop) = PlanPrune(items, now, MaxEntries, MaxAgeDays);
