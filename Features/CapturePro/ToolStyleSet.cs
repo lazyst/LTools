@@ -92,21 +92,74 @@ internal sealed class ToolStyleSet
     /// <summary>同步用的共享色。</summary>
     public Color SharedColor { get; private set; } = DefaultSharedColor;
 
-    /// <summary>当前工具的样式（不存在的族按默认建一份）。</summary>
+    /// <summary>
+    /// 当前工具的样式（不存在的族按默认建一份）。
+    /// </summary>
     public ToolStyle For(CaptureTool tool) => ForFamily(StyleFamilies.Of(tool));
 
-    /// <summary>某个族的样式；共享颜色开着时颜色恒等于共享色（关掉开关也保持统一，与上游一致）。</summary>
+    /// <summary>
+    /// 某个族的样式；共享颜色开着时颜色恒等于共享色（关掉开关也保持统一，与上游一致）。
+    /// 各族默认值只在 <see cref="ApplyFamilyDefaults"/>（别散到工具栏里）。
+    /// </summary>
     public ToolStyle ForFamily(string family)
     {
         if (!_byFamily.TryGetValue(family, out var style))
         {
             style = new ToolStyle();
-            // 画笔橡皮默认笔头很粗（上游 brushEraserStyle.strokeWidth = 30），细笔头擦起来像没反应
-            if (family == StyleFamilies.BrushEraser) style.Width = 30;
+            ApplyFamilyDefaults(family, style);
             _byFamily[family] = style;
         }
         if (SyncColors) style.Color = SharedColor;
         return style;
+    }
+
+    /// <summary>
+    /// 每族的出厂默认（上游 <c>screenshotCanvasStyleDefaults()</c> 与
+    /// <c>SnowCanvas*Style</c> 的默认构造）。只有这里一处，自检直接断言。
+    /// </summary>
+    public static void ApplyFamilyDefaults(string family, ToolStyle style)
+    {
+        switch (family)
+        {
+            case StyleFamilies.BrushEraser:
+                // 画笔橡皮默认笔头很粗（上游 brushEraserStyle.strokeWidth = 30），细笔头擦起来像没反应
+                style.Width = 30;
+                break;
+
+            case StyleFamilies.Serial:
+                style.Color = SerialSpec.DefaultStroke;
+                style.FillColor = SerialSpec.DefaultFill;
+                style.Badge = SerialBadge.OutlinedCircle;
+                style.Numbering = SerialNumbering.Arabic;
+                style.SerialNumber = 1;
+                style.FontSize = 24;
+                style.Width = 2;
+                style.Opacity = 1;
+                style.FillStyle = FillKind.None;
+                break;
+
+            case StyleFamilies.Watermark:
+                style.Color = Colors.Black;
+                style.FontSize = 16;
+                style.WatermarkText = string.Empty;
+                style.WatermarkAngle = 30;
+                style.WatermarkGap = 56;
+                style.WatermarkOpacity = 0.16;
+                break;
+
+            case StyleFamilies.Magnifier:
+                style.Color = MagnifierSpec.DefaultStroke;
+                style.ShapeKind = ShapeKind.Rectangle;
+                style.Width = 2;
+                style.Factor = 2;
+                style.Connection = MagnifierConnection.Gradient;
+                style.SourceOutline = true;
+                style.EndpointStyle = Arrowhead.None;
+                style.ArrowRatio = 1;
+                style.CornerRadius = 6;
+                style.Opacity = 1;
+                break;
+        }
     }
 
     /// <summary>开着共享颜色时改一处颜色 = 全改；关着时只改这一族。</summary>
@@ -135,6 +188,29 @@ internal sealed class ToolStyleSet
         foreach (var style in _byFamily.Values) style.Color = SharedColor;
     }
 
+    // ============ 水印模板（上游 WatermarkTemplateSettings） ============
+
+    private readonly List<WatermarkTemplate> _templates = new();
+
+    /// <summary>水印模板（顺序就是参数行下拉的顺序）。</summary>
+    public IReadOnlyList<WatermarkTemplate> WatermarkTemplates => _templates;
+
+    /// <summary>加一个模板：同名就替换内容（上游「添加模板」同名不允许，这里按覆盖处理）。</summary>
+    public void AddWatermarkTemplate(string name, string value)
+    {
+        string key = (name ?? string.Empty).Trim();
+        if (key.Length == 0) return;
+
+        int index = _templates.FindIndex(t => t.Name == key);
+        var template = new WatermarkTemplate(key, (value ?? string.Empty).Trim());
+        if (index >= 0) _templates[index] = template;
+        else _templates.Add(template);
+    }
+
+    /// <summary>删一个模板；返回是否删到了。</summary>
+    public bool RemoveWatermarkTemplate(string name) =>
+        _templates.RemoveAll(t => t.Name == (name ?? string.Empty).Trim()) > 0;
+
     // ============ 落盘 ============
 
     /// <summary>写进 <c>ui.json</c>；只写已经创建过的族（没碰过的工具不留垃圾）。</summary>
@@ -143,6 +219,9 @@ internal sealed class ToolStyleSet
         SyncColors = SyncColors,
         SharedColor = SyncColors ? ToolStyleFormat.Hex(SharedColor) : null,
         Families = _byFamily.ToDictionary(pair => pair.Key, pair => pair.Value.ToDto()),
+        WatermarkTemplates = _templates
+            .Select(t => new CaptureWatermarkTemplate { Name = t.Name, Value = t.Value })
+            .ToList(),
     };
 
     /// <summary>从 <c>ui.json</c> 读；认不出的族名直接丢掉。</summary>
@@ -161,6 +240,13 @@ internal sealed class ToolStyleSet
             if (dto == null || !StyleFamilies.IsKnown(family)) continue;
             set._byFamily[family] = ToolStyle.FromDto(dto);
         }
+
+        foreach (var template in file.WatermarkTemplates ?? new())
+        {
+            if (template == null || string.IsNullOrWhiteSpace(template.Name)) continue;
+            set.AddWatermarkTemplate(template.Name, template.Value);
+        }
+
         if (set.SyncColors) set.ApplySharedColor();
         return set;
     }

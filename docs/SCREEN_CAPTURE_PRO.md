@@ -146,7 +146,9 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 | `ArrowMark` | 起点、终点、颜色、线宽、箭头大小 | 线宽 1–50 |
 | `PolylineMark` | 点列、颜色、线宽、是否带箭头 | ≥2 点 |
 | `TextMark` | 原点、文本、`TextSpec`（字体族 / 字号 / 粗 / 斜 / 水平对齐 / 字色 / 描边宽 · 描边色 / 背景填充色 · 填充方式 · 圆角） | 字号 6–256（默认 30）；描边宽 0–72（默认 0，色 `#FFCCC7`）；圆角 0–83（默认 6）；背景默认「无填充」（上游 `Border`） |
-| `SerialMark` | 圆心、序号、颜色、样式（实心圆 / 空心圆 / 方形）、字号 | 序号从 1 起，删除不重排（与 Quicker 一致） |
+| `SerialMark` | 圆心、序号 + `SerialSpec`（徽标 5 种 / 写法 5 种 / 描边色 + 线宽 / 填充色 + 填充方式 / 字号 / 字体 / 不透明度） | 序号从 1 起，删除不重排（与 Quicker 一致）；字号 6–256（默认 24），**徽标直径 = 1.68 × 字号**（与写法 / 位数无关）、方形圆角 = 0.2 × 字号 |
+| `MagnifierMark` | 镜头中心、源中心、源尺寸 + `MagnifierSpec`（形状 / 描边色 + 线宽 / 倍率 / 连接方式 / 源轮廓 / 引导线端点 + 比例 / 圆角 / 不透明度） | 倍率 1–10（默认 2）；镜头 = 源尺寸 × 倍率；镜头与源**各自独立定位** |
+| `WatermarkMark` | 文字 + `WatermarkSpec`（颜色 / 字号 / 字体 / 角度 / 间距 / 不透明度） | 字号 6–256（默认 16）、角度 ±90°（默认 30°）、间距 10–200（默认 56）、不透明度 0–1（默认 0.16）；格距 = max(间距 + 字号 × 4, 32) |
 | `MosaicMark` | 矩形、块边长 | 块 4–24 DIP（默认 8）；**P0 只有矩形**，笔刷形状放 P1 |
 | `SpotlightMark` | 矩形、暗度 | 40–80%（默认 55%） |
 
@@ -194,6 +196,18 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
   **横向（高度为 0）拖拽会退化、上游同样什么都不生成**。`HitTest` 按 16 段折线采样，**脊线本身不命中**（它是空的）。
 - **橡皮三模式**（P2-d1）：参数行一格「模式」把 橡皮 / 矩形橡皮 / 画笔橡皮 摆在一起，点另一个 = 发 `ToolChanged` 换工具
   （上游 `modeSelector` 同一语义）；画笔橡皮的宽度直接用 `brushEraser` 族自己的 `ToolStyle.Width`（新建默认 30），不另开字段。
+- **放大镜**（P2-d2，`MagnifierStyle.cs` 的 `MagnifierInk`）：① 镜头内容 = 以**源中心**按倍率采样底图，裁在镜头轮廓内
+  （椭圆 / 圆角矩形 / 菱形三种轮廓）；② 渐变桥 = 镜头与源轮廓的**凸包减镜头**，从源中心（透明）到镜头中心（`0.3 × 不透明度`）线性渐变；
+  ③ 源轮廓只在镜头**外**绘制（与上游一致，镜头里的那半圈被镜头自己盖住）；④ 引导线从镜头轮廓外「半描边 + 8 DIP（`SHAPE_CONNECTOR_GAP`）」起、
+  止于源中心，端点走 `ArrowInk`；⑤ 最后画镜头描边（内部透明）。镜头与源**各自独立定位**：
+  拖源区域 = 两个中心一起平移，拖镜头本体（源之外）或镜头下缘 **+24 DIP** 的移动手柄（14×14、命中 ±9、六点小图标）= 只动镜头；
+  选中时额外画源区域虚线轮廓（1 DIP、选中色）与手柄（照上游 `overlay_composition.rs` 的 `magnifier_source_outline` + `magnifier_move_grip`）。
+- **序号**（P2-d2，`SerialStyle.cs`）：徽标 5 种（空心圆 / 实心圆 / 空心方 / 实心方 / **纯圆圈不写数字**，照 `supports_number()`）×
+  写法 5 种（阿拉伯 / 罗马 1–3999（只有大写）/ 小写字母 `aa..` / 大写字母 `AA..` / 中文四位分组 + 万·亿·兆·京、跨组补零「一万零一」、空组补零「一亿零一」）；
+  直径 `1.68 × 字号`、方形圆角 `0.2 × 字号`，数字用字号居中；实心徽标填描边色、字取对比色，空心徽标字就是描边色。
+- **水印**（P2-d2，`WatermarkStyle.cs`）：整图斜向平铺（`PushClip` 夹到画布、4096 块上限），**格距 = max(间距 + 字号 × 4, 32)**、
+  排版行高 `1.2 × 字号`，每块的局部原点按 `(格距/顶部偏移, 行高/2 − 字号)` 摆；模板先展开再画——`{text}` 换成当前文字、
+  `{YYYY}{MM}{DD}{HH}{mm}{ss}` 换成此刻时间，**嵌套 `{outer-{YYYY}}` / 未闭合 `{YYYY` / 认不出的 `{foo}` 整段原样保留**。
 - **导出**：新建 `DrawingVisual`，`PushTransform(new ScaleTransform(scale, scale))`，
   按 DIP 画「底图 + 标注」，再 `RenderTargetBitmap(物理宽, 物理高, 96, 96, Pbgra32)`。
   DPI 用 96 + 缩放变换，纹理尺寸就是物理像素，文字与描边是矢量重绘（不是放大位图）。
@@ -232,7 +246,9 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 | 测角（P2-d1） | 颜色、线宽、类型（有向 360° / 内角 180°）、单位（度 / 弧度）、小数位（0–3） |
 | 括号（P2-d1） | 颜色、线宽（花括号，纵向拖出） |
 | 文字（P2-c） | 颜色、字号（数字框 6–256 + S/M/L/XL = 24/30/42/54）、字体（可搜索弹层，首项「默认（微软雅黑 UI）」）、粗 / 斜、对齐（左 / 中 / 右）、描边（0–72）、描边色、填充色、填充（无 / 实心 / 斜线 / 交叉）、圆角（0–83） |
-| 序号 | 颜色、徽标形状（圆 / 方 / 圆角方）、数字写法（1 / I / i / A / a / 一） |
+| 序号（P2-d2） | 颜色、徽标（空心圆 / 实心圆 / 空心方 / 实心方 / 圆圈）、写法（1 / I / a / A / 一）、序号（**下一个号码**，落一个自动 +1）、字号（6–256）、字体、线宽、填充色、填充（无 / 实心 / 斜线 / 交叉） |
+| 放大镜（P2-d2） | 形状（矩形 / 椭圆 / 菱形）、颜色、线宽、倍率（1–10，滚轮 0.5）、连接（无 / 引导线 / 渐变）、源轮廓开关、箭头比例（0.5–3）、端点（14 种）、圆角 |
+| 水印（P2-d2） | 颜色、文字、字号（12 / 16 / 24 / 30 预设 + 数字框）、字体、模板（点名字套用；右键增删，存 `ui.json`）、角度（−90–90）、间距（10–200）、不透明度 |
 | 马赛克 | 块大小（4/8/16） |
 | 滤镜 | 类型（模糊 / 灰度 / 反相 / 浮雕 / 亮度 / 智能擦除）、强度（0–100） |
 | 自动打码（P1-c） | 类型（马赛克 / 模糊 / 灰度 / 反相 / 浮雕 / 亮度）、强度（0–100）、填充区域下拉（正文 / 框内文字 / 图片 / 头像 / 图标 / 消息框 / 整段文字；没识别结果时置灰） |
@@ -2006,6 +2022,36 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   ⑨ **已知偏差**：空心端点只描边不填充（上游填画布背景色，LTools 的背景是截图）；上游「样式预设」是
   可自定义的颜色 / 线宽 / 字号预设表，归 P7 的设置页；箭头族参数与「选中后切样式族」单列 P2-e。
 
+- **P2-d2 放大镜 / 序号 / 水印（2026-11-18）**：
+  ① **三份纯规格 + 纯几何**：`MagnifierStyle.cs`（`MagnifierSpec` + `MagnifierConnection` + `MagnifierInk` 的
+  `LensRect` / `SourceRectOf` / `Leader` / `Hull` / `Outline` / `MoveGrip` / `MoveGripRect` / `HitsMoveGrip`）、
+  `SerialStyle.cs`（`SerialSpec` + `SerialBadge` 5 种 + `SerialNumbering` 5 种 + `SerialLabel.Of / Chip / Name`）、
+  `WatermarkStyle.cs`（`WatermarkSpec` 的 `Step` / `LineHeight` + `WatermarkTemplateText.Resolve / Hint`）。
+  旧的 `MarkStyles.cs` 只留 `FilterKind` + `ShapeLabel`，`SerialShape` **整体退役**（徽标改成 `SerialBadge`，
+  罗马只有大写一种、字母写法拆成大小写，与上游 `serial_number_format.rs` 对齐）。
+  ② **型号 / 默认值只有一处**：`SerialSpec.Default` 写 `OutlinedCircle / Arabic / 字号 24 / 字体空（回落微软雅黑 UI）`，
+  `Diameter = 1.68 × 字号`、`CornerRadius = 0.2 × 字号`、`TextColor`（实心取对比色、空心取描边色）；
+  `MagnifierSpec.Default` 倍率 2、连接 `Gradient`、`SourceOutline = true`；`WatermarkSpec.Default` 空文字 / 黑 / 16 / 30° / 56 / 0.16。
+  DTO 往返按名字存枚举、越界钳回（倍率 1–10、字号 6–256、间距 10–200、角度 ±90），认不出的值丢弃。
+  ③ **拖动语义照上游修正**（`hit_resolution.rs` + `magnifier_drag_style_tests.rs`）：`Mark.Magnifier.MoveBy` 现在
+  **同时搬两个中心**（上游 selection transform 映射 `source_center` 与 `magnified_center`）；
+  `CaptureOverlayWindow` 的 `DragMode.MagnifierLens`（原 `MarkSource`）只在「按在镜头本体、源区域之外」或
+  「按在移动手柄（镜头下缘 +24 DIP、14×14、命中 ±9）」时启动，只改 `magnified_center`；
+  上一版「拖源区域只挪源中心」不符合上游，已删。
+  ④ **选中态的额外图层**（`CaptureCanvas.DrawMagnifierChrome`）：源区域轮廓（选中色 1 DIP 虚线，形状跟镜头、圆角 = 镜头圆角 ÷ 倍率）
+  + 移动手柄（镜头下缘 +24 DIP 的 2×3 六个小点，照上游 `selection_overlay.rs`）。两者都**不进导出**。
+  ⑤ **参数行三族**：序号 9 格（颜色 / 徽标 / 写法 / 序号 / 字号 / 字体 / 线宽 / 填充色 / 填充）——
+  「序号」框显示**下一个号码**，`AddSerialAt` 落一个后自动 +1 并 `Toolbar.RefreshValues()`；
+  放大镜 9 格（形状 / 颜色 / 线宽 / 倍率 / 连接 / 源轮廓 / 箭头比例 / 端点 / 圆角）；
+  水印 8 格（颜色 / 文字 / 字号（12·16·24·30 预设）/ 字体 / 模板 / 角度 / 间距 / 不透明度），
+  模板按钮点名字套用、右键增删，存 `configs/ui.json` 的 `CaptureStyles.WatermarkTemplates`。
+  ⑥ 自检新增 `CaptureProSuite.SerialWatermarkMagnifier.cs`（徽标尺寸矩阵 / 5×5 写法与徽标矩阵 / 中文 `int.MaxValue` /
+  水印 `Step` 与 `LineHeight` / 模板展开 8 条 / 引导线起点 210 / 凸包 / 轮廓 / 手柄几何与三段拖动语义）；
+  冒烟新增「序号 9 格（五种徽标 + 五种写法 + 落号 +1 + 撤销）」「放大镜 9 格（连接三胶囊 / 源轮廓 / 倍率 2×）」
+  「水印 8 格（模板按钮 / 12–30 / 30° / 56 / 16%）」与真窗口的拖动语义 + 源轮廓 / 手柄逐像素。
+  ⑦ 验收：构建 0 错 0 警；`--selftest` 218 用例 6795 断言全绿（`capturePro` 50 用例 1969 断言）；
+  `capture-overlay-smoke` 714 条全绿。
+
 - **P0 手感层（2026-11-17，按 `docs/SNOW_SHOT_REFERENCE.md` §17 的 P0 逐项复刻）**：
   ① **矩形滤镜**（新工具 `CaptureTool.Filter`，`F`）：`Mark.Filter`（A / B / 类型 / 强度）走 `MarkRenderer.DrawFilter`
   ——从底图裁这块 → `Process` 逐像素处理 → 贴回；五种类型（模糊用两趟方框模糊、灰度按亮度加权、反相、
@@ -2016,6 +2062,7 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   徽标圆 / 方 / 圆角方，数字写法阿拉伯 / 大小写罗马 / 大小写字母 / 中文；文案换算只有一份（`Of` / `Chip` / `Name`），
   超范围（罗马 > 3999、中文 > 9999）退回阿拉伯数字而不是留空；长写法按字数收字号（`SerialFontSize`）。
   字段名 `BadgeShape`——叫 `Shape` 会与嵌套类 `Mark.Shape` 撞（`CS0108` + `CS0572`，见 §17 坑 43）。
+  *（P2-d2 已改成「徽标直径固定 = 1.68 × 字号 + 5 种徽标 / 5 种写法」，`SerialShape` / `SerialFontSize` 退役，见上面那条。）*
   ③ **参数行补齐 + 滚轮微调 / 点击复位**：枚举参数用文字胶囊（`ChoiceChip` 样式，`Chips<T>` 生成），
   数值格 `Step(...)` 在 host 上挂 `MouseWheel`（±一个步长、夹在上下限）与数值 `MouseLeftButtonUp`（复位到默认），
   tooltip 写明「滚轮微调 · 点一下复位」。

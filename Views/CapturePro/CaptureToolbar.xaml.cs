@@ -646,9 +646,7 @@ public partial class CaptureToolbar : UserControl
             () => _style?.Width ?? 4, v => { if (_style != null) _style.Width = v; },
             v => v.ToString("0"), 4));
 
-        AddHost(ToolParam.FontSize, Step("字号", 8, 72, 2,
-            () => _style?.FontSize ?? 20, v => { if (_style != null) _style.FontSize = v; },
-            v => v.ToString("0"), 20));
+        AddHost(ToolParam.FontSize, WatermarkFontSizeRow());
 
         AddHost(ToolParam.Block, Step("块大小", 4, 24, 2,
             () => _style?.Block ?? 8, v => { if (_style != null) _style.Block = v; },
@@ -705,22 +703,35 @@ public partial class CaptureToolbar : UserControl
             v => { if (_style != null) _style.BrushMode = v; },
             ShapeLabel.Chip, ShapeLabel.Name));
 
-        // 序号的形状与数字写法（枚举用文字胶囊：图标认不出「圆角方 / 罗马数字」）
-        AddHost(ToolParam.BadgeShape, Chips("形状",
-            new[] { SerialShape.Circle, SerialShape.Square, SerialShape.Rounded },
-            () => _style?.SerialShape ?? SerialShape.Circle,
-            v => { if (_style != null) _style.SerialShape = v; },
-            SerialLabel.Name, v => "徽标形状：" + SerialLabel.Name(v), "badgeShape"));
-
-        AddHost(ToolParam.Numbering, Chips("编号",
+        // 序号的徽标类型与数字写法（枚举用文字胶囊：图标认不出「空心方 / 罗马数字」）
+        AddHost(ToolParam.BadgeShape, Chips("徽标",
             new[]
             {
-                SerialNumbering.Arabic, SerialNumbering.RomanUpper, SerialNumbering.RomanLower,
-                SerialNumbering.AlphaUpper, SerialNumbering.AlphaLower, SerialNumbering.Chinese,
+                SerialBadge.OutlinedCircle, SerialBadge.SolidCircle,
+                SerialBadge.OutlinedSquare, SerialBadge.SolidSquare, SerialBadge.Circle,
+            },
+            () => _style?.Badge ?? SerialBadge.OutlinedCircle,
+            v => { if (_style != null) _style.Badge = v; },
+            SerialLabel.Chip, SerialLabel.Name, "badgeShape"));
+
+        AddHost(ToolParam.Numbering, Chips("写法",
+            new[]
+            {
+                SerialNumbering.Arabic, SerialNumbering.Roman, SerialNumbering.LowercaseLetters,
+                SerialNumbering.UppercaseLetters, SerialNumbering.Chinese,
             },
             () => _style?.Numbering ?? SerialNumbering.Arabic,
             v => { if (_style != null) _style.Numbering = v; },
-            SerialLabel.Chip, v => "数字写法：" + SerialLabel.Of(8, v)));
+            SerialLabel.Chip, v => "数字写法：" + SerialLabel.Name(v), "numbering"));
+
+        AddHost(ToolParam.SerialNumber, NumberBox("序号",
+            () => _style?.SerialNumber ?? 1,
+            v => { if (_style != null) _style.SerialNumber = Math.Max(0, v); },
+            "下一个序号（滚轮微调，落一个自动 +1）"));
+
+        AddHost(ToolParam.SerialFontSize, Step("字号", SerialSpec.MinFontSize, SerialSpec.MaxFontSize, 2,
+            () => _style?.FontSize ?? 24, v => { if (_style != null) _style.FontSize = v; },
+            v => v.ToString("0"), 24));
 
         // 滤镜类型与强度
         AddHost(ToolParam.FilterKind, Chips("类型",
@@ -754,22 +765,55 @@ public partial class CaptureToolbar : UserControl
 
         AddHost(ToolParam.FillRegions, FillRegions());
 
-        // 放大镜倍率 + 水印（文字 / 角度 / 间距）
-        AddHost(ToolParam.Factor, Step("倍率", 1, 8, 1,
+        // ============ 放大镜族（上游 buildMagnifierFamily） ============
+        // 顺序：形状（3，没有思考气泡）→ 色 → 线宽 → 倍率 → 连接方式 → 源轮廓 →
+        // 箭头比例 → 引导线端点 → 圆角
+        AddHost(ToolParam.Factor, Step("倍率", MagnifierSpec.MinFactor, MagnifierSpec.MaxFactor, 0.5,
             () => _style?.Factor ?? 2, v => { if (_style != null) _style.Factor = v; },
-            v => v.ToString("0") + "×", 2));
+            v => v.ToString("0.#") + "×", 2));
 
+        AddHost(ToolParam.Connection, Chips("连接",
+            new[] { MagnifierConnection.None, MagnifierConnection.LeaderLine, MagnifierConnection.Gradient },
+            () => _style?.Connection ?? MagnifierConnection.Gradient,
+            v => { if (_style != null) _style.Connection = v; },
+            MagnifierLabel.Chip, MagnifierLabel.Name, "magnifierConnection"));
+
+        AddHost(ToolParam.SourceOutline, Toggle("源轮廓",
+            () => _style?.SourceOutline ?? true,
+            v => { if (_style != null) _style.SourceOutline = v; },
+            "画出源区域的外框（与镜头重合时会被镜头盖住）"));
+
+        AddHost(ToolParam.ArrowRatio, Step("箭头比例", ArrowInk.MinRatio, ArrowInk.MaxRatio, 0.1,
+            () => _style?.ArrowRatio ?? 1, v => { if (_style != null) _style.ArrowRatio = v; },
+            v => v.ToString("0.0") + "×", 1));
+
+        AddHost(ToolParam.LeaderArrowhead, Picker("箭头",
+            DistanceEndpoints,
+            () => _style?.EndpointStyle ?? Arrowhead.None,
+            v => { if (_style != null) _style.EndpointStyle = v; },
+            MeasureLabel.Chip, MeasureLabel.Name));
+
+        // ============ 水印族（上游 buildWatermarkFamily） ============
+        // 顺序：色 → 文字 → 字号 + 字体族 → 模板 → 角度 → 间距 → 不透明度
         AddHost(ToolParam.WatermarkText, Text("文字",
-            () => _style?.WatermarkText ?? "LTools",
-            v => { if (_style != null) _style.WatermarkText = v; }));
+            () => _style?.WatermarkText ?? string.Empty,
+            v => { if (_style != null) _style.WatermarkText = v; },
+            "水印文字（回车或失焦生效；留空就什么都不画）", 150));
 
-        AddHost(ToolParam.WatermarkAngle, Step("角度", -90, 90, 15,
-            () => _style?.WatermarkAngle ?? -30, v => { if (_style != null) _style.WatermarkAngle = v; },
-            v => v.ToString("0") + "°", -30));
+        AddHost(ToolParam.WatermarkTemplate, WatermarkTemplates());
 
-        AddHost(ToolParam.WatermarkGap, Step("间距", 20, 400, 10,
-            () => _style?.WatermarkGap ?? 120, v => { if (_style != null) _style.WatermarkGap = v; },
-            v => v.ToString("0"), 120));
+        AddHost(ToolParam.WatermarkAngle, Step("角度", WatermarkSpec.MinAngle, WatermarkSpec.MaxAngle, 15,
+            () => _style?.WatermarkAngle ?? 30, v => { if (_style != null) _style.WatermarkAngle = v; },
+            v => v.ToString("0") + "°", 30));
+
+        AddHost(ToolParam.WatermarkGap, Step("间距", WatermarkSpec.MinGap, WatermarkSpec.MaxGap, 8,
+            () => _style?.WatermarkGap ?? 56, v => { if (_style != null) _style.WatermarkGap = v; },
+            v => v.ToString("0"), 56));
+
+        AddHost(ToolParam.WatermarkOpacity, Step("不透明度", 0, 100, 4,
+            () => (_style?.WatermarkOpacity ?? 0.16) * 100,
+            v => { if (_style != null) _style.WatermarkOpacity = v / 100; },
+            v => v.ToString("0") + "%", 16));
 
         // ============ 测距族（上游 buildDistanceFamily） ============
         // 顺序：描边（色 / 线宽）→ 实测值 → 单位 → 小数位 → 端点比例 → 端点样式
@@ -989,7 +1033,7 @@ public partial class CaptureToolbar : UserControl
     }
 
     /// <summary>一格文字输入（水印内容）：失焦与回车都立刻写回样式，工具栏不自己存副本。</summary>
-    private FrameworkElement Text(string label, Func<string> get, Action<string> set)
+    private FrameworkElement Text(string label, Func<string> get, Action<string> set, string tip, double width = 110)
     {
         var host = new StackPanel
         {
@@ -1000,7 +1044,7 @@ public partial class CaptureToolbar : UserControl
 
         var box = new TextBox
         {
-            Width = 110,
+            Width = width,
             Height = 22,
             FontSize = 12,
             Padding = new Thickness(6, 1, 6, 1),
@@ -1009,7 +1053,7 @@ public partial class CaptureToolbar : UserControl
             BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xD9, 0xD9)),
             BorderThickness = new Thickness(1),
             Foreground = new SolidColorBrush(Color.FromRgb(0x27, 0x27, 0x2A)),
-            ToolTip = "水印文字（回车或失焦生效）",
+            ToolTip = tip,
         };
 
         void Commit()
@@ -1083,37 +1127,44 @@ public partial class CaptureToolbar : UserControl
     /// 字号：数字步进 + S / M / L / XL 四个预设（上游 <c>ScreenshotToolPaletteFontEditor</c> 的
     /// <c>fontSizes()</c> = 24 / 30 / 42 / 54，与画笔宽度预设共用同一组值）。
     /// </summary>
-    private FrameworkElement FontSizeRow()
-    {
-        var row = Step("字号", TextInk.MinFontSize, TextInk.MaxFontSize, 2,
-            () => _style?.TextSize ?? TextInk.DefaultFontSize,
-            v => { if (_style != null) _style.TextSize = v; },
-            v => v.ToString("0"), TextInk.DefaultFontSize);
+    private FrameworkElement FontSizeRow() => PresetSizeRow("字号",
+        () => _style?.TextSize ?? TextInk.DefaultFontSize,
+        v => { if (_style != null) _style.TextSize = v; },
+        new (string, double)[] { ("S", 24), ("M", 30), ("L", 42), ("XL", 54) },
+        "captureTextSize", TextInk.DefaultFontSize, TextInk.MinFontSize, TextInk.MaxFontSize);
 
+    /// <summary>
+    /// 水印字号：数字步进 + 四个预设（上游 <c>style_presets::watermarkFontSizes()</c> = 12 / 16 / 24 / 30）。
+    /// </summary>
+    private FrameworkElement WatermarkFontSizeRow() => PresetSizeRow("字号",
+        () => _style?.FontSize ?? 16,
+        v => { if (_style != null) _style.FontSize = v; },
+        new (string, double)[] { ("12", 12), ("16", 16), ("24", 24), ("30", 30) },
+        "captureWatermarkSize", 16, WatermarkSpec.MinFontSize, WatermarkSpec.MaxFontSize);
+
+    /// <summary>字号一格：加减 / 滚轮 / 点数字复位 + 一排预设胶囊（文字族与水印族共用）。</summary>
+    private FrameworkElement PresetSizeRow(string label, Func<double> get, Action<double> set,
+        (string Label, double Size)[] presets, string group, double reset, double min, double max)
+    {
+        var row = Step(label, min, max, 2, get, set, v => v.ToString("0"), reset);
         if (row is not Panel host) return row;
 
-        // 上游 sizePresetValues / sizePresetLabels
-        var presets = new (string Label, double Size)[]
-        {
-            ("S", 24), ("M", 30), ("L", 42), ("XL", 54),
-        };
-
         var chips = new List<RadioButton>();
-        foreach (var (label, size) in presets)
+        foreach (var (text, size) in presets)
         {
             var chip = new RadioButton
             {
                 Style = (Style)FindResource("ChoiceChip"),
-                GroupName = "captureTextSize",
-                Content = label,
+                GroupName = "capture" + group,
+                Content = text,
                 Tag = size,
                 Margin = new Thickness(2, 0, 0, 0),
-                ToolTip = $"{label}（{size:0}px）",
+                ToolTip = $"{text}（{size:0}px）",
             };
             chip.Checked += (_, _) =>
             {
                 if (_syncing) return;
-                if (_style != null) _style.TextSize = size;
+                set(size);
                 RefreshValues();
                 StyleChanged?.Invoke();
             };
@@ -1123,7 +1174,7 @@ public partial class CaptureToolbar : UserControl
 
         _refreshers.Add(() =>
         {
-            double current = _style?.TextSize ?? TextInk.DefaultFontSize;
+            double current = get();
             _syncing = true;
             foreach (var chip in chips) chip.IsChecked = Math.Abs((double)chip.Tag - current) < 0.01;
             _syncing = false;
@@ -1131,6 +1182,211 @@ public partial class CaptureToolbar : UserControl
 
         return row;
     }
+
+    /// <summary>单个开关胶囊（放大镜的「源轮廓」这类布尔参数）。</summary>
+    private FrameworkElement Toggle(string label, Func<bool> get, Action<bool> set, string tip)
+    {
+        var host = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        host.Children.Add(Label(label));
+
+        var chip = new ToggleButton
+        {
+            Style = (Style)FindResource("ToggleChip"),
+            Content = "开",
+            ToolTip = tip,
+        };
+        chip.Click += (_, _) =>
+        {
+            if (_syncing) return;
+            set(chip.IsChecked == true);
+            RefreshValues();
+            StyleChanged?.Invoke();
+        };
+
+        host.Children.Add(chip);
+
+        _refreshers.Add(() =>
+        {
+            bool on = get();
+            _syncing = true;
+            chip.IsChecked = on;
+            chip.Content = on ? "开" : "关";
+            _syncing = false;
+        });
+
+        return host;
+    }
+
+    /// <summary>整数参数一格（序号的「下一个序号」）：回车 / 失焦写回，滚轮 ±1。</summary>
+    private FrameworkElement NumberBox(string label, Func<int> get, Action<int> set, string tip)
+    {
+        var host = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        host.Children.Add(Label(label));
+
+        var box = new TextBox
+        {
+            Width = 54,
+            Height = 22,
+            FontSize = 12,
+            Padding = new Thickness(6, 1, 6, 1),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Background = new SolidColorBrush(Color.FromRgb(0xF7, 0xF8, 0xFA)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xD9, 0xD9)),
+            BorderThickness = new Thickness(1),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x27, 0x27, 0x2A)),
+            ToolTip = tip,
+        };
+
+        void Commit()
+        {
+            if (_syncing) return;
+            if (int.TryParse(box.Text.Trim(), NumberStyles.Integer, CultureInfo.CurrentCulture, out int value)
+                && value >= 0)
+            {
+                set(value);
+                StyleChanged?.Invoke();
+            }
+            RefreshValues();
+        }
+
+        box.LostFocus += (_, _) => Commit();
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Enter) return;
+            Commit();
+            e.Handled = true;
+        };
+        box.PreviewMouseWheel += (_, e) =>
+        {
+            if (_syncing) return;
+            set(Math.Max(0, get() + (e.Delta > 0 ? 1 : -1)));
+            RefreshValues();
+            StyleChanged?.Invoke();
+            e.Handled = true;
+        };
+
+        _refreshers.Add(() =>
+        {
+            if (box.IsKeyboardFocusWithin) return;
+            string text = get().ToString(CultureInfo.CurrentCulture);
+            if (box.Text != text) box.Text = text;
+        });
+
+        host.Children.Add(box);
+        return host;
+    }
+
+    /// <summary>
+    /// 水印模板：一个胶囊 + <see cref="ContextMenu"/>（点名字套用、底部「添加模板」「删除模板」）。
+    /// 套用时按上游规则展开 <c>{text}</c> 与时间占位，结果写进水印文字。
+    /// </summary>
+    private FrameworkElement WatermarkTemplates()
+    {
+        var host = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        host.Children.Add(Label("模板"));
+
+        var button = new Button
+        {
+            Style = (Style)FindResource("StepBtn"),
+            MinWidth = 66,
+            Content = "模板",
+            ToolTip = "水印模板：选中即套用（" + WatermarkTemplateText.Hint + "）",
+        };
+
+        button.Click += (_, e) =>
+        {
+            e.Handled = true;
+            var menu = new ContextMenu();
+
+            foreach (var template in _styles?.WatermarkTemplates ?? Array.Empty<WatermarkTemplate>())
+            {
+                var captured = template;
+                var item = new MenuItem { Header = captured.Name, ToolTip = captured.Value };
+                item.Click += (_, _) => ApplyWatermarkTemplate(captured);
+                menu.Items.Add(item);
+            }
+
+            if (menu.Items.Count > 0) menu.Items.Add(new Separator());
+
+            var add = new MenuItem { Header = "添加模板…" };
+            add.Click += (_, _) => AddWatermarkTemplate();
+            menu.Items.Add(add);
+
+            var removable = _styles?.WatermarkTemplates;
+            if (removable is { Count: > 0 })
+            {
+                var delete = MenuFx.Submenu(menu, "删除模板");
+                foreach (var template in removable)
+                {
+                    var captured = template.Name;
+                    var item = new MenuItem { Header = captured };
+                    item.Click += (_, _) => DeleteWatermarkTemplate(captured);
+                    delete.Items.Add(item);
+                }
+            }
+
+            menu.PlacementTarget = button;
+            menu.Placement = PlacementMode.Bottom;
+            menu.IsOpen = true;
+        };
+
+        host.Children.Add(button);
+        return host;
+    }
+
+    /// <summary>套用一个模板：<c>{text}</c> 换成当前文字、时间占位换成现在（上游 resolution 同一套）。</summary>
+    private void ApplyWatermarkTemplate(WatermarkTemplate template)
+    {
+        if (_style == null) return;
+        _style.WatermarkText = WatermarkTemplateText.Resolve(template.Value, _style.WatermarkText,
+            DateTime.Now);
+        RefreshValues();
+        StyleChanged?.Invoke();
+    }
+
+    /// <summary>添加模板：先问名字、再问内容（内容里可以写 <c>{text}</c> 与时间占位）。</summary>
+    private void AddWatermarkTemplate()
+    {
+        if (_styles == null) return;
+
+        string suggested = string.IsNullOrWhiteSpace(_style?.WatermarkText)
+            ? "模板 " + (_styles.WatermarkTemplates.Count + 1)
+            : _style!.WatermarkText;
+
+        var name = InputDialog.Show(Window.GetWindow(this), "新建水印模板", "模板名称", suggested);
+        if (!name.ok || string.IsNullOrWhiteSpace(name.value)) return;
+
+        string defaultValue = string.IsNullOrWhiteSpace(_style?.WatermarkText)
+            ? "{text}"
+            : _style!.WatermarkText;
+        var value = InputDialog.Show(Window.GetWindow(this), "新建水印模板", "模板内容（" +
+            WatermarkTemplateText.Hint + "）", defaultValue);
+        if (!value.ok || string.IsNullOrWhiteSpace(value.value)) return;
+
+        _styles.AddWatermarkTemplate(name.value, value.value);
+        CaptureStyleStore.SaveSoon();
+        ApplyWatermarkTemplate(new WatermarkTemplate(name.value.Trim(), value.value.Trim()));
+    }
+
+    private void DeleteWatermarkTemplate(string name)
+    {
+        if (_styles == null) return;
+        if (!_styles.RemoveWatermarkTemplate(name)) return;
+        CaptureStyleStore.SaveSoon();
+    }
+
 
     /// <summary>
     /// 粗体 / 斜体：两个可以同时按下的胶囊（上游 <c>ScreenshotToolPaletteTextEmphasisEditor</c>）。
@@ -1597,7 +1853,8 @@ public partial class CaptureToolbar : UserControl
         return host;
     }
 
-    private void RefreshValues()
+    /// <summary>按当前样式刷新所有参数格（覆盖层改了样式——如序号自增——也要能把界面拉回来）。</summary>
+    public void RefreshValues()
     {
         if (_style == null) return;
         foreach (var refresh in _refreshers) refresh();

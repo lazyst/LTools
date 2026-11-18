@@ -61,8 +61,7 @@ public partial class CaptureOverlayWindow
                 return BeginAutoFilterGesture(p);
 
             case CaptureTool.Serial:
-                _doc.Add(new Mark.Serial(p, _doc.NextSerial(), _style.Color, _style.SerialShape, _style.Numbering));
-                RefreshMarks();
+                AddSerialAt(p);
                 return true;
 
             case CaptureTool.Text:
@@ -91,6 +90,19 @@ public partial class CaptureOverlayWindow
                 Surface.InvalidateVisual();
                 return true;
         }
+    }
+
+    /// <summary>
+    /// 落一个序号：用参数行里那个「下一个序号」，落完自动 +1
+    /// （上游 palette 的序号输入框就是这个语义：框里显示的是下一次要用的数字）。
+    /// </summary>
+    private void AddSerialAt(Point p)
+    {
+        int number = Math.Max(1, _style.SerialNumber);
+        _doc.Add(new Mark.Serial(p, number, _style.SerialSpecOf()));
+        _style.SerialNumber = number + 1;
+        Toolbar.RefreshValues();
+        RefreshMarks();
     }
 
     /// <summary>拖动中：手绘补点，形状只挪终点。</summary>
@@ -183,7 +195,7 @@ public partial class CaptureOverlayWindow
                     _style.ShapeSpecOf(_dragSeed));
 
             case CaptureTool.Magnifier:
-                return new Mark.Magnifier(MarkGeometry.RectOf(_toolStart, current), _style.Factor, color, width);
+                return new Mark.Magnifier(MarkGeometry.RectOf(_toolStart, current), _style.MagnifierSpecOf());
 
             case CaptureTool.HighlightRect:
                 return new Mark.Highlight(_toolStart, current, color, _style.Opacity);
@@ -435,6 +447,73 @@ public partial class CaptureOverlayWindow
         _resizeMark = null;
         _resizeMarkIndex = -1;
         _resizeHandle = FrameHandle.None;
+        Surface.InvalidateVisual();
+    }
+
+    // ============ 选择：拖放大镜的镜头 ============
+
+    private Mark.Magnifier? _lensMark;
+    private int _lensMarkIndex = -1;
+
+    /// <summary>
+    /// 选中的是放大镜、且这一下按在**镜头本体**上（源区域之外）或镜头下方的移动手柄里：
+    /// 只挪镜头，源区域留在原处。照上游 <c>hit_resolution.rs</c>：源区域先判（= 整块挪动），
+    /// 镜头次之（= 只动 <c>magnified_center</c>），移动手柄（镜头下缘 +24 DIP，±9 DIP 命中）优先于一切。
+    /// </summary>
+    private bool BeginMagnifierLensDrag(Point p)
+    {
+        if (_tool != CaptureTool.Select) return false;
+        if (_selectedIndex < 0 || _selectedIndex >= _doc.Marks.Count) return false;
+        if (_doc.Marks[_selectedIndex] is not Mark.Magnifier magnifier) return false;
+
+        bool grip = MagnifierInk.HitsMoveGrip(magnifier.Lens, p);
+        bool lensOnly = magnifier.Lens.Contains(p) && !magnifier.SourceRect.Contains(p);
+        if (!grip && !lensOnly) return false;
+
+        _lensMarkIndex = _selectedIndex;
+        _lensMark = magnifier;
+        _origin = p;
+        _drag = DragMode.MagnifierLens;
+        Surface.SkipIndex = _lensMarkIndex;     // 原件藏起来，由预览代画（松手才提交）
+        Surface.InvalidateVisual();
+        return true;
+    }
+
+    /// <summary>镜头中心跟着指针走（按按下时的偏移搬，不会「跳一下」把中心吸到指针上）。</summary>
+    private void UpdateMagnifierLensDrag(Point p)
+    {
+        if (_lensMark == null) return;
+        var limit = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
+        Point center = _lensMark.LensCenter + (p - _origin);
+        center = new Point(Math.Clamp(center.X, limit.Left, limit.Right),
+            Math.Clamp(center.Y, limit.Top, limit.Bottom));
+        Surface.Preview = _lensMark.WithLensCenter(center);
+        Surface.InvalidateVisual();
+    }
+
+    private void CommitMagnifierLensDrag(Point p)
+    {
+        UpdateMagnifierLensDrag(p);
+
+        var preview = Surface.Preview;
+        Surface.Preview = null;
+        Surface.SkipIndex = -1;
+
+        if (preview is Mark.Magnifier moved && _lensMark != null &&
+            moved.LensCenter != _lensMark.LensCenter && _lensMarkIndex >= 0)
+            _doc.ReplaceAt(_lensMarkIndex, moved);
+
+        _lensMark = null;
+        _lensMarkIndex = -1;
+        RefreshMarks();
+    }
+
+    private void CancelMagnifierLensDrag()
+    {
+        Surface.Preview = null;
+        Surface.SkipIndex = -1;
+        _lensMark = null;
+        _lensMarkIndex = -1;
         Surface.InvalidateVisual();
     }
 

@@ -75,6 +75,12 @@ internal enum ToolParam
     /// <summary>序号的数字写法。</summary>
     Numbering,
 
+    /// <summary>下一个序号（上游参数行的序号输入框，滚轮微调）。</summary>
+    SerialNumber,
+
+    /// <summary>序号的字号（与水印 / 文字的字号分开：它的默认是 24）。</summary>
+    SerialFontSize,
+
     /// <summary>滤镜的类型。</summary>
     FilterKind,
 
@@ -93,14 +99,32 @@ internal enum ToolParam
     /// <summary>放大镜的倍率。</summary>
     Factor,
 
+    /// <summary>放大镜与源区域的连接方式（无 / 引导线 / 渐变）。</summary>
+    Connection,
+
+    /// <summary>放大镜的源区域轮廓开关。</summary>
+    SourceOutline,
+
+    /// <summary>箭头比例（引导线 / 箭头族的箭头缩放，0.5–3）。</summary>
+    ArrowRatio,
+
+    /// <summary>引导线端点样式（14 种，与测距端点同一套 <see cref="Arrowhead"/>）。</summary>
+    LeaderArrowhead,
+
     /// <summary>水印文字。</summary>
     WatermarkText,
+
+    /// <summary>水印模板（可编辑下拉 + 增删，存 <c>ui.json</c>）。</summary>
+    WatermarkTemplate,
 
     /// <summary>水印倾斜角度。</summary>
     WatermarkAngle,
 
     /// <summary>水印间距。</summary>
     WatermarkGap,
+
+    /// <summary>水印不透明度（与荧光笔的透明度分开）。</summary>
+    WatermarkOpacity,
 
     /// <summary>文字字号（与水印的「字号」分开：范围 6–256，上游 text 族）。</summary>
     TextSize,
@@ -226,6 +250,39 @@ internal static class ToolCatalog
         ToolParam.FillColor, ToolParam.FillStyle, ToolParam.CornerRadius,
     };
 
+    /// <summary>
+    /// 序号族（上游 <c>buildSequenceNumberFamily</c>）：色 → 徽标类型（5）→ 数字写法（5）→
+    /// 下一个序号 → 字号 + 字体族 → 线宽 → 填充色 + 填充方式。
+    /// </summary>
+    private static readonly ToolParam[] SerialFamily =
+    {
+        ToolParam.Color, ToolParam.BadgeShape, ToolParam.Numbering, ToolParam.SerialNumber,
+        ToolParam.SerialFontSize, ToolParam.FontFamily, ToolParam.Width, ToolParam.FillColor,
+        ToolParam.FillStyle,
+    };
+
+    /// <summary>
+    /// 放大镜族（上游 <c>buildMagnifierFamily</c>）：形状（3，没有思考气泡）→ 色 → 线宽 →
+    /// 倍率 → 连接方式 → 源轮廓 → 箭头比例 → 引导线端点 → 圆角。
+    /// </summary>
+    private static readonly ToolParam[] MagnifierFamily =
+    {
+        ToolParam.ShapeKind, ToolParam.Color, ToolParam.Width, ToolParam.Factor, ToolParam.Connection,
+        ToolParam.SourceOutline, ToolParam.ArrowRatio, ToolParam.LeaderArrowhead,
+        ToolParam.CornerRadius,
+    };
+
+    /// <summary>
+    /// 水印族（上游 <c>buildWatermarkFamily</c>）：色 → 文字 → 字号 + 字体族 → 模板 →
+    /// 角度 → 间距 → 不透明度。
+    /// </summary>
+    private static readonly ToolParam[] WatermarkFamily =
+    {
+        ToolParam.Color, ToolParam.WatermarkText, ToolParam.FontSize, ToolParam.FontFamily,
+        ToolParam.WatermarkTemplate, ToolParam.WatermarkAngle, ToolParam.WatermarkGap,
+        ToolParam.WatermarkOpacity,
+    };
+
     public static readonly ToolInfo[] All =
     {
         new(CaptureTool.Select, "选择", "Select", "点选标注后可拖动移动，Delete 删除", None, Key.Q),
@@ -247,12 +304,12 @@ internal static class ToolCatalog
         new(CaptureTool.HighlightRect, "矩形荧光", "HighlightRect", "把一块区域铺上半透明色", new[] { ToolParam.Color, ToolParam.Opacity }, Key.J),
         new(CaptureTool.Text, "文字", "Text", "单击输入文字，Enter 结束（Shift+Enter 换行）；字色 / 字号 / 字体 / 粗斜 / 对齐 / 描边 / 背景在参数行选",
             TextFamily, Key.T),
-        new(CaptureTool.Serial, "序号", "Serial", "单击添加序号，自动递增（删除不重排）",
-            new[] { ToolParam.Color, ToolParam.BadgeShape, ToolParam.Numbering }, Key.N),
-        new(CaptureTool.Magnifier, "放大镜", "Magnifier", "拖出镜头框，框内的画面按倍率放大",
-            new[] { ToolParam.Color, ToolParam.Width, ToolParam.Factor }, Key.Z),
-        new(CaptureTool.Watermark, "水印", "Watermark", "整张图斜向平铺水印文字，单击落到图上",
-            new[] { ToolParam.Color, ToolParam.FontSize, ToolParam.WatermarkText, ToolParam.WatermarkAngle, ToolParam.WatermarkGap, ToolParam.Opacity }, Key.W),
+        new(CaptureTool.Serial, "序号", "Serial", "单击添加序号，自动递增（删除不重排）；徽标 / 写法 / 下一个序号 / 字号 / 填充在参数行选",
+            SerialFamily, Key.N),
+        new(CaptureTool.Magnifier, "放大镜", "Magnifier", "拖出镜头框，框内的画面按倍率放大；源区域可以单独拖开，连接方式在参数行选",
+            MagnifierFamily, Key.Z),
+        new(CaptureTool.Watermark, "水印", "Watermark", "整张图斜向平铺水印文字，单击落到图上；模板 / 角度 / 间距 / 不透明度在参数行选",
+            WatermarkFamily, Key.W),
         new(CaptureTool.Mosaic, "马赛克", "Mosaic", "拖出要打码的矩形", new[] { ToolParam.Block }, Key.M),
         new(CaptureTool.Filter, "矩形滤镜", "Filter", "拖出矩形，按参数行选的类型处理这一块（模糊 / 灰度 / 反相 / 浮雕 / 亮度 / 智能擦除）",
             new[] { ToolParam.FilterKind, ToolParam.FilterStrength }, Key.F),
@@ -350,8 +407,11 @@ internal sealed class ToolStyle
     /// <summary>荧光笔的不透明度；聚光用它换算压暗程度。</summary>
     public double Opacity { get; set; } = 0.35;
 
-    /// <summary>序号徽标的形状。</summary>
-    public SerialShape SerialShape { get; set; } = SerialShape.Circle;
+    /// <summary>序号徽标的类型（空心 / 实心 × 圆 / 方，外加不写数字的圆圈）。</summary>
+    public SerialBadge Badge { get; set; } = SerialBadge.OutlinedCircle;
+
+    /// <summary>下一个序号（上游参数行那个数字输入框，默认 1）。</summary>
+    public int SerialNumber { get; set; } = 1;
 
     /// <summary>形状族的形状（矩形 / 椭圆 / 菱形 / 思考气泡）。</summary>
     public ShapeKind ShapeKind { get; set; } = ShapeKind.Rectangle;
@@ -400,24 +460,32 @@ internal sealed class ToolStyle
     public double WidthFor(CaptureTool tool) => tool switch
     {
         CaptureTool.Highlighter => Math.Max(Width, 10),
-        CaptureTool.Magnifier => Math.Max(Width, 3),
         _ => Width,
     };
 
     /// <summary>放大镜倍率。</summary>
     public double Factor { get; set; } = 2;
 
-    /// <summary>水印文字。</summary>
-    public string WatermarkText { get; set; } = "LTools";
+    /// <summary>放大镜与源区域的连接方式（上游默认渐变桥）。</summary>
+    public MagnifierConnection Connection { get; set; } = MagnifierConnection.Gradient;
 
-    /// <summary>水印倾斜角度（度，逆时针为正）。</summary>
-    public double WatermarkAngle { get; set; } = -30;
+    /// <summary>放大镜的源区域轮廓（上游默认开）。</summary>
+    public bool SourceOutline { get; set; } = true;
 
-    /// <summary>水印间距（DIP）。</summary>
-    public double WatermarkGap { get; set; } = 120;
+    /// <summary>箭头比例（0.5–3，上游 <c>arrow_ratio</c> 默认 1）。</summary>
+    public double ArrowRatio { get; set; } = 1;
 
-    /// <summary>水印不透明度（比荧光笔低得多，否则盖住整张图）。</summary>
-    public double WatermarkOpacity { get; set; } = 0.15;
+    /// <summary>水印文字（上游默认空：没填就什么都不画）。</summary>
+    public string WatermarkText { get; set; } = string.Empty;
+
+    /// <summary>水印倾斜角度（度，逆时针为正；上游默认 30）。</summary>
+    public double WatermarkAngle { get; set; } = 30;
+
+    /// <summary>水印间距（DIP；上游默认 56）。</summary>
+    public double WatermarkGap { get; set; } = 56;
+
+    /// <summary>水印不透明度（上游默认 0.16，比荧光笔低得多）。</summary>
+    public double WatermarkOpacity { get; set; } = 0.16;
 
     /// <summary>聚光的压暗程度：透明度越低，框外压得越暗。</summary>
     public double Dim => Math.Clamp(1 - Opacity, 0.15, 0.85);
@@ -487,6 +555,22 @@ internal sealed class ToolStyle
         FontFamily, TextSize, TextBold, TextItalic, TextAlign,
         Color, TextStrokeWidth, StrokeColor, FillColor, FillStyle, CornerRadius);
 
+    // ============ 序号 / 水印 / 放大镜（上游 serial_number_style / watermark / magnifier） ============
+
+    /// <summary>造一份序号画法（徽标 / 写法 / 色 / 填充 / 字号 / 字体 / 描边 / 不透明度）。</summary>
+    public SerialSpec SerialSpecOf() => new SerialSpec(
+        Badge, Numbering, Color, FillColor, FillStyle, FontSize, FontFamily, Width, Opacity).Clamped();
+
+    /// <summary>造一份水印画法（文字 / 色 / 字号 / 字体 / 角度 / 间距 / 不透明度）。</summary>
+    public WatermarkSpec WatermarkSpecOf() => new WatermarkSpec(
+        WatermarkText, Color, FontSize, FontFamily, WatermarkAngle, WatermarkGap,
+        WatermarkOpacity).Clamped();
+
+    /// <summary>造一份放大镜画法（形状 / 色 / 线宽 / 倍率 / 连接 / 源轮廓 / 箭头 / 圆角）。</summary>
+    public MagnifierSpec MagnifierSpecOf() => new MagnifierSpec(
+        ShapeKind, Color, Width, Factor, Connection, SourceOutline, EndpointStyle, ArrowRatio,
+        CornerRadius, Opacity).Clamped();
+
     // ============ 落盘（ui.json 的 CaptureStyles） ============
 
     /// <summary>写进配置文件的一份（字段全给，读回来等价）。</summary>
@@ -497,8 +581,9 @@ internal sealed class ToolStyle
         FontSize = FontSize,
         Block = Block,
         Opacity = Opacity,
-        Shape = ToolStyleFormat.Name(SerialShape),
+        Shape = ToolStyleFormat.Name(Badge),
         Numbering = ToolStyleFormat.Name(Numbering),
+        SerialNumber = SerialNumber,
         ShapeKind = ToolStyleFormat.Name(ShapeKind),
         StrokeStyle = ToolStyleFormat.Name(StrokeStyle),
         Rendering = ToolStyleFormat.Name(Rendering),
@@ -510,6 +595,9 @@ internal sealed class ToolStyle
         FilterMode = ToolStyleFormat.Name(FilterMode),
         FilterStrength = FilterStrength,
         Factor = Factor,
+        Connection = ToolStyleFormat.Name(Connection),
+        SourceOutline = SourceOutline,
+        ArrowRatio = ArrowRatio,
         WatermarkText = WatermarkText,
         WatermarkAngle = WatermarkAngle,
         WatermarkGap = WatermarkGap,
@@ -538,11 +626,12 @@ internal sealed class ToolStyle
         if (ToolStyleFormat.TryParseColor(dto.Color, out var color)) style.Color = color;
 
         style.Width = Math.Clamp(dto.Width ?? style.Width, 1, 50);
-        style.FontSize = Math.Clamp(dto.FontSize ?? style.FontSize, 8, 72);
+        style.FontSize = Math.Clamp(dto.FontSize ?? style.FontSize, 6, 256);
         style.Block = Math.Clamp(dto.Block ?? style.Block, 4, 24);
         style.Opacity = Math.Clamp(dto.Opacity ?? style.Opacity, 0.1, 0.9);
-        style.SerialShape = ToolStyleFormat.ParseEnum(dto.Shape, style.SerialShape);
+        style.Badge = ToolStyleFormat.ParseEnum(dto.Shape, style.Badge);
         style.Numbering = ToolStyleFormat.ParseEnum(dto.Numbering, style.Numbering);
+        style.SerialNumber = Math.Max(0, dto.SerialNumber ?? style.SerialNumber);
         style.ShapeKind = ToolStyleFormat.ParseEnum(dto.ShapeKind, style.ShapeKind);
         style.StrokeStyle = ToolStyleFormat.ParseEnum(dto.StrokeStyle, style.StrokeStyle);
         style.Rendering = ToolStyleFormat.ParseEnum(dto.Rendering, style.Rendering);
@@ -553,10 +642,15 @@ internal sealed class ToolStyle
         style.BrushMode = ToolStyleFormat.ParseEnum(dto.BrushMode, style.BrushMode);
         style.FilterMode = ToolStyleFormat.ParseEnum(dto.FilterMode, style.FilterMode);
         style.FilterStrength = Math.Clamp(dto.FilterStrength ?? style.FilterStrength, 0, 100);
-        style.Factor = Math.Clamp(dto.Factor ?? style.Factor, 1, 8);
-        if (!string.IsNullOrEmpty(dto.WatermarkText)) style.WatermarkText = dto.WatermarkText;
+        style.Factor = Math.Clamp(dto.Factor ?? style.Factor, MagnifierSpec.MinFactor, MagnifierSpec.MaxFactor);
+        style.Connection = ToolStyleFormat.ParseEnum(dto.Connection, style.Connection);
+        style.SourceOutline = dto.SourceOutline ?? style.SourceOutline;
+        style.ArrowRatio = double.IsFinite(dto.ArrowRatio ?? style.ArrowRatio)
+            ? Math.Clamp(dto.ArrowRatio ?? style.ArrowRatio, ArrowInk.MinRatio, ArrowInk.MaxRatio)
+            : style.ArrowRatio;
+        if (dto.WatermarkText != null) style.WatermarkText = dto.WatermarkText;
         style.WatermarkAngle = Math.Clamp(dto.WatermarkAngle ?? style.WatermarkAngle, -90, 90);
-        style.WatermarkGap = Math.Clamp(dto.WatermarkGap ?? style.WatermarkGap, 20, 400);
+        style.WatermarkGap = Math.Clamp(dto.WatermarkGap ?? style.WatermarkGap, 10, 200);
         style.WatermarkOpacity = Math.Clamp(dto.WatermarkOpacity ?? style.WatermarkOpacity, 0, 1);
 
         style.TextSize = Math.Clamp(dto.TextSize ?? style.TextSize, TextInk.MinFontSize, TextInk.MaxFontSize);

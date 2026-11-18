@@ -156,35 +156,69 @@ internal static class MarkRenderer
 
     private static void DrawSerial(DrawingContext dc, Mark.Serial n)
     {
+        var spec = n.Spec;
         var box = n.Box;
-        var fill = Freeze(n.Color);
-        switch (n.BadgeShape)
+        var color = WithAlpha(spec.Stroke, spec.Opacity);
+        var geometry = spec.Square
+            ? (Geometry)new RectangleGeometry(box, spec.CornerRadius, spec.CornerRadius)
+            : new EllipseGeometry(box);
+
+        // 实心类型：底色就是描边色；空心类型按 fillColor + fillStyle（上游默认 Border = 不填）
+        if (spec.Solid)
         {
-            case SerialShape.Square:
-                dc.DrawRectangle(fill, null, box);
-                break;
-            case SerialShape.Rounded:
-                dc.DrawRoundedRectangle(fill, null, box, 6, 6);
-                break;
-            default:
-                dc.DrawEllipse(fill, null, n.Center, Mark.Serial.Radius, Mark.Serial.Radius);
-                break;
+            dc.DrawGeometry(Freeze(color), null, geometry);
+        }
+        else if (spec.FillStyle != FillKind.None)
+        {
+            ShapeInk.PaintFillGeometry(dc, geometry, WithAlpha(spec.Fill, spec.Opacity),
+                spec.FillStyle, spec.StrokeWidth);
         }
 
-        // 数字走「反色」：深底白字、浅底黑字；罗马 / 中文比数字长，按字数收字号
+        if (spec.StrokeWidth > 0)
+        {
+            var pen = new Pen(Freeze(color), spec.StrokeWidth) { LineJoin = PenLineJoin.Round };
+            pen.Freeze();
+            dc.DrawGeometry(null, pen, geometry);
+        }
+
+        if (!spec.Numbered) return;
         string label = n.Label;
+        if (label.Length == 0) return;
+
+        var typeface = FaceOf(spec.FontFamily);
         var text = new FormattedText(label, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-            Face, SerialFontSize(n.Number, label), Freeze(Contrast(n.Color)), 1.0);
-        var origin = new Point(n.Center.X - text.Width / 2, n.Center.Y - text.Height / 2);
-        dc.DrawText(text, origin);
+            typeface, spec.FontSize, Freeze(WithAlpha(spec.TextColor, spec.Opacity)), 1.0);
+
+        // 上游：字形按徽标直径「拟合」进去，长写法缩小而不是把徽标撑大
+        double inner = Math.Max(1, n.Diameter - Math.Max(spec.StrokeWidth, 1) * 2);
+        double fit = Math.Min(1, Math.Min(inner / Math.Max(1, text.Width), inner / Math.Max(1, text.Height)));
+        var origin = new Point(n.Center.X - text.Width * fit / 2, n.Center.Y - text.Height * fit / 2);
+
+        if (fit < 0.999)
+        {
+            dc.PushTransform(new ScaleTransform(fit, fit, n.Center.X, n.Center.Y));
+            dc.DrawText(text, new Point(n.Center.X - text.Width / 2, n.Center.Y - text.Height / 2));
+            dc.Pop();
+        }
+        else
+        {
+            dc.DrawText(text, origin);
+        }
     }
 
-    /// <summary>徽标里文字的字号：短数字按位数，长写法（罗马 / 中文）按字数缩小，别顶破边框。</summary>
-    public static double SerialFontSize(int number, string label)
+    /// <summary>按字体族取字型（空 = 项目默认微软雅黑 UI）。</summary>
+    private static Typeface FaceOf(string family)
     {
-        double size = MarkGeometry.SerialFontSize(number);
-        if (label.Length > 2) size = Math.Min(size, 30.0 / label.Length);
-        return Math.Max(7, size);
+        if (string.IsNullOrWhiteSpace(family)) return Face;
+        try
+        {
+            return new Typeface(new FontFamily(family), FontStyles.Normal, FontWeights.Normal,
+                FontStretches.Normal);
+        }
+        catch (Exception)
+        {
+            return Face;
+        }
     }
 
     private static void DrawMosaic(DrawingContext dc, Mark.Mosaic m, BitmapSource baseImage, double scale)
@@ -524,12 +558,23 @@ internal static class MarkRenderer
     private static void DrawSpeechBubble(DrawingContext dc, Mark.SpeechBubble b) =>
         ShapeInk.Draw(dc, b.Parts, b.Spec);
 
-    /// <summary>放大镜：把镜头中心那一小块按倍率放大画进镜头框，再加一圈描边。</summary>
+    /// <summary>
+    /// 放大镜（P2-d2，照上游 <c>paint_magnifier</c>）：
+    /// ① 镜头内容 = 以源中心按倍率采样底图，裁在镜头轮廓内；
+    /// ② Gradient 连接 = 镜头 + 源轮廓的凸包，在镜头外按源→镜头方向线性渐变的描边色（最大 alpha 0.3）；
+    /// ③ 源轮廓只在镜头外绘制；④ 引导线（含箭头）画在镜头之后；⑤ 最后画镜头描边（填充透明）。
+    /// </summary>
     private static void DrawMagnifier(DrawingContext dc, Mark.Magnifier m, BitmapSource baseImage, double scale)
     {
+        var spec = m.Spec;
         var lens = m.Lens;
         if (lens.Width < 2 || lens.Height < 2) return;
 
+        double radius = spec.Shape == ShapeKind.Rectangle ? spec.CornerRadius : 0;
+        var lensGeometry = MagnifierInk.Outline(lens, spec.Shape, radius);
+        var stroke = WithAlpha(spec.Stroke, spec.Opacity);
+
+        // ① 镜头内容
         if (TryCrop(baseImage, m.SourceRect, scale, out int x, out int y, out int w, out int h))
         {
             try
@@ -537,57 +582,147 @@ internal static class MarkRenderer
                 var crop = new CroppedBitmap(baseImage, new Int32Rect(x, y, w, h));
                 crop.Freeze();
 
-                double radius = Math.Clamp(Math.Min(lens.Width, lens.Height) * 0.08, 2, 10);
-                dc.PushClip(new RectangleGeometry(lens, radius, radius));
+                dc.PushClip(lensGeometry);
+                if (spec.Opacity < 0.999) dc.PushOpacity(spec.Opacity);
                 var drawing = new ImageDrawing(crop, lens);
                 RenderOptions.SetBitmapScalingMode(drawing, BitmapScalingMode.HighQuality);
                 dc.DrawDrawing(drawing);
+                if (spec.Opacity < 0.999) dc.Pop();
                 dc.Pop();
-
-                dc.DrawRoundedRectangle(null, MakePen(Color.FromArgb(0x88, 0, 0, 0), m.Width + 2, dashed: false),
-                    lens, radius, radius);
-                dc.DrawRoundedRectangle(null, MakePen(m.Color, m.Width, dashed: false), lens, radius, radius);
             }
             catch (Exception)
             {
-                // 底图还没准备好 / 越界：画个空框提示位置，别让整帧失败
-                dc.DrawRoundedRectangle(null, MakePen(m.Color, m.Width, dashed: false), lens, 4, 4);
+                // 底图还没准备好 / 越界：镜头留空，靠下面的描边标出位置
             }
         }
-        else
+
+        // ② 渐变桥：凸包减镜头，从源中心（透明）到镜头中心（0.3 alpha）
+        if (spec.Connection == MagnifierConnection.Gradient && spec.Stroke.A > 0)
         {
-            dc.DrawRoundedRectangle(null, MakePen(m.Color, m.Width, dashed: false), lens, 4, 4);
+            var hull = MagnifierInk.HullGeometry(lens, m.SourceRect, spec.Shape, radius);
+            if (!hull.IsEmpty())
+            {
+                var outside = new CombinedGeometry(GeometryCombineMode.Exclude, hull, lensGeometry);
+                outside.Freeze();
+                if (!outside.IsEmpty())
+                {
+                    var brush = new LinearGradientBrush(
+                        WithAlpha(spec.Stroke, 0),
+                        WithAlpha(spec.Stroke, 0.3 * spec.Opacity),
+                        new Point(m.SourceCenter.X, m.SourceCenter.Y),
+                        new Point(m.LensCenter.X, m.LensCenter.Y));
+                    brush.Freeze();
+                    dc.DrawGeometry(brush, null, outside);
+                }
+            }
+        }
+
+        // ③ 源轮廓：只画在镜头外
+        if (spec.SourceOutline && spec.StrokeWidth > 0)
+        {
+            var source = m.SourceRect;
+            double sourceRadius = radius / Math.Max(1, spec.Factor);
+            var sourceGeometry = MagnifierInk.Outline(source, spec.Shape, sourceRadius);
+
+            var bounds = Rect.Union(lens, source);
+            bounds.Inflate(spec.StrokeWidth + 4, spec.StrokeWidth + 4);
+            var canvas = new RectangleGeometry(bounds);
+            var clip = new CombinedGeometry(GeometryCombineMode.Exclude, canvas, lensGeometry);
+            clip.Freeze();
+
+            dc.PushClip(clip);
+            var pen = new Pen(Freeze(stroke), Math.Max(0.5, spec.StrokeWidth))
+            {
+                LineJoin = PenLineJoin.Round,
+            };
+            pen.Freeze();
+            dc.DrawGeometry(null, pen, sourceGeometry);
+            dc.Pop();
+        }
+
+        // ④ 引导线：从镜头轮廓外 8 DIP 起，指向源中心
+        if (spec.Connection == MagnifierConnection.LeaderLine)
+        {
+            var leader = MagnifierInk.Leader(m.LensCenter, m.SourceCenter, lens.Width, lens.Height,
+                spec.Shape, radius, spec.StrokeWidth);
+            if (leader is { } line)
+            {
+                var pen = new Pen(Freeze(stroke), Math.Max(0.5, spec.StrokeWidth))
+                {
+                    StartLineCap = PenLineCap.Round,
+                    EndLineCap = PenLineCap.Round,
+                };
+                pen.Freeze();
+                dc.DrawLine(pen, line.Start, line.End);
+
+                if (spec.LeaderArrowhead != Arrowhead.None)
+                {
+                    var axis = line.End - line.Start;
+                    if (axis.Length > 0.01)
+                    {
+                        ArrowInk.Draw(dc, line.End, axis, spec.LeaderArrowhead, stroke,
+                            spec.StrokeWidth, spec.ArrowRatio, Math.Max(1, axis.Length));
+                    }
+                }
+            }
+        }
+
+        // ⑤ 镜头描边（填充透明）
+        if (spec.StrokeWidth > 0)
+        {
+            var pen = new Pen(Freeze(stroke), Math.Max(0.5, spec.StrokeWidth))
+            {
+                LineJoin = PenLineJoin.Round,
+            };
+            pen.Freeze();
+            dc.DrawGeometry(null, pen, lensGeometry);
         }
     }
 
-    /// <summary>水印：在整张图上按角度平铺文字，画在其它标注之上（后加入的本来就后画）。</summary>
+    /// <summary>
+    /// 水印（P2-d2，照上游 <c>paint_watermark</c>）：格距 `max(gap + 字号 × 4, 32)`，
+    /// 以画布原点为锚点的方格阵，每个印记按角度旋转、左对齐、无描边无填充。
+    /// </summary>
     private static void DrawWatermark(DrawingContext dc, Mark.Watermark wm, Rect canvas)
     {
         if (canvas.Width < 2 || canvas.Height < 2) return;
+        if (string.IsNullOrWhiteSpace(wm.Content) || wm.Opacity <= 0) return;
 
+        var spec = wm.Spec;
         var text = new FormattedText(wm.Content, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-            Face, wm.FontSize, Freeze(WithAlpha(wm.Color, wm.Opacity)), 1.0);
+            FaceOf(spec.FontFamily), spec.FontSize, Freeze(WithAlpha(spec.Color, spec.Opacity)), 1.0);
 
-        double stepX = Math.Max(24, text.Width + wm.Gap);
-        double stepY = Math.Max(18, text.Height + wm.Gap * 0.8);
-        double diagonal = Math.Sqrt(canvas.Width * canvas.Width + canvas.Height * canvas.Height);
-        int nx = (int)Math.Ceiling(diagonal / stepX) + 1;
-        int ny = (int)Math.Ceiling(diagonal / stepY) + 1;
+        double gap = spec.Step;
+        double width = Math.Max(1, text.Width);
+        double height = spec.LineHeight;
+        double angle = spec.Angle * Math.PI / 180;
+        double cos = Math.Cos(angle), sin = Math.Sin(angle);
 
-        var center = new Point(canvas.X + canvas.Width / 2, canvas.Y + canvas.Height / 2);
+        // 上游：local_center = [宽/2, 高/2 − 字号]
+        double localX = width / 2, localY = height / 2 - spec.FontSize;
+
         dc.PushClip(new RectangleGeometry(canvas));
-        dc.PushTransform(new RotateTransform(wm.Rotation, center.X, center.Y));
-        for (int row = -ny; row <= ny; row++)
+        int count = 0;
+        double startY = Math.Floor((canvas.Top - width) / gap) * gap;
+        for (double y = startY; y < canvas.Bottom + width + gap; y += gap)
         {
-            double offset = (row & 1) == 0 ? 0 : stepX / 2;   // 隔行错开半格，看着像一片而不是一列列
-            for (int col = -nx; col <= nx; col++)
+            double startX = Math.Floor((canvas.Left - width) / gap) * gap;
+            for (double x = startX; x < canvas.Right + width + gap; x += gap)
             {
-                double x = center.X + col * stepX + offset - text.Width / 2;
-                double y = center.Y + row * stepY - text.Height / 2;
-                dc.DrawText(text, new Point(x, y));
+                double cx = x + cos * localX - sin * localY;
+                double cy = y + sin * localX + cos * localY;
+                var origin = new Point(cx - width / 2, cy - height / 2);
+                dc.PushTransform(new RotateTransform(spec.Angle, cx, cy));
+                dc.DrawText(text, origin);
+                dc.Pop();
+
+                if (++count > 4096)
+                {
+                    dc.Pop();   // 夹层必须成对：留一个没弹的 PushClip，DrawingContext 关闭时会抛
+                    return;
+                }
             }
         }
-        dc.Pop();
         dc.Pop();
     }
 

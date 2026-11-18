@@ -149,9 +149,7 @@ public partial class CaptureOverlayWindow
         _tool == CaptureTool.Watermark && !_doc.Marks.OfType<Mark.Watermark>().Any();
 
     /// <summary>按当前样式造一块水印（预览与实际落盘都用它，别两处各拼一次）。</summary>
-    private Mark.Watermark WatermarkMark => new(
-        _style.WatermarkText, _style.Color, _style.FontSize,
-        _style.WatermarkAngle, _style.WatermarkGap, _style.WatermarkOpacity);
+    private Mark.Watermark WatermarkMark => new(_style.WatermarkSpecOf());
 
     /// <summary>
     /// Esc / 右键：一级一级往回退（折线 → 手势 → 选中的标注 → 工具 → **选区** → 退出）。

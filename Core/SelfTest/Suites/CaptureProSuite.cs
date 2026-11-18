@@ -50,6 +50,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "样式：每个工具家族各记一套（落盘往返）", ToolStyles));
         cases.Add(new("capturePro", "样式：形状族（形状 / 描边 / 填充 / 圆角 / 尾巴 / 圆点）", ShapeStyles));
         cases.Add(new("capturePro", "度量：测距端点 / 单位 / 系数 / 测角内角 / 花括号", MeasureStyles));
+        cases.Add(new("capturePro", "样式：序号徽标 / 水印模板 / 放大镜几何", SerialWatermarkMagnifier));
         cases.Add(new("capturePro", "识别：表格聚类 / TSV / HTML", Recognize));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
@@ -256,7 +257,7 @@ internal static partial class CaptureProSuite
         var spot = new Mark.Spotlight(new Point(10, 10), new Point(50, 40), 0.5);
         Check.Equal(to, ((Mark.Spotlight)spot.ScaleTo(spot.Frame, to)).Frame, "聚光框搬过去");
 
-        var serial = new Mark.Serial(new Point(30, 30), 3, Colors.Red, SerialShape.Circle, SerialNumbering.Arabic);
+        var serial = new Mark.Serial(new Point(30, 30), 3, SerialSpec.Default);
         Check.False(serial.CanScale, "序号徽标固定尺寸，不给手柄");
         Check.Equal(new Point(40, 30),
             ((Mark.Serial)serial.ScaleTo(serial.Frame, to)).Center, "序号只跟着搬位置");
@@ -289,7 +290,7 @@ internal static partial class CaptureProSuite
         var doc = NewDocument();
         Check.False(doc.CanUndo, "新文档不能撤销");
 
-        doc.Add(new Mark.Serial(new Point(20, 20), doc.NextSerial(), Colors.Red, SerialShape.Circle, SerialNumbering.Arabic));
+        doc.Add(new Mark.Serial(new Point(20, 20), doc.NextSerial(), SerialSpec.Default));
         doc.Add(new Mark.Arrow(new Point(0, 0), new Point(10, 10), Colors.Red, 2));
         Check.Equal(2, doc.Marks.Count, "加了两条");
 
@@ -309,7 +310,7 @@ internal static partial class CaptureProSuite
         // 上限：只留最近 MaxUndo 份快照
         var many = NewDocument();
         for (int i = 0; i < CaptureDocument.MaxUndo + 10; i++)
-            many.Add(new Mark.Serial(new Point(10, 10), many.NextSerial(), Colors.Red, SerialShape.Circle, SerialNumbering.Arabic));
+            many.Add(new Mark.Serial(new Point(10, 10), many.NextSerial(), SerialSpec.Default));
         Check.Equal(CaptureDocument.MaxUndo + 10, many.Marks.Count, "都加进去了");
         for (int i = 0; i < CaptureDocument.MaxUndo + 10; i++) many.Undo();
         Check.False(many.CanUndo, "撤销栈到底");
@@ -320,9 +321,9 @@ internal static partial class CaptureProSuite
     {
         var doc = NewDocument();
         int first = doc.NextSerial();
-        doc.Add(new Mark.Serial(new Point(20, 20), first, Colors.Red, SerialShape.Circle, SerialNumbering.Arabic));
+        doc.Add(new Mark.Serial(new Point(20, 20), first, SerialSpec.Default));
         int second = doc.NextSerial();
-        doc.Add(new Mark.Serial(new Point(40, 20), second, Colors.Red, SerialShape.Circle, SerialNumbering.Arabic));
+        doc.Add(new Mark.Serial(new Point(40, 20), second, SerialSpec.Default));
         Check.Equal(1, first, "从 1 开始");
         Check.Equal(2, second, "递增");
 
@@ -331,33 +332,47 @@ internal static partial class CaptureProSuite
     }
 
     /// <summary>
-    /// 序号的五种写法都要有确定结果（罗马 / 字母 / 中文各有自己的边界），
-    /// 以及长写法的字号收缩——别等真机上看见「VIII」顶破圆圈才发现。
+    /// 序号的五种写法都要有确定结果（照上游 <c>serial_number_format.rs</c>：罗马 1–3999、
+    /// 字母表格列名式 aa..、中文带万 / 亿 / 兆 / 京分组），以及五种徽标的直径 / 圆角 /
+    /// 「纯圆圈不写数字」。别等真机上看见「VIII」顶破圆圈才发现。
     /// </summary>
     private static void SerialTexts()
     {
         Check.Equal("1", SerialLabel.Of(1, SerialNumbering.Arabic), "阿拉伯数字原样");
-        Check.Equal("IV", SerialLabel.Of(4, SerialNumbering.RomanUpper), "4 → IV");
-        Check.Equal("ix", SerialLabel.Of(9, SerialNumbering.RomanLower), "9 → ix（小写罗马）");
-        Check.Equal("A", SerialLabel.Of(1, SerialNumbering.AlphaUpper), "1 → A");
-        Check.Equal("z", SerialLabel.Of(26, SerialNumbering.AlphaLower), "26 → z");
-        Check.Equal("AA", SerialLabel.Of(27, SerialNumbering.AlphaUpper), "27 → AA（表格列名式）");
+        Check.Equal("IV", SerialLabel.Of(4, SerialNumbering.Roman), "4 → IV");
+        Check.Equal("IX", SerialLabel.Of(9, SerialNumbering.Roman), "9 → IX（罗马只有大写一种）");
+        Check.Equal("a", SerialLabel.Of(1, SerialNumbering.LowercaseLetters), "1 → a");
+        Check.Equal("z", SerialLabel.Of(26, SerialNumbering.LowercaseLetters), "26 → z");
+        Check.Equal("aa", SerialLabel.Of(27, SerialNumbering.LowercaseLetters), "27 → aa（表格列名式）");
+        Check.Equal("AA", SerialLabel.Of(27, SerialNumbering.UppercaseLetters), "27 → AA");
+        Check.Equal("aaa", SerialLabel.Of(703, SerialNumbering.LowercaseLetters), "703 → aaa（上游用例）");
         Check.Equal("十", SerialLabel.Of(10, SerialNumbering.Chinese), "10 读「十」而不是「一十」");
         Check.Equal("二十一", SerialLabel.Of(21, SerialNumbering.Chinese), "21 → 二十一");
         Check.Equal("一百零五", SerialLabel.Of(105, SerialNumbering.Chinese), "105 → 一百零五（中间补零）");
-        Check.Equal("4000", SerialLabel.Of(4000, SerialNumbering.RomanUpper), "超范围退回阿拉伯数字，不留空");
+        Check.Equal("一万零一", SerialLabel.Of(10001, SerialNumbering.Chinese), "跨组补零：一万零一");
+        Check.Equal("一亿零一", SerialLabel.Of(100_000_001, SerialNumbering.Chinese), "空组补零：一亿零一");
+        Check.Equal("一亿", SerialLabel.Of(100_000_000, SerialNumbering.Chinese), "亿级分组");
+        Check.Equal("一万二千三百四十五", SerialLabel.Of(12345, SerialNumbering.Chinese), "四位一组的读法");
+        Check.Equal("二十一亿四千七百四十八万三千六百四十七", SerialLabel.Of(int.MaxValue, SerialNumbering.Chinese),
+            "int 上限也要读全（不进位、不塌成空）");
+        Check.Equal("4000", SerialLabel.Of(4000, SerialNumbering.Roman), "超范围退回阿拉伯数字，不留空");
 
-        double shortSize = MarkRenderer.SerialFontSize(1, "1");
-        double longSize = MarkRenderer.SerialFontSize(8, "VIII");
-        Check.True(longSize < shortSize, "长写法的字号比单数字小");
-        Check.True(longSize >= 7, "再小也留得下（不会塌成 0）");
+        // 徽标直径 = 1.68 × 字号（与写法 / 位数无关）；方形圆角 = 0.2 × 字号
+        Check.Equal(24 * 1.68, SerialSpec.Default.Diameter, "默认 24 号 → 直径 40.32");
+        Check.Equal(24 * 0.2, SerialSpec.Default.CornerRadius, "方形圆角 = 0.2 × 字号");
+        Check.True(SerialSpec.Default.Numbered, "空心圆写数字");
+        Check.False((SerialSpec.Default with { Badge = SerialBadge.Circle }).Numbered,
+            "纯圆圈徽标不写数字（上游 supports_number()）");
+        Check.True((SerialSpec.Default with { Badge = SerialBadge.SolidSquare }).Solid, "实心方是实心");
+        Check.True((SerialSpec.Default with { Badge = SerialBadge.OutlinedSquare }).Square, "空心方是方形");
 
-        var serial = new Mark.Serial(new Point(10, 10), 2, Colors.Red,
-            SerialShape.Rounded, SerialNumbering.RomanUpper);
+        var spec = SerialSpec.Default with { Badge = SerialBadge.OutlinedSquare, Numbering = SerialNumbering.Roman };
+        var serial = new Mark.Serial(new Point(10, 10), 2, spec);
         var moved = (Mark.Serial)serial.MoveBy(new Vector(5, 5));
-        Check.Equal(SerialShape.Rounded, moved.BadgeShape, "移动不改徽标形状");
-        Check.Equal(SerialNumbering.RomanUpper, moved.Numbering, "移动不改数字写法");
+        Check.Equal(SerialBadge.OutlinedSquare, moved.Badge, "移动不改徽标类型");
+        Check.Equal(SerialNumbering.Roman, moved.Numbering, "移动不改数字写法");
         Check.Equal("II", moved.Label, "标签跟着写法走");
+        Check.Equal(40.32, moved.Diameter, "直径只由字号决定");
     }
 
     /// <summary>
@@ -410,7 +425,7 @@ internal static partial class CaptureProSuite
         doc.Area = new Int32Rect(100, 100, 8, 8);
         doc.Add(new Mark.Shape(new Point(1, 1), new Point(3, 3), Colors.Red, 2, false, false));
         int first = doc.NextSerial();
-        doc.Add(new Mark.Serial(new Point(4, 4), first, Colors.White, SerialShape.Circle, SerialNumbering.Arabic));
+        doc.Add(new Mark.Serial(new Point(4, 4), first, SerialSpec.Default));
         Check.True(doc.CanUndo, "换之前有撤销可退");
 
         // 换一张 16×20 的历史图，摆在窗口里的 (5,7)，缩放仍是 2
@@ -436,8 +451,8 @@ internal static partial class CaptureProSuite
         // 退回实时截图：把刚才那份标注放回来，序号接着最大的那个
         doc.ResetMarks(new Mark[]
         {
-            new Mark.Serial(new Point(4, 4), 3, Colors.White, SerialShape.Circle, SerialNumbering.Arabic),
-            new Mark.Serial(new Point(8, 4), 7, Colors.White, SerialShape.Square, SerialNumbering.RomanUpper),
+            new Mark.Serial(new Point(4, 4), 3, SerialSpec.Default),
+            new Mark.Serial(new Point(8, 4), 7, SerialSpec.Default),
         });
         Check.Equal(2, doc.Marks.Count, "ResetMarks 原样放回");
         Check.False(doc.CanUndo, "放回标注不产生撤销记录");
@@ -669,9 +684,6 @@ internal static partial class CaptureProSuite
         Check.True(small.Width > 0 && small.Height > 0, "量得出尺寸");
         Check.True(big.Width > small.Width, "字号变大宽度变大");
         Check.True(MarkGeometry.MeasureText("", 20).Width > 0, "空文本给一个最小宽度（不塌成 0）");
-        Check.Equal(15, MarkGeometry.SerialFontSize(7), "个位数的字号");
-        Check.Equal(13, MarkGeometry.SerialFontSize(12), "两位数的字号");
-        Check.Equal(11, MarkGeometry.SerialFontSize(120), "三位数缩小一点");
     }
 
     private static void Contrast()
@@ -724,9 +736,15 @@ internal static partial class CaptureProSuite
         Check.Equal(0, ToolCatalog.Of(CaptureTool.Picker).Params.Length, "取色不用任何参数格");
 
         // 新增的两族参数：序号要形状 / 写法，滤镜要类型 / 强度（马赛克的块大小不给滤镜）
-        Check.True(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.BadgeShape), "序号有徽标形状");
+        Check.True(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.BadgeShape), "序号有徽标类型");
         Check.True(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.Numbering), "序号有数字写法");
-        Check.False(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.Width), "序号没有线宽");
+        Check.True(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.SerialNumber), "序号有「下一个序号」");
+        Check.True(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.SerialFontSize), "序号有字号（与文字 / 水印分开）");
+        Check.True(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.Width), "序号有线宽（上游 buildSequenceNumberFamily 有 strokeWidth）");
+        Check.True(ToolCatalog.Uses(CaptureTool.Magnifier, ToolParam.Connection), "放大镜有连接方式");
+        Check.True(ToolCatalog.Uses(CaptureTool.Magnifier, ToolParam.SourceOutline), "放大镜有源轮廓开关");
+        Check.True(ToolCatalog.Uses(CaptureTool.Magnifier, ToolParam.ArrowRatio), "放大镜有箭头比例");
+        Check.True(ToolCatalog.Uses(CaptureTool.Magnifier, ToolParam.LeaderArrowhead), "放大镜有引导线端点");
         Check.True(ToolCatalog.Uses(CaptureTool.Filter, ToolParam.FilterKind), "滤镜有类型");
         Check.True(ToolCatalog.Uses(CaptureTool.Filter, ToolParam.FilterStrength), "滤镜有强度");
         Check.False(ToolCatalog.Uses(CaptureTool.Filter, ToolParam.Block), "滤镜没有马赛克块大小");
@@ -753,6 +771,9 @@ internal static partial class CaptureProSuite
         Check.True(ToolCatalog.Uses(CaptureTool.Watermark, ToolParam.WatermarkText), "水印有文字");
         Check.True(ToolCatalog.Uses(CaptureTool.Watermark, ToolParam.WatermarkAngle), "水印有角度");
         Check.True(ToolCatalog.Uses(CaptureTool.Watermark, ToolParam.WatermarkGap), "水印有间距");
+        Check.True(ToolCatalog.Uses(CaptureTool.Watermark, ToolParam.WatermarkTemplate), "水印有模板下拉");
+        Check.True(ToolCatalog.Uses(CaptureTool.Watermark, ToolParam.WatermarkOpacity), "水印有不透明度（与荧光笔分开）");
+        Check.True(ToolCatalog.Uses(CaptureTool.Watermark, ToolParam.FontSize), "水印有字号（12 / 16 / 24 / 30 预设）");
         Check.False(ToolCatalog.Uses(CaptureTool.Watermark, ToolParam.Width), "水印没有线宽");
         Check.True(ToolCatalog.Uses(CaptureTool.BrushFilter, ToolParam.FilterKind), "画笔滤镜有类型");
         Check.True(ToolCatalog.Uses(CaptureTool.BrushFilter, ToolParam.Width), "画笔滤镜有笔头宽度");
@@ -780,8 +801,8 @@ internal static partial class CaptureProSuite
             Check.True(!string.IsNullOrWhiteSpace(SerialLabel.Name(kind)), kind + " 有中文名");
         foreach (var numbering in Enum.GetValues<SerialNumbering>())
             Check.True(!string.IsNullOrWhiteSpace(SerialLabel.Chip(numbering)), numbering + " 有 chip 标签");
-        foreach (var shape in Enum.GetValues<SerialShape>())
-            Check.True(!string.IsNullOrWhiteSpace(SerialLabel.Name(shape)), shape + " 有中文名");
+        foreach (var badge in Enum.GetValues<SerialBadge>())
+            Check.True(!string.IsNullOrWhiteSpace(SerialLabel.Name(badge)), badge + " 有中文名");
 
         // 光标：只有选择和文字不是十字
         Check.False(ToolCatalog.WantsCrossCursor(CaptureTool.Select), "选择用箭头");
@@ -2949,26 +2970,39 @@ internal static partial class CaptureProSuite
         var moved = (Mark.SpeechBubble)bubble.MoveBy(new Vector(10, 20));
         Check.Equal(new Rect(10, 20, 200, 100), moved.Body, "气泡整体平移");
 
-        // ---- 放大镜：取图区域按倍率收在镜头中心 ----
-        var lens = new Mark.Magnifier(new Rect(0, 0, 200, 100), 2, Colors.Red, 3);
+        // ---- 放大镜：镜头 = 源 × 倍率，源与镜头各自定位 ----
+        var lensSpec = MagnifierSpec.Default with { Factor = 2, StrokeWidth = 3 };
+        var lens = new Mark.Magnifier(new Rect(0, 0, 200, 100), lensSpec);
         Check.Equal(new Rect(50, 25, 100, 50), lens.SourceRect, "2 倍镜头取中心一半大小的区域");
-        Check.Equal(1.2, new Mark.Magnifier(new Rect(0, 0, 10, 10), 0.2, Colors.Red, 3).Factor, "倍率下限 1.2");
-        Check.Equal(8d, new Mark.Magnifier(new Rect(0, 0, 10, 10), 99, Colors.Red, 3).Factor, "倍率上限 8");
+        Check.Equal(new Rect(0, 0, 200, 100), lens.Lens, "镜头就是拖出来的框");
+        Check.Equal(new Point(100, 50), lens.LensCenter, "镜头中心");
+        Check.Equal(new Point(100, 50), lens.SourceCenter, "新建时源与镜头同心");
+        Check.Equal(1d, new Mark.Magnifier(new Rect(0, 0, 10, 10),
+            MagnifierSpec.Default with { Factor = 0.2 }).Factor, "倍率下限 1（上游 1–10）");
+        Check.Equal(10d, new Mark.Magnifier(new Rect(0, 0, 10, 10),
+            MagnifierSpec.Default with { Factor = 99 }).Factor, "倍率上限 10");
         Check.True(lens.HitTest(new Point(100, 50), 0), "镜头里命中");
         Check.False(lens.HitTest(new Point(300, 50), 0), "镜头外不命中");
         Check.Equal(new Rect(10, 10, 200, 100), ((Mark.Magnifier)lens.MoveBy(new Vector(10, 10))).Lens,
             "镜头整体平移");
+        Check.Equal(new Rect(150, 110, 100, 50), ((Mark.Magnifier)lens.WithSourceCenter(new Point(200, 135))).SourceRect,
+            "源中心单独搬（镜头不动）");
 
         // ---- 水印：整图效果，不参与选中 / 拖动 ----
-        var wm = new Mark.Watermark("保密", Colors.White, 24, -30, 120, 0.15);
+        var wmSpec = new WatermarkSpec("保密", Colors.White, 24, string.Empty, -30, 120, 0.15);
+        var wm = new Mark.Watermark(wmSpec);
         Check.Equal(Rect.Empty, wm.Bounds, "水印没有外接框");
         Check.Equal(Rect.Empty, wm.Frame, "水印没有选中框");
         Check.False(wm.CanScale, "水印不能缩放");
         Check.False(wm.HitTest(new Point(10, 10), 999), "水印点不中（永远不挡选择）");
         Check.True(ReferenceEquals(wm, wm.MoveBy(new Vector(10, 10))), "水印移动返回自己");
         Check.True(ReferenceEquals(wm, wm.ScaleTo(new Rect(0, 0, 1, 1), new Rect(0, 0, 2, 2))), "水印缩放返回自己");
-        Check.Equal("LTools", new Mark.Watermark("   ", Colors.White, 24, 0, 120, 0.15).Content, "水印文字为空时用默认名");
+        Check.Equal(string.Empty, WatermarkSpec.Default.Text, "上游默认水印文字是空（没填就什么都不画）");
         Check.Equal(-30d, wm.Rotation, "水印角度字段（不叫 Angle：那是标注类型名）");
+        Check.Equal(216d, wmSpec.Step, "格距 = max(gap 120 + 24×4, 32) = 216");
+        Check.Equal(32d, (new WatermarkSpec("x", Colors.Black, 2, "", 0, 10, 1)).Step,
+            "格距有 32 的下限（字号小、间距小时别挤成一片）");
+        Check.True(Math.Abs(wmSpec.LineHeight - 28.8) < 1e-9, "排版行高 = 1.2 × 字号");
 
         // ---- 矩形荧光 ----
         var glow = new Mark.Highlight(new Point(0, 0), new Point(100, 50), Colors.Yellow, 0.35);
@@ -3260,3 +3294,4 @@ internal static partial class CaptureProSuite
         return new CaptureDocument(baseImage, new Int32Rect(100, 100, 8, 8), 2.0);
     }
 }
+

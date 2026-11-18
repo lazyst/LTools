@@ -89,9 +89,6 @@ internal static class MarkGeometry
         return new Size(Math.Ceiling(ft.WidthIncludingTrailingWhitespace), Math.Ceiling(ft.Height));
     }
 
-    /// <summary>序号徽标里数字的字号。</summary>
-    public static double SerialFontSize(int number) => number >= 100 ? 11 : number >= 10 ? 13 : 15;
-
     // ============ 八个把手：选区与标注共用 ============
 
     /// <summary>八个把手（点中判定按这个顺序：角优先，角比边更好按）。</summary>

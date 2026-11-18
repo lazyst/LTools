@@ -231,50 +231,61 @@ internal abstract class Mark
                 .Contains(point);
     }
 
-    /// <summary>序号：圆形 / 方形 / 圆角方徽标 + 数字，序号由文档递增分配，删除不重排。</summary>
+    /// <summary>序号：徽标（5 种）+ 数字（5 种写法），序号由文档递增分配，删除不重排。</summary>
     public sealed class Serial : Mark
     {
-        public Serial(Point center, int number, Color color, SerialShape shape, SerialNumbering numbering)
+        public Serial(Point center, int number, SerialSpec spec)
         {
             Center = center;
-            Number = number;
-            Color = color;
-            BadgeShape = shape;
-            Numbering = numbering;
+            Number = Math.Max(0, number);
+            Spec = (spec ?? SerialSpec.Default).Clamped();
         }
 
         public Point Center { get; }
         public int Number { get; }
-        public Color Color { get; }
 
-        /// <summary>徽标形状。</summary>
-        public SerialShape BadgeShape { get; }
+        /// <summary>整套画法（类型 / 写法 / 颜色 / 填充 / 字号 / 字体 / 描边 / 不透明度）。</summary>
+        public SerialSpec Spec { get; }
 
-        /// <summary>数字写法（阿拉伯 / 罗马 / 字母 / 中文）。</summary>
-        public SerialNumbering Numbering { get; }
+        public SerialBadge Badge => Spec.Badge;
+        public SerialNumbering Numbering => Spec.Numbering;
+        public Color Color => Spec.Stroke;
 
-        /// <summary>徽标上要画的字（罗马、中文比数字长，字号由渲染按长度收）。</summary>
-        public string Label => SerialLabel.Of(Number, Numbering);
+        /// <summary>徽标上要画的字（<see cref="SerialBadge.Circle"/> 不写字）。</summary>
+        public string Label => Spec.Numbered ? SerialLabel.Of(Number, Spec.Numbering) : string.Empty;
 
-        public const double Radius = 13;
+        /// <summary>徽标直径（1.68 × 字号，与写法 / 位数无关）。</summary>
+        public double Diameter => Spec.Diameter;
 
-        public Rect Box => new(Center.X - Radius, Center.Y - Radius, Radius * 2, Radius * 2);
+        public Rect Box
+        {
+            get
+            {
+                double r = Diameter / 2;
+                return new Rect(Center.X - r, Center.Y - r, Diameter, Diameter);
+            }
+        }
 
         public override Rect Bounds => Box;
 
-        /// <summary>徽标直径是固定的（数字要看得清），所以它只有移动、没有缩放。</summary>
+        /// <summary>徽标直径由字号决定，所以它只有移动、没有缩放。</summary>
         public override bool CanScale => false;
 
-        public override Mark MoveBy(Vector delta) => new Serial(Center + delta, Number, Color, BadgeShape, Numbering);
+        public override Mark MoveBy(Vector delta) => new Serial(Center + delta, Number, Spec);
 
         public override Mark ScaleTo(Rect from, Rect to) =>
-            new Serial(MarkGeometry.MapPoint(Center, from, to), Number, Color, BadgeShape, Numbering);
+            new Serial(MarkGeometry.MapPoint(Center, from, to), Number, Spec);
 
         public override bool HitTest(Point point, double tolerance)
         {
-            var b = Box;
-            b.Inflate(tolerance, tolerance);
-            return b.Contains(point);
+            var box = Box;
+            box.Inflate(tolerance, tolerance);
+            if (!box.Contains(point)) return false;
+            if (Spec.Square) return true;
+
+            double rx = box.Width / 2, ry = box.Height / 2;
+            double dx = (point.X - Center.X) / rx, dy = (point.Y - Center.Y) / ry;
+            return dx * dx + dy * dy <= 1;
         }
     }
 
@@ -870,83 +881,129 @@ internal abstract class Mark
     }
 
     /// <summary>
-    /// 放大镜：把底图上「镜头中心」附近的一小块按倍率放大画进镜头框。
-    /// 镜头框就是它在外接框里的位置；倍率默认 2 倍。
+    /// 放大镜：镜头框把「源区域」按倍率放大画出来；源区域与镜头**各自独立定位**
+    /// （上游 <c>MagnifierData</c> 的 <c>source_center</c> / <c>magnified_center</c>）。
     /// </summary>
     public sealed class Magnifier : Mark
     {
-        public Magnifier(Rect lens, double factor, Color color, double width)
+        /// <summary>拖出镜头框造一个：源区域默认与镜头同心，取镜头 / 倍率那么大一块。</summary>
+        public Magnifier(Rect lens, MagnifierSpec spec)
+            : this(lens.Location + new Vector(lens.Width / 2, lens.Height / 2), lens.Width, lens.Height,
+                lens.Location + new Vector(lens.Width / 2, lens.Height / 2), spec, fromLens: true)
         {
-            Lens = lens;
-            Factor = Math.Clamp(factor, 1.2, 8);
-            Color = color;
-            Width = width;
         }
 
-        public Rect Lens { get; }
-        public double Factor { get; }
-        public Color Color { get; }
-        public double Width { get; }
-
-        /// <summary>取图区域：镜头中心、边长 = 镜头 / 倍率（DIP，渲染时再按底图裁）。</summary>
-        public Rect SourceRect
+        private Magnifier(Point lensCenter, double sourceWidth, double sourceHeight, Point sourceCenter,
+            MagnifierSpec spec, bool fromLens)
         {
-            get
+            Spec = (spec ?? MagnifierSpec.Default).Clamped();
+            LensCenter = lensCenter;
+            SourceCenter = sourceCenter;
+            if (fromLens)
             {
-                double w = Lens.Width / Factor, h = Lens.Height / Factor;
-                return new Rect(Lens.X + (Lens.Width - w) / 2, Lens.Y + (Lens.Height - h) / 2, w, h);
+                SourceWidth = Math.Max(1, sourceWidth / Spec.Factor);
+                SourceHeight = Math.Max(1, sourceHeight / Spec.Factor);
+            }
+            else
+            {
+                SourceWidth = Math.Max(1, sourceWidth);
+                SourceHeight = Math.Max(1, sourceHeight);
             }
         }
 
-        public override Rect Bounds => MarkGeometry.Inflate(Lens, Width / 2 + 2);
+        /// <summary>镜头中心 / 源区域中心各自独立（可以拖开，形成连接桥）。</summary>
+        public Point LensCenter { get; }
+        public Point SourceCenter { get; }
+
+        public double SourceWidth { get; }
+        public double SourceHeight { get; }
+
+        public MagnifierSpec Spec { get; }
+
+        public double Factor => Spec.Factor;
+        public Color Color => Spec.Stroke;
+        public double Width => Spec.StrokeWidth;
+
+        /// <summary>放大后的镜头矩形（源尺寸 × 倍率）。</summary>
+        public Rect Lens => MagnifierInk.LensRect(LensCenter, SourceWidth, SourceHeight, Factor);
+
+        /// <summary>取图区域（源尺寸、源中心）。</summary>
+        public Rect SourceRect => MagnifierInk.SourceRectOf(SourceCenter, SourceWidth, SourceHeight);
+
+        /// <summary>换源中心（拖手柄用；镜头不动）。</summary>
+        public Mark WithSourceCenter(Point center) =>
+            new Magnifier(LensCenter, SourceWidth, SourceHeight, center, Spec, fromLens: false);
+
+        /// <summary>换镜头中心（拖镜头 / 拖移动手柄用；源不动，与上游拖动镜头一致）。</summary>
+        public Mark WithLensCenter(Point center) =>
+            new Magnifier(center, SourceWidth, SourceHeight, SourceCenter, Spec, fromLens: false);
+
+        /// <summary>两个中心一起平移（拖源区域 / 键盘微调 / 整块挪动，上游 transform 会同时映射两个中心）。</summary>
+        public Mark WithCenters(Point lensCenter, Point sourceCenter) =>
+            new Magnifier(lensCenter, SourceWidth, SourceHeight, sourceCenter, Spec, fromLens: false);
+
+        public override Rect Bounds
+        {
+            get
+            {
+                var box = Rect.Union(Lens, SourceRect);
+                box.Inflate(Width / 2 + 2, Width / 2 + 2);
+                return box;
+            }
+        }
+
         public override Rect Frame => Lens;
 
-        public override Mark MoveBy(Vector delta) => new Magnifier(
-            new Rect(Lens.X + delta.X, Lens.Y + delta.Y, Lens.Width, Lens.Height), Factor, Color, Width);
+        /// <summary>
+        /// 整个标注平移：源与镜头**一起走**（上游 transform 同时映射 <c>source_center</c> 与
+        /// <c>magnified_center</c>）。只想动镜头请用 <see cref="WithLensCenter"/>。
+        /// </summary>
+        public override Mark MoveBy(Vector delta) =>
+            WithCenters(LensCenter + delta, SourceCenter + delta);
 
         public override Mark ScaleTo(Rect from, Rect to)
         {
-            var a = MarkGeometry.MapPoint(Lens.TopLeft, from, to);
-            var b = MarkGeometry.MapPoint(Lens.BottomRight, from, to);
-            return new Magnifier(MarkGeometry.RectOf(a, b), Factor, Color,
-                Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)));
+            var lensCenter = MarkGeometry.MapPoint(LensCenter, from, to);
+            var sourceCenter = MarkGeometry.MapPoint(SourceCenter, from, to);
+            double scale = MarkGeometry.ScaleOf(from, to);
+            return new Magnifier(lensCenter, SourceWidth * scale, SourceHeight * scale, sourceCenter,
+                Spec, fromLens: false);
         }
 
         public override bool HitTest(Point point, double tolerance)
         {
-            var box = Lens;
-            box.Inflate(tolerance, tolerance);
-            return box.Contains(point);
+            var lens = Lens;
+            lens.Inflate(tolerance, tolerance);
+            if (lens.Contains(point)) return true;
+
+            var source = SourceRect;
+            source.Inflate(tolerance, tolerance);
+            return source.Contains(point);
         }
     }
 
     /// <summary>
-    /// 水印：整张图上斜向平铺的文字（颜色 / 字号 / 角度 / 间距 / 不透明度）。
+    /// 水印：整张图上按角度平铺的文字（颜色 / 字号 / 字体 / 角度 / 间距 / 不透明度）。
     /// 它是**覆盖整张图**的效果，不参与选中 / 拖动（<see cref="Bounds"/> 为空、<see cref="HitTest"/> 恒 false）。
     /// </summary>
     public sealed class Watermark : Mark
     {
-        public Watermark(string text, Color color, double fontSize, double angle, double gap, double opacity)
-        {
-            Content = string.IsNullOrWhiteSpace(text) ? "LTools" : text;
-            Color = color;
-            FontSize = Math.Clamp(fontSize, 6, 512);
-            Rotation = angle;
-            Gap = Math.Clamp(gap, 10, 600);
-            Opacity = Math.Clamp(opacity, 0.02, 1);
-        }
+        public Watermark(WatermarkSpec spec) => Spec = (spec ?? WatermarkSpec.Default).Clamped();
 
-        public string Content { get; }
-        public Color Color { get; }
-        public double FontSize { get; }
+        public WatermarkSpec Spec { get; }
+
+        public string Content => Spec.Text;
+        public Color Color => Spec.Color;
+        public double FontSize => Spec.FontSize;
+        public string FontFamily => Spec.FontFamily;
 
         /// <summary>倾斜角度（度，逆时针为正）。</summary>
-        public double Rotation { get; }
+        public double Rotation => Spec.Angle;
 
-        /// <summary>相邻两块水印的间距（DIP）。</summary>
-        public double Gap { get; }
+        /// <summary>相邻两块水印的间距（配置值；实际格距见 <see cref="WatermarkSpec.Step"/>）。</summary>
+        public double Gap => Spec.Gap;
 
-        public double Opacity { get; }
+        public double Opacity => Spec.Opacity;
 
         public override Rect Bounds => Rect.Empty;
         public override Rect Frame => Rect.Empty;

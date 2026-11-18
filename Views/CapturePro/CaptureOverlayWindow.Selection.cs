@@ -41,7 +41,7 @@ public partial class CaptureOverlayWindow
     private bool _pressMoved;
     private SnapBox? _pressTarget;
 
-    private enum DragMode { None, New, Move, Resize, Draw, Erase, Mark, MarkResize, Lasso }
+    private enum DragMode { None, New, Move, Resize, Draw, Erase, Mark, MarkResize, MagnifierLens, Lasso }
 
     private void Window_MouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -104,6 +104,15 @@ public partial class CaptureOverlayWindow
         {
             BeginMarkResize(p, markHandle);
             StartDrag(e, CursorFor(markHandle));
+            return;
+        }
+
+        // 0.5 放大镜的镜头：镜头与源**分开定位**，按在镜头本体（源区域之外）或下方的移动手柄
+        //     上只挪镜头；按在源区域里 = 整块挪动（交给下面的 BeginMarkDrag，MoveBy 两个中心一起走）。
+        //     上游命中顺序：移动手柄 → 源区域（= 元素） → 镜头（= 只动镜头）。
+        if (BeginMagnifierLensDrag(p))
+        {
+            StartDrag(e, Cursors.SizeAll);
             return;
         }
 
@@ -327,6 +336,9 @@ public partial class CaptureOverlayWindow
             case DragMode.MarkResize:
                 UpdateMarkResize(p);
                 break;
+            case DragMode.MagnifierLens:
+                UpdateMagnifierLensDrag(p);
+                break;
         }
 
         UpdateChrome();
@@ -380,6 +392,10 @@ public partial class CaptureOverlayWindow
             case DragMode.MarkResize:
                 CommitMarkResize(p);
                 break;
+
+            case DragMode.MagnifierLens:
+                CommitMagnifierLensDrag(p);
+                break;
         }
 
         _pressTarget = null;
@@ -399,6 +415,7 @@ public partial class CaptureOverlayWindow
 
         if (_drag == DragMode.Mark) CancelMarkDrag();
         else if (_drag == DragMode.MarkResize) CancelMarkResize();
+        else if (_drag == DragMode.MagnifierLens) CancelMagnifierLensDrag();
         else if (_drag is DragMode.Draw or DragMode.Erase) Surface.Preview = null;
         else if (_drag == DragMode.Lasso) _lasso.Clear();
 
@@ -427,6 +444,16 @@ public partial class CaptureOverlayWindow
         if (markHit is not (FrameHandle.None or FrameHandle.Move))
         {
             Cursor = CursorFor(markHit);
+            return;
+        }
+
+        // 放大镜的镜头 / 移动手柄也是抓手（源区域 = 整块挪动，由下面的通用分支给 SizeAll）
+        if (_tool == CaptureTool.Select && _selectedIndex >= 0 && _selectedIndex < _doc.Marks.Count &&
+            _doc.Marks[_selectedIndex] is Mark.Magnifier lensMag &&
+            (MagnifierInk.HitsMoveGrip(lensMag.Lens, p) ||
+             (lensMag.Lens.Contains(p) && !lensMag.SourceRect.Contains(p))))
+        {
+            Cursor = Cursors.SizeAll;
             return;
         }
 

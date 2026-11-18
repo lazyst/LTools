@@ -21,6 +21,16 @@ public sealed class CaptureStylesFile
 
     /// <summary>家族名 → 该家族记住的样式。</summary>
     public Dictionary<string, CaptureToolStyleDto> Families { get; set; } = new();
+
+    /// <summary>水印模板（上游 <c>WatermarkTemplate</c>：名字 + 内容，参数行下拉可增删）。</summary>
+    public List<CaptureWatermarkTemplate> WatermarkTemplates { get; set; } = new();
+}
+
+/// <summary>一个水印模板：名字（下拉里显示的那一条）+ 内容（写进水印文字的值）。</summary>
+public sealed class CaptureWatermarkTemplate
+{
+    public string Name { get; set; } = string.Empty;
+    public string Value { get; set; } = string.Empty;
 }
 
 /// <summary>一个工具家族的样式（每个字段都可空，缺省 = 默认）。</summary>
@@ -41,11 +51,14 @@ public sealed class CaptureToolStyleDto
     /// <summary>荧光笔不透明度（0–1）。</summary>
     public double? Opacity { get; set; }
 
-    /// <summary>序号徽标形状（<c>CapturedShape</c> 名字）。</summary>
+    /// <summary>序号徽标类型（<c>SerialBadge</c> 名字）。</summary>
     public string? Shape { get; set; }
 
     /// <summary>序号数字写法（<c>SerialNumbering</c> 名字）。</summary>
     public string? Numbering { get; set; }
+
+    /// <summary>下一个序号（参数行里那个数字框）。</summary>
+    public int? SerialNumber { get; set; }
 
     /// <summary>形状族的形状（<c>ShapeKind</c> 名字）。</summary>
     public string? ShapeKind { get; set; }
@@ -79,6 +92,15 @@ public sealed class CaptureToolStyleDto
 
     /// <summary>放大镜倍率。</summary>
     public double? Factor { get; set; }
+
+    /// <summary>放大镜连接方式（<c>MagnifierConnection</c> 名字）。</summary>
+    public string? Connection { get; set; }
+
+    /// <summary>放大镜的源区域轮廓开关。</summary>
+    public bool? SourceOutline { get; set; }
+
+    /// <summary>箭头比例（0.5–3）。</summary>
+    public double? ArrowRatio { get; set; }
 
     /// <summary>水印文字。</summary>
     public string? WatermarkText { get; set; }

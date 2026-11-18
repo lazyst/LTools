@@ -196,8 +196,8 @@ internal sealed class RecordAnnotationWindow : Window
                     return;
 
                 case RecordTool.Serial:
-                    _doc.Add(new Mark.Serial(p, _doc.NextSerial(), Ink, SerialShape.Circle,
-                        SerialNumbering.Arabic));
+                    _doc.Add(new Mark.Serial(p, _doc.NextSerial(),
+                        SerialSpec.Default with { Stroke = Ink, Fill = ToolStyle.DefaultFillColor }));
                     Done();
                     return;
 

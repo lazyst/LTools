@@ -34,6 +34,9 @@ internal sealed class CaptureCanvas : FrameworkElement
     private static readonly SolidColorBrush HandleFill = Frozen(Colors.White);
     private static readonly Pen HandleEdge = FrozenPen(Color.FromRgb(0x18, 0x18, 0x1B), 1);
 
+    /// <summary>放大镜移动手柄的六个小点（选中色）。</summary>
+    private static readonly SolidColorBrush GripFill = Frozen(Color.FromRgb(0x3B, 0x82, 0xF6));
+
     /// <summary>正在圈 / 正在点的选区：白色虚线 + 深色底描边（浅底上也看得见）。</summary>
     private static readonly Pen PendingPen = FrozenDashPen(Colors.White, 1.5);
     private static readonly Pen PendingShadow = FrozenDashPen(Color.FromArgb(0xAA, 0, 0, 0), 3);
@@ -130,6 +133,11 @@ internal sealed class CaptureCanvas : FrameworkElement
                 dc.DrawRectangle(null, SelectPen, box);
                 if (ShowHandles && mark.CanScale) DrawHandles(dc, box);
             }
+
+            // 放大镜额外画源轮廓与移动手柄（照上游 overlay_composition 的
+            // magnifier_source_outline + magnifier_move_grip）：源轮廓一直看得见，
+            // 手柄在镜头下方 24 DIP，抓着它 = 只挪镜头
+            if (mark is Mark.Magnifier magnifier) DrawMagnifierChrome(dc, magnifier);
         }
 
         if (selectionGeo != null) dc.Pop();
@@ -261,6 +269,26 @@ internal sealed class CaptureCanvas : FrameworkElement
         var pen = new Pen(Frozen(color), width);
         pen.Freeze();
         return pen;
+    }
+
+    /// <summary>
+    /// 选中放大镜时的两件套（照上游 <c>overlay_composition.rs</c> + <c>selection_overlay.rs</c>）：
+    /// ① 源区域轮廓（选中色、1 DIP 虚线，形状跟着镜头走，圆角是镜头圆角 ÷ 倍率）；
+    /// ② 移动手柄（镜头下缘 +24 DIP，14×14 的 2×3 六个小点）——抓着它只挪镜头。
+    /// </summary>
+    private static void DrawMagnifierChrome(DrawingContext dc, Mark.Magnifier magnifier)
+    {
+        var spec = magnifier.Spec;
+        double radius = spec.Shape == ShapeKind.Rectangle ? spec.CornerRadius / Math.Max(1, spec.Factor) : 0;
+        var source = MagnifierInk.Outline(magnifier.SourceRect, spec.Shape, radius);
+        if (!source.IsEmpty()) dc.DrawGeometry(null, SelectPen, source);
+
+        const double unit = MagnifierInk.MoveGripSize / 14.0;
+        var grip = MagnifierInk.MoveGrip(magnifier.Lens);
+        foreach (double gx in new[] { -1.5, 1.5 })
+            foreach (double gy in new[] { -2.5, 0.0, 2.5 })
+                dc.DrawEllipse(GripFill, null,
+                    new Point(grip.X + gx * unit, grip.Y + gy * unit), 0.65 * unit, 0.65 * unit);
     }
 
     private static Pen FrozenDashPen(Color color, double width)
