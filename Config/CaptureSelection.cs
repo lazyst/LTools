@@ -43,6 +43,12 @@ public sealed class CaptureSelectionFile
     /// <summary>切换元素层级时的过渡：<c>soft</c>（默认）/ <c>fast</c> / <c>none</c>。</summary>
     public string? SelectionTransition { get; set; }
 
+    /// <summary>
+    /// 框完选区自动识别二维码（照上游 <c>screenshot/auto_recognize_qr_code</c>，默认开）。
+    /// <c>null</c> = 开——老配置里没有这一项时不写盘，保持上游的默认值。
+    /// </summary>
+    public bool? AutoRecognizeQrCode { get; set; }
+
     /// <summary>「上次选区」快速集：上一次提交的几何 + 外观。</summary>
     public CaptureSelectionPreset? Previous { get; set; }
 

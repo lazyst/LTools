@@ -135,7 +135,82 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        </ResourceDictionary>
+            <!-- ===== 二维码标记 + 气泡（照 Snow Shot ScreenshotQrMarker / ScreenshotQrPopover） =====
+             标记：24×24 圆点（主色填充、浅底描边 2、白色 14×14 scan-qrcode，悬停变亮、键盘焦点描边 3）。
+             气泡：白色圆角卡 + 16×8 箭头合成一个几何（描边只画外轮廓），阴影 blur 18 / 下移 3 / 黑 22%。 -->
+        <DropShadowEffect x:Key="QrBubbleShadow" BlurRadius="18" ShadowDepth="3" Direction="270"
+                          Color="#000000" Opacity="0.216"/>
+
+        <Style x:Key="QrMarkerBtn" TargetType="Button">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Focusable" Value="True"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Ellipse x:Name="Dot" Margin="1" Fill="{StaticResource CapturePrimary}"
+                                     Stroke="{StaticResource ChromePanel}" StrokeThickness="2"/>
+                            <Path x:Name="Glyph" Width="14" Height="14" Stretch="Uniform"
+                                  Data="{StaticResource IconScanQr}" Fill="#FFFFFF"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource CapturePrimaryHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource CapturePrimaryHover}"/>
+                                <Setter TargetName="Dot" Property="StrokeThickness" Value="3"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource CapturePrimaryActive}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="QrBtnBase" TargetType="Button">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="12,3"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.86"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.72"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="QrBtnOutline" TargetType="Button" BasedOn="{StaticResource QrBtnBase}">
+            <Setter Property="Background" Value="{StaticResource ChromePanel}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CaptureBorder}"/>
+            <Setter Property="Foreground" Value="{StaticResource CaptureText}"/>
+        </Style>
+        <Style x:Key="QrBtnPrimary" TargetType="Button" BasedOn="{StaticResource QrBtnBase}">
+            <Setter Property="Background" Value="{StaticResource CapturePrimary}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CapturePrimary}"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+        </Style>
+    </ResourceDictionary>
     </Window.Resources>
 
     <Grid x:Name="Root" Background="#0B0B0E" ClipToBounds="True">
@@ -331,6 +406,32 @@
             <!-- 浮动工具栏（框选完成才出现）：上排 12 个标注工具 + 撤销 / 完成动作，下排样式。
                  可拖、双击复位；鼠标事件由覆盖层让路（见 IsOnToolbar）。 -->
             <cp:CaptureToolbar x:Name="Toolbar" Panel.ZIndex="30" Visibility="Collapsed"/>
+
+            <!-- 二维码标记（识别到码、且选区不动时出现；按钮自己的悬停 / 点击由覆盖层让路） -->
+            <Canvas x:Name="QrMarkerHost" Panel.ZIndex="28"/>
+
+            <!-- 二维码气泡：白色圆角卡 + 箭头（合成一个几何），只读文本 + 复制 / 打开链接 -->
+            <Canvas x:Name="QrBubbleHost" Panel.ZIndex="45" Visibility="Collapsed" Cursor="Arrow">
+                <Grid x:Name="QrBubbleCard" Effect="{StaticResource QrBubbleShadow}">
+                    <Path x:Name="QrBubbleShape" Fill="{StaticResource ChromePanel}"
+                          Stroke="{StaticResource CaptureBorderSecondary}" StrokeThickness="1"/>
+                    <StackPanel x:Name="QrBubbleBody" Margin="24">
+                        <TextBox x:Name="QrBubbleText" IsReadOnly="True" AcceptsReturn="True"
+                                 TextWrapping="Wrap" BorderThickness="0" Background="Transparent"
+                                 Foreground="{StaticResource ChromeInk}" Padding="0"
+                                 FontSize="13" FontFamily="{StaticResource UiFont}"
+                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"/>
+                        <TextBlock x:Name="QrBubbleStatus" Visibility="Collapsed" Margin="0,8,0,0"
+                                   Foreground="{StaticResource CaptureDanger}" FontSize="12" TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                            <Button x:Name="QrCopyBtn" Style="{StaticResource QrBtnOutline}"
+                                    Content="复制文本" Click="QrCopy_Click"/>
+                            <Button x:Name="QrOpenBtn" Style="{StaticResource QrBtnPrimary}" Margin="8,0,0,0"
+                                    Content="打开链接" Click="QrOpen_Click"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Canvas>
 
             <!-- 文字工具的就地输入框：Enter 结束，Shift+Enter 换行，Esc 放弃。
                  **刻意保持深色**：框里显示的就是最终标注的颜色（白字 / 黄字在白底上根本看不见），

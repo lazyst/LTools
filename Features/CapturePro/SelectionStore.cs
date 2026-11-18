@@ -103,6 +103,24 @@ internal static class SelectionStore
         }
     }
 
+    /// <summary>框完选区自动识别二维码（<c>null</c> / 缺项 = 开，照上游 schema 默认 true）。</summary>
+    public static bool QrAuto
+    {
+        get
+        {
+            lock (Gate) return Load().AutoRecognizeQrCode is not false;
+        }
+    }
+
+    public static void SetQrAuto(bool enabled)
+    {
+        lock (Gate)
+        {
+            Load().AutoRecognizeQrCode = enabled;
+            MarkDirty();
+        }
+    }
+
     /// <summary>「上次选区」快速集（没有 = null）。</summary>
     public static SelectionPreset? Previous
     {

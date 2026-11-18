@@ -47,8 +47,17 @@ public partial class CaptureOverlayWindow
         }
     }
 
-    /// <summary>按当前选区重画画面、把手、尺寸条、悬停高亮、工具条与顶部提示。</summary>
+    /// <summary>
+    /// 按当前选区重画画面、把手、尺寸条、悬停高亮、工具条与顶部提示，
+    /// 再让二维码标记 / 气泡跟着选区走（见 <see cref="UpdateQrChrome"/>）。
+    /// </summary>
     private void UpdateChrome()
+    {
+        UpdateChromeCore();
+        UpdateQrChrome();
+    }
+
+    private void UpdateChromeCore()
     {
         // 长截图模式：界面完全是另一套（拼接画面 + 小面板），别再摆框选那一套
         if (_scrollMode)

@@ -132,6 +132,9 @@ public partial class CaptureToolbar : UserControl
     /// <summary>双击标题条要复位：宿主重新按当前选区摆一次（工具栏自己不知道选区在哪）。</summary>
     public event Action? ResetRequested;
 
+    /// <summary>「显示二维码」被点：参数 = 勾上还是取消（照上游 <c>qrCodeVisibilityRequested</c>）。</summary>
+    public event Action<bool>? QrVisibilityRequested;
+
     internal CaptureTool CurrentTool { get; private set; } = CaptureTool.Select;
 
     public CaptureToolbar()
@@ -181,6 +184,7 @@ public partial class CaptureToolbar : UserControl
         _syncing = false;
 
         ApplyParamVisibility(tool);
+        ApplyQrVisibility();
         RefreshValues();
     }
 
@@ -543,9 +547,10 @@ public partial class CaptureToolbar : UserControl
         _actionParts.Add(line);
         ToolRow.Children.Add(line);
 
-        AddGroup(new[]
+        AddGroup(new FrameworkElement[]
         {
             ActionButton("IconRecognize", "识别文字 / 表格 / 二维码（Ctrl+R）", CaptureAction.Recognize),
+            QrButton(),
         });
 
         AddGroup(new[]
@@ -631,6 +636,56 @@ public partial class CaptureToolbar : UserControl
         }
     }
 
+    /// <summary>
+    /// 「显示二维码」（照 Snow Shot 的 <c>m_showQrCodeButton</c>）：只在「选择」工具下露出来，
+    /// **可勾选**（勾上 = 标记显示中），识别不到码 / 还没扫完时禁用、原因进 ToolTip。
+    /// </summary>
+    private ToggleButton QrButton()
+    {
+        var button = new ToggleButton
+        {
+            Style = (Style)FindResource("BarToggle"),
+            Focusable = false,
+            IsEnabled = false,
+            ToolTip = "显示二维码",
+            Content = new ShapePath
+            {
+                Data = (Geometry)FindResource("IconScanQr"),
+                Style = (Style)FindResource("IconPath"),
+            },
+        };
+        button.Click += (_, _) => QrVisibilityRequested?.Invoke(button.IsChecked == true);
+        _qrBtn = button;
+        return button;
+    }
+
+    private ToggleButton? _qrBtn;
+    private bool _actionsVisible = true;
+    private bool _qrAvailable;
+    private bool _qrVisible = true;
+    private string _qrError = "";
+
+    /// <summary>覆盖层告诉我们「二维码能不能看 / 是不是正在看 / 出没出错」（照上游 <c>setQrCodeState</c>）。</summary>
+    internal void SetQrState(bool available, bool visible, string error)
+    {
+        _qrAvailable = available;
+        _qrVisible = visible;
+        _qrError = error ?? "";
+        if (_qrBtn == null) return;
+
+        _qrBtn.IsEnabled = available;
+        _qrBtn.IsChecked = available && visible;
+        _qrBtn.ToolTip = _qrError.Length > 0 ? _qrError : "显示二维码（自动识别到的码；Esc 退出）";
+    }
+
+    /// <summary>「显示二维码」只服务「选择」工具（画标注时它没有意义），完成动作收起时一起收。</summary>
+    private void ApplyQrVisibility()
+    {
+        if (_qrBtn == null) return;
+        bool show = _actionsVisible && _tool == CaptureTool.Select;
+        _qrBtn.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private Button ActionButton(string icon, string tip, CaptureAction action, bool primary = false,
         bool danger = false)
     {
@@ -654,8 +709,10 @@ public partial class CaptureToolbar : UserControl
     /// </summary>
     internal void SetActionsVisible(bool visible)
     {
+        _actionsVisible = visible;
         var visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         foreach (var part in _actionParts) part.Visibility = visibility;
+        ApplyQrVisibility();     // 二维码按钮另有「只在使用选择工具时」这一层
     }
 
     private Button? _undoBtn, _redoBtn;

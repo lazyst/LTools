@@ -678,6 +678,31 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 两个坑：① 每次编辑都换成新 `TableDocument` 实例，冒烟里缓存的引用会变成旧快照（`Doc()` 每次重取）；
 ② `XmlWriter` 写命名空间必须用 `WriteStartElement(root, ns)` 重载，`WriteAttributeString("xmlns", …)` 会把 part 写坏。
 
+### 10.4 二维码标记与气泡（P4-c）
+
+照 `screenshotqrcontroller.cpp`：选区一落定就在后台扫一遍，**在覆盖层上**给每枚码摆一个圆点，
+悬停 / 点击弹气泡。结果窗的「二维码」页签照旧（那是「按 Ctrl+R 主动识别」那条路），两者互不替代。
+
+- **识别**（`Features/CapturePro/QrScan.cs`）：识别图裁自**原始冻结图**的选区外接框，先按
+  `min(1, √(1920×1080/(w·h)), 2560/max(w,h))` 降采样（1080p 不缩、4K 缩一半），再「贪心白掩码」逐枚解码——
+  每认出一枚就把它的外接框涂白重扫，直到扫不出来（ZXing 的多码接口在这类图上去重不稳定，会同一枚数两遍）。
+  结果按「图像像素 ÷ 缩放 × 文档尺度 + 原点」换回窗口 DIP。签名 = 底图对象 + 选区图像矩形，
+  同一块区域不动就不重复扫；选区变了走 220ms 防抖再扫。
+- **标记**：24×24 圆（主色填充、浅底描边 2、键盘焦点描边 3、14×14 白色 `scan-qrcode`），摆在码的外接框中心。
+  只在 `Select` 工具、没在拖动 / 预选 / 打字 / 翻历史、开关打开、识别没在跑、**码的四角都在选区里**时显示。
+- **气泡**：白色圆角卡 + 16×8 箭头（`CombinedGeometry(Union)` 合成一个几何，描边只在外轮廓上），
+  阴影 blur 18 / 下移 3 / 黑 21.6%；文本区宽 = 总宽 − 48（左右各 24 内边距），总宽 ≤ 344；
+  文本高 = clamp(量出来 + 8, 48, 240) 再压到「可用高 − 140」。落点：优先标记右侧（箭头朝左），
+  放不下翻左侧，最后夹进可用区；箭头纵坐标 clamp 在圆角内。
+- **时序**：悬停 150ms 才弹（别一划过就闪）；离开标记 / 气泡 250ms 收起；指针停在气泡里或焦点在文本框里不收起；
+  点气泡外立刻收起。单击标记 = 打开并把焦点送进只读文本框（划选后可 `Ctrl+C` 只复制那段）；
+  **Esc 只关气泡**并把焦点还给标记，标记上 Enter / 空格重开；复制 / 打开链接成功后结束这次截图（上游 `cancelCapture`）。
+- **工具条**：「显示二维码」是 `BarToggle`（32×32、`IconScanQr`），只在 `Select` 工具且完成动作组可见时露出；
+  `enabled = 自动识别开着 && 没在扫 && 有码`，`checked = 开着 && 正在显示`，失败原因进 ToolTip。
+  开关只切显示、不重扫。设置项 `CaptureSelectionFile.AutoRecognizeQrCode`（`bool?`，`null` = 开），设置页 UI 在 P7 补。
+- **让路**：标记 / 气泡上的鼠标事件不能被当成「开始框选 / 改选区 / 换候选层级」，为此覆盖层有
+  `IsOnQr` / `IsOnQrBubble` 两个判定，接进 MouseDown / MouseMove / Wheel / 右键。
+
 ## 11. 采集历史（P2-2 / P4）
 
 截图 / 识别 / 录屏的落点：数据根 `captures/`（`catalog.json` + `assets/<id>.png` + `thumbnails/<id>.png`
@@ -1102,6 +1127,7 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
 | **P3-d** ✅ | ⑤ ⑨ | 智能选区（照 `screenshotintelligentselectionmodel.cpp` + `screenshotsmartselectiontransition.cpp`）：三档模式（关闭 / 窗口子元素 / 整窗）+ 命中路径「最深 → 整窗」+ 滚轮换层级 + Tab 切目标 + UIA 细化只增不减 + 过渡动画（Soft 101ms / Fast 67ms / 0.4 DIP 落位容差 / `p*(2-p)` 缓出）；**预选就是真选区**，单击确认 / 拖动改手框 / 换工具落成普通选区 / 预选态右键退出这次截图 |
 | **P4-a** ✅ | ④ | 识别结果窗照 `screenshotrecognitionwindow` 重写：无边框置顶贴选区、1 源像素 ≈ 1 屏幕物理像素 + **文字层**（逐行估色 `screenshotocrvisuals` / 字号拟合 `screenshotocrtextlayout` / 跨行选区编辑 `screenshotocrtexteditingsession`）+ 「显示原图 / 填充背景 / 原文预览（`screenshotoriginalimagepreviewwindow`）」三开关 + 表格 / 二维码页签 |
 | **P4-b** ✅ | ④ | 表格编辑器（照 `screenshottabledocument` + `screenshottableeditor` + `screenshotrecognitionfileexport`）：槽位 / 锚点模型（256 边 · 16384 格上限）、合并 · 拆分 · 清空 · 选区扩展、粘贴四个出口；自绘网格单击进编辑 / 拖动矩形选区 / Ctrl 并集 / AnyKeyPressed / 方向键 / F2 / Esc / 右键菜单；撤销重做 50 步 + `canUndo/canRedo/canMerge/canSplit/canReset` 可用性；HTML + 文本双格式复制、xlsx 导出（六 part / `inlineStr` / 文本格式 / `mergeCells` / 列宽）、打开表格 = 临时 xlsx 用默认程序打开 |
+| **P4-c** ✅ | ④ | 二维码标记与气泡（照 `screenshotqrcontroller.cpp`）：选区落定 220ms 防抖扫描、识别图降到 1080p 内、贪心白掩码逐枚解码；24×24 圆点标记摆在码中心（只在 `Select` 工具、码四角都在选区里时显示）；悬停 150ms / 离开 250ms 的气泡（圆角卡 + 合成箭头 + blur 18 阴影）、文本区 24 内边距 / 总宽 ≤344 / 高 48–240 且压到可用高 −140、右优先翻左再夹进可用区；复制 / 打开链接后结束截图、Esc 只关气泡并把焦点还给标记；工具条「显示二维码」开关 + `AutoRecognizeQrCode` 设置项 |
 
 ## 16. 验收
 
@@ -2616,3 +2642,23 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   回归：`--selftest` 237 用例 **7562 断言**（`capturePro` 69 用例 2736 断言，新增槽位模型 / HTML·TSV
   往返 / 粘贴规则 / xlsx 结构与转义四组）；`capture-overlay-smoke` **960 条**（表格页：真鼠标单击进编辑
   改字、真鼠标拖选一行两格、合并 / 撤销 / 重做 / 拆分、复制双格式、重置、按钮置灰矩阵）。
+- **二维码标记与气泡（P4-c，2026-11-18）**：照上游 `screenshotqrcontroller.cpp`。新文件两个：
+  `Features/CapturePro/QrScan.cs`（`QrMark` / `ScaleFor` / `Prepare` / `Detect` / `WebUrl` /
+  `BubbleWidth` / `ContentWidth` / `TextHeight` / `PlaceBubble` / `QrBubbleLayout`）、
+  `Views/CapturePro/CaptureOverlayWindow.Qr.cs`（`InitQr` / 扫描调度 / 标记池 / 气泡 / 复制 / 打开链接 /
+  `IsOnQr` / `IsOnQrBubble` / `BubbleGeometry`）。改到的：`CaptureOverlayWindow.xaml`（`QrMarkerHost` /
+  `QrBubbleHost` + `QrMarkerBtn` / `QrBtnOutline` / `QrBtnPrimary` / `QrBubbleShadow`）、
+  `CaptureOverlayWindow.Chrome.cs`（`UpdateChrome` = `UpdateChromeCore` + `UpdateQrChrome`）、
+  `CaptureOverlayWindow.xaml.cs`（`InitQr` / Esc / Enter / 右键）、`.Selection.cs` / `.Hover.cs`（让路）、
+  `CaptureToolbar.xaml.cs`（`QrButton` / `SetQrState` / `QrVisibilityRequested` / `ApplyQrVisibility`）、
+  `CaptureIcons.xaml`（`IconScanQr`）、`Config/CaptureSelection.cs` + `Features/CapturePro/SelectionStore.cs`
+  （`AutoRecognizeQrCode` / `QrAuto`）。
+  五个坑：① 同一枚码在贪心重扫里会被数成多枚 → 每认出一枚先把它的外接框涂白；
+  ② `<Grid.Effect><StaticResource …/></Grid.Effect>` 在 XAML 解析期报「不是属性 Effect 的有效值」，
+  阴影要写成 `Effect="{StaticResource QrBubbleShadow}"`；③ 气泡的卡 + 箭头必须合成**一个**几何
+  （`CombinedGeometry(Union)`），两个图形叠着画会在接缝处多一条描边；
+  ④ 覆盖层是全屏 `AllowsTransparency` 窗口，`Popup` 在这里按下 / 抬起会被拆散，气泡只能画在 `Layer` 里；
+  ⑤ 标记 / 气泡上的鼠标事件必须显式让路（`IsOnQr` / `IsOnQrBubble`），否则点一下就开始重新框选。
+  回归：`--selftest` 全量 **7608 断言**（`capturePro` 71 用例 2782 断言，新增二维码缩放 / 网址 / 气泡落点
+  与真两枚码检测两组）；`capture-overlay-smoke` **987 条**（二维码段 22 条，含真鼠标悬停弹气泡、单击聚焦、
+  Esc 只关气泡、移开 250ms 收起、剪贴板收到码文本且覆盖层关闭）。

@@ -62,6 +62,21 @@ public partial class CaptureOverlayWindow
             return;
         }
 
+        // 二维码气泡 / 标记：点气泡外先收气泡（这一下继续按普通点击处理），
+        // 点气泡或标记本身则让控件自己处理（按钮 Click / 文本框选字）。
+        if (_qrBubbleOpen &&
+            !IsOnQrBubble(e.OriginalSource as DependencyObject) &&
+            !IsOnQr(e.OriginalSource as DependencyObject))
+        {
+            HideQrBubble();
+        }
+
+        if (IsOnQrBubble(e.OriginalSource as DependencyObject) ||
+            IsOnQr(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
+
         // 比例下拉开着时：点在信息条与下拉以外的地方 = 先收起菜单（这一下不再做别的，
         // 与菜单惯例一致——点外面是「关掉」，不是「关掉并执行」）
         if (IsAspectMenuOpen &&
@@ -377,6 +392,13 @@ public partial class CaptureOverlayWindow
     {
         // 长截图模式：光标只是滚轮的位置，别改光标 / 别更新悬停候选
         if (_scrollMode) return;
+
+        // 二维码标记 / 气泡上：光标形状归它们（手型 / 文本光标），别改选区光标
+        if (IsOnQrBubble(e.OriginalSource as DependencyObject) ||
+            IsOnQr(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
 
         Point p = Clamp(e.GetPosition(Layer));
 

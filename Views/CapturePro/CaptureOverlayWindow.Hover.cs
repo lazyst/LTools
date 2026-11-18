@@ -31,6 +31,14 @@ public partial class CaptureOverlayWindow
     /// <summary>滚轮在候选层级之间切换：向上滚 = 父级（更大范围），向下滚 = 更细的控件。</summary>
     private void Window_Wheel(object sender, MouseWheelEventArgs e)
     {
+        // 二维码：气泡里的只读文本要自己滚（别拿去换候选层级），标记上滚轮不做任何事
+        if (IsOnQrBubble(e.OriginalSource as DependencyObject)) return;
+        if (IsOnQr(e.OriginalSource as DependencyObject))
+        {
+            e.Handled = true;
+            return;
+        }
+
         // 长截图模式：滚轮归页面。覆盖层这时是透明壳，落在页面上的真滚轮根本到不了这里；
         // 还能收到 = 光标停在小面板 / 提示条上，或系统把滚轮路由给了前台窗口（覆盖层）——
         // 两种情况都不当「换层级」，顺手把前台顶回目标窗口，免得下一格又落空。

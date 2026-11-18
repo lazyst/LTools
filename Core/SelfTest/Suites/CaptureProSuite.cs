@@ -61,6 +61,8 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "识别：表格 HTML / TSV 往返（span / 表头 / 嵌套表）", TableHtmlCases));
         cases.Add(new("capturePro", "识别：表格粘贴规则（放不下 / 切合并格）", TablePasteCases));
         cases.Add(new("capturePro", "识别：表格导出 xlsx（part / 引用 / 转义）", TableXlsxCases));
+        cases.Add(new("capturePro", "识别：二维码缩放 / 网址 / 气泡落点", QrGeometryCases));
+        cases.Add(new("capturePro", "识别：二维码检测（同图两枚 / 空白图）", QrDetectCases));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
         cases.Add(new("capturePro", "长截图：滚动位移识别", ScrollDetection));

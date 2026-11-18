@@ -115,6 +115,7 @@ public partial class CaptureOverlayWindow : Window
 
         BuildGrips();
         WireToolbar();
+        InitQr();
         DpiChanged += (_, _) => { PinToMonitor(); SyncDocumentScale(); };
         UpdateCursorForTool();
     }
@@ -166,6 +167,31 @@ public partial class CaptureOverlayWindow : Window
             if (e.Key == Key.Enter || (ctrlDown && e.Key == Key.C)) FinishScroll();
             else if (e.Key == Key.Escape) CancelScroll();
             else if (e.Key == Key.Space) ToggleAutoScroll();
+            e.Handled = true;
+            return;
+        }
+
+        // 二维码气泡：Esc 只关气泡并把焦点还给标记；焦点在气泡里时按键全交给文本框
+        // （Ctrl+C 复制选中文本，别被下面的「复制整张截图」抢走）。照上游 eventFilter 的 Escape 分支。
+        if (_qrBubbleOpen)
+        {
+            if (e.Key == Key.Escape)
+            {
+                var marker = _qrBubbleMarker;
+                HideQrBubble();
+                if (marker != null) Keyboard.Focus(marker);
+                e.Handled = true;
+                return;
+            }
+
+            if (QrBubbleCard.IsKeyboardFocusWithin) return;
+        }
+
+        // 焦点在二维码标记上（Esc 关掉气泡之后）：Enter / 空格重新打开气泡
+        if (!_qrBubbleOpen && Keyboard.FocusedElement is Button focusedQr && _qrMarkers.Contains(focusedQr) &&
+            e.Key is Key.Enter or Key.Space)
+        {
+            ShowQrBubble(focusedQr, focus: true);
             e.Handled = true;
             return;
         }
@@ -402,6 +428,21 @@ public partial class CaptureOverlayWindow : Window
         if (IsOnAspectMenu(e.OriginalSource as DependencyObject))
         {
             CloseAspectMenu();
+            e.Handled = true;
+            return;
+        }
+
+        // 二维码气泡上右键：只收气泡（别当成「退一步」）
+        if (IsOnQrBubble(e.OriginalSource as DependencyObject))
+        {
+            HideQrBubble();
+            e.Handled = true;
+            return;
+        }
+
+        // 二维码标记上右键：什么都不做（左键才是它的入口）
+        if (IsOnQr(e.OriginalSource as DependencyObject))
+        {
             e.Handled = true;
             return;
         }
