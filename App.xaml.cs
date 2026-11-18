@@ -234,6 +234,7 @@ public partial class App : Application
         menu.Items.Add(NewItem("贴图管理…", () => Views.CapturePro.PinManagerWindow.Toggle()));
         menu.Items.Add(NewItem("图片编辑…", () => Features.CapturePro.ImageEdit.ImageEditSession.OpenEmpty()));
         menu.Items.Add(NewItem("切图…", () => Features.CapturePro.Split.SplitSession.OpenEmpty()));
+        menu.Items.Add(NewItem("图像拼接…", () => Features.CapturePro.Collage.CollageSession.OpenEmpty()));
         menu.Items.Add(new Separator());
         _macroMenuItem = NewItem("开始 / 停止录制宏", () => MacroRecorder.Toggle());
         _macroMenuItemText = (TextBlock)((StackPanel)_macroMenuItem.Header).Children[1];

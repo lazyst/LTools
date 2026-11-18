@@ -197,6 +197,9 @@ public sealed class AppConfig
     /// <summary>贴图的行为开关（现在只有「拖动抖动隐藏同组其他贴图」）。</summary>
     public PinToScreenFile PinToScreen { get; set; } = new();
 
+    /// <summary>拼图默认设置（方向 / 尺寸方式 / 外边距 / 间距 / 背景色 / 宫格行列）。</summary>
+    public CollageFile Collage { get; set; } = new();
+
     /// <summary>
     /// 动作运行结束后的提示策略：不提示 / 只在失败时（默认）/ 成功也提示。
     /// 失败提示是常驻的（点一下关，下一次运行自动替换）。

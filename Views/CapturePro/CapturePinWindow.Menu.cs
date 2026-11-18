@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using LTools.Core;
 using LTools.Features.CapturePro;
+using LTools.Features.CapturePro.Collage;
 using LTools.Features.CapturePro.ImageEdit;
 using LTools.Features.CapturePro.Split;
 using LTools.Native;
@@ -135,6 +136,21 @@ public partial class CapturePinWindow
                 System.Windows.Threading.DispatcherPriority.Background);
         };
         menu.Items.Add(split);
+
+        // 把这张贴图加进拼接（与「切图…」同一口径：内容取自当前显示的图）
+        var collage = new MenuItem
+        {
+            Header = "拼接图像…",
+            IsEnabled = !_live && _cardKind == PinContentKind.Image,
+        };
+        collage.Click += (_, _) =>
+        {
+            _menu?.IsOpen = false;
+            var content = _content;
+            Dispatcher.BeginInvoke(new Action(() => CollageSession.OpenImage(content, "贴图")),
+                System.Windows.Threading.DispatcherPriority.Background);
+        };
+        menu.Items.Add(collage);
 
         AddLoadMenu(menu);
 

@@ -51,6 +51,9 @@ public sealed class SettingsFile
 
     /// <summary>贴图的行为开关（现在只有「拖动抖动隐藏同组其他贴图」）。</summary>
     public PinToScreenFile PinToScreen { get; set; } = new();
+
+    /// <summary>拼图默认设置（方向 / 尺寸方式 / 外边距 / 间距 / 背景色 / 宫格行列）。</summary>
+    public CollageFile Collage { get; set; } = new();
 }
 
 /// <summary><c>config/ui.json</c>：界面状态（丢了不影响功能，只是记忆丢失）。</summary>

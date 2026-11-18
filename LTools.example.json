@@ -184,6 +184,16 @@
   "PinToScreen": {
     "ShakeWindowToHideOthers": true
   },
+  "Collage": {
+    "Direction": "vertical",
+    "Sizing": "uniform",
+    "BorderPx": 0,
+    "SpacingPx": 0,
+    "Background": "#FFFFFFFF",
+    "Rows": 1,
+    "Columns": 1,
+    "CustomGridInitialized": false
+  },
   "Triggers": {
     "Enabled": false,
     "Rules": []

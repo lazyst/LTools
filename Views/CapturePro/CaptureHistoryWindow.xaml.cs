@@ -12,6 +12,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using LTools.Core;
 using LTools.Features.CapturePro;
+using LTools.Features.CapturePro.Collage;
 using LTools.Features.CapturePro.ImageEdit;
 using LTools.Features.CapturePro.Split;
 using LTools.Native;
@@ -232,6 +233,8 @@ public partial class CaptureHistoryWindow : Window
         EditBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
         SplitBtn.IsEnabled = has && !record;
         SplitBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
+        CollageBtn.IsEnabled = has && !record;
+        CollageBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
         PlayBtn.IsEnabled = record;
         PlayBtn.Visibility = record ? Visibility.Visible : Visibility.Collapsed;
         TrimBtn.IsEnabled = record;
@@ -412,6 +415,15 @@ public partial class CaptureHistoryWindow : Window
 
         if (SplitSession.OpenCapture(row.Entry)) return;
         ToastService.Show("图片文件不见了，没法切图", "采集历史", 2200, ToastKind.error);
+    }
+
+    /// <summary>把这一条加进拼接（与「切图」同一口径：录屏没有图）。</summary>
+    private void Collage_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedRow is not { } row || row.Entry.IsRecord) return;
+
+        if (CollageSession.OpenCapture(row.Entry)) return;
+        ToastService.Show("图片文件不见了，没法拼接", "采集历史", 2200, ToastKind.error);
     }
 
     private void Pin_Click(object sender, RoutedEventArgs e)

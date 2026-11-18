@@ -116,6 +116,10 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "切图：加线 / 删线 / 拖线 / 撤销 / 设置切换", SplitDocumentCases));
         cases.Add(new("capturePro", "切图：表单草案与单位换算", SplitFormDraftCases));
         cases.Add(new("capturePro", "切图：导出目录命名与逐张落盘", SplitExportCases));
+        cases.Add(new("capturePro", "拼图：纵向 / 横向 / 宫格布局与手摆", CollageLayoutCases));
+        cases.Add(new("capturePro", "拼图：设置 / 背景色 / 几何变化", CollageSettingsCases));
+        cases.Add(new("capturePro", "拼图：增删换序与宫格规整", CollageDocumentCases));
+        cases.Add(new("capturePro", "拼图：成品逐像素渲染", CollageRenderCases));
     }
 
     private static void Geometry()

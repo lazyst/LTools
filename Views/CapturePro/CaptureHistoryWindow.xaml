@@ -217,6 +217,9 @@
                         <Button x:Name="SplitBtn" Style="{StaticResource BtnGhost}" Content="切图…"
                                 MinWidth="88" Margin="8,0,0,0" Click="Split_Click" IsEnabled="False"
                                 ToolTip="在切图窗里把这张切成多张"/>
+                        <Button x:Name="CollageBtn" Style="{StaticResource BtnGhost}" Content="拼接…"
+                                MinWidth="88" Margin="8,0,0,0" Click="Collage_Click" IsEnabled="False"
+                                ToolTip="把这张加进图像拼接窗和别的图拼在一起"/>
                         <Button x:Name="SaveAsBtn" Style="{StaticResource BtnGhost}" Content="另存为…"
                                 MinWidth="88" Margin="8,0,0,0" Click="SaveAs_Click" IsEnabled="False"/>
                         <Button x:Name="CopyTextBtn" Style="{StaticResource BtnGhost}" Content="复制识别文字"
