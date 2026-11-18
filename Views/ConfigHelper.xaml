@@ -274,6 +274,27 @@
                             </StackPanel>
                         </Border>
 
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="延时截图" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="ScreenshotDelayCombo" MinHeight="32"
+                                              SelectionChanged="ScreenshotDelay_Changed"
+                                              ToolTip="「延时截图」入口先等多少秒再冻结画面">
+                                    </ComboBox>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="120,6,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="「延时截图」入口（面板 / 快捷键 / 悬浮）点下后先等这笔秒数再弹框选，方便先把菜单、悬停提示摆好。1–10 秒，默认 3 秒。"/>
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Style="{StaticResource SectionLabel}" Text="开机自启" Margin="0,4,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>

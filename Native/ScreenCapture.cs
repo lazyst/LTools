@@ -45,6 +45,41 @@ internal static class ScreenCapture
     }
 
     /// <summary>
+    /// 把 <see cref="Bitmap"/> 换成冻结的 WPF 位图（可以直接跨线程用）。
+    /// </summary>
+    /// <remarks>
+    /// 调用方**仍然负责** Dispose 传进来的位图；这里只借用它的像素。
+    /// 冻结的位图在后台线程读、UI 线程画都不会抛「另一个线程拥有该对象」。
+    /// </remarks>
+    public static System.Windows.Media.Imaging.BitmapSource ToSource(Bitmap bitmap)
+    {
+        IntPtr hbitmap = bitmap.GetHbitmap();
+        try
+        {
+            var source = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
+                hbitmap, IntPtr.Zero, System.Windows.Int32Rect.Empty,
+                System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+            source.Freeze();
+            return source;
+        }
+        finally
+        {
+            DeleteObject(hbitmap);
+        }
+    }
+
+    /// <summary>抓一块并直接给冻结的 WPF 位图。</summary>
+    public static System.Windows.Media.Imaging.BitmapSource CaptureSource(
+        int x, int y, int width, int height)
+    {
+        using var bitmap = Capture(x, y, width, height);
+        return ToSource(bitmap);
+    }
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(IntPtr hObject);
+
+    /// <summary>
     /// 把一个窗口**整窗**画到位图（<c>PrintWindow</c> + <c>PW_RENDERFULLCONTENT</c>），
     /// 尺寸 = <c>GetWindowRect</c>（含标题栏 / 边框）。实时贴图拿它按屏幕坐标裁。
     /// 调用方负责 Dispose；窗口不在了 / 没有可见尺寸时抛异常。

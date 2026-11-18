@@ -100,8 +100,9 @@ public partial class CaptureOverlayWindow
 
         // 形状条 = 「下一块的形状」，**框过之后也常驻**：加区 / 减区也要先选形状。
         // 只在拖动 / 画标注、折线待收尾、贴图内标注、翻历史、打字、智能选区预选时收起来。
+        // 快捷入口（选完就执行）同样不摆：这一次没有「下一块」。
         bool shapeBar = !pending && _drag == DragMode.None && !_textEditing && !EditOnly &&
-                        !BrowsingHistory && !smart;
+                        !BrowsingHistory && !smart && !HasPending;
         ShapeBar.Visibility = shapeBar ? Visibility.Visible : Visibility.Collapsed;
         if (shapeBar)
         {
@@ -139,11 +140,13 @@ public partial class CaptureOverlayWindow
 
         // 拖动过程中先别跳出来，松手后再给按钮。
         // 「贴图内标注」没有完成动作：完成是 Enter / 双击，结果交回那张贴图，别摆一排按了会被忽略的按钮。
-        bool showActions = _drag == DragMode.None && !EditOnly;
+        // 快捷入口（选完就执行）也不摆：照上游 suppressCaptureToolbar，它根本没有「点一下」这一步。
+        bool showActions = _drag == DragMode.None && !EditOnly && !HasPending;
         Toolbar.SetActionsVisible(showActions);
 
         // 工具栏：改框期间先收起来，免得被拖到指头底下；画标注时留着（随时能换工具）
-        if (_drag is DragMode.New or DragMode.Move or DragMode.Resize or DragMode.Lasso) Toolbar.Visibility = Visibility.Collapsed;
+        if (HasPending ||
+            _drag is DragMode.New or DragMode.Move or DragMode.Resize or DragMode.Lasso) Toolbar.Visibility = Visibility.Collapsed;
         else ShowToolbar(sel);
         Toolbar.SetUndo(_doc.CanUndo, _doc.CanRedo);
 

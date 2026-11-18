@@ -124,6 +124,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "拼图 PDF：页数 / 校验 / 页面布局 / 合成页", CollagePdfGeometryCases));
         cases.Add(new("capturePro", "拼图 PDF：像素准备与页面绘制", CollagePdfRenderCases));
         cases.Add(new("capturePro", "拼图 PDF：导出的真实字节", CollagePdfExportCases));
+        cases.Add(new("capturePro", "采集入口：延时规则与八个快捷功能", CaptureEntryCases));
     }
 
     private static void Geometry()

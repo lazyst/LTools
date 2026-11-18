@@ -782,6 +782,32 @@ public partial class ConfigHelperWindow : Window
             _ => 0,
         };
         ApplyEdgeWheelVisibility();
+        PopulateScreenshotDelay();
+    }
+
+    /// <summary>
+    /// 「延时截图」的秒数下拉：1–10 秒，项目只在第一次填充（之后只改 SelectedIndex）。
+    /// 读的是运行时缓存 <see cref="AppState.ScreenshotDelaySeconds"/>，不读磁盘。
+    /// </summary>
+    private void PopulateScreenshotDelay()
+    {
+        if (ScreenshotDelayCombo.Items.Count == 0)
+        {
+            for (int seconds = LTools.Features.CapturePro.CaptureDelay.MinSeconds;
+                 seconds <= LTools.Features.CapturePro.CaptureDelay.MaxSeconds; seconds++)
+                ScreenshotDelayCombo.Items.Add(new ComboBoxItem { Content = $"{seconds} 秒" });
+        }
+
+        int value = LTools.Features.CapturePro.CaptureDelay.Normalize(AppState.ScreenshotDelaySeconds);
+        ScreenshotDelayCombo.SelectedIndex = value - LTools.Features.CapturePro.CaptureDelay.MinSeconds;
+    }
+
+    private void ScreenshotDelay_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_initializing) return;
+        int index = ScreenshotDelayCombo.SelectedIndex;
+        if (index < 0) return;
+        Settings.SetScreenshotDelay(LTools.Features.CapturePro.CaptureDelay.MinSeconds + index);
     }
 
     /// <summary>边缘滚轮关掉时把「算哪条边」与说明一起收起，只留一行干净的开关。</summary>

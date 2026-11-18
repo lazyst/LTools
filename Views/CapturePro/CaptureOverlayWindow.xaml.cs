@@ -82,11 +82,40 @@ public partial class CaptureOverlayWindow : Window
     /// <summary>这一次是怎么完成的（采集历史记「完成动作」用）。</summary>
     internal FinishKind Finish { get; private set; } = FinishKind.Copy;
 
+    /// <summary>
+    /// 快捷入口带进来的「选完就做」动作（照 Snow Shot 的 <c>PendingSelectionAction</c>）：
+    /// 「截图并贴图 / 另存为 / 快速保存 / 识别」这类入口不在工具条上等人点，框一落定就执行。
+    /// </summary>
+    /// <remarks>
+    /// <see cref="PendingAction.None"/> = 普通截图（工具条 + 标注，Enter / 双击走「复制」）。
+    /// 动作失败（另存为被取消、识别没开起来）时**留在覆盖层**并退回普通编辑 ——
+    /// 不会出现「工具条被收起、又没完成」的死角。
+    /// </remarks>
+    public enum PendingAction { None, Copy, Pin, Save, QuickSave, Recognize }
+
+    private readonly PendingAction _pending;
+
+    /// <summary>试过一次了：失败后立刻退回普通编辑（工具条回来，Enter 仍走它自己的出口）。</summary>
+    private bool _pendingDone;
+
+    /// <summary>还有没执行过的「选完就做」：工具条先不摆出来。</summary>
+    internal bool HasPending => _pending != PendingAction.None && !_pendingDone;
+
+    /// <summary>快捷入口这一次的默认出口（Enter / 双击 / 直接确认）。</summary>
+    internal FinishKind DefaultFinish => _pending switch
+    {
+        PendingAction.Pin => FinishKind.Pin,
+        PendingAction.Save => FinishKind.Save,
+        PendingAction.QuickSave => FinishKind.QuickSave,
+        PendingAction.Recognize => FinishKind.Recognize,
+        _ => FinishKind.Copy,
+    };
+
     /// <summary>内容真源：底图 + 选区 + 标注 + 撤销栈。</summary>
     internal CaptureDocument Document => _doc;
 
     public CaptureOverlayWindow(BitmapSource shot, System.Drawing.Rectangle area, double sx, double sy,
-        bool editOnly = false)
+        bool editOnly = false, PendingAction pending = PendingAction.None)
     {
         InitializeComponent();
 
@@ -94,6 +123,7 @@ public partial class CaptureOverlayWindow : Window
         _area = area;
         _sx = sx > 0 ? sx : 1;
         _sy = sy > 0 ? sy : 1;
+        _pending = editOnly ? PendingAction.None : pending;
         _doc = new CaptureDocument(shot, new Int32Rect(area.Left, area.Top, area.Width, area.Height), _sx);
         Surface.Document = _doc;
         EditOnly = editOnly;
@@ -247,7 +277,7 @@ public partial class CaptureOverlayWindow : Window
         {
             if (_selPolyActive) CompleteSelectionPolyline();     // 折线选区：Enter 收尾
             else if (_polyActive) CompletePolyline();            // 折线：Enter 收尾
-            else if (_sel is Rect enterSel && IsValid(enterSel)) Accept(FinishKind.Copy);
+            else if (_sel is Rect enterSel && IsValid(enterSel)) Accept(DefaultFinish);
             else if (_hoverTarget is SnapBox hover)
             {
                 // 还没框选时按 Enter = 选中当前高亮的窗口 / 控件，再按一次才确定
@@ -469,6 +499,9 @@ public partial class CaptureOverlayWindow : Window
         // 「贴图内标注」只有「完成」一个出口：别的（另存为 / 打印 / 贴图 / 识别 / 长截图）在这里没意义
         if (EditOnly && kind != FinishKind.Copy) return;
 
+        // 用户自己按了出口（Enter / 工具条 / 快捷键）：快捷入口的「选完就做」不再重复执行
+        if (_pending != PendingAction.None) _pendingDone = true;
+
         if (_sel is not Rect sel || !IsValid(sel)) return;
 
         // 减区把选区挖空了：没有可导出的内容，说清楚而不是导出一张全透明的图
@@ -558,6 +591,23 @@ public partial class CaptureOverlayWindow : Window
         }
 
         CloseWithResult(kind, image);
+    }
+
+    /// <summary>
+    /// 快捷入口（截图并贴图 / 另存为 / 快速保存 / 识别）：选区一落定就执行它的默认动作。
+    /// </summary>
+    /// <remarks>
+    /// 照上游 <c>handleSelectionConfirmed</c> 的 pending action：这几个入口在 Snow Shot 里
+    /// 是「拖完直接执行」，工具条根本不摆出来，所以这里也不给标注机会。
+    /// 失败（另存为取消 / 识别没开起来）留在覆盖层，下一次 <see cref="UpdateChrome"/> 会把工具条放回来。
+    /// </remarks>
+    private void FirePendingAction()
+    {
+        if (!HasPending) return;
+        _pendingDone = true;
+        Accept(DefaultFinish);
+        if (_confirmed) return;
+        UpdateChrome();
     }
 
     /// <summary>确认出口：记下结果并按「对话框 / 非模态」两种方式关窗。</summary>

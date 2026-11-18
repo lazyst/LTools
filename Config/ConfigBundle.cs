@@ -115,6 +115,7 @@ internal static class ConfigBundle
         cfg.PinText = settings.PinText ?? new PinTextFile();
         cfg.PinToScreen = settings.PinToScreen ?? new PinToScreenFile();
         cfg.Collage = settings.Collage ?? new CollageFile();
+        cfg.Screenshot = settings.Screenshot ?? new ScreenshotFile();
 
         var ui = Read<UiStateFile>(UiPath(anchorPath), ctx);
         if (ui == null) ui = ToUi(ctx.GetSeed());
@@ -383,6 +384,7 @@ internal static class ConfigBundle
         PinText = cfg.PinText ?? new PinTextFile(),
         PinToScreen = cfg.PinToScreen ?? new PinToScreenFile(),
         Collage = cfg.Collage ?? new CollageFile(),
+        Screenshot = cfg.Screenshot ?? new ScreenshotFile(),
     };
 
     internal static UiStateFile ToUi(AppConfig cfg) => new()

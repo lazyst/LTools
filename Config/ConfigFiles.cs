@@ -54,6 +54,9 @@ public sealed class SettingsFile
 
     /// <summary>拼图默认设置（方向 / 尺寸方式 / 外边距 / 间距 / 背景色 / 宫格行列）。</summary>
     public CollageFile Collage { get; set; } = new();
+
+    /// <summary>截图 Pro 的全局设置（现在只有「延时截图」的等待秒数）。</summary>
+    public ScreenshotFile Screenshot { get; set; } = new();
 }
 
 /// <summary><c>config/ui.json</c>：界面状态（丢了不影响功能，只是记忆丢失）。</summary>

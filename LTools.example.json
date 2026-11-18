@@ -207,6 +207,9 @@
     "PdfExportMode": "combined",
     "PdfImageQuality": 100
   },
+  "Screenshot": {
+    "DelaySeconds": 3
+  },
   "Triggers": {
     "Enabled": false,
     "Rules": []

@@ -1,5 +1,6 @@
 using LTools.Config;
 using LTools.Features;
+using LTools.Features.CapturePro;
 namespace LTools.Core;
 
 /// <summary>
@@ -54,6 +55,19 @@ internal static class Settings
         AppState.TrayDoubleClick = action;
         AppLog.Info("Settings", $"双击托盘图标 = {action}");
         Save(() => SettingsStore.Modify(s => s.TrayDoubleClick = action));
+    }
+
+    /// <summary>改「延时截图」的等待秒数（1–10）。立即生效（同步 <see cref="AppState.ScreenshotDelaySeconds"/>）并落盘。</summary>
+    public static void SetScreenshotDelay(int seconds)
+    {
+        int value = CaptureDelay.Normalize(seconds);
+        AppState.ScreenshotDelaySeconds = value;
+        AppLog.Info("Settings", $"延时截图 = {value} 秒");
+        Save(() => SettingsStore.Modify(s =>
+        {
+            s.Screenshot ??= new ScreenshotFile();
+            s.Screenshot.DelaySeconds = value;
+        }));
     }
 
     /// <summary>把改动写回配置（读磁盘→改一个字段→只写该域）。

@@ -45,6 +45,9 @@ internal static class AppState
     /// <summary>左键双击托盘图标的行为。读配置落在这里，双击回调（UI 线程）零磁盘 IO；设置页改值经 <see cref="Settings.SetTrayDoubleClick"/> 同步。</summary>
     public static TrayDoubleClickAction TrayDoubleClick = TrayDoubleClickAction.settings;
 
+    /// <summary>「延时截图」先等多少秒（1–10，默认 3）。启动时从 <c>settings.json</c> 灌进来，设置页改值经 <see cref="Settings.SetScreenshotDelay"/> 同步。</summary>
+    public static volatile int ScreenshotDelaySeconds = 3;
+
     /// <summary>
     /// 录屏的默认开关（声音 / 摄像头 / 特效 / 编码器 / 录完裁剪）。
     /// 启动时从 <c>settings.json</c> 灌进来，「录屏选项」窗口保存时换一个新实例（别就地改，读方可能正在用）。

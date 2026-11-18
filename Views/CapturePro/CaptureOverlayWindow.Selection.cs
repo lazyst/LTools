@@ -207,7 +207,7 @@ public partial class CaptureOverlayWindow
                 // 双击（和框选取图一致）= 确定
                 if (e.ClickCount == 2)
                 {
-                    Accept(FinishKind.Copy);
+                    Accept(DefaultFinish);
                     e.Handled = true;
                     return;
                 }
@@ -544,6 +544,8 @@ public partial class CaptureOverlayWindow
         _handle = FrameHandle.None;
         try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
 
+        bool fresh = false;      // 这一下真的定下了一块新选区（快捷入口要据此执行）
+
         switch (mode)
         {
             case DragMode.New:
@@ -552,14 +554,19 @@ public partial class CaptureOverlayWindow
                 _liveRect = null;
 
                 // 几乎没移动 = 单击：选中光标下的窗口 / 控件（整块换掉）；拖动了就是框选
-                if (!_pressMoved && _pressTarget is SnapBox target) SetSingleRect(ToDipRect(target.Bounds));
+                if (!_pressMoved && _pressTarget is SnapBox target)
+                {
+                    SetSingleRect(ToDipRect(target.Bounds));
+                    fresh = true;
+                }
                 else if (!CommitBox(box)) RefreshSelection();   // 太小 / 挖空 / 点空白：保留原选区
+                else fresh = true;
                 FinalizeAspect();                                // 锁着但还没定比例：取这一块的比例
                 break;
             }
 
             case DragMode.Lasso:
-                CommitLasso();
+                fresh = CommitLasso();
                 break;
 
             case DragMode.Move:
@@ -602,7 +609,10 @@ public partial class CaptureOverlayWindow
                     : _smart.CurrentSelection;
 
                 if (SmartSelectionTransition.HasSelection(target) && target.Contains(p))
+                {
                     ConfirmSmartSelection(target);
+                    fresh = true;
+                }
                 else
                     UpdateHover(p);
                 break;
@@ -617,6 +627,9 @@ public partial class CaptureOverlayWindow
         RefreshCursor(p);
         UpdateChrome();
         e.Handled = true;
+
+        // 快捷入口：选区一落定就执行它的默认动作（普通截图 HasPending = false，不受影响）
+        if (fresh) FirePendingAction();
     }
 
     /// <summary>放弃当前手势：画到一半的丢掉，改框 / 移动就还原成按下前的选区。</summary>
@@ -800,6 +813,7 @@ public partial class CaptureOverlayWindow
         }
 
         UpdateChrome();
+        if (ok) FirePendingAction();       // 快捷入口：折线定下来也算「选区落定」
     }
 
     /// <summary>丢掉正在点的折线选区（Esc / 换形状 / 翻历史）。</summary>
@@ -815,18 +829,21 @@ public partial class CaptureOverlayWindow
         RefreshSelection();
     }
 
-    /// <summary>套索松手：够大就并进选区（形状按点列裁），太小就当没框过。</summary>
-    private void CommitLasso()
+    /// <summary>套索松手：够大就并进选区（形状按点列裁），太小就当没框过。返回 true = 真的定下了一块。</summary>
+    private bool CommitLasso()
     {
         var points = _lasso.ToArray();
         _lasso.Clear();
 
-        if (SelectionShape.IsUsable(points, MinSize)) Commit(SelectionRegion.FromPoints(_mode, points));
-        else
+        if (SelectionShape.IsUsable(points, MinSize))
         {
-            _replaceOnCommit = false;
-            RefreshSelection();
+            Commit(SelectionRegion.FromPoints(_mode, points));
+            return true;
         }
+
+        _replaceOnCommit = false;
+        RefreshSelection();
+        return false;
     }
 
     // ============ 多区域选区：加区 / 减区 ============

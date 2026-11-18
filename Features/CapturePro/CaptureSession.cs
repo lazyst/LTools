@@ -52,7 +52,8 @@ internal static class CaptureSession
     /// 「截图」这个内置功能用它恢复被自己临时收起的自动化指示器。
     /// </param>
     public static CaptureResult? TryCapture(Window? owner, out CaptureExit exit,
-        Action? onRecordingFinished = null)
+        Action? onRecordingFinished = null,
+        CaptureOverlayWindow.PendingAction pending = CaptureOverlayWindow.PendingAction.None)
     {
         exit = CaptureExit.Cancelled;
 
@@ -78,7 +79,8 @@ internal static class CaptureSession
             var shot = ScreenShot.Capture(area);
             var (sx, sy) = ScreenPickerWindow.MonitorScale(ScreenShot.ToRectangle(area));
 
-            var overlay = new CaptureOverlayWindow(shot, ScreenShot.ToRectangle(area), sx, sy);
+            var overlay = new CaptureOverlayWindow(shot, ScreenShot.ToRectangle(area), sx, sy,
+                pending: pending);
             bool? ok = overlay.ShowDialog();
             if (ok != true) return null;
 
@@ -257,6 +259,28 @@ internal static class CaptureSession
         if (ForegroundApp.IsShellWindow(hwnd) || ForegroundApp.IsOwnWindow(hwnd)) return IntPtr.Zero;
 
         return hwnd;
+    }
+
+    /// <summary>
+    /// 直接截图（不弹覆盖层）：抓一块 → 复制到剪贴板 → 记一条采集历史。
+    /// </summary>
+    /// <remarks>
+    /// 照 Snow Shot 的 <c>DirectCaptureWorkflow</c>（copy → 自动保存 → history）：
+    /// 「截取当前显示器」「截取前台窗口」这两个入口不经过覆盖层，抓完直接落剪贴板。
+    /// 自动保存还没接（属 P7-d 的导出设置），这里只做复制 + 历史。
+    /// 失败抛异常（调用方是功能入口，由 <c>FeatureRunner</c> 弹失败提示）。
+    /// </remarks>
+    public static BitmapSource? CaptureDirect(System.Drawing.Rectangle area, string source)
+    {
+        if (area.Width < 1 || area.Height < 1) return null;
+
+        var image = ScreenCapture.CaptureSource(area.Left, area.Top, area.Width, area.Height);
+        NativeClipboard.SetImage(image);
+
+        var entry = CaptureCatalog.Create(image.PixelWidth, image.PixelHeight,
+            CaptureCatalog.KindShot, source);
+        System.Threading.Tasks.Task.Run(() => CaptureCatalog.SaveAssets(entry, image));
+        return image;
     }
 
     /// <summary>

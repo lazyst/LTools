@@ -10,6 +10,7 @@ using LTools.Core;
 using LTools.Features.CapturePro;
 using LTools.Native;
 using LTools.Views;
+using LTools.Views.CapturePro;
 
 namespace LTools.Features.Builtin;
 
@@ -63,6 +64,32 @@ internal static class FeatureCatalog
         L("ltools.exit", "退出 LTools", "power",
             "退出 LTools（等同托盘菜单的「退出」）",
             () => Ui(App.RequestExit)),
+
+        // ============ 截图 Pro 的采集入口（照 Snow Shot 的快捷动作） ============
+        L("ltools.captureDelay", "延时截图", "clock",
+            "等设置里的秒数再弹框选（1–10 秒，默认 3）",
+            () => CaptureWith(CaptureOverlayWindow.PendingAction.None, delay: true)),
+        L("ltools.captureCopy", "截图并复制", "camera",
+            "拖完选区立刻复制到剪贴板（不摆工具栏、不能标注）",
+            () => CaptureWith(CaptureOverlayWindow.PendingAction.Copy)),
+        L("ltools.capturePin", "截图并贴图", "pin",
+            "拖完选区立刻贴到屏幕上（不摆工具栏、不能标注）",
+            () => CaptureWith(CaptureOverlayWindow.PendingAction.Pin)),
+        L("ltools.captureSave", "截图并另存为", "save",
+            "拖完选区立刻弹「另存为」",
+            () => CaptureWith(CaptureOverlayWindow.PendingAction.Save)),
+        L("ltools.captureQuickSave", "截图并快速保存", "save",
+            "拖完选区立刻按快速保存规则落盘（不弹框）",
+            () => CaptureWith(CaptureOverlayWindow.PendingAction.QuickSave)),
+        L("ltools.captureRecognize", "截图并识别", "edit",
+            "拖完选区立刻做文字识别并打开结果窗",
+            () => CaptureWith(CaptureOverlayWindow.PendingAction.Recognize)),
+        L("ltools.captureScreen", "截取当前显示器", "camera",
+            "不弹覆盖层：直接抓光标所在的显示器，复制并记进采集历史",
+            CaptureMonitor),
+        L("ltools.captureWindow", "截取前台窗口", "window",
+            "不弹覆盖层：直接抓前台窗口，复制并记进采集历史",
+            CaptureFrontWindow),
 
         // ============ 常用功能 · 工具 ============
         C("common.magnifier", "工具", "放大镜", "magnifier",
@@ -448,7 +475,13 @@ internal static class FeatureCatalog
     /// 交互框选。返回 null 有两种完全不同的意思，由 <paramref name="recording"/> 区分：
     /// 真的取消（要给一句「已取消截图」），还是已经交给录屏（这时什么都不用说）。
     /// </summary>
-    private static BitmapSource? PickRegion(out bool recording)
+    /// <remarks>
+    /// <paramref name="pending"/> 是快捷入口的「选完就做」（照 Snow Shot 的
+    /// <c>PendingSelectionAction</c>）：覆盖层在选区落定后直接执行，工具条根本不摆出来。
+    /// 动作失败（另存为取消 / 识别没开起来）会留在覆盖层里继续编辑，不会卡在半截。
+    /// </remarks>
+    private static BitmapSource? PickRegion(out bool recording,
+        CaptureOverlayWindow.PendingAction pending = CaptureOverlayWindow.PendingAction.None)
     {
         var app = Application.Current ?? throw new InvalidOperationException("界面未初始化，无法截图");
         string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
@@ -460,7 +493,7 @@ internal static class FeatureCatalog
             {
                 var captured = CaptureSession.TryCapture(null, out var exit,
                     // 录屏跑完再恢复指示器：否则它会被录进成品里
-                    () => RecordingIndicatorWindow.RestoreAutomation(indicator));
+                    () => RecordingIndicatorWindow.RestoreAutomation(indicator), pending);
                 handed = exit == CaptureSession.CaptureExit.Recording;
                 return captured?.Image;
             });
@@ -472,6 +505,68 @@ internal static class FeatureCatalog
         {
             if (!handed) RecordingIndicatorWindow.RestoreAutomation(indicator);
         }
+    }
+
+    /// <summary>
+    /// 快捷入口：框选后立刻执行某个动作（复制 / 贴图 / 另存为 / 快速保存 / 识别）。
+    /// </summary>
+    /// <remarks>
+    /// 照 Snow Shot 的 <c>beginCapture(action)</c>：「截图并贴图」这类入口拖完就直接完成，
+    /// 中间没有「点工具条」这一步。取消时照上游静默（只有普通截图才说「已取消截图」）。
+    /// 「延时截图」先按设置里的秒数等，等完再弹覆盖层——等待期间不摆任何窗口。
+    /// </remarks>
+    private static void CaptureWith(CaptureOverlayWindow.PendingAction pending, bool delay = false)
+    {
+        if (delay)
+        {
+            // 取消只可能来自退出程序：静默收摊，别再去弹覆盖层
+            if (!CaptureDelay.Wait(AppState.ScreenshotDelaySeconds)) return;
+        }
+
+        var image = PickRegion(out bool recording, pending);
+        if (recording) return;                       // 已交给录屏，不是取消
+
+        if (pending == CaptureOverlayWindow.PendingAction.None)
+        {
+            if (image == null) ToastService.Show("已取消截图", null, 1600, ToastKind.info);
+            return;
+        }
+
+        // 上游这几个入口成功后都不弹 toast（贴图 / 另存为 / 快速保存 / 识别自己就是反馈），
+        // 只有「复制」在 LTools 里多一句提示，免得用户不知道到底复制了没有。
+        if (pending == CaptureOverlayWindow.PendingAction.Copy && image != null)
+            ToastService.Show("已复制到剪贴板", "截图", 1600, ToastKind.success);
+    }
+
+    /// <summary>「截取当前显示器」：光标所在那块屏，不弹覆盖层（照上游 <c>captureCurrentMonitor</c>）。</summary>
+    private static void CaptureMonitor()
+    {
+        if (!Win32.GetCursorPos(out var cursor))
+            throw new InvalidOperationException("取不到光标位置，无法判断是哪块显示器");
+
+        IntPtr monitor = Win32.MonitorFromPoint(cursor, Win32.MonitorDefaultToNearest);
+        var info = new Win32.MonitorInfo { cbSize = Marshal.SizeOf<Win32.MonitorInfo>() };
+        if (monitor == IntPtr.Zero || !Win32.GetMonitorInfo(monitor, ref info))
+            throw new InvalidOperationException("取不到显示器范围");
+
+        var rc = info.rcMonitor;
+        CaptureSession.CaptureDirect(
+            new System.Drawing.Rectangle(rc.Left, rc.Top, rc.Right - rc.Left, rc.Bottom - rc.Top),
+            "当前显示器");
+    }
+
+    /// <summary>「截取前台窗口」：不弹覆盖层，抓完直接复制（照上游 <c>captureFocusedWindow</c>）。</summary>
+    private static void CaptureFrontWindow()
+    {
+        IntPtr hwnd = Win32.GetForegroundWindow();
+        if (hwnd == IntPtr.Zero) throw new InvalidOperationException("没有前台窗口可截图");
+
+        IntPtr root = Win32.GetAncestor(hwnd, Win32.GaRoot);
+        if (root != IntPtr.Zero) hwnd = root;
+
+        var (x, y, w, h) = WindowFinder.GetVisibleBounds(hwnd);
+        if (w <= 0 || h <= 0) throw new InvalidOperationException("前台窗口不可见，无法截图");
+        CaptureSession.CaptureDirect(new System.Drawing.Rectangle(x, y, w, h), "前台窗口");
     }
 
     private static void ScreenText(FeatureRunContext ctx)
@@ -532,21 +627,6 @@ internal static class FeatureCatalog
 
     private static BitmapSource ToSource(System.Drawing.Bitmap bitmap)
     {
-        IntPtr hbitmap = bitmap.GetHbitmap();
-        try
-        {
-            var source = Imaging.CreateBitmapSourceFromHBitmap(
-                hbitmap, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-            source.Freeze();
-            return source;
-        }
-        finally
-        {
-            DeleteObject(hbitmap);
-            bitmap.Dispose();
-        }
+        using (bitmap) return ScreenCapture.ToSource(bitmap);
     }
-
-    [DllImport("gdi32.dll")]
-    private static extern bool DeleteObject(IntPtr hObject);
 }
