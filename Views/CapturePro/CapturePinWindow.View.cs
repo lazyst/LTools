@@ -105,6 +105,7 @@ public partial class CapturePinWindow
 
         if (on)
         {
+            if (_clickThrough) SetClickThrough(false);  // 穿透态里这块方块也点不到，先退出去（照上游 setThumbnailMode）
             if (_viewport) SetViewport(false);        // 两种特殊形态互斥
             _thumb = true;
             Shot.Stretch = Stretch.Uniform;

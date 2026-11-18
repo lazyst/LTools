@@ -700,6 +700,69 @@ pins/thumbnails/<id>.png    # 列表小图（长边 240）
   读与写用同一个锚点（`ConfigStore.ConfigPath`，空才回落 `ConfigLocator.FindPath()`），
   否则导了备份或把配置指到临时目录后会「写一处、读另一处」。
 
+### 9.6 贴图点击穿透 / 抖动隐藏（P5-e）
+
+照上游 `setClickThroughMode` / `ensureClickThroughExitButton` / `applyEffectiveOpacity`、
+`pinned/screenshotpinnedclickthroughgeometry.cpp`、`screenshotpinnedinteraction.cpp` 的抖动段、
+`screenshotpinnedshakedetector.h`。
+
+**点穿是逐贴图开关**（贴图右键「点击穿透」；实时贴图置灰——它跟着源窗口刷新，点不到就转不回来）：
+
+- 开：窗口补 `WS_EX_TRANSPARENT`（鼠标真穿过去，点击落到下面的窗口）；关：去掉这个 ex-style。
+- 开缩略图 / 取景框这类特殊形态时先退出穿透（照上游 `setThumbnailMode`），两者不叠加。
+- 穿透期间 ✕ 不画（点不到），退出走控制栏那个圆按钮。
+
+**不透明度是两套值**（`PinClickThrough.EffectiveOpacity`）：
+
+| 状态 | 生效值 |
+|---|---|
+| 普通 | 用户不透明度（Ctrl+滚轮 / 右键「不透明度」改的那个） |
+| 穿透 | 穿透不透明度（控制栏滑条改的那个，默认 50） |
+
+两套分开记（`_opacityPercent` 与 `_clickThroughOpacity`），退出穿透就回到用户那一份；
+`SetOpacityPercent` 只改用户那份，别在穿透态顺手把它当生效值写回去。
+
+**控制栏几何**（`Features/CapturePro/PinClickThrough.cs`，单位 DIP）：
+
+| 常量 | 值 | 含义 |
+|---|---|---|
+| `ControlHeight` | 32 | 三件套统一高 |
+| `OpacityEditorWidth` | 152 | 不透明度胶囊宽 |
+| `ControlSpacing` | 8 | 三件套之间的间隙 |
+| `Inset` | 16 | 相对内容右上角的内缩 |
+| `TotalWidth` | 232 | 整条宽 = 152 + 8 + 32 + 8 + 32 |
+
+`Layout(content, workArea)` 的落位：先贴内容右上角内侧（`right − Inset − 232`，`top + Inset`）；
+上方放得下就摆内容上方（`top − Inset − 32`），否则摆下方（`bottom + Inset`），
+最后整条夹进工作区；工作区比 232×32 还小、或内容矩形为空时返回**空布局**，
+贴图据此退出穿透（不会留一条点不到的栏）。
+
+LTools 用**一块 232×32 分层窗口**（`Views/CapturePro/PinClickThroughBar.cs`）承载三件套，
+三件之间那 8 DIP 间隙靠 alpha 穿透（不建三个 HWND）：胶囊自绘滑条（0–100，滚轮 / 拖动都改）+
+「移动」与「退出」两个 32 圆按钮（底色 `colorBgMask` = rgba(0,0,0,115)，图标 18，白色）。
+图标是 1024 viewBox 的几何，外面套 `Viewbox(size, Uniform)` 才是上游的 `IconFit::Contain`
+（给 `Path` 设 `Stretch=Uniform` 会按几何包围盒撑满，图标偏大且贴角）。
+贴图移动 / 缩放 / 置顶 / 锁定都同步这条栏；「移动」按钮拖贴图（锁定态不动），「退出」恢复可交互。
+
+**抖动隐藏其他贴图**（`Features/CapturePro/PinShakeDetector.cs`，逐条移植上游状态机）：
+
+| 参数 | 值 | 含义 |
+|---|---|---|
+| `MinimumLeg` | 48 | 单腿最小位移（DIP），小于它算拖拽纠偏 |
+| `MinimumLegCount` | 6 | 至少这么多腿才认 |
+| `MaximumLegMs` | 250 | 单腿最长时长 |
+| `MaximumSequenceMs` | 700 | 整串最长时长 |
+
+X / Y 两轴各一份状态机；极值点吞掉阈值内的小幅回摆；非有限数、时间倒流、停顿过久都会重新武装。
+拖动时每个 `MouseMove` 把同一个光标位置同时喂给 `DragTo` 与 `SampleShake`，命中那一下
+切换**同组**其他贴图（都藏着就全放出来，否则全藏起来），给一条 3 秒提示。
+开关落 `configs/settings.json` 的 `PinToScreen.ShakeWindowToHideOthers`（默认开，
+`Config/PinToScreen.cs` + `Features/CapturePro/PinToScreenStore.cs`）：关掉时拖动不武装识别器。
+
+**持久化与贴回**：`PinRecord` 有 `ClickThrough` / `ClickThroughOpacity`（`PinStore.UpdateClickThrough`
+只在真变时写盘）；`CapturePinManager.Sync` 顺带写这两个字段，`Restore` / `FinishRestore` 按记录恢复
+（贴回一张点不到的图而不带控制栏，用户会以为卡死）。`PinStore.Create` 的两个可选参数默认 = 不穿透 / 50。
+
 
 ## 10. 识别（P2 / P4-a / P4-b）
 

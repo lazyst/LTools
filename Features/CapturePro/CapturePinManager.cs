@@ -140,9 +140,15 @@ internal static class CapturePinManager
         return pin;
     }
 
-    /// <summary>把窗口当前的落点 / 尺寸 / 分组 / 实时开关写回贴图历史（记录不存在或 Id 为空是空操作）。</summary>
-    internal static void Sync(CapturePinWindow pin) =>
+    /// <summary>
+    /// 把窗口当前的落点 / 尺寸 / 分组 / 实时开关 / 点击穿透写回贴图历史
+    /// （记录不存在或 Id 为空是空操作）。
+    /// </summary>
+    internal static void Sync(CapturePinWindow pin)
+    {
         PinStore.UpdateState(pin.PinId, pin.Group, pin.Left, pin.Top, pin.Width, pin.Height, pin.Live);
+        PinStore.UpdateClickThrough(pin.PinId, pin.ClickThrough, pin.ClickThroughOpacity);
+    }
 
     /// <summary>
     /// 贴一块**实时**的图：跟住 <paramref name="hwnd"/>，每 200ms 刷新一次内容，
@@ -250,6 +256,14 @@ internal static class CapturePinManager
         pin.Show();
         pin.RaiseToTop();
         Sync(pin);
+
+        // 关的时候是穿透态就还回穿透态（连不透明度一起），否则贴回一张「点不到的图」会让人以为卡死
+        if (record.ClickThrough)
+        {
+            pin.SetClickThroughOpacity(record.ClickThroughOpacity);
+            pin.SetClickThrough(true);
+        }
+
         return pin;
     }
 
@@ -387,6 +401,46 @@ internal static class CapturePinManager
     public static void SetSelectedThumbnail(bool on)
     {
         foreach (var pin in Selection.ToArray()) pin.SetThumbnail(on);
+    }
+
+    // ============ 抖动隐藏同组其他贴图 ============
+
+    /// <summary>
+    /// 抖动命中那一下：同组其他贴图**都藏着**就全放出来，否则全藏起来
+    /// （照上游 <c>toggleOtherWindowsForShake</c>）。
+    /// </summary>
+    /// <returns>
+    /// <c>Changed</c> = 真的动了别的贴图（没有可切换的对象时是 false，界面据此决定要不要提示）；
+    /// <c>Showed</c> = 这次是「放出来」还是「藏起来」。
+    /// </returns>
+    internal static (bool Changed, bool Showed) ToggleOthersForShake(CapturePinWindow source)
+    {
+        if (!source.IsVisible) return (false, false);
+
+        // 只碰同一组、当前分组过滤下本来就该看得见、且不是实时贴图的那些
+        var others = Pins.Where(pin =>
+                !ReferenceEquals(pin, source) &&
+                !pin.Live &&
+                PinGroups.Same(pin.Group, source.Group) &&
+                IsShown(pin))
+            .ToArray();
+
+        if (others.Length == 0) return (false, false);
+
+        bool show = others.All(pin => !pin.IsVisible);
+        foreach (var pin in others)
+        {
+            if (show)
+            {
+                if (!pin.IsVisible) { pin.Show(); pin.RaiseToTop(); }
+            }
+            else
+            {
+                if (pin.IsVisible) pin.Hide();
+            }
+        }
+
+        return (true, show);
     }
 
     // ============ 拖动 / 成组移动 ============

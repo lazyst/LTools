@@ -125,8 +125,22 @@ public partial class CapturePinWindow
         {
             Topmost = !Topmost;
             RaiseToTop();
+            _ctBar?.SetTopmost(Topmost);   // 穿透控件是同级窗口，置顶态要跟贴图一致
         };
         menu.Items.Add(pin);
+
+        // 点击穿透：开着一张点不到的图时，旁边会浮出「不透明度 / 移动 / 退出」三个控件
+        // （见 CapturePinWindow.ClickThrough.cs）。实时贴图不参加——它跟着源窗口刷新，
+        // 点不到就没法转回普通贴图了。
+        var clickThrough = new MenuItem
+        {
+            Header = "点击穿透",
+            IsCheckable = true,
+            IsChecked = _clickThrough,
+            IsEnabled = !_live,
+        };
+        clickThrough.Click += (_, _) => SetClickThrough(!_clickThrough);
+        menu.Items.Add(clickThrough);
 
         var locked = new MenuItem { Header = "锁定位置", IsCheckable = true, IsChecked = _locked };
         locked.Click += (_, _) => SetLocked(!_locked);
@@ -344,13 +358,8 @@ public partial class CapturePinWindow
     private void AddOpacity(ItemsControl parent, string header, double opacity)
     {
         var item = new MenuItem { Header = header };
-        item.Click += (_, _) =>
-        {
-            // 窗口自己（分层、逐像素）与实时内容层（宿主整窗 alpha）要一起调，否则半透明时
-            // 内容那块还是全不透明的（两层是分开合成的）
-            Opacity = PinMath.ClampOpacity(opacity);
-            _thumbLayer?.SetOpacity(Opacity);
-        };
+        // 菜单改的是**用户不透明度**；穿透态下生效的是它自己那份（见 ApplyEffectiveOpacity）
+        item.Click += (_, _) => SetOpacityPercent((int)Math.Round(opacity * 100));
         parent.Items.Add(item);
     }
 
@@ -364,9 +373,11 @@ public partial class CapturePinWindow
             _dragging = false;
             _panning = false;
             _maybeSelect = false;
+            EndShake(true);
             CapturePinManager.EndMove();
             try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
         }
+        _ctBar?.SetLocked(locked);
         ApplyCursor();
     }
 

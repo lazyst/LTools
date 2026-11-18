@@ -48,6 +48,9 @@ public sealed class SettingsFile
 
     /// <summary>贴图文字样式的默认值（最大宽 / 字体 / 字号 / 字色 / 底色）。</summary>
     public PinTextFile PinText { get; set; } = new();
+
+    /// <summary>贴图的行为开关（现在只有「拖动抖动隐藏同组其他贴图」）。</summary>
+    public PinToScreenFile PinToScreen { get; set; } = new();
 }
 
 /// <summary><c>config/ui.json</c>：界面状态（丢了不影响功能，只是记忆丢失）。</summary>

@@ -113,6 +113,7 @@ internal static class ConfigBundle
         cfg.Translation = settings.Translation ?? new TranslationFile();
         cfg.TextRecognition = settings.TextRecognition ?? new TextRecognitionFile();
         cfg.PinText = settings.PinText ?? new PinTextFile();
+        cfg.PinToScreen = settings.PinToScreen ?? new PinToScreenFile();
 
         var ui = Read<UiStateFile>(UiPath(anchorPath), ctx);
         if (ui == null) ui = ToUi(ctx.GetSeed());
@@ -379,6 +380,7 @@ internal static class ConfigBundle
         Translation = cfg.Translation ?? new TranslationFile(),
         TextRecognition = cfg.TextRecognition ?? new TextRecognitionFile(),
         PinText = cfg.PinText ?? new PinTextFile(),
+        PinToScreen = cfg.PinToScreen ?? new PinToScreenFile(),
     };
 
     internal static UiStateFile ToUi(AppConfig cfg) => new()

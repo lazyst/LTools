@@ -67,6 +67,15 @@ internal sealed class PinRecord
     public bool Live { get; set; }
 
     /// <summary>
+    /// 是不是点击穿透态（贴图点不到，旁边浮出「不透明度 / 移动 / 退出」三个控件）。
+    /// 贴回屏幕时按它恢复（照上游 <c>clickThroughMode</c>）。
+    /// </summary>
+    public bool ClickThrough { get; set; }
+
+    /// <summary>穿透态的不透明度（0–100，默认 50；用户不透明度不在这里）。</summary>
+    public int ClickThroughOpacity { get; set; } = PinClickThrough.DefaultOpacity;
+
+    /// <summary>
     /// 贴的是什么：<c>image</c> / <c>text</c> / <c>color</c>（颜色取样板）。
     /// 文字与色卡会把原文留在 <see cref="Text"/> 里，贴回时按它重画（上游也是从文字重渲染）。
     /// </summary>
@@ -209,7 +218,8 @@ internal static class PinStore
     /// </summary>
     public static PinRecord Create(int width, int height, int areaX, int areaY, int areaW, int areaH,
         double scale, string source, string group, bool live,
-        string kind = KindImage, string text = "", int cardWidth = 0, PinTextSnapshot? textStyle = null)
+        string kind = KindImage, string text = "", int cardWidth = 0, PinTextSnapshot? textStyle = null,
+        bool clickThrough = false, int clickThroughOpacity = PinClickThrough.DefaultOpacity)
     {
         var now = DateTime.Now;
 
@@ -236,6 +246,8 @@ internal static class PinStore
                 WinWidth = areaW / (scale > 0 ? scale : 1.0),
                 WinHeight = areaH / (scale > 0 ? scale : 1.0),
                 Live = live,
+                ClickThrough = clickThrough,
+                ClickThroughOpacity = PinClickThrough.NormalizeOpacity(clickThroughOpacity),
             };
 
             items.Insert(0, record);
@@ -268,6 +280,31 @@ internal static class PinStore
             if (!Nearly(record.WinWidth, width)) { record.WinWidth = width; dirty = true; }
             if (!Nearly(record.WinHeight, height)) { record.WinHeight = height; dirty = true; }
             if (record.Live != live) { record.Live = live; dirty = true; }
+
+            if (!dirty) return;
+            SaveUnsafe(items);
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// 记点击穿透状态（开关 + 穿透不透明度）。两个值都没变就直接返回，不白写盘。
+    /// </summary>
+    public static void UpdateClickThrough(string id, bool on, int opacityPercent)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+
+        int opacity = PinClickThrough.NormalizeOpacity(opacityPercent);
+
+        lock (Gate)
+        {
+            var items = LoadUnsafe();
+            var record = items.FirstOrDefault(e => e.Id == id);
+            if (record == null) return;
+
+            bool dirty = false;
+            if (record.ClickThrough != on) { record.ClickThrough = on; dirty = true; }
+            if (record.ClickThroughOpacity != opacity) { record.ClickThroughOpacity = opacity; dirty = true; }
 
             if (!dirty) return;
             SaveUnsafe(items);

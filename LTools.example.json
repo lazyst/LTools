@@ -181,6 +181,9 @@
     "TextColor": "system",
     "BackgroundColor": "system"
   },
+  "PinToScreen": {
+    "ShakeWindowToHideOthers": true
+  },
   "Triggers": {
     "Enabled": false,
     "Rules": []

@@ -125,9 +125,17 @@ public partial class CapturePinWindow : Window
         SourceInitialized += (_, _) => MakeNonActivating();
 
         // 实时贴图：本窗口一动 / 一改尺寸 / 一藏，下面那层缩略图宿主就得跟着（否则屏幕上会
-        // 留下一块对不上的画面）。平时它们是空操作。
-        LocationChanged += (_, _) => SyncLiveLayer();
-        SizeChanged += (_, _) => SyncLiveLayer();
+        // 留下一块对不上的画面）。平时它们是空操作。点击穿透的三个控件也跟着贴图走。
+        LocationChanged += (_, _) =>
+        {
+            SyncLiveLayer();
+            SyncClickThroughGeometry();
+        };
+        SizeChanged += (_, _) =>
+        {
+            SyncLiveLayer();
+            SyncClickThroughGeometry();
+        };
         IsVisibleChanged += (_, _) => _thumbLayer?.SetShown(IsVisible);
     }
 
@@ -252,11 +260,15 @@ public partial class CapturePinWindow : Window
         if (_hwnd == IntPtr.Zero) return;
         Win32.SetWindowPos(_hwnd, Topmost ? Win32.HwndTopmost : IntPtr.Zero,   // IntPtr.Zero = HWND_TOP
             0, 0, 0, 0, Win32.SwpNomove | Win32.SwpNosize | Win32.SwpNoactivate);
+
+        // 穿透控件是同级窗口，贴图一抬头就会把它们盖住——跟着一起提。
+        _ctBar?.RaiseToTop();
     }
 
     protected override void OnClosed(EventArgs e)
     {
         StopLive();                            // 关掉窗口就别再抓帧（定时器不停会一直 PrintWindow）
+        ShutdownClickThrough();                // 穿透控件是独立窗口，不关会留在屏幕上
         _menu?.IsOpen = false;
         _menu = null;
         base.OnClosed(e);

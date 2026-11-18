@@ -83,6 +83,7 @@ public partial class CapturePinWindow
             _dragging = true;
             _moveStart = CursorScreenDip();
             CapturePinManager.BeginMove(this);
+            BeginShake(_moveStart);
             Cursor = Cursors.SizeAll;
         }
     }
@@ -171,8 +172,11 @@ public partial class CapturePinWindow
             return;
         }
 
-        // 移动窗口一律交给登记处：单张时它只夹自己，成组移动时按「整组一个位移」夹
-        DragTo(CursorScreenDip());
+        // 移动窗口一律交给登记处：单张时它只夹自己，成组移动时按「整组一个位移」夹。
+        // 同一份光标位置顺手喂给抖动识别（拖动中快速来回甩 = 隐藏同组其他贴图）。
+        Point cursor = CursorScreenDip();
+        DragTo(cursor);
+        SampleShake(cursor);
         e.Handled = true;
     }
 
@@ -191,6 +195,7 @@ public partial class CapturePinWindow
 
         _dragging = false;
         _panning = false;
+        EndShake(false);
         CapturePinManager.EndMove();
         ApplyCursor();
         try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
@@ -205,8 +210,8 @@ public partial class CapturePinWindow
         // Ctrl + 滚轮 = 不透明度；单独滚 = 缩放（缩放锚在光标下，见 PinMath.AnchoredOrigin）
         if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0)
         {
-            Opacity = PinMath.NextOpacity(Opacity, e.Delta);
-            _thumbLayer?.SetOpacity(Opacity);
+            // 滚轮改的是**用户不透明度**，穿透态下那一份不参与（照上游 applyEffectiveOpacity）
+            SetOpacityPercent((int)Math.Round(PinMath.NextOpacity(_opacityPercent / 100.0, e.Delta) * 100));
             return;
         }
 
@@ -297,7 +302,8 @@ public partial class CapturePinWindow
     {
         bool hover = _hovering || IsMouseOver;
 
-        CloseBtn.Visibility = hover && PinMath.ShowsHoverButtons(Width, Height, _thumb)
+        // 穿透态鼠标根本点不到贴图，✕ 摆出来也点不动（退出走控制栏的圆按钮），干脆不画
+        CloseBtn.Visibility = hover && !_clickThrough && PinMath.ShowsHoverButtons(Width, Height, _thumb)
             ? Visibility.Visible
             : Visibility.Collapsed;
 
@@ -317,8 +323,10 @@ public partial class CapturePinWindow
     /// <summary>
     /// 空闲光标：取景框里用四向箭头暗示「拖 = 平移」，其它情况是普通箭头
     /// （拖动中的 <c>SizeAll</c> 在按下时临时设，松手回到这里）。
+    /// 穿透态一律箭头：那是提示「这张图现在拖不动」。
     /// </summary>
-    private void ApplyCursor() => Cursor = !_locked && _viewport ? Cursors.ScrollAll : Cursors.Arrow;
+    private void ApplyCursor() =>
+        Cursor = !_clickThrough && !_locked && _viewport ? Cursors.ScrollAll : Cursors.Arrow;
 
     /// <summary>边框颜色同时表达三种状态：多选（2px 亮蓝）优先，其次锁定（亮蓝），再次局部显示（淡蓝）。</summary>
     private void ApplyFrame()
