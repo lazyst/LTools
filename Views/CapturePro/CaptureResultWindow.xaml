@@ -42,6 +42,8 @@
                                  Content="文字" IsChecked="True" Tag="text" Checked="Tab_Changed"/>
                     <RadioButton x:Name="TabTable" Style="{StaticResource CaptureTab}" GroupName="resultTab"
                                  Content="表格" Tag="table" Checked="Tab_Changed"/>
+                    <RadioButton x:Name="TabDocument" Style="{StaticResource CaptureTab}" GroupName="resultTab"
+                                 Content="文档" Tag="document" Checked="Tab_Changed"/>
                     <RadioButton x:Name="TabQr" Style="{StaticResource CaptureTab}" GroupName="resultTab"
                                  Content="二维码" Tag="qr" Checked="Tab_Changed"/>
                     <RadioButton x:Name="TabMarkdown" Style="{StaticResource CaptureTab}" GroupName="resultTab"
@@ -128,6 +130,32 @@
                                         FontSize="{StaticResource FontSizeHint}" Margin="0,0,4,4"
                                         Click="TableOpen_Click"/>
                                 <TextBlock x:Name="TableInfo" Margin="8,0,0,4" VerticalAlignment="Center"
+                                           FontSize="{StaticResource FontSizeHint}"
+                                           Foreground="{StaticResource SecondaryTextBrush}"/>
+                            </WrapPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- 文档：同一份派生块当「可导出的文档」渲染（标题 / 段落 / 列表 / 表格），
+                         底栏接上游文档模式的出口：导出 docx / pdf / md / html / tex、用默认程序打开。 -->
+                    <Grid x:Name="DocumentPage" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <local:CaptureConversionView x:Name="DocumentView"/>
+
+                        <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="0,1,0,0" Padding="10,6">
+                            <WrapPanel Orientation="Horizontal">
+                                <Button x:Name="DocExportBtn" Style="{StaticResource BtnGhost}" Content="导出…"
+                                        MinWidth="76" Height="26" FontSize="{StaticResource FontSizeHint}"
+                                        Margin="0,0,4,4" Click="DocExport_Click"/>
+                                <Button x:Name="DocOpenBtn" Style="{StaticResource BtnGhost}" Content="打开文档"
+                                        MinWidth="76" Height="26" FontSize="{StaticResource FontSizeHint}"
+                                        Margin="0,0,4,4" Click="DocOpen_Click"/>
+                                <TextBlock x:Name="DocInfo" Margin="8,0,0,4" VerticalAlignment="Center"
                                            FontSize="{StaticResource FontSizeHint}"
                                            Foreground="{StaticResource SecondaryTextBrush}"/>
                             </WrapPanel>

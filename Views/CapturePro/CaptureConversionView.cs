@@ -40,7 +40,7 @@ internal sealed class CaptureConversionView : FlowDocumentScrollViewer
         Padding = new Thickness(12, 10, 12, 10);
         Background = Brushes.Transparent;
         Focusable = true;
-        Document = Build(ConversionDocument.Empty, html: false);
+        Document = Build(ConversionDocument.Empty, "这张截图没有识别到文字。");
     }
 
     /// <summary>当前渲染的是哪一份（状态行 / 复制用）。</summary>
@@ -62,11 +62,11 @@ internal sealed class CaptureConversionView : FlowDocumentScrollViewer
         }
     }
 
-    /// <summary>换一份内容（<paramref name="html"/> 只影响空态文案：两份块列表相同）。</summary>
-    internal void Render(ConversionDocument document, bool html)
+    /// <summary>换一份内容（<paramref name="emptyHint"/> 只影响空态文案：几页共用同一份块列表）。</summary>
+    internal void Render(ConversionDocument document, string emptyHint)
     {
         _document = document;
-        Document = Build(document, html);
+        Document = Build(document, emptyHint);
     }
 
     /// <summary>全选（Ctrl+A 走这里；<see cref="FlowDocumentScrollViewer"/> 自己不带）。</summary>
@@ -78,7 +78,7 @@ internal sealed class CaptureConversionView : FlowDocumentScrollViewer
 
     // ============ 块 → FlowDocument ============
 
-    private static FlowDocument Build(ConversionDocument document, bool html)
+    private static FlowDocument Build(ConversionDocument document, string emptyHint)
     {
         var flow = new FlowDocument
         {
@@ -145,9 +145,9 @@ internal sealed class CaptureConversionView : FlowDocumentScrollViewer
         if (openList != null) flow.Blocks.Add(openList);
         if (flow.Blocks.Count == 0)
         {
-            flow.Blocks.Add(Paragraph(html
-                ? "没有可转换成 HTML 的内容（这张截图没有识别到文字）。"
-                : "没有可转换成 Markdown 的内容（这张截图没有识别到文字）。",
+            flow.Blocks.Add(Paragraph(string.IsNullOrEmpty(emptyHint)
+                ? "这张截图没有识别到文字。"
+                : emptyHint,
                 new Thickness(0, 8, 0, 0),
                 dim: true));
         }

@@ -65,6 +65,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "识别：二维码检测（同图两枚 / 空白图）", QrDetectCases));
         cases.Add(new("capturePro", "转换：版面 → 块（标题 / 段落 / 列表 / 表格）", ConversionBlockCases));
         cases.Add(new("capturePro", "转换：Markdown / HTML 源码与转义", ConversionSourceCases));
+        cases.Add(new("capturePro", "转换：文档导出（纯文本 / LaTeX / HTML / docx）", DocumentExportCases));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
         cases.Add(new("capturePro", "长截图：滚动位移识别", ScrollDetection));

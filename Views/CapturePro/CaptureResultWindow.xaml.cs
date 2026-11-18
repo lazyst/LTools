@@ -54,6 +54,7 @@ public partial class CaptureResultWindow : Window
     private CaptureOriginalPreviewWindow? _preview;
     private ConversionDocument _conversion = ConversionDocument.Empty;
     private string _renderedConversion = "";
+    private bool _documentRendered;
 
     /// <summary>正常打开：先显示「正在识别…」，Loaded 之后在后台跑识别。</summary>
     internal CaptureResultWindow(BitmapSource image, string? engine, CaptureEntry? entry = null,
@@ -123,6 +124,9 @@ public partial class CaptureResultWindow : Window
 
     /// <summary>Markdown / HTML 页的渲染预览（冒烟读它做断言）。</summary>
     internal CaptureConversionView ConversionView => ConversionPage;
+
+    /// <summary>文档页的渲染预览（冒烟读它做断言）。</summary>
+    internal CaptureConversionView DocumentPreview => DocumentView;
 
     private async void Start()
     {
@@ -308,6 +312,7 @@ public partial class CaptureResultWindow : Window
 
         bool text = _tab == "text";
         bool conversion = _tab is "markdown" or "html";
+        bool document = _tab == "document";
         bool original = originalToggle.IsChecked == true;
 
         ocrScroll.Visibility = text && !original ? Visibility.Visible : Visibility.Collapsed;
@@ -315,14 +320,30 @@ public partial class CaptureResultWindow : Window
         TablePage.Visibility = _tab == "table" ? Visibility.Visible : Visibility.Collapsed;
         QrPage.Visibility = _tab == "qr" ? Visibility.Visible : Visibility.Collapsed;
         ConversionPage.Visibility = conversion ? Visibility.Visible : Visibility.Collapsed;
+        DocumentPage.Visibility = document ? Visibility.Visible : Visibility.Collapsed;
 
         // 只在内容 / 页真的变了时重渲染：翻开关不该把用户刚划好的选区清掉
         if (conversion &&
             (!ReferenceEquals(ConversionPage.Content, _conversion) || _renderedConversion != _tab))
         {
-            ConversionPage.Render(_conversion, html: _tab == "html");
+            ConversionPage.Render(_conversion, _tab == "html"
+                ? "没有可转换成 HTML 的内容（这张截图没有识别到文字）。"
+                : "没有可转换成 Markdown 的内容（这张截图没有识别到文字）。");
             _renderedConversion = _tab;
         }
+
+        if (document && (!_documentRendered || !ReferenceEquals(DocumentView.Content, _conversion)))
+        {
+            DocumentView.Render(_conversion, "这张截图没有识别到文字，无法生成文档。");
+            _documentRendered = true;
+        }
+
+        DocExportBtn.IsEnabled = !_conversion.IsEmpty;
+        DocOpenBtn.IsEnabled = !_conversion.IsEmpty;
+        DocInfo.Text = _conversion.IsEmpty
+            ? "没有可导出的内容"
+            : string.Format(CultureInfo.CurrentCulture, "{0} 块 · {1} 个字符",
+                _conversion.Blocks.Count, _conversion.Length);
 
         emptyText.Visibility = text && !original && _layer.Count == 0
             ? Visibility.Visible
@@ -338,10 +359,13 @@ public partial class CaptureResultWindow : Window
             "qr" => "复制二维码内容",
             "markdown" => "复制 Markdown",
             "html" => "复制 HTML",
+            "document" => "复制文档",
             _ => "复制文字",
         };
 
-        copyBtn.IsEnabled = conversion ? !_conversion.IsEmpty : _result is { Ok: true } || _layer.Count > 0;
+        copyBtn.IsEnabled = conversion || document
+            ? !_conversion.IsEmpty
+            : _result is { Ok: true } || _layer.Count > 0;
 
         // 表格页时贴选区摆好的窗口可能装不下整张表：切过去先把画布宽度对齐视口
         if (_tab == "table")
@@ -409,6 +433,23 @@ public partial class CaptureResultWindow : Window
                     name, selected.Length, _conversion.Blocks.Count)
                 : string.Format(CultureInfo.CurrentCulture, "{0} · {1} 块 · {2} 个字符 · 可划选后复制",
                     name, _conversion.Blocks.Count, _conversion.Length);
+            return;
+        }
+
+        if (_tab == "document")
+        {
+            if (_conversion.IsEmpty)
+            {
+                StatusText.Text = "文档 · 没有可用的内容";
+                return;
+            }
+
+            string selected = DocumentView.SelectedText;
+            StatusText.Text = selected.Length > 0
+                ? string.Format(CultureInfo.CurrentCulture, "文档 · 已选中 {0} 个字符 · 共 {1} 块",
+                    selected.Length, _conversion.Blocks.Count)
+                : string.Format(CultureInfo.CurrentCulture, "文档 · {0} 块 · {1} 个字符 · 可划选后复制",
+                    _conversion.Blocks.Count, _conversion.Length);
             return;
         }
 
@@ -494,13 +535,15 @@ public partial class CaptureResultWindow : Window
             return;
         }
 
-        // Markdown / HTML：预览自己管滚动与选中，只补 Ctrl+A / Ctrl+C（FlowDocumentScrollViewer 不带全选）
-        if (_tab is "markdown" or "html")
+        // Markdown / HTML / 文档：预览自己管滚动与选中，只补 Ctrl+A / Ctrl+C
+        // （FlowDocumentScrollViewer 不带全选）
+        if (_tab is "markdown" or "html" or "document")
         {
+            CaptureConversionView view = _tab == "document" ? DocumentView : ConversionPage;
             bool control = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
             if (control && e.Key == Key.A)
             {
-                ConversionPage.SelectAllText();
+                view.SelectAllText();
                 e.Handled = true;
                 RefreshStatus();
             }
@@ -600,6 +643,9 @@ public partial class CaptureResultWindow : Window
                 break;
             case "html":
                 CopyConversion(asHtml: true);
+                break;
+            case "document":
+                CopyDocument();
                 break;
             default:
                 // 有选区就复制选中的，没有就整份（与上游识别窗的复制语义一致）

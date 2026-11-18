@@ -732,6 +732,30 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
   否则紧贴表格的段落会变成表头；③ `FlowDocumentScrollViewer` 没有 `ScrollToHome()`，
   换内容后要靠内部 `ScrollViewer` 再滚——换页时视图本来就是新的，这里不滚。
 
+### 10.6 文档（P4-e）
+
+上游「文档识别」是云端返回的结构化文档（富文本 + 图片 + 公式），导出走 `QTextDocument` 的 docx / PDF 写手
+（`screenshotdocumentexport.cpp` / `screenshotrecognitionfileexport.cpp` 的 Document 一族）。本地没有云端模型，
+**同一份版面派生块既当预览、也当可导出的文档**（与 §10.5 同源）：
+
+- **预览**：结果窗「文档」页签复用 `CaptureConversionView`（标题按级别给字号、列表有记号、表格带表头），
+  **可划选**——`FlowDocumentScrollViewer` 的选中文本就是上游「选中一段复制一段」的语义。
+- **导出五种格式**（`Features/CapturePro/DocumentExport.cs`，按扩展名定格式，保存对话框可换类型）：
+  - `docx`：最小 WordprocessingML 六 part（`[Content_Types].xml` / `_rels/.rels` / `word/document.xml` /
+    `word/styles.xml` / `word/numbering.xml` / `word/_rels/document.xml.rels`），`Heading1–3` 带大纲级别与字号、
+    `ListParagraph` + `numbering`（bullet / decimal）、表格六向边框 + 加粗表头。
+  - `pdf`：**平台桥**——系统自带 Edge / Chrome 的 headless `--print-to-pdf`（`--no-pdf-header-footer`、独立
+    `--user-data-dir`），落盘后校验 `%PDF` 文件头；**找不到浏览器就明确报错**（提示改导 Word / HTML），不假装成功。
+  - `md` / `html` / `tex`：Markdown 直接用块模型的管道表格源码；HTML 是独立页（字符集 / 视口 / 正文样式 / 表头底色）；
+    LaTeX 是 `article` + `ctex` + `booktabs`（`section` / `itemize` / `enumerate` / `tabular`，特殊字符全转义）。
+- **复制**：选了复制选中那段（包一层 `<p>`、换行转 `<br>`），没选复制整份；两份都同时写 `text/html` + 纯文本，
+  粘到 Word / 邮件里保留标题与表格。
+- **打开文档**：写一份临时 docx 到 `%TEMP%\ltools-capture-doc\` 交默认程序（照上游 `openTemporaryDocument`），
+  不在数据根留垃圾。
+- 三个坑：① WordprocessingML 属性必须 `w:val`（写成 `w:w` 会让 Word 认不出样式）、`ind` 是 `left/hanging`、
+  `rFonts` 用 `eastAsia`；② Chromium headless 的**父进程会先退出、PDF 稍后才落盘**，`WaitForExit` 之后要轮询文件
+  （最多 20 秒）；③ 两个输出管道要异步排空，同步 `ReadToEnd` 会跟 `WaitForExit` 互等。
+
 ## 11. 采集历史（P2-2 / P4）
 
 截图 / 识别 / 录屏的落点：数据根 `captures/`（`catalog.json` + `assets/<id>.png` + `thumbnails/<id>.png`
@@ -1158,6 +1182,7 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
 | **P4-b** ✅ | ④ | 表格编辑器（照 `screenshottabledocument` + `screenshottableeditor` + `screenshotrecognitionfileexport`）：槽位 / 锚点模型（256 边 · 16384 格上限）、合并 · 拆分 · 清空 · 选区扩展、粘贴四个出口；自绘网格单击进编辑 / 拖动矩形选区 / Ctrl 并集 / AnyKeyPressed / 方向键 / F2 / Esc / 右键菜单；撤销重做 50 步 + `canUndo/canRedo/canMerge/canSplit/canReset` 可用性；HTML + 文本双格式复制、xlsx 导出（六 part / `inlineStr` / 文本格式 / `mergeCells` / 列宽）、打开表格 = 临时 xlsx 用默认程序打开 |
 | **P4-c** ✅ | ④ | 二维码标记与气泡（照 `screenshotqrcontroller.cpp`）：选区落定 220ms 防抖扫描、识别图降到 1080p 内、贪心白掩码逐枚解码；24×24 圆点标记摆在码中心（只在 `Select` 工具、码四角都在选区里时显示）；悬停 150ms / 离开 250ms 的气泡（圆角卡 + 合成箭头 + blur 18 阴影）、文本区 24 内边距 / 总宽 ≤344 / 高 48–240 且压到可用高 −140、右优先翻左再夹进可用区；复制 / 打开链接后结束截图、Esc 只关气泡并把焦点还给标记；工具条「显示二维码」开关 + `AutoRecognizeQrCode` 设置项 |
 | **P4-d** ✅ | ④ | 图片转 Markdown / HTML（照 `markdownRequested` / `htmlRequested` + `screenshotimageconversionview` + `screenshotimageconversionclipboard`，云端部分改本地版面派生）：块模型 Heading 1–3 / Paragraph / Bullet / Ordered / Table；标题按行高比 ≥1.9 · 1.45 · 1.2、段落按纵向间距 ≤0.75 中位行高且中日韩不补空格、列表认 `•·-*–` 与 `1. 1、1)`、表格剔去 `TableArea` 内行并裁首尾单格行；Markdown 管道表格 + 单元格转义、HTML `h1–h3`/`p`/`ul`/`ol`/`table+thead+th+tbody+td` + 文本转义；预览用 `FlowDocumentScrollViewer` 可划选，**选了复制选中段、没选复制整份源码**，HTML 另写 `text/html` |
+| **P4-e** ✅ | ④ | 文档识别与导出（照 `documentRequested` / `screenshotdocumentexport` / `screenshotrecognitionfileexport` 的 Document 一族）：结果窗「文档」页签（同一份版面块渲染、可划选）+ 五种导出 `docx`（六 part WordprocessingML + 三级标题 + numbering + 表格）/ `pdf`（系统 Edge·Chrome headless `--print-to-pdf`，无引擎明确报错）/ `md` / `html`（独立页）/ `tex`（`ctex` + `booktabs`）+「打开文档」= 写临时 docx 交默认程序 + 复制富文本（`text/html` + 纯文本，选了复制选中段） |
 
 ## 16. 验收
 
@@ -2707,3 +2732,18 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   「Markdown / HTML 源码与转义」两组）；`capture-overlay-smoke` **1000 条**（Markdown 页源码含管道表格、
   状态行、全选后复制选中段；HTML 页未选时复制整份源码且带 `text/html`；落图 `out/result-markdown.png` /
   `out/result-html.png`）。
+- **文档识别与导出（P4-e，2026-11-18）**：上游云端文档模型 + `QTextDocument` 写手，本地改成
+  「版面派生块 → 五种格式导出」。新文件两个：`Features/CapturePro/DocumentExport.cs`
+  （`DocumentExportKind` / `Filter` / `KindOf` / `NormalizePath` / `Write` / `StandaloneHtml` / `Latex` /
+  `Docx` / `PdfEngine` / `WritePdf`）、`Views/CapturePro/CaptureResultWindow.Document.cs`
+  （`CopyDocument` / `DocExport` / `ExportDocument` / `PrepareDocumentFile` / `DocOpen`）。
+  改到的：`ConversionDocument`（`PlainText`）、`CaptureConversionView`（`Render(document, emptyHint)`）、
+  `CaptureResultWindow.xaml(.cs)`（「文档」页签、`DocumentPage` / `DocumentView` / `DocExportBtn` /
+  `DocOpenBtn` / `DocInfo`、复制按钮文案与 Ctrl+A/C、状态行文档分支）。
+  三个坑：① WordprocessingML 属性必须写 `w:val`（`Element(xml,"pStyle",("w",…))` 会出 `w:w="Heading1"`，
+  Word 里样式全丢），`ind` 是 `left/hanging`、`rFonts` 用 `eastAsia`；② Chromium headless `--print-to-pdf` 的
+  父进程会先退出、PDF 稍后才落盘 → `WaitForExit` 之后必须轮询文件（最多 20 秒）；③ 两个输出管道要
+  `ReadToEndAsync` 排空，同步 `ReadToEnd` 会跟 `WaitForExit` 互等。PDF 依赖系统 Edge / Chrome，见 §5。
+  回归：`--selftest` `capturePro` **74 用例 2865 断言**（新增「转换：文档导出（纯文本 / LaTeX / HTML / docx）」）；
+  `capture-overlay-smoke` **1022 条**（文档页与状态行、全选 / 复制选中段、真导出 docx·md·html·tex、
+  PDF 真出 `%PDF`（26681 字节）、临时 docx 结构有效；落图 `out/result-document.png`）。

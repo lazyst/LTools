@@ -73,6 +73,32 @@ internal sealed class ConversionDocument
 
     public bool IsEmpty => Blocks.Count == 0;
 
+    /// <summary>纯文本形式（复制 / 导出兜底：段落之间空一行，表格按制表符分行）。</summary>
+    public string PlainText
+    {
+        get
+        {
+            var sb = new StringBuilder();
+            foreach (ConversionBlock block in Blocks)
+            {
+                if (sb.Length > 0) sb.Append("\r\n");
+
+                if (block.Kind == ConversionKind.Table)
+                {
+                    foreach (string[] row in block.Rows)
+                        sb.Append(string.Join("\t", row)).Append("\r\n");
+                    continue;
+                }
+
+                if (block.Kind is ConversionKind.Bullet or ConversionKind.Ordered)
+                    sb.Append("• ").Append(block.Text).Append("\r\n");
+                else sb.Append(block.Text).Append("\r\n");
+            }
+
+            return sb.ToString().TrimEnd('\r', '\n');
+        }
+    }
+
     /// <summary>正文字符数（不含 Markdown / HTML 语法；状态行报它）。</summary>
     public int Length
     {
