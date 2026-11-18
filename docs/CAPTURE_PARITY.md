@@ -55,13 +55,13 @@
 
 | 上游 | 位置 | LTools 现状 | 批次 | 状态 |
 | --- | --- | --- | --- | --- |
-| X / Y / W / H 数值框 + px 单位 | `screenshotselectiontoolbarwidgets.cpp` | 只有角上尺寸提示 | P3 | ❌ |
-| 比例锁定 + 比例预设（16:9 等） | 同上 `Lock selection aspect ratio` | 无 | P3 | ❌ |
-| 圆角半径 | 同上 `Corner radius` | 无 | P3 | ❌ |
-| 阴影像素宽（无边框时） / 边框宽 | 同上 `Shadow width` / `Border width` | 无（导出永远直角） | P3 | ❌ |
-| 选区预设 / 上次选区 | 同上 `Selection presets` `Previous selection` | 历史窗口有上一张，不是选区几何 | P3 | 🟡 |
-| 智能选区（UI 元素识别 + 过渡动画） | `core/screenshotintelligentselectionmodel.cpp`、`screenshotsmartselectiontransition.cpp` | `Views/ScreenSnapTargets` 只做吸附线 | P3 | 🟡 |
-| 选区阴影渲染 | `overlay/screenshotselectionshadowrenderer.cpp` | 无 | P3 | ❌ |
+| X / Y / W / H 数值框 + px 单位 | `screenshotselectiontoolbarwidgets.cpp` | `SelBar` 上的 X · Y · 宽 × 高（物理像素，滚轮 ±1 px，单击开参数框） | P3-b | ✅ |
+| 比例锁定 + 比例预设（16:9 等） | 同上 `Lock selection aspect ratio` | 信息条上的锁 + 比例下拉（1:1 / 3:2 / 4:3 / 16:9 / 2:3 / 3:4 / 9:16 + 自由）；锁着改宽 / 高按比例推、左上角锚定 | P3-c | ✅ |
+| 圆角半径 | 同上 `Corner radius` | `SelectionStyle.CornerRadius`（DIP，上限 256 px），预览与导出都吃 | P3-a/b | ✅ |
+| 阴影像素宽（无边框时） / 边框宽 | 同上 `Shadow width` / `Border width` | `SelectionStyle` 阴影（峰值 36% + `(1-d/w)^4`）/ 边框（外扩描边），上限 64 px；两份宽与颜色各自保留 | P3-a/b/c | ✅ |
+| 选区预设 / 上次选区 | 同上 `Selection presets` `Previous selection` | 比例下拉里的「上次选区」+ 具名快速集（参数框里增删，落 `settings.json`） | P3-c | ✅ |
+| 智能选区（UI 元素识别 + 过渡动画） | `core/screenshotintelligentselectionmodel.cpp`、`screenshotsmartselectiontransition.cpp` | `Views/ScreenSnapTargets` 只做吸附线 | P3-d | 🟡 |
+| 选区阴影渲染 | `overlay/screenshotselectionshadowrenderer.cpp` | `MarkRenderer` + `SelectionStyle`（预览与导出同一条路径） | P3-a | ✅ |
 | 悬停窗口 / 控件高亮与切换 | `overlay/screenshotoverlaycanvaspresenter.cpp` | `CaptureOverlayWindow.Hover.cs` | — | ✅ |
 
 ### 2.3 识别与转换（P4）
@@ -152,7 +152,10 @@
 | P2-e1 | 箭头族参数：箭头类型（直线 / 曲线 / 折线）+ 起止端点 14 种 + 箭头比例 0.5–3 + 杆型（等宽 / 渐宽）+ 外描边（宽 0–72 + 色）+ 几何照 `arrow/{data,render_core,shaft}.rs`（Catmull-Rom 曲线、拐角圆角、渐宽 ribbon、外描边垫底） | ✅ | 构建 0 警；`--selftest` 219 用例 6866 断言全绿（`capturePro` 51 用例 2040 断言，新增「样式：箭头族」一组）；`capture-overlay-smoke` 749 条全绿（真参数行 11 格 / 三类型胶囊 / 杆型胶囊 / 比例 1.0× / 外描边 0 / 起终点默认值；逐像素：直线杆、终点三角、曲线偏离弦、折线三段、14 种端点、双端箭头、外描边青圈 + 墨迹覆盖、渐宽杆变粗） |
 | P2-e2 | 选中标注后切它自己的样式族 + 显示这一条的值 + 参数实时写回（形状 / 箭头 / 线 / 文字 / 序号 / 放大镜 / 测距 / 测角 / 括号 / 滤镜…，且只把变过的字段合并进创建样式） | ✅ | 构建 0 警；`--selftest` 220 用例 7042 断言全绿（`capturePro` 52 用例 2216 断言，新增「样式：选中标注后切族并写回」46 条：18 种标注 → 族 / 工具反向映射、捕获 → 写回逐字段等价、改一项不动几何与种子、`CopyChangedTo` 只搬变过字段且不收序号计数器）；`capture-overlay-smoke` 775 条全绿（真窗口：选中旧箭头时参数行显示它自己的线宽 7 而创建样式仍是 4、工具按钮停在「选择」、改色写回标注且创建样式只合并颜色、滚轮改线宽两个都变、取消选中参数行收起、画笔下选形状切形状族且工具不动、测距「实测值」按那一条自己的系数 2 显示） |
 | P2-e3 | 多选标注（Shift+点选 / Shift+拖框选）+ 参数行「多个值」混合显示（`Mixed`）+ 整组拖动 / 批量删除 | ✅ | 构建 0 警；`--selftest` 221 用例 7102 断言全绿（`capturePro` 53 用例 2276 断言，新增「多选：选区切族 / 框选命中」一组：优先顺序挑族、显示值取主选中项 / 族内第一个、水印与空选区不归族、`InFamily` 只认同族、框选相交即命中（含零高度箭头）、加选不重复、抖动不算框、`AllowsShiftToggle` 逐工具表）；`capture-overlay-smoke` 809 条全绿（真窗口：三条线宽 3/5/7 的箭头整组选中 → 线宽显示「多个值」而颜色仍显示选中色块、只选一条回落到它自己的 5、滚轮改一次三条一起变 8 且创建样式同步、一次撤销三条各回原值且重新显示「多个值」、整组拖动三条一起挪一次撤销全回来、框选三条命中并提交选中、空框加选不清空、取消框选不动选区、Esc 清空多选、批量删三条一次撤销全回来；顺带修好自动打码「填充区域」按钮没被加进参数行） |
-| P3 | 选区：XYWH / 比例 / 圆角 / 阴影 / 智能选区 / 预设 | ❌ | 待填 |
+| P3-a | 选区外观模型：`Features/CapturePro/SelectionStyle.cs`（圆角上限 256 / 阴影与边框宽上限 64 / 阴影 `PeakAlphaScale = 0.36` + `(1-d/w)^4` 衰减 / 边框为外扩描边）+ `MarkRenderer` 与导出按「内容 + 两侧效果宽」出图（照 `screenshotselectionshadowrenderer.cpp`） | ✅ | 构建 0 警；`--selftest` 全绿（`capturePro` 新增「选区外观」一组：圆角切角 / 阴影四周渐隐 / 边框外扩不吃内容 / 导出尺寸 = 内容 + 2×效果宽）；`capture-overlay-smoke` 逐像素对账 |
+| P3-b | 选区信息条（照 `screenshotselectiontoolbarwidget.cpp`）：`SelBar` 高 26 · 圆角 6 · 左右 8 / 上下 2；X · Y · 锁 · 宽 × 高 · 比例下拉 · 圆角 · 效果宽；数字全是**屏幕物理像素**，滚轮 ±1 px（`adjustFromToolbar` 口径），外观长度存 DIP、显示按 `_doc.Scale` 换算；摆位 `SelectionBarPlacement`（上方优先，放不下依次换右 / 左 / 下） | ✅ | 构建 0 警；`--selftest` 全绿（「选区信息条」一组：摆位四向 / 滚轮改值 / 锁比例联动 / 物理↔DIP 往返）；`capture-overlay-smoke` 864 条全绿 |
+| P3-c | 选区参数框 + 快速集：`Views/CapturePro/SelectionParamsWindow`（X / Y / 宽 / 高 + 比例锁 + 圆角 + 阴影 \| 边框 + 效果宽 / 色板 + 快速集增删）、`SelectionStore` 落 `settings.json`、比例下拉里的「上次选区 / 具名快速集 / 8 个比例」 | ✅ | 构建 0 警；`--selftest` 227 用例 7247 断言全绿；`capture-overlay-smoke` 864 条全绿（信息条数字 / 摆位 / 滚轮 ±1 / 圆角与效果宽物理像素 / 锁 / 比例预设 / 下拉项高 28 / 参数框字段与联动 / 色板 / `ReadParams`）；真机 `selection-bar-e2e` 全绿（真鼠标框选 → 真滚轮 ±1 → 真点击锁（图标转 #1677FF、锁着改宽按比例推、左上角不动）→ 真点击下拉「1:1」（选区变正方形）→ 真键盘 Esc 退出） |
+| P3 | 选区：XYWH / 比例 / 圆角 / 阴影 / 智能选区 / 预设 | 🟡 | P3-a/b/c 已落地；**剩 P3-d 智能选区**（`window_sub_element` / `window` / `disabled` 三档 + 吸附容差 0.4 + 过渡动画 Soft 101ms / Fast 67ms） |
 | P4 | 识别与转换：OCR 编辑器 / 原文预览 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档 / 翻译 | ❌ | 待填 |
 | P5 | 贴图：管理页 / 取色板 / 文字样式 / 点击穿透 / 抖动隐藏 / 批量保存 / 拖拽导出 / 历史恢复 | ❌ | 待填 |
 | P6 | 图片编辑窗 / 拼图 / 切图 | ❌ | 待填 |

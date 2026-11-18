@@ -136,22 +136,27 @@ internal static class SelectionSet
     /// 合起来的几何：加区逐个并、减区逐个挖。没有加区（或全被挖空）时返回 null ——
     /// 调用方拿它当「没有可导出的内容」，别导出一张全透明的图。
     /// </summary>
-    public static Geometry? Combine(IReadOnlyList<SelectionRegion> regions)
+    /// <param name="radius">
+    /// 矩形块的圆角半径（与 <paramref name="regions"/> 同一坐标系）。点列块不受影响——
+    /// 上游对自定义路径也是 <c>cornerRadius = 0</c>。
+    /// </param>
+    public static Geometry? Combine(IReadOnlyList<SelectionRegion> regions, double radius = 0)
     {
         Geometry? geometry = null;
         for (int i = 0; i < regions.Count; i++)
         {
             var region = regions[i];
+            Geometry shape = Shape(region, radius);
             if (region.Mode == RegionMode.Subtract)
             {
                 if (geometry == null) continue;                  // 还没有加区，减什么都没意义
-                geometry = new CombinedGeometry(GeometryCombineMode.Exclude, geometry, region.Geometry());
+                geometry = new CombinedGeometry(GeometryCombineMode.Exclude, geometry, shape);
                 continue;
             }
 
             geometry = geometry == null
-                ? region.Geometry()
-                : new CombinedGeometry(GeometryCombineMode.Union, geometry, region.Geometry());
+                ? shape
+                : new CombinedGeometry(GeometryCombineMode.Union, geometry, shape);
         }
 
         if (geometry == null) return null;
@@ -159,9 +164,21 @@ internal static class SelectionSet
         return geometry.IsEmpty() ? null : geometry;
     }
 
-    /// <summary>点是不是落在选区里（多块 / 挖洞都算对）。</summary>
-    public static bool Contains(IReadOnlyList<SelectionRegion> regions, Point p) =>
-        Combine(regions) is { } geometry && geometry.FillContains(p);
+    private static Geometry Shape(SelectionRegion region, double radius)
+    {
+        if (radius <= 0 || region.IsPolygon) return region.Geometry();
+
+        double r = Math.Clamp(radius, 0, Math.Max(0, Math.Min(region.Box.Width, region.Box.Height) / 2));
+        if (r <= 0) return region.Geometry();
+
+        var rounded = new RectangleGeometry(region.Box, r, r);
+        rounded.Freeze();
+        return rounded;
+    }
+
+    /// <summary>点是不是落在选区里（多块 / 挖洞 / 圆角都算对）。</summary>
+    public static bool Contains(IReadOnlyList<SelectionRegion> regions, Point p, double radius = 0) =>
+        Combine(regions, radius) is { } geometry && geometry.FillContains(p);
 
     /// <summary>
     /// 在**选区外**（压暗的阴影上）按下去时，是「拖动整块选区」还是「重新框选」。

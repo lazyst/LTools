@@ -81,6 +81,9 @@ public sealed class UiStateFile
 
     /// <summary>截图 Pro 的样式记忆：每个工具家族一套（见 <c>Features/CapturePro/ToolStyleSet</c>）。</summary>
     public CaptureStylesFile? CaptureStyles { get; set; }
+
+    /// <summary>截图 Pro 的选区设置：圆角 / 阴影 / 边框 / 比例锁 / 快速集（见 <c>Features/CapturePro/SelectionStore</c>）。</summary>
+    public CaptureSelectionFile? CaptureSelection { get; set; }
 }
 
 /// <summary><c>configs/panel.json</c>：超级面板（开关 / 长按阈值 / 面板结构）。</summary>

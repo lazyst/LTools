@@ -22,7 +22,7 @@ public partial class CaptureOverlayWindow
         Rect sel = _scrollRect;
 
         ShapeBar.Visibility = Visibility.Collapsed;
-        InfoBox.Visibility = Visibility.Collapsed;
+        HideSelectionBar();
         Toolbar.Visibility = Visibility.Collapsed;
         TextEntry.Visibility = Visibility.Collapsed;
         HideDetect();

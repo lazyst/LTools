@@ -97,6 +97,7 @@ public partial class CaptureOverlayWindow : Window
         _doc = new CaptureDocument(shot, new Int32Rect(area.Left, area.Top, area.Width, area.Height), _sx);
         Surface.Document = _doc;
         EditOnly = editOnly;
+        InitSelectionStyle();
 
         // 按目标显示器的 DPI 把物理矩形换算成 DIP：窗口正好盖住它（Loaded 里再按物理像素钉一次）
         Left = area.Left / _sx;
@@ -170,7 +171,17 @@ public partial class CaptureOverlayWindow : Window
 
         if (e.Key == Key.Escape)
         {
-            StepBack();
+            // 比例下拉开着：Esc 只关下拉，别顺手把选区 / 覆盖层也退掉
+            if (IsAspectMenuOpen)
+            {
+                CloseAspectMenu();
+                e.Handled = true;
+                return;
+            }
+
+            // 上游 Esc = cancel_screenshot：直接退出这次截图。**不是**「退一步」——
+            // 右键才是逐级往回收（上游 handleRightClick：预选态退出 / 有选区时回 Move）。
+            Cancel();
             e.Handled = true;
             return;
         }
@@ -367,6 +378,17 @@ public partial class CaptureOverlayWindow : Window
         // 这里必须**不**置 Handled：置了隧道路由就断在窗口这一层，工具栏收不到这次右键。
         if (IsOnToolbar(e.OriginalSource as DependencyObject)) return;
 
+        // 信息条上的右键不取消选区（字段只认左键 / 滚轮）
+        if (IsOnSelectionBar(e.OriginalSource as DependencyObject)) return;
+
+        // 比例下拉里的右键：只收起菜单，别顺手退选区
+        if (IsOnAspectMenu(e.OriginalSource as DependencyObject))
+        {
+            CloseAspectMenu();
+            e.Handled = true;
+            return;
+        }
+
         // 长截图模式：右键（面板上除外）= 放弃这次长截图，回到普通框选
         if (_scrollMode)
         {
@@ -380,7 +402,7 @@ public partial class CaptureOverlayWindow : Window
 
         // 打字中右键 = 放弃这段文字；其余逐级往回退（右键在有选区时直接取消这次框选）
         if (_textEditing) CancelText();
-        else StepBack(preferSelection: true);
+        else StepBack();
     }
 
     /// <summary>先按当前选区重绘成品，再按出口复制 / 贴图 / 识别 / 另存为；任一步失败都留在覆盖层里继续改。</summary>
@@ -401,6 +423,8 @@ public partial class CaptureOverlayWindow : Window
 
         SyncArea();
         if (!_doc.HasArea) return;
+
+        RememberSelection();          // 记「上次选区」：这次提交的几何 + 外观
 
         // 录屏：这次不导出成品（更不记采集历史），只要区域的物理像素矩形；
         // 覆盖层关掉、自己的窗口还原之后由 CaptureSession 去开录。

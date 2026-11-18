@@ -1034,6 +1034,9 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
 | **P0 补** ✅ | — | 工具栏堆叠组与收起工具（一格多工具 / 右键收起 · 拆出 · 并到左边 · 恢复默认，布局落 `ui.json`） |
 | **P1 补** ✅ | ① | 自由 / 折线选区 + 多区域选区（`Shift` 拖加区 / `Alt` 拖减区，导出按合起来的几何裁） |
 | **P1-b** ✅ | ①③ | 滤镜加「智能擦除」（上游 `smart_erase` 的仿射曲面 → 周期纹理 → 多尺度块匹配三级像素重建；大洞降采样）+ 矩形 / 画笔橡皮改成「恢复原图」块（上游 `RestoreBackground`：把像素还原成截图原样，不可点中、只能撤销） |
+| **P3-a** ✅ | ①④ | 选区外观：圆角 0–256、阴影像素宽 / 边框宽 0–64（阴影像素曲线照 `screenshotshadowrenderer`：峰值 36% + `(1-d/w)^4` 衰减、边框是外扩描边），预览与导出共用一条渲染路径，输出尺寸 = 内容 + 两侧效果宽 |
+| **P3-b** ✅ | ⑤ | 选区信息条（照 `ScreenshotSelectionToolbarWidget`）：X · Y · 锁 · 宽 × 高 · 比例 · 圆角 · 效果宽；数值是屏幕物理像素、滚轮 ±1 px；块大小 26 / 圆角 6 / 内边距 8×2 / 图标 18 / 项高 26 |
+| **P3-c** ✅ | ⑤ | 选区参数框（`SelectionParamsWindow`：XYWH + 比例锁 + 圆角 + 阴影 \| 边框 + 效果宽 / 色板 + 快速集增删，列宽 218、总宽 452）+ 比例下拉里的「上次选区 / 具名快速集 / 8 个比例（1:1 … 9:16）」 |
 
 ## 16. 验收
 
@@ -1651,6 +1654,32 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
     就重新 `StartLiveLayer`。
 
 ## 18. 实施记录
+
+- **选区信息条 / 参数框 / 快速集（P3-a · b · c，2026-11-18）**：照上游
+  `screenshotselectiontoolbarwidget(s).cpp` + `screenshotselectionresizemodalcontent.cpp` 补上「框完之后那一条」。
+  ① **度量照抄**：信息条高 26 / 圆角 6 / 左右内边距 8 / 上下 2 / 图标 18 / 图标与文字间距 4 / 锁左右边距 4 /
+  分线 1×12 / 圆角与效果之间 8；面板底色 rgba(0,0,0,115)、悬停胶囊 rgba(22,119,255,107)、主色 `#1677FF`；
+  参数框总宽 452、两列各 218、锁按钮 32；比例下拉宽 `clamp(最宽+40, 112, 320)`、项高 28、文字 14。
+  ② **两套单位**：信息条 / 参数框 / 快速集里的数字都是**屏幕物理像素**（`SelectionParams` 全是像素），
+  只有「外观长度」在窗口里存 DIP（`SelectionStyle.CornerRadius` / `EffectWidth`），显示与导出按
+  `_doc.Scale` 换算——所以滚轮 ±1 一定正好是数字 ±1。
+  ③ **选区宽度含两端像素**（`W = x2 − x1 + 1`，与 `ToImage` 互逆），因此「物理 → DIP」必须走
+  `DipSelectionFrom`（`(W − 1) / scale`）。用 `ToDipRect` 的 `W / scale` 会让每次改值都多算 1 px
+  （真机 e2e 抓到的：滚一格 601 → 602 → 601 变成 601 → 602 → 603）。
+  ④ **比例下拉不能是 `Popup`**：全屏 NOACTIVATE 覆盖层上，Popup 是独立 HWND（实测 ex-style `0x08080088`），
+  `WM_LBUTTONDOWN` 进了 Popup、`WM_LBUTTONUP` 却被覆盖层收走，条目的 `MouseLeftButtonUp` 永远不触发——
+  表现就是「点一下只把菜单关掉、什么都不选」（真机 e2e 逐条复现：WindowFromPoint 命中 popup、popup 收得到
+  down、up 落在覆盖层）。改成**画在覆盖层自己的 Canvas 里**（`SelAspectMenu` 现在是 `Border` +
+  `Panel.ZIndex=40`，照上游那个窗口内下拉），点条目 / 点外面 / Esc 全部按普通 WPF 路由走。
+  ⑤ **Esc 的口径对齐上游**：上游 `cancel_screenshot` 是**直接退出这次截图**（可配确认），「逐级往回退」是
+  右键的事（`handleRightClick`）。所以 `Window_KeyDown` 的 Esc 改成 `Cancel()`，`StepBack()` 只服务右键
+  （并顺手删掉了那个只为 Esc 存在的 `preferSelection` 参数）。
+  ⑥ **验收**：`--selftest` 227 用例 7247 断言；`capture-overlay-smoke` 864 条（信息条数字 / 摆位 / 滚轮 ±1 /
+  圆角与效果宽物理像素 / 锁 / 比例预设 / 下拉项高 28 / 参数框字段与联动 / 色板 / `ReadParams`）；
+  真机 `selection-bar-e2e`（真鼠标框选 → 真滚轮 ±1 → 真点击锁 → 真点击下拉 1:1 → 真键盘 Esc）全绿。
+  ⑦ 仓库外的 `esc-rightclick-e2e` 那支探针已失效：它靠反射调 `FeatureRunner` / `PickRegion` 的旧签名
+  （`TargetParameterCountException`），`common.capture` 起不来覆盖层，与产品行为无关，别再拿它当门禁；
+  Esc 退出与下一次右键的路径由 `capture-exit-e2e`（真机，含「抬起不落到桌面窗口」）覆盖。
 
 - **实时贴图的「最小化」两处修正（2026-11-17）**：用户报 ① 源窗口最小化后贴图里什么都没有、直接看到
   贴图后面的窗口；② 最小化再打开，实时贴图就自动关闭了。

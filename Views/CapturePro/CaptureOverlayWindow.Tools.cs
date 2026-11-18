@@ -237,24 +237,23 @@ public partial class CaptureOverlayWindow
     private Mark.Watermark WatermarkMark => new(_style.WatermarkSpecOf());
 
     /// <summary>
-    /// Esc / 右键：一级一级往回退（折线 → 手势 → 选中的标注 → 工具 → **选区** → 退出）。
+    /// 右键：一级一级往回退（折线 → 手势 → 选中的标注 → **选区** → 工具 → 退出）。
     /// 「有选区」单独占一档：像别的截图工具一样，框完右键先把这次框选取消掉，
     /// 覆盖层留着让用户重新框；没选区时再按一次才关掉覆盖层。
     /// </summary>
-    /// <param name="preferSelection">
-    /// 右键传 true：**有选区就直接取消这次框选**（截图工具里右键的惯常含义：Snipaste / 微信截图都这样），
-    /// 不必先退回选择工具。Esc 不传，仍先退回选择工具（提示里写的是「Esc 逐级退出」）。
-    /// </param>
-    private void StepBack(bool preferSelection = false)
+    /// <remarks>
+    /// **Esc 不走这里**：上游（snow-shot）Esc = <c>cancel_screenshot</c>，直接退出这次截图；
+    /// 逐级收是右键的事（上游 <c>handleRightClick</c>）。
+    /// </remarks>
+    private void StepBack()
     {
         if (BrowsingHistory) ExitHistory();
         else if (_selPolyActive) { CancelSelectionPolyline(); UpdateChrome(); }
         else if (_polyActive) CancelPolyline();
         else if (_drag != DragMode.None) CancelDrag();
         else if (_selectedIndex >= 0) ClearMarkSelection();
-        else if (preferSelection && IsValid(_sel)) ClearSelection();
-        else if (_tool != CaptureTool.Select) SetTool(CaptureTool.Select);
         else if (IsValid(_sel)) ClearSelection();
+        else if (_tool != CaptureTool.Select) SetTool(CaptureTool.Select);
         else Cancel();
     }
 

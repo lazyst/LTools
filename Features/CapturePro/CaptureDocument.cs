@@ -95,6 +95,12 @@ internal sealed class CaptureDocument
     /// <summary>是不是需要按形状裁（多块 / 自由 / 折线 / 挖洞）。</summary>
     public bool HasRegions => Regions is { Length: > 0 };
 
+    /// <summary>
+    /// 选区外观（圆角 / 阴影 / 边框）。预览与导出都读这一份，**没有第二份状态**；
+    /// 直角且没有效果时导出走「不合成」的快路径（尺寸与以前完全一致）。
+    /// </summary>
+    public SelectionStyle Style { get; set; } = SelectionStyle.None;
+
     public bool HasArea => Area.Width >= 2 && Area.Height >= 2;
 
     /// <summary>标注列表，顺序即绘制顺序（后画的在上面）。</summary>
@@ -225,11 +231,22 @@ internal sealed class CaptureDocument
     /// 按选区导出成品：从底图 + 标注**重绘**，不是截屏再裁。
     /// 只在 UI 线程调用（<see cref="RenderTargetBitmap"/> 要求）。
     /// </summary>
+    /// <remarks>
+    /// 圆角 / 阴影 / 边框走 <see cref="RenderStyled"/>：输出尺寸 = 内容 + 两侧效果宽，
+    /// 内容按形状裁（圆角外留透明），效果画在内容外面（照上游 <c>ScreenshotResultCompositor</c>）。
+    /// 直角且没有效果时 <see cref="RenderPlain"/> 保持原尺寸（不多一圈透明）。
+    /// </remarks>
     public BitmapSource Render()
     {
         var area = Area;
         if (!HasArea) throw new InvalidOperationException("还没有选区，不能导出");
 
+        var style = Style.Clamp();
+        return style.IsPlain ? RenderPlain(area) : RenderStyled(area, style);
+    }
+
+    private BitmapSource RenderPlain(Int32Rect area)
+    {
         // 选区相对这块屏的左上角（物理像素）；历史翻页时底图还整个偏了 Origin，一起抵掉
         double dx = area.X - Monitor.X;
         double dy = area.Y - Monitor.Y;
@@ -237,27 +254,115 @@ internal sealed class CaptureDocument
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
         {
-            dc.PushTransform(new ScaleTransform(Scale, Scale));               // DIP → 物理像素
-            dc.PushTransform(new TranslateTransform(-dx / Scale - Origin.X, -dy / Scale - Origin.Y)); // 平移到选区左上角
+            PushContent(dc, dx, dy);
 
             // 多区域 / 自由 / 折线选区：按合起来的几何裁（形状外留透明）。几何写的是「相对底图左上角的 DIP」，
             // 跟上面两层变换同一个坐标系；一整块矩形不用裁（位图本身就是它的尺寸）。
             Geometry? clip = RegionClip();
-            if (clip != null) dc.PushClip(clip);
+            if (clip != null)
+            {
+                dc.PushClip(clip);
+                DrawContent(dc);
+                dc.Pop();
+            }
+            else
+            {
+                DrawContent(dc);
+            }
 
-            dc.DrawImage(Base, Canvas);
-            MarkRenderer.DrawAll(dc, _marks, Base, Canvas, Scale);
-
-            if (clip != null) dc.Pop();
             dc.Pop();
             dc.Pop();
         }
 
-        var bitmap = new RenderTargetBitmap(Math.Max(1, area.Width), Math.Max(1, area.Height),
-            96, 96, PixelFormats.Pbgra32);
+        return Finish(visual, Math.Max(1, area.Width), Math.Max(1, area.Height));
+    }
+
+    /// <summary>
+    /// 带圆角 / 阴影 / 边框的导出（照上游 <c>ScreenshotResultCompositor::compose</c>）：
+    /// 内容画在 <c>效果宽</c> 的内边距里，外面再加一圈阴影或外扩边框。
+    /// </summary>
+    private BitmapSource RenderStyled(Int32Rect area, SelectionStyle style)
+    {
+        double s = Scale > 0 ? Scale : 1;
+        int effect = style.EffectPixels(s);
+        int radius = style.RadiusPixels(s);
+        double dx = area.X - Monitor.X;
+        double dy = area.Y - Monitor.Y;
+
+        var content = new Rect(effect, effect, Math.Max(1, area.Width), Math.Max(1, area.Height));
+        Geometry path = ContentPathPixels(content, radius);
+
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            // 内容：DIP 变换 + 形状裁剪（圆角 / 多块 / 挖洞都在 path 里）
+            dc.PushClip(path);
+            PushContent(dc, dx - effect, dy - effect);
+            DrawContent(dc);
+            dc.Pop();
+            dc.Pop();
+            dc.Pop();
+
+            // 效果画在内容外面：阴影（默认）或外扩边框
+            if (style.BorderType == SelectionBorderType.Border)
+                SelectionEffects.DrawBorder(dc, path, content, radius, effect, style.BorderColor);
+            else
+                SelectionEffects.DrawShadow(dc, path, content, radius, effect, style.ShadowColor);
+        }
+
+        return Finish(visual, Math.Max(1, area.Width + effect * 2), Math.Max(1, area.Height + effect * 2));
+    }
+
+    /// <summary>推入「DIP 内容」的两层变换（缩放 + 平移到选区左上角）。</summary>
+    private void PushContent(DrawingContext dc, double dx, double dy)
+    {
+        dc.PushTransform(new ScaleTransform(Scale, Scale));                                   // DIP → 物理像素
+        dc.PushTransform(new TranslateTransform(-dx / Scale - Origin.X, -dy / Scale - Origin.Y)); // 平移到选区左上角
+    }
+
+    /// <summary>底图 + 标注（调用方已经推好变换与裁剪）。</summary>
+    private void DrawContent(DrawingContext dc)
+    {
+        dc.DrawImage(Base, Canvas);
+        MarkRenderer.DrawAll(dc, _marks, Base, Canvas, Scale);
+    }
+
+    private static BitmapSource Finish(DrawingVisual visual, int width, int height)
+    {
+        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(visual);
         bitmap.Freeze();
         return bitmap;
+    }
+
+    /// <summary>
+    /// 内容形状（**输出像素坐标**）：一块矩形 + 圆角，或者多块合成（矩形块各自圆角、点列块原样）。
+    /// </summary>
+    private Geometry ContentPathPixels(Rect content, int radius)
+    {
+        if (Regions is not { Length: > 0 } regions)
+            return new RectangleGeometry(content, radius, radius);
+
+        // 选区几何是「相对底图左上角的图像像素」→ 输出像素：减掉选区左上的图像坐标，再加效果内边距
+        double dx = Area.X - Monitor.X - content.X;
+        double dy = Area.Y - Monitor.Y - content.Y;
+
+        var local = new SelectionRegion[regions.Length];
+        for (int i = 0; i < regions.Length; i++)
+        {
+            var region = regions[i];
+            var box = new Rect(region.Box.X - dx, region.Box.Y - dy, region.Box.Width, region.Box.Height);
+            Point[]? points = null;
+            if (region.Points is { } source)
+            {
+                points = new Point[source.Length];
+                for (int j = 0; j < source.Length; j++)
+                    points[j] = new Point(source[j].X - dx, source[j].Y - dy);
+            }
+            local[i] = new SelectionRegion(region.Mode, box, points);
+        }
+
+        return SelectionSet.Combine(local, radius) ?? new RectangleGeometry(content, radius, radius);
     }
 
     /// <summary>

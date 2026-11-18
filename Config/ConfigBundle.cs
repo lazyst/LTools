@@ -124,6 +124,7 @@ internal static class ConfigBundle
         cfg.CaptureToolGroups = ui.CaptureToolGroups ?? new();
         cfg.CaptureToolHidden = ui.CaptureToolHidden ?? new();
         cfg.CaptureStyles = ui.CaptureStyles ?? new();
+        cfg.CaptureSelection = ui.CaptureSelection ?? new();
 
         bool hasStore = ActionStore.HasStore(anchorPath);
         if (hasStore)
@@ -386,6 +387,7 @@ internal static class ConfigBundle
         CaptureToolGroups = cfg.CaptureToolGroups ?? new(),
         CaptureToolHidden = cfg.CaptureToolHidden ?? new(),
         CaptureStyles = cfg.CaptureStyles ?? new(),
+        CaptureSelection = cfg.CaptureSelection ?? new(),
     };
 
     internal static HotkeyFile ToHotkeys(AppConfig cfg) => cfg.Hotkeys ?? new HotkeyFile();

@@ -195,10 +195,24 @@ internal sealed class CaptureCanvas : FrameworkElement
         // 选区框：外面一层深色描边保证浅底上也看得清；一整块矩形走双描边，其它几何按路径描边
         if (selectionGeo != null)
         {
+            var style = doc.Style.Clamp();
+            var bounds = selectionGeo.Bounds;
+            double radius = style.EffectiveRadius(bounds);
+
+            // 选区外观（圆角 / 阴影 / 边框，P3）：先画效果，再把选区框压在最上面。
+            // 预览与导出共用同一份 SelectionStyle，只是这里宽度是 DIP（导出乘 Scale 换成像素）。
+            if (style.EffectWidth > 0)
+            {
+                if (style.BorderType == SelectionBorderType.Border)
+                    SelectionEffects.DrawBorder(dc, selectionGeo, bounds, radius, style.EffectWidth, style.BorderColor);
+                else
+                    SelectionEffects.DrawShadow(dc, selectionGeo, bounds, radius, style.EffectWidth, style.ShadowColor);
+            }
+
             if (selectionGeo is RectangleGeometry rect)
             {
-                dc.DrawRectangle(null, FrameShadow, rect.Rect);
-                dc.DrawRectangle(null, FramePen, rect.Rect);
+                dc.DrawRoundedRectangle(null, FrameShadow, rect.Rect, rect.RadiusX, rect.RadiusY);
+                dc.DrawRoundedRectangle(null, FramePen, rect.Rect, rect.RadiusX, rect.RadiusY);
             }
             else
             {

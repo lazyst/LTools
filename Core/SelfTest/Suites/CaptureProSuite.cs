@@ -74,6 +74,12 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "文字族：字号 / 字体 / 粗斜 / 对齐 / 描边 / 背景胶囊", TextStyles));
         cases.Add(new("capturePro", "样式：选中标注后切族并写回", SelectionStyles));
         cases.Add(new("capturePro", "多选：选区切族 / 框选命中", SelectionMulti));
+        cases.Add(new("capturePro", "选区：外观 / 比例锁定 / 阴影曲线 / 导出布局", SelectionStyleRules));
+        cases.Add(new("capturePro", "选区：比例锁定的拖动 / 框选几何", SelectionAspectGeometry));
+        cases.Add(new("capturePro", "选区：圆角几何与命中", SelectionCornerGeometry));
+        cases.Add(new("capturePro", "选区：圆角 / 边框 / 阴影的导出合成（逐像素）", SelectionExportLayout));
+        cases.Add(new("capturePro", "选区：信息条摆位", SelectionBarRules));
+        cases.Add(new("capturePro", "选区：参数与外观往返 / 两份效果宽保持", SelectionParamsRules));
     }
 
     private static void Geometry()

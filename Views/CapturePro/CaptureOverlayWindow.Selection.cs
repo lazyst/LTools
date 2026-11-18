@@ -62,6 +62,30 @@ public partial class CaptureOverlayWindow
             return;
         }
 
+        // 比例下拉开着时：点在信息条与下拉以外的地方 = 先收起菜单（这一下不再做别的，
+        // 与菜单惯例一致——点外面是「关掉」，不是「关掉并执行」）
+        if (IsAspectMenuOpen &&
+            !IsOnSelectionBar(e.OriginalSource as DependencyObject) &&
+            !IsOnAspectMenu(e.OriginalSource as DependencyObject))
+        {
+            CloseAspectMenu();
+            e.Handled = true;
+            return;
+        }
+
+        // 点下拉里的条目：交给条目自己的 MouseLeftButtonUp，别当成开始框选
+        if (IsOnAspectMenu(e.OriginalSource as DependencyObject)) return;
+
+        // 选区信息条：字段点击 / 滚轮是改参数，别当成开始框选。
+        // PreviewMouseLeftButtonDown 是 **Direct** 事件（只在本元素上被 WPF 提升），
+        // 所以分发必须在这里做，别指望冒泡到 SelBar 再加一层。
+        if (IsOnSelectionBar(e.OriginalSource as DependencyObject))
+        {
+            e.Handled = true;
+            HandleSelectionBarClick(e.OriginalSource as DependencyObject);
+            return;
+        }
+
         // 浮动工具栏 / 选区形状条都是普通控件：点它们不能当成开始框选或画标注
         if (IsOnToolbar(e.OriginalSource as DependencyObject)) return;
         if (IsOnShapeBar(e.OriginalSource as DependencyObject)) return;
@@ -94,7 +118,7 @@ public partial class CaptureOverlayWindow
 
         // 在不在选区里按**合起来的几何**判：外接框的四个角、挖掉的洞都是空的，
         // 点在那里等于点在外面（加区 / 减区 / 整块重框）。
-        bool inside = IsValid(_sel) && SelectionSet.Contains(_regions, p);
+        bool inside = IsValid(_sel) && SelectionSet.Contains(_regions, p, _selStyle.CornerRadius);
 
         _pressAt = p;
         _pressMoved = false;
@@ -344,8 +368,8 @@ public partial class CaptureOverlayWindow
 
         if (_drag == DragMode.None)
         {
-            // 光标停在工具栏 / 输入框上时，别去动悬停候选和光标形状
-            if (_textEditing || IsOverToolbar) return;
+            // 光标停在工具栏 / 信息条 / 输入框上时，别去动悬停候选和光标形状
+            if (_textEditing || IsOverToolbar || IsOverSelectionBar) return;
 
             // 折线选区正在逐点单击：只让最后一段虚线跟着光标
             if (_selPolyActive)
@@ -383,10 +407,20 @@ public partial class CaptureOverlayWindow
         {
             case DragMode.New:
             {
-                // 拖出来的边角吸附到附近窗口 / 控件的边（Ctrl 临时关闭）；还没有选区时 Shift 锁正方形
-                Point end = SnapPoint(p);
-                if (_squareDrag) end = SquareOf(_origin, end);
-                _liveRect = RectFrom(_origin, end);
+                // 拖出来的边角吸附到附近窗口 / 控件的边（Ctrl 临时关闭）；还没有选区时 Shift 锁正方形。
+                // 锁了比例时**不走吸附**（上游同口径：锁定几何自己按比例推，被边吸一下就变形）。
+                double ratio = DragRatio(marquee: true);
+                if (ratio > 0)
+                {
+                    _liveRect = AspectLock.Marquee(_origin, p,
+                        new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight)), ratio);
+                }
+                else
+                {
+                    Point end = SnapPoint(p);
+                    if (_squareDrag) end = SquareOf(_origin, end);
+                    _liveRect = RectFrom(_origin, end);
+                }
                 RefreshSelection();
                 break;
             }
@@ -399,8 +433,20 @@ public partial class CaptureOverlayWindow
                 MoveFrame(SnapMove(MoveTo(_originRect, p - _origin)));
                 break;
             case DragMode.Resize:
-                ResizeFrame(SnapResize(ResizeFrom(_originRect, _handle, p - _origin), _handle));
+            {
+                double ratio = DragRatio(marquee: false);
+                if (ratio > 0)
+                {
+                    ResizeFrame(AspectLock.Drag(_originRect, _handle, p - _origin,
+                        new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight)),
+                        MinSize, ratio));
+                }
+                else
+                {
+                    ResizeFrame(SnapResize(ResizeFrom(_originRect, _handle, p - _origin), _handle));
+                }
                 break;
+            }
             case DragMode.Draw:
                 UpdateToolDrag(p);
                 break;
@@ -428,6 +474,19 @@ public partial class CaptureOverlayWindow
     private void Window_MouseUp(object sender, MouseButtonEventArgs e)
     {
         if (_scrollMode) return;
+
+        // 比例下拉：按下只记一笔，抬起才真正打开（否则这一下 MouseUp 会把它关掉）
+        if (_pendingAspectMenu)
+        {
+            _pendingAspectMenu = false;
+            if (e.ChangedButton == MouseButton.Left)
+            {
+                OpenAspectMenu();
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (e.ChangedButton != MouseButton.Left || _drag == DragMode.None) return;
 
         Point p = Clamp(e.GetPosition(Layer));
@@ -447,6 +506,7 @@ public partial class CaptureOverlayWindow
                 // 几乎没移动 = 单击：选中光标下的窗口 / 控件（整块换掉）；拖动了就是框选
                 if (!_pressMoved && _pressTarget is SnapBox target) SetSingleRect(ToDipRect(target.Bounds));
                 else if (!CommitBox(box)) RefreshSelection();   // 太小 / 挖空 / 点空白：保留原选区
+                FinalizeAspect();                                // 锁着但还没定比例：取这一块的比例
                 break;
             }
 
@@ -459,6 +519,10 @@ public partial class CaptureOverlayWindow
                 // （以前这条路径走「拖出去整块重框」里的单击分支，那里也是保留原选区）。
                 // 没有这句的话，按下时抖的那一两像素会留在选区上。
                 if (!_pressMoved && _moveFromShadow) MoveFrame(_originRect);
+                break;
+
+            case DragMode.Resize:
+                FinalizeAspect();       // 预设与结果对不上就降级成自定义比例
                 break;
 
             case DragMode.Draw:
@@ -720,7 +784,7 @@ public partial class CaptureOverlayWindow
     /// 选区合起来的几何（窗口 DIP，含正在拖的那块）：加区并、减区挖。
     /// 减区把选区挖空 = null（画面不再挖洞，导出也拿不到内容）。
     /// </summary>
-    private Geometry? SelectionGeometry() => SelectionSet.Combine(LiveRegions());
+    private Geometry? SelectionGeometry() => SelectionSet.Combine(LiveRegions(), _selStyle.CornerRadius);
 
     /// <summary>按选区重算外接框（把手 / 尺寸条都挂在它上面）。</summary>
     private void RefreshSelection()
@@ -888,7 +952,7 @@ public partial class CaptureOverlayWindow
 
         FrameHandle hit = MarkGeometry.HitFrameEdge(s, p, GripHit);
         if (hit is not (FrameHandle.None or FrameHandle.Move) &&
-            s.Contains(p) && !SelectionSet.Contains(_regions, p))
+            s.Contains(p) && !SelectionSet.Contains(_regions, p, _selStyle.CornerRadius))
             return FrameHandle.None;
 
         return hit;

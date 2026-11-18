@@ -96,7 +96,7 @@ public partial class CaptureOverlayWindow
         if (!hasSelection)
         {
             PositionGrips(sel, false);
-            InfoBox.Visibility = Visibility.Collapsed;
+            HideSelectionBar();
             HideToolbar();
             ClearMarkSelection();
             if (hover != Rect.Empty) DrawDetect(hover, _hoverTarget!.Value.Label);
@@ -120,11 +120,8 @@ public partial class CaptureOverlayWindow
         else ShowToolbar(sel);
         Toolbar.SetUndo(_doc.CanUndo, _doc.CanRedo);
 
-        // 尺寸提示：主流放在选区左上角外侧，工具条翻到选区上方时让开（别压住它）
-        double toolbarHeight = Toolbar.ActualHeight > 0 ? Toolbar.ActualHeight : Toolbar.DesiredSize.Height;
-        bool toolbarAbove = Toolbar.Visibility == Visibility.Visible &&
-                            Canvas.GetTop(Toolbar) + toolbarHeight <= sel.Top + 1;
-        ShowSizeInfo(sel, toolbarAbove);
+        // 选区信息条：摆位自己挑（上方 → 右 → 左 → 下），不和浮动工具条抢位置
+        ShowSelectionBar(sel);
 
         RefreshHint();
         PlaceHint();
@@ -210,28 +207,6 @@ public partial class CaptureOverlayWindow
             Canvas.SetTop(grip, at.Y - GripSize / 2);
             grip.Visibility = Visibility.Visible;
         }
-    }
-
-    /// <summary>尺寸提示（物理像素）；主流放在选区左上角外侧，工具条翻上去时改放选区内侧。</summary>
-    private void ShowSizeInfo(Rect s, bool toolbarAbove)
-    {
-        var (x1, y1) = ToImage(s.TopLeft);
-        var (x2, y2) = ToImage(s.BottomRight);
-        int x = Math.Min(x1, x2), y = Math.Min(y1, y2);
-        int w = Math.Abs(x2 - x1) + 1, h = Math.Abs(y2 - y1) + 1;
-
-        // 尺寸仍报外接框（存进配置的就是它），形状 / 块数另说一句
-        InfoText.Text = $"{SelectionLabel()}{w} × {h} px   {_doc.Monitor.X + x}, {_doc.Monitor.Y + y}";
-        InfoBox.Visibility = Visibility.Visible;
-        InfoBox.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        double iw = InfoBox.DesiredSize.Width;
-        double ih = InfoBox.DesiredSize.Height;
-
-        double left = Math.Clamp(s.X, 8, Math.Max(8, ActualWidth - iw - 8));
-        double top = s.Y - ih - 6;                     // 选区上方
-        if (top < 8 || toolbarAbove) top = s.Y + 6;    // 上方没空间 / 工具条翻上去了 → 放进选区左上角
-        Canvas.SetLeft(InfoBox, left);
-        Canvas.SetTop(InfoBox, Math.Clamp(top, 8, Math.Max(8, ActualHeight - ih - 8)));
     }
 
     /// <summary>顶部提示居中。</summary>

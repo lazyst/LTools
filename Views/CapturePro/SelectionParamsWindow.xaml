@@ -1,0 +1,149 @@
+<Window x:Class="LTools.Views.CapturePro.SelectionParamsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:LTools.Views"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:LTools.Views.Controls"
+        Title="选区参数" Width="492" ResizeMode="NoResize" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
+        views:WindowSizing.Mode="Dialog">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <controls:DialogShell>
+        <controls:DialogShell.Footer>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="20,10,20,16">
+                <Button Style="{StaticResource BtnGhost}" Content="取消" MinWidth="74"
+                        IsCancel="True" Click="Cancel_Click"/>
+                <Button Style="{StaticResource BtnPrimary}" Content="确定" MinWidth="74"
+                        Margin="8,0,0,0" IsDefault="True" Click="Ok_Click"/>
+            </StackPanel>
+        </controls:DialogShell.Footer>
+
+        <!-- 内容宽 452（照上游 kModalContentWidth），两列 218 + 16 间距。
+             数字全是屏幕物理像素（与信息条 / 快速集同一套）。 -->
+        <StackPanel Width="452" Margin="20,12,20,16">
+
+            <!-- 快速集：当前选区 / 上次选区 / 具名预设 + 添加 / 删除 -->
+            <TextBlock Style="{StaticResource HintLabel}" Text="快速集"/>
+            <Grid Margin="0,4,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ComboBox x:Name="QuickSetBox" Grid.Column="0" Height="32"
+                          SelectionChanged="QuickSet_Changed"/>
+                <Button x:Name="AddPresetBtn" Grid.Column="1" Style="{StaticResource BtnGhost}"
+                        Content="＋ 添加…" Margin="8,0,0,0" Height="32" Click="AddPreset_Click"
+                        ToolTip="把当前各项的值存成一个快速集"/>
+                <Button x:Name="RemovePresetBtn" Grid.Column="2" Style="{StaticResource BtnGhostDanger}"
+                        Content="✕" Width="34" Margin="4,0,0,0" Height="32" Click="RemovePreset_Click"
+                        ToolTip="删除选中的快速集（只能删具名预设）"/>
+            </Grid>
+
+            <!-- X / Y -->
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="218"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="218"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource HintLabel}" Text="X 坐标"/>
+                <TextBlock Grid.Row="0" Grid.Column="2" Style="{StaticResource HintLabel}" Text="Y 坐标"/>
+                <TextBox x:Name="XBox" Grid.Row="1" Grid.Column="0" Height="32" Margin="0,4,0,0"
+                         VerticalContentAlignment="Center" TextChanged="Number_Changed"/>
+                <TextBox x:Name="YBox" Grid.Row="1" Grid.Column="2" Height="32" Margin="0,4,0,0"
+                         VerticalContentAlignment="Center" TextChanged="Number_Changed"/>
+            </Grid>
+
+            <!-- 宽 [锁] 高（锁 = 宽高比联动，左上角不动） -->
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="202"/>
+                    <ColumnDefinition Width="32"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="202"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource HintLabel}" Text="宽"/>
+                <TextBlock Grid.Row="0" Grid.Column="3" Style="{StaticResource HintLabel}" Text="高"/>
+                <TextBox x:Name="WidthBox" Grid.Row="1" Grid.Column="0" Height="32" Margin="0,4,0,0"
+                         VerticalContentAlignment="Center" TextChanged="Width_Changed"/>
+                <Button x:Name="LockBtn" Grid.Row="1" Grid.Column="1" Style="{StaticResource BtnGhost}"
+                        Width="32" Height="32" Margin="0,4,0,0" Padding="0" Click="Lock_Click"
+                        ToolTip="锁定宽高比（改宽自动推高，改高自动推宽）">
+                    <Path x:Name="LockGlyph" Width="16" Height="16" Stretch="Uniform"
+                          Fill="{StaticResource TextBrush}"
+                          Data="M5.1,8.4 C4.7,8.4 4.5,8.2 4.5,7.9 L4.5,5.6 C4.5,3.2 6.1,1.6 8.5,1.6 C10.9,1.6 12.5,3.2 12.5,5.6 L12.5,7.9 C12.5,8.2 12.3,8.4 11.9,8.4 L11.1,8.4 C10.8,8.4 10.6,8.2 10.6,7.9 L10.6,5.6 C10.6,4.4 9.7,3.5 8.5,3.5 C7.3,3.5 6.4,4.4 6.4,5.6 L6.4,7.9 C6.4,8.2 6.2,8.4 5.9,8.4 Z M4.5,9.7 L10.9,9.7 C11.4,9.7 11.7,10 11.7,10.5 L11.7,14.1 C11.7,14.6 11.4,14.9 10.9,14.9 L4.5,14.9 C4,14.9 3.7,14.6 3.7,14.1 L3.7,10.5 C3.7,10 4,9.7 4.5,9.7 Z M7.1,11 L7.1,13.6 L8.3,13.6 L8.3,11 Z"/>
+                </Button>
+                <TextBox x:Name="HeightBox" Grid.Row="1" Grid.Column="3" Height="32" Margin="0,4,0,0"
+                         VerticalContentAlignment="Center" TextChanged="Height_Changed"/>
+            </Grid>
+
+            <!-- 圆角 | 效果类型 -->
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="218"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="218"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource HintLabel}" Text="圆角"/>
+                <TextBlock Grid.Row="0" Grid.Column="2" Style="{StaticResource HintLabel}" Text="效果类型"/>
+                <TextBox x:Name="RadiusBox" Grid.Row="1" Grid.Column="0" Height="32" Margin="0,4,0,0"
+                         VerticalContentAlignment="Center"/>
+                <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" Margin="0,4,0,0">
+                    <RadioButton x:Name="ShadowTypeBtn" GroupName="selBorderType" Content="阴影"
+                                 VerticalAlignment="Center" Margin="0,0,16,0"
+                                 Checked="BorderType_Changed"/>
+                    <RadioButton x:Name="BorderTypeBtn" GroupName="selBorderType" Content="边框"
+                                 VerticalAlignment="Center" Checked="BorderType_Changed"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- 效果宽 | 效果色 -->
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="218"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="218"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock x:Name="EffectWidthLabel" Grid.Row="0" Grid.Column="0"
+                           Style="{StaticResource HintLabel}" Text="阴影宽度"/>
+                <TextBlock x:Name="EffectColorLabel" Grid.Row="0" Grid.Column="2"
+                           Style="{StaticResource HintLabel}" Text="阴影颜色"/>
+                <TextBox x:Name="EffectWidthBox" Grid.Row="1" Grid.Column="0" Height="32" Margin="0,4,0,0"
+                         VerticalContentAlignment="Center"/>
+                <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,4,0,0">
+                    <WrapPanel x:Name="ColorPalette"/>
+                    <TextBox x:Name="ColorHexBox" Height="32" Margin="0,6,0,0" Width="110"
+                             HorizontalAlignment="Left" VerticalContentAlignment="Center"
+                             TextChanged="ColorHex_Changed"/>
+                </StackPanel>
+            </Grid>
+
+            <TextBlock Style="{StaticResource HintLabel}" Margin="0,12,0,0"
+                       Text="尺寸与坐标是屏幕物理像素；锁上宽高比后改一边会按比例推另一边。"/>
+        </StackPanel>
+    </controls:DialogShell>
+</Window>

@@ -723,6 +723,8 @@ public partial class CaptureOverlayWindow
         _scrollMode = false;
         _scrollReady = false;
         _scrollAuto = false;
+
+        SelectionStore.Flush();     // 选区外观是防抖写的，别把最后一下丢在缓存里
     }
 
     /// <summary>一帧的去向（<see cref="ScrollFrameStatus"/>）：抓不到 / 认不出 / 没动 / 往回滚 / 接上了。</summary>

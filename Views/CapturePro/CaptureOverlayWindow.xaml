@@ -57,6 +57,60 @@
             <Setter Property="Foreground" Value="#F4F4F5"/>
         </Style>
 
+        <!-- ===== 顶部选区信息条（照 snow-shot ScreenshotSelectionToolbarWidget） =====
+             深色半透明（#73000000 = rgba(0,0,0,115)）、高 26 / 圆角 6 / 左右内边距 8 / 上下 2、
+             白字 14。字段悬停 = 主色半透明胶囊（rgba(22,119,255,107)）。 -->
+        <Style x:Key="SelValue" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="2,0"/>
+        </Style>
+        <Style x:Key="SelSymbol" TargetType="TextBlock" BasedOn="{StaticResource SelValue}"/>
+        <Style x:Key="SelUnit" TargetType="TextBlock" BasedOn="{StaticResource SelValue}">
+            <Setter Property="Margin" Value="2,0,0,0"/>
+        </Style>
+
+        <Style x:Key="SelField" TargetType="Border">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Padding" Value="2,0"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#6B1677FF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 信息条上的描边图标（圆角 / 阴影 / 比例锁）：上游是 1024 画布的填充路径，缩到 18。 -->
+        <GeometryGroup x:Key="SelRadiusIcon">
+            <PathGeometry Figures="M543.36,81.92 L339.52,81.92 C197.28,81.92 81.92,197.28 81.92,339.52 L81.92,543.36 A8.96,8.96 0 0,0 90.88,552.32 L153.6,552.32 A8.96,8.96 0 0,0 162.56,543.36 L162.56,339.52 C162.56,241.744 241.744,162.56 339.52,162.56 L543.36,162.56 A8.96,8.96 0 0,0 552.32,153.6 L552.32,90.88 A8.96,8.96 0 0,0 543.36,81.92 Z"/>
+            <RectangleGeometry Rect="664.32,81.92,80.64,80.64" RadiusX="8.96" RadiusY="8.96"/>
+            <RectangleGeometry Rect="861.44,81.92,80.64,80.64" RadiusX="8.96" RadiusY="8.96"/>
+            <RectangleGeometry Rect="861.44,276.8,80.64,80.64" RadiusX="8.96" RadiusY="8.96"/>
+            <RectangleGeometry Rect="861.44,471.68,80.64,80.64" RadiusX="8.96" RadiusY="8.96"/>
+            <RectangleGeometry Rect="861.44,666.56,80.64,80.64" RadiusX="8.96" RadiusY="8.96"/>
+            <RectangleGeometry Rect="861.44,861.44,80.64,80.64" RadiusX="8.96" RadiusY="8.96"/>
+            <RectangleGeometry Rect="666.56,861.44,80.64,80.64" RadiusX="8.96" RadiusY="8.96"/>
+            <RectangleGeometry Rect="471.68,861.44,80.64,80.64" RadiusX="8.96" RadiusY="8.96"/>
+            <RectangleGeometry Rect="276.8,861.44,80.64,80.64" RadiusX="8.96" RadiusY="8.96"/>
+            <RectangleGeometry Rect="81.92,861.44,80.64,80.64" RadiusX="8.96" RadiusY="8.96"/>
+            <RectangleGeometry Rect="81.92,666.56,80.64,80.64" RadiusX="8.96" RadiusY="8.96"/>
+        </GeometryGroup>
+        <GeometryGroup x:Key="SelShadowIcon">
+            <PathGeometry Figures="M816.64,252.16 L924.16,252.16 A35.84,35.84 0 0,1 960,288 L960,924.16 A35.84,35.84 0 0,1 924.16,960 L288,960 A35.84,35.84 0 0,1 252.16,924.16 L252.16,816.64 L780.8,816.64 A35.84,35.84 0 0,0 816.64,780.8 L816.64,252.16 Z"/>
+            <PathGeometry Figures="M709.12,64 L99.84,64 A35.84,35.84 0 0,0 64,99.84 L64,709.12 A35.84,35.84 0 0,0 99.84,744.96 L709.12,744.96 A35.84,35.84 0 0,0 744.96,709.12 L744.96,99.84 A35.84,35.84 0 0,0 709.12,64 Z M144.64,144.64 L664.32,144.64 L664.32,664.32 L410.864,410.864 A8.96,8.96 0 0,0 398.096,410.864 L144.64,664.32 L144.64,144.64 Z M258.656,664.32 L404.48,518.496 L550.304,664.32 L258.656,664.32 Z"/>
+            <EllipseGeometry Center="552.32,252.16" RadiusX="49.28" RadiusY="49.28"/>
+        </GeometryGroup>
+        <GeometryGroup x:Key="SelLockIcon">
+            <PathGeometry Figures="M270.08,476.16 A8.96,8.96 0 0,1 261.12,467.2 L261.12,314.88 A250.88,250.88 0 0,1 762.88,314.88 L762.88,467.2 A8.96,8.96 0 0,1 753.92,476.16 L691.2,476.16 A8.96,8.96 0 0,1 682.24,467.2 L682.24,314.88 A170.24,170.24 0 0,0 341.76,314.88 L341.76,467.2 A8.96,8.96 0 0,1 332.8,476.16 L270.08,476.16 Z"/>
+            <PathGeometry Figures="M270.08,547.84 L332.8,547.84 A8.96,8.96 0 0,1 341.76,556.8 L341.76,709.12 A170.24,170.24 0 0,0 682.24,709.12 L682.24,556.8 A8.96,8.96 0 0,1 691.2,547.84 L753.92,547.84 A8.96,8.96 0 0,1 762.88,556.8 L762.88,709.12 A250.88,250.88 0 0,1 261.12,709.12 L261.12,556.8 A8.96,8.96 0 0,1 270.08,547.84 Z"/>
+            <RectangleGeometry Rect="471.68,305.92,80.64,412.16" RadiusX="8.96" RadiusY="8.96"/>
+        </GeometryGroup>
+
         <!-- 选区形状的小胶囊：选中 = 主色底白字，未选中是透明底 -->
         <Style x:Key="ShapeBtn" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{StaticResource ChromeInk}"/>
@@ -96,11 +150,93 @@
                 <TextBlock x:Name="DetectText" Foreground="#18181B" FontSize="12" FontWeight="SemiBold"/>
             </Border>
 
-            <!-- 尺寸 / 坐标（物理像素，就是最终会存进配置的数字） -->
-            <Border x:Name="InfoBox" Background="{StaticResource ChromeBg}" CornerRadius="4" Padding="8,4"
-                    BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1"
-                    Visibility="Collapsed" IsHitTestVisible="False">
-                <TextBlock x:Name="InfoText" Foreground="{StaticResource ChromeInk}" FontFamily="Consolas" FontSize="13"/>
+            <!-- 选区信息条（照 snow-shot）：X / Y · 比例锁 · 宽 × 高 · 比例下拉 | 圆角 · 效果宽。
+                 数字全是**屏幕物理像素**（就是存进配置 / 快速集的那套数）；滚轮 ±1 px，单击开参数框。 -->
+            <Border x:Name="SelBar" Panel.ZIndex="18" Background="#73000000" CornerRadius="6"
+                    Padding="8,2" Visibility="Collapsed" SnapsToDevicePixels="True">
+                <StackPanel x:Name="SelBarRow" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border x:Name="SelFieldX" Style="{StaticResource SelField}" Tag="X"
+                            Cursor="SizeWE" ToolTip="X 坐标（物理像素）· 滚轮 ±1 · 单击改参数">
+                        <TextBlock x:Name="SelXText" Style="{StaticResource SelValue}"/>
+                    </Border>
+                    <TextBlock Style="{StaticResource SelSymbol}" Text=","/>
+                    <Border x:Name="SelFieldY" Style="{StaticResource SelField}" Tag="Y"
+                            Cursor="SizeNS" ToolTip="Y 坐标（物理像素）· 滚轮 ±1 · 单击改参数">
+                        <TextBlock x:Name="SelYText" Style="{StaticResource SelValue}"/>
+                    </Border>
+                    <TextBlock Style="{StaticResource SelUnit}" Text="px"/>
+
+                    <Border x:Name="SelLockBtn" Style="{StaticResource SelField}" Padding="4,0"
+                            Cursor="Hand" ToolTip="锁定宽高比">
+                        <Viewbox Width="18" Height="18" VerticalAlignment="Center">
+                            <Path x:Name="SelLockIcon" Fill="#FFFFFF" Data="{StaticResource SelLockIcon}"/>
+                        </Viewbox>
+                    </Border>
+
+                    <Border x:Name="SelFieldW" Style="{StaticResource SelField}" Tag="W"
+                            Cursor="SizeWE" ToolTip="宽（物理像素）· 滚轮 ±1 · 单击改参数">
+                        <TextBlock x:Name="SelWText" Style="{StaticResource SelValue}"/>
+                    </Border>
+                    <TextBlock Style="{StaticResource SelSymbol}" Text="x"/>
+                    <Border x:Name="SelFieldH" Style="{StaticResource SelField}" Tag="H"
+                            Cursor="SizeNS" ToolTip="高（物理像素）· 滚轮 ±1 · 单击改参数">
+                        <TextBlock x:Name="SelHText" Style="{StaticResource SelValue}"/>
+                    </Border>
+                    <TextBlock Style="{StaticResource SelUnit}" Text="px"/>
+
+                    <Border Width="8"/>
+                    <Border x:Name="SelAspectBtn" Style="{StaticResource SelField}" Padding="4,0"
+                            Cursor="Hand" ToolTip="选区宽高比">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="SelAspectText" Style="{StaticResource SelValue}"
+                                       TextAlignment="Center" MinWidth="28"/>
+                            <Path Width="8" Height="5" Stretch="Fill" Stroke="#FFFFFF" StrokeThickness="1.4"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Data="M 0,0 L 4,4 L 8,0" Margin="2,2,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Rectangle Width="1" Height="12" Fill="#6BD9D9D9" Margin="8,0"/>
+
+                    <Border x:Name="SelFieldR" Style="{StaticResource SelField}" Tag="R"
+                            Cursor="SizeNS" ToolTip="圆角半径（物理像素）· 滚轮 ±1 · 单击改参数">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Viewbox Width="18" Height="18" VerticalAlignment="Center">
+                                <Path Fill="#FFFFFF" Data="{StaticResource SelRadiusIcon}"/>
+                            </Viewbox>
+                            <TextBlock x:Name="SelRText" Style="{StaticResource SelValue}" Margin="4,0,2,0"/>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Style="{StaticResource SelUnit}" Text="px"/>
+
+                    <Border Width="8"/>
+
+                    <Border x:Name="SelFieldE" Style="{StaticResource SelField}" Tag="E"
+                            Cursor="SizeNS" ToolTip="阴影 / 边框宽度（物理像素）· 滚轮 ±1 · 单击改参数">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Viewbox Width="18" Height="18" VerticalAlignment="Center">
+                                <Path Fill="#FFFFFF" Data="{StaticResource SelShadowIcon}"/>
+                            </Viewbox>
+                            <TextBlock x:Name="SelEText" Style="{StaticResource SelValue}" Margin="4,0,2,0"/>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Style="{StaticResource SelUnit}" Text="px"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 比例下拉：上次选区 + 具名快速集（「选区预设」）+ 8 个比例（「比例预设」）。
+                 宽 112 / 项高 28 / 上限高 320（照上游 AdSelect 的 token）。
+
+                 **画在覆盖层自己的 Canvas 里，不用 Popup**：Popup 是独立 HWND，在全屏
+                 NOACTIVATE 覆盖层上，真机点条目时 WM_LBUTTONDOWN 进了 Popup、WM_LBUTTONUP
+                 却被覆盖层收走（实测 ex-style 0x08080088），条目的 MouseLeftButtonUp 永远不触发，
+                 表现就是「点一下只把菜单关掉」。上游那个下拉本来也是窗口内的控件。 -->
+            <Border x:Name="SelAspectMenu" Panel.ZIndex="40" Visibility="Collapsed"
+                    Background="#F21B1B1E" CornerRadius="6" BorderBrush="#33FFFFFF"
+                    BorderThickness="1" Padding="4" MinWidth="112" MaxWidth="320" MaxHeight="320">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="SelAspectItems"/>
+                </ScrollViewer>
             </Border>
 
             <Border x:Name="HintBox" Background="{StaticResource ChromeBg}" CornerRadius="4" Padding="14,7"

@@ -41,6 +41,14 @@ public partial class CaptureOverlayWindow
             return;
         }
 
+        // 光标停在信息条上：滚轮归字段（±1 像素），不换悬停层级
+        if (BarFieldAt(e.OriginalSource as DependencyObject) is SelectionField field)
+        {
+            e.Handled = true;
+            BarWheel(field, e.Delta);
+            return;
+        }
+
         if (IsValid(_sel) || _hoverCandidates.Count < 2) return;
 
         // 测角工具下滚轮改的是角度值（Shift = 1°，否则 5°）：选中了角就改它，没选就改最近那个。
