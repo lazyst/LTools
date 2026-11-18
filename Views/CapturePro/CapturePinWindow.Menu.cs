@@ -100,6 +100,8 @@ public partial class CapturePinWindow
         };
         menu.Items.Add(annotate);
 
+        AddLoadMenu(menu);
+
         var zoom = MenuFx.Submenu(menu, "缩放");
         zoom.IsEnabled = !_live;
         AddZoom(zoom, "100%", 1);
@@ -332,6 +334,24 @@ public partial class CapturePinWindow
                 System.Windows.Threading.DispatcherPriority.Background);
         };
         root.Items.Add(save);
+
+        // 复制为文件：剪贴板里放文件列表（照上游 copyPinnedWindowFiles → ClipboardFileCache）
+        var copyFiles = new MenuItem { Header = "复制所选为文件", IsEnabled = count > 0 };
+        copyFiles.Click += (_, _) =>
+        {
+            var images = CapturePinManager.Selected.Select(p => p.Image).ToArray();
+            int copied = PinCopyCache.Copy(images);
+            if (copied > 0)
+            {
+                ToastService.Show($"已复制 {copied} 个文件到剪贴板", "贴图", 2600, ToastKind.success,
+                    key: "pin-copy-files");
+            }
+            else
+            {
+                ToastService.Show("复制文件失败", "贴图", 3600, ToastKind.warning, key: "pin-copy-files");
+            }
+        };
+        root.Items.Add(copyFiles);
 
         bool allLocked = count > 0 && CapturePinManager.Selected.All(p => p.Locked);
         var locked = new MenuItem

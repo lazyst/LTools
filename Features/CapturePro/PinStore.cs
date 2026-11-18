@@ -312,6 +312,47 @@ internal static class PinStore
         }
     }
 
+    /// <summary>
+    /// 换掉一张贴图的内容（拖放替换 / 「加载新内容」之后）。
+    /// </summary>
+    /// <remarks>
+    /// 照上游 <c>replaceContent</c>：种类、原文、色卡宽度、图像尺寸、源区域与窗口尺寸一起更新，
+    /// 落点由调用方按新的几何写回（<see cref="UpdateState"/>）。图片文件由调用方随后
+    /// <see cref="SaveAssets"/> 重写——这里只改元数据，不在写盘锁里编码 png。
+    /// </remarks>
+    /// <returns>更新后的记录；记录不存在返回 <c>null</c>。</returns>
+    public static PinRecord? UpdateContent(string id, string kind, string text, int cardWidth,
+        int width, int height, int areaX, int areaY, int areaW, int areaH,
+        double winWidth, double winHeight, PinTextSnapshot? textStyle)
+    {
+        if (string.IsNullOrEmpty(id)) return null;
+
+        lock (Gate)
+        {
+            var items = LoadUnsafe();
+            var record = items.FirstOrDefault(e => e.Id == id);
+            if (record == null) return null;
+
+            string normalized = NormalizeKind(kind);
+            record.Kind = normalized;
+            record.Text = text ?? "";
+            record.CardWidth = Math.Max(0, cardWidth);
+            record.TextStyle = normalized == KindImage ? null : textStyle;
+            record.Width = Math.Max(0, width);
+            record.Height = Math.Max(0, height);
+            record.AreaX = areaX;
+            record.AreaY = areaY;
+            record.AreaW = Math.Max(0, areaW);
+            record.AreaH = Math.Max(0, areaH);
+            record.WinWidth = Math.Max(1, winWidth);
+            record.WinHeight = Math.Max(1, winHeight);
+
+            SaveUnsafe(items);
+            Changed?.Invoke();
+            return record;
+        }
+    }
+
     /// <summary>关掉一张：记关闭时间与最后落点（再贴出来时按它复位）。</summary>
     public static void MarkClosed(string id, double left, double top, double width, double height)
     {

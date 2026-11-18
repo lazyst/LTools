@@ -7,11 +7,12 @@ using LTools.Native;
 namespace LTools.Features.CapturePro;
 
 /// <summary>
-/// 「贴剪贴板」：把剪贴板里的图片或文字贴到屏幕上（照上游 `pinClipboardContentToScreen`）。
+/// 「贴剪贴板」：把剪贴板里的图片 / 文件 / 文字贴到屏幕上（照上游 `pinClipboardContentToScreen`）。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 顺序照上游：先看图片（位图 / 剪贴板里带回的图片文件），没有图片再看文字。
+/// 顺序照上游：先看位图，再看**文件列表**（资源管理器里复制的图片 / 文本文件，见
+/// <see cref="PinFiles"/>），最后才是文字。
 /// 文字能解析成颜色就贴成**颜色取样板**（色块 + HEX / RGB / HSL 三行 + 三枚复制按钮），
 /// 否则贴成普通文字卡片；两者都是按屏幕缩放渲染成位图，之后与图片贴图走同一条路径。
 /// </para>
@@ -35,13 +36,23 @@ internal static class PinClipboard
             return;
         }
 
+        if (NativeClipboard.TryGetFileList(out var files))
+        {
+            var usable = PinFiles.Filter(files, out _);
+            if (usable.Count > 0)
+            {
+                PinFiles.PinPaths(usable);
+                return;
+            }
+        }
+
         if (NativeClipboard.TryGetText(out string text) && !string.IsNullOrWhiteSpace(text))
         {
             CapturePinManager.PinText(text, scale, workArea);
             return;
         }
 
-        ToastService.Show("剪贴板里没有可以贴的内容（图片或文字）", "贴剪贴板", 2800,
+        ToastService.Show("剪贴板里没有可以贴的内容（图片、文件或文字）", "贴剪贴板", 2800,
             ToastKind.warning, key: "pin-clipboard");
     }
 

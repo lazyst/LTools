@@ -763,6 +763,61 @@ X / Y 两轴各一份状态机；极值点吞掉阈值内的小幅回摆；非�
 只在真变时写盘）；`CapturePinManager.Sync` 顺带写这两个字段，`Restore` / `FinishRestore` 按记录恢复
 （贴回一张点不到的图而不带控制栏，用户会以为卡死）。`PinStore.Create` 的两个可选参数默认 = 不穿透 / 50。
 
+### 9.7 批量贴出 / 拖出成文件 / 拖放替换（P5-f）
+
+照上游 `screenshotfilepinbatch.h`、`screenshotcontentdrop.h`、`screenshotpinneddragexport.cpp`、
+`screenshotpinnedbatchsave.cpp`。三件事共用一份「什么文件能贴」的口径。
+
+**能贴什么**（`Features/CapturePro/PinFiles.cs`）：
+
+| 类别 | 扩展名 |
+|---|---|
+| 图片 | gif / apng / png / jpg / jpeg / webp / jxl / avif / bmp / tif / tiff（11 种） |
+| 文本 | txt / css（纯文本）、html / htm（HTML）、md / markdown（Markdown） |
+
+`Identity(path)` = 路径（忽略大小写）+ 长度 + 最后写入时间，用来去重；`Filter` 一次去掉重复、
+不支持的扩展名、0 字节文件、超过 1 MB 的文本与超过 256 MB 的图片，被拒的另报一份（`rejected`）。
+`PinPaths` 把每个文件依次贴出：**每个都在光标所在显示器的工作区居中**，不做级联（照上游
+`screenshotfilepinbatch`），所以后贴的会盖在前一张上。文档贴成文字卡；HTML / Markdown
+**不排版**，按纯文本贴（上游用 `QTextDocument` 渲染，本地没有等价引擎，见 §5 平台差异）；
+能不能解码 webp / jxl / avif 取决于系统 WIC。
+
+入口三个：剪贴板里的文件列表（`PinClipboard.Pin` 顺序 = 位图 → 文件列表 → 文本）、
+内置功能「贴选中的文件」（`common.pinSelectedFiles`，走 `ShellBridge.SelectedAny()`，
+跨进程 COM 留在后台线程）、批量菜单「复制所选为文件」。
+
+**拖出成文件**（`Views/CapturePro/PinDragExport.cs` + `Features/CapturePro/PinDragRetention.cs`）：
+
+- 数据 = 一条临时 png 的文件 URL + 位图本身（聊天输入框这类只认位图的接收方也接得住），
+  拖拽图是 160×160 等比缩略图、热点在正中。
+- 临时文件按**拖拽生命周期**结账：取消立刻删；被接下则保留 30 分钟宽限（接收方可能在
+  `DoDragDrop` 返回之后才去读）。额度 64 个 / 512 MB，删不掉的目录继续占额度并 60 秒后重试；
+  启动时 `CleanStale()` 清上次进程留下的。
+- 入口只有 `Ctrl`+左键按下后移动（不挪就是「多选」）：非取景框、非实时、非穿透。
+  取景框里 `Ctrl` 拖动仍是「移动窗口」；锁定的贴图**可以**拖出（导出不改几何）。
+- 拖拽图不走 OLE 的 `IDragSourceHelper`，而是一个 `WS_EX_TRANSPARENT` 的无激活分层窗口；
+  位置由**后台线程** `GetCursorPos` + `SetWindowPos` 驱动——`DoDragDrop` 期间 UI 线程在 OLE
+  模态循环里，WPF 定时器不保证走。
+
+**拖放替换**（`Features/CapturePro/PinDropRules.cs` + `Views/CapturePro/CapturePinWindow.Replace.cs`）：
+
+- 判定：实时贴图 / 穿透态 / 正在拖出自己 / 什么都没有 → 不收；数据顺序照上游文件 → 位图 → 文本。
+- 拖入拖出时边框变 2px `#69B1FF`（上游 `pin_to_screen/border_active_color`），离开回到 1px 白边。
+- 几何：同尺寸不动窗口；变大按**中心**向两边长；锁定贴图尺寸变了就拒（同尺寸照样能换）；
+  缩略图与取景框只换 100% 基准、不改窗口尺寸；最后夹进虚拟桌面（至少留 `KeepVisible`）。
+- 落地：内容 / 卡片热区 / `PinStore.UpdateContent` 一起换，png 丢后台重写（与贴出同一条路径）。
+- 右键「加载新内容」→「图片 / 文本文件…」（系统文件框，不挂 Owner——贴图窗口不抢焦点）/
+  「剪贴板」（文件 → 位图 → 文本）。
+
+**「复制所选为文件」**（`Features/CapturePro/PinCopyCache.cs`）：剪贴板放的是路径（`CF_HDROP`），
+所以先把每张图编码进 `cache/pin-copy/<时间戳>/`，30 分钟后由启动清理与下一次复制前顺手删掉
+（`cache/` 不进备份）。
+
+回归：`--selftest` 的「贴图批量贴出 / 拖放规则 / 拖出临时文件预算」（扩展名表、去重与拒绝、
+判定全组合、几何七种情形、预算三种上限与过期重试）+ 仓库外 `capture-overlay-smoke` 的
+`PinDropSection`（真窗口的 `AllowDrop` / 边框 / 菜单入口 / 换内容 / 锁定 / 拖出数据与临时文件 /
+取消即删 / 160px 预览）。
+
 
 ## 10. 识别（P2 / P4-a / P4-b）
 

@@ -213,6 +213,14 @@ public partial class App : Application
         System.Threading.Tasks.Task.Run(LTools.Features.CapturePro.CaptureCatalog.Maintain);
         // 贴图历史：上次没关掉就退出的记录补上关闭时间，再按保留策略剪枝。
         System.Threading.Tasks.Task.Run(LTools.Features.CapturePro.PinStore.Maintain);
+
+        // 拖出用的临时目录（%TEMP%\ltools-drag）与「复制为文件」的缓存（cache/pin-copy）：
+        // 上次进程留下的过期目录清掉，接收方还在读的（30 分钟内）不动。
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            LTools.Features.CapturePro.PinDragRetention.CleanStale();
+            LTools.Features.CapturePro.PinCopyCache.Sweep();
+        });
     }
 
     private void BuildTray()

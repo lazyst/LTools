@@ -101,9 +101,9 @@ public partial class CapturePinWindow : Window
     internal CapturePinWindow(BitmapSource image, Int32Rect area, double scale, double zoom)
     {
         InitializeComponent();
+        InitDrop();
 
-        _content = image;
-        _scale = scale > 0 ? scale : 1;
+        _content = image;        _scale = scale > 0 ? scale : 1;
         _zoom = PinMath.ClampZoom(zoom);
         Shot.Source = image;
 

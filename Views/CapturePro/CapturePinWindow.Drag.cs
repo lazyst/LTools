@@ -145,6 +145,17 @@ public partial class CapturePinWindow
             }
 
             _maybeSelect = false;
+
+            // 非取景框里 Ctrl+拖动 = 把内容拖出去（照上游 exportDragEnabledAt）；
+            // 取景框里 Ctrl 拖动仍是「移动窗口」。锁定的贴图照样能拖出——导出不改几何。
+            if (!_viewport && !_live && !_clickThrough)
+            {
+                e.Handled = true;
+                try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
+                BeginExportDrag();
+                return;
+            }
+
             if (_locked)                  // 锁着的贴图不跟着走，这一下什么都不做
             {
                 try { ReleaseMouseCapture(); } catch { /* 未捕获 */ }
@@ -328,7 +339,11 @@ public partial class CapturePinWindow
     private void ApplyCursor() =>
         Cursor = !_clickThrough && !_locked && _viewport ? Cursors.ScrollAll : Cursors.Arrow;
 
-    /// <summary>边框颜色同时表达三种状态：多选（2px 亮蓝）优先，其次锁定（亮蓝），再次局部显示（淡蓝）。</summary>
+    /// <summary>
+    /// 边框颜色同时表达几种状态：多选（2px 亮蓝）优先，其次拖入 / 拖出（2px 强调蓝，
+    /// 照上游 <c>pin_to_screen/border_active_color</c> 的 #69B1FF），再其次锁定（亮蓝）、
+    /// 局部显示（淡蓝），最后是默认的 1px 白边。
+    /// </summary>
     private void ApplyFrame()
     {
         if (_selected)
@@ -336,6 +351,13 @@ public partial class CapturePinWindow
             // 2px 描边是「压在图上」画的（见 XAML 里 Frame 的注释），加粗不会挤动内容
             Frame.BorderThickness = new Thickness(2);
             Frame.BorderBrush = new SolidColorBrush(Color.FromRgb(0x3B, 0x82, 0xF6));
+            return;
+        }
+
+        if (_fileDragActive || _exporting)
+        {
+            Frame.BorderThickness = new Thickness(2);
+            Frame.BorderBrush = new SolidColorBrush(Color.FromRgb(0x69, 0xB1, 0xFF));
             return;
         }
 

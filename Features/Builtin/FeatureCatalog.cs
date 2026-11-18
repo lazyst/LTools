@@ -172,8 +172,11 @@ internal static class FeatureCatalog
             "拖选屏幕上的文字并识别，点候选复制",
             ScreenText),
         C("common.pinClipboard", "屏幕", "贴剪贴板", "paste",
-            "把剪贴板里的图片或文字贴到屏幕上（颜色文本贴成色卡）",
+            "把剪贴板里的图片、文件或文字贴到屏幕上（颜色文本贴成色卡）",
             _ => Ui(PinClipboard.Pin)),
+        C("common.pinSelectedFiles", "屏幕", "贴选中的文件", "pin",
+            "把资源管理器里选中的图片 / 文本文件贴到屏幕上",
+            PinSelectedFiles),
         C("common.record", "屏幕", "录屏", "record",
             "录屏（选区 / 主屏 / 全部屏幕 / 前台窗口），存成 MP4 或 GIF",
             Record,
@@ -486,6 +489,28 @@ internal static class FeatureCatalog
     }
 
     // ============ 录屏 ============
+
+    /// <summary>
+    /// 「贴选中的文件」：资源管理器 / 桌面里选中的图片与文本文件，按顺序贴到屏幕上。
+    /// </summary>
+    /// <remarks>
+    /// 读选中项要跨进程 COM（<see cref="Selection.ShellBridge.SelectedAny"/> 自己会起 STA 线程），
+    /// 所以整段留在 <see cref="FeatureRunner"/> 给的后台线程上，只有贴图投递回 UI 线程。
+    /// 读不到只是提示，不弹窗（与「选中的文件」取值器同口径）。
+    /// </remarks>
+    private static void PinSelectedFiles()
+    {
+        var selection = Selection.ShellBridge.SelectedAny();
+        if (selection == null || selection.Paths.Count == 0)
+        {
+            Ui(() => ToastService.Show("先在资源管理器里选中要贴的图片或文本文件", "贴图", 3200,
+                ToastKind.warning, key: "pin-files"));
+            return;
+        }
+
+        var paths = selection.Paths.ToArray();
+        Ui(() => PinFiles.PinPaths(paths));
+    }
 
     private static void Record(FeatureRunContext ctx)
     {
