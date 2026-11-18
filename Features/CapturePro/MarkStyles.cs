@@ -45,6 +45,60 @@ internal enum FilterKind
 }
 
 /// <summary>
+/// 形状族的参数文案：**只做枚举 → 中文**，参数行胶囊 / tooltip / 自检共用一份
+/// （别在工具栏里另写一套 switch）。
+/// </summary>
+internal static class ShapeLabel
+{
+    /// <summary>参数行胶囊上的短标签（三个字以内，别把参数条撑开）。</summary>
+    public static string Chip(ShapeKind kind) => kind switch
+    {
+        ShapeKind.Ellipse => "椭圆",
+        ShapeKind.Diamond => "菱形",
+        ShapeKind.ThoughtBubble => "思考",
+        _ => "矩形",
+    };
+
+    public static string Name(ShapeKind kind) => "形状：" + Chip(kind);
+
+    public static string Chip(StrokeKind kind) => kind switch
+    {
+        StrokeKind.Dashed => "虚线",
+        StrokeKind.Dotted => "点线",
+        _ => "实线",
+    };
+
+    public static string Name(StrokeKind kind) => "描边：" + Chip(kind);
+
+    public static string Chip(StrokeRendering style) => style switch
+    {
+        StrokeRendering.Artist => "手绘",
+        StrokeRendering.Cartoonist => "涂鸦",
+        _ => "干净",
+    };
+
+    public static string Name(StrokeRendering style) => "笔触：" + Chip(style);
+
+    public static string Chip(FillKind kind) => kind switch
+    {
+        FillKind.Solid => "实心",
+        FillKind.Line => "斜线",
+        FillKind.CrossLine => "交叉",
+        _ => "无",
+    };
+
+    public static string Name(FillKind kind) => "填充：" + Chip(kind);
+
+    public static string Chip(LineType type) => type == LineType.Curve ? "曲线" : "直线";
+
+    public static string Name(LineType type) => "线型：" + Chip(type);
+
+    public static string Chip(BrushMode mode) => mode == BrushMode.PressureSensitive ? "压感" : "常规";
+
+    public static string Name(BrushMode mode) => "画笔：" + Chip(mode);
+}
+
+/// <summary>
 /// 序号文案：**只做纯文本换算**，绘制与自检共用一份（别在渲染里另写一套 switch）。
 /// 换算超范围（罗马数字 &gt; 3999、中文 &gt; 9999）时退回阿拉伯数字，不抛错、不留空。
 /// </summary>

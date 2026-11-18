@@ -52,7 +52,7 @@ internal static class StyleFamilies
         CaptureTool.Pen => Pen,
         CaptureTool.Highlighter => Highlighter,
         CaptureTool.HighlightRect => HighlightRect,
-        CaptureTool.Rect or CaptureTool.Ellipse => Shape,
+        CaptureTool.Shape => Shape,
         CaptureTool.Arrow => Arrow,
         CaptureTool.Line => Line,
         CaptureTool.Polyline => Polyline,

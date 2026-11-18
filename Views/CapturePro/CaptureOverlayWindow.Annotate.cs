@@ -23,6 +23,9 @@ public partial class CaptureOverlayWindow
     private readonly List<Point> _polyPoints = new();
     private bool _polyActive;
 
+    /// <summary>本次拖动的抖动种子：一次手势里每帧重画都一致（松手落盘也是同一条）。</summary>
+    private uint _dragSeed = ShapeInk.NextSeed();
+
     private Mark? _dragMark;
     private int _dragMarkIndex = -1;
 
@@ -58,7 +61,7 @@ public partial class CaptureOverlayWindow
                 return BeginAutoFilterGesture(p);
 
             case CaptureTool.Serial:
-                _doc.Add(new Mark.Serial(p, _doc.NextSerial(), _style.Color, _style.Shape, _style.Numbering));
+                _doc.Add(new Mark.Serial(p, _doc.NextSerial(), _style.Color, _style.SerialShape, _style.Numbering));
                 RefreshMarks();
                 return true;
 
@@ -83,6 +86,7 @@ public partial class CaptureOverlayWindow
                 _freehand.Clear();
                 _freehand.Add(p);
                 _drag = DragMode.Draw;
+                _dragSeed = ShapeInk.NextSeed();
                 Surface.Preview = BuildDragMark(p);
                 Surface.InvalidateVisual();
                 return true;
@@ -158,17 +162,15 @@ public partial class CaptureOverlayWindow
             case CaptureTool.Highlighter:
                 return new Mark.Stroke(_freehand.ToArray(), color, width, true, _style.Opacity);
 
-            case CaptureTool.Rect:
-                return new Mark.Shape(_toolStart, current, color, width, false, ellipse: false);
-
-            case CaptureTool.Ellipse:
-                return new Mark.Shape(_toolStart, current, color, width, false, ellipse: true);
+            case CaptureTool.Shape:
+                return new Mark.Shape(_toolStart, current, _style.ShapeSpecOf(_dragSeed));
 
             case CaptureTool.Arrow:
                 return new Mark.Arrow(_toolStart, current, color, width);
 
             case CaptureTool.Line:
-                return new Mark.Line(_toolStart, current, color, width, false);
+                return new Mark.Line(_toolStart, current, color, width, _style.StrokeStyle,
+                    _style.LineType, _style.Rendering, _dragSeed);
 
             case CaptureTool.Distance:
                 return new Mark.Distance(_toolStart, current, color, width);
@@ -177,7 +179,8 @@ public partial class CaptureOverlayWindow
                 return new Mark.Bracket(_toolStart, current, color, width);
 
             case CaptureTool.SpeechBubble:
-                return new Mark.SpeechBubble(MarkGeometry.RectOf(_toolStart, current), color, width);
+                return new Mark.SpeechBubble(MarkGeometry.RectOf(_toolStart, current),
+                    _style.ShapeSpecOf(_dragSeed));
 
             case CaptureTool.Magnifier:
                 return new Mark.Magnifier(MarkGeometry.RectOf(_toolStart, current), _style.Factor, color, width);
@@ -219,6 +222,7 @@ public partial class CaptureOverlayWindow
         _freehand.Clear();
         _freehand.Add(p);
         _drag = DragMode.Draw;
+        _dragSeed = ShapeInk.NextSeed();
 
         if (!_angleArmed) _angleVertex = p;
         Surface.Preview = BuildDragMark(p);

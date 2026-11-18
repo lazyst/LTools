@@ -75,50 +75,52 @@ internal abstract class Mark
             MarkGeometry.NearPolyline(Points, point, Width / 2 + tolerance);
     }
 
-    /// <summary>矩形 / 椭圆（只有描边，不填充）。</summary>
+    /// <summary>矩形 / 椭圆 / 菱形（形状族：描边 + 可选填充，见 <see cref="ShapeSpec"/>）。</summary>
     public sealed class Shape : Mark
     {
+        /// <summary>简化构造（录制窗口的旧调用点）：直角矩形 / 椭圆，只有描边。</summary>
         public Shape(Point a, Point b, Color color, double width, bool dashed, bool ellipse)
+            : this(a, b, new ShapeSpec(
+                ellipse ? ShapeKind.Ellipse : ShapeKind.Rectangle, color, width,
+                dashed ? StrokeKind.Dashed : StrokeKind.Solid, StrokeRendering.Architect,
+                Colors.Transparent, FillKind.None, 0, ShapeInk.NextSeed()))
+        {
+        }
+
+        public Shape(Point a, Point b, ShapeSpec spec)
         {
             A = a;
             B = b;
-            Color = color;
-            Width = width;
-            Dashed = dashed;
-            Ellipse = ellipse;
+            Spec = spec;
         }
 
         public Point A { get; }
         public Point B { get; }
-        public Color Color { get; }
-        public double Width { get; }
-        public bool Dashed { get; }
-        public bool Ellipse { get; }
+        public ShapeSpec Spec { get; }
+
+        public Color Color => Spec.Stroke;
+        public double Width => Spec.Width;
+        public bool Dashed => Spec.StrokeStyle == StrokeKind.Dashed;
+        public bool Ellipse => Spec.Kind == ShapeKind.Ellipse;
 
         public Rect Rect => MarkGeometry.RectOf(A, B);
 
-        public override Rect Bounds => MarkGeometry.Inflate(Rect, Width / 2);
+        /// <summary>当前形状的轮廓（命中 / 上色共用一份）。</summary>
+        public IReadOnlyList<InkSegment> Contour => ShapeInk.Contour(Rect, Spec.Kind, Spec.Radius);
+
+        public override Rect Bounds =>
+            MarkGeometry.Inflate(Rect, Width / 2 + ShapeInk.Outset(Spec.Rendering));
 
         public override Rect Frame => Rect;
 
-        public override Mark MoveBy(Vector delta) =>
-            new Shape(A + delta, B + delta, Color, Width, Dashed, Ellipse);
+        public override Mark MoveBy(Vector delta) => new Shape(A + delta, B + delta, Spec);
 
         public override Mark ScaleTo(Rect from, Rect to) => new Shape(
-            MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(B, from, to), Color,
-            Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)), Dashed, Ellipse);
+            MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(B, from, to),
+            Spec with { Width = Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)) });
 
-        public override bool HitTest(Point point, double tolerance)
-        {
-            var r = Rect;
-            double t = Width / 2 + tolerance;
-            bool nearBorder =
-                MarkGeometry.NearSegment(point, new Point(r.Left, r.Top), new Point(r.Right, r.Top), t) ||
-                MarkGeometry.NearSegment(point, new Point(r.Right, r.Top), new Point(r.Right, r.Bottom), t) ||
-                MarkGeometry.NearSegment(point, new Point(r.Right, r.Bottom), new Point(r.Left, r.Bottom), t) ||
-                MarkGeometry.NearSegment(point, new Point(r.Left, r.Bottom), new Point(r.Left, r.Top), t);
-            return nearBorder;
-        }
+        public override bool HitTest(Point point, double tolerance) =>
+            ShapeInk.HitTest(new[] { new InkPart(Contour, true) }, Spec, point, tolerance);
     }
 
     /// <summary>箭头：起点 + 终点 + 三角箭头。</summary>
@@ -400,35 +402,85 @@ internal abstract class Mark
 
     // ============ P1：与 Snow Shot 对齐的补充工具 ============
 
-    /// <summary>直线：两点之间的一条线（没有箭头）。</summary>
+    /// <summary>直线：两点之间的一条线（没有箭头）。线型 / 笔触风格与形状族共用。</summary>
     public sealed class Line : Mark
     {
         public Line(Point a, Point b, Color color, double width, bool dashed)
+            : this(a, b, color, width, dashed, LineType.Straight)
+        {
+        }
+
+        public Line(Point a, Point b, Color color, double width, bool dashed, LineType type)
+            : this(a, b, color, width, dashed, type, StrokeRendering.Architect)
+        {
+        }
+
+        public Line(Point a, Point b, Color color, double width, bool dashed, LineType type,
+            StrokeRendering rendering)
+            : this(a, b, color, width, dashed ? StrokeKind.Dashed : StrokeKind.Solid, type,
+                rendering, ShapeInk.NextSeed())
+        {
+        }
+
+        public Line(Point a, Point b, Color color, double width, StrokeKind style, LineType type,
+            StrokeRendering rendering)
+            : this(a, b, color, width, style, type, rendering, ShapeInk.NextSeed())
+        {
+        }
+
+        public Line(Point a, Point b, Color color, double width, StrokeKind style, LineType type,
+            StrokeRendering rendering, uint seed)
         {
             A = a;
             B = b;
             Color = color;
             Width = width;
-            Dashed = dashed;
+            StrokeStyle = style;
+            Type = type;
+            Rendering = rendering;
+            Seed = seed;
         }
 
         public Point A { get; }
         public Point B { get; }
         public Color Color { get; }
         public double Width { get; }
-        public bool Dashed { get; }
 
-        public override Rect Bounds => MarkGeometry.Inflate(MarkGeometry.RectOf(A, B), Width / 2);
+        /// <summary>描边线型（实线 / 虚线 / 点线）。</summary>
+        public StrokeKind StrokeStyle { get; }
+
+        /// <summary>旧口径：是不是虚线（点线也算虚线）。</summary>
+        public bool Dashed => StrokeStyle != StrokeKind.Solid;
+
+        /// <summary>直线 / 曲线（上游两点直线与曲线都是直的，保留开关只为与上游参数一致）。</summary>
+        public LineType Type { get; }
+
+        public StrokeRendering Rendering { get; }
+        public uint Seed { get; }
+
+        /// <summary>描边用的样式（填充不适用）。</summary>
+        public ShapeSpec StrokeSpec => new(ShapeKind.Rectangle, Color, Width,
+            StrokeStyle, Rendering, Colors.Transparent, FillKind.None, 0, Seed);
+
+        /// <summary>笔迹（不闭合）。</summary>
+        public IReadOnlyList<InkSegment> Contour => new[] { InkSegment.Line(A, B) };
+
+        public override Rect Bounds => MarkGeometry.Inflate(MarkGeometry.RectOf(A, B),
+            Width / 2 + ShapeInk.Outset(Rendering));
+
         public override Rect Frame => MarkGeometry.RectOf(A, B);
 
-        public override Mark MoveBy(Vector delta) => new Line(A + delta, B + delta, Color, Width, Dashed);
+        public override Mark MoveBy(Vector delta) =>
+            new Line(A + delta, B + delta, Color, Width, StrokeStyle, Type, Rendering, Seed);
 
         public override Mark ScaleTo(Rect from, Rect to) => new Line(
             MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(B, from, to), Color,
-            Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)), Dashed);
+            Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)), StrokeStyle, Type, Rendering, Seed);
 
         public override bool HitTest(Point point, double tolerance) =>
-            MarkGeometry.NearSegment(point, A, B, Width / 2 + tolerance);
+            MarkGeometry.NearSegment(point, A, B, Width / 2 + ShownOutset + tolerance);
+
+        private double ShownOutset => ShapeInk.Outset(Rendering);
     }
 
     /// <summary>
@@ -627,21 +679,37 @@ internal abstract class Mark
     }
 
     /// <summary>
-    /// 气泡：圆角矩形 + 左下角一条指向外的尾巴。
-    /// 尾巴尺寸按气泡宽高的比例算（小气泡不会挂一条比身体还大的尾巴）。
+    /// 气泡：身体轮廓（矩形 / 椭圆 / 菱形 / 思考气泡云朵）+ 一条指向外的尾巴。
+    /// 尾巴根部取自身体轮廓（上游 <c>speech_bubble</c>），所以身体边线不会横穿尾巴；
+    /// 思考气泡的尾巴是一串由大到小的圆点。
     /// </summary>
     public sealed class SpeechBubble : Mark
     {
+        /// <summary>简化构造：圆角矩形 + 左下角一条尾巴（录制窗口的旧调用点）。</summary>
         public SpeechBubble(Rect body, Color color, double width)
+            : this(body, new ShapeSpec(
+                ShapeKind.Rectangle, color, width, StrokeKind.Solid, StrokeRendering.Architect,
+                Colors.Transparent, FillKind.None,
+                Math.Clamp(Math.Min(body.Width, body.Height) * 0.18, 4, 16), ShapeInk.NextSeed()))
+        {
+        }
+
+        public SpeechBubble(Rect body, ShapeSpec spec)
         {
             Body = body;
-            Color = color;
-            Width = width;
+            Spec = spec;
         }
 
         public Rect Body { get; }
-        public Color Color { get; }
-        public double Width { get; }
+        public ShapeSpec Spec { get; }
+        public Color Color => Spec.Stroke;
+        public double Width => Spec.Width;
+
+        /// <summary>气泡圆角（形状族同一套参数）。</summary>
+        public double Radius => Spec.Radius;
+
+        /// <summary>思考气泡：尾巴是圆点、身体是云朵。</summary>
+        public bool Thought => Spec.Kind == ShapeKind.ThoughtBubble;
 
         /// <summary>尾巴根部离左边缘的距离。</summary>
         public double TailInset => Math.Clamp(Body.Width * 0.12, 10, 28);
@@ -650,46 +718,81 @@ internal abstract class Mark
 
         public double TailHeight => Math.Clamp(TailWidth * 0.9, 12, 42);
 
-        /// <summary>尾巴三角形的三个点（根两点 + 尖一点）。</summary>
-        public Point[] Tail => new[]
-        {
-            new Point(Body.Left + TailInset, Body.Bottom - Width / 2),
-            new Point(Body.Left + TailInset + TailWidth, Body.Bottom - Width / 2),
-            new Point(Body.Left + TailInset + TailWidth * 0.35, Body.Bottom + TailHeight),
-        };
+        /// <summary>尾巴尖（左下角朝外）。</summary>
+        public Point Tip => new(Body.Left + TailInset + TailWidth * 0.35, Body.Bottom + TailHeight);
 
-        /// <summary>气泡圆角。</summary>
-        public double Radius => Math.Clamp(Math.Min(Body.Width, Body.Height) * 0.18, 4, 16);
+        /// <summary>身体轮廓（不含尾巴 / 圆点）。</summary>
+        public IReadOnlyList<InkSegment> BodyOutline => ShapeInk.Contour(Body, Spec.Kind, Spec.Radius);
+
+        /// <summary>尾巴根部两点；尖落在身体里时没有尾巴。</summary>
+        public (Point Left, Point Right)? Bases =>
+            Thought ? null : ShapeInk.TailBases(BodyOutline, Body, Tip, TailWidth);
+
+        /// <summary>尾巴三角形的三个点（根两点 + 尖一点）。</summary>
+        public Point[] Tail
+        {
+            get
+            {
+                if (Bases is { } bases) return new[] { bases.Left, bases.Right, Tip };
+                return new[]
+                {
+                    new Point(Body.Left + TailInset, Body.Bottom - Width / 2),
+                    new Point(Body.Left + TailInset + TailWidth, Body.Bottom - Width / 2),
+                    Tip,
+                };
+            }
+        }
+
+        /// <summary>思考气泡的圆点尾巴（其余形状为空）。</summary>
+        public IReadOnlyList<(Point Center, double Radius)> Trail =>
+            Thought ? ShapeInk.ThoughtTrail(BodyOutline, Body, Tip, TailWidth, Width) : Array.Empty<(Point, double)>();
+
+        /// <summary>可画的几块轮廓：身体（含尾巴）与圆点。</summary>
+        public IReadOnlyList<InkPart> Parts
+        {
+            get
+            {
+                var parts = new List<InkPart>(1 + Trail.Count);
+                var body = BodyOutline;
+                if (Bases is { } bases) body = ShapeInk.WithTail(body, bases.Left, bases.Right, Tip);
+                parts.Add(new InkPart(body, true));
+                foreach (var (center, radius) in Trail)
+                    parts.Add(new InkPart(ShapeInk.Circle(center, radius), true));
+                return parts;
+            }
+        }
 
         public override Rect Frame
         {
             get
             {
                 var box = Body;
-                box.Union(Tail[2]);
+                box.Union(Tip);
+                foreach (var (center, radius) in Trail)
+                {
+                    box.Union(new Point(center.X - radius, center.Y - radius));
+                    box.Union(new Point(center.X + radius, center.Y + radius));
+                }
                 return box;
             }
         }
 
-        public override Rect Bounds => MarkGeometry.Inflate(Frame, Width / 2);
+        public override Rect Bounds =>
+            MarkGeometry.Inflate(Frame, Width / 2 + ShapeInk.Outset(Spec.Rendering));
 
         public override Mark MoveBy(Vector delta) => new SpeechBubble(
-            new Rect(Body.X + delta.X, Body.Y + delta.Y, Body.Width, Body.Height), Color, Width);
+            new Rect(Body.X + delta.X, Body.Y + delta.Y, Body.Width, Body.Height), Spec);
 
         public override Mark ScaleTo(Rect from, Rect to)
         {
             var a = MarkGeometry.MapPoint(Body.TopLeft, from, to);
             var b = MarkGeometry.MapPoint(Body.BottomRight, from, to);
-            return new SpeechBubble(MarkGeometry.RectOf(a, b), Color,
-                Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)));
+            return new SpeechBubble(MarkGeometry.RectOf(a, b),
+                Spec with { Width = Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)) });
         }
 
-        public override bool HitTest(Point point, double tolerance)
-        {
-            if (MarkGeometry.Inflate(Body, tolerance).Contains(point)) return true;
-            var tail = Tail;
-            return MarkGeometry.InTriangle(point, tail[0], tail[1], tail[2]);
-        }
+        public override bool HitTest(Point point, double tolerance) =>
+            ShapeInk.HitTest(Parts, Spec, point, tolerance, interiorAlways: true);
     }
 
     /// <summary>

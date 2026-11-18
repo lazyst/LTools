@@ -48,6 +48,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "贴图：实时状态与裁剪", PinLiveCrop));
         cases.Add(new("capturePro", "工具栏：格子布局 / 收起 / 落盘往返", ToolLayouts));
         cases.Add(new("capturePro", "样式：每个工具家族各记一套（落盘往返）", ToolStyles));
+        cases.Add(new("capturePro", "样式：形状族（形状 / 描边 / 填充 / 圆角 / 尾巴 / 圆点）", ShapeStyles));
         cases.Add(new("capturePro", "识别：表格聚类 / TSV / HTML", Recognize));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
@@ -717,7 +718,7 @@ internal static partial class CaptureProSuite
         Check.Equal(0, ToolCatalog.Of(CaptureTool.Picker).Params.Length, "取色不用任何参数格");
 
         // 新增的两族参数：序号要形状 / 写法，滤镜要类型 / 强度（马赛克的块大小不给滤镜）
-        Check.True(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.Shape), "序号有徽标形状");
+        Check.True(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.BadgeShape), "序号有徽标形状");
         Check.True(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.Numbering), "序号有数字写法");
         Check.False(ToolCatalog.Uses(CaptureTool.Serial, ToolParam.Width), "序号没有线宽");
         Check.True(ToolCatalog.Uses(CaptureTool.Filter, ToolParam.FilterKind), "滤镜有类型");
@@ -726,8 +727,8 @@ internal static partial class CaptureProSuite
         Check.False(ToolCatalog.Uses(CaptureTool.Mosaic, ToolParam.FilterKind), "马赛克没有滤镜类型（两个工具别混）");
         Check.Equal(CaptureTool.Filter, ToolCatalog.ForKey(System.Windows.Input.Key.F), "F = 滤镜");
 
-        // P1：与 Snow Shot 对齐的新工具（上游 32 项 → 这里 26 项，其余是 P4 的识别类）
-        Check.Equal(26, all.Length, "工具目录 26 项");
+        // P1 / P2：与 Snow Shot 对齐的新工具（上游 32 项 → 这里 25 项，其余是 P4 的识别类）
+        Check.Equal(25, all.Length, "工具目录 25 项");
         Check.Equal(CaptureTool.AutoFilter, ToolCatalog.ForKey(System.Windows.Input.Key.V), "V = 自动打码");
         Check.Equal(CaptureTool.Line, ToolCatalog.ForKey(System.Windows.Input.Key.I), "I = 直线");
         Check.Equal(CaptureTool.Distance, ToolCatalog.ForKey(System.Windows.Input.Key.D), "D = 测距");
@@ -766,7 +767,7 @@ internal static partial class CaptureProSuite
         // 一维工具：横着拖也要能画（只判长度，不要求两个方向都动）
         foreach (var tool in new[] { CaptureTool.Line, CaptureTool.Distance, CaptureTool.Bracket, CaptureTool.Arrow })
             Check.True(ToolCatalog.IsLinear(tool), tool + " 是一维工具");
-        Check.False(ToolCatalog.IsLinear(CaptureTool.Rect), "矩形不是一维工具（宽高都得够）");
+        Check.False(ToolCatalog.IsLinear(CaptureTool.Shape), "形状不是一维工具（宽高都得够）");
 
         // 每种滤镜都有自己的名字（参数行 chip 与 tooltip 共用，别留空）
         foreach (var kind in Enum.GetValues<FilterKind>())
@@ -779,12 +780,12 @@ internal static partial class CaptureProSuite
         // 光标：只有选择和文字不是十字
         Check.False(ToolCatalog.WantsCrossCursor(CaptureTool.Select), "选择用箭头");
         Check.False(ToolCatalog.WantsCrossCursor(CaptureTool.Text), "文字用 I 形");
-        Check.True(ToolCatalog.WantsCrossCursor(CaptureTool.Rect), "矩形用十字");
+        Check.True(ToolCatalog.WantsCrossCursor(CaptureTool.Shape), "形状用十字");
 
         // 点一下不该留下 0 像素标注：手绘 1 DIP 就算，形状要 4 DIP
         Check.Equal(1d, ToolCatalog.MinimumSize(CaptureTool.Pen), "手绘的最小尺寸");
         Check.Equal(1d, ToolCatalog.MinimumSize(CaptureTool.Highlighter), "荧光笔的最小尺寸");
-        Check.Equal(4d, ToolCatalog.MinimumSize(CaptureTool.Rect), "形状的最小尺寸");
+        Check.Equal(4d, ToolCatalog.MinimumSize(CaptureTool.Shape), "形状的最小尺寸");
 
         // 样式：默认值、荧光笔笔头、聚光的压暗换算
         var style = new ToolStyle();
@@ -1249,7 +1250,7 @@ internal static partial class CaptureProSuite
         Check.Equal(all, def.Groups.SelectMany(g => g).Distinct().Count(), "每个工具都在某一格里（格数少但一个都不少）");
         Check.Equal(0, def.HiddenTools.Count, "默认布局没有收起来的工具");
         Check.Equal("Select", def.ToLines()[0], "第一格是「选择」");
-        Check.Equal("Rect,Ellipse", def.ToLines()[1], "第二格是形状（矩形 / 椭圆）");
+        Check.Equal("Shape", def.ToLines()[1], "第二格是形状（矩形 / 椭圆 / 菱形共用一个工具）");
         Check.Equal("Arrow,Line", def.ToLines()[2], "第三格是箭头与直线");
         Check.Equal("Polyline,Pen", def.ToLines()[3], "第四格是自由笔（折线 / 画笔）");
         Check.Equal("Distance,Angle,Bracket", def.ToLines()[4], "第五格是标注尺寸（测距 / 测角 / 括号）");
@@ -1299,7 +1300,7 @@ internal static partial class CaptureProSuite
         Check.True(ToolLayout.Parse(merge.ToLines(), merge.ToHidden()).SameAs(merge),
             "落盘再读回来是同一份布局");
         Check.Equal("Select", merge.ToLines()[0], "一行一格");
-        Check.Equal("Rect,Ellipse", merge.ToLines()[1], "格内逗号分隔工具键");
+        Check.Equal("Shape", merge.ToLines()[1], "格内就是形状工具本身");
 
         // 目录里新增、两处都没提到的工具：自动补回来（不许被老布局一直藏着）
         var lines = def.ToLines().Where(l => !l.Contains("Eraser", StringComparison.Ordinal)).ToList();

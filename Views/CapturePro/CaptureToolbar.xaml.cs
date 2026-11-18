@@ -54,6 +54,7 @@ public partial class CaptureToolbar : UserControl
     private readonly Dictionary<ToolParam, FrameworkElement> _paramHosts = new();
     private readonly List<Action> _refreshers = new();
     private readonly List<RadioButton> _colorChips = new();
+    private readonly List<RadioButton> _fillChips = new();
     private Button? _fillRegionsButton;      // 自动打码「填充区域」下拉（没识别结果时置灰）
 
     private ToolLayout _layout = ToolLayout.Default();
@@ -608,30 +609,7 @@ public partial class CaptureToolbar : UserControl
 
     private void BuildParams()
     {
-        // 颜色
-        var colors = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        colors.Children.Add(Label("颜色"));
-        foreach (var color in ToolStyle.Palette)
-        {
-            var chip = new RadioButton
-            {
-                Style = (Style)FindResource("ColorChip"),
-                GroupName = "captureColor",
-                Background = new SolidColorBrush(color),
-                Tag = color,
-                ToolTip = $"#{(int)color.R:X2}{(int)color.G:X2}{(int)color.B:X2}",
-            };
-            chip.Checked += (_, _) =>
-            {
-                if (_syncing || _styles == null) return;
-                // 共享颜色开着时改一处 = 全改（由 ToolStyleSet 统一处理）
-                _styles.SetColor(StyleFamilies.Of(_tool), (Color)chip.Tag);
-                StyleChanged?.Invoke();
-            };
-            _colorChips.Add(chip);
-            colors.Children.Add(chip);
-        }
-        AddHost(ToolParam.Color, colors);
+        AddHost(ToolParam.Color, ColorRow("颜色", "captureColor", true));
 
         // 线宽 / 字号 / 块大小 / 透明度
         AddHost(ToolParam.Width, Step("线宽", 1, 50, 1,
@@ -650,12 +628,57 @@ public partial class CaptureToolbar : UserControl
             () => (_style?.Opacity ?? 0.35) * 100, v => { if (_style != null) _style.Opacity = v / 100; },
             v => v.ToString("0") + "%", 35));
 
+        // 形状族（上游 buildShapeFamily）：形状选择 / 描边线型 / 笔触风格 / 填充 / 圆角
+        AddHost(ToolParam.ShapeKind, Chips("形状",
+            new[] { ShapeKind.Rectangle, ShapeKind.Ellipse, ShapeKind.Diamond, ShapeKind.ThoughtBubble },
+            () => _style?.ShapeKind ?? ShapeKind.Rectangle,
+            v => { if (_style != null) _style.ShapeKind = v; },
+            ShapeLabel.Chip, ShapeLabel.Name, "shapeKind",
+            // 思考气泡只在气泡工具里出现（上游 buildShapeSelector 的第 4 项）
+            v => v != ShapeKind.ThoughtBubble || _tool == CaptureTool.SpeechBubble));
+
+        AddHost(ToolParam.StrokeStyle, Chips("描边",
+            new[] { StrokeKind.Solid, StrokeKind.Dashed, StrokeKind.Dotted },
+            () => _style?.StrokeStyle ?? StrokeKind.Solid,
+            v => { if (_style != null) _style.StrokeStyle = v; },
+            ShapeLabel.Chip, ShapeLabel.Name));
+
+        AddHost(ToolParam.Rendering, Chips("笔触",
+            new[] { StrokeRendering.Architect, StrokeRendering.Artist, StrokeRendering.Cartoonist },
+            () => _style?.Rendering ?? StrokeRendering.Architect,
+            v => { if (_style != null) _style.Rendering = v; },
+            ShapeLabel.Chip, ShapeLabel.Name));
+
+        AddHost(ToolParam.FillColor, ColorRow("填充色", "captureFillColor", false));
+
+        AddHost(ToolParam.FillStyle, Chips("填充",
+            new[] { FillKind.None, FillKind.Solid, FillKind.Line, FillKind.CrossLine },
+            () => _style?.FillStyle ?? FillKind.None,
+            v => { if (_style != null) _style.FillStyle = v; },
+            ShapeLabel.Chip, ShapeLabel.Name));
+
+        AddHost(ToolParam.CornerRadius, Step("圆角", 0, 40, 2,
+            () => _style?.CornerRadius ?? 6, v => { if (_style != null) _style.CornerRadius = v; },
+            v => v.ToString("0"), 6));
+
+        AddHost(ToolParam.LineType, Chips("线型",
+            new[] { LineType.Straight, LineType.Curve },
+            () => _style?.LineType ?? LineType.Curve,
+            v => { if (_style != null) _style.LineType = v; },
+            ShapeLabel.Chip, ShapeLabel.Name));
+
+        AddHost(ToolParam.BrushMode, Chips("画笔",
+            new[] { BrushMode.Regular, BrushMode.PressureSensitive },
+            () => _style?.BrushMode ?? BrushMode.Regular,
+            v => { if (_style != null) _style.BrushMode = v; },
+            ShapeLabel.Chip, ShapeLabel.Name));
+
         // 序号的形状与数字写法（枚举用文字胶囊：图标认不出「圆角方 / 罗马数字」）
-        AddHost(ToolParam.Shape, Chips("形状",
+        AddHost(ToolParam.BadgeShape, Chips("形状",
             new[] { SerialShape.Circle, SerialShape.Square, SerialShape.Rounded },
-            () => _style?.Shape ?? SerialShape.Circle,
-            v => { if (_style != null) _style.Shape = v; },
-            SerialLabel.Name, v => "徽标形状：" + SerialLabel.Name(v)));
+            () => _style?.SerialShape ?? SerialShape.Circle,
+            v => { if (_style != null) _style.SerialShape = v; },
+            SerialLabel.Name, v => "徽标形状：" + SerialLabel.Name(v), "badgeShape"));
 
         AddHost(ToolParam.Numbering, Chips("编号",
             new[]
@@ -767,11 +790,66 @@ public partial class CaptureToolbar : UserControl
     }
 
     /// <summary>
+    /// 一排颜色胶囊：描边色（<paramref name="stroke"/> = true，跟共享颜色开关联动）
+    /// 与填充色各一排，<c>GroupName</c> 分开。
+    /// </summary>
+    private FrameworkElement ColorRow(string label, string group, bool stroke)
+    {
+        var host = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        host.Children.Add(Label(label));
+
+        var chips = stroke ? _colorChips : _fillChips;
+        foreach (var color in ToolStyle.Palette)
+        {
+            var chip = new RadioButton
+            {
+                Style = (Style)FindResource("ColorChip"),
+                GroupName = group,
+                Background = new SolidColorBrush(color),
+                Tag = color,
+                ToolTip = $"#{(int)color.R:X2}{(int)color.G:X2}{(int)color.B:X2}",
+            };
+            chip.Checked += (_, _) =>
+            {
+                if (_syncing) return;
+                if (stroke)
+                {
+                    if (_styles == null) return;
+                    // 共享颜色开着时改一处 = 全改（由 ToolStyleSet 统一处理）
+                    _styles.SetColor(StyleFamilies.Of(_tool), (Color)chip.Tag);
+                }
+                else if (_style != null)
+                {
+                    _style.FillColor = (Color)chip.Tag;
+                }
+                StyleChanged?.Invoke();
+            };
+            chips.Add(chip);
+            host.Children.Add(chip);
+        }
+
+        Func<Color> get = stroke
+            ? () => _style?.Color ?? ToolStyle.Palette[0]
+            : () => _style?.FillColor ?? Colors.White;
+
+        _refreshers.Add(() =>
+        {
+            var current = get();
+            _syncing = true;
+            foreach (var chip in chips) chip.IsChecked = (Color)chip.Tag == current;
+            _syncing = false;
+        });
+
+        return host;
+    }
+
+    /// <summary>
     /// 枚举型参数：一排文字胶囊，点了就换（单选）。
     /// 与颜色胶囊同一套「_syncing 防回环」写法，别让刷新把用户刚点的值又切回去。
+    /// <paramref name="visible"/> 非空时按它显隐单个胶囊（思考气泡只在气泡工具里出现）。
     /// </summary>
     private FrameworkElement Chips<T>(string label, T[] values, Func<T> get, Action<T> set,
-        Func<T, string> text, Func<T, string> tip, string? group = null)
+        Func<T, string> text, Func<T, string> tip, string? group = null, Func<T, bool>? visible = null)
     {
         var host = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         host.Children.Add(Label(label));
@@ -802,7 +880,11 @@ public partial class CaptureToolbar : UserControl
             var current = get();
             _syncing = true;
             foreach (var (button, value) in chips)
-                button.IsChecked = EqualityComparer<T>.Default.Equals(value, current);
+            {
+                bool shown = visible?.Invoke(value) ?? true;
+                button.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+                button.IsChecked = shown && EqualityComparer<T>.Default.Equals(value, current);
+            }
             _syncing = false;
         });
 
@@ -977,11 +1059,6 @@ public partial class CaptureToolbar : UserControl
     {
         if (_style == null) return;
         foreach (var refresh in _refreshers) refresh();
-
-        _syncing = true;
-        foreach (var chip in _colorChips)
-            chip.IsChecked = (Color)chip.Tag == _style.Color;
-        _syncing = false;
     }
 
     // ============ 拖动 / 双击复位 ============

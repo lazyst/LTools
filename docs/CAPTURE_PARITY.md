@@ -17,11 +17,11 @@
 
 | 上游 | 位置 | LTools 现状 | 批次 | 状态 |
 | --- | --- | --- | --- | --- |
-| 工具清单（32 项） | `include/.../screenshotcanvastools.inc`、`src/.../tools/screenshottoolpalette.cpp` | `Features/CapturePro/ToolCatalog.cs` **26 项**（余下是 P4 的识别 / 转换类：OCR / 翻译 / 文档 / 表格 / 二维码 / LaTeX / Markdown / HTML） | P1 / P4 | 🟡 |
+| 工具清单（32 项） | `include/.../screenshotcanvastools.inc`、`src/.../tools/screenshottoolpalette.cpp` | `Features/CapturePro/ToolCatalog.cs` **25 项**（矩形与椭圆合并成上游那样一个「形状」；余下是 P4 的识别 / 转换类：OCR / 翻译 / 文档 / 表格 / 二维码 / LaTeX / Markdown / HTML） | P1 / P2 / P4 | 🟡 |
 | 移动工具 Move（拖整个选区窗口） | `screenshottoolpalette.cpp:5210` | 拖动选区 / 空白拖动窗格 | — | ✅ |
 | 选择 Select（选中标注改样式 / 拖动 / 缩放） | 同上 | `CaptureOverlayWindow.Annotate.cs` + `Chrome.cs` | — | ✅ |
-| 气泡 SpeechBubble | `SnowCanvasShapeKind::SpeechBubble` | `Mark.SpeechBubble`（圆角身体 + 左下尾巴） | P1 | ✅ |
-| 形状 Shape（矩形 / 椭圆 / 圆角矩形 / 菱形…） | `SnowCanvasShapeKind` | 矩形 / 椭圆两种 | P2 | 🟡 |
+| 气泡 SpeechBubble（尾巴 / 思考气泡） | `speech_bubble/*` | `Mark.SpeechBubble`：身体轮廓取自形状族（矩形 / 椭圆 / 菱形 / 思考气泡云朵），尾巴根部由身体轮廓二分求出、身体边线不横穿尾巴；思考气泡是一串由大到小的圆点 | P1 / P2-b | ✅ |
+| 形状 Shape（矩形 / 椭圆 / 圆角矩形 / 菱形…） | `SnowCanvasShapeKind`、`snow_canvas_render_geometry.cpp` 的 `roundedDiamondPath` | `CaptureTool.Shape`（`R`）+ `ShapeInk.Contour`：矩形（圆角上限 = 短边 / 2）/ 椭圆 / 圆角菱形（上限 = 短边 / 4）/ 思考气泡云朵（14 段贝塞尔） | P2-b | ✅ |
 | 测距 Distance | `distanceToolRequested` | `Mark.Distance`（两端刻度 + 中点 px 标签） | P1 | ✅ |
 | 测角 Angle（滚轮调角度） | `screenshottoolpalette.cpp:4550` | `Mark.Angle`（两次拖拽成角，滚轮 ±5° / Shift ±1°） | P1 | ✅ |
 | 括号 Bracket | `bracketToolRequested` | `Mark.Bracket`（主线 + 两端刻度） | P1 | ✅ |
@@ -42,9 +42,9 @@
 | 文字 Text（富文本样式） | `textRequested` | `Mark.Text` 纯文本 | P1/P2 | 🟡 |
 | 序号 SerialNumber（徽标样式 / 数字写法） | `SnowCanvasSerialNumber*` | `Mark.Serial`（形状 + 写法已实现） | P2 | 🟡 |
 | 取色 Picker | `canvasColorSamplingRequested` | `CaptureTool.Picker` | — | ✅ |
-| 每工具样式记忆 + 落盘 | `screenshotcanvastoolstyles.cpp`、`configs` | `ToolStyle` 单份全局样式 | P2 | ❌ |
-| 样式预设 / 默认样式 | `screenshotdefaultstyles.h` | 无 | P2 | ❌ |
-| 描边色 / 描边宽 / 填充 / 虚线 | `SnowCanvasShapeStyle` | 只有色 + 宽 | P2 | 🟡 |
+| 每工具样式记忆 + 落盘 | `screenshotcanvastoolstyles.cpp`、`configs` | `ToolStyleSet`：每个工具家族各一套（`StyleFamilies`，形状 / 气泡共用 `shape` 族）+ 共享颜色开关 + 落 `configs/ui.json` 的 `CaptureStyles`（只写碰过的族） | P2-a | ✅ |
+| 样式预设 / 默认样式 | `screenshotdefaultstyles.h` | 默认值已对齐（描边 `#F5222D`、填充 `#FFCCC7`、圆角 6、线宽 2、`arrowType = Curve`）；**用户可存的样式预设**留 P2-d | P2-b / P2-d | 🟡 |
+| 描边色 / 描边宽 / 填充 / 虚线 | `SnowCanvasShapeStyle` | `ShapeSpec` + `ShapeInk`：形状（矩形 / 椭圆 / 菱形 / 思考气泡）、描边实 / 虚 / 点、笔触风格（干净 / 手绘 / 涂鸦，同一 seed 重绘一致）、填充无 / 实心 / 斜线 / 交叉、填充色、圆角、直线 / 曲线、画笔压感 | P2-b | ✅ |
 | 字体族 / 字号 / 粗斜 / 对齐 / 透明度 | `SnowCanvasTextStyle` | 只有字号 | P2 | 🟡 |
 | 滤镜类型与强度 | `SnowCanvasFilterType` | `FilterKind`：模糊 / 灰度 / 反相 / 浮雕 / 亮度 / **智能擦除**（`SmartErase.cs` 移植上游三级重建）+ 强度 | P1-b | ✅ |
 | 工具栏自定义（显示哪些工具 / 顺序 / 分组） | `screenshotdrawingtoolbaroptions.h` | `ToolLayout` + `ToolLayoutStore` | — | ✅ |
@@ -143,7 +143,7 @@
 | P1-b | 橡皮与滤镜对齐上游：① 像素级智能擦除 `SmartErase` 滤镜（`snow-draw-engine-gpui/src/smart_erase` 的仿射曲面 → 周期纹理 → 多尺度块匹配三级求解）② 两把橡皮改成落 `RestoreBackground` 恢复原图块（`SnowCanvasTool::RectangleEraser` / `BrushEraser`） | ✅ | 构建 0 警；`--selftest` 211 用例 6240 断言全绿（`capturePro` 43 用例 1414 断言）；`capture-overlay-smoke` 549 条全绿 |
 | P1-c | 自动打码 AutoFilter：移植 `visual-region-detector` 的检测管线（canny / 轮廓 / 形态学 / 对齐 / 文字行 / 媒体分类）+ `screenshotautofiltercontroller.cpp` 的闪烁提示与分类填充 | ✅ | 构建 0 警；`--selftest` 213 用例 6315 断言全绿；`capture-overlay-smoke` 552 条全绿（真窗口识别 10 块 / 点选 toggle / 框选保留 id 序 / 按类型填充替换 / 离开工具清结果） |
 | P2-a | 样式记忆：每个工具家族各一套样式 + 共享颜色开关 + 落盘 `ui.json`（`CaptureStyles`） | ✅ | 构建 0 警；`--selftest` 214 用例 6383 断言全绿；`capture-overlay-smoke` 586 条全绿（切工具各自保留 / 矩形与椭圆同一份 / 共享颜色全改 / 参数条跟族刷新） |
-| P2-b | 形状族参数：形状选择（矩形 / 椭圆 / 菱形 / 思考气泡）+ 描边实 / 虚 / 点 + 填充（实心 / 斜线 / 交叉 / 无）+ 圆角 + 不透明度 + 直线 / 曲线 + 笔刷压感 | ❌ | 待填 |
+| P2-b | 形状族参数：形状选择（矩形 / 椭圆 / 菱形 / 思考气泡）+ 描边实 / 虚 / 点 + 填充（实心 / 斜线 / 交叉 / 无）+ 圆角 + 笔触风格（干净 / 手绘 / 涂鸦）+ 直线 / 曲线 + 画笔压感 | ✅ | 构建 0 警；`--selftest` 215 用例 6513 断言全绿（`capturePro` 47 用例 1687 断言，新增「样式：形状族」一组）；`capture-overlay-smoke` 620 条全绿（真参数行胶囊 3 档形状 / 思考只在气泡出现 / 填充色单独一排 / 圆角默认 6 / 点胶囊改样式 / 填充与圆角与菱形与虚点线与手绘与思考气泡圆点逐像素对账） |
 | P2-c | 文字族参数：字体族 / 粗体 / 斜体 / 水平与垂直对齐 / 不透明度 / 圆角 / 填充样式 / 描边宽度 | ❌ | 待填 |
 | P2-d | 序号 / 水印 / 放大镜 / 测距 / 测角 / 括号 / 橡皮的完整参数 | ❌ | 待填 |
 | P3 | 选区：XYWH / 比例 / 圆角 / 阴影 / 智能选区 / 预设 | ❌ | 待填 |
@@ -190,3 +190,16 @@
   - **打码方式与强度沿用矩形滤镜那一套**（`ToolStyle.FilterMode` / `FilterStrength`）；类型下拉只有 6 项、不含智能擦除（逐区域擦会掏空洞），样式停在智能擦除时回落到马赛克。新增 `FilterKind.Mosaic`（块边长 = `(2 + 20 × 强度²) × 缩放`，块内取平均）。
   - **标注与顺序**：`Mark.Filter` 加 `AutoRegionId`（`MoveBy` / `ScaleTo` 都带上），所以拖动 / 缩放后还认得「这块打过没有」；`CaptureDocument.EditBatch` 让整批只占一个撤销位（引用序列相同不记）；`AutoFilterLogic.NormalizeOrder` 把顺序固定成「智能擦除 → 自动填充按区域 id 升序 → 其余原序」。
   - 验收：构建 0 错 0 警；`--selftest` 213 用例 / 6315 断言全绿（新增「自动打码：命中 / 框选 / 填充事务 / 绘制顺序」「自动打码：区域检测与上游逐区域对齐」）；`capture-overlay-smoke` 552 条全绿（真窗口识别 10 块 / 点选 toggle / 框选保留 id 序 / 按类型填充替换 / 离开工具清结果 / 填充按钮可用性）。
+- 2026-11-18：**P2-a 完成（每工具家族一套样式）**。上游 `screenshotcanvastoolstyles.cpp` 是「一个工具家族一份样式」，LTools 原来只有一份全局 `ToolStyle`。
+  - 新增 `Features/CapturePro/ToolStyleSet.cs`：`StyleFamilies`（`shape` / `speechBubble` / `arrow` / `line` / `polyline` / `pen` / `highlighter` / … 20 个族）+ `StyleFamilies.Of(tool)`（矩形与椭圆共用 `shape`，自动打码与矩形滤镜共用 `filter`）；`ToolStyleSet.For(tool)` 按族取同一份对象（不是副本），`SetColor` / `SetSyncColors` 复刻上游 `syncToolColors`：开着改一处 = 全改，关着只改自己那一族。
+  - 落盘 `configs/ui.json` 的 `CaptureStyles`（`Config/CaptureStyles.cs` 的 `CaptureToolStyleDto`）：只写碰过的族，颜色 `#RRGGBB`、枚举按名字；认不出的值丢弃、越界钳回，写盘防抖 300 ms + `Flush()`（关窗 / 退出补写）。
+  - 参数条跟着族刷新（`CaptureToolbar.RefreshValues`），换工具再切回来时刚才调的值还在。
+  - 验收：构建 0 错 0 警；`--selftest` 214 用例 / 6383 断言全绿；`capture-overlay-smoke` 586 条全绿（切工具各自保留 / 矩形与椭圆同一份 / 共享颜色全改 / 参数条跟族刷新）。
+- 2026-11-18：**P2-b 完成（形状族参数）**。工具 26 → 25：`Rect` 与 `Ellipse` 合并成上游那样一个 `CaptureTool.Shape`（`Key.R`，`Key.E` 释放），每种形状在参数行的「形状」胶囊里选。
+  - **几何**：新文件 `Features/CapturePro/ShapeStyle.cs`（约 1000 行，纯数据 + 绘制，不碰窗口）。`ShapeKind` 四种轮廓（矩形 / 椭圆 / 圆角菱形 / 思考气泡云朵）、`StrokeKind` 实 / 虚 / 点、`StrokeRendering` 干净 / 手绘 / 涂鸦（同 `seed` 重绘完全一致，抖动种子存在标注里，拖动 / 缩放不换）、`FillKind` 无（上游 `Border`）/ 实心 / 斜线 / 交叉，`LineType` 直线 / 曲线，`BrushMode` 常规 / 压感。
+  - **对齐上游细节**：圆角矩形上限 = 短边 / 2、圆角菱形上限 = 短边 / 4（`roundedDiamondPath` + `normalize_shape_corner_radii`）；虚 / 点线直接给上游 `{4,4}` / `{0.01,3}`（都是线宽倍数，没有再除线宽）；`PathFigure.IsFilled` 必须为 `true`，否则填充与命中同时失效（踩过）。
+  - **气泡**：尾巴根部由身体轮廓二分求出（`TailBases`），身体边线不再横穿尾巴；思考气泡是 14 段云朵 + 1–3 个由大到小的圆点（`ThoughtTrail`，照 `thought_bubble.rs`）。
+  - **默认值照 `screenshotdefaultstyles.h`**：描边 `#F5222D`、填充 `#FFCCC7`、圆角 6、线宽 2、`arrowType = Curve`；「思考气泡」只在气泡工具的形状胶囊里出现（第 4 个胶囊按工具显隐）。
+  - **参数行**：`ToolParam.Shape` 改名 `BadgeShape`（序号的徽标形状），新增 `ShapeKind` / `StrokeStyle` / `Rendering` / `FillStyle` / `FillColor` / `CornerRadius` / `LineType` / `BrushMode` 八格；`ColorRow` 改成可复用（描边色一排 + 填充色一排，`GroupName` 分开），`Chips` 支持按值显隐。
+  - **未做**：上游 `ArrowType::Curve` 对两点直线与 Straight 视觉等价，`LineType` / `BrushMode` 只入参数与模型、不假造效果。
+  - 验收：构建 0 错 0 警；`--selftest` 215 用例 / 6513 断言全绿（`capturePro` 47 用例 / 1687 断言，新增「样式：形状族（形状 / 描边 / 填充 / 圆角 / 尾巴 / 圆点）」一组）；`capture-overlay-smoke` 620 条全绿（真参数行胶囊 3 档形状 / 思考只在气泡出现 / 填充色单独一排 / 圆角默认 6 / 点胶囊改样式 / 填充与圆角与菱形与虚点线与手绘与思考气泡圆点逐像素对账）。

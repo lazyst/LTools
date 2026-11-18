@@ -13,8 +13,7 @@ internal enum CaptureTool
     Pen,
     Highlighter,
     HighlightRect,
-    Rect,
-    Ellipse,
+    Shape,
     Arrow,
     Line,
     Polyline,
@@ -47,7 +46,31 @@ internal enum ToolParam
     Opacity,
 
     /// <summary>序号的徽标形状。</summary>
-    Shape,
+    BadgeShape,
+
+    /// <summary>形状族的形状（矩形 / 椭圆 / 菱形 / 思考气泡）。</summary>
+    ShapeKind,
+
+    /// <summary>描边线型（实线 / 虚线 / 点线）。</summary>
+    StrokeStyle,
+
+    /// <summary>笔触风格（干净 / 手绘 / 涂鸦）。</summary>
+    Rendering,
+
+    /// <summary>填充方式（无 / 实心 / 斜线 / 交叉斜线）。</summary>
+    FillStyle,
+
+    /// <summary>填充色（与描边色分开）。</summary>
+    FillColor,
+
+    /// <summary>圆角半径。</summary>
+    CornerRadius,
+
+    /// <summary>直线 / 曲线。</summary>
+    LineType,
+
+    /// <summary>画笔模式（常规 / 压感）。</summary>
+    BrushMode,
 
     /// <summary>序号的数字写法。</summary>
     Numbering,
@@ -93,26 +116,48 @@ internal static class ToolCatalog
     private static readonly ToolParam[] None = Array.Empty<ToolParam>();
     private static readonly ToolParam[] Stroke = { ToolParam.Color, ToolParam.Width };
 
+    /// <summary>
+    /// 形状族（上游 <c>buildShapeFamily</c>）：形状选择 + 描边（色 / 线宽 / 线型 / 笔触风格）
+    /// + 填充（色 / 方式）+ 圆角。气泡共用同一套，只是形状里多一个「思考气泡」。
+    /// </summary>
+    private static readonly ToolParam[] ShapeFamily =
+    {
+        ToolParam.Color, ToolParam.Width, ToolParam.ShapeKind, ToolParam.StrokeStyle,
+        ToolParam.Rendering, ToolParam.FillColor, ToolParam.FillStyle, ToolParam.CornerRadius,
+    };
+
+    /// <summary>箭头：描边 + 线型 + 笔触风格（上游 <c>arrow_style</c>，没有填充与形状）。</summary>
+    private static readonly ToolParam[] ArrowStroke =
+    {
+        ToolParam.Color, ToolParam.Width, ToolParam.StrokeStyle, ToolParam.Rendering,
+    };
+
+    /// <summary>直线：箭头那套再加「直线 / 曲线」。</summary>
+    private static readonly ToolParam[] LineStroke =
+    {
+        ToolParam.Color, ToolParam.Width, ToolParam.StrokeStyle, ToolParam.Rendering, ToolParam.LineType,
+    };
+
     public static readonly ToolInfo[] All =
     {
         new(CaptureTool.Select, "选择", "Select", "点选标注后可拖动移动，Delete 删除", None, Key.Q),
-        new(CaptureTool.Rect, "矩形", "Rect", "拖出矩形框", Stroke, Key.R),
-        new(CaptureTool.Ellipse, "椭圆", "Ellipse", "拖出椭圆", Stroke, Key.E),
-        new(CaptureTool.Arrow, "箭头", "Arrow", "从起点拖到目标", Stroke, Key.A),
-        new(CaptureTool.Line, "直线", "Line", "从起点拖到终点，不带箭头", Stroke, Key.I),
+        new(CaptureTool.Shape, "形状", "Rect", "拖出形状（矩形 / 椭圆 / 菱形，气泡工具里还能选思考气泡），填充与圆角在参数行选",
+            ShapeFamily, Key.R),
+        new(CaptureTool.Arrow, "箭头", "Arrow", "从起点拖到目标", ArrowStroke, Key.A),
+        new(CaptureTool.Line, "直线", "Line", "从起点拖到终点，不带箭头", LineStroke, Key.I),
         new(CaptureTool.Polyline, "折线", "Polyline", "逐点单击，双击 / Enter 结束", Stroke, Key.L),
         new(CaptureTool.Distance, "测距", "Distance", "拖出线段，中点显示长度（像素）", Stroke, Key.D),
         new(CaptureTool.Angle, "测角", "Angle", "先拖一条臂，再拖第二条臂；选中后滚轮改角度", Stroke, Key.G),
         new(CaptureTool.Bracket, "括号", "Bracket", "拖出带两端刻度的区间", Stroke, Key.B),
-        new(CaptureTool.SpeechBubble, "气泡", "SpeechBubble", "拖出气泡框，左下角带指向外的尾巴", Stroke, Key.O),
-        new(CaptureTool.Pen, "画笔", "Pen", "按住拖动自由绘制", Stroke, Key.P),
+        new(CaptureTool.SpeechBubble, "气泡", "SpeechBubble", "拖出气泡框，左下角带指向外的尾巴", ShapeFamily, Key.O),
+        new(CaptureTool.Pen, "画笔", "Pen", "按住拖动自由绘制", new[] { ToolParam.Color, ToolParam.Width, ToolParam.BrushMode }, Key.P),
         new(CaptureTool.Picker, "取色", "Picker", "鼠标下的颜色，单击复制 #RRGGBB", None, Key.C),
         new(CaptureTool.Spotlight, "聚光", "Spotlight", "拖出保持原样的矩形，其余压暗", new[] { ToolParam.Opacity }, Key.S),
         new(CaptureTool.Highlighter, "画笔荧光", "Highlighter", "半透明粗线，给文字打底", new[] { ToolParam.Color, ToolParam.Width, ToolParam.Opacity }, Key.H),
         new(CaptureTool.HighlightRect, "矩形荧光", "HighlightRect", "把一块区域铺上半透明色", new[] { ToolParam.Color, ToolParam.Opacity }, Key.J),
         new(CaptureTool.Text, "文字", "Text", "单击输入文字，Enter 结束（Shift+Enter 换行）", new[] { ToolParam.Color, ToolParam.FontSize }, Key.T),
         new(CaptureTool.Serial, "序号", "Serial", "单击添加序号，自动递增（删除不重排）",
-            new[] { ToolParam.Color, ToolParam.Shape, ToolParam.Numbering }, Key.N),
+            new[] { ToolParam.Color, ToolParam.BadgeShape, ToolParam.Numbering }, Key.N),
         new(CaptureTool.Magnifier, "放大镜", "Magnifier", "拖出镜头框，框内的画面按倍率放大",
             new[] { ToolParam.Color, ToolParam.Width, ToolParam.Factor }, Key.Z),
         new(CaptureTool.Watermark, "水印", "Watermark", "整张图斜向平铺水印文字，单击落到图上",
@@ -183,6 +228,9 @@ internal sealed class ToolStyle
         Color.FromRgb(0x10, 0x10, 0x14),   // 近黑
     };
 
+    /// <summary>填充色默认值（上游 <c>screenshotCanvasStyleDefaults()</c> 的 <c>#FFCCC7</c>）。</summary>
+    public static readonly Color DefaultFillColor = Color.FromRgb(0xFF, 0xCC, 0xC7);
+
     public Color Color { get; set; } = Palette[0];
     public double Width { get; set; } = 4;
     public double FontSize { get; set; } = 20;
@@ -192,7 +240,31 @@ internal sealed class ToolStyle
     public double Opacity { get; set; } = 0.35;
 
     /// <summary>序号徽标的形状。</summary>
-    public SerialShape Shape { get; set; } = SerialShape.Circle;
+    public SerialShape SerialShape { get; set; } = SerialShape.Circle;
+
+    /// <summary>形状族的形状（矩形 / 椭圆 / 菱形 / 思考气泡）。</summary>
+    public ShapeKind ShapeKind { get; set; } = ShapeKind.Rectangle;
+
+    /// <summary>描边线型（实线 / 虚线 / 点线）。</summary>
+    public StrokeKind StrokeStyle { get; set; } = StrokeKind.Solid;
+
+    /// <summary>笔触风格（干净 / 手绘 / 涂鸦）。</summary>
+    public StrokeRendering Rendering { get; set; } = StrokeRendering.Architect;
+
+    /// <summary>填充方式（无 = 上游的 Border）。</summary>
+    public FillKind FillStyle { get; set; } = FillKind.None;
+
+    /// <summary>填充色（上游默认 <c>#FFCCC7</c>，与描边色分开）。</summary>
+    public Color FillColor { get; set; } = DefaultFillColor;
+
+    /// <summary>圆角半径（DIP，上游默认 6）。</summary>
+    public double CornerRadius { get; set; } = 6;
+
+    /// <summary>直线 / 曲线（上游默认曲线；两点之间两者视觉一致）。</summary>
+    public LineType LineType { get; set; } = LineType.Curve;
+
+    /// <summary>画笔模式（常规 / 压感）。</summary>
+    public BrushMode BrushMode { get; set; } = BrushMode.Regular;
 
     /// <summary>序号的数字写法。</summary>
     public SerialNumbering Numbering { get; set; } = SerialNumbering.Arabic;
@@ -239,6 +311,13 @@ internal sealed class ToolStyle
     /// <summary>聚光的压暗程度：透明度越低，框外压得越暗。</summary>
     public double Dim => Math.Clamp(1 - Opacity, 0.15, 0.85);
 
+    /// <summary>
+    /// 造一份形状样式给新标注（形状族与气泡族共用）。
+    /// <paramref name="seed"/> 是手绘抖动种子：同一条标注重绘多次结果一致。
+    /// </summary>
+    public ShapeSpec ShapeSpecOf(uint seed) => new(
+        ShapeKind, Color, Width, StrokeStyle, Rendering, FillColor, FillStyle, CornerRadius, seed);
+
     // ============ 落盘（ui.json 的 CaptureStyles） ============
 
     /// <summary>写进配置文件的一份（字段全给，读回来等价）。</summary>
@@ -249,8 +328,16 @@ internal sealed class ToolStyle
         FontSize = FontSize,
         Block = Block,
         Opacity = Opacity,
-        Shape = ToolStyleFormat.Name(Shape),
+        Shape = ToolStyleFormat.Name(SerialShape),
         Numbering = ToolStyleFormat.Name(Numbering),
+        ShapeKind = ToolStyleFormat.Name(ShapeKind),
+        StrokeStyle = ToolStyleFormat.Name(StrokeStyle),
+        Rendering = ToolStyleFormat.Name(Rendering),
+        FillStyle = ToolStyleFormat.Name(FillStyle),
+        FillColor = ToolStyleFormat.Hex(FillColor),
+        CornerRadius = CornerRadius,
+        LineType = ToolStyleFormat.Name(LineType),
+        BrushMode = ToolStyleFormat.Name(BrushMode),
         FilterMode = ToolStyleFormat.Name(FilterMode),
         FilterStrength = FilterStrength,
         Factor = Factor,
@@ -270,8 +357,16 @@ internal sealed class ToolStyle
         style.FontSize = Math.Clamp(dto.FontSize ?? style.FontSize, 8, 72);
         style.Block = Math.Clamp(dto.Block ?? style.Block, 4, 24);
         style.Opacity = Math.Clamp(dto.Opacity ?? style.Opacity, 0.1, 0.9);
-        style.Shape = ToolStyleFormat.ParseEnum(dto.Shape, style.Shape);
+        style.SerialShape = ToolStyleFormat.ParseEnum(dto.Shape, style.SerialShape);
         style.Numbering = ToolStyleFormat.ParseEnum(dto.Numbering, style.Numbering);
+        style.ShapeKind = ToolStyleFormat.ParseEnum(dto.ShapeKind, style.ShapeKind);
+        style.StrokeStyle = ToolStyleFormat.ParseEnum(dto.StrokeStyle, style.StrokeStyle);
+        style.Rendering = ToolStyleFormat.ParseEnum(dto.Rendering, style.Rendering);
+        style.FillStyle = ToolStyleFormat.ParseEnum(dto.FillStyle, style.FillStyle);
+        if (ToolStyleFormat.TryParseColor(dto.FillColor, out var fill)) style.FillColor = fill;
+        style.CornerRadius = Math.Clamp(dto.CornerRadius ?? style.CornerRadius, 0, 40);
+        style.LineType = ToolStyleFormat.ParseEnum(dto.LineType, style.LineType);
+        style.BrushMode = ToolStyleFormat.ParseEnum(dto.BrushMode, style.BrushMode);
         style.FilterMode = ToolStyleFormat.ParseEnum(dto.FilterMode, style.FilterMode);
         style.FilterStrength = Math.Clamp(dto.FilterStrength ?? style.FilterStrength, 0, 100);
         style.Factor = Math.Clamp(dto.Factor ?? style.Factor, 1, 8);

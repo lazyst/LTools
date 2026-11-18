@@ -260,10 +260,6 @@ internal static class MarkGeometry
         return geo;
     }
 
-    public static Geometry ShapeOf(Rect rect, bool ellipse) => ellipse
-        ? new EllipseGeometry(rect)
-        : new RectangleGeometry(rect);
-
     /// <summary>极坐标取点：从 <paramref name="origin"/> 沿 <paramref name="radians"/> 走 <paramref name="length"/>。</summary>
     public static Point Polar(Point origin, double radians, double length) =>
         new(origin.X + Math.Cos(radians) * length, origin.Y + Math.Sin(radians) * length);

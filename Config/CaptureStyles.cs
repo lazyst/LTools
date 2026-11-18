@@ -47,6 +47,30 @@ public sealed class CaptureToolStyleDto
     /// <summary>序号数字写法（<c>SerialNumbering</c> 名字）。</summary>
     public string? Numbering { get; set; }
 
+    /// <summary>形状族的形状（<c>ShapeKind</c> 名字）。</summary>
+    public string? ShapeKind { get; set; }
+
+    /// <summary>描边线型（<c>StrokeKind</c> 名字）。</summary>
+    public string? StrokeStyle { get; set; }
+
+    /// <summary>笔触风格（<c>StrokeRendering</c> 名字）。</summary>
+    public string? Rendering { get; set; }
+
+    /// <summary>填充方式（<c>FillKind</c> 名字）。</summary>
+    public string? FillStyle { get; set; }
+
+    /// <summary>填充色（<c>#RRGGBB</c>）。</summary>
+    public string? FillColor { get; set; }
+
+    /// <summary>圆角半径（DIP）。</summary>
+    public double? CornerRadius { get; set; }
+
+    /// <summary>直线 / 曲线（<c>LineType</c> 名字）。</summary>
+    public string? LineType { get; set; }
+
+    /// <summary>画笔模式（<c>BrushMode</c> 名字）。</summary>
+    public string? BrushMode { get; set; }
+
     /// <summary>滤镜类型（<c>FilterKind</c> 名字）。</summary>
     public string? FilterMode { get; set; }
 

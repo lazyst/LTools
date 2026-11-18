@@ -124,11 +124,8 @@ internal static class MarkRenderer
         dc.DrawGeometry(null, pen, MarkGeometry.Polyline(s.Points));
     }
 
-    private static void DrawShape(DrawingContext dc, Mark.Shape s)
-    {
-        var pen = MakePen(s.Color, s.Width, s.Dashed);
-        dc.DrawGeometry(null, pen, MarkGeometry.ShapeOf(s.Rect, s.Ellipse));
-    }
+    private static void DrawShape(DrawingContext dc, Mark.Shape s) =>
+        ShapeInk.Draw(dc, s.Contour, closed: true, s.Spec);
 
     private static void DrawArrow(DrawingContext dc, Mark.Arrow a)
     {
@@ -488,7 +485,7 @@ internal static class MarkRenderer
     // ============ P1：新增工具 ============
 
     private static void DrawLine(DrawingContext dc, Mark.Line line) =>
-        dc.DrawLine(MakePen(line.Color, line.Width, line.Dashed), line.A, line.B);
+        ShapeInk.DrawStroke(dc, line.Contour, closed: false, line.StrokeSpec);
 
     /// <summary>测距：主线 + 两端刻度 + 中点标签。</summary>
     private static void DrawDistance(DrawingContext dc, Mark.Distance d, double scale)
@@ -545,14 +542,8 @@ internal static class MarkRenderer
         dc.DrawLine(pen, b.B - normal, b.B + normal);
     }
 
-    private static void DrawSpeechBubble(DrawingContext dc, Mark.SpeechBubble b)
-    {
-        var pen = MakePen(b.Color, b.Width, dashed: false);
-        dc.DrawRoundedRectangle(null, pen, b.Body, b.Radius, b.Radius);
-
-        var tail = b.Tail;
-        dc.DrawGeometry(null, pen, MarkGeometry.Polyline(new[] { tail[0], tail[2], tail[1] }));
-    }
+    private static void DrawSpeechBubble(DrawingContext dc, Mark.SpeechBubble b) =>
+        ShapeInk.Draw(dc, b.Parts, b.Spec);
 
     /// <summary>放大镜：把镜头中心那一小块按倍率放大画进镜头框，再加一圈描边。</summary>
     private static void DrawMagnifier(DrawingContext dc, Mark.Magnifier m, BitmapSource baseImage, double scale)
