@@ -681,11 +681,25 @@ internal static class ShapeInk
         return false;
     }
 
-    private static void PaintFill(DrawingContext dc, Geometry geometry, ShapeSpec spec)
+    private static void PaintFill(DrawingContext dc, Geometry geometry, ShapeSpec spec) =>
+        PaintFillGeometry(dc, geometry, spec.Fill, spec.FillStyle, spec.Width);
+
+    /// <summary>
+    /// 把一块任意几何按填充方式上色（形状填充与文字背景胶囊共用这一份：
+    /// 斜线 / 交叉的线宽与间距在上游是同一套 <c>drawStyledFill</c>）。
+    /// </summary>
+    /// <param name="referenceStripeWidth">
+    /// 算斜线粗细的参考宽度：形状用描边线宽，文字背景用「字号 / 24」
+    /// （上游 <c>drawTextBackgroundFill</c> 的 <c>kTextFillReferenceFontSize</c>）。
+    /// </param>
+    public static void PaintFillGeometry(DrawingContext dc, Geometry geometry, Color color,
+        FillKind style, double referenceStripeWidth)
     {
-        var brush = new SolidColorBrush(spec.Fill);
+        if (style == FillKind.None || color.A == 0) return;
+
+        var brush = new SolidColorBrush(color);
         brush.Freeze();
-        if (spec.FillStyle == FillKind.Solid)
+        if (style == FillKind.Solid)
         {
             dc.DrawGeometry(brush, null, geometry);
             return;
@@ -694,8 +708,8 @@ internal static class ShapeInk
         var bounds = geometry.Bounds;
         if (bounds.Width <= 0.01 || bounds.Height <= 0.01) return;
 
-        // 上游：线宽 = clamp(1 + (描边宽 - 1) × 0.6, 0.5, 6)，间距 = clamp(线宽 × 4, 3, 21)
-        double lineWidth = Math.Clamp(1 + (spec.Width - 1) * 0.6, 0.5, 6);
+        // 上游：线宽 = clamp(1 + (参考宽 - 1) × 0.6, 0.5, 6)，间距 = clamp(线宽 × 4, 3, 21)
+        double lineWidth = Math.Clamp(1 + (referenceStripeWidth - 1) * 0.6, 0.5, 6);
         double spacing = Math.Clamp(lineWidth * 4, 3, 21);
 
         var pen = new Pen(brush, lineWidth) { StartLineCap = PenLineCap.Flat, EndLineCap = PenLineCap.Flat };
@@ -703,7 +717,7 @@ internal static class ShapeInk
 
         dc.PushClip(geometry);
         DrawHatch(dc, pen, bounds, spacing, mirror: false);
-        if (spec.FillStyle == FillKind.CrossLine) DrawHatch(dc, pen, bounds, spacing, mirror: true);
+        if (style == FillKind.CrossLine) DrawHatch(dc, pen, bounds, spacing, mirror: true);
         dc.Pop();
     }
 

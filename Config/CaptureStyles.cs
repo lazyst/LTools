@@ -91,4 +91,25 @@ public sealed class CaptureToolStyleDto
 
     /// <summary>水印不透明度（0–1）。</summary>
     public double? WatermarkOpacity { get; set; }
+
+    /// <summary>文字字号（DIP，6–256）。</summary>
+    public double? TextSize { get; set; }
+
+    /// <summary>字体族；空 = 项目默认。</summary>
+    public string? FontFamily { get; set; }
+
+    /// <summary>文字粗体。</summary>
+    public bool? TextBold { get; set; }
+
+    /// <summary>文字斜体。</summary>
+    public bool? TextItalic { get; set; }
+
+    /// <summary>文字水平对齐（<c>TextAlign</c> 名字）。</summary>
+    public string? TextAlign { get; set; }
+
+    /// <summary>文字描边宽度（DIP，0–72）。</summary>
+    public double? TextStrokeWidth { get; set; }
+
+    /// <summary>文字描边色（<c>#RRGGBB</c>）。</summary>
+    public string? StrokeColor { get; set; }
 }

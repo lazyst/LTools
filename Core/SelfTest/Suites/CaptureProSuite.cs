@@ -68,6 +68,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "录屏：选项 / 编码器 / 混音参数", RecordOptionsRules));
         cases.Add(new("capturePro", "录屏：特效几何 / 画中画落点", RecordEffectRules));
         cases.Add(new("capturePro", "录屏：裁剪 / 倍速 / 导出参数", RecordTrimRules));
+        cases.Add(new("capturePro", "文字族：字号 / 字体 / 粗斜 / 对齐 / 描边 / 背景胶囊", TextStyles));
     }
 
     private static void Geometry()
@@ -118,7 +119,9 @@ internal static partial class CaptureProSuite
         Check.Equal(new Point(5, -3), moved.A, "新实例跟着移动");
         Check.Equal(new Point(0, 0), shape.A, "原实例不动（撤销栈靠这个）");
 
-        var text = new Mark.Text(new Point(0, 0), "截图", 20, Colors.White, 0, Colors.Black, 0, 4);
+        var text = new Mark.Text(new Point(0, 0), "截图",
+            new TextSpec("", 20, false, false, TextAlign.Left, Colors.White, 0, Colors.Black,
+                Colors.Transparent, FillKind.Solid, 6));
         var movedText = (Mark.Text)text.MoveBy(new Vector(10, 10));
         Check.Equal(new Point(10, 10), movedText.Origin, "文字移动");
         Check.Equal(text.Measured, movedText.Measured, "移动不改排版尺寸");
@@ -237,11 +240,13 @@ internal static partial class CaptureProSuite
         Check.Equal(new Point(20, 20),
             ((Mark.Stroke)stroke.ScaleTo(stroke.Frame, new Rect(0, 0, 20, 20))).Points[1], "笔迹点按比例搬");
 
-        var text = new Mark.Text(new Point(10, 10), "截图", 20, Colors.White, 0, Colors.Black, 0, 4);
+        var text = new Mark.Text(new Point(10, 10), "截图",
+            new TextSpec("", 20, false, false, TextAlign.Left, Colors.White, 0, Colors.Black,
+                Colors.Transparent, FillKind.Solid, 6));
         var textBox = text.Frame;
         var textTarget = new Rect(0, 0, textBox.Width * 2, textBox.Height * 2);
         var scaledText = (Mark.Text)text.ScaleTo(textBox, textTarget);
-        Check.Equal(40.0, scaledText.FontSize, "文字放大是字号变大（不是拉歪）");
+        Check.Equal(40.0, scaledText.Style.FontSize, "文字放大是字号变大（不是拉歪）");
         Check.True(textTarget.Contains(scaledText.Origin), "文字原点落在新框里");
 
         var mosaic = new Mark.Mosaic(new Point(10, 10), new Point(50, 40), 8);
@@ -709,7 +714,7 @@ internal static partial class CaptureProSuite
         Check.True(ToolCatalog.Uses(CaptureTool.Pen, ToolParam.Width), "画笔有线宽");
         Check.False(ToolCatalog.Uses(CaptureTool.Pen, ToolParam.Block), "画笔没有块大小");
         Check.True(ToolCatalog.Uses(CaptureTool.Highlighter, ToolParam.Opacity), "荧光笔有透明度");
-        Check.True(ToolCatalog.Uses(CaptureTool.Text, ToolParam.FontSize), "文字有字号");
+        Check.True(ToolCatalog.Uses(CaptureTool.Text, ToolParam.TextSize), "文字有字号");
         Check.False(ToolCatalog.Uses(CaptureTool.Text, ToolParam.Width), "文字没有线宽");
         Check.True(ToolCatalog.Uses(CaptureTool.Mosaic, ToolParam.Block), "马赛克有块大小");
         Check.False(ToolCatalog.Uses(CaptureTool.Mosaic, ToolParam.Color), "马赛克没有颜色");

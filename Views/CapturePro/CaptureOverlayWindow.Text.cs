@@ -29,8 +29,28 @@ public partial class CaptureOverlayWindow
         _textEditing = true;
 
         TextEntry.Text = string.Empty;
-        TextEntry.FontSize = _style.FontSize;
-        TextEntry.Foreground = new SolidColorBrush(_style.Color);
+
+        // 输入框就照这一套文字样式显示（字体 / 字号 / 粗斜 / 对齐 / 字色），
+        // 敲的时候看到的和落地后是同一份——上游的编辑器也是直接用样式渲染的。
+        var spec = _style.TextSpecOf();
+        TextEntry.FontFamily = new FontFamily(
+            string.IsNullOrWhiteSpace(spec.FontFamily) ? TextInk.FallbackFamily : spec.FontFamily);
+        TextEntry.FontSize = TextInk.SizeOf(spec);
+        TextEntry.FontWeight = spec.Bold ? FontWeights.Bold : FontWeights.Normal;
+        TextEntry.FontStyle = spec.Italic ? FontStyles.Italic : FontStyles.Normal;
+        TextEntry.TextAlignment = spec.Align switch
+        {
+            TextAlign.Center => TextAlignment.Center,
+            TextAlign.Right => TextAlignment.Right,
+            _ => TextAlignment.Left,
+        };
+
+        TextEntry.Foreground = new SolidColorBrush(spec.Color);
+        // 背景胶囊在画布上由标注自己画；输入框只垫一层同色底，避免白底上白字看不见
+        TextEntry.Background = TextInk.HasFill(spec) && spec.FillStyle == FillKind.Solid
+            ? new SolidColorBrush(spec.Fill)
+            : Brushes.Transparent;
+
         TextEntry.Visibility = Visibility.Visible;
 
         // 先把框摆好再量：贴右边 / 底边时往回收，别让输入框跑到窗口外
@@ -65,9 +85,7 @@ public partial class CaptureOverlayWindow
 
         if (string.IsNullOrWhiteSpace(text)) return;
 
-        // 外描边取「与字色相反」的颜色：不管底下是浅底还是深底，字都立得住
-        _doc.Add(new Mark.Text(_textOrigin, text, _style.FontSize, _style.Color,
-            0.75, MarkRenderer.Contrast(_style.Color), 0, 0));
+        _doc.Add(new Mark.Text(_textOrigin, text, _style.TextSpecOf()));
         RefreshMarks();
     }
 

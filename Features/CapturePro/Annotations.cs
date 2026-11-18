@@ -186,57 +186,49 @@ internal abstract class Mark
             MarkGeometry.NearPolyline(Points, point, Width / 2 + tolerance);
     }
 
-    /// <summary>文字：可带外描边与半透明背景。</summary>
+    /// <summary>
+    /// 文字：一整套 <see cref="TextSpec"/>（字色 / 字号 / 字体族 / 粗斜 / 对齐 / 描边 /
+    /// 背景胶囊的填充色与方式 / 圆角）。绘制见 <see cref="TextInk"/>。
+    /// </summary>
     public sealed class Text : Mark
     {
-        public Text(Point origin, string text, double fontSize, Color color,
-            double outlineWidth, Color outlineColor, double backgroundOpacity, double radius)
+        public Text(Point origin, string text, TextSpec style)
         {
             Origin = origin;
-            Content = text;
-            FontSize = fontSize;
-            Color = color;
-            OutlineWidth = outlineWidth;
-            OutlineColor = outlineColor;
-            BackgroundOpacity = backgroundOpacity;
-            Radius = radius;
-            Measured = MarkGeometry.MeasureText(text, fontSize);
+            Content = text ?? string.Empty;
+            Style = style;
+            Measured = TextInk.Measure(Content, style);
         }
 
         public Point Origin { get; }
         public string Content { get; }
-        public double FontSize { get; }
-        public Color Color { get; }
 
-        /// <summary>外描边宽度（0 = 不描边）。</summary>
-        public double OutlineWidth { get; }
+        /// <summary>这一条文字的样式（不可变，改样式 = 换一份）。</summary>
+        public TextSpec Style { get; }
 
-        public Color OutlineColor { get; }
-
-        /// <summary>背景不透明度 0–1（0 = 无背景）。</summary>
-        public double BackgroundOpacity { get; }
-
-        /// <summary>背景圆角。</summary>
-        public double Radius { get; }
-
-        /// <summary>排版尺寸（构造时量一次，命中与背景框都用它）。</summary>
+        /// <summary>墨迹尺寸（构造时量一次，不含背景内边距）。</summary>
         public Size Measured { get; }
 
-        public Rect Box => new(Origin.X - MarkGeometry.TextPad, Origin.Y - MarkGeometry.TextPad,
-            Measured.Width + MarkGeometry.TextPad * 2, Measured.Height + MarkGeometry.TextPad * 2);
+        /// <summary>命中 / 选中框：墨迹 + 背景内边距 + 描边外溢。</summary>
+        public Rect Box => TextInk.BoundsOf(Origin, Content, Style);
 
         public override Rect Bounds => Box;
 
-        public override Mark MoveBy(Vector delta) => new Text(Origin + delta, Content, FontSize, Color,
-            OutlineWidth, OutlineColor, BackgroundOpacity, Radius);
+        public override Mark MoveBy(Vector delta) => new Text(Origin + delta, Content, Style);
 
         /// <summary>改字号而不是改行数：文字不会被拉成歪的，放大就是字变大。</summary>
         public override Mark ScaleTo(Rect from, Rect to) => new Text(
             MarkGeometry.MapPoint(Origin, from, to), Content,
-            Math.Max(6, FontSize * MarkGeometry.ScaleOf(from, to)), Color,
-            OutlineWidth, OutlineColor, BackgroundOpacity, Radius);
+            Style with
+            {
+                FontSize = Math.Clamp(
+                    Style.FontSize * MarkGeometry.ScaleOf(from, to),
+                    TextInk.MinFontSize, TextInk.MaxFontSize),
+            });
 
-        public override bool HitTest(Point point, double tolerance) => Box.Contains(point);
+        public override bool HitTest(Point point, double tolerance) =>
+            Rect.Inflate(Box, Math.Max(tolerance, MarkGeometry.TextPad), Math.Max(tolerance, MarkGeometry.TextPad))
+                .Contains(point);
     }
 
     /// <summary>序号：圆形 / 方形 / 圆角方徽标 + 数字，序号由文档递增分配，删除不重排。</summary>

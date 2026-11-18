@@ -132,9 +132,11 @@ internal sealed class RecordAnnotationWindow : Window
         if (!ok || string.IsNullOrWhiteSpace(value)) return;
 
         var mark = watermark
-            ? new Mark.Text(at, value.Trim(), 34, Color.FromArgb(110, _surface.Ink.R, _surface.Ink.G, _surface.Ink.B),
-                0, Colors.White, 0, 0)
-            : new Mark.Text(at, value, 22, _surface.Ink, 2, Colors.White, 0, 4);
+            ? new Mark.Text(at, value.Trim(), new TextSpec("", 34, false, false, TextAlign.Left,
+                Color.FromArgb(110, _surface.Ink.R, _surface.Ink.G, _surface.Ink.B),
+                0, Colors.White, Colors.Transparent, FillKind.Solid, 0))
+            : new Mark.Text(at, value, new TextSpec("", 22, false, false, TextAlign.Left,
+                _surface.Ink, 4, Colors.White, Colors.Transparent, FillKind.Solid, 4));
 
         _doc.Add(mark);
         _surface.InvalidateVisual();

@@ -130,7 +130,7 @@ internal static partial class CaptureProSuite
         Check.Equal(StrokeRendering.Architect, pen.Rendering, "认不出的笔触风格用默认");
         Check.Equal(FillKind.None, pen.FillStyle, "认不出的填充方式用默认");
         Check.Equal(ToolStyle.DefaultFillColor, pen.FillColor, "坏填充色回默认");
-        Check.Equal(40d, pen.CornerRadius, "圆角半径超上限钳到 40");
+        Check.Equal(83d, pen.CornerRadius, "圆角半径超上限钳到 83（上游 kMaxRectangleCornerRadius）");
         Check.Equal(LineType.Curve, pen.LineType, "认不出的线型开关用默认");
         Check.Equal(BrushMode.Regular, pen.BrushMode, "认不出的画笔模式用默认");
 

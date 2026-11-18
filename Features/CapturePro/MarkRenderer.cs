@@ -151,24 +151,8 @@ internal static class MarkRenderer
         dc.DrawGeometry(null, MakePen(p.Color, p.Width, p.Dashed), MarkGeometry.Polyline(p.Points));
     }
 
-    private static void DrawText(DrawingContext dc, Mark.Text t)
-    {
-        var box = t.Box;
-        if (t.BackgroundOpacity > 0.01)
-            dc.DrawRoundedRectangle(Freeze(Colors.Black, t.BackgroundOpacity), null, box, t.Radius, t.Radius);
-
-        var ft = new FormattedText(t.Content, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-            Face, t.FontSize, Brushes.Black, 1.0);
-        var geo = ft.BuildGeometry(t.Origin);
-        if (geo == null) return;
-
-        if (t.OutlineWidth > 0.01)
-            dc.DrawGeometry(null, new Pen(Freeze(t.OutlineColor), t.OutlineWidth * 2)
-            {
-                LineJoin = PenLineJoin.Round,
-            }, geo);
-        dc.DrawGeometry(Freeze(t.Color), null, geo);
-    }
+    private static void DrawText(DrawingContext dc, Mark.Text t) =>
+        TextInk.Draw(dc, t.Origin, t.Content, t.Style);
 
     private static void DrawSerial(DrawingContext dc, Mark.Serial n)
     {

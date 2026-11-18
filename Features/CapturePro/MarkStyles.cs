@@ -96,6 +96,15 @@ internal static class ShapeLabel
     public static string Chip(BrushMode mode) => mode == BrushMode.PressureSensitive ? "压感" : "常规";
 
     public static string Name(BrushMode mode) => "画笔：" + Chip(mode);
+
+    public static string Chip(TextAlign align) => align switch
+    {
+        TextAlign.Center => "中",
+        TextAlign.Right => "右",
+        _ => "左",
+    };
+
+    public static string Name(TextAlign align) => "对齐：" + Chip(align);
 }
 
 /// <summary>

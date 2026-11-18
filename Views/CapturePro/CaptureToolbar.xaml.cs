@@ -53,9 +53,8 @@ public partial class CaptureToolbar : UserControl
     private Border? _selectSeparator;        // 「选择」与其它工具之间的竖线（照 Snow Shot 的 select-separator）
     private readonly Dictionary<ToolParam, FrameworkElement> _paramHosts = new();
     private readonly List<Action> _refreshers = new();
-    private readonly List<RadioButton> _colorChips = new();
-    private readonly List<RadioButton> _fillChips = new();
     private Button? _fillRegionsButton;      // 自动打码「填充区域」下拉（没识别结果时置灰）
+    private Popup? _fontPopup;               // 字体族弹层（自检 / 冒烟要能点开它选字体）
 
     private ToolLayout _layout = ToolLayout.Default();
     private ToolStyleSet? _styles;
@@ -609,7 +608,34 @@ public partial class CaptureToolbar : UserControl
 
     private void BuildParams()
     {
-        AddHost(ToolParam.Color, ColorRow("颜色", "captureColor", true));
+        // 主色：共享颜色开着时改一处 = 全改（由 ToolStyleSet 统一处理）
+        AddHost(ToolParam.Color, ColorRow("颜色", "captureColor",
+            () => _style?.Color ?? ToolStyle.Palette[0],
+            c => _styles?.SetColor(StyleFamilies.Of(_tool), c)));
+
+        // 文字族（上游 buildTextFamily）：字色 → 字号 + 字体族 → 粗 / 斜 → 水平对齐 →
+        // 描边宽度 + 描边色 → 背景填充色 + 填充方式 → 背景圆角。
+        // 顺序就是上游从左到右的顺序；别的工具用不到的格子收起来不占位。
+        AddHost(ToolParam.TextSize, FontSizeRow());
+
+        AddHost(ToolParam.FontFamily, FontPicker());
+
+        AddHost(ToolParam.TextEmphasis, Emphasis());
+
+        AddHost(ToolParam.TextAlign, Chips("对齐",
+            new[] { TextAlign.Left, TextAlign.Center, TextAlign.Right },
+            () => _style?.TextAlign ?? TextAlign.Left,
+            v => { if (_style != null) _style.TextAlign = v; },
+            ShapeLabel.Chip, ShapeLabel.Name, "textAlign"));
+
+        AddHost(ToolParam.TextStrokeWidth, Step("描边", 0, TextInk.MaxStrokeWidth, 1,
+            () => _style?.TextStrokeWidth ?? 0,
+            v => { if (_style != null) _style.TextStrokeWidth = v; },
+            v => v.ToString("0"), 0));
+
+        AddHost(ToolParam.TextStrokeColor, ColorRow("描边色", "captureTextStroke",
+            () => _style?.StrokeColor ?? TextInk.DefaultStroke,
+            c => { if (_style != null) _style.StrokeColor = c; }));
 
         // 线宽 / 字号 / 块大小 / 透明度
         AddHost(ToolParam.Width, Step("线宽", 1, 50, 1,
@@ -649,7 +675,9 @@ public partial class CaptureToolbar : UserControl
             v => { if (_style != null) _style.Rendering = v; },
             ShapeLabel.Chip, ShapeLabel.Name));
 
-        AddHost(ToolParam.FillColor, ColorRow("填充色", "captureFillColor", false));
+        AddHost(ToolParam.FillColor, ColorRow("填充色", "captureFillColor",
+            () => _style?.FillColor ?? ToolStyle.DefaultFillColor,
+            c => { if (_style != null) _style.FillColor = c; }));
 
         AddHost(ToolParam.FillStyle, Chips("填充",
             new[] { FillKind.None, FillKind.Solid, FillKind.Line, FillKind.CrossLine },
@@ -657,7 +685,7 @@ public partial class CaptureToolbar : UserControl
             v => { if (_style != null) _style.FillStyle = v; },
             ShapeLabel.Chip, ShapeLabel.Name));
 
-        AddHost(ToolParam.CornerRadius, Step("圆角", 0, 40, 2,
+        AddHost(ToolParam.CornerRadius, Step("圆角", 0, TextInk.MaxCornerRadius, 2,
             () => _style?.CornerRadius ?? 6, v => { if (_style != null) _style.CornerRadius = v; },
             v => v.ToString("0"), 6));
 
@@ -790,15 +818,16 @@ public partial class CaptureToolbar : UserControl
     }
 
     /// <summary>
-    /// 一排颜色胶囊：描边色（<paramref name="stroke"/> = true，跟共享颜色开关联动）
-    /// 与填充色各一排，<c>GroupName</c> 分开。
+    /// 一排颜色胶囊：读 <paramref name="get"/>、写 <paramref name="set"/>，<c>GroupName</c> 分开。
+    /// 主色（跟共享颜色开关联动）/ 填充色 / 文字描边色各来一排，**同一份实现**——
+    /// 别为某个颜色再写一遍「造胶囊 + _syncing 回填」。
     /// </summary>
-    private FrameworkElement ColorRow(string label, string group, bool stroke)
+    private FrameworkElement ColorRow(string label, string group, Func<Color> get, Action<Color> set)
     {
         var host = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         host.Children.Add(Label(label));
 
-        var chips = stroke ? _colorChips : _fillChips;
+        var chips = new List<RadioButton>();
         foreach (var color in ToolStyle.Palette)
         {
             var chip = new RadioButton
@@ -812,25 +841,12 @@ public partial class CaptureToolbar : UserControl
             chip.Checked += (_, _) =>
             {
                 if (_syncing) return;
-                if (stroke)
-                {
-                    if (_styles == null) return;
-                    // 共享颜色开着时改一处 = 全改（由 ToolStyleSet 统一处理）
-                    _styles.SetColor(StyleFamilies.Of(_tool), (Color)chip.Tag);
-                }
-                else if (_style != null)
-                {
-                    _style.FillColor = (Color)chip.Tag;
-                }
+                set((Color)chip.Tag);
                 StyleChanged?.Invoke();
             };
             chips.Add(chip);
             host.Children.Add(chip);
         }
-
-        Func<Color> get = stroke
-            ? () => _style?.Color ?? ToolStyle.Palette[0]
-            : () => _style?.FillColor ?? Colors.White;
 
         _refreshers.Add(() =>
         {
@@ -838,6 +854,312 @@ public partial class CaptureToolbar : UserControl
             _syncing = true;
             foreach (var chip in chips) chip.IsChecked = (Color)chip.Tag == current;
             _syncing = false;
+        });
+
+        return host;
+    }
+
+    /// <summary>
+    /// 字号：数字步进 + S / M / L / XL 四个预设（上游 <c>ScreenshotToolPaletteFontEditor</c> 的
+    /// <c>fontSizes()</c> = 24 / 30 / 42 / 54，与画笔宽度预设共用同一组值）。
+    /// </summary>
+    private FrameworkElement FontSizeRow()
+    {
+        var row = Step("字号", TextInk.MinFontSize, TextInk.MaxFontSize, 2,
+            () => _style?.TextSize ?? TextInk.DefaultFontSize,
+            v => { if (_style != null) _style.TextSize = v; },
+            v => v.ToString("0"), TextInk.DefaultFontSize);
+
+        if (row is not Panel host) return row;
+
+        // 上游 sizePresetValues / sizePresetLabels
+        var presets = new (string Label, double Size)[]
+        {
+            ("S", 24), ("M", 30), ("L", 42), ("XL", 54),
+        };
+
+        var chips = new List<RadioButton>();
+        foreach (var (label, size) in presets)
+        {
+            var chip = new RadioButton
+            {
+                Style = (Style)FindResource("ChoiceChip"),
+                GroupName = "captureTextSize",
+                Content = label,
+                Tag = size,
+                Margin = new Thickness(2, 0, 0, 0),
+                ToolTip = $"{label}（{size:0}px）",
+            };
+            chip.Checked += (_, _) =>
+            {
+                if (_syncing) return;
+                if (_style != null) _style.TextSize = size;
+                RefreshValues();
+                StyleChanged?.Invoke();
+            };
+            chips.Add(chip);
+            host.Children.Add(chip);
+        }
+
+        _refreshers.Add(() =>
+        {
+            double current = _style?.TextSize ?? TextInk.DefaultFontSize;
+            _syncing = true;
+            foreach (var chip in chips) chip.IsChecked = Math.Abs((double)chip.Tag - current) < 0.01;
+            _syncing = false;
+        });
+
+        return row;
+    }
+
+    /// <summary>
+    /// 粗体 / 斜体：两个可以同时按下的胶囊（上游 <c>ScreenshotToolPaletteTextEmphasisEditor</c>）。
+    /// </summary>
+    private FrameworkElement Emphasis()
+    {
+        var host = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        host.Children.Add(Label("粗细"));
+
+        var bold = new ToggleButton
+        {
+            Style = (Style)FindResource("ToggleChip"),
+            Content = "B",
+            FontWeight = FontWeights.Bold,
+            ToolTip = "粗体",
+        };
+        var italic = new ToggleButton
+        {
+            Style = (Style)FindResource("ToggleChip"),
+            Content = "I",
+            FontStyle = FontStyles.Italic,
+            ToolTip = "斜体",
+        };
+
+        // 用 Click 而不是 Checked / Unchecked：一套处理，`_syncing` 回填不会触发它
+        bold.Click += (_, _) =>
+        {
+            if (_syncing) return;
+            if (_style != null) _style.TextBold = bold.IsChecked == true;
+            StyleChanged?.Invoke();
+        };
+        italic.Click += (_, _) =>
+        {
+            if (_syncing) return;
+            if (_style != null) _style.TextItalic = italic.IsChecked == true;
+            StyleChanged?.Invoke();
+        };
+
+        host.Children.Add(bold);
+        host.Children.Add(italic);
+
+        _refreshers.Add(() =>
+        {
+            _syncing = true;
+            bold.IsChecked = _style?.TextBold ?? false;
+            italic.IsChecked = _style?.TextItalic ?? false;
+            _syncing = false;
+        });
+
+        return host;
+    }
+
+    /// <summary>字体族下拉里「没有指定」的那一项（= 上游空 <c>fontFamily</c>）。</summary>
+    private const string DefaultFontLabel = "默认（微软雅黑 UI）";
+
+    /// <summary>系统字体族：量一次就缓存（<see cref="Fonts.SystemFontFamilies"/> 在部分机器上要几十毫秒）。</summary>
+    private static IReadOnlyList<string>? _fontFamilies;
+
+    private static IReadOnlyList<string> FontFamilies()
+    {
+        if (_fontFamilies != null) return _fontFamilies;
+
+        var names = new SortedSet<string>(StringComparer.CurrentCultureIgnoreCase);
+        try
+        {
+            foreach (var family in Fonts.SystemFontFamilies)
+            {
+                string name = family.Source;
+                if (!string.IsNullOrWhiteSpace(name)) names.Add(name.Trim());
+            }
+        }
+        catch (Exception ex)
+        {
+            LTools.Core.AppLog.Warn("capture", "枚举系统字体失败：" + ex.Message);
+        }
+
+        _fontFamilies = names.ToList();
+        return _fontFamilies;
+    }
+
+    /// <summary>
+    /// 字体族：一个胶囊 + 可搜索的弹层（上游 <c>FontEditor</c> 的 searchable family select）。
+    /// </summary>
+    private FrameworkElement FontPicker()
+    {
+        var host = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        host.Children.Add(Label("字体"));
+
+        var caption = new TextBlock
+        {
+            Text = DefaultFontLabel,
+            FontSize = 12,
+            MaxWidth = 120,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x27, 0x27, 0x2A)),
+        };
+        var chevron = new ShapePath
+        {
+            Data = (Geometry)FindResource("IconChevronDown"),
+            Stroke = new SolidColorBrush(Color.FromRgb(0x59, 0x59, 0x59)),
+            StrokeThickness = 1.4,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            Stretch = Stretch.None,
+            Margin = new Thickness(6, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var content = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        content.Children.Add(caption);
+        content.Children.Add(chevron);
+
+        var button = new Button
+        {
+            Style = (Style)FindResource("BarPill"),
+            Content = content,
+            ToolTip = "字体（可以搜索）",
+        };
+
+        var search = new TextBox
+        {
+            Height = 24,
+            FontSize = 12,
+            Padding = new Thickness(6, 1, 6, 1),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Background = new SolidColorBrush(Color.FromRgb(0xF7, 0xF8, 0xFA)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xD9, 0xD9)),
+            BorderThickness = new Thickness(1),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x27, 0x27, 0x2A)),
+            ToolTip = "输入字体名筛选（Enter 选第一个，Esc 关闭）",
+        };
+
+        var list = new ListBox
+        {
+            MaxHeight = 220,
+            Width = 220,
+            Margin = new Thickness(0, 6, 0, 0),
+            BorderThickness = new Thickness(0),
+            Background = Brushes.Transparent,
+            FontSize = 12,
+        };
+        ScrollViewer.SetHorizontalScrollBarVisibility(list, ScrollBarVisibility.Disabled);
+
+        var stack = new StackPanel();
+        stack.Children.Add(search);
+        stack.Children.Add(list);
+
+        var card = new Border
+        {
+            Background = Brushes.White,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xD9, 0xD9)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(8),
+            Child = stack,
+        };
+
+        var popup = new Popup
+        {
+            PlacementTarget = button,
+            Placement = PlacementMode.Bottom,
+            VerticalOffset = 6,
+            StaysOpen = false,
+            AllowsTransparency = true,
+            PopupAnimation = PopupAnimation.None,
+            Child = card,
+        };
+
+        bool filling = false;
+
+        void Fill(string filter)
+        {
+            filling = true;
+            list.Items.Clear();
+            list.Items.Add(DefaultFontLabel);
+            foreach (string name in FontFamilies())
+                if (filter.Length == 0 || name.IndexOf(filter, StringComparison.CurrentCultureIgnoreCase) >= 0)
+                    list.Items.Add(name);
+            filling = false;
+        }
+
+        void Close() => popup.IsOpen = false;
+
+        void Choose(string? name)
+        {
+            if (name == null) return;
+            if (_style != null) _style.FontFamily = name == DefaultFontLabel ? string.Empty : name;
+            Close();
+            RefreshValues();
+            StyleChanged?.Invoke();
+        }
+
+        button.Click += (_, e) =>
+        {
+            e.Handled = true;
+            if (popup.IsOpen)
+            {
+                Close();
+                return;
+            }
+
+            search.Text = string.Empty;
+            Fill(string.Empty);
+            list.SelectedItem = null;
+            popup.IsOpen = true;
+            search.Focus();
+        };
+
+        search.TextChanged += (_, _) => Fill(search.Text.Trim());
+        search.KeyDown += (_, e) =>
+        {
+            switch (e.Key)
+            {
+                case Key.Escape:
+                    Close();
+                    e.Handled = true;
+                    break;
+                case Key.Enter:
+                    if (list.Items.Count > 0)
+                        Choose((list.SelectedItem as string) ?? list.Items[0] as string);
+                    e.Handled = true;
+                    break;
+                case Key.Down:
+                case Key.Up:
+                {
+                    int delta = e.Key == Key.Down ? 1 : -1;
+                    int next = Math.Clamp(list.SelectedIndex + delta, 0, Math.Max(0, list.Items.Count - 1));
+                    if (list.Items.Count > 0) list.SelectedIndex = next;
+                    e.Handled = true;
+                    break;
+                }
+            }
+        };
+
+        list.SelectionChanged += (_, _) =>
+        {
+            if (filling || !popup.IsOpen) return;
+            if (list.SelectedItem is not string name) return;
+            Choose(name);
+        };
+
+        host.Children.Add(button);
+        _fontPopup = popup;
+
+        _refreshers.Add(() =>
+        {
+            string family = _style?.FontFamily ?? string.Empty;
+            caption.Text = string.IsNullOrWhiteSpace(family) ? DefaultFontLabel : family;
+            caption.ToolTip = caption.Text;
         });
 
         return host;

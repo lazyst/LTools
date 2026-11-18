@@ -39,13 +39,13 @@
 | 矩形滤镜 RectangleFilter | `rectangleFilterRequested` | `Mark.Filter` + `CaptureTool.Filter` | — | ✅ |
 | 画笔滤镜 BrushFilter | `brushFilterRequested` | `Mark.BrushFilter`（笔迹遮罩 + 同一套滤镜） | P1 | ✅ |
 | 水印 Watermark（文本 / 模板 / 角度 / 间距 / 不透明度） | `SnowCanvasWatermark*` | `Mark.Watermark`：文字 / 颜色 / 字号 / 角度 / 间距 / 不透明度已 1:1；**图片模板水印**留 P2 | P1 / P2 | 🟡 |
-| 文字 Text（富文本样式） | `textRequested` | `Mark.Text` 纯文本 | P1/P2 | 🟡 |
+| 文字 Text（富文本样式） | `textRequested`、`snow_canvas_text_render.cpp` | `Mark.Text` + `TextInk`：字号 / 字体族 / 粗斜 / 水平对齐 / 文字描边（宽 + 色）/ 背景胶囊（填充色 · 填充方式 · 圆角），排版照上游 `text_fill_outset`（行高 1.2×、内边距 0.32×/0.1×、圆角钳 `min(w,h)/2`），描边单独一遍 | P2-c | ✅ |
 | 序号 SerialNumber（徽标样式 / 数字写法） | `SnowCanvasSerialNumber*` | `Mark.Serial`（形状 + 写法已实现） | P2 | 🟡 |
 | 取色 Picker | `canvasColorSamplingRequested` | `CaptureTool.Picker` | — | ✅ |
 | 每工具样式记忆 + 落盘 | `screenshotcanvastoolstyles.cpp`、`configs` | `ToolStyleSet`：每个工具家族各一套（`StyleFamilies`，形状 / 气泡共用 `shape` 族）+ 共享颜色开关 + 落 `configs/ui.json` 的 `CaptureStyles`（只写碰过的族） | P2-a | ✅ |
 | 样式预设 / 默认样式 | `screenshotdefaultstyles.h` | 默认值已对齐（描边 `#F5222D`、填充 `#FFCCC7`、圆角 6、线宽 2、`arrowType = Curve`）；**用户可存的样式预设**留 P2-d | P2-b / P2-d | 🟡 |
 | 描边色 / 描边宽 / 填充 / 虚线 | `SnowCanvasShapeStyle` | `ShapeSpec` + `ShapeInk`：形状（矩形 / 椭圆 / 菱形 / 思考气泡）、描边实 / 虚 / 点、笔触风格（干净 / 手绘 / 涂鸦，同一 seed 重绘一致）、填充无 / 实心 / 斜线 / 交叉、填充色、圆角、直线 / 曲线、画笔压感 | P2-b | ✅ |
-| 字体族 / 字号 / 粗斜 / 对齐 / 透明度 | `SnowCanvasTextStyle` | 只有字号 | P2 | 🟡 |
+| 字体族 / 字号 / 粗斜 / 对齐 | `SnowCanvasTextStyle` | `TextSpec` + 工具栏「字号（数字 + S/M/L/XL 预设）/ 字体（可搜索弹层）/ B·I / 左中右对齐 / 描边宽 + 描边色 / 背景填充色 + 填充方式 + 圆角」；字号 6–256、默认 30，描边 0–72、默认 0；**文字族没有不透明度**（上游 `buildTextFamily` 只有这十格） | P2-c | ✅ |
 | 滤镜类型与强度 | `SnowCanvasFilterType` | `FilterKind`：模糊 / 灰度 / 反相 / 浮雕 / 亮度 / **智能擦除**（`SmartErase.cs` 移植上游三级重建）+ 强度 | P1-b | ✅ |
 | 工具栏自定义（显示哪些工具 / 顺序 / 分组） | `screenshotdrawingtoolbaroptions.h` | `ToolLayout` + `ToolLayoutStore` | — | ✅ |
 
@@ -144,7 +144,7 @@
 | P1-c | 自动打码 AutoFilter：移植 `visual-region-detector` 的检测管线（canny / 轮廓 / 形态学 / 对齐 / 文字行 / 媒体分类）+ `screenshotautofiltercontroller.cpp` 的闪烁提示与分类填充 | ✅ | 构建 0 警；`--selftest` 213 用例 6315 断言全绿；`capture-overlay-smoke` 552 条全绿（真窗口识别 10 块 / 点选 toggle / 框选保留 id 序 / 按类型填充替换 / 离开工具清结果） |
 | P2-a | 样式记忆：每个工具家族各一套样式 + 共享颜色开关 + 落盘 `ui.json`（`CaptureStyles`） | ✅ | 构建 0 警；`--selftest` 214 用例 6383 断言全绿；`capture-overlay-smoke` 586 条全绿（切工具各自保留 / 矩形与椭圆同一份 / 共享颜色全改 / 参数条跟族刷新） |
 | P2-b | 形状族参数：形状选择（矩形 / 椭圆 / 菱形 / 思考气泡）+ 描边实 / 虚 / 点 + 填充（实心 / 斜线 / 交叉 / 无）+ 圆角 + 笔触风格（干净 / 手绘 / 涂鸦）+ 直线 / 曲线 + 画笔压感 | ✅ | 构建 0 警；`--selftest` 215 用例 6513 断言全绿（`capturePro` 47 用例 1687 断言，新增「样式：形状族」一组）；`capture-overlay-smoke` 620 条全绿（真参数行胶囊 3 档形状 / 思考只在气泡出现 / 填充色单独一排 / 圆角默认 6 / 点胶囊改样式 / 填充与圆角与菱形与虚点线与手绘与思考气泡圆点逐像素对账） |
-| P2-c | 文字族参数：字体族 / 粗体 / 斜体 / 水平与垂直对齐 / 不透明度 / 圆角 / 填充样式 / 描边宽度 | ❌ | 待填 |
+| P2-c | 文字族参数：字色 / 字号（6–256 + S·M·L·XL）/ 字体族（可搜索弹层）/ 粗体 / 斜体 / 水平对齐 / 文字描边（宽 0–72 + 色）/ 背景（填充色 · 填充方式 · 圆角 0–83），排版照上游 `text_fill_outset`（行高 1.2×、内边距 0.32×/0.1×、描边单独一遍）。上游文字族没有垂直对齐与不透明度，故不实现 | ✅ | 构建 0 警；`--selftest` 216 用例 6602 断言全绿（`capturePro` 48 用例 1776 断言，新增「文字族」一组 89 条）；`capture-overlay-smoke` 670 条全绿（真参数行 10 格 / 点 L·M 改字号 / 字体弹层搜索选中收起 / B·I 独立开关 / 对齐三胶囊 / 描边默认 0 + 换色 / 填充四档 / 圆角 6 / 形状无字号；逐像素：实心胶囊 · 无填充 · 圆角切角 · 斜线少于实心 · 描边外圈 · 粗体墨多 · 斜体与换字体像素不同 · 左中右对齐窄行位置） |
 | P2-d | 序号 / 水印 / 放大镜 / 测距 / 测角 / 括号 / 橡皮的完整参数 | ❌ | 待填 |
 | P3 | 选区：XYWH / 比例 / 圆角 / 阴影 / 智能选区 / 预设 | ❌ | 待填 |
 | P4 | 识别与转换：OCR 编辑器 / 原文预览 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档 / 翻译 | ❌ | 待填 |

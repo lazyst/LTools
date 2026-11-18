@@ -101,6 +101,24 @@ internal enum ToolParam
 
     /// <summary>水印间距。</summary>
     WatermarkGap,
+
+    /// <summary>文字字号（与水印的「字号」分开：范围 6–256，上游 text 族）。</summary>
+    TextSize,
+
+    /// <summary>字体族（可搜索的字体选择）。</summary>
+    FontFamily,
+
+    /// <summary>粗体 / 斜体。</summary>
+    TextEmphasis,
+
+    /// <summary>文字水平对齐（左 / 中 / 右）。</summary>
+    TextAlign,
+
+    /// <summary>文字描边宽度。</summary>
+    TextStrokeWidth,
+
+    /// <summary>文字描边色。</summary>
+    TextStrokeColor,
 }
 
 /// <summary>一个工具的名字 / 图标 / 说明 / 用到哪几格参数 / 快捷键（工具栏与自检共用）。</summary>
@@ -138,6 +156,17 @@ internal static class ToolCatalog
         ToolParam.Color, ToolParam.Width, ToolParam.StrokeStyle, ToolParam.Rendering, ToolParam.LineType,
     };
 
+    /// <summary>
+    /// 文字族（上游 <c>buildTextFamily</c>）：字色 → 字号 + 字体族 → 粗 / 斜 → 水平对齐 →
+    /// 描边宽度 + 描边色 → 背景填充色 + 填充方式 → 背景圆角。
+    /// </summary>
+    private static readonly ToolParam[] TextFamily =
+    {
+        ToolParam.Color, ToolParam.TextSize, ToolParam.FontFamily, ToolParam.TextEmphasis,
+        ToolParam.TextAlign, ToolParam.TextStrokeWidth, ToolParam.TextStrokeColor,
+        ToolParam.FillColor, ToolParam.FillStyle, ToolParam.CornerRadius,
+    };
+
     public static readonly ToolInfo[] All =
     {
         new(CaptureTool.Select, "选择", "Select", "点选标注后可拖动移动，Delete 删除", None, Key.Q),
@@ -155,7 +184,8 @@ internal static class ToolCatalog
         new(CaptureTool.Spotlight, "聚光", "Spotlight", "拖出保持原样的矩形，其余压暗", new[] { ToolParam.Opacity }, Key.S),
         new(CaptureTool.Highlighter, "画笔荧光", "Highlighter", "半透明粗线，给文字打底", new[] { ToolParam.Color, ToolParam.Width, ToolParam.Opacity }, Key.H),
         new(CaptureTool.HighlightRect, "矩形荧光", "HighlightRect", "把一块区域铺上半透明色", new[] { ToolParam.Color, ToolParam.Opacity }, Key.J),
-        new(CaptureTool.Text, "文字", "Text", "单击输入文字，Enter 结束（Shift+Enter 换行）", new[] { ToolParam.Color, ToolParam.FontSize }, Key.T),
+        new(CaptureTool.Text, "文字", "Text", "单击输入文字，Enter 结束（Shift+Enter 换行）；字色 / 字号 / 字体 / 粗斜 / 对齐 / 描边 / 背景在参数行选",
+            TextFamily, Key.T),
         new(CaptureTool.Serial, "序号", "Serial", "单击添加序号，自动递增（删除不重排）",
             new[] { ToolParam.Color, ToolParam.BadgeShape, ToolParam.Numbering }, Key.N),
         new(CaptureTool.Magnifier, "放大镜", "Magnifier", "拖出镜头框，框内的画面按倍率放大",
@@ -318,6 +348,31 @@ internal sealed class ToolStyle
     public ShapeSpec ShapeSpecOf(uint seed) => new(
         ShapeKind, Color, Width, StrokeStyle, Rendering, FillColor, FillStyle, CornerRadius, seed);
 
+    // ============ 文字族（上游 SnowCanvasTextStyle） ============
+
+    /// <summary>文字字号（与 <see cref="FontSize"/> 分开：那个是水印 / 序号的）。</summary>
+    public double TextSize { get; set; } = TextInk.DefaultFontSize;
+
+    /// <summary>字体族；空 = 项目默认（微软雅黑 UI）。</summary>
+    public string FontFamily { get; set; } = string.Empty;
+
+    public bool TextBold { get; set; }
+    public bool TextItalic { get; set; }
+
+    /// <summary>文字水平对齐（上游只有水平，垂直留给固定框、这里文字自适应所以用不到）。</summary>
+    public TextAlign TextAlign { get; set; } = TextAlign.Left;
+
+    /// <summary>文字描边宽度（0 = 不描边，上游默认 0）。</summary>
+    public double TextStrokeWidth { get; set; }
+
+    /// <summary>文字描边色（上游默认 <c>#FFCCC7</c>）。</summary>
+    public Color StrokeColor { get; set; } = TextInk.DefaultStroke;
+
+    /// <summary>造一份文字样式给新标注。</summary>
+    public TextSpec TextSpecOf() => new(
+        FontFamily, TextSize, TextBold, TextItalic, TextAlign,
+        Color, TextStrokeWidth, StrokeColor, FillColor, FillStyle, CornerRadius);
+
     // ============ 落盘（ui.json 的 CaptureStyles） ============
 
     /// <summary>写进配置文件的一份（字段全给，读回来等价）。</summary>
@@ -345,6 +400,13 @@ internal sealed class ToolStyle
         WatermarkAngle = WatermarkAngle,
         WatermarkGap = WatermarkGap,
         WatermarkOpacity = WatermarkOpacity,
+        TextSize = TextSize,
+        FontFamily = string.IsNullOrWhiteSpace(FontFamily) ? null : FontFamily,
+        TextBold = TextBold,
+        TextItalic = TextItalic,
+        TextAlign = ToolStyleFormat.Name(TextAlign),
+        TextStrokeWidth = TextStrokeWidth,
+        StrokeColor = ToolStyleFormat.Hex(StrokeColor),
     };
 
     /// <summary>从配置读一份：缺项用默认，超范围钳回界面能摆出来的区间（读坏不炸）。</summary>
@@ -364,7 +426,7 @@ internal sealed class ToolStyle
         style.Rendering = ToolStyleFormat.ParseEnum(dto.Rendering, style.Rendering);
         style.FillStyle = ToolStyleFormat.ParseEnum(dto.FillStyle, style.FillStyle);
         if (ToolStyleFormat.TryParseColor(dto.FillColor, out var fill)) style.FillColor = fill;
-        style.CornerRadius = Math.Clamp(dto.CornerRadius ?? style.CornerRadius, 0, 40);
+        style.CornerRadius = Math.Clamp(dto.CornerRadius ?? style.CornerRadius, 0, TextInk.MaxCornerRadius);
         style.LineType = ToolStyleFormat.ParseEnum(dto.LineType, style.LineType);
         style.BrushMode = ToolStyleFormat.ParseEnum(dto.BrushMode, style.BrushMode);
         style.FilterMode = ToolStyleFormat.ParseEnum(dto.FilterMode, style.FilterMode);
@@ -374,6 +436,14 @@ internal sealed class ToolStyle
         style.WatermarkAngle = Math.Clamp(dto.WatermarkAngle ?? style.WatermarkAngle, -90, 90);
         style.WatermarkGap = Math.Clamp(dto.WatermarkGap ?? style.WatermarkGap, 20, 400);
         style.WatermarkOpacity = Math.Clamp(dto.WatermarkOpacity ?? style.WatermarkOpacity, 0, 1);
+
+        style.TextSize = Math.Clamp(dto.TextSize ?? style.TextSize, TextInk.MinFontSize, TextInk.MaxFontSize);
+        if (dto.FontFamily != null) style.FontFamily = dto.FontFamily.Trim();
+        style.TextBold = dto.TextBold ?? style.TextBold;
+        style.TextItalic = dto.TextItalic ?? style.TextItalic;
+        style.TextAlign = ToolStyleFormat.ParseEnum(dto.TextAlign, style.TextAlign);
+        style.TextStrokeWidth = Math.Clamp(dto.TextStrokeWidth ?? style.TextStrokeWidth, 0, TextInk.MaxStrokeWidth);
+        if (ToolStyleFormat.TryParseColor(dto.StrokeColor, out var stroke)) style.StrokeColor = stroke;
         return style;
     }
 }
