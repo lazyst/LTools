@@ -313,56 +313,21 @@ public partial class CaptureResultWindow : Window
 
         copyBtn.Content = _tab switch
         {
-            "table" => "复制 TSV",
+            "table" => "复制表格",
             "qr" => "复制二维码内容",
             _ => "复制文字",
         };
+
+        // 表格页时贴选区摆好的窗口可能装不下整张表：切过去先把画布宽度对齐视口
+        if (_tab == "table")
+        {
+            TableScroll.UpdateLayout();
+            TableCanvas.SetViewportWidth(TableScroll.ViewportWidth);
+            RefreshTableCommands();
+        }
     }
 
     // ============ 结果填充 ============
-
-    private void FillTable(TableGrid table)
-    {
-        TableView.Columns.Clear();
-        TableView.ItemsSource = null;
-
-        bool has = table.HasTable;
-        TableView.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
-        TableEmpty.Visibility = has ? Visibility.Collapsed : Visibility.Visible;
-        CopyTsvBtn.IsEnabled = has;
-        CopyHtmlBtn.IsEnabled = has;
-
-        TableInfo.Text = has
-            ? string.Format(CultureInfo.CurrentCulture, "{0} 行 × {1} 列（按词框聚类，仅供参考）",
-                table.RowCount, table.Columns)
-            : "";
-
-        if (!has) return;
-
-        for (int i = 0; i < table.Columns; i++)
-        {
-            var binding = new Binding($"[{i}]");
-            TableView.Columns.Add(new DataGridTextColumn
-            {
-                Header = "列 " + (i + 1).ToString(CultureInfo.CurrentCulture),
-                Binding = binding,
-                Width = new DataGridLength(1, DataGridLengthUnitType.Star),
-                MinWidth = 72,
-                ElementStyle = CellStyle(binding),
-            });
-        }
-
-        TableView.ItemsSource = table.Rows;
-    }
-
-    /// <summary>单元格样式：长文本省略 + 悬停看全文（表格列宽固定，不省略会撑出横向滚动）。</summary>
-    private static Style CellStyle(Binding binding)
-    {
-        var style = new Style(typeof(TextBlock));
-        style.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
-        style.Setters.Add(new Setter(FrameworkElement.ToolTipProperty, binding));
-        return style;
-    }
 
     private void FillQr(RecognizeResult result)
     {
@@ -385,6 +350,22 @@ public partial class CaptureResultWindow : Window
         if (!_result.Ok)
         {
             StatusText.Text = "识别失败";
+            return;
+        }
+
+        if (_tab == "table")
+        {
+            if (_tableDocument.IsEmpty)
+            {
+                StatusText.Text = "没有识别出表格";
+                return;
+            }
+
+            TableRange range = TableCanvas.Selection;
+            StatusText.Text = string.Format(CultureInfo.CurrentCulture,
+                "表格 {0} 行 × {1} 列 · 选中 {2} 格",
+                _tableDocument.RowCount, _tableDocument.ColumnCount,
+                range.IsValid ? range.RowCount * range.ColumnCount : 0);
             return;
         }
 
@@ -445,8 +426,28 @@ public partial class CaptureResultWindow : Window
     {
         if (e.Key == Key.Escape)
         {
+            // 表格单元格正在编辑时 Esc 只退出这一格（上游 QTableView 的语义），不关窗
+            if (TableCanvas is { IsEditing: true })
+            {
+                TableCanvas.CancelEdit();
+                e.Handled = true;
+                return;
+            }
+
             Close();
             e.Handled = true;
+            return;
+        }
+
+        if (_tab == "table" && HandleTableKey(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (_tab == "table")
+        {
+            if (HandleTableKey(e)) e.Handled = true;
             return;
         }
 
@@ -521,16 +522,13 @@ public partial class CaptureResultWindow : Window
 
     private void Copy_Click(object sender, RoutedEventArgs e) => CopyCurrent();
 
-    private void CopyTsv_Click(object sender, RoutedEventArgs e) => Copy(_result?.Table.ToTsv(), "表格 TSV");
-
-    private void CopyHtml_Click(object sender, RoutedEventArgs e) => Copy(_result?.Table.ToHtml(), "表格 HTML");
-
     private void CopyCurrent()
     {
         switch (_tab)
         {
             case "table":
-                Copy(_result?.Table.ToTsv(), "表格 TSV");
+                // 有选区就复制选中的格子，没有就整张表（HTML + 文本一起写）
+                TableCopySelection();
                 break;
             case "qr":
                 Copy(_result?.QrText, "二维码内容");

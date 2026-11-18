@@ -67,34 +67,67 @@
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="{StaticResource SecondaryTextBrush}"/>
 
-                    <!-- 表格：本地近似表格（按词框聚类），可复制 TSV / HTML -->
+                    <!-- 表格：识别成表格文档后可以直接改字 / 合并 / 拆分（照 Snow Shot 的
+                         screenshottableeditor：单击进编辑、拖动是矩形选区、工具条对应它的命令集） -->
                     <Grid x:Name="TablePage" Visibility="Collapsed">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <DataGrid x:Name="TableView" IsReadOnly="True" AutoGenerateColumns="False"
-                                  CanUserAddRows="False" CanUserDeleteRows="False"
-                                  HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Auto"
-                                  BorderThickness="0" Background="Transparent"/>
+                        <ScrollViewer x:Name="TableScroll" Padding="0"
+                                      HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Auto"
+                                      SizeChanged="TableScroll_SizeChanged">
+                            <local:CaptureTableGrid x:Name="TableCanvas"/>
+                        </ScrollViewer>
 
                         <TextBlock x:Name="TableEmpty" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" TextWrapping="Wrap" Margin="16"
                                    Foreground="{StaticResource SecondaryTextBrush}"
                                    Text="没有识别出表格（至少要 2 行 × 2 列）"/>
 
-                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="10,8,10,10">
-                            <Button x:Name="CopyTsvBtn" Style="{StaticResource BtnGhost}" Content="复制 TSV"
-                                    MinWidth="92" Click="CopyTsv_Click"/>
-                            <Button x:Name="CopyHtmlBtn" Style="{StaticResource BtnGhost}" Content="复制 HTML"
-                                    MinWidth="92" Margin="8,0,0,0" Click="CopyHtml_Click"/>
-                            <TextBlock x:Name="TableInfo" Margin="12,0,0,0" VerticalAlignment="Center"
-                                       FontSize="{StaticResource FontSizeHint}"
-                                       Foreground="{StaticResource SecondaryTextBrush}"/>
-                        </StackPanel>
+                        <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="0,1,0,0" Padding="10,6">
+                            <WrapPanel Orientation="Horizontal">
+                                <Button x:Name="TableUndoBtn" Style="{StaticResource BtnGhost}" Content="撤销"
+                                        MinWidth="60" Height="26" FontSize="{StaticResource FontSizeHint}"
+                                        Margin="0,0,4,4" ToolTip="Ctrl+Z" Click="TableUndo_Click"/>
+                                <Button x:Name="TableRedoBtn" Style="{StaticResource BtnGhost}" Content="重做"
+                                        MinWidth="60" Height="26" FontSize="{StaticResource FontSizeHint}"
+                                        Margin="0,0,4,4" ToolTip="Ctrl+Y" Click="TableRedo_Click"/>
+                                <Button x:Name="TableMergeBtn" Style="{StaticResource BtnGhost}" Content="合并"
+                                        MinWidth="60" Height="26" FontSize="{StaticResource FontSizeHint}"
+                                        Margin="0,0,4,4" Click="TableMerge_Click"/>
+                                <Button x:Name="TableSplitBtn" Style="{StaticResource BtnGhost}" Content="拆分"
+                                        MinWidth="60" Height="26" FontSize="{StaticResource FontSizeHint}"
+                                        Margin="0,0,4,4" Click="TableSplit_Click"/>
+                                <Button x:Name="TableResetBtn" Style="{StaticResource BtnGhost}" Content="重置"
+                                        MinWidth="60" Height="26" FontSize="{StaticResource FontSizeHint}"
+                                        Margin="0,0,4,4" Click="TableReset_Click"/>
+                                <Border Width="1" Height="16" Margin="4,0,8,4"
+                                        Background="{StaticResource BorderStrongBrush}"/>
+                                <Button x:Name="TableCopyHtmlBtn" Style="{StaticResource BtnGhost}"
+                                        Content="复制 HTML" MinWidth="76" Height="26"
+                                        FontSize="{StaticResource FontSizeHint}" Margin="0,0,4,4"
+                                        Click="TableCopyHtml_Click"/>
+                                <Button x:Name="TableCopyTsvBtn" Style="{StaticResource BtnGhost}"
+                                        Content="复制 TSV" MinWidth="76" Height="26"
+                                        FontSize="{StaticResource FontSizeHint}" Margin="0,0,4,4"
+                                        Click="TableCopyTsv_Click"/>
+                                <Button x:Name="TableExportBtn" Style="{StaticResource BtnGhost}"
+                                        Content="导出 xlsx" MinWidth="76" Height="26"
+                                        FontSize="{StaticResource FontSizeHint}" Margin="0,0,4,4"
+                                        Click="TableExport_Click"/>
+                                <Button x:Name="TableOpenBtn" Style="{StaticResource BtnGhost}"
+                                        Content="打开表格" MinWidth="76" Height="26"
+                                        FontSize="{StaticResource FontSizeHint}" Margin="0,0,4,4"
+                                        Click="TableOpen_Click"/>
+                                <TextBlock x:Name="TableInfo" Margin="8,0,0,4" VerticalAlignment="Center"
+                                           FontSize="{StaticResource FontSizeHint}"
+                                           Foreground="{StaticResource SecondaryTextBrush}"/>
+                            </WrapPanel>
+                        </Border>
                     </Grid>
 
                     <!-- 二维码 -->

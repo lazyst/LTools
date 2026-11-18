@@ -502,6 +502,32 @@ internal static class NativeClipboard
     /// <summary>写入 HTML 到剪贴板（按 CF_HTML 规范生成头部偏移）。</summary>
     public static bool SetHtml(string html)
     {
+        return SetSingleFormat(HtmlFormat, BuildHtmlPayload(html));
+    }
+
+    /// <summary>
+    /// 一次写入 HTML + 纯文本（表格 / 富文本复制用）：表格软件读 HTML、记事本读文本，
+    /// 两次 <c>SetSingleFormat</c> 会互相清空，所以这里只开一次剪贴板。
+    /// </summary>
+    public static bool SetHtmlAndText(string html, string text)
+    {
+        byte[] payload = BuildHtmlPayload(html);
+        if (!OpenWithRetry()) return false;
+        try
+        {
+            EmptyOwn();
+            if (!SetBytes(HtmlFormat, payload)) return false;
+            if (string.IsNullOrEmpty(text)) return true;
+            IntPtr hMem = AllocText(text);
+            if (hMem == IntPtr.Zero) return false;
+            return SetClipboardData(CF_UNICODETEXT, hMem) != IntPtr.Zero;
+        }
+        finally { CloseClipboard(); }
+    }
+
+    /// <summary>CF_HTML 载荷：固定头 + <c>StartFragment</c> / <c>EndFragment</c> 的字节偏移。</summary>
+    private static byte[] BuildHtmlPayload(string? html)
+    {
         html ??= "";
 
         const string template =
@@ -522,7 +548,7 @@ internal static class NativeClipboard
         string payload = string.Format(template, headerBytes, endHtml, startFragment, endFragment)
                        + pre + html + post;
 
-        return SetSingleFormat(HtmlFormat, Encoding.UTF8.GetBytes(payload));
+        return Encoding.UTF8.GetBytes(payload);
     }
 
     /// <summary>读取剪贴板里的 RTF。没有返回 false。</summary>

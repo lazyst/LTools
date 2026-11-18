@@ -57,6 +57,10 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "识别：文字层构建与字号拟合", OcrTextLayerCases));
         cases.Add(new("capturePro", "识别：文字层编辑（选区 / 跨行 / 撤销）", OcrEditCases));
         cases.Add(new("capturePro", "识别：文字层命中（行内字符）", OcrCanvasHitCases));
+        cases.Add(new("capturePro", "识别：表格文档（槽位 / 合并 / 拆分 / 清空 / 选区扩展）", TableDocumentCases));
+        cases.Add(new("capturePro", "识别：表格 HTML / TSV 往返（span / 表头 / 嵌套表）", TableHtmlCases));
+        cases.Add(new("capturePro", "识别：表格粘贴规则（放不下 / 切合并格）", TablePasteCases));
+        cases.Add(new("capturePro", "识别：表格导出 xlsx（part / 引用 / 转义）", TableXlsxCases));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
         cases.Add(new("capturePro", "长截图：滚动位移识别", ScrollDetection));

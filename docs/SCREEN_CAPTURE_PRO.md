@@ -595,7 +595,7 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 
 纯函数在 `Features/CapturePro/PickerColor.cs`（`Read` / `Hex` / `Rgb` / `Describe`），`--selftest` 直接断言。
 
-## 10. 识别（P2 / P4-a）
+## 10. 识别（P2 / P4-a / P4-b）
 
 入口三处，行为一致（都先按标注文档重绘成品，再关覆盖层，然后开结果窗）：
 工具条「识别」/ `Ctrl+R`；作为 `screen.capture` 的一步时也开，并且照常返回这张图。
@@ -606,7 +606,7 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 | 页签 | 内容 | 复制 |
 |---|---|---|
 | 文字（默认） | **文字层**：按 OCR 行框重排的可编辑文字（见下） | 复制文字（有选区就复制选区） |
-| 表格 | 本地**近似表格**：词框按行 / 列聚类，2 行 2 列以上才显示 | 复制 TSV / 复制 HTML |
+| 表格 | **可编辑表格**（见 §10.3）：合并 / 拆分 / 改字 / 撤销，与上游 `screenshottableeditor` 同一套交互 | 复制表格（HTML + 文本双格式）/ 复制 HTML / 复制 TSV |
 | 二维码 | 解码内容 + 格式（`QR_CODE`）+ 字数 | 复制二维码内容 |
 
 底栏三个开关都是上游的真实能力：**显示原图**（同一块画布换成原图，文字层收起）、
@@ -634,8 +634,10 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 1. 上游识别窗是 Qt 的无边框 Tool 窗、出口（复制 / 关闭 / 原文预览）挂在**覆盖层工具条**上；
    本项目的覆盖层在识别时已经关掉（否则会被冻结画面截进去），所以结果窗**自带**这几个出口。
 2. 上游有段落信息，能做整段重排与行内缩放；本项目 OCR 只给逐行框，故逐行拟合字号。
-3. 表格识别、LaTeX / 文档识别与免费翻译在上游走 Snow Shot 私有云（`SNOW_APPS_API_BASE_URL`，构建时注入），
-   **不可复刻**；本地改用「OCR 派生 + 用户可配 OpenAI 兼容端点」替代，不假装有云端模型。
+3. 表格 / LaTeX / 文档识别与免费翻译在上游走 Snow Shot 私有云（`SNOW_APPS_API_BASE_URL`，构建时注入），
+   **云端模型不可复刻**：表格的**识别**改用本地 OCR 派生（`OcrTable`），但**编辑器**（槽位模型 / 合并拆分 / 导出）
+   按 `screenshottabledocument` + `screenshottableeditor` + `screenshotrecognitionfileexport` 完整复刻（§10.3）；
+   LaTeX / 文档与翻译改走「本地派生 + 用户可配 OpenAI 兼容端点」，不假装有云端模型。
 
 - **窗口先开再算**：识别要一两秒，`Loaded` 里把 `CaptureRecognize.Run` 丢到后台线程，算完回 UI 线程填内容；
   失败（如系统没装 OCR 语言包）在状态行说明原因，窗口照常可用。
@@ -646,6 +648,35 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
   一张 GDI+ 位图同时跑 OCR、二维码与文字层估色，不再解码三次。
 - 只放**当前真能出结果**的页签（文字 / 表格 / 二维码）；Markdown / HTML / LaTeX / 文档 / 翻译各自到批次里再加，
   不做死按钮。
+
+### 10.3 表格编辑器（P4-b）
+
+上游把表格拆成三块：`screenshottabledocument`（数据）、`screenshottableeditor`（QTableView 交互与命令态）、
+`screenshotrecognitionfileexport`（xlsx）。本项目一一对应：
+
+- **数据**（`Features/CapturePro/TableDocument.cs`）：槽位表 + 锚点。每格一个 `Slot`，只有锚点持有
+  `TableCell`（`RowSpan` / `ColumnSpan` / `Header` / `Text`），被盖住的格子指回锚点，
+  所以 `ExpandedRange` 天然实现「拖到合并格一半自动扩成整块」。上限照上游：单边 256、总格 16384。
+  - `Merge` 按行优先把文字接起来（去空白、换行连），`Split` 文字留在左上角，`Clear` 只清文字不动结构。
+  - `Paste` 有四个出口：`Ok` / `EmptySource` / `DoesNotFit`（源比目的区域大）/ `CutsMergedCell`（切开已有合并格）。
+    源里的**空格照样清掉**目的格（不是跳过）——照上游 `pasteDocument`。
+  - 导入导出：`FromGrid`（OCR 近似表）/ `FromTsv` / `FromHtml`（`rowspan` / `colspan` / `th` / `<br>` /
+    嵌套表退化成换行），`ToHtml` / `ToTsv` / `ToClipboard`（HTML + 纯文本一起写，12 位以上纯数字加 `'` 前缀防被当科学计数）。
+- **交互**（`Views/CapturePro/CaptureTableGrid.cs`）：自绘 `Panel`——列宽按该列文字量算、行高固定、表头加粗，
+  选区 / hover / 当前格三层视觉。单击 = 选中、**单击不拖 = 进编辑**（内嵌 `TextBox`，Enter / Tab 提交、Esc 取消），
+  拖动 = 矩形选区（**不带 Ctrl 替换、Ctrl 并集**，对齐上游 `ContiguousSelection`），AnyKeyPressed 直接改成输入，
+  方向键 / Shift+方向 / Home / End / PageUp / PageDown / Ctrl+A、右键菜单。文档在窗口那边，
+  控件只通过 `CellEditRequested` / `SelectionChanged` / `CommandRequested` / `ContextMenuRequested` 回报。
+- **命令与导出**（`Views/CapturePro/CaptureResultWindow.Table.cs`）：撤销 / 重做栈 50 步（存整份文档快照），
+  `canUndo/canRedo/canMerge/canSplit/canReset/hasSelection` 一处算按钮可用性，**不给死按钮**。
+  工具条 = 撤销 · 重做 · 合并 · 拆分 · 重置 | 复制 HTML · 复制 TSV · 导出 xlsx · 打开表格
+  （最后一个照上游 `openSpreadsheetFile`：导一份临时 xlsx 用系统默认程序打开）。
+- **xlsx**（`Features/CapturePro/XlsxWriter.cs`，照 `tableWorkbook`）：六 part OOXML、`inlineStr`（不建 sharedStrings）、
+  `numFmtId=49` 文本格式（前导零 / 长数字不被吃掉）、表头 `th` → 加粗样式、`mergeCells`、
+  列宽按画布像素折成 1/256 字符宽、SpreadsheetML 转义（控制字符转 `_xHHHH_`，字面的 `_xHHHH_` 先把下划线转义）。
+
+两个坑：① 每次编辑都换成新 `TableDocument` 实例，冒烟里缓存的引用会变成旧快照（`Doc()` 每次重取）；
+② `XmlWriter` 写命名空间必须用 `WriteStartElement(root, ns)` 重载，`WriteAttributeString("xmlns", …)` 会把 part 写坏。
 
 ## 11. 采集历史（P2-2 / P4）
 
@@ -1070,6 +1101,7 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
 | **P3-c** ✅ | ⑤ | 选区参数框（`SelectionParamsWindow`：XYWH + 比例锁 + 圆角 + 阴影 \| 边框 + 效果宽 / 色板 + 快速集增删，列宽 218、总宽 452）+ 比例下拉里的「上次选区 / 具名快速集 / 8 个比例（1:1 … 9:16）」 |
 | **P3-d** ✅ | ⑤ ⑨ | 智能选区（照 `screenshotintelligentselectionmodel.cpp` + `screenshotsmartselectiontransition.cpp`）：三档模式（关闭 / 窗口子元素 / 整窗）+ 命中路径「最深 → 整窗」+ 滚轮换层级 + Tab 切目标 + UIA 细化只增不减 + 过渡动画（Soft 101ms / Fast 67ms / 0.4 DIP 落位容差 / `p*(2-p)` 缓出）；**预选就是真选区**，单击确认 / 拖动改手框 / 换工具落成普通选区 / 预选态右键退出这次截图 |
 | **P4-a** ✅ | ④ | 识别结果窗照 `screenshotrecognitionwindow` 重写：无边框置顶贴选区、1 源像素 ≈ 1 屏幕物理像素 + **文字层**（逐行估色 `screenshotocrvisuals` / 字号拟合 `screenshotocrtextlayout` / 跨行选区编辑 `screenshotocrtexteditingsession`）+ 「显示原图 / 填充背景 / 原文预览（`screenshotoriginalimagepreviewwindow`）」三开关 + 表格 / 二维码页签 |
+| **P4-b** ✅ | ④ | 表格编辑器（照 `screenshottabledocument` + `screenshottableeditor` + `screenshotrecognitionfileexport`）：槽位 / 锚点模型（256 边 · 16384 格上限）、合并 · 拆分 · 清空 · 选区扩展、粘贴四个出口；自绘网格单击进编辑 / 拖动矩形选区 / Ctrl 并集 / AnyKeyPressed / 方向键 / F2 / Esc / 右键菜单；撤销重做 50 步 + `canUndo/canRedo/canMerge/canSplit/canReset` 可用性；HTML + 文本双格式复制、xlsx 导出（六 part / `inlineStr` / 文本格式 / `mergeCells` / 列宽）、打开表格 = 临时 xlsx 用默认程序打开 |
 
 ## 16. 验收
 
@@ -2564,3 +2596,23 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   背景 / 原文预览」。回归：`--selftest` 233 用例 **7452 断言**（`capturePro` 65 用例 2626 断言，新增
   估色 / 行层与字号 / 编辑模型 / 命中四组）；`capture-overlay-smoke` **931 条**（识别窗 21 条，含
   **真鼠标跨行拖选** → 状态行「已选中 6 个字符 · 共 2 行」、原文预览窗开在识别窗旁）。
+- **表格编辑器（P4-b，2026-11-18）**：照上游 `screenshottabledocument`（数据）/ `screenshottableeditor`
+  （QTableView 交互与命令态）/ `screenshotrecognitionfileexport`（xlsx）。云端表格识别不可复刻，
+  识别走本地 OCR 派生（`OcrTable`），编辑器完整复刻。新文件四个：
+  `Features/CapturePro/TableDocument.cs`（`TableRange` / `TableCell` / 槽位 + 锚点 / `Merge` / `Split` /
+  `Clear` / `ExpandedRange` / `SpanRangeAt` / `Paste` + `TablePasteResult` 四值 / `ToHtml` · `ToTsv` ·
+  `ToClipboard` · `ToSpreadsheetHtml` / `FromGrid` · `FromTsv` · `FromHtml`（含 `rowspan` · `colspan` · `th` ·
+  `<br>` · 嵌套表退化））、`Features/CapturePro/XlsxWriter.cs`（六 part OOXML、`inlineStr`、`numFmtId=49`、
+  表头加粗、`mergeCells`、列宽、`CellReference`、`SpreadsheetText` 转义）、
+  `Views/CapturePro/CaptureTableGrid.cs`（自绘网格：列宽按文字量、行高、表头加粗、选区 / hover / 当前格、
+  拖选、单击进编辑、AnyKeyPressed、右键、键盘导航、内嵌 `TextBox`、`ColumnWidths`）、
+  `Views/CapturePro/CaptureResultWindow.Table.cs`（文档 / 基线 / 撤销重做栈 50 / 命令分发 / 粘贴两种拒绝
+  toast / 复制双格式 / 导出 xlsx / 打开表格 / 右键菜单 / `HandleTableKey`）。`Native/NativeClipboard.cs`
+  抽出 `BuildHtmlPayload` 并新增 `SetHtmlAndText`。
+  三个坑：① **每次编辑都换新 `TableDocument` 实例**，冒烟里缓存的引用会变成旧快照（`Doc()` 每次重取）；
+  ② **`XmlWriter` 写命名空间必须用 `WriteStartElement(root, ns)` 重载**——`WriteStartElement(root)` +
+  `WriteAttributeString("xmlns", …)` 会把 part 写坏（`XmlReader` 读回来 NRE）；③ 表格页的
+  `TableInfo` / 状态行文案别和「选中 N 格」重复两遍口径（`选中 2 格（1 × 2）`）。
+  回归：`--selftest` 237 用例 **7562 断言**（`capturePro` 69 用例 2736 断言，新增槽位模型 / HTML·TSV
+  往返 / 粘贴规则 / xlsx 结构与转义四组）；`capture-overlay-smoke` **960 条**（表格页：真鼠标单击进编辑
+  改字、真鼠标拖选一行两格、合并 / 撤销 / 重做 / 拆分、复制双格式、重置、按钮置灰矩阵）。
