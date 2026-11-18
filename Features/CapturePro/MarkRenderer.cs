@@ -20,6 +20,9 @@ internal static class MarkRenderer
     /// <summary>滤镜处理后的整块位图同样按标注对象缓存（一次处理，拖动不再重算）。</summary>
     private static readonly ConditionalWeakTable<Mark.Filter, MosaicTile> FilterCache = new();
 
+    /// <summary>画笔滤镜的处理结果同样按标注对象缓存。</summary>
+    private static readonly ConditionalWeakTable<Mark.BrushFilter, MosaicTile> BrushFilterCache = new();
+
     /// <summary>缓存单元格（位图可能因为底图未就绪而为空）。</summary>
     private sealed class MosaicTile
     {
@@ -62,6 +65,33 @@ internal static class MarkRenderer
                 break;
             case Mark.Spotlight sp:
                 DrawSpotlight(dc, sp, canvas);
+                break;
+            case Mark.Line line:
+                DrawLine(dc, line);
+                break;
+            case Mark.Distance distance:
+                DrawDistance(dc, distance, scale);
+                break;
+            case Mark.Angle angle:
+                DrawAngle(dc, angle, scale);
+                break;
+            case Mark.Bracket bracket:
+                DrawBracket(dc, bracket);
+                break;
+            case Mark.SpeechBubble bubble:
+                DrawSpeechBubble(dc, bubble);
+                break;
+            case Mark.Magnifier magnifier:
+                DrawMagnifier(dc, magnifier, baseImage, scale);
+                break;
+            case Mark.Watermark watermark:
+                DrawWatermark(dc, watermark, canvas);
+                break;
+            case Mark.Highlight highlight:
+                dc.DrawRectangle(Freeze(highlight.Color, highlight.Opacity), null, highlight.Rect);
+                break;
+            case Mark.BrushFilter brush:
+                DrawBrushFilter(dc, brush, baseImage, scale);
                 break;
         }
     }
@@ -394,6 +424,263 @@ internal static class MarkRenderer
         dc.PushClip(outside);
         dc.DrawRectangle(Freeze(Colors.Black, Math.Clamp(sp.Dim, 0, 1)), null, canvas);
         dc.Pop();
+    }
+
+    // ============ P1：新增工具 ============
+
+    private static void DrawLine(DrawingContext dc, Mark.Line line) =>
+        dc.DrawLine(MakePen(line.Color, line.Width, line.Dashed), line.A, line.B);
+
+    /// <summary>测距：主线 + 两端刻度 + 中点标签。</summary>
+    private static void DrawDistance(DrawingContext dc, Mark.Distance d, double scale)
+    {
+        var pen = MakePen(d.Color, d.Width, dashed: false);
+        dc.DrawLine(pen, d.A, d.B);
+
+        var dir = d.B - d.A;
+        if (dir.Length > 0.01)
+        {
+            dir.Normalize();
+            var normal = new Vector(-dir.Y, dir.X) * (d.Tick / 2);
+            dc.DrawLine(pen, d.A - normal, d.A + normal);
+            dc.DrawLine(pen, d.B - normal, d.B + normal);
+        }
+
+        DrawLabel(dc, d.LabelBox(scale), d.LabelText(scale), d.Width);
+    }
+
+    /// <summary>测角：两条射线 + 圆弧 + 角度标签。</summary>
+    private static void DrawAngle(DrawingContext dc, Mark.Angle a, double scale)
+    {
+        var pen = MakePen(a.Color, a.Width, dashed: false);
+        dc.DrawLine(pen, a.Vertex, a.A);
+        dc.DrawLine(pen, a.Vertex, a.B);
+
+        double radius = a.ArcRadius;
+        double half = a.Degrees * Math.PI / 360;
+        var start = MarkGeometry.Polar(a.Vertex, a.Bisector - half, radius);
+        var end = MarkGeometry.Polar(a.Vertex, a.Bisector + half, radius);
+
+        var geo = new PathGeometry();
+        var figure = new PathFigure { StartPoint = start, IsClosed = false, IsFilled = false };
+        figure.Segments.Add(new ArcSegment(end, new Size(radius, radius), 0,
+            a.Degrees > 180, SweepDirection.Clockwise, true));
+        geo.Figures.Add(figure);
+        geo.Freeze();
+        dc.DrawGeometry(null, pen, geo);
+
+        DrawLabel(dc, a.LabelBox, a.LabelText, a.Width);
+    }
+
+    /// <summary>括号：主线 + 两端穿过主线的垂直刻度。</summary>
+    private static void DrawBracket(DrawingContext dc, Mark.Bracket b)
+    {
+        var pen = MakePen(b.Color, b.Width, dashed: false);
+        dc.DrawLine(pen, b.A, b.B);
+
+        var dir = b.B - b.A;
+        if (dir.Length <= 0.01) return;
+        dir.Normalize();
+        var normal = new Vector(-dir.Y, dir.X) * (b.Tick / 2);
+        dc.DrawLine(pen, b.A - normal, b.A + normal);
+        dc.DrawLine(pen, b.B - normal, b.B + normal);
+    }
+
+    private static void DrawSpeechBubble(DrawingContext dc, Mark.SpeechBubble b)
+    {
+        var pen = MakePen(b.Color, b.Width, dashed: false);
+        dc.DrawRoundedRectangle(null, pen, b.Body, b.Radius, b.Radius);
+
+        var tail = b.Tail;
+        dc.DrawGeometry(null, pen, MarkGeometry.Polyline(new[] { tail[0], tail[2], tail[1] }));
+    }
+
+    /// <summary>放大镜：把镜头中心那一小块按倍率放大画进镜头框，再加一圈描边。</summary>
+    private static void DrawMagnifier(DrawingContext dc, Mark.Magnifier m, BitmapSource baseImage, double scale)
+    {
+        var lens = m.Lens;
+        if (lens.Width < 2 || lens.Height < 2) return;
+
+        if (TryCrop(baseImage, m.SourceRect, scale, out int x, out int y, out int w, out int h))
+        {
+            try
+            {
+                var crop = new CroppedBitmap(baseImage, new Int32Rect(x, y, w, h));
+                crop.Freeze();
+
+                double radius = Math.Clamp(Math.Min(lens.Width, lens.Height) * 0.08, 2, 10);
+                dc.PushClip(new RectangleGeometry(lens, radius, radius));
+                var drawing = new ImageDrawing(crop, lens);
+                RenderOptions.SetBitmapScalingMode(drawing, BitmapScalingMode.HighQuality);
+                dc.DrawDrawing(drawing);
+                dc.Pop();
+
+                dc.DrawRoundedRectangle(null, MakePen(Color.FromArgb(0x88, 0, 0, 0), m.Width + 2, dashed: false),
+                    lens, radius, radius);
+                dc.DrawRoundedRectangle(null, MakePen(m.Color, m.Width, dashed: false), lens, radius, radius);
+            }
+            catch (Exception)
+            {
+                // 底图还没准备好 / 越界：画个空框提示位置，别让整帧失败
+                dc.DrawRoundedRectangle(null, MakePen(m.Color, m.Width, dashed: false), lens, 4, 4);
+            }
+        }
+        else
+        {
+            dc.DrawRoundedRectangle(null, MakePen(m.Color, m.Width, dashed: false), lens, 4, 4);
+        }
+    }
+
+    /// <summary>水印：在整张图上按角度平铺文字，画在其它标注之上（后加入的本来就后画）。</summary>
+    private static void DrawWatermark(DrawingContext dc, Mark.Watermark wm, Rect canvas)
+    {
+        if (canvas.Width < 2 || canvas.Height < 2) return;
+
+        var text = new FormattedText(wm.Content, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+            Face, wm.FontSize, Freeze(WithAlpha(wm.Color, wm.Opacity)), 1.0);
+
+        double stepX = Math.Max(24, text.Width + wm.Gap);
+        double stepY = Math.Max(18, text.Height + wm.Gap * 0.8);
+        double diagonal = Math.Sqrt(canvas.Width * canvas.Width + canvas.Height * canvas.Height);
+        int nx = (int)Math.Ceiling(diagonal / stepX) + 1;
+        int ny = (int)Math.Ceiling(diagonal / stepY) + 1;
+
+        var center = new Point(canvas.X + canvas.Width / 2, canvas.Y + canvas.Height / 2);
+        dc.PushClip(new RectangleGeometry(canvas));
+        dc.PushTransform(new RotateTransform(wm.Rotation, center.X, center.Y));
+        for (int row = -ny; row <= ny; row++)
+        {
+            double offset = (row & 1) == 0 ? 0 : stepX / 2;   // 隔行错开半格，看着像一片而不是一列列
+            for (int col = -nx; col <= nx; col++)
+            {
+                double x = center.X + col * stepX + offset - text.Width / 2;
+                double y = center.Y + row * stepY - text.Height / 2;
+                dc.DrawText(text, new Point(x, y));
+            }
+        }
+        dc.Pop();
+        dc.Pop();
+    }
+
+    /// <summary>画笔滤镜：沿笔迹遮罩过滤底图像素，结果按标注缓存。</summary>
+    private static void DrawBrushFilter(DrawingContext dc, Mark.BrushFilter f, BitmapSource baseImage, double scale)
+    {
+        var rect = f.Bounds;
+        if (rect.Width < 1 || rect.Height < 1) return;
+        var tile = BrushFilterCache.GetValue(f, key => new MosaicTile { Image = BuildBrushFilter(key, baseImage, scale) });
+        if (tile.Image == null) return;
+
+        var drawing = new ImageDrawing(tile.Image, rect);
+        RenderOptions.SetBitmapScalingMode(drawing, BitmapScalingMode.Linear);
+        dc.DrawDrawing(drawing);
+    }
+
+    private static BitmapSource? BuildBrushFilter(Mark.BrushFilter f, BitmapSource baseImage, double scale)
+    {
+        if (!TryCrop(baseImage, f.Bounds, scale, out int x, out int y, out int w, out int h)) return null;
+
+        try
+        {
+            var crop = new CroppedBitmap(baseImage, new Int32Rect(x, y, w, h));
+            BitmapSource source = crop.Format == PixelFormats.Bgra32
+                ? crop
+                : new FormatConvertedBitmap(crop, PixelFormats.Bgra32, null, 0);
+
+            int stride = w * 4;
+            var pixels = new byte[stride * h];
+            source.CopyPixels(pixels, stride, 0);
+
+            var processed = (byte[])pixels.Clone();
+            Process(f.Kind, f.Strength, processed, w, h, Math.Max(scale, 0.1));
+
+            var mask = BuildStrokeMask(f.Points, f.Width / 2 * Math.Max(scale, 0.1), w, h, x, y, scale);
+            for (int i = 0; i < mask.Length; i++)
+            {
+                if (!mask[i]) continue;
+                int at = i * 4;
+                pixels[at] = processed[at];
+                pixels[at + 1] = processed[at + 1];
+                pixels[at + 2] = processed[at + 2];
+            }
+
+            var bitmap = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
+            bitmap.Freeze();
+            return bitmap;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 笔迹遮罩（纯计算，<c>--selftest</c> 可断言）：像素到折线的距离 ≤ 半径就算命中。
+    /// 逐段只扫自己的外接框，长笔迹也不会退化成「整块 × 全部线段」。
+    /// </summary>
+    public static bool[] BuildStrokeMask(IReadOnlyList<Point> points, double radius, int width, int height,
+        int originX, int originY, double scale)
+    {
+        var mask = new bool[Math.Max(0, width * height)];
+        if (points.Count == 0 || width <= 0 || height <= 0) return mask;
+
+        double s = scale <= 0 ? 1 : scale;
+        double r = Math.Max(0.75, radius);
+
+        var pixel = new Point[points.Count];
+        for (int i = 0; i < points.Count; i++)
+            pixel[i] = new Point(points[i].X * s - originX, points[i].Y * s - originY);
+
+        if (pixel.Length == 1)
+        {
+            Stamp(pixel[0], pixel[0], r, mask, width, height);
+            return mask;
+        }
+
+        for (int i = 1; i < pixel.Length; i++)
+            Stamp(pixel[i - 1], pixel[i], r, mask, width, height);
+
+        return mask;
+    }
+
+    private static void Stamp(Point a, Point b, double radius, bool[] mask, int width, int height)
+    {
+        double minX = Math.Min(a.X, b.X) - radius;
+        double maxX = Math.Max(a.X, b.X) + radius;
+        double minY = Math.Min(a.Y, b.Y) - radius;
+        double maxY = Math.Max(a.Y, b.Y) + radius;
+
+        int left = Math.Max(0, (int)Math.Floor(minX));
+        int right = Math.Min(width - 1, (int)Math.Ceiling(maxX));
+        int top = Math.Max(0, (int)Math.Floor(minY));
+        int bottom = Math.Min(height - 1, (int)Math.Ceiling(maxY));
+
+        double r2 = radius * radius;
+        for (int y = top; y <= bottom; y++)
+        {
+            for (int x = left; x <= right; x++)
+            {
+                double dx = b.X - a.X, dy = b.Y - a.Y;
+                double len2 = dx * dx + dy * dy;
+                double t = len2 <= double.Epsilon
+                    ? 0
+                    : Math.Clamp(((x - a.X) * dx + (y - a.Y) * dy) / len2, 0, 1);
+                double px = a.X + t * dx, py = a.Y + t * dy;
+                double d2 = (x - px) * (x - px) + (y - py) * (y - py);
+                if (d2 <= r2) mask[y * width + x] = true;
+            }
+        }
+    }
+
+    /// <summary>深色底 + 白字的圆角标签（测距 / 测角共用）。</summary>
+    private static void DrawLabel(DrawingContext dc, Rect box, string text, double lineWidth)
+    {
+        double radius = Math.Clamp(box.Height * 0.3, 2, 8);
+        dc.DrawRoundedRectangle(Freeze(Colors.Black, 0.72), null, box, radius, radius);
+
+        var ft = new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+            Face, Mark.Distance.FontSize, Freeze(Colors.White), 1.0);
+        var origin = new Point(box.X + (box.Width - ft.Width) / 2, box.Y + (box.Height - ft.Height) / 2);
+        dc.DrawText(ft, origin);
     }
 
     // ============ 小工具 ============

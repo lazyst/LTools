@@ -35,8 +35,10 @@ internal sealed class ToolLayout
 
     /// <summary>
     /// 默认布局（照 Snow Shot 的分组与顺序）：
-    /// 选择 │ 形状（矩形 / 椭圆）│ 线条（箭头 / 折线）│ 画笔 │
-    /// 放大镜组（取色 / 聚光 / 荧光笔）│ 文字 │ 序号 │ 打码与滤镜（马赛克 / 滤镜）│ 橡皮。
+    /// 选择 │ 形状（矩形 / 椭圆）│ 箭头与直线 │ 自由笔（折线 / 画笔）│
+    /// 标注尺寸（测距 / 测角 / 括号）│ 气泡与文字 │ 荧光（画笔 / 矩形）│
+    /// 镜头与聚光（聚光 / 放大镜）│ 序号 │ 打码与滤镜（马赛克 / 矩形 / 画笔）│ 水印 │
+    /// 橡皮（点选 / 矩形 / 画笔）│ 取色。
     /// </summary>
     /// <remarks>
     /// 同格的工具**再点一次循环切换**（右下角一个小点表示这里不止一个），
@@ -50,13 +52,17 @@ internal sealed class ToolLayout
         {
             new() { CaptureTool.Select },
             new() { CaptureTool.Rect, CaptureTool.Ellipse },
-            new() { CaptureTool.Arrow, CaptureTool.Polyline },
-            new() { CaptureTool.Pen },
-            new() { CaptureTool.Picker, CaptureTool.Spotlight, CaptureTool.Highlighter },
-            new() { CaptureTool.Text },
+            new() { CaptureTool.Arrow, CaptureTool.Line },
+            new() { CaptureTool.Polyline, CaptureTool.Pen },
+            new() { CaptureTool.Distance, CaptureTool.Angle, CaptureTool.Bracket },
+            new() { CaptureTool.SpeechBubble, CaptureTool.Text },
+            new() { CaptureTool.Highlighter, CaptureTool.HighlightRect },
+            new() { CaptureTool.Spotlight, CaptureTool.Magnifier },
             new() { CaptureTool.Serial },
-            new() { CaptureTool.Mosaic, CaptureTool.Filter },
-            new() { CaptureTool.Eraser },
+            new() { CaptureTool.Mosaic, CaptureTool.Filter, CaptureTool.BrushFilter },
+            new() { CaptureTool.Watermark },
+            new() { CaptureTool.Eraser, CaptureTool.RectEraser, CaptureTool.BrushEraser },
+            new() { CaptureTool.Picker },
         };
 
         var seen = groups.SelectMany(g => g).ToHashSet();

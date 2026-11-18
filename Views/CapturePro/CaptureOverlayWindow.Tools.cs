@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -26,6 +27,7 @@ public partial class CaptureOverlayWindow
         Toolbar.Init(_style, _tool);
         Toolbar.ToolChanged += SetTool;
         Toolbar.ActionRequested += OnToolbarAction;
+        Toolbar.StyleChanged += UpdateToolPreview;
         Toolbar.UndoRequested += () => { _doc.Undo(); RefreshMarks(); };
         Toolbar.RedoRequested += () => { _doc.Redo(); RefreshMarks(); };
         Toolbar.ResetRequested += () => { _toolbarPlaced = false; UpdateChrome(); };
@@ -39,8 +41,41 @@ public partial class CaptureOverlayWindow
         Toolbar.Sync(tool);
         if (tool != CaptureTool.Picker) HidePicker();
         UpdateCursorForTool();
+        UpdateToolPreview();
         UpdateChrome();
     }
+
+    /// <summary>
+    /// 水印是「整张图的效果」：选中工具就先画一层预览，点一下才真正落到文档里，
+    /// 参数一改预览立刻跟着变（其它工具没有常驻预览）。
+    /// </summary>
+    private void UpdateToolPreview()
+    {
+        if (NeedsWatermarkPreview)
+        {
+            Surface.Preview = WatermarkMark;
+            Surface.InvalidateVisual();
+            return;
+        }
+
+        if (Surface.Preview is Mark.Watermark)
+        {
+            Surface.Preview = null;
+            Surface.InvalidateVisual();
+        }
+    }
+
+    /// <summary>
+    /// 水印选了工具还没落盘时才画预览：已经在图上的那一块就是成品，
+    /// 再叠一层预览会让不透明度翻倍（看着比实际深）。
+    /// </summary>
+    private bool NeedsWatermarkPreview =>
+        _tool == CaptureTool.Watermark && !_doc.Marks.OfType<Mark.Watermark>().Any();
+
+    /// <summary>按当前样式造一块水印（预览与实际落盘都用它，别两处各拼一次）。</summary>
+    private Mark.Watermark WatermarkMark => new(
+        _style.WatermarkText, _style.Color, _style.FontSize,
+        _style.WatermarkAngle, _style.WatermarkGap, _style.WatermarkOpacity);
 
     /// <summary>
     /// Esc / 右键：一级一级往回退（折线 → 手势 → 选中的标注 → 工具 → **选区** → 退出）。

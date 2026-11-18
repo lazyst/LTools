@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using LTools.Features.CapturePro;
 using LTools.Native;
 
 namespace LTools.Views.CapturePro;
@@ -41,6 +42,13 @@ public partial class CaptureOverlayWindow
         }
 
         if (IsValid(_sel) || _hoverCandidates.Count < 2) return;
+
+        // 测角工具下滚轮改的是角度值（Shift = 1°，否则 5°）：选中了角就改它，没选就改最近那个。
+        if (_tool == CaptureTool.Angle && AdjustAngleByWheel(e.Delta))
+        {
+            e.Handled = true;
+            return;
+        }
 
         int step = e.Delta > 0 ? 1 : -1;
         _hoverIndex = (_hoverIndex + step + _hoverCandidates.Count) % _hoverCandidates.Count;

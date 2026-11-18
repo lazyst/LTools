@@ -11,16 +11,27 @@ internal enum CaptureTool
     Select,
     Pen,
     Highlighter,
+    HighlightRect,
     Rect,
     Ellipse,
     Arrow,
+    Line,
     Polyline,
+    Distance,
+    Angle,
+    Bracket,
+    SpeechBubble,
     Text,
     Serial,
+    Magnifier,
+    Watermark,
     Mosaic,
     Filter,
+    BrushFilter,
     Spotlight,
     Eraser,
+    RectEraser,
+    BrushEraser,
     Picker,
 }
 
@@ -44,6 +55,18 @@ internal enum ToolParam
 
     /// <summary>滤镜的强度。</summary>
     FilterStrength,
+
+    /// <summary>放大镜的倍率。</summary>
+    Factor,
+
+    /// <summary>水印文字。</summary>
+    WatermarkText,
+
+    /// <summary>水印倾斜角度。</summary>
+    WatermarkAngle,
+
+    /// <summary>水印间距。</summary>
+    WatermarkGap,
 }
 
 /// <summary>一个工具的名字 / 图标 / 说明 / 用到哪几格参数 / 快捷键（工具栏与自检共用）。</summary>
@@ -65,18 +88,32 @@ internal static class ToolCatalog
         new(CaptureTool.Rect, "矩形", "Rect", "拖出矩形框", Stroke, Key.R),
         new(CaptureTool.Ellipse, "椭圆", "Ellipse", "拖出椭圆", Stroke, Key.E),
         new(CaptureTool.Arrow, "箭头", "Arrow", "从起点拖到目标", Stroke, Key.A),
+        new(CaptureTool.Line, "直线", "Line", "从起点拖到终点，不带箭头", Stroke, Key.I),
         new(CaptureTool.Polyline, "折线", "Polyline", "逐点单击，双击 / Enter 结束", Stroke, Key.L),
+        new(CaptureTool.Distance, "测距", "Distance", "拖出线段，中点显示长度（像素）", Stroke, Key.D),
+        new(CaptureTool.Angle, "测角", "Angle", "先拖一条臂，再拖第二条臂；选中后滚轮改角度", Stroke, Key.G),
+        new(CaptureTool.Bracket, "括号", "Bracket", "拖出带两端刻度的区间", Stroke, Key.B),
+        new(CaptureTool.SpeechBubble, "气泡", "SpeechBubble", "拖出气泡框，左下角带指向外的尾巴", Stroke, Key.O),
         new(CaptureTool.Pen, "画笔", "Pen", "按住拖动自由绘制", Stroke, Key.P),
         new(CaptureTool.Picker, "取色", "Picker", "鼠标下的颜色，单击复制 #RRGGBB", None, Key.C),
         new(CaptureTool.Spotlight, "聚光", "Spotlight", "拖出保持原样的矩形，其余压暗", new[] { ToolParam.Opacity }, Key.S),
-        new(CaptureTool.Highlighter, "荧光笔", "Highlighter", "半透明粗线，给文字打底", new[] { ToolParam.Color, ToolParam.Width, ToolParam.Opacity }, Key.H),
+        new(CaptureTool.Highlighter, "画笔荧光", "Highlighter", "半透明粗线，给文字打底", new[] { ToolParam.Color, ToolParam.Width, ToolParam.Opacity }, Key.H),
+        new(CaptureTool.HighlightRect, "矩形荧光", "HighlightRect", "把一块区域铺上半透明色", new[] { ToolParam.Color, ToolParam.Opacity }, Key.J),
         new(CaptureTool.Text, "文字", "Text", "单击输入文字，Enter 结束（Shift+Enter 换行）", new[] { ToolParam.Color, ToolParam.FontSize }, Key.T),
         new(CaptureTool.Serial, "序号", "Serial", "单击添加序号，自动递增（删除不重排）",
             new[] { ToolParam.Color, ToolParam.Shape, ToolParam.Numbering }, Key.N),
+        new(CaptureTool.Magnifier, "放大镜", "Magnifier", "拖出镜头框，框内的画面按倍率放大",
+            new[] { ToolParam.Color, ToolParam.Width, ToolParam.Factor }, Key.Z),
+        new(CaptureTool.Watermark, "水印", "Watermark", "整张图斜向平铺水印文字，单击落到图上",
+            new[] { ToolParam.Color, ToolParam.FontSize, ToolParam.WatermarkText, ToolParam.WatermarkAngle, ToolParam.WatermarkGap, ToolParam.Opacity }, Key.W),
         new(CaptureTool.Mosaic, "马赛克", "Mosaic", "拖出要打码的矩形", new[] { ToolParam.Block }, Key.M),
-        new(CaptureTool.Filter, "滤镜", "Filter", "拖出矩形，按参数行选的类型处理这一块（模糊 / 灰度 / 反相 / 浮雕 / 亮度）",
+        new(CaptureTool.Filter, "矩形滤镜", "Filter", "拖出矩形，按参数行选的类型处理这一块（模糊 / 灰度 / 反相 / 浮雕 / 亮度）",
             new[] { ToolParam.FilterKind, ToolParam.FilterStrength }, Key.F),
+        new(CaptureTool.BrushFilter, "画笔滤镜", "BrushFilter", "按住涂抹，把经过的像素按滤镜类型处理",
+            new[] { ToolParam.Width, ToolParam.FilterKind, ToolParam.FilterStrength }, Key.Y),
         new(CaptureTool.Eraser, "橡皮", "Eraser", "点一下去掉整条标注", None, Key.X),
+        new(CaptureTool.RectEraser, "矩形橡皮", "RectEraser", "拖出矩形，删掉与它相交的标注", None, Key.K),
+        new(CaptureTool.BrushEraser, "画笔橡皮", "BrushEraser", "按住涂抹，删掉碰到的标注", new[] { ToolParam.Width }, Key.U),
     };
 
     public static ToolInfo Of(CaptureTool tool) => All.First(t => t.Tool == tool);
@@ -96,7 +133,22 @@ internal static class ToolCatalog
     public static bool WantsCrossCursor(CaptureTool tool) => tool is not (CaptureTool.Select or CaptureTool.Text);
 
     /// <summary>拖出来的东西太小时不落盘（点一下不该留一个 0 像素的框）。</summary>
-    public static double MinimumSize(CaptureTool tool) => tool == CaptureTool.Pen || tool == CaptureTool.Highlighter ? 1 : 4;
+    public static double MinimumSize(CaptureTool tool) => IsFreehand(tool) ? 1 : 4;
+
+    /// <summary>这几个工具靠笔迹（自由手绘）而不是拖矩形。</summary>
+    public static bool IsFreehand(CaptureTool tool) =>
+        tool is CaptureTool.Pen or CaptureTool.Highlighter or CaptureTool.BrushFilter or CaptureTool.BrushEraser;
+
+    /// <summary>
+    /// 一维工具（只有长度有意义）：横着拉、竖着拉都是合法的一条，
+    /// 别按「宽和高都得够大」判（否则水平直线 / 测距 / 量水平距离根本画不出来）。
+    /// </summary>
+    public static bool IsLinear(CaptureTool tool) =>
+        tool is CaptureTool.Line or CaptureTool.Distance or CaptureTool.Bracket or CaptureTool.Arrow;
+
+    /// <summary>橡皮类：不改文档内容之外的东西，松手时一次性提交。</summary>
+    public static bool IsEraser(CaptureTool tool) =>
+        tool is CaptureTool.Eraser or CaptureTool.RectEraser or CaptureTool.BrushEraser;
 }
 
 /// <summary>
@@ -140,7 +192,27 @@ internal sealed class ToolStyle
     public double FilterStrength { get; set; } = 40;
 
     /// <summary>荧光笔的笔头比普通画笔粗，否则看着就是一条普通线。</summary>
-    public double WidthFor(CaptureTool tool) => tool == CaptureTool.Highlighter ? Math.Max(Width, 10) : Width;
+    public double WidthFor(CaptureTool tool) => tool switch
+    {
+        CaptureTool.Highlighter => Math.Max(Width, 10),
+        CaptureTool.Magnifier => Math.Max(Width, 3),
+        _ => Width,
+    };
+
+    /// <summary>放大镜倍率。</summary>
+    public double Factor { get; set; } = 2;
+
+    /// <summary>水印文字。</summary>
+    public string WatermarkText { get; set; } = "LTools";
+
+    /// <summary>水印倾斜角度（度，逆时针为正）。</summary>
+    public double WatermarkAngle { get; set; } = -30;
+
+    /// <summary>水印间距（DIP）。</summary>
+    public double WatermarkGap { get; set; } = 120;
+
+    /// <summary>水印不透明度（比荧光笔低得多，否则盖住整张图）。</summary>
+    public double WatermarkOpacity { get; set; } = 0.15;
 
     /// <summary>聚光的压暗程度：透明度越低，框外压得越暗。</summary>
     public double Dim => Math.Clamp(1 - Opacity, 0.15, 0.85);

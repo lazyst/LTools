@@ -350,6 +350,7 @@ public partial class CaptureOverlayWindow
         Surface.Preview = null;
         Surface.SkipIndex = -1;
         if (_selectedIndex >= _doc.Marks.Count) SelectMark(-1);
+        if (NeedsWatermarkPreview) Surface.Preview = WatermarkMark;
         Surface.InvalidateVisual();
         UpdateChrome();
     }

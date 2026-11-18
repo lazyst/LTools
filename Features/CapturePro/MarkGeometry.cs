@@ -264,6 +264,41 @@ internal static class MarkGeometry
         ? new EllipseGeometry(rect)
         : new RectangleGeometry(rect);
 
+    /// <summary>极坐标取点：从 <paramref name="origin"/> 沿 <paramref name="radians"/> 走 <paramref name="length"/>。</summary>
+    public static Point Polar(Point origin, double radians, double length) =>
+        new(origin.X + Math.Cos(radians) * length, origin.Y + Math.Sin(radians) * length);
+
+    /// <summary>把角度归一到 <c>[0, 2π)</c>。</summary>
+    public static double NormalizeAngle(double radians)
+    {
+        double twoPi = Math.PI * 2;
+        radians %= twoPi;
+        return radians < 0 ? radians + twoPi : radians;
+    }
+
+    /// <summary>两个向量之间的夹角（0–π）。任一向量长度为 0 时返回 0。</summary>
+    public static double AngleBetween(Vector a, Vector b)
+    {
+        double la = a.Length, lb = b.Length;
+        if (la <= 1e-6 || lb <= 1e-6) return 0;
+        double cos = Math.Clamp((a.X * b.X + a.Y * b.Y) / (la * lb), -1, 1);
+        return Math.Acos(cos);
+    }
+
+    /// <summary>点是否落在三角形里（气泡的尾巴用）。</summary>
+    public static bool InTriangle(Point point, Point a, Point b, Point c)
+    {
+        double d1 = Cross(point, a, b);
+        double d2 = Cross(point, b, c);
+        double d3 = Cross(point, c, a);
+        bool neg = d1 < 0 || d2 < 0 || d3 < 0;
+        bool pos = d1 > 0 || d2 > 0 || d3 > 0;
+        return !(neg && pos);
+    }
+
+    private static double Cross(Point p, Point a, Point b) =>
+        (a.X - p.X) * (b.Y - p.Y) - (b.X - p.X) * (a.Y - p.Y);
+
     /// <summary>箭头三角头的三个顶点。</summary>
     public static Point[] ArrowHead(Point start, Point end, double width)
     {

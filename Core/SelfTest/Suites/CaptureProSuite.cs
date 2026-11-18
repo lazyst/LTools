@@ -37,6 +37,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "文字：量宽随字号增长", TextMetrics));
         cases.Add(new("capturePro", "样式：底色对比取字色", Contrast));
         cases.Add(new("capturePro", "工具：目录 / 参数格 / 默认样式", Tools));
+        cases.Add(new("capturePro", "标注：P1 新工具（线 / 尺寸 / 气泡 / 镜头 / 水印 / 画笔滤镜）", ParityMarks));
         cases.Add(new("capturePro", "取色：像素颜色与文本", Picker));
         cases.Add(new("capturePro", "贴图：缩放 / 不透明度 / 锚点", Pin));
         cases.Add(new("capturePro", "贴图：分组名与批量另存", PinGrouping));
@@ -686,7 +687,7 @@ internal static partial class CaptureProSuite
         Check.Equal(CaptureTool.Pen, ToolCatalog.ForKey(System.Windows.Input.Key.P), "P = 画笔");
         Check.Equal(CaptureTool.Select, ToolCatalog.ForKey(System.Windows.Input.Key.Q), "Q = 选择");
         Check.Equal(CaptureTool.Picker, ToolCatalog.ForKey(System.Windows.Input.Key.C), "C = 取色（Ctrl+C 是复制，先判 Ctrl）");
-        Check.True(ToolCatalog.ForKey(System.Windows.Input.Key.Z) == null, "没绑的字母返回 null");
+        Check.True(ToolCatalog.ForKey(System.Windows.Input.Key.V) == null, "没绑的字母返回 null");
 
         foreach (var info in all)
         {
@@ -719,6 +720,47 @@ internal static partial class CaptureProSuite
         Check.False(ToolCatalog.Uses(CaptureTool.Filter, ToolParam.Block), "滤镜没有马赛克块大小");
         Check.False(ToolCatalog.Uses(CaptureTool.Mosaic, ToolParam.FilterKind), "马赛克没有滤镜类型（两个工具别混）");
         Check.Equal(CaptureTool.Filter, ToolCatalog.ForKey(System.Windows.Input.Key.F), "F = 滤镜");
+
+        // P1：与 Snow Shot 对齐的 11 个新工具（上游 32 项 → 这里 25 项，其余是 P4 的识别类）
+        Check.Equal(25, all.Length, "工具目录 25 项");
+        Check.Equal(CaptureTool.Line, ToolCatalog.ForKey(System.Windows.Input.Key.I), "I = 直线");
+        Check.Equal(CaptureTool.Distance, ToolCatalog.ForKey(System.Windows.Input.Key.D), "D = 测距");
+        Check.Equal(CaptureTool.Angle, ToolCatalog.ForKey(System.Windows.Input.Key.G), "G = 测角");
+        Check.Equal(CaptureTool.Bracket, ToolCatalog.ForKey(System.Windows.Input.Key.B), "B = 括号");
+        Check.Equal(CaptureTool.SpeechBubble, ToolCatalog.ForKey(System.Windows.Input.Key.O), "O = 气泡");
+        Check.Equal(CaptureTool.Magnifier, ToolCatalog.ForKey(System.Windows.Input.Key.Z), "Z = 放大镜");
+        Check.Equal(CaptureTool.Watermark, ToolCatalog.ForKey(System.Windows.Input.Key.W), "W = 水印");
+        Check.Equal(CaptureTool.HighlightRect, ToolCatalog.ForKey(System.Windows.Input.Key.J), "J = 矩形荧光");
+        Check.Equal(CaptureTool.BrushFilter, ToolCatalog.ForKey(System.Windows.Input.Key.Y), "Y = 画笔滤镜");
+        Check.Equal(CaptureTool.RectEraser, ToolCatalog.ForKey(System.Windows.Input.Key.K), "K = 矩形橡皮");
+        Check.Equal(CaptureTool.BrushEraser, ToolCatalog.ForKey(System.Windows.Input.Key.U), "U = 画笔橡皮");
+
+        Check.True(ToolCatalog.Uses(CaptureTool.Magnifier, ToolParam.Factor), "放大镜有倍率");
+        Check.False(ToolCatalog.Uses(CaptureTool.Magnifier, ToolParam.Block), "放大镜没有马赛克块大小");
+        Check.True(ToolCatalog.Uses(CaptureTool.Watermark, ToolParam.WatermarkText), "水印有文字");
+        Check.True(ToolCatalog.Uses(CaptureTool.Watermark, ToolParam.WatermarkAngle), "水印有角度");
+        Check.True(ToolCatalog.Uses(CaptureTool.Watermark, ToolParam.WatermarkGap), "水印有间距");
+        Check.False(ToolCatalog.Uses(CaptureTool.Watermark, ToolParam.Width), "水印没有线宽");
+        Check.True(ToolCatalog.Uses(CaptureTool.BrushFilter, ToolParam.FilterKind), "画笔滤镜有类型");
+        Check.True(ToolCatalog.Uses(CaptureTool.BrushFilter, ToolParam.Width), "画笔滤镜有笔头宽度");
+        Check.False(ToolCatalog.Uses(CaptureTool.HighlightRect, ToolParam.Width), "矩形荧光没有线宽（只有色 + 透明度）");
+        Check.True(ToolCatalog.Uses(CaptureTool.HighlightRect, ToolParam.Opacity), "矩形荧光有透明度");
+
+        // 笔迹类 / 橡皮类的判定只有这一处（手势与最小尺寸都读它）
+        foreach (var tool in new[] { CaptureTool.Pen, CaptureTool.Highlighter, CaptureTool.BrushFilter, CaptureTool.BrushEraser })
+        {
+            Check.True(ToolCatalog.IsFreehand(tool), tool + " 走笔迹");
+            Check.Equal(1d, ToolCatalog.MinimumSize(tool), tool + " 的最小尺寸是 1 DIP");
+        }
+        foreach (var tool in new[] { CaptureTool.Eraser, CaptureTool.RectEraser, CaptureTool.BrushEraser })
+            Check.True(ToolCatalog.IsEraser(tool), tool + " 是橡皮");
+        Check.False(ToolCatalog.IsFreehand(CaptureTool.RectEraser), "矩形橡皮不是笔迹（拖矩形）");
+        Check.False(ToolCatalog.IsEraser(CaptureTool.Pen), "画笔不是橡皮");
+
+        // 一维工具：横着拖也要能画（只判长度，不要求两个方向都动）
+        foreach (var tool in new[] { CaptureTool.Line, CaptureTool.Distance, CaptureTool.Bracket, CaptureTool.Arrow })
+            Check.True(ToolCatalog.IsLinear(tool), tool + " 是一维工具");
+        Check.False(ToolCatalog.IsLinear(CaptureTool.Rect), "矩形不是一维工具（宽高都得够）");
 
         // 每种滤镜都有自己的名字（参数行 chip 与 tooltip 共用，别留空）
         foreach (var kind in Enum.GetValues<FilterKind>())
@@ -1196,39 +1238,56 @@ internal static partial class CaptureProSuite
         int all = ToolCatalog.All.Length;
 
         var def = ToolLayout.Default();
-        Check.Equal(9, def.Groups.Count, "默认布局：照 Snow Shot 分成 9 格（选择 / 形状 / 线条 / 画笔 / 放大镜组 / 文字 / 序号 / 打码 / 橡皮）");
+        Check.Equal(13, def.Groups.Count,
+            "默认布局：照 Snow Shot 分成 13 格（选择 / 形状 / 箭直 / 自由笔 / 尺寸 / 气泡文字 / 荧光 / 镜头 / 序号 / 打码 / 水印 / 橡皮 / 取色）");
         Check.Equal(all, def.Groups.SelectMany(g => g).Distinct().Count(), "每个工具都在某一格里（格数少但一个都不少）");
         Check.Equal(0, def.HiddenTools.Count, "默认布局没有收起来的工具");
         Check.Equal("Select", def.ToLines()[0], "第一格是「选择」");
         Check.Equal("Rect,Ellipse", def.ToLines()[1], "第二格是形状（矩形 / 椭圆）");
-        Check.Equal("Arrow,Polyline", def.ToLines()[2], "第三格是线条（箭头 / 折线）");
-        Check.Equal("Mosaic,Filter", def.ToLines()[7], "打码与滤镜同格");
+        Check.Equal("Arrow,Line", def.ToLines()[2], "第三格是箭头与直线");
+        Check.Equal("Polyline,Pen", def.ToLines()[3], "第四格是自由笔（折线 / 画笔）");
+        Check.Equal("Distance,Angle,Bracket", def.ToLines()[4], "第五格是标注尺寸（测距 / 测角 / 括号）");
+        Check.Equal("SpeechBubble,Text", def.ToLines()[5], "第六格是气泡与文字");
+        Check.Equal("Highlighter,HighlightRect", def.ToLines()[6], "第七格是两种荧光");
+        Check.Equal("Spotlight,Magnifier", def.ToLines()[7], "第八格是聚光与放大镜");
+        Check.Equal("Mosaic,Filter,BrushFilter", def.ToLines()[9], "打码与滤镜同格（马赛克 / 矩形 / 画笔）");
+        Check.Equal("Watermark", def.ToLines()[10], "水印单独一格");
+        Check.Equal("Eraser,RectEraser,BrushEraser", def.ToLines()[11], "三把橡皮同格");
+        Check.Equal("Picker", def.ToLines()[12], "最后一格是取色");
 
         // 并到左边一格：格内顺序保持原样，第一格不再动
-        var merge = def.MergeLeft(CaptureTool.Pen);
-        Check.Equal(8, merge.Groups.Count, "并到左边一格：少一格");
+        var merge = def.MergeLeft(CaptureTool.Pen);          // 「折线 / 画笔」那一格并进「箭头 / 直线」
+        Check.Equal(12, merge.Groups.Count, "并到左边一格：少一格");
         Check.Equal(CaptureTool.Select, merge.Groups[0][0], "第一格还是「选择」");
-        Check.True(merge.Groups[2].SequenceEqual(new[] { CaptureTool.Arrow, CaptureTool.Polyline, CaptureTool.Pen }),
-            "「画笔」并进左边那格（顺序不变）");
+        Check.True(merge.Groups[2].SequenceEqual(new[]
+            { CaptureTool.Arrow, CaptureTool.Line, CaptureTool.Polyline, CaptureTool.Pen }),
+            "整格并进左边那格（顺序不变）");
         Check.True(merge.MergeLeft(CaptureTool.Select).SameAs(merge), "第一格左边没东西：并过去什么都不变");
 
         // 拆出来：回到默认的格数与位置
         var split = merge.Split(CaptureTool.Pen);
-        Check.Equal(9, split.Groups.Count, "拆成单独一格：格子数回到默认");
+        Check.Equal(13, split.Groups.Count, "拆成单独一格：格子数回到默认");
         Check.Equal(1, split.Groups[3].Count, "拆出来的格子里只有它自己");
         Check.Equal(CaptureTool.Pen, split.Groups[3][0], "拆出来的格子落在原位置");
 
-        // 收起 / 放回
-        var hidden = def.Hide(CaptureTool.Eraser);
-        Check.True(hidden.IsHidden(CaptureTool.Eraser), "收起「橡皮」");
-        Check.Equal(-1, hidden.CellOf(CaptureTool.Eraser), "收起后它不在任何格子里");
-        Check.Equal(8, hidden.Groups.Count, "收起一个工具就少一格");
-        Check.Equal("Eraser", hidden.ToHidden()[0], "落盘写的是工具键");
+        // 收起 / 放回（拿单独一格的「取色」试：整格消失）
+        var hidden = def.Hide(CaptureTool.Picker);
+        Check.True(hidden.IsHidden(CaptureTool.Picker), "收起「取色」");
+        Check.Equal(-1, hidden.CellOf(CaptureTool.Picker), "收起后它不在任何格子里");
+        Check.Equal(12, hidden.Groups.Count, "收起一个单格工具就少一格");
+        Check.Equal("Picker", hidden.ToHidden()[0], "落盘写的是工具键");
 
-        var back = hidden.Insert(CaptureTool.Eraser);
-        Check.False(back.IsHidden(CaptureTool.Eraser), "放回去就不再是收起的");
-        Check.Equal(9, back.Groups.Count, "放回去还是单独一格");
-        Check.Equal(CaptureTool.Eraser, back.Groups[8][0], "放回去落在默认顺序的位置上（最后）");
+        var back = hidden.Insert(CaptureTool.Picker);
+        Check.False(back.IsHidden(CaptureTool.Picker), "放回去就不再是收起的");
+        Check.Equal(13, back.Groups.Count, "放回去还是单独一格");
+        Check.Equal(1, back.Groups[back.CellOf(CaptureTool.Picker)].Count, "放回去单独占一格");
+        Check.True(back.CellOf(CaptureTool.Picker) < back.CellOf(CaptureTool.Spotlight),
+            "放回去落在目录顺序里它该在的位置（聚光前面）");
+
+        // 多工具格里收起一个：格子还在，只是少一个
+        var trimmed = def.Hide(CaptureTool.Eraser);
+        Check.Equal(13, trimmed.Groups.Count, "多工具格收起一个：格子保留");
+        Check.Equal(2, trimmed.Groups[11].Count, "那一格剩两把橡皮");
 
         // 落盘往返：写出去再读回来必须是同一份
         Check.True(ToolLayout.Parse(merge.ToLines(), merge.ToHidden()).SameAs(merge),
@@ -1237,10 +1296,10 @@ internal static partial class CaptureProSuite
         Check.Equal("Rect,Ellipse", merge.ToLines()[1], "格内逗号分隔工具键");
 
         // 目录里新增、两处都没提到的工具：自动补回来（不许被老布局一直藏着）
-        var lines = merge.ToLines().Where(l => !l.Contains("Eraser", StringComparison.Ordinal)).ToList();
-        var grown = ToolLayout.Parse(lines, merge.ToHidden());
+        var lines = def.ToLines().Where(l => !l.Contains("Eraser", StringComparison.Ordinal)).ToList();
+        var grown = ToolLayout.Parse(lines, def.ToHidden());
         Check.False(grown.IsHidden(CaptureTool.Eraser), "老布局里没有的新工具自动补回（可见）");
-        Check.Equal(8, grown.Groups.Count, "补回来的新工具占单独一格");
+        Check.Equal(lines.Count + 3, grown.Groups.Count, "补回来的三把橡皮各占单独一格");
 
         // 脏数据：未知键丢掉、空行丢掉、同格重复只留一次；其余工具按默认补回
         var dirty = ToolLayout.Parse(new List<string> { "pen,pen", "nope,select", "" }, null);
@@ -2806,6 +2865,139 @@ internal static partial class CaptureProSuite
             "  Stream #0:0[0x1](und): Video: h264 (High), yuv420p, 1920x1080, 30 fps"), "只有视频流");
         Check.Equal(0, RecordTrimSession.ParseDurationMs("garbage"), "读不出时长返回 0");
         Check.Equal(0, RecordTrimSession.ParseDurationMs("Duration: N/A, start: 0"), "N/A 也返回 0");
+    }
+
+    /// <summary>
+    /// P1：与 Snow Shot 对齐的新标注（直线 / 测距 / 测角 / 括号 / 气泡 / 放大镜 / 水印 / 矩形荧光 / 画笔滤镜）
+    /// 的几何与命中。**不碰窗口、不碰位图**，纯数据断言。
+    /// </summary>
+    private static void ParityMarks()
+    {
+        // ---- 直线 ----
+        var line = new Mark.Line(new Point(0, 0), new Point(100, 0), Colors.Red, 4, false);
+        Check.Equal(new Rect(-2, -2, 104, 4), line.Bounds, "直线的外接框按线宽外扩");
+        Check.Equal(new Rect(0, 0, 100, 0), line.Frame, "直线的选中框贴着笔迹");
+        Check.True(line.HitTest(new Point(50, 1), 0), "直线上命中");
+        Check.False(line.HitTest(new Point(50, 10), 0), "离得远不命中");
+        Check.Equal(new Point(5, 5), ((Mark.Line)line.MoveBy(new Vector(5, 5))).A, "直线整体平移");
+        var wide = (Mark.Line)line.ScaleTo(new Rect(0, 0, 100, 100), new Rect(0, 0, 200, 200));
+        Check.Equal(8d, wide.Width, "直线缩放时线宽跟着乘 2");
+        Check.Equal(new Point(200, 0), wide.B, "直线缩放时终点跟着搬");
+
+        // ---- 测距：标签按物理像素显示 ----
+        var dist = new Mark.Distance(new Point(0, 0), new Point(100, 0), Colors.Red, 4);
+        Check.Equal("100", dist.LabelText(1), "测距标签：100 DIP → 100");
+        Check.Equal("200", dist.LabelText(2), "测距标签：缩放 2 → 200 物理像素");
+        Check.Equal(50d, dist.Midpoint.X, "标签挂在线段中点");
+        Check.True(dist.Bounds.Contains(dist.LabelBox(1)), "标签框算进外接框（拖动时不会切掉数字）");
+        Check.True(dist.HitTest(dist.Midpoint, 0), "线段中间命中");
+        Check.True(dist.HitTest(new Point(50, dist.LabelBox(1).Y + 2), 0), "标签本身也命中（点数字就能选中它）");
+        Check.Equal(12d, dist.Tick, "线宽 4 → 端部刻度 12 DIP");
+        var scaled = (Mark.Distance)dist.ScaleTo(new Rect(0, 0, 100, 100), new Rect(0, 0, 200, 200));
+        Check.Equal("200", scaled.LabelText(1), "缩放后长度按新几何算（200 DIP）");
+
+        // ---- 测角：两条臂 → 角度 / 平分线；滚轮只改张角 ----
+        var right = Mark.Angle.FromArms(new Point(0, 0), new Point(100, 0), new Point(0, 100), Colors.Red, 4);
+        Check.Equal(90d, Math.Round(right.Degrees, 6), "垂直两臂 = 90°");
+        Check.Equal(100d, Math.Round(right.Radius, 6), "臂长取两条边的平均");
+        Check.Equal(new Point(100, 0), new Point(Math.Round(right.A.X, 6), Math.Round(right.A.Y, 6)), "第一条臂端点");
+        Check.Equal(new Point(0, 100), new Point(Math.Round(right.B.X, 6), Math.Round(right.B.Y, 6)), "第二条臂端点");
+
+        var reflex = Mark.Angle.FromArms(new Point(0, 0), new Point(100, 0), new Point(0, -100), Colors.Red, 4);
+        Check.Equal(90d, Math.Round(reflex.Degrees, 6), "顺时针那侧也按「小的那一边」算 90°");
+
+        var sharper = right.WithDegrees(45);
+        Check.Equal(45d, sharper.Degrees, "改角度只换张角");
+        Check.Equal(right.Vertex, sharper.Vertex, "顶点不动");
+        Check.Equal(right.Radius, sharper.Radius, "臂长不动");
+        Check.Equal(right.Bisector, sharper.Bisector, "平分线方向不动");
+        Check.Equal("45°", sharper.LabelText, "角度标签带度号");
+        Check.True(sharper.HitTest(sharper.A, 0), "第一条臂上命中");
+        Check.False(sharper.HitTest(new Point(50, 50), 0), "两条臂之间空着的地方不命中");
+
+        // ---- 括号：主线 + 两端刻度（没有数字）----
+        var bracket = new Mark.Bracket(new Point(0, 0), new Point(100, 0), Colors.Red, 4);
+        Check.Equal(new Rect(-12, -12, 124, 24), bracket.Bounds, "括号的外接框按刻度长度扩");
+        Check.Equal(12d, bracket.Tick, "括号刻度与测距同一套换算");
+        Check.True(bracket.HitTest(new Point(50, 6), 0), "主线上命中");
+        Check.False(bracket.HitTest(new Point(50, 20), 0), "离得远不命中");
+
+        // ---- 气泡：身体 + 尾巴 ----
+        var bubble = new Mark.SpeechBubble(new Rect(0, 0, 200, 100), Colors.Red, 4);
+        Check.Equal(3, bubble.Tail.Length, "尾巴是三角形");
+        Check.Equal(136d, bubble.Frame.Bottom, "尾巴尖算进选中框");
+        Check.True(bubble.HitTest(new Point(150, 50), 0), "气泡内命中");
+        Check.False(bubble.HitTest(new Point(400, 400), 0), "气泡外不命中");
+        Check.Equal(24d, bubble.TailInset, "尾巴根部离左边 24 DIP（宽度 200 的 12%）");
+        var moved = (Mark.SpeechBubble)bubble.MoveBy(new Vector(10, 20));
+        Check.Equal(new Rect(10, 20, 200, 100), moved.Body, "气泡整体平移");
+
+        // ---- 放大镜：取图区域按倍率收在镜头中心 ----
+        var lens = new Mark.Magnifier(new Rect(0, 0, 200, 100), 2, Colors.Red, 3);
+        Check.Equal(new Rect(50, 25, 100, 50), lens.SourceRect, "2 倍镜头取中心一半大小的区域");
+        Check.Equal(1.2, new Mark.Magnifier(new Rect(0, 0, 10, 10), 0.2, Colors.Red, 3).Factor, "倍率下限 1.2");
+        Check.Equal(8d, new Mark.Magnifier(new Rect(0, 0, 10, 10), 99, Colors.Red, 3).Factor, "倍率上限 8");
+        Check.True(lens.HitTest(new Point(100, 50), 0), "镜头里命中");
+        Check.False(lens.HitTest(new Point(300, 50), 0), "镜头外不命中");
+        Check.Equal(new Rect(10, 10, 200, 100), ((Mark.Magnifier)lens.MoveBy(new Vector(10, 10))).Lens,
+            "镜头整体平移");
+
+        // ---- 水印：整图效果，不参与选中 / 拖动 ----
+        var wm = new Mark.Watermark("保密", Colors.White, 24, -30, 120, 0.15);
+        Check.Equal(Rect.Empty, wm.Bounds, "水印没有外接框");
+        Check.Equal(Rect.Empty, wm.Frame, "水印没有选中框");
+        Check.False(wm.CanScale, "水印不能缩放");
+        Check.False(wm.HitTest(new Point(10, 10), 999), "水印点不中（永远不挡选择）");
+        Check.True(ReferenceEquals(wm, wm.MoveBy(new Vector(10, 10))), "水印移动返回自己");
+        Check.True(ReferenceEquals(wm, wm.ScaleTo(new Rect(0, 0, 1, 1), new Rect(0, 0, 2, 2))), "水印缩放返回自己");
+        Check.Equal("LTools", new Mark.Watermark("   ", Colors.White, 24, 0, 120, 0.15).Content, "水印文字为空时用默认名");
+        Check.Equal(-30d, wm.Rotation, "水印角度字段（不叫 Angle：那是标注类型名）");
+
+        // ---- 矩形荧光 ----
+        var glow = new Mark.Highlight(new Point(0, 0), new Point(100, 50), Colors.Yellow, 0.35);
+        Check.Equal(new Rect(0, 0, 100, 50), glow.Bounds, "矩形荧光就是一个矩形");
+        Check.True(glow.HitTest(new Point(50, 25), 0), "矩形里命中");
+        Check.False(glow.HitTest(new Point(200, 25), 0), "矩形外不命中");
+        Check.Equal(1d, new Mark.Highlight(new Point(0, 0), new Point(1, 1), Colors.Yellow, 9).Opacity,
+            "不透明度上限 1");
+        Check.Equal(0.02, new Mark.Highlight(new Point(0, 0), new Point(1, 1), Colors.Yellow, -1).Opacity,
+            "不透明度下限 0.02");
+
+        // ---- 画笔滤镜：笔迹遮罩（纯像素计算）----
+        var stroke = new[] { new Point(0, 0), new Point(10, 0) };
+        var mask = MarkRenderer.BuildStrokeMask(stroke, 2, 20, 10, 0, 0, 1);
+        Check.Equal(200, mask.Length, "遮罩尺寸 = 裁块尺寸");
+        Check.True(mask[0 * 20 + 5], "笔迹上的像素在遮罩里");
+        Check.True(mask[2 * 20 + 5], "半径内的像素在遮罩里");
+        Check.False(mask[3 * 20 + 5], "半径外的像素不在遮罩里");
+        Check.False(mask[0 * 20 + 15], "笔迹没经过的地方不在遮罩里");
+        Check.True(MarkRenderer.BuildStrokeMask(Array.Empty<Point>(), 2, 20, 10, 0, 0, 1).All(v => !v),
+            "没有点就没有遮罩（一个像素都不选）");
+
+        var single = MarkRenderer.BuildStrokeMask(new[] { new Point(5, 5) }, 2, 20, 10, 0, 0, 1);
+        Check.True(single[5 * 20 + 5], "单点笔迹也有圆点遮罩");
+
+        // 笔迹滤镜本身：外接框 / 平移 / 缩放 / 命中
+        var brush = new Mark.BrushFilter(stroke, 8, FilterKind.Blur, 40);
+        Check.Equal(new Rect(-4, -4, 18, 8), brush.Bounds, "画笔滤镜外接框按笔头外扩");
+        Check.True(brush.HitTest(new Point(5, 2), 0), "笔迹上命中");
+        Check.False(brush.HitTest(new Point(5, 30), 0), "离笔迹远不命中");
+        Check.Equal(16d, ((Mark.BrushFilter)brush.ScaleTo(
+            new Rect(0, 0, 10, 10), new Rect(0, 0, 20, 20))).Width, "缩放时笔头跟着乘 2");
+
+        // ---- 几何补充：极坐标 / 角度归一 / 夹角 / 三角形 ----
+        var polar = MarkGeometry.Polar(new Point(10, 10), 0, 5);
+        Check.Equal(new Point(15, 10), new Point(Math.Round(polar.X, 6), Math.Round(polar.Y, 6)),
+            "极坐标沿 X 轴取点");
+        Check.Equal(0d, Math.Round(MarkGeometry.NormalizeAngle(Math.PI * 2), 6), "2π 归一到 0");
+        Check.Equal(Math.Round(Math.PI, 6), Math.Round(MarkGeometry.NormalizeAngle(-Math.PI), 6), "负角归一到正角");
+        Check.Equal(Math.Round(Math.PI / 2, 6),
+            Math.Round(MarkGeometry.AngleBetween(new Vector(1, 0), new Vector(0, 1)), 6), "垂直向量夹角 90°");
+        Check.Equal(0d, MarkGeometry.AngleBetween(new Vector(0, 0), new Vector(1, 0)), "零向量夹角按 0 算");
+        Check.True(MarkGeometry.InTriangle(new Point(1, 1), new Point(0, 0), new Point(4, 0), new Point(0, 4)),
+            "三角形里");
+        Check.False(MarkGeometry.InTriangle(new Point(3, 3), new Point(0, 0), new Point(4, 0), new Point(0, 4)),
+            "三角形外");
     }
 
     /// <summary>8×8 像素的假底图 + 缩放 2 的文档（不开窗口）。</summary>

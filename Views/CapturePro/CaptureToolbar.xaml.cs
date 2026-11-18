@@ -665,6 +665,72 @@ public partial class CaptureToolbar : UserControl
         AddHost(ToolParam.FilterStrength, Step("强度", 0, 100, 5,
             () => _style?.FilterStrength ?? 40, v => { if (_style != null) _style.FilterStrength = v; },
             v => v.ToString("0"), 40));
+
+        // 放大镜倍率 + 水印（文字 / 角度 / 间距）
+        AddHost(ToolParam.Factor, Step("倍率", 1, 8, 1,
+            () => _style?.Factor ?? 2, v => { if (_style != null) _style.Factor = v; },
+            v => v.ToString("0") + "×", 2));
+
+        AddHost(ToolParam.WatermarkText, Text("文字",
+            () => _style?.WatermarkText ?? "LTools",
+            v => { if (_style != null) _style.WatermarkText = v; }));
+
+        AddHost(ToolParam.WatermarkAngle, Step("角度", -90, 90, 15,
+            () => _style?.WatermarkAngle ?? -30, v => { if (_style != null) _style.WatermarkAngle = v; },
+            v => v.ToString("0") + "°", -30));
+
+        AddHost(ToolParam.WatermarkGap, Step("间距", 20, 400, 10,
+            () => _style?.WatermarkGap ?? 120, v => { if (_style != null) _style.WatermarkGap = v; },
+            v => v.ToString("0"), 120));
+    }
+
+    /// <summary>一格文字输入（水印内容）：失焦与回车都立刻写回样式，工具栏不自己存副本。</summary>
+    private FrameworkElement Text(string label, Func<string> get, Action<string> set)
+    {
+        var host = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        host.Children.Add(Label(label));
+
+        var box = new TextBox
+        {
+            Width = 110,
+            Height = 22,
+            FontSize = 12,
+            Padding = new Thickness(6, 1, 6, 1),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Background = new SolidColorBrush(Color.FromRgb(0xF7, 0xF8, 0xFA)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xD9, 0xD9)),
+            BorderThickness = new Thickness(1),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x27, 0x27, 0x2A)),
+            ToolTip = "水印文字（回车或失焦生效）",
+        };
+
+        void Commit()
+        {
+            if (_syncing) return;
+            set(box.Text);
+            StyleChanged?.Invoke();
+        }
+
+        box.LostFocus += (_, _) => Commit();
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Enter) return;
+            Commit();
+            e.Handled = true;
+        };
+
+        _refreshers.Add(() =>
+        {
+            string value = get();
+            if (!box.IsKeyboardFocusWithin && box.Text != value) box.Text = value;
+        });
+
+        host.Children.Add(box);
+        return host;
     }
 
     /// <summary>

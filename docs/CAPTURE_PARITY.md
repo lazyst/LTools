@@ -1,0 +1,177 @@
+# 截图 Pro × Snow Shot 复刻对照计划
+
+上游基准：[mg-chao/snow-shot](https://github.com/mg-chao/snow-shot)（本机 `C:\main\APPS\_refs\snow-shot`，commit `637f8ca`）。
+本文是**唯一进度账本**：每个模块一行，标出上游实现位置、LTools 现状、所属批次与状态。
+批次完成即改状态并写「验收」记录；跨批次的临时决定写进 §6 变更记录。
+
+## 1. 判定口径
+
+- **1:1 复刻** = 行为（同样输入得到同样的像素 / 文本 / 文件）、交互（手势、快捷键、悬停、拖动、取消路径）、界面（布局、度量、配色、图标）三者都与上游一致；平台差异（Windows 无 macOS 权限引导）只在 §6 记差异，不降级。
+- 每批次必须同时满足：构建 0 错 0 警 → `LTools.exe --selftest` 全绿 → 仓库外冒烟（`capture-overlay-smoke` / `record-e2e` 或新 harness）全绿 → 真机点一遍相关路径。
+- 纯逻辑（几何 / 命中 / 序列化 / 样式回落）进 `--selftest` 的 `capturePro` 组；需要真窗口 / 真鼠标 / 真编码器的进仓库外 harness。
+- 状态：`✅` 已 1:1；`🟡` 有但不等价（缺参数 / 缺交互 / 度量不同）；`❌` 完全没有；`⏳` 本批次进行中。
+
+## 2. 模块对照表
+
+### 2.1 画布与工具（P1 / P2）
+
+| 上游 | 位置 | LTools 现状 | 批次 | 状态 |
+| --- | --- | --- | --- | --- |
+| 工具清单（32 项） | `include/.../screenshotcanvastools.inc`、`src/.../tools/screenshottoolpalette.cpp` | `Features/CapturePro/ToolCatalog.cs` **25 项**（余 7 项是 P4 的识别类：Ocr / 翻译 / 文档 / 表格 / Qr / LaTeX / Markdown / Html） | P1 / P4 | 🟡 |
+| 移动工具 Move（拖整个选区窗口） | `screenshottoolpalette.cpp:5210` | 拖动选区 / 空白拖动窗格 | — | ✅ |
+| 选择 Select（选中标注改样式 / 拖动 / 缩放） | 同上 | `CaptureOverlayWindow.Annotate.cs` + `Chrome.cs` | — | ✅ |
+| 气泡 SpeechBubble | `SnowCanvasShapeKind::SpeechBubble` | `Mark.SpeechBubble`（圆角身体 + 左下尾巴） | P1 | ✅ |
+| 形状 Shape（矩形 / 椭圆 / 圆角矩形 / 菱形…） | `SnowCanvasShapeKind` | 矩形 / 椭圆两种 | P2 | 🟡 |
+| 测距 Distance | `distanceToolRequested` | `Mark.Distance`（两端刻度 + 中点 px 标签） | P1 | ✅ |
+| 测角 Angle（滚轮调角度） | `screenshottoolpalette.cpp:4550` | `Mark.Angle`（两次拖拽成角，滚轮 ±5° / Shift ±1°） | P1 | ✅ |
+| 括号 Bracket | `bracketToolRequested` | `Mark.Bracket`（主线 + 两端刻度） | P1 | ✅ |
+| 箭头 Arrow | `arrowRequested` | `Mark.Arrow` | — | ✅ |
+| 直线 Line | `lineRequested` | `Mark.Line`（可虚线；横向拖拽不会因「高度为 0」被丢） | P1 | ✅ |
+| 画笔 Brush（FreeDraw） | `brushRequested` | `CaptureTool.Pen` | — | ✅ |
+| 矩形高亮 RectangleHighlight | `highlightRequested` | `CaptureTool.HighlightRect` → `Mark.Highlight`（半透明铺块） | P1 | ✅ |
+| 画笔高亮 PenHighlight | `brushHighlightRequested` | `CaptureTool.Highlighter` → `Mark.Stroke(highlighter: true)` | — | ✅ |
+| 放大镜 Magnifier（倍率 / 连接线 / 源框） | `magnifierRequested` + `SnowCanvasMagnifierStyle` | `Mark.Magnifier`：镜头框 + 倍率（1.2–8）已 1:1；**连接线 / 箭头 / 源框轮廓 / 圆角**留 P2 | P1 / P2 | 🟡 |
+| 聚光灯 Spotlight | `spotlightRequested` | `Mark.Spotlight` | — | ✅ |
+| 橡皮 Eraser（点选删除） | `eraserRequested` | `CaptureTool.Eraser` | — | ✅ |
+| 矩形橡皮 RectangleEraser | `rectangleEraserRequested` | `CaptureTool.RectEraser`：**按对象删除**（相交即删） | P1 | 🟡 |
+| 画笔橡皮 BrushEraser | `brushEraserRequested` | `CaptureTool.BrushEraser`：**按对象删除**（笔迹碰到即删） | P1 | 🟡 |
+| 自动打码 AutoFilter（视觉区域检测） | `screenshotautofiltercontroller.cpp` | 无 | P1-b | ❌ |
+| 矩形滤镜 RectangleFilter | `rectangleFilterRequested` | `Mark.Filter` + `CaptureTool.Filter` | — | ✅ |
+| 画笔滤镜 BrushFilter | `brushFilterRequested` | `Mark.BrushFilter`（笔迹遮罩 + 同一套滤镜） | P1 | ✅ |
+| 水印 Watermark（文本 / 模板 / 角度 / 间距 / 不透明度） | `SnowCanvasWatermark*` | `Mark.Watermark`：文字 / 颜色 / 字号 / 角度 / 间距 / 不透明度已 1:1；**图片模板水印**留 P2 | P1 / P2 | 🟡 |
+| 文字 Text（富文本样式） | `textRequested` | `Mark.Text` 纯文本 | P1/P2 | 🟡 |
+| 序号 SerialNumber（徽标样式 / 数字写法） | `SnowCanvasSerialNumber*` | `Mark.Serial`（形状 + 写法已实现） | P2 | 🟡 |
+| 取色 Picker | `canvasColorSamplingRequested` | `CaptureTool.Picker` | — | ✅ |
+| 每工具样式记忆 + 落盘 | `screenshotcanvastoolstyles.cpp`、`configs` | `ToolStyle` 单份全局样式 | P2 | ❌ |
+| 样式预设 / 默认样式 | `screenshotdefaultstyles.h` | 无 | P2 | ❌ |
+| 描边色 / 描边宽 / 填充 / 虚线 | `SnowCanvasShapeStyle` | 只有色 + 宽 | P2 | 🟡 |
+| 字体族 / 字号 / 粗斜 / 对齐 / 透明度 | `SnowCanvasTextStyle` | 只有字号 | P2 | 🟡 |
+| 滤镜类型与强度 | `SnowCanvasFilterType` | Blur / Grayscale / Invert / Sharpen / Brightness | P2 | 🟡 |
+| 工具栏自定义（显示哪些工具 / 顺序 / 分组） | `screenshotdrawingtoolbaroptions.h` | `ToolLayout` + `ToolLayoutStore` | — | ✅ |
+
+### 2.2 选区（P3）
+
+| 上游 | 位置 | LTools 现状 | 批次 | 状态 |
+| --- | --- | --- | --- | --- |
+| X / Y / W / H 数值框 + px 单位 | `screenshotselectiontoolbarwidgets.cpp` | 只有角上尺寸提示 | P3 | ❌ |
+| 比例锁定 + 比例预设（16:9 等） | 同上 `Lock selection aspect ratio` | 无 | P3 | ❌ |
+| 圆角半径 | 同上 `Corner radius` | 无 | P3 | ❌ |
+| 阴影像素宽（无边框时） / 边框宽 | 同上 `Shadow width` / `Border width` | 无（导出永远直角） | P3 | ❌ |
+| 选区预设 / 上次选区 | 同上 `Selection presets` `Previous selection` | 历史窗口有上一张，不是选区几何 | P3 | 🟡 |
+| 智能选区（UI 元素识别 + 过渡动画） | `core/screenshotintelligentselectionmodel.cpp`、`screenshotsmartselectiontransition.cpp` | `Views/ScreenSnapTargets` 只做吸附线 | P3 | 🟡 |
+| 选区阴影渲染 | `overlay/screenshotselectionshadowrenderer.cpp` | 无 | P3 | ❌ |
+| 悬停窗口 / 控件高亮与切换 | `overlay/screenshotoverlaycanvaspresenter.cpp` | `CaptureOverlayWindow.Hover.cs` | — | ✅ |
+
+### 2.3 识别与转换（P4）
+
+| 上游 | 位置 | LTools 现状 | 批次 | 状态 |
+| --- | --- | --- | --- | --- |
+| 本地 OCR（系统 / PP-OCR） | `ocr/screenshotocrcontroller.cpp` | `Features/Flow/PaddleOcr.cs` + `CaptureRecognize.cs` | — | ✅ |
+| OCR 结果编辑器（选中 / 编辑 / 复制 / 替换为文本） | `screenshotocrtexteditingsession.cpp`、`screenshotocrvisuals.cpp` | 无（只把文本塞进速记 / 剪贴板） | P4 | ❌ |
+| OCR 原文预览窗 | `screenshotoriginalimagepreviewwindow.cpp` | 无 | P4 | ❌ |
+| 文本排版还原（行 / 段 / 字号） | `screenshotocrtextlayout.cpp`、`screenshotocrlayout.cpp` | `OcrLayout` 只有词框 | P4 | 🟡 |
+| 二维码识别 + 呈现 | `screenshotqrcontroller.cpp` | `QrCodeAlgorithms.Read` 只填字段 | P4 | 🟡 |
+| 表格识别 | `tableRequested`（在线服务） | 无 | P4 | ❌ |
+| 文档识别 | `documentRequested` | 无 | P4 | ❌ |
+| LaTeX 识别 + 渲染 | `screenshotlatexrenderer.cpp` | 无 | P4 | ❌ |
+| 图片转 Markdown | `markdownRequested` | 无 | P4 | ❌ |
+| 图片转 HTML | `htmlRequested` | 无 | P4 | ❌ |
+| 在线翻译 | `textTranslationRequested`、`settings/screenshottranslationsettings*` | 无 | P4 | ❌ |
+| 识别结果贴回画布（作为文字标注 / 覆盖原图） | `screenshotocrtexttransform.cpp` | 无 | P4 | ❌ |
+
+### 2.4 贴图（P5）
+
+| 上游 | 位置 | LTools 现状 | 批次 | 状态 |
+| --- | --- | --- | --- | --- |
+| 贴图窗口（拖动 / 缩放 / 旋转 / 缩放快捷键） | `pinned/*` | `CapturePinWindow.*` | — | ✅ |
+| 贴图分组（成组移动 / 只显示某组） | `services/pinnedwindowgroupmanager.cpp` | `PinGroups.cs` + 右键菜单 | — | ✅ |
+| 贴图管理页 | `components/pinnedwindowmanagementpagewidget.cpp` | 只有右键菜单 | P5 | 🟡 |
+| 贴图颜色取样板（取色 / 色板） | `services/pinnedcolorswatch.cpp` | 无 | P5 | ❌ |
+| 贴图文字样式捕获 | `services/pinnedtextstylecapture.cpp` | 无 | P5 | ❌ |
+| 贴图堆叠与层级协调 | `pinned/pinnedwindowstackingcoordinator.cpp` | `RaiseAllAbove` 部分等价 | P5 | 🟡 |
+| 点击穿透 / 抖动隐藏 | `pinnedwindowselectioncontroller.cpp` | 无 | P5 | ❌ |
+| 批量保存贴图 / 拖拽导出 | `screenshotfilepinbatch.h`、`screenshotcontentdrop.h` | 无 | P5 | ❌ |
+| 贴图历史与恢复位置 | `services/historypinplacement.cpp` | 无 | P5 | ❌ |
+
+### 2.5 图片编辑 / 拼图 / 切图（P6）
+
+| 上游 | 位置 | LTools 现状 | 批次 | 状态 |
+| --- | --- | --- | --- | --- |
+| 图片编辑窗口（导入已有图片 → 画布标注 → 导出） | `imageediting/*` | 只有截图后的覆盖层 | P6 | ❌ |
+| 拼图（多图拼接 / 行 / 间距 / 背景 / PDF） | `collage/*` | 无 | P6 | ❌ |
+| 切图（网格 / 智能布局 / 导出） | `imagesplit/*` | `Features/CapturePro/Stitch` 只有长截图拼接 | P6 | ❌ |
+| 全屏画布（在任意屏幕讲解 / 贴住） | `globalcanvas/*` | 无 | P8 | ❌ |
+
+### 2.6 采集入口与设置（P7）
+
+| 上游 | 位置 | LTools 现状 | 批次 | 状态 |
+| --- | --- | --- | --- | --- |
+| 区域截图 | `selector/*` | `CaptureSession` | — | ✅ |
+| 焦点窗口 / 显示器 / 全屏 | `capture/screenshotcapturepolicy.cpp` | 面板「全屏」+ 悬停窗口选择 | 🟡 P7 | 🟡 |
+| 延时截图（可配置秒数 / 倒计时） | `quick.screenshot-delay` | 无 | P7 | ❌ |
+| 固定区域截图（记住矩形） | `quick.screenshot-fixed` | 无 | P7 | ❌ |
+| 滚动长截图 | `capture/screenshotscrolling*` | `ScrollCaptureHookState` / `ScrollStitch` | — | ✅ |
+| 鼠标释放即执行动作 | `services/mousereleaseactioncontroller.cpp` | 无 | P7 | ❌ |
+| 全局快捷键（截图 / OCR / 翻译 / 滚动 / 复制 / 保存 / 快速保存 / 贴图…） | `services/globalshortcutmanager.cpp`、`settingscatalog.cpp` | 截图 Pro 只有覆盖层内快捷键 | P7 | 🟡 |
+| 导出设置（格式 / 质量 / 文件名模板 / 快捷保存目录） | `screenshotencodingsettings.h`、`screenshotexportnaming.h` | `CaptureSave` + `CaptureSaveWindow` | P7 | 🟡 |
+| 剪贴板外观（不透明 / 圆角 / 阴影） | `screenshotclipboardappearance.h`、`screenshotclipboardplacement.h` | 直接复制原图 | P7 | ❌ |
+| 采集历史页（搜索 / 筛选 / 恢复贴图 / 批量） | `components/screenshothistorypagewidget.cpp`、`screenshothistoryservice.cpp` | `CaptureHistoryWindow` 基础版 | P7 | 🟡 |
+| 云上传 / 分享 / AirDrop | `screenshotclouduploadservice.cpp` | 不复刻（依赖第三方服务） | — | ⛔ |
+| 相机快门音 | `capture/camerashuttersound.cpp` | 无 | P7 | ❌ |
+
+### 2.7 录屏（P8）
+
+| 上游 | 位置 | LTools 现状 | 批次 | 状态 |
+| --- | --- | --- | --- | --- |
+| 区域 / 窗口 / 全屏录制 | `recording/*` | `RecordSession` + 区域框 | — | ✅ |
+| 系统声音 / 麦克风 / 混音 | `recordingaudio*` | `RecordAudio` | — | ✅ |
+| 音频增益 popover | `recordingaudiogainpopover.cpp` | 无 | P8 | ❌ |
+| 硬件编码 / 回退 | `RecordEncoders`（已复刻） | — | ✅ |
+| 键鼠特效 | `recordingeffect*` | `RecordEffects` | — | ✅ |
+| 摄像头画中画 / 虚拟相机 | `recordingcamera*` | 仅开关参数 | P8 | 🟡 |
+| 渲染进度对话框 | `recordingrenderdialog.cpp` | 只有 toast | P8 | ❌ |
+| 录制快捷键控制器 | `screenrecordingshortcutcontroller.cpp` | 部分（面板按钮） | P8 | 🟡 |
+| 工具条自动隐藏 / 悬停唤出 | `recordingtoolbarwindow.cpp` | 无 | P8 | ❌ |
+| 崩溃残片恢复 | `recordingrecovery.h` | `RecordRecovery` | — | ✅ |
+
+## 3. 批次与验收
+
+| 批次 | 范围 | 状态 | 验收 |
+| --- | --- | --- | --- |
+| P0 | 已完成基线（区域 / 窗口 / 滚动 / 贴图 / 录屏五项 / 两行面板 / 区域框 / 工具布局） | ✅ | 见提交 `a61e15f` |
+| P1 | 绘图工具补齐：气泡 / 直线 / 测距 / 测角 / 括号 / 放大镜 / 水印 / 矩形荧光 / 画笔滤镜 / 矩形橡皮 / 画笔橡皮（工具 14 → 25，默认工具栏 9 → 13 格） | ✅ | 构建 0 警；`--selftest` 209 用例 6210 断言全绿（`capturePro` 41 用例 1379 断言）；`capture-overlay-smoke` 536 条全绿（含 11 个新工具的真手势 + 导出逐像素对账） |
+| P1-b | 橡皮对齐上游：像素级智能擦除（`snow-draw-engine-gpui/src/smart_erase` 的 Lab 引导 + 分块重建）+ 自动打码 AutoFilter（`screenshotautofiltercontroller.cpp` 的视觉区域检测） | ❌ | 待填 |
+| P2 | 样式系统：每工具样式记忆 + 形状种类 + 描边 / 填充 / 虚线 + 字体 + 序号徽标 + 预设 | ❌ | 待填 |
+| P3 | 选区：XYWH / 比例 / 圆角 / 阴影 / 智能选区 / 预设 | ❌ | 待填 |
+| P4 | 识别与转换：OCR 编辑器 / 原文预览 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档 / 翻译 | ❌ | 待填 |
+| P5 | 贴图：管理页 / 取色板 / 文字样式 / 点击穿透 / 抖动隐藏 / 批量保存 / 拖拽导出 / 历史恢复 | ❌ | 待填 |
+| P6 | 图片编辑窗 / 拼图 / 切图 | ❌ | 待填 |
+| P7 | 采集入口与设置：延时 / 固定区域 / 鼠标释放动作 / 全局快捷键 / 导出设置 / 剪贴板外观 / 历史页 | ❌ | 待填 |
+| P8 | 全屏画布 + 录屏剩余：音频增益 / 渲染进度 / 快捷键 / 工具条自动隐藏 | ❌ | 待填 |
+
+## 4. 每批次的实施顺序（固定套路）
+
+1. 上游对照：把该批次涉及的上游文件读透，摘出**度量常量 / 交互状态机 / 默认值**，写进本文件对应行。
+2. 数据模型：`Features/CapturePro/*` 加纯数据（能被 `--selftest` 直接断言），不碰 WPF。
+3. 渲染：只改 `MarkRenderer.Draw`（显示与导出共用），必要时给 `CaptureCanvas` 加图层。
+4. 交互：`CaptureOverlayWindow.Annotate.cs`（手势）/ `CaptureToolbar.xaml.cs`（UI）。
+5. 图标：`Views/CapturePro/CaptureIcons.xaml` 加 `Icon*` 几何；字形只用已收录码点或自绘 Path。
+6. 测试：`Core/SelfTest/Suites/CaptureProSuite.cs` 加断言；仓库外冒烟加真实交互断言。
+7. 文档与进度：本文件状态改 ✅ / 🟡，`docs/SCREEN_CAPTURE_PRO.md` 补规格，提交信息按 AGENTS.md 先审批。
+
+## 5. 与上游的已知平台差异
+
+| 主题 | 上游 | LTools 处理 |
+| --- | --- | --- |
+| 权限引导（屏幕录制授权） | macOS TCC 引导页 | 不复刻（Windows 无此权限） |
+| 云上传 / AirDrop | 第三方服务 | 不复刻，导出走本地文件 / 剪贴板 |
+| 主题皮肤 | ant-design-qt 多主题 | 跟随 LTools `Themes/Modern.xaml` 灰阶主题，只复刻度量与交互 |
+| MCP | 上游自带 MCP 服务 | 由 LTools 自身 MCP（`Core/Ai`）承担，截图 Pro 不另开一套 |
+
+## 6. 变更记录
+
+- 2026-11-18：建立本文件；完成 P0 基线确认（提交 `a61e15f`），开 P1。
+- 2026-11-18：**P1 完成**。工具 14 → 25：新增直线、测距（中点 px 标签）、测角（两段拖拽 + 滚轮 ±5° / Shift ±1°）、括号、气泡、放大镜（镜头框 + 倍率 1.2–8）、水印（整图斜向平铺，文字 / 角度 / 间距 / 不透明度）、矩形荧光、画笔滤镜（笔迹遮罩 + 同一套滤镜）、矩形橡皮、画笔橡皮。默认工具栏按上游分组重排成 13 格（选择 │ 形状 │ 箭直 │ 自由笔 │ 尺寸 │ 气泡文字 │ 荧光 │ 镜头与聚光 │ 序号 │ 打码 │ 水印 │ 橡皮 │ 取色）。
+  - 修掉一处会挡新工具的真 bug：落盘门槛原来要求「宽和高都 ≥ 4 DIP」，水平直线 / 水平测距 / 括号被当成「没拖动」丢掉；现在一维工具（直线 / 测距 / 括号 / 箭头）只判长度（`ToolCatalog.IsLinear`）。
+  - 上游「像素级智能擦除」这次没做（两把橡皮都是**按对象删除**），与自动打码一起另列 **P1-b**；放大镜的连接线 / 源框、水印的图片模板留 P2。
+  - 验收：构建 0 错 0 警；`--selftest` 209 用例 / 6210 断言全绿；`capture-overlay-smoke` 536 条全绿（真手势画出 11 个新工具 + 合成底图逐像素对账：放大镜把 10×10 绿块放大到约 2 倍面积、画笔滤镜只把笔迹压过的红底反相成青色、测距标签里确有白字、水印左右两半都有白像素）。
