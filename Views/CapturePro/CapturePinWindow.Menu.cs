@@ -6,6 +6,7 @@ using System.Windows.Input;
 using LTools.Core;
 using LTools.Features.CapturePro;
 using LTools.Features.CapturePro.ImageEdit;
+using LTools.Features.CapturePro.Split;
 using LTools.Native;
 using LTools.Views.Controls;
 
@@ -119,6 +120,21 @@ public partial class CapturePinWindow
             }), System.Windows.Threading.DispatcherPriority.Background);
         };
         menu.Items.Add(edit);
+
+        // 把这张贴图丢进切图窗（与「在编辑器中打开」同一口径：内容取自当前显示的图）
+        var split = new MenuItem
+        {
+            Header = "切图…",
+            IsEnabled = !_live && _cardKind == PinContentKind.Image,
+        };
+        split.Click += (_, _) =>
+        {
+            _menu?.IsOpen = false;
+            var content = _content;
+            Dispatcher.BeginInvoke(new Action(() => SplitSession.OpenImage(content, "贴图")),
+                System.Windows.Threading.DispatcherPriority.Background);
+        };
+        menu.Items.Add(split);
 
         AddLoadMenu(menu);
 

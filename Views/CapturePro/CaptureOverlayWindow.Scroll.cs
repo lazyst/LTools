@@ -642,12 +642,30 @@ public partial class CaptureOverlayWindow
 
     // ============ 完成 / 放弃 ============
 
-    private void ScrollDone_Click(object sender, RoutedEventArgs e) => FinishScroll();
+    /// <summary>长截图完成之后去哪儿：直接复制走 / 交给图片编辑 / 交给切图。</summary>
+    internal enum ScrollExit
+    {
+        Copy,
+        Edit,
+        Split,
+    }
+
+    /// <summary>这次长截图完成后要做什么（<see cref="FinishKind.Scroll"/> 的出口才知道）。</summary>
+    internal ScrollExit ScrollAfter { get; private set; } = ScrollExit.Copy;
+
+    private void ScrollDone_Click(object sender, RoutedEventArgs e) => FinishScroll(ScrollExit.Copy);
+
+    private void ScrollEdit_Click(object sender, RoutedEventArgs e) => FinishScroll(ScrollExit.Edit);
+
+    private void ScrollSplit_Click(object sender, RoutedEventArgs e) => FinishScroll(ScrollExit.Split);
 
     private void ScrollCancel_Click(object sender, RoutedEventArgs e) => CancelScroll();
 
-    /// <summary>完成：拼好的长图当成品交回（<see cref="CaptureSession"/> 负责复制 + 提示）。</summary>
-    private void FinishScroll()
+    /// <summary>
+    /// 完成：拼好的长图当成品交回（<see cref="CaptureSession"/> 负责复制 + 提示）。
+    /// 「编辑 / 切图」同样先收尾拼图，只是交回之后由会话把图交给对应的窗口。
+    /// </summary>
+    private void FinishScroll(ScrollExit exit = ScrollExit.Copy)
     {
         if (!_scrollMode) return;
 
@@ -673,7 +691,7 @@ public partial class CaptureOverlayWindow
             timer.Tick += (_, _) =>
             {
                 timer.Stop();
-                FinishScroll();
+                FinishScroll(exit);
             };
             timer.Start();
             return;
@@ -704,7 +722,8 @@ public partial class CaptureOverlayWindow
         _doc.Area = new Int32Rect(_doc.Area.X, _doc.Area.Y, image.PixelWidth, image.PixelHeight);
 
         ExitScrollMode();
-        ScrollRequested = true;
+        ScrollAfter = exit;
+        ScrollRequested = exit == ScrollExit.Copy;
         ResultImage = image;
         Finish = FinishKind.Scroll;
         _confirmed = true;

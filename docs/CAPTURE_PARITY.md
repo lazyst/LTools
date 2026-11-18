@@ -105,7 +105,7 @@
 | --- | --- | --- | --- | --- |
 | 图片编辑窗口（导入已有图片 → 画布标注 → 导出） | `imageediting/*` | `P6-a1` 独立窗口（`Views/CapturePro/ImageEditWindow.*` + `Features/CapturePro/ImageEdit/*` 的 `ImageEditDocument` / `ImageEditGeometry` / `ImageEditBitmap` / `ImageEditSession`）+ 棋盘格透明底 + 打开图片（文件 / 粘贴 / 拖放 / 采集历史「编辑…」/ 贴图右键「在编辑器中打开…」/ 托盘「图片编辑…」）+ 空态 + 适应窗口 / 100% / 滚轮缩放 / 拖动平移 + 行列裁剪（半透明红带 + `N px` + `#4096FF` 虚线导引线）+ 撤销重做 + 未保存确认 + 复制 / 快速保存 / 另存为 / 贴到屏幕 / 打印；`P6-a2` 浮动绘图工具条（锚图片右下 4px，`[平移] [裁剪行][裁剪列] | 绘图 13 格 | [撤销][重做] | [贴图][复制] | [打印][快速保存][另存为]`）+ 画布底部居中缩放条 + 就地文字输入 + 选择 / 拖动 / 框选 / 多选 / 把手改大小 / 橡皮 / 折线 / 测角 / 标注样式回写（复用截图工具与 `MarkFactory`）；`P6-a3` 识别入口（工具条「识别」+ Ctrl+R，把**整张底图**交给结果窗，文字 / 表格 / 二维码 / Markdown / HTML / 文档 / LaTeX / 翻译都在结果窗页签里）+ 自动打码（识别范围 = 整张图，点击 / 框选 / 「填充区域」按类型一次打码，落普通滤镜标注） | P6 | 🟡 |
 | 拼图（多图拼接 / 行 / 间距 / 背景 / PDF） | `collage/*` | 无 | P6-c / P6-d | ❌ |
-| 切图（网格 / 智能布局 / 导出） | `imagesplit/*` | `Features/CapturePro/Stitch` 只有长截图拼接 | P6-b | ❌ |
+| 切图（网格 / 智能布局 / 导出） | `imagesplit/*` | `P6-b` 切图窗（`Views/CapturePro/ImageSplitWindow.*` + `Views/CapturePro/SplitPreviewCanvas.cs` + `Features/CapturePro/Split/*`）：左画布（棋盘格 + 标尺 + 切分线 + 序号徽标 + 中键平移 + 滚轮缩放 + 适应窗口）+ 右固定 340 表单（方向〔纵向 / 横向 / 宫格〕/ 方式〔智能 / 等分 / 精确〕/ 重叠 / 张数 / 行列 / 每张尺寸 + 像素↔百分比互换）+ 页脚「W × H px」·「共 N 张」+ 取消 / 全部保存；切分线可拖动 / 标尺点一下加线 / Delete 删线 / 撤销重做（拖动松手才算一步）/ 设置变了后台重找线（修订号 CAS）；智能找线照上游投影 + 活动域 + 字典序评分；百分比按十进制精确进位；导出 `切图_<名称>`（重名 ` (2)`）内 `1.png` 起逐张落盘并自动打开目录；四个入口（托盘「切图…」/ 贴图右键「切图…」/ 采集历史「切图…」/ 长截图面板「切图」）；空态 + 关窗确认 | P6-b | ✅ |
 | 全屏画布（在任意屏幕讲解 / 贴住） | `globalcanvas/*` | 无 | P8 | ❌ |
 
 ### 2.6 采集入口与设置（P7）
@@ -458,5 +458,9 @@
   - **图一变就对齐**：`RefreshMarks()`（填充 / 撤销 / 重做）与 `CommitCrop()` 之后都调 `SyncAutoFilter(detect: true)`——识别结果还跟当前图对得上就保留，对不上就清掉重扫；换工具 / 换图 / 关窗都 `LeaveAutoFilter()`（停动画计时器、清高亮、`Canvas.AutoFilter = null`）。Esc 第一下只取消进行中的框选，第二下才退出工具（与覆盖层同口径）。
   - 验收：构建 0 错 0 警；`--selftest` 全量 **257 用例 14787 断言全绿**（`capturePro` 89 用例 9961 断言，自动打码的纯函数早前已在 `AutoFilterLogic` 一组里覆盖，本批没有新增引擎 / 校验器逻辑）；`capture-overlay-smoke` **1449 条全绿**（`ImageEditSection` 新增 16 条：工具条有「识别」按钮、点它真开结果窗且拿的是 300×160 的整张底图、进自动打码画布拿到识别状态、整张图识别在时限内跑完、「填充区域」按可用性置灰 / 可用、点一下落一条带区域 id 的滤镜标注、同类型再点一次撤掉、框选一次填两块、再框一次撤掉、「填充区域」只补不删、换工具后覆盖层与识别结果一起清掉；落图 `out/imageedit/edit-window.png` 里能看到画布与浮动工具条）。
 
-
-
+- 2026-11-19：**P6-b 完成（切图窗：等分 / 精确 / 智能找线 / 导出）**。上游 `ImageSplitWindow` / `ImageSplitEditorWidget` / `imageSplitLayout` / `imagesplitsmartlayout` / `imagesplitexport`。
+  - **纯逻辑在 `Features/CapturePro/Split/`**：`SplitSettings` / `SplitLines` / `SplitLayout`（`BaseRegionAt` / `RegionAt` / `OutputCount`）、`SplitLayoutCalculator`（等分先宽后窄；精确像素线 = 倍数、数量 `(边长-1)/pixels`；百分比用 `BigInteger` 做十进制精确 + 首位被丢小数 ≥5 进位；宫格两轴各自等分；每张至少 16 像素）、`SplitSmart`（相邻像素差投影 + 每条线一个活动域 + 字典序评分：两侧邻居差 → 左右各两像素总差 → 距标称 → 坐标）、`SplitDocument`（加 / 删 / 拖线、拖动松手才进撤销、修订号 CAS、`Reset`）、`SplitFormDraft`（原文保留 + 逐字段错误 + 像素↔百分比换算）、`SplitExport`（`切图_<名称>` / 重名 ` (2)` / 从 `1.png` 逐张落盘 / 可取消）、`SplitSession`（空窗复用 + 文件 / 图 / 采集历史 / 贴图入口）。
+  - **窗口照上游**：左画布 `SplitPreviewCanvas`（棋盘格、标尺、切分线、序号徽标、悬停 / 选中、中键平移、滚轮缩放、适应窗口、Delete 删线、Ctrl+Z / Ctrl+Y）；右固定 340 表单（方向 / 方式 / 重叠 / 张数 / 行列 / 每张尺寸 + 单位互换）；页脚「W × H px」·「共 N 张」+ 取消 / 全部保存；空态与拖放、替换图片确认、关窗「放弃这些切图？」、导出后自动打开目录。**「拼成 PDF」按 P6-d 留白**（不做假按钮）。
+  - **入口四处**：托盘「切图…」、贴图右键「切图…」、采集历史「切图…」、长截图面板「切图」（渲染长图 → 关覆盖层 → 开切图窗，不复制、不记采集历史）。
+  - 踩过的坑：`OnClosing` 里 `e.Cancel = true` 之后不能就地「继续关」——`Close()` 已经返回，必须 `_closing = true` 再 `Dispatcher.BeginInvoke(Close)` 重排一次；否则点「放弃」窗口也不关。
+  - 验收：构建 0 错 0 警；`--selftest` 全量 **263 用例 14908 断言全绿**（`capturePro` 95 用例 10082 断言，切图 6 组：布局 / 重叠矩形 / 智能找线 / 文档编辑与 CAS / 表单草案 / 导出逐张像素）；`capture-overlay-smoke` **1495 条全绿**（`SplitSection`：空态、装图、智能线 160、等分 4 张、**真鼠标把线 160 拖到 140**、Delete 删线、撤销重做、宫格 2×3、重叠 10、行数 0 就地报错、真导出 170×77 与像素来源、关窗确认、空窗复用；落图 `out/split/split-window.png`）。

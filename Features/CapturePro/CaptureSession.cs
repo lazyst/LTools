@@ -3,6 +3,8 @@ using System.Windows;
 using System.Windows.Media.Imaging;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.CapturePro.ImageEdit;
+using LTools.Features.CapturePro.Split;
 using LTools.Hooks;
 using LTools.Native;
 using LTools.Views;
@@ -65,6 +67,7 @@ internal static class CaptureSession
         bool record = false;
         var recordArea = Int32Rect.Empty;
         var finish = CaptureOverlayWindow.FinishKind.Copy;
+        var scrollExit = CaptureOverlayWindow.ScrollExit.Copy;
 
         try
         {
@@ -94,6 +97,7 @@ internal static class CaptureSession
                 pin = overlay.PinRequested;
                 recognize = overlay.RecognizeRequested;
                 scroll = overlay.ScrollRequested;
+                scrollExit = overlay.ScrollAfter;
                 live = overlay.LiveRequested;
                 finish = overlay.Finish;
 
@@ -125,6 +129,20 @@ internal static class CaptureSession
         }
 
         if (result == null) return null;
+
+        // 长截图面板上的「编辑 / 切图」：成品图只交给对应的窗口，不复制、不记采集历史
+        // （那是同一个画面的二次加工，不是新采集）。
+        if (scrollExit != CaptureOverlayWindow.ScrollExit.Copy)
+        {
+            string name = $"长截图 {DateTime.Now:HHmmss}";
+            if (scrollExit == CaptureOverlayWindow.ScrollExit.Edit)
+                ImageEditSession.OpenImage(result.Image, name);
+            else
+                SplitSession.OpenImage(result.Image, name);
+
+            exit = CaptureExit.Captured;
+            return null;
+        }
 
         // 长截图：拼接结果默认直接复制走（覆盖层那边不复制，只有这里知道最终的长图）
         if (scroll)

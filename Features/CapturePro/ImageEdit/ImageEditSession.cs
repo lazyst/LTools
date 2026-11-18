@@ -80,6 +80,24 @@ internal static class ImageEditSession
         return true;
     }
 
+    /// <summary>把一张内存里的图直接交给编辑窗（长截图「编辑」/ 采集历史）。</summary>
+    public static bool OpenImage(BitmapSource? image, string name, string? sourcePath = null)
+    {
+        if (image == null) return false;
+
+        if (!Ui.IsUiThread)
+        {
+            Ui.Post(() => OpenImage(image, name, sourcePath));
+            return true;
+        }
+
+        var window = TakeEmpty() ?? Create();
+        window.Show();
+        window.PresentImage(image, name, sourcePath);
+        window.Activate();
+        return true;
+    }
+
     /// <summary>打开贴图历史里的一条（贴图本身可能已经关掉了，但 png 还在）。</summary>
     public static bool OpenPinned(string pinId)
     {

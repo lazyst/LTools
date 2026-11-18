@@ -13,6 +13,7 @@ using System.Windows.Media.Imaging;
 using LTools.Core;
 using LTools.Features.CapturePro;
 using LTools.Features.CapturePro.ImageEdit;
+using LTools.Features.CapturePro.Split;
 using LTools.Native;
 using LTools.Views.Controls;
 
@@ -229,6 +230,8 @@ public partial class CaptureHistoryWindow : Window
         CopyImageBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
         EditBtn.IsEnabled = has && !record;
         EditBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
+        SplitBtn.IsEnabled = has && !record;
+        SplitBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
         PlayBtn.IsEnabled = record;
         PlayBtn.Visibility = record ? Visibility.Visible : Visibility.Collapsed;
         TrimBtn.IsEnabled = record;
@@ -400,6 +403,15 @@ public partial class CaptureHistoryWindow : Window
 
         if (ImageEditSession.OpenCapture(row.Entry)) return;
         ToastService.Show("图片文件不见了，没法编辑", "采集历史", 2200, ToastKind.error);
+    }
+
+    /// <summary>在切图窗里把这一条切成多张（与「编辑」同一口径：录屏没有图）。</summary>
+    private void Split_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedRow is not { } row || row.Entry.IsRecord) return;
+
+        if (SplitSession.OpenCapture(row.Entry)) return;
+        ToastService.Show("图片文件不见了，没法切图", "采集历史", 2200, ToastKind.error);
     }
 
     private void Pin_Click(object sender, RoutedEventArgs e)

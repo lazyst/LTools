@@ -354,6 +354,14 @@
                         <TextBlock DockPanel.Dock="Left" Text="长截图" Foreground="{StaticResource ChromeInk}" FontSize="13"
                                    FontWeight="SemiBold" VerticalAlignment="Center"/>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button x:Name="ScrollEditBtn" Style="{StaticResource BarBtn}" Click="ScrollEdit_Click"
+                                    ToolTip="编辑这张长图（图片编辑窗）">
+                                <Path Data="{StaticResource IconPen}" Style="{StaticResource IconPath}"/>
+                            </Button>
+                            <Button x:Name="ScrollSplitBtn" Style="{StaticResource BarBtn}" Click="ScrollSplit_Click"
+                                    ToolTip="切图（先拼好长图，再打开切图窗）">
+                                <Path Data="{StaticResource IconCropColumns}" Style="{StaticResource IconPath}"/>
+                            </Button>
                             <Button x:Name="ScrollCancelBtn" Style="{StaticResource BarBtn}" Click="ScrollCancel_Click"
                                     ToolTip="放弃这次长截图（Esc）">
                                 <Path Data="{StaticResource IconClose}" Style="{StaticResource IconPath}"/>

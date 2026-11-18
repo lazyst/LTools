@@ -110,6 +110,12 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "图片编辑：适应 / 滚轮 / 裁剪条带几何", ImageEditGeometryCases));
         cases.Add(new("capturePro", "图片编辑：剪行 / 剪列逐像素搬运", ImageEditBitmapCases));
         cases.Add(new("capturePro", "图片编辑：裁剪 / 撤销 / 脏判定", ImageEditDocumentCases));
+        cases.Add(new("capturePro", "切图：等分 / 精确像素 / 百分比 / 宫格布局", SplitCalculatorCases));
+        cases.Add(new("capturePro", "切图：原始格子与重叠矩形", SplitRegionCases));
+        cases.Add(new("capturePro", "切图：智能找线（避开纹理 / 取消 / 标称兜底）", SplitSmartCases));
+        cases.Add(new("capturePro", "切图：加线 / 删线 / 拖线 / 撤销 / 设置切换", SplitDocumentCases));
+        cases.Add(new("capturePro", "切图：表单草案与单位换算", SplitFormDraftCases));
+        cases.Add(new("capturePro", "切图：导出目录命名与逐张落盘", SplitExportCases));
     }
 
     private static void Geometry()
