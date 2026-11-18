@@ -28,6 +28,7 @@ public partial class CaptureOverlayWindow
         Toolbar.ToolChanged += SetTool;
         Toolbar.ActionRequested += OnToolbarAction;
         Toolbar.StyleChanged += UpdateToolPreview;
+        Toolbar.AutoFilterFillRequested += OnAutoFilterFillRequested;
         Toolbar.UndoRequested += () => { _doc.Undo(); RefreshMarks(); };
         Toolbar.RedoRequested += () => { _doc.Redo(); RefreshMarks(); };
         Toolbar.ResetRequested += () => { _toolbarPlaced = false; UpdateChrome(); };
@@ -40,6 +41,8 @@ public partial class CaptureOverlayWindow
         _tool = tool;
         Toolbar.Sync(tool);
         if (tool != CaptureTool.Picker) HidePicker();
+        if (tool == CaptureTool.AutoFilter) EnterAutoFilter();
+        else LeaveAutoFilter();
         UpdateCursorForTool();
         UpdateToolPreview();
         UpdateChrome();
@@ -51,6 +54,14 @@ public partial class CaptureOverlayWindow
     /// </summary>
     private void UpdateToolPreview()
     {
+        if (_tool == CaptureTool.AutoFilter)
+        {
+            // 类型 / 强度直接影响高亮颜色（同类型填过 = 绿）与下一次填充
+            Surface.AutoFillKind = _style.FilterForAutoFill;
+            Surface.InvalidateVisual();
+            return;
+        }
+
         if (NeedsWatermarkPreview)
         {
             Surface.Preview = WatermarkMark;
@@ -116,6 +127,7 @@ public partial class CaptureOverlayWindow
         _doc.Area = default;             // 选区也没了：别让「有区域、没框」的中间态留在文档里
         _doc.Regions = null;
         _doc.ClearMarks();
+        SyncAutoFilter(detect: false);    // 选区没了：识别结果与「填充区域」一起作废
         UpdateCursorForTool();
         UpdateChrome();                  // 收起尺寸条 / 工具栏，提示改回「拖动框选」
 

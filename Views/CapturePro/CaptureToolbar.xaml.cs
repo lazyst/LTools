@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using LTools.Features.CapturePro;
+using LTools.Features.CapturePro.AutoFilter;
 using LTools.Views.Controls;
 using ShapePath = System.Windows.Shapes.Path;
 
@@ -53,6 +54,7 @@ public partial class CaptureToolbar : UserControl
     private readonly Dictionary<ToolParam, FrameworkElement> _paramHosts = new();
     private readonly List<Action> _refreshers = new();
     private readonly List<RadioButton> _colorChips = new();
+    private Button? _fillRegionsButton;      // 自动打码「填充区域」下拉（没识别结果时置灰）
 
     private ToolLayout _layout = ToolLayout.Default();
     private ToolStyle? _style;
@@ -92,6 +94,9 @@ public partial class CaptureToolbar : UserControl
 
     /// <summary>样式（颜色 / 线宽 / 字号 / 块 / 透明度）变了。</summary>
     public event Action? StyleChanged;
+
+    /// <summary>自动打码：点了「填充区域 → 某类型」要一次填满（参数 = 上游的区域类型键）。</summary>
+    public event Action<string>? AutoFilterFillRequested;
 
     public event Action? UndoRequested;
     public event Action? RedoRequested;
@@ -667,8 +672,25 @@ public partial class CaptureToolbar : UserControl
             SerialLabel.Name, v => "滤镜：" + SerialLabel.Name(v)));
 
         AddHost(ToolParam.FilterStrength, Step("强度", 0, 100, 5,
-            () => _style?.FilterStrength ?? 40, v => { if (_style != null) _style.FilterStrength = v; },
-            v => v.ToString("0"), 40));
+            () => _style?.FilterStrength ?? 50, v => { if (_style != null) _style.FilterStrength = v; },
+            v => v.ToString("0"), 50));
+
+        // 自动打码：类型（不含智能擦除，跟矩形滤镜共用同一份样式状态）+ 强度 + 「填充区域」下拉
+        AddHost(ToolParam.AutoFilterKind, Chips("类型",
+            new[]
+            {
+                FilterKind.Mosaic, FilterKind.Blur, FilterKind.Grayscale, FilterKind.Invert,
+                FilterKind.Emboss, FilterKind.Brighten,
+            },
+            () => _style?.FilterForAutoFill ?? FilterKind.Mosaic,
+            v => { if (_style != null) _style.FilterMode = v; },
+            SerialLabel.Name, v => "打码方式：" + SerialLabel.Name(v), "autoFilterKind"));
+
+        AddHost(ToolParam.AutoFilterStrength, Step("强度", 0, 100, 5,
+            () => _style?.FilterStrength ?? 50, v => { if (_style != null) _style.FilterStrength = v; },
+            v => v.ToString("0"), 50));
+
+        AddHost(ToolParam.FillRegions, FillRegions());
 
         // 放大镜倍率 + 水印（文字 / 角度 / 间距）
         AddHost(ToolParam.Factor, Step("倍率", 1, 8, 1,
@@ -742,7 +764,7 @@ public partial class CaptureToolbar : UserControl
     /// 与颜色胶囊同一套「_syncing 防回环」写法，别让刷新把用户刚点的值又切回去。
     /// </summary>
     private FrameworkElement Chips<T>(string label, T[] values, Func<T> get, Action<T> set,
-        Func<T, string> text, Func<T, string> tip)
+        Func<T, string> text, Func<T, string> tip, string? group = null)
     {
         var host = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         host.Children.Add(Label(label));
@@ -753,7 +775,7 @@ public partial class CaptureToolbar : UserControl
             var chip = new RadioButton
             {
                 Style = (Style)FindResource("ChoiceChip"),
-                GroupName = "captureChoice" + label,
+                GroupName = "captureChoice" + (group ?? label),
                 Content = text(value),
                 ToolTip = tip(value),
                 Tag = value,
@@ -778,6 +800,81 @@ public partial class CaptureToolbar : UserControl
         });
 
         return host;
+    }
+
+    /// <summary>
+    /// 自动打码的「填充区域」下拉：按识别到的类型一次填满
+    /// （上游 <c>available()</c> 不成立时置灰；菜单选完即关，它是一次性命令，不是持久开关）。
+    /// </summary>
+    private FrameworkElement FillRegions()
+    {
+        var host = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        host.Children.Add(Label("填充"));
+
+        var content = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        var caption = new TextBlock
+        {
+            Text = "填充区域",
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x27, 0x27, 0x2A)),
+        };
+        var chevron = new ShapePath
+        {
+            Data = (Geometry)FindResource("IconChevronDown"),
+            Stroke = new SolidColorBrush(Color.FromRgb(0x59, 0x59, 0x59)),
+            StrokeThickness = 1.4,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            Stretch = Stretch.None,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        content.Children.Add(caption);
+        content.Children.Add(chevron);
+
+        var button = new Button
+        {
+            Style = (Style)FindResource("BarPill"),
+            Content = content,
+            // 首帧就是「还没有识别结果」（上游 available() = false）：别等第一次 UpdateChrome
+            IsEnabled = false,
+            Opacity = 0.45,
+            ToolTip = "还没有识别结果：先在选区里等一下（识别中会扫过一道光带）",
+        };
+        button.IsEnabledChanged += (_, _) => button.Opacity = button.IsEnabled ? 1 : 0.45;
+        button.Click += (_, e) =>
+        {
+            if (!button.IsEnabled) return;
+
+            var menu = new ContextMenu { PlacementTarget = button, Placement = PlacementMode.Top };
+            foreach (var category in RegionCategories.All)
+            {
+                string picked = category;
+                var item = new MenuItem { Header = RegionCategories.Label(category) };
+                item.Click += (_, _) => AutoFilterFillRequested?.Invoke(picked);
+                menu.Items.Add(item);
+            }
+
+            menu.IsOpen = true;
+            e.Handled = true;
+        };
+
+        _fillRegionsButton = button;
+        return host;
+    }
+
+    /// <summary>
+    /// 「填充区域」能不能点：识别到区域且选区没变过（上游 <c>available()</c>）。
+    /// 工具栏不认识识别结果，由覆盖层在检测完成 / 选区变化时告诉它。
+    /// </summary>
+    internal void SetAutoFilterState(bool available)
+    {
+        if (_fillRegionsButton == null) return;
+        _fillRegionsButton.IsEnabled = available;
+        _fillRegionsButton.ToolTip = available
+            ? "按类型一次填满所有识别到的区域（用当前打码方式与强度）"
+            : "还没有识别结果：先在选区里等一下（识别中会扫过一道光带）";
     }
 
     private void AddHost(ToolParam param, FrameworkElement host)

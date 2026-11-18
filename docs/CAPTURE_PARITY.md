@@ -17,7 +17,7 @@
 
 | 上游 | 位置 | LTools 现状 | 批次 | 状态 |
 | --- | --- | --- | --- | --- |
-| 工具清单（32 项） | `include/.../screenshotcanvastools.inc`、`src/.../tools/screenshottoolpalette.cpp` | `Features/CapturePro/ToolCatalog.cs` **25 项**（余 7 项是 P4 的识别类：Ocr / 翻译 / 文档 / 表格 / Qr / LaTeX / Markdown / Html） | P1 / P4 | 🟡 |
+| 工具清单（32 项） | `include/.../screenshotcanvastools.inc`、`src/.../tools/screenshottoolpalette.cpp` | `Features/CapturePro/ToolCatalog.cs` **26 项**（余下是 P4 的识别 / 转换类：OCR / 翻译 / 文档 / 表格 / 二维码 / LaTeX / Markdown / HTML） | P1 / P4 | 🟡 |
 | 移动工具 Move（拖整个选区窗口） | `screenshottoolpalette.cpp:5210` | 拖动选区 / 空白拖动窗格 | — | ✅ |
 | 选择 Select（选中标注改样式 / 拖动 / 缩放） | 同上 | `CaptureOverlayWindow.Annotate.cs` + `Chrome.cs` | — | ✅ |
 | 气泡 SpeechBubble | `SnowCanvasShapeKind::SpeechBubble` | `Mark.SpeechBubble`（圆角身体 + 左下尾巴） | P1 | ✅ |
@@ -35,7 +35,7 @@
 | 橡皮 Eraser（点选删除） | `eraserRequested` | `CaptureTool.Eraser` | — | ✅ |
 | 矩形橡皮 RectangleEraser | `rectangleEraserRequested` | `CaptureTool.RectEraser` → `Mark.Restore`：落一条**恢复原图块**（把这块像素还原成截图原样，盖掉下面的标注 / 滤镜），块本身不可选、不可删，只能撤销 | P1-b | ✅ |
 | 画笔橡皮 BrushEraser | `brushEraserRequested` | `CaptureTool.BrushEraser` → `Mark.Restore`（笔迹遮罩，只有压过的那一条还原） | P1-b | ✅ |
-| 自动打码 AutoFilter（视觉区域检测） | `screenshotautofiltercontroller.cpp` | 无 | P1-c | ❌ |
+| 自动打码 AutoFilter（视觉区域检测） | `screenshotautofiltercontroller.cpp` + `auto_filter_workflow.rs` + `auto_filter.rs` | `CaptureTool.AutoFilter`（V）+ `Features/CapturePro/AutoFilter/*`（检测 / 状态）+ `AutoFilterLogic`（命中 / 框选 / 填充事务 / 顺序归一）：进入工具即识别、扫描光带（1400ms）、结果闪红 300ms、hover 红 / 绿高亮、单击 toggle、拖动框选一批、按类型「填充区域」；新增 `FilterKind.Mosaic` | P1-c | ✅ |
 | 矩形滤镜 RectangleFilter | `rectangleFilterRequested` | `Mark.Filter` + `CaptureTool.Filter` | — | ✅ |
 | 画笔滤镜 BrushFilter | `brushFilterRequested` | `Mark.BrushFilter`（笔迹遮罩 + 同一套滤镜） | P1 | ✅ |
 | 水印 Watermark（文本 / 模板 / 角度 / 间距 / 不透明度） | `SnowCanvasWatermark*` | `Mark.Watermark`：文字 / 颜色 / 字号 / 角度 / 间距 / 不透明度已 1:1；**图片模板水印**留 P2 | P1 / P2 | 🟡 |
@@ -141,7 +141,7 @@
 | P0 | 已完成基线（区域 / 窗口 / 滚动 / 贴图 / 录屏五项 / 两行面板 / 区域框 / 工具布局） | ✅ | 见提交 `a61e15f` |
 | P1 | 绘图工具补齐：气泡 / 直线 / 测距 / 测角 / 括号 / 放大镜 / 水印 / 矩形荧光 / 画笔滤镜 / 矩形橡皮 / 画笔橡皮（工具 14 → 25，默认工具栏 9 → 13 格） | ✅ | 构建 0 警；`--selftest` 209 用例 6210 断言全绿（`capturePro` 41 用例 1379 断言）；`capture-overlay-smoke` 536 条全绿（含 11 个新工具的真手势 + 导出逐像素对账） |
 | P1-b | 橡皮与滤镜对齐上游：① 像素级智能擦除 `SmartErase` 滤镜（`snow-draw-engine-gpui/src/smart_erase` 的仿射曲面 → 周期纹理 → 多尺度块匹配三级求解）② 两把橡皮改成落 `RestoreBackground` 恢复原图块（`SnowCanvasTool::RectangleEraser` / `BrushEraser`） | ✅ | 构建 0 警；`--selftest` 211 用例 6240 断言全绿（`capturePro` 43 用例 1414 断言）；`capture-overlay-smoke` 549 条全绿 |
-| P1-c | 自动打码 AutoFilter：移植 `visual-region-detector` 的检测管线（canny / 轮廓 / 形态学 / 对齐 / 文字行 / 媒体分类）+ `screenshotautofiltercontroller.cpp` 的闪烁提示与分类填充 | ❌ | 待填 |
+| P1-c | 自动打码 AutoFilter：移植 `visual-region-detector` 的检测管线（canny / 轮廓 / 形态学 / 对齐 / 文字行 / 媒体分类）+ `screenshotautofiltercontroller.cpp` 的闪烁提示与分类填充 | ✅ | 构建 0 警；`--selftest` 213 用例 6315 断言全绿；`capture-overlay-smoke` 552 条全绿（真窗口识别 10 块 / 点选 toggle / 框选保留 id 序 / 按类型填充替换 / 离开工具清结果） |
 | P2 | 样式系统：每工具样式记忆 + 形状种类 + 描边 / 填充 / 虚线 + 字体 + 序号徽标 + 预设 | ❌ | 待填 |
 | P3 | 选区：XYWH / 比例 / 圆角 / 阴影 / 智能选区 / 预设 | ❌ | 待填 |
 | P4 | 识别与转换：OCR 编辑器 / 原文预览 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档 / 翻译 | ❌ | 待填 |
@@ -181,3 +181,9 @@
   - **两把橡皮改成上游语义**：`RectangleEraser` / `BrushEraser` 不是按对象删除，而是各落一条 `RestoreBackground` 滤镜——把这块像素还原成截图原样、盖掉下面的标注 / 滤镜 / 打码。LTools 落成 `Mark.Restore`（矩形 / 笔迹两种），`CaptureDocument.HitTest` 点不中它（上游这种块不可选、旧橡皮也删不掉，只能 Ctrl+Z 撤销）。上一版「相交即删」的写法已删除（`HitByBrush` 一并删掉）。
   - 验收：构建 0 错 0 警；`--selftest` 211 用例 / 6240 断言全绿（`capturePro` 43 用例 / 1414 断言，新增 `SmartEraseCases` 27 条与 `RestoreMarks` 12 条纯像素断言）；`capture-overlay-smoke` 549 条全绿（滤镜胶囊含「智能」、合成底图逐像素：智能擦除洞左半边续红 / 右半边续蓝 / 洞外不动、恢复块露出原图而块外仍是标注、画笔恢复只还原笔迹压过的那一条）。
   - 上游自动打码（AutoFilter）依赖 `visual-region-detector`（约 150 KB Rust 检测管线），量大，另列 **P1-c**。
+- 2026-11-18：**P1-c 完成（自动打码 AutoFilter）**。工具 25 → 26（`CaptureTool.AutoFilter`，快捷键 `V`，图标照上游 magic-wand），默认工具栏「打码」格变成 `马赛克 / 自动打码 / 滤镜 / 画笔滤镜`。
+  - **检测管线**：`Features/CapturePro/AutoFilter/`（`DetectorCore` / `DetectorMorph` / `DetectorEdges` / `DetectorStages` / `AutoFilterDetector`）逐行照抄上游 `visual-region-detector`（准备证据 → 媒体候选 → 文字与最终分类），与本机 1920×1080 真实截图对账逐区域一致（189 vs 189，含 id / 类型 / 矩形）。8 连通、候选按面积降序稳定排序、NMS 按面积升序保留首次命中、`f as u8` 用 `Math.Truncate` + `Clamp`、`round_ties_even` 用 `MidpointRounding.ToEven`。
+  - **交互照 `screenshotautofiltercontroller.cpp` + `auto_filter_workflow.rs`**：进入工具即识别（后台线程）→ 画布扫一道光带（`elapsed % 1400`）→ 结果闪红 300ms → hover 取光标下最小区域高亮（已用同类型打码 = 绿 `#52c41a`，否则红 `#ff4d4f`，填充 alpha 51）→ 单击 toggle 那一块 → 拖动 > `POINTER_DRAG_THRESHOLD`(4) 框选、相交区域一次性 toggle（整批一个撤销位）→ 参数条「填充区域」下拉按 7 类（正文 / 框内文字 / 图片 / 头像 / 图标 / 消息框 / 整段文字）一次填满、填的是 toggle=false、`available()` 不成立时置灰 + `Opacity 0.45`。
+  - **打码方式与强度沿用矩形滤镜那一套**（`ToolStyle.FilterMode` / `FilterStrength`）；类型下拉只有 6 项、不含智能擦除（逐区域擦会掏空洞），样式停在智能擦除时回落到马赛克。新增 `FilterKind.Mosaic`（块边长 = `(2 + 20 × 强度²) × 缩放`，块内取平均）。
+  - **标注与顺序**：`Mark.Filter` 加 `AutoRegionId`（`MoveBy` / `ScaleTo` 都带上），所以拖动 / 缩放后还认得「这块打过没有」；`CaptureDocument.EditBatch` 让整批只占一个撤销位（引用序列相同不记）；`AutoFilterLogic.NormalizeOrder` 把顺序固定成「智能擦除 → 自动填充按区域 id 升序 → 其余原序」。
+  - 验收：构建 0 错 0 警；`--selftest` 213 用例 / 6315 断言全绿（新增「自动打码：命中 / 框选 / 填充事务 / 绘制顺序」「自动打码：区域检测与上游逐区域对齐」）；`capture-overlay-smoke` 552 条全绿（真窗口识别 10 块 / 点选 toggle / 框选保留 id 序 / 按类型填充替换 / 离开工具清结果 / 填充按钮可用性）。

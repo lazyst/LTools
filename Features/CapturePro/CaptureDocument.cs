@@ -148,6 +148,22 @@ internal sealed class CaptureDocument
     }
 
     /// <summary>
+    /// 一次改多条（自动打码一次填充 / 一次框选）：整批**只占一个撤销位**。
+    /// 改完的列表与现在一模一样（引用序列相同）就不记撤销，也别把「点了一下没生效」写进历史。
+    /// </summary>
+    public void EditBatch(Action<List<Mark>> edit)
+    {
+        var next = new List<Mark>(_marks);
+        edit(next);
+        if (next.Count == _marks.Count && next.SequenceEqual(_marks)) return;
+
+        Push();
+        _marks.Clear();
+        _marks.AddRange(next);
+        Dirty = true;
+    }
+
+    /// <summary>
     /// 丢掉所有标注（右键取消这次框选时用）。进撤销栈，所以误清还能 <c>Ctrl+Z</c> 找回来。
     /// </summary>
     public void ClearMarks()

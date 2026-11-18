@@ -81,6 +81,7 @@ public partial class CaptureOverlayWindow
         Surface.Hover = hover;
         Surface.ShowHandles = ShowsMarkHandles;
         Surface.InvalidateVisual();
+        RefreshAutoFilterAvailability();     // 「填充区域」跟着选区 / 识别结果走
 
         // 形状条 = 「下一块的形状」，**框过之后也常驻**：加区 / 减区也要先选形状。
         // 只在拖动 / 画标注、折线待收尾、贴图内标注、翻历史、打字时收起来。

@@ -37,7 +37,7 @@ internal sealed class ToolLayout
     /// 默认布局（照 Snow Shot 的分组与顺序）：
     /// 选择 │ 形状（矩形 / 椭圆）│ 箭头与直线 │ 自由笔（折线 / 画笔）│
     /// 标注尺寸（测距 / 测角 / 括号）│ 气泡与文字 │ 荧光（画笔 / 矩形）│
-    /// 镜头与聚光（聚光 / 放大镜）│ 序号 │ 打码与滤镜（马赛克 / 矩形 / 画笔）│ 水印 │
+    /// 镜头与聚光（聚光 / 放大镜）│ 序号 │ 打码与滤镜（马赛克 / 自动打码 / 矩形 / 画笔）│ 水印 │
     /// 橡皮（点选 / 矩形 / 画笔）│ 取色。
     /// </summary>
     /// <remarks>
@@ -59,7 +59,7 @@ internal sealed class ToolLayout
             new() { CaptureTool.Highlighter, CaptureTool.HighlightRect },
             new() { CaptureTool.Spotlight, CaptureTool.Magnifier },
             new() { CaptureTool.Serial },
-            new() { CaptureTool.Mosaic, CaptureTool.Filter, CaptureTool.BrushFilter },
+            new() { CaptureTool.Mosaic, CaptureTool.AutoFilter, CaptureTool.Filter, CaptureTool.BrushFilter },
             new() { CaptureTool.Watermark },
             new() { CaptureTool.Eraser, CaptureTool.RectEraser, CaptureTool.BrushEraser },
             new() { CaptureTool.Picker },

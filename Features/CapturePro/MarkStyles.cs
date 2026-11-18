@@ -23,9 +23,14 @@ internal enum SerialNumbering
     Chinese,
 }
 
-/// <summary>矩形滤镜的类型（马赛克是单独的工具，不在这里）。</summary>
+/// <summary>
+/// 滤镜的类型（顺序照上游 <c>CanvasFilterType</c>）。
+/// 马赛克既是一个单独的工具（<see cref="Mark.Mosaic"/>，块大小由用户调），
+/// 也是这里的滤镜类型（强度换算块边长）——自动打码「填充区域」默认用它。
+/// </summary>
 internal enum FilterKind
 {
+    Mosaic,
     Blur,
     Grayscale,
     Invert,
@@ -87,6 +92,7 @@ internal static class SerialLabel
     /// <summary>滤镜的中文名（参数行 chip 与 tooltip 共用）。</summary>
     public static string Name(FilterKind kind) => kind switch
     {
+        FilterKind.Mosaic => "马赛克",
         FilterKind.Grayscale => "灰度",
         FilterKind.Invert => "反相",
         FilterKind.Emboss => "浮雕",

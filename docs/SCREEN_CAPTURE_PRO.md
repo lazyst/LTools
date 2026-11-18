@@ -210,6 +210,7 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 | 序号 | 颜色、徽标形状（圆 / 方 / 圆角方）、数字写法（1 / I / i / A / a / 一） |
 | 马赛克 | 块大小（4/8/16） |
 | 滤镜 | 类型（模糊 / 灰度 / 反相 / 浮雕 / 亮度 / 智能擦除）、强度（0–100） |
+| 自动打码（P1-c） | 类型（马赛克 / 模糊 / 灰度 / 反相 / 浮雕 / 亮度）、强度（0–100）、填充区域下拉（正文 / 框内文字 / 图片 / 头像 / 图标 / 消息框 / 整段文字；没识别结果时置灰） |
 | 聚光 | 暗度（40/55/70） |
 | 橡皮 | 点选橡皮无；画笔橡皮有线宽（矩形橡皮按框走，无参数） |
 | 取色（P1） | 无（色卡跟着光标显示色值） |
@@ -253,6 +254,39 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
   认不出的键（工具删了 / 改名了）直接丢掉：不做兼容、不留别名。
 - 读取有进程内缓存（覆盖层与 UI 线程、鼠标钩子同线程，别每次截图都读一遍 `ui.json`）；
   改布局只走 `ToolLayoutStore.Save`（只写 `ui.json` 这两个字段），失败只记日志、不挡截图。
+
+**自动打码（P1-c，2026-11-18）**
+
+工具 `CaptureTool.AutoFilter`（快捷键 `V`，图标照上游 magic-wand），照
+`screenshotautofiltercontroller.cpp` + `auto_filter_workflow.rs` + `auto_filter.rs` 复刻。
+纯逻辑在 `Features/CapturePro/AutoFilter/AutoFilterLogic.cs`，界面状态在 `AutoFilterState.cs`，
+检测管线在 `AutoFilterDetector.cs`（逐行照抄 `visual-region-detector`），手势全在
+`Views/CapturePro/CaptureOverlayWindow.AutoFilter.cs`。
+
+- **进入工具即识别当前选区**（`EnterAutoFilter` → `StartAutoFilterDetection`）：检测在后台线程跑
+  （`Task.Run`），画布不动。检测期间画一条从上往下扫的**光带**（`elapsed % 1400` 决定 `ScanY`，
+  提醒「正在看这块图」）。
+- **结果闪红 300ms**（`FlashUntil`）：识别到就得让用户看见，不然「它到底认出了什么」全靠猜。
+  识别结果按选区缓存，选区没变就不重复识别；选区一变（`Window_MouseUp`）重新识别。
+- **hover 高亮**：光标下取**最小**的那块区域（同面积取小 id）。这块**已经用同类方式打码** →
+  绿 `#52c41a`；还没打 → 红 `#ff4d4f`（填充 alpha 51）。绿 / 红就是「点了会发生什么」。
+- **单击 = toggle 那一块**：已经有同类型的滤镜就删掉，没有就新建一条。
+- **拖动 = 框选一批**（超过 `POINTER_DRAG_THRESHOLD`(4) 才算拖动，否则按单击）：
+  与矩形相交的区域**一次性 toggle**，整批只占**一个撤销位**（`CaptureDocument.EditBatch`，
+  引用序列与现状相同就不记撤销）。拖动中画 marquee 框。
+- **「填充区域」下拉**（参数条，只在自动打码下出现）：按类型一次填满所有识别到的区域
+  （7 类：正文 / 框内文字 / 图片 / 头像 / 图标 / 消息框 / 整段文字），
+  **填的是 toggle = false**（不会把已经打过的翻回去），选完菜单清空；
+  `available()` 不成立（还没识别结果 / 选区变过）时按钮置灰 + `Opacity 0.45`，别让用户点了没反应。
+- **打码方式与强度和小滤镜共用一套样式**（`ToolStyle.FilterMode` / `FilterStrength`）：
+  类型下拉只有 6 项（**不含智能擦除**——那块图是整个矩形算的，逐区域擦会擦出空洞）；
+  样式停在智能擦除时 `FilterForAutoFill` 回落到马赛克。新增 `FilterKind.Mosaic`
+  （块边长 = `(2 + 20 × 强度²) × 缩放`，与矩形滤镜同一个 `FilterRenderSpec`）。
+- **每条打码是 `Mark.Filter` + `AutoRegionId`**：区域 id 跟着标注走（`MoveBy` / `ScaleTo` 都带上），
+  所以拖动 / 缩放之后「这块打过没有」还认得出来。
+- **绘制顺序**（`NormalizeOrder`）：智能擦除 → 自动填充（按区域 id 升序）→ 其余保持原序。
+  自动填充是「按截图区域算出来的」，压在其它的下面、按 id 稳定，撤销 / 重做来回也不会抖序。
+- **离开工具清结果**（`LeaveAutoFilter`）：换工具 / 退出截图都不留一堆看不见的识别态。
 
 ## 6. 交互规格
 

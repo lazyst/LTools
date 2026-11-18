@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
+using LTools.Features.CapturePro.AutoFilter;
 
 namespace LTools.Features.CapturePro;
 
@@ -35,6 +38,17 @@ internal sealed class CaptureCanvas : FrameworkElement
     private static readonly Pen PendingPen = FrozenDashPen(Colors.White, 1.5);
     private static readonly Pen PendingShadow = FrozenDashPen(Color.FromArgb(0xAA, 0, 0, 0), 3);
 
+    // 自动打码（照上游：命中红 / 已填绿，框选蓝）
+    private static readonly Color AutoRed = Color.FromRgb(0xFF, 0x4D, 0x4F);
+    private static readonly Color AutoGreen = Color.FromRgb(0x52, 0xC4, 0x1A);
+    private static readonly Color AutoBlue = Color.FromRgb(0x40, 0x96, 0xFF);
+    private static readonly SolidColorBrush AutoRedFill = Frozen(Color.FromArgb(51, AutoRed.R, AutoRed.G, AutoRed.B));
+    private static readonly Pen AutoRedPen = FrozenPen(AutoRed, 1);
+    private static readonly SolidColorBrush AutoGreenFill = Frozen(Color.FromArgb(51, AutoGreen.R, AutoGreen.G, AutoGreen.B));
+    private static readonly Pen AutoGreenPen = FrozenPen(AutoGreen, 1);
+    private static readonly SolidColorBrush AutoMarqueeFill = Frozen(Color.FromArgb(0x33, AutoBlue.R, AutoBlue.G, AutoBlue.B));
+    private static readonly Pen AutoMarqueePen = FrozenPen(AutoBlue, 1);
+
     /// <summary>内容真源（底图 + 标注列表）。</summary>
     public CaptureDocument? Document { get; set; }
 
@@ -68,6 +82,18 @@ internal sealed class CaptureCanvas : FrameworkElement
     /// </summary>
     public bool ShowHandles { get; set; }
 
+    /// <summary>
+    /// 自动打码的界面状态（识别结果 / 扫描光带 / 闪红 / 悬停 / 框选）；空 = 没在用这个工具。
+    /// 由覆盖层在切工具时给上 / 清掉，画布只读。
+    /// </summary>
+    public AutoFilterState? AutoFilter { get; set; }
+
+    /// <summary>自动打码当前的滤镜类型：判断「这一块是不是已经用同类型填过」（绿 / 红高亮）。</summary>
+    public FilterKind AutoFillKind { get; set; } = FilterKind.Mosaic;
+
+    /// <summary>扫描光带这一刻的位置（选区 DIP）；空选区 = 不画。</summary>
+    public long AutoFilterClock { get; set; } = Environment.TickCount64;
+
     protected override void OnRender(DrawingContext dc)
     {
         base.OnRender(dc);
@@ -91,6 +117,8 @@ internal sealed class CaptureCanvas : FrameworkElement
             MarkRenderer.Draw(dc, doc.Marks[i], doc.Base, canvas, doc.Scale);
         }
         if (Preview != null) MarkRenderer.Draw(dc, Preview, doc.Base, canvas, doc.Scale);
+
+        DrawAutoFilter(dc);
 
         // 选中的那条：一圈虚线 + 八个把手，不参与导出（导出只看标注本身）
         if (SelectedIndex >= 0 && SelectedIndex < doc.Marks.Count && SelectedIndex != SkipIndex)
@@ -146,6 +174,66 @@ internal sealed class CaptureCanvas : FrameworkElement
                 dc.DrawGeometry(null, PendingShadow, line);
                 dc.DrawGeometry(null, PendingPen, line);
             }
+        }
+    }
+
+    /// <summary>
+    /// 自动打码的覆盖层（照上游 <c>ScreenshotAutoFilterVisual</c> + <c>auto_filter_highlights</c>）：
+    /// 悬停 / 框中的区域描边 + 半透明填充（已用同类型填过 → 绿，否则红）、框选矩形（蓝）、
+    /// 检测中的扫描光带、结果刚到时的整批闪红。
+    /// </summary>
+    private void DrawAutoFilter(DrawingContext dc)
+    {
+        var state = AutoFilter;
+        if (state == null) return;
+
+        var marks = Document?.Marks ?? (IReadOnlyList<Mark>)Array.Empty<Mark>();
+
+        // 高亮：拖动中是整批命中，否则只是光标下那一块（同面积取 id 小的那块，见 AutoFilterLogic）
+        IReadOnlyList<int> hits = state.GestureActive
+            ? state.Hits
+            : state.HoverId >= 0 ? new[] { state.HoverId } : Array.Empty<int>();
+
+        foreach (int id in hits)
+        {
+            var region = state.Regions.FirstOrDefault(r => r.Id == id);
+            if (region.Bounds.Width <= 0 || region.Bounds.Height <= 0) continue;
+            bool filled = AutoFilterLogic.FilledWith(marks, id, AutoFillKind);
+            dc.DrawRectangle(filled ? AutoGreenFill : AutoRedFill,
+                filled ? AutoGreenPen : AutoRedPen, region.Bounds);
+        }
+
+        // 框选矩形（上游就是选区套索那一套颜色：蓝描边 + 20% 填充）
+        if (state.Marquee is { } marquee && marquee.Width > 0 && marquee.Height > 0)
+            dc.DrawRectangle(AutoMarqueeFill, AutoMarqueePen, marquee);
+
+        // 检测中的扫描光带：42 高，中心 y 按 1400ms 一圈从上走到下（带子从选区上下各多出 30）
+        if (state.Detecting)
+        {
+            var box = state.Bounds.Width > 0 ? state.Bounds : Selection;
+            if (box.Width > 0 && box.Height > 0)
+            {
+                double y = state.ScanY(AutoFilterClock);
+                var glow = new LinearGradientBrush
+                {
+                    StartPoint = new Point(0.5, 0),
+                    EndPoint = new Point(0.5, 1),
+                    MappingMode = BrushMappingMode.RelativeToBoundingBox,
+                };
+                glow.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x40, 0x96, 0xFF), 0));
+                glow.GradientStops.Add(new GradientStop(Color.FromArgb(45, 0x40, 0x96, 0xFF), 0.70));
+                glow.GradientStops.Add(new GradientStop(Color.FromArgb(145, 0x60, 0xDC, 0xFF), 0.76));
+                glow.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x40, 0x96, 0xFF), 1));
+                glow.Freeze();
+                dc.DrawRectangle(glow, null, new Rect(box.Left, y - 30, box.Width, 42));
+            }
+        }
+
+        // 结果刚到：整批红框闪一下（300ms，上游 <c>m_flashUntil = arrived + 300</c>）
+        if (state.Flashing(AutoFilterClock))
+        {
+            foreach (var region in state.Regions)
+                dc.DrawRectangle(AutoRedFill, AutoRedPen, region.Bounds);
         }
     }
 

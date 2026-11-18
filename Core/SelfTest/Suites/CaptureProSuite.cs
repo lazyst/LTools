@@ -40,6 +40,8 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "标注：P1 新工具（线 / 尺寸 / 气泡 / 镜头 / 水印 / 画笔滤镜）", ParityMarks));
         cases.Add(new("capturePro", "滤镜：像素级智能擦除（仿射 / 周期 / 多尺度）", SmartEraseCases));
         cases.Add(new("capturePro", "橡皮：恢复原图块（矩形 / 画笔，不可点中）", RestoreMarks));
+        cases.Add(new("capturePro", "自动打码：区域检测与上游逐区域对齐", AutoFilterDetect));
+        cases.Add(new("capturePro", "自动打码：命中 / 框选 / 填充事务 / 绘制顺序", AutoFilterLogicChecks));
         cases.Add(new("capturePro", "取色：像素颜色与文本", Picker));
         cases.Add(new("capturePro", "贴图：缩放 / 不透明度 / 锚点", Pin));
         cases.Add(new("capturePro", "贴图：分组名与批量另存", PinGrouping));
@@ -689,7 +691,7 @@ internal static partial class CaptureProSuite
         Check.Equal(CaptureTool.Pen, ToolCatalog.ForKey(System.Windows.Input.Key.P), "P = 画笔");
         Check.Equal(CaptureTool.Select, ToolCatalog.ForKey(System.Windows.Input.Key.Q), "Q = 选择");
         Check.Equal(CaptureTool.Picker, ToolCatalog.ForKey(System.Windows.Input.Key.C), "C = 取色（Ctrl+C 是复制，先判 Ctrl）");
-        Check.True(ToolCatalog.ForKey(System.Windows.Input.Key.V) == null, "没绑的字母返回 null");
+        Check.True(ToolCatalog.ForKey(System.Windows.Input.Key.F13) == null, "没绑的键返回 null");
 
         foreach (var info in all)
         {
@@ -723,8 +725,9 @@ internal static partial class CaptureProSuite
         Check.False(ToolCatalog.Uses(CaptureTool.Mosaic, ToolParam.FilterKind), "马赛克没有滤镜类型（两个工具别混）");
         Check.Equal(CaptureTool.Filter, ToolCatalog.ForKey(System.Windows.Input.Key.F), "F = 滤镜");
 
-        // P1：与 Snow Shot 对齐的 11 个新工具（上游 32 项 → 这里 25 项，其余是 P4 的识别类）
-        Check.Equal(25, all.Length, "工具目录 25 项");
+        // P1：与 Snow Shot 对齐的新工具（上游 32 项 → 这里 26 项，其余是 P4 的识别类）
+        Check.Equal(26, all.Length, "工具目录 26 项");
+        Check.Equal(CaptureTool.AutoFilter, ToolCatalog.ForKey(System.Windows.Input.Key.V), "V = 自动打码");
         Check.Equal(CaptureTool.Line, ToolCatalog.ForKey(System.Windows.Input.Key.I), "I = 直线");
         Check.Equal(CaptureTool.Distance, ToolCatalog.ForKey(System.Windows.Input.Key.D), "D = 测距");
         Check.Equal(CaptureTool.Angle, ToolCatalog.ForKey(System.Windows.Input.Key.G), "G = 测角");
@@ -1252,7 +1255,7 @@ internal static partial class CaptureProSuite
         Check.Equal("SpeechBubble,Text", def.ToLines()[5], "第六格是气泡与文字");
         Check.Equal("Highlighter,HighlightRect", def.ToLines()[6], "第七格是两种荧光");
         Check.Equal("Spotlight,Magnifier", def.ToLines()[7], "第八格是聚光与放大镜");
-        Check.Equal("Mosaic,Filter,BrushFilter", def.ToLines()[9], "打码与滤镜同格（马赛克 / 矩形 / 画笔）");
+        Check.Equal("Mosaic,AutoFilter,Filter,BrushFilter", def.ToLines()[9], "打码与滤镜同格（马赛克 / 自动打码 / 矩形 / 画笔）");
         Check.Equal("Watermark", def.ToLines()[10], "水印单独一格");
         Check.Equal("Eraser,RectEraser,BrushEraser", def.ToLines()[11], "三把橡皮同格");
         Check.Equal("Picker", def.ToLines()[12], "最后一格是取色");

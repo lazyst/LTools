@@ -311,6 +311,14 @@ internal static class MarkRenderer
     {
         switch (kind)
         {
+            case FilterKind.Mosaic:
+            {
+                // 上游 FilterRenderSpec：块边长 = 2 + 20 × 强度²，单位是画布 DIP，按缩放换像素
+                double s = Math.Clamp(strength, 0, 100) / 100.0;
+                int block = (int)Math.Round((2 + 20 * s * s) * Math.Max(scale, 0.1));
+                Pixelate(pixels, width, height, Math.Max(1, block));
+                break;
+            }
             case FilterKind.Blur:
             {
                 // 强度 0–100 → 半径 1–24 像素（按缩放换算，逻辑上永远是屏幕上看着差不多粗）
@@ -353,6 +361,48 @@ internal static class MarkRenderer
             case FilterKind.Emboss:
                 Emboss(pixels, width, height);
                 break;
+        }
+    }
+
+    /// <summary>马赛克：按 <paramref name="block"/> 像素见方的格子取平均色铺满（只改 RGB，alpha 不动）。</summary>
+    private static void Pixelate(byte[] pixels, int width, int height, int block)
+    {
+        if (block < 2 || width < 2 || height < 2) return;
+        int stride = width * 4;
+
+        for (int by = 0; by < height; by += block)
+        {
+            int y2 = Math.Min(by + block, height);
+            for (int bx = 0; bx < width; bx += block)
+            {
+                int x2 = Math.Min(bx + block, width);
+                long b = 0, g = 0, r = 0;
+                int count = (x2 - bx) * (y2 - by);
+                for (int y = by; y < y2; y++)
+                {
+                    int row = y * stride;
+                    for (int x = bx; x < x2; x++)
+                    {
+                        int i = row + x * 4;
+                        b += pixels[i];
+                        g += pixels[i + 1];
+                        r += pixels[i + 2];
+                    }
+                }
+
+                byte ab = (byte)(b / count), ag = (byte)(g / count), ar = (byte)(r / count);
+                for (int y = by; y < y2; y++)
+                {
+                    int row = y * stride;
+                    for (int x = bx; x < x2; x++)
+                    {
+                        int i = row + x * 4;
+                        pixels[i] = ab;
+                        pixels[i + 1] = ag;
+                        pixels[i + 2] = ar;
+                    }
+                }
+            }
         }
     }
 

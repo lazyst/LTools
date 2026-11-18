@@ -54,6 +54,9 @@ public partial class CaptureOverlayWindow
                 UpdateBrushErasePreview();
                 return true;
 
+            case CaptureTool.AutoFilter:
+                return BeginAutoFilterGesture(p);
+
             case CaptureTool.Serial:
                 _doc.Add(new Mark.Serial(p, _doc.NextSerial(), _style.Color, _style.Shape, _style.Numbering));
                 RefreshMarks();
@@ -89,6 +92,12 @@ public partial class CaptureOverlayWindow
     /// <summary>拖动中：手绘补点，形状只挪终点。</summary>
     private void UpdateToolDrag(Point p)
     {
+        if (_tool == CaptureTool.AutoFilter)
+        {
+            UpdateAutoFilterGesture(p);
+            return;
+        }
+
         if (ToolCatalog.IsFreehand(_tool))
         {
             Point last = _freehand[^1];
@@ -103,6 +112,12 @@ public partial class CaptureOverlayWindow
     /// <summary>松手：够大才落盘（点一下不留下 0 像素的框）。</summary>
     private void FinishToolDrag(Point p)
     {
+        if (_tool == CaptureTool.AutoFilter)
+        {
+            FinishAutoFilterGesture(p);
+            return;
+        }
+
         if (_tool == CaptureTool.Angle)
         {
             FinishAngle(p);

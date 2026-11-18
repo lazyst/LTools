@@ -324,12 +324,13 @@ internal abstract class Mark
     /// </summary>
     public sealed class Filter : Mark
     {
-        public Filter(Point a, Point b, FilterKind kind, double strength)
+        public Filter(Point a, Point b, FilterKind kind, double strength, int? autoRegionId = null)
         {
             A = a;
             B = b;
             Kind = kind;
             Strength = strength;
+            AutoRegionId = autoRegionId;
         }
 
         public Point A { get; }
@@ -341,14 +342,20 @@ internal abstract class Mark
         /// <summary>强度 0–100（模糊 = 半径、亮度 = 50 是原样、其余忽略）。</summary>
         public double Strength { get; }
 
+        /// <summary>
+        /// 自动打码填出来的那一块对应哪个识别区域（1 起；普通矩形滤镜是 null）。
+        /// 一个区域最多一条填充，再点一次同类型的就删掉它。
+        /// </summary>
+        public int? AutoRegionId { get; }
+
         public Rect Rect => MarkGeometry.RectOf(A, B);
 
         public override Rect Bounds => Rect;
 
-        public override Mark MoveBy(Vector delta) => new Filter(A + delta, B + delta, Kind, Strength);
+        public override Mark MoveBy(Vector delta) => new Filter(A + delta, B + delta, Kind, Strength, AutoRegionId);
 
         public override Mark ScaleTo(Rect from, Rect to) => new Filter(
-            MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(B, from, to), Kind, Strength);
+            MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(B, from, to), Kind, Strength, AutoRegionId);
 
         public override bool HitTest(Point point, double tolerance)
         {

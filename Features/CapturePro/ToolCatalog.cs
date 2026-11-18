@@ -28,6 +28,7 @@ internal enum CaptureTool
     Mosaic,
     Filter,
     BrushFilter,
+    AutoFilter,
     Spotlight,
     Eraser,
     RectEraser,
@@ -55,6 +56,15 @@ internal enum ToolParam
 
     /// <summary>滤镜的强度。</summary>
     FilterStrength,
+
+    /// <summary>自动打码的滤镜类型（不含智能擦除）。</summary>
+    AutoFilterKind,
+
+    /// <summary>自动打码的滤镜强度。</summary>
+    AutoFilterStrength,
+
+    /// <summary>自动打码的「填充区域」下拉（按识别到的类型一次填满）。</summary>
+    FillRegions,
 
     /// <summary>放大镜的倍率。</summary>
     Factor,
@@ -111,6 +121,9 @@ internal static class ToolCatalog
             new[] { ToolParam.FilterKind, ToolParam.FilterStrength }, Key.F),
         new(CaptureTool.BrushFilter, "画笔滤镜", "BrushFilter", "按住涂抹，把经过的像素按滤镜类型处理",
             new[] { ToolParam.Width, ToolParam.FilterKind, ToolParam.FilterStrength }, Key.Y),
+        new(CaptureTool.AutoFilter, "自动打码", "AutoFilter",
+            "自动识别文字 / 图片 / 头像 / 图标…：点一下给那一块打码，拖动可框选多块；「填充区域」按类型一次填满",
+            new[] { ToolParam.AutoFilterKind, ToolParam.AutoFilterStrength, ToolParam.FillRegions }, Key.V),
         new(CaptureTool.Eraser, "橡皮", "Eraser", "点一下去掉整条标注", None, Key.X),
         new(CaptureTool.RectEraser, "矩形橡皮", "RectEraser", "拖出矩形，把这块还原成截图原样（盖掉下面的标注 / 滤镜）", None, Key.K),
         new(CaptureTool.BrushEraser, "画笔橡皮", "BrushEraser", "按住涂抹，把经过的地方还原成截图原样（盖掉下面的标注 / 滤镜）",
@@ -183,14 +196,21 @@ internal sealed class ToolStyle
     /// <summary>序号的数字写法。</summary>
     public SerialNumbering Numbering { get; set; } = SerialNumbering.Arabic;
 
-    /// <summary>矩形滤镜的处理方式。</summary>
-    public FilterKind FilterMode { get; set; } = FilterKind.Blur;
+    /// <summary>矩形滤镜的处理方式（上游默认马赛克）。</summary>
+    public FilterKind FilterMode { get; set; } = FilterKind.Mosaic;
 
     /// <summary>
     /// 滤镜强度 0–100：模糊按它算半径、亮度按它算倍数（50 = 原样），
     /// 灰度 / 反相 / 浮雕不看它。
     /// </summary>
-    public double FilterStrength { get; set; } = 40;
+    public double FilterStrength { get; set; } = 50;
+
+    /// <summary>
+    /// 自动打码实际用的滤镜类型：类型下拉不给「智能擦除」，所以停在它上面时
+    /// 回落成马赛克（上游 <c>filter_style()</c> 的同一条规则）。
+    /// </summary>
+    public FilterKind FilterForAutoFill =>
+        FilterMode == FilterKind.SmartErase ? FilterKind.Mosaic : FilterMode;
 
     /// <summary>荧光笔的笔头比普通画笔粗，否则看着就是一条普通线。</summary>
     public double WidthFor(CaptureTool tool) => tool switch

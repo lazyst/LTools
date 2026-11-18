@@ -280,6 +280,11 @@ public partial class CaptureOverlayWindow
             HidePicker();
 
             RefreshCursor(p);
+            if (_tool == CaptureTool.AutoFilter)
+            {
+                UpdateAutoFilterHover(p);      // 光标下那一块点亮（上游 region_at）
+                return;
+            }
             if (!IsValid(_sel)) UpdateHover(p);
             return;
         }
@@ -381,6 +386,7 @@ public partial class CaptureOverlayWindow
         _moveFromShadow = false;
         _originRegions = null;
         _replaceOnCommit = false;
+        if (_tool == CaptureTool.AutoFilter) SyncAutoFilter(detect: true);   // 选区变了就重新识别
         RefreshCursor(p);
         UpdateChrome();
         e.Handled = true;
@@ -395,6 +401,8 @@ public partial class CaptureOverlayWindow
         else if (_drag == DragMode.MarkResize) CancelMarkResize();
         else if (_drag is DragMode.Draw or DragMode.Erase) Surface.Preview = null;
         else if (_drag == DragMode.Lasso) _lasso.Clear();
+
+        if (_tool == CaptureTool.AutoFilter) CancelAutoFilterGesture();
 
         _drag = DragMode.None;
         _handle = FrameHandle.None;
