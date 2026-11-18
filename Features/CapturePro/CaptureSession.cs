@@ -64,7 +64,8 @@ internal static class CaptureSession
 
         CaptureResult? result = null;
         CapturePlacement? placement = null;
-        bool pin = false, recognize = false, recognizeCopy = false, scroll = false, live = false;
+        bool pin = false, recognize = false, recognizeCopy = false, translate = false;
+        bool scroll = false, live = false;
         bool record = false;
         var recordArea = Int32Rect.Empty;
         var finish = CaptureOverlayWindow.FinishKind.Copy;
@@ -99,6 +100,7 @@ internal static class CaptureSession
                 pin = overlay.PinRequested;
                 recognize = overlay.RecognizeRequested;
                 recognizeCopy = overlay.RecognizeCopyRequested;
+                translate = overlay.TranslateRequested;
                 scroll = overlay.ScrollRequested;
                 scrollExit = overlay.ScrollAfter;
                 live = overlay.LiveRequested;
@@ -178,7 +180,7 @@ internal static class CaptureSession
         if (live) StartLivePin(result);
         if (recognize)
             CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry, result.Area,
-                recognizeCopy);
+                recognizeCopy, translate);
 
         exit = CaptureExit.Captured;
         return result;

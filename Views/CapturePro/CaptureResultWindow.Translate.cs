@@ -80,7 +80,7 @@ public partial class CaptureResultWindow
         RefreshStatus();
     }
 
-    private void Translate_Click(object sender, RoutedEventArgs e) => ToggleTranslationAsync();
+    private void Translate_Click(object sender, RoutedEventArgs e) => _ = ToggleTranslationAsync();
 
     private void TranslateSettings_Click(object sender, RoutedEventArgs e)
     {
@@ -112,7 +112,8 @@ public partial class CaptureResultWindow
         return saved;
     }
 
-    private async void ToggleTranslationAsync()
+    /// <summary>翻一遍 / 取消 / 切回原文（「翻译」按钮与「截图并翻译」入口共用）。</summary>
+    internal async System.Threading.Tasks.Task ToggleTranslationAsync()
     {
         // 正在翻译：这一下是「取消」
         if (_translationCts is { } running)

@@ -132,6 +132,12 @@ public sealed class HotkeyFile
     /// </summary>
     public int SeedVersion { get; set; }
 
+    /// <summary>
+    /// 「截图 Pro」快捷键组的播种版本（0 = 还没播；1 = 已播一次）。
+    /// 与 <see cref="SeedVersion"/> 分开记：以后再加 CapsLock 种子不会把用户删掉的截图快捷键塞回来，反之亦然。
+    /// </summary>
+    public int CaptureSeedVersion { get; set; }
+
     /// <summary>预设组（顺序 = 运行期匹配优先级）。</summary>
     public List<HotkeyGroup> Groups { get; set; } = new();
 
@@ -141,6 +147,7 @@ public sealed class HotkeyFile
         DefaultFilter = DefaultFilter?.Clone() ?? new AppFilter(),
         DefaultScope = DefaultScope,
         SeedVersion = SeedVersion,
+        CaptureSeedVersion = CaptureSeedVersion,
         Groups = Groups.Select(g => g.Clone()).ToList(),
     };
 

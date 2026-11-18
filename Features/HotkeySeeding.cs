@@ -68,27 +68,42 @@ internal static class HotkeySeeding
     /// <summary>播种（已播过就什么都不做）。</summary>
     public static void Ensure(string configPath, AppConfig cfg)
     {
-        if (cfg.Hotkeys.SeedVersion >= Version) return;
+        if (cfg.Hotkeys.SeedVersion >= Version && cfg.Hotkeys.CaptureSeedVersion >= 1) return;
 
         bool changed = false;
+        int captureSeeds = 0;
         // 首次播种顺带补齐 configs/ 六个域；之后每次启动只读不写。
         ConfigIO.Modify(configPath, ConfigDomain.all, c =>
         {
             var file = c.Hotkeys ?? new HotkeyFile();
             file.Normalize();
-            if (file.SeedVersion >= Version) return;
+            bool touched = false;
 
-            var group = file.Groups.FirstOrDefault(g => g.Name == GroupName);
-            if (group == null)
+            if (file.SeedVersion < Version)
             {
-                group = new HotkeyGroup { Id = file.NewId(), Name = GroupName, Enabled = true };
-                file.Groups.Add(group);
+                var group = file.Groups.FirstOrDefault(g => g.Name == GroupName);
+                if (group == null)
+                {
+                    group = new HotkeyGroup { Id = file.NewId(), Name = GroupName, Enabled = true };
+                    file.Groups.Add(group);
+                }
+
+                foreach (var seed in FeatureSeeds)
+                    Bind(group, file, seed.Chord, seed.Reference);
+
+                file.SeedVersion = Version;
+                touched = true;
             }
 
-            foreach (var seed in FeatureSeeds)
-                Bind(group, file, seed.Chord, seed.Reference);
+            // 「截图 Pro」快捷键组：与上面那组分开记播种版本，删掉的条目不会互相塞回来
+            if (CapturePro.CaptureShortcuts.Seed(file))
+            {
+                captureSeeds = CapturePro.CaptureShortcuts.GroupOf(file)?.Bindings.Count ?? 0;
+                touched = true;
+            }
 
-            file.SeedVersion = Version;
+            if (!touched) return;
+
             c.Hotkeys = file;
             changed = true;
         });
@@ -99,7 +114,9 @@ internal static class HotkeySeeding
         ActionLibrary.LoadFrom(reloaded);
         HotkeyRegistry.Load(reloaded);
         AppLog.Info("Hotkeys",
-            $"已播种预设组「{GroupName}」（{FeatureSeeds.Length} 条内置功能绑定）");
+            captureSeeds > 0
+                ? $"已播种预设组「{GroupName}」（{FeatureSeeds.Length} 条）与「{CapturePro.CaptureShortcuts.GroupName}」（{captureSeeds} 条截图快捷键）"
+                : $"已播种预设组「{GroupName}」（{FeatureSeeds.Length} 条内置功能绑定）");
     }
 
     /// <summary>组内按快捷键复用绑定；空引用的绑定就地补上。</summary>

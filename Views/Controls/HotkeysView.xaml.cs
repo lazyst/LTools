@@ -211,6 +211,7 @@ public partial class HotkeysView : UserControl
                 store.DefaultScope = copy.DefaultScope;
                 store.DefaultFilter = copy.DefaultFilter;
                 store.SeedVersion = copy.SeedVersion;
+                store.CaptureSeedVersion = copy.CaptureSeedVersion;
                 store.Groups = copy.Groups;
             });
         }

@@ -463,14 +463,34 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 选「贴图」也一样：贴一份到屏幕上，同时照常返回；
 「取消」= `found = false`，**不报错**（与现有截图步骤同一口径）。
 
+### 7.1 全局快捷键（P7-c，2026-11-19）
+
+截图 / 贴图动作的全局键就是 `configs/hotkeys.json` 里名为「截图 Pro」的预设组
+（照上游 `services/globalshortcutmanager.cpp` / `settingscatalog.cpp` 的「全局快捷键」页）。
+**没有第二套注册**：匹配、单键与 CapsLock 修饰键、名单过滤、冲突判定全部走既有 `HotkeyRegistry` + 低级键盘钩子，
+所以在「快捷键」页里看到的是同一份数据。
+
+| 项 | 行为 |
+|---|---|
+| 动作表 | `Features/CapturePro/CaptureShortcuts.cs` 的 22 条：8 个采集入口（截图 / 延时 / 贴图 / 识别 / 识别复制 / 翻译 / 长截图 / 复制 / 另存为 / 快速保存 / 当前显示器 / 前台窗口）+ 录屏 / 采集历史 / 贴图管理 / 贴剪贴板 / 贴选中的文件 / 恢复上一张关闭的贴图 / 隐藏显示全部贴图 / 窗口置顶 / 打开设置 / 暂停全局快捷键 |
+| 默认值 | 首次启动播 `F1` 截图、`Ctrl+F1` 截图并复制、`F3` 贴剪贴板、`Ctrl+F3` 恢复上一张关闭的贴图（照 `configurationschema.cpp`） |
+| 播种 | `HotkeyFile.CaptureSeedVersion` 与 CapsLock 经典组的 `SeedVersion` 分开记：一边再加种子不会把另一边删掉的条目塞回来；组排在最后 = 匹配优先级最低 |
+| 编辑 | 设置「通用 → 截图 Pro → 全局快捷键…」开 `Views/CaptureShortcutsWindow`：一行一个动作、最多两个 chip（点一下按组合键录入、Esc 取消），`✕` 清空，「恢复默认」；撞键的两行标「冲突」；改动即时 `HotkeyRegistry.Load` + `HotkeyStore.Modify`，没有「确定 / 取消」 |
+| 暂停 | 顶部「启用全局快捷键」= `HotkeyRegistry.GlobalEnabled`（进程内状态、不落盘）；暂停后除 `ltools.hotkeysToggle` 自己以外都不触发 |
+| 覆盖层期间 | `CaptureSession` 把 `HotkeyRegistry.Suspended` 置 true，框选 / 标注时这些键不会误触发 |
+
+三个「选完就做」的一键入口：**识别复制**结果窗照开、算完把全文写进剪贴板；
+**翻译**先走识别出口，`CaptureResultWindow.Apply` 末尾自动翻一遍（没配端点先弹设置）；
+**长截图**框完直接进长截图模式，进不去（太小 / 找不到可滚的窗口）就退回普通框选并把工具条放回来。
+
 ## 8. 接入点
 
 | 位置 | 改动 |
 |---|---|
 | `Features/Flow/ScreenshotProbe.cs` | `interactive` 分支改调 `CaptureSession.TryCapture`（在 UI 线程 `Dispatcher.Invoke` 里开窗），其余三种模式不动；取消仍是 `found = false` |
 | `Features/Units/Screen/CaptureScreenUnit.cs` | 不动（参数与输出都不变；交互模式只是「取图方式」的一种） |
-| `Features/Builtin/FeatureCatalog.cs` | 「截图」功能（`common.capture`）的范围=框选改走同一个覆盖层；**不新增 `ltools.capture`**：功能 Id 是唯一身份，同一件事不挂两个 Id |
-| `Features/HotkeySeeding.cs` | 不动（种子仍是 20 条）；「截图」由用户在快捷键页自行绑定，或在面板 / 悬浮里放 |
+| `Features/Builtin/FeatureCatalog.cs` | 「截图」功能（`common.capture`）的范围=框选改走同一个覆盖层；**不新增 `ltools.capture`**：功能 Id 是唯一身份，同一件事不挂两个 Id。P7-a / P7-c 又补了 16 个同类入口（`ltools.captureDelay` / `captureCopy` / `capturePin` / `captureSave` / `captureQuickSave` / `captureRecognize` / `captureRecognizeCopy` / `captureTranslate` / `captureScrolling` / `captureScreen` / `captureWindow` / `captureHistory` / `pinManager` / `pinRestoreLast` / `pinToggleAll` / `hotkeysToggle`），它们同样只是内置功能，动作编辑器左栏里没有对应动作单元 |
+| `Features/HotkeySeeding.cs` | 拆成两段播种：CapsLock 经典组仍是 20 条（`HotkeyFile.SeedVersion`），「截图 Pro」组四条默认值（`HotkeyFile.CaptureSeedVersion`，`Features/CapturePro/CaptureShortcuts.cs`）单独记版本；用户删掉的条目不会因为另一次播种回来 |
 | `Features/Flow/ImageLibrary.cs` | 不改；成品仍走 `SaveCapture`（`cache/screenshots/`，下次运行清空） |
 | 数据根 | P0 **不新增**目录；`captures/` 随 P2 的采集历史一起加 |
 
@@ -1779,6 +1799,15 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   贴图管理页里那条记录也没了；贴图中键默认把 200% 还原成 100%。框好选区后双击 = 复制、中键 = 贴到屏幕
   （这两项也能在设置里改，含「识别并复制」）；右键退出这次截图时窗口等松手才关，
   逐级回退（折线 / 手势 / 标注 / 选区 / 工具）仍是按下就回退。
+- 真机（全局快捷键 / 三个一键入口，2026-11-19）：设置「通用 → 截图 Pro → 全局快捷键…」里
+  「截图」一行显示 `F1`、第二格是「＋ 添加」；在任意程序里按 `F1` 直接弹覆盖层，`Ctrl+F1` 截完自动复制、
+  `F3` 把剪贴板图片贴到屏幕上、`Ctrl+F3` 把刚关掉的那张贴图按原位置贴回来。点 chip 按 `Ctrl+9` 改绑后
+  立刻生效（`F1` 不再弹）；故意和「贴剪贴板」撞同一个键，两行都标红「冲突」；「恢复默认」后冲突消失、
+  `F1` 回来；行尾 `✕` 清空那一行、格子回到「＋ 添加」；取消顶部「启用全局快捷键」后所有键都不再触发，
+  `ltools.hotkeysToggle` 若绑了键仍能按（按一下恢复）。改完关窗再开、重启 LTools 都还是新值
+  （写进 `configs/hotkeys.json` 的「截图 Pro」组，「快捷键」页里看到的是同一份）。
+  三个一键入口：识别复制截完结果窗照开、算完剪贴板里就是全文；截图并翻译结果窗出来后自动翻一遍
+  （没配端点会先弹翻译设置）；截图并长截图框完直接进长截图模式（选区太小 / 找不到可滚窗口时退回普通框选）。
 - 真机（工具栏堆叠组，2026-11-17）：右键「画笔」选「并到左边一格」——工具栏少一格，
   第一格（选择）右下角多一个小灰点；连点两次第一格会在「选择 / 画笔」之间来回换，图标跟着换；
   右键第一格选「把「选择」拆成单独一格」后两格各管一个。右键「橡皮」选「收起」后它不再占格子，

@@ -84,6 +84,30 @@ internal static class FeatureCatalog
         L("ltools.captureRecognize", "截图并识别", "edit",
             "拖完选区立刻做文字识别并打开结果窗",
             () => CaptureWith(CaptureOverlayWindow.PendingAction.Recognize)),
+        L("ltools.captureRecognizeCopy", "截图并识别复制", "edit",
+            "拖完选区立刻识别，算完把全文写进剪贴板（结果窗照开）",
+            () => CaptureWith(CaptureOverlayWindow.PendingAction.RecognizeCopy)),
+        L("ltools.captureTranslate", "截图并翻译", "edit",
+            "拖完选区立刻识别并按「翻译」设置里的目标语言翻一遍",
+            () => CaptureWith(CaptureOverlayWindow.PendingAction.Translate)),
+        L("ltools.captureScrolling", "截图并长截图", "window",
+            "拖完选区立刻进长截图（自己滚或自动滚，拼成一张长图）",
+            () => CaptureWith(CaptureOverlayWindow.PendingAction.Scrolling)),
+        L("ltools.captureHistory", "采集历史", "clock",
+            "打开采集历史（截图 / 录屏都在里面）",
+            () => Ui(CaptureHistoryWindow.Toggle)),
+        L("ltools.pinManager", "贴图管理", "pin",
+            "打开贴图管理页（浏览 / 批量贴回 / 删除）",
+            () => Ui(PinManagerWindow.Toggle)),
+        L("ltools.pinRestoreLast", "恢复上一张关闭的贴图", "pin",
+            "把最近关掉的那张贴回原来的位置",
+            PinRestoreLast),
+        L("ltools.pinToggleAll", "隐藏 / 显示所有贴图", "pin",
+            "一键把屏幕上的贴图全收起来，再按一次放回来",
+            PinToggleAll),
+        L("ltools.hotkeysToggle", "暂停 / 恢复全局快捷键", "keyboard",
+            "紧急开关：暂停所有全局快捷键（这条本身例外，随时能恢复）",
+            HotkeysToggle),
         L("ltools.captureScreen", "截取当前显示器", "camera",
             "不弹覆盖层：直接抓光标所在的显示器，复制并记进采集历史",
             CaptureMonitor),
@@ -569,8 +593,42 @@ internal static class FeatureCatalog
         CaptureSession.CaptureDirect(new System.Drawing.Rectangle(x, y, w, h), "前台窗口");
     }
 
-    private static void ScreenText(FeatureRunContext ctx)
+    /// <summary>「恢复上一张关闭的贴图」：没有可恢复的记录就提示一句（不是错误，照上游静默语义）。</summary>
+    private static void PinRestoreLast() => Ui(() =>
     {
+        var pin = CapturePinManager.RestoreLastClosed();
+        if (pin == null)
+            ToastService.Show("还没有关掉的贴图可以恢复", "贴图", 2000, ToastKind.warning);
+        else
+            ToastService.Show("已贴回上一张关闭的贴图", "贴图", 1600, ToastKind.success);
+    });
+
+    /// <summary>「隐藏 / 显示所有贴图」：一次收起、再一次放回（不关窗、不写历史）。</summary>
+    private static void PinToggleAll() => Ui(() =>
+    {
+        if (CapturePinManager.AllHidden || CapturePinManager.Visible.Count == 0)
+        {
+            int shown = CapturePinManager.ShowAll();
+            if (shown == 0)
+                ToastService.Show("屏幕上没有可以放回的贴图", "贴图", 1800, ToastKind.warning);
+            return;
+        }
+
+        int hidden = CapturePinManager.HideAll();
+        ToastService.Show($"已收起 {hidden} 张贴图（再按一次放回来）", "贴图", 2000);
+    });
+
+    /// <summary>「暂停 / 恢复全局快捷键」（照上游 toggle global hotkeys）。</summary>
+    private static void HotkeysToggle()
+    {
+        bool on = !HotkeyRegistry.GlobalEnabled;
+        HotkeyRegistry.GlobalEnabled = on;
+        ToastService.Show(
+            on ? "全局快捷键已恢复" : "全局快捷键已暂停（再按一次恢复）",
+            "快捷键", 2200, on ? ToastKind.success : ToastKind.warning, key: "hotkeys-enabled");
+    }
+
+    private static void ScreenText(FeatureRunContext ctx)    {
         // 自动化指示器是置顶窗口，会被截进冻结画面：先收起，结束再恢复。
         string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
         try

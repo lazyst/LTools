@@ -69,6 +69,9 @@ public partial class CaptureOverlayWindow : Window
     /// <summary>完成动作选了「识别并复制」：识别结果窗算完直接把全文写进剪贴板。</summary>
     public bool RecognizeCopyRequested { get; private set; }
 
+    /// <summary>完成动作选了「识别并翻译」：识别结果窗算完自动翻一遍（照上游 <c>captureAndTranslateText</c>）。</summary>
+    public bool TranslateRequested { get; private set; }
+
     /// <summary>长截图完成：<see cref="ResultImage"/> 就是拼好的长图，覆盖层关掉之后由 <see cref="CaptureSession"/> 复制走。</summary>
     public bool ScrollRequested { get; private set; }
 
@@ -94,9 +97,12 @@ public partial class CaptureOverlayWindow : Window
     /// 动作失败（另存为被取消、识别没开起来）时**留在覆盖层**并退回普通编辑 ——
     /// 不会出现「工具条被收起、又没完成」的死角。
     /// </remarks>
-    public enum PendingAction { None, Copy, Pin, Save, QuickSave, Recognize }
+    public enum PendingAction { None, Copy, Pin, Save, QuickSave, Recognize, RecognizeCopy, Translate, Scrolling }
 
     private readonly PendingAction _pending;
+
+    /// <summary>这一次是「识别并翻译」入口：用户即便手动按 Enter 进结果窗，也算一次翻译请求。</summary>
+    private readonly bool _translate;
 
     /// <summary>右键取消 / 指针动作的「按下武装、抬起才做」（照上游 MouseReleaseActionController）。</summary>
     private readonly MouseReleaseGate _release;
@@ -114,6 +120,8 @@ public partial class CaptureOverlayWindow : Window
         PendingAction.Save => FinishKind.Save,
         PendingAction.QuickSave => FinishKind.QuickSave,
         PendingAction.Recognize => FinishKind.Recognize,
+        PendingAction.RecognizeCopy => FinishKind.RecognizeCopy,
+        PendingAction.Translate => FinishKind.Recognize,
         _ => FinishKind.Copy,
     };
 
@@ -130,6 +138,7 @@ public partial class CaptureOverlayWindow : Window
         _sx = sx > 0 ? sx : 1;
         _sy = sy > 0 ? sy : 1;
         _pending = editOnly ? PendingAction.None : pending;
+        _translate = _pending == PendingAction.Translate;
         _doc = new CaptureDocument(shot, new Int32Rect(area.Left, area.Top, area.Width, area.Height), _sx);
         Surface.Document = _doc;
         EditOnly = editOnly;
@@ -622,6 +631,7 @@ public partial class CaptureOverlayWindow : Window
             case FinishKind.Recognize:
                 // 识别结果窗同理：覆盖层关掉、还原自己的窗口之后再开（识别本身在窗口里跑）
                 RecognizeRequested = true;
+                if (_translate) TranslateRequested = true;      // 「截图并翻译」：算完自动翻一遍
                 break;
 
             case FinishKind.RecognizeCopy:
@@ -664,6 +674,15 @@ public partial class CaptureOverlayWindow : Window
     {
         if (!HasPending) return;
         _pendingDone = true;
+
+        // 「截图并长截图」不是导出一个成品，而是把这次框选直接交给长截图模式；
+        // 进不去（太小 / 找不到可滚的窗口）就退回普通框选，原因 StartScrollMode 已经说过
+        if (_pending == PendingAction.Scrolling)
+        {
+            if (!StartScrollMode()) UpdateChrome();
+            return;
+        }
+
         Accept(DefaultFinish);
         if (_confirmed) return;
         UpdateChrome();

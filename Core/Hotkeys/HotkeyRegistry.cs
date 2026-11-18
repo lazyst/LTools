@@ -32,6 +32,15 @@ internal static class HotkeyRegistry
     private static int _revision;
     private static volatile bool _suspended;
 
+    /// <summary>
+    /// 「暂停全局快捷键」总开关（照上游 <c>setGlobalShortcutsEnabled</c>）：暂停后除
+    /// <see cref="GateReference"/> 自己以外都不触发。进程内状态，不落盘。
+    /// </summary>
+    private static volatile bool _enabled = true;
+
+    /// <summary>这个引用就是「暂停 / 恢复全局快捷键」，暂停时它仍要能按。</summary>
+    private const string GateReference = "ltools.hotkeysToggle";
+
     /// <summary>本次按下已经触发过的键：按住不放时系统会重复 keydown，不能连发。</summary>
     /// <remarks>UI 线程的 Rebuild / ClearLatches 会碰它，钩子线程也会碰，全部走 <see cref="FiredGate"/>。</remarks>
     private static readonly HashSet<ushort> Fired = new();
@@ -49,6 +58,11 @@ internal static class HotkeyRegistry
 
     /// <summary>热键录入期间为 true：钩子跳过匹配，否则刚录的组合键会立刻触发动作。</summary>
     public static bool Suspended { get => _suspended; set => _suspended = value; }
+
+    /// <summary>
+    /// 全局快捷键总开关（「暂停全局快捷键」功能翻它）。关掉时只有那条暂停 / 恢复自己的绑定还能按。
+    /// </summary>
+    public static bool GlobalEnabled { get => _enabled; set => _enabled = value; }
 
     /// <summary>可命中的绑定（按优先级排序）。</summary>
     public static IReadOnlyList<HotkeyEntry> Entries => System.Threading.Volatile.Read(ref _entries);
@@ -104,10 +118,12 @@ internal static class HotkeyRegistry
         var entries = Entries;
         if (entries.Count == 0) return null;
         var current = File;
+        bool enabled = _enabled;
 
         foreach (var entry in entries)
         {
             if (entry.Chord.Vk != vk) continue;
+            if (!enabled && entry.Binding.ActionId != GateReference) continue;
             if (!ModifiersMatch(entry.Chord)) continue;
 
             if (!AppFilterMatch.Allows(entry.Binding, current, ForegroundAppCache.Current)) return null;

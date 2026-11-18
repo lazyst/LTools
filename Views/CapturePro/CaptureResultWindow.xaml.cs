@@ -44,6 +44,7 @@ public partial class CaptureResultWindow : Window
     private readonly bool _runOnLoad;
     private readonly Int32Rect _area;
     private bool _copyWhenReady;
+    private bool _translateWhenReady;
 
     private RecognizeResult? _result;
     private string _tab = "text";
@@ -61,8 +62,11 @@ public partial class CaptureResultWindow : Window
     /// <param name="copyWhenReady">
     /// 算完直接把全文写进剪贴板（照上游 <c>text_recognition_copy</c>：识别窗照开，只是省掉「再点一下复制」）。
     /// </param>
+    /// <param name="translateWhenReady">
+    /// 算完自动翻一遍（照上游 <c>captureAndTranslateText</c>：先「翻译」按钮那一步，没配端点会弹设置）。
+    /// </param>
     internal CaptureResultWindow(BitmapSource image, string? engine, CaptureEntry? entry = null,
-        Int32Rect area = default, bool copyWhenReady = false)
+        Int32Rect area = default, bool copyWhenReady = false, bool translateWhenReady = false)
     {
         InitializeComponent();
 
@@ -72,6 +76,7 @@ public partial class CaptureResultWindow : Window
         _area = area;
         _runOnLoad = true;
         _copyWhenReady = copyWhenReady;
+        _translateWhenReady = translateWhenReady;
 
         OriginalImage.Source = image;
         FillTranslateTargets();
@@ -108,9 +113,9 @@ public partial class CaptureResultWindow : Window
 
     /// <summary>打开结果窗（非模态：用户慢慢改 / 复制，流程该干嘛干嘛）。</summary>
     internal static void Show(BitmapSource image, string? engine, CaptureEntry? entry = null,
-        Int32Rect area = default, bool copyWhenReady = false)
+        Int32Rect area = default, bool copyWhenReady = false, bool translateWhenReady = false)
     {
-        var window = new CaptureResultWindow(image, engine, entry, area, copyWhenReady);
+        var window = new CaptureResultWindow(image, engine, entry, area, copyWhenReady, translateWhenReady);
         window.Show();
         window.Activate();
         window.Focus();
@@ -231,6 +236,14 @@ public partial class CaptureResultWindow : Window
                 if (_model.AllText.Length > 0) Copy(_model.AllText, "识别文字");
                 else ToastService.Show("没有识别到文字", "识别结果", 1600, ToastKind.warning);
             }
+        }
+
+        // 「识别并翻译」（照上游 captureAndTranslateText）：算完自己翻一遍，用户不用再点「翻译」
+        if (_translateWhenReady)
+        {
+            _translateWhenReady = false;
+            if (result.Ok && _model is { LineCount: > 0 }) _ = ToggleTranslationAsync();
+            else ToastService.Show("没有识别到可翻译的文字", "识别结果", 1800, ToastKind.warning);
         }
     }
 

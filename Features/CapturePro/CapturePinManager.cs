@@ -177,6 +177,7 @@ internal static class CapturePinManager
         pin.PinId = record.Id;
 
         Pins.Add(pin);
+        AllHidden = false;   // 新贴上来一张 = 用户现在要看屏幕上的贴图
         pin.Show();          // 无激活窗口：ShowActivated=False + WS_EX_NOACTIVATE
         pin.RaiseToTop();
         PinStacking.Presented(pin, preserveFocus: false);   // 新贴的排到组最前
@@ -337,6 +338,7 @@ internal static class CapturePinManager
 
         PinStore.Reopen(record.Id);
         Pins.Add(pin);
+        AllHidden = false;   // 贴回一张 = 现在要看见它
         pin.Show();
         pin.RaiseToTop();
         PinStacking.Presented(pin, preserveFocus);
@@ -352,9 +354,60 @@ internal static class CapturePinManager
         return pin;
     }
 
-    /// <summary>全关（右键菜单「关闭全部贴图」，含被分组藏起来的）。</summary>
-    public static void CloseAll()
+    /// <summary>
+    /// 恢复**最近关闭的那一张**（照上游 <c>restoreLastClosedPinnedWindow</c>）：
+    /// 按关闭时间取最新的一条记录整条贴回来（原落点、原分组、原外观）。
+    /// 没有可恢复的记录返回 <c>null</c>。
+    /// </summary>
+    public static CapturePinWindow? RestoreLastClosed()
     {
+        var open = new HashSet<string>(Pins.Select(pin => pin.PinId), StringComparer.Ordinal);
+        var record = PinStore.Load()
+            .Where(item => item.ClosedAt.Length > 0 && !open.Contains(item.Id))
+            .OrderByDescending(item => item.ClosedAt, StringComparer.Ordinal)
+            .FirstOrDefault();
+
+        return record == null ? null : Restore(record);
+    }
+
+    /// <summary>贴图被「隐藏所有贴图」收起来了（再按一次会放回来）。</summary>
+    public static bool AllHidden { get; private set; }
+
+    /// <summary>收起所有看得见的贴图（不关窗、不写历史，位置原样留着）。返回收起几张。</summary>
+    public static int HideAll()
+    {
+        EndMove();
+        ClearSelection();
+
+        int count = 0;
+        foreach (var pin in Pins)
+        {
+            if (!pin.IsVisible) continue;
+            pin.Hide();
+            count++;
+        }
+
+        if (count > 0) AllHidden = true;
+        return count;
+    }
+
+    /// <summary>把「隐藏所有贴图」收起来的放回来（分组过滤里看不见的那些不放）。返回放回几张。</summary>
+    public static int ShowAll()
+    {
+        int count = 0;
+        foreach (var pin in Pins)
+        {
+            if (pin.IsVisible || !IsShown(pin)) continue;
+            pin.Show();
+            count++;
+        }
+
+        AllHidden = false;
+        return count;
+    }
+
+    /// <summary>全关（右键菜单「关闭全部贴图」，含被分组藏起来的）。</summary>
+    public static void CloseAll()    {
         EndMove();
         ClearSelection();
 
