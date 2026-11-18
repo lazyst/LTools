@@ -56,6 +56,8 @@
                                      Content="Markdown" Tag="markdown" Checked="Tab_Changed"/>
                         <RadioButton x:Name="TabHtml" Style="{StaticResource CaptureTab}" GroupName="resultTab"
                                      Content="HTML" Tag="html" Checked="Tab_Changed"/>
+                        <RadioButton x:Name="TabLatex" Style="{StaticResource CaptureTab}" GroupName="resultTab"
+                                     Content="LaTeX" Tag="latex" Checked="Tab_Changed"/>
                     </StackPanel>
 
                     <!-- 翻译（照上游识别窗的「翻译」入口）：只在文字页露面，目标语言下拉 + 翻译 / 原文
@@ -210,6 +212,29 @@
                     <!-- Markdown / HTML：把 OCR 行派生出的块（标题 / 段落 / 列表 / 表格）渲染成流文档。
                          渲染与源码出自同一份块列表，划选可复制选中那段。 -->
                     <local:CaptureConversionView x:Name="ConversionPage" Visibility="Collapsed"/>
+
+                    <!-- LaTeX：上游 LaTeX 模式 = 视觉模型给源码 + 内置 MicroTeX 渲染预览图。
+                         本地两样都没有（见 docs/CAPTURE_PARITY.md §5），所以这一页只给**源码**：
+                         从识别行里按 TeX 特征挑公式行，可划选 / 复制；不做假渲染。 -->
+                    <Grid x:Name="LatexPage" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBox x:Name="LatexView" BorderThickness="0" Background="Transparent" Margin="10"
+                                 IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 FontFamily="Consolas" FontSize="13"
+                                 VerticalContentAlignment="Top"
+                                 TextChanged="LatexView_TextChanged"
+                                 SelectionChanged="LatexView_SelectionChanged"
+                                 controls:TextBoxClear.Attach="False"/>
+
+                        <TextBlock x:Name="LatexInfo" Grid.Row="1" Margin="10,0,10,10" TextWrapping="Wrap"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource SecondaryTextBrush}"/>
+                    </Grid>
 
                     <!-- 二维码 -->
                     <Grid x:Name="QrPage" Visibility="Collapsed">

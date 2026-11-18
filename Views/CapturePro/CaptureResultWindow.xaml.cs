@@ -324,6 +324,7 @@ public partial class CaptureResultWindow : Window
         bool text = _tab == "text";
         bool conversion = _tab is "markdown" or "html";
         bool document = _tab == "document";
+        bool latex = _tab == "latex";
         bool original = originalToggle.IsChecked == true;
 
         ocrScroll.Visibility = text && !original ? Visibility.Visible : Visibility.Collapsed;
@@ -332,6 +333,14 @@ public partial class CaptureResultWindow : Window
         QrPage.Visibility = _tab == "qr" ? Visibility.Visible : Visibility.Collapsed;
         ConversionPage.Visibility = conversion ? Visibility.Visible : Visibility.Collapsed;
         DocumentPage.Visibility = document ? Visibility.Visible : Visibility.Collapsed;
+        LatexPage.Visibility = latex ? Visibility.Visible : Visibility.Collapsed;
+
+        // LaTeX 源码跟着「当前的识别文字」走（用户在文字页改过字就重新挑公式）
+        if (latex)
+        {
+            RefreshLatex();
+            LatexView.Focus();
+        }
 
         // 只在内容 / 页真的变了时重渲染：翻开关不该把用户刚划好的选区清掉
         if (conversion &&
@@ -370,13 +379,16 @@ public partial class CaptureResultWindow : Window
             "qr" => "复制二维码内容",
             "markdown" => "复制 Markdown",
             "html" => "复制 HTML",
+            "latex" => "复制公式源码",
             "document" => "复制文档",
             _ => CopyLabelForText(),
         };
 
-        copyBtn.IsEnabled = conversion || document
-            ? !_conversion.IsEmpty
-            : _result is { Ok: true } || _layer.Count > 0;
+        copyBtn.IsEnabled = latex
+            ? LatexView.Text.Length > 0
+            : conversion || document
+                ? !_conversion.IsEmpty
+                : _result is { Ok: true } || _layer.Count > 0;
 
         // 翻译只服务文字页：别的页签把这一组收起（不放死按钮）
         UpdateTranslateBar();
@@ -465,6 +477,21 @@ public partial class CaptureResultWindow : Window
                     selected.Length, _conversion.Blocks.Count)
                 : string.Format(CultureInfo.CurrentCulture, "文档 · {0} 块 · {1} 个字符 · 可划选后复制",
                     _conversion.Blocks.Count, _conversion.Length);
+            return;
+        }
+
+        if (_tab == "latex")
+        {
+            if (LatexView.Text.Length == 0)
+            {
+                StatusText.Text = "LaTeX · 没有可整理的源码";
+                return;
+            }
+
+            int chars = LatexView.SelectionLength;
+            StatusText.Text = chars > 0
+                ? string.Format(CultureInfo.CurrentCulture, "LaTeX · 已选中 {0} 个字符", chars)
+                : "LaTeX · 只给源码（本地不渲染公式）· 可划选后复制";
             return;
         }
 
@@ -586,6 +613,26 @@ public partial class CaptureResultWindow : Window
             return;
         }
 
+        if (_tab == "latex")
+        {
+            // 只读文本框：全选 / 复制由这里给命令（没焦点时 TextBox 自己的 Ctrl+A 不会生效）
+            bool control = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            if (control && e.Key == Key.A)
+            {
+                LatexView.Focus();
+                LatexView.SelectAll();
+                e.Handled = true;
+                RefreshStatus();
+            }
+            else if (control && e.Key == Key.C)
+            {
+                CopyLatex();
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         if (_model == null || !TextEditable)
         {
             // 译文模式只读：只保留 Ctrl+C（复制译文），别的编辑键都不认
@@ -687,6 +734,9 @@ public partial class CaptureResultWindow : Window
                 break;
             case "document":
                 CopyDocument();
+                break;
+            case "latex":
+                CopyLatex();
                 break;
             default:
                 // 译文模式：复制整段译文（逐行）；开了「复制成图片」就把渲染好的图放进剪贴板

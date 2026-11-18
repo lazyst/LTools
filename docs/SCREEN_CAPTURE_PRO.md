@@ -829,6 +829,23 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 - 设置框两个开关 + 一个下拉，保存后**立刻**作用到已显示的译文（换底图 / 换按钮文案），不必重翻；
   「翻译前」下拉的说明跟着选项走。
 
+### 10.10 LaTeX 源码页（P4-i）
+
+上游 LaTeX 模式 = 两件事：`streamingLatexSource` 从视觉模型流里剥 ```` ```latex ```` 围栏拿源码，
+`ScreenshotLatexRenderer` 交给内置 **MicroTeX** 排版成预览图。
+
+本机只做**源码侧**，**不假渲染**：
+
+| 能力 | 本地处理 |
+| --- | --- |
+| 公式源码 | `Features/CapturePro/LatexSource.cs`：按 TeX 特征从当前识别行里挑——命令白名单（`\frac` / `\sqrt` / `\alpha`…约 130 个，避开 `C:\Users\x` 这类路径）/ 上下标两侧都有字符 / `$…$` / `\begin{…}` |
+| 围栏 / 定界符 | `Unfence` 只认 `latex` / `tex` 标签；`TrimDelimiters` 只脱整行的 `$$…$$` / `$…$`，行内混排不动 |
+| 挑不到公式 | 退回**整段识别文字**，页脚写明「没认出公式特征，下面是整段识别文字」 |
+| 界面 | 结果窗「LaTeX」页签：只读 Consolas 源码框（可划选、可只复制挑中的几行）、`复制公式源码`（有选区复制选区）、`Ctrl+A` / `Ctrl+C`、底栏写明「本地不渲染公式」 |
+| 渲染 | **不复刻**：.NET 侧没有稳定离线的 TeX 排版引擎（上游用 MicroTeX），写进 `docs/CAPTURE_PARITY.md` §5；要渲染得接可配端点 |
+
+源码跟随**当前识别文字**重建（在文字页改过字，切过来就是改后的），所以「识别 → 改字 → 复制源码」是一条闭环。
+
 ## 11. 采集历史（P2-2 / P4）
 
 截图 / 识别 / 录屏的落点：数据根 `captures/`（`catalog.json` + `assets/<id>.png` + `thumbnails/<id>.png`
