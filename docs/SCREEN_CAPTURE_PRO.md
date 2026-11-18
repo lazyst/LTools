@@ -178,6 +178,22 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
   先铺所有背景胶囊（实心 / 斜线与交叉复用 `ShapeInk.PaintFillGeometry`）→ 再画一遍**只描边**的字形几何
   （线宽不是字号的百分比，而是 `strokeWidth` 本身）→ 最后填字。水平对齐在**最长行**的宽度里定位，
   文字块的 `Frame` / 命中框 = 墨迹 + `max(背景内边距, 描边外溢/2 + 1)`（上游 `text_paint_outset`，两项取大不叠加）。
+- **测距**（P2-d1，`MeasureStyle.cs` + `ArrowInk.cs`）：主线 → 两端端点（14 种，样式 / 比例来自 `DistanceSpec`）
+  → 中点标签。标签是 `"{值} {单位}"`（一个空格），值 = `长度(DIP) × 物理缩放 × 系数`，**居中压在中点**、
+  用描边色纯文字、**没有背景块**（上游注释文字就是这个形态）；字号 `20 × √(线宽/2)`。
+  端点尺寸照 `arrow/render_core.rs`：Arrow 25、Diamond / DiamondOutline / Square 12、Crowfoot* 20、其余 15，统一 × 1.25；
+  张角 Bar 90°、Arrow 20°、其余 25°；圆直径 `base + min(stroke, 2) − 2`；比例钳 0.5–3.0，
+  且**端点不得长过线段**（× 0.5，Diamond / Square × 0.25）。
+  **已知偏差**：空心端点（空心圆 / 空心三角 / 空心菱形 / 内凹三角）上游填「画布背景色」，
+  LTools 的背景是截图，所以**只描边不填充**——填成截图色会在深色区域露出一块浅色补丁。
+- **测角**（P2-d1）：两条射线 + 圆弧 + 平分线处的标签；`AngleKind.Interior` 把 `> 180°` 的 sweep
+  折成 `2π − sweep`，圆弧起止与平分线一起翻到另一侧；度写成 `90°`（无空格）、弧度写成 `1.57 rad`（一个前导空格）。
+- **括号是花括号**（P2-d1，`BracketInk.cs`）：a（起）/ c（尖）/ b（止）三点定义局部坐标系，
+  四段三次贝塞尔（肩部切线连续、尖是圆角），几何与命中 / 包围盒共用同一份 `Segments`；
+  拖拽按上游 `process_bracket_creation_pointer_event` 换算三点——首尾落在起点的 x 上纵向撑满、尖在终点 x 与中线，
+  **横向（高度为 0）拖拽会退化、上游同样什么都不生成**。`HitTest` 按 16 段折线采样，**脊线本身不命中**（它是空的）。
+- **橡皮三模式**（P2-d1）：参数行一格「模式」把 橡皮 / 矩形橡皮 / 画笔橡皮 摆在一起，点另一个 = 发 `ToolChanged` 换工具
+  （上游 `modeSelector` 同一语义）；画笔橡皮的宽度直接用 `brushEraser` 族自己的 `ToolStyle.Width`（新建默认 30），不另开字段。
 - **导出**：新建 `DrawingVisual`，`PushTransform(new ScaleTransform(scale, scale))`，
   按 DIP 画「底图 + 标注」，再 `RenderTargetBitmap(物理宽, 物理高, 96, 96, Pbgra32)`。
   DPI 用 96 + 缩放变换，纹理尺寸就是物理像素，文字与描边是矢量重绘（不是放大位图）。
@@ -212,13 +228,16 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 | 矩形 / 椭圆 / 菱形 / 思考气泡（一个「形状」工具，P2-b） | 描边色、线宽、形状、描边（实线 / 虚线 / 点线）、笔触（干净 / 手绘 / 涂鸦）、填充色、填充（无 / 实心 / 斜线 / 交叉）、圆角 |
 | 箭头 / 直线 | 颜色、线宽、描边（实 / 虚 / 点）、笔触风格；直线另有直线 / 曲线 |
 | 折线 | 颜色、线宽 |
+| 测距（P2-d1） | 颜色、线宽、实测值（选中一条测距后可填，回车写回系数 `值 ÷ 实测长度`，钳 0.01–1000；没选中时置灰）、单位（px / cm / m / km / mm / pt / in / ft / μm）、小数位（整数 / 1 / 2 / 3）、端点比例（0.5–3.0×）、端点样式（14 种：无 / 箭头 / 横杠 / 圆点 / 实心圆 / 空心圆 / 内凹三角 / 三角 / 空心三角 / 菱形 / 空心菱形 / 单趾 / 多趾 / 单多趾） |
+| 测角（P2-d1） | 颜色、线宽、类型（有向 360° / 内角 180°）、单位（度 / 弧度）、小数位（0–3） |
+| 括号（P2-d1） | 颜色、线宽（花括号，纵向拖出） |
 | 文字（P2-c） | 颜色、字号（数字框 6–256 + S/M/L/XL = 24/30/42/54）、字体（可搜索弹层，首项「默认（微软雅黑 UI）」）、粗 / 斜、对齐（左 / 中 / 右）、描边（0–72）、描边色、填充色、填充（无 / 实心 / 斜线 / 交叉）、圆角（0–83） |
 | 序号 | 颜色、徽标形状（圆 / 方 / 圆角方）、数字写法（1 / I / i / A / a / 一） |
 | 马赛克 | 块大小（4/8/16） |
 | 滤镜 | 类型（模糊 / 灰度 / 反相 / 浮雕 / 亮度 / 智能擦除）、强度（0–100） |
 | 自动打码（P1-c） | 类型（马赛克 / 模糊 / 灰度 / 反相 / 浮雕 / 亮度）、强度（0–100）、填充区域下拉（正文 / 框内文字 / 图片 / 头像 / 图标 / 消息框 / 整段文字；没识别结果时置灰） |
 | 聚光 | 暗度（40/55/70） |
-| 橡皮 | 点选橡皮无；画笔橡皮有线宽（矩形橡皮按框走，无参数） |
+| 橡皮（P2-d1） | 模式（橡皮 / 矩形橡皮 / 画笔橡皮，点另一个 = 换工具）；画笔橡皮多一格线宽，那一族新建时默认 30 DIP |
 | 取色（P1） | 无（色卡跟着光标显示色值） |
 
 规则：
@@ -1956,6 +1975,36 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   自检补「文字族」一组 89 条（排版口径 / 填充描边可见性 / 三种对齐 / 命中框 / 字体粗斜 / DTO 往返 / 越界钳制 / 移动缩放）；
   冒烟补 50 条（真参数行 10 格 + 逐像素：实心胶囊 / 无填充 / 圆角切角 / 斜线少于实心 / 描边外圈 / 粗体墨多 /
   斜体与换字体像素不同 / 左中右对齐窄行位置）。
+
+- **P2-d1 端点 / 测距 / 测角 / 括号 / 橡皮（2026-11-18）**：
+  ① **端点几何只有一份**（`Features/CapturePro/ArrowInk.cs`）：`Arrowhead` 16 项（界面列 14 种，上游 distance 家族），
+  `Size` / `AngleDegrees` / `IsRound` / `IsDiamond` / `Ratio`（钳 0.5–3.0，坏值回落 1）/
+  `Draw(dc, tip, axis, style, color, stroke, scale, lineLength)`。尺寸基值 Arrow 25、Diamond / DiamondOutline / Square 12、
+  Crowfoot* 20、其余 15，统一 × 1.25；张角 Bar 90°、Arrow 20°、其余 25°；圆直径 `base + min(stroke, 2) − 2`；
+  **端点不得长过线段**（× 0.5，Diamond / Square × 0.25），否则短线段会变成两只互相嚼掉的箭头。
+  ② **测距 / 测角的数值与文案只有一份**（`Features/CapturePro/MeasureStyle.cs`）：`DistanceSpec`（单位 × 9 / 系数 / 小数位 /
+  端点比例 / 端点样式）、`AngleSpec`（类型 / 单位 / 小数位）、`MeasureLabel.Distance / Angle / FontSize / ClampDecimals`，
+  `DistanceSpec.Default` / `AngleSpec.Default` 是**唯一默认值**（厘米 / 0 位 / 系数 1 / 横杠；有向 / 度 / 0 位）。
+  `Mark.Distance` 持 `DistanceSpec` + `Length` / `LabelBox(scale)` / `LabelText(scale)`，
+  `Mark.Angle` 持 `AngleSpec` + `ShownOpen` / `ShownBisector` / `ArcStart` / `ArcEnd`（内角折边在这里算一次）。
+  ③ **标签一律描边色纯文字、居中压在中点**（`MarkRenderer.DrawPlainLabel`）：原来的黑底白字圆角 pill 已删除——
+  上游注释文字没有背景块。
+  ④ **花括号**（`Features/CapturePro/BracketInk.cs`）：`Segments(a, c, b)` 四段三次贝塞尔 + `Bounds` / `Hit`（16 段采样）/
+  `ToGeometry`；`Mark.Bracket` 两个构造器（2 点拖拽 / 3 点成形）都归到三点存储，`MoveBy` / `ScaleTo` 搬三个点。
+  **横向拖拽不再生成**（跟上游一样），所以冒烟与真机都是纵向拖。
+  ⑤ **实测值写回系数**：`CaptureOverlayWindow.MeasuredDistance()` 给工具栏 `SetMeasuredDistance`，
+  提交时 `OnDistanceValueSubmitted` 算 `系数 = clamp(值 ÷ 长度, 0.01, 1000)` 再 `ReplaceAt` 重建那一条；
+  `RefreshMarks` / `SelectMark` 两处都同步刷新，所以换选中项时那一格立刻跟着变。
+  ⑥ **样式实时生效只做测距 / 测角**（`ApplyStyleToSelection`，且当前工具必须是它自己）：
+  其余族留 P2-e——用形状族的线宽去改一条测距只会得出莫名其妙的结果。
+  ⑦ **橡皮三模式**：`ToolParam.EraserMode` 一格胶囊（`EraserLabel` 出文案），点另一个发 `ToolChanged` 换工具；
+  `ToolStyleSet.For` 认 `brushEraser` 族时新建就给 `Width = 30`。
+  ⑧ 自检补「度量」一组 100 条（端点尺寸 / 张角 / 分类 / 比例钳制、单位与系数与小数位文案、字号公式、内角折叠、
+  弧度前导空格、三点花括号几何与命中、参数格归属、DTO 往返与坏值回落）；
+  冒烟补 18 条（真参数行 7 / 5 / 1 格、实测值置灰 / 可用 / 显示值、点「画笔橡皮」换工具后 2 格且线宽 30；
+  逐像素：花括号尖 / 肩 / 空脊线、测距无黑底 pill 的描边色纯文字、端点比例 2 的箭头肩线）。
+  ⑨ **已知偏差**：空心端点只描边不填充（上游填画布背景色，LTools 的背景是截图）；上游「样式预设」是
+  可自定义的颜色 / 线宽 / 字号预设表，归 P7 的设置页；箭头族参数与「选中后切样式族」单列 P2-e。
 
 - **P0 手感层（2026-11-17，按 `docs/SNOW_SHOT_REFERENCE.md` §17 的 P0 逐项复刻）**：
   ① **矩形滤镜**（新工具 `CaptureTool.Filter`，`F`）：`Mark.Filter`（A / B / 类型 / 强度）走 `MarkRenderer.DrawFilter`

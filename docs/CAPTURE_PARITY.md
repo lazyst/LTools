@@ -22,19 +22,20 @@
 | 选择 Select（选中标注改样式 / 拖动 / 缩放） | 同上 | `CaptureOverlayWindow.Annotate.cs` + `Chrome.cs` | — | ✅ |
 | 气泡 SpeechBubble（尾巴 / 思考气泡） | `speech_bubble/*` | `Mark.SpeechBubble`：身体轮廓取自形状族（矩形 / 椭圆 / 菱形 / 思考气泡云朵），尾巴根部由身体轮廓二分求出、身体边线不横穿尾巴；思考气泡是一串由大到小的圆点 | P1 / P2-b | ✅ |
 | 形状 Shape（矩形 / 椭圆 / 圆角矩形 / 菱形…） | `SnowCanvasShapeKind`、`snow_canvas_render_geometry.cpp` 的 `roundedDiamondPath` | `CaptureTool.Shape`（`R`）+ `ShapeInk.Contour`：矩形（圆角上限 = 短边 / 2）/ 椭圆 / 圆角菱形（上限 = 短边 / 4）/ 思考气泡云朵（14 段贝塞尔） | P2-b | ✅ |
-| 测距 Distance | `distanceToolRequested` | `Mark.Distance`（两端刻度 + 中点 px 标签） | P1 | ✅ |
-| 测角 Angle（滚轮调角度） | `screenshottoolpalette.cpp:4550` | `Mark.Angle`（两次拖拽成角，滚轮 ±5° / Shift ±1°） | P1 | ✅ |
-| 括号 Bracket | `bracketToolRequested` | `Mark.Bracket`（主线 + 两端刻度） | P1 | ✅ |
-| 箭头 Arrow | `arrowRequested` | `Mark.Arrow` | — | ✅ |
+| 测距 Distance（单位 / 小数位 / 端点 / 实测值换算） | `buildDistanceFamily` `screenshottoolpalettestylecontrols.cpp:2904`、`distance.rs`、`arrow/render_core.rs` | `Mark.Distance`：主线 + **14 种端点**（`ArrowInk`，尺寸 / 张角 / 圆直径 / 比例全部照 `render_core.rs`）+ 中点纯文字标签（`值 单位`，字号 `20×√(线宽/2)`，与上游注释文字同为无背景、描边色）；工具栏 7 格 = 色 / 线宽 / **实测值**（写回 `系数 = 值 ÷ 实测长度`，钳 0.01–1000，没选中时置灰）/ 9 种单位 / 0–3 位小数 / 端点比例 0.5–3 / 端点样式 | P1 / P2-d1 | ✅ |
+| 测角 Angle（滚轮调角度 / 内角 / 弧度） | `buildAngleFamily` `:2711`、`angle.rs` | `Mark.Angle`（两次拖拽成角，滚轮 ±5° / Shift ±1°）+ 类型有向 360° / **内角 180°**（`>180°` 折成 `2π−sweep`，圆弧与平分线一起翻边）+ 单位度 / 弧度（`°` 无空格、`" rad"` 前导空格）+ 0–3 位小数 | P1 / P2-d1 | ✅ |
+| 括号 Bracket | `buildBracketFamily` `:2633`、`bracket.rs` | `Mark.Bracket` = **花括号**（三点 a/c/b + 四段三次贝塞尔 `BracketInk`）；拖拽 = 首尾落在起点 x 上纵向撑满、尖在终点 x 与中线，**横向拖拽退化为不生成**（与上游同） | P1 / P2-d1 | ✅ |
+| 箭头 Arrow | `arrowRequested` | `Mark.Arrow` 目前只有「直线 + 三角头」；上游的**起止箭头 14 种 / 箭头比例 / 外描边（宽 + 色）/ 杆型（Plain·Tapered）/ 箭头类型（Straight·Curve·Elbow）** 均未复刻 | — / P2-e | 🟡 |
+| 选中标注后切到该工具的样式族 + 样式实时生效 | 各 `*Family` 的 selection 分支 | 只有「当前工具就是测距 / 测角」时改参数会写回选中的那一条；其余族（形状 / 文字 / 序号…）选中后改参数不写回 | P2-d1 / P2-e | 🟡 |
 | 直线 Line | `lineRequested` | `Mark.Line`（可虚线；横向拖拽不会因「高度为 0」被丢） | P1 | ✅ |
 | 画笔 Brush（FreeDraw） | `brushRequested` | `CaptureTool.Pen` | — | ✅ |
 | 矩形高亮 RectangleHighlight | `highlightRequested` | `CaptureTool.HighlightRect` → `Mark.Highlight`（半透明铺块） | P1 | ✅ |
 | 画笔高亮 PenHighlight | `brushHighlightRequested` | `CaptureTool.Highlighter` → `Mark.Stroke(highlighter: true)` | — | ✅ |
 | 放大镜 Magnifier（倍率 / 连接线 / 源框） | `magnifierRequested` + `SnowCanvasMagnifierStyle` | `Mark.Magnifier`：镜头框 + 倍率（1.2–8）已 1:1；**连接线 / 箭头 / 源框轮廓 / 圆角**留 P2 | P1 / P2 | 🟡 |
 | 聚光灯 Spotlight | `spotlightRequested` | `Mark.Spotlight` | — | ✅ |
-| 橡皮 Eraser（点选删除） | `eraserRequested` | `CaptureTool.Eraser` | — | ✅ |
+| 橡皮 Eraser（点选删除 / 三模式切换） | `buildEraserFamily` `:4271` | `CaptureTool.Eraser` + 参数行「模式」选择器（橡皮 / 矩形橡皮 / 画笔橡皮，点另一个 = 换工具，与上游 `modeSelector` 同义） | P1 / P2-d1 | ✅ |
 | 矩形橡皮 RectangleEraser | `rectangleEraserRequested` | `CaptureTool.RectEraser` → `Mark.Restore`：落一条**恢复原图块**（把这块像素还原成截图原样，盖掉下面的标注 / 滤镜），块本身不可选、不可删，只能撤销 | P1-b | ✅ |
-| 画笔橡皮 BrushEraser | `brushEraserRequested` | `CaptureTool.BrushEraser` → `Mark.Restore`（笔迹遮罩，只有压过的那一条还原） | P1-b | ✅ |
+| 画笔橡皮 BrushEraser | `brushEraserRequested` | `CaptureTool.BrushEraser` → `Mark.Restore`（笔迹遮罩，只有压过的那一条还原）+ 参数行「模式」+「线宽」（那一族新建时默认 30 DIP，上游 `brushEraserStyle.strokeWidth`） | P1-b / P2-d1 | ✅ |
 | 自动打码 AutoFilter（视觉区域检测） | `screenshotautofiltercontroller.cpp` + `auto_filter_workflow.rs` + `auto_filter.rs` | `CaptureTool.AutoFilter`（V）+ `Features/CapturePro/AutoFilter/*`（检测 / 状态）+ `AutoFilterLogic`（命中 / 框选 / 填充事务 / 顺序归一）：进入工具即识别、扫描光带（1400ms）、结果闪红 300ms、hover 红 / 绿高亮、单击 toggle、拖动框选一批、按类型「填充区域」；新增 `FilterKind.Mosaic` | P1-c | ✅ |
 | 矩形滤镜 RectangleFilter | `rectangleFilterRequested` | `Mark.Filter` + `CaptureTool.Filter` | — | ✅ |
 | 画笔滤镜 BrushFilter | `brushFilterRequested` | `Mark.BrushFilter`（笔迹遮罩 + 同一套滤镜） | P1 | ✅ |
@@ -145,7 +146,9 @@
 | P2-a | 样式记忆：每个工具家族各一套样式 + 共享颜色开关 + 落盘 `ui.json`（`CaptureStyles`） | ✅ | 构建 0 警；`--selftest` 214 用例 6383 断言全绿；`capture-overlay-smoke` 586 条全绿（切工具各自保留 / 矩形与椭圆同一份 / 共享颜色全改 / 参数条跟族刷新） |
 | P2-b | 形状族参数：形状选择（矩形 / 椭圆 / 菱形 / 思考气泡）+ 描边实 / 虚 / 点 + 填充（实心 / 斜线 / 交叉 / 无）+ 圆角 + 笔触风格（干净 / 手绘 / 涂鸦）+ 直线 / 曲线 + 画笔压感 | ✅ | 构建 0 警；`--selftest` 215 用例 6513 断言全绿（`capturePro` 47 用例 1687 断言，新增「样式：形状族」一组）；`capture-overlay-smoke` 620 条全绿（真参数行胶囊 3 档形状 / 思考只在气泡出现 / 填充色单独一排 / 圆角默认 6 / 点胶囊改样式 / 填充与圆角与菱形与虚点线与手绘与思考气泡圆点逐像素对账） |
 | P2-c | 文字族参数：字色 / 字号（6–256 + S·M·L·XL）/ 字体族（可搜索弹层）/ 粗体 / 斜体 / 水平对齐 / 文字描边（宽 0–72 + 色）/ 背景（填充色 · 填充方式 · 圆角 0–83），排版照上游 `text_fill_outset`（行高 1.2×、内边距 0.32×/0.1×、描边单独一遍）。上游文字族没有垂直对齐与不透明度，故不实现 | ✅ | 构建 0 警；`--selftest` 216 用例 6602 断言全绿（`capturePro` 48 用例 1776 断言，新增「文字族」一组 89 条）；`capture-overlay-smoke` 670 条全绿（真参数行 10 格 / 点 L·M 改字号 / 字体弹层搜索选中收起 / B·I 独立开关 / 对齐三胶囊 / 描边默认 0 + 换色 / 填充四档 / 圆角 6 / 形状无字号；逐像素：实心胶囊 · 无填充 · 圆角切角 · 斜线少于实心 · 描边外圈 · 粗体墨多 · 斜体与换字体像素不同 · 左中右对齐窄行位置） |
-| P2-d | 序号 / 水印 / 放大镜 / 测距 / 测角 / 括号 / 橡皮的完整参数 | ❌ | 待填 |
+| P2-d1 | 端点 / 测距 / 测角 / 括号 / 橡皮：14 种端点（`ArrowInk`）+ 测距单位 · 小数位 · 端点比例 · 实测值换算 + 测角内角 · 弧度 · 小数位 + 括号改花括号（`BracketInk`）+ 橡皮三模式选择器 | ✅ | 构建 0 警；`--selftest` 217 用例 6693 断言全绿（`capturePro` 49 用例 1867 断言，新增「度量」一组）；`capture-overlay-smoke` 688 条全绿（真参数行 7 / 5 / 1 格 + 实测值置灰与显示 + 点「画笔橡皮」换工具 + 默认笔头 30；逐像素：花括号尖 / 肩 / 空脊线、测距无黑底 pill 的纯文字、端点比例 2 的箭头肩线） |
+| P2-d2 | 放大镜（连接方式 / 源轮廓 / 引导线箭头 / 圆角）+ 序号（5 类型 / 5 写法 / 字号 + 字体 / 填充色 + 填充方式 / 描边）+ 水印（字体 + 字号预设 + 模板 + 角度 / 间距 / 不透明度 / 色） | ❌ | 待填 |
+| P2-e | 箭头族参数（起止箭头 14 种 / 箭头比例 / 外描边宽 + 色 / 杆型 Plain·Tapered / 箭头类型 Straight·Curve·Elbow）+ 选中标注后切该工具样式族并实时生效（形状 / 文字 / 序号…） | ❌ | 待填 |
 | P3 | 选区：XYWH / 比例 / 圆角 / 阴影 / 智能选区 / 预设 | ❌ | 待填 |
 | P4 | 识别与转换：OCR 编辑器 / 原文预览 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档 / 翻译 | ❌ | 待填 |
 | P5 | 贴图：管理页 / 取色板 / 文字样式 / 点击穿透 / 抖动隐藏 / 批量保存 / 拖拽导出 / 历史恢复 | ❌ | 待填 |
@@ -203,3 +206,16 @@
   - **参数行**：`ToolParam.Shape` 改名 `BadgeShape`（序号的徽标形状），新增 `ShapeKind` / `StrokeStyle` / `Rendering` / `FillStyle` / `FillColor` / `CornerRadius` / `LineType` / `BrushMode` 八格；`ColorRow` 改成可复用（描边色一排 + 填充色一排，`GroupName` 分开），`Chips` 支持按值显隐。
   - **未做**：上游 `ArrowType::Curve` 对两点直线与 Straight 视觉等价，`LineType` / `BrushMode` 只入参数与模型、不假造效果。
   - 验收：构建 0 错 0 警；`--selftest` 215 用例 / 6513 断言全绿（`capturePro` 47 用例 / 1687 断言，新增「样式：形状族（形状 / 描边 / 填充 / 圆角 / 尾巴 / 圆点）」一组）；`capture-overlay-smoke` 620 条全绿（真参数行胶囊 3 档形状 / 思考只在气泡出现 / 填充色单独一排 / 圆角默认 6 / 点胶囊改样式 / 填充与圆角与菱形与虚点线与手绘与思考气泡圆点逐像素对账）。
+- 2026-11-18：**P2-c 完成（文字族参数）**。新文件 `Features/CapturePro/TextStyle.cs` 的 `TextSpec` + `TextInk`（约 700 行，纯计算）。
+  - **十格照上游 `buildTextFamily`**：字色 → 字号（6–256，默认 30，另有 S/M/L/XL = 24/30/42/54）→ 字体族（可搜索弹层，与 `QFontDatabase` 同口径取本机字体）→ 粗体 / 斜体 → 水平对齐（左 / 中 / 右）→ 文字描边宽（0–72，默认 0）+ 描边色 → 背景填充色 + 填充方式（无 / 实心）+ 圆角（0–83，默认 6）。上游文字族**没有**垂直对齐与不透明度，故不实现、也不在 UI 里放假开关。
+  - **排版照 `text_fill_outset`**：行高 1.2 × 字号、内边距 0.32× / 0.1× 字号、圆角钳 `min(w,h)/2`；描边单独一遍（先粗后细），文字本身与背景分别取对比色。
+  - 验收：构建 0 错 0 警；`--selftest` 216 用例 / 6602 断言全绿（`capturePro` 48 用例 / 1776 断言，新增「文字族」一组 89 条）；`capture-overlay-smoke` 670 条全绿（真参数行 10 格 / 点 L·M 改字号 / 字体弹层搜索选中收起 / B·I 独立开关 / 对齐三胶囊 / 描边默认 0 + 换色 / 填充两档 / 圆角 6 / 形状无字号；逐像素：实心胶囊 · 无填充 · 圆角切角 · 描边外圈 · 粗体墨多 · 斜体与换字体像素不同 · 左中右对齐窄行位置）。
+- 2026-11-18：**P2-d1 完成（端点 / 测距 / 测角 / 括号 / 橡皮）**。三个新纯逻辑文件：`ArrowInk.cs`（端点几何）、`MeasureStyle.cs`（`DistanceSpec` / `AngleSpec` / `MeasureLabel` 全部文案与数值）、`BracketInk.cs`（花括号四段三次贝塞尔）。
+  - **端点 14 种**（照 `snow-draw-engine-document/src/arrow/render_core.rs`）：`Arrowhead` 扩到 16 项，界面上只列上游 distance 家族的 14 种（`Square` / `InvertedTriangle` 留在枚举里不上界面）；尺寸基值 Arrow 25、Diamond/DiamondOutline/Square 12、Crowfoot* 20、其余 15，统一 ×1.25；张角 Bar 90°、Arrow 20°、其余 25°；圆直径 `base + min(stroke,2) − 2`；比例钳 0.5–3.0，且**端点不得长过线段**（×0.5，Diamond / Square ×0.25）。空心端点（`CircleOutline` / `TriangleOutline` / `DiamondOutline` / `IndentedTriangle`）上游填「画布背景色」，LTools 的背景是截图 → **只描边不填充**（已知偏差，写进 `SCREEN_CAPTURE_PRO.md`）。
+  - **测距**：标签 = `"{值} {单位}"`（一个空格），值 = `长度(DIP) × 物理缩放 × 系数`；**居中压在中点**、描边色纯文字、无背景（弃用原来的黑底白字 pill）；字号 = `20 × √(线宽/2)`；9 种单位、0–3 位小数；工具栏多一格「实测值」——选中一条测距时显示 `长度 × 系数`，改它写回 `系数 = clamp(值 ÷ 长度, 0.01, 1000)`（上游 `setDistanceValue`），没选中时置灰。
+  - **测角**：类型「有向 360° / 内角 180°」——`Interior` 把 `>180°` 的 sweep 折成 `2π − sweep`，圆弧与平分线一起翻到另一侧；单位度 / 弧度（`90°` 无空格、`1.57 rad` 带一个前导空格）；0–3 位小数。
+  - **括号真身是花括号**：`bracket.rs` 用 a（起）/ c（尖）/ b（止）三点定义局部坐标系 + 四段三次贝塞尔（肩部切线连续、尖是圆角）；拖拽按 `process_bracket_creation_pointer_event` 换算成三点（首尾在起点的 x 上纵向撑满、尖在终点 x 与中线），**横向拖拽会退化、上游同样什么都不生成**。原来「主线 + 两端刻度」的本地实现已整体替换。
+  - **橡皮三模式**：参数行一格「模式」（橡皮 / 矩形橡皮 / 画笔橡皮），点另一个 = `ToolChanged` 换工具（上游 `modeSelector` 同一语义）；画笔橡皮多一格「线宽」，那一族新建时默认 30 DIP（`brushEraserStyle.strokeWidth`）。
+  - **样式实时生效**：`ApplyStyleToSelection` 只在「当前工具就是测距 / 测角」时把参数写回选中的那一条（别的族留 P2-e，避免用形状族的线宽去改一条测距）。
+  - 验收：构建 0 错 0 警；`--selftest` 217 用例 / 6693 断言全绿（`capturePro` 49 用例 / 1867 断言，新增 `CaptureProSuite.MeasureStyles.cs` 的「度量：测距端点 / 单位 / 系数 / 测角内角 / 花括号」一组）；`capture-overlay-smoke` 688 条全绿（真参数行测距 7 格 / 测角 5 格 / 橡皮 1 格 + 点「画笔橡皮」后 2 格且默认 30 + 实测值置灰 / 可用 / 显示值；逐像素：花括号的尖与肩画出来而脊线是空的、测距标签没有黑底 pill 且是描边色纯文字、端点比例 2 的箭头从终点长出肩线）。
+  - 新发现的两个 1:1 缺口单列 **P2-e**：箭头族参数（起止箭头 14 种 / 箭头比例 / 外描边宽 + 色 / 杆型 Plain·Tapered / 箭头类型 Straight·Curve·Elbow，目前 `Mark.Arrow` 只有直线 + 三角头）、以及「选中标注后切到该工具的样式族并实时生效」（目前只做测距 / 测角）。上游「样式预设」实为可自定义的颜色 / 线宽 / 字号预设表（`style_presets::strokeColors()` / `strokePresetWidths()` / `sizePresetValues()`），按「设置页可自定义预设」看待，并入 P7。

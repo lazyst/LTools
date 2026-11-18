@@ -101,6 +101,8 @@ internal sealed class ToolStyleSet
         if (!_byFamily.TryGetValue(family, out var style))
         {
             style = new ToolStyle();
+            // 画笔橡皮默认笔头很粗（上游 brushEraserStyle.strokeWidth = 30），细笔头擦起来像没反应
+            if (family == StyleFamilies.BrushEraser) style.Width = 30;
             _byFamily[family] = style;
         }
         if (SyncColors) style.Color = SharedColor;

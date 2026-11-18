@@ -112,4 +112,28 @@ public sealed class CaptureToolStyleDto
 
     /// <summary>文字描边色（<c>#RRGGBB</c>）。</summary>
     public string? StrokeColor { get; set; }
+
+    /// <summary>测距单位（<c>DistanceUnit</c> 名字）。</summary>
+    public string? DistanceUnit { get; set; }
+
+    /// <summary>测距系数（0.01–1000）。</summary>
+    public double? DistanceFactor { get; set; }
+
+    /// <summary>测距小数位（0–3）。</summary>
+    public int? DistanceDecimals { get; set; }
+
+    /// <summary>测距端点比例（0.5–3）。</summary>
+    public double? EndpointScale { get; set; }
+
+    /// <summary>测距端点样式（<c>Arrowhead</c> 名字）。</summary>
+    public string? EndpointStyle { get; set; }
+
+    /// <summary>测角类型（<c>AngleKind</c> 名字：有向 / 内角）。</summary>
+    public string? AngleKind { get; set; }
+
+    /// <summary>测角单位（<c>AngleUnit</c> 名字：度 / 弧度）。</summary>
+    public string? AngleUnit { get; set; }
+
+    /// <summary>测角小数位（0–3）。</summary>
+    public int? AngleDecimals { get; set; }
 }

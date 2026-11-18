@@ -119,6 +119,37 @@ internal enum ToolParam
 
     /// <summary>文字描边色。</summary>
     TextStrokeColor,
+
+    // ============ 测距族（上游 buildDistanceFamily） ============
+
+    /// <summary>测距实测值（只对选中的一条测距生效，写回系数）。</summary>
+    DistanceValue,
+
+    /// <summary>测距单位。</summary>
+    DistanceUnit,
+
+    /// <summary>测距小数位。</summary>
+    DistanceDecimals,
+
+    /// <summary>端点比例（0.5–3.0）。</summary>
+    EndpointScale,
+
+    /// <summary>端点样式（14 种）。</summary>
+    EndpointStyle,
+
+    // ============ 测角族（上游 buildAngleFamily） ============
+
+    /// <summary>角度的类型（有向 360° / 内角 180°）。</summary>
+    AngleKind,
+
+    /// <summary>角度单位（度 / 弧度）。</summary>
+    AngleUnit,
+
+    /// <summary>角度小数位。</summary>
+    AngleDecimals,
+
+    /// <summary>橡皮的三种模式（元素 / 矩形 / 画笔）。</summary>
+    EraserMode,
 }
 
 /// <summary>一个工具的名字 / 图标 / 说明 / 用到哪几格参数 / 快捷键（工具栏与自检共用）。</summary>
@@ -133,6 +164,34 @@ internal static class ToolCatalog
 {
     private static readonly ToolParam[] None = Array.Empty<ToolParam>();
     private static readonly ToolParam[] Stroke = { ToolParam.Color, ToolParam.Width };
+
+    /// <summary>
+    /// 橡皮族（上游 <c>buildEraserFamily</c>）：三种模式用一个选择器切换，
+    /// 画笔橡皮多一格宽度。
+    /// </summary>
+    private static readonly ToolParam[] EraserFamily = { ToolParam.EraserMode };
+
+    private static readonly ToolParam[] BrushEraserFamily =
+    {
+        ToolParam.EraserMode, ToolParam.Width,
+    };
+
+    /// <summary>
+    /// 测距族（上游 <c>buildDistanceFamily</c>）：描边（色 / 线宽）→ 实测值 → 单位 → 小数位
+    /// → 端点比例 → 端点样式。
+    /// </summary>
+    private static readonly ToolParam[] DistanceFamily =
+    {
+        ToolParam.Color, ToolParam.Width, ToolParam.DistanceValue, ToolParam.DistanceUnit,
+        ToolParam.DistanceDecimals, ToolParam.EndpointScale, ToolParam.EndpointStyle,
+    };
+
+    /// <summary>测角族（上游 <c>buildAngleFamily</c>）：描边（色 / 线宽）→ 类型 → 单位 → 小数位。</summary>
+    private static readonly ToolParam[] AngleFamily =
+    {
+        ToolParam.Color, ToolParam.Width, ToolParam.AngleKind, ToolParam.AngleUnit,
+        ToolParam.AngleDecimals,
+    };
 
     /// <summary>
     /// 形状族（上游 <c>buildShapeFamily</c>）：形状选择 + 描边（色 / 线宽 / 线型 / 笔触风格）
@@ -175,9 +234,11 @@ internal static class ToolCatalog
         new(CaptureTool.Arrow, "箭头", "Arrow", "从起点拖到目标", ArrowStroke, Key.A),
         new(CaptureTool.Line, "直线", "Line", "从起点拖到终点，不带箭头", LineStroke, Key.I),
         new(CaptureTool.Polyline, "折线", "Polyline", "逐点单击，双击 / Enter 结束", Stroke, Key.L),
-        new(CaptureTool.Distance, "测距", "Distance", "拖出线段，中点显示长度（像素）", Stroke, Key.D),
-        new(CaptureTool.Angle, "测角", "Angle", "先拖一条臂，再拖第二条臂；选中后滚轮改角度", Stroke, Key.G),
-        new(CaptureTool.Bracket, "括号", "Bracket", "拖出带两端刻度的区间", Stroke, Key.B),
+        new(CaptureTool.Distance, "测距", "Distance", "拖出线段，中点显示长度（单位 / 小数位 / 端点样式在参数行选；选中一条后还能直接填实测值）",
+            DistanceFamily, Key.D),
+        new(CaptureTool.Angle, "测角", "Angle", "先拖一条臂，再拖第二条臂；选中后滚轮改角度",
+            AngleFamily, Key.G),
+        new(CaptureTool.Bracket, "括号", "Bracket", "拖出花括号，开口朝拖动的方向", Stroke, Key.B),
         new(CaptureTool.SpeechBubble, "气泡", "SpeechBubble", "拖出气泡框，左下角带指向外的尾巴", ShapeFamily, Key.O),
         new(CaptureTool.Pen, "画笔", "Pen", "按住拖动自由绘制", new[] { ToolParam.Color, ToolParam.Width, ToolParam.BrushMode }, Key.P),
         new(CaptureTool.Picker, "取色", "Picker", "鼠标下的颜色，单击复制 #RRGGBB", None, Key.C),
@@ -200,10 +261,10 @@ internal static class ToolCatalog
         new(CaptureTool.AutoFilter, "自动打码", "AutoFilter",
             "自动识别文字 / 图片 / 头像 / 图标…：点一下给那一块打码，拖动可框选多块；「填充区域」按类型一次填满",
             new[] { ToolParam.AutoFilterKind, ToolParam.AutoFilterStrength, ToolParam.FillRegions }, Key.V),
-        new(CaptureTool.Eraser, "橡皮", "Eraser", "点一下去掉整条标注", None, Key.X),
-        new(CaptureTool.RectEraser, "矩形橡皮", "RectEraser", "拖出矩形，把这块还原成截图原样（盖掉下面的标注 / 滤镜）", None, Key.K),
+        new(CaptureTool.Eraser, "橡皮", "Eraser", "点一下去掉整条标注；参数行的模式能切成矩形 / 画笔橡皮", EraserFamily, Key.X),
+        new(CaptureTool.RectEraser, "矩形橡皮", "RectEraser", "拖出矩形，把这块还原成截图原样（盖掉下面的标注 / 滤镜）", EraserFamily, Key.K),
         new(CaptureTool.BrushEraser, "画笔橡皮", "BrushEraser", "按住涂抹，把经过的地方还原成截图原样（盖掉下面的标注 / 滤镜）",
-            new[] { ToolParam.Width }, Key.U),
+            BrushEraserFamily, Key.U),
     };
 
     public static ToolInfo Of(CaptureTool tool) => All.First(t => t.Tool == tool);
@@ -239,6 +300,26 @@ internal static class ToolCatalog
     /// <summary>橡皮类：不改文档内容之外的东西，松手时一次性提交。</summary>
     public static bool IsEraser(CaptureTool tool) =>
         tool is CaptureTool.Eraser or CaptureTool.RectEraser or CaptureTool.BrushEraser;
+}
+
+/// <summary>
+/// 橡皮族的参数文案：模式选择器上的三个名字（与工具栏格子的名字同一套叫法）。
+/// </summary>
+internal static class EraserLabel
+{
+    public static string Chip(CaptureTool tool) => tool switch
+    {
+        CaptureTool.RectEraser => "矩形橡皮",
+        CaptureTool.BrushEraser => "画笔橡皮",
+        _ => "橡皮",
+    };
+
+    public static string Name(CaptureTool tool) => tool switch
+    {
+        CaptureTool.RectEraser => "橡皮模式：拖矩形还原这块",
+        CaptureTool.BrushEraser => "橡皮模式：按住涂抹还原",
+        _ => "橡皮模式：点一下去掉整条标注",
+    };
 }
 
 /// <summary>
@@ -348,6 +429,39 @@ internal sealed class ToolStyle
     public ShapeSpec ShapeSpecOf(uint seed) => new(
         ShapeKind, Color, Width, StrokeStyle, Rendering, FillColor, FillStyle, CornerRadius, seed);
 
+    // ============ 测距 / 测角 / 橡皮（上游 distance_style / angle_style / brush_eraser_style） ============
+
+    /// <summary>测距单位（上游默认厘米）。</summary>
+    public DistanceUnit DistanceUnit { get; set; } = DistanceUnit.Cm;
+
+    /// <summary>测距系数：数值 = 长度 × 屏幕缩放 × 系数（上游默认 1）。</summary>
+    public double DistanceFactor { get; set; } = 1;
+
+    /// <summary>测距小数位（0–3，上游默认 0）。</summary>
+    public int DistanceDecimals { get; set; }
+
+    /// <summary>测距端点比例（0.5–3.0，上游默认 1）。</summary>
+    public double EndpointScale { get; set; } = 1;
+
+    /// <summary>测距端点样式（上游默认横杠）。</summary>
+    public Arrowhead EndpointStyle { get; set; } = Arrowhead.Bar;
+
+    /// <summary>角度类型（上游默认有向 360°）。</summary>
+    public AngleKind AngleKind { get; set; } = AngleKind.Directed;
+
+    /// <summary>角度单位（上游默认度）。</summary>
+    public AngleUnit AngleUnit { get; set; } = AngleUnit.Degrees;
+
+    /// <summary>角度小数位（0–3，上游默认 0）。</summary>
+    public int AngleDecimals { get; set; }
+
+    /// <summary>造一份测距参数给新标注。</summary>
+    public DistanceSpec DistanceSpecOf() => new DistanceSpec(
+        DistanceUnit, DistanceFactor, DistanceDecimals, EndpointScale, EndpointStyle).Clamped();
+
+    /// <summary>造一份测角参数给新标注。</summary>
+    public AngleSpec AngleSpecOf() => new AngleSpec(AngleKind, AngleUnit, AngleDecimals).Clamped();
+
     // ============ 文字族（上游 SnowCanvasTextStyle） ============
 
     /// <summary>文字字号（与 <see cref="FontSize"/> 分开：那个是水印 / 序号的）。</summary>
@@ -407,6 +521,14 @@ internal sealed class ToolStyle
         TextAlign = ToolStyleFormat.Name(TextAlign),
         TextStrokeWidth = TextStrokeWidth,
         StrokeColor = ToolStyleFormat.Hex(StrokeColor),
+        DistanceUnit = ToolStyleFormat.Name(DistanceUnit),
+        DistanceFactor = DistanceFactor,
+        DistanceDecimals = DistanceDecimals,
+        EndpointScale = EndpointScale,
+        EndpointStyle = ToolStyleFormat.Name(EndpointStyle),
+        AngleKind = ToolStyleFormat.Name(AngleKind),
+        AngleUnit = ToolStyleFormat.Name(AngleUnit),
+        AngleDecimals = AngleDecimals,
     };
 
     /// <summary>从配置读一份：缺项用默认，超范围钳回界面能摆出来的区间（读坏不炸）。</summary>
@@ -444,6 +566,19 @@ internal sealed class ToolStyle
         style.TextAlign = ToolStyleFormat.ParseEnum(dto.TextAlign, style.TextAlign);
         style.TextStrokeWidth = Math.Clamp(dto.TextStrokeWidth ?? style.TextStrokeWidth, 0, TextInk.MaxStrokeWidth);
         if (ToolStyleFormat.TryParseColor(dto.StrokeColor, out var stroke)) style.StrokeColor = stroke;
+
+        style.DistanceUnit = ToolStyleFormat.ParseEnum(dto.DistanceUnit, style.DistanceUnit);
+        style.DistanceFactor = double.IsFinite(dto.DistanceFactor ?? style.DistanceFactor)
+            ? Math.Clamp(dto.DistanceFactor ?? style.DistanceFactor, 0.01, 1000)
+            : style.DistanceFactor;
+        style.DistanceDecimals = MeasureLabel.ClampDecimals(dto.DistanceDecimals ?? style.DistanceDecimals);
+        style.EndpointScale = double.IsFinite(dto.EndpointScale ?? style.EndpointScale)
+            ? Math.Clamp(dto.EndpointScale ?? style.EndpointScale, ArrowInk.MinRatio, ArrowInk.MaxRatio)
+            : style.EndpointScale;
+        style.EndpointStyle = ToolStyleFormat.ParseEnum(dto.EndpointStyle, style.EndpointStyle);
+        style.AngleKind = ToolStyleFormat.ParseEnum(dto.AngleKind, style.AngleKind);
+        style.AngleUnit = ToolStyleFormat.ParseEnum(dto.AngleUnit, style.AngleUnit);
+        style.AngleDecimals = MeasureLabel.ClampDecimals(dto.AngleDecimals ?? style.AngleDecimals);
         return style;
     }
 }

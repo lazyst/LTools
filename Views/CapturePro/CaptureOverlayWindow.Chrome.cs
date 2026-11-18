@@ -354,6 +354,7 @@ public partial class CaptureOverlayWindow
         if (NeedsWatermarkPreview) Surface.Preview = WatermarkMark;
         Surface.InvalidateVisual();
         UpdateChrome();
+        Toolbar.SetMeasuredDistance(MeasuredDistance());
     }
 
     /// <summary>

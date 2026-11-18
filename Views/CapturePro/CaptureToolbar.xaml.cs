@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -102,6 +103,9 @@ public partial class CaptureToolbar : UserControl
 
     /// <summary>自动打码：点了「填充区域 → 某类型」要一次填满（参数 = 上游的区域类型键）。</summary>
     public event Action<string>? AutoFilterFillRequested;
+
+    /// <summary>测距「实测值」提交（参数 = 用户填的数值；覆盖层换算成系数）。</summary>
+    public event Action<double>? DistanceValueSubmitted;
 
     public event Action? UndoRequested;
     public event Action? RedoRequested;
@@ -766,6 +770,222 @@ public partial class CaptureToolbar : UserControl
         AddHost(ToolParam.WatermarkGap, Step("间距", 20, 400, 10,
             () => _style?.WatermarkGap ?? 120, v => { if (_style != null) _style.WatermarkGap = v; },
             v => v.ToString("0"), 120));
+
+        // ============ 测距族（上游 buildDistanceFamily） ============
+        // 顺序：描边（色 / 线宽）→ 实测值 → 单位 → 小数位 → 端点比例 → 端点样式
+        AddHost(ToolParam.DistanceValue, MeasureValueRow());
+
+        AddHost(ToolParam.DistanceUnit, Chips("单位",
+            new[]
+            {
+                DistanceUnit.Px, DistanceUnit.Cm, DistanceUnit.M, DistanceUnit.Km, DistanceUnit.Mm,
+                DistanceUnit.Pt, DistanceUnit.In, DistanceUnit.Ft, DistanceUnit.Um,
+            },
+            () => _style?.DistanceUnit ?? DistanceUnit.Cm,
+            v => { if (_style != null) _style.DistanceUnit = v; },
+            MeasureLabel.Chip, MeasureLabel.Name, "distanceUnit"));
+
+        AddHost(ToolParam.DistanceDecimals, DecimalsRow("小数位",
+            () => _style?.DistanceDecimals ?? 0,
+            v => { if (_style != null) _style.DistanceDecimals = v; }, "distanceDecimals"));
+
+        AddHost(ToolParam.EndpointScale, Step("端点比例", ArrowInk.MinRatio, ArrowInk.MaxRatio, 0.1,
+            () => _style?.EndpointScale ?? 1, v => { if (_style != null) _style.EndpointScale = v; },
+            v => v.ToString("0.0") + "×", 1));
+
+        AddHost(ToolParam.EndpointStyle, Picker("端点",
+            DistanceEndpoints,
+            () => _style?.EndpointStyle ?? Arrowhead.Bar,
+            v => { if (_style != null) _style.EndpointStyle = v; },
+            MeasureLabel.Chip, MeasureLabel.Name));
+
+        // ============ 测角族（上游 buildAngleFamily） ============
+        AddHost(ToolParam.AngleKind, Chips("类型",
+            new[] { AngleKind.Directed, AngleKind.Interior },
+            () => _style?.AngleKind ?? AngleKind.Directed,
+            v => { if (_style != null) _style.AngleKind = v; },
+            MeasureLabel.Chip, MeasureLabel.Name, "angleKind"));
+
+        AddHost(ToolParam.AngleUnit, Chips("单位",
+            new[] { AngleUnit.Degrees, AngleUnit.Radians },
+            () => _style?.AngleUnit ?? AngleUnit.Degrees,
+            v => { if (_style != null) _style.AngleUnit = v; },
+            MeasureLabel.Chip, MeasureLabel.Name, "angleUnit"));
+
+        AddHost(ToolParam.AngleDecimals, DecimalsRow("小数位",
+            () => _style?.AngleDecimals ?? 0,
+            v => { if (_style != null) _style.AngleDecimals = v; }, "angleDecimals"));
+
+        // ============ 橡皮族（上游 buildEraserFamily） ============
+        // 三种模式共用一个选择器：点另一个模式就是换工具（上游 modeSelector 同一语义）
+        AddHost(ToolParam.EraserMode, Chips("模式",
+            new[] { CaptureTool.Eraser, CaptureTool.RectEraser, CaptureTool.BrushEraser },
+            () => _tool,
+            v => { if (v != _tool) ToolChanged?.Invoke(v); },
+            EraserLabel.Chip, EraserLabel.Name, "eraserMode"));
+    }
+
+    /// <summary>端点样式下拉的选项：上游 distance 家族的 14 种（不含方块 / 倒三角）。</summary>
+    private static readonly Arrowhead[] DistanceEndpoints =
+    {
+        Arrowhead.None, Arrowhead.Arrow, Arrowhead.Bar, Arrowhead.Dot, Arrowhead.Circle,
+        Arrowhead.CircleOutline, Arrowhead.IndentedTriangle, Arrowhead.Triangle,
+        Arrowhead.TriangleOutline, Arrowhead.Diamond, Arrowhead.DiamondOutline,
+        Arrowhead.CrowfootOne, Arrowhead.CrowfootMany, Arrowhead.CrowfootOneOrMany,
+    };
+
+    /// <summary>
+    /// 实测值一格：选中一条测距时可直接填它「应该是多少」，写回的是系数
+    /// （上游 <c>setDistanceValue</c>：<c>factor = 值 / 实测长度</c>，钳 0.01–1000）。
+    /// 没选中时置灰、显示占位 <c>—</c>。
+    /// </summary>
+    private FrameworkElement MeasureValueRow()
+    {
+        var host = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        host.Children.Add(Label("实测值"));
+
+        var box = new TextBox
+        {
+            Width = 74,
+            Height = 22,
+            FontSize = 12,
+            Padding = new Thickness(6, 1, 6, 1),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Background = new SolidColorBrush(Color.FromRgb(0xF7, 0xF8, 0xFA)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xD9, 0xD9)),
+            BorderThickness = new Thickness(1),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x27, 0x27, 0x2A)),
+            ToolTip = "选中一条测距后可以填实测值（回车生效），会换算成系数",
+        };
+        box.LostFocus += (_, _) => CommitMeasured(box);
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Enter) return;
+            CommitMeasured(box);
+            e.Handled = true;
+        };
+
+        _measuredBox = box;
+        _refreshers.Add(RefreshMeasured);
+        RefreshMeasured();
+
+        host.Children.Add(box);
+        return host;
+    }
+
+    private TextBox? _measuredBox;
+
+    /// <summary>选中那条测距的实测长度（屏幕物理像素）；0 = 没有可编辑的目标。</summary>
+    private double _measuredLength;
+
+    private void CommitMeasured(TextBox box)
+    {
+        if (_syncing || _measuredLength <= 0) return;
+        if (!double.TryParse(box.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out double value) &&
+            !double.TryParse(box.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+        {
+            RefreshMeasured();
+            return;
+        }
+
+        if (!double.IsFinite(value) || value <= 0) { RefreshMeasured(); return; }
+        DistanceValueSubmitted?.Invoke(value);
+        RefreshMeasured();
+    }
+
+    private void RefreshMeasured()
+    {
+        if (_measuredBox == null) return;
+        if (_measuredLength <= 0)
+        {
+            _measuredBox.IsEnabled = false;
+            if (_measuredBox.Text.Length > 0) _measuredBox.Text = string.Empty;
+            _measuredBox.ToolTip = "先选中一条测距，才能填它的实测值";
+            return;
+        }
+
+        _measuredBox.IsEnabled = true;
+        _measuredBox.ToolTip = "选中一条测距后可以填实测值（回车生效），会换算成系数";
+        if (_measuredBox.IsKeyboardFocusWithin) return;
+        double factor = _style?.DistanceFactor ?? 1;
+        _measuredBox.Text = (_measuredLength * factor).ToString("0.###", CultureInfo.CurrentCulture);
+    }
+
+    /// <summary>覆盖层告诉工具栏「选中的这条测距有多长」（物理像素；0 = 没有）。</summary>
+    internal void SetMeasuredDistance(double lengthPx)
+    {
+        _measuredLength = double.IsFinite(lengthPx) && lengthPx > 0 ? lengthPx : 0;
+        RefreshMeasured();
+    }
+
+    /// <summary>小数位（0–3）：四个胶囊比加减号快。</summary>
+    private FrameworkElement DecimalsRow(string label, Func<int> get, Action<int> set, string group) =>
+        Chips(label, new[] { 0, 1, 2, 3 }, get, set,
+            v => v == 0 ? "整数" : v + " 位", v => v == 0 ? "不保留小数" : $"保留 {v} 位小数", group);
+
+    /// <summary>
+    /// 选项太多的参数（端点 14 种）：一个按钮 + <see cref="ContextMenu"/>，比一排胶囊省地方。
+    /// 点按钮不抢焦点、菜单项带勾选，选中即写回并抛 <see cref="StyleChanged"/>。
+    /// </summary>
+    private FrameworkElement Picker<T>(string label, T[] values, Func<T> get, Action<T> set,
+        Func<T, string> text, Func<T, string> tip)
+    {
+        var host = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        host.Children.Add(Label(label));
+
+        var button = new Button
+        {
+            Style = (Style)FindResource("StepBtn"),
+            MinWidth = 58,
+            Content = text(get()),
+            ToolTip = tip(get()),
+        };
+
+        button.Click += (_, _) =>
+        {
+            var current = get();
+            var menu = new ContextMenu();
+            foreach (var value in values)
+            {
+                var item = new MenuItem
+                {
+                    Header = text(value),
+                    IsCheckable = true,
+                    IsChecked = EqualityComparer<T>.Default.Equals(value, current),
+                    ToolTip = tip(value),
+                };
+                var captured = value;
+                item.Click += (_, _) =>
+                {
+                    set(captured);
+                    RefreshValues();
+                    StyleChanged?.Invoke();
+                };
+                menu.Items.Add(item);
+            }
+
+            menu.PlacementTarget = button;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            menu.IsOpen = true;
+        };
+
+        _refreshers.Add(() =>
+        {
+            var current = get();
+            button.Content = text(current);
+            button.ToolTip = tip(current);
+        });
+
+        host.Children.Add(button);
+        return host;
     }
 
     /// <summary>一格文字输入（水印内容）：失焦与回车都立刻写回样式，工具栏不自己存副本。</summary>
@@ -1339,13 +1559,13 @@ public partial class CaptureToolbar : UserControl
 
         minus.Click += (_, _) =>
         {
-            set(Math.Max(min, Math.Round(get() - step)));
+            set(Math.Clamp(RoundTo(get() - step, step), min, max));
             RefreshValues();
             StyleChanged?.Invoke();
         };
         plus.Click += (_, _) =>
         {
-            set(Math.Min(max, Math.Round(get() + step)));
+            set(Math.Clamp(RoundTo(get() + step, step), min, max));
             RefreshValues();
             StyleChanged?.Invoke();
         };
@@ -1354,7 +1574,7 @@ public partial class CaptureToolbar : UserControl
         // 点一下数值复位——「调过头了」比「找不到恢复按钮」常见得多。
         host.MouseWheel += (_, e) =>
         {
-            double next = Math.Clamp(Math.Round(get() + (e.Delta > 0 ? step : -step)), min, max);
+            double next = Math.Clamp(RoundTo(get() + (e.Delta > 0 ? step : -step), step), min, max);
             if (Math.Abs(next - get()) < 1e-9) return;
             set(next);
             RefreshValues();
@@ -1382,6 +1602,10 @@ public partial class CaptureToolbar : UserControl
         if (_style == null) return;
         foreach (var refresh in _refreshers) refresh();
     }
+
+    /// <summary>按步长取整（步长 &lt; 1 时保留小数，别被 <c>Math.Round</c> 吃掉 0.1）。</summary>
+    private static double RoundTo(double value, double step) =>
+        step >= 1 ? Math.Round(value) : Math.Round(Math.Round(value / step) * step, 3);
 
     // ============ 拖动 / 双击复位 ============
 

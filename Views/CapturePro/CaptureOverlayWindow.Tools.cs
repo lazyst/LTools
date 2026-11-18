@@ -35,12 +35,68 @@ public partial class CaptureOverlayWindow
         Toolbar.StyleChanged += () =>
         {
             CaptureStyleStore.SaveSoon();
+            ApplyStyleToSelection();
             UpdateToolPreview();
         };
         Toolbar.AutoFilterFillRequested += OnAutoFilterFillRequested;
+        Toolbar.DistanceValueSubmitted += OnDistanceValueSubmitted;
         Toolbar.UndoRequested += () => { _doc.Undo(); RefreshMarks(); };
         Toolbar.RedoRequested += () => { _doc.Redo(); RefreshMarks(); };
         Toolbar.ResetRequested += () => { _toolbarPlaced = false; UpdateChrome(); };
+    }
+
+    /// <summary>
+    /// 选中某条测距 / 测角时改参数 = 直接改那一条（上游各 <c>*_style</c> 的 selection 分支）。
+    /// 只在当前工具就是它自己时生效：LTools 的选择工具不切换样式族，
+    /// 用「形状族」的线宽去改一条测距只会得出莫名其妙的结果。
+    /// </summary>
+    private void ApplyStyleToSelection()
+    {
+        if (_selectedIndex < 0 || _selectedIndex >= _doc.Marks.Count) return;
+
+        switch (_doc.Marks[_selectedIndex])
+        {
+            case Mark.Distance d when _tool == CaptureTool.Distance:
+                _doc.ReplaceAt(_selectedIndex, new Mark.Distance(d.A, d.B, _style.Color,
+                    _style.WidthFor(_tool), _style.DistanceSpecOf()));
+                break;
+
+            case Mark.Angle a when _tool == CaptureTool.Angle:
+                _doc.ReplaceAt(_selectedIndex, new Mark.Angle(a.Vertex, a.Radius, a.Bisector, a.Degrees,
+                    _style.Color, _style.WidthFor(_tool), _style.AngleSpecOf()));
+                break;
+
+            default:
+                return;
+        }
+
+        RefreshMarks();
+    }
+
+    /// <summary>选中的那条测距量出来有多长（屏幕物理像素）；没有可编辑目标 = 0。</summary>
+    private double MeasuredDistance()
+    {
+        if (_selectedIndex < 0 || _selectedIndex >= _doc.Marks.Count) return 0;
+        if (_doc.Marks[_selectedIndex] is not Mark.Distance d || d.Length <= 0.01) return 0;
+        return d.Length * (_doc.Scale > 0 ? _doc.Scale : 1);
+    }
+
+    /// <summary>
+    /// 「实测值」提交：<c>系数 = 值 / 实测长度</c>（上游 <c>setDistanceValue</c>，钳 0.01–1000），
+    /// 只作用在选中的那一条上。
+    /// </summary>
+    private void OnDistanceValueSubmitted(double value)
+    {
+        if (_selectedIndex < 0 || _selectedIndex >= _doc.Marks.Count) return;
+        if (_doc.Marks[_selectedIndex] is not Mark.Distance d) return;
+
+        double length = MeasuredDistance();
+        if (length <= 0 || !double.IsFinite(value) || value <= 0) return;
+
+        _style.DistanceFactor = Math.Clamp(value / length, 0.01, 1000);
+        _doc.ReplaceAt(_selectedIndex, new Mark.Distance(d.A, d.B, d.Color, d.Width, _style.DistanceSpecOf()));
+        CaptureStyleStore.SaveSoon();
+        RefreshMarks();
     }
 
     private void SetTool(CaptureTool tool)
@@ -162,6 +218,7 @@ public partial class CaptureOverlayWindow
         Surface.SelectedIndex = index;
         Surface.ShowHandles = ShowsMarkHandles;
         Surface.InvalidateVisual();
+        Toolbar.SetMeasuredDistance(MeasuredDistance());
     }
 
     private void ClearMarkSelection() => SelectMark(-1);

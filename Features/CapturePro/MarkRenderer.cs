@@ -76,7 +76,7 @@ internal static class MarkRenderer
                 DrawDistance(dc, distance, scale);
                 break;
             case Mark.Angle angle:
-                DrawAngle(dc, angle, scale);
+                DrawAngle(dc, angle);
                 break;
             case Mark.Bracket bracket:
                 DrawBracket(dc, bracket);
@@ -471,59 +471,54 @@ internal static class MarkRenderer
     private static void DrawLine(DrawingContext dc, Mark.Line line) =>
         ShapeInk.DrawStroke(dc, line.Contour, closed: false, line.StrokeSpec);
 
-    /// <summary>测距：主线 + 两端刻度 + 中点标签。</summary>
+    /// <summary>测距：主线 + 两端端点（14 种）+ 中点标签（纯文字，居中压在中线上）。</summary>
     private static void DrawDistance(DrawingContext dc, Mark.Distance d, double scale)
     {
         var pen = MakePen(d.Color, d.Width, dashed: false);
         dc.DrawLine(pen, d.A, d.B);
 
-        var dir = d.B - d.A;
-        if (dir.Length > 0.01)
+        var axis = d.B - d.A;
+        if (axis.Length > 0.01 && d.Spec.Endpoint != Arrowhead.None)
         {
-            dir.Normalize();
-            var normal = new Vector(-dir.Y, dir.X) * (d.Tick / 2);
-            dc.DrawLine(pen, d.A - normal, d.A + normal);
-            dc.DrawLine(pen, d.B - normal, d.B + normal);
+            axis.Normalize();
+            // B 端朝 +axis 长出去，A 端朝 -axis 长出去（两端的肩点都朝线段内侧退）
+            ArrowInk.Draw(dc, d.B, axis, d.Spec.Endpoint, d.Color, d.Width, d.Spec.EndpointScale, d.Length);
+            ArrowInk.Draw(dc, d.A, -axis, d.Spec.Endpoint, d.Color, d.Width, d.Spec.EndpointScale, d.Length);
         }
 
-        DrawLabel(dc, d.LabelBox(scale), d.LabelText(scale), d.Width);
+        DrawPlainLabel(dc, d.LabelBox(scale), d.LabelText(scale), d.FontSize, d.Color);
     }
 
-    /// <summary>测角：两条射线 + 圆弧 + 角度标签。</summary>
-    private static void DrawAngle(DrawingContext dc, Mark.Angle a, double scale)
+    /// <summary>测角：两条射线 + 圆弧 + 角度标签（内角模式画补角、平分线翻到另一侧）。</summary>
+    private static void DrawAngle(DrawingContext dc, Mark.Angle a)
     {
         var pen = MakePen(a.Color, a.Width, dashed: false);
         dc.DrawLine(pen, a.Vertex, a.A);
         dc.DrawLine(pen, a.Vertex, a.B);
 
         double radius = a.ArcRadius;
-        double half = a.Degrees * Math.PI / 360;
-        var start = MarkGeometry.Polar(a.Vertex, a.Bisector - half, radius);
-        var end = MarkGeometry.Polar(a.Vertex, a.Bisector + half, radius);
+        double sweep = a.ShownOpen;
+        if (sweep > 0.0001)
+        {
+            var figure = new PathFigure { StartPoint = a.ArcStart, IsClosed = false, IsFilled = false };
+            figure.Segments.Add(new ArcSegment(a.ArcEnd, new Size(radius, radius), 0,
+                sweep > Math.PI, SweepDirection.Clockwise, true));
+            var geo = new PathGeometry();
+            geo.Figures.Add(figure);
+            geo.Freeze();
+            dc.DrawGeometry(null, pen, geo);
+        }
 
-        var geo = new PathGeometry();
-        var figure = new PathFigure { StartPoint = start, IsClosed = false, IsFilled = false };
-        figure.Segments.Add(new ArcSegment(end, new Size(radius, radius), 0,
-            a.Degrees > 180, SweepDirection.Clockwise, true));
-        geo.Figures.Add(figure);
-        geo.Freeze();
-        dc.DrawGeometry(null, pen, geo);
-
-        DrawLabel(dc, a.LabelBox, a.LabelText, a.Width);
+        DrawPlainLabel(dc, a.LabelBox, a.LabelText, a.FontSize, a.Color);
     }
 
-    /// <summary>括号：主线 + 两端穿过主线的垂直刻度。</summary>
+    /// <summary>括号：花括号（四段三次贝塞尔，几何来自 <see cref="BracketInk"/>）。</summary>
     private static void DrawBracket(DrawingContext dc, Mark.Bracket b)
     {
-        var pen = MakePen(b.Color, b.Width, dashed: false);
-        dc.DrawLine(pen, b.A, b.B);
-
-        var dir = b.B - b.A;
-        if (dir.Length <= 0.01) return;
-        dir.Normalize();
-        var normal = new Vector(-dir.Y, dir.X) * (b.Tick / 2);
-        dc.DrawLine(pen, b.A - normal, b.A + normal);
-        dc.DrawLine(pen, b.B - normal, b.B + normal);
+        var segments = b.Segments;
+        if (segments.Length == 0) return;
+        dc.DrawGeometry(null, MakePen(b.Color, b.Width, dashed: false),
+            BracketInk.ToGeometry(segments));
     }
 
     private static void DrawSpeechBubble(DrawingContext dc, Mark.SpeechBubble b) =>
@@ -822,14 +817,13 @@ internal static class MarkRenderer
         }
     }
 
-    /// <summary>深色底 + 白字的圆角标签（测距 / 测角共用）。</summary>
-    private static void DrawLabel(DrawingContext dc, Rect box, string text, double lineWidth)
+    /// <summary>
+    /// 描边色纯文字标签（测距 / 测角共用，上游注释文字就是这个形态：无背景、居中）。
+    /// </summary>
+    private static void DrawPlainLabel(DrawingContext dc, Rect box, string text, double fontSize, Color color)
     {
-        double radius = Math.Clamp(box.Height * 0.3, 2, 8);
-        dc.DrawRoundedRectangle(Freeze(Colors.Black, 0.72), null, box, radius, radius);
-
         var ft = new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-            Face, Mark.Distance.FontSize, Freeze(Colors.White), 1.0);
+            Face, fontSize, Freeze(color), 1.0);
         var origin = new Point(box.X + (box.Width - ft.Width) / 2, box.Y + (box.Height - ft.Height) / 2);
         dc.DrawText(ft, origin);
     }

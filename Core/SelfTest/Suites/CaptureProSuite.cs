@@ -49,6 +49,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "工具栏：格子布局 / 收起 / 落盘往返", ToolLayouts));
         cases.Add(new("capturePro", "样式：每个工具家族各记一套（落盘往返）", ToolStyles));
         cases.Add(new("capturePro", "样式：形状族（形状 / 描边 / 填充 / 圆角 / 尾巴 / 圆点）", ShapeStyles));
+        cases.Add(new("capturePro", "度量：测距端点 / 单位 / 系数 / 测角内角 / 花括号", MeasureStyles));
         cases.Add(new("capturePro", "识别：表格聚类 / TSV / HTML", Recognize));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
@@ -2896,17 +2897,18 @@ internal static partial class CaptureProSuite
         Check.Equal(8d, wide.Width, "直线缩放时线宽跟着乘 2");
         Check.Equal(new Point(200, 0), wide.B, "直线缩放时终点跟着搬");
 
-        // ---- 测距：标签按物理像素显示 ----
+        // ---- 测距：标签 = 值 + 单位（上游默认厘米、0 位小数） ----
         var dist = new Mark.Distance(new Point(0, 0), new Point(100, 0), Colors.Red, 4);
-        Check.Equal("100", dist.LabelText(1), "测距标签：100 DIP → 100");
-        Check.Equal("200", dist.LabelText(2), "测距标签：缩放 2 → 200 物理像素");
+        Check.Equal("100 cm", dist.LabelText(1), "测距标签：100 DIP → 100 cm");
+        Check.Equal("200 cm", dist.LabelText(2), "测距标签：缩放 2 → 200（物理像素 × 系数）");
         Check.Equal(50d, dist.Midpoint.X, "标签挂在线段中点");
         Check.True(dist.Bounds.Contains(dist.LabelBox(1)), "标签框算进外接框（拖动时不会切掉数字）");
         Check.True(dist.HitTest(dist.Midpoint, 0), "线段中间命中");
         Check.True(dist.HitTest(new Point(50, dist.LabelBox(1).Y + 2), 0), "标签本身也命中（点数字就能选中它）");
-        Check.Equal(12d, dist.Tick, "线宽 4 → 端部刻度 12 DIP");
+        Check.Equal(0, dist.Spec.Decimals, "测距默认 0 位小数");
+        Check.Equal(Arrowhead.Bar, dist.Spec.Endpoint, "测距默认横杠端点");
         var scaled = (Mark.Distance)dist.ScaleTo(new Rect(0, 0, 100, 100), new Rect(0, 0, 200, 200));
-        Check.Equal("200", scaled.LabelText(1), "缩放后长度按新几何算（200 DIP）");
+        Check.Equal("200 cm", scaled.LabelText(1), "缩放后长度按新几何算（200 DIP）");
 
         // ---- 测角：两条臂 → 角度 / 平分线；滚轮只改张角 ----
         var right = Mark.Angle.FromArms(new Point(0, 0), new Point(100, 0), new Point(0, 100), Colors.Red, 4);
@@ -2927,12 +2929,15 @@ internal static partial class CaptureProSuite
         Check.True(sharper.HitTest(sharper.A, 0), "第一条臂上命中");
         Check.False(sharper.HitTest(new Point(50, 50), 0), "两条臂之间空着的地方不命中");
 
-        // ---- 括号：主线 + 两端刻度（没有数字）----
-        var bracket = new Mark.Bracket(new Point(0, 0), new Point(100, 0), Colors.Red, 4);
-        Check.Equal(new Rect(-12, -12, 124, 24), bracket.Bounds, "括号的外接框按刻度长度扩");
-        Check.Equal(12d, bracket.Tick, "括号刻度与测距同一套换算");
-        Check.True(bracket.HitTest(new Point(50, 6), 0), "主线上命中");
-        Check.False(bracket.HitTest(new Point(50, 20), 0), "离得远不命中");
+        // ---- 括号：花括号（三点定义，四段三次贝塞尔）----
+        var bracket = new Mark.Bracket(new Point(0, 0), new Point(40, 100), Colors.Red, 4);
+        Check.Equal(4, bracket.Segments.Length, "花括号是四段弧");
+        Check.Equal(new Point(0, 0), bracket.A, "拖拽形态：起点在起点的 x、纵向最小处");
+        Check.Equal(new Point(0, 100), bracket.B, "拖拽形态：终点落回起点的 x");
+        Check.Equal(new Point(40, 50), bracket.Apex, "尖在终点的 x 与中线上（开口朝拖动方向）");
+        Check.True(bracket.Frame.Contains(bracket.Apex), "尖算进选中框");
+        Check.True(bracket.HitTest(new Point(40, 50), 1), "尖上命中");
+        Check.False(bracket.HitTest(new Point(0, 200), 0), "括号外不命中");
 
         // ---- 气泡：身体 + 尾巴 ----
         var bubble = new Mark.SpeechBubble(new Rect(0, 0, 200, 100), Colors.Red, 4);

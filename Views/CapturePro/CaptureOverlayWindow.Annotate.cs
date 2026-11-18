@@ -173,7 +173,7 @@ public partial class CaptureOverlayWindow
                     _style.LineType, _style.Rendering, _dragSeed);
 
             case CaptureTool.Distance:
-                return new Mark.Distance(_toolStart, current, color, width);
+                return new Mark.Distance(_toolStart, current, color, width, _style.DistanceSpecOf());
 
             case CaptureTool.Bracket:
                 return new Mark.Bracket(_toolStart, current, color, width);
@@ -202,7 +202,7 @@ public partial class CaptureOverlayWindow
 
             case CaptureTool.Angle:
                 return _angleArmed
-                    ? Mark.Angle.FromArms(_angleVertex, _angleArm1, current, color, width)
+                    ? Mark.Angle.FromArms(_angleVertex, _angleArm1, current, color, width, _style.AngleSpecOf())
                     : new Mark.Line(_angleVertex, current, color, width, false);
 
             default:
@@ -257,7 +257,7 @@ public partial class CaptureOverlayWindow
             return;
         }
 
-        var mark = Mark.Angle.FromArms(_angleVertex, _angleArm1, p, color, width);
+        var mark = Mark.Angle.FromArms(_angleVertex, _angleArm1, p, color, width, _style.AngleSpecOf());
         _angleArmed = false;
         _drag = DragMode.None;
         Surface.Preview = null;

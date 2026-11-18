@@ -476,19 +476,23 @@ internal abstract class Mark
     }
 
     /// <summary>
-    /// 测距：两端带垂直刻度的线段 + 中点标签（按**物理像素**显示长度，与上游一致）。
-    /// 刻度长度随线宽变大，短线段也不会糊成一团。
+    /// 测距：两端带端点样式（默认横杠）的线段 + 中点标签。
+    /// 数值 / 单位 / 小数位 / 端点样式与比例照上游 <c>distance.rs</c>：默认厘米、0 位小数。
     /// </summary>
     public sealed class Distance : Mark
     {
-        public const double FontSize = 12;
-
         public Distance(Point a, Point b, Color color, double width)
+            : this(a, b, color, width, DistanceSpec.Default)
+        {
+        }
+
+        public Distance(Point a, Point b, Color color, double width, DistanceSpec spec)
         {
             A = a;
             B = b;
             Color = color;
             Width = width;
+            Spec = spec.Clamped();
         }
 
         public Point A { get; }
@@ -496,30 +500,37 @@ internal abstract class Mark
         public Color Color { get; }
         public double Width { get; }
 
-        /// <summary>端部刻度长度（DIP）。</summary>
-        public double Tick => Math.Max(10, Width * 3);
+        /// <summary>单位 / 系数 / 小数位 / 端点样式。</summary>
+        public DistanceSpec Spec { get; }
+
+        /// <summary>线段长度（DIP）。</summary>
+        public double Length => (B - A).Length;
+
+        /// <summary>标签字号：上游 <c>20 × √(线宽 / 2)</c>。</summary>
+        public double FontSize => MeasureLabel.FontSize(Width);
 
         public Point Midpoint => new((A.X + B.X) / 2, (A.Y + B.Y) / 2);
 
-        /// <summary>标签文字：长度按缩放换成物理像素。</summary>
-        public string LabelText(double scale) =>
-            Math.Round((B - A).Length * (scale <= 0 ? 1 : scale)).ToString("0");
+        /// <summary>标签文字：长度按物理缩放 × 系数，再带单位后缀。</summary>
+        public string LabelText(double scale) => MeasureLabel.Distance(
+            Length, scale <= 0 ? 1 : scale, Spec.Factor, Spec.Unit, Spec.Decimals);
 
         public Size LabelSize(double scale) => MarkGeometry.MeasureText(LabelText(scale), FontSize);
 
-        /// <summary>标签框（中线正上方）。绘制与命中取同一个框。</summary>
+        /// <summary>标签框（上游把标签**居中放在中线上**，与线重叠；绘制与命中取同一个框）。</summary>
         public Rect LabelBox(double scale)
         {
             var size = LabelSize(scale);
-            return new Rect(Midpoint.X - size.Width / 2 - 4, Midpoint.Y - size.Height - 12,
-                size.Width + 8, size.Height + 4);
+            return new Rect(Midpoint.X - size.Width / 2 - 3, Midpoint.Y - size.Height / 2 - 1,
+                size.Width + 6, size.Height + 2);
         }
 
         public override Rect Bounds
         {
             get
             {
-                var box = MarkGeometry.Inflate(MarkGeometry.RectOf(A, B), Math.Max(Width / 2, Tick));
+                var box = MarkGeometry.Inflate(MarkGeometry.RectOf(A, B),
+                    Math.Max(Width / 2, ArrowInk.Size(Spec.Endpoint) * Spec.EndpointScale / 2));
                 box.Union(LabelBox(1));
                 return box;
             }
@@ -527,14 +538,15 @@ internal abstract class Mark
 
         public override Rect Frame => MarkGeometry.RectOf(A, B);
 
-        public override Mark MoveBy(Vector delta) => new Distance(A + delta, B + delta, Color, Width);
+        public override Mark MoveBy(Vector delta) => new Distance(A + delta, B + delta, Color, Width, Spec);
 
         public override Mark ScaleTo(Rect from, Rect to) => new Distance(
             MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(B, from, to), Color,
-            Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)));
+            Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)), Spec);
 
         public override bool HitTest(Point point, double tolerance) =>
-            MarkGeometry.NearSegment(point, A, B, Width / 2 + tolerance) ||
+            MarkGeometry.NearSegment(point, A, B, Math.Max(Width / 2 + tolerance,
+                ArrowInk.Size(Spec.Endpoint) * Spec.EndpointScale / 2)) ||
             LabelBox(1).Contains(point);
     }
 
@@ -544,9 +556,13 @@ internal abstract class Mark
     /// </summary>
     public sealed class Angle : Mark
     {
-        public const double FontSize = 12;
-
         public Angle(Point vertex, double radius, double bisector, double degrees, Color color, double width)
+            : this(vertex, radius, bisector, degrees, color, width, AngleSpec.Default)
+        {
+        }
+
+        public Angle(Point vertex, double radius, double bisector, double degrees, Color color, double width,
+            AngleSpec spec)
         {
             Vertex = vertex;
             Radius = radius;
@@ -554,10 +570,14 @@ internal abstract class Mark
             Degrees = Math.Clamp(degrees, 1, 359);
             Color = color;
             Width = width;
+            Spec = spec.Clamped();
         }
 
         /// <summary>用两条臂的三个点造一个角（顶点 + 两个臂上的点）。</summary>
-        public static Angle FromArms(Point vertex, Point p1, Point p2, Color color, double width)
+        public static Angle FromArms(Point vertex, Point p1, Point p2, Color color, double width) =>
+            FromArms(vertex, p1, p2, color, width, AngleSpec.Default);
+
+        public static Angle FromArms(Point vertex, Point p1, Point p2, Color color, double width, AngleSpec spec)
         {
             var v1 = p1 - vertex;
             var v2 = p2 - vertex;
@@ -568,7 +588,7 @@ internal abstract class Mark
             double open = reflex ? Math.PI * 2 - delta : delta;
             double bisector = MarkGeometry.NormalizeAngle(reflex ? a2 + open / 2 : a1 + open / 2);
             double radius = Math.Clamp((v1.Length + v2.Length) / 2, 24, 400);
-            return new Angle(vertex, radius, bisector, open * 180 / Math.PI, color, width);
+            return new Angle(vertex, radius, bisector, open * 180 / Math.PI, color, width, spec);
         }
 
         public Point Vertex { get; }
@@ -581,7 +601,23 @@ internal abstract class Mark
         public Color Color { get; }
         public double Width { get; }
 
+        /// <summary>角度类型 / 单位 / 小数位。</summary>
+        public AngleSpec Spec { get; }
+
+        /// <summary>标签字号：上游 <c>20 × √(线宽 / 2)</c>。</summary>
+        public double FontSize => MeasureLabel.FontSize(Width);
+
         private double Open => Degrees * Math.PI / 180;
+
+        /// <summary>实际画出的圆弧张角：内角模式下大于 180° 的角画补角（上游 <c>Interior</c>）。</summary>
+        public double ShownOpen =>
+            Spec.Kind == AngleKind.Interior && Open > Math.PI ? Math.PI * 2 - Open : Open;
+
+        /// <summary>圆弧的角平分线：内角折过去时落在另一侧。</summary>
+        public double ShownBisector =>
+            Spec.Kind == AngleKind.Interior && Open > Math.PI
+                ? MarkGeometry.NormalizeAngle(Bisector + Math.PI)
+                : Bisector;
 
         public Point A => MarkGeometry.Polar(Vertex, Bisector - Open / 2, Radius);
         public Point B => MarkGeometry.Polar(Vertex, Bisector + Open / 2, Radius);
@@ -589,9 +625,13 @@ internal abstract class Mark
         /// <summary>圆弧半径（臂长的 55%，短臂也不会跑到臂外）。</summary>
         public double ArcRadius => Math.Clamp(Radius * 0.55, 14, 90);
 
-        public string LabelText => Math.Round(Degrees).ToString("0") + "°";
+        public Point ArcStart => MarkGeometry.Polar(Vertex, ShownBisector - ShownOpen / 2, ArcRadius);
+        public Point ArcEnd => MarkGeometry.Polar(Vertex, ShownBisector + ShownOpen / 2, ArcRadius);
 
-        public Point LabelAt => MarkGeometry.Polar(Vertex, Bisector, ArcRadius + 16);
+        /// <summary>标签文字（度带 <c>°</c>、弧度带 <c>" rad"</c>，小数位由参数决定）。</summary>
+        public string LabelText => MeasureLabel.Angle(Open, Spec.Kind, Spec.Unit, Spec.Decimals);
+
+        public Point LabelAt => MarkGeometry.Polar(Vertex, ShownBisector, ArcRadius + FontSize * 0.9);
 
         public Rect LabelBox
         {
@@ -605,7 +645,7 @@ internal abstract class Mark
         }
 
         public Angle WithDegrees(double degrees) =>
-            new(Vertex, Radius, Bisector, degrees, Color, Width);
+            new(Vertex, Radius, Bisector, degrees, Color, Width, Spec);
 
         public override Rect Bounds
         {
@@ -622,13 +662,13 @@ internal abstract class Mark
         public override Rect Frame => MarkGeometry.RectOf(A, B);
 
         public override Mark MoveBy(Vector delta) =>
-            new Angle(Vertex + delta, Radius, Bisector, Degrees, Color, Width);
+            new Angle(Vertex + delta, Radius, Bisector, Degrees, Color, Width, Spec);
 
         public override Mark ScaleTo(Rect from, Rect to)
         {
             double scale = MarkGeometry.ScaleOf(from, to);
             return new Angle(MarkGeometry.MapPoint(Vertex, from, to), Math.Max(18, Radius * scale),
-                Bisector, Degrees, Color, Math.Max(0.5, Width * scale));
+                Bisector, Degrees, Color, Math.Max(0.5, Width * scale), Spec);
         }
 
         public override bool HitTest(Point point, double tolerance)
@@ -639,35 +679,77 @@ internal abstract class Mark
         }
     }
 
-    /// <summary>括号：一条主线 + 两端垂直刻度（相当于不带数字的测距）。</summary>
+    /// <summary>
+    /// 括号：**花括号**（上游 <c>bracket.rs</c>：三点定义 a 起 / c 尖 / b 止，四段三次贝塞尔）。
+    /// 拖拽时按上游 <c>process_bracket_creation_pointer_event</c> 把「起点 → 终点」换算成三点：
+    /// 首尾落在起点的 x 上、纵向撑满，尖落在终点的 x 与中线上——所以开口朝拖动方向。
+    /// </summary>
     public sealed class Bracket : Mark
     {
-        public Bracket(Point a, Point b, Color color, double width)
+        private readonly BracketInk.Cubic[]? _segments;
+
+        /// <summary>
+        /// 拖拽成形（上游 <c>process_bracket_creation_pointer_event</c>）：
+        /// 首尾落在起点的 y 两端、纵向撑满，尖在终点的 x 与中线——开口朝拖动方向。
+        /// </summary>
+        public Bracket(Point start, Point end, Color color, double width)
+            : this(new Point(start.X, Math.Min(start.Y, end.Y)),
+                new Point(end.X, (start.Y + end.Y) / 2),
+                new Point(start.X, Math.Max(start.Y, end.Y)), color, width)
+        {
+        }
+
+        /// <summary>三点成形（移动 / 缩放 / 反序列化走这条）。</summary>
+        public Bracket(Point a, Point apex, Point b, Color color, double width)
         {
             A = a;
+            Apex = apex;
             B = b;
             Color = color;
             Width = width;
+            _segments = BracketInk.Segments(A, Apex, B);
         }
 
+        /// <summary>起点（花括号的一端）。</summary>
         public Point A { get; }
+
+        /// <summary>尖（花括号中间那个凸起）。</summary>
+        public Point Apex { get; }
+
+        /// <summary>终点（另一端）。</summary>
         public Point B { get; }
+
         public Color Color { get; }
         public double Width { get; }
 
-        public double Tick => Math.Max(10, Width * 3);
+        /// <summary>四段弧（退化时为空，绘制 / 命中都当没有）。</summary>
+        public BracketInk.Cubic[] Segments => _segments ?? Array.Empty<BracketInk.Cubic>();
 
-        public override Rect Bounds => MarkGeometry.Inflate(MarkGeometry.RectOf(A, B), Math.Max(Width / 2, Tick));
-        public override Rect Frame => MarkGeometry.RectOf(A, B);
+        public override Rect Bounds => _segments == null
+            ? MarkGeometry.Inflate(MarkGeometry.RectOf(A, B), Width / 2 + 2)
+            : BracketInk.Bounds(_segments, Width);
 
-        public override Mark MoveBy(Vector delta) => new Bracket(A + delta, B + delta, Color, Width);
+        public override Rect Frame
+        {
+            get
+            {
+                var box = MarkGeometry.RectOf(A, B);
+                box.Union(Apex);
+                return box;
+            }
+        }
+
+        public override Mark MoveBy(Vector delta) =>
+            new Bracket(A + delta, Apex + delta, B + delta, Color, Width);
 
         public override Mark ScaleTo(Rect from, Rect to) => new Bracket(
-            MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(B, from, to), Color,
-            Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)));
+            MarkGeometry.MapPoint(A, from, to), MarkGeometry.MapPoint(Apex, from, to),
+            MarkGeometry.MapPoint(B, from, to), Color, Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)));
 
         public override bool HitTest(Point point, double tolerance) =>
-            MarkGeometry.NearSegment(point, A, B, Math.Max(Width / 2 + tolerance, Tick / 2));
+            _segments != null
+                ? BracketInk.Hit(_segments, point, Width / 2 + tolerance)
+                : MarkGeometry.NearSegment(point, A, B, Width / 2 + tolerance);
     }
 
     /// <summary>
