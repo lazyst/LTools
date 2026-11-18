@@ -806,6 +806,29 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 - **默认值**：`settings.json` 的 `TextRecognition` 段（`DefaultFormatting` / `DefaultPunctuation`），
   进文字编辑先应用一次（上游 `applyInitialTransforms`）；在识别窗换下拉即写默认值，下次还是这个。
 
+### 10.9 译文渲进原图 / 复制译文图 / 翻译前版面处理（P4-h）
+
+照上游 `screenshotrecognitionimage.cpp` 的 `renderScreenshotRecognitionImage`（底图 + 逐行文字 → 一张图）
+与三个设置项：
+
+| 设置（上游键） | 行为 |
+| --- | --- |
+| `translation.original-image`（`OriginalImage`） | 译文画进原图：画布底图与导出图的底都是截图，原文字被逐行估出来的底色盖住，再按估出的字色画译文 |
+| `translation.copy-results-as-image`（`CopyAsImage`） | 复制译文时把渲好的 `RenderTargetBitmap` 写进剪贴板（`PNG` + `CF_DIB`），按钮文案变「复制译文图」；关着复制文本 |
+| `translation.layout-processing`（`LayoutProcessing`） | `smart_merge`（默认）先把断行接成段落再翻，落点 = 成员行框并集、字号 = 成员行中位（上游 `fontSizeCapRatio`）；`original` 逐行翻逐行摆 |
+
+- **同一套绘制**：画布（`CaptureOcrCanvas`）与导出图（`OcrImageRenderer`）都走 `OcrTextPaint`
+  （字号拟合 / 底色 / 字色 / 折行），屏幕上看到的与复制出去的图一致；顺带修掉画布原来一直用黑字画的
+  缺陷（深底截图会看不见字）。
+- **合并段的字号**：`OcrTextLine.FontSize` 有值 = 合并段，按该字号排版并在段框里折行，不再按单行宽度
+  缩（否则一段话会被压到 6 px 下限）。
+- **分组规则只有一份**：`TranslationLayout.Prepare` 的 `smart_merge` 直接复用 P4-g 的智能分段
+  （`OcrTextTransform.Apply(..., Smart, None)`），所以「排版」下拉接出来的段落与翻译接出来的段落一致。
+- **平台差异**：上游先有「擦掉原文字」的干净底图；本地没有这一步，用「原图 + 行底色盖字」等价，
+  原字被盖住但底图不是修复过的像素（写进 `docs/CAPTURE_PARITY.md` §5）。
+- 设置框两个开关 + 一个下拉，保存后**立刻**作用到已显示的译文（换底图 / 换按钮文案），不必重翻；
+  「翻译前」下拉的说明跟着选项走。
+
 ## 11. 采集历史（P2-2 / P4）
 
 截图 / 识别 / 录屏的落点：数据根 `captures/`（`catalog.json` + `assets/<id>.png` + `thumbnails/<id>.png`

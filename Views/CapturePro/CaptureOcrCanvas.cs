@@ -24,15 +24,15 @@ namespace LTools.Views.CapturePro;
 /// </remarks>
 internal sealed class CaptureOcrCanvas : FrameworkElement
 {
-    private static readonly Typeface Face = new(new FontFamily("Microsoft YaHei UI, Segoe UI"),
-        FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
-
     private readonly Dictionary<int, FormattedText> _textCache = new();
     private readonly Dictionary<int, double> _sizeCache = new();
 
     private OcrTextEditModel? _model;
     private IReadOnlyList<OcrTextLine> _lines = Array.Empty<OcrTextLine>();
     private IReadOnlyList<string>? _translation;
+    private IReadOnlyList<OcrTextLine>? _translationLayer;
+    private ImageSource? _sourceImage;
+    private bool _translationOnImage;
 
     private int _hoverLine = -1;
     private int _dragLine = -1;
@@ -71,11 +71,24 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         _model = model;
         _lines = lines;
         _translation = null;
+        _translationLayer = null;
+        _translationOnImage = false;
         ImageWidth = Math.Max(1, imageWidth);
         ImageHeight = Math.Max(1, imageHeight);
         _model.Changed += OnModelChanged;
         ResetMeasure();
         InvalidateMeasure();
+        InvalidateVisual();
+    }
+
+    /// <summary>
+    /// 译文的底图（照上游 <c>originalImageTranslation</c>）：给了它且
+    /// <see cref="SetTranslation"/> 打开「画进原图」时，画布底色换成这张原图。
+    /// </summary>
+    public void SetSourceImage(ImageSource? image)
+    {
+        if (ReferenceEquals(_sourceImage, image)) return;
+        _sourceImage = image;
         InvalidateVisual();
     }
 
@@ -85,14 +98,31 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
     /// <summary>当前显示的译文行（没开翻译时为 null）。</summary>
     public IReadOnlyList<string>? TranslationLines => _translation;
 
+    /// <summary>译文落在哪些行框上（智能合并时行数比文字层少；没开翻译时为 null）。</summary>
+    public IReadOnlyList<OcrTextLine>? TranslationLayer => _translationLayer;
+
+    /// <summary>译文是不是画在截图上（上游 <c>originalImageTranslation</c>：底图换成原图）。</summary>
+    public bool TranslationOnImage => _translation != null && _translationOnImage;
+
     /// <summary>
     /// 把文字层换成译文 / 换回原文。译文模式下**只读**：不画选区与光标、点不中行，
     /// 这样译文不会被误编辑，划选仍交给窗口里的「复制译文」。
     /// </summary>
-    public void SetTranslation(IReadOnlyList<string>? lines)
+    /// <param name="lines">译文（null = 切回原文）。</param>
+    /// <param name="layer">译文落在哪些行框上（null = 与文字层一一对应）。</param>
+    /// <param name="onOriginalImage">译文画在截图上（底图换原图，照上游 originalImageTranslation）。</param>
+    public void SetTranslation(IReadOnlyList<string>? lines, IReadOnlyList<OcrTextLine>? layer = null,
+        bool onOriginalImage = false)
     {
-        if (ReferenceEquals(_translation, lines)) return;
+        if (ReferenceEquals(_translation, lines) && ReferenceEquals(_translationLayer, layer) &&
+            _translationOnImage == onOriginalImage)
+        {
+            return;
+        }
+
         _translation = lines;
+        _translationLayer = lines == null ? null : layer ?? _lines;
+        _translationOnImage = lines != null && onOriginalImage;
         _hoverLine = -1;
         _dragLine = -1;
         _dragging = false;
@@ -164,26 +194,34 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
     protected override void OnRender(DrawingContext dc)
     {
         var bounds = new Rect(0, 0, ImageWidth * Zoom, ImageHeight * Zoom);
-        dc.DrawRectangle(Brushes.White, null, bounds);
+
+        // 译文画进原图时底图是截图本身（上游 originalImageTranslation 的画布），
+        // 否则是白纸（文字层本身就是「重排后的文字」）。
+        if (TranslationOnImage && _sourceImage is ImageSource source)
+            dc.DrawImage(source, bounds);
+        else
+            dc.DrawRectangle(Brushes.White, null, bounds);
 
         dc.PushTransform(new ScaleTransform(Zoom, Zoom));
 
+        IReadOnlyList<OcrTextLine> layer = _translation != null ? _translationLayer ?? _lines : _lines;
         IReadOnlyList<string> text = _translation ?? _model?.Lines ?? Array.Empty<string>();
         var (selStartLine, selStartChar, selEndLine, selEndChar) = Selection();
 
-        for (int i = 0; i < _lines.Count; i++)
+        for (int i = 0; i < layer.Count; i++)
         {
-            OcrTextLine line = _lines[i];
+            OcrTextLine line = layer[i];
             string content = i < text.Count ? text[i] : line.Text;
             var box = new Rect(line.Box.X, line.Box.Y,
                 Math.Max(1, line.Box.Width), Math.Max(1, line.Box.Height));
 
             if (FillBackground)
-                dc.DrawRectangle(new SolidColorBrush(line.BackgroundColor.ToColor()), null, box);
+                dc.DrawRectangle(OcrTextPaint.Brush(line.BackgroundColor), null, box);
 
             if (content.Length == 0) continue;
 
-            FormattedText formatted = TextFor(i, content, box.Width);
+            FormattedText formatted = TextFor(i, content, line);
+            formatted.SetForegroundBrush(OcrTextPaint.Brush(line.TextColor));
             double top = box.Y + (box.Height - formatted.Height) / 2;
             var origin = new Point(box.X, top);
 
@@ -235,8 +273,8 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
                 continue;
             }
 
-            double x1 = box.X + PrefixWidth(i, content, from, box.Width);
-            double x2 = box.X + PrefixWidth(i, content, to, box.Width);
+            double x1 = box.X + PrefixWidth(i, line, content, from);
+            double x2 = box.X + PrefixWidth(i, line, content, to);
             if (x2 - x1 < 1.5) x2 = x1 + 1.5;
             dc.DrawRectangle(fill, null, new Rect(x1, top, x2 - x1, height));
         }
@@ -250,61 +288,48 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         OcrTextLine line = _lines[index];
         string content = index < text.Count ? text[index] : line.Text;
         int caret = Math.Clamp(_model.CaretChar, 0, content.Length);
-        double x = line.Box.X + PrefixWidth(index, content, caret, Math.Max(1, line.Box.Width));
+        double x = line.Box.X + PrefixWidth(index, line, content, caret);
         double height = Math.Max(4, line.Box.Height * 0.92);
         dc.DrawRectangle(PrimaryBrush(), null,
             new Rect(x, line.Box.Y + (line.Box.Height - height) / 2, 1.6, height));
     }
 
-    private FormattedText TextFor(int index, string content, double availableWidth)
+    private FormattedText TextFor(int index, string content, OcrTextLine line)
     {
+        double available = Math.Max(1, line.Box.Width);
         if (_textCache.TryGetValue(index, out FormattedText? cached) &&
-            cached.Text == content && Math.Abs(cached.MaxTextWidth - availableWidth) < 0.5)
+            cached.Text == content && Math.Abs(cached.MaxTextWidth - available) < 0.5)
         {
             return cached;
         }
 
-        OcrTextLine line = _lines[index];
-        double baseSize = Math.Clamp(line.Box.Height * 0.82, 6, 4096);
-        var probe = MakeText(content, baseSize);
-        double fitted = OcrTextLayer.FitFontSize(baseSize, probe.WidthIncludingTrailingWhitespace,
-            availableWidth);
-
-        FormattedText text = Math.Abs(fitted - baseSize) < 0.01 ? probe : MakeText(content, fitted);
-        text.MaxTextWidth = Math.Max(1, availableWidth);
-        text.MaxTextHeight = Math.Max(1, line.Box.Height * 1.6);
-        text.Trimming = TextTrimming.None;
-
+        (FormattedText text, double fitted) = OcrTextPaint.Fit(content, line, PixelsPerDip);
         _textCache[index] = text;
         _sizeCache[index] = fitted;
         return text;
     }
 
-    private FormattedText MakeText(string content, double size) =>
-        new(content, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-            Face, Math.Max(1, size), Brushes.Black,
-            VisualTreeHelper.GetDpi(this).PixelsPerDip);
+    private double PixelsPerDip => VisualTreeHelper.GetDpi(this).PixelsPerDip;
 
     /// <summary>前 <paramref name="count"/> 个字符的宽度（源图像素）。</summary>
-    private double PrefixWidth(int index, string content, int count, double availableWidth)
+    private double PrefixWidth(int index, OcrTextLine line, string content, int count)
     {
         if (count <= 0) return 0;
-        if (count >= content.Length) return TextFor(index, content, availableWidth).WidthIncludingTrailingWhitespace;
+        if (count >= content.Length)
+            return TextFor(index, content, line).WidthIncludingTrailingWhitespace;
 
-        double size = BestSize(index, content, availableWidth);
-        var prefix = new FormattedText(content[..count], CultureInfo.CurrentUICulture,
-            FlowDirection.LeftToRight, Face, size, Brushes.Black,
-            VisualTreeHelper.GetDpi(this).PixelsPerDip);
-        return prefix.WidthIncludingTrailingWhitespace;
+        double size = BestSize(index, content, line);
+        return OcrTextPaint.Create(content[..count], size, PixelsPerDip)
+            .WidthIncludingTrailingWhitespace;
     }
 
-    private double BestSize(int index, string content, double availableWidth)
+    private double BestSize(int index, string content, OcrTextLine line)
     {
         if (_sizeCache.TryGetValue(index, out double size)) return size;
 
-        TextFor(index, content, availableWidth);
+        TextFor(index, content, line);
         if (_sizeCache.TryGetValue(index, out size)) return size;
-        return Math.Max(1, _lines[index].Box.Height * 0.82);
+        return line.FontSize ?? Math.Max(1, line.Box.Height * 0.82);
     }
 
     // ============ 命中 ============
@@ -441,19 +466,14 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         if (content.Length == 0 || x <= 0) return 0;
 
         double available = Math.Max(1, _lines[line].Box.Width);
-        double size = BestSize(line, content, available);
-        var single = new FormattedText(content, CultureInfo.CurrentUICulture,
-            FlowDirection.LeftToRight, Face, size, Brushes.Black,
-            VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        double size = BestSize(line, content, _lines[line]);
 
         // 二分：宽度随字符数单调增长
         int low = 0, high = content.Length;
         while (low < high)
         {
             int middle = (low + high + 1) / 2;
-            var prefix = new FormattedText(content[..middle], CultureInfo.CurrentUICulture,
-                FlowDirection.LeftToRight, Face, size, Brushes.Black,
-                VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            var prefix = OcrTextPaint.Create(content[..middle], size, PixelsPerDip);
             if (prefix.WidthIncludingTrailingWhitespace <= x) low = middle;
             else high = middle - 1;
         }

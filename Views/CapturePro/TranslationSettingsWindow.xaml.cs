@@ -46,6 +46,18 @@ public partial class TranslationSettingsWindow : Window
         SelectTag(SourceBox, TranslationLanguages.NormalizeSource(config.Source));
         SelectTag(TargetBox, TranslationLanguages.Normalize(config.Target));
 
+        OriginalImageBox.IsChecked = TranslationStore.OriginalImage;
+        CopyAsImageBox.IsChecked = TranslationStore.CopyAsImage;
+        foreach (string key in TranslationLayout.Keys)
+            LayoutBox.Items.Add(new ComboBoxItem { Content = TranslationLayout.LabelOf(key), Tag = key });
+        SelectTag(LayoutBox, TranslationStore.Layout);
+        LayoutBox.SelectionChanged += (_, _) =>
+        {
+            LayoutHint.Text = TranslationLayout.Describe(TagOf(LayoutBox) as string);
+            // 「画进原图」只在翻译页有意义，但复制成图片两个模式都能用，所以两者互不牵制
+        };
+        LayoutHint.Text = TranslationLayout.Describe(TagOf(LayoutBox) as string);
+
         Loaded += (_, _) => EndpointBox.Focus();
     }
 
@@ -143,7 +155,8 @@ public partial class TranslationSettingsWindow : Window
             return;
         }
 
-        TranslationStore.Save(config);
+        TranslationStore.SaveWithDisplay(config, OriginalImageBox.IsChecked == true,
+            CopyAsImageBox.IsChecked == true, TagOf(LayoutBox) as string);
         DialogResult = true;
         Close();
     }

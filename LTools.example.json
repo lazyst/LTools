@@ -165,7 +165,10 @@
     "ApiKey": null,
     "Target": "zh-CN",
     "Source": "auto",
-    "TimeoutMs": 30000
+    "TimeoutMs": 30000,
+    "OriginalImage": false,
+    "CopyAsImage": false,
+    "LayoutProcessing": "smart_merge"
   },
   "TextRecognition": {
     "DefaultFormatting": "none",

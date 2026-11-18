@@ -188,6 +188,7 @@ internal static class OcrTextTransform
                 TextColor = span.TextColor,
                 HasTextColor = span.HasTextColor,
                 BackgroundColor = span.BackgroundColor,
+                FontSize = span.FontSize,
             });
         }
 
@@ -231,7 +232,8 @@ internal static class OcrTextTransform
             if (i < layer.Count) boxes.Add(layer[i].Box);
         }
 
-        return new Span(sb.ToString(), Union(boxes, layer));
+        return new Span(sb.ToString(), Union(boxes, layer), layer.Count > 0 ? layer[0] : null,
+            MedianBaseFont(layer));
     }
 
     /// <summary>
@@ -249,15 +251,19 @@ internal static class OcrTextTransform
 
         var current = new StringBuilder();
         var boxes = new List<Int32Rect>(4);
+        var members = new List<OcrTextLine>(4);
+        OcrTextLine? first = null;
         int currentHeight = 0;
         int bottom = 0;
 
         void Flush()
         {
             if (current.Length == 0 && boxes.Count == 0) return;
-            spans.Add(new Span(current.ToString(), Union(boxes, layer)));
+            spans.Add(new Span(current.ToString(), Union(boxes, layer), first, MedianBaseFont(members)));
             current.Clear();
             boxes.Clear();
+            members.Clear();
+            first = null;
             currentHeight = 0;
             bottom = 0;
         }
@@ -282,13 +288,37 @@ internal static class OcrTextTransform
             if (current.Length > 0) ConversionDocument.JoinText(current, text);
             else current.Append(text);
 
+            first ??= line;
             boxes.Add(line.Box);
+            members.Add(line);
             currentHeight = line.Box.Height;
             bottom = line.Box.Y + line.Box.Height;
         }
 
         Flush();
         return spans;
+    }
+
+    /// <summary>
+    /// 合并出来的段用哪个起始字号：成员行字号（槽高 82%）的中位数。
+    /// </summary>
+    /// <remarks>
+    /// 照上游 <c>setScreenshotOcrTranslationFontCaps</c>（<c>fontSizeCapRatio</c> = 成员行字号的
+    /// 中位数）：段框比单行高得多，按框高给字号会把一段字撑成一两行巨字。
+    /// 单行段返回 <c>null</c>，仍按槽高算（与不合并时完全一致）。
+    /// </remarks>
+    private static double? MedianBaseFont(IReadOnlyList<OcrTextLine> lines)
+    {
+        if (lines.Count <= 1) return null;
+
+        var sizes = new List<double>(lines.Count);
+        foreach (OcrTextLine line in lines)
+            sizes.Add(line.FontSize is > 0
+                ? line.FontSize.Value
+                : Math.Max(6, line.Box.Height * 0.82));
+
+        sizes.Sort();
+        return (sizes[(sizes.Count - 1) / 2] + sizes[sizes.Count / 2]) / 2;
     }
 
     private static Int32Rect Union(List<Int32Rect> boxes, IReadOnlyList<OcrTextLine> layer)
@@ -307,13 +337,20 @@ internal static class OcrTextTransform
         return new Int32Rect(left, top, Math.Max(1, right - left), Math.Max(1, bottom - top));
     }
 
-    /// <summary>分组结果：合并出来的文本 + 成员行框的并集 + 取第一行的颜色。</summary>
+    /// <summary>分组结果：合并出来的文本 + 成员行框的并集 + 取第一行的颜色 / 字号。</summary>
     private sealed class Span
     {
-        public Span(string text, Int32Rect box)
+        public Span(string text, Int32Rect box, OcrTextLine? first = null, double? fontSize = null)
         {
             Text = text;
             Box = box;
+            FontSize = fontSize;
+            if (first == null) return;
+
+            TextColor = first.TextColor;
+            HasTextColor = first.HasTextColor;
+            BackgroundColor = first.BackgroundColor;
+            FontSize ??= first.FontSize;
         }
 
         public Span(string text, OcrTextLine source)
@@ -323,6 +360,7 @@ internal static class OcrTextTransform
             TextColor = source.TextColor;
             HasTextColor = source.HasTextColor;
             BackgroundColor = source.BackgroundColor;
+            FontSize = source.FontSize;
         }
 
         public string Text { get; }
@@ -330,5 +368,6 @@ internal static class OcrTextTransform
         public Rgb TextColor { get; } = Rgb.Black;
         public bool HasTextColor { get; }
         public Rgb BackgroundColor { get; } = Rgb.White;
+        public double? FontSize { get; }
     }
 }

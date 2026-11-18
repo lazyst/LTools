@@ -33,4 +33,22 @@ public sealed class TranslationFile
 
     /// <summary>单次请求超时（毫秒，1000–120000，默认 30000）。</summary>
     public int TimeoutMs { get; set; } = 30000;
+
+    /// <summary>
+    /// 译文画进原图（照上游 <c>screenshot_translation/original_image_translation</c>）：
+    /// 打开后译文直接铺在截图的原图上（原文字被逐行底色盖住），适合把结果当图片看 / 贴走。
+    /// </summary>
+    public bool OriginalImage { get; set; }
+
+    /// <summary>
+    /// 复制译文时复制成图片（照上游 <c>screenshot_translation/copy_translation_results_as_image</c>）：
+    /// 关着复制纯文本，打开把渲染好的图（原图 + 译文）放进剪贴板。
+    /// </summary>
+    public bool CopyAsImage { get; set; }
+
+    /// <summary>
+    /// 翻译前怎么处理断行（照上游 <c>screenshot_translation/layout_processing</c>）：
+    /// <c>smart_merge</c>（默认）= 先按版面接成段落再翻，<c>original</c> = 逐行翻。
+    /// </summary>
+    public string? LayoutProcessing { get; set; }
 }

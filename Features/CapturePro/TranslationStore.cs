@@ -25,22 +25,76 @@ internal static class TranslationStore
         }
     }
 
+    /// <summary>译文画进原图（照上游 <c>screenshot_translation/original_image_translation</c>）。</summary>
+    public static bool OriginalImage => Load().OriginalImage;
+
+    /// <summary>复制译文时复制成图片（照上游 <c>copy_translation_results_as_image</c>）。</summary>
+    public static bool CopyAsImage => Load().CopyAsImage;
+
+    /// <summary>翻译前的版面处理（<c>smart_merge</c> / <c>original</c>）。</summary>
+    public static string Layout => TranslationLayout.Normalize(Load().LayoutProcessing);
+
     public static void Save(TranslationConfig config)
+    {
+        Modify(file =>
+        {
+            file.Endpoint = config.Endpoint;
+            file.Model = config.Model;
+            file.ApiKey = config.ApiKey;
+            file.Target = config.Target;
+            file.Source = config.Source;
+            file.TimeoutMs = config.TimeoutMs;
+        });
+    }
+
+    /// <summary>设置框「保存」：端点 / 语言与三个显示选项一次写完（只动 <c>settings.json</c>）。</summary>
+    public static void SaveWithDisplay(TranslationConfig config, bool originalImage,
+        bool copyAsImage, string? layout)
+    {
+        string normalized = TranslationLayout.Normalize(layout);
+        Modify(file =>
+        {
+            file.Endpoint = config.Endpoint;
+            file.Model = config.Model;
+            file.ApiKey = config.ApiKey;
+            file.Target = config.Target;
+            file.Source = config.Source;
+            file.TimeoutMs = config.TimeoutMs;
+            file.OriginalImage = originalImage;
+            file.CopyAsImage = copyAsImage;
+            file.LayoutProcessing = normalized;
+        });
+    }
+
+    /// <summary>译文画进原图（只动这一个字段）。</summary>
+    public static void SetOriginalImage(bool on) => Modify(file => file.OriginalImage = on);
+
+    /// <summary>复制译文时复制成图片（只动这一个字段）。</summary>
+    public static void SetCopyAsImage(bool on) => Modify(file => file.CopyAsImage = on);
+
+    /// <summary>翻译前的版面处理（只动这一个字段；不认识的值回落到智能合并）。</summary>
+    public static void SetLayout(string? layout)
+    {
+        string normalized = TranslationLayout.Normalize(layout);
+        Modify(file => file.LayoutProcessing = normalized);
+    }
+
+    /// <summary>
+    /// 就地改字段：**别用 <c>new TranslationFile</c> 整体替换**，那样会把别处刚写进去、
+    /// 这段代码还不知道的字段（译文画进原图 / 复制成图片 / 版面处理，以后还会更多）一起抹掉。
+    /// </summary>
+    private static void Modify(Action<TranslationFile> change)
     {
         try
         {
-            var file = new TranslationFile
+            static void Apply(SettingsFile settings, Action<TranslationFile> change)
             {
-                Endpoint = config.Endpoint,
-                Model = config.Model,
-                ApiKey = config.ApiKey,
-                Target = config.Target,
-                Source = config.Source,
-                TimeoutMs = config.TimeoutMs,
-            };
+                settings.Translation ??= new TranslationFile();
+                change(settings.Translation);
+            }
 
-            if (string.IsNullOrEmpty(ConfigStore.ConfigPath)) SettingsStore.Modify(d => d.Translation = file);
-            else SettingsStore.Modify(ConfigStore.ConfigPath, d => d.Translation = file);
+            if (string.IsNullOrEmpty(ConfigStore.ConfigPath)) SettingsStore.Modify(d => Apply(d, change));
+            else SettingsStore.Modify(ConfigStore.ConfigPath, d => Apply(d, change));
         }
         catch (Exception ex)
         {

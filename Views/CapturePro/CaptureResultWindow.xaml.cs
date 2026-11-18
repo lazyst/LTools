@@ -189,6 +189,7 @@ public partial class CaptureResultWindow : Window
         _ocrWidth = width;
         _ocrHeight = height;
         OcrCanvas.Attach(model, _layer, width, height);
+        OcrCanvas.SetSourceImage(_image);
         OcrCanvas.SelectionChanged += RefreshStatus;
         OcrCanvas.LineEditRequested += _ => RefreshStatus();
 
@@ -688,9 +689,19 @@ public partial class CaptureResultWindow : Window
                 CopyDocument();
                 break;
             default:
-                // 译文模式：复制整段译文（逐行）
+                // 译文模式：复制整段译文（逐行）；开了「复制成图片」就把渲染好的图放进剪贴板
                 if (_translatedLines != null)
                 {
+                    if (TranslationStore.CopyAsImage && RenderTranslationImage() is { } image)
+                    {
+                        if (NativeClipboard.SetImage(image))
+                            ToastService.Show("已复制译文图", "识别结果", 1600);
+                        else
+                            ToastService.Show("复制失败（剪贴板被占用）", "识别结果", 0,
+                                ToastKind.error);
+                        break;
+                    }
+
                     Copy(string.Join("\r\n", _translatedLines), "译文");
                     break;
                 }

@@ -25,6 +25,16 @@ internal sealed class OcrTextLine
 
     /// <summary>估出来的底色（文字层铺在它上面）。</summary>
     public Rgb BackgroundColor { get; init; } = Rgb.White;
+
+    /// <summary>
+    /// 起始字号（源图像素）；<c>null</c> = 按槽高的 82% 算。
+    /// </summary>
+    /// <remarks>
+    /// 排版 / 翻译把多行合并成一段时，段框比单行高得多，再按槽高给字号会大得离谱
+    /// （上游用 <c>fontSizeCapRatio</c> 取成员行字号的中位数，并在段框里折行）。这里就是那个中位数：
+    /// 设了它之后行内文字按这个字号排版并在框里折行，不再按单行宽度缩。
+    /// </remarks>
+    public double? FontSize { get; init; }
 }
 
 /// <summary>

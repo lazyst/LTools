@@ -83,6 +83,23 @@
                 </StackPanel>
             </Grid>
 
+            <TextBlock Text="显示" Style="{StaticResource SectionLabel}" Margin="0,14,0,0"/>
+            <CheckBox x:Name="OriginalImageBox" Margin="0,6,0,0"
+                      Content="译文画进原图（原文字被底色盖住，直接看整段译文）"/>
+            <CheckBox x:Name="CopyAsImageBox" Margin="0,6,0,0"
+                      Content="复制译文时复制成图片（原图 + 译文）"/>
+            <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="翻译前" VerticalAlignment="Center"
+                           Style="{StaticResource SectionLabel}"/>
+                <ComboBox x:Name="LayoutBox" Grid.Column="1" Height="28" Margin="10,0,0,0"/>
+            </Grid>
+            <TextBlock x:Name="LayoutHint" Style="{StaticResource HintLabel}" Margin="0,4,0,0"
+                       TextWrapping="Wrap" Text="分组识别出来的断行后再翻译，长句在段框里折行。"/>
+
             <TextBlock x:Name="TestText" Style="{StaticResource HintLabel}" Margin="0,10,0,0"
                        TextWrapping="Wrap"/>
         </StackPanel>
