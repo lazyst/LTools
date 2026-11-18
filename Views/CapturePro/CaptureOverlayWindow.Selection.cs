@@ -45,7 +45,7 @@ public partial class CaptureOverlayWindow
     private Point _marqueeStart;
     private int[]? _marqueeBase;
 
-    private enum DragMode { None, New, Move, Resize, Draw, Erase, Mark, MarkResize, MagnifierLens, Lasso, Marquee }
+    private enum DragMode { None, New, Move, Resize, Draw, Erase, Mark, MarkResize, MagnifierLens, Lasso, Marquee, SmartPress }
 
     private void Window_MouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -111,6 +111,20 @@ public partial class CaptureOverlayWindow
         {
             AddSelectionPoint(p, e.ClickCount);
             e.Handled = true;
+            return;
+        }
+
+        // 智能选区预选态（上游 handleIntelligentSelectionPress）：按下只记账——
+        // 松手还在这一块里 = 确认；拖动超过阈值 = 从按下点开始手拖框选。
+        if (_smartPreviewActive)
+        {
+            _pressAt = p;
+            _pressMoved = false;
+            _pressTarget = null;
+            _origin = p;
+            _smart.BeginPress(p, _smart.CurrentSelection);
+            _drag = DragMode.SmartPress;
+            StartDrag(e, Cursors.Cross);
             return;
         }
 
@@ -395,7 +409,7 @@ public partial class CaptureOverlayWindow
                 UpdateAutoFilterHover(p);      // 光标下那一块点亮（上游 region_at）
                 return;
             }
-            if (!IsValid(_sel)) UpdateHover(p);
+            if (!IsValid(_sel) || _smartPreviewActive) UpdateHover(p);
             return;
         }
 
@@ -406,24 +420,8 @@ public partial class CaptureOverlayWindow
         switch (_drag)
         {
             case DragMode.New:
-            {
-                // 拖出来的边角吸附到附近窗口 / 控件的边（Ctrl 临时关闭）；还没有选区时 Shift 锁正方形。
-                // 锁了比例时**不走吸附**（上游同口径：锁定几何自己按比例推，被边吸一下就变形）。
-                double ratio = DragRatio(marquee: true);
-                if (ratio > 0)
-                {
-                    _liveRect = AspectLock.Marquee(_origin, p,
-                        new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight)), ratio);
-                }
-                else
-                {
-                    Point end = SnapPoint(p);
-                    if (_squareDrag) end = SquareOf(_origin, end);
-                    _liveRect = RectFrom(_origin, end);
-                }
-                RefreshSelection();
+                UpdateNewDrag(p);
                 break;
-            }
             case DragMode.Lasso:
                 // 自由选区：补点 + 外接框跟着走（画面上画的是那条虚线，不是这个框）
                 SelectionShape.Append(_lasso, p);
@@ -465,10 +463,38 @@ public partial class CaptureOverlayWindow
             case DragMode.Marquee:
                 UpdateMarkMarquee(p);
                 break;
+            case DragMode.SmartPress:
+                // 预选态按住拖 = 手拖框选：从**按下点**起框（上游 beginSelectionDrag(pressPosition, Marquee)）
+                if (_smart.ShouldStartManualDrag(p, PressSlop))
+                {
+                    BeginSmartMarquee(_smart.PressPosition);
+                    UpdateNewDrag(p);
+                }
+                break;
         }
 
         UpdateChrome();
         e.Handled = true;
+    }
+
+    /// <summary>正在拖一块新矩形（新框 / 加区 / 减区 / 智能选区转手拖）：算这一格的几何。</summary>
+    private void UpdateNewDrag(Point p)
+    {
+        // 拖出来的边角吸附到附近窗口 / 控件的边（Ctrl 临时关闭）；还没有选区时 Shift 锁正方形。
+        // 锁了比例时**不走吸附**（上游同口径：锁定几何自己按比例推，被边吸一下就变形）。
+        double ratio = DragRatio(marquee: true);
+        if (ratio > 0)
+        {
+            _liveRect = AspectLock.Marquee(_origin, p,
+                new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight)), ratio);
+        }
+        else
+        {
+            Point end = SnapPoint(p);
+            if (_squareDrag) end = SquareOf(_origin, end);
+            _liveRect = RectFrom(_origin, end);
+        }
+        RefreshSelection();
     }
 
     private void Window_MouseUp(object sender, MouseButtonEventArgs e)
@@ -544,6 +570,21 @@ public partial class CaptureOverlayWindow
             case DragMode.Marquee:
                 CommitMarkMarquee(p);
                 break;
+
+            case DragMode.SmartPress:
+            {
+                // 松手还在预选里 = 确认这一块；否则重新命中（上游 handleIntelligentSelectionRelease）
+                Rect pressed = _smart.TakePressSelection();
+                Rect target = SmartSelectionTransition.HasSelection(pressed)
+                    ? pressed
+                    : _smart.CurrentSelection;
+
+                if (SmartSelectionTransition.HasSelection(target) && target.Contains(p))
+                    ConfirmSmartSelection(target);
+                else
+                    UpdateHover(p);
+                break;
+            }
         }
 
         _pressTarget = null;
@@ -567,6 +608,7 @@ public partial class CaptureOverlayWindow
         else if (_drag == DragMode.Marquee) CancelMarkMarquee();
         else if (_drag is DragMode.Draw or DragMode.Erase) Surface.Preview = null;
         else if (_drag == DragMode.Lasso) _lasso.Clear();
+        else if (_drag == DragMode.SmartPress) _smart.ClearPress();
 
         if (_tool == CaptureTool.AutoFilter) CancelAutoFilterGesture();
 
@@ -585,6 +627,13 @@ public partial class CaptureOverlayWindow
     private void RefreshCursor(Point p)
     {
         if (_textEditing) return;
+
+        // 智能选区预选态：光标就是「十字 + 单击确认」，不该出现缩放 / 移动的箭头
+        if (SmartPreviewActive)
+        {
+            Cursor = Cursors.Cross;
+            return;
+        }
 
         FrameHandle hit = HitTest(p);
         FrameHandle markHit = MarkHandleAt(p);
@@ -849,6 +898,7 @@ public partial class CaptureOverlayWindow
     {
         _drag = DragMode.None;
         CancelSelectionPolyline();
+        EndSmartPreviewKeepingSelection();     // 全屏 = 明确的选区，智能选区暂停
         SetSingleRect(new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight)));
         UpdateChrome();
     }

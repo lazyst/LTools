@@ -67,6 +67,12 @@ public partial class CaptureOverlayWindow
         bool hasSelection = !pending && geometry != null && _sel is Rect current && IsValid(current);
         Rect sel = hasSelection ? _sel!.Value : Rect.Empty;
 
+        // 智能选区预选：选区本身是真的（Enter / 导出都用它），画面几何走过渡插值
+        bool smart = SmartPreviewActive && hasSelection;
+        Rect shown = smart && SmartSelectionTransition.HasSelection(_smartFx.Displayed)
+            ? _smartFx.Displayed
+            : sel;
+
         // 悬停高亮只在「还没选区」时出现；有选区时用户在看边角，不需要再跳候选
         Rect hover = Rect.Empty;
         if (!hasSelection && !pending && _regions.Count == 0 && _hoverTarget is SnapBox hb)
@@ -75,8 +81,8 @@ public partial class CaptureOverlayWindow
             if (hr.Width >= 2 && hr.Height >= 2) hover = hr;
         }
 
-        Surface.Selection = sel;
-        Surface.SelectionGeometry = geometry;
+        Surface.Selection = shown;
+        Surface.SelectionGeometry = smart ? new RectangleGeometry(shown) : geometry;
         Surface.PendingPolygon = PendingShape();
         Surface.Hover = hover;
         Surface.ShowHandles = ShowsMarkHandles;
@@ -84,8 +90,9 @@ public partial class CaptureOverlayWindow
         RefreshAutoFilterAvailability();     // 「填充区域」跟着选区 / 识别结果走
 
         // 形状条 = 「下一块的形状」，**框过之后也常驻**：加区 / 减区也要先选形状。
-        // 只在拖动 / 画标注、折线待收尾、贴图内标注、翻历史、打字时收起来。
-        bool shapeBar = !pending && _drag == DragMode.None && !_textEditing && !EditOnly && !BrowsingHistory;
+        // 只在拖动 / 画标注、折线待收尾、贴图内标注、翻历史、打字、智能选区预选时收起来。
+        bool shapeBar = !pending && _drag == DragMode.None && !_textEditing && !EditOnly &&
+                        !BrowsingHistory && !smart;
         ShapeBar.Visibility = shapeBar ? Visibility.Visible : Visibility.Collapsed;
         if (shapeBar)
         {
@@ -108,7 +115,18 @@ public partial class CaptureOverlayWindow
         }
 
         HideDetect();
-        PositionGrips(sel, true);
+        PositionGrips(shown, true);
+
+        if (smart)
+        {
+            // 预选态：主工具条整条收起、信息条只读、提示改成智能选区那一句（照上游 hideToolbar）
+            Toolbar.SetActionsVisible(false);
+            HideToolbar();
+            ShowSelectionBar(shown);
+            RefreshHint();
+            PlaceHint();
+            return;
+        }
 
         // 拖动过程中先别跳出来，松手后再给按钮。
         // 「贴图内标注」没有完成动作：完成是 Enter / 双击，结果交回那张贴图，别摆一排按了会被忽略的按钮。
@@ -255,6 +273,18 @@ public partial class CaptureOverlayWindow
         if (_tool == CaptureTool.Picker)
         {
             HintText.Text = "取色 · 单击复制 #RRGGBB · 色卡跟着光标 · Esc 退出取色";
+            return;
+        }
+
+        // 智能选区预选：说清「哪一层、怎么确认、怎么换层、怎么手框」
+        if (SmartPreviewActive)
+        {
+            bool subElement = _smart.Target == SmartSelectionTarget.WindowSubElement;
+            string smartHint =
+                $"智能选区 · {(subElement ? "子元素" : "整窗")}「{SmartTargetLabel}」· 单击确认 · 滚轮换层级 · " +
+                $"{(subElement ? "Tab 切到整窗" : "Tab 切到子元素")} · 也可直接拖动框选 · 右键退出";
+            if (_uiaPending != IntPtr.Zero) smartHint += " · 识别控件中…";
+            HintText.Text = smartHint;
             return;
         }
 

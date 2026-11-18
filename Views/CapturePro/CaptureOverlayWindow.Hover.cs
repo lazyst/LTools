@@ -41,11 +41,24 @@ public partial class CaptureOverlayWindow
             return;
         }
 
-        // 光标停在信息条上：滚轮归字段（±1 像素），不换悬停层级
-        if (BarFieldAt(e.OriginalSource as DependencyObject) is SelectionField field)
+        // 光标停在信息条上：滚轮归字段（±1 像素），不换悬停层级。
+        // 智能选区预选态的信息条是**只读**的（上游 selectionEditable = false），滚轮归层级。
+        if (!SmartPreviewActive &&
+            BarFieldAt(e.OriginalSource as DependencyObject) is SelectionField field)
         {
             e.Handled = true;
             BarWheel(field, e.Delta);
+            return;
+        }
+
+        // 智能选区：滚轮在命中路径上换一层（往上 = 外层整窗，往下 = 更细的子元素）
+        if (SmartPreviewActive)
+        {
+            if (_smart.HitCount >= 2)
+            {
+                StepSmartLevel(e.Delta > 0 ? 1 : -1);
+                e.Handled = true;
+            }
             return;
         }
 
@@ -64,11 +77,14 @@ public partial class CaptureOverlayWindow
         e.Handled = true;
     }
 
-    /// <summary>光标移动时更新悬停候选（窗口树即时，控件子树按窗口缓存、异步取一次）。</summary>
-    private void UpdateHover(Point p)
+    /// <summary>
+    /// 光标移动时更新悬停候选（窗口树即时，控件子树按窗口缓存、异步取一次）。
+    /// <paramref name="refine"/> = UIA 子树后到，只走「只增不减」的细化路径。
+    /// </summary>
+    private void UpdateHover(Point p, bool refine = false)
     {
         if (BrowsingHistory) { SetHover(null); return; }
-        if (IsValid(_sel)) { SetHover(null); return; }
+        if (IsValid(_sel) && !_smartPreviewActive) { SetHover(null); return; }
 
         IntPtr hwnd = _hwnd != IntPtr.Zero ? _hwnd : new WindowInteropHelper(this).Handle;
         IntPtr top = ScreenSnapTargets.TopWindowAtPoint(hwnd, ToScreen(p));
@@ -97,10 +113,20 @@ public partial class CaptureOverlayWindow
         if (_hoverCandidates.Count == 0)
         {
             SetHover(null);
+            if (HideSmartPreview()) UpdateChrome();   // 上游 applyHitPath 失败 = setSelectionRect({})
             return;
         }
 
         _hoverCandidates.Sort((a, b) => a.Area.CompareTo(b.Area));
+
+        // 智能选区：候选就是命中路径（面积升序 = 最深 → 最外层），交给模型挑层级
+        if (SmartSelectionAvailable)
+        {
+            UpdateSmartTarget(top, refine);
+            return;
+        }
+
+        if (HideSmartPreview()) UpdateChrome();
 
         // 光标在同一处停留时不重置层级（滚轮选好的那一级要留住）
         if (Math.Abs(p.X - _hoverAt.X) > PressSlop || Math.Abs(p.Y - _hoverAt.Y) > PressSlop)
@@ -165,7 +191,7 @@ public partial class CaptureOverlayWindow
                         {
                             _uiaTargets = t.Result;
                             RebuildSnapLines();
-                            if (!IsValid(_sel)) UpdateHover(at);
+                            if (!IsValid(_sel) || _smartPreviewActive) UpdateHover(at, refine: true);
                         }
                     }
 

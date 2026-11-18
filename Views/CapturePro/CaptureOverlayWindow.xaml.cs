@@ -98,6 +98,7 @@ public partial class CaptureOverlayWindow : Window
         Surface.Document = _doc;
         EditOnly = editOnly;
         InitSelectionStyle();
+        InitSmartSelection();
 
         // 按目标显示器的 DPI 把物理矩形换算成 DIP：窗口正好盖住它（Loaded 里再按物理像素钉一次）
         Left = area.Left / _sx;
@@ -191,6 +192,15 @@ public partial class CaptureOverlayWindow : Window
             (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) == 0)
         {
             StepHistory(e.Key == Key.OemPeriod ? 1 : -1);
+            e.Handled = true;
+            return;
+        }
+
+        // 智能选区：Tab = 整窗 ↔ 窗口子元素（上游 toggle_selection_between_window_and_window_sub_element）
+        if (e.Key == Key.Tab && SmartPreviewActive &&
+            (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift)) == 0)
+        {
+            ToggleSmartTarget();
             e.Handled = true;
             return;
         }
@@ -318,6 +328,13 @@ public partial class CaptureOverlayWindow : Window
         }
 
         if (_sel is not Rect sel || _drag != DragMode.None) return;
+
+        // 预选态的方向键不挪这块选区（上游那是「移动光标」的快捷键，LTools 没有光标导航）
+        if (SmartPreviewActive && e.Key is Key.Left or Key.Right or Key.Up or Key.Down)
+        {
+            e.Handled = true;
+            return;
+        }
 
         // 方向键逐像素微调；按住 Shift 每次 10px
         double step = (Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? 10 : 1;

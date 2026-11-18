@@ -186,6 +186,10 @@ public partial class CaptureOverlayWindow
     private void SetTool(CaptureTool tool)
     {
         if (_tool == tool) return;
+
+        // 预选态换工具 = 进入编辑：这块预选就地变成普通选区，智能选区暂停
+        EndSmartPreviewKeepingSelection();
+
         CancelGesture();
         if (_selectedIndex >= 0) SelectMark(-1);    // 换工具 = 放弃选中（参数行要交给新工具）
         _tool = tool;
@@ -247,6 +251,9 @@ public partial class CaptureOverlayWindow
     /// </remarks>
     private void StepBack()
     {
+        // 智能选区预选态：右键直接退出这次截图（上游 preselection 里的 handleRightClick = CancelCapture）
+        if (SmartPreviewActive) { Cancel(); return; }
+
         if (BrowsingHistory) ExitHistory();
         else if (_selPolyActive) { CancelSelectionPolyline(); UpdateChrome(); }
         else if (_polyActive) CancelPolyline();
@@ -263,6 +270,11 @@ public partial class CaptureOverlayWindow
     /// </summary>
     private void ClearSelection()
     {
+        StopSmartTicker();
+        _smartPreviewActive = false;
+        _smartShown = Rect.Empty;
+        _smart.ClearTransientState();     // 上游 clearSelection：命中路径一起清掉
+
         _regions.Clear();
         _originRegions = null;
         _liveRect = null;

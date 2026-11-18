@@ -1037,6 +1037,7 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
 | **P3-a** ✅ | ①④ | 选区外观：圆角 0–256、阴影像素宽 / 边框宽 0–64（阴影像素曲线照 `screenshotshadowrenderer`：峰值 36% + `(1-d/w)^4` 衰减、边框是外扩描边），预览与导出共用一条渲染路径，输出尺寸 = 内容 + 两侧效果宽 |
 | **P3-b** ✅ | ⑤ | 选区信息条（照 `ScreenshotSelectionToolbarWidget`）：X · Y · 锁 · 宽 × 高 · 比例 · 圆角 · 效果宽；数值是屏幕物理像素、滚轮 ±1 px；块大小 26 / 圆角 6 / 内边距 8×2 / 图标 18 / 项高 26 |
 | **P3-c** ✅ | ⑤ | 选区参数框（`SelectionParamsWindow`：XYWH + 比例锁 + 圆角 + 阴影 \| 边框 + 效果宽 / 色板 + 快速集增删，列宽 218、总宽 452）+ 比例下拉里的「上次选区 / 具名快速集 / 8 个比例（1:1 … 9:16）」 |
+| **P3-d** ✅ | ⑤ ⑨ | 智能选区（照 `screenshotintelligentselectionmodel.cpp` + `screenshotsmartselectiontransition.cpp`）：三档模式（关闭 / 窗口子元素 / 整窗）+ 命中路径「最深 → 整窗」+ 滚轮换层级 + Tab 切目标 + UIA 细化只增不减 + 过渡动画（Soft 101ms / Fast 67ms / 0.4 DIP 落位容差 / `p*(2-p)` 缓出）；**预选就是真选区**，单击确认 / 拖动改手框 / 换工具落成普通选区 / 预选态右键退出这次截图 |
 
 ## 16. 验收
 
@@ -2483,3 +2484,33 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   全量 207 用例 5974 断言；仓库外 `record-e2e` **200 断言**（叠加层逐像素、HEVC 真流、环回真录到声音
   峰值 −8.7 dB、**一秒一色假源验切点内容**：剪 1.0–1.8s 开 2 倍速 → 400ms 且首末帧都是绿色）；
   `capture-overlay-smoke` 412 检查（新增两个窗口的结构与联动断言）。
+- **选区外观 / 信息条 / 参数框（P3-a / P3-b / P3-c，2026-11-18）**：照 Snow Shot 的选区那一族补齐。
+  ① **外观** `Features/CapturePro/SelectionStyle.cs`：圆角 0–256、阴影与边框宽 0–64；阴影走上游曲线
+  （峰值 36% + `(1-d/w)^4`），边框是外扩描边；**预览与导出共用一条渲染路径**，成品尺寸 = 内容 +
+  两侧效果宽。② **信息条**（`ScreenshotSelectionToolbarWidget`）：X · Y · 锁 · 宽 × 高 · 比例下拉 ·
+  圆角 · 效果宽，块高 26 / 圆角 6 / 内边距 8×2；数字一律**屏幕物理像素**、滚轮 ±1 px，外观长度存
+  DIP、显示按 `Scale` 换算；摆位四向（上方优先，放不下依次换右 / 左 / 下）。③ **参数框**
+  `Views/CapturePro/SelectionParamsWindow`（列宽 218 / 总宽 452）：XYWH + 比例锁 + 圆角 + 阴影 | 边框 +
+  效果宽 / 色板 + 快速集增删，落 `settings.json`；比例下拉里的「上次选区 / 具名快速集 / 8 个比例」。
+  比例下拉**画在覆盖层自己的 Canvas 里**：Popup 是独立 HWND，在全屏 `NOACTIVATE` 覆盖层上按下进了
+  Popup、抬起被覆盖层收走，条目点了没反应（真机复现过）。Esc 口径对齐上游 `cancel_screenshot`：
+  直接退出这次截图，逐级回退只归右键。回归：`--selftest` 227 用例 7247 断言、`capture-overlay-smoke`
+  864 条、真机 `selection-bar-e2e` 25 条（真鼠标框选 / 真滚轮 ±1 / 真点击锁与比例预设 / 真键盘 Esc）。
+- **智能选区（P3-d，2026-11-18）**：照 `screenshotintelligentselectionmodel.cpp` +
+  `screenshotsmartselectiontransition.cpp`。三档模式 `Disabled` / `WindowSubElement` / `Window`
+  （落 `configs` 的 `SelectionStore.SmartSelection`，默认子元素），命中路径**从最深的元素排到整窗**
+  ——正好是 `Views/ScreenSnapTargets` 按面积升序给出的顺序，所以候选来源不另造一套。
+  四条容易写错的地方：① **预选就是真选区**：`_regions` / `_sel` 与手工框选完全一致，只多一个
+  `_smartPreviewActive` 标记，所以后续所有「有选区才出现」的界面自动跟着走，不必给预选另铺一套；
+  ② **UIA 细化只增不减**（`ApplyRefinementPath`）：窗口树先给一层，子树到了只往更细的方向替换，
+  不会把用户已经滚轮选中的外层拽回去；③ **时间由外面喂**（`SmartSelectionTransition` 自己不带计时器，
+  覆盖层只在动画期间跑一个 8ms `DispatcherTimer`），按绝对时间推进，帧率抖动不改轨迹，起点取**当前
+  显示中的几何**所以中途换目标不跳；④ **`Tab` 之后界面没跟着变**：`UpdateSmartTarget` 原来用「模型
+  当前值」判「没变就不重建」，而模型在 `Tab` 里已经改过——改用 `_smartShown`（上一次真正交给过渡的
+  目标）。交互口径逐条对上游：命中路径不变时保留 index、`Tab` 双向切两级、滚轮换层级、预选态单击空白
+  = 重新命中、预选态右键 = 退出这次截图、单击确认后暂停智能选区（要右键取消选区才重新开始认）、
+  换工具 = 把预选落成普通选区、拖过阈值 = 从按下点开始手框。
+  回归：`--selftest` 全量 7387 断言（`capturePro` 61 用例 2561 断言，含上游 16 组用例移植）；
+  仓库外 `capture-overlay-smoke` **911 条**，新增 `[smart]` 50 条用真鼠标单击 / 真鼠标拖框 / 真右键退出。
+  冒烟侧的一个坑：默认档位是「窗口子元素」，覆盖层一打开光标下的窗口就是预选，所有「没有预选」的老
+  分支全红——统一用 `NewOverlay()` 先关档位，**不改产品默认值**。

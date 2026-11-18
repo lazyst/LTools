@@ -60,7 +60,7 @@
 | 圆角半径 | 同上 `Corner radius` | `SelectionStyle.CornerRadius`（DIP，上限 256 px），预览与导出都吃 | P3-a/b | ✅ |
 | 阴影像素宽（无边框时） / 边框宽 | 同上 `Shadow width` / `Border width` | `SelectionStyle` 阴影（峰值 36% + `(1-d/w)^4`）/ 边框（外扩描边），上限 64 px；两份宽与颜色各自保留 | P3-a/b/c | ✅ |
 | 选区预设 / 上次选区 | 同上 `Selection presets` `Previous selection` | 比例下拉里的「上次选区」+ 具名快速集（参数框里增删，落 `settings.json`） | P3-c | ✅ |
-| 智能选区（UI 元素识别 + 过渡动画） | `core/screenshotintelligentselectionmodel.cpp`、`screenshotsmartselectiontransition.cpp` | `Views/ScreenSnapTargets` 只做吸附线 | P3-d | 🟡 |
+| 智能选区（UI 元素识别 + 过渡动画） | `core/screenshotintelligentselectionmodel.cpp`、`screenshotsmartselectiontransition.cpp` | `Features/CapturePro/SmartSelection.cs`（三档模式 + 命中路径 / 层级偏好 / Tab / 细化）+ `SmartSelectionTransition.cs`（Soft 101ms / Fast 67ms + 0.4 DIP 落位容差）+ `CaptureOverlayWindow.Smart.cs`（预选即真选区、单击确认、拖动改手框、换工具落成普通选区、右键退出）；候选来源仍是 `Views/ScreenSnapTargets`（Win32 窗口树 + UIA 子树） | P3-d | ✅ |
 | 选区阴影渲染 | `overlay/screenshotselectionshadowrenderer.cpp` | `MarkRenderer` + `SelectionStyle`（预览与导出同一条路径） | P3-a | ✅ |
 | 悬停窗口 / 控件高亮与切换 | `overlay/screenshotoverlaycanvaspresenter.cpp` | `CaptureOverlayWindow.Hover.cs` | — | ✅ |
 
@@ -155,7 +155,8 @@
 | P3-a | 选区外观模型：`Features/CapturePro/SelectionStyle.cs`（圆角上限 256 / 阴影与边框宽上限 64 / 阴影 `PeakAlphaScale = 0.36` + `(1-d/w)^4` 衰减 / 边框为外扩描边）+ `MarkRenderer` 与导出按「内容 + 两侧效果宽」出图（照 `screenshotselectionshadowrenderer.cpp`） | ✅ | 构建 0 警；`--selftest` 全绿（`capturePro` 新增「选区外观」一组：圆角切角 / 阴影四周渐隐 / 边框外扩不吃内容 / 导出尺寸 = 内容 + 2×效果宽）；`capture-overlay-smoke` 逐像素对账 |
 | P3-b | 选区信息条（照 `screenshotselectiontoolbarwidget.cpp`）：`SelBar` 高 26 · 圆角 6 · 左右 8 / 上下 2；X · Y · 锁 · 宽 × 高 · 比例下拉 · 圆角 · 效果宽；数字全是**屏幕物理像素**，滚轮 ±1 px（`adjustFromToolbar` 口径），外观长度存 DIP、显示按 `_doc.Scale` 换算；摆位 `SelectionBarPlacement`（上方优先，放不下依次换右 / 左 / 下） | ✅ | 构建 0 警；`--selftest` 全绿（「选区信息条」一组：摆位四向 / 滚轮改值 / 锁比例联动 / 物理↔DIP 往返）；`capture-overlay-smoke` 864 条全绿 |
 | P3-c | 选区参数框 + 快速集：`Views/CapturePro/SelectionParamsWindow`（X / Y / 宽 / 高 + 比例锁 + 圆角 + 阴影 \| 边框 + 效果宽 / 色板 + 快速集增删）、`SelectionStore` 落 `settings.json`、比例下拉里的「上次选区 / 具名快速集 / 8 个比例」 | ✅ | 构建 0 警；`--selftest` 227 用例 7247 断言全绿；`capture-overlay-smoke` 864 条全绿（信息条数字 / 摆位 / 滚轮 ±1 / 圆角与效果宽物理像素 / 锁 / 比例预设 / 下拉项高 28 / 参数框字段与联动 / 色板 / `ReadParams`）；真机 `selection-bar-e2e` 全绿（真鼠标框选 → 真滚轮 ±1 → 真点击锁（图标转 #1677FF、锁着改宽按比例推、左上角不动）→ 真点击下拉「1:1」（选区变正方形）→ 真键盘 Esc 退出） |
-| P3 | 选区：XYWH / 比例 / 圆角 / 阴影 / 智能选区 / 预设 | 🟡 | P3-a/b/c 已落地；**剩 P3-d 智能选区**（`window_sub_element` / `window` / `disabled` 三档 + 吸附容差 0.4 + 过渡动画 Soft 101ms / Fast 67ms） |
+| P3-d | 智能选区：`Features/CapturePro/SmartSelection.cs`（`SmartSelectionMode` 三档 / `SmartSelectionTarget` 两级 / 命中路径「最深 → 整窗」/ 层级偏好与 Tab / 细化只增不减）+ `SmartSelectionTransition.cs`（按绝对时间插值、`p*(2-p)` 缓出、8ms 喂时间）+ `Views/CapturePro/CaptureOverlayWindow.Smart.cs`（预选就是真选区，主工具条与形状条收起、信息条只读、单击确认 / 拖动改手框 / 换工具落成普通选区 / 右键退出这次截图） | ✅ | 构建 0 警；`--selftest` 全量 7387 断言全绿（`capturePro` 61 用例 2561 断言，新增上游 16 组智能选区用例）；`capture-overlay-smoke` **911 条全绿**（新增 `[smart]` 50 条：预选几何与标签 / 工具条收起 / 信息条只读且报物理像素 / 滚轮换层走过渡并精确落位 / Tab 整窗↔子元素 / 真鼠标单击确认 / 换工具落成普通选区 / 真鼠标从按下点拖框 / 真右键退出；落图 `out/smart-preview.png`、`smart-window.png`、`smart-manual.png`） |
+| P3 | 选区：XYWH / 比例 / 圆角 / 阴影 / 智能选区 / 预设 | ✅ | P3-a/b/c/d 全部落地 |
 | P4 | 识别与转换：OCR 编辑器 / 原文预览 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档 / 翻译 | ❌ | 待填 |
 | P5 | 贴图：管理页 / 取色板 / 文字样式 / 点击穿透 / 抖动隐藏 / 批量保存 / 拖拽导出 / 历史恢复 | ❌ | 待填 |
 | P6 | 图片编辑窗 / 拼图 / 切图 | ❌ | 待填 |
@@ -261,3 +262,17 @@
   - 修好两处顺手发现的真 bug：① 自动打码「填充区域」按钮造出来后**从没加进参数行**（`FillRegions()` 少了 `host.Children.Add(button)`），界面上一直看不到它；② `RefreshMarks` 现在会重算选中显示值——否则撤销 / 批量改样式之后参数行还停在旧值（「多个值」消不掉）。
   - **已知限制**：多选**不做整体缩放 / 旋转**（八把手只在单选，上游的多选变换框不实现）；LTools 的「选择」工具在空白处无修饰键拖动仍是「拖整个选区窗口」，所以框选标注挂在 **Shift+拖**（语义 = 上游「加选框选」，但少了「无修饰键框选」这一路）。
   - 验收：构建 0 错 0 警；`--selftest` 221 用例 / 7102 断言全绿（`capturePro` 53 用例 2276 断言，新增 `CaptureProSuite.SelectionMulti.cs`：选区挑族与显示值、`InFamily`、框选相交 / 零高度箭头 / 加选 / 抖动 / 恢复块、`AllowsShiftToggle` 逐工具表）；`capture-overlay-smoke` 809 条全绿（真窗口：三条线宽 3/5/7 箭头 → 线宽显示「多个值」而颜色仍显示选中色块、单选回落 5、滚轮改一次三条一起变 8 且创建样式同步、撤销后三条各回原值并重新显示「多个值」、整组拖动三条一起走 + 一次撤销全回来、框选三条提交选中、空框加选不清空、取消不动选区、Esc 清空、批量删三条一次撤销全回来）。
+
+- 2026-11-18：**P3-a / P3-b / P3-c 完成（选区外观 + 信息条 + 参数框与快速集）**，提交 `cc7dc3d`。
+  - `Features/CapturePro/SelectionStyle.cs`：圆角 0–256、阴影与边框宽 0–64，阴影按上游截图曲线（峰值 36% + `(1-d/w)^4`），预览与导出共用一条渲染路径（输出尺寸 = 内容 + 两侧效果宽）。
+  - 信息条（照 `ScreenshotSelectionToolbarWidget`）：X · Y · 锁 · 宽 × 高 · 比例下拉 · 圆角 · 效果宽；数值是**屏幕物理像素**、滚轮 ±1 px，外观长度存 DIP、显示按 `Scale` 换算；摆位四向（上方优先，放不下依次换右 / 左 / 下）。
+  - 参数框 `Views/CapturePro/SelectionParamsWindow`（XYWH + 比例锁 + 圆角 + 阴影 | 边框 + 效果宽 / 色板 + 快速集增删）落 `settings.json`；比例下拉改成画在覆盖层自己的 Canvas 里——Popup 是独立 HWND，在全屏 NOACTIVATE 覆盖层上按下进了 Popup、抬起被覆盖层收走，条目点了没反应（真机复现过）。
+  - Esc 口径对齐上游 `cancel_screenshot`：直接退出这次截图，逐级回退只归右键。
+  - 验收：构建 0 错 0 警；`--selftest` 227 用例 7247 断言；`capture-overlay-smoke` 864 条；真机 `selection-bar-e2e` 25 条（真鼠标框选 / 真滚轮 ±1 / 真点击锁与比例预设 / 真键盘 Esc）。
+
+- 2026-11-18：**P3-d 完成（智能选区）**。两个新纯逻辑文件 + 一个接线 partial。
+  - `Features/CapturePro/SmartSelection.cs`（照 `screenshotintelligentselectionmodel.cpp`）：三档模式（`Disabled` / `WindowSubElement` / `Window`）、命中路径**从最深的元素排到整窗**（正是 `ScreenSnapTargets` 按面积升序给出的顺序）、层级偏好与 `Tab` 切换（整窗模式永远锁最后一项）、`ApplyRefinementPath` 只增不减（UIA 子树比窗口树更细）、按下期间冻结、`ClearTransientState` = 上游 `pauseIntelligentSelection`。
+  - `Features/CapturePro/SmartSelectionTransition.cs`：Soft 101ms / Fast 67ms / 四边都在 0.4 DIP 内直接落位；`p*(2-p)` 缓出，起点取**当前显示中的几何**（中途改目标不跳）；按绝对时间推进，覆盖层用一个只在动画期间跑的 8ms `DispatcherTimer`（`DispatcherPriority.Render`）喂时间。
+  - `Views/CapturePro/CaptureOverlayWindow.Smart.cs`：**预选就是真选区**——`_regions` / `_sel` 与手工框选完全一致，只多一个 `_smartPreviewActive` 标记；画面几何走过渡插值，主工具条与形状条收起、信息条只读、提示写明「单击确认 · 滚轮换层级 · Tab 切到整窗 · 也可直接拖动框选 · 右键退出」。单击 = 确认（转普通选区 + 暂停智能选区），拖过阈值 = 从按下点开始手框，换工具 = 把这块落成普通选区，预选态右键 = 直接退出这次截图。
+  - 两个坑：① `UpdateSmartTarget` 原来用「模型当前值」判「没变就不重建」，`Tab` 之后模型已经变了、界面却没跟着变——改用 `_smartShown`（上一次真正交给过渡的目标）；② 默认档位是「窗口子元素」，覆盖层一打开光标下的窗口就是预选，离线冒烟里所有「没有预选」的老分支全红——冒烟侧统一用 `NewOverlay()` 先关档位，产品行为不改。
+  - 验收：构建 0 错 0 警；`--selftest` 全量 7387 断言全绿（`capturePro` 61 用例 2561 断言，含上游 16 组智能选区用例移植）；`capture-overlay-smoke` **911 条全绿**（新增 `[smart]` 段 50 条，真鼠标单击 / 真鼠标拖框 / 真右键退出）。

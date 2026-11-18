@@ -104,6 +104,10 @@ public partial class CaptureOverlayWindow
     private bool StartScrollMode()
     {
         if (EditOnly || _scrollMode || BrowsingHistory) return false;
+
+        // 预选态直接进长截图：先把这块预选落成普通选区（智能选区暂停）
+        EndSmartPreviewKeepingSelection();
+
         if (_sel is not Rect sel || !IsValid(sel)) return false;
 
         if (SelectionGeometry() == null)
@@ -719,6 +723,7 @@ public partial class CaptureOverlayWindow
 
         StopAutoTimer();
         _scrollTimer?.Stop();
+        StopSmartTicker();
         ScrollCaptureHookState.Stop();
         _scrollMode = false;
         _scrollReady = false;

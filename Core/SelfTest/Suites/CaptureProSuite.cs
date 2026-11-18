@@ -80,6 +80,8 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "选区：圆角 / 边框 / 阴影的导出合成（逐像素）", SelectionExportLayout));
         cases.Add(new("capturePro", "选区：信息条摆位", SelectionBarRules));
         cases.Add(new("capturePro", "选区：参数与外观往返 / 两份效果宽保持", SelectionParamsRules));
+        cases.Add(new("capturePro", "智能选区：换层过渡（上游 14 组用例）", SmartTransitionCases));
+        cases.Add(new("capturePro", "智能选区：命中路径 / 细化 / Tab 切目标", SmartSelectionModelCases));
     }
 
     private static void Geometry()

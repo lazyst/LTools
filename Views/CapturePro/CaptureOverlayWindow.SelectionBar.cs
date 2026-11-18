@@ -103,6 +103,9 @@ public partial class CaptureOverlayWindow
     /// <summary>信息条这一下点击该怎么处理（由 <c>Window_MouseDown</c> 调用，自己置 Handled）。</summary>
     private void HandleSelectionBarClick(DependencyObject? source)
     {
+        // 智能选区预选态：信息条只读（上游 selectionEditable = false），点它别把参数框拉起来
+        if (SmartPreviewActive) return;
+
         if (IsWithin(source, SelLockBtn))
         {
             CloseAspectMenu();
