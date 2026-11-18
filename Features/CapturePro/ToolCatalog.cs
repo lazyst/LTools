@@ -174,6 +174,26 @@ internal enum ToolParam
 
     /// <summary>橡皮的三种模式（元素 / 矩形 / 画笔）。</summary>
     EraserMode,
+
+    // ============ 箭头族（上游 buildArrowFamily） ============
+
+    /// <summary>箭头类型（直线 / 曲线 / 折线）。</summary>
+    ArrowKind,
+
+    /// <summary>箭头外描边宽度（0 = 不描）。</summary>
+    ArrowOutlineWidth,
+
+    /// <summary>箭头外描边色。</summary>
+    ArrowOutlineColor,
+
+    /// <summary>起点端点样式。</summary>
+    StartArrowhead,
+
+    /// <summary>杆型（等宽 / 渐宽）。</summary>
+    ArrowShaftType,
+
+    /// <summary>终点端点样式。</summary>
+    EndArrowhead,
 }
 
 /// <summary>一个工具的名字 / 图标 / 说明 / 用到哪几格参数 / 快捷键（工具栏与自检共用）。</summary>
@@ -227,10 +247,16 @@ internal static class ToolCatalog
         ToolParam.Rendering, ToolParam.FillColor, ToolParam.FillStyle, ToolParam.CornerRadius,
     };
 
-    /// <summary>箭头：描边 + 线型 + 笔触风格（上游 <c>arrow_style</c>，没有填充与形状）。</summary>
-    private static readonly ToolParam[] ArrowStroke =
+    /// <summary>
+    /// 箭头族（上游 <c>buildArrowFamily</c>）：描边（色 / 线宽 / 线型 / 笔触风格）→ 类型（3）→
+    /// 外描边（宽 + 色）→ 箭头比例 → 起点端点 → 杆型 → 终点端点。
+    /// </summary>
+    private static readonly ToolParam[] ArrowFamily =
     {
         ToolParam.Color, ToolParam.Width, ToolParam.StrokeStyle, ToolParam.Rendering,
+        ToolParam.ArrowKind, ToolParam.ArrowOutlineWidth, ToolParam.ArrowOutlineColor,
+        ToolParam.ArrowRatio, ToolParam.StartArrowhead, ToolParam.ArrowShaftType,
+        ToolParam.EndArrowhead,
     };
 
     /// <summary>直线：箭头那套再加「直线 / 曲线」。</summary>
@@ -288,7 +314,8 @@ internal static class ToolCatalog
         new(CaptureTool.Select, "选择", "Select", "点选标注后可拖动移动，Delete 删除", None, Key.Q),
         new(CaptureTool.Shape, "形状", "Rect", "拖出形状（矩形 / 椭圆 / 菱形，气泡工具里还能选思考气泡），填充与圆角在参数行选",
             ShapeFamily, Key.R),
-        new(CaptureTool.Arrow, "箭头", "Arrow", "从起点拖到目标", ArrowStroke, Key.A),
+        new(CaptureTool.Arrow, "箭头", "Arrow", "从起点拖到目标（类型 / 起止端点 / 杆型 / 外描边在参数行选）",
+            ArrowFamily, Key.A),
         new(CaptureTool.Line, "直线", "Line", "从起点拖到终点，不带箭头", LineStroke, Key.I),
         new(CaptureTool.Polyline, "折线", "Polyline", "逐点单击，双击 / Enter 结束", Stroke, Key.L),
         new(CaptureTool.Distance, "测距", "Distance", "拖出线段，中点显示长度（单位 / 小数位 / 端点样式在参数行选；选中一条后还能直接填实测值）",
@@ -475,6 +502,29 @@ internal sealed class ToolStyle
     /// <summary>箭头比例（0.5–3，上游 <c>arrow_ratio</c> 默认 1）。</summary>
     public double ArrowRatio { get; set; } = 1;
 
+    /// <summary>箭头类型（上游默认曲线）。</summary>
+    public ArrowType ArrowKind { get; set; } = ArrowType.Curve;
+
+    /// <summary>起点端点（上游默认无）。</summary>
+    public Arrowhead StartArrowhead { get; set; } = Arrowhead.None;
+
+    /// <summary>终点端点（上游默认三角箭头）。</summary>
+    public Arrowhead EndArrowhead { get; set; } = Arrowhead.Arrow;
+
+    /// <summary>杆型（上游默认等宽）。</summary>
+    public ArrowShaft ArrowShaftType { get; set; } = ArrowShaft.Plain;
+
+    /// <summary>箭头外描边色（上游默认 <c>#FFCCC7</c>）。</summary>
+    public Color ArrowOutlineColor { get; set; } = ArrowSpec.DefaultOutline;
+
+    /// <summary>箭头外描边宽（上游默认 0 = 不描；上限 72）。</summary>
+    public double ArrowOutlineWidth { get; set; }
+
+    /// <summary>造一份箭头画法给新标注（点列由拖动产生，这里只管样式）。</summary>
+    public ArrowSpec ArrowSpecOf(uint seed) => new ArrowSpec(
+        Color, Width, StrokeStyle, Rendering, ArrowKind, StartArrowhead, EndArrowhead,
+        ArrowRatio, ArrowShaftType, ArrowOutlineColor, ArrowOutlineWidth, 1, seed).Clamped();
+
     /// <summary>水印文字（上游默认空：没填就什么都不画）。</summary>
     public string WatermarkText { get; set; } = string.Empty;
 
@@ -598,6 +648,12 @@ internal sealed class ToolStyle
         Connection = ToolStyleFormat.Name(Connection),
         SourceOutline = SourceOutline,
         ArrowRatio = ArrowRatio,
+        ArrowKind = ToolStyleFormat.Name(ArrowKind),
+        StartArrowhead = ToolStyleFormat.Name(StartArrowhead),
+        EndArrowhead = ToolStyleFormat.Name(EndArrowhead),
+        ArrowShaftType = ToolStyleFormat.Name(ArrowShaftType),
+        ArrowOutlineColor = ToolStyleFormat.Hex(ArrowOutlineColor),
+        ArrowOutlineWidth = ArrowOutlineWidth,
         WatermarkText = WatermarkText,
         WatermarkAngle = WatermarkAngle,
         WatermarkGap = WatermarkGap,
@@ -648,6 +704,15 @@ internal sealed class ToolStyle
         style.ArrowRatio = double.IsFinite(dto.ArrowRatio ?? style.ArrowRatio)
             ? Math.Clamp(dto.ArrowRatio ?? style.ArrowRatio, ArrowInk.MinRatio, ArrowInk.MaxRatio)
             : style.ArrowRatio;
+        style.ArrowKind = ToolStyleFormat.ParseEnum(dto.ArrowKind, style.ArrowKind);
+        style.StartArrowhead = ToolStyleFormat.ParseEnum(dto.StartArrowhead, style.StartArrowhead);
+        style.EndArrowhead = ToolStyleFormat.ParseEnum(dto.EndArrowhead, style.EndArrowhead);
+        style.ArrowShaftType = ToolStyleFormat.ParseEnum(dto.ArrowShaftType, style.ArrowShaftType);
+        if (ToolStyleFormat.TryParseColor(dto.ArrowOutlineColor, out var arrowOutline))
+            style.ArrowOutlineColor = arrowOutline;
+        style.ArrowOutlineWidth = double.IsFinite(dto.ArrowOutlineWidth ?? style.ArrowOutlineWidth)
+            ? Math.Clamp(dto.ArrowOutlineWidth ?? style.ArrowOutlineWidth, 0, ArrowSpec.MaxOutlineWidth)
+            : style.ArrowOutlineWidth;
         if (dto.WatermarkText != null) style.WatermarkText = dto.WatermarkText;
         style.WatermarkAngle = Math.Clamp(dto.WatermarkAngle ?? style.WatermarkAngle, -90, 90);
         style.WatermarkGap = Math.Clamp(dto.WatermarkGap ?? style.WatermarkGap, 10, 200);

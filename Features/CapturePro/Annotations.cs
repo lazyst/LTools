@@ -123,36 +123,63 @@ internal abstract class Mark
             ShapeInk.HitTest(new[] { new InkPart(Contour, true) }, Spec, point, tolerance);
     }
 
-    /// <summary>箭头：起点 + 终点 + 三角箭头。</summary>
+    /// <summary>
+    /// 箭头：点列 + 一整套 <see cref="ArrowSpec"/>（类型 / 两端端点 / 杆型 / 线型 / 笔触 / 外描边）。
+    /// 曲线与折线的拐点保存在 <see cref="Points"/> 里，改类型只换 <see cref="Spec"/> 不丢点。
+    /// </summary>
     public sealed class Arrow : Mark
     {
+        /// <summary>旧的四参构造（只有首尾两点、三角箭头）——给自检与旧调用点兜底。</summary>
         public Arrow(Point start, Point end, Color color, double width)
+            : this(new[] { start, end }, ArrowSpec.Default with
+            {
+                Stroke = color, Width = width, Seed = ShapeInk.NextSeed(),
+            })
         {
-            Start = start;
-            End = end;
-            Color = color;
-            Width = width;
         }
 
-        public Point Start { get; }
-        public Point End { get; }
-        public Color Color { get; }
-        public double Width { get; }
+        public Arrow(IReadOnlyList<Point> points, ArrowSpec spec)
+        {
+            Points = points.Count >= 2 ? points : new[] { new Point(), new Point() };
+            Spec = spec.Clamped();
+        }
 
-        public override Rect Bounds => MarkGeometry.Inflate(
-            MarkGeometry.RectOf(Start, End), Width + MarkGeometry.HeadSize(Width));
+        public IReadOnlyList<Point> Points { get; }
+        public ArrowSpec Spec { get; }
 
-        public override Rect Frame => MarkGeometry.RectOf(Start, End);
+        /// <summary>起点 / 终点（派生，别单独存）。</summary>
+        public Point Start => Points[0];
+
+        public Point End => Points[^1];
+
+        public Color Color => Spec.Stroke;
+
+        public double Width => Spec.Width;
+
+        public override Rect Bounds
+        {
+            get
+            {
+                var flat = ArrowGeometry.Flatten(Points, Spec.Type);
+                double pad = Spec.Width / 2 + Spec.OutlineWidth +
+                    MarkGeometry.HeadSize(Spec.Width) * Math.Max(1, Spec.Ratio) +
+                    ShapeInk.Outset(Spec.Rendering);
+                return MarkGeometry.Inflate(MarkGeometry.BoundsOf(flat, 0), pad);
+            }
+        }
+
+        public override Rect Frame => MarkGeometry.BoundsOf(Points, 0);
 
         public override Mark MoveBy(Vector delta) =>
-            new Arrow(Start + delta, End + delta, Color, Width);
+            new Arrow(MarkGeometry.Shift(Points, delta), Spec);
 
         public override Mark ScaleTo(Rect from, Rect to) => new Arrow(
-            MarkGeometry.MapPoint(Start, from, to), MarkGeometry.MapPoint(End, from, to), Color,
-            Math.Max(0.5, Width * MarkGeometry.ScaleOf(from, to)));
+            MarkGeometry.MapAll(Points, from, to),
+            Spec with { Width = Math.Max(0.5, Spec.Width * MarkGeometry.ScaleOf(from, to)) });
 
         public override bool HitTest(Point point, double tolerance) =>
-            MarkGeometry.NearSegment(point, Start, End, Width / 2 + tolerance);
+            MarkGeometry.NearPolyline(ArrowGeometry.Flatten(Points, Spec.Type), point,
+                Spec.Width / 2 + Spec.OutlineWidth + tolerance);
     }
 
     /// <summary>折线 / 曲线（多段线，可带箭头）。</summary>

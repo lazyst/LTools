@@ -129,20 +129,115 @@ internal static class MarkRenderer
 
     private static void DrawArrow(DrawingContext dc, Mark.Arrow a)
     {
-        var pen = MakePen(a.Color, a.Width, dashed: false);
-        var head = MarkGeometry.ArrowHead(a.Start, a.End, a.Width);
-        // 线只画到箭头底部，避免粗线把三角头顶破
-        var end = head.Length > 0 ? head[1] + (head[2] - head[1]) / 2 : a.End;
-        dc.DrawLine(pen, a.Start, end);
-        if (head.Length == 3)
+        var spec = a.Spec;
+        if (spec.Width <= 0.01 || spec.Stroke.A == 0 || spec.Opacity <= 0) return;
+
+        var shaft = ArrowGeometry.Tapered(spec, a.Points);
+        var heads = new List<(Point Tip, Vector Direction, double Length, Arrowhead Head)>();
+        AddHead(spec, a.Points, start: true, heads);
+        AddHead(spec, a.Points, start: false, heads);
+
+        bool outline = spec.OutlineWidth > 0 && spec.OutlineColor.A > 0;
+
+        dc.PushOpacity(Math.Clamp(spec.Opacity, 0, 1));
+        try
         {
-            var geo = new PathGeometry();
-            var figure = new PathFigure { StartPoint = head[0], IsClosed = true, IsFilled = true };
-            figure.Segments.Add(new PolyLineSegment(new[] { head[1], head[2] }, true));
-            geo.Figures.Add(figure);
-            geo.Freeze();
-            dc.DrawGeometry(Freeze(a.Color), null, geo);
+            if (shaft.Count > 0)
+            {
+                // 渐宽杆：轮廓已经把箭头并进同一块填色里（上游 <c>tapered_arrow_geometry</c>）
+                if (outline)
+                    foreach (var part in shaft) DrawPart(dc, part, spec.OutlineColor, spec.OutlineWidth);
+                foreach (var part in shaft) DrawPart(dc, part, spec.Stroke, 0);
+                return;
+            }
+
+            var paths = ShapeInk.StrokePaths(ArrowGeometry.Path(a.Points, spec.Type), false,
+                spec.StrokeSpec);
+
+            if (outline)
+            {
+                var halo = ArrowPen(spec.OutlineColor, spec.Width + spec.OutlineWidth,
+                    spec.StrokeStyle, spec.Width);
+                foreach (var path in paths) dc.DrawGeometry(null, halo, path);
+                foreach (var head in heads)
+                    ArrowInk.Draw(dc, head.Tip, head.Direction, head.Head, spec.OutlineColor,
+                        spec.Width, spec.Ratio, head.Length, spec.OutlineWidth);
+            }
+
+            var ink = ArrowPen(spec.Stroke, spec.Width, spec.StrokeStyle, spec.Width);
+            foreach (var path in paths) dc.DrawGeometry(null, ink, path);
+            foreach (var head in heads)
+                ArrowInk.Draw(dc, head.Tip, head.Direction, head.Head, spec.Stroke, spec.Width,
+                    spec.Ratio, head.Length);
         }
+        finally
+        {
+            dc.Pop();
+        }
+    }
+
+    /// <summary>按类型取端点（曲线按切线、折线按末段弦），没有箭头就跳过。</summary>
+    private static void AddHead(ArrowSpec spec, IReadOnlyList<Point> points, bool start,
+        List<(Point Tip, Vector Direction, double Length, Arrowhead Head)> heads)
+    {
+        var head = start ? spec.Start : spec.End;
+        if (head == Arrowhead.None) return;
+        if (!ArrowGeometry.Endpoint(points, spec.Type, start, out var tip, out var direction,
+                out var length)) return;
+        heads.Add((tip, direction, length, head));
+    }
+
+    /// <summary>一条闭合轮廓的填色（<paramref name="outlineWidth"/> &gt; 0 = 外描边垫底那一遍）。</summary>
+    private static void DrawPart(DrawingContext dc, InkPart part, Color color, double outlineWidth)
+    {
+        if (part.Segments.Count == 0) return;
+        var geometry = ShapeInk.BuildPath(part.Segments, part.Closed, filled: true);
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+
+        if (outlineWidth <= 0)
+        {
+            dc.DrawGeometry(brush, null, geometry);
+            return;
+        }
+
+        var pen = new Pen(brush, outlineWidth)
+        {
+            StartLineCap = PenLineCap.Round,
+            EndLineCap = PenLineCap.Round,
+            LineJoin = PenLineJoin.Round,
+        };
+        pen.Freeze();
+        dc.DrawGeometry(brush, pen, geometry);
+    }
+
+    /// <summary>
+    /// 箭头笔：虚线 / 点线的节奏按**线宽倍数**给（与 <see cref="ShapeInk.DashPattern"/> 同口径），
+    /// 外描边那一遍笔更粗，但节奏按原始线宽折算，所以虚线长度不会跟着变。
+    /// </summary>
+    private static Pen ArrowPen(Color color, double width, StrokeKind style, double baseWidth)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        double thickness = Math.Max(0.1, width);
+        var pen = new Pen(brush, thickness)
+        {
+            StartLineCap = style == StrokeKind.Solid ? PenLineCap.Flat : PenLineCap.Round,
+            EndLineCap = style == StrokeKind.Solid ? PenLineCap.Flat : PenLineCap.Round,
+            LineJoin = PenLineJoin.Round,
+        };
+
+        var pattern = ShapeInk.DashPattern(style);
+        if (pattern.Length > 0)
+        {
+            double baseThickness = Math.Max(0.1, baseWidth);
+            var scaled = new double[pattern.Length];
+            for (int i = 0; i < pattern.Length; i++) scaled[i] = pattern[i] * baseThickness / thickness;
+            pen.DashStyle = new DashStyle(scaled, 0);
+        }
+
+        pen.Freeze();
+        return pen;
     }
 
     private static void DrawPolyline(DrawingContext dc, Mark.Polyline p)

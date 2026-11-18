@@ -102,6 +102,24 @@ public sealed class CaptureToolStyleDto
     /// <summary>箭头比例（0.5–3）。</summary>
     public double? ArrowRatio { get; set; }
 
+    /// <summary>箭头类型（<c>ArrowType</c> 名字：直线 / 曲线 / 折线）。</summary>
+    public string? ArrowKind { get; set; }
+
+    /// <summary>起点端点（<c>Arrowhead</c> 名字）。</summary>
+    public string? StartArrowhead { get; set; }
+
+    /// <summary>终点端点（<c>Arrowhead</c> 名字）。</summary>
+    public string? EndArrowhead { get; set; }
+
+    /// <summary>杆型（<c>ArrowShaft</c> 名字：等宽 / 渐宽）。</summary>
+    public string? ArrowShaftType { get; set; }
+
+    /// <summary>箭头外描边色（<c>#RRGGBB</c>）。</summary>
+    public string? ArrowOutlineColor { get; set; }
+
+    /// <summary>箭头外描边宽（0–72，0 = 不描）。</summary>
+    public double? ArrowOutlineWidth { get; set; }
+
     /// <summary>水印文字。</summary>
     public string? WatermarkText { get; set; }
 

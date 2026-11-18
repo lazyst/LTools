@@ -159,6 +159,21 @@ internal sealed class ToolStyleSet
                 style.CornerRadius = 6;
                 style.Opacity = 1;
                 break;
+
+            case StyleFamilies.Arrow:
+                // 上游 defaults.arrow = defaults.rectangle + 终点 Arrow + 类型 Curve
+                style.Color = Color.FromRgb(0xF5, 0x22, 0x2D);
+                style.Width = 2;
+                style.StrokeStyle = StrokeKind.Solid;
+                style.Rendering = StrokeRendering.Architect;
+                style.ArrowKind = ArrowType.Curve;
+                style.StartArrowhead = Arrowhead.None;
+                style.EndArrowhead = Arrowhead.Arrow;
+                style.ArrowRatio = 1;
+                style.ArrowShaftType = ArrowShaft.Plain;
+                style.ArrowOutlineColor = ArrowSpec.DefaultOutline;
+                style.ArrowOutlineWidth = 0;
+                break;
         }
     }
 

@@ -291,7 +291,13 @@ internal sealed class RecordAnnotationWindow : Window
                 RecordTool.Pen => new Mark.Stroke(_points.ToArray(), Ink, width, false, 1),
                 RecordTool.Highlighter => new Mark.Stroke(_points.ToArray(), Ink, width, true, 0.35),
                 RecordTool.Rect => new Mark.Shape(_start, current, Ink, width, false, ellipse: false),
-                RecordTool.Arrow => new Mark.Arrow(_start, current, Ink, width),
+                RecordTool.Arrow => new Mark.Arrow(
+                    ArrowGeometry.Points(_start, current, ArrowType.Straight),
+                    ArrowSpec.Default with
+                    {
+                        Stroke = Ink, Width = width, Type = ArrowType.Straight,
+                        Seed = ShapeInk.NextSeed(),
+                    }),
                 RecordTool.Filter => new Mark.Filter(_start, current, FilterKind.Blur, 55),
                 _ => null,
             };

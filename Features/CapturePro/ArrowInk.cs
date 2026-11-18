@@ -76,8 +76,12 @@ internal static class ArrowInk
     /// <param name="tip">端点（线的尽头）。</param>
     /// <param name="toward">从线段指向端点方向的单位向量（肩点往后退的方向）。</param>
     /// <param name="segmentLength">最后一段的长度：端点不能比线段本身还长（上游 <c>length_multiplier</c>）。</param>
+    /// <param name="grow">
+    /// 外描边垫底用：0 = 正常墨迹；&gt;0 = 用这个颜色把同一形状整体外扩 <c>grow / 2</c>
+    /// （实心图元外扩靠描边、线条 / 空心图元靠加粗笔），随后正常墨迹盖在上面。
+    /// </param>
     public static void Draw(DrawingContext dc, Point tip, Vector toward, Arrowhead head, Color color,
-        double width, double ratio, double segmentLength)
+        double width, double ratio, double segmentLength, double grow = 0)
     {
         if (head == Arrowhead.None) return;
         if (!(segmentLength > 0.01) || !double.IsFinite(segmentLength)) return;
@@ -87,6 +91,9 @@ internal static class ArrowInk
         dir.Normalize();
 
         double stroke = Math.Max(0.1, width);
+        // 外描边那一遍：线条 / 空心形状的笔要更粗，实心形状靠描边把它撑大
+        double line = grow > 0 ? Math.Max(0.1, width + grow) : stroke;
+        double edge = grow > 0 ? Math.Max(0.1, grow) : stroke;
         double strokeScale = Math.Sqrt(Math.Max(stroke / 2.0, 1.0));
         double baseSize = Size(head) * strokeScale;
         double scale = Ratio(ratio);
@@ -104,7 +111,9 @@ internal static class ArrowInk
 
             double radius = diameter / 2;
             if (head == Arrowhead.CircleOutline)
-                dc.DrawEllipse(null, Pen(color, stroke), tip, radius, radius);
+                dc.DrawEllipse(null, Pen(color, line), tip, radius, radius);
+            else if (grow > 0)
+                dc.DrawEllipse(Brush(color), Pen(color, edge), tip, radius, radius);
             else
                 dc.DrawEllipse(Brush(color), null, tip, radius, radius);
             return;
@@ -118,28 +127,28 @@ internal static class ArrowInk
         {
             case Arrowhead.CrowfootOne:
                 // 只有一根横杠（上游 CrowfootOne 取肩点之间的那一条）
-                DrawPolyline(dc, color, stroke, new[] { a, b });
+                DrawPolyline(dc, color, line, new[] { a, b });
                 return;
 
             case Arrowhead.CrowfootMany:
                 // 三趾：从基部往两个肩点各一线（开口朝端点）
-                DrawPolyline(dc, color, stroke, new[] { a, basePoint, b });
+                DrawPolyline(dc, color, line, new[] { a, basePoint, b });
                 return;
 
             case Arrowhead.CrowfootOneOrMany:
-                DrawPolyline(dc, color, stroke, new[] { a, basePoint, b });
-                DrawPolyline(dc, color, stroke, new[] { a, b });
+                DrawPolyline(dc, color, line, new[] { a, basePoint, b });
+                DrawPolyline(dc, color, line, new[] { a, b });
                 return;
 
             case Arrowhead.Bar:
-                DrawPolyline(dc, color, stroke, new[] { a, basePoint, b });
+                DrawPolyline(dc, color, line, new[] { a, basePoint, b });
                 return;
 
             case Arrowhead.Triangle:
             case Arrowhead.TriangleOutline:
             case Arrowhead.InvertedTriangle:
-                Polygon(dc, color, stroke, head == Arrowhead.TriangleOutline,
-                    new[] { tip, a, b });
+                Polygon(dc, color, head == Arrowhead.TriangleOutline ? line : edge,
+                    head == Arrowhead.TriangleOutline, new[] { tip, a, b });
                 return;
 
             case Arrowhead.IndentedTriangle:
@@ -148,7 +157,7 @@ internal static class ArrowInk
                 var notch = new Point(
                     mid.X + 0.25 * (tip.X - mid.X),
                     mid.Y + 0.25 * (tip.Y - mid.Y));
-                Polygon(dc, color, stroke, true, new[] { tip, a, notch, b });
+                Polygon(dc, color, line, true, new[] { tip, a, notch, b });
                 return;
             }
 
@@ -157,14 +166,14 @@ internal static class ArrowInk
             case Arrowhead.Square:
             {
                 Point back = tip - dir * (minSize * 2);
-                Polygon(dc, color, stroke, head == Arrowhead.DiamondOutline,
-                    new[] { tip, a, back, b });
+                Polygon(dc, color, head == Arrowhead.DiamondOutline ? line : edge,
+                    head == Arrowhead.DiamondOutline, new[] { tip, a, back, b });
                 return;
             }
 
             default:
                 // Arrow：两条肩线汇到端点
-                DrawPolyline(dc, color, stroke, new[] { a, tip, b });
+                DrawPolyline(dc, color, line, new[] { a, tip, b });
                 return;
         }
     }

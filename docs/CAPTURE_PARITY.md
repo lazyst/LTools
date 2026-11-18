@@ -25,8 +25,8 @@
 | 测距 Distance（单位 / 小数位 / 端点 / 实测值换算） | `buildDistanceFamily` `screenshottoolpalettestylecontrols.cpp:2904`、`distance.rs`、`arrow/render_core.rs` | `Mark.Distance`：主线 + **14 种端点**（`ArrowInk`，尺寸 / 张角 / 圆直径 / 比例全部照 `render_core.rs`）+ 中点纯文字标签（`值 单位`，字号 `20×√(线宽/2)`，与上游注释文字同为无背景、描边色）；工具栏 7 格 = 色 / 线宽 / **实测值**（写回 `系数 = 值 ÷ 实测长度`，钳 0.01–1000，没选中时置灰）/ 9 种单位 / 0–3 位小数 / 端点比例 0.5–3 / 端点样式 | P1 / P2-d1 | ✅ |
 | 测角 Angle（滚轮调角度 / 内角 / 弧度） | `buildAngleFamily` `:2711`、`angle.rs` | `Mark.Angle`（两次拖拽成角，滚轮 ±5° / Shift ±1°）+ 类型有向 360° / **内角 180°**（`>180°` 折成 `2π−sweep`，圆弧与平分线一起翻边）+ 单位度 / 弧度（`°` 无空格、`" rad"` 前导空格）+ 0–3 位小数 | P1 / P2-d1 | ✅ |
 | 括号 Bracket | `buildBracketFamily` `:2633`、`bracket.rs` | `Mark.Bracket` = **花括号**（三点 a/c/b + 四段三次贝塞尔 `BracketInk`）；拖拽 = 首尾落在起点 x 上纵向撑满、尖在终点 x 与中线，**横向拖拽退化为不生成**（与上游同） | P1 / P2-d1 | ✅ |
-| 箭头 Arrow | `arrowRequested` | `Mark.Arrow` 目前只有「直线 + 三角头」；上游的**起止箭头 14 种 / 箭头比例 / 外描边（宽 + 色）/ 杆型（Plain·Tapered）/ 箭头类型（Straight·Curve·Elbow）** 均未复刻 | — / P2-e | 🟡 |
-| 选中标注后切到该工具的样式族 + 样式实时生效 | 各 `*Family` 的 selection 分支 | 只有「当前工具就是测距 / 测角」时改参数会写回选中的那一条；其余族（形状 / 文字 / 序号…）选中后改参数不写回 | P2-d1 / P2-e | 🟡 |
+| 箭头 Arrow（类型 / 起止端点 / 杆型 / 外描边 / 比例） | `buildArrowFamily` `screenshottoolpalettestylecontrols.cpp:1926`、`arrow/data.rs`、`render_core.rs`、`shaft.rs` | `Mark.Arrow` = 点列 + `ArrowSpec`：**三种类型**（直线 / 曲线 = Catmull-Rom（tension 1，端点自重复）/ 折线 = 拐点 16 DIP 圆角）、**起止端点 14 种**（`ArrowInk`，方向按曲线 t=0.85 切线 / 末段弦）、**箭头比例 0.5–3**、**杆型**（等宽 / 渐宽 = ribbon 半径从次箭头肩宽/4 线性长到主箭头肩宽/4，实线连成一片、虚点线分段）、**外描边**（宽 0–72 + 色 `#FFCCC7`，垫在墨迹下面）；工具栏 11 格 = 色 / 线宽 / 线型 / 笔触 / 类型 / 外描边宽 / 外描边色 / 比例 / 起点 / 杆型 / 终点 | P2-e1 | ✅ |
+| 选中标注后切到该工具的样式族 + 样式实时生效 | 各 `*Family` 的 selection 分支 | 只有「当前工具就是测距 / 测角」时改参数会写回选中的那一条；其余族（形状 / 箭头 / 文字 / 序号…）选中后改参数不写回 | P2-d1 / P2-e2 | 🟡 |
 | 直线 Line | `lineRequested` | `Mark.Line`（可虚线；横向拖拽不会因「高度为 0」被丢） | P1 | ✅ |
 | 画笔 Brush（FreeDraw） | `brushRequested` | `CaptureTool.Pen` | — | ✅ |
 | 矩形高亮 RectangleHighlight | `highlightRequested` | `CaptureTool.HighlightRect` → `Mark.Highlight`（半透明铺块） | P1 | ✅ |
@@ -148,7 +148,8 @@
 | P2-c | 文字族参数：字色 / 字号（6–256 + S·M·L·XL）/ 字体族（可搜索弹层）/ 粗体 / 斜体 / 水平对齐 / 文字描边（宽 0–72 + 色）/ 背景（填充色 · 填充方式 · 圆角 0–83），排版照上游 `text_fill_outset`（行高 1.2×、内边距 0.32×/0.1×、描边单独一遍）。上游文字族没有垂直对齐与不透明度，故不实现 | ✅ | 构建 0 警；`--selftest` 216 用例 6602 断言全绿（`capturePro` 48 用例 1776 断言，新增「文字族」一组 89 条）；`capture-overlay-smoke` 670 条全绿（真参数行 10 格 / 点 L·M 改字号 / 字体弹层搜索选中收起 / B·I 独立开关 / 对齐三胶囊 / 描边默认 0 + 换色 / 填充四档 / 圆角 6 / 形状无字号；逐像素：实心胶囊 · 无填充 · 圆角切角 · 斜线少于实心 · 描边外圈 · 粗体墨多 · 斜体与换字体像素不同 · 左中右对齐窄行位置） |
 | P2-d1 | 端点 / 测距 / 测角 / 括号 / 橡皮：14 种端点（`ArrowInk`）+ 测距单位 · 小数位 · 端点比例 · 实测值换算 + 测角内角 · 弧度 · 小数位 + 括号改花括号（`BracketInk`）+ 橡皮三模式选择器 | ✅ | 构建 0 警；`--selftest` 217 用例 6693 断言全绿（`capturePro` 49 用例 1867 断言，新增「度量」一组）；`capture-overlay-smoke` 688 条全绿（真参数行 7 / 5 / 1 格 + 实测值置灰与显示 + 点「画笔橡皮」换工具 + 默认笔头 30；逐像素：花括号尖 / 肩 / 空脊线、测距无黑底 pill 的纯文字、端点比例 2 的箭头肩线） |
 | P2-d2 | 放大镜（连接方式 / 源轮廓 / 引导线箭头 / 圆角）+ 序号（5 类型 / 5 写法 / 字号 + 字体 / 填充色 + 填充方式 / 描边）+ 水印（字体 + 字号预设 + 模板 + 角度 / 间距 / 不透明度 / 色） | ✅ | 构建 0 警；`--selftest` 218 用例 6795 断言全绿（`capturePro` 50 用例 1969 断言，新增「样式：序号徽标 / 水印模板 / 放大镜几何」一组）；`capture-overlay-smoke` 714 条全绿（真参数行序号 9 格 / 放大镜 9 格 / 水印 8 格 + 落号后「序号」自动 +1 + 放大镜三段拖动语义 + 源轮廓与移动手柄逐像素） |
-| P2-e | 箭头族参数（起止箭头 14 种 / 箭头比例 / 外描边宽 + 色 / 杆型 Plain·Tapered / 箭头类型 Straight·Curve·Elbow）+ 选中标注后切该工具样式族并实时生效（形状 / 文字 / 序号…） | ❌ | 待填 |
+| P2-e1 | 箭头族参数：箭头类型（直线 / 曲线 / 折线）+ 起止端点 14 种 + 箭头比例 0.5–3 + 杆型（等宽 / 渐宽）+ 外描边（宽 0–72 + 色）+ 几何照 `arrow/{data,render_core,shaft}.rs`（Catmull-Rom 曲线、拐角圆角、渐宽 ribbon、外描边垫底） | ✅ | 构建 0 警；`--selftest` 219 用例 6866 断言全绿（`capturePro` 51 用例 2040 断言，新增「样式：箭头族」一组）；`capture-overlay-smoke` 749 条全绿（真参数行 11 格 / 三类型胶囊 / 杆型胶囊 / 比例 1.0× / 外描边 0 / 起终点默认值；逐像素：直线杆、终点三角、曲线偏离弦、折线三段、14 种端点、双端箭头、外描边青圈 + 墨迹覆盖、渐宽杆变粗） |
+| P2-e2 | 选中标注后切该工具样式族 + 混合值显示 + 参数实时写回（把 `ApplyStyleToSelection` 从只有测距 / 测角扩到全部族：形状 / 箭头 / 线 / 文字 / 序号 / 放大镜 / 水印 / 滤镜…） | ❌ | 待填 |
 | P3 | 选区：XYWH / 比例 / 圆角 / 阴影 / 智能选区 / 预设 | ❌ | 待填 |
 | P4 | 识别与转换：OCR 编辑器 / 原文预览 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档 / 翻译 | ❌ | 待填 |
 | P5 | 贴图：管理页 / 取色板 / 文字样式 / 点击穿透 / 抖动隐藏 / 批量保存 / 拖拽导出 / 历史恢复 | ❌ | 待填 |
@@ -216,9 +217,9 @@
   - **测角**：类型「有向 360° / 内角 180°」——`Interior` 把 `>180°` 的 sweep 折成 `2π − sweep`，圆弧与平分线一起翻到另一侧；单位度 / 弧度（`90°` 无空格、`1.57 rad` 带一个前导空格）；0–3 位小数。
   - **括号真身是花括号**：`bracket.rs` 用 a（起）/ c（尖）/ b（止）三点定义局部坐标系 + 四段三次贝塞尔（肩部切线连续、尖是圆角）；拖拽按 `process_bracket_creation_pointer_event` 换算成三点（首尾在起点的 x 上纵向撑满、尖在终点 x 与中线），**横向拖拽会退化、上游同样什么都不生成**。原来「主线 + 两端刻度」的本地实现已整体替换。
   - **橡皮三模式**：参数行一格「模式」（橡皮 / 矩形橡皮 / 画笔橡皮），点另一个 = `ToolChanged` 换工具（上游 `modeSelector` 同一语义）；画笔橡皮多一格「线宽」，那一族新建时默认 30 DIP（`brushEraserStyle.strokeWidth`）。
-  - **样式实时生效**：`ApplyStyleToSelection` 只在「当前工具就是测距 / 测角」时把参数写回选中的那一条（别的族留 P2-e，避免用形状族的线宽去改一条测距）。
+  - **样式实时生效**：`ApplyStyleToSelection` 只在「当前工具就是测距 / 测角」时把参数写回选中的那一条（别的族留 P2-e2，避免用形状族的线宽去改一条测距）。
   - 验收：构建 0 错 0 警；`--selftest` 217 用例 / 6693 断言全绿（`capturePro` 49 用例 / 1867 断言，新增 `CaptureProSuite.MeasureStyles.cs` 的「度量：测距端点 / 单位 / 系数 / 测角内角 / 花括号」一组）；`capture-overlay-smoke` 688 条全绿（真参数行测距 7 格 / 测角 5 格 / 橡皮 1 格 + 点「画笔橡皮」后 2 格且默认 30 + 实测值置灰 / 可用 / 显示值；逐像素：花括号的尖与肩画出来而脊线是空的、测距标签没有黑底 pill 且是描边色纯文字、端点比例 2 的箭头从终点长出肩线）。
-  - 新发现的两个 1:1 缺口单列 **P2-e**：箭头族参数（起止箭头 14 种 / 箭头比例 / 外描边宽 + 色 / 杆型 Plain·Tapered / 箭头类型 Straight·Curve·Elbow，目前 `Mark.Arrow` 只有直线 + 三角头）、以及「选中标注后切到该工具的样式族并实时生效」（目前只做测距 / 测角）。上游「样式预设」实为可自定义的颜色 / 线宽 / 字号预设表（`style_presets::strokeColors()` / `strokePresetWidths()` / `sizePresetValues()`），按「设置页可自定义预设」看待，并入 P7。
+  - 新发现的两个 1:1 缺口拆成 **P2-e1**（箭头族参数）与 **P2-e2**（选中标注后切到该工具的样式族并实时生效，目前只做测距 / 测角）。上游「样式预设」实为可自定义的颜色 / 线宽 / 字号预设表（`style_presets::strokeColors()` / `strokePresetWidths()` / `sizePresetValues()`），按「设置页可自定义预设」看待，并入 P7。
 
 - 2026-11-18：**P2-d2 完成（放大镜 / 序号 / 水印三族参数）**。三个新纯逻辑文件：`MagnifierStyle.cs`（`MagnifierSpec` + `MagnifierInk` 的镜头 / 源矩形 / 引导线 / 凸包 / 轮廓）、`SerialStyle.cs`（`SerialSpec` + `SerialLabel` 五种写法与五种徽标）、`WatermarkStyle.cs`（`WatermarkSpec` + `WatermarkTemplateText`）。
   - **放大镜**（`buildMagnifierFamily` + `magnifier.rs`）：形状（矩形 / 椭圆 / 菱形）/ 颜色 / 描边宽 / 倍率（1–10，滚轮 0.5）/ 连接方式（无 / 引导线 / 渐变）/ 源轮廓开关 / 引导线端点（14 种）+ 箭头比例（0.5–3）/ 圆角 = 9 格。**源与镜头各自独立定位**（`source_center` / `magnified_center`），镜头 = 源尺寸 × 倍率；引导线起点 = 镜头轮廓 + 半描边 + 8 DIP 空隙（`SHAPE_CONNECTOR_GAP`）、止于源中心；渐变桥 = 镜头与源轮廓的凸包减镜头，源侧透明 → 镜头侧 `0.3 × 不透明度`；源轮廓只在镜头外绘制（与上游一致）。
@@ -227,3 +228,12 @@
   - **水印**（`document.rs` 的模板展开 + `SnowCanvasWatermarkConfig`）：颜色 / 文字 / 字号（12·16·24·30 预设 + 6–256 数字框）/ 字体 / 模板 / 角度（−90–90）/ 间距（10–200）/ 不透明度 = 8 格。**格距 = max(间距 + 字号 × 4, 32)**、排版行高 1.2 × 字号、整图斜向平铺（4096 块上限并成对 `PushClip` / `Pop`）。模板 `{text}` 换成当前文字、`{YYYY}{MM}{DD}{HH}{mm}{ss}` 换成此刻时间；**嵌套 `{outer-{YYYY}}` / 未闭合 `{YYYY` / 认不出的 `{foo}` 整段原样保留**（上游同样只展开认得的那几个）。模板表可增删、落 `configs/ui.json` 的 `CaptureStyles.WatermarkTemplates`。
   - **样式记忆**：三族各自独立（`StyleFamilies` 的 `serial` / `magnifier` / `watermark`），落盘往返含徽标 / 写法 / 下一个号码 / 连接方式 / 源轮廓 / 箭头比例 / 水印模板；`ApplyFamilyDefaults` 只在新建族时套默认值。上游 `snowCanvasSerialNumberType` 的 `Circle`（无数字）也一并落成 `SerialBadge.Circle`。
   - 验收：构建 0 错 0 警；`--selftest` 218 用例 / 6795 断言全绿（`capturePro` 50 用例 / 1969 断言，新增 `CaptureProSuite.SerialWatermarkMagnifier.cs` 一组：徽标尺寸矩阵 / 5×5 / 五种写法边界（含 `int.MaxValue` 读全）/ 水印格距与行高 / 模板展开 8 条 / 引导线起点 210 / 凸包 / 轮廓 / 手柄几何与三段拖动语义）；`capture-overlay-smoke` 714 条全绿（真参数行序号 9 格含五种徽标与五种写法胶囊、「序号」框显示 1 → `AddSerialAt` 后变 2 → 撤销；放大镜 9 格含连接方式三胶囊 / 源轮廓开关 / 倍率 2×；水印 8 格含模板按钮 / 12–30 字号 / 30° / 56 / 16%；真窗口里拖源 = 两个中心一起走、拖手柄与拖镜头本体 = 只动镜头、按源区域不归「只挪镜头」；选中态源轮廓 575 个蓝色像素、手柄 24 个）。
+
+- 2026-11-18：**P2-e1 完成（箭头族参数与几何）**。新纯逻辑文件 `ArrowStyle.cs`（`ArrowType` / `ArrowShaft` / `ArrowSpec`（13 字段）/ `ArrowGeometry`），`Mark.Arrow` 从「两点 + 三角头」改成「点列 + `ArrowSpec`」。
+  - **三种类型**（`arrow/data.rs`）：直线 = 两点；曲线 = Catmull-Rom（tension 1，两端 previous / next 取端点自身重复，转成三次贝塞尔）；折线 = 四点（长边中点先拐），拐角圆角 `corner = min(16, 邻边/2)`，四点折线输出 5 段 = 3 段直线 + 2 段「二次转三次」的拐角弧。
+  - **端点 14 种**：形状 / 尺寸 / 张角全部沿用 P2-d1 的 `ArrowInk`；方向按类型取——曲线用 t=0.85 / 0.15 的切线，直线与折线取首末段弦；起点端点用「从第二点指向第一点」的方向，所以两端同时有箭头时互不干扰。
+  - **箭头比例** 0.5–3（`normalize_arrow_ratio`），钳位在 `ArrowSpec.Clamped()`，端点长度仍受「不得长过线段」限制。
+  - **杆型**（`arrow/shaft.rs` 的 `tapered_arrow_geometry`）：等宽走普通描边；渐宽 = ribbon 轮廓，半径从次箭头「肩宽 ÷ 4」线性长到主箭头「肩宽 ÷ 4」，实线 / 空心三角把箭头并进同一块轮廓，虚线 / 点线把箭头拆成独立块（`ArrowGeometry.Tapered` 返回多块 `InkPart`），不支持的端点（Bar / 圆类 / Crowfoot…）按上游 `supports_tapered_shaft` 退回等宽。
+  - **外描边**（`arrow_outline_width` 0–72 + `default_arrow_outline_color` `#FFCCC7`）：普通杆用同一批路径（`ShapeInk.StrokePaths`，实线 + 非 Architect 是两遍）配「线宽 + 外描边宽」的笔先垫一遍，端点用 `ArrowInk.Draw(..., grow)` 把形状整体外扩；渐宽杆则先用外描边色把轮廓填大（填色 + 宽 `OutlineWidth` 的笔）再盖墨迹。
+  - **参数行**（`buildArrowFamily`）：色 / 线宽 / 线型 / 笔触 / 类型（3 胶囊）/ 外描边宽 / 外描边色 / 箭头比例 / 起点 / 杆型（2 胶囊）/ 终点 = 11 格；出厂默认照上游 `defaults.arrow`：`#FFF5222D`、线宽 2、实线、Architect、曲线、起点无 / 终点三角、比例 1、等宽、外描边 0。
+  - 验收：构建 0 错 0 警；`--selftest` 219 用例 / 6866 断言全绿（`capturePro` 51 用例 / 2040 断言，新增 `CaptureProSuite.ArrowFamily.cs` 一组：三种类型点列 / 折线五段与拐角坐标 / 曲线与折线端点方向 / 14 端点顺序 / 渐宽杆轮廓与虚线分段 / 肩宽 ÷ 4 / 命中与平移缩放 / 落盘往返）；`capture-overlay-smoke` 749 条全绿（真参数行 11 格 + 三类型与杆型胶囊 + 比例 1.0× + 外描边 0 + 起终点默认文案；逐像素：直线杆、终点三角、曲线在弦外鼓出且经过控制点、折线横竖三段、14 种端点都落在终点附近、两端同时有箭头、外描边青圈在杆外侧而墨迹盖在上面、渐宽杆末端比起点粗）。

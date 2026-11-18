@@ -49,6 +49,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "工具栏：格子布局 / 收起 / 落盘往返", ToolLayouts));
         cases.Add(new("capturePro", "样式：每个工具家族各记一套（落盘往返）", ToolStyles));
         cases.Add(new("capturePro", "样式：形状族（形状 / 描边 / 填充 / 圆角 / 尾巴 / 圆点）", ShapeStyles));
+        cases.Add(new("capturePro", "样式：箭头族（三种类型 / 14 端点 / 渐宽杆 / 外描边）", ArrowFamily));
         cases.Add(new("capturePro", "度量：测距端点 / 单位 / 系数 / 测角内角 / 花括号", MeasureStyles));
         cases.Add(new("capturePro", "样式：序号徽标 / 水印模板 / 放大镜几何", SerialWatermarkMagnifier));
         cases.Add(new("capturePro", "识别：表格聚类 / TSV / HTML", Recognize));

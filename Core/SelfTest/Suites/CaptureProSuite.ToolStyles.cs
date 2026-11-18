@@ -30,7 +30,12 @@ internal static partial class CaptureProSuite
         Check.Equal(4d, set.For(CaptureTool.Shape).Width, "改画笔线宽不影响形状");
         Check.True(ReferenceEquals(set.For(CaptureTool.Filter), set.For(CaptureTool.AutoFilter)),
             "同一族的工具拿到同一个对象（不是两份副本）");
-        Check.Equal(ToolStyle.Palette[0], set.For(CaptureTool.Arrow).Color, "默认颜色");
+        Check.Equal(Color.FromRgb(0xF5, 0x22, 0x2D), set.For(CaptureTool.Arrow).Color,
+            "箭头默认色（上游 defaults.arrow = rectangle 的红）");
+        Check.Equal(2d, set.For(CaptureTool.Arrow).Width, "箭头默认线宽 2");
+        Check.Equal(ArrowType.Curve, set.For(CaptureTool.Arrow).ArrowKind, "箭头默认曲线");
+        Check.Equal(Arrowhead.None, set.For(CaptureTool.Arrow).StartArrowhead, "箭头起点默认无端点");
+        Check.Equal(Arrowhead.Arrow, set.For(CaptureTool.Arrow).EndArrowhead, "箭头终点默认三角箭头");
         Check.Equal(4d, set.For(CaptureTool.Highlighter).Width, "默认线宽 4");
 
         // 共享颜色：关着只改一族，开着改一处 = 全改（含还没碰过的工具）

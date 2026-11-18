@@ -70,6 +70,21 @@ internal static class ShapeLabel
 
     public static string Name(LineType type) => "线型：" + Chip(type);
 
+    /// <summary>箭头类型（上游 <c>ArrowType</c>：直线 / 曲线 / 折线）。</summary>
+    public static string Chip(ArrowType type) => type switch
+    {
+        ArrowType.Curve => "曲线",
+        ArrowType.Elbow => "折线",
+        _ => "直线",
+    };
+
+    public static string Name(ArrowType type) => "箭头类型：" + Chip(type);
+
+    /// <summary>箭头杆型（上游 <c>ArrowShaftType</c>：等宽 / 渐宽）。</summary>
+    public static string Chip(ArrowShaft shaft) => shaft == ArrowShaft.Tapered ? "渐宽" : "等宽";
+
+    public static string Name(ArrowShaft shaft) => "杆型：" + Chip(shaft);
+
     public static string Chip(BrushMode mode) => mode == BrushMode.PressureSensitive ? "压感" : "常规";
 
     public static string Name(BrushMode mode) => "画笔：" + Chip(mode);

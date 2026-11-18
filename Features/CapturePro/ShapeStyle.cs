@@ -574,6 +574,24 @@ internal static class ShapeInk
         DrawStroke(dc, parts, spec);
     }
 
+    /// <summary>
+    /// 描边会画出的那几条路径（实线 + 手绘风格是两遍，其余一遍）。
+    /// 箭头族拿它垫外描边：同一批路径再按更粗的笔走一遍就是上游的轮廓描边。
+    /// </summary>
+    public static List<PathGeometry> StrokePaths(IReadOnlyList<InkSegment> contour, bool closed,
+        ShapeSpec spec)
+    {
+        var list = new List<PathGeometry>();
+        if (contour.Count == 0) return list;
+
+        int passes = spec.StrokeStyle == StrokeKind.Solid && spec.Rendering != StrokeRendering.Architect ? 2 : 1;
+        for (int pass = 0; pass < passes; pass++)
+            list.Add(spec.Rendering == StrokeRendering.Architect
+                ? BuildPath(contour, closed)
+                : VariedPath(contour, closed, spec, pass));
+        return list;
+    }
+
     /// <summary>只要描边（直线 / 折线这类不闭合的笔迹用）。</summary>
     public static void DrawStroke(DrawingContext dc, IReadOnlyList<InkSegment> contour, bool closed, ShapeSpec spec) =>
         DrawStroke(dc, new[] { new InkPart(contour, closed) }, spec);

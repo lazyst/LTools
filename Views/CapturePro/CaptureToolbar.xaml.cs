@@ -793,6 +793,41 @@ public partial class CaptureToolbar : UserControl
             v => { if (_style != null) _style.EndpointStyle = v; },
             MeasureLabel.Chip, MeasureLabel.Name));
 
+        // ============ 箭头族（上游 buildArrowFamily） ============
+        // 顺序：类型（3）→ 外描边（宽 + 色）→ 箭头比例 → 起止端点 → 杆型
+        AddHost(ToolParam.ArrowKind, Chips("类型",
+            new[] { ArrowType.Straight, ArrowType.Curve, ArrowType.Elbow },
+            () => _style?.ArrowKind ?? ArrowType.Curve,
+            v => { if (_style != null) _style.ArrowKind = v; },
+            ShapeLabel.Chip, ShapeLabel.Name, "arrowKind"));
+
+        AddHost(ToolParam.ArrowOutlineWidth, Step("外描边", 0, ArrowSpec.MaxOutlineWidth, 1,
+            () => _style?.ArrowOutlineWidth ?? 0,
+            v => { if (_style != null) _style.ArrowOutlineWidth = v; },
+            v => v.ToString("0"), 0));
+
+        AddHost(ToolParam.ArrowOutlineColor, ColorRow("描边色", "captureArrowOutline",
+            () => _style?.ArrowOutlineColor ?? ArrowSpec.DefaultOutline,
+            c => { if (_style != null) _style.ArrowOutlineColor = c; }));
+
+        AddHost(ToolParam.StartArrowhead, Picker("起点",
+            ArrowGeometry.Heads,
+            () => _style?.StartArrowhead ?? Arrowhead.None,
+            v => { if (_style != null) _style.StartArrowhead = v; },
+            MeasureLabel.Chip, MeasureLabel.Name));
+
+        AddHost(ToolParam.ArrowShaftType, Chips("杆型",
+            new[] { ArrowShaft.Plain, ArrowShaft.Tapered },
+            () => _style?.ArrowShaftType ?? ArrowShaft.Plain,
+            v => { if (_style != null) _style.ArrowShaftType = v; },
+            ShapeLabel.Chip, ShapeLabel.Name, "arrowShaft"));
+
+        AddHost(ToolParam.EndArrowhead, Picker("终点",
+            ArrowGeometry.Heads,
+            () => _style?.EndArrowhead ?? Arrowhead.Arrow,
+            v => { if (_style != null) _style.EndArrowhead = v; },
+            MeasureLabel.Chip, MeasureLabel.Name));
+
         // ============ 水印族（上游 buildWatermarkFamily） ============
         // 顺序：色 → 文字 → 字号 + 字体族 → 模板 → 角度 → 间距 → 不透明度
         AddHost(ToolParam.WatermarkText, Text("文字",

@@ -178,7 +178,9 @@ public partial class CaptureOverlayWindow
                 return new Mark.Shape(_toolStart, current, _style.ShapeSpecOf(_dragSeed));
 
             case CaptureTool.Arrow:
-                return new Mark.Arrow(_toolStart, current, color, width);
+                return new Mark.Arrow(
+                    ArrowGeometry.Points(_toolStart, current, _style.ArrowKind),
+                    _style.ArrowSpecOf(_dragSeed));
 
             case CaptureTool.Line:
                 return new Mark.Line(_toolStart, current, color, width, _style.StrokeStyle,
