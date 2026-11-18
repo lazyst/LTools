@@ -69,6 +69,7 @@ public partial class CaptureResultWindow : Window
         _runOnLoad = true;
 
         OriginalImage.Source = image;
+        FillTranslateTargets();
         Place();
         Loaded += (_, _) =>
         {
@@ -93,6 +94,7 @@ public partial class CaptureResultWindow : Window
         _image = image;
         _runOnLoad = false;
         if (image != null) OriginalImage.Source = image;
+        FillTranslateTargets();
         Place();
         Apply(result);
     }
@@ -360,12 +362,15 @@ public partial class CaptureResultWindow : Window
             "markdown" => "复制 Markdown",
             "html" => "复制 HTML",
             "document" => "复制文档",
-            _ => "复制文字",
+            _ => CopyLabelForText(),
         };
 
         copyBtn.IsEnabled = conversion || document
             ? !_conversion.IsEmpty
             : _result is { Ok: true } || _layer.Count > 0;
+
+        // 翻译只服务文字页：别的页签把这一组收起（不放死按钮）
+        UpdateTranslateBar();
 
         // 表格页时贴选区摆好的窗口可能装不下整张表：切过去先把画布宽度对齐视口
         if (_tab == "table")
@@ -453,6 +458,20 @@ public partial class CaptureResultWindow : Window
             return;
         }
 
+        if (_translatedLines != null)
+        {
+            StatusText.Text = string.Format(CultureInfo.CurrentCulture,
+                "译文 · {0} 行 · 目标 {1} · 点「原文」切回",
+                _translatedLines.Count, TranslationLanguages.LabelOf(SelectedTarget));
+            return;
+        }
+
+        if (TranslationError.Length > 0)
+        {
+            StatusText.Text = "翻译失败：" + TranslationError;
+            return;
+        }
+
         if (_model != null && _model.HasSelection)
         {
             int chars = _model.SelectionText().Length;
@@ -504,7 +523,8 @@ public partial class CaptureResultWindow : Window
 
     // ============ 键盘 / 输入 ============
 
-    private bool TextEditable => _tab == "text" && OriginalToggle.IsChecked != true;
+    private bool TextEditable => _tab == "text" && OriginalToggle.IsChecked != true &&
+                                 _translatedLines == null;
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -556,7 +576,18 @@ public partial class CaptureResultWindow : Window
             return;
         }
 
-        if (_model == null || !TextEditable) return;
+        if (_model == null || !TextEditable)
+        {
+            // 译文模式只读：只保留 Ctrl+C（复制译文），别的编辑键都不认
+            if (_translatedLines != null && e.Key == Key.C &&
+                (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+            {
+                CopyCurrent();
+                e.Handled = true;
+            }
+
+            return;
+        }
 
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
         bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
@@ -648,6 +679,13 @@ public partial class CaptureResultWindow : Window
                 CopyDocument();
                 break;
             default:
+                // 译文模式：复制整段译文（逐行）
+                if (_translatedLines != null)
+                {
+                    Copy(string.Join("\r\n", _translatedLines), "译文");
+                    break;
+                }
+
                 // 有选区就复制选中的，没有就整份（与上游识别窗的复制语义一致）
                 if (_model == null)
                 {
@@ -735,6 +773,20 @@ public partial class CaptureResultWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
+
+        // 关窗要掐掉还在飞的翻译请求，并把画布切回原文（窗口已关，但画布对象可能还被引用）
+        try
+        {
+            _translationCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 已经结束
+        }
+
+        _translationCts = null;
+        _translatedLines = null;
+
         _preview?.Close();
         _preview = null;
     }

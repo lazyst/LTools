@@ -159,6 +159,14 @@
     "Codec": "auto",
     "TrimAfterRecord": false
   },
+  "Translation": {
+    "Endpoint": null,
+    "Model": null,
+    "ApiKey": null,
+    "Target": "zh-CN",
+    "Source": "auto",
+    "TimeoutMs": 30000
+  },
   "Triggers": {
     "Enabled": false,
     "Rules": []

@@ -39,6 +39,9 @@ public sealed class SettingsFile
 
     /// <summary>录屏的默认开关：声音 / 摄像头 / 键鼠特效 / 编码器 / 录完裁剪。</summary>
     public RecordOptions Record { get; set; } = new();
+
+    /// <summary>识别结果的在线翻译（OpenAI 兼容端点）。空端点 / 空模型 = 没配。</summary>
+    public TranslationFile Translation { get; set; } = new();
 }
 
 /// <summary><c>config/ui.json</c>：界面状态（丢了不影响功能，只是记忆丢失）。</summary>

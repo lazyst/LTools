@@ -756,6 +756,31 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
   `rFonts` 用 `eastAsia`；② Chromium headless 的**父进程会先退出、PDF 稍后才落盘**，`WaitForExit` 之后要轮询文件
   （最多 20 秒）；③ 两个输出管道要异步排空，同步 `ReadToEnd` 会跟 `WaitForExit` 互等。
 
+### 10.7 在线翻译（P4-f）
+
+上游识别窗的「翻译」是 `beginTextTranslation`：确认后把**当前文字层的每一行**送去翻译，译文按原行框
+摆回画布（overlay translation），切回原文还能继续编辑；设置里能选源 / 目标语言并从多家服务里挑一家。
+
+本地按 §5 的口径只留**一个 OpenAI 兼容的 `/chat/completions`**（自建网关 / 代理 / 本地模型都通）：
+
+- **语义照上游**：按行翻译、**行数必须对得上**（`TryParseLines` 对不上就报「模型返回的译文是 N 行，
+  与输入的 M 行对不上」，不把译文错位塞进别的行框）；空行原样返回空行。
+- **`Features/CapturePro/TranslationClient.cs`**：端点校验（绝对 http(s) + 有主机 + 不带 `#fragment`）、
+  `ChatUrl`（写没写 `/chat/completions` 都认）、`BuildBody`（系统提示要求同长度 JSON 字符串数组）、
+  `ExtractContent`（`choices[0].message.content`，兼容分段数组与旧式 `text`）、`StripFence`、`TryParseLines`
+  （JSON 数组 → 按行切并去「1. 」「- 」「• 」 → 单行整段）、`Describe`（401 / 404 / 429 / 5xx 翻成人话
+  + 响应体片段）、`TranslateAsync`（静态 `HttpClient` + linked 超时与取消，取消报「已取消翻译」）。
+- **`TranslationLanguages.cs`**：9 门语言 + `auto`；`Detect` 按字符族判源语言（假名 → 日语、谚文 → 韩语、
+  汉字 → 中文、西里尔 → 俄语、拉丁 → 英语），只服务「提示词里怎么写」和「标签怎么显示」，不做概率模型。
+- **配置**：`configs/settings.json` 的 `Translation` 段（`Endpoint` / `Model` / `ApiKey` / `Target` /
+  `Source` / `TimeoutMs`，超时夹 1–120 秒）；`TranslationStore` 读写这一段，换目标语言立刻落盘。
+- **界面**：结果窗页签行右侧的翻译条（目标语言 + 翻译 / 取消 / 原文 + ⚙ 设置），**只在本文字页露出**；
+  没配端点时点「翻译」**直接弹设置框**（不放死按钮），设置框里的「测试连接」真发一条 `["Hello, world!"]`。
+  译文态**只读**（不画选区与光标、鼠标让路），复制按钮变「复制译文」、`Ctrl+C` 复制译文，
+  状态行「译文 · N 行 · 目标 X · 点「原文」切回」；关窗会取消还在飞的请求。
+- **失败不假装成功**：401 报「翻译端点拒绝了这个密钥（401）」，连不上报「连不上翻译端点：…」，超时报秒数；
+  失败时常驻 toast + 状态行「翻译失败：…」，画布仍是原文。
+
 ## 11. 采集历史（P2-2 / P4）
 
 截图 / 识别 / 录屏的落点：数据根 `captures/`（`catalog.json` + `assets/<id>.png` + `thumbnails/<id>.png`
@@ -1183,6 +1208,7 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
 | **P4-c** ✅ | ④ | 二维码标记与气泡（照 `screenshotqrcontroller.cpp`）：选区落定 220ms 防抖扫描、识别图降到 1080p 内、贪心白掩码逐枚解码；24×24 圆点标记摆在码中心（只在 `Select` 工具、码四角都在选区里时显示）；悬停 150ms / 离开 250ms 的气泡（圆角卡 + 合成箭头 + blur 18 阴影）、文本区 24 内边距 / 总宽 ≤344 / 高 48–240 且压到可用高 −140、右优先翻左再夹进可用区；复制 / 打开链接后结束截图、Esc 只关气泡并把焦点还给标记；工具条「显示二维码」开关 + `AutoRecognizeQrCode` 设置项 |
 | **P4-d** ✅ | ④ | 图片转 Markdown / HTML（照 `markdownRequested` / `htmlRequested` + `screenshotimageconversionview` + `screenshotimageconversionclipboard`，云端部分改本地版面派生）：块模型 Heading 1–3 / Paragraph / Bullet / Ordered / Table；标题按行高比 ≥1.9 · 1.45 · 1.2、段落按纵向间距 ≤0.75 中位行高且中日韩不补空格、列表认 `•·-*–` 与 `1. 1、1)`、表格剔去 `TableArea` 内行并裁首尾单格行；Markdown 管道表格 + 单元格转义、HTML `h1–h3`/`p`/`ul`/`ol`/`table+thead+th+tbody+td` + 文本转义；预览用 `FlowDocumentScrollViewer` 可划选，**选了复制选中段、没选复制整份源码**，HTML 另写 `text/html` |
 | **P4-e** ✅ | ④ | 文档识别与导出（照 `documentRequested` / `screenshotdocumentexport` / `screenshotrecognitionfileexport` 的 Document 一族）：结果窗「文档」页签（同一份版面块渲染、可划选）+ 五种导出 `docx`（六 part WordprocessingML + 三级标题 + numbering + 表格）/ `pdf`（系统 Edge·Chrome headless `--print-to-pdf`，无引擎明确报错）/ `md` / `html`（独立页）/ `tex`（`ctex` + `booktabs`）+「打开文档」= 写临时 docx 交默认程序 + 复制富文本（`text/html` + 纯文本，选了复制选中段） |
+| **P4-f** ✅ | ④ | 在线翻译（照 `textTranslationRequested` / `translationservice` / `translationjob` 的 `beginTextTranslation` + overlay translation）：按行翻译、**行数必须对得上**，译文摆回原行框且只读；`TranslationClient`（端点校验 / `ChatUrl` / 请求体 / `ExtractContent` 含分段 content / 围栏 / JSON 数组 → 按行切 → 单行整段 / 状态码人话 / linked 超时与取消）、`TranslationLanguages`（9 门语言 + 按字符族判源语言）、`TranslationStore`（`settings.json` 的 `Translation` 段）、`TranslationSettingsWindow`（端点 / 模型 / 密钥 / 超时 / 源与目标语言 / 真发一条测试连接）+ 结果窗翻译条（目标语言 / 翻译·取消·原文 / ⚙，只在文字页）+ 「复制译文」；上游多家服务与私有云换成**一个 OpenAI 兼容端点**（§5） |
 
 ## 16. 验收
 
@@ -2747,3 +2773,19 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   回归：`--selftest` `capturePro` **74 用例 2865 断言**（新增「转换：文档导出（纯文本 / LaTeX / HTML / docx）」）；
   `capture-overlay-smoke` **1022 条**（文档页与状态行、全选 / 复制选中段、真导出 docx·md·html·tex、
   PDF 真出 `%PDF`（26681 字节）、临时 docx 结构有效；落图 `out/result-document.png`）。
+- **在线翻译（P4-f，2026-11-18）**：上游「多家翻译服务 + 私有云快速翻译 → 按行对齐的 overlay translation」
+  收到一个 OpenAI 兼容的 `/chat/completions`（§5）。新文件五个：`Config/Translation.cs`、
+  `Features/CapturePro/TranslationClient.cs`、`TranslationLanguages.cs`、`TranslationStore.cs`、
+  `Views/CapturePro/TranslationSettingsWindow.xaml(.cs)` + `Views/CapturePro/CaptureResultWindow.Translate.cs`。
+  改到的：`CaptureOcrCanvas`（`SetTranslation` / `ShowingTranslation` / 译文态只读、不画选区、鼠标让路）、
+  `CaptureResultWindow.xaml(.cs)`（页签行改「左页签 + 右翻译条」；`UpdateTabs` 调 `UpdateTranslateBar`、
+  复制按钮文案走 `CopyLabelForText`、`RefreshStatus` 三个分支（译文 / 失败 / 原文）、`CopyCurrent` 复制译文、
+  `TextEditable` 加译文态、`OnClosed` 取消在飞请求）、`AppConfig` / `ConfigFiles` / `ConfigBundle` /
+  `LTools.example.json`（`Translation` 段）。
+  三个坑：① 请求体默认序列化会把汉字写成 `\uXXXX`，要 `JavaScriptEncoder.UnsafeRelaxedJsonEscaping`；
+  ② 译文切换后必须 `RefreshStatus()`（只 `UpdateTabs()` 会让状态行卡在「正在翻译…」，冒烟首轮两条红就是它）；
+  ③ 冒烟别读本机真配置——`ConfigStore.ConfigPath` 临时指向 `out/translate-config`，跑完还原。
+  回归：`--selftest` 全量 **7780 断言**（`capturePro` 75 用例 2954 断言，新增「翻译：端点 / 请求体 /
+  响应解析 / 语言判定」）；`capture-overlay-smoke` **1047 条**（本地真 TCP 假端点端到端：请求体带当前文字层
+  两行与模型名、译文摆回画布、复制译文、点「原文」切回、401 报「密钥」且不显示译文、非文字页收起翻译条；
+  落图 `out/result-translate.png`）。

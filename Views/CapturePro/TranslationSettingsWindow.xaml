@@ -1,0 +1,90 @@
+<Window x:Class="LTools.Views.CapturePro.TranslationSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:LTools.Views"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:LTools.Views.Controls"
+        Title="翻译设置" Width="560" ResizeMode="NoResize" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
+        views:WindowSizing.Mode="Dialog">
+    <!-- 识别结果的在线翻译设置（照 Snow Shot 的 screenshot_translation settings）：
+         上游自带 DeepL / DeepLX / 百度 / 有道与私有云的快速翻译，这里收到一个
+         OpenAI 兼容的 chat completions 端点（自建网关、代理、本地模型都通）。 -->
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <controls:DialogShell>
+        <controls:DialogShell.Footer>
+            <Grid Margin="20,10,20,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="ErrorText" Grid.Column="0" Style="{StaticResource HintLabel}"
+                           VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0"
+                           Foreground="{StaticResource DangerBrush}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="TestBtn" Style="{StaticResource BtnGhost}" Content="测试连接"
+                            MinWidth="86" Click="Test_Click"/>
+                    <Button Style="{StaticResource BtnGhost}" Content="取消" MinWidth="74"
+                            Margin="8,0,0,0" IsCancel="True" Click="Cancel_Click"/>
+                    <Button Style="{StaticResource BtnPrimary}" Content="保存" MinWidth="74"
+                            Margin="8,0,0,0" IsDefault="True" Click="Ok_Click"/>
+                </StackPanel>
+            </Grid>
+        </controls:DialogShell.Footer>
+
+        <StackPanel Margin="20,12,20,10">
+            <TextBlock Text="端点" Style="{StaticResource SectionLabel}"/>
+            <TextBox x:Name="EndpointBox" Height="28" Margin="0,4,0,0"
+                     controls:TextBoxPlaceholder.Text="https://api.openai.com/v1"/>
+            <TextBlock Style="{StaticResource HintLabel}" Margin="0,4,0,0" TextWrapping="Wrap"
+                       Text="OpenAI 兼容的 base 地址；写不写结尾的 /chat/completions 都认。"/>
+
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="模型" Style="{StaticResource SectionLabel}"/>
+                    <TextBox x:Name="ModelBox" Height="28" Margin="0,4,0,0"
+                             controls:TextBoxPlaceholder.Text="gpt-4o-mini"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" Width="120">
+                    <TextBlock Text="超时（秒）" Style="{StaticResource SectionLabel}"/>
+                    <TextBox x:Name="TimeoutBox" Height="28" Margin="0,4,0,0"
+                             controls:TextBoxClear.Attach="False"/>
+                </StackPanel>
+            </Grid>
+
+            <TextBlock Text="密钥" Style="{StaticResource SectionLabel}" Margin="0,12,0,0"/>
+            <PasswordBox x:Name="KeyBox" Height="28" Margin="0,4,0,0"/>
+            <TextBlock Style="{StaticResource HintLabel}" Margin="0,4,0,0" TextWrapping="Wrap"
+                       Text="只存在本机 configs/settings.json；本地无鉴权的网关可以留空。"/>
+
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="源语言" Style="{StaticResource SectionLabel}"/>
+                    <ComboBox x:Name="SourceBox" Height="28" Margin="0,4,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                    <TextBlock Text="目标语言" Style="{StaticResource SectionLabel}"/>
+                    <ComboBox x:Name="TargetBox" Height="28" Margin="0,4,0,0"/>
+                </StackPanel>
+            </Grid>
+
+            <TextBlock x:Name="TestText" Style="{StaticResource HintLabel}" Margin="0,10,0,0"
+                       TextWrapping="Wrap"/>
+        </StackPanel>
+    </controls:DialogShell>
+</Window>

@@ -32,6 +32,7 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
 
     private OcrTextEditModel? _model;
     private IReadOnlyList<OcrTextLine> _lines = Array.Empty<OcrTextLine>();
+    private IReadOnlyList<string>? _translation;
 
     private int _hoverLine = -1;
     private int _dragLine = -1;
@@ -69,11 +70,34 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         if (_model != null) _model.Changed -= OnModelChanged;
         _model = model;
         _lines = lines;
+        _translation = null;
         ImageWidth = Math.Max(1, imageWidth);
         ImageHeight = Math.Max(1, imageHeight);
         _model.Changed += OnModelChanged;
         ResetMeasure();
         InvalidateMeasure();
+        InvalidateVisual();
+    }
+
+    /// <summary>文字层现在显示的是译文（照上游的 overlay translation：同一批行框换成译文）。</summary>
+    public bool ShowingTranslation => _translation != null;
+
+    /// <summary>当前显示的译文行（没开翻译时为 null）。</summary>
+    public IReadOnlyList<string>? TranslationLines => _translation;
+
+    /// <summary>
+    /// 把文字层换成译文 / 换回原文。译文模式下**只读**：不画选区与光标、点不中行，
+    /// 这样译文不会被误编辑，划选仍交给窗口里的「复制译文」。
+    /// </summary>
+    public void SetTranslation(IReadOnlyList<string>? lines)
+    {
+        if (ReferenceEquals(_translation, lines)) return;
+        _translation = lines;
+        _hoverLine = -1;
+        _dragLine = -1;
+        _dragging = false;
+        Cursor = Cursors.Arrow;
+        ResetMeasure();
         InvalidateVisual();
     }
 
@@ -144,7 +168,7 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
 
         dc.PushTransform(new ScaleTransform(Zoom, Zoom));
 
-        IReadOnlyList<string> text = _model?.Lines ?? Array.Empty<string>();
+        IReadOnlyList<string> text = _translation ?? _model?.Lines ?? Array.Empty<string>();
         var (selStartLine, selStartChar, selEndLine, selEndChar) = Selection();
 
         for (int i = 0; i < _lines.Count; i++)
@@ -167,18 +191,18 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
             dc.DrawText(formatted, origin);
             dc.Pop();
 
-            if (i == _hoverLine)
+            if (i == _hoverLine && _translation == null)
             {
                 var pen = new Pen(PrimaryBrush(), 1.2) { DashStyle = DashStyles.Dot };
                 dc.DrawRectangle(null, pen, box);
             }
         }
 
-        if (_model != null && _model.HasSelection)
+        if (_translation == null && _model != null && _model.HasSelection)
         {
             DrawSelection(dc, text, selStartLine, selStartChar, selEndLine, selEndChar);
         }
-        else if (_model != null && IsKeyboardFocusWithin)
+        else if (_translation == null && _model != null && IsKeyboardFocusWithin)
         {
             DrawCaret(dc, text);
         }
@@ -288,7 +312,7 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
-        if (_model == null) return;
+        if (_model == null || _translation != null) return;
 
         Focus();
         Point point = e.GetPosition(this);
@@ -324,6 +348,17 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
     {
         base.OnMouseMove(e);
         if (_model == null) return;
+        if (_translation != null)
+        {
+            if (_hoverLine >= 0)
+            {
+                _hoverLine = -1;
+                InvalidateVisual();
+            }
+
+            Cursor = Cursors.Arrow;
+            return;
+        }
 
         Point point = e.GetPosition(this);
 

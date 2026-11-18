@@ -37,20 +37,36 @@
             <!-- 页签：只列当前真能出结果的页（没有实现的模式不放上来当死按钮） -->
             <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
                     Padding="10,0,10,6">
-                <StackPanel Orientation="Horizontal">
-                    <RadioButton x:Name="TabText" Style="{StaticResource CaptureTab}" GroupName="resultTab"
-                                 Content="文字" IsChecked="True" Tag="text" Checked="Tab_Changed"/>
-                    <RadioButton x:Name="TabTable" Style="{StaticResource CaptureTab}" GroupName="resultTab"
-                                 Content="表格" Tag="table" Checked="Tab_Changed"/>
-                    <RadioButton x:Name="TabDocument" Style="{StaticResource CaptureTab}" GroupName="resultTab"
-                                 Content="文档" Tag="document" Checked="Tab_Changed"/>
-                    <RadioButton x:Name="TabQr" Style="{StaticResource CaptureTab}" GroupName="resultTab"
-                                 Content="二维码" Tag="qr" Checked="Tab_Changed"/>
-                    <RadioButton x:Name="TabMarkdown" Style="{StaticResource CaptureTab}" GroupName="resultTab"
-                                 Content="Markdown" Tag="markdown" Checked="Tab_Changed"/>
-                    <RadioButton x:Name="TabHtml" Style="{StaticResource CaptureTab}" GroupName="resultTab"
-                                 Content="HTML" Tag="html" Checked="Tab_Changed"/>
-                </StackPanel>
+                <Grid>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                        <RadioButton x:Name="TabText" Style="{StaticResource CaptureTab}" GroupName="resultTab"
+                                     Content="文字" IsChecked="True" Tag="text" Checked="Tab_Changed"/>
+                        <RadioButton x:Name="TabTable" Style="{StaticResource CaptureTab}" GroupName="resultTab"
+                                     Content="表格" Tag="table" Checked="Tab_Changed"/>
+                        <RadioButton x:Name="TabDocument" Style="{StaticResource CaptureTab}" GroupName="resultTab"
+                                     Content="文档" Tag="document" Checked="Tab_Changed"/>
+                        <RadioButton x:Name="TabQr" Style="{StaticResource CaptureTab}" GroupName="resultTab"
+                                     Content="二维码" Tag="qr" Checked="Tab_Changed"/>
+                        <RadioButton x:Name="TabMarkdown" Style="{StaticResource CaptureTab}" GroupName="resultTab"
+                                     Content="Markdown" Tag="markdown" Checked="Tab_Changed"/>
+                        <RadioButton x:Name="TabHtml" Style="{StaticResource CaptureTab}" GroupName="resultTab"
+                                     Content="HTML" Tag="html" Checked="Tab_Changed"/>
+                    </StackPanel>
+
+                    <!-- 翻译（照上游识别窗的「翻译」入口）：只在文字页露面，目标语言下拉 + 翻译 / 原文
+                         切换 + 设置。译文按原文行框摆回画布（overlay translation）。 -->
+                    <StackPanel x:Name="TranslateBar" Orientation="Horizontal" HorizontalAlignment="Right"
+                                VerticalAlignment="Center">
+                        <ComboBox x:Name="TargetBox" Width="104" Height="26" Padding="6,0,24,0"
+                                  FontSize="{StaticResource FontSizeHint}"
+                                  SelectionChanged="TargetBox_Changed"/>
+                        <Button x:Name="TranslateBtn" Style="{StaticResource BtnGhost}" Content="翻译"
+                                MinWidth="66" Height="26" Margin="8,0,0,0" Click="Translate_Click"/>
+                        <Button x:Name="TranslateSettingsBtn" Style="{StaticResource BtnGhost}"
+                                Content="⚙" Width="26" Height="26" Margin="6,0,0,0" Focusable="False"
+                                ToolTip="翻译设置…" Click="TranslateSettings_Click"/>
+                    </StackPanel>
+                </Grid>
             </Border>
 
             <!-- 内容：文字层 / 原图共用一块画布尺寸（摆位与滚动一致） -->

@@ -110,6 +110,7 @@ internal static class ConfigBundle
         cfg.TrayDoubleClick = settings.TrayDoubleClick;
         cfg.Logging = settings.Logging ?? new LogConfig();
         cfg.Record = (settings.Record ?? new RecordOptions()).Normalized();
+        cfg.Translation = settings.Translation ?? new TranslationFile();
 
         var ui = Read<UiStateFile>(UiPath(anchorPath), ctx);
         if (ui == null) ui = ToUi(ctx.GetSeed());
@@ -372,6 +373,7 @@ internal static class ConfigBundle
         TrayDoubleClick = cfg.TrayDoubleClick,
         Logging = cfg.Logging ?? new LogConfig(),
         Record = cfg.Record ?? new RecordOptions(),
+        Translation = cfg.Translation ?? new TranslationFile(),
     };
 
     internal static UiStateFile ToUi(AppConfig cfg) => new()
