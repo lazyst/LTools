@@ -24,6 +24,10 @@ namespace LTools.Views.CapturePro;
 /// 用 <c>RenderTransform</c> 摆过去，图像像素始终 1:1 对得上。
 /// </para>
 /// <para>
+/// 布局照上游：**没有顶部工具行**，绘图工具条浮在画布上（锚图片右下 4px，见
+/// <see cref="PlaceOverlay"/>），缩放条贴画布底部居中；空态可点「添加图片」或拖进来。
+/// </para>
+/// <para>
 /// 裁剪照上游 <c>ImageEditingCanvas</c>：拖动时铺一条半透明红带 + 白字「N px」+
 /// 两条蓝色虚线导引线；松手提交，进撤销栈。Esc 先退出裁剪，再按才关窗。
 /// </para>
@@ -57,10 +61,26 @@ public partial class ImageEditWindow : Window
         InitializeComponent();
         ImageEditSession.Track(this);
 
+        Toolbar.Init(_styles, CaptureTool.Select, CaptureToolbar.ToolbarMode.Edit);
+        Toolbar.ToolChanged += SetTool;
+        Toolbar.PanRequested += EnterPanMode;
+        Toolbar.CropRequested += SetCropAxis;
+        Toolbar.UndoRequested += Undo;
+        Toolbar.RedoRequested += Redo;
+        Toolbar.ActionRequested += OnToolbarAction;
+        Toolbar.StyleChanged += OnToolbarStyleChanged;
+        Toolbar.ResetRequested += PlaceOverlay;
+
         Loaded += Window_Loaded;
-        SizeChanged += (_, _) => { ClampOffset(); ApplyCamera(); };
+        SizeChanged += (_, _) =>
+        {
+            ClampOffset();
+            ApplyCamera();
+            PlaceOverlay();
+        };
         DpiChanged += (_, _) => { _dpi = ReadDpi(); UpdateChrome(); };
 
+        Toolbar.SetPan(true);
         UpdateChrome();
     }
 
@@ -73,6 +93,10 @@ public partial class ImageEditWindow : Window
     public void PresentEmpty()
     {
         _generation++;
+        CommitText();
+        CancelGesture();
+        CancelCropMode();
+
         _doc.Clear();
         Canvas.Document = null;
         Canvas.InvalidateVisual();
@@ -81,6 +105,11 @@ public partial class ImageEditWindow : Window
         EmptyState.Visibility = Visibility.Visible;
         Title = "图片编辑";
         Notice("");
+
+        _panMode = true;
+        SelectMark(-1);
+        Toolbar.SetPan(true);
+
         UpdateChrome();
     }
 
@@ -137,6 +166,10 @@ public partial class ImageEditWindow : Window
     {
         _generation++;
 
+        CommitText();
+        CancelGesture();
+        CancelCropMode();
+
         _applying = true;
         _doc.Load(image, fileName ?? "", sourcePath);
         _applying = false;
@@ -147,15 +180,22 @@ public partial class ImageEditWindow : Window
         Canvas.ShowSelectionChrome = false;
 
         _fitted = false;
-        CancelCropMode();
         EmptyState.Visibility = Visibility.Collapsed;
         Title = $"图片编辑 — {_doc.Title}";
         Notice("");
+
+        // 打开一张图 = 回到上游的默认「平移」模式
+        _panMode = true;
+        _tool = CaptureTool.Select;
+        SelectMark(-1);
+        Toolbar.Sync(CaptureTool.Select);
+        Toolbar.SetPan(true);
 
         if (IsLoaded && Surface.ActualWidth > 1) FitToWindow();
         else Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(FitIfPending));
 
         UpdateChrome();
+        PlaceOverlay();
     }
 
     // ============ 镜头（缩放 / 平移） ============
@@ -164,6 +204,7 @@ public partial class ImageEditWindow : Window
     {
         _dpi = ReadDpi();
         FitIfPending();
+        PlaceOverlay();
         Surface.Focus();
     }
 
@@ -199,6 +240,7 @@ public partial class ImageEditWindow : Window
         _fitted = true;
 
         ApplyCamera();
+        PlaceOverlay();
     }
 
     /// <summary>实际大小（1 图像像素 = 1 物理像素）。</summary>
@@ -216,6 +258,7 @@ public partial class ImageEditWindow : Window
 
         ClampOffset();
         ApplyCamera();
+        PlaceOverlay();
     }
 
     /// <summary>窗口坐标 → 图像像素坐标（DIP，1 单位 = 1 图像像素）。</summary>
@@ -231,6 +274,9 @@ public partial class ImageEditWindow : Window
 
         UpdateCropLayer();
         UpdateChrome();
+
+        // 就地输入框跟着镜头走（缩放 / 平移时用户可能正在打字）
+        if (_textEditing) PlaceTextEntry(_textOrigin);
     }
 
     /// <summary>把内容夹在视口里：比视口小就居中，比视口大就不许露出空白。</summary>
@@ -261,6 +307,49 @@ public partial class ImageEditWindow : Window
         ApplyCamera();
     }
 
+    // ============ 浮层（工具条 / 缩放条）摆位 ============
+
+    /// <summary>
+    /// 照上游 <c>anchoredToolbarPlacement</c>：工具条锚图片**右下角 + 4px**，下方放不下翻到
+    /// 上方、右边放不下往左挪；用户拖动过就保持用户的位置（双击工具条空白复位）。
+    /// 缩放条贴画布底部居中。
+    /// </summary>
+    private void PlaceOverlay()
+    {
+        if (!_doc.HasImage || Surface.ActualWidth < 2 || Surface.ActualHeight < 2) return;
+
+        double width = Surface.ActualWidth;
+        double height = Surface.ActualHeight;
+
+        // 工具条整条夹进画布宽度（参数条本身是 WrapPanel，会换行而不是被裁掉）
+        Toolbar.FitWidth(width);
+
+        // 缩放条：底部居中
+        ZoomBar.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double zw = ZoomBar.DesiredSize.Width;
+        double zh = ZoomBar.DesiredSize.Height;
+        System.Windows.Controls.Canvas.SetLeft(ZoomBar, Math.Max(4, (width - zw) / 2));
+        System.Windows.Controls.Canvas.SetTop(ZoomBar, Math.Max(4, height - zh - 12));
+
+        if (Toolbar.UserMoved) return;
+
+        var image = new Rect(_offset.X, _offset.Y,
+            ContentSize.Width * _zoom, ContentSize.Height * _zoom);
+
+        Toolbar.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double tw = Toolbar.DesiredSize.Width;
+        double th = Toolbar.DesiredSize.Height;
+
+        double left = image.Right + 4;
+        double top = image.Bottom + 4;
+
+        if (top + th > height - 4) top = image.Top - th - 4;        // 下方放不下 → 翻到上方
+        if (left + tw > width - 4) left = image.Right - tw;         // 右边放不下 → 往左挪
+
+        System.Windows.Controls.Canvas.SetLeft(Toolbar, Math.Max(4, Math.Min(left, Math.Max(4, width - tw - 4))));
+        System.Windows.Controls.Canvas.SetTop(Toolbar, Math.Max(4, Math.Min(top, Math.Max(4, height - th - 4))));
+    }
+
     // ============ 鼠标 ============
 
     private void Surface_MouseWheel(object sender, MouseWheelEventArgs e)
@@ -281,12 +370,20 @@ public partial class ImageEditWindow : Window
         ClampOffset();
         ApplyCamera();
         UpdateCropLayer();
+        PlaceOverlay();
         e.Handled = true;
     }
 
     private void Surface_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (!_doc.HasImage) return;
+
+        // 浮层上的点击（工具条 / 缩放条 / 文字输入框）不参与画布手势
+        var source = e.OriginalSource as DependencyObject;
+        if (IsOnOverlay(source) || IsOnTextEntry(source)) return;
+
+        // 点画布 = 正在输入的那一段先落地
+        if (_textEditing && e.ChangedButton == MouseButton.Left) CommitText();
 
         // 裁剪模式：左键按下开始拉条带（起点可以先落在图外，提交时夹回去）
         if (_cropAxis is { } axis && e.ChangedButton == MouseButton.Left)
@@ -299,14 +396,25 @@ public partial class ImageEditWindow : Window
             return;
         }
 
-        // 平移：中键任何时候都能拖；左键在没有其它手势时也能拖
-        if (e.ChangedButton is MouseButton.Middle or MouseButton.Left)
+        // 平移：中键任何时候都能拖；左键在平移模式（默认）下也能拖
+        if (e.ChangedButton == MouseButton.Middle ||
+            (e.ChangedButton == MouseButton.Left && _panMode))
         {
             _panning = true;
             _panStart = e.GetPosition(Surface);
             _panOffset = _offset;
             Surface.CaptureMouse();
-            Cursor = Cursors.SizeAll;
+            Surface.Cursor = Cursors.SizeAll;
+            e.Handled = true;
+            return;
+        }
+
+        if (e.ChangedButton != MouseButton.Left) return;
+
+        if (BeginDrawGesture(ToImage(e.GetPosition(Surface)), e.ClickCount))
+        {
+            // 文字 / 序号 / 水印 / 折线是「点一下」类：不抓鼠标，免得输入框点不进去
+            if (_drag != EditDrag.None) Surface.CaptureMouse();
             e.Handled = true;
         }
     }
@@ -318,42 +426,55 @@ public partial class ImageEditWindow : Window
         if (_panning)
         {
             var now = e.GetPosition(Surface);
-            _offset = new Point(_panOffset.X + (now.X - _panStart.X), _panOffset.Y + (now.Y - _panStart.Y));
+            _offset = new Point(_panOffset.X + (now.X - _panStart.X),
+                _panOffset.Y + (now.Y - _panStart.Y));
             ClampOffset();
             ApplyCamera();
+            PlaceOverlay();
             return;
         }
 
-        if (_cropAxis is null) return;
+        var view = e.GetPosition(Surface);
 
-        if (_cropping)
+        if (_cropping && _cropAxis != null)
         {
-            _cropLast = PixelAt(e.GetPosition(Surface));
+            _cropLast = PixelAt(view);
             _cropPointerInside = true;
             UpdateCropLayer();
             return;
         }
 
-        var view = e.GetPosition(Surface);
-        var content = ContentSize;
-        bool inside = content.Width > 0 && content.Height > 0 &&
-                      view.X >= _offset.X && view.Y >= _offset.Y &&
-                      view.X <= _offset.X + content.Width * _zoom &&
-                      view.Y <= _offset.Y + content.Height * _zoom;
-
-        if (!inside)
+        if (_cropAxis != null)
         {
-            if (_cropPointerInside)
+            var content = ContentSize;
+            bool inside = content.Width > 0 && content.Height > 0 &&
+                          view.X >= _offset.X && view.Y >= _offset.Y &&
+                          view.X <= _offset.X + content.Width * _zoom &&
+                          view.Y <= _offset.Y + content.Height * _zoom;
+
+            if (!inside)
             {
-                _cropPointerInside = false;
-                UpdateCropLayer();
+                if (_cropPointerInside)
+                {
+                    _cropPointerInside = false;
+                    UpdateCropLayer();
+                }
+                return;
             }
+
+            _cropPointerInside = true;
+            _cropFirst = _cropLast = PixelAt(view);
+            UpdateCropLayer();
             return;
         }
 
-        _cropPointerInside = true;
-        _cropFirst = _cropLast = PixelAt(view);
-        UpdateCropLayer();
+        if (_drag != EditDrag.None)
+        {
+            UpdateDraw(ToImage(view));
+            return;
+        }
+
+        UpdateHoverCursor(view);
     }
 
     private void Surface_MouseUp(object sender, MouseButtonEventArgs e)
@@ -362,7 +483,7 @@ public partial class ImageEditWindow : Window
         {
             _panning = false;
             Surface.ReleaseMouseCapture();
-            Cursor = _cropAxis != null ? Cursors.Cross : Cursors.Arrow;
+            UpdateCanvasCursor();
             return;
         }
 
@@ -372,18 +493,27 @@ public partial class ImageEditWindow : Window
             Surface.ReleaseMouseCapture();
             CommitCrop();
             e.Handled = true;
+            return;
+        }
+
+        if (_drag != EditDrag.None && e.ChangedButton == MouseButton.Left)
+        {
+            FinishDraw(ToImage(e.GetPosition(Surface)));
+            Surface.ReleaseMouseCapture();
+            e.Handled = true;
         }
     }
 
     private void Surface_MouseLeave(object sender, MouseEventArgs e)
     {
-        if (_panning || _cropping || !_cropPointerInside) return;
+        if (_panning || _cropping || _drag != EditDrag.None) return;
+        if (!_cropPointerInside) return;
 
         _cropPointerInside = false;
         UpdateCropLayer();
     }
 
-    /// <summary>光标处的图像像素（按内容缩放换算，越界夹在 [0, 边长]）。</summary>
+    /// <summary>光标处的图像像素（按当前裁剪轴取行 / 列，越界夹在 [0, 边长]）。</summary>
     private int PixelAt(Point view)
     {
         var content = ContentSize;
@@ -391,6 +521,21 @@ public partial class ImageEditWindow : Window
         int extent = _cropAxis == CropAxis.Columns ? (int)content.Width : (int)content.Height;
         double value = _cropAxis == CropAxis.Columns ? point.X : point.Y;
         return Math.Clamp((int)Math.Round(value), 0, Math.Max(0, extent));
+    }
+
+    private bool IsOnOverlay(DependencyObject? source) =>
+        AncestorIs(source, Toolbar) || AncestorIs(source, ZoomBar);
+
+    private static bool AncestorIs(DependencyObject? source, DependencyObject target)
+    {
+        for (var node = source; node != null;)
+        {
+            if (ReferenceEquals(node, target)) return true;
+            node = node is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(node)
+                : LogicalTreeHelper.GetParent(node);
+        }
+        return false;
     }
 
     // ============ 撤销 / 重做 ============
@@ -401,23 +546,65 @@ public partial class ImageEditWindow : Window
 
     private void Undo()
     {
+        CommitText();
         if (!_doc.Undo()) return;
 
-        Canvas.Document = _doc.Doc;
-        Canvas.InvalidateVisual();
+        SelectMark(-1);
+        RefreshMarks();
         KeepCameraAfterResize();
-        UpdateChrome();
     }
 
     private void Redo()
     {
+        CommitText();
         if (!_doc.Redo()) return;
 
-        Canvas.Document = _doc.Doc;
-        Canvas.InvalidateVisual();
+        SelectMark(-1);
+        RefreshMarks();
         KeepCameraAfterResize();
-        UpdateChrome();
     }
+
+    /// <summary>文档变了：换底图尺寸、重画、修正选中（下标可能已越界）。</summary>
+    private void RefreshMarks()
+    {
+        Canvas.Document = _doc.Doc;
+
+        if (_doc.HasImage)
+        {
+            Canvas.Width = _doc.Width;
+            Canvas.Height = _doc.Height;
+        }
+
+        // 选中项可能被删掉 / 撤销掉了，按现存下标重新收一遍
+        SelectMarks(_selected.ToArray());
+        Canvas.InvalidateVisual();
+
+        UpdateChrome();
+        PlaceOverlay();
+    }
+
+    // ============ 工具条 ============
+
+    private void OnToolbarAction(CaptureToolbar.CaptureAction action)
+    {
+        switch (action)
+        {
+            case CaptureToolbar.CaptureAction.Copy: CopyImage(); break;
+            case CaptureToolbar.CaptureAction.Pin: PinImage(); break;
+            case CaptureToolbar.CaptureAction.Print: PrintImage(); break;
+            case CaptureToolbar.CaptureAction.QuickSave: QuickSave(); break;
+            case CaptureToolbar.CaptureAction.Save: SaveAs(); break;
+        }
+    }
+
+    private void OnToolbarStyleChanged()
+    {
+        CaptureStyleStore.SaveSoon();
+        ApplyStyleToSelection();
+    }
+
+    /// <summary>「水印」工具点一下铺一整张（照覆盖层）。</summary>
+    private Mark.Watermark WatermarkMark => new(CurrentStyle.WatermarkSpecOf());
 
     // ============ 界面状态 ============
 
@@ -425,27 +612,29 @@ public partial class ImageEditWindow : Window
     {
         bool has = _doc.HasImage;
 
-        foreach (var button in new[] { FitBtn, ActualBtn, CopyBtn, QuickSaveBtn, SaveBtn, PrintBtn })
-            button.IsEnabled = has;
+        FitBtn.IsEnabled = has;
+        ActualBtn.IsEnabled = has;
 
-        PinBtn.IsEnabled = has;
-        CropRowsBtn.IsEnabled = has;
-        CropColumnsBtn.IsEnabled = has;
-        UndoBtn.IsEnabled = has && _doc.CanUndo;
-        RedoBtn.IsEnabled = has && _doc.CanRedo;
+        Toolbar.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+        ZoomBar.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
 
         if (!has)
         {
-            CropRowsBtn.IsChecked = false;
-            CropColumnsBtn.IsChecked = false;
             _cropAxis = null;
+            _cropping = false;
+            _cropPointerInside = false;
             CropLayer.ImageRect = Rect.Empty;
             CropLayer.Strip = Rect.Empty;
             CropLayer.InvalidateVisual();
         }
 
+        Toolbar.SetCrop(has ? _cropAxis : null);
+        Toolbar.SetUndo(has && _doc.CanUndo, has && _doc.CanRedo);
+
         ZoomText.Text = has ? $"{Math.Round(_zoom * _dpi * 100)}%" : "";
         InfoText.Text = has ? $"{_doc.Width} × {_doc.Height} px · {_doc.Title}" : "";
+
+        UpdateCanvasCursor();
     }
 
     private void Notice(string text) => NoticeText.Text = text;
@@ -502,6 +691,9 @@ public partial class ImageEditWindow : Window
     {
         if (_closing) return;
 
+        CommitText();
+        CancelGesture();
+
         if (!_doc.Dirty)
         {
             _closing = true;
@@ -520,7 +712,11 @@ public partial class ImageEditWindow : Window
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
+        // 正在输入文字：Enter / Shift+Enter / Esc 归输入框（它在隧道更里层，先在这里让开）
+        if (_textEditing) return;
+
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
 
         if (e.Key == Key.Escape)
         {
@@ -546,17 +742,37 @@ public partial class ImageEditWindow : Window
             return;
         }
 
-        if (ctrl && e.Key == Key.Z) { Undo(); e.Handled = true; return; }
-        if (ctrl && e.Key == Key.Y) { Redo(); e.Handled = true; return; }
-        if (ctrl && e.Key == Key.C) { CopyImage(); e.Handled = true; return; }
-        if (ctrl && e.Key == Key.V) { PasteFromClipboard(); e.Handled = true; return; }
-        if (ctrl && e.Key == Key.O) { ChooseImages(); e.Handled = true; return; }
-        if (ctrl && e.Key == Key.P) { PrintImage(); e.Handled = true; return; }
-
-        if (ctrl && e.Key == Key.S)
+        if (e.Key is Key.Delete or Key.Back)
         {
-            if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) SaveAs();
-            else QuickSave();
+            DeleteSelection();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl)
+        {
+            if (e.Key == Key.Z) { Undo(); e.Handled = true; return; }
+            if (e.Key == Key.Y) { Redo(); e.Handled = true; return; }
+            if (e.Key == Key.C) { CopyImage(); e.Handled = true; return; }
+            if (e.Key == Key.V) { PasteFromClipboard(); e.Handled = true; return; }
+            if (e.Key == Key.O) { ChooseImages(); e.Handled = true; return; }
+            if (e.Key == Key.P) { PrintImage(); e.Handled = true; return; }
+            if (e.Key == Key.T) { PinImage(); e.Handled = true; return; }
+
+            if (e.Key == Key.S)
+            {
+                if (shift) SaveAs();
+                else QuickSave();
+                e.Handled = true;
+            }
+
+            return;
+        }
+
+        // 工具快捷键（与截图覆盖层同一份表）
+        if (ToolCatalog.ForKey(e.Key) is CaptureTool tool)
+        {
+            SetTool(tool);
             e.Handled = true;
         }
     }

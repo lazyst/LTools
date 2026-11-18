@@ -10,6 +10,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using LTools.Features.CapturePro;
 using LTools.Features.CapturePro.AutoFilter;
+using LTools.Features.CapturePro.ImageEdit;
 using LTools.Views.Controls;
 using ShapePath = System.Windows.Shapes.Path;
 
@@ -59,6 +60,13 @@ public partial class CaptureToolbar : UserControl
 
     private ToolLayout _layout = ToolLayout.Default();
     private ToolStyleSet? _styles;
+    private ToolbarMode _mode = ToolbarMode.Capture;
+
+    /// <summary>图片编辑窗的「平移」工具（上游 <c>MoveToolPresentation::Pan</c>）：本窗独有的第 0 格。</summary>
+    private RadioButton? _panBtn;
+
+    /// <summary>图片编辑窗的两个裁剪模式（可勾，互斥；再点一次 = 退出裁剪）。</summary>
+    private ToggleButton? _cropRowsBtn, _cropColumnsBtn;
 
     /// <summary>
     /// 当前样式：选中标注时是**那一条的显示样式**（参数行显示它自己的值），
@@ -135,6 +143,12 @@ public partial class CaptureToolbar : UserControl
     /// <summary>「显示二维码」被点：参数 = 勾上还是取消（照上游 <c>qrCodeVisibilityRequested</c>）。</summary>
     public event Action<bool>? QrVisibilityRequested;
 
+    /// <summary>图片编辑窗点了「平移」：宿主进入平移模式（绘图工具全部取消选中）。</summary>
+    internal event Action? PanRequested;
+
+    /// <summary>图片编辑窗勾了裁剪行 / 裁剪列（null = 退出裁剪，回到默认工具）。</summary>
+    internal event Action<CropAxis?>? CropRequested;
+
     internal CaptureTool CurrentTool { get; private set; } = CaptureTool.Select;
 
     public CaptureToolbar()
@@ -146,11 +160,19 @@ public partial class CaptureToolbar : UserControl
     public bool UserMoved { get; private set; }
 
     /// <summary>按样式与当前工具建一次按钮（覆盖层构造完调）。</summary>
-    internal void Init(ToolStyleSet styles, CaptureTool current)
+    /// <param name="mode">
+    /// <see cref="ToolbarMode.Capture"/> = 截图覆盖层（画标注 + 完成动作）；
+    /// <see cref="ToolbarMode.Edit"/> = 图片编辑窗（照上游 <c>editorOptions()</c>：多一个「平移」工具与
+    /// 裁剪行 / 裁剪列两格，完成动作只留复制与贴图，没有识别 / 长截图 / 录屏 / 保存 / 取消）。
+    /// </param>
+    internal void Init(ToolStyleSet styles, CaptureTool current, ToolbarMode mode = ToolbarMode.Capture)
     {
         if (_built) return;
         _built = true;
         _styles = styles;
+        _mode = mode;
+
+        if (_mode == ToolbarMode.Edit) BuildPanButton();
 
         BuildCells(ToolLayoutStore.Current);
         BuildActions();
@@ -158,6 +180,13 @@ public partial class CaptureToolbar : UserControl
 
         Sync(current);
         RefreshValues();
+    }
+
+    /// <summary>工具栏的两种形态（截图覆盖层 / 图片编辑窗）。</summary>
+    internal enum ToolbarMode
+    {
+        Capture,
+        Edit,
     }
 
     /// <summary>界面跟着工具的默认状态对齐（覆盖层切工具时调，会同步按钮的选中态）。</summary>
@@ -181,6 +210,7 @@ public partial class CaptureToolbar : UserControl
             ShowCellIcon(c);
             c.Button.IsChecked = ReferenceEquals(c, cell);
         }
+        if (_panBtn != null) _panBtn.IsChecked = false;    // 选了绘图工具 = 退出平移
         _syncing = false;
 
         ApplyParamVisibility(tool);
@@ -309,7 +339,7 @@ public partial class CaptureToolbar : UserControl
     /// 窗口比工具栏还窄时按窗口收窄，上排的 <c>WrapPanel</c> 才会折成两行 / 多行。
     /// 画布里的子元素不限宽：不收的话右边那几个按钮被窗口裁掉（贴图内标注的小窗口实测）。
     /// </summary>
-    private void FitWidth(double width)
+    internal void FitWidth(double width)
     {
         double cap = Math.Max(240, width - 16);
         if (double.IsNaN(MaxWidth) || Math.Abs(MaxWidth - cap) > 0.5) MaxWidth = cap;
@@ -347,11 +377,78 @@ public partial class CaptureToolbar : UserControl
 
     // ============ 构建 ============
 
+    /// <summary>
+    /// 图片编辑窗的「平移」工具（照上游 <c>MoveToolPresentation::Pan</c> 那一格）：
+    /// 与工具格子同一个 <c>GroupName</c>，所以勾上它 = 其它工具自动取消；它排在最前面。
+    /// </summary>
+    private void BuildPanButton()
+    {
+        var button = new RadioButton
+        {
+            Style = (Style)FindResource("ToolBtn"),
+            GroupName = "captureTool",
+            ToolTip = "平移（拖动画面；中键在任何工具下都能平移）",
+            Content = new ShapePath
+            {
+                Data = (Geometry)FindResource("IconMove"),
+                Style = (Style)FindResource("IconPath"),
+            },
+        };
+        button.Click += (_, _) =>
+        {
+            if (_panBtn?.IsChecked == true) PanRequested?.Invoke();
+        };
+
+        ToolRow.Children.Insert(0, button);
+        _panBtn = button;
+    }
+
+    /// <summary>平移模式开 / 关（开 = 取消所有绘图工具的选中态、参数条收起）。</summary>
+    internal void SetPan(bool active)
+    {
+        if (_panBtn == null) return;
+
+        _syncing = true;
+        if (active)
+        {
+            foreach (var cell in _cells) cell.Button.IsChecked = false;
+            _panBtn.IsChecked = true;
+        }
+        else
+        {
+            _panBtn.IsChecked = false;
+        }
+        _syncing = false;
+
+        if (active)
+        {
+            _styleOverride = null;
+            _toolOverride = null;
+            _stylePeers = null;
+            ParamBar.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            ApplyParamVisibility(_tool);
+        }
+    }
+
+    /// <summary>裁剪模式回显（勾选状态由宿主决定；null = 两个都不勾）。</summary>
+    internal void SetCrop(CropAxis? axis)
+    {
+        if (_cropRowsBtn == null || _cropColumnsBtn == null) return;
+
+        _syncing = true;
+        _cropRowsBtn.IsChecked = axis == CropAxis.Rows;
+        _cropColumnsBtn.IsChecked = axis == CropAxis.Columns;
+        _syncing = false;
+    }
+
     /// <summary>按布局建格子（插在 <c>ToolRow</c> 最前面；动作按钮与分隔条在后面）。</summary>
     private void BuildCells(ToolLayout layout)
     {
         _layout = layout;
-        int index = 0;
+        int index = _panBtn != null ? 1 : 0;      // 平移格固定在 0 号位
 
         foreach (var group in layout.Groups)
         {
@@ -538,6 +635,12 @@ public partial class CaptureToolbar : UserControl
     {
         ToolRow.Children.Add(new Border { Style = (Style)FindResource("SeparatorBar") });
 
+        if (_mode == ToolbarMode.Edit)
+        {
+            BuildEditActions();
+            return;
+        }
+
         _undoBtn = AddAction("IconUndo", "撤销（Ctrl+Z）", () => UndoRequested?.Invoke());
         _redoBtn = AddAction("IconRedo", "重做（Ctrl+Y）", () => RedoRequested?.Invoke());
 
@@ -578,6 +681,71 @@ public partial class CaptureToolbar : UserControl
             ActionButton("IconClose", "取消（Esc）", CaptureAction.Cancel, danger: true),
             ActionButton("IconCopy", "复制到剪贴板并关闭（Enter）", CaptureAction.Copy, primary: true),
         });
+    }
+
+    /// <summary>
+    /// 图片编辑窗右半边（照上游 <c>editorOptions()</c>）：裁剪行 / 裁剪列 → 撤销 / 重做 →
+    /// 复制 / 贴到屏幕。没有取消（Esc 只退裁剪）、没有识别 / 长截图 / 录屏 / 打印 / 保存——
+    /// 编辑窗的保存入口在窗口工具栏，那里才有格式 / 尺寸 / 质量选项。
+    /// </summary>
+    private void BuildEditActions()
+    {
+        _cropRowsBtn = AddToolToggle("IconCropRows", "裁剪行：拖一条横带剪掉（减少高度）",
+            () => CropRequested?.Invoke(ToggledCrop(CropAxis.Rows)));
+        _cropColumnsBtn = AddToolToggle("IconCropColumns", "裁剪列：拖一条竖带剪掉（减少宽度）",
+            () => CropRequested?.Invoke(ToggledCrop(CropAxis.Columns)));
+
+        ToolRow.Children.Add(new Border { Style = (Style)FindResource("SeparatorBar") });
+
+        _undoBtn = AddAction("IconUndo", "撤销（Ctrl+Z）", () => UndoRequested?.Invoke());
+        _redoBtn = AddAction("IconRedo", "重做（Ctrl+Y）", () => RedoRequested?.Invoke());
+
+        // 结果动作（照上游 pinned 布局：pin / copy 一组，print / quick-save / save-as 一组）
+        AddGroup(new[]
+        {
+            ActionButton("IconPin", "贴图到屏幕（Ctrl+T）", CaptureAction.Pin),
+            ActionButton("IconCopy", "复制到剪贴板（Ctrl+C）", CaptureAction.Copy, primary: true),
+        });
+
+        AddGroup(new[]
+        {
+            ActionButton("IconPrint", "打印（Ctrl+P）", CaptureAction.Print),
+            ActionButton("IconQuickSave", "快速保存到图片\\LTools 截图，不弹框（Ctrl+S）", CaptureAction.QuickSave),
+            ActionButton("IconSave", "另存为…（Ctrl+Shift+S）", CaptureAction.Save),
+        });
+    }
+
+    /// <summary>两个裁剪格子互斥：按下哪个就只勾哪个；再点一次取消 → 返回 null（退出裁剪）。</summary>
+    private CropAxis? ToggledCrop(CropAxis axis)
+    {
+        if (_cropRowsBtn == null || _cropColumnsBtn == null) return null;
+
+        bool on = axis == CropAxis.Rows ? _cropRowsBtn.IsChecked == true : _cropColumnsBtn.IsChecked == true;
+
+        _syncing = true;
+        _cropRowsBtn.IsChecked = on && axis == CropAxis.Rows;
+        _cropColumnsBtn.IsChecked = on && axis == CropAxis.Columns;
+        _syncing = false;
+
+        return on ? axis : null;
+    }
+
+    private ToggleButton AddToolToggle(string icon, string tip, Action click)
+    {
+        var button = new ToggleButton
+        {
+            Style = (Style)FindResource("BarToggle"),
+            Focusable = false,
+            ToolTip = tip,
+            Content = new ShapePath
+            {
+                Data = (Geometry)FindResource(icon),
+                Style = (Style)FindResource("IconPath"),
+            },
+        };
+        button.Click += (_, _) => click();
+        ToolRow.Children.Add(button);
+        return button;
     }
 
     /// <summary>「更多」按钮：点它弹出 <see cref="ShowMoreMenu"/>（本身不直接是个完成动作）。</summary>

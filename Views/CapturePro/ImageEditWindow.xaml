@@ -15,155 +15,91 @@
         AllowDrop="True" DragOver="Window_DragOver" DragLeave="Window_DragLeave"
         Drop="Window_Drop" Closing="Window_Closing" PreviewKeyDown="Window_KeyDown">
     <!-- 图片编辑窗（照 snow-shot 的 ImageEditingWindow）：导入已有图片 → 画布标注 → 导出。
-         工具行：添加图片 · 适应 / 100% · 裁剪行 / 裁剪列 · 撤销 / 重做 | 复制 / 快速保存 /
-         另存为 / 贴到屏幕 / 打印；画布是棋盘格透明底 + 滚轮缩放 / 拖动平移；
-         空态可点「添加图片」或把图片拖进来。 -->
+         布局照上游：**没有顶部工具行**，绘图工具条浮在画布右下（`placeToolbar`），
+         缩放条（适应 / 100%）浮在画布底部居中；空态可点「添加图片」或把图片拖进来。 -->
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
-        <!-- 棋盘格透明底：10px 一格（照上游 theme.colorBgContainer / colorFillSecondary） -->
-        <DrawingBrush x:Key="CheckerBrush" TileMode="Tile" Stretch="None"
-                      Viewport="0,0,20,20" ViewportUnits="Absolute">
-            <DrawingBrush.Drawing>
-                <DrawingGroup>
-                    <GeometryDrawing Brush="{StaticResource SurfaceBrush}">
-                        <GeometryDrawing.Geometry>
-                            <RectangleGeometry Rect="0,0,20,20"/>
-                        </GeometryDrawing.Geometry>
-                    </GeometryDrawing>
-                    <GeometryDrawing Brush="#F0F0F1">
-                        <GeometryDrawing.Geometry>
-                            <GeometryGroup>
-                                <RectangleGeometry Rect="0,0,10,10"/>
-                                <RectangleGeometry Rect="10,10,10,10"/>
-                            </GeometryGroup>
-                        </GeometryDrawing.Geometry>
-                    </GeometryDrawing>
-                </DrawingGroup>
-            </DrawingBrush.Drawing>
-        </DrawingBrush>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="CaptureIcons.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
 
-        <Style x:Key="ToolBtn" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
-            <Setter Property="Padding" Value="9,4"/>
-            <Setter Property="MinHeight" Value="28"/>
-            <Setter Property="Margin" Value="0,0,4,0"/>
-            <Setter Property="FontSize" Value="{StaticResource FontSizeHint}"/>
-        </Style>
+            <!-- 棋盘格透明底：10px 一格（照上游 theme.colorBgContainer / colorFillSecondary） -->
+            <DrawingBrush x:Key="CheckerBrush" TileMode="Tile" Stretch="None"
+                          Viewport="0,0,20,20" ViewportUnits="Absolute">
+                <DrawingBrush.Drawing>
+                    <DrawingGroup>
+                        <GeometryDrawing Brush="{StaticResource SurfaceBrush}">
+                            <GeometryDrawing.Geometry>
+                                <RectangleGeometry Rect="0,0,20,20"/>
+                            </GeometryDrawing.Geometry>
+                        </GeometryDrawing>
+                        <GeometryDrawing Brush="#F0F0F1">
+                            <GeometryDrawing.Geometry>
+                                <GeometryGroup>
+                                    <RectangleGeometry Rect="0,0,10,10"/>
+                                    <RectangleGeometry Rect="10,10,10,10"/>
+                                </GeometryGroup>
+                            </GeometryDrawing.Geometry>
+                        </GeometryDrawing>
+                    </DrawingGroup>
+                </DrawingBrush.Drawing>
+            </DrawingBrush>
 
-        <!-- 可切换的一格（裁剪行 / 裁剪列）：勾上 = 主色底 + 主色字 -->
-        <Style x:Key="ToolToggle" TargetType="ToggleButton">
-            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Padding" Value="9,4"/>
-            <Setter Property="MinHeight" Value="28"/>
-            <Setter Property="Margin" Value="0,0,4,0"/>
-            <Setter Property="FontSize" Value="{StaticResource FontSizeHint}"/>
-            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FocusVisualStyle" Value="{StaticResource SubtleFocusVisual}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4"
-                                Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                              TextBlock.Foreground="{TemplateBinding Foreground}"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <MultiTrigger>
-                                <MultiTrigger.Conditions>
-                                    <Condition Property="IsMouseOver" Value="True"/>
-                                    <Condition Property="IsEnabled" Value="True"/>
-                                </MultiTrigger.Conditions>
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverBgBrush}"/>
-                            </MultiTrigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PressedBgBrush}"/>
-                                <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.4"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+            <!-- 浮层底：白底 + 圆角 8 + 浮层阴影（浮在画布上的两块都走它） -->
+            <Style x:Key="FloatPanel" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource ChromePanel}"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Effect" Value="{StaticResource BarShadow}"/>
+            </Style>
 
-        <!-- 工具行里的竖分隔 -->
-        <Style x:Key="ToolSep" TargetType="Border">
-            <Setter Property="Width" Value="1"/>
-            <Setter Property="Height" Value="16"/>
-            <Setter Property="Margin" Value="6,0,10,0"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Background" Value="{StaticResource BorderBrush}"/>
-        </Style>
+            <!-- 缩放条上的按钮（放文字：适应 / 100%） -->
+            <Style x:Key="ZoomBtn" TargetType="Button">
+                <Setter Property="Foreground" Value="{StaticResource ChromeInk}"/>
+                <Setter Property="FontSize" Value="{StaticResource FontSizeHint}"/>
+                <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+                <Setter Property="Padding" Value="8,2"/>
+                <Setter Property="MinWidth" Value="34"/>
+                <Setter Property="Height" Value="24"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Focusable" Value="False"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" Background="Transparent" CornerRadius="4"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChromeHover}"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.4"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
     </Window.Resources>
 
     <Grid Background="{StaticResource BgBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="36"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <controls:TitleBar Grid.Row="0"/>
 
-        <!-- 工具行 -->
-        <Border Grid.Row="1" Padding="12,6" Background="{StaticResource SurfaceBrush}"
-                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="AddImageBtn" Style="{StaticResource ToolBtn}" Content="添加图片"
-                            ToolTip="选择一张或多张图片（每张一个窗口）" Click="AddImage_Click"/>
-                    <Border Style="{StaticResource ToolSep}"/>
-                    <Button x:Name="FitBtn" Style="{StaticResource ToolBtn}" Content="适应窗口"
-                            ToolTip="适应窗口（Fit image to window）" Click="Fit_Click"/>
-                    <Button x:Name="ActualBtn" Style="{StaticResource ToolBtn}" Content="100%"
-                            ToolTip="实际大小（100%）" Click="Actual_Click"/>
-                    <Border Style="{StaticResource ToolSep}"/>
-                    <ToggleButton x:Name="CropRowsBtn" Style="{StaticResource ToolToggle}" Content="裁剪行"
-                                  ToolTip="拖动剪掉一条横带（减少高度）" Click="CropRows_Click"/>
-                    <ToggleButton x:Name="CropColumnsBtn" Style="{StaticResource ToolToggle}" Content="裁剪列"
-                                  ToolTip="拖动剪掉一条竖带（减少宽度）" Click="CropColumns_Click"/>
-                    <Border Style="{StaticResource ToolSep}"/>
-                    <Button x:Name="UndoBtn" Style="{StaticResource ToolBtn}" Content="撤销"
-                            ToolTip="撤销（Ctrl+Z）" Click="Undo_Click"/>
-                    <Button x:Name="RedoBtn" Style="{StaticResource ToolBtn}" Content="重做"
-                            ToolTip="重做（Ctrl+Y）" Click="Redo_Click"/>
-                </StackPanel>
-
-                <TextBlock x:Name="ZoomText" Grid.Column="1" HorizontalAlignment="Center"
-                           VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"
-                           Foreground="{StaticResource HintTextBrush}"/>
-
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="CopyBtn" Style="{StaticResource ToolBtn}" Content="复制"
-                            ToolTip="复制到剪贴板（Ctrl+C）" Click="Copy_Click"/>
-                    <Button x:Name="QuickSaveBtn" Style="{StaticResource ToolBtn}" Content="快速保存"
-                            ToolTip="直接存到「图片\LTools 截图」（Ctrl+S）" Click="QuickSave_Click"/>
-                    <Button x:Name="SaveBtn" Style="{StaticResource ToolBtn}" Content="另存为"
-                            ToolTip="选择格式 / 尺寸 / 质量后保存（Ctrl+Shift+S）" Click="SaveAs_Click"/>
-                    <Button x:Name="PinBtn" Style="{StaticResource ToolBtn}" Content="贴到屏幕"
-                            ToolTip="把当前成品贴到屏幕上" Click="Pin_Click"/>
-                    <Button x:Name="PrintBtn" Style="{StaticResource ToolBtn}" Content="打印"
-                            ToolTip="打印当前成品（Ctrl+P）" Click="Print_Click"/>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- 画布：棋盘格底 + 可缩放平移的内容 + 裁剪预览层 -->
-        <Grid x:Name="Surface" Grid.Row="2" Background="{StaticResource CheckerBrush}"
+        <!-- 画布：棋盘格底 + 可缩放平移的内容 + 裁剪预览层 + 浮层（工具条 / 缩放条） -->
+        <Grid x:Name="Surface" Grid.Row="1" Background="{StaticResource CheckerBrush}"
               ClipToBounds="True" Focusable="True"
               PreviewMouseWheel="Surface_MouseWheel"
               PreviewMouseDown="Surface_MouseDown"
@@ -184,6 +120,34 @@
             </Grid>
 
             <cp:ImageEditCropLayer x:Name="CropLayer" IsHitTestVisible="False"/>
+
+            <!-- 浮层：工具条（右下 4px，照上游 placeToolbar）+ 缩放条（底部居中） -->
+            <Canvas x:Name="Overlay">
+                <cp:CaptureToolbar x:Name="Toolbar" Visibility="Collapsed"/>
+
+                <Border x:Name="ZoomBar" Style="{StaticResource FloatPanel}" Padding="4,3"
+                        Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="FitBtn" Style="{StaticResource ZoomBtn}" Content="适应"
+                                ToolTip="适应窗口（Fit image to window）" Click="Fit_Click"/>
+                        <Button x:Name="ActualBtn" Style="{StaticResource ZoomBtn}" Content="100%"
+                                ToolTip="实际大小（100%）" Click="Actual_Click"/>
+                        <Border Width="1" Height="14" Margin="4,0" VerticalAlignment="Center"
+                                Background="{StaticResource CaptureBorder}"/>
+                        <TextBlock x:Name="ZoomText" Margin="2,0,4,0" VerticalAlignment="Center"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource ChromeInkDim}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- 「文字」工具的就地输入框（照截图覆盖层：Enter 提交、Shift+Enter 换行、Esc 放弃；
+                     **不抢画布手势**，点画布别处 = 提交） -->
+                <TextBox x:Name="TextEntry" Visibility="Collapsed"
+                         AcceptsReturn="True" TextWrapping="NoWrap" MinWidth="80" MaxWidth="480"
+                         Background="#E6101014" Foreground="#F4F4F5" BorderBrush="#3B82F6"
+                         BorderThickness="1" Padding="4,2" FontFamily="Microsoft YaHei UI"
+                         PreviewKeyDown="TextEntry_KeyDown" LostFocus="TextEntry_LostFocus"/>
+            </Canvas>
 
             <!-- 空态 -->
             <Grid x:Name="EmptyState" Background="Transparent">
@@ -212,7 +176,7 @@
         </Grid>
 
         <!-- 状态栏 -->
-        <Border Grid.Row="3" Background="{StaticResource SurfaceAltBrush}" Padding="12,5"
+        <Border Grid.Row="2" Background="{StaticResource SurfaceAltBrush}" Padding="12,5"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
             <Grid>
                 <Grid.ColumnDefinitions>

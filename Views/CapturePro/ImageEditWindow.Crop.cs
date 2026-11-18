@@ -1,6 +1,5 @@
 using System;
 using System.Windows;
-using System.Windows.Input;
 using LTools.Features.CapturePro;
 using LTools.Features.CapturePro.ImageEdit;
 
@@ -11,53 +10,28 @@ namespace LTools.Views.CapturePro;
 /// <c>ImageEditingDocument::prepareCrop</c>）。
 /// </summary>
 /// <remarks>
-/// 交互：工具行勾上「裁剪行 / 裁剪列」→ 鼠标在图上是悬停导引线，按下拖动拉出一条红带并显示
+/// 交互：工具条勾上「裁剪行 / 裁剪列」→ 鼠标在图上是悬停导引线，按下拖动拉出一条红带并显示
 /// 「N px」，松手提交（长度 0 / 等于整条边长时不动）；Esc 退出裁剪模式。
 /// 提交后模式留在裁剪上（可以接着剪第二刀），与上游一致。
+/// 两个格子由 <see cref="CaptureToolbar"/> 自己记勾选态，宿主只回显 <see cref="CaptureToolbar.SetCrop"/>。
 /// </remarks>
 public partial class ImageEditWindow
 {
-    private void CropRows_Click(object sender, RoutedEventArgs e) => ToggleCrop(CropAxis.Rows);
-
-    private void CropColumns_Click(object sender, RoutedEventArgs e) => ToggleCrop(CropAxis.Columns);
-
-    private void ToggleCrop(CropAxis axis)
+    /// <summary>切 / 退裁剪模式（null = 退出；由工具条的裁剪格子驱动）。</summary>
+    private void SetCropAxis(CropAxis? axis)
     {
-        bool on = axis == CropAxis.Rows
-            ? CropRowsBtn.IsChecked == true
-            : CropColumnsBtn.IsChecked == true;
-
         _cropping = false;
         _cropPointerInside = false;
 
-        if (!on || !_doc.HasImage)
-        {
-            _cropAxis = null;
-            CropRowsBtn.IsChecked = false;
-            CropColumnsBtn.IsChecked = false;
-        }
-        else
-        {
-            _cropAxis = axis;
-            CropRowsBtn.IsChecked = axis == CropAxis.Rows;
-            CropColumnsBtn.IsChecked = axis == CropAxis.Columns;
-        }
+        _cropAxis = axis is { } value && _doc.HasImage ? value : null;
 
-        Surface.Cursor = _cropAxis != null ? Cursors.Cross : Cursors.Arrow;
+        Toolbar.SetCrop(_cropAxis);
+        UpdateCanvasCursor();
         UpdateCropLayer();
     }
 
     /// <summary>退出裁剪模式（Esc / 打开别的图）。</summary>
-    private void CancelCropMode()
-    {
-        _cropAxis = null;
-        _cropping = false;
-        _cropPointerInside = false;
-        CropRowsBtn.IsChecked = false;
-        CropColumnsBtn.IsChecked = false;
-        Surface.Cursor = Cursors.Arrow;
-        UpdateCropLayer();
-    }
+    private void CancelCropMode() => SetCropAxis(null);
 
     /// <summary>松手提交：真的剪掉了才换文档，进撤销栈。</summary>
     private void CommitCrop()
@@ -76,6 +50,9 @@ public partial class ImageEditWindow
         if (cropped)
         {
             Canvas.Document = _doc.Doc;
+            Canvas.Width = _doc.Width;
+            Canvas.Height = _doc.Height;
+            SelectMark(-1);
             Canvas.InvalidateVisual();
             KeepCameraAfterResize();
             Notice($"已裁剪：{_doc.Width} × {_doc.Height} px");
@@ -83,6 +60,7 @@ public partial class ImageEditWindow
 
         UpdateCropLayer();
         UpdateChrome();
+        PlaceOverlay();
     }
 
     /// <summary>把当前条带摆到预览层上（窗口内容区坐标）。</summary>

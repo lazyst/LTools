@@ -143,7 +143,9 @@
 
         <Border x:Name="ParamBar" Style="{StaticResource BarPanel}" Padding="10,4"
                 Margin="0,6,0,0" HorizontalAlignment="Left" Cursor="Arrow">
-            <StackPanel x:Name="ParamRow" Orientation="Horizontal"/>
+            <!-- 参数条也用 WrapPanel：整条被窗口宽度夹住时**换行**，不把右边的控件裁掉
+                 （StackPanel 会直接溢出，窄窗口里最后几项点不到） -->
+            <WrapPanel x:Name="ParamRow" Orientation="Horizontal"/>
         </Border>
     </StackPanel>
 </UserControl>

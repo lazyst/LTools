@@ -147,12 +147,7 @@ public partial class CaptureOverlayWindow
         }
 
         var mark = BuildDragMark(p);
-        bool big = ToolCatalog.IsFreehand(_tool)
-            ? _freehand.Count > 0
-            : ToolCatalog.IsLinear(_tool)
-                ? (p - _toolStart).Length >= ToolCatalog.MinimumSize(_tool)   // 直线 / 测距 / 括号 / 箭头要有长度，不要求两个方向都动
-                : Math.Abs(p.X - _toolStart.X) >= ToolCatalog.MinimumSize(_tool)
-                  && Math.Abs(p.Y - _toolStart.Y) >= ToolCatalog.MinimumSize(_tool);
+        bool big = MarkFactory.BigEnough(_tool, _toolStart, p, _freehand.Count);
 
         _drag = DragMode.None;
         Surface.Preview = null;
@@ -161,68 +156,11 @@ public partial class CaptureOverlayWindow
         RefreshMarks();
     }
 
-    private Mark? BuildDragMark(Point current)
-    {
-        var color = _style.Color;
-        double width = _style.WidthFor(_tool);
-
-        switch (_tool)
-        {
-            case CaptureTool.Pen:
-                return new Mark.Stroke(_freehand.ToArray(), color, width, false, 1);
-
-            case CaptureTool.Highlighter:
-                return new Mark.Stroke(_freehand.ToArray(), color, width, true, _style.Opacity);
-
-            case CaptureTool.Shape:
-                return new Mark.Shape(_toolStart, current, _style.ShapeSpecOf(_dragSeed));
-
-            case CaptureTool.Arrow:
-                return new Mark.Arrow(
-                    ArrowGeometry.Points(_toolStart, current, _style.ArrowKind),
-                    _style.ArrowSpecOf(_dragSeed));
-
-            case CaptureTool.Line:
-                return new Mark.Line(_toolStart, current, color, width, _style.StrokeStyle,
-                    _style.LineType, _style.Rendering, _dragSeed);
-
-            case CaptureTool.Distance:
-                return new Mark.Distance(_toolStart, current, color, width, _style.DistanceSpecOf());
-
-            case CaptureTool.Bracket:
-                return new Mark.Bracket(_toolStart, current, color, width);
-
-            case CaptureTool.SpeechBubble:
-                return new Mark.SpeechBubble(MarkGeometry.RectOf(_toolStart, current),
-                    _style.ShapeSpecOf(_dragSeed));
-
-            case CaptureTool.Magnifier:
-                return new Mark.Magnifier(MarkGeometry.RectOf(_toolStart, current), _style.MagnifierSpecOf());
-
-            case CaptureTool.HighlightRect:
-                return new Mark.Highlight(_toolStart, current, color, _style.Opacity);
-
-            case CaptureTool.BrushFilter:
-                return new Mark.BrushFilter(_freehand.ToArray(), width, _style.FilterMode, _style.FilterStrength);
-
-            case CaptureTool.Mosaic:
-                return new Mark.Mosaic(_toolStart, current, _style.Block);
-
-            case CaptureTool.Filter:
-                return new Mark.Filter(_toolStart, current, _style.FilterMode, _style.FilterStrength);
-
-            case CaptureTool.Spotlight:
-                return new Mark.Spotlight(_toolStart, current, _style.Dim);
-
-            case CaptureTool.Angle:
-                return _angleArmed
-                    ? Mark.Angle.FromArms(_angleVertex, _angleArm1, current, color, width, _style.AngleSpecOf())
-                    : new Mark.Line(_angleVertex, current, color, width, false);
-
-            default:
-                return null;
-        }
-    }
+    private Mark? BuildDragMark(Point current) =>
+        MarkFactory.Drag(_tool, _toolStart, current, _freehand, _style, _dragSeed,
+            _tool == CaptureTool.Angle
+                ? new AngleArms(_angleVertex, _angleArm1, _angleArmed)
+                : AngleArms.None);
 
     // ============ 测角：先一条臂，再第二条 ============
 
@@ -311,8 +249,7 @@ public partial class CaptureOverlayWindow
 
     private void UpdateBrushErasePreview()
     {
-        Surface.Preview = new Mark.Stroke(_freehand.ToArray(),
-            Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF), _style.WidthFor(CaptureTool.BrushEraser), false, 1);
+        Surface.Preview = MarkFactory.BrushEraseTrail(_freehand, _style);
     }
 
     /// <summary>

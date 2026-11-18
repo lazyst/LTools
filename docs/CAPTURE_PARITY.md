@@ -103,7 +103,7 @@
 
 | 上游 | 位置 | LTools 现状 | 批次 | 状态 |
 | --- | --- | --- | --- | --- |
-| 图片编辑窗口（导入已有图片 → 画布标注 → 导出） | `imageediting/*` | `P6-a1` 独立窗口（`Views/CapturePro/ImageEditWindow.*` + `Features/CapturePro/ImageEdit/*` 的 `ImageEditDocument` / `ImageEditGeometry` / `ImageEditBitmap` / `ImageEditSession`）+ 棋盘格透明底 + 打开图片（文件 / 粘贴 / 拖放 / 采集历史「编辑…」/ 贴图右键「在编辑器中打开…」/ 托盘「图片编辑…」）+ 空态 + 适应窗口 / 100% / 滚轮缩放 / 拖动平移 + 行列裁剪（半透明红带 + `N px` + `#4096FF` 虚线导引线）+ 撤销重做 + 未保存确认 + 复制 / 快速保存 / 另存为 / 贴到屏幕 / 打印；`P6-a2` 绘图工具条（复用截图工具与样式）；`P6-a3` 识别（文字 / 表格）与导出源 | P6 | 🟡 |
+| 图片编辑窗口（导入已有图片 → 画布标注 → 导出） | `imageediting/*` | `P6-a1` 独立窗口（`Views/CapturePro/ImageEditWindow.*` + `Features/CapturePro/ImageEdit/*` 的 `ImageEditDocument` / `ImageEditGeometry` / `ImageEditBitmap` / `ImageEditSession`）+ 棋盘格透明底 + 打开图片（文件 / 粘贴 / 拖放 / 采集历史「编辑…」/ 贴图右键「在编辑器中打开…」/ 托盘「图片编辑…」）+ 空态 + 适应窗口 / 100% / 滚轮缩放 / 拖动平移 + 行列裁剪（半透明红带 + `N px` + `#4096FF` 虚线导引线）+ 撤销重做 + 未保存确认 + 复制 / 快速保存 / 另存为 / 贴到屏幕 / 打印；`P6-a2` 浮动绘图工具条（锚图片右下 4px，`[平移] [裁剪行][裁剪列] | 绘图 13 格 | [撤销][重做] | [贴图][复制] | [打印][快速保存][另存为]`）+ 画布底部居中缩放条 + 就地文字输入 + 选择 / 拖动 / 框选 / 多选 / 把手改大小 / 橡皮 / 折线 / 测角 / 标注样式回写（复用截图工具与 `MarkFactory`）；`P6-a3` 识别（文字 / 表格 / 二维码）与自动打码 | P6 | 🟡 |
 | 拼图（多图拼接 / 行 / 间距 / 背景 / PDF） | `collage/*` | 无 | P6-c / P6-d | ❌ |
 | 切图（网格 / 智能布局 / 导出） | `imagesplit/*` | `Features/CapturePro/Stitch` 只有长截图拼接 | P6-b | ❌ |
 | 全屏画布（在任意屏幕讲解 / 贴住） | `globalcanvas/*` | 无 | P8 | ❌ |
@@ -440,6 +440,16 @@
   - **窗口外形以图为准**：`CapturePinWindow.SetAppearance` / `ApplyChrome`——图自带圆角 / 阴影时不铺不透明底（透明处不会画成深灰），自带阴影 / 边框时不叠 1px 描边；只有圆角时描边跟着圆角走（`RadiusDip` 随贴图缩放变）。
   - **入口**：采集历史预览栏「贴到屏幕」按钮（录屏不显示）；普通截图提示「按原选区与外观贴回屏幕」，长截图 / 老记录提示「会居中贴到光标所在屏」。`pins.json` 记下 `RadiusPx` / `EffectPx` / `Decoration`，贴回时按记录恢复。
   - 验收：构建 0 错 0 警；`--selftest` 全量 **254 用例 14693 断言全绿**（`capturePro` 86 用例 9867 断言，新增「采集历史贴回：外观 / 窗口矩形 / 桌面求交」一组 40 条：样式 → 图像素换算、圆角夹半、装饰规整、窗口矩形让出内边距 / 图更小时居中、DIP 圆角随缩放、落位与长截图不记外观、`SupportsPin` 各分支、取选区与外观、桌面求交的边界 / 缝隙 / 空列表）；`capture-overlay-smoke` **1363 条全绿**（`HistoryPinSection` 30 条：历史里四条、截图条目按钮可用且提示按原选区、点一下真写 `source=history` 的记录、窗口按内边距让开（208,168 324×184）、DIP 落点 166.4,134.4 与尺寸 259.2×147.2、Backdrop / Frame 都收起、圆角与效果进 `pins.json`；长截图不按原选区且正居中于工作区、Backdrop / Frame 照常；老记录同样居中；录屏不显示按钮；落图 `out/history-pin.png`）。
+
+- 2026-11-19：**P6-a1 + P6-a2 完成（图片编辑窗：浮动绘图工具条 + 全套标注手势）**。上游 `ImageEditingWindow` 与截图覆盖层共用同一个画布与调色板，但**没有顶部工具行**：调色板浮在图上（`placeToolbar` 锚图片右下 4px），缩放条贴画布底部居中，`editorOptions()` 给 `showCropTools = true` / `moveToolPresentation = Pan` / `actions = Copy | Pin` / `showSaveButton`（`saveButtonWithResultActions` 默认 true → print / quick-save / save-as）/ `showDragHandle` / `showHistoryActions`。
+  - **P6-a1 骨架**：`Views/CapturePro/ImageEditWindow.*`（壳 / 裁剪 / 导出）+ `Features/CapturePro/ImageEdit/`（`ImageEditDocument` 底图 + 标注 + 最多 50 步快照 + 内容指纹脏判定；`ImageEditGeometry` 的 `FitZoom`（四周留 48、不封顶 1）/ `Wheel`（1.15^steps）/ `Resolve` / `Strip`；`ImageEditBitmap.RemoveStrip` 逐像素搬行 / 列；`ImageEditSession` 一张图一个窗口）+ 10px 棋盘格 + 空态 + 拖放 + 采集历史「编辑…」/ 贴图右键「在编辑器中打开…」/ 托盘「图片编辑…」三个新入口 + `PinStore.SourceEdit`（来源「图片编辑」）+ `CaptureSaveWindow` 建议文件名 + `CaptureDocument.SwapBase` / `CaptureCanvas.ShowSelectionChrome`。
+  - **工具条模式**：`CaptureToolbar` 加 `ToolbarMode` / `Init(styles, tool, mode)` / `PanRequested` / `CropRequested` / `BuildPanButton` / `SetPan` / `SetCrop` / `BuildEditActions` / `ToggledCrop` / `AddToolToggle`。编辑模式的行是 `[平移] [裁剪行][裁剪列] | 绘图 13 格 | [撤销][重做] | [贴图][复制] | [打印][快速保存][另存为]`——`AddGroup` 真正按组挂进 `ToolRow`（之前动作按钮建了却没挂上去，等于死按钮）。「平移」是编辑窗**专属的第 0 格**（不往 `CaptureTool` 里加 `Move`，否则覆盖层的工具表 / 快捷键表都会被带着变），勾上 = 退出绘图 + 退出裁剪；绘图工具勾上 = 退出平移。两种裁剪格改成 `ToggleButton`（能回显、也能再点一次退出），几何照上游 `crop-vertical` / `crop-horizontal`（同一条写出转 90°）。
+  - **标注构造只有一份**：新增 `Features/CapturePro/MarkFactory.cs`（`Drag` 覆盖全部工具、`AngleArms` 测角三臂、`BrushEraseTrail` 橡皮轨迹、`BigEnough` 最小尺寸），截图覆盖层 `CaptureOverlayWindow.Annotate.cs` 改成调它——编辑窗与覆盖层从此按同一个函数画同一种标注，改工具只改一处。
+  - **参数条不再被裁掉**：`CaptureToolbar` 的 `ParamRow` 由 `StackPanel` 换成 `WrapPanel`，`FitWidth` 提到 `internal` 由编辑窗在摆位时调用——工具条被窗口宽度夹住时**换行**而不是把最右边的「圆角 / 填充」裁出屏幕（1280 宽的冒烟窗里原来最后两项点不到）；宽屏（1920 / 125% ≈ 1536 DIP）单行时与之前一模一样。
+  - **手势**（`ImageEditWindow.Draw.cs`）：选择工具单击描边 = 选中 + 拖动、拖把手 = 改大小、拖空白 = 框选、Shift+单击 = 加选、Shift 框选 = 加选、Delete / Backspace 删除、`Ctrl+Z` / `Ctrl+Y`、中键任何模式都能平移；**命中容差按 `_zoom` 折算**（屏幕 8 DIP 在 25% 缩放下仍然是 8 DIP 手感）；空心形状只命中描边（`ShapeInk.HitTest`，与覆盖层同一套）；滚轮以光标为锚；选中时工具条参数行切到它那一族并显示**它自己的值**，改值只把变过的字段合并回去（`ToolStyle.CopyChangedTo`）。
+  - **就地文字**（`ImageEditWindow.Text.cs`）：与覆盖层同一套交互，差别是起点为图像像素、输入框字号乘 `_zoom`（敲的时候看到的和落地后一样大），Enter 提交 / Shift+Enter 换行 / Esc 放弃 / 点别处提交。
+  - 三个坑：① XAML 里 `x:Name="Canvas"` 会遮住 `Canvas` 类型，`Canvas.SetLeft/SetTop` 必须写全 `System.Windows.Controls.Canvas.…`；② `ToolStyle` 字段名 `Style` 会隐藏 `FrameworkElement.Style`（CS0108），编辑窗里改叫 `CurrentStyle`；③ WPF 不认 `Transform="90,512,512"`（报「分析…时遇到字符串过早终止」），旋转要写 `<GeometryGroup.Transform><RotateTransform …/></GeometryGroup.Transform>`。
+  - 验收：构建 0 错 0 警；`--selftest` 全量 **257 用例 14787 断言全绿**（`capturePro` 89 用例 9961 断言）；`capture-overlay-smoke` **1433 条全绿**（`ImageEditSection` 新增 27 条：平移格排在最前、裁剪两格是开关、画一个 120×80 的形状、按描边选中并拖动 (30,20)、空白框选、Delete 删掉、撤销找回、点平移格进平移、选绘图工具离开平移、文字就地输入并原样落盘、裁剪模式里换工具自动退出；落图 `out/imageedit/edit-window.png`）。
 
 
 
