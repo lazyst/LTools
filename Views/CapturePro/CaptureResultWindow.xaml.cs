@@ -1,27 +1,39 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using LTools.Core;
+using LTools.Features;
 using LTools.Features.CapturePro;
 using LTools.Native;
 
 namespace LTools.Views.CapturePro;
 
 /// <summary>
-/// 识别结果窗：一次截图的文字 / 近似表格 / 二维码，每页都能一键复制。
+/// 识别结果窗：文字层（可选中 / 编辑 / 复制）、近似表格、二维码，外加「显示原图 / 填充背景 /
+/// 原文预览」。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 识别要一两秒，所以窗口**先开再算**：<c>Loaded</c> 里把 <see cref="CaptureRecognize.Run"/> 丢到后台线程，
-/// 算完回 UI 线程填内容（与编辑器试运行的轨迹上屏同一套思路）。调用方不必自己起线程。
+/// 照 Snow Shot 的 <c>screenshotrecognitionwindow</c>：**无边框、置顶、贴选区摆位**，
+/// 文字不是一整块只读文本，而是按 OCR 行框重排的**文字层**——点一下落下光标、拖过是选区、
+/// 双击选整行，可以直接改识别错的字再复制。
 /// </para>
 /// <para>
-/// 三页签用 RadioButton + 三个同层面板切显隐（主题里没有 TabControl 样式，
-/// 用系统那套灰边框会跟整个界面格格不入）。
+/// 识别要一两秒，所以窗口**先开再算**：<c>Loaded</c> 里把 <see cref="CaptureRecognize.Run"/>
+/// 丢到后台线程，算完回 UI 线程填内容（与编辑器试运行的轨迹上屏同一套思路）。
+/// </para>
+/// <para>
+/// 架构差异（写进 <c>docs/SCREEN_CAPTURE_PRO.md</c> §5）：上游的识别窗是 Qt 的无边框 Tool 窗，
+/// 它自己贴住选区；本项目覆盖层在「识别」时已经关闭，所以窗口自带「复制 / 关闭 / 显示原图」
+/// 这几个出口，而不是依赖覆盖层的工具条。
 /// </para>
 /// </remarks>
 public partial class CaptureResultWindow : Window
@@ -30,40 +42,79 @@ public partial class CaptureResultWindow : Window
     private readonly string? _engine;
     private readonly CaptureEntry? _entry;
     private readonly bool _runOnLoad;
+    private readonly Int32Rect _area;
 
     private RecognizeResult? _result;
     private string _tab = "text";
     private bool _started;
+    private double _scale = 1;
+
+    private OcrTextEditModel? _model;
+    private IReadOnlyList<OcrTextLine> _layer = Array.Empty<OcrTextLine>();
+    private CaptureOriginalPreviewWindow? _preview;
 
     /// <summary>正常打开：先显示「正在识别…」，Loaded 之后在后台跑识别。</summary>
-    internal CaptureResultWindow(BitmapSource image, string? engine, CaptureEntry? entry = null)
+    internal CaptureResultWindow(BitmapSource image, string? engine, CaptureEntry? entry = null,
+        Int32Rect area = default)
     {
         InitializeComponent();
+
         _image = image;
         _engine = engine;
         _entry = entry;
+        _area = area;
         _runOnLoad = true;
-        Loaded += (_, _) => Start();
+
+        OriginalImage.Source = image;
+        Place();
+        Loaded += (_, _) =>
+        {
+            UpdateZoom();
+            Start();
+        };
+        SizeChanged += (_, _) => UpdateZoom();
+        PreviewKeyDown += OnPreviewKeyDown;
+        TextInput += OnTextInput;
     }
 
     /// <summary>冒烟 / 自检用：直接灌一份已经算好的结果，不跑 OCR、不读屏幕。</summary>
-    internal CaptureResultWindow(RecognizeResult result)
+    internal CaptureResultWindow(RecognizeResult result) : this(result, null)
+    {
+    }
+
+    /// <summary>同上，但连原图一起给（「显示原图 / 原文预览」要有图才成立）。</summary>
+    internal CaptureResultWindow(RecognizeResult result, BitmapSource? image)
     {
         InitializeComponent();
+
+        _image = image;
         _runOnLoad = false;
+        if (image != null) OriginalImage.Source = image;
+        Place();
         Apply(result);
     }
 
-    /// <summary>打开结果窗（非模态：用户慢慢复制，流程该干嘛干嘛）。</summary>
-    internal static void Show(BitmapSource image, string? engine, CaptureEntry? entry = null)
+    /// <summary>打开结果窗（非模态：用户慢慢改 / 复制，流程该干嘛干嘛）。</summary>
+    internal static void Show(BitmapSource image, string? engine, CaptureEntry? entry = null,
+        Int32Rect area = default)
     {
-        var window = new CaptureResultWindow(image, engine, entry);
+        var window = new CaptureResultWindow(image, engine, entry, area);
         window.Show();
         window.Activate();
+        window.Focus();
     }
 
     /// <summary>识别结果（冒烟读它做断言；还没算完时为 null）。</summary>
     internal RecognizeResult? Result => _result;
+
+    /// <summary>当前页：text / table / qr。</summary>
+    internal string CurrentTab => _tab;
+
+    /// <summary>文字层编辑模型（还没识别完时为 null）。</summary>
+    internal OcrTextEditModel? EditModel => _model;
+
+    /// <summary>文字层画布。</summary>
+    internal CaptureOcrCanvas Canvas => OcrCanvas;
 
     private async void Start()
     {
@@ -109,31 +160,166 @@ public partial class CaptureResultWindow : Window
     {
         _result = result;
 
+        _layer = result.TextLayer.Count > 0 ? result.TextLayer : OcrTextLayer.FromLines(result.Lines);
+
+        var model = new OcrTextEditModel();
+        model.Load(_layer.Select(line => line.Text));
+        model.Changed += RefreshStatus;
+        _model = model;
+
+        int width = _image?.PixelWidth ?? Extent(_layer, true);
+        int height = _image?.PixelHeight ?? Extent(_layer, false);
+        OcrCanvas.Attach(model, _layer, width, height);
+        OcrCanvas.SelectionChanged += RefreshStatus;
+        OcrCanvas.LineEditRequested += _ => RefreshStatus();
+
+        FillTable(result.Table);
+        FillQr(result);
+
         if (!result.Ok)
         {
             Fail(result.Error);
-            FillText(result);
+        }
+        else
+        {
+            DetailText.Text = string.Format(CultureInfo.CurrentCulture,
+                "{0} · 用时 {1:0.0} 秒", result.Engine, result.ElapsedMs / 1000.0);
+        }
+
+        CopyBtn.IsEnabled = result.Ok || _layer.Count > 0;
+        UpdateTabs();
+        UpdateZoom();
+        RefreshStatus();
+    }
+
+    private static int Extent(IReadOnlyList<OcrTextLine> lines, bool horizontal)
+    {
+        int max = 1;
+        foreach (OcrTextLine line in lines)
+        {
+            int value = horizontal ? line.Box.X + line.Box.Width : line.Box.Y + line.Box.Height;
+            if (value > max) max = value;
+        }
+
+        return max;
+    }
+
+    // ============ 摆位 / 缩放 ============
+
+    /// <summary>贴选区摆位：优先盖住选区，放不下就夹到所在显示器的工作区里。</summary>
+    private void Place()
+    {
+        if (_area.Width <= 0 || _area.Height <= 0)
+        {
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
             return;
         }
 
-        StatusText.Text = string.Format(CultureInfo.CurrentCulture,
-            "识别完成 · 文字 {0} 行{1}{2}",
-            result.Lines.Count,
-            result.Table.HasTable ? string.Format(CultureInfo.CurrentCulture, " · 表格 {0} 行 × {1} 列", result.Table.RowCount, result.Table.Columns) : "",
-            result.QrText.Length > 0 ? " · 找到二维码" : "");
+        ScreenGeometry? screen = CaptureRecordWindow.ScreenOf(_area);
+        _scale = screen?.Scale ?? 1;
+        if (_scale <= 0) _scale = 1;
 
-        DetailText.Text = string.Format(CultureInfo.CurrentCulture,
-            "{0} · 用时 {1:0.0} 秒", result.Engine, result.ElapsedMs / 1000.0);
+        double areaLeft = _area.X / _scale;
+        double areaTop = _area.Y / _scale;
+        double areaWidth = _area.Width / _scale;
+        double areaHeight = _area.Height / _scale;
 
-        FillText(result);
-        FillTable(result.Table);
-        FillQr(result);
-        CopyBtn.IsEnabled = true;
+        Width = Math.Clamp(areaWidth + 26, 460, 1000);
+        Height = Math.Clamp(areaHeight + 132, 340, 840);
+
+        double left = areaLeft + (areaWidth - Width) / 2;
+        double top = areaTop;
+
+        if (screen != null)
+        {
+            double workLeft = screen.WorkLeft / _scale;
+            double workTop = screen.WorkTop / _scale;
+            double workRight = (screen.WorkLeft + screen.WorkWidth) / _scale;
+            double workBottom = (screen.WorkTop + screen.WorkHeight) / _scale;
+
+            left = Math.Clamp(left, workLeft, Math.Max(workLeft, workRight - Width));
+            top = Math.Clamp(top, workTop, Math.Max(workTop, workBottom - Height));
+        }
+
+        Left = left;
+        Top = top;
     }
 
-    // ============ 三页 ============
+    /// <summary>
+    /// 文字层缩放：1 源像素 = 1 屏幕物理像素（= 1 / DPI 缩放 DIP）；窗口装不下时再等比缩小。
+    /// </summary>
+    private void UpdateZoom()
+    {
+        if (OcrCanvas == null) return;
 
-    private void FillText(RecognizeResult result) => TextView.Text = result.Text;
+        double imageWidth = Math.Max(1, OcrCanvas.ImageWidth);
+        double imageHeight = Math.Max(1, OcrCanvas.ImageHeight);
+
+        double availableWidth = OcrScroll.ActualWidth - 4;
+        double availableHeight = OcrScroll.ActualHeight - 4;
+        if (double.IsNaN(availableWidth) || availableWidth <= 0) availableWidth = Width - 30;
+        if (double.IsNaN(availableHeight) || availableHeight <= 0) availableHeight = Height - 170;
+
+        double zoom = 1 / _scale;
+        if (imageWidth * zoom > availableWidth) zoom = availableWidth / imageWidth;
+        if (imageHeight * zoom > availableHeight) zoom = Math.Min(zoom, availableHeight / imageHeight);
+        zoom = Math.Max(zoom, 0.05);
+
+        OcrCanvas.SetZoom(zoom);
+
+        OriginalImage.Width = imageWidth * zoom;
+        OriginalImage.Height = imageHeight * zoom;
+    }
+
+    // ============ 页签 ============
+
+    private void Tab_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton button) return;
+        _tab = button.Tag as string ?? "text";
+
+        // XAML 解析期间 IsChecked="True" 会先触发一次，那时后面的兄弟控件还没建出来
+        if (OcrScroll == null) return;
+
+        UpdateTabs();
+        RefreshStatus();
+    }
+
+    private void UpdateTabs()
+    {
+        // XAML 解析期间 IsChecked="True" 会先触发一次 Checked，那时后面的兄弟控件还没建出来
+        if (OcrScroll is not { } ocrScroll || OriginalToggle is not { } originalToggle ||
+            FillToggle is not { } fillToggle || PreviewBtn is not { } previewBtn ||
+            CopyBtn is not { } copyBtn || EmptyText is not { } emptyText)
+        {
+            return;
+        }
+
+        bool text = _tab == "text";
+        bool original = originalToggle.IsChecked == true;
+
+        ocrScroll.Visibility = text && !original ? Visibility.Visible : Visibility.Collapsed;
+        OriginalScroll.Visibility = text && original ? Visibility.Visible : Visibility.Collapsed;
+        TablePage.Visibility = _tab == "table" ? Visibility.Visible : Visibility.Collapsed;
+        QrPage.Visibility = _tab == "qr" ? Visibility.Visible : Visibility.Collapsed;
+
+        emptyText.Visibility = text && !original && _layer.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        originalToggle.IsEnabled = text;
+        fillToggle.IsEnabled = text && !original;
+        previewBtn.IsEnabled = text && _image != null;
+
+        copyBtn.Content = _tab switch
+        {
+            "table" => "复制 TSV",
+            "qr" => "复制二维码内容",
+            _ => "复制文字",
+        };
+    }
+
+    // ============ 结果填充 ============
 
     private void FillTable(TableGrid table)
     {
@@ -147,7 +333,8 @@ public partial class CaptureResultWindow : Window
         CopyHtmlBtn.IsEnabled = has;
 
         TableInfo.Text = has
-            ? string.Format(CultureInfo.CurrentCulture, "{0} 行 × {1} 列（按词框聚类，仅供参考）", table.RowCount, table.Columns)
+            ? string.Format(CultureInfo.CurrentCulture, "{0} 行 × {1} 列（按词框聚类，仅供参考）",
+                table.RowCount, table.Columns)
             : "";
 
         if (!has) return;
@@ -181,32 +368,156 @@ public partial class CaptureResultWindow : Window
     {
         QrView.Text = result.QrText;
         QrInfo.Text = result.QrText.Length > 0
-            ? string.Format(CultureInfo.CurrentCulture, "格式 {0} · {1} 个字符", result.QrType, result.QrText.Length)
+            ? string.Format(CultureInfo.CurrentCulture, "格式 {0} · {1} 个字符", result.QrType,
+                result.QrText.Length)
             : "这张截图里没有找到二维码。";
     }
 
-    // ============ 页签 / 复制 ============
-
-    private void Tab_Changed(object sender, RoutedEventArgs e)
+    /// <summary>状态行：识别完成后的字数 / 选区字数（没有识别完就报引擎与用时）。</summary>
+    private void RefreshStatus()
     {
-        if (sender is not RadioButton button) return;
-        _tab = button.Tag as string ?? "text";
-
-        // XAML 解析期间 IsChecked="True" 会先触发一次，那时后面的兄弟控件还没建出来
-        if (TextView == null) return;
-
-        bool text = _tab == "text";
-        TextView.Visibility = text ? Visibility.Visible : Visibility.Collapsed;
-        TablePage.Visibility = _tab == "table" ? Visibility.Visible : Visibility.Collapsed;
-        QrPage.Visibility = _tab == "qr" ? Visibility.Visible : Visibility.Collapsed;
-
-        CopyBtn.Content = _tab switch
+        if (_result == null)
         {
-            "table" => "复制 TSV",
-            "qr" => "复制二维码内容",
-            _ => "复制文字",
-        };
+            StatusText.Text = "正在识别…";
+            return;
+        }
+
+        if (!_result.Ok)
+        {
+            StatusText.Text = "识别失败";
+            return;
+        }
+
+        if (_model != null && _model.HasSelection)
+        {
+            int chars = _model.SelectionText().Length;
+            StatusText.Text = string.Format(CultureInfo.CurrentCulture, "已选中 {0} 个字符 · 共 {1} 行",
+                chars, _layer.Count);
+            return;
+        }
+
+        StatusText.Text = _layer.Count == 0
+            ? "没有识别到文字"
+            : string.Format(CultureInfo.CurrentCulture, "共 {0} 行 · 点一下选字，双击选整行，Ctrl+A 全选",
+                _layer.Count);
     }
+
+    // ============ 开关 ============
+
+    private void Original_Changed(object sender, RoutedEventArgs e) => UpdateTabs();
+
+    private void Fill_Changed(object sender, RoutedEventArgs e)
+    {
+        if (OcrCanvas == null) return;
+        OcrCanvas.SetFillBackground(FillToggle.IsChecked == true);
+    }
+
+    private void Preview_Click(object sender, RoutedEventArgs e)
+    {
+        if (_image == null) return;
+
+        if (_preview != null)
+        {
+            _preview.Close();
+            _preview = null;
+            return;
+        }
+
+        var preview = new CaptureOriginalPreviewWindow(_image, _scale);
+        preview.Closed += (_, _) => _preview = null;
+
+        ScreenGeometry? screen = CaptureRecordWindow.ScreenOf(_area);
+        var work = screen == null
+            ? SystemParameters.WorkArea
+            : new Rect(screen.WorkLeft / _scale, screen.WorkTop / _scale,
+                screen.WorkWidth / _scale, screen.WorkHeight / _scale);
+
+        preview.Show();
+        preview.PlaceBeside(new Rect(Left, Top, Width, Height), work);
+        _preview = preview;
+    }
+
+    // ============ 键盘 / 输入 ============
+
+    private bool TextEditable => _tab == "text" && OriginalToggle.IsChecked != true;
+
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            Close();
+            e.Handled = true;
+            return;
+        }
+
+        if (_model == null || !TextEditable) return;
+
+        bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+
+        switch (e.Key)
+        {
+            case Key.A when ctrl:
+                _model.SelectAll();
+                break;
+            case Key.C when ctrl:
+                Copy(_model.HasSelection ? _model.SelectionText() : _model.AllText, "识别文字");
+                break;
+            case Key.X when ctrl:
+                if (!_model.HasSelection) break;
+                Copy(_model.SelectionText(), "识别文字");
+                _model.DeleteSelection();
+                break;
+            case Key.V when ctrl:
+                if (NativeClipboard.TryGetText(out string pasted) && pasted.Length > 0)
+                    _model.InsertText(pasted);
+                break;
+            case Key.Z when ctrl:
+                if (shift) _model.Redo();
+                else _model.Undo();
+                break;
+            case Key.Y when ctrl:
+                _model.Redo();
+                break;
+            case Key.Back:
+                _model.Backspace();
+                break;
+            case Key.Delete:
+                _model.DeleteForward();
+                break;
+            case Key.Left:
+                _model.MoveCaret(-1, shift);
+                break;
+            case Key.Right:
+                _model.MoveCaret(1, shift);
+                break;
+            case Key.Up:
+                _model.MoveLine(-1, shift);
+                break;
+            case Key.Down:
+                _model.MoveLine(1, shift);
+                break;
+            case Key.Enter:
+                _model.InsertText("\n");
+                break;
+            default:
+                return;
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (_model == null || !TextEditable) return;
+        if (string.IsNullOrEmpty(e.Text)) return;
+        if (char.IsControl(e.Text[0]) && e.Text != "\n") return;
+
+        _model.InsertText(e.Text);
+        e.Handled = true;
+    }
+
+    // ============ 复制 / 关闭 ============
 
     private void Copy_Click(object sender, RoutedEventArgs e) => CopyCurrent();
 
@@ -225,7 +536,16 @@ public partial class CaptureResultWindow : Window
                 Copy(_result?.QrText, "二维码内容");
                 break;
             default:
-                Copy(_result?.Text, "识别文字");
+                // 有选区就复制选中的，没有就整份（与上游识别窗的复制语义一致）
+                if (_model == null)
+                {
+                    Copy(_result?.Text, "识别文字");
+                }
+                else
+                {
+                    Copy(_model.HasSelection ? _model.SelectionText() : _model.AllText, "识别文字");
+                }
+
                 break;
         }
     }
@@ -242,5 +562,25 @@ public partial class CaptureResultWindow : Window
         else ToastService.Show("复制失败（剪贴板被占用）", "识别结果", 0, ToastKind.error);
     }
 
+    private void Header_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        try
+        {
+            DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+            // 鼠标已经松开（快速点击）：没有可拖的循环，忽略
+        }
+    }
+
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        _preview?.Close();
+        _preview = null;
+    }
 }

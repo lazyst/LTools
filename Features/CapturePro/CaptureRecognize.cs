@@ -16,6 +16,9 @@ internal sealed class RecognizeResult
 {
     public string Text { get; init; } = "";
     public IReadOnlyList<OcrLineBox> Lines { get; init; } = Array.Empty<OcrLineBox>();
+
+    /// <summary>文字层（行框 + 从像素估出的字色 / 底色）：识别结果窗的文字页画它。</summary>
+    public IReadOnlyList<OcrTextLine> TextLayer { get; init; } = Array.Empty<OcrTextLine>();
     public TableGrid Table { get; init; } = TableGrid.Empty;
 
     /// <summary>二维码内容；没找到为空串（不是错误）。</summary>
@@ -56,17 +59,31 @@ internal static class CaptureRecognize
         var watch = Stopwatch.StartNew();
 
         IReadOnlyList<OcrLineBox> lines = Array.Empty<OcrLineBox>();
+        IReadOnlyList<OcrTextLine> layer = Array.Empty<OcrTextLine>();
         string error = "";
 
-        try
+        // 一张 GDI+ 位图跑三样：OCR、二维码、文字层估色（都只读它，别重复解码三次）
+        using (Bitmap bitmap = ToBitmap(image))
         {
-            using Bitmap bitmap = ToBitmap(image);
-            lines = OcrLayout.Read(bitmap, engine);
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warn("CapturePro.Recognize", "识别失败：" + ex.Message);
-            error = ex.Message;
+            try
+            {
+                lines = OcrLayout.Read(bitmap, engine);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("CapturePro.Recognize", "识别失败：" + ex.Message);
+                error = ex.Message;
+            }
+
+            try
+            {
+                // 估色要逐像素采样，放到后台（本方法本来就在后台线程），失败只影响颜色
+                layer = OcrTextLayer.Build(lines, OcrImage.From(bitmap));
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("CapturePro.Recognize", "文字层估色失败：" + ex.Message);
+            }
         }
 
         string qrText = "", qrType = "";
@@ -87,6 +104,7 @@ internal static class CaptureRecognize
         {
             Text = string.Join("\n", lines.Select(l => l.Text)),
             Lines = lines,
+            TextLayer = layer,
             Table = OcrTable.Build(lines),
             QrText = qrText,
             QrType = qrType,

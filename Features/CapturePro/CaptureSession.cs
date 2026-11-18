@@ -150,7 +150,7 @@ internal static class CaptureSession
         if (pin) CapturePinManager.Pin(result.Image, result.Area);
         if (live) StartLivePin(result);
         if (recognize)
-            CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry);
+            CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry, result.Area);
 
         exit = CaptureExit.Captured;
         return result;

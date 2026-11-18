@@ -69,10 +69,11 @@
 | 上游 | 位置 | LTools 现状 | 批次 | 状态 |
 | --- | --- | --- | --- | --- |
 | 本地 OCR（系统 / PP-OCR） | `ocr/screenshotocrcontroller.cpp` | `Features/Flow/PaddleOcr.cs` + `CaptureRecognize.cs` | — | ✅ |
-| OCR 结果编辑器（选中 / 编辑 / 复制 / 替换为文本） | `screenshotocrtexteditingsession.cpp`、`screenshotocrvisuals.cpp` | 无（只把文本塞进速记 / 剪贴板） | P4 | ❌ |
-| OCR 原文预览窗 | `screenshotoriginalimagepreviewwindow.cpp` | 无 | P4 | ❌ |
-| 文本排版还原（行 / 段 / 字号） | `screenshotocrtextlayout.cpp`、`screenshotocrlayout.cpp` | `OcrLayout` 只有词框 | P4 | 🟡 |
-| 二维码识别 + 呈现 | `screenshotqrcontroller.cpp` | `QrCodeAlgorithms.Read` 只填字段 | P4 | 🟡 |
+| OCR 结果编辑器（选中 / 编辑 / 复制 / 替换为文本） | `screenshotocrtexteditingsession.cpp`、`screenshotocrvisuals.cpp` | `OcrTextEditModel`（行文本 + 跨行字符选区 + 插入 / 删除 / 退格 / 整行替换 + 撤销 50 步）+ `CaptureOcrCanvas`（按源图像素画、逐行可点 / 拖选 / 双击选整行）+ `CaptureResultWindow` 键盘全集（Ctrl+A/C/X/V/Z/Y、Delete/Backspace、方向键、Enter 拆行） | P4-a | ✅ |
+| OCR 原文预览窗 | `screenshotoriginalimagepreviewwindow.cpp` | `Views/CapturePro/CaptureOriginalPreviewWindow`（无边框置顶、100% 按屏幕缩放折算、可左右停靠） | P4-a | ✅ |
+| 文字层配色（逐行估背景 / 字色） | `screenshotocrvisuals.cpp`（`estimateBackground` / `estimateTextColor` / `dominantColor`） | `Features/CapturePro/OcrPalette.cs`（OKLab 感知色 + 4 种子 2 步均值漂移 + 方向分族 + 对比度提纯；估不出时退回「浅底黑字 / 深底白字」）+ `OcrTextLayer.cs`（逐行组装 + 字号拟合） | P4-a | ✅ |
+| 文本排版还原（行 / 段 / 字号） | `screenshotocrtextlayout.cpp`、`screenshotocrlayout.cpp` | 逐行拟合：字号 = 槽高 82%，超宽等比缩到 98% 槽宽（下限 6 px）；**没有段落信息**（只有逐行框），上游的「按段落重排 + 行内缩放」不复刻 | P4-a | 🟡 |
+| 二维码识别 + 呈现 | `screenshotqrcontroller.cpp` | `QrCodeAlgorithms.Read` + 结果窗「二维码」页签（内容 / 格式 / 字数 / 复制） | P4-c | 🟡 |
 | 表格识别 | `tableRequested`（在线服务） | 无 | P4 | ❌ |
 | 文档识别 | `documentRequested` | 无 | P4 | ❌ |
 | LaTeX 识别 + 渲染 | `screenshotlatexrenderer.cpp` | 无 | P4 | ❌ |
@@ -157,7 +158,8 @@
 | P3-c | 选区参数框 + 快速集：`Views/CapturePro/SelectionParamsWindow`（X / Y / 宽 / 高 + 比例锁 + 圆角 + 阴影 \| 边框 + 效果宽 / 色板 + 快速集增删）、`SelectionStore` 落 `settings.json`、比例下拉里的「上次选区 / 具名快速集 / 8 个比例」 | ✅ | 构建 0 警；`--selftest` 227 用例 7247 断言全绿；`capture-overlay-smoke` 864 条全绿（信息条数字 / 摆位 / 滚轮 ±1 / 圆角与效果宽物理像素 / 锁 / 比例预设 / 下拉项高 28 / 参数框字段与联动 / 色板 / `ReadParams`）；真机 `selection-bar-e2e` 全绿（真鼠标框选 → 真滚轮 ±1 → 真点击锁（图标转 #1677FF、锁着改宽按比例推、左上角不动）→ 真点击下拉「1:1」（选区变正方形）→ 真键盘 Esc 退出） |
 | P3-d | 智能选区：`Features/CapturePro/SmartSelection.cs`（`SmartSelectionMode` 三档 / `SmartSelectionTarget` 两级 / 命中路径「最深 → 整窗」/ 层级偏好与 Tab / 细化只增不减）+ `SmartSelectionTransition.cs`（按绝对时间插值、`p*(2-p)` 缓出、8ms 喂时间）+ `Views/CapturePro/CaptureOverlayWindow.Smart.cs`（预选就是真选区，主工具条与形状条收起、信息条只读、单击确认 / 拖动改手框 / 换工具落成普通选区 / 右键退出这次截图） | ✅ | 构建 0 警；`--selftest` 全量 7387 断言全绿（`capturePro` 61 用例 2561 断言，新增上游 16 组智能选区用例）；`capture-overlay-smoke` **911 条全绿**（新增 `[smart]` 50 条：预选几何与标签 / 工具条收起 / 信息条只读且报物理像素 / 滚轮换层走过渡并精确落位 / Tab 整窗↔子元素 / 真鼠标单击确认 / 换工具落成普通选区 / 真鼠标从按下点拖框 / 真右键退出；落图 `out/smart-preview.png`、`smart-window.png`、`smart-manual.png`） |
 | P3 | 选区：XYWH / 比例 / 圆角 / 阴影 / 智能选区 / 预设 | ✅ | P3-a/b/c/d 全部落地 |
-| P4 | 识别与转换：OCR 编辑器 / 原文预览 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档 / 翻译 | ❌ | 待填 |
+| P4-a | 识别结果窗（照 `screenshotrecognitionwindow` + `screenshotocrvisuals` / `screenshotocrtextlayout` / `screenshotocrtexteditingsession` / `screenshotoriginalimagepreviewwindow`）：无边框置顶、贴选区摆位；**文字层**按 OCR 行框重排（逐行估背景 / 字色、按槽高拟合字号），可点 / 拖选 / 双击选整行 / 直接改字（跨行选区、插入、删除、退格、整行替换、撤销重做 50 步）；「显示原图 / 填充背景 / 原文预览」三个开关；表格 / 二维码页签 | ✅ | 构建 0 警；`--selftest` 233 用例 **7452 断言全绿**（`capturePro` 65 用例 2626 断言，新增估色 / 行层与字号 / 编辑模型 / 命中四组）；`capture-overlay-smoke` **931 条全绿**（识别窗 21 条：画布按原图像素铺 320×80、页签与复制按钮文案、显示原图收起文字层并禁用填充、填充开关落到画布、原文预览窗开在识别窗旁、**真鼠标跨行拖选** → 状态行报「已选中 6 个字符 · 共 2 行」、选整行） |
+| P4 | 识别与转换：OCR 编辑器 / 原文预览 / 表格 / 二维码 / LaTeX / Markdown / HTML / 文档 / 翻译 | ⏳ | P4-a 已完成；余下 P4-b 表格编辑器 / P4-c 二维码呈现 / P4-d Markdown·HTML / P4-e 文档 / P4-f 在线翻译 / P4-g 贴回画布 |
 | P5 | 贴图：管理页 / 取色板 / 文字样式 / 点击穿透 / 抖动隐藏 / 批量保存 / 拖拽导出 / 历史恢复 | ❌ | 待填 |
 | P6 | 图片编辑窗 / 拼图 / 切图 | ❌ | 待填 |
 | P7 | 采集入口与设置：延时 / 固定区域 / 鼠标释放动作 / 全局快捷键 / 导出设置 / 剪贴板外观 / 历史页 | ❌ | 待填 |
@@ -276,3 +278,14 @@
   - `Views/CapturePro/CaptureOverlayWindow.Smart.cs`：**预选就是真选区**——`_regions` / `_sel` 与手工框选完全一致，只多一个 `_smartPreviewActive` 标记；画面几何走过渡插值，主工具条与形状条收起、信息条只读、提示写明「单击确认 · 滚轮换层级 · Tab 切到整窗 · 也可直接拖动框选 · 右键退出」。单击 = 确认（转普通选区 + 暂停智能选区），拖过阈值 = 从按下点开始手框，换工具 = 把这块落成普通选区，预选态右键 = 直接退出这次截图。
   - 两个坑：① `UpdateSmartTarget` 原来用「模型当前值」判「没变就不重建」，`Tab` 之后模型已经变了、界面却没跟着变——改用 `_smartShown`（上一次真正交给过渡的目标）；② 默认档位是「窗口子元素」，覆盖层一打开光标下的窗口就是预选，离线冒烟里所有「没有预选」的老分支全红——冒烟侧统一用 `NewOverlay()` 先关档位，产品行为不改。
   - 验收：构建 0 错 0 警；`--selftest` 全量 7387 断言全绿（`capturePro` 61 用例 2561 断言，含上游 16 组智能选区用例移植）；`capture-overlay-smoke` **911 条全绿**（新增 `[smart]` 段 50 条，真鼠标单击 / 真鼠标拖框 / 真右键退出）。
+
+- 2026-11-18：**P4-a 完成（识别结果窗 + 文字层编辑器 + 原文预览）**。上游在识别上分了四个文件：`screenshotrecognitionwindow`（窗与工具条）、`screenshotocrvisuals`（逐行估色）、`screenshotocrtextlayout`（字距 / 行距拟合）、`screenshotocrtexteditingsession`（编辑会话）。
+  - `Features/CapturePro/OcrPalette.cs`（照 `screenshotocrvisuals.cpp`）：一张图整块摊平成 BGRA 数组后逐行采样。**背景** = 四条边三带 × 24 位 + 8×8 内部网格（相位错开避开笔画），平坦像素权重 ×4，4 个最高权重分箱当种子做 2 步固定半径均值漂移（OKLab 距离 ≤ 0.025），外部样本只破并列；**字色** = 外圈定噪声（四分位 > 24 直接放弃）、三像素水平滤波只用于「分族」、按「相对背景的方向」聚族取证据最多那族、再用对比度四分位提纯取代表色。估不出时退回「浅底黑字 / 深底白字」——上游用主题字色，这里会铺底色，主题字色可能正好融进去。
+  - `Features/CapturePro/OcrTextLayer.cs`：行层数据（框 + 估出的字色 / 底色）+ `Build`（后台线程跑）+ `FitFontSize`（起始 = 槽高 82%，超宽等比缩到 98% 槽宽，下限 6 px）。真字体度量只在 UI 线程（`FormattedText`）。
+  - `Features/CapturePro/OcrTextEditModel.cs`：逐行文本 + **跨行字符级选区** + 插入 / 替换选区 / 删除 / 退格 / Delete / 整行替换 / 全选 / 左右上下移动；撤销栈存整份行文本快照，上限 50 步（增量 diff 一旦算错就是「撤销后文字错位」，不值得）。
+  - `Views/CapturePro/CaptureOcrCanvas.cs`：画布坐标 = **源图像素** × `Zoom`，所以文字与原始行框永远对得上；逐行铺底色 / 画文字 / 画选区与光标 / 悬停虚线框；`CharIndexAt` 是纯函数（二分）供 selftest 直接断言。
+  - `Views/CapturePro/CaptureResultWindow.xaml(.cs)` 重写：无边框置顶、按选区物理像素 ÷ 显示器 Scale 摆位、1 源像素 ≈ 1 屏幕物理像素（装不下再等比缩）；三页签（文字 / 表格 / 二维码）+ 底栏「显示原图 / 填充背景 / 原文预览 / 复制 / 关闭」；键盘 Ctrl+A/C/X/V/Z/Y、Delete/Backspace、方向键、Enter 拆行、Esc 关窗；状态行报「共 N 行」或「已选中 N 个字符 · 共 N 行」。
+  - `Views/CapturePro/CaptureOriginalPreviewWindow.cs`（照 `screenshotoriginalimagepreviewwindow.cpp`）：无边框置顶不抢焦点、100% 显示、`PlaceBeside` 先右后左再夹进工作区。
+  - `CaptureRecognize.Run` 改成一张 GDI+ 位图跑三样（OCR / 二维码 / 文字层估色），不再解码三次。
+  - 两处与上游的差异（写进 `docs/SCREEN_CAPTURE_PRO.md` §5）：① 上游识别窗是 Qt Tool 窗、出口挂在覆盖层工具条上，本项目的覆盖层在识别时已关闭，所以识别窗自带复制 / 关闭；② 上游是**整段**行内缩放（有段落信息），本项目 OCR 只给逐行框，所以逐行拟合字号、不做段落重排。
+  - 验收：构建 0 错 0 警；`--selftest` 233 用例 **7452 断言全绿**（`capturePro` 65 用例 2626 断言）；`capture-overlay-smoke` **931 条全绿**（识别窗 21 条，含真鼠标跨行拖选与原文预览窗摆位）。

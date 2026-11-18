@@ -595,18 +595,47 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 
 纯函数在 `Features/CapturePro/PickerColor.cs`（`Read` / `Hex` / `Rgb` / `Describe`），`--selftest` 直接断言。
 
-## 10. 识别（P2）
+## 10. 识别（P2 / P4-a）
 
 入口三处，行为一致（都先按标注文档重绘成品，再关覆盖层，然后开结果窗）：
 工具条「识别」/ `Ctrl+R`；作为 `screen.capture` 的一步时也开，并且照常返回这张图。
 
-结果窗（`Views/CapturePro/CaptureResultWindow.xaml(.cs)`）三个页签，每页各有复制：
+**结果窗照上游 `screenshotrecognitionwindow`**：无边框、置顶、按选区物理像素 ÷ 显示器 Scale 摆位（装得下就压住选区，装不下夹进工作区），
+**1 源像素 ≈ 1 屏幕物理像素**（窗口装不下再等比缩小）。三个页签，每页各有复制：
 
 | 页签 | 内容 | 复制 |
 |---|---|---|
-| 文字 | OCR 的行文本（换行分隔） | 复制文字 |
+| 文字（默认） | **文字层**：按 OCR 行框重排的可编辑文字（见下） | 复制文字（有选区就复制选区） |
 | 表格 | 本地**近似表格**：词框按行 / 列聚类，2 行 2 列以上才显示 | 复制 TSV / 复制 HTML |
-| 二维码 | 解码内容 + 格式（`QR_CODE`） | 复制二维码内容 |
+| 二维码 | 解码内容 + 格式（`QR_CODE`）+ 字数 | 复制二维码内容 |
+
+底栏三个开关都是上游的真实能力：**显示原图**（同一块画布换成原图，文字层收起）、
+**填充背景**（文字层铺不铺估出来的底色）、**原文预览**（右侧开一个 100% 原图窗，放不下翻到左边）。
+
+### 10.1 文字层（P4-a）
+
+文字层不是「一整块只读文本」，而是照 `screenshotocrvisuals.cpp` / `screenshotocrtextlayout.cpp` 的**逐行槽位**：
+
+- **位置** = OCR 行框（源图像素），画布坐标 = 源图像素 × `Zoom`，所以文字与原始行框永远对得上。
+- **配色**（`Features/CapturePro/OcrPalette.cs`）：背景 = 四条边三带 × 24 位 + 8×8 内部网格采样（相位错开避开笔画），
+  平坦像素权重 ×4，4 个最高权重分箱当种子做 2 步固定半径均值漂移（OKLab 距离 ≤ 0.025），外部样本只破并列；
+  字色 = 外圈定噪声（四分位 > 24 直接放弃）、三像素水平滤波只用于「按相对背景的方向分族」、
+  取证据最多那族再用对比度四分位提纯取代表色。**估不出就退回「浅底黑字 / 深底白字」**——上游此时用主题字色，
+  但本项目的文字层会铺底色，主题字色可能正好和底色融在一起。
+- **字号** = 槽高 × 0.82 起步，量出来超宽就等比缩到 98% 槽宽，下限 6 px。上游是**整段**行内缩放
+  （它有段落信息），OCR 这边只有逐行框，所以逐行拟合、不做段落重排——这是与上游的已知差异。
+- **编辑**（`Features/CapturePro/OcrTextEditModel.cs`）：点一下落光标、拖过是选区、双击选整行；
+  `Ctrl+A/C/X/V/Z/Y`、`Delete` / `Backspace`、方向键、`Enter` 拆行；选区**跨行**（起点 / 终点各是「第几行第几个字符」）；
+  撤销栈存整份行文本快照、上限 50 步（增量 diff 一旦算错就是「撤销后文字错位」这种最难查的问题）。
+- **状态行**：识别完报「共 N 行 · 点一下选字，双击选整行，Ctrl+A 全选」，有选区改成「已选中 N 个字符 · 共 N 行」。
+
+### 10.2 与上游的架构差异（写进 `docs/CAPTURE_PARITY.md` §5）
+
+1. 上游识别窗是 Qt 的无边框 Tool 窗、出口（复制 / 关闭 / 原文预览）挂在**覆盖层工具条**上；
+   本项目的覆盖层在识别时已经关掉（否则会被冻结画面截进去），所以结果窗**自带**这几个出口。
+2. 上游有段落信息，能做整段重排与行内缩放；本项目 OCR 只给逐行框，故逐行拟合字号。
+3. 表格识别、LaTeX / 文档识别与免费翻译在上游走 Snow Shot 私有云（`SNOW_APPS_API_BASE_URL`，构建时注入），
+   **不可复刻**；本地改用「OCR 派生 + 用户可配 OpenAI 兼容端点」替代，不假装有云端模型。
 
 - **窗口先开再算**：识别要一两秒，`Loaded` 里把 `CaptureRecognize.Run` 丢到后台线程，算完回 UI 线程填内容；
   失败（如系统没装 OCR 语言包）在状态行说明原因，窗口照常可用。
@@ -614,7 +643,9 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
   与「文字识别」取值同一套；状态行写明引擎名与用时。
 - 底层复用 `OcrLayout.Read`（带坐标的行 / 词）与 `QrCodeAlgorithms.Read`（ZXing，只认 QR），
   **不另写识别实现**；表格聚类是纯函数 `OcrTable.Build`（`Features/CapturePro/OcrTable.cs`）。
-- 不做公式识别与翻译（Quicker 那两条都靠云）。
+  一张 GDI+ 位图同时跑 OCR、二维码与文字层估色，不再解码三次。
+- 只放**当前真能出结果**的页签（文字 / 表格 / 二维码）；Markdown / HTML / LaTeX / 文档 / 翻译各自到批次里再加，
+  不做死按钮。
 
 ## 11. 采集历史（P2-2 / P4）
 
@@ -1038,6 +1069,7 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
 | **P3-b** ✅ | ⑤ | 选区信息条（照 `ScreenshotSelectionToolbarWidget`）：X · Y · 锁 · 宽 × 高 · 比例 · 圆角 · 效果宽；数值是屏幕物理像素、滚轮 ±1 px；块大小 26 / 圆角 6 / 内边距 8×2 / 图标 18 / 项高 26 |
 | **P3-c** ✅ | ⑤ | 选区参数框（`SelectionParamsWindow`：XYWH + 比例锁 + 圆角 + 阴影 \| 边框 + 效果宽 / 色板 + 快速集增删，列宽 218、总宽 452）+ 比例下拉里的「上次选区 / 具名快速集 / 8 个比例（1:1 … 9:16）」 |
 | **P3-d** ✅ | ⑤ ⑨ | 智能选区（照 `screenshotintelligentselectionmodel.cpp` + `screenshotsmartselectiontransition.cpp`）：三档模式（关闭 / 窗口子元素 / 整窗）+ 命中路径「最深 → 整窗」+ 滚轮换层级 + Tab 切目标 + UIA 细化只增不减 + 过渡动画（Soft 101ms / Fast 67ms / 0.4 DIP 落位容差 / `p*(2-p)` 缓出）；**预选就是真选区**，单击确认 / 拖动改手框 / 换工具落成普通选区 / 预选态右键退出这次截图 |
+| **P4-a** ✅ | ④ | 识别结果窗照 `screenshotrecognitionwindow` 重写：无边框置顶贴选区、1 源像素 ≈ 1 屏幕物理像素 + **文字层**（逐行估色 `screenshotocrvisuals` / 字号拟合 `screenshotocrtextlayout` / 跨行选区编辑 `screenshotocrtexteditingsession`）+ 「显示原图 / 填充背景 / 原文预览（`screenshotoriginalimagepreviewwindow`）」三开关 + 表格 / 二维码页签 |
 
 ## 16. 验收
 
@@ -2514,3 +2546,21 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   仓库外 `capture-overlay-smoke` **911 条**，新增 `[smart]` 50 条用真鼠标单击 / 真鼠标拖框 / 真右键退出。
   冒烟侧的一个坑：默认档位是「窗口子元素」，覆盖层一打开光标下的窗口就是预选，所有「没有预选」的老
   分支全红——统一用 `NewOverlay()` 先关档位，**不改产品默认值**。
+- **识别结果窗与文字层（P4-a，2026-11-18）**：照上游四个文件——`screenshotrecognitionwindow`
+  （窗 / 摆位 / 出口）、`screenshotocrvisuals`（逐行估色）、`screenshotocrtextlayout`（字号拟合）、
+  `screenshotocrtexteditingsession`（编辑会话）。新文件五个：
+  `Features/CapturePro/OcrPalette.cs`（`Rgb` / `OcrImage` BGRA 摊平 / `EstimateBackground` /
+  `EstimateTextColor` / `Perceptual`）、`OcrTextLayer.cs`（`OcrTextLine` + `Build` + `FromLines` +
+  `FitFontSize`）、`OcrTextEditModel.cs`（跨行选区 / 插入 / 删除 / 退格 / 整行替换 / 撤销 50 步）、
+  `Views/CapturePro/CaptureOcrCanvas.cs`（按源图像素绘制 + `Zoom` + 逐行底色 / 字色 / 选区 / 光标 / 悬停 /
+  `CharIndexAt`）、`Views/CapturePro/CaptureOriginalPreviewWindow.cs`（无边框置顶 100% 原文 + `PlaceBeside`）。
+  `CaptureRecognize.Run` 改成一张 GDI+ 位图跑三样（OCR / 二维码 / 文字层估色）。
+  五个坑：① **`Rgb.ToColor()` 与 `PixelFormat` 必须全限定**（`System.Drawing` 与
+  `System.Windows.Media` 同名冲突）；② **`FormattedText` 没有 `FontSize` 属性**，拟合出来的字号要自己
+  缓存在 `_sizeCache`，别指望从 `FormattedText` 读回来；③ 结果窗 XAML 解析期 `Tab_Changed` /
+  `Fill_Changed` 会先于后面的兄弟控件创建触发，`UpdateTabs` 必须用 `is not { } local` 取本地变量再判空
+  （字段直接判空仍会 CS8602）；④ 上游是整段重排（有段落信息），这里只有逐行框，所以字号逐行拟合；
+  ⑤ 上游出口挂在覆盖层工具条上，本项目覆盖层识别时已关闭，所以结果窗自带「复制 / 关闭 / 显示原图 / 填充
+  背景 / 原文预览」。回归：`--selftest` 233 用例 **7452 断言**（`capturePro` 65 用例 2626 断言，新增
+  估色 / 行层与字号 / 编辑模型 / 命中四组）；`capture-overlay-smoke` **931 条**（识别窗 21 条，含
+  **真鼠标跨行拖选** → 状态行「已选中 6 个字符 · 共 2 行」、原文预览窗开在识别窗旁）。

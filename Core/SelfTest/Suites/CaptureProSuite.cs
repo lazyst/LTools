@@ -53,6 +53,10 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "度量：测距端点 / 单位 / 系数 / 测角内角 / 花括号", MeasureStyles));
         cases.Add(new("capturePro", "样式：序号徽标 / 水印模板 / 放大镜几何", SerialWatermarkMagnifier));
         cases.Add(new("capturePro", "识别：表格聚类 / TSV / HTML", Recognize));
+        cases.Add(new("capturePro", "识别：文字层像素估色（背景 / 字色 / 花底放弃）", OcrPaletteCases));
+        cases.Add(new("capturePro", "识别：文字层构建与字号拟合", OcrTextLayerCases));
+        cases.Add(new("capturePro", "识别：文字层编辑（选区 / 跨行 / 撤销）", OcrEditCases));
+        cases.Add(new("capturePro", "识别：文字层命中（行内字符）", OcrCanvasHitCases));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
         cases.Add(new("capturePro", "长截图：滚动位移识别", ScrollDetection));
