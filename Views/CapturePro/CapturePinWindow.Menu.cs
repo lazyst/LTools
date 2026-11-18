@@ -55,6 +55,7 @@ public partial class CapturePinWindow
     private void Window_RightDown(object sender, MouseButtonEventArgs e)
     {
         RaiseToTop();
+        PinStacking.Promote(this);
         ContextMenu = BuildMenu();
     }
 

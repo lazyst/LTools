@@ -244,6 +244,9 @@ public partial class CapturePinWindow : Window
         switch (msg)
         {
             case 0x0047:        // WM_WINDOWPOSCHANGED
+                if (_live) SyncLiveLayer();
+                PinStacking.NativeOrderChanged(this);    // z 序变了：延迟一拍读回真实前后序
+                break;
             case 0x0003:        // WM_MOVE
             case 0x0005:        // WM_SIZE
             case 0x0018:        // WM_SHOWWINDOW

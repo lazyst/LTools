@@ -76,6 +76,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "贴图点击穿透：控件几何 / 不透明度口径", PinClickThroughCases));
         cases.Add(new("capturePro", "贴图抖动识别（移植上游 8 个用例）", PinShakeCases));
         cases.Add(new("capturePro", "贴图批量贴出 / 拖放规则 / 拖出临时文件预算", PinFileCases));
+        cases.Add(new("capturePro", "贴图前后序：加 / 提 / 删 / 换组 / 观测 / 还原", PinStackingCases));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
         cases.Add(new("capturePro", "长截图：滚动位移识别", ScrollDetection));

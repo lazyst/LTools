@@ -134,6 +134,7 @@ internal static class CapturePinManager
         Pins.Add(pin);
         pin.Show();          // 无激活窗口：ShowActivated=False + WS_EX_NOACTIVATE
         pin.RaiseToTop();
+        PinStacking.Presented(pin, preserveFocus: false);   // 新贴的排到组最前
         Sync(pin);
 
         System.Threading.Tasks.Task.Run(() => PinStore.SaveAssets(record, image));
@@ -183,7 +184,44 @@ internal static class CapturePinManager
     /// 把历史里的一条重新贴到屏幕上（管理页「贴回屏幕」）：整条记录复用，不新建。
     /// 图读不出来返回 <c>null</c>（调用方提示「图片文件不见了」）。
     /// </summary>
-    public static CapturePinWindow? Restore(PinRecord record)
+    public static CapturePinWindow? Restore(PinRecord record) => RestoreCore(record, preserveFocus: false);
+
+    /// <summary>
+    /// 批量贴回（管理页「批量贴到屏幕」）：按给定顺序逐张贴出来，整批结束再按记录槽位排一次。
+    /// </summary>
+    /// <remarks>
+    /// 照上游管理页走的 <c>showRecords</c>：全程 <c>PreserveFocus</c>，**每张都回到它在
+    /// 记录里的槽位**（关掉时槽位保留），不因为「这一批刚贴出来」就整批顶到最前面。
+    /// 整批期间挂起「原生 z 序观测」（中间态没有意义、每张都写一次盘也白费），结束统一落一次。
+    /// 同一张已经贴在屏幕上的直接复用（不新建窗口）。
+    /// </remarks>
+    /// <returns>这次新贴出来几张（已开着的不算）。</returns>
+    public static int RestoreBatch(IReadOnlyList<PinRecord> records)
+    {
+        if (records == null || records.Count == 0) return 0;
+
+        int opened = 0;
+
+        using (PinStacking.Batch())
+        {
+            foreach (var record in records)
+            {
+                var existing = FindByRecord(record.Id);
+                if (existing != null)
+                {
+                    if (!existing.IsVisible) existing.Show();
+                    continue;
+                }
+
+                if (RestoreCore(record, preserveFocus: true) != null) opened++;
+            }
+        }
+
+        PinStacking.Apply();
+        return opened;
+    }
+
+    private static CapturePinWindow? RestoreCore(PinRecord record, bool preserveFocus)
     {
         // 文字 / 颜色卡：按原文重画（上游也是从 stored text 重渲染，不依赖图片文件）
         if (PinStore.IsTextual(record))
@@ -209,7 +247,7 @@ internal static class CapturePinManager
                 textPin.Top = record.Top;
             }
 
-            return FinishRestore(textPin, record);
+            return FinishRestore(textPin, record, preserveFocus);
         }
 
         var image = PinStore.LoadAsset(record.Id);
@@ -242,11 +280,11 @@ internal static class CapturePinManager
             pin.Top = record.Top + delta.Y;
         }
 
-        return FinishRestore(pin, record);
+        return FinishRestore(pin, record, preserveFocus);
     }
 
     /// <summary>贴回的共同收尾：分组、记录回到「还开着」、显示、顶最前、同步落点。</summary>
-    private static CapturePinWindow FinishRestore(CapturePinWindow pin, PinRecord record)
+    private static CapturePinWindow FinishRestore(CapturePinWindow pin, PinRecord record, bool preserveFocus)
     {
         string group = CreateGroup(record.Group) ?? PinGroups.Default;
         pin.SetGroup(group);
@@ -255,6 +293,7 @@ internal static class CapturePinManager
         Pins.Add(pin);
         pin.Show();
         pin.RaiseToTop();
+        PinStacking.Presented(pin, preserveFocus);
         Sync(pin);
 
         // 关的时候是穿透态就还回穿透态（连不透明度一起），否则贴回一张「点不到的图」会让人以为卡死
@@ -272,8 +311,14 @@ internal static class CapturePinManager
     {
         EndMove();
         ClearSelection();
-        foreach (var pin in Pins.ToArray()) pin.Close();
+
+        using (PinStacking.Batch())
+        {
+            foreach (var pin in Pins.ToArray()) pin.Close();
+        }
+
         Pins.Clear();
+        PinStacking.Reset();
         GroupList.RemoveAll(group => !PinGroups.Same(group, PinGroups.Default));
         ActiveGroup = null;
     }
@@ -309,7 +354,9 @@ internal static class CapturePinManager
 
         if (IsShown(pin))
         {
-            if (!pin.IsVisible) { pin.Show(); pin.RaiseToTop(); }
+            if (!pin.IsVisible) pin.Show();
+            pin.RaiseToTop();
+            PinStacking.Presented(pin, preserveFocus: false);   // 搬进新组 = 排到那组最前
         }
         else if (pin.IsVisible)
         {
@@ -341,6 +388,9 @@ internal static class CapturePinManager
                 pin.Hide();
             }
         }
+
+        // 露出来的按记录槽位排一次：否则「最后 Show 的那张」会盖住本该在它前面的
+        PinStacking.Apply(ActiveGroup);
     }
 
     // ============ 多选与批量 ============
@@ -387,7 +437,13 @@ internal static class CapturePinManager
     {
         var targets = Selection.ToArray();
         ClearSelection();
-        foreach (var pin in targets) pin.Close();
+
+        using (PinStacking.Batch())
+        {
+            foreach (var pin in targets) pin.Close();
+        }
+
+        PinStacking.Apply();
         return targets.Length;
     }
 
@@ -439,6 +495,9 @@ internal static class CapturePinManager
                 if (pin.IsVisible) pin.Hide();
             }
         }
+
+        // 藏起来再放出来不该打乱前后序（Show + 顶最前会让最后一张盖住全部）
+        if (show) PinStacking.Apply(source.Group);
 
         return (true, show);
     }
@@ -506,6 +565,7 @@ internal static class CapturePinManager
         if (pin.PinId.Length > 0)
             PinStore.MarkClosed(pin.PinId, pin.Left, pin.Top, pin.Width, pin.Height);
 
+        PinStacking.Retiring(pin);
         Selection.Remove(pin);
         Pins.Remove(pin);
         MoveBase.RemoveAll(entry => ReferenceEquals(entry.Pin, pin));

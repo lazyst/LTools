@@ -818,6 +818,50 @@ X / Y 两轴各一份状态机；极值点吞掉阈值内的小幅回摆；非�
 `PinDropSection`（真窗口的 `AllowDrop` / 边框 / 菜单入口 / 换内容 / 锁定 / 拖出数据与临时文件 /
 取消即删 / 160px 预览）。
 
+### 9.8 贴图堆叠与层级协调（P5-g）
+
+照上游 `pinned/pinnedwindowstackingcoordinator.cpp`、`pinnedwindowstackingplatform.cpp`、
+`include/snow_shot/storage/pinnedwindowstackingorder.h`。
+
+**逻辑前后序是唯一权威**（`Features/CapturePro/PinStacking.cs` 的 `PinStackOrder`）：
+每个分组一份 **front-to-back** 列表，与窗口句柄、可见性、内容都无关；落盘在 `pins/pins.json` 的
+`Stacking`（分组 → 成员 Id）。`revision` 只在真变时增加，`--selftest` 直接断言这一层。
+
+| 动作 | 前后序怎么变 |
+|---|---|
+| 新贴一张 | 插到组最前 |
+| 点 / 拖 / 右键某一张 | 它提到组最前（只改层级，不改几何） |
+| 关掉（或分组藏起来） | **保留槽位**，再贴回时按原位置回去 |
+| 管理页单张「贴回屏幕」 | 提到组最前（照上游 `PresentationPolicy::Activate`） |
+| 管理页「批量贴到屏幕」 | 逐张按记录槽位回位（照上游 `showRecords` 的 `PreserveFocus`），不整批顶到最前 |
+| 换分组 | 搬到目标组最前，原组少一个 |
+| 删记录 | 从顺序里摘掉，不留残渣 |
+
+**与原生 z 序对齐**（`PinStacking`）：
+
+- 出场 / 贴回 / 换组之后 `Place(pin)`：找到它在记录里的位置，插到「更靠前那张」下面
+  （没有更靠前的就插到「更靠后那张」上面），与上游 `platform.place(window, above, below)` 同口径。
+- 原生 z 序一变（`WM_WINDOWPOSCHANGED` → `NativeOrderChanged`）延迟一拍用 `EnumWindows`
+  读回真实前后序存盘；`Observe` **只重排看得见的成员**，藏起来 / 已关闭的保留槽位，
+  观测里多出来的 Id（别的组 / 已删除）一律忽略，少于两张不算一次观测。
+- 批量关闭 / 批量贴回期间 `Batch()` 挂起观测（中间态没有意义、每张都写一次盘也白费），
+  结束统一 `Apply()` 落一次；`CloseAll` 之后 `Reset()` 清账。
+- 层级只分「置顶 / 普通」两档（`WS_EX_TOPMOST`），跨档不做相对落位——与上游 `place` 先比
+  `level` 再动 z 序同口径。所有挪 z 序的调用都是
+  `SetWindowPos(hwnd, after, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER)`；
+  Windows 的 `after` 语义是「放到它**下面**」，所以「放到 below 上面」要取
+  `GetWindow(below, GW_HWNDPREV)`。
+
+**持久化**：`PinStoreFile.Stacking` 与 `Items` 同文件同一次写；`PinStore` 里 `Create` / `UpdateState`
+（换组）/ `Remove` / `Clear` / `Maintain` 都同步改顺序，对外只开
+`StackingOrder` / `StackingOrders` / `AddStacking` / `PromoteStacking` / `MoveStacking` /
+`UpdateStackingOrder`。载入时档案顺序优先，没记过的记录按「新 → 旧」补在组后面；存档里跨组的
+Id 与已经删掉的 Id 都不复活。
+
+回归：`--selftest` 的「贴图前后序：加 / 提 / 删 / 换组 / 观测 / 还原」+ 仓库外
+`capture-overlay-smoke` 的 `PinStackSection`（真窗口的原生 z 序、点击提升、单张 / 批量贴回、
+切分组、删记录、`pins.json` 落盘）。
+
 
 ## 10. 识别（P2 / P4-a / P4-b）
 

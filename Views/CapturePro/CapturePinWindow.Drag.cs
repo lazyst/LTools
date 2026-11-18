@@ -24,6 +24,7 @@ public partial class CapturePinWindow
         if (e.ChangedButton != MouseButton.Left) return;
 
         RaiseToTop();
+        PinStacking.Promote(this);      // 点了哪张，它就在记录里排到组最前
 
         // 点在自己的按钮上（右上角 ✕）就交给按钮：这个处理器在隧道阶段先到，
         // 要是照常走「按下 = 开始拖动」并 CaptureMouse()，按钮永远收不到 MouseUp、

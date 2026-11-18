@@ -107,10 +107,17 @@ internal sealed class PinRecord
     [JsonIgnore] public string GroupText => Group.Length > 0 ? Group : PinGroups.Default;
 }
 
-/// <summary><c>pins/pins.json</c> 的磁盘形状（只有一个列表）。</summary>
+/// <summary><c>pins/pins.json</c> 的磁盘形状（记录 + 每个分组的前后序）。</summary>
+/// <remarks>
+/// 前后序对应上游 <c>stacking_order</c>：<b>分组 → 成员 Id（最前 → 最后）</b>。
+/// 老文件没有这个域就是空表，按「新 → 旧」重新排一遍（见 <see cref="PinStackOrder.From"/>）。
+/// </remarks>
 internal sealed class PinStoreFile
 {
     public List<PinRecord> Items { get; set; } = new();
+
+    /// <summary>分组 → 成员 Id（最前 → 最后）；只记当前还在历史里的 Id。</summary>
+    public Dictionary<string, List<string>> Stacking { get; set; } = new();
 }
 
 /// <summary>
@@ -164,6 +171,9 @@ internal static class PinStore
 
     private static readonly object Gate = new();
 
+    /// <summary>前后序的进程内副本（<see cref="PinStackOrder"/>，只在 <see cref="Gate"/> 里读写）。</summary>
+    private static PinStackOrder? _stack;
+
     private static readonly JsonSerializerOptions Opt = new()
     {
         WriteIndented = true,
@@ -196,20 +206,48 @@ internal static class PinStore
 
     private static List<PinRecord> LoadUnsafe()
     {
+        var file = ReadFileUnsafe();
+        var items = file.Items ?? new List<PinRecord>();
+        items.RemoveAll(e => e == null || string.IsNullOrWhiteSpace(e.Id));
+        return items.OrderByDescending(e => e.CreatedAt, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>原样读磁盘形状（含前后序）；文件不存在 / 读坏了返回空对象，不抛。</summary>
+    private static PinStoreFile ReadFileUnsafe()
+    {
         try
         {
-            if (!File.Exists(IndexPath)) return new List<PinRecord>();
+            if (!File.Exists(IndexPath)) return new PinStoreFile();
+
             var file = JsonSerializer.Deserialize<PinStoreFile>(
                 File.ReadAllText(IndexPath, Encoding.UTF8), Opt);
-            var items = file?.Items ?? new List<PinRecord>();
-            items.RemoveAll(e => e == null || string.IsNullOrWhiteSpace(e.Id));
-            return items.OrderByDescending(e => e.CreatedAt, StringComparer.Ordinal).ToList();
+            file ??= new PinStoreFile();
+            file.Stacking ??= new Dictionary<string, List<string>>();
+            return file;
         }
         catch (Exception ex)
         {
             AppLog.Warn("PinStore.Load", "读取贴图历史失败：" + ex.Message);
-            return new List<PinRecord>();
+            return new PinStoreFile();
         }
+    }
+
+    /// <summary>
+    /// 取前后序（首次访问时从磁盘还原）：记录里已经没有的 Id 不复活，没记过的按「新 → 旧」补进来。
+    /// 必须已有 <see cref="Gate"/>。
+    /// </summary>
+    private static PinStackOrder StackingUnsafe(List<PinRecord>? items = null)
+    {
+        if (_stack != null) return _stack;
+
+        var file = ReadFileUnsafe();
+        var records = items ?? (file.Items ?? new List<PinRecord>())
+            .Where(e => e != null && !string.IsNullOrWhiteSpace(e.Id))
+            .OrderByDescending(e => e.CreatedAt, StringComparer.Ordinal)
+            .ToList();
+
+        _stack = PinStackOrder.From(records.Select(e => (e.Id, e.Group)), file.Stacking);
+        return _stack;
     }
 
     /// <summary>
@@ -252,7 +290,12 @@ internal static class PinStore
 
             items.Insert(0, record);
             var (keep, drop) = PlanPrune(items, now, MaxEntries, MaxAgeDays);
-            SaveUnsafe(keep);
+
+            var order = StackingUnsafe(items);
+            order.Add(record.Id, record.Group);       // 新贴的排在最前
+            foreach (var gone in drop) order.Remove(gone.Id);
+
+            SaveUnsafe(keep, order);
             DeleteFiles(drop);
             Changed?.Invoke();
             return record;
@@ -274,7 +317,8 @@ internal static class PinStore
             if (record == null) return;
 
             bool dirty = false;
-            if (group != null && record.Group != group) { record.Group = group; dirty = true; }
+            bool moved = false;
+            if (group != null && record.Group != group) { record.Group = group; dirty = true; moved = true; }
             if (!Nearly(record.Left, left)) { record.Left = left; dirty = true; }
             if (!Nearly(record.Top, top)) { record.Top = top; dirty = true; }
             if (!Nearly(record.WinWidth, width)) { record.WinWidth = width; dirty = true; }
@@ -282,7 +326,11 @@ internal static class PinStore
             if (record.Live != live) { record.Live = live; dirty = true; }
 
             if (!dirty) return;
-            SaveUnsafe(items);
+
+            var order = StackingUnsafe(items);
+            if (moved) order.Move(new[] { id }, record.Group);   // 换组：搬到目标组最前
+
+            SaveUnsafe(items, order);
             Changed?.Invoke();
         }
     }
@@ -411,20 +459,25 @@ internal static class PinStore
             if (record == null) return;
 
             items.Remove(record);
-            SaveUnsafe(items);
+            var order = StackingUnsafe(items);
+            order.Remove(id);
+            SaveUnsafe(items, order);
             DeleteFile(AssetPath(id));
             DeleteFile(ThumbPath(id));
             Changed?.Invoke();
         }
     }
 
-    /// <summary>清空（连同全部图片）。</summary>
+    /// <summary>清空（连同全部图片与前后序）。</summary>
     public static void Clear()
     {
         lock (Gate)
         {
             var items = LoadUnsafe();
-            SaveUnsafe(new List<PinRecord>());
+            var order = StackingUnsafe(items);
+            foreach (var record in items) order.Remove(record.Id);
+
+            SaveUnsafe(new List<PinRecord>(), order);
             DeleteFiles(items);
             Changed?.Invoke();
         }
@@ -456,7 +509,10 @@ internal static class PinStore
                 var (keep, drop) = PlanPrune(items, DateTime.Now, MaxEntries, MaxAgeDays);
                 if (!dirty && drop.Count == 0 && keep.Count == items.Count) return;
 
-                SaveUnsafe(keep);
+                var order = StackingUnsafe(items);
+                foreach (var gone in drop) order.Remove(gone.Id);
+
+                SaveUnsafe(keep, order);
                 DeleteFiles(drop);
                 Changed?.Invoke();
             }
@@ -520,6 +576,81 @@ internal static class PinStore
         return File.Exists(thumb)
             ? LoadImage(thumb, decodeWidth)
             : LoadAsset(id, decodeWidth);
+    }
+
+    // ============ 前后序（P5-g，照上游 PinnedWindowStackingOrder） ============
+
+    /// <summary>某个分组的前后序（最前 → 最后）；没记过就是空表。</summary>
+    public static IReadOnlyList<string> StackingOrder(string group)
+    {
+        lock (Gate) return StackingUnsafe().Order(group);
+    }
+
+    /// <summary>所有非空分组的前后序（写盘 / 批量贴回用）。</summary>
+    public static IReadOnlyDictionary<string, List<string>> StackingOrders()
+    {
+        lock (Gate) return StackingUnsafe().Orders();
+    }
+
+    /// <summary>登记一个成员：不存在就排到组最前，已在别的组就搬过去；无变化返回 false。</summary>
+    public static bool AddStacking(string id, string group)
+    {
+        if (string.IsNullOrEmpty(id)) return false;
+
+        lock (Gate)
+        {
+            var order = StackingUnsafe();
+            if (!order.Add(id, group)) return false;
+
+            SaveUnsafe(LoadUnsafe(), order);
+            return true;
+        }
+    }
+
+    /// <summary>把一张贴图提到它所在分组的最前（点 / 拖 / 右键它时）；已经最前返回 false。</summary>
+    public static bool PromoteStacking(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return false;
+
+        lock (Gate)
+        {
+            var order = StackingUnsafe();
+            if (!order.Promote(id)) return false;
+
+            SaveUnsafe(LoadUnsafe(), order);
+            return true;
+        }
+    }
+
+    /// <summary>把一批成员搬到目标组最前（换分组 / 分组整批贴回）。</summary>
+    public static bool MoveStacking(IEnumerable<string> ids, string group)
+    {
+        lock (Gate)
+        {
+            var order = StackingUnsafe();
+            if (!order.Move(ids, group)) return false;
+
+            SaveUnsafe(LoadUnsafe(), order);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// 用一次真实观测到的前后序重排（<see cref="PinStacking"/> 读回原生 z 序后调）；
+    /// 观测不到的成员保留原位，多出来的忽略。
+    /// </summary>
+    public static bool UpdateStackingOrder(string group, IReadOnlyList<string> observed)
+    {
+        if (observed == null) return false;
+
+        lock (Gate)
+        {
+            var order = StackingUnsafe();
+            if (!order.Observe(group, observed)) return false;
+
+            SaveUnsafe(LoadUnsafe(), order);
+            return true;
+        }
     }
 
     // ============ 纯函数（自检直接断言） ============
@@ -633,14 +764,20 @@ internal static class PinStore
 
     private static bool Nearly(double a, double b) => Math.Abs(a - b) < 0.01;
 
-    private static void SaveUnsafe(List<PinRecord> items)
+    private static void SaveUnsafe(List<PinRecord> items) => SaveUnsafe(items, StackingUnsafe(items));
+
+    private static void SaveUnsafe(List<PinRecord> items, PinStackOrder order)
     {
         try
         {
             Directory.CreateDirectory(Root);
             string tmp = IndexPath + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(new PinStoreFile { Items = items }, Opt),
-                new UTF8Encoding(false));
+            var file = new PinStoreFile
+            {
+                Items = items,
+                Stacking = order.Orders().ToDictionary(pair => pair.Key, pair => pair.Value),
+            };
+            File.WriteAllText(tmp, JsonSerializer.Serialize(file, Opt), new UTF8Encoding(false));
             File.Move(tmp, IndexPath, true);
         }
         catch (Exception ex)

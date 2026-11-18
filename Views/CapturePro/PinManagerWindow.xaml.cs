@@ -319,6 +319,7 @@ public partial class PinManagerWindow : Window
         {
             if (!open.IsVisible) open.Show();
             open.RaiseToTop();
+            PinStacking.Promote(open);
             return;
         }
 
@@ -430,7 +431,19 @@ public partial class PinManagerWindow : Window
     private void BatchPin_Click(object sender, RoutedEventArgs e)
     {
         var rows = SelectedRows();
-        foreach (var row in rows) ShowRecord(row.Record);
+        if (rows.Count == 0) return;
+
+        // 整批交给协调器：中途不观测、结束统一排一次（已开着的那几张直接复用）
+        int opened = CapturePinManager.RestoreBatch(rows.Select(row => row.Record).ToArray());
+        if (opened == 0 && rows.All(row => row.Record.ClosedAt.Length == 0))
+        {
+            ToastService.Show("选中的贴图都已经在屏幕上了", "贴图管理", 2000);
+        }
+        else
+        {
+            ToastService.Show($"已贴回 {rows.Count} 张", "贴图管理", 1800);
+        }
+
         Reload();
     }
 

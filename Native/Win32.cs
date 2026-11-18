@@ -164,6 +164,9 @@ internal static class Win32
     /// <summary>GetWindow 的 GW_HWNDNEXT。</summary>
     public const uint GwHwndnext = 2;
 
+    /// <summary>GetWindow 的 GW_HWNDPREV（z 序上一个，贴图堆积排序用）。</summary>
+    public const uint GwHwndprev = 3;
+
     [DllImport("user32.dll")]
     public static extern bool IsWindowEnabled(IntPtr hwnd);
 
@@ -327,6 +330,9 @@ internal static class Win32
     public const uint SwpNozorder = 0x0004;
     public const uint SwpNoactivate = 0x0010;
     public const uint SwpShowwindow = 0x0040;
+
+    /// <summary>SetWindowPos 的 SWP_NOOWNERZORDER（挪 z 序时不连带改宿主窗口，上游堆积协调同口径）。</summary>
+    public const uint SwpNoownerzorder = 0x0200;
 
     /// <summary>SetWindowPos 的 HWND_TOPMOST。</summary>
     public static readonly IntPtr HwndTopmost = new(-1);
