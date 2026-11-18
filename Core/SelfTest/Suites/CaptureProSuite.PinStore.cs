@@ -74,11 +74,15 @@ internal static partial class CaptureProSuite
         Check.Equal(PinStore.SourceClipboard, PinStore.NormalizeSource(PinStore.SourceClipboard),
             "已知来源原样保留");
         Check.Equal(PinStore.SourceOther, PinStore.NormalizeSource(null), "空来源归一成 other");
+        Check.Equal(PinStore.SourceEdit, PinStore.NormalizeSource(PinStore.SourceEdit),
+            "图片编辑来源原样保留");
+        Check.Equal("图片编辑", PinStore.SourceLabel(PinStore.SourceEdit), "图片编辑来源的中文名");
 
         IReadOnlyList<(string Key, string Label)> options = PinStore.SourceOptions();
-        Check.Equal(5, options.Count, "来源筛选 5 项（不含「全部」，全部由空值表示）");
+        Check.Equal(6, options.Count, "来源筛选 6 项（不含「全部」，全部由空值表示）");
         Check.Equal("截图", options[0].Label, "筛选项第一项是截图");
-        Check.Equal("其它", options[4].Label, "筛选项最后一项是其它");
+        Check.Equal("图片编辑", options[4].Label, "筛选项倒数第二项是图片编辑");
+        Check.Equal("其它", options[5].Label, "筛选项最后一项是其它");
 
         // 摘要
         var record = Record("x", "2026-11-16T11:00:00", PinStore.SourceClipboard, "外部");

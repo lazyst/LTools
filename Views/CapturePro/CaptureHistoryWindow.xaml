@@ -211,6 +211,9 @@
                                 ToolTip="按原来的选区与外观贴回屏幕；长截图 / 老记录会居中贴到光标所在屏"/>
                         <Button x:Name="CopyImageBtn" Style="{StaticResource BtnGhost}" Content="复制图片"
                                 MinWidth="88" Margin="8,0,0,0" Click="CopyImage_Click" IsEnabled="False"/>
+                        <Button x:Name="EditBtn" Style="{StaticResource BtnGhost}" Content="编辑…"
+                                MinWidth="88" Margin="8,0,0,0" Click="Edit_Click" IsEnabled="False"
+                                ToolTip="在图片编辑窗里接着标注 / 裁剪"/>
                         <Button x:Name="SaveAsBtn" Style="{StaticResource BtnGhost}" Content="另存为…"
                                 MinWidth="88" Margin="8,0,0,0" Click="SaveAs_Click" IsEnabled="False"/>
                         <Button x:Name="CopyTextBtn" Style="{StaticResource BtnGhost}" Content="复制识别文字"

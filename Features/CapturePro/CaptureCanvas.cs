@@ -101,6 +101,13 @@ internal sealed class CaptureCanvas : FrameworkElement
     public bool ShowHandles { get; set; }
 
     /// <summary>
+    /// 要不要画「截图的选区那一套」：标注裁剪、压暗、选区框 / 外观、悬停高亮、待定折线。
+    /// 覆盖层恒为 true；图片编辑窗（整张图就是一个矩形文档）设成 false，
+    /// 否则整张图会被压暗、外面再套一圈白框。
+    /// </summary>
+    public bool ShowSelectionChrome { get; set; } = true;
+
+    /// <summary>
     /// 自动打码的界面状态（识别结果 / 扫描光带 / 闪红 / 悬停 / 框选）；空 = 没在用这个工具。
     /// 由覆盖层在切工具时给上 / 清掉，画布只读。
     /// </summary>
@@ -124,9 +131,14 @@ internal sealed class CaptureCanvas : FrameworkElement
         dc.DrawImage(doc.Base, canvas);
 
         // 标注：裁到选区，显示与导出看到的是同一块内容（多块 / 自由 / 折线 / 挖洞按合并几何裁）
-        Geometry? selectionGeo = SelectionGeometry;
-        if (selectionGeo == null && Selection.Width >= 0.5 && Selection.Height >= 0.5)
-            selectionGeo = new RectangleGeometry(Selection);
+        // 图片编辑窗（ShowSelectionChrome = false）整张图就是文档，不裁也不压暗。
+        Geometry? selectionGeo = null;
+        if (ShowSelectionChrome)
+        {
+            selectionGeo = SelectionGeometry;
+            if (selectionGeo == null && Selection.Width >= 0.5 && Selection.Height >= 0.5)
+                selectionGeo = new RectangleGeometry(Selection);
+        }
 
         if (selectionGeo != null) dc.PushClip(selectionGeo);
         bool dragging = Previews is { Count: > 0 };
@@ -181,6 +193,8 @@ internal sealed class CaptureCanvas : FrameworkElement
         }
 
         if (selectionGeo != null) dc.Pop();
+
+        if (!ShowSelectionChrome) return;
 
         // 压暗：EvenOdd 挖洞，选区（或悬停命中的元素）保持原亮度
         var full = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));

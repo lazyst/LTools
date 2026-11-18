@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using LTools.Core;
 using LTools.Features.CapturePro;
+using LTools.Features.CapturePro.ImageEdit;
 using LTools.Native;
 using LTools.Views.Controls;
 
@@ -100,6 +101,24 @@ public partial class CapturePinWindow
                 System.Windows.Threading.DispatcherPriority.Background);
         };
         menu.Items.Add(annotate);
+
+        // 在图片编辑窗里打开这张贴图（内容取自贴图历史的 png；实时贴图没有静态图，置灰）
+        var edit = new MenuItem
+        {
+            Header = "在编辑器中打开…",
+            IsEnabled = !_live && PinId.Length > 0 && _cardKind == PinContentKind.Image,
+        };
+        edit.Click += (_, _) =>
+        {
+            _menu?.IsOpen = false;
+            string id = PinId;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (!ImageEditSession.OpenPinned(id))
+                    ToastService.Show("这张贴图没有可编辑的图片文件", "图片编辑", 2200, ToastKind.warning);
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        };
+        menu.Items.Add(edit);
 
         AddLoadMenu(menu);
 

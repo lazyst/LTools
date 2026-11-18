@@ -107,6 +107,9 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "选区：参数与外观往返 / 两份效果宽保持", SelectionParamsRules));
         cases.Add(new("capturePro", "智能选区：换层过渡（上游 14 组用例）", SmartTransitionCases));
         cases.Add(new("capturePro", "智能选区：命中路径 / 细化 / Tab 切目标", SmartSelectionModelCases));
+        cases.Add(new("capturePro", "图片编辑：适应 / 滚轮 / 裁剪条带几何", ImageEditGeometryCases));
+        cases.Add(new("capturePro", "图片编辑：剪行 / 剪列逐像素搬运", ImageEditBitmapCases));
+        cases.Add(new("capturePro", "图片编辑：裁剪 / 撤销 / 脏判定", ImageEditDocumentCases));
     }
 
     private static void Geometry()

@@ -21,16 +21,19 @@ public partial class CaptureSaveWindow : Window
     private static string? _lastFolder;      // 本次进程里记住上次存的目录（不落盘）
 
     private readonly BitmapSource _image;
+    private readonly string? _suggestedName;
     private readonly List<(RadioButton Button, SaveFormat Value)> _formatChips = new();
     private readonly List<(RadioButton Button, double Value)> _scaleChips = new();
 
     private SaveFormat _format = SaveFormat.Png;
     private double _percent = 100;
 
-    public CaptureSaveWindow(BitmapSource image)
+    /// <param name="suggestedName">默认文件名（不含扩展名）；空 = <see cref="CaptureSave.DefaultName"/>。</param>
+    public CaptureSaveWindow(BitmapSource image, string? suggestedName = null)
     {
         InitializeComponent();
         _image = image;
+        _suggestedName = suggestedName;
     }
 
     /// <summary>真的写下去了（取消 / 失败都是 false）。</summary>
@@ -43,7 +46,7 @@ public partial class CaptureSaveWindow : Window
     {
         Preview.Source = _image;
         FolderBox.Text = _lastFolder ?? CaptureSave.DefaultFolder;
-        NameBox.Text = CaptureSave.DefaultName;
+        NameBox.Text = string.IsNullOrWhiteSpace(_suggestedName) ? CaptureSave.DefaultName : _suggestedName!;
 
         BuildChips();
         UpdateMeta();

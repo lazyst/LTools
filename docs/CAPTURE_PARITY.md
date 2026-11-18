@@ -103,9 +103,9 @@
 
 | 上游 | 位置 | LTools 现状 | 批次 | 状态 |
 | --- | --- | --- | --- | --- |
-| 图片编辑窗口（导入已有图片 → 画布标注 → 导出） | `imageediting/*` | 只有截图后的覆盖层 | P6 | ❌ |
-| 拼图（多图拼接 / 行 / 间距 / 背景 / PDF） | `collage/*` | 无 | P6 | ❌ |
-| 切图（网格 / 智能布局 / 导出） | `imagesplit/*` | `Features/CapturePro/Stitch` 只有长截图拼接 | P6 | ❌ |
+| 图片编辑窗口（导入已有图片 → 画布标注 → 导出） | `imageediting/*` | `P6-a1` 独立窗口（`Views/CapturePro/ImageEditWindow.*` + `Features/CapturePro/ImageEdit/*` 的 `ImageEditDocument` / `ImageEditGeometry` / `ImageEditBitmap` / `ImageEditSession`）+ 棋盘格透明底 + 打开图片（文件 / 粘贴 / 拖放 / 采集历史「编辑…」/ 贴图右键「在编辑器中打开…」/ 托盘「图片编辑…」）+ 空态 + 适应窗口 / 100% / 滚轮缩放 / 拖动平移 + 行列裁剪（半透明红带 + `N px` + `#4096FF` 虚线导引线）+ 撤销重做 + 未保存确认 + 复制 / 快速保存 / 另存为 / 贴到屏幕 / 打印；`P6-a2` 绘图工具条（复用截图工具与样式）；`P6-a3` 识别（文字 / 表格）与导出源 | P6 | 🟡 |
+| 拼图（多图拼接 / 行 / 间距 / 背景 / PDF） | `collage/*` | 无 | P6-c / P6-d | ❌ |
+| 切图（网格 / 智能布局 / 导出） | `imagesplit/*` | `Features/CapturePro/Stitch` 只有长截图拼接 | P6-b | ❌ |
 | 全屏画布（在任意屏幕讲解 / 贴住） | `globalcanvas/*` | 无 | P8 | ❌ |
 
 ### 2.6 采集入口与设置（P7）

@@ -164,6 +164,9 @@ internal static class PinStore
     public const string SourceFiles = "files";
     public const string SourceOther = "other";
 
+    /// <summary>从图片编辑窗贴出来的（<see cref="PinStore"/> 只用来标记来源与筛选）。</summary>
+    public const string SourceEdit = "edit";
+
     /// <summary>贴的是一张图。</summary>
     public const string KindImage = "image";
 
@@ -713,16 +716,18 @@ internal static class PinStore
         SourceClipboard => "剪贴板",
         SourceFiles => "选中的文件",
         SourceScreenshot => "截图",
+        SourceEdit => "图片编辑",
         _ => "其它",
     };
 
-    /// <summary>把来源归一成五个已知值（认不出的当「其它」，别让脏数据进筛选）。</summary>
+    /// <summary>把来源归一成六个已知值（认不出的当「其它」，别让脏数据进筛选）。</summary>
     public static string NormalizeSource(string? source) => source switch
     {
         SourceHistory => SourceHistory,
         SourceClipboard => SourceClipboard,
         SourceFiles => SourceFiles,
         SourceScreenshot => SourceScreenshot,
+        SourceEdit => SourceEdit,
         _ => SourceOther,
     };
 
@@ -737,13 +742,14 @@ internal static class PinStore
     /// <summary>是不是「从原文重画」的贴图（文字卡 / 色卡，不依赖 <c>assets/</c> 里的 png）。</summary>
     public static bool IsTextual(PinRecord record) => NormalizeKind(record.Kind) != KindImage;
 
-    /// <summary>管理页的筛选项（照上游「全部 + 五个来源」的顺序；空值 = 全部）。</summary>
+    /// <summary>管理页的筛选项（照上游「全部 + 各来源」的顺序；空值 = 全部）。</summary>
     public static IReadOnlyList<(string Key, string Label)> SourceOptions() => new[]
     {
         (SourceScreenshot, SourceLabel(SourceScreenshot)),
         (SourceHistory, SourceLabel(SourceHistory)),
         (SourceClipboard, SourceLabel(SourceClipboard)),
         (SourceFiles, SourceLabel(SourceFiles)),
+        (SourceEdit, SourceLabel(SourceEdit)),
         (SourceOther, SourceLabel(SourceOther)),
     };
 

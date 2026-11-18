@@ -1,0 +1,125 @@
+using System;
+using System.Windows;
+using System.Windows.Input;
+using LTools.Features.CapturePro;
+using LTools.Features.CapturePro.ImageEdit;
+
+namespace LTools.Views.CapturePro;
+
+/// <summary>
+/// 图片编辑窗的行 / 列裁剪（照上游 <c>ImageEditingCanvas::cropStrip</c> +
+/// <c>ImageEditingDocument::prepareCrop</c>）。
+/// </summary>
+/// <remarks>
+/// 交互：工具行勾上「裁剪行 / 裁剪列」→ 鼠标在图上是悬停导引线，按下拖动拉出一条红带并显示
+/// 「N px」，松手提交（长度 0 / 等于整条边长时不动）；Esc 退出裁剪模式。
+/// 提交后模式留在裁剪上（可以接着剪第二刀），与上游一致。
+/// </remarks>
+public partial class ImageEditWindow
+{
+    private void CropRows_Click(object sender, RoutedEventArgs e) => ToggleCrop(CropAxis.Rows);
+
+    private void CropColumns_Click(object sender, RoutedEventArgs e) => ToggleCrop(CropAxis.Columns);
+
+    private void ToggleCrop(CropAxis axis)
+    {
+        bool on = axis == CropAxis.Rows
+            ? CropRowsBtn.IsChecked == true
+            : CropColumnsBtn.IsChecked == true;
+
+        _cropping = false;
+        _cropPointerInside = false;
+
+        if (!on || !_doc.HasImage)
+        {
+            _cropAxis = null;
+            CropRowsBtn.IsChecked = false;
+            CropColumnsBtn.IsChecked = false;
+        }
+        else
+        {
+            _cropAxis = axis;
+            CropRowsBtn.IsChecked = axis == CropAxis.Rows;
+            CropColumnsBtn.IsChecked = axis == CropAxis.Columns;
+        }
+
+        Surface.Cursor = _cropAxis != null ? Cursors.Cross : Cursors.Arrow;
+        UpdateCropLayer();
+    }
+
+    /// <summary>退出裁剪模式（Esc / 打开别的图）。</summary>
+    private void CancelCropMode()
+    {
+        _cropAxis = null;
+        _cropping = false;
+        _cropPointerInside = false;
+        CropRowsBtn.IsChecked = false;
+        CropColumnsBtn.IsChecked = false;
+        Surface.Cursor = Cursors.Arrow;
+        UpdateCropLayer();
+    }
+
+    /// <summary>松手提交：真的剪掉了才换文档，进撤销栈。</summary>
+    private void CommitCrop()
+    {
+        if (_cropAxis is not { } axis)
+        {
+            UpdateCropLayer();
+            return;
+        }
+
+        bool cropped = _doc.Crop(axis, _cropFirst, _cropLast);
+
+        // 松手后上游按指针重算：条带塌成一条导引线（长度 0）
+        _cropLast = _cropFirst;
+
+        if (cropped)
+        {
+            Canvas.Document = _doc.Doc;
+            Canvas.InvalidateVisual();
+            KeepCameraAfterResize();
+            Notice($"已裁剪：{_doc.Width} × {_doc.Height} px");
+        }
+
+        UpdateCropLayer();
+        UpdateChrome();
+    }
+
+    /// <summary>把当前条带摆到预览层上（窗口内容区坐标）。</summary>
+    private void UpdateCropLayer()
+    {
+        if (_cropAxis is not { } axis || !_doc.HasImage || (!_cropping && !_cropPointerInside))
+        {
+            CropLayer.ImageRect = Rect.Empty;
+            CropLayer.Strip = Rect.Empty;
+            CropLayer.InvalidateVisual();
+            return;
+        }
+
+        var content = ContentSize;
+        int extent = axis == CropAxis.Rows ? (int)content.Height : (int)content.Width;
+        if (extent <= 0)
+        {
+            CropLayer.ImageRect = Rect.Empty;
+            CropLayer.Strip = Rect.Empty;
+            CropLayer.InvalidateVisual();
+            return;
+        }
+
+        var image = new Rect(_offset.X, _offset.Y, content.Width * _zoom, content.Height * _zoom);
+        var span = ImageEditGeometry.Resolve(_cropFirst, _cropLast, extent);
+
+        // 先在「图像像素」坐标里量出条带，再按缩放摆到窗口内容区
+        var local = ImageEditGeometry.Strip(new Rect(0, 0, content.Width, content.Height), axis, span, extent);
+        var strip = new Rect(
+            image.X + local.X * _zoom, image.Y + local.Y * _zoom,
+            local.Width * _zoom, local.Height * _zoom);
+
+        CropLayer.ImageRect = image;
+        CropLayer.Strip = strip;
+        CropLayer.Rows = axis == CropAxis.Rows;
+        CropLayer.Pixels = span.Length;
+        CropLayer.DpiScale = _dpi > 0 ? _dpi : 1;
+        CropLayer.InvalidateVisual();
+    }
+}

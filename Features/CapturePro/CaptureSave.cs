@@ -29,9 +29,10 @@ internal enum SaveFormat
 internal static class CaptureSave
 {
     /// <summary>弹「另存为」对话框（预览 + 格式 / 尺寸 / 质量）；返回 true = 真的存下去了。</summary>
-    public static bool TrySave(Window? owner, BitmapSource image)
+    /// <param name="suggestedName">默认文件名（不含扩展名）；空 = 时间戳名字。</param>
+    public static bool TrySave(Window? owner, BitmapSource image, string? suggestedName = null)
     {
-        var dialog = new CaptureSaveWindow(image);
+        var dialog = new CaptureSaveWindow(image, suggestedName);
         if (owner != null) dialog.Owner = owner;
 
         bool? ok = dialog.ShowDialog();

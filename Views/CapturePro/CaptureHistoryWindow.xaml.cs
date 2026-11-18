@@ -12,6 +12,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using LTools.Core;
 using LTools.Features.CapturePro;
+using LTools.Features.CapturePro.ImageEdit;
 using LTools.Native;
 using LTools.Views.Controls;
 
@@ -226,6 +227,8 @@ public partial class CaptureHistoryWindow : Window
             : "按原选区与外观贴回屏幕";
         CopyImageBtn.IsEnabled = has && !record;
         CopyImageBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
+        EditBtn.IsEnabled = has && !record;
+        EditBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
         PlayBtn.IsEnabled = record;
         PlayBtn.Visibility = record ? Visibility.Visible : Visibility.Collapsed;
         TrimBtn.IsEnabled = record;
@@ -388,6 +391,15 @@ public partial class CaptureHistoryWindow : Window
 
         if (NativeClipboard.SetImage(image)) ToastService.Show("已复制图片", "采集历史", 1400);
         else ToastService.Show("复制失败（剪贴板被占用）", "采集历史", 0, ToastKind.error);
+    }
+
+    /// <summary>在图片编辑窗里打开这一条（接着标注 / 裁剪 / 导出）。</summary>
+    private void Edit_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedRow is not { } row || row.Entry.IsRecord) return;
+
+        if (ImageEditSession.OpenCapture(row.Entry)) return;
+        ToastService.Show("图片文件不见了，没法编辑", "采集历史", 2200, ToastKind.error);
     }
 
     private void Pin_Click(object sender, RoutedEventArgs e)

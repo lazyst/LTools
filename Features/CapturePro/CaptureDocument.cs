@@ -72,6 +72,19 @@ internal sealed class CaptureDocument
         Dirty = false;
     }
 
+    /// <summary>
+    /// 只换底图（图片编辑窗的裁剪 / 撤销）：标注、序号、撤销栈都**不动**，坐标原点归零。
+    /// 与 <see cref="LoadBase"/> 的区别是它会把标注一起清掉；选区 / 多区几何由调用方重设。
+    /// </summary>
+    public void SwapBase(BitmapSource image)
+    {
+        if (image == null) throw new ArgumentNullException(nameof(image));
+        Base = image;
+        Origin = default;
+        // 编辑器里没有「显示器」概念：把 Monitor 也收成这张图，选区 / 导出按它算偏移才不会留旧尺寸
+        Monitor = new Int32Rect(0, 0, Math.Max(1, image.PixelWidth), Math.Max(1, image.PixelHeight));
+    }
+
     /// <summary>把一份标注快照原样放回来（从历史翻页退回实时截图时用），序号接着最大的那个。</summary>
     public void ResetMarks(IReadOnlyList<Mark> marks)
     {
