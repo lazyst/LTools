@@ -1,0 +1,70 @@
+using System.Collections.Generic;
+
+namespace LTools.Config;
+
+/// <summary>
+/// 截图 Pro 的样式记忆（<c>configs/ui.json</c> 的 <c>CaptureStyles</c>）：
+/// **每个工具家族一套**，对齐上游 <c>screenshotcanvastoolstyles.cpp</c> 的
+/// <c>drawing/*_style</c> 那组键，而不是全项目一份样式。
+/// </summary>
+/// <remarks>
+/// 字段都可空：缺省 = 该家族用默认值（默认值只有一处，在 <c>ToolStyle</c>）。
+/// 认不出的家族名读的时候直接丢掉（不做兼容、不留别名）。
+/// </remarks>
+public sealed class CaptureStylesFile
+{
+    /// <summary>改任一工具的颜色 = 所有工具一起变（上游「同步工具颜色」，默认关）。</summary>
+    public bool SyncColors { get; set; }
+
+    /// <summary>同步用的共享色（<c>#RRGGBB</c>）；空 = 默认红。</summary>
+    public string? SharedColor { get; set; }
+
+    /// <summary>家族名 → 该家族记住的样式。</summary>
+    public Dictionary<string, CaptureToolStyleDto> Families { get; set; } = new();
+}
+
+/// <summary>一个工具家族的样式（每个字段都可空，缺省 = 默认）。</summary>
+public sealed class CaptureToolStyleDto
+{
+    /// <summary>主色 / 描边色（<c>#RRGGBB</c>）。</summary>
+    public string? Color { get; set; }
+
+    /// <summary>线宽（DIP）。</summary>
+    public double? Width { get; set; }
+
+    /// <summary>字号（DIP）。</summary>
+    public double? FontSize { get; set; }
+
+    /// <summary>马赛克块边长（DIP）。</summary>
+    public double? Block { get; set; }
+
+    /// <summary>荧光笔不透明度（0–1）。</summary>
+    public double? Opacity { get; set; }
+
+    /// <summary>序号徽标形状（<c>CapturedShape</c> 名字）。</summary>
+    public string? Shape { get; set; }
+
+    /// <summary>序号数字写法（<c>SerialNumbering</c> 名字）。</summary>
+    public string? Numbering { get; set; }
+
+    /// <summary>滤镜类型（<c>FilterKind</c> 名字）。</summary>
+    public string? FilterMode { get; set; }
+
+    /// <summary>滤镜强度 0–100。</summary>
+    public double? FilterStrength { get; set; }
+
+    /// <summary>放大镜倍率。</summary>
+    public double? Factor { get; set; }
+
+    /// <summary>水印文字。</summary>
+    public string? WatermarkText { get; set; }
+
+    /// <summary>水印角度（度）。</summary>
+    public double? WatermarkAngle { get; set; }
+
+    /// <summary>水印间距（DIP）。</summary>
+    public double? WatermarkGap { get; set; }
+
+    /// <summary>水印不透明度（0–1）。</summary>
+    public double? WatermarkOpacity { get; set; }
+}

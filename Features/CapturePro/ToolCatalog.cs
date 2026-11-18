@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Windows.Input;
 using System.Windows.Media;
+using LTools.Config;
 
 namespace LTools.Features.CapturePro;
 
@@ -237,4 +238,47 @@ internal sealed class ToolStyle
 
     /// <summary>聚光的压暗程度：透明度越低，框外压得越暗。</summary>
     public double Dim => Math.Clamp(1 - Opacity, 0.15, 0.85);
+
+    // ============ 落盘（ui.json 的 CaptureStyles） ============
+
+    /// <summary>写进配置文件的一份（字段全给，读回来等价）。</summary>
+    public CaptureToolStyleDto ToDto() => new()
+    {
+        Color = ToolStyleFormat.Hex(Color),
+        Width = Width,
+        FontSize = FontSize,
+        Block = Block,
+        Opacity = Opacity,
+        Shape = ToolStyleFormat.Name(Shape),
+        Numbering = ToolStyleFormat.Name(Numbering),
+        FilterMode = ToolStyleFormat.Name(FilterMode),
+        FilterStrength = FilterStrength,
+        Factor = Factor,
+        WatermarkText = WatermarkText,
+        WatermarkAngle = WatermarkAngle,
+        WatermarkGap = WatermarkGap,
+        WatermarkOpacity = WatermarkOpacity,
+    };
+
+    /// <summary>从配置读一份：缺项用默认，超范围钳回界面能摆出来的区间（读坏不炸）。</summary>
+    public static ToolStyle FromDto(CaptureToolStyleDto dto)
+    {
+        var style = new ToolStyle();
+        if (ToolStyleFormat.TryParseColor(dto.Color, out var color)) style.Color = color;
+
+        style.Width = Math.Clamp(dto.Width ?? style.Width, 1, 50);
+        style.FontSize = Math.Clamp(dto.FontSize ?? style.FontSize, 8, 72);
+        style.Block = Math.Clamp(dto.Block ?? style.Block, 4, 24);
+        style.Opacity = Math.Clamp(dto.Opacity ?? style.Opacity, 0.1, 0.9);
+        style.Shape = ToolStyleFormat.ParseEnum(dto.Shape, style.Shape);
+        style.Numbering = ToolStyleFormat.ParseEnum(dto.Numbering, style.Numbering);
+        style.FilterMode = ToolStyleFormat.ParseEnum(dto.FilterMode, style.FilterMode);
+        style.FilterStrength = Math.Clamp(dto.FilterStrength ?? style.FilterStrength, 0, 100);
+        style.Factor = Math.Clamp(dto.Factor ?? style.Factor, 1, 8);
+        if (!string.IsNullOrEmpty(dto.WatermarkText)) style.WatermarkText = dto.WatermarkText;
+        style.WatermarkAngle = Math.Clamp(dto.WatermarkAngle ?? style.WatermarkAngle, -90, 90);
+        style.WatermarkGap = Math.Clamp(dto.WatermarkGap ?? style.WatermarkGap, 20, 400);
+        style.WatermarkOpacity = Math.Clamp(dto.WatermarkOpacity ?? style.WatermarkOpacity, 0, 1);
+        return style;
+    }
 }

@@ -78,6 +78,9 @@ public sealed class UiStateFile
 
     /// <summary>截图工具栏里被收起来的工具键（不占格子，可在「隐藏的工具」里放回去）。</summary>
     public List<string>? CaptureToolHidden { get; set; }
+
+    /// <summary>截图 Pro 的样式记忆：每个工具家族一套（见 <c>Features/CapturePro/ToolStyleSet</c>）。</summary>
+    public CaptureStylesFile? CaptureStyles { get; set; }
 }
 
 /// <summary><c>configs/panel.json</c>：超级面板（开关 / 长按阈值 / 面板结构）。</summary>

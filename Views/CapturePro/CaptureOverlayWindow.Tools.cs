@@ -17,17 +17,26 @@ namespace LTools.Views.CapturePro;
 /// </remarks>
 public partial class CaptureOverlayWindow
 {
-    private readonly ToolStyle _style = new();
+    /// <summary>每个工具家族一套样式（落盘在 <c>ui.json</c>，见 <see cref="CaptureStyleStore"/>）。</summary>
+    private readonly ToolStyleSet _styles = CaptureStyleStore.Current;
+
+    /// <summary>当前工具的那一套（工具栏改它、标注创建读它，两边同一个对象）。</summary>
+    private ToolStyle _style => _styles.For(_tool);
+
     private CaptureTool _tool = CaptureTool.Select;
     private int _selectedIndex = -1;
     private bool _toolbarPlaced;
 
     private void WireToolbar()
     {
-        Toolbar.Init(_style, _tool);
+        Toolbar.Init(_styles, _tool);
         Toolbar.ToolChanged += SetTool;
         Toolbar.ActionRequested += OnToolbarAction;
-        Toolbar.StyleChanged += UpdateToolPreview;
+        Toolbar.StyleChanged += () =>
+        {
+            CaptureStyleStore.SaveSoon();
+            UpdateToolPreview();
+        };
         Toolbar.AutoFilterFillRequested += OnAutoFilterFillRequested;
         Toolbar.UndoRequested += () => { _doc.Undo(); RefreshMarks(); };
         Toolbar.RedoRequested += () => { _doc.Redo(); RefreshMarks(); };

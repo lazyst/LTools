@@ -57,7 +57,12 @@ public partial class CaptureToolbar : UserControl
     private Button? _fillRegionsButton;      // 自动打码「填充区域」下拉（没识别结果时置灰）
 
     private ToolLayout _layout = ToolLayout.Default();
-    private ToolStyle? _style;
+    private ToolStyleSet? _styles;
+
+    /// <summary>当前工具的样式（换工具就换一份；<c>_tool</c> 由 <see cref="Sync"/> 维护）。</summary>
+    private ToolStyle? _style => _styles?.For(_tool);
+
+    private CaptureTool _tool = CaptureTool.Select;
     private bool _built;
     private bool _syncing;
 
@@ -115,11 +120,11 @@ public partial class CaptureToolbar : UserControl
     public bool UserMoved { get; private set; }
 
     /// <summary>按样式与当前工具建一次按钮（覆盖层构造完调）。</summary>
-    internal void Init(ToolStyle style, CaptureTool current)
+    internal void Init(ToolStyleSet styles, CaptureTool current)
     {
         if (_built) return;
         _built = true;
-        _style = style;
+        _styles = styles;
 
         BuildCells(ToolLayoutStore.Current);
         BuildActions();
@@ -132,6 +137,7 @@ public partial class CaptureToolbar : UserControl
     /// <summary>界面跟着工具的默认状态对齐（覆盖层切工具时调，会同步按钮的选中态）。</summary>
     internal void Sync(CaptureTool tool)
     {
+        _tool = tool;
         CurrentTool = tool;
 
         // 选中哪个工具，它所在的那一格就显示哪个（同格里切换时图标跟着换）
@@ -617,8 +623,9 @@ public partial class CaptureToolbar : UserControl
             };
             chip.Checked += (_, _) =>
             {
-                if (_syncing || _style == null) return;
-                _style.Color = (Color)chip.Tag;
+                if (_syncing || _styles == null) return;
+                // 共享颜色开着时改一处 = 全改（由 ToolStyleSet 统一处理）
+                _styles.SetColor(StyleFamilies.Of(_tool), (Color)chip.Tag);
                 StyleChanged?.Invoke();
             };
             _colorChips.Add(chip);

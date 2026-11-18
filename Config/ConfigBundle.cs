@@ -123,6 +123,7 @@ internal static class ConfigBundle
         cfg.EditorDrawerWidth = ui.EditorDrawerWidth;
         cfg.CaptureToolGroups = ui.CaptureToolGroups ?? new();
         cfg.CaptureToolHidden = ui.CaptureToolHidden ?? new();
+        cfg.CaptureStyles = ui.CaptureStyles ?? new();
 
         bool hasStore = ActionStore.HasStore(anchorPath);
         if (hasStore)
@@ -384,6 +385,7 @@ internal static class ConfigBundle
         EditorDrawerWidth = cfg.EditorDrawerWidth,
         CaptureToolGroups = cfg.CaptureToolGroups ?? new(),
         CaptureToolHidden = cfg.CaptureToolHidden ?? new(),
+        CaptureStyles = cfg.CaptureStyles ?? new(),
     };
 
     internal static HotkeyFile ToHotkeys(AppConfig cfg) => cfg.Hotkeys ?? new HotkeyFile();

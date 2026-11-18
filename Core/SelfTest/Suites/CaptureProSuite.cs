@@ -47,6 +47,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "贴图：分组名与批量另存", PinGrouping));
         cases.Add(new("capturePro", "贴图：实时状态与裁剪", PinLiveCrop));
         cases.Add(new("capturePro", "工具栏：格子布局 / 收起 / 落盘往返", ToolLayouts));
+        cases.Add(new("capturePro", "样式：每个工具家族各记一套（落盘往返）", ToolStyles));
         cases.Add(new("capturePro", "识别：表格聚类 / TSV / HTML", Recognize));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));

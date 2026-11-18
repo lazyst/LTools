@@ -173,6 +173,9 @@ public sealed class AppConfig
     /// <summary>截图工具栏里被收起来的工具键（不占格子）。</summary>
     public List<string> CaptureToolHidden { get; set; } = new();
 
+    /// <summary>截图 Pro 的样式记忆：每个工具家族一套。</summary>
+    public CaptureStylesFile CaptureStyles { get; set; } = new();
+
     /// <summary>
     /// 动作运行结束后的提示策略：不提示 / 只在失败时（默认）/ 成功也提示。
     /// 失败提示是常驻的（点一下关，下一次运行自动替换）。
