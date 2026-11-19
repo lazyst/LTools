@@ -72,6 +72,9 @@ public partial class CaptureRecordWindow : Window
         InitAutoHide();
         InitWebcam();
 
+        // 工具条尺寸（照上游：截图 / 贴图 / 录屏三处工具条同一个 toolbar_size）
+        PanelRoot.LayoutTransform = OverlayUiSettings.ToolbarTransform();
+
         MetaText.Text = MetaSummary();
         _hasLastRecord = LastRecord() != null;
 

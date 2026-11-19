@@ -19,19 +19,6 @@ internal enum SmartSelectionMode
     Disabled,
 }
 
-/// <summary>切换元素层级时的过渡动画（照上游 <c>SelectionTransitionAnimation</c>）。</summary>
-internal enum SelectionTransition
-{
-    /// <summary>柔和：101ms。</summary>
-    Soft,
-
-    /// <summary>快速：67ms。</summary>
-    Fast,
-
-    /// <summary>不做动画，直接落位。</summary>
-    None,
-}
-
 /// <summary>一个选区快速集：屏幕物理像素几何 + 提交时的外观 + 当时锁没锁比例。</summary>
 internal sealed record SelectionPreset(string Name, Int32Rect Area, SelectionStyle Style,
     bool LockAspect = false)
@@ -92,14 +79,6 @@ internal static class SelectionStore
         get
         {
             lock (Gate) return ParseSmart(Load().SmartSelection);
-        }
-    }
-
-    public static SelectionTransition Transition
-    {
-        get
-        {
-            lock (Gate) return ParseTransition(Load().SelectionTransition);
         }
     }
 
@@ -190,20 +169,6 @@ internal static class SelectionStore
                 SmartSelectionMode.Window => "window",
                 SmartSelectionMode.Disabled => "disabled",
                 _ => "window_sub_element",
-            };
-            MarkDirty();
-        }
-    }
-
-    public static void SetTransition(SelectionTransition transition)
-    {
-        lock (Gate)
-        {
-            Load().SelectionTransition = transition switch
-            {
-                SelectionTransition.Fast => "fast",
-                SelectionTransition.None => "none",
-                _ => "soft",
             };
             MarkDirty();
         }
@@ -376,12 +341,5 @@ internal static class SelectionStore
         "window" => SmartSelectionMode.Window,
         "disabled" => SmartSelectionMode.Disabled,
         _ => SmartSelectionMode.WindowSubElement,
-    };
-
-    private static SelectionTransition ParseTransition(string? value) => value switch
-    {
-        "fast" => SelectionTransition.Fast,
-        "none" => SelectionTransition.None,
-        _ => SelectionTransition.Soft,
     };
 }

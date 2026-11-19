@@ -265,8 +265,18 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "overlayui")
+        {
+            OverlayUiSection();
+            Console.WriteLine(_failed == 0 ? "overlayui-only：通过" : $"overlayui-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
+
+        // ============ 截图界面与参考线（P9-c：工具条尺寸 / 单位 / 参考线 / 取色格式） ============
+        OverlayUiSection();
 
         const int width = 1600, height = 900;
         var shot = BuildShot(width, height);

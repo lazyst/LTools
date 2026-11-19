@@ -97,4 +97,81 @@ public sealed class ScreenshotFile
     /// <c>image_size</c> / <c>a4_portrait</c> / <c>a4_landscape</c>。
     /// </summary>
     public string? PdfPageSize { get; set; } = "a4_portrait";
+
+    // ============ 截图界面与参考线（照上游 screenshot_ui/*） ============
+
+    /// <summary>工具条尺寸（照上游 <c>screenshot_ui/toolbar_size</c>）：<c>normal</c> / <c>small</c>（×0.8）。</summary>
+    public string? ToolbarSize { get; set; } = "normal";
+
+    /// <summary>
+    /// 智能选区换层级时的过渡动画（照上游 <c>screenshot_ui/selection_transition_animation</c>）：
+    /// 0 = 关 / 32 = 柔和（101ms）/ 72 = 快速（67ms）。
+    /// </summary>
+    public int? SelectionTransitionAnimation { get; set; } = 32;
+
+    /// <summary>
+    /// 选区信息条上的单位（照上游 <c>screenshot_ui/selection_display_unit</c>）：
+    /// <c>physical_pixels</c>（px）/ <c>logical_pixels</c>（dp）。
+    /// </summary>
+    public string? SelectionDisplayUnit { get; set; } = "physical_pixels";
+
+    /// <summary>隐藏选区信息条（照上游 <c>screenshot_ui/selection_toolbar_hidden</c>，默认不隐藏）。</summary>
+    public bool? SelectionToolbarHidden { get; set; } = false;
+
+    /// <summary>
+    /// 选择工具下显示选区信息条（照上游 <c>screenshot_ui/show_edit_selection_toolbar</c>；
+    /// 上游那是「移动」工具的子工具条，LTools 没有独立移动工具，映射到选择工具）。
+    /// </summary>
+    public bool? ShowEditSelectionToolbar { get; set; } = true;
+
+    /// <summary>
+    /// 取色器什么时候显示（照上游 <c>screenshot_ui/color_picker_display_mode</c>）：
+    /// <c>hide_outside_selection</c> / <c>always_show</c> / <c>always_hide</c>。
+    /// </summary>
+    public string? ColorPickerDisplayMode { get; set; } = "hide_outside_selection";
+
+    /// <summary>
+    /// 取色器坐标口径（照上游 <c>screenshot_ui/color_picker_coordinate_mode</c>）：
+    /// <c>global</c> = 屏幕坐标 / <c>relative</c> = 相对选区左上角。
+    /// </summary>
+    public string? ColorPickerCoordinateMode { get; set; } = "global";
+
+    /// <summary>
+    /// 取色器色值格式（照上游 <c>screenshot_ui/color_picker_format</c>）：
+    /// <c>hex</c> / <c>hex_without_hash</c> / <c>rgb</c> / <c>hsl</c>。
+    /// </summary>
+    public string? ColorPickerFormat { get; set; } = "hex";
+
+    /// <summary>选区边框色（照上游 <c>screenshot_ui/selection_border_color</c>，<c>#RRGGBBAA</c>）。</summary>
+    public string? SelectionBorderColor { get; set; } = "#4096FFFF";
+
+    /// <summary>选区外压暗色（照上游 <c>screenshot_ui/selection_mask_color</c>，<c>#RRGGBBAA</c>）。</summary>
+    public string? SelectionMaskColor { get; set; } = "#00000080";
+
+    /// <summary>顶部快捷键提示的不透明度（照上游 <c>screenshot_ui/shortcut_hint_opacity</c>，0–100）。</summary>
+    public int? ShortcutHintOpacity { get; set; } = 100;
+
+    /// <summary>悬停探测时显示区域类型提示（照上游 <c>screenshot_ui/area_type_hint_enabled</c>，默认开）。</summary>
+    public bool? AreaTypeHintEnabled { get; set; } = true;
+
+    /// <summary>每次截图开始时默认显示参考线（照上游 <c>screenshot_ui/show_guides_by_default</c>，默认关）。</summary>
+    public bool? ShowGuidesByDefault { get; set; } = false;
+
+    /// <summary>参考线颜色跟取样处背景太像时自动反色（照上游 <c>screenshot_ui/adaptive_guide_colors</c>，默认开）。</summary>
+    public bool? AdaptiveGuideColors { get; set; } = true;
+
+    /// <summary>光标十字参考线颜色（照上游 <c>screenshot_ui/cursor_guide_line_color</c>）。</summary>
+    public string? CursorGuideLineColor { get; set; } = "#000000FF";
+
+    /// <summary>选区中心十字参考线颜色（照上游 <c>screenshot_ui/selection_center_guide_line_color</c>）。</summary>
+    public string? SelectionCenterGuideLineColor { get; set; } = "#4096FFFF";
+
+    /// <summary>显示器中心十字参考线颜色（照上游 <c>screenshot_ui/monitor_center_guide_line_color</c>）。</summary>
+    public string? MonitorCenterGuideLineColor { get; set; } = "#FF0000FF";
+
+    /// <summary>
+    /// 取色器取样点十字参考线颜色（照上游 <c>screenshot_ui/color_picker_center_guide_line_color</c>，
+    /// 默认全透明 = 不画）。
+    /// </summary>
+    public string? ColorPickerCenterGuideLineColor { get; set; } = "#00000000";
 }

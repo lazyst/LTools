@@ -133,18 +133,29 @@ public partial class CaptureOverlayWindow
         }
     }
 
-    /// <summary>同步信息条上的数字 / 锁颜色 / 比例名（数值全按物理像素显示）。</summary>
+    /// <summary>同步信息条上的数字 / 锁颜色 / 比例名（按「显示单位」换算：物理像素 px / 逻辑像素 dp）。</summary>
     private void SyncSelectionBar()
     {
         if (CurrentSelectionParams() is not SelectionParams p) return;
 
-        SelXText.Text = p.X.ToString();
-        SelYText.Text = p.Y.ToString();
-        SelWText.Text = p.Width.ToString();
-        SelHText.Text = p.Height.ToString();
+        double scale = _doc.Scale > 0 ? _doc.Scale : 1;
+
+        SelXText.Text = OverlayUiSettings.DisplayValue(p.X, scale).ToString();
+        SelYText.Text = OverlayUiSettings.DisplayValue(p.Y, scale).ToString();
+        SelWText.Text = OverlayUiSettings.DisplayValue(p.Width, scale).ToString();
+        SelHText.Text = OverlayUiSettings.DisplayValue(p.Height, scale).ToString();
         SelRText.Text = p.RadiusPixels.ToString();
         SelEText.Text = p.EffectWidthPixels.ToString();
         SelAspectText.Text = SelectionAspects.Label(_aspect);
+
+        // 位置 / 尺寸的单位跟设置走（照上游两处 unit label）；圆角 / 效果宽永远是画布像素。
+        string unit = OverlayUiSettings.UnitLabel;
+        SelPosUnit.Text = unit;
+        SelSizeUnit.Text = unit;
+
+        string unitTip = OverlayUiSettings.LogicalUnits ? "逻辑像素（dp）" : "物理像素（px）";
+        SelPosUnit.ToolTip = unitTip;
+        SelSizeUnit.ToolTip = unitTip;
 
         SelLockIcon.Fill = new SolidColorBrush(_aspectLocked ? BarPrimary : Colors.White);
 
@@ -155,6 +166,13 @@ public partial class CaptureOverlayWindow
     /// <summary>把信息条摆到选区旁边（上方优先，放不下依次换右 / 左 / 下）。</summary>
     private void ShowSelectionBar(Rect selection)
     {
+        // 两个开关（照上游 selection_toolbar_hidden / show_edit_selection_toolbar）
+        if (!OverlayUiSettings.ShouldShowSelectionBar(_tool))
+        {
+            HideSelectionBar();
+            return;
+        }
+
         SyncSelectionBar();
         SelBar.Visibility = Visibility.Visible;
 
@@ -179,33 +197,46 @@ public partial class CaptureOverlayWindow
 
     // ============ 滚轮 ============
 
-    /// <summary>字段滚轮：±1 物理像素（照上游 <c>handleFieldWheel</c>）。</summary>
+    /// <summary>字段滚轮：显示单位下 ±1（物理像素 = 1px，逻辑像素 = 1dp，照上游 <c>handleFieldWheel</c>）。</summary>
     private void BarWheel(SelectionField field, int delta)
     {
         if (delta == 0) return;
+        if (CurrentSelectionParams() is not SelectionParams current) return;
+
         int direction = delta > 0 ? 1 : -1;
+        double scale = _doc.Scale > 0 ? _doc.Scale : 1;
+        int stepX = OverlayUiSettings.StepPixels(current.X, direction, scale);
+        int stepY = OverlayUiSettings.StepPixels(current.Y, direction, scale);
+        int stepW = OverlayUiSettings.StepPixels(current.Width, direction, scale);
+        int stepH = OverlayUiSettings.StepPixels(current.Height, direction, scale);
 
         switch (field)
         {
             case SelectionField.X:
-                AdjustBarSelection(direction, 0, direction, 0);
+                AdjustBarSelection(stepX, 0, stepX, 0);
                 break;
             case SelectionField.Y:
-                AdjustBarSelection(0, direction, 0, direction);
+                AdjustBarSelection(0, stepY, 0, stepY);
                 break;
             case SelectionField.Width:
-                AdjustBarSelection(0, 0, direction, 0);
+                AdjustBarSelection(0, 0, stepW, 0);
                 break;
             case SelectionField.Height:
-                AdjustBarSelection(0, 0, 0, direction);
+                AdjustBarSelection(0, 0, 0, stepH);
                 break;
             case SelectionField.Radius:
                 if (CornerRadiusApplicable)
-                    SetCornerRadiusPixels(_selStyle.RadiusPixels(_doc.Scale) + direction);
+                {
+                    int radius = _selStyle.RadiusPixels(_doc.Scale);
+                    SetCornerRadiusPixels(radius + OverlayUiSettings.StepPixels(radius, direction, scale));
+                }
                 break;
             case SelectionField.EffectWidth:
-                SetEffectWidthPixels(_selStyle.EffectPixels(_doc.Scale) + direction);
+            {
+                int effect = _selStyle.EffectPixels(_doc.Scale);
+                SetEffectWidthPixels(effect + OverlayUiSettings.StepPixels(effect, direction, scale));
                 break;
+            }
         }
     }
 

@@ -41,4 +41,62 @@ internal static class PickerColor
 
     /// <summary>光标旁那一条提示的正文。</summary>
     public static string Describe(Color color) => $"{Hex(color)} · {Rgb(color)}";
+
+    /// <summary>
+    /// 按取色器格式（<c>screenshot_ui/color_picker_format</c>）出文本，照上游 <c>formatColor</c>：
+    /// <c>#RRGGBB</c> / <c>RRGGBB</c> / <c>rgb(r, g, b)</c> / <c>hsl(h, s%, l%)</c>。
+    /// </summary>
+    public static string Format(Color color, string format)
+    {
+        switch (format)
+        {
+            case OverlayUiSettings.FormatHexWithoutHash:
+                return $"{color.R:X2}{color.G:X2}{color.B:X2}";
+            case OverlayUiSettings.FormatRgb:
+                return Rgb(color);
+            case OverlayUiSettings.FormatHsl:
+            {
+                var (hue, saturation, lightness) = ToHsl(color);
+                return $"hsl({hue}, {saturation:0.0}%, {lightness:0.0}%)";
+            }
+            default:
+                return Hex(color);
+        }
+    }
+
+    /// <summary>RGB → HSL（色相 0–360 取整，饱和 / 亮度 0–100 小数），照 Qt 的 <c>QColor::toHsl</c>。</summary>
+    public static (int Hue, double Saturation, double Lightness) ToHsl(Color color)
+    {
+        double r = color.R / 255.0;
+        double g = color.G / 255.0;
+        double b = color.B / 255.0;
+
+        double max = Math.Max(r, Math.Max(g, b));
+        double min = Math.Min(r, Math.Min(g, b));
+        double lightness = (max + min) / 2.0;
+        double delta = max - min;
+
+        if (delta <= 0) return (0, 0, lightness * 100.0);
+
+        double saturation = delta / (1.0 - Math.Abs(2.0 * lightness - 1.0));
+        double hue = max == r ? (g - b) / delta + (g < b ? 6 : 0)
+            : max == g ? (b - r) / delta + 2
+            : (r - g) / delta + 4;
+        hue *= 60;
+
+        return ((int)Math.Round(hue) % 360, saturation * 100.0, lightness * 100.0);
+    }
+
+    /// <summary>取色器上那一行坐标（照上游 <c>X: %1 Y: %2</c>，按四舍五入取整）。</summary>
+    public static string PositionText(double x, double y) =>
+        $"X: {Math.Round(x, MidpointRounding.AwayFromZero)} Y: {Math.Round(y, MidpointRounding.AwayFromZero)}";
+
+    /// <summary>当前格式的「长什么样」（提示条里写一句，用户才知道单击会复制什么）。</summary>
+    public static string FormatHint(string format) => format switch
+    {
+        OverlayUiSettings.FormatHexWithoutHash => "RRGGBB",
+        OverlayUiSettings.FormatRgb => "rgb(r, g, b)",
+        OverlayUiSettings.FormatHsl => "hsl(h, s%, l%)",
+        _ => "#RRGGBB",
+    };
 }

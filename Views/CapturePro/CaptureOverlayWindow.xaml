@@ -9,6 +9,7 @@
         AllowsTransparency="True" Background="Transparent" Cursor="Cross" UseLayoutRounding="True"
         SnapsToDevicePixels="True" Focusable="True"
         PreviewKeyDown="Window_KeyDown"
+        PreviewKeyUp="Window_KeyUp"
         PreviewMouseMove="Window_MouseMove"
         PreviewMouseDown="Window_MiddleDown"
         PreviewMouseLeftButtonDown="Window_MouseDown"
@@ -240,7 +241,7 @@
                             Cursor="SizeNS" ToolTip="Y 坐标（物理像素）· 滚轮 ±1 · 单击改参数">
                         <TextBlock x:Name="SelYText" Style="{StaticResource SelValue}"/>
                     </Border>
-                    <TextBlock Style="{StaticResource SelUnit}" Text="px"/>
+                    <TextBlock x:Name="SelPosUnit" Style="{StaticResource SelUnit}" Text="px"/>
 
                     <Border x:Name="SelLockBtn" Style="{StaticResource SelField}" Padding="4,0"
                             Cursor="Hand" ToolTip="锁定宽高比">
@@ -258,7 +259,7 @@
                             Cursor="SizeNS" ToolTip="高（物理像素）· 滚轮 ±1 · 单击改参数">
                         <TextBlock x:Name="SelHText" Style="{StaticResource SelValue}"/>
                     </Border>
-                    <TextBlock Style="{StaticResource SelUnit}" Text="px"/>
+                    <TextBlock x:Name="SelSizeUnit" Style="{StaticResource SelUnit}" Text="px"/>
 
                     <Border Width="8"/>
                     <Border x:Name="SelAspectBtn" Style="{StaticResource SelField}" Padding="4,0"
@@ -406,9 +407,15 @@
                     Padding="6,3" Visibility="Collapsed" IsHitTestVisible="False">
                 <StackPanel Orientation="Horizontal">
                     <Border x:Name="PickerSwatch" Width="14" Height="14" CornerRadius="2"
-                            BorderBrush="{StaticResource ChromeStroke}" BorderThickness="1" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="PickerText" Margin="6,0,0,0" Foreground="{StaticResource ChromeInk}"
-                               FontFamily="Consolas" FontSize="12" VerticalAlignment="Center"/>
+                            BorderBrush="{StaticResource ChromeStroke}" BorderThickness="1"
+                            VerticalAlignment="Center"/>
+                    <!-- 两行（照上游取色窗）：上一行色值、下一行取样点坐标（全局 / 相对选区左上角） -->
+                    <StackPanel Margin="6,0,0,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="PickerText" Foreground="{StaticResource ChromeInk}"
+                                   FontFamily="Consolas" FontSize="12"/>
+                        <TextBlock x:Name="PickerPosText" Foreground="#B3FFFFFF"
+                                   FontFamily="Consolas" FontSize="11" Margin="0,1,0,0"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

@@ -556,6 +556,272 @@
                             </StackPanel>
                         </Border>
 
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 界面与参考线" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="工具条尺寸" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="CaptureToolbarSizeCombo" MinHeight="32"
+                                              SelectionChanged="CaptureOverlayUi_Changed"
+                                              ToolTip="截图工具条 / 录屏面板的大小（照上游 screenshot_ui/toolbar_size）">
+                                        <ComboBoxItem Content="标准"/>
+                                        <ComboBoxItem Content="小（80%）"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="换层级过渡" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="CaptureTransitionCombo" MinHeight="32"
+                                              SelectionChanged="CaptureOverlayUi_Changed"
+                                              ToolTip="智能选区在窗口 / 子元素之间切换时的动画（照上游 screenshot_ui/selection_transition_animation）">
+                                        <ComboBoxItem Content="柔和（101ms）"/>
+                                        <ComboBoxItem Content="快速（67ms）"/>
+                                        <ComboBoxItem Content="关（直接落位）"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="信息条单位" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="CaptureUnitCombo" MinHeight="32"
+                                              SelectionChanged="CaptureOverlayUi_Changed"
+                                              ToolTip="选区信息条上的数字按什么单位显示（照上游 screenshot_ui/selection_display_unit）">
+                                        <ComboBoxItem Content="物理像素（px）"/>
+                                        <ComboBoxItem Content="逻辑像素（dp）"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="取色器显示" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="CapturePickerModeCombo" MinHeight="32"
+                                              SelectionChanged="CaptureOverlayUi_Changed"
+                                              ToolTip="取色色卡什么时候出现（照上游 screenshot_ui/color_picker_display_mode）；单击仍会取色并复制">
+                                        <ComboBoxItem Content="选区外不显示"/>
+                                        <ComboBoxItem Content="总是显示"/>
+                                        <ComboBoxItem Content="总是不显示"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="取色色值格式" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="CapturePickerFormatCombo" MinHeight="32"
+                                              SelectionChanged="CaptureOverlayUi_Changed"
+                                              ToolTip="单击取色复制成什么格式（照上游 screenshot_ui/color_picker_format）；覆盖层里轻按 Shift 轮换">
+                                        <ComboBoxItem Content="HEX（#RRGGBB）"/>
+                                        <ComboBoxItem Content="无井号（RRGGBB）"/>
+                                        <ComboBoxItem Content="rgb(r, g, b)"/>
+                                        <ComboBoxItem Content="hsl(h, s%, l%)"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="取色坐标" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="CapturePickerCoordCombo" MinHeight="32"
+                                              SelectionChanged="CaptureOverlayUi_Changed"
+                                              ToolTip="取色器上那一行坐标的口径（照上游 screenshot_ui/color_picker_coordinate_mode）；覆盖层里 Shift+P 切换">
+                                        <ComboBoxItem Content="全局（屏幕坐标）"/>
+                                        <ComboBoxItem Content="相对选区左上角"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <CheckBox x:Name="CaptureHideSelectionBarBox" Margin="0,12,0,0"
+                                          Content="隐藏选区信息条（X / Y / 宽 × 高那一排）"
+                                          Checked="CaptureOverlayUi_Changed" Unchecked="CaptureOverlayUi_Changed"/>
+
+                                <CheckBox x:Name="CaptureShowEditBarBox" Margin="0,8,0,0"
+                                          Content="「选择」工具下也显示选区信息条"
+                                          Checked="CaptureOverlayUi_Changed" Unchecked="CaptureOverlayUi_Changed"/>
+
+                                <CheckBox x:Name="CaptureAreaHintBox" Margin="0,8,0,0"
+                                          Content="悬停时显示区域类型提示（窗口 / 控件标签与尺寸）"
+                                          Checked="CaptureOverlayUi_Changed" Unchecked="CaptureOverlayUi_Changed"/>
+
+                                <CheckBox x:Name="CaptureGuidesDefaultBox" Margin="0,8,0,0"
+                                          Content="每次截图默认显示参考线（覆盖层里 Alt 随时切换）"
+                                          Checked="CaptureOverlayUi_Changed" Unchecked="CaptureOverlayUi_Changed"/>
+
+                                <CheckBox x:Name="CaptureGuidesAdaptiveBox" Margin="0,8,0,0"
+                                          Content="参考线颜色跟背景太像时自动反色"
+                                          Checked="CaptureOverlayUi_Changed" Unchecked="CaptureOverlayUi_Changed"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="顶部提示不透明度" VerticalAlignment="Center"/>
+                                    <Slider Grid.Column="1" x:Name="CaptureHintOpacitySlider" Minimum="0" Maximum="100"
+                                            SmallChange="1" LargeChange="10" TickFrequency="10" IsSnapToTickEnabled="False"
+                                            VerticalAlignment="Center"
+                                            ToolTip="覆盖层顶部那句操作提示的不透明度（照上游 screenshot_ui/shortcut_hint_opacity）"
+                                            ValueChanged="CaptureHintOpacity_Changed"/>
+                                    <TextBlock Grid.Column="2" x:Name="CaptureHintOpacityText" Width="42"
+                                               Style="{StaticResource HintLabel}" TextAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="142,6,0,0" TextWrapping="Wrap"
+                                           Text="颜色都是 #RRGGBBAA（带透明度）；「取样点参考线」默认全透明 = 不画那四条短线，只留取色像素的小方框。"/>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="选区边框色" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="CaptureBorderColorBtn" Style="{StaticResource Btn}"
+                                            MinHeight="32" Padding="10,4" HorizontalAlignment="Left"
+                                            Click="CaptureBorderColor_Click"
+                                            ToolTip="选区那圈边框（照上游 screenshot_ui/selection_border_color，默认 #4096FF）">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="CaptureBorderColorSwatch" Width="18" Height="18"
+                                                    CornerRadius="3" BorderBrush="{StaticResource BorderStrongBrush}"
+                                                    BorderThickness="1" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="CaptureBorderColorText" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="选区外压暗色" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="CaptureMaskColorBtn" Style="{StaticResource Btn}"
+                                            MinHeight="32" Padding="10,4" HorizontalAlignment="Left"
+                                            Click="CaptureMaskColor_Click"
+                                            ToolTip="选区之外那层压暗（照上游 screenshot_ui/selection_mask_color，默认 #00000080）">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="CaptureMaskColorSwatch" Width="18" Height="18"
+                                                    CornerRadius="3" BorderBrush="{StaticResource BorderStrongBrush}"
+                                                    BorderThickness="1" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="CaptureMaskColorText" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="光标参考线" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="CaptureCursorGuideColorBtn" Style="{StaticResource Btn}"
+                                            MinHeight="32" Padding="10,4" HorizontalAlignment="Left"
+                                            Click="CaptureCursorGuideColor_Click"
+                                            ToolTip="光标十字（虚线，照上游 screenshot_ui/cursor_guide_line_color，默认黑色）">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="CaptureCursorGuideColorSwatch" Width="18" Height="18"
+                                                    CornerRadius="3" BorderBrush="{StaticResource BorderStrongBrush}"
+                                                    BorderThickness="1" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="CaptureCursorGuideColorText" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="选区中心参考线" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="CaptureSelectionGuideColorBtn" Style="{StaticResource Btn}"
+                                            MinHeight="32" Padding="10,4" HorizontalAlignment="Left"
+                                            Click="CaptureSelectionGuideColor_Click"
+                                            ToolTip="选区中心的十字（照上游 screenshot_ui/selection_center_guide_line_color，默认 #4096FF）">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="CaptureSelectionGuideColorSwatch" Width="18" Height="18"
+                                                    CornerRadius="3" BorderBrush="{StaticResource BorderStrongBrush}"
+                                                    BorderThickness="1" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="CaptureSelectionGuideColorText" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="显示器中心参考线" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="CaptureMonitorGuideColorBtn" Style="{StaticResource Btn}"
+                                            MinHeight="32" Padding="10,4" HorizontalAlignment="Left"
+                                            Click="CaptureMonitorGuideColor_Click"
+                                            ToolTip="显示器中心的十字（照上游 screenshot_ui/monitor_center_guide_line_color，默认红色）">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="CaptureMonitorGuideColorSwatch" Width="18" Height="18"
+                                                    CornerRadius="3" BorderBrush="{StaticResource BorderStrongBrush}"
+                                                    BorderThickness="1" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="CaptureMonitorGuideColorText" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="取样点参考线" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="CapturePickerGuideColorBtn" Style="{StaticResource Btn}"
+                                            MinHeight="32" Padding="10,4" HorizontalAlignment="Left"
+                                            Click="CapturePickerGuideColor_Click"
+                                            ToolTip="取色时取样点那四条短线（照上游 screenshot_ui/color_picker_center_guide_line_color，默认全透明）">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="CapturePickerGuideColorSwatch" Width="18" Height="18"
+                                                    CornerRadius="3" BorderBrush="{StaticResource BorderStrongBrush}"
+                                                    BorderThickness="1" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="CapturePickerGuideColorText" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Style="{StaticResource SectionLabel}" Text="开机自启" Margin="0,4,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>

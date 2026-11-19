@@ -80,7 +80,7 @@ public partial class CaptureOverlayWindow
     private void InitSmartSelection()
     {
         _smart.BeginSession(SelectionStore.SmartSelection);
-        _smartFx.SetAnimation(SelectionStore.Transition, 0);
+        _smartFx.SetAnimation(OverlayUiSettings.SelectionTransition, 0);
     }
 
     /// <summary>

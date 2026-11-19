@@ -788,6 +788,7 @@ public partial class ConfigHelperWindow : Window
         PopulatePointerActions();
         PopulateCaptureSound();
         PopulateCaptureColorPresets();
+        PopulateOverlayUi();
         PopulateDrawing();
         PopulateBehavior();
         PopulateCaptureShortcuts();

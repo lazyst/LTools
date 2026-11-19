@@ -96,6 +96,7 @@ public partial class CaptureOverlayWindow
         Surface.Hover = hover;
         Surface.ShowHandles = ShowsMarkHandles;
         Surface.InvalidateVisual();
+        if (_guidesVisible) UpdateGuideColors();   // 选区变了：选区中心那条要重新取样反色
         RefreshAutoFilterAvailability();     // 「填充区域」跟着选区 / 识别结果走
 
         // 形状条 = 「下一块的形状」，**框过之后也常驻**：加区 / 减区也要先选形状。
@@ -200,6 +201,14 @@ public partial class CaptureOverlayWindow
         var (x2, y2) = ToImage(r.BottomRight);
         DetectText.Text = $"{label}   {Math.Abs(x2 - x1) + 1} × {Math.Abs(y2 - y1) + 1}";
 
+        // 区域类型提示（照上游 screenshot_ui/area_type_hint_enabled）：关掉时只留琥珀色框，
+        // 不显示「控件类型 · 名称 · 尺寸」那块标签。
+        if (!OverlayUiSettings.AreaTypeHintEnabled)
+        {
+            DetectLabel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
         DetectLabel.Visibility = Visibility.Visible;
         DetectLabel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         double lw = DetectLabel.DesiredSize.Width;
@@ -284,7 +293,10 @@ public partial class CaptureOverlayWindow
 
         if (_tool == CaptureTool.Picker)
         {
-            HintText.Text = "取色 · 单击复制 #RRGGBB · 色卡跟着光标 · Esc 退出取色";
+            HintText.Text =
+                $"取色 · 单击复制 {PickerColor.FormatHint(OverlayUiSettings.ColorPickerFormat)} · " +
+                $"Shift 换格式 · Shift+P 坐标{(OverlayUiSettings.RelativePickerCoordinates ? "相对选区" : "全局")} · " +
+                $"Alt 参考线{(_guidesVisible ? "（开）" : "（关）")} · Esc 退出取色";
             return;
         }
 
@@ -324,7 +336,7 @@ public partial class CaptureOverlayWindow
             }
 
             HintText.Text = SelectionLabel() +
-                "拖动边角微调 · Shift 拖 = 加区 · Alt 拖 = 减区 · 方向键 1px（Shift 10px）· 点标注拖动 / Delete 删除 · 右键取消选区 · Ctrl+Z 撤销 · Enter 复制 · Ctrl+T 贴图 · Ctrl+R 识别 · Ctrl+L 长截图 · , / . 翻历史";
+                "拖动边角微调 · Shift 拖 = 加区 · Alt 拖 = 减区 · 方向键 1px（Shift 10px）· 点标注拖动 / Delete 删除 · 右键取消选区 · Ctrl+Z 撤销 · Enter 复制 · Ctrl+T 贴图 · Ctrl+R 识别 · Ctrl+L 长截图 · Alt 参考线 · , / . 翻历史";
             return;
         }
 
@@ -348,7 +360,7 @@ public partial class CaptureOverlayWindow
         };
 
         if (_windowTargets.Count > 0) text += " · 单击选窗口 / 控件 · 滚轮换层级";
-        text += " · , / . 翻历史 · 右键 / Esc 取消";
+        text += " · Alt 参考线 · , / . 翻历史 · 右键 / Esc 取消";
 
         if (_uiaPending != IntPtr.Zero) text += " · 识别控件中…";
         else if (_uiaTargets.Count == 0 && _windowTargets.Count > 0) text += " · 未检测到控件，可直接拖拽框选";

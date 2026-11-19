@@ -165,6 +165,7 @@ public partial class CaptureOverlayWindow : Window
         }
 
         BuildGrips();
+        InitOverlayUi();
         // 「记住上次工具」（默认关）：新会话直接从上次的绘图工具开始，否则仍是「选择」
         _tool = CaptureToolMemory.Start(CaptureTool.Select);
         WireToolbar();
@@ -206,13 +207,22 @@ public partial class CaptureOverlayWindow : Window
 
         // 打开时鼠标本来就停在某个窗口上：先算一次悬停，省得用户要动一下才看见高亮
         if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out var dip))
-            UpdateHover(Clamp(dip));
+        {
+            var at = Clamp(dip);
+            _guideCursor = at;
+            Surface.GuideCursor = at;
+            Surface.InvalidateVisual();
+            UpdateHover(at);
+        }
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
         // 文字输入中：Enter / Esc / 方向键都归输入框（本处理器在隧道阶段，比输入框先到）
         if (_textEditing) return;
+
+        // Alt / Shift 轻按有独立语义（参考线开关 / 换色值格式），按下先记一笔
+        TrackModifierDown(e);
 
         // 长截图模式：只有「完成 / 放弃 / 自动滚动」几个出口，别的键一律吃掉（别让工具快捷键改状态）
         if (_scrollMode)
@@ -399,6 +409,21 @@ public partial class CaptureOverlayWindow : Window
             return;
         }
 
+        // 取色器：Shift+P 切坐标口径（照上游 toggle_coordinate_mode 的默认键）
+        if (_tool == CaptureTool.Picker && e.Key == Key.P &&
+            (_shiftHeld || (Keyboard.Modifiers & ModifierKeys.Shift) != 0))
+        {
+            _shiftConsumed = true;
+            OverlayUiSettings.SetColorPickerCoordinateMode(OverlayUiSettings.RelativePickerCoordinates
+                ? OverlayUiSettings.CoordGlobal
+                : OverlayUiSettings.CoordRelative);
+            ShowPickerAt(_guideCursor);
+            RefreshHint();
+            PlaceHint();
+            e.Handled = true;
+            return;
+        }
+
         // 字母选工具（Ctrl 组合已经全部处理完，这里只看裸字母）
         if (!ctrl && ToolCatalog.ForKey(e.Key) is CaptureTool tool)
         {
@@ -436,6 +461,9 @@ public partial class CaptureOverlayWindow : Window
         UpdateChrome();
         e.Handled = true;
     }
+
+    /// <summary>修饰键抬起：Alt 轻按切参考线，Shift 轻按在取色器里换色值格式。</summary>
+    private void Window_KeyUp(object sender, KeyEventArgs e) => TrackModifierUp(e);
 
     // ============ 完成动作 ============
 

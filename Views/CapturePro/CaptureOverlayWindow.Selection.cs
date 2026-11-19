@@ -157,6 +157,10 @@ public partial class CaptureOverlayWindow
 
         Point p = Clamp(e.GetPosition(Layer));
 
+        // 这一下点击用掉了手上的修饰键（减区 / 加区 / 锁正方形）：抬起时别当「轻按」
+        ConsumeModifiers((Keyboard.Modifiers & ModifierKeys.Alt) != 0,
+            (Keyboard.Modifiers & ModifierKeys.Shift) != 0);
+
         // 取色：单击就把光标下的颜色复制走，不框选、不落标注、不关覆盖层
         if (_tool == CaptureTool.Picker)
         {
@@ -465,6 +469,9 @@ public partial class CaptureOverlayWindow
         }
 
         Point p = Clamp(e.GetPosition(Layer));
+
+        // 参考线 / 取色十字跟着光标走（不管在拖还是在悬停）
+        UpdateGuides(p);
 
         if (_drag == DragMode.None)
         {

@@ -23,9 +23,63 @@ namespace LTools.Features.CapturePro;
 /// </remarks>
 internal sealed class CaptureCanvas : FrameworkElement
 {
-    private static readonly SolidColorBrush DimBrush = Frozen(Color.FromArgb(0x66, 0, 0, 0));
-    private static readonly Pen FrameShadow = FrozenPen(Color.FromArgb(0x99, 0, 0, 0), 3);
-    private static readonly Pen FramePen = FrozenPen(Colors.White, 1.5);
+    /// <summary>选区框的宽度（DIP，照上游 <c>kSelectionBorderWidth = 2.0</c>）。</summary>
+    public const double SelectionBorderWidth = 2.0;
+
+    private SolidColorBrush _maskBrush = Frozen(Color.FromArgb(0x80, 0, 0, 0));
+    private Pen _framePen = FrozenPen(Color.FromArgb(0xFF, 0x40, 0x96, 0xFF), SelectionBorderWidth);
+    private Color _maskColor = Color.FromArgb(0x80, 0, 0, 0);
+    private Color _borderColor = Color.FromArgb(0xFF, 0x40, 0x96, 0xFF);
+
+    /// <summary>选区外压暗色（照上游 <c>screenshot_ui/selection_mask_color</c>）。</summary>
+    public Color SelectionMaskColor
+    {
+        get => _maskColor;
+        set
+        {
+            if (_maskColor == value) return;
+            _maskColor = value;
+            _maskBrush = Frozen(value);
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>选区边框色（照上游 <c>screenshot_ui/selection_border_color</c>）。</summary>
+    public Color SelectionBorderColor
+    {
+        get => _borderColor;
+        set
+        {
+            if (_borderColor == value) return;
+            _borderColor = value;
+            _framePen = FrozenPen(value, SelectionBorderWidth);
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>要不要画参考线（光标十字 + 显示器中心 + 选区中心；Alt 切换）。</summary>
+    public bool ShowGuides { get; set; }
+
+    /// <summary>参考线的光标位置（窗口 DIP）。</summary>
+    public Point GuideCursor { get; set; }
+
+    /// <summary>光标十字线颜色（已经过自适应反色）。</summary>
+    public Color GuideCursorColor { get; set; } = Color.FromArgb(0xFF, 0, 0, 0);
+
+    /// <summary>显示器中心十字线颜色（已经过自适应反色）。</summary>
+    public Color GuideMonitorColor { get; set; } = Color.FromArgb(0xFF, 0xFF, 0, 0);
+
+    /// <summary>选区中心十字线颜色（已经过自适应反色）；全透明 = 不画。</summary>
+    public Color GuideSelectionColor { get; set; } = Color.FromArgb(0xFF, 0x40, 0x96, 0xFF);
+
+    /// <summary>取色器取样点（窗口 DIP）；空 = 没在取色。</summary>
+    public Point? PickerPoint { get; set; }
+
+    /// <summary>取色器取样点那四条参考线的颜色；全透明 = 只画取样像素的小方框。</summary>
+    public Color PickerGuideColor { get; set; } = Colors.Transparent;
+
+    /// <summary>取样像素小方框的颜色（照上游 <c>readableTextColor</c>）。</summary>
+    public Color PickerMarkerColor { get; set; } = Colors.White;
 
     /// <summary>选中标注的虚线框（和工具栏的选中色一致）。</summary>
     private static readonly Pen SelectPen = FrozenDashPen(Color.FromRgb(0x3B, 0x82, 0xF6), 1.2);
@@ -237,9 +291,13 @@ internal sealed class CaptureCanvas : FrameworkElement
         geo.Children.Add(new RectangleGeometry(full));
         if (hole != null) geo.Children.Add(hole);
         geo.Freeze();
-        dc.DrawGeometry(DimBrush, null, geo);
+        dc.DrawGeometry(_maskBrush, null, geo);
 
-        // 选区框：外面一层深色描边保证浅底上也看得清；一整块矩形走双描边，其它几何按路径描边
+        // 参考线（照上游 paintScreenshotGuideLines）：画在压暗之上、选区框之下。
+        // 光标十字是虚线，显示器中心 / 选区中心是实线；三条各自按取样处反色。
+        DrawGuides(dc, full, selectionGeo, doc.Scale);
+
+        // 选区框：一整块矩形 / 其它几何都按配置色描边（上游只有一层，宽 2.0）
         if (selectionGeo != null)
         {
             var style = doc.Style.Clamp();
@@ -257,15 +315,9 @@ internal sealed class CaptureCanvas : FrameworkElement
             }
 
             if (selectionGeo is RectangleGeometry rect)
-            {
-                dc.DrawRoundedRectangle(null, FrameShadow, rect.Rect, rect.RadiusX, rect.RadiusY);
-                dc.DrawRoundedRectangle(null, FramePen, rect.Rect, rect.RadiusX, rect.RadiusY);
-            }
+                dc.DrawRoundedRectangle(null, _framePen, rect.Rect, rect.RadiusX, rect.RadiusY);
             else
-            {
-                dc.DrawGeometry(null, FrameShadow, selectionGeo);
-                dc.DrawGeometry(null, FramePen, selectionGeo);
-            }
+                dc.DrawGeometry(null, _framePen, selectionGeo);
         }
 
         // 正在圈 / 正在点的选区：白色虚线跟手（深色底描边先画）；
@@ -284,6 +336,72 @@ internal sealed class CaptureCanvas : FrameworkElement
                 dc.DrawGeometry(null, PendingPen, line);
             }
         }
+    }
+
+    /// <summary>
+    /// 参考线（照上游 <c>screenshotguidelinerendering.h</c>）：光标十字（虚线）+ 显示器中心十字（实线）+
+    /// 选区中心十字（实线，颜色透明就不画），外加取色器取样点那一圈短线与小方框。
+    /// </summary>
+    /// <remarks>
+    /// 虚线长度 / 间隔是**物理像素**（10 / 3），所以笔宽取 <c>1 / scale</c> DIP、镜头线吸附到像素中心；
+    /// 这样 125% / 150% 缩放下也是干净的 1 物理像素线，不会糊成两像素。
+    /// </remarks>
+    private void DrawGuides(DrawingContext dc, Rect viewport, Geometry? selectionGeo, double scale)
+    {
+        double s = scale > 0 ? scale : 1;
+
+        if (ShowGuides)
+        {
+            var cursor = GuideLines.Cross(viewport, GuideCursor, s);
+            DrawCrosshair(dc, cursor, GuideCursorColor, dashed: true, s);
+
+            var monitor = GuideLines.Cross(viewport, new Point(viewport.Width / 2, viewport.Height / 2), s);
+            DrawCrosshair(dc, monitor, GuideMonitorColor, dashed: false, s);
+
+            if (selectionGeo != null && GuideSelectionColor.A > 0)
+            {
+                var bounds = selectionGeo.Bounds;
+                var center = new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
+                DrawCrosshair(dc, GuideLines.Cross(viewport, center, s), GuideSelectionColor, false, s);
+            }
+        }
+
+        if (PickerPoint is not { } picked) return;
+
+        // 取色器：四条短线从视口边走到取样像素边缘（中间给取样像素留空），
+        // 再给那一格画一圈与底色反差最大的方框（上游 <c>readableTextColor</c>）。
+        var reticle = GuideLines.PickerReticle(viewport, picked, s);
+
+        if (PickerGuideColor.A > 0)
+        {
+            var pen = PhysicalPen(PickerGuideColor, s, dashed: false);
+            dc.DrawLine(pen, reticle.TopStart, reticle.TopEnd);
+            dc.DrawLine(pen, reticle.BottomStart, reticle.BottomEnd);
+            dc.DrawLine(pen, reticle.LeftStart, reticle.LeftEnd);
+            dc.DrawLine(pen, reticle.RightStart, reticle.RightEnd);
+        }
+
+        dc.DrawRectangle(null, PhysicalPen(PickerMarkerColor, s, false), reticle.Marker);
+    }
+
+    private static void DrawCrosshair(DrawingContext dc, GuideLines.Crosshair cross, Color color,
+        bool dashed, double scale)
+    {
+        if (color.A == 0 || cross.IsEmpty) return;
+
+        var pen = PhysicalPen(color, scale, dashed);
+        if (cross.HasVertical) dc.DrawLine(pen, cross.VerticalStart, cross.VerticalEnd);
+        if (cross.HasHorizontal) dc.DrawLine(pen, cross.HorizontalStart, cross.HorizontalEnd);
+    }
+
+    /// <summary>1 物理像素宽的笔（长 / 间隔也按物理像素，所以 dash 数组直接是 10 / 3 个单位）。</summary>
+    private static Pen PhysicalPen(Color color, double scale, bool dashed)
+    {
+        double width = 1.0 / Math.Max(0.01, scale);
+        var pen = new Pen(Frozen(color), width);
+        if (dashed) pen.DashStyle = new DashStyle(new[] { GuideLines.DashLength, GuideLines.DashGap }, 0);
+        pen.Freeze();
+        return pen;
     }
 
     /// <summary>
