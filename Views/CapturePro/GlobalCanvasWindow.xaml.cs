@@ -84,7 +84,9 @@ public partial class GlobalCanvasWindow : Window
         Height = Math.Max(1, _monitor.Height) / _sy;
 
         // 工具条：只在画布模式建一次；照上游 canvasOptions() 只收不依赖底图的工具
-        Toolbar.Init(_styles, CaptureTool.Select, CaptureToolbar.ToolbarMode.GlobalCanvas);
+        // 「记住上次工具」（默认关）：开着时从上次的绘图工具开始
+        _tool = CaptureToolMemory.Start(CaptureTool.Select);
+        Toolbar.Init(_styles, _tool, CaptureToolbar.ToolbarMode.GlobalCanvas);
         Toolbar.ToolChanged += SetTool;
         Toolbar.UndoRequested += Undo;
         Toolbar.RedoRequested += Redo;
@@ -401,6 +403,7 @@ public partial class GlobalCanvasWindow : Window
         if (_tool != CaptureTool.Picker) _colorTarget = _tool;
 
         _tool = tool;
+        CaptureToolMemory.Remember(tool);
         Toolbar.Sync(tool);
 
         if (tool != CaptureTool.Select) SelectMark(-1);

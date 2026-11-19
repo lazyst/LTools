@@ -165,6 +165,8 @@ public partial class CaptureOverlayWindow : Window
         }
 
         BuildGrips();
+        // 「记住上次工具」（默认关）：新会话直接从上次的绘图工具开始，否则仍是「选择」
+        _tool = CaptureToolMemory.Start(CaptureTool.Select);
         WireToolbar();
         InitQr();
         DpiChanged += (_, _) => { PinToMonitor(); SyncDocumentScale(); };

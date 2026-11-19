@@ -116,6 +116,7 @@ internal static class ConfigBundle
         cfg.PinToScreen = settings.PinToScreen ?? new PinToScreenFile();
         cfg.Collage = settings.Collage ?? new CollageFile();
         cfg.Screenshot = settings.Screenshot ?? new ScreenshotFile();
+        cfg.Drawing = settings.Drawing ?? new DrawingFile();
         cfg.Export = settings.Export ?? new ExportFile();
 
         var ui = Read<UiStateFile>(UiPath(anchorPath), ctx);
@@ -132,6 +133,7 @@ internal static class ConfigBundle
         cfg.CaptureHistoryPageSize = ui.CaptureHistoryPageSize;
         cfg.CaptureToolGroups = ui.CaptureToolGroups ?? new();
         cfg.CaptureToolHidden = ui.CaptureToolHidden ?? new();
+        cfg.CaptureLastTool = ui.CaptureLastTool;
         cfg.CaptureStyles = ui.CaptureStyles ?? new();
         cfg.CaptureSelection = ui.CaptureSelection ?? new();
 
@@ -387,6 +389,7 @@ internal static class ConfigBundle
         PinToScreen = cfg.PinToScreen ?? new PinToScreenFile(),
         Collage = cfg.Collage ?? new CollageFile(),
         Screenshot = cfg.Screenshot ?? new ScreenshotFile(),
+        Drawing = cfg.Drawing ?? new DrawingFile(),
         Export = cfg.Export ?? new ExportFile(),
     };
 
@@ -404,6 +407,7 @@ internal static class ConfigBundle
         CaptureHistoryPageSize = cfg.CaptureHistoryPageSize,
         CaptureToolGroups = cfg.CaptureToolGroups ?? new(),
         CaptureToolHidden = cfg.CaptureToolHidden ?? new(),
+        CaptureLastTool = cfg.CaptureLastTool,
         CaptureStyles = cfg.CaptureStyles ?? new(),
         CaptureSelection = cfg.CaptureSelection ?? new(),
     };

@@ -201,6 +201,14 @@ internal sealed class CaptureDocument
         return -1;
     }
 
+    /// <summary>最上面一个命中**且满足条件**的标注下标（快速选择按工具族过滤时用）。</summary>
+    public int HitTestWhere(Point point, double tolerance, Func<Mark, bool> accept)
+    {
+        for (int i = _marks.Count - 1; i >= 0; i--)
+            if (_marks[i].HitTest(point, tolerance) && accept(_marks[i])) return i;
+        return -1;
+    }
+
     /// <summary>分配下一个序号（删除不重排，与截图工具的惯例一致）。</summary>
     public int NextSerial() => ++_serial;
 

@@ -96,6 +96,7 @@ public partial class GlobalCanvasWindow
 
         _doc.Add(new Mark.Text(_textOrigin, text, CurrentStyle.TextSpecOf()));
         RefreshMarks();
+        NoteCreated();
     }
 
     /// <summary>放弃这一段文字（Esc / 切工具 / 退出）。</summary>
@@ -129,6 +130,10 @@ public partial class GlobalCanvasWindow
             e.Handled = true;
             return;
         }
+
+        // 上游 drawing/delete_text_after_cursor（默认开）：关掉之后 Delete 什么都不删，只剩退格。
+        if (e.Key == Key.Delete && !DrawingSettings.DeleteTextAfterCursor)
+            e.Handled = true;
     }
 
     /// <summary>点到别处 = 提交（点画布、点工具条都算）。</summary>

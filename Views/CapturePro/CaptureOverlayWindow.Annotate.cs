@@ -103,6 +103,7 @@ public partial class CaptureOverlayWindow
         _style.SerialNumber = number + 1;
         Toolbar.RefreshValues();
         RefreshMarks();
+        NoteCreated();
     }
 
     /// <summary>拖动中：手绘补点，形状只挪终点。</summary>
@@ -154,6 +155,7 @@ public partial class CaptureOverlayWindow
 
         if (mark != null && big) _doc.Add(mark);
         RefreshMarks();
+        if (mark != null && big) NoteCreated();
     }
 
     private Mark? BuildDragMark(Point current) =>
@@ -215,6 +217,7 @@ public partial class CaptureOverlayWindow
         Surface.Preview = null;
         _doc.Add(mark);
         RefreshMarks();
+        NoteCreated();
     }
 
     /// <summary>滚轮调当前角的角度（Shift = 1°，否则 5°）：只换张角，方位与臂长不动。</summary>
@@ -285,6 +288,44 @@ public partial class CaptureOverlayWindow
 
     /// <summary>这次拖动牵连的标注（多选时整组一起挪；单条就是它自己）。</summary>
     private List<(int Index, Mark Mark)>? _dragGroup;
+
+    /// <summary>
+    /// 上游 <c>drawing/automatically_select_newly_created_elements</c>（默认关）：
+    /// 刚画完的那一条自动选中，**工具不变**——接着画下一条不用先去点「选择」。
+    /// 排除工具由 <c>drawing/automatic_selection_excluded_tools</c> 决定（默认画笔 / 画笔滤镜 / 文字 / 气泡）。
+    /// </summary>
+    private void NoteCreated()
+    {
+        if (!DrawingSettings.AutoSelectNew) return;
+        if (DrawingSettings.IsAutoSelectExcluded(_tool)) return;
+
+        int index = _doc.Marks.Count - 1;
+        if (index < 0) return;
+        if (!MarkStyler.TryFamily(_doc.Marks[index], out _, out _)) return;
+        SelectMark(index);
+    }
+
+    /// <summary>
+    /// 上游的「快速选择」：手上有绘图工具时，左键点在**已有的同类元素**上 = 选中并拖动它
+    /// （不是再画一条）。<c>drawing/quick_selection_disabled_tools</c> 里的工具关掉这条路
+    /// （默认画笔 / 画笔滤镜，因为在这两个工具下点中笔画再画一笔是常态）。
+    /// </summary>
+    private bool TryQuickSelect(Point p)
+    {
+        if (_tool is CaptureTool.Select or CaptureTool.Picker or CaptureTool.AutoFilter
+            or CaptureTool.Eraser or CaptureTool.RectEraser or CaptureTool.BrushEraser)
+            return false;
+
+        if (DrawingSettings.IsQuickSelectionDisabled(_tool)) return false;
+
+        string family = StyleFamilies.Of(_tool);
+        int hit = _doc.HitTestWhere(p, MarkHitSlop,
+            mark => MarkStyler.TryFamily(mark, out var markFamily, out _) && markFamily == family);
+        if (hit < 0) return false;
+
+        BeginMarkDrag(p, hit);
+        return true;
+    }
 
     private void BeginMarkDrag(Point p, int index)
     {
@@ -520,6 +561,7 @@ public partial class CaptureOverlayWindow
         _polyPoints.Clear();
         _polyActive = false;
         RefreshMarks();
+        NoteCreated();
     }
 
     private void CancelPolyline()

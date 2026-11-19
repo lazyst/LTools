@@ -62,7 +62,15 @@ public partial class ImageEditWindow : Window
         InitializeComponent();
         ImageEditSession.Track(this);
 
-        Toolbar.Init(_styles, CaptureTool.Select, CaptureToolbar.ToolbarMode.Edit);
+        // 「记住上次工具」（默认关）：开着且记过绘图工具时，直接进那个工具（照上游从上次工具开始，
+        // 而不是从「平移 / 移动」开始）；否则保持上游默认的平移模式。
+        if (DrawingSettings.RememberLastTool)
+        {
+            _tool = CaptureToolMemory.Start(CaptureTool.Select);
+            _panMode = _tool == CaptureTool.Select;
+        }
+
+        Toolbar.Init(_styles, _tool, CaptureToolbar.ToolbarMode.Edit);
         Toolbar.ToolChanged += SetTool;
         Toolbar.PanRequested += EnterPanMode;
         Toolbar.CropRequested += SetCropAxis;

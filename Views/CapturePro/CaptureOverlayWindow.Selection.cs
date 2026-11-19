@@ -282,6 +282,14 @@ public partial class CaptureOverlayWindow
                 return;
             }
 
+            // 2b. 快速选择（上游 quick selection）：手上是绘图工具、点在**已有同类元素**上 = 选中并拖它
+            //    （不想这样就在设置里把该工具列进「禁用快速选择的工具」）。文字工具点击已有文字也走这里。
+            if (e.ClickCount == 1 && TryQuickSelect(p))
+            {
+                StartDrag(e, Cursors.SizeAll);
+                return;
+            }
+
             BeginToolGesture(p, e.ClickCount);
             bool dragging = _drag is DragMode.Draw or DragMode.Erase;
             Cursor = _tool == CaptureTool.Text ? Cursors.IBeam : Cursors.Cross;

@@ -36,6 +36,11 @@ internal static class ToolLayoutStore
             if (string.IsNullOrEmpty(path)) return ToolLayout.Default();
 
             var ui = UiStore.Read(path);
+            // 组列表为空 = 还没保存过布局（首次启动走种子配置，UiStateFile 拿到的是空集合、
+            // 不是 null）。这时必须回到目录默认分组，否则会把 27 个工具摊成 27 格。
+            // 「把工具全藏起来」是「组空 + hidden 非空」，那条仍照保存内容解析。
+            if (ui.CaptureToolGroups is not { Count: > 0 } && ui.CaptureToolHidden is not { Count: > 0 })
+                return ToolLayout.Default();
             return ToolLayout.Parse(ui.CaptureToolGroups, ui.CaptureToolHidden);
         }
         catch (Exception ex)

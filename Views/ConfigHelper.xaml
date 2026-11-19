@@ -403,6 +403,61 @@
                             </StackPanel>
                         </Border>
 
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 绘制行为" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <CheckBox x:Name="CaptureAutoSelectBox"
+                                          Content="新画的元素自动选中（工具不变）"
+                                          ToolTip="照上游 drawing/automatically_select_newly_created_elements：画完这一条就选中它，接着还能用同一个工具画下一条"
+                                          Checked="CaptureDrawing_Changed" Unchecked="CaptureDrawing_Changed"/>
+                                <Grid Margin="22,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="98"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="自动选中排除" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="CaptureAutoSelectExcludedButton"
+                                            Style="{StaticResource Btn}" Content="编辑…" MinHeight="30" Padding="14,2"
+                                            HorizontalAlignment="Left" Click="CaptureAutoSelectExcluded_Click"
+                                            ToolTip="这些工具画完不自动选中（默认画笔 / 画笔滤镜 / 文字 / 气泡）"/>
+                                </Grid>
+                                <TextBlock x:Name="CaptureAutoSelectExcludedHint" Style="{StaticResource HintLabel}"
+                                           Margin="120,6,0,0" TextWrapping="Wrap"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="禁用快速选择" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="CaptureQuickSelectionDisabledButton"
+                                            Style="{StaticResource Btn}" Content="编辑…" MinHeight="30" Padding="14,2"
+                                            HorizontalAlignment="Left" Click="CaptureQuickSelectionDisabled_Click"
+                                            ToolTip="这些工具下，左键点在已有的同类元素上继续画，而不是选中拖动它（默认画笔 / 画笔滤镜）"/>
+                                </Grid>
+                                <TextBlock x:Name="CaptureQuickSelectionDisabledHint" Style="{StaticResource HintLabel}"
+                                           Margin="120,6,0,0" TextWrapping="Wrap"/>
+
+                                <CheckBox x:Name="CaptureDeleteTextAfterCursorBox" Margin="0,12,0,0"
+                                          Content="编辑文字时 Delete 删光标后的字符"
+                                          ToolTip="照上游 drawing/delete_text_after_cursor（默认开）；关掉后 Delete 不删字符，只剩退格"
+                                          Checked="CaptureDrawing_Changed" Unchecked="CaptureDrawing_Changed"/>
+                                <CheckBox x:Name="CaptureRememberToolBox" Margin="22,8,0,0"
+                                          Content="记住上次用过的绘图工具（下次直接从这个工具开始）"
+                                          ToolTip="照上游 drawing/remember_last_used_tool（默认关）；关着时每次从「选择」开始"
+                                          Checked="CaptureDrawing_Changed" Unchecked="CaptureDrawing_Changed"/>
+                                <CheckBox x:Name="CaptureAlwaysShowFirstBox" Margin="22,8,0,0"
+                                          Content="工具条里每组固定显示第一个工具"
+                                          ToolTip="照上游 drawing/always_show_first_toolbar_group_button（默认关）；关着时显示这一格上次点过的工具"
+                                          Checked="CaptureDrawing_Changed" Unchecked="CaptureDrawing_Changed"/>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,6,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="「快速选择」= 手上有绘图工具时，左键点在已有的同类元素上就选中并拖动它。这些设置对截图覆盖层、图片编辑窗、全屏画布都生效。"/>
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Style="{StaticResource SectionLabel}" Text="开机自启" Margin="0,4,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>

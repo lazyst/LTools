@@ -185,6 +185,9 @@ public sealed class AppConfig
     /// <summary>截图工具栏里被收起来的工具键（不占格子）。</summary>
     public List<string> CaptureToolHidden { get; set; } = new();
 
+    /// <summary>上次用过的绘图工具（「记住上次工具」打开时开新会话用它）。</summary>
+    public string? CaptureLastTool { get; set; }
+
     /// <summary>截图 Pro 的样式记忆：每个工具家族一套。</summary>
     public CaptureStylesFile CaptureStyles { get; set; } = new();
 
@@ -208,6 +211,9 @@ public sealed class AppConfig
 
     /// <summary>截图 Pro 的全局设置（「延时截图」的等待秒数 + 覆盖层指针动作）。</summary>
     public ScreenshotFile Screenshot { get; set; } = new();
+
+    /// <summary>绘制行为（自动选中 / 快速选择 / 记住上次工具 / 工具组首按钮）。</summary>
+    public DrawingFile Drawing { get; set; } = new();
 
     /// <summary>截图输出：格式 / 质量 / 压缩 / 目录 / 文件名模板 / 另存为对话框 / 自动保存。</summary>
     public ExportFile Export { get; set; } = new();

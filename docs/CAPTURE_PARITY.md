@@ -145,6 +145,21 @@
 | 工具条自动隐藏 / 悬停唤出 | `recordingtoolbarwindow.cpp`（`AutoHide`）+ `screenrecordingtoolbarautohide.h` + `RecordingToolbarEdgeControl` | `P8-e`：`Features/CapturePro/RecordAutoHide.cs`（`EdgeThreshold = 16` / `TabWidth = 20` / `RevealDelayMs = 100` / `RetreatDelayMs = 200` / `WatchIntervalMs = 50`；`IsEmpty` / `Intersects` / `Contains`（QRect 语义）/ `SideForRow`（两边都远 → 不贴边、相等沿用上一次、越过边缘按负间距算）/ `TabGeometry`（20 DIP × scale 夹到 1…屏宽、高跟主行、贴边、纵向居中并夹回屏内）/ `TransferRegion`（小条与主行之间那条带）/ `IsEligible`）+ `Views/CapturePro/RecordAutoHideTab.cs`（**不透明窗口 + `SetWindowRgn`** 抠「贴边方角 + 朝里圆角」，白 / 悬停 `#E6F4FF` / 按下 `#F5F5F5` 底 + 悬停主色描边与折线箭头，`OverlayShell` 的 `WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW` + `WDA_EXCLUDEFROMCAPTURE`）+ `Views/CapturePro/CaptureRecordWindow.AutoHide.cs`（三个 `DispatcherTimer`、`ReconcileAutoHide` / `CollapseAutoHide` / `RevealAutoHide` / `DismissAutoHide`、`UpdateAutoHideDock`（`ActionBar` 取物理行 → 相交面积最大的屏 → 边变了才重判）、`AutoHideProtected`（工具条矩形 / 过渡区 / 拖动 / 鼠标键按着 / 悬停弹层 · 取色器 · 格式菜单 / 自己的对话框）、`ScreenForRow`；接线 `Window_Loaded` / `Sync`（含收尾分支）/ `PlaceBar` / 拖动按下与松手 / `SetExportRow` / 改完选项 / `Window_Closing` · `CloseQuietly`，`IsPointerHot` 把小条也算「热」）+ `RecordOptions.AutoHideToolbar`（默认关，`settings.json` 的 `Record` 段）+「录屏选项」窗口「工具条」段勾选框 | P8-e | ✅ |
 | 崩溃残片恢复 | `recordingrecovery.h` | `RecordRecovery` | — | ✅ |
 
+### 2.8 设置项对齐（P9）
+
+`configurationschema.cpp` 里还有约 450 个设置项。**只补真能落地的**：全局偏好进既有设置页卡片（与快门音 / 颜色预设同一写法），采集入口参数挂内置功能参数，平台做不到的写 §5。
+
+| 上游 | 位置 | LTools 现状 | 批次 | 状态 |
+| --- | --- | --- | --- | --- |
+| 绘制行为（记住上次工具 / 自动选中新元素 / 两类清单 / Delete 删字 / 组首常显） | `configurationschema.cpp` 的 `drawing/*`、`settingscatalog.cpp` 的 `drawing` 页 | `P9-b`：`Config/Drawing.cs` + `Features/CapturePro/DrawingSettings.cs`（默认值逐字照上游）+ `CaptureToolIds.cs`（16 键 ↔ `CaptureTool`）+ `CaptureToolMemory.cs`（`ui.json` 的 `CaptureLastTool`）；三个画布（覆盖层 / 图片编辑 / 全屏画布）全部接上；设置「通用 → 截图 Pro · 绘制行为」4 勾选 + 两个清单编辑框（`Views/CapturePro/CaptureToolListWindow`） | P9-b | ✅ |
+| 截图行为（光标 / 快捷键退出确认 / 快速选择修改 / 拖拽改尺寸方式 / HiDPI / PDF 纸张 / 长截图间隔 / 恢复原屏色） | `configurationschema.cpp` 的 `screenshot/*` | `P9-a` 待做（`restore_original_screen_colors` 与 `capture_ui_in_scrolling_screenshot` 记 §5） | P9-a | ⏳ |
+| 截图界面外观（背景色 / 选区边框 / 光标 / 工具栏透明度 / 取色器） | `screenshot_ui/*` | `P9-c` 待做 | P9-c | ⏳ |
+| 贴图剩余设置 | `pin_to_screen/*` | `P9-d` 待做 | P9-d | ⏳ |
+| 识别剩余设置 | `text_recognition/*` + `screenshot/auto_execute_after_text_recognition` | `P9-e` 待做 | P9-e | ⏳ |
+| 快捷键默认值对齐 | `screenshot_shortcuts/*` / `pin_to_screen_shortcuts/*` / `drawing_shortcuts/*` | `P9-f` 待做 | P9-f | ⏳ |
+| 录屏设置核对 | `screen_recording/*` | `P9-g` 待做 | P9-g | ⏳ |
+| 平台差异登记 | `global_mouse/*` / `tray/*` / `interface/*` / `system/*` / `network/*` / `updates/*` / `cloud_upload/*` / `mcp/*` / `screenshot/api_mode` / `window_element_api` | `P9-h` 待做（只登记不进代码） | P9-h | ⏳ |
+
 ## 3. 批次与验收
 
 | 批次 | 范围 | 状态 | 验收 |
@@ -195,6 +210,7 @@
 | P7-g | 相机快门音（照 `presentation/capture/camerashuttersound.cpp`）：`Features/CapturePro/ShutterSound.cs`（MCI `mciSendStringW` + `type mpegvideo` + 每次独立别名 + 5 秒 `close`；`OpenCommand` / `PlayCommand` / `CloseCommand` / `AliasOf` 是纯函数，`FilePath` / `Available` / `Describe` 给设置页与自检，`PlayFile` 供自检验证「缺文件只返回 false」）、`Config/Screenshot.cs` 的 `ShutterSound`（直接截前台窗口 / 当前显示器，默认**开**，上游 `shutter_sound_notification`）/ `ScreenshotSound`（覆盖层开始截图，默认**关**，上游 `screenshot_sound_notification`）+ `Features/CapturePro/CaptureSoundSettings.cs`（缓存读写，只写 settings 域）+ 两处播放接线（`CaptureSession.TryCapture` 抓帧前 / `CaptureDirect` 抓图前；`TryEdit` 与录屏不响）+ 设置「通用 → 截图 Pro」两个勾选框（`Views/ConfigHelper.CaptureSound.cs`）+ 随包 `Assets/Audio/camera_shutter.mp3`（csproj Content，`licenses/CameraShutterSound-NOTICE.txt`） | ✅ | 构建 0 警；`--selftest` **278 用例 / 15848 断言全绿**（新增「快门音：音频路径 / MCI 命令 / 别名 / 缺文件不挡截图」）；`capture-overlay-smoke` 新增 `sound` 段 13 条（默认值 / 音频存在 / 真发 MCI 播放 / 缺文件不抛 / 设置页两个勾选框真落 `settings.json` 并回读）|
 | P7 | 采集入口与设置：延时 / 截图后直做 / 鼠标释放动作 / 指针动作 / 全局快捷键 / 导出设置 / 剪贴板外观 / 历史页 / 快门音 | ✅ | P7-a ✅、P7-b ✅、P7-c ✅、P7-d ✅、P7-e ✅、P7-f ✅、P7-g ✅ |
 | P8 | 全屏画布 + 录屏剩余：音频增益 / 渲染进度 / 快捷键 / 工具条自动隐藏 / 摄像头画中画 | 🟡 | P8-a ✅（透明全屏画布 + 18 个工具 + 缩放 / 平移 + 激光拖尾 + 点击穿透 + 内置功能入口）；P8-b ✅（音频增益弹层 + 按轨 `volume` + 电平表）；P8-c ✅（渲染进度对话框 + 重试 / 保留 / 丢弃）；P8-d ✅（录制快捷键控制器 + 录屏区域历史）；P8-e ✅（贴边自动收起 + 悬停 / 点击唤出）；P8-f ✅（空闲期画中画预览 / 拖动 / 缩放 / 四个方向按钮 / 开录交给会话） |
+| P9 | 设置项对齐（`configurationschema.cpp` 里还能落地的那一批；全局偏好进既有设置页，入口参数挂内置功能，做不到的写 §5） | 🟡 | P9-b ✅（绘制行为 6 项 + 上次工具 + 三个画布接线 + 两个清单编辑框）；P9-a / P9-c / P9-d / P9-e / P9-f / P9-g / P9-h 待做 |
 
 ## 4. 每批次的实施顺序（固定套路）
 
@@ -629,4 +645,12 @@
   - **设置页**「通用 → 截图 Pro」新增「颜色预设 编辑…」+ 摘要行 + 「共用一套颜色」勾选框（照上游 `drawing/sync_tool_colors`，写 `ui.json` 的 `CaptureStyles.SyncColors`）。
   - **两个对话框**：`CaptureColorPresetsWindow`（三排各 5 格 / 每族「恢复默认」/ 保存才落盘，取消整份丢掉）；`CaptureColorDialog` 替代 Qt 的 `QColorDialog`（十六进制 + R/G/B/A 数字双向联动 + 常用色快选 + 棋盘格预览，认不出写法就地提示而不是静默改值）。
   - 验收：构建 0 错 0 警；`--selftest` 全量 **287 用例 16296 断言全绿**（`capturePro` 新增「颜色预设：默认值 / 解析 / 归一 / 工具映射 / 色块」39 条）；`capture-overlay-smoke` 新增 `colorpresets` 段 **42 条**（真实配置根：只读不落盘 / `Set` 真写 `settings.json` 且 `Invalidate` 后读回 / 设置页按钮与摘要 / 参数条 15 胶囊 + 画笔·荧光笔·矩形荧光·聚光换族 + 填充·箭头外描边·文字描边各用己族 / 真点第三个色块把画笔改成 `#778899FF` / 编辑框三排各 5 格与「恢复默认」只动一族 / 取色框 hex 与 RGBA 双向联动且 alpha 决定棋盘格 / 共用颜色开关真落 `ui.json` / `Reset` 写回默认）。
+
+- 2026-11-19：**P9-b 完成（绘制行为偏好）**。照上游 `storage/configurationschema.cpp` 的 `drawing/*` 六个默认值 + `settingscatalog.cpp` 的「绘制」页文案。
+  - **配置**：`Config/Drawing.cs`（`settings.json` 的 `Drawing` 段）+ `ConfigFiles` / `AppConfig` / `ConfigBundle.ToSettings` + `LoadCore` / `LTools.example.json` 四处接线；「上次用过的工具」属界面状态，落 `ui.json` 的 `CaptureLastTool`。
+  - **纯数据 + 缓存**：`Features/CapturePro/CaptureToolIds.cs`（上游 `drawingSelectableToolOptions` 的 16 个 id ↔ `CaptureTool`，`Normalize` 去重并按上游顺序、`Describe` 出设置页摘要 —— 默认排除「气泡 / 画笔 / 画笔滤镜 / 文字」，默认禁用快速选择「画笔 / 画笔滤镜」）、`DrawingSettings.cs`（六项缓存读写 + `IsAutoSelectExcluded` / `IsQuickSelectionDisabled` + `Invalidate`）、`CaptureToolMemory.cs`（写 `ui.json`，读坏即回默认）。
+  - **三个画布同一套**（覆盖层 / 图片编辑窗 / 全屏画布）：打开时按「记住上次工具」决定初始工具；真的换工具 / 画完一个标注才记；`NoteCreated()` 按「自动选中新元素」+ 排除清单决定要不要转成选择态；`TryQuickSelect()` 在「快速选择禁用」的工具下不接点击；文字编辑框的 `Delete` 在「删光标后文字」关着时只做退格。**没有第二套判定**——三处都调同一批 `DrawingSettings` / `CaptureToolMemory`。
+  - **界面**：设置「通用 → 截图 Pro · 绘制行为」卡片（4 个勾选框 + 「编辑清单…」两个按钮 + 两行摘要）；清单窗口 `Views/CapturePro/CaptureToolListWindow` 16 项勾选 + 「恢复默认」+ 保存即写 `settings.json`。
+  - **顺带修掉一个真 bug**：全新数据根（还没有 `configs/ui.json`）时 `UiStateFile` 拿到的是**空集合**而不是 `null`，`ToolLayout.Parse` 会把它当成「用户把 27 个工具全拆开」，首屏工具栏变成 27 个单格而不是目录默认 13 格。`ToolLayoutStore.Load` 现在把「组为空且没藏任何工具」当成「没保存过布局」回落 `ToolLayout.Default()`（「全藏起来」是组空 + hidden 非空，仍照保存内容解析）。
+  - 验收：构建 0 错 0 警；`--selftest` 全量 **288 用例 16375 断言全绿**（`capturePro` 新增「绘制行为：清单映射 / 默认值 / 组首常显 / 工具记忆」）；`capture-overlay-smoke` 新增 `drawing` 段 **47 条**（临时配置根：默认值逐项对上游 / 写盘只动 `Drawing` / 设置页 4 勾选 + 两个编辑按钮 + 摘要 / 清单窗口 16 项与恢复默认与标题 / 全新配置工具栏按默认分 13 格 / 组首常显开与关两种显示 / 真鼠标画完自动选中且工具不变 / 快速选择点边命中与禁用工具不命中 / 记住上次工具跨窗口生效 / 文字编辑 Delete 两种状态 / 跑完搬回原配置路径）。
 

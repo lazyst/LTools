@@ -95,6 +95,7 @@ public partial class ImageEditWindow
 
         _panMode = false;
         _tool = tool;
+        CaptureToolMemory.Remember(tool);
         Toolbar.Sync(tool);
         Toolbar.SetPan(false);
 
@@ -169,6 +170,9 @@ public partial class ImageEditWindow
             BeginMarquee(p);
             return true;
         }
+
+        // 快速选择：绘图工具下点已有同类元素 = 选中并拖它（与截图覆盖层同一份设置）
+        if (clickCount == 1 && TryQuickSelect(p)) return true;
 
         switch (_tool)
         {
@@ -352,6 +356,7 @@ public partial class ImageEditWindow
         }
 
         RefreshMarks();
+        if (mark != null && big) NoteCreated();
     }
 
     private Mark? BuildDragMark(Point current) =>
@@ -369,6 +374,7 @@ public partial class ImageEditWindow
         CurrentStyle.SerialNumber = number + 1;
         Toolbar.RefreshValues();
         RefreshMarks();
+        NoteCreated();
     }
 
     private void SetPreview(Mark? mark)
@@ -418,6 +424,7 @@ public partial class ImageEditWindow
         _doc.PushUndo();
         _doc.Doc!.Add(mark);
         RefreshMarks();
+        NoteCreated();
     }
 
     // ============ 橡皮（恢复原图块） ============
@@ -451,6 +458,40 @@ public partial class ImageEditWindow
     }
 
     // ============ 选择：点选 / 拖动 / 改大小 / 框选 ============
+
+    /// <summary>新画的元素自动选中（与截图覆盖层共用同一份设置）。</summary>
+    private void NoteCreated()
+    {
+        if (!DrawingSettings.AutoSelectNew) return;
+        if (DrawingSettings.IsAutoSelectExcluded(_tool)) return;
+
+        var doc = _doc.Doc;
+        if (doc == null || doc.Marks.Count == 0) return;
+        int index = doc.Marks.Count - 1;
+        if (!MarkStyler.TryFamily(doc.Marks[index], out _, out _)) return;
+        SelectMark(index);
+    }
+
+    /// <summary>快速选择：绘图工具下左键点已有同类元素 = 选中并拖动它。</summary>
+    private bool TryQuickSelect(Point p)
+    {
+        if (_tool is CaptureTool.Select or CaptureTool.Picker or CaptureTool.AutoFilter
+            or CaptureTool.Eraser or CaptureTool.RectEraser or CaptureTool.BrushEraser)
+            return false;
+
+        if (DrawingSettings.IsQuickSelectionDisabled(_tool)) return false;
+
+        var doc = _doc.Doc;
+        if (doc == null) return false;
+
+        string family = StyleFamilies.Of(_tool);
+        int hit = doc.HitTestWhere(p, Slop(MarkHitSlop),
+            mark => MarkStyler.TryFamily(mark, out var markFamily, out _) && markFamily == family);
+        if (hit < 0) return false;
+
+        BeginMarkDrag(p, hit);
+        return true;
+    }
 
     private void BeginMarkDrag(Point p, int index)
     {
@@ -690,6 +731,7 @@ public partial class ImageEditWindow
         _polyActive = false;
         SetPreview(null);
         RefreshMarks();
+        NoteCreated();
     }
 
     /// <summary>工具栏上的「完成折线」（点别的工具 / 关窗时也先落下来）。</summary>

@@ -540,21 +540,45 @@ public partial class CaptureToolbar : UserControl
     /// <summary>格子的图标与提示跟着「这一格现在显示哪个工具」走。</summary>
     private void ShowCellIcon(ToolCell cell)
     {
-        var info = ToolCatalog.Of(cell.Current);
+        var current = EntryOf(cell);
+        var info = ToolCatalog.Of(current);
         cell.Icon.Data = (Geometry)FindResource("Icon" + info.Icon);
         cell.Button.ToolTip = cell.Tools.Count <= 1
             ? $"{info.Name}（{info.Shortcut}）\n{info.Hint}"
             : $"{info.Name}（{info.Shortcut}）· 这一格还有 " + string.Join(" / ",
-                cell.Tools.Where(t => t != cell.Current)
+                cell.Tools.Where(t => t != current)
                     .Select(t => ToolCatalog.Of(t).Name + "（" + ToolCatalog.Of(t).Shortcut + "）"))
               + "，再点一次切换\n" + info.Hint;
     }
 
+    /// <summary>
+    /// 这一格「显示 / 首点」用哪个工具：照上游 <c>toolbarGroupEntryItemId</c>，
+    /// 「组首按钮常显」打开时固定第一个，否则用这一格上次点过的那个。
+    /// </summary>
+    private static CaptureTool EntryOf(ToolCell cell) =>
+        GroupEntry(cell.Tools, cell.Current, DrawingSettings.AlwaysShowFirstGroup);
+
+    /// <summary><see cref="EntryOf"/> 的纯函数版本（自检直接断言）。</summary>
+    internal static CaptureTool GroupEntry(IReadOnlyList<CaptureTool> tools, CaptureTool current,
+        bool alwaysShowFirst) =>
+        tools.Count > 1 && alwaysShowFirst ? tools[0] : current;
+
     /// <summary>点格子：单工具直接切；同格再点一次循环到组内下一个。</summary>
     private void OnCellClick(ToolCell cell)
     {
-        if (cell.Tools.Count > 1 && CurrentTool == cell.Current)
-            cell.Current = cell.Tools[(cell.Tools.IndexOf(cell.Current) + 1) % cell.Tools.Count];
+        if (cell.Tools.Count > 1)
+        {
+            var entry = EntryOf(cell);
+            if (CurrentTool == entry)
+            {
+                int index = cell.Tools.IndexOf(entry);
+                cell.Current = cell.Tools[(index + 1) % cell.Tools.Count];
+            }
+            else
+            {
+                cell.Current = entry;
+            }
+        }
 
         ToolChanged?.Invoke(cell.Current);
     }

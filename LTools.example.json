@@ -241,6 +241,22 @@
       "#B37FEBFF"
     ]
   },
+  "Drawing": {
+    "AutomaticallySelectNewlyCreatedElements": false,
+    "AutomaticSelectionExcludedTools": [
+      "free-draw",
+      "pen-filter",
+      "text",
+      "speech-bubble"
+    ],
+    "QuickSelectionDisabledTools": [
+      "free-draw",
+      "pen-filter"
+    ],
+    "DeleteTextAfterCursor": true,
+    "RememberLastUsedTool": false,
+    "AlwaysShowFirstToolbarGroupButton": false
+  },
   "Triggers": {
     "Enabled": false,
     "Rules": []

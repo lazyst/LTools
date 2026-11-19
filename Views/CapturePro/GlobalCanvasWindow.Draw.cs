@@ -110,6 +110,9 @@ public partial class GlobalCanvasWindow
             return true;
         }
 
+        // 快速选择：绘图工具下点已有同类元素 = 选中并拖它（与截图覆盖层同一份设置）
+        if (clickCount == 1 && TryQuickSelect(p)) return true;
+
         switch (_tool)
         {
             case CaptureTool.Eraser:
@@ -255,6 +258,7 @@ public partial class GlobalCanvasWindow
         if (mark != null && big) _doc.Add(mark);
 
         RefreshMarks();
+        if (mark != null && big) NoteCreated();
     }
 
     private Mark? BuildDragMark(Point current) =>
@@ -271,6 +275,7 @@ public partial class GlobalCanvasWindow
         CurrentStyle.SerialNumber = number + 1;
         Toolbar.RefreshValues();
         RefreshMarks();
+        NoteCreated();
     }
 
     private void SetPreview(Mark? mark)
@@ -319,9 +324,40 @@ public partial class GlobalCanvasWindow
 
         _doc.Add(mark);
         RefreshMarks();
+        NoteCreated();
     }
 
     // ============ 选择：点选 / 拖动 / 改大小 / 框选 ============
+
+    /// <summary>新画的元素自动选中（与截图覆盖层共用同一份设置）。</summary>
+    private void NoteCreated()
+    {
+        if (!DrawingSettings.AutoSelectNew) return;
+        if (DrawingSettings.IsAutoSelectExcluded(_tool)) return;
+
+        int index = _doc.Marks.Count - 1;
+        if (index < 0) return;
+        if (!MarkStyler.TryFamily(_doc.Marks[index], out _, out _)) return;
+        SelectMark(index);
+    }
+
+    /// <summary>快速选择：绘图工具下左键点已有同类元素 = 选中并拖动它。</summary>
+    private bool TryQuickSelect(Point p)
+    {
+        if (_tool is CaptureTool.Select or CaptureTool.Picker or CaptureTool.AutoFilter
+            or CaptureTool.Eraser or CaptureTool.RectEraser or CaptureTool.BrushEraser)
+            return false;
+
+        if (DrawingSettings.IsQuickSelectionDisabled(_tool)) return false;
+
+        string family = StyleFamilies.Of(_tool);
+        int hit = _doc.HitTestWhere(p, Slop(MarkHitSlop),
+            mark => MarkStyler.TryFamily(mark, out var markFamily, out _) && markFamily == family);
+        if (hit < 0) return false;
+
+        BeginMarkDrag(p, hit);
+        return true;
+    }
 
     private void BeginMarkDrag(Point p, int index)
     {
@@ -498,6 +534,7 @@ public partial class GlobalCanvasWindow
         _polyActive = false;
         SetPreview(null);
         RefreshMarks();
+        NoteCreated();
     }
 
     /// <summary>工具栏上的「完成折线」（点别的工具 / 关窗时也先落下来）。</summary>

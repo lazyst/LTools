@@ -101,6 +101,7 @@ public partial class ImageEditWindow
         _doc.PushUndo();
         _doc.Doc!.Add(new Mark.Text(_textOrigin, text, CurrentStyle.TextSpecOf()));
         RefreshMarks();
+        NoteCreated();
     }
 
     /// <summary>放弃这一段文字（Esc / 切工具 / 进平移）。</summary>
@@ -132,7 +133,11 @@ public partial class ImageEditWindow
         {
             CancelText();
             e.Handled = true;
+            return;
         }
+
+        if (e.Key == Key.Delete && !DrawingSettings.DeleteTextAfterCursor)
+            e.Handled = true;
     }
 
     /// <summary>点到别处 = 提交（点画布、点工具条都算）。</summary>

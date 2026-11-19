@@ -193,6 +193,7 @@ public partial class CaptureOverlayWindow
         CancelGesture();
         if (_selectedIndex >= 0) SelectMark(-1);    // 换工具 = 放弃选中（参数行要交给新工具）
         _tool = tool;
+        CaptureToolMemory.Remember(tool);
         Toolbar.Sync(tool);
         if (tool != CaptureTool.Picker) HidePicker();
         if (tool == CaptureTool.AutoFilter) EnterAutoFilter();
