@@ -714,37 +714,7 @@ public partial class CaptureToolbar : UserControl
         _actionParts.Add(line);
         ToolRow.Children.Add(line);
 
-        AddGroup(new FrameworkElement[]
-        {
-            ActionButton("IconRecognize", "识别文字 / 表格 / 二维码（Ctrl+R）", CaptureAction.Recognize),
-            QrButton(),
-        });
-
-        AddGroup(new[]
-        {
-            ActionButton("IconPin", "贴图到屏幕（Ctrl+T）", CaptureAction.Pin),
-            ActionButton("IconLive", "实时贴图：贴一块跟着这个窗口刷新的图（Ctrl+W）", CaptureAction.Live),
-            ActionButton("IconScroll", "长截图：滚着接成一张长图（Ctrl+L）", CaptureAction.Scroll),
-            ActionButton("IconRecord", "录屏：把当前选区录成 MP4（3 秒倒计时后开始，控制条上可暂停 / 完成 / 取消）",
-                CaptureAction.Record),
-        });
-
-        AddGroup(new[]
-        {
-            ActionButton("IconPrint", "打印（Ctrl+P）", CaptureAction.Print),
-            ActionButton("IconQuickSave", "快速保存到图片\\LTools 截图，不弹框（Ctrl+Shift+S）", CaptureAction.QuickSave),
-            ActionButton("IconSave", "另存为…（Ctrl+S）", CaptureAction.Save),
-        });
-
-        // 「更多」：不常用的入口收进一个菜单（全屏、采集历史翻页 / 历史窗），
-        // 常驻按钮只留高频的那几个，免得工具条横着长成一整排。
-        AddGroup(new[] { MoreButton() });
-
-        AddGroup(new[]
-        {
-            ActionButton("IconClose", "取消（Esc）", CaptureAction.Cancel, danger: true),
-            ActionButton("IconCopy", "复制到剪贴板并关闭（Enter）", CaptureAction.Copy, primary: true),
-        });
+        AddActionGroups(ToolbarMode.Capture, separatorBeforeFirst: false);
     }
 
     /// <summary>
@@ -768,24 +738,92 @@ public partial class CaptureToolbar : UserControl
         _undoBtn = AddAction("IconUndo", "撤销（Ctrl+Z）", () => UndoRequested?.Invoke());
         _redoBtn = AddAction("IconRedo", "重做（Ctrl+Y）", () => RedoRequested?.Invoke());
 
-        AddGroup(new[]
-        {
-            ActionButton("IconRecognize", "识别文字 / 表格 / 二维码（Ctrl+R）", CaptureAction.Recognize),
-        });
+        AddActionGroups(ToolbarMode.Edit, separatorBeforeFirst: true);
+    }
 
-        // 结果动作（照上游 pinned 布局：pin / copy 一组，print / quick-save / save-as 一组）
-        AddGroup(new[]
-        {
-            ActionButton("IconPin", "贴图到屏幕（Ctrl+T）", CaptureAction.Pin),
-            ActionButton("IconCopy", "复制到剪贴板（Ctrl+C）", CaptureAction.Copy, primary: true),
-        });
+    // ============ 完成动作布局（照上游 action_tools_layout） ============
 
-        AddGroup(new[]
+    /// <summary>当前工具条上按顺序排出来的完成动作（冒烟 / 设置页摘要用）。</summary>
+    internal IReadOnlyList<CaptureActionTool> ActionOrder => _actionOrder;
+
+    private readonly List<CaptureActionTool> _actionOrder = new();
+
+    /// <summary>
+    /// 编辑模式里用得到的完成动作：截图覆盖层有的长截图 / 录屏 / 实时贴图 / 更多 / 取消
+    /// 在图片编辑窗里没有对应行为，按上游 <c>PinnedActionTools</c> 的口径直接跳过。
+    /// </summary>
+    internal static bool ActionAvailableIn(CaptureActionTool tool, ToolbarMode mode) => mode != ToolbarMode.Edit
+        || tool is CaptureActionTool.Recognize
+            or CaptureActionTool.Pin
+            or CaptureActionTool.Copy
+            or CaptureActionTool.Print
+            or CaptureActionTool.QuickSave
+            or CaptureActionTool.SaveAs;
+
+    /// <summary>
+    /// 按布局逐组摆出完成动作（<see cref="CaptureActionLayoutStore"/>）：布局里的顺序与分组
+    /// 就是工具条上的顺序与竖线；编辑模式里用不到的自动跳过，整组都跳过的连竖线一起不画。
+    /// </summary>
+    /// <param name="mode">哪条工具条（截图 / 图片编辑 / 全屏画布）。</param>
+    /// <param name="separatorBeforeFirst">
+    /// 第一组前面要不要竖线：截图模式前面已经有一条（「撤销 / 重做 │ 完成动作」），编辑模式没有。
+    /// </param>
+    private void AddActionGroups(ToolbarMode mode, bool separatorBeforeFirst)
+    {
+        bool first = true;
+        foreach (var group in CaptureActionLayoutStore.Current.Groups)
         {
-            ActionButton("IconPrint", "打印（Ctrl+P）", CaptureAction.Print),
-            ActionButton("IconQuickSave", "快速保存到图片\\LTools 截图，不弹框（Ctrl+S）", CaptureAction.QuickSave),
-            ActionButton("IconSave", "另存为…（Ctrl+Shift+S）", CaptureAction.Save),
-        });
+            var buttons = new List<FrameworkElement>();
+            foreach (var tool in group)
+            {
+                var button = ActionButtonFor(tool, mode);
+                if (button == null) continue;
+                _actionOrder.Add(tool);
+                buttons.Add(button);
+            }
+
+            if (buttons.Count == 0) continue;
+
+            AddGroup(buttons, separator: !first || separatorBeforeFirst);
+            first = false;
+        }
+    }
+
+    /// <summary>一个完成动作的按钮（布局里的键 → 图标 / 提示 / <see cref="CaptureAction"/>）。</summary>
+    private FrameworkElement? ActionButtonFor(CaptureActionTool tool, ToolbarMode mode)
+    {
+        if (!ActionAvailableIn(tool, mode)) return null;
+
+        bool edit = mode == ToolbarMode.Edit;
+        return tool switch
+        {
+            CaptureActionTool.Recognize => ActionButton("IconRecognize",
+                "识别文字 / 表格 / 二维码（Ctrl+R）", CaptureAction.Recognize),
+            CaptureActionTool.QrCode => QrButton(),
+            CaptureActionTool.Record => ActionButton("IconRecord",
+                "录屏：把当前选区录成 MP4（3 秒倒计时后开始，控制条上可暂停 / 完成 / 取消）",
+                CaptureAction.Record),
+            CaptureActionTool.Pin => ActionButton("IconPin", "贴图到屏幕（Ctrl+T）", CaptureAction.Pin),
+            CaptureActionTool.Live => ActionButton("IconLive",
+                "实时贴图：贴一块跟着这个窗口刷新的图（Ctrl+W）", CaptureAction.Live),
+            CaptureActionTool.Scroll => ActionButton("IconScroll",
+                "长截图：滚着接成一张长图（Ctrl+L）", CaptureAction.Scroll),
+            CaptureActionTool.Print => ActionButton("IconPrint", "打印（Ctrl+P）", CaptureAction.Print),
+            CaptureActionTool.QuickSave => ActionButton("IconQuickSave",
+                edit
+                    ? "快速保存到图片\\LTools 截图，不弹框（Ctrl+S）"
+                    : "快速保存到图片\\LTools 截图，不弹框（Ctrl+Shift+S）",
+                CaptureAction.QuickSave),
+            CaptureActionTool.SaveAs => ActionButton("IconSave",
+                edit ? "另存为…（Ctrl+Shift+S）" : "另存为…（Ctrl+S）", CaptureAction.Save),
+            CaptureActionTool.More => MoreButton(),
+            CaptureActionTool.Cancel => ActionButton("IconClose", "取消（Esc）", CaptureAction.Cancel,
+                danger: true),
+            CaptureActionTool.Copy => ActionButton("IconCopy",
+                edit ? "复制到剪贴板（Ctrl+C）" : "复制到剪贴板并关闭（Enter）",
+                CaptureAction.Copy, primary: true),
+            _ => null,
+        };
     }
 
     /// <summary>
@@ -909,10 +947,17 @@ public partial class CaptureToolbar : UserControl
         menu.IsOpen = true;
     }
 
-    /// <summary>一组动作按钮前面加一条竖线（第一条不加）；分组同时记进 <see cref="_actionParts"/>，便于整组收起。</summary>
-    private void AddGroup(IReadOnlyList<FrameworkElement> buttons)
+    /// <summary>
+    /// 一组动作按钮前面加一条竖线（<paramref name="separator"/> = false 时不加）；
+    /// 分组同时记进 <see cref="_actionParts"/>，便于整组收起。
+    /// </summary>
+    /// <remarks>
+    /// 「第一组前面要不要线」由调用方明确给（截图模式前面已经有「撤销 / 重做 │ 完成动作」那条，
+    /// 编辑模式没有）——别用 <c>_actionParts.Count &gt; 0</c> 猜，那个集合只在截图模式预先有内容。
+    /// </remarks>
+    private void AddGroup(IReadOnlyList<FrameworkElement> buttons, bool separator = true)
     {
-        if (_actionParts.Count > 0)
+        if (separator)
         {
             var line = new Border { Style = (Style)FindResource("SeparatorBar") };
             _actionParts.Add(line);

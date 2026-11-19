@@ -74,6 +74,24 @@ public partial class ConfigHelperWindow
             OverlayUiSettings.MonitorCenterGuideColor);
         ShowColor(CapturePickerGuideColorSwatch, CapturePickerGuideColorText,
             OverlayUiSettings.PickerCenterGuideColor);
+
+        PopulateActionLayoutSummary();
+    }
+
+    /// <summary>「完成动作按钮」那一行的摘要（分组用竖线连、收起来的在末尾报数）。</summary>
+    private void PopulateActionLayoutSummary()
+    {
+        var layout = CaptureActionLayoutStore.Current;
+        string text = layout.Describe();
+        if (layout.Hidden.Count > 0) text += $"（收起 {layout.Hidden.Count} 个）";
+        CaptureActionLayoutSummary.Text = text;
+    }
+
+    /// <summary>打开完成动作布局编辑器；保存了就刷新摘要。</summary>
+    private void CaptureActionLayout_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CaptureActionLayoutWindow.Show(this)) return;
+        PopulateActionLayoutSummary();
     }
 
     /// <summary>六个色值按钮的共用外观：色块 + <c>#RRGGBBAA</c> 文本（透明写「透明」）。</summary>

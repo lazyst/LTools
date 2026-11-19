@@ -133,6 +133,8 @@ internal static class ConfigBundle
         cfg.CaptureHistoryPageSize = ui.CaptureHistoryPageSize;
         cfg.CaptureToolGroups = ui.CaptureToolGroups ?? new();
         cfg.CaptureToolHidden = ui.CaptureToolHidden ?? new();
+        cfg.CaptureActionGroups = ui.CaptureActionGroups ?? new();
+        cfg.CaptureActionHidden = ui.CaptureActionHidden ?? new();
         cfg.CaptureLastTool = ui.CaptureLastTool;
         cfg.CaptureStyles = ui.CaptureStyles ?? new();
         cfg.CaptureSelection = ui.CaptureSelection ?? new();
@@ -407,6 +409,8 @@ internal static class ConfigBundle
         CaptureHistoryPageSize = cfg.CaptureHistoryPageSize,
         CaptureToolGroups = cfg.CaptureToolGroups ?? new(),
         CaptureToolHidden = cfg.CaptureToolHidden ?? new(),
+        CaptureActionGroups = cfg.CaptureActionGroups ?? new(),
+        CaptureActionHidden = cfg.CaptureActionHidden ?? new(),
         CaptureLastTool = cfg.CaptureLastTool,
         CaptureStyles = cfg.CaptureStyles ?? new(),
         CaptureSelection = cfg.CaptureSelection ?? new(),

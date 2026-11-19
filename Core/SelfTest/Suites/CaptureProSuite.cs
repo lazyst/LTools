@@ -145,6 +145,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "截图界面与参考线：归一 / 单位 / 显隐 / 色值 / 参考线几何", OverlayUiCases));
         cases.Add(new("capturePro", "贴图窗口：归一 / 滚轮档位 / 缩放锚点 / 阴影带宽", PinWindowCases));
         cases.Add(new("capturePro", "贴图文字标注：样式 / 选区 / toggle / 载荷 / 几何", PinAnnotationCases));
+        cases.Add(new("capturePro", "完成动作布局：默认 / 归一 / 往返 / 编辑模式可用集", ActionLayoutCases));
     }
 
     private static void Geometry()

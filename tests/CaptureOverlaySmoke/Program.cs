@@ -300,6 +300,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "actionlayout")
+        {
+            ActionLayoutSection(BuildShot(320, 240));
+            Console.WriteLine(_failed == 0 ? "actionlayout-only：通过" : $"actionlayout-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
 
@@ -314,6 +321,9 @@ internal static partial class Program
 
         // ============ 贴图快速文字标注（P9-d3：划选工具条 / 样式 / 导出 / 贴回指纹） ============
         PinAnnotationSection(BuildShot(320, 240));
+
+        // ============ 完成动作布局（P9-d4：顺序 / 分组 / 显隐 / 落盘 / 编辑窗过滤） ============
+        ActionLayoutSection(BuildShot(320, 240));
 
         const int width = 1600, height = 900;
         var shot = BuildShot(width, height);

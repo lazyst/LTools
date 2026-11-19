@@ -185,6 +185,15 @@ public sealed class AppConfig
     /// <summary>截图工具栏里被收起来的工具键（不占格子）。</summary>
     public List<string> CaptureToolHidden { get; set; } = new();
 
+    /// <summary>
+    /// 截图工具条「完成动作」的分组布局（一行一组、组内逗号分隔动作键，如 <c>recognize,qrcode</c>）；
+    /// 空 = 按默认分组。见 <c>Features/CapturePro/CaptureActionLayout</c>。
+    /// </summary>
+    public List<string> CaptureActionGroups { get; set; } = new();
+
+    /// <summary>截图工具条里被收起来的完成动作键（不占位置）。</summary>
+    public List<string> CaptureActionHidden { get; set; } = new();
+
     /// <summary>上次用过的绘图工具（「记住上次工具」打开时开新会话用它）。</summary>
     public string? CaptureLastTool { get; set; }
 

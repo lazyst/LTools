@@ -516,6 +516,26 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 - **覆盖层的三个复制出口都走 `CaptureSave.CopyImage`**（普通复制 / 长截图 / 贴图里「复制图片」），
   所以「复制时带文件」与「复制截图后自动保存」在哪个入口触发都一致。
 
+### 7.3 完成动作按钮布局（P9-d4，2026-11-19）
+
+照上游 `screenshot_toolbar/action_tools_layout`（`presentation/screenshottoolbarlayoutmodel.h` 的
+`normalizedLayout` / `actionDefaultPositions` + `storage/settingsadapters.h` 的 `ScreenshotToolbarLayout`
+（`positions` + `hidden`））：工具条右半边那 12 个按钮的**顺序 / 分组 / 显隐**可以自己排。
+
+| 项 | 行为 |
+|---|---|
+| 数据 | `Features/CapturePro/CaptureActionLayout.cs`：`CaptureActionTool` 12 个动作（识别 / 二维码 / 录屏 / 贴图 / 实时贴图 / 长截图 / 打印 / 快速保存 / 另存为 / 更多 / 取消 / 复制），`KeyOf` ↔ `ToolOf` 用上游那套键（`recognize` / `qrcode` / `record-screen` / `pin-to-screen` / `pin-live` / `scrolling-screenshot` / `print` / `quick-save` / `save-as-file` / `more` / `cancel` / `copy`） |
+| 默认 | 7 组：`recognize,qrcode` │ `record-screen` │ `pin-to-screen,pin-live` │ `scrolling-screenshot` │ `print,quick-save,save-as-file` │ `more` │ `cancel,copy`（照上游 `actionDefaultPositions`） |
+| 归一 | 未知键丢掉、同一个键只算第一次、空组丢掉；既在位置里又在隐藏里按「在位置里」算（同上游 `normalizedLayout`）；`Parse` 额外把**新版加进来的动作**按默认分组补回，老配置不用改 |
+| 落盘 | `configs/ui.json` 的 `CaptureActionGroups`（一行一组、组内逗号分隔）+ `CaptureActionHidden`；`CaptureActionLayoutStore` 进程内缓存，写完立刻影响下一次摆工具条 |
+| 工具条 | `CaptureToolbar.AddActionGroups` 逐组摆按钮，每组前面**恰好一条**竖线；第一组前面那条由调用方决定（截图模式前面已有「撤销 / 重做 │ 完成动作」那条，编辑模式没有） |
+| 图片编辑窗 | 与截图覆盖层**共用同一份布局**：编辑模式里用不到的动作（长截图 / 录屏 / 实时贴图 / 更多 / 取消 / 二维码开关）自动跳过，整组都跳过就连竖线一起不画（`ActionAvailableIn`） |
+| 编辑器 | 设置「通用 → 截图 Pro · 界面与参考线」的「完成动作按钮 编辑…」→ `Views/CapturePro/CaptureActionLayoutWindow`：一行一个动作（显隐勾选 + 名称 + 「新组」勾选 + ▲▼），第一行不能「另起一组」；**上移 / 下移只换「这一行是哪个动作」（连同显隐），分组线不动**——分组线属于位置，挪走一项不该把最后一组拆成两段；「恢复默认」还原顺序与显隐 |
+| 摘要 | 设置页那一行用 `Describe()` 写出分组（竖线分隔）+「收起 N 个」 |
+
+**为什么只存一份**：上游按工具栏种类各存一份，本项目的贴图内标注与图片编辑窗是**同一个覆盖层**，
+分成两份就会出现「截图里排好的顺序在编辑器里不生效」。编辑器里照实说明哪些动作在编辑窗会自动跳过。
+
 ## 8. 接入点
 
 | 位置 | 改动 |
