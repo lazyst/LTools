@@ -79,6 +79,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "贴图前后序：加 / 提 / 删 / 换组 / 观测 / 还原", PinStackingCases));
         cases.Add(new("capturePro", "采集历史贴回：外观 / 窗口矩形 / 桌面求交", HistoryPinCases));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
+        cases.Add(new("capturePro", "采集历史：来源 / 日期 / 关键词 / 分页 / 卡片文案", HistoryPageCases));
         cases.Add(new("capturePro", "跨屏：取景并集 / 交集", ScreenArea));
         cases.Add(new("capturePro", "长截图：滚动位移识别", ScrollDetection));
         cases.Add(new("capturePro", "长截图：拼接与面板落点", ScrollBuild));

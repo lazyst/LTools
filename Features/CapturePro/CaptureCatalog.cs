@@ -75,6 +75,11 @@ internal sealed class CaptureEntry
     /// <summary>是不是长截图（拼出来的长图不按原选区贴回，也没有那一圈效果）。</summary>
     public bool Scrolling { get; set; }
 
+    /// <summary>
+    /// 这块截图压到了几块显示器（照上游 <c>record.displays.size()</c>）；直接截图 / 老记录是 1。
+    /// </summary>
+    public int Displays { get; set; } = 1;
+
     /// <summary>识别还没跑完（给列表显示「识别中…」用）。</summary>
     [JsonIgnore] public bool Pending => State == "pending";
 
@@ -311,6 +316,9 @@ internal static class CaptureCatalog
                 entry.EffectPx = Math.Max(0, placement.Appearance.EffectPx);
                 entry.Decoration = PinAppearance.NormalizeDecoration(placement.Appearance.Decoration);
                 entry.Scrolling = placement.Scrolling;
+                entry.Displays = CountDisplays(placement.Selection.X, placement.Selection.Y,
+                    placement.Selection.Width, placement.Selection.Height,
+                    Native.Screens.All().Select(s => (s.Left, s.Top, s.Width, s.Height)));
             }
 
             items.Insert(0, entry);
@@ -561,6 +569,24 @@ internal static class CaptureCatalog
         }
 
         return (keep, drop);
+    }
+
+    /// <summary>
+    /// 这块选区压到了几块屏（照上游 <c>displays</c> 的数量）：按交集判定，一块都碰不上也算 1。
+    /// </summary>
+    /// <remarks>
+    /// 纯函数：矩形形状用元组传，自检可以直接喂几块「假屏」，不必去枚举真显示器。
+    /// </remarks>
+    public static int CountDisplays(int x, int y, int width, int height,
+        IEnumerable<(int Left, int Top, int Width, int Height)> screens)
+    {
+        if (width <= 0 || height <= 0) return 1;
+
+        int count = screens.Count(s =>
+            x < s.Left + s.Width && s.Left < x + width &&
+            y < s.Top + s.Height && s.Top < y + height);
+
+        return count > 0 ? count : 1;
     }
 
     /// <summary>缩略图尺寸：按长边缩到 <paramref name="maxSide"/>，不放大小图。</summary>

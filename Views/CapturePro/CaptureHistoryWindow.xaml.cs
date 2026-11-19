@@ -1,82 +1,74 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using LTools.Config;
 using LTools.Core;
+using LTools.Features;
 using LTools.Features.CapturePro;
-using LTools.Features.CapturePro.Collage;
-using LTools.Features.CapturePro.ImageEdit;
-using LTools.Features.CapturePro.Split;
 using LTools.Native;
 using LTools.Views.Controls;
 
 namespace LTools.Views.CapturePro;
 
-/// <summary>列表里的一行：磁盘上的 <see cref="CaptureEntry"/> + 已经解码好的缩略图。</summary>
-internal sealed class CaptureRow
-{
-    public CaptureRow(CaptureEntry entry, BitmapSource? thumbnail)
-    {
-        Entry = entry;
-        Thumb = thumbnail;
-    }
-
-    public CaptureEntry Entry { get; }
-
-    public BitmapSource? Thumb { get; }
-
-    public string Title => $"{Entry.KindLabel} · {Entry.TimeText}";
-
-    /// <summary>录屏第一行写时长与尺寸（它没有「完成动作」那么要紧），其它写尺寸 + 完成动作。</summary>
-    public string Info => Entry.IsRecord
-        ? $"{Entry.DurationText} · {Entry.SizeText}"
-        : $"{Entry.SizeText} · {Entry.SourceText}";
-
-    public string Summary => CaptureCatalog.SummaryOf(Entry);
-}
-
 /// <summary>
-/// 采集历史中心：截图 / 识别的成品图与识别文字，左列表 + 右预览。
+/// 采集历史（照 Snow Shot 的 <c>screenshothistorypagewidget</c>）：页头（标题 + 计数 + 清空 / 刷新 /
+/// 打开目录）→ 筛选（来源多选 + 日期范围 + 搜索）→ 选择栏（有选中才出现）→ 卡片列表 → 分页。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 数据全在 <see cref="CaptureCatalog"/>（<c>captures/catalog.json</c> + 图片）；
-/// 这个窗口只负责浏览、复制、另存、删除，不往磁盘写别的东西。
+/// 卡片是「左详情 + 右 260 × 156 预览」的宽布局（上游 <c>kPreviewWidth</c> / <c>kPreviewHeight</c>）；
+/// 勾选框是批量操作的入口，不是行选中。双击卡片 = 编辑，中键 = 复制，点预览 = 看大图。
 /// </para>
 /// <para>
-/// 识别文字是异步回填的：识别结果窗算完会 <see cref="CaptureCatalog.SetText"/>，
-/// 窗口订阅 <see cref="CaptureCatalog.Changed"/> 自己刷新，用户不必手动点「刷新」。
+/// 筛选 / 分页全是 <see cref="CaptureHistoryQuery"/> / <see cref="CaptureHistoryPaging"/> 的纯函数，
+/// 窗口只负责搬控件状态；数据源是 <see cref="CaptureCatalog"/>（<c>captures/catalog.json</c> + 图片），
+/// 这个窗口只读它，写动作都走目录自己的方法。
 /// </para>
 /// </remarks>
 public partial class CaptureHistoryWindow : Window
 {
     private static CaptureHistoryWindow? _current;
 
-    private readonly ObservableCollection<CaptureRow> _rows = new();
+    private readonly ObservableCollection<CaptureHistoryRow> _rows = new();
+    private readonly List<CaptureHistoryRow> _pageRows = new();
     private readonly Dictionary<string, BitmapSource> _thumbs = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _bytes = new(StringComparer.Ordinal);
+
+    /// <summary>勾选中的记录 id（跨页保留，照上游 <c>m_selectedRecordIds</c>）。</summary>
+    private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
+
+    private readonly HashSet<string> _sources = new(StringComparer.Ordinal);
     private readonly SearchDebounce _debounce;
 
-    private List<CaptureRow> _all = new();
-    private string _kind = "all";
+    private List<CaptureEntry> _all = new();
+    private List<CaptureEntry> _filtered = new();
+    private int _page = 1;
+    private int _pageSize = CaptureHistoryPaging.DefaultPageSize;
     private bool _loaded;
+
+    /// <summary>程序化改控件（回填日期 / 勾选 / 页码）时别再触发一轮筛选。</summary>
+    private bool _suppress;
 
     public CaptureHistoryWindow()
     {
         InitializeComponent();
 
-        HistoryList.ItemsSource = _rows;
-        _debounce = new SearchDebounce(150, ApplyFilter);
+        CardList.ItemsSource = _rows;
+        _debounce = new SearchDebounce(150, () => ApplyFilter(resetPage: true));
+
+        BuildSourceMenu();
 
         Loaded += OnLoaded;
         Closed += OnClosed;
+        PreviewKeyDown += OnPreviewKeyDown;
     }
 
     /// <summary>托盘入口：没开就开一个，开着就激活 / 还原。</summary>
@@ -103,10 +95,30 @@ public partial class CaptureHistoryWindow : Window
         _current.Topmost = false;
     }
 
+    /// <summary>
+    /// 配置锚点：正常运行是 <see cref="ConfigLocator.FindPath"/>；导入备份 / 冒烟会把
+    /// <see cref="ConfigStore.ConfigPath"/> 指到临时目录（与 <see cref="PinManagerWindow"/> 同一个写法）。
+    /// </summary>
+    private static string ConfigAnchor =>
+        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (_loaded) return;
         _loaded = true;
+
+        // 每页条数照上游存在 ui.json（0 / 认不出 = 默认 20）
+        try
+        {
+            _pageSize = CaptureHistoryPaging.NormalizePageSize(
+                UiStore.Read(ConfigAnchor).CaptureHistoryPageSize);
+        }
+        catch (Exception ex)
+        {
+            _pageSize = CaptureHistoryPaging.DefaultPageSize;
+            AppLog.Warn("CaptureHistory.LoadPageSize", "读取每页条数失败：" + ex.Message);
+        }
+        SelectPageSize(_pageSize);
 
         CaptureCatalog.Changed += Catalog_Changed;
         Reload();
@@ -118,11 +130,33 @@ public partial class CaptureHistoryWindow : Window
         _debounce.Cancel();
     }
 
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // 在输入框里按键是打字 / 删字符 / 全选文本，不能当成列表快捷键
+        if (Keyboard.FocusedElement is TextBoxBase || Keyboard.FocusedElement is DatePicker) return;
+
+        if (e.Key == Key.Escape)
+        {
+            Close();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Delete && _selected.Count > 0)
+        {
+            DeleteSelected();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.A && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            SelectCurrentPage();
+            e.Handled = true;
+        }
+    }
+
     private void Catalog_Changed()
     {
         if (!Dispatcher.CheckAccess())
         {
-            Dispatcher.BeginInvoke(new Action(() => Reload()));
+            Dispatcher.BeginInvoke(new Action(Reload));
             return;
         }
         Reload();
@@ -130,16 +164,70 @@ public partial class CaptureHistoryWindow : Window
 
     // ============ 列表 ============
 
-    /// <summary>重新读磁盘并重建列表（保留当前选中项）。</summary>
-    internal void Reload(string? selectId = null)
+    /// <summary>重新读磁盘（保留筛选、页码与勾选；失效的勾选自动丢掉）。</summary>
+    internal void Reload()
     {
-        selectId ??= SelectedId();
+        _all = CaptureCatalog.Load();
+        ApplyFilter(resetPage: false);
+    }
 
-        _all = CaptureCatalog.Load()
-            .Select(entry => new CaptureRow(entry, ThumbFor(entry)))
-            .ToList();
+    /// <summary>按当前筛选条件重建本页（<paramref name="resetPage"/> = 换筛选时回第 1 页并清空勾选）。</summary>
+    private void ApplyFilter(bool resetPage)
+    {
+        if (!_loaded) return;
 
-        ApplyFilter(selectId);
+        if (resetPage)
+        {
+            _page = 1;
+            ClearSelection(repaint: false);
+        }
+
+        var query = new CaptureHistoryQuery
+        {
+            Sources = _sources.ToArray(),
+            Range = CurrentRange(),
+            Text = SearchBox.Text ?? "",
+        };
+
+        _filtered = query.Apply(_all);
+
+        // 记录被删掉（别处清空 / 超过保留期）后，勾选里可能挂着不存在的 id
+        var live = new HashSet<string>(_all.Select(entry => entry.Id), StringComparer.Ordinal);
+        _selected.RemoveWhere(id => !live.Contains(id));
+
+        BuildPage();
+        UpdateHeader();
+        UpdateEmpty();
+        UpdatePager();
+        UpdateSelectionBar();
+        UpdateDateState();
+    }
+
+    private CaptureDateRange CurrentRange()
+    {
+        if (!_loaded) return CaptureDateRange.Empty;
+        return new CaptureDateRange(DateStart.SelectedDate, DateEnd.SelectedDate).Ordered();
+    }
+
+    private void BuildPage()
+    {
+        _page = CaptureHistoryPaging.ClampPage(_page, _filtered.Count, _pageSize);
+        var (first, last) = CaptureHistoryPaging.Range(_page, _filtered.Count, _pageSize);
+
+        _pageRows.Clear();
+        _rows.Clear();
+
+        for (int index = first; index < last; index++)
+        {
+            var entry = _filtered[index];
+            var row = new CaptureHistoryRow(entry, ThumbFor(entry), BytesOf(entry))
+            {
+                IsSelected = _selected.Contains(entry.Id),
+            };
+
+            _pageRows.Add(row);
+            _rows.Add(row);
+        }
     }
 
     private BitmapSource? ThumbFor(CaptureEntry entry)
@@ -151,62 +239,136 @@ public partial class CaptureHistoryWindow : Window
         return thumb;
     }
 
-    private void ApplyFilter() => ApplyFilter(SelectedId());
-
-    private void ApplyFilter(string? selectId)
+    /// <summary>成品文件的字节数（录屏算视频、其余算成品图）；读不到按 0（卡片只写位置）。</summary>
+    private long BytesOf(CaptureEntry entry)
     {
-        string query = SearchBox?.Text?.Trim() ?? "";
+        if (_bytes.TryGetValue(entry.Id, out long cached)) return cached;
 
-        var filtered = _all
-            .Where(row => KindMatches(row.Entry) && Matches(row.Entry, query))
-            .ToList();
+        long bytes = 0;
+        try
+        {
+            string path = entry.IsRecord
+                ? CaptureCatalog.FilePath(entry)
+                : CaptureCatalog.AssetPath(entry.Id);
 
-        _rows.Clear();
-        foreach (var row in filtered) _rows.Add(row);
+            if (path.Length > 0 && File.Exists(path)) bytes = new FileInfo(path).Length;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("CaptureHistory.Bytes", "读文件大小失败：" + ex.Message);
+        }
 
-        StatusText.Text = query.Length > 0 || _kind != "all"
-            ? $"显示 {filtered.Count} / 共 {_all.Count} 条"
-            : $"共 {_all.Count} 条 · 最多保留 {CaptureCatalog.MaxEntries} 条 / {CaptureCatalog.MaxAgeDays} 天";
-
-        EmptyHint.Visibility = filtered.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        EmptyHint.Text = _all.Count == 0
-            ? "还没有采集记录。截图、识别、录屏完成后，这里会出现成品图 / 文字 / 视频。"
-            : "没有符合条件的记录。";
-
-        var target = selectId == null ? null : filtered.FirstOrDefault(r => r.Entry.Id == selectId);
-        HistoryList.SelectedItem = target ?? filtered.FirstOrDefault();
-
-        if (filtered.Count > 0) HistoryList.ScrollIntoView(filtered[0]);
+        _bytes[entry.Id] = bytes;
+        return bytes;
     }
 
-    private bool KindMatches(CaptureEntry entry) =>
-        _kind == "all" || entry.Kind == _kind;
-
-    private static bool Matches(CaptureEntry entry, string query)
+    private void UpdateHeader()
     {
-        if (query.Length == 0) return true;
+        CountText.Text = _filtered.Count == _all.Count
+            ? $"共 {_all.Count} 条 · 最多保留 {CaptureCatalog.MaxEntries} 条 / {CaptureCatalog.MaxAgeDays} 天"
+            : $"共 {_all.Count} 条 · 筛选出 {_filtered.Count} 条";
 
-        return entry.Text.Contains(query, StringComparison.OrdinalIgnoreCase)
-            || entry.Source.Contains(query, StringComparison.OrdinalIgnoreCase)
-            || entry.KindLabel.Contains(query, StringComparison.OrdinalIgnoreCase)
-            || entry.TimeText.Contains(query, StringComparison.OrdinalIgnoreCase);
+        ClearAllBtn.IsEnabled = _all.Count > 0;
     }
 
-    private CaptureRow? SelectedRow => HistoryList.SelectedItem as CaptureRow;
-
-    private string? SelectedId() => SelectedRow?.Entry.Id;
-
-    // ============ 事件 ============
-
-    private void Tab_Changed(object sender, RoutedEventArgs e)
+    private void UpdateEmpty()
     {
-        if (sender is not RadioButton button) return;
-        _kind = button.Tag as string ?? "all";
+        if (_filtered.Count > 0)
+        {
+            EmptyPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
 
-        // XAML 解析期间 IsChecked="True" 会先触发一次，那时列表还没建好
-        if (HistoryList == null || !_loaded) return;
-        ApplyFilter();
+        EmptyPanel.Visibility = Visibility.Visible;
+        bool empty = _all.Count == 0;
+        EmptyTitle.Text = empty ? "还没有截图历史" : "没有符合条件的截图";
+        EmptyText.Text = empty
+            ? "复制或贴到屏幕的截图会出现在这里"
+            : "换一个来源或日期范围看看";
     }
+
+    // ============ 分页 ============
+
+    private void UpdatePager()
+    {
+        PageRangeText.Text = CaptureHistoryPaging.RangeText(_page, _filtered.Count, _pageSize);
+
+        int pages = CaptureHistoryPaging.PageCount(_filtered.Count, _pageSize);
+        PrevBtn.IsEnabled = _page > 1;
+        NextBtn.IsEnabled = _page < pages;
+
+        PageHost.Children.Clear();
+        foreach (int page in CaptureHistoryPaging.PageNumbers(_page, pages))
+        {
+            var button = new Button
+            {
+                Content = page.ToString(CultureInfo.InvariantCulture),
+                Tag = page,
+                Width = 28,
+                Height = 28,
+                Margin = new Thickness(2, 0, 2, 0),
+                Padding = new Thickness(0),
+                MinWidth = 0,
+                MinHeight = 0,
+                FontSize = 12,
+                Style = (Style)FindResource(page == _page ? "BtnPrimary" : "BtnGhost"),
+            };
+
+            button.Click += (_, _) => GoToPage(page);
+            PageHost.Children.Add(button);
+        }
+    }
+
+    private void GoToPage(int page)
+    {
+        int target = CaptureHistoryPaging.ClampPage(page, _filtered.Count, _pageSize);
+        if (target == _page) return;
+
+        _page = target;
+        BuildPage();
+        UpdatePager();
+        UpdateSelectionBar();
+        HistoryScroll.ScrollToTop();
+    }
+
+    private void PrevPage_Click(object sender, RoutedEventArgs e) => GoToPage(_page - 1);
+
+    private void NextPage_Click(object sender, RoutedEventArgs e) => GoToPage(_page + 1);
+
+    private void SelectPageSize(int size)
+    {
+        int normalized = CaptureHistoryPaging.NormalizePageSize(size);
+        _suppress = true;
+
+        foreach (var item in PageSizeBox.Items.OfType<ComboBoxItem>())
+        {
+            if (int.TryParse(item.Tag?.ToString(), out int value) && value == normalized)
+            {
+                PageSizeBox.SelectedItem = item;
+                break;
+            }
+        }
+
+        _suppress = false;
+    }
+
+    private void PageSize_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loaded || _suppress) return;
+        if (PageSizeBox.SelectedItem is not ComboBoxItem item) return;
+        if (!int.TryParse(item.Tag?.ToString(), out int size)) return;
+
+        _pageSize = CaptureHistoryPaging.NormalizePageSize(size);
+        _page = 1;
+        BuildPage();
+        UpdatePager();
+        UpdateSelectionBar();
+
+        try { UiStore.Modify(ConfigAnchor, ui => ui.CaptureHistoryPageSize = _pageSize); }
+        catch (Exception ex) { AppLog.Warn("CaptureHistory.SavePageSize", "保存每页条数失败：" + ex.Message); }
+    }
+
+    // ============ 筛选 ============
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
@@ -214,347 +376,153 @@ public partial class CaptureHistoryWindow : Window
         _debounce.Signal();
     }
 
-    private void HistoryList_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateSelection();
-
-    private void UpdateSelection()
+    private void Date_Changed(object? sender, SelectionChangedEventArgs e)
     {
-        var row = SelectedRow;
-        bool has = row != null;
-        bool record = has && row!.Entry.IsRecord;
-
-        PinBtn.IsEnabled = has && !record;
-        PinBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
-        PinBtn.ToolTip = has && !row!.Entry.CanPin
-            ? "这张没有记下原选区（长截图 / 老记录）：会居中贴到光标所在屏"
-            : "按原选区与外观贴回屏幕";
-        CopyImageBtn.IsEnabled = has && !record;
-        CopyImageBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
-        EditBtn.IsEnabled = has && !record;
-        EditBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
-        SplitBtn.IsEnabled = has && !record;
-        SplitBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
-        CollageBtn.IsEnabled = has && !record;
-        CollageBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
-        PlayBtn.IsEnabled = record;
-        PlayBtn.Visibility = record ? Visibility.Visible : Visibility.Collapsed;
-        TrimBtn.IsEnabled = record;
-        TrimBtn.Visibility = record ? Visibility.Visible : Visibility.Collapsed;
-        SaveAsBtn.IsEnabled = has;
-        DeleteBtn.IsEnabled = has;
-        CopyTextBtn.IsEnabled = has && !string.IsNullOrEmpty(row!.Entry.Text);
-        CopyTextBtn.Visibility = record ? Visibility.Collapsed : Visibility.Visible;
-
-        TextPanel.Visibility = has && row!.Entry.IsRecognize ? Visibility.Visible : Visibility.Collapsed;
-        TextPreview.Text = has ? row!.Entry.Text : "";
-
-        PreviewImage.Source = null;
-        PreviewImage.Visibility = Visibility.Collapsed;
-
-        if (!has)
-        {
-            PreviewEmpty.Text = "选择左边一条查看大图";
-            PreviewEmpty.Visibility = Visibility.Visible;
-            PreviewInfo.Text = "";
-            return;
-        }
-
-        PreviewInfo.Text = record
-            ? $"{row!.Entry.KindLabel} · {row.Entry.TimeText} · {row.Entry.DurationText}"
-              + $" · {row.Entry.SizeText} · {row.Entry.FormatText}"
-              + $" · 文件 {FileSizeText(row.Entry)}"
-            : $"{row!.Entry.KindLabel} · {row.Entry.TimeText} · {row.Entry.SizeText}"
-              + $" · 完成动作：{row.Entry.SourceText}";
-
-        var image = CaptureCatalog.LoadImage(CaptureCatalog.AssetPath(row.Entry.Id), 1600);
-        if (image == null)
-        {
-            PreviewEmpty.Text = record ? "封面帧不见了" : "图片文件不见了";
-            PreviewEmpty.Visibility = Visibility.Visible;
-            return;
-        }
-
-        PreviewImage.Source = image;
-        PreviewImage.Visibility = Visibility.Visible;
-        PreviewEmpty.Visibility = Visibility.Collapsed;
+        if (!_loaded || _suppress) return;
+        ApplyFilter(resetPage: true);
     }
 
-    /// <summary>录屏成品的文件大小（<c>3.4 MB</c>）；读不到返回「—」。</summary>
-    private static string FileSizeText(CaptureEntry entry)
+    private void ClearDate_Click(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            string path = CaptureCatalog.FilePath(entry);
-            if (path.Length == 0 || !File.Exists(path)) return "—";
-            string text = CaptureCatalog.FormatBytes(new FileInfo(path).Length);
-            return text.Length > 0 ? text : "—";
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warn("CaptureHistory.FileSize", "读文件大小失败：" + ex.Message);
-            return "—";
-        }
+        _suppress = true;
+        DateStart.SelectedDate = null;
+        DateEnd.SelectedDate = null;
+        _suppress = false;
+
+        ApplyFilter(resetPage: true);
     }
 
-    private void HistoryList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    private void UpdateDateState() =>
+        ClearDateBtn.Visibility = CurrentRange().IsEmpty ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>来源筛选弹层：第一行「全部来源」，下面一条一个勾选框（照上游 <c>AdSelect</c> 多选）。</summary>
+    private void BuildSourceMenu()
     {
-        if (!ShouldCopyOnDoubleClick(e.OriginalSource as DependencyObject)) return;
+        SourceListHost.Children.Clear();
 
-        // 录屏双击 = 播放（复制封面没意义，视频本身才是内容）
-        if (SelectedRow?.Entry.IsRecord == true) PlaySelected();
-        else CopySelectedImage();
-    }
-
-    private void HistoryList_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (SelectedRow == null) return;
-
-        if (e.Key == Key.Delete)
+        var all = new Button
         {
-            DeleteSelected();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Enter)
+            Content = "全部来源",
+            Style = (Style)FindResource("BtnGhost"),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+
+        all.Click += (_, _) =>
         {
-            if (SelectedRow.Entry.IsRecord) PlaySelected();
-            else CopySelectedImage();
-            e.Handled = true;
-        }
-    }
+            _sources.Clear();
+            SyncSourceChecks();
+            UpdateSourceFilterText();
+            ApplyFilter(resetPage: true);
+        };
 
-    /// <summary>双击整行 = 复制图片 / 播放录屏；滚动条 / 行内按钮 / 表头空白都不算。</summary>
-    internal static bool ShouldCopyOnDoubleClick(DependencyObject? source)
-    {
-        if (source == null) return false;
-        if (FindAncestor<ScrollBar>(source) != null) return false;
-        if (FindAncestor<Button>(source) != null) return false;
-        return FindAncestor<ListBoxItem>(source) != null;
-    }
+        SourceListHost.Children.Add(all);
 
-    // ============ 操作 ============
-
-    private void Play_Click(object sender, RoutedEventArgs e) => PlaySelected();
-
-    /// <summary>裁剪 / 倍速：开窗口，导出成新文件（原片不动）。</summary>
-    private void Trim_Click(object sender, RoutedEventArgs e)
-    {
-        var row = SelectedRow;
-        if (row == null || !row.Entry.IsRecord) return;
-
-        string path = CaptureCatalog.FilePath(row.Entry);
-        if (path.Length == 0 || !File.Exists(path))
+        foreach (var (key, label) in CaptureHistorySource.All)
         {
-            ToastService.Show("录屏文件不在了", "采集历史", 2200, ToastKind.error);
-            return;
-        }
-
-        try
-        {
-            RecordTrimSession.Open(row.Entry);
-        }
-        catch (Exception ex)
-        {
-            ToastService.Show("打开裁剪窗口失败：" + ex.Message, "采集历史", 3200, ToastKind.error);
-            AppLog.Warn("CapturePro.Trim", "打开裁剪窗口失败：" + ex.Message);
-        }
-    }
-
-    /// <summary>用系统默认播放器打开录屏成品。</summary>
-    private void PlaySelected()
-    {
-        var row = SelectedRow;
-        if (row == null) return;
-
-        string path = CaptureCatalog.FilePath(row.Entry);
-        if (path.Length == 0 || !File.Exists(path))
-        {
-            ToastService.Show("录制文件不见了", "采集历史", 2200, ToastKind.error);
-            return;
-        }
-
-        try
-        {
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            ToastService.Show("打不开录制文件：" + ex.Message, "采集历史", 0, ToastKind.error);
-        }
-    }
-
-    private void CopyImage_Click(object sender, RoutedEventArgs e) => CopySelectedImage();
-
-    private void CopySelectedImage()
-    {
-        var row = SelectedRow;
-        if (row == null) return;
-
-        var image = CaptureCatalog.LoadImage(CaptureCatalog.AssetPath(row.Entry.Id), 0);
-        if (image == null)
-        {
-            ToastService.Show("图片文件不见了", "采集历史", 1800, ToastKind.error);
-            return;
-        }
-
-        if (NativeClipboard.SetImage(image)) ToastService.Show("已复制图片", "采集历史", 1400);
-        else ToastService.Show("复制失败（剪贴板被占用）", "采集历史", 0, ToastKind.error);
-    }
-
-    /// <summary>在图片编辑窗里打开这一条（接着标注 / 裁剪 / 导出）。</summary>
-    private void Edit_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRow is not { } row || row.Entry.IsRecord) return;
-
-        if (ImageEditSession.OpenCapture(row.Entry)) return;
-        ToastService.Show("图片文件不见了，没法编辑", "采集历史", 2200, ToastKind.error);
-    }
-
-    /// <summary>在切图窗里把这一条切成多张（与「编辑」同一口径：录屏没有图）。</summary>
-    private void Split_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRow is not { } row || row.Entry.IsRecord) return;
-
-        if (SplitSession.OpenCapture(row.Entry)) return;
-        ToastService.Show("图片文件不见了，没法切图", "采集历史", 2200, ToastKind.error);
-    }
-
-    /// <summary>把这一条加进拼接（与「切图」同一口径：录屏没有图）。</summary>
-    private void Collage_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRow is not { } row || row.Entry.IsRecord) return;
-
-        if (CollageSession.OpenCapture(row.Entry)) return;
-        ToastService.Show("图片文件不见了，没法拼接", "采集历史", 2200, ToastKind.error);
-    }
-
-    private void Pin_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRow is not { } row) return;
-
-        if (CapturePinManager.PinHistory(row.Entry) == null)
-        {
-            ToastService.Show("图片文件不见了，没法贴回屏幕", "采集历史", 2200, ToastKind.error);
-            return;
-        }
-
-        // 按原选区贴回的会正好盖在当初那块；长截图 / 老记录居中贴到光标所在屏
-        ToastService.Show(row.Entry.CanPin ? "已按原选区贴到屏幕" : "已居中贴到屏幕",
-            "采集历史", 1600);
-    }
-
-    private void SaveAs_Click(object sender, RoutedEventArgs e)
-    {
-        var row = SelectedRow;
-        if (row == null) return;
-
-        // 录屏：另存的是视频本身；截图 / 识别：另存 png
-        if (row.Entry.IsRecord)
-        {
-            string path = CaptureCatalog.FilePath(row.Entry);
-            if (path.Length == 0 || !File.Exists(path))
+            var check = new CheckBox
             {
-                ToastService.Show("录制文件不见了", "采集历史", 2200, ToastKind.error);
-                return;
-            }
+                Content = label,
+                Tag = key,
+                Margin = new Thickness(4, 3, 4, 3),
+            };
 
-            CaptureSave.TrySaveFile(this, path, CaptureCatalog.ExtensionOf(path));
-            return;
+            check.Checked += SourceCheck_Changed;
+            check.Unchecked += SourceCheck_Changed;
+            SourceListHost.Children.Add(check);
         }
+    }
 
-        var image = CaptureCatalog.LoadImage(CaptureCatalog.AssetPath(row.Entry.Id), 0);
-        if (image == null)
+    private void SourceFilter_Click(object sender, RoutedEventArgs e) =>
+        SourcePopup.IsOpen = SourceFilterBtn.IsChecked == true;
+
+    private void SourceCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_loaded || _suppress) return;
+
+        _sources.Clear();
+        foreach (var check in SourceListHost.Children.OfType<CheckBox>())
         {
-            ToastService.Show("图片文件不见了", "采集历史", 1800, ToastKind.error);
-            return;
+            if (check.IsChecked == true && check.Tag is string key) _sources.Add(key);
         }
 
-        CaptureSave.TrySave(this, image);
+        UpdateSourceFilterText();
+        ApplyFilter(resetPage: true);
     }
 
-    private void CopyText_Click(object sender, RoutedEventArgs e)
+    private void SyncSourceChecks()
     {
-        string text = SelectedRow?.Entry.Text ?? "";
-        if (string.IsNullOrEmpty(text))
+        _suppress = true;
+        foreach (var check in SourceListHost.Children.OfType<CheckBox>())
         {
-            ToastService.Show("没有识别文字", "采集历史", 1600);
-            return;
+            check.IsChecked = check.Tag is string key && _sources.Contains(key);
         }
-
-        if (NativeClipboard.SetText(text)) ToastService.Show("已复制识别文字", "采集历史", 1400);
-        else ToastService.Show("复制失败（剪贴板被占用）", "采集历史", 0, ToastKind.error);
+        _suppress = false;
     }
 
-    private void Delete_Click(object sender, RoutedEventArgs e) => DeleteSelected();
-
-    private void DeleteSelected()
+    private void UpdateSourceFilterText()
     {
-        var row = SelectedRow;
-        if (row == null) return;
-
-        // 删完把选中落到相邻那条（列表会在 Changed 里重建，先记住 id）
-        var rows = _rows.ToList();
-        int index = rows.IndexOf(row);
-        string? next = rows.Count <= 1
-            ? null
-            : rows[index + 1 < rows.Count ? index + 1 : index - 1].Entry.Id;
-
-        if (!ConfirmDialog.Confirm(this, "删除采集记录",
-                "这条记录和它的图片会被删除，不能撤销。", danger: true, okText: "删除"))
-            return;
-
-        CaptureCatalog.Remove(row.Entry.Id);
-        SelectById(next);
-    }
-
-    private void ClearAll_Click(object sender, RoutedEventArgs e)
-    {
-        if (_all.Count == 0) return;
-
-        if (!ConfirmDialog.Confirm(this, "清空采集历史",
-                $"会删除全部 {_all.Count} 条记录和它们的图片，不能撤销。", danger: true, okText: "清空"))
-            return;
-
-        CaptureCatalog.Clear();
-    }
-
-    private void OpenDir_Click(object sender, RoutedEventArgs e)
-    {
-        try
+        SourceFilterText.Text = _sources.Count switch
         {
-            Directory.CreateDirectory(CaptureCatalog.Root);
-            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{CaptureCatalog.Root}\"")
-            {
-                UseShellExecute = true,
-            });
-        }
-        catch (Exception ex)
-        {
-            ToastService.Show("打开目录失败：" + ex.Message, "采集历史", 0, ToastKind.error);
-        }
+            0 => "全部来源",
+            1 => CaptureHistorySource.LabelOf(_sources.First()),
+            _ => $"已选 {_sources.Count} 项",
+        };
+
+        SourceFilterBtn.ToolTip = _sources.Count == 0
+            ? "按来源筛选（可多选）"
+            : "已选：" + string.Join("、", _sources.Select(CaptureHistorySource.LabelOf)) + "（点开可改）";
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+    // ============ 勾选 ============
 
-    private void SelectById(string? id)
+    private void RowCheck_Changed(object sender, RoutedEventArgs e)
     {
-        var row = id == null ? null : _rows.FirstOrDefault(r => r.Entry.Id == id);
-        HistoryList.SelectedItem = row ?? _rows.FirstOrDefault();
-        if (HistoryList.SelectedItem is CaptureRow selected) HistoryList.ScrollIntoView(selected);
+        if (sender is not CheckBox box || box.DataContext is not CaptureHistoryRow row) return;
+
+        if (box.IsChecked == true) _selected.Add(row.Entry.Id);
+        else _selected.Remove(row.Entry.Id);
+
+        UpdateSelectionBar();
     }
 
-    // ============ 位图 ============
-
-    private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
+    private void SelectCurrentPage()
     {
-        while (d != null)
+        foreach (var row in _pageRows)
         {
-            if (d is T hit) return hit;
-
-            d = d is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(d)
-                : LogicalTreeHelper.GetParent(d);
-
-            if (d is not (Visual or System.Windows.Media.Media3D.Visual3D)) return null;
+            _selected.Add(row.Entry.Id);
+            row.IsSelected = true;
         }
-        return null;
+        UpdateSelectionBar();
     }
+
+    private void Deselect_Click(object sender, RoutedEventArgs e) => ClearSelection(repaint: true);
+
+    private void ClearSelection(bool repaint)
+    {
+        _selected.Clear();
+        if (repaint)
+        {
+            foreach (var row in _pageRows) row.IsSelected = false;
+        }
+        UpdateSelectionBar();
+    }
+
+    private void UpdateSelectionBar()
+    {
+        int count = _selected.Count;
+
+        SelectionBar.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        SelectionText.Text = $"已选 {count} 项";
+        DeleteSelectedBtn.IsEnabled = count > 0;
+        BatchBtn.IsEnabled = count > 0;
+        DeselectBtn.IsEnabled = count > 0;
+
+        SelectPageBtn.IsEnabled = !CaptureHistoryPaging.AllSelected(
+            _pageRows.Select(row => row.Entry.Id), _selected);
+    }
+
+    /// <summary>当前页的 id（批量动作按本页勾选顺序取记录）。</summary>
+    private List<string> PageIds() => _pageRows.Select(row => row.Entry.Id).ToList();
 }

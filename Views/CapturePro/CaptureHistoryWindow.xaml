@@ -4,53 +4,216 @@
         xmlns:views="clr-namespace:LTools.Views"
         xmlns:controls="clr-namespace:LTools.Views.Controls"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="采集历史" Width="1020" Height="660" MinWidth="840" MinHeight="520"
+        Title="采集历史" Width="1080" Height="720" MinWidth="900" MinHeight="540"
         WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
         views:WindowSizing.Mode="Main">
-    <!-- 采集历史：左列表（缩略图 / 时间 / 尺寸 / 摘要）+ 右预览（大图 + 识别文字）。
-         三页签用主题里的 CaptureTab（与识别结果窗共用同一份自绘 RadioButton 样式）。 -->
+    <!-- 采集历史（照 Snow Shot 的 screenshothistorypagewidget）：
+         页头（标题 + 计数 + 清空 / 刷新 / 打开目录）→ 筛选（来源多选 + 日期范围 + 搜索）→
+         选择栏（有选中才出现）→ 卡片列表（宽布局：左详情 + 右 260×156 预览）→ 分页。 -->
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
-        <!-- 行卡片自带底色：全局 ListItemTemplate 的选中底色会被卡片完全挡住，
-             所以高亮写在卡片模板的 DataTrigger 里（照 SubActionLibraryView 的既有做法）。 -->
-        <Style x:Key="HistoryItem" TargetType="ListBoxItem">
-            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <!-- 页头那个方角图标按钮（清空 / 刷新 / 打开目录）：Segoe MDL2 字形，悬停灰底 -->
+        <Style x:Key="HeaderIconButton" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
             <Setter Property="Padding" Value="0"/>
-            <Setter Property="Margin" Value="0"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+
+        <!-- 筛选框按钮（与输入框同高同圆角）；IsChecked = 弹层打开 -->
+        <Style x:Key="FilterButton" TargetType="ToggleButton">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="MinWidth" Value="140"/>
+            <Setter Property="MaxWidth" Value="220"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSecondary}"/>
+            <Setter Property="FocusVisualStyle" Value="{StaticResource SubtleFocusVisual}"/>
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <ContentPresenter/>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="{StaticResource CornerSm}">
+                            <Grid Margin="{TemplateBinding Padding}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter VerticalAlignment="Center"
+                                                  HorizontalAlignment="Left"/>
+                                <Path Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0"
+                                      Data="M 0,0 L 4,4 L 8,0" Stroke="{StaticResource SecondaryTextBrush}"
+                                      StrokeThickness="1.4" StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BorderStrongBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
 
-        <Style x:Key="HistoryText" TargetType="TextBox">
-            <Setter Property="IsReadOnly" Value="True"/>
-            <Setter Property="AcceptsReturn" Value="True"/>
-            <Setter Property="TextWrapping" Value="Wrap"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
-            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
-            <Setter Property="FontFamily" Value="{StaticResource MonoFont}"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="VerticalContentAlignment" Value="Top"/>
-            <Setter Property="IsTabStop" Value="False"/>
+        <!-- 卡片上的文字按钮（图标 + 文字） -->
+        <Style x:Key="CardAction" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
         </Style>
+
+        <!-- 卡片：白底 + 描边，悬停提亮一档（卡片底色会把 ListBox 的选中底色盖住，
+             所以高亮只能写在这里，别指望全局 ListItemTemplate） -->
+        <DataTemplate x:Key="CaptureCard">
+            <Border x:Name="Card" Margin="0,0,0,12" Padding="18,16"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CornerMd}"
+                    MouseDown="Card_MouseDown">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Margin="0,0,18,0">
+                        <CheckBox x:Name="RowCheck" Content="{Binding DateText}"
+                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                  FontSize="{StaticResource FontSizeBody}" FontWeight="SemiBold"
+                                  Checked="RowCheck_Changed" Unchecked="RowCheck_Changed"/>
+
+                        <Border Margin="0,9,0,0" HorizontalAlignment="Left" Padding="7,2"
+                                Background="{StaticResource SurfaceAltBrush}"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="{StaticResource CornerSm}">
+                            <TextBlock Text="{Binding SourceLabel}" FontSize="11"
+                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                        </Border>
+
+                        <TextBlock Text="{Binding SummaryText}" Margin="0,9,0,0" FontSize="13"
+                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding MetaText}" Margin="0,4,0,0"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource HintTextBrush}"
+                                   TextTrimming="CharacterEllipsis"/>
+
+                        <TextBlock x:Name="Excerpt" Text="{Binding TextExcerpt}" Margin="0,6,0,0"
+                                   FontSize="{StaticResource FontSizeHint}"
+                                   Foreground="{StaticResource HintTextBrush}"
+                                   TextWrapping="Wrap" MaxHeight="34">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasText}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                            <Button x:Name="EditBtn" Style="{StaticResource CardAction}"
+                                    Click="CardEdit_Click" ToolTip="在图片编辑窗里接着标注 / 裁剪">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="编辑" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="CopyBtn" Style="{StaticResource CardAction}"
+                                    Click="CardCopy_Click" ToolTip="复制这张成品图">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE8C8;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="PlayBtn" Style="{StaticResource CardAction}"
+                                    Click="CardPlay_Click" ToolTip="用系统默认播放器打开录屏" Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="播放" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="MoreBtn" Style="{StaticResource CardAction}"
+                                    Click="CardMore_Click" ToolTip="更多操作">
+                                <TextBlock Text="&#xE712;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Border x:Name="PreviewBox" Grid.Column="1" Width="260" Height="156"
+                            Background="{StaticResource SurfaceAltBrush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                            CornerRadius="{StaticResource CornerSm}" ClipToBounds="True"
+                            Cursor="Hand" MouseLeftButtonDown="CardPreview_Click"
+                            ToolTip="点击查看大图">
+                        <Grid>
+                            <Image Source="{Binding Thumb}" Stretch="Uniform" Margin="1"
+                                   RenderOptions.BitmapScalingMode="HighQuality"/>
+                            <TextBlock Text="{Binding PreviewHint}" HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"
+                                       Foreground="{StaticResource HintTextBrush}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasThumb}" Value="False">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsRecord}" Value="True">
+                    <Setter TargetName="EditBtn" Property="Visibility" Value="Collapsed"/>
+                    <Setter TargetName="CopyBtn" Property="Visibility" Value="Collapsed"/>
+                    <Setter TargetName="PlayBtn" Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter TargetName="Card" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="36"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
@@ -58,189 +221,153 @@
 
         <controls:TitleBar Grid.Row="0"/>
 
-        <!-- 头部：三个页签 + 搜索 + 页面级操作 -->
-        <Border Grid.Row="1" Background="{StaticResource SurfaceAltBrush}" Padding="14,8">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+        <!-- 页头：标题 + 计数，右侧清空 / 刷新 / 打开目录 -->
+        <Grid Grid.Row="1" Margin="18,14,18,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
+            <StackPanel>
+                <TextBlock Text="采集历史" FontSize="20" FontWeight="SemiBold"/>
+                <TextBlock x:Name="CountText" Margin="0,3,0,0" FontSize="{StaticResource FontSizeHint}"
+                           Foreground="{StaticResource SecondaryTextBrush}" Text="共 0 条"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <Button x:Name="ClearAllBtn" Style="{StaticResource HeaderIconButton}"
+                        Content="&#xE74D;" Foreground="{StaticResource DangerBrush}"
+                        Click="ClearAll_Click" ToolTip="清空全部历史"/>
+                <Button x:Name="RefreshBtn" Style="{StaticResource HeaderIconButton}"
+                        Content="&#xE72C;" Margin="4,0,0,0" Click="Refresh_Click"
+                        ToolTip="刷新历史"/>
+                <Button x:Name="OpenDirBtn" Style="{StaticResource HeaderIconButton}"
+                        Content="&#xE8B7;" Margin="4,0,0,0" Click="OpenDir_Click"
+                        ToolTip="在资源管理器里打开 captures 目录"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- 筛选：来源多选 + 日期范围 + 搜索 -->
+        <Grid Grid.Row="2" Margin="18,10,18,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <ToggleButton x:Name="SourceFilterBtn" Style="{StaticResource FilterButton}"
+                          Click="SourceFilter_Click">
+                <TextBlock x:Name="SourceFilterText" Text="全部来源"/>
+            </ToggleButton>
+
+            <Popup x:Name="SourcePopup" PlacementTarget="{Binding ElementName=SourceFilterBtn}"
+                   Placement="Bottom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                <Border Background="{StaticResource SurfaceBrush}"
+                        BorderBrush="{StaticResource BorderStrongBrush}" BorderThickness="1"
+                        CornerRadius="{StaticResource CornerMd}" Padding="6" MinWidth="200"
+                        Margin="0,4,0,0">
+                    <StackPanel x:Name="SourceListHost"/>
+                </Border>
+            </Popup>
+
+            <Border Grid.Column="1" Margin="8,0,0,0" Height="30" Padding="8,0"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CornerSm}"
+                    ToolTip="按采集日期筛选（含两端）">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <RadioButton x:Name="TabAll" Style="{StaticResource CaptureTab}" GroupName="historyTab"
-                                 Content="全部" IsChecked="True" Tag="all" Checked="Tab_Changed"/>
-                    <RadioButton x:Name="TabShot" Style="{StaticResource CaptureTab}" GroupName="historyTab"
-                                 Content="截图" Tag="shot" Checked="Tab_Changed"/>
-                    <RadioButton x:Name="TabRecognize" Style="{StaticResource CaptureTab}" GroupName="historyTab"
-                                 Content="识别" Tag="recognize" Checked="Tab_Changed"/>
-                    <RadioButton x:Name="TabRecord" Style="{StaticResource CaptureTab}" GroupName="historyTab"
-                                 Content="录屏" Tag="record" Checked="Tab_Changed"/>
+                    <TextBlock Text="日期" Margin="0,0,6,0" VerticalAlignment="Center"
+                               FontSize="{StaticResource FontSizeHint}"
+                               Foreground="{StaticResource SecondaryTextBrush}"/>
+                    <DatePicker x:Name="DateStart" Width="118" BorderThickness="0"
+                                Background="Transparent" FontSize="12"
+                                SelectedDateChanged="Date_Changed"
+                                controls:TextBoxClear.Attach="False" ToolTip="起始日期（含当天）"/>
+                    <TextBlock Text="–" Margin="4,0" VerticalAlignment="Center"
+                               Foreground="{StaticResource HintTextBrush}"/>
+                    <DatePicker x:Name="DateEnd" Width="118" BorderThickness="0"
+                                Background="Transparent" FontSize="12"
+                                SelectedDateChanged="Date_Changed"
+                                controls:TextBoxClear.Attach="False" ToolTip="结束日期（含当天）"/>
+                    <Button x:Name="ClearDateBtn" Style="{StaticResource HeaderIconButton}" Width="24" Height="24"
+                            FontSize="10" Content="&#xE711;" Margin="2,0,0,0"
+                            Click="ClearDate_Click" ToolTip="清空日期范围" Visibility="Collapsed"/>
                 </StackPanel>
+            </Border>
 
-                <TextBox x:Name="SearchBox" Grid.Column="1" Width="240" Height="30"
-                         HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16,0,16,0"
-                         controls:TextBoxPlaceholder.Text="搜索文字 / 类型…"
-                         TextChanged="SearchBox_TextChanged"/>
+            <TextBox x:Name="SearchBox" Grid.Column="3" Width="220" Height="30"
+                     VerticalAlignment="Center" controls:TextBoxPlaceholder.Text="搜索文字 / 来源…"
+                     TextChanged="SearchBox_TextChanged"/>
+        </Grid>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Style="{StaticResource BtnGhost}" Content="打开目录" Click="OpenDir_Click"
-                            ToolTip="在资源管理器里打开 captures 目录"/>
-                    <Button Style="{StaticResource BtnGhost}" Content="清空全部" Margin="8,0,0,0"
-                            Click="ClearAll_Click" ToolTip="删除全部采集记录与图片（不可撤销）"/>
+        <!-- 选择栏：有选中才出现（照上游 selectionBar） -->
+        <Border x:Name="SelectionBar" Grid.Row="3" Margin="18,10,18,0" Padding="14,8"
+                Background="{StaticResource SurfaceAltBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CornerMd}" Visibility="Collapsed">
+            <Grid>
+                <TextBlock x:Name="SelectionText" VerticalAlignment="Center"
+                           Foreground="{StaticResource SecondaryTextBrush}" Text="已选 0 项"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="DeleteSelectedBtn" Style="{StaticResource BtnGhostDanger}"
+                            Content="删除" Click="DeleteSelected_Click" ToolTip="删除选中的记录"/>
+                    <Button x:Name="BatchBtn" Style="{StaticResource BtnGhost}" Content="批量操作 ▾"
+                            Margin="8,0,0,0" Click="Batch_Click"
+                            ToolTip="拼接图片 / 贴到屏幕"/>
+                    <Button x:Name="SelectPageBtn" Style="{StaticResource BtnGhost}" Content="全选本页"
+                            Margin="8,0,0,0" Click="SelectPage_Click"/>
+                    <Button x:Name="DeselectBtn" Style="{StaticResource BtnGhost}" Content="取消选择"
+                            Margin="8,0,0,0" Click="Deselect_Click"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- 主体：左列表 + 右预览 -->
-        <Grid Grid.Row="2" Margin="14,10,14,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="310"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
+        <!-- 卡片列表 + 空态 -->
+        <Grid Grid.Row="4" Margin="0,12,0,0">
+            <ScrollViewer x:Name="HistoryScroll" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled" Padding="18,0,18,0">
+                <ItemsControl x:Name="CardList" ItemTemplate="{StaticResource CaptureCard}"/>
+            </ScrollViewer>
 
-            <Grid>
-                <ListBox x:Name="HistoryList" BorderThickness="0" Background="Transparent"
-                         ItemContainerStyle="{StaticResource HistoryItem}"
-                         HorizontalContentAlignment="Stretch"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         SelectionChanged="HistoryList_SelectionChanged"
-                         MouseDoubleClick="HistoryList_MouseDoubleClick"
-                         PreviewKeyDown="HistoryList_PreviewKeyDown">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border x:Name="Card" Margin="0,0,6,6" Padding="8"
-                                    Background="{StaticResource SurfaceBrush}"
-                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                    CornerRadius="{StaticResource CornerMd}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <Border Width="88" Height="58" Margin="0,0,10,0"
-                                            Background="{StaticResource SurfaceAltBrush}"
-                                            CornerRadius="{StaticResource CornerSm}" ClipToBounds="True">
-                                        <Image Source="{Binding Thumb}" Stretch="UniformToFill"
-                                               RenderOptions.BitmapScalingMode="HighQuality"/>
-                                    </Border>
-
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Text="{Binding Info}" Margin="0,2,0,0"
-                                                   FontSize="{StaticResource FontSizeHint}"
-                                                   Foreground="{StaticResource SecondaryTextBrush}"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Text="{Binding Summary}" Margin="0,3,0,0"
-                                                   FontSize="{StaticResource FontSizeHint}"
-                                                   Foreground="{StaticResource HintTextBrush}"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-
-                            <DataTemplate.Triggers>
-                                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
-                                             Value="True">
-                                    <Setter TargetName="Card" Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
-                                             Value="True">
-                                    <Setter TargetName="Card" Property="Background" Value="{StaticResource PressedBgBrush}"/>
-                                    <Setter TargetName="Card" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
-                                </DataTrigger>
-                            </DataTemplate.Triggers>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-
-                <TextBlock x:Name="EmptyHint" HorizontalAlignment="Center" VerticalAlignment="Center"
-                           TextAlignment="Center" TextWrapping="Wrap" MaxWidth="250"
-                           Foreground="{StaticResource SecondaryTextBrush}" IsHitTestVisible="False"
-                           Text="还没有采集记录。"/>
-            </Grid>
-
-            <Border Grid.Column="1" Width="1" Margin="8,2,8,2" Background="{StaticResource BorderBrush}"/>
-
-            <Grid Grid.Column="2">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
-                        BorderThickness="1" CornerRadius="{StaticResource CornerMd}" Padding="10"
-                        MinHeight="180">
-                    <Grid>
-                        <Image x:Name="PreviewImage" Stretch="Uniform" Visibility="Collapsed"
-                               RenderOptions.BitmapScalingMode="HighQuality"/>
-                        <TextBlock x:Name="PreviewEmpty" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   TextAlignment="Center" TextWrapping="Wrap"
-                                   Foreground="{StaticResource SecondaryTextBrush}"
-                                   Text="选择左边一条查看大图"/>
-                    </Grid>
-                </Border>
-
-                <StackPanel Grid.Row="1" Margin="0,10,0,0">
-                    <TextBlock x:Name="PreviewInfo" TextWrapping="Wrap"
-                               FontSize="{StaticResource FontSizeHint}"
-                               Foreground="{StaticResource SecondaryTextBrush}"/>
-
-                    <StackPanel x:Name="TextPanel" Visibility="Collapsed" Margin="0,8,0,0">
-                        <TextBlock Text="识别文字" Style="{StaticResource HintLabel}"/>
-                        <Border Height="96" Margin="0,4,0,0" Padding="8,6"
-                                Background="{StaticResource SurfaceAltBrush}"
-                                CornerRadius="{StaticResource CornerSm}" ClipToBounds="True">
-                            <TextBox x:Name="TextPreview" Style="{StaticResource HistoryText}"
-                                     controls:TextBoxClear.Attach="False"/>
-                        </Border>
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                        <Button x:Name="PlayBtn" Style="{StaticResource BtnGhost}" Content="播放"
-                                MinWidth="76" Click="Play_Click" IsEnabled="False"
-                                Visibility="Collapsed" ToolTip="用系统默认播放器打开录屏"/>
-                        <Button x:Name="TrimBtn" Style="{StaticResource BtnGhost}" Content="裁剪 / 倍速…"
-                                MinWidth="104" Margin="8,0,0,0" Click="Trim_Click" IsEnabled="False"
-                                Visibility="Collapsed" ToolTip="裁剪录屏区间、改倍速，导出成新文件（原片不动）"/>
-                        <Button x:Name="PinBtn" Style="{StaticResource BtnGhost}" Content="贴到屏幕"
-                                MinWidth="88" Click="Pin_Click" IsEnabled="False"
-                                ToolTip="按原来的选区与外观贴回屏幕；长截图 / 老记录会居中贴到光标所在屏"/>
-                        <Button x:Name="CopyImageBtn" Style="{StaticResource BtnGhost}" Content="复制图片"
-                                MinWidth="88" Margin="8,0,0,0" Click="CopyImage_Click" IsEnabled="False"/>
-                        <Button x:Name="EditBtn" Style="{StaticResource BtnGhost}" Content="编辑…"
-                                MinWidth="88" Margin="8,0,0,0" Click="Edit_Click" IsEnabled="False"
-                                ToolTip="在图片编辑窗里接着标注 / 裁剪"/>
-                        <Button x:Name="SplitBtn" Style="{StaticResource BtnGhost}" Content="切图…"
-                                MinWidth="88" Margin="8,0,0,0" Click="Split_Click" IsEnabled="False"
-                                ToolTip="在切图窗里把这张切成多张"/>
-                        <Button x:Name="CollageBtn" Style="{StaticResource BtnGhost}" Content="拼接…"
-                                MinWidth="88" Margin="8,0,0,0" Click="Collage_Click" IsEnabled="False"
-                                ToolTip="把这张加进图像拼接窗和别的图拼在一起"/>
-                        <Button x:Name="SaveAsBtn" Style="{StaticResource BtnGhost}" Content="另存为…"
-                                MinWidth="88" Margin="8,0,0,0" Click="SaveAs_Click" IsEnabled="False"/>
-                        <Button x:Name="CopyTextBtn" Style="{StaticResource BtnGhost}" Content="复制识别文字"
-                                MinWidth="108" Margin="8,0,0,0" Click="CopyText_Click" IsEnabled="False"/>
-                        <Button x:Name="DeleteBtn" Style="{StaticResource BtnGhostDanger}" Content="删除"
-                                MinWidth="76" Margin="8,0,0,0" Click="Delete_Click" IsEnabled="False"/>
-                    </StackPanel>
-                </StackPanel>
-            </Grid>
+            <StackPanel x:Name="EmptyPanel" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        MaxWidth="380" Visibility="Collapsed">
+                <TextBlock Text="&#xE8B9;" FontFamily="Segoe MDL2 Assets" FontSize="40"
+                           HorizontalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                <TextBlock x:Name="EmptyTitle" Text="还没有截图历史" Margin="0,14,0,0"
+                           FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="EmptyText" Text="复制或贴到屏幕的截图会出现在这里" Margin="0,6,0,0"
+                           TextAlignment="Center" TextWrapping="Wrap"
+                           Foreground="{StaticResource SecondaryTextBrush}"/>
+            </StackPanel>
         </Grid>
 
-        <!-- 底栏：统计 + 关闭 -->
-        <Border Grid.Row="3" Background="{StaticResource SurfaceAltBrush}" Padding="14,8" Margin="0,10,0,0">
+        <!-- 分页（照上游 AdPagination：10 / 20 / 50，靠右） -->
+        <Border Grid.Row="5" Margin="0,10,0,0" Padding="18,10"
+                Background="{StaticResource SurfaceAltBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
             <Grid>
-                <TextBlock x:Name="StatusText" VerticalAlignment="Center"
+                <TextBlock x:Name="PageRangeText" VerticalAlignment="Center"
                            FontSize="{StaticResource FontSizeHint}"
-                           Foreground="{StaticResource SecondaryTextBrush}"
-                           TextTrimming="CharacterEllipsis" Margin="0,0,150,0"
-                           Text="采集历史保存在 captures/，进备份。"/>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button Style="{StaticResource BtnGhost}" Content="关闭" MinWidth="78"
+                           Foreground="{StaticResource SecondaryTextBrush}" Text="还没有记录"/>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="每页" VerticalAlignment="Center"
+                               FontSize="{StaticResource FontSizeHint}"
+                               Foreground="{StaticResource SecondaryTextBrush}"/>
+                    <ComboBox x:Name="PageSizeBox" Width="68" Height="28" Margin="6,0,10,0"
+                              SelectionChanged="PageSize_Changed">
+                        <ComboBoxItem Content="10" Tag="10"/>
+                        <ComboBoxItem Content="20" Tag="20"/>
+                        <ComboBoxItem Content="50" Tag="50"/>
+                    </ComboBox>
+                    <Button x:Name="PrevBtn" Style="{StaticResource HeaderIconButton}" Width="28" Height="28"
+                            FontSize="11" Content="&#xE76B;" Click="PrevPage_Click" ToolTip="上一页"/>
+                    <StackPanel x:Name="PageHost" Orientation="Horizontal" VerticalAlignment="Center"
+                                Margin="4,0"/>
+                    <Button x:Name="NextBtn" Style="{StaticResource HeaderIconButton}" Width="28" Height="28"
+                            FontSize="11" Content="&#xE76C;" Click="NextPage_Click" ToolTip="下一页"/>
+                    <Button Style="{StaticResource BtnGhost}" Content="关闭" MinWidth="72" Margin="12,0,0,0"
                             IsCancel="True" Click="Close_Click"/>
                 </StackPanel>
             </Grid>

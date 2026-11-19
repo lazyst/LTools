@@ -171,6 +171,12 @@ public sealed class AppConfig
     public int PinPageSize { get; set; }
 
     /// <summary>
+    /// 采集历史页每页几条（0 = 默认 20）。照上游 <c>AdPagination</c> 的 10 / 20 / 50，
+    /// 只在 <c>configs/ui.json</c> 里。
+    /// </summary>
+    public int CaptureHistoryPageSize { get; set; }
+
+    /// <summary>
     /// 截图工具栏的格子布局（一行一格、格内逗号分隔工具键，如 <c>pen,highlighter</c>）；
     /// 空 = 按 <c>ToolCatalog</c> 默认（每个工具一格）。见 <c>Features/CapturePro/ToolLayout</c>。
     /// </summary>
