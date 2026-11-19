@@ -230,12 +230,8 @@ internal static class CaptureSession
         }
 
         // 覆盖层入口照 Snow Shot：先把面板摆出来等用户点「录制」，倒计时在点完之后才开始。
-        var plan = new RecordPlan
-        {
-            Mode = RecordMode.Region,
-            Options = AppState.Record.Normalized(),
-            PromptStart = true,
-        };
+        // 格式 / 帧率 / 等待秒数 / 跟随鼠标都取设置里的默认值（见「录屏」设置卡片）。
+        var plan = RecordPlan.FromSettings(AppState.Record, promptStart: true);
         System.Threading.Tasks.Task.Run(() =>
         {
             try

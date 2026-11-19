@@ -77,6 +77,7 @@ public partial class CaptureRecordWindow : Window
 
         MetaText.Text = MetaSummary();
         _hasLastRecord = LastRecord() != null;
+        _baselineRecordId = LastRecord()?.Id ?? "";
 
         _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(200) };
         _timer.Tick += (_, _) => Sync();
@@ -87,6 +88,35 @@ public partial class CaptureRecordWindow : Window
     }
 
     internal RecordController Controller => _controller;
+
+    /// <summary>面板建出来那一刻「最近一条录屏」的 id：关窗时用它判断这次有没有新录的。</summary>
+    private readonly string _baselineRecordId = "";
+
+    /// <summary>
+    /// 关窗：照上游 <c>delete_files_on_recording_close</c>（默认关）——开着就把这次刚录的那条删掉，
+    /// 相当于「关掉面板 = 丢弃这次录制」。只删**这次新产生的**那一条，不碰以前的。
+    /// </summary>
+    protected override void OnClosed(EventArgs e)
+    {
+        if (_plan.Options.DeleteFilesOnClose)
+        {
+            var last = LastRecord();
+            if (last != null && last.Id.Length > 0 && last.Id != _baselineRecordId)
+            {
+                try
+                {
+                    CaptureCatalog.Remove(last.Id);
+                    ToastService.Show("已删除刚录的文件", "录屏", 2200, ToastKind.info);
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Warn("CapturePro.Record", "关窗删除录屏失败：" + ex.Message);
+                }
+            }
+        }
+
+        base.OnClosed(e);
+    }
 
     /// <summary>面板现在是不是「正在录」（false = 摆着等用户点录制）。</summary>
     internal bool IsRecording => _recording;
@@ -183,6 +213,7 @@ public partial class CaptureRecordWindow : Window
         CloseRegion();
         SuspendWebcam();
         RememberArea();
+        AnnounceStatus("开始录制");
         Sync();
         ShowAnnotations();
     }
@@ -294,7 +325,18 @@ public partial class CaptureRecordWindow : Window
         if (!_recording || _controller.Finished) return;
 
         _controller.TogglePause();
+        AnnounceStatus(_controller.IsPaused ? "已暂停 · 时间不再走" : "继续录制");
         Sync();
+    }
+
+    /// <summary>
+    /// 状态提示（上游 <c>show_status_prompts</c>，默认开）：开始 / 暂停 / 继续各给一条短提示。
+    /// 同一个 key，所以连按只会就地替换，不会堆一屏。
+    /// </summary>
+    private void AnnounceStatus(string text)
+    {
+        if (!_plan.Options.ShowStatusPrompts) return;
+        ToastService.Show(text, "录屏", 1500, ToastKind.info, key: "record-status");
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
@@ -439,6 +481,9 @@ public partial class CaptureRecordWindow : Window
     {
         base.OnSourceInitialized(e);
 
-        _hwnd = OverlayShell.MakeNonActivating(this, excludeFromCapture: true);
+        // 工具条要不要录进画面看 `screen_recording/capture_toolbar_in_recording`（默认开 = 录进去）：
+        // 开着就不设 WDA_EXCLUDEFROMCAPTURE，关着才把自己从抓帧里排除。区域红框永远排除。
+        _hwnd = OverlayShell.MakeNonActivating(this,
+            excludeFromCapture: !_plan.Options.CaptureToolbarInRecording);
     }
 }

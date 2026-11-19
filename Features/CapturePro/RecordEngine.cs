@@ -131,7 +131,10 @@ internal sealed class RecordEngine
                 RedirectStandardInput = true,
                 RedirectStandardError = true,
             };
-            foreach (string arg in RecordPlan.Mp4Args(_area, _fps, _output, encoder)) info.ArgumentList.Add(arg);
+            foreach (string arg in RecordPlan.Mp4Args(_area, _fps, _output, encoder,
+                     RecordOptions.ClarityHeight(_plan.Options.Clarity),
+                     _plan.Options.VideoQuality, _plan.Options.EncodingPreset))
+            info.ArgumentList.Add(arg);
 
             _process = new Process { StartInfo = info };
             _process.ErrorDataReceived += (_, e) =>

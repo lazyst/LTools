@@ -108,6 +108,7 @@ public partial class CaptureRecordWindow
 
                 if (_controller.Finished) return;
                 _controller.TogglePause();
+                AnnounceStatus(_controller.IsPaused ? "已暂停 · 时间不再走" : "继续录制");
                 Sync();
                 return;
 

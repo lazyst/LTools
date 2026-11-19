@@ -1524,6 +1524,35 @@ Id 与已经删掉的 Id 都不复活。
 - **作用范围**（与上游的差异见 `docs/CAPTURE_PARITY.md` §5）：覆盖层有焦点；录屏面板看「指针在不在面板上」；
   贴图看「有没有点过这张贴图、指针还在不在上面」——鼠标只是停在贴图上不会吞键。
 
+### 10.13 录屏设置（P9-g，2026-11-19）
+
+设置「通用 → 截图 Pro · 录屏」一张卡片，真源是 `configs/settings.json` 的 `Record` 段，
+运行期缓存是 `Core/AppState.Record`，写入统一走 `Features/CapturePro/RecordSettings.Modify`
+（改一项 → 归一 → 刷缓存 → 只写 settings 域）。默认值逐条照上游 `configurationschema.cpp`。
+
+| 设置 | 落到哪 |
+| --- | --- |
+| 清晰度 `clarity` / 画面质量 `video_quality` / 速度档 `encoding_preset` | `RecordPlan.Mp4Args` → `RecordEncoders.Arguments`（质量换算 crf / cq / qp）；缩放只往下、小画面不放大 |
+| 帧率 `frame_rate` | 录制抓帧与编码器 `-framerate` |
+| 默认格式 `output_format` | 覆盖层入口与内置功能「录屏」的初始格式（面板上仍可逐次改） |
+| 动图清晰度 / 帧率 / 循环 `animated_image_*` / `loop_animated_images` | `GifPaletteArgs` / `GifEncodeArgs` / `AnimatedArgs`（GIF 帧率最多 15） |
+| 拖尾寿命 `mouse_trail_duration_ms` | `RecordEffects` 的激光拖尾保留时长 |
+| 按键浮层高度与两色 `keyboard_*` | `RecordEffects.DrawKeys` 的胶囊尺寸 / 底色 / 字色 |
+| 光标高亮色 `mouse_highlight_color` | `RecordEffects.DrawHighlight` |
+| 进度条色 `progress_bar_color` | `RecordPlan.ProgressBarArgs`（收尾后 `drawbox` 那一遍） |
+| 跟随鼠标三项 `follow_mouse*` | 覆盖层入口的 `RecordPlan.FollowMouse` / `RecordFollowOptions` |
+| 开录等待 `start_delay_seconds` | 面板倒计时的默认值 |
+| 工具条入镜 `capture_toolbar_in_recording` | 面板与弹层的 `WDA_EXCLUDEFROMCAPTURE`（开 = 不排除） |
+| 状态提示 `show_status_prompts` | 开始 / 暂停 / 继续各一条短 toast（key `record-status`） |
+| 自动收起 / 导出提示 / 关窗删文件 | `RecordSession` 收尾与 `CaptureRecordWindow.OnClosed`（只删这次新录的那一条） |
+| 分离音轨 `separate_audio_tracks` | `RecordPlan.FinalizeArgs(…, separateTracks)`：两路各一条 AAC |
+| 保存目录 / 文件名模板 | 「另存录屏」的初始目录与文件名（`RecordOptions.FileNameFor`，每对花括号是一段日期格式） |
+
+- **分工**：「录屏选项…」窗口只改**这次录什么**（声音 / 摄像头 / 光标 / 点击 / 按键 / 编码器 / 裁剪），
+  保存时用 `CopySettingsFrom` 把上面这批全局字段原样搬回；设置页反过来只动自己这批字段。
+- **不做空开关**：`api_mode`（DXGI / WGC / GDI）本地只有 GDI 一种实现，不落成下拉（见 `docs/CAPTURE_PARITY.md` §5）。
+- 回归：`--selftest` 的「录屏：设置默认值 / 质量换算 / 清晰度 / 进度条」+ 冒烟 `recordsettings` 段。
+
 ## 11. 采集历史（P2-2 / P4）
 
 截图 / 识别 / 录屏的落点：数据根 `captures/`（`catalog.json` + `assets/<id>.png` + `thumbnails/<id>.png`

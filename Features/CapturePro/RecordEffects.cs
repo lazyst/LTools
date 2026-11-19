@@ -45,6 +45,9 @@ internal sealed class RecordEffects
 
     private readonly Font _font = new("Segoe UI", 11f, System.Drawing.FontStyle.Bold, GraphicsUnit.Pixel);
 
+    private Font? _keyFont;
+    private int _keyFontSize;
+
     private long _lastSampleMs;
     private (int X, int Y) _cursor;
     private bool _left, _right, _middle;
@@ -73,11 +76,11 @@ internal sealed class RecordEffects
         _right = right;
         _middle = middle;
 
-        // 拖尾没有开关：色卡选到透明就是不画（照 Snow Shot）
+        // 拖尾没有开关：色卡选到透明就是不画（照 Snow Shot）；寿命来自 mouse_trail_duration_ms
         if (_options.HasLaser)
         {
             _trail.Add(new Point2(nowMs, _cursor.X, _cursor.Y));
-            long oldest = nowMs - RecordEffectsMath.LaserLifeMs;
+            long oldest = nowMs - Math.Max(1, _options.TrailDurationMs);
             _trail.RemoveAll(p => p.AtMs < oldest);
             if (_trail.Count > RecordEffectsMath.LaserMaxPoints)
                 _trail.RemoveRange(0, _trail.Count - RecordEffectsMath.LaserMaxPoints);
@@ -246,8 +249,12 @@ internal sealed class RecordEffects
         var (x, y) = RecordEffectsMath.Map(_cursor.X, _cursor.Y, area, width, height);
         int radius = Math.Clamp(_options.MouseHighlightRadius * width / Math.Max(1, area.Width), 4, 512);
 
-        using var ring = new Pen(Color.FromArgb(200, 255, 196, 0), 2.4f) { Alignment = PenAlignment.Center };
-        using var fill = new SolidBrush(Color.FromArgb(28, 255, 196, 0));
+        var ink = InkOf(_options.MouseHighlightColor, System.Drawing.Color.FromArgb(255, 255, 0, 128));
+        using var ring = new Pen(System.Drawing.Color.FromArgb(200, ink.R, ink.G, ink.B), 2.4f)
+        {
+            Alignment = PenAlignment.Center,
+        };
+        using var fill = new SolidBrush(System.Drawing.Color.FromArgb(28, ink.R, ink.G, ink.B));
 
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
         graphics.FillEllipse(fill, x - radius, y - radius, radius * 2, radius * 2);
@@ -332,10 +339,16 @@ internal sealed class RecordEffects
         graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
         float scale = Math.Clamp(width / 960f, 0.75f, 2f);
-        float paddingX = 10 * scale;
-        float paddingY = 5 * scale;
-        float gap = 6 * scale;
-        float bottom = height - bottomInset - 18 * scale;
+        float capHeight = Math.Clamp(_options.KeyboardSize * scale, 18f, 160f);
+        float paddingX = capHeight * 0.28f;
+        float paddingY = capHeight * 0.12f;
+        float gap = capHeight * 0.12f;
+        float radius = capHeight * 0.18f;
+        float bottom = height - bottomInset - capHeight * 0.3f;
+
+        var font = KeyFont((int)Math.Round(capHeight * 0.42f));
+        var background = InkOf(_options.KeyboardBackgroundColor, Color.FromArgb(204, 0, 0, 0));
+        var foreground = InkOf(_options.KeyboardForegroundColor, Color.FromArgb(255, 255, 255, 255));
 
         for (int i = _keys.Count - 1; i >= 0; i--)
         {
@@ -349,23 +362,35 @@ internal sealed class RecordEffects
             float alpha = state.Value.Alpha / 255f;
             float rise = (float)((1 - state.Value.Slide) * 8 * scale);
 
-            var size = graphics.MeasureString(cap.Label, _font);
+            var size = graphics.MeasureString(cap.Label, font);
             float w = size.Width + paddingX * 2;
-            float h = size.Height + paddingY * 2;
+            float h = Math.Max(capHeight, size.Height + paddingY * 2);
             var rect = new RectangleF((width - w) / 2f, bottom - h - rise, w, h);
 
-            using var path = Rounded(rect, 6 * scale);
-            using var fill = new SolidBrush(Color.FromArgb((int)(190 * alpha), 24, 24, 27));
+            using var path = Rounded(rect, radius);
+            using var fill = new SolidBrush(Color.FromArgb((int)(background.A * alpha), background));
             using var border = new Pen(Color.FromArgb((int)(150 * alpha), 255, 255, 255), 1f);
-            using var text = new SolidBrush(Color.FromArgb((int)(255 * alpha), 255, 255, 255));
+            using var text = new SolidBrush(Color.FromArgb((int)(foreground.A * alpha), foreground));
 
             graphics.FillPath(fill, path);
             graphics.DrawPath(border, path);
-            graphics.DrawString(cap.Label, _font, text, rect.X + paddingX, rect.Y + paddingY);
+            graphics.DrawString(cap.Label, font, text, rect.X + paddingX, rect.Y + paddingY);
 
             bottom -= h + gap;
             if (bottom < height * 0.55f) break;
         }
+    }
+
+    /// <summary>按键浮层的字体跟着 <c>keyboard_size</c> 走（缓存一份，别每帧 new）。</summary>
+    private Font KeyFont(int pixelSize)
+    {
+        int size = Math.Clamp(pixelSize, 8, 96);
+        if (_keyFont != null && _keyFontSize == size) return _keyFont;
+
+        _keyFont?.Dispose();
+        _keyFontSize = size;
+        _keyFont = new Font("Segoe UI", size, System.Drawing.FontStyle.Bold, GraphicsUnit.Pixel);
+        return _keyFont;
     }
 
     private static GraphicsPath Rounded(RectangleF rect, float radius)
@@ -380,7 +405,11 @@ internal sealed class RecordEffects
         return path;
     }
 
-    public void Dispose() => _font.Dispose();
+    public void Dispose()
+    {
+        _font.Dispose();
+        _keyFont?.Dispose();
+    }
 
     private readonly record struct Click(long AtMs, int X, int Y, RecordMouseButton Button);
 

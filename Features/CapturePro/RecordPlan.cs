@@ -86,8 +86,15 @@ internal sealed class RecordPlan
     /// <summary>实际录制帧率（夹到 5–60）。</summary>
     public int EffectiveFps => NormalizeFps(Fps);
 
-    /// <summary>动图转码时用的帧率。</summary>
-    public int GifFps => Math.Min(EffectiveFps, GifMaxFps);
+    /// <summary>动图转码时用的帧率（上游 <c>animated_image_frame_rate</c>，默认 10；GIF 最高 15）。</summary>
+    public int GifFps
+    {
+        get
+        {
+            int fps = RecordOptions.NormalizeAnimatedFrameRate(Options.AnimatedFrameRate);
+            return Format == RecordFormat.Gif ? Math.Min(fps, GifMaxFps) : fps;
+        }
+    }
 
     /// <summary>成品扩展名（不含点）。</summary>
     public string Extension => Format switch
@@ -99,15 +106,37 @@ internal sealed class RecordPlan
     };
 
     public static RecordPlan FromValues(string? mode, string? format, int fps, int countdown,
-        bool followMouse = false, RecordOptions? options = null) => new()
+        bool? followMouse = null, RecordOptions? options = null)
     {
-        Mode = ParseMode(mode),
-        Format = ParseFormat(format),
-        Fps = NormalizeFps(fps),
-        Countdown = NormalizeCountdown(countdown),
-        FollowMouse = followMouse,
-        Options = (options ?? new RecordOptions()).Normalized(),
-    };
+        var settings = (options ?? new RecordOptions()).Normalized();
+
+        return new()
+        {
+            Mode = ParseMode(mode),
+            Format = string.IsNullOrWhiteSpace(format) ? ParseFormat(settings.OutputFormat) : ParseFormat(format),
+            Fps = fps > 0 ? NormalizeFps(fps) : NormalizeFps(settings.FrameRate),
+            Countdown = countdown >= 0 ? NormalizeCountdown(countdown) : NormalizeCountdown(settings.StartDelaySeconds),
+            FollowMouse = followMouse ?? settings.FollowMouse,
+            FollowOptions = new RecordFollowOptions(settings.FollowMouseSmooth, settings.FollowMouseReduceJitter),
+            Options = settings,
+        };
+    }
+
+    /// <summary>照设置里的默认值拼一份（覆盖层 / 内置功能入口用）：格式 / 帧率 / 等待秒数 / 跟随鼠标。</summary>
+    public static RecordPlan FromSettings(RecordOptions? options, bool promptStart = false)
+    {
+        var settings = (options ?? new RecordOptions()).Normalized();
+        return new RecordPlan
+        {
+            Format = ParseFormat(settings.OutputFormat),
+            Fps = NormalizeFps(settings.FrameRate),
+            Countdown = NormalizeCountdown(settings.StartDelaySeconds),
+            FollowMouse = settings.FollowMouse,
+            FollowOptions = new RecordFollowOptions(settings.FollowMouseSmooth, settings.FollowMouseReduceJitter),
+            Options = settings,
+            PromptStart = promptStart,
+        };
+    }
 
     public static RecordMode ParseMode(string? value) => value?.Trim().ToLowerInvariant() switch
     {
@@ -199,7 +228,9 @@ internal sealed class RecordPlan
     /// 编码器参数表也只有 <see cref="RecordEncoders.Arguments"/> 一份。
     /// </para>
     /// </remarks>
-    public static IReadOnlyList<string> Mp4Args(Int32Rect size, int fps, string output, string encoder)
+    public static IReadOnlyList<string> Mp4Args(Int32Rect size, int fps, string output, string encoder,
+        int clarityHeight = 0, int quality = RecordOptions.DefaultVideoQuality,
+        string preset = "veryfast")
     {
         int width = Math.Max(2, size.Width);
         int height = Math.Max(2, size.Height);
@@ -214,10 +245,16 @@ internal sealed class RecordPlan
             "-an",
         };
 
-        args.AddRange(RecordEncoders.Arguments(encoder));
+        args.AddRange(RecordEncoders.Arguments(encoder, quality, preset));
+
+        // 清晰度：只往下缩（小画面不放大），再补偶数边（yuv420p 要求）
+        string filter = clarityHeight > 0 && clarityHeight < height
+            ? RecordOptions.ScaleFilter(clarityHeight) + ",pad=ceil(iw/2)*2:ceil(ih/2)*2"
+            : "pad=ceil(iw/2)*2:ceil(ih/2)*2";
+
         args.AddRange(new[]
         {
-            "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+            "-vf", filter,
             "-pix_fmt", "yuv420p", "-movflags", "+frag_keyframe+empty_moov",
             output,
         });
@@ -255,7 +292,15 @@ internal sealed class RecordPlan
 
     /// <summary>收尾 + 按轨增益（<paramref name="gainDb"/> 与音轨一一对应，缺的当 0 dB）。</summary>
     public static IReadOnlyList<string> FinalizeArgs(string input, string output,
-        IReadOnlyList<string>? audioTracks, IReadOnlyList<int>? gainDb)
+        IReadOnlyList<string>? audioTracks, IReadOnlyList<int>? gainDb) =>
+        FinalizeArgs(input, output, audioTracks, gainDb, separateTracks: false);
+
+    /// <summary>
+    /// 收尾（上游 <c>separate_audio_tracks</c>）：<paramref name="separateTracks"/> 为真时两路声音
+    /// **各成一条 AAC 音轨**（不混音），否则混成一条。
+    /// </summary>
+    public static IReadOnlyList<string> FinalizeArgs(string input, string output,
+        IReadOnlyList<string>? audioTracks, IReadOnlyList<int>? gainDb, bool separateTracks)
     {
         var args = new List<string>
         {
@@ -291,7 +336,8 @@ internal sealed class RecordPlan
             return args;
         }
 
-        // 多路：先统一到 48kHz 立体声浮点，再混（amix 不做格式统一）；增益在混音前按轨套
+        // 先统一到 48kHz 立体声浮点（设备给的原生格式各不相同，amix / 多轨都不做格式统一）；
+        // 增益按轨套在重采样之后。
         var filters = new List<string>();
         var labels = new List<string>();
         for (int i = 0; i < tracks; i++)
@@ -301,6 +347,23 @@ internal sealed class RecordPlan
             filters.Add($"[{i + 1}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo{volume}[a{i}]");
             labels.Add($"[a{i}]");
         }
+
+        if (separateTracks)
+        {
+            // 各留一条：不过 amix，每条映射成一个音轨
+            args.AddRange(new[] { "-filter_complex", string.Join(";", filters) });
+            args.AddRange(new[] { "-map", "0:v" });
+            foreach (string label in labels) args.AddRange(new[] { "-map", label });
+            args.AddRange(new[]
+            {
+                "-c:v", "copy",
+                "-c:a", "aac", "-b:a", "192k",
+                "-shortest", "-movflags", "+faststart",
+                output,
+            });
+            return args;
+        }
+
         filters.Add($"{string.Concat(labels)}amix=inputs={tracks}:duration=longest:normalize=0[aout]");
 
         args.AddRange(new[]
@@ -319,8 +382,9 @@ internal sealed class RecordPlan
     public static IReadOnlyList<string> RemuxArgs(string input, string output) =>
         FinalizeArgs(input, output);
 
-    /// <summary>GIF 第一遍：从录好的 mp4 里抽帧做调色板（不缩放就太糊，顺便压到 ≤ <see cref="GifMaxWidth"/>）。</summary>
-    public static IReadOnlyList<string> GifPaletteArgs(string input, string palettePath, int fps)
+    /// <summary>GIF 第一遍：从录好的 mp4 里抽帧做调色板（按清晰度缩放，缺省压到 ≤ <see cref="GifMaxWidth"/>）。</summary>
+    public static IReadOnlyList<string> GifPaletteArgs(string input, string palettePath, int fps,
+        int clarityHeight = 0)
     {
         int rate = Math.Min(NormalizeFps(fps), GifMaxFps);
 
@@ -328,13 +392,14 @@ internal sealed class RecordPlan
         {
             "-y", "-hide_banner", "-loglevel", "error", "-nostats",
             "-i", input,
-            "-vf", $"fps={rate},{GifScaleFilter},palettegen=stats_mode=diff",
+            "-vf", $"fps={rate},{ScaleFor(clarityHeight)},palettegen=stats_mode=diff",
             palettePath,
         };
     }
 
-    /// <summary>GIF 第二遍：拿第一遍的调色板把同一段 mp4 转成 GIF（无限循环）。</summary>
-    public static IReadOnlyList<string> GifEncodeArgs(string input, string palettePath, string output, int fps)
+    /// <summary>GIF 第二遍：拿第一遍的调色板把同一段 mp4 转成 GIF（<paramref name="loop"/> = 无限循环）。</summary>
+    public static IReadOnlyList<string> GifEncodeArgs(string input, string palettePath, string output, int fps,
+        int clarityHeight = 0, bool loop = true)
     {
         int rate = Math.Min(NormalizeFps(fps), GifMaxFps);
 
@@ -343,8 +408,43 @@ internal sealed class RecordPlan
             "-y", "-hide_banner", "-loglevel", "error", "-nostats",
             "-i", input,
             "-i", palettePath,
-            "-lavfi", $"fps={rate},{GifScaleFilter}[x];[x][1:v]paletteuse=dither=sierra2_4a:diff_mode=rectangle",
-            "-loop", "0",
+            "-lavfi", $"fps={rate},{ScaleFor(clarityHeight)}[x];[x][1:v]paletteuse=dither=sierra2_4a:diff_mode=rectangle",
+            "-loop", loop ? "0" : "1",
+            output,
+        };
+    }
+
+    /// <summary>
+    /// 后期处理「底部进度条」：录完之后才知道总时长，所以单独过一遍，
+    /// 用 <c>drawbox</c> 的逐帧表达式把一条彩色条按时间从左往右填满（<c>progress_bar_color</c>）。
+    /// </summary>
+    /// <remarks>
+    /// 这一步会重编码画面（opt-in 的后期处理），参数用同一套质量 / 速度档；
+    /// 播放时间那一档不经过这里（它边录边画，见 <see cref="RecordEffects"/>）。
+    /// </remarks>
+    public static IReadOnlyList<string> ProgressBarArgs(string input, string output, int durationMs,
+        string color, int quality, string preset)
+    {
+        string hex = RecordOptions.NormalizeColor(color, "#1677FFFF");
+        string alpha = (Convert.ToInt32(hex.Substring(1, 2), 16) / 255.0)
+            .ToString("0.###", CultureInfo.InvariantCulture);
+        string ffColor = "0x" + hex.Substring(3, 6) + "@" + alpha;
+        double seconds = Math.Max(0.1, durationMs / 1000.0);
+
+        string filter =
+            $"drawbox=x=0:y=ih-'max(4,ih/180)':w='iw*min(t/{seconds.ToString("0.###", CultureInfo.InvariantCulture)},1)'" +
+            $":h='max(4,ih/180)':color={ffColor}:t=fill";
+
+        return new[]
+        {
+            "-y", "-hide_banner", "-loglevel", "error", "-nostats",
+            "-i", input,
+            "-vf", filter,
+            "-c:v", RecordEncoders.X264,
+            "-preset", RecordOptions.NormalizePreset(preset),
+            "-crf", RecordOptions.CrfOf(quality).ToString(CultureInfo.InvariantCulture),
+            "-pix_fmt", "yuv420p",
+            "-an", "-movflags", "+faststart",
             output,
         };
     }
@@ -352,26 +452,30 @@ internal sealed class RecordPlan
     /// <summary>缩到 GIF 宽度上限（小画面不放大）。</summary>
     public static string GifScaleFilter => $"scale='min({GifMaxWidth},iw)':-1:flags=lanczos";
 
+    /// <summary>动图的缩放：给了清晰度高度就按它缩，否则退回 GIF 的宽度上限。</summary>
+    public static string ScaleFor(int clarityHeight) =>
+        clarityHeight > 0 ? RecordOptions.ScaleFilter(clarityHeight) : GifScaleFilter;
+
     /// <summary>
-    /// 动图转码（APNG / WebP）：单遍、无音轨；帧率与宽度上限和 GIF 一致。
+    /// 动图转码（APNG / WebP）：单遍、无音轨；帧率与缩放按设置。
     /// GIF 仍走两遍调色板（<see cref="GifPaletteArgs"/> / <see cref="GifEncodeArgs"/>）。
     /// </summary>
     public static IReadOnlyList<string> AnimatedArgs(string input, string output,
-        RecordFormat format, int fps)
+        RecordFormat format, int fps, int clarityHeight = 0, bool loop = true)
     {
-        int rate = Math.Min(NormalizeFps(fps), GifMaxFps);
+        int rate = Math.Min(NormalizeFps(fps), format == RecordFormat.Gif ? GifMaxFps : MaxFps);
         var args = new List<string>
         {
             "-y", "-hide_banner", "-loglevel", "error", "-nostats",
             "-i", input,
-            "-vf", $"fps={rate},{GifScaleFilter}",
+            "-vf", $"fps={rate},{ScaleFor(clarityHeight)}",
             "-an",
         };
 
         if (format == RecordFormat.Apng)
         {
             args.Add("-plays");
-            args.Add("0");
+            args.Add(loop ? "0" : "1");
             args.Add("-c:v");
             args.Add("apng");
         }
@@ -384,7 +488,7 @@ internal sealed class RecordPlan
             args.Add("-q:v");
             args.Add("75");
             args.Add("-loop");
-            args.Add("0");
+            args.Add(loop ? "0" : "1");
         }
 
         args.Add(output);

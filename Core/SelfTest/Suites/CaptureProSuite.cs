@@ -99,6 +99,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "录屏：空闲区域框的拖拽几何", RecordRegion));
         cases.Add(new("capturePro", "录屏：中断残片的尺寸 / 时长解析", RecordRecoveryProbe));
         cases.Add(new("capturePro", "录屏：选项 / 编码器 / 混音参数", RecordOptionsRules));
+        cases.Add(new("capturePro", "录屏：设置默认值 / 质量换算 / 清晰度 / 进度条", RecordSettingsRules));
         cases.Add(new("capturePro", "录屏：特效几何 / 画中画落点", RecordEffectRules));
         cases.Add(new("capturePro", "录屏：裁剪 / 倍速 / 导出参数", RecordTrimRules));
         cases.Add(new("capturePro", "文字族：字号 / 字体 / 粗斜 / 对齐 / 描边 / 背景胶囊", TextStyles));
@@ -2133,7 +2134,13 @@ internal static partial class CaptureProSuite
         Check.Equal(RecordPlan.MinFps, RecordPlan.FromValues(null, null, 1, 0).EffectiveFps, "帧率太小夹到下限");
         Check.Equal(0, RecordPlan.FromValues(null, null, 30, -5).Countdown, "倒计时负数夹到 0");
 
-        Check.Equal(RecordPlan.GifMaxFps, RecordPlan.FromValues(null, "gif", 60, 0).GifFps, "GIF 帧率最多 15");
+        Check.Equal(RecordPlan.GifMaxFps,
+            RecordPlan.FromValues(null, "gif", 60, 0, null,
+                new RecordOptions { AnimatedFrameRate = 30 }).GifFps, "GIF 帧率最多 15");
+        Check.Equal(RecordOptions.DefaultAnimatedFrameRate, RecordPlan.FromValues(null, "gif", 30, 0).GifFps,
+            "动图帧率取设置（默认 10），不看录制帧率");
+        Check.Equal(30, RecordPlan.FromValues(null, "apng", 30, 0, null,
+            new RecordOptions { AnimatedFrameRate = 30 }).GifFps, "APNG 不受 GIF 的 15 上限");
         Check.Equal("gif", RecordPlan.FromValues(null, "gif", 30, 0).Extension, "GIF 扩展名");
         Check.Equal("mp4", RecordPlan.FromValues(null, null, 30, 0).Extension, "MP4 扩展名");
 
@@ -2206,10 +2213,10 @@ internal static partial class CaptureProSuite
         Check.Equal("out.gif", gif[^1], "GIF 输出是最后一个参数");
 
         // APNG / WebP：单遍转码（不像 GIF 要两遍调色板），同样压帧率 / 宽度，且不带音轨
-        var apng = RecordPlan.AnimatedArgs("in.mp4", "out.apng", RecordFormat.Apng, 60);
+        var apng = RecordPlan.AnimatedArgs("in.mp4", "out.apng", RecordFormat.Apng, 15);
         string apngLine = string.Join(" ", apng);
-        Check.True(apngLine.Contains("fps=15"), "APNG 帧率也压到 15");
-        Check.True(apngLine.Contains("min(960,iw)"), "APNG 宽度上限 960");
+        Check.True(apngLine.Contains("fps=15"), "APNG 帧率按设置");
+        Check.True(apngLine.Contains("min(960,iw)"), "没给清晰度时宽度上限 960");
         Check.True(apngLine.Contains("-an"), "动图不带音轨");
         Check.True(apngLine.Contains("-c:v apng"), "APNG 用 apng 编码器");
         Check.Equal("out.apng", apng[^1], "APNG 输出是最后一个参数");
@@ -3381,6 +3388,196 @@ internal static partial class CaptureProSuite
         var clamped = RecordWebcamLayout.ToolbarRect(new Int32Rect(1900, 400, 150, 150), screen, 1);
         Check.Equal(1818, clamped.X, "靠右边缘时横向夹回屏幕里（1920 − 102）");
         Check.Equal(102, clamped.Width, "夹回来不改宽度");
+    }
+
+    /// <summary>
+    /// 录屏设置（P9-g）：照上游 <c>screen_recording/*</c> 的默认值与归一、质量换算、
+    /// 清晰度缩放、文件名模板、分离音轨、后期处理进度条。
+    /// </summary>
+    private static void RecordSettingsRules()
+    {
+        // ---- 默认值（configurationschema.cpp 的 kSchemaStrings* / kSchemaRange*）----
+        var d = new RecordOptions();
+        Check.Equal("1080p", d.Clarity, "清晰度默认 1080p");
+        Check.Equal(30, d.FrameRate, "帧率默认 30");
+        Check.Equal("720p", d.AnimatedClarity, "动图清晰度默认 720p");
+        Check.Equal(10, d.AnimatedFrameRate, "动图帧率默认 10");
+        Check.True(d.LoopAnimated, "动图默认无限循环");
+        Check.Equal("mp4", d.OutputFormat, "默认格式 mp4");
+        Check.Equal(500, d.TrailDurationMs, "拖尾默认 500ms");
+        Check.Equal(64, d.KeyboardSize, "按键浮层默认 64");
+        Check.Equal("#000000CC", d.KeyboardBackgroundColor, "按键底色默认 #000000CC");
+        Check.Equal("#FFFFFFFF", d.KeyboardForegroundColor, "按键字色默认白");
+        Check.Equal("#FFFF0080", d.MouseHighlightColor, "光标高亮默认玫红");
+        Check.Equal("#1677FFFF", d.ProgressBarColor, "进度条默认蓝");
+        Check.False(d.FollowMouse, "默认不跟随鼠标");
+        Check.True(d.FollowMouseSmooth && d.FollowMouseReduceJitter, "跟随默认平滑 + 抑抖");
+        Check.Equal(80, d.VideoQuality, "默认质量 80");
+        Check.Equal("veryfast", d.EncodingPreset, "默认速度档 veryfast");
+        Check.True(d.CaptureToolbarInRecording, "工具条默认录进画面");
+        Check.True(d.ShowStatusPrompts, "默认显示状态提示");
+        Check.False(d.AutoExitAfterRecording, "默认不自动收起");
+        Check.False(d.NotifyAfterExport, "默认不额外提示导出");
+        Check.False(d.DeleteFilesOnClose, "默认关窗不删文件");
+        Check.False(d.SeparateAudioTracks, "默认混成一条音轨");
+        Check.Equal(0, d.StartDelaySeconds, "默认不等待");
+        Check.Equal("", d.SaveDirectory, "默认保存目录留空（系统视频目录）");
+        Check.Equal("SnowShot_Video_{YYYY-MM-DD_HH-mm-ss}", d.FilenameFormat, "默认文件名模板");
+
+        // ---- 归一 ----
+        Check.Equal("4k", RecordOptions.NormalizeClarity("4K", animated: false), "清晰度不分大小写");
+        Check.Equal("1080p", RecordOptions.NormalizeClarity("???", animated: false), "认不出回视频默认");
+        Check.Equal("720p", RecordOptions.NormalizeClarity("4k", animated: true), "动图不认 4k → 720p");
+        Check.Equal("mp4", RecordOptions.NormalizeFormat("webm"), "认不出的格式回 mp4");
+        Check.Equal("webp", RecordOptions.NormalizeFormat("WebP"), "格式不分大小写");
+        Check.Equal("veryfast", RecordOptions.NormalizePreset("nope"), "认不出的速度档回 veryfast");
+        Check.Equal(RecordOptions.MinFrameRate, RecordOptions.NormalizeFrameRate(1), "帧率夹到下限");
+        Check.Equal(RecordOptions.MaxFrameRate, RecordOptions.NormalizeFrameRate(120), "帧率夹到上限");
+        Check.Equal(30, RecordOptions.NormalizeFrameRate(0), "帧率 0 = 默认 30");
+        Check.Equal(10, RecordOptions.NormalizeAnimatedFrameRate(0), "动图帧率 0 = 默认 10");
+        Check.Equal(10, RecordOptions.NormalizeAnimatedFrameRate(-3), "动图帧率负数也回默认");
+        Check.Equal(30, RecordOptions.NormalizeAnimatedFrameRate(99), "动图帧率夹到上限");
+        Check.Equal(300, RecordOptions.NormalizeTrailDuration(260), "拖尾按 100ms 取整");
+        Check.Equal(100, RecordOptions.NormalizeTrailDuration(10), "拖尾夹到下限");
+        Check.Equal(2000, RecordOptions.NormalizeTrailDuration(5000), "拖尾夹到上限");
+        Check.Equal(64, RecordOptions.NormalizeKeyboardSize(0), "按键高度 0 = 默认 64");
+        Check.Equal(40, RecordOptions.NormalizeKeyboardSize(38), "按键高度按 8px 取整");
+        Check.Equal(128, RecordOptions.NormalizeKeyboardSize(200), "按键高度夹到上限");
+        Check.Equal(0, RecordOptions.NormalizeQuality(-5), "质量夹到 0");
+        Check.Equal(100, RecordOptions.NormalizeQuality(500), "质量夹到 100");
+        Check.Equal(10, RecordOptions.NormalizeStartDelay(99), "等待秒数夹到 10");
+        Check.Equal(2160, RecordOptions.ClarityHeight("4k"), "4k = 2160");
+        Check.Equal(1440, RecordOptions.ClarityHeight("2k"), "2k = 1440");
+        Check.Equal(1080, RecordOptions.ClarityHeight("???"), "认不出按 1080");
+        Check.Equal(480, RecordOptions.AnimatedClarityHeight("480p"), "动图 480p");
+        Check.Equal(720, RecordOptions.AnimatedClarityHeight("4k"), "动图不认 4k → 720");
+        Check.Equal(16, RecordOptions.CrfOf(100), "质量 100 → crf 16");
+        Check.Equal(23, RecordOptions.CrfOf(80), "质量 80 → crf 23");
+        Check.Equal(51, RecordOptions.CrfOf(0), "质量 0 → crf 51");
+        Check.Equal("scale=-2:'min(ih,720)'", RecordOptions.ScaleFilter(720), "缩放滤镜只往下缩");
+
+        // ---- 颜色（#AARRGGBB）----
+        Check.Equal("#FF112233", RecordOptions.NormalizeColor("112233", "#FF000000"), "6 位补 FF");
+        Check.Equal("#80112233", RecordOptions.NormalizeColor("#80112233", "#FF000000"), "8 位原样");
+        Check.Equal("#FF000000", RecordOptions.NormalizeColor("zzz", "#FF000000"), "认不出用兜底");
+        Check.Equal(0x80, RecordOptions.AlphaOf("#80112233"), "alpha 取前两位");
+        Check.Equal(0, RecordOptions.AlphaOf("???"), "认不出按透明");
+
+        // ---- 文件名模板 ----
+        var when = new DateTime(2026, 3, 4, 5, 6, 7);
+        Check.Equal("SnowShot_Video_2026-03-04_05-06-07",
+            RecordOptions.FileNameFor("SnowShot_Video_{YYYY}-{MM}-{DD}_{HH}-{mm}-{ss}", when), "模板逐项展开");
+        Check.Equal("rec-26", RecordOptions.FileNameFor("rec-{YY}", when), "{YY} 两位年份");
+        Check.Equal("2026-03-04_05-06-07", RecordOptions.FileNameFor("{YYYY-MM-DD_HH-mm-ss}", when),
+            "一对花括号里可以是一整段日期格式（上游写法）");
+        Check.Equal("SnowShot_Video_2026-03-04_05-06-07", RecordOptions.FileNameFor("   ", when), "空模板回默认");
+        Check.Equal("a_b", RecordOptions.FileNameFor("a:b", when), "非法字符换下划线");
+
+        // ---- CopySettingsFrom 只搬全局字段 ----
+        var global = new RecordOptions
+        {
+            Clarity = "720p",
+            FrameRate = 24,
+            VideoQuality = 60,
+            EncodingPreset = "medium",
+            TrailDurationMs = 800,
+            KeyboardSize = 96,
+            FollowMouse = true,
+            SaveDirectory = @"D:\rec",
+            FilenameFormat = "x_{YYYY}",
+        };
+        var local = new RecordOptions
+        {
+            SystemAudio = false,
+            Microphone = true,
+            CameraDevice = 2,
+            Codec = RecordCodec.hevc,
+        };
+        local.CopySettingsFrom(global);
+        Check.Equal("720p", local.Clarity, "全局：清晰度");
+        Check.Equal(24, local.FrameRate, "全局：帧率");
+        Check.Equal(60, local.VideoQuality, "全局：质量");
+        Check.Equal(800, local.TrailDurationMs, "全局：拖尾");
+        Check.Equal(@"D:\rec", local.SaveDirectory, "全局：保存目录");
+        Check.True(local.FollowMouse, "全局：跟随鼠标");
+        Check.False(local.SystemAudio, "本地：声音不被覆盖");
+        Check.Equal(2, local.CameraDevice, "本地：摄像头不被覆盖");
+        Check.Equal(RecordCodec.hevc, local.Codec, "本地：编码器不被覆盖");
+
+        // ---- 编码器参数：质量 → crf / cq / qp，速度档 → preset ----
+        string x264 = string.Join(" ", RecordEncoders.Arguments(RecordEncoders.X264, 80, "medium"));
+        Check.True(x264.Contains("-preset medium") && x264.Contains("-crf 23"), "x264 质量 80 → crf 23");
+        string x265 = string.Join(" ", RecordEncoders.Arguments(RecordEncoders.X265, 100, "slow"));
+        Check.True(x265.Contains("-crf 16") && x265.Contains("-preset slow") && x265.Contains("hvc1"),
+            "x265 质量 100 → crf 16 + hvc1");
+        string nv = string.Join(" ", RecordEncoders.Arguments("h264_nvenc", 80, "veryfast"));
+        Check.True(nv.Contains("-cq 23") && nv.Contains("-preset p1"), "NVENC 用 cq 与 p 档");
+        string nvSlow = string.Join(" ", RecordEncoders.Arguments("h264_nvenc", 80, "veryslow"));
+        Check.True(nvSlow.Contains("-preset p6"), "慢档映射 p6");
+        string amf = string.Join(" ", RecordEncoders.Arguments("h264_amf", 80, "medium"));
+        Check.True(amf.Contains("-qp_i 23") && amf.Contains("-qp_p 23") && amf.Contains("-qp_b 25"),
+            "AMF 用 qp");
+        string qsv = string.Join(" ", RecordEncoders.Arguments("hevc_qsv", 80, "medium"));
+        Check.True(qsv.Contains("-global_quality 26"), "HEVC 质量偏保守（+3）");
+
+        // ---- MP4：清晰度 / 质量 / 速度档 ----
+        string mp4 = string.Join(" ", RecordPlan.Mp4Args(new Int32Rect(0, 0, 1920, 1080), 30, "o.mp4",
+            RecordEncoders.X264, 720, 60, "medium"));
+        Check.True(mp4.Contains("min(ih,720)"), "清晰度按高度缩");
+        Check.True(mp4.Contains("-preset medium") && mp4.Contains("-crf 30"), "质量 60 → crf 30");
+        string noScale = string.Join(" ", RecordPlan.Mp4Args(new Int32Rect(0, 0, 1280, 720), 30, "o.mp4",
+            RecordEncoders.X264, 1080));
+        Check.False(noScale.Contains("min(ih,1080)"), "比清晰度小的画面不放大");
+
+        // ---- 动图：清晰度 / 循环 ----
+        string palette = string.Join(" ", RecordPlan.GifPaletteArgs("in.mp4", "p.png", 10, 480));
+        Check.True(palette.Contains("fps=10") && palette.Contains("min(ih,480)"), "GIF 按设置帧率与清晰度");
+        string gifOnce = string.Join(" ", RecordPlan.GifEncodeArgs("in.mp4", "p.png", "o.gif", 10, 480,
+            loop: false));
+        Check.True(gifOnce.Contains("-loop 1"), "不循环 = -loop 1");
+        string apng = string.Join(" ", RecordPlan.AnimatedArgs("in.mp4", "o.apng", RecordFormat.Apng, 20,
+            1080, loop: false));
+        Check.True(apng.Contains("fps=20") && apng.Contains("min(ih,1080)") && apng.Contains("-plays 1"),
+            "APNG 帧率 / 清晰度 / 只播一次");
+        string webp = string.Join(" ", RecordPlan.AnimatedArgs("in.mp4", "o.webp", RecordFormat.Webp, 20, 720));
+        Check.True(webp.Contains("min(ih,720)") && webp.Contains("-loop 0"), "WebP 无限循环");
+
+        // ---- 收尾：分离音轨（上游 separate_audio_tracks）----
+        string separate = string.Join(" ", RecordPlan.FinalizeArgs("in.mp4", "out.mp4",
+            new[] { "sys.wav", "mic.wav" }, new[] { 0, 0 }, separateTracks: true));
+        Check.False(separate.Contains("amix"), "分离音轨不混音");
+        Check.True(separate.Contains("-map [a0]") && separate.Contains("-map [a1]"), "两路各映射一条");
+        Check.True(separate.Contains("-c:a aac"), "两条都编 AAC");
+
+        // ---- 后期处理「进度条」：收尾后单独过一遍 drawbox ----
+        string bar = string.Join(" ", RecordPlan.ProgressBarArgs("in.mp4", "out.mp4", 10_000,
+            "#1677FFFF", 80, "veryfast"));
+        Check.True(bar.Contains("drawbox"), "进度条用 drawbox");
+        Check.True(bar.Contains("0x77FFFF@0.086"), "颜色取 #RRGGBB + alpha 0–1（#16 = 0.086）");
+        Check.True(bar.Contains("t/10"), "按总时长填满");
+        Check.True(bar.Contains("-crf 23"), "重编码沿用同一套质量");
+
+        // ---- 设置默认值进计划（覆盖层 / 内置功能入口）----
+        var plan = RecordPlan.FromSettings(new RecordOptions
+        {
+            OutputFormat = "gif",
+            FrameRate = 24,
+            StartDelaySeconds = 3,
+            FollowMouse = true,
+            AnimatedFrameRate = 20,
+        });
+        Check.Equal(RecordFormat.Gif, plan.Format, "格式取设置默认值");
+        Check.Equal(24, plan.Fps, "帧率取设置默认值");
+        Check.Equal(3, plan.Countdown, "等待秒数取设置默认值");
+        Check.True(plan.FollowMouse, "跟随鼠标取设置默认值");
+        Check.Equal(15, plan.GifFps, "GIF 动图帧率取设置并压到 15");
+        Check.Equal(20, RecordPlan.FromSettings(new RecordOptions
+        {
+            OutputFormat = "apng",
+            AnimatedFrameRate = 20,
+        }).GifFps, "APNG 帧率不受 15 限制");
+        Check.False(plan.PromptStart, "默认不摆面板");
+        Check.True(RecordPlan.FromSettings(null, promptStart: true).PromptStart, "覆盖层入口要摆面板");
     }
 
     /// <summary>

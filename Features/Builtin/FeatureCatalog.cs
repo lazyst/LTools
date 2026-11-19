@@ -232,7 +232,7 @@ internal static class FeatureCatalog
             "把资源管理器里选中的图片 / 文本文件贴到屏幕上",
             PinSelectedFiles),
         C("common.record", "屏幕", "录屏", "record",
-            "录屏（选区 / 主屏 / 全部屏幕 / 前台窗口），存成 MP4 或 GIF",
+            "录屏（选区 / 主屏 / 全部屏幕 / 前台窗口），存成 MP4 / GIF / APNG / WebP",
             Record,
             new FeatureParam("source", "范围", FeatureParamKind.Choice, "pick",
                 Options: new[]
@@ -243,20 +243,24 @@ internal static class FeatureCatalog
                     new FeatureOption("window", "前台窗口"),
                 },
                 Hint: "框选时按 Esc 取消"),
-            new FeatureParam("format", "格式", FeatureParamKind.Choice, "mp4",
+            new FeatureParam("format", "格式", FeatureParamKind.Choice, "",
                 Options: new[]
                 {
+                    new FeatureOption("", "跟随设置"),
                     new FeatureOption("mp4", "MP4 视频"),
                     new FeatureOption("gif", "GIF 动图"),
+                    new FeatureOption("apng", "APNG 动图"),
+                    new FeatureOption("webp", "WebP 动图"),
                 },
-                Hint: "GIF 帧率最高 15、宽度最多 960"),
-            new FeatureParam("fps", "帧率", FeatureParamKind.Number, "30",
-                Hint: "5–60；GIF 取 min(帧率, 15)", Unit: "fps"),
-            new FeatureParam("countdown", "倒计时", FeatureParamKind.Number, "3",
-                Hint: "开始前等几秒，0 = 立刻开始", Unit: "秒"),
-            new FeatureParam("follow", "跟随鼠标", FeatureParamKind.Choice, "off",
+                Hint: "跟随设置时用「设置 → 通用 → 截图 Pro · 录屏」里的默认格式；GIF 帧率最高 15"),
+            new FeatureParam("fps", "帧率", FeatureParamKind.Number, "0",
+                Hint: "0 = 跟随设置（5–60）", Unit: "fps"),
+            new FeatureParam("countdown", "倒计时", FeatureParamKind.Number, "-1",
+                Hint: "-1 = 跟随设置；0 = 立刻开始", Unit: "秒"),
+            new FeatureParam("follow", "跟随鼠标", FeatureParamKind.Choice, "",
                 Options: new[]
                 {
+                    new FeatureOption("", "跟随设置"),
                     new FeatureOption("off", "不跟随"),
                     new FeatureOption("on", "跟随鼠标（选区决定成品尺寸）"),
                 },
@@ -676,12 +680,17 @@ internal static class FeatureCatalog
             ctx.Get("audio"), ctx.Get("camera"), ctx.Get("effects"),
             ctx.Get("codec"), ctx.Get("trim"));
 
+        string? follow = ctx.Get("follow");
+        bool? followMouse = string.IsNullOrWhiteSpace(follow)
+            ? null
+            : follow.Trim().ToLowerInvariant() is "on" or "true" or "1";
+
         var plan = RecordPlan.FromValues(
             ctx.Get("source"),
             ctx.Get("format"),
-            ctx.GetInt("fps", RecordPlan.DefaultFps),
-            ctx.GetInt("countdown", RecordPlan.DefaultCountdown),
-            string.Equals(ctx.Get("follow"), "on", StringComparison.OrdinalIgnoreCase),
+            ctx.GetInt("fps", 0),
+            ctx.GetInt("countdown", -1),
+            followMouse,
             options);
 
         RecordSession.TryRun(null, plan);

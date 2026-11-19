@@ -244,6 +244,10 @@ public partial class RecordOptionsWindow : Window
         options.MicrophoneGainDb = previous.MicrophoneGainDb;
         options.SystemAudioGainDb = previous.SystemAudioGainDb;
 
+        // 设置页那批全局默认值（清晰度 / 帧率 / 质量 / 特效尺寸配色 / 跟随鼠标 / 保存目录…）
+        // 也不归这个窗口管：从旧值搬回来，别被 RecordOptions 的默认值冲掉。
+        options.CopySettingsFrom(previous);
+
         try
         {
             SettingsStore.Modify(file => file.Record = options);

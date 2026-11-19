@@ -223,7 +223,7 @@ internal static class RecordSession
         }
 
         // 收尾（重封装 + 混音）走渲染进度对话框：失败 / 取消停在那儿等用户选重试 / 保留源文件 / 丢弃
-        string file = FinalizeWithProgress(ffmpeg, temp, area, engine.DurationMs, trackPaths, trackGains);
+        string file = FinalizeWithProgress(ffmpeg, temp, area, engine.DurationMs, plan, trackPaths, trackGains);
         if (file.Length == 0)
         {
             DeleteAudio(audio);
@@ -275,6 +275,18 @@ internal static class RecordSession
             onClick: OpenRecordsFolder, actionText: "打开文件夹");
 
         if (plan.Options.TrimAfterRecord && extension == "mp4") OpenTrim(entry);
+
+        // 导出完成通知（上游 notify_after_export_completes，默认关）：另给一条带「打开文件夹」的提示，
+        // 与上面那条结果提示分开（用户关掉结果提示后仍能看到导出完成）。
+        if (plan.Options.NotifyAfterExport)
+        {
+            ToastService.Show("录屏已导出 · " + Path.GetFileName(CaptureCatalog.FilePath(entry)),
+                "录屏", 4000, ToastKind.success, onClick: OpenRecordsFolder, actionText: "打开文件夹",
+                key: "record-export");
+        }
+
+        // 录完自动收起面板（上游 auto_exit_after_recording_ends，默认关）
+        if (plan.Options.AutoExitAfterRecording) CloseBar(bar);
 
         return new RecordOutcome
         {
@@ -658,15 +670,19 @@ internal static class RecordSession
             if (plan.Format == RecordFormat.Gif)
             {
                 string palette = TempPath("png");
+                int clarity = RecordOptions.AnimatedClarityHeight(plan.Options.AnimatedClarity);
                 try
                 {
-                    if (!RunFfmpeg(ffmpeg, RecordPlan.GifPaletteArgs(input, palette, plan.GifFps), out string paletteError))
+                    if (!RunFfmpeg(ffmpeg, RecordPlan.GifPaletteArgs(input, palette, plan.GifFps, clarity),
+                            out string paletteError))
                     {
                         error = "调色板：" + paletteError;
                         return false;
                     }
 
-                    if (!RunFfmpeg(ffmpeg, RecordPlan.GifEncodeArgs(input, palette, output, plan.GifFps), out string encodeError))
+                    if (!RunFfmpeg(ffmpeg,
+                            RecordPlan.GifEncodeArgs(input, palette, output, plan.GifFps, clarity,
+                                plan.Options.LoopAnimated), out string encodeError))
                     {
                         error = "编码：" + encodeError;
                         return false;
@@ -678,7 +694,9 @@ internal static class RecordSession
                 }
             }
             else if (!RunFfmpeg(ffmpeg,
-                         RecordPlan.AnimatedArgs(input, output, plan.Format, plan.GifFps),
+                         RecordPlan.AnimatedArgs(input, output, plan.Format, plan.GifFps,
+                             RecordOptions.AnimatedClarityHeight(plan.Options.AnimatedClarity),
+                             plan.Options.LoopAnimated),
                          out string convertError))
             {
                 error = "编码：" + convertError;
@@ -764,34 +782,55 @@ internal static class RecordSession
     /// </para>
     /// </remarks>
     private static string FinalizeWithProgress(string ffmpeg, string temp, Int32Rect area, int durationMs,
-        IReadOnlyList<string> trackPaths, IReadOnlyList<int> trackGains)
+        RecordPlan plan, IReadOnlyList<string> trackPaths, IReadOnlyList<int> trackGains)
     {
         string final = Path.Combine(TempDir, "rec-" + IdFactory.ShortId() + ".final.mp4");
 
-        var outcome = RecordRenderRunner.Run(ffmpeg, TempDir, area, durationMs, new[]
+        var steps = new List<RecordRenderStep>
         {
-            new RecordRenderStep
+            new()
             {
-                Args = RecordPlan.FinalizeArgs(temp, final, trackPaths, trackGains),
+                Args = RecordPlan.FinalizeArgs(temp, final, trackPaths, trackGains,
+                    plan.Options.SeparateAudioTracks),
                 ExpectedFile = final,
             },
-        });
+        };
 
-        if (outcome.Ok && File.Exists(final) && new FileInfo(final).Length > 0)
+        // 「后期处理 → 进度条」要等录完才知道总时长，所以放在收尾之后单独过一遍
+        // （见 RecordPlan.ProgressBarArgs；播放时间那一档是边录边画的，不进这一步）。
+        string bar = Path.Combine(TempDir, "rec-" + IdFactory.ShortId() + ".bar.mp4");
+        bool progressBar = plan.Options.PostProcessing && plan.Options.PostProcessingProgressBar;
+        if (progressBar)
         {
+            steps.Add(new RecordRenderStep
+            {
+                Args = RecordPlan.ProgressBarArgs(final, bar, durationMs,
+                    plan.Options.ProgressBarColor, plan.Options.VideoQuality, plan.Options.EncodingPreset),
+                ExpectedFile = bar,
+            });
+        }
+
+        var outcome = RecordRenderRunner.Run(ffmpeg, TempDir, area, durationMs, steps);
+
+        string produced = progressBar && File.Exists(bar) && new FileInfo(bar).Length > 0 ? bar : final;
+        if (outcome.Ok && File.Exists(produced) && new FileInfo(produced).Length > 0)
+        {
+            if (!ReferenceEquals(produced, final)) DeleteFile(final);
             DeleteFile(temp);
-            return final;
+            return produced;
         }
 
         if (outcome.Discarded)
         {
             DeleteFile(final);
+            DeleteFile(bar);
             DeleteFile(temp);
             return "";
         }
 
         // 保留源文件 / 没有界面：分片 MP4 就是这次的成品
         DeleteFile(final);
+        DeleteFile(bar);
         AppLog.Warn("CapturePro.Record",
             "重封装 MP4 没有完成（沿用分片文件）：" + (outcome.Error.Length > 0 ? outcome.Error : "用户取消"));
         return temp;

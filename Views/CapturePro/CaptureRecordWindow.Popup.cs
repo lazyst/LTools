@@ -135,8 +135,10 @@ public partial class CaptureRecordWindow
 
         try
         {
-            if (noActivate) OverlayShell.MakeNonActivating(source.Handle, excludeFromCapture: true);
-            else Win32.SetWindowDisplayAffinity(source.Handle, Win32.WdaExcludeFromCapture);
+            // 弹层也是工具条的一部分：跟着 capture_toolbar_in_recording 走（默认开 = 录进去）
+            bool exclude = !_plan.Options.CaptureToolbarInRecording;
+            if (noActivate) OverlayShell.MakeNonActivating(source.Handle, excludeFromCapture: exclude);
+            else if (exclude) Win32.SetWindowDisplayAffinity(source.Handle, Win32.WdaExcludeFromCapture);
         }
         catch (Exception ex)
         {

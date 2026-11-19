@@ -839,9 +839,12 @@ public partial class CaptureRecordWindow
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
                 Title = "另存录屏",
-                FileName = System.IO.Path.GetFileName(path),
+                FileName = RecordOptions.FileNameFor(_plan.Options.FilenameFormat, DateTime.Now)
+                           + System.IO.Path.GetExtension(path),
                 Filter = "视频 / 动图|*.mp4;*.gif;*.apng;*.webp|所有文件|*.*",
-                InitialDirectory = System.IO.Path.GetDirectoryName(path),
+                InitialDirectory = System.IO.Directory.Exists(_plan.Options.SaveDirectory)
+                    ? _plan.Options.SaveDirectory
+                    : System.IO.Path.GetDirectoryName(path),
             };
             if (dlg.ShowDialog(this) != true) return;
 

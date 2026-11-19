@@ -265,6 +265,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "recordsettings")
+        {
+            RecordSettingsSection();
+            Console.WriteLine(_failed == 0 ? "recordsettings-only：通过" : $"recordsettings-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         if (_only == "drawing")
         {
             DrawingSection();
@@ -592,6 +599,9 @@ internal static partial class Program
 
         // ============ 颜色预设（P2-f）：默认值 / 落盘 / 参数条换族 / 真点色块 / 设置页 ============
         ColorPresetsSection();
+
+        // ============ 录屏设置（P9-g）：回显 / 改动落盘 / 归一 / 全局默认值进计划 ============
+        RecordSettingsSection();
 
         // ============ 绘制行为（P9-b）：设置页 / 清单窗口 / 组首按钮 / 自动选中 / 快速选择 ============
         DrawingSection();

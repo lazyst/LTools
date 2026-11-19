@@ -134,17 +134,50 @@ internal static class RecordEncoders
         encoder is X265 or "hevc_nvenc" or "hevc_amf" or "hevc_qsv";
 
     /// <summary>编码器参数（画面质量 / 速度档）。</summary>
-    public static IReadOnlyList<string> Arguments(string encoder) => encoder switch
+    /// <param name="encoder">编码器名（来自 <see cref="Pick"/>）。</param>
+    /// <param name="quality">画面质量 0–100（上游 <c>video_quality</c>，默认 80）。</param>
+    /// <param name="preset">x264 / x265 的速度档（上游 <c>encoding_preset</c>，默认 <c>veryfast</c>）。</param>
+    public static IReadOnlyList<string> Arguments(string encoder,
+        int quality = RecordOptions.DefaultVideoQuality, string preset = "veryfast")
     {
-        X265 => new[] { "-c:v", X265, "-preset", "veryfast", "-crf", "24", "-tag:v", "hvc1" },
-        "h264_nvenc" => new[] { "-c:v", "h264_nvenc", "-preset", "p4", "-tune", "ll", "-rc", "vbr", "-cq", "23", "-b:v", "0" },
-        "hevc_nvenc" => new[] { "-c:v", "hevc_nvenc", "-preset", "p4", "-tune", "ll", "-rc", "vbr", "-cq", "26", "-b:v", "0", "-tag:v", "hvc1" },
-        "h264_amf" => new[] { "-c:v", "h264_amf", "-quality", "balanced", "-rc", "cqp", "-qp_i", "23", "-qp_p", "23", "-qp_b", "25" },
-        "hevc_amf" => new[] { "-c:v", "hevc_amf", "-quality", "balanced", "-rc", "cqp", "-qp_i", "26", "-qp_p", "26", "-qp_b", "28", "-tag:v", "hvc1" },
-        "h264_qsv" => new[] { "-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "23" },
-        "hevc_qsv" => new[] { "-c:v", "hevc_qsv", "-preset", "veryfast", "-global_quality", "26", "-tag:v", "hvc1" },
-        _ => new[] { "-c:v", X264, "-preset", "veryfast", "-crf", "20" },
-    };
+        int crf = RecordOptions.CrfOf(quality);
+        string speed = RecordOptions.NormalizePreset(preset);
+        string nvencPreset = speed is "ultrafast" or "superfast" or "veryfast" or "faster" or "fast" ? "p1"
+            : speed is "medium" ? "p4"
+            : "p6";
+
+        return encoder switch
+        {
+            X265 => new[] { "-c:v", X265, "-preset", speed, "-crf", crf.ToString(), "-tag:v", "hvc1" },
+            "h264_nvenc" => new[]
+            {
+                "-c:v", "h264_nvenc", "-preset", nvencPreset, "-tune", "ll", "-rc", "vbr",
+                "-cq", crf.ToString(), "-b:v", "0",
+            },
+            "hevc_nvenc" => new[]
+            {
+                "-c:v", "hevc_nvenc", "-preset", nvencPreset, "-tune", "ll", "-rc", "vbr",
+                "-cq", (crf + 3).ToString(), "-b:v", "0", "-tag:v", "hvc1",
+            },
+            "h264_amf" => new[]
+            {
+                "-c:v", "h264_amf", "-quality", "balanced", "-rc", "cqp",
+                "-qp_i", crf.ToString(), "-qp_p", crf.ToString(), "-qp_b", (crf + 2).ToString(),
+            },
+            "hevc_amf" => new[]
+            {
+                "-c:v", "hevc_amf", "-quality", "balanced", "-rc", "cqp",
+                "-qp_i", (crf + 3).ToString(), "-qp_p", (crf + 3).ToString(), "-qp_b", (crf + 5).ToString(),
+                "-tag:v", "hvc1",
+            },
+            "h264_qsv" => new[] { "-c:v", "h264_qsv", "-preset", speed, "-global_quality", crf.ToString() },
+            "hevc_qsv" => new[]
+            {
+                "-c:v", "hevc_qsv", "-preset", speed, "-global_quality", (crf + 3).ToString(), "-tag:v", "hvc1",
+            },
+            _ => new[] { "-c:v", X264, "-preset", speed, "-crf", crf.ToString() },
+        };
+    }
 
     /// <summary>成品扩展名之外的一句话名字（日志 / 控制条用）。</summary>
     public static string Label(string encoder) => encoder switch

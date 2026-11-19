@@ -47,6 +47,7 @@ dotnet run --no-build -- behavior     # 只跑一段（改哪块跑哪段）
 | `split` / `collage` / `collagepdf` | 切图 / 拼图 / 拼图 PDF |
 | `history` / `hidetotop` / `pinocr` / `clipboardmeta` | 采集历史 / 贴图收顶部 / 贴图识别 / 剪贴板元数据 |
 | `record` / `webcam` / `autohide` / `render` / `globalscreen`(`globalcanvas`) | 录屏：区域框 / 选项 / 画中画 / 自动收起 / 后期渲染 / 全屏画布 |
+| `recordsettings` | 录屏设置：设置页回显 / 改动落 `settings.json` / 归一 / 全局默认值进计划 |
 | `keys` / `shortcuts` / `export` / `sound` / `captureEntry` / `releaseAction` | 键名 / 全局快捷键 / 导出 / 快门音 / 采集入口 / 释放动作 |
 | 不带参数 | 上面全部 + 覆盖层主链路（选区 / 标注 / 样式 / 多选 / 贴图 / 识别 / 转换 / 翻译 / PDF…） |
 

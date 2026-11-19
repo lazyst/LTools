@@ -71,6 +71,46 @@ public sealed class RecordOptions
     public const int MinHighlightRadius = 8;
     public const int MaxHighlightRadius = 128;
 
+    /// <summary>录制帧率（上游 <c>screen_recording/frame_rate</c>，默认 30）。</summary>
+    public const int DefaultFrameRate = 30;
+    public const int MinFrameRate = 5;
+    public const int MaxFrameRate = 60;
+
+    /// <summary>动图（GIF / APNG / WebP）的帧率（上游 <c>animated_image_frame_rate</c>，默认 10）。</summary>
+    public const int DefaultAnimatedFrameRate = 10;
+    public const int MinAnimatedFrameRate = 1;
+    public const int MaxAnimatedFrameRate = 30;
+
+    /// <summary>激光拖尾寿命（上游 <c>mouse_trail_duration_ms</c>，100–2000 步长 100，默认 500）。</summary>
+    public const int DefaultTrailDurationMs = 500;
+    public const int MinTrailDurationMs = 100;
+    public const int MaxTrailDurationMs = 2000;
+
+    /// <summary>按键浮层的高度（上游 <c>keyboard_size</c>，32–128 步长 8，默认 64）。</summary>
+    public const int DefaultKeyboardSize = 64;
+    public const int MinKeyboardSize = 32;
+    public const int MaxKeyboardSize = 128;
+
+    /// <summary>画面质量（上游 <c>video_quality</c>，0–100，默认 80）。</summary>
+    public const int DefaultVideoQuality = 80;
+
+    /// <summary>开录前的等待秒数（上游 <c>start_delay_seconds</c>，0–10，默认 0）。</summary>
+    public const int DefaultStartDelaySeconds = 0;
+    public const int MaxStartDelaySeconds = 10;
+
+    /// <summary>清晰度档位（上游 <c>clarity</c>）。</summary>
+    public static readonly string[] ClarityOptions = { "4k", "2k", "1080p", "720p", "480p" };
+
+    /// <summary>动图清晰度档位（上游 <c>animated_image_clarity</c>）。</summary>
+    public static readonly string[] AnimatedClarityOptions = { "1080p", "720p", "480p" };
+
+    /// <summary>成品格式（上游 <c>output_format</c>）。</summary>
+    public static readonly string[] FormatOptions = { "mp4", "gif", "apng", "webp" };
+
+    /// <summary>x264 / x265 的速度档（上游 <c>encoding_preset</c>）。</summary>
+    public static readonly string[] PresetOptions =
+        { "ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow" };
+
     /// <summary>录系统声音（WASAPI 环回，不需要「立体声混音」设备）。默认开：Snow Shot 的 `enable_system_audio` 默认 true。</summary>
     public bool SystemAudio { get; set; } = true;
 
@@ -166,7 +206,89 @@ public sealed class RecordOptions
     /// </summary>
     public bool AutoHideToolbar { get; set; }
 
+    /// <summary>
+    /// 两路声音各自成一条音轨（上游 <c>separate_audio_tracks</c>，默认关）。
+    /// 关着时收尾按 <c>amix</c> 混成一条；开着时保留两条（系统声音 + 麦克风）各调各的。
+    /// </summary>
+    public bool SeparateAudioTracks { get; set; }
+
+    /// <summary>输出分辨率档位（上游 <c>clarity</c>，默认 <c>1080p</c>）：只往下缩，小画面不放大。</summary>
+    public string Clarity { get; set; } = "1080p";
+
+    /// <summary>录制帧率（上游 <c>frame_rate</c>，默认 30）。</summary>
+    public int FrameRate { get; set; } = DefaultFrameRate;
+
+    /// <summary>动图清晰度（上游 <c>animated_image_clarity</c>，默认 <c>720p</c>）。</summary>
+    public string AnimatedClarity { get; set; } = "720p";
+
+    /// <summary>动图帧率（上游 <c>animated_image_frame_rate</c>，默认 10）。</summary>
+    public int AnimatedFrameRate { get; set; } = DefaultAnimatedFrameRate;
+
+    /// <summary>动图无限循环（上游 <c>loop_animated_images</c>，默认开）。</summary>
+    public bool LoopAnimated { get; set; } = true;
+
+    /// <summary>默认成品格式（上游 <c>output_format</c>，默认 <c>mp4</c>）；面板上仍可逐次改。</summary>
+    public string OutputFormat { get; set; } = "mp4";
+
+    /// <summary>激光拖尾寿命（毫秒，100–2000，默认 500）。</summary>
+    public int TrailDurationMs { get; set; } = DefaultTrailDurationMs;
+
+    /// <summary>按键浮层高度（物理像素，32–128，默认 64）。</summary>
+    public int KeyboardSize { get; set; } = DefaultKeyboardSize;
+
+    /// <summary>按键浮层底色（<c>#AARRGGBB</c>，上游 <c>keyboard_background_color</c>）。</summary>
+    public string KeyboardBackgroundColor { get; set; } = "#000000CC";
+
+    /// <summary>按键浮层字色（<c>#AARRGGBB</c>，上游 <c>keyboard_foreground_color</c>）。</summary>
+    public string KeyboardForegroundColor { get; set; } = "#FFFFFFFF";
+
+    /// <summary>光标高亮的颜色（<c>#AARRGGBB</c>，上游 <c>mouse_highlight_color</c>）。</summary>
+    public string MouseHighlightColor { get; set; } = "#FFFF0080";
+
+    /// <summary>底部进度条颜色（<c>#AARRGGBB</c>，上游 <c>progress_bar_color</c>）。</summary>
+    public string ProgressBarColor { get; set; } = "#1677FFFF";
+
+    /// <summary>跟随鼠标（上游 <c>follow_mouse</c>，默认关）。</summary>
+    public bool FollowMouse { get; set; }
+
+    /// <summary>跟随鼠标时平滑移动（上游 <c>follow_mouse_smooth_movement</c>，默认开）。</summary>
+    public bool FollowMouseSmooth { get; set; } = true;
+
+    /// <summary>跟随鼠标时抑制抖动（上游 <c>follow_mouse_reduce_jitter</c>，默认开）。</summary>
+    public bool FollowMouseReduceJitter { get; set; } = true;
+
+    /// <summary>画面质量（0–100，默认 80）：换算成各编码器的 crf / cq / qp。</summary>
+    public int VideoQuality { get; set; } = DefaultVideoQuality;
+
+    /// <summary>x264 / x265 的速度档（默认 <c>veryfast</c>）。</summary>
+    public string EncodingPreset { get; set; } = "veryfast";
+
+    /// <summary>录制时把录屏工具条也录进画面（上游 <c>capture_toolbar_in_recording</c>，默认开）。</summary>
+    public bool CaptureToolbarInRecording { get; set; } = true;
+
+    /// <summary>录制过程中显示状态提示（上游 <c>show_status_prompts</c>，默认开）。</summary>
+    public bool ShowStatusPrompts { get; set; } = true;
+
+    /// <summary>录完导出成功后自动退出录屏（上游 <c>auto_exit_after_recording_ends</c>，默认关）。</summary>
+    public bool AutoExitAfterRecording { get; set; }
+
+    /// <summary>导出完成后弹通知（上游 <c>notify_after_export_completes</c>，默认关）。</summary>
+    public bool NotifyAfterExport { get; set; }
+
+    /// <summary>关闭录屏面板时删掉刚录的文件（上游 <c>delete_files_on_recording_close</c>，默认关）。</summary>
+    public bool DeleteFilesOnClose { get; set; }
+
+    /// <summary>开录前的等待秒数（0–10，默认 0；面板上的倒计时用它当默认值）。</summary>
+    public int StartDelaySeconds { get; set; } = DefaultStartDelaySeconds;
+
+    /// <summary>录屏保存目录；空 = 系统「视频」目录（上游 <c>video_save_directory</c>）。</summary>
+    public string SaveDirectory { get; set; } = "";
+
+    /// <summary>录屏文件名模板（上游 <c>video_filename_format</c>）。</summary>
+    public string FilenameFormat { get; set; } = "SnowShot_Video_{YYYY-MM-DD_HH-mm-ss}";
+
     public bool HasAudio => SystemAudio || Microphone;
+
     public bool HasCamera => CameraDevice >= 0;
 
     public bool HasEffects => MouseHighlight || RecordClicks || RecordScroll || Keystroke
@@ -213,6 +335,68 @@ public sealed class RecordOptions
         Codec = other.Codec;
         TrimAfterRecord = other.TrimAfterRecord;
         AutoHideToolbar = other.AutoHideToolbar;
+        SeparateAudioTracks = other.SeparateAudioTracks;
+        Clarity = other.Clarity;
+        FrameRate = other.FrameRate;
+        AnimatedClarity = other.AnimatedClarity;
+        AnimatedFrameRate = other.AnimatedFrameRate;
+        LoopAnimated = other.LoopAnimated;
+        OutputFormat = other.OutputFormat;
+        TrailDurationMs = other.TrailDurationMs;
+        KeyboardSize = other.KeyboardSize;
+        KeyboardBackgroundColor = other.KeyboardBackgroundColor;
+        KeyboardForegroundColor = other.KeyboardForegroundColor;
+        MouseHighlightColor = other.MouseHighlightColor;
+        ProgressBarColor = other.ProgressBarColor;
+        FollowMouse = other.FollowMouse;
+        FollowMouseSmooth = other.FollowMouseSmooth;
+        FollowMouseReduceJitter = other.FollowMouseReduceJitter;
+        VideoQuality = other.VideoQuality;
+        EncodingPreset = other.EncodingPreset;
+        CaptureToolbarInRecording = other.CaptureToolbarInRecording;
+        ShowStatusPrompts = other.ShowStatusPrompts;
+        AutoExitAfterRecording = other.AutoExitAfterRecording;
+        NotifyAfterExport = other.NotifyAfterExport;
+        DeleteFilesOnClose = other.DeleteFilesOnClose;
+        StartDelaySeconds = other.StartDelaySeconds;
+        SaveDirectory = other.SaveDirectory;
+        FilenameFormat = other.FilenameFormat;
+    }
+
+    /// <summary>
+    /// 只搬「全局设置」那一批字段（清晰度 / 帧率 / 质量 / 特效尺寸配色 / 跟随鼠标 / 保存目录…）。
+    /// 录屏选项窗口只改「这次录什么」，这些不归它管——保存时从旧值搬回来，别被默认值冲掉。
+    /// </summary>
+    public void CopySettingsFrom(RecordOptions other)
+    {
+        if (other == null || ReferenceEquals(this, other)) return;
+
+        SeparateAudioTracks = other.SeparateAudioTracks;
+        Clarity = other.Clarity;
+        FrameRate = other.FrameRate;
+        AnimatedClarity = other.AnimatedClarity;
+        AnimatedFrameRate = other.AnimatedFrameRate;
+        LoopAnimated = other.LoopAnimated;
+        OutputFormat = other.OutputFormat;
+        TrailDurationMs = other.TrailDurationMs;
+        KeyboardSize = other.KeyboardSize;
+        KeyboardBackgroundColor = other.KeyboardBackgroundColor;
+        KeyboardForegroundColor = other.KeyboardForegroundColor;
+        MouseHighlightColor = other.MouseHighlightColor;
+        ProgressBarColor = other.ProgressBarColor;
+        FollowMouse = other.FollowMouse;
+        FollowMouseSmooth = other.FollowMouseSmooth;
+        FollowMouseReduceJitter = other.FollowMouseReduceJitter;
+        VideoQuality = other.VideoQuality;
+        EncodingPreset = other.EncodingPreset;
+        CaptureToolbarInRecording = other.CaptureToolbarInRecording;
+        ShowStatusPrompts = other.ShowStatusPrompts;
+        AutoExitAfterRecording = other.AutoExitAfterRecording;
+        NotifyAfterExport = other.NotifyAfterExport;
+        DeleteFilesOnClose = other.DeleteFilesOnClose;
+        StartDelaySeconds = other.StartDelaySeconds;
+        SaveDirectory = other.SaveDirectory;
+        FilenameFormat = other.FilenameFormat;
     }
 
     /// <summary>夹紧数值字段（尺寸 / 半径 / 边距），并把负边距收成 0。</summary>
@@ -246,7 +430,172 @@ public sealed class RecordOptions
         Codec = Codec,
         TrimAfterRecord = TrimAfterRecord,
         AutoHideToolbar = AutoHideToolbar,
+        SeparateAudioTracks = SeparateAudioTracks,
+        Clarity = NormalizeClarity(Clarity, animated: false),
+        FrameRate = NormalizeFrameRate(FrameRate),
+        AnimatedClarity = NormalizeClarity(AnimatedClarity, animated: true),
+        AnimatedFrameRate = NormalizeAnimatedFrameRate(AnimatedFrameRate),
+        LoopAnimated = LoopAnimated,
+        OutputFormat = NormalizeFormat(OutputFormat),
+        TrailDurationMs = NormalizeTrailDuration(TrailDurationMs),
+        KeyboardSize = NormalizeKeyboardSize(KeyboardSize),
+        KeyboardBackgroundColor = NormalizeColor(KeyboardBackgroundColor, "#000000CC"),
+        KeyboardForegroundColor = NormalizeColor(KeyboardForegroundColor, "#FFFFFFFF"),
+        MouseHighlightColor = NormalizeColor(MouseHighlightColor, "#FFFF0080"),
+        ProgressBarColor = NormalizeColor(ProgressBarColor, "#1677FFFF"),
+        FollowMouse = FollowMouse,
+        FollowMouseSmooth = FollowMouseSmooth,
+        FollowMouseReduceJitter = FollowMouseReduceJitter,
+        VideoQuality = NormalizeQuality(VideoQuality),
+        EncodingPreset = NormalizePreset(EncodingPreset),
+        CaptureToolbarInRecording = CaptureToolbarInRecording,
+        ShowStatusPrompts = ShowStatusPrompts,
+        AutoExitAfterRecording = AutoExitAfterRecording,
+        NotifyAfterExport = NotifyAfterExport,
+        DeleteFilesOnClose = DeleteFilesOnClose,
+        StartDelaySeconds = NormalizeStartDelay(StartDelaySeconds),
+        SaveDirectory = (SaveDirectory ?? "").Trim(),
+        FilenameFormat = string.IsNullOrWhiteSpace(FilenameFormat)
+            ? "SnowShot_Video_{YYYY-MM-DD_HH-mm-ss}"
+            : FilenameFormat.Trim(),
     };
+
+    /// <summary>清晰度归一（认不出回默认：视频 <c>1080p</c> / 动图 <c>720p</c>）。</summary>
+    public static string NormalizeClarity(string? value, bool animated)
+    {
+        string text = (value ?? "").Trim().ToLowerInvariant();
+        foreach (string option in animated ? AnimatedClarityOptions : ClarityOptions)
+        {
+            if (text == option) return option;
+        }
+
+        return animated ? "720p" : "1080p";
+    }
+
+    /// <summary>成品格式归一（认不出回 <c>mp4</c>）。</summary>
+    public static string NormalizeFormat(string? value)
+    {
+        string text = (value ?? "").Trim().ToLowerInvariant();
+        foreach (string option in FormatOptions)
+        {
+            if (text == option) return option;
+        }
+
+        return "mp4";
+    }
+
+    /// <summary>速度档归一（认不出回 <c>veryfast</c>）。</summary>
+    public static string NormalizePreset(string? value)
+    {
+        string text = (value ?? "").Trim().ToLowerInvariant();
+        foreach (string option in PresetOptions)
+        {
+            if (text == option) return option;
+        }
+
+        return "veryfast";
+    }
+
+    public static int NormalizeFrameRate(int fps) =>
+        Math.Clamp(fps <= 0 ? DefaultFrameRate : fps, MinFrameRate, MaxFrameRate);
+
+    public static int NormalizeAnimatedFrameRate(int fps) =>
+        Math.Clamp(fps <= 0 ? DefaultAnimatedFrameRate : fps, MinAnimatedFrameRate, MaxAnimatedFrameRate);
+
+    /// <summary>拖尾寿命按 100ms 步长夹到 100–2000。</summary>
+    public static int NormalizeTrailDuration(int ms)
+    {
+        int value = ms <= 0 ? DefaultTrailDurationMs : ms;
+        int stepped = (int)Math.Round(value / 100.0) * 100;
+        return Math.Clamp(stepped, MinTrailDurationMs, MaxTrailDurationMs);
+    }
+
+    /// <summary>按键浮层高度按 8px 步长夹到 32–128。</summary>
+    public static int NormalizeKeyboardSize(int size)
+    {
+        int value = size <= 0 ? DefaultKeyboardSize : size;
+        int stepped = (int)Math.Round(value / 8.0) * 8;
+        return Math.Clamp(stepped, MinKeyboardSize, MaxKeyboardSize);
+    }
+
+    public static int NormalizeQuality(int quality) => Math.Clamp(quality, 0, 100);
+
+    public static int NormalizeStartDelay(int seconds) =>
+        Math.Clamp(seconds, 0, MaxStartDelaySeconds);
+
+    /// <summary>清晰度档位对应的高度（<c>4k</c> = 2160，<c>2k</c> = 1440，…）。</summary>
+    public static int ClarityHeight(string? clarity) => NormalizeClarity(clarity, animated: false) switch
+    {
+        "4k" => 2160,
+        "2k" => 1440,
+        "720p" => 720,
+        "480p" => 480,
+        _ => 1080,
+    };
+
+    /// <summary>动图清晰度档位对应的高度。</summary>
+    public static int AnimatedClarityHeight(string? clarity) =>
+        NormalizeClarity(clarity, animated: true) switch
+        {
+            "1080p" => 1080,
+            "480p" => 480,
+            _ => 720,
+        };
+
+    /// <summary>
+    /// 质量（0–100）换成 crf / cq / qp：100 → 16（最好），0 → 51（最差），80 → 23。
+    /// 各家编码器都认这个数（crf / cq / global_quality / qp 的刻度基本一致）。
+    /// </summary>
+    public static int CrfOf(int quality) => 51 - (int)Math.Round(NormalizeQuality(quality) * 0.35);
+
+    /// <summary>ffmpeg 的缩放滤镜：只往下缩，小画面不放大（<c>min(ih, 高度)</c>）。</summary>
+    public static string ScaleFilter(int height) =>
+        $"scale=-2:'min(ih,{Math.Max(2, height)})'";
+
+    /// <summary>
+    /// 录屏文件名：按上游 <c>video_filename_format</c> 展开——**每一对花括号里是一段日期格式**
+    /// （<c>{YYYY-MM-DD_HH-mm-ss}</c> → <c>2026-03-04_05-06-07</c>），照
+    /// <c>storage/timevariables.cpp</c> 的 <c>expandTimeVariables</c>：只把 Qt 的
+    /// <c>YYYY</c> / <c>YY</c> / <c>DD</c> 换成 .NET 的 <c>yyyy</c> / <c>yy</c> / <c>dd</c>，
+    /// 其余（<c>MM</c> / <c>HH</c> / <c>mm</c> / <c>ss</c>）两边写法一致。
+    /// 展开完把文件名里不能出现的字符换成下划线。
+    /// </summary>
+    public static string FileNameFor(string? template, DateTime when)
+    {
+        string text = string.IsNullOrWhiteSpace(template)
+            ? "SnowShot_Video_{YYYY-MM-DD_HH-mm-ss}"
+            : template.Trim();
+
+        string name = TimeVariablePattern.Replace(text, match => ExpandTime(match.Groups[1].Value, when));
+
+        foreach (char bad in System.IO.Path.GetInvalidFileNameChars()) name = name.Replace(bad, '_');
+
+        name = name.Trim();
+        return name.Length == 0
+            ? "SnowShot_Video_" + when.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture)
+            : name;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex TimeVariablePattern =
+        new(@"\{([^{}]+)\}", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string ExpandTime(string pattern, DateTime when)
+    {
+        string format = pattern
+            .Replace("YYYY", "yyyy")
+            .Replace("YY", "yy")
+            .Replace("DD", "dd");
+
+        try
+        {
+            return when.ToString(format, CultureInfo.InvariantCulture);
+        }
+        catch (FormatException)
+        {
+            // 用户写了 .NET 不认的记号：原样留着，别让「另存录屏」弹异常
+            return "{" + pattern + "}";
+        }
+    }
 
     /// <summary>颜色里的 alpha（认不出按 0 = 透明）。</summary>
     public static int AlphaOf(string? value)

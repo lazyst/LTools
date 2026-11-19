@@ -1085,6 +1085,270 @@
                             </StackPanel>
                         </Border>
 
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 录屏" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="清晰度" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="RecordClarityCombo" MinHeight="32"
+                                              SelectionChanged="RecordSettings_Changed"
+                                              ToolTip="照上游 screen_recording/clarity：只往下缩，小画面不放大"/>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="帧率" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="RecordFpsCombo" MinHeight="32"
+                                              SelectionChanged="RecordSettings_Changed"
+                                              ToolTip="照上游 screen_recording/frame_rate（5–60，默认 30）"/>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="默认格式" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="RecordFormatCombo" MinHeight="32"
+                                              SelectionChanged="RecordSettings_Changed"
+                                              ToolTip="照上游 screen_recording/output_format；面板上还能逐次改"/>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="画面质量" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="RecordQualityCombo" MinHeight="32"
+                                              SelectionChanged="RecordSettings_Changed"
+                                              ToolTip="照上游 screen_recording/video_quality（0–100，默认 80）：换算成各编码器的 crf / cq / qp"/>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="编码速度" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="RecordPresetCombo" MinHeight="32"
+                                              SelectionChanged="RecordSettings_Changed"
+                                              ToolTip="照上游 screen_recording/encoding_preset：x264 / x265 的速度档"/>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="动图清晰度" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="RecordAnimClarityCombo" MinHeight="32"
+                                              SelectionChanged="RecordSettings_Changed"
+                                              ToolTip="照上游 screen_recording/animated_image_clarity（GIF / APNG / WebP）"/>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="动图帧率" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="RecordAnimFpsCombo" MinHeight="32"
+                                              SelectionChanged="RecordSettings_Changed"
+                                              ToolTip="照上游 screen_recording/animated_image_frame_rate（1–30，默认 10；GIF 最高 15）"/>
+                                </Grid>
+
+                                <CheckBox x:Name="RecordLoopBox" Margin="0,12,0,0"
+                                          Content="动图无限循环"
+                                          ToolTip="照上游 screen_recording/loop_animated_images（默认开）"
+                                          Checked="RecordSettings_Changed" Unchecked="RecordSettings_Changed"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="激光拖尾时长" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="RecordTrailCombo" MinHeight="32"
+                                              SelectionChanged="RecordSettings_Changed"
+                                              ToolTip="照上游 screen_recording/mouse_trail_duration_ms（100–2000，默认 500）"/>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="按键浮层高度" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="RecordKeySizeCombo" MinHeight="32"
+                                              SelectionChanged="RecordSettings_Changed"
+                                              ToolTip="照上游 screen_recording/keyboard_size（32–128，默认 64）"/>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="按键底色" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="RecordKeyBgBox" Width="120" MinHeight="30"
+                                             TextChanged="RecordColor_Changed"
+                                             ToolTip="照上游 screen_recording/keyboard_background_color（#AARRGGBB）"/>
+                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="选择…"
+                                            MinWidth="64" Margin="8,0,0,0" HorizontalAlignment="Left"
+                                            Click="RecordKeyBg_Click"/>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="按键字色" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="RecordKeyFgBox" Width="120" MinHeight="30"
+                                             TextChanged="RecordColor_Changed"
+                                             ToolTip="照上游 screen_recording/keyboard_foreground_color（#AARRGGBB）"/>
+                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="选择…"
+                                            MinWidth="64" Margin="8,0,0,0" HorizontalAlignment="Left"
+                                            Click="RecordKeyFg_Click"/>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="光标高亮色" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="RecordHighlightBox" Width="120" MinHeight="30"
+                                             TextChanged="RecordColor_Changed"
+                                             ToolTip="照上游 screen_recording/mouse_highlight_color（#AARRGGBB）"/>
+                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="选择…"
+                                            MinWidth="64" Margin="8,0,0,0" HorizontalAlignment="Left"
+                                            Click="RecordHighlight_Click"/>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="进度条色" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="RecordProgressBox" Width="120" MinHeight="30"
+                                             TextChanged="RecordColor_Changed"
+                                             ToolTip="照上游 screen_recording/progress_bar_color（#AARRGGBB）：后期处理选「进度条」时底部那条"/>
+                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="选择…"
+                                            MinWidth="64" Margin="8,0,0,0" HorizontalAlignment="Left"
+                                            Click="RecordProgress_Click"/>
+                                </Grid>
+
+                                <CheckBox x:Name="RecordFollowBox" Margin="0,12,0,0"
+                                          Content="跟随鼠标录制"
+                                          ToolTip="照上游 screen_recording/follow_mouse：选区只决定成品尺寸，画面跟着光标走"
+                                          Checked="RecordSettings_Changed" Unchecked="RecordSettings_Changed"/>
+                                <CheckBox x:Name="RecordFollowSmoothBox" Margin="22,8,0,0"
+                                          Content="平滑移动"
+                                          ToolTip="照上游 screen_recording/follow_mouse_smooth_movement"
+                                          Checked="RecordSettings_Changed" Unchecked="RecordSettings_Changed"/>
+                                <CheckBox x:Name="RecordFollowJitterBox" Margin="22,8,0,0"
+                                          Content="抑制抖动"
+                                          ToolTip="照上游 screen_recording/follow_mouse_reduce_jitter"
+                                          Checked="RecordSettings_Changed" Unchecked="RecordSettings_Changed"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="开录前等待" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="RecordDelayCombo" MinHeight="32"
+                                              SelectionChanged="RecordSettings_Changed"
+                                              ToolTip="照上游 screen_recording/start_delay_seconds（0–10 秒）：面板上的倒计时用它当默认值"/>
+                                </Grid>
+
+                                <CheckBox x:Name="RecordToolbarBox" Margin="0,12,0,0"
+                                          Content="工具条也录进画面"
+                                          ToolTip="照上游 screen_recording/capture_toolbar_in_recording（默认开）；关掉时录屏面板与弹层不进画面"
+                                          Checked="RecordSettings_Changed" Unchecked="RecordSettings_Changed"/>
+                                <CheckBox x:Name="RecordStatusBox" Margin="0,8,0,0"
+                                          Content="录制时显示状态提示"
+                                          ToolTip="照上游 screen_recording/show_status_prompts（默认开）：开始 / 暂停 / 继续各给一条短提示"
+                                          Checked="RecordSettings_Changed" Unchecked="RecordSettings_Changed"/>
+                                <CheckBox x:Name="RecordAutoExitBox" Margin="0,8,0,0"
+                                          Content="录完自动收起面板"
+                                          ToolTip="照上游 screen_recording/auto_exit_after_recording_ends"
+                                          Checked="RecordSettings_Changed" Unchecked="RecordSettings_Changed"/>
+                                <CheckBox x:Name="RecordNotifyBox" Margin="0,8,0,0"
+                                          Content="导出完成后再提示一次"
+                                          ToolTip="照上游 screen_recording/notify_after_export_completes：另给一条带「打开文件夹」的提示"
+                                          Checked="RecordSettings_Changed" Unchecked="RecordSettings_Changed"/>
+                                <CheckBox x:Name="RecordDeleteBox" Margin="0,8,0,0"
+                                          Content="关窗时删掉刚录的文件"
+                                          ToolTip="照上游 screen_recording/delete_files_on_recording_close：关掉录屏面板 = 丢弃这次录制"
+                                          Checked="RecordSettings_Changed" Unchecked="RecordSettings_Changed"/>
+                                <CheckBox x:Name="RecordSeparateAudioBox" Margin="0,8,0,0"
+                                          Content="系统声音与麦克风各成一条音轨"
+                                          ToolTip="照上游 screen_recording/separate_audio_tracks：关着时混成一条"
+                                          Checked="RecordSettings_Changed" Unchecked="RecordSettings_Changed"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="保存目录" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="RecordDirBox" Width="320" MinHeight="30"
+                                             ToolTip="照上游 screen_recording/video_save_directory：留空 = 系统「视频」目录"
+                                             LostFocus="RecordDirBox_LostFocus"/>
+                                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}" Content="浏览…"
+                                            MinWidth="64" Margin="8,0,0,0" HorizontalAlignment="Left"
+                                            Click="RecordDir_Click"/>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="文件名模板" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="RecordNameBox" MinHeight="30"
+                                             ToolTip="照上游 screen_recording/video_filename_format：可用 {YYYY} {MM} {DD} {HH} {mm} {ss}"
+                                             LostFocus="RecordNameBox_LostFocus"/>
+                                </Grid>
+
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,8,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="格式 / 清晰度 / 帧率 / 质量这些是「默认值」，录屏面板上仍可逐次改；保存目录与文件名模板只作用于「另存录屏」。抓帧方式（api_mode）在 Windows 上只有一种实现，不落开关。"/>
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 文字识别" Margin="0,4,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>
