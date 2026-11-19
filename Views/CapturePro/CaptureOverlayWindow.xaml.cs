@@ -262,7 +262,7 @@ public partial class CaptureOverlayWindow : Window
 
             // 上游 Esc = cancel_screenshot：直接退出这次截图。**不是**「退一步」——
             // 右键才是逐级往回收（上游 handleRightClick：预选态退出 / 有选区时回 Move）。
-            Cancel();
+            RequestCancelViaShortcut();
             e.Handled = true;
             return;
         }
@@ -618,12 +618,12 @@ public partial class CaptureOverlayWindow : Window
         switch (kind)
         {
             case FinishKind.Save:
-                if (!CaptureSave.TrySave(this, image, null, ExportNames)) return;   // 取消另存为 = 留在覆盖层，继续改
+                if (!CaptureSave.TrySave(this, image, null, ExportNames, _doc.Area)) return;   // 取消另存为 = 留在覆盖层，继续改
                 break;
 
             case FinishKind.QuickSave:
                 // 快速保存不弹框：失败就留在覆盖层（提示已经由 CaptureSave 发出）
-                if (!CaptureSave.TryQuickSave(image, out _, ExportNames)) return;
+                if (!CaptureSave.TryQuickSave(image, out _, ExportNames, _doc.Area)) return;
                 break;
 
             case FinishKind.Print:
@@ -660,7 +660,7 @@ public partial class CaptureOverlayWindow : Window
                     _doc.Area.Width, _doc.Area.Height);
                 var capture = new ClipboardCapture(
                     look.WindowRect(_doc.Area, image.PixelWidth, image.PixelHeight), look);
-                if (!CaptureSave.CopyImage(image, ExportSettings.ScenarioCopy, ExportNames, capture))
+                if (!CaptureSave.CopyImage(image, ExportSettings.ScenarioCopy, ExportNames, capture, _doc.Area))
                 {
                     TrayService.Notify("复制截图失败：剪贴板被占用");
                     return;
@@ -714,6 +714,30 @@ public partial class CaptureOverlayWindow : Window
         _confirmed = false;
         try { DialogResult = false; }
         catch (InvalidOperationException) { Close(); }
+    }
+
+    /// <summary>
+    /// Esc（截图快捷键）退出这次截图；设置里开了「退出前确认」时先问一句。
+    /// </summary>
+    /// <remarks>
+    /// 照上游 <c>screenshotshortcutexitconfirmation.cpp</c>：标题「退出截图？」、
+    /// 正文「当前截图会被丢弃」、危险按钮「退出」。只有快捷键 / Esc 走这条；
+    /// 右键退一步、工具条上的取消按钮都是用户明确点的，不弹确认（上游同样只包住快捷键出口）。
+    /// </remarks>
+    private void RequestCancelViaShortcut()
+    {
+        if (!ScreenshotBehavior.ConfirmBeforeExitViaShortcut)
+        {
+            Cancel();
+            return;
+        }
+
+        if (!ConfirmDialog.Confirm(this, "退出截图？",
+                "当前截图会被丢弃。\n可以在「设置 → 通用 → 截图 Pro · 截图行为」里关掉这个确认。",
+                danger: true, okText: "退出"))
+            return;
+
+        Cancel();
     }
 
     /// <summary>确认过（不是 Esc / 右键退出）。</summary>

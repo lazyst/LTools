@@ -117,6 +117,7 @@ internal static class ExportSettings
         "jpeg" or "jpg" => SaveFormat.Jpeg,
         "bmp" => SaveFormat.Bmp,
         "tiff" or "tif" => SaveFormat.Tiff,
+        "pdf" => SaveFormat.Pdf,
         _ => SaveFormat.Png,
     };
 
@@ -126,6 +127,7 @@ internal static class ExportSettings
         SaveFormat.Jpeg => "jpeg",
         SaveFormat.Bmp => "bmp",
         SaveFormat.Tiff => "tiff",
+        SaveFormat.Pdf => "pdf",
         _ => "png",
     };
 

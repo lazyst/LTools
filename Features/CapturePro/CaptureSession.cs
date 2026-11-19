@@ -85,7 +85,7 @@ internal static class CaptureSession
 
             // 覆盖层盖住**所有显示器**（跨屏选区）：冻结画面逐块抓再拼，坐标仍是物理像素
             var area = ScreenShot.Bounds();
-            var shot = ScreenShot.Capture(area);
+            var shot = ScreenShot.Capture(area, ScreenshotBehavior.CaptureCursor);
             var (sx, sy) = ScreenPickerWindow.MonitorScale(ScreenShot.ToRectangle(area));
 
             var overlay = new CaptureOverlayWindow(shot, ScreenShot.ToRectangle(area), sx, sy,
@@ -297,11 +297,17 @@ internal static class CaptureSession
 
         var image = ScreenCapture.CaptureSource(area.Left, area.Top, area.Width, area.Height);
 
+        // 直接截图同样是「截图」成品：按设置决定要不要把指针画进去
+        if (ScreenshotBehavior.CaptureCursor)
+            image = ScreenShot.WithCursor(image,
+                new Int32Rect(area.Left, area.Top, image.PixelWidth, image.PixelHeight));
+
         // 直接截图没有选区外观，也没有「贴图窗口」这一层：窗口矩形就是抓的那块，
         // 外观是空的。带上落位元数据后「贴剪贴板」能贴回原来的位置（照上游）。
         var capture = new ClipboardCapture(
             new Int32Rect(area.Left, area.Top, image.PixelWidth, image.PixelHeight), PinAppearance.None);
-        CaptureSave.CopyImage(image, scenario, names, capture);
+        CaptureSave.CopyImage(image, scenario, names, capture,
+            new Int32Rect(area.Left, area.Top, image.PixelWidth, image.PixelHeight));
 
         var entry = CaptureCatalog.Create(image.PixelWidth, image.PixelHeight,
             CaptureCatalog.KindShot, source);

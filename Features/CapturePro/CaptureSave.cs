@@ -10,13 +10,14 @@ using LTools.Views.CapturePro;
 
 namespace LTools.Features.CapturePro;
 
-/// <summary>另存为支持的图片格式（WPF 自带编码器里这四种够用，WebP / AVIF / PDF 不做）。</summary>
+/// <summary>另存为支持的图片格式（WPF 自带编码器四种 + 自己写的 PDF）。</summary>
 internal enum SaveFormat
 {
     Png,
     Jpeg,
     Bmp,
     Tiff,
+    Pdf,
 }
 
 /// <summary>
@@ -32,9 +33,12 @@ internal static class CaptureSave
     /// <summary>弹「另存为」对话框（预览 + 格式 / 尺寸 / 质量）；返回 true = 真的存下去了。</summary>
     /// <param name="suggestedName">默认文件名（不含扩展名）；空 = 按「截图输出」里的模板生成。</param>
     /// <param name="names">文件名模板里 <c>{AN}</c> / <c>{WN}</c> 的取值（抓图那一刻的前台程序 / 窗口）。</param>
+    /// <param name="region">成品图在屏幕上的物理矩形（HiDPI 缩放按它挑显示器）；空 = 不缩。</param>
     public static bool TrySave(Window? owner, BitmapSource image, string? suggestedName = null,
-        ExportNameContext names = default)
+        ExportNameContext names = default, Int32Rect? region = null)
     {
+        image = HiDpiImageScaling.Apply(image, region);
+
         if (ExportSettings.UseSystemDialog)
             return TrySaveSystem(owner, image, suggestedName, names);
 
@@ -73,12 +77,13 @@ internal static class CaptureSave
                 : DefaultFolder,
             FileName = suggested,
             DefaultExt = Extension(format),
-            Filter = "PNG 图片|*.png|JPEG 图片|*.jpg;*.jpeg|BMP 图片|*.bmp|TIFF 图片|*.tif;*.tiff",
+            Filter = "PNG 图片|*.png|JPEG 图片|*.jpg;*.jpeg|BMP 图片|*.bmp|TIFF 图片|*.tif;*.tiff|PDF 文档|*.pdf",
             FilterIndex = format switch
             {
                 SaveFormat.Jpeg => 2,
                 SaveFormat.Bmp => 3,
                 SaveFormat.Tiff => 4,
+                SaveFormat.Pdf => 5,
                 _ => 1,
             },
             AddExtension = true,
@@ -113,6 +118,7 @@ internal static class CaptureSave
             "jpg" or "jpeg" => SaveFormat.Jpeg,
             "bmp" => SaveFormat.Bmp,
             "tif" or "tiff" => SaveFormat.Tiff,
+            "pdf" => SaveFormat.Pdf,
             "png" => SaveFormat.Png,
             _ => ExportSettings.CurrentFormat,
         };
@@ -133,6 +139,7 @@ internal static class CaptureSave
         SaveFormat.Jpeg => ".jpg",
         SaveFormat.Bmp => ".bmp",
         SaveFormat.Tiff => ".tiff",
+        SaveFormat.Pdf => ".pdf",
         _ => ".png",
     };
 
@@ -141,6 +148,7 @@ internal static class CaptureSave
         SaveFormat.Jpeg => "JPEG",
         SaveFormat.Bmp => "BMP",
         SaveFormat.Tiff => "TIFF",
+        SaveFormat.Pdf => "PDF",
         _ => "PNG",
     };
 
@@ -172,6 +180,12 @@ internal static class CaptureSave
         {
             byte[] png = PngWriter.Encode(output, ExportSettings.CurrentCompression);
             stream.Write(png, 0, png.Length);
+            return;
+        }
+
+        if (format == SaveFormat.Pdf)
+        {
+            ScreenshotPdf.Save(stream, output, ExportSettings.Quality);
             return;
         }
 
@@ -209,12 +223,13 @@ internal static class CaptureSave
         TryQuickSave(image, out path, default);
 
     /// <summary>同上，文件名模板里的 <c>{AN}</c> / <c>{WN}</c> 用 <paramref name="names"/>。</summary>
-    public static bool TryQuickSave(BitmapSource image, out string path, ExportNameContext names)
+    public static bool TryQuickSave(BitmapSource image, out string path, ExportNameContext names,
+        Int32Rect? region = null)
     {
         path = "";
         try
         {
-            string file = WriteExport(image, ExportSettings.AutoNameFormat, names);
+            string file = WriteExport(image, ExportSettings.AutoNameFormat, names, region);
             path = file;
             ToastService.Show($"已保存到 {Path.GetFileName(file)}", "快速保存", 3000, ToastKind.success,
                 key: "capture-quicksave", onClick: () => RevealInExplorer(file), actionText: "打开文件夹");
@@ -236,13 +251,14 @@ internal static class CaptureSave
     /// 失败只记日志 + 一条 warning：复制 / 贴图本身已经成功，不能因为「顺手存一份」失败
     /// 就把主流程说成失败。
     /// </remarks>
-    public static string? AutoSave(BitmapSource image, string scenario, ExportNameContext names = default)
+    public static string? AutoSave(BitmapSource image, string scenario, ExportNameContext names = default,
+        Int32Rect? region = null)
     {
         if (!ExportSettings.ShouldAutoSave(scenario)) return null;
 
         try
         {
-            return WriteExport(image, ExportSettings.AutoNameFormat, names);
+            return WriteExport(image, ExportSettings.AutoNameFormat, names, region);
         }
         catch (Exception ex)
         {
@@ -266,8 +282,10 @@ internal static class CaptureSave
     /// </para>
     /// </remarks>
     public static bool CopyImage(BitmapSource image, string scenario, ExportNameContext names = default,
-        ClipboardCapture? capture = null)
+        ClipboardCapture? capture = null, Int32Rect? region = null)
     {
+        image = HiDpiImageScaling.Apply(image, region);
+
         string? file = null;
         if (ExportSettings.CopyImageFile || ExportSettings.ShouldAutoSave(scenario))
         {
@@ -298,8 +316,11 @@ internal static class CaptureSave
     }
 
     /// <summary>按「截图输出」写一份文件（格式 / 质量 / 压缩 / 目录 / 模板），返回绝对路径。</summary>
-    public static string WriteExport(BitmapSource image, string nameFormat, ExportNameContext names)
+    public static string WriteExport(BitmapSource image, string nameFormat, ExportNameContext names,
+        Int32Rect? region = null)
     {
+        image = HiDpiImageScaling.Apply(image, region);
+
         string dir = ExportSettings.Directory;
         Directory.CreateDirectory(dir);
 

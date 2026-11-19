@@ -458,6 +458,104 @@
                             </StackPanel>
                         </Border>
 
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 截图行为" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <CheckBox x:Name="CaptureCursorBox"
+                                          Content="截图里带上鼠标指针"
+                                          ToolTip="照上游 screenshot/capture_cursor（默认关）；只作用于「截图」自己的抓帧，模板找图 / 文字识别的抓帧不带指针"
+                                          Checked="CaptureBehavior_Changed" Unchecked="CaptureBehavior_Changed"/>
+                                <CheckBox x:Name="CaptureConfirmExitBox" Margin="22,8,0,0"
+                                          Content="Esc 退出截图前先确认"
+                                          ToolTip="照上游 screenshot/confirm_before_exiting_via_shortcut（默认关）；右键退一步、工具条上的取消不弹确认"
+                                          Checked="CaptureBehavior_Changed" Unchecked="CaptureBehavior_Changed"/>
+                                <CheckBox x:Name="CaptureQuickSelectionModBox" Margin="22,8,0,0"
+                                          Content="非「选择」工具下也能拖选区边框改大小"
+                                          ToolTip="照上游 screenshot/quick_selection_modification（默认开）；关掉后拿着画笔 / 文字等工具碰到边框也只是画，不改选区"
+                                          Checked="CaptureBehavior_Changed" Unchecked="CaptureBehavior_Changed"/>
+
+                                <Grid Margin="22,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="拖动改尺寸" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="CaptureResizeModeCombo" MinHeight="32"
+                                              SelectionChanged="CaptureBehavior_Changed"
+                                              ToolTip="照上游 screenshot/selection_resize_mode：按位移 = 抓到的边跟着鼠标走多远；贴到指针 = 按下那一刻边框就跳到指针上">
+                                        <ComboBoxItem Content="按鼠标位移"/>
+                                        <ComboBoxItem Content="起拖时贴到指针"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="复制 / 保存时降采样" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="CaptureHidpiCombo" MinHeight="32"
+                                              SelectionChanged="CaptureBehavior_Changed"
+                                              ToolTip="照上游 screenshot/hidpi_image_scaling：按显示器缩放比缩小导出的截图；「自动」只在选区落在一块屏、且缩放比大于 100% 时生效">
+                                        <ComboBoxItem Content="关闭"/>
+                                        <ComboBoxItem Content="自动（按显示器缩放）"/>
+                                        <ComboBoxItem Content="125%"/>
+                                        <ComboBoxItem Content="150%"/>
+                                        <ComboBoxItem Content="175%"/>
+                                        <ComboBoxItem Content="200%"/>
+                                        <ComboBoxItem Content="225%"/>
+                                        <ComboBoxItem Content="250%"/>
+                                        <ComboBoxItem Content="275%"/>
+                                        <ComboBoxItem Content="300%"/>
+                                        <ComboBoxItem Content="325%"/>
+                                        <ComboBoxItem Content="350%"/>
+                                    </ComboBox>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="164,6,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="只影响复制到剪贴板与另存 / 快速保存的成品；覆盖层里编辑、贴图、识别仍按原分辨率。"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="PDF 纸张" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="CapturePdfPageSizeCombo" MinHeight="32"
+                                              SelectionChanged="CaptureBehavior_Changed"
+                                              ToolTip="照上游 screenshot/pdf_page_size：另存为 PDF 时的页面；「图片尺寸」= 页面就是图片本身（像素按 96 DPI 换成点）">
+                                        <ComboBoxItem Content="A4 竖版"/>
+                                        <ComboBoxItem Content="A4 横版"/>
+                                        <ComboBoxItem Content="图片尺寸"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="长截图自动滚动间隔" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <TextBox x:Name="CaptureScrollIntervalBox" Width="90" MinHeight="32"
+                                                 VerticalContentAlignment="Center"
+                                                 controls:TextBoxClear.Attach="False"
+                                                 LostFocus="CaptureScrollInterval_Changed"
+                                                 KeyDown="CaptureScrollInterval_KeyDown"/>
+                                        <TextBlock Style="{StaticResource HintLabel}" Margin="8,0,0,0"
+                                                   VerticalAlignment="Center" Text="毫秒（128–1000）"/>
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,6,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="长截图自动滚动时每两格之间等多久（照上游 screenshot/scrolling_auto_scroll_interval_ms，默认 200）。页面滚动越平滑、越可以调大。"/>
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Style="{StaticResource SectionLabel}" Text="开机自启" Margin="0,4,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>

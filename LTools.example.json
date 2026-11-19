@@ -239,7 +239,14 @@
       "#69B1FFFF",
       "#FFF566FF",
       "#B37FEBFF"
-    ]
+    ],
+    "ScrollingAutoScrollIntervalMs": 200,
+    "CaptureCursor": false,
+    "ConfirmBeforeExitViaShortcut": false,
+    "QuickSelectionModification": true,
+    "SelectionResizeMode": "follow_mouse_movement",
+    "HidpiImageScaling": "disabled",
+    "PdfPageSize": "a4_portrait"
   },
   "Drawing": {
     "AutomaticallySelectNewlyCreatedElements": false,

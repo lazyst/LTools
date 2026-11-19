@@ -46,7 +46,6 @@ public partial class CaptureOverlayWindow
     private const int ScrollPreviewWidth = 408;     // 小预览的采样像素上限（面板 204 DIP，按 200% 也够）
     private const int ScrollPreviewHeight = 472;
     private const int ScrollAutoDelta = 120;        // 自动滚动一次投几格（一个 WHEEL_DELTA）
-    private const int ScrollAutoIntervalMs = 200;   // 自动滚动的基准节奏（snow-shot 的默认值）
     private const int ScrollAutoMaxStill = 3;       // 连续几帧没动 = 到底
     private const int ScrollAutoMaxMiss = 4;        // 自动滚动连续几帧认不出重叠 = 放弃（页面不配合）
 
@@ -70,7 +69,7 @@ public partial class CaptureOverlayWindow
     private StitchAxis _scrollAxis = StitchAxis.Vertical;
     private bool _scrollAuto;          // 自动滚动开着
     private bool _scrollRealWheel;     // 投消息不认 → 改成真滚轮（会把光标挪进选区）
-    private int _scrollAutoInterval = ScrollAutoIntervalMs;
+    private int _scrollAutoInterval = ScreenshotBehavior.DefaultScrollingAutoScrollIntervalMs;
     private readonly ScrollCadence _scrollCadence = new();
     private readonly Stopwatch _scrollAutoClock = new();   // 距上一次投滚轮过了多久（节奏按「两次投递之间」算）
     private int _scrollGen;             // 拼接代次：换方向 / 重开时 +1，旧的异步结果据此作废
@@ -156,7 +155,7 @@ public partial class CaptureOverlayWindow
         _scrollRealWheel = false;
         _scrollCursorMoved = false;
         _scrollFinishTries = 0;
-        _scrollAutoInterval = ScrollAutoIntervalMs;
+        _scrollAutoInterval = ScreenshotBehavior.ScrollingAutoScrollIntervalMs;
         _scrollCadence.Reset();
         StopAutoTimer();
         _scrollGen++;

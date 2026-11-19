@@ -223,9 +223,19 @@ public partial class CaptureOverlayWindow
         //    这里**不能**再要求 `inside`：把手的命中半径是 8 DIP，用户常常从框**外侧**那圈
         //    抓边（光标已经变成 SizeWE / SizeNS），这时 `Rect.Contains` 是 false，会被当成
         //    「选区外 = 重新框选」——松手时框太小被清掉，看着就是「按住拖动退出了截图」。
-        if (hit is not (FrameHandle.None or FrameHandle.Move))
+        //    例外：设置里关掉「快速选择修改」时，非「选择」工具不再改框（照上游
+        //    dragModeForVirtualPosition：activeTool != Move 且 quickSelectionModification 关 = None）。
+        if (CanDragFrameHandle(hit))
         {
-            BeginFrameChange(_sel!.Value);
+            Rect frame = _sel!.Value;
+
+            // 尺寸方式 = 「贴到指针」：起拖就把被抓的那条边放到指针上（上游
+            // grabAdjustedScreenshotSelectionRect），之后的位移从指针算
+            if (ScreenshotBehavior.SelectionResizeMode == ScreenshotBehavior.ResizeFollowPosition)
+                frame = GrabAdjusted(frame, hit, p, new Rect(0, 0, ActualWidth, ActualHeight), MinSize);
+
+            BeginFrameChange(frame);
+            if (frame != _sel!.Value) ResizeFrame(frame);
             _drag = DragMode.Resize;
             _handle = hit;
             RebuildSnapLines();
@@ -745,8 +755,8 @@ public partial class CaptureOverlayWindow
         }
 
         // **任何工具**下边框都能抓（按下就改框），光标也就跟着变——否则拿着画笔
-        // 走到边上还是十字，看不出那里能拉伸。
-        if (hit is not (FrameHandle.None or FrameHandle.Move))
+        // 走到边上还是十字，看不出那里能拉伸。关掉「快速选择修改」时非「选择」工具不给抓。
+        if (CanDragFrameHandle(hit))
         {
             Cursor = CursorFor(hit);
             return;
@@ -1137,6 +1147,83 @@ public partial class CaptureOverlayWindow
     /// <summary>选区改框：纯几何在 <see cref="MarkGeometry.ResizeFrame"/>，这里只补「别跑出窗口」。</summary>
     private Rect ResizeFrom(Rect r, FrameHandle h, Vector d) =>
         MarkGeometry.ResizeFrame(r, h, d, MinSize, new Rect(0, 0, ActualWidth, ActualHeight));
+
+    /// <summary>
+    /// 这个把手现在能不能抓（改选区大小）：八个方向把手在「选择」工具下永远能抓，
+    /// 其它工具要设置里开着「快速选择修改」（照上游 <c>dragModeForVirtualPosition</c>：
+    /// <c>activeTool != Move &amp;&amp; !quickSelectionModification</c> = 完全不给拖）。
+    /// </summary>
+    internal static bool CanDragFrameHandle(FrameHandle handle, CaptureTool tool, bool quickModification) =>
+        handle is not (FrameHandle.None or FrameHandle.Move) &&
+        (tool == CaptureTool.Select || quickModification);
+
+    private bool CanDragFrameHandle(FrameHandle handle) =>
+        CanDragFrameHandle(handle, _tool, ScreenshotBehavior.QuickSelectionModification);
+
+    /// <summary>
+    /// 起拖时把被抓的那条边贴到指针上（照上游 <c>grabAdjustedScreenshotSelectionRect</c>，
+    /// <c>selection_resize_mode = follow_mouse_position</c>）。
+    /// </summary>
+    /// <remarks>
+    /// 指针先按像素取整，边界按「越过锚定边就 +1」算（<c>draggedEdgeBoundary</c>）——
+    /// 所以拖动时抓到的那条边正好落在指针所在的那一像素格的外沿，不会差半格。
+    /// 之后把框翻正、夹进 <paramref name="bounds"/>、补齐最小尺寸。
+    /// </remarks>
+    internal static Rect GrabAdjusted(Rect selection, FrameHandle handle, Point position, Rect bounds,
+        double minimum)
+    {
+        // 上游用 std::round（半数远离零），不是 C# 默认的银行家舍入
+        double cx = Math.Round(position.X, MidpointRounding.AwayFromZero);
+        double cy = Math.Round(position.Y, MidpointRounding.AwayFromZero);
+
+        static double Edge(double cell, double anchored) => cell >= anchored ? cell + 1 : cell;
+
+        double left = selection.Left, top = selection.Top;
+        double right = selection.Right, bottom = selection.Bottom;
+
+        switch (handle)
+        {
+            case FrameHandle.TopLeft:
+                left = Edge(cx, right); top = Edge(cy, bottom);
+                break;
+            case FrameHandle.Top:
+                top = Edge(cy, bottom);
+                break;
+            case FrameHandle.TopRight:
+                right = Edge(cx, left); top = Edge(cy, bottom);
+                break;
+            case FrameHandle.Right:
+                right = Edge(cx, left);
+                break;
+            case FrameHandle.BottomRight:
+                right = Edge(cx, left); bottom = Edge(cy, top);
+                break;
+            case FrameHandle.Bottom:
+                bottom = Edge(cy, top);
+                break;
+            case FrameHandle.BottomLeft:
+                left = Edge(cx, right); bottom = Edge(cy, top);
+                break;
+            case FrameHandle.Left:
+                left = Edge(cx, right);
+                break;
+            default:
+                return selection;
+        }
+
+        if (left > right) (left, right) = (right, left);
+        if (top > bottom) (top, bottom) = (bottom, top);
+
+        left = Math.Clamp(left, bounds.Left, bounds.Right);
+        right = Math.Clamp(right, bounds.Left, bounds.Right);
+        top = Math.Clamp(top, bounds.Top, bounds.Bottom);
+        bottom = Math.Clamp(bottom, bounds.Top, bounds.Bottom);
+
+        double width = Math.Max(minimum, right - left);
+        double height = Math.Max(minimum, bottom - top);
+        return new Rect(left, top, width, height);
+    }
+
 
     private static Rect RectFrom(Point a, Point b) => new(
         Math.Min(a.X, b.X), Math.Min(a.Y, b.Y),

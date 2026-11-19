@@ -110,10 +110,10 @@ public partial class CaptureSaveWindow : Window
         var (w, h) = CaptureSave.OutputSize(_image, _percent);
         MetaText.Text = $"{_image.PixelWidth} × {_image.PixelHeight} px → {w} × {h} px";
 
-        // 质量只对 JPEG 有意义：其余格式置灰，避免「调了没反应」
-        bool jpeg = _format == SaveFormat.Jpeg;
-        QualityBox.IsEnabled = jpeg;
-        QualityBox.Opacity = jpeg ? 1.0 : 0.45;
+        // 质量只对 JPEG / PDF（内嵌 JPEG）有意义：其余格式置灰，避免「调了没反应」
+        bool quality = _format is SaveFormat.Jpeg or SaveFormat.Pdf;
+        QualityBox.IsEnabled = quality;
+        QualityBox.Opacity = quality ? 1.0 : 0.45;
     }
 
     private void Browse_Click(object sender, RoutedEventArgs e)
@@ -142,7 +142,7 @@ public partial class CaptureSaveWindow : Window
         if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) { Fail("文件名里有不能用的字符"); return; }
 
         int quality = 90;
-        if (_format == SaveFormat.Jpeg &&
+        if (_format is SaveFormat.Jpeg or SaveFormat.Pdf &&
             (!int.TryParse(QualityBox.Text.Trim(), out quality) || quality < 1 || quality > 100))
         {
             Fail("质量填 1–100");

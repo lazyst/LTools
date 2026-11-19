@@ -50,7 +50,7 @@ public partial class CaptureOverlayWindow
 
         _scrollAuto = true;
         _scrollCadence.Reset();
-        _scrollAutoInterval = ScrollAutoIntervalMs;
+        _scrollAutoInterval = ScreenshotBehavior.ScrollingAutoScrollIntervalMs;
         _scrollStill = 0;                  // 上一轮停在「到底」的计数别带过来，不然一开就停
         _scrollMiss = 0;
         _scrollAutoClock.Reset();
@@ -106,7 +106,8 @@ public partial class CaptureOverlayWindow
     {
         if (!_scrollAuto || !_scrollMode) return;
 
-        _scrollAutoInterval = _scrollCadence.NextInterval(ScrollAutoIntervalMs, ScrollSettleMs);
+        _scrollAutoInterval = _scrollCadence.NextInterval(
+            ScreenshotBehavior.ScrollingAutoScrollIntervalMs, ScrollSettleMs);
 
         if (_scrollAutoTimer == null)
         {

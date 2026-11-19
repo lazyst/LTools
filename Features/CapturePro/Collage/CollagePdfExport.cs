@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using LTools.Features.CapturePro.Pdf;
 
 namespace LTools.Features.CapturePro.Collage;
 
@@ -482,16 +483,7 @@ internal static class CollagePdfExport
         return stream.ToArray();
     }
 
-    private static byte[] Flate(byte[] data)
-    {
-        using var output = new MemoryStream();
-        using (var zlib = new ZLibStream(output, CompressionLevel.Optimal, true))
-        {
-            zlib.Write(data, 0, data.Length);
-        }
-
-        return output.ToArray();
-    }
+    private static byte[] Flate(byte[] data) => PdfImages.Flate(data);
 
     // ============ 命名与文件 ============
 
@@ -553,76 +545,7 @@ internal static class CollagePdfExport
 
     // ============ 字节工具 ============
 
-    private static string Number(double value) =>
-        value.ToString("0.######", CultureInfo.InvariantCulture);
+    private static string Number(double value) => PdfText.Number(value);
 
-    private static string PdfString(string value)
-    {
-        var builder = new StringBuilder("<FEFF");
-        foreach (char character in value)
-            builder.Append(((int)character).ToString("X4", CultureInfo.InvariantCulture));
-        builder.Append('>');
-        return builder.ToString();
-    }
-
-    /// <summary>顺序写 PDF 对象并记偏移（照上游 <c>Writer</c>，含 xref / trailer）。</summary>
-    private sealed class PdfWriter
-    {
-        private readonly Stream _output;
-        private readonly List<long> _offsets = new() { 0 };
-        private long _position;
-
-        public PdfWriter(Stream output) => _output = output;
-
-        public int NextId => _offsets.Count;
-
-        public bool Put(string text) => Put(Encoding.Latin1.GetBytes(text));
-
-        public bool Put(byte[] bytes)
-        {
-            try
-            {
-                _output.Write(bytes, 0, bytes.Length);
-                _position += bytes.Length;
-                return true;
-            }
-            catch (IOException)
-            {
-                return false;
-            }
-        }
-
-        public int Object(string contents)
-        {
-            int id = NextId;
-            _offsets.Add(_position);
-            Put(Encoding.ASCII.GetBytes(id + " 0 obj\n" + contents + "\nendobj\n"));
-            return id;
-        }
-
-        public int Stream(string dictionary, byte[] data)
-        {
-            int id = NextId;
-            _offsets.Add(_position);
-            Put(Encoding.ASCII.GetBytes(id + " 0 obj\n<< " + dictionary + " /Length " + data.Length +
-                                        " >>\nstream\n"));
-            Put(data);
-            Put("\nendstream\nendobj\n");
-            return id;
-        }
-
-        public bool Finish(int root, int info)
-        {
-            long start = _position;
-            var builder = new StringBuilder();
-            builder.Append("xref\n0 ").Append(_offsets.Count).Append("\n0000000000 65535 f \n");
-            for (int index = 1; index < _offsets.Count; index++)
-                builder.Append(_offsets[index].ToString("D10", CultureInfo.InvariantCulture))
-                    .Append(" 00000 n \n");
-            builder.Append("trailer\n<< /Size ").Append(_offsets.Count).Append(" /Root ").Append(root)
-                .Append(" 0 R /Info ").Append(info).Append(" 0 R >>\nstartxref\n").Append(start)
-                .Append("\n%%EOF\n");
-            return Put(builder.ToString());
-        }
-    }
+    private static string PdfString(string value) => PdfText.PdfString(value);
 }

@@ -207,7 +207,7 @@ internal static class CapturePinManager
             PinStore.SaveAssets(record, image);
             // 「贴图到屏幕」勾了自动保存：贴图历史那份是截图缩略 + 原图，这里再按「截图输出」写一份
             if (kind == PinStore.KindImage)
-                CaptureSave.AutoSave(image, ExportSettings.ScenarioPin);
+                CaptureSave.AutoSave(image, ExportSettings.ScenarioPin, default, area);
         });
         return pin;
     }

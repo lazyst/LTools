@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using LTools.Core;
 using LTools.Native;
 using LTools.Views;
 
@@ -73,7 +74,12 @@ internal static class ScreenShot
     }
 
     /// <summary>拍下整块区域（物理像素）。区域不在任何显示器上时抛异常（调用方给提示）。</summary>
-    public static BitmapSource Capture(Int32Rect area)
+    /// <param name="area">抓取区域（屏幕物理像素）。</param>
+    /// <param name="withCursor">
+    /// 是否把鼠标指针画进画面（照上游 <c>screenshot/capture_cursor</c>）。
+    /// 只有「截图」自己的抓帧会传 true，模板找图 / OCR 的抓帧一律不画。
+    /// </param>
+    public static BitmapSource Capture(Int32Rect area, bool withCursor = false)
     {
         if (area.Width <= 0 || area.Height <= 0)
             throw new ArgumentException("截图区域尺寸必须大于 0");
@@ -89,9 +95,27 @@ internal static class ScreenShot
         }
 
         if (pieces.Count == 0) throw new InvalidOperationException("截图区域不在任何显示器上");
-        if (pieces.Count == 1 && Same(pieces[0].Rect, area)) return pieces[0].Image;   // 单屏：不复制一遍
 
-        return Compose(area, pieces);
+        BitmapSource result = pieces.Count == 1 && Same(pieces[0].Rect, area)
+            ? pieces[0].Image                                // 单屏：不复制一遍
+            : Compose(area, pieces);
+
+        return withCursor ? WithCursor(result, area) : result;
+    }
+
+    /// <summary>把当前鼠标指针叠进画面（取不到光标就原样返回）。</summary>
+    public static BitmapSource WithCursor(BitmapSource image, Int32Rect area)
+    {
+        try
+        {
+            var shape = CursorCapture.TryRead(out var position);
+            return CursorCapture.Apply(image, area, shape, position);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("CapturePro.ScreenShot", "叠加鼠标指针失败：" + ex.Message);
+            return image;
+        }
     }
 
     /// <summary>把逐块画面按物理坐标贴进一张 Bgra32 位图（纯像素搬运，不走渲染栈）。</summary>
