@@ -356,12 +356,16 @@ public partial class CapturePinWindow
         Cursor = !_clickThrough && !_locked && _viewport ? Cursors.ScrollAll : Cursors.Arrow;
 
     /// <summary>
-    /// 底色 / 描边这两层要不要露：实时贴图让给 DWM 缩略图；缩略图模式要那块不透明底；
-    /// 图自带圆角 / 阴影时不能铺不透明底（透明的地方会画成深灰），自带效果时也不再叠窗口描边。
+    /// 底色 / 棋盘格 / 描边这三层要不要露：实时贴图让给 DWM 缩略图；缩略图模式要那块不透明底；
+    /// 图自带圆角 / 阴影时不能铺不透明底（透明的地方会画成深灰），改铺棋盘格；
+    /// 自带效果时也不再叠窗口描边。
     /// </summary>
     private void ApplyChrome()
     {
-        bool backdrop = !_live && (_thumb || !_appearance.HasShape);
+        bool checker = !_live && !_thumb && Checkerboard;
+        Checker.Visibility = checker ? Visibility.Visible : Visibility.Collapsed;
+
+        bool backdrop = !_live && (_thumb || !Checkerboard);
         Backdrop.Visibility = backdrop ? Visibility.Visible : Visibility.Collapsed;
         ApplyFrame();
     }

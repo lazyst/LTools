@@ -652,8 +652,13 @@ public partial class CaptureOverlayWindow : Window
                 break;
 
             default:
-                // 复制到剪贴板：顺带处理「执行完自动保存」与「把图片文件也复制到剪贴板」
-                if (!CaptureSave.CopyImage(image, ExportSettings.ScenarioCopy, ExportNames))
+                // 复制到剪贴板：顺带处理「执行完自动保存」与「把图片文件也复制到剪贴板」；
+                // 同时带上外观 / 落位元数据，让「贴剪贴板」能贴回原位置与原外观（P7-e）
+                var look = PinAppearance.FromStyle(_doc.Style, _doc.Scale,
+                    _doc.Area.Width, _doc.Area.Height);
+                var capture = new ClipboardCapture(
+                    look.WindowRect(_doc.Area, image.PixelWidth, image.PixelHeight), look);
+                if (!CaptureSave.CopyImage(image, ExportSettings.ScenarioCopy, ExportNames, capture))
                 {
                     TrayService.Notify("复制截图失败：剪贴板被占用");
                     return;

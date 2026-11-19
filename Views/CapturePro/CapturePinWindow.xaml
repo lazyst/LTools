@@ -76,6 +76,34 @@
         <!-- 不透明底：普通贴图 / 局部显示 / 缩略图都靠它；实时贴图时收起（见文件头注释）。 -->
         <Border x:Name="Backdrop" Background="#101014"/>
 
+        <!-- 透明棋盘格：图里烘了圆角 / 阴影 / 边框时，透明的那几处铺这层（照上游
+             themedCheckerboardBrush，深色底 #1F1F1F + 交替 #313131，10px 一格）。
+             缩略图 / 实时贴图 / 没有形状时收起——那时要么有底色要么内容自己铺满。 -->
+        <Rectangle x:Name="Checker" IsHitTestVisible="False" Visibility="Collapsed">
+            <Rectangle.Fill>
+                <DrawingBrush TileMode="Tile" Stretch="None"
+                              Viewport="0,0,20,20" ViewportUnits="Absolute">
+                    <DrawingBrush.Drawing>
+                        <DrawingGroup>
+                            <GeometryDrawing Brush="#1F1F1F">
+                                <GeometryDrawing.Geometry>
+                                    <RectangleGeometry Rect="0,0,20,20"/>
+                                </GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                            <GeometryDrawing Brush="#313131">
+                                <GeometryDrawing.Geometry>
+                                    <GeometryGroup>
+                                        <RectangleGeometry Rect="0,0,10,10"/>
+                                        <RectangleGeometry Rect="10,10,10,10"/>
+                                    </GeometryGroup>
+                                </GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                        </DrawingGroup>
+                    </DrawingBrush.Drawing>
+                </DrawingBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+
         <Image x:Name="Shot" Stretch="Fill" HorizontalAlignment="Left" VerticalAlignment="Top"
                RenderOptions.BitmapScalingMode="HighQuality">
             <Image.RenderTransform>

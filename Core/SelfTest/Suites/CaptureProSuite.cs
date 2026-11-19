@@ -128,6 +128,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "指针动作：取值 / 默认值 / 实时门禁 / 释放手势", PointerActionCases));
         cases.Add(new("capturePro", "全局快捷键：动作表 / 播种 / 读写 / 摘要 / 冲突", ShortcutCases));
         cases.Add(new("capturePro", "截图输出：文件名模板 / 清洗封顶 / 设置读写 / PNG 压缩", ExportCases));
+        cases.Add(new("capturePro", "剪贴板元数据：外观 / 落位 / 桌面变化 / 文件签名", ClipboardMetaCases));
     }
 
     private static void Geometry()

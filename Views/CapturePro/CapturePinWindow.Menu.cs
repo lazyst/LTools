@@ -457,7 +457,11 @@ public partial class CapturePinWindow
     {
         // 走统一的「截图输出」：勾了「复制贴图时自动保存」就顺带存一份，
         // 勾了「复制图片文件到剪贴板」就把那个文件也放进去（贴图没有抓图时的窗口名，模板里 {AN}/{WN} 回落 Unknown）。
-        if (CaptureSave.CopyImage(_content, ExportSettings.ScenarioCopyPinned))
+        // 落位按**当前窗口矩形**（可能被缩放过）+ 贴图自带的外观写进元数据，
+        // 这样「复制贴图 → 贴剪贴板」能贴回现在这个位置，圆角 / 阴影 / 棋盘格也一起回来（照上游）。
+        var capture = new ClipboardCapture(PhysicalArea(), _appearance,
+            _checkerboard || _appearance.HasShape);
+        if (CaptureSave.CopyImage(_content, ExportSettings.ScenarioCopyPinned, default, capture))
             ToastService.Show("贴图已复制", "贴图", 1600);
         else ToastService.Show("复制贴图失败", "贴图", 0, ToastKind.error);
     }

@@ -300,7 +300,15 @@ internal static class NativeClipboard
     /// 图片 + 文件一起放进剪贴板（Snow Shot 的「复制图片文件到剪贴板」）：
     /// 现代应用读到 PNG / CF_DIB，资源管理器与聊天软件读到 CF_HDROP 的那个文件。
     /// </summary>
-    public static bool SetImageAndFiles(BitmapSource image, IReadOnlyList<string> paths)
+    public static bool SetImageAndFiles(BitmapSource image, IReadOnlyList<string> paths) =>
+        SetImageAndFilesWith(image, paths, null);
+
+    /// <summary>
+    /// 同上，并附带若干自定义注册格式（截图 Pro 的剪贴板外观 / 落位元数据）。
+    /// 元数据与图片 / 文件列表在同一次会话里写完，别再另开一次剪贴板。
+    /// </summary>
+    public static bool SetImageAndFilesWith(BitmapSource image, IReadOnlyList<string> paths,
+        IReadOnlyList<(string Name, byte[] Data)>? extras)
     {
         if (image == null) return false;
 
@@ -334,7 +342,56 @@ internal static class NativeClipboard
                 }
             }
 
+            any |= SetExtras(extras);
             return any;
+        }
+        finally { CloseClipboard(); }
+    }
+
+    /// <summary>写一组自定义注册格式（已在剪贴板会话里）。空表 = 空操作，返回 false。</summary>
+    private static bool SetExtras(IReadOnlyList<(string Name, byte[] Data)>? extras)
+    {
+        if (extras == null || extras.Count == 0) return false;
+
+        bool any = false;
+        foreach (var (name, data) in extras)
+            if (!string.IsNullOrEmpty(name) && data is { Length: > 0 })
+                any |= SetCustom(name, data);
+        return any;
+    }
+
+    /// <summary>按注册名写一块字节（<c>RegisterClipboardFormat</c> 对同一个名字返回同一个格式号）。</summary>
+    private static bool SetCustom(string name, byte[] data)
+    {
+        uint format = RegisterClipboardFormat(name);
+        return format != 0 && SetBytes(format, data);
+    }
+
+    /// <summary>
+    /// 读一个注册格式的原始字节（截图 Pro 的剪贴板元数据用）。
+    /// </summary>
+    /// <param name="maxBytes">字节上限：原生分配器可能把缓冲区补齐，超出就当作没有（别把整块外部数据读进来）。</param>
+    public static bool TryGetCustom(string name, int maxBytes, out byte[] data)
+    {
+        data = Array.Empty<byte>();
+        if (string.IsNullOrEmpty(name) || maxBytes <= 0) return false;
+
+        uint format = RegisterClipboardFormat(name);
+        if (format == 0) return false;
+        if (!OpenWithRetry()) return false;
+
+        try
+        {
+            IntPtr h = GetClipboardData(format);
+            if (h == IntPtr.Zero) return false;
+
+            int size = GlobalSize(h);
+            if (size <= 0 || size > maxBytes) return false;
+
+            byte[]? bytes = ReadAll(h);
+            if (bytes == null || bytes.Length == 0) return false;
+            data = bytes;
+            return true;
         }
         finally { CloseClipboard(); }
     }
@@ -444,7 +501,17 @@ internal static class NativeClipboard
     }
 
     /// <summary>把图片放进剪贴板：注册格式 PNG（现代应用）+ CF_DIB（老应用）。</summary>
-    public static bool SetImage(BitmapSource image)
+    public static bool SetImage(BitmapSource image) => SetImageWith(image, null);
+
+    /// <summary>
+    /// 同上，并附带若干自定义注册格式（截图 Pro 的外观 / 落位元数据）。
+    /// </summary>
+    /// <remarks>
+    /// 元数据必须与图片在同一次 <c>EmptyClipboard</c> 之后的会话里写：分两次打开会互相清空。
+    /// 名称为空 / 数据为空的那几项直接跳过，不影响图片本身。
+    /// </remarks>
+    public static bool SetImageWith(BitmapSource image,
+        IReadOnlyList<(string Name, byte[] Data)>? extras)
     {
         if (image == null) return false;
 
@@ -458,6 +525,7 @@ internal static class NativeClipboard
             bool any = false;
             if (png != null) any |= SetBytes(PngFormat, png);
             if (dib != null) any |= SetBytes(CF_DIB, dib);
+            any |= SetExtras(extras);
             return any;
         }
         finally { CloseClipboard(); }

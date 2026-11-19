@@ -89,6 +89,25 @@ internal static class CapturePinManager
     }
 
     /// <summary>
+    /// 按剪贴板里记下的**窗口矩形**贴回（照上游 <c>resolveScreenshotClipboardPlacement</c> 的结果）：
+    /// 窗口就是当初那一块（含阴影 / 边框让出的内边距），图带原来的外观与棋盘格。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="Pin"/> 的区别：<see cref="Pin"/> 收的是**内容**选区、按外观往四周扩；
+    /// 这里已经是算好的窗口矩形（跨显示器 / 缩放比变化都已经由元数据解析处理过），不再二次扩。
+    /// </remarks>
+    public static CapturePinWindow PinRestored(BitmapSource image, Int32Rect windowRect,
+        PinAppearance? appearance, bool checkerboard, string source = PinStore.SourceClipboard)
+    {
+        var look = (appearance ?? PinAppearance.None).Clamp(image.PixelWidth, image.PixelHeight);
+        double scale = ScreenShot.ScaleOf(windowRect);
+        var pin = new CapturePinWindow(image, windowRect, scale);
+        pin.SetAppearance(look);
+        pin.SetCheckerboard(checkerboard || look.HasShape);
+        return Register(pin, image, windowRect, scale, source, PinStore.KindImage, "", 0, null, look);
+    }
+
+    /// <summary>
     /// 贴剪贴板里的文字 / 颜色：按屏幕缩放渲染成卡片，放在 <paramref name="workArea"/>（DIP）中间，
     /// 装不下就等比缩小（照上游 <c>fitPinnedImageOnScreen</c>）。
     /// </summary>

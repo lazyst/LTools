@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Media.Imaging;
 using LTools.Core;
 using LTools.Features.Units.Files;
@@ -206,7 +207,8 @@ internal static class PinFiles
     /// 依次把一批文件贴到屏幕上（照上游 <c>PinFilesToScreen</c>）：先解码、后按原顺序贴出，
     /// 单个失败只记一条，最后一条汇总提示。
     /// </summary>
-    public static void PinPaths(IReadOnlyList<string> paths, string source = PinStore.SourceFiles)
+    public static void PinPaths(IReadOnlyList<string> paths, string source = PinStore.SourceFiles,
+        ClipboardMeta? meta = null)
     {
         var unique = Filter(paths, out var rejected);
         if (unique.Count == 0)
@@ -233,8 +235,18 @@ internal static class PinFiles
                     continue;
                 }
 
+                // 剪贴板元数据按「这张图 + 这个文件」各自校验：图像素尺寸与文件签名（大小 / 修改时间）
+                // 都要对得上，才按原位置 + 原外观贴回（照上游 filePlacement / fileAppearance 的 matches）
+                ClipboardAppearance? appearance = null;
+                ClipboardPlacement? placement = null;
+                if (item.Image is { } image && meta != null)
+                {
+                    appearance = meta.AppearanceFor(image.PixelWidth, image.PixelHeight, path);
+                    placement = meta.PlacementFor(image.PixelWidth, image.PixelHeight, path);
+                }
+
                 ok++;
-                Ui.Post(() => Present(item, source));
+                Ui.Post(() => Present(item, source, appearance, placement));
             }
 
             int count = ok;
@@ -263,14 +275,36 @@ internal static class PinFiles
         names.Count == 0 ? "" : "：" + string.Join("、", names);
 
     /// <summary>把一个解码好的文件贴出来（必须在 UI 线程调）。</summary>
-    public static void Present(PinFileItem item, string source = PinStore.SourceFiles)
+    public static void Present(PinFileItem item, string source = PinStore.SourceFiles) =>
+        Present(item, source, null, null);
+
+    /// <summary>
+    /// 同上，并带上剪贴板里记下的外观 / 落位（只对图片有效；文字直接走卡片）。
+    /// </summary>
+    /// <remarks>
+    /// 照上游 <c>screenshotClipboardPinGeometry</c>：落位能解析（桌面没变 / 换屏后能算出位置）
+    /// 就按原窗口矩形贴回，外观（圆角 / 阴影 / 棋盘格）一起还原；解析不出来才退回「居中贴」。
+    /// </remarks>
+    public static void Present(PinFileItem item, string source,
+        ClipboardAppearance? appearance, ClipboardPlacement? placement)
     {
         double scale = PinClipboard.ScreenScale();
         var workArea = PinClipboard.WorkAreaDip(scale);
 
-        if (item.Image != null)
-            CapturePinManager.PinClipboardImage(item.Image, scale, workArea, source);
-        else
+        if (item.Image is not { } image)
+        {
             CapturePinManager.PinText(item.Text, scale, workArea, source);
+            return;
+        }
+
+        var look = appearance?.Look ?? PinAppearance.None;
+        if (placement != null && CaptureClipboard.ResolveRect(placement) is Int32Rect at)
+        {
+            CapturePinManager.PinRestored(image, at, look,
+                appearance?.Checkerboard ?? look.HasShape, source);
+            return;
+        }
+
+        CapturePinManager.PinClipboardImage(image, scale, workArea, source, look);
     }
 }

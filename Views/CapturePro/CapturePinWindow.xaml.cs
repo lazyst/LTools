@@ -65,6 +65,7 @@ public partial class CapturePinWindow : Window
     private bool _selected;
 
     private PinAppearance _appearance = PinAppearance.None;   // 图自带的选区外观（圆角 / 阴影 / 边框）
+    private bool _checkerboard;                              // 透明棋盘格（有形状时为真，剪贴板元数据可显式带）
 
     private IntPtr _liveHwnd;                // 实时贴图跟的源窗口
     private uint _livePid;                   // 源窗口属于哪个程序（句柄换了要在同一个程序里找回）
@@ -204,6 +205,20 @@ public partial class CapturePinWindow : Window
     {
         _appearance = (appearance ?? PinAppearance.None)
             .Clamp(_content.PixelWidth, _content.PixelHeight);
+        ApplyChrome();
+    }
+
+    /// <summary>这张贴图现在会不会铺透明棋盘格（显式开关，或图自带圆角 / 阴影 / 边框）。</summary>
+    internal bool Checkerboard => _checkerboard || _appearance.HasShape;
+
+    /// <summary>
+    /// 显式开 / 关棋盘格（剪贴板元数据里的 <c>checkerboardEnabled</c>）。
+    /// 图自带形状时无论如何都会铺（见 <see cref="ApplyChrome"/>）——否则圆角外那几块会直接透出桌面。
+    /// </summary>
+    internal void SetCheckerboard(bool on)
+    {
+        if (_checkerboard == on) return;
+        _checkerboard = on;
         ApplyChrome();
     }
 

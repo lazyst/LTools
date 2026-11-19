@@ -288,7 +288,12 @@ internal static class CaptureSession
             ForegroundAppCache.Current?.Title);
 
         var image = ScreenCapture.CaptureSource(area.Left, area.Top, area.Width, area.Height);
-        CaptureSave.CopyImage(image, scenario, names);
+
+        // 直接截图没有选区外观，也没有「贴图窗口」这一层：窗口矩形就是抓的那块，
+        // 外观是空的。带上落位元数据后「贴剪贴板」能贴回原来的位置（照上游）。
+        var capture = new ClipboardCapture(
+            new Int32Rect(area.Left, area.Top, image.PixelWidth, image.PixelHeight), PinAppearance.None);
+        CaptureSave.CopyImage(image, scenario, names, capture);
 
         var entry = CaptureCatalog.Create(image.PixelWidth, image.PixelHeight,
             CaptureCatalog.KindShot, source);

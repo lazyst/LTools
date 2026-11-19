@@ -258,8 +258,15 @@ internal static class CaptureSave
     /// 两件事共用**同一份**导出文件（照上游）：先按自动保存的文件名模板写一份，
     /// 只有 <c>copy_image_file_to_clipboard</c> 打开时才把它的 CF_HDROP 一起放进去。
     /// 写文件失败不影响图片本身进剪贴板。
+    /// <para>
+    /// <paramref name="capture"/> 非空时再附带**外观 / 落位**两份自定义格式（照上游
+    /// <c>screenshotclipboardappearance</c> / <c>screenshotclipboardplacement</c>）：
+    /// 「贴剪贴板」据此贴回原来的位置与圆角 / 阴影。文件签名（路径 + 大小 + 修改时间）
+    /// 一起写进去，文件被改过就不按原位置贴回。
+    /// </para>
     /// </remarks>
-    public static bool CopyImage(BitmapSource image, string scenario, ExportNameContext names = default)
+    public static bool CopyImage(BitmapSource image, string scenario, ExportNameContext names = default,
+        ClipboardCapture? capture = null)
     {
         string? file = null;
         if (ExportSettings.CopyImageFile || ExportSettings.ShouldAutoSave(scenario))
@@ -271,11 +278,17 @@ internal static class CaptureSave
             }
         }
 
+        // 元数据与图片 / 文件列表同一次写进剪贴板；没有落位（capture 为空）就不写
+        var extras = capture is ClipboardCapture request
+            ? CaptureClipboard.Payloads(image, request, file)
+                .Select(payload => (payload.Name, payload.Data)).ToArray()
+            : null;
+
         try
         {
             if (file != null && ExportSettings.CopyImageFile)
-                return NativeClipboard.SetImageAndFiles(image, new[] { file });
-            return NativeClipboard.SetImage(image);
+                return NativeClipboard.SetImageAndFilesWith(image, new[] { file }, extras);
+            return NativeClipboard.SetImageWith(image, extras);
         }
         catch (Exception ex)
         {
