@@ -3627,7 +3627,14 @@ internal static partial class Program
         var ocrScroll = (ScrollViewer)Field(window, "OcrScroll");
         var originalScroll = (ScrollViewer)Field(window, "OriginalScroll");
 
-        Check(ocrScroll.Visibility == Visibility.Visible, "文字页默认显示文字层");
+        // 开发机上的真实配置可能开着「识别结果先显示原图」，先关掉再验文字层
+        if (original.IsChecked == true)
+        {
+            original.IsChecked = false;
+            Pump(window);
+        }
+
+        Check(ocrScroll.Visibility == Visibility.Visible, "文字页显示文字层（关掉「显示原图」后）");
 
         original.IsChecked = true;
         Pump(window);
@@ -3647,28 +3654,22 @@ internal static partial class Program
         Pump(window);
         Check((bool)Get(canvas, "FillBackground"), "打开填充背景 → 画布铺底色");
 
-        // 「原文预览」= 旁边开一个 100% 原图窗；默认设置（show_original_image_preview = 开）下
-        // 识别完成时它已经自动开出来了（P9-e），所以这里先确认自动开、再验按钮能关 / 能开
+        // 「显示原图」= 在**同一个窗口**里切到原图（上游 show_original_image，默认关）。
+        // 回归：以前另开一个「原文预览」小窗，点一次文字识别会同时弹出两个窗口（用户报过）。
         Window? Preview() => Application.Current.Windows.Cast<Window>()
             .FirstOrDefault(w => w.GetType().Name == "CaptureOriginalPreviewWindow" && w.IsVisible);
 
-        var preview = Preview();
-        Check(preview != null, "默认设置下识别完自动开出原图预览窗");
-        if (preview != null) preview.Close();
-        Pump(window);
-        Check(Preview() == null, "关掉预览窗后确实不在了");
+        Check(Preview() == null, "识别结果只有一个窗口：不再自动弹出「原文预览」小窗");
+        Check(window.FindName("PreviewBtn") == null, "识别结果窗上没有「原文预览」按钮（原图在窗内切）");
 
-        ((Button)Field(window, "PreviewBtn")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        var originalToggle = (CheckBox)Field(window, "OriginalToggle");
+        originalToggle.IsChecked = true;
         Pump(window);
-        preview = Preview();
-        Check(preview != null, "原文预览按钮打开预览窗");
-        if (preview != null)
-        {
-            Check(preview.Left + preview.Width <= window.Left + 1 ||
-                  preview.Left >= window.Left + window.Width - 1,
-                $"预览窗贴在识别窗旁边（识别 {window.Left:0}/{window.Width:0} · 预览 {preview.Left:0}/{preview.Width:0}）");
-            preview.Close();
-        }
+        Check(((FrameworkElement)Field(window, "OriginalScroll")).Visibility == Visibility.Visible,
+            "勾「显示原图」→ 窗内换成原图");
+        originalToggle.IsChecked = false;
+        Pump(window);
+        Check(Preview() == null, "切回文字层也不会冒出第二个窗口");
 
         Save(Render(window), Path.Combine(_outDir, "result.png"));
 

@@ -97,7 +97,8 @@ internal static partial class Program
             Check(!Flag("ModelHotStart"), "默认不热启动");
             Check(!Flag("ShowTextHighlighting"), "默认不加遮罩");
             Check(Flag("SaveResultAsImage"), "默认保存结果图");
-            Check(Flag("ShowOriginalPreview"), "默认显示原图预览");
+            Check(!(bool)storeType.GetField("DefaultShowOriginalPreview", Stat)!.GetValue(null)!,
+                "默认不显示原图（上游 show_original_image 默认关）");
             Check(OcrAction() == "no_action", "默认识别后不执行操作");
             Check(!File.Exists(settingsFile), "只读默认值不会平白落一份 settings.json");
 

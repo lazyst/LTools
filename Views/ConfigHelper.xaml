@@ -1473,9 +1473,9 @@
                                 <CheckBox x:Name="OcrSaveImageBox" Content="保存图片时带上识别 / 译文结果"
                                           Margin="0,8,0,0" Checked="CaptureOcr_Changed" Unchecked="CaptureOcr_Changed"
                                           ToolTip="照上游 text_recognition/save_recognition_result_as_image"/>
-                                <CheckBox x:Name="OcrPreviewBox" Content="识别后显示原图预览"
+                                <CheckBox x:Name="OcrPreviewBox" Content="识别结果先显示原图"
                                           Margin="0,8,0,0" Checked="CaptureOcr_Changed" Unchecked="CaptureOcr_Changed"
-                                          ToolTip="照上游 text_recognition/show_original_image_preview：识别完自动在结果窗旁开预览"/>
+                                          ToolTip="照上游 text_recognition/show_original_image_preview：打开结果窗时先在同一个窗口里显示原图（可随时勾「显示原图」切回来）"/>
                             </StackPanel>
                         </Border>
 

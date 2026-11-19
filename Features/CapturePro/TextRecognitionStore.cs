@@ -43,7 +43,8 @@ internal static class TextRecognitionStore
     public const bool DefaultModelHotStart = false;
     public const bool DefaultShowTextHighlighting = false;
     public const bool DefaultSaveResultAsImage = true;
-    public const bool DefaultShowOriginalPreview = true;
+    /// <summary>打开识别结果时先显示原图（上游 <c>show_original_image</c> 默认关）。</summary>
+    public const bool DefaultShowOriginalPreview = false;
 
     /// <summary>模型档的全部取值（下拉顺序同上游）。</summary>
     public static readonly string[] ModelTypes = { ModelExtraSmall, ModelSmall, ModelMedium };

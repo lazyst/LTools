@@ -55,7 +55,6 @@ public partial class CaptureResultWindow : Window
 
     private OcrTextEditModel? _model;
     private IReadOnlyList<OcrTextLine> _layer = Array.Empty<OcrTextLine>();
-    private CaptureOriginalPreviewWindow? _preview;
     private ConversionDocument _conversion = ConversionDocument.Empty;
     private string _renderedConversion = "";
     private bool _documentRendered;
@@ -288,8 +287,9 @@ public partial class CaptureResultWindow : Window
         // 翻译入口短路自动动作（上游 m_ocrTranslateAfterRecognition 直接 return）。
         if (!translating) RunAutomaticAction();
 
-        // 「显示原图预览」（照上游 updateOriginalImagePreview）：开着就自己摆到结果窗旁边
-        if (TextRecognitionStore.ShowOriginalPreview && _image != null) OpenPreview();
+        // 「显示原图」（照上游 show_original_image，默认关）：在**同一个窗口**里切到原图，
+        // 不再另开一个「原文预览」小窗（用户报过「点文字识别弹出两个窗口」）。
+        if (TextRecognitionStore.ShowOriginalPreview && _image != null) OriginalToggle.IsChecked = true;
     }
 
     /// <summary>
@@ -457,7 +457,7 @@ public partial class CaptureResultWindow : Window
     {
         // XAML 解析期间 IsChecked="True" 会先触发一次 Checked，那时后面的兄弟控件还没建出来
         if (OcrScroll is not { } ocrScroll || OriginalToggle is not { } originalToggle ||
-            FillToggle is not { } fillToggle || PreviewBtn is not { } previewBtn ||
+            FillToggle is not { } fillToggle ||
             CopyBtn is not { } copyBtn || EmptyText is not { } emptyText)
         {
             return;
@@ -513,7 +513,6 @@ public partial class CaptureResultWindow : Window
 
         originalToggle.IsEnabled = text;
         fillToggle.IsEnabled = text && !original;
-        previewBtn.IsEnabled = text && _image != null;
 
         copyBtn.Content = _tab switch
         {
@@ -673,39 +672,6 @@ public partial class CaptureResultWindow : Window
     {
         if (OcrCanvas == null) return;
         OcrCanvas.SetFillBackground(FillToggle.IsChecked == true);
-    }
-
-    private void Preview_Click(object sender, RoutedEventArgs e)
-    {
-        if (_preview != null)
-        {
-            _preview.Close();
-            _preview = null;
-            return;
-        }
-
-        OpenPreview();
-    }
-
-    /// <summary>
-    /// 打开原图预览窗（按钮 / 「显示原图预览」设置共用）。已经开着就不重复开。
-    /// </summary>
-    private void OpenPreview()
-    {
-        if (_image == null || _preview != null) return;
-
-        var preview = new CaptureOriginalPreviewWindow(_image, _scale);
-        preview.Closed += (_, _) => _preview = null;
-
-        ScreenGeometry? screen = CaptureRecordWindow.ScreenOf(_area);
-        var work = screen == null
-            ? SystemParameters.WorkArea
-            : new Rect(screen.WorkLeft / _scale, screen.WorkTop / _scale,
-                screen.WorkWidth / _scale, screen.WorkHeight / _scale);
-
-        preview.Show();
-        preview.PlaceBeside(new Rect(Left, Top, Width, Height), work);
-        _preview = preview;
     }
 
     /// <summary>
@@ -1041,8 +1007,5 @@ public partial class CaptureResultWindow : Window
 
         _translationCts = null;
         _translatedLines = null;
-
-        _preview?.Close();
-        _preview = null;
     }
 }
