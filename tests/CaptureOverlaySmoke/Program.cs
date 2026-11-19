@@ -3404,10 +3404,11 @@ internal static partial class Program
         System.Windows.Clipboard.Clear();
         ((Button)Field(window, "CopyBtn")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Pump(window);
-        string copied = System.Windows.Clipboard.GetText();
+        string copied = WaitClipboardText(t => t.Contains("苹果") && t.Contains('\t'));
         Check(copied.Contains("苹果") && copied.Contains('\t'),
             "复制到剪贴板的是 TSV：" + copied.Replace("\n", "/"));
-        Check(System.Windows.Clipboard.GetDataObject()?.GetDataPresent(DataFormats.Html) == true,
+        Check(WaitUntil(() => System.Windows.Clipboard.GetDataObject()?.GetDataPresent(DataFormats.Html) == true,
+                1000),
             "剪贴板里同时有 HTML（表格软件读它）");
 
         resetBtn.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
@@ -3450,7 +3451,7 @@ internal static partial class Program
         System.Windows.Clipboard.Clear();
         copyButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Pump(window);
-        string copiedPreview = System.Windows.Clipboard.GetText();
+        string copiedPreview = WaitClipboardText(t => t.Contains("名称") && !t.Contains("| ---"));
         Check(copiedPreview.Contains("名称") && !copiedPreview.Contains("| ---"),
             "选了就复制选中那段（不是整份源码）：" + copiedPreview.Replace("\r\n", "/"));
 
@@ -3466,10 +3467,11 @@ internal static partial class Program
         System.Windows.Clipboard.Clear();
         copyButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Pump(window);
-        string copiedHtml = System.Windows.Clipboard.GetText();
+        string copiedHtml = WaitClipboardText(t => t.Contains("<table>") && t.Contains("<th>名称</th>"));
         Check(copiedHtml.Contains("<table>") && copiedHtml.Contains("<th>名称</th>"),
             "没选就复制整份 HTML 源码：" + copiedHtml);
-        Check(System.Windows.Clipboard.GetDataObject()?.GetDataPresent(DataFormats.Html) == true,
+        Check(WaitUntil(() => System.Windows.Clipboard.GetDataObject()?.GetDataPresent(DataFormats.Html) == true,
+                1000),
             "HTML 页同时写 text/html 剪贴板格式");
 
         Save(Render(window), Path.Combine(_outDir, "result-html.png"));
@@ -3789,8 +3791,9 @@ internal static partial class Program
         }
 
         translateBtn.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-        Pump(window);
+        // 先断言再泵消息：本地假端点回得太快时，Pump 会把「已翻译」的收尾也一起跑掉
         Check(translateBtn.Content as string == "取消", "翻译期间按钮变「取消」（真能取消）");
+        Pump(window);
         WaitTranslation(window);
         Pump(window);
 
@@ -3813,7 +3816,7 @@ internal static partial class Program
         System.Windows.Clipboard.Clear();
         ((Button)Field(window, "CopyBtn")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Pump(window);
-        string copiedTranslation = System.Windows.Clipboard.GetText();
+        string copiedTranslation = WaitClipboardText(t => t.Contains("Name Count") && t.Contains("Apple 12"));
         Check(copiedTranslation.Contains("Name Count") && copiedTranslation.Contains("Apple 12"),
             "复制译文拿到两行译文：" + copiedTranslation.Replace("\r\n", "/"));
 
@@ -3902,9 +3905,8 @@ internal static partial class Program
         System.Windows.Clipboard.Clear();
         ((Button)Field(window, "CopyBtn")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Pump(window);
-        Check(!System.Windows.Clipboard.ContainsImage(), "关掉之后不再写图片");
-        Check(System.Windows.Clipboard.ContainsText() &&
-              System.Windows.Clipboard.GetText().Contains("Name Count"),
+        Check(!WaitUntil(() => System.Windows.Clipboard.ContainsImage(), 300), "关掉之后不再写图片");
+        Check(WaitClipboardText(t => t.Contains("Name Count")).Contains("Name Count"),
             "关掉之后复制的是文本译文");
 
         // 版面处理改回「按原行」→ 又是 2 行，且译文仍画在原图上
@@ -4050,7 +4052,7 @@ internal static partial class Program
         System.Windows.Clipboard.Clear();
         copyButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Pump(window);
-        Check(System.Windows.Clipboard.GetText() == "E = mc^2", "没选时复制整份公式源码");
+        Check(WaitClipboardText(t => t == "E = mc^2") == "E = mc^2", "没选时复制整份公式源码");
 
         latexView.Focus();
         latexView.SelectAll();
@@ -6972,6 +6974,62 @@ internal static partial class Program
         Check(!styleBar.IsEnabled, "录制中导出设置整行禁用");
         Check(styleBar.Visibility == Visibility.Visible, "录制中仍然显示导出设置");
         Check(tools.All(b => b.IsChecked != true), "录制中不选中任何绘制工具");
+
+        // ---- 标注层：没选工具 = 点击穿透；选了画笔 = 真收鼠标、真能落笔 ----
+        // 回归：分层窗口零 alpha 的像素会把鼠标放过去，标注层必须铺一层 alpha 2 的输入面
+        // （照上游 ScreenRecordingAreaWindow::inputSurfaceColor）。
+        var layer = (Window?)barType.GetProperty("Annotations", Private)?.GetValue(bar);
+        Check(layer != null, "开录后建出录制期标注层");
+        if (layer != null)
+        {
+            var layerType = layer.GetType();
+            var inputActive = layerType.GetProperty("InputActive", Private)!;
+            long ExStyle() => GetWindowLongPtr(new System.Windows.Interop.WindowInteropHelper(layer).Handle, -20)
+                .ToInt64();
+
+            Check(inputActive.GetValue(layer) is false, "没选工具时标注层不拦鼠标（点击穿透）");
+            Check((ExStyle() & 0x20) != 0, "没选工具时带 WS_EX_TRANSPARENT");
+
+            var pen = tools.First(t => t.Tag?.ToString() == "Pen");
+            pen.IsChecked = true;
+            Pump(bar);
+            Check(inputActive.GetValue(layer) is true, "选画笔后标注层收鼠标");
+            Check((ExStyle() & 0x20) == 0, "选画笔后去掉 WS_EX_TRANSPARENT");
+
+            var surface = (FrameworkElement)layer.Content;
+            surface.UpdateLayout();
+            var shot = new RenderTargetBitmap((int)Math.Max(1, surface.ActualWidth),
+                (int)Math.Max(1, surface.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+            shot.Render(surface);
+            var pixel = new byte[4];
+            shot.CopyPixels(new Int32Rect(4, 4, 1, 1), pixel, 4, 0);
+            Check(pixel[3] == 2, $"输入面是 alpha 2（肉眼不可见但收得到鼠标），实际 {pixel[3]}");
+
+            // 真鼠标：在录制区里拖一条横线，标注层要真的收到（修之前会穿到桌面）
+            SetCursorPos(60, 60);
+            Thread.Sleep(120);
+            Pump(bar);
+            mouse_event(LeftDown, 0, 0, 0, UIntPtr.Zero);
+            Thread.Sleep(80);
+            for (int x = 90; x <= 210; x += 30)
+            {
+                SetCursorPos(x, 100);
+                Thread.Sleep(40);
+            }
+
+            mouse_event(LeftUp, 0, 0, 0, UIntPtr.Zero);
+            Thread.Sleep(150);
+            Pump(bar);
+
+            Check((bool)layerType.GetProperty("CanUndo", Private)!.GetValue(layer)!,
+                "在录制区里拖一下真的画出一笔（不是穿到桌面）");
+
+            // 复原：回到「没选工具 + 导出设置可见」，后面的截图与断言仍按上游默认态
+            foreach (var tool in tools) tool.IsChecked = false;
+            InvokeWith(bar, "SetExportRow", true);
+            Pump(bar);
+            Check(inputActive.GetValue(layer) is false, "清掉工具后又回到点击穿透");
+        }
 
         // ---- 录制中的声音按钮：已开的一路仍能点开增益弹层（不切开关），没开的一路禁用 ----
         Check(speakerBtn.IsEnabled, "录制中已开的系统声音仍可点（打开增益弹层）");

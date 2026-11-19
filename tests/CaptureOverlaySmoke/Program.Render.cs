@@ -315,6 +315,32 @@ internal static partial class Program
         return condition();
     }
 
+    /// <summary>
+    /// 读剪贴板文本：OLE 写入可能晚一拍（系统忙 / 别的进程刚清空），等到 <paramref name="accept"/> 满意为止。
+    /// 断言里直接 <c>Clipboard.GetText()</c> 在满负载跑全量时会偶发拿到空串（踩过）。
+    /// </summary>
+    private static string WaitClipboardText(Func<string, bool> accept, int timeoutMs = 1500)
+    {
+        string last = "";
+        var clock = Stopwatch.StartNew();
+        while (clock.ElapsedMilliseconds < timeoutMs)
+        {
+            try
+            {
+                last = System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : "";
+            }
+            catch (Exception)
+            {
+                last = "";
+            }
+
+            if (accept(last)) return last;
+            PumpFor(40);
+        }
+
+        return last;
+    }
+
     /// <summary>抽一会儿消息（没有窗口也要能跑：直接推 DispatcherFrame）。</summary>
     private static void PumpFor(int ms)
     {

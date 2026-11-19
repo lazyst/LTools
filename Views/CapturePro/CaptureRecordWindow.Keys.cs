@@ -75,6 +75,15 @@ public partial class CaptureRecordWindow
         // 收起来时指针停在小条上也算「在我们的 UI 上」（小条同样能唤出面板）
         if (_autoHidden && RecordAutoHide.Contains(_autoHideTabRect, point.X, point.Y)) return true;
 
+        // 绘制中：标注层正收着鼠标（上游此时区域窗是焦点作用域），指针在录制区里也算我们的 UI，
+        // 撤销 / 重做 / 清空 / 换工具这些键在画面上照样生效；没选工具时这一层是穿透的，不算。
+        if (_recording && !_controller.Finished && Annotations is { InputActive: true }
+            && point.X >= _area.X && point.X < _area.X + _area.Width
+            && point.Y >= _area.Y && point.Y < _area.Y + _area.Height)
+        {
+            return true;
+        }
+
         // 空闲期：区域框也是我们的 UI（拖边、看尺寸时按 R / Esc 同样应该生效）
         if (_region != null)
         {

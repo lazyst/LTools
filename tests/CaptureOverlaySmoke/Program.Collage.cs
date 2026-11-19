@@ -490,14 +490,24 @@ internal static partial class Program
                 $"滚轮一格 = 1.15 倍（{zoomBefore:0.###} → {zoomAfter:0.###}）");
 
             var offsetBefore = (Point)preview.GetType().GetProperty("Offset")!.GetValue(preview)!;
-            mouse_event(0x0020 /* 中键按下 */, 0, 0, 0, UIntPtr.Zero);
-            Thread.Sleep(60);
-            SetCursorPos((int)wheelAt.X + 25, (int)wheelAt.Y + 15);
-            Thread.Sleep(80);
-            mouse_event(0x0040 /* 中键抬起 */, 0, 0, 0, UIntPtr.Zero);
-            Thread.Sleep(150);
-            Pump(window);
-            var offsetAfter = (Point)preview.GetType().GetProperty("Offset")!.GetValue(preview)!;
+            Point offsetAfter = offsetBefore;
+            // 真鼠标：满负载时第一下可能还没落到窗口上（别的置顶窗口刚关、光标没归位），最多重试三次
+            for (int attempt = 0; attempt < 3 && offsetAfter == offsetBefore; attempt++)
+            {
+                window.Activate();
+                Pump(window);
+                SetCursorPos((int)wheelAt.X, (int)wheelAt.Y);
+                Thread.Sleep(60);
+                mouse_event(0x0020 /* 中键按下 */, 0, 0, 0, UIntPtr.Zero);
+                Thread.Sleep(60);
+                SetCursorPos((int)wheelAt.X + 25, (int)wheelAt.Y + 15);
+                Thread.Sleep(90);
+                mouse_event(0x0040 /* 中键抬起 */, 0, 0, 0, UIntPtr.Zero);
+                Thread.Sleep(160);
+                Pump(window);
+                offsetAfter = (Point)preview.GetType().GetProperty("Offset")!.GetValue(preview)!;
+            }
+
             Check(offsetAfter != offsetBefore, "中键拖动 = 平移画布");
 
             preview.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(preview)!, 0,

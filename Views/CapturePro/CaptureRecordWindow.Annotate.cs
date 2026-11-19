@@ -36,10 +36,19 @@ public partial class CaptureRecordWindow
         }
     }
 
+    /// <summary>有没有选中任何一个绘制工具（决定标注层收不收鼠标）。</summary>
+    private bool IsToolSelected => _toolButtons.Exists(button => button.IsChecked == true);
+
     private void Tool_Checked(object sender, RoutedEventArgs e)
     {
         if (sender is not RadioButton { Tag: RecordTool tool }) return;
-        if (Annotations != null) Annotations.Tool = tool;
+
+        if (Annotations != null)
+        {
+            Annotations.Tool = tool;
+            // 有工具 = 画布收鼠标（照上游：绘制时选区铺 alpha 2 的输入面）
+            Annotations.InputActive = true;
+        }
     }
 
     /// <summary>开录：把标注层摆到录制区上，并在它之后把工具条顶回最上面。</summary>
@@ -55,6 +64,8 @@ public partial class CaptureRecordWindow
             var layer = new RecordAnnotationWindow(_area, image, scale);
             layer.Changed += RefreshUndo;
             layer.Tool = CurrentTool;
+            // 开录前就选好工具（或在录制中已选中）→ 画布直接收鼠标；没选 → 点击穿到被录的程序
+            layer.InputActive = IsToolSelected;
             layer.Show();
 
             Annotations = layer;

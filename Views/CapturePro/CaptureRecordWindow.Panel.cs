@@ -345,6 +345,7 @@ public partial class CaptureRecordWindow
         }
 
         if (Annotations != null) Annotations.Tool = RecordTool.Select;
+        if (Annotations != null) Annotations.InputActive = false;
     }
 
     // ============ 第二行 ============

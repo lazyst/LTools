@@ -33,6 +33,9 @@ internal sealed class RecordAnnotationWindow : Window
     private readonly CaptureDocument _doc;
     private readonly Surface _surface;
 
+    private IntPtr _hwnd;
+    private bool _inputActive;
+
     /// <summary>标注变动（加 / 删 / 撤销 / 重做）：工具条据此刷新撤销与重做按钮。</summary>
     public event Action? Changed;
 
@@ -85,6 +88,27 @@ internal sealed class RecordAnnotationWindow : Window
         set => _surface.Ink = value;
     }
 
+    /// <summary>
+    /// 有没有绘制工具选中：**有 = 收鼠标**（铺一层 alpha 2 的输入面），**没有 = 点击穿透**。
+    /// </summary>
+    /// <remarks>
+    /// 照上游 <c>ScreenRecordingAreaWindow::inputSurfaceColor()</c>：Windows 的分层窗口
+    /// **零 alpha 的像素会让鼠标消息穿过去**，所以纯透明的标注层永远收不到点击——
+    /// 上游在有工具时给选区铺 <c>QColor(0, 0, 0, 2)</c>，没工具时退回全透明 + <c>WS_EX_TRANSPARENT</c>。
+    /// 这里同一套：alpha 2 肉眼看不出来，但足以让系统把点击交给这层。
+    /// </remarks>
+    internal bool InputActive
+    {
+        get => _inputActive;
+        set
+        {
+            if (_inputActive == value) return;
+            _inputActive = value;
+            ApplyInputMode();
+            _surface.InvalidateVisual();
+        }
+    }
+
     internal bool CanUndo => _doc.CanUndo;
     internal bool CanRedo => _doc.CanRedo;
 
@@ -118,7 +142,32 @@ internal sealed class RecordAnnotationWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        OverlayShell.MakeNonActivating(this, excludeFromCapture: false);
+        _hwnd = OverlayShell.MakeNonActivating(this, excludeFromCapture: false);
+        ApplyInputMode();
+    }
+
+    /// <summary>按 <see cref="InputActive"/> 切「收鼠标 / 点击穿透」（<c>WS_EX_TRANSPARENT</c>）。</summary>
+    private void ApplyInputMode()
+    {
+        if (_hwnd == IntPtr.Zero) return;
+
+        try
+        {
+            long ex = Win32.GetWindowLongPtr(_hwnd, Win32.GwlExstyle).ToInt64();
+            long next = _inputActive
+                ? ex & ~Win32.WsExTransparent
+                : ex | Win32.WsExTransparent;
+
+            if (next == ex) return;
+
+            Win32.SetWindowLongPtr(_hwnd, Win32.GwlExstyle, (IntPtr)next);
+            Win32.SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                Win32.SwpNomove | Win32.SwpNosize | Win32.SwpNozorder | Win32.SwpNoactivate);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("CapturePro.Record", "切换标注层输入模式失败：" + ex.Message);
+        }
     }
 
     /// <summary>文字 / 水印要键入：弹一次输入框，确认了才落一条标注。</summary>
@@ -146,6 +195,19 @@ internal sealed class RecordAnnotationWindow : Window
     /// <summary>画布：只画标注（底图是透明的），手势与截图覆盖层同一套规则。</summary>
     private sealed class Surface : FrameworkElement
     {
+        /// <summary>
+        /// 输入面：alpha 2 的纯黑（照上游 <c>QColor(0, 0, 0, 2)</c>）。肉眼不可见，
+        /// 但分层窗口只有「像素 alpha &gt; 0」的地方才收得到鼠标，所以这一层是画布能落笔的前提。
+        /// </summary>
+        private static readonly Brush InputSurface = CreateInputSurface();
+
+        private static Brush CreateInputSurface()
+        {
+            var brush = new SolidColorBrush(Color.FromArgb(2, 0, 0, 0));
+            brush.Freeze();
+            return brush;
+        }
+
         private readonly RecordAnnotationWindow _owner;
         private readonly CaptureDocument _doc;
         private readonly List<Point> _points = new();
@@ -175,6 +237,9 @@ internal sealed class RecordAnnotationWindow : Window
         protected override void OnRender(DrawingContext dc)
         {
             base.OnRender(dc);
+
+            // 有绘制工具时先铺输入面（收鼠标）；没工具时整层全透明、点击穿到被录的程序
+            if (_owner.InputActive) dc.DrawRectangle(InputSurface, null, new Rect(RenderSize));
 
             MarkRenderer.DrawAll(dc, _doc.Marks, _doc.Base, _doc.Canvas, _doc.Scale);
             if (_preview != null) MarkRenderer.Draw(dc, _preview, _doc.Base, _doc.Canvas, _doc.Scale);

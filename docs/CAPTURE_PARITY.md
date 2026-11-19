@@ -809,3 +809,9 @@
   - **单一实现，不做后端切换**：`screenshot/api_mode`（只有 GDI）、`screenshot/window_element_api`（只有 FlaUI UIA）、`screen_recording/api_mode`（见 P9-g）。
   - **应用外壳不复制**：托盘固定 5 项、不隐藏 / 不换图标 / 不做单击动作；主题 / 字体 / 语言 / 皮肤无引擎；`global_mouse/*` 没有鼠标手势绑定系统；`system` 的优先级 / QoS / 内存策略 / Shell 右键菜单、`network` 的应用内代理（跟随系统）、`updates` 的内置更新器、`cloud_upload` 全部不做，理由逐条写在 §5.1。
   - 验收：纯文档批，不改产品代码；构建 / `--selftest`（296 用例 17490 断言）/ `capture-overlay-smoke`（2981 条）维持全绿。
+
+- 2026-11-20：**修录屏标注层鼠标穿透（用户报「画笔和方框点下去直接落到背面」）**。根因是 `RecordAnnotationWindow` 是 `AllowsTransparency` 的分层窗口：Windows 按逐像素 alpha 做命中测试，**整层全透明（alpha 0）时鼠标消息会直接穿到下层**，所以录制区里根本收不到按下事件。
+  - 照上游 `ScreenRecordingAreaWindow::inputSurfaceColor()` 分两态：**没选工具** = 整层全透明 + `WS_EX_TRANSPARENT`（点击穿到被录的程序，标注仍可见）；**选中任何工具** = 铺一层 `alpha 2` 的输入面（肉眼不可见，但收得到鼠标）+ 去掉 `WS_EX_TRANSPARENT`。状态由 `RecordAnnotationWindow.InputActive` 承载，`CaptureRecordWindow.Tool_Checked` 置真、`ClearToolState` 置假，开录时按「开录前有没有选好工具」初始化。
+  - 顺带把绘制中的快捷键作用范围补上：`RecordShortcutRoute` 的 `IsPointerHot` 在「标注层正在收鼠标 + 指针在录制区里」时也算我们的 UI，撤销 / 重做 / 清空 / 换工具在画面上照常生效（上游此时区域窗是焦点作用域）。
+  - 回归：`capture-overlay-smoke` 的 `record` 段新增 8 条（没工具时带 `WS_EX_TRANSPARENT` / 选画笔后去掉 / 输入面像素 alpha = 2 / **真鼠标在录制区拖一下真的画出一笔** / 清掉工具又回到穿透），全量 **2989 条 0 失败**（连跑两遍）。
+  - 顺带把冒烟里三处偶发竞态改稳：翻译按钮「取消」改成**在泵消息前**断言、剪贴板读取统一走 `WaitClipboardText`（最多等 1.5s）、拼图预览中键拖动失败重试三次。`--selftest` 296 用例 17490 断言维持全绿。
