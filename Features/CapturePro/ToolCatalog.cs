@@ -384,6 +384,27 @@ internal static class ToolCatalog
     /// <summary>橡皮类：不改文档内容之外的东西，松手时一次性提交。</summary>
     public static bool IsEraser(CaptureTool tool) =>
         tool is CaptureTool.Eraser or CaptureTool.RectEraser or CaptureTool.BrushEraser;
+
+    /// <summary>
+    /// 全屏画布能用的工具（照上游 <c>canvasOptions()</c> 的开关，再按「有没有底图」收一道）。
+    /// </summary>
+    /// <remarks>
+    /// 全屏画布是**透明的实时表面**，没有截图底图：放大镜 / 马赛克 / 矩形滤镜 / 画笔滤镜 /
+    /// 自动打码 / 矩形橡皮 / 画笔橡皮都要从底图取像素（橡皮还原的就是底图），所以不提供。
+    /// 上游同样 <c>showMagnifierTool = false</c> 并关掉自动打码；其余依赖底图的项按同一口径收掉，
+    /// 记在 <c>docs/CAPTURE_PARITY.md</c> 的平台差异里。
+    /// </remarks>
+    private static readonly CaptureTool[] GlobalCanvasTools =
+    {
+        CaptureTool.Select, CaptureTool.Shape, CaptureTool.SpeechBubble, CaptureTool.Arrow,
+        CaptureTool.Line, CaptureTool.Polyline, CaptureTool.Distance, CaptureTool.Angle,
+        CaptureTool.Bracket, CaptureTool.Pen, CaptureTool.Highlighter, CaptureTool.HighlightRect,
+        CaptureTool.Spotlight, CaptureTool.Text, CaptureTool.Serial, CaptureTool.Watermark,
+        CaptureTool.Eraser, CaptureTool.Picker,
+    };
+
+    /// <summary>这个工具在全屏画布里有没有（工具栏全屏模式据此过滤格子）。</summary>
+    public static bool SupportsGlobalCanvas(CaptureTool tool) => GlobalCanvasTools.Contains(tool);
 }
 
 /// <summary>

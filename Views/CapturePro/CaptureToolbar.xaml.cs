@@ -120,10 +120,19 @@ public partial class CaptureToolbar : UserControl
         Save,
         Cancel,
         Copy,
+
+        /// <summary>全屏画布：退出（照上游 <c>globalCanvasExitRequested</c>）。</summary>
+        Exit,
     }
 
     /// <summary>点了某个完成动作（由覆盖层决定具体做什么）。</summary>
     public event Action<CaptureAction>? ActionRequested;
+
+    /// <summary>全屏画布：点了激光笔（纯开关，切换由宿主做）。</summary>
+    internal event Action? LaserToggleRequested;
+
+    /// <summary>全屏画布：点了点击穿透（纯开关，切换由宿主做）。</summary>
+    internal event Action? ClickThroughToggleRequested;
 
     /// <summary>样式（颜色 / 线宽 / 字号 / 块 / 透明度）变了。</summary>
     public event Action? StyleChanged;
@@ -183,11 +192,17 @@ public partial class CaptureToolbar : UserControl
         RefreshValues();
     }
 
-    /// <summary>工具栏的两种形态（截图覆盖层 / 图片编辑窗）。</summary>
+    /// <summary>工具栏的两种形态（截图覆盖层 / 图片编辑窗 / 全屏画布）。</summary>
     internal enum ToolbarMode
     {
         Capture,
         Edit,
+
+        /// <summary>
+        /// 全屏画布（照上游 <c>canvasOptions()</c>）：只有不依赖底图的绘图工具，
+        /// 完成动作是撤销 / 重做 → 激光笔 / 点击穿透 → 退出。
+        /// </summary>
+        GlobalCanvas,
     }
 
     /// <summary>界面跟着工具的默认状态对齐（覆盖层切工具时调，会同步按钮的选中态）。</summary>
@@ -451,9 +466,18 @@ public partial class CaptureToolbar : UserControl
         _layout = layout;
         int index = _panBtn != null ? 1 : 0;      // 平移格固定在 0 号位
 
+        bool canvasMode = _mode == ToolbarMode.GlobalCanvas;
+        int visibleGroups = layout.Groups.Count(g =>
+            !canvasMode || g.Any(ToolCatalog.SupportsGlobalCanvas));
+
         foreach (var group in layout.Groups)
         {
-            var tools = group.ToList();
+            // 全屏画布：只用不依赖底图的工具；整格都被筛掉就跳过（不留空格）
+            var tools = canvasMode
+                ? group.Where(ToolCatalog.SupportsGlobalCanvas).ToList()
+                : group.ToList();
+            if (tools.Count == 0) continue;
+
             var icon = new ShapePath { Style = (Style)FindResource("IconPath") };
 
             // 同格不止一个工具：右下角一个灰点（别用数字——小图标里认不出是几）
@@ -485,18 +509,26 @@ public partial class CaptureToolbar : UserControl
             button.Click += (_, _) => OnCellClick(cell);
 
             // 右键在按下时装菜单（与贴图同一个坑：ContextMenuOpening 里现赋第一次弹不出来）
-            button.PreviewMouseRightButtonDown += (_, e) =>
+            // 全屏画布**不提供布局编辑**（上游那条工具条也不给），右键直接吃掉。
+            if (canvasMode)
             {
-                e.Handled = true;
-                OpenCellMenu(cell, button);
-            };
+                button.PreviewMouseRightButtonDown += (_, e) => e.Handled = true;
+            }
+            else
+            {
+                button.PreviewMouseRightButtonDown += (_, e) =>
+                {
+                    e.Handled = true;
+                    OpenCellMenu(cell, button);
+                };
+            }
 
             _cells.Add(cell);
             ToolRow.Children.Insert(index++, button);
             ShowCellIcon(cell);
 
             // 「选择」后面一条竖线（照 Snow Shot 的 select-separator）：只建一次，重建时搬位置
-            if (_cells.Count == 1 && layout.Groups.Count > 1)
+            if (_cells.Count == 1 && visibleGroups > 1)
             {
                 _selectSeparator ??= new Border { Style = (Style)FindResource("SeparatorBar") };
                 if (_selectSeparator.Parent is Panel old) old.Children.Remove(_selectSeparator);
@@ -623,6 +655,7 @@ public partial class CaptureToolbar : UserControl
     /// <summary>工具栏空白处右键 = 布局菜单（点在格子上时是格子自己的菜单）。</summary>
     private void Chrome_RightDown(object sender, MouseButtonEventArgs e)
     {
+        if (_mode == ToolbarMode.GlobalCanvas) return;    // 全屏画布不提供布局编辑
         if (IsOnControl(e.OriginalSource as DependencyObject)) return;
         e.Handled = true;
         OpenBackgroundMenu(this);
@@ -635,6 +668,12 @@ public partial class CaptureToolbar : UserControl
     private void BuildActions()
     {
         ToolRow.Children.Add(new Border { Style = (Style)FindResource("SeparatorBar") });
+
+        if (_mode == ToolbarMode.GlobalCanvas)
+        {
+            BuildCanvasActions();
+            return;
+        }
 
         if (_mode == ToolbarMode.Edit)
         {
@@ -723,6 +762,55 @@ public partial class CaptureToolbar : UserControl
             ActionButton("IconQuickSave", "快速保存到图片\\LTools 截图，不弹框（Ctrl+S）", CaptureAction.QuickSave),
             ActionButton("IconSave", "另存为…（Ctrl+Shift+S）", CaptureAction.Save),
         });
+    }
+
+    /// <summary>
+    /// 全屏画布右半边（照上游 <c>screenshottoolpalette.cpp</c> 的 <c>showGlobalCanvasActions</c>）：
+    /// 撤销 / 重做 → 激光笔（可勾）· 点击穿透（可勾）→ 退出（主色）。没有取消 / 保存 / 复制：
+    /// 画布是拿来「边讲边画」的，不是一次截图。
+    /// </summary>
+    private void BuildCanvasActions()
+    {
+        _undoBtn = AddAction("IconUndo", "撤销（Ctrl+Z）", () => UndoRequested?.Invoke());
+        _redoBtn = AddAction("IconRedo", "重做（Ctrl+Y）", () => RedoRequested?.Invoke());
+
+        var line = new Border { Style = (Style)FindResource("SeparatorBar") };
+        _actionParts.Add(line);
+        ToolRow.Children.Add(line);
+
+        _laserBtn = AddToolToggle("IconRecTrail",
+            "激光笔：指针走过的地方留一条红色拖尾（500ms 淡出）", () => LaserToggleRequested?.Invoke());
+        _clickThroughBtn = AddToolToggle("IconMouse",
+            "点击穿透：画布不再吃鼠标，点得到下面的窗口；再按一次热键切回",
+            () => ClickThroughToggleRequested?.Invoke());
+
+        _actionParts.Add(_laserBtn);
+        _actionParts.Add(_clickThroughBtn);
+
+        var exit = ActionButton("IconClose", "退出全屏画布（Esc）", CaptureAction.Exit, primary: true);
+        _actionParts.Add(exit);
+        ToolRow.Children.Add(exit);
+    }
+
+    private ToggleButton? _laserBtn;
+    private ToggleButton? _clickThroughBtn;
+
+    /// <summary>宿主告诉我们激光笔现在是开还是关（热键 / 别的入口改了也要同步按钮）。</summary>
+    internal void SetLaserState(bool on)
+    {
+        if (_laserBtn == null) return;
+        _syncing = true;
+        _laserBtn.IsChecked = on;
+        _syncing = false;
+    }
+
+    /// <summary>宿主告诉我们点击穿透现在是开还是关。</summary>
+    internal void SetClickThroughState(bool on)
+    {
+        if (_clickThroughBtn == null) return;
+        _syncing = true;
+        _clickThroughBtn.IsChecked = on;
+        _syncing = false;
     }
 
     /// <summary>两个裁剪格子互斥：按下哪个就只勾哪个；再点一次取消 → 返回 null（退出裁剪）。</summary>

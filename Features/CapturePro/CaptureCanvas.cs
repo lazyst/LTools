@@ -116,6 +116,24 @@ internal sealed class CaptureCanvas : FrameworkElement
     /// <summary>自动打码当前的滤镜类型：判断「这一块是不是已经用同类型填过」（绿 / 红高亮）。</summary>
     public FilterKind AutoFillKind { get; set; } = FilterKind.Mosaic;
 
+    /// <summary>
+    /// 要不要画底图（默认画）。全屏画布是**透明实时表面**、没有底图，设成 false；
+    /// 标注、选中框、框选这些都照常画。
+    /// </summary>
+    public bool ShowBase { get; set; } = true;
+
+    /// <summary>
+    /// 画布 → 窗口 DIP 的视图矩阵（全屏画布的缩放 / 平移）。
+    /// 默认 <see cref="Matrix.Identity"/> = 截图覆盖层那种 1:1 平铺，行为完全不变。
+    /// </summary>
+    public Matrix View { get; set; } = Matrix.Identity;
+
+    /// <summary>
+    /// 换掉传给标注渲染器的「画布矩形」：水印平铺范围 / 聚光压暗范围按它算。
+    /// 空 = 用 <see cref="CaptureDocument.Canvas"/>；全屏画布没有底图，传视口在画布坐标下的矩形。
+    /// </summary>
+    public Rect? CanvasOverride { get; set; }
+
     /// <summary>扫描光带这一刻的位置（选区 DIP）；空选区 = 不画。</summary>
     public long AutoFilterClock { get; set; } = Environment.TickCount64;
 
@@ -126,9 +144,24 @@ internal sealed class CaptureCanvas : FrameworkElement
         var doc = Document;
         if (doc == null) return;
 
-        // 底图：位图物理像素，按文档换算成 DIP 整块铺满窗口
-        var canvas = doc.Canvas;
-        dc.DrawImage(doc.Base, canvas);
+        bool transformed = !View.IsIdentity;
+        if (transformed) dc.PushTransform(new MatrixTransform(View));
+        try
+        {
+            RenderContent(dc, doc);
+        }
+        finally
+        {
+            if (transformed) dc.Pop();
+        }
+    }
+
+    private void RenderContent(DrawingContext dc, CaptureDocument doc)
+    {
+        var canvas = CanvasOverride ?? doc.Canvas;
+
+        // 底图：位图物理像素，按文档换算成 DIP 整块铺满窗口（全屏画布没有底图）
+        if (ShowBase) dc.DrawImage(doc.Base, canvas);
 
         // 标注：裁到选区，显示与导出看到的是同一块内容（多块 / 自由 / 折线 / 挖洞按合并几何裁）
         // 图片编辑窗（ShowSelectionChrome = false）整张图就是文档，不裁也不压暗。

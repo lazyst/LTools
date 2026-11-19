@@ -185,6 +185,17 @@ internal static class KeyboardHook
             // （含它旁边的弹层）/ 空闲期区域框上时接管，命中就排回 UI 线程点对应的按钮。
             if (RecordShortcutRoute.Handle(vk, isDown, isUp)) return (IntPtr)1;
 
+            // 全屏画布开着时：全局快捷键整体挂起（工具字母键 / IME 打字要能落进画布），
+            // 唯一例外是「打开 / 切换全屏画布」这一条——再按一次 = 切点击穿透。
+            // 放在 Suspended 分支之前：命中即吞掉并投递，没命中就照常往下走（放行给画布窗口）。
+            if (isDown && GlobalCanvasSession.IsOpen &&
+                HotkeyRegistry.TryFireOnly(vk, GlobalCanvasSession.HotkeyRef))
+            {
+                MarkSwallowed(vk);
+                GlobalCanvasSession.ToggleClickThrough();
+                return (IntPtr)1;
+            }
+
             // 全局快捷键（含 CapsLock 前缀）：命中就吞键并在后台线程跑动作。
             // 放在状态机之前：CapsLock+字母 不再走旧的 vim 分发，统一由「快捷键」配置决定。
             if (isDown)

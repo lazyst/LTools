@@ -1,0 +1,72 @@
+<Window x:Class="LTools.Views.CapturePro.GlobalCanvasWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:LTools.Views"
+        xmlns:cap="clr-namespace:LTools.Features.CapturePro"
+        xmlns:cp="clr-namespace:LTools.Views.CapturePro"
+        Title="全屏画布" WindowStyle="None" ResizeMode="NoResize"
+        ShowInTaskbar="False" Topmost="True" WindowStartupLocation="Manual"
+        AllowsTransparency="True" Background="Transparent" UseLayoutRounding="True"
+        SnapsToDevicePixels="True" Focusable="True"
+        PreviewKeyDown="Window_KeyDown"
+        Loaded="Window_Loaded"
+        Closed="Window_Closed"
+        SizeChanged="Window_SizeChanged"
+        views:WindowSizing.Mode="Overlay">
+    <!-- 全屏画布（照 snow-shot 的 GlobalCanvasController / Session）：
+         一块**透明实时表面**，盖住光标所在显示器，随手在屏幕上画标注、讲课时用激光笔指引。
+         与截图覆盖层的差别：没有冻结底图、没有选区、没有完成动作；多了缩放 / 平移（相机）、
+         激光笔拖尾与「点击穿透」（画布不挡下面的程序，工具条仍可点）。
+
+         层级：Surface（手势宿主，透明但吃鼠标）→ 画布 → 激光层（不吃鼠标）→ 工具条层。 -->
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="CaptureIcons.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <!-- 铺底 alpha = 2（照上游 renderBeforeCanvas 的 QColor(0, 0, 0, 2)）：
+         分层窗口在零 alpha 像素上会把输入漏出去，所以编辑态必须垫一层几乎全透明的底；
+         点击穿透走 WM_NCHITTEST（工具条以外返回 HTTRANSPARENT），不靠 alpha。 -->
+    <Grid x:Name="Root" Background="#02000000" ClipToBounds="True">
+        <Border x:Name="Surface" Background="Transparent" Focusable="True" ClipToBounds="True"
+                PreviewMouseDown="Surface_MouseDown"
+                PreviewMouseUp="Surface_MouseUp"
+                PreviewMouseMove="Surface_MouseMove"
+                PreviewMouseWheel="Surface_MouseWheel"
+                MouseLeave="Surface_MouseLeave">
+            <cap:CaptureCanvas x:Name="Canvas" IsHitTestVisible="False"
+                               ShowSelectionChrome="False" ShowBase="False"/>
+        </Border>
+
+        <!-- 激光笔拖尾：窗口坐标里的红色收细线（不吃鼠标，穿透时照样看得见） -->
+        <cp:GlobalCanvasLaserLayer x:Name="LaserLayer" IsHitTestVisible="False"/>
+
+        <!-- 浮层：工具条 + 取色卡 + 文字输入框（Canvas 自己不参与命中，子控件照常可点） -->
+        <Canvas x:Name="Layer" ClipToBounds="True">
+            <cp:CaptureToolbar x:Name="Toolbar" Visibility="Collapsed"/>
+
+            <!-- 取色：光标旁一块色卡 + #RRGGBB；单击复制十六进制（照截图覆盖层） -->
+            <Border x:Name="PickerChip" Panel.ZIndex="26" Background="{StaticResource ChromeBg}"
+                    CornerRadius="4" BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1"
+                    Padding="6,3" Visibility="Collapsed" IsHitTestVisible="False">
+                <StackPanel Orientation="Horizontal">
+                    <Border x:Name="PickerSwatch" Width="14" Height="14" CornerRadius="2"
+                            BorderBrush="{StaticResource ChromeStroke}" BorderThickness="1"
+                            VerticalAlignment="Center"/>
+                    <TextBlock x:Name="PickerText" Margin="6,0,0,0" Foreground="{StaticResource ChromeInk}"
+                               FontFamily="Consolas" FontSize="12" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 文字工具的就地输入框：Enter 提交，Shift+Enter 换行，Esc 放弃（与截图覆盖层同一套） -->
+            <TextBox x:Name="TextEntry" Panel.ZIndex="25" Visibility="Collapsed"
+                     AcceptsReturn="True" TextWrapping="NoWrap" MinWidth="80" MaxWidth="480"
+                     Background="#E6101014" Foreground="#F4F4F5" BorderBrush="#3B82F6"
+                     BorderThickness="1" Padding="4,2" FontFamily="Microsoft YaHei UI"
+                     PreviewKeyDown="TextEntry_KeyDown" LostFocus="TextEntry_LostFocus"/>
+        </Canvas>
+    </Grid>
+</Window>

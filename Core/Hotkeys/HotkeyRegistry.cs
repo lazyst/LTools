@@ -134,6 +134,40 @@ internal static class HotkeyRegistry
         return null;
     }
 
+    /// <summary>
+    /// 只匹配「绑到某个引用」的快捷键（全屏画布开着时用：整体挂起，但「打开 / 切换全屏画布」
+    /// 这一条仍要能按，再按一次 = 切点击穿透）。命中时同样记锁存，按住不放不会连发。
+    /// </summary>
+    public static bool TryFireOnly(ushort vk, string actionId)
+    {
+        if (!_enabled) return false;
+
+        lock (FiredGate)
+        {
+            if (Fired.Contains(vk))
+            {
+                if (!Down(vk)) Fired.Remove(vk);
+                else return false;
+            }
+        }
+
+        var entries = Entries;
+        if (entries.Count == 0) return false;
+        var current = File;
+
+        foreach (var entry in entries)
+        {
+            if (entry.Chord.Vk != vk) continue;
+            if (!string.Equals(entry.Binding.ActionId, actionId, StringComparison.Ordinal)) continue;
+            if (!ModifiersMatch(entry.Chord)) continue;
+            if (!AppFilterMatch.Allows(entry.Binding, current, ForegroundAppCache.Current)) return false;
+
+            lock (FiredGate) Fired.Add(vk);
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>按键抬起：清掉「已触发」锁存，下一次按下才能再触发。</summary>
     public static void KeyUp(ushort vk)
     {
