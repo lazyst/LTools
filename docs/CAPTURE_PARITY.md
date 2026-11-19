@@ -314,7 +314,8 @@
 | 项 | 上游 | LTools（改后） |
 | --- | --- | --- |
 | 默认格数 | 17（选择 + 16 个工具） | 17 格，顺序逐一对应：选择 ｜ 形状、气泡、箭头、测距、测角、括号、直线、画笔、荧光、聚光、放大镜、文字、序号、滤镜、橡皮、水印 |
-| 变体收在一格 | `highlighter` / `filter` / `eraser` | 同（`Highlighter+HighlightRect`、`Mosaic+Filter+BrushFilter+AutoFilter`、`Eraser+RectEraser+BrushEraser`），再点一次循环 |
+| 变体收在一格 | `highlighter` / `filter` / `eraser` | 同（`Highlighter+HighlightRect`、`Mosaic+Filter+BrushFilter+AutoFilter`、`Eraser+RectEraser+BrushEraser`） |
+| 变体怎么选 | **悬停**触发按钮弹出二级工具条（`ensureDrawingToolGroupPopover`），点图标切换 | 同：悬停弹出 220ms 后自动收起的一排图标；**点按钮本身 = 用当前显示的那个工具，不再循环切换** |
 | 其余工具 | 各自独立按钮 | 同（箭头与直线、聚光与放大镜、气泡与文字、测距 / 测角 / 括号都已拆开） |
 | 选择后的分隔线 / 撤销重做 | `select-separator` + 末尾 `separator, undo, redo` | 同 |
 | 上游没有的工具 | — | 折线（`Polyline`）、取色（`Picker`）默认**收起**，仍可在「工具条」设置里加回来 |

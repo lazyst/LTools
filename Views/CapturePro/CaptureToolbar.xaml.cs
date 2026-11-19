@@ -283,6 +283,9 @@ public partial class CaptureToolbar : UserControl
     /// <summary>换一份布局（右键菜单 / 自检夹具调）：重建格子，当前工具的选中态跟着走。</summary>
     internal void ApplyLayout(ToolLayout layout)
     {
+        foreach (var popup in _groupPopups.Values) popup.IsOpen = false;
+        _groupPopups.Clear();
+
         foreach (var cell in _cells) ToolRow.Children.Remove(cell.Button);
         _cells.Clear();
         if (_selectSeparator != null) ToolRow.Children.Remove(_selectSeparator);
@@ -527,6 +530,9 @@ public partial class CaptureToolbar : UserControl
             ToolRow.Children.Insert(index++, button);
             ShowCellIcon(cell);
 
+            // 多工具格：悬停弹出二级工具条（照上游 ensureDrawingToolGroupPopover）
+            if (tools.Count > 1) AttachGroupPopover(cell, button);
+
             // 「选择」后面一条竖线（照 Snow Shot 的 select-separator）：只建一次，重建时搬位置
             if (_cells.Count == 1 && visibleGroups > 1)
             {
@@ -563,25 +569,109 @@ public partial class CaptureToolbar : UserControl
         bool alwaysShowFirst) =>
         tools.Count > 1 && alwaysShowFirst ? tools[0] : current;
 
-    /// <summary>点格子：单工具直接切；同格再点一次循环到组内下一个。</summary>
-    private void OnCellClick(ToolCell cell)
+    /// <summary>
+    /// 点格子：切到这一格现在显示的工具（**不再循环**）。
+    /// </summary>
+    /// <remarks>
+    /// 上游的组是「一个按钮 + 悬停弹出二级工具条」（<c>ensureDrawingToolGroupPopover</c>）：
+    /// 点按钮就是用它，变体靠悬停那排图标选。以前这里是「再点一次切下一个」，
+    /// 用户点一下会莫名其妙换成别的工具（报过）。
+    /// </remarks>
+    private void OnCellClick(ToolCell cell) => ToolChanged?.Invoke(cell.Current);
+
+    /// <summary>
+    /// 多工具格子：悬停弹出「二级工具条」（照上游 <c>ensureDrawingToolGroupPopover</c>）——
+    /// 一行图标，点哪个就切到哪个，点完收起。
+    /// </summary>
+    private void AttachGroupPopover(ToolCell cell, FrameworkElement target)
     {
-        if (cell.Tools.Count > 1)
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        var border = new Border
         {
-            var entry = EntryOf(cell);
-            if (CurrentTool == entry)
+            Background = (Brush)FindResource("SurfaceBrush"),
+            BorderBrush = (Brush)FindResource("BorderStrongBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(4),
+            Child = row,
+        };
+
+        var popup = new Popup
+        {
+            PlacementTarget = target,
+            Placement = PlacementMode.Bottom,
+            VerticalOffset = 6,
+            StaysOpen = true,
+            AllowsTransparency = true,
+            PopupAnimation = PopupAnimation.Fade,
+            Child = border,
+            IsOpen = false,
+        };
+
+        // 悬停离开按钮 / 弹层都延迟收起：鼠标从按钮挪到弹层要跨一条缝，不能立刻关
+        var close = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(220),
+        };
+        close.Tick += (_, _) =>
+        {
+            close.Stop();
+            popup.IsOpen = false;
+        };
+
+        void Open()
+        {
+            close.Stop();
+            RefreshGroupItems();
+            popup.IsOpen = true;
+        }
+
+        void CloseSoon()
+        {
+            close.Stop();
+            close.Start();
+        }
+
+        void RefreshGroupItems()
+        {
+            row.Children.Clear();
+            foreach (var tool in cell.Tools)
             {
-                int index = cell.Tools.IndexOf(entry);
-                cell.Current = cell.Tools[(index + 1) % cell.Tools.Count];
-            }
-            else
-            {
-                cell.Current = entry;
+                var info = ToolCatalog.Of(tool);
+                var item = new RadioButton
+                {
+                    Style = (Style)FindResource("ToolBtn"),
+                    GroupName = "captureToolPopover",
+                    Content = new ShapePath
+                    {
+                        Style = (Style)FindResource("IconPath"),
+                        Data = (Geometry)FindResource("Icon" + info.Icon),
+                    },
+                    ToolTip = $"{info.Name}（{info.Shortcut}）\n{info.Hint}",
+                    IsChecked = cell.Current == tool,
+                };
+
+                item.Click += (_, _) =>
+                {
+                    cell.Current = tool;
+                    ShowCellIcon(cell);
+                    popup.IsOpen = false;
+                    ToolChanged?.Invoke(tool);
+                };
+
+                row.Children.Add(item);
             }
         }
 
-        ToolChanged?.Invoke(cell.Current);
+        target.MouseEnter += (_, _) => Open();
+        target.MouseLeave += (_, _) => CloseSoon();
+        border.MouseEnter += (_, _) => close.Stop();
+        border.MouseLeave += (_, _) => CloseSoon();
+
+        _groupPopups[cell] = popup;
     }
+
+    private readonly Dictionary<ToolCell, Popup> _groupPopups = new();
 
     private ToolCell? CellOf(CaptureTool tool) => _cells.FirstOrDefault(c => c.Tools.Contains(tool));
 

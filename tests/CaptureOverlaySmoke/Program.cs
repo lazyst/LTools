@@ -1188,20 +1188,35 @@ internal static partial class Program
         Check((mergedCell.ToolTip?.ToString() ?? "").Contains("文字"),
             "那一格的提示写明还有个「文字」：" + mergedCell.ToolTip);
 
-        // 同格再点一次循环切换：画笔荧光 → 矩形荧光 → 画笔荧光
+        // 多工具格：**悬停**弹出二级工具条（照上游 ensureDrawingToolGroupPopover），点里面的图标切换；
+        // 点格子本身不再循环换工具（用户报过「点一下变成别的工具」）
         InvokeWith(window, "SetTool", Tool("Highlighter"));
         var glowCell = CellWith("Highlighter");
         glowCell.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Pump(window);
-        Check(Current() == "HighlightRect", "同格点一下就换到组里的「矩形荧光」：" + Current());
-        glowCell.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Check(Current() == "Highlighter", "点多工具格 = 用它现在显示的那个工具（不循环）：" + Current());
+
+        var popups = (System.Collections.IDictionary)Field(toolbar, "_groupPopups")!;
+        var glowPopup = (Popup)popups[glowCell.Tag!]!;
+        glowCell.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0)
+        { RoutedEvent = UIElement.MouseEnterEvent });
         Pump(window);
-        Check(Current() == "Highlighter", "再点一下转回「画笔荧光」：" + Current());
+        Check(glowPopup.IsOpen, "悬停多工具格弹出二级工具条");
+
+        var popRow = (StackPanel)((Border)glowPopup.Child).Child;
+        Check(popRow.Children.Count == 2, $"二级工具条里是这一格的两个工具（实际 {popRow.Children.Count} 个）");
+        var rectItem = popRow.Children.OfType<RadioButton>()
+            .First(r => r.ToolTip?.ToString()?.StartsWith("矩形荧光", StringComparison.Ordinal) == true);
+        rectItem.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Pump(window);
+        Check(Current() == "HighlightRect", "点二级工具条里的「矩形荧光」就切过去：" + Current());
+        Check(!glowPopup.IsOpen, "选完自动收起二级工具条");
 
         // 格子右键菜单：收起 / 拆成单独一格 / 并到左边一格（第一格那条置灰）
         var cellMenu = (ContextMenu)InvokeValue(toolbar, "OpenCellMenu", glowCell.Tag!, glowCell, false);
         var items = Headers(cellMenu.Items);
-        Check(items.Any(t => t.Contains("收起「画笔荧光」")), "格子菜单有「收起」：" + string.Join(" / ", items));
+        Check(items.Any(t => t.StartsWith("收起「", StringComparison.Ordinal)),
+            "格子菜单有「收起」：" + string.Join(" / ", items));
         Check(items.Any(t => t.Contains("拆成单独一格")), "多工具格子菜单有「拆成单独一格」");
 
         var firstCell = CellList()[0];
