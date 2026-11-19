@@ -396,8 +396,12 @@ public partial class CaptureRecordWindow
         row.Add(_followBtn);
         _popovers.Add(new HoverPopover(_followBtn, BuildFollowOptions(), RefreshPopoverState, HookPopupWindow));
 
-        _cameraBtn = StyleToggle("IconRecCamera", "摄像头画中画（录制开始后不能改）",
-            value => _plan.Options.CameraDevice = value ? DefaultCameraDevice() : -1);
+        _cameraBtn = StyleToggle("IconRecCamera", "摄像头画中画（拖方块改位置、拖右上角改大小，录制开始后不能改）",
+            value =>
+            {
+                _plan.Options.CameraDevice = value ? DefaultCameraDevice() : -1;
+                ReconcileWebcam();
+            });
         row.Add(_cameraBtn);
 
         _postBtn = StyleToggle("IconRecPost", "后期处理特效（悬停看显示什么）",
@@ -875,6 +879,7 @@ public partial class CaptureRecordWindow
             {
                 SyncUi();
                 ReconcileAutoHide();   // 「贴边自动收起」可能刚被改掉
+                ReconcileWebcam();     // 摄像头开关 / 尺寸 / 形状 / 方向可能刚被改掉
             }
         }
         catch (Exception ex)

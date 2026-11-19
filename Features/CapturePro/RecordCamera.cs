@@ -23,6 +23,12 @@ namespace LTools.Features.CapturePro;
 /// </remarks>
 internal sealed class RecordCamera : IDisposable
 {
+    /// <summary>
+    /// 采集帧的内部边长：定死一个足够大的正方形，尺寸变化（空闲期拖角改大小）就不用重开摄像头。
+    /// 落盘边长最大 500，这里取 512 保证放大到上限也不糊。
+    /// </summary>
+    public const int FrameSide = 512;
+
     private readonly VideoCapture _capture;
     private Thread? _thread;
     private readonly byte[] _frame;
@@ -31,15 +37,24 @@ internal sealed class RecordCamera : IDisposable
     private volatile bool _stop;
     private bool _hasFrame;
 
-    private RecordCamera(VideoCapture capture, int side)
+    /// <summary>当前方向（低两位圈数、第 3 位镜像）：预览上的四个按钮改它，下一帧就生效。</summary>
+    private volatile int _orientation;
+
+    private RecordCamera(VideoCapture capture)
     {
         _capture = capture;
-        Side = side;
-        _frame = new byte[side * side * 4];
+        _frame = new byte[FrameSide * FrameSide * 4];
     }
 
-    /// <summary>画中画边长（输出像素）。</summary>
-    public int Side { get; }
+    /// <summary>采集帧的边长（输出像素，定值 <see cref="FrameSide"/>）。</summary>
+    public int Side => FrameSide;
+
+    /// <summary>当前方向。</summary>
+    public RecordCameraOrientation Orientation => (RecordCameraOrientation)_orientation;
+
+    /// <summary>换方向（下一帧生效；旋转 / 翻转都在抓帧线程上做）。</summary>
+    public void SetOrientation(RecordCameraOrientation orientation) =>
+        _orientation = (int)orientation & 7;
 
     /// <summary>最近是否真的拿到过画面（拿不到时调用方就不画）。</summary>
     public bool HasFrame
@@ -56,7 +71,6 @@ internal sealed class RecordCamera : IDisposable
         if (!options.HasCamera) return null;
 
         int index = Math.Max(0, options.CameraDevice);
-        int side = Math.Clamp(options.CameraSize, RecordOptions.MinCameraSize, RecordOptions.MaxCameraSize);
 
         VideoCapture? capture = null;
         foreach (var api in new[] { VideoCaptureAPIs.DSHOW, VideoCaptureAPIs.MSMF, VideoCaptureAPIs.ANY })
@@ -84,14 +98,15 @@ internal sealed class RecordCamera : IDisposable
             return null;
         }
 
-        var camera = new RecordCamera(capture, side);
-        camera.Start(options.CameraMirrored);
+        var camera = new RecordCamera(capture);
+        camera.SetOrientation(options.CameraOrientation);
+        camera.Start();
         return camera;
     }
 
-    private void Start(bool mirrored)
+    private void Start()
     {
-        _thread = new Thread(() => Loop(mirrored))
+        _thread = new Thread(Loop)
         {
             IsBackground = true,
             Name = "LTools.RecordCamera",
@@ -99,7 +114,7 @@ internal sealed class RecordCamera : IDisposable
         _thread.Start();
     }
 
-    private void Loop(bool mirrored)
+    private void Loop()
     {
         using var frame = new Mat();
         using var square = new Mat();
@@ -120,12 +135,14 @@ internal sealed class RecordCamera : IDisposable
                     continue;
                 }
 
-                // 取中间的正方形（和上游一样：先保比例裁，再缩到边长）
+                // 取中间的正方形（和上游一样：先保比例裁，再缩到内部边长）
                 int side = Math.Min(frame.Width, frame.Height);
                 var crop = new Rect((frame.Width - side) / 2, (frame.Height - side) / 2, side, side);
-                using (var view = new Mat(frame, crop)) Cv2.Resize(view, square, new OpenCvSharp.Size(Side, Side));
+                using (var view = new Mat(frame, crop))
+                    Cv2.Resize(view, square, new OpenCvSharp.Size(FrameSide, FrameSide));
 
-                if (mirrored) Cv2.Flip(square, square, FlipMode.Y);
+                // 方向：先左右翻转，再顺时针旋转（上游 WebcamOrientation 的位语义）
+                ApplyOrientation(square);
                 Cv2.CvtColor(square, bgra, ColorConversionCodes.BGR2BGRA);
 
                 lock (_gate)
@@ -158,6 +175,26 @@ internal sealed class RecordCamera : IDisposable
             if (!_hasFrame || destination.Length < _frame.Length) return false;
             Buffer.BlockCopy(_frame, 0, destination, 0, _frame.Length);
             return true;
+        }
+    }
+
+    /// <summary>先左右翻转、再顺时针旋转（上游「horizontal reflection before rotation」）。</summary>
+    private void ApplyOrientation(Mat square)
+    {
+        int raw = _orientation;
+        if ((raw & 4) != 0) Cv2.Flip(square, square, FlipMode.Y);
+
+        switch (raw & 3)
+        {
+            case 1:
+                Cv2.Rotate(square, square, RotateFlags.Rotate90Clockwise);
+                break;
+            case 2:
+                Cv2.Rotate(square, square, RotateFlags.Rotate180);
+                break;
+            case 3:
+                Cv2.Rotate(square, square, RotateFlags.Rotate90Counterclockwise);
+                break;
         }
     }
 

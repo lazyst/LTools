@@ -12,6 +12,14 @@
         views:WindowSizing.Mode="Dialog">
     <!-- 录屏的默认开关：声音 / 摄像头 / 键鼠特效 / 编码 / 录完裁剪。
          这里存的只是「默认值」，内置功能 common.record 的参数可以按次覆盖。 -->
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 图标几何（摄像头方向的四个按钮）与截图浮层共用一份 -->
+                <ResourceDictionary Source="CaptureIcons.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
                             GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -74,11 +82,45 @@
                         <ComboBoxItem Content="方形" Tag="square"/>
                         <ComboBoxItem Content="圆形" Tag="circle"/>
                     </ComboBox>
-                    <CheckBox x:Name="MirrorBox" Content="镜像" Margin="10,0,0,0" VerticalAlignment="Center"/>
                 </StackPanel>
             </Grid>
+            <Grid Margin="0,6,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="方向" VerticalAlignment="Center" Foreground="{StaticResource HintTextBrush}"/>
+                <StackPanel x:Name="OrientationRow" Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock x:Name="OrientationText" Width="126" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextBrush}"/>
+                    <Button x:Name="RotateRightBtn" Style="{StaticResource BarBtn}" Margin="4,0,0,0"
+                            CommandParameter="rotateClockwise" Click="Orientation_Click"
+                            ToolTip="顺时针转 90°">
+                        <Path Data="{StaticResource IconRotateRight}" Style="{StaticResource IconPathSm}"/>
+                    </Button>
+                    <Button x:Name="RotateLeftBtn" Style="{StaticResource BarBtn}" Margin="2,0,0,0"
+                            CommandParameter="rotateCounterclockwise" Click="Orientation_Click"
+                            ToolTip="逆时针转 90°">
+                        <Path Data="{StaticResource IconRotateLeft}" Style="{StaticResource IconPathSm}"/>
+                    </Button>
+                    <Button x:Name="FlipHorizontalBtn" Style="{StaticResource BarBtn}" Margin="2,0,0,0"
+                            CommandParameter="flipHorizontal" Click="Orientation_Click"
+                            ToolTip="左右翻转（自拍视角）">
+                        <Path Data="{StaticResource IconFlipHorizontal}" Style="{StaticResource IconPathSm}"/>
+                    </Button>
+                    <Button x:Name="FlipVerticalBtn" Style="{StaticResource BarBtn}" Margin="2,0,0,0"
+                            CommandParameter="flipVertical" Click="Orientation_Click"
+                            ToolTip="上下翻转">
+                        <Path Data="{StaticResource IconFlipVertical}" Style="{StaticResource IconPathSm}"/>
+                    </Button>
+                </StackPanel>
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="8,0,0,0"
+                           Style="{StaticResource HintLabel}"
+                           Text="也能在录屏面板上拖动 / 缩放预览、点预览上方的方向按钮"/>
+            </Grid>
             <TextBlock Style="{StaticResource HintLabel}" Margin="0,4,0,0"
-                       Text="贴在录制画面左下角（距离 48 像素）；摄像头打不开就只录画面。"/>
+                       Text="默认贴在录制画面左下角（距离 48 像素，可在录屏面板上拖动 / 缩放）；摄像头打不开就只录画面。"/>
 
             <Separator Margin="0,12"/>
 

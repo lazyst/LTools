@@ -102,7 +102,7 @@ internal sealed class RecordComposer : IDisposable
         if (_camera != null && TryRefreshCamera())
         {
             var (x, y, side) = RecordOptions.CameraPlacement(
-                _width, _height, _cameraSide, _options.CameraOffsetLeft, _options.CameraOffsetBottom);
+                _width, _height, _options.CameraSize, _options.CameraOffsetLeft, _options.CameraOffsetBottom);
             DrawCamera(x, y, side);
             bottomInset = _height - y + 8;
         }

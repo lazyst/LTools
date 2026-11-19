@@ -70,6 +70,7 @@ public partial class CaptureRecordWindow : Window
         BuildActionRow();
         BuildStyleRow();
         InitAutoHide();
+        InitWebcam();
 
         MetaText.Text = MetaSummary();
         _hasLastRecord = LastRecord() != null;
@@ -101,6 +102,7 @@ public partial class CaptureRecordWindow : Window
         ResetAreaHistory();
         MetaText.Text = MetaSummary();
         PlaceBar();
+        ReconcileWebcam();
     }
 
     // ============ 生命周期 ============
@@ -126,6 +128,8 @@ public partial class CaptureRecordWindow : Window
         _timer.Stop();
         RecordShortcutRoute.Clear();
         DismissAutoHide();
+        HideWebcamWindow();
+        ReleasePreviewCamera();
         CloseRegion();
         foreach (var popover in _popovers) popover.Hide();
         _micGainPop?.Hide();
@@ -145,6 +149,8 @@ public partial class CaptureRecordWindow : Window
         _closing = true;
         _timer.Stop();
         DismissAutoHide();
+        HideWebcamWindow();
+        ReleasePreviewCamera();
         CloseRegion();
         foreach (var popover in _popovers) popover.Hide();
         _micGainPop?.Hide();
@@ -172,6 +178,7 @@ public partial class CaptureRecordWindow : Window
 
         _recording = true;
         CloseRegion();
+        SuspendWebcam();
         RememberArea();
         Sync();
         ShowAnnotations();
@@ -199,6 +206,7 @@ public partial class CaptureRecordWindow : Window
     {
         SyncUi();
         ReconcileAutoHide();
+        ReconcileWebcam();
 
         if (!_finished && _recording && _controller.Finished)
         {
@@ -244,6 +252,7 @@ public partial class CaptureRecordWindow : Window
         ResetAreaHistory();
         MetaText.Text = MetaSummary();
         PlaceBar();
+        ReconcileWebcam();
     }
 
     /// <summary>收掉空闲区域框（开录 / 取消 / 关面板都要走这里，别让蓝框留在屏幕上）。</summary>
@@ -266,6 +275,7 @@ public partial class CaptureRecordWindow : Window
         {
             // 摆着等开始：这一下就是「开录」，区域到此定稿（先关框，会话随后取 Area）
             CloseRegion();
+            SuspendWebcam();   // 倒计时就开始收画中画（上游 countdownActive 时预览不可见）
             _gate?.Start();
             return;
         }

@@ -20,6 +20,27 @@ public enum RecordCameraShape
 }
 
 /// <summary>
+/// 摄像头画面的方向（照上游 <c>snow-recording-model/src/webcam.rs</c> 的 <c>WebcamOrientation</c>）：
+/// 低两位是**顺时针**四分之一圈数，第 3 位（值 4）= 先左右翻转再旋转。
+/// </summary>
+/// <remarks>
+/// 数值就是落盘值（<c>settings.json</c> 的 <c>Record.CameraOrientation</c>），
+/// 顺序照上游 <c>from_raw</c>，别重排。面板上的四个按钮在
+/// <see cref="RecordWebcamLayout.Next"/> 里换算。
+/// </remarks>
+public enum RecordCameraOrientation
+{
+    identity = 0,
+    clockwise90 = 1,
+    clockwise180 = 2,
+    clockwise270 = 3,
+    mirrored = 4,
+    mirroredClockwise90 = 5,
+    mirroredClockwise180 = 6,
+    mirroredClockwise270 = 7,
+}
+
+/// <summary>
 /// 一次录屏的「录什么以外」的那些开关：声音、摄像头、键鼠特效、编码器、录完是否进裁剪。
 /// </summary>
 /// <remarks>
@@ -76,8 +97,11 @@ public sealed class RecordOptions
 
     public RecordCameraShape CameraShape { get; set; } = RecordCameraShape.square;
 
-    /// <summary>镜像（自拍视角）：多数摄像头默认就该是镜像的。</summary>
-    public bool CameraMirrored { get; set; } = true;
+    /// <summary>
+    /// 摄像头画面的方向（旋转 / 镜像）。默认 <c>identity</c>，与上游 <c>webcam_orientation</c> 默认 0 一致；
+    /// 面板空闲期预览上的四个按钮改的就是它（旋转 / 左右翻 / 上下翻）。
+    /// </summary>
+    public RecordCameraOrientation CameraOrientation { get; set; } = RecordCameraOrientation.identity;
 
     public int CameraOffsetLeft { get; set; } = DefaultCameraOffset;
 
@@ -169,7 +193,7 @@ public sealed class RecordOptions
         CameraDevice = other.CameraDevice;
         CameraSize = other.CameraSize;
         CameraShape = other.CameraShape;
-        CameraMirrored = other.CameraMirrored;
+        CameraOrientation = other.CameraOrientation;
         CameraOffsetLeft = other.CameraOffsetLeft;
         CameraOffsetBottom = other.CameraOffsetBottom;
         ShowCursor = other.ShowCursor;
@@ -202,7 +226,7 @@ public sealed class RecordOptions
         CameraDevice = CameraDevice < 0 ? -1 : CameraDevice,
         CameraSize = Math.Clamp(CameraSize, MinCameraSize, MaxCameraSize),
         CameraShape = CameraShape,
-        CameraMirrored = CameraMirrored,
+        CameraOrientation = (RecordCameraOrientation)((int)CameraOrientation & 7),
         CameraOffsetLeft = Math.Max(0, CameraOffsetLeft),
         CameraOffsetBottom = Math.Max(0, CameraOffsetBottom),
         MouseHighlight = MouseHighlight,

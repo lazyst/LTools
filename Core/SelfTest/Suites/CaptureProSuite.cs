@@ -136,6 +136,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "渲染进度：阶段文案 / 按钮 / ffmpeg 进度解析", RecordRenderCases));
         cases.Add(new("capturePro", "录屏快捷键：动作表 / 匹配 / 状态门槛 / 区域历史", RecordShortcutCases));
         cases.Add(new("capturePro", "录屏自动收起：贴边判定 / 边条几何 / 转移区 / 门槛", RecordAutoHideCases));
+        cases.Add(new("capturePro", "画中画预览：方向换算 / 拖动夹取 / 缩放 / 工具条", RecordWebcamCases));
     }
 
     private static void Geometry()
@@ -3205,6 +3206,159 @@ internal static partial class CaptureProSuite
         var target = new RecordOptions();
         target.CopyFrom(on);
         Check.True(target.AutoHideToolbar, "CopyFrom 带过去（面板上的这一轮立刻生效）");
+    }
+
+    /// <summary>
+    /// 录屏空闲期的摄像头画中画预览（照上游 <c>recordingwebcamcontrol.cpp</c> +
+    /// <c>snow-recording-model/src/webcam.rs</c>）：方向位语义与四个按钮的换算、拖动夹取、
+    /// 缩放 50–500、右上角缩放钮、正上方方向工具条的落点与夹取。
+    /// </summary>
+    private static void RecordWebcamCases()
+    {
+        // ---- 方向：默认 identity（上游 webcam_orientation 默认 0），落盘只认 0…7 ----
+        var defaults = new RecordOptions();
+        Check.Equal(RecordCameraOrientation.identity, defaults.CameraOrientation,
+            "画中画默认不旋转、不镜像（上游 integerDefault(0)）");
+        Check.Equal(RecordCameraOrientation.identity, defaults.Normalized().CameraOrientation,
+            "清洗后仍是 identity");
+
+        Check.Equal(RecordCameraOrientation.clockwise90,
+            new RecordOptions { CameraOrientation = RecordCameraOrientation.clockwise90 }.Normalized().CameraOrientation,
+            "清洗保留合法值");
+        Check.Equal(RecordCameraOrientation.mirroredClockwise270,
+            new RecordOptions { CameraOrientation = (RecordCameraOrientation)7 }.Normalized().CameraOrientation,
+            "7 = 左右翻 + 逆时针 90°");
+        Check.Equal(RecordCameraOrientation.clockwise270,
+            new RecordOptions { CameraOrientation = (RecordCameraOrientation)11 }.Normalized().CameraOrientation,
+            "越界值按低三位掩回（11 & 7 = 3）");
+
+        var carried = new RecordOptions();
+        carried.CopyFrom(new RecordOptions { CameraOrientation = RecordCameraOrientation.mirroredClockwise90 });
+        Check.Equal(RecordCameraOrientation.mirroredClockwise90, carried.CameraOrientation,
+            "CopyFrom 把方向带过去");
+
+        // ---- 四个按钮（上游 screenrecordingcontroller.cpp 的 webcamOrientationRequested） ----
+        Check.Equal(RecordCameraOrientation.clockwise90,
+            RecordWebcamLayout.Next(RecordCameraOrientation.identity, RecordWebcamAction.rotateClockwise),
+            "原方向 → 顺时针 90°");
+        Check.Equal(RecordCameraOrientation.identity,
+            RecordWebcamLayout.Next(RecordCameraOrientation.clockwise270, RecordWebcamAction.rotateClockwise),
+            "逆时针 90° 再顺时针 → 回到原方向");
+        Check.Equal(RecordCameraOrientation.clockwise270,
+            RecordWebcamLayout.Next(RecordCameraOrientation.identity, RecordWebcamAction.rotateCounterclockwise),
+            "原方向 → 逆时针 90°");
+        Check.Equal(RecordCameraOrientation.mirroredClockwise90,
+            RecordWebcamLayout.Next(RecordCameraOrientation.mirrored, RecordWebcamAction.rotateClockwise),
+            "镜像态旋转只动圈数、镜像位保持");
+
+        Check.Equal(RecordCameraOrientation.mirrored,
+            RecordWebcamLayout.Next(RecordCameraOrientation.identity, RecordWebcamAction.flipHorizontal),
+            "左右翻：原方向 → 左右镜像");
+        Check.Equal(RecordCameraOrientation.mirroredClockwise270,
+            RecordWebcamLayout.Next(RecordCameraOrientation.clockwise90, RecordWebcamAction.flipHorizontal),
+            "左右翻：顺时针 90° → 镜像 + 逆时针 90°");
+        Check.Equal(RecordCameraOrientation.mirroredClockwise180,
+            RecordWebcamLayout.Next(RecordCameraOrientation.identity, RecordWebcamAction.flipVertical),
+            "上下翻：原方向 = 镜像 + 180°");
+        Check.Equal(RecordCameraOrientation.mirroredClockwise90,
+            RecordWebcamLayout.Next(RecordCameraOrientation.clockwise90, RecordWebcamAction.flipVertical),
+            "上下翻：顺时针 90° → 镜像 + 顺时针 90°");
+
+        Check.Equal(RecordCameraOrientation.identity,
+            RecordWebcamLayout.Next(
+                RecordWebcamLayout.Next(RecordCameraOrientation.identity, RecordWebcamAction.flipHorizontal),
+                RecordWebcamAction.flipHorizontal),
+            "左右翻两次回到原方向");
+
+        var spun = RecordCameraOrientation.identity;
+        for (int i = 0; i < 4; i++) spun = RecordWebcamLayout.Next(spun, RecordWebcamAction.rotateClockwise);
+        Check.Equal(RecordCameraOrientation.identity, spun, "顺时针转四次回到原方向");
+
+        // ---- 文案 / 图标（悬停提示与按钮资源键） ----
+        Check.Equal("原方向", RecordWebcamLayout.Describe(RecordCameraOrientation.identity), "方向短说明：原方向");
+        Check.Equal("顺时针 90°", RecordWebcamLayout.Describe(RecordCameraOrientation.clockwise90),
+            "方向短说明：顺时针 90°");
+        Check.Equal("左右翻转 · 180°", RecordWebcamLayout.Describe(RecordCameraOrientation.mirroredClockwise180),
+            "方向短说明：镜像 + 180°");
+
+        var labels = new HashSet<string>(StringComparer.Ordinal);
+        foreach (RecordWebcamAction action in Enum.GetValues<RecordWebcamAction>())
+        {
+            labels.Add(RecordWebcamLayout.ActionLabel(action));
+            Check.True(RecordWebcamLayout.ActionIcon(action).StartsWith("Icon", StringComparison.Ordinal),
+                $"{action} 有图标键（{RecordWebcamLayout.ActionIcon(action)}）");
+        }
+
+        Check.Equal(4, labels.Count, "四个方向按钮的提示各不相同");
+
+        // ---- 落点：区域在屏幕上的偏移要带上 ----
+        var area = new Int32Rect(100, 200, 700, 460);
+        Check.Equal(new Int32Rect(148, 462, 150, 150),
+            RecordWebcamLayout.PreviewRect(area, 150, 48, 48),
+            "画中画 = 区域左上 + 边距（贴左 / 贴下）");
+
+        // 边长先按区域短边收成 460，此时「离底边 48」也被夹成 0（460 − 460），所以纵向落回区域顶部
+        Check.Equal(new Int32Rect(148, 200, 460, 460),
+            RecordWebcamLayout.PreviewRect(area, 600, 48, 48),
+            "区域比画中画小时按短边收（宽 700 高 460 → 460），边距跟着夹");
+
+        var fitted = RecordWebcamLayout.FittedOffset(area, 150, 1000, 1000);
+        Check.Equal(550, fitted.Left, "边距超界按区域夹（左）");
+        Check.Equal(310, fitted.Bottom, "边距超界按区域夹（下）");
+        var negative = RecordWebcamLayout.FittedOffset(area, 150, -20, -20);
+        Check.Equal(0, negative.Left, "负边距收成 0（左）");
+        Check.Equal(0, negative.Bottom, "负边距收成 0（下）");
+
+        // ---- 拖动：从夹过的起点加位移，两边都夹回区域 ----
+        var moved = RecordWebcamLayout.OffsetForMove(area, 150, 48, 48, 30, -20);
+        Check.Equal(78, moved.Left, "往右拖 30 → 左边距 +30");
+        Check.Equal(68, moved.Bottom, "往上拖 20 → 离底边 +20");
+        Check.Equal(550, RecordWebcamLayout.OffsetForMove(area, 150, 48, 48, 10000, 0).Left,
+            "拖出右边就夹在区域内（700 − 150）");
+        Check.Equal(310, RecordWebcamLayout.OffsetForMove(area, 150, 48, 48, 0, -10000).Bottom,
+            "拖出上边就夹在区域内（460 − 150）");
+        Check.Equal(0, RecordWebcamLayout.OffsetForMove(area, 150, 48, 48, -10000, 10000).Left,
+            "拖出左边夹到 0");
+        Check.Equal(0, RecordWebcamLayout.OffsetForMove(area, 150, 48, 48, -10000, 10000).Bottom,
+            "拖出下边夹到 0");
+
+        // ---- 缩放：size = clamp(初始边长 + (dx − dy) / 2, 50, 500) ----
+        Check.Equal(180, RecordWebcamLayout.SizeForResize(150, 60, 0), "右拖 60 → 边长 +30");
+        Check.Equal(120, RecordWebcamLayout.SizeForResize(150, 0, 60), "下拖 60 → 边长 −30");
+        Check.Equal(RecordOptions.MaxCameraSize, RecordWebcamLayout.SizeForResize(150, 10000, 0),
+            "放大夹到 500");
+        Check.Equal(RecordOptions.MinCameraSize, RecordWebcamLayout.SizeForResize(150, -10000, 0),
+            "缩小夹到 50");
+        Check.Equal(152, RecordWebcamLayout.SizeForResize(150, 3, 0), "1.5 进位（AwayFromZero）");
+        Check.Equal(150, RecordWebcamLayout.ResizeAnchor(area, 150), "缩放起点 = 区域夹过的边长");
+
+        var tiny = new Int32Rect(0, 0, 100, 100);
+        Check.Equal(100, RecordWebcamLayout.ResizeAnchor(tiny, 500), "区域比画中画小时从短边起算");
+
+        // ---- 右上角缩放钮：32 DIP × 比例，夹在画中画里 ----
+        var preview = new Int32Rect(100, 100, 150, 150);
+        Check.Equal(new Int32Rect(218, 100, 32, 32), RecordWebcamLayout.HandleRect(preview, 1),
+            "缩放钮贴右上角（150 − 32）");
+        Check.Equal(new Int32Rect(210, 100, 40, 40), RecordWebcamLayout.HandleRect(preview, 1.25),
+            "125% 缩放下 40 像素");
+        Check.Equal(new Int32Rect(100, 100, 20, 20),
+            RecordWebcamLayout.HandleRect(new Int32Rect(100, 100, 20, 20), 1),
+            "画中画比钮还小时夹到画中画大小");
+
+        // ---- 方向工具条：4 个 24 DIP 按钮 + 3/2 内边距 ----
+        Check.Equal((102, 28), RecordWebcamLayout.ToolbarSize(1), "工具条 102 × 28 DIP");
+        Check.Equal((128, 36), RecordWebcamLayout.ToolbarSize(1.25), "125% 缩放：128 × 36 像素");
+
+        var screen = new Int32Rect(0, 0, 1920, 1080);
+        var bar = RecordWebcamLayout.ToolbarRect(new Int32Rect(300, 400, 150, 150), screen, 1);
+        Check.Equal(new Int32Rect(324, 366, 102, 28), bar, "工具条居中贴在画中画上方 6 DIP");
+
+        var below = RecordWebcamLayout.ToolbarRect(new Int32Rect(300, 0, 150, 150), screen, 1);
+        Check.Equal(156, below.Y, "上面放不下就翻到下方（150 + 6）");
+
+        var clamped = RecordWebcamLayout.ToolbarRect(new Int32Rect(1900, 400, 150, 150), screen, 1);
+        Check.Equal(1818, clamped.X, "靠右边缘时横向夹回屏幕里（1920 − 102）");
+        Check.Equal(102, clamped.Width, "夹回来不改宽度");
     }
 
     /// <summary>

@@ -132,8 +132,11 @@ internal static class RecordSession
         // 编码器：先探测这台机器哪些硬件编码器真能开（一次进程只探一次），再按意图挑
         string encoder = RecordEncoders.Pick(plan.Options.Codec, RecordEncoders.Probe(ffmpeg));
 
-        // 摄像头：打不开只是少个画中画，录制继续
-        var camera = RecordCamera.TryStart(plan.Options, out string? cameraProblem);
+        // 摄像头：先要面板空闲期预览里那个（已经开着、方向也是用户刚摆好的），
+        // 没有再自己开；打不开只是少个画中画，录制继续
+        string? cameraProblem = null;
+        RecordCamera? camera = TakeBarCamera(bar);
+        if (camera == null) camera = RecordCamera.TryStart(plan.Options, out cameraProblem);
         if (cameraProblem != null)
             ToastService.Show(cameraProblem + "，只录画面", "录屏", 3200, ToastKind.warning);
 
@@ -438,8 +441,28 @@ internal static class RecordSession
         }
     }
 
-    // ============ 区域边框 / 跟随鼠标 ============
+    /// <summary>
+    /// 取走面板空闲期预览用的摄像头（同一个设备、同一个方向，不再开第二份）。
+    /// 面板是 WPF 窗口，字段只能在 UI 线程上碰。
+    /// </summary>
+    private static RecordCamera? TakeBarCamera(CaptureRecordWindow? bar)
+    {
+        if (bar == null) return null;
 
+        try
+        {
+            var app = Application.Current;
+            if (app == null) return bar.TakeCamera();
+            return app.Dispatcher.Invoke(bar.TakeCamera);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("CapturePro.Record", "接管预览摄像头失败：" + ex.Message);
+            return null;
+        }
+    }
+
+    // ============ 区域边框 / 跟随鼠标 ============
     /// <summary>
     /// 摆出录制区域边框（照 Snow Shot：红框告诉用户正在录哪一块）。
     /// 失败只记日志——边框是提示，不该因为它录不成。

@@ -30,6 +30,9 @@ public partial class RecordOptionsWindow : Window
     /// <summary>「从面板打开」时的那份运行期选项：保存后要就地生效（composer 每帧读它）。</summary>
     private RecordOptions? _runtime;
 
+    /// <summary>窗口里正在编辑的方向（点四个按钮改它，保存时写回）。</summary>
+    private RecordCameraOrientation _orientation = RecordCameraOrientation.identity;
+
     internal RecordOptionsWindow(RecordOptions options)
     {
         InitializeComponent();
@@ -42,7 +45,8 @@ public partial class RecordOptionsWindow : Window
 
         CameraSizeSlider.Value = Math.Clamp(options.CameraSize, 50, 500);
         SelectTag(CameraShapeBox, options.CameraShape == RecordCameraShape.circle ? "circle" : "square");
-        MirrorBox.IsChecked = options.CameraMirrored;
+        _orientation = (RecordCameraOrientation)((int)options.CameraOrientation & 7);
+        ShowOrientation();
 
         HighlightBox.IsChecked = options.MouseHighlight;
         CursorBox.IsChecked = options.ShowCursor;
@@ -137,6 +141,33 @@ public partial class RecordOptionsWindow : Window
 
     private void Camera_Changed(object sender, SelectionChangedEventArgs e) => SyncEnabled();
 
+    /// <summary>四个方向按钮：先按 <see cref="RecordWebcamLayout.Next"/> 换算，再刷新文字（与预览窗同一套规则）。</summary>
+    private void Orientation_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        if (sender is not Button { CommandParameter: string tag }) return;
+
+        var action = tag switch
+        {
+            "rotateClockwise" => RecordWebcamAction.rotateClockwise,
+            "rotateCounterclockwise" => RecordWebcamAction.rotateCounterclockwise,
+            "flipHorizontal" => RecordWebcamAction.flipHorizontal,
+            "flipVertical" => RecordWebcamAction.flipVertical,
+            _ => (RecordWebcamAction?)null,
+        };
+
+        if (action == null) return;
+
+        _orientation = RecordWebcamLayout.Next(_orientation, action.Value);
+        ShowOrientation();
+    }
+
+    private void ShowOrientation()
+    {
+        if (OrientationText == null) return;
+        OrientationText.Text = RecordWebcamLayout.Describe(_orientation);
+    }
+
     /// <summary>麦克风 / 光标高亮这类开关也会解锁下面的设备下拉、半径滑块（别等用户去动摄像头）。</summary>
     private void Toggle_Changed(object sender, RoutedEventArgs e) => SyncEnabled();
 
@@ -152,13 +183,13 @@ public partial class RecordOptionsWindow : Window
         RadiusText.Text = ((int)Math.Round(e.NewValue)).ToString();
     }
 
-    /// <summary>摄像头关着的时候，尺寸 / 形状 / 镜像不可用（免得以为设了就会录）。</summary>
+    /// <summary>摄像头关着的时候，尺寸 / 形状 / 方向不可用（免得以为设了就会录）。</summary>
     private void SyncEnabled()
     {
         bool camera = (TagOf(CameraBox) as int? ?? -1) >= 0;
         CameraSizeSlider.IsEnabled = camera;
         CameraShapeBox.IsEnabled = camera;
-        MirrorBox.IsEnabled = camera;
+        OrientationRow.IsEnabled = camera;
 
         bool mic = MicBox.IsChecked == true;
         MicDeviceBox.IsEnabled = mic;
@@ -181,7 +212,7 @@ public partial class RecordOptionsWindow : Window
             CameraShape = string.Equals(TagOf(CameraShapeBox) as string, "circle", StringComparison.Ordinal)
                 ? RecordCameraShape.circle
                 : RecordCameraShape.square,
-            CameraMirrored = MirrorBox.IsChecked == true,
+            CameraOrientation = _orientation,
             MouseHighlight = HighlightBox.IsChecked == true,
             ShowCursor = CursorBox.IsChecked == true,
             RecordClicks = ClicksBox.IsChecked == true,

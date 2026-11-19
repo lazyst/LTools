@@ -136,10 +136,12 @@
     "SystemAudio": true,
     "Microphone": false,
     "MicrophoneDevice": null,
+    "MicrophoneGainDb": 0,
+    "SystemAudioGainDb": 0,
     "CameraDevice": -1,
     "CameraSize": 150,
     "CameraShape": "square",
-    "CameraMirrored": true,
+    "CameraOrientation": "identity",
     "CameraOffsetLeft": 48,
     "CameraOffsetBottom": 48,
     "ShowCursor": true,
@@ -157,7 +159,8 @@
     "LaserColor": "#00000000",
     "ClickColor": "#00000000",
     "Codec": "auto",
-    "TrimAfterRecord": false
+    "TrimAfterRecord": false,
+    "AutoHideToolbar": false
   },
   "Translation": {
     "Endpoint": null,
