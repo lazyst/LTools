@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Windows;
 using LTools.Core;
 using LTools.Native;
 using LTools.Views.CapturePro;
@@ -107,7 +108,12 @@ internal static class RecordTrimSession
     /// 导出裁剪结果。全片 + 1.0x 直接复制字节（上游同样的「复用原文件」），
     /// 其余重编码。返回 false 时 <paramref name="error"/> 是给用户看的说明。
     /// </summary>
-    public static bool Export(CaptureEntry entry, string output, TrimRange range, bool hasAudio, out string error)
+    /// <remarks>
+    /// 重编码走与录屏收尾同一个渲染进度对话框（上游 <c>RecordingTrimSession</c> 也共用
+    /// <c>RecordingRenderDialog</c>）：能看进度、能取消，失败后能重试 / 保留源文件 / 丢弃。
+    /// </remarks>
+    public static bool Export(CaptureEntry entry, string output, TrimRange range, bool hasAudio,
+        out string error, Int32Rect anchor = default)
     {
         error = "";
 
@@ -137,9 +143,30 @@ internal static class RecordTrimSession
             string part = output + ".part.mp4";
             File.Delete(part);
 
-            if (!RecordSession.RunFfmpeg(ffmpeg, RecordTrim.ExportArgs(input, part, range, hasAudio), out error))
+            var outcome = RecordRenderRunner.Run(ffmpeg, RecordTrimSession.TempDirOf(input), anchor,
+                Math.Max(1, range.EndMs - range.StartMs), new[]
+                {
+                    new RecordRenderStep
+                    {
+                        Args = RecordTrim.ExportArgs(input, part, range, hasAudio),
+                        ExpectedFile = part,
+                    },
+                });
+
+            if (!outcome.Ok)
             {
                 File.Delete(part);
+
+                if (outcome.Discarded) error = "已丢弃这次导出";
+                else if (outcome.Cancelled) error = "已取消导出";
+                else error = "导出没有完成：" + outcome.Error;
+                return false;
+            }
+
+            if (!File.Exists(part) || new FileInfo(part).Length == 0)
+            {
+                File.Delete(part);
+                error = "导出结果是空的";
                 return false;
             }
 
@@ -151,6 +178,16 @@ internal static class RecordTrimSession
             error = ex.Message;
             return false;
         }
+    }
+
+    /// <summary>
+    /// 「源文件保留在」那一栏：重编码时源文件是**原片**，别指向录制缓存目录
+    /// （那个目录里的东西下次启动就清）。给「保留源文件」的用户看到的东西要还在。
+    /// </summary>
+    private static string TempDirOf(string input)
+    {
+        string? folder = Path.GetDirectoryName(input);
+        return string.IsNullOrEmpty(folder) ? input : folder;
     }
 
     /// <summary>把成品放进剪贴板（文件形式，资源管理器里能直接粘贴）。</summary>

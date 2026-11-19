@@ -236,18 +236,35 @@ internal sealed class RecordPlan
     /// <c>amix</c> 本身不做格式统一。
     /// </para>
     /// <para>
+    /// 增益（−24…+24 dB）按轨套 ffmpeg <c>volume</c>：单轨用输出侧 <c>-af</c>，
+    /// 双轨在各路重采样之后套（混音前），0 dB 不挂滤镜。带增益的重载是为了面板上的
+    /// 增益弹层——上游 <c>RecordingAudioGainPopover</c> 让两路各调各的。
+    /// </para>
+    /// <para>
     /// <c>-shortest</c> 收口：音轨比画面长（收尾差几毫秒）时以画面为准。
     /// 没有音轨时就是纯容器搬运，和以前的 <see cref="RemuxArgs"/> 完全一致。
     /// </para>
     /// </remarks>
     public static IReadOnlyList<string> FinalizeArgs(string input, string output,
-        IReadOnlyList<string>? audioTracks = null)
+        IReadOnlyList<string>? audioTracks) =>
+        FinalizeArgs(input, output, audioTracks, null);
+
+    /// <summary>收尾（不带音轨）：等价于传空音轨。</summary>
+    public static IReadOnlyList<string> FinalizeArgs(string input, string output) =>
+        FinalizeArgs(input, output, null, null);
+
+    /// <summary>收尾 + 按轨增益（<paramref name="gainDb"/> 与音轨一一对应，缺的当 0 dB）。</summary>
+    public static IReadOnlyList<string> FinalizeArgs(string input, string output,
+        IReadOnlyList<string>? audioTracks, IReadOnlyList<int>? gainDb)
     {
         var args = new List<string>
         {
             "-y", "-hide_banner", "-loglevel", "error", "-nostats",
             "-i", input,
         };
+
+        int GainOf(int index) =>
+            gainDb != null && index >= 0 && index < gainDb.Count ? RecordGain.Clamp(gainDb[index]) : 0;
 
         int tracks = audioTracks?.Count ?? 0;
         if (tracks == 0)
@@ -260,10 +277,13 @@ internal sealed class RecordPlan
 
         if (tracks == 1)
         {
+            args.AddRange(new[] { "-map", "0:v", "-map", "1:a", "-c:v", "copy" });
+
+            int gain = GainOf(0);
+            if (gain != 0) args.AddRange(new[] { "-af", "volume=" + RecordGain.FilterValue(gain) });
+
             args.AddRange(new[]
             {
-                "-map", "0:v", "-map", "1:a",
-                "-c:v", "copy",
                 "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
                 "-shortest", "-movflags", "+faststart",
                 output,
@@ -271,12 +291,14 @@ internal sealed class RecordPlan
             return args;
         }
 
-        // 多路：先统一到 48kHz 立体声浮点，再混（amix 不做格式统一）
+        // 多路：先统一到 48kHz 立体声浮点，再混（amix 不做格式统一）；增益在混音前按轨套
         var filters = new List<string>();
         var labels = new List<string>();
         for (int i = 0; i < tracks; i++)
         {
-            filters.Add($"[{i + 1}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a{i}]");
+            int gain = GainOf(i);
+            string volume = gain == 0 ? "" : ",volume=" + RecordGain.FilterValue(gain);
+            filters.Add($"[{i + 1}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo{volume}[a{i}]");
             labels.Add($"[a{i}]");
         }
         filters.Add($"{string.Concat(labels)}amix=inputs={tracks}:duration=longest:normalize=0[aout]");
@@ -293,7 +315,7 @@ internal sealed class RecordPlan
         return args;
     }
 
-    /// <summary>没有音轨时的收尾（等价于 <see cref="FinalizeArgs"/> 的空音轨分支）。</summary>
+    /// <summary>没有音轨时的收尾（等价于 <see cref="FinalizeArgs(string, string)"/>）。</summary>
     public static IReadOnlyList<string> RemuxArgs(string input, string output) =>
         FinalizeArgs(input, output);
 

@@ -9,6 +9,16 @@ using NAudio.Wave;
 
 namespace LTools.Features.CapturePro;
 
+/// <summary>录屏的两路声音（照上游 <c>RecordingAudioGainPopover::Source</c>）。</summary>
+internal enum RecordAudioSource
+{
+    System,
+    Microphone,
+}
+
+/// <summary>一条已经录好的音轨（收尾混音用）：文件路径 + 它是哪一路（决定套哪个增益）。</summary>
+internal readonly record struct RecordAudioTrack(string Path, RecordAudioSource Source);
+
 /// <summary>
 /// 录制声音：系统环回（WASAPI loopback）+ 麦克风，各写一条 WAV，收尾时由 ffmpeg 混成 AAC。
 /// </summary>
@@ -36,17 +46,36 @@ internal sealed class RecordAudio : IDisposable
     private RecordAudio(RecordController controller) => _controller = controller;
 
     /// <summary>打开的声音通道（收尾后仍保留路径，供 ffmpeg 混音）。</summary>
-    public IReadOnlyList<string> Tracks
+    public IReadOnlyList<RecordAudioTrack> Tracks
     {
         get
         {
-            var list = new List<string>(_tracks.Count);
-            foreach (var track in _tracks) list.Add(track.Path);
+            var list = new List<RecordAudioTrack>(_tracks.Count);
+            foreach (var track in _tracks) list.Add(new RecordAudioTrack(track.Path, track.Source));
             return list;
         }
     }
 
     public bool Any => _tracks.Count > 0;
+
+    /// <summary>这一路这次有没有打开（没开 / 打不开 = false，增益弹层的电平表据此归零）。</summary>
+    public bool Has(RecordAudioSource source)
+    {
+        foreach (var track in _tracks)
+            if (track.Source == source) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// 这一路的原始峰值（0–1 满刻度，**不含增益**，约 350ms 的包络）。增益由调用方按当前设置乘，
+    /// 这样拖动增益滑块时电平表立刻跟着变（增益在收尾才真正套进音轨）。
+    /// </summary>
+    public float RawPeakOf(RecordAudioSource source)
+    {
+        foreach (var track in _tracks)
+            if (track.Source == source) return track.RawPeak();
+        return 0f;
+    }
 
     /// <summary>打开失败时的说明（没有失败为 null）。</summary>
     public string? Warning { get; private set; }
@@ -113,20 +142,28 @@ internal sealed class RecordAudio : IDisposable
         private long _written;
         private bool _closed;
 
-        private Track(IWaveIn capture, WaveFileWriter writer, RecordController controller)
+        // 电平表：原始峰值（不含增益）+ 最后一次有数据的时间（350ms 没有新数据就归零）
+        private float _peak;
+        private long _peakAt;
+
+        private Track(IWaveIn capture, WaveFileWriter writer, RecordController controller,
+            RecordAudioSource source)
         {
             _capture = capture;
             _writer = writer;
             _controller = controller;
+            Source = source;
         }
+
+        public RecordAudioSource Source { get; }
 
         public string Path => _writer.Filename;
 
         public static Track StartSystem(string path, RecordController controller) =>
-            Start(new WasapiLoopbackCapture(), path, controller);
+            Start(new WasapiLoopbackCapture(), path, controller, RecordAudioSource.System);
 
         public static Track StartMicrophone(string path, string? deviceName, RecordController controller) =>
-            Start(new WasapiCapture(PickMicrophone(deviceName)), path, controller);
+            Start(new WasapiCapture(PickMicrophone(deviceName)), path, controller, RecordAudioSource.Microphone);
 
         /// <summary>按名字挑麦克风；名字为空或找不到就用系统默认输入设备。</summary>
         private static MMDevice PickMicrophone(string? deviceName)
@@ -149,16 +186,27 @@ internal sealed class RecordAudio : IDisposable
             return fallback;
         }
 
-        private static Track Start(IWaveIn capture, string path, RecordController controller)
+        private static Track Start(IWaveIn capture, string path, RecordController controller,
+            RecordAudioSource source)
         {
             var writer = new WaveFileWriter(path, capture.WaveFormat);
-            var track = new Track(capture, writer, controller);
+            var track = new Track(capture, writer, controller, source);
 
             capture.DataAvailable += track.OnData;
             capture.RecordingStopped += track.OnStopped;
             capture.StartRecording();
 
             return track;
+        }
+
+        /// <summary>原始峰值（0–1）：350ms 内没有新数据就当静音，电平表不会卡在最后一帧。</summary>
+        public float RawPeak()
+        {
+            lock (_gate)
+            {
+                if (_peak <= 0f) return 0f;
+                return Environment.TickCount64 - _peakAt > 350 ? 0f : _peak;
+            }
         }
 
         private void OnData(object? sender, WaveInEventArgs e)
@@ -171,6 +219,8 @@ internal sealed class RecordAudio : IDisposable
 
                 // 暂停：这段既不算进视频，也不该进音轨（与视频时间轴同一个判定）
                 if (_controller.IsPaused) return;
+
+                UpdatePeak(e.Buffer, e.BytesRecorded);
 
                 try
                 {
@@ -190,6 +240,19 @@ internal sealed class RecordAudio : IDisposable
                     AppLog.Warn("CapturePro.Record", "写音轨失败：" + ex.Message);
                 }
             }
+        }
+
+        /// <summary>把这段缓冲的峰值并进包络（含静音补齐：补的静音本来就是 0，不影响）。</summary>
+        private void UpdatePeak(byte[] buffer, int count)
+        {
+            var format = _writer.WaveFormat;
+            float peak = RecordGain.PeakOf(buffer, count, format.BitsPerSample,
+                format.Encoding == WaveFormatEncoding.IeeeFloat);
+
+            long now = Environment.TickCount64;
+            if (now - _peakAt > 350) _peak = 0f;
+            if (peak > _peak) _peak = peak;
+            _peakAt = now;
         }
 
         private void OnStopped(object? sender, StoppedEventArgs e)

@@ -120,6 +120,9 @@ public partial class CaptureRecordWindow : Window
         _timer.Stop();
         CloseRegion();
         foreach (var popover in _popovers) popover.Hide();
+        _micGainPop?.Hide();
+        _speakerGainPop?.Hide();
+        FlushGains();
         CloseColorPicker();
         CloseAnnotation();
 
@@ -135,6 +138,9 @@ public partial class CaptureRecordWindow : Window
         _timer.Stop();
         CloseRegion();
         foreach (var popover in _popovers) popover.Hide();
+        _micGainPop?.Hide();
+        _speakerGainPop?.Hide();
+        FlushGains();
         CloseColorPicker();
         CloseAnnotation();
 

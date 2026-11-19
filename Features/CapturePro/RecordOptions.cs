@@ -59,6 +59,15 @@ public sealed class RecordOptions
     /// <summary>麦克风设备名；空 = 系统默认输入设备。</summary>
     public string? MicrophoneDevice { get; set; }
 
+    /// <summary>
+    /// 麦克风增益（dB，−24…+24，默认 0）。收尾时按轨套 ffmpeg <c>volume</c>；
+    /// 面板上悬停麦克风按钮弹出的增益弹层改的就是它（照上游 <c>microphone_gain_db</c>）。
+    /// </summary>
+    public int MicrophoneGainDb { get; set; } = RecordGain.DefaultDb;
+
+    /// <summary>系统声音增益（dB，−24…+24，默认 0；上游 <c>system_audio_gain_db</c>）。</summary>
+    public int SystemAudioGainDb { get; set; } = RecordGain.DefaultDb;
+
     /// <summary>摄像头序号（OpenCV 的设备号）；负数 = 不录。</summary>
     public int CameraDevice { get; set; } = -1;
 
@@ -149,6 +158,8 @@ public sealed class RecordOptions
         SystemAudio = other.SystemAudio;
         Microphone = other.Microphone;
         MicrophoneDevice = other.MicrophoneDevice;
+        MicrophoneGainDb = other.MicrophoneGainDb;
+        SystemAudioGainDb = other.SystemAudioGainDb;
         CameraDevice = other.CameraDevice;
         CameraSize = other.CameraSize;
         CameraShape = other.CameraShape;
@@ -179,6 +190,8 @@ public sealed class RecordOptions
         SystemAudio = SystemAudio,
         Microphone = Microphone,
         MicrophoneDevice = string.IsNullOrWhiteSpace(MicrophoneDevice) ? null : MicrophoneDevice.Trim(),
+        MicrophoneGainDb = RecordGain.Clamp(MicrophoneGainDb),
+        SystemAudioGainDb = RecordGain.Clamp(SystemAudioGainDb),
         CameraDevice = CameraDevice < 0 ? -1 : CameraDevice,
         CameraSize = Math.Clamp(CameraSize, MinCameraSize, MaxCameraSize),
         CameraShape = CameraShape,

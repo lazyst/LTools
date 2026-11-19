@@ -196,7 +196,7 @@ public partial class RecordOptionsWindow : Window
             TrimAfterRecord = TrimBox.IsChecked == true,
         }.Normalized();
 
-        // 颜色 / 键过滤 / 后期处理这些只在面板上改的项：窗口不管它们，原样带过来
+        // 颜色 / 键过滤 / 后期处理 / 声音增益这些只在面板上改的项：窗口不管它们，原样带过来
         var previous = _runtime ?? AppState.Record;
         options.LaserColor = previous.LaserColor;
         options.ClickColor = previous.ClickColor;
@@ -208,6 +208,8 @@ public partial class RecordOptionsWindow : Window
         options.PostProcessingProgressBar = previous.PostProcessingProgressBar;
         options.CameraOffsetLeft = previous.CameraOffsetLeft;
         options.CameraOffsetBottom = previous.CameraOffsetBottom;
+        options.MicrophoneGainDb = previous.MicrophoneGainDb;
+        options.SystemAudioGainDb = previous.SystemAudioGainDb;
 
         try
         {

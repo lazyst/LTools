@@ -352,7 +352,19 @@ public partial class RecordTrimWindow : Window
 
         System.Threading.Tasks.Task.Run(() =>
         {
-            bool ok = RecordTrimSession.Export(_entry, output, range, hasAudio, out string error);
+            // 渲染进度窗摆在裁剪窗所在那块屏上（窗口只能在 UI 线程上问坐标）
+            Int32Rect anchor = default;
+            try
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    var center = PointToScreen(new Point(ActualWidth / 2, ActualHeight / 2));
+                    anchor = new Int32Rect((int)center.X, (int)center.Y, 0, 0);
+                });
+            }
+            catch (Exception) { /* 窗口已经关了：用主屏 */ }
+
+            bool ok = RecordTrimSession.Export(_entry, output, range, hasAudio, out string error, anchor);
 
             Dispatcher.BeginInvoke(() =>
             {

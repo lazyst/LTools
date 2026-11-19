@@ -220,6 +220,9 @@ public partial class CaptureRecordWindow
         row.Add(_saveBtn);
         row.Add(_copyBtn);
 
+        // 麦克风 / 系统声音的增益弹层（悬停开，录制中点按钮也开）
+        InitGainPopovers();
+
         // 面板上没有位置、但会话与 harness 要看的两段文字（状态 / 格式摘要）
         StatusText = new TextBlock { Visibility = Visibility.Collapsed, Text = "" };
         MetaText = new TextBlock { Visibility = Visibility.Collapsed, Text = "" };
@@ -670,16 +673,23 @@ public partial class CaptureRecordWindow
             PauseBtn.ToolTip = paused ? "继续录制" : "暂停（暂停的时间不进成品）";
             PauseBtn.IsEnabled = active;
 
-            // 麦克风 / 扬声器：图标形状 + 颜色；动图格式与录制中禁用
+            // 麦克风 / 扬声器：图标形状 + 颜色。可用性照上游 `(idle || enabled) && !busy && !animated`：
+            // 录制中只有本来开着的那一路还能点（点开的是增益弹层，不是切开关）。
             _micBtn.IsChecked = _plan.Options.Microphone;
             SetIcon(_micBtn, _plan.Options.Microphone ? "IconRecMic" : "IconRecMicOff");
-            _micBtn.IsEnabled = editable && !animated;
-            _micBtn.ToolTip = animated ? "动图格式不含音频" : "录麦克风（录制开始后不能改）";
+            _micBtn.IsEnabled = !animated && !finished && (idle || _plan.Options.Microphone);
+            _micBtn.ToolTip = animated ? "动图格式不含音频"
+                : idle ? "录麦克风（悬停调增益）"
+                : "麦克风增益：点一下或悬停打开（录制中可调）";
 
             _speakerBtn.IsChecked = _plan.Options.SystemAudio;
             SetIcon(_speakerBtn, _plan.Options.SystemAudio ? "IconRecAudio" : "IconRecAudioOff");
-            _speakerBtn.IsEnabled = editable && !animated;
-            _speakerBtn.ToolTip = animated ? "动图格式不含音频" : "录系统声音（录制开始后不能改）";
+            _speakerBtn.IsEnabled = !animated && !finished && (idle || _plan.Options.SystemAudio);
+            _speakerBtn.ToolTip = animated ? "动图格式不含音频"
+                : idle ? "录系统声音（悬停调增益）"
+                : "系统声音增益：点一下或悬停打开（录制中可调）";
+
+            RefreshGainPanels();
 
             // 收尾动作：录制中可用；空闲时只要历史里有录屏也可用（LTools 作用在最近一条上）
             bool canFinish = active || _hasLastRecord;

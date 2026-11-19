@@ -144,18 +144,19 @@ public partial class CaptureRecordWindow
         }
     }
 
-    /// <summary>一个悬停弹层：鼠标进按钮就开，离开按钮和弹层 120ms 后关。</summary>
+    /// <summary>一个悬停弹层：鼠标进按钮就开（可配延迟），离开按钮和弹层后关。</summary>
     private sealed class HoverPopover
     {
         private readonly ToggleButton _anchor;
         private readonly Border _card;
         private readonly Popup _popup;
         private readonly DispatcherTimer _leave;
+        private readonly DispatcherTimer? _open;
         private readonly Action _refresh;
         private readonly StackPanel _content;
 
         public HoverPopover(ToggleButton anchor, FrameworkElement content, Action refresh,
-            Action<Popup, bool> hook)
+            Action<Popup, bool> hook, int openDelayMs = 0, int closeDelayMs = 120)
         {
             _anchor = anchor;
             _refresh = refresh;
@@ -180,7 +181,7 @@ public partial class CaptureRecordWindow
 
             _leave = new DispatcherTimer(DispatcherPriority.Input)
             {
-                Interval = TimeSpan.FromMilliseconds(120),
+                Interval = TimeSpan.FromMilliseconds(closeDelayMs),
             };
             _leave.Tick += (_, _) =>
             {
@@ -188,21 +189,53 @@ public partial class CaptureRecordWindow
                 Hide();
             };
 
-            anchor.MouseEnter += (_, _) => Show();
-            anchor.MouseLeave += (_, _) => _leave.Start();
+            if (openDelayMs > 0)
+            {
+                _open = new DispatcherTimer(DispatcherPriority.Input)
+                {
+                    Interval = TimeSpan.FromMilliseconds(openDelayMs),
+                };
+                _open.Tick += (_, _) =>
+                {
+                    // 真离开会在 MouseLeave 里停掉这个计时器，这里不必再问 IsMouseOver
+                    // （冒烟里是合成 MouseEnter，IsMouseOver 永远是 false，问了就永远开不了）
+                    _open.Stop();
+                    Show();
+                };
+            }
+
+            anchor.MouseEnter += (_, _) =>
+            {
+                _leave.Stop();
+                if (_open == null) Show();
+                else
+                {
+                    _open.Stop();
+                    _open.Start();
+                }
+            };
+            anchor.MouseLeave += (_, _) =>
+            {
+                _open?.Stop();
+                _leave.Start();
+            };
             _card.MouseEnter += (_, _) => _leave.Stop();
             _card.MouseLeave += (_, _) => _leave.Start();
         }
 
+        public bool IsOpen => _popup.IsOpen;
+
         public void Show()
         {
             if (!_anchor.IsEnabled) return;
+            _open?.Stop();
             _refresh();
             _popup.IsOpen = true;
         }
 
         public void Hide()
         {
+            _open?.Stop();
             _leave.Stop();
             _popup.IsOpen = false;
         }

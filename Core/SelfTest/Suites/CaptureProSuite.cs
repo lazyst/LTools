@@ -133,6 +133,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "全局快捷键：动作表 / 播种 / 读写 / 摘要 / 冲突", ShortcutCases));
         cases.Add(new("capturePro", "截图输出：文件名模板 / 清洗封顶 / 设置读写 / PNG 压缩", ExportCases));
         cases.Add(new("capturePro", "剪贴板元数据：外观 / 落位 / 桌面变化 / 文件签名", ClipboardMetaCases));
+        cases.Add(new("capturePro", "渲染进度：阶段文案 / 按钮 / ffmpeg 进度解析", RecordRenderCases));
     }
 
     private static void Geometry()
@@ -2579,6 +2580,57 @@ internal static partial class CaptureProSuite
         Check.Equal(RecordOptions.MinCameraSize,
             new RecordOptions { CameraSize = 1 }.Normalized().CameraSize, "画中画边长夹到下限");
 
+        // ---- 声音增益：夹取 / 文案 / 倍数 / 峰值换算（照上游 −24…+24 dB）----
+        Check.Equal(-24, RecordGain.Clamp(-99), "增益夹到下限");
+        Check.Equal(24, RecordGain.Clamp(99), "增益夹到上限");
+        Check.Equal(0, RecordGain.Clamp(0), "0 dB 原样");
+        Check.Equal("0 dB", RecordGain.Format(0), "0 dB 文案");
+        Check.Equal("+6 dB", RecordGain.Format(6), "正增益带加号");
+        Check.Equal("-6 dB", RecordGain.Format(-6), "负增益带减号");
+        Check.Equal("+24 dB", RecordGain.Format(99), "文案也跟着夹取");
+        Check.True(Math.Abs(RecordGain.Factor(0) - 1.0) < 1e-9, "0 dB = 1 倍");
+        Check.True(Math.Abs(RecordGain.Factor(6) - 1.99526) < 0.0005, "+6 dB ≈ 2 倍");
+        Check.True(Math.Abs(RecordGain.Factor(-6) - 0.50119) < 0.0005, "-6 dB ≈ 0.5 倍");
+        Check.Equal("6dB", RecordGain.FilterValue(6), "ffmpeg volume 写法（正数不带加号）");
+        Check.Equal("-6dB", RecordGain.FilterValue(-6), "ffmpeg volume 写法（负数）");
+
+        var pcm16 = new byte[] { 0xFF, 0x7F, 0x00, 0x00, 0x00, 0xC0 };
+        Check.True(Math.Abs(RecordGain.PeakOf(pcm16, pcm16.Length, 16, false) - 1f) < 0.001f,
+            "16 位整数峰值（含负半周绝对值）");
+
+        var floats = new byte[8];
+        BitConverter.GetBytes(0.25f).CopyTo(floats, 0);
+        BitConverter.GetBytes(-0.75f).CopyTo(floats, 4);
+        Check.True(Math.Abs(RecordGain.PeakOf(floats, floats.Length, 32, true) - 0.75f) < 1e-6,
+            "32 位浮点峰值（环回常见格式）");
+
+        var pcm32 = new byte[4];
+        BitConverter.GetBytes(int.MinValue).CopyTo(pcm32, 0);
+        Check.True(Math.Abs(RecordGain.PeakOf(pcm32, pcm32.Length, 32, false) - 1f) < 1e-6,
+            "32 位整数峰值");
+
+        var gained = RecordGain.Process(0.5f, 6);
+        Check.True(Math.Abs(gained.Level - 0.99763) < 0.001 && !gained.Clipping,
+            "+6 dB 把 0.5 推到近满刻度，还没削波");
+        var loud = RecordGain.Process(0.9f, 6);
+        Check.True(loud.Clipping && loud.Level == 1.0, "过载时电平封顶 1 并标削波");
+        var silent = RecordGain.Process(0f, 12);
+        Check.Equal(0d, silent.Level, "没有声音时电平为 0");
+        Check.False(silent.Clipping, "静音不标削波");
+
+        var gainClamped = new RecordOptions
+        {
+            MicrophoneGainDb = -99,
+            SystemAudioGainDb = 99,
+        }.Normalized();
+        Check.Equal(-24, gainClamped.MicrophoneGainDb, "麦克风增益夹到下限");
+        Check.Equal(24, gainClamped.SystemAudioGainDb, "系统声音增益夹到上限");
+
+        var carried = new RecordOptions();
+        carried.CopyFrom(new RecordOptions { MicrophoneGainDb = 5, SystemAudioGainDb = -7 });
+        Check.Equal(5, carried.MicrophoneGainDb, "CopyFrom 带麦克风增益");
+        Check.Equal(-7, carried.SystemAudioGainDb, "CopyFrom 带系统声音增益");
+
         // ---- 从参数覆盖：没写 / 认不出的项跟随设置 ----
         var baseOptions = new RecordOptions
         {
@@ -2743,9 +2795,112 @@ internal static partial class CaptureProSuite
 
         Check.Equal(string.Join(" ", mute), string.Join(" ", RecordPlan.RemuxArgs("in.mp4", "out.mp4")),
             "RemuxArgs 等价于「没有音轨的收尾」");
+
+        // ---- 按轨增益（面板两个增益弹层）----
+        var singleGain = RecordPlan.FinalizeArgs("in.mp4", "out.mp4", new[] { "mic.wav" }, new[] { 6 });
+        string singleGainLine = string.Join(" ", singleGain);
+        Check.True(singleGainLine.Contains("-af volume=6dB"), "单轨用输出侧 -af 套增益");
+        Check.True(singleGainLine.Contains("-c:v copy"), "套增益不影响画面直拷");
+
+        var singleZero = RecordPlan.FinalizeArgs("in.mp4", "out.mp4", new[] { "mic.wav" }, new[] { 0 });
+        Check.False(string.Join(" ", singleZero).Contains("volume="), "0 dB 不挂滤镜");
+
+        var dualGain = RecordPlan.FinalizeArgs("in.mp4", "out.mp4",
+            new[] { "sys.wav", "mic.wav" }, new[] { -6, 6 });
+        string dualGainLine = string.Join(" ", dualGain);
+        Check.True(dualGainLine.Contains("volume=-6dB[a0]"), "第一路增益套在它自己的重采样之后");
+        Check.True(dualGainLine.Contains("volume=6dB[a1]"), "第二路增益各调各的（混音前）");
+        Check.Equal(2, dualGainLine.Split("volume=").Length - 1, "每一路各挂一次增益");
+
+        var overGain = RecordPlan.FinalizeArgs("in.mp4", "out.mp4", new[] { "a.wav" }, new[] { 99 });
+        Check.True(string.Join(" ", overGain).Contains("volume=24dB"), "增益超出范围也按 ±24 收口");
     }
 
-    // ============ 录屏：特效几何 / 画中画 ============
+    // ============ 录屏：渲染进度对话框 ============
+
+    /// <summary>
+    /// 渲染进度对话框（照上游 <c>RecordingRenderDialog</c>）：三阶段文案 / 失败与取消的文案 /
+    /// 按钮显隐 / 详情写法 / 进度只增不减 / ffmpeg <c>-progress</c> 行解析。
+    /// </summary>
+    private static void RecordRenderCases()
+    {
+        Check.Equal(500, RecordRender.ModalWidth, "对话框宽 500（上游 setPreferredWidth）");
+        Check.Equal("正在渲染录屏", RecordRender.Title, "标题");
+
+        // ---- 阶段文案 ----
+        var state = new RecordRenderState();
+        Check.Equal("正在准备导出录屏…", RecordRender.StatusText(state), "准备阶段");
+        state.Stage = RecordRenderStage.Render;
+        Check.Equal("正在渲染视频…", RecordRender.StatusText(state), "渲染阶段");
+        state.Stage = RecordRenderStage.Finalize;
+        Check.Equal("正在完成录屏…", RecordRender.StatusText(state), "收尾阶段");
+        state.CancelRequested = true;
+        Check.Equal("正在取消渲染…", RecordRender.StatusText(state), "按了取消之后");
+        state.Retained = true;
+        Check.Equal("已取消渲染", RecordRender.StatusText(state), "取消后停下来（没有错误）");
+        state.Error = "ffmpeg 炸了";
+        Check.Equal("渲染失败", RecordRender.StatusText(state), "失败后停下来");
+
+        // ---- 按钮显隐 ----
+        var running = new RecordRenderState { Stage = RecordRenderStage.Render };
+        Check.True(RecordRender.ShowCancel(running), "渲染中显示取消");
+        Check.False(RecordRender.ShowRetained(running), "渲染中不显示另外三个");
+        Check.True(RecordRender.CancelEnabled(running), "渲染中取消可点");
+        Check.False(RecordRender.ShowDetails(running), "渲染中不显示详情");
+
+        var retained = new RecordRenderState { Retained = true, Error = "炸了", Path = @"C:\tmp\rec" };
+        Check.False(RecordRender.ShowCancel(retained), "停下来之后没有取消按钮");
+        Check.True(RecordRender.ShowRetained(retained), "停下来之后显示重试 / 保留 / 丢弃");
+        Check.True(RecordRender.ShowDetails(retained), "停下来之后显示详情");
+        Check.True(RecordRender.RetainedEnabled(retained), "停下来之后按钮可点");
+        Check.False(RecordRender.RetainedEnabled(new RecordRenderState { Retained = true, Busy = true }),
+            "清理中三个按钮禁用");
+
+        var cancelPending = new RecordRenderState { CancelRequested = true };
+        Check.False(RecordRender.CancelEnabled(cancelPending), "按过取消之后按钮禁用（不重复发）");
+        Check.False(RecordRender.CancelEnabled(new RecordRenderState { TerminalSucceeded = true }),
+            "成功了就不用再取消");
+
+        // ---- 详情写法 ----
+        Check.Equal("源文件保留在：\nC:\\tmp\\rec",
+            RecordRender.DetailsText(new RecordRenderState { Retained = true, Path = "C:\\tmp\\rec" }),
+            "只有目录时就是一行目录");
+        Check.Equal("炸了\n\n源文件保留在：\nC:\\tmp\\rec",
+            RecordRender.DetailsText(new RecordRenderState { Retained = true, Error = "炸了", Path = "C:\\tmp\\rec" }),
+            "失败时先写原因再写目录");
+        Check.Equal("源文件保留在：\n", RecordRender.DetailsText(new RecordRenderState()),
+            "路径空着也不炸");
+
+        // ---- 进度只增不减 / 夹取 ----
+        Check.Equal(40d, RecordRender.Advance(40, 30), "进度不倒退");
+        Check.Equal(60d, RecordRender.Advance(40, 60), "往前就更新");
+        Check.Equal(100d, RecordRender.Advance(40, 160), "超出上限压到 100");
+        Check.Equal(0d, RecordRender.Advance(-5, -20), "负数压到 0");
+        Check.Equal(40d, RecordRender.Advance(40, double.NaN), "NaN 不动");
+
+        // ---- ffmpeg -progress 行 ----
+        Check.True(RecordRender.TryReadProgress("out_time_us=1500000", out long micros)
+            && micros == 1_500_000, "读 out_time_us");
+        Check.True(RecordRender.TryReadProgress("out_time_ms=2500000", out long ms)
+            && ms == 2_500_000, "读 out_time_ms（ffmpeg 里也是微秒）");
+        Check.True(RecordRender.TryReadProgress("out_time=00:00:02.500000", out long clock)
+            && clock == 2_500_000, "读 out_time 时钟");
+        Check.False(RecordRender.TryReadProgress("out_time=N/A", out _), "N/A 不认");
+        Check.False(RecordRender.TryReadProgress("progress=continue", out _), "progress 行不认");
+        Check.False(RecordRender.TryReadProgress("frame=42", out _), "帧行不认");
+        Check.False(RecordRender.TryReadProgress(null, out _), "空行不认");
+
+        Check.Equal(50d, RecordRender.PercentOf(500_000, 1000), "一秒的一半 = 50%");
+        Check.Equal(100d, RecordRender.PercentOf(3_000_000, 1000), "超出总时长封顶 100");
+        Check.Equal(0d, RecordRender.PercentOf(500_000, 0), "总时长未知就是 0");
+
+        // ---- 挂进度参数 ----
+        var withProgress = RecordRender.WithProgress(new[] { "-y", "-i", "in.mp4", "out.mp4" });
+        Check.Equal("-progress", withProgress[0], "progress 放最前面（全局选项）");
+        Check.Equal("pipe:1", withProgress[1], "进度从 stdout 出来");
+        Check.Equal("-nostats", withProgress[2], "顺手关掉 stderr 的统计");
+        Check.Equal("out.mp4", withProgress[^1], "原参数原样跟在后面");
+    }
 
     /// <summary>
     /// 键鼠特效的纯函数（涟漪 / 拖尾 / 按键 / 坐标映射）+ 摄像头画中画落点。

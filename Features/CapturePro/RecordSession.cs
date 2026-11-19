@@ -146,6 +146,15 @@ internal static class RecordSession
                 ToastService.Show("没有录到声音：" + audio.Warning, "录屏", 3600, ToastKind.warning);
             else if (audio.Warning != null)
                 AppLog.Warn("CapturePro.Record", "部分声音通道打不开：" + audio.Warning);
+
+            // 电平表：把这次的两条音轨交给控制条（增益弹层每 200ms 读一次原始峰值）。
+            // 控制条是 WPF 窗口，只能从 UI 线程碰。
+            if (bar != null && audio.Any)
+            {
+                var captured = audio;
+                try { app.Dispatcher.Invoke(() => bar.AttachAudio(captured)); }
+                catch (Exception ex) { AppLog.Warn("CapturePro.Record", "接上电平表失败：" + ex.Message); }
+            }
         }
 
         var engine = new RecordEngine(ffmpeg, area, plan, temp, controller, encoder, camera);
@@ -196,7 +205,29 @@ internal static class RecordSession
             throw new InvalidOperationException("录屏失败：" + (engine.Error ?? "没有录到画面"));
         }
 
-        string file = ToFaststart(ffmpeg, temp, plan.IsAnimated ? Array.Empty<string>() : audio?.Tracks);
+        // 音轨只是混音素材，成品出来就删；增益按当前设置按轨套（录制中拖动滑块对整条轨生效）
+        var trackPaths = new List<string>();
+        var trackGains = new List<int>();
+        if (!plan.IsAnimated && audio != null)
+        {
+            foreach (var track in audio.Tracks)
+            {
+                trackPaths.Add(track.Path);
+                trackGains.Add(track.Source == RecordAudioSource.Microphone
+                    ? plan.Options.MicrophoneGainDb
+                    : plan.Options.SystemAudioGainDb);
+            }
+        }
+
+        // 收尾（重封装 + 混音）走渲染进度对话框：失败 / 取消停在那儿等用户选重试 / 保留源文件 / 丢弃
+        string file = FinalizeWithProgress(ffmpeg, temp, area, engine.DurationMs, trackPaths, trackGains);
+        if (file.Length == 0)
+        {
+            DeleteAudio(audio);
+            ToastService.Show("已丢弃这次录屏", "录屏", 2000, ToastKind.info);
+            return new RecordOutcome();
+        }
+
         string extension = "mp4";
 
         if (plan.IsAnimated)
@@ -697,23 +728,50 @@ internal static class RecordSession
         Path.Combine(TempDir, "rec-" + IdFactory.ShortId() + "." + extension);
 
     /// <summary>
-    /// 把录好的分片 MP4（+ 音轨）重新封装成普通 faststart MP4。
-    /// 失败就沿用分片文件——它本身是完整的，别为了「格式更好」把已经录到的东西丢了。
+    /// 把录好的分片 MP4（+ 音轨）重新封装成普通 faststart MP4，**带渲染进度对话框**。
     /// </summary>
-    private static string ToFaststart(string ffmpeg, string temp, IReadOnlyList<string>? audio)
+    /// <remarks>
+    /// <para>
+    /// 照上游 <c>RecordingRenderJob</c>：对话框里看得见进度、能取消；失败 / 取消后停在
+    /// 「重试 / 保留源文件 / 丢弃」三选一，不再一声不吭地沿用分片文件。
+    /// </para>
+    /// <para>
+    /// 返回成品路径；返回空串 = 用户选了「丢弃」（调用方把这轮录制整体扔掉）。
+    /// 选「保留源文件」或没有界面时沿用分片 MP4——它本身是完整的，别为了「格式更好」把已经录到的东西丢了。
+    /// </para>
+    /// </remarks>
+    private static string FinalizeWithProgress(string ffmpeg, string temp, Int32Rect area, int durationMs,
+        IReadOnlyList<string> trackPaths, IReadOnlyList<int> trackGains)
     {
         string final = Path.Combine(TempDir, "rec-" + IdFactory.ShortId() + ".final.mp4");
 
-        if (!RunFfmpeg(ffmpeg, RecordPlan.FinalizeArgs(temp, final, audio), out string error)
-            || !File.Exists(final) || new FileInfo(final).Length == 0)
+        var outcome = RecordRenderRunner.Run(ffmpeg, TempDir, area, durationMs, new[]
         {
-            DeleteFile(final);
-            AppLog.Warn("CapturePro.Record", "重封装 MP4 失败（沿用分片文件）：" + error);
-            return temp;
+            new RecordRenderStep
+            {
+                Args = RecordPlan.FinalizeArgs(temp, final, trackPaths, trackGains),
+                ExpectedFile = final,
+            },
+        });
+
+        if (outcome.Ok && File.Exists(final) && new FileInfo(final).Length > 0)
+        {
+            DeleteFile(temp);
+            return final;
         }
 
-        DeleteFile(temp);
-        return final;
+        if (outcome.Discarded)
+        {
+            DeleteFile(final);
+            DeleteFile(temp);
+            return "";
+        }
+
+        // 保留源文件 / 没有界面：分片 MP4 就是这次的成品
+        DeleteFile(final);
+        AppLog.Warn("CapturePro.Record",
+            "重封装 MP4 没有完成（沿用分片文件）：" + (outcome.Error.Length > 0 ? outcome.Error : "用户取消"));
+        return temp;
     }
 
     /// <summary>删掉这次录制的音轨（它们是混音素材，不是成品）。</summary>
@@ -721,7 +779,7 @@ internal static class RecordSession
     {
         if (audio == null) return;
 
-        foreach (string track in audio.Tracks) DeleteFile(track);
+        foreach (var track in audio.Tracks) DeleteFile(track.Path);
     }
 
     /// <summary>清掉上一次没删干净的临时文件（进程被杀 / 断电）。</summary>
