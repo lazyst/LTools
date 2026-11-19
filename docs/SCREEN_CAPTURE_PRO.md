@@ -1709,6 +1709,7 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
 | **P4-e** ✅ | ④ | 文档识别与导出（照 `documentRequested` / `screenshotdocumentexport` / `screenshotrecognitionfileexport` 的 Document 一族）：结果窗「文档」页签（同一份版面块渲染、可划选）+ 五种导出 `docx`（六 part WordprocessingML + 三级标题 + numbering + 表格）/ `pdf`（系统 Edge·Chrome headless `--print-to-pdf`，无引擎明确报错）/ `md` / `html`（独立页）/ `tex`（`ctex` + `booktabs`）+「打开文档」= 写临时 docx 交默认程序 + 复制富文本（`text/html` + 纯文本，选了复制选中段） |
 | **P4-f** ✅ | ④ | 在线翻译（照 `textTranslationRequested` / `translationservice` / `translationjob` 的 `beginTextTranslation` + overlay translation）：按行翻译、**行数必须对得上**，译文摆回原行框且只读；`TranslationClient`（端点校验 / `ChatUrl` / 请求体 / `ExtractContent` 含分段 content / 围栏 / JSON 数组 → 按行切 → 单行整段 / 状态码人话 / linked 超时与取消）、`TranslationLanguages`（9 门语言 + 按字符族判源语言）、`TranslationStore`（`settings.json` 的 `Translation` 段）、`TranslationSettingsWindow`（端点 / 模型 / 密钥 / 超时 / 源与目标语言 / 真发一条测试连接）+ 结果窗翻译条（目标语言 / 翻译·取消·原文 / ⚙，只在文字页）+ 「复制译文」；上游多家服务与私有云换成**一个 OpenAI 兼容端点**（§5） |
 | **P4-g** ✅ | ④ | 文字排版与标点（照 `screenshotocrtexttransform.cpp` / `screenshotocrtexteditingsession.cpp`）：`OcrTextTransform`（`none/keep/remove/smart` + `none/half/full`、32 字符半↔全角表、**基线式变换**（首次非「无」记基线 → 每次从基线重算 → 都回「无」恢复基线）、智能排版按版面接段落、合并后行框并集）+ `TextRecognitionStore`（`settings.json` 的 `TextRecognition` 段）+ 结果窗文字页第二行的两个下拉与「重置」+ `OcrTextEditModel.ReplaceAll`（保留撤销栈）；手动编辑作废变换、译文态禁用、「重置」= 回到最初 OCR 文本（§10.8） |
+| **P7** ✅ | ①⑦ | 采集入口与设置：延时秒数 / 八个快捷入口 / 鼠标释放动作 + 指针动作 / 「截图 Pro」全局快捷键组 / 「截图输出」页（格式 · 质量 · 文件名模板 · 六个自动保存场景）/ 剪贴板外观与落位 / 采集历史页 / 相机快门音（两个默认值一开一关，见 §18.x） |
 
 ## 16. 验收
 
@@ -1861,6 +1862,11 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   「全选本页」把整页勾上且按钮自己置灰；「贴到屏幕（2 张）」真的贴出两张、位置按原选区；
   点卡片右侧预览开大图，滚轮放大后「100%」回到 1:1、← → 能翻到相邻那张；双击截图卡片开图片编辑窗、
   双击录屏卡片直接播放；删选中 / 清空先弹确认框，确认后 `captures/` 里的图一起消失。
+- 真机（P7-g，相机快门音）：默认打开「截图时响一声」后，用「截取当前显示器」/「截取前台窗口」各截一次都听得到
+  那一下快门声；在设置里关掉后同样两次都不响。「框选开始时也响一声」也勾上时，点普通「截图」进入框选那一刻响、
+  取消框选后不再响；只勾这一项（关掉直接截图那项）时，直接截图不响、框选响。删掉
+  `Assets\Audio\camera_shutter.mp3` 再截图仍然正常出图，只在日志里留一条警告；连按两次截图，两声都完整响
+  （不会被前一声吞掉）。连点几下设置页的两个勾选框，不会卡鼠标、`settings.json` 里的值与界面一致。
 - 真机（P3-1，多屏才有意义）：框选能跨过屏幕交界，跨屏那一块内容不错位、不缩放；
   两块屏缩放比不同时，冻结画面与被截的桌面 1:1 对齐；贴图贴到副屏那块区域时位置正确；
   单屏机器上行为与之前完全一致（覆盖层只盖那一块屏）。
@@ -3377,3 +3383,25 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
 - 冒烟 `HistoryPageSection` 段首把真实 `captures/` 改名让开、段尾搬回；`ConfigStore.ConfigPath` 指向
   冒烟自己的临时目录，每页条数写的是那份 `ui.json`，**不碰仓库里的真实数据**。
 - 回归：`--selftest` **277 用例 15831 断言**；`capture-overlay-smoke` **1948 条全绿**。
+
+### 18.y 相机快门音（P7-g，2026-11-19）
+
+- 上游对照：`presentation/capture/camerashuttersound.cpp`（Windows 走 `mciSendStringW`：`open "…" type mpegvideo
+  alias …` → `play … from 0` → `QTimer::singleShot(5000)` 后 `close`），两个默认值在
+  `storage/configurationschema.cpp`：`screenshot/shutter_sound_notification = true`（直接截前台窗口 / 当前显示器）、
+  `screenshot/screenshot_sound_notification = false`（覆盖层开始截图）。
+- 播放收在一个文件 `Features/CapturePro/ShutterSound.cs`：`FilePath` / `Available` / `Describe` 给设置页与自检，
+  `AliasOf` / `OpenCommand` / `PlayCommand` / `CloseCommand` 是纯函数（自检直接断言），`Play` / `PlayFile` 真正发命令。
+  每次播放一个独立别名（`ltools_camera_shutter_<n>`），5 秒后各自 `close`——连按几下就有几下声音，不会互相吞。
+- **P/Invoke 必须写 `EntryPoint = "mciSendStringW"`**：`CharSet.Unicode` 不会替你补那个 W，漏了就是
+  `EntryPointNotFoundException`（冒烟先红了一次）。自检里用 `close` 一个不存在的别名探入口点（不发声）。
+- 失败语义照「不能挡截图」：文件不在 / MCI 打不开 / 播不出都只 `AppLog.Warn` **一次**（`WarnOnce`）并返回 `false`，
+  调用方不看返回值。
+- 接线只有两处，与上游两个开关一一对应：`CaptureSession.TryCapture` 抓帧前（`CaptureSoundSettings.Screenshot`）、
+  `CaptureSession.CaptureDirect` 抓图前（`CaptureSoundSettings.Shutter`）。`TryEdit`（贴图内标注）、长截图、录屏都**不响**。
+- 开关读写 `CaptureSoundSettings`（进程内缓存 + 只写 `settings.json`），设置页两个勾选框在「通用 → 截图 Pro」的延时块
+  下面（`Views/ConfigHelper.CaptureSound.cs`），改完立刻生效（下一次截图就是新值）。
+- 随包音频 `Assets/Audio/camera_shutter.mp3` 由 csproj 的 `Assets\Audio\**\*` Content 复制到输出目录；
+  出处与许可证见 `licenses/CameraShutterSound-NOTICE.txt`。
+- 冒烟 `SoundSection`：真窗口里勾两个框 → 读 `settings.json` → 丢缓存重新读盘，不碰仓库真实配置。
+- 回归：`--selftest` **278 用例 15848 断言**；`capture-overlay-smoke` **1961 条**（新增 `sound` 段 13 条）。

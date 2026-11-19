@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace LTools.Native;
 
@@ -576,4 +577,10 @@ internal static class Win32
 
     [DllImport("user32.dll")]
     public static extern void PostQuitMessage(int nExitCode);
+
+    // —— MCI（相机快门音，P7-g）——
+    // 照上游 camerashuttersound.cpp：用 MCI 播随包 mp3，open 一个别名 → play → 几秒后 close。
+    // 导出名是 mciSendStringW（上游也是直接调这个），必须写 EntryPoint：.NET 不会替它补 W。
+    [DllImport("winmm.dll", EntryPoint = "mciSendStringW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    public static extern int MciSendString(string command, StringBuilder? buffer, int bufferSize, IntPtr hwnd);
 }

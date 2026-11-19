@@ -295,6 +295,16 @@
                                            TextWrapping="Wrap"
                                            Text="「延时截图」入口（面板 / 快捷键 / 悬浮）点下后先等这笔秒数再弹框选，方便先把菜单、悬停提示摆好。1–10 秒，默认 3 秒。"/>
 
+                                <CheckBox x:Name="CaptureShutterSoundBox" Margin="0,12,0,0"
+                                          Content="截图时响一声快门音（直接截当前显示器 / 前台窗口）"
+                                          Checked="CaptureSound_Changed" Unchecked="CaptureSound_Changed"/>
+                                <CheckBox x:Name="CaptureScreenshotSoundBox" Margin="22,8,0,0"
+                                          Content="框选开始时也响一声（截图后进入框选那一刻）"
+                                          Checked="CaptureSound_Changed" Unchecked="CaptureSound_Changed"/>
+                                <TextBlock x:Name="CaptureSoundHint" Style="{StaticResource HintLabel}"
+                                           Margin="22,6,0,0" TextWrapping="Wrap"
+                                           Text="随包快门音在 Assets\Audio\camera_shutter.mp3。播放失败只记一条日志，不挡截图。"/>
+
                                 <Grid Margin="0,12,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="120"/>

@@ -786,6 +786,7 @@ public partial class ConfigHelperWindow : Window
         ApplyEdgeWheelVisibility();
         PopulateScreenshotDelay();
         PopulatePointerActions();
+        PopulateCaptureSound();
         PopulateCaptureShortcuts();
     }
 

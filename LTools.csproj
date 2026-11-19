@@ -50,6 +50,11 @@
     <Content Include="Assets\Ocr\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- 相机快门音（P7-g）：截图时响的那一下，照 Snow Shot 的 audios/camera_shutter.mp3。
+         出处与许可证见 licenses\CameraShutterSound-NOTICE.txt。 -->
+    <Content Include="Assets\Audio\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- 随包 AutoHotkey v2：脚本单元直接用，不依赖用户机器上装没装 AHK。
          只放 64 位主程序（1.2 MB）；许可证与源码出处在 licenses\ 里（GPL-2.0 要求）。
          更新用 tools\fetch-autohotkey.ps1。 -->

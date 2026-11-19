@@ -1,0 +1,23 @@
+Camera shutter sound — third-party notice
+=========================================
+
+File: Assets/Audio/camera_shutter.mp3
+
+Source
+------
+Snow Shot (https://github.com/mg-chao/snow-shot)
+Path in the source tree: snow_shot/resources/audios/camera_shutter.mp3
+Reference commit: 637f8ca
+
+License
+-------
+The snow_shot/ component of Snow Apps is licensed under
+GPL-3.0-or-later (see the upstream LICENSE.md). This audio file is
+redistributed unchanged alongside LTools, which also ships under
+GPL-compatible terms for this asset.
+
+Usage
+-----
+LTools plays this file as the "camera shutter" notification for
+screenshots (see Features/CapturePro/ShutterSound.cs), mirroring the
+upstream behaviour on Windows (MCI playback).

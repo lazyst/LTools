@@ -79,6 +79,10 @@ internal static class CaptureSession
         {
             System.Threading.Thread.Sleep(TransientMinimize.SettleMs);   // 等最小化动画结束、桌面重绘完
 
+            // 快门音（照上游 screenshot/screenshot_sound_notification，默认关）：
+            // 在上游是 beginCapture 里、冻结画面之前响，这里放在抓帧之前同一个时机。
+            if (CaptureSoundSettings.Screenshot) ShutterSound.Play();
+
             // 覆盖层盖住**所有显示器**（跨屏选区）：冻结画面逐块抓再拼，坐标仍是物理像素
             var area = ScreenShot.Bounds();
             var shot = ScreenShot.Capture(area);
@@ -282,6 +286,10 @@ internal static class CaptureSession
     public static BitmapSource? CaptureDirect(System.Drawing.Rectangle area, string source, string scenario)
     {
         if (area.Width < 1 || area.Height < 1) return null;
+
+        // 快门音（照上游 screenshot/shutter_sound_notification，默认开）：
+        // 上游在 DirectCaptureWorkflow.enqueue 里就响，也就是抓图之前。
+        if (CaptureSoundSettings.Shutter) ShutterSound.Play();
 
         // 文件名模板的 {AN} / {WN}：直接截图时前台就是目标窗口
         var names = ExportNameContext.Of(ForegroundAppCache.Current?.ExeName,

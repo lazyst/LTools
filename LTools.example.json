@@ -213,7 +213,9 @@
   "Screenshot": {
     "DelaySeconds": 3,
     "DoubleClickAction": "copy",
-    "MiddleButtonAction": "pin"
+    "MiddleButtonAction": "pin",
+    "ShutterSound": true,
+    "ScreenshotSound": false
   },
   "Triggers": {
     "Enabled": false,

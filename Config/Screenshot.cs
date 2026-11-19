@@ -21,4 +21,16 @@ public sealed class ScreenshotFile
 
     /// <summary>覆盖层里中键做什么：同 <see cref="DoubleClickAction"/> 的取值。</summary>
     public string? MiddleButtonAction { get; set; } = "pin";
+
+    /// <summary>
+    /// 直接截前台窗口 / 当前显示器时响一声快门音（照上游
+    /// <c>screenshot/shutter_sound_notification</c>，默认开）。
+    /// </summary>
+    public bool? ShutterSound { get; set; } = true;
+
+    /// <summary>
+    /// 覆盖层开始截图时响一声快门音（照上游
+    /// <c>screenshot/screenshot_sound_notification</c>，默认关）。
+    /// </summary>
+    public bool? ScreenshotSound { get; set; } = false;
 }
