@@ -203,15 +203,24 @@ internal static partial class Program
 
             var toolbar = Field(window, "Toolbar")!;
             var cells = (IList)Field(toolbar, "_cells")!;
+            object? HighlightCell = null;
             object? ArrowCell = null;
+            object? LineCell = null;
             foreach (var cell in cells)
             {
                 var tools = (IList)cell.GetType().GetProperty("Tools")!.GetValue(cell)!;
-                if (tools.Cast<object>().Any(t => t.ToString() == "Arrow")) ArrowCell = cell;
+                var names = tools.Cast<object>().Select(t => t.ToString()).ToList();
+                if (names.Contains("Highlighter")) HighlightCell = cell;
+                if (names.Contains("Arrow")) ArrowCell = cell;
+                if (names.Contains("Line")) LineCell = cell;
             }
 
-            Check(cells.Count == 13, $"全新配置（没有 ui.json）工具栏按目录默认分 13 格，实际 {cells.Count}");
-            Check(ArrowCell != null, "工具栏里有「箭头 / 直线」那一格（默认布局把两个合成一格）");
+            // 上游 toolbar_layout::defaultOrder()：17 个按钮（选择 + 16 个工具），一格一个
+            Check(cells.Count == 17, $"全新配置（没有 ui.json）工具栏按上游默认排 17 格，实际 {cells.Count}");
+            Check(ArrowCell != null && LineCell != null && !ReferenceEquals(ArrowCell, LineCell),
+                "箭头和直线各自一格（上游是两个按钮，不是一格循环）");
+            Check(HighlightCell != null, "工具栏里有「荧光」那一格（矩形 / 画笔两种变体收在一格）");
+
             var catalogType = asm.GetType("LTools.Features.CapturePro.ToolCatalog")!;
             string NameOfTool(object tool)
             {
@@ -219,23 +228,23 @@ internal static partial class Program
                 return (string)info.GetType().GetProperty("Name")!.GetValue(info)!;
             }
 
-            var cellTools = (IList)ArrowCell!.GetType().GetProperty("Tools")!.GetValue(ArrowCell)!;
+            var cellTools = (IList)HighlightCell!.GetType().GetProperty("Tools")!.GetValue(HighlightCell)!;
             string firstToolName = NameOfTool(cellTools[0]!);
             var showIcon = toolbar.GetType().GetMethod("ShowCellIcon", Inst)!;
             string TipOf(object cell) =>
                 ((RadioButton)cell.GetType().GetProperty("Button")!.GetValue(cell)!).ToolTip?.ToString() ?? "";
 
-            // 模拟「这一格上次点过直线」
-            ArrowCell!.GetType().GetProperty("Current")!.SetValue(ArrowCell, Tool("Line"));
-            showIcon.Invoke(toolbar, new[] { ArrowCell });
-            Check(TipOf(ArrowCell).StartsWith("直线", StringComparison.Ordinal),
-                "组首常显关着：这一格显示上次点过的「直线」：" + TipOf(ArrowCell).Split('\n')[0]);
+            // 模拟「这一格上次点过矩形荧光」
+            HighlightCell!.GetType().GetProperty("Current")!.SetValue(HighlightCell, Tool("HighlightRect"));
+            showIcon.Invoke(toolbar, new[] { HighlightCell });
+            Check(TipOf(HighlightCell).StartsWith("矩形荧光", StringComparison.Ordinal),
+                "组首常显关着：这一格显示上次点过的「矩形荧光」：" + TipOf(HighlightCell).Split('\n')[0]);
 
             SetFlag("SetAlwaysShowFirstGroup", true);
             Check(Flag("AlwaysShowFirstGroup"), "组首常显的开关真的变成开（读回设置）");
-            showIcon.Invoke(toolbar, new[] { ArrowCell });
-            Check(TipOf(ArrowCell).StartsWith(firstToolName, StringComparison.Ordinal),
-                $"组首常显打开：固定显示组里第一个「{firstToolName}」：" + TipOf(ArrowCell).Split('\n')[0]);
+            showIcon.Invoke(toolbar, new[] { HighlightCell });
+            Check(TipOf(HighlightCell).StartsWith(firstToolName, StringComparison.Ordinal),
+                $"组首常显打开：固定显示组里第一个「{firstToolName}」：" + TipOf(HighlightCell).Split('\n')[0]);
             SetFlag("SetAlwaysShowFirstGroup", false);
 
             // ============ ⑥ 自动选中：真鼠标画一条 → 选中它、工具不变 ============

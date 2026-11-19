@@ -279,6 +279,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "tools")
+        {
+            ToolSweepSection();
+            Console.WriteLine(_failed == 0 ? "tools-only：通过" : $"tools-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         if (_only == "behavior")
         {
             BehaviorSection();
@@ -605,6 +612,9 @@ internal static partial class Program
 
         // ============ 绘制行为（P9-b）：设置页 / 清单窗口 / 组首按钮 / 自动选中 / 快速选择 ============
         DrawingSection();
+
+        // ============ 工具逐个点名：每个工具真鼠标画一笔，断言落下来的标注类型 ============
+        ToolSweepSection();
 
         Console.WriteLine(_failed == 0 ? "capture-overlay-smoke：全部通过" : $"capture-overlay-smoke：{_failed} 条失败");
         return _failed == 0 ? 0 : 1;
@@ -1158,10 +1168,10 @@ internal static partial class Program
             grid.Children[grid.Children.Count - 1] is System.Windows.Shapes.Ellipse { Visibility: Visibility.Visible };
 
         int all = Cells();
-        Check(all == 13, $"默认布局按 Snow Shot 分成 13 格（实际 {all}）");
+        Check(all == 17, $"默认布局按上游排 17 格（实际 {all}）");
         Check(!BadgeShown(CellList()[0]), "单工具格子（选择）不显示「这里还有别的工具」的角标");
-        Check(!BadgeShown(CellList()[1]), "「形状」合并后单独一格（矩形 / 椭圆 / 菱形在参数行里选），没有角标");
-        Check(BadgeShown(CellList()[2]), "「箭头 / 直线」格有角标（一格不止一个工具）");
+        Check(!BadgeShown(CellList()[1]), "「形状」单独一格（矩形 / 椭圆 / 菱形在参数行里选），没有角标");
+        Check(!BadgeShown(CellList()[2]), "「气泡」单独一格（上游就是独立按钮），没有角标");
 
         // 按名字找格子（布局一改，下标就变，断言不该跟着改）
         RadioButton CellWith(string name) => CellList().First(c =>
@@ -1221,12 +1231,12 @@ internal static partial class Program
         Pump(window);
         Save(CropElement(window, (FrameworkElement)toolbar), Path.Combine(_outDir, "toolbar-stacked.png"));
 
-        // 恢复默认：回到 13 格（选择 / 形状是单格，箭头与荧光等仍是多工具格）
+        // 恢复默认：回到 17 格（选择 / 形状 / 气泡是单格，荧光与滤镜仍是多工具格）
         Apply(Default());
         Pump(window);
         Check(Cells() == all, $"恢复默认后回到 {all} 格（{Cells()}）");
-        Check(!BadgeShown(CellList()[0]) && !BadgeShown(CellList()[1]) && BadgeShown(CellList()[2]),
-            "恢复默认后仍是「选择 / 形状单格 + 箭头多工具格」");
+        Check(!BadgeShown(CellList()[0]) && !BadgeShown(CellList()[1]) && BadgeShown(CellWith("Highlighter")),
+            "恢复默认后仍是「选择 / 形状单格 + 荧光多工具格」");
     }
 
     /// <summary>
@@ -1289,8 +1299,8 @@ internal static partial class Program
                     if (cell.Tag?.GetType().GetProperty("Tools")?.GetValue(cell.Tag) is System.Collections.IEnumerable tools)
                         foreach (var tool in tools) covered.Add(tool!.ToString()!);
                 }
-        Check(cells == 13 && covered.Count == 25,
-            $"工具栏按目录分成 13 格、覆盖全部 25 个工具（{cells} 格 / {covered.Count} 个工具）");
+        Check(cells == 17 && covered.Count == 23,
+            $"工具栏按上游排 17 格、覆盖 23 个工具（折线 / 取色默认隐藏）（{cells} 格 / {covered.Count} 个工具）");
 
         var toolType = typeof(CaptureOverlayWindow).Assembly.GetType("LTools.Features.CapturePro.CaptureTool")!;
         ParamRow(window, toolbar);

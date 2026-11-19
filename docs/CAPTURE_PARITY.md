@@ -303,6 +303,27 @@
 | `cloud_upload/configuration` | 云上传服务配置 | 云上传不复刻（见上「云上传 / AirDrop」），配置项自然也不存在 |
 | `mcp/enabled` | 上游自带 MCP 服务开关 | **已有等价实现**：LTools 自己的 MCP（设置 → AI 接入：HTTP / stdio + 令牌 + 审批），截图 Pro 不另开一套 |
 
+## 5.2 截图工具条逐项对照（2026-11-20）
+
+上游把绘制工具排成**一格一个按钮**（`toolbar_layout::defaultOrder()`），只有「同族变体」收在一个按钮里
+（`highlighter` = 矩形 / 画笔荧光、`filter` = 矩形 / 画笔 / 自动滤镜、`eraser` = 点选 / 矩形 / 画笔橡皮，
+`drawingToolItemId()` 把这几个 `SnowCanvasTool` 都映射到同一个 item id）。LTools 早先把
+「箭头 / 直线」「聚光 / 放大镜」「气泡 / 文字」「测距 / 测角 / 括号」「折线 / 画笔」也合成了循环格，
+看起来「点一下换了别的工具」，与上游不一致。
+
+| 项 | 上游 | LTools（改后） |
+| --- | --- | --- |
+| 默认格数 | 17（选择 + 16 个工具） | 17 格，顺序逐一对应：选择 ｜ 形状、气泡、箭头、测距、测角、括号、直线、画笔、荧光、聚光、放大镜、文字、序号、滤镜、橡皮、水印 |
+| 变体收在一格 | `highlighter` / `filter` / `eraser` | 同（`Highlighter+HighlightRect`、`Mosaic+Filter+BrushFilter+AutoFilter`、`Eraser+RectEraser+BrushEraser`），再点一次循环 |
+| 其余工具 | 各自独立按钮 | 同（箭头与直线、聚光与放大镜、气泡与文字、测距 / 测角 / 括号都已拆开） |
+| 选择后的分隔线 / 撤销重做 | `select-separator` + 末尾 `separator, undo, redo` | 同 |
+| 上游没有的工具 | — | 折线（`Polyline`）、取色（`Picker`）默认**收起**，仍可在「工具条」设置里加回来 |
+
+逐个工具的真鼠标点名（`capture-overlay-smoke` 的 `tools` 段，44 条）：形状 / 气泡 / 箭头 / 直线 / 测距 /
+括号 / 画笔 / 荧光 / 矩形荧光 / 聚光 / 放大镜 / 马赛克 / 滤镜 / 画笔滤镜 / 折线（连点 + 双击结束）/
+测角（两次拖臂）/ 序号 / 水印 / 取色（写剪贴板不落标注）/ 三把橡皮（矩形与画笔落「恢复原图」块、
+点选橡皮按对象删除）——每个工具都断言「真鼠标操作一次 → 落下的标注类型」。
+
 ## 6. 变更记录
 
 
@@ -820,3 +841,5 @@
   - `ShowRegion()` 建完空闲区域框就调 `ShowAnnotations()`；`OnRegionChanged` / `ApplyArea` / `VisitArea` 在区域变化后走 `ScheduleAnnotations()`（150ms 防抖，拖动区域框时别每次鼠标移动都截一张全屏）。
   - `ShowAnnotations()` 以 `RecordAnnotationWindow.Area` 判定：同一块区域直接 no-op（标注保留），区域不同则 `CloseAnnotation()` 后重建（旧标注不跨区域，上游 `setRecordingRegion` 的 `clearDocument`）。
   - 回归：`record` 段新增 11 条——空闲期就有标注层且正好盖住录制区（DIP × 缩放）/ 没工具时穿透 / 选画笔后收鼠标 + **真鼠标在录制区画出一笔** / 换区域重建且旧标注清空 / 换回又是一层新的 / 同区域重复通知不重建且标注还在。全量 **3000 条 0 失败**；`--selftest` 维持全绿。
+
+- 2026-11-20（工具条对齐上游）：默认工具条从「13 个循环格」改成**上游的 17 格**（一格一个按钮，只有 `highlighter` / `filter` / `eraser` 三族按上游的变体模型收在一格循环）；折线、取色这两个上游没有的扩展工具默认收起。顺带补上「每个工具真鼠标点名」的端到端测试（`tools` 段 44 条），逐个断言「操作一次 → 落下的标注类型」。`--selftest` 全绿、`capture-overlay-smoke` 全量 **3044 条 0 失败**。

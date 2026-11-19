@@ -1350,56 +1350,57 @@ internal static partial class CaptureProSuite
         int all = ToolCatalog.All.Length;
 
         var def = ToolLayout.Default();
-        Check.Equal(13, def.Groups.Count,
-            "默认布局：照 Snow Shot 分成 13 格（选择 / 形状 / 箭直 / 自由笔 / 尺寸 / 气泡文字 / 荧光 / 镜头 / 序号 / 打码 / 水印 / 橡皮 / 取色）");
-        Check.Equal(all, def.Groups.SelectMany(g => g).Distinct().Count(), "每个工具都在某一格里（格数少但一个都不少）");
-        Check.Equal(0, def.HiddenTools.Count, "默认布局没有收起来的工具");
+        Check.Equal(17, def.Groups.Count,
+            "默认布局：照上游 toolbar_layout::defaultOrder() 排 17 格（选择 / 形状 / 气泡 / 箭头 / 测距 / 测角 / 括号 / 直线 / 画笔 / 荧光 / 聚光 / 放大镜 / 文字 / 序号 / 滤镜 / 橡皮 / 水印）");
+        Check.Equal(all - 2, def.Groups.SelectMany(g => g).Distinct().Count(),
+            "23 个工具各占一格（折线 / 取色默认收起）");
+        Check.Equal(2, def.HiddenTools.Count, "默认收起的只有上游没有的扩展工具（折线 / 取色）");
         Check.Equal("Select", def.ToLines()[0], "第一格是「选择」");
         Check.Equal("Shape", def.ToLines()[1], "第二格是形状（矩形 / 椭圆 / 菱形共用一个工具）");
-        Check.Equal("Arrow,Line", def.ToLines()[2], "第三格是箭头与直线");
-        Check.Equal("Polyline,Pen", def.ToLines()[3], "第四格是自由笔（折线 / 画笔）");
-        Check.Equal("Distance,Angle,Bracket", def.ToLines()[4], "第五格是标注尺寸（测距 / 测角 / 括号）");
-        Check.Equal("SpeechBubble,Text", def.ToLines()[5], "第六格是气泡与文字");
-        Check.Equal("Highlighter,HighlightRect", def.ToLines()[6], "第七格是两种荧光");
-        Check.Equal("Spotlight,Magnifier", def.ToLines()[7], "第八格是聚光与放大镜");
-        Check.Equal("Mosaic,AutoFilter,Filter,BrushFilter", def.ToLines()[9], "打码与滤镜同格（马赛克 / 自动打码 / 矩形 / 画笔）");
-        Check.Equal("Watermark", def.ToLines()[10], "水印单独一格");
-        Check.Equal("Eraser,RectEraser,BrushEraser", def.ToLines()[11], "三把橡皮同格");
-        Check.Equal("Picker", def.ToLines()[12], "最后一格是取色");
+        Check.Equal("SpeechBubble", def.ToLines()[2], "第三格是气泡（上游独立按钮）");
+        Check.Equal("Arrow", def.ToLines()[3], "第四格是箭头");
+        Check.Equal("Line", def.ToLines()[7], "第八格是直线（与箭头分开，上游就是两个按钮）");
+        Check.Equal("Highlighter,HighlightRect", def.ToLines()[9], "荧光一格（矩形 / 画笔两种变体，照上游 highlighter）");
+        Check.Equal("Spotlight", def.ToLines()[10], "聚光单独一格");
+        Check.Equal("Magnifier", def.ToLines()[11], "放大镜单独一格");
+        Check.Equal("Mosaic,Filter,BrushFilter,AutoFilter", def.ToLines()[14],
+            "滤镜一格（马赛克 / 矩形 / 画笔 / 自动，照上游 filter）");
+        Check.Equal("Eraser,RectEraser,BrushEraser", def.ToLines()[15], "三把橡皮同格（照上游 eraser）");
+        Check.Equal("Watermark", def.ToLines()[16], "水印单独一格（最后一格）");
 
         // 并到左边一格：格内顺序保持原样，第一格不再动
-        var merge = def.MergeLeft(CaptureTool.Pen);          // 「折线 / 画笔」那一格并进「箭头 / 直线」
-        Check.Equal(12, merge.Groups.Count, "并到左边一格：少一格");
+        var merge = def.MergeLeft(CaptureTool.Pen);          // 「画笔」并进「直线」
+        Check.Equal(16, merge.Groups.Count, "并到左边一格：少一格");
         Check.Equal(CaptureTool.Select, merge.Groups[0][0], "第一格还是「选择」");
-        Check.True(merge.Groups[2].SequenceEqual(new[]
-            { CaptureTool.Arrow, CaptureTool.Line, CaptureTool.Polyline, CaptureTool.Pen }),
+        Check.True(merge.Groups[7].SequenceEqual(new[] { CaptureTool.Line, CaptureTool.Pen }),
             "整格并进左边那格（顺序不变）");
         Check.True(merge.MergeLeft(CaptureTool.Select).SameAs(merge), "第一格左边没东西：并过去什么都不变");
 
         // 拆出来：回到默认的格数与位置
         var split = merge.Split(CaptureTool.Pen);
-        Check.Equal(13, split.Groups.Count, "拆成单独一格：格子数回到默认");
-        Check.Equal(1, split.Groups[3].Count, "拆出来的格子里只有它自己");
-        Check.Equal(CaptureTool.Pen, split.Groups[3][0], "拆出来的格子落在原位置");
+        Check.Equal(17, split.Groups.Count, "拆成单独一格：格子数回到默认");
+        Check.Equal(1, split.Groups[8].Count, "拆出来的格子里只有它自己");
+        Check.Equal(CaptureTool.Pen, split.Groups[8][0], "拆出来的格子落在原位置");
 
-        // 收起 / 放回（拿单独一格的「取色」试：整格消失）
-        var hidden = def.Hide(CaptureTool.Picker);
-        Check.True(hidden.IsHidden(CaptureTool.Picker), "收起「取色」");
-        Check.Equal(-1, hidden.CellOf(CaptureTool.Picker), "收起后它不在任何格子里");
-        Check.Equal(12, hidden.Groups.Count, "收起一个单格工具就少一格");
-        Check.Equal("Picker", hidden.ToHidden()[0], "落盘写的是工具键");
+        // 收起 / 放回（拿单独一格的「聚光」试：整格消失）
+        var hidden = def.Hide(CaptureTool.Spotlight);
+        Check.True(hidden.IsHidden(CaptureTool.Spotlight), "收起「聚光」");
+        Check.Equal(-1, hidden.CellOf(CaptureTool.Spotlight), "收起后它不在任何格子里");
+        Check.Equal(16, hidden.Groups.Count, "收起一个单格工具就少一格");
+        Check.True(hidden.ToHidden().Contains("Spotlight"), "落盘写的是工具键");
 
-        var back = hidden.Insert(CaptureTool.Picker);
-        Check.False(back.IsHidden(CaptureTool.Picker), "放回去就不再是收起的");
-        Check.Equal(13, back.Groups.Count, "放回去还是单独一格");
-        Check.Equal(1, back.Groups[back.CellOf(CaptureTool.Picker)].Count, "放回去单独占一格");
-        Check.True(back.CellOf(CaptureTool.Picker) < back.CellOf(CaptureTool.Spotlight),
-            "放回去落在目录顺序里它该在的位置（聚光前面）");
+        var back = hidden.Insert(CaptureTool.Spotlight);
+        Check.False(back.IsHidden(CaptureTool.Spotlight), "放回去就不再是收起的");
+        Check.Equal(17, back.Groups.Count, "放回去还是单独一格");
+        Check.Equal(1, back.Groups[back.CellOf(CaptureTool.Spotlight)].Count, "放回去单独占一格");
+        Check.True(back.CellOf(CaptureTool.Spotlight) > back.CellOf(CaptureTool.Pen)
+                   && back.CellOf(CaptureTool.Spotlight) < back.CellOf(CaptureTool.Highlighter),
+            "放回去按目录顺序插回（画笔之后、荧光之前）");
 
         // 多工具格里收起一个：格子还在，只是少一个
         var trimmed = def.Hide(CaptureTool.Eraser);
-        Check.Equal(13, trimmed.Groups.Count, "多工具格收起一个：格子保留");
-        Check.Equal(2, trimmed.Groups[11].Count, "那一格剩两把橡皮");
+        Check.Equal(17, trimmed.Groups.Count, "多工具格收起一个：格子保留");
+        Check.Equal(2, trimmed.Groups[15].Count, "那一格剩两把橡皮");
 
         // 落盘往返：写出去再读回来必须是同一份
         Check.True(ToolLayout.Parse(merge.ToLines(), merge.ToHidden()).SameAs(merge),

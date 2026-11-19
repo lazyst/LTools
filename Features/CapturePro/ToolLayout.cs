@@ -34,17 +34,15 @@ internal sealed class ToolLayout
     public IReadOnlyList<IReadOnlyList<CaptureTool>> Groups => _groups;
 
     /// <summary>
-    /// 默认布局（照 Snow Shot 的分组与顺序）：
-    /// 选择 │ 形状（矩形 / 椭圆 / 菱形，气泡工具里还有思考气泡）│ 箭头与直线 │ 自由笔（折线 / 画笔）│
-    /// 标注尺寸（测距 / 测角 / 括号）│ 气泡与文字 │ 荧光（画笔 / 矩形）│
-    /// 镜头与聚光（聚光 / 放大镜）│ 序号 │ 打码与滤镜（马赛克 / 自动打码 / 矩形 / 画笔）│ 水印 │
-    /// 橡皮（点选 / 矩形 / 画笔）│ 取色。
+    /// 默认布局（照 Snow Shot 的 <c>toolbar_layout::defaultOrder()</c>，一格一个按钮）：
+    /// 选择 ｜ 形状、气泡、箭头、测距、测角、括号、直线、画笔、荧光（矩形 / 画笔）、聚光、放大镜、
+    /// 文字、序号、滤镜（矩形 / 画笔 / 自动 / 马赛克）、橡皮（点选 / 矩形 / 画笔）、水印 ｜ 撤销、重做。
     /// </summary>
     /// <remarks>
-    /// 同格的工具**再点一次循环切换**（右下角一个小点表示这里不止一个），
-    /// 与 Snow Shot 把「矩形 / 折线」「箭头 / 距离」收进一格的思路一致。
-    /// 目录里后来新增、这张表没提到的工具自动补在末尾单独一格——新工具不会因为
-    /// 忘了改这张表而看不见。
+    /// 上游把「同族变体」收在一个按钮里（<c>highlighter</c> = 矩形 / 画笔荧光、<c>filter</c> = 矩形 /
+    /// 画笔 / 自动滤镜、<c>eraser</c> = 点选 / 矩形 / 画笔橡皮），这里用同一格循环切换对齐它；
+    /// 其余工具**各自一格**（别把箭头和直线、聚光和放大镜合成一格——上游是分开的）。
+    /// 上游没有的扩展工具（折线、取色）默认隐藏，仍能在「工具条」设置里加回来。
     /// </remarks>
     public static ToolLayout Default()
     {
@@ -52,24 +50,30 @@ internal sealed class ToolLayout
         {
             new() { CaptureTool.Select },
             new() { CaptureTool.Shape },
-            new() { CaptureTool.Arrow, CaptureTool.Line },
-            new() { CaptureTool.Polyline, CaptureTool.Pen },
-            new() { CaptureTool.Distance, CaptureTool.Angle, CaptureTool.Bracket },
-            new() { CaptureTool.SpeechBubble, CaptureTool.Text },
+            new() { CaptureTool.SpeechBubble },
+            new() { CaptureTool.Arrow },
+            new() { CaptureTool.Distance },
+            new() { CaptureTool.Angle },
+            new() { CaptureTool.Bracket },
+            new() { CaptureTool.Line },
+            new() { CaptureTool.Pen },
             new() { CaptureTool.Highlighter, CaptureTool.HighlightRect },
-            new() { CaptureTool.Spotlight, CaptureTool.Magnifier },
+            new() { CaptureTool.Spotlight },
+            new() { CaptureTool.Magnifier },
+            new() { CaptureTool.Text },
             new() { CaptureTool.Serial },
-            new() { CaptureTool.Mosaic, CaptureTool.AutoFilter, CaptureTool.Filter, CaptureTool.BrushFilter },
-            new() { CaptureTool.Watermark },
+            new() { CaptureTool.Mosaic, CaptureTool.Filter, CaptureTool.BrushFilter, CaptureTool.AutoFilter },
             new() { CaptureTool.Eraser, CaptureTool.RectEraser, CaptureTool.BrushEraser },
-            new() { CaptureTool.Picker },
+            new() { CaptureTool.Watermark },
         };
 
+        var hidden = new HashSet<CaptureTool> { CaptureTool.Polyline, CaptureTool.Picker };
         var seen = groups.SelectMany(g => g).ToHashSet();
         foreach (var info in ToolCatalog.All)
-            if (seen.Add(info.Tool)) groups.Add(new List<CaptureTool> { info.Tool });
+            if (seen.Add(info.Tool) && !hidden.Contains(info.Tool))
+                groups.Add(new List<CaptureTool> { info.Tool });
 
-        return new ToolLayout(groups, new HashSet<CaptureTool>());
+        return new ToolLayout(groups, hidden);
     }
 
     /// <summary>被收起来的工具（按目录顺序，菜单里照着列）。</summary>
