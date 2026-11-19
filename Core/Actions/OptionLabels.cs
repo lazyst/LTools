@@ -112,6 +112,7 @@ internal static class OptionLabels
         ["windows"] = "Windows 自带",
         ["v6tiny"] = "PP-OCRv6 快速",
         ["v6small"] = "PP-OCRv6 高精度",
+        ["v6medium"] = "PP-OCRv6 最高精度",
 
         // —— 图片格式（image.transform）——
         ["png"] = "PNG（保留透明）",

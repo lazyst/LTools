@@ -1067,6 +1067,136 @@
                             </StackPanel>
                         </Border>
 
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 文字识别" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="默认排版" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="OcrFormattingCombo" MinHeight="32"
+                                              SelectionChanged="CaptureOcr_Changed"
+                                              ToolTip="识别结果窗打开时的初始排版（照上游 text_recognition/default_formatting）">
+                                        <ComboBoxItem Content="不排版"/>
+                                        <ComboBoxItem Content="保留换行"/>
+                                        <ComboBoxItem Content="去掉换行"/>
+                                        <ComboBoxItem Content="智能排版"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="默认标点" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="OcrPunctuationCombo" MinHeight="32"
+                                              SelectionChanged="CaptureOcr_Changed"
+                                              ToolTip="识别结果窗打开时的初始标点转换（照上游 text_recognition/default_punctuation）">
+                                        <ComboBoxItem Content="不转换"/>
+                                        <ComboBoxItem Content="半角标点"/>
+                                        <ComboBoxItem Content="全角标点"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="模型档" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="OcrModelCombo" MinHeight="32"
+                                              SelectionChanged="CaptureOcr_Changed"
+                                              ToolTip="OCR 模型的版本与大小（照上游 text_recognition/model_type）：超小号随包、小号与中号按需下载">
+                                        <ComboBoxItem Content="超小号 V6（随包）"/>
+                                        <ComboBoxItem Content="小号 V6（约 30 MB）"/>
+                                        <ComboBoxItem Content="中号 V6（约 133 MB）"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="22,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" x:Name="OcrDownloadBtn" Style="{StaticResource Btn}"
+                                            Content="下载模型" Padding="12,4" Click="OcrDownload_Click"
+                                            ToolTip="把所选档位的模型下载到数据根 ocr-models/，逐个文件校验长度与 SHA-256"/>
+                                    <TextBlock Grid.Column="1" x:Name="OcrModelStatus" Style="{StaticResource HintLabel}"
+                                               Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                               Text=""/>
+                                </Grid>
+                                <ProgressBar x:Name="OcrDownloadProgress" Height="4" Margin="22,6,0,0"
+                                             Minimum="0" Maximum="1" Visibility="Collapsed"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="文本检测缩放" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="OcrResizeCombo" MinHeight="32"
+                                              SelectionChanged="CaptureOcr_Changed"
+                                              ToolTip="照上游 text_recognition/detector_resize_policy">
+                                        <ComboBoxItem Content="限制长边（更快）"/>
+                                        <ComboBoxItem Content="放大短边（更细）"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="文本检测处理" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="OcrProcessingCombo" MinHeight="32"
+                                              SelectionChanged="CaptureOcr_Changed"
+                                              ToolTip="照上游 text_recognition/text_detection_processing">
+                                        <ComboBoxItem Content="精度优先"/>
+                                        <ComboBoxItem Content="速度优先"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="填充样式" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="OcrFillCombo" MinHeight="32"
+                                              SelectionChanged="CaptureOcr_Changed"
+                                              ToolTip="识别结果里文字区域的底（照上游 text_recognition/fill_style）">
+                                        <ComboBoxItem Content="背景填充（逐行估色）"/>
+                                        <ComboBoxItem Content="模糊（高斯模糊 + 半透明底）"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <CheckBox x:Name="OcrResidentBox" Content="常驻识别进程（识别完不卸载）"
+                                          Margin="0,14,0,0" Checked="CaptureOcr_Changed" Unchecked="CaptureOcr_Changed"
+                                          ToolTip="照上游 text_recognition/resident_process；关掉后每次识别完立刻卸载引擎"/>
+                                <CheckBox x:Name="OcrHotStartBox" Content="模型热启动（启动时预加载所选模型）"
+                                          Margin="0,8,0,0" Checked="CaptureOcr_Changed" Unchecked="CaptureOcr_Changed"
+                                          ToolTip="照上游 text_recognition/model_hot_start：需要常驻进程，会多占一些内存"/>
+                                <CheckBox x:Name="OcrHighlightBox" Content="识别结果加遮罩（压暗文字以外的区域）"
+                                          Margin="0,8,0,0" Checked="CaptureOcr_Changed" Unchecked="CaptureOcr_Changed"
+                                          ToolTip="照上游 text_recognition/show_text_highlighting：遮罩色取「界面与参考线」里的选区压暗色"/>
+                                <CheckBox x:Name="OcrSaveImageBox" Content="保存图片时带上识别 / 译文结果"
+                                          Margin="0,8,0,0" Checked="CaptureOcr_Changed" Unchecked="CaptureOcr_Changed"
+                                          ToolTip="照上游 text_recognition/save_recognition_result_as_image"/>
+                                <CheckBox x:Name="OcrPreviewBox" Content="识别后显示原图预览"
+                                          Margin="0,8,0,0" Checked="CaptureOcr_Changed" Unchecked="CaptureOcr_Changed"
+                                          ToolTip="照上游 text_recognition/show_original_image_preview：识别完自动在结果窗旁开预览"/>
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Style="{StaticResource SectionLabel}" Text="开机自启" Margin="0,4,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>

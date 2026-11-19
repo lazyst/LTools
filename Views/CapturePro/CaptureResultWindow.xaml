@@ -290,6 +290,9 @@
                     </Grid>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="SaveImageBtn" Style="{StaticResource BtnGhost}" Content="保存图片"
+                                MinWidth="88" Margin="0,0,8,0" Click="SaveImage_Click"
+                                ToolTip="保存这张截图；设置里打开「保存识别结果图片」时带上当前识别 / 译文结果"/>
                         <Button x:Name="CopyBtn" Style="{StaticResource BtnPrimary}" Content="复制文字"
                                 MinWidth="110" Click="Copy_Click"/>
                         <Button Style="{StaticResource BtnGhost}" Content="关闭" MinWidth="78"

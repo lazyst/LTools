@@ -123,7 +123,6 @@ internal static class ConfigBundle
         if (ui == null) ui = ToUi(ctx.GetSeed());
         cfg.LastNavPage = string.IsNullOrWhiteSpace(ui.LastNavPage) ? "actions" : ui.LastNavPage;
         cfg.NavExpandedGroups = ui.NavExpandedGroups;
-        cfg.LastOcrEngine = ui.LastOcrEngine;
         cfg.ToolboxCollapsedGroups = ui.ToolboxCollapsedGroups ?? new();
         cfg.RecentActionIds = ui.RecentActionIds;
         cfg.FavoriteUnits = ui.FavoriteUnits ?? new();
@@ -399,7 +398,6 @@ internal static class ConfigBundle
     {
         LastNavPage = cfg.LastNavPage,
         NavExpandedGroups = cfg.NavExpandedGroups,
-        LastOcrEngine = cfg.LastOcrEngine,
         ToolboxCollapsedGroups = cfg.ToolboxCollapsedGroups ?? new(),
         RecentActionIds = cfg.RecentActionIds,
         FavoriteUnits = cfg.FavoriteUnits ?? new(),

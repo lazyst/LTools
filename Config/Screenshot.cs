@@ -25,6 +25,16 @@ public sealed class ScreenshotFile
     public string? MiddleButtonAction { get; set; } = "pin";
 
     /// <summary>
+    /// 文字识别完成后自动做什么（照上游 <c>screenshot/auto_execute_after_text_recognition</c>）：
+    /// <c>no_action</c>（不执行操作）/ <c>copy_text</c>（复制文本）/
+    /// <c>copy_text_and_end_screenshot</c>（复制文本并结束截图）/ <c>quick_copy_text</c>（复制文本（全局））/
+    /// <c>quick_copy_text_and_end_screenshot</c>（复制文本并结束截图（全局））/
+    /// <c>enable_edit_mode</c>（启用编辑模式）。
+    /// <c>quick_*</c> 只在「快速 OCR」入口（<c>ltools.captureRecognize</c> / <c>captureRecognizeCopy</c>）生效。
+    /// </summary>
+    public string? AutoExecuteAfterTextRecognition { get; set; } = "no_action";
+
+    /// <summary>
     /// 直接截前台窗口 / 当前显示器时响一声快门音（照上游
     /// <c>screenshot/shutter_sound_notification</c>，默认开）。
     /// </summary>

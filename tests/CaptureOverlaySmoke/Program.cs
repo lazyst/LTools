@@ -307,6 +307,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "ocrsettings")
+        {
+            OcrSettingsSection();
+            Console.WriteLine(_failed == 0 ? "ocrsettings-only：通过" : $"ocrsettings-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
 
@@ -324,6 +331,9 @@ internal static partial class Program
 
         // ============ 完成动作布局（P9-d4：顺序 / 分组 / 显隐 / 落盘 / 编辑窗过滤） ============
         ActionLayoutSection(BuildShot(320, 240));
+
+        // ============ 文字识别设置（P9-e：默认值 / 落盘 / 设置卡片 / 识别后自动执行） ============
+        OcrSettingsSection();
 
         const int width = 1600, height = 900;
         var shot = BuildShot(width, height);
@@ -3585,11 +3595,20 @@ internal static partial class Program
         Pump(window);
         Check((bool)Get(canvas, "FillBackground"), "打开填充背景 → 画布铺底色");
 
-        // 「原文预览」= 旁边开一个 100% 原图窗
+        // 「原文预览」= 旁边开一个 100% 原图窗；默认设置（show_original_image_preview = 开）下
+        // 识别完成时它已经自动开出来了（P9-e），所以这里先确认自动开、再验按钮能关 / 能开
+        Window? Preview() => Application.Current.Windows.Cast<Window>()
+            .FirstOrDefault(w => w.GetType().Name == "CaptureOriginalPreviewWindow" && w.IsVisible);
+
+        var preview = Preview();
+        Check(preview != null, "默认设置下识别完自动开出原图预览窗");
+        if (preview != null) preview.Close();
+        Pump(window);
+        Check(Preview() == null, "关掉预览窗后确实不在了");
+
         ((Button)Field(window, "PreviewBtn")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Pump(window);
-        var preview = Application.Current.Windows.Cast<Window>()
-            .FirstOrDefault(w => w.GetType().Name == "CaptureOriginalPreviewWindow" && w.IsVisible);
+        preview = Preview();
         Check(preview != null, "原文预览按钮打开预览窗");
         if (preview != null)
         {

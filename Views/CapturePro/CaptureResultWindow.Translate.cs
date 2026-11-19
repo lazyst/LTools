@@ -228,8 +228,11 @@ public partial class CaptureResultWindow
     internal BitmapSource? RenderTranslationImage()
     {
         if (_translationOverlay == null) return null;
+        bool onImage = TranslationStore.OriginalImage;
         return OcrImageRenderer.Render(_image, _translationOverlay.Layer, _translationOverlay.Texts,
-            TranslationStore.OriginalImage, fillBackground: true);
+            onImage, fillBackground: true,
+            fillStyle: onImage ? TextRecognitionStore.FillStyle : null,
+            highlight: onImage && TextRecognitionStore.ShowTextHighlighting);
     }
 
     /// <summary>切回原文（译文缓存丢掉；再点「翻译」重新请求）。</summary>

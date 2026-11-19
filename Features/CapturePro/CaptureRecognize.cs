@@ -118,7 +118,8 @@ internal static class CaptureRecognize
     public static string EngineLabel(string? engine) => engine?.Trim().ToLowerInvariant() switch
     {
         "v6tiny" => "PP-OCRv6 快速",
-        "v6small" => "PP-OCRv6 精确",
+        "v6small" => "PP-OCRv6 高精度",
+        "v6medium" => "PP-OCRv6 最高精度",
         "windows" or null or "" => "系统 OCR",
         _ => engine!.Trim(),
     };

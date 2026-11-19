@@ -332,7 +332,10 @@ public partial class CapturePinWindow
 
         OcrCanvas.SetSelectionOnly(false);
         OcrCanvas.Attach(_ocrModel, _ocrLayer, _content.PixelWidth, _content.PixelHeight);
+        OcrCanvas.SetSourceImage(_content);
         OcrCanvas.SetFillBackground(true);
+        OcrCanvas.SetFillStyle(TextRecognitionStore.FillStyle);
+        OcrCanvas.SetHighlightText(TextRecognitionStore.ShowTextHighlighting);
         OcrCanvas.SetAnnotations(_annotations);
         ApplyOcrGeometry();
         OcrCanvas.Visibility = Visibility.Visible;

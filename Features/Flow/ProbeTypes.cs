@@ -157,7 +157,7 @@ public sealed class Probe
     /// <summary>ocr: 要识别的图片（变量或路径，支持 ${} 模板，如 <c>${截图}</c> / <c>${截图.file}</c>）。</summary>
     public string? OcrImage { get; set; }
 
-    /// <summary>ocr / textSearch: 识别引擎。<c>null</c>/<c>windows</c> = 系统 OCR；<c>v6tiny</c> / <c>v6small</c> = PP-OCRv6。</summary>
+    /// <summary>ocr / textSearch: 识别引擎。<c>null</c>/<c>windows</c> = 系统 OCR；<c>v6tiny</c> / <c>v6small</c> / <c>v6medium</c> = PP-OCRv6。</summary>
     public string? OcrEngine { get; set; }
 
     // —— color ——

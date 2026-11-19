@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using LTools.Features.CapturePro;
 
 namespace LTools.Views.CapturePro;
@@ -26,6 +27,8 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
 {
     private readonly Dictionary<int, FormattedText> _textCache = new();
     private readonly Dictionary<int, double> _sizeCache = new();
+    private readonly Dictionary<int, (Int32Rect Box, ImageSource? Patch)> _blurCache = new();
+    private Brush? _blendBrush;
 
     private OcrTextEditModel? _model;
     private IReadOnlyList<OcrTextLine> _lines = Array.Empty<OcrTextLine>();
@@ -50,6 +53,18 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
 
     /// <summary>文字层是否铺每行估出来的底色（关掉 = 只画文字）。</summary>
     public bool FillBackground { get; set; } = true;
+
+    /// <summary>
+    /// 文字区域的填充样式（照上游 <c>text_recognition/fill_style</c>）：
+    /// <c>background_fill</c> = 铺每行估出来的底色；<c>blur</c> = 把原图对应块模糊后叠 50% 容器底色。
+    /// </summary>
+    public string FillStyle { get; private set; } = OcrFillStyle.Default;
+
+    /// <summary>
+    /// 反向文字遮罩（照上游 <c>text_recognition/show_text_highlighting</c>）：
+    /// 整块区域压暗、字形区域留空，遮罩色取 <see cref="OverlayUiSettings.SelectionMaskColor"/>。
+    /// </summary>
+    public bool HighlightText { get; private set; }
 
     /// <summary>
     /// 隐形文字层（照上游 <c>RenderingMode::SelectionOnly</c>）：不画白纸底、不画文字、不画光标，
@@ -121,6 +136,7 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         ImageWidth = Math.Max(1, imageWidth);
         ImageHeight = Math.Max(1, imageHeight);
         _model.Changed += OnModelChanged;
+        _blurCache.Clear();
         ResetMeasure();
         InvalidateMeasure();
         InvalidateVisual();
@@ -134,6 +150,7 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
     {
         if (ReferenceEquals(_sourceImage, image)) return;
         _sourceImage = image;
+        _blurCache.Clear();
         InvalidateVisual();
     }
 
@@ -191,6 +208,24 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
     {
         if (FillBackground == fill) return;
         FillBackground = fill;
+        InvalidateVisual();
+    }
+
+    /// <summary>换填充样式（<c>background_fill</c> / <c>blur</c>）。</summary>
+    public void SetFillStyle(string? style)
+    {
+        string next = OcrFillStyle.Normalize(style);
+        if (next == FillStyle) return;
+        FillStyle = next;
+        _blurCache.Clear();
+        InvalidateVisual();
+    }
+
+    /// <summary>开 / 关反向文字遮罩。</summary>
+    public void SetHighlightText(bool on)
+    {
+        if (HighlightText == on) return;
+        HighlightText = on;
         InvalidateVisual();
     }
 
@@ -261,15 +296,35 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         if (_annotations is { Empty: false } annotations && _translation == null)
             PinTextAnnotationPainter.PaintHighlights(dc, annotations, RangeRect);
 
+        // 1) 文字区域的底：模糊（fill_style = blur）或逐行估出来的底色（background_fill）
+        if (!SelectionOnly && FillBackground)
+        {
+            bool blur = OcrFillStyle.IsBlur(FillStyle);
+            for (int i = 0; i < layer.Count; i++)
+            {
+                OcrTextLine line = layer[i];
+                Rect box = BoxOf(line);
+                if (blur && BlurPatch(i, line) is { } patch)
+                {
+                    dc.DrawImage(patch, box);
+                    dc.DrawRectangle(BlendBrush(), null, box);
+                }
+                else
+                {
+                    dc.DrawRectangle(OcrTextPaint.Brush(line.BackgroundColor), null, box);
+                }
+            }
+        }
+
+        // 2) 反向文字遮罩：整块压暗、字形区域留空（上游 setTextHighlighting 的 viewport - textRegions）
+        if (!SelectionOnly && HighlightText) DrawTextHighlight(dc, layer, text);
+
+        // 3) 文字（+ 悬停虚线框）
         for (int i = 0; i < layer.Count && !SelectionOnly; i++)
         {
             OcrTextLine line = layer[i];
             string content = i < text.Count ? text[i] : line.Text;
-            var box = new Rect(line.Box.X, line.Box.Y,
-                Math.Max(1, line.Box.Width), Math.Max(1, line.Box.Height));
-
-            if (FillBackground)
-                dc.DrawRectangle(OcrTextPaint.Brush(line.BackgroundColor), null, box);
+            Rect box = BoxOf(line);
 
             if (content.Length == 0) continue;
 
@@ -305,9 +360,82 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         dc.Pop();
     }
 
+    private static Rect BoxOf(OcrTextLine line) =>
+        new(line.Box.X, line.Box.Y, Math.Max(1, line.Box.Width), Math.Max(1, line.Box.Height));
+
+    /// <summary>
+    /// 这一行的模糊底（<c>fill_style = blur</c>）：从原图裁同一块、按设备像素比模糊一次后缓存。
+    /// 没有原图 / 裁不出像素时返回 <c>null</c>，调用方退回估出来的底色。
+    /// </summary>
+    private ImageSource? BlurPatch(int index, OcrTextLine line)
+    {
+        if (_sourceImage is not BitmapSource source) return null;
+        Int32Rect box = line.Box;
+        if (box.Width < 1 || box.Height < 1) return null;
+
+        if (_blurCache.TryGetValue(index, out var cached) && cached.Box.Equals(box))
+            return cached.Patch;
+
+        double dpr = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        ImageSource? patch = OcrBlur.BlurRegion(source, box, OcrFillStyle.DeviceSigma(dpr));
+        _blurCache[index] = (box, patch);
+        return patch;
+    }
+
+    /// <summary>模糊块上面叠的 50% 容器底色（上游 <c>kBackgroundBlendAmount = 0.5</c>）。</summary>
+    private Brush BlendBrush()
+    {
+        if (_blendBrush != null) return _blendBrush;
+
+        Color color = ThemeColor("SurfaceBrush", Colors.White);
+        var brush = new SolidColorBrush(Color.FromArgb(
+            (byte)Math.Round(OcrFillStyle.BackgroundBlendAmount * 255), color.R, color.G, color.B));
+        brush.Freeze();
+        _blendBrush = brush;
+        return brush;
+    }
+
+    /// <summary>
+    /// 反向文字遮罩：整块画布铺遮罩色，字形矩形挖空（EvenOdd）。
+    /// 与上游 <c>viewport.subtracted(textRegions)</c> 同一个形状。
+    /// </summary>
+    private void DrawTextHighlight(DrawingContext dc, IReadOnlyList<OcrTextLine> layer,
+        IReadOnlyList<string> text)
+    {
+        Color mask = OverlayUiSettings.SelectionMaskColor;
+        if (mask.A == 0) return;
+
+        var geometry = new GeometryGroup { FillRule = FillRule.EvenOdd };
+        geometry.Children.Add(new RectangleGeometry(new Rect(0, 0, ImageWidth, ImageHeight)));
+
+        for (int i = 0; i < layer.Count; i++)
+        {
+            OcrTextLine line = layer[i];
+            string content = i < text.Count ? text[i] : line.Text;
+            Rect box = BoxOf(line);
+
+            Rect hole;
+            if (content.Length == 0)
+            {
+                hole = new Rect(box.X, box.Y, Math.Max(1, box.Width * 0.1), box.Height);
+            }
+            else
+            {
+                FormattedText formatted = TextFor(i, content, line);
+                double top = box.Y + (box.Height - formatted.Height) / 2;
+                double width = Math.Min(box.Width,
+                    Math.Max(1, formatted.WidthIncludingTrailingWhitespace));
+                hole = new Rect(box.X, top, width, Math.Max(1, formatted.Height));
+            }
+
+            geometry.Children.Add(new RectangleGeometry(hole));
+        }
+
+        dc.DrawGeometry(new SolidColorBrush(mask), null, geometry);
+    }
+
     /// <summary>一段源文本在画布坐标（源图像素）里的矩形；越界 / 空行返回 <c>null</c>。</summary>
     private Rect? RangeRect(PinTextRange range) => RangeRect(range, PixelsPerDip);
-
     /// <summary>
     /// 同上，但文字度量按 <paramref name="pixelsPerDip"/> 算：导出 png 时传 1，
     /// 保证标注落点与**源图像素**一致（屏幕上那个像素比是显示器给的）。
@@ -691,4 +819,7 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
 
     private static Brush Theme(string key, Color fallback) =>
         Application.Current?.TryFindResource(key) as Brush ?? new SolidColorBrush(fallback);
+
+    private static Color ThemeColor(string key, Color fallback) =>
+        (Application.Current?.TryFindResource(key) as SolidColorBrush)?.Color ?? fallback;
 }

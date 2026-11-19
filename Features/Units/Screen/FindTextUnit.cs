@@ -7,7 +7,7 @@ namespace LTools.Features.Units.Screen;
 /// <summary>截图找文字：区域截图 → 带坐标 OCR → 按包含匹配。</summary>
 public sealed class FindTextUnit : IStepUnit
 {
-    private static readonly string[] Engines = { "windows", "v6tiny", "v6small" };
+    private static readonly string[] Engines = { "windows", "v6tiny", "v6small", "v6medium" };
 
     public UnitSpec Spec { get; } = new()
     {

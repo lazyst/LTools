@@ -9,7 +9,7 @@ namespace LTools.Features.Units.Screen;
 /// <summary>文字识别：读一张图片，或现截一块屏幕区域，识别其中的文字。</summary>
 public sealed class OcrUnit : IStepUnit
 {
-    private static readonly string[] Engines = { "windows", "v6tiny", "v6small" };
+    private static readonly string[] Engines = { "windows", "v6tiny", "v6small", "v6medium" };
 
     /// <summary>图片来源：图片（默认，来自「截图」或文件）/ 前台窗口 / 整个屏幕 / 固定区域。</summary>
     private static readonly string[] Sources = { "image", "foreground", "screen", "rect" };

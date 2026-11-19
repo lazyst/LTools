@@ -1463,6 +1463,44 @@ Id 与已经删掉的 Id 都不复活。
 
 源码跟随**当前识别文字**重建（在文字页改过字，切过来就是改后的），所以「识别 → 改字 → 复制源码」是一条闭环。
 
+### 10.11 文字识别设置（P9-e，2026-11-19）
+
+上游 `text_recognition/*` 那 11 项 + `screenshot/auto_execute_after_text_recognition` 六值，全局偏好落在
+`configs/settings.json` 的 `TextRecognition` 段（`Config/TextRecognition.cs`），读写与归一在
+`Features/CapturePro/TextRecognitionStore.cs`。设置页入口：「通用 → 截图 Pro · 文字识别」。
+
+| 键 | 默认 | 本地行为 |
+| --- | --- | --- |
+| `default_formatting` | `none` | 结果窗打开时的初始排版（`OcrFormatting` 四档） |
+| `default_punctuation` | `none` | 结果窗打开时的初始标点（`OcrPunctuation` 三档） |
+| `model_type` | `small` | 三档：超小号（随包）/ 小号（约 30 MB）/ 中号（约 133 MB），后两档在设置页下载到 `ocr-models/`，逐文件校验长度 + SHA-256 |
+| `detector_resize_policy` | `max` | `max` → `ImgResize = 1600`；`min` → `ImgResize = 0` + `LimitSideLen = 736` |
+| `text_detection_processing` | `accuracy_first` | `speed_first` → `WidthHeightRatio = -1, MinHeight = -1` |
+| `resident_process` | 开 | 开 = 引擎常驻（空闲 5 分钟卸载）；关 = 每次识别完立刻卸载 |
+| `model_hot_start` | 关 | 开 + 常驻 = 启动时后台预热所选模型（`App.OnStartup` 的 `Task.Run(PaddleOcr.OnSettingsChanged)`） |
+| `fill_style` | `background_fill` | `background_fill` = 逐行估色填底；`blur` = 每行框从原图裁块做三次盒式模糊（sigma 8×dpr）再叠 50% 底色 |
+| `show_text_highlighting` | 关 | 反向遮罩：整块压暗、字形矩形留空，遮罩色取「界面与参考线」的选区压暗色 |
+| `save_recognition_result_as_image` | 开 | 结果窗「保存图片」：开 = 带识别 / 译文结果，关 = 原图 |
+| `show_original_image_preview` | 开 | 识别完成后自动在结果窗旁开原图预览 |
+
+**识别后自动执行**（`ScreenshotBehavior.AutoExecuteAfterTextRecognition`）六值：
+
+| 值 | 行为 |
+| --- | --- |
+| `no_action` | 只显示结果窗 |
+| `copy_text` | 复制识别文字 |
+| `copy_text_and_end_screenshot` | 复制 + 关结果窗 |
+| `quick_copy_text` | 仅快速识别入口（`ltools.captureRecognize` / `captureRecognizeCopy`）复制 |
+| `quick_copy_text_and_end_screenshot` | 仅快速入口复制 + 关窗 |
+| `enable_edit_mode` | 结果窗自动切到文字页 |
+
+翻译入口短路自动动作（用户点翻译就是要看译文，不该被复制 / 关窗抢走）。判断只有一处：
+`IsQuickOnlyOcrAction` / `CopiesOcrText` / `EndsAfterOcr`。
+
+**渲染三段**：`CaptureOcrCanvas` 与 `OcrImageRenderer` 共用同一套画法——「底（估色 / 模糊）→ 反向遮罩 → 文字」，
+所以结果窗看到的和「保存图片」导出的成品图一致；贴图的文字层也走这条路径。
+平台差异（`blur` 按每行框、`hardware_acceleration` 不落空开关等）见 `docs/CAPTURE_PARITY.md` §5。
+
 ## 11. 采集历史（P2-2 / P4）
 
 截图 / 识别 / 录屏的落点：数据根 `captures/`（`catalog.json` + `assets/<id>.png` + `thumbnails/<id>.png`

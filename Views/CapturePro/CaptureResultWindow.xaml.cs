@@ -43,8 +43,10 @@ public partial class CaptureResultWindow : Window
     private readonly CaptureEntry? _entry;
     private readonly bool _runOnLoad;
     private readonly Int32Rect _area;
+    private readonly bool _quick;
     private bool _copyWhenReady;
     private bool _translateWhenReady;
+    private bool _autoActionDone;
 
     private RecognizeResult? _result;
     private string _tab = "text";
@@ -65,8 +67,13 @@ public partial class CaptureResultWindow : Window
     /// <param name="translateWhenReady">
     /// 算完自动翻一遍（照上游 <c>captureAndTranslateText</c>：先「翻译」按钮那一步，没配端点会弹设置）。
     /// </param>
+    /// <param name="quick">
+    /// 这一窗是不是「快速识别」入口（<c>ltools.captureRecognize</c> / <c>captureRecognizeCopy</c>）开的：
+    /// 只有它为真时 <c>quick_copy_text*</c> 两种自动动作才生效（照上游 <c>m_ocrFromQuickOcrAction</c>）。
+    /// </param>
     internal CaptureResultWindow(BitmapSource image, string? engine, CaptureEntry? entry = null,
-        Int32Rect area = default, bool copyWhenReady = false, bool translateWhenReady = false)
+        Int32Rect area = default, bool copyWhenReady = false, bool translateWhenReady = false,
+        bool quick = false)
     {
         InitializeComponent();
 
@@ -77,6 +84,7 @@ public partial class CaptureResultWindow : Window
         _runOnLoad = true;
         _copyWhenReady = copyWhenReady;
         _translateWhenReady = translateWhenReady;
+        _quick = quick;
 
         OriginalImage.Source = image;
         FillTranslateTargets();
@@ -113,9 +121,11 @@ public partial class CaptureResultWindow : Window
 
     /// <summary>打开结果窗（非模态：用户慢慢改 / 复制，流程该干嘛干嘛）。</summary>
     internal static void Show(BitmapSource image, string? engine, CaptureEntry? entry = null,
-        Int32Rect area = default, bool copyWhenReady = false, bool translateWhenReady = false)
+        Int32Rect area = default, bool copyWhenReady = false, bool translateWhenReady = false,
+        bool quick = false)
     {
-        var window = new CaptureResultWindow(image, engine, entry, area, copyWhenReady, translateWhenReady);
+        var window = new CaptureResultWindow(image, engine, entry, area, copyWhenReady,
+            translateWhenReady, quick);
         window.Show();
         window.Activate();
         window.Focus();
@@ -200,6 +210,8 @@ public partial class CaptureResultWindow : Window
         _ocrHeight = height;
         OcrCanvas.Attach(model, _layer, width, height);
         OcrCanvas.SetSourceImage(_image);
+        OcrCanvas.SetFillStyle(TextRecognitionStore.FillStyle);
+        OcrCanvas.SetHighlightText(TextRecognitionStore.ShowTextHighlighting);
         OcrCanvas.SelectionChanged += RefreshStatus;
         OcrCanvas.LineEditRequested += _ => RefreshStatus();
 
@@ -239,12 +251,88 @@ public partial class CaptureResultWindow : Window
         }
 
         // 「识别并翻译」（照上游 captureAndTranslateText）：算完自己翻一遍，用户不用再点「翻译」
+        bool translating = _translateWhenReady;
         if (_translateWhenReady)
         {
             _translateWhenReady = false;
             if (result.Ok && _model is { LineCount: > 0 }) _ = ToggleTranslationAsync();
             else ToastService.Show("没有识别到可翻译的文字", "识别结果", 1800, ToastKind.warning);
         }
+
+        // 「识别后自动执行」（照上游 handleAutomaticTextRecognitionAction）：
+        // 翻译入口短路自动动作（上游 m_ocrTranslateAfterRecognition 直接 return）。
+        if (!translating) RunAutomaticAction();
+
+        // 「显示原图预览」（照上游 updateOriginalImagePreview）：开着就自己摆到结果窗旁边
+        if (TextRecognitionStore.ShowOriginalPreview && _image != null) OpenPreview();
+    }
+
+    /// <summary>
+    /// 文字识别完成后自动执行（照上游 <c>screenshot/auto_execute_after_text_recognition</c> 六值）。
+    /// </summary>
+    /// <remarks>
+    /// <c>quick_*</c> 只在「快速识别」入口生效（上游 <c>m_ocrFromQuickOcrAction</c>）；
+    /// 「并结束截图」在本项目里 = 复制完关掉结果窗——覆盖层在识别开始前就已经关闭，
+    /// 这里没有第二个「截图会话」可结束（写进 <c>docs/CAPTURE_PARITY.md</c> §5）。
+    /// </remarks>
+    private void RunAutomaticAction()
+    {
+        if (_autoActionDone) return;
+        _autoActionDone = true;
+
+        string action = ScreenshotBehavior.AutoExecuteAfterTextRecognition;
+        if (action == ScreenshotBehavior.OcrActionNone) return;
+        if (ScreenshotBehavior.IsQuickOnlyOcrAction(action) && !_quick) return;
+
+        switch (action)
+        {
+            case ScreenshotBehavior.OcrActionCopy:
+            case ScreenshotBehavior.OcrActionQuickCopy:
+                CopyRecognizedText();
+                break;
+
+            case ScreenshotBehavior.OcrActionCopyAndEnd:
+            case ScreenshotBehavior.OcrActionQuickCopyAndEnd:
+                CopyRecognizedText();
+                Close();
+                break;
+
+            case ScreenshotBehavior.OcrActionEditMode:
+                EnterTextEditMode();
+                break;
+        }
+    }
+
+    /// <summary>把当前文字层的全文写进剪贴板（自动动作的「复制文本」）。</summary>
+    private void CopyRecognizedText()
+    {
+        if (_model is not { } model) return;
+        if (model.AllText.Length > 0) Copy(model.AllText, "识别文字");
+        else ToastService.Show("没有识别到文字", "识别结果", 1600, ToastKind.warning);
+    }
+
+    /// <summary>
+    /// 照上游 <c>beginTextEditing</c>：切到文字页、收起原图、焦点给文字层、光标落在第一行开头。
+    /// </summary>
+    private void EnterTextEditMode()
+    {
+        if (_tab != "text")
+        {
+            _tab = "text";
+            TabText.IsChecked = true;
+            UpdateTabs();
+        }
+
+        if (OriginalToggle.IsChecked == true) OriginalToggle.IsChecked = false;
+
+        if (_model is { LineCount: > 0 } model && _translatedLines == null)
+        {
+            model.SetCaret(0, 0);
+            OcrCanvas.Focus();
+            Keyboard.Focus(OcrCanvas);
+        }
+
+        RefreshStatus();
     }
 
     private static int Extent(IReadOnlyList<OcrTextLine> lines, bool horizontal)
@@ -564,14 +652,22 @@ public partial class CaptureResultWindow : Window
 
     private void Preview_Click(object sender, RoutedEventArgs e)
     {
-        if (_image == null) return;
-
         if (_preview != null)
         {
             _preview.Close();
             _preview = null;
             return;
         }
+
+        OpenPreview();
+    }
+
+    /// <summary>
+    /// 打开原图预览窗（按钮 / 「显示原图预览」设置共用）。已经开着就不重复开。
+    /// </summary>
+    private void OpenPreview()
+    {
+        if (_image == null || _preview != null) return;
 
         var preview = new CaptureOriginalPreviewWindow(_image, _scale);
         preview.Closed += (_, _) => _preview = null;
@@ -585,6 +681,41 @@ public partial class CaptureResultWindow : Window
         preview.Show();
         preview.PlaceBeside(new Rect(Left, Top, Width, Height), work);
         _preview = preview;
+    }
+
+    /// <summary>
+    /// 「保存图片」：照上游 <c>text_recognition/save_recognition_result_as_image</c>——
+    /// 打开时保存带上当前识别 / 译文结果的图，关掉时只存原图。
+    /// </summary>
+    private void SaveImage_Click(object sender, RoutedEventArgs e)
+    {
+        BitmapSource? image = BuildSavableImage();
+        if (image == null)
+        {
+            ToastService.Show("没有可保存的图片", "保存图片", 1600, ToastKind.warning);
+            return;
+        }
+
+        CaptureSave.TrySave(this, image, CaptureSave.DefaultName, default,
+            _area.Width > 0 && _area.Height > 0 ? _area : null);
+    }
+
+    /// <summary>保存 / 复制用的成品图（尊重「保存识别结果图片」开关）。</summary>
+    internal BitmapSource? BuildSavableImage()
+    {
+        if (_image == null) return null;
+        if (!TextRecognitionStore.SaveResultAsImage) return _image;
+
+        if (_translatedLines != null)
+            return RenderTranslationImage() ?? _image;
+
+        if (_model == null || _layer.Count == 0) return _image;
+
+        return OcrImageRenderer.Render(_image, _layer, _model.Lines, includeSource: false,
+                   fillBackground: FillToggle.IsChecked == true,
+                   fillStyle: TextRecognitionStore.FillStyle,
+                   highlight: TextRecognitionStore.ShowTextHighlighting)
+               ?? _image;
     }
 
     // ============ 键盘 / 输入 ============

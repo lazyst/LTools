@@ -180,6 +180,10 @@ public partial class App : Application
         // 启动时把它们重新封装、收进采集历史（重活，后台跑，别拖住启动）。
         _ = Task.Run(RecordRecovery.Sweep);
 
+        // OCR 模型热启动（照上游 text_recognition/model_hot_start）：开着 + 常驻时后台预热一次，
+        // 第一次识别不必等加载；关着 / 非常驻时 OnSettingsChanged 自己直接返回，不白占内存。
+        _ = Task.Run(PaddleOcr.OnSettingsChanged);
+
         // —— 启动提示：屏幕右下角的 toast（抽屉式从右侧滑入、点一下就关），不再跟着鼠标弹小字。
         //    仍在无钩子阶段同步显示：首个 WPF 窗口的首帧会初始化渲染栈（D3D 等），
         //    耗时落在此处，不阻塞任何钩子回调。 ——

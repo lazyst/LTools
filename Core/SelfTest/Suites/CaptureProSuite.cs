@@ -146,6 +146,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "贴图窗口：归一 / 滚轮档位 / 缩放锚点 / 阴影带宽", PinWindowCases));
         cases.Add(new("capturePro", "贴图文字标注：样式 / 选区 / toggle / 载荷 / 几何", PinAnnotationCases));
         cases.Add(new("capturePro", "完成动作布局：默认 / 归一 / 往返 / 编辑模式可用集", ActionLayoutCases));
+        cases.Add(new("capturePro", "文字识别设置：默认值 / 归一 / 六值分发 / 模糊核", OcrSettingsCases));
     }
 
     private static void Geometry()
@@ -1513,7 +1514,8 @@ internal static partial class CaptureProSuite
         Check.Equal("系统 OCR", CaptureRecognize.EngineLabel(null), "null = 系统 OCR");
         Check.Equal("系统 OCR", CaptureRecognize.EngineLabel("windows"), "windows = 系统 OCR");
         Check.Equal("PP-OCRv6 快速", CaptureRecognize.EngineLabel("v6tiny"), "v6tiny 的显示名");
-        Check.Equal("PP-OCRv6 精确", CaptureRecognize.EngineLabel("v6small"), "v6small 的显示名");
+        Check.Equal("PP-OCRv6 高精度", CaptureRecognize.EngineLabel("v6small"), "v6small 的显示名");
+        Check.Equal("PP-OCRv6 最高精度", CaptureRecognize.EngineLabel("v6medium"), "v6medium 的显示名");
 
         // 成品位图 → GDI+ 位图（OCR 与二维码两套底层都吃 Bitmap）
         var pixels = new byte[4 * 3 * 4];

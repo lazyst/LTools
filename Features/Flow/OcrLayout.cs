@@ -56,7 +56,7 @@ internal static class OcrLayout
 {
     /// <summary>
     /// 识别一张图，返回带坐标的行 / 词。<paramref name="engine"/> 与取值器的 <c>OcrEngine</c> 同义：
-    /// <c>null</c> / <c>windows</c> = 系统 OCR，<c>v6tiny</c> / <c>v6small</c> = PP-OCRv6。
+    /// <c>null</c> / <c>windows</c> = 系统 OCR，<c>v6tiny</c> / <c>v6small</c> / <c>v6medium</c> = PP-OCRv6。
     /// </summary>
     public static IReadOnlyList<OcrLineBox> Read(Bitmap bmp, string? engine)
     {

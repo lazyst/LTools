@@ -188,8 +188,13 @@ internal static class CaptureSession
         if (pin) CapturePinManager.Pin(result.Image, result.Area, appearance: result.Appearance);
         if (live) StartLivePin(result);
         if (recognize)
-            CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry, result.Area,
-                recognizeCopy, translate);
+        {
+            // 「快速识别」入口（ltools.captureRecognize / captureRecognizeCopy）才认 quick_* 自动动作
+            bool quick = pending is CaptureOverlayWindow.PendingAction.Recognize
+                or CaptureOverlayWindow.PendingAction.RecognizeCopy;
+            CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry,
+                result.Area, recognizeCopy, translate, quick);
+        }
 
         exit = CaptureExit.Captured;
         return result;

@@ -67,7 +67,7 @@ internal sealed record TextClickRequest
     /// <summary><see cref="ImageRegion.rect"/> 时的区域 [x, y, w, h]（虚拟桌面物理像素）。</summary>
     public int[]? Rect { get; init; }
 
-    /// <summary>识别引擎（<c>null</c> / <c>windows</c> = 系统 OCR；<c>v6tiny</c> / <c>v6small</c> = PP-OCRv6）。</summary>
+    /// <summary>识别引擎（<c>null</c> / <c>windows</c> = 系统 OCR；<c>v6tiny</c> / <c>v6small</c> / <c>v6medium</c> = PP-OCRv6）。</summary>
     public string? OcrEngine { get; init; }
 
     /// <summary>等目标出现的最长时间（ms，0 = 只找一次，-1 = 一直等）。</summary>

@@ -46,6 +46,15 @@ internal static class ScreenshotBehavior
     public const string PdfA4Landscape = "a4_landscape";
     public const string DefaultPdfPageSize = PdfA4Portrait;
 
+    // 文字识别完成后自动执行（照上游 screenshot/auto_execute_after_text_recognition）
+    public const string OcrActionNone = "no_action";
+    public const string OcrActionCopy = "copy_text";
+    public const string OcrActionCopyAndEnd = "copy_text_and_end_screenshot";
+    public const string OcrActionQuickCopy = "quick_copy_text";
+    public const string OcrActionQuickCopyAndEnd = "quick_copy_text_and_end_screenshot";
+    public const string OcrActionEditMode = "enable_edit_mode";
+    public const string DefaultOcrAction = OcrActionNone;
+
     private static readonly object Gate = new();
 
     private static ScreenshotFile? _cached;
@@ -71,6 +80,10 @@ internal static class ScreenshotBehavior
 
     public static string PdfPageSize => NormalizePdfPageSize(Snapshot().PdfPageSize);
 
+    /// <summary>文字识别完成后自动做什么（六值，见 <see cref="ScreenshotFile"/>）。</summary>
+    public static string AutoExecuteAfterTextRecognition =>
+        NormalizeOcrAction(Snapshot().AutoExecuteAfterTextRecognition);
+
     public static void SetScrollingAutoScrollIntervalMs(int value) =>
         Save(file => file.ScrollingAutoScrollIntervalMs = NormalizeInterval(value));
 
@@ -90,6 +103,9 @@ internal static class ScreenshotBehavior
 
     public static void SetPdfPageSize(string? key) =>
         Save(file => file.PdfPageSize = NormalizePdfPageSize(key));
+
+    public static void SetAutoExecuteAfterTextRecognition(string? key) =>
+        Save(file => file.AutoExecuteAfterTextRecognition = NormalizeOcrAction(key));
 
     /// <summary>配置被外部改过（导入备份 / 冒烟切目录）时丢掉缓存。</summary>
     public static void Invalidate()
@@ -128,6 +144,31 @@ internal static class ScreenshotBehavior
             _ => PdfA4Portrait,
         };
 
+    /// <summary>识别后自动动作只认六个键，其余按「不执行操作」。</summary>
+    public static string NormalizeOcrAction(string? key) =>
+        (key ?? "").Trim().ToLowerInvariant() switch
+        {
+            OcrActionCopy => OcrActionCopy,
+            OcrActionCopyAndEnd => OcrActionCopyAndEnd,
+            OcrActionQuickCopy => OcrActionQuickCopy,
+            OcrActionQuickCopyAndEnd => OcrActionQuickCopyAndEnd,
+            OcrActionEditMode => OcrActionEditMode,
+            _ => OcrActionNone,
+        };
+
+    /// <summary>这个自动动作是不是「只在快速 OCR 入口生效」的 <c>quick_*</c>。</summary>
+    public static bool IsQuickOnlyOcrAction(string? action) =>
+        NormalizeOcrAction(action) is OcrActionQuickCopy or OcrActionQuickCopyAndEnd;
+
+    /// <summary>这个自动动作会不会复制文本。</summary>
+    public static bool CopiesOcrText(string? action) =>
+        NormalizeOcrAction(action) is OcrActionCopy or OcrActionCopyAndEnd
+            or OcrActionQuickCopy or OcrActionQuickCopyAndEnd;
+
+    /// <summary>这个自动动作会不会顺手结束截图。</summary>
+    public static bool EndsAfterOcr(string? action) =>
+        NormalizeOcrAction(action) is OcrActionCopyAndEnd or OcrActionQuickCopyAndEnd;
+
     /// <summary>固定档位键（<c>"125"</c> … <c>"350"</c>）→ 百分比。</summary>
     public static bool TryParsePercentage(string? key, out int percentage)
     {
@@ -163,6 +204,8 @@ internal static class ScreenshotBehavior
         loaded.SelectionResizeMode = NormalizeResizeMode(loaded.SelectionResizeMode);
         loaded.HidpiImageScaling = NormalizeHidpi(loaded.HidpiImageScaling);
         loaded.PdfPageSize = NormalizePdfPageSize(loaded.PdfPageSize);
+        loaded.AutoExecuteAfterTextRecognition =
+            NormalizeOcrAction(loaded.AutoExecuteAfterTextRecognition);
 
         lock (Gate) return _cached = loaded;
     }
@@ -178,6 +221,8 @@ internal static class ScreenshotBehavior
             next.SelectionResizeMode = NormalizeResizeMode(next.SelectionResizeMode);
             next.HidpiImageScaling = NormalizeHidpi(next.HidpiImageScaling);
             next.PdfPageSize = NormalizePdfPageSize(next.PdfPageSize);
+            next.AutoExecuteAfterTextRecognition =
+                NormalizeOcrAction(next.AutoExecuteAfterTextRecognition);
             _cached = Clone(next);
         }
 
@@ -193,6 +238,8 @@ internal static class ScreenshotBehavior
                 file.Screenshot.SelectionResizeMode = next.SelectionResizeMode;
                 file.Screenshot.HidpiImageScaling = next.HidpiImageScaling;
                 file.Screenshot.PdfPageSize = next.PdfPageSize;
+                file.Screenshot.AutoExecuteAfterTextRecognition =
+                    next.AutoExecuteAfterTextRecognition;
             });
         }
         catch (Exception ex)
@@ -206,6 +253,7 @@ internal static class ScreenshotBehavior
         DelaySeconds = file.DelaySeconds,
         DoubleClickAction = file.DoubleClickAction,
         MiddleButtonAction = file.MiddleButtonAction,
+        AutoExecuteAfterTextRecognition = file.AutoExecuteAfterTextRecognition,
         ShutterSound = file.ShutterSound,
         ScreenshotSound = file.ScreenshotSound,
         StrokeColorPresets = file.StrokeColorPresets is null ? null : new List<string>(file.StrokeColorPresets),
