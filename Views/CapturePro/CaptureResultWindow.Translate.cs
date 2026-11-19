@@ -170,6 +170,13 @@ public partial class CaptureResultWindow
         string detected = TranslationLanguages.Detect(TranslationLanguages.Join(prepared.Texts));
         string sourceKey = config.Source == TranslationLanguages.Auto ? detected : config.Source;
 
+        // 第二目标语言（照上游 resolveTranslationTarget）：自动判断出原文本来就是主目标语言时，
+        // 改译成第二目标语言（中文界面译中文稿 → 出英文）；置信度不到门槛就照旧。
+        string effectiveTarget = TranslationStore.ResolveTarget(config.Target,
+            TranslationLanguages.Join(prepared.Texts));
+        if (!TranslationLanguages.SameLanguage(effectiveTarget, config.Target))
+            config = config with { Target = effectiveTarget };
+
         var cts = new CancellationTokenSource();
         _translationCts = cts;
         TranslationError = "";

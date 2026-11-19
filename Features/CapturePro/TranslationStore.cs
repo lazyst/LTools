@@ -34,6 +34,27 @@ internal static class TranslationStore
     /// <summary>翻译前的版面处理（<c>smart_merge</c> / <c>original</c>）。</summary>
     public static string Layout => TranslationLayout.Normalize(Load().LayoutProcessing);
 
+    /// <summary>第二目标语言（空 = 不用；照上游 <c>secondary_target_language</c>）。</summary>
+    public static string SecondaryTarget => TranslationLanguages.NormalizeSecondary(Load().SecondaryTarget);
+
+    /// <summary>语言自动检测的置信度门槛（30–100，默认 60）。</summary>
+    public static int DetectionThreshold => TranslationLanguages.NormalizeThreshold(Load().DetectionThreshold);
+
+    /// <summary>这次实际译成哪种语言（原文已经是主目标语言就换第二目标语言）。</summary>
+    public static string ResolveTarget(string? target, string? text) =>
+        TranslationLanguages.ResolveTarget(target, SecondaryTarget, DetectionThreshold, text);
+
+    /// <summary>只改第二目标语言（空 = 不用）。</summary>
+    public static void SetSecondaryTarget(string? key)
+    {
+        string normalized = TranslationLanguages.NormalizeSecondary(key);
+        Modify(file => file.SecondaryTarget = normalized.Length == 0 ? null : normalized);
+    }
+
+    /// <summary>只改置信度门槛（30–100，越界按范围夹取）。</summary>
+    public static void SetDetectionThreshold(int percent) =>
+        Modify(file => file.DetectionThreshold = TranslationLanguages.NormalizeThreshold(percent));
+
     public static void Save(TranslationConfig config)
     {
         Modify(file =>
@@ -49,9 +70,10 @@ internal static class TranslationStore
 
     /// <summary>设置框「保存」：端点 / 语言与三个显示选项一次写完（只动 <c>settings.json</c>）。</summary>
     public static void SaveWithDisplay(TranslationConfig config, bool originalImage,
-        bool copyAsImage, string? layout)
+        bool copyAsImage, string? layout, string? secondaryTarget = null, int? threshold = null)
     {
         string normalized = TranslationLayout.Normalize(layout);
+        string secondary = TranslationLanguages.NormalizeSecondary(secondaryTarget);
         Modify(file =>
         {
             file.Endpoint = config.Endpoint;
@@ -63,6 +85,8 @@ internal static class TranslationStore
             file.OriginalImage = originalImage;
             file.CopyAsImage = copyAsImage;
             file.LayoutProcessing = normalized;
+            if (secondaryTarget != null) file.SecondaryTarget = secondary.Length == 0 ? null : secondary;
+            if (threshold != null) file.DetectionThreshold = TranslationLanguages.NormalizeThreshold(threshold.Value);
         });
     }
 

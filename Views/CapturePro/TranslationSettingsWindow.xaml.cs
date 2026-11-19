@@ -46,6 +46,14 @@ public partial class TranslationSettingsWindow : Window
         SelectTag(SourceBox, TranslationLanguages.NormalizeSource(config.Source));
         SelectTag(TargetBox, TranslationLanguages.Normalize(config.Target));
 
+        // 第二目标语言（照上游 secondary_target_language）：第一项 = 不用
+        SecondaryBox.Items.Add(new ComboBoxItem { Content = "不用", Tag = "" });
+        foreach (TranslationLanguage language in TranslationLanguages.All)
+            SecondaryBox.Items.Add(new ComboBoxItem { Content = language.Label, Tag = language.Key });
+        string secondary = TranslationStore.SecondaryTarget;
+        SelectTag(SecondaryBox, secondary.Length == 0 ? "" : secondary);
+        ThresholdBox.Text = TranslationStore.DetectionThreshold.ToString(CultureInfo.InvariantCulture);
+
         OriginalImageBox.IsChecked = TranslationStore.OriginalImage;
         CopyAsImageBox.IsChecked = TranslationStore.CopyAsImage;
         foreach (string key in TranslationLayout.Keys)
@@ -155,10 +163,33 @@ public partial class TranslationSettingsWindow : Window
             return;
         }
 
+        int threshold = ReadThreshold(out string thresholdError);
+        if (thresholdError.Length > 0)
+        {
+            ErrorText.Text = thresholdError;
+            return;
+        }
+
         TranslationStore.SaveWithDisplay(config, OriginalImageBox.IsChecked == true,
-            CopyAsImageBox.IsChecked == true, TagOf(LayoutBox) as string);
+            CopyAsImageBox.IsChecked == true, TagOf(LayoutBox) as string,
+            TagOf(SecondaryBox) as string, threshold);
         DialogResult = true;
         Close();
+    }
+
+    /// <summary>置信度门槛（30–100，默认 60）；填错给一句人话。</summary>
+    private int ReadThreshold(out string error)
+    {
+        error = "";
+        string text = ThresholdBox.Text.Trim();
+        if (text.Length == 0) return TranslationLanguages.DefaultThreshold;
+        if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int percent))
+        {
+            error = "检测门槛请填 30–100 的数字（默认 60）";
+            return TranslationLanguages.DefaultThreshold;
+        }
+
+        return TranslationLanguages.NormalizeThreshold(percent);
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)

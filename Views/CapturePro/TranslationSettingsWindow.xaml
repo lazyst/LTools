@@ -83,6 +83,24 @@
                 </StackPanel>
             </Grid>
 
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="120"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="第二目标语言" Style="{StaticResource SectionLabel}"/>
+                    <ComboBox x:Name="SecondaryBox" Height="28" Margin="0,4,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                    <TextBlock Text="检测门槛（%）" Style="{StaticResource SectionLabel}"/>
+                    <TextBox x:Name="ThresholdBox" Height="28" Margin="0,4,0,0"
+                             controls:TextBoxClear.Attach="False"/>
+                </StackPanel>
+            </Grid>
+            <TextBlock Style="{StaticResource HintLabel}" Margin="0,4,0,0" TextWrapping="Wrap"
+                       Text="照 Snow Shot：自动判断出原文本来就是目标语言、且置信度达到门槛时，改译成第二目标语言（例如中文界面译中文稿 → 出英文）。第二目标语言选「不用」就关掉；门槛 30–100，默认 60。"/>
+
             <TextBlock Text="显示" Style="{StaticResource SectionLabel}" Margin="0,14,0,0"/>
             <CheckBox x:Name="OriginalImageBox" Margin="0,6,0,0"
                       Content="译文画进原图（原文字被底色盖住，直接看整段译文）"/>

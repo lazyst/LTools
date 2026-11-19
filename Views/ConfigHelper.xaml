@@ -132,8 +132,42 @@
                                      Checked="Nav_Changed" Tag="subactions"/>
                         <RadioButton x:Name="NavHotkeys" Style="{StaticResource NavRow}" Content="快捷键"
                                      Checked="Nav_Changed" Tag="hotkeys"/>
-                        <RadioButton x:Name="NavOutput" Style="{StaticResource NavRow}" Content="截图输出"
-                                     Checked="Nav_Changed" Tag="output"/>
+                        <!-- 截图 Pro：第五个带二级下拉的父项（常规 / 截图行为 / 绘制行为 / 界面与参考线 /
+                             文字识别 / 贴图窗口 / 录屏 / 截图输出），与面板管理 / AI / 日志共用一套机制 -->
+                        <RadioButton x:Name="NavCapture" Style="{StaticResource NavRow}"
+                                     Checked="Nav_Changed" Tag="capture"
+                                     PreviewMouseLeftButtonUp="NavCapture_MouseUp">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="截图 Pro" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="NavCaptureChevron" Text="&#xE76C;"
+                                           FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                           Margin="6,1,0,0" VerticalAlignment="Center"
+                                           RenderTransformOrigin="0.5,0.5"
+                                           Foreground="{StaticResource HintTextBrush}"/>
+                            </StackPanel>
+                        </RadioButton>
+                        <Border x:Name="CaptureSubNavHost" Visibility="Collapsed" ClipToBounds="True"
+                                Margin="22,0,0,6" Padding="6,2,0,2"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="2,0,0,0">
+                            <StackPanel x:Name="CaptureSubNav">
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
+                                             Content="常规" Checked="Nav_Changed" Tag="capture-general"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
+                                             Content="截图行为" Checked="Nav_Changed" Tag="capture-behavior"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
+                                             Content="绘制行为" Checked="Nav_Changed" Tag="capture-drawing"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
+                                             Content="界面与参考线" Checked="Nav_Changed" Tag="capture-overlay"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
+                                             Content="文字识别" Checked="Nav_Changed" Tag="capture-ocr"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
+                                             Content="贴图窗口" Checked="Nav_Changed" Tag="capture-pin"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
+                                             Content="录屏" Checked="Nav_Changed" Tag="capture-record"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
+                                             Content="截图输出" Checked="Nav_Changed" Tag="capture-output"/>
+                            </StackPanel>
+                        </Border>
                         <!-- 键鼠宏：第四个带二级下拉的父项（录制的宏 / 设置），与面板管理 / AI / 日志共用一套机制 -->
                         <RadioButton x:Name="NavMacros" Style="{StaticResource NavRow}"
                                      Checked="Nav_Changed" Tag="macros"
@@ -276,7 +310,94 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro" Margin="0,4,0,8"/>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="开机自启" Margin="0,0,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <CheckBox x:Name="AutoStartBox" Content="开机自动启动（任务计划，静默提权）"
+                                          Checked="AutoStartBox_Changed" Unchecked="AutoStartBox_Changed"/>
+                                <TextBlock x:Name="AutoStartHint" Style="{StaticResource HintLabel}" Margin="22,4,0,0"
+                                           Text="通过任务计划程序创建 ONLOGON / 最高权限任务，开机无 UAC 弹窗。"
+                                           TextWrapping="Wrap"/>
+                                <Button x:Name="AutoStartFixButton" Style="{StaticResource Btn}" Content="改为当前程序"
+                                        Margin="22,8,0,2" HorizontalAlignment="Left" Padding="12,4"
+                                        Visibility="Collapsed" Click="AutoStartFix_Click"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="运行提示" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="动作结束后" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="RunNoticeCombo" MinHeight="32"
+                                              SelectionChanged="RunNotice_Changed">
+                                        <ComboBoxItem Content="不提示（只看日志）"/>
+                                        <ComboBoxItem Content="只在失败时（推荐）"/>
+                                        <ComboBoxItem Content="成功也提示"/>
+                                    </ComboBox>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="默认提示位置" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="ToastPositionCombo" MinHeight="32"
+                                              SelectionChanged="RunNotice_Changed">
+                                        <ComboBoxItem Content="右下（推荐）"/>
+                                        <ComboBoxItem Content="左下"/>
+                                        <ComboBoxItem Content="底部居中"/>
+                                        <ComboBoxItem Content="右上"/>
+                                        <ComboBoxItem Content="左上"/>
+                                        <ComboBoxItem Content="顶部居中"/>
+                                    </ComboBox>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="120,6,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="失败提示常驻（点一下关，下一次运行自动替换），标题带「第 3 行 › 否则 › 第 1 行」这样的位置；按停止也会给一条。成功提示 2.5 秒后自动消失。「提示弹窗」步骤里位置选「跟随设置」时用这里的落点。"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="托盘图标" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="左键双击" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="TrayDoubleClickCombo" MinHeight="32"
+                                              SelectionChanged="TrayDoubleClick_Changed"
+                                              ToolTip="左键双击托盘图标时打开设置窗口并停到所选页面">
+                                        <ComboBoxItem Content="打开设置"/>
+                                        <ComboBoxItem Content="打开动作管理"/>
+                                        <ComboBoxItem Content="打开快捷键"/>
+                                        <ComboBoxItem Content="打开键鼠宏"/>
+                                        <ComboBoxItem Content="打开自动触发"/>
+                                        <ComboBoxItem Content="打开面板管理"/>
+                                    </ComboBox>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="120,6,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="「打开设置」停在上次看的页面，其余直接跳到对应页面；「打开面板管理」停在该分组上次停留的子页。右键单击仍是托盘菜单。"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ 截图 Pro · 常规（延时 / 快门音 / 颜色 / 快捷键 / 点击行为） ============ -->
+                <ScrollViewer x:Name="Page_CaptureGeneral" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro" Margin="0,0,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>
                                 <Grid>
@@ -421,7 +542,14 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 贴图窗口" Margin="0,4,0,8"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ 截图 Pro · 贴图窗口 ============ -->
+                <ScrollViewer x:Name="Page_CapturePin" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 贴图窗口" Margin="0,0,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>
                                 <CheckBox x:Name="PinShowBorderBox"
@@ -648,7 +776,14 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 绘制行为" Margin="0,4,0,8"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ 截图 Pro · 绘制行为 ============ -->
+                <ScrollViewer x:Name="Page_CaptureDrawing" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 绘制行为" Margin="0,0,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>
                                 <CheckBox x:Name="CaptureAutoSelectBox"
@@ -703,7 +838,14 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 截图行为" Margin="0,4,0,8"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ 截图 Pro · 截图行为 ============ -->
+                <ScrollViewer x:Name="Page_CaptureBehavior" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 截图行为" Margin="0,0,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>
                                 <CheckBox x:Name="CaptureCursorBox"
@@ -801,7 +943,14 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 界面与参考线" Margin="0,4,0,8"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ 截图 Pro · 界面与参考线 ============ -->
+                <ScrollViewer x:Name="Page_CaptureOverlay" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 界面与参考线" Margin="0,0,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>
                                 <Grid>
@@ -1085,7 +1234,14 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 录屏" Margin="0,4,0,8"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ 截图 Pro · 录屏 ============ -->
+                <ScrollViewer x:Name="Page_CaptureRecord" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 录屏" Margin="0,0,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>
                                 <Grid>
@@ -1349,7 +1505,14 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 文字识别" Margin="0,4,0,8"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ 截图 Pro · 文字识别 ============ -->
+                <ScrollViewer x:Name="Page_CaptureOcr" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 文字识别" Margin="0,0,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>
                                 <Grid>
@@ -1479,86 +1642,85 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="开机自启" Margin="0,4,0,8"/>
-                        <Border Style="{StaticResource CardBox}">
-                            <StackPanel>
-                                <CheckBox x:Name="AutoStartBox" Content="开机自动启动（任务计划，静默提权）"
-                                          Checked="AutoStartBox_Changed" Unchecked="AutoStartBox_Changed"/>
-                                <TextBlock x:Name="AutoStartHint" Style="{StaticResource HintLabel}" Margin="22,4,0,0"
-                                           Text="通过任务计划程序创建 ONLOGON / 最高权限任务，开机无 UAC 弹窗。"
-                                           TextWrapping="Wrap"/>
-                                <Button x:Name="AutoStartFixButton" Style="{StaticResource Btn}" Content="改为当前程序"
-                                        Margin="22,8,0,2" HorizontalAlignment="Left" Padding="12,4"
-                                        Visibility="Collapsed" Click="AutoStartFix_Click"/>
-                            </StackPanel>
-                        </Border>
-
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="运行提示" Margin="0,4,0,8"/>
-                        <Border Style="{StaticResource CardBox}">
-                            <StackPanel>
-                                <Grid Margin="0,0,0,6">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
-                                               Text="动作结束后" VerticalAlignment="Center"/>
-                                    <ComboBox Grid.Column="1" x:Name="RunNoticeCombo" MinHeight="32"
-                                              SelectionChanged="RunNotice_Changed">
-                                        <ComboBoxItem Content="不提示（只看日志）"/>
-                                        <ComboBoxItem Content="只在失败时（推荐）"/>
-                                        <ComboBoxItem Content="成功也提示"/>
-                                    </ComboBox>
-                                </Grid>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
-                                               Text="默认提示位置" VerticalAlignment="Center"/>
-                                    <ComboBox Grid.Column="1" x:Name="ToastPositionCombo" MinHeight="32"
-                                              SelectionChanged="RunNotice_Changed">
-                                        <ComboBoxItem Content="右下（推荐）"/>
-                                        <ComboBoxItem Content="左下"/>
-                                        <ComboBoxItem Content="底部居中"/>
-                                        <ComboBoxItem Content="右上"/>
-                                        <ComboBoxItem Content="左上"/>
-                                        <ComboBoxItem Content="顶部居中"/>
-                                    </ComboBox>
-                                </Grid>
-                                <TextBlock Style="{StaticResource HintLabel}" Margin="120,6,0,0"
-                                           TextWrapping="Wrap"
-                                           Text="失败提示常驻（点一下关，下一次运行自动替换），标题带「第 3 行 › 否则 › 第 1 行」这样的位置；按停止也会给一条。成功提示 2.5 秒后自动消失。「提示弹窗」步骤里位置选「跟随设置」时用这里的落点。"/>
-                            </StackPanel>
-                        </Border>
-
-                        <TextBlock Style="{StaticResource SectionLabel}" Text="托盘图标" Margin="0,4,0,8"/>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 在线翻译" Margin="0,4,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="142"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
-                                               Text="左键双击" VerticalAlignment="Center"/>
-                                    <ComboBox Grid.Column="1" x:Name="TrayDoubleClickCombo" MinHeight="32"
-                                              SelectionChanged="TrayDoubleClick_Changed"
-                                              ToolTip="左键双击托盘图标时打开设置窗口并停到所选页面">
-                                        <ComboBoxItem Content="打开设置"/>
-                                        <ComboBoxItem Content="打开动作管理"/>
-                                        <ComboBoxItem Content="打开快捷键"/>
-                                        <ComboBoxItem Content="打开键鼠宏"/>
-                                        <ComboBoxItem Content="打开自动触发"/>
-                                        <ComboBoxItem Content="打开面板管理"/>
-                                    </ComboBox>
+                                               Text="源语言" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="TranslationSourceCombo" MinHeight="32"
+                                              SelectionChanged="TranslationLanguage_Changed"
+                                              ToolTip="照 Snow Shot 的 screenshot_translation/source_language"/>
                                 </Grid>
-                                <TextBlock Style="{StaticResource HintLabel}" Margin="120,6,0,0"
+
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="目标语言" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="TranslationTargetCombo" MinHeight="32"
+                                              SelectionChanged="TranslationLanguage_Changed"
+                                              ToolTip="照 Snow Shot 的 screenshot_translation/target_language"/>
+                                </Grid>
+
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="第二目标语言" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="TranslationSecondaryCombo" MinHeight="32"
+                                              SelectionChanged="TranslationLanguage_Changed"
+                                              ToolTip="照 Snow Shot 的 screenshot_translation/secondary_target_language：原文本来就是目标语言时改译成它"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="142,6,0,0"
                                            TextWrapping="Wrap"
-                                           Text="「打开设置」停在上次看的页面，其余直接跳到对应页面；「打开面板管理」停在该分组上次停留的子页。右键单击仍是托盘菜单。"/>
+                                           Text="自动判断出原文本来就是目标语言时，改译成第二目标语言（例如中文界面译中文稿 → 出英文）。选「不用」就关掉。"/>
+
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="检测门槛（%）" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="TranslationThresholdBox" MinHeight="32"
+                                             VerticalContentAlignment="Center" MaxWidth="120"
+                                             HorizontalAlignment="Left" MinWidth="88"
+                                             controls:TextBoxClear.Attach="False"
+                                             LostFocus="TranslationThreshold_LostFocus"
+                                             KeyDown="TranslationThreshold_KeyDown"
+                                             ToolTip="照 Snow Shot 的 screenshot_translation/language_detection_confidence_threshold：30–100，默认 60"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="142,6,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="语言检测置信度低于这个门槛就不换目标语言。30–100，默认 60。"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="翻译服务" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="TranslationSettingsButton"
+                                            Style="{StaticResource Btn}" Content="设置…" MinHeight="32"
+                                            Padding="14,4" HorizontalAlignment="Left"
+                                            Click="TranslationSettings_Click"
+                                            ToolTip="端点 / 模型 / 密钥 / 超时 / 译文画进原图 / 复制成图片 / 版面处理"/>
+                                </Grid>
+                                <TextBlock x:Name="TranslationSummaryText" Style="{StaticResource HintLabel}"
+                                           Margin="142,6,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
+
                     </StackPanel>
                 </ScrollViewer>
 

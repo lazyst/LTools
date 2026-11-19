@@ -51,4 +51,17 @@ public sealed class TranslationFile
     /// <c>smart_merge</c>（默认）= 先按版面接成段落再翻，<c>original</c> = 逐行翻。
     /// </summary>
     public string? LayoutProcessing { get; set; }
+
+    /// <summary>
+    /// 第二目标语言（照上游 <c>screenshot_translation/secondary_target_language</c>，默认 <c>en</c>）：
+    /// 自动判断出原文**就是目标语言**时改译成它（中文界面译中文稿 → 出英文）。
+    /// 留空 / 与目标语言相同 = 不做这件事。
+    /// </summary>
+    public string? SecondaryTarget { get; set; }
+
+    /// <summary>
+    /// 语言自动检测的置信度门槛（照上游 <c>screenshot_translation/language_detection_confidence_threshold</c>，
+    /// 默认 60，范围 30–100）：检测置信度低于它就不换目标语言，照常译成主目标语言。
+    /// </summary>
+    public int DetectionThreshold { get; set; } = 60;
 }

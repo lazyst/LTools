@@ -125,6 +125,13 @@ internal static partial class Program
             .SetValue(null, false);
 
         // 只跑一段（调试用）：dotnet run --no-build -- split
+        if (_only == "nav")
+        {
+            NavSection();
+            Console.WriteLine(_failed == 0 ? "nav-only：通过" : $"nav-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         if (_only == "split")
         {
             SplitSection();
@@ -335,8 +342,18 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "translation")
+        {
+            TranslationSection();
+            Console.WriteLine(_failed == 0 ? "translation-only：通过" : $"translation-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
+
+        // ============ 设置页「截图 Pro」二级导航（结构 / 子页 / 记忆 / 落盘） ============
+        NavSection();
 
         // ============ 截图界面与参考线（P9-c：工具条尺寸 / 单位 / 参考线 / 取色格式） ============
         OverlayUiSection();
@@ -355,6 +372,9 @@ internal static partial class Program
 
         // ============ 文字识别设置（P9-e：默认值 / 落盘 / 设置卡片 / 识别后自动执行） ============
         OcrSettingsSection();
+
+        // ============ 在线翻译设置（P9-f：源 / 目标 / 第二目标 / 检测门槛 + 完整设置框） ============
+        TranslationSection();
 
         const int width = 1600, height = 900;
         var shot = BuildShot(width, height);

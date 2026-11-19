@@ -37,6 +37,7 @@ public partial class ConfigHelperWindow : Window
     private const string FamilyAi = "ai";
     private const string FamilyLogs = "logs";
     private const string FamilyMacros = "macros";
+    private const string FamilyCapture = "capture";
 
     private readonly DispatcherTimer _saveDebounce;
     // 别处改了动作 / 宏（面板删除、录制完成、AI 采纳…）：合批后只刷已建页，避免一次操作反复 Reload
@@ -65,6 +66,7 @@ public partial class ConfigHelperWindow : Window
         [FamilyAi] = "connect",
         [FamilyMacros] = "list",
         [FamilyLogs] = "settings",
+        [FamilyCapture] = "general",
     };
     private bool _backupBusy;            // 备份 / 导入进行中，禁用重复点击
     private bool _loadingRunNotice;      // 通用页「运行提示」回填期间抑制保存事件
@@ -120,7 +122,7 @@ public partial class ConfigHelperWindow : Window
         string lastNav = NormalizeSavedNav(ui.LastNavPage);
         _expandedGroups.Clear();
         foreach (string g in ui.NavExpandedGroups ?? new List<string>())
-            if (g is FamilySuperPanel or FamilyAi or FamilyMacros or FamilyLogs) _expandedGroups.Add(g);
+            if (g is FamilySuperPanel or FamilyAi or FamilyMacros or FamilyLogs or FamilyCapture) _expandedGroups.Add(g);
         string? startupFamily = NavFamilyOf(lastNav);
         // 当前页所在的组一定展开：否则打开设置看不出自己在哪个子页（其余分组按记录）
         if (startupFamily != null) _expandedGroups.Add(startupFamily);
@@ -223,6 +225,13 @@ public partial class ConfigHelperWindow : Window
         if (_pageMacros != null) _pageMacros.Reload();
         if (_pageSubActions != null) _pageSubActions.Reload();
         if (_pageTriggers != null) _pageTriggers.Reload();
+        // 截图 Pro 的设置可能被覆盖层 / 录屏面板 / 颜色预设窗改过：正停在这一组就同步显示值
+        if (NavFamilyOf(_currentNav) == FamilyCapture)
+        {
+            _initializing = true;
+            PopulateToggles();
+            _initializing = false;
+        }
     }
 
     /// <summary>别处改了动作 / 宏：切回 UI 线程并合批刷新（事件可能来自录制 / AI 采纳的后台线程）。</summary>
@@ -265,6 +274,10 @@ public partial class ConfigHelperWindow : Window
     private void NavLogs_MouseUp(object sender, MouseButtonEventArgs e) =>
         ToggleNavGroup(FamilyLogs);
 
+    /// <summary>「截图 Pro」父项：已选中时 = 展开 / 收起，未选中交给 Checked 进该分组。</summary>
+    private void NavCapture_MouseUp(object sender, MouseButtonEventArgs e) =>
+        ToggleNavGroup(FamilyCapture);
+
     /// <summary>
     /// 父项已经选中（正在这个分组里）时，再点它就是展开 / 收起，不换页；
     /// 没选中时不动它，交给 RadioButton 的 Checked → <see cref="ApplyNavPage"/> 进该分组。
@@ -291,15 +304,17 @@ public partial class ConfigHelperWindow : Window
             .Concat(SuperPanelSubNav.Children.OfType<RadioButton>())
             .Concat(AiSubNav.Children.OfType<RadioButton>())
             .Concat(MacrosSubNav.Children.OfType<RadioButton>())
+            .Concat(CaptureSubNav.Children.OfType<RadioButton>())
             .Concat(LogsSubNav.Children.OfType<RadioButton>());
 
-    // 四个分组共用一套机制：下面四张表把 family 映射到各自的父项 / 下拉容器 / 箭头，
+    // 五个分组共用一套机制：下面四张表把 family 映射到各自的父项 / 下拉容器 / 箭头，
     // 新增分组只加行，别再写 family == FamilyAi ? A : B 这种二元判断（第三组起就会落到 superpanel 上）。
     private RadioButton NavGroupItem(string family) => family switch
     {
         FamilyAi => NavAi,
         FamilyMacros => NavMacros,
         FamilyLogs => NavLogs,
+        FamilyCapture => NavCapture,
         _ => NavSuperPanel,
     };
 
@@ -308,6 +323,7 @@ public partial class ConfigHelperWindow : Window
         FamilyAi => AiSubNav,
         FamilyMacros => MacrosSubNav,
         FamilyLogs => LogsSubNav,
+        FamilyCapture => CaptureSubNav,
         _ => SuperPanelSubNav,
     };
 
@@ -316,6 +332,7 @@ public partial class ConfigHelperWindow : Window
         FamilyAi => AiSubNavHost,
         FamilyMacros => MacrosSubNavHost,
         FamilyLogs => LogsSubNavHost,
+        FamilyCapture => CaptureSubNavHost,
         _ => SuperPanelSubNavHost,
     };
 
@@ -324,6 +341,7 @@ public partial class ConfigHelperWindow : Window
         FamilyAi => NavAiChevron,
         FamilyMacros => NavMacrosChevron,
         FamilyLogs => NavLogsChevron,
+        FamilyCapture => NavCaptureChevron,
         _ => NavSuperPanelChevron,
     };
 
@@ -333,6 +351,9 @@ public partial class ConfigHelperWindow : Window
         "superpanel" or "superpanel-general" or "superpanel-scenes" or "superpanel-blocked" => FamilySuperPanel,
         "ai" or "ai-connect" or "ai-audit" => FamilyAi,
         "macros" or "macros-list" or "macros-settings" => FamilyMacros,
+        "capture" or "capture-general" or "capture-behavior" or "capture-drawing"
+            or "capture-overlay" or "capture-ocr" or "capture-pin" or "capture-record"
+            or "capture-output" => FamilyCapture,
         "logs" or "logs-settings" or "logs-recent" or "logs-history" => FamilyLogs,
         _ => null,
     };
@@ -349,6 +370,14 @@ public partial class ConfigHelperWindow : Window
         (FamilyMacros, _) => "list",
         (FamilyLogs, "logs-recent") => "recent",
         (FamilyLogs, "logs-history") => "history",
+        (FamilyCapture, "capture-behavior") => "behavior",
+        (FamilyCapture, "capture-drawing") => "drawing",
+        (FamilyCapture, "capture-overlay") => "overlay",
+        (FamilyCapture, "capture-ocr") => "ocr",
+        (FamilyCapture, "capture-pin") => "pin",
+        (FamilyCapture, "capture-record") => "record",
+        (FamilyCapture, "capture-output") => "output",
+        (FamilyCapture, _) => "general",
         _ => "settings",
     };
 
@@ -357,6 +386,7 @@ public partial class ConfigHelperWindow : Window
         FamilyAi => "ai-" + page,
         FamilyMacros => "macros-" + page,
         FamilyLogs => "logs-" + page,
+        FamilyCapture => "capture-" + page,
         _ => page switch
         {
             "scenes" => "superpanel-scenes",
@@ -371,6 +401,7 @@ public partial class ConfigHelperWindow : Window
         FamilyAi => "connect",
         FamilyMacros => "list",
         FamilyLogs => "settings",
+        FamilyCapture => "general",
         _ => "general",
     };
 
@@ -387,7 +418,7 @@ public partial class ConfigHelperWindow : Window
     /// <summary>一级导航的 tag（与 <c>ConfigHelper.xaml</c> 的 RadioButton 一一对应；四个父项不在此表）。</summary>
     private static readonly HashSet<string> FirstLevelNav = new(StringComparer.Ordinal)
     {
-        "general", "actions", "subactions", "hotkeys", "output", "triggers", "terminals", "backup",
+        "general", "actions", "subactions", "hotkeys", "triggers", "terminals", "backup",
     };
 
     /// <summary>把某个二级下拉设为展开 / 收起，并记住这个状态。</summary>
@@ -581,12 +612,21 @@ public partial class ConfigHelperWindow : Window
         bool ai = family == FamilyAi;
         bool macros = family == FamilyMacros;
         bool logs = family == FamilyLogs;
+        bool capture = family == FamilyCapture;
 
         Page_General.Visibility = tag == "general" ? Visibility.Visible : Visibility.Collapsed;
         Page_Actions.Visibility = tag == "actions" ? Visibility.Visible : Visibility.Collapsed;
         Host_SubActions.Visibility = tag == "subactions" ? Visibility.Visible : Visibility.Collapsed;
         Host_Hotkeys.Visibility = tag == "hotkeys" ? Visibility.Visible : Visibility.Collapsed;
-        Page_Output.Visibility = tag == "output" ? Visibility.Visible : Visibility.Collapsed;
+        // 「截图 Pro」八个同层子页：一个子页一个 ScrollViewer，按 page 切可见性
+        Page_CaptureGeneral.Visibility = capture && page == "general" ? Visibility.Visible : Visibility.Collapsed;
+        Page_CaptureBehavior.Visibility = capture && page == "behavior" ? Visibility.Visible : Visibility.Collapsed;
+        Page_CaptureDrawing.Visibility = capture && page == "drawing" ? Visibility.Visible : Visibility.Collapsed;
+        Page_CaptureOverlay.Visibility = capture && page == "overlay" ? Visibility.Visible : Visibility.Collapsed;
+        Page_CaptureOcr.Visibility = capture && page == "ocr" ? Visibility.Visible : Visibility.Collapsed;
+        Page_CapturePin.Visibility = capture && page == "pin" ? Visibility.Visible : Visibility.Collapsed;
+        Page_CaptureRecord.Visibility = capture && page == "record" ? Visibility.Visible : Visibility.Collapsed;
+        Page_Output.Visibility = capture && page == "output" ? Visibility.Visible : Visibility.Collapsed;
         Host_Macros.Visibility = macros ? Visibility.Visible : Visibility.Collapsed;
         Host_Triggers.Visibility = tag == "triggers" ? Visibility.Visible : Visibility.Collapsed;
         Host_SuperPanel.Visibility = superPanel ? Visibility.Visible : Visibility.Collapsed;
@@ -604,8 +644,9 @@ public partial class ConfigHelperWindow : Window
         // 诊断采样：单个 tag 的整次切页（含惰性建页 / Reload / 动画注册）
         using var perfSeg = PerfProbe.Measure("nav:" + tag);
 
-        // 父项（superpanel / ai / macros / logs）落到该分组上次所在的子页
-        if (tag is FamilySuperPanel or FamilyAi or FamilyMacros or FamilyLogs) tag = NavTagOf(tag, _lastSubPage[tag]);
+        // 父项（superpanel / ai / macros / capture / logs）落到该分组上次所在的子页
+        if (tag is FamilySuperPanel or FamilyAi or FamilyMacros or FamilyLogs or FamilyCapture)
+            tag = NavTagOf(tag, _lastSubPage[tag]);
 
         _navApplied = true;   // 显式导航已发生：取消排队中的「启动后恢复」，别把页改回去
         _currentNav = tag;
@@ -616,6 +657,7 @@ public partial class ConfigHelperWindow : Window
         bool ai = family == FamilyAi;
         bool macros = family == FamilyMacros;
         bool logs = family == FamilyLogs;
+        bool capture = family == FamilyCapture;
 
         SetPageVisibility(tag);
 
@@ -624,16 +666,18 @@ public partial class ConfigHelperWindow : Window
         if (ai) SyncNavGroup(FamilyAi, page);
         if (macros) SyncNavGroup(FamilyMacros, page);
         if (logs) SyncNavGroup(FamilyLogs, page);
-        // 四套子项各有 GroupName（subnav / subnav-ai / subnav-macros / subnav-logs），跨组不会自动互斥：
-        // 切到别处时清掉不在当前分组的子项，否则左边栏会同时高亮多项。
+        if (capture) SyncNavGroup(FamilyCapture, page);
+        // 五套子项各有 GroupName（subnav / subnav-ai / subnav-macros / subnav-capture / subnav-logs），
+        // 跨组不会自动互斥：切到别处时清掉不在当前分组的子项，否则左边栏会同时高亮多项。
         // 「上次子页」保留在 _lastSubPage 里，点回父项时还落在那儿。
         if (!superPanel) ClearSubNav(FamilySuperPanel);
         if (!ai) ClearSubNav(FamilyAi);
         if (!macros) ClearSubNav(FamilyMacros);
         if (!logs) ClearSubNav(FamilyLogs);
+        if (!capture) ClearSubNav(FamilyCapture);
 
         if (tag == "terminals") PopulateTerminals();
-        if (tag == "output") PopulateExport();
+        if (capture && page == "output") PopulateExport();
         if (logs) PopulateLogging();
         // 只有「运行历史」页可见时才读历史文件（500 条 JSONL，别在别的页白读）
         if (logs && page == "history") LoadRunHistory();
@@ -646,6 +690,13 @@ public partial class ConfigHelperWindow : Window
             PopulateToggles();
             PopulateRunNotice();
             PopulateTrayDoubleClick();
+            _initializing = false;
+        }
+        else if (capture)
+        {
+            // 截图 Pro 的选项也可能被覆盖层 / 录屏面板 / 颜色预设窗改过：每次进组同步一遍显示值
+            _initializing = true;
+            PopulateToggles();
             _initializing = false;
         }
         // 记忆当前页 + 展开状态，下次打开恢复（恢复期间不写盘、不播动画）
@@ -796,6 +847,7 @@ public partial class ConfigHelperWindow : Window
         PopulateCaptureShortcuts();
         PopulateCaptureKeymap();
         PopulateRecord();
+        PopulateTranslation();
     }
 
     /// <summary>

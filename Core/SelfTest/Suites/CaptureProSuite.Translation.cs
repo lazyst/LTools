@@ -224,5 +224,51 @@ internal static partial class CaptureProSuite
         Check.Equal("a\nb", TranslationLanguages.Join(new[] { "a", "", "b" }),
             "多行拼接跳过空行");
         Check.Equal(9, TranslationLanguages.All.Count, "语言目录 9 门");
+
+        // ============ 第二目标语言 + 检测门槛（照上游 resolveTranslationTarget） ============
+
+        // 纯中文、目标中文、第二目标英文、门槛 60 → 换英文
+        Check.Equal("en", TranslationLanguages.ResolveTarget("zh-CN", "en", 60, "这是一段中文"),
+            "原文就是目标语言 → 改译第二目标语言");
+        // 纯英文、目标中文 → 照旧译中文
+        Check.Equal("zh-CN", TranslationLanguages.ResolveTarget("zh-CN", "en", 60, "Hello world"),
+            "原文不是目标语言 → 照旧用主目标");
+        // 第二目标没配 / 与主目标相同 → 不换
+        Check.Equal("zh-CN", TranslationLanguages.ResolveTarget("zh-CN", "", 60, "这是一段中文"),
+            "第二目标为空 → 不换");
+        Check.Equal("zh-CN", TranslationLanguages.ResolveTarget("zh-CN", null, 60, "这是一段中文"),
+            "第二目标为 null → 不换");
+        Check.Equal("zh-CN", TranslationLanguages.ResolveTarget("zh-CN", "zh-CN", 60, "这是一段中文"),
+            "第二目标 = 主目标 → 不换");
+        Check.Equal("zh-CN", TranslationLanguages.ResolveTarget("zh-CN", "zh-TW", 60, "这是一段中文"),
+            "简繁算同一门 → 不换");
+        // 中英混排：汉字占比不到门槛就不换
+        Check.Equal("zh-CN",
+            TranslationLanguages.ResolveTarget("zh-CN", "en", 80, "中文 abcdefghij"),
+            "置信度不到门槛 → 不换");
+        Check.Equal("en",
+            TranslationLanguages.ResolveTarget("zh-CN", "en", 75, "中文中文中文中文 ab"),
+            "门槛降到汉字占比之下 → 换英文");
+        Check.Equal("zh-CN",
+            TranslationLanguages.ResolveTarget("zh-CN", "en", 90, "中文中文中文中文 ab"),
+            "门槛高于汉字占比 → 不换");
+        // 判不出语言（纯数字 / 符号）→ 不换
+        Check.Equal("zh-CN", TranslationLanguages.ResolveTarget("zh-CN", "en", 60, "123 !!!"),
+            "判不出语言 → 不换");
+
+        var detected = TranslationLanguages.DetectDetailed("这是一段中文");
+        Check.Equal("zh-CN", detected.Key, "DetectDetailed 给语言键");
+        Check.True(detected.Confidence > 0.99, "纯中文置信度接近 1");
+        Check.Equal(0.0, TranslationLanguages.DetectDetailed("123 !!!").Confidence, "判不出来时置信度 0");
+
+        Check.Equal(60, TranslationLanguages.DefaultThreshold, "门槛默认 60（照上游 integerDefault(60)）");
+        Check.Equal(30, TranslationLanguages.NormalizeThreshold(5), "低于下限夹到 30");
+        Check.Equal(100, TranslationLanguages.NormalizeThreshold(500), "高于上限夹到 100");
+        Check.Equal(60, TranslationLanguages.NormalizeThreshold(0), "0 = 没配 → 默认 60");
+        Check.Equal("", TranslationLanguages.NormalizeSecondary(null), "第二目标空 = 不用");
+        Check.Equal("", TranslationLanguages.NormalizeSecondary("none"), "写 none 也当不用");
+        Check.Equal("en", TranslationLanguages.NormalizeSecondary("en"), "第二目标键原样");
+        Check.True(TranslationLanguages.SameLanguage("zh-CN", "zh-TW"), "简繁算同一门");
+        Check.False(TranslationLanguages.SameLanguage("zh-CN", "en"), "中英不是同一门");
     }
 }
