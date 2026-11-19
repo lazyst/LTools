@@ -1205,6 +1205,14 @@ internal static partial class Program
 
         var popRow = (StackPanel)((Border)glowPopup.Child).Child;
         Check(popRow.Children.Count == 2, $"二级工具条里是这一格的两个工具（实际 {popRow.Children.Count} 个）");
+
+        // 位置：与一级图标水平居中、整体在它下方并留出间距（用户报过「歪了、贴太近」）。
+        // 直接调自定义摆位回调（弹层窗口还没建出来时 PointToScreen 拿不到 PresentationSource）
+        var placements = glowPopup.CustomPopupPlacementCallback!(
+            new Size(120, 40), new Size(28, 28), new Point(0, 0));
+        Check(Math.Abs(placements[0].Point.X - (28 - 120) / 2.0) < 0.01,
+            $"工具二级工具条与一级图标居中对齐（x={placements[0].Point.X:0.#}）");
+        Check(placements[0].Point.Y >= 28 + 4, $"首选在一级图标下方并留出间距（y={placements[0].Point.Y:0.#}）");
         var rectItem = popRow.Children.OfType<RadioButton>()
             .First(r => r.ToolTip?.ToString()?.StartsWith("矩形荧光", StringComparison.Ordinal) == true);
         rectItem.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));

@@ -594,20 +594,27 @@ public partial class CaptureToolbar : UserControl
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(4),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                BlurRadius = 12,
+                ShadowDepth = 2,
+                Opacity = 0.22,
+                Color = Colors.Black,
+            },
             Child = row,
         };
 
         var popup = new Popup
         {
             PlacementTarget = target,
-            Placement = PlacementMode.Bottom,
-            VerticalOffset = 6,
+            Placement = PlacementMode.Custom,
             StaysOpen = true,
             AllowsTransparency = true,
             PopupAnimation = PopupAnimation.Fade,
             Child = border,
             IsOpen = false,
         };
+        CenterOn(popup, preferAbove: false);
 
         // 悬停离开按钮 / 弹层都延迟收起：鼠标从按钮挪到弹层要跨一条缝，不能立刻关
         var close = new System.Windows.Threading.DispatcherTimer
@@ -1082,20 +1089,27 @@ public partial class CaptureToolbar : UserControl
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(4),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                BlurRadius = 12,
+                ShadowDepth = 2,
+                Opacity = 0.22,
+                Color = Colors.Black,
+            },
             Child = row,
         };
 
         var popup = new Popup
         {
             PlacementTarget = trigger,
-            Placement = PlacementMode.Top,
-            VerticalOffset = 6,
+            Placement = PlacementMode.Custom,
             StaysOpen = true,
             AllowsTransparency = true,
             PopupAnimation = PopupAnimation.Fade,
             Child = border,
             IsOpen = false,
         };
+        CenterOn(popup, preferAbove: true);
 
         foreach (var button in buttons.Skip(1))
         {
@@ -1140,6 +1154,29 @@ public partial class CaptureToolbar : UserControl
     }
 
     private readonly List<Popup> _actionPopups = new();
+
+    /// <summary>
+    /// 把悬停弹层**居中**摆在触发按钮的正上方 / 正下方（<paramref name="preferAbove"/> 决定先试哪边），
+    /// 两边都给候选：WPF 取第一个装得下的，贴屏幕边也不会被裁掉。
+    /// </summary>
+    /// <remarks>
+    /// 别用 <see cref="PlacementMode.Bottom"/> / <see cref="PlacementMode.Top"/>：那两个把弹层的
+    /// **左边缘**对齐按钮左边缘，比按钮宽的一排会整排往右甩，看起来「歪了、压到隔壁」。
+    /// </remarks>
+    private static void CenterOn(Popup popup, bool preferAbove)
+    {
+        const double gap = 8;
+
+        popup.CustomPopupPlacementCallback = (popupSize, targetSize, _) =>
+        {
+            double x = (targetSize.Width - popupSize.Width) / 2;
+            var below = new CustomPopupPlacement(new Point(x, targetSize.Height + gap),
+                PopupPrimaryAxis.Horizontal);
+            var above = new CustomPopupPlacement(new Point(x, -popupSize.Height - gap),
+                PopupPrimaryAxis.Horizontal);
+            return preferAbove ? new[] { above, below } : new[] { below, above };
+        };
+    }
 
     /// <summary>
     /// 「显示二维码」（照 Snow Shot 的 <c>m_showQrCodeButton</c>）：只在「选择」工具下露出来，

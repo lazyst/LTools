@@ -133,6 +133,17 @@ internal static partial class Program
             { RoutedEvent = UIElement.MouseEnterEvent });
             Pump(first);
             Check(pinStack.IsOpen, "鼠标停在一叠动作上就弹出二级工具条");
+            Pump(first);   // 让弹层把窗口建出来，PointToScreen 才有 PresentationSource
+
+            // 位置：与一级图标**水平居中**、整体在它上方并留出间距（用户报过「歪了、贴太近」）。
+            // 直接调自定义摆位回调（弹层窗口还没建出来时 PointToScreen 拿不到 PresentationSource）
+            var placements = pinStack.CustomPopupPlacementCallback!(
+                new Size(120, 40), new Size(28, 28), new Point(0, 0));
+            Check(placements.Length == 2, "给出上 / 下两个候选位置（贴边时自动翻）");
+            Check(Math.Abs(placements[0].Point.X - (28 - 120) / 2.0) < 0.01,
+                $"二级工具条与一级图标居中对齐（x={placements[0].Point.X:0.#}）");
+            Check(placements[0].Point.Y <= -40, $"首选在一级图标上方并留出间距（y={placements[0].Point.Y:0.#}）");
+            Check(placements[1].Point.Y >= 28 + 4, $"备选在下方并留出间距（y={placements[1].Point.Y:0.#}）");
             pinStack.IsOpen = false;
 
             // ============ ② 编辑器：行 = 目录默认顺序，第一行不能「另起一组」 ============
