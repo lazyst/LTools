@@ -1916,6 +1916,11 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   `ScreenRecordingAreaWindow::inputSurfaceColor()`）并去掉 `WS_EX_TRANSPARENT`，否则鼠标直接落到桌面，
   画不出任何东西（用户报过「画笔和方框点下去直接穿透到背面」）。同一开关也决定快捷键作用范围：
   绘制中「指针在录制区里」也算我们的 UI，撤销 / 重做 / 清空 / 换工具照常生效。
+- **标注层必须从「区域定下来」那一刻就存在**：只在 `BeginRecording()` 里建，空闲期（面板摆着、还没点开始）
+  选中画笔后屏幕上**没有任何窗口收鼠标**，画下去直接穿到背面——第一轮只修了 alpha 2，用户仍然复现。
+  现在 `ShowRegion()` 建完区域框就 `ShowAnnotations()`（上游 `annotationsPersistAcrossStatesAndClearOnlyForANewRegion`：
+  空闲也能先画，开录 / 暂停 / 停止都不清），区域变了才整层重建（旧标注不跨区域，上游 `setRecordingRegion`
+  的 `clearDocument`）；拖动区域框会连发很多次，重建走 150ms 防抖，别每次鼠标移动都截一张全屏。
 - `BeginRecording()` 由录制线程在倒计时结束后调用：它要碰控件、还要截冻结画面给标注层，
   必须 `Dispatcher.CheckAccess()` 自投递，否则「调用线程无法访问此对象」。
 - 麦克风 / 扬声器的 `Checked` / `Unchecked` 要顺手 `SyncUi()`：只写回 `RecordOptions` 而不刷状态，

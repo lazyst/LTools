@@ -815,3 +815,8 @@
   - 顺带把绘制中的快捷键作用范围补上：`RecordShortcutRoute` 的 `IsPointerHot` 在「标注层正在收鼠标 + 指针在录制区里」时也算我们的 UI，撤销 / 重做 / 清空 / 换工具在画面上照常生效（上游此时区域窗是焦点作用域）。
   - 回归：`capture-overlay-smoke` 的 `record` 段新增 8 条（没工具时带 `WS_EX_TRANSPARENT` / 选画笔后去掉 / 输入面像素 alpha = 2 / **真鼠标在录制区拖一下真的画出一笔** / 清掉工具又回到穿透），全量 **2989 条 0 失败**（连跑两遍）。
   - 顺带把冒烟里三处偶发竞态改稳：翻译按钮「取消」改成**在泵消息前**断言、剪贴板读取统一走 `WaitClipboardText`（最多等 1.5s）、拼图预览中键拖动失败重试三次。`--selftest` 296 用例 17490 断言维持全绿。
+
+- 2026-11-20（第二轮，用户仍报穿透）：**标注层从「区域定下来」那一刻就建**。第一轮只修了 alpha 2，但标注层仍只在 `BeginRecording()` 里建——空闲期（面板摆着、还没点开始）选中画笔后屏幕上**没有任何窗口收鼠标**，画下去直接穿到背面，这正是用户复现的路径。上游 `annotationsPersistAcrossStatesAndClearOnlyForANewRegion` 明确「idle 时就能画，且录制 / 暂停 / 停止都不清」。
+  - `ShowRegion()` 建完空闲区域框就调 `ShowAnnotations()`；`OnRegionChanged` / `ApplyArea` / `VisitArea` 在区域变化后走 `ScheduleAnnotations()`（150ms 防抖，拖动区域框时别每次鼠标移动都截一张全屏）。
+  - `ShowAnnotations()` 以 `RecordAnnotationWindow.Area` 判定：同一块区域直接 no-op（标注保留），区域不同则 `CloseAnnotation()` 后重建（旧标注不跨区域，上游 `setRecordingRegion` 的 `clearDocument`）。
+  - 回归：`record` 段新增 11 条——空闲期就有标注层且正好盖住录制区（DIP × 缩放）/ 没工具时穿透 / 选画笔后收鼠标 + **真鼠标在录制区画出一笔** / 换区域重建且旧标注清空 / 换回又是一层新的 / 同区域重复通知不重建且标注还在。全量 **3000 条 0 失败**；`--selftest` 维持全绿。

@@ -32,9 +32,13 @@ internal sealed class RecordAnnotationWindow : Window
 {
     private readonly CaptureDocument _doc;
     private readonly Surface _surface;
+    private readonly Int32Rect _area;
 
     private IntPtr _hwnd;
     private bool _inputActive;
+
+    /// <summary>这块标注层对应的录制区（物理像素）；区域变了就整层重建（标注不跨区域）。</summary>
+    internal Int32Rect Area => _area;
 
     /// <summary>标注变动（加 / 删 / 撤销 / 重做）：工具条据此刷新撤销与重做按钮。</summary>
     public event Action? Changed;
@@ -42,6 +46,7 @@ internal sealed class RecordAnnotationWindow : Window
     internal RecordAnnotationWindow(Int32Rect area, BitmapSource baseImage, double scale)
     {
         double s = scale > 0 ? scale : 1;
+        _area = area;
 
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;

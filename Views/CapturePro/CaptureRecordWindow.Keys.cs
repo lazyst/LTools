@@ -183,6 +183,7 @@ public partial class CaptureRecordWindow
         MetaText.Text = MetaSummary();
         PlaceBar();
         ShowRegion();
+        ScheduleAnnotations();   // 没有空闲区域框（直接开录）时也要换到新区域的标注层
         Sync();
     }
 

@@ -51,10 +51,46 @@ public partial class CaptureRecordWindow
         }
     }
 
+    /// <summary>区域变化时延迟重建标注层：拖区域框会连发很多次，别每一次都截一张全屏。</summary>
+    private System.Windows.Threading.DispatcherTimer? _annotationDebounce;
+
+    /// <summary>区域变了：安静 150ms 之后再重建（拖动过程中只保留旧层，松手后换新层）。</summary>
+    private void ScheduleAnnotations()
+    {
+        if (_closing) return;
+
+        if (_annotationDebounce == null)
+        {
+            _annotationDebounce = new System.Windows.Threading.DispatcherTimer(
+                System.Windows.Threading.DispatcherPriority.Background, Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(150),
+            };
+            _annotationDebounce.Tick += (_, _) =>
+            {
+                _annotationDebounce!.Stop();
+                ShowAnnotations();
+            };
+        }
+
+        _annotationDebounce.Stop();
+        _annotationDebounce.Start();
+    }
+
     /// <summary>开录：把标注层摆到录制区上，并在它之后把工具条顶回最上面。</summary>
+    /// <remarks>
+    /// 照上游：标注层**从区域定下来那一刻就在**（空闲时也能先画，画的东西开录后照样在）。
+    /// 区域变了就整层重建（上游「换了区域才清空上一块的标注」），同一块区域重复调用什么都不做。
+    /// </remarks>
     private void ShowAnnotations()
     {
-        if (Annotations != null) return;
+        if (_closing) return;
+
+        if (Annotations != null)
+        {
+            if (Annotations.Area == _area) return;
+            CloseAnnotation();
+        }
 
         try
         {
@@ -81,6 +117,8 @@ public partial class CaptureRecordWindow
     /// <summary>收尾 / 取消 / 关窗：标注层跟着走，别留一个透明窗口挂在屏幕上。</summary>
     private void CloseAnnotation()
     {
+        _annotationDebounce?.Stop();
+
         var layer = Annotations;
         Annotations = null;
         layer?.CloseQuietly();

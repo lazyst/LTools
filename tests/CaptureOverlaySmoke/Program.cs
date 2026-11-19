@@ -6735,6 +6735,94 @@ internal static partial class Program
         Check(styleBar.Visibility == Visibility.Visible, "点导出设置开关又展开");
         Check(tools.All(b => b.IsChecked != true), "展开导出设置时清掉工具选中");
 
+        // ---- 空闲期（还没点开始录）就该能画（上游 annotationsPersistAcrossStatesAndClearOnlyForANewRegion）----
+        // 回归：标注层以前只在 BeginRecording 里建，空闲期点画笔后屏幕上根本没有窗口收鼠标 → 直接穿透到背面。
+        var idleType = asm.GetType("LTools.Views.CapturePro.RecordAnnotationWindow")!;
+        Window? IdleLayer() => (Window?)barType.GetProperty("Annotations", AnyCtor)?.GetValue(bar);
+        var idleLayer = IdleLayer();
+        Check(idleLayer != null, "面板摆出来就有标注层（空闲也能先画）");
+        if (idleLayer != null)
+        {
+            var idleActive = idleType.GetProperty("InputActive", AnyCtor)!;
+            Check(idleActive.GetValue(idleLayer) is false, "空闲期没选工具时标注层点击穿透");
+            var shotType = asm.GetType("LTools.Features.CapturePro.ScreenShot")!;
+            double idleScale = (double)shotType.GetMethod("ScaleOf",
+                BindingFlags.Public | BindingFlags.Static)!.Invoke(null, new object[] { area })!;
+            Check(Math.Abs(idleLayer.Left - area.X / idleScale) < 0.6
+                  && Math.Abs(idleLayer.Top - area.Y / idleScale) < 0.6
+                  && Math.Abs(idleLayer.Width - area.Width / idleScale) < 0.6
+                  && Math.Abs(idleLayer.Height - area.Height / idleScale) < 0.6,
+                $"空闲期标注层正好盖住录制区（{idleLayer.Left:0.#},{idleLayer.Top:0.#} "
+                + $"{idleLayer.Width:0.#}×{idleLayer.Height:0.#} DIP，缩放 {idleScale:0.##}）");
+
+            var penIdle = tools.First(t => t.Tag?.ToString() == "Pen");
+            penIdle.IsChecked = true;
+            Pump(bar);
+            Check(idleActive.GetValue(idleLayer) is true, "空闲期选画笔后标注层收鼠标");
+
+            SetCursorPos(60, 60);
+            Thread.Sleep(120);
+            Pump(bar);
+            mouse_event(LeftDown, 0, 0, 0, UIntPtr.Zero);
+            Thread.Sleep(80);
+            for (int x = 90; x <= 210; x += 30)
+            {
+                SetCursorPos(x, 100);
+                Thread.Sleep(40);
+            }
+
+            mouse_event(LeftUp, 0, 0, 0, UIntPtr.Zero);
+            Thread.Sleep(150);
+            Pump(bar);
+            Check((bool)idleType.GetProperty("CanUndo", AnyCtor)!.GetValue(idleLayer)!,
+                "空闲期在录制区里真的画出一笔（不是穿到背面）");
+
+            // 换区域 = 整层重建（旧标注不跨区域，上游 setRecordingRegion 的 clearDocument）
+            void ChangeArea(Int32Rect next)
+            {
+                InvokeWith(bar, "OnRegionChanged", next);
+                Thread.Sleep(240);
+                Pump(bar);
+            }
+
+            ChangeArea(new Int32Rect(20, 20, 280, 200));
+            var movedLayer = IdleLayer();
+            Check(movedLayer != null && !ReferenceEquals(movedLayer, idleLayer), "换区域后重建标注层");
+            Check(movedLayer != null && idleType.GetProperty("CanUndo", AnyCtor)!.GetValue(movedLayer) is false,
+                "换区域后上一块的标注被清空");
+
+            ChangeArea(new Int32Rect(0, 0, 320, 240));
+            var backLayer = IdleLayer();
+            Check(backLayer != null && !ReferenceEquals(backLayer, movedLayer), "换回原区域又是一层新的");
+
+            // 同一块区域重复通知 = 什么都不做（标注保留）
+            if (backLayer != null)
+            {
+                SetCursorPos(60, 60);
+                Thread.Sleep(100);
+                Pump(bar);
+                mouse_event(LeftDown, 0, 0, 0, UIntPtr.Zero);
+                Thread.Sleep(60);
+                SetCursorPos(160, 120);
+                Thread.Sleep(60);
+                mouse_event(LeftUp, 0, 0, 0, UIntPtr.Zero);
+                Thread.Sleep(120);
+                Pump(bar);
+                Check((bool)idleType.GetProperty("CanUndo", AnyCtor)!.GetValue(backLayer)!,
+                    "新区域上又能画（画布仍然收鼠标）");
+
+                ChangeArea(new Int32Rect(0, 0, 320, 240));
+                Check(ReferenceEquals(IdleLayer(), backLayer), "同一块区域重复通知不重建（标注保留）");
+                Check((bool)idleType.GetProperty("CanUndo", AnyCtor)!.GetValue(backLayer)!,
+                    "同一块区域上的标注还在");
+            }
+
+            // 复原：展开导出设置（顺带清掉工具选中 + 标注层回到穿透），后面的断言仍按上游默认态
+            InvokeWith(bar, "SetExportRow", true);
+            if (backLayer != null) idleType.GetMethod("Clear", AnyCtor)!.Invoke(backLayer, null);
+            Pump(bar);
+        }
+
         // ---- 空闲态（上游 Idle）：开始键蓝、暂停禁用且灰、没有录屏时收尾三键禁用 ----
         var recordBtn = (Button)Field(bar, "RecordBtn");
         var pauseBtn = (Button)Field(bar, "PauseBtn");

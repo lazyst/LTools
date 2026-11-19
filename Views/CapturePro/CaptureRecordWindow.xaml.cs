@@ -136,6 +136,7 @@ public partial class CaptureRecordWindow : Window
         MetaText.Text = MetaSummary();
         PlaceBar();
         ReconcileWebcam();
+        ScheduleAnnotations();   // 会话定稿的区域 → 标注层跟着换（同一块区域不会重建）
     }
 
     // ============ 生命周期 ============
@@ -278,6 +279,9 @@ public partial class CaptureRecordWindow : Window
             _region = null;
             AppLog.Warn("CapturePro.Record", "显示录屏区域框失败：" + ex.Message);
         }
+
+        // 标注层从「区域定下来」那一刻就在（上游：空闲也能先画，开录后标注照样在）
+        ShowAnnotations();
     }
 
     private void OnRegionChanged(Int32Rect area)
@@ -287,6 +291,7 @@ public partial class CaptureRecordWindow : Window
         MetaText.Text = MetaSummary();
         PlaceBar();
         ReconcileWebcam();
+        ScheduleAnnotations();   // 区域变了 → 整层重建（上游：只有换区域才清空上一块的标注）
     }
 
     /// <summary>收掉空闲区域框（开录 / 取消 / 关面板都要走这里，别让蓝框留在屏幕上）。</summary>
