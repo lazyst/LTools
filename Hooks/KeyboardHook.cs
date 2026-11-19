@@ -180,6 +180,11 @@ internal static class KeyboardHook
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
             }
 
+            // 录屏面板快捷键（照上游 screenrecordingshortcutcontroller.cpp）：面板刻意不抢焦点
+            // （WS_EX_NOACTIVATE），拿不到窗口键盘事件，所以由全局钩子投递；只在指针停在录屏条
+            // （含它旁边的弹层）/ 空闲期区域框上时接管，命中就排回 UI 线程点对应的按钮。
+            if (RecordShortcutRoute.Handle(vk, isDown, isUp)) return (IntPtr)1;
+
             // 全局快捷键（含 CapsLock 前缀）：命中就吞键并在后台线程跑动作。
             // 放在状态机之前：CapsLock+字母 不再走旧的 vim 分发，统一由「快捷键」配置决定。
             if (isDown)

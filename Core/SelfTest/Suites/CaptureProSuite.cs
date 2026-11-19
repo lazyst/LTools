@@ -134,6 +134,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "截图输出：文件名模板 / 清洗封顶 / 设置读写 / PNG 压缩", ExportCases));
         cases.Add(new("capturePro", "剪贴板元数据：外观 / 落位 / 桌面变化 / 文件签名", ClipboardMetaCases));
         cases.Add(new("capturePro", "渲染进度：阶段文案 / 按钮 / ffmpeg 进度解析", RecordRenderCases));
+        cases.Add(new("capturePro", "录屏快捷键：动作表 / 匹配 / 状态门槛 / 区域历史", RecordShortcutCases));
     }
 
     private static void Geometry()
@@ -2900,6 +2901,177 @@ internal static partial class CaptureProSuite
         Check.Equal("pipe:1", withProgress[1], "进度从 stdout 出来");
         Check.Equal("-nostats", withProgress[2], "顺手关掉 stderr 的统计");
         Check.Equal("out.mp4", withProgress[^1], "原参数原样跟在后面");
+    }
+
+    /// <summary>
+    /// 录屏面板的快捷键（照上游 <c>screenrecordingshortcutcontroller.cpp</c> +
+    /// <c>drawing_shortcuts</c> / <c>canvashistoryshortcuts.h</c>）与录屏区域历史。
+    /// </summary>
+    private static void RecordShortcutCases()
+    {
+        // ---- 动作表：默认组合键与上游一致 ----
+        Check.Equal("Ctrl+E", RecordShortcuts.ChordsOf(RecordShortcutAction.Export), "导出 = Ctrl+E");
+        Check.Equal("Ctrl+S", RecordShortcuts.ChordsOf(RecordShortcutAction.ToggleRecording), "开始 / 暂停 = Ctrl+S");
+        Check.Equal("Ctrl+C", RecordShortcuts.ChordsOf(RecordShortcutAction.CopyToClipboard), "复制 = Ctrl+C");
+        Check.Equal("Esc", RecordShortcuts.ChordsOf(RecordShortcutAction.EndRecording), "关闭 = Esc");
+        Check.Equal("R", RecordShortcuts.ChordsOf(RecordShortcutAction.PreviousArea), "上一块区域 = R");
+        Check.Equal("Shift+R", RecordShortcuts.ChordsOf(RecordShortcutAction.NextArea), "下一块区域 = Shift+R");
+        Check.Equal("Ctrl+Z", RecordShortcuts.ChordsOf(RecordShortcutAction.Undo), "撤销 = Ctrl+Z");
+        Check.Equal("Ctrl+Y / Ctrl+Shift+Z", RecordShortcuts.ChordsOf(RecordShortcutAction.Redo),
+            "重做 = Ctrl+Y（另认 Ctrl+Shift+Z）");
+        Check.Equal("V", RecordShortcuts.ChordsOf(RecordShortcutAction.ToolSelect), "选择 = V");
+        Check.Equal("3 / P", RecordShortcuts.ChordsOf(RecordShortcutAction.ToolPen), "画笔 = 3 / P");
+        Check.Equal("9", RecordShortcuts.ChordsOf(RecordShortcutAction.ToolWatermark), "水印 = 9");
+
+        // 每个绘制工具都有快捷键，且反过来也能查回去
+        foreach (var tool in RecordTools.All)
+        {
+            var action = RecordShortcuts.ActionOf(tool);
+            Check.True(RecordShortcuts.ChordsOf(action).Length > 0, $"{tool} 有默认快捷键");
+            Check.True(RecordShortcuts.ToolOf(action) == tool, $"{tool} 的动作能查回工具");
+        }
+
+        // ---- 只有 Esc 在抬起时才触发（上游 end_recording 的 Release）----
+        Check.True(RecordShortcuts.FiresOnRelease(RecordShortcutAction.EndRecording), "Esc 抬起才关面板");
+        Check.False(RecordShortcuts.FiresOnRelease(RecordShortcutAction.Export), "导出是按下就触发");
+        Check.False(RecordShortcuts.FiresOnRelease(RecordShortcutAction.ToggleRecording), "开始 / 暂停是按下就触发");
+
+        // ---- 匹配：修饰键精确 ----
+        const ushort KeyS = 0x53, KeyE = 0x45, KeyC = 0x43, KeyZ = 0x5A, KeyY = 0x59;
+        const ushort KeyR = 0x52, Esc = 0x1B, KeyV = 0x56, Key1 = 0x31, KeyP = 0x50;
+
+        var idle = new RecordShortcutState();
+        Check.Equal(RecordShortcutAction.ToggleRecording,
+            RecordShortcuts.Match(KeyS, true, false, false, false, idle), "空闲 Ctrl+S = 开始录制");
+        Check.Equal(RecordShortcutAction.None,
+            RecordShortcuts.Match(KeyS, false, false, false, false, idle), "裸 S 不触发");
+        Check.Equal(RecordShortcutAction.None,
+            RecordShortcuts.Match(KeyS, true, true, false, false, idle), "多按 Shift 就不算命中");
+        Check.Equal(RecordShortcutAction.None,
+            RecordShortcuts.Match(KeyE, true, false, false, false, idle), "空闲 Ctrl+E 不导出（没在录）");
+
+        var recording = new RecordShortcutState { Recording = true };
+        Check.Equal(RecordShortcutAction.Export,
+            RecordShortcuts.Match(KeyE, true, false, false, false, recording), "录制中 Ctrl+E = 结束并导出");
+        Check.Equal(RecordShortcutAction.ToggleRecording,
+            RecordShortcuts.Match(KeyS, true, false, false, false, recording), "录制中 Ctrl+S = 暂停");
+        Check.Equal(RecordShortcutAction.CopyToClipboard,
+            RecordShortcuts.Match(KeyC, true, false, false, false, recording), "录制中 Ctrl+C = 复制");
+        Check.Equal(RecordShortcutAction.None,
+            RecordShortcuts.Match(KeyC, true, false, false, false, idle), "空闲且没有历史：Ctrl+C 不触发");
+        Check.Equal(RecordShortcutAction.CopyToClipboard,
+            RecordShortcuts.Match(KeyC, true, false, false, false, new RecordShortcutState { HasLastRecord = true }),
+            "有历史就能复制");
+        Check.Equal(RecordShortcutAction.None,
+            RecordShortcuts.Match(KeyE, true, false, false, false, new RecordShortcutState { Recording = true, Busy = true }),
+            "收尾中不再响应导出");
+
+        // ---- Esc：任何状态下都能关面板 ----
+        Check.Equal(RecordShortcutAction.EndRecording,
+            RecordShortcuts.Match(Esc, false, false, false, false, idle), "空闲 Esc = 关面板");
+        Check.Equal(RecordShortcutAction.EndRecording,
+            RecordShortcuts.Match(Esc, false, false, false, false, recording), "录制中 Esc = 关面板");
+
+        // ---- R / Shift+R：要摆着导出设置、且历史里还有别的区域 ----
+        var noHistory = new RecordShortcutState { ExportRowVisible = true };
+        Check.Equal(RecordShortcutAction.None,
+            RecordShortcuts.Match(KeyR, false, false, false, false, noHistory), "历史里没有别的区域：R 不触发");
+        var hasHistory = new RecordShortcutState { ExportRowVisible = true, AreaHistory = true };
+        Check.Equal(RecordShortcutAction.PreviousArea,
+            RecordShortcuts.Match(KeyR, false, false, false, false, hasHistory), "R = 上一块区域");
+        Check.Equal(RecordShortcutAction.NextArea,
+            RecordShortcuts.Match(KeyR, false, true, false, false, hasHistory), "Shift+R = 下一块区域");
+        Check.Equal(RecordShortcutAction.None,
+            RecordShortcuts.Match(KeyR, false, false, false, false,
+                new RecordShortcutState { ExportRowVisible = true, AreaHistory = true, Recording = true }),
+            "录制中不翻区域");
+
+        // ---- 绘制工具键 ----
+        var drawing = new RecordShortcutState();
+        Check.Equal(RecordShortcutAction.ToolSelect,
+            RecordShortcuts.Match(KeyV, false, false, false, false, drawing), "V = 选择");
+        Check.Equal(RecordShortcutAction.ToolRect,
+            RecordShortcuts.Match(Key1, false, false, false, false, drawing), "1 = 矩形");
+        Check.Equal(RecordShortcutAction.ToolPen,
+            RecordShortcuts.Match(KeyP, false, false, false, false, drawing), "P = 画笔");
+        Check.Equal(RecordShortcutAction.None,
+            RecordShortcuts.Match(KeyV, false, false, false, false, new RecordShortcutState { DrawingAllowed = false }),
+            "不能画时工具键无效");
+
+        // ---- 撤销 / 重做看栈 ----
+        Check.Equal(RecordShortcutAction.None,
+            RecordShortcuts.Match(KeyZ, true, false, false, false, drawing), "没有可撤销的就不吞 Ctrl+Z");
+        var undoable = new RecordShortcutState { CanUndo = true, CanRedo = true };
+        Check.Equal(RecordShortcutAction.Undo,
+            RecordShortcuts.Match(KeyZ, true, false, false, false, undoable), "Ctrl+Z = 撤销");
+        Check.Equal(RecordShortcutAction.Redo,
+            RecordShortcuts.Match(KeyY, true, false, false, false, undoable), "Ctrl+Y = 重做");
+        Check.Equal(RecordShortcutAction.Redo,
+            RecordShortcuts.Match(KeyZ, true, true, false, false, undoable), "Ctrl+Shift+Z = 重做");
+
+        // ---- 按钮提示带上快捷键 ----
+        Check.Equal("复制：最近一条录屏文件（Ctrl+C）",
+            RecordShortcuts.WithChord("复制：最近一条录屏文件", RecordShortcutAction.CopyToClipboard),
+            "提示文案带组合键");
+
+        // ---- 区域历史：翻页顺序 / 跳过当前 / 跳过屏幕外 ----
+        var screens = new List<Int32Rect> { new(0, 0, 1920, 1080) };
+        var entries = new List<Int32Rect> { new(0, 0, 400, 300), new(0, 0, 800, 600) };
+        var current = new Int32Rect(0, 0, 1000, 700);
+
+        Check.False(RecordAreaHistory.TryVisit(entries, current, false, -1, screens, out _, out _),
+            "头一次「下一块」什么都没有");
+        Check.True(RecordAreaHistory.TryVisit(entries, current, true, -1, screens, out var newest, out int idx),
+            "往回翻拿得到");
+        Check.Equal(entries[1], newest, "往回翻先拿最新的那块");
+        Check.Equal(1, idx, "游标落在最新那块");
+        Check.True(RecordAreaHistory.TryVisit(entries, current, true, 1, screens, out var older, out _),
+            "接着往回翻");
+        Check.Equal(entries[0], older, "第二块");
+        Check.False(RecordAreaHistory.TryVisit(entries, current, true, 0, screens, out _, out _), "到头了");
+        Check.True(RecordAreaHistory.TryVisit(entries, current, false, 0, screens, out var forward, out _),
+            "往前翻到下一块");
+        Check.Equal(entries[1], forward, "下一块是最新那块");
+        Check.False(RecordAreaHistory.TryVisit(entries, current, false, 1, screens, out _, out _),
+            "已经在最新那块，再往前就没有了");
+
+        Check.True(RecordAreaHistory.TryVisit(entries, entries[1], true, -1, screens, out var skipped, out _),
+            "当前这块在列表里也能翻");
+        Check.Equal(entries[0], skipped, "跳过当前这块");
+
+        var offscreen = new List<Int32Rect> { new(5000, 5000, 400, 300), new(0, 0, 800, 600) };
+        Check.True(RecordAreaHistory.TryVisit(offscreen, current, true, -1, screens, out var visible, out _),
+            "屏幕外的旧坐标自动跳过");
+        Check.Equal(offscreen[1], visible, "落到还在屏幕上的那一块");
+        Check.False(RecordAreaHistory.TryVisit(offscreen.GetRange(0, 1), current, true, -1, screens, out _, out _),
+            "全都出了屏幕 = 到底");
+
+        // ---- 有没有「别的区域」（R / Shift+R 能不能点）----
+        Check.True(RecordAreaHistory.AnyOther(entries, current, screens), "历史里有别的可用区域");
+        Check.False(RecordAreaHistory.AnyOther(new List<Int32Rect> { current }, current, screens),
+            "只有当前这块 = 没有别的");
+        Check.False(RecordAreaHistory.AnyOther(offscreen.GetRange(0, 1), current, screens),
+            "屏幕外的不算可用");
+
+        // ---- 清洗：去重留最后 / 丢空 / 限长 ----
+        var cleaned = RecordAreaHistory.Normalize(new List<Int32Rect>
+        {
+            new(0, 0, 10, 10), new(0, 0, 20, 20), new(0, 0, 10, 10),
+        });
+        Check.Equal(2, cleaned.Count, "重复区域只留一条");
+        Check.Equal(new Int32Rect(0, 0, 20, 20), cleaned[0], "挪到后面去");
+        Check.Equal(new Int32Rect(0, 0, 10, 10), cleaned[1], "最后出现的位置决定顺序");
+
+        Check.Equal(0, RecordAreaHistory.Normalize(new List<Int32Rect>
+        {
+            new(0, 0, 0, 10), new(0, 0, 10, 0), new(0, 0, -5, 10),
+        }).Count, "空区域 / 负尺寸不收");
+
+        var many = new List<Int32Rect>();
+        for (int i = 0; i < RecordAreaHistory.Limit + 20; i++) many.Add(new Int32Rect(0, 0, i + 1, 10));
+        var limited = RecordAreaHistory.Normalize(many);
+        Check.Equal(RecordAreaHistory.Limit, limited.Count, "上限 100");
+        Check.Equal(new Int32Rect(0, 0, RecordAreaHistory.Limit + 20, 10), limited[^1], "超出时丢最旧的");
     }
 
     /// <summary>

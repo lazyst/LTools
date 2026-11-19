@@ -97,6 +97,7 @@ public partial class CaptureRecordWindow : Window
         if (area == _area) return;
 
         _area = area;
+        ResetAreaHistory();
         MetaText.Text = MetaSummary();
         PlaceBar();
     }
@@ -111,6 +112,9 @@ public partial class CaptureRecordWindow : Window
 
         ShowRegion();
 
+        // 没有等待期（内置功能 / harness 直接开录）：这时就已经在录了，历史现在就记
+        if (_recording) RememberArea();
+
         Sync();
         _timer.Start();
     }
@@ -118,6 +122,7 @@ public partial class CaptureRecordWindow : Window
     private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
     {
         _timer.Stop();
+        RecordShortcutRoute.Clear();
         CloseRegion();
         foreach (var popover in _popovers) popover.Hide();
         _micGainPop?.Hide();
@@ -163,6 +168,7 @@ public partial class CaptureRecordWindow : Window
 
         _recording = true;
         CloseRegion();
+        RememberArea();
         Sync();
         ShowAnnotations();
     }
@@ -189,10 +195,11 @@ public partial class CaptureRecordWindow : Window
     {
         SyncUi();
 
-        if (_finished || !_recording || !_controller.Finished) return;
+        if (_finished || !_recording || !_controller.Finished) { PublishShortcuts(); return; }
 
         _finished = true;
         UpdateToolButtons();      // 收尾过程中立刻把三个收尾按钮按「历史里有没有录屏」重算
+        PublishShortcuts();
     }
 
     // ============ 空闲时的可编辑区域框 ============
@@ -226,6 +233,7 @@ public partial class CaptureRecordWindow : Window
     private void OnRegionChanged(Int32Rect area)
     {
         _area = area;
+        ResetAreaHistory();
         MetaText.Text = MetaSummary();
         PlaceBar();
     }

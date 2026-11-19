@@ -146,7 +146,7 @@ public partial class CaptureRecordWindow
                 Style = (Style)FindResource("BarToolBtn"),
                 GroupName = "recTool",
                 Content = MakeIcon(RecordTools.IconOf(tool)),
-                ToolTip = RecordTools.TipOf(tool),
+                ToolTip = RecordShortcuts.WithChord(RecordTools.TipOf(tool), RecordShortcuts.ActionOf(tool)),
                 Tag = tool,
             };
             button.Checked += (_, e) =>
@@ -661,7 +661,9 @@ public partial class CaptureRecordWindow
             RecordBtn.Foreground = active
                 ? (Brush)FindResource("CaptureDanger")     // 停止：danger 红（上游 addActionButton(..., true)）
                 : (Brush)FindResource("CapturePrimary");   // 开始：primary 蓝
-            RecordBtn.ToolTip = active ? "结束录制（存进采集历史）" : "开始录制";
+            RecordBtn.ToolTip = active
+                ? RecordShortcuts.WithChord("结束录制（存进采集历史）", RecordShortcutAction.Export)
+                : RecordShortcuts.WithChord("开始录制", RecordShortcutAction.ToggleRecording);
             RecordBtn.IsEnabled = !finished;
 
             // 暂停：录制中才可用，可用时图标是警示黄（上游 `Pause()` + colorWarning）；
@@ -670,7 +672,9 @@ public partial class CaptureRecordWindow
             PauseBtn.Foreground = paused
                 ? (Brush)FindResource("CapturePrimary")
                 : (Brush)FindResource(active ? "CaptureWarning" : "CaptureTextDisabled");
-            PauseBtn.ToolTip = paused ? "继续录制" : "暂停（暂停的时间不进成品）";
+            PauseBtn.ToolTip = paused
+                ? RecordShortcuts.WithChord("继续录制", RecordShortcutAction.ToggleRecording)
+                : RecordShortcuts.WithChord("暂停（暂停的时间不进成品）", RecordShortcutAction.ToggleRecording);
             PauseBtn.IsEnabled = active;
 
             // 麦克风 / 扬声器：图标形状 + 颜色。可用性照上游 `(idle || enabled) && !busy && !animated`：
@@ -702,7 +706,12 @@ public partial class CaptureRecordWindow
 
             _trimBtn.ToolTip = canFinish ? "裁剪 / 倍速：最近一条录屏" : "裁剪 / 倍速：还没有录屏";
             _saveBtn.ToolTip = canFinish ? "另存为：最近一条录屏" : "另存为：还没有录屏";
-            _copyBtn.ToolTip = canFinish ? "复制：最近一条录屏文件" : "复制：还没有录屏";
+            _copyBtn.ToolTip = canFinish
+                ? RecordShortcuts.WithChord("复制：最近一条录屏文件", RecordShortcutAction.CopyToClipboard)
+                : "复制：还没有录屏";
+            _undoBtn.ToolTip = RecordShortcuts.WithChord("撤销标注", RecordShortcutAction.Undo);
+            _redoBtn.ToolTip = RecordShortcuts.WithChord("重做标注", RecordShortcutAction.Redo);
+            CancelBtn.ToolTip = RecordShortcuts.WithChord("关闭（取消这次录制）", RecordShortcutAction.EndRecording);
 
             _undoBtn.IsEnabled = Annotations?.CanUndo == true;
             _redoBtn.IsEnabled = Annotations?.CanRedo == true;
