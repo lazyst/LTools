@@ -829,6 +829,14 @@ public partial class ImageEditWindow : Window
             return;
         }
 
+        // 与截图覆盖层同一份快捷键表（绘图工具 + 撤销 / 重做 + 清空画布）。
+        // 放在 Ctrl 分支之前：用户把某个工具改绑到 Ctrl+… 也照样生效。
+        if (TryTableShortcut(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (ctrl)
         {
             if (e.Key == Key.Z) { Undo(); e.Handled = true; return; }

@@ -120,15 +120,40 @@ public partial class CaptureResultWindow : Window
     }
 
     /// <summary>打开结果窗（非模态：用户慢慢改 / 复制，流程该干嘛干嘛）。</summary>
+    /// <param name="initialTab">
+    /// 打开就停在哪一页（<c>table_recognition</c> 快捷键直接进表格页）。识别是异步的，
+    /// 先切页不会丢内容：算完之后 <see cref="Apply"/> 按当前页重新铺一遍。
+    /// </param>
     internal static void Show(BitmapSource image, string? engine, CaptureEntry? entry = null,
         Int32Rect area = default, bool copyWhenReady = false, bool translateWhenReady = false,
-        bool quick = false)
+        bool quick = false, string? initialTab = null)
     {
         var window = new CaptureResultWindow(image, engine, entry, area, copyWhenReady,
             translateWhenReady, quick);
         window.Show();
         window.Activate();
         window.Focus();
+        if (!string.IsNullOrEmpty(initialTab)) window.SelectTab(initialTab);
+    }
+
+    /// <summary>直接切到某一页（快捷键 <c>table_recognition</c> 用）。</summary>
+    internal void SelectTab(string tag)
+    {
+        RadioButton? button = tag switch
+        {
+            "table" => TabTable,
+            "qr" => TabQr,
+            "document" => TabDocument,
+            "markdown" => TabMarkdown,
+            "html" => TabHtml,
+            "latex" => TabLatex,
+            _ => TabText,
+        };
+        if (button == null) return;
+
+        _tab = button.Tag as string ?? tag;
+        button.IsChecked = true;      // 已经选中时 Checked 不会再发，所以先写 _tab
+        UpdateTabs();
     }
 
     /// <summary>识别结果（冒烟读它做断言；还没算完时为 null）。</summary>

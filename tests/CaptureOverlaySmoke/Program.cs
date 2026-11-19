@@ -167,6 +167,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "keymap")
+        {
+            KeymapSection();
+            Console.WriteLine(_failed == 0 ? "keymap-only：通过" : $"keymap-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         if (_only == "export")
         {
             ExportSection();
@@ -567,6 +574,9 @@ internal static partial class Program
 
         // ============ 全局快捷键（P7-c）：播种 / 真按键 / 设置对话框 / 三个新出口 ============
         ShortcutsSection();
+
+        // ============ 覆盖层内快捷键（P9-f）：四张表 / 设置窗 / 真录入 / 落盘 ============
+        KeymapSection();
 
         // ============ 截图输出（P7-d）：模板 / 格式 / 压缩 / 自动保存 / 复制带文件 / 结果条 ============
         ExportSection();
@@ -2770,8 +2780,8 @@ internal static partial class Program
                 if (mi.Header?.ToString() == "关闭全部贴图") hasCloseAll = true;
                 if (mi.Header?.ToString() == "局部显示") hasViewport = true;
                 if (mi.Header?.ToString() == "成组移动") hasGroup = true;
-                if (mi.Header?.ToString() == "标注…") hasAnnotate = true;
-                if (mi.Header?.ToString() == "缩略图模式") hasThumb = true;
+                if (mi.Header?.ToString()?.StartsWith("标注…", StringComparison.Ordinal) == true) hasAnnotate = true;
+                if (mi.Header?.ToString()?.StartsWith("缩略图模式", StringComparison.Ordinal) == true) hasThumb = true;
             }
         Check(items >= 12, $"右键菜单条目齐（{items} 项）");
         Check(hasZoom && hasOpacity, "右键菜单有缩放 / 不透明度子菜单");
@@ -3489,7 +3499,27 @@ internal static partial class Program
         System.Windows.Clipboard.Clear();
         copyButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Pump(window);
-        Check(System.Windows.Clipboard.GetText().Contains("苹果"), "文档复制拿到选中那段");
+
+        // 剪贴板是全局独占的：写完到别的进程读得到之间有个很短的窗口，
+        // 刚好被系统里别的程序抢一下就会读成空。这里按「重试 10 次 × 30ms」读，
+        // 读法也换成写它的那条原生路径（NativeClipboard），别在 OLE 转换上再赌一次。
+        string copiedText = "";
+        var nativeClipboard = typeof(CaptureOverlayWindow).Assembly.GetType("LTools.Native.NativeClipboard")!;
+        var tryGetText = nativeClipboard.GetMethod("TryGetText",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!;
+        for (int i = 0; i < 10; i++)
+        {
+            object?[] args = { "" };
+            if (tryGetText.Invoke(null, args) is true && args[0] is string text && text.Length > 0)
+            {
+                copiedText = text;
+                break;
+            }
+
+            System.Threading.Thread.Sleep(30);
+        }
+
+        Check(copiedText.Contains("苹果"), "文档复制拿到选中那段：" + copiedText.Replace("\r\n", "/"));
         Check(System.Windows.Clipboard.GetDataObject()?.GetDataPresent(DataFormats.Html) == true,
             "文档复制同时写 text/html（富文本）");
 
@@ -4528,7 +4558,8 @@ internal static partial class Program
             var menu = (ContextMenu)Call("BuildMenu")!;
             bool hasItem = false;
             foreach (var item in menu.Items)
-                if (item is MenuItem mi && (mi.Header as string) == "点击穿透") hasItem = true;
+                if (item is MenuItem mi && (mi.Header as string)?.StartsWith("点击穿透", StringComparison.Ordinal) == true)
+                hasItem = true;
             Check(hasItem, "点穿：右键菜单里有「点击穿透」");
 
             // ============ 开穿透 ============
@@ -4854,7 +4885,8 @@ internal static partial class Program
             static MenuItem? Find(ItemsControl root, string header)
             {
                 foreach (var item in root.Items)
-                    if (item is MenuItem mi && (mi.Header as string) == header) return mi;
+                    if (item is MenuItem mi && (mi.Header as string)?.StartsWith(header, StringComparison.Ordinal) == true)
+                return mi;
                 return null;
             }
 

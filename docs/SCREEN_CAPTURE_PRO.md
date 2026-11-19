@@ -1501,6 +1501,29 @@ Id 与已经删掉的 Id 都不复活。
 所以结果窗看到的和「保存图片」导出的成品图一致；贴图的文字层也走这条路径。
 平台差异（`blur` 按每行框、`hardware_acceleration` 不落空开关等）见 `docs/CAPTURE_PARITY.md` §5。
 
+### 10.12 快捷键（P9-f，2026-11-19）
+
+四张表，默认值逐条照上游 `storage/configurationschema.cpp`：
+
+| 表 | 条目 | 用在哪 | 怎么派发 |
+| --- | --- | --- | --- |
+| `screenshot_shortcuts` | 36（上游 37，`upload_to_cloud` 不注册） | 截图覆盖层 | 覆盖层自己带焦点 → `Window_KeyDown` → `CaptureShortcutTable.Match` |
+| `drawing_shortcuts` | 26 | 覆盖层与图片编辑窗 | 同上；`reset_canvas` 是「清空画布」，其余是换工具 |
+| `pin_to_screen_shortcuts` | 24（上游 39，见 §5） | 贴图窗口 | 贴图不抢焦点 → 点一下「把键盘交给它」→ 全局钩子按「光标下就是这张贴图」投递 |
+| `screen_recording_shortcuts` | 6 | 录屏面板 | 面板不抢焦点 → 指针停在录屏条上时由全局钩子投递 |
+
+- **只存改过的项**：`configs/settings.json` 的 `CaptureShortcuts` 段，键 = 上游动作 Id、值 = 组合键列表；
+  缺项 = 上游默认，**空列表 = 明确不绑**（不是回落默认）。`CaptureShortcutTable.Set` / `Reset` / `ResetAll`
+  写的就是这一份，`Invalidate()` 让进程内缓存立刻跟上。
+- **匹配规则**：修饰键精确（`Ctrl+C` 不会被 `Ctrl+Shift+C` 命中）、左右修饰键归一（右 Shift 也算 `Shift`）、
+  **裸修饰键合法**（`Shift` 锁正方形、`Alt` 切参考线）。`CaptureChord` 用 `KeyStroke.TryResolveKey`，
+  所以 `Esc` / `Tab` / `Enter` / `,` / `.` / `` ` `` 都能当主键。
+- **设置入口**：「设置 → 通用 → 截图 Pro → 覆盖层内快捷键 → 编辑…」（`Views/CapturePro/CaptureKeymapWindow`），
+  四个页签、每行两个格子 + ✕ 清空 + ↺ 恢复默认，改完即时生效、即时落盘。与「全局快捷键…」
+  （`hotkeys.json` 里名为「截图 Pro」的预设组，管的是「在任意程序里按什么键开始截图」）是两件事。
+- **作用范围**（与上游的差异见 `docs/CAPTURE_PARITY.md` §5）：覆盖层有焦点；录屏面板看「指针在不在面板上」；
+  贴图看「有没有点过这张贴图、指针还在不在上面」——鼠标只是停在贴图上不会吞键。
+
 ## 11. 采集历史（P2-2 / P4）
 
 截图 / 识别 / 录屏的落点：数据根 `captures/`（`catalog.json` + `assets/<id>.png` + `thumbnails/<id>.png`

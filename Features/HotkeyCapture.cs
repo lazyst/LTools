@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -46,8 +47,17 @@ internal static class HotkeyCapture
     // 阶段 2：Begin / End / Cancel 由 UI 线程写，IsCapturing 由钩子线程读 → volatile 保证可见。
     private static volatile State? _active;
 
+    /// <summary>额外的「让钩子放行」计数（截图 Pro 的快捷键录入框用，见 <see cref="CaptureChordRecorder"/>）。</summary>
+    private static int _extra;
+
     /// <summary>是否有热键框正在等待 / 接收按键（键盘钩子回调只读）。</summary>
-    public static bool IsCapturing => _active != null;
+    public static bool IsCapturing => _active != null || Volatile.Read(ref _extra) > 0;
+
+    /// <summary>临时让全局钩子放行（与热键录入同一条通道，配对调用 <see cref="PopSuspend"/>）。</summary>
+    public static void PushSuspend() => Interlocked.Increment(ref _extra);
+
+    /// <summary>结束放行。</summary>
+    public static void PopSuspend() => Interlocked.Decrement(ref _extra);
 
     /// <summary>宿主窗口失焦 / 关闭时调用：结束录入，避免键盘钩子一直让路。</summary>
     public static void Cancel()

@@ -139,6 +139,9 @@ public partial class CapturePinWindow : Window
         // 出现之后静默识别一次（照上游 automatic_text_recognition）：点「显示文字」/ 划选都不必再等。
         Loaded += (_, _) => StartAutoRecognize();
 
+        // 贴图不抢焦点，键只能由全局钩子按「指针停在这张贴图上」投递（见 PinShortcutRoute）。
+        Loaded += (_, _) => PinShortcutRoute.Register(_hwnd, PerformShortcut);
+
         // 实时贴图：本窗口一动 / 一改尺寸 / 一藏，下面那层缩略图宿主就得跟着（否则屏幕上会
         // 留下一块对不上的画面）。平时它们是空操作。点击穿透的三个控件也跟着贴图走。
         LocationChanged += (_, _) =>
@@ -333,6 +336,7 @@ public partial class CapturePinWindow : Window
         ShutdownShadow();                      // 阴影也是独立窗口，跟着一起关
         _menu?.IsOpen = false;
         _menu = null;
+        PinShortcutRoute.Unregister(_hwnd);
         base.OnClosed(e);
         CapturePinManager.Forget(this);
     }

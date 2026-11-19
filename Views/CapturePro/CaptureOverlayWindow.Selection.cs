@@ -335,11 +335,13 @@ public partial class CaptureOverlayWindow
         BeginFrameChange(_sel ?? default);
 
         // 还没有选区时 Shift 仍然是「锁正方形」（等价于新建）；有选区之后 Shift / Alt 才是加区 / 减区。
+        // 锁正方形的键可以改（截图快捷键表），按住的是它才算。
         _squareDrag = false;
         if (_regions.Count == 0)
         {
             _mode = RegionMode.Add;
-            _squareDrag = shift;
+            _squareDrag = CaptureShortcutTable.Held(CaptureShortcutScope.Screenshot,
+                "keep_selection_width_and_height_consistent");
         }
         else if (alt)
         {
@@ -700,7 +702,11 @@ public partial class CaptureOverlayWindow
         e.Handled = true;
 
         // 快捷入口：选区一落定就执行它的默认动作（普通截图 HasPending = false，不受影响）
-        if (fresh) FirePendingAction();
+        if (fresh)
+        {
+            RememberRecentSelection();
+            FirePendingAction();
+        }
     }
 
     /// <summary>放弃当前手势：画到一半的丢掉，改框 / 移动就还原成按下前的选区。</summary>
@@ -733,6 +739,13 @@ public partial class CaptureOverlayWindow
     private void RefreshCursor(Point p)
     {
         if (_textEditing) return;
+
+        // 用户按了「显示 / 隐藏光标」：这一层就别再按工具改回箭头 / 十字
+        if (_cursorHidden)
+        {
+            Cursor = Cursors.None;
+            return;
+        }
 
         // 智能选区预选态：光标就是「十字 + 单击确认」，不该出现缩放 / 移动的箭头
         if (SmartPreviewActive)

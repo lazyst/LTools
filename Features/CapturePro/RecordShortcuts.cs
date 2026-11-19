@@ -65,11 +65,22 @@ internal sealed class RecordShortcutState
     public RecordShortcutState Clone() => (RecordShortcutState)MemberwiseClone();
 }
 
-/// <summary>一条快捷键：动作 + 默认组合键（一个动作可以有多组，照上游的字符串列表）+ 说明。</summary>
+/// <summary>
+/// 一条快捷键：动作 + 它在快捷键表里的位置（作用域 + 上游动作 Id）+ 说明。
+/// </summary>
+/// <remarks>
+/// 组合键本身**不存这里**：一律问 <see cref="CaptureShortcutTable"/>（用户改过就用改过的），
+/// 这样录屏面板与截图覆盖层、图片编辑窗、贴图窗读的是同一份配置，改一处到处生效。
+/// </remarks>
 internal sealed record RecordShortcutEntry(
     RecordShortcutAction Action,
-    IReadOnlyList<string> Chords,
-    string Label);
+    CaptureShortcutScope Scope,
+    string Id,
+    string Label)
+{
+    /// <summary>当前生效的组合键。</summary>
+    public IReadOnlyList<string> Chords => CaptureShortcutTable.Chords(Scope, Id);
+}
 
 /// <summary>
 /// 录屏面板的键盘快捷键（照 Snow Shot 的 <c>screenrecordingshortcutcontroller.cpp</c> +
@@ -89,38 +100,41 @@ internal sealed record RecordShortcutEntry(
 /// </remarks>
 internal static class RecordShortcuts
 {
-    /// <summary>默认组合键与说明（顺序照上游：录制控制 → 画布历史 → 绘制工具）。</summary>
+    /// <summary>动作与说明（顺序照上游：录制控制 → 画布历史 → 绘制工具）。</summary>
     public static readonly IReadOnlyList<RecordShortcutEntry> All = new[]
     {
-        new RecordShortcutEntry(RecordShortcutAction.Export, new[] { "Ctrl+E" }, "结束并导出"),
-        new RecordShortcutEntry(RecordShortcutAction.ToggleRecording, new[] { "Ctrl+S" }, "开始 / 暂停 / 继续"),
-        new RecordShortcutEntry(RecordShortcutAction.CopyToClipboard, new[] { "Ctrl+C" }, "复制最近一条录屏"),
-        new RecordShortcutEntry(RecordShortcutAction.EndRecording, new[] { "Esc" }, "关闭录屏面板"),
-        new RecordShortcutEntry(RecordShortcutAction.PreviousArea, new[] { "R" }, "上一块录屏区域"),
-        new RecordShortcutEntry(RecordShortcutAction.NextArea, new[] { "Shift+R" }, "下一块录屏区域"),
+        new RecordShortcutEntry(RecordShortcutAction.Export, CaptureShortcutScope.Recording, "export", "结束并导出"),
+        new RecordShortcutEntry(RecordShortcutAction.ToggleRecording, CaptureShortcutScope.Recording, "toggle_recording", "开始 / 暂停 / 继续"),
+        new RecordShortcutEntry(RecordShortcutAction.CopyToClipboard, CaptureShortcutScope.Recording, "copy_to_clipboard", "复制最近一条录屏"),
+        new RecordShortcutEntry(RecordShortcutAction.EndRecording, CaptureShortcutScope.Recording, "end_recording", "关闭录屏面板"),
+        new RecordShortcutEntry(RecordShortcutAction.PreviousArea, CaptureShortcutScope.Recording, "previous_recording_area", "上一块录屏区域"),
+        new RecordShortcutEntry(RecordShortcutAction.NextArea, CaptureShortcutScope.Recording, "next_recording_area", "下一块录屏区域"),
 
-        new RecordShortcutEntry(RecordShortcutAction.Undo, new[] { "Ctrl+Z" }, "撤销标注"),
-        new RecordShortcutEntry(RecordShortcutAction.Redo, new[] { "Ctrl+Y", "Ctrl+Shift+Z" }, "重做标注"),
+        // 上游 undo / redo 是 CanvasHistoryShortcuts 的固定绑定，读的是 screenshot_shortcuts/*；
+        // reset_canvas 才是 drawing_shortcuts/*。
+        new RecordShortcutEntry(RecordShortcutAction.Undo, CaptureShortcutScope.Screenshot, "undo", "撤销标注"),
+        new RecordShortcutEntry(RecordShortcutAction.Redo, CaptureShortcutScope.Screenshot, "redo", "重做标注"),
+        new RecordShortcutEntry(RecordShortcutAction.ResetCanvas, CaptureShortcutScope.Drawing, "reset_canvas", "清空标注"),
 
-        new RecordShortcutEntry(RecordShortcutAction.ToolSelect, new[] { "V" }, "选择 / 移动标注"),
-        new RecordShortcutEntry(RecordShortcutAction.ToolRect, new[] { "1" }, "矩形标注"),
-        new RecordShortcutEntry(RecordShortcutAction.ToolArrow, new[] { "2" }, "箭头标注"),
-        new RecordShortcutEntry(RecordShortcutAction.ToolPen, new[] { "3", "P" }, "画笔"),
-        new RecordShortcutEntry(RecordShortcutAction.ToolHighlighter, new[] { "4", "H" }, "荧光笔"),
-        new RecordShortcutEntry(RecordShortcutAction.ToolText, new[] { "5", "T" }, "文字标注"),
-        new RecordShortcutEntry(RecordShortcutAction.ToolSerial, new[] { "6", "N" }, "序号标注"),
-        new RecordShortcutEntry(RecordShortcutAction.ToolFilter, new[] { "7", "F" }, "马赛克 / 滤镜"),
-        new RecordShortcutEntry(RecordShortcutAction.ToolEraser, new[] { "8", "E" }, "橡皮"),
-        new RecordShortcutEntry(RecordShortcutAction.ToolWatermark, new[] { "9" }, "水印"),
+        new RecordShortcutEntry(RecordShortcutAction.ToolSelect, CaptureShortcutScope.Drawing, "select", "选择 / 移动标注"),
+        new RecordShortcutEntry(RecordShortcutAction.ToolRect, CaptureShortcutScope.Drawing, "shape", "矩形标注"),
+        new RecordShortcutEntry(RecordShortcutAction.ToolArrow, CaptureShortcutScope.Drawing, "arrow", "箭头标注"),
+        new RecordShortcutEntry(RecordShortcutAction.ToolPen, CaptureShortcutScope.Drawing, "brush", "画笔"),
+        new RecordShortcutEntry(RecordShortcutAction.ToolHighlighter, CaptureShortcutScope.Drawing, "highlight", "荧光笔"),
+        new RecordShortcutEntry(RecordShortcutAction.ToolText, CaptureShortcutScope.Drawing, "text", "文字标注"),
+        new RecordShortcutEntry(RecordShortcutAction.ToolSerial, CaptureShortcutScope.Drawing, "serial_number", "序号标注"),
+        new RecordShortcutEntry(RecordShortcutAction.ToolFilter, CaptureShortcutScope.Drawing, "filter", "马赛克 / 滤镜"),
+        new RecordShortcutEntry(RecordShortcutAction.ToolEraser, CaptureShortcutScope.Drawing, "eraser", "橡皮"),
+        new RecordShortcutEntry(RecordShortcutAction.ToolWatermark, CaptureShortcutScope.Drawing, "watermark", "水印"),
     };
 
-    /// <summary>动作的默认组合键文案（按钮悬停提示用；没有就是空串）。</summary>
+    /// <summary>动作的生效组合键文案（按钮悬停提示用；没有就是空串）。</summary>
     public static string ChordsOf(RecordShortcutAction action)
     {
         foreach (var entry in All)
         {
             if (entry.Action != action) continue;
-            return string.Join(" / ", entry.Chords);
+            return CaptureShortcutTable.Describe(entry.Scope, entry.Id);
         }
 
         return "";
@@ -219,12 +233,8 @@ internal static class RecordShortcuts
 
             foreach (string text in entry.Chords)
             {
-                if (!HotkeyChord.TryParse(text, out var chord, out _)) continue;
-                if (chord.Vk != vk) continue;
-
-                if (chord.HasCtrl != ctrl || chord.HasShift != shift || chord.HasAlt != alt || chord.HasWin != win)
-                    continue;
-
+                if (!CaptureChord.TryParse(text, out var chord)) continue;
+                if (!chord.Matches(vk, ctrl, shift, alt, win)) continue;
                 return entry.Action;
             }
         }
@@ -232,13 +242,13 @@ internal static class RecordShortcuts
         return RecordShortcutAction.None;
     }
 
-    /// <summary>动作的默认组合键是不是「裸键」（没有 Ctrl / Shift / Alt / Win）。</summary>
+    /// <summary>动作的第一个组合键是不是「裸键」（没有 Ctrl / Shift / Alt / Win）。</summary>
     public static bool IsBare(RecordShortcutAction action)
     {
         foreach (var entry in All)
         {
             if (entry.Action != action || entry.Chords.Count == 0) continue;
-            if (!HotkeyChord.TryParse(entry.Chords[0], out var chord, out _)) return false;
+            if (!CaptureChord.TryParse(entry.Chords[0], out var chord)) return false;
             return !chord.HasCtrl && !chord.HasShift && !chord.HasAlt && !chord.HasWin;
         }
 

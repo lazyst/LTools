@@ -147,6 +147,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "贴图文字标注：样式 / 选区 / toggle / 载荷 / 几何", PinAnnotationCases));
         cases.Add(new("capturePro", "完成动作布局：默认 / 归一 / 往返 / 编辑模式可用集", ActionLayoutCases));
         cases.Add(new("capturePro", "文字识别设置：默认值 / 归一 / 六值分发 / 模糊核", OcrSettingsCases));
+        cases.Add(new("capturePro", "截图快捷键：四张表 / 解析显示 / 归一 / 覆盖恢复 / 匹配 / 工具映射", ShortcutTableCases));
     }
 
     private static void Geometry()
@@ -2930,11 +2931,13 @@ internal static partial class CaptureProSuite
         Check.Equal("R", RecordShortcuts.ChordsOf(RecordShortcutAction.PreviousArea), "上一块区域 = R");
         Check.Equal("Shift+R", RecordShortcuts.ChordsOf(RecordShortcutAction.NextArea), "下一块区域 = Shift+R");
         Check.Equal("Ctrl+Z", RecordShortcuts.ChordsOf(RecordShortcutAction.Undo), "撤销 = Ctrl+Z");
-        Check.Equal("Ctrl+Y / Ctrl+Shift+Z", RecordShortcuts.ChordsOf(RecordShortcutAction.Redo),
-            "重做 = Ctrl+Y（另认 Ctrl+Shift+Z）");
-        Check.Equal("V", RecordShortcuts.ChordsOf(RecordShortcutAction.ToolSelect), "选择 = V");
+        Check.Equal("Ctrl+Y", RecordShortcuts.ChordsOf(RecordShortcutAction.Redo),
+            "重做 = Ctrl+Y（Ctrl+Shift+Z 在表里是「清空标注」）");
+        Check.Equal("Ctrl+Shift+Z", RecordShortcuts.ChordsOf(RecordShortcutAction.ResetCanvas),
+            "清空标注 = Ctrl+Shift+Z");
+        Check.Equal("V / Q", RecordShortcuts.ChordsOf(RecordShortcutAction.ToolSelect), "选择 = V / Q");
         Check.Equal("3 / P", RecordShortcuts.ChordsOf(RecordShortcutAction.ToolPen), "画笔 = 3 / P");
-        Check.Equal("9", RecordShortcuts.ChordsOf(RecordShortcutAction.ToolWatermark), "水印 = 9");
+        Check.Equal("9 / W", RecordShortcuts.ChordsOf(RecordShortcutAction.ToolWatermark), "水印 = 9 / W");
 
         // 每个绘制工具都有快捷键，且反过来也能查回去
         foreach (var tool in RecordTools.All)
@@ -2985,10 +2988,11 @@ internal static partial class CaptureProSuite
         Check.Equal(RecordShortcutAction.EndRecording,
             RecordShortcuts.Match(Esc, false, false, false, false, recording), "录制中 Esc = 关面板");
 
-        // ---- R / Shift+R：要摆着导出设置、且历史里还有别的区域 ----
+        // ---- R / Shift+R：区域历史可用时翻历史；不可用时 R 就是「矩形」工具 ----
         var noHistory = new RecordShortcutState { ExportRowVisible = true };
-        Check.Equal(RecordShortcutAction.None,
-            RecordShortcuts.Match(KeyR, false, false, false, false, noHistory), "历史里没有别的区域：R 不触发");
+        Check.Equal(RecordShortcutAction.ToolRect,
+            RecordShortcuts.Match(KeyR, false, false, false, false, noHistory),
+            "历史里没有别的区域：R 落到矩形工具");
         var hasHistory = new RecordShortcutState { ExportRowVisible = true, AreaHistory = true };
         Check.Equal(RecordShortcutAction.PreviousArea,
             RecordShortcuts.Match(KeyR, false, false, false, false, hasHistory), "R = 上一块区域");
@@ -2996,7 +3000,10 @@ internal static partial class CaptureProSuite
             RecordShortcuts.Match(KeyR, false, true, false, false, hasHistory), "Shift+R = 下一块区域");
         Check.Equal(RecordShortcutAction.None,
             RecordShortcuts.Match(KeyR, false, false, false, false,
-                new RecordShortcutState { ExportRowVisible = true, AreaHistory = true, Recording = true }),
+                new RecordShortcutState
+                {
+                    ExportRowVisible = true, AreaHistory = true, Recording = true, DrawingAllowed = false,
+                }),
             "录制中不翻区域");
 
         // ---- 绘制工具键 ----
@@ -3019,8 +3026,12 @@ internal static partial class CaptureProSuite
             RecordShortcuts.Match(KeyZ, true, false, false, false, undoable), "Ctrl+Z = 撤销");
         Check.Equal(RecordShortcutAction.Redo,
             RecordShortcuts.Match(KeyY, true, false, false, false, undoable), "Ctrl+Y = 重做");
-        Check.Equal(RecordShortcutAction.Redo,
-            RecordShortcuts.Match(KeyZ, true, true, false, false, undoable), "Ctrl+Shift+Z = 重做");
+        Check.Equal(RecordShortcutAction.ResetCanvas,
+            RecordShortcuts.Match(KeyZ, true, true, false, false, undoable), "Ctrl+Shift+Z = 清空标注");
+        Check.Equal(RecordShortcutAction.None,
+            RecordShortcuts.Match(KeyZ, true, true, false, false,
+                new RecordShortcutState { CanUndo = true, CanRedo = true, DrawingAllowed = false }),
+            "不能画时清空标注也不响应");
 
         // ---- 按钮提示带上快捷键 ----
         Check.Equal("复制：最近一条录屏文件（Ctrl+C）",

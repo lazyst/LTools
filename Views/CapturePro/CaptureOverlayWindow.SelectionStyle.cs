@@ -169,12 +169,24 @@ public partial class CaptureOverlayWindow
     /// <summary>
     /// 这一次拖动该用的「高 / 宽」：0 = 不锁。
     /// 框选在「锁着但还没定比例」时按正方形（上游 <c>kNewMarqueeAspectRatio</c>）。
+    /// 另外按住「锁当前比例」的键（<c>selection_aspect_ratio_snap</c>，默认 Q）也临时锁住
+    /// 按下那一刻的比例——上游允许提前按住再拖。
     /// </summary>
     private double DragRatio(bool marquee)
     {
-        if (!_aspectLocked) return 0;
-        if (_lockedRatio > 0) return _lockedRatio;
-        return marquee ? 1.0 : 0.0;
+        if (_aspectLocked)
+        {
+            if (_lockedRatio > 0) return _lockedRatio;
+            return marquee ? 1.0 : 0.0;
+        }
+
+        if (CaptureShortcutTable.Held(CaptureShortcutScope.Screenshot, "selection_aspect_ratio_snap"))
+        {
+            if (_originRect.Width > 0.5) return _originRect.Height / _originRect.Width;
+            return 1.0;
+        }
+
+        return 0;
     }
 
     /// <summary>

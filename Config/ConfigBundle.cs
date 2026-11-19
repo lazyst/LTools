@@ -116,6 +116,7 @@ internal static class ConfigBundle
         cfg.PinToScreen = settings.PinToScreen ?? new PinToScreenFile();
         cfg.Collage = settings.Collage ?? new CollageFile();
         cfg.Screenshot = settings.Screenshot ?? new ScreenshotFile();
+        cfg.CaptureShortcuts = settings.CaptureShortcuts ?? new CaptureShortcutsFile();
         cfg.Drawing = settings.Drawing ?? new DrawingFile();
         cfg.Export = settings.Export ?? new ExportFile();
 
@@ -390,6 +391,7 @@ internal static class ConfigBundle
         PinToScreen = cfg.PinToScreen ?? new PinToScreenFile(),
         Collage = cfg.Collage ?? new CollageFile(),
         Screenshot = cfg.Screenshot ?? new ScreenshotFile(),
+        CaptureShortcuts = cfg.CaptureShortcuts ?? new CaptureShortcutsFile(),
         Drawing = cfg.Drawing ?? new DrawingFile(),
         Export = cfg.Export ?? new ExportFile(),
     };

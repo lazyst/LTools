@@ -215,6 +215,9 @@ public sealed class AppConfig
     /// <summary>截图 Pro 的全局设置（「延时截图」的等待秒数 + 覆盖层指针动作）。</summary>
     public ScreenshotFile Screenshot { get; set; } = new();
 
+    /// <summary>截图 Pro 的四张快捷键表（覆盖层 / 绘图 / 贴图 / 录屏），只存改过的项。</summary>
+    public CaptureShortcutsFile CaptureShortcuts { get; set; } = new();
+
     /// <summary>绘制行为（自动选中 / 快速选择 / 记住上次工具 / 工具组首按钮）。</summary>
     public DrawingFile Drawing { get; set; } = new();
 

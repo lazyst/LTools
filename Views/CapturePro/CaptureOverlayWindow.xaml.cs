@@ -108,7 +108,8 @@ public partial class CaptureOverlayWindow : Window
     private readonly PendingAction _pending;
 
     /// <summary>这一次是「识别并翻译」入口：用户即便手动按 Enter 进结果窗，也算一次翻译请求。</summary>
-    private readonly bool _translate;
+    /// <remarks>「截图并翻译」的快捷键（<c>text_translation</c>）会在确认前把它打开。</remarks>
+    private bool _translate;
 
     /// <summary>右键取消 / 指针动作的「按下武装、抬起才做」（照上游 MouseReleaseActionController）。</summary>
     private readonly MouseReleaseGate _release;
@@ -277,23 +278,7 @@ public partial class CaptureOverlayWindow : Window
             return;
         }
 
-        // , / . 翻采集历史（Snow Shot 的「上一张 / 下一张」）；带 Ctrl 时留给别的用途
-        if (e.Key is Key.OemComma or Key.OemPeriod &&
-            (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) == 0)
-        {
-            StepHistory(e.Key == Key.OemPeriod ? 1 : -1);
-            e.Handled = true;
-            return;
-        }
-
-        // 智能选区：Tab = 整窗 ↔ 窗口子元素（上游 toggle_selection_between_window_and_window_sub_element）
-        if (e.Key == Key.Tab && SmartPreviewActive &&
-            (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift)) == 0)
-        {
-            ToggleSmartTarget();
-            e.Handled = true;
-            return;
-        }
+        // , / . 翻采集历史、Tab 切智能选区目标都由快捷键表派发（见下面 TryCaptureShortcut）
 
         if (e.Key is Key.Delete or Key.Back)
         {
@@ -322,37 +307,20 @@ public partial class CaptureOverlayWindow : Window
             return;
         }
 
-        if (ctrl && e.Key == Key.C)
+        // 可配置的快捷键（覆盖层 + 绘图工具）：默认值照 Snow Shot，用户改过就按用户的。
+        // 放在 Enter / Delete 之后，所以「确认」「删标注」这两个最常用的不受重绑影响。
+        if (TryCaptureShortcut(e))
         {
-            Accept(FinishKind.Copy);
             e.Handled = true;
             return;
         }
 
-        if (ctrl && e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Shift) != 0)
-        {
-            Accept(FinishKind.QuickSave);
-            e.Handled = true;
-            return;
-        }
+        // ---- LTools 自己的固定入口（上游没有对应项）----
 
-        if (ctrl && e.Key == Key.S)
+        // Ctrl+A = 全屏（上游也是固定绑定 screenshot.select_current_screen）
+        if (ctrl && e.Key == Key.A)
         {
-            Accept(FinishKind.Save);
-            e.Handled = true;
-            return;
-        }
-
-        if (ctrl && e.Key == Key.P)
-        {
-            Accept(FinishKind.Print);
-            e.Handled = true;
-            return;
-        }
-
-        if (ctrl && e.Key == Key.T)
-        {
-            Accept(FinishKind.Pin);
+            SelectWholeScreen();
             e.Handled = true;
             return;
         }
@@ -361,73 +329,6 @@ public partial class CaptureOverlayWindow : Window
         if (ctrl && e.Key == Key.W)
         {
             Accept(FinishKind.Live);
-            e.Handled = true;
-            return;
-        }
-
-        if (ctrl && e.Key == Key.R && (Keyboard.Modifiers & ModifierKeys.Shift) != 0)
-        {
-            Accept(FinishKind.Record);      // 录屏（Shift 在前，否则会被下面的 Ctrl+R 吃掉）
-            e.Handled = true;
-            return;
-        }
-
-        if (ctrl && e.Key == Key.R)
-        {
-            Accept(FinishKind.Recognize);
-            e.Handled = true;
-            return;
-        }
-
-        if (ctrl && e.Key == Key.L)
-        {
-            StartScrollMode();
-            e.Handled = true;
-            return;
-        }
-
-        if (ctrl && e.Key == Key.A)
-        {
-            SelectWholeScreen();
-            e.Handled = true;
-            return;
-        }
-
-        if (ctrl && e.Key == Key.Z)
-        {
-            _doc.Undo();
-            RefreshMarks();
-            e.Handled = true;
-            return;
-        }
-
-        if (ctrl && e.Key == Key.Y)
-        {
-            _doc.Redo();
-            RefreshMarks();
-            e.Handled = true;
-            return;
-        }
-
-        // 取色器：Shift+P 切坐标口径（照上游 toggle_coordinate_mode 的默认键）
-        if (_tool == CaptureTool.Picker && e.Key == Key.P &&
-            (_shiftHeld || (Keyboard.Modifiers & ModifierKeys.Shift) != 0))
-        {
-            _shiftConsumed = true;
-            OverlayUiSettings.SetColorPickerCoordinateMode(OverlayUiSettings.RelativePickerCoordinates
-                ? OverlayUiSettings.CoordGlobal
-                : OverlayUiSettings.CoordRelative);
-            ShowPickerAt(_guideCursor);
-            RefreshHint();
-            PlaceHint();
-            e.Handled = true;
-            return;
-        }
-
-        // 字母选工具（Ctrl 组合已经全部处理完，这里只看裸字母）
-        if (!ctrl && ToolCatalog.ForKey(e.Key) is CaptureTool tool)
-        {
-            SetTool(tool);
             e.Handled = true;
             return;
         }

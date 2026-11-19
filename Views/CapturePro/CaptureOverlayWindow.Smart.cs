@@ -224,7 +224,8 @@ public partial class CaptureOverlayWindow
         _liveRect = new Rect(anchor, anchor);
 
         _mode = RegionMode.Add;
-        _squareDrag = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+        _squareDrag = CaptureShortcutTable.Held(CaptureShortcutScope.Screenshot,
+            "keep_selection_width_and_height_consistent");
         _origin = anchor;
         _pressAt = anchor;
         _pressMoved = true;          // 之后松手是「框选提交」，不是单击选中

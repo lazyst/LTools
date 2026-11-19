@@ -185,6 +185,10 @@ internal static class KeyboardHook
             // （含它旁边的弹层）/ 空闲期区域框上时接管，命中就排回 UI 线程点对应的按钮。
             if (RecordShortcutRoute.Handle(vk, isDown, isUp)) return (IntPtr)1;
 
+            // 贴图窗口快捷键（照上游 pin_to_screen_shortcuts/*）：贴图同样是 WS_EX_NOACTIVATE，
+            // 作用范围 = 指针停在那张贴图上，命中就排回 UI 线程（复制 / 置顶 / 缩放 / 挪动…）。
+            if (PinShortcutRoute.Handle(vk, isDown, isUp)) return (IntPtr)1;
+
             // 全屏画布开着时：全局快捷键整体挂起（工具字母键 / IME 打字要能落进画布），
             // 唯一例外是「打开 / 切换全屏画布」这一条——再按一次 = 切点击穿透。
             // 放在 Suspended 分支之前：命中即吞掉并投递，没命中就照常往下走（放行给画布窗口）。

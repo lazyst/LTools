@@ -794,6 +794,7 @@ public partial class ConfigHelperWindow : Window
         PopulateDrawing();
         PopulateBehavior();
         PopulateCaptureShortcuts();
+        PopulateCaptureKeymap();
     }
 
     /// <summary>

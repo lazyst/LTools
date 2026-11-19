@@ -145,7 +145,9 @@ public partial class CaptureOverlayWindow
         if (IsAltKey(e))
         {
             bool tap = _altHeld && !_altConsumed && _drag == DragMode.None &&
-                       !_textEditing && !_scrollMode;
+                       !_textEditing && !_scrollMode &&
+                       CaptureShortcutTable.BindsBareModifier(CaptureShortcutScope.Screenshot,
+                           "toggle_guides", 0xA4);
             _altHeld = false;
             _altConsumed = false;
             if (tap) ToggleGuides();
@@ -159,7 +161,9 @@ public partial class CaptureOverlayWindow
 
             // 取色器里轻按 Shift = 换色值格式（上游 keep_selection_width_and_height_consistent
             // 在取色时那一下「没用来拖」的轻按）；格式存进 settings 的 color_picker_format。
-            if (tap && _tool == CaptureTool.Picker)
+            if (tap && _tool == CaptureTool.Picker &&
+                CaptureShortcutTable.BindsBareModifier(CaptureShortcutScope.Screenshot,
+                    "keep_selection_width_and_height_consistent", 0xA0))
             {
                 OverlayUiSettings.SetColorPickerFormat(
                     OverlayUiSettings.NextColorFormat(OverlayUiSettings.ColorPickerFormat));

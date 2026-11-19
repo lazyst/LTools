@@ -32,6 +32,10 @@ public partial class CapturePinWindow
         // Click 不会触发——用户得连点好几次、凑巧双击才关得掉（实测）。
         if (IsOnButton(e.OriginalSource as DependencyObject)) return;
 
+        // 点一下贴图 = 把键盘交给它：贴图不抢焦点，快捷键靠这个「点过」才生效
+        // （指针一离开就作废，见 Window_MouseLeave，避免鼠标停在贴图上打字被吞键）。
+        PinShortcutRoute.Engage(_hwnd, true);
+
         // 色卡上的复制按钮：点中就把那一行规范 CSS 放进剪贴板（不拖动、不关窗）
         if (CopyAt(e.GetPosition(this)))
         {
@@ -351,6 +355,9 @@ public partial class CapturePinWindow
     {
         _hovering = false;
         RefreshHoverChrome();
+
+        // 指针离开 = 键盘交还（见 PinShortcutRoute 的类注释：不然鼠标停在贴图上打字会被吞键）
+        PinShortcutRoute.Engage(_hwnd, false);
     }
 
     /// <summary>

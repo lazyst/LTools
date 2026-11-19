@@ -89,7 +89,8 @@ internal static partial class Program
             var menu = (ContextMenu)Call("BuildMenu")!;
             bool hasItem = false;
             foreach (var item in menu.Items)
-                if (item is MenuItem mi && (mi.Header as string) == "收到屏幕顶部") hasItem = true;
+                if (item is MenuItem mi && (mi.Header as string)?.StartsWith("收到屏幕顶部", StringComparison.Ordinal) == true)
+                hasItem = true;
             Check(hasItem, "收顶部：右键菜单里有「收到屏幕顶部」");
             menu.IsOpen = false;
 

@@ -1,0 +1,69 @@
+<Window x:Class="LTools.Views.CapturePro.CaptureKeymapWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:LTools.Views"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:LTools.Views.Controls"
+        Title="截图 Pro · 快捷键" Width="760" Height="600" ResizeMode="CanResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
+        views:WindowSizing.Mode="Dialog">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <controls:DialogShell>
+        <controls:DialogShell.Footer>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="20,10,20,16">
+                <TextBlock x:Name="SummaryText" Style="{StaticResource HintLabel}"
+                           VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <Button Style="{StaticResource BtnGhost}" Content="全部恢复默认"
+                        MinWidth="104" Click="RestoreAll_Click"
+                        ToolTip="四组快捷键全部改回 Snow Shot 的默认值"/>
+                <Button Style="{StaticResource BtnPrimary}" Content="关闭" MinWidth="78"
+                        Margin="8,0,0,0" IsDefault="True" IsCancel="True" Click="Close_Click"/>
+            </StackPanel>
+        </controls:DialogShell.Footer>
+
+        <Grid Margin="20,10,20,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                       Margin="0,0,0,8"
+                       Text="点一下右边的框，按下组合键即可录入（修饰键可以单独按，比如锁正方形就是裸 Shift）。改动立刻生效，不用重启。"/>
+
+            <TabControl Grid.Row="1" x:Name="Tabs" Background="Transparent" BorderThickness="0">
+                <TabItem Header="截图覆盖层">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="ScreenshotHost" Margin="4,10,8,12"/>
+                    </ScrollViewer>
+                </TabItem>
+                <TabItem Header="绘图工具">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="DrawingHost" Margin="4,10,8,12"/>
+                    </ScrollViewer>
+                </TabItem>
+                <TabItem Header="贴图窗口">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="PinHost" Margin="4,10,8,12"/>
+                    </ScrollViewer>
+                </TabItem>
+                <TabItem Header="录屏面板">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="RecordingHost" Margin="4,10,8,12"/>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </controls:DialogShell>
+</Window>

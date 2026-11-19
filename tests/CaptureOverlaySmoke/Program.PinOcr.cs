@@ -96,7 +96,7 @@ internal static partial class Program
         MenuItem Item(ContextMenu menu, string header)
         {
             foreach (var entry in menu.Items)
-                if (entry is MenuItem mi && (mi.Header as string) == header)
+                if (entry is MenuItem mi && (mi.Header as string)?.StartsWith(header, StringComparison.Ordinal) == true)
                     return mi;
             return null;
         }

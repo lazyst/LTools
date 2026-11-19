@@ -93,25 +93,25 @@ public partial class CapturePinWindow
             menu.Items.Add(new Separator());
         }
 
-        var copy = new MenuItem { Header = "复制图片" };
+        var copy = new MenuItem { Header = PinShortcuts.WithChord("复制图片", PinShortcutAction.Copy) };
         copy.Click += (_, _) => CopyImage();
         menu.Items.Add(copy);
 
         // 文字 / 色卡贴图另有「复制原文」：照上游 copyOriginalContent（复制的是原文本，不是渲染出来的图）
         if (_cardKind != PinContentKind.Image && _cardText.Length > 0)
         {
-            var copyText = new MenuItem { Header = "复制原文" };
+            var copyText = new MenuItem { Header = PinShortcuts.WithChord("复制原文", PinShortcutAction.CopyOriginal) };
             copyText.Click += (_, _) => NativeClipboard.SetText(_cardText);
             menu.Items.Add(copyText);
         }
 
-        var save = new MenuItem { Header = "另存为…" };
+        var save = new MenuItem { Header = PinShortcuts.WithChord("另存为…", PinShortcutAction.SaveAs) };
         save.Click += (_, _) => CaptureSave.TrySave(null, ComposeContent());
         menu.Items.Add(save);
 
         // 标注这张贴图：覆盖层开在它上面，标完换回内容（菜单必须先收起，ShowDialog 挂在开着
         // 的 Popup 上会让菜单看不见也点不动）
-        var annotate = new MenuItem { Header = "标注…", IsEnabled = !_live };
+        var annotate = new MenuItem { Header = PinShortcuts.WithChord("标注…", PinShortcutAction.Annotate), IsEnabled = !_live };
         annotate.Click += (_, _) =>
         {
             _menu?.IsOpen = false;
@@ -174,7 +174,7 @@ public partial class CapturePinWindow
         PinOcrPhase ocrPhase = OcrPhase;
         var ocr = new MenuItem
         {
-            Header = PinOcr.MenuLabel(ocrPhase),
+            Header = PinShortcuts.WithChord(PinOcr.MenuLabel(ocrPhase), PinShortcutAction.Ocr),
             IsCheckable = ocrPhase != PinOcrPhase.TooLarge,
             IsChecked = PinOcr.MenuChecked(ocrPhase),
             IsEnabled = !_live && PinOcr.MenuEnabled(ocrPhase),
@@ -223,7 +223,7 @@ public partial class CapturePinWindow
 
         menu.Items.Add(new Separator());
 
-        var pin = new MenuItem { Header = "置顶", IsCheckable = true, IsChecked = Topmost };
+        var pin = new MenuItem { Header = PinShortcuts.WithChord("置顶", PinShortcutAction.AlwaysOnTop), IsCheckable = true, IsChecked = Topmost };
         pin.Click += (_, _) =>
         {
             Topmost = !Topmost;
@@ -237,7 +237,7 @@ public partial class CapturePinWindow
         // 点不到就没法转回普通贴图了。
         var clickThrough = new MenuItem
         {
-            Header = "点击穿透",
+            Header = PinShortcuts.WithChord("点击穿透", PinShortcutAction.ClickThrough),
             IsCheckable = true,
             IsChecked = _clickThrough,
             IsEnabled = !_live,
@@ -245,7 +245,7 @@ public partial class CapturePinWindow
         clickThrough.Click += (_, _) => SetClickThrough(!_clickThrough);
         menu.Items.Add(clickThrough);
 
-        var locked = new MenuItem { Header = "锁定位置", IsCheckable = true, IsChecked = _locked };
+        var locked = new MenuItem { Header = PinShortcuts.WithChord("锁定位置", PinShortcutAction.Lock), IsCheckable = true, IsChecked = _locked };
         locked.Click += (_, _) => SetLocked(!_locked);
         menu.Items.Add(locked);
 
@@ -253,7 +253,7 @@ public partial class CapturePinWindow
         // 存进贴图历史，贴回时保持原样；实时贴图不画边框（内容每拍都在换）。
         var border = new MenuItem
         {
-            Header = "显示边框",
+            Header = PinShortcuts.WithChord("显示边框", PinShortcutAction.ShowBorder),
             IsCheckable = true,
             IsChecked = !_live && _showBorder,
             IsEnabled = !_live,
@@ -261,7 +261,7 @@ public partial class CapturePinWindow
         border.Click += (_, _) => SetShowBorder(!_showBorder);
         menu.Items.Add(border);
 
-        var shadow = new MenuItem { Header = "显示阴影", IsCheckable = true, IsChecked = _showShadow };
+        var shadow = new MenuItem { Header = PinShortcuts.WithChord("显示阴影", PinShortcutAction.ShowShadow), IsCheckable = true, IsChecked = _showShadow };
         shadow.Click += (_, _) => SetShowShadow(!_showShadow);
         menu.Items.Add(shadow);
 
@@ -279,7 +279,7 @@ public partial class CapturePinWindow
         // 缩略图模式：缩成一个小方块让开路（与局部显示互斥，双击方块可还原）
         var thumb = new MenuItem
         {
-            Header = "缩略图模式",
+            Header = PinShortcuts.WithChord("缩略图模式", PinShortcutAction.Thumbnail),
             IsCheckable = true,
             IsChecked = _thumb,
             IsEnabled = !_live,
@@ -290,7 +290,7 @@ public partial class CapturePinWindow
         // 收到屏幕顶部：只留一条手柄，鼠标靠近再展开（照上游 hide_to_top）
         var hideTop = new MenuItem
         {
-            Header = "收到屏幕顶部",
+            Header = PinShortcuts.WithChord("收到屏幕顶部", PinShortcutAction.HideToTop),
             IsCheckable = true,
             IsChecked = HideToTopActive,
             IsEnabled = !_live,
@@ -324,7 +324,7 @@ public partial class CapturePinWindow
         };
         menu.Items.Add(textStyle);
 
-        var close = new MenuItem { Header = "关闭" };
+        var close = new MenuItem { Header = PinShortcuts.WithChord("关闭", PinShortcutAction.Close) };
         close.Click += (_, _) => RequestUserClose();
         menu.Items.Add(close);
 

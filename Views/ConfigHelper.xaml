@@ -351,6 +351,24 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="覆盖层内快捷键" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="CaptureKeymapButton" Style="{StaticResource Btn}"
+                                            Content="编辑…" MinHeight="32" Padding="14,4"
+                                            HorizontalAlignment="Left" Click="CaptureKeymap_Click"
+                                            ToolTip="截图覆盖层、绘图工具、贴图窗口、录屏面板四组快捷键（默认值照 Snow Shot）"/>
+                                </Grid>
+                                <TextBlock x:Name="CaptureKeymapHint" Style="{StaticResource HintLabel}"
+                                           Margin="120,6,0,0" TextWrapping="Wrap"/>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,6,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="「按住」类（锁正方形 / 锁比例 / 整个选区）与轻按 Alt 切参考线是按下时判定的，不能改成带修饰键的组合。改完立刻生效。"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
                                                Text="框选后双击" VerticalAlignment="Center"/>
                                     <ComboBox Grid.Column="1" x:Name="ScreenshotDoubleClickCombo" MinHeight="32"
                                               SelectionChanged="ScreenshotPointer_Changed"

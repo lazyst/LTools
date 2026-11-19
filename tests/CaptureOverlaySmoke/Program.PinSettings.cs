@@ -384,13 +384,17 @@ internal static partial class Program
 
             // ============ ⑤ 右键菜单两项 ============
             var menu = (ContextMenu)type.GetMethod("BuildMenu", Inst)!.Invoke(pin, null)!;
+
+            // 菜单标题后面会补上当前快捷键（「显示边框（B）」），所以按前缀认
             MenuItem? Item(string header) =>
-                menu.Items.OfType<MenuItem>().FirstOrDefault(m => (m.Header as string) == header);
+                menu.Items.OfType<MenuItem>().FirstOrDefault(m =>
+                    (m.Header as string)?.StartsWith(header, StringComparison.Ordinal) == true);
 
             var borderItem = Item("显示边框");
             var shadowItem = Item("显示阴影");
             Check(borderItem is { IsCheckable: true }, "右键菜单有「显示边框」（可勾选）");
             Check(shadowItem is { IsCheckable: true }, "右键菜单有「显示阴影」（可勾选）");
+            Check((borderItem?.Header as string)?.Contains("（B）") == true, "「显示边框」标着快捷键 B");
             Check(borderItem?.IsChecked == true, "「显示边框」当前是勾上的");
             Check(shadowItem?.IsChecked == true, "「显示阴影」当前是勾上的");
 
