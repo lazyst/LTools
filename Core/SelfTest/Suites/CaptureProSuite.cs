@@ -141,6 +141,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "画中画预览：方向换算 / 拖动夹取 / 缩放 / 工具条", RecordWebcamCases));
         cases.Add(new("capturePro", "颜色预设：默认值 / 解析 / 归一 / 工具映射 / 色块", ColorPresetCases));
         cases.Add(new("capturePro", "绘制行为：工具键对照 / 清单归一 / 默认值 / 组首按钮", DrawingCases));
+        cases.Add(new("capturePro", "截图行为：默认值 / 归一 / HiDPI / PDF 版面 / 光标混合 / 拖边框", BehaviorCases));
     }
 
     private static void Geometry()

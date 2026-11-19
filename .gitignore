@@ -53,6 +53,9 @@ bin/
 # C# 构建产物（项目扁平化后）
 obj/
 
+# 冒烟输出（tests/ 下每次跑都会重写，别提交）
+tests/**/out-*.txt
+
 # 发布产物（本地构建）
 LTools-*.zip
 CapsLockPro-*.zip   # 改名前旧产物

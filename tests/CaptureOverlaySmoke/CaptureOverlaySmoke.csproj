@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    截图 / 贴图 / 录屏的「真窗口、真鼠标」冒烟工程（仓库外跑，不进 CI）。
+    - 用反射驱动 LTools.dll 里的 internal 类型，不复制任何产品代码；
+    - 每段都能单独跑：`dotnet run`（全量）或带一个段名参数（只跑一段）；
+    - 只断言「看得见的行为」：几何、像素、落盘文件、控件状态。
+    相关文档：tests/README.md、AGENTS.md「测试」、docs/CAPTURE_PARITY.md。
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>annotations</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>CaptureOverlaySmoke</AssemblyName>
+    <RootNamespace>CaptureOverlaySmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\LTools.csproj" />
+  </ItemGroup>
+
+</Project>

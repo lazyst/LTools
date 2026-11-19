@@ -25,7 +25,7 @@ dotnet publish LTools.csproj -c Release -r win-x64 --self-contained true -o publ
 - **发布命令必须带 `LTools.csproj`**：仓库同时有 `LTools.sln` 与 `LTools.csproj`，省略时 dotnet 会去构建 sln，配 `-o` 触发 `NETSDK1194` 警告（`release.yml` 就是显式指定的）
 - 输出：`bin/Debug/net10.0-windows10.0.19041.0/LTools.exe`；TFM 带 Windows SDK 投影（`net10.0-windows10.0.19041.0`，OCR 用 `Windows.Media.Ocr`），改 TFM 会改变输出目录
 - 构建必须 **0 错 0 警**
-- **没有测试项目**，不要找 `dotnet test`。回归门禁是程序内的 `LTools.exe --selftest`（`Core/SelfTest`，纯逻辑断言：引擎 / 校验器 / 步骤文本 / 声明 / 模板 / 辅助函数；`--filter <组名或用例名>` 只跑一部分、`--verbose` 连通过的用例一起列、报告写到 `%TEMP%\ltools-selftest\report.txt`，退出码非 0 即失败）。**改引擎 / 校验器 / `StepText` / 动作单元声明时先加或改断言**，别只靠点一遍。UI 验收仍靠仓库外的临时无头冒烟工程（`%TEMP%\opencode\lpanel-smoke` / `floating-smoke`，反射驱动 `LTools.dll`，见 `docs/FLOATING.md` 与 `docs/ACTION_SYSTEM.md`），不在 CI 里；日常回归 = 构建 0 警 + `--selftest` 全绿 + 真机点一遍相关路径
+- **没有测试项目**，不要找 `dotnet test`。回归门禁是程序内的 `LTools.exe --selftest`（`Core/SelfTest`，纯逻辑断言：引擎 / 校验器 / 步骤文本 / 声明 / 模板 / 辅助函数；`--filter <组名或用例名>` 只跑一部分、`--verbose` 连通过的用例一起列、报告写到 `%TEMP%\ltools-selftest\report.txt`，退出码非 0 即失败）。**改引擎 / 校验器 / `StepText` / 动作单元声明时先加或改断言**，别只靠点一遍。**仓库内的端到端冒烟在 `tests/`**（`tests/CaptureOverlaySmoke` 是截图 / 贴图 / 录屏那一套，反射驱动 `LTools.dll`：`dotnet build` 后 `dotnet run --no-build [段名]`，详见 `tests/README.md`），`tests/**` 已在 `LTools.csproj` 里从产品编译排除；更早的临时冒烟工程（`%TEMP%\opencode\lpanel-smoke` / `floating-smoke`）仍可按 `docs/FLOATING.md` 与 `docs/ACTION_SYSTEM.md` 的方式跑，但新写的冒烟一律进 `tests/`。**测试都不在 CI 里**；日常回归 = 构建 0 警 + `--selftest` 全绿 + 相关冒烟段全绿 + 真机点一遍相关路径
 - `--selftest` 跑在 WPF 启动的 `OnStartup` 里、在托盘 / 钩子 / 单实例互斥体之前分流（与 `--mcp-stdio` 同一套）；生成的 `Main` 不返回 `Application.Run` 的值，所以退出码要写 `Environment.ExitCode` 再 `Shutdown(code)`，只 `Shutdown(code)` 在 CI 里永远是 0
 
 ## CI

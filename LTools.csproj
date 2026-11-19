@@ -41,6 +41,18 @@
     <PackageReference Include="HtmlAgilityPack" Version="1.13.1" />
   </ItemGroup>
 
+  <!-- tests\ 是仓库内的冒烟工程（各自独立 csproj）：SDK 默认把 **/*.cs 全收进 LTools，
+       必须显式排除，否则 dotnet build 会把冒烟 Program.cs 一起编进产品。 -->
+  <ItemGroup>
+    <Compile Remove="tests\**" />
+    <Page Remove="tests\**" />
+    <ApplicationDefinition Remove="tests\**" />
+    <Resource Remove="tests\**" />
+    <None Remove="tests\**" />
+    <Content Remove="tests\**" />
+    <EmbeddedResource Remove="tests\**" />
+  </ItemGroup>
+
   <ItemGroup>
     <Content Include="Icon\LTools.ico">
       <Link>Icon\LTools.ico</Link>
