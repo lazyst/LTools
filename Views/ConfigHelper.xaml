@@ -165,6 +165,8 @@
                                 <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
                                              Content="录屏" Checked="Nav_Changed" Tag="capture-record"/>
                                 <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
+                                             Content="采集历史" Checked="Nav_Changed" Tag="capture-history"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
                                              Content="截图输出" Checked="Nav_Changed" Tag="capture-output"/>
                             </StackPanel>
                         </Border>
@@ -1505,6 +1507,79 @@
                             </StackPanel>
                         </Border>
 
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ 截图 Pro · 采集历史 ============ -->
+                <ScrollViewer x:Name="Page_CaptureHistory" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 采集历史" Margin="0,0,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <CheckBox x:Name="CaptureHistoryEnabledBox"
+                                          Content="记录新的采集（截图 / 识别 / 录屏进采集历史）"
+                                          Checked="CaptureHistory_Changed" Unchecked="CaptureHistory_Changed"
+                                          ToolTip="照 Snow Shot 的 capture_history/enabled，默认开；关掉后不再新增记录，已有记录仍可查看"/>
+                                <CheckBox x:Name="CaptureHistoryKeepBox" Margin="22,8,0,0"
+                                          Content="永久保留（不按天数 / 条数 / 磁盘上限清理）"
+                                          Checked="CaptureHistory_Changed" Unchecked="CaptureHistory_Changed"
+                                          ToolTip="照 Snow Shot 的 capture_history/keep_permanently"/>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,6,0,0" TextWrapping="Wrap"
+                                           Text="采集历史存在数据根的 captures/ 里（随备份带上）。关掉「永久保留」后按下面三条自动清理：先按天数，再按条数，最后按磁盘占用从最旧的开始丢。"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="保留天数" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="CaptureHistoryDaysBox" MinHeight="32"
+                                             VerticalContentAlignment="Center" MaxWidth="120"
+                                             HorizontalAlignment="Left" MinWidth="88"
+                                             controls:TextBoxClear.Attach="False"
+                                             LostFocus="CaptureHistoryNumber_LostFocus"
+                                             KeyDown="CaptureHistoryNumber_KeyDown"
+                                             ToolTip="照 Snow Shot 的 capture_history/retention_days：1–365，默认 7"/>
+                                </Grid>
+
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="最多保留条数" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="CaptureHistoryEntriesBox" MinHeight="32"
+                                             VerticalContentAlignment="Center" MaxWidth="120"
+                                             HorizontalAlignment="Left" MinWidth="88"
+                                             controls:TextBoxClear.Attach="False"
+                                             LostFocus="CaptureHistoryNumber_LostFocus"
+                                             KeyDown="CaptureHistoryNumber_KeyDown"
+                                             ToolTip="照 Snow Shot 的 capture_history/max_entries：1–1000，默认 100"/>
+                                </Grid>
+
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="磁盘上限（MB）" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="CaptureHistoryDiskBox" MinHeight="32"
+                                             VerticalContentAlignment="Center" MaxWidth="120"
+                                             HorizontalAlignment="Left" MinWidth="88"
+                                             controls:TextBoxClear.Attach="False"
+                                             LostFocus="CaptureHistoryNumber_LostFocus"
+                                             KeyDown="CaptureHistoryNumber_KeyDown"
+                                             ToolTip="照 Snow Shot 的 capture_history/max_disk_mib：128–10240，默认 1024"/>
+                                </Grid>
+
+                                <TextBlock x:Name="CaptureHistorySummaryText" Style="{StaticResource HintLabel}"
+                                           Margin="0,10,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
 

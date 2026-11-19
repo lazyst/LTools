@@ -149,6 +149,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "完成动作布局：默认 / 归一 / 往返 / 编辑模式可用集", ActionLayoutCases));
         cases.Add(new("capturePro", "文字识别设置：默认值 / 归一 / 六值分发 / 模糊核", OcrSettingsCases));
         cases.Add(new("capturePro", "截图快捷键：四张表 / 解析显示 / 归一 / 覆盖恢复 / 匹配 / 工具映射", ShortcutTableCases));
+        cases.Add(new("capturePro", "采集历史策略：默认 / 归一范围 / 永久保留 / 条数 / 磁盘上限", CaptureHistoryCases));
     }
 
     private static void Geometry()

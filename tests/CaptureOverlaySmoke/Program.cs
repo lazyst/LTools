@@ -349,6 +349,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "historypolicy")
+        {
+            HistoryPolicySection();
+            Console.WriteLine(_failed == 0 ? "historypolicy-only：通过" : $"historypolicy-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
 
@@ -375,6 +382,9 @@ internal static partial class Program
 
         // ============ 在线翻译设置（P9-f：源 / 目标 / 第二目标 / 检测门槛 + 完整设置框） ============
         TranslationSection();
+
+        // ============ 采集历史策略（P9-j：开关 / 永久保留 / 天数 / 条数 / 磁盘上限） ============
+        HistoryPolicySection();
 
         const int width = 1600, height = 900;
         var shot = BuildShot(width, height);

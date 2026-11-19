@@ -203,6 +203,9 @@ public sealed class AppConfig
     /// <summary>文字识别的默认排版 / 标点（进文字编辑时先应用一次）。</summary>
     public TextRecognitionFile TextRecognition { get; set; } = new();
 
+    /// <summary>采集历史的保留策略（开关 / 永久保留 / 天数 / 条数 / 磁盘上限）。</summary>
+    public CaptureHistoryFile CaptureHistory { get; set; } = new();
+
     /// <summary>贴图文字样式的默认值（最大宽 / 字体 / 字号 / 字色 / 底色）。</summary>
     public PinTextFile PinText { get; set; } = new();
 

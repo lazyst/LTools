@@ -62,13 +62,13 @@ internal static partial class Program
 
             var sub = Named<StackPanel>("CaptureSubNav");
             var items = sub.Children.OfType<RadioButton>().ToList();
-            Check(items.Count == 8, $"二级分类 8 项（实际 {items.Count}）");
+            Check(items.Count == 9, $"二级分类 9 项（实际 {items.Count}）");
             Check(string.Join(",", items.Select(i => i.Tag)) ==
                   "capture-general,capture-behavior,capture-drawing,capture-overlay,"
-                  + "capture-ocr,capture-pin,capture-record,capture-output",
+                  + "capture-ocr,capture-pin,capture-record,capture-history,capture-output",
                 "二级项顺序与 tag：" + string.Join(",", items.Select(i => i.Tag)));
             Check(string.Join(",", items.Select(i => i.Content?.ToString())) ==
-                  "常规,截图行为,绘制行为,界面与参考线,文字识别,贴图窗口,录屏,截图输出",
+                  "常规,截图行为,绘制行为,界面与参考线,文字识别,贴图窗口,录屏,采集历史,截图输出",
                 "二级项中文名：" + string.Join(",", items.Select(i => i.Content)));
             Check(items.All(i => i.GroupName == "subnav-capture"), "二级项同一 GroupName（互斥）");
 
@@ -82,6 +82,7 @@ internal static partial class Program
                 ("ocr", "Page_CaptureOcr", "OcrModelCombo"),
                 ("pin", "Page_CapturePin", "PinShowBorderBox"),
                 ("record", "Page_CaptureRecord", "RecordClarityCombo"),
+                ("history", "Page_CaptureHistory", "CaptureHistoryDaysBox"),
                 ("output", "Page_Output", "ExportDirBox"),
             };
 
@@ -139,7 +140,7 @@ internal static partial class Program
                 var want = items.First(i => Equals(i.Tag, "capture-" + page));
                 Check(want.IsChecked == true, $"{page}：对应子项高亮");
                 Check(items.Count(i => i.IsChecked == true) == 1, $"{page}：只高亮一项");
-                if (page is "ocr" or "overlay")
+                if (page is "ocr" or "overlay" or "history")
                     Save(RenderHi(settings), Path.Combine(_outDir, $"settings-capture-{page}.png"));
             }
 

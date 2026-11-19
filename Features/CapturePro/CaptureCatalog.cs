@@ -322,10 +322,14 @@ internal static class CaptureCatalog
             }
 
             items.Insert(0, entry);
-            var (keep, drop) = PlanPrune(items, now, MaxEntries, MaxAgeDays);
-            SaveUnsafe(keep);
-            DeleteFiles(drop);
-            Changed?.Invoke();
+            if (CaptureHistoryStore.Enabled)
+            {
+                var (keep, drop) = PlanPrune(items, now, CaptureHistoryStore.Current);
+                SaveUnsafe(keep);
+                DeleteFiles(drop);
+                Changed?.Invoke();
+            }
+
             return entry;
         }
     }
@@ -375,10 +379,13 @@ internal static class CaptureCatalog
             }
 
             items.Insert(0, entry);
-            var (keep, drop) = PlanPrune(items, now, MaxEntries, MaxAgeDays);
-            SaveUnsafe(keep);
-            DeleteFiles(drop);
-            Changed?.Invoke();
+            if (CaptureHistoryStore.Enabled)
+            {
+                var (keep, drop) = PlanPrune(items, now, CaptureHistoryStore.Current);
+                SaveUnsafe(keep);
+                DeleteFiles(drop);
+                Changed?.Invoke();
+            }
         }
 
         if (poster != null) SaveAssets(entry, poster);
@@ -489,7 +496,24 @@ internal static class CaptureCatalog
             lock (Gate)
             {
                 var items = LoadUnsafe();
-                var (keep, drop) = PlanPrune(items, DateTime.Now, MaxEntries, MaxAgeDays);
+                CaptureHistoryPolicy policy = CaptureHistoryStore.Current;
+
+                // 「永久保留」= 不按天数 / 条数 / 磁盘裁剪，但孤儿文件仍然扫掉
+                if (policy.KeepPermanently)
+                {
+                    SweepOrphans(items);
+                    return;
+                }
+
+                var (keep, drop) = PlanPrune(items, DateTime.Now, policy);
+
+                // 再按磁盘上限从最旧的开始丢（上游 max_disk_mib）
+                var (withinDisk, overDisk) = PlanDiskPrune(keep, policy.MaxDiskBytes, EntryBytes);
+                keep = withinDisk;
+                drop.AddRange(overDisk);
+
+                SweepOrphans(keep);
+
                 if (drop.Count == 0 && keep.Count == items.Count) return;
 
                 SaveUnsafe(keep);
@@ -546,6 +570,96 @@ internal static class CaptureCatalog
     }
 
     // ============ 纯函数（自检直接断言） ============
+
+    /// <summary>按策略裁剪：「永久保留」= 一条都不丢，否则按条数 + 天数。</summary>
+    public static (List<CaptureEntry> Keep, List<CaptureEntry> Drop) PlanPrune(
+        IEnumerable<CaptureEntry> items, DateTimeOffset now, CaptureHistoryPolicy policy)
+    {
+        if (policy.KeepPermanently)
+            return (items.OrderByDescending(e => e.CreatedAt, StringComparer.Ordinal).ToList(),
+                new List<CaptureEntry>());
+
+        return PlanPrune(items, now, policy.MaxEntries, policy.RetentionDays);
+    }
+
+    /// <summary>
+    /// 磁盘上限（照上游 <c>capture_history/max_disk_mib</c>）：从最旧的开始丢，直到总量不超上限。
+    /// </summary>
+    /// <param name="sizeOf">一条记录占多少字节（调用方给，纯函数好断言）。</param>
+    public static (List<CaptureEntry> Keep, List<CaptureEntry> Drop) PlanDiskPrune(
+        IEnumerable<CaptureEntry> items, long maxBytes, Func<CaptureEntry, long> sizeOf)
+    {
+        var ordered = items
+            .OrderByDescending(e => e.CreatedAt, StringComparer.Ordinal)
+            .ToList();
+
+        var keep = new List<CaptureEntry>();
+        var drop = new List<CaptureEntry>();
+        long total = 0;
+
+        foreach (var entry in ordered)
+        {
+            long size = Math.Max(0, sizeOf(entry));
+            if (maxBytes > 0 && keep.Count > 0 && total + size > maxBytes)
+            {
+                drop.Add(entry);
+                continue;
+            }
+
+            keep.Add(entry);
+            total += size;
+        }
+
+        return (keep, drop);
+    }
+
+    /// <summary>一条记录占的字节（成品图 + 缩略图 + 录屏文件）。</summary>
+    public static long EntryBytes(CaptureEntry entry) =>
+        LengthOf(AssetPath(entry.Id)) + LengthOf(ThumbPath(entry.Id)) + LengthOf(FilePath(entry));
+
+    private static long LengthOf(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return info.Exists ? info.Length : 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// 扫掉没有条目的孤儿文件（关掉采集历史后留下的图 / 缩略图）：只碰 <c>assets/</c> 与
+    /// <c>thumbnails/</c>，录屏成品不动；文件写入不到 1 小时的不碰（可能刚写还没入库）。
+    /// </summary>
+    private static void SweepOrphans(IReadOnlyList<CaptureEntry> keep)
+    {
+        var ids = new HashSet<string>(keep.Select(e => e.Id), StringComparer.Ordinal);
+        DateTime cutoff = DateTime.Now.AddHours(-1);
+
+        foreach (string dir in new[] { AssetsDir, ThumbsDir })
+        {
+            if (!Directory.Exists(dir)) continue;
+            foreach (string file in Directory.EnumerateFiles(dir, "*.png"))
+            {
+                string id = Path.GetFileNameWithoutExtension(file);
+                if (ids.Contains(id)) continue;
+
+                try
+                {
+                    if (File.GetLastWriteTime(file) > cutoff) continue;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                DeleteFile(file);
+            }
+        }
+    }
 
     /// <summary>保留 / 丢弃怎么分：先按时间倒序，超龄或超量的进 discard。</summary>
     public static (List<CaptureEntry> Keep, List<CaptureEntry> Drop) PlanPrune(

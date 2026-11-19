@@ -112,6 +112,7 @@ internal static class ConfigBundle
         cfg.Record = (settings.Record ?? new RecordOptions()).Normalized();
         cfg.Translation = settings.Translation ?? new TranslationFile();
         cfg.TextRecognition = settings.TextRecognition ?? new TextRecognitionFile();
+        cfg.CaptureHistory = settings.CaptureHistory ?? new CaptureHistoryFile();
         cfg.PinText = settings.PinText ?? new PinTextFile();
         cfg.PinToScreen = settings.PinToScreen ?? new PinToScreenFile();
         cfg.Collage = settings.Collage ?? new CollageFile();
@@ -387,6 +388,7 @@ internal static class ConfigBundle
         Record = cfg.Record ?? new RecordOptions(),
         Translation = cfg.Translation ?? new TranslationFile(),
         TextRecognition = cfg.TextRecognition ?? new TextRecognitionFile(),
+        CaptureHistory = cfg.CaptureHistory ?? new CaptureHistoryFile(),
         PinText = cfg.PinText ?? new PinTextFile(),
         PinToScreen = cfg.PinToScreen ?? new PinToScreenFile(),
         Collage = cfg.Collage ?? new CollageFile(),

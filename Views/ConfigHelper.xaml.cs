@@ -353,7 +353,7 @@ public partial class ConfigHelperWindow : Window
         "macros" or "macros-list" or "macros-settings" => FamilyMacros,
         "capture" or "capture-general" or "capture-behavior" or "capture-drawing"
             or "capture-overlay" or "capture-ocr" or "capture-pin" or "capture-record"
-            or "capture-output" => FamilyCapture,
+            or "capture-history" or "capture-output" => FamilyCapture,
         "logs" or "logs-settings" or "logs-recent" or "logs-history" => FamilyLogs,
         _ => null,
     };
@@ -376,6 +376,7 @@ public partial class ConfigHelperWindow : Window
         (FamilyCapture, "capture-ocr") => "ocr",
         (FamilyCapture, "capture-pin") => "pin",
         (FamilyCapture, "capture-record") => "record",
+        (FamilyCapture, "capture-history") => "history",
         (FamilyCapture, "capture-output") => "output",
         (FamilyCapture, _) => "general",
         _ => "settings",
@@ -626,6 +627,7 @@ public partial class ConfigHelperWindow : Window
         Page_CaptureOcr.Visibility = capture && page == "ocr" ? Visibility.Visible : Visibility.Collapsed;
         Page_CapturePin.Visibility = capture && page == "pin" ? Visibility.Visible : Visibility.Collapsed;
         Page_CaptureRecord.Visibility = capture && page == "record" ? Visibility.Visible : Visibility.Collapsed;
+        Page_CaptureHistory.Visibility = capture && page == "history" ? Visibility.Visible : Visibility.Collapsed;
         Page_Output.Visibility = capture && page == "output" ? Visibility.Visible : Visibility.Collapsed;
         Host_Macros.Visibility = macros ? Visibility.Visible : Visibility.Collapsed;
         Host_Triggers.Visibility = tag == "triggers" ? Visibility.Visible : Visibility.Collapsed;
@@ -848,6 +850,7 @@ public partial class ConfigHelperWindow : Window
         PopulateCaptureKeymap();
         PopulateRecord();
         PopulateTranslation();
+        PopulateCaptureHistory();
     }
 
     /// <summary>
