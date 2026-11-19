@@ -309,6 +309,9 @@ public partial class CaptureRecordWindow
 
         StyleBar.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
 
+        // 第二行显隐会改整个面板的高 / 宽：贴边判定要重算
+        ReconcileAutoHide();
+
         if (_exportToggle.IsChecked != visible)
         {
             bool was = _syncing;
@@ -406,7 +409,7 @@ public partial class CaptureRecordWindow
 
         row.Add(DelayPill());
 
-        _effectBtn = AddButton("IconRecEffectSettings", "特效设置：声音 / 摄像头 / 编码器 / 录完裁剪",
+        _effectBtn = AddButton("IconRecEffectSettings", "特效设置：声音 / 摄像头 / 编码器 / 录完裁剪 / 贴边收起",
             (_, _) => OpenOptions(), "BarBtnSm", small: true);
         row.Add(_effectBtn);
 
@@ -868,7 +871,11 @@ public partial class CaptureRecordWindow
     {
         try
         {
-            if (RecordOptionsWindow.Show(this, _plan.Options)) SyncUi();
+            if (RecordOptionsWindow.Show(this, _plan.Options))
+            {
+                SyncUi();
+                ReconcileAutoHide();   // 「贴边自动收起」可能刚被改掉
+            }
         }
         catch (Exception ex)
         {

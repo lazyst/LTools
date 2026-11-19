@@ -135,6 +135,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "剪贴板元数据：外观 / 落位 / 桌面变化 / 文件签名", ClipboardMetaCases));
         cases.Add(new("capturePro", "渲染进度：阶段文案 / 按钮 / ffmpeg 进度解析", RecordRenderCases));
         cases.Add(new("capturePro", "录屏快捷键：动作表 / 匹配 / 状态门槛 / 区域历史", RecordShortcutCases));
+        cases.Add(new("capturePro", "录屏自动收起：贴边判定 / 边条几何 / 转移区 / 门槛", RecordAutoHideCases));
     }
 
     private static void Geometry()
@@ -3072,6 +3073,138 @@ internal static partial class CaptureProSuite
         var limited = RecordAreaHistory.Normalize(many);
         Check.Equal(RecordAreaHistory.Limit, limited.Count, "上限 100");
         Check.Equal(new Int32Rect(0, 0, RecordAreaHistory.Limit + 20, 10), limited[^1], "超出时丢最旧的");
+    }
+
+    /// <summary>
+    /// 录屏工具条「贴边自动收起」的纯几何（照上游
+    /// <c>screenrecordingtoolbarautohide.h</c>）：贴边判定 / 小条几何 / 过渡区 / 可收起门槛。
+    /// </summary>
+    private static void RecordAutoHideCases()
+    {
+        var bounds = new Int32Rect(0, 0, 1920, 1080);
+
+        // ---- 贴边判定：两边都离得远 = 不贴边 ----
+        Check.Equal(RecordToolbarSide.None,
+            RecordAutoHide.SideForRow(new Int32Rect(600, 800, 700, 76), bounds), "屏幕中间不收");
+
+        // ---- 贴着左边（间距 0）/ 贴着右边 ----
+        Check.Equal(RecordToolbarSide.Left,
+            RecordAutoHide.SideForRow(new Int32Rect(0, 800, 700, 76), bounds), "贴左 = 左");
+        Check.Equal(RecordToolbarSide.Right,
+            RecordAutoHide.SideForRow(new Int32Rect(1220, 800, 700, 76), bounds), "贴右 = 右");
+
+        // ---- 阈值 16：15 算贴边、17 不算 ----
+        Check.Equal(RecordToolbarSide.Left,
+            RecordAutoHide.SideForRow(new Int32Rect(15, 800, 700, 76), bounds), "左间距 15 还算贴边");
+        Check.Equal(RecordToolbarSide.None,
+            RecordAutoHide.SideForRow(new Int32Rect(17, 800, 700, 76), bounds), "左间距 17 不算");
+        Check.Equal(RecordToolbarSide.Right,
+            RecordAutoHide.SideForRow(new Int32Rect(1920 - 700 - 16, 800, 700, 76), bounds),
+            "右间距正好 16 算贴边");
+
+        // ---- 两边一样近：沿用上一次的边，没有上一次就取右 ----
+        // （两边都超过阈值时先判「不贴边」，所以只有接近满宽的行才会走到这一步）
+        var even = new Int32Rect(10, 800, 1900, 76);   // 左 10、右 10
+        Check.Equal(RecordToolbarSide.Right, RecordAutoHide.SideForRow(even, bounds), "相等且没有上次 = 右");
+        Check.Equal(RecordToolbarSide.Left,
+            RecordAutoHide.SideForRow(even, bounds, RecordToolbarSide.Left), "相等时保持上次的左");
+        Check.Equal(RecordToolbarSide.Right,
+            RecordAutoHide.SideForRow(even, bounds, RecordToolbarSide.Right), "相等时保持上次的右");
+        Check.Equal(RecordToolbarSide.None,
+            RecordAutoHide.SideForRow(new Int32Rect(610, 800, 700, 76), bounds, RecordToolbarSide.Left),
+            "居中时两边都远 → 不贴边（先判阈值再看相等）");
+
+        // ---- 越过边缘（负间距）仍然算那一边，越得多的一边优先 ----
+        Check.Equal(RecordToolbarSide.Left,
+            RecordAutoHide.SideForRow(new Int32Rect(-40, 800, 700, 76), bounds), "拖出左边缘仍算左");
+        Check.Equal(RecordToolbarSide.Right,
+            RecordAutoHide.SideForRow(new Int32Rect(1260, 800, 700, 76), bounds), "拖出右边缘仍算右");
+
+        // ---- 不相交 / 空矩形 = 不贴边 ----
+        Check.Equal(RecordToolbarSide.None,
+            RecordAutoHide.SideForRow(new Int32Rect(0, 1400, 700, 76), bounds), "和屏幕不相交");
+        Check.Equal(RecordToolbarSide.None,
+            RecordAutoHide.SideForRow(new Int32Rect(0, 800, 0, 76), bounds), "空主行");
+
+        // ---- 小条几何：20 DIP × scale，贴边、纵向居中 ----
+        var row = new Int32Rect(0, 500, 700, 76);
+        var tab = RecordAutoHide.TabGeometry(row, bounds, RecordToolbarSide.Left, 1);
+        Check.Equal(new Int32Rect(0, 500, 20, 76), tab, "100% 缩放：20 × 76，贴左边、与主行同高");
+
+        var tab125 = RecordAutoHide.TabGeometry(row, bounds, RecordToolbarSide.Left, 1.25);
+        Check.Equal(25, tab125.Width, "125% 缩放：20 DIP = 25 物理像素");
+        Check.Equal(76, tab125.Height, "高度跟主行（不超过屏高）");
+
+        var right = RecordAutoHide.TabGeometry(new Int32Rect(1220, 500, 700, 76), bounds,
+            RecordToolbarSide.Right, 1);
+        Check.Equal(new Int32Rect(1900, 500, 20, 76), right, "贴右边：右对齐到屏幕边");
+
+        // 主行贴在屏幕顶 / 底：小条仍留在屏幕内
+        var topRow = new Int32Rect(0, 0, 700, 76);
+        Check.Equal(new Int32Rect(0, 0, 20, 76),
+            RecordAutoHide.TabGeometry(topRow, bounds, RecordToolbarSide.Left, 1), "贴顶不越界");
+        var bottomRow = new Int32Rect(0, 1070, 700, 76);
+        var bottomTab = RecordAutoHide.TabGeometry(bottomRow, bounds, RecordToolbarSide.Left, 1);
+        Check.Equal(1080 - 76, bottomTab.Y, "贴底收到屏幕里");
+
+        // 比例认得不对时按 1.0 兜底（上游 !isfinite || <= 0）
+        Check.Equal(20, RecordAutoHide.TabGeometry(row, bounds, RecordToolbarSide.Left, 0).Width, "scale 0 → 1");
+        Check.Equal(20, RecordAutoHide.TabGeometry(row, bounds, RecordToolbarSide.Left, -2).Width, "负 scale → 1");
+        Check.Equal(20, RecordAutoHide.TabGeometry(row, bounds, RecordToolbarSide.Left, double.NaN).Width,
+            "NaN scale → 1");
+
+        // 不贴边 / 空矩形 / 屏比小条还窄：不返回畸形矩形
+        Check.True(RecordAutoHide.IsEmpty(
+            RecordAutoHide.TabGeometry(row, bounds, RecordToolbarSide.None, 1)), "没有边就没有小条");
+        Check.True(RecordAutoHide.IsEmpty(
+            RecordAutoHide.TabGeometry(default, bounds, RecordToolbarSide.Left, 1)), "空主行没有小条");
+        Check.Equal(12, RecordAutoHide.TabGeometry(new Int32Rect(0, 10, 30, 20),
+            new Int32Rect(0, 0, 12, 1080), RecordToolbarSide.Left, 1).Width, "小条不超过屏宽");
+
+        // ---- 过渡区：小条 → 主行之间那一条竖直带（不是整行） ----
+        var transfer = RecordAutoHide.TransferRegion(new Int32Rect(8, 500, 700, 76), tab,
+            RecordToolbarSide.Left);
+        Check.Equal(new Int32Rect(0, 500, 20, 76), transfer,
+            "左侧：小条与主行左边缘之间那条带");
+
+        var rightTransfer = RecordAutoHide.TransferRegion(new Int32Rect(1212, 500, 700, 76), right,
+            RecordToolbarSide.Right);
+        Check.Equal(new Int32Rect(1900, 500, 20, 76), rightTransfer, "右侧同理（小条那一列）");
+
+        // 主行整块在小条上方：竖直方向取「主行下沿 → 小条下沿」
+        var above = RecordAutoHide.TransferRegion(new Int32Rect(8, 400, 700, 76), tab,
+            RecordToolbarSide.Left);
+        Check.Equal(new Int32Rect(0, 475, 20, 101), above, "主行在小条上方时仍连成一条带");
+
+        Check.True(RecordAutoHide.IsEmpty(
+            RecordAutoHide.TransferRegion(row, tab, RecordToolbarSide.None)), "没有边就没有过渡区");
+        Check.True(RecordAutoHide.IsEmpty(
+            RecordAutoHide.TransferRegion(row, default, RecordToolbarSide.Left)), "没有小条就没有过渡区");
+
+        // ---- 命中 / 相交 ----
+        Check.True(RecordAutoHide.Contains(tab, 10, 510), "小条里命中");
+        Check.False(RecordAutoHide.Contains(tab, 20, 510), "右边界外不命中");
+        Check.True(RecordAutoHide.Intersects(new Int32Rect(0, 0, 10, 10), new Int32Rect(9, 9, 10, 10)),
+            "共享一个像素也算相交");
+        Check.False(RecordAutoHide.Intersects(new Int32Rect(0, 0, 10, 10), new Int32Rect(10, 0, 10, 10)),
+            "相邻不算相交");
+
+        // ---- 可收起门槛：开着 + 真的在录 + 不在收尾 ----
+        Check.True(RecordAutoHide.IsEligible(true, true, false), "开着、在录、没收尾");
+        Check.False(RecordAutoHide.IsEligible(false, true, false), "设置关着");
+        Check.False(RecordAutoHide.IsEligible(true, false, false), "摆着等开始 / 已经停了");
+        Check.False(RecordAutoHide.IsEligible(true, true, true), "正在收尾");
+
+        // ---- 设置项：默认关，改过之后能存下来（Normalized / CopyFrom 都不能丢） ----
+        var defaults = new RecordOptions();
+        Check.False(defaults.AutoHideToolbar, "「贴边自动收起」默认关（上游 booleanDefault(false)）");
+        Check.True(defaults.Normalized().AutoHideToolbar == false, "清洗后仍是关");
+
+        var on = new RecordOptions { AutoHideToolbar = true };
+        Check.True(on.Normalized().AutoHideToolbar, "清洗后保留开");
+        var target = new RecordOptions();
+        target.CopyFrom(on);
+        Check.True(target.AutoHideToolbar, "CopyFrom 带过去（面板上的这一轮立刻生效）");
     }
 
     /// <summary>

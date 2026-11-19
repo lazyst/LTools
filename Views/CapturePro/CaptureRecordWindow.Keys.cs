@@ -72,6 +72,9 @@ public partial class CaptureRecordWindow
             }
         }
 
+        // 收起来时指针停在小条上也算「在我们的 UI 上」（小条同样能唤出面板）
+        if (_autoHidden && RecordAutoHide.Contains(_autoHideTabRect, point.X, point.Y)) return true;
+
         // 空闲期：区域框也是我们的 UI（拖边、看尺寸时按 R / Esc 同样应该生效）
         if (_region != null)
         {

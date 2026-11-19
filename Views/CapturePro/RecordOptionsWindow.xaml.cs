@@ -59,6 +59,7 @@ public partial class RecordOptionsWindow : Window
         });
 
         TrimBox.IsChecked = options.TrimAfterRecord;
+        AutoHideBox.IsChecked = options.AutoHideToolbar;
 
         SyncEnabled();
         _loading = false;
@@ -194,6 +195,7 @@ public partial class RecordOptionsWindow : Window
                 _ => RecordCodec.auto,
             },
             TrimAfterRecord = TrimBox.IsChecked == true,
+            AutoHideToolbar = AutoHideBox.IsChecked == true,
         }.Normalized();
 
         // 颜色 / 键过滤 / 后期处理 / 声音增益这些只在面板上改的项：窗口不管它们，原样带过来

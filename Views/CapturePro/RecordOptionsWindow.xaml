@@ -124,6 +124,14 @@
                 <CheckBox x:Name="TrimBox" Grid.Column="2" Content="录完打开裁剪 / 倍速窗口"
                           Margin="18,0,0,0" VerticalAlignment="Center"/>
             </Grid>
+
+            <Separator Margin="0,12"/>
+
+            <TextBlock Text="工具条" Style="{StaticResource SectionLabel}"/>
+            <CheckBox x:Name="AutoHideBox" Margin="0,4,0,0" VerticalAlignment="Center"
+                      Content="贴边自动收起：拖到屏幕左 / 右边缘，鼠标移开后收起成小条，悬停唤出"/>
+            <TextBlock Style="{StaticResource HintLabel}" Margin="0,4,0,0"
+                       Text="只在录制中生效（摆着等点录制时不会自己消失）。小条贴住屏幕边，点它或悬停 0.1 秒就展开。"/>
         </StackPanel>
     </controls:DialogShell>
 </Window>

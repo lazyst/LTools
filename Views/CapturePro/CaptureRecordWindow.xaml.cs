@@ -69,6 +69,7 @@ public partial class CaptureRecordWindow : Window
 
         BuildActionRow();
         BuildStyleRow();
+        InitAutoHide();
 
         MetaText.Text = MetaSummary();
         _hasLastRecord = LastRecord() != null;
@@ -116,6 +117,7 @@ public partial class CaptureRecordWindow : Window
         if (_recording) RememberArea();
 
         Sync();
+        ReconcileAutoHide();
         _timer.Start();
     }
 
@@ -123,6 +125,7 @@ public partial class CaptureRecordWindow : Window
     {
         _timer.Stop();
         RecordShortcutRoute.Clear();
+        DismissAutoHide();
         CloseRegion();
         foreach (var popover in _popovers) popover.Hide();
         _micGainPop?.Hide();
@@ -141,6 +144,7 @@ public partial class CaptureRecordWindow : Window
     {
         _closing = true;
         _timer.Stop();
+        DismissAutoHide();
         CloseRegion();
         foreach (var popover in _popovers) popover.Hide();
         _micGainPop?.Hide();
@@ -194,11 +198,15 @@ public partial class CaptureRecordWindow : Window
     private void Sync()
     {
         SyncUi();
+        ReconcileAutoHide();
 
-        if (_finished || !_recording || !_controller.Finished) { PublishShortcuts(); return; }
+        if (!_finished && _recording && _controller.Finished)
+        {
+            _finished = true;
+            UpdateToolButtons();      // 收尾过程中立刻把三个收尾按钮按「历史里有没有录屏」重算
+            ReconcileAutoHide();      // 收尾中不再收起（eligible 掉了就唤回来）
+        }
 
-        _finished = true;
-        UpdateToolButtons();      // 收尾过程中立刻把三个收尾按钮按「历史里有没有录屏」重算
         PublishShortcuts();
     }
 
@@ -320,6 +328,9 @@ public partial class CaptureRecordWindow : Window
         Left = left;
         Top = Math.Clamp(top, screen.WorkTop / scale + edge,
             Math.Max(screen.WorkTop / scale + edge, (screen.WorkTop + screen.WorkHeight) / scale - height - edge));
+
+        // 位置变了：dock 判定与小条位置跟着重算（贴边收起状态由控制器自己决定去留）
+        ReconcileAutoHide();
     }
 
     private static double What(double actual, double desired) => actual > 1 ? actual : desired;
@@ -357,6 +368,8 @@ public partial class CaptureRecordWindow : Window
         _dragLeft = Left;
         _dragTop = Top;
 
+        ReconcileAutoHide();
+
         ActionBar.CaptureMouse();
         e.Handled = true;
     }
@@ -379,6 +392,8 @@ public partial class CaptureRecordWindow : Window
 
         _dragging = false;
         ActionBar.ReleaseMouseCapture();
+
+        ReconcileAutoHide();
     }
 
     private void Bar_RightDown(object sender, MouseButtonEventArgs e)

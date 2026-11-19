@@ -136,6 +136,12 @@ public sealed class RecordOptions
     /// <summary>录完直接打开裁剪 / 倍速窗口。</summary>
     public bool TrimAfterRecord { get; set; }
 
+    /// <summary>
+    /// 工具条贴到屏幕左 / 右边缘时自动收起成一条小条、悬停唤出
+    /// （上游 <c>screen_recording/auto_hide_toolbar</c>，默认关）。
+    /// </summary>
+    public bool AutoHideToolbar { get; set; }
+
     public bool HasAudio => SystemAudio || Microphone;
     public bool HasCamera => CameraDevice >= 0;
 
@@ -182,6 +188,7 @@ public sealed class RecordOptions
         ClickColor = other.ClickColor;
         Codec = other.Codec;
         TrimAfterRecord = other.TrimAfterRecord;
+        AutoHideToolbar = other.AutoHideToolbar;
     }
 
     /// <summary>夹紧数值字段（尺寸 / 半径 / 边距），并把负边距收成 0。</summary>
@@ -214,6 +221,7 @@ public sealed class RecordOptions
         ClickColor = NormalizeColor(ClickColor, "#00000000"),
         Codec = Codec,
         TrimAfterRecord = TrimAfterRecord,
+        AutoHideToolbar = AutoHideToolbar,
     };
 
     /// <summary>颜色里的 alpha（认不出按 0 = 透明）。</summary>
