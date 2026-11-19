@@ -136,6 +136,9 @@ public partial class CapturePinWindow : Window
         Area = area;
         SourceInitialized += (_, _) => MakeNonActivating();
 
+        // 出现之后静默识别一次（照上游 automatic_text_recognition）：点「显示文字」/ 划选都不必再等。
+        Loaded += (_, _) => StartAutoRecognize();
+
         // 实时贴图：本窗口一动 / 一改尺寸 / 一藏，下面那层缩略图宿主就得跟着（否则屏幕上会
         // 留下一块对不上的画面）。平时它们是空操作。点击穿透的三个控件也跟着贴图走。
         LocationChanged += (_, _) =>
@@ -149,11 +152,13 @@ public partial class CapturePinWindow : Window
             SyncLiveLayer();
             SyncClickThroughGeometry();
             SyncShadow();
+            if (_hiddenTextSelection) RefreshHiddenBar();
         };
         IsVisibleChanged += (_, _) =>
         {
             _thumbLayer?.SetShown(IsVisible);
             SyncShadow();
+            SyncHiddenTextLayer();       // 藏起来（切分组）就别留着划选层
         };
     }
 
@@ -320,6 +325,7 @@ public partial class CapturePinWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        StopAttentionShake();                  // 抖动定时器还在跑的话会一直改 Left
         StopLive();                            // 关掉窗口就别再抓帧（定时器不停会一直 PrintWindow）
         ShutdownOcr();                         // 在途识别作废（回来时窗口已经不在了）
         ShutdownHideToTop();                   // 顶边手柄是独立窗口，关窗时一起带走

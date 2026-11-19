@@ -78,4 +78,30 @@ public sealed class PinToScreenFile
 
     /// <summary>贴图右上角显示窗口按钮（关闭 ✕ / 标注）。缺省 = 开。</summary>
     public bool? ShowWindowButtons { get; set; } = true;
+
+    /// <summary>
+    /// 贴图创建时后台先识别一次文字（照上游 <c>pin_to_screen/automatic_text_recognition</c>）。
+    /// 识别结果给「显示文字」与隐形文字层复用，点菜单时不用再等。缺省 = 开。
+    /// </summary>
+    public bool? AutomaticTextRecognition { get; set; } = true;
+
+    /// <summary>
+    /// 什么时候能在贴图上直接划选识别出的文字：<c>only_when_displayed</c>（只在「显示文字」里）/
+    /// <c>always</c>（照上游 <c>pin_to_screen/text_selection_on_recognition_results</c>，
+    /// 在图片上叠一层隐形文字层，直接拖选 + 复制）。缺省 = <c>always</c>。
+    /// </summary>
+    public string? TextSelectionOnRecognitionResults { get; set; } = "always";
+
+    /// <summary>
+    /// 贴到重复内容时做什么：<c>none</c>（什么都不贴）/ <c>shake_window</c>（抖一下已有的那张）/
+    /// <c>restore_last_closed_window</c>（贴回最近关掉的那张）/ <c>repeat_action</c>（照常再贴一张）。
+    /// 照上游 <c>pin_to_screen/duplicate_content_action</c>，缺省 = <c>shake_window</c>。
+    /// </summary>
+    public string? DuplicateContentAction { get; set; } = "shake_window";
+
+    /// <summary>
+    /// 贴图比屏幕工作区大时自动缩小（照上游 <c>pin_to_screen/auto_resize_window</c>）。
+    /// 关掉之后剪贴板 / 文件贴图按原始尺寸贴出，可能超出屏幕。缺省 = 开。
+    /// </summary>
+    public bool? AutoResizeWindow { get; set; } = true;
 }

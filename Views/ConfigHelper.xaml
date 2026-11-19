@@ -588,6 +588,41 @@
                                         </StackPanel>
                                     </Button>
                                 </Grid>
+
+                                <TextBlock Style="{StaticResource SectionLabel}" Margin="0,14,0,0"
+                                           Text="识别与重复内容"/>
+                                <CheckBox x:Name="PinAutoOcrBox" Margin="0,6,0,0"
+                                          Content="贴图出现时先识别一次文字"
+                                          ToolTip="照上游 pin_to_screen/automatic_text_recognition（默认开）：贴上来就在后台认一次，「显示文字」与划选都不必再等"
+                                          Checked="PinWindowToggle_Changed" Unchecked="PinWindowToggle_Changed"/>
+                                <CheckBox x:Name="PinAutoResizeBox" Margin="0,8,0,0"
+                                          Content="贴图比屏幕大时自动缩小"
+                                          ToolTip="照上游 pin_to_screen/auto_resize_window（默认开）：关掉之后按原始尺寸贴出，可能超出屏幕"
+                                          Checked="PinWindowToggle_Changed" Unchecked="PinWindowToggle_Changed"/>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="识别结果可划选" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="PinTextSelectionCombo" MinHeight="32"
+                                              SelectionChanged="PinWindowSelect_Changed"
+                                              ToolTip="照上游 pin_to_screen/text_selection_on_recognition_results：「始终」在图片上直接拖选文字，不必先进文字层"/>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="贴到重复内容时" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="PinDuplicateCombo" MinHeight="32"
+                                              SelectionChanged="PinWindowSelect_Changed"
+                                              ToolTip="照上游 pin_to_screen/duplicate_content_action：同一个文件 / 同一次复制再贴一次时怎么办"/>
+                                </Grid>
                             </StackPanel>
                         </Border>
 

@@ -97,14 +97,16 @@ internal static class CapturePinManager
     /// 这里已经是算好的窗口矩形（跨显示器 / 缩放比变化都已经由元数据解析处理过），不再二次扩。
     /// </remarks>
     public static CapturePinWindow PinRestored(BitmapSource image, Int32Rect windowRect,
-        PinAppearance? appearance, bool checkerboard, string source = PinStore.SourceClipboard)
+        PinAppearance? appearance, bool checkerboard, string source = PinStore.SourceClipboard,
+        string sourceKey = "")
     {
         var look = (appearance ?? PinAppearance.None).Clamp(image.PixelWidth, image.PixelHeight);
         double scale = ScreenShot.ScaleOf(windowRect);
         var pin = new CapturePinWindow(image, windowRect, scale);
         pin.SetAppearance(look);
         pin.SetCheckerboard(checkerboard || look.HasShape);
-        return Register(pin, image, windowRect, scale, source, PinStore.KindImage, "", 0, null, look);
+        return Register(pin, image, windowRect, scale, source, PinStore.KindImage, "", 0, null, look,
+            sourceKey);
     }
 
     /// <summary>
@@ -112,14 +114,15 @@ internal static class CapturePinManager
     /// 装不下就等比缩小（照上游 <c>fitPinnedImageOnScreen</c>）。
     /// </summary>
     public static CapturePinWindow PinText(string text, double scale, Rect workArea,
-        string source = PinStore.SourceClipboard)
+        string source = PinStore.SourceClipboard, string sourceKey = "")
     {
         double s = scale > 0 ? scale : 1;
         var style = PinTextStyle.Current();
         var snapshot = PinTextSnapshot.Of(style);
         var card = PinCardRenderer.Render(text, style, s);
 
-        var (box, zoom) = PinPlacement.Center(card.Logical, workArea);
+        var (box, zoom) = PinPlacement.Center(card.Logical, workArea, PinPlacement.Margin,
+            PinSettings.AutoResizeWindow);
         var area = new Int32Rect(
             (int)Math.Round(box.X * s), (int)Math.Round(box.Y * s),
             Math.Max(1, (int)Math.Round(box.Width * s)), Math.Max(1, (int)Math.Round(box.Height * s)));
@@ -127,16 +130,18 @@ internal static class CapturePinManager
         var pin = new CapturePinWindow(card, area, s, zoom, text);
         return Register(pin, card.Image, area, s, source,
             card.Kind == PinContentKind.Color ? PinStore.KindColor : PinStore.KindText,
-            text, card.Kind == PinContentKind.Color ? (int)card.Logical.Width : 0, snapshot);
+            text, card.Kind == PinContentKind.Color ? (int)card.Logical.Width : 0, snapshot,
+            sourceKey: sourceKey);
     }
 
     /// <summary>贴剪贴板里的一张图：居中放到 <paramref name="workArea"/>（DIP），超大等比缩小。</summary>
     public static CapturePinWindow PinClipboardImage(BitmapSource image, double scale, Rect workArea,
-        string source = PinStore.SourceClipboard, PinAppearance? appearance = null)
+        string source = PinStore.SourceClipboard, PinAppearance? appearance = null, string sourceKey = "")
     {
         double s = scale > 0 ? scale : 1;
         var logical = new Size(Math.Max(1, image.PixelWidth / s), Math.Max(1, image.PixelHeight / s));
-        var (box, zoom) = PinPlacement.Center(logical, workArea);
+        var (box, zoom) = PinPlacement.Center(logical, workArea, PinPlacement.Margin,
+            PinSettings.AutoResizeWindow);
         var area = new Int32Rect(
             (int)Math.Round(box.X * s), (int)Math.Round(box.Y * s),
             Math.Max(1, (int)Math.Round(box.Width * s)), Math.Max(1, (int)Math.Round(box.Height * s)));
@@ -144,7 +149,8 @@ internal static class CapturePinManager
         var look = (appearance ?? PinAppearance.None).Clamp(image.PixelWidth, image.PixelHeight);
         var pin = new CapturePinWindow(image, area, s, zoom);
         pin.SetAppearance(look);
-        return Register(pin, image, area, s, source, PinStore.KindImage, "", 0, null, look);
+        return Register(pin, image, area, s, source, PinStore.KindImage, "", 0, null, look,
+            sourceKey: sourceKey);
     }
 
     /// <summary>
@@ -182,7 +188,7 @@ internal static class CapturePinManager
     /// <summary>出场收尾：分组、历史记录（先写 pins.json）、显示、顶最前，图片丢后台写。</summary>
     private static CapturePinWindow Register(CapturePinWindow pin, BitmapSource image, Int32Rect area,
         double scale, string source, string kind, string text, int cardWidth,
-        PinTextSnapshot? textStyle = null, PinAppearance? appearance = null)
+        PinTextSnapshot? textStyle = null, PinAppearance? appearance = null, string sourceKey = "")
     {
         // 正只看某个分组时，新贴图落进那个组 —— 否则贴上来立刻被自己藏起来，看着像「贴图没反应」
         string group = ActiveGroup ?? PinGroups.Default;
@@ -192,7 +198,8 @@ internal static class CapturePinManager
         var record = PinStore.Create(image.PixelWidth, image.PixelHeight,
             area.X, area.Y, area.Width, area.Height, scale, source, group, live: false,
             kind: kind, text: text, cardWidth: cardWidth, textStyle: textStyle,
-            appearance: appearance, showBorder: pin.ShowBorder, showShadow: pin.ShowShadow);
+            appearance: appearance, showBorder: pin.ShowBorder, showShadow: pin.ShowShadow,
+            sourceKey: sourceKey);
         pin.PinId = record.Id;
 
         Pins.Add(pin);
@@ -393,12 +400,92 @@ internal static class CapturePinManager
     public static CapturePinWindow? RestoreLastClosed()
     {
         var open = new HashSet<string>(Pins.Select(pin => pin.PinId), StringComparer.Ordinal);
+        string? group = ActiveGroup;
         var record = PinStore.Load()
-            .Where(item => item.ClosedAt.Length > 0 && !open.Contains(item.Id))
+            .Where(item => item.ClosedAt.Length > 0 && !open.Contains(item.Id) &&
+                           (group == null || PinGroups.Same(item.Group, group)))
             .OrderByDescending(item => item.ClosedAt, StringComparer.Ordinal)
             .FirstOrDefault();
 
         return record == null ? null : Restore(record);
+    }
+
+    /// <summary>
+    /// 贴图设置里的「自动识别 / 识别结果可划选」改了：让已经贴着的图按新设置走
+    /// （打开自动识别就补一次识别；可划选的开关立刻生效）。
+    /// </summary>
+    internal static void RefreshRecognition()
+    {
+        foreach (var pin in Pins.ToArray())
+        {
+            pin.StartAutoRecognize();
+            pin.SyncHiddenTextLayer();
+        }
+    }
+
+    /// <summary>
+    /// 「贴到重复内容时」的门禁（照上游 <c>handleDuplicatePin</c>）：同一个文件 / 同一次复制
+    /// 已经贴过时，按设置抖一下已有的那张 / 贴回最近关掉的那张 / 干脆不贴。
+    /// </summary>
+    /// <remarks>
+    /// 调用方在**建窗口之前**调；返回 <see cref="PinDuplicateOutcome.Handled"/> 表示这次不要再贴。
+    /// 身份由 <see cref="PinContentIdentity"/> 生成（文件 = 规范化路径，剪贴板 = 会话令牌 + 序号）；
+    /// 截图 / 采集历史 / 文字卡片的身份是空串，永远走「照常贴」。
+    /// </remarks>
+    internal static PinDuplicateOutcome HandleDuplicate(string? sourceKey)
+    {
+        var action = PinSettings.DuplicateAction;
+        if (action == PinDuplicateAction.RepeatAction || !PinContentIdentity.IsValid(sourceKey))
+            return PinDuplicateOutcome.Proceed;
+
+        string group = ActiveGroup ?? PinGroups.Default;
+        var records = PinStore.Load();                       // 已经是创建时间倒序
+        var openIds = new HashSet<string>(Pins.Select(pin => pin.PinId), StringComparer.Ordinal);
+
+        // 已经贴着的那张（当前分组里最新的那一张）
+        CapturePinWindow? open = null;
+        foreach (var record in records)
+        {
+            if (!openIds.Contains(record.Id) || record.SourceKey != sourceKey) continue;
+            if (!PinGroups.Same(record.Group, group)) continue;
+            open = FindByRecord(record.Id);
+            if (open != null) break;
+        }
+
+        // 关掉的历史（最近关的那条）
+        PinRecord? closed = null;
+        foreach (var record in records)
+        {
+            if (record.ClosedAt.Length == 0 || openIds.Contains(record.Id)) continue;
+            if (record.SourceKey != sourceKey) continue;
+            if (!PinGroups.Same(record.Group, group)) continue;
+            closed = record;
+            break;
+        }
+
+        if (open == null && closed == null) return PinDuplicateOutcome.Proceed;
+
+        switch (action)
+        {
+            case PinDuplicateAction.None:
+                return PinDuplicateOutcome.Handled;
+
+            case PinDuplicateAction.RestoreLastClosedWindow:
+                RestoreLastClosed();
+                return PinDuplicateOutcome.Handled;
+
+            default:                                         // ShakeWindow
+                if (open != null)
+                {
+                    open.ShakeForAttention();
+                    return PinDuplicateOutcome.Handled;
+                }
+
+                var restored = closed == null ? null : Restore(closed);
+                if (restored == null) return PinDuplicateOutcome.Proceed;
+                restored.ShakeForAttention();
+                return PinDuplicateOutcome.Handled;
+        }
     }
 
     /// <summary>贴图被「隐藏所有贴图」收起来了（再按一次会放回来）。</summary>

@@ -295,15 +295,27 @@ internal static class PinPlacement
     public const double Margin = 16;
 
     /// <summary>算出贴图的窗口矩形（DIP）与初始缩放。</summary>
-    public static (Rect Box, double Zoom) Center(Size logical, Rect workArea, double margin = Margin)
+    /// <param name="logical">内容在 100% 下的 DIP 尺寸。</param>
+    /// <param name="workArea">落点所在显示器的工作区（DIP）。</param>
+    /// <param name="margin">装不下时四周留的边距（DIP）。</param>
+    /// <param name="autoResize">
+    /// 装不下时要不要等比缩小（照上游 <c>pin_to_screen/auto_resize_window</c>）；
+    /// 关掉时按 100% 贴出，窗口可能超出屏幕（居中摆，允许越界）。
+    /// </param>
+    public static (Rect Box, double Zoom) Center(Size logical, Rect workArea, double margin = Margin,
+        bool autoResize = true)
     {
         double width = Math.Max(1, logical.Width);
         double height = Math.Max(1, logical.Height);
-        double usableWidth = Math.Max(1, workArea.Width - Math.Max(0, margin) * 2);
-        double usableHeight = Math.Max(1, workArea.Height - Math.Max(0, margin) * 2);
 
-        double zoom = Math.Min(1, Math.Min(usableWidth / width, usableHeight / height));
-        if (!(zoom > 0) || !double.IsFinite(zoom)) zoom = 1;
+        double zoom = 1;
+        if (autoResize)
+        {
+            double usableWidth = Math.Max(1, workArea.Width - Math.Max(0, margin) * 2);
+            double usableHeight = Math.Max(1, workArea.Height - Math.Max(0, margin) * 2);
+            zoom = Math.Min(1, Math.Min(usableWidth / width, usableHeight / height));
+            if (!(zoom > 0) || !double.IsFinite(zoom)) zoom = 1;
+        }
 
         double boxWidth = Math.Max(1, Math.Round(width * zoom));
         double boxHeight = Math.Max(1, Math.Round(height * zoom));

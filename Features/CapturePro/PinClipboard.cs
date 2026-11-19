@@ -55,20 +55,28 @@ internal static class PinClipboard
             var placement = meta.PlacementFor(image.PixelWidth, image.PixelHeight);
             var look = appearance?.Look ?? PinAppearance.None;
 
-            if (placement != null && CaptureClipboard.ResolveRect(placement) is Int32Rect at)
+            // 同一次复制（剪贴板序号没变）已经贴过：按「重复内容」设置处理
+            string key = PinContentIdentity.ClipboardKey(Win32.GetClipboardSequenceNumber());
+            if (CapturePinManager.HandleDuplicate(key) == PinDuplicateOutcome.Handled) return;
+
+            if (placement != null &&
+                CaptureClipboard.ResolveRect(placement, PinSettings.AutoResizeWindow) is Int32Rect at)
             {
                 CapturePinManager.PinRestored(image, at, look,
-                    appearance?.Checkerboard ?? look.HasShape);
+                    appearance?.Checkerboard ?? look.HasShape, sourceKey: key);
                 return;
             }
 
-            CapturePinManager.PinClipboardImage(image, scale, workArea, PinStore.SourceClipboard, look);
+            CapturePinManager.PinClipboardImage(image, scale, workArea, PinStore.SourceClipboard, look, key);
             return;
         }
 
         if (NativeClipboard.TryGetText(out string text) && !string.IsNullOrWhiteSpace(text))
         {
-            CapturePinManager.PinText(text, scale, workArea);
+            string key = PinContentIdentity.ClipboardKey(Win32.GetClipboardSequenceNumber());
+            if (CapturePinManager.HandleDuplicate(key) == PinDuplicateOutcome.Handled) return;
+
+            CapturePinManager.PinText(text, scale, workArea, sourceKey: key);
             return;
         }
 

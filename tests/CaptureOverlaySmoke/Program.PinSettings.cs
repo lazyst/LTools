@@ -77,6 +77,10 @@ internal static partial class Program
             Check(Text("ZoomMode") == "mouse_position", "滚轮缩放锚点默认光标位置");
             Check(Number("ZoomStepPercent") == 10, "滚轮缩放步长默认 10%");
             Check(Number("OpacityStepPercent") == 5, "滚轮不透明度步长默认 5%");
+            Check(Flag("AutomaticTextRecognition"), "贴图默认自动识别一次文字（上游 true）");
+            Check(Text("TextSelectionMode") == "always", "识别结果默认「始终」可划选（上游 always）");
+            Check(Text("DuplicateMode") == "shake_window", "贴到重复内容默认「抖一下」（上游 shake_window）");
+            Check(Flag("AutoResizeWindow"), "贴图超大默认自动缩小（上游 true）");
             Check(Col("BorderColor") == Color.FromArgb(0xFF, 0xDB, 0xDB, 0xDB), "边框色默认 #DBDBDB");
             Check(Col("BorderActiveColor") == Color.FromArgb(0xFF, 0x69, 0xB1, 0xFF), "活动边框色默认 #69B1FF");
             Check(Col("LockedBorderColor") == Color.FromArgb(0xFF, 0xFA, 0xAD, 0x14), "锁定边框色默认 #FAAD14");
@@ -111,6 +115,35 @@ internal static partial class Program
             Check(Col("LockedShadowColor") == Color.FromArgb(0x80, 0x11, 0x22, 0x33), "带透明度的色值存得住");
             Check(File.ReadAllText(settingsFile).Contains("\"BorderColor\": \"#010203FF\""),
                 "颜色按 #RRGGBBAA 落盘");
+
+            // P9-d2 四项：写入即落盘 + 归一化
+            Set("SetAutomaticTextRecognition", false);
+            Set("SetTextSelectionMode", "only_when_displayed");
+            Set("SetDuplicateMode", "restore_last_closed_window");
+            Set("SetAutoResizeWindow", false);
+            Invalidate();
+            Check(!Flag("AutomaticTextRecognition"), "关掉自动识别存得住");
+            Check(Text("TextSelectionMode") == "only_when_displayed", "划选模式写成 only_when_displayed");
+            Check(!Flag("SelectsOnImage"), "only_when_displayed = 不在图片上直接划选");
+            Check(Text("DuplicateMode") == "restore_last_closed_window", "重复内容写成贴回最近关闭");
+            Check(!Flag("AutoResizeWindow"), "关掉自动缩小存得住");
+            string json2 = File.ReadAllText(settingsFile);
+            Check(json2.Contains("\"AutomaticTextRecognition\": false"), "settings.json 写着 AutomaticTextRecognition = false");
+            Check(json2.Contains("\"TextSelectionOnRecognitionResults\": \"only_when_displayed\""),
+                "settings.json 写着 TextSelectionOnRecognitionResults");
+            Check(json2.Contains("\"DuplicateContentAction\": \"restore_last_closed_window\""),
+                "settings.json 写着 DuplicateContentAction");
+            Check(json2.Contains("\"AutoResizeWindow\": false"), "settings.json 写着 AutoResizeWindow = false");
+
+            // 乱写回落：划选回「始终」、重复内容回「抖一下」
+            Set("SetTextSelectionMode", "sometimes");
+            Set("SetDuplicateMode", "garbage");
+            Invalidate();
+            Check(Text("TextSelectionMode") == "always", "认不出的划选模式回落「始终」");
+            Check(Text("DuplicateMode") == "shake_window", "认不出的重复内容回落「抖一下」");
+            Set("SetAutomaticTextRecognition", true);
+            Set("SetAutoResizeWindow", true);
+            Invalidate();
 
             // 乱写回落：锚点回光标位置、步长夹到 1–50、0 回默认
             Set("SetZoomMode", "corner");
@@ -163,6 +196,43 @@ internal static partial class Program
                 "不透明度步长回显 5%");
             Check(Label("PinBorderColorText")?.Text == "#DBDBDBFF", "边框色回显 #DBDBDBFF");
             Check(Label("PinLockedShadowColorText")?.Text == "#FAAD14FF", "锁定阴影色回显 #FAAD14FF");
+
+            // P9-d2 四项在设置页的控件
+            Check(Box("PinAutoOcrBox")?.IsChecked == true, "「贴图出现时先识别一次」回显为勾上");
+            Check(Box("PinAutoResizeBox")?.IsChecked == true, "「贴图比屏幕大时自动缩小」回显为勾上");
+            Check(Combo("PinTextSelectionCombo")?.Items.Count == 2, "划选下拉两项");
+            Check(Combo("PinTextSelectionCombo")?.SelectedItem is ComboBoxItem { Tag: "always" },
+                "划选回显「始终」");
+            Check(Combo("PinDuplicateCombo")?.Items.Count == 4, "重复内容下拉四项");
+            Check(Combo("PinDuplicateCombo")?.SelectedItem is ComboBoxItem { Tag: "shake_window" },
+                "重复内容回显「抖一下」");
+
+            Box("PinAutoOcrBox")!.IsChecked = false;
+            Pump(settings);
+            Check(!Flag("AutomaticTextRecognition"), "取消「自动识别」立刻写进设置");
+            Box("PinAutoOcrBox")!.IsChecked = true;
+            Pump(settings);
+            Check(Flag("AutomaticTextRecognition"), "勾上「自动识别」立刻写回");
+
+            Box("PinAutoResizeBox")!.IsChecked = false;
+            Pump(settings);
+            Check(!Flag("AutoResizeWindow"), "取消「自动缩小」立刻写进设置");
+            Box("PinAutoResizeBox")!.IsChecked = true;
+            Pump(settings);
+
+            Combo("PinTextSelectionCombo")!.SelectedIndex = 0;      // only_when_displayed
+            Pump(settings);
+            Check(Text("TextSelectionMode") == "only_when_displayed", "下拉切「只在文字层里可划选」立刻写进设置");
+            Combo("PinTextSelectionCombo")!.SelectedIndex = 1;      // always
+            Pump(settings);
+            Check(Text("TextSelectionMode") == "always", "切回「始终」立刻写回");
+
+            Combo("PinDuplicateCombo")!.SelectedIndex = 2;          // restore_last_closed_window
+            Pump(settings);
+            Check(Text("DuplicateMode") == "restore_last_closed_window", "下拉切「贴回最近关闭」立刻写进设置");
+            Combo("PinDuplicateCombo")!.SelectedIndex = 1;          // shake_window
+            Pump(settings);
+            Check(Text("DuplicateMode") == "shake_window", "切回「抖一下」立刻写回");
 
             Combo("PinWheelModeCombo")!.SelectedIndex = 5;
             Pump(settings);

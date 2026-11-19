@@ -52,6 +52,34 @@ internal static class PinSettings
     public const int MinStep = 1;
     public const int MaxStep = 50;
 
+    // —— 识别结果上划选（pin_to_screen/text_selection_on_recognition_results）——
+
+    public const string TextSelectionOnlyWhenDisplayed = "only_when_displayed";
+    public const string TextSelectionAlways = "always";
+
+    /// <summary>「识别结果可直接划选」的下拉表（键 = 上游英文键）。</summary>
+    public static readonly (string Key, string Label)[] TextSelectionModes =
+    {
+        (TextSelectionOnlyWhenDisplayed, "只在「显示文字」里"),
+        (TextSelectionAlways, "始终（在图片上直接划选）"),
+    };
+
+    // —— 重复内容（pin_to_screen/duplicate_content_action）——
+
+    public const string DuplicateNone = "none";
+    public const string DuplicateShakeWindow = "shake_window";
+    public const string DuplicateRestoreLastClosed = "restore_last_closed_window";
+    public const string DuplicateRepeatAction = "repeat_action";
+
+    /// <summary>「贴到重复内容时」的下拉表（键 = 上游英文键）。</summary>
+    public static readonly (string Key, string Label)[] DuplicateActions =
+    {
+        (DuplicateNone, "不贴（已有的那张就是它）"),
+        (DuplicateShakeWindow, "抖一下已有的那张"),
+        (DuplicateRestoreLastClosed, "贴回最近关掉的那张"),
+        (DuplicateRepeatAction, "照常再贴一张"),
+    };
+
     public static readonly Color DefaultBorderColor = Color.FromArgb(0xFF, 0xDB, 0xDB, 0xDB);
     public static readonly Color DefaultBorderActiveColor = Color.FromArgb(0xFF, 0x69, 0xB1, 0xFF);
     public static readonly Color DefaultLockedBorderColor = Color.FromArgb(0xFF, 0xFA, 0xAD, 0x14);
@@ -141,6 +169,47 @@ internal static class PinSettings
     public static void SetConfirmBeforeClosingWindow(bool on) =>
         Save(file => file.ConfirmBeforeClosingWindow = on);
 
+    // ============ 自动识别 / 划选 / 重复内容 / 自动缩小 ============
+
+    /// <summary>贴图创建时后台先识别一次文字（缺省 = 开）。</summary>
+    public static bool AutomaticTextRecognition => Snapshot().AutomaticTextRecognition ?? true;
+
+    public static void SetAutomaticTextRecognition(bool on) =>
+        Save(file => file.AutomaticTextRecognition = on);
+
+    /// <summary>识别结果什么时候能划选（<c>only_when_displayed</c> / <c>always</c>，缺省 always）。</summary>
+    public static string TextSelectionMode =>
+        NormalizeTextSelection(Snapshot().TextSelectionOnRecognitionResults);
+
+    public static void SetTextSelectionMode(string? key) =>
+        Save(file => file.TextSelectionOnRecognitionResults = NormalizeTextSelection(key));
+
+    /// <summary>「始终」= 在图片上叠一层隐形文字层，直接拖选 + 复制。</summary>
+    public static bool SelectsOnImage => TextSelectionMode == TextSelectionAlways;
+
+    /// <summary>贴到重复内容时做什么（缺省 <c>shake_window</c>）。</summary>
+    public static string DuplicateMode => NormalizeDuplicateAction(Snapshot().DuplicateContentAction);
+
+    public static void SetDuplicateMode(string? key) =>
+        Save(file => file.DuplicateContentAction = NormalizeDuplicateAction(key));
+
+    /// <summary>归一后的重复内容动作枚举。</summary>
+    public static PinDuplicateAction DuplicateAction => DuplicateActionOf(DuplicateMode);
+
+    /// <summary>把一个键翻成重复内容动作枚举（认不出 = 抖一下，与归一化同口径）。</summary>
+    public static PinDuplicateAction DuplicateActionOf(string? key) => NormalizeDuplicateAction(key) switch
+    {
+        DuplicateNone => PinDuplicateAction.None,
+        DuplicateRestoreLastClosed => PinDuplicateAction.RestoreLastClosedWindow,
+        DuplicateRepeatAction => PinDuplicateAction.RepeatAction,
+        _ => PinDuplicateAction.ShakeWindow,
+    };
+
+    /// <summary>贴图比屏幕工作区大时自动缩小（缺省 = 开）。</summary>
+    public static bool AutoResizeWindow => Snapshot().AutoResizeWindow ?? true;
+
+    public static void SetAutoResizeWindow(bool on) => Save(file => file.AutoResizeWindow = on);
+
     /// <summary>配置被外部改过（导入备份 / 冒烟切目录）时丢掉缓存。</summary>
     public static void Invalidate()
     {
@@ -162,6 +231,44 @@ internal static class PinSettings
             ZoomCenter => ZoomCenter,
             _ => ZoomMousePosition,
         };
+    }
+
+    /// <summary>识别结果划选只认两个键，其余一律回落到「始终」（与上游默认一致）。</summary>
+    public static string NormalizeTextSelection(string? key)
+    {
+        string value = (key ?? "").Trim().ToLowerInvariant();
+        return value == TextSelectionOnlyWhenDisplayed ? TextSelectionOnlyWhenDisplayed : TextSelectionAlways;
+    }
+
+    /// <summary>重复内容动作只认四个键，其余一律回落到「抖一下」（与上游默认一致）。</summary>
+    public static string NormalizeDuplicateAction(string? key)
+    {
+        string value = (key ?? "").Trim().ToLowerInvariant();
+        return value switch
+        {
+            DuplicateNone => DuplicateNone,
+            DuplicateRestoreLastClosed => DuplicateRestoreLastClosed,
+            DuplicateRepeatAction => DuplicateRepeatAction,
+            _ => DuplicateShakeWindow,
+        };
+    }
+
+    /// <summary>识别结果划选的下拉显示名。</summary>
+    public static string TextSelectionLabel(string? key)
+    {
+        string normalized = NormalizeTextSelection(key);
+        foreach (var (mode, label) in TextSelectionModes)
+            if (mode == normalized) return label;
+        return normalized;
+    }
+
+    /// <summary>重复内容动作的下拉显示名。</summary>
+    public static string DuplicateLabel(string? key)
+    {
+        string normalized = NormalizeDuplicateAction(key);
+        foreach (var (mode, label) in DuplicateActions)
+            if (mode == normalized) return label;
+        return normalized;
     }
 
     /// <summary>步长夹到 1–50；没填（0 / 负数 / <c>null</c>）用缺省值。</summary>
@@ -255,6 +362,10 @@ internal static class PinSettings
                 target.MouseWheelOpacityStep = next.MouseWheelOpacityStep;
                 target.ShowWindowButtons = next.ShowWindowButtons;
                 target.ConfirmBeforeClosingWindow = next.ConfirmBeforeClosingWindow;
+                target.AutomaticTextRecognition = next.AutomaticTextRecognition;
+                target.TextSelectionOnRecognitionResults = next.TextSelectionOnRecognitionResults;
+                target.DuplicateContentAction = next.DuplicateContentAction;
+                target.AutoResizeWindow = next.AutoResizeWindow;
             });
         }
         catch (Exception ex)
@@ -278,6 +389,10 @@ internal static class PinSettings
         file.MouseWheelOpacityStep = NormalizeStep(file.MouseWheelOpacityStep, DefaultOpacityStep);
         file.ShowWindowButtons ??= true;
         file.ConfirmBeforeClosingWindow ??= false;
+        file.AutomaticTextRecognition ??= true;
+        file.TextSelectionOnRecognitionResults = NormalizeTextSelection(file.TextSelectionOnRecognitionResults);
+        file.DuplicateContentAction = NormalizeDuplicateAction(file.DuplicateContentAction);
+        file.AutoResizeWindow ??= true;
     }
 
     private static PinToScreenFile Clone(PinToScreenFile file) => new()
@@ -299,5 +414,9 @@ internal static class PinSettings
         MouseWheelOpacityStep = file.MouseWheelOpacityStep,
         MouseWheelZoomStep = file.MouseWheelZoomStep,
         ShowWindowButtons = file.ShowWindowButtons,
+        AutomaticTextRecognition = file.AutomaticTextRecognition,
+        TextSelectionOnRecognitionResults = file.TextSelectionOnRecognitionResults,
+        DuplicateContentAction = file.DuplicateContentAction,
+        AutoResizeWindow = file.AutoResizeWindow,
     };
 }

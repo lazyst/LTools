@@ -23,6 +23,120 @@ internal static partial class CaptureProSuite
         PinScaleAnchors();
         PinShadowGeometry();
         PinRecordDefaults();
+        PinRecognitionSettings();
+        PinPlacementAutoResize();
+        PinContentIdentityCases();
+        PinAttentionShake();
+    }
+
+    /// <summary>
+    /// P9-d2 的四项设置：划选模式两个键、重复内容四个键、自动缩小 / 自动识别默认值。
+    /// </summary>
+    private static void PinRecognitionSettings()
+    {
+        // 划选：只认两个键，其余（含空）= 「始终」（与上游默认一致）
+        Check.Equal(PinSettings.TextSelectionAlways, PinSettings.NormalizeTextSelection("always"),
+            "always 认得出");
+        Check.Equal(PinSettings.TextSelectionOnlyWhenDisplayed,
+            PinSettings.NormalizeTextSelection(" ONLY_WHEN_DISPLAYED "), "大小写 / 空格都能认");
+        Check.Equal(PinSettings.TextSelectionAlways, PinSettings.NormalizeTextSelection(null),
+            "空 = 始终");
+        Check.Equal(PinSettings.TextSelectionAlways, PinSettings.NormalizeTextSelection("sometimes"),
+            "乱写 = 始终");
+        Check.Equal(2, PinSettings.TextSelectionModes.Length, "两个划选模式");
+        Check.Equal("始终（在图片上直接划选）",
+            PinSettings.TextSelectionLabel(PinSettings.TextSelectionAlways), "划选显示名");
+
+        // 重复内容：四个键，其余 = 抖一下
+        Check.Equal(PinSettings.DuplicateNone, PinSettings.NormalizeDuplicateAction("none"), "none");
+        Check.Equal(PinSettings.DuplicateShakeWindow,
+            PinSettings.NormalizeDuplicateAction("SHAKE_WINDOW"), "shake_window");
+        Check.Equal(PinSettings.DuplicateRestoreLastClosed,
+            PinSettings.NormalizeDuplicateAction("restore_last_closed_window"), "贴回最近关闭");
+        Check.Equal(PinSettings.DuplicateRepeatAction,
+            PinSettings.NormalizeDuplicateAction("repeat_action"), "照常再贴");
+        Check.Equal(PinSettings.DuplicateShakeWindow, PinSettings.NormalizeDuplicateAction(null),
+            "空 = 抖一下");
+        Check.Equal(PinSettings.DuplicateShakeWindow, PinSettings.NormalizeDuplicateAction("other"),
+            "乱写 = 抖一下");
+        Check.Equal(4, PinSettings.DuplicateActions.Length, "四个重复动作");
+        Check.Equal("抖一下已有的那张",
+            PinSettings.DuplicateLabel(PinSettings.DuplicateShakeWindow), "重复动作显示名");
+
+        // 枚举映射（窗口按它分派）
+        Check.Equal(PinDuplicateAction.None,
+            PinSettings.DuplicateActionOf(PinSettings.DuplicateNone), "none → None");
+        Check.Equal(PinDuplicateAction.RestoreLastClosedWindow,
+            PinSettings.DuplicateActionOf(PinSettings.DuplicateRestoreLastClosed), "恢复最近关闭");
+        Check.Equal(PinDuplicateAction.RepeatAction,
+            PinSettings.DuplicateActionOf(PinSettings.DuplicateRepeatAction), "照常再贴");
+        Check.Equal(PinDuplicateAction.ShakeWindow,
+            PinSettings.DuplicateActionOf("garbage"), "兜底 = 抖一下");
+    }
+
+    /// <summary>自动缩小（<c>pin_to_screen/auto_resize_window</c>）：关掉按 100% 贴出，允许越界。</summary>
+    private static void PinPlacementAutoResize()
+    {
+        var logical = new Size(4000, 3000);
+        var work = new Rect(0, 0, 1920, 1020);
+
+        var (shrunk, shrinkZoom) = PinPlacement.Center(logical, work);
+        Check.True(shrinkZoom < 1, "装不下要缩小");
+        Check.True(shrunk.Width <= work.Width, "缩小后不超宽");
+        Check.True(shrunk.Height <= work.Height, "缩小后不超高");
+
+        var (raw, rawZoom) = PinPlacement.Center(logical, work, PinPlacement.Margin, autoResize: false);
+        Check.Equal(1.0, rawZoom, "关掉自动缩小 = 100%");
+        Check.Equal(4000.0, raw.Width, "宽度按原始尺寸");
+        Check.Equal(3000.0, raw.Height, "高度按原始尺寸");
+        Check.Equal(-1040.0, raw.Left, "居中摆，允许超出左边");
+        Check.Equal(-990.0, raw.Top, "居中摆，允许超出上边");
+
+        var (small, smallZoom) = PinPlacement.Center(new Size(400, 300), work, PinPlacement.Margin, false);
+        Check.Equal(1.0, smallZoom, "装得下也是 100%");
+        Check.Equal(760.0, small.Left, "装得下就居中（横向）");
+        Check.Equal(360.0, small.Top, "装得下就居中（纵向）");
+    }
+
+    /// <summary>内容身份（照上游 <c>PinnedSourceIdentity</c>）：文件路径 / 剪贴板序号。</summary>
+    private static void PinContentIdentityCases()
+    {
+        string file = PinContentIdentity.FileKey(@"C:\Temp\Shot.PNG");
+        Check.True(PinContentIdentity.IsFileKey(file), "文件身份带前缀");
+        Check.Equal(file, PinContentIdentity.FileKey(@"c:/temp/shot.png"), "大小写 / 斜杠归一后同一条身份");
+        Check.True(PinContentIdentity.IsValid(file), "有身份");
+        Check.Equal("", PinContentIdentity.FileKey(""), "空路径没有身份");
+        Check.Equal("", PinContentIdentity.FileKey(null), "null 没有身份");
+        Check.False(PinContentIdentity.IsValid(""), "空串不算身份");
+
+        string clipboard = PinContentIdentity.ClipboardKey(42);
+        Check.True(PinContentIdentity.IsClipboardKey(clipboard), "剪贴板身份带前缀");
+        Check.True(clipboard.EndsWith(":42", StringComparison.Ordinal), "带上剪贴板序号");
+        Check.Equal(clipboard, PinContentIdentity.ClipboardKey(42), "同一次复制 = 同一条身份");
+        Check.NotEqual(clipboard, PinContentIdentity.ClipboardKey(43), "又复制一次就是新身份");
+        Check.False(PinContentIdentity.IsFileKey(clipboard), "剪贴板身份不是文件身份");
+    }
+
+    /// <summary>抖动提醒的曲线（照上游 shakeForAttention 的 300ms / 6 DIP 关键帧）。</summary>
+    private static void PinAttentionShake()
+    {
+        Check.Equal(300, PinMath.ShakeDurationMs, "抖动 300ms");
+        Check.Equal(6.0, PinMath.ShakeAmplitude, "幅度 6 DIP");
+
+        Check.Equal(0.0, PinMath.ShakeOffset(0), "起点 0");
+        Check.Equal(-6.0, PinMath.ShakeOffset(1.0 / 6.0), "1/6 拍 = −1");
+        Check.Equal(6.0, PinMath.ShakeOffset(2.0 / 6.0), "2/6 拍 = +1");
+        Check.Equal(-4.5, PinMath.ShakeOffset(3.0 / 6.0), "3/6 拍 = −0.75");
+        Check.Equal(3.0, PinMath.ShakeOffset(4.0 / 6.0), "4/6 拍 = +0.5");
+        Check.Equal(-1.5, PinMath.ShakeOffset(5.0 / 6.0), "5/6 拍 = −0.25");
+        Check.Equal(0.0, PinMath.ShakeOffset(1), "终点 0");
+        Check.Equal(0.0, PinMath.ShakeOffset(2), "超出范围按 0");
+        Check.Equal(0.0, PinMath.ShakeOffset(double.NaN), "NaN 按 0");
+
+        // 两拍之间线性插值：1/12 在 0 与 −1 之间 = −3 DIP
+        Check.Equal(-3.0, PinMath.ShakeOffset(1.0 / 12.0), "两拍之间线性");
+        Check.True(PinMath.ShakeOffset(1.0 / 12.0) > PinMath.ShakeOffset(1.0 / 6.0),
+            "1/12 还没到最低点");
     }
 
     /// <summary>六个锚点键、步长夹取、色值解析、显示名。</summary>

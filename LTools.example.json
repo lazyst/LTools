@@ -201,7 +201,11 @@
     "MouseWheelZoomMode": "mouse_position",
     "MouseWheelOpacityStep": 5,
     "MouseWheelZoomStep": 10,
-    "ShowWindowButtons": true
+    "ShowWindowButtons": true,
+    "AutomaticTextRecognition": true,
+    "TextSelectionOnRecognitionResults": "always",
+    "DuplicateContentAction": "shake_window",
+    "AutoResizeWindow": true
   },
   "Collage": {
     "Direction": "vertical",

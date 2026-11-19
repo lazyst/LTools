@@ -43,6 +43,17 @@ public partial class CapturePinWindow
         // （照上游 m_ocrMode 对 windowDragEligible / handleDoubleClick 的门禁）。
         if (_ocrMode) return;
 
+        // 隐形文字层（P9-d2）：按在文字上 = 划选，不移动窗口；按住 Alt 始终是移动窗口
+        // （照上游 windowDragEligibleAt 的修饰键例外）。在空白处按下 = 拖窗口，并清掉已有选区。
+        if (_hiddenTextSelection)
+        {
+            if ((Keyboard.Modifiers & ModifierKeys.Alt) == 0 && HiddenTextHit(e.GetPosition(OcrCanvas)))
+                return;
+
+            _ocrModel?.ClearSelection();
+            RefreshHiddenBar();
+        }
+
         // 双击：按设置执行（默认缩略图里 = 还原成整张图，再点一次又缩回去）。
         // 「关闭 / 删除」不是按下就做——先武装，按钮抬起之后一拍才动窗口（照上游）。
         if (e.ClickCount == 2)
@@ -94,6 +105,8 @@ public partial class CapturePinWindow
     /// <summary>按下后真正开始的那一下手势：取景框里平移内容，其余情况移动窗口（含成组 / 多选）。</summary>
     private void BeginGesture(Point windowPos)
     {
+        StopAttentionShake();                  // 用户开始拖了：抖动让路（照上游 beginControlledInteraction）
+
         // 局部显示里拖动是「平移内容」：窗口不动，用窗口内坐标；
         // 移动窗口必须用**屏幕**坐标——窗口跟着走时窗口内坐标会互相抵消，
         // 每帧只落下最后一个增量，看着就是拖影 / 追不上手（见 DragTo）。

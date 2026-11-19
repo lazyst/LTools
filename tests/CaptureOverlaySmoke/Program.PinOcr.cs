@@ -248,7 +248,11 @@ internal static partial class Program
             exitBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Wait(120);
             Check(!Mode(), "贴图文字：点「退出文字层」回到可拖动的贴图");
-            Check(canvasElement.Visibility == Visibility.Collapsed, "贴图文字：退出后文字层收起");
+            // 退出文字层后若「识别结果可划选」开着（P9-d2 默认「始终」），画布会切成隐形文字层
+            // （只画选区、原图照旧），所以这里不是「画布收起」，而是「不再铺白纸文字层」。
+            bool hiddenAfterExit = (bool)canvasType.GetProperty("SelectionOnly", Inst)!.GetValue(canvas)!;
+            Check(canvasElement.Visibility == Visibility.Collapsed || hiddenAfterExit,
+                "贴图文字：退出后不再铺白纸文字层（收起或转成隐形划选层）");
             Check(bar.Visibility == Visibility.Collapsed, "贴图文字：退出后状态条收起");
 
             // ============ 指针动作（双击 / 中键设置）：走缓存秒开 ============

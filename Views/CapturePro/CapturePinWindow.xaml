@@ -213,6 +213,25 @@
             </WrapPanel>
         </Border>
 
+        <!-- 隐形文字层选区旁的「复制 / 取消」小按钮（P9-d2）：贴图不抢焦点，键盘 Ctrl+C
+             走不到这里，所以复制出口跟着选区走（照上游 SelectionOnly 层的复制默认项）。
+             放在 Canvas 里由代码按选区定位（下方放不下翻上方）。 -->
+        <Canvas x:Name="HiddenLayerHost">
+            <Border x:Name="HiddenBar" Background="#E6101014" CornerRadius="6" Padding="6,3"
+                    BorderBrush="#40FFFFFF" BorderThickness="1" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="已选文字" FontSize="11" Foreground="#A1A1AA"
+                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <Button x:Name="HiddenCopyBtn" Style="{StaticResource PinBarBtn}"
+                            Content="复制" Click="HiddenCopy_Click"
+                            ToolTip="把选中的文字复制到剪贴板"/>
+                    <Button x:Name="HiddenClearBtn" Style="{StaticResource PinBarBtn}" Margin="0"
+                            Content="✕" Click="HiddenClear_Click"
+                            ToolTip="取消选择"/>
+                </StackPanel>
+            </Border>
+        </Canvas>
+
         <!-- 实时贴图的状态徽标（右下角）：跟得住时红点「实时」，源窗口最小化 / 关闭时换成说明。 -->
         <Border x:Name="LiveBadge" Background="#CC101014" CornerRadius="6" Padding="8,4" Margin="6"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom"

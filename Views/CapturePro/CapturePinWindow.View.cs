@@ -46,6 +46,7 @@ public partial class CapturePinWindow
         ApplyFrame();
         ApplyCursor();
         RefreshHoverChrome();
+        SyncHiddenTextLayer();          // 取景框里拖动是平移内容，文字划选先收起
     }
 
     /// <summary>改窗口尺寸但守住中心（进入 / 退出取景框、缩小到工作区里都用它）。</summary>
@@ -68,8 +69,8 @@ public partial class CapturePinWindow
     /// <summary>把内容尺寸与偏移写到界面（缩放 / 平移 / 进出取景框 / 缩略图都只调它）。</summary>
     private void ApplyContent()
     {
-        // 文字层跟着同一套几何走（源图像素 × _zoom ÷ _scale，平移共用 PanTransform）
-        if (_ocrMode) ApplyOcrContent();
+        // 文字层 / 隐形文字层跟着同一套几何走（源图像素 × _zoom ÷ _scale，平移共用 PanTransform）
+        if (_ocrMode || _hiddenTextSelection) ApplyOcrGeometry();
 
         // 圆角跟着缩放走（图里的圆角是成品图像素，窗口描边要用当前 DIP 半径）
         Frame.CornerRadius = new CornerRadius(_thumb ? 0 : _appearance.RadiusDip(_scale, _zoom));
@@ -134,6 +135,7 @@ public partial class CapturePinWindow
         ApplyCursor();
         RefreshHoverChrome();
         RefreshBadges();                              // 方块里不挂徽标
+        SyncHiddenTextLayer();                        // 83 DIP 的方块里不划选文字
     }
 
     // ============ 标注 ============

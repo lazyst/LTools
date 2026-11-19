@@ -122,6 +122,13 @@ internal sealed class PinRecord
     public int CardWidth { get; set; }
 
     /// <summary>
+    /// 内容身份（照上游 <c>PinnedSourceIdentity.key</c>）：文件贴图 = 规范化路径，
+    /// 剪贴板贴图 = 会话令牌 + 剪贴板序号，其余（截图 / 历史 / 文字卡片）为空串。
+    /// 「贴到重复内容时」按它找已有的那张，见 <see cref="CapturePinManager.HandleDuplicate"/>。
+    /// </summary>
+    public string SourceKey { get; set; } = "";
+
+    /// <summary>
     /// 文字 / 色卡贴出那一刻用的样式（字体 / 字号 / 字色 / 底色 / 最大宽）。
     /// 之后改默认值不会让已经贴过的文字变样；图片贴图是 <c>null</c>。
     /// </summary>
@@ -303,7 +310,8 @@ internal static class PinStore
         double scale, string source, string group, bool live,
         string kind = KindImage, string text = "", int cardWidth = 0, PinTextSnapshot? textStyle = null,
         bool clickThrough = false, int clickThroughOpacity = PinClickThrough.DefaultOpacity,
-        PinAppearance? appearance = null, bool showBorder = true, bool showShadow = false)
+        PinAppearance? appearance = null, bool showBorder = true, bool showShadow = false,
+        string sourceKey = "")
     {
         var now = DateTime.Now;
         var look = (appearance ?? PinAppearance.None).Clamp(width, height);
@@ -320,6 +328,7 @@ internal static class PinStore
                 Text = text ?? "",
                 CardWidth = Math.Max(0, cardWidth),
                 TextStyle = NormalizeKind(kind) == KindImage ? null : textStyle,
+                SourceKey = sourceKey ?? "",
                 CreatedAt = now.ToString(TimeFormat, CultureInfo.InvariantCulture),
                 Width = Math.Max(0, width),
                 Height = Math.Max(0, height),

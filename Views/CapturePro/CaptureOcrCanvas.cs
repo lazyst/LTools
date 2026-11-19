@@ -50,6 +50,25 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
     /// <summary>文字层是否铺每行估出来的底色（关掉 = 只画文字）。</summary>
     public bool FillBackground { get; set; } = true;
 
+    /// <summary>
+    /// 隐形文字层（照上游 <c>RenderingMode::SelectionOnly</c>）：不画白纸底、不画文字、不画光标，
+    /// 只把拖选中的那块高亮画出来——底下的原图看起来一点没变，但文字能直接划选。
+    /// 命中只认文字行（空白处让给窗口拖动）。
+    /// </summary>
+    public bool SelectionOnly { get; private set; }
+
+    /// <summary>切到 / 退出隐形文字层。</summary>
+    public void SetSelectionOnly(bool on)
+    {
+        if (SelectionOnly == on) return;
+        SelectionOnly = on;
+        _hoverLine = -1;
+        _dragLine = -1;
+        _dragging = false;
+        Cursor = on ? Cursors.IBeam : Cursors.Arrow;
+        InvalidateVisual();
+    }
+
     /// <summary>源图像素宽高（决定画布大小）。</summary>
     public int ImageWidth { get; private set; } = 1;
 
@@ -197,10 +216,14 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
 
         // 译文画进原图时底图是截图本身（上游 originalImageTranslation 的画布），
         // 否则是白纸（文字层本身就是「重排后的文字」，与上游识别内容页的容器底色一致）。
-        if (TranslationOnImage && _sourceImage is ImageSource source)
-            dc.DrawImage(source, bounds);
-        else
-            dc.DrawRectangle(Brushes.White, null, bounds);
+        // 隐形文字层什么都不铺：底下的原图就是底图（照上游 SelectionOnly）。
+        if (!SelectionOnly)
+        {
+            if (TranslationOnImage && _sourceImage is ImageSource source)
+                dc.DrawImage(source, bounds);
+            else
+                dc.DrawRectangle(Brushes.White, null, bounds);
+        }
 
         dc.PushTransform(new ScaleTransform(Zoom, Zoom));
 
@@ -208,7 +231,7 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         IReadOnlyList<string> text = _translation ?? _model?.Lines ?? Array.Empty<string>();
         var (selStartLine, selStartChar, selEndLine, selEndChar) = Selection();
 
-        for (int i = 0; i < layer.Count; i++)
+        for (int i = 0; i < layer.Count && !SelectionOnly; i++)
         {
             OcrTextLine line = layer[i];
             string content = i < text.Count ? text[i] : line.Text;
@@ -240,7 +263,7 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         {
             DrawSelection(dc, text, selStartLine, selStartChar, selEndLine, selEndChar);
         }
-        else if (_translation == null && _model != null && IsKeyboardFocusWithin)
+        else if (!SelectionOnly && _translation == null && _model != null && IsKeyboardFocusWithin)
         {
             DrawCaret(dc, text);
         }
@@ -352,7 +375,7 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         if (e.ClickCount >= 2)
         {
             _model.SelectLine(line);
-            LineEditRequested?.Invoke(line);
+            if (!SelectionOnly) LineEditRequested?.Invoke(line);   // 隐形层没有编辑框：双击只是选整行
             _dragLine = -1;
             e.Handled = true;
             return;
@@ -454,6 +477,67 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         }
 
         return (-1, 0);
+    }
+
+    /// <summary>
+    /// 隐形文字层只让文字行可点：空白处不命中，鼠标落到贴图窗口上照常拖动窗口。
+    /// </summary>
+    protected override HitTestResult HitTestCore(PointHitTestParameters hitTestParameters)
+    {
+        if (!SelectionOnly) return base.HitTestCore(hitTestParameters);
+
+        Point point = hitTestParameters.HitPoint;
+        if (point.X < 0 || point.Y < 0 || point.X > ActualWidth || point.Y > ActualHeight) return null!;
+        return HitTest(point).Line >= 0 ? new PointHitTestResult(this, point) : null!;
+    }
+
+    /// <summary>
+    /// 当前选区在**画布 DIP**（未含 RenderTransform）里的外接矩形；没有选区返回 <c>null</c>。
+    /// 隐形文字层用它把「复制」小按钮摆在选区旁边。
+    /// </summary>
+    internal Rect? SelectionBounds()
+    {
+        if (_model == null || _translation != null || !_model.HasSelection || _lines.Count == 0)
+            return null;
+
+        var (startLine, startChar, endLine, endChar) = Selection();
+        var text = _model.Lines;
+        Rect union = Rect.Empty;
+
+        for (int i = startLine; i <= endLine && i < _lines.Count; i++)
+        {
+            OcrTextLine line = _lines[i];
+            string content = i < text.Count ? text[i] : line.Text;
+            var box = new Rect(line.Box.X, line.Box.Y,
+                Math.Max(1, line.Box.Width), Math.Max(1, line.Box.Height));
+
+            int from = i == startLine ? startChar : 0;
+            int to = i == endLine ? endChar : content.Length;
+            from = Math.Clamp(from, 0, content.Length);
+            to = Math.Clamp(to, from, content.Length);
+
+            double height = Math.Max(4, box.Height);
+            double top = box.Y + (box.Height - height) / 2;
+
+            Rect piece;
+            if (content.Length == 0)
+            {
+                piece = new Rect(box.X, top, Math.Max(3, box.Height * 0.12), height);
+            }
+            else
+            {
+                double x1 = box.X + PrefixWidth(i, line, content, from);
+                double x2 = box.X + PrefixWidth(i, line, content, to);
+                if (x2 - x1 < 1.5) x2 = x1 + 1.5;
+                piece = new Rect(x1, top, x2 - x1, height);
+            }
+
+            union = union.IsEmpty ? piece : Rect.Union(union, piece);
+        }
+
+        if (union.IsEmpty) return null;
+        union.Scale(Zoom, Zoom);
+        return union;
     }
 
     /// <summary>行内 x（源图像素）→ 字符下标。</summary>

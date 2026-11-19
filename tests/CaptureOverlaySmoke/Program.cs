@@ -117,6 +117,13 @@ internal static partial class Program
         _outDir = Path.Combine(Path.GetTempPath(), "opencode", "capture-overlay-smoke", "out");
         Directory.CreateDirectory(_outDir);
 
+        // 贴图「出现时自动识别一次」（P9-d2）默认开着：真跑 OCR 会让冒烟变慢、还依赖系统语言包。
+        // 冒烟统一关掉它，需要识别结果的段自己灌夹具（OcrFixture / ApplyHiddenOcrResult）。
+        typeof(CapturePinWindow).Assembly
+            .GetType("LTools.Views.CapturePro.CapturePinWindow")!
+            .GetField("AutoOcrEnabled", BindingFlags.Static | BindingFlags.NonPublic)!
+            .SetValue(null, false);
+
         // 只跑一段（调试用）：dotnet run --no-build -- split
         if (_only == "split")
         {
@@ -279,6 +286,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "pinrecognition")
+        {
+            PinRecognitionSection(BuildShot(320, 240));
+            Console.WriteLine(_failed == 0 ? "pinrecognition-only：通过" : $"pinrecognition-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
 
@@ -287,6 +301,9 @@ internal static partial class Program
 
         // ============ 贴图窗口设置（P9-d1：边框 / 阴影 / 滚轮 / 按钮 / 关闭确认） ============
         PinSettingsSection();
+
+        // ============ 贴图识别划选与重复内容（P9-d2：隐形文字层 / 重复动作 / 抖动 / 自动缩小） ============
+        PinRecognitionSection(BuildShot(320, 240));
 
         const int width = 1600, height = 900;
         var shot = BuildShot(width, height);

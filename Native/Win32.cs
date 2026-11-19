@@ -24,6 +24,12 @@ internal static class Win32
     [DllImport("user32.dll")]
     public static extern bool SetCursorPos(int x, int y);
 
+    /// <summary>
+    /// 剪贴板序号：每次有人往剪贴板写东西就 +1。用来区分「同一次复制」与「又复制了一次」。
+    /// </summary>
+    [DllImport("user32.dll")]
+    public static extern uint GetClipboardSequenceNumber();
+
     // —— 窗口圆角（Win11 22H2+）——
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);

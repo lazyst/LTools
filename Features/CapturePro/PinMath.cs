@@ -171,6 +171,53 @@ internal static class PinMath
         !thumbnail && width >= HoverButtonMinSide && height >= HoverButtonMinSide;
 
 
+    // ============ 抖动提醒（贴到重复内容时） ============
+
+    /// <summary>抖动一次的时长（毫秒，照上游 <c>shakeForAttention</c> 的 300）。</summary>
+    public const int ShakeDurationMs = 300;
+
+    /// <summary>抖动幅度（DIP）：上游是 6 × 屏幕缩放，DIP 下就是 6。</summary>
+    public const double ShakeAmplitude = 6;
+
+    /// <summary>
+    /// 抖动的关键帧（照上游）：1/6 拍 −1、2/6 拍 +1、3/6 拍 −0.75、4/6 拍 +0.5、5/6 拍 −0.25，
+    /// 两端都是 0。返回的是**幅度倍数**（−1…1），乘 <see cref="ShakeAmplitude"/> 才是 DIP。
+    /// </summary>
+    private static readonly (double At, double Value)[] ShakeKeys =
+    {
+        (0.0, 0.0),
+        (1.0 / 6.0, -1.0),
+        (2.0 / 6.0, 1.0),
+        (3.0 / 6.0, -0.75),
+        (4.0 / 6.0, 0.5),
+        (5.0 / 6.0, -0.25),
+        (1.0, 0.0),
+    };
+
+    /// <summary>
+    /// 抖动在 <paramref name="progress"/>（0…1）时的水平偏移（DIP）。
+    /// 纯函数，<c>--selftest</c> 直接断言曲线与端点。
+    /// </summary>
+    public static double ShakeOffset(double progress)
+    {
+        if (!double.IsFinite(progress) || progress <= 0) return 0;
+        if (progress >= 1) return 0;
+
+        for (int i = 1; i < ShakeKeys.Length; i++)
+        {
+            var (at, value) = ShakeKeys[i];
+            if (progress > at) continue;
+
+            var (prevAt, prevValue) = ShakeKeys[i - 1];
+            double span = at - prevAt;
+            if (span <= 0) return value * ShakeAmplitude;
+            double t = (progress - prevAt) / span;
+            return (prevValue + (value - prevValue) * t) * ShakeAmplitude;
+        }
+
+        return 0;
+    }
+
     // ============ 成组移动 ============
 
     /// <summary>

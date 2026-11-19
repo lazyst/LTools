@@ -30,8 +30,12 @@ public partial class ConfigHelperWindow
         PinShowShadowBox.IsChecked = PinSettings.ShowShadowByDefault;
         PinWindowButtonsBox.IsChecked = PinSettings.ShowWindowButtons;
         PinConfirmCloseBox.IsChecked = PinSettings.ConfirmBeforeClosingWindow;
+        PinAutoOcrBox.IsChecked = PinSettings.AutomaticTextRecognition;
+        PinAutoResizeBox.IsChecked = PinSettings.AutoResizeWindow;
 
         FillPinZoomModes();
+        FillPinTextSelectionModes();
+        FillPinDuplicateActions();
 
         FillPinStepCombo(PinZoomStepCombo, PinSettings.ZoomStepPercent, new[] { 5, 10, 15, 20, 25, 50 });
         FillPinStepCombo(PinOpacityStepCombo, PinSettings.OpacityStepPercent, new[] { 1, 5, 10, 15, 20, 25 });
@@ -60,6 +64,50 @@ public partial class ConfigHelperWindow
             if (PinWheelModeCombo.Items[i] is ComboBoxItem { Tag: string key } && key == current)
             {
                 PinWheelModeCombo.SelectedIndex = i;
+                return;
+            }
+        }
+    }
+
+    /// <summary>「识别结果可划选」两个选项（键 = 上游英文键）。</summary>
+    private void FillPinTextSelectionModes()
+    {
+        if (PinTextSelectionCombo.Items.Count != PinSettings.TextSelectionModes.Length)
+        {
+            PinTextSelectionCombo.Items.Clear();
+            foreach (var (key, label) in PinSettings.TextSelectionModes)
+                PinTextSelectionCombo.Items.Add(new ComboBoxItem { Content = label, Tag = key });
+        }
+
+        string current = PinSettings.TextSelectionMode;
+        PinTextSelectionCombo.SelectedIndex = 0;
+        for (int i = 0; i < PinTextSelectionCombo.Items.Count; i++)
+        {
+            if (PinTextSelectionCombo.Items[i] is ComboBoxItem { Tag: string key } && key == current)
+            {
+                PinTextSelectionCombo.SelectedIndex = i;
+                return;
+            }
+        }
+    }
+
+    /// <summary>「贴到重复内容时」四个选项（键 = 上游英文键）。</summary>
+    private void FillPinDuplicateActions()
+    {
+        if (PinDuplicateCombo.Items.Count != PinSettings.DuplicateActions.Length)
+        {
+            PinDuplicateCombo.Items.Clear();
+            foreach (var (key, label) in PinSettings.DuplicateActions)
+                PinDuplicateCombo.Items.Add(new ComboBoxItem { Content = label, Tag = key });
+        }
+
+        string current = PinSettings.DuplicateMode;
+        PinDuplicateCombo.SelectedIndex = 0;
+        for (int i = 0; i < PinDuplicateCombo.Items.Count; i++)
+        {
+            if (PinDuplicateCombo.Items[i] is ComboBoxItem { Tag: string key } && key == current)
+            {
+                PinDuplicateCombo.SelectedIndex = i;
                 return;
             }
         }
@@ -107,6 +155,18 @@ public partial class ConfigHelperWindow
         PinSettings.SetShowShadowByDefault(PinShowShadowBox.IsChecked == true);
         PinSettings.SetShowWindowButtons(PinWindowButtonsBox.IsChecked == true);
         PinSettings.SetConfirmBeforeClosingWindow(PinConfirmCloseBox.IsChecked == true);
+
+        bool recognition = PinSettings.AutomaticTextRecognition;
+        bool autoResize = PinSettings.AutoResizeWindow;
+        PinSettings.SetAutomaticTextRecognition(PinAutoOcrBox.IsChecked == true);
+        PinSettings.SetAutoResizeWindow(PinAutoResizeBox.IsChecked == true);
+
+        // 已经贴着的图按新设置走：打开自动识别 = 现在就补一次；可划选开关立刻生效。
+        if (recognition != PinSettings.AutomaticTextRecognition ||
+            autoResize != PinSettings.AutoResizeWindow)
+        {
+            CapturePinManager.RefreshRecognition();
+        }
     }
 
     private void PinWindowSelect_Changed(object sender, SelectionChangedEventArgs e)
@@ -127,6 +187,21 @@ public partial class ConfigHelperWindow
         else if (ReferenceEquals(sender, PinOpacityStepCombo))
         {
             PinSettings.SetOpacityStepPercent(PinStepOf(PinOpacityStepCombo, PinSettings.DefaultOpacityStep));
+        }
+        else if (ReferenceEquals(sender, PinTextSelectionCombo))
+        {
+            string key = PinTextSelectionCombo.SelectedItem is ComboBoxItem { Tag: string tag }
+                ? tag
+                : PinSettings.TextSelectionAlways;
+            PinSettings.SetTextSelectionMode(key);
+            CapturePinManager.RefreshRecognition();
+        }
+        else if (ReferenceEquals(sender, PinDuplicateCombo))
+        {
+            string key = PinDuplicateCombo.SelectedItem is ComboBoxItem { Tag: string tag }
+                ? tag
+                : PinSettings.DuplicateShakeWindow;
+            PinSettings.SetDuplicateMode(key);
         }
     }
 

@@ -1117,6 +1117,40 @@ Id 与已经删掉的 Id 都不复活。
 边框开关与记录写回 / 阴影窗口几何与峰值 / 挪动跟随 / 锁定状态色 / ✕ 开关 / 右键菜单两项 / 真滚轮
 档位（10% 与 25%）与 137% 向上取档 / 关掉再贴回按记录恢复；落图 `out/pin-settings.png`）。
 
+### 9.14 贴图识别划选与重复内容（P9-d2，2026-11-19）
+
+照上游 `configurationschema.cpp` 的 `pin_to_screen/automatic_text_recognition` /
+`text_selection_on_recognition_results` / `duplicate_content_action` / `auto_resize_window`
+与 `screenshotpinnedwindow.cpp` 的 `synchronizeHiddenTextSelection` / `shakeForAttention`。
+
+| 项 | 上游默认 | LTools |
+|---|---|---|
+| `automatic_text_recognition` | true | 贴图出现时静默跑一次 OCR（`StartAutoRecognize`），「显示文字」/ 划选都不必再等 |
+| `text_selection_on_recognition_results` | `always` | `always` 铺隐形文字层（原图上直接划选）；`only_when_displayed` 只在「显示文字」文字层里可划选 |
+| `duplicate_content_action` | `shake_window` | 贴到重复内容时：不贴 / 抖一下已有的（没有就贴回最近关闭再抖）/ 贴回最近关闭 / 照常再贴 |
+| `auto_resize_window` | true | 关掉时大图按 100% 贴出（居中、允许越界），打开时等比缩进工作区 |
+
+- **隐形文字层**（`CaptureOcrCanvas.SelectionOnly`）：不换底、不画字、不画光标，只把拖选中的那块高亮
+  画出来——原图看起来一点没变，但文字能直接拖选 + 复制。命中只认文字行，空白处让给窗口拖动，
+  `Alt` 始终留给移动窗口（照上游 `windowDragEligibleAt` 的修饰键例外）。贴图不抢焦点，复制出口做成
+  选区旁的「复制 / ✕」chip（`HiddenBar`），不指望键盘 Ctrl+C。
+- **识别只跑一次**：`CapturePinWindow.Ocr.cs` 把「文字层 / 隐形层」做成同一份 `OcrTextEditModel` 的
+  两套形态，`SyncHiddenTextLayer` 按设置与窗口形态（文字层 / 缩略图 / 取景框 / 实时贴图）铺或收。
+- **重复内容身份**（`Features/CapturePro/PinContentIdentity.cs`）：文件 = 规范化绝对路径（大小写不敏感），
+  剪贴板 = 进程会话令牌 + `GetClipboardSequenceNumber()`（复制一次序号就变，所以「再复制同样的图再贴」
+  是允许的）；`CapturePinManager.HandleDuplicate` 在贴剪贴板 / 文件之前先过门禁，没有身份
+  （截图 / 历史贴图）永远放行。
+- **抖动提醒**（`CapturePinWindow.Attention.cs` + `PinMath.ShakeOffset`）：照上游 300ms / 6 DIP 关键帧
+  （1/6 −1、2/6 +1、3/6 −0.75、4/6 +0.5、5/6 −0.25），先让窗口看得见（被分组藏 / 缩略图 / 收顶部都先
+  还原），锁定的贴图不抖；用户开始拖动 / 关窗 / 再次抖动都先停掉，绝不一直拽着 `Left`。
+- **设置页**：「通用 → 截图 Pro · 贴图窗口」在原有外观 / 滚轮之后加「识别与重复内容」四项，改动即时落盘，
+  一改就让已贴的图按新设置走（`CapturePinManager.RefreshRecognition`）。
+
+回归：`--selftest` 的「贴图窗口：识别设置 / 自动缩小 / 内容身份 / 抖动曲线」+ `capture-overlay-smoke` 的
+`pinsettings` 段（四项默认值 / 写入即落盘 / 归一回落 / 设置页回显与改动）与新增 `pinrecognition` 段
+（隐形文字层铺开且原图像素不变 / 真鼠标拖选 / chip 复制与 ✕ / `only_when_displayed` 不铺层 /
+重复内容四动作 / 无身份放行 / 抖动回原位与锁定不抖 / 自动缩小关掉按 100%、打开等比缩）。
+
 
 ## 10. 识别（P2 / P4-a / P4-b）
 

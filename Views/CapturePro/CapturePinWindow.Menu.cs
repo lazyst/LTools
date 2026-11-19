@@ -182,7 +182,7 @@ public partial class CapturePinWindow
         ocr.Click += (_, _) => ToggleOcrMode();
         menu.Items.Add(ocr);
 
-        if (_ocrMode && ocrPhase == PinOcrPhase.Ready)
+        if ((_ocrMode || _hiddenTextSelection) && ocrPhase == PinOcrPhase.Ready)
         {
             var copySelection = new MenuItem
             {

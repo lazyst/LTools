@@ -223,6 +223,7 @@ internal static class PinFiles
         Task.Run(() =>
         {
             int ok = 0;
+            int skipped = 0;
             var failed = rejected.Select(Path.GetFileName)
                 .Where(name => !string.IsNullOrEmpty(name)).Select(name => name!).ToList();
 
@@ -246,25 +247,38 @@ internal static class PinFiles
                 }
 
                 ok++;
-                Ui.Post(() => Present(item, source, appearance, placement));
+
+                // 同一个文件已经贴过：按「重复内容」设置处理（抖一下 / 贴回 / 不贴）
+                string key = PinContentIdentity.FileKey(path);
+                Ui.Post(() =>
+                {
+                    if (!Present(item, source, appearance, placement, key)) skipped++;
+                });
             }
 
             int count = ok;
             var names = failed.Take(3).ToArray();
             Ui.Post(() =>
             {
-                if (count == 0)
+                int pinned = Math.Max(0, count - skipped);
+                if (pinned == 0)
                 {
+                    if (skipped > 0 && names.Length == 0)
+                    {
+                        ToastService.Show("这些文件已经贴过了", "贴图", 2400, ToastKind.info, key: "pin-files");
+                        return;
+                    }
+
                     ToastService.Show("这些文件都读不出来" + Suffix(names), "贴图", 0, ToastKind.error,
                         key: "pin-files");
                 }
                 else if (names.Length == 0)
                 {
-                    ToastService.Show($"已贴出 {count} 张", "贴图", 2400, ToastKind.success, key: "pin-files");
+                    ToastService.Show($"已贴出 {pinned} 张", "贴图", 2400, ToastKind.success, key: "pin-files");
                 }
                 else
                 {
-                    ToastService.Show($"已贴出 {count} 张，{names.Length} 个读不出来{Suffix(names)}",
+                    ToastService.Show($"已贴出 {pinned} 张，{names.Length} 个读不出来{Suffix(names)}",
                         "贴图", 4000, ToastKind.warning, key: "pin-files");
                 }
             });
@@ -275,36 +289,46 @@ internal static class PinFiles
         names.Count == 0 ? "" : "：" + string.Join("、", names);
 
     /// <summary>把一个解码好的文件贴出来（必须在 UI 线程调）。</summary>
-    public static void Present(PinFileItem item, string source = PinStore.SourceFiles) =>
-        Present(item, source, null, null);
+    public static bool Present(PinFileItem item, string source = PinStore.SourceFiles) =>
+        Present(item, source, null, null, "");
 
     /// <summary>
     /// 同上，并带上剪贴板里记下的外观 / 落位（只对图片有效；文字直接走卡片）。
     /// </summary>
     /// <remarks>
+    /// <para>
     /// 照上游 <c>screenshotClipboardPinGeometry</c>：落位能解析（桌面没变 / 换屏后能算出位置）
     /// 就按原窗口矩形贴回，外观（圆角 / 阴影 / 棋盘格）一起还原；解析不出来才退回「居中贴」。
+    /// </para>
+    /// <para>
+    /// <paramref name="sourceKey"/> 是内容身份（<see cref="PinContentIdentity.FileKey"/>）：
+    /// 已经贴过时按「重复内容」设置处理，返回 <c>false</c> 表示这次没有新建窗口。
+    /// </para>
     /// </remarks>
-    public static void Present(PinFileItem item, string source,
-        ClipboardAppearance? appearance, ClipboardPlacement? placement)
+    public static bool Present(PinFileItem item, string source,
+        ClipboardAppearance? appearance, ClipboardPlacement? placement, string sourceKey = "")
     {
+        if (CapturePinManager.HandleDuplicate(sourceKey) == PinDuplicateOutcome.Handled) return false;
+
         double scale = PinClipboard.ScreenScale();
         var workArea = PinClipboard.WorkAreaDip(scale);
 
         if (item.Image is not { } image)
         {
-            CapturePinManager.PinText(item.Text, scale, workArea, source);
-            return;
+            CapturePinManager.PinText(item.Text, scale, workArea, source, sourceKey);
+            return true;
         }
 
         var look = appearance?.Look ?? PinAppearance.None;
-        if (placement != null && CaptureClipboard.ResolveRect(placement) is Int32Rect at)
+        if (placement != null &&
+            CaptureClipboard.ResolveRect(placement, PinSettings.AutoResizeWindow) is Int32Rect at)
         {
             CapturePinManager.PinRestored(image, at, look,
-                appearance?.Checkerboard ?? look.HasShape, source);
-            return;
+                appearance?.Checkerboard ?? look.HasShape, source, sourceKey);
+            return true;
         }
 
-        CapturePinManager.PinClipboardImage(image, scale, workArea, source, look);
+        CapturePinManager.PinClipboardImage(image, scale, workArea, source, look, sourceKey);
+        return true;
     }
 }
