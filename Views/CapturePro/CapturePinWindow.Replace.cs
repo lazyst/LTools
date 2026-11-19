@@ -228,6 +228,8 @@ public partial class CapturePinWindow
     {
         if (image == null || !IsVisible) return false;
 
+        ResetOcrCache();                      // 内容换了：文字层 / 标注都作废（源文本对不上了）
+
         double baseWidth = Math.Max(1, image.PixelWidth / _scale);
         double baseHeight = Math.Max(1, image.PixelHeight / _scale);
 

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Media;
 using LTools.Config;
 using LTools.Core;
@@ -79,6 +81,53 @@ internal static class PinSettings
         (DuplicateRestoreLastClosed, "贴回最近关掉的那张"),
         (DuplicateRepeatAction, "照常再贴一张"),
     };
+
+    // —— 快速文字标注（pin_to_screen/quick_annotation_for_selected_text + quick_text_annotation_styles）——
+
+    public const string AnnotateHighlight = "highlight";
+    public const string AnnotateWavyUnderline = "wavy_underline";
+    public const string AnnotateUnderline = "underline";
+    public const string AnnotateStrikethrough = "strikethrough";
+
+    /// <summary>四种标注工具（顺序与上游枚举一致；键 = 上游英文键）。</summary>
+    public static readonly (string Key, string Label, PinTextAnnotationTool Tool)[] AnnotationTools =
+    {
+        (AnnotateHighlight, "高亮", PinTextAnnotationTool.Highlight),
+        (AnnotateWavyUnderline, "波浪线", PinTextAnnotationTool.WavyUnderline),
+        (AnnotateUnderline, "下划线", PinTextAnnotationTool.Underline),
+        (AnnotateStrikethrough, "删除线", PinTextAnnotationTool.Strikethrough),
+    };
+
+    /// <summary>工具的英文键（写配置 / 存标注都用它）。</summary>
+    public static string AnnotationToolKey(PinTextAnnotationTool tool) => tool switch
+    {
+        PinTextAnnotationTool.WavyUnderline => AnnotateWavyUnderline,
+        PinTextAnnotationTool.Underline => AnnotateUnderline,
+        PinTextAnnotationTool.Strikethrough => AnnotateStrikethrough,
+        _ => AnnotateHighlight,
+    };
+
+    /// <summary>英文键 → 工具（认不出 = 高亮，与上游默认一致）。</summary>
+    public static PinTextAnnotationTool AnnotationToolOf(string? key)
+    {
+        string value = (key ?? "").Trim().ToLowerInvariant();
+        return value switch
+        {
+            AnnotateWavyUnderline => PinTextAnnotationTool.WavyUnderline,
+            AnnotateUnderline => PinTextAnnotationTool.Underline,
+            AnnotateStrikethrough => PinTextAnnotationTool.Strikethrough,
+            _ => PinTextAnnotationTool.Highlight,
+        };
+    }
+
+    /// <summary>工具的中文名。</summary>
+    public static string AnnotationToolLabel(PinTextAnnotationTool tool)
+    {
+        foreach (var (_, label, candidate) in AnnotationTools)
+            if (candidate == tool)
+                return label;
+        return tool.ToString();
+    }
 
     public static readonly Color DefaultBorderColor = Color.FromArgb(0xFF, 0xDB, 0xDB, 0xDB);
     public static readonly Color DefaultBorderActiveColor = Color.FromArgb(0xFF, 0x69, 0xB1, 0xFF);
@@ -209,6 +258,65 @@ internal static class PinSettings
     public static bool AutoResizeWindow => Snapshot().AutoResizeWindow ?? true;
 
     public static void SetAutoResizeWindow(bool on) => Save(file => file.AutoResizeWindow = on);
+
+    // ============ 快速文字标注 ============
+
+    /// <summary>划选文字后是否出现「复制 + 四种标注」工具条（缺省 = 开）。</summary>
+    public static bool QuickAnnotationForSelectedText => Snapshot().QuickAnnotationForSelectedText ?? true;
+
+    public static void SetQuickAnnotationForSelectedText(bool on) =>
+        Save(file => file.QuickAnnotationForSelectedText = on);
+
+    /// <summary>这一种工具当前的样式（缺项按该工具默认值）。</summary>
+    public static PinTextAnnotationStyle AnnotationStyle(PinTextAnnotationTool tool)
+    {
+        var styles = Snapshot().QuickTextAnnotationStyles;
+        if (styles != null && styles.TryGetValue(AnnotationToolKey(tool), out var entry) && entry != null)
+            return NormalizeAnnotationStyle(tool, entry);
+        return PinTextAnnotationStyle.Default(tool);
+    }
+
+    /// <summary>改一种工具的样式（整项写回归一后的四个字段，与上游 <c>persistPreference</c> 一致）。</summary>
+    public static void SetAnnotationStyle(PinTextAnnotationTool tool, PinTextAnnotationStyle style) =>
+        Save(file =>
+        {
+            file.QuickTextAnnotationStyles ??= new Dictionary<string, PinTextAnnotationStyleFile>();
+            file.QuickTextAnnotationStyles[AnnotationToolKey(tool)] = ToFile(tool, style);
+        });
+
+    /// <summary>配置里的一项 → 可用样式（颜色认不出 / 宽越界 / 枚举越界都回落该工具默认值）。</summary>
+    public static PinTextAnnotationStyle NormalizeAnnotationStyle(PinTextAnnotationTool tool,
+        PinTextAnnotationStyleFile? entry)
+    {
+        PinTextAnnotationStyle fallback = PinTextAnnotationStyle.Default(tool);
+        if (entry == null) return fallback;
+
+        Color color = ColorPresets.TryParse(entry.Color, out Color parsed) ? parsed : fallback.Color;
+        return PinTextAnnotationStyle.Normalize(color, entry.Width, entry.StrokeStyle,
+            entry.RenderingStyle, tool);
+    }
+
+    private static PinTextAnnotationStyleFile ToFile(PinTextAnnotationTool tool,
+        PinTextAnnotationStyle style)
+    {
+        PinTextAnnotationStyle normalized = PinTextAnnotationStyle.Normalize(style.Color, style.Width,
+            (int)style.StrokeStyle, (int)style.RenderingStyle, tool);
+        return new PinTextAnnotationStyleFile
+        {
+            Color = ColorPresets.Format(normalized.Color),
+            Width = normalized.Width,
+            StrokeStyle = (int)normalized.StrokeStyle,
+            RenderingStyle = (int)normalized.RenderingStyle,
+        };
+    }
+
+    private static PinTextAnnotationStyleFile CloneStyle(PinTextAnnotationStyleFile entry) => new()
+    {
+        Color = entry.Color,
+        Width = entry.Width,
+        StrokeStyle = entry.StrokeStyle,
+        RenderingStyle = entry.RenderingStyle,
+    };
 
     /// <summary>配置被外部改过（导入备份 / 冒烟切目录）时丢掉缓存。</summary>
     public static void Invalidate()
@@ -366,6 +474,11 @@ internal static class PinSettings
                 target.TextSelectionOnRecognitionResults = next.TextSelectionOnRecognitionResults;
                 target.DuplicateContentAction = next.DuplicateContentAction;
                 target.AutoResizeWindow = next.AutoResizeWindow;
+                target.QuickAnnotationForSelectedText = next.QuickAnnotationForSelectedText;
+                target.QuickTextAnnotationStyles = next.QuickTextAnnotationStyles == null
+                    ? null
+                    : next.QuickTextAnnotationStyles.ToDictionary(
+                        pair => pair.Key, pair => CloneStyle(pair.Value));
             });
         }
         catch (Exception ex)
@@ -393,6 +506,16 @@ internal static class PinSettings
         file.TextSelectionOnRecognitionResults = NormalizeTextSelection(file.TextSelectionOnRecognitionResults);
         file.DuplicateContentAction = NormalizeDuplicateAction(file.DuplicateContentAction);
         file.AutoResizeWindow ??= true;
+        file.QuickAnnotationForSelectedText ??= true;
+        if (file.QuickTextAnnotationStyles != null)
+        {
+            foreach (var (_, _, tool) in AnnotationTools)
+            {
+                string key = AnnotationToolKey(tool);
+                if (file.QuickTextAnnotationStyles.TryGetValue(key, out var entry) && entry != null)
+                    file.QuickTextAnnotationStyles[key] = ToFile(tool, NormalizeAnnotationStyle(tool, entry));
+            }
+        }
     }
 
     private static PinToScreenFile Clone(PinToScreenFile file) => new()
@@ -418,5 +541,8 @@ internal static class PinSettings
         TextSelectionOnRecognitionResults = file.TextSelectionOnRecognitionResults,
         DuplicateContentAction = file.DuplicateContentAction,
         AutoResizeWindow = file.AutoResizeWindow,
+        QuickAnnotationForSelectedText = file.QuickAnnotationForSelectedText,
+        QuickTextAnnotationStyles = file.QuickTextAnnotationStyles?.ToDictionary(
+            pair => pair.Key, pair => CloneStyle(pair.Value)),
     };
 }

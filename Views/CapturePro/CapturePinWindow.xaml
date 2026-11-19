@@ -64,8 +64,41 @@
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter TargetName="Bd" Property="Background" Value="#F03A3A46"/>
                                 </Trigger>
+                                <Trigger Property="Tag" Value="Active">
+                                    <Setter TargetName="Bd" Property="Background" Value="#F03B82F6"/>
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#99FFFFFF"/>
+                                </Trigger>
                                 <Trigger Property="IsEnabled" Value="False">
                                     <Setter Property="Opacity" Value="0.45"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- 快速文字标注的色板格：颜色由代码塞进 Content 的 Rectangle，选中态只改描边。 -->
+            <Style x:Key="PinSwatchBtn" TargetType="Button">
+                <Setter Property="Width" Value="22"/>
+                <Setter Property="Height" Value="22"/>
+                <Setter Property="Margin" Value="0,0,4,0"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Focusable" Value="False"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" CornerRadius="4" BorderThickness="1"
+                                    BorderBrush="#40FFFFFF">
+                                <ContentPresenter HorizontalAlignment="Stretch"
+                                                  VerticalAlignment="Stretch"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#F4F4F5"/>
+                                </Trigger>
+                                <Trigger Property="Tag" Value="Active">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#3B82F6"/>
+                                    <Setter TargetName="Bd" Property="BorderThickness" Value="2"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -213,22 +246,63 @@
             </WrapPanel>
         </Border>
 
-        <!-- 隐形文字层选区旁的「复制 / 取消」小按钮（P9-d2）：贴图不抢焦点，键盘 Ctrl+C
+        <!-- 隐形文字层选区旁的工具栏（P9-d2 / P9-d3）：贴图不抢焦点，键盘 Ctrl+C
              走不到这里，所以复制出口跟着选区走（照上游 SelectionOnly 层的复制默认项）。
-             放在 Canvas 里由代码按选区定位（下方放不下翻上方）。 -->
+             划选后如果开着「快速文字标注」，这里还会多出高亮 / 波浪线 / 下划线 / 删除线
+             四个开关与一个「样式」入口（照上游 screenshotquicktextannotationtoolbar）。
+             放在 Canvas 里由代码按选区定位（上方放不下翻下方）。 -->
         <Canvas x:Name="HiddenLayerHost">
             <Border x:Name="HiddenBar" Background="#E6101014" CornerRadius="6" Padding="6,3"
                     BorderBrush="#40FFFFFF" BorderThickness="1" Visibility="Collapsed">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="已选文字" FontSize="11" Foreground="#A1A1AA"
-                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBlock x:Name="HiddenBarText" Text="已选文字" FontSize="11"
+                               Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,6,0"/>
                     <Button x:Name="HiddenCopyBtn" Style="{StaticResource PinBarBtn}"
                             Content="复制" Click="HiddenCopy_Click"
                             ToolTip="把选中的文字复制到剪贴板"/>
+                    <Button x:Name="HiddenHighlightBtn" Style="{StaticResource PinBarBtn}"
+                            Width="26" Padding="0" Click="AnnotateTool_Click"
+                            CommandParameter="Highlight" ToolTip="高亮选中的文字（再点一次取消）"
+                            Visibility="Collapsed">
+                        <Path Style="{StaticResource IconPath}" Width="14" Height="14"
+                              Data="{StaticResource IconAnnotateHighlight}"/>
+                    </Button>
+                    <Button x:Name="HiddenWavyBtn" Style="{StaticResource PinBarBtn}"
+                            Width="26" Padding="0" Click="AnnotateTool_Click"
+                            CommandParameter="WavyUnderline" ToolTip="给选中的文字加波浪线（再点一次取消）"
+                            Visibility="Collapsed">
+                        <Path Style="{StaticResource IconPath}" Width="14" Height="14"
+                              Data="{StaticResource IconAnnotateWavy}"/>
+                    </Button>
+                    <Button x:Name="HiddenUnderlineBtn" Style="{StaticResource PinBarBtn}"
+                            Width="26" Padding="0" Click="AnnotateTool_Click"
+                            CommandParameter="Underline" ToolTip="给选中的文字加下划线（再点一次取消）"
+                            Visibility="Collapsed">
+                        <Path Style="{StaticResource IconPath}" Width="14" Height="14"
+                              Data="{StaticResource IconAnnotateUnderline}"/>
+                    </Button>
+                    <Button x:Name="HiddenStrikeBtn" Style="{StaticResource PinBarBtn}"
+                            Width="26" Padding="0" Click="AnnotateTool_Click"
+                            CommandParameter="Strikethrough" ToolTip="给选中的文字加删除线（再点一次取消）"
+                            Visibility="Collapsed">
+                        <Path Style="{StaticResource IconPath}" Width="14" Height="14"
+                              Data="{StaticResource IconAnnotateStrike}"/>
+                    </Button>
+                    <Button x:Name="HiddenStyleBtn" Style="{StaticResource PinBarBtn}"
+                            Content="样式" Click="AnnotateStyle_Click"
+                            ToolTip="改这一种标注的颜色 / 线宽 / 线型 / 笔触"
+                            Visibility="Collapsed"/>
                     <Button x:Name="HiddenClearBtn" Style="{StaticResource PinBarBtn}" Margin="0"
                             Content="✕" Click="HiddenClear_Click"
                             ToolTip="取消选择"/>
                 </StackPanel>
+            </Border>
+
+            <!-- 样式面板：贴在工具栏上方（放不下翻下方），内容由代码按当前工具建 -->
+            <Border x:Name="HiddenStylePanel" Background="#F2101014" CornerRadius="6"
+                    Padding="8,6" BorderBrush="#40FFFFFF" BorderThickness="1"
+                    Visibility="Collapsed">
+                <StackPanel x:Name="HiddenStyleBody"/>
             </Border>
         </Canvas>
 

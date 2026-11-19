@@ -599,6 +599,10 @@
                                           Content="贴图比屏幕大时自动缩小"
                                           ToolTip="照上游 pin_to_screen/auto_resize_window（默认开）：关掉之后按原始尺寸贴出，可能超出屏幕"
                                           Checked="PinWindowToggle_Changed" Unchecked="PinWindowToggle_Changed"/>
+                                <CheckBox x:Name="PinQuickAnnotateBox" Margin="0,8,0,0"
+                                          Content="划选文字后显示快速标注"
+                                          ToolTip="照上游 pin_to_screen/quick_annotation_for_selected_text（默认开）：在贴图上拖选文字后，选区旁出现高亮 / 波浪线 / 下划线 / 删除线四个开关"
+                                          Checked="PinWindowToggle_Changed" Unchecked="PinWindowToggle_Changed"/>
 
                                 <Grid Margin="0,8,0,0">
                                     <Grid.ColumnDefinitions>

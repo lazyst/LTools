@@ -370,6 +370,7 @@ internal static class CapturePinManager
         string group = CreateGroup(record.Group) ?? PinGroups.Default;
         pin.SetGroup(group);
         pin.SetDecoration(record.ShowBorder, record.ShowShadow);   // 边框 / 阴影按记录恢复
+        pin.RestoreAnnotations(record.Annotations);                 // 快速文字标注：识别结果回来时按指纹校验
 
         PinStore.Reopen(record.Id);
         Pins.Add(pin);

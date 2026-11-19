@@ -134,6 +134,12 @@ internal sealed class PinRecord
     /// </summary>
     public PinTextSnapshot? TextStyle { get; set; }
 
+    /// <summary>
+    /// 快速文字标注的载荷（JSON；空串 = 没有标注）。只有静态图片贴图会有，
+    /// 换内容（<see cref="PinStore.UpdateContent"/>）时清空——源文本变了标注就对不上了。
+    /// </summary>
+    public string Annotations { get; set; } = "";
+
     /// <summary>还开着（没有关闭时间）。</summary>
     [JsonIgnore] public bool IsOpen => ClosedAt.Length == 0;
 
@@ -468,6 +474,27 @@ internal static class PinStore
     }
 
     /// <summary>
+    /// 记快速文字标注的载荷（贴图窗口每次标注 / 清空时写）。载荷没变就不写盘。
+    /// </summary>
+    public static void UpdateAnnotations(string id, string payload)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+        payload ??= "";
+
+        lock (Gate)
+        {
+            var items = LoadUnsafe();
+            var record = items.FirstOrDefault(e => e.Id == id);
+            if (record == null) return;
+            if (string.Equals(record.Annotations, payload, StringComparison.Ordinal)) return;
+
+            record.Annotations = payload;
+            SaveUnsafe(items);
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>
     /// 换掉一张贴图的内容（拖放替换 / 「加载新内容」之后）。
     /// </summary>
     /// <remarks>
@@ -493,6 +520,7 @@ internal static class PinStore
             record.Text = text ?? "";
             record.CardWidth = Math.Max(0, cardWidth);
             record.TextStyle = normalized == KindImage ? null : textStyle;
+            record.Annotations = "";             // 源文本换了：旧标注作废（贴图窗口那边也会清画布）
             record.Width = Math.Max(0, width);
             record.Height = Math.Max(0, height);
             record.AreaX = areaX;

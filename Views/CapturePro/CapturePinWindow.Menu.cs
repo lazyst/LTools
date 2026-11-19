@@ -106,7 +106,7 @@ public partial class CapturePinWindow
         }
 
         var save = new MenuItem { Header = "另存为…" };
-        save.Click += (_, _) => CaptureSave.TrySave(null, _content);
+        save.Click += (_, _) => CaptureSave.TrySave(null, ComposeContent());
         menu.Items.Add(save);
 
         // 标注这张贴图：覆盖层开在它上面，标完换回内容（菜单必须先收起，ShowDialog 挂在开着
@@ -548,7 +548,7 @@ public partial class CapturePinWindow
         // 这样「复制贴图 → 贴剪贴板」能贴回现在这个位置，圆角 / 阴影 / 棋盘格也一起回来（照上游）。
         var capture = new ClipboardCapture(PhysicalArea(), _appearance,
             _checkerboard || _appearance.HasShape);
-        if (CaptureSave.CopyImage(_content, ExportSettings.ScenarioCopyPinned, default, capture))
+        if (CaptureSave.CopyImage(ComposeContent(), ExportSettings.ScenarioCopyPinned, default, capture))
             ToastService.Show("贴图已复制", "贴图", 1600);
         else ToastService.Show("复制贴图失败", "贴图", 0, ToastKind.error);
     }

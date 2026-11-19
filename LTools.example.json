@@ -205,7 +205,9 @@
     "AutomaticTextRecognition": true,
     "TextSelectionOnRecognitionResults": "always",
     "DuplicateContentAction": "shake_window",
-    "AutoResizeWindow": true
+    "AutoResizeWindow": true,
+    "QuickAnnotationForSelectedText": true,
+    "QuickTextAnnotationStyles": {}
   },
   "Collage": {
     "Direction": "vertical",

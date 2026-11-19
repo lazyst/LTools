@@ -1,4 +1,7 @@
 using System;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using LTools.Features.CapturePro;
 
 namespace LTools.Views.CapturePro;
@@ -24,6 +27,31 @@ public partial class CapturePinWindow
     /// <summary>正在往外拖内容（拖放接收要拒绝自己）。</summary>
     internal bool Exporting => _exporting;
 
+    /// <summary>
+    /// 导出的内容：原图 + 快速文字标注（高亮 + 线标注）。没有标注就直接是原图，
+    /// 不白渲染一遍；有标注时按**源图像素**合成一张新位图（与屏幕上同一套几何）。
+    /// </summary>
+    internal BitmapSource ComposeContent()
+    {
+        if (_annotations is not { Empty: false } annotations || _ocrModel == null) return _content;
+
+        int width = _content.PixelWidth;
+        int height = _content.PixelHeight;
+        if (width <= 0 || height <= 0) return _content;
+
+        var visual = new DrawingVisual();
+        using (DrawingContext dc = visual.RenderOpen())
+        {
+            dc.DrawImage(_content, new Rect(0, 0, width, height));
+            OcrCanvas.PaintAnnotations(dc, annotations);
+        }
+
+        var target = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        target.Render(visual);
+        target.Freeze();
+        return target;
+    }
+
     /// <summary>开始一次拖出（由 <see cref="Window_MouseMove"/> 在 Ctrl+拖动时调）。</summary>
     internal void BeginExportDrag()
     {
@@ -35,7 +63,7 @@ public partial class CapturePinWindow
         try
         {
             string name = $"贴图-{DateTime.Now:yyyyMMdd-HHmmss}";
-            PinDragExport.Start(this, _content, name);
+            PinDragExport.Start(this, ComposeContent(), name);
         }
         finally
         {

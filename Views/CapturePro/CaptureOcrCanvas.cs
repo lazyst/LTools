@@ -33,6 +33,7 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
     private IReadOnlyList<OcrTextLine>? _translationLayer;
     private ImageSource? _sourceImage;
     private bool _translationOnImage;
+    private PinTextAnnotationDocument? _annotations;
 
     private int _hoverLine = -1;
     private int _dragLine = -1;
@@ -82,6 +83,31 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
 
     /// <summary>光标所在的行（-1 = 不在任何行上）。</summary>
     public int HoverLine => _hoverLine;
+
+    /// <summary>当前是否有选区（工具栏据此显隐）。</summary>
+    internal bool IsSelecting => _model is { HasSelection: true } && _translation == null;
+
+    /// <summary>挂上快速文字标注（同一份文档由窗口持有；null = 不画）。</summary>
+    public void SetAnnotations(PinTextAnnotationDocument? document)
+    {
+        if (ReferenceEquals(_annotations, document)) return;
+        _annotations = document;
+        InvalidateVisual();
+    }
+
+    /// <summary>标注变了（文档是同一个对象，只是内容改了）。</summary>
+    public void InvalidateAnnotations() => InvalidateVisual();
+
+    /// <summary>
+    /// 把标注按**源图像素**画进别的画布（导出 png / 拖出成文件用）。
+    /// 与屏幕上是同一套几何，只把文字度量的像素比固定成 1。
+    /// </summary>
+    internal void PaintAnnotations(DrawingContext dc, PinTextAnnotationDocument document)
+    {
+        if (_model == null || document.Empty) return;
+        PinTextAnnotationPainter.PaintHighlights(dc, document, range => RangeRect(range, 1));
+        PinTextAnnotationPainter.PaintLines(dc, document, range => RangeRect(range, 1));
+    }
 
     public void Attach(OcrTextEditModel model, IReadOnlyList<OcrTextLine> lines, int imageWidth,
         int imageHeight)
@@ -231,6 +257,10 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         IReadOnlyList<string> text = _translation ?? _model?.Lines ?? Array.Empty<string>();
         var (selStartLine, selStartChar, selEndLine, selEndChar) = Selection();
 
+        // 高亮压在文字**下面**：WPF 没有 Multiply，只能靠半透明色 + 先画来近似（见绘制器注释）
+        if (_annotations is { Empty: false } annotations && _translation == null)
+            PinTextAnnotationPainter.PaintHighlights(dc, annotations, RangeRect);
+
         for (int i = 0; i < layer.Count && !SelectionOnly; i++)
         {
             OcrTextLine line = layer[i];
@@ -268,7 +298,61 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
             DrawCaret(dc, text);
         }
 
+        // 线标注画在最上面（文字 / 选区之上）
+        if (_annotations is { Empty: false } lines && _translation == null)
+            PinTextAnnotationPainter.PaintLines(dc, lines, RangeRect);
+
         dc.Pop();
+    }
+
+    /// <summary>一段源文本在画布坐标（源图像素）里的矩形；越界 / 空行返回 <c>null</c>。</summary>
+    private Rect? RangeRect(PinTextRange range) => RangeRect(range, PixelsPerDip);
+
+    /// <summary>
+    /// 同上，但文字度量按 <paramref name="pixelsPerDip"/> 算：导出 png 时传 1，
+    /// 保证标注落点与**源图像素**一致（屏幕上那个像素比是显示器给的）。
+    /// </summary>
+    private Rect? RangeRect(PinTextRange range, double pixelsPerDip)
+    {
+        if (_model == null || range.SourceLine < 0 || range.SourceLine >= _lines.Count) return null;
+        if (range.SourceLine >= _model.LineCount) return null;
+
+        OcrTextLine line = _lines[range.SourceLine];
+        string content = _model.Lines[range.SourceLine];
+        var box = new Rect(line.Box.X, line.Box.Y,
+            Math.Max(1, line.Box.Width), Math.Max(1, line.Box.Height));
+
+        int from = Math.Clamp(range.Start, 0, content.Length);
+        int to = Math.Clamp(range.End, from, content.Length);
+
+        double x1 = box.X + PrefixWidth(range.SourceLine, line, content, from, pixelsPerDip);
+        double x2 = box.X + PrefixWidth(range.SourceLine, line, content, to, pixelsPerDip);
+        if (x2 - x1 < 1.5) x2 = x1 + 1.5;
+
+        double height = Math.Max(4, box.Height);
+        double top = box.Y + (box.Height - height) / 2;
+        return new Rect(x1, top, x2 - x1, height);
+    }
+
+    /// <summary>当前选区按行拆成源文本区间（没有选区 / 译文态 = 空）。</summary>
+    internal IReadOnlyList<PinTextRange> SelectionRanges()
+    {
+        if (_model == null || _translation != null || !_model.HasSelection)
+            return Array.Empty<PinTextRange>();
+
+        var (startLine, startChar, endLine, endChar) = Selection();
+        var ranges = new List<PinTextRange>();
+        for (int i = startLine; i <= endLine && i < _lines.Count && i < _model.LineCount; i++)
+        {
+            string content = _model.Lines[i];
+            int from = i == startLine ? startChar : 0;
+            int to = i == endLine ? endChar : content.Length;
+            from = Math.Clamp(from, 0, content.Length);
+            to = Math.Clamp(to, from, content.Length);
+            if (to > from) ranges.Add(new PinTextRange(i, from, to));
+        }
+
+        return ranges;
     }
 
     private void DrawSelection(DrawingContext dc, IReadOnlyList<string> text, int startLine,
@@ -296,8 +380,8 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
                 continue;
             }
 
-            double x1 = box.X + PrefixWidth(i, line, content, from);
-            double x2 = box.X + PrefixWidth(i, line, content, to);
+            double x1 = box.X + PrefixWidth(i, line, content, from, PixelsPerDip);
+            double x2 = box.X + PrefixWidth(i, line, content, to, PixelsPerDip);
             if (x2 - x1 < 1.5) x2 = x1 + 1.5;
             dc.DrawRectangle(fill, null, new Rect(x1, top, x2 - x1, height));
         }
@@ -311,7 +395,7 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         OcrTextLine line = _lines[index];
         string content = index < text.Count ? text[index] : line.Text;
         int caret = Math.Clamp(_model.CaretChar, 0, content.Length);
-        double x = line.Box.X + PrefixWidth(index, line, content, caret);
+        double x = line.Box.X + PrefixWidth(index, line, content, caret, PixelsPerDip);
         double height = Math.Max(4, line.Box.Height * 0.92);
         dc.DrawRectangle(PrimaryBrush(), null,
             new Rect(x, line.Box.Y + (line.Box.Height - height) / 2, 1.6, height));
@@ -335,14 +419,15 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
     private double PixelsPerDip => VisualTreeHelper.GetDpi(this).PixelsPerDip;
 
     /// <summary>前 <paramref name="count"/> 个字符的宽度（源图像素）。</summary>
-    private double PrefixWidth(int index, OcrTextLine line, string content, int count)
+    private double PrefixWidth(int index, OcrTextLine line, string content, int count,
+        double pixelsPerDip)
     {
         if (count <= 0) return 0;
-        if (count >= content.Length)
-            return TextFor(index, content, line).WidthIncludingTrailingWhitespace;
-
         double size = BestSize(index, content, line);
-        return OcrTextPaint.Create(content[..count], size, PixelsPerDip)
+        if (count >= content.Length)
+            return OcrTextPaint.Create(content, size, pixelsPerDip).WidthIncludingTrailingWhitespace;
+
+        return OcrTextPaint.Create(content[..count], size, pixelsPerDip)
             .WidthIncludingTrailingWhitespace;
     }
 
@@ -526,8 +611,8 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
             }
             else
             {
-                double x1 = box.X + PrefixWidth(i, line, content, from);
-                double x2 = box.X + PrefixWidth(i, line, content, to);
+                double x1 = box.X + PrefixWidth(i, line, content, from, PixelsPerDip);
+                double x2 = box.X + PrefixWidth(i, line, content, to, PixelsPerDip);
                 if (x2 - x1 < 1.5) x2 = x1 + 1.5;
                 piece = new Rect(x1, top, x2 - x1, height);
             }

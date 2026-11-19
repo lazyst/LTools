@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace LTools.Config;
 
 /// <summary>
@@ -104,4 +106,17 @@ public sealed class PinToScreenFile
     /// 关掉之后剪贴板 / 文件贴图按原始尺寸贴出，可能超出屏幕。缺省 = 开。
     /// </summary>
     public bool? AutoResizeWindow { get; set; } = true;
+
+    /// <summary>
+    /// 在贴图上划选文字后，选区旁是否出现「复制 + 四种标注」工具条
+    /// （照上游 <c>pin_to_screen/quick_annotation_for_selected_text</c>）。缺省 = 开。
+    /// </summary>
+    public bool? QuickAnnotationForSelectedText { get; set; } = true;
+
+    /// <summary>
+    /// 四种快速文字标注工具各自的样式（照上游 <c>pin_to_screen/quick_text_annotation_styles</c>）。
+    /// 键 = <c>highlight</c> / <c>wavy_underline</c> / <c>underline</c> / <c>strikethrough</c>；
+    /// 缺项用该工具的默认样式。缺省 = 空（全部默认）。
+    /// </summary>
+    public Dictionary<string, PinTextAnnotationStyleFile>? QuickTextAnnotationStyles { get; set; }
 }

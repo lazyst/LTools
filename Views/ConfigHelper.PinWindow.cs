@@ -32,6 +32,7 @@ public partial class ConfigHelperWindow
         PinConfirmCloseBox.IsChecked = PinSettings.ConfirmBeforeClosingWindow;
         PinAutoOcrBox.IsChecked = PinSettings.AutomaticTextRecognition;
         PinAutoResizeBox.IsChecked = PinSettings.AutoResizeWindow;
+        PinQuickAnnotateBox.IsChecked = PinSettings.QuickAnnotationForSelectedText;
 
         FillPinZoomModes();
         FillPinTextSelectionModes();
@@ -158,12 +159,15 @@ public partial class ConfigHelperWindow
 
         bool recognition = PinSettings.AutomaticTextRecognition;
         bool autoResize = PinSettings.AutoResizeWindow;
+        bool quickAnnotate = PinSettings.QuickAnnotationForSelectedText;
         PinSettings.SetAutomaticTextRecognition(PinAutoOcrBox.IsChecked == true);
         PinSettings.SetAutoResizeWindow(PinAutoResizeBox.IsChecked == true);
+        PinSettings.SetQuickAnnotationForSelectedText(PinQuickAnnotateBox.IsChecked == true);
 
-        // 已经贴着的图按新设置走：打开自动识别 = 现在就补一次；可划选开关立刻生效。
+        // 已经贴着的图按新设置走：打开自动识别 = 现在就补一次；可划选 / 快速标注开关立刻生效。
         if (recognition != PinSettings.AutomaticTextRecognition ||
-            autoResize != PinSettings.AutoResizeWindow)
+            autoResize != PinSettings.AutoResizeWindow ||
+            quickAnnotate != PinSettings.QuickAnnotationForSelectedText)
         {
             CapturePinManager.RefreshRecognition();
         }

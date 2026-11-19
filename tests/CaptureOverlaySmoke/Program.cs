@@ -293,6 +293,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "pinannotate")
+        {
+            PinAnnotationSection(BuildShot(320, 240));
+            Console.WriteLine(_failed == 0 ? "pinannotate-only：通过" : $"pinannotate-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
 
@@ -304,6 +311,9 @@ internal static partial class Program
 
         // ============ 贴图识别划选与重复内容（P9-d2：隐形文字层 / 重复动作 / 抖动 / 自动缩小） ============
         PinRecognitionSection(BuildShot(320, 240));
+
+        // ============ 贴图快速文字标注（P9-d3：划选工具条 / 样式 / 导出 / 贴回指纹） ============
+        PinAnnotationSection(BuildShot(320, 240));
 
         const int width = 1600, height = 900;
         var shot = BuildShot(width, height);

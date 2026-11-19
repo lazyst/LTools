@@ -1151,6 +1151,46 @@ Id 与已经删掉的 Id 都不复活。
 （隐形文字层铺开且原图像素不变 / 真鼠标拖选 / chip 复制与 ✕ / `only_when_displayed` 不铺层 /
 重复内容四动作 / 无身份放行 / 抖动回原位与锁定不抖 / 自动缩小关掉按 100%、打开等比缩）。
 
+### 9.15 贴图快速文字标注（P9-d3，2026-11-19）
+
+照上游 `configurationschema.cpp` 的 `pin_to_screen/quick_annotation_for_selected_text` /
+`quick_text_annotation_styles` 与 `screenshotquicktextannotationtoolbar.cpp` /
+`screenshottextannotation.cpp` / `screenshottextannotationrenderer.cpp` /
+`screenshotpinnedtextannotation.cpp`。
+
+| 项 | 上游默认 | LTools |
+|---|---|---|
+| `quick_annotation_for_selected_text` | true | 隐形文字层里划选完成后，选区旁 chip 从「复制」扩成「复制 │ 高亮 波浪线 下划线 删除线 │ 样式 │ ✕」 |
+| `quick_text_annotation_styles` | 空对象（全默认） | 四种工具各一份 `{color, width, stroke_style, rendering_style}`；高亮默认 `#FF7875`、其余 `#F5222D`，线宽 2、实线、`Architect` |
+
+- **四种标注**（`Features/CapturePro/PinTextAnnotations.cs`）：`highlight` / `wavy_underline` /
+  `underline` / `strikethrough`。按钮是 toggle——选区整段已有就整段去掉，否则整段加上；高亮与线标注
+  互相独立（同一段可以既高亮又加波浪线），线标注同一段只有一种（换工具 = 换线）。激活态走
+  `Tag="Active"` 的模板触发器。
+- **样式面板**贴在 chip 上方（放不下翻下方）：高亮只有颜色（取「荧光」族预设），三种线标注再加
+  线宽 / 线型 / 笔触；改样式同时改默认值并回写选区里已有的同类标注（照上游 `updateStyle`）。
+- **只在「隐形层 + 划选完成 + 设置开 + 划选模式 `always`」时出现**：关掉「可划选」时四个开关收起，
+  但**已经画好的标注照样显示**——`SyncHiddenTextLayer` 允许「只有标注」时铺画布，这时画布
+  `IsHitTestVisible=false`，点击照旧拖动窗口。
+- **画法**（`PinTextAnnotationPainter.cs`）：高亮按行框铺满（合并段用段框），**画在文字下面**；
+  线标注几何照上游（`Amplitude = max(1, width×0.75)`、`HalfWave = max(3, width×2)`，下划线
+  `y = bottom + width/2 + amplitude`、删除线走 `center.Y`），波浪线按半波长分段走控制点。
+- **持久化 + 贴回**：载荷（`source` / `fingerprint` / `runs`）进 `PinRecord.Annotations`，
+  `PinStore.UpdateAnnotations` 脏检查写盘；贴回时 `RestoreAnnotations` 先交载荷、识别结果回来再按
+  「源行文本 + 行框」的 SHA-256 指纹校验——对得上原样恢复，对不上整份丢弃。换图
+  （`ResetOcrCache`）与文字被改（`OnOcrModelChanged` 的文本签名变化）都整体作废；
+  **待校验的载荷不会被中途的空识别结果吞掉**（`ClearAnnotations` 不动 `_annotationPending`）。
+- **导出带上标注**：`ComposeContent()` 把原图 + 标注按**源图像素**合成新位图
+  （`OcrCanvas.PaintAnnotations` 用 `pixelsPerDip = 1`），复制图片 / 另存为 / 拖出成文件三个出口共用；
+  没有标注时直接返回原图。
+- **平台差异**（见 `docs/CAPTURE_PARITY.md` §5）：上游高亮走 `CompositionMode_Multiply`，WPF 没有
+  等价混合模式，改成「画在文字下面 + 不透明色降到 alpha 0.5」近似。
+
+回归：`--selftest` 的「贴图文字标注：样式 / 选区 / toggle / 载荷 / 几何」+ `capture-overlay-smoke`
+的 `pinannotate` 段（真鼠标划选 → 四开关出现 / 点一下加、再点去掉 / 高亮 + 下划线共存 / 样式面板
+改色并回写已有标注 / 关掉可划选时标注照样显示且画布不接鼠标 / 导出 png 与源图逐像素对账 /
+载荷写进贴图历史 / 同文本贴回原样恢复 / 文本变了整份丢弃）。
+
 
 ## 10. 识别（P2 / P4-a / P4-b）
 
