@@ -70,7 +70,7 @@ internal static partial class CaptureProSuite
             Check.True(label.Length > 0, $"覆盖层选项 {key} 有中文名");
         }
 
-        Check.Equal(5, PointerActions.PinOptions.Count, "贴图下拉 5 项（去掉未实现的收顶部 / 识别结果）");
+        Check.Equal(6, PointerActions.PinOptions.Count, "贴图下拉 6 项（收顶部已实现，识别结果还没做）");
         foreach (var (key, label) in PointerActions.PinOptions)
         {
             Check.True(PointerActions.ParsePin(key) != PinPointerAction.None || key == "none",
@@ -78,7 +78,8 @@ internal static partial class CaptureProSuite
             Check.True(label.Length > 0, $"贴图选项 {key} 有中文名");
         }
 
-        Check.False(ContainsKey(PointerActions.PinOptions, "hide_to_top"), "下拉里没有假的「收顶部」");
+        Check.True(ContainsKey(PointerActions.PinOptions, "hide_to_top"),
+            "下拉里有「收顶部」（P5-i 已实现，不是假选项）");
         Check.False(ContainsKey(PointerActions.PinOptions, "show_text_recognition_results"),
             "下拉里没有假的「识别结果」");
 

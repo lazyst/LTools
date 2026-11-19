@@ -48,6 +48,10 @@ public partial class CapturePinWindow
             return;
         }
 
+        // 展开状态下单点 / 拖动 = 退出收顶部（照上游 beginControlledInteraction 的第一句），
+        // 然后照常拖动 / 多选。双击放在前面：设置成「收到屏幕顶部」时双击才收得起来（否则先退出再进）。
+        ExitHideToTop();
+
         // Ctrl+单击 = 多选（贴图不抢焦点、收不到键盘，这是唯一的选择入口）。
         // 先不动手：取景框里 Ctrl 拖动是「移动窗口」，得看松手前有没有挪过再定。
         if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
@@ -232,6 +236,9 @@ public partial class CapturePinWindow
     private void Window_Wheel(object sender, MouseWheelEventArgs e)
     {
         e.Handled = true;
+
+        // 滚轮要改缩放（= 几何），收顶部状态先退出；锁定的贴图本来就不响应滚轮。
+        ExitHideToTop();
         if (_locked) return;
 
         // Ctrl + 滚轮 = 不透明度；单独滚 = 缩放（缩放锚在光标下，见 PinMath.AnchoredOrigin）
@@ -273,6 +280,7 @@ public partial class CapturePinWindow
     public void SetZoom(double zoom)
     {
         if (_live) return;                    // 实时那块永远 100%：缩放会让尺寸与选区对不上
+        ExitHideToTop();                      // 缩放会改窗口几何：先退出收顶部
         if (_thumb) SetThumbnail(false);      // 缩略图里改缩放 = 先还原（方块里缩放没有意义）
         double target = PinMath.ClampZoom(zoom);
 

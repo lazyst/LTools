@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using LTools.Core;
 using LTools.Features.CapturePro;
@@ -57,9 +58,23 @@ public partial class CapturePinWindow
     /// </summary>
     private void Window_RightDown(object sender, MouseButtonEventArgs e)
     {
+        // 照上游 showContextMenu 的第一句：弹菜单前先退出收顶部（窗口回到手柄下方）。
+        ExitHideToTop();
         RaiseToTop();
         PinStacking.Promote(this);
         ContextMenu = BuildMenu();
+    }
+
+    /// <summary>
+    /// 在光标处弹出贴图右键菜单：收顶部那条手柄是独立窗口，没有自己的 <c>ContextMenu</c> 链路，
+    /// 右键时由它调这里（照上游手柄把右键转给 <c>showContextMenu</c>）。
+    /// </summary>
+    internal void ShowPinMenuAtCursor()
+    {
+        var menu = BuildMenu();
+        menu.PlacementTarget = this;
+        menu.Placement = PlacementMode.MousePoint;
+        menu.IsOpen = true;
     }
 
     private ContextMenu BuildMenu()
@@ -221,6 +236,17 @@ public partial class CapturePinWindow
         };
         thumb.Click += (_, _) => SetThumbnail(!_thumb);
         menu.Items.Add(thumb);
+
+        // 收到屏幕顶部：只留一条手柄，鼠标靠近再展开（照上游 hide_to_top）
+        var hideTop = new MenuItem
+        {
+            Header = "收到屏幕顶部",
+            IsCheckable = true,
+            IsChecked = HideToTopActive,
+            IsEnabled = !_live,
+        };
+        hideTop.Click += (_, _) => ToggleHideToTop();
+        menu.Items.Add(hideTop);
 
         // 成组移动：只有一张时没有「组」，置灰（开关本身记着，等第二张贴上来才生效）
         var group = new MenuItem
@@ -423,6 +449,15 @@ public partial class CapturePinWindow
         thumb.Click += (_, _) => CapturePinManager.SetSelectedThumbnail(!allThumb);
         root.Items.Add(thumb);
 
+        bool allHideTop = count > 0 && CapturePinManager.Selected.All(p => p.HideToTopActive);
+        var hideTop = new MenuItem
+        {
+            Header = allHideTop ? "展开所选" : "收顶部所选",
+            IsEnabled = count > 0,
+        };
+        hideTop.Click += (_, _) => CapturePinManager.SetSelectedHideToTop(!allHideTop);
+        root.Items.Add(hideTop);
+
         root.Items.Add(new Separator());
         root.Items.Add(new MenuItem { Header = "按住 Ctrl 再单击可多选", IsEnabled = false });
     }
@@ -438,6 +473,7 @@ public partial class CapturePinWindow
     /// <summary>锁定：不拖动、不缩放，边框亮起来告诉用户「这是锁住的」。</summary>
     public void SetLocked(bool locked)
     {
+        if (locked) ExitHideToTop();          // 锁定要看得见整块贴图；收顶部状态先退出
         _locked = locked;
         ApplyFrame();
         if (locked && (_dragging || _panning || _maybeSelect))

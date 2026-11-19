@@ -76,6 +76,18 @@ internal sealed class PinRecord
     public int ClickThroughOpacity { get; set; } = PinClickThrough.DefaultOpacity;
 
     /// <summary>
+    /// 关掉时是不是「收到屏幕顶部」（只剩顶边手柄）。贴回时照它决定要不要直接收起
+    /// （照上游 <c>hideToTopMode</c>）。
+    /// </summary>
+    public bool HideToTop { get; set; }
+
+    /// <summary>关掉时手柄的左边（物理像素；<see cref="int.MinValue"/> = 没记过）。</summary>
+    public int HideToTopX { get; set; } = int.MinValue;
+
+    /// <summary>关掉时手柄用的 accent 序号（0–12；负数 = 重新分配）。</summary>
+    public int HideToTopAccent { get; set; } = -1;
+
+    /// <summary>
     /// 图自带的选区外观（圆角 / 阴影 / 边框，见 <see cref="PinAppearance"/>）。
     /// 对应上游 <c>PinnedWindowRecord.borderAppearance</c>：贴回时照它决定要不要铺不透明底、画窗口描边。
     /// </summary>
@@ -379,6 +391,28 @@ internal static class PinStore
             bool dirty = false;
             if (record.ClickThrough != on) { record.ClickThrough = on; dirty = true; }
             if (record.ClickThroughOpacity != opacity) { record.ClickThroughOpacity = opacity; dirty = true; }
+
+            if (!dirty) return;
+            SaveUnsafe(items);
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>记「收到屏幕顶部」状态（开关 + 手柄左边 + accent 序号）。没变就不写盘。</summary>
+    public static void UpdateHideToTop(string id, bool on, int left, int accent)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+
+        lock (Gate)
+        {
+            var items = LoadUnsafe();
+            var record = items.FirstOrDefault(e => e.Id == id);
+            if (record == null) return;
+
+            bool dirty = false;
+            if (record.HideToTop != on) { record.HideToTop = on; dirty = true; }
+            if (record.HideToTopX != left) { record.HideToTopX = left; dirty = true; }
+            if (record.HideToTopAccent != accent) { record.HideToTopAccent = accent; dirty = true; }
 
             if (!dirty) return;
             SaveUnsafe(items);

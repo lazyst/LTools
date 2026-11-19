@@ -547,7 +547,7 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 | `Ctrl`+单击 | 多选 / 取消选中；选中的贴图描边加粗到 2px 亮蓝、左上角挂「✓ 已选」徽标 |
 | 滚轮 | 缩放 10%–400%，一格 10%，**锚在光标下**（缩放前后光标下的内容不动）；缩略图里不改缩放 |
 | `Ctrl` / `Shift` + 滚轮 | 不透明度 20%–100%，一格 5% |
-| 双击 | 按设置执行（`pin_to_screen/double_click_action`，默认「缩略图模式」）：整张 ↔ 83 DIP 小方块；可选「不处理 / 重置缩放 / 关闭 / 删除」。**关闭 / 删除不是按下就做**——按下只武装，按钮抬起之后一拍才执行（见下「指针动作」） |
+| 双击 | 按设置执行（`pin_to_screen/double_click_action`，默认「缩略图模式」）：整张 ↔ 83 DIP 小方块；可选「不处理 / 重置缩放 / 缩略图模式 / 收到屏幕顶部 / 关闭 / 删除」。**关闭 / 删除不是按下就做**——按下只武装，按钮抬起之后一拍才执行（见下「指针动作」） |
 | 悬停 | 右上角出现 ✕（**一次点击就关**）；局部显示时左下角还有一句「拖动看别处 · Ctrl 拖动移窗口」。窗口太窄（短边 < 56 DIP）或缩略图里**不显示**（会盖住内容），出口仍有右键菜单（双击按设置，默认是切缩略图，不是关闭） |
 | 右键 | 复制图片 / 另存为… / 标注… / 缩放（100·50·200·400%）/ 不透明度（100·80·60·40%）/ 分组 ▸ / 批量 ▸ / 置顶 / 锁定位置 / 局部显示 / 缩略图模式 / 成组移动 / 关闭 / 关闭全部贴图 |
 
@@ -558,7 +558,8 @@ BrowsingHistory --Esc / 右键--> 回到进历史之前那一份（底图 / 选�
 - 出场 100%：窗口 = 选区物理像素 ÷ 该屏缩放，正好压住刚截的那块。
 - **指针动作**（P7-b，`Features/CapturePro/PointerActions.cs` + `PointerSettings.cs`）：贴图双击 / 中键的
   动作在设置「通用 → 截图 Pro」里选（`pin_to_screen/double_click_action` 默认「缩略图模式」、
-  `middle_mouse_button_action` 默认「重置缩放」；另有「不处理 / 关闭 / 删除」）。**「关闭 / 删除」按下只武装、
+  `middle_mouse_button_action` 默认「重置缩放」；另有「不处理 / 缩略图模式 / 收到屏幕顶部 / 关闭 / 删除」，共 6 项）。
+  **「关闭 / 删除」按下只武装、
   按钮抬起之后一拍才执行**（`MouseReleaseGesture` 纯逻辑 + `MouseReleaseGate` 抓捕获 / 吞抬起 / `Background` 延后；
   窗口藏了 / 关了 / 失活 / 鼠标捕获被抢走就作废）。「删除」连 `pins/` 里的记录与素材一起删，
   默认先弹确认（`confirm_before_destroying_window`，关掉就直接删）。实时贴图只放行「不处理 / 重置缩放 / 关闭」
@@ -1015,6 +1016,39 @@ Id 与已经删掉的 Id 都不复活。
 回归：`--selftest` 的「剪贴板元数据：外观 / 落位 / 桌面变化 / 文件签名」+ 仓库外
 `capture-overlay-smoke` 的 `clipboard-meta` 段（真复制 → 真读两份格式 → 真贴回原位置 / 原尺寸 /
 棋盘格可见；文件签名失配作废；没有元数据时退回居中；落图 `out/clipboard-meta/pin-restored.png`）。
+
+
+### 9.11 贴图「收到屏幕顶部」（P5-i，2026-11-19）
+
+照上游 `presentation/pinned/screenshotpinnedhidetotopcontroller.cpp` + `screenshotpinnedpointerpresence.h`：
+贴图可以收成屏幕顶边的一条小柄，鼠标靠近再展开，屏幕不会一直被贴图占着。
+
+- **进入**：右键菜单 / 批量菜单 / 指针动作第 6 项 `hide_to_top`（「收到屏幕顶部」）。先按顺序退出
+  点击穿透 / 锁定 / 缩略图 / 实时贴图，再按**窗口中心所在那块屏**算手柄位置：首选左边 = 窗口左边，
+  **250ms InOutCubic** 滑到工作区顶边、同时不透明度从用户值淡到 0；动画结束窗口 `Hide()`，只剩手柄。
+- **手柄**（`Views/CapturePro/PinHideHandleWindow.cs`）：可见部分 **30×6 DIP**，左 / 右 / 下各
+  **2 物理像素**描边、**顶边不画**；颜色来自 13 个 accent 之一，按贴图 Id 的 FNV-1a 定色（同一张永远同色）。
+  窗口 = 命中区（左右 / 下方各多 2 DIP 再夹进工作区）——分层窗口里全透明像素点不到，所以整块铺
+  1 个 alpha 的 `HitWash` 底，可见部分被彩色条盖住看不出来。
+- **换屏 / 避让**：同屏多张贴图各自占一个手柄，撞上就往右让 **4 DIP**、贴右边缘撞了往左找，
+  哪儿都放不下时宁可重叠也留在工作区里；工作区比手柄还小时仍把完整手柄夹进来。1s 一次的屏变检查按
+  「窗口中心所在屏」重排（`PlaceHandle` 全用物理像素，落 WPF 再除该屏 `Scale`）。
+- **悬停 / 收起**：55ms 指针轮询；指针进入命中区（或已展开的窗口）立即 `Revealed`——展开位置 =
+  手柄左下角，也就是**手柄正下方**同一左上角、不透明度恢复用户值；离开 **100ms** 后收起。
+  这里不用 `MouseEnter` / `MouseLeave`：贴图窗不是前台窗口，事件常常收不到。
+- **手柄自己的鼠标**：右键 = 先退出收顶部、再在光标处弹贴图菜单；中键 / 左键双击按设置里的贴图动作执行
+  （默认中键重置缩放）；动作做完也退出收顶部，整张图回到屏幕上原位。
+- **「隐藏全部贴图 / 换分组 / 关掉分组」照上游 `setSuppressed` 语义**：**保留收顶部模式与手柄位置**，
+  只是把窗口和手柄一起收掉；放回来时手柄回到原位置。被按住的手柄不参与别的贴图的避让。
+- **持久化**：`pins.json` 的 `HideToTop` / `HideToTopX` / `HideToTopAccent`（`PinStore.UpdateHideToTop`
+  在 `CapturePinManager.Sync` 里写）。关掉再从管理页贴回屏幕时按记录 `RestoreHideToTop`：
+  不播动画、直接只剩手柄，沿用原 accent 与左边。
+- **平台差异**：上游展开时 `activate()` 把贴图提到前台；LTools 贴图是 `WS_EX_NOACTIVATE`，展开只
+  `Show()` + 置顶，不激活窗口（否则后续注入的键鼠会落到贴图上）。
+
+回归：`--selftest` 的「贴图收顶部：手柄占位 / 命中 / 缓动 / 换屏重排」（含上游 `placement()` 逐条）+
+`capture-overlay-smoke` 的 `hidetotop` 段（真窗口进入动画 / 手柄几何与描边 / accent 与 `pins.json` /
+悬停展开与离开收起 / 手柄右键与中键 / 隐藏全部保留模式 / 关掉再贴回；落图 `out/pin-hide-handle.png`）。
 
 
 ## 10. 识别（P2 / P4-a / P4-b）
@@ -1709,6 +1743,7 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
 | **P4-e** ✅ | ④ | 文档识别与导出（照 `documentRequested` / `screenshotdocumentexport` / `screenshotrecognitionfileexport` 的 Document 一族）：结果窗「文档」页签（同一份版面块渲染、可划选）+ 五种导出 `docx`（六 part WordprocessingML + 三级标题 + numbering + 表格）/ `pdf`（系统 Edge·Chrome headless `--print-to-pdf`，无引擎明确报错）/ `md` / `html`（独立页）/ `tex`（`ctex` + `booktabs`）+「打开文档」= 写临时 docx 交默认程序 + 复制富文本（`text/html` + 纯文本，选了复制选中段） |
 | **P4-f** ✅ | ④ | 在线翻译（照 `textTranslationRequested` / `translationservice` / `translationjob` 的 `beginTextTranslation` + overlay translation）：按行翻译、**行数必须对得上**，译文摆回原行框且只读；`TranslationClient`（端点校验 / `ChatUrl` / 请求体 / `ExtractContent` 含分段 content / 围栏 / JSON 数组 → 按行切 → 单行整段 / 状态码人话 / linked 超时与取消）、`TranslationLanguages`（9 门语言 + 按字符族判源语言）、`TranslationStore`（`settings.json` 的 `Translation` 段）、`TranslationSettingsWindow`（端点 / 模型 / 密钥 / 超时 / 源与目标语言 / 真发一条测试连接）+ 结果窗翻译条（目标语言 / 翻译·取消·原文 / ⚙，只在文字页）+ 「复制译文」；上游多家服务与私有云换成**一个 OpenAI 兼容端点**（§5） |
 | **P4-g** ✅ | ④ | 文字排版与标点（照 `screenshotocrtexttransform.cpp` / `screenshotocrtexteditingsession.cpp`）：`OcrTextTransform`（`none/keep/remove/smart` + `none/half/full`、32 字符半↔全角表、**基线式变换**（首次非「无」记基线 → 每次从基线重算 → 都回「无」恢复基线）、智能排版按版面接段落、合并后行框并集）+ `TextRecognitionStore`（`settings.json` 的 `TextRecognition` 段）+ 结果窗文字页第二行的两个下拉与「重置」+ `OcrTextEditModel.ReplaceAll`（保留撤销栈）；手动编辑作废变换、译文态禁用、「重置」= 回到最初 OCR 文本（§10.8） |
+| **P5-i** ✅ | ③ | 贴图「收到屏幕顶部」（照 `screenshotpinnedhidetotopcontroller.cpp`）：30×6 DIP 顶边手柄（13 accent 定色 / 4 DIP 避让 / 三面 2 物理像素描边）、250ms 进入动画同时淡出、55ms 指针轮询悬停展开到手柄正下方 / 离开 100ms 收起、1s 屏变重排、手柄右键退出并弹菜单 / 中键按设置执行、「隐藏全部 / 换分组」保留模式、`pins.json` 记 `HideToTop` 三个字段并由贴回恢复（§9.11） |
 | **P7** ✅ | ①⑦ | 采集入口与设置：延时秒数 / 八个快捷入口 / 鼠标释放动作 + 指针动作 / 「截图 Pro」全局快捷键组 / 「截图输出」页（格式 · 质量 · 文件名模板 · 六个自动保存场景）/ 剪贴板外观与落位 / 采集历史页 / 相机快门音（两个默认值一开一关，见 §18.x） |
 
 ## 16. 验收
@@ -3405,3 +3440,38 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   出处与许可证见 `licenses/CameraShutterSound-NOTICE.txt`。
 - 冒烟 `SoundSection`：真窗口里勾两个框 → 读 `settings.json` → 丢缓存重新读盘，不碰仓库真实配置。
 - 回归：`--selftest` **278 用例 15848 断言**；`capture-overlay-smoke` **1961 条**（新增 `sound` 段 13 条）。
+
+### 18.z 贴图收到屏幕顶部（P5-i，2026-11-19）
+
+- 上游对照：`presentation/pinned/screenshotpinnedhidetotopcontroller.cpp`（`geometry` 命名的
+  `placeHandle` / `hitGeometry` / `screenGeometry`）、`screenshotpinnedpointerpresence.h`（55ms 轮询 + 100ms 延迟）、
+  `tests/screenshot_pinned_hide_to_top_tests.cpp`（`placement` / `animationAndHover` / `reservationsAndRestore`）。
+- **几何与节奏全在 `Features/CapturePro/PinHideToTop.cs`**（纯函数，不碰窗口，自检直接驱动）：
+  `HandleWidthDip` 30 / `HandleHeightDip` 6 / `GapDip` 4 / `HitMarginDip` 2 / `HandleBorderDevicePixels` 2 /
+  `EnterDurationMs` 250 / `HideDelayMs` 100 / `AccentCount` 13，加 `PlaceHandle`（首选超界夹进工作区、
+  撞别的手柄向右 4 像素、右边缘撞了往左找、放不下宁可重叠也留在工作区、工作区比手柄还小仍夹完整手柄、
+  按 `qRound` 取整）、`HitGeometry`（左右 / 下各多 2 DIP 再夹进工作区）、`Intersect` / `Contains`（右 / 下开区间）、
+  `EaseInOutCubic` / `InterpolateTop` / `OpacityFactor`、`AccentIndexFor`（FNV-1a）/ `AccentColor`、
+  `MonitorAt` / `WorkAreaOf` / `SameScreen`。
+- **坐标一律物理像素**，落 WPF 时除该屏 `Scale`；`Int32Rect` 与上游 `QRect` 的边界差（开 / 闭区间）在
+  `Intersect` / `Contains` 与手柄窗口尺寸里一起对上。
+- **状态机 `Views/CapturePro/CapturePinWindow.HideToTop.cs`**：`Normal / Entering / Hidden / Revealed`；
+  进入 = 250ms 动画滑到工作区顶边 + 同时淡出（`_hideFade` 乘在用户不透明度上），结束 `Hide()` 只留手柄；
+  55ms 指针轮询 + 100ms 延迟收起；1s 屏变重排 + 同屏避让（被按住的跳过）；`SetHideToTopSuppressed` /
+  `SuspendHideToTop` / `ResumeHideToTop` / `ShutdownHideToTop` / `RestoreHideToTop`。
+- **所有退出点**都要先 `ExitHideToTop`：滚轮 / `SetZoom`、拖动 / 单击 / 双击、开点击穿透、右键菜单、
+  手柄右键 / 中键动作、`SetLocked(true)`；关窗走 `ShutdownHideToTop`（手柄是独立窗口，不关会留在屏幕上）。
+- **手柄窗口 `Views/CapturePro/PinHideHandleWindow.cs`**：`WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE` + 1 alpha
+  铺底（分层窗口全透明像素点不到）+ 三面 2 物理像素描边（顶边不画）；静态笔刷改名 `HandleBorderBrush`，
+  避免和 `Window.BorderBrush` 撞名（CS0108）。
+- **`PointerActions.PinOptions` 加第 6 项 `hide_to_top`**（「收到屏幕顶部」）；`show_text_recognition_results`
+  仍留给 P4-j，解析照认、设置里不列。
+- **记录与恢复**：`PinRecord.HideToTop` / `HideToTopX`（默认 `int.MinValue`）/ `HideToTopAccent`（默认 -1）
+  + `PinStore.UpdateHideToTop`；`CapturePinManager.Sync` 写、`FinishRestore` 按记录 `RestoreHideToTop`；
+  `HideAll` / `ShowAll` / `MoveToGroup` / `SetActiveGroup` / `RestoreBatch` / `Forget` 全部按「收顶部 = 手柄在、
+  窗口不在」的口径判断，别再看 `IsVisible`。
+- 回归：`--selftest` **279 用例 15908 断言**（新增「贴图收顶部：手柄占位 / 命中 / 缓动 / 换屏重排」）；
+  `capture-overlay-smoke` 新增 `hidetotop` 段 **54 条**（真窗口：进入动画途中淡出且手柄不出现 → 动画结束只剩
+  30×6 手柄贴住工作区顶边 / 手柄窗口是命中区 / 三面描边 2 物理像素 / accent 与 `pins.json` 三个字段 /
+  悬停展开到手柄正下方且恢复不透明度 / 离开收起 / 手柄右键退出并弹菜单 / 手柄中键重置缩放 / 隐藏全部保留
+  模式 / 关掉再贴回按记录收起并沿用 accent 与左边 / 贴回的那张也能悬停展开；落图 `out/pin-hide-handle.png`）。

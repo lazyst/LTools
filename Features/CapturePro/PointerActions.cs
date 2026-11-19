@@ -48,7 +48,7 @@ internal enum PinPointerAction
     /// <summary>缩略图 / 整张来回切。</summary>
     ThumbnailMode,
 
-    /// <summary>收进屏幕顶部（上游 <c>hide_to_top</c>；LTools 还没做，见 P5-i）。</summary>
+    /// <summary>收进屏幕顶部（上游 <c>hide_to_top</c>）：只留一条顶边手柄，鼠标靠近再展开。</summary>
     HideToTop,
 
     /// <summary>显示贴图上的文字识别结果（上游 <c>show_text_recognition_results</c>；见 P4-j）。</summary>
@@ -71,10 +71,9 @@ internal enum PinPointerAction
 /// 落到最后一支，什么都不做，而不是悄悄退回默认值。
 /// </para>
 /// <para>
-/// **设置里只列已经能做的动作**：<see cref="PinPointerAction.HideToTop"/> 与
-/// <see cref="PinPointerAction.TextRecognition"/> 是上游两个独立大功能（P5-i / P4-j），
-/// 现在还没实现，所以 <see cref="PinOptions"/> 不列它们（不做假选项）；但解析仍认这两个键，
-/// 以后补上实现时老配置直接生效。
+/// **设置里只列已经能做的动作**：<see cref="PinPointerAction.TextRecognition"/> 是上游另一个
+/// 独立大功能（P4-j），现在还没实现，所以 <see cref="PinOptions"/> 不列它（不做假选项）；
+/// 解析仍认这个键，以后补上实现时老配置直接生效。
 /// </para>
 /// </remarks>
 internal static class PointerActions
@@ -177,14 +176,14 @@ internal static class PointerActions
     };
 
     /// <summary>
-    /// 贴图的下拉选项：<b>只列已经能做的</b>（顺序照上游 <c>pinDoubleClickActionItem</c>，
-    /// 去掉还没实现的 <c>hide_to_top</c> / <c>show_text_recognition_results</c>）。
+    /// 贴图的下拉选项：顺序照上游 <c>pinDoubleClickActionItem</c>。
     /// </summary>
     public static IReadOnlyList<(string Key, string Label)> PinOptions { get; } = new[]
     {
         ("none", "不处理"),
         ("reset_zoom", "重置缩放"),
         ("thumbnail_mode", "缩略图模式"),
+        ("hide_to_top", "收到屏幕顶部"),
         ("close", "关闭贴图"),
         ("destroy", "删除贴图"),
     };

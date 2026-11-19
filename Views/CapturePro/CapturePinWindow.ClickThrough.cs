@@ -71,6 +71,7 @@ public partial class CapturePinWindow
 
         if (on)
         {
+            ExitHideToTop();                          // 穿透要看得见整块贴图：先退出收顶部
             if (_thumb) SetThumbnail(false);          // 缩略图与穿透互斥（照上游 setThumbnailMode）
             CancelGesture();
             _menu?.IsOpen = false;
@@ -138,10 +139,11 @@ public partial class CapturePinWindow
         ApplyEffectiveOpacity();
     }
 
-    /// <summary>按当前形态落到窗口不透明度上：穿透态用穿透值，否则用用户自己那个。</summary>
+    /// <summary>按当前形态落到窗口不透明度上：穿透态用穿透值，否则用用户自己那个；收顶部时再乘淡出因子。</summary>
     private void ApplyEffectiveOpacity()
     {
-        double value = PinClickThrough.EffectiveOpacity(_clickThrough, _opacityPercent, _clickThroughOpacity);
+        double value = PinClickThrough.EffectiveOpacity(_clickThrough, _opacityPercent, _clickThroughOpacity)
+                       * Math.Clamp(_hideFade, 0, 1);
         Opacity = value;
         _thumbLayer?.SetOpacity(value);
     }

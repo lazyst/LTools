@@ -220,6 +220,7 @@ internal static class CapturePinManager
     {
         PinStore.UpdateState(pin.PinId, pin.Group, pin.Left, pin.Top, pin.Width, pin.Height, pin.Live);
         PinStore.UpdateClickThrough(pin.PinId, pin.ClickThrough, pin.ClickThroughOpacity);
+        PinStore.UpdateHideToTop(pin.PinId, pin.HideToTopActive, pin.HideToTopLeftPhysical, pin.HideToTopAccent);
     }
 
     /// <summary>
@@ -280,7 +281,7 @@ internal static class CapturePinManager
                 var existing = FindByRecord(record.Id);
                 if (existing != null)
                 {
-                    if (!existing.IsVisible) existing.Show();
+                    if (!existing.IsVisible || existing.HideToTopSuppressed) existing.ResumeHideToTop();
                     continue;
                 }
 
@@ -376,6 +377,9 @@ internal static class CapturePinManager
             pin.SetClickThrough(true);
         }
 
+        // 关的时候收在顶部：贴回时只露手柄（照上游 prepareRestore / finishRestore）
+        if (record.HideToTop) pin.RestoreHideToTop(record.HideToTopX, record.HideToTopAccent);
+
         return pin;
     }
 
@@ -407,8 +411,8 @@ internal static class CapturePinManager
         int count = 0;
         foreach (var pin in Pins)
         {
-            if (!pin.IsVisible) continue;
-            pin.Hide();
+            if (!pin.IsVisible && !pin.HideToTopActive) continue;
+            pin.SuspendHideToTop();      // 收顶部的手柄一起收，但保留模式（上游 setSuppressed）
             count++;
         }
 
@@ -422,7 +426,18 @@ internal static class CapturePinManager
         int count = 0;
         foreach (var pin in Pins)
         {
-            if (pin.IsVisible || !IsShown(pin)) continue;
+            if (!IsShown(pin)) continue;
+
+            // 收顶部的那张：放回来的是手柄（上游 showAllPinnedWindows 的 setSuppressed(false)）
+            if (pin.HideToTopActive)
+            {
+                if (!pin.HideToTopSuppressed) continue;
+                pin.ResumeHideToTop();
+                count++;
+                continue;
+            }
+
+            if (pin.IsVisible) continue;
             pin.Show();
             count++;
         }
@@ -478,13 +493,12 @@ internal static class CapturePinManager
 
         if (IsShown(pin))
         {
-            if (!pin.IsVisible) pin.Show();
-            pin.RaiseToTop();
+            pin.ResumeHideToTop();      // 收顶部的那张回到原位置的手柄上
             PinStacking.Presented(pin, preserveFocus: false);   // 搬进新组 = 排到那组最前
         }
-        else if (pin.IsVisible)
+        else if (pin.IsVisible || pin.HideToTopActive)
         {
-            pin.Hide();
+            pin.SuspendHideToTop();
         }
     }
 
@@ -502,14 +516,23 @@ internal static class CapturePinManager
         foreach (var pin in Pins)
         {
             bool show = IsShown(pin);
-            if (show && !pin.IsVisible)
+            if (show)
             {
-                pin.Show();
-                pin.RaiseToTop();
+                if (pin.HideToTopActive)
+                {
+                    if (pin.HideToTopSuppressed) pin.ResumeHideToTop();
+                    continue;
+                }
+
+                if (!pin.IsVisible)
+                {
+                    pin.Show();
+                    pin.RaiseToTop();
+                }
             }
-            else if (!show && pin.IsVisible)
+            else if (pin.IsVisible || pin.HideToTopActive)
             {
-                pin.Hide();
+                pin.SuspendHideToTop();
             }
         }
 
@@ -549,7 +572,7 @@ internal static class CapturePinManager
         ClearSelection();
         foreach (var pin in Pins)
         {
-            if (!IsShown(pin)) continue;
+            if (!IsShown(pin) || pin.HideToTopActive) continue;
             Selection.Add(pin);
             pin.SetSelected(true);
         }
@@ -583,6 +606,18 @@ internal static class CapturePinManager
         foreach (var pin in Selection.ToArray()) pin.SetThumbnail(on);
     }
 
+    /// <summary>批量收进顶部 / 展开（实时贴图不参与，与单张菜单的置灰口径一致）。</summary>
+    public static void SetSelectedHideToTop(bool on)
+    {
+        foreach (var pin in Selection.ToArray())
+        {
+            if (pin.Live) continue;
+
+            if (on && !pin.HideToTopActive) pin.EnterHideToTop();
+            else if (!on && pin.HideToTopActive) pin.ExitHideToTop();
+        }
+    }
+
     // ============ 抖动隐藏同组其他贴图 ============
 
     /// <summary>
@@ -597,10 +632,12 @@ internal static class CapturePinManager
     {
         if (!source.IsVisible) return (false, false);
 
-        // 只碰同一组、当前分组过滤下本来就该看得见、且不是实时贴图的那些
+        // 只碰同一组、当前分组过滤下本来就该看得见、且不是实时贴图的那些；
+        // 收在顶部的那几张不算「藏着」（它们只剩手柄），不参与抖动的藏 / 显。
         var others = Pins.Where(pin =>
                 !ReferenceEquals(pin, source) &&
                 !pin.Live &&
+                !pin.HideToTopActive &&
                 PinGroups.Same(pin.Group, source.Group) &&
                 IsShown(pin))
             .ToArray();
@@ -705,11 +742,8 @@ internal static class CapturePinManager
         {
             ActiveGroup = null;
             foreach (var other in Pins)
-                if (!other.IsVisible)
-                {
-                    other.Show();
-                    other.RaiseToTop();
-                }
+                if (!other.IsVisible || other.HideToTopSuppressed)
+                    other.ResumeHideToTop();
         }
     }
 }

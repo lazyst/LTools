@@ -22,6 +22,7 @@ public partial class CapturePinWindow
     public void SetViewport(bool on)
     {
         if (_live) return;                    // 实时贴图不切取景框：窗口尺寸一变就和选区那块脱钩了
+        ExitHideToTop();                      // 换形态前先退出收顶部（几何要变了）
         if (_viewport == on) return;
         if (on && _thumb) SetThumbnail(false);        // 两种特殊形态互斥
         _viewport = on;
@@ -104,6 +105,7 @@ public partial class CapturePinWindow
     public void SetThumbnail(bool on)
     {
         if (_live && on) return;              // 缩成方块就看不见实时的内容了；退出实时之后随便切
+        ExitHideToTop();                      // 缩略图是另一种形态：先退出收顶部
         if (_thumb == on) return;
 
         if (on)
@@ -138,6 +140,7 @@ public partial class CapturePinWindow
     private void AnnotateContent()
     {
         if (_live) return;                    // 实时贴图的内容每 200ms 换一次，标了也留不住
+        ExitHideToTop();                      // 覆盖层要按整张图定位，收顶部状态先退出
 
         // 覆盖层只能把图按「像素 1:1」铺开，所以标注前先回到整张图的 100%：
         // 缩略图 / 取景框里都只看得见一部分，缩放 200% 时覆盖层与贴图本身对不上。
@@ -170,6 +173,7 @@ public partial class CapturePinWindow
     /// <summary>换掉贴的内容（标注之后）：回到 100% 并按新图尺寸贴合窗口。</summary>
     private void ReplaceContent(BitmapSource image)
     {
+        ExitHideToTop();                      // 内容是拖放换的：先退出收顶部再重排几何
         _content = image;
         Shot.Source = image;
         _zoom = 1;
