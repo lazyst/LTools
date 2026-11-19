@@ -100,7 +100,7 @@ internal static partial class Program
 
             var defaultOrder = new[]
             {
-                "Recognize", "QrCode", "Record", "Pin", "Live", "Scroll",
+                "Recognize", "QrCode", "Record", "Pin", "Live", "Translate", "Scroll",
                 "Print", "QuickSave", "SaveAs", "More", "Cancel", "Copy",
             };
 
@@ -108,19 +108,40 @@ internal static partial class Program
             var first = OpenOverlay();
             var order = OrderOf(ToolbarOf(first));
             Check(order.SequenceEqual(defaultOrder),
-                "默认顺序：识别 / 二维码 │ 录屏 │ 贴图 / 实时 │ 长截图 │ 打印 / 快速保存 / 另存为 │ 更多 │ 取消 / 复制："
+                "默认顺序：识别 / 二维码 │ 录屏 │ 贴图 / 实时 │ 识别并翻译 │ 长截图 │ 打印 / 快速保存 / 另存为 │ 更多 ｜ 取消 │ 复制："
                 + string.Join(",", order));
 
-            // 1 条（工具格与撤销 / 重做之间）+ 1 条（撤销 / 重做与完成动作之间）+ 6 条（组与组之间）
-            Check(GroupLines(first) == 8, $"默认 7 组 → 8 条分隔线（实际 {GroupLines(first)}）");
+            // 1 条（工具格与撤销 / 重做之间）+ 1 条（撤销 / 重做与完成动作之间）+ 1 条（布局里取消前面那条）
+            Check(GroupLines(first) == 3, $"默认只有布局那一条竖线（共 3 条，实际 {GroupLines(first)}）");
+
+            // 一叠动作 = 只露一个按钮 + 悬停弹出二级工具条（照上游 stackPresentation）
+            var firstToolbar = ToolbarOf(first);
+            var stacks = ((System.Collections.IEnumerable)Field(firstToolbar, "_actionPopups")!)
+                .Cast<System.Windows.Controls.Primitives.Popup>().ToList();
+            Check(stacks.Count == 3, $"默认有 3 叠（识别 / 二维码、贴图 / 实时、打印 / 快速保存 / 另存为），实际 {stacks.Count}");
+
+            System.Windows.Controls.StackPanel StackRow(System.Windows.Controls.Primitives.Popup popup) =>
+                (System.Windows.Controls.StackPanel)((Border)popup.Child).Child;
+
+            var pinStack = stacks.First(p => StackRow(p).Children.OfType<Button>()
+                .Any(b => (b.ToolTip?.ToString() ?? "").Contains("实时")));
+            Check(!pinStack.IsOpen, "二级工具条默认收起");
+            Check(StackRow(pinStack).Children.Count == 1, "贴图那一叠只多一个「实时贴图」");
+
+            ((FrameworkElement)pinStack.PlacementTarget!).RaiseEvent(new System.Windows.Input.MouseEventArgs(
+                System.Windows.Input.Mouse.PrimaryDevice, 0)
+            { RoutedEvent = UIElement.MouseEnterEvent });
+            Pump(first);
+            Check(pinStack.IsOpen, "鼠标停在一叠动作上就弹出二级工具条");
+            pinStack.IsOpen = false;
 
             // ============ ② 编辑器：行 = 目录默认顺序，第一行不能「另起一组」 ============
             editor = OpenEditor();
             var rows = Rows(editor);
-            Check(rows.Count == 12, $"编辑器列出 12 个动作（实际 {rows.Count}）");
+            Check(rows.Count == 13, $"编辑器列出 13 个动作（实际 {rows.Count}）");
             Check(string.Join(",", rows.Select(r => r.Tag?.ToString())) ==
-                  "recognize,qrcode,record-screen,pin-to-screen,pin-live,scrolling-screenshot,"
-                  + "print,quick-save,save-as-file,more,cancel,copy",
+                  "recognize,qrcode,record-screen,pin-to-screen,pin-live,text-translation,"
+                  + "scrolling-screenshot,print,quick-save,save-as-file,more,cancel,copy",
                 "编辑器行顺序照默认布局：" + string.Join(",", rows.Select(r => r.Tag)));
             Check(!GroupBox(rows[0]).IsEnabled, "第一行不能「另起一组」（前面没有东西）");
             Check(GroupBox(rows[1]).IsEnabled, "第二行可以「另起一组」");
@@ -142,15 +163,15 @@ internal static partial class Program
             var recordRow = rows.First(r => (string?)r.Tag == "record-screen");
             VisibleBox(recordRow).IsChecked = false;
             Pump(editor);
-            Check(Rows(editor).Count == 12, "收起不等于从清单里删掉（行还在，只是勾掉）");
+            Check(Rows(editor).Count == 13, "收起不等于从清单里删掉（行还在，只是勾掉）");
 
             // 保存（Ok_Click 会设 DialogResult，Show 出来的窗口设不了，所以直接走 Save）
             windowType.GetMethod("Save", Inst)!.Invoke(editor, null);
             editor.Close();
             editor = null;
 
-            Check((int)layoutType.GetProperty("VisibleCount", Inst)!.GetValue(CurrentLayout())! == 11,
-                "收起录屏后可见 11 个");
+            Check((int)layoutType.GetProperty("VisibleCount", Inst)!.GetValue(CurrentLayout())! == 12,
+                "收起录屏后可见 12 个");
 
             // ============ ④ 落盘：ui.json 两个字段 ============
             string json = File.ReadAllText(uiFile);
@@ -162,7 +183,8 @@ internal static partial class Program
                 var hidden = root.GetProperty("CaptureActionHidden").EnumerateArray()
                     .Select(e => e.GetString()).ToList();
 
-                Check(groups[^1] == "copy,cancel", "落盘最后一组是「复制 / 取消」：" + groups[^1]);
+                Check(groups[^1] == "cancel", "落盘最后一组是「取消」：" + groups[^1]);
+                Check(groups.Any(g => g!.Contains("copy")), "复制仍在某一组里（上移只是换位置）");
                 Check(hidden.Count == 1 && hidden[0] == "record-screen", "落盘隐藏项是录屏");
                 Check(!groups.Any(g => g!.Contains("record-screen")), "隐藏的动作不在任何一组里");
             }
@@ -172,7 +194,7 @@ internal static partial class Program
             var order2 = OrderOf(ToolbarOf(second));
             Check(!order2.Contains("Record"), "新布局下工具条没有录屏");
             Check(order2[^2] == "Copy" && order2[^1] == "Cancel", "新布局下复制排在取消前面");
-            Check(GroupLines(second) == 7, $"收起录屏后少一组 → 7 条分隔线（实际 {GroupLines(second)}）");
+            Check(GroupLines(second) == 3, $"收起录屏后竖线不变（共 3 条，实际 {GroupLines(second)}）");
 
             // ============ ⑥ 图片编辑窗按可用集过滤（同一份布局） ============
             object styleSet = styleStoreType.GetProperty("Current", Stat)!.GetValue(null)!;
@@ -201,7 +223,7 @@ internal static partial class Program
             var third = OpenOverlay();
             Check(OrderOf(ToolbarOf(third)).SequenceEqual(defaultOrder),
                 "「恢复默认」把顺序与显隐一起还原");
-            Check(GroupLines(third) == 8, "恢复默认后又是 8 条分隔线（7 组）");
+            Check(GroupLines(third) == 3, "恢复默认后又是 3 条竖线（布局里那条 + 工具 / 撤销那两条）");
         }
         finally
         {

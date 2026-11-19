@@ -9857,9 +9857,26 @@ internal static partial class Program
     }
 
     /// <summary>工具条上所有按钮的 ToolTip（完成动作只画图标，文字只在这里）。</summary>
-    private static List<string> ActionTips(object window) =>
-        ToolRow(window)?.Children.OfType<Button>().Select(b => b.ToolTip?.ToString() ?? "").ToList()
-        ?? new List<string>();
+    private static List<string> ActionTips(object window)
+    {
+        var tips = ToolRow(window)?.Children.OfType<Button>()
+            .Select(b => b.ToolTip?.ToString() ?? "").ToList() ?? new List<string>();
+
+        // 一叠动作只露第一个按钮，其余的挂在悬停弹层里（照上游 stackPresentation）：
+        // 断言「工具条上有没有某个动作」时把它们也算进来
+        object? toolbar = Field(window, "Toolbar");
+        if (toolbar != null && Field(toolbar, "_actionPopups") is System.Collections.IEnumerable popups)
+        {
+            foreach (var popup in popups.Cast<System.Windows.Controls.Primitives.Popup>())
+            {
+                if (popup.Child is not Border { Child: StackPanel row }) continue;
+                tips.AddRange(row.Children.OfType<Button>()
+                    .Select(b => b.ToolTip?.ToString() ?? ""));
+            }
+        }
+
+        return tips;
+    }
 
     /// <summary>工具栏是不是「一排」：所有可见按钮相对 ToolRow 的 Y 都相同（分隔线不参与，它们竖直居中）。</summary>
     private static bool ToolRowSingleLine(object window)

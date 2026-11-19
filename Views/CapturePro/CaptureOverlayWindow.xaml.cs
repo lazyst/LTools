@@ -382,6 +382,11 @@ public partial class CaptureOverlayWindow : Window
             case CaptureToolbar.CaptureAction.Pin: Accept(FinishKind.Pin); break;              // 贴图（Ctrl+T）
             case CaptureToolbar.CaptureAction.Live: Accept(FinishKind.Live); break;            // 实时贴图（Ctrl+W）
             case CaptureToolbar.CaptureAction.Recognize: Accept(FinishKind.Recognize); break;  // 识别（Ctrl+R）
+            case CaptureToolbar.CaptureAction.Translate:
+                // 「识别并翻译」：结果窗算完自动按设置里的目标语言翻一遍（上游 captureAndTranslateText）
+                _translate = true;
+                Accept(FinishKind.Recognize);
+                break;
             case CaptureToolbar.CaptureAction.Save: Accept(FinishKind.Save); break;            // 另存为…（Ctrl+S）
             case CaptureToolbar.CaptureAction.QuickSave: Accept(FinishKind.QuickSave); break;  // 快速保存（Ctrl+Shift+S）
             case CaptureToolbar.CaptureAction.Print: Accept(FinishKind.Print); break;          // 打印（Ctrl+P）

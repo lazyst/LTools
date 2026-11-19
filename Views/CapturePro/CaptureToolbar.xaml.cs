@@ -118,6 +118,7 @@ public partial class CaptureToolbar : UserControl
         Print,
         QuickSave,
         Save,
+        Translate,
         Cancel,
         Copy,
 
@@ -851,8 +852,8 @@ public partial class CaptureToolbar : UserControl
             or CaptureActionTool.SaveAs;
 
     /// <summary>
-    /// 按布局逐组摆出完成动作（<see cref="CaptureActionLayoutStore"/>）：布局里的顺序与分组
-    /// 就是工具条上的顺序与竖线；编辑模式里用不到的自动跳过，整组都跳过的连竖线一起不画。
+    /// 按布局逐「位置」摆出完成动作（<see cref="CaptureActionLayoutStore"/>）：一叠一个按钮
+    /// （多于一个动作时悬停弹出二级工具条），竖线位置画一条竖线。编辑模式里用不到的自动跳过。
     /// </summary>
     /// <param name="mode">哪条工具条（截图 / 图片编辑 / 全屏画布）。</param>
     /// <param name="separatorBeforeFirst">
@@ -860,11 +861,18 @@ public partial class CaptureToolbar : UserControl
     /// </param>
     private void AddActionGroups(ToolbarMode mode, bool separatorBeforeFirst)
     {
-        bool first = true;
-        foreach (var group in CaptureActionLayoutStore.Current.Groups)
+        bool pendingSeparator = separatorBeforeFirst;
+
+        foreach (var position in CaptureActionLayoutStore.Current.Positions)
         {
+            if (position.IsSeparator)
+            {
+                pendingSeparator = true;
+                continue;
+            }
+
             var buttons = new List<FrameworkElement>();
-            foreach (var tool in group)
+            foreach (var tool in position.Tools)
             {
                 var button = ActionButtonFor(tool, mode);
                 if (button == null) continue;
@@ -874,8 +882,11 @@ public partial class CaptureToolbar : UserControl
 
             if (buttons.Count == 0) continue;
 
-            AddGroup(buttons, separator: !first || separatorBeforeFirst);
-            first = false;
+            if (pendingSeparator) AddSeparator();
+            pendingSeparator = false;
+
+            if (buttons.Count == 1) AddInline(buttons[0]);
+            else AddActionStack(buttons);
         }
     }
 
@@ -896,6 +907,9 @@ public partial class CaptureToolbar : UserControl
             CaptureActionTool.Pin => ActionButton("IconPin", "贴图到屏幕（Ctrl+T）", CaptureAction.Pin),
             CaptureActionTool.Live => ActionButton("IconLive",
                 "实时贴图：贴一块跟着这个窗口刷新的图（Ctrl+W）", CaptureAction.Live),
+            CaptureActionTool.Translate => ActionButton("IconTranslate",
+                "识别并翻译：识别完自动按设置里的目标语言翻一遍（Ctrl+R 识别后在结果窗点翻译）",
+                CaptureAction.Translate),
             CaptureActionTool.Scroll => ActionButton("IconScroll",
                 "长截图：滚着接成一张长图（Ctrl+L）", CaptureAction.Scroll),
             CaptureActionTool.Print => ActionButton("IconPrint", "打印（Ctrl+P）", CaptureAction.Print),
@@ -1037,29 +1051,95 @@ public partial class CaptureToolbar : UserControl
         menu.IsOpen = true;
     }
 
-    /// <summary>
-    /// 一组动作按钮前面加一条竖线（<paramref name="separator"/> = false 时不加）；
-    /// 分组同时记进 <see cref="_actionParts"/>，便于整组收起。
-    /// </summary>
-    /// <remarks>
-    /// 「第一组前面要不要线」由调用方明确给（截图模式前面已经有「撤销 / 重做 │ 完成动作」那条，
-    /// 编辑模式没有）——别用 <c>_actionParts.Count &gt; 0</c> 猜，那个集合只在截图模式预先有内容。
-    /// </remarks>
-    private void AddGroup(IReadOnlyList<FrameworkElement> buttons, bool separator = true)
+    /// <summary>画一条竖线（布局里的 <c>separator</c> 位置）。</summary>
+    private void AddSeparator()
     {
-        if (separator)
+        var line = new Border { Style = (Style)FindResource("SeparatorBar") };
+        _actionParts.Add(line);
+        ToolRow.Children.Add(line);
+    }
+
+    /// <summary>把一个按钮直接摆进工具条。</summary>
+    private void AddInline(FrameworkElement button)
+    {
+        _actionParts.Add(button);
+        ToolRow.Children.Add(button);
+    }
+
+    /// <summary>
+    /// 一叠动作（照上游 <c>stackPresentation</c>）：**只露第一个按钮**，鼠标停上去弹出二级工具条
+    /// （这一叠的其余动作），点哪个执行哪个；移开 220ms 自动收起。
+    /// </summary>
+    private void AddActionStack(IReadOnlyList<FrameworkElement> buttons)
+    {
+        var trigger = buttons[0];
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        var border = new Border
         {
-            var line = new Border { Style = (Style)FindResource("SeparatorBar") };
-            _actionParts.Add(line);
-            ToolRow.Children.Add(line);
+            Background = (Brush)FindResource("SurfaceBrush"),
+            BorderBrush = (Brush)FindResource("BorderStrongBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(4),
+            Child = row,
+        };
+
+        var popup = new Popup
+        {
+            PlacementTarget = trigger,
+            Placement = PlacementMode.Top,
+            VerticalOffset = 6,
+            StaysOpen = true,
+            AllowsTransparency = true,
+            PopupAnimation = PopupAnimation.Fade,
+            Child = border,
+            IsOpen = false,
+        };
+
+        foreach (var button in buttons.Skip(1))
+        {
+            button.Margin = new Thickness(0, 0, 4, 0);
+            row.Children.Add(button);
         }
 
-        foreach (var button in buttons)
+        var close = new System.Windows.Threading.DispatcherTimer
         {
-            _actionParts.Add(button);
-            ToolRow.Children.Add(button);
-        }
+            Interval = TimeSpan.FromMilliseconds(220),
+        };
+        close.Tick += (_, _) =>
+        {
+            close.Stop();
+            popup.IsOpen = false;
+        };
+
+        trigger.MouseEnter += (_, _) =>
+        {
+            close.Stop();
+            popup.IsOpen = true;
+        };
+        trigger.MouseLeave += (_, _) =>
+        {
+            close.Stop();
+            close.Start();
+        };
+        border.MouseEnter += (_, _) => close.Stop();
+        border.MouseLeave += (_, _) =>
+        {
+            close.Stop();
+            close.Start();
+        };
+
+        // 点二级工具条里的按钮之后收起（按钮自己的 Click 先跑，这里只负责关）
+        foreach (var button in buttons.Skip(1))
+            button.MouseLeftButtonUp += (_, _) => popup.IsOpen = false;
+
+        _actionPopups.Add(popup);
+        _actionParts.Add(trigger);
+        ToolRow.Children.Add(trigger);
     }
+
+    private readonly List<Popup> _actionPopups = new();
 
     /// <summary>
     /// 「显示二维码」（照 Snow Shot 的 <c>m_showQrCodeButton</c>）：只在「选择」工具下露出来，
@@ -1137,6 +1217,7 @@ public partial class CaptureToolbar : UserControl
         _actionsVisible = visible;
         var visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         foreach (var part in _actionParts) part.Visibility = visibility;
+        if (!visible) foreach (var popup in _actionPopups) popup.IsOpen = false;
         ApplyQrVisibility();     // 二维码按钮另有「只在使用选择工具时」这一层
     }
 

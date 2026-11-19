@@ -21,16 +21,19 @@ internal static partial class CaptureProSuite
         // ============ 默认布局（照上游 actionDefaultPositions） ============
 
         var defaults = CaptureActionLayout.Default();
-        Check.Equal(7, defaults.Groups.Count, "默认分 7 组");
-        Check.Equal(12, defaults.VisibleCount, "默认 12 个动作全在工具条上");
+        Check.Equal(9, defaults.Groups.Count, "默认分 9 叠（中间一条竖线不算一叠）");
+        Check.Equal(13, defaults.VisibleCount, "默认 13 个动作全在工具条上");
         Check.Equal(0, defaults.Hidden.Count, "默认一个都不收起来");
+        Check.Equal(1, defaults.Positions.Count(p => p.IsSeparator), "默认只有一条竖线（照上游：取消前面）");
         Check.Equal("recognize,qrcode", string.Join(",", defaults.Groups[0].Select(CaptureActionLayout.KeyOf)),
-            "第一组：识别 + 二维码");
-        Check.Equal("cancel,copy", string.Join(",", defaults.Groups[^1].Select(CaptureActionLayout.KeyOf)),
-            "最后一组：取消 + 复制");
+            "第一叠：识别 + 二维码");
+        Check.Equal("cancel", string.Join(",", defaults.Groups[^2].Select(CaptureActionLayout.KeyOf)),
+            "竖线后面是「取消」");
+        Check.Equal("copy", string.Join(",", defaults.Groups[^1].Select(CaptureActionLayout.KeyOf)),
+            "最后一叠：复制（与取消相邻、中间没有竖线，照上游）");
         Check.Equal(
-            "识别文字 显示二维码 │ 录屏 │ 贴图到屏幕 实时贴图 │ 长截图 │ 打印 快速保存 另存为 │ 更多 │ 取消 复制",
-            defaults.Describe(), "摘要把分组与中文名都写出来");
+            "识别文字 显示二维码 │ 录屏 │ 贴图到屏幕 实时贴图 │ 识别并翻译 │ 长截图 │ 打印 快速保存 另存为 │ 更多 │ | │ 取消 │ 复制",
+            defaults.Describe(), "摘要把每一叠与中文名都写出来（竖线写 |）");
 
         // ============ 键往返 ============
 
@@ -39,7 +42,7 @@ internal static partial class CaptureProSuite
                 $"{CaptureActionLayout.LabelOf(tool)} 的键能认回来");
         Check.True(CaptureActionLayout.ToolOf("not-a-tool") is null, "认不出的键给 null（不做兼容 / 别名）");
         Check.True(CaptureActionLayout.ToolOf("") is null, "空键给 null");
-        Check.Equal(12, CaptureActionLayout.Catalog.Count, "目录 12 个动作");
+        Check.Equal(13, CaptureActionLayout.Catalog.Count, "目录 13 个动作");
 
         // ============ 归一：未知键丢掉 / 重复只算一次 / 空组丢掉 ============
 
@@ -68,25 +71,26 @@ internal static partial class CaptureProSuite
             new[] { "print", "print", "recognize", "bogus" });
         Check.True(appended.Groups.SelectMany(g => g).Contains(CaptureActionTool.Copy),
             "没提到的 copy 自动补回来（新版加动作不用改配置文件）");
-        Check.Equal(12, appended.VisibleCount + appended.Hidden.Count,
+        Check.Equal(13, appended.VisibleCount + appended.Hidden.Count,
             "补回来之后每个动作要么可见要么隐藏");
-        Check.Equal(8, appended.Groups.Count,
-            "补回来的按默认分组各起一组（3 组原有 + 5 组补回）");
+        Check.Equal(3, appended.Groups.Count,
+            "补回来的动作并进最后一叠（3 叠原有，不再各起一叠）");
         Check.True(appended.Describe().Contains("复制"), "摘要里有补回来的动作");
 
         // 全空 = 默认布局（首次启动 / 老配置）
         var empty = CaptureActionLayout.Parse(null, null);
-        Check.Equal(7, empty.Groups.Count, "两个字段都空 → 默认布局");
+        Check.Equal(9, empty.Groups.Count, "两个字段都空 → 默认布局");
         Check.Equal(0, empty.Hidden.Count, "两个字段都空 → 一个都不隐藏");
-        Check.Equal(7, CaptureActionLayout.Parse(new string[0], new string[0]).Groups.Count,
+        Check.Equal(9, CaptureActionLayout.Parse(new string[0], new string[0]).Groups.Count,
             "空集合也按默认布局");
 
         // ============ 落盘往返 ============
 
         var lines = defaults.ToLines();
         var hidden = defaults.ToHidden();
-        Check.Equal(7, lines.Count, "一行一组");
-        Check.Equal("recognize,qrcode", lines[0], "第一行就是第一组");
+        Check.Equal(10, lines.Count, "一行一叠（竖线也占一行）");
+        Check.Equal("recognize,qrcode", lines[0], "第一行就是第一叠");
+        Check.Equal("-", lines[7], "第八行是那条竖线");
         Check.Equal(0, hidden.Count, "没有隐藏项时是空集合");
         Check.Equal(defaults.Describe(), CaptureActionLayout.Parse(lines, hidden).Describe(),
             "写出去再读回来完全一致");
@@ -109,7 +113,7 @@ internal static partial class CaptureProSuite
         Check.Equal(4, built.Hidden.Count + built.VisibleCount,
             "FromGroups 不补新动作（编辑器里的清单就是全部）");
 
-        Check.Equal(7, CaptureActionLayout.FromGroups(new CaptureActionTool[0][], new CaptureActionTool[0])
+        Check.Equal(9, CaptureActionLayout.FromGroups(new CaptureActionTool[0][], new CaptureActionTool[0])
             .Groups.Count, "什么都不给 = 默认布局");
 
         // ============ 编辑模式里用不到的动作自动跳过 ============
@@ -132,6 +136,8 @@ internal static partial class CaptureProSuite
             "编辑模式没有取消（Esc 只退裁剪）");
         Check.False(CaptureToolbar.ActionAvailableIn(CaptureActionTool.QrCode, CaptureToolbar.ToolbarMode.Edit),
             "编辑模式没有二维码开关");
+        Check.False(CaptureToolbar.ActionAvailableIn(CaptureActionTool.Translate, CaptureToolbar.ToolbarMode.Edit),
+            "编辑模式没有「识别并翻译」（图片编辑窗里没有识别流程）");
 
         foreach (var tool in CaptureActionLayout.Catalog)
             Check.True(CaptureToolbar.ActionAvailableIn(tool, CaptureToolbar.ToolbarMode.Capture),
