@@ -4,6 +4,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
+using LTools.Core;
 using LTools.Features.CapturePro;
 
 namespace LTools.Views.CapturePro;
@@ -22,18 +23,22 @@ public partial class CaptureSaveWindow : Window
 
     private readonly BitmapSource _image;
     private readonly string? _suggestedName;
+    private readonly ExportNameContext _names;
     private readonly List<(RadioButton Button, SaveFormat Value)> _formatChips = new();
     private readonly List<(RadioButton Button, double Value)> _scaleChips = new();
 
-    private SaveFormat _format = SaveFormat.Png;
+    private SaveFormat _format = ExportSettings.CurrentFormat;
     private double _percent = 100;
 
-    /// <param name="suggestedName">默认文件名（不含扩展名）；空 = <see cref="CaptureSave.DefaultName"/>。</param>
-    public CaptureSaveWindow(BitmapSource image, string? suggestedName = null)
+    /// <param name="suggestedName">默认文件名（不含扩展名）；空 = 按「截图输出」的模板生成。</param>
+    /// <param name="names">文件名模板里 <c>{AN}</c> / <c>{WN}</c> 的取值。</param>
+    public CaptureSaveWindow(BitmapSource image, string? suggestedName = null,
+        ExportNameContext names = default)
     {
         InitializeComponent();
         _image = image;
         _suggestedName = suggestedName;
+        _names = names;
     }
 
     /// <summary>真的写下去了（取消 / 失败都是 false）。</summary>
@@ -46,9 +51,12 @@ public partial class CaptureSaveWindow : Window
     {
         Preview.Source = _image;
         FolderBox.Text = _lastFolder ?? CaptureSave.DefaultFolder;
-        NameBox.Text = string.IsNullOrWhiteSpace(_suggestedName) ? CaptureSave.DefaultName : _suggestedName!;
+        NameBox.Text = string.IsNullOrWhiteSpace(_suggestedName)
+            ? CaptureSave.DefaultNameFor(_names)
+            : _suggestedName!;
 
         BuildChips();
+        QualityBox.Text = ExportSettings.Quality.ToString();
         UpdateMeta();
 
         // 文件名默认全选：想改名直接打字，不想改就按 Enter
@@ -170,8 +178,61 @@ public partial class CaptureSaveWindow : Window
         _lastFolder = folder;
         Saved = true;
         SavedPath = path;
-        try { DialogResult = true; }
-        catch (InvalidOperationException) { Close(); }   // 非模态打开时 DialogResult 不可用
+
+        // 「保存后显示结果」：留着对话框，把路径与体积显示出来（照 Snow Shot 的 show_save_result）
+        if (ExportSettings.ShowSaveResult)
+        {
+            ShowResult(path);
+            return;
+        }
+
+        Finish();
+    }
+
+    /// <summary>存完之后不关窗：显示结果条，主按钮换成「关闭」（Esc 也能关）。</summary>
+    private void ShowResult(string path)
+    {
+        ErrorText.Visibility = Visibility.Collapsed;
+        ResultText.Text = $"已保存 · {Path.GetFileName(path)} · {CaptureCatalog.FormatBytes(new FileInfo(path).Length)}";
+        ResultText.ToolTip = path;
+        ResultBar.Visibility = Visibility.Visible;
+
+        SaveBtn.Visibility = Visibility.Collapsed;
+        CancelBtn.Content = "关闭";
+        CancelBtn.Style = (Style)FindResource("PrimaryBtn");
+        CancelBtn.IsCancel = false;
+        NameBox.Focus();
+        NameBox.SelectAll();
+    }
+
+    private void OpenFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (SavedPath.Length == 0) return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe",
+                $"/select,\"{SavedPath}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("CapturePro.SaveOpenFolder", ex);
+        }
+    }
+
+    /// <summary>取消 = 没存就关；已经存过（结果条那一步）就是「关闭」，照样算保存成功。</summary>
+    private void Cancel_Click(object sender, RoutedEventArgs e) => Finish();
+
+    /// <summary>关窗：存过就交回 <c>DialogResult = true</c>，没存就是取消。</summary>
+    private void Finish()
+    {
+        if (Saved)
+        {
+            try { DialogResult = true; }
+            catch (InvalidOperationException) { Close(); }   // 非模态打开时 DialogResult 不可用
+            return;
+        }
+
+        Close();
     }
 
     private void Fail(string message)
@@ -188,3 +249,4 @@ public partial class CaptureSaveWindow : Window
         catch (InvalidOperationException) { }   // 鼠标已经松开 / 窗口正在关，忽略
     }
 }
+

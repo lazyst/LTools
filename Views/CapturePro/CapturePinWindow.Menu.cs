@@ -455,7 +455,10 @@ public partial class CapturePinWindow
 
     private void CopyImage()
     {
-        if (NativeClipboard.SetImage(_content)) ToastService.Show("贴图已复制", "贴图", 1600);
+        // 走统一的「截图输出」：勾了「复制贴图时自动保存」就顺带存一份，
+        // 勾了「复制图片文件到剪贴板」就把那个文件也放进去（贴图没有抓图时的窗口名，模板里 {AN}/{WN} 回落 Unknown）。
+        if (CaptureSave.CopyImage(_content, ExportSettings.ScenarioCopyPinned))
+            ToastService.Show("贴图已复制", "贴图", 1600);
         else ToastService.Show("复制贴图失败", "贴图", 0, ToastKind.error);
     }
 }

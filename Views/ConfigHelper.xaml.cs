@@ -387,7 +387,7 @@ public partial class ConfigHelperWindow : Window
     /// <summary>一级导航的 tag（与 <c>ConfigHelper.xaml</c> 的 RadioButton 一一对应；四个父项不在此表）。</summary>
     private static readonly HashSet<string> FirstLevelNav = new(StringComparer.Ordinal)
     {
-        "general", "actions", "subactions", "hotkeys", "triggers", "terminals", "backup",
+        "general", "actions", "subactions", "hotkeys", "output", "triggers", "terminals", "backup",
     };
 
     /// <summary>把某个二级下拉设为展开 / 收起，并记住这个状态。</summary>
@@ -586,6 +586,7 @@ public partial class ConfigHelperWindow : Window
         Page_Actions.Visibility = tag == "actions" ? Visibility.Visible : Visibility.Collapsed;
         Host_SubActions.Visibility = tag == "subactions" ? Visibility.Visible : Visibility.Collapsed;
         Host_Hotkeys.Visibility = tag == "hotkeys" ? Visibility.Visible : Visibility.Collapsed;
+        Page_Output.Visibility = tag == "output" ? Visibility.Visible : Visibility.Collapsed;
         Host_Macros.Visibility = macros ? Visibility.Visible : Visibility.Collapsed;
         Host_Triggers.Visibility = tag == "triggers" ? Visibility.Visible : Visibility.Collapsed;
         Host_SuperPanel.Visibility = superPanel ? Visibility.Visible : Visibility.Collapsed;
@@ -632,6 +633,7 @@ public partial class ConfigHelperWindow : Window
         if (!logs) ClearSubNav(FamilyLogs);
 
         if (tag == "terminals") PopulateTerminals();
+        if (tag == "output") PopulateExport();
         if (logs) PopulateLogging();
         // 只有「运行历史」页可见时才读历史文件（500 条 JSONL，别在别的页白读）
         if (logs && page == "history") LoadRunHistory();

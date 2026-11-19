@@ -57,6 +57,10 @@ internal static class CaptureSession
     {
         exit = CaptureExit.Cancelled;
 
+        // 文件名模板里的 {AN} / {WN}：必须在收起自己的窗口**之前**取（之后前台就变成桌面或别人了）
+        var names = ExportNameContext.Of(ForegroundAppCache.Current?.ExeName,
+            ForegroundAppCache.Current?.Title);
+
         var restore = TransientMinimize.MinimizeAll(owner);
         bool wasSuspended = HotkeyRegistry.Suspended;
         MouseHook.SetWindowPickerActive(true);
@@ -82,6 +86,7 @@ internal static class CaptureSession
 
             var overlay = new CaptureOverlayWindow(shot, ScreenShot.ToRectangle(area), sx, sy,
                 pending: pending);
+            overlay.ExportNames = names;
             bool? ok = overlay.ShowDialog();
             if (ok != true) return null;
 
@@ -154,7 +159,7 @@ internal static class CaptureSession
         {
             try
             {
-                NativeClipboard.SetImage(result.Image);
+                CaptureSave.CopyImage(result.Image, ExportSettings.ScenarioCopyScrolling, names);
                 ToastService.Show(
                     $"{result.Image.PixelWidth} × {result.Image.PixelHeight} px 已复制到剪贴板",
                     "长截图", 3000, ToastKind.success);
@@ -271,15 +276,19 @@ internal static class CaptureSession
     /// <remarks>
     /// 照 Snow Shot 的 <c>DirectCaptureWorkflow</c>（copy → 自动保存 → history）：
     /// 「截取当前显示器」「截取前台窗口」这两个入口不经过覆盖层，抓完直接落剪贴板。
-    /// 自动保存还没接（属 P7-d 的导出设置），这里只做复制 + 历史。
+    /// <paramref name="scenario"/> 是「执行完自动保存」的场景键（<see cref="ExportSettings.Scenarios"/>）。
     /// 失败抛异常（调用方是功能入口，由 <c>FeatureRunner</c> 弹失败提示）。
     /// </remarks>
-    public static BitmapSource? CaptureDirect(System.Drawing.Rectangle area, string source)
+    public static BitmapSource? CaptureDirect(System.Drawing.Rectangle area, string source, string scenario)
     {
         if (area.Width < 1 || area.Height < 1) return null;
 
+        // 文件名模板的 {AN} / {WN}：直接截图时前台就是目标窗口
+        var names = ExportNameContext.Of(ForegroundAppCache.Current?.ExeName,
+            ForegroundAppCache.Current?.Title);
+
         var image = ScreenCapture.CaptureSource(area.Left, area.Top, area.Width, area.Height);
-        NativeClipboard.SetImage(image);
+        CaptureSave.CopyImage(image, scenario, names);
 
         var entry = CaptureCatalog.Create(image.PixelWidth, image.PixelHeight,
             CaptureCatalog.KindShot, source);

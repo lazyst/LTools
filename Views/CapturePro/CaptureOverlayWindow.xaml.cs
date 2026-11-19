@@ -69,6 +69,12 @@ public partial class CaptureOverlayWindow : Window
     /// <summary>完成动作选了「识别并复制」：识别结果窗算完直接把全文写进剪贴板。</summary>
     public bool RecognizeCopyRequested { get; private set; }
 
+    /// <summary>
+    /// 文件名模板里 <c>{AN}</c> / <c>{WN}</c> 的取值：抓图那一刻的前台程序 / 窗口
+    /// （由 <see cref="CaptureSession"/> 在收起自己的窗口之前记下来）。
+    /// </summary>
+    public ExportNameContext ExportNames { get; set; } = ExportNameContext.Empty;
+
     /// <summary>完成动作选了「识别并翻译」：识别结果窗算完自动翻一遍（照上游 <c>captureAndTranslateText</c>）。</summary>
     public bool TranslateRequested { get; private set; }
 
@@ -610,12 +616,12 @@ public partial class CaptureOverlayWindow : Window
         switch (kind)
         {
             case FinishKind.Save:
-                if (!CaptureSave.TrySave(this, image)) return;   // 取消另存为 = 留在覆盖层，继续改
+                if (!CaptureSave.TrySave(this, image, null, ExportNames)) return;   // 取消另存为 = 留在覆盖层，继续改
                 break;
 
             case FinishKind.QuickSave:
                 // 快速保存不弹框：失败就留在覆盖层（提示已经由 CaptureSave 发出）
-                if (!CaptureSave.TryQuickSave(image)) return;
+                if (!CaptureSave.TryQuickSave(image, out _, ExportNames)) return;
                 break;
 
             case FinishKind.Print:
@@ -646,14 +652,10 @@ public partial class CaptureOverlayWindow : Window
                 break;
 
             default:
-                try
+                // 复制到剪贴板：顺带处理「执行完自动保存」与「把图片文件也复制到剪贴板」
+                if (!CaptureSave.CopyImage(image, ExportSettings.ScenarioCopy, ExportNames))
                 {
-                    NativeClipboard.SetImage(image);
-                }
-                catch (Exception ex)
-                {
-                    CrashLog.Write("CapturePro.Copy", ex);
-                    TrayService.Notify("复制截图失败：" + ex.Message);
+                    TrayService.Notify("复制截图失败：剪贴板被占用");
                     return;
                 }
                 break;

@@ -106,6 +106,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- 标题 + 输出尺寸（按住标题拖动窗口：自绘卡片没有标题栏） -->
@@ -164,13 +165,29 @@
                 </StackPanel>
             </Grid>
 
+            <!-- 保存结果（设置里「保存后显示结果」打开时，存完留着窗口显示这一条） -->
+            <Border x:Name="ResultBar" Grid.Row="2" Margin="0,12,0,0" Visibility="Collapsed"
+                    Background="{StaticResource ChromeWell}" BorderBrush="{StaticResource ChromeBorder}"
+                    BorderThickness="1" CornerRadius="6" Padding="10,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ResultText" Foreground="{StaticResource ChromeInk}" FontSize="11"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    <Button x:Name="OpenFolderBtn" Grid.Column="1" Content="打开文件夹"
+                            Style="{StaticResource GhostBtn}" Margin="8,0,0,0" Click="OpenFolder_Click"/>
+                </Grid>
+            </Border>
+
             <!-- 错误 + 按钮 -->
-            <Grid Grid.Row="2" Margin="0,12,0,0">
+            <Grid Grid.Row="3" Margin="0,12,0,0">
                 <TextBlock x:Name="ErrorText" Foreground="#DC2626" FontSize="11" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button Content="取消" Style="{StaticResource GhostBtn}" MinWidth="66"
-                            IsCancel="True"/>
+                    <Button x:Name="CancelBtn" Content="取消" Style="{StaticResource GhostBtn}" MinWidth="66"
+                            IsCancel="True" Click="Cancel_Click"/>
                     <Button x:Name="SaveBtn" Content="保存" Style="{StaticResource PrimaryBtn}" MinWidth="78"
                             Margin="8,0,0,0" IsDefault="True" Click="Save_Click"/>
                 </StackPanel>

@@ -183,7 +183,13 @@ internal static class CapturePinManager
         PinStacking.Presented(pin, preserveFocus: false);   // 新贴的排到组最前
         Sync(pin);
 
-        System.Threading.Tasks.Task.Run(() => PinStore.SaveAssets(record, image));
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            PinStore.SaveAssets(record, image);
+            // 「贴图到屏幕」勾了自动保存：贴图历史那份是截图缩略 + 原图，这里再按「截图输出」写一份
+            if (kind == PinStore.KindImage)
+                CaptureSave.AutoSave(image, ExportSettings.ScenarioPin);
+        });
         return pin;
     }
 

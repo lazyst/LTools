@@ -576,7 +576,7 @@ internal static class FeatureCatalog
         var rc = info.rcMonitor;
         CaptureSession.CaptureDirect(
             new System.Drawing.Rectangle(rc.Left, rc.Top, rc.Right - rc.Left, rc.Bottom - rc.Top),
-            "当前显示器");
+            "当前显示器", ExportSettings.ScenarioCurrentMonitor);
     }
 
     /// <summary>「截取前台窗口」：不弹覆盖层，抓完直接复制（照上游 <c>captureFocusedWindow</c>）。</summary>
@@ -590,7 +590,8 @@ internal static class FeatureCatalog
 
         var (x, y, w, h) = WindowFinder.GetVisibleBounds(hwnd);
         if (w <= 0 || h <= 0) throw new InvalidOperationException("前台窗口不可见，无法截图");
-        CaptureSession.CaptureDirect(new System.Drawing.Rectangle(x, y, w, h), "前台窗口");
+        CaptureSession.CaptureDirect(new System.Drawing.Rectangle(x, y, w, h), "前台窗口",
+            ExportSettings.ScenarioFocusedWindow);
     }
 
     /// <summary>「恢复上一张关闭的贴图」：没有可恢复的记录就提示一句（不是错误，照上游静默语义）。</summary>

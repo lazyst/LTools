@@ -26,6 +26,15 @@ internal static class Crc32
         return (~crc).ToString("x8", CultureInfo.InvariantCulture);
     }
 
+    /// <summary>同一份 CRC-32 的数值形态（PNG / ZIP 这类要自己拼 chunk 的地方用）。</summary>
+    public static uint Compute(ReadOnlySpan<byte> data)
+    {
+        uint crc = 0xFFFFFFFF;
+        foreach (byte value in data)
+            crc = Table[(crc ^ value) & 0xFF] ^ (crc >> 8);
+        return ~crc;
+    }
+
     private static uint[] BuildTable()
     {
         var table = new uint[256];

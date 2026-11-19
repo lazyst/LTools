@@ -132,6 +132,8 @@
                                      Checked="Nav_Changed" Tag="subactions"/>
                         <RadioButton x:Name="NavHotkeys" Style="{StaticResource NavRow}" Content="快捷键"
                                      Checked="Nav_Changed" Tag="hotkeys"/>
+                        <RadioButton x:Name="NavOutput" Style="{StaticResource NavRow}" Content="截图输出"
+                                     Checked="Nav_Changed" Tag="output"/>
                         <!-- 键鼠宏：第四个带二级下拉的父项（录制的宏 / 设置），与面板管理 / AI / 日志共用一套机制 -->
                         <RadioButton x:Name="NavMacros" Style="{StaticResource NavRow}"
                                      Checked="Nav_Changed" Tag="macros"
@@ -581,6 +583,191 @@
 
                 <!-- ============ 快捷键 ============ -->
                 <ContentControl x:Name="Host_Hotkeys" Visibility="Collapsed"/>
+
+                <!-- ============ 截图输出（格式 / 质量 / 压缩 / 目录 / 文件名模板 / 另存为 / 自动保存） ============ -->
+                <ScrollViewer x:Name="Page_Output" VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="保存位置" Margin="0,0,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="目录"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="ExportDirBox" MinHeight="32"
+                                             VerticalContentAlignment="Center"
+                                             LostFocus="ExportDir_LostFocus" KeyDown="ExportDir_KeyDown"
+                                             controls:TextBoxPlaceholder.Text="留空 = 系统「图片」文件夹"
+                                             ToolTip="自动保存、快速保存与「复制图片文件到剪贴板」都写在这里"/>
+                                    <Button Grid.Column="2" Style="{StaticResource Btn}" Content="浏览…"
+                                            MinWidth="72" Margin="8,0,0,0" Click="ExportBrowseDir_Click"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="0,6,0,0" TextWrapping="Wrap"
+                                           Text="留空 = 系统「图片」文件夹；目录不存在会自动创建。"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="格式" Margin="0,18,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="图片格式"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="ExportFormatCombo" MinHeight="32"
+                                              SelectionChanged="ExportFormat_Changed"
+                                              ToolTip="自动保存 / 快速保存 / 复制图片文件用的格式">
+                                        <ComboBoxItem Content="PNG（无损，支持透明）" Tag="png"/>
+                                        <ComboBoxItem Content="JPEG（有损，体积小）" Tag="jpeg"/>
+                                        <ComboBoxItem Content="BMP（未压缩位图）" Tag="bmp"/>
+                                        <ComboBoxItem Content="TIFF（无损，ZIP 压缩）" Tag="tiff"/>
+                                    </ComboBox>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="0,6,0,0" TextWrapping="Wrap"
+                                           Text="上游还能输出 WebP / JPEG XL / AVIF / PDF，本地没有对应的编码器，这四种之外的格式不列。"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="JPEG 质量"
+                                               VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <TextBox x:Name="ExportQualityBox" Width="72" MinHeight="32"
+                                                 VerticalContentAlignment="Center"
+                                                 LostFocus="ExportQuality_LostFocus" KeyDown="ExportQuality_KeyDown"
+                                                 ToolTip="0–100，越大越清晰、文件越大；只对 JPEG 生效"/>
+                                        <TextBlock Text="%" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource HintTextBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="PNG 压缩力度"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="ExportCompressionCombo" MinHeight="32"
+                                              SelectionChanged="ExportCompression_Changed"
+                                              ToolTip="低 = 存得快、文件大；高 = 存得慢、文件小；同样无损">
+                                        <ComboBoxItem Content="低（快）" Tag="low"/>
+                                        <ComboBoxItem Content="中（默认）" Tag="medium"/>
+                                        <ComboBoxItem Content="高（小）" Tag="high"/>
+                                    </ComboBox>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="文件名" Margin="0,18,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="另存为"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="ExportManualNameBox" MinHeight="32"
+                                             VerticalContentAlignment="Center"
+                                             LostFocus="ExportManualName_LostFocus"
+                                             KeyDown="ExportManualName_KeyDown"
+                                             ToolTip="手动「另存为」时预填的文件名（不含扩展名）"/>
+                                </Grid>
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="自动保存"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="ExportAutoNameBox" MinHeight="32"
+                                             VerticalContentAlignment="Center"
+                                             LostFocus="ExportAutoName_LostFocus"
+                                             KeyDown="ExportAutoName_KeyDown"
+                                             ToolTip="快速保存与「执行完自动保存」用的文件名（不含扩展名）"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="0,6,0,0" TextWrapping="Wrap">
+                                    <Run Text="{}{YYYY} 年 · {YY} 两位年 · {MM} 月 · {DD} 日 · {HH} 时 · {mm} 分 · {ss} 秒 · {zzz} 毫秒；"/>
+                                    <Run Text="{}{AN} 前台程序的进程名 · {WN} 前台窗口标题。"/>
+                                </TextBlock>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="0,4,0,0" TextWrapping="Wrap"
+                                           Text="文件名里不能出现的字符会换成 _，同一个目录下重名会自动加 (2)、(3)。"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="保存行为" Margin="0,18,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="另存为对话框"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="ExportDialogCombo" MinHeight="32"
+                                              SelectionChanged="ExportDialog_Changed"
+                                              ToolTip="手动保存时用哪个框">
+                                        <ComboBoxItem Content="LTools 自绘（带预览 / 尺寸 / 质量）" Tag="builtin"/>
+                                        <ComboBoxItem Content="Windows 自带" Tag="system"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <CheckBox x:Name="ExportShowResultBox" Content="保存之后留着对话框显示结果"
+                                          Margin="0,12,0,0" Checked="ExportShowResult_Changed"
+                                          Unchecked="ExportShowResult_Changed"/>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,0" TextWrapping="Wrap"
+                                           Text="存完不马上关，显示落盘路径与文件大小（Esc / 关闭再走）。"/>
+
+                                <CheckBox x:Name="ExportCopyFileBox" Content="复制截图时把图片文件也放进剪贴板"
+                                          Margin="0,12,0,0" Checked="ExportCopyFileBox_Changed"
+                                          Unchecked="ExportCopyFileBox_Changed"/>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,0" TextWrapping="Wrap"
+                                           Text="资源管理器与聊天软件粘贴出一个文件，图库软件仍读到图片本身。"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="执行完自动保存" Margin="0,18,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="0,0,0,8" TextWrapping="Wrap"
+                                           Text="勾上的动作在完成之后按上面的格式与目录顺带存一份（不改变原来的复制 / 贴图行为）。"/>
+                                <UniformGrid Columns="2">
+                                    <CheckBox x:Name="ExportAutoCopyBox" Content="复制截图" Margin="0,4"
+                                              Tag="copy_screenshot"
+                                              Checked="ExportAutoSave_Changed" Unchecked="ExportAutoSave_Changed"/>
+                                    <CheckBox x:Name="ExportAutoScrollingBox" Content="复制长截图" Margin="0,4"
+                                              Tag="copy_scrolling_screenshot"
+                                              Checked="ExportAutoSave_Changed" Unchecked="ExportAutoSave_Changed"/>
+                                    <CheckBox x:Name="ExportAutoPinnedBox" Content="复制贴图" Margin="0,4"
+                                              Tag="copy_pinned_image"
+                                              Checked="ExportAutoSave_Changed" Unchecked="ExportAutoSave_Changed"/>
+                                    <CheckBox x:Name="ExportAutoMonitorBox" Content="截取当前显示器" Margin="0,4"
+                                              Tag="capture_current_monitor"
+                                              Checked="ExportAutoSave_Changed" Unchecked="ExportAutoSave_Changed"/>
+                                    <CheckBox x:Name="ExportAutoWindowBox" Content="截取前台窗口" Margin="0,4"
+                                              Tag="capture_focused_window"
+                                              Checked="ExportAutoSave_Changed" Unchecked="ExportAutoSave_Changed"/>
+                                    <CheckBox x:Name="ExportAutoPinBox" Content="贴图到屏幕" Margin="0,4"
+                                              Tag="pin_to_screen"
+                                              Checked="ExportAutoSave_Changed" Unchecked="ExportAutoSave_Changed"/>
+                                </UniformGrid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
 
                 <!-- ============ 键鼠宏 ============ -->
                 <ContentControl x:Name="Host_Macros" Visibility="Collapsed"/>

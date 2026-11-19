@@ -200,8 +200,11 @@ public sealed class AppConfig
     /// <summary>拼图默认设置（方向 / 尺寸方式 / 外边距 / 间距 / 背景色 / 宫格行列）。</summary>
     public CollageFile Collage { get; set; } = new();
 
-    /// <summary>截图 Pro 的全局设置（现在只有「延时截图」的等待秒数）。</summary>
+    /// <summary>截图 Pro 的全局设置（「延时截图」的等待秒数 + 覆盖层指针动作）。</summary>
     public ScreenshotFile Screenshot { get; set; } = new();
+
+    /// <summary>截图输出：格式 / 质量 / 压缩 / 目录 / 文件名模板 / 另存为对话框 / 自动保存。</summary>
+    public ExportFile Export { get; set; } = new();
 
     /// <summary>
     /// 动作运行结束后的提示策略：不提示 / 只在失败时（默认）/ 成功也提示。

@@ -37,6 +37,7 @@ internal static class NativeClipboard
     [DllImport("kernel32.dll")] private static extern bool GlobalUnlock(IntPtr h);
     [DllImport("kernel32.dll")] private static extern int GlobalSize(IntPtr h);
     [DllImport("kernel32.dll")] private static extern IntPtr GlobalAlloc(uint uFlags, UIntPtr dwBytes);
+    [DllImport("kernel32.dll")] private static extern IntPtr GlobalFree(IntPtr h);
 
     private const uint CF_DIB = 8;
     private const uint CF_UNICODETEXT = 13;
@@ -277,49 +278,105 @@ internal static class NativeClipboard
             .ToList();
         if (list.Count == 0) return false;
 
-        // DROPFILES 头 20 字节 + 宽字符列表（每项以 \0 结尾，最后再补一个 \0）
-        int headerSize = 20;
-        int chars = list.Sum(p => p.Length + 1) + 1;
-        int bytes = headerSize + chars * 2;
-
         if (!OpenWithRetry()) return false;
         try
         {
             EmptyOwn();
 
-            IntPtr h = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, (UIntPtr)bytes);
+            IntPtr h = AllocHDrop(list);
             if (h == IntPtr.Zero) return false;
-            var p = GlobalLock(h);
-            if (p == IntPtr.Zero)
+            if (SetClipboardData(CF_HDROP, h) == IntPtr.Zero)
             {
-                Marshal.FreeHGlobal(h);
+                GlobalFree(h);
                 return false;
             }
-            try
-            {
-                Marshal.WriteInt32(p, 0, headerSize);   // pFiles
-                Marshal.WriteInt32(p, 4, 0);            // pt.x
-                Marshal.WriteInt32(p, 8, 0);            // pt.y
-                Marshal.WriteInt32(p, 12, 0);           // fNC
-                Marshal.WriteInt32(p, 16, 1);           // fWide
-
-                int at = headerSize;
-                foreach (string path in list)
-                {
-                    Marshal.Copy(path.ToCharArray(), 0, p + at, path.Length);
-                    at += path.Length * 2;
-                    Marshal.WriteInt16(p + at, 0);
-                    at += 2;
-                }
-                Marshal.WriteInt16(p + at, 0);
-            }
-            finally { GlobalUnlock(h); }
-
-            if (SetClipboardData(CF_HDROP, h) == IntPtr.Zero) return false;
             WriteDropEffect(cut);
             return true;
         }
         finally { CloseClipboard(); }
+    }
+
+    /// <summary>
+    /// 图片 + 文件一起放进剪贴板（Snow Shot 的「复制图片文件到剪贴板」）：
+    /// 现代应用读到 PNG / CF_DIB，资源管理器与聊天软件读到 CF_HDROP 的那个文件。
+    /// </summary>
+    public static bool SetImageAndFiles(BitmapSource image, IReadOnlyList<string> paths)
+    {
+        if (image == null) return false;
+
+        var list = paths
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p.Trim())
+            .ToList();
+
+        byte[]? png = Encode(image, new PngBitmapEncoder());
+        byte[]? dib = EncodeDib(image);
+
+        if (!OpenWithRetry()) return false;
+        try
+        {
+            EmptyOwn();
+            bool any = false;
+            if (png != null) any |= SetBytes(PngFormat, png);
+            if (dib != null) any |= SetBytes(CF_DIB, dib);
+
+            if (list.Count > 0)
+            {
+                IntPtr h = AllocHDrop(list);
+                if (h != IntPtr.Zero)
+                {
+                    if (SetClipboardData(CF_HDROP, h) == IntPtr.Zero) GlobalFree(h);
+                    else
+                    {
+                        WriteDropEffect(cut: false);
+                        any = true;
+                    }
+                }
+            }
+
+            return any;
+        }
+        finally { CloseClipboard(); }
+    }
+
+    /// <summary>DROPFILES 头 20 字节 + 宽字符列表（每项以 \0 结尾，最后再补一个 \0）。</summary>
+    private static IntPtr AllocHDrop(IReadOnlyList<string> list)
+    {
+        int headerSize = 20;
+        int chars = list.Sum(p => p.Length + 1) + 1;
+        int bytes = headerSize + chars * 2;
+
+        IntPtr h = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, (UIntPtr)bytes);
+        if (h == IntPtr.Zero) return IntPtr.Zero;
+
+        var p = GlobalLock(h);
+        if (p == IntPtr.Zero)
+        {
+            GlobalFree(h);
+            return IntPtr.Zero;
+        }
+
+        try
+        {
+            Marshal.WriteInt32(p, 0, headerSize);   // pFiles
+            Marshal.WriteInt32(p, 4, 0);            // pt.x
+            Marshal.WriteInt32(p, 8, 0);            // pt.y
+            Marshal.WriteInt32(p, 12, 0);           // fNC
+            Marshal.WriteInt32(p, 16, 1);           // fWide
+
+            int at = headerSize;
+            foreach (string path in list)
+            {
+                Marshal.Copy(path.ToCharArray(), 0, p + at, path.Length);
+                at += path.Length * 2;
+                Marshal.WriteInt16(p + at, 0);
+                at += 2;
+            }
+            Marshal.WriteInt16(p + at, 0);
+        }
+        finally { GlobalUnlock(h); }
+
+        return h;
     }
 
     private static int ReadDropEffect()
