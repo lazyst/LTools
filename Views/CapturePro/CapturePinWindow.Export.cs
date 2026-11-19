@@ -31,6 +31,7 @@ public partial class CapturePinWindow
 
         _exporting = true;
         ApplyFrame();
+        SyncShadow();
         try
         {
             string name = $"贴图-{DateTime.Now:yyyyMMdd-HHmmss}";
@@ -40,6 +41,7 @@ public partial class CapturePinWindow
         {
             _exporting = false;
             ApplyFrame();
+            SyncShadow();
         }
     }
 }

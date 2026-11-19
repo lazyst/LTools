@@ -16,33 +16,48 @@ internal static class PinMath
 {
     public const double ZoomMin = 0.1;
     public const double ZoomMax = 4.0;
-    public const double ZoomStep = 0.1;
 
     public const double OpacityMin = 0.2;
     public const double OpacityMax = 1.0;
-    public const double OpacityStep = 0.05;
 
     /// <summary>滚轮一格（120）走几档；按整数倍取，免得来回滚一次回不到原值。</summary>
     private static int Steps(int delta) => delta == 0 ? 0 : Math.Max(1, (int)Math.Round(Math.Abs(delta) / 120.0));
 
-    /// <summary>缩放一步（<paramref name="delta"/> 为滚轮增量，正 = 放大）。</summary>
-    public static double NextZoom(double zoom, int delta)
+    /// <summary>
+    /// 缩放一步（<paramref name="delta"/> 为滚轮增量，正 = 放大）。
+    /// </summary>
+    /// <remarks>
+    /// 照上游 <c>applyWheelScaleSteps</c>：滚轮在「步长的整数倍」这排档位之间跳，
+    /// 不是往当前值上加减——拖边框得到 137% 时滚一格是 140%，不是 147%。
+    /// <paramref name="stepPercent"/> 来自 <see cref="PinSettings.ZoomStepPercent"/>（默认 10）。
+    /// </remarks>
+    public static double NextZoom(double zoom, int delta, int stepPercent = PinSettings.DefaultZoomStep)
     {
         int steps = Steps(delta);
         if (steps == 0) return ClampZoom(zoom);
 
-        double next = Math.Round(zoom + (delta > 0 ? steps : -steps) * ZoomStep, 4);
-        return ClampZoom(next);
+        int step = PinSettings.NormalizeStep(stepPercent, PinSettings.DefaultZoomStep);
+        int displayed = (int)Math.Round(ClampZoom(zoom) * 100);
+        bool up = delta > 0;
+        double currentLevel = (double)displayed / step;
+        double level = up ? Math.Floor(currentLevel) : Math.Ceiling(currentLevel);
+        int target = (int)Math.Round(level * step + (up ? steps : -steps) * step);
+        return ClampZoom(Math.Round(target / 100.0, 4));
     }
 
-    /// <summary>不透明度一步（<paramref name="delta"/> 为滚轮增量，正 = 更不透明）。</summary>
-    public static double NextOpacity(double opacity, int delta)
+    /// <summary>
+    /// 不透明度一步（<paramref name="delta"/> 为滚轮增量，正 = 更不透明）。
+    /// 照上游 <c>handleOpacityWheel</c>：直接加减步长（百分点），夹在 20–100。
+    /// </summary>
+    public static double NextOpacity(double opacity, int delta, int stepPercent = PinSettings.DefaultOpacityStep)
     {
         int steps = Steps(delta);
         if (steps == 0) return ClampOpacity(opacity);
 
-        double next = Math.Round(opacity + (delta > 0 ? steps : -steps) * OpacityStep, 4);
-        return ClampOpacity(next);
+        int step = PinSettings.NormalizeStep(stepPercent, PinSettings.DefaultOpacityStep);
+        int displayed = (int)Math.Round(ClampOpacity(opacity) * 100);
+        int target = displayed + (delta > 0 ? steps : -steps) * step;
+        return ClampOpacity(Math.Round(target / 100.0, 4));
     }
 
     public static double ClampZoom(double zoom) => Math.Clamp(zoom, ZoomMin, ZoomMax);
@@ -53,13 +68,36 @@ internal static class PinMath
     /// 缩放后窗口左上角该放哪：让窗口里 <paramref name="at"/> 那个点（DIP）缩放前后**落在同一处屏幕位置**。
     /// 没有它的话滚轮缩放会「窗口左上角不动」，光标下的内容跟着跑。
     /// </summary>
-    public static Point AnchoredOrigin(Point origin, Size oldSize, Size newSize, Point at)
+    public static Point AnchoredOrigin(Point origin, Size oldSize, Size newSize, Point at) =>
+        AnchoredOrigin(origin, oldSize, newSize, at, PinSettings.ZoomMousePosition);
+
+    /// <summary>
+    /// 按滚轮锚点设置缩放：<c>mouse_position</c> 用光标在窗口里的比例，
+    /// 四角 / 中心用固定比例（照上游 <c>scaleAnchorFromSetting</c>）。
+    /// </summary>
+    public static Point AnchoredOrigin(Point origin, Size oldSize, Size newSize, Point at, string? mode)
     {
-        double rx = oldSize.Width > 0.5 ? Math.Clamp(at.X / oldSize.Width, 0, 1) : 0.5;
-        double ry = oldSize.Height > 0.5 ? Math.Clamp(at.Y / oldSize.Height, 0, 1) : 0.5;
+        var (rx, ry) = Ratio(oldSize, mode, at);
         return new Point(
-            origin.X + at.X - rx * newSize.Width,
-            origin.Y + at.Y - ry * newSize.Height);
+            origin.X + rx * (oldSize.Width - newSize.Width),
+            origin.Y + ry * (oldSize.Height - newSize.Height));
+    }
+
+    /// <summary>某个滚轮锚点在窗口里的实际位置（取景框里当缩放锚点用）。</summary>
+    public static Point AnchorPoint(Size size, string? mode, Point at)
+    {
+        var (rx, ry) = Ratio(size, mode, at);
+        return new Point(rx * size.Width, ry * size.Height);
+    }
+
+    private static (double X, double Y) Ratio(Size size, string? mode, Point at)
+    {
+        var (rx, ry) = PinSettings.AnchorRatio(mode);
+        if (!double.IsNaN(rx)) return (rx, ry);
+
+        rx = size.Width > 0.5 ? Math.Clamp(at.X / size.Width, 0, 1) : 0.5;
+        ry = size.Height > 0.5 ? Math.Clamp(at.Y / size.Height, 0, 1) : 0.5;
+        return (rx, ry);
     }
 
     /// <summary>

@@ -34,6 +34,7 @@ public partial class CapturePinWindow
         if (_selected == on) return;
         _selected = on;
         ApplyFrame();
+        SyncShadow();          // 活动态的阴影色也跟着换
         RefreshBadges();
     }
 
@@ -247,6 +248,22 @@ public partial class CapturePinWindow
         var locked = new MenuItem { Header = "锁定位置", IsCheckable = true, IsChecked = _locked };
         locked.Click += (_, _) => SetLocked(!_locked);
         menu.Items.Add(locked);
+
+        // 边框 / 阴影：每张贴图自己的状态（照上游 PinnedWindowRecord.showBorder / showShadow），
+        // 存进贴图历史，贴回时保持原样；实时贴图不画边框（内容每拍都在换）。
+        var border = new MenuItem
+        {
+            Header = "显示边框",
+            IsCheckable = true,
+            IsChecked = !_live && _showBorder,
+            IsEnabled = !_live,
+        };
+        border.Click += (_, _) => SetShowBorder(!_showBorder);
+        menu.Items.Add(border);
+
+        var shadow = new MenuItem { Header = "显示阴影", IsCheckable = true, IsChecked = _showShadow };
+        shadow.Click += (_, _) => SetShowShadow(!_showShadow);
+        menu.Items.Add(shadow);
 
         // 局部显示：长截图钉在屏幕上比屏幕还大时用——取景框固定，拖着看
         var viewport = new MenuItem
@@ -509,6 +526,7 @@ public partial class CapturePinWindow
         if (locked) ExitHideToTop();          // 锁定要看得见整块贴图；收顶部状态先退出
         _locked = locked;
         ApplyFrame();
+        SyncShadow();                          // 锁定的阴影色（locked_shadow_color）也要立刻换
         if (locked && (_dragging || _panning || _maybeSelect))
         {
             _dragging = false;

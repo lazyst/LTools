@@ -61,6 +61,7 @@ public partial class CapturePinWindow
         if (_fileDragActive == on) return;
         _fileDragActive = on;
         ApplyFrame();
+        SyncShadow();
     }
 
     private void UpdateDropEffects(DragEventArgs e)

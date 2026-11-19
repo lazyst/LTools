@@ -143,6 +143,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "绘制行为：工具键对照 / 清单归一 / 默认值 / 组首按钮", DrawingCases));
         cases.Add(new("capturePro", "截图行为：默认值 / 归一 / HiDPI / PDF 版面 / 光标混合 / 拖边框", BehaviorCases));
         cases.Add(new("capturePro", "截图界面与参考线：归一 / 单位 / 显隐 / 色值 / 参考线几何", OverlayUiCases));
+        cases.Add(new("capturePro", "贴图窗口：归一 / 滚轮档位 / 缩放锚点 / 阴影带宽", PinWindowCases));
     }
 
     private static void Geometry()

@@ -251,25 +251,28 @@ public partial class CapturePinWindow
         ExitHideToTop();
         if (_locked) return;
 
-        // Ctrl + 滚轮 = 不透明度；单独滚 = 缩放（缩放锚在光标下，见 PinMath.AnchoredOrigin）
+        // Ctrl + 滚轮 = 不透明度；单独滚 = 缩放（缩放锚点按设置，见 PinSettings.ZoomMode）
         if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0)
         {
             // 滚轮改的是**用户不透明度**，穿透态下那一份不参与（照上游 applyEffectiveOpacity）
-            SetOpacityPercent((int)Math.Round(PinMath.NextOpacity(_opacityPercent / 100.0, e.Delta) * 100));
+            SetOpacityPercent((int)Math.Round(PinMath.NextOpacity(_opacityPercent / 100.0, e.Delta,
+                PinSettings.OpacityStepPercent) * 100));
             return;
         }
 
         if (_thumb) return;      // 缩略图里滚轮不改缩放（要改先双击还原）
 
-        double next = PinMath.NextZoom(_zoom, e.Delta);
+        double next = PinMath.NextZoom(_zoom, e.Delta, PinSettings.ZoomStepPercent);
         if (Math.Abs(next - _zoom) < 0.0001) return;
 
         Point at = e.GetPosition(this);
+        string mode = PinSettings.ZoomMode;
 
         if (_viewport)
         {
             // 取景框不跟图走：只换内容缩放，再用锚点算出该看哪一块
-            Vector pan = PinMath.ZoomAnchoredPan(_pan, at, _zoom, next);
+            Point anchor = PinMath.AnchorPoint(new Size(Width, Height), mode, at);
+            Vector pan = PinMath.ZoomAnchoredPan(_pan, anchor, _zoom, next);
             ApplyZoom(next);
             _pan = PinMath.ClampPan(pan, ContentSize, new Size(Width, Height));
             ApplyContent();
@@ -281,7 +284,7 @@ public partial class CapturePinWindow
 
         ApplyZoom(next);
 
-        Point moved = PinMath.AnchoredOrigin(origin, oldSize, new Size(Width, Height), at);
+        Point moved = PinMath.AnchoredOrigin(origin, oldSize, new Size(Width, Height), at, mode);
         Left = moved.X;
         Top = moved.Y;
     }
@@ -311,7 +314,9 @@ public partial class CapturePinWindow
 
         ApplyZoom(target);
 
-        Point moved = PinMath.AnchoredOrigin(origin, oldSize, new Size(Width, Height), anchor);
+        // 菜单里的缩放固定以窗口中心为锚（滚轮才按 PinSettings.ZoomMode）
+        Point moved = PinMath.AnchoredOrigin(origin, oldSize, new Size(Width, Height), anchor,
+            PinSettings.ZoomCenter);
         Left = moved.X;
         Top = moved.Y;
     }
@@ -348,8 +353,10 @@ public partial class CapturePinWindow
     {
         bool hover = _hovering || IsMouseOver;
 
-        // 穿透态鼠标根本点不到贴图，✕ 摆出来也点不动（退出走控制栏的圆按钮），干脆不画
-        CloseBtn.Visibility = hover && !_clickThrough && PinMath.ShowsHoverButtons(Width, Height, _thumb)
+        // 穿透态鼠标根本点不到贴图，✕ 摆出来也点不动（退出走控制栏的圆按钮），干脆不画；
+        // 设置里关掉「显示窗口按钮」时同样不画（出口仍在：双击 / 右键菜单）
+        CloseBtn.Visibility = PinSettings.ShowWindowButtons &&
+                              hover && !_clickThrough && PinMath.ShowsHoverButtons(Width, Height, _thumb)
             ? Visibility.Visible
             : Visibility.Collapsed;
 
@@ -387,21 +394,23 @@ public partial class CapturePinWindow
         bool backdrop = !_live && (_thumb || !Checkerboard);
         Backdrop.Visibility = backdrop ? Visibility.Visible : Visibility.Collapsed;
         ApplyFrame();
+        SyncShadow();
     }
 
     /// <summary>
-    /// 边框颜色同时表达几种状态：多选（2px 亮蓝）优先，其次拖入 / 拖出（2px 强调蓝，
-    /// 照上游 <c>pin_to_screen/border_active_color</c> 的 #69B1FF），再其次锁定（亮蓝）、
-    /// 局部显示（淡蓝），最后是默认的 1px 白边。
+    /// 边框颜色同时表达几种状态：多选 / 拖入拖出（2px 活动色，照上游
+    /// <c>pin_to_screen/border_active_color</c>）优先，其次锁定（<c>locked_border_color</c>），
+    /// 再其次局部显示（普通色 40% 透明度），最后是普通的 1px 边框（<c>border_color</c>）。
     /// </summary>
     /// <remarks>
     /// 图里已经烘进阴影 / 边框（<see cref="PinAppearance.SuppressesFrame"/>）时整圈描边收起：
     /// 那圈内边距也是图的一部分，再包一个方框就成了「画框」。
     /// 直角 / 只有圆角时描边跟着圆角走（<see cref="PinAppearance.RadiusDip"/>）。
+    /// 这张贴图自己关掉了边框（右键菜单）也整圈收起。
     /// </remarks>
     private void ApplyFrame()
     {
-        if (_live || _appearance.SuppressesFrame)
+        if (_live || !_showBorder || _appearance.SuppressesFrame)
         {
             Frame.Visibility = Visibility.Collapsed;
             return;
@@ -410,26 +419,8 @@ public partial class CapturePinWindow
         Frame.Visibility = Visibility.Visible;
         Frame.CornerRadius = new CornerRadius(_thumb ? 0 : _appearance.RadiusDip(_scale, _zoom));
 
-        if (_selected)
-        {
-            // 2px 描边是「压在图上」画的（见 XAML 里 Frame 的注释），加粗不会挤动内容
-            Frame.BorderThickness = new Thickness(2);
-            Frame.BorderBrush = new SolidColorBrush(Color.FromRgb(0x3B, 0x82, 0xF6));
-            return;
-        }
-
-        if (_fileDragActive || _exporting)
-        {
-            Frame.BorderThickness = new Thickness(2);
-            Frame.BorderBrush = new SolidColorBrush(Color.FromRgb(0x69, 0xB1, 0xFF));
-            return;
-        }
-
-        Frame.BorderThickness = new Thickness(1);
-        Frame.BorderBrush = new SolidColorBrush(_locked
-            ? Color.FromRgb(0x3B, 0x82, 0xF6)
-            : _viewport
-                ? Color.FromArgb(0x66, 0x3B, 0x82, 0xF6)
-                : Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF));
+        // 2px 描边是「压在图上」画的（见 XAML 里 Frame 的注释），加粗不会挤动内容
+        Frame.BorderThickness = new Thickness(DecorActive ? 2 : 1);
+        Frame.BorderBrush = new SolidColorBrush(BorderTint());
     }
 }

@@ -67,6 +67,10 @@ public partial class CapturePinWindow : Window
     private PinAppearance _appearance = PinAppearance.None;   // 图自带的选区外观（圆角 / 阴影 / 边框）
     private bool _checkerboard;                              // 透明棋盘格（有形状时为真，剪贴板元数据可显式带）
 
+    private bool _showBorder;                                // 这张贴图自己画不画边框（右键菜单可切）
+    private bool _showShadow;                                // 这张贴图自己画不画阴影（独立分层窗口）
+    private PinShadowWindow? _shadow;                        // 阴影窗口（只在 _showShadow 且可见时存在）
+
     private IntPtr _liveHwnd;                // 实时贴图跟的源窗口
     private uint _livePid;                   // 源窗口属于哪个程序（句柄换了要在同一个程序里找回）
     private string _liveClass = "";          // 源窗口的类名（句柄换了的兜底只认同一个类名）
@@ -107,6 +111,10 @@ public partial class CapturePinWindow : Window
         InitDrop();
         InitPointerActions();
 
+        // 每张贴图自己的边框 / 阴影开关：新建时取全局默认，贴回时由记录覆盖（见 SetDecoration）
+        _showBorder = PinSettings.ShowBorderByDefault;
+        _showShadow = PinSettings.ShowShadowByDefault;
+
         _content = image;        _scale = scale > 0 ? scale : 1;
         _zoom = PinMath.ClampZoom(zoom);
         Shot.Source = image;
@@ -134,13 +142,19 @@ public partial class CapturePinWindow : Window
         {
             SyncLiveLayer();
             SyncClickThroughGeometry();
+            SyncShadow();
         };
         SizeChanged += (_, _) =>
         {
             SyncLiveLayer();
             SyncClickThroughGeometry();
+            SyncShadow();
         };
-        IsVisibleChanged += (_, _) => _thumbLayer?.SetShown(IsVisible);
+        IsVisibleChanged += (_, _) =>
+        {
+            _thumbLayer?.SetShown(IsVisible);
+            SyncShadow();
+        };
     }
 
     /// <summary>
@@ -254,6 +268,7 @@ public partial class CapturePinWindow : Window
         int h = Math.Max(1, (int)Math.Round(Height * _scale));
         Win32.SetWindowPos(_hwnd, Win32.HwndTopmost, Area.X, Area.Y, w, h, Win32.SwpNoactivate);
         RaiseToTop();
+        SyncShadow();          // 阴影窗口要等句柄建好才能插到贴图下面
 
         // 自己的位置 / 尺寸一变就把内容层对齐当拍（拖窗口时是系统模态移动循环，等不到 200ms 的定时器）。
         // 照 Snow Shot 的 `WM_WINDOWPOSCHANGED → synchronize()`：移动循环里也不会落后一帧。
@@ -298,6 +313,9 @@ public partial class CapturePinWindow : Window
 
         // 穿透控件是同级窗口，贴图一抬头就会把它们盖住——跟着一起提。
         _ctBar?.RaiseToTop();
+
+        // 阴影在贴图**下面**：抬头之后要重新插一次，否则会沉到别的贴图后面
+        _shadow?.Place(_hwnd);
     }
 
     protected override void OnClosed(EventArgs e)
@@ -306,6 +324,7 @@ public partial class CapturePinWindow : Window
         ShutdownOcr();                         // 在途识别作废（回来时窗口已经不在了）
         ShutdownHideToTop();                   // 顶边手柄是独立窗口，关窗时一起带走
         ShutdownClickThrough();                // 穿透控件是独立窗口，不关会留在屏幕上
+        ShutdownShadow();                      // 阴影也是独立窗口，跟着一起关
         _menu?.IsOpen = false;
         _menu = null;
         base.OnClosed(e);

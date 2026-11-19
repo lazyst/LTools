@@ -403,6 +403,194 @@
                             </StackPanel>
                         </Border>
 
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 贴图窗口" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <CheckBox x:Name="PinShowBorderBox"
+                                          Content="新贴图默认显示边框"
+                                          Checked="PinWindowToggle_Changed" Unchecked="PinWindowToggle_Changed"/>
+                                <CheckBox x:Name="PinShowShadowBox" Margin="0,8,0,0"
+                                          Content="新贴图默认显示阴影"
+                                          Checked="PinWindowToggle_Changed" Unchecked="PinWindowToggle_Changed"/>
+                                <CheckBox x:Name="PinWindowButtonsBox" Margin="0,8,0,0"
+                                          Content="显示右上角窗口按钮（关闭 ✕）"
+                                          ToolTip="照上游 pin_to_screen/show_window_buttons"
+                                          Checked="PinWindowToggle_Changed" Unchecked="PinWindowToggle_Changed"/>
+                                <CheckBox x:Name="PinConfirmCloseBox" Margin="0,8,0,0"
+                                          Content="关闭贴图前先确认（还能从贴图管理页贴回）"
+                                          ToolTip="照上游 pin_to_screen/confirm_before_closing_window，默认关；「删除贴图」另有一套默认开着的确认"
+                                          Checked="PinWindowToggle_Changed" Unchecked="PinWindowToggle_Changed"/>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="0,6,0,0" TextWrapping="Wrap"
+                                           Text="这两项只是「新贴图默认怎么显示」；每张贴图自己的边框 / 阴影在右键菜单里切，贴回时保持原样。"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="滚轮缩放锚点" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="PinWheelModeCombo" MinHeight="32"
+                                              SelectionChanged="PinWindowSelect_Changed"
+                                              ToolTip="滚轮缩放时哪个点不动（照上游 pin_to_screen/mouse_wheel_zoom_mode）">
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="滚轮缩放步长" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="PinZoomStepCombo" MinHeight="32"
+                                              SelectionChanged="PinWindowSelect_Changed"
+                                              ToolTip="滚轮一格改多少缩放（照上游 pin_to_screen/mouse_wheel_zoom_step，默认 10%）"/>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="滚轮不透明度步长" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="PinOpacityStepCombo" MinHeight="32"
+                                              SelectionChanged="PinWindowSelect_Changed"
+                                              ToolTip="Ctrl / Shift + 滚轮一格改多少不透明度（照上游 pin_to_screen/mouse_wheel_opacity_step，默认 5%）"/>
+                                </Grid>
+
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="142,6,0,0" TextWrapping="Wrap"
+                                           Text="颜色都是 #RRGGBBAA；「活动」用于选中 / 拖入拖出，「锁定」用于锁定位置。"/>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="边框色" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="PinBorderColorBtn" Style="{StaticResource Btn}"
+                                            MinHeight="32" Padding="10,4" HorizontalAlignment="Left"
+                                            Click="PinBorderColor_Click"
+                                            ToolTip="普通状态的贴图边框（照上游 pin_to_screen/border_color，默认 #DBDBDB）">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="PinBorderColorSwatch" Width="18" Height="18"
+                                                    CornerRadius="3" BorderBrush="{StaticResource BorderStrongBrush}"
+                                                    BorderThickness="1" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="PinBorderColorText" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="活动边框色" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="PinBorderActiveColorBtn" Style="{StaticResource Btn}"
+                                            MinHeight="32" Padding="10,4" HorizontalAlignment="Left"
+                                            Click="PinBorderActiveColor_Click"
+                                            ToolTip="选中 / 拖入拖出时的边框（照上游 pin_to_screen/border_active_color，默认 #69B1FF）">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="PinBorderActiveColorSwatch" Width="18" Height="18"
+                                                    CornerRadius="3" BorderBrush="{StaticResource BorderStrongBrush}"
+                                                    BorderThickness="1" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="PinBorderActiveColorText" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="锁定边框色" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="PinLockedBorderColorBtn" Style="{StaticResource Btn}"
+                                            MinHeight="32" Padding="10,4" HorizontalAlignment="Left"
+                                            Click="PinLockedBorderColor_Click"
+                                            ToolTip="锁定位置后的边框（照上游 pin_to_screen/locked_border_color，默认 #FAAD14）">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="PinLockedBorderColorSwatch" Width="18" Height="18"
+                                                    CornerRadius="3" BorderBrush="{StaticResource BorderStrongBrush}"
+                                                    BorderThickness="1" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="PinLockedBorderColorText" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="阴影色" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="PinShadowColorBtn" Style="{StaticResource Btn}"
+                                            MinHeight="32" Padding="10,4" HorizontalAlignment="Left"
+                                            Click="PinShadowColor_Click"
+                                            ToolTip="普通状态的贴图阴影（照上游 pin_to_screen/shadow_color，默认 #BFBFBF）">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="PinShadowColorSwatch" Width="18" Height="18"
+                                                    CornerRadius="3" BorderBrush="{StaticResource BorderStrongBrush}"
+                                                    BorderThickness="1" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="PinShadowColorText" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="活动阴影色" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="PinShadowActiveColorBtn" Style="{StaticResource Btn}"
+                                            MinHeight="32" Padding="10,4" HorizontalAlignment="Left"
+                                            Click="PinShadowActiveColor_Click"
+                                            ToolTip="选中 / 拖入拖出时的阴影（照上游 pin_to_screen/shadow_active_color，默认 #69B1FF）">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="PinShadowActiveColorSwatch" Width="18" Height="18"
+                                                    CornerRadius="3" BorderBrush="{StaticResource BorderStrongBrush}"
+                                                    BorderThickness="1" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="PinShadowActiveColorText" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="锁定阴影色" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="PinLockedShadowColorBtn" Style="{StaticResource Btn}"
+                                            MinHeight="32" Padding="10,4" HorizontalAlignment="Left"
+                                            Click="PinLockedShadowColor_Click"
+                                            ToolTip="锁定位置后的阴影（照上游 pin_to_screen/locked_shadow_color，默认 #FAAD14）">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border x:Name="PinLockedShadowColorSwatch" Width="18" Height="18"
+                                                    CornerRadius="3" BorderBrush="{StaticResource BorderStrongBrush}"
+                                                    BorderThickness="1" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="PinLockedShadowColorText" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 绘制行为" Margin="0,4,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>

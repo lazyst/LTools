@@ -98,6 +98,18 @@ internal sealed class PinRecord
     public string Decoration { get; set; } = PinAppearance.DecorationNone;
 
     /// <summary>
+    /// 这张贴图自己的「显示边框」开关（照上游 <c>PinnedWindowRecord.showBorder</c>）；
+    /// 缺字段的老记录按 <b>显示</b>（与全局默认一致）。
+    /// </summary>
+    public bool ShowBorder { get; set; } = true;
+
+    /// <summary>
+    /// 这张贴图自己的「显示阴影」开关（照上游 <c>PinnedWindowRecord.showShadow</c>）；
+    /// 缺字段的老记录按<b>不显示</b>（与全局默认一致）。
+    /// </summary>
+    public bool ShowShadow { get; set; }
+
+    /// <summary>
     /// 贴的是什么：<c>image</c> / <c>text</c> / <c>color</c>（颜色取样板）。
     /// 文字与色卡会把原文留在 <see cref="Text"/> 里，贴回时按它重画（上游也是从文字重渲染）。
     /// </summary>
@@ -291,7 +303,7 @@ internal static class PinStore
         double scale, string source, string group, bool live,
         string kind = KindImage, string text = "", int cardWidth = 0, PinTextSnapshot? textStyle = null,
         bool clickThrough = false, int clickThroughOpacity = PinClickThrough.DefaultOpacity,
-        PinAppearance? appearance = null)
+        PinAppearance? appearance = null, bool showBorder = true, bool showShadow = false)
     {
         var now = DateTime.Now;
         var look = (appearance ?? PinAppearance.None).Clamp(width, height);
@@ -324,6 +336,8 @@ internal static class PinStore
                 RadiusPx = look.RadiusPx,
                 EffectPx = look.EffectPx,
                 Decoration = look.Decoration,
+                ShowBorder = showBorder,
+                ShowShadow = showShadow,
             };
 
             items.Insert(0, record);
@@ -413,6 +427,30 @@ internal static class PinStore
             if (record.HideToTop != on) { record.HideToTop = on; dirty = true; }
             if (record.HideToTopX != left) { record.HideToTopX = left; dirty = true; }
             if (record.HideToTopAccent != accent) { record.HideToTopAccent = accent; dirty = true; }
+
+            if (!dirty) return;
+            SaveUnsafe(items);
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// 记一张贴图自己的「显示边框 / 显示阴影」（右键菜单切换时写）。
+    /// 两个值都没变就直接返回，不白写盘。
+    /// </summary>
+    public static void UpdateDecoration(string id, bool showBorder, bool showShadow)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+
+        lock (Gate)
+        {
+            var items = LoadUnsafe();
+            var record = items.FirstOrDefault(e => e.Id == id);
+            if (record == null) return;
+
+            bool dirty = false;
+            if (record.ShowBorder != showBorder) { record.ShowBorder = showBorder; dirty = true; }
+            if (record.ShowShadow != showShadow) { record.ShowShadow = showShadow; dirty = true; }
 
             if (!dirty) return;
             SaveUnsafe(items);

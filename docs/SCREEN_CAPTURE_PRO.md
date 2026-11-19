@@ -1080,6 +1080,43 @@ Id 与已经删掉的 Id 都不复活。
 （菜单入口 / 夹具灌 3 行后的画布几何与白纸页 / 状态条与菜单复制项 / 真滚轮 / 真鼠标划选 / 复制 /
 真鼠标点退出按钮 / 指针动作秒开缓存 / 3841×2160 门槛；落图 `out/pin-ocr.png`）。
 
+### 9.13 贴图窗口外观与滚轮（P9-d1，2026-11-19）
+
+照上游 `configurationschema.cpp` 的 `pin_to_screen/*` 十二项。**全局那几项只是「新建时默认怎么显示」**；
+「这张贴图自己画不画边框 / 阴影」是每张贴图的状态（右键菜单可切，存进 `pins/pins.json`，贴回时保持原样）。
+
+| 项 | 上游默认 | LTools |
+|---|---|---|
+| `show_border_by_default` | true | 新贴图默认画 1px 边框 |
+| `show_shadow_by_default` | false | 新贴图默认不画阴影 |
+| `border_color` / `border_active_color` / `locked_border_color` | `#DBDBDBFF` / `#69B1FFFF` / `#FAAD14FF` | 普通 / 活动（选中 · 拖入拖出 · 拖出）/ 锁定；局部显示用普通色 40% |
+| `shadow_color` / `shadow_active_color` / `locked_shadow_color` | `#BFBFBFFF` / `#69B1FFFF` / `#FAAD14FF` | 与边框同一套状态优先级 |
+| `mouse_wheel_zoom_mode` | `mouse_position` | 六个锚点：光标位置 / 四角 / 窗口中心 |
+| `mouse_wheel_zoom_step` | 10 | 档位式（见下），1–50 |
+| `mouse_wheel_opacity_step` | 5 | `Ctrl` / `Shift` + 滚轮直接加减，1–50 |
+| `show_window_buttons` | true | 右上角 ✕（悬停才出，小窗口 / 缩略图 / 穿透态本来就不画） |
+| `confirm_before_closing_window` | false | 「关闭贴图」前确认；与「删除贴图」默认开着的确认是两件事 |
+
+- **读写只有一个口**：`Features/CapturePro/PinSettings.cs`（进程内缓存 + 只写 `settings.json` 的
+  `PinToScreen` 段 + `Invalidate()`）。滚轮与拖动路径每帧都要问，读盘只发生一次。
+- **滚轮是「档位」不是「加步长」**（照上游 `applyWheelScaleSteps`）：缩放按步长的整数倍跳，
+  拖边框得到 137% 时滚一格向上到 140%、向下到 130%；不透明度照 `handleOpacityWheel` 直接加减。
+  锚点照 `scaleAnchorFromSetting`：`mouse_position` 用光标在窗口里的比例，其余固定角 / 中心。
+- **阴影是独立分层窗口**（`Views/CapturePro/PinShadowWindow.cs`）：内容外 **16 物理像素**带宽
+  （逻辑像素模式 12）、峰值 `0.36`、`(1-d/w)^4` 衰减——本地用「圆角矩形 + 高斯模糊」逼近同一条曲线。
+  **不改贴图窗口几何**（宽高就是内容宽高，拖动 / 缩放 / 吸附 / 导出全按它算），只跟着
+  `Left/Top/Width/Height` 走，`SetWindowPos(hwnd, 贴图句柄)` 插到贴图正下方，`WS_EX_TRANSPARENT`
+  不吃鼠标。`CapturePinWindow.Decor.cs` 的 `SyncShadow` 在移动 / 缩放 / 显隐 / 抬头 / 状态变化时都调一次。
+- **状态色也要刷新阴影**：`SetLocked` / `SetSelected` / 拖入拖出 / 拖出成文件都同时 `ApplyFrame()` + `SyncShadow()`，
+  否则边框变黄了阴影还是灰的（冒烟抓到的真 bug）。
+- **关闭确认走 `ConfirmDialog` 且不带 Owner**：贴图永远不是前台窗口（`WS_EX_NOACTIVATE`），
+  拿它当 Owner 会被 DWM 画成黑块。
+
+回归：`--selftest` 的「贴图窗口：归一 / 滚轮档位 / 缩放锚点 / 阴影带宽」+ `capture-overlay-smoke` 的
+`pinsettings` 段（默认值与落盘 / 归一化 / 设置页 4 勾选 + 3 下拉 + 6 色块回显与改动 / 真贴图窗口的
+边框开关与记录写回 / 阴影窗口几何与峰值 / 挪动跟随 / 锁定状态色 / ✕ 开关 / 右键菜单两项 / 真滚轮
+档位（10% 与 25%）与 137% 向上取档 / 关掉再贴回按记录恢复；落图 `out/pin-settings.png`）。
+
 
 ## 10. 识别（P2 / P4-a / P4-b）
 

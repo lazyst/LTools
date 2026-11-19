@@ -67,8 +67,17 @@ public partial class CapturePinWindow
     }
 
     /// <summary>「关闭贴图」的出口（双击 / 中键 / ✕ / 右键菜单共用）。</summary>
+    /// <remarks>
+    /// 「关闭」只是把窗口收起来，记录还在贴图管理页里、能贴回来，所以确认默认是<b>关</b>的
+    /// （<c>pin_to_screen/confirm_before_closing_window</c>）；「删除」另有一套默认开着的确认。
+    /// </remarks>
     internal void RequestUserClose()
     {
+        if (PinSettings.ConfirmBeforeClosingWindow &&
+            !ConfirmDialog.Confirm(null, "关闭贴图", "要关闭这张贴图吗？之后可以在贴图管理页贴回来。",
+                okText: "关闭"))
+            return;
+
         Close();
     }
 

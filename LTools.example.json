@@ -188,7 +188,20 @@
     "ShakeWindowToHideOthers": true,
     "DoubleClickAction": "thumbnail_mode",
     "MiddleButtonAction": "reset_zoom",
-    "ConfirmBeforeDestroyingWindow": true
+    "ConfirmBeforeDestroyingWindow": true,
+    "ConfirmBeforeClosingWindow": false,
+    "ShowBorderByDefault": true,
+    "ShowShadowByDefault": false,
+    "BorderColor": "#DBDBDBFF",
+    "BorderActiveColor": "#69B1FFFF",
+    "LockedBorderColor": "#FAAD14FF",
+    "ShadowColor": "#BFBFBFFF",
+    "ShadowActiveColor": "#69B1FFFF",
+    "LockedShadowColor": "#FAAD14FF",
+    "MouseWheelZoomMode": "mouse_position",
+    "MouseWheelOpacityStep": 5,
+    "MouseWheelZoomStep": 10,
+    "ShowWindowButtons": true
   },
   "Collage": {
     "Direction": "vertical",

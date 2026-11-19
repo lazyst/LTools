@@ -272,11 +272,21 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "pinsettings")
+        {
+            PinSettingsSection();
+            Console.WriteLine(_failed == 0 ? "pinsettings-only：通过" : $"pinsettings-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
 
         // ============ 截图界面与参考线（P9-c：工具条尺寸 / 单位 / 参考线 / 取色格式） ============
         OverlayUiSection();
+
+        // ============ 贴图窗口设置（P9-d1：边框 / 阴影 / 滚轮 / 按钮 / 关闭确认） ============
+        PinSettingsSection();
 
         const int width = 1600, height = 900;
         var shot = BuildShot(width, height);
@@ -4697,6 +4707,10 @@ internal static partial class Program
         var previewType = asm.GetType("LTools.Views.CapturePro.PinDragPreview")!;
         var retentionType = asm.GetType("LTools.Features.CapturePro.PinDragRetention")!;
 
+        // P9-d1 起边框色不再是写死的白，而是设置里的 pin_to_screen/border_color
+        var pinSettingsType = asm.GetType("LTools.Features.CapturePro.PinSettings")!;
+        var normalBorder = (Color)pinSettingsType.GetProperty("BorderColor", Stat)!.GetValue(null)!;
+
         var pin = manager.GetMethod("Pin")!.Invoke(null, new object[]
         {
             image, new Int32Rect(420, 260, image.PixelWidth, image.PixelHeight), "screenshot", null,
@@ -4764,8 +4778,8 @@ internal static partial class Program
 
             Call("SetFileDragActive", false);
             Check(Math.Abs(frame.BorderThickness.Left - 1) < 0.01, "拖放：离开后回到 1px");
-            Check(((SolidColorBrush)frame.BorderBrush).Color == Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF),
-                "拖放：离开后回到默认白边");
+            Check(((SolidColorBrush)frame.BorderBrush).Color == normalBorder,
+                $"拖放：离开后回到设置里的普通边框色（{normalBorder}）");
 
             // 判定：支持的文件收、不支持的拒
             var probe = new DataObject();
@@ -6110,16 +6124,13 @@ internal static partial class Program
         // 先清空，避免上一次冒烟留下的记录影响条数断言
         storeType.GetMethod("Clear")!.Invoke(null, null);
 
-        var create = storeType.GetMethod("Create")!;
         var saveAssets = storeType.GetMethod("SaveAssets")!;
 
         object Make(string source, string group, int x)
         {
-            object record = create.Invoke(null, new object[]
-            {
+            object record = CallStatic(storeType, "Create",
                 image.PixelWidth, image.PixelHeight, x, 150, image.PixelWidth, image.PixelHeight,
-                1.0, source, group, false, "image", "", 0, null, false, 50, null,
-            })!;
+                1.0, source, group, false, "image", "", 0, null, false, 50, null)!;
             saveAssets.Invoke(null, new object[] { record, image });
             return record;
         }

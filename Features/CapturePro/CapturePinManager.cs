@@ -192,7 +192,7 @@ internal static class CapturePinManager
         var record = PinStore.Create(image.PixelWidth, image.PixelHeight,
             area.X, area.Y, area.Width, area.Height, scale, source, group, live: false,
             kind: kind, text: text, cardWidth: cardWidth, textStyle: textStyle,
-            appearance: appearance);
+            appearance: appearance, showBorder: pin.ShowBorder, showShadow: pin.ShowShadow);
         pin.PinId = record.Id;
 
         Pins.Add(pin);
@@ -221,6 +221,7 @@ internal static class CapturePinManager
         PinStore.UpdateState(pin.PinId, pin.Group, pin.Left, pin.Top, pin.Width, pin.Height, pin.Live);
         PinStore.UpdateClickThrough(pin.PinId, pin.ClickThrough, pin.ClickThroughOpacity);
         PinStore.UpdateHideToTop(pin.PinId, pin.HideToTopActive, pin.HideToTopLeftPhysical, pin.HideToTopAccent);
+        PinStore.UpdateDecoration(pin.PinId, pin.ShowBorder, pin.ShowShadow);
     }
 
     /// <summary>
@@ -361,6 +362,7 @@ internal static class CapturePinManager
     {
         string group = CreateGroup(record.Group) ?? PinGroups.Default;
         pin.SetGroup(group);
+        pin.SetDecoration(record.ShowBorder, record.ShowShadow);   // 边框 / 阴影按记录恢复
 
         PinStore.Reopen(record.Id);
         Pins.Add(pin);
