@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace LTools.Config;
 
 /// <summary>
@@ -33,4 +35,23 @@ public sealed class ScreenshotFile
     /// <c>screenshot/screenshot_sound_notification</c>，默认关）。
     /// </summary>
     public bool? ScreenshotSound { get; set; } = false;
+
+    /// <summary>
+    /// 描边颜色预设（照上游 <c>screenshot/stroke_color_presets</c>）：恒 5 个
+    /// <c>#RRGGBBAA</c>，主色 / 文字描边色 / 聚光共用。空 = 用
+    /// <see cref="Features.CapturePro.ColorPresets"/> 的默认值。
+    /// </summary>
+    public List<string>? StrokeColorPresets { get; set; }
+
+    /// <summary>
+    /// 填充颜色预设（照上游 <c>screenshot/fill_color_presets</c>）：恒 5 个
+    /// <c>#RRGGBBAA</c>，填充色 / 文字底色 / 箭头外描边共用。
+    /// </summary>
+    public List<string>? FillColorPresets { get; set; }
+
+    /// <summary>
+    /// 荧光颜色预设（照上游 <c>screenshot/highlight_color_presets</c>）：恒 5 个
+    /// <c>#RRGGBBAA</c>，荧光笔与矩形荧光共用。
+    /// </summary>
+    public List<string>? HighlightColorPresets { get; set; }
 }

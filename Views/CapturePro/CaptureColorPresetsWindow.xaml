@@ -1,0 +1,93 @@
+<Window x:Class="LTools.Views.CapturePro.CaptureColorPresetsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:LTools.Views"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:LTools.Views.Controls"
+        Title="颜色预设" Width="560" ResizeMode="NoResize" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
+        views:WindowSizing.Mode="Dialog">
+    <!-- 照上游设置里的三项颜色预设（screenshot/stroke_color_presets /
+         fill_color_presets / highlight_color_presets）：每项恒定 5 个，
+         决定截图参数条上那排快捷颜色。 -->
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <controls:DialogShell>
+        <controls:DialogShell.Footer>
+            <Grid Margin="20,10,20,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="HintText" Grid.Column="0" Style="{StaticResource HintLabel}"
+                           VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0"
+                           Text="点色块改颜色；改完点「保存」立刻生效。"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource BtnGhost}" Content="取消" MinWidth="74"
+                            Margin="0,0,8,0" IsCancel="True" Click="Cancel_Click"/>
+                    <Button Style="{StaticResource BtnPrimary}" Content="保存" MinWidth="74"
+                            IsDefault="True" Click="Ok_Click"/>
+                </StackPanel>
+            </Grid>
+        </controls:DialogShell.Footer>
+
+        <ScrollViewer Margin="20,10,20,10" MaxHeight="440"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="描边色" Style="{StaticResource SectionLabel}"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Content="恢复默认" Style="{StaticResource BtnGhost}"
+                                MinWidth="88" Tag="Stroke" Click="Reset_Click"/>
+                    </Grid>
+                    <WrapPanel x:Name="StrokePalette" Margin="0,6,0,0"/>
+                    <TextBlock Style="{StaticResource HintLabel}" Margin="0,2,0,0" TextWrapping="Wrap"
+                               Text="主色（线条 / 形状 / 箭头本体）、文字描边色、聚光都用这一排。"/>
+                </StackPanel>
+
+                <StackPanel Margin="0,16,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="填充色" Style="{StaticResource SectionLabel}"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Content="恢复默认" Style="{StaticResource BtnGhost}"
+                                MinWidth="88" Tag="Fill" Click="Reset_Click"/>
+                    </Grid>
+                    <WrapPanel x:Name="FillPalette" Margin="0,6,0,0"/>
+                    <TextBlock Style="{StaticResource HintLabel}" Margin="0,2,0,0" TextWrapping="Wrap"
+                               Text="形状填充、文字底色（背景填充）、箭头外描边都用这一排；第一个默认是透明，色块上有棋盘格。"/>
+                </StackPanel>
+
+                <StackPanel Margin="0,16,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="荧光色" Style="{StaticResource SectionLabel}"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Content="恢复默认" Style="{StaticResource BtnGhost}"
+                                MinWidth="88" Tag="Highlight" Click="Reset_Click"/>
+                    </Grid>
+                    <WrapPanel x:Name="HighlightPalette" Margin="0,6,0,0"/>
+                    <TextBlock Style="{StaticResource HintLabel}" Margin="0,2,0,0" TextWrapping="Wrap"
+                               Text="荧光笔与矩形荧光用这一排（半透明的高亮色）。"/>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </controls:DialogShell>
+</Window>

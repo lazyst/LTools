@@ -787,6 +787,7 @@ public partial class ConfigHelperWindow : Window
         PopulateScreenshotDelay();
         PopulatePointerActions();
         PopulateCaptureSound();
+        PopulateCaptureColorPresets();
         PopulateCaptureShortcuts();
     }
 

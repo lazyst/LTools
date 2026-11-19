@@ -311,6 +311,30 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="颜色预设" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="CaptureColorPresetsButton" Style="{StaticResource Btn}"
+                                            Content="编辑…" MinHeight="32" Padding="14,4"
+                                            HorizontalAlignment="Left" Click="CaptureColorPresets_Click"
+                                            ToolTip="截图参数条上那排快捷颜色（描边 / 填充 / 荧光各 5 个）"/>
+                                </Grid>
+                                <TextBlock x:Name="CaptureColorPresetsHint" Style="{StaticResource HintLabel}"
+                                           Margin="120,6,0,0" TextWrapping="Wrap"
+                                           Text="描边 / 填充 / 荧光各 5 个快捷色，改完立刻生效；每族第一个默认值分别是红、透明、浅红。"/>
+
+                                <CheckBox x:Name="CaptureSyncColorsBox" Margin="0,12,0,0"
+                                          Content="新建标注共用一套颜色（描边 / 填充 / 荧光统一）"
+                                          ToolTip="照上游 drawing/sync_tool_colors：打开后改一处描边色 = 所有工具一起改"
+                                          Checked="CaptureSyncColors_Changed" Unchecked="CaptureSyncColors_Changed"/>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,6,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="关着时每个工具各记各的颜色（默认）。打开后改一次描边色，画笔 / 形状 / 箭头等一起换。"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
                                                Text="全局快捷键" VerticalAlignment="Center"/>
                                     <Button Grid.Column="1" x:Name="CaptureShortcutsButton" Style="{StaticResource Btn}"
                                             Content="设置…" MinHeight="32" Padding="14,4"

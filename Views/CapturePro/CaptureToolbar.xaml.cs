@@ -1005,7 +1005,8 @@ public partial class CaptureToolbar : UserControl
         // 主色：共享颜色开着时改一处 = 全改（由 ToolStyleSet 统一处理）
         AddHost(ToolParam.Color, ColorRow("颜色", "captureColor",
             () => _style?.Color ?? ToolStyle.Palette[0],
-            SetPrimaryColor));
+            SetPrimaryColor,
+            () => ColorPresets.ForTool(ParamTool)));
 
         // 文字族（上游 buildTextFamily）：字色 → 字号 + 字体族 → 粗 / 斜 → 水平对齐 →
         // 描边宽度 + 描边色 → 背景填充色 + 填充方式 → 背景圆角。
@@ -1029,7 +1030,8 @@ public partial class CaptureToolbar : UserControl
 
         AddHost(ToolParam.TextStrokeColor, ColorRow("描边色", "captureTextStroke",
             () => _style?.StrokeColor ?? TextInk.DefaultStroke,
-            c => { if (_style != null) _style.StrokeColor = c; }));
+            c => { if (_style != null) _style.StrokeColor = c; },
+            ColorPresetFamily.Stroke));
 
         // 线宽 / 字号 / 块大小 / 透明度
         AddHost(ToolParam.Width, Step("线宽", 1, 50, 1,
@@ -1069,7 +1071,8 @@ public partial class CaptureToolbar : UserControl
 
         AddHost(ToolParam.FillColor, ColorRow("填充色", "captureFillColor",
             () => _style?.FillColor ?? ToolStyle.DefaultFillColor,
-            c => { if (_style != null) _style.FillColor = c; }));
+            c => { if (_style != null) _style.FillColor = c; },
+            ColorPresetFamily.Fill));
 
         AddHost(ToolParam.FillStyle, Chips("填充",
             new[] { FillKind.None, FillKind.Solid, FillKind.Line, FillKind.CrossLine },
@@ -1198,7 +1201,8 @@ public partial class CaptureToolbar : UserControl
 
         AddHost(ToolParam.ArrowOutlineColor, ColorRow("描边色", "captureArrowOutline",
             () => _style?.ArrowOutlineColor ?? ArrowSpec.DefaultOutline,
-            c => { if (_style != null) _style.ArrowOutlineColor = c; }));
+            c => { if (_style != null) _style.ArrowOutlineColor = c; },
+            ColorPresetFamily.Fill));
 
         AddHost(ToolParam.StartArrowhead, Picker("起点",
             ArrowGeometry.Heads,
@@ -1511,42 +1515,73 @@ public partial class CaptureToolbar : UserControl
     /// 主色（跟共享颜色开关联动）/ 填充色 / 文字描边色各来一排，**同一份实现**——
     /// 别为某个颜色再写一遍「造胶囊 + _syncing 回填」。
     /// </summary>
-    private FrameworkElement ColorRow(string label, string group, Func<Color> get, Action<Color> set)
+    /// <remarks>
+    /// 三族的预设色（描边 / 填充 / 荧光）一次全建出来，按
+    /// <paramref name="family"/> 决定哪一族可见——主色那一排在荧光笔与矩形荧光上换成荧光预设，
+    /// 换工具时 <see cref="Sync"/> 会重跑 refresher，格子跟着换，不用重建参数条。
+    /// </remarks>
+    private FrameworkElement ColorRow(string label, string group, Func<Color> get, Action<Color> set,
+        Func<ColorPresetFamily> family)
     {
         var host = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         host.Children.Add(Label(label));
 
-        var chips = new List<RadioButton>();
-        foreach (var color in ToolStyle.Palette)
+        var rows = new List<(ColorPresetFamily Family, List<RadioButton> Chips)>();
+        foreach (var preset in new[]
+                 {
+                     ColorPresetFamily.Stroke, ColorPresetFamily.Fill, ColorPresetFamily.Highlight,
+                 })
         {
-            var chip = new RadioButton
+            var chips = new List<RadioButton>();
+            string chipGroup = group + "-" + preset;
+
+            foreach (var color in ColorPresets.Get(preset))
             {
-                Style = (Style)FindResource("ColorChip"),
-                GroupName = group,
-                Background = new SolidColorBrush(color),
-                Tag = color,
-                ToolTip = $"#{(int)color.R:X2}{(int)color.G:X2}{(int)color.B:X2}",
-            };
-            chip.Checked += (_, _) =>
-            {
-                if (_syncing) return;
-                set((Color)chip.Tag);
-                StyleChanged?.Invoke();
-            };
-            chips.Add(chip);
-            host.Children.Add(chip);
+                var chip = new RadioButton
+                {
+                    Style = (Style)FindResource("ColorChip"),
+                    GroupName = chipGroup,
+                    Background = ColorPresets.Swatch(color),
+                    Tag = color,
+                    ToolTip = ColorPresets.Format(color),
+                    Visibility = Visibility.Collapsed,
+                };
+                chip.Checked += (_, _) =>
+                {
+                    if (_syncing) return;
+                    set((Color)chip.Tag);
+                    StyleChanged?.Invoke();
+                };
+                chips.Add(chip);
+                host.Children.Add(chip);
+            }
+
+            rows.Add((preset, chips));
         }
 
         _refreshers.Add(() =>
         {
-            var current = get();
+            var current = family();
+            var value = get();
             _syncing = true;
-            foreach (var chip in chips) chip.IsChecked = (Color)chip.Tag == current;
+            foreach (var (preset, chips) in rows)
+            {
+                bool active = preset == current;
+                foreach (var chip in chips)
+                {
+                    chip.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+                    chip.IsChecked = active && (Color)chip.Tag == value;
+                }
+            }
             _syncing = false;
         });
 
         return host;
     }
+
+    /// <summary>固定用某一族预设的颜色排（填充 / 文字描边 / 箭头外描边）。</summary>
+    private FrameworkElement ColorRow(string label, string group, Func<Color> get, Action<Color> set,
+        ColorPresetFamily family) => ColorRow(label, group, get, set, () => family);
 
     /// <summary>
     /// 字号：数字步进 + S / M / L / XL 四个预设（上游 <c>ScreenshotToolPaletteFontEditor</c> 的

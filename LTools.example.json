@@ -218,7 +218,28 @@
     "DoubleClickAction": "copy",
     "MiddleButtonAction": "pin",
     "ShutterSound": true,
-    "ScreenshotSound": false
+    "ScreenshotSound": false,
+    "StrokeColorPresets": [
+      "#F5222DFF",
+      "#52C41AFF",
+      "#1677FFFF",
+      "#FADB14FF",
+      "#000000FF"
+    ],
+    "FillColorPresets": [
+      "#FFFFFF00",
+      "#FFCCC7FF",
+      "#D9F7BEFF",
+      "#BAE0FFFF",
+      "#FFF1B8FF"
+    ],
+    "HighlightColorPresets": [
+      "#FF7875FF",
+      "#D3F261FF",
+      "#69B1FFFF",
+      "#FFF566FF",
+      "#B37FEBFF"
+    ]
   },
   "Triggers": {
     "Enabled": false,
