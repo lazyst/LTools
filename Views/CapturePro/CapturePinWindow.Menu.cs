@@ -167,6 +167,39 @@ public partial class CapturePinWindow
         };
         menu.Items.Add(collage);
 
+        // 显示文字：在贴图上跑一次 OCR，把文字按原行框铺回原图（照上游
+        // show_text_recognition_results）。尺寸过大 / 识别中不给点，也不假装有结果。
+        // 贴图不抢焦点、Ctrl+C 走不到这里，所以「复制所选 / 复制全文」就摆在这份菜单里。
+        PinOcrPhase ocrPhase = OcrPhase;
+        var ocr = new MenuItem
+        {
+            Header = PinOcr.MenuLabel(ocrPhase),
+            IsCheckable = ocrPhase != PinOcrPhase.TooLarge,
+            IsChecked = PinOcr.MenuChecked(ocrPhase),
+            IsEnabled = !_live && PinOcr.MenuEnabled(ocrPhase),
+        };
+        ocr.Click += (_, _) => ToggleOcrMode();
+        menu.Items.Add(ocr);
+
+        if (_ocrMode && ocrPhase == PinOcrPhase.Ready)
+        {
+            var copySelection = new MenuItem
+            {
+                Header = PinOcr.CopySelectionLabel,
+                IsEnabled = _ocrModel is { HasSelection: true },
+            };
+            copySelection.Click += (_, _) => CopyOcrSelection();
+            menu.Items.Add(copySelection);
+
+            var copyAll = new MenuItem
+            {
+                Header = PinOcr.CopyAllLabel,
+                IsEnabled = _ocrText.Length > 0,
+            };
+            copyAll.Click += (_, _) => CopyOcrAll();
+            menu.Items.Add(copyAll);
+        }
+
         AddLoadMenu(menu);
 
         var zoom = MenuFx.Submenu(menu, "缩放");

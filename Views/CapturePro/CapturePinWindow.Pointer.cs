@@ -43,7 +43,7 @@ public partial class CapturePinWindow
         ExecutePointerAction(action);
     }
 
-    /// <summary>立即可做的动作（重置缩放 / 缩略图 / 收到屏幕顶部）。</summary>
+    /// <summary>立即可做的动作（重置缩放 / 缩略图 / 收到屏幕顶部 / 显示文字）。</summary>
     private void ExecutePointerAction(PinPointerAction action)
     {
         switch (action)
@@ -60,7 +60,9 @@ public partial class CapturePinWindow
                 ToggleHideToTop();
                 break;
 
-            // TextRecognition 是上游另一个独立大功能（P4-j），实现前不假装有效果。
+            case PinPointerAction.TextRecognition:
+                ToggleOcrMode();
+                break;
         }
     }
 

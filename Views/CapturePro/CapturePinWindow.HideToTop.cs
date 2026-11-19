@@ -130,6 +130,7 @@ public partial class CapturePinWindow
     {
         if (_live || HideToTopActive || !IsVisible) return;
 
+        ExitOcrMode();                        // 只剩一条手柄时读不了字：先退出文字层
         if (_clickThrough) SetClickThrough(false);
         if (_locked) SetLocked(false);
         if (_thumb) SetThumbnail(false);

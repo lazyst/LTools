@@ -39,6 +39,10 @@ public partial class CapturePinWindow
             return;
         }
 
+        // 文字层（P4-j）：拖动 = 划选文字，不再移动窗口、也不跑双击动作
+        // （照上游 m_ocrMode 对 windowDragEligible / handleDoubleClick 的门禁）。
+        if (_ocrMode) return;
+
         // 双击：按设置执行（默认缩略图里 = 还原成整张图，再点一次又缩回去）。
         // 「关闭 / 删除」不是按下就做——先武装，按钮抬起之后一拍才动窗口（照上游）。
         if (e.ClickCount == 2)
@@ -80,6 +84,8 @@ public partial class CapturePinWindow
 
         // 点在自己的按钮上就交给按钮（和左键同一个理由）：不吞事件。
         if (IsOnButton(e.OriginalSource as DependencyObject)) return;
+
+        if (_ocrMode) return;      // 文字层里中键不跑指针动作（免得读字时把图关掉）
 
         e.Handled = true;
         InvokePointerAction(PointerSettings.PinMiddleClick, PointerButton.Middle);
@@ -237,6 +243,10 @@ public partial class CapturePinWindow
     {
         e.Handled = true;
 
+        // 文字层里滚轮不改缩放（照上游 applyWheelScale 的 m_ocrMode 门禁）：
+        // 一缩放选中的字就跟着跑位，读字时最不需要这个。
+        if (_ocrMode) return;
+
         // 滚轮要改缩放（= 几何），收顶部状态先退出；锁定的贴图本来就不响应滚轮。
         ExitHideToTop();
         if (_locked) return;
@@ -280,6 +290,7 @@ public partial class CapturePinWindow
     public void SetZoom(double zoom)
     {
         if (_live) return;                    // 实时那块永远 100%：缩放会让尺寸与选区对不上
+        if (_ocrMode) return;                 // 文字层里不改缩放（同上：选中会跑位，照上游 applyScale）
         ExitHideToTop();                      // 缩放会改窗口几何：先退出收顶部
         if (_thumb) SetThumbnail(false);      // 缩略图里改缩放 = 先还原（方块里缩放没有意义）
         double target = PinMath.ClampZoom(zoom);

@@ -61,7 +61,7 @@ internal static partial class CaptureProSuite
         Check.Equal(PinPointerAction.ResetZoom,
             PointerActions.ParsePin(PointerActions.DefaultPinMiddle), "默认：贴图中键 = 重置缩放");
 
-        // 下拉选项：键都能解析回来、标签不空；贴图那边**不列**还没实现的两项（不做假选项）
+        // 下拉选项：键都能解析回来、标签不空；贴图那组七项现在都已落地
         Check.Equal(8, PointerActions.OverlayOptions.Count, "覆盖层下拉 8 项");
         foreach (var (key, label) in PointerActions.OverlayOptions)
         {
@@ -70,7 +70,7 @@ internal static partial class CaptureProSuite
             Check.True(label.Length > 0, $"覆盖层选项 {key} 有中文名");
         }
 
-        Check.Equal(6, PointerActions.PinOptions.Count, "贴图下拉 6 项（收顶部已实现，识别结果还没做）");
+        Check.Equal(7, PointerActions.PinOptions.Count, "贴图下拉 7 项（收顶部 / 识别结果都已实现）");
         foreach (var (key, label) in PointerActions.PinOptions)
         {
             Check.True(PointerActions.ParsePin(key) != PinPointerAction.None || key == "none",
@@ -80,8 +80,8 @@ internal static partial class CaptureProSuite
 
         Check.True(ContainsKey(PointerActions.PinOptions, "hide_to_top"),
             "下拉里有「收顶部」（P5-i 已实现，不是假选项）");
-        Check.False(ContainsKey(PointerActions.PinOptions, "show_text_recognition_results"),
-            "下拉里没有假的「识别结果」");
+        Check.True(ContainsKey(PointerActions.PinOptions, "show_text_recognition_results"),
+            "下拉里有「显示文字识别结果」（P4-j 已实现，不是假选项）");
 
         // 实时贴图：只许「不处理 / 重置缩放 / 关闭」（照上游 liveCommandAllowed 的命令表）
         Check.True(PointerActions.AllowedInLive(PinPointerAction.None), "实时：不处理");
@@ -90,6 +90,7 @@ internal static partial class CaptureProSuite
         Check.False(PointerActions.AllowedInLive(PinPointerAction.ThumbnailMode), "实时：缩略图不允许");
         Check.False(PointerActions.AllowedInLive(PinPointerAction.Destroy), "实时：删除不允许");
         Check.False(PointerActions.AllowedInLive(PinPointerAction.HideToTop), "实时：收顶部不允许");
+        Check.False(PointerActions.AllowedInLive(PinPointerAction.TextRecognition), "实时：文字识别不允许");
 
         GestureCases();
     }

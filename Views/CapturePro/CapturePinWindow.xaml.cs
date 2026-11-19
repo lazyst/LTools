@@ -303,6 +303,7 @@ public partial class CapturePinWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         StopLive();                            // 关掉窗口就别再抓帧（定时器不停会一直 PrintWindow）
+        ShutdownOcr();                         // 在途识别作废（回来时窗口已经不在了）
         ShutdownHideToTop();                   // 顶边手柄是独立窗口，关窗时一起带走
         ShutdownClickThrough();                // 穿透控件是独立窗口，不关会留在屏幕上
         _menu?.IsOpen = false;

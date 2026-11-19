@@ -196,7 +196,7 @@ internal sealed class CaptureOcrCanvas : FrameworkElement
         var bounds = new Rect(0, 0, ImageWidth * Zoom, ImageHeight * Zoom);
 
         // 译文画进原图时底图是截图本身（上游 originalImageTranslation 的画布），
-        // 否则是白纸（文字层本身就是「重排后的文字」）。
+        // 否则是白纸（文字层本身就是「重排后的文字」，与上游识别内容页的容器底色一致）。
         if (TranslationOnImage && _sourceImage is ImageSource source)
             dc.DrawImage(source, bounds);
         else

@@ -71,6 +71,7 @@ public partial class CapturePinWindow
 
         if (on)
         {
+            ExitOcrMode();                            // 穿透态点不到文字：先退出文字层
             ExitHideToTop();                          // 穿透要看得见整块贴图：先退出收顶部
             if (_thumb) SetThumbnail(false);          // 缩略图与穿透互斥（照上游 setThumbnailMode）
             CancelGesture();

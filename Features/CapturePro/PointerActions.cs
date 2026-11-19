@@ -71,9 +71,8 @@ internal enum PinPointerAction
 /// 落到最后一支，什么都不做，而不是悄悄退回默认值。
 /// </para>
 /// <para>
-/// **设置里只列已经能做的动作**：<see cref="PinPointerAction.TextRecognition"/> 是上游另一个
-/// 独立大功能（P4-j），现在还没实现，所以 <see cref="PinOptions"/> 不列它（不做假选项）；
-/// 解析仍认这个键，以后补上实现时老配置直接生效。
+/// **设置里只列已经能做的动作**：贴图那一组七项都已落地（<c>hide_to_top</c> 见 P5-i、
+/// <c>show_text_recognition_results</c> 见 P4-j），不再有「解析认、下拉不列」的项。
 /// </para>
 /// </remarks>
 internal static class PointerActions
@@ -184,6 +183,7 @@ internal static class PointerActions
         ("reset_zoom", "重置缩放"),
         ("thumbnail_mode", "缩略图模式"),
         ("hide_to_top", "收到屏幕顶部"),
+        ("show_text_recognition_results", "显示文字识别结果"),
         ("close", "关闭贴图"),
         ("destroy", "删除贴图"),
     };

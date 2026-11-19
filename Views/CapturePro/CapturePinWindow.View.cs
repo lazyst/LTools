@@ -22,6 +22,7 @@ public partial class CapturePinWindow
     public void SetViewport(bool on)
     {
         if (_live) return;                    // 实时贴图不切取景框：窗口尺寸一变就和选区那块脱钩了
+        if (on && _ocrMode) ExitOcrMode();    // 取景框里文字层拖不动也看不全：先退出文字层
         ExitHideToTop();                      // 换形态前先退出收顶部（几何要变了）
         if (_viewport == on) return;
         if (on && _thumb) SetThumbnail(false);        // 两种特殊形态互斥
@@ -67,6 +68,9 @@ public partial class CapturePinWindow
     /// <summary>把内容尺寸与偏移写到界面（缩放 / 平移 / 进出取景框 / 缩略图都只调它）。</summary>
     private void ApplyContent()
     {
+        // 文字层跟着同一套几何走（源图像素 × _zoom ÷ _scale，平移共用 PanTransform）
+        if (_ocrMode) ApplyOcrContent();
+
         // 圆角跟着缩放走（图里的圆角是成品图像素，窗口描边要用当前 DIP 半径）
         Frame.CornerRadius = new CornerRadius(_thumb ? 0 : _appearance.RadiusDip(_scale, _zoom));
 
@@ -105,6 +109,7 @@ public partial class CapturePinWindow
     public void SetThumbnail(bool on)
     {
         if (_live && on) return;              // 缩成方块就看不见实时的内容了；退出实时之后随便切
+        if (on && _ocrMode) ExitOcrMode();    // 83 DIP 的方块里读不了字，先退出文字层
         ExitHideToTop();                      // 缩略图是另一种形态：先退出收顶部
         if (_thumb == on) return;
 
@@ -140,6 +145,7 @@ public partial class CapturePinWindow
     private void AnnotateContent()
     {
         if (_live) return;                    // 实时贴图的内容每 200ms 换一次，标了也留不住
+        ExitOcrMode();                        // 标注要回到整张图的 100%：文字层先退出
         ExitHideToTop();                      // 覆盖层要按整张图定位，收顶部状态先退出
 
         // 覆盖层只能把图按「像素 1:1」铺开，所以标注前先回到整张图的 100%：
@@ -173,6 +179,7 @@ public partial class CapturePinWindow
     /// <summary>换掉贴的内容（标注之后）：回到 100% 并按新图尺寸贴合窗口。</summary>
     private void ReplaceContent(BitmapSource image)
     {
+        ResetOcrCache();                      // 换图之后旧的文字层对不上了
         ExitHideToTop();                      // 内容是拖放换的：先退出收顶部再重排几何
         _content = image;
         Shot.Source = image;

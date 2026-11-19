@@ -1051,6 +1051,36 @@ Id 与已经删掉的 Id 都不复活。
 悬停展开与离开收起 / 手柄右键与中键 / 隐藏全部保留模式 / 关掉再贴回；落图 `out/pin-hide-handle.png`）。
 
 
+### 9.12 贴图「显示文字」（P4-j，2026-11-19）
+
+照上游 `presentation/pinned/screenshotpinnedwindow.cpp` 的 `m_ocrMode` / `activateRecognitionMode` /
+`toggleTextRecognitionResults` / `deactivateRecognition`：贴图上右键「显示文字」（或把双击 / 中键设成
+「显示文字识别结果」），这张图会被跑一遍 OCR，文字按原行框铺回去，可以划选、复制。**退出就回到原图。**
+
+- **入口与门禁**：`CapturePinWindow.Ocr.cs` 的 `ToggleOcrMode` / `EnterOcrMode` / `ExitOcrMode`。进入前先
+  退出点击穿透 / 收顶部 / 缩略图；实时贴图（内容每 200ms 换）与超过 **3840×2160** 的图直接拒绝
+  （菜单写「图片尺寸过大」并置灰）。`Views/CapturePro/CapturePinWindow.Drag.cs` 里文字层开着时：
+  左键 = 划选（不搬窗口、不跑双击动作）、中键不跑指针动作、滚轮不改缩放；`SetZoom` 也直接返回
+  （照上游那一组 `m_ocrMode` 门禁）。
+- **铺回去的样子**：`CaptureOcrCanvas` 以**白纸页**作底（上游进 OCR 模式会
+  `setCanvasContentVisible(false)` 把原图藏掉，识别内容页用自己的容器底色），再逐行铺
+  `OcrTextLayer` 估出来的底色与文字。坐标 = **源图像素 × `_zoom ÷ _scale`**，平移用自己一份
+  `TranslateTransform`（与图片同一组数值、但不共用同一个 Freezable）；光标是 I 形。
+- **识别**：走 `CaptureRecognize.Run`（与识别结果窗同一套引擎偏好 `OcrEnginePreference.DefaultForNewProbe`），
+  结果缓存着：退出文字层再进来不重跑。`_ocrRun` 轮次保证「退出 / 换图 / 关窗」时在途结果回来不会写错窗口；
+  换图（标注 `ReplaceContent` / 拖放替换）会 `ResetOcrCache`。
+- **复制出口**：贴图是 `WS_EX_NOACTIVATE`，键盘 `Ctrl+C` 到不了它，所以图下有一条状态条
+  （`OcrBar`：`N 行 · 拖动选择文字` / `已选 N 字 …` + 「复制所选 / 复制全文 / 退出文字层」），
+  右键菜单在文字层开着时也多出「复制所选文字」「复制全部文字」。状态条限宽 = 窗口宽 − 12、
+  `WrapPanel` 自动换行（贴图常比这条条窄，不换行会被裁掉）。
+- **平台差异**：上游贴图 OCR 模式还嵌着编辑工具条（排版 / 标点 / 翻译 / 显示原图 / 原文预览）与翻译结果页；
+  LTools 只做「识别结果」，不做这些页与「显示原图」开关（退出文字层就是原图）。
+
+回归：`--selftest` 的「贴图文字：尺寸门槛 / 阶段 / 菜单与状态条」+ `capture-overlay-smoke` 的 `pinocr` 段
+（菜单入口 / 夹具灌 3 行后的画布几何与白纸页 / 状态条与菜单复制项 / 真滚轮 / 真鼠标划选 / 复制 /
+真鼠标点退出按钮 / 指针动作秒开缓存 / 3841×2160 门槛；落图 `out/pin-ocr.png`）。
+
+
 ## 10. 识别（P2 / P4-a / P4-b）
 
 入口三处，行为一致（都先按标注文档重绘成品，再关覆盖层，然后开结果窗）：
