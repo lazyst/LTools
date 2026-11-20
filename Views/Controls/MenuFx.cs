@@ -24,13 +24,23 @@ namespace LTools.Views.Controls;
 internal static class MenuFx
 {
     /// <summary>
-    /// 悬停多久展开子菜单（毫秒）。0 = 立即。
+    /// 悬停多久展开子菜单（毫秒）。0 = 立即（默认）。
     /// </summary>
     /// <remarks>
-    /// 用 <c>static readonly</c> 而不是 <c>const</c>：0 时下面那条计时器分支是死代码，<c>const</c> 会报 CS0162。
-    /// 想留一点容错（扫过父项时不闪开）把它调成 60 / 100 即可，走同一个旋钮。
+    /// 打开仍然立即——滑到父项上就该看见子菜单，不要等。给容错的旋钮是 <see cref="HoverCloseMs"/>。
+    /// 用可写字段而不是 <c>const</c>：冒烟要临时调大它来验收起宽限。
     /// </remarks>
-    private static readonly int HoverOpenMs = 0;
+    internal static int HoverOpenMs = 0;
+
+    /// <summary>
+    /// 指针离开「父项 + 子菜单」多久才收起（毫秒，默认 260）。
+    /// </summary>
+    /// <remarks>
+    /// 必须有这段宽限：父项与子菜单是两个窗口，指针斜着往子菜单里挪的那一瞬间两边都不在，
+    /// 立刻收的话子菜单会在光标下「一过去就消失」（用户实测报过）。宽限期间指针回到任一边就取消，
+    /// 所以它对手感几乎无感——移开之后不会黏着不走，只是不再「一碰就散」。
+    /// </remarks>
+    internal static int HoverCloseMs = 260;
 
     /// <summary>建一个「点一下就展开、悬停也展开」的父项，并挂进 <paramref name="menu"/>。</summary>
     internal static MenuItem Submenu(ItemsControl menu, string header) => Submenu(menu, (object)header);
@@ -44,43 +54,91 @@ internal static class MenuFx
         var mi = new MenuItem { Header = header };
         mi.Click += (_, _) => mi.IsSubmenuOpen = true;
 
-        if (HoverOpenMs <= 0)
+        DispatcherTimer? openTimer = null;
+        DispatcherTimer? closeTimer = null;
+        UIElement? popupChild = null;
+
+        bool Anywhere() => PointerInside(mi) || (popupChild != null && PointerInside(popupChild));
+
+        void OpenNow()
         {
-            mi.MouseEnter += (_, _) => { if (!mi.IsSubmenuOpen) mi.IsSubmenuOpen = true; };
-        }
-        else
-        {
-            var hover = new DispatcherTimer(DispatcherPriority.Input)
-            {
-                Interval = TimeSpan.FromMilliseconds(HoverOpenMs),
-            };
-            bool hovering = false;
-            hover.Tick += (_, _) =>
-            {
-                hover.Stop();
-                if (hovering) mi.IsSubmenuOpen = true;
-            };
-            mi.MouseEnter += (_, _) => { hovering = true; if (!mi.IsSubmenuOpen) hover.Start(); };
-            mi.MouseLeave += (_, _) => { hovering = false; hover.Stop(); };
-            mi.Unloaded += (_, _) => { hovering = false; hover.Stop(); };
+            if (!mi.IsSubmenuOpen) mi.IsSubmenuOpen = true;
         }
 
-        // 收起也必须自己做：子菜单一开，WPF 就把「离开父项 → 撤高亮 + 收子菜单」挂到
-        // MenuShowDelay（默认 400ms）的计时器上；指针直接离开**整个菜单**时它连计时器都不起，
-        // 高亮和子菜单会一直挂在那儿（实测：移出菜单 400ms 后 IsHighlighted 仍是 true）。
-        // 所以离开父项 / 离开子菜单时，只要指针不在「父项 + 自己的子菜单」里就立刻收起。
-        UIElement? popupChild = null;
-        mi.MouseLeave += (_, _) => CollapseIfPointerOutside(mi, popupChild);
+        // 悬停展开：默认立即（HoverOpenMs = 0），滑到父项上就看见子菜单
+        mi.MouseEnter += (_, _) =>
+        {
+            closeTimer?.Stop();
+            if (mi.IsSubmenuOpen) return;
+            if (HoverOpenMs <= 0)
+            {
+                OpenNow();
+                return;
+            }
+
+            openTimer ??= NewTimer(() =>
+            {
+                openTimer!.Stop();
+                if (mi.IsMouseOver) OpenNow();
+            }, HoverOpenMs);
+            openTimer.Stop();
+            openTimer.Start();
+        };
+
+        // 离开父项：先记着「可能要收」，给指针挪进子菜单的时间；指针回到任一边就取消。
+        mi.MouseLeave += (_, _) =>
+        {
+            openTimer?.Stop();
+            ScheduleClose();
+        };
+
         mi.SubmenuOpened += (_, _) =>
         {
             if (popupChild != null) return;
             popupChild = PopupChild(mi);
-            if (popupChild != null)
-                popupChild.MouseLeave += (_, _) => CollapseIfPointerOutside(mi, popupChild);
+            if (popupChild == null) return;
+            popupChild.MouseEnter += (_, _) => closeTimer?.Stop();
+            popupChild.MouseLeave += (_, _) => ScheduleClose();
+        };
+
+        mi.Unloaded += (_, _) =>
+        {
+            openTimer?.Stop();
+            closeTimer?.Stop();
         };
 
         menu.Items.Add(mi);
         return mi;
+
+        // 收起也要自己管：子菜单一开，WPF 就把「离开父项 → 撤高亮 + 收子菜单」挂到
+        // MenuShowDelay（默认 400ms）的计时器上；指针直接离开**整个菜单**时它连计时器都不起，
+        // 高亮和子菜单会一直挂在那儿（实测：移出菜单 400ms 后 IsHighlighted 仍是 true）。
+        void ScheduleClose()
+        {
+            if (!mi.IsSubmenuOpen) return;
+            if (HoverCloseMs <= 0)
+            {
+                CollapseIfPointerOutside(mi, popupChild);
+                return;
+            }
+
+            closeTimer ??= NewTimer(() =>
+            {
+                closeTimer!.Stop();
+                // 宽限到点时指针已经在「父项 + 子菜单」里 = 用户是在往子菜单里挪，不收
+                if (Anywhere()) return;
+                CollapseIfPointerOutside(mi, popupChild);
+            }, HoverCloseMs);
+            closeTimer.Stop();
+            closeTimer.Start();
+        }
+    }
+
+    private static DispatcherTimer NewTimer(Action tick, int ms)
+    {
+        var timer = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(ms) };
+        timer.Tick += (_, _) => tick();
+        return timer;
     }
 
     /// <summary>指针是否落在这个元素的实际矩形里（跨 popup 窗口也算，按屏幕坐标换算）。</summary>

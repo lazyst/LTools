@@ -17,6 +17,7 @@ namespace CaptureOverlaySmoke;
 internal static partial class Program
 {
     private const BindingFlags TrayAny = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+    private const BindingFlags TrayAnyStatic = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
 
     private static void TraySection()
     {
@@ -54,7 +55,15 @@ internal static partial class Program
         Check(sub.SequenceEqual(expectedSub), "「截图」二级菜单条目 / 顺序：" + string.Join(" | ", sub));
         Check(captureItem.Items.OfType<MenuItem>().All(i => i.Items.Count == 0), "子菜单里的都是叶子项");
 
-        // ---- 真鼠标：打开菜单 → 悬停父项 → 子菜单立即展开 → 移开 → 收起 ----
+        // ---- 真鼠标：打开菜单 → 悬停父项 → 子菜单展开 → 移开（宽限）→ 收起 ----
+        var menuFx = asm.GetType("LTools.Views.Controls.MenuFx")!;
+        var openField = menuFx.GetField("HoverOpenMs", TrayAnyStatic)!;
+        var closeField = menuFx.GetField("HoverCloseMs", TrayAnyStatic)!;
+        int openDefault = (int)openField.GetValue(null)!;
+        int closeDefault = (int)closeField.GetValue(null)!;
+        Check(openDefault == 0, $"悬停展开没有延迟（{openDefault}ms）");
+        Check(closeDefault > 0, $"移出后有收起宽限（{closeDefault}ms）");
+
         var work = SystemParameters.WorkArea;
         menu.Placement = PlacementMode.AbsolutePoint;
         menu.HorizontalOffset = work.Left + 60;
@@ -69,8 +78,8 @@ internal static partial class Program
         {
             var center = container.PointToScreen(
                 new Point(container.ActualWidth / 2, container.ActualHeight / 2));
-            SetCursorPos((int)Math.Round(center.X), (int)Math.Round(center.Y));
-            Check(WaitUntil(() => captureItem.IsSubmenuOpen, 1500), "鼠标悬停「截图」→ 子菜单立即展开");
+            int cx = (int)Math.Round(center.X), cy = (int)Math.Round(center.Y);
+            Check(HoverUntil(cx, cy, () => captureItem.IsSubmenuOpen, 1500), "鼠标悬停「截图」→ 子菜单展开");
 
             var popup = (Popup?)container.Template?.FindName("PART_Popup", container);
             Check(popup != null && popup.IsOpen, "子菜单的 popup 真的打开了");
@@ -85,19 +94,71 @@ internal static partial class Program
             {
                 var p = firstContainer.PointToScreen(
                     new Point(firstContainer.ActualWidth / 2, firstContainer.ActualHeight / 2));
-                SetCursorPos((int)Math.Round(p.X), (int)Math.Round(p.Y));
-                Check(WaitUntil(() => first.IsHighlighted, 1500), "指针进子菜单 → 「截图…」高亮");
+                Check(HoverUntil((int)Math.Round(p.X), (int)Math.Round(p.Y),
+                    () => first.IsHighlighted, 2000), "指针进子菜单 → 「截图…」高亮");
             }
 
-            // 移开：MenuFx 自己管收起（不等系统的 MenuShowDelay）
-            SetCursorPos(10, 1060);
-            Check(WaitUntil(() => !captureItem.IsSubmenuOpen, 1500), "鼠标移开 → 子菜单收起");
+            // 移出宽限：把宽限临时调大，移开后先「还开着」，宽限过后才收（这就是「一过去就消失」的修复点）
+            try
+            {
+                closeField.SetValue(null, 700);
+                SetCursorPos(10, 1060);
+                PumpFor(220);
+                Check(captureItem.IsSubmenuOpen, "移开 220ms 仍展开（宽限期，不会一碰就散）");
+                Check(WaitUntil(() => !captureItem.IsSubmenuOpen, 3000), "宽限过后收起");
+            }
+            finally
+            {
+                closeField.SetValue(null, closeDefault);
+            }
+
+            // 宽限期间挪回父项：不收起
+            Check(HoverUntil(cx, cy, () => captureItem.IsSubmenuOpen, 1500), "再悬停 → 子菜单回来");
+            try
+            {
+                closeField.SetValue(null, 700);
+                SetCursorPos(10, 1060);
+                PumpFor(200);
+                SetCursorPos(cx, cy);
+                PumpFor(700);
+                Check(captureItem.IsSubmenuOpen, "宽限内挪回父项 → 不收起");
+            }
+            finally
+            {
+                closeField.SetValue(null, closeDefault);
+                SetCursorPos(10, 1060);
+                WaitUntil(() => !captureItem.IsSubmenuOpen, 3000);
+            }
         }
 
         menu.IsOpen = false;
         PumpFor(120);
         SetCursorPos(960, 540);
         Check(exitCalls == 0 && triggerCalls == 0, "只悬停不点击，没有任何回调被执行");
+    }
+
+    /// <summary>
+    /// 把光标停在 <paramref name="x"/>, <paramref name="y"/> 上等 <paramref name="ok"/> 成立，
+    /// 期间每 80ms 抖 1–2 像素。
+    /// </summary>
+    /// <remarks>
+    /// 真人挪鼠标是连续的，这里一次 <c>SetCursorPos</c> 是瞬移：弹层刚打开那一拍若还没可命中，
+    /// 那一次 <c>MouseEnter</c> 就落空了，而静止的光标不会再产生鼠标消息（实测偶发红）。
+    /// 抖动只为了重新触发一次移动，位置始终在这个菜单项的矩形里。
+    /// </remarks>
+    private static bool HoverUntil(int x, int y, Func<bool> ok, int timeoutMs)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        int step = 0;
+        while (clock.ElapsedMilliseconds < timeoutMs)
+        {
+            if (ok()) return true;
+            step++;
+            SetCursorPos(x + (step % 2 == 0 ? 1 : -1), y + (step % 3 == 0 ? 1 : -1));
+            PumpFor(80);
+        }
+
+        return ok();
     }
 
     /// <summary>菜单项标题的文字（托盘项是「状态点 + 文字」的 StackPanel，分隔符记作 —）。</summary>
