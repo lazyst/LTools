@@ -30,10 +30,8 @@ public partial class App : Application
     private static Mutex? _singleInstanceMutex;
 
     private TaskbarIcon? _tray;
+    private TrayMenu? _trayMenu;
     private DispatcherTimer? _watchdog;
-    private MenuItem? _macroMenuItem;      // 托盘「开始 / 停止录制宏」：标题随录制状态变化
-    private TextBlock? _macroMenuItemText;
-    private TextBlock? _triggerMenuItemText;   // 托盘「暂停 / 恢复自动触发」：标题随紧急禁用状态变化
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -234,43 +232,13 @@ public partial class App : Application
 
     private void BuildTray()
     {
-        var menu = new ContextMenu();
-        menu.Items.Add(NewItem("速记 (CapsLock+N)", () => QuickNote.Toggle()));
-        menu.Items.Add(NewItem("动作面板 (CapsLock+T)", () => Features.SuperPanel.Toggle()));
-        menu.Items.Add(NewItem("设置 (CapsLock+\\)", () => ConfigHelper.Toggle()));
-        menu.Items.Add(NewItem("辅助工具…", () => Views.InfoHelperWindow.Toggle()));
-        menu.Items.Add(NewItem("采集历史…", () => Views.CapturePro.CaptureHistoryWindow.Toggle()));
-        menu.Items.Add(NewItem("贴图管理…", () => Views.CapturePro.PinManagerWindow.Toggle()));
-        menu.Items.Add(NewItem("图片编辑…", () => Features.CapturePro.ImageEdit.ImageEditSession.OpenEmpty()));
-        menu.Items.Add(NewItem("切图…", () => Features.CapturePro.Split.SplitSession.OpenEmpty()));
-        menu.Items.Add(NewItem("图像拼接…", () => Features.CapturePro.Collage.CollageSession.OpenEmpty()));
-        menu.Items.Add(new Separator());
-        _macroMenuItem = NewItem("开始 / 停止录制宏", () => MacroRecorder.Toggle());
-        _macroMenuItemText = (TextBlock)((StackPanel)_macroMenuItem.Header).Children[1];
-        menu.Items.Add(_macroMenuItem);
-        menu.Items.Add(NewItem("键鼠宏…", ConfigHelper.OpenMacros));
-        menu.Items.Add(new Separator());
-        menu.Items.Add(NewItem("启用 CapsLock 修饰键", Settings.ToggleCapsLockModifier, () => AppState.CapsLockModifier));
-        menu.Items.Add(NewItem("启用超级面板", Settings.ToggleSuperPanel, () => AppState.IsSuperPanelEnabled));
-        // 和上面两个开关项同一套状态点列：运行中绿点、紧急禁用橙点（不再用暂停 / 播放字符图标，
-        // 那个字形在 Segoe UI 下会渲染成带方框的 emoji，和灰阶菜单、绿点列都不搭）。
-        var triggerMenuItem = NewItem("暂停自动触发（紧急禁用）", ToggleTriggerEmergency,
-            () => !TriggerService.EmergencyDisabled, PausedDotBrush);
-        _triggerMenuItemText = (TextBlock)((StackPanel)triggerMenuItem.Header).Children[1];
-        menu.Items.Add(triggerMenuItem);
-        menu.Items.Add(new Separator());
-        menu.Items.Add(NewItem("关闭所有悬浮项", FloatingManager.CloseAll));
-        menu.Items.Add(new Separator());
-        menu.Items.Add(NewItem("退出 LTools", ExitApplication));
-
-        // 状态点每次打开菜单时刷新：状态可能经设置页或托盘切换，托盘菜单要跟随
-        menu.Opened += (_, _) => { RefreshStatusDots(); RefreshMacroMenuItem(); RefreshTriggerMenuItem(); };
+        _trayMenu = new TrayMenu(ExitApplication, ToggleTriggerEmergency);
 
         _tray = new TaskbarIcon
         {
             ToolTipText = "LTools",
             IconSource = LoadIconSource(),
-            ContextMenu = menu,
+            ContextMenu = _trayMenu.Menu,
         };
         // 左键双击托盘图标：按设置 →「通用」的行为打开设置窗口（停上次页 / 跳指定页）。
         // 右键单击仍是上面的 ContextMenu，两者互不干扰；回调只读 AppState.TrayDoubleClick（零磁盘 IO）。
@@ -282,99 +250,11 @@ public partial class App : Application
         _tray.ForceCreate(enablesEfficiencyMode: false);
     }
 
-    /// <summary>
-    /// 托盘菜单项：标题左侧统一留出状态点列（做法同系统菜单的勾选列，保证各行文字对齐）。
-    /// <paramref name="isOn"/> 非空即开关项：启用 → 该列显示绿色状态点（SuccessColor #16A34A），
-    /// 禁用 → 有 <paramref name="offBrush"/> 就显示它（如紧急禁用的橙点），否则透明但不收列，
-    /// 文字不因开关状态左右跳动。
-    /// 注意：本项目 MenuItem 模板只呈现 Header 不呈现 Icon，故状态点必须放进 Header。
-    /// </summary>
-    private MenuItem NewItem(string header, Action onClick, Func<bool>? isOn = null,
-        System.Windows.Media.Brush? offBrush = null)
-    {
-        var dot = new System.Windows.Shapes.Ellipse
-        {
-            Width = StatusDotSize,
-            Height = StatusDotSize,
-            Margin = new Thickness(0, 0, StatusDotGap, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Fill = System.Windows.Media.Brushes.Transparent,
-        };
-        var headerRow = new StackPanel { Orientation = Orientation.Horizontal };
-        headerRow.Children.Add(dot);
-        headerRow.Children.Add(new TextBlock
-        {
-            Text = header,
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-
-        var mi = new MenuItem { Header = headerRow };
-        mi.Click += (_, _) =>
-        {
-            onClick();
-            RefreshStatusDots();
-        };
-        if (isOn != null)
-            _statusDots.Add((dot, isOn, offBrush));
-        return mi;
-    }
-
-    /// <summary>按各开关的当前状态刷新状态点（打开菜单时 + 点击菜单项后调用）。</summary>
-    private void RefreshStatusDots()
-    {
-        foreach (var (dot, isOn, off) in _statusDots)
-            dot.Fill = isOn() ? EnabledDotBrush : (off ?? System.Windows.Media.Brushes.Transparent);
-    }
-
-    /// <summary>
-    /// 托盘宏菜单标题跟随录制状态：录制中显示「■ 停止录制宏（热键）」，让托盘始终是一个可用的停止入口。
-    /// </summary>
-    private void RefreshMacroMenuItem()
-    {
-        if (_macroMenuItemText == null) return;
-        _macroMenuItemText.Text = MacroRecorder.IsRecording
-            ? $"■ 停止录制宏（{MacroSettings.RecordHotkeyDisplay}）"
-            : $"● 开始录制宏（{MacroSettings.RecordHotkeyDisplay}）";
-    }
-
     /// <summary>托盘「暂停自动触发」：切换紧急禁用空文件（数据根下），标题随状态变化。</summary>
     private void ToggleTriggerEmergency()
     {
         TriggerService.SetEmergencyDisabled(!TriggerService.EmergencyDisabled);
-        RefreshTriggerMenuItem();
-    }
-
-    private void RefreshTriggerMenuItem()
-    {
-        if (_triggerMenuItemText == null) return;
-        // 状态由左侧圆点表达（绿 = 运行中，橙 = 已暂停），文字只说「点了会做什么」。
-        _triggerMenuItemText.Text = TriggerService.EmergencyDisabled
-            ? "恢复自动触发"
-            : "暂停自动触发（紧急禁用）";
-    }
-
-    private const double StatusDotSize = 9;
-    private const double StatusDotGap = 7;
-    private readonly List<(System.Windows.Shapes.Ellipse Dot, Func<bool> IsOn, System.Windows.Media.Brush? OffBrush)> _statusDots = new();
-    private static readonly System.Windows.Media.Brush EnabledDotBrush = CreateEnabledDotBrush();
-    private static readonly System.Windows.Media.Brush PausedDotBrush = CreatePausedDotBrush();
-
-    private static System.Windows.Media.Brush CreateEnabledDotBrush()
-    {
-        // 与 Themes/Modern.xaml 的 SuccessColor (#16A34A) 保持一致
-        var brush = new System.Windows.Media.SolidColorBrush(
-            System.Windows.Media.Color.FromRgb(0x16, 0xA3, 0x4A));
-        brush.Freeze();
-        return brush;
-    }
-
-    private static System.Windows.Media.Brush CreatePausedDotBrush()
-    {
-        // 紧急禁用是「暂停」不是「出错」，用橙而不是 DangerColor 红
-        var brush = new System.Windows.Media.SolidColorBrush(
-            System.Windows.Media.Color.FromRgb(0xEA, 0x58, 0x0C));
-        brush.Freeze();
-        return brush;
+        _trayMenu?.RefreshTrigger();
     }
 
     /// <summary>

@@ -377,6 +377,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "tray")
+        {
+            TraySection();
+            Console.WriteLine(_failed == 0 ? "tray-only：通过" : $"tray-only：{_failed} 项失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         if (_only == "selectionexport")
         {
             SelectionExportSection();
@@ -685,6 +692,9 @@ internal static partial class Program
 
         // ============ 工具逐个点名：每个工具真鼠标画一笔，断言落下来的标注类型 ============
         ToolSweepSection();
+
+        // ============ 托盘菜单：条目 / 顺序 / 「截图」二级菜单真鼠标悬停展开 ============
+        TraySection();
 
         Console.WriteLine(_failed == 0 ? "capture-overlay-smoke：全部通过" : $"capture-overlay-smoke：{_failed} 条失败");
         return _failed == 0 ? 0 : 1;

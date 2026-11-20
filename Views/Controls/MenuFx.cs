@@ -33,7 +33,13 @@ internal static class MenuFx
     private static readonly int HoverOpenMs = 0;
 
     /// <summary>建一个「点一下就展开、悬停也展开」的父项，并挂进 <paramref name="menu"/>。</summary>
-    internal static MenuItem Submenu(ItemsControl menu, string header)
+    internal static MenuItem Submenu(ItemsControl menu, string header) => Submenu(menu, (object)header);
+
+    /// <summary>
+    /// 同上，但父项标题用现成的元素：托盘菜单的每一项标题左侧都留了状态点列（保证文字对齐），
+    /// 子菜单父项也要照那个样子排，否则它比别的项左出一截。
+    /// </summary>
+    internal static MenuItem Submenu(ItemsControl menu, object header)
     {
         var mi = new MenuItem { Header = header };
         mi.Click += (_, _) => mi.IsSubmenuOpen = true;
