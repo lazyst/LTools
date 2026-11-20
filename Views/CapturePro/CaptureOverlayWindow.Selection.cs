@@ -45,7 +45,13 @@ public partial class CaptureOverlayWindow
     private Point _marqueeStart;
     private int[]? _marqueeBase;
 
-    private enum DragMode { None, New, Move, Resize, Draw, Erase, Mark, MarkResize, MagnifierLens, Lasso, Marquee, SmartPress }
+    private enum DragMode { None, New, Move, MoveRegion, Resize, Draw, Erase, Mark, MarkResize, MagnifierLens, Lasso, Marquee, SmartPress }
+
+    /// <summary>拖动中命中的是第几块（<see cref="DragMode.MoveRegion"/> 只挪这一块；-1 = 没有）。</summary>
+    private int _dragRegion = -1;
+
+    /// <summary>按下那一刻「移动整个选区」（默认 Space）是不是按着（上游 <c>m_moveEntireSelectionShortcut</c>）。</summary>
+    private bool _moveEntire;
 
     /// <summary>
     /// 中键：按设置完成当前选区（照上游 <c>handleUnhandledMiddleClick</c>）。
@@ -289,9 +295,18 @@ public partial class CaptureOverlayWindow
                 }
 
                 BeginFrameChange(_sel!.Value);
-                _drag = DragMode.Move;
                 _handle = FrameHandle.Move;
                 RebuildSnapLines();
+
+                // 多块选区：默认只挪**命中的那一块**（照上游 beginMoveDrag → beginRegionMove，
+                // regionAt 取最上面那块）；按住「移动整个选区」（默认 Space）才整体挪。
+                // 单块选区没有「哪一块」之分，整体动也就是拖这一块。
+                _dragRegion = SelectionSet.TopmostAt(_regions, p, _selStyle.CornerRadius);
+                _moveEntire = CaptureShortcutTable.Held(CaptureShortcutScope.Screenshot,
+                    "move_entire_selection");
+                _drag = SelectionSet.MovesSingleRegion(_regions.Count, _dragRegion, _moveEntire)
+                    ? DragMode.MoveRegion
+                    : DragMode.Move;
                 StartDrag(e, Cursors.SizeAll);
                 return;
             }
@@ -322,6 +337,8 @@ public partial class CaptureOverlayWindow
         if (SelectionSet.MovesOnOutsideDrag(_regions, _tool == CaptureTool.Select, shift, alt))
         {
             _moveFromShadow = true;
+            _dragRegion = -1;
+            _moveEntire = true;
             BeginFrameChange(_sel!.Value);
             _drag = DragMode.Move;
             _handle = FrameHandle.Move;
@@ -530,7 +547,12 @@ public partial class CaptureOverlayWindow
                 RefreshSelection();
                 break;
             case DragMode.Move:
-                MoveFrame(SnapMove(MoveTo(_originRect, p - _origin)));
+            case DragMode.MoveRegion:
+                // 按住 / 松开「移动整个选区」可以中途换口径（上游 rebaseMoveDrag）：
+                // 换完按新口径继续拖，指针位置不跳
+                RebaseMoveIfScopeChanged(p);
+                if (_drag == DragMode.MoveRegion) MoveOneRegion(p - _origin);
+                else MoveFrame(SnapMove(MoveTo(_originRect, p - _origin)));
                 break;
             case DragMode.Resize:
             {
@@ -650,6 +672,7 @@ public partial class CaptureOverlayWindow
                 break;
 
             case DragMode.Move:
+            case DragMode.MoveRegion:
                 // 从压暗的阴影上按下去、几乎没移动 = 单击：在阴影上点一下什么都别做
                 // （以前这条路径走「拖出去整块重框」里的单击分支，那里也是保留原选区）。
                 // 没有这句的话，按下时抖的那一两像素会留在选区上。
@@ -703,6 +726,8 @@ public partial class CaptureOverlayWindow
         _moveFromShadow = false;
         _originRegions = null;
         _replaceOnCommit = false;
+        _dragRegion = -1;
+        _moveEntire = false;
         if (_tool == CaptureTool.AutoFilter) SyncAutoFilter(detect: true);   // 选区变了就重新识别
         RefreshCursor(p);
         UpdateChrome();
@@ -719,7 +744,8 @@ public partial class CaptureOverlayWindow
     /// <summary>放弃当前手势：画到一半的丢掉，改框 / 移动就还原成按下前的选区。</summary>
     private void CancelDrag()
     {
-        bool wasFrame = _drag is DragMode.New or DragMode.Move or DragMode.Resize or DragMode.Lasso;
+        bool wasFrame = _drag is DragMode.New or DragMode.Move or DragMode.MoveRegion or DragMode.Resize
+            or DragMode.Lasso;
 
         if (_drag == DragMode.Mark) CancelMarkDrag();
         else if (_drag == DragMode.MarkResize) CancelMarkResize();
@@ -993,7 +1019,31 @@ public partial class CaptureOverlayWindow
         _replaceOnCommit = false;
         _liveRect = null;
         _lasso.Clear();
+        _dragRegion = -1;
+        _moveEntire = false;
         RefreshSelection();
+    }
+
+    /// <summary>
+    /// 从采集历史重新裁选：把当时那几块选区摆回来（窗口 DIP）。
+    /// 交接前还没有底图上的任何标注，所以只还原几何、不动 <c>_doc</c>。
+    /// </summary>
+    internal void LoadSelection(IReadOnlyList<SelectionRegion> regions)
+    {
+        _regions.Clear();
+        _regions.AddRange(regions);
+
+        _originRegions = null;
+        _replaceOnCommit = false;
+        _liveRect = null;
+        _lasso.Clear();
+        _dragRegion = -1;
+        _moveEntire = false;
+        _drag = DragMode.None;
+        _handle = FrameHandle.None;
+
+        RefreshSelection();
+        UpdateChrome();
     }
 
     /// <summary>
@@ -1063,6 +1113,79 @@ public partial class CaptureOverlayWindow
     {
         var delta = new Vector(target.X - _originRect.X, target.Y - _originRect.Y);
         ApplyFrame(target, region => region.Offset(delta));
+    }
+
+    /// <summary>
+    /// 只挪命中的那一块（多块选区里默认的手势）：别的块原地不动，外接框按并集重算。
+    /// </summary>
+    /// <remarks>
+    /// 位移按**这一块自己的**外接框算（不是整个选区的并集）：并集可能横跨整个屏幕，
+    /// 拿它钳「别跑出窗口」会让小块明明还有空间却动不了。
+    /// 吸附除了窗口 / 控件边，还吸**别的选区**的四条边（上游 <c>beginRegionMove</c> 的 references）。
+    /// </remarks>
+    private void MoveOneRegion(Vector delta)
+    {
+        if (_originRegions == null || _dragRegion < 0 || _dragRegion >= _originRegions.Count)
+        {
+            _drag = DragMode.Move;      // 快照没了 = 退回整体移动，别把手势吞掉
+            MoveFrame(SnapMove(MoveTo(_originRect, delta)));
+            return;
+        }
+
+        var source = _originRegions[_dragRegion];
+        Rect target = SnapMoveRegion(MoveTo(source.Bounds, delta), _dragRegion);
+        var shift = new Vector(target.X - source.Bounds.X, target.Y - source.Bounds.Y);
+
+        _regions.Clear();
+        for (int i = 0; i < _originRegions.Count; i++)
+            _regions.Add(i == _dragRegion ? source.Offset(shift) : _originRegions[i]);
+        RefreshSelection();     // 外接框 = 并集：被拖的那块动了，别的块没动
+    }
+
+    /// <summary>
+    /// 拖一块时吸附：窗口 / 控件的边（<see cref="_snapXs"/> / <see cref="_snapYs"/>）加上
+    /// **别的选区**的四条边。Ctrl 仍然临时关闭吸附（与整块移动同口径）。
+    /// </summary>
+    private Rect SnapMoveRegion(Rect r, int skip)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0) return r;
+
+        var (otherXs, otherYs) = SelectionSet.OtherEdges(_originRegions ?? _regions, skip);
+        var xs = new List<double>(_snapXs.Count + otherXs.Length);
+        xs.AddRange(_snapXs);
+        xs.AddRange(otherXs);
+        var ys = new List<double>(_snapYs.Count + otherYs.Length);
+        ys.AddRange(_snapYs);
+        ys.AddRange(otherYs);
+        if (xs.Count == 0 && ys.Count == 0) return r;
+
+        double dx = NearestDelta(new[] { r.Left, r.Right }, xs);
+        double dy = NearestDelta(new[] { r.Top, r.Bottom }, ys);
+        return new Rect(r.X + dx, r.Y + dy, r.Width, r.Height);
+    }
+
+    /// <summary>
+    /// 拖动中按住 / 松开「移动整个选区」（默认 <c>Space</c>）：换口径重来一次（上游 <c>rebaseMoveDrag</c>）。
+    /// 起点改到当前指针、快照改成当前几何，所以画面不跳；松开时优先接着拖刚才那一块。
+    /// </summary>
+    private void RebaseMoveIfScopeChanged(Point p)
+    {
+        bool entire = CaptureShortcutTable.Held(CaptureShortcutScope.Screenshot, "move_entire_selection");
+        if (entire == _moveEntire) return;
+
+        int target = _dragRegion;
+        if (!entire && (target < 0 || target >= _regions.Count))
+            target = SelectionSet.TopmostAt(_regions, _origin, _selStyle.CornerRadius);
+        if (!entire && target < 0) return;      // 松开 Space 时指针已不在任何一块上：继续整体拖
+
+        _moveEntire = entire;
+        _dragRegion = entire ? -1 : target;
+        _drag = entire ? DragMode.Move : DragMode.MoveRegion;
+
+        _originRegions = new List<SelectionRegion>(_regions);
+        _originRect = SelectionSet.Bounds(_originRegions);
+        _sel = _originRect;
+        _origin = p;
     }
 
     /// <summary>按外接框的变形缩放每一块选区（与标注缩放同一口径）。</summary>

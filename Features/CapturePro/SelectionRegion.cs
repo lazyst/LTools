@@ -209,4 +209,49 @@ internal static class SelectionSet
         regions.Count == 1 &&
         regions[0].Mode == RegionMode.Add &&
         !regions[0].IsPolygon;
+
+    /// <summary>
+    /// 光标下最上层那块**加区**（列表顺序 = 叠放顺序，后画的在上；重叠时取最后一块）。
+    /// 减区是挖掉的洞，永远命中不到；没命中返回 -1。
+    /// </summary>
+    public static int TopmostAt(IReadOnlyList<SelectionRegion> regions, Point p, double radius = 0)
+    {
+        // 挖掉的洞里「不在选区里」：减区不会成为拖动目标，也不该被算成命中了下面那块
+        if (!Contains(regions, p, radius)) return -1;
+
+        for (int i = regions.Count - 1; i >= 0; i--)
+        {
+            if (regions[i].Mode != RegionMode.Add) continue;
+            if (Shape(regions[i], radius).FillContains(p)) return i;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// 在多块选区上按下拖动时：**只挪命中的那一块**还是**挪整个选区**。
+    /// </summary>
+    /// <remarks>
+    /// 照上游 <c>ScreenshotSelectionModel::beginMoveDrag</c>：多块编辑里默认只动命中的那块
+    /// （<c>regionAt(startPosition)</c>），按住「移动整个选区」（默认 <c>Space</c>）才整体动。
+    /// 单块选区没有「哪一块」的问题，一律整体动（也就等于拖这一块）。
+    /// </remarks>
+    public static bool MovesSingleRegion(int regionCount, int hit, bool moveEntireHeld) =>
+        regionCount > 1 && hit >= 0 && !moveEntireHeld;
+
+    /// <summary>拖一块区域时用来吸附的参考边：**别的区域**的四条边（上游 <c>beginRegionMove</c> 的 references）。</summary>
+    public static (double[] Xs, double[] Ys) OtherEdges(IReadOnlyList<SelectionRegion> regions, int skip)
+    {
+        var xs = new List<double>();
+        var ys = new List<double>();
+        for (int i = 0; i < regions.Count; i++)
+        {
+            if (i == skip) continue;
+            Rect box = regions[i].Bounds;
+            xs.Add(box.Left);
+            xs.Add(box.Right);
+            ys.Add(box.Top);
+            ys.Add(box.Bottom);
+        }
+        return (xs.ToArray(), ys.ToArray());
+    }
 }
