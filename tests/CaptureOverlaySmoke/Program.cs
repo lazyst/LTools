@@ -3392,6 +3392,46 @@ internal static partial class Program
         window.Show();
         Pump(window);
 
+        // —— 标题栏：最小化 / 最大化（最大化铺满工作区，不盖任务栏）——
+        var minBtn = (Button)Field(window, "MinBtn");
+        var maxBtn = (Button)Field(window, "MaxBtn");
+        Check(minBtn.Visibility == Visibility.Visible && maxBtn.Visibility == Visibility.Visible,
+            "标题栏有最小化 / 最大化按钮");
+        Check(window.ShowInTaskbar, "最小化后能从任务栏点回来（ShowInTaskbar = true）");
+
+        var normal = new Rect(window.Left, window.Top, window.ActualWidth, window.ActualHeight);
+        var work = (Rect)Call(window, "WorkAreaOfWindow");
+
+        maxBtn.RaiseEvent(new RoutedEventArgs(
+            System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Pump(window);
+        Check((bool)Prop("IsMaximized"), "点最大化 → 进入最大化态");
+        Check(Math.Abs(window.Left - work.Left) <= 1 && Math.Abs(window.Top - work.Top) <= 1 &&
+              Math.Abs(window.Width - work.Width) <= 1 && Math.Abs(window.Height - work.Height) <= 1,
+            $"最大化铺满工作区（{window.Left:0},{window.Top:0} {window.Width:0}×{window.Height:0}，" +
+            $"工作区 {work.Left:0},{work.Top:0} {work.Width:0}×{work.Height:0}）");
+        Check((maxBtn.ToolTip as string)?.Contains("还原") == true, "最大化后按钮变成「还原」");
+
+        maxBtn.RaiseEvent(new RoutedEventArgs(
+            System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Pump(window);
+        Check(!(bool)Prop("IsMaximized"), "再点一次 → 还原");
+        Check(Math.Abs(window.Left - normal.Left) <= 1 && Math.Abs(window.Top - normal.Top) <= 1 &&
+              Math.Abs(window.ActualWidth - normal.Width) <= 1 &&
+              Math.Abs(window.ActualHeight - normal.Height) <= 1,
+            "还原回原来的位置和尺寸");
+
+        minBtn.RaiseEvent(new RoutedEventArgs(
+            System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Pump(window);
+        Check(window.WindowState == WindowState.Minimized, "点最小化 → 窗口进任务栏");
+        window.WindowState = WindowState.Normal;
+        Pump(window);
+        Check(window.WindowState == WindowState.Normal && !(bool)Prop("IsMaximized"),
+            "从任务栏回来：还是还原态");
+        window.Activate();
+        Pump(window);
+
         object Prop(string name) =>
             windowType.GetProperty(name, Private)!.GetValue(window)!;
 
@@ -3779,15 +3819,42 @@ internal static partial class Program
         Check(window.Left + window.ActualWidth <= SystemParameters.WorkArea.Right + 1,
             "为放原文栏加宽窗口时没冲出工作区");
 
+        // 能 1:1 就 1:1：320×80 的图在这个屏幕上够左右并列 → 文字层和原图都按 100%
+        Check(window.ActualWidth >= image.PixelWidth * 2,
+            $"窗口撑到能左右并列（{window.ActualWidth:0} ≥ 2×{image.PixelWidth}）");
+        Check(previewHost.ActualWidth >= image.PixelWidth,
+            $"原文栏按 1:1 宽（{previewHost.ActualWidth:0} ≥ {image.PixelWidth}）");
+        Check(Math.Abs((double)Get(canvas, "Zoom") - 1) < 0.02,
+            $"文字层按 100% 显示（zoom {Get(canvas, "Zoom")}）");
+
         var panePicture = FindAll<Image>(previewPane).FirstOrDefault();
         Check(panePicture?.Source is BitmapSource paneSource && paneSource.PixelWidth == image.PixelWidth,
             "原文栏里就是这张原图");
-        Check(FittedOf(previewPane), "打开时是「适应窗口」态");
+
+        // 能 1:1 就是 1:1；屏幕放不下才退成「适应窗口」
+        double paneZoomBefore = ZoomOf(previewPane);
+        Check(Math.Abs(paneZoomBefore - 1) < 0.02 || FittedOf(previewPane),
+            $"原文栏打开就是 100%（zoom {paneZoomBefore:0.00}），放不下才退成适应窗口");
 
         Save(Render(window), Path.Combine(_outDir, "result-preview-pane.png"));
 
+        // 上下并列的形态（宽度不够、高度够时用）：切一次确认真的搬到内容区下面
+        var paneSide = asm.GetType("LTools.Features.CapturePro.OriginalPaneSide")!;
+        Call(window, "SetPaneSide", Enum.Parse(paneSide, "Bottom"), 120d);
+        Pump(window);
+        Check(Grid.GetRow(previewHost) == 2 && Grid.GetColumnSpan(previewHost) == 3,
+            "上下并列：原文栏搬到内容区下面、占满整行");
+        Check(previewHost.ActualHeight >= 100 && previewHost.ActualWidth > window.ActualWidth * 0.8,
+            $"下面那一栏横向铺满（{previewHost.ActualWidth:0}×{previewHost.ActualHeight:0}）");
+        Check(((GridSplitter)Field(window, "PreviewSplitter")).ResizeDirection == GridResizeDirection.Rows,
+            "上下并列时分隔条改成横向拖");
+
+        Call(window, "ApplyPreviewPlan", false);      // 回到当前尺寸下该有的形态
+        Pump(window);
+        Check(Grid.GetRow(previewHost) == 0 && Grid.GetColumn(previewHost) == 2,
+            "放得下 1:1 时回到右侧并列");
+
         // 滚轮在指针处放大（照上游 mouse_position 缩放）
-        double paneZoomBefore = ZoomOf(previewPane);
         var paneScroll = FindAll<ScrollViewer>(previewPane).FirstOrDefault();
         if (paneScroll != null)
         {

@@ -32,6 +32,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "标注：矩形滤镜与像素处理", FilterMark));
         cases.Add(new("capturePro", "文档：换底图（翻采集历史）", SwapBase));
         cases.Add(new("capturePro", "原文预览：摆位与尺寸（右 / 左 / 上下 / 内侧）", PreviewPlacement));
+        cases.Add(new("capturePro", "原文预览：1:1 布局（左右 / 上下 / 退回缩放）", PreviewLayout));
         cases.Add(new("capturePro", "保存：格式 / 尺寸 / 编码", SaveFormats));
         cases.Add(new("capturePro", "文档：选区换算与导出", Selection));
         cases.Add(new("capturePro", "选区形状：自由 / 折线的几何与导出", SelectionShapes));
@@ -4251,6 +4252,41 @@ internal static partial class CaptureProSuite
 
         Check.True(OriginalPreviewPlacement.Place(host, work, new Size(0, 0)).IsEmpty,
             "尺寸为 0 时返回空矩形（不摆位）");
+    }
+
+    /// <summary>
+    /// 原文栏的 1:1 布局（照「能 1:1 就 1:1」的规则）：宽度够 → 左右并列；宽度不够但高度够 →
+    /// 上下并列；两样都不够 → 退回「右侧一栏 + 缩放」。
+    /// </summary>
+    private static void PreviewLayout()
+    {
+        var chrome = new Size(26, 170);
+        var work = new Size(1920, 1040);
+
+        // 858×748：2×858 + 缝 + 开销 ≤ 1920，748 + 开销 ≤ 1040 → 左右并列
+        var wide = OriginalPreviewLayout.Plan(new Size(858, 748), work, chrome);
+        Check.Equal(OriginalPaneSide.Right, wide.Side, "宽度够 → 左右并列");
+        Check.True(wide.OneToOne, "左右并列时两个都按 100% 显示全");
+        Check.True(wide.Window.Width >= 858 * 2, "窗口宽到能放下两栏");
+        Check.Equal(860d, wide.Pane, "原图栏 = 图宽 + 2");
+
+        // 1280 宽放不下 2×700，但高度够 → 上下并列
+        var narrow = OriginalPreviewLayout.Plan(new Size(700, 400), new Size(1280, 1040), chrome);
+        Check.Equal(OriginalPaneSide.Bottom, narrow.Side, "宽度不够、高度够 → 上下并列");
+        Check.True(narrow.OneToOne, "上下并列也是 1:1");
+        Check.True(narrow.Window.Height >= 400 * 2, "窗口高到能放下两栏");
+        Check.Equal(402d, narrow.Pane, "下面那一栏 = 图高 + 2");
+
+        // 3000×1600 的截图放在 1080p 屏上：两样都不够 → 退回缩放
+        var huge = OriginalPreviewLayout.Plan(new Size(3000, 1600), work, chrome);
+        Check.True(!huge.OneToOne, "左右上下都放不下 → 退回缩放");
+        Check.Equal(OriginalPaneSide.Right, huge.Side, "退回缩放时贴右侧");
+        Check.True(huge.Pane >= OriginalPreviewLayout.MinPane &&
+                   huge.Pane <= OriginalPreviewLayout.MaxPane, "缩放时那一栏有上下限（别把文字层挤没）");
+
+        // 高度是瓶颈（宽够、高不够）也不能硬上左右并列
+        var tall = OriginalPreviewLayout.Plan(new Size(800, 1000), work, chrome);
+        Check.True(!tall.OneToOne, "高度不够时不做 1:1（800×1000 在 1040 高的屏上放不下两栏）");
     }
 }
 

@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using LTools.Core;
@@ -103,6 +104,12 @@ public partial class CaptureResultWindow : Window
         LocationChanged += (_, _) => FollowOriginalPreview();
         PreviewKeyDown += OnPreviewKeyDown;
         TextInput += OnTextInput;
+
+        // 从任务栏回来时可能已经落在屏幕外（换过分辨率 / 显示器）：夹回工作区
+        StateChanged += (_, _) =>
+        {
+            if (WindowState == WindowState.Normal) EnsureOnScreen();
+        };
     }
 
     /// <summary>冒烟 / 自检用：直接灌一份已经算好的结果，不跑 OCR、不读屏幕。</summary>
@@ -681,8 +688,9 @@ public partial class CaptureResultWindow : Window
     private CaptureOriginalPreviewWindow? _floating;
     private bool _previewDetached;
     private bool _previewPending;
-    private double _paneWidth;
-    private double _paneGrew;
+
+    /// <summary>为了 1:1 把窗口撑大之前的矩形（收起预览时收回去）。</summary>
+    private Rect _beforePreview;
 
     /// <summary>内嵌栏 / 小窗的按钮接线（两个构造函数都要走一遍）。</summary>
     private void WirePreview()
@@ -707,49 +715,133 @@ public partial class CaptureResultWindow : Window
     }
 
     /// <summary>
-    /// 内嵌那一栏：宽度按上次拖过的分隔条（默认 38%）。窗口右侧还有地方就先长宽再放栏，
-    /// **别挤压文字层**；屏幕不够长才让文字层让一点（它本来就能滚 / 能缩）。
+    /// 摆原文栏：**能 1:1 就 1:1**——文字层和原图都按 100% 完整显示（不滚不缩）。
+    /// 宽度够就左右并列；宽度不够但高度够就上下并列；两样都不够才退回「右侧一栏 + 缩放」。
     /// </summary>
+    /// <param name="fitWindow">
+    /// true = 为了 1:1 可以把窗口撑大（用户刚勾上预览）；false = 窗口尺寸已经定了（最大化 / 还原后重排），
+    /// 只按现在的内容区选边和大小。
+    /// </param>
+    private void ApplyPreviewPlan(bool fitWindow)
+    {
+        if (_image == null) return;
+
+        Rect work = WorkAreaOfWindow();
+        Size chrome = Chrome();
+        var image = new Size(Math.Max(1, _image.PixelWidth / _scale),
+            Math.Max(1, _image.PixelHeight / _scale));
+
+        // 能用多少内容区：要撑窗口时按「工作区 − 固定开销」，否则按现在这一块
+        var available = fitWindow
+            ? new Size(Math.Max(1, work.Width - chrome.Width), Math.Max(1, work.Height - chrome.Height))
+            : new Size(Math.Max(1, ContentBorder.ActualWidth - 2), Math.Max(1, ContentBorder.ActualHeight - 2));
+
+        OriginalPanePlan plan = OriginalPreviewLayout.Plan(image, available, chrome);
+
+        if (plan.OneToOne && fitWindow)
+        {
+            if (_beforePreview.IsEmpty)
+                _beforePreview = new Rect(Left, Top, ActualWidth, ActualHeight);
+
+            double cx = Left + ActualWidth / 2, cy = Top + ActualHeight / 2;
+            Width = Math.Min(plan.Window.Width, work.Width);
+            Height = Math.Min(plan.Window.Height, work.Height);
+            Left = Math.Clamp(cx - Width / 2, work.Left, Math.Max(work.Left, work.Right - Width));
+            Top = Math.Clamp(cy - Height / 2, work.Top, Math.Max(work.Top, work.Bottom - Height));
+        }
+
+        // 退回缩放时那一栏别把文字层挤没（最多占 55%）
+        double pane = plan.OneToOne
+            ? plan.Pane
+            : Math.Min(plan.Pane, Math.Max(240, ActualWidth * 0.55));
+
+        SetPaneSide(plan.Side, pane);
+        PreviewPane.SetImage(_image, _scale);
+
+        if (plan.OneToOne) PreviewPane.ActualSize();
+        else PreviewPane.FitToViewport();
+    }
+
+    /// <summary>把原文栏挪到右边或下边（列 / 行 + 分隔条方向 + 边框），两种形态共用一份内容区。</summary>
+    private void SetPaneSide(OriginalPaneSide side, double size)
+    {
+        bool bottom = side == OriginalPaneSide.Bottom;
+
+        PreviewColumn.MinWidth = bottom ? 0 : 240;
+        PreviewRow.MinHeight = bottom ? 160 : 0;
+        PreviewColumn.Width = bottom ? new GridLength(0) : new GridLength(size);
+        PreviewRow.Height = bottom ? new GridLength(size) : new GridLength(0);
+
+        Grid.SetRow(PreviewHost, bottom ? 2 : 0);
+        Grid.SetColumn(PreviewHost, bottom ? 0 : 2);
+        Grid.SetColumnSpan(PreviewHost, bottom ? 3 : 1);
+
+        Grid.SetRow(PreviewSplitter, bottom ? 1 : 0);
+        Grid.SetColumn(PreviewSplitter, bottom ? 0 : 1);
+        Grid.SetColumnSpan(PreviewSplitter, bottom ? 3 : 1);
+
+        PreviewSplitter.ResizeDirection = bottom ? GridResizeDirection.Rows : GridResizeDirection.Columns;
+        PreviewSplitter.Width = bottom ? double.NaN : 7;
+        PreviewSplitter.Height = bottom ? 7 : double.NaN;
+        PreviewSplitter.HorizontalAlignment = bottom ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
+        PreviewSplitter.VerticalAlignment = bottom ? VerticalAlignment.Center : VerticalAlignment.Stretch;
+
+        // 栏在右边是竖线、在下边是横线
+        PreviewHost.BorderThickness = bottom ? new Thickness(0, 1, 0, 0) : new Thickness(1, 0, 0, 0);
+
+        PreviewSplitter.Visibility = Visibility.Visible;
+        PreviewHost.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>窗口里除内容区之外的固定开销（标题栏 / 页签 / 底栏 / 外边距）：量出来，没量过就按布局常量估。</summary>
+    private Size Chrome()
+    {
+        if (ContentBorder.ActualWidth > 0 && ContentBorder.ActualHeight > 0 &&
+            ActualWidth > ContentBorder.ActualWidth && ActualHeight > ContentBorder.ActualHeight)
+        {
+            return new Size(ActualWidth - ContentBorder.ActualWidth,
+                ActualHeight - ContentBorder.ActualHeight);
+        }
+
+        return new Size(26, 170);
+    }
+
+    /// <summary>最大化 / 还原之后按新的内容区重排一次（等这一帧布局量好再算）。</summary>
+    private void ReplanPreview()
+    {
+        if (OriginalToggle.IsChecked != true) return;
+        Dispatcher.BeginInvoke(new Action(() => ApplyPreviewPlan(fitWindow: false)),
+            System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
     private void ShowPreviewPane()
     {
         if (_image == null) return;
 
         PreviewPane.CanPopOut = true;
-        PreviewPane.SetImage(_image, _scale);
-
-        double pane = _paneWidth > 100 ? _paneWidth : ActualWidth * 0.38;
-        pane = Math.Clamp(pane, 240, Math.Max(240, Math.Min(480, ActualWidth * 0.55)));
-        Rect work = WorkArea();
-
-        double room = Math.Max(0, work.Right - (Left + ActualWidth) - 8);
-        double grow = Math.Min(pane, room);
-        if (grow >= 120 && _paneGrew <= 0)
-        {
-            Width = ActualWidth + grow;
-            _paneGrew = grow;
-        }
-
-        PreviewColumn.MinWidth = 240;
-        PreviewColumn.Width = new GridLength(pane);
-        PreviewSplitter.Visibility = Visibility.Visible;
-        PreviewHost.Visibility = Visibility.Visible;
-        PreviewPane.FitToViewport();
+        ApplyPreviewPlan(fitWindow: !_maximized);
     }
 
     private void HidePreviewPane()
     {
         if (PreviewHost.Visibility != Visibility.Visible) return;
 
-        if (PreviewHost.ActualWidth > 100) _paneWidth = PreviewHost.ActualWidth;
         PreviewColumn.MinWidth = 0;
+        PreviewRow.MinHeight = 0;
         PreviewColumn.Width = new GridLength(0);
+        PreviewRow.Height = new GridLength(0);
         PreviewSplitter.Visibility = Visibility.Collapsed;
         PreviewHost.Visibility = Visibility.Collapsed;
 
-        if (_paneGrew > 0)
+        // 为了 1:1 撑大过就把窗口收回去（最大化态由它自己管）
+        if (!_maximized && !_beforePreview.IsEmpty)
         {
-            Width = Math.Max(MinWidth, ActualWidth - _paneGrew);
-            _paneGrew = 0;
+            Rect before = _beforePreview;
+            _beforePreview = default;
+            Left = before.Left;
+            Top = before.Top;
+            Width = Math.Max(MinWidth, before.Width);
+            Height = Math.Max(MinHeight, before.Height);
         }
     }
 
@@ -1148,6 +1240,16 @@ public partial class CaptureResultWindow : Window
     private void Header_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
+
+        // 双击标题栏 = 最大化 / 还原（和系统窗口一致）
+        if (e.ClickCount >= 2)
+        {
+            ToggleMaximize();
+            return;
+        }
+
+        if (_maximized) return;      // 最大化时标题栏不拖：双击还原，别把窗口拽成半屏
+
         try
         {
             DragMove();
@@ -1156,6 +1258,98 @@ public partial class CaptureResultWindow : Window
         {
             // 鼠标已经松开（快速点击）：没有可拖的循环，忽略
         }
+    }
+
+    // ============ 最小化 / 最大化 ============
+
+    private static readonly Geometry MaximizeGlyph = Geometry.Parse("M 1,1 L 9,1 L 9,9 L 1,9 Z");
+    private static readonly Geometry RestoreGlyph = Geometry.Parse("M 1,1 L 6,1 L 6,6 L 1,6 Z M 4,4 L 9,4 L 9,9 L 4,9 Z");
+
+    private Rect _normalBounds;
+    private bool _maximized;
+
+    /// <summary>现在是不是「最大化」态（冒烟读它）。</summary>
+    internal bool IsMaximized => _maximized;
+
+    /// <summary>最小化：窗口进任务栏，点一下回来（<c>ShowInTaskbar</c> 必须是 true，否则就再也找不到了）。</summary>
+    private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void Maximize_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
+
+    /// <summary>
+    /// 最大化 / 还原。**铺满所在显示器的工作区**（不是整个屏幕）：无边框窗口走 <c>WindowState</c>
+    /// 会连任务栏一起盖住，所以这里自己换位置尺寸，并把原来的矩形记下来还原。
+    /// </summary>
+    internal void ToggleMaximize()
+    {
+        if (_maximized)
+        {
+            _maximized = false;
+            Rect normal = _normalBounds;
+            if (normal.Width >= MinWidth && normal.Height >= MinHeight)
+            {
+                Left = normal.Left;
+                Top = normal.Top;
+                Width = normal.Width;
+                Height = normal.Height;
+            }
+
+            UpdateMaximizeChrome();
+            ReplanPreview();       // 还原后按小窗口重排原文栏
+            return;
+        }
+
+        _normalBounds = new Rect(Left, Top, Math.Max(MinWidth, ActualWidth),
+            Math.Max(MinHeight, ActualHeight));
+
+        Rect work = WorkAreaOfWindow();
+        Left = work.Left;
+        Top = work.Top;
+        Width = work.Width;
+        Height = work.Height;
+        _maximized = true;
+        UpdateMaximizeChrome();
+        ReplanPreview();            // 铺满工作区之后多半就够 1:1 了
+    }
+
+    private void UpdateMaximizeChrome()
+    {
+        MaxIcon.Data = _maximized ? RestoreGlyph : MaximizeGlyph;
+        MaxBtn.ToolTip = _maximized ? "还原（双击标题栏也行）" : "最大化 / 还原（双击标题栏也行）";
+    }
+
+    /// <summary>窗口当前所在显示器的工作区（DIP）；拿不到就退回捕获区域那块。</summary>
+    private Rect WorkAreaOfWindow()
+    {
+        IntPtr hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero && Win32.GetWindowRect(hwnd, out var rect))
+        {
+            var screen = CaptureRecordWindow.ScreenOf(new Int32Rect(rect.Left, rect.Top,
+                Math.Max(1, rect.Right - rect.Left), Math.Max(1, rect.Bottom - rect.Top)));
+            if (screen is { Scale: > 0 })
+            {
+                return new Rect(screen.WorkLeft / screen.Scale, screen.WorkTop / screen.Scale,
+                    screen.WorkWidth / screen.Scale, screen.WorkHeight / screen.Scale);
+            }
+        }
+
+        return WorkArea();
+    }
+
+    /// <summary>从任务栏回来时，窗口可能已经落在屏幕外（换过分辨率 / 显示器）：夹回工作区。</summary>
+    private void EnsureOnScreen()
+    {
+        Rect work = WorkAreaOfWindow();
+        Rect bounds = new(Left, Top, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
+        if (bounds.Right > work.Left && bounds.Left < work.Right &&
+            bounds.Bottom > work.Top && bounds.Top < work.Bottom)
+        {
+            return;
+        }
+
+        Place();
+        UpdateZoom();
+        ReplanPreview();
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();

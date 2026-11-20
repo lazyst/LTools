@@ -5,12 +5,14 @@
         xmlns:controls="clr-namespace:LTools.Views.Controls"
         Title="识别结果" Width="720" Height="620" MinWidth="460" MinHeight="320"
         WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent"
-        ShowInTaskbar="False" Topmost="True" WindowStartupLocation="Manual"
+        ShowInTaskbar="True" Topmost="True" WindowStartupLocation="Manual"
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
         Foreground="{StaticResource TextBrush}">
     <!-- 识别结果窗（照 Snow Shot 的 screenshotrecognitionwindow）：无边框置顶、贴选区摆位、
          文字层按原图行框重排（可选中 / 编辑 / 复制），另有表格与二维码两页。
-         「显示原图 / 填充背景 / 原文预览」三个开关都对应上游的真实能力。 -->
+         「显示原图 / 填充背景 / 原文预览」三个开关都对应上游的真实能力。
+         标题栏带最小化 / 最大化（铺满工作区、双击标题栏也能切）；`ShowInTaskbar` 必须是 true，
+         否则最小化之后在任务栏里找不到它。 -->
     <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderStrongBrush}"
             BorderThickness="1" CornerRadius="{StaticResource CornerLg}">
         <Grid>
@@ -29,9 +31,27 @@
                                FontSize="{StaticResource FontSizeHint}"
                                Foreground="{StaticResource SecondaryTextBrush}"/>
                 </StackPanel>
-                <Button x:Name="CloseBtn" Content="✕" Width="34" Height="32" Padding="0"
-                        HorizontalAlignment="Right" Style="{StaticResource BtnGhost}"
-                        Focusable="False" Click="Close_Click"/>
+
+                <!-- 最小化 / 最大化 / 关闭（图标与 TitleBar 一致；最小化靠任务栏点回来） -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="MinBtn" Width="34" Height="32" Padding="0" Focusable="False"
+                            Style="{StaticResource BtnGhost}" ToolTip="最小化（任务栏点回来）"
+                            Click="Minimize_Click">
+                        <Path Width="10" Height="10" Stretch="Uniform"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1" Data="M 0,5 L 10,5"/>
+                    </Button>
+                    <Button x:Name="MaxBtn" Width="34" Height="32" Padding="0" Focusable="False"
+                            Style="{StaticResource BtnGhost}" ToolTip="最大化 / 还原（双击标题栏也行）"
+                            Click="Maximize_Click">
+                        <Path x:Name="MaxIcon" Width="10" Height="10" Stretch="Uniform"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1" Data="M 1,1 L 9,1 L 9,9 L 1,9 Z"/>
+                    </Button>
+                    <Button x:Name="CloseBtn" Content="✕" Width="34" Height="32" Padding="0"
+                            HorizontalAlignment="Right" Style="{StaticResource BtnGhost}"
+                            Focusable="False" Click="Close_Click"/>
+                </StackPanel>
             </Grid>
 
             <!-- 页签：只列当前真能出结果的页（没有实现的模式不放上来当死按钮） -->
@@ -101,7 +121,8 @@
             </Border>
 
             <!-- 内容：文字层 / 原图共用一块画布尺寸（摆位与滚动一致） -->
-            <Border Grid.Row="2" Margin="12,10,12,8" Background="{StaticResource SurfaceAltBrush}"
+            <Border x:Name="ContentBorder" Grid.Row="2" Margin="12,10,12,8"
+                    Background="{StaticResource SurfaceAltBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                     CornerRadius="{StaticResource CornerMd}" ClipToBounds="True">
                 <Grid>
@@ -110,6 +131,11 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition x:Name="PreviewColumn" Width="0"/>
                     </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition x:Name="PreviewRow" Height="0"/>
+                    </Grid.RowDefinitions>
 
                     <ScrollViewer x:Name="OcrScroll" HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto" Padding="0">
