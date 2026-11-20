@@ -153,6 +153,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "贴图历史策略：默认 / 归一范围 / 永久保留 / 磁盘上限", PinnedHistoryCases));
         cases.Add(new("capturePro", "悬浮工具条：默认布局 / 归一 / 往返 / 设置默认值", FloatingToolbarCases));
         cases.Add(new("capturePro", "选区形状：id 映射 / 化简 / 平滑曲线 / 命中 / 变换保持", RegionTypeCases));
+        cases.Add(new("capturePro", "选区背景与版面压缩：夹取 / 方案 / 导出像素", SelectionExportCases));
     }
 
     private static void Geometry()

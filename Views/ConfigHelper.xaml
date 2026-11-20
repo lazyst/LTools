@@ -1096,6 +1096,56 @@
                             </StackPanel>
                         </Border>
 
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 选区背景与版面" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="选区背景不透明度" VerticalAlignment="Center"/>
+                                    <Slider Grid.Column="1" x:Name="CaptureBackgroundOpacitySlider" Minimum="0" Maximum="100"
+                                            SmallChange="1" LargeChange="10" TickFrequency="10" IsSnapToTickEnabled="False"
+                                            VerticalAlignment="Center"
+                                            ToolTip="照上游 screenshot_selection/background_opacity_percent：把底图（不含标注）按这个不透明度垫在成品后面，圆角外 / 形状外那片透明变成淡化的上下文；0 = 不垫"
+                                            ValueChanged="CaptureBackgroundOpacity_Changed"/>
+                                    <TextBlock Grid.Column="2" x:Name="CaptureBackgroundOpacityText" Width="42"
+                                               Style="{StaticResource HintLabel}" TextAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="142,6,0,0" TextWrapping="Wrap"
+                                           Text="0 = 不垫背景（默认）。只有形状裁切 / 圆角 / 阴影那些「留白」会被填上淡化的底图。"/>
+
+                                <CheckBox x:Name="CaptureCompactionBox" Margin="0,12,0,0"
+                                          Content="导出时压缩选区里的空白（版面压缩）"
+                                          Checked="CaptureCompaction_Changed" Unchecked="CaptureCompaction_Changed"
+                                          ToolTip="照上游 screenshot_selection/layout_compaction_enabled：多块选区之间整段空白的行列被抽掉、按下面的留白贴紧；覆盖层预览仍是原尺寸"/>
+
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="压缩后留白" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <TextBox x:Name="CaptureCompactionSpacingBox" Width="90" MinHeight="32"
+                                                 VerticalContentAlignment="Center"
+                                                 controls:TextBoxClear.Attach="False"
+                                                 LostFocus="CaptureCompactionSpacing_Changed"
+                                                 KeyDown="CaptureCompactionSpacing_KeyDown"/>
+                                        <TextBlock Style="{StaticResource HintLabel}" Margin="8,0,0,0"
+                                                   VerticalAlignment="Center" Text="像素（0–100）"/>
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="142,6,0,0" TextWrapping="Wrap"
+                                           Text="只有两块以上、且它们之间确实隔着整段空白时才有效果（照上游同一口径）。"/>
+                            </StackPanel>
+                        </Border>
+
                     </StackPanel>
                 </ScrollViewer>
 

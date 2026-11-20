@@ -47,6 +47,18 @@ public sealed class CaptureSelectionFile
     public string? RegionType { get; set; }
 
     /// <summary>
+    /// 选区背景不透明度（0–100，默认 0 = 不垫背景）：把底图（不含标注）按它垫在成品后面，
+    /// 照上游 <c>screenshot_selection/background_opacity_percent</c>。
+    /// </summary>
+    public int BackgroundOpacityPercent { get; set; }
+
+    /// <summary>导出时压缩选区里的空白（照上游 <c>screenshot_selection/layout_compaction_enabled</c>，默认关）。</summary>
+    public bool? LayoutCompaction { get; set; }
+
+    /// <summary>压缩后每段之间留多少像素（0–100，照上游 <c>layout_compaction_spacing</c>）。</summary>
+    public int LayoutCompactionSpacing { get; set; }
+
+    /// <summary>
     /// 框完选区自动识别二维码（照上游 <c>screenshot/auto_recognize_qr_code</c>，默认开）。
     /// <c>null</c> = 开——老配置里没有这一项时不写盘，保持上游的默认值。
     /// </summary>
@@ -86,5 +98,8 @@ public sealed class CaptureSelectionPreset
     public string? BorderColor { get; set; }
 
     public string? BorderType { get; set; }
+
+    /// <summary>当时选的背景不透明度（0–100；0 = 不垫背景）。</summary>
+    public int BackgroundOpacityPercent { get; set; }
 }
 

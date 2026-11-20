@@ -166,6 +166,61 @@ internal static class SelectionStore
             file.BorderWidth = clamped.BorderWidth;
             file.BorderColor = ToolStyleFormat.Hex(clamped.BorderColor);
             file.BorderType = clamped.BorderType == SelectionBorderType.Border ? "border" : "shadow";
+            file.BackgroundOpacityPercent = clamped.BackgroundOpacity;
+            MarkDirty();
+        }
+    }
+
+    /// <summary>选区背景不透明度（0–100，0 = 不垫背景）。</summary>
+    public static void SetBackgroundOpacity(int percent)
+    {
+        int value = Math.Clamp(percent, 0, 100);
+        lock (Gate)
+        {
+            var file = Load();
+            if (file.BackgroundOpacityPercent == value) return;
+            file.BackgroundOpacityPercent = value;
+            MarkDirty();
+        }
+    }
+
+    /// <summary>导出时压缩选区里的空白（照上游 <c>layout_compaction_enabled</c>）。</summary>
+    public static bool Compaction
+    {
+        get
+        {
+            lock (Gate) return Load().LayoutCompaction is true;
+        }
+    }
+
+    /// <summary>压缩后每段之间留多少像素（0–100）。</summary>
+    public static int CompactionSpacing
+    {
+        get
+        {
+            lock (Gate) return Math.Clamp(Load().LayoutCompactionSpacing, 0, 100);
+        }
+    }
+
+    public static void SetCompaction(bool enabled)
+    {
+        lock (Gate)
+        {
+            var file = Load();
+            if (file.LayoutCompaction == enabled) return;
+            file.LayoutCompaction = enabled;
+            MarkDirty();
+        }
+    }
+
+    public static void SetCompactionSpacing(int spacing)
+    {
+        int value = Math.Clamp(spacing, 0, 100);
+        lock (Gate)
+        {
+            var file = Load();
+            if (file.LayoutCompactionSpacing == value) return;
+            file.LayoutCompactionSpacing = value;
             MarkDirty();
         }
     }
@@ -315,6 +370,7 @@ internal static class SelectionStore
             BorderType = string.Equals(file.BorderType, "border", StringComparison.OrdinalIgnoreCase)
                 ? SelectionBorderType.Border
                 : SelectionBorderType.Shadow,
+            BackgroundOpacity = file.BackgroundOpacityPercent,
         }.Clamp();
     }
 
@@ -335,6 +391,7 @@ internal static class SelectionStore
             BorderType = string.Equals(dto.BorderType, "border", StringComparison.OrdinalIgnoreCase)
                 ? SelectionBorderType.Border
                 : SelectionBorderType.Shadow,
+            BackgroundOpacity = dto.BackgroundOpacityPercent,
         }.Clamp();
 
         return new SelectionPreset(dto.Name, new Int32Rect(dto.X, dto.Y, dto.Width, dto.Height), style,
@@ -356,6 +413,7 @@ internal static class SelectionStore
         BorderWidth = style.BorderWidth,
         BorderColor = ToolStyleFormat.Hex(style.BorderColor),
         BorderType = style.BorderType == SelectionBorderType.Border ? "border" : "shadow",
+        BackgroundOpacityPercent = style.BackgroundOpacity,
     };
 
     private static SmartSelectionMode ParseSmart(string? value) => value switch

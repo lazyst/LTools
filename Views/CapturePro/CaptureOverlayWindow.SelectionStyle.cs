@@ -44,6 +44,9 @@ public partial class CaptureOverlayWindow
         _aspectLocked = SelectionStore.AspectLocked;
         _lockedRatio = _aspect == SelectionAspect.Free ? 0 : SelectionAspects.HeightOverWidth(_aspect);
         _doc.Style = _selStyle;
+        // 导出选项（覆盖层预览不压缩，见 docs/CAPTURE_PARITY.md §5）
+        _doc.CompactLayout = SelectionStore.Compaction;
+        _doc.CompactSpacing = SelectionStore.CompactionSpacing;
     }
 
     /// <summary>

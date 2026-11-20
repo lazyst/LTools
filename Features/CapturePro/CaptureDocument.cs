@@ -114,6 +114,15 @@ internal sealed class CaptureDocument
     /// </summary>
     public SelectionStyle Style { get; set; } = SelectionStyle.None;
 
+    /// <summary>
+    /// 导出时压缩选区里的空白（照上游 <c>layout_compaction_enabled</c>）：多块加区之间那些整段空白的
+    /// 行列被抽掉、按 <see cref="CompactSpacing"/> 重新贴紧。单块矩形 / 单块点列没有可压缩的整段空白。
+    /// </summary>
+    public bool CompactLayout { get; set; }
+
+    /// <summary>压缩后每段之间留多少物理像素（0–100，照上游 <c>layout_compaction_spacing</c>）。</summary>
+    public int CompactSpacing { get; set; }
+
     public bool HasArea => Area.Width >= 2 && Area.Height >= 2;
 
     /// <summary>标注列表，顺序即绘制顺序（后画的在上面）。</summary>
@@ -263,7 +272,140 @@ internal sealed class CaptureDocument
         if (!HasArea) throw new InvalidOperationException("还没有选区，不能导出");
 
         var style = Style.Clamp();
-        return style.IsPlain ? RenderPlain(area) : RenderStyled(area, style);
+
+        // 版面压缩：多块加区之间整段空白的行列抽掉（输出尺寸会变小）
+        if (CompactionPlanFor(area, style) is { } plan)
+            return RenderCompacted(area, style, plan);
+
+        var result = style.IsPlain ? RenderPlain(area) : RenderStyled(area, style);
+        return style.BackgroundOpacity > 0 ? WithBackground(result, area, style) : result;
+    }
+
+    /// <summary>
+    /// 把底图（**不含标注**）按 <see cref="SelectionStyle.BackgroundOpacity"/> 垫在成品后面：
+    /// 圆角外 / 形状外 / 阴影留白那片原本透明的地方变成淡化的上下文（照上游
+    /// <c>background_opacity_percent</c> + <c>maskBackgroundForSelection</c>）。
+    /// </summary>
+    private BitmapSource WithBackground(BitmapSource result, Int32Rect area, SelectionStyle style)
+    {
+        double s = Scale > 0 ? Scale : 1;
+        int effect = style.IsPlain ? 0 : style.EffectPixels(s);
+        double dx = area.X - Monitor.X;
+        double dy = area.Y - Monitor.Y;
+
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            dc.PushOpacity(style.BackgroundOpacity / 100.0);
+            PushContent(dc, dx - effect, dy - effect);
+            dc.DrawImage(Base, Canvas);
+            dc.Pop();
+            dc.Pop();
+            dc.Pop();
+
+            // 成品画在上面：内容不透明的地方完全盖住背景，透明的地方透出淡化的底图
+            dc.DrawImage(result, new Rect(0, 0, result.PixelWidth, result.PixelHeight));
+        }
+
+        return Finish(visual, result.PixelWidth, result.PixelHeight);
+    }
+
+    /// <summary>多块加区在内容像素下的外接框（压缩方案只认加区，减区跟着它自己那块一起搬）。</summary>
+    private LayoutCompaction.Plan? CompactionPlanFor(Int32Rect area, SelectionStyle style)
+    {
+        if (!CompactLayout || Regions is not { Length: > 0 } regions) return null;
+
+        var blocks = new List<Rect>();
+        for (int i = 0; i < regions.Length; i++)
+        {
+            if (regions[i].Mode != RegionMode.Add) continue;
+            blocks.Add(ToContentPixels(regions[i].Bounds, area));
+        }
+
+        if (blocks.Count < 2) return null;
+        return LayoutCompaction.Build(blocks, area.Width, area.Height, CompactSpacing);
+    }
+
+    /// <summary>「图像像素（相对底图左上角）」→「内容像素（相对选区左上角）」。</summary>
+    private Rect ToContentPixels(Rect bounds, Int32Rect area)
+    {
+        double dx = area.X - Monitor.X;
+        double dy = area.Y - Monitor.Y;
+        return new Rect(bounds.X - dx, bounds.Y - dy, bounds.Width, bounds.Height);
+    }
+
+    /// <summary>
+    /// 压缩后的导出：每块内容按方案搬到新位置，形状裁剪、圆角、阴影 / 边框、背景都跟着搬
+    /// （照上游 <c>ScreenshotLayoutCompactionPlan</c> 的 tile 模型）。
+    /// </summary>
+    private BitmapSource RenderCompacted(Int32Rect area, SelectionStyle style, LayoutCompaction.Plan plan)
+    {
+        double s = Scale > 0 ? Scale : 1;
+        int effect = style.IsPlain ? 0 : style.EffectPixels(s);
+        int radius = style.RadiusPixels(s);
+        double dx = area.X - Monitor.X;
+        double dy = area.Y - Monitor.Y;
+
+        int width = Math.Max(1, plan.Width + effect * 2);
+        int height = Math.Max(1, plan.Height + effect * 2);
+
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            foreach (var tile in plan.Tiles)
+            {
+                if (tile.Region < 0 || tile.Region >= (Regions?.Length ?? 0)) continue;
+
+                // 这一块搬到输出坐标后的形状（内容像素 → 输出像素）
+                SelectionRegion moved = MoveRegion(Regions![tile.Region], dx, dy,
+                    effect + tile.Dx, effect + tile.Dy);
+                Geometry path = SelectionSet.Combine(new[] { moved }, radius) ?? moved.Geometry();
+
+                if (style.BackgroundOpacity > 0)
+                {
+                    dc.PushOpacity(style.BackgroundOpacity / 100.0);
+                    PushContent(dc, dx - effect - tile.Dx, dy - effect - tile.Dy);
+                    dc.DrawImage(Base, Canvas);
+                    dc.Pop();
+                    dc.Pop();
+                    dc.Pop();
+                }
+
+                dc.PushClip(path);
+                PushContent(dc, dx - effect - tile.Dx, dy - effect - tile.Dy);
+                DrawContent(dc);
+                dc.Pop();
+                dc.Pop();
+                dc.Pop();
+
+                if (effect > 0)
+                {
+                    if (style.BorderType == SelectionBorderType.Border)
+                        SelectionEffects.DrawBorder(dc, path, moved.Bounds, radius, effect, style.BorderColor);
+                    else
+                        SelectionEffects.DrawShadow(dc, path, moved.Bounds, radius, effect, style.ShadowColor);
+                }
+            }
+        }
+
+        return Finish(visual, width, height);
+    }
+
+    /// <summary>把一块选区从「图像像素」搬到输出像素下的新位置。</summary>
+    private static SelectionRegion MoveRegion(SelectionRegion region, double dx, double dy,
+        double shiftX, double shiftY)
+    {
+        var box = new Rect(region.Box.X - dx + shiftX, region.Box.Y - dy + shiftY,
+            region.Box.Width, region.Box.Height);
+        Point[]? points = null;
+        if (region.Points is { } source)
+        {
+            points = new Point[source.Length];
+            for (int i = 0; i < source.Length; i++)
+                points[i] = new Point(source[i].X - dx + shiftX, source[i].Y - dy + shiftY);
+        }
+
+        return new SelectionRegion(region.Mode, box, points, region.Smooth);
     }
 
     private BitmapSource RenderPlain(Int32Rect area)

@@ -63,6 +63,12 @@ internal sealed record SelectionStyle
     /// <summary>当前生效的影响宽度（类型决定取阴影还是边框那一个）。</summary>
     public double EffectWidth => BorderType == SelectionBorderType.Border ? BorderWidth : ShadowWidth;
 
+    /// <summary>
+    /// 选区背景不透明度（0–100）：把「底图（不含标注）」按这个不透明度垫在成品后面，
+    /// 形状外 / 圆角外那片透明就变成淡化的上下文。0 = 不垫（默认，照上游 <c>background_opacity_percent</c>）。
+    /// </summary>
+    public int BackgroundOpacity { get; init; }
+
     /// <summary>当前生效的影响颜色。</summary>
     public Color EffectColor => BorderType == SelectionBorderType.Border ? BorderColor : ShadowColor;
 
@@ -75,6 +81,7 @@ internal sealed record SelectionStyle
         CornerRadius = Math.Clamp(CornerRadius, 0, CornerRadiusMax),
         ShadowWidth = Math.Clamp(ShadowWidth, 0, EffectWidthMax),
         BorderWidth = Math.Clamp(BorderWidth, 0, EffectWidthMax),
+        BackgroundOpacity = Math.Clamp(BackgroundOpacity, 0, 100),
     };
 
     /// <summary>换当前生效的影响宽度（不动另一种）。</summary>

@@ -853,6 +853,7 @@ public partial class ConfigHelperWindow : Window
         PopulateCaptureHistory();
         PopulatePinHistory();
         PopulateFloatingBar();
+        PopulateSelectionExport();
     }
 
     /// <summary>

@@ -377,6 +377,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "selectionexport")
+        {
+            SelectionExportSection();
+            Console.WriteLine(_failed == 0 ? "selectionexport-only：通过" : $"selectionexport-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
 
@@ -415,6 +422,9 @@ internal static partial class Program
 
         // ============ 选区形状（P9-m：四档 / 真鼠标画 / 导出按路径裁 / 拖动整条） ============
         RegionTypeSection();
+
+        // ============ 选区背景与版面压缩（P9-n：设置落盘 / 两块压缩导出 / 背景像素） ============
+        SelectionExportSection();
 
         const int width = 1600, height = 900;
         var shot = BuildShot(width, height);
