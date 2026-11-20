@@ -692,6 +692,12 @@ public partial class CaptureResultWindow : Window
     }
 
     /// <summary>保存 / 复制用的成品图（尊重「保存识别结果图片」开关）。</summary>
+    /// <remarks>
+    /// 识别结果图 = **原截图 + 原位替换的文字**（照上游 <c>renderScreenshotRecognitionImage</c>：
+    /// 先把选区原图铺满，再按行把底色盖上去、把文字按原位置画回来）。所以这里必须
+    /// <c>includeSource: true</c>——传 <c>false</c> 出来的是「只有文字、裁到文字外接框」的一张图，
+    /// 保存下来根本不是截图（用户报过「保存的不是截图」）。
+    /// </remarks>
     internal BitmapSource? BuildSavableImage()
     {
         if (_image == null) return null;
@@ -702,7 +708,7 @@ public partial class CaptureResultWindow : Window
 
         if (_model == null || _layer.Count == 0) return _image;
 
-        return OcrImageRenderer.Render(_image, _layer, _model.Lines, includeSource: false,
+        return OcrImageRenderer.Render(_image, _layer, _model.Lines, includeSource: true,
                    fillBackground: FillToggle.IsChecked == true,
                    fillStyle: TextRecognitionStore.FillStyle,
                    highlight: TextRecognitionStore.ShowTextHighlighting)

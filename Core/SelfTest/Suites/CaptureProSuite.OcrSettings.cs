@@ -227,5 +227,28 @@ internal static partial class CaptureProSuite
 
         Check.True(OcrImageRenderer.Render(source, Array.Empty<OcrTextLine>(), texts,
             includeSource: true, fillBackground: true) == null, "空文字层不产图");
+
+        // —— 「保存识别结果图片」= 整张截图 + 原位替换的文字 ——
+        // 照上游 renderScreenshotRecognitionImage：先把选区原图铺满，再把行底色盖上去、文字按原位置画回来。
+        // 传 includeSource: false 出来的是「只有文字、裁到文字外接框」的一张图，保存下来根本不是截图。
+        var small = new[]
+        {
+            new OcrTextLine
+            {
+                Index = 0,
+                Text = "A",
+                Box = new Int32Rect(5, 5, 10, 8),
+                TextColor = Rgb.Black,
+                BackgroundColor = Rgb.White,
+            },
+        };
+        var inPlace = OcrImageRenderer.Render(source, small, texts, includeSource: true,
+            fillBackground: true);
+        Check.True(inPlace is { PixelWidth: width, PixelHeight: height },
+            "成品图 = 整张截图（原图 + 原位文字），不是裁到文字外接框");
+        var textOnly = OcrImageRenderer.Render(source, small, texts, includeSource: false,
+            fillBackground: true);
+        Check.True(textOnly != null && textOnly.PixelWidth < width && textOnly.PixelHeight < height,
+            "不带原图时只剩文字外接框（这就是原来保存出来的东西）");
     }
 }

@@ -234,6 +234,20 @@ internal static partial class Program
             Pump(edit);
             Check(TabOf(edit, Inst) == "text", "「启用编辑模式」把页签切到文字");
             Check(edit.IsVisible, "编辑模式不关窗");
+
+            // 「保存识别结果图片」= 整张截图 + 原位替换的文字（不是只有文字、裁到文字外接框的一张图）
+            var saved = (BitmapSource?)resultType.GetMethod("BuildSavableImage", Inst)!
+                .Invoke(edit, null);
+            Check(saved != null && saved.PixelWidth == image.PixelWidth &&
+                  saved.PixelHeight == image.PixelHeight,
+                $"保存识别结果图片 = 整张截图（{saved?.PixelWidth}×{saved?.PixelHeight}，原图 {image.PixelWidth}×{image.PixelHeight}）");
+            if (saved != null)
+            {
+                var probe = new byte[4];
+                saved.CopyPixels(new Int32Rect(1, 1, 1, 1), probe, 4, 0);
+                Check(probe[3] == 255, "成品图角落不透明（铺了原图，不是只有文字的透明图）");
+            }
+
             edit.Close();
 
             // 4.2 copy_text_and_end_screenshot：复制文本并关窗
