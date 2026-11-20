@@ -778,6 +778,73 @@
                             </StackPanel>
                         </Border>
 
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 贴图历史" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <CheckBox x:Name="PinHistoryEnabledBox"
+                                          Content="记录贴图历史（关掉 = 贴图关掉之后不留记录）"
+                                          Checked="PinHistory_Changed" Unchecked="PinHistory_Changed"
+                                          ToolTip="照 Snow Shot 的 pinned_history/enabled，默认开；关掉后管理页看不到新关掉的贴图"/>
+                                <CheckBox x:Name="PinHistoryKeepBox" Margin="22,8,0,0"
+                                          Content="永久保留（不按天数 / 条数 / 磁盘上限清理）"
+                                          Checked="PinHistory_Changed" Unchecked="PinHistory_Changed"
+                                          ToolTip="照 Snow Shot 的 pinned_history/keep_permanently"/>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,6,0,0" TextWrapping="Wrap"
+                                           Text="贴图历史存在数据根的 pins/ 里（随备份带上）。默认 30 天 / 200 条（沿用 LTools 既有口径，上游是 7 天 / 100 条）；关掉「永久保留」后按天数 → 条数 → 磁盘占用依次清理。"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="保留天数" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="PinHistoryDaysBox" MinHeight="32"
+                                             VerticalContentAlignment="Center" MaxWidth="120"
+                                             HorizontalAlignment="Left" MinWidth="88"
+                                             controls:TextBoxClear.Attach="False"
+                                             LostFocus="PinHistoryNumber_LostFocus"
+                                             KeyDown="PinHistoryNumber_KeyDown"
+                                             ToolTip="照 Snow Shot 的 pinned_history/retention_days：1–365，默认 30"/>
+                                </Grid>
+
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="最多保留条数" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="PinHistoryEntriesBox" MinHeight="32"
+                                             VerticalContentAlignment="Center" MaxWidth="120"
+                                             HorizontalAlignment="Left" MinWidth="88"
+                                             controls:TextBoxClear.Attach="False"
+                                             LostFocus="PinHistoryNumber_LostFocus"
+                                             KeyDown="PinHistoryNumber_KeyDown"
+                                             ToolTip="照 Snow Shot 的 pinned_history/max_entries：1–1000，默认 200"/>
+                                </Grid>
+
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="磁盘上限（MB）" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="PinHistoryDiskBox" MinHeight="32"
+                                             VerticalContentAlignment="Center" MaxWidth="120"
+                                             HorizontalAlignment="Left" MinWidth="88"
+                                             controls:TextBoxClear.Attach="False"
+                                             LostFocus="PinHistoryNumber_LostFocus"
+                                             KeyDown="PinHistoryNumber_KeyDown"
+                                             ToolTip="照 Snow Shot 的 pinned_history/max_disk_mib：128–10240，默认 1024"/>
+                                </Grid>
+
+                                <TextBlock x:Name="PinHistorySummaryText" Style="{StaticResource HintLabel}"
+                                           Margin="0,10,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+
                     </StackPanel>
                 </ScrollViewer>
 

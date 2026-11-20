@@ -356,6 +356,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "pinhistory")
+        {
+            PinHistorySection();
+            Console.WriteLine(_failed == 0 ? "pinhistory-only：通过" : $"pinhistory-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
 
@@ -385,6 +392,9 @@ internal static partial class Program
 
         // ============ 采集历史策略（P9-j：开关 / 永久保留 / 天数 / 条数 / 磁盘上限） ============
         HistoryPolicySection();
+
+        // ============ 贴图历史策略（P9-k：同一套口径，默认沿用 30 天 / 200 条） ============
+        PinHistorySection();
 
         const int width = 1600, height = 900;
         var shot = BuildShot(width, height);

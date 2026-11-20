@@ -356,7 +356,7 @@ internal static class PinStore
             };
 
             items.Insert(0, record);
-            var (keep, drop) = PlanPrune(items, now, MaxEntries, MaxAgeDays);
+            var (keep, drop) = PlanPrune(items, now, PinnedHistoryStore.Current);
 
             var order = StackingUnsafe(items);
             order.Add(record.Id, record.Group);       // 新贴的排在最前
@@ -554,6 +554,19 @@ internal static class PinStore
             record.WinWidth = width;
             record.WinHeight = height;
             record.Live = false;
+
+            // 关掉「记录贴图历史」时，关一张就不留：记录与图一起删（贴图本身早已在窗口里）
+            if (!PinnedHistoryStore.Enabled)
+            {
+                items.Remove(record);
+                var order = StackingUnsafe(items);
+                order.Remove(record.Id);
+                SaveUnsafe(items, order);
+                DeleteFiles(new[] { record });
+                Changed?.Invoke();
+                return;
+            }
+
             SaveUnsafe(items);
             Changed?.Invoke();
         }
@@ -641,7 +654,7 @@ internal static class PinStore
                     dirty = true;
                 }
 
-                var (keep, drop) = PlanPrune(items, DateTime.Now, MaxEntries, MaxAgeDays);
+                var (keep, drop) = PlanPrune(items, DateTime.Now, PinnedHistoryStore.Current);
                 if (!dirty && drop.Count == 0 && keep.Count == items.Count) return;
 
                 var order = StackingUnsafe(items);
@@ -789,6 +802,65 @@ internal static class PinStore
     }
 
     // ============ 纯函数（自检直接断言） ============
+
+    /// <summary>按策略裁剪：「永久保留」= 一条都不丢，否则按条数 / 天数 / 磁盘上限。</summary>
+    public static (List<PinRecord> Keep, List<PinRecord> Drop) PlanPrune(
+        IEnumerable<PinRecord> items, DateTimeOffset now, PinnedHistoryPolicy policy)
+    {
+        if (policy.KeepPermanently)
+            return (items.OrderByDescending(e => e.CreatedAt, StringComparer.Ordinal).ToList(),
+                new List<PinRecord>());
+
+        var (keep, drop) = PlanPrune(items, now, policy.MaxEntries, policy.RetentionDays);
+        var (withinDisk, overDisk) = PlanDiskPrune(keep, policy.MaxDiskBytes, EntryBytes);
+        drop.AddRange(overDisk);
+        return (withinDisk, drop);
+    }
+
+    /// <summary>磁盘上限：从最旧的开始丢，直到总量不超上限（纯函数）。</summary>
+    public static (List<PinRecord> Keep, List<PinRecord> Drop) PlanDiskPrune(
+        IEnumerable<PinRecord> items, long maxBytes, Func<PinRecord, long> sizeOf)
+    {
+        var ordered = items
+            .OrderByDescending(e => e.CreatedAt, StringComparer.Ordinal)
+            .ToList();
+
+        var keep = new List<PinRecord>();
+        var drop = new List<PinRecord>();
+        long total = 0;
+
+        foreach (var record in ordered)
+        {
+            long size = Math.Max(0, sizeOf(record));
+            if (maxBytes > 0 && keep.Count > 0 && total + size > maxBytes)
+            {
+                drop.Add(record);
+                continue;
+            }
+
+            keep.Add(record);
+            total += size;
+        }
+
+        return (keep, drop);
+    }
+
+    /// <summary>一条贴图记录占的字节（原图 + 缩略图）。</summary>
+    public static long EntryBytes(PinRecord record) =>
+        LengthOf(AssetPath(record.Id)) + LengthOf(ThumbPath(record.Id));
+
+    private static long LengthOf(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return info.Exists ? info.Length : 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
 
     /// <summary>保留 / 丢弃怎么分：先按创建时间倒序，超龄或超量的进 discard。</summary>
     public static (List<PinRecord> Keep, List<PinRecord> Drop) PlanPrune(
