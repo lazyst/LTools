@@ -196,7 +196,7 @@ public partial class CaptureOverlayWindow
         _tool = tool;
         CaptureToolMemory.Remember(tool);
         Toolbar.Sync(tool);
-        if (tool != CaptureTool.Picker) HidePicker();
+        if (tool is not (CaptureTool.Picker or CaptureTool.Select)) HidePicker();
         if (tool == CaptureTool.AutoFilter) EnterAutoFilter();
         else LeaveAutoFilter();
         UpdateCursorForTool();
@@ -308,7 +308,8 @@ public partial class CaptureOverlayWindow
         {
             var p = Clamp(dip);
             RefreshCursor(p);
-            if (_tool == CaptureTool.Picker) ShowPickerAt(p);   // 切过去就显示色卡，不用先动一下
+            // 切到取色 / 选择工具之后马上摆好色卡（别等用户先动一下鼠标）
+            if (_tool is CaptureTool.Picker or CaptureTool.Select) ShowPickerAt(p);
         }
         else Cursor = _tool == CaptureTool.Text ? Cursors.IBeam : Cursors.Cross;
     }

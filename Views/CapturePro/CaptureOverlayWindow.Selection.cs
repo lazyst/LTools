@@ -477,8 +477,16 @@ public partial class CaptureOverlayWindow
 
         if (_drag == DragMode.None)
         {
-            // 光标停在工具栏 / 信息条 / 输入框上时，别去动悬停候选和光标形状
-            if (_textEditing || IsOverToolbar || IsOverSelectionBar) return;
+            // 光标停在工具栏 / 信息条 / 输入框上时，别去动悬停候选和光标形状（取色卡也收起）
+            if (_textEditing || IsOverToolbar || IsOverSelectionBar)
+            {
+                HidePicker();
+                return;
+            }
+
+            // 取色 / 坐标：选择工具与取色工具下都跟着光标（上游 moveToolActive 那一档）
+            if (_tool is CaptureTool.Select or CaptureTool.Picker) ShowPickerAt(p);
+            else HidePicker();
 
             // 折线选区正在逐点单击：只让最后一段虚线跟着光标
             if (_selPolyActive)
@@ -494,10 +502,8 @@ public partial class CaptureOverlayWindow
             if (_tool == CaptureTool.Picker)
             {
                 Cursor = Cursors.Cross;
-                ShowPickerAt(p);
                 return;
             }
-            HidePicker();
 
             RefreshCursor(p);
             if (_tool == CaptureTool.AutoFilter)

@@ -405,21 +405,32 @@
                 </StackPanel>
             </Border>
 
-            <!-- 取色：光标旁一块色卡 + #RRGGBB / rgb()；单击复制十六进制 -->
-            <Border x:Name="PickerChip" Panel.ZIndex="26" Background="{StaticResource ChromeBg}" CornerRadius="4"
-                    BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1"
-                    Padding="6,3" Visibility="Collapsed" IsHitTestVisible="False">
-                <StackPanel Orientation="Horizontal">
-                    <Border x:Name="PickerSwatch" Width="14" Height="14" CornerRadius="2"
-                            BorderBrush="{StaticResource ChromeStroke}" BorderThickness="1"
-                            VerticalAlignment="Center"/>
-                    <!-- 两行（照上游取色窗）：上一行色值、下一行取样点坐标（全局 / 相对选区左上角） -->
-                    <StackPanel Margin="6,0,0,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="PickerText" Foreground="{StaticResource ChromeInk}"
-                                   FontFamily="Consolas" FontSize="12"/>
-                        <TextBlock x:Name="PickerPosText" Foreground="#B3FFFFFF"
-                                   FontFamily="Consolas" FontSize="11" Margin="0,1,0,0"/>
-                    </StackPanel>
+            <!-- 光标旁那块取色 / 坐标卡（照上游 ScreenshotColorPickerWindow）：
+                 上面 11×11 源像素按 12 倍放大（最近邻），中间一格描边；中间一行 X / Y；
+                 下面一条色带写当前格式的色值（黑 / 白字按底色自动挑）。
+                 选择工具与取色工具下都跟着光标走，显示时机见 OverlayUiSettings.PickerVisible。 -->
+            <Border x:Name="PickerChip" Panel.ZIndex="26" Background="{StaticResource ChromePanel}"
+                    CornerRadius="6" BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1"
+                    Padding="4" Visibility="Collapsed" IsHitTestVisible="False">
+                <StackPanel>
+                    <Grid x:Name="PickerPreviewClip" Width="132" Height="132"
+                          Background="{StaticResource ChromeWell}" ClipToBounds="True">
+                        <Image x:Name="PickerPreview" Stretch="Fill"
+                               RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                        <Rectangle x:Name="PickerCenterMark" Width="12" Height="12"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Stroke="White" StrokeThickness="1"/>
+                    </Grid>
+                    <TextBlock x:Name="PickerPosText" Width="132" Height="20" Margin="0,5,0,0"
+                               TextAlignment="Center" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{StaticResource ChromeInk}" FontSize="13"/>
+                    <Border x:Name="PickerColorBar" Width="132" Height="24" Margin="0,5,0,0"
+                            CornerRadius="5">
+                        <TextBlock x:Name="PickerText" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   FontSize="13"/>
+                    </Border>
                 </StackPanel>
             </Border>
 

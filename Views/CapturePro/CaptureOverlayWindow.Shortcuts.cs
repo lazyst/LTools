@@ -49,7 +49,9 @@ public partial class CaptureOverlayWindow
         "toggle_guides",
     };
 
-    /// <summary>上游要求取色上下文活着才生效的那几项（LTools 就是取色工具）。</summary>
+    /// <summary>
+    /// 上游要求取色上下文活着才生效的那几项（<c>moveToolActive</c>）：选择工具与取色工具下都算。
+    /// </summary>
     private static readonly HashSet<string> PickerOnly = new(StringComparer.Ordinal)
     {
         "move_cursor_up",
@@ -103,7 +105,8 @@ public partial class CaptureOverlayWindow
     private bool RunScreenshotShortcut(string id)
     {
         // 取色 / 光标采样：上游 moveCursorOnePixel 也要求 colorPickerContext().active
-        if (PickerOnly.Contains(id) && _tool != CaptureTool.Picker) return false;
+        // （选择工具与取色工具下都算，见 PickerOnly 的注释）
+        if (PickerOnly.Contains(id) && _tool is not (CaptureTool.Picker or CaptureTool.Select)) return false;
 
         switch (id)
         {
@@ -270,7 +273,7 @@ public partial class CaptureOverlayWindow
             Surface.GuideCursor = at;
             Surface.InvalidateVisual();
             UpdateHover(at);
-            if (_tool == CaptureTool.Picker) ShowPickerAt(at);
+            if (_tool is CaptureTool.Picker or CaptureTool.Select) ShowPickerAt(at);
         }
 
         return true;

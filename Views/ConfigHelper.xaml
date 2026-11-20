@@ -1230,7 +1230,7 @@
                                                Text="取色器显示" VerticalAlignment="Center"/>
                                     <ComboBox Grid.Column="1" x:Name="CapturePickerModeCombo" MinHeight="32"
                                               SelectionChanged="CaptureOverlayUi_Changed"
-                                              ToolTip="取色色卡什么时候出现（照上游 screenshot_ui/color_picker_display_mode）；单击仍会取色并复制">
+                                              ToolTip="框选阶段光标旁那块取色 / 坐标卡什么时候出现（照上游 screenshot_ui/color_picker_display_mode）；取色工具下单击仍会取色并复制">
                                         <ComboBoxItem Content="选区外不显示"/>
                                         <ComboBoxItem Content="总是显示"/>
                                         <ComboBoxItem Content="总是不显示"/>

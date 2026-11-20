@@ -161,7 +161,8 @@ public partial class CaptureOverlayWindow
 
             // 取色器里轻按 Shift = 换色值格式（上游 keep_selection_width_and_height_consistent
             // 在取色时那一下「没用来拖」的轻按）；格式存进 settings 的 color_picker_format。
-            if (tap && _tool == CaptureTool.Picker &&
+            // 选择工具下同样有效（光标旁那块取色卡本来就跟着走，上游 cycle_color_format 看 moveToolActive）。
+            if (tap && _tool is CaptureTool.Picker or CaptureTool.Select &&
                 CaptureShortcutTable.BindsBareModifier(CaptureShortcutScope.Screenshot,
                     "keep_selection_width_and_height_consistent", 0xA0))
             {

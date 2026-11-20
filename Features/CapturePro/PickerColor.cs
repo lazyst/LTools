@@ -18,6 +18,15 @@ namespace LTools.Features.CapturePro;
 /// </remarks>
 internal static class PickerColor
 {
+    /// <summary>光标旁那块预览格取几乘几的源像素（照上游 <c>kPreviewPickerSize = 11</c>）。</summary>
+    public const int PatchSize = 11;
+
+    /// <summary>预览格里一个源像素放大到多少 DIP（照上游 <c>kPreviewScale = 12</c>）。</summary>
+    public const int PatchScale = 12;
+
+    /// <summary>预览格边长（DIP）= 11 × 12 = 132。</summary>
+    public const double PatchCanvas = PatchSize * PatchScale;
+
     /// <summary>读画面像素颜色（物理像素坐标）。越界 / 没有底图 = <c>null</c>。</summary>
     public static Color? Read(BitmapSource? image, int x, int y)
     {
@@ -35,6 +44,59 @@ internal static class PickerColor
 
     /// <summary>十六进制文本（大写，复制的就是这一段）。</summary>
     public static string Hex(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+
+    /// <summary>
+    /// 光标周围 <see cref="PatchSize"/> × <see cref="PatchSize"/> 的像素块（BGRA32，行优先）。
+    /// 越界时**边缘像素重复**（逐点 clamp，照上游 <c>updatePreview</c>）；没有底图 = <c>null</c>。
+    /// </summary>
+    public static byte[]? ReadPatch(BitmapSource? image, int x, int y)
+    {
+        if (image == null || image.PixelWidth <= 0 || image.PixelHeight <= 0) return null;
+
+        BitmapSource source = image.Format == PixelFormats.Bgra32
+            ? image
+            : new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0);
+
+        int w = source.PixelWidth, h = source.PixelHeight;
+        int size = PatchSize, half = size / 2;
+
+        // 先把「光标 ± half」夹成一块真实存在的矩形，一次拷出来
+        int left = Math.Clamp(x - half, 0, w - 1);
+        int top = Math.Clamp(y - half, 0, h - 1);
+        int right = Math.Clamp(x + half, 0, w - 1);
+        int bottom = Math.Clamp(y + half, 0, h - 1);
+        int rw = right - left + 1, rh = bottom - top + 1;
+
+        var raw = new byte[rw * rh * 4];
+        source.CopyPixels(new Int32Rect(left, top, rw, rh), raw, rw * 4, 0);
+
+        var block = new byte[size * size * 4];
+        for (int row = 0; row < size; row++)
+        {
+            int sy = Math.Clamp(y + row - half, top, bottom) - top;
+            for (int col = 0; col < size; col++)
+            {
+                int sx = Math.Clamp(x + col - half, left, right) - left;
+                int from = (sy * rw + sx) * 4;
+                int to = (row * size + col) * 4;
+                block[to] = raw[from];
+                block[to + 1] = raw[from + 1];
+                block[to + 2] = raw[from + 2];
+                block[to + 3] = raw[from + 3];
+            }
+        }
+
+        return block;
+    }
+
+    /// <summary>
+    /// 压在这一格颜色上的字该用黑还是白（照上游 <c>readableTextColor</c>：
+    /// 任一分量 &gt; 128 用黑，否则用白）。
+    /// </summary>
+    public static Color ReadableTextColor(Color color) =>
+        color.R > 128 || color.G > 128 || color.B > 128
+            ? Color.FromArgb(224, 0, 0, 0)
+            : Color.FromArgb(217, 255, 255, 255);
 
     /// <summary>给 CSS 用的 rgb 文本（提示条里一起显示，方便看清分量）。</summary>
     public static string Rgb(Color color) => $"rgb({color.R}, {color.G}, {color.B})";

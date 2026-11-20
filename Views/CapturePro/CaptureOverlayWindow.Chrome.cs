@@ -55,6 +55,7 @@ public partial class CaptureOverlayWindow
     {
         UpdateChromeCore();
         UpdateQrChrome();
+        RefreshPicker();      // 选区 / 工具变了，光标旁那块取色卡要不要在也跟着变
     }
 
     private void UpdateChromeCore()

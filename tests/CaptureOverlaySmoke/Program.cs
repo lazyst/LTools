@@ -405,6 +405,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "picker")
+        {
+            PickerCardSection();
+            Console.WriteLine(_failed == 0 ? "picker-only：通过" : $"picker-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
 
@@ -1484,23 +1491,8 @@ internal static partial class Program
         Invoke(window, "CommitText");
         Check(marks!.Count == 2, "空白文字不落盘");
 
-        // 取色：色卡跟着光标，读的是冻结底图上的颜色
-        InvokeWith(window, "SetTool", Tool("Picker"));
-        InvokeWith(window, "ShowPickerAt", new Point(260, 210));   // 底图上的红色块（250..450 × 200..320）
-        var chip = Field(window, "PickerChip") as Border;
-        var chipText = Field(window, "PickerText") as TextBlock;
-        Check(chip != null && chip.Visibility == Visibility.Visible, "取色色卡出现");
-        Check(chipText != null && chipText.Text.StartsWith("#E15B4E"),
-            "取到的是底图色块的颜色：" + chipText?.Text);
-
-        InvokeWith(window, "PickColor", new Point(260, 210));
-        Check(chip != null && chip.Visibility == Visibility.Visible, "取色后覆盖层不关，色卡还在（可以连着取）");
-        Check(marks!.Count == 2, "取色不落标注");
-
-        Save(Render(window), Path.Combine(_outDir, "overlay-picker.png"));
-
-        InvokeWith(window, "SetTool", Tool("Select"));
-        Check(chip == null || chip.Visibility != Visibility.Visible, "切回选择后色卡收起");
+        // 取色 / 坐标卡（P9-r）：选择工具下就跟着光标，11 × 11 预览 + X / Y + 色带
+        PickerCardChecks(window, doc, Tool, marks!.Count);
 
         MarkHandles(window, doc, Tool);
         MagnifierHandles(window, doc, Tool);

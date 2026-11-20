@@ -939,6 +939,32 @@ internal static partial class CaptureProSuite
         Check.Equal("#FF8000", PickerColor.Hex(sample), "十六进制大写补零");
         Check.Equal("rgb(255, 128, 0)", PickerColor.Rgb(sample), "rgb 文本");
         Check.Equal("#000000 · rgb(0, 0, 0)", PickerColor.Describe(Colors.Black), "提示条正文 = 两种写法");
+
+        // 光标旁那块 11 × 11 预览：中间那一格就是取样点，越界时边缘像素重复（照上游逐点 clamp）
+        var patchImage = BitmapSource.Create(2, 1, 96, 96, PixelFormats.Bgra32, null, pixels, 8);
+        patchImage.Freeze();
+
+        byte[]? patch = PickerColor.ReadPatch(patchImage, 0, 0);
+        Check.True(patch != null && patch.Length == PickerColor.PatchSize * PickerColor.PatchSize * 4,
+            "预览块是 11 × 11 × 4 字节");
+        Check.Equal((byte)0x00, patch![4 * (5 * 11 + 5)], "正中那一格的蓝分量 = (0,0) 的蓝（红像素）");
+        Check.Equal((byte)0xFF, patch[4 * (5 * 11 + 5) + 2], "正中那一格的红色分量 = 255");
+        Check.Equal((byte)0x00, patch[4 * (0 * 11 + 0)], "左上角越界：重复边缘像素（还是左边那个红）");
+        Check.Equal((byte)0xFF, patch[4 * (5 * 11 + 10)], "取 (0,0) 时右边几列越界：重复右边那个蓝像素");
+
+        byte[]? rightPatch = PickerColor.ReadPatch(patchImage, 1, 0);
+        Check.True(rightPatch != null, "取右像素也有预览块");
+        Check.Equal((byte)0xFF, rightPatch![4 * (5 * 11 + 5)], "正中那一格跟着取样点走（蓝）");
+        Check.True(PickerColor.ReadPatch(null, 0, 0) == null, "没有底图 → 没有预览块");
+
+        Check.True(PickerColor.PatchCanvas == PickerColor.PatchSize * PickerColor.PatchScale,
+            "预览格边长 = 11 × 12 = 132 DIP");
+
+        // 色带上的字：亮的底色用黑字、暗的用白字（照上游 readableTextColor）
+        Check.Equal(Color.FromArgb(224, 0, 0, 0), PickerColor.ReadableTextColor(Colors.White), "浅底色配黑字");
+        Check.Equal(Color.FromArgb(217, 255, 255, 255), PickerColor.ReadableTextColor(Colors.Black), "深底色配白字");
+        Check.Equal(Color.FromArgb(224, 0, 0, 0),
+            PickerColor.ReadableTextColor(Color.FromRgb(0x81, 0x00, 0x00)), "任一分量 > 128 就算亮");
     }
 
     /// <summary>
