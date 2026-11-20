@@ -363,6 +363,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "floatingbar")
+        {
+            FloatingBarSection();
+            Console.WriteLine(_failed == 0 ? "floatingbar-only：通过" : $"floatingbar-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
 
@@ -395,6 +402,9 @@ internal static partial class Program
 
         // ============ 贴图历史策略（P9-k：同一套口径，默认沿用 30 天 / 200 条） ============
         PinHistorySection();
+
+        // ============ 悬浮工具条（P9-l：开关 / 模式 / 透明度 / 拖放 / 隐藏规则 / 布局） ============
+        FloatingBarSection();
 
         const int width = 1600, height = 900;
         var shot = BuildShot(width, height);

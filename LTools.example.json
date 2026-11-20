@@ -171,11 +171,38 @@
     "TimeoutMs": 30000,
     "OriginalImage": false,
     "CopyAsImage": false,
-    "LayoutProcessing": "smart_merge"
+    "LayoutProcessing": "smart_merge",
+    "SecondaryTarget": null,
+    "DetectionThreshold": 60
   },
   "TextRecognition": {
     "DefaultFormatting": "none",
     "DefaultPunctuation": "none"
+  },
+  "CaptureHistory": {
+    "Enabled": true,
+    "KeepPermanently": false,
+    "RetentionDays": 7,
+    "MaxEntries": 100,
+    "MaxDiskMiB": 1024
+  },
+  "PinnedHistory": {
+    "Enabled": true,
+    "KeepPermanently": false,
+    "RetentionDays": 30,
+    "MaxEntries": 200,
+    "MaxDiskMiB": 1024
+  },
+  "FloatingToolbar": {
+    "Enabled": false,
+    "Mode": "icon",
+    "Opacity": 50,
+    "DropBehavior": "pin_to_screen",
+    "HideInFullscreen": true,
+    "HideDuringCapture": true,
+    "Placement": null,
+    "Positions": null,
+    "Hidden": null
   },
   "PinText": {
     "MaximumWidth": 1024,

@@ -544,6 +544,90 @@
                             </StackPanel>
                         </Border>
 
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图 Pro · 悬浮工具条" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <CheckBox x:Name="FloatingBarEnabledBox"
+                                          Content="显示悬浮工具条（常驻桌面的一小条截图入口）"
+                                          Checked="FloatingBar_Changed" Unchecked="FloatingBar_Changed"
+                                          ToolTip="照 Snow Shot 的 floating_toolbar/enabled，默认关"/>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="22,6,0,0" TextWrapping="Wrap"
+                                           Text="不抢焦点、不进 Alt+Tab：点它就截图 / 识别，焦点仍留在原来的程序。图标模式下平时只露一个图标，鼠标停上去展开；拖到任意位置会记住落点。"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="显示方式" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="FloatingBarModeCombo" MinHeight="32"
+                                              SelectionChanged="FloatingBarSelect_Changed"
+                                              ToolTip="照 Snow Shot 的 floating_toolbar/mode">
+                                        <ComboBoxItem Content="图标（悬停展开）" Tag="icon"/>
+                                        <ComboBoxItem Content="一直展开" Tag="toolbar"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="把文件拖到工具条上" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="FloatingBarDropCombo" MinHeight="32"
+                                              SelectionChanged="FloatingBarSelect_Changed"
+                                              ToolTip="照 Snow Shot 的 floating_toolbar/drop_behavior">
+                                        <ComboBoxItem Content="贴到屏幕" Tag="pin_to_screen"/>
+                                        <ComboBoxItem Content="拼长图" Tag="image_stitching"/>
+                                        <ComboBoxItem Content="拆分图片" Tag="image_splitting"/>
+                                        <ComboBoxItem Content="打开图片编辑" Tag="image_editing"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="不透明度（%）" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="FloatingBarOpacityBox" MinHeight="32"
+                                             VerticalContentAlignment="Center" MaxWidth="120"
+                                             HorizontalAlignment="Left" MinWidth="88"
+                                             controls:TextBoxClear.Attach="False"
+                                             LostFocus="FloatingBarOpacity_LostFocus"
+                                             KeyDown="FloatingBarOpacity_KeyDown"
+                                             ToolTip="照 Snow Shot 的 floating_toolbar/opacity：10–100，默认 50；指针停上去恢复 100"/>
+                                </Grid>
+
+                                <CheckBox x:Name="FloatingBarHideFullscreenBox" Margin="0,10,0,0"
+                                          Content="前台窗口全屏时隐藏"
+                                          Checked="FloatingBar_Changed" Unchecked="FloatingBar_Changed"
+                                          ToolTip="照 Snow Shot 的 floating_toolbar/hide_in_fullscreen"/>
+                                <CheckBox x:Name="FloatingBarHideCaptureBox" Margin="22,8,0,0"
+                                          Content="截图 / 录屏进行时隐藏"
+                                          Checked="FloatingBar_Changed" Unchecked="FloatingBar_Changed"
+                                          ToolTip="照 Snow Shot 的 floating_toolbar/hide_during_capture"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="按钮布局" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="FloatingBarLayoutButton" Style="{StaticResource Btn}"
+                                            Content="编辑…" MinHeight="32" Padding="14,4"
+                                            HorizontalAlignment="Left" Click="FloatingBarLayout_Click"
+                                            ToolTip="哪些按钮在工具条上、分成几叠、顺序、哪些收起来"/>
+                                </Grid>
+                                <TextBlock x:Name="FloatingBarLayoutText" Style="{StaticResource HintLabel}"
+                                           Margin="142,6,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+
                     </StackPanel>
                 </ScrollViewer>
 

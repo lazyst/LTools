@@ -209,6 +209,9 @@ public sealed class AppConfig
     /// <summary>贴图历史的保留策略（开关 / 永久保留 / 天数 / 条数 / 磁盘上限）。</summary>
     public PinnedHistoryFile PinnedHistory { get; set; } = new();
 
+    /// <summary>悬浮工具条（开关 / 模式 / 不透明度 / 拖放行为 / 隐藏规则 / 落点 / 布局）。</summary>
+    public FloatingToolbarFile FloatingToolbar { get; set; } = new();
+
     /// <summary>贴图文字样式的默认值（最大宽 / 字体 / 字号 / 字色 / 底色）。</summary>
     public PinTextFile PinText { get; set; } = new();
 

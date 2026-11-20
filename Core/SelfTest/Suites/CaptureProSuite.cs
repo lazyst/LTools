@@ -151,6 +151,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "截图快捷键：四张表 / 解析显示 / 归一 / 覆盖恢复 / 匹配 / 工具映射", ShortcutTableCases));
         cases.Add(new("capturePro", "采集历史策略：默认 / 归一范围 / 永久保留 / 条数 / 磁盘上限", CaptureHistoryCases));
         cases.Add(new("capturePro", "贴图历史策略：默认 / 归一范围 / 永久保留 / 磁盘上限", PinnedHistoryCases));
+        cases.Add(new("capturePro", "悬浮工具条：默认布局 / 归一 / 往返 / 设置默认值", FloatingToolbarCases));
     }
 
     private static void Geometry()

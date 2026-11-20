@@ -65,6 +65,8 @@ internal static class CaptureSession
         bool wasSuspended = HotkeyRegistry.Suspended;
         MouseHook.SetWindowPickerActive(true);
         HotkeyRegistry.Suspended = true;
+        // 悬浮工具条：截图 / 录屏期间收起（照上游 floating_toolbar/hide_during_capture）
+        FloatingToolbarService.SetCaptureActive(true);
 
         CaptureResult? result = null;
         CapturePlacement? placement = null;
@@ -144,6 +146,7 @@ internal static class CaptureSession
         {
             HotkeyRegistry.Suspended = wasSuspended;
             MouseHook.SetWindowPickerActive(false);
+            FloatingToolbarService.SetCaptureActive(false);
             restore();
         }
 

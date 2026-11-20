@@ -114,6 +114,7 @@ internal static class ConfigBundle
         cfg.TextRecognition = settings.TextRecognition ?? new TextRecognitionFile();
         cfg.CaptureHistory = settings.CaptureHistory ?? new CaptureHistoryFile();
         cfg.PinnedHistory = settings.PinnedHistory ?? new PinnedHistoryFile();
+        cfg.FloatingToolbar = settings.FloatingToolbar ?? new FloatingToolbarFile();
         cfg.PinText = settings.PinText ?? new PinTextFile();
         cfg.PinToScreen = settings.PinToScreen ?? new PinToScreenFile();
         cfg.Collage = settings.Collage ?? new CollageFile();
@@ -391,6 +392,7 @@ internal static class ConfigBundle
         TextRecognition = cfg.TextRecognition ?? new TextRecognitionFile(),
         CaptureHistory = cfg.CaptureHistory ?? new CaptureHistoryFile(),
         PinnedHistory = cfg.PinnedHistory ?? new PinnedHistoryFile(),
+        FloatingToolbar = cfg.FloatingToolbar ?? new FloatingToolbarFile(),
         PinText = cfg.PinText ?? new PinTextFile(),
         PinToScreen = cfg.PinToScreen ?? new PinToScreenFile(),
         Collage = cfg.Collage ?? new CollageFile(),
