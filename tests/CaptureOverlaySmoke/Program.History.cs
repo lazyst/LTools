@@ -147,6 +147,19 @@ internal static partial class Program
             Check((string)recognizeRow.GetType().GetProperty("TextExcerpt")!.GetValue(recognizeRow)! ==
                   "第一行文字 第二行", "识别文字压成一行显示在卡片上");
 
+            // 页头 / 翻页的图标按钮（清空 / 刷新 / 打开目录 / 清空日期 / 上一页 / 下一页）：
+            // 字形必须落在 TextBlock 的**局部值**上——全局隐式 TextBlock 样式把 FontFamily 钉成 UiFont，
+            // 只写在 Button 上会被那条样式盖掉，字形变成空方框（用户报过「右边按钮显示不出来」）。
+            var clearBtn = (Button)Field(window, "ClearAllBtn");
+            clearBtn.UpdateLayout();
+            var clearGlyph = FindChild<TextBlock>(clearBtn);
+            Check(clearGlyph != null && clearGlyph.FontFamily.Source == "Segoe MDL2 Assets",
+                $"页头图标按钮的字形用 MDL2 字体渲染（{clearGlyph?.FontFamily.Source}）");
+            prevBtn.UpdateLayout();
+            var prevGlyph = FindChild<TextBlock>(prevBtn);
+            Check(prevGlyph != null && prevGlyph.FontFamily.Source == "Segoe MDL2 Assets",
+                $"翻页箭头同样是 MDL2 字形（{prevGlyph?.FontFamily.Source}）");
+
             Save(Render(window), Path.Combine(_outDir, "history-page.png"));
 
             // ---- 翻页 ----

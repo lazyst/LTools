@@ -30,6 +30,16 @@
             <Setter Property="FontSize" Value="15"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <!-- 字形必须落在 TextBlock 的**局部值**上：全局隐式 TextBlock 样式（Themes/Modern.xaml）
+                 把 FontFamily 钉成 UiFont，样式值压得过继承，只写在 Button 上会让字形变成空方框。 -->
+            <Setter Property="ContentTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}" FontFamily="Segoe MDL2 Assets"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <!-- 筛选框按钮（与输入框同高同圆角）；IsChecked = 弹层打开 -->
