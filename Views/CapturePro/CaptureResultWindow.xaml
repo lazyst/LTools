@@ -105,6 +105,12 @@
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                     CornerRadius="{StaticResource CornerMd}" ClipToBounds="True">
                 <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition x:Name="PreviewColumn" Width="0"/>
+                    </Grid.ColumnDefinitions>
+
                     <ScrollViewer x:Name="OcrScroll" HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto" Padding="0">
                         <local:CaptureOcrCanvas x:Name="OcrCanvas"/>
@@ -247,6 +253,19 @@
                                    FontSize="{StaticResource FontSizeHint}"
                                    Foreground="{StaticResource SecondaryTextBrush}"/>
                     </Grid>
+
+                    <!-- 原文预览：**内嵌一栏**（默认形态，不遮挡任何东西、没有第二个窗口 / 层级问题）。
+                         分隔条可拖；栏头「⧉」把它弹出成独立小窗，那时这一栏收起。 -->
+                    <GridSplitter x:Name="PreviewSplitter" Grid.Column="1" Width="7"
+                                  HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                  Background="Transparent" ResizeDirection="Columns"
+                                  ResizeBehavior="PreviousAndNext" Visibility="Collapsed"/>
+
+                    <Border x:Name="PreviewHost" Grid.Column="2" Visibility="Collapsed"
+                            Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
+                        <local:OriginalPreviewView x:Name="PreviewPane"/>
+                    </Border>
                 </Grid>
             </Border>
 
@@ -269,7 +288,7 @@
 
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <CheckBox x:Name="OriginalToggle" Content="原文预览" VerticalAlignment="Center"
-                                      ToolTip="在旁边开一个小窗显示原图（滚轮缩放 / 拖动平移 / 双击切 100%）"
+                                      ToolTip="在识别窗右侧开一栏显示原图（滚轮缩放 / 拖动平移 / 双击切 100%，可拖分隔条，也能弹出成独立小窗）"
                                       Checked="Original_Changed" Unchecked="Original_Changed"/>
                             <CheckBox x:Name="FillToggle" Content="填充背景" IsChecked="True"
                                       VerticalAlignment="Center" Margin="14,0,0,0"

@@ -384,6 +384,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "result")
+        {
+            ResultWindow();
+            Console.WriteLine(_failed == 0 ? "result-only：通过" : $"result-only：{_failed} 项失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         if (_only == "tray")
         {
             TraySection();
@@ -3440,7 +3447,7 @@ internal static partial class Program
         Pump(window);
         Check(((Grid)Field(window, "TablePage")).Visibility == Visibility.Visible, "切到表格页");
         Check((string)((Button)Field(window, "CopyBtn")).Content == "复制表格", "表格页的复制按钮是「复制表格」");
-        Check(!((CheckBox)Field(window, "OriginalToggle")).IsEnabled, "表格页没有原图开关");
+        Check(((CheckBox)Field(window, "OriginalToggle")).IsEnabled, "表格页也能开原文栏（对照表格和原图）");
 
         // —— 表格页的真鼠标交互：单击进编辑 / 拖动选一片 / 合并 / 撤销 / 重置 / 复制 ——
         window.Activate();
@@ -3734,14 +3741,21 @@ internal static partial class Program
         Pump(window);
         Check((string)((Button)Field(window, "CopyBtn")).Content == "复制文字", "回文字页时复制按钮回到文字");
 
-        // 「原文预览」= 识别窗旁边**独立的小窗**（照上游 screenshotoriginalimagepreviewwindow）：
-        // 识别窗盖住选区、里面画的是重排后的文字，对照原文得另开一个看得见原图的窗口。
+        // 「原文预览」= 识别窗里**内嵌一栏**（默认，不遮挡任何东西、没有第二个窗口）；
+        // 点栏头的「⧉」才弹出成独立小窗（照上游 screenshotoriginalimagepreviewwindow 的能力）。
         var original = (CheckBox)Field(window, "OriginalToggle");
         var fill = (CheckBox)Field(window, "FillToggle");
         var ocrScroll = (ScrollViewer)Field(window, "OcrScroll");
+        var previewHost = (FrameworkElement)Field(window, "PreviewHost");
+        var previewPane = (FrameworkElement)Field(window, "PreviewPane");
 
         Window? Preview() => Application.Current.Windows.Cast<Window>()
             .FirstOrDefault(w => w.GetType().Name == "CaptureOriginalPreviewWindow" && w.IsVisible);
+
+        double ZoomOf(object view) => (double)view.GetType()
+            .GetProperty("Zoom", Private | BindingFlags.Public)!.GetValue(view)!;
+        bool FittedOf(object view) => (bool)view.GetType()
+            .GetProperty("Fitted", Private | BindingFlags.Public)!.GetValue(view)!;
 
         // 开发机上的真实配置可能开着「识别结果先显示原图」，先关掉再验文字层
         if (original.IsChecked == true)
@@ -3750,30 +3764,77 @@ internal static partial class Program
             Pump(window);
         }
 
-        Check(ocrScroll.Visibility == Visibility.Visible, "文字页显示文字层（关掉「原文预览」后）");
-        Check(Preview() == null, "默认不自动弹原文预览小窗");
+        Check(previewHost.Visibility == Visibility.Collapsed, "默认不显示原文栏");
+        Check(Preview() == null, "默认不自动弹原文小窗");
+        Check(ocrScroll.Visibility == Visibility.Visible, "文字页显示文字层");
 
         original.IsChecked = true;
         Pump(window);
+
+        Check(previewHost.Visibility == Visibility.Visible, "勾「原文预览」→ 识别窗右侧出现原文栏");
+        Check(Preview() == null, "默认是内嵌一栏，不弹第二个窗口");
+        Check(ocrScroll.Visibility == Visibility.Visible, "原文栏不占文字层画布（左右并排）");
+        Check(fill.IsEnabled, "原文栏开着也能继续改填充背景");
+        Check(previewHost.ActualWidth >= 200, $"原文栏有宽度（{previewHost.ActualWidth:0}）");
+        Check(window.Left + window.ActualWidth <= SystemParameters.WorkArea.Right + 1,
+            "为放原文栏加宽窗口时没冲出工作区");
+
+        var panePicture = FindAll<Image>(previewPane).FirstOrDefault();
+        Check(panePicture?.Source is BitmapSource paneSource && paneSource.PixelWidth == image.PixelWidth,
+            "原文栏里就是这张原图");
+        Check(FittedOf(previewPane), "打开时是「适应窗口」态");
+
+        Save(Render(window), Path.Combine(_outDir, "result-preview-pane.png"));
+
+        // 滚轮在指针处放大（照上游 mouse_position 缩放）
+        double paneZoomBefore = ZoomOf(previewPane);
+        var paneScroll = FindAll<ScrollViewer>(previewPane).FirstOrDefault();
+        if (paneScroll != null)
+        {
+            Point at = previewPane.PointToScreen(
+                new Point(previewPane.ActualWidth / 2, previewPane.ActualHeight / 2));
+            SetCursorPos((int)Math.Round(at.X), (int)Math.Round(at.Y));
+            Thread.Sleep(80);
+            paneScroll.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice,
+                Environment.TickCount, 120) { RoutedEvent = UIElement.PreviewMouseWheelEvent });
+            Pump(window);
+        }
+
+        Check(ZoomOf(previewPane) > paneZoomBefore,
+            $"原文栏滚轮放大（{paneZoomBefore:0.00} → {ZoomOf(previewPane):0.00}）");
+
+
+        // 栏头「⧉」→ 弹出为独立小窗
+        var popBtn = FindAll<Button>(previewPane)
+            .FirstOrDefault(b => (b.ToolTip as string)?.Contains("弹出") == true);
+        Check(popBtn != null, "栏头有「弹出为独立小窗」按钮");
+        popBtn?.RaiseEvent(new RoutedEventArgs(
+            System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Pump(window);
+
         Window? preview = Preview();
-        Check(preview != null, "勾「原文预览」→ 识别窗旁边开一个原图小窗");
-        Check(ocrScroll.Visibility == Visibility.Visible, "原文预览不占识别窗自己的画布（文字层照旧显示）");
-        Check(fill.IsEnabled, "原文预览开着也能继续改填充背景");
+        Check(preview != null, "点「弹出」→ 变成独立小窗");
+        Check(previewHost.Visibility == Visibility.Collapsed, "弹出后原文栏收起");
 
         if (preview != null)
         {
             var picture = FindAll<Image>(preview).FirstOrDefault();
             Check(picture?.Source is BitmapSource source && source.PixelWidth == image.PixelWidth,
                 "小窗里就是这张原图");
-            Check(preview.Left >= window.Left + window.ActualWidth - 1 ||
-                  preview.Left + preview.Width <= window.Left + 1,
-                $"小窗贴在识别窗左右（识别窗 {window.Left:0}..{window.Left + window.ActualWidth:0}，" +
-                $"小窗 {preview.Left:0}..{preview.Left + preview.Width:0}）");
-            Check((bool)preview.GetType().GetProperty("Fitted", Private | BindingFlags.Public)!.GetValue(preview)!,
-                "打开时是「适应窗口」态");
+            Check(FittedOf(preview), "小窗打开时是「适应窗口」态");
 
-            // 滚轮在指针处放大（照上游 mouse_position 缩放）
-            double zoomBefore = (double)preview.GetType().GetProperty("Zoom", Private | BindingFlags.Public)!.GetValue(preview)!;
+            double cardWidth = preview.Width - 32;      // 去掉四周留给投影的 16
+            Check(cardWidth <= 460,
+                $"小窗是紧凑一档（卡片宽 {cardWidth:0}；不再按图片原始像素 {image.PixelWidth} 开窗）");
+
+            var hostRect = new Rect(window.Left, window.Top, window.ActualWidth, window.ActualHeight);
+            // 小窗的窗口矩形含四周 16 的投影留白：比「卡片」本身才算准
+            var floatRect = new Rect(preview.Left + 16, preview.Top + 16,
+                Math.Max(1, preview.Width - 32), Math.Max(1, preview.Height - 32));
+            Check(!hostRect.IntersectsWith(floatRect),
+                $"小窗贴在识别窗外面（识别窗 {hostRect.Left:0}..{hostRect.Right:0}，卡片 {floatRect.Left:0}..{floatRect.Right:0}）");
+
+            double zoomBefore = ZoomOf(preview);
             var viewport = FindAll<ScrollViewer>(preview).FirstOrDefault();
             if (viewport != null)
             {
@@ -3787,13 +3848,41 @@ internal static partial class Program
                 Pump(preview);
             }
 
-            double zoomAfter = (double)preview.GetType().GetProperty("Zoom", Private | BindingFlags.Public)!.GetValue(preview)!;
-            Check(zoomAfter > zoomBefore, $"滚轮放大（{zoomBefore:0.00} → {zoomAfter:0.00}）");
+            double zoomAfter = ZoomOf(preview);
+            Check(zoomAfter > zoomBefore, $"小窗滚轮放大（{zoomBefore:0.00} → {zoomAfter:0.00}）");
+
+            Save(Render(preview), Path.Combine(_outDir, "result-preview-float.png"));
+
+            // 小窗标题条的 ✕ = 关掉原文预览（勾选一起取消，两个形态都收）
+            var closeBtn = FindAll<Button>(preview)
+                .FirstOrDefault(b => (b.ToolTip as string)?.Contains("关掉原文预览") == true);
+            Check(closeBtn != null, "小窗标题条有「关掉原文预览」按钮");
+            closeBtn?.RaiseEvent(new RoutedEventArgs(
+                System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Pump(window);
+
+            Check(original.IsChecked != true, "小窗 ✕ → 勾选取消");
+            Check(Preview() == null && previewHost.Visibility == Visibility.Collapsed,
+                "小窗 ✕ → 窗口与原文栏都收起");
         }
+        else
+        {
+            original.IsChecked = false;
+            Pump(window);
+        }
+
+        // 再勾一次回到内嵌栏（弹出只是形态，不是开关）
+        original.IsChecked = true;
+        Pump(window);
+        Check(previewHost.Visibility == Visibility.Visible && Preview() == null,
+            "再勾一次回到内嵌栏（不弹窗）");
 
         original.IsChecked = false;
         Pump(window);
-        Check(Preview() == null, "取消勾选 → 小窗关掉");
+        Check(previewHost.Visibility == Visibility.Collapsed && Preview() == null,
+            "取消勾选 → 原文栏收起");
+        Check(previewHost.ActualWidth <= 0.5,
+            $"收起后原文栏不再占宽度（{previewHost.ActualWidth:0}）");
         Check(ocrScroll.Visibility == Visibility.Visible, "关掉原文预览后文字层照旧");
 
         // 「填充背景」= 文字层铺不铺估出来的底色

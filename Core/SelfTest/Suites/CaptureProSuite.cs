@@ -31,7 +31,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "标注：序号写法与徽标字号", SerialTexts));
         cases.Add(new("capturePro", "标注：矩形滤镜与像素处理", FilterMark));
         cases.Add(new("capturePro", "文档：换底图（翻采集历史）", SwapBase));
-        cases.Add(new("capturePro", "原文预览：摆位规则（右 / 左 / 上下 / 夹进工作区）", PreviewPlacement));
+        cases.Add(new("capturePro", "原文预览：摆位与尺寸（右 / 左 / 上下 / 内侧）", PreviewPlacement));
         cases.Add(new("capturePro", "保存：格式 / 尺寸 / 编码", SaveFormats));
         cases.Add(new("capturePro", "文档：选区换算与导出", Selection));
         cases.Add(new("capturePro", "选区形状：自由 / 折线的几何与导出", SelectionShapes));
@@ -4198,39 +4198,56 @@ internal static partial class CaptureProSuite
     }
 
     /// <summary>
-    /// 「原文预览」小窗的摆位（照上游 <c>ScreenshotOriginalImagePreviewWindow::placement</c>）：
-    /// 右边放得下贴右侧，放不下翻左侧，上下放不下翻上方，最后夹进工作区。
+    /// 「原文」预览的摆位与尺寸（照上游 <c>ScreenshotOriginalImagePreviewWindow::placement</c>，
+    /// 但**不再按图片原始像素开窗**）：右 → 左 → 上 → 下，四周都不够才贴识别窗内侧右边。
     /// </summary>
     private static void PreviewPlacement()
     {
         var work = new Rect(0, 0, 1920, 1040);
-        var host = new Rect(400, 300, 600, 400);
-        var size = new Size(300, 200);
+        var host = new Rect(400, 200, 600, 500);
+        var size = new Size(360, 270);
 
         Rect right = OriginalPreviewPlacement.Place(host, work, size);
         Check.Equal(host.Right + OriginalPreviewPlacement.Gap, right.Left, "右边放得下 → 贴识别窗右侧");
-        Check.Equal(host.Bottom + OriginalPreviewPlacement.Gap, right.Top, "上下够就贴识别窗底边");
+        Check.Equal(host.Top, right.Top, "纵向对齐识别窗顶边（再夹进工作区）");
+        Check.True(!OriginalPreviewPlacement.Overlaps(right, host), "贴在外面不算压住识别窗");
 
-        var wide = new Rect(1400, 300, 500, 400);
+        var wide = new Rect(1500, 200, 400, 500);       // 右边只剩 20，放不下
         Rect left = OriginalPreviewPlacement.Place(wide, work, size);
         Check.Equal(wide.Left - OriginalPreviewPlacement.Gap - size.Width, left.Left,
             "右边放不下 → 翻到左侧");
 
-        var low = new Rect(400, 700, 600, 300);
-        Rect above = OriginalPreviewPlacement.Place(low, work, size);
-        Check.Equal(low.Top - OriginalPreviewPlacement.Gap - size.Height, above.Top,
-            "下方放不下 → 翻到上方");
+        var full = new Rect(20, 400, 1880, 500);        // 左右都放不下，上方够
+        Rect above = OriginalPreviewPlacement.Place(full, work, size);
+        Check.Equal(full.Top - OriginalPreviewPlacement.Gap - size.Height, above.Top,
+            "左右都不够 → 放到上方");
 
-        var full = new Rect(10, 10, 1900, 1000);
-        Rect clamped = OriginalPreviewPlacement.Place(full, work, size);
-        Check.True(clamped.Left >= work.Left && clamped.Right <= work.Right + 0.5,
-            "左右都放不下 → 夹进工作区（左右）");
-        Check.True(clamped.Top >= work.Top && clamped.Bottom <= work.Bottom + 0.5,
-            "上下都放不下 → 夹进工作区（上下）");
+        var tall = new Rect(20, 20, 1880, 700);         // 上方也放不下，下方够
+        Rect below = OriginalPreviewPlacement.Place(tall, work, size);
+        Check.Equal(tall.Bottom + OriginalPreviewPlacement.Gap, below.Top,
+            "上方也不够 → 放到下方");
+
+        // 四周都不够（识别窗几乎满屏）→ 贴内侧右边、垂直居中，像一张画中画
+        var huge = new Rect(0, 0, 1920, 1040);
+        Rect inside = OriginalPreviewPlacement.Place(huge, work, size);
+        Check.Equal(huge.Right - OriginalPreviewPlacement.Inset - size.Width, inside.Left,
+            "四周都不够 → 贴识别窗内侧右边");
+        Check.True(inside.Top >= work.Top && inside.Bottom <= work.Bottom + 0.5,
+            "内侧摆放也夹进工作区");
+        Check.True(OriginalPreviewPlacement.Overlaps(inside, huge),
+            "内侧摆放确实压在识别窗上（投影要加重）");
 
         Rect preferLeft = OriginalPreviewPlacement.Place(host, work, size, preferLeft: true);
         Check.Equal(host.Left - OriginalPreviewPlacement.Gap - size.Width, preferLeft.Left,
             "preferLeft = 优先左侧");
+
+        // 尺寸：工作区的 22%，夹在 300–420 宽；高 = 宽 × 0.75，不超过工作区高的 45%
+        Check.Equal(420d, Math.Round(OriginalPreviewPlacement.DefaultSize(work).Width),
+            "1920 宽 → 卡片夹到 420");
+        Check.Equal(300d, Math.Round(OriginalPreviewPlacement.DefaultSize(new Rect(0, 0, 1024, 768)).Width),
+            "1024 宽 → 卡片夹到 300");
+        Size shortWork = OriginalPreviewPlacement.DefaultSize(new Rect(0, 0, 1920, 600));
+        Check.True(shortWork.Height <= 600 * 0.45 + 0.5, "矮屏幕时卡片高不超过工作区 45%");
 
         Check.True(OriginalPreviewPlacement.Place(host, work, new Size(0, 0)).IsEmpty,
             "尺寸为 0 时返回空矩形（不摆位）");

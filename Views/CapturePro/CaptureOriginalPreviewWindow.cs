@@ -3,46 +3,46 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
-using System.Windows.Shell;
+using System.Windows.Shapes;
 
 namespace LTools.Views.CapturePro;
 
 /// <summary>
-/// 识别结果旁边的「原文预览」窗（照上游 <c>screenshotoriginalimagepreviewwindow</c>）。
+/// 「原文」预览**弹出后**的独立小窗（照上游 <c>screenshotoriginalimagepreviewwindow</c>）。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 上游把它做成**独立小窗**而不是识别窗里的一个勾选：识别窗正好盖住选区、里面画的是重排后的文字，
-/// 想对照原文就得有个看得见原图的地方，而且它要能自己缩放 / 平移、钉在最上面。
+/// 默认形态是识别窗里内嵌的一栏（<see cref="OriginalPreviewView"/>），点栏头的「⧉」才变成这个窗。
+/// 尺寸固定一档（<see cref="OriginalPreviewPlacement.DefaultSize"/>，300–420 宽）、打开即
+/// 「适应窗口」——**不再按图片原始像素开窗**（858×748 的图开一个 858×748 的窗，两侧塞不下就只能
+/// 盖在识别窗上，又大又丑）。摆位见 <see cref="OriginalPreviewPlacement.Place"/>：右 → 左 → 上 → 下，
+/// 四周都不够才贴到识别窗内侧右边。
 /// </para>
 /// <para>
-/// 交互照上游：滚轮**在指针位置**缩放（100% = 1 源像素 1 物理像素）、左键拖动平移、
-/// 双击在「适应窗口 / 100%」之间切、标题栏拖动挪位置、Esc / ✕ 关掉。不抢焦点出场。
-/// 同一个窗也服务拼图（<see cref="ImageCollageWindow"/>）的「看原图」。
+/// 外壳：白卡 + 1px 描边 + 8 圆角 + 一层**单独的投影**（投影画在一个没有子元素的 Border 上，
+/// 图片缩放时不会被反复模糊）；标题条拖动挪位置，右下角可以拖大小，Esc / ✕ 关。
+/// 不抢焦点出场（<c>ShowActivated = false</c>），识别窗里还能接着打字。
 /// </para>
 /// </remarks>
 internal sealed class CaptureOriginalPreviewWindow : Window
 {
-    private const double MinZoom = 0.05;
-    private const double MaxZoom = 8;
+    /// <summary>卡片四周留给投影的透明边。</summary>
+    private const double ShadowRoom = 16;
 
-    private readonly BitmapSource _image;
-    private readonly double _scale;
-    private readonly Image _picture;
-    private readonly ScrollViewer _scroller;
-    private readonly TextBlock _title;
-
-    private double _zoom;          // DIP / 源像素
-    private bool _fitted = true;
-    private bool _dragging;
-    private Point _dragStart;
-    private double _dragOffsetX, _dragOffsetY;
+    private readonly OriginalPreviewView _view;
+    private readonly Border _shadow;
+    private readonly Border _card;
+    private bool _resizing;
+    private Point _resizeStart;
+    private Size _resizeFrom;
 
     public CaptureOriginalPreviewWindow(BitmapSource image, double scale)
     {
-        _image = image;
-        _scale = scale > 0.1 ? scale : 1;
+        _view = new OriginalPreviewView { CanPopOut = false };
+        _view.SetImage(image, scale);
+        _view.CloseRequested += RequestClose;
 
         Title = "原文预览";
         WindowStyle = WindowStyle.None;
@@ -50,209 +50,159 @@ internal sealed class CaptureOriginalPreviewWindow : Window
         ShowInTaskbar = false;
         Topmost = true;
         ShowActivated = false;
+        AllowsTransparency = true;
         Background = Brushes.Transparent;
+        UseLayoutRounding = true;
+        SnapsToDevicePixels = true;
+        MinWidth = 300 + ShadowRoom * 2;
+        MinHeight = 220 + ShadowRoom * 2;
 
-        var chrome = new WindowChrome
+        _shadow = new Border
         {
-            CaptionHeight = 30,
-            ResizeBorderThickness = new Thickness(0),
-            GlassFrameThickness = new Thickness(0),
-            CornerRadius = new CornerRadius(0),
-            UseAeroCaptionButtons = false,
-        };
-        WindowChrome.SetWindowChrome(this, chrome);
-
-        _picture = new Image
-        {
-            Source = image,
-            Stretch = Stretch.Fill,
-            SnapsToDevicePixels = true,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
-        };
-        RenderOptions.SetBitmapScalingMode(_picture, BitmapScalingMode.HighQuality);
-
-        _scroller = new ScrollViewer
-        {
-            Content = _picture,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Background = (Brush?)TryFind("SurfaceAltBrush") ?? Brushes.Black,
-            Cursor = Cursors.SizeAll,
-        };
-        _scroller.PreviewMouseWheel += Scroller_Wheel;
-        _scroller.PreviewMouseLeftButtonDown += Scroller_MouseDown;
-        _scroller.PreviewMouseLeftButtonUp += Scroller_MouseUp;
-        _scroller.PreviewMouseMove += Scroller_MouseMove;
-        _scroller.PreviewMouseRightButtonDown += (_, _) => Close();
-
-        _title = new TextBlock
-        {
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(12, 0, 34, 0),
-            FontSize = 12,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            Foreground = (Brush?)TryFind("SecondaryTextBrush") ?? Brushes.Gray,
+            Background = Brush("SurfaceBrush", Colors.White),
+            CornerRadius = new CornerRadius(8),
+            IsHitTestVisible = false,
+            Effect = new DropShadowEffect
+            {
+                BlurRadius = 14,
+                ShadowDepth = 3,
+                Direction = 270,
+                Opacity = 0.16,
+                Color = Colors.Black,
+            },
         };
 
-        var close = new Button
+        _card = new Border
         {
-            Content = "✕",
-            Width = 30,
-            Height = 28,
-            Focusable = false,
-            Cursor = Cursors.Hand,
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Foreground = (Brush?)TryFind("TextBrush") ?? Brushes.White,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            ToolTip = "关掉原文预览",
-        };
-        close.Click += (_, _) => Close();
-
-        var header = new Grid { Height = 30, Cursor = Cursors.SizeAll };
-        header.Children.Add(_title);
-        header.Children.Add(close);
-        header.MouseLeftButtonDown += (_, _) =>
-        {
-            try { DragMove(); } catch (InvalidOperationException) { /* 鼠标已经抬起 */ }
-        };
-
-        var root = new Grid();
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        Grid.SetRow(header, 0);
-        root.Children.Add(header);
-        Grid.SetRow(_scroller, 1);
-        root.Children.Add(_scroller);
-
-        Content = new Border
-        {
-            Background = (Brush?)TryFind("SurfaceBrush") ?? Brushes.Black,
-            BorderBrush = (Brush?)TryFind("BorderBrush") ?? Brushes.DimGray,
+            Background = Brush("SurfaceBrush", Colors.White),
+            BorderBrush = Brush("BorderStrongBrush", Color.FromRgb(0xD4, 0xD4, 0xD8)),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             ClipToBounds = true,
-            Child = root,
+            Child = _view,
         };
 
-        double dipWidth = image.PixelWidth / _scale;
-        double dipHeight = image.PixelHeight / _scale;
-        Width = Math.Clamp(dipWidth + 2, 240, 1100);
-        Height = Math.Clamp(dipHeight + 34, 160, 860);
+        var grip = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M 11,0 L 0,11 M 11,4 L 4,11 M 11,8 L 8,11"),
+            Stroke = Brush("BorderStrongBrush", Color.FromRgb(0xD4, 0xD4, 0xD8)),
+            StrokeThickness = 1.2,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 6, 6),
+            Cursor = Cursors.SizeNWSE,
+            ToolTip = "拖这里改大小",
+            Width = 12,
+            Height = 12,
+        };
+        grip.MouseLeftButtonDown += (_, e) =>
+        {
+            _resizing = true;
+            _resizeStart = PointToScreen(e.GetPosition(this));
+            _resizeFrom = new Size(Width, Height);
+            grip.CaptureMouse();
+            e.Handled = true;
+        };
+        grip.MouseMove += (_, e) =>
+        {
+            if (!_resizing) return;
+            Point now = PointToScreen(e.GetPosition(this));
+            Width = Math.Max(MinWidth, _resizeFrom.Width + (now.X - _resizeStart.X));
+            Height = Math.Max(MinHeight, _resizeFrom.Height + (now.Y - _resizeStart.Y));
+        };
+        grip.MouseLeftButtonUp += (_, _) =>
+        {
+            if (!_resizing) return;
+            _resizing = false;
+            grip.ReleaseMouseCapture();
+        };
 
-        _zoom = 1 / _scale;      // 100% = 1 源像素 1 物理像素
-        Loaded += (_, _) => { Apply(); FitToViewport(); };
-        SizeChanged += (_, _) => { if (_fitted) FitToViewport(); };
+        var root = new Grid();
+        var inset = new Thickness(ShadowRoom);
+        _shadow.Margin = inset;
+        _card.Margin = inset;
+        grip.Margin = new Thickness(0, 0, ShadowRoom + 6, ShadowRoom + 6);
+        root.Children.Add(_shadow);
+        root.Children.Add(_card);
+        root.Children.Add(grip);
+        Content = root;
+
+        // 标题条拖动挪位置（按钮自己会把 MouseDown 标成已处理，不会误拖）
+        _view.Header.MouseLeftButtonDown += (_, e) =>
+        {
+            if (e.ButtonState != MouseButtonState.Pressed) return;
+            var before = new Point(Left, Top);
+            try { DragMove(); }
+            catch (InvalidOperationException) { /* 鼠标已经抬起 */ }
+
+            // 用户自己挪过就不再自动跟着识别窗摆（不然一拖识别窗，它又被拽回去）
+            if (Math.Abs(Left - before.X) > 0.5 || Math.Abs(Top - before.Y) > 0.5) UserMoved = true;
+        };
+
+        Size size = OriginalPreviewPlacement.DefaultSize(SystemParameters.WorkArea);
+        Width = size.Width + ShadowRoom * 2;
+        Height = size.Height + ShadowRoom * 2;
+
         PreviewKeyDown += (_, e) =>
         {
             if (e.Key != Key.Escape) return;
-            Close();
+            RequestClose();
             e.Handled = true;
         };
     }
 
-    /// <summary>窗口在屏幕上的 DIP 矩形（识别窗据此摆位）。</summary>
+    /// <summary>点了 ✕ / 按了 Esc：宿主如果接管（把「原文预览」勾选关掉）就走宿主，没人接管才自己关。</summary>
+    public event Action? CloseRequested;
+
+    private void RequestClose()
+    {
+        Action? handler = CloseRequested;
+        if (handler != null) handler();
+        else Close();
+    }
+
+    /// <summary>里面的主体（冒烟读缩放 / 适应态用）。</summary>
+    internal OriginalPreviewView View => _view;
+
+    /// <summary>当前缩放。</summary>
+    internal double Zoom => _view.Zoom;
+
+    /// <summary>是不是「适应窗口」态。</summary>
+    internal bool Fitted => _view.Fitted;
+
+    /// <summary>当前显示的图。</summary>
+    internal BitmapSource? Image => _view.Image;
+
+    /// <summary>用户自己拖过这个窗（之后别再自动跟着识别窗摆位）。</summary>
+    internal bool UserMoved { get; private set; }
+
+    /// <summary>窗口在屏幕上的矩形（含投影留白，DIP）。</summary>
     public Rect Bounds => new(Left, Top, Width, Height);
 
-    /// <summary>100% 的缩放（1 源像素 = 1 物理像素）。</summary>
-    private double ActualZoom => 1 / _scale;
-
-    /// <summary>当前缩放（冒烟读它）。</summary>
-    internal double Zoom => _zoom;
-
-    /// <summary>是否处于「适应窗口」态（冒烟读它）。</summary>
-    internal bool Fitted => _fitted;
-
     /// <summary>
-    /// 贴在 <paramref name="anchor"/> 旁边：右边优先，放不下翻左边 / 下方 / 上方，最后夹进工作区。
-    /// 摆位规则只有一份（<see cref="OriginalPreviewPlacement"/>），这里只是把窗口搬过去。
+    /// 贴着 <paramref name="anchor"/> 摆：右 → 左 → 上 → 下，四周都不够才贴内侧右边。
+    /// 压在识别窗上时把投影加重一点，读作「浮在上面的一张卡」。
     /// </summary>
     public void PlaceBeside(Rect anchor, Rect workArea)
     {
-        Rect placed = OriginalPreviewPlacement.Place(anchor, workArea, new Size(Width, Height));
+        var cardSize = new Size(Math.Max(200, Width - ShadowRoom * 2),
+            Math.Max(160, Height - ShadowRoom * 2));
+
+        Rect placed = OriginalPreviewPlacement.Place(anchor, workArea, cardSize);
         if (placed.IsEmpty) return;
 
-        Left = placed.Left;
-        Top = placed.Top;
-        if (_fitted) FitToViewport();
-    }
+        Left = placed.Left - ShadowRoom;
+        Top = placed.Top - ShadowRoom;
 
-    // ============ 缩放 / 平移 ============
-
-    /// <summary>适应窗口：整张图塞进可视区（打开时的默认态）。</summary>
-    internal void FitToViewport()
-    {
-        double viewWidth = _scroller.ViewportWidth > 0 ? _scroller.ViewportWidth : Width - 2;
-        double viewHeight = _scroller.ViewportHeight > 0 ? _scroller.ViewportHeight : Height - 32;
-        if (viewWidth <= 0 || viewHeight <= 0) return;
-
-        double fit = Math.Min(viewWidth / _image.PixelWidth, viewHeight / _image.PixelHeight);
-        _zoom = Math.Clamp(Math.Min(fit, ActualZoom), MinZoom, MaxZoom);
-        _fitted = true;
-        Apply();
-        _scroller.ScrollToHorizontalOffset(0);
-        _scroller.ScrollToVerticalOffset(0);
-    }
-
-    private void Apply()
-    {
-        _picture.Width = Math.Max(1, _image.PixelWidth * _zoom);
-        _picture.Height = Math.Max(1, _image.PixelHeight * _zoom);
-        _title.Text = $"{_image.PixelWidth} × {_image.PixelHeight} · " +
-                      $"{Math.Round(_zoom * _scale * 100)}%";
-    }
-
-    private void Scroller_Wheel(object sender, MouseWheelEventArgs e)
-    {
-        Point at = e.GetPosition(_scroller);
-        double next = Math.Clamp(_zoom * (e.Delta > 0 ? 1.15 : 1 / 1.15), MinZoom, MaxZoom);
-        if (Math.Abs(next - _zoom) < 0.0001) return;
-
-        // 光标下的源像素坐标：缩放前后保持它在同一个位置
-        double sourceX = (_scroller.HorizontalOffset + at.X) / _zoom;
-        double sourceY = (_scroller.VerticalOffset + at.Y) / _zoom;
-
-        _zoom = next;
-        _fitted = false;
-        Apply();
-
-        _scroller.ScrollToHorizontalOffset(sourceX * _zoom - at.X);
-        _scroller.ScrollToVerticalOffset(sourceY * _zoom - at.Y);
-        e.Handled = true;
-    }
-
-    private void Scroller_MouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ClickCount >= 2)
+        bool overlapping = OriginalPreviewPlacement.Overlaps(placed, anchor);
+        _shadow.Opacity = 1;
+        if (_shadow.Effect is DropShadowEffect effect)
         {
-            if (_fitted) { _zoom = Math.Clamp(ActualZoom, MinZoom, MaxZoom); _fitted = false; Apply(); }
-            else FitToViewport();
-            e.Handled = true;
-            return;
+            effect.BlurRadius = overlapping ? 22 : 14;
+            effect.Opacity = overlapping ? 0.24 : 0.16;
         }
-
-        _dragging = true;
-        _dragStart = e.GetPosition(_scroller);
-        _dragOffsetX = _scroller.HorizontalOffset;
-        _dragOffsetY = _scroller.VerticalOffset;
-        _scroller.CaptureMouse();
-        e.Handled = true;
-    }
-
-    private void Scroller_MouseMove(object sender, MouseEventArgs e)
-    {
-        if (!_dragging) return;
-        Point at = e.GetPosition(_scroller);
-        _scroller.ScrollToHorizontalOffset(_dragOffsetX - (at.X - _dragStart.X));
-        _scroller.ScrollToVerticalOffset(_dragOffsetY - (at.Y - _dragStart.Y));
-    }
-
-    private void Scroller_MouseUp(object sender, MouseButtonEventArgs e)
-    {
-        if (!_dragging) return;
-        _dragging = false;
-        _scroller.ReleaseMouseCapture();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -270,6 +220,7 @@ internal sealed class CaptureOriginalPreviewWindow : Window
             Native.Win32.SwpNomove | Native.Win32.SwpNosize | Native.Win32.SwpNoactivate);
     }
 
-    private object? TryFind(string key) => TryFindResource(key) ??
-                                          Application.Current?.TryFindResource(key);
+    private Brush Brush(string key, Color fallback) =>
+        (TryFindResource(key) ?? Application.Current?.TryFindResource(key)) as Brush
+        ?? new SolidColorBrush(fallback);
 }

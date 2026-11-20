@@ -87,11 +87,17 @@ public partial class CaptureResultWindow : Window
 
         FillTranslateTargets();
         FillTransformOptions();
+        WirePreview();
         Place();
         Loaded += (_, _) =>
         {
             UpdateZoom();
             Start();
+            if (_previewPending)
+            {
+                _previewPending = false;
+                OpenPreview();
+            }
         };
         SizeChanged += (_, _) => { UpdateZoom(); FollowOriginalPreview(); };
         LocationChanged += (_, _) => FollowOriginalPreview();
@@ -113,6 +119,7 @@ public partial class CaptureResultWindow : Window
         _runOnLoad = false;
         FillTranslateTargets();
         FillTransformOptions();
+        WirePreview();
         Place();
         Apply(result);
     }
@@ -503,7 +510,8 @@ public partial class CaptureResultWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-        originalToggle.IsEnabled = text;
+        // 原图对照跟页签无关：表格 / Markdown / 二维码页也能一边看原文一边看结果
+        originalToggle.IsEnabled = _image != null;
         fillToggle.IsEnabled = text;
 
         copyBtn.Content = _tab switch
@@ -656,56 +664,151 @@ public partial class CaptureResultWindow : Window
                 _layer.Count);
     }
 
-    // ============ 开关 ============
+    // ============ 原文预览 ============
 
     /// <summary>
-    /// 「原文预览」（照上游 <c>text_recognition/show_original_image_preview</c> + <c>setOriginalImagePreviewEnabled</c>）：
-    /// 勾上就在识别窗旁边开一个**独立小窗**显示原图，不是把识别窗自己的画布换成原图。
+    /// 「原文预览」（照上游 <c>text_recognition/show_original_image_preview</c> +
+    /// <c>setOriginalImagePreviewEnabled</c>）：勾上就在识别窗里**内嵌一栏**显示原图
+    /// （默认形态，不遮挡任何东西、没有第二个窗口 / 层级问题）；点栏头的「⧉」弹出成独立小窗，
+    /// 那时这一栏收起，小窗关掉再回到这一栏。
     /// </summary>
     private void Original_Changed(object sender, RoutedEventArgs e)
     {
-        if (OriginalToggle.IsChecked == true) ShowOriginalPreview();
-        else CloseOriginalPreview();
+        if (OriginalToggle.IsChecked == true) OpenPreview();
+        else ClosePreview();
     }
 
-    private CaptureOriginalPreviewWindow? _preview;
+    private CaptureOriginalPreviewWindow? _floating;
+    private bool _previewDetached;
+    private bool _previewPending;
+    private double _paneWidth;
+    private double _paneGrew;
 
-    private void ShowOriginalPreview()
+    /// <summary>内嵌栏 / 小窗的按钮接线（两个构造函数都要走一遍）。</summary>
+    private void WirePreview()
+    {
+        PreviewPane.PopOutRequested += DetachPreview;
+        PreviewPane.CloseRequested += () => OriginalToggle.IsChecked = false;
+    }
+
+    private void OpenPreview()
     {
         if (_image == null) return;
 
-        if (_preview == null)
+        // 构造期 / Loaded 之前 ActualWidth 还是 0：等窗口量好尺寸再来
+        if (!IsLoaded)
         {
-            _preview = new CaptureOriginalPreviewWindow(_image, _scale);
-            _preview.Closed += (_, _) =>
+            _previewPending = true;
+            return;
+        }
+
+        if (_previewDetached) ShowFloatingPreview();
+        else ShowPreviewPane();
+    }
+
+    /// <summary>
+    /// 内嵌那一栏：宽度按上次拖过的分隔条（默认 38%）。窗口右侧还有地方就先长宽再放栏，
+    /// **别挤压文字层**；屏幕不够长才让文字层让一点（它本来就能滚 / 能缩）。
+    /// </summary>
+    private void ShowPreviewPane()
+    {
+        if (_image == null) return;
+
+        PreviewPane.CanPopOut = true;
+        PreviewPane.SetImage(_image, _scale);
+
+        double pane = _paneWidth > 100 ? _paneWidth : ActualWidth * 0.38;
+        pane = Math.Clamp(pane, 240, Math.Max(240, Math.Min(480, ActualWidth * 0.55)));
+        Rect work = WorkArea();
+
+        double room = Math.Max(0, work.Right - (Left + ActualWidth) - 8);
+        double grow = Math.Min(pane, room);
+        if (grow >= 120 && _paneGrew <= 0)
+        {
+            Width = ActualWidth + grow;
+            _paneGrew = grow;
+        }
+
+        PreviewColumn.MinWidth = 240;
+        PreviewColumn.Width = new GridLength(pane);
+        PreviewSplitter.Visibility = Visibility.Visible;
+        PreviewHost.Visibility = Visibility.Visible;
+        PreviewPane.FitToViewport();
+    }
+
+    private void HidePreviewPane()
+    {
+        if (PreviewHost.Visibility != Visibility.Visible) return;
+
+        if (PreviewHost.ActualWidth > 100) _paneWidth = PreviewHost.ActualWidth;
+        PreviewColumn.MinWidth = 0;
+        PreviewColumn.Width = new GridLength(0);
+        PreviewSplitter.Visibility = Visibility.Collapsed;
+        PreviewHost.Visibility = Visibility.Collapsed;
+
+        if (_paneGrew > 0)
+        {
+            Width = Math.Max(MinWidth, ActualWidth - _paneGrew);
+            _paneGrew = 0;
+        }
+    }
+
+    /// <summary>栏头「⧉」：把这一栏换成独立小窗（尺寸 / 摆位见 <see cref="OriginalPreviewPlacement"/>）。</summary>
+    private void DetachPreview()
+    {
+        if (_image == null) return;
+
+        _previewDetached = true;
+        HidePreviewPane();
+        ShowFloatingPreview();
+    }
+
+    private void ShowFloatingPreview()
+    {
+        if (_image == null) return;
+
+        if (_floating == null)
+        {
+            _floating = new CaptureOriginalPreviewWindow(_image, _scale);
+            _floating.CloseRequested += () => OriginalToggle.IsChecked = false;
+            _floating.Closed += (_, _) =>
             {
-                _preview = null;
-                if (OriginalToggle.IsChecked == true) OriginalToggle.IsChecked = false;
+                _floating = null;
+                if (!_previewDetached) return;
+
+                // 小窗被直接关掉（不是点 ✕ / Esc）：退回内嵌那一栏，别把预览弄丢
+                _previewDetached = false;
+                if (OriginalToggle.IsChecked == true) ShowPreviewPane();
             };
-            _preview.Show();
+            _floating.Show();
         }
 
         FollowOriginalPreview();
-        UpdateTabs();
     }
 
-    private void CloseOriginalPreview()
+    private void ClosePreview()
     {
-        CaptureOriginalPreviewWindow? preview = _preview;
-        _preview = null;
-        if (preview == null) return;
-        try { preview.Close(); }
-        catch (InvalidOperationException) { /* 已经关掉 */ }
-        UpdateTabs();
+        _previewDetached = false;
+
+        CaptureOriginalPreviewWindow? floating = _floating;
+        _floating = null;
+        if (floating != null)
+        {
+            try { floating.Close(); }
+            catch (InvalidOperationException) { /* 已经关掉 */ }
+        }
+
+        HidePreviewPane();
     }
 
-    /// <summary>把原文小窗贴到识别窗旁边（右侧优先，放不下翻左侧 / 上下），并夹进工作区。</summary>
+    /// <summary>把原文小窗贴到识别窗旁边（右 → 左 → 上 → 下，四周都不够才贴内侧），并夹进工作区。</summary>
     private void FollowOriginalPreview()
     {
-        if (_preview == null || !_preview.IsVisible) return;
+        if (_floating is not { IsVisible: true }) return;
+        if (_floating.UserMoved) return;      // 用户自己挪过就别再拽回去
 
         Rect host = new(Left, Top, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
-        _preview.PlaceBeside(host, WorkArea());
+        _floating.PlaceBeside(host, WorkArea());
     }
 
     /// <summary>识别窗所在显示器的工作区（DIP）。</summary>
@@ -780,6 +883,14 @@ public partial class CaptureResultWindow : Window
             if (TableCanvas is { IsEditing: true })
             {
                 TableCanvas.CancelEdit();
+                e.Handled = true;
+                return;
+            }
+
+            // 原文预览开着：Esc 先关它（跟「关掉最上面那层」的直觉一致）
+            if (OriginalToggle.IsChecked == true)
+            {
+                OriginalToggle.IsChecked = false;
                 e.Handled = true;
                 return;
             }
@@ -1065,6 +1176,6 @@ public partial class CaptureResultWindow : Window
 
         _translationCts = null;
         _translatedLines = null;
-        CloseOriginalPreview();
+        ClosePreview();
     }
 }
