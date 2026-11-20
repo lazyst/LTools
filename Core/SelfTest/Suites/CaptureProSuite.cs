@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using LTools.Features;
 using LTools.Features.CapturePro;
+using LTools.Views.CapturePro;
 
 namespace LTools.Core.SelfTest;
 
@@ -30,6 +31,7 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "标注：序号写法与徽标字号", SerialTexts));
         cases.Add(new("capturePro", "标注：矩形滤镜与像素处理", FilterMark));
         cases.Add(new("capturePro", "文档：换底图（翻采集历史）", SwapBase));
+        cases.Add(new("capturePro", "原文预览：摆位规则（右 / 左 / 上下 / 夹进工作区）", PreviewPlacement));
         cases.Add(new("capturePro", "保存：格式 / 尺寸 / 编码", SaveFormats));
         cases.Add(new("capturePro", "文档：选区换算与导出", Selection));
         cases.Add(new("capturePro", "选区形状：自由 / 折线的几何与导出", SelectionShapes));
@@ -4193,6 +4195,45 @@ internal static partial class CaptureProSuite
         var baseImage = BitmapSource.Create(8, 8, 96, 96, PixelFormats.Pbgra32, null, pixels, 8 * 4);
         baseImage.Freeze();
         return new CaptureDocument(baseImage, new Int32Rect(100, 100, 8, 8), 2.0);
+    }
+
+    /// <summary>
+    /// 「原文预览」小窗的摆位（照上游 <c>ScreenshotOriginalImagePreviewWindow::placement</c>）：
+    /// 右边放得下贴右侧，放不下翻左侧，上下放不下翻上方，最后夹进工作区。
+    /// </summary>
+    private static void PreviewPlacement()
+    {
+        var work = new Rect(0, 0, 1920, 1040);
+        var host = new Rect(400, 300, 600, 400);
+        var size = new Size(300, 200);
+
+        Rect right = OriginalPreviewPlacement.Place(host, work, size);
+        Check.Equal(host.Right + OriginalPreviewPlacement.Gap, right.Left, "右边放得下 → 贴识别窗右侧");
+        Check.Equal(host.Bottom + OriginalPreviewPlacement.Gap, right.Top, "上下够就贴识别窗底边");
+
+        var wide = new Rect(1400, 300, 500, 400);
+        Rect left = OriginalPreviewPlacement.Place(wide, work, size);
+        Check.Equal(wide.Left - OriginalPreviewPlacement.Gap - size.Width, left.Left,
+            "右边放不下 → 翻到左侧");
+
+        var low = new Rect(400, 700, 600, 300);
+        Rect above = OriginalPreviewPlacement.Place(low, work, size);
+        Check.Equal(low.Top - OriginalPreviewPlacement.Gap - size.Height, above.Top,
+            "下方放不下 → 翻到上方");
+
+        var full = new Rect(10, 10, 1900, 1000);
+        Rect clamped = OriginalPreviewPlacement.Place(full, work, size);
+        Check.True(clamped.Left >= work.Left && clamped.Right <= work.Right + 0.5,
+            "左右都放不下 → 夹进工作区（左右）");
+        Check.True(clamped.Top >= work.Top && clamped.Bottom <= work.Bottom + 0.5,
+            "上下都放不下 → 夹进工作区（上下）");
+
+        Rect preferLeft = OriginalPreviewPlacement.Place(host, work, size, preferLeft: true);
+        Check.Equal(host.Left - OriginalPreviewPlacement.Gap - size.Width, preferLeft.Left,
+            "preferLeft = 优先左侧");
+
+        Check.True(OriginalPreviewPlacement.Place(host, work, new Size(0, 0)).IsEmpty,
+            "尺寸为 0 时返回空矩形（不摆位）");
     }
 }
 

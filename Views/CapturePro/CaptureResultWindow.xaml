@@ -110,12 +110,6 @@
                         <local:CaptureOcrCanvas x:Name="OcrCanvas"/>
                     </ScrollViewer>
 
-                    <ScrollViewer x:Name="OriginalScroll" Visibility="Collapsed"
-                                  HorizontalScrollBarVisibility="Auto"
-                                  VerticalScrollBarVisibility="Auto" Padding="0">
-                        <Image x:Name="OriginalImage" Stretch="None" SnapsToDevicePixels="True"/>
-                    </ScrollViewer>
-
                     <TextBlock x:Name="EmptyText" Text="没有识别到文字" Visibility="Collapsed"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="{StaticResource SecondaryTextBrush}"/>
@@ -274,7 +268,8 @@
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <CheckBox x:Name="OriginalToggle" Content="显示原图" VerticalAlignment="Center"
+                            <CheckBox x:Name="OriginalToggle" Content="原文预览" VerticalAlignment="Center"
+                                      ToolTip="在旁边开一个小窗显示原图（滚轮缩放 / 拖动平移 / 双击切 100%）"
                                       Checked="Original_Changed" Unchecked="Original_Changed"/>
                             <CheckBox x:Name="FillToggle" Content="填充背景" IsChecked="True"
                                       VerticalAlignment="Center" Margin="14,0,0,0"

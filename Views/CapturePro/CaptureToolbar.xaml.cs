@@ -153,6 +153,9 @@ public partial class CaptureToolbar : UserControl
     /// <summary>「显示二维码」被点：参数 = 勾上还是取消（照上游 <c>qrCodeVisibilityRequested</c>）。</summary>
     public event Action<bool>? QrVisibilityRequested;
 
+    /// <summary>「重新截图」被点（照上游 <c>recaptureRequested</c>）：宿主原位重抓一张底图。</summary>
+    public event Action? RecaptureRequested;
+
     /// <summary>图片编辑窗点了「平移」：宿主进入平移模式（绘图工具全部取消选中）。</summary>
     internal event Action? PanRequested;
 
@@ -907,7 +910,7 @@ public partial class CaptureToolbar : UserControl
         {
             CaptureActionTool.Recognize => ActionButton("IconRecognize",
                 "识别文字 / 表格 / 二维码（Ctrl+R）", CaptureAction.Recognize),
-            CaptureActionTool.QrCode => QrButton(),
+            CaptureActionTool.QrCode => RegionActions(),
             CaptureActionTool.Record => ActionButton("IconRecord",
                 "录屏：把当前选区录成 MP4（3 秒倒计时后开始，控制条上可暂停 / 完成 / 取消）",
                 CaptureAction.Record),
@@ -1179,6 +1182,62 @@ public partial class CaptureToolbar : UserControl
     }
 
     /// <summary>
+    /// 「选择」工具那一行的采集入口（照上游移动工具的参数行：光标 / 重新截图 / 二维码）。
+    /// LTools 没有「光标」开关，所以这里是「重新截图」+「显示二维码」两个。
+    /// </summary>
+    private FrameworkElement RegionActions()
+    {
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        panel.Children.Add(RecaptureButton());
+        panel.Children.Add(new Border { Width = 6 });
+        panel.Children.Add(QrButton());
+        _regionActions = panel;
+        return panel;
+    }
+
+    /// <summary>
+    /// 「重新截图」（照上游 <c>m_recaptureButton</c>）：原位重抓，只换底图；
+    /// 重抓期间和二维码一起置灰（上游 <c>setRecaptureBusy</c>）。
+    /// </summary>
+    private Button RecaptureButton()
+    {
+        var button = new Button
+        {
+            Name = "RecaptureBtn",
+            Style = (Style)FindResource("ActBtn"),
+            Focusable = false,
+            ToolTip = "重新截图（Alt+R）：重抓一张底图，选区 / 标注 / 撤销都不动——等页面刷新完再抓",
+            Content = new ShapePath
+            {
+                Data = (Geometry)FindResource("IconReload"),
+                Style = (Style)FindResource("IconPath"),
+            },
+        };
+        button.Click += (_, _) => RecaptureRequested?.Invoke();
+        _recaptureBtn = button;
+        return button;
+    }
+
+    private Button? _recaptureBtn;
+    private StackPanel? _regionActions;
+
+    /// <summary>重抓期间置灰（上游 <c>setRecaptureBusy</c>：重新截图与二维码一起禁用）。</summary>
+    internal void SetRecaptureBusy(bool busy)
+    {
+        if (_recaptureBtn != null)
+        {
+            _recaptureBtn.IsEnabled = !busy;
+            _recaptureBtn.Opacity = busy ? 0.45 : 1;
+        }
+
+        if (_qrBtn != null) _qrBtn.IsEnabled = !busy && _qrAvailable;
+    }
+
+    /// <summary>
     /// 「显示二维码」（照 Snow Shot 的 <c>m_showQrCodeButton</c>）：只在「选择」工具下露出来，
     /// **可勾选**（勾上 = 标记显示中），识别不到码 / 还没扫完时禁用、原因进 ToolTip。
     /// </summary>
@@ -1221,11 +1280,14 @@ public partial class CaptureToolbar : UserControl
     }
 
     /// <summary>「显示二维码」只服务「选择」工具（画标注时它没有意义），完成动作收起时一起收。</summary>
+    /// <remarks>「重新截图」跟它同一行、同一个显隐规则（上游也是移动工具那一行才露）。</remarks>
     private void ApplyQrVisibility()
     {
-        if (_qrBtn == null) return;
         bool show = _actionsVisible && _tool == CaptureTool.Select;
-        _qrBtn.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        var visibility = show ? Visibility.Visible : Visibility.Collapsed;
+
+        if (_qrBtn != null) _qrBtn.Visibility = visibility;
+        if (_regionActions != null) _regionActions.Visibility = visibility;
     }
 
     private Button ActionButton(string icon, string tip, CaptureAction action, bool primary = false,

@@ -66,6 +66,7 @@ public partial class CaptureOverlayWindow
         Toolbar.UndoRequested += () => { _doc.Undo(); RefreshMarks(); };
         Toolbar.RedoRequested += () => { _doc.Redo(); RefreshMarks(); };
         Toolbar.ResetRequested += () => { _toolbarPlaced = false; UpdateChrome(); };
+        Toolbar.RecaptureRequested += () => _ = RecaptureAsync();
     }
 
     /// <summary>

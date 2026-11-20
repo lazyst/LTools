@@ -34,14 +34,8 @@ public partial class CaptureOverlayWindow
     /// <summary>隐藏光标（<c>toggle_cursor_visibility</c>）。</summary>
     private bool _cursorHidden;
 
-    /// <summary>按了「重新截图」：覆盖层关掉之后由 <see cref="CaptureSession"/> 再抓一次。</summary>
-    private bool _recaptureRequested;
-
     /// <summary>按了「表格识别」：结果窗算完直接切到表格页。</summary>
     private bool _tableRequested;
-
-    /// <summary>这条出口是「重新截图」（不是取消）。</summary>
-    internal bool RecaptureRequested => _recaptureRequested;
 
     /// <summary>这次识别要直接打开表格页（<c>table_recognition</c>）。</summary>
     internal bool TableRequested => _tableRequested;
@@ -156,8 +150,9 @@ public partial class CaptureOverlayWindow
                 return true;
 
             case "recapture":
-                _recaptureRequested = true;
-                Cancel();            // 不弹「退出确认」：这次截图会被立刻重拍，不算丢弃
+                // 原位重抓（照上游 requestRecapture）：只换底图，选区 / 标注 / 撤销栈都不动，
+                // 不再「退出本次截图重开一轮」（那条路会把这些全丢掉）。
+                _ = RecaptureAsync();
                 return true;
 
             case "toggle_coordinate_mode":

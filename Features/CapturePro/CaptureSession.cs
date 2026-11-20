@@ -80,31 +80,24 @@ internal static class CaptureSession
 
         try
         {
-            // 重新截图（<c>recapture</c>，默认 Alt+R）不退出截图流程：覆盖层关掉、再抓一帧、
-            // 重新开一层。抓帧放在循环里，其余出口都是 <c>return</c> / <c>break</c>。
-            bool first = true;
-            while (true)
+            System.Threading.Thread.Sleep(TransientMinimize.SettleMs);   // 等最小化动画结束、桌面重绘完
+
+            // 快门音（照上游 screenshot/screenshot_sound_notification，默认关）：
+            // 在上游是 beginCapture 里、冻结画面之前响，这里放在抓帧之前同一个时机。
+            if (CaptureSoundSettings.Screenshot) ShutterSound.Play();
+
+            // 覆盖层盖住**所有显示器**（跨屏选区）：冻结画面逐块抓再拼，坐标仍是物理像素
+            var area = ScreenShot.Bounds();
+            var shot = ScreenShot.Capture(area, ScreenshotBehavior.CaptureCursor);
+            var (sx, sy) = ScreenPickerWindow.MonitorScale(ScreenShot.ToRectangle(area));
+
+            var overlay = new CaptureOverlayWindow(shot, ScreenShot.ToRectangle(area), sx, sy,
+                pending: pending);
+            overlay.ExportNames = names;
+            bool? ok = overlay.ShowDialog();
+            if (ok != true) return null;
+
             {
-                if (first) System.Threading.Thread.Sleep(TransientMinimize.SettleMs);   // 等最小化动画结束、桌面重绘完
-                first = false;
-
-                // 快门音（照上游 screenshot/screenshot_sound_notification，默认关）：
-                // 在上游是 beginCapture 里、冻结画面之前响，这里放在抓帧之前同一个时机。
-                if (CaptureSoundSettings.Screenshot) ShutterSound.Play();
-
-                // 覆盖层盖住**所有显示器**（跨屏选区）：冻结画面逐块抓再拼，坐标仍是物理像素
-                var area = ScreenShot.Bounds();
-                var shot = ScreenShot.Capture(area, ScreenshotBehavior.CaptureCursor);
-                var (sx, sy) = ScreenPickerWindow.MonitorScale(ScreenShot.ToRectangle(area));
-
-                var overlay = new CaptureOverlayWindow(shot, ScreenShot.ToRectangle(area), sx, sy,
-                    pending: pending);
-                overlay.ExportNames = names;
-                bool? ok = overlay.ShowDialog();
-                if (ok != true) return null;
-
-                if (overlay.RecaptureRequested) continue;      // 用户要重拍：再抓一帧
-
                 if (overlay.RecordRequested)
                 {
                     // 录屏出口**没有成品图**（这次不是截图，只是借覆盖层挑区域）：
@@ -132,8 +125,6 @@ internal static class CaptureSession
                     result = new CaptureResult(overlay.Document.Area, captured,
                         placement.Appearance, placement.Scrolling);
                 }
-
-                break;
             }
         }
         catch (Exception ex)

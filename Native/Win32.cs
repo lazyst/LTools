@@ -213,6 +213,9 @@ internal static class Win32
     /// <summary>只有这个窗口本身被排除；桌面其余部分正常捕获。</summary>
     public const uint WdaExcludeFromCapture = 0x00000011;
 
+    /// <summary>恢复成「正常参与截图」（重新截图抓完要把排除撤掉）</summary>
+    public const uint WdaNone = 0x00000000;
+
     /// <summary>DWM 窗口属性：实际可见边框（不含不可见的阴影边距）。</summary>
     [DllImport("dwmapi.dll")]
     public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out Rect pvAttribute, int cbAttribute);

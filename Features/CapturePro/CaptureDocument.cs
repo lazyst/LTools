@@ -73,6 +73,17 @@ internal sealed class CaptureDocument
     }
 
     /// <summary>
+    /// 只换底图：**原位重抓**用（照 Snow Shot 的 recapture）。几何（<see cref="Monitor"/> /
+    /// <see cref="Origin"/> / <see cref="Scale"/>）、选区、标注、撤销栈全部不动——
+    /// 和 <see cref="SwapBase"/> 的区别就在这里，那个是图片编辑窗换图，会把几何重置。
+    /// </summary>
+    public void ReplaceBaseKeepingFrame(BitmapSource image)
+    {
+        if (image == null) throw new ArgumentNullException(nameof(image));
+        Base = image;
+    }
+
+    /// <summary>
     /// 只换底图（图片编辑窗的裁剪 / 撤销）：标注、序号、撤销栈都**不动**，坐标原点归零。
     /// 与 <see cref="LoadBase"/> 的区别是它会把标注一起清掉；选区 / 多区几何由调用方重设。
     /// </summary>

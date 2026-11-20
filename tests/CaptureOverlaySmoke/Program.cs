@@ -377,6 +377,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "recapture")
+        {
+            RecaptureSection();
+            Console.WriteLine(_failed == 0 ? "recapture-only：通过" : $"recapture-only：{_failed} 项失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         if (_only == "tray")
         {
             TraySection();
@@ -695,6 +702,9 @@ internal static partial class Program
 
         // ============ 托盘菜单：条目 / 顺序 / 「截图」二级菜单真鼠标悬停展开 ============
         TraySection();
+
+        // ============ 重新截图：只换底图（选区 / 标注 / 撤销栈不动，覆盖层不进截屏）============
+        RecaptureSection();
 
         Console.WriteLine(_failed == 0 ? "capture-overlay-smoke：全部通过" : $"capture-overlay-smoke：{_failed} 条失败");
         return _failed == 0 ? 0 : 1;
@@ -3724,11 +3734,14 @@ internal static partial class Program
         Pump(window);
         Check((string)((Button)Field(window, "CopyBtn")).Content == "复制文字", "回文字页时复制按钮回到文字");
 
-        // 「显示原图」= 同一块画布换成原图，文字层收起
+        // 「原文预览」= 识别窗旁边**独立的小窗**（照上游 screenshotoriginalimagepreviewwindow）：
+        // 识别窗盖住选区、里面画的是重排后的文字，对照原文得另开一个看得见原图的窗口。
         var original = (CheckBox)Field(window, "OriginalToggle");
         var fill = (CheckBox)Field(window, "FillToggle");
         var ocrScroll = (ScrollViewer)Field(window, "OcrScroll");
-        var originalScroll = (ScrollViewer)Field(window, "OriginalScroll");
+
+        Window? Preview() => Application.Current.Windows.Cast<Window>()
+            .FirstOrDefault(w => w.GetType().Name == "CaptureOriginalPreviewWindow" && w.IsVisible);
 
         // 开发机上的真实配置可能开着「识别结果先显示原图」，先关掉再验文字层
         if (original.IsChecked == true)
@@ -3737,17 +3750,51 @@ internal static partial class Program
             Pump(window);
         }
 
-        Check(ocrScroll.Visibility == Visibility.Visible, "文字页显示文字层（关掉「显示原图」后）");
+        Check(ocrScroll.Visibility == Visibility.Visible, "文字页显示文字层（关掉「原文预览」后）");
+        Check(Preview() == null, "默认不自动弹原文预览小窗");
 
         original.IsChecked = true;
         Pump(window);
-        Check(originalScroll.Visibility == Visibility.Visible, "显示原图 → 原图可见");
-        Check(ocrScroll.Visibility == Visibility.Collapsed, "显示原图 → 文字层收起");
-        Check(!fill.IsEnabled, "显示原图时「填充背景」不可用");
+        Window? preview = Preview();
+        Check(preview != null, "勾「原文预览」→ 识别窗旁边开一个原图小窗");
+        Check(ocrScroll.Visibility == Visibility.Visible, "原文预览不占识别窗自己的画布（文字层照旧显示）");
+        Check(fill.IsEnabled, "原文预览开着也能继续改填充背景");
+
+        if (preview != null)
+        {
+            var picture = FindAll<Image>(preview).FirstOrDefault();
+            Check(picture?.Source is BitmapSource source && source.PixelWidth == image.PixelWidth,
+                "小窗里就是这张原图");
+            Check(preview.Left >= window.Left + window.ActualWidth - 1 ||
+                  preview.Left + preview.Width <= window.Left + 1,
+                $"小窗贴在识别窗左右（识别窗 {window.Left:0}..{window.Left + window.ActualWidth:0}，" +
+                $"小窗 {preview.Left:0}..{preview.Left + preview.Width:0}）");
+            Check((bool)preview.GetType().GetProperty("Fitted", Private | BindingFlags.Public)!.GetValue(preview)!,
+                "打开时是「适应窗口」态");
+
+            // 滚轮在指针处放大（照上游 mouse_position 缩放）
+            double zoomBefore = (double)preview.GetType().GetProperty("Zoom", Private | BindingFlags.Public)!.GetValue(preview)!;
+            var viewport = FindAll<ScrollViewer>(preview).FirstOrDefault();
+            if (viewport != null)
+            {
+                preview.Activate();
+                Pump(preview);
+                SetCursorPos((int)(preview.Left + preview.Width / 2),
+                    (int)(preview.Top + preview.Height / 2));
+                Thread.Sleep(80);
+                viewport.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice,
+                    Environment.TickCount, 120) { RoutedEvent = UIElement.PreviewMouseWheelEvent });
+                Pump(preview);
+            }
+
+            double zoomAfter = (double)preview.GetType().GetProperty("Zoom", Private | BindingFlags.Public)!.GetValue(preview)!;
+            Check(zoomAfter > zoomBefore, $"滚轮放大（{zoomBefore:0.00} → {zoomAfter:0.00}）");
+        }
 
         original.IsChecked = false;
         Pump(window);
-        Check(ocrScroll.Visibility == Visibility.Visible && fill.IsEnabled, "关掉原图回到文字层");
+        Check(Preview() == null, "取消勾选 → 小窗关掉");
+        Check(ocrScroll.Visibility == Visibility.Visible, "关掉原文预览后文字层照旧");
 
         // 「填充背景」= 文字层铺不铺估出来的底色
         fill.IsChecked = false;
@@ -3756,23 +3803,6 @@ internal static partial class Program
         fill.IsChecked = true;
         Pump(window);
         Check((bool)Get(canvas, "FillBackground"), "打开填充背景 → 画布铺底色");
-
-        // 「显示原图」= 在**同一个窗口**里切到原图（上游 show_original_image，默认关）。
-        // 回归：以前另开一个「原文预览」小窗，点一次文字识别会同时弹出两个窗口（用户报过）。
-        Window? Preview() => Application.Current.Windows.Cast<Window>()
-            .FirstOrDefault(w => w.GetType().Name == "CaptureOriginalPreviewWindow" && w.IsVisible);
-
-        Check(Preview() == null, "识别结果只有一个窗口：不再自动弹出「原文预览」小窗");
-        Check(window.FindName("PreviewBtn") == null, "识别结果窗上没有「原文预览」按钮（原图在窗内切）");
-
-        var originalToggle = (CheckBox)Field(window, "OriginalToggle");
-        originalToggle.IsChecked = true;
-        Pump(window);
-        Check(((FrameworkElement)Field(window, "OriginalScroll")).Visibility == Visibility.Visible,
-            "勾「显示原图」→ 窗内换成原图");
-        originalToggle.IsChecked = false;
-        Pump(window);
-        Check(Preview() == null, "切回文字层也不会冒出第二个窗口");
 
         Save(Render(window), Path.Combine(_outDir, "result.png"));
 

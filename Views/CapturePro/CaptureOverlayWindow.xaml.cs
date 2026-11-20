@@ -30,7 +30,7 @@ public partial class CaptureOverlayWindow : Window
 {
     private const double MinSize = 4;      // 选区最小边长（DIP）
 
-    private readonly BitmapSource _shot;
+    private BitmapSource _shot;
     private readonly System.Drawing.Rectangle _area;   // 覆盖的物理矩形（多屏时是整个虚拟桌面）
     private readonly double _sx, _sy;      // 物理像素 / DIP
     private readonly CaptureDocument _doc;

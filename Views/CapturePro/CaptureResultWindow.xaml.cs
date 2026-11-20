@@ -85,7 +85,6 @@ public partial class CaptureResultWindow : Window
         _translateWhenReady = translateWhenReady;
         _quick = quick;
 
-        OriginalImage.Source = image;
         FillTranslateTargets();
         FillTransformOptions();
         Place();
@@ -94,7 +93,8 @@ public partial class CaptureResultWindow : Window
             UpdateZoom();
             Start();
         };
-        SizeChanged += (_, _) => UpdateZoom();
+        SizeChanged += (_, _) => { UpdateZoom(); FollowOriginalPreview(); };
+        LocationChanged += (_, _) => FollowOriginalPreview();
         PreviewKeyDown += OnPreviewKeyDown;
         TextInput += OnTextInput;
     }
@@ -104,14 +104,13 @@ public partial class CaptureResultWindow : Window
     {
     }
 
-    /// <summary>同上，但连原图一起给（「显示原图 / 原文预览」要有图才成立）。</summary>
+    /// <summary>同上，但连原图一起给（「原文预览」小窗要有图才成立）。</summary>
     internal CaptureResultWindow(RecognizeResult result, BitmapSource? image)
     {
         InitializeComponent();
 
         _image = image;
         _runOnLoad = false;
-        if (image != null) OriginalImage.Source = image;
         FillTranslateTargets();
         FillTransformOptions();
         Place();
@@ -348,8 +347,6 @@ public partial class CaptureResultWindow : Window
             UpdateTabs();
         }
 
-        if (OriginalToggle.IsChecked == true) OriginalToggle.IsChecked = false;
-
         if (_model is { LineCount: > 0 } model && _translatedLines == null)
         {
             model.SetCaret(0, 0);
@@ -434,9 +431,6 @@ public partial class CaptureResultWindow : Window
         zoom = Math.Max(zoom, 0.05);
 
         OcrCanvas.SetZoom(zoom);
-
-        OriginalImage.Width = imageWidth * zoom;
-        OriginalImage.Height = imageHeight * zoom;
     }
 
     // ============ 页签 ============
@@ -467,10 +461,8 @@ public partial class CaptureResultWindow : Window
         bool conversion = _tab is "markdown" or "html";
         bool document = _tab == "document";
         bool latex = _tab == "latex";
-        bool original = originalToggle.IsChecked == true;
 
-        ocrScroll.Visibility = text && !original ? Visibility.Visible : Visibility.Collapsed;
-        OriginalScroll.Visibility = text && original ? Visibility.Visible : Visibility.Collapsed;
+        ocrScroll.Visibility = text ? Visibility.Visible : Visibility.Collapsed;
         TablePage.Visibility = _tab == "table" ? Visibility.Visible : Visibility.Collapsed;
         QrPage.Visibility = _tab == "qr" ? Visibility.Visible : Visibility.Collapsed;
         ConversionPage.Visibility = conversion ? Visibility.Visible : Visibility.Collapsed;
@@ -507,12 +499,12 @@ public partial class CaptureResultWindow : Window
             : string.Format(CultureInfo.CurrentCulture, "{0} 块 · {1} 个字符",
                 _conversion.Blocks.Count, _conversion.Length);
 
-        emptyText.Visibility = text && !original && _layer.Count == 0
+        emptyText.Visibility = text && _layer.Count == 0
             ? Visibility.Visible
             : Visibility.Collapsed;
 
         originalToggle.IsEnabled = text;
-        fillToggle.IsEnabled = text && !original;
+        fillToggle.IsEnabled = text;
 
         copyBtn.Content = _tab switch
         {
@@ -666,7 +658,67 @@ public partial class CaptureResultWindow : Window
 
     // ============ 开关 ============
 
-    private void Original_Changed(object sender, RoutedEventArgs e) => UpdateTabs();
+    /// <summary>
+    /// 「原文预览」（照上游 <c>text_recognition/show_original_image_preview</c> + <c>setOriginalImagePreviewEnabled</c>）：
+    /// 勾上就在识别窗旁边开一个**独立小窗**显示原图，不是把识别窗自己的画布换成原图。
+    /// </summary>
+    private void Original_Changed(object sender, RoutedEventArgs e)
+    {
+        if (OriginalToggle.IsChecked == true) ShowOriginalPreview();
+        else CloseOriginalPreview();
+    }
+
+    private CaptureOriginalPreviewWindow? _preview;
+
+    private void ShowOriginalPreview()
+    {
+        if (_image == null) return;
+
+        if (_preview == null)
+        {
+            _preview = new CaptureOriginalPreviewWindow(_image, _scale);
+            _preview.Closed += (_, _) =>
+            {
+                _preview = null;
+                if (OriginalToggle.IsChecked == true) OriginalToggle.IsChecked = false;
+            };
+            _preview.Show();
+        }
+
+        FollowOriginalPreview();
+        UpdateTabs();
+    }
+
+    private void CloseOriginalPreview()
+    {
+        CaptureOriginalPreviewWindow? preview = _preview;
+        _preview = null;
+        if (preview == null) return;
+        try { preview.Close(); }
+        catch (InvalidOperationException) { /* 已经关掉 */ }
+        UpdateTabs();
+    }
+
+    /// <summary>把原文小窗贴到识别窗旁边（右侧优先，放不下翻左侧 / 上下），并夹进工作区。</summary>
+    private void FollowOriginalPreview()
+    {
+        if (_preview == null || !_preview.IsVisible) return;
+
+        Rect host = new(Left, Top, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
+        _preview.PlaceBeside(host, WorkArea());
+    }
+
+    /// <summary>识别窗所在显示器的工作区（DIP）。</summary>
+    private Rect WorkArea()
+    {
+        ScreenGeometry? screen = CaptureRecordWindow.ScreenOf(_area);
+        double scale = screen?.Scale ?? _scale;
+        if (scale <= 0) scale = 1;
+        if (screen == null) return SystemParameters.WorkArea;
+
+        return new Rect(screen.WorkLeft / scale, screen.WorkTop / scale,
+            screen.WorkWidth / scale, screen.WorkHeight / scale);
+    }
 
     private void Fill_Changed(object sender, RoutedEventArgs e)
     {
@@ -717,7 +769,7 @@ public partial class CaptureResultWindow : Window
 
     // ============ 键盘 / 输入 ============
 
-    private bool TextEditable => _tab == "text" && OriginalToggle.IsChecked != true &&
+    private bool TextEditable => _tab == "text" &&
                                  _translatedLines == null;
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
@@ -1013,5 +1065,6 @@ public partial class CaptureResultWindow : Window
 
         _translationCts = null;
         _translatedLines = null;
+        CloseOriginalPreview();
     }
 }
