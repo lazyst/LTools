@@ -3432,6 +3432,25 @@ internal static partial class Program
         window.Activate();
         Pump(window);
 
+        // 关闭按钮：悬停变红（照系统窗口）
+        var closeWindowBtn = (Button)Field(window, "CloseBtn");
+        Point closeAt = closeWindowBtn.PointToScreen(
+            new Point(closeWindowBtn.ActualWidth / 2, closeWindowBtn.ActualHeight / 2));
+        SetCursorPos((int)Math.Round(closeAt.X), (int)Math.Round(closeAt.Y));
+        PumpFor(200);
+        Check(closeWindowBtn.IsMouseOver, "鼠标停在关闭按钮上");
+        var closeFill = ((Border?)closeWindowBtn.Template.FindName("bd", closeWindowBtn))?.Background
+            as SolidColorBrush;
+        Check(closeFill is { Color: var c } && c == Color.FromRgb(0xDC, 0x26, 0x26),
+            $"关闭按钮悬停变红（{closeFill?.Color}）");
+
+        SetCursorPos(60, 60);
+        PumpFor(200);
+        var closeFillAfter = ((Border?)closeWindowBtn.Template.FindName("bd", closeWindowBtn))?.Background
+            as SolidColorBrush;
+        Check(closeFillAfter is not { Color: var moved } || moved != Color.FromRgb(0xDC, 0x26, 0x26),
+            $"鼠标移开后关闭按钮恢复原样（{closeFillAfter?.Color}）");
+
         object Prop(string name) =>
             windowType.GetProperty(name, Private)!.GetValue(window)!;
 

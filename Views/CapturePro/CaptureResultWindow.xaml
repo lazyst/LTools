@@ -49,7 +49,7 @@
                               StrokeThickness="1" Data="M 1,1 L 9,1 L 9,9 L 1,9 Z"/>
                     </Button>
                     <Button x:Name="CloseBtn" Content="✕" Width="34" Height="32" Padding="0"
-                            HorizontalAlignment="Right" Style="{StaticResource BtnGhost}"
+                            HorizontalAlignment="Right" Style="{StaticResource BtnGhostClose}"
                             Focusable="False" Click="Close_Click"/>
                 </StackPanel>
             </Grid>

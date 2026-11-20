@@ -252,6 +252,38 @@
         <Setter Property="Tag" Value="{StaticResource DangerBgBrush}"/>
     </Style>
 
+    <!-- 自定义标题栏的「关闭」：平时和 BtnGhost 一样（灰字），悬停 / 按下**红底白字**（照系统窗口）。
+         窗口是无边框卡片、圆角 8，所以按钮自己带圆角（别用 TitleBarCloseButton 那种方角满铺，
+         那会在卡片圆角外面露出一块方的红）。 -->
+    <Style x:Key="BtnGhostClose" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="bd" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{StaticResource CornerSm}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{StaticResource DangerBrush}"/>
+                            <Setter Property="Foreground" Value="White"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{StaticResource DangerHoverBrush}"/>
+                            <Setter Property="Foreground" Value="White"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- 未配置提示条里的行内动作（「添加专用设置」）：
          提示条底色就是 SurfaceAlt，和默认悬停色 HoverBgBrush 同色 → 悬停等于没反应，
          所以这里把 Tag 换成更深一档的 BorderBrush。 -->
