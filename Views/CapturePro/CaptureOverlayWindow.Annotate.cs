@@ -29,6 +29,18 @@ public partial class CaptureOverlayWindow
     private Mark? _dragMark;
     private int _dragMarkIndex = -1;
 
+    /// <summary>
+    /// 从采集历史「重新编辑截图」：把当时那份标注与撤销 / 重做栈整份摆回来。
+    /// 底图与选区由调用方先设好（<c>LoadSelection</c> / <c>LoadCaptureStyle</c>）。
+    /// </summary>
+    internal void LoadAnnotations(IReadOnlyList<Mark> marks, IReadOnlyList<Mark[]> undo,
+        IReadOnlyList<Mark[]> redo)
+    {
+        Document.ImportHistory(marks, undo, redo);
+        Surface.InvalidateVisual();
+        UpdateChrome();
+    }
+
     /// <summary>按下时若是「工具手势」就吃掉这次按下（返回 true）。</summary>
     private bool BeginToolGesture(Point p, int clickCount)
     {
@@ -592,7 +604,8 @@ public partial class CaptureOverlayWindow
         if (_drag == DragMode.None) return;
 
         // 改框 / 套索画到一半：还原成按下前的选区（也要把已落的点丢掉）
-        if (_drag is DragMode.New or DragMode.Move or DragMode.Resize or DragMode.Lasso)
+        if (_drag is DragMode.New or DragMode.Move or DragMode.MoveRegion or DragMode.Resize
+            or DragMode.Lasso)
         {
             CancelDrag();
             return;

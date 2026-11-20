@@ -272,6 +272,20 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "regiondrag")
+        {
+            RegionDragSection();
+            Console.WriteLine(_failed == 0 ? "regiondrag-only：通过" : $"regiondrag-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
+        if (_only == "historydisplay")
+        {
+            HistoryDisplaySection();
+            Console.WriteLine(_failed == 0 ? "historydisplay-only：通过" : $"historydisplay-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         if (_only == "recordsettings")
         {
             RecordSettingsSection();
@@ -660,6 +674,12 @@ internal static partial class Program
 
         // ============ 自由 / 折线选区 ============
         SelectionShapes(window, selField, doc);
+
+        // ============ 多块选区里单独拖一块 / Space 整体挪 ============
+        RegionDragSection();
+
+        // ============ 采集历史：整屏轮播 / 重新编辑入口 ============
+        HistoryDisplaySection();
 
         // ============ 右键取消选区（不退出截图） ============
         StepBackClearsSelection(window, selField, doc);
@@ -5634,8 +5654,8 @@ internal static partial class Program
             $"贴回：外观按缩放算出来（圆角 {radius}px / 内边距 {effect}px @ {scale:0.##}x）");
 
         var of = placementType.GetMethod("Of", Stat)!;
-        var placement = of.Invoke(null, new object[] { selection, style, scale, false })!;
-        var scrollingPlacement = of.Invoke(null, new object[] { selection, style, scale, true })!;
+        var placement = of.Invoke(null, new object?[] { selection, style, scale, false, null })!;
+        var scrollingPlacement = of.Invoke(null, new object?[] { selection, style, scale, true, null })!;
 
         // 成品图 = 内容 + 两侧效果内边距（RenderStyled 的输出尺寸）
         int imageW = selection.Width + effect * 2;
@@ -5644,7 +5664,7 @@ internal static partial class Program
         object Make(int w, int h, string kind, object geometry)
         {
             var entry = catalogType.GetMethod("Create")!
-                .Invoke(null, new object[] { w, h, kind, "贴图", geometry })!;
+                .Invoke(null, new object?[] { w, h, kind, "贴图", geometry, null, null, null })!;
             catalogType.GetMethod("SaveAssets")!
                 .Invoke(null, new object[] { entry, Solid(w, h, Colors.SteelBlue) });
             return entry;
@@ -9061,15 +9081,23 @@ internal static partial class Program
         Save(Render(window), Path.Combine(_outDir, "param-row.png"));
     }
     /// <summary>
-    /// 采集历史翻页：<c>,</c> / <c>.</c> 就地换底图（不关覆盖层），选区框满整张、标注清空；
-    /// Esc / 右键回到刚才那次截图（底图 / 标注 / 选区都还回来）。
+    /// 采集历史翻页（覆盖层里 <c>,</c> / <c>.</c>，照上游 <c>navigatePrevious</c> / <c>navigateNext</c>）：
+    /// 换进来的是**那次截图的整块屏幕**（不是成品图），选区 + 外观 + 标注（连撤销 / 重做栈）照原样摆回去；
+    /// 位置 0 是「刚才这次截图」，<c>.</c> 一路按回来会回到自己，两头都停住、不循环。
     /// </summary>
     private static void HistoryPaging(CaptureOverlayWindow window)
     {
         var asm = typeof(CaptureOverlayWindow).Assembly;
         var catalogType = asm.GetType("LTools.Features.CapturePro.CaptureCatalog")!;
+        var placementType = asm.GetType("LTools.Features.CapturePro.CapturePlacement")!;
+        var styleType = asm.GetType("LTools.Features.CapturePro.SelectionStyle")!;
+        var editType = asm.GetType("LTools.Features.CapturePro.CaptureEditState")!;
+        var styleDtoType = asm.GetType("LTools.Features.CapturePro.CaptureStyleDto")!;
+
         var doc = typeof(CaptureOverlayWindow).GetProperty("Document", Private)!.GetValue(window)!;
         var docType = doc.GetType();
+        var selField = typeof(CaptureOverlayWindow).GetField("_sel", Private)!;
+        double scale = (double)docType.GetProperty("Scale")!.GetValue(doc)!;
 
         catalogType.GetMethod("Clear")!.Invoke(null, null);
 
@@ -9088,72 +9116,133 @@ internal static partial class Program
             return image;
         }
 
-        object Make(int w, int h, Color color)
+        // 两条能还原现场的记录：各画了 2 条标注、有一份撤销快照、选区 100,80 200×120（物理像素）
+        const string annotations = """
+            [
+              {"t":"Mosaic","a":{"a":"10,10","b":"60,40","block":8}},
+              {"t":"Shape","a":{"a":"20,20","b":"90,70","spec":{"t":"ShapeSpec","a":{
+                "kind":"Rectangle","stroke":"#FF2B7CF0","width":3,"strokeStyle":"Solid",
+                "rendering":"Architect","fill":"#00000000","fillStyle":"None","radius":0,"seed":7}}}}
+            ]
+            """;
+
+        const string undoSnapshot = """
+            [[{"t":"Mosaic","a":{"a":"1,2","b":"30,40","block":6}}]]
+            """;
+
+        object Make(int productW, int productH, Color productColor, int displayW, int displayH,
+            Color displayColor, double corner)
         {
-            var entry = catalogType.GetMethod("Create")!.Invoke(null, new object[] { w, h, "shot", "复制", null })!;
-            catalogType.GetMethod("SaveAssets")!.Invoke(null, new object[] { entry, Solid(w, h, color) });
+            var placement = placementType.GetMethod("Of")!.Invoke(null, new object?[]
+            {
+                new Int32Rect(100, 80, 200, 120),
+                styleType.GetField("None", BindingFlags.Static | BindingFlags.Public)!.GetValue(null),
+                1.0, false, null,
+            });
+            var styleDto = Activator.CreateInstance(styleDtoType)!;
+            styleDtoType.GetProperty("CornerRadius")!.SetValue(styleDto, corner);
+
+            var edit = Activator.CreateInstance(editType)!;
+            editType.GetProperty("Annotations")!.SetValue(edit,
+                System.Text.Json.Nodes.JsonNode.Parse(annotations));
+            editType.GetProperty("Undo")!.SetValue(edit,
+                System.Text.Json.Nodes.JsonNode.Parse(undoSnapshot));
+            editType.GetProperty("Style")!.SetValue(edit, styleDto);
+
+            var entry = catalogType.GetMethod("Create")!.Invoke(null, new object?[]
+            {
+                productW, productH, "shot", "复制", placement,
+                new Int32Rect(0, 0, displayW, displayH), null, edit,
+            })!;
+
+            catalogType.GetMethod("SaveAssets")!.Invoke(null,
+                new object[] { entry, Solid(productW, productH, productColor) });
+            catalogType.GetMethod("SaveDisplay")!.Invoke(null,
+                new object[] { entry, Solid(displayW, displayH, displayColor) });
             return entry;
         }
 
-        Make(320, 200, Colors.DarkOrange);            // 更早
-        Make(640, 360, Colors.SteelBlue);             // 更新（索引 0）
+        Make(320, 200, Colors.DarkOrange, 600, 400, Colors.Gainsboro, 4);      // 更早
+        Make(640, 360, Colors.SteelBlue, 800, 500, Colors.White, 12);          // 更新（索引 0）
 
+        // 当前这次截图：一块选区（回到 live 时要一模一样地回来）
         SetSelection(window, new Rect(200, 150, 600, 400));
         Invoke(window, "SyncArea");
 
-        var baseBefore = docType.GetProperty("Base")!.GetValue(doc);
-        var marksProp = docType.GetProperty("Marks")!;
+        object Base() => docType.GetProperty("Base")!.GetValue(doc)!;
+        int BaseWidth() => ((BitmapSource)Base()).PixelWidth;
+        int BaseHeight() => ((BitmapSource)Base()).PixelHeight;
+        int MarksNow() => (docType.GetProperty("Marks")!.GetValue(doc) as System.Collections.IList)?.Count ?? -1;
+        bool CanUndo() => (bool)docType.GetProperty("CanUndo")!.GetValue(doc)!;
+        double Corner()
+        {
+            var style = docType.GetProperty("Style")!.GetValue(doc)!;
+            return (double)style.GetType().GetProperty("CornerRadius")!.GetValue(style)!;
+        }
+
+        Rect? Sel() => selField.GetValue(window) as Rect?;
+
         var browsing = typeof(CaptureOverlayWindow).GetProperty("BrowsingHistory", Private)!;
+        bool Browsing() => (bool)browsing.GetValue(window)!;
+        bool Step(string id) => (bool)InvokeValue(window, "RunScreenshotShortcut", id)!;
 
-        int MarksIn(object target) => (marksProp.GetValue(target) as System.Collections.IList)?.Count ?? -1;
-        int MarksNow() => MarksIn(doc);
-        int BaseWidth() => ((BitmapSource)docType.GetProperty("Base")!.GetValue(doc)!).PixelWidth;
-
+        var baseBefore = Base();
         int marksBefore = MarksNow();
+        bool undoBefore = CanUndo();
+        var selBefore = Sel();
+        double cornerBefore = Corner();
 
-        // . = 更早：第一次落在最新那条（640×360）
-        InvokeWith(window, "StepHistory", 1);
+        // , = 更早：落在最新那条记录上，看到的是**整块屏幕**（800 × 500）而不是成品图（640 × 360）
+        Check(Step("previous_screenshot_history"), ", 归翻页处理");
         Pump(window);
-        Check((bool)browsing.GetValue(window)!, "翻页后进入历史浏览态");
-        Check(MarksNow() == 0, "换底图清空标注");
-        Check(!(bool)docType.GetProperty("CanUndo")!.GetValue(doc)!, "换底图清空撤销栈");
-        Check(BaseWidth() == 640, "先落在最新那张（640 宽）");
-        Check((int)docType.GetMethod("NextSerial")!.Invoke(doc, null)! == 1, "历史图上序号从 1 重新开始");
+        Check(Browsing(), "翻页后进入历史浏览态");
+        Check(BaseWidth() == 800 && BaseHeight() == 500,
+            $"翻进去换的是那次截图的整块屏幕（{BaseWidth()} × {BaseHeight()}）");
+        Check(MarksNow() == 2, $"标注照原样摆回来（{MarksNow()} 条）");
+        Check(CanUndo(), "撤销栈跟着回来（能 Ctrl+Z 退回当初）");
+        Check(Corner() == 12, $"选区外观照原样摆回来（圆角 {Corner()}）");
 
-        var canvas = (Rect)docType.GetProperty("Canvas")!.GetValue(doc)!;
-        var historySelField = typeof(CaptureOverlayWindow).GetField("_sel", Private)!;
-        var selection = (Rect?)historySelField.GetValue(window);
-        Check(selection is { } s && Math.Abs(s.Width - canvas.Width) < 0.6 && Math.Abs(s.Height - canvas.Height) < 0.6,
-            $"选区框满整张历史图：{selection} vs {canvas}");
-        Check(Math.Abs(canvas.X - (window.ActualWidth - canvas.Width) / 2) < 1.0,
-            $"历史图摆在窗口中间：{canvas.X:0.#}（窗口 {window.ActualWidth:0.#}）");
+        var restoredSel = Sel();
+        Check(restoredSel is { } rs &&
+              Math.Abs(rs.X - 100 / scale) < 0.6 && Math.Abs(rs.Y - 80 / scale) < 0.6 &&
+              Math.Abs(rs.Width - 200 / scale) < 0.6 && Math.Abs(rs.Height - 120 / scale) < 0.6,
+            $"选区回到当初框的那块（{restoredSel}，按 {scale} 换算）");
 
         var hint = (TextBlock)Field(window, "HintText");
         Check(hint.Text.Contains("历史 1/2"), "顶部提示写出第几张：" + hint.Text);
+        Check(hint.Text.Contains(", 更早"), "提示里的方向与上游一致（, 更早）：" + hint.Text);
 
-        // 再按 . 到更早那张（320×200）
-        InvokeWith(window, "StepHistory", 1);
+        // 再 , 到更早那条（600 × 400 / 圆角 4）
+        Step("previous_screenshot_history");
         Pump(window);
-        Check(BaseWidth() == 320, "再往前翻到 320 宽那张");
+        Check(BaseWidth() == 600, $"再往前翻到 600 宽那条（{BaseWidth()}）");
+        Check(Corner() == 4, $"换一条记录，外观也跟着换（圆角 {Corner()}）");
 
-        // 到最早一张了：按键不再变，但仍是历史态
-        InvokeWith(window, "StepHistory", 1);
+        // 到头了：停在最早那张，不循环
+        Step("previous_screenshot_history");
         Pump(window);
-        Check(BaseWidth() == 320, "到头了就停在最早那张");
+        Check(BaseWidth() == 600, "到头了就停在最早那张（不循环）");
 
-        // , 回到更新那张
-        InvokeWith(window, "StepHistory", -1);
+        // . = 更新
+        Step("next_screenshot_history");
         Pump(window);
-        Check(BaseWidth() == 640, ", 回到更新那张");
+        Check(BaseWidth() == 800, $". 回到更新那条（{BaseWidth()}）");
+        Check(Corner() == 12, "外观跟着回到那条记录的圆角 12");
 
-        // 右键：退回刚才那次截图，底图 / 标注 / 选区都回来
-        Invoke(window, "StepBack");
+        // . 一直到头 = 回到刚才这次截图（上游 index 0 = live）
+        Step("next_screenshot_history");
         Pump(window);
-        Check(!(bool)browsing.GetValue(window)!, "退回实时截图");
-        Check(ReferenceEquals(baseBefore, docType.GetProperty("Base")!.GetValue(doc)), "底图换回原来那张");
+        Check(!Browsing(), "退回到这次截图（不再算历史浏览）");
+        Check(ReferenceEquals(baseBefore, Base()), "底图换回原来那张");
         Check(MarksNow() == marksBefore, $"标注原样放回（{MarksNow()} vs {marksBefore}）");
-        Check(historySelField.GetValue(window) is Rect r && Math.Abs(r.Width - 600) < 0.6 && Math.Abs(r.Height - 400) < 0.6,
-            "选区也回到刚才那块");
+        Check(CanUndo() == undoBefore, "撤销栈也回到实时那份");
+        Check(Sel() == selBefore, $"选区也回到刚才那块（{Sel()} vs {selBefore}）");
+        Check(Corner() == cornerBefore, $"外观回到这次的外（圆角 {Corner()}）");
+
+        // 已经在 live：再按 . 什么都不做（上游 navigateNext 在 index 0 直接返回 false）
+        Step("next_screenshot_history");
+        Pump(window);
+        Check(!Browsing() && ReferenceEquals(baseBefore, Base()), "live 再按 . 不进历史、画面不动");
 
         catalogType.GetMethod("Clear")!.Invoke(null, null);
     }

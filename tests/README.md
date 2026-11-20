@@ -43,7 +43,9 @@ dotnet run --no-build -- behavior     # 只跑一段（改哪块跑哪段）
 |---|---|
 | `behavior` | 截图行为：指针 / Esc 退出确认 / 拖边框（快速选择修改 / 贴到指针）/ HiDPI 降采样 / PDF 纸张（真文件）/ 设置页七控件往返 |
 | `drawing` | 绘制行为：默认值 / 工具清单窗口 / 自动选中 / 快速选择 / Delete 删字符 / 组首按钮 |
-| `colorpresets` | 颜色预设：三族 15 色 / 设置页 / 跟随工具切换 |
+| `colorpresets` | 颜色预设：三族 15 色 / 设置页 / 跟随工具切换 / 取色弹窗（色板·色相条·透明度条·HEX/RGB/HSB） |
+| `regiondrag` | 多块选区：拖命中的那一块 / 按住 Space 整体挪 / 中途换口径 / 外接框按并集 |
+| `historydisplay` | 采集历史轮播：底图落盘 / 每块屏裁图 / 卡片与大图翻张 / 重新编辑还原选区·外观·标注·撤销栈 |
 | `split` / `collage` / `collagepdf` | 切图 / 拼图 / 拼图 PDF |
 | `history` / `hidetotop` / `pinocr` / `clipboardmeta` | 采集历史 / 贴图收顶部 / 贴图识别 / 剪贴板元数据 |
 | `record` / `webcam` / `autohide` / `render` / `globalscreen`(`globalcanvas`) | 录屏：区域框 / 选项 / 画中画 / 自动收起 / 后期渲染 / 全屏画布 |

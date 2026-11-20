@@ -149,7 +149,8 @@ public partial class CaptureOverlayWindow
 
         // 工具栏：改框期间先收起来，免得被拖到指头底下；画标注时留着（随时能换工具）
         if (HasPending ||
-            _drag is DragMode.New or DragMode.Move or DragMode.Resize or DragMode.Lasso) Toolbar.Visibility = Visibility.Collapsed;
+            _drag is DragMode.New or DragMode.Move or DragMode.MoveRegion or DragMode.Resize or DragMode.Lasso)
+            Toolbar.Visibility = Visibility.Collapsed;
         else ShowToolbar(sel);
         Toolbar.SetUndo(_doc.CanUndo, _doc.CanRedo);
 

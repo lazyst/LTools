@@ -131,10 +131,10 @@ public partial class CaptureOverlayWindow
                 return CycleSelectionShape(-1);
 
             case "previous_screenshot_history":
-                return StepHistory(-1);
+                return StepHistory(1);      // , = 更早（上游 navigatePrevious）
 
             case "next_screenshot_history":
-                return StepHistory(1);
+                return StepHistory(-1);     // . = 更新（上游 navigateNext；到头就是这次截图）
 
             case "select_previously_selected_area":
                 if (_tool != CaptureTool.Select || _drag != DragMode.None) return false;
