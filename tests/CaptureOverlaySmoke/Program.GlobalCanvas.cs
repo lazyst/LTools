@@ -77,6 +77,16 @@ internal static partial class Program
         PumpFor(180);
         Check(window.IsVisible, "会话入口真的把画布打开了");
 
+        // 注入的真键盘要求窗口在前台（前面的段关掉自己的窗口后，前台可能已经留给别的程序，
+        // 这时 Activate() 会被前台锁拦掉；ForceForeground 与产品 WindowAction 同一套兜底）
+        ForceForeground(window);
+        PumpFor(140);
+        Check(window.IsActive, "全屏画布拿到前台 / 键盘焦点（真键盘注入靠它）");
+
+        // 输入法会把注入的字母吃掉（Key.ImeProcessed，中文模式下 P / V 都到不了窗口）；
+        // 这一段只按字母键、文字直接写进 TextEntry，所以关掉输入法。
+        System.Windows.Input.InputMethod.SetIsInputMethodEnabled(window, false);
+
         try
         {
             var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;

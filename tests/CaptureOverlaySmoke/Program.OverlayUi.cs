@@ -192,6 +192,8 @@ internal static partial class Program
             Check(Combo("CaptureUnitCombo")?.SelectedIndex == 0, "单位回显「物理像素」");
             Check(Combo("CapturePickerModeCombo")?.SelectedIndex == 0, "取色显示回显「选区外不显示」");
             Check(Combo("CapturePickerFormatCombo")?.SelectedIndex == 0, "取色格式回显「HEX」");
+            Check(Combo("CapturePickerFormatCombo")?.Items.Count == 5,
+                "取色格式下拉有 5 种写法（HEX / 无井号 / RGB / HSL / HSB）");
             Check(Combo("CapturePickerCoordCombo")?.SelectedIndex == 0, "取色坐标回显「全局」");
             Check(Box("CaptureHideSelectionBarBox")?.IsChecked == false, "「隐藏信息条」回显为不勾");
             Check(Box("CaptureShowEditBarBox")?.IsChecked == true, "「选择工具下也显示」回显为勾上");
@@ -394,7 +396,10 @@ internal static partial class Program
             Check(Text("ColorPickerFormat") == "hsl", "再轻按 Shift 换成 hsl");
             RaiseModifierTap(window, Key.LeftShift);
             Pump(window);
-            Check(Text("ColorPickerFormat") == "hex", "第四次轻按 Shift 转回 hex");
+            Check(Text("ColorPickerFormat") == "hsb", "再轻按 Shift 换成 hsb");
+            RaiseModifierTap(window, Key.LeftShift);
+            Pump(window);
+            Check(Text("ColorPickerFormat") == "hex", "第五次轻按 Shift 转回 hex");
 
             RaiseShiftP(window);
             Pump(window);

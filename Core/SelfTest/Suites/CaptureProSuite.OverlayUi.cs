@@ -153,20 +153,63 @@ internal static partial class CaptureProSuite
         Check.True(gray.Hue == 0 && gray.Saturation == 0 && Math.Abs(gray.Lightness - 50.2) < 0.2,
             $"灰没有饱和（实际 {gray}）");
 
-        // 格式轮换：hex → 无井号 → rgb → hsl → hex
+        // 格式轮换：hex → 无井号 → rgb → hsl → hsb → hex
         Check.Equal(OverlayUiSettings.FormatHexWithoutHash,
             OverlayUiSettings.NextColorFormat(OverlayUiSettings.FormatHex), "hex → 无井号");
         Check.Equal(OverlayUiSettings.FormatRgb,
             OverlayUiSettings.NextColorFormat(OverlayUiSettings.FormatHexWithoutHash), "无井号 → rgb");
         Check.Equal(OverlayUiSettings.FormatHsl,
             OverlayUiSettings.NextColorFormat(OverlayUiSettings.FormatRgb), "rgb → hsl");
+        Check.Equal(OverlayUiSettings.FormatHsb,
+            OverlayUiSettings.NextColorFormat(OverlayUiSettings.FormatHsl), "hsl → hsb");
         Check.Equal(OverlayUiSettings.FormatHex,
-            OverlayUiSettings.NextColorFormat(OverlayUiSettings.FormatHsl), "hsl → hex");
+            OverlayUiSettings.NextColorFormat(OverlayUiSettings.FormatHsb), "hsb → hex");
+
+        // HSB 写法（上游取色弹窗的第三种；等于 HSV）
+        Check.Equal("hsb(213, 75%, 100%)", PickerColor.Format(color, OverlayUiSettings.FormatHsb),
+            "hsb()");
+        Check.Equal("hsb(0, 100%, 100%)", ColorText.Format(Color.FromRgb(255, 0, 0), ColorFormatKind.Hsb),
+            "红 = hsb(0, 100%, 100%)");
+        Check.Equal((120.0, 100.0, 100.0), ColorText.ToHsb(Color.FromRgb(0, 255, 0)), "绿 = 120° / 100% / 100%");
+        var dark = ColorText.ToHsb(Color.FromRgb(0, 0, 128));
+        Check.True(Math.Abs(dark.Hue - 240) < 0.01 && Math.Abs(dark.Saturation - 100) < 0.01 &&
+                   Math.Abs(dark.Brightness - 50.196) < 0.2, $"蓝的亮度 = 128/255（实际 {dark}）");
+
+        // 半透明：hex 补 AA、rgb 用 rgba(…, 0.533)、hsb 用百分比刻度里的 hsb(…, 0.533)
+        var translucent = Color.FromArgb(0x88, 0x40, 0x96, 0xFF);
+        Check.Equal("#4096FF88", ColorText.Format(translucent, ColorFormatKind.Hex), "HEX 带 alpha");
+        Check.Equal("rgba(64, 150, 255, 0.533)", ColorText.Format(translucent, ColorFormatKind.Rgb),
+            "rgba() 的 alpha 是分数");
+        Check.Equal("hsb(213, 75%, 100%, 0.533)", ColorText.Format(translucent, ColorFormatKind.Hsb),
+            "hsb() 带 alpha");
+
+        // 解析：hex 3/4/6/8 位、rgb/rgba、hsl/hsla、hsb/hsv（逗号与空格斜杠两种写法）
+        Check.True(ColorText.TryParse("#4096FF", out var parsed) && parsed == Color.FromRgb(0x40, 0x96, 0xFF),
+            "#RRGGBB");
+        Check.True(ColorText.TryParse("#49F", out parsed) && parsed == Color.FromRgb(0x44, 0x99, 0xFF),
+            "#RGB 展开");
+        Check.True(ColorText.TryParse("4096FF", out parsed) && parsed == Color.FromRgb(0x40, 0x96, 0xFF),
+            "无井号 6 位");
+        Check.True(ColorText.TryParse("#4096FF88", out parsed) && parsed.A == 0x88, "#RRGGBBAA");
+        Check.True(ColorText.TryParse("rgba(64, 150, 255, 0.5)", out parsed) && parsed.A is 127 or 128,
+            "rgba()");
+        Check.True(ColorText.TryParse("hsl(213, 100%, 62.5%)", out parsed) &&
+                   Math.Abs(parsed.R - 0x40) <= 1 && Math.Abs(parsed.B - 0xFF) <= 1, "hsl()");
+        Check.True(ColorText.TryParse("hsb(213, 75%, 100%)", out parsed) &&
+                   Math.Abs(parsed.R - 0x40) <= 1 && Math.Abs(parsed.G - 0x96) <= 1 &&
+                   Math.Abs(parsed.B - 0xFF) <= 1, "hsb() 与 rgb() 同一档");
+        Check.True(ColorText.TryParse("hsv(213, 75%, 100%)", out parsed) && Math.Abs(parsed.R - 0x40) <= 1,
+            "hsv() 也认");
+        Check.True(ColorText.TryParse("hsb(213 75% 100%)", out parsed) && Math.Abs(parsed.R - 0x40) <= 1,
+            "空格写法");
+        Check.False(ColorText.TryParse("hsb(213, 75)", out _), "少一个分量不认");
+        Check.False(ColorText.TryParse("无聊的一段文字", out _), "普通文字不认");
 
         // 坐标：X: … Y: …（四舍五入，不含小数）
         Check.Equal("X: 128 Y: -3", PickerColor.PositionText(127.6, -3.4), "坐标文本");
         Check.Equal("#RRGGBB", PickerColor.FormatHint(OverlayUiSettings.FormatHex), "提示：HEX");
         Check.Equal("hsl(h, s%, l%)", PickerColor.FormatHint(OverlayUiSettings.FormatHsl), "提示：HSL");
+        Check.Equal("hsb(h, s%, b%)", PickerColor.FormatHint(OverlayUiSettings.FormatHsb), "提示：HSB");
     }
 
     /// <summary>参考线几何：像素中心吸附、右边取外沿、十字落在视口内、取样点留空。</summary>

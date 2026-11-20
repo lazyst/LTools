@@ -141,6 +141,17 @@ internal static class ColorSwatch
     /// <summary>只认色值本身（卡片之外的地方要问「这段文字是不是颜色」时用它）。</summary>
     public static bool LooksLikeColor(string? text) => ParseColor(text) != null;
 
+    /// <summary>
+    /// 只解析颜色、不算那三行文案（取色弹窗 / 取色卡共用 <paramref name="ColorText"/> 走这里）。
+    /// 认的形状与 <see cref="Parse"/> 完全一致。
+    /// </summary>
+    public static bool TryParseColor(string? text, out Color color)
+    {
+        Color? parsed = ParseColor(text);
+        color = parsed ?? default;
+        return parsed != null;
+    }
+
     // ============ 解析 ============
 
     private static Color? ParseColor(string? raw)

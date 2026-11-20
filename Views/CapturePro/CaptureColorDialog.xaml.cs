@@ -9,11 +9,19 @@ using LTools.Features.CapturePro;
 namespace LTools.Views.CapturePro;
 
 /// <summary>
-/// 一个颜色的取色框（颜色预设编辑用）：十六进制 + RGBA 数字 + 常用色快选 + 预览。
+/// 取色 / 选色弹窗（照上游 <c>AdColorPicker</c> 的截图工具条那一版）：
+/// 色板 + 色相条 + 透明度条 + 格式下拉（HEX / RGB / HSB）+ 一个能写多种写法的输入框 + 快捷色。
 /// </summary>
 /// <remarks>
-/// 上游这一层是 Qt 的 <c>QColorDialog</c>；本地没有等价控件，所以只做「能改准」的部分：
-/// 输入 <c>#RRGGBBAA</c> 或分别填四个分量，改哪边另一边跟着走，带透明度时预览铺棋盘格。
+/// <para>
+/// 输入框认 <c>#RGB</c> / <c>#RGBA</c> / <c>#RRGGBB</c> / <c>#RRGGBBAA</c>（井号可省 6 / 8 位）、
+/// <c>rgb()</c> / <c>rgba()</c> / <c>hsl()</c> / <c>hsla()</c> / <c>hsb()</c> / <c>hsv()</c>
+/// ——解析只有 <see cref="ColorText"/> 一份，取色卡也用同一套。
+/// </para>
+/// <para>
+/// 色板改 S / V、色相条改 H、透明度条改 alpha；三者都就地重算颜色并回写输入框（按当前格式）。
+/// 灰色（饱和 = 0）时色相条停在原来的角度，不会一跳就归零。
+/// </para>
 /// </remarks>
 public partial class CaptureColorDialog : Window
 {
@@ -35,15 +43,18 @@ public partial class CaptureColorDialog : Window
 
     private bool _syncing;
     private Color _color;
+    private ColorFormatKind _format = ColorFormatKind.Hex;
+    private double _hue;
 
     private CaptureColorDialog(Color color)
     {
         InitializeComponent();
         BuildQuickPicks();
-        SetColor(color, syncHex: true, syncRgba: true);
+        FormatBox.SelectedIndex = 0;
+        ApplyColor(color, syncText: true);
     }
 
-    /// <summary>当前选的颜色（确定之后才有意义）。</summary>
+    /// <summary>当前选中的颜色（确定之后才有意义）。</summary>
     internal Color Result => _color;
 
     internal static bool Show(Window? owner, Color color, out Color result)
@@ -73,73 +84,120 @@ public partial class CaptureColorDialog : Window
                 BorderThickness = new Thickness(1),
                 BorderBrush = (Brush)FindResource("BorderBrush"),
                 Cursor = Cursors.Hand,
-                ToolTip = ColorPresets.Format(color),
+                ToolTip = ColorText.Format(color, ColorFormatKind.Hex),
             };
 
             var captured = color;
             swatch.MouseLeftButtonDown += (_, e) =>
             {
                 e.Handled = true;
-                SetColor(captured, syncHex: true, syncRgba: true);
+                ApplyColor(captured, syncText: true);
             };
 
             QuickPicks.Children.Add(swatch);
         }
     }
 
-    private void SetColor(Color color, bool syncHex, bool syncRgba)
+    /// <summary>把颜色灌进全部控件（色板 / 色相条 / 透明度条 / 预览 / 输入框）。</summary>
+    private void ApplyColor(Color color, bool syncText)
     {
         _color = color;
-        Preview.Background = ColorPresets.Swatch(color);
+
+        var (hue, saturation, brightness) = ColorText.ToHsb(color);
+        if (saturation > 0.01) _hue = hue;      // 灰色时保留原来的色相，别一跳就归零
 
         _syncing = true;
-        if (syncHex) HexBox.Text = ColorPresets.Format(color);
-        if (syncRgba)
-        {
-            RBox.Text = color.R.ToString(CultureInfo.InvariantCulture);
-            GBox.Text = color.G.ToString(CultureInfo.InvariantCulture);
-            BBox.Text = color.B.ToString(CultureInfo.InvariantCulture);
-            ABox.Text = color.A.ToString(CultureInfo.InvariantCulture);
-        }
+        Preview.Background = ColorPresets.Swatch(color);
+
+        Board.Hue = _hue;
+        Board.Saturation = saturation / 100.0;
+        Board.Brightness = brightness / 100.0;
+        Board.InvalidateVisual();
+
+        Hue.Hue = _hue;
+        Hue.InvalidateVisual();
+
+        Alpha.Color = color;
+        Alpha.Alpha = color.A;
+        Alpha.InvalidateVisual();
+        AlphaText.Text = ((int)Math.Round(color.A / 255.0 * 100)).ToString(CultureInfo.InvariantCulture) + "%";
+
+        if (syncText) ValueBox.Text = ColorText.Format(color, _format);
         _syncing = false;
         ErrorText.Text = "";
     }
 
-    private void Hex_Changed(object sender, TextChangedEventArgs e)
+    // ============ 色板 / 色相 / 透明度 ============
+
+    private void Board_Picked(object? sender, EventArgs e) =>
+        ApplyColor(ColorText.FromHsb(_hue, Board.Saturation * 100, Board.Brightness * 100, _color.A),
+            syncText: true);
+
+    private void Hue_Picked(object? sender, EventArgs e)
+    {
+        _hue = Hue.Hue;
+        ApplyColor(ColorText.FromHsb(_hue, Board.Saturation * 100, Board.Brightness * 100, _color.A),
+            syncText: true);
+    }
+
+    private void Alpha_Picked(object? sender, EventArgs e) =>
+        ApplyColor(Color.FromArgb(Alpha.Alpha, _color.R, _color.G, _color.B), syncText: true);
+
+    // ============ 格式与输入框 ============
+
+    private void Format_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncing || ValueBox == null) return;
+
+        _format = ColorText.KindOf((FormatBox.SelectedItem as ComboBoxItem)?.Tag as string);
+
+        _syncing = true;
+        ValueBox.Text = ColorText.Format(_color, _format);
+        _syncing = false;
+        ErrorText.Text = "";
+    }
+
+    private void Value_Changed(object sender, TextChangedEventArgs e)
     {
         if (_syncing) return;
 
-        // 输到一半不报错（比如刚删掉两位），能解析时才同步其它控件。
-        if (ColorPresets.TryParse(HexBox.Text, out var color))
-            SetColor(color, syncHex: false, syncRgba: true);
-        else
-            ErrorText.Text = "";
+        // 输到一半（少一位、括号没写完）不报错，能认出来才同步色板
+        if (ColorText.TryParse(ValueBox.Text, out var color)) ApplyColor(color, syncText: false);
+        else ErrorText.Text = "";
     }
 
-    private void Rgba_Changed(object sender, TextChangedEventArgs e)
+    private void Value_LostFocus(object sender, RoutedEventArgs e)
     {
-        if (_syncing) return;
-
-        if (!TryByte(RBox.Text, out byte r) || !TryByte(GBox.Text, out byte g) ||
-            !TryByte(BBox.Text, out byte b) || !TryByte(ABox.Text, out byte a))
-            return;
-
-        SetColor(Color.FromArgb(a, r, g, b), syncHex: true, syncRgba: false);
+        // 离开输入框时还是认不出来：把最后能用的颜色写回去，别留一段半截文本
+        if (!ColorText.TryParse(ValueBox.Text, out _))
+            ApplyColor(_color, syncText: true);
     }
 
-    private static bool TryByte(string text, out byte value) =>
-        byte.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+    private void Value_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+
+        e.Handled = true;
+        Commit();
+    }
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
-        if (!ColorPresets.TryParse(HexBox.Text, out var color))
+        if (!Commit()) return;
+        DialogResult = true;
+    }
+
+    /// <summary>把输入框里那段写进当前颜色；认不出来就地提示、不关窗。</summary>
+    private bool Commit()
+    {
+        if (!ColorText.TryParse(ValueBox.Text, out var color))
         {
-            ErrorText.Text = "认不出这个颜色，按 #RRGGBBAA 或 #RRGGBB 写（十六进制）。";
-            return;
+            ErrorText.Text = "认不出这个颜色：可以写 #RRGGBB / #RRGGBBAA、rgb()、hsl()、hsb()。";
+            return false;
         }
 
-        _color = color;
-        DialogResult = true;
+        ApplyColor(color, syncText: true);
+        return true;
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;

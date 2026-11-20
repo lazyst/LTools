@@ -57,6 +57,7 @@ internal static class OverlayUiSettings
     public const string FormatHexWithoutHash = "hex_without_hash";
     public const string FormatRgb = "rgb";
     public const string FormatHsl = "hsl";
+    public const string FormatHsb = "hsb";
 
     public const int TransitionNone = 0;
     public const int TransitionSoft = 32;
@@ -174,14 +175,9 @@ internal static class OverlayUiSettings
     public static void SetColorPickerFormat(string? key) =>
         Save(file => file.ColorPickerFormat = NormalizeColorFormat(key));
 
-    /// <summary>下一个色值格式（照上游 <c>cycleColorFormat</c>：hex → 无井号 → rgb → hsl → hex）。</summary>
-    public static string NextColorFormat(string? key) => NormalizeColorFormat(key) switch
-    {
-        FormatHex => FormatHexWithoutHash,
-        FormatHexWithoutHash => FormatRgb,
-        FormatRgb => FormatHsl,
-        _ => FormatHex,
-    };
+    /// <summary>下一个色值格式（照上游 <c>cycleColorFormat</c>：hex → 无井号 → rgb → hsl → hsb → hex）。</summary>
+    public static string NextColorFormat(string? key) =>
+        ColorText.KeyOf(ColorText.Next(ColorText.KindOf(key)));
 
     /// <summary>
     /// 取色器此刻该不该显示（照上游 <c>screenshotColorPickerVisible</c>）。
@@ -298,6 +294,7 @@ internal static class OverlayUiSettings
         FormatHexWithoutHash => FormatHexWithoutHash,
         FormatRgb => FormatRgb,
         FormatHsl => FormatHsl,
+        FormatHsb => FormatHsb,
         _ => FormatHex,
     };
 

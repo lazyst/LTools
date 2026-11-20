@@ -59,6 +59,7 @@ public partial class ConfigHelperWindow
             OverlayUiSettings.FormatHexWithoutHash => 1,
             OverlayUiSettings.FormatRgb => 2,
             OverlayUiSettings.FormatHsl => 3,
+            OverlayUiSettings.FormatHsb => 4,
             _ => 0,
         };
 
@@ -155,6 +156,7 @@ public partial class ConfigHelperWindow
             1 => OverlayUiSettings.FormatHexWithoutHash,
             2 => OverlayUiSettings.FormatRgb,
             3 => OverlayUiSettings.FormatHsl,
+            4 => OverlayUiSettings.FormatHsb,
             _ => OverlayUiSettings.FormatHex,
         });
 

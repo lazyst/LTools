@@ -80,6 +80,7 @@ internal static partial class Program
             .GetType("LTools.Features.CapturePro.OverlayUiSettings")!;
         string savedMode = (string)uiType.GetProperty("ColorPickerDisplayMode")!.GetValue(null)!;
         string savedCoord = (string)uiType.GetProperty("ColorPickerCoordinateMode")!.GetValue(null)!;
+        string savedFormat = (string)uiType.GetProperty("ColorPickerFormat")!.GetValue(null)!;
         double docScale = (double)doc.GetType().GetProperty("Scale")!.GetValue(doc)!;
         bool logical = (bool)uiType.GetProperty("LogicalUnits")!.GetValue(null)!;
         var monitorRect = (System.Windows.Int32Rect)doc.GetType().GetProperty("Monitor")!.GetValue(doc)!;
@@ -141,6 +142,14 @@ internal static partial class Program
               $"Y: {Shown(monitorRect.Y + pointY - selTopLeft.Y)}",
             "相对坐标以选区左上角为原点：" + chipPos?.Text);
         uiType.GetMethod("SetColorPickerCoordinateMode")!.Invoke(null, new object[] { savedCoord });
+        InvokeWith(window, "ShowPickerAt", new Point(260, 210));
+
+        // HSB 写法（取色弹窗的第三种格式，取色卡也能切过去）
+        uiType.GetMethod("SetColorPickerFormat")!.Invoke(null, new object[] { "hsb" });
+        InvokeWith(window, "ShowPickerAt", new Point(260, 210));
+        Check(chipText?.Text == "hsb(5, 65%, 88%)",
+            "取色卡按 hsb() 写色值：" + chipText?.Text);
+        uiType.GetMethod("SetColorPickerFormat")!.Invoke(null, new object[] { savedFormat });
         InvokeWith(window, "ShowPickerAt", new Point(260, 210));
 
         // 只有选择 / 取色工具下有这块卡片

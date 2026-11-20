@@ -1251,6 +1251,7 @@
                                         <ComboBoxItem Content="无井号（RRGGBB）"/>
                                         <ComboBoxItem Content="rgb(r, g, b)"/>
                                         <ComboBoxItem Content="hsl(h, s%, l%)"/>
+                                        <ComboBoxItem Content="hsb(h, s%, b%)"/>
                                     </ComboBox>
                                 </Grid>
 

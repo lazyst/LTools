@@ -240,38 +240,117 @@ internal static partial class Program
             dialog.Close();
             dialog = null;
 
-            // ============ ⑦ 取色框：十六进制 / RGBA 互相联动，预览铺棋盘格 ============
+            // ============ ⑦ 取色弹窗（照上游 AdColorPicker：色板 / 色相条 / 透明度条 / 格式下拉） ============
             var colorDialogType = asm.GetType("LTools.Views.CapturePro.CaptureColorDialog")!;
             picker = (Window)Activator.CreateInstance(colorDialogType, Inst, null,
                 new object[] { System.Windows.Media.Color.FromArgb(0x80, 0x11, 0x22, 0x33) }, null)!;
+            picker.Topmost = true;      // 冒烟跑在控制台窗口后面，点之前先把它抬到最前
             picker.Show();
+            picker.Activate();
+            Pump(picker);
+            System.Threading.Thread.Sleep(160);
             Pump(picker);
 
-            var hexBox = picker.FindName("HexBox") as TextBox;
-            var rBox = picker.FindName("RBox") as TextBox;
-            var gBox = picker.FindName("GBox") as TextBox;
-            var bBox = picker.FindName("BBox") as TextBox;
-            var aBox = picker.FindName("ABox") as TextBox;
+            var valueBox = picker.FindName("ValueBox") as TextBox;
+            var formatBox = picker.FindName("FormatBox") as ComboBox;
             var previewBorder = picker.FindName("Preview") as Border;
+            var boardEl = picker.FindName("Board") as FrameworkElement;
+            var hueEl = picker.FindName("Hue") as FrameworkElement;
+            var alphaEl = picker.FindName("Alpha") as FrameworkElement;
+            var alphaText = picker.FindName("AlphaText") as TextBlock;
 
-            Check(hexBox?.Text == "#11223380", "取色框先填好当前颜色：" + hexBox?.Text);
-            Check(rBox?.Text == "17" && gBox?.Text == "34" && bBox?.Text == "51" && aBox?.Text == "128",
-                $"四个分量按十进制显示（{rBox?.Text}/{gBox?.Text}/{bBox?.Text}/{aBox?.Text}）");
+            Check(valueBox?.Text == "#11223380", "取色弹窗先填好当前颜色（HEX）：" + valueBox?.Text);
+            Check(formatBox != null && formatBox.Items.Count == 3, "格式下拉有 HEX / RGB / HSB 三项");
             Check(previewBorder?.Background is System.Windows.Media.DrawingBrush,
                 "带透明度时预览铺棋盘格（不是一块看不见的空色）");
+            Check(alphaText?.Text == "50%", "透明度读数 50%：" + alphaText?.Text);
 
-            rBox!.Text = "255";
+            formatBox!.SelectedIndex = 1;      // RGB
             Pump(picker);
-            Check(hexBox?.Text == "#FF223380", "改 R 分量后十六进制跟着变：" + hexBox?.Text);
-            Check(previewBorder?.Background is System.Windows.Media.SolidColorBrush == false,
-                "alpha 还是 128，预览仍是棋盘格");
+            Check(valueBox?.Text == "rgba(17, 34, 51, 0.502)", "切到 RGB：" + valueBox?.Text);
+            formatBox.SelectedIndex = 2;       // HSB
+            Pump(picker);
+            Check(valueBox?.Text?.StartsWith("hsb(") == true, "切到 HSB：" + valueBox?.Text);
+            formatBox.SelectedIndex = 0;       // 回 HEX
+            Pump(picker);
 
-            hexBox!.Text = "#00FF00";
+            // 直接写 rgb()：认出来、预览跟着变成不透明色
+            valueBox!.Text = "rgb(255, 34, 51)";
             Pump(picker);
-            Check(gBox?.Text == "255" && rBox.Text == "0" && aBox.Text == "255",
-                $"写 6 位十六进制后分量跟着变、alpha 补成 255（{rBox.Text}/{gBox.Text}/{aBox.Text}）");
-            Check(previewBorder?.Background is System.Windows.Media.SolidColorBrush,
-                "alpha 回到 255 时预览就是纯色");
+            Check(previewBorder?.Background is System.Windows.Media.SolidColorBrush solid &&
+                  solid.Color == System.Windows.Media.Color.FromRgb(255, 34, 51),
+                "写 rgb() 后预览变成不透明色");
+            Check(alphaText?.Text == "100%", "alpha 跟着写成 100%：" + alphaText?.Text);
+
+            // 切一次格式再切回来：输入框按 HEX 规范化（证明解析真的换成了颜色）
+            formatBox.SelectedIndex = 1;
+            Pump(picker);
+            formatBox.SelectedIndex = 0;
+            Pump(picker);
+            Check(valueBox?.Text == "#FF2233", "写进去的颜色按 HEX 规范化：" + valueBox?.Text);
+
+            // 真鼠标点色相条：点中间 → 色相大约 180°（红 → 青）
+            string beforeHue = valueBox!.Text!;
+            Point hueAt = hueEl!.PointToScreen(
+                new Point(hueEl.ActualWidth / 2, hueEl.ActualHeight / 2));
+            SetCursorPos((int)Math.Round(hueAt.X), (int)Math.Round(hueAt.Y));
+            System.Threading.Thread.Sleep(90);
+            Pump(picker);
+            mouse_event(LeftDown, 0, 0, 0, UIntPtr.Zero);
+            System.Threading.Thread.Sleep(45);
+            mouse_event(LeftUp, 0, 0, 0, UIntPtr.Zero);
+            System.Threading.Thread.Sleep(140);
+            Pump(picker);
+            Check(valueBox.Text != beforeHue, $"点色相条也能改颜色（{beforeHue} → {valueBox.Text}）");
+
+            // 真鼠标拖色板：拖到左下角 → 饱和度 0、明度最低（几乎黑）
+            string beforeBoard = valueBox.Text!;
+            Point boardTo = boardEl.PointToScreen(
+                new Point(8, Math.Max(8, boardEl.ActualHeight - 8)));
+            Point boardFrom = boardEl.PointToScreen(new Point(boardEl.ActualWidth / 2, 20));
+            SetCursorPos((int)Math.Round(boardFrom.X), (int)Math.Round(boardFrom.Y));
+            System.Threading.Thread.Sleep(90);
+            Pump(picker);
+            mouse_event(LeftDown, 0, 0, 0, UIntPtr.Zero);
+            System.Threading.Thread.Sleep(50);
+            SetCursorPos((int)Math.Round(boardTo.X), (int)Math.Round(boardTo.Y));
+            System.Threading.Thread.Sleep(110);
+            Pump(picker);
+            mouse_event(LeftUp, 0, 0, 0, UIntPtr.Zero);
+            System.Threading.Thread.Sleep(140);
+            Pump(picker);
+            Check(valueBox.Text != beforeBoard, $"拖色板能改颜色（{beforeBoard} → {valueBox.Text}）");
+
+            // 真鼠标拖透明度条：拖到最左 → alpha 归零（输入框补上 AA 两位）
+            Point alphaLeft = alphaEl!.PointToScreen(new Point(1, alphaEl.ActualHeight / 2));
+            SetCursorPos((int)Math.Round(alphaLeft.X), (int)Math.Round(alphaLeft.Y));
+            System.Threading.Thread.Sleep(90);
+            Pump(picker);
+            mouse_event(LeftDown, 0, 0, 0, UIntPtr.Zero);
+            System.Threading.Thread.Sleep(45);
+            mouse_event(LeftUp, 0, 0, 0, UIntPtr.Zero);
+            System.Threading.Thread.Sleep(140);
+            Pump(picker);
+            Check(alphaText?.Text == "0%" && valueBox.Text.Length == 9,
+                $"拖透明度条到最左 = 全透明（{alphaText?.Text} / {valueBox.Text}）");
+
+            // 快捷色：点第五个（红）→ 颜色与 alpha 一起换过去
+            if (picker.FindName("QuickPicks") is WrapPanel picks && picks.Children.Count > 4)
+            {
+                var swatch = (FrameworkElement)picks.Children[4];
+                Point swatchAt = swatch.PointToScreen(
+                    new Point(swatch.ActualWidth / 2, swatch.ActualHeight / 2));
+                SetCursorPos((int)Math.Round(swatchAt.X), (int)Math.Round(swatchAt.Y));
+                System.Threading.Thread.Sleep(90);
+                Pump(picker);
+                mouse_event(LeftDown, 0, 0, 0, UIntPtr.Zero);
+                System.Threading.Thread.Sleep(45);
+                mouse_event(LeftUp, 0, 0, 0, UIntPtr.Zero);
+                System.Threading.Thread.Sleep(140);
+                Pump(picker);
+                Check(valueBox.Text == "#F5222D", "点快捷色换过去（alpha 也回到不透明）：" + valueBox.Text);
+            }
+            else Check(false, "取色弹窗里有快捷颜色");
 
             picker.Close();
             picker = null;
