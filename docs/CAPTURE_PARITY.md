@@ -162,10 +162,9 @@
 | 平台差异登记 | `global_mouse/*` / `tray/*` / `interface/*` / `system/*` / `network/*` / `updates/*` / `cloud_upload/*` / `mcp/*` / `screenshot/api_mode` / `screenshot/window_element_api` | `P9-h`：逐键写进 §5.1（应用外壳类键只登记、不落代码）——`screenshot/api_mode` 与 `window_element_api` 只有 GDI / UIA 一种实现；`global_mouse/*` 没有鼠标手势绑定系统；托盘固定 5 项、不做隐藏 / 自定义图标 / 单击动作；主题 / 字体 / 语言 / 皮肤不复制；`interface` 的两个每页条数与 `system/auto_start_at_boot`、`mcp/enabled` 标「已有等价实现」；`system/launch_as_administrator` 恒为管理员、`annotation_mode_when_opening_for_editing` 恒为开；优先级 / QoS / 内存策略 / Shell 右键菜单 / 应用内代理 / 内置更新器 / 云上传不实现 | P9-h | ✅ |
 | 采集历史保留策略 | `capture_history/*`（enabled / keep_permanently / retention_days / max_entries / max_disk_mib / compression_level） | `P9-j`：`Config/CaptureHistory.cs` + `Features/CapturePro/CaptureHistoryStore.cs`（默认值逐字照 `configurationschema.cpp`：true / false / 7 / 100 / 1024，范围 1–365 天 / 1–1000 条 / 128–10240 MiB）+ `CaptureCatalog` 接上（`Create` / `CreateRecord` 按 `Enabled` 决定入不入库、`Maintain` 按策略裁剪 + 磁盘上限从最旧开始丢 + 扫掉没有条目的孤儿图，1 小时内新写的不碰）+ `PlanPrune(items, now, policy)` / `PlanDiskPrune` / `EntryBytes` 纯函数 + 设置「截图 Pro → 采集历史」五项（`Views/ConfigHelper.History.cs`，改完立刻剪一次）。`compression_level` 不落开关（历史资产一律无损 png，见 §5） | P9-j | ✅ |
 | 贴图历史保留策略 | `pinned_history/*`（同上六项） | `P9-k`：`Config/PinnedHistory.cs` + `Features/CapturePro/PinnedHistoryStore.cs` + `PinStore` 接上（`Save` / `Maintain` 按策略裁剪、磁盘上限从最旧开始丢、关掉记录时 `MarkClosed` 直接删记录与图）+ 设置「截图 Pro → 贴图窗口 → 贴图历史」五项（`Views/ConfigHelper.PinHistory.cs`）。**默认值沿用 LTools 既有 30 天 / 200 条**（上游 7 / 100，按上游剪会删掉用户已有历史），`compression_level` 同 §5 | P9-k | ✅ |
-| 选区形状（折线 / 曲线 / 手绘） | `screenshot_selection/region_type`（rectangle / polyline / curve / freehand）、`screenshotregiongeometry` | LTools 的选区是矩形（含圆角），非矩形选区要引入路径几何 + 按路径裁图 + 命中 / 拖动 / 吸附全链路改写 | — | 🟡 待办 |
+| 选区形状（折线 / 曲线 / 手绘） | `screenshot_selection/region_type`（rectangle / polyline / curve / freehand）、`screenshotregiongeometry` | `P9-m`：`SelectionMode` 补齐四档（枚举顺序照上游：矩形 → 折线 → 曲线 → 自由绘制）+ `SelectionRegionTypes`（id ↔ 形状 ↔ 中文名，落 `ui.json` 的 `CaptureSelection.RegionType`）+ `SelectionShape` 的**向心 Catmull-Rom**（照 `snowCanvasCatmullRomPath`，每段三次贝塞尔）与 RDP 化简（照 `simplifyScreenshotRegionPoints`，0.125 DIP）+ `SelectionRegion.Smooth`（几何 / 平移 / 缩放 / 换算 / 夹取全保持）+ `SmoothBounds`（按曲线采样求精确外接框；**别用 WPF 的 `Geometry.Bounds`，那是控制点包络**）+ 覆盖层手势（曲线 = 逐点单击、自由绘制 = 按住画并化简平滑）+ 形状条四档与快捷键轮换 + 设置「截图 Pro → 界面与参考线 → 选区形状」。导出按路径裁（形状外透明），圆角只对矩形生效（选区信息条本来就按 `CornerRadiusApplicable` 把圆角字段变暗） | P9-m | ✅ |
 | 悬浮工具条 | `floating_toolbar/*`（enabled / mode / placement / layout / opacity / drop_behavior / hide_during_capture / hide_in_fullscreen） | `P9-l`：`Config/FloatingToolbar.cs` + `Features/CapturePro/FloatingToolbar/`——`FloatingToolbarLayout`（14 个内置功能引用 / 默认 4 叠 7 个按钮 7 个收起，照上游 `defaultFloatingToolbarLayout()`）/ `FloatingToolbarStore`（只写 settings 域 + `Changed` 事件）/ `FloatingToolbarService`（建窗口、1 秒轮询前台全屏、截图 / 录屏期间收起）+ `Views/CapturePro/CaptureFloatingBarWindow`（`WS_EX_NOACTIVATE` / 图标模式悬停展开 / 不透明度 / 拖动记落点 / 一叠悬停弹二级工具条 / 文件拖放四种行为）+ `FloatingToolbarLayoutWindow`（叠的增删与排序）+ 设置「截图 Pro → 常规 → 悬浮工具条」七项。点按钮走 `ActionExecutor.RunRef`，与面板 / 快捷键 / 悬浮按钮同一条路 | P9-l | ✅ |
 | 选区背景与版面压缩 | `screenshot_selection/background_opacity_percent`、`layout_compaction_enabled` / `layout_compaction_spacing`（`screenshotlayoutcompaction.h`：导出时按轮廓压缩留白） | 两者都挂在非矩形选区 / 带背景导出上（`background_opacity_percent` 是垫在选区后面的背景不透明度）；矩形选区下没有等价物 | — | 🟡 待办（依赖上一行） |
-| 悬浮工具条 | `floating_toolbar/*`（enabled / mode / placement / layout / opacity / drop_behavior / hide_during_capture / hide_in_fullscreen） | 上游是常驻桌面的截图快捷条；LTools 目前只有「桌面悬浮」（用户动作按钮）与覆盖层工具条，没有这个常驻入口 | — | 🟡 待办 |
 | 云服务配置 | `api_configuration/*`（server_url / text_translation / custom_models） | 上游指向自家云服务与自定义模型清单；LTools 用本机 `settings.json` 的 OpenAI 兼容端点（`Translation` 段），没有账号 / 服务器概念，`custom_models` 由「模型」文本框承担 | — | 记 §5 |
 
 ## 3. 批次与验收
@@ -337,22 +336,23 @@
 测角（两次拖臂）/ 序号 / 水印 / 取色（写剪贴板不落标注）/ 三把橡皮（矩形与画笔落「恢复原图」块、
 点选橡皮按对象删除）——每个工具都断言「真鼠标操作一次 → 落下的标注类型」。
 
-## 6. 非矩形选区（`region_type`）设计草案
+## 6. 非矩形选区（`region_type`）实现记录
 
 上游 `screenshot_selection/region_type` = `rectangle` / `polyline` / `curve` / `freehand`（默认 `rectangle`），
 选区是一条 `QPainterPath`；`background_opacity_percent`、`layout_compaction_*` 都挂在它上面。
-LTools 现在只有矩形 + 圆角，这一批要动到「抓帧 → 渲染 → 交互 → 导出」整条链，按下面拆：
+`P9-m` 已按下面这张表落地（`rectangle` 档行为零变化）：
 
-| 层 | 改动 |
+| 层 | 落地情况 |
 | --- | --- |
-| 模型 | 新增 `SelectionShape`（`Rect` / `Polyline` / `Curve` / `Freehand`）+ 点列（DIP，相对选区左上）；`Bounds` = 点列外接矩形。`region_type = rectangle` 时点列为空、行为与现在**完全一致**（默认档必须零变化） |
-| 抓帧 / 导出 | `CaptureDocument.Render` 增加「按路径裁剪」分支：路径内的像素保留、路径外透明（PNG alpha）；圆角 / 阴影只在 `Rect` 下有效（非矩形时不画，设置页那两项置灰） |
-| 交互 | 覆盖层手势：`polyline` = 逐点单击 + 双击 / Enter 收口；`curve` = 拖出一条平滑曲线（Catmull-Rom 采样）；`freehand` = 按住自由画。拖动 = 整条点列平移；矩形那 8 个手柄只对 `Rect` 显示 |
-| 命中 | 命中测试按「点是否在路径内」（`Geometry.FillContains`），选中 / 删除 / 多选沿用现有标注那套 |
-| 选区栏 | 显示外接矩形尺寸 + 形状名（矩形 / 折线 / 曲线 / 自由画）；智能选区 / 吸附只在 `Rect` 下启用（非矩形不吸附，避免「看不见的东西拽住框」） |
-| 预设 | `CaptureSelectionPreset` 加点列（`Points`）；贴图 / 采集历史仍按外接矩形 + 裁剪后的图存 |
-| 依赖项 | `background_opacity_percent`（垫在选区后面的背景不透明度）与 `layout_compaction_*`（按轮廓压缩留白）在这一批之后做 |
-| 验收 | `--selftest`：形状模型 / 外接框 / 命中 / 归一点列 / 预设往返；冒烟 `regiontype` 段：每种形状真鼠标画一遍 + 裁图四角逐像素透明 + 拖动整条 + 撤销；`rectangle` 档的全部既有断言保持全绿 |
+| 模型 | `SelectionMode` = `Rect` / `Polyline` / `Curve` / `Lasso`（枚举顺序与上游一致，轮换就是「下一档」）；`SelectionRegionTypes` 负责 `rectangle` / `polyline` / `curve` / `freehand` 的 id 映射与中文名（矩形 / 折线 / 曲线 / 自由绘制）；落盘 `ui.json` 的 `CaptureSelection.RegionType`，覆盖层打开时按它恢复 |
+| 曲线数学 | `SelectionShape.Geometry(points, closed, smooth: true)` = **向心 Catmull-Rom**（照 `snowCanvasCatmullRomPath` / Rust `catmull_rom_path_commands`：弦长平方根参数、每段一条三次贝塞尔，端点按镜像补邻居）；自由绘制先按上游口径 RDP 化简（0.125 DIP）再平滑 |
+| 外接框 | `SelectionRegion.Bounds` 对平滑块用 `SelectionShape.SmoothBounds`（按曲线采样求精确框）。**别用 `Geometry.Bounds`**：WPF 返回的是控制点包络，500 宽的框会报成 595，导出会平白多一大圈透明边 |
+| 抓帧 / 导出 | `CaptureDocument` 的裁剪与圆角逻辑原样复用：`SelectionSet.Combine` 对点列块忽略圆角，路径外透明；`RegionClip` / `ContentPathPixels` 带上 `Smooth` |
+| 交互 | 折线 / 曲线 = 逐点单击 + 双击 / Enter 收口（跟手虚线也按平滑画）；自由绘制 = 按住随手画、松手化简 + 平滑；拖动 = 整条点列平移（`Offset` / `Scale` 都保持 `Smooth`）；矩形那 8 个把手与智能选区只在 `Rect` 档启用 |
+| 选区栏 | 圆角字段按 `CornerRadiusApplicable`（单块矩形加区）变暗——自定义区域本来就没有圆角（照上游 `m_cornerRadiusApplicable`） |
+| 设置 | 「截图 Pro → 界面与参考线 → 选区形状」四档下拉 + 一行说明（矩形以外是自定义区域、导出按路径裁、圆角不生效） |
+| 验收 | `--selftest` 的「选区形状」一组（id 映射 / 化简 / 向心 Catmull-Rom 的段类型与插值 / 闭合曲线命中 / 变换保持 / 圆角不生效 / 一笔化简）；冒烟 `regiontype` 段（形状条四档 / 真鼠标画曲线·自由绘制·折线·矩形 / 导出四角逐像素 / 拖动整条 / 设置页回显）；`rectangle` 档的全部既有断言保持全绿 |
+| 后续 | `background_opacity_percent`（垫在选区后面的背景不透明度）与 `layout_compaction_*`（按轮廓压缩留白）下一批做 |
 
 ## 7. 变更记录
 
@@ -883,3 +883,5 @@ LTools 现在只有矩形 + 圆角，这一批要动到「抓帧 → 渲染 → 
 - 2026-11-20（贴图历史策略）：`pinned_history/*` 六项里的五项（`compression_level` 同 §5）——`Config/PinnedHistory.cs` + `Features/CapturePro/PinnedHistoryStore.cs`，`PinStore` 的 `Save` / `Maintain` 改按策略裁剪（天数 → 条数 → 磁盘上限），关掉「记录贴图历史」后 `MarkClosed` 直接删记录与图；设置「截图 Pro → 贴图窗口 → 贴图历史」五项。**默认值沿用 LTools 既有 30 天 / 200 条**（上游 7 / 100，按上游剪会删掉用户已有历史），记进 §5。验收：`--selftest` 298 用例 **17571 断言**全绿；`capture-overlay-smoke` 全量 **3260 条 0 失败**（新增 `pinhistory` 段）。同时在 §2 把 `region_type`（折线 / 曲线 / 手绘选区）、`layout_compaction_*` + `background_opacity_percent`、`floating_toolbar/*` 标成 🟡 待办，`api_configuration/*` 记 §5。
 
 - 2026-11-20（悬浮工具条 P9-l）：`floating_toolbar/*` 八项全部落地——`Config/FloatingToolbar.cs`（默认值逐字照上游：关 / icon / 50 / pin_to_screen / 全屏隐藏 / 截图时隐藏）+ `Features/CapturePro/FloatingToolbar/`（`FloatingToolbarLayout`：14 个内置功能引用、默认 4 叠 7 个按钮 7 个收起，照 `defaultFloatingToolbarLayout()`；`FloatingToolbarStore`；`FloatingToolbarService`）+ `Views/CapturePro/CaptureFloatingBarWindow`（不抢焦点、图标模式悬停展开、一叠悬停弹二级条、拖动记落点、文件拖放四种行为）+ `FloatingToolbarLayoutWindow`（布局编辑器）+ 设置「截图 Pro → 常规 → 悬浮工具条」七项；`CaptureSession` 在截图 / 录屏期间收起它。验收：构建 0 错 0 警；`--selftest` 299 用例 **17607 断言**全绿；`capture-overlay-smoke` 全量 **3284 条 0 失败**（新增 `floatingbar` 段：默认值 / 落盘 / 真窗口图标模式 / 悬停展开 / 模式切换 / 布局编辑器）。
+
+- 2026-11-20（非矩形选区 P9-m）：`screenshot_selection/region_type` 四档落地——`SelectionMode` 补齐 `Curve`（枚举顺序照上游 `ScreenshotRegionType`：矩形 → 折线 → 曲线 → 自由绘制，快捷键轮换就是下一档）+ `SelectionRegionTypes`（`rectangle` / `polyline` / `curve` / `freehand` ↔ 形状 ↔ 中文名，落 `ui.json` 的 `CaptureSelection.RegionType`，覆盖层打开时恢复）；`SelectionShape` 补**向心 Catmull-Rom**（照 `snowCanvasCatmullRomPath`：弦长平方根参数、每段三次贝塞尔、端点镜像补邻居）与 RDP 化简（照 `simplifyScreenshotRegionPoints`，0.125 DIP，自由绘制松手时用）；`SelectionRegion` 加 `Smooth` 标记（几何 / 平移 / 缩放 / 换算 / 夹取全保持）+ `SmoothBounds`（按曲线采样求精确外接框——**WPF 的 `Geometry.Bounds` 是控制点包络**，500 宽的框会报成 595）；覆盖层手势：曲线 = 逐点单击（跟手虚线也平滑）、自由绘制 = 按住随手画再化简平滑、拖动整条保持形状；形状条四档 + 设置「截图 Pro → 界面与参考线 → 选区形状」。圆角只对矩形生效（选区信息条本来按 `CornerRadiusApplicable` 变暗），智能选区仍只在矩形档启用。验收：构建 0 错 0 警；`--selftest` 300 用例 **17667 断言**全绿（新增「选区形状」一组）；`capture-overlay-smoke` 全量 **3327 条 0 失败**（新增 `regiontype` 段：形状条四档 / 真鼠标画曲线·自由绘制·折线·矩形 / 导出四角逐像素 / 拖动整条 / 设置页回显）。

@@ -92,6 +92,7 @@ public partial class CaptureOverlayWindow
 
         Surface.Selection = shown;
         Surface.SelectionGeometry = smart ? new RectangleGeometry(shown) : geometry;
+        Surface.PendingSmooth = _shape == SelectionMode.Curve;
         Surface.PendingPolygon = PendingShape();
         Surface.Hover = hover;
         Surface.ShowHandles = ShowsMarkHandles;
@@ -344,8 +345,9 @@ public partial class CaptureOverlayWindow
         {
             string extra = _shape switch
             {
-                SelectionMode.Lasso => " · 或按住自由圈选",
+                SelectionMode.Lasso => " · 或按住自由绘制圈选",
                 SelectionMode.Polyline => " · 或逐点折线围选",
+                SelectionMode.Curve => " · 或逐点曲线围选",
                 _ => " · 也可直接拖动框选",
             };
             HintText.Text = $"单击选中「{hover.Label}」{extra} · 滚轮换层级 · 右键 / Esc 取消";
@@ -356,6 +358,7 @@ public partial class CaptureOverlayWindow
         {
             SelectionMode.Lasso => "按住拖动圈出区域 · 松开自动闭合",
             SelectionMode.Polyline => "逐点单击围出区域 · 双击 / Enter 结束",
+            SelectionMode.Curve => "逐点单击围出区域（边角平滑）· 双击 / Enter 结束",
             _ => "拖动框选区域",
         };
 

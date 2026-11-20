@@ -41,6 +41,12 @@ public sealed class CaptureSelectionFile
     public string? SmartSelection { get; set; }
 
     /// <summary>
+    /// 选区形状：<c>rectangle</c>（默认）/ <c>polyline</c> / <c>curve</c> / <c>freehand</c>。
+    /// 照上游 <c>screenshot_selection/region_type</c>，跨会话记住上次用的那一档。
+    /// </summary>
+    public string? RegionType { get; set; }
+
+    /// <summary>
     /// 框完选区自动识别二维码（照上游 <c>screenshot/auto_recognize_qr_code</c>，默认开）。
     /// <c>null</c> = 开——老配置里没有这一项时不写盘，保持上游的默认值。
     /// </summary>

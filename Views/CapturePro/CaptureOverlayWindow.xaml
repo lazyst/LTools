@@ -322,8 +322,9 @@
                 <TextBlock x:Name="HintText" Foreground="{StaticResource ChromeInk}" FontSize="13" TextWrapping="Wrap"/>
             </Border>
 
-            <!-- 选区形状（还没框选时才出现）：矩形 / 自由（按住圈）/ 折线（逐点单击）。
-                 框过之后形状就定了；想换就右键取消选区，这块条会再出现。 -->
+            <!-- 选区形状（还没框选时才出现）：矩形 / 折线 / 曲线 / 自由绘制（照上游
+                 ScreenshotRegionTypeControl 的四档与顺序）。框过之后形状就定了；
+                 想换就右键取消选区，这块条会再出现。 -->
             <Border x:Name="ShapeBar" Panel.ZIndex="15" Background="{StaticResource ChromeBg}" CornerRadius="6"
                     BorderBrush="{StaticResource ChromeBorder}" BorderThickness="1"
                     Padding="4" Visibility="Collapsed">
@@ -331,12 +332,15 @@
                     <RadioButton x:Name="ShapeRect" Style="{StaticResource ShapeBtn}" Content="矩形"
                                  GroupName="capShape" IsChecked="True" Tag="Rect" Click="Shape_Click"
                                  ToolTip="拖出一个矩形（默认）"/>
-                    <RadioButton x:Name="ShapeLasso" Style="{StaticResource ShapeBtn}" Content="自由"
-                                 GroupName="capShape" Tag="Lasso" Click="Shape_Click"
-                                 ToolTip="按住拖动，随手圈出要截的区域"/>
                     <RadioButton x:Name="ShapePolyline" Style="{StaticResource ShapeBtn}" Content="折线"
                                  GroupName="capShape" Tag="Polyline" Click="Shape_Click"
                                  ToolTip="逐点单击围出区域，双击 / Enter 结束"/>
+                    <RadioButton x:Name="ShapeCurve" Style="{StaticResource ShapeBtn}" Content="曲线"
+                                 GroupName="capShape" Tag="Curve" Click="Shape_Click"
+                                 ToolTip="逐点单击，边角平滑成曲线，双击 / Enter 结束"/>
+                    <RadioButton x:Name="ShapeLasso" Style="{StaticResource ShapeBtn}" Content="自由绘制"
+                                 GroupName="capShape" Tag="Lasso" Click="Shape_Click"
+                                 ToolTip="按住拖动，随手圈出要截的区域（松开自动闭合并平滑）"/>
                 </StackPanel>
             </Border>
 

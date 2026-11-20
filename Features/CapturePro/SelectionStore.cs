@@ -91,6 +91,28 @@ internal static class SelectionStore
         }
     }
 
+    /// <summary>上次用的选区形状（照上游 <c>screenshot_selection/region_type</c>）。</summary>
+    public static SelectionMode RegionType
+    {
+        get
+        {
+            lock (Gate) return SelectionRegionTypes.FromId(Load().RegionType);
+        }
+    }
+
+    /// <summary>记下这次用的形状（换形状即落盘，防抖与外观同一套）。</summary>
+    public static void SetRegionType(SelectionMode mode)
+    {
+        lock (Gate)
+        {
+            string id = SelectionRegionTypes.Id(mode);
+            var file = Load();
+            if (string.Equals(file.RegionType, id, StringComparison.Ordinal)) return;
+            file.RegionType = id;
+            MarkDirty();
+        }
+    }
+
     public static void SetQrAuto(bool enabled)
     {
         lock (Gate)

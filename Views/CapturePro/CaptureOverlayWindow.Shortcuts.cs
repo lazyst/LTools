@@ -281,10 +281,11 @@ public partial class CaptureOverlayWindow
         return true;
     }
 
-    /// <summary>矩形 → 自由 → 折线 循环（上游 next/previous_selection_type）。</summary>
+    /// <summary>矩形 → 折线 → 曲线 → 自由绘制 循环（上游 next/previous_selection_type 的枚举顺序）。</summary>
     private bool CycleSelectionShape(int step)
     {
-        SelectionMode[] order = { SelectionMode.Rect, SelectionMode.Lasso, SelectionMode.Polyline };
+        SelectionMode[] order =
+            { SelectionMode.Rect, SelectionMode.Polyline, SelectionMode.Curve, SelectionMode.Lasso };
         int index = Array.IndexOf(order, _shape);
         if (index < 0) index = 0;
         int next = ((index + step) % order.Length + order.Length) % order.Length;

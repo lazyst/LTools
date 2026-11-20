@@ -361,9 +361,9 @@ public partial class CaptureOverlayWindow
         _liveRect = new Rect(p, p);
         _lasso.Clear();
 
-        if (_shape == SelectionMode.Polyline)
+        if (_shape is SelectionMode.Polyline or SelectionMode.Curve)
         {
-            // 折线：这一下只是第一个点，收尾靠双击 / Enter（_selPolyActive 之后走上面那个早退）
+            // 折线 / 曲线：这一下只是第一个点，收尾靠双击 / Enter（_selPolyActive 之后走上面那个早退）
             SetHover(null);
             AddSelectionPoint(p, e.ClickCount);
             e.Handled = true;
@@ -484,6 +484,7 @@ public partial class CaptureOverlayWindow
             if (_selPolyActive)
             {
                 _selPolyCursor = p;
+                Surface.PendingSmooth = _shape == SelectionMode.Curve;
                 Surface.PendingPolygon = PendingShape();
                 Surface.InvalidateVisual();
                 return;
@@ -823,6 +824,7 @@ public partial class CaptureOverlayWindow
         if (_shape == mode) return;
         _shape = mode;
         CancelSelectionPolyline();      // 正在点的折线还没成选区，跟着换形状作废
+        SelectionStore.SetRegionType(mode);   // 跨会话记住（照上游 screenshot_selection/region_type）
         UpdateChrome();
     }
 
@@ -843,8 +845,9 @@ public partial class CaptureOverlayWindow
     private void SyncShapeButtons()
     {
         ShapeRect.IsChecked = _shape == SelectionMode.Rect;
-        ShapeLasso.IsChecked = _shape == SelectionMode.Lasso;
         ShapePolyline.IsChecked = _shape == SelectionMode.Polyline;
+        ShapeCurve.IsChecked = _shape == SelectionMode.Curve;
+        ShapeLasso.IsChecked = _shape == SelectionMode.Lasso;
     }
 
     /// <summary>
@@ -876,6 +879,7 @@ public partial class CaptureOverlayWindow
 
     private void CompleteSelectionPolyline()
     {
+        bool smooth = _shape == SelectionMode.Curve;   // 曲线 = 同样的逐点单击，收尾时平滑成贝塞尔
         var points = _selPoly.ToArray();
         bool ok = SelectionShape.IsUsable(points, MinSize);
 
@@ -886,18 +890,19 @@ public partial class CaptureOverlayWindow
 
         if (ok)
         {
-            Commit(SelectionRegion.FromPoints(_mode, points));
+            Commit(SelectionRegion.FromPoints(_mode, points, smooth));
         }
         else
         {
             _replaceOnCommit = false;      // 这一笔作废，别把「整块重框」留给下一次
             RefreshSelection();
-            ToastService.Show("折线选区至少要围出一小块：多点几个点再双击结束", null, 2000,
+            ToastService.Show(SelectionRegionTypes.Label(_shape) +
+                "选区至少要围出一小块：多点几个点再双击结束", null, 2000,
                 ToastKind.info, key: "capture-shape-small");
         }
 
         UpdateChrome();
-        if (ok) FirePendingAction();       // 快捷入口：折线定下来也算「选区落定」
+        if (ok) FirePendingAction();       // 快捷入口：折线 / 曲线定下来也算「选区落定」
     }
 
     /// <summary>丢掉正在点的折线选区（Esc / 换形状 / 翻历史）。</summary>
@@ -916,12 +921,16 @@ public partial class CaptureOverlayWindow
     /// <summary>套索松手：够大就并进选区（形状按点列裁），太小就当没框过。返回 true = 真的定下了一块。</summary>
     private bool CommitLasso()
     {
-        var points = _lasso.ToArray();
+        var raw = _lasso.ToArray();
         _lasso.Clear();
+
+        // 自由绘制：先按上游口径化简（RDP，0.125 DIP），再平滑成曲线
+        var points = SelectionShape.Simplify(raw, SelectionShape.SimplifyTolerance);
+        if (!SelectionShape.IsUsable(points, MinSize)) points = raw;
 
         if (SelectionShape.IsUsable(points, MinSize))
         {
-            Commit(SelectionRegion.FromPoints(_mode, points));
+            Commit(SelectionRegion.FromPoints(_mode, points, smooth: true));
             return true;
         }
 
@@ -947,7 +956,7 @@ public partial class CaptureOverlayWindow
             list.Add(SelectionRegion.FromRect(_mode, rect));
 
         if (_drag == DragMode.Lasso && _lasso.Count >= SelectionShape.MinPoints)
-            list.Add(SelectionRegion.FromPoints(_mode, _lasso));
+            list.Add(SelectionRegion.FromPoints(_mode, _lasso, smooth: true));
 
         return list;
     }

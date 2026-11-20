@@ -380,7 +380,7 @@ internal sealed class CaptureDocument
                 for (int j = 0; j < source.Length; j++)
                     points[j] = new Point(source[j].X - dx, source[j].Y - dy);
             }
-            local[i] = new SelectionRegion(region.Mode, box, points);
+            local[i] = new SelectionRegion(region.Mode, box, points, region.Smooth);
         }
 
         return SelectionSet.Combine(local, radius) ?? new RectangleGeometry(content, radius, radius);
@@ -412,7 +412,7 @@ internal sealed class CaptureDocument
                     points[j] = new Point(source[j].X / s + Origin.X, source[j].Y / s + Origin.Y);
             }
 
-            local[i] = new SelectionRegion(region.Mode, box, points);
+            local[i] = new SelectionRegion(region.Mode, box, points, region.Smooth);
         }
 
         return SelectionSet.Combine(local);

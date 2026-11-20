@@ -370,6 +370,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "regiontype")
+        {
+            RegionTypeSection();
+            Console.WriteLine(_failed == 0 ? "regiontype-only：通过" : $"regiontype-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
 
@@ -405,6 +412,9 @@ internal static partial class Program
 
         // ============ 悬浮工具条（P9-l：开关 / 模式 / 透明度 / 拖放 / 隐藏规则 / 布局） ============
         FloatingBarSection();
+
+        // ============ 选区形状（P9-m：四档 / 真鼠标画 / 导出按路径裁 / 拖动整条） ============
+        RegionTypeSection();
 
         const int width = 1600, height = 900;
         var shot = BuildShot(width, height);
@@ -959,8 +969,8 @@ internal static partial class Program
         if (shapeBar?.Child is StackPanel strip)
             foreach (var child in strip.Children)
                 if (child is RadioButton rb) labels.Add(rb.Content?.ToString() ?? "");
-        Check(labels.SequenceEqual(new[] { "矩形", "自由", "折线" }),
-            "形状条是矩形 / 自由 / 折线：" + string.Join("/", labels));
+        Check(labels.SequenceEqual(new[] { "矩形", "折线", "曲线", "自由绘制" }),
+            "形状条是矩形 / 折线 / 曲线 / 自由绘制：" + string.Join("/", labels));
         Check(shapeRect?.IsChecked == true, "默认是矩形");
         if (shapeBar != null) Save(CropElement(window, shapeBar), Path.Combine(_outDir, "shapebar.png"));
 
@@ -986,8 +996,8 @@ internal static partial class Program
         var polygon = Regions()[0]!.GetType().GetProperty("Points")!.GetValue(Regions()[0]!) as Point[];
         Check(polygon is { Length: 6 }, $"多边形有 6 个点（实际 {polygon?.Length}）");
         var bounds = selField.GetValue(window) as Rect?;
-        Check(bounds is Rect b && Math.Abs(b.Width - 560) < 1 && Math.Abs(b.Height - 370) < 1,
-            "选区外接框跟点列对得上：" + bounds);
+        Check(bounds is Rect b && b.Width >= 559 && b.Width < 700 && b.Height >= 369 && b.Height < 500,
+            "选区外接框跟点列对得上（平滑曲线会外凸一点）：" + bounds);
         Check(shapeBar?.Visibility == Visibility.Visible,
             "框过之后形状条仍然在（它就是「下一块的形状」）");
 

@@ -20,29 +20,37 @@ internal enum RegionMode
 /// 「相对底图左上角的图像像素」；导出时再按选区外接框换一遍局部坐标（见 <see cref="CaptureDocument.Render"/>）。
 /// 这里是**纯数据 + 纯几何**，不碰窗口也不碰位图，`--selftest` 直接断言。
 /// </remarks>
-internal sealed record SelectionRegion(RegionMode Mode, Rect Box, Point[]? Points)
+internal sealed record SelectionRegion(RegionMode Mode, Rect Box, Point[]? Points, bool Smooth = false)
 {
     /// <summary>是点列（点够多）而不是矩形。</summary>
     public bool IsPolygon => Points is { Length: >= SelectionShape.MinPoints };
 
-    /// <summary>这一块自己的外接框（点列的是点列的框）。</summary>
-    public Rect Bounds => IsPolygon ? SelectionShape.Bounds(Points!) : Box;
+    /// <summary>
+    /// 这一块自己的外接框：矩形就是矩形；点列是点列的框；平滑曲线按**曲线的框**——
+    /// Catmull-Rom 会在边中间外凸，按点列算会把外凸那一段裁掉（上游 <c>fromPath</c> 也是取 path 的 bounds）。
+    /// </summary>
+    public Rect Bounds => !IsPolygon
+        ? Box
+        : Smooth
+            ? SelectionShape.SmoothBounds(Points!)
+            : SelectionShape.Bounds(Points!);
 
-    /// <summary>这一块的几何：点列闭合填充，矩形就是矩形。</summary>
+    /// <summary>这一块的几何：点列闭合填充（<see cref="Smooth"/> 时是平滑曲线），矩形就是矩形。</summary>
     public Geometry Geometry() => IsPolygon
-        ? SelectionShape.Geometry(Points!, closed: true)
+        ? SelectionShape.Geometry(Points!, closed: true, smooth: Smooth)
         : new RectangleGeometry(Box);
 
     public static SelectionRegion FromRect(RegionMode mode, Rect rect) => new(mode, rect, null);
 
-    public static SelectionRegion FromPoints(RegionMode mode, IReadOnlyList<Point> points) =>
-        new(mode, SelectionShape.Bounds(points), Copy(points));
+    public static SelectionRegion FromPoints(RegionMode mode, IReadOnlyList<Point> points,
+        bool smooth = false) => new(mode, SelectionShape.Bounds(points), Copy(points), smooth);
 
     /// <summary>整体平移。</summary>
     public SelectionRegion Offset(Vector delta) => new(
         Mode,
         new Rect(Box.X + delta.X, Box.Y + delta.Y, Box.Width, Box.Height),
-        Points is null ? null : SelectionShape.Offset(Points, delta));
+        Points is null ? null : SelectionShape.Offset(Points, delta),
+        Smooth);
 
     /// <summary>按外接框从 <paramref name="from"/> 变到 <paramref name="to"/>（与标注缩放同一口径）。</summary>
     public SelectionRegion Scale(Rect from, Rect to)
@@ -60,7 +68,7 @@ internal sealed record SelectionRegion(RegionMode Mode, Rect Box, Point[]? Point
             Box.Height * sy);
 
         return new SelectionRegion(Mode, box,
-            Points is null ? null : SelectionShape.Scale(Points, from, to));
+            Points is null ? null : SelectionShape.Scale(Points, from, to), Smooth);
     }
 
     /// <summary>
@@ -74,7 +82,7 @@ internal sealed record SelectionRegion(RegionMode Mode, Rect Box, Point[]? Point
         if (Points is { } points)
         {
             var image = SelectionShape.ToImage(points, origin, s);
-            return new SelectionRegion(Mode, SelectionShape.Bounds(image), image);
+            return new SelectionRegion(Mode, SelectionShape.Bounds(image), image, Smooth);
         }
 
         double x1 = Math.Round((Box.X - origin.X) * s);
@@ -104,7 +112,7 @@ internal sealed record SelectionRegion(RegionMode Mode, Rect Box, Point[]? Point
                 Math.Clamp(points[i].X, 0, Math.Max(0, width - 1)),
                 Math.Clamp(points[i].Y, 0, Math.Max(0, height - 1)));
 
-        return new SelectionRegion(Mode, SelectionShape.Bounds(copy), copy);
+        return new SelectionRegion(Mode, SelectionShape.Bounds(copy), copy, Smooth);
     }
 
     private static Point[] Copy(IReadOnlyList<Point> points)

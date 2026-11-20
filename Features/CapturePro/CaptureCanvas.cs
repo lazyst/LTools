@@ -121,6 +121,9 @@ internal sealed class CaptureCanvas : FrameworkElement
     /// <summary>正在圈（套索）/ 正在点（折线）的选区，还没闭合；空 = 没有。</summary>
     public Point[]? PendingPolygon { get; set; }
 
+    /// <summary>上面那条虚线要不要画成平滑曲线（曲线选区；折线是直的）。</summary>
+    public bool PendingSmooth { get; set; }
+
     /// <summary>悬停命中的窗口 / 控件（窗口 DIP）；只在还没选区时显示。</summary>
     public Rect Hover { get; set; } = Rect.Empty;
 
@@ -331,7 +334,7 @@ internal sealed class CaptureCanvas : FrameworkElement
             }
             else
             {
-                var line = SelectionShape.Geometry(pending, closed: false);
+                var line = SelectionShape.Geometry(pending, closed: false, smooth: PendingSmooth);
                 dc.DrawGeometry(null, PendingShadow, line);
                 dc.DrawGeometry(null, PendingPen, line);
             }

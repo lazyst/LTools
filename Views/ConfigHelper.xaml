@@ -1127,6 +1127,25 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="选区形状" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="CaptureRegionTypeCombo" MinHeight="32"
+                                              SelectionChanged="CaptureRegionType_Changed"
+                                              ToolTip="下一次框选用什么形状（照上游 screenshot_selection/region_type）；覆盖层里形状条随时切，会记住上次用的那档">
+                                        <ComboBoxItem Content="矩形（拖框）"/>
+                                        <ComboBoxItem Content="折线（逐点单击）"/>
+                                        <ComboBoxItem Content="曲线（逐点单击，边角平滑）"/>
+                                        <ComboBoxItem Content="自由绘制（按住随手画）"/>
+                                    </ComboBox>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="142,6,0,0" TextWrapping="Wrap"
+                                           Text="矩形以外都是自定义区域：导出按路径裁（形状外透明），圆角不生效。"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="142"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
                                                Text="换层级过渡" VerticalAlignment="Center"/>
                                     <ComboBox Grid.Column="1" x:Name="CaptureTransitionCombo" MinHeight="32"
                                               SelectionChanged="CaptureOverlayUi_Changed"

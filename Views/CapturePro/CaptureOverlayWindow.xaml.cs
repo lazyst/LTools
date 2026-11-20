@@ -44,7 +44,7 @@ public partial class CaptureOverlayWindow : Window
     private Point _origin;                 // 本次拖动起点
     private Rect _originRect;              // 本次拖动开始时的选区
 
-    private SelectionMode _shape = SelectionMode.Rect;   // 下一次拖框画什么形状（每次打开都从矩形开始）
+    private SelectionMode _shape = SelectionMode.Rect;   // 下一次拖框画什么形状（打开时按设置里的「选区形状」恢复）
     private readonly List<SelectionRegion> _regions = new();   // 已确定的选区（窗口 DIP；加区并、减区挖）
     private List<SelectionRegion>? _originRegions;       // 本次移动 / 缩放开始时的每一块（取消时还原）
     private RegionMode _mode;                            // 本次拖出来的是加区还是减区
@@ -151,6 +151,8 @@ public partial class CaptureOverlayWindow : Window
         EditOnly = editOnly;
         InitSelectionStyle();
         InitSmartSelection();
+        // 上次用的选区形状（照上游 screenshot_selection/region_type：跨会话记住）
+        _shape = SelectionStore.RegionType;
 
         // 按目标显示器的 DPI 把物理矩形换算成 DIP：窗口正好盖住它（Loaded 里再按物理像素钉一次）
         Left = area.Left / _sx;

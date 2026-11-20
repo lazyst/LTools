@@ -30,6 +30,14 @@ public partial class ConfigHelperWindow
         CaptureToolbarSizeCombo.SelectedIndex =
             OverlayUiSettings.ToolbarSize == OverlayUiSettings.ToolbarSmall ? 1 : 0;
 
+        CaptureRegionTypeCombo.SelectedIndex = SelectionStore.RegionType switch
+        {
+            LTools.Features.CapturePro.SelectionMode.Polyline => 1,
+            LTools.Features.CapturePro.SelectionMode.Curve => 2,
+            LTools.Features.CapturePro.SelectionMode.Lasso => 3,
+            _ => 0,
+        };
+
         CaptureTransitionCombo.SelectedIndex = OverlayUiSettings.SelectionTransition switch
         {
             SelectionTransition.Fast => 1,
@@ -103,9 +111,22 @@ public partial class ConfigHelperWindow
 
     // ============ 下拉 / 勾选 ============
 
-    private void CaptureOverlayUi_Changed(object sender, RoutedEventArgs e)
+    /// <summary>选区形状（落 <c>ui.json</c> 的 <c>CaptureSelection.RegionType</c>，覆盖层下次打开就用它）。</summary>
+    private void CaptureRegionType_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (_initializing) return;
+
+        SelectionStore.SetRegionType(CaptureRegionTypeCombo.SelectedIndex switch
+        {
+            1 => LTools.Features.CapturePro.SelectionMode.Polyline,
+            2 => LTools.Features.CapturePro.SelectionMode.Curve,
+            3 => LTools.Features.CapturePro.SelectionMode.Lasso,
+            _ => LTools.Features.CapturePro.SelectionMode.Rect,
+        });
+    }
+
+    private void CaptureOverlayUi_Changed(object sender, RoutedEventArgs e)
+    {        if (_initializing) return;
 
         OverlayUiSettings.SetToolbarSize(CaptureToolbarSizeCombo.SelectedIndex == 1
             ? OverlayUiSettings.ToolbarSmall
