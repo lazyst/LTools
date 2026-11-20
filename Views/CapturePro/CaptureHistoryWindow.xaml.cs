@@ -41,6 +41,7 @@ public partial class CaptureHistoryWindow : Window
     private readonly List<CaptureHistoryRow> _pageRows = new();
     private readonly Dictionary<string, BitmapSource> _thumbs = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _bytes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<HistorySlide>> _slides = new(StringComparer.Ordinal);
 
     /// <summary>勾选中的记录 id（跨页保留，照上游 <c>m_selectedRecordIds</c>）。</summary>
     private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
@@ -220,7 +221,8 @@ public partial class CaptureHistoryWindow : Window
         for (int index = first; index < last; index++)
         {
             var entry = _filtered[index];
-            var row = new CaptureHistoryRow(entry, ThumbFor(entry), BytesOf(entry))
+            var thumb = ThumbFor(entry);
+            var row = new CaptureHistoryRow(entry, thumb, BytesOf(entry), SlidesFor(entry, thumb))
             {
                 IsSelected = _selected.Contains(entry.Id),
             };
@@ -228,6 +230,19 @@ public partial class CaptureHistoryWindow : Window
             _pageRows.Add(row);
             _rows.Add(row);
         }
+    }
+
+    /// <summary>
+    /// 这一条预览的轮播（成品图 + 每块屏幕）：卡片翻页与查看器共用，按条目缓存。
+    /// 缩略图解码宽度给 520（260 的 2 倍，125% 屏上也清楚）。
+    /// </summary>
+    private List<HistorySlide> SlidesFor(CaptureEntry entry, BitmapSource? thumb)
+    {
+        if (_slides.TryGetValue(entry.Id, out var cached)) return cached;
+
+        var slides = HistorySlides.Load(entry, 520, thumb);
+        _slides[entry.Id] = slides;
+        return slides;
     }
 
     private BitmapSource? ThumbFor(CaptureEntry entry)

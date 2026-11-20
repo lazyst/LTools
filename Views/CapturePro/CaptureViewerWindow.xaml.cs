@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -21,6 +22,10 @@ namespace LTools.Views.CapturePro;
 /// 之间切、Esc 关闭；右侧面板只在有识别文字时出现。
 /// </para>
 /// <para>
+/// 预览是**一组轮播**（照上游 <c>AdCarousel</c>）：第一张成品图，后面每块屏幕一张当时的原始屏幕。
+/// 卡片上翻到第几张，点开就停在第几张；多张时左右箭头 / ←→ 循环翻。
+/// </para>
+/// <para>
 /// 窗口是单例：再点另一条就地在同一个窗里换内容，不会堆出一屏查看器。录屏没有静态图，
 /// 这里给一块「没有封面帧」的说明和一个「播放录屏」按钮，而不是假装有图。
 /// </para>
@@ -30,10 +35,26 @@ public partial class CaptureViewerWindow : Window
     private const double MinZoom = 0.05;
     private const double MaxZoom = 8.0;
 
+    /// <summary>
+    /// 整屏预览的解码宽上限（2560）：够看清文字与布局，又不至于把三屏 4K 的整块虚拟桌面原样铺进内存。
+    /// 卡片轮播用 520（260 的两倍），两者都走 <see cref="HistorySlides.Load"/>。
+    /// </summary>
+    private const int DisplayPreviewWidth = 2560;
+
     private static CaptureViewerWindow? _current;
 
     private CaptureEntry? _entry;
+
+    /// <summary>成品图（复制 / 另存为用它；录屏没有）。</summary>
     private BitmapSource? _image;
+
+    /// <summary>这一条的预览轮播：成品图 + 每块屏幕。</summary>
+    private List<HistorySlide> _slides = new();
+
+    private int _slide;
+
+    /// <summary>此刻画在 <c>Picture</c> 上的那张。</summary>
+    private BitmapSource? _shown;
 
     private double _zoom = 1.0;
     private bool _fit = true;
@@ -54,11 +75,16 @@ public partial class CaptureViewerWindow : Window
         {
             if (ReferenceEquals(_current, this)) _current = null;
             if (Picture != null) Picture.Source = null;
+            _slides = new();
+            _shown = null;
         };
     }
 
-    /// <summary>打开 / 复用查看器看这一条（<paramref name="owner"/> 为空时居中到屏幕）。</summary>
-    internal static void Show(Window? owner, CaptureEntry entry)
+    /// <summary>
+    /// 打开 / 复用查看器看这一条（<paramref name="owner"/> 为空时居中到屏幕）。
+    /// <paramref name="slideIndex"/> 是卡片上停在第几张预览（0 = 成品图）。
+    /// </summary>
+    internal static void Show(Window? owner, CaptureEntry entry, int slideIndex = 0)
     {
         if (_current == null)
         {
@@ -69,13 +95,13 @@ public partial class CaptureViewerWindow : Window
             window.Show();
         }
 
-        _current.Present(entry);
+        _current.Present(entry, slideIndex);
         if (_current.WindowState == WindowState.Minimized) _current.WindowState = WindowState.Normal;
         _current.Activate();
     }
 
     /// <summary>换成这一条（同一窗口复用）。</summary>
-    private void Present(CaptureEntry entry)
+    private void Present(CaptureEntry entry, int slideIndex)
     {
         _entry = entry;
 
@@ -101,10 +127,17 @@ public partial class CaptureViewerWindow : Window
               + (file.Length > 0 ? " · " + file : "");
 
         _image = entry.IsRecord ? null : CaptureCatalog.LoadImage(CaptureCatalog.AssetPath(entry.Id), 0);
-        Picture.Source = _image;
+
+        // 成品图 + 每块屏幕（原始屏幕，不压暗、不画选框）。查看器按「够看清」的尺寸解码：
+        // 整屏原分辨率在三屏 4K 下是上百 MB 位图，翻两张就爆内存；2560 宽已经能看清字与布局。
+        _slides = HistorySlides.Load(entry, DisplayPreviewWidth, _image);
+        _slide = _slides.Count == 0 ? 0 : Math.Clamp(slideIndex, 0, _slides.Count - 1);
+        SyncSlide();
+
+        ReopenBtn.Visibility = entry.HasDisplay ? Visibility.Visible : Visibility.Collapsed;
+        ReopenBtn.IsEnabled = entry.HasDisplay;
 
         bool hasImage = _image != null;
-        NoImagePanel.Visibility = hasImage ? Visibility.Collapsed : Visibility.Visible;
         NoImageText.Text = entry.IsRecord
             ? "录屏没有静态画面。点下面的「播放录屏」用系统播放器打开它。"
             : "成品图不在了（可能被清理或移走）。";
@@ -113,10 +146,10 @@ public partial class CaptureViewerWindow : Window
         CopyImageBtn.IsEnabled = hasImage;
         SaveAsBtn.IsEnabled = hasImage || entry.IsRecord;
         RevealBtn.IsEnabled = path.Length > 0 && File.Exists(path);
-        ZoomInBtn.IsEnabled = hasImage;
-        ZoomOutBtn.IsEnabled = hasImage;
-        FitBtn.IsEnabled = hasImage;
-        ActualBtn.IsEnabled = hasImage;
+        ZoomInBtn.IsEnabled = _shown != null;
+        ZoomOutBtn.IsEnabled = _shown != null;
+        FitBtn.IsEnabled = _shown != null;
+        ActualBtn.IsEnabled = _shown != null;
 
         string text = entry.IsRecord ? "" : entry.Text;
         TextPanel.Visibility = text.Trim().Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -127,16 +160,62 @@ public partial class CaptureViewerWindow : Window
         ApplyFit();
     }
 
+    // ============ 预览轮播（成品图 + 每块屏幕） ============
+
+    /// <summary>把 <see cref="_slide"/> 那一张放上画面，并同步箭头 / 角标 / 空态。</summary>
+    private void SyncSlide()
+    {
+        HistorySlide? slide = _slides.Count == 0 ? null : _slides[_slide];
+        _shown = slide?.Image;
+        Picture.Source = _shown;
+
+        bool multiple = _slides.Count > 1;
+        PrevSlideBtn.Visibility = multiple ? Visibility.Visible : Visibility.Collapsed;
+        NextSlideBtn.Visibility = multiple ? Visibility.Visible : Visibility.Collapsed;
+
+        SlideChip.Visibility = slide?.Image != null ? Visibility.Visible : Visibility.Collapsed;
+        SlideChipText.Text = slide == null
+            ? ""
+            : multiple ? $"{slide.Label}  {_slide + 1}/{_slides.Count}" : slide.Label;
+
+        NoImagePanel.Visibility = _shown == null ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>翻到第 <paramref name="index"/> 张（循环，照上游 <c>infinite</c>）。</summary>
+    internal void GoSlide(int index)
+    {
+        if (_slides.Count <= 1) return;
+
+        int next = (index % _slides.Count + _slides.Count) % _slides.Count;
+        if (next == _slide) return;
+
+        _slide = next;
+        SyncSlide();
+
+        _fit = true;
+        ApplyFit();
+    }
+
+    private void PrevSlide_Click(object sender, RoutedEventArgs e) => GoSlide(_slide - 1);
+
+    private void NextSlide_Click(object sender, RoutedEventArgs e) => GoSlide(_slide + 1);
+
+    private void Reopen_Click(object sender, RoutedEventArgs e)
+    {
+        if (_entry == null) return;
+        CaptureSession.TryReopen(_entry);
+    }
+
     // ============ 缩放 / 平移 ============
 
     private void ApplyFit()
     {
-        if (_image == null || !IsLoaded) return;
+        if (_shown == null || !IsLoaded) return;
 
         double viewport = Math.Max(40, ImageScroll.ActualWidth - 4);
         double height = Math.Max(40, ImageScroll.ActualHeight - 4);
 
-        double fit = Math.Min(viewport / _image.PixelWidth, height / _image.PixelHeight);
+        double fit = Math.Min(viewport / _shown.PixelWidth, height / _shown.PixelHeight);
         if (fit <= 0 || double.IsInfinity(fit)) fit = 1.0;
 
         _fit = true;
@@ -149,8 +228,8 @@ public partial class CaptureViewerWindow : Window
         _zoom = Math.Clamp(zoom, MinZoom, MaxZoom);
 
         Point viewportPoint = anchor ?? new Point(ImageScroll.ActualWidth / 2, ImageScroll.ActualHeight / 2);
-        double imageX = (_image == null || old <= 0) ? 0 : (ImageScroll.HorizontalOffset + viewportPoint.X) / old;
-        double imageY = (_image == null || old <= 0) ? 0 : (ImageScroll.VerticalOffset + viewportPoint.Y) / old;
+        double imageX = (_shown == null || old <= 0) ? 0 : (ImageScroll.HorizontalOffset + viewportPoint.X) / old;
+        double imageY = (_shown == null || old <= 0) ? 0 : (ImageScroll.VerticalOffset + viewportPoint.Y) / old;
 
         Picture.LayoutTransform = new ScaleTransform(_zoom, _zoom);
 
@@ -165,7 +244,7 @@ public partial class CaptureViewerWindow : Window
 
     private void ImageScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (_image == null) return;
+        if (_shown == null) return;
 
         e.Handled = true;
         double factor = e.Delta > 0 ? 1.1 : 1 / 1.1;
@@ -175,7 +254,7 @@ public partial class CaptureViewerWindow : Window
 
     private void Picture_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (_image == null) return;
+        if (_shown == null) return;
 
         if (e.ClickCount == 2)
         {
@@ -249,6 +328,14 @@ public partial class CaptureViewerWindow : Window
         {
             case Key.Escape:
                 Close();
+                e.Handled = true;
+                break;
+            case Key.Left when _slides.Count > 1:
+                GoSlide(_slide - 1);
+                e.Handled = true;
+                break;
+            case Key.Right when _slides.Count > 1:
+                GoSlide(_slide + 1);
                 e.Handled = true;
                 break;
             case Key.D0 when Keyboard.Modifiers == ModifierKeys.Control:

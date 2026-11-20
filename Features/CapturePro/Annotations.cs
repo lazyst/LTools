@@ -973,6 +973,14 @@ internal abstract class Mark
         public Mark WithSpec(MagnifierSpec spec) =>
             new Magnifier(LensCenter, SourceWidth, SourceHeight, SourceCenter, spec, fromLens: false);
 
+        /// <summary>
+        /// 按落盘的几何原样重建（采集历史「重新编辑截图」用）：镜头 / 源的中心与**源尺寸**都照抄。
+        /// 别改走公开的两参构造——那个会拿镜头框反推源尺寸（缩放过的镜头就还原不回来了）。
+        /// </summary>
+        internal static Magnifier FromState(Point lensCenter, double sourceWidth, double sourceHeight,
+            Point sourceCenter, MagnifierSpec spec) =>
+            new(lensCenter, sourceWidth, sourceHeight, sourceCenter, spec, fromLens: false);
+
         public override Rect Bounds
         {
             get

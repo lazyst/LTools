@@ -6,7 +6,9 @@ using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using LTools.Core;
@@ -79,6 +81,60 @@ internal sealed class CaptureEntry
     /// 这块截图压到了几块显示器（照上游 <c>record.displays.size()</c>）；直接截图 / 老记录是 1。
     /// </summary>
     public int Displays { get; set; } = 1;
+
+    /// <summary>
+    /// 当时**整块屏幕**的冻结画面（相对 <c>captures/</c> 的路径，如 <c>displays/&lt;id&gt;.png</c>）。
+    /// 采集历史据此能看到「当时整个屏幕 + 选框」，并重新裁选；录屏 / 老记录为空。
+    /// </summary>
+    public string Display { get; set; } = "";
+
+    /// <summary>整屏底图覆盖的虚拟桌面矩形（物理像素，<c>Display</c> 的左上角就是它的左上角）。</summary>
+    public int DisplayX { get; set; }
+
+    public int DisplayY { get; set; }
+
+    public int DisplayW { get; set; }
+
+    public int DisplayH { get; set; }
+
+    /// <summary>
+    /// 当时每一块屏幕的位置（虚拟桌面物理像素）：历史里「一块屏一张预览」照它从
+    /// <see cref="Display"/> 那张整屏图上裁。老记录为空 = 整屏只有一张。
+    /// </summary>
+    public List<CaptureScreenDto> Screens { get; set; } = new();
+
+    /// <summary>
+    /// 当初框的**每一块**选区（物理像素，已含加 / 减与点列）：重新裁选时照它还原，
+    /// 多块 / 自由 / 折线只有靠这个才还原得出来（<see cref="SelectionX"/> 只是外接框）。
+    /// 老记录为空。
+    /// </summary>
+    public List<CaptureRegionDto> Regions { get; set; } = new();
+
+    /// <summary>
+    /// 当时画在成品上的标注（顺序即绘制顺序）。「重新编辑截图」照它把标注摆回覆盖层；
+    /// 没画过标注 / 老记录为空。
+    /// </summary>
+    public JsonArray? Annotations { get; set; }
+
+    /// <summary>标注的撤销栈（每份是一整份标注列表快照）。「重新编辑截图」后 Ctrl+Z 还能退回去。</summary>
+    public JsonArray? UndoMarks { get; set; }
+
+    /// <summary>标注的重做栈。</summary>
+    public JsonArray? RedoMarks { get; set; }
+
+    /// <summary>当时选区的外观（圆角 / 阴影 / 边框 / 背景不透明度）；老记录为空。</summary>
+    public CaptureStyleDto? Style { get; set; }
+
+    /// <summary>当时画过标注（能恢复的不只是底图与选区）。</summary>
+    [JsonIgnore] public bool HasAnnotations => Annotations is { Count: > 0 };
+
+    /// <summary>有没有整屏底图（能看整屏 / 重新裁选）。</summary>
+    [JsonIgnore] public bool HasDisplay => Display.Length > 0 && DisplayW > 0 && DisplayH > 0;
+
+    /// <summary>整屏底图的屏幕矩形（物理像素）；没有底图时是 <see cref="Int32Rect.Empty"/>。</summary>
+    [JsonIgnore] public Int32Rect DisplayRect => HasDisplay
+        ? new Int32Rect(DisplayX, DisplayY, DisplayW, DisplayH)
+        : Int32Rect.Empty;
 
     /// <summary>识别还没跑完（给列表显示「识别中…」用）。</summary>
     [JsonIgnore] public bool Pending => State == "pending";
@@ -167,11 +223,19 @@ internal static class CaptureCatalog
     /// <summary>录屏成品（mp4 / gif）放这里；元数据仍只在 <c>catalog.json</c>。</summary>
     public static string RecordsDir => Path.Combine(Root, "records");
 
+    /// <summary>整屏冻结画面（采集历史「看整屏 / 重新裁选」用，一条一张）。</summary>
+    public static string DisplaysDir => Path.Combine(Root, "displays");
+
     public static string CatalogPath => Path.Combine(Root, "catalog.json");
 
     public static string AssetPath(string id) => Path.Combine(AssetsDir, id + ".png");
 
     public static string ThumbPath(string id) => Path.Combine(ThumbsDir, id + ".png");
+
+    public static string DisplayPath(string id) => Path.Combine(DisplaysDir, id + ".png");
+
+    /// <summary><see cref="CaptureEntry.Display"/> 里存的（相对 <c>captures/</c>、正斜杠）。</summary>
+    public static string DisplayRelative(string id) => "displays/" + id + ".png";
 
     public static string RecordPath(string id, string extension) =>
         Path.Combine(RecordsDir, id + "." + NormalizeExtension(extension));
@@ -186,6 +250,17 @@ internal static class CaptureCatalog
         if (string.IsNullOrWhiteSpace(entry.File)) return "";
         return Path.Combine(Root, entry.File.Replace('/', Path.DirectorySeparatorChar));
     }
+
+    /// <summary>整屏底图的绝对路径；这条记录没有底图时返回空串。</summary>
+    public static string DisplayFilePath(CaptureEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Display)) return "";
+        return Path.Combine(Root, entry.Display.Replace('/', Path.DirectorySeparatorChar));
+    }
+
+    /// <summary>读整屏底图（<paramref name="decodeWidth"/> = 0 表示原分辨率）；没有 / 读不动返回 null。</summary>
+    public static BitmapSource? LoadDisplay(CaptureEntry entry, int decodeWidth = 0) =>
+        LoadImage(DisplayFilePath(entry), decodeWidth);
 
     /// <summary>小写扩展名（不含点）；没有扩展名返回空串。</summary>
     public static string ExtensionOf(string? path)
@@ -287,8 +362,12 @@ internal static class CaptureCatalog
     /// 先记一条（只写 <c>catalog.json</c>，很快），图片由调用方随后
     /// <see cref="SaveAssets"/> 丢后台写。顺带按保留策略剪枝。
     /// </summary>
+    /// <param name="display">这次抓的整块屏幕（虚拟桌面物理像素）；记下来历史才能看整屏 / 重新裁选。</param>
+    /// <param name="screens">当时每块屏幕的位置（历史里一块屏一张预览）。</param>
+    /// <param name="edit">当时画在上面的标注 / 撤销栈 / 选区外观（「重新编辑截图」照它还原）。</param>
     public static CaptureEntry Create(int width, int height, string kind, string source,
-        CapturePlacement? placement = null)
+        CapturePlacement? placement = null, Int32Rect? display = null,
+        IEnumerable<Int32Rect>? screens = null, CaptureEditState? edit = null)
     {
         var now = DateTime.Now;
 
@@ -319,6 +398,37 @@ internal static class CaptureCatalog
                 entry.Displays = CountDisplays(placement.Selection.X, placement.Selection.Y,
                     placement.Selection.Width, placement.Selection.Height,
                     Native.Screens.All().Select(s => (s.Left, s.Top, s.Width, s.Height)));
+
+                // 每一块选区（物理像素）：多块 / 自由 / 折线只有靠这份才还原得出来。
+                // 选区的图像像素相对**底图左上角**，加 display 的原点就是虚拟桌面坐标。
+                if (placement.Regions is { Count: > 0 } regions && display is Int32Rect screen)
+                    entry.Regions = CaptureRegionDto.Of(regions, screen.X, screen.Y);
+            }
+
+            if (display is Int32Rect area && area.Width > 0 && area.Height > 0)
+            {
+                entry.Display = DisplayRelative(entry.Id);
+                entry.DisplayX = area.X;
+                entry.DisplayY = area.Y;
+                entry.DisplayW = area.Width;
+                entry.DisplayH = area.Height;
+
+                if (screens != null)
+                    entry.Screens = CaptureScreenDto.Of(screens);
+            }
+
+            if (edit != null)
+            {
+                // 「重新编辑截图」要的三样：标注、撤销 / 重做栈、选区外观。
+                // 没画过标注时只留外观（省得每条都挂一个空数组）。
+                if (edit.Annotations is { Count: > 0 })
+                {
+                    entry.Annotations = edit.Annotations;
+                    entry.UndoMarks = edit.Undo;
+                    entry.RedoMarks = edit.Redo;
+                }
+
+                entry.Style = edit.Style;
             }
 
             items.Insert(0, entry);
@@ -430,6 +540,35 @@ internal static class CaptureCatalog
         }
     }
 
+    /// <summary>把整屏冻结画面落盘（可放后台线程；<paramref name="image"/> 必须已 Freeze）。</summary>
+    public static void SaveDisplay(CaptureEntry entry, BitmapSource image)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Display) || image == null) return;
+
+        try
+        {
+            Directory.CreateDirectory(DisplaysDir);
+            string path = DisplayPath(entry.Id);
+            WritePng(path, image);
+
+            // 写图期间这条被删了：别留下孤儿文件
+            lock (Gate)
+            {
+                if (LoadUnsafe().All(e => e.Id != entry.Id))
+                {
+                    DeleteFile(path);
+                    return;
+                }
+            }
+
+            Changed?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("CaptureCatalog.SaveDisplay", "写整屏底图失败：" + ex.Message);
+        }
+    }
+
     /// <summary>识别完成后把文字回填到那条记录（找不到就什么也不做）。</summary>
     public static void SetText(string id, string text)
     {
@@ -466,6 +605,7 @@ internal static class CaptureCatalog
             SaveUnsafe(items);
             DeleteFile(AssetPath(id));
             DeleteFile(ThumbPath(id));
+            DeleteFile(DisplayPath(id));
 
             string file = FilePath(entry);
             if (file.Length > 0) DeleteFile(file);
@@ -557,6 +697,7 @@ internal static class CaptureCatalog
         {
             DeleteFile(AssetPath(entry.Id));
             DeleteFile(ThumbPath(entry.Id));
+            DeleteFile(DisplayPath(entry.Id));
 
             string file = FilePath(entry);
             if (file.Length > 0) DeleteFile(file);
@@ -613,9 +754,10 @@ internal static class CaptureCatalog
         return (keep, drop);
     }
 
-    /// <summary>一条记录占的字节（成品图 + 缩略图 + 录屏文件）。</summary>
+    /// <summary>一条记录占的字节（成品图 + 缩略图 + 整屏底图 + 录屏文件）。</summary>
     public static long EntryBytes(CaptureEntry entry) =>
-        LengthOf(AssetPath(entry.Id)) + LengthOf(ThumbPath(entry.Id)) + LengthOf(FilePath(entry));
+        LengthOf(AssetPath(entry.Id)) + LengthOf(ThumbPath(entry.Id)) + LengthOf(DisplayPath(entry.Id))
+        + LengthOf(FilePath(entry));
 
     private static long LengthOf(string path)
     {
@@ -639,7 +781,7 @@ internal static class CaptureCatalog
         var ids = new HashSet<string>(keep.Select(e => e.Id), StringComparer.Ordinal);
         DateTime cutoff = DateTime.Now.AddHours(-1);
 
-        foreach (string dir in new[] { AssetsDir, ThumbsDir })
+        foreach (string dir in new[] { AssetsDir, ThumbsDir, DisplaysDir })
         {
             if (!Directory.Exists(dir)) continue;
             foreach (string file in Directory.EnumerateFiles(dir, "*.png"))

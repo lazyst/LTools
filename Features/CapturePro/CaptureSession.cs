@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using LTools.Core;
@@ -15,6 +16,18 @@ namespace LTools.Features.CapturePro;
 /// <summary>一次截图的成品：屏幕矩形（物理像素）+ 按选区重绘出来的图片 + 图里烘进的外观。</summary>
 internal sealed record CaptureResult(Int32Rect Area, BitmapSource Image,
     PinAppearance Appearance, bool Scrolling);
+
+/// <summary>
+/// 「从采集历史重新裁选」要交给覆盖层的东西：当时那张整屏冻结画面 + 它的屏幕矩形 +
+/// 每一块选区（窗口 DIP）。
+/// </summary>
+internal sealed record CaptureReopen(BitmapSource Image, Int32Rect Rect,
+    IReadOnlyList<SelectionRegion> Regions, double Scale,
+    IReadOnlyList<Int32Rect>? Screens = null,
+    IReadOnlyList<Mark>? Marks = null,
+    IReadOnlyList<Mark[]>? Undo = null,
+    IReadOnlyList<Mark[]>? Redo = null,
+    CaptureStyleDto? Style = null);
 
 /// <summary>
 /// 截图覆盖层的唯一入口：收起 LTools 自己的窗口 → 冻结抓帧 → 打开覆盖层 → 交回成品。
@@ -41,6 +54,50 @@ internal static class CaptureSession
     public static CaptureResult? TryCapture(Window? owner) => TryCapture(owner, out _);
 
     /// <summary>
+    /// 从采集历史重新编辑：用当时那张整屏冻结画面重开覆盖层，把每一块选区、选区外观与**标注**
+    /// （含撤销 / 重做栈）原样摆回去，交回一次**新的**成品（新的采集记录、复制 / 贴图 / 识别等出口照常）。
+    /// </summary>
+    /// <remarks>
+    /// 照上游 <c>CaptureHistoryDraft</c> 的 <c>displays</c> + <c>selection</c> + <c>canvasHistory</c> 重开：
+    /// 底图就是历史那张，不再抓帧；这条记录没有底图（录屏 / 更早版本记的）时提示一句并返回 null。
+    /// </remarks>
+    public static CaptureResult? TryReopen(CaptureEntry entry)
+    {
+        BitmapSource? display = null;
+        if (entry.HasDisplay)
+        {
+            try { display = CaptureCatalog.LoadDisplay(entry); }
+            catch (Exception ex) { AppLog.Warn("CapturePro.Reopen", "读整屏底图失败：" + ex.Message); }
+        }
+
+        if (display == null)
+        {
+            ToastService.Show("这条记录没有整屏底图（老版本记录或录屏），没法重新编辑",
+                "采集历史", 2800, ToastKind.warning);
+            return null;
+        }
+
+        // 与当初那次截图同一套换算：窗口按该屏的 DPI 摆，选区是「物理像素 ÷ DPI = DIP」。
+        // 用 1 会让窗口按 1:1 的 DIP 尺寸摆出去、被屏幕夹小，文档比例跟着散掉（裁出来会整体偏移）。
+        var dpiScale = ScreenPickerWindow.MonitorScale(ScreenShot.ToRectangle(entry.DisplayRect));
+        double dpi = dpiScale.X > 0 ? dpiScale.X : 1;
+
+        var regions = CaptureRegionDto.RegionsOf(entry, dpi);
+
+        var screens = new System.Collections.Generic.List<Int32Rect>(entry.Screens.Count);
+        foreach (var screen in entry.Screens) screens.Add(screen.Rect);
+
+        // 标注 / 撤销栈 / 选区外观：这一步才让「重新编辑」等于当初那个编辑现场，而不是一张烘好的图
+        var marks = MarkCodec.Read(entry.Annotations);
+        var undo = MarkCodec.ReadHistory(entry.UndoMarks);
+        var redo = MarkCodec.ReadHistory(entry.RedoMarks);
+
+        return TryCapture(null, out _,
+            reopen: new CaptureReopen(display, entry.DisplayRect, regions, dpi, screens,
+                marks, undo, redo, entry.Style));
+    }
+
+    /// <summary>
     /// 弹出覆盖层框选 + 标注。
     /// </summary>
     /// <param name="exit">
@@ -53,7 +110,8 @@ internal static class CaptureSession
     /// </param>
     public static CaptureResult? TryCapture(Window? owner, out CaptureExit exit,
         Action? onRecordingFinished = null,
-        CaptureOverlayWindow.PendingAction pending = CaptureOverlayWindow.PendingAction.None)
+        CaptureOverlayWindow.PendingAction pending = CaptureOverlayWindow.PendingAction.None,
+        CaptureReopen? reopen = null)
     {
         exit = CaptureExit.Cancelled;
 
@@ -70,6 +128,10 @@ internal static class CaptureSession
 
         CaptureResult? result = null;
         CapturePlacement? placement = null;
+        BitmapSource? display = null;
+        var displayRect = Int32Rect.Empty;
+        IReadOnlyList<Int32Rect>? screens = null;
+        CaptureEditState? edit = null;
         bool pin = false, recognize = false, recognizeCopy = false, translate = false;
         bool table = false;
         bool scroll = false, live = false;
@@ -84,16 +146,29 @@ internal static class CaptureSession
 
             // 快门音（照上游 screenshot/screenshot_sound_notification，默认关）：
             // 在上游是 beginCapture 里、冻结画面之前响，这里放在抓帧之前同一个时机。
-            if (CaptureSoundSettings.Screenshot) ShutterSound.Play();
+            // 重新裁选用的是历史里的画面，没有「又拍了一张」，不响。
+            if (reopen == null && CaptureSoundSettings.Screenshot) ShutterSound.Play();
 
-            // 覆盖层盖住**所有显示器**（跨屏选区）：冻结画面逐块抓再拼，坐标仍是物理像素
-            var area = ScreenShot.Bounds();
-            var shot = ScreenShot.Capture(area, ScreenshotBehavior.CaptureCursor);
-            var (sx, sy) = ScreenPickerWindow.MonitorScale(ScreenShot.ToRectangle(area));
+            // 覆盖层盖住**所有显示器**（跨屏选区）：冻结画面逐块抓再拼，坐标仍是物理像素。
+            // 重新裁选直接拿历史里那张整屏冻结画面，不再抓帧。
+            var area = reopen?.Rect ?? ScreenShot.Bounds();
+            screens = reopen?.Screens ?? ScreenShot.Monitors();
+            var shot = reopen?.Image ?? ScreenShot.Capture(area, ScreenshotBehavior.CaptureCursor);
+            var (sx, sy) = reopen != null
+                ? (reopen.Scale > 0 ? reopen.Scale : 1, reopen.Scale > 0 ? reopen.Scale : 1)
+                : ScreenPickerWindow.MonitorScale(ScreenShot.ToRectangle(area));
 
             var overlay = new CaptureOverlayWindow(shot, ScreenShot.ToRectangle(area), sx, sy,
                 pending: pending);
             overlay.ExportNames = names;
+            if (reopen is { Regions.Count: > 0 }) overlay.LoadSelection(reopen.Regions);
+
+            // 「重新编辑截图」：把当时的外观与标注（含撤销 / 重做栈）一起摆回去，用户能接着改、也能撤销
+            overlay.LoadCaptureStyle(reopen?.Style);
+            if (reopen is { Marks.Count: > 0 } reopened)
+                overlay.LoadAnnotations(reopened.Marks!, reopened.Undo ?? Array.Empty<Mark[]>(),
+                    reopened.Redo ?? Array.Empty<Mark[]>());
+
             bool? ok = overlay.ShowDialog();
             if (ok != true) return null;
 
@@ -121,7 +196,26 @@ internal static class CaptureSession
                     finish = overlay.Finish;
 
                     placement = CapturePlacement.Of(overlay.Document.Area, overlay.Document.Style,
-                        overlay.Document.Scale, scroll);
+                        overlay.Document.Scale, scroll, overlay.Document.Regions);
+
+                    // 整屏底图：覆盖层手里那张（用户可能点过「重新截图」换过底图，别拿外面那份旧的）
+                    var baseImage = overlay.Document.Base;
+                    if (!baseImage.IsFrozen && baseImage.CanFreeze) baseImage.Freeze();
+                    display = baseImage;
+                    displayRect = new Int32Rect(area.X, area.Y, area.Width, area.Height);
+
+                    // 翻着采集历史按了「完成」：底图是那条记录的整屏画面，
+                    // 按它自己的矩形记（记成这次整块桌面会让底图与矩形对不上）
+                    if (overlay.BrowsingHistory)
+                    {
+                        displayRect = overlay.Document.Monitor;
+                        screens = new[] { displayRect };
+                    }
+
+                    // 标注 + 撤销 / 重做栈 + 选区外观：下一次「重新编辑截图」照它整个现场摆回来
+                    edit = CaptureEditState.Of(overlay.Document, overlay.Document.UndoStack,
+                        overlay.Document.RedoStack);
+
                     result = new CaptureResult(overlay.Document.Area, captured,
                         placement.Appearance, placement.Scrolling);
                 }
@@ -183,14 +277,20 @@ internal static class CaptureSession
         }
 
         // 采集历史：先记一条（只写 catalog.json），图片丢后台写；识别文字稍后由结果窗回填。
-        // 落位信息一起记：采集历史要能「按原选区 + 原外观」贴回（见 HistoryPinPlacement）。
+        // 落位信息一起记：采集历史要能「按原选区 + 原外观」贴回（见 HistoryPinPlacement）；
+        // 整屏底图也一起记：历史里能看当时整个屏幕，还能重新裁选。
         var entry = CaptureCatalog.Create(
             result.Image.PixelWidth, result.Image.PixelHeight,
             recognize ? CaptureCatalog.KindRecognize : CaptureCatalog.KindShot,
-            SourceOf(finish), placement);
+            SourceOf(finish), placement, display == null ? null : displayRect, screens, edit);
 
         var image = result.Image;
-        System.Threading.Tasks.Task.Run(() => CaptureCatalog.SaveAssets(entry, image));
+        var screen = display;
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            CaptureCatalog.SaveAssets(entry, image);
+            if (screen != null) CaptureCatalog.SaveDisplay(entry, screen);
+        });
 
         if (pin) CapturePinManager.Pin(result.Image, result.Area, appearance: result.Appearance);
         if (live) StartLivePin(result);

@@ -11,15 +11,18 @@ namespace LTools.Features.CapturePro;
 /// 对应上游 <c>CaptureHistoryRecord</c> 的 <c>desktopGeometry</c> + <c>selection</c>
 /// （本地坐标本来就是虚拟桌面物理像素，不需要再记一个画布原点）。
 /// </remarks>
-internal sealed record CapturePlacement(Int32Rect Selection, PinAppearance Appearance, bool Scrolling)
+internal sealed record CapturePlacement(Int32Rect Selection, PinAppearance Appearance, bool Scrolling,
+    IReadOnlyList<SelectionRegion>? Regions = null)
 {
     /// <summary>从选区与样式算出落位信息（长截图不记外观：拼出来的长图没有那一圈效果）。</summary>
+    /// <param name="regions">每一块选区（底图图像像素）；多块 / 自由 / 折线靠它还原。</param>
     public static CapturePlacement Of(Int32Rect selection, SelectionStyle style, double scale,
-        bool scrolling) =>
+        bool scrolling, IReadOnlyList<SelectionRegion>? regions = null) =>
         new(selection,
             scrolling ? PinAppearance.None
                       : PinAppearance.FromStyle(style, scale, selection.Width, selection.Height),
-            scrolling);
+            scrolling,
+            regions);
 }
 
 /// <summary>

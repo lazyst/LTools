@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
@@ -25,18 +26,67 @@ internal sealed class CaptureHistoryRow : INotifyPropertyChanged
 
     private bool _selected;
 
-    public CaptureHistoryRow(CaptureEntry entry, BitmapSource? thumb, long bytes)
+    private readonly IReadOnlyList<HistorySlide> _slides;
+    private int _slide;
+
+    public CaptureHistoryRow(CaptureEntry entry, BitmapSource? thumb, long bytes,
+        IReadOnlyList<HistorySlide>? slides = null)
     {
         Entry = entry;
-        Thumb = thumb;
         Bytes = bytes;
+        _slides = slides is { Count: > 0 }
+            ? slides
+            : new[] { new HistorySlide(thumb, HistorySlides.ResultLabel) };
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public CaptureEntry Entry { get; }
 
-    public BitmapSource? Thumb { get; }
+    /// <summary>当前这一张预览（第一张是成品图，后面每块屏幕一张）。</summary>
+    public BitmapSource? Thumb => _slides[Math.Clamp(_slide, 0, _slides.Count - 1)].Image;
+
+    /// <summary>当前预览是什么（「成品图」/「整个屏幕」/「屏幕 2」）。</summary>
+    public string SlideLabel => _slides[Math.Clamp(_slide, 0, _slides.Count - 1)].Label;
+
+    /// <summary>有多张才露左右箭头与角标（照上游：<c>multiple</c> 时才显示箭头 / 圆点）。</summary>
+    public bool HasMultipleSlides => _slides.Count > 1;
+
+    /// <summary>第几张（1 起）——卡片右下角的角标。</summary>
+    public int SlideNumber => Math.Clamp(_slide, 0, _slides.Count - 1) + 1;
+
+    public int SlideCount => _slides.Count;
+
+    /// <summary>翻到下一张（循环，照上游 <c>infinite</c>）。</summary>
+    public void NextSlide() => ShowSlide(_slide + 1);
+
+    /// <summary>翻到上一张（循环）。</summary>
+    public void PreviousSlide() => ShowSlide(_slide - 1);
+
+    /// <summary>预览右下角那枚角标：<c>整个屏幕</c> / <c>屏幕 2</c>，多张时补 <c>2/3</c>。</summary>
+    public string SlideChipText => HasMultipleSlides
+        ? $"{SlideLabel}  {SlideNumber}/{SlideCount}"
+        : SlideLabel;
+
+    /// <summary>点预览打开大图时，大图也停在这一张上。</summary>
+    public int SlideIndex => Math.Clamp(_slide, 0, _slides.Count - 1);
+
+    private void ShowSlide(int index)
+    {
+        if (_slides.Count <= 1) return;
+
+        int next = (index % _slides.Count + _slides.Count) % _slides.Count;
+        if (next == _slide) return;
+
+        _slide = next;
+        Raise(nameof(Thumb));
+        Raise(nameof(HasThumb));
+        Raise(nameof(SlideLabel));
+        Raise(nameof(SlideNumber));
+        Raise(nameof(SlideChipText));
+    }
+
+    private void Raise(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
     /// <summary>成品文件（图片 / 视频）的字节数；读不到是 0。</summary>
     public long Bytes { get; }

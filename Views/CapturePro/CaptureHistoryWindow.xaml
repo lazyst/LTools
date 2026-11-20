@@ -84,6 +84,35 @@
             <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
         </Style>
 
+        <!-- 预览轮播的翻页箭头（照上游 AdCarousel）：多张才出现，半透明底浮在图上 -->
+        <Style x:Key="SlideArrow" TargetType="Button">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="#99000000" CornerRadius="12">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#CC000000"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E6000000"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 卡片：白底 + 描边，悬停提亮一档（卡片底色会把 ListBox 的选中底色盖住，
              所以高亮只能写在这里，别指望全局 ListItemTemplate） -->
         <DataTemplate x:Key="CaptureCard">
@@ -191,6 +220,27 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
+
+                            <!-- 多张预览（成品 + 每块屏幕）才有左右箭头：照上游 AdCarousel 的循环翻张 -->
+                            <Button x:Name="PrevSlideBtn" Style="{StaticResource SlideArrow}"
+                                    HorizontalAlignment="Left" Click="CardPrevSlide_Click"
+                                    ToolTip="上一张">
+                                <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                            </Button>
+                            <Button x:Name="NextSlideBtn" Style="{StaticResource SlideArrow}"
+                                    HorizontalAlignment="Right" Click="CardNextSlide_Click"
+                                    ToolTip="下一张">
+                                <TextBlock Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                            </Button>
+
+                            <!-- 右下角标：这一张是什么（成品图 / 整个屏幕 / 屏幕 2 · 2/3） -->
+                            <Border x:Name="SlideChip" Background="#B3000000" CornerRadius="3"
+                                    Padding="6,1" Margin="0,0,6,6"
+                                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                    IsHitTestVisible="False">
+                                <TextBlock x:Name="SlideChipText" Text="{Binding SlideChipText}"
+                                           FontSize="11" Foreground="White"/>
+                            </Border>
                         </Grid>
                     </Border>
                 </Grid>
@@ -204,6 +254,14 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsSelected}" Value="True">
                     <Setter TargetName="Card" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding HasMultipleSlides}" Value="True">
+                    <Setter TargetName="PrevSlideBtn" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="NextSlideBtn" Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+                <!-- 单张预览不挂角标（照上游：只有多张时才露箭头 / 圆点 / 角标），别让每张卡片都顶一个「成品图」 -->
+                <DataTrigger Binding="{Binding HasMultipleSlides}" Value="False">
+                    <Setter TargetName="SlideChip" Property="Visibility" Value="Collapsed"/>
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>

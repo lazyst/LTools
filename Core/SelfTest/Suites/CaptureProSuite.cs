@@ -82,6 +82,8 @@ internal static partial class CaptureProSuite
         cases.Add(new("capturePro", "贴图前后序：加 / 提 / 删 / 换组 / 观测 / 还原", PinStackingCases));
         cases.Add(new("capturePro", "采集历史贴回：外观 / 窗口矩形 / 桌面求交", HistoryPinCases));
         cases.Add(new("capturePro", "采集历史：剪枝 / 缩略图 / 文案", Catalog));
+        cases.Add(new("capturePro", "采集历史：整屏底图 / 选区还原 / 整屏预览", HistoryDisplayCases));
+        cases.Add(new("capturePro", "采集历史：标注落盘往返（19 种 / 逐像素）", MarkCodecCases));
         cases.Add(new("capturePro", "采集历史：来源 / 日期 / 关键词 / 分页 / 卡片文案", HistoryPageCases));
         cases.Add(new("capturePro", "快门音：音频路径 / MCI 命令 / 别名 / 缺文件不挡截图", ShutterSoundCases));
         cases.Add(new("capturePro", "贴图收顶部：手柄占位 / 命中 / 缓动 / 换屏重排", HideToTopCases));
@@ -726,6 +728,34 @@ internal static partial class CaptureProSuite
             "自由 / 折线选区：外面 = 重新框选");
         Check.False(SelectionSet.MovesOnOutsideDrag(new[] { cut }, true, false, false),
             "只有减区：没有可挪的整块");
+
+        // 多块选区里按下拖动：命中哪一块就只挪那一块（照上游 beginMoveDrag → beginRegionMove）；
+        // 按住「移动整个选区」（Space）才整体挪。重叠时取列表最后一块（叠放顺序：后画的在上）。
+        Check.Equal(0, SelectionSet.TopmostAt(set, new Point(1, 1)), "命中最上面那块加区");
+        Check.Equal(2, SelectionSet.TopmostAt(set, new Point(22, 6)), "命中第二块加区");
+        Check.Equal(-1, SelectionSet.TopmostAt(set, new Point(4, 4)), "挖掉的洞里命中不到任何一块");
+        Check.Equal(-1, SelectionSet.TopmostAt(set, new Point(-5, 50)), "选区外命中不到");
+        var overlap = new[]
+        {
+            SelectionRegion.FromRect(RegionMode.Add, new Rect(0, 0, 20, 20)),
+            SelectionRegion.FromRect(RegionMode.Add, new Rect(10, 10, 20, 20)),
+        };
+        Check.Equal(1, SelectionSet.TopmostAt(overlap, new Point(15, 15)), "重叠处命中后画的那一块（最上层）");
+        Check.Equal(0, SelectionSet.TopmostAt(overlap, new Point(5, 5)), "只有下面那块盖住的地方还是命中它");
+        Check.Equal(-1, SelectionSet.TopmostAt(new[] { cut }, new Point(3, 3)), "只有减区：命中不到任何一块");
+
+        Check.True(SelectionSet.MovesSingleRegion(3, 1, false), "多块 + 没按住 Space：只挪命中的那一块");
+        Check.False(SelectionSet.MovesSingleRegion(3, 1, true), "按住 Space：挪整个选区");
+        Check.False(SelectionSet.MovesSingleRegion(1, 0, false), "单块选区：没有「哪一块」，整体动");
+        Check.False(SelectionSet.MovesSingleRegion(3, -1, false), "没命中任何一块：别当成单块拖动");
+
+        var (edgesX, edgesY) = SelectionSet.OtherEdges(set, 2);
+        Check.Equal(4, edgesX.Length, "吸附参考边只取别的区域（两块 × 左右）");
+        Check.True(Array.IndexOf(edgesX, 0.0) >= 0 && Array.IndexOf(edgesX, 10.0) >= 0,
+            "参考边里有第一块的左右");
+        Check.True(Array.IndexOf(edgesY, 0.0) >= 0 && Array.IndexOf(edgesY, 10.0) >= 0,
+            "参考边里有第一块的上下");
+        Check.Equal(0, SelectionSet.OtherEdges(new[] { add }, 0).Xs.Length, "只有一块时没有别的参考边");
 
         // 平移 / 缩放 / DIP → 像素 / 夹到底图里
         var moved = add.Offset(new Vector(3, 4));

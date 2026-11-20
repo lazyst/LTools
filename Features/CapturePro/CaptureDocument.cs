@@ -106,6 +106,33 @@ internal sealed class CaptureDocument
         _serial = _marks.OfType<Mark.Serial>().Select(s => s.Number).DefaultIfEmpty(0).Max();
     }
 
+    /// <summary>撤销栈（每份是一整份标注列表快照，老的在前面）；采集历史落盘时读它。</summary>
+    public IReadOnlyList<Mark[]> UndoStack => _undo;
+
+    /// <summary>重做栈。</summary>
+    public IReadOnlyList<Mark[]> RedoStack => _redo;
+
+    /// <summary>
+    /// 整份放回：标注 + 撤销 / 重做栈（采集历史「重新编辑截图」）。
+    /// 与 <see cref="ResetMarks"/> 的区别是会**连历史一起**恢复——用户接着按 Ctrl+Z 能退到当初更早的状态。
+    /// </summary>
+    public void ImportHistory(IReadOnlyList<Mark> marks, IEnumerable<Mark[]> undo, IEnumerable<Mark[]> redo)
+    {
+        _marks.Clear();
+        _marks.AddRange(marks);
+
+        _undo.Clear();
+        foreach (var snapshot in undo) _undo.Add(snapshot);
+        // 落盘上限与内存一致：多出来的老快照丢掉（超出的都是更早的）
+        if (_undo.Count > MaxUndo) _undo.RemoveRange(0, _undo.Count - MaxUndo);
+
+        _redo.Clear();
+        foreach (var snapshot in redo) _redo.Add(snapshot);
+
+        _serial = _marks.OfType<Mark.Serial>().Select(s => s.Number).DefaultIfEmpty(0).Max();
+        Dirty = true;
+    }
+
     /// <summary>选区（物理像素，屏幕绝对坐标）。未框选时宽高为 0。</summary>
     public Int32Rect Area { get; set; }
 

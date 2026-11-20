@@ -71,7 +71,7 @@ internal static partial class Program
             object Make(string kind, string source)
             {
                 var entry = catalogType.GetMethod("Create")!
-                    .Invoke(null, new object[] { image.PixelWidth, image.PixelHeight, kind, source, null })!;
+                    .Invoke(null, new object?[] { image.PixelWidth, image.PixelHeight, kind, source, null, null, null, null })!;
                 catalogType.GetMethod("SaveAssets")!.Invoke(null, new object[] { entry, image });
                 return entry;
             }
@@ -290,7 +290,7 @@ internal static partial class Program
             var shotHeaders = shotMenu.Items.OfType<MenuItem>().Select(i => (string)i.Header!).ToList();
             Check(string.Join("|", shotHeaders) == string.Join("|", new[]
             {
-                "贴到屏幕", "拼接图片", "切图…", "图片编辑", "复制图片路径", "在资源管理器中显示",
+                "贴到屏幕", "拼接图片", "切图…", "图片编辑", "重新编辑截图…", "复制图片路径", "在资源管理器中显示",
                 "另存为…", "删除",
             }), $"截图卡片菜单顺序照上游（{string.Join(" / ", shotHeaders)}）");
 
@@ -310,7 +310,7 @@ internal static partial class Program
 
             // ---- 查看大图 ----
             var show = viewerType.GetMethod("Show", Stat)!;
-            show.Invoke(null, new object?[] { null, shotEntry });
+            show.Invoke(null, new object?[] { null, shotEntry, 0 });
             Pump(window);
 
             var viewer = Application.Current.Windows.OfType<Window>()
@@ -329,14 +329,14 @@ internal static partial class Program
                 Pump(viewer);
                 Check(((TextBlock)Field(viewer, "ZoomText")).Text == "100%", "点 100% 缩放到 1:1");
 
-                show.Invoke(null, new object?[] { null, recognizeEntry });
+                show.Invoke(null, new object?[] { null, recognizeEntry, 0 });
                 Pump(viewer);
                 Check(((Border)Field(viewer, "TextPanel")).Visibility == Visibility.Visible,
                     "识别条目显示文字面板");
                 Check(((TextBox)Field(viewer, "TextBody")).Text.Contains("第一行文字"),
                     "识别文字回填到查看器");
 
-                show.Invoke(null, new object?[] { null, recordEntry });
+                show.Invoke(null, new object?[] { null, recordEntry, 0 });
                 Pump(viewer);
                 Check(((Image)Field(viewer, "Picture")).Source == null, "录屏没有静态图");
                 Check(((StackPanel)Field(viewer, "NoImagePanel")).Visibility == Visibility.Visible,

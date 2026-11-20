@@ -62,10 +62,23 @@ public partial class CaptureOverlayWindow
         UpdateChrome();
     }
 
+    /// <summary>
+    /// 历史「重新编辑截图」/ 覆盖层里翻历史：把那条记录当时的选区外观（含版面压缩）摆回来。
+    /// <c>save: false</c>——采自历史的不是「我上次用的」，别覆盖掉设置里的偏好。
+    /// </summary>
+    internal void LoadCaptureStyle(CaptureStyleDto? dto)
+    {
+        if (dto == null) return;
+
+        ApplySelStyle(dto.ToStyle(), save: false);
+        _doc.CompactLayout = dto.CompactLayout;
+        _doc.CompactSpacing = dto.CompactSpacing;
+        SyncArea();
+    }
+
     /// <summary>只改圆角（界面给的是物理像素）。</summary>
     private void SetCornerRadiusPixels(int pixels) =>
         ApplySelStyle(_selStyle with { CornerRadius = DipFromPixels(pixels) });
-
     /// <summary>只改当前生效的效果宽度（界面给的是物理像素）。</summary>
     private void SetEffectWidthPixels(int pixels) =>
         ApplySelStyle(_selStyle.WithEffectWidth(DipFromPixels(pixels)));

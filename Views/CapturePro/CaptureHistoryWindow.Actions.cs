@@ -63,13 +63,29 @@ public partial class CaptureHistoryWindow
         }
     }
 
-    /// <summary>点预览 = 看大图（识别文字在大图右侧）。</summary>
+    /// <summary>点预览 = 看大图（识别文字在大图右侧；大图停在这一张预览上）。</summary>
     private void CardPreview_Click(object sender, MouseButtonEventArgs e)
     {
+        // 行内按钮（翻页箭头 / 勾选 / 更多）自己处理鼠标，别再叠一层「点预览看大图」
+        if (FindAncestor<ButtonBase>(e.OriginalSource as DependencyObject) != null) return;
+
         e.Handled = true;
         if (RowOf(sender) is not { } row) return;
 
-        CaptureViewerWindow.Show(this, row.Entry);
+        CaptureViewerWindow.Show(this, row.Entry, row.SlideIndex);
+    }
+
+    /// <summary>预览左下 / 右的翻页箭头（多张预览才出现）。</summary>
+    private void CardPrevSlide_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (RowOf(sender) is { } row) row.PreviousSlide();
+    }
+
+    private void CardNextSlide_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (RowOf(sender) is { } row) row.NextSlide();
     }
 
     private void CardEdit_Click(object sender, RoutedEventArgs e)
@@ -120,6 +136,13 @@ public partial class CaptureHistoryWindow
         var edit = new MenuItem { Header = "图片编辑", IsEnabled = !entry.IsRecord };
         edit.Click += (_, _) => EditEntry(entry);
         menu.Items.Add(edit);
+
+        var reopen = new MenuItem { Header = "重新编辑截图…", IsEnabled = entry.HasDisplay };
+        reopen.ToolTip = entry.HasDisplay
+            ? "用当时那张整屏画面重开截图工具：选区、外观和画过的标注（连撤销）都在（会记一条新的采集）"
+            : "这条记录没有整屏底图（老版本记录或录屏）";
+        reopen.Click += (_, _) => ReopenEntry(entry);
+        menu.Items.Add(reopen);
 
         var copyPath = new MenuItem { Header = "复制图片路径" };
         copyPath.Click += (_, _) => CopyPath(entry);
@@ -174,6 +197,19 @@ public partial class CaptureHistoryWindow
 
         if (ImageEditSession.OpenCapture(entry)) return;
         ToastService.Show("图片文件不见了，没法编辑", "采集历史", 2200, ToastKind.error);
+    }
+
+    /// <summary>用当时那张整屏画面重开覆盖层重新编辑（选区 / 外观 / 标注都摆回来，记一条新的采集）。</summary>
+    private static void ReopenEntry(CaptureEntry entry)
+    {
+        if (!entry.HasDisplay)
+        {
+            ToastService.Show("这条记录没有整屏底图（老版本记录或录屏），没法重新编辑",
+                "采集历史", 2600, ToastKind.warning);
+            return;
+        }
+
+        CaptureSession.TryReopen(entry);
     }
 
     private void CopyEntry(CaptureEntry entry)
@@ -361,9 +397,10 @@ public partial class CaptureHistoryWindow
 
     private void Refresh_Click(object sender, RoutedEventArgs e)
     {
-        // 显式刷新：缩略图与文件大小都重读（别处可能换过文件）
+        // 显式刷新：缩略图、预览轮播与文件大小都重读（别处可能换过文件）
         _thumbs.Clear();
         _bytes.Clear();
+        _slides.Clear();
         Reload();
         ToastService.Show($"已刷新 · 共 {_all.Count} 条", "采集历史", 1400);
     }
