@@ -63,6 +63,7 @@ internal static class SelfTestRunner
         InfoHelperSuite.Register(cases);
         CaptureProSuite.Register(cases);
         ListSuite.Register(cases);
+        NoteSuite.Register(cases);
         JsonSuite.Register(cases);
         ContractSuite.Register(cases);
         ProcessSuite.Register(cases);

@@ -19,6 +19,9 @@ public partial class QuickNoteWindow : Window
     private bool _dirty;
     private string _filter = "";
 
+    /// <summary>打开窗口时仍有几条旧 <c>.txt</c> 没能改名成 <c>.md</c>（被占用），状态栏提示一次。</summary>
+    private readonly int _pendingMigration;
+
     // 搜索防抖：按键间隙不重扫目录，停顿 300ms 后统一刷新一次
     private readonly DispatcherTimer _searchDebounce;
 
@@ -31,6 +34,7 @@ public partial class QuickNoteWindow : Window
         InitializeComponent();
         WindowChromeHelper.FixMaximize(this);
         _repo = repo;
+        _pendingMigration = repo.MigrateTxtToMd();
         ApplyEditorTheme();
         _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _searchDebounce.Tick += (_, _) => { _searchDebounce.Stop(); ReloadList(); };
@@ -43,6 +47,8 @@ public partial class QuickNoteWindow : Window
     {
         NewNote();
         TitleBox.Focus();
+        if (_pendingMigration > 0)
+            StatusBar.Text = "有 " + _pendingMigration + " 条旧速记被占用，未能改名成 .md（关掉占用它的程序后重开速记）";
     }
 
     /// <summary>外部（QuickNote.Refresh）通知仓库可能变化，重刷分类+列表。</summary>

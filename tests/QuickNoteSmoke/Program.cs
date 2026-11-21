@@ -178,8 +178,8 @@ internal static class Program
         Check(files.Length == 1, $"保存后落盘一个文件（实际 {files.Length} 个）");
         if (files.Length == 1)
         {
-            Check(files[0].EndsWith(".txt", StringComparison.OrdinalIgnoreCase),
-                "P1 之前仍是 .txt（本次只换编辑器）");
+            Check(files[0].EndsWith(".md", StringComparison.OrdinalIgnoreCase),
+                "落盘是 .md（P1 之后重写扩展名）");
             Check(Normalize(File.ReadAllText(files[0])) == Normalize(Sample),
                 "落盘正文与编辑器里的 Markdown 一字不差");
         }

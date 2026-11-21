@@ -17,7 +17,7 @@ internal sealed class NoteEntry
     /// <summary>文件最后修改时间。列表按此倒序。</summary>
     public DateTime Mtime { get; set; }
 
-    /// <summary>正文（纯文本，UTF-8 无 BOM）。</summary>
+    /// <summary>正文（Markdown 源码，UTF-8 无 BOM）。</summary>
     public string Body { get; set; } = "";
 
     /// <summary>是否尚未落盘（新建或原文件已删）。</summary>

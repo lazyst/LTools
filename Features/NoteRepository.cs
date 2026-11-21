@@ -7,12 +7,18 @@ using LTools.Core;
 namespace LTools.Features;
 
 /// <summary>
-/// 速记数据层（深模块）：隔离所有文件 IO。每条速记 = <c>速记/&lt;分类&gt;/&lt;yyyy-MM-dd&gt; &lt;标题&gt;.txt</c>；
-/// 标题存于文件名、正文存于文件内容、分类=一级子目录名。UI/协调器不直接碰文件。
+/// 速记数据层（深模块）：隔离所有文件 IO。每条速记 = <c>速记/&lt;分类&gt;/&lt;yyyy-MM-dd&gt; &lt;标题&gt;.md</c>；
+/// 标题存于文件名、正文存于文件内容（Markdown 源码）、分类=一级子目录名。UI/协调器不直接碰文件。
 /// </summary>
 internal sealed class NoteRepository
 {
     private readonly string _root;
+
+    /// <summary>速记文件的扩展名。改这里就全链路生效（列表 / 计数 / 命名 / 迁移），别再各处写 <c>.md</c>。</summary>
+    internal const string Extension = ".md";
+
+    /// <summary>旧版速记的扩展名：只在一次性迁移里认，写完就不再产生。</summary>
+    private const string LegacyExtension = ".txt";
 
     /// <summary>未指定分类时的兜底目录名。</summary>
     internal const string Unclassified = "未分类";
@@ -69,13 +75,13 @@ internal sealed class NoteRepository
         Directory.Move(oldDir, newDir);
     }
 
-    /// <summary>统计分类下 .txt 数。</summary>
+    /// <summary>统计分类下速记数。</summary>
     public int CountNotes(string name)
     {
         string clean = CleanCategoryName(name);
         string dir = System.IO.Path.Combine(_root, clean);
         if (!Directory.Exists(dir)) return 0;
-        try { return Directory.GetFiles(dir, "*.txt").Length; }
+        try { return Directory.GetFiles(dir, "*" + Extension).Length; }
         catch { return 0; }
     }
 
@@ -103,7 +109,7 @@ internal sealed class NoteRepository
             string dir = System.IO.Path.Combine(_root, cat);
             if (!Directory.Exists(dir)) continue;
             string[] files;
-            try { files = Directory.GetFiles(dir, "*.txt"); }
+            try { files = Directory.GetFiles(dir, "*" + Extension); }
             catch { continue; }
             foreach (var f in files)
                 result.Add(BuildEntryLight(f, cat));
@@ -203,9 +209,9 @@ internal sealed class NoteRepository
 
                 var (date, title, body) = ParseLegacyNote(content);
                 string fileName = string.IsNullOrWhiteSpace(title)
-                    ? date.ToString("yyyy-MM-dd_HHmmss") + ".txt"
-                    : date.ToString("yyyy-MM-dd") + " " + CleanFileNameFromTitle(title) + ".txt";
-                if (fileName.Length > 80) fileName = fileName.Substring(0, 77) + ".txt";
+                    ? date.ToString("yyyy-MM-dd_HHmmss") + Extension
+                    : date.ToString("yyyy-MM-dd") + " " + CleanFileNameFromTitle(title) + Extension;
+                if (fileName.Length > 80) fileName = fileName[..77] + Extension;
 
                 string newPath = AvoidCollision(System.IO.Path.Combine(unclassifiedDir, fileName), null);
                 File.WriteAllText(newPath, body, new UTF8Encoding(false));
@@ -219,6 +225,55 @@ internal sealed class NoteRepository
             }
             catch (Exception ex) { CrashLog.Write("速记迁移失败: " + f, ex); }
         }
+    }
+
+    /// <summary>
+    /// 一次性迁移：把旧版 <c>.txt</c> 速记改名为 <c>.md</c>（内容一个字都不动）。
+    /// 返回没能改名的条数——文件被别的程序占用时改名会失败，下次启动 / 下次打开速记窗口再重试。
+    /// </summary>
+    /// <remarks>不做「.txt / .md 双读」：那会永久多一条读路径，也更难说清「为什么这条显示两次」。</remarks>
+    public int MigrateTxtToMd()
+    {
+        if (!Directory.Exists(_root)) return 0;
+        int failed = 0;
+        foreach (string dir in NoteDirectories())
+        {
+            string[] files;
+            try { files = Directory.GetFiles(dir, "*" + LegacyExtension); }
+            catch { continue; }
+
+            foreach (string file in files)
+            {
+                try
+                {
+                    string target = System.IO.Path.ChangeExtension(file, Extension);
+                    File.Move(file, AvoidCollision(target, null));
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    CrashLog.Write("速记迁移 .txt → .md 失败: " + file, ex);
+                }
+            }
+        }
+        return failed;
+    }
+
+    /// <summary>速记根目录 + 各分类子目录（跳过 <c>.迁移备份</c> 这类点前缀目录）。</summary>
+    private IReadOnlyList<string> NoteDirectories()
+    {
+        var dirs = new List<string> { _root };
+        try
+        {
+            foreach (string dir in Directory.GetDirectories(_root))
+            {
+                string name = System.IO.Path.GetFileName(dir.TrimEnd(System.IO.Path.DirectorySeparatorChar));
+                if (name.StartsWith(".")) continue;
+                dirs.Add(dir);
+            }
+        }
+        catch { /* 静默：迁移是尽力而为 */ }
+        return dirs;
     }
 
     // —— 内部工具 ——
@@ -275,14 +330,14 @@ internal sealed class NoteRepository
         try { return new DateTime(y, mo, d, h, mi, s); } catch { return null; }
     }
 
-    /// <summary>标题 → 文件名：<c>yyyy-MM-dd &lt;清理后标题&gt;.txt</c>；标题空则 <c>yyyy-MM-dd_HHmmss.txt</c>。</summary>
+    /// <summary>标题 → 文件名：<c>yyyy-MM-dd &lt;清理后标题&gt;.md</c>；标题空则 <c>yyyy-MM-dd_HHmmss.md</c>。</summary>
     private static string BuildFileName(string title, DateTime dt)
     {
         if (string.IsNullOrWhiteSpace(title))
-            return dt.ToString("yyyy-MM-dd_HHmmss") + ".txt";
+            return dt.ToString("yyyy-MM-dd_HHmmss") + Extension;
         string clean = CleanFileNameFromTitle(title);
         if (clean.Length > 60) clean = clean.Substring(0, 60);
-        return dt.ToString("yyyy-MM-dd") + " " + clean + ".txt";
+        return dt.ToString("yyyy-MM-dd") + " " + clean + Extension;
     }
 
     private static string AvoidCollision(string path, string? oldPath)
@@ -291,9 +346,10 @@ internal sealed class NoteRepository
             return path;
         string dir = System.IO.Path.GetDirectoryName(path)!;
         string name = System.IO.Path.GetFileNameWithoutExtension(path);
+        string ext = System.IO.Path.GetExtension(path);
         for (int i = 2; i < 1000; i++)
         {
-            string candidate = System.IO.Path.Combine(dir, name + " (" + i + ").txt");
+            string candidate = System.IO.Path.Combine(dir, name + " (" + i + ")" + ext);
             if (!File.Exists(candidate)
                 || string.Equals(candidate, oldPath, StringComparison.OrdinalIgnoreCase))
                 return candidate;

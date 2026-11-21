@@ -80,11 +80,79 @@ internal static class NoteActions
         };
     }
 
-    /// <summary>正文第一行（去掉首尾空白，最多 40 字）作为默认标题。</summary>
-    private static string FirstLine(string body)
+    /// <summary>正文第一行有效内容（跳过开头空行、去掉 Markdown 记号，最多 40 字）作为默认标题。</summary>
+    internal static string FirstLine(string body)
     {
-        string first = body.Replace("\r\n", "\n").Split('\n')[0].Trim();
+        string first = "";
+        foreach (string line in body.Replace("\r\n", "\n").Split('\n'))
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            first = StripMarkdownPrefix(line);
+            break;
+        }
         return first.Length <= 40 ? first : first[..40];
+    }
+
+    /// <summary>
+    /// 去掉行首的 Markdown 记号（<c># 标题</c> / <c>- 项</c> / <c>1. 项</c> / <c>&gt; 引用</c> / <c>- [ ] 待办</c>），
+    /// 只取第一行当标题时用。记号后面必须跟着空白才算：<c>-5 度</c>、<c>1.5 倍</c> 原样保留。
+    /// 整行都被去空时退回原行（别把标题弄成空串）。
+    /// </summary>
+    internal static string StripMarkdownPrefix(string line)
+    {
+        string original = line.Trim();
+        string text = original;
+        while (true)
+        {
+            string next = text.TrimStart();
+            if (next.Length == 0) break;
+
+            // 标题：1–6 个 #，后面必须跟空白（`#标题` 不算，但也不该误伤）
+            int hashes = 0;
+            while (hashes < next.Length && next[hashes] == '#') hashes++;
+            if (hashes is > 0 and <= 6 && hashes < next.Length && char.IsWhiteSpace(next[hashes]))
+            {
+                text = next[(hashes + 1)..];
+                continue;
+            }
+
+            // 引用
+            if (next[0] == '>')
+            {
+                text = next[1..];
+                continue;
+            }
+
+            // 待办：[ ] / [x]
+            if (next.Length >= 3 && next[0] == '[' && next[2] == ']' && (next[1] == ' ' || next[1] is 'x' or 'X'))
+            {
+                text = next[3..];
+                continue;
+            }
+
+            // 列表：- * + 或 1. 1)，后面必须跟空白
+            int marker = 0;
+            if (next[0] is '-' or '*' or '+')
+            {
+                marker = 1;
+            }
+            else
+            {
+                int digits = 0;
+                while (digits < next.Length && char.IsAsciiDigit(next[digits])) digits++;
+                if (digits > 0 && digits + 1 < next.Length && next[digits] is '.' or ')') marker = digits + 1;
+            }
+            if (marker > 0 && marker < next.Length && char.IsWhiteSpace(next[marker]))
+            {
+                text = next[(marker + 1)..];
+                continue;
+            }
+
+            break;
+        }
+
+        string result = text.Trim();
+        return result.Length == 0 ? original : result;
     }
 }
 
