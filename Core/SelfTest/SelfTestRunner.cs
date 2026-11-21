@@ -58,6 +58,7 @@ internal static class SelfTestRunner
         PanelClipboardSuite.Register(cases);
         TableSuite.Register(cases);
         UiaPickSuite.Register(cases);
+        SnapTreeSuite.Register(cases);
         KnowledgeSuite.Register(cases);
         InfoHelperSuite.Register(cases);
         CaptureProSuite.Register(cases);

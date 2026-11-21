@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using LTools.Features.CapturePro;
 using LTools.Native;
 
 namespace LTools.Views;
@@ -52,13 +53,16 @@ public partial class ScreenPickerWindow : Window
 
     // —— 窗口 / 控件探测（框选模式）——
     private readonly List<SnapBox> _windowTargets = new();   // Win32 窗口树，打开时枚举一次
-    private readonly Dictionary<IntPtr, List<SnapBox>> _uiaTrees = new();   // 顶层窗口 → 整棵控件子树
-    private List<SnapBox> _uiaTargets = new();               // 光标所在窗口的控件子树
+    private readonly SnapProbe _probe = new();               // 按窗口缓存的「懒下钻」控件树
+    private IReadOnlyList<SnapBox> _uiaTargets = Array.Empty<SnapBox>();   // 光标那条支路（深 → 浅）
+    private SnapStop _uiaStop = SnapStop.complete;
+    private int _uiaSignature;
+    private IntPtr _uiaWindow;
     private readonly List<SnapBox> _hoverCandidates = new();
     private int _hoverIndex;
     private SnapBox? _hoverTarget;
     private Point _hoverAt = new(-9999, -9999);
-    private IntPtr _uiaPending;      // 正在后台枚举的窗口
+    private IntPtr _uiaPending;      // 正在后台补层的窗口
     private string _notice = "";     // 「已复制坐标」这类一次性提示
     private DispatcherTimer? _noticeTimer;
 
@@ -661,8 +665,10 @@ public partial class ScreenPickerWindow : Window
 
         if (_uiaPending != IntPtr.Zero)
             text += " · 识别控件中…";
-        else if (_uiaTargets.Count == 0 && _windowTargets.Count > 0)
-            text += " · 未检测到控件，可直接拖拽框选";
+        else if (_uiaStop == SnapStop.timeout)
+            text += " · 读控件超时，可直接拖拽框选";
+        else if (_uiaStop == SnapStop.failed)
+            text += " · 这个窗口不暴露控件，可直接拖拽框选";
 
         HintText.Text = text;
     }
@@ -773,7 +779,7 @@ public partial class ScreenPickerWindow : Window
         e.Handled = true;
     }
 
-    /// <summary>光标移动时更新悬停候选（窗口树即时，控件子树按窗口缓存、异步取一次）。</summary>
+    /// <summary>光标移动时更新悬停候选：窗口树即时，控件走「懒下钻」（只用已展开的层）。</summary>
     private void UpdateHover(Point p)
     {
         if (IsValid(_sel)) { SetHover(null); return; }
@@ -782,15 +788,19 @@ public partial class ScreenPickerWindow : Window
         IntPtr top = ScreenSnapTargets.TopWindowAtPoint(
             new WindowInteropHelper(this).Handle, screen);
 
-        // 第一次进这个窗口：后台把它的控件子树取回来（之后移动鼠标纯本地判断）。
-        EnsureUiaTree(top);
+        // 只读缓存（微秒级）；没读到的层交给后台再走一趟，绝不在这里发跨进程调用。
+        SnapPath path = top == IntPtr.Zero
+            ? SnapPath.Empty
+            : _probe.Resolve(top, screen, _monitor, expand: false);
+        ApplyPath(top, path);
+        EnsureUiaTree(top, screen, path);
 
         _hoverCandidates.Clear();
         var seen = new HashSet<(int X, int Y, int W, int H)>();
 
         // 只保留最上层那个窗口及其子控件：窗口树里也包含被遮住的后台窗口，
         // 不过滤的话光标处可能挑中最上层看不见的小控件。
-        void Collect(List<SnapBox> boxes)
+        void Collect(IReadOnlyList<SnapBox> boxes)
         {
             foreach (var box in boxes)
             {
@@ -834,29 +844,35 @@ public partial class ScreenPickerWindow : Window
         top == IntPtr.Zero || box.Owner == IntPtr.Zero || box.Owner == top;
 
     /// <summary>
-    /// 按窗口缓存控件子树：UIA 是跨进程调用，慢应用一次能花几十到几百毫秒，
-    /// 所以整棵树只在**第一次进入某个窗口**时后台取一次，之后鼠标移动只是本地包含判断。
+    /// 把这条支路接到吸附线 / 悬停候选上。矩形没变就不重建（每次鼠标移动都重算吸附线会很贵：
+    /// 里面还要再枚举一次窗口树）。
     /// </summary>
-    private void EnsureUiaTree(IntPtr top)
+    private void ApplyPath(IntPtr top, SnapPath path)
     {
-        if (top == IntPtr.Zero) return;
+        if (top == _uiaWindow && path.Signature == _uiaSignature && path.Stop == _uiaStop) return;
 
-        if (_uiaTrees.TryGetValue(top, out var cached))
-        {
-            if (!ReferenceEquals(_uiaTargets, cached))
-            {
-                _uiaTargets = cached;
-                RebuildSnapLines();
-            }
-            return;
-        }
+        _uiaWindow = top;
+        _uiaSignature = path.Signature;
+        _uiaTargets = path.Boxes;
+        _uiaStop = path.Stop;
+        RebuildSnapLines(top);
+    }
 
-        if (_uiaPending == top) return;   // 已经有人在查这个窗口了
+    /// <summary>
+    /// 缺层时在后台补一趟（<c>expand: true</c>）：一次只沿光标那条支路往下，缺几层补几层。
+    /// 同一个窗口同时只排一趟；连续没进展的窗口由 <see cref="SnapProbe"/> 标记放弃。
+    /// </summary>
+    private void EnsureUiaTree(IntPtr top, System.Drawing.Point screen, SnapPath path)
+    {
+        if (top == IntPtr.Zero || path.Complete) return;
+        if (_uiaPending == top) return;              // 已经有人在补这个窗口了
+        if (!_probe.CanExpand(top)) return;          // 这个窗口读不动了，别每次移动都白排一趟
+
         _uiaPending = top;
+        System.Drawing.Rectangle monitor = _monitor;
 
-        var monitor = _monitor;
-        Task.Run(() => ScreenSnapTargets.FromWindowTree(top, monitor))
-            .ContinueWith(t =>
+        Task.Run(() => _probe.Resolve(top, screen, monitor, expand: true))
+            .ContinueWith(_ =>
             {
                 if (Dispatcher.HasShutdownStarted) return;
                 Dispatcher.BeginInvoke(new Action(() =>
@@ -864,26 +880,13 @@ public partial class ScreenPickerWindow : Window
                     if (_uiaPending != top) return;
                     _uiaPending = IntPtr.Zero;
 
-                    if (t.Status != TaskStatus.RanToCompletion)
-                    {
-                        UpdateChrome();
-                        return;
-                    }
-
-                    // 空结果也缓存：说明这个程序不暴露 UIA，别再反复问它。
-                    if (_uiaTrees.Count > 40) _uiaTrees.Clear();
-                    _uiaTrees[top] = t.Result;
-
                     if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out var dip))
                     {
                         var at = Clamp(dip);
                         if (ScreenSnapTargets.TopWindowAtPoint(
-                                new WindowInteropHelper(this).Handle, ToScreen(at)) == top)
-                        {
-                            _uiaTargets = t.Result;
-                            RebuildSnapLines();
-                            if (!IsValid(_sel)) UpdateHover(at);
-                        }
+                                new WindowInteropHelper(this).Handle, ToScreen(at)) == top &&
+                            !IsValid(_sel))
+                            UpdateHover(at);
                     }
 
                     UpdateChrome();
@@ -891,15 +894,18 @@ public partial class ScreenPickerWindow : Window
             });
     }
 
-    /// <summary>收集吸附值（DIP）：只取光标下最上层窗口及子控件的边 + 屏幕四边。</summary>
-    private void RebuildSnapLines()
+    /// <summary>
+    /// 收集吸附值（DIP）：只取光标下最上层窗口及子控件的边 + 屏幕四边。
+    /// <paramref name="top"/> 给定时不再自己找一次顶层窗口（鼠标移动路径上已经在找了）。
+    /// </summary>
+    private void RebuildSnapLines(IntPtr? top = null)
     {
         var xs = new List<double>(_windowTargets.Count * 2 + 16);
         var ys = new List<double>(_windowTargets.Count * 2 + 16);
 
-        IntPtr top = IntPtr.Zero;
-        if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out _))
-            top = ScreenSnapTargets.TopWindowAtPoint(
+        IntPtr owner = top ?? IntPtr.Zero;
+        if (top == null && Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out _))
+            owner = ScreenSnapTargets.TopWindowAtPoint(
                 new WindowInteropHelper(this).Handle, new System.Drawing.Point(cursor.X, cursor.Y));
 
         void Add(System.Drawing.Rectangle b)
@@ -912,9 +918,9 @@ public partial class ScreenPickerWindow : Window
 
         // 后台窗口的边也吸的话，框会被「看不见的窗口」拽住——Quicker / Snipaste 都只吸看得见的那个。
         foreach (var box in _windowTargets)
-            if (OwnedBy(box, top)) Add(box.Bounds);
+            if (OwnedBy(box, owner)) Add(box.Bounds);
         foreach (var box in _uiaTargets)
-            if (OwnedBy(box, top)) Add(box.Bounds);
+            if (OwnedBy(box, owner)) Add(box.Bounds);
         xs.Add(0); xs.Add(ActualWidth);
         ys.Add(0); ys.Add(ActualHeight);
 

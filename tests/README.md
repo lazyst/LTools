@@ -45,6 +45,7 @@ dotnet run --no-build -- behavior     # 只跑一段（改哪块跑哪段）
 | `drawing` | 绘制行为：默认值 / 工具清单窗口 / 自动选中 / 快速选择 / Delete 删字符 / 组首按钮 |
 | `colorpresets` | 颜色预设：三族 15 色 / 设置页 / 跟随工具切换 / 取色弹窗（色板·色相条·透明度条·HEX/RGB/HSB） |
 | `regiondrag` | 多块选区：拖命中的那一块 / 按住 Space 整体挪 / 中途换口径 / 外接框按并集 |
+| `smart` | 智能选区：悬停预选 / 滚轮换层 / Tab 切整窗 / 单击确认 / 手框 / 右键退出（命中路径用 `SnapProbe.Pin` 注入，不依赖真实 UIA） |
 | `historydisplay` | 采集历史轮播：底图落盘 / 每块屏裁图 / 卡片与大图翻张 / 重新编辑还原选区·外观·标注·撤销栈 |
 | `split` / `collage` / `collagepdf` | 切图 / 拼图 / 拼图 PDF |
 | `history` / `hidetotop` / `pinocr` / `clipboardmeta` | 采集历史 / 贴图收顶部 / 贴图识别 / 剪贴板元数据 |
@@ -106,12 +107,15 @@ TSV 3 行每行 2 个制表符、CSV 按 CRLF 分 3 行、Markdown 4 行（表�
 
 ```powershell
 cd tests\UiaPickSmoke
-dotnet run                                # 15 条，约 5 秒
+dotnet run                                # 22 条，约 5 秒
 ```
 
 起一个**子进程** WPF 窗口（两个带 AutomationId 的按钮），对它的真实 UIA 控件树跑
 `ControlTargets.Snapshot` / `AtPoint` / `RollUp` / `CountSame`：跨进程取树、按 AutomationId 找到
 「确定」按钮、光标落在按钮上命中后能抬回 Button、同名计数只有它自己、窗口外的点不命中。
+
+同一份窗口也跑截图吸附那条链路（`SnapProbe` → `SnapTree` → FlaUI）：`Resolve(expand: true)`
+能一路钻到「按钮 · 确定」那一层并走完、路径深 → 浅、标签读得到、第二趟 `expand: false` 直接命中缓存。
 
 **必须分两个进程**：UIA 的 provider 在目标进程的 UI 线程上响应，同一个进程里父线程阻塞等结果
 会死锁（消息循环发不出响应）。所以 `dotnet run` 不带参数是父进程，带 `host` 是子进程窗口。

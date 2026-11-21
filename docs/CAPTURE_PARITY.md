@@ -303,7 +303,7 @@
 | 上游键 | 上游语义 | LTools 处理 |
 | --- | --- | --- |
 | `screenshot/api_mode`（`auto` 等） | 截图抓帧后端可切 | 只有 GDI `BitBlt`（`Native/ScreenCapture`），与录屏共用同一条抓帧路径；没有 WGC / DXGI 等价后端，不落下拉 |
-| `screenshot/window_element_api`（默认 `uia`） | 智能选区的窗口 / 控件识别后端可切（UIA / Win32 等） | 只有 FlaUI UIA（`ScreenSnapTargets` / `AiUia`）。没有第二套识别后端，切换等于换一个坏掉的默认值，所以不落下拉；UIA 拿不到时按现有降级（整窗矩形 + 手框） |
+| `screenshot/window_element_api`（默认 `uia`） | 智能选区的窗口 / 控件识别后端可切（**`msaa` / `uia`**，默认 `uia`） | 只有 FlaUI UIA（`Features/CapturePro/SnapTree.cs` 的 `ISnapSource` 实现 / `AiUia`）。没有第二套识别后端，切换等于换一个坏掉的默认值，所以不落下拉；UIA 拿不到时按现有降级（整窗矩形 + 手框）。**取树方式是「懒下钻」**（2026-11-21，照上游 `snow-ui-selector`）：只沿光标那条支路逐层展开 + 整层缓存，不再一次性 BFS 整棵树（旧实现的节点上限按层序截断，深层内容永远最后才轮到，是有窗口只能吸整窗的根因） |
 | `global_mouse/*`（8 个动作：截图复制 / 贴图 / OCR / 翻译 / 识别复制 / 快速保存 / 保存 / 录屏） | 用鼠标手势在任意程序里直接触发这些动作 | LTools 的鼠标钩子只有两条固定手势（裸右键长按 = 面板、屏幕边缘滚轮 = 音量），没有「鼠标手势 → 任意动作」的绑定系统。要一键截图请用全局快捷键（`hotkeys.json` 的「截图 Pro」组）、面板、悬浮或自动触发——这些都是既有入口，不另造一套鼠标手势配置 |
 | `tray/enabled` / `use_system_icon_color` / `icon` / `custom_icon` / `dark_icon` / `dark_custom_icon` | 托盘图标可隐藏、可换图标 / 跟随系统色 / 深色图标 | LTools 托盘是主入口（启用 CapsLock、启用面板、暂停自动触发、退出），**不提供隐藏**（隐藏后只能杀进程才能退出）；图标固定用主题灰阶，不做自定义图标 / 双色图标 |
 | `tray/left_click_action` / `middle_click_action` | 托盘左键 / 中键单击直接执行截图动作 | LTools 托盘左键单击 = 打开面板，**双击**行为可配（`TrayDoubleClick`：设置 / 动作管理 / 快捷键 / 键鼠宏 / 自动触发 / 面板管理），中键无动作。改成「单击直接截图」会和「左键打开面板」冲突，所以保留现有语义；要单击截图请绑全局快捷键 |
@@ -865,6 +865,7 @@
   - **平台差异**（写进 §5）：`api_mode` 只有 GDI 一种实现、进度条用 `drawbox` 重编码一遍。
   - 验收：构建 0 错 0 警；`--selftest` 全量 **296 用例 17490 断言全绿**（新增「录屏：设置默认值 / 质量换算 / 清晰度 / 进度条」）；`capture-overlay-smoke` 新增 `recordsettings` 段 **71 条**（默认值回显 / 改控件即刷 `AppState.Record` 与 `settings.json` / 半截色值不落盘 / 读盘往返 / 写入侧归一 / 全局默认值进开录计划），全量 **2981 条 0 失败**。
 
+- 2026-11-21：**截图吸附的控件树改成「懒下钻」**（`Features/CapturePro/SnapTree.cs` + `SnapProbe.cs`）：只沿光标那条支路逐层展开、展开过的层按窗口缓存，UI 线程只读缓存、后台补层。旧实现「进窗口就 BFS 整棵树」（限深 8 / 每层 160 / 共 700）有两个坑：节点上限按**层序**截断（深层内容永远最后才轮到），以及 `catch` 把 provider 超时当成「没有孩子」。两者叠加的产物就是「某些窗口只能吸附整个窗口」。这次同时补：空集合（叶子）与失败分开、超时重试一次、失败按节点缓存、等大 Pane / Group 的结构回溯、跳过离屏元素、`TopWindowAtPoint` 排掉 cloaked 窗口。对照实现见 `C:\main\APPS\_refs\snow-shot\snow-crates\crates\snow-ui-selector`（它用 UIA cache request 把每层压到一次调用；我们靠「一层一次、只走一条支路」把总量从两千多次降到几十次，所以没接 `CacheRequest`）。回归：`--selftest --filter snapTree`（假树 10 用例）+ `tests/UiaPickSmoke`（真 UIA 的整条链路）。
 - 2026-11-19：**P9-h 完成（应用外壳类键登记）**。上游 `configurationschema.cpp` 里剩下的 `global_mouse/*` / `tray/*` / `interface/*` / `system/*` / `network/*` / `updates/*` / `cloud_upload/*` / `mcp/*` / `screenshot/api_mode` / `screenshot/window_element_api` 逐键写进 `docs/CAPTURE_PARITY.md` §5.1，**只登记不落代码**（不给按了没反应的开关）。
   - **已有等价实现**（标「已有」）：`interface/screenshot_history_page_size` / `pinned_window_management_page_size`（`CaptureHistoryPageSize` / `PinPageSize`）、`system/auto_start_at_boot`（任务计划 `AutoStartService`）、`mcp/enabled`（LTools 自己的 MCP 服务）、`system/annotation_mode_when_opening_for_editing`（LTools 的「编辑」就是标注画布，恒为开）。
   - **单一实现，不做后端切换**：`screenshot/api_mode`（只有 GDI）、`screenshot/window_element_api`（只有 FlaUI UIA）、`screen_recording/api_mode`（见 P9-g）。

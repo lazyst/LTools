@@ -368,7 +368,8 @@ public partial class CaptureOverlayWindow
         text += " · Alt 参考线 · , / . 翻历史 · 右键 / Esc 取消";
 
         if (_uiaPending != IntPtr.Zero) text += " · 识别控件中…";
-        else if (_uiaTargets.Count == 0 && _windowTargets.Count > 0) text += " · 未检测到控件，可直接拖拽框选";
+        else if (_uiaStop == SnapStop.timeout) text += " · 读控件超时，可直接拖拽框选";
+        else if (_uiaStop == SnapStop.failed) text += " · 这个窗口不暴露控件，可直接拖拽框选";
         HintText.Text = text;
     }
 

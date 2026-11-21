@@ -63,8 +63,11 @@ public partial class CaptureOverlayWindow
         return true;
     }
 
-    /// <summary>收集吸附值（DIP）：只取光标下最上层窗口及子控件的边 + 屏幕四边。</summary>
-    private void RebuildSnapLines()
+    /// <summary>
+    /// 收集吸附值（DIP）：只取光标下最上层窗口及子控件的边 + 屏幕四边。
+    /// <paramref name="top"/> 给定时不再自己找一次顶层窗口（鼠标移动路径上已经在找了）。
+    /// </summary>
+    private void RebuildSnapLines(IntPtr? top = null)
     {
         var xs = new List<double>(_windowTargets.Count * 2 + 16);
         var ys = new List<double>(_windowTargets.Count * 2 + 16);
@@ -73,9 +76,9 @@ public partial class CaptureOverlayWindow
         if (BrowsingHistory) { _snapXs = xs; _snapYs = ys; return; }
 
         IntPtr hwnd = _hwnd != IntPtr.Zero ? _hwnd : new WindowInteropHelper(this).Handle;
-        IntPtr top = IntPtr.Zero;
-        if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out _))
-            top = ScreenSnapTargets.TopWindowAtPoint(hwnd, new System.Drawing.Point(cursor.X, cursor.Y));
+        IntPtr owner = top ?? IntPtr.Zero;
+        if (top == null && Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out _))
+            owner = ScreenSnapTargets.TopWindowAtPoint(hwnd, new System.Drawing.Point(cursor.X, cursor.Y));
 
         void Add(System.Drawing.Rectangle b)
         {
@@ -87,9 +90,9 @@ public partial class CaptureOverlayWindow
 
         // 后台窗口的边也吸的话，框会被「看不见的窗口」拽住——只吸看得见的那个
         foreach (var box in _windowTargets)
-            if (OwnedBy(box, top)) Add(box.Bounds);
+            if (OwnedBy(box, owner)) Add(box.Bounds);
         foreach (var box in _uiaTargets)
-            if (OwnedBy(box, top)) Add(box.Bounds);
+            if (OwnedBy(box, owner)) Add(box.Bounds);
 
         // 每块显示器的边：跨屏拖框时能贴住屏幕交界，也能直接框住某一块屏
         foreach (var monitor in ScreenShot.Monitors()) Add(ScreenShot.ToRectangle(monitor));

@@ -279,6 +279,13 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "smart")
+        {
+            SmartSelectionSection();
+            Console.WriteLine(_failed == 0 ? "smart-only：通过" : $"smart-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         if (_only == "historydisplay")
         {
             HistoryDisplaySection();
@@ -9409,7 +9416,7 @@ internal static partial class Program
         double scale = width / Math.Max(1, window.Width);
 
         var asm = typeof(CaptureOverlayWindow).Assembly;
-        var snapType = asm.GetType("LTools.Views.SnapBox")!;
+        var snapType = asm.GetType("LTools.Features.CapturePro.SnapBox")!;
         var modeType = asm.GetType("LTools.Features.CapturePro.SmartSelectionMode")!;
         var targetType = asm.GetType("LTools.Features.CapturePro.SmartSelectionTarget")!;
         var animType = asm.GetType("LTools.Features.CapturePro.SelectionTransition")!;
@@ -9459,12 +9466,16 @@ internal static partial class Program
             "TopWindowAtPoint", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!;
         var top = (IntPtr)topAt.Invoke(null, new object[] { hwnd, new System.Drawing.Point(cx, cy) })!;
 
-        // 把那个顶层窗口的 UIA 子树预先钉成空：真实 UIA 是异步的，跑起来会打乱候选
-        var trees = (System.Collections.IDictionary)Field(window, "_uiaTrees")!;
-        trees.Clear();
-        trees[top] = Activator.CreateInstance(typeof(List<>).MakeGenericType(snapType))!;
-        SetField(typeof(CaptureOverlayWindow), window, "_uiaPending", IntPtr.Zero);
-        ((System.Collections.IList)Field(window, "_uiaTargets")!).Clear();
+        // 真实 UIA 在无人值守机器上不可控（光标下永远是桌面窗口）：把命中路径钉成下面注入的三块。
+        var pinned = Activator.CreateInstance(typeof(List<>).MakeGenericType(snapType))!;
+        var pinnedList = (System.Collections.IList)pinned;
+        pinnedList.Add(Box(boxButton, "按钮"));
+        pinnedList.Add(Box(boxPanel, "侧栏"));
+        pinnedList.Add(Box(boxWindow, "编辑器窗口"));
+
+        var probe = Field(window, "_probe")!;
+        probe.GetType().GetMethod("Pin", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
+            .Invoke(probe, new object[] { top, pinned });
 
         var dip = new Point(300 / scale, 200 / scale);
         var screenAt = (System.Drawing.Point)InvokeValue(window, "ToScreen", dip);

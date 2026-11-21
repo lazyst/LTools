@@ -97,6 +97,9 @@ internal static class Program
 
             Check("标题过滤能按窗口找到它",
                 FilterTitle(tree, "确定").Any(n => n.AutomationId == "OkBtn"));
+
+            // 截图吸附的「懒下钻」链路（SnapProbe → SnapTree → FlaUI）：真 UIA，不是假树
+            SnapTreeCheck(hwnd, ok);
         }
         catch (Exception ex)
         {
@@ -171,6 +174,52 @@ internal static class Program
         (System.Collections.Generic.IReadOnlyList<ControlTarget>)Targets
             .GetMethod("Filter", BindingFlags.Public | BindingFlags.Static)!
             .Invoke(null, new object?[] { tree.Nodes, query })!;
+
+    // ============ 截图吸附的懒下钻（真 UIA） ============
+
+    /// <summary>
+    /// 控件选择器那套是「一次拍全量快照」；截图吸附用的是「只沿光标那条支路下钻」。
+    /// 这里对同一个子进程窗口跑后者：能走到「确定」按钮那一层，第二趟全在缓存里。
+    /// </summary>
+    private static void SnapTreeCheck(IntPtr hwnd, ControlTarget ok)
+    {
+        var probeType = typeof(ControlTree).Assembly
+            .GetType("LTools.Features.CapturePro.SnapProbe", throwOnError: true)!;
+        object probe = Activator.CreateInstance(probeType)!;
+        MethodInfo resolve = probeType.GetMethod("Resolve", BindingFlags.Public | BindingFlags.Instance)!;
+
+        var center = new DPoint(ok.Bounds.X + ok.Bounds.Width / 2, ok.Bounds.Y + ok.Bounds.Height / 2);
+        var monitor = new Rectangle(ok.Bounds.X - 400, ok.Bounds.Y - 400,
+            ok.Bounds.Width + 800, ok.Bounds.Height + 800);
+
+        object path = resolve.Invoke(probe, new object[] { hwnd, center, monitor, true })!;
+        Type pathType = path.GetType();
+        string stop = pathType.GetProperty("Stop")!.GetValue(path)!.ToString()!;
+        int depth = (int)pathType.GetProperty("Depth")!.GetValue(path)!;
+
+        Check("吸附：读到了控件树", stop != "failed" && stop != "timeout", stop);
+        Check("吸附：支路走完", (bool)pathType.GetProperty("Complete")!.GetValue(path)!);
+        Check("吸附：深度大于 1", depth > 1, $"depth={depth}");
+
+        var boxes = ((System.Collections.IEnumerable)pathType.GetProperty("Boxes")!.GetValue(path)!)
+            .Cast<object>()
+            .Select(box => (
+                Bounds: (Rectangle)box.GetType().GetProperty("Bounds")!.GetValue(box)!,
+                Label: (string)box.GetType().GetProperty("Label")!.GetValue(box)!))
+            .ToList();
+
+        Check("吸附：路径里有「确定」按钮的矩形", boxes.Any(b => b.Bounds == ok.Bounds),
+            string.Join(" | ", boxes.Select(b => $"{b.Label} {b.Bounds.Width}×{b.Bounds.Height}")));
+        Check("吸附：矩形深 → 浅（第一条最小）",
+            boxes.Count > 0 &&
+            boxes[0].Bounds.Width * boxes[0].Bounds.Height <= boxes[^1].Bounds.Width * boxes[^1].Bounds.Height);
+        Check("吸附：控件标签读到了", boxes.Any(b => b.Label.Length > 0));
+
+        // 第二趟只用缓存：同一支路不再发跨进程调用
+        object cached = resolve.Invoke(probe, new object[] { hwnd, center, monitor, false })!;
+        Check("吸附：缓存命中（第二趟直接完成）",
+            (bool)cached.GetType().GetProperty("Complete")!.GetValue(cached)!);
+    }
 
     // ============ 等窗口 / 读窗口 ============
 
