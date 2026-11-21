@@ -57,6 +57,20 @@ dotnet run --no-build -- behavior     # 只跑一段（改哪块跑哪段）
 | `picker` | 取色 / 坐标卡：选择工具下跟着光标 / 11×11 放大预览 / X·Y 坐标 / 色带与字色 / 显示时机 / Shift+P 相对坐标 |
 | 不带参数 | 上面全部 + 覆盖层主链路（选区 / 标注 / 样式 / 多选 / 取色·坐标卡 / 贴图 / 识别 / 转换 / 翻译 / PDF…） |
 
+### `MenuConeSmoke`（右键菜单「预测锥」）
+
+```powershell
+dotnet build -p:NoWin32Manifest=true      # 先构建产品：这个工程直接引用 bin\Debug 里的 LTools.dll
+cd tests\MenuConeSmoke
+dotnet build -v q
+dotnet run --no-build                     # 15 条，约 5 秒
+```
+
+真 `ContextMenu` + `SetCursorPos` 斜着穿过相邻菜单项走向子菜单，断言「看得见的行为」：
+悬停父项立即展开 / 斜穿 360ms 不换项、不冒出第二个子菜单 / 指针进子菜单后停留 600ms 仍打开 /
+明确移到邻项才换 / 锥内短停 140ms 保持、停 660ms 让位 / 被划过的邻项底板不是 `HoverBg`（`#00FFFFFF`）/
+横向离开菜单后子菜单收起。它会真的动鼠标，结束时把光标放回原处。
+
 ### 写法约定
 
 - `Check(条件, "中文断言文案")`：失败只记一条，不中断（最后汇总失败数）。

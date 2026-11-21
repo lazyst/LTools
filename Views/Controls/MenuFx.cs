@@ -20,6 +20,11 @@ namespace LTools.Views.Controls;
 /// （「菜单点不动」最容易被当成 bug 的地方）。现在 <see cref="HoverOpenMs"/> = 0：
 /// <c>MouseEnter</c> 里立即展开，同时挂上 <c>Click</c>。
 /// </para>
+/// <para>
+/// 但「立即展开」会让**斜穿**相邻项变成一次次误切换：指针从父项往子菜单走时必然划过几个邻项。
+/// 通道由 <see cref="MenuCone"/>（预测锥 / safe triangle）负责，这里只在每个钩子上问它一句——
+/// 悬停能不能开（<c>BlocksOpen</c>）、宽限计时器要不要让路（<c>HoldsOwner</c>）、锥送出去了没（<c>Forget</c>）。
+/// </para>
 /// </remarks>
 internal static class MenuFx
 {
@@ -69,6 +74,10 @@ internal static class MenuFx
         mi.MouseEnter += (_, _) =>
         {
             closeTimer?.Stop();
+
+            // 预测锥：指针正在往**另一个**子菜单走的通道里，只是路过这一项 → 不展开、也不点亮它
+            if (MenuCone.BlocksOpen(mi)) return;
+
             if (mi.IsSubmenuOpen) return;
             if (HoverOpenMs <= 0)
             {
@@ -79,7 +88,7 @@ internal static class MenuFx
             openTimer ??= NewTimer(() =>
             {
                 openTimer!.Stop();
-                if (mi.IsMouseOver) OpenNow();
+                if (mi.IsMouseOver && !MenuCone.BlocksOpen(mi)) OpenNow();
             }, HoverOpenMs);
             openTimer.Stop();
             openTimer.Start();
@@ -94,8 +103,11 @@ internal static class MenuFx
 
         mi.SubmenuOpened += (_, _) =>
         {
+            // 预测锥布在这里：子菜单一开，指针往它走的通道就开始生效
+            MenuCone.Arm(mi);
+
             if (popupChild != null) return;
-            popupChild = PopupChild(mi);
+            popupChild = MenuCone.PopupChild(mi);
             if (popupChild == null) return;
             popupChild.MouseEnter += (_, _) => closeTimer?.Stop();
             popupChild.MouseLeave += (_, _) => ScheduleClose();
@@ -105,6 +117,7 @@ internal static class MenuFx
         {
             openTimer?.Stop();
             closeTimer?.Stop();
+            MenuCone.Forget(mi);
         };
 
         menu.Items.Add(mi);
@@ -116,6 +129,10 @@ internal static class MenuFx
         void ScheduleClose()
         {
             if (!mi.IsSubmenuOpen) return;
+
+            // 预测锥正压着这一项（指针在往子菜单走的通道里）：宽限计时器让路，别把子菜单收掉
+            if (MenuCone.HoldsOwner(mi)) return;
+
             if (HoverCloseMs <= 0)
             {
                 CollapseIfPointerOutside(mi, popupChild);
@@ -127,6 +144,7 @@ internal static class MenuFx
                 closeTimer!.Stop();
                 // 宽限到点时指针已经在「父项 + 子菜单」里 = 用户是在往子菜单里挪，不收
                 if (Anywhere()) return;
+                if (MenuCone.HoldsOwner(mi)) return;
                 CollapseIfPointerOutside(mi, popupChild);
             }, HoverCloseMs);
             closeTimer.Stop();
@@ -147,14 +165,32 @@ internal static class MenuFx
         if (!element.IsVisible || element.RenderSize.Width <= 0 || element.RenderSize.Height <= 0)
             return false;
 
-        var p = Mouse.GetPosition(element);
-        return p.X >= 0 && p.Y >= 0
-               && p.X <= element.RenderSize.Width && p.Y <= element.RenderSize.Height;
+        try
+        {
+            var p = Mouse.GetPosition(element);
+            return p.X >= 0 && p.Y >= 0
+                   && p.X <= element.RenderSize.Width && p.Y <= element.RenderSize.Height;
+        }
+        catch
+        {
+            // 元素已经脱离 PresentationSource（子菜单刚拆掉）：当作不在里面
+            return false;
+        }
     }
 
-    /// <summary>子菜单的 popup 内容（独立窗口，父项的 <c>IsMouseOver</c> 覆盖不到）。</summary>
-    private static UIElement? PopupChild(MenuItem mi) =>
-        mi.Template?.FindName("PART_Popup", mi) is Popup { Child: UIElement child } ? child : null;
+    /// <summary>
+    /// 「指针在预测锥里划过这一项」：只用于**压掉它的高亮**——WPF 在 MouseEnter 时已经把
+    /// <c>IsHighlighted</c> 点亮了，而用户其实是在往另一个子菜单走，邻项闪一下会像「菜单换项」。
+    /// 主题里按这个附加属性把底色刷回透明（触发器排在 <c>IsHighlighted</c> 之后，覆盖它）。
+    /// </summary>
+    public static readonly DependencyProperty ConePassOverProperty = DependencyProperty.RegisterAttached(
+        "ConePassOver", typeof(bool), typeof(MenuFx), new PropertyMetadata(false));
+
+    public static bool GetConePassOver(DependencyObject element) =>
+        (bool)element.GetValue(ConePassOverProperty);
+
+    public static void SetConePassOver(DependencyObject element, bool value) =>
+        element.SetValue(ConePassOverProperty, value);
 
     /// <summary>
     /// 指针离开了父项（或离开了子菜单）：只要不在「父项 + 子菜单」里，就立刻收起子菜单并撤掉高亮，
@@ -164,6 +200,7 @@ internal static class MenuFx
     private static void CollapseIfPointerOutside(MenuItem mi, UIElement? popupChild)
     {
         if (!mi.IsSubmenuOpen) return;
+        if (MenuCone.HoldsOwner(mi)) return;
         if (PointerInside(mi)) return;
         if (popupChild != null && PointerInside(popupChild)) return;
 

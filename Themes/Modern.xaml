@@ -1247,6 +1247,12 @@
                         <Trigger Property="IsSubmenuOpen" Value="True">
                             <Setter TargetName="bd" Property="Background" Value="{StaticResource HoverBgBrush}"/>
                         </Trigger>
+                        <!-- 预测锥：指针从父项斜着走向子菜单时只是「路过」这一项（controls:MenuCone），
+                             别点亮它——WPF 已经把 IsHighlighted 设上了，这里按附加属性压回透明。 -->
+                        <DataTrigger Binding="{Binding Path=(controls:MenuFx.ConePassOver), RelativeSource={RelativeSource Self}}"
+                                     Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="Transparent"/>
+                        </DataTrigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.5"/>
                         </Trigger>
