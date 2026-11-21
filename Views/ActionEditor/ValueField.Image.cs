@@ -125,7 +125,7 @@ public partial class ValueField
         }
         catch (Exception ex)
         {
-            ToastService.Show("预览失败：" + ex.Message, "参数", ToastService.StickyMs, ToastKind.error);
+            ToastService.Show("预览失败：" + ex.Message, "参数", ToastService.LongMs, ToastKind.error);
         }
     }
 

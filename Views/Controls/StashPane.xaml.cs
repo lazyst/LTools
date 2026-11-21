@@ -457,7 +457,7 @@ public sealed partial class StashPane : UserControl
         {
             // 采纳失败一律用常驻提示：新建时面板还开着，模态框会被 Topmost 面板挡住；
             // 覆盖时同样不弹框，按草稿 id 去重，连点不会刷屏。
-            ToastService.Show(ex.Message, "采纳失败", ToastService.StickyMs, ToastKind.error, key: "stash:" + id);
+            ToastService.Show(ex.Message, "采纳失败", ToastService.LongMs, ToastKind.error, key: "stash:" + id);
         }
 
         Reload(force: true);

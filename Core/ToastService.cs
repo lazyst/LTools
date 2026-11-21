@@ -50,8 +50,12 @@ internal static class ToastService
     /// <summary>默认停留时长（ms）。</summary>
     public const int DefaultDurationMs = 4000;
 
-    /// <summary>失败提示默认常驻（等用户看完 / 点掉，下一次运行会替换它）。</summary>
-    public const int StickyMs = 0;
+    /// <summary>
+    /// 需要读一会儿的提示（失败 / 要先看一眼再决定）用这个：**长，但照样会自己消失**。
+    /// 别再用「常驻 + 等用户点掉」——模态窗口（动作编辑器 / 确认框）会把同进程其它窗口禁掉，
+    /// 那期间卡片根本点不动（见 <c>ToastWindow</c> 的 <c>WM_ENABLE</c> 自愈），常驻就等于关不掉。
+    /// </summary>
+    public const int LongMs = 15000;
 
     /// <summary>最多同时显示几条；超出时挤掉最旧的那条。</summary>
     private const int MaxVisible = 4;
@@ -98,7 +102,7 @@ internal static class ToastService
         Show(text, title, durationMs, ToastKind.info);
 
     /// <summary>显示一条带等级 / 位置 / 去重键 / 操作按钮的提示。</summary>
-    /// <param name="durationMs">≤ 0 = 不自动关闭（失败提示用这个）。</param>
+    /// <param name="durationMs">≤ 0 = 不自动关闭；**内部调用一律用 <see cref="DefaultDurationMs"/> / <see cref="LongMs"/>**，别传 0。</param>
     /// <param name="key">去重键：同一个键的提示就地更新并累计次数。</param>
     /// <param name="onClick">底部主操作按钮执行什么（例如打开运行记录）。<b>正文点击不会执行它</b>。</param>
     /// <param name="actionText">主操作按钮上的文字（「查看日志」「打开键鼠宏设置」…）；为空用「查看详情」。</param>

@@ -66,7 +66,7 @@ internal static class AutomationRunner
         {
             AppLog.Error("Flow", $"动作「{action.Name}」没有动作体");
             ToastService.Show($"「{action.Name}」没有动作体，无法运行", "动作失败",
-                ToastService.StickyMs, ToastKind.error, key: "run:" + action.Name,
+                ToastService.LongMs, ToastKind.error, key: "run:" + action.Name,
                 onClick: OpenLogsFolder, actionText: "查看日志");
             return;
         }
@@ -240,7 +240,7 @@ internal static class AutomationRunner
 
             if (notify || noticeOverride != null)
                 ToastService.Show($"「{name}」启动失败：{ex.Message}", "动作失败",
-                    ToastService.StickyMs, ToastKind.error, key: "run:" + name,
+                    ToastService.LongMs, ToastKind.error, key: "run:" + name,
                     onClick: OpenFailureReport, actionText: "查看日志");
         }
         finally
@@ -325,7 +325,7 @@ internal static class AutomationRunner
                 : "动作失败";
 
             ToastService.Show(body, $"{title}（{name}）",
-                ToastService.StickyMs, ToastKind.error, key: key,
+                ToastService.LongMs, ToastKind.error, key: key,
                 onClick: OpenFailureReport, actionText: "查看日志", position: position);
             return;
         }

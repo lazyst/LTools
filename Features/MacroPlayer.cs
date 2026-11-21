@@ -62,7 +62,7 @@ internal static class MacroPlayer
                 options.Loops < 0
                     ? $"「{macro.Name}」无限循环中 · 按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止"
                     : $"「{macro.Name}」回放中 · 按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止",
-                "键鼠宏", ToastService.StickyMs, ToastKind.info, key: PlayKey);
+                "键鼠宏", ToastService.LongMs, ToastKind.info, key: PlayKey);
             PlayCore(macro, options);
             AppLog.Info("Macro", $"回放结束「{macro.Name}」· {started.ElapsedMilliseconds} ms");
         }

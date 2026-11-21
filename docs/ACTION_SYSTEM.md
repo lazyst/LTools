@@ -677,7 +677,8 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 用户反馈：「成功了没反馈，失败了提示一闪就没，还不知道哪一步」。
 
 - `Core/ToastService` 增等级（info / success / warning / error，色条 + 失败红边）、
-  位置（六向）、`key` 去重（就地更新 + `×N`）、`StickyMs`（≤ 0 = 常驻）、点击回调。
+  位置（六向）、`key` 去重（就地更新 + `×N`）、时长（≤ 0 = 不自动关闭；内部调用一律用
+  `DefaultDurationMs` / `LongMs`，**别用 0**）、点击回调。
 - `AutomationRunner` 拆出 `RunCore` / `NotifyFinished`：失败**常驻**红色提示（标题带失败位置，
   点一下打开日志目录），成功按 `AppConfig.RunNotice`（默认只在失败时），停止给 2 秒 info；
   同一动作用 `run:<动作名>` 作 key，下次运行就地替换。移除原 `TrayService.Notify` 的失败提示。

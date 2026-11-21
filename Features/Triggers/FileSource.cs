@@ -198,6 +198,6 @@ internal sealed class FileSource : ITriggerSource
         string detail = string.Join("、", bad.Distinct());
         AppLog.Warn("Triggers", "文件系统变化规则监听目录无效，本次未生效：" + detail);
         ToastService.Show("文件系统变化规则监听目录无效（不存在或无权限），这些规则本次未生效：" + detail,
-            "自动触发", ToastService.StickyMs, ToastKind.error, key: "trigger:badpath");
+            "自动触发", ToastService.LongMs, ToastKind.error, key: "trigger:badpath");
     }
 }

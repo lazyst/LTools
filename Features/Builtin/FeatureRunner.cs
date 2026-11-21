@@ -37,7 +37,7 @@ internal static class FeatureRunner
                 ToastService.Show(
                     ex.Message,
                     $"功能失败 · {name}",
-                    ToastService.StickyMs,
+                    ToastService.LongMs,
                     ToastKind.error,
                     onClick: () =>
                     {

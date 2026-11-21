@@ -305,6 +305,10 @@ internal static class Win32
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hWnd);
 
+    /// <summary>启用 / 禁用某个窗口（模态窗口打开时 WPF 用它禁掉同进程其它窗口）。</summary>
+    [DllImport("user32.dll")]
+    public static extern bool EnableWindow(IntPtr hWnd, bool bEnable);
+
     [DllImport("user32.dll")]
     public static extern bool IsWindow(IntPtr hWnd);
 
@@ -545,6 +549,9 @@ internal static class Win32
     public const int SwMinimize = 6;
     public const int SwRestore = 9;
     public const uint WmClose = 0x0010;
+
+    /// <summary>窗口「被启用 / 被禁用」：模态窗口（<c>ShowDialog</c>）一开，WPF 会把同进程其它窗口禁掉。</summary>
+    public const int WmEnable = 0x000A;
 
     // —— 专用钩子线程的消息泵（见 Hooks/HookDispatcher.cs）——
     // WH_*_LL 的回调由「安装它的那条线程」的消息循环派发，所以那条线程必须自己泵消息。

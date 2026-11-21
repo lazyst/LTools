@@ -88,6 +88,9 @@ public partial class ToastWindow : Window
 
         Loaded += (_, _) => PlayIntro();
         SourceInitialized += (_, _) => MakeNonActivating();
+
+        // 模态窗口（动作编辑器 / 确认框…）会禁掉同进程其它窗口：卡片得自己救回来
+        StayClickable.Attach(this, () => _closing || _captured);
     }
 
     /// <summary>这条卡片占的位置（同一位置的卡片一起堆叠）。</summary>
@@ -276,6 +279,9 @@ public partial class ToastWindow : Window
                 : TimeSpan.FromMilliseconds(1));
             _countdown.Start();
         }
+
+        // 收起期间可能正赶上模态窗口（动作编辑器 / 确认框）把大家禁掉：放回来时补一次
+        StayClickable.Nudge(this);
     }
 
     /// <summary>立刻关闭（重复调用安全）。</summary>

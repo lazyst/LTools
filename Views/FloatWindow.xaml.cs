@@ -82,6 +82,8 @@ public partial class FloatWindow : Window
         ApplyGeometry();
         Rebuild();
         SourceInitialized += (_, _) => MakeNonActivating();
+        // 模态窗口（动作编辑器 / 确认框）会把同进程其它窗口禁掉：悬浮按钮得自己救回来
+        StayClickable.Attach(this);
         IsVisibleChanged += OnVisibilityChanged;
     }
 

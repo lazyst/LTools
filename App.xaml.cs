@@ -282,7 +282,7 @@ public partial class App : Application
             {
                 CrashLog.Write("App.OnMacroSaved", ex);
                 ToastService.Show("宏已保存，但没能挂成动作：" + ex.Message, "键鼠宏",
-                    ToastService.StickyMs, ToastKind.error, key: "macro:saved");
+                    ToastService.LongMs, ToastKind.error, key: "macro:saved");
             }
         });
     }

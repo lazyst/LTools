@@ -118,7 +118,7 @@ internal static class AiRuns
         else if (run.State == "stopped")
             ToastService.Show("试运行已停止", run.Name, 2500, ToastKind.info);
         else
-            ToastService.Show(run.Error ?? "试运行失败", run.Name, ToastService.StickyMs, ToastKind.error,
+            ToastService.Show(run.Error ?? "试运行失败", run.Name, ToastService.LongMs, ToastKind.error,
                 key: "ai-run:" + run.DraftId);
     }
 

@@ -149,7 +149,7 @@ public partial class SuperPanelWindow
         if (macro == null)
         {
             ToastService.Show("宏文件已不存在（通常随引用它的动作一起删除），请重新录制", "键鼠宏",
-                ToastService.StickyMs, ToastKind.error, key: "macro:play:hint");
+                ToastService.LongMs, ToastKind.error, key: "macro:play:hint");
             return;
         }
 
@@ -163,7 +163,7 @@ public partial class SuperPanelWindow
             catch (Exception ex)
             {
                 AppLog.Error("Macro", $"试放失败「{macro.Name}」", ex);
-                ToastService.Show("试放失败：" + ex.Message, "键鼠宏", ToastService.StickyMs,
+                ToastService.Show("试放失败：" + ex.Message, "键鼠宏", ToastService.LongMs,
                     ToastKind.error, key: "macro:play:hint");
             }
         });

@@ -283,7 +283,7 @@ internal static class MacroRecorder
             {
                 AppLog.Error("Macro", "宏保存失败", ex);
                 CrashLog.Write("MacroRecorder.Save", ex);
-                ToastService.Show("宏保存失败，详见崩溃日志", "键鼠宏", ToastService.StickyMs, ToastKind.error);
+                ToastService.Show("宏保存失败，详见崩溃日志", "键鼠宏", ToastService.LongMs, ToastKind.error);
             }
         });
     }

@@ -231,7 +231,7 @@ public partial class MacroView : UserControl
         if (macro == null)
         {
             ToastService.Show("宏文件已不存在（通常随引用它的动作一起删除），请重新录制", "键鼠宏",
-                ToastService.StickyMs, ToastKind.error, key: "macro:play:hint");
+                ToastService.LongMs, ToastKind.error, key: "macro:play:hint");
             return;
         }
 
@@ -246,7 +246,7 @@ public partial class MacroView : UserControl
             catch (Exception ex)
             {
                 AppLog.Error("Macro", $"试放失败「{macro.Name}」", ex);
-                ToastService.Show("试放失败：" + ex.Message, "键鼠宏", ToastService.StickyMs,
+                ToastService.Show("试放失败：" + ex.Message, "键鼠宏", ToastService.LongMs,
                     ToastKind.error, key: "macro:play:hint");
             }
             finally
@@ -319,7 +319,7 @@ public partial class MacroView : UserControl
         }
         catch (Exception ex)
         {
-            ToastService.Show("打不开宏目录：" + ex.Message, "键鼠宏", ToastService.StickyMs, ToastKind.error);
+            ToastService.Show("打不开宏目录：" + ex.Message, "键鼠宏", ToastService.LongMs, ToastKind.error);
         }
     }
 
@@ -394,7 +394,7 @@ public partial class MacroView : UserControl
         catch (Exception ex)
         {
             CrashLog.Write("MacroView.Save", ex);
-            ToastService.Show("保存键鼠宏设置失败：" + ex.Message, "键鼠宏", ToastService.StickyMs,
+            ToastService.Show("保存键鼠宏设置失败：" + ex.Message, "键鼠宏", ToastService.LongMs,
                 ToastKind.error);
         }
     }
