@@ -31,6 +31,7 @@ public partial class QuickNoteWindow : Window
         InitializeComponent();
         WindowChromeHelper.FixMaximize(this);
         _repo = repo;
+        ApplyEditorTheme();
         _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _searchDebounce.Tick += (_, _) => { _searchDebounce.Stop(); ReloadList(); };
         Loaded += OnLoaded;
@@ -237,7 +238,7 @@ public partial class QuickNoteWindow : Window
         }
         NoteList.SelectedItem = row;
         BodyBox.Focus();
-        BodyBox.CaretIndex = BodyBox.Text.Length;
+        BodyBox.CaretOffset = BodyBox.Text.Length;
         e.Handled = true;
     }
 
@@ -249,11 +250,12 @@ public partial class QuickNoteWindow : Window
         TitleBox.Text = entry.Title;
         BodyBox.Text = entry.Body;
         _loading = false;
+        UpdateBodyPlaceholder();
         BodyBox.ScrollToHome();
         StatusBar.Text = "正在编辑「" + entry.Title + "」";
         UpdateSaveBadge();
         BodyBox.Focus();
-        BodyBox.CaretIndex = BodyBox.Text.Length;
+        BodyBox.CaretOffset = BodyBox.Text.Length;
     }
 
     private void ReloadList()
@@ -299,6 +301,7 @@ public partial class QuickNoteWindow : Window
         TitleBox.Text = "";
         BodyBox.Text = "";
         _loading = false;
+        UpdateBodyPlaceholder();
         BodyBox.ScrollToHome();
         StatusBar.Text = "输入标题与正文后 Ctrl+S 保存";
         UpdateSaveBadge();
@@ -311,10 +314,32 @@ public partial class QuickNoteWindow : Window
         MarkDirty();
     }
 
-    private void BodyBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void BodyBox_TextChanged(object? sender, EventArgs e)
     {
+        UpdateBodyPlaceholder();
         if (_loading) return;
         MarkDirty();
+    }
+
+    /// <summary>
+    /// 正文编辑器的主题与高亮：AvalonEdit 不读全局 TextBox 样式，选区 / 光标 / 高亮色都要自己灌。
+    /// 高亮定义由 <see cref="MarkdownHighlighting"/> 按当前主题现造。
+    /// </summary>
+    private void ApplyEditorTheme()
+    {
+        BodyBox.TextArea.Background = Brushes.Transparent;
+        BodyBox.TextArea.Foreground = (Brush)FindResource("TextBrush");
+        BodyBox.TextArea.SelectionBrush = (Brush)FindResource("EditorSelectionBrush");
+        BodyBox.TextArea.SelectionForeground = (Brush)FindResource("TextBrush");
+        BodyBox.TextArea.SelectionBorder = null;
+        BodyBox.TextArea.Caret.CaretBrush = (Brush)FindResource("TextBrush");
+        BodyBox.SyntaxHighlighting = MarkdownHighlighting.Create(this);
+    }
+
+    /// <summary>AvalonEdit 没有占位文字：空正文时露出叠层灰字。</summary>
+    private void UpdateBodyPlaceholder()
+    {
+        BodyPlaceholder.Visibility = BodyBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void MarkDirty()
@@ -451,6 +476,7 @@ public partial class QuickNoteWindow : Window
     }
 
     /// <summary>焦点是否落在标题或正文编辑框（有光标可输入的文本控件）。</summary>
-    private static bool IsTextCaretFocused() => Keyboard.FocusedElement is TextBox;
+    private bool IsTextCaretFocused()
+        => Keyboard.FocusedElement is TextBox || BodyBox.TextArea.IsKeyboardFocusWithin;
 
 }

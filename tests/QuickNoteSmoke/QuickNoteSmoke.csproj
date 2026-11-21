@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    速记 Markdown 编辑器的技术冒烟（仓库里跑，不进 CI）。
+    - 真实 `QuickNoteWindow`（反射构造，internal 仓库类型），断言正文已是 AvalonEdit、
+      Markdown 高亮真的加载并按主题上色、占位文字与脏标记照常工作、Ctrl+S 仍写得出文件；
+    - 真的渲染一张 png 到 %TEMP%\opencode\quicknote-smoke\out\editor.png，并逐像素确认
+      代码色 / 链接色真的画在画面上（只断言「看得见的行为」）；
+    - 中文输入法手感仍需真机人工验一次（自动化替不了 IME 组字）。
+
+    跑之前先构建产品：
+        dotnet build -p:NoWin32Manifest=true
+        cd tests\QuickNoteSmoke；dotnet run
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>QuickNoteSmoke</AssemblyName>
+    <RootNamespace>QuickNoteSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 产品引用的是同一个包；这里显式引用一次，让 ICSharpCode.AvalonEdit.dll 落进冒烟的输出目录
+         （冒烟只用反射碰它，没有编译期依赖，但运行时必须解析得到）。 -->
+    <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="LTools">
+      <HintPath>..\..\bin\Debug\net10.0-windows10.0.19041.0\LTools.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

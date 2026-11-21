@@ -39,6 +39,11 @@
     <PackageReference Include="ZXing.Net" Version="0.16.11" />
     <!-- HTML DOM + XPath（web.html）：容错 HTML 解析，MIT；与 web.request 串成「请求 → 提取」两步。 -->
     <PackageReference Include="HtmlAgilityPack" Version="1.13.1" />
+    <!-- 速记的 Markdown 源码编辑器：WPF 原生 TextBox 不能局部着色，Markdown 记号和正文
+         在长笔记里会糊成一片。AvalonEdit（MIT，netstandard2.0）提供逐 token 高亮、
+         虚拟化滚动与自带的撤销栈；高亮定义由 Views/QuickNote/MarkdownHighlighting.cs 从
+         主题色现拼（xshd 不能绑定资源，所以不落 .xshd 文件）。 -->
+    <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
   </ItemGroup>
 
   <!-- tests\ 是仓库内的冒烟工程（各自独立 csproj）：SDK 默认把 **/*.cs 全收进 LTools，

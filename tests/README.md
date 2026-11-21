@@ -72,6 +72,22 @@ dotnet run --no-build                     # 15 条，约 5 秒
 明确移到邻项才换 / 锥内短停 140ms 保持、停 660ms 让位 / 被划过的邻项底板不是 `HoverBg`（`#00FFFFFF`）/
 横向离开菜单后子菜单收起。它会真的动鼠标，结束时把光标放回原处。
 
+### `QuickNoteSmoke`（速记 Markdown 编辑器）
+
+```powershell
+dotnet build -p:NoWin32Manifest=true      # 先构建产品（直接引用 bin\Debug 里的 LTools.dll）
+cd tests\QuickNoteSmoke
+dotnet build -v q
+dotnet run --no-build                     # 25 条，约 3 秒
+```
+
+用临时数据根构造真 `QuickNoteWindow`（反射驱动 internal 的 `NoteRepository`），断言「看得见的行为」：
+正文已是 AvalonEdit / `WordWrap` 仍开 / 右键菜单六项都挂上命令 / Markdown 高亮按主题加载（围栏块**跨行**
+且不漏到下一段、粗体带 `FontWeight`）/ 选区用主题 `EditorSelectionColor` / 占位文字随正文显隐 / 改正文标脏 /
+焦点在列表时 `Ctrl+Del` 才删速记 / `Ctrl+S` 落盘正文一字不差。最后渲染 `editor.png`、`editor-2x.png`、
+`empty.png` 到 `%TEMP%\opencode\quicknote-smoke\out\`，并逐像素确认代码色 / 链接色真的画在画面上。
+**中文输入法的组字手感自动化替不了，仍要真机点一遍。**
+
 ### `PanelClipboardSmoke`（复制引用 / 复制为副本 / 粘贴）
 
 ```powershell
@@ -147,6 +163,7 @@ dotnet run                                # 32 条，约 6 秒
 自动化覆盖不到的部分（真机 DPI、真鼠标手感、系统对话框、托盘、开机自启）改完仍要点一遍：
 
 - 125% / 100% 两种缩放下截图与拖边框；
+- 速记：微软拼音在正文里打中文（组字、候选框位置、撤销 / 重做）；
 - 截图带指针（开关前后各截一张看指针在不在）；
 - Esc 退出确认（开关前后）；
 - 另存为 PDF（A4 竖 / 横 / 图片尺寸各存一份，用 Edge 打开看版面）；

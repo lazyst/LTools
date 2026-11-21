@@ -50,6 +50,11 @@
     <!-- 校验提醒（warning）：琥珀色，和错误的红分开；只用于文字 / 小标记，不做大底块 -->
     <Color x:Key="WarningColor">#B45309</Color>
 
+    <!-- Markdown 链接（速记源码高亮与预览共用）：灰阶里的低饱和蓝，别用高饱和科技蓝 -->
+    <Color x:Key="LinkColor">#3B6EA5</Color>
+    <!-- 正文编辑器选区：比 SelectedBgColor 深一档，否则选中的字看不出来 -->
+    <Color x:Key="EditorSelectionColor">#D4D4D8</Color>
+
     <!-- 滚动条 -->
     <Color x:Key="ScrollThumbColor">#CBCBD1</Color>
     <Color x:Key="ScrollThumbHoverColor">#A1A1AA</Color>
@@ -79,6 +84,8 @@
     <SolidColorBrush x:Key="DangerHoverBgBrush" Color="{StaticResource DangerHoverBgColor}"/>
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
     <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
+    <SolidColorBrush x:Key="LinkBrush" Color="{StaticResource LinkColor}"/>
+    <SolidColorBrush x:Key="EditorSelectionBrush" Color="{StaticResource EditorSelectionColor}"/>
     <SolidColorBrush x:Key="ScrollThumbBrush" Color="{StaticResource ScrollThumbColor}"/>
     <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="{StaticResource ScrollThumbHoverColor}"/>
 

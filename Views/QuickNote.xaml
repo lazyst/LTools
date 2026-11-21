@@ -4,6 +4,7 @@
         xmlns:views="clr-namespace:LTools.Views"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:controls="clr-namespace:LTools.Views.Controls"
+        xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
         Title="速记" Width="780" Height="540" MinWidth="560" MinHeight="380"
         Topmost="True" ShowInTaskbar="True" ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen"
@@ -129,11 +130,33 @@
                 </Grid>
                 <Border Grid.Row="1" Height="1" Background="{StaticResource BorderBrush}" Margin="0,8"/>
                 <Grid Grid.Row="2">
-                    <TextBox x:Name="BodyBox" AcceptsReturn="True" AcceptsTab="True"
-                             VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"
-                             VerticalContentAlignment="Top" BorderThickness="0" Background="Transparent"
-                             Padding="0,4" controls:TextBoxPlaceholder.Text="正文"
-                             TextChanged="BodyBox_TextChanged"/>
+                    <!-- 正文是 Markdown 源码：TextBox 不能局部着色，换 AvalonEdit（逐 token 高亮 + 虚拟化）。 -->
+                    <avalonedit:TextEditor x:Name="BodyBox"
+                                           WordWrap="True" ShowLineNumbers="False"
+                                           HorizontalScrollBarVisibility="Disabled"
+                                           VerticalScrollBarVisibility="Auto"
+                                           Background="Transparent" Foreground="{StaticResource TextBrush}"
+                                           FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
+                                           Padding="0,4" BorderThickness="0"
+                                           TextChanged="BodyBox_TextChanged">
+                        <!-- AvalonEdit 不自带右键菜单；换掉 TextBox 后这四件事要自己补回来。 -->
+                        <avalonedit:TextEditor.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="撤销" Command="ApplicationCommands.Undo"/>
+                                <MenuItem Header="重做" Command="ApplicationCommands.Redo"/>
+                                <Separator/>
+                                <MenuItem Header="剪切" Command="ApplicationCommands.Cut"/>
+                                <MenuItem Header="复制" Command="ApplicationCommands.Copy"/>
+                                <MenuItem Header="粘贴" Command="ApplicationCommands.Paste"/>
+                                <Separator/>
+                                <MenuItem Header="全选" Command="ApplicationCommands.SelectAll"/>
+                            </ContextMenu>
+                        </avalonedit:TextEditor.ContextMenu>
+                    </avalonedit:TextEditor>
+                    <!-- AvalonEdit 没有占位文字：空正文时叠一层灰字，和全局 TextBox 的手感一致。 -->
+                    <TextBlock x:Name="BodyPlaceholder" Text="正文（Markdown）" IsHitTestVisible="False"
+                               Margin="1,5,0,0" VerticalAlignment="Top" HorizontalAlignment="Left"
+                               Foreground="{StaticResource HintTextBrush}" Visibility="Collapsed"/>
                 </Grid>
             </Grid>
         </Grid>
