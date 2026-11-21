@@ -10,10 +10,10 @@ public sealed class UserInputUnit : IStepUnit
     public UnitSpec Spec { get; } = new()
     {
         Key = "ui.input",
-        Name = "输入框",
+        Name = "获取用户输入",
         Category = "界面",
         Icon = "input",
-        Description = "弹出输入框向用户要一段文本；取消时 found = false",
+        Description = "向用户要一段文本（一次一个值；要问几项就多写几步）；取消时 found = false",
         Kind = UnitKind.pure,
         // 会弹模态框：干跑时跳过（问用户不是「解析参数」能算出来的）。
         DryRun = false,

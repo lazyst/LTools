@@ -16,7 +16,7 @@ public sealed class ToastUnit : IStepUnit
     public UnitSpec Spec { get; } = new()
     {
         Key = "ui.toast",
-        Name = "提示弹窗",
+        Name = "显示提示",
         Category = "界面",
         Icon = "toast",
         Description = "显示一条提示，不阻塞后续步骤、不抢焦点；同一「去重键」的提示会就地更新而不是堆叠",

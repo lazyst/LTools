@@ -84,7 +84,7 @@ public sealed class ProcessUnit : IStepUnit
     public UnitSpec Spec { get; } = new()
     {
         Key = "app.process",
-        Name = "进程",
+        Name = "进程操作",
         Category = "窗口与程序",
         Icon = "process",
         Description = "按进程名（不含 .exe）查询数量 / 进程号，或结束进程（结束时等它真的退出，杀不掉就整步报错）",

@@ -335,7 +335,7 @@ sealed class SubActionDef {
 | | `flow.if` 条件（then/else） | FlowNode.if |
 | | `flow.repeat` / `flow.forEach` / `flow.while` 循环 | FlowNode.loop |
 | | `flow.break` / `flow.continue` / `flow.stop` / `flow.delay` | 同名节点 / DelayMs |
-| | `flow.lastError` 上一步的错误 | RunContext.LastError |
+| | `flow.lastError` 最近一次错误 | RunContext.LastError |
 | | `flow.lastErrorStep` 上一次失败的步骤（位置 / 动作单元 / 性质） | 新增（P5-A） |
 | **子动作** | `sub.run` 调用子动作（W3） | 新增 |
 | **数据** | `data.noteWrite` / `data.noteRead` 速记 | quickNote / Probe.note |
@@ -344,8 +344,8 @@ sealed class SubActionDef {
 | | `data.jsonEncode` 值 / 列表 / 对象 → JSON 文本（`indented` 缩进） | 新增 |
 | | `data.calc` 数值计算 | 新增 |
 | | `data.time` 当前时间/格式化/偏移 | 新增 |
-| **界面** | `ui.toast` 提示 | toast |
-| | `ui.input` 弹输入框 | Probe.user |
+| **界面** | `ui.toast` 显示提示 | toast |
+| | `ui.input` 获取用户输入（一次一个值） | Probe.user |
 
 > 打开面板 / 设置 / 速记、截图、调音量这类「一下就完事」的入口**不是动作单元**，见 `Features/Builtin/`
 > 的 `FeatureCatalog`（常用功能 / LTools 功能）。它们只出现在面板、快捷键、悬浮里，
@@ -376,8 +376,8 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
 | | `file.zip` | 压缩文件夹 / 文件成 zip，或解压；目标已存在且没勾「覆盖」直接失败 |
 | **窗口与程序** | `window.message` | 发 Windows 消息（`WM_CLOSE` / 自定义消息）；默认 `SendMessageTimeout` 带超时，也可以只投递 |
 | **屏幕** | `image.transform` | 裁剪 / 缩放 / 旋转 / 灰度 / 翻转 / 转格式；不填目标路径时输出到 `cache/screenshots/` |
-| **界面** | `ui.confirm` | 确认框，按钮可自定义（`确定\|取消`、`保存\|不保存\|取消`），第一个按钮算「肯定」 |
-| | `ui.select` | 从候选列表里挑一项（列表值 / 文件列表 / 正则结果），取消是 `found = false` |
+| **界面** | `ui.confirm` | 询问确认，按钮可自定义（`确定\|取消`、`保存\|不保存\|取消`），第一个按钮算「肯定」 |
+| | `ui.select` | 让用户从候选列表里挑一项（列表值 / 文件列表 / 正则结果），取消是 `found = false` |
 
 两处实现细节值得记住：
 

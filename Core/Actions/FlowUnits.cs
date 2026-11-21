@@ -433,7 +433,7 @@ internal static class FlowUnits
         {
             Key = "flow.return",
             DryRun = true,
-            Name = "返回",
+            Name = "结束子动作",
             Category = "流程",
             Icon = "return",
             Description = "结束当前子动作，已赋值的输出照常带回调用方；只能用在子动作里",

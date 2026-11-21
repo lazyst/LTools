@@ -8,8 +8,8 @@ public sealed class LastErrorUnit : IStepUnit
     public UnitSpec Spec { get; } = new()
     {
         Key = "flow.lastError",
-        Name = "上一步的错误",
-        Category = "文本与数据",
+        Name = "最近一次错误",
+        Category = "流程",
         Icon = "warning",
         Description = "取本次运行里最近一次被「失败继续」吞掉的错误文本",
         Kind = UnitKind.pure,

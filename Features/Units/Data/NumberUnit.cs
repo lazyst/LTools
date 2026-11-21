@@ -43,7 +43,7 @@ public sealed class NumberUnit : IStepUnit
     public UnitSpec Spec { get; } = new()
     {
         Key = "data.number",
-        Name = "数字处理",
+        Name = "数字换算",
         Category = "文本与数据",
         Icon = "calc",
         Description = "进制转换、取整、千分位 / 百分比格式化",

@@ -15,7 +15,7 @@ public sealed class ClipboardUnit : IStepUnit
     public UnitSpec Spec { get; } = new()
     {
         Key = "text.clipboard",
-        Name = "剪贴板",
+        Name = "剪贴板文字",
         Category = "剪贴板",
         Icon = "clipboard",
         Description = "读取或写入系统剪贴板（纯文本 / HTML / RTF）",

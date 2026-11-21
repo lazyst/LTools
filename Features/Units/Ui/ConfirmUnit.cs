@@ -21,7 +21,7 @@ public sealed class ConfirmUnit : IStepUnit
     public UnitSpec Spec { get; } = new()
     {
         Key = "ui.confirm",
-        Name = "确认框",
+        Name = "询问确认",
         Category = "界面",
         Icon = "help",
         Description = "弹一个确认框等用户按按钮；按钮可自定义，第一个算「肯定」，超时 / 关窗返回 found = false",

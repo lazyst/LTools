@@ -20,7 +20,7 @@ public sealed class SelectUnit : IStepUnit
     public UnitSpec Spec { get; } = new()
     {
         Key = "ui.select",
-        Name = "选择器",
+        Name = "让用户选择",
         Category = "界面",
         Icon = "filter",
         Description = "列出候选让用户选一项；取消 / 超时返回 found = false",
