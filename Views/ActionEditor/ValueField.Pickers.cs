@@ -87,6 +87,24 @@ public partial class ValueField
         if (hex.Length > 0) SetLiteral(hex);
     }
 
+    /// <summary>
+    /// 选控件：一次填好名称 / AutomationId / 控件类型 / 窗口类名（<c>ui.uia</c> 的一整组定位条件）。
+    /// 宿主要一次写多行，所以优先交给 <see cref="ControlPicked"/>；没有宿主时退回只填一个键。
+    /// </summary>
+    private void PickControl()
+    {
+        PickedControl? picked = ControlPickOverlay.Pick(Window.GetWindow(this));
+        if (picked == null) return;
+
+        if (ControlPicked != null)
+        {
+            ControlPicked(picked);
+            return;
+        }
+
+        SetLiteral(picked.AutomationId.Length > 0 ? picked.AutomationId : picked.Name);
+    }
+
     private void RecordKey()
     {
         _inline = null;

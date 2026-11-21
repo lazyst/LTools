@@ -100,6 +100,9 @@ public partial class ValueField : UserControl
     /// <summary>要在屏幕上取点：参数是屏幕坐标，宿主一次填好同组的 x / y。</summary>
     public event Action<int, int>? PointPicked;
 
+    /// <summary>在屏幕上选了一个控件：宿主一次填好名称 / AutomationId / 类型 / 窗口类名。</summary>
+    public event Action<PickedControl>? ControlPicked;
+
     /// <summary>这个参数的声明（决定编辑器形态与可用来源）。</summary>
     public InputSpec? Spec
     {

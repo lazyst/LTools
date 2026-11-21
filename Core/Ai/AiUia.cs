@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
 using LTools.Features;
 using LTools.Native;
@@ -16,22 +14,14 @@ namespace LTools.Core.Ai;
 /// 为什么 agent 需要它（A4）：「文字点击」「鼠标操作」要知道「那个按钮叫什么 / 在哪儿」，
 /// 而它看不见用户的屏幕，也不能模拟点一下试试。截图能看形状，控件树给的是**准确的名字与矩形**——
 /// 把元素的 <c>name</c> 填进「文字点击」的文本，或把 <c>bounds</c> 中心当坐标，两条路都能走。
-/// 这里不引入「按控件点击」这种新动作单元：动作单元是用户的东西，工具只提供观察能力。
+/// 遍历与「读不读得到」的判断在 <see cref="ControlTargets"/>（编辑器里的「选控件…」共用同一份），
+/// 这里只把它翻成 MCP 的 JSON 形状。
 /// </remarks>
 internal static class AiUia
 {
-    private const int MaxDepth = 12;
-
     /// <summary>默认就走到上限：Chromium 类应用要 8–10 层才到真正的内容，浅了只会拿到一串空 Pane。真正的地板是 limit。</summary>
-    private const int DefaultDepth = MaxDepth;
-    private const int MaxElements = 1000;
+    private const int DefaultDepth = ControlTargets.MaxDepth;
     private const int DefaultElements = 300;
-
-    /// <summary>每个父节点最多看多少个孩子（浏览器 / Electron 可能上千个）。</summary>
-    private const int MaxChildren = 200;
-
-    /// <summary>整棵树的墙上时间预算：慢应用（无响应的 UIA）不能把工具挂死。</summary>
-    private static readonly TimeSpan Budget = TimeSpan.FromSeconds(4);
 
     private const int NameLimit = 120;
     private const int IdLimit = 80;
@@ -58,8 +48,8 @@ internal static class AiUia
     /// <param name="limit">最多返回多少个元素（≤ 0 = 用默认值 300）。</param>
     public static Dictionary<string, object?> Snapshot(string? title, string? className, int depth, int limit)
     {
-        int maxDepth = Math.Clamp(depth <= 0 ? DefaultDepth : depth, 0, MaxDepth);
-        int maxElements = Math.Clamp(limit <= 0 ? DefaultElements : limit, 1, MaxElements);
+        int maxDepth = Math.Clamp(depth <= 0 ? DefaultDepth : depth, 0, ControlTargets.MaxDepth);
+        int maxElements = Math.Clamp(limit <= 0 ? DefaultElements : limit, 1, ControlTargets.MaxElements);
 
         var payload = new Dictionary<string, object?>();
         string? fallbackNote = null;
@@ -77,52 +67,11 @@ internal static class AiUia
         payload["maxElements"] = maxElements;
 
         var elements = new List<Dictionary<string, object?>>(Math.Min(maxElements, 128));
-        bool truncated = false;
-        bool depthCut = false;
-
+        ControlTree tree;
         try
         {
-            AutomationElement? root = Automation.Value.FromHandle(hwnd);
-            if (root == null)
-                throw new AiToolException("uia_unavailable",
-                    "这个窗口不暴露 UI Automation：可能是不支持 UIA 的自绘界面，或以更高权限运行" +
-                    "（提权窗口需要以管理员运行 LTools）。可以改用 ltools_screenshot 看形状 + 「文字点击」。");
-
-            var queue = new Queue<(AutomationElement Element, int Depth, string Path)>();
-            queue.Enqueue((root, 0, "0"));
-            var watch = Stopwatch.StartNew();
-
-            while (queue.Count > 0)
-            {
-                if (elements.Count >= maxElements || watch.Elapsed > Budget)
-                {
-                    truncated = true;
-                    break;
-                }
-
-                var (element, level, path) = queue.Dequeue();
-                elements.Add(Describe(element, level, path));
-
-                // 到了深度上限：真的还有孩子才算「被深度截断」，别让每个叶子都报 truncated。
-                if (level >= maxDepth)
-                {
-                    if (SafeChildren(element).Length > 0) depthCut = true;
-                    continue;
-                }
-
-                int seen = 0;
-                foreach (var child in SafeChildren(element))
-                {
-                    if (++seen > MaxChildren)
-                    {
-                        truncated = true;
-                        break;
-                    }
-                    queue.Enqueue((child, level + 1, $"{path}.{seen - 1}"));
-                }
-            }
+            tree = ControlTargets.Snapshot(hwnd, maxDepth, maxElements);
         }
-        catch (AiToolException) { throw; }
         catch (Exception ex)
         {
             throw new AiToolException("uia_unavailable",
@@ -130,13 +79,21 @@ internal static class AiUia
                 "可以调小 depth，或改用 ltools_screenshot 看形状。");
         }
 
+        if (tree.Unavailable)
+            throw new AiToolException("uia_unavailable",
+                tree.Problem + "可以改用 ltools_screenshot 看形状 + 「文字点击」。");
+
+        foreach (ControlTarget node in tree.Nodes) elements.Add(Describe(node));
+        bool truncated = tree.Truncated;
+        bool depthCut = tree.DepthCut;
+
         payload["count"] = elements.Count;
         payload["truncated"] = truncated || depthCut;
         payload["elements"] = elements;
 
         var notes = new List<string>();
         if (fallbackNote != null) notes.Add(fallbackNote);
-        if (depthCut) notes.Add($"到 depth = {maxDepth} 就停了；要更深就调大 depth（上限 {MaxDepth}）");
+        if (depthCut) notes.Add($"到 depth = {maxDepth} 就停了；要更深就调大 depth（上限 {ControlTargets.MaxDepth}）");
         if (truncated) notes.Add($"结果被 limit = {maxElements} 或时间预算截断；先调小 depth 或用 title 缩小范围");
         if (notes.Count > 0) payload["note"] = string.Join("；", notes);
         return payload;
@@ -188,41 +145,28 @@ internal static class AiUia
     }
 
     /// <summary>一个控件：路径 / 层级 / 控件类型 / 名字 / automationId / 类名 / 屏幕矩形 / 是否可用。</summary>
-    private static Dictionary<string, object?> Describe(AutomationElement element, int depth, string path)
+    private static Dictionary<string, object?> Describe(ControlTarget node)
     {
-        Rectangle bounds = Safe(() => element.Properties.BoundingRectangle.ValueOrDefault, Rectangle.Empty);
-        string name = Shorten(Safe(() => element.Properties.Name.ValueOrDefault ?? "", ""), NameLimit);
+        string name = Shorten(node.Name, NameLimit);
 
         return new Dictionary<string, object?>
         {
-            ["path"] = path,
-            ["depth"] = depth,
-            ["controlType"] = Safe(() => element.Properties.ControlType.ValueOrDefault.ToString(), "Custom"),
+            ["path"] = node.Path,
+            ["depth"] = node.Depth,
+            ["controlType"] = node.ControlType.Length > 0 ? node.ControlType : "Custom",
             ["name"] = name.Length > 0 ? name : null,
-            ["automationId"] = Nullable(Safe(() => element.Properties.AutomationId.ValueOrDefault ?? "", ""), IdLimit),
-            ["className"] = Nullable(Safe(() => element.Properties.ClassName.ValueOrDefault ?? "", ""), IdLimit),
+            ["automationId"] = Nullable(node.AutomationId, IdLimit),
+            ["className"] = Nullable(node.ClassName, IdLimit),
             ["bounds"] = new Dictionary<string, object?>
             {
-                ["left"] = bounds.X,
-                ["top"] = bounds.Y,
-                ["width"] = bounds.Width,
-                ["height"] = bounds.Height,
+                ["left"] = node.Bounds.X,
+                ["top"] = node.Bounds.Y,
+                ["width"] = node.Bounds.Width,
+                ["height"] = node.Bounds.Height,
             },
-            ["enabled"] = Safe(() => element.Properties.IsEnabled.ValueOrDefault, false),
-            ["offscreen"] = Safe(() => element.Properties.IsOffscreen.ValueOrDefault, false),
+            ["enabled"] = node.Enabled,
+            ["offscreen"] = node.Offscreen,
         };
-    }
-
-    private static AutomationElement[] SafeChildren(AutomationElement element)
-    {
-        try { return element.FindAllChildren(); }
-        catch { return Array.Empty<AutomationElement>(); }
-    }
-
-    /// <summary>单个属性的读取都可能超时 / 抛 COM 异常：坏一个属性不该让整棵树失败。</summary>
-    private static T Safe<T>(Func<T> read, T fallback)
-    {
-        try { return read(); } catch { return fallback; }
     }
 
     private static string ProcessName(IntPtr hwnd)

@@ -80,26 +80,11 @@ public partial class WindowPickOverlay : Window
     /// <summary>弹出遮罩点选。返回「选中的窗口 / 是否要切列表」。</summary>
     public static (SystemPickerDialog.WindowInfo? Info, bool WantsList) Pick(Window? owner, bool allowList = true)
     {
-        // 点选期间收起 LTools 全部窗口（含 owner），别让自己的窗口挡在前面 / 混进候选。
-        // 遮罩是 Topmost 全屏，**不设 Owner**：owner 被最小化后，owned window 会被系统一起隐藏
-        // （照 ScreenPicker.TryPickRegion 的已验证做法）。
-        var restore = TransientMinimize.MinimizeAll(owner);
-        // 裸右键长按手势让路：它吞掉 down/up 再注入一次右键，遮罩会「连点两次才退出」。
-        MouseHook.SetWindowPickerActive(true);
-        try
-        {
-            System.Threading.Thread.Sleep(TransientMinimize.SettleMs);   // 等最小化动画结束、桌面重绘完
-            var monitor = ScreenPicker.MonitorUnderCursor();
-            var (sx, sy) = ScreenPickerWindow.MonitorScale(monitor);
-            var overlay = new WindowPickOverlay(monitor, sx, sy, allowList);
-            bool? ok = overlay.ShowDialog();
-            return (ok == true ? overlay.Result : null, overlay.WantsList);
-        }
-        finally
-        {
-            MouseHook.SetWindowPickerActive(false);
-            restore();
-        }
+        // 收起 LTools 全部窗口 + 鼠标钩子让路 + 等桌面重绘（窗口 / 控件两个点选器共用一份）。
+        using var session = PickerSession.Begin(owner);
+        var overlay = new WindowPickOverlay(session.Monitor, session.ScaleX, session.ScaleY, allowList);
+        bool? ok = overlay.ShowDialog();
+        return (ok == true ? overlay.Result : null, overlay.WantsList);
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -136,6 +121,12 @@ public partial class WindowPickOverlay : Window
         if (SkipClasses.Contains(cls)) return false;
         return true;
     }
+
+    /// <summary>
+    /// 类名是不是桌面 / 托盘 / 输入法这类辅助窗口。窗口点选器整类跳过（它们不能当目标）；
+    /// 控件选择器只拿它排掉「不可能有控件」的壳，弹出菜单（<c>#32768</c> 之类）仍要允许。
+    /// </summary>
+    internal static bool IsShellWindowClass(string cls) => SkipClasses.Contains(cls);
 
     /// <summary>
     /// 光标下第一个可点选的**顶层**窗口（按 z 序从前往后；跳过遮罩自己与本进程窗口）。

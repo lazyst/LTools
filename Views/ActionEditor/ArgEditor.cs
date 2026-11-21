@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using LTools.Core.Actions;
+using LTools.Features;
 
 namespace LTools.Views;
 
@@ -82,4 +83,7 @@ internal sealed class ArgEditorContext
 
     /// <summary>屏幕上取到一次点（参数是屏幕坐标时填好同组的 X / Y）。</summary>
     public Action<int, int>? PointPicked { get; init; }
+
+    /// <summary>在屏幕上选了一个控件（一次填好名称 / AutomationId / 类型 / 窗口类名）。</summary>
+    public Action<PickedControl>? ControlPicked { get; init; }
 }

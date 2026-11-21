@@ -150,7 +150,8 @@ public partial class ValueField
     private bool HasSelectionPickers =>
         (Pickers & (PickerKind.file | PickerKind.folder | PickerKind.image | PickerKind.region
                     | PickerKind.window | PickerKind.windowClass | PickerKind.process
-                    | PickerKind.point | PickerKind.color | PickerKind.keys)) != PickerKind.none;
+                    | PickerKind.point | PickerKind.color | PickerKind.keys
+                    | PickerKind.control)) != PickerKind.none;
 
     private void AddSelectionPickers()
     {
@@ -187,6 +188,10 @@ public partial class ValueField
 
         if (Pickers.HasFlag(PickerKind.keys))
             AddItem("⌨", "录制按键…", "按一下组合键，追加一行", "按键 录制 keys", RecordKey);
+
+        if (Pickers.HasFlag(PickerKind.control))
+            AddItem("▩", "选控件…", "在屏幕上点一个控件，填名称 / AutomationId / 类型 / 窗口类名",
+                "控件 选择器 uia 控件树 automationId", PickControl);
     }
 
     /// <summary>

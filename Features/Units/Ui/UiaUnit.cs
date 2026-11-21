@@ -18,7 +18,8 @@ namespace LTools.Features.Units.Ui;
 /// 「文字点击」靠 OCR 看形状、「鼠标操作」靠坐标，两者都看不见控件本身。这里补的是
 /// **准确的名字与 AutomationId**：树形遍历（限深 / 限量 / 每层上限 / 4 秒预算）按精确匹配找元素，
 /// 找到后走项目统一的 <see cref="MouseOps"/> 注入鼠标，或用 UIA 自己的 ValuePattern 读 / 设值。
-/// 没有「XPath 定位」，也没有在线服务。
+/// 没有「XPath 定位」，也没有在线服务。定位条件不用手抄：编辑器里点「▾ 来源 → 选控件…」
+/// 在屏幕上选一次（<c>Views/ControlPickOverlay</c>），名称 / AutomationId / 类型 / 窗口类名一起填好。
 /// </para>
 /// <para>
 /// 命中类而非等待类：等不到按 <see cref="ActionErrors.NotFound"/> 抛错（能配
@@ -60,7 +61,7 @@ public sealed class UiaUnit : IStepUnit
         Name = "控件操作",
         Category = "界面",
         Icon = "window",
-        Description = "按名称 / AutomationId 找控件并点击 / 读值 / 设值；找不到按「未找到」标性质",
+        Description = "按名称 / AutomationId 找控件并点击 / 读值 / 设值；找不到按「未找到」标性质；定位条件可用「▾ 来源 → 选控件…」点选",
         Inputs = new[]
         {
             new InputSpec("title", "窗口标题", ValueKind.text,
@@ -68,13 +69,16 @@ public sealed class UiaUnit : IStepUnit
                 Description: "标题包含；留空 = 前台窗口"),
             new InputSpec("className", "窗口类名", ValueKind.text,
                 Pickers: PickerKind.variable | PickerKind.inline | PickerKind.clear | PickerKind.windowClass,
-                Description: "类名精确；留空 = 不限"),
+                Description: "类名精确；留空 = 不限；选控件时会自动填"),
             new InputSpec("name", "控件名称", ValueKind.text,
+                Pickers: PickerKind.variable | PickerKind.inline | PickerKind.clear | PickerKind.control,
                 Description: "UIA Name，精确匹配（不区分大小写）；与 AutomationId 至少填一个"),
             new InputSpec("automationId", "AutomationId", ValueKind.text,
-                Description: "UIA AutomationId，精确匹配；可用「控件树」工具查到"),
+                Pickers: PickerKind.variable | PickerKind.inline | PickerKind.clear | PickerKind.control,
+                Description: "UIA AutomationId，精确匹配；也可以点「选控件…」在屏幕上选"),
             new InputSpec("controlType", "控件类型", ValueKind.text,
-                Description: "可选过滤，如 Button / Edit / Text；不区分大小写"),
+                Pickers: PickerKind.variable | PickerKind.inline | PickerKind.clear | PickerKind.control,
+                Description: "可选过滤，如 Button / Edit / Text；不区分大小写；选控件时会自动填"),
             new InputSpec("action", "操作", ValueKind.text, InputEditor.enumList,
                 Required: true, Default: Value.FromText("click"),
                 Options: Actions, Labels: ActionLabels,

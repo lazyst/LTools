@@ -28,6 +28,7 @@ public partial class StepFormView
             ResourceRoot = ResourceRoot,
             Captured = ApplyPickedRegion,
             PointPicked = (x, y) => ApplyPickedPoint(input, x, y),
+            ControlPicked = ApplyPickedControl,
             UnitKey = _spec.Key,
         };
 

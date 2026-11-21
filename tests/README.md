@@ -102,6 +102,23 @@ dotnet run                                # 23 条，首次要构建产品 + 加
 TSV 3 行每行 2 个制表符、CSV 按 CRLF 分 3 行、Markdown 4 行（表头 + 分隔行 + 2 行数据）、JSON 3×3。
 测试图不入库（跑在 `%TEMP%` 下，结束删掉）。
 
+### `UiaPickSmoke`（控件操作 `ui.uia` 的控件选择器）
+
+```powershell
+cd tests\UiaPickSmoke
+dotnet run                                # 15 条，约 5 秒
+```
+
+起一个**子进程** WPF 窗口（两个带 AutomationId 的按钮），对它的真实 UIA 控件树跑
+`ControlTargets.Snapshot` / `AtPoint` / `RollUp` / `CountSame`：跨进程取树、按 AutomationId 找到
+「确定」按钮、光标落在按钮上命中后能抬回 Button、同名计数只有它自己、窗口外的点不命中。
+
+**必须分两个进程**：UIA 的 provider 在目标进程的 UI 线程上响应，同一个进程里父线程阻塞等结果
+会死锁（消息循环发不出响应）。所以 `dotnet run` 不带参数是父进程，带 `host` 是子进程窗口。
+子进程结束后父进程 `Kill(entireProcessTree: true)`，不会留下窗口。
+
+点选遮罩的鼠标交互（高亮、信息条、Esc / 右键、控件树对话框）仍要人工在真机上点一遍。
+
 ### 写法约定
 
 - `Check(条件, "中文断言文案")`：失败只记一条，不中断（最后汇总失败数）。

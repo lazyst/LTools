@@ -30,6 +30,7 @@ internal sealed class ValueArgEditor : IArgEditor
         field.Changed += context.Edited;
         if (context.Captured != null) field.Captured += context.Captured;
         if (context.PointPicked != null) field.PointPicked += context.PointPicked;
+        if (context.ControlPicked != null) field.ControlPicked += context.ControlPicked;
 
         // 候选型参数（按键 / 宏 / 子动作）：候选随用户数据变化，收进 ▾ 的「从列表选…」，
         // 行内不再摆下拉。

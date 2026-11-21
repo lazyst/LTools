@@ -70,6 +70,12 @@ public enum PickerKind
     /// 所以收进「▾ 来源 → 从列表选…」，不在行内再摆一个下拉。
     /// </summary>
     choices = 1 << 18,
+
+    /// <summary>
+    /// 在屏幕上点一个 UI Automation 控件，一次填好名称 / AutomationId / 控件类型 / 窗口类名
+    /// （<c>ui.uia</c> 的定位条件）。见 <c>Views/ControlPickOverlay</c>。
+    /// </summary>
+    control = 1 << 19,
 }
 
 /// <summary>没声明 <see cref="InputSpec.Pickers"/> 时，按编辑器形态推出的可用来源。</summary>

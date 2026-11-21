@@ -139,6 +139,9 @@
 - 输出：`found` / `text` / `bounds` / `count`。
 - 约束：UIA 在动作线程（MTA）直接调，别包 `StaRunner`（`ltools_uia_tree` 已验证）；等待走 `ctx.Wait`；找不到按 `ActionErrors.NotFound` 标性质，可配 `RetryOn=notFound`。
 - 成本主要在「控件定位语义」的设计，建议先只做 `Name` + `AutomationId` + 深度限制的精确匹配，XPath 留到有真实需求再加。
+- 2026-11-21 已补最后一环：编辑器「▾ 来源 → 选控件…」（`Views/ControlPickOverlay` + `Views/ControlTreeDialog`），
+  一次填好名称 / AutomationId / 类型 / 窗口类名；控件树与 `ltools_uia_tree` 共用 `Features/ControlTargets.cs` 的遍历。
+  本节其余取舍（不做 XPath / expand / invoke）仍然有效。
 
 ### 5.7 P1-5 `data.number`（源：`sys:numberprocess`）
 

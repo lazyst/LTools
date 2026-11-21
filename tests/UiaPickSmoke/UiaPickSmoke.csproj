@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    控件选择器（选控件 / 控件树）的真控件树冒烟（仓库外跑，不进 CI）。
+    - 父进程起一个**子进程** WPF 窗口（两个按钮带 AutomationId），对子进程窗口真跑
+      ControlTargets.Snapshot / AtPoint / RollUp / CountSame，验证跨进程 UIA 这条链路；
+    - 子进程跑自己的消息循环：同一个进程里读自己的 UIA 需要 provider 在 UI 线程响应，
+      父进程一阻塞等结果就会死锁，所以必须分成两个进程；
+    - 不断言点选遮罩的鼠标交互（那要人点）：遮罩的命中 / 信息条逻辑就是这里验的纯函数。
+
+    用 ProjectReference：要 FlaUI.UIA3 与窗口树依赖。
+         cd tests\UiaPickSmoke；dotnet run
+    相关文档：tests/README.md、AGENTS.md 的「控件选择器」那条。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>UiaPickSmoke</AssemblyName>
+    <RootNamespace>UiaPickSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\LTools.csproj" />
+  </ItemGroup>
+
+</Project>
