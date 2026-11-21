@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    表格识别（screen.table）的冒烟（仓库外跑，不进 CI）。
+    - 运行时用 GDI+ 画三张表（带框线 / 无线框 / 合并表头），真跑线检测 + PP-OCRv6；
+    - 断言结构（行列数、合并、是否按线还原）与导出格式，不比对具体文字（机器 OCR 有差异）；
+    - 图片不入库，跑在 %TEMP% 下。
+
+    用 ProjectReference（不是 HintPath）：表格识别要 OpenCvSharp 的 native、ONNX Runtime 与
+    PP-OCRv6 的内置模型，这些都由产品项目带出来；直接引用 LTools.dll 不会带上它们。
+    跑法：
+        cd tests\TableSmoke；dotnet run
+    相关文档：tests/README.md、AGENTS.md 的「表格识别」那条。
+  -->
+  <PropertyGroup>
+    <!-- Exe 而不是 WinExe：结果靠 stdout 打印，`dotnet run` 要能把 PASS / FAIL 显示出来 -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>TableSmoke</AssemblyName>
+    <RootNamespace>TableSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\LTools.csproj" />
+  </ItemGroup>
+
+</Project>

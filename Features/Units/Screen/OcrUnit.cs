@@ -1,8 +1,6 @@
 using System.Drawing;
 using LTools.Core.Actions;
 using LTools.Features;
-using LTools.Native;
-using LTools.Views;
 
 namespace LTools.Features.Units.Screen;
 
@@ -49,9 +47,17 @@ public sealed class OcrUnit : IStepUnit
         string source = args.Text("source").Trim().ToLowerInvariant();
         if (source.Length == 0) source = "image";
 
-        Value value = source == "image"
-            ? RecognizeImage(ctx, args)
-            : RecognizeScreen(ctx, args, source);
+        Value value;
+        if (source == "image")
+        {
+            value = RecognizeImage(ctx, args);
+        }
+        else
+        {
+            // 现截一块屏幕区域（区域语义 / 指示器收起与「表格识别」共用一份实现）
+            using Bitmap bitmap = ScreenBitmap.Capture(ctx, args, source);
+            value = UnitValues.FromVarValue(OcrProbe.RecognizeImage(bitmap, args.Text("engine").Trim()));
+        }
 
         string text = UnitValues.Member(value, "text")?.AsText() ?? "";
         bool found = UnitValues.Member(value, "found")?.AsBool() ?? false;
@@ -80,37 +86,5 @@ public sealed class OcrUnit : IStepUnit
         };
 
         return ProbeContext.Evaluate(ctx, legacy => OcrProbe.Run(probe, legacy));
-    }
-
-    /// <summary>
-    /// 屏幕区域：运行时现截一块再识别，**不落盘**（要留下 png 就用「截图」）。
-    /// 区域语义与「截图」「找图」共用 <see cref="ScreenRegion"/>：前台窗口 / 整个屏幕 / 固定矩形，
-    /// 固定区域为空时明确报错，不退化成整屏（那会把满屏文字都认回来）。
-    /// </summary>
-    private static Value RecognizeScreen(StepContext ctx, StepArgs args, string source)
-    {
-        if (ctx.Token.IsCancellationRequested)
-            throw new ActionAbortedException("已停止", userCancelled: true);
-
-        ImageRegion region = ScreenArgs.ParseRegion(source);
-        int[]? rect = ScreenArgs.ParseRect(args);
-        if (region == ImageRegion.rect && (rect == null || rect.Length < 4 || rect[2] <= 0 || rect[3] <= 0))
-            throw new ActionException("「文字识别」选了固定区域，但区域还是空的：在「固定区域」那一行框选一下");
-
-        var (x, y, w, h) = ScreenRegion.Resolve(region, rect);
-        if (w <= 0 || h <= 0)
-            throw new ActionException($"识别区域无效：{x},{y} · {w}×{h}");
-
-        // 自动化指示器是置顶窗口，会被截进画面：截图期间收起，结束后恢复。
-        string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
-        try
-        {
-            using Bitmap bmp = ScreenCapture.Capture(x, y, w, h);
-            return UnitValues.FromVarValue(OcrProbe.RecognizeImage(bmp, args.Text("engine").Trim()));
-        }
-        finally
-        {
-            RecordingIndicatorWindow.RestoreAutomation(indicator);
-        }
     }
 }

@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace LTools.Features.CapturePro;
@@ -534,6 +536,112 @@ internal sealed class TableDocument
 
         return sb.ToString();
     }
+
+    public string ToMarkdown() => ToMarkdown(new TableRange(0, 0, RowCount - 1, ColumnCount - 1));
+
+    /// <summary>
+    /// Markdown 表格（贴进文档 / 交给 AI）：合并格只写左上角，其余留空——
+    /// Markdown 没有合并语法，留空至少保证列数不变、还能看出是同一格。
+    /// </summary>
+    public string ToMarkdown(TableRange source)
+    {
+        TableRange range = ExpandedRange(source);
+        if (!range.IsValid) return "";
+
+        var sb = new StringBuilder();
+        int index = 0;
+        for (int row = range.Top; row <= range.Bottom; row++, index++)
+        {
+            if (index > 0) sb.Append('\n');
+
+            sb.Append('|');
+            for (int column = range.Left; column <= range.Right; column++)
+                sb.Append(' ').Append(MarkdownCell(row, column)).Append(" |");
+
+            // 表头下一行是分隔行（Markdown 的表格必须要有）
+            if (index == 0)
+            {
+                sb.Append('\n').Append('|');
+                for (int column = range.Left; column <= range.Right; column++) sb.Append(" --- |");
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>Markdown 单元格：<c>|</c> 转义、换行变 <c>&lt;br&gt;</c>（否则整张表会断）。</summary>
+    private string MarkdownCell(int row, int column)
+    {
+        string text = TextAt(row, column);
+        return text
+            .Replace("\\", "\\\\")
+            .Replace("|", "\\|")
+            .Replace("\r\n", "<br>")
+            .Replace("\n", "<br>")
+            .Replace("\r", "<br>");
+    }
+
+    public string ToCsv() => ToCsv(new TableRange(0, 0, RowCount - 1, ColumnCount - 1));
+
+    /// <summary>
+    /// CSV（RFC 4180 的转义：含逗号 / 引号 / 换行或首尾空白的格子整体加引号，引号翻倍）。
+    /// 行尾用 CRLF，Excel / 表格软件都认；合并格只写左上角。
+    /// </summary>
+    public string ToCsv(TableRange source)
+    {
+        TableRange range = ExpandedRange(source);
+        if (!range.IsValid) return "";
+
+        var sb = new StringBuilder();
+        for (int row = range.Top; row <= range.Bottom; row++)
+        {
+            if (row > range.Top) sb.Append("\r\n");
+            for (int column = range.Left; column <= range.Right; column++)
+            {
+                if (column > range.Left) sb.Append(',');
+                sb.Append(CsvField(TextAt(row, column)));
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static string CsvField(string text)
+    {
+        if (text.Length == 0) return "";
+        bool quote = text.Contains(',') || text.Contains('"') || text.Contains('\n') || text.Contains('\r')
+                     || char.IsWhiteSpace(text[0]) || char.IsWhiteSpace(text[^1]);
+        return quote ? "\"" + text.Replace("\"", "\"\"") + "\"" : text;
+    }
+
+    public string ToJson() => ToJson(new TableRange(0, 0, RowCount - 1, ColumnCount - 1));
+
+    /// <summary>JSON 二维数组（每行一个字符串数组）；合并格只写左上角，其余是空串。</summary>
+    public string ToJson(TableRange source)
+    {
+        TableRange range = ExpandedRange(source);
+        if (!range.IsValid) return "[]";
+
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+        {
+            writer.WriteStartArray();
+            for (int row = range.Top; row <= range.Bottom; row++)
+            {
+                writer.WriteStartArray();
+                for (int column = range.Left; column <= range.Right; column++)
+                    writer.WriteStringValue(TextAt(row, column));
+                writer.WriteEndArray();
+            }
+            writer.WriteEndArray();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    /// <summary>导出文本用：合并格被盖住的位置给空串（<see cref="CellText"/> 会把锚点内容重复出来）。</summary>
+    private string TextAt(int row, int column) =>
+        IsAnchor(row, column) ? _slots[row][column].Cell!.Text ?? "" : "";
 
     /// <summary>剪贴板里的 HTML 部分：超长数字加 `'` 前缀，别让表格软件把它当数字截断。</summary>
     public string ToSpreadsheetHtml(TableRange source)

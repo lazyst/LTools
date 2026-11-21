@@ -120,6 +120,14 @@ internal static class OptionLabels
         ["bmp"] = "BMP（无压缩）",
         ["webp"] = "WebP（有损、更小）",
 
+        // —— 表格识别（screen.table）——
+        ["lines"] = "只认表格线",
+        ["cluster"] = "只按文字位置",
+        ["tsv"] = "TSV（贴 Excel 分列）",
+        ["markdown"] = "Markdown 表格",
+        ["csv"] = "CSV（逗号分隔）",
+        ["json"] = "JSON（二维数组）",
+
         // —— 剪贴板 / 发送文本 ——
         ["read"] = "读取剪贴板",
         ["write"] = "写入剪贴板",

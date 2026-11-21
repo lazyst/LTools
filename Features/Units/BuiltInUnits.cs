@@ -92,6 +92,7 @@ public static class BuiltInUnits
         registry.Register(new PickPointUnit());
         registry.Register(new FindImageUnit());
         registry.Register(new OcrUnit());
+        registry.Register(new TableUnit());
         registry.Register(new FindTextUnit());
         registry.Register(new PixelUnit());
         registry.Register(new ImageTransformUnit());

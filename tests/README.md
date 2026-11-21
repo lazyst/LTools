@@ -85,6 +85,23 @@ dotnet run --no-build                     # 21 条，约 2 秒
 空剪贴板什么都不粘 / 复制为副本后粘到指定位置「新 Id + 名字加『副本』+ 自己的 `files/`」/
 跨场景（上下文场景）粘贴 / 空剪贴板不挂「粘贴」而菜单树里能选到每个分组 / 源动作被删后粘不了并清空剪贴板。
 
+### `TableSmoke`（表格识别 `screen.table`）
+
+```powershell
+cd tests\TableSmoke
+dotnet run                                # 23 条，首次要构建产品 + 加载 PP-OCRv6，约 20 秒
+```
+
+**它用 `ProjectReference` 而不是 HintPath**：表格识别要 OpenCvSharp 的 native、ONNX Runtime 与
+`Assets\Ocr\ppocrv6` 的内置模型，这些只有引用产品项目才会被带进输出；换成直接引用 `LTools.dll`
+会以 `DllNotFoundException: OpenCvSharpExtern` 收场。
+
+用 GDI+ 现画三张图（带框线 3×3 / 无线框 3×2 / 表头跨两列合并），真跑 `TableReader.Read`，
+断言**结构**而不是文字（OCR 结果随机型 / 语言包略有差异）：`auto` 在有框线图走线检测、无线框图退回聚类 /
+`lines` 在无线框图 `found=false` / 合并表 2 行 3 列且合并是 `0,0,1,2`、被盖住的格子不是锚点（`rows` 里留空）/
+TSV 3 行每行 2 个制表符、CSV 按 CRLF 分 3 行、Markdown 4 行（表头 + 分隔行 + 2 行数据）、JSON 3×3。
+测试图不入库（跑在 `%TEMP%` 下，结束删掉）。
+
 ### 写法约定
 
 - `Check(条件, "中文断言文案")`：失败只记一条，不中断（最后汇总失败数）。
