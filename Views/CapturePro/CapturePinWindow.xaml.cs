@@ -136,6 +136,10 @@ public partial class CapturePinWindow : Window
         Area = area;
         SourceInitialized += (_, _) => MakeNonActivating();
 
+        // 模态窗口（动作编辑器 / 确认框）会把同进程其它窗口禁掉：贴图窗得自己救回来，
+        // 否则置顶的贴图看得见却点不动（点它是「贴图工具条」的入口）。
+        StayClickable.Attach(this);
+
         // 出现之后静默识别一次（照上游 automatic_text_recognition）：点「显示文字」/ 划选都不必再等。
         Loaded += (_, _) => StartAutoRecognize();
 
