@@ -180,6 +180,41 @@ internal static partial class Program
                 "存的子页原样保留");
             Check((string)normalize.Invoke(null, new object?[] { "output" })! == "actions",
                 "「截图输出」不再是合法一级页（旧值回到动作管理，不做旧 tag 兼容）");
+
+            // ============ ⑧ 重开设置：展开状态要真的恢复 ============
+            // 只把 capture 记进 NavExpandedGroups、启动却只套另外四个分组时，界面仍是折叠的，
+            // 第一下点父项会被当成「收起」（什么都看不见），用户得连点好几下才展开。
+            settings.Close();
+            settings = null;
+            PumpFor(150);
+
+            var reopened = new LTools.Views.ConfigHelperWindow(configPath);
+            try
+            {
+                reopened.Show();
+                Pump(reopened);
+                Pump(reopened);
+                var host = (Border)reopened.FindName("CaptureSubNavHost")!;
+                Check(host.Visibility == Visibility.Visible,
+                    "重开设置后「截图 Pro」二级下拉按记录展开（不是折叠着等用户点）");
+                var chevron = (TextBlock)reopened.FindName("NavCaptureChevron")!;
+                Check(chevron.RenderTransform is System.Windows.Media.RotateTransform { Angle: 90 },
+                    "箭头也是展开态（90°）");
+
+                // 状态一致之后，第一下点击就该是「收起」，再点一下展开——不用连点
+                var toggle = typeof(LTools.Views.ConfigHelperWindow).GetMethod("ToggleNavGroup", Inst)!;
+                toggle.Invoke(reopened, new object[] { "capture" });
+                PumpFor(300);   // 收起动画 170ms
+                Check(host.Visibility == Visibility.Collapsed, "状态一致后点一下父项就收起");
+                toggle.Invoke(reopened, new object[] { "capture" });
+                PumpFor(300);
+                Check(host.Visibility == Visibility.Visible, "再点一下又展开（不用连点）");
+            }
+            finally
+            {
+                reopened.Close();
+                PumpFor(100);
+            }
         }
         finally
         {

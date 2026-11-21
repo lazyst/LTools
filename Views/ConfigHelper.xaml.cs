@@ -31,7 +31,7 @@ namespace LTools.Views;
 /// </summary>
 public partial class ConfigHelperWindow : Window
 {
-    // 二级下拉导航的四个父项（AppConfig.NavExpandedGroups 里也用这四个值）
+    // 二级下拉导航的父项（AppConfig.NavExpandedGroups 里也用这些值；五个分组共用一套机制）
     private const string FamilySuperPanel = "superpanel";
     private const string FamilyAi = "ai";
     private const string FamilyLogs = "logs";
@@ -57,7 +57,7 @@ public partial class ConfigHelperWindow : Window
     private bool _syncingNav;            // 程序化点亮二级导航时不重复导航
     private bool _restoringNav;          // 恢复上次导航时不写盘、不播动画
     private string _currentNav = "";     // 当前导航 tag（具体子页，如 ai-audit）
-    private readonly HashSet<string> _expandedGroups = new();   // 展开着的二级分组（superpanel / ai / macros / logs）
+    private readonly HashSet<string> _expandedGroups = new();   // 展开着的二级分组（superpanel / ai / macros / logs / capture）
     // 每个二级分组上次所在的子页：点父项切进来时回到这里，而不是永远回第一页
     private readonly Dictionary<string, string> _lastSubPage = new()
     {
@@ -121,7 +121,7 @@ public partial class ConfigHelperWindow : Window
         string lastNav = NormalizeSavedNav(ui.LastNavPage);
         _expandedGroups.Clear();
         foreach (string g in ui.NavExpandedGroups ?? new List<string>())
-            if (g is FamilySuperPanel or FamilyAi or FamilyMacros or FamilyLogs or FamilyCapture) _expandedGroups.Add(g);
+            if (_lastSubPage.ContainsKey(g)) _expandedGroups.Add(g);
         string? startupFamily = NavFamilyOf(lastNav);
         // 当前页所在的组一定展开：否则打开设置看不出自己在哪个子页（其余分组按记录）
         if (startupFamily != null) _expandedGroups.Add(startupFamily);
@@ -429,13 +429,16 @@ public partial class ConfigHelperWindow : Window
         AnimateSubNav(NavGroupHost(family), NavGroupChevron(family), expanded, animate);
     }
 
-    /// <summary>按 <see cref="_expandedGroups"/> 套一遍四个下拉（启动恢复用，不播动画）。</summary>
+    /// <summary>按 <see cref="_expandedGroups"/> 把所有二级下拉套一遍（启动恢复用，不播动画）。</summary>
+    /// <remarks>
+    /// 遍历分组表（<see cref="_lastSubPage"/> 的键），**别再在这里手写分组清单**：
+    /// 「截图 Pro」当初就是漏在清单外——`_expandedGroups` 记着它、可视状态却一直折叠，
+    /// 于是第一下点父项被当成「收起」（什么也看不见），要连点好几次才展开。
+    /// </remarks>
     private void ApplyNavExpandedStates(bool animate)
     {
-        SetNavGroupExpanded(FamilySuperPanel, _expandedGroups.Contains(FamilySuperPanel), animate);
-        SetNavGroupExpanded(FamilyAi, _expandedGroups.Contains(FamilyAi), animate);
-        SetNavGroupExpanded(FamilyMacros, _expandedGroups.Contains(FamilyMacros), animate);
-        SetNavGroupExpanded(FamilyLogs, _expandedGroups.Contains(FamilyLogs), animate);
+        foreach (string family in _lastSubPage.Keys)
+            SetNavGroupExpanded(family, _expandedGroups.Contains(family), animate);
     }
 
     /// <summary>把当前选中的导航项滚进视野（启动恢复时用：四个下拉都展开会超出可视高度）。</summary>
@@ -445,7 +448,7 @@ public partial class ConfigHelperWindow : Window
         foreach (var rb in AllNavItems())
         {
             if (rb.IsChecked != true || rb.Tag is not string t) continue;
-            if (t is FamilySuperPanel or FamilyAi or FamilyMacros or FamilyLogs) { parent = rb; continue; }
+            if (_lastSubPage.ContainsKey(t)) { parent = rb; continue; }
             rb.BringIntoView();   // 具体子页优先：父项在上面，滚它不一定能看到子项
             return;
         }
