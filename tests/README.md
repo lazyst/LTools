@@ -71,6 +71,20 @@ dotnet run --no-build                     # 15 条，约 5 秒
 明确移到邻项才换 / 锥内短停 140ms 保持、停 660ms 让位 / 被划过的邻项底板不是 `HoverBg`（`#00FFFFFF`）/
 横向离开菜单后子菜单收起。它会真的动鼠标，结束时把光标放回原处。
 
+### `PanelClipboardSmoke`（复制引用 / 复制为副本 / 粘贴）
+
+```powershell
+dotnet build -p:NoWin32Manifest=true      # 先构建产品（同样直接引用 bin\Debug 里的 LTools.dll）
+cd tests\PanelClipboardSmoke
+dotnet build -v q
+dotnet run --no-build                     # 21 条，约 2 秒
+```
+
+用临时数据根（`%TEMP%\ltools-panel-clip-*` 下的 `configs/` + `actions/`，跑完删掉）驱动真实的
+`ConfigStore` / `PanelLibrary` / `PanelActionOps`，断言：复制引用后粘到另一个分组「是同一个动作、不新建」/
+空剪贴板什么都不粘 / 复制为副本后粘到指定位置「新 Id + 名字加『副本』+ 自己的 `files/`」/
+跨场景（上下文场景）粘贴 / 空剪贴板不挂「粘贴」而菜单树里能选到每个分组 / 源动作被删后粘不了并清空剪贴板。
+
 ### 写法约定
 
 - `Check(条件, "中文断言文案")`：失败只记一条，不中断（最后汇总失败数）。

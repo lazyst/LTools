@@ -2115,7 +2115,7 @@
                                             <Button Content="⧉" CommandParameter="copy" Style="{StaticResource BtnGhost}"
                                                     Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="14"
                                                     FontFamily="Segoe UI Symbol" Focusable="False"
-                                                    ToolTip="复制这个动作" Click="ActionRowAction_Click"/>
+                                                    ToolTip="复制为副本（新动作，模板图 / 脚本一起带走）" Click="ActionRowAction_Click"/>
                                             <Button Content="🕘" CommandParameter="history" Style="{StaticResource BtnGhost}"
                                                     Width="24" Height="24" Padding="0" Margin="2,0,0,0" FontSize="13"
                                                     FontFamily="Segoe UI Symbol" Focusable="False"

@@ -105,16 +105,15 @@ internal static class ConfigStore
         finally { NotifyChanged(); }
     }
 
-    /// <summary>复制动作（新 Id + 名称追加「副本」）。</summary>
+    /// <summary>复制动作（新 Id + 名称加「副本」，模板图 / 脚本一并带走）。</summary>
+    /// <remarks>
+    /// 只复制动作本体：快捷键绑定、悬浮项、触发规则都不跟过去——副本是一份新动作，
+    /// 跟着绑会让一个键触发两个动作、桌面上冒出两个一模一样的悬浮按钮。
+    /// </remarks>
     public static ActionDto? DuplicateAction(string id)
     {
-        var src = ActionLibrary.Find(id);
-        if (src == null) return null;
-        // 用 Clone 深拷贝全部字段，避免新增字段时这里漏抄导致复制出的动作丢配置。
-        var copy = src.Clone();
-        copy.Id = ActionRegistry.NextId();
-        copy.Name = src.Name + " 副本";
-        if (string.IsNullOrEmpty(copy.Icon)) copy.Icon = IconCatalog.Default;
+        var copy = ActionDuplicator.Duplicate(ConfigPath, id, ActionRegistry.All.Select(a => a.Name));
+        if (copy == null) return null;
         ActionLibrary.Add(copy);
         NotifyChanged();
         return copy;

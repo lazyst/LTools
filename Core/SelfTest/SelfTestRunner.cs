@@ -55,6 +55,7 @@ internal static class SelfTestRunner
         S3BSuite.Register(cases);
         CategoryNavSuite.Register(cases);
         MenuConeSuite.Register(cases);
+        PanelClipboardSuite.Register(cases);
         KnowledgeSuite.Register(cases);
         InfoHelperSuite.Register(cases);
         CaptureProSuite.Register(cases);

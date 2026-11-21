@@ -44,7 +44,10 @@ public partial class SuperPanelWindow
         }
 
         AddMenuItem(menu, "编辑…", () => EditAction(tref));
-        AddMenuItem(menu, "复制", () => DuplicateAction(tref));
+        // 两种复制：引用 = 同一个动作再放一处；副本 = 现复制一份新动作（各走各的）。
+        AddMenuItem(menu, "复制引用", () => PanelActionOps.CopyReference(id));
+        AddMenuItem(menu, "复制为副本", () => PanelActionOps.CopyCopy(id));
+        PanelPasteMenu.Append(menu, tref.Group, PasteIntoGroup, tref.Index + 1);
         // 照 Quicker「以暂存区方式编辑」：正式动作只读，先复制一份到暂存区再改
         AddMenuItem(menu, "在暂存区编辑…", () => EditInStash(id));
         AddMenuItem(menu, "导出动作…", () => ExportAction(tref));
@@ -82,6 +85,11 @@ public partial class SuperPanelWindow
             ToolTip = def?.Description,
         };
         menu.Items.Add(info);
+        menu.Items.Add(new Separator());
+
+        // 内置功能没有本体可复制，只能「复制引用」（带参数的整串照原样带走）。
+        AddMenuItem(menu, "复制引用", () => PanelActionOps.CopyReference(id));
+        PanelPasteMenu.Append(menu, tref.Group, PasteIntoGroup, tref.Index + 1);
         menu.Items.Add(new Separator());
 
         bool floating = FloatingLibrary.IsFloating(id);
@@ -237,6 +245,7 @@ public partial class SuperPanelWindow
         AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(group));
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
         AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
+        PanelPasteMenu.Append(menu, group, PasteIntoGroup);
         menu.Items.Add(new Separator());
         AddFeatureMenus(menu, group);
         menu.Items.Add(new Separator());
@@ -274,6 +283,7 @@ public partial class SuperPanelWindow
         {
             AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(target));
             AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(target));
+            PanelPasteMenu.Append(menu, target, PasteIntoGroup);
             menu.Items.Add(new Separator());
             AddFeatureMenus(menu, target);
             menu.Items.Add(new Separator());
@@ -692,16 +702,10 @@ public partial class SuperPanelWindow
         }
     }
 
-    private void DuplicateAction(PanelTileRef tref)
+    /// <summary>粘贴到某个分组（索引 -1 = 末尾）；面板不关，粘完就地重建。</summary>
+    private void PasteIntoGroup(PanelGroupDto group, int index)
     {
-        if (tref.ActionId == null) return;
-        var copy = ConfigStore.DuplicateAction(tref.ActionId);
-        if (copy == null) return;
-        ConfigStore.Save();
-        int insert = Math.Min(tref.Index + 1, tref.Group.Actions.Count);
-        tref.Group.Actions.Insert(insert, copy.Id);
-        PanelLibrary.Save();
-        RebuildAll();
+        if (PanelActionOps.Paste(group, index)) RebuildAll();
     }
 
     private void RemoveFromGroup(PanelTileRef tref)

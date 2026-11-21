@@ -65,6 +65,13 @@ public partial class PanelManageView : UserControl
     private static ContextMenu Menu(params (string Header, Action? Invoke)[] items)
     {
         var menu = new ContextMenu();
+        AddMenuItems(menu, items);
+        return menu;
+    }
+
+    /// <summary>照 <see cref="Menu"/> 的写法往现成菜单里追加（中间要插「粘贴」时用）。</summary>
+    private static void AddMenuItems(ItemsControl menu, params (string Header, Action? Invoke)[] items)
+    {
         foreach (var (header, invoke) in items)
         {
             if (header == "-") { menu.Items.Add(new Separator()); continue; }
@@ -75,7 +82,6 @@ public partial class PanelManageView : UserControl
                 mi.IsEnabled = false;
             menu.Items.Add(mi);
         }
-        return menu;
     }
 
     private ContextMenu BuildSceneListBlankMenu() => Menu(
@@ -83,9 +89,16 @@ public partial class PanelManageView : UserControl
         ("新建上下文场景", () => CreateScene(global: false)),
         ("新建窗口子场景", NewChildSceneForSelection));
 
-    private ContextMenu BuildDetailBlankMenu() => Menu(
-        ("在此场景新建动作…", () => NewActionForSelectedScene()),
-        ("新建分组", AddGroupToSelectedScene));
+    private ContextMenu BuildDetailBlankMenu()
+    {
+        var menu = Menu(
+            ("在此场景新建动作…", () => NewActionForSelectedScene()),
+            ("新建分组", AddGroupToSelectedScene));
+        // 详情页空白处：粘到本场景的第一个分组（与「在此场景新建动作…」同一个落点）
+        var groups = GroupsOfSelectedScene();
+        PanelPasteMenu.Append(menu, groups.Count > 0 ? groups[0] : null, PasteIntoGroup);
+        return menu;
+    }
 
     private ContextMenu BuildSceneRowMenu(PanelSceneDto scene, bool isGlobal)
     {
@@ -102,12 +115,24 @@ public partial class PanelManageView : UserControl
         return Menu(items.ToArray());
     }
 
-    private ContextMenu BuildGroupMenu(PanelGroupDto group, List<PanelGroupDto> groups) => Menu(
-        ("重命名分组", () => RenameGroup(group)),
-        ("新建动作…", () => AddActionToGroup(group)),
-        ("从动作池选择…", () => AddExistingToGroup(group)),
-        ("-", null),
-        ("删除分组…", () => DeleteGroup(groups, group)));
+    private ContextMenu BuildGroupMenu(PanelGroupDto group, List<PanelGroupDto> groups)
+    {
+        var menu = new ContextMenu();
+        AddMenuItems(menu,
+            ("重命名分组", () => RenameGroup(group)),
+            ("新建动作…", () => AddActionToGroup(group)),
+            ("从动作池选择…", () => AddExistingToGroup(group)));
+        PanelPasteMenu.Append(menu, group, PasteIntoGroup);
+        menu.Items.Add(new Separator());
+        AddMenuItems(menu, ("删除分组…", () => DeleteGroup(groups, group)));
+        return menu;
+    }
+
+    /// <summary>粘贴进某个分组（索引 -1 = 末尾）；粘完就地刷新场景页。</summary>
+    private void PasteIntoGroup(PanelGroupDto group, int index)
+    {
+        if (PanelActionOps.Paste(group, index)) RefreshAll();
+    }
 
     private void RenameScene(PanelSceneDto scene)
     {
@@ -627,7 +652,17 @@ public partial class PanelManageView : UserControl
 
     // ============ 详情 ============
 
+    /// <summary>
+    /// 重建详情页。空白处菜单**跟着重建**：它里面有「粘贴（落到本场景第一个分组）」，
+    /// 而剪贴板与当前场景都会变——构造时建一次的话会粘到别的场景的分组里。
+    /// </summary>
     private void RenderDetail()
+    {
+        RenderDetailCore();
+        DetailHost.ContextMenu = BuildDetailBlankMenu();
+    }
+
+    private void RenderDetailCore()
     {
         DetailHost.Children.Clear();
         _groupNameBoxes.Clear();
@@ -1283,6 +1318,18 @@ public partial class PanelManageView : UserControl
         var edit = new MenuItem { Header = "编辑…" };
         edit.Click += (_, _) => { if (PanelActionOps.Edit(Window.GetWindow(this), id)) RefreshAll(); };
         menu.Items.Add(edit);
+
+        var copyRef = new MenuItem { Header = "复制引用" };
+        copyRef.Click += (_, _) => PanelActionOps.CopyReference(id);
+        menu.Items.Add(copyRef);
+        if (a != null)
+        {
+            var copyCopy = new MenuItem { Header = "复制为副本" };
+            copyCopy.Click += (_, _) => PanelActionOps.CopyCopy(id);
+            menu.Items.Add(copyCopy);
+        }
+        PanelPasteMenu.Append(menu, group, PasteIntoGroup, index + 1);
+
         if (a != null)
         {
             var export = new MenuItem { Header = "导出动作…" };

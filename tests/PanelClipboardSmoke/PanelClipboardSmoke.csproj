@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    面板「复制引用 / 复制为副本 / 粘贴」的冒烟（仓库外跑，不进 CI）。
+    - 用临时数据根（configs / actions 都落在 %TEMP%），不碰真实配置；
+    - 用反射驱动 LTools.dll 里的 internal 类型（ConfigStore / PanelLibrary / PanelActionOps / ActionClipboard / PanelPasteMenu）；
+    - 断言「看得见的结果」：分组里的引用、动作清单、副本的 files/、菜单项文案。
+    跑之前先构建产品：
+        dotnet build -p:NoWin32Manifest=true
+        cd tests\PanelClipboardSmoke；dotnet run
+    相关文档：tests/README.md、AGENTS.md「超级面板用完即收」附近那条复制 / 粘贴约定。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>PanelClipboardSmoke</AssemblyName>
+    <RootNamespace>PanelClipboardSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="LTools">
+      <HintPath>..\..\bin\Debug\net10.0-windows10.0.19041.0\LTools.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

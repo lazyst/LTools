@@ -6,6 +6,7 @@ using LTools.Config;
 using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Core.Storage;
+using LTools.Features.Builtin;
 using LTools.Views;
 
 namespace LTools.Features.Panel;
@@ -43,6 +44,75 @@ internal static class PanelActionOps
         PanelLibrary.Save();
         ConfigStore.NotifyChanged();   // 面板结构变了，已打开的设置页要跟着刷
         return true;
+    }
+
+    /// <summary>复制引用：剪贴板里放「同一个动作再放一处」，粘到别的分组 / 场景后两边永远是同一个动作。</summary>
+    public static void CopyReference(string reference)
+    {
+        var entry = ActionClipboard.CopyReference(reference);
+        ToastService.Show("已复制引用；到目标分组右键「粘贴」或「粘贴到…」", entry.Name,
+            2500, ToastKind.success, key: "panel:clipboard");
+    }
+
+    /// <summary>复制为副本：剪贴板里放「粘贴时现复制一份」，副本带新的 Id / 名字与它自己的 files/。</summary>
+    public static void CopyCopy(string actionId)
+    {
+        var entry = ActionClipboard.CopyCopy(actionId);
+        ToastService.Show("已复制为副本；粘贴时会新建一个动作", entry.Name,
+            2500, ToastKind.success, key: "panel:clipboard");
+    }
+
+    /// <summary>
+    /// 把剪贴板里的那一份粘进分组：引用 = 再加一颗磁贴（同一个动作）；
+    /// 副本 = 现复制一份新动作（<c>files/</c> 一并带走）再加磁贴。
+    /// </summary>
+    /// <param name="group">目标分组。</param>
+    /// <param name="index">插到第几颗前面；<c>-1</c> 或越界 = 追加到末尾。</param>
+    /// <returns>是否真的粘了（剪贴板为空 / 源已被删返回 false）。</returns>
+    public static bool Paste(PanelGroupDto group, int index = -1)
+    {
+        var entry = ActionClipboard.Entry;
+        if (entry == null || group == null) return false;
+
+        if (entry.Kind == ActionClipKind.Reference)
+        {
+            if (!BindingRef.Exists(entry.Reference))
+            {
+                ActionClipboard.Clear();
+                ToastService.Show($"「{entry.Name}」已经不存在了，剪贴板已清空", "粘贴", 4000, ToastKind.error);
+                return false;
+            }
+
+            InsertAt(group, index, entry.Reference);
+            PanelLibrary.Save();
+            ConfigStore.NotifyChanged();   // 面板结构变了，已打开的设置页要跟着刷
+            ToastService.Show($"已在「{group.Name}」里加了一份引用", entry.Name,
+                2000, ToastKind.success, key: "panel:paste");
+            return true;
+        }
+
+        var copy = ConfigStore.DuplicateAction(entry.Reference);
+        if (copy == null)
+        {
+            ActionClipboard.Clear();
+            ToastService.Show("原动作已经不存在了，剪贴板已清空", "粘贴副本", 4000, ToastKind.error);
+            return false;
+        }
+
+        ConfigStore.Save();                        // 新动作先落盘（actions/<新 id>/），再挂进面板
+        InsertAt(group, index, copy.Id);
+        PanelLibrary.Save();
+        ConfigStore.NotifyChanged();
+        ToastService.Show($"已复制为「{copy.Name}」并放进「{group.Name}」", "粘贴副本",
+            3000, ToastKind.success, key: "panel:paste");
+        return true;
+    }
+
+    /// <summary>把引用插进分组（越界 / -1 = 追加）。</summary>
+    private static void InsertAt(PanelGroupDto group, int index, string reference)
+    {
+        if (index < 0 || index > group.Actions.Count) group.Actions.Add(reference);
+        else group.Actions.Insert(index, reference);
     }
 
     /// <summary>编辑分组里的动作；返回是否发生了修改。</summary>
