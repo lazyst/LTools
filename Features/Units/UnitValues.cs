@@ -52,6 +52,11 @@ internal static class UnitValues
 
         if (value.Title.Length > 0) Add("title", Value.FromText(value.Title));
         if (value.Time.Length > 0) Add("time", Value.FromText(value.Time));
+        if (value.Snippet.Length > 0)
+        {
+            Add("snippet", Value.FromText(value.Snippet));
+            Add("summary", Value.FromText(value.Snippet));
+        }
 
         return Value.FromObject(members);
     }
@@ -64,7 +69,7 @@ internal static class UnitValues
         bool? flag = null;
         int? x = null, y = null, w = null, h = null;
         double? score = null;
-        string file = "", error = "", title = "", time = "";
+        string file = "", error = "", title = "", time = "", snippet = "";
 
         if (value.Kind == ValueKind.number) number = value.NumberValue;
         if (value.Kind == ValueKind.@bool) flag = value.BoolValue;
@@ -83,6 +88,7 @@ internal static class UnitValues
             if (members.TryGetValue("err", out var errValue)) error = errValue.AsText();
             if (members.TryGetValue("title", out var titleValue)) title = titleValue.AsText();
             if (members.TryGetValue("time", out var timeValue)) time = timeValue.AsText();
+            if (members.TryGetValue("snippet", out var snippetValue)) snippet = snippetValue.AsText();
         }
 
         return new VarValue
@@ -99,6 +105,7 @@ internal static class UnitValues
             Error = error,
             Title = title,
             Time = time,
+            Snippet = snippet,
         };
     }
 

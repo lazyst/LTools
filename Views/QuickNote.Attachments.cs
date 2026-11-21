@@ -210,14 +210,8 @@ public partial class QuickNoteWindow
 
     private void InsertImageLink(string filePath)
     {
-        string dirName = Path.GetFileName(Path.GetDirectoryName(filePath)) ?? "";
-        string fileName = Path.GetFileName(filePath);
-        string destination = dirName + "/" + fileName;
-        // 笔记名里常有空格 / 括号：CommonMark 要求这种地址用尖括号包起来，否则 Markdig 与别的
-        // Markdown 阅读器都会在空格处截断（正文里也仍然可读）
-        if (destination.Any(c => c is ' ' or '(' or ')'))
-            destination = "<" + destination + ">";
-        string link = "![" + Path.GetFileNameWithoutExtension(fileName) + "](" + destination + ")";
+        string destination = NoteRepository.AttachmentLink(filePath);
+        string link = "![" + Path.GetFileNameWithoutExtension(filePath) + "](" + destination + ")";
 
         var document = BodyBox.Document;
         int offset = BodyBox.CaretOffset;
@@ -263,19 +257,7 @@ public partial class QuickNoteWindow
         return true;
     }
 
-    private static string UniquePath(string dir, string fileName)
-    {
-        string path = Path.Combine(dir, fileName);
-        if (!File.Exists(path)) return path;
-        string stem = Path.GetFileNameWithoutExtension(fileName);
-        string ext = Path.GetExtension(fileName);
-        for (int i = 2; i < 1000; i++)
-        {
-            string candidate = Path.Combine(dir, stem + " (" + i + ")" + ext);
-            if (!File.Exists(candidate)) return candidate;
-        }
-        return path;
-    }
+    private static string UniquePath(string dir, string fileName) => NoteRepository.UniqueFilePath(dir, fileName);
 
     private static string UniqueDirectory(string path)
     {

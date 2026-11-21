@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using LTools.Core;
+using LTools.Core.Actions;
 
 namespace LTools.Features;
 
@@ -224,6 +225,25 @@ internal sealed class NoteRepository
         return newPath;
     }
 
+    /// <summary>原地写回一条已存在的速记（不改文件名、不搬目录）。追加模式用它。</summary>
+    /// <remarks>
+    /// 走 <see cref="Save"/> 会按「标题 + 创建日」重算文件名：没有标题的旧笔记（<c>2026-11-22_101010.md</c>）
+    /// 追加时会被改名，用户看到的是「追加一下，文件名变了」。所以追加一律按原路径写。
+    /// </remarks>
+    public void WriteExisting(string path, string body, DateTime mtime)
+    {
+        try
+        {
+            File.WriteAllText(path, body ?? "", new UTF8Encoding(false));
+            File.SetLastWriteTime(path, mtime);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("速记写回失败: " + path, ex);
+            throw;
+        }
+    }
+
     /// <summary>删除单条（连带它的 <c>&lt;笔记名&gt;.files</c> 附件目录）。</summary>
     public void Delete(string path)
     {
@@ -245,6 +265,74 @@ internal sealed class NoteRepository
         string dir = System.IO.Path.GetDirectoryName(notePath) ?? "";
         string stem = System.IO.Path.GetFileNameWithoutExtension(notePath);
         return System.IO.Path.Combine(dir, stem + ".files");
+    }
+
+    /// <summary>
+    /// 同名文件已存在时按 <c>名字 (2).ext</c> 往后找空位（粘贴 / 拖入 / 动作导入图片共用这一份）。
+    /// </summary>
+    public static string UniqueFilePath(string dir, string fileName)
+    {
+        string path = System.IO.Path.Combine(dir, fileName);
+        if (!File.Exists(path)) return path;
+
+        string stem = System.IO.Path.GetFileNameWithoutExtension(fileName);
+        string ext = System.IO.Path.GetExtension(fileName);
+        for (int i = 2; i < 1000; i++)
+        {
+            string candidate = System.IO.Path.Combine(dir, stem + " (" + i + ")" + ext);
+            if (!File.Exists(candidate)) return candidate;
+        }
+        return path;
+    }
+
+    /// <summary>
+    /// 附件在正文里的相对链接（<c>笔记名.files/x.png</c>）。笔记名常有空格 / 括号，
+    /// CommonMark 要求这种地址用 <c>&lt;…&gt;</c> 包起来，否则 Markdig 与别的阅读器会在空格处截断。
+    /// 粘贴 / 拖入与「写速记」共用这一份。
+    /// </summary>
+    public static string AttachmentLink(string attachmentPath)
+    {
+        string dirName = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(attachmentPath)) ?? "";
+        string relative = dirName + "/" + System.IO.Path.GetFileName(attachmentPath);
+        return relative.IndexOfAny(new[] { ' ', '(', ')' }) >= 0 ? "<" + relative + ">" : relative;
+    }
+
+    /// <summary>
+    /// 把外部图片复制进这条速记的附件夹，返回**正文里能直接用的相对链接**（<c>笔记名.files/x.png</c>；
+    /// 带空格 / 括号时按 CommonMark 用 <c>&lt;…&gt;</c> 包起来）。
+    /// </summary>
+    /// <remarks>
+    /// 「写速记」动作用它把 <c>${截图.file}</c> 这类运行期图片（<c>cache/screenshots</c> 下次运行就清空）
+    /// 存成速记资产；已经在这个附件夹里的文件不重复复制。源文件不存在时抛 <see cref="ActionErrors.Precondition"/>
+    /// ——用户明确给了图却悄悄丢掉，比报错更难查。
+    /// </remarks>
+    public IReadOnlyList<string> ImportAttachments(string notePath, IReadOnlyList<string> sources)
+    {
+        string dir = AttachmentsDirFor(notePath);
+        Directory.CreateDirectory(dir);
+        string fullDir = System.IO.Path.GetFullPath(dir);
+
+        var links = new List<string>(sources.Count);
+        foreach (string source in sources)
+        {
+            string full = System.IO.Path.GetFullPath(source);
+            if (!File.Exists(full)) throw ActionErrors.Precondition("写速记找不到图片：" + source);
+
+            string fileName;
+            if (string.Equals(System.IO.Path.GetDirectoryName(full), fullDir, StringComparison.OrdinalIgnoreCase))
+            {
+                fileName = System.IO.Path.GetFileName(full); // 已经在附件夹里：不重复复制
+            }
+            else
+            {
+                fileName = System.IO.Path.GetFileName(
+                    UniqueFilePath(dir, System.IO.Path.GetFileName(full)));
+                File.Copy(full, System.IO.Path.Combine(dir, fileName));
+            }
+
+            links.Add(AttachmentLink(System.IO.Path.Combine(dir, fileName)));
+        }
+        return links;
     }
 
     // —— 一次性迁移：速记/ 根目录散落旧 .txt → 未分类/<新文件名>（只留正文）——

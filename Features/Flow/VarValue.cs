@@ -49,6 +49,9 @@ public sealed class VarValue
     /// <summary>速记时间（yyyy-MM-dd HH:mm:ss）。</summary>
     public string Time { get; init; } = "";
 
+    /// <summary>速记摘要：正文第一行有效内容（已去 Markdown 记号，最长 60 字），与列表里那一行同源。</summary>
+    public string Snippet { get; init; } = "";
+
     /// <summary>由文本构造。</summary>
     public static VarValue FromText(string? text) => new() { Text = text ?? "" };
 
@@ -115,6 +118,7 @@ public sealed class VarValue
         "err" or "error" or "stderr" => Error,
         "title" => Title,
         "time" => Time,
+        "snippet" or "summary" => Snippet,
         _ => null,
     };
 }

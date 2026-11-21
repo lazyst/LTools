@@ -19,11 +19,13 @@ public sealed class NoteReadUnit : IStepUnit
         {
             new InputSpec("category", "分类", ValueKind.text,
                 Pickers: PickerKind.variable | PickerKind.noteCategory | PickerKind.inline | PickerKind.clear),
-            new InputSpec("filter", "关键字", ValueKind.text),
+            new InputSpec("filter", "关键字", ValueKind.text,
+                Description: "匹配标题或正文（包含即可，忽略大小写）；留空 = 该分类最近修改的一条"),
         },
         Outputs = new[]
         {
-            new OutputSpec("text", "正文", ValueKind.text, "note", Description: "命中的速记正文"),
+            new OutputSpec("text", "正文", ValueKind.text, "note", Description: "命中的速记正文（Markdown 源码）"),
+            new OutputSpec("snippet", "摘要", ValueKind.text, Description: "正文第一行有效内容（和速记列表里那一行一样，最长 60 字）"),
             new OutputSpec("title", "标题", ValueKind.text, Description: "速记标题"),
             new OutputSpec("time", "时间", ValueKind.text, Description: "最后修改时间"),
             new OutputSpec("path", "文件", ValueKind.text, Description: "速记文件路径"),
@@ -44,6 +46,7 @@ public sealed class NoteReadUnit : IStepUnit
 
         var value = ProbeContext.Evaluate(ctx, legacy => NoteActions.Read(probe, legacy));
         string text = UnitValues.Member(value, "text")?.AsText() ?? "";
+        string snippet = UnitValues.Member(value, "snippet")?.AsText() ?? "";
         string title = UnitValues.Member(value, "title")?.AsText() ?? "";
         string time = UnitValues.Member(value, "time")?.AsText() ?? "";
         string path = UnitValues.Member(value, "file")?.AsText() ?? "";
@@ -51,6 +54,7 @@ public sealed class NoteReadUnit : IStepUnit
         int count = (int)Number(value, "number");
 
         ctx.SetOutput("text", Value.FromText(text));
+        ctx.SetOutput("snippet", Value.FromText(snippet));
         ctx.SetOutput("title", Value.FromText(title));
         ctx.SetOutput("time", Value.FromText(time));
         ctx.SetOutput("path", Value.FromText(path));
@@ -58,6 +62,7 @@ public sealed class NoteReadUnit : IStepUnit
         ctx.SetOutput("count", Value.FromNumber(count));
         ctx.SetOutput("value", Value.Object(
             ("text", Value.FromText(text)),
+            ("snippet", Value.FromText(snippet)),
             ("title", Value.FromText(title)),
             ("time", Value.FromText(time)),
             ("path", Value.FromText(path)),
