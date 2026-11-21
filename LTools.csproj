@@ -44,6 +44,10 @@
          虚拟化滚动与自带的撤销栈；高亮定义由 Views/QuickNote/MarkdownHighlighting.cs 从
          主题色现拼（xshd 不能绑定资源，所以不落 .xshd 文件）。 -->
     <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
+    <!-- 速记的 Markdown 解析（预览用）：只解析成 AST，渲染成 FlowDocument 由
+         Views/QuickNote/MarkdownRender.cs 自己做——不引 Markdig.Wpf，那套的配色与
+         「点块回源码行」都改不动。MIT，netstandard2.0。 -->
+    <PackageReference Include="Markdig" Version="1.6.0" />
   </ItemGroup>
 
   <!-- tests\ 是仓库内的冒烟工程（各自独立 csproj）：SDK 默认把 **/*.cs 全收进 LTools，

@@ -250,6 +250,7 @@ public partial class QuickNoteWindow : Window
 
     private void LoadEntry(NoteEntry entry)
     {
+        ExitPreview();
         _loading = true;
         _current = entry;
         _dirty = false;
@@ -301,6 +302,7 @@ public partial class QuickNoteWindow : Window
 
     private void NewNote()
     {
+        ExitPreview();
         _loading = true;
         _current = null;
         _dirty = false;
@@ -472,6 +474,11 @@ public partial class QuickNoteWindow : Window
                 SaveCurrent();
                 e.Handled = true;
             }
+            else if (e.Key == Key.P)
+            {
+                TogglePreview();
+                e.Handled = true;
+            }
             else if (e.Key == Key.Delete && !IsTextCaretFocused())
             {
                 // 焦点在标题/正文时 Ctrl+Del 留给编辑（删到文末），不触发删除速记
@@ -479,10 +486,17 @@ public partial class QuickNoteWindow : Window
                 e.Handled = true;
             }
         }
+        else if (e.Key == Key.Escape && _previewMode)
+        {
+            ExitPreview();
+            e.Handled = true;
+        }
     }
 
-    /// <summary>焦点是否落在标题或正文编辑框（有光标可输入的文本控件）。</summary>
+    /// <summary>焦点是否落在标题 / 正文 / 预览里（有光标可输入的文本控件）。预览里也不行——Ctrl+Del 不能删掉整条速记。</summary>
     private bool IsTextCaretFocused()
-        => Keyboard.FocusedElement is TextBox || BodyBox.TextArea.IsKeyboardFocusWithin;
+        => Keyboard.FocusedElement is TextBox
+           || BodyBox.TextArea.IsKeyboardFocusWithin
+           || PreviewBox.IsKeyboardFocusWithin;
 
 }

@@ -123,10 +123,23 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <Grid Grid.Row="0">
-                    <TextBox x:Name="TitleBox" FontSize="{StaticResource FontSizeTitle}" FontWeight="SemiBold"
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="TitleBox" Grid.Column="0" FontSize="{StaticResource FontSizeTitle}" FontWeight="SemiBold"
                              BorderThickness="0" Padding="0,2" Background="Transparent"
                              controls:TextBoxPlaceholder.Text="标题"
                              TextChanged="TitleBox_TextChanged"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="CopyMarkdownBtn" Style="{StaticResource BtnGhost}" Content="复制 Markdown"
+                                Padding="8,3" FontSize="{StaticResource FontSizeHint}" Margin="8,0,0,0"
+                                Visibility="Collapsed" Click="CopyMarkdown_Click"
+                                ToolTip="把这条速记的 Markdown 源码复制到剪贴板"/>
+                        <Button x:Name="PreviewToggleBtn" Style="{StaticResource BtnGhost}" Content="预览"
+                                Padding="8,3" FontSize="{StaticResource FontSizeHint}" Margin="4,0,0,0"
+                                Click="PreviewToggle_Click" ToolTip="Ctrl+P 在源码与预览之间切换"/>
+                    </StackPanel>
                 </Grid>
                 <Border Grid.Row="1" Height="1" Background="{StaticResource BorderBrush}" Margin="0,8"/>
                 <Grid Grid.Row="2">
@@ -157,6 +170,14 @@
                     <TextBlock x:Name="BodyPlaceholder" Text="正文（Markdown）" IsHitTestVisible="False"
                                Margin="1,5,0,0" VerticalAlignment="Top" HorizontalAlignment="Left"
                                Foreground="{StaticResource HintTextBrush}" Visibility="Collapsed"/>
+                    <!-- 预览：只读 RichTextBox 托着 FlowDocument（点某一块要能回源码行，要它的命中测试）。 -->
+                    <RichTextBox x:Name="PreviewBox" Visibility="Collapsed"
+                                 IsReadOnly="True" IsDocumentEnabled="True" IsReadOnlyCaretVisible="False"
+                                 AcceptsTab="False" BorderThickness="0" Background="Transparent"
+                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                 FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
+                                 Padding="0,4" SpellCheck.IsEnabled="False"
+                                 PreviewMouseLeftButtonUp="PreviewBox_MouseLeftButtonUp"/>
                 </Grid>
             </Grid>
         </Grid>

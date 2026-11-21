@@ -161,6 +161,43 @@ internal static class Program
         Check(!(bool)caretFocused.Invoke(win, null)!,
             $"焦点在列表时 IsTextCaretFocused = false（Ctrl+Del 删速记；实际焦点 {Keyboard.FocusedElement?.GetType().Name}）");
 
+        // 预览：Ctrl+P 那条路径（这里直接调 TogglePreview），文档结构 + 回源码的行号 + 截图。
+        var copyMd = (UIElement)Field(win, "CopyMarkdownBtn");
+        var toggleBtn = (UIElement)Field(win, "PreviewToggleBtn");
+        var preview = Field(win, "PreviewBox");
+        Invoke(win, "TogglePreview");
+        Flush(win);
+        Check((Visibility)Prop(preview, "Visibility")! == Visibility.Visible, "预览可见");
+        Check((Visibility)Prop(body, "Visibility")! == Visibility.Collapsed, "预览时源码编辑区隐藏");
+        Check((Visibility)Prop(copyMd, "Visibility")! == Visibility.Visible, "预览时露出「复制 Markdown」");
+        Check((string?)Prop(toggleBtn, "Content") == "编辑", "切换按钮变成「编辑」");
+        var previewDoc = (System.Windows.Documents.FlowDocument)Prop(preview, "Document")!;
+        Check(previewDoc.Blocks.Count >= 6, $"预览文档有内容（{previewDoc.Blocks.Count} 块）");
+        Check(Prop(previewDoc.Blocks.FirstBlock!, "Tag") is 1, "预览第一块带源码行号 1");
+        string previewText = new System.Windows.Documents.TextRange(
+            previewDoc.ContentStart, previewDoc.ContentEnd).Text;
+        Check(previewText.Contains("围栏代码块") && previewText.Contains("P1 存储"),
+            "预览里有代码块与表格的正文");
+        Keyboard.Focus((UIElement)preview);
+        Flush(win);
+        Check((bool)caretFocused.Invoke(win, null)!, "焦点在预览里时也不做 Ctrl+Del 删速记");
+        Save(Render(win), Path.Combine(_out, "preview.png"));
+        Save(Render(win, 2), Path.Combine(_out, "preview-2x.png"));
+
+        // 回源码定位：行号 → 光标偏移（命中哪一块才算点击成功，靠真机点）。
+        var sourceDoc = (ICSharpCode.AvalonEdit.Document.TextDocument)Prop(body, "Document")!;
+        int targetLine = 12;
+        InvokeWith(win, "JumpToLine", targetLine);
+        Check(Prop(body, "CaretOffset") is int offset && offset == sourceDoc.GetOffset(targetLine, 1),
+            "JumpToLine 把光标放到那一行行首");
+
+        Invoke(win, "TogglePreview");
+        Flush(win);
+        Check((Visibility)Prop(preview, "Visibility")! == Visibility.Collapsed, "切回编辑后预览收起");
+        Check(((System.Windows.Documents.FlowDocument)Prop(preview, "Document")!).Blocks.Count == 0,
+            "切回编辑时预览文档被清空");
+        Check((Visibility)Prop(body, "Visibility")! == Visibility.Visible, "源码编辑区回来");
+
         BitmapSource shot = Render(win);
         string png = Path.Combine(_out, "editor.png");
         Save(shot, png);
@@ -251,6 +288,9 @@ internal static class Program
 
     private static void Invoke(object target, string name)
         => target.GetType().GetMethod(name, Any)!.Invoke(target, null);
+
+    private static void InvokeWith(object target, string name, params object?[] args)
+        => target.GetType().GetMethod(name, Any)!.Invoke(target, args);
 
     private static void Check(bool ok, string what)
     {
