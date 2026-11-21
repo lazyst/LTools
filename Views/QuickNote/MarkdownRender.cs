@@ -409,16 +409,22 @@ internal static class MarkdownRender
         if (string.IsNullOrWhiteSpace(url)) return null;
         if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return null;
-        try
+
+        string? TryResolve(string candidate)
         {
-            string path = Path.IsPathRooted(url) ? url : Path.Combine(baseDirectory, url);
-            path = Path.GetFullPath(path);
-            return File.Exists(path) ? path : null;
+            try
+            {
+                string path = Path.IsPathRooted(candidate) ? candidate : Path.Combine(baseDirectory, candidate);
+                path = Path.GetFullPath(path);
+                return File.Exists(path) ? path : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
-        catch
-        {
-            return null;
-        }
+
+        return TryResolve(url) ?? TryResolve(Uri.UnescapeDataString(url));
     }
 
     private static string PlainText(ContainerInline source)

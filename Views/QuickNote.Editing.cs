@@ -43,6 +43,7 @@ public partial class QuickNoteWindow
         else if (ctrl && e.Key == Key.I) { Wrap("*"); e.Handled = true; }
         else if (ctrl && e.Key == Key.E) { Wrap("`"); e.Handled = true; }
         else if (ctrl && e.Key == Key.K) { InsertLink(); e.Handled = true; }
+        else if (ctrl && e.Key == Key.V) { if (PasteImageFromClipboard()) e.Handled = true; }
     }
 
     /// <summary>

@@ -204,9 +204,11 @@
                                                VerticalScrollBarVisibility="Auto"
                                                Background="Transparent" Foreground="{StaticResource TextBrush}"
                                                FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
-                                               Padding="0,4" BorderThickness="0"
+                                               Padding="0,4" BorderThickness="0" AllowDrop="True"
                                                TextChanged="BodyBox_TextChanged"
-                                               PreviewKeyDown="BodyBox_PreviewKeyDown">
+                                               PreviewKeyDown="BodyBox_PreviewKeyDown"
+                                               PreviewDragOver="BodyBox_PreviewDragOver"
+                                               PreviewDrop="BodyBox_PreviewDrop">
                             <!-- AvalonEdit 不自带右键菜单；换掉 TextBox 后这四件事要自己补回来。 -->
                             <avalonedit:TextEditor.ContextMenu>
                                 <ContextMenu>

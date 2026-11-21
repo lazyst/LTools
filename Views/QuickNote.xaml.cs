@@ -253,6 +253,7 @@ public partial class QuickNoteWindow : Window
         ExitPreview();
         _loading = true;
         _current = entry;
+        _attachmentDir = AttachmentFolderOf(entry.Path);
         _dirty = false;
         TitleBox.Text = entry.Title;
         BodyBox.Text = entry.Body;
@@ -305,6 +306,7 @@ public partial class QuickNoteWindow : Window
         ExitPreview();
         _loading = true;
         _current = null;
+        _attachmentDir = null;
         _dirty = false;
         TitleBox.Text = "";
         BodyBox.Text = "";
@@ -409,6 +411,26 @@ public partial class QuickNoteWindow : Window
         string savedPath;
         try { savedPath = _repo.Save(entry, oldPath); }
         catch (Exception ex) { ConfirmDialog.Info(this, "速记", "保存失败: " + ex.Message); return; }
+
+        // 改名 / 换分类后附件夹跟着搬家；正文里的相对路径变了就再写一次（清单式笔记不心疼这一下）
+        if (ReconcileAttachments(savedPath, out string updatedBody))
+        {
+            var again = new NoteEntry
+            {
+                Path = savedPath,
+                Title = title,
+                Category = category,
+                Body = updatedBody,
+                Mtime = DateTime.Now,
+            };
+            try { savedPath = _repo.Save(again, savedPath); }
+            catch (Exception ex) { ConfirmDialog.Info(this, "速记", "附件路径更新后保存失败: " + ex.Message); return; }
+
+            _loading = true;
+            BodyBox.Text = updatedBody;
+            _loading = false;
+            UpdateBodyPlaceholder();
+        }
 
         TrayService.Notify("已保存「" + (string.IsNullOrEmpty(title) ? Path.GetFileNameWithoutExtension(savedPath) : title) + "」");
         _current = _repo.Load(savedPath);

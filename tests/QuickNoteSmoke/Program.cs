@@ -221,6 +221,58 @@ internal static class Program
                 "落盘正文与编辑器里的 Markdown 一字不差");
         }
 
+        // 图片附件：剪贴板粘贴 → 落「笔记名.files/」+ 相对链接；改名后目录与正文一起搬家；删笔记连带删目录。
+        string notePath = files[0];
+        string attachDir = (string)InvokeStatic(repoType, "AttachmentsDirFor", notePath)!;
+        Check(Path.GetFileName(attachDir) == Path.GetFileNameWithoutExtension(notePath) + ".files",
+            "附件目录名 = 笔记名 + .files（" + Path.GetFileName(attachDir) + "）");
+
+        var pixels = new byte[120 * 80 * 4];
+        for (int y = 0; y < 80; y++)
+        for (int x = 0; x < 120; x++)
+        {
+            int i = (y * 120 + x) * 4;
+            pixels[i] = (byte)(0x30 + x);       // B
+            pixels[i + 1] = (byte)(0x90 + y);   // G
+            pixels[i + 2] = 0xE0;               // R
+            pixels[i + 3] = 0xFF;               // A
+        }
+        var image = BitmapSource.Create(120, 80, 96, 96, PixelFormats.Bgr32, null, pixels, 120 * 4);
+        Clipboard.SetImage(image);
+        Check((bool)InvokeResult(win, "PasteImageFromClipboard")!, "剪贴板里有图时接管 Ctrl+V");
+        Check(Directory.Exists(attachDir), "附件目录建在笔记旁边");
+        string[] pastedImages = Directory.GetFiles(attachDir, "*.png");
+        Check(pastedImages.Length == 1, "图片落盘一张（实际 " + pastedImages.Length + "）");
+        string dirName = Path.GetFileName(attachDir);
+        Check(Normalize((string)Prop(body, "Text")!).Contains("](" + dirName + "/") || Normalize((string)Prop(body, "Text")!).Contains("](<" + dirName + "/"),
+            "正文里插的是相对路径链接");
+
+        Invoke(win, "TogglePreview");
+        Flush(win);
+        var withImage = (System.Windows.Documents.FlowDocument)Prop(preview, "Document")!;
+        Check(HasImage(withImage), "预览把附件图片渲染成 Image");
+        Save(Render(win, 2), Path.Combine(_out, "preview-image-2x.png"));
+        Invoke(win, "TogglePreview");
+        Flush(win);
+
+        PropSet(title, "Text", "改名后");
+        Invoke(win, "SaveCurrent");
+        Flush(win);
+        string[] renamed = Directory.GetFiles(root, "*.md", SearchOption.AllDirectories);
+        Check(renamed.Length == 1 && Path.GetFileName(renamed[0]).Contains("改名后"),
+            "改名后笔记落盘成新名字");
+        string movedDir = Path.Combine(Path.GetDirectoryName(renamed[0])!,
+            Path.GetFileNameWithoutExtension(renamed[0]) + ".files");
+        Check(Directory.Exists(movedDir), "附件目录跟着改名（" + Path.GetFileName(movedDir) + "）");
+        Check(!Directory.Exists(attachDir), "旧附件目录已经不在了");
+        string movedBody = Normalize(File.ReadAllText(renamed[0]));
+        Check(movedBody.Contains("](" + Path.GetFileName(movedDir) + "/") || movedBody.Contains("](<" + Path.GetFileName(movedDir) + "/"), "正文里的相对路径一起改写");
+        Check(Directory.GetFiles(movedDir, "*.png").Length == 1, "图片跟着搬过去了");
+
+        repoType.GetMethod("Delete", Any)!.Invoke(repo, new object[] { renamed[0] });
+        Check(!File.Exists(renamed[0]), "删除笔记");
+        Check(!Directory.Exists(movedDir), "删除笔记连带删掉附件目录");
+
         // 书写辅助（P3）：续列表 / 缩进 / 包裹 / 行首记号 / 链接 / 表格
         Editing(win, body);
 
@@ -371,6 +423,34 @@ internal static class Program
 
     private static object? InvokeResult(object target, string name, params object?[] args)
         => target.GetType().GetMethod(name, Any)!.Invoke(target, args.Length == 0 ? null : args);
+
+    private static object? InvokeStatic(Type type, string name, params object?[] args)
+        => type.GetMethod(name, Any)!.Invoke(null, args);
+
+    private static bool HasImage(System.Windows.Documents.FlowDocument document)
+        => document.Blocks.Any(HasImage);
+
+    private static bool HasImage(System.Windows.Documents.Block block)
+    {
+        switch (block)
+        {
+            case System.Windows.Documents.Paragraph paragraph:
+                return paragraph.Inlines.OfType<System.Windows.Documents.InlineUIContainer>()
+                           .Any(c => c.Child is System.Windows.Controls.Image)
+                       || paragraph.Inlines.OfType<System.Windows.Documents.Span>()
+                           .Any(s => s.Inlines.OfType<System.Windows.Documents.InlineUIContainer>()
+                               .Any(c => c.Child is System.Windows.Controls.Image));
+            case System.Windows.Documents.Section section:
+                return section.Blocks.Any(HasImage);
+            case System.Windows.Documents.List list:
+                return list.ListItems.Any(item => item.Blocks.Any(HasImage));
+            case System.Windows.Documents.Table table:
+                return table.RowGroups.Any(group => group.Rows.Any(row =>
+                    row.Cells.Any(cell => cell.Blocks.Any(HasImage))));
+            default:
+                return false;
+        }
+    }
 
     private static void Check(bool ok, string what)
     {

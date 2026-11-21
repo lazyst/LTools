@@ -28,6 +28,7 @@ internal static class QuickNote
         _repo = new NoteRepository(root);
         _repo.MigrateRootScatteredNotes();
         _repo.MigrateTxtToMd();
+        _repo.CleanDraftAttachments(TimeSpan.FromDays(7));
     }
 
     /// <summary>重新扫描分类（设置保存后调用；当前仓库即时扫描，此方法主要用于通知已打开窗口刷新）。</summary>

@@ -114,6 +114,17 @@ internal static class MarkdownSuite
             Check.True(container?.Child is Image, "本地图片渲染成 Image");
             Check.Equal(1.0, ((Image)container!.Child).Width, "1px 的图按原宽显示");
 
+            // 笔记名带空格：插入时写成 <…>，Markdig 才会把整段当路径；手写的 %20 也要认
+            string spaced = "有 空格.png";
+            File.Copy(Path.Combine(dir, "dot.png"), Path.Combine(dir, spaced));
+            FlowDocument pointy = MarkdownRender.Build("![空格](<" + spaced + ">)", dir, Theme());
+            Check.True(FindInline<InlineUIContainer>(((Paragraph)pointy.Blocks.FirstBlock!).Inlines, _ => true)
+                ?.Child is Image, "带空格的路径用 <…> 包起来能渲染");
+
+            FlowDocument encoded = MarkdownRender.Build("![空格](%E6%9C%89%20%E7%A9%BA%E6%A0%BC.png)", dir, Theme());
+            Check.True(FindInline<InlineUIContainer>(((Paragraph)encoded.Blocks.FirstBlock!).Inlines, _ => true)
+                ?.Child is Image, "百分号编码的路径也能解析");
+
             FlowDocument missing = MarkdownRender.Build("![没有这张](nope.png)", dir, Theme());
             var missingParagraph = (Paragraph)missing.Blocks.FirstBlock!;
             Check.True(ParagraphText(missingParagraph).Contains("[图片：没有这张]"),

@@ -179,12 +179,27 @@ internal sealed class NoteRepository
         return newPath;
     }
 
-    /// <summary>删除单条。</summary>
+    /// <summary>删除单条（连带它的 <c>&lt;笔记名&gt;.files</c> 附件目录）。</summary>
     public void Delete(string path)
     {
         if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
         try { File.Delete(path); }
         catch (Exception ex) { CrashLog.Write("速记删除失败: " + path, ex); }
+
+        try
+        {
+            string attachments = AttachmentsDirFor(path);
+            if (Directory.Exists(attachments)) Directory.Delete(attachments, recursive: true);
+        }
+        catch (Exception ex) { CrashLog.Write("速记附件删除失败: " + path, ex); }
+    }
+
+    /// <summary>这条速记的附件目录：<c>速记/&lt;分类&gt;/&lt;笔记名&gt;.files</c>（和笔记同目录、同名）。</summary>
+    public static string AttachmentsDirFor(string notePath)
+    {
+        string dir = System.IO.Path.GetDirectoryName(notePath) ?? "";
+        string stem = System.IO.Path.GetFileNameWithoutExtension(notePath);
+        return System.IO.Path.Combine(dir, stem + ".files");
     }
 
     // —— 一次性迁移：速记/ 根目录散落旧 .txt → 未分类/<新文件名>（只留正文）——
@@ -257,6 +272,28 @@ internal sealed class NoteRepository
             }
         }
         return failed;
+    }
+
+    /// <summary>清掉太久没保存的粘贴草稿附件夹（速记根下的 <c>.draft-*.files</c>）。返回删掉几个。</summary>
+    public int CleanDraftAttachments(TimeSpan maxAge)
+    {
+        if (!Directory.Exists(_root)) return 0;
+        int removed = 0;
+        try
+        {
+            foreach (string dir in Directory.GetDirectories(_root, ".draft-*.files"))
+            {
+                try
+                {
+                    if (DateTime.Now - Directory.GetLastWriteTime(dir) <= maxAge) continue;
+                    Directory.Delete(dir, recursive: true);
+                    removed++;
+                }
+                catch { /* 被占用就下次再清 */ }
+            }
+        }
+        catch { /* 目录枚举失败：不影响打开速记 */ }
+        return removed;
     }
 
     /// <summary>速记根目录 + 各分类子目录（跳过 <c>.迁移备份</c> 这类点前缀目录）。</summary>
