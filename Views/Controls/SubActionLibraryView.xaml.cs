@@ -227,11 +227,26 @@ public partial class SubActionLibraryView : UserControl
 
     private void Edit(SubActionDef? def)
     {
+        // 同一个子动作只开一个编辑器（同 Id 两份快照会互相覆盖）
+        string? key = string.IsNullOrWhiteSpace(def?.Id) ? null : "subaction:" + def!.Id;
+        if (SingleEditor.Reveal(key)) return;
+
         var dlg = ActionEditorWindow.ForSubAction(
             def == null || string.IsNullOrWhiteSpace(def.Id) ? "新建子动作" : "编辑子动作", def);
         dlg.Owner = Window.GetWindow(this);
 
-        if (dlg.ShowDialog() != true || dlg.SubResult == null) return;
+        SingleEditor.Track(key, dlg);
+        bool accepted;
+        try
+        {
+            accepted = dlg.ShowDialog() == true && dlg.SubResult != null;
+        }
+        finally
+        {
+            SingleEditor.Release(key, dlg);
+        }
+
+        if (!accepted || dlg.SubResult == null) return;
 
         try
         {

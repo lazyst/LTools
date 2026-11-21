@@ -107,7 +107,7 @@ TSV 3 行每行 2 个制表符、CSV 按 CRLF 分 3 行、Markdown 4 行（表�
 
 ```powershell
 cd tests\UiaPickSmoke
-dotnet run                                # 29 条，约 6 秒
+dotnet run                                # 32 条，约 6 秒
 ```
 
 起一个**子进程** WPF 窗口（两个带 AutomationId 的按钮），对它的真实 UIA 控件树跑
@@ -121,13 +121,14 @@ dotnet run                                # 29 条，约 6 秒
 - 点选器悬停（`ControlSnapSource`）：支路上每一层都带身份（名称 / AutomationId / 类型）、
   `PickOnPath` 跳掉末尾的窗口并挑中按钮那一层、同名计数走 provider 条件查找（1 / 1 / 0）。
 
+再验运行时那条（`ui.uia` 的 `Find`）：把「最大深度 / 最多元素」都压到 1 也照样找得到「确定」
+（走 provider 条件查找，BFS 兜底时才受这两个上限约束）、名称首尾空白不影响命中、名称对不上就找不到。
+
 点选遮罩的鼠标交互（高亮、信息条、Esc / 右键、控件树对话框）仍要人工在真机上点一遍。
 
 **必须分两个进程**：UIA 的 provider 在目标进程的 UI 线程上响应，同一个进程里父线程阻塞等结果
 会死锁（消息循环发不出响应）。所以 `dotnet run` 不带参数是父进程，带 `host` 是子进程窗口。
 子进程结束后父进程 `Kill(entireProcessTree: true)`，不会留下窗口。
-
-点选遮罩的鼠标交互（高亮、信息条、Esc / 右键、控件树对话框）仍要人工在真机上点一遍。
 
 ### 写法约定
 

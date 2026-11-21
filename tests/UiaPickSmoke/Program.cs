@@ -103,6 +103,9 @@ internal static class Program
 
             // 点选器悬停用的同一条链路（节点多带身份 + 同名计数走 provider）
             ControlPickCheck(hwnd, ok, cancel!);
+
+            // 运行时查找（ui.uia）：条件查找优先，别被深度 / 元素上限卡住
+            UiaUnitCheck(hwnd);
         }
         catch (Exception ex)
         {
@@ -283,6 +286,33 @@ internal static class Program
             hwnd, ok with { Name = "不存在的名字", AutomationId = "NoSuchBtn" }, 50,
         });
         Check("点选器：查不到就是 0，不是 null", other == 0, $"实际 {other?.ToString() ?? "null"}");
+    }
+
+    // ============ ui.uia 的运行时查找（真 UIA） ============
+
+    /// <summary>
+    /// 运行时「控件操作」**先走 provider 侧条件查找**，不受「最大深度 / 最多元素」限制。
+    /// 旧实现按层序数到 300 个就停，深层控件永远排不到——「选得到、跑不到」就是它。
+    /// 这里把两个上限都压到 1：只有条件查找那条路还能找到「确定」按钮。
+    /// </summary>
+    private static void UiaUnitCheck(IntPtr hwnd)
+    {
+        var asm = typeof(ControlTree).Assembly;
+        Type unitType = asm.GetType("LTools.Features.Units.Ui.UiaUnit", throwOnError: true)!;
+        MethodInfo find = unitType.GetMethod("Find", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        Type aiUia = asm.GetType("LTools.Core.Ai.AiUia", throwOnError: true)!;
+        object uia = aiUia.GetProperty("Uia", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!
+            .GetValue(null)!;
+
+        object? Found(string name, int depth, int limit) =>
+            find.Invoke(null, new object?[] { uia, hwnd, name, "OkBtn", "Button", depth, limit, 0 });
+
+        Check("ui.uia：深度 / 元素上限压到 1 也能找到「确定」（走条件查找）",
+            Found("确定", 1, 1) != null);
+        Check("ui.uia：名称带首尾空白也算命中（与选择器存下的规范化一致）",
+            Found(" 确定 ", 1, 1) != null);
+        Check("ui.uia：名称对不上就是找不到", Found("不存在的名字", 12, 1000) == null);
     }
 
     // ============ 等窗口 / 读窗口 ============

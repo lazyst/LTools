@@ -1,6 +1,10 @@
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Conditions;
+using FlaUI.Core.Definitions;
 using FlaUI.Core.Patterns;
 using FlaUI.UIA3;
 using LTools.Core.Actions;
@@ -40,6 +44,10 @@ public sealed class UiaUnit : IStepUnit
     private const int MaxDepth = 12;
     private const int MaxElements = 1000;
     private const int MaxChildren = 200;
+
+    /// <summary>按类名找窗口时最多试几个实例（同一个程序开了多个窗口时按 z 序挨个找）。</summary>
+    private const int MaxWindows = 4;
+
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(4);
 
     private static readonly string[] Actions =
@@ -100,10 +108,10 @@ public sealed class UiaUnit : IStepUnit
                 Description: "两次查找之间隔多久（50–5000）；UIA 遍历本身可能要几百毫秒"),
             new InputSpec("depth", "最大深度", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(12), Advanced: true,
-                Description: "控件树往下几层（1–12）；Chromium 类应用常要 8–10 层"),
+                Description: "只在「条件查找」不灵、退回逐层遍历时生效：往下几层（1–12）"),
             new InputSpec("limit", "最多元素", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(300), Advanced: true,
-                Description: "单次查找最多看多少个控件（1–1000）"),
+                Default: Value.FromNumber(MaxElements), Advanced: true,
+                Description: "只在退回逐层遍历时生效：单次最多看多少个控件（1–1000）"),
         },
         Outputs = new[]
         {
@@ -152,14 +160,27 @@ public sealed class UiaUnit : IStepUnit
         while (true)
         {
             ctx.EnterIteration();
-            IntPtr hwnd = ResolveWindow(title, className);
-            element = Find(AiUia.Uia, hwnd, name, id, controlType, depth, maxElements, out visited);
+
+            // 同一个程序可能开了多个同类窗口：按 z 序挨个试，别只认最上面那个
+            var scanned = 0;
+            foreach (IntPtr hwnd in ResolveWindows(title, className))
+            {
+                element = Find(AiUia.Uia, hwnd, name, id, controlType, depth, maxElements, out int count);
+                scanned += count;
+                if (element != null) break;
+            }
+
+            visited = scanned;
             if (element != null) break;
 
             long elapsed = Environment.TickCount64 - started;
             if (elapsed >= limit)
                 throw ActionErrors.NotFound(
-                    $"没找到控件（名称「{name}」/ AutomationId「{id}」）{Timeouts.DescribeWait(timeout)}");
+                    $"没找到控件（名称「{name}」/ AutomationId「{id}」）" +
+                    $"{(className.Length > 0 ? $"，窗口类名「{className}」" : "")}：" +
+                    $"看过 {visited} 个控件" +
+                    $"（退回逐层遍历时受「最大深度 {depth} / 最多元素 {maxElements}」限制，不够就调大）" +
+                    Timeouts.DescribeWait(timeout));
 
             int slice = (int)Math.Min(interval, Math.Max(1, limit - elapsed));
             if (!ctx.Wait(slice)) throw new ActionAbortedException("已停止", userCancelled: true);
@@ -232,24 +253,39 @@ public sealed class UiaUnit : IStepUnit
         ctx.SetOutput("count", Value.FromNumber(visited));
     }
 
-    /// <summary>找窗口：给了筛选条件就精确找，找不到 / 没给就用前台窗口（照 <c>ltools_uia_tree</c>）。</summary>
-    private static IntPtr ResolveWindow(string title, string className)
+    /// <summary>
+    /// 找窗口：给了筛选条件就按条件找（同类窗口可能有多个实例，按 z 序都给出来，挨个试）；
+    /// 没给条件 / 一个都没匹配上就用前台窗口（照 <c>ltools_uia_tree</c>）。
+    /// </summary>
+    private static List<IntPtr> ResolveWindows(string title, string className)
     {
         if (title.Length > 0 || className.Length > 0)
         {
-            IntPtr found = WindowFinder.Find(title, className);
-            if (found != IntPtr.Zero) return found;
+            List<IntPtr> found = WindowFinder.FindAll(title, className, MaxWindows);
+            if (found.Count > 0) return found;
         }
-        return Win32.GetForegroundWindow();
+
+        return new List<IntPtr>(1) { Win32.GetForegroundWindow() };
     }
 
-    /// <summary>BFS 遍历 UIA 子树，按 Name / AutomationId（+ 可选控件类型）精确匹配。</summary>
+    /// <summary>
+    /// 在某个窗口里找控件。**先走 provider 侧条件查找**（一次调用，不受深度 / 元素上限约束，
+    /// 与 `ControlSnapSource.CountSame` 同一个套路），不灵再退回逐层 BFS 兜底。
+    /// </summary>
+    /// <remarks>
+    /// 「选控件…」能选到的控件比运行时能找的多，是旧实现的固有毛病：BFS 按层序数到 300 个就停，
+    /// 深层控件永远排不到（Chromium / Electron 那种界面第一层就几十个容器）。
+    /// </remarks>
     private static AutomationElement? Find(UIA3Automation uia, IntPtr hwnd, string name, string id,
         string controlType, int depth, int limit, out int visited)
     {
         visited = 0;
         AutomationElement? root = Safe(() => uia.FromHandle(hwnd), (AutomationElement?)null);
         if (root == null) return null;
+
+        AutomationElement? hit = FindByCondition(uia, root, name, id, controlType, out int scanned);
+        visited += scanned;
+        if (hit != null) return hit;
 
         var queue = new Queue<(AutomationElement Element, int Level)>();
         queue.Enqueue((root, 0));
@@ -269,7 +305,59 @@ public sealed class UiaUnit : IStepUnit
                 queue.Enqueue((child, level + 1));
             }
         }
+
         return null;
+    }
+
+    /// <summary>
+    /// provider 侧条件查找：把「名称 + AutomationId + 类型」交给 UIA 自己找，一次跨进程调用。
+    /// 条件可能被某些 provider 忽略，所以命中后还要按 <see cref="Matches"/> 逐条核对身份。
+    /// </summary>
+    private static AutomationElement? FindByCondition(UIA3Automation uia, AutomationElement root,
+        string name, string id, string controlType, out int scanned)
+    {
+        scanned = 0;
+
+        AutomationElement[] found;
+        try
+        {
+            found = root.FindAllDescendants(BuildCondition(uia, name, id, controlType));
+        }
+        catch
+        {
+            return null;   // provider 不支持按 Descendants 查：交给 BFS 兜底
+        }
+
+        scanned = found.Length;
+        foreach (AutomationElement element in found)
+            if (Matches(element, name, id, controlType)) return element;
+
+        return null;
+    }
+
+    /// <summary>名称 / AutomationId / 类型依次 AND（名称与 Id 至少有一个，调用方已经保证）。</summary>
+    private static ConditionBase BuildCondition(UIA3Automation uia, string name, string id, string controlType)
+    {
+        ConditionFactory factory = uia.ConditionFactory;
+
+        // provider 按原样比：先把参数的首尾空白去掉，否则「 确定 」在条件里永远匹配不到
+        name = name.Trim();
+        id = id.Trim();
+        controlType = controlType.Trim();
+
+        ConditionBase condition = name.Length > 0
+            ? id.Length > 0
+                ? factory.ByName(name).And(factory.ByAutomationId(id))
+                : factory.ByName(name)
+            : factory.ByAutomationId(id);
+
+        // 类型是可选过滤：认不出的写法（含 Custom 兜底值）不进条件，交给 Matches 判
+        if (controlType.Length > 0
+            && Enum.TryParse(controlType, ignoreCase: true, out ControlType type)
+            && type != ControlType.Custom)
+            condition = condition.And(factory.ByControlType(type));
+
+        return condition;
     }
 
     /// <summary>至少要填了 name 或 id 才算「有定位条件」；两者都填时按 AND 匹配。</summary>
@@ -279,20 +367,28 @@ public sealed class UiaUnit : IStepUnit
         if (name.Length > 0)
         {
             keyed = true;
-            if (!string.Equals(Safe(() => element.Properties.Name.ValueOrDefault ?? "", ""), name,
-                    StringComparison.OrdinalIgnoreCase)) return false;
+            if (!SameText(Safe(() => element.Properties.Name.ValueOrDefault, ""), name)) return false;
         }
         if (id.Length > 0)
         {
             keyed = true;
-            if (!string.Equals(Safe(() => element.Properties.AutomationId.ValueOrDefault ?? "", ""), id,
-                    StringComparison.OrdinalIgnoreCase)) return false;
+            if (!SameText(Safe(() => element.Properties.AutomationId.ValueOrDefault, ""), id)) return false;
         }
         if (controlType.Length > 0 &&
-            !string.Equals(Safe(() => element.Properties.ControlType.ValueOrDefault.ToString(), ""),
-                controlType, StringComparison.OrdinalIgnoreCase)) return false;
+            !SameText(Safe(() => element.Properties.ControlType.ValueOrDefault.ToString(), ""), controlType))
+            return false;
         return keyed;
     }
+
+    /// <summary>
+    /// 比较前两边都过一遍同一个规范化：控件选择器填进来的名称已经去过首尾空白、换行变空格
+    /// （见 <c>ControlTargets.Text</c>），这里按原样比会永远对不上多行名称。
+    /// </summary>
+    private static bool SameText(string? left, string? right) =>
+        string.Equals(Normalize(left), Normalize(right), StringComparison.OrdinalIgnoreCase);
+
+    private static string Normalize(string? text) =>
+        (text ?? "").Trim().Replace("\r", " ").Replace("\n", " ");
 
     private static AutomationElement[] Children(AutomationElement element)
     {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using LTools.Native;
 
@@ -21,20 +22,30 @@ internal static class WindowFinder
     /// <summary>找第一个匹配的可见窗口，并带回它的实际标题（日志 / 提示用）。</summary>
     public static IntPtr Find(string? titleFragment, string? className, out string matchedTitle)
     {
-        IntPtr found = IntPtr.Zero;
-        string title = "";
+        List<IntPtr> all = FindAll(titleFragment, className, 1);
+        matchedTitle = all.Count > 0 ? GetText(all[0]) : "";
+        return all.Count > 0 ? all[0] : IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// 所有匹配的可见顶层窗口（z 序，最上面那个在前）。同一个程序开了多个同类窗口时，
+    /// 调用方（<c>ui.uia</c>）按顺序挨个找控件，别只认最上面那个。
+    /// </summary>
+    public static List<IntPtr> FindAll(string? titleFragment, string? className, int cap = 4)
+    {
+        var list = new List<IntPtr>();
+        if (cap <= 0) return list;
 
         Win32.EnumWindows((hwnd, _) =>
         {
             if (!Win32.IsWindowVisible(hwnd)) return true;
-            if (!Matches(hwnd, titleFragment, className, out string text)) return true;
-            found = hwnd;
-            title = text;
-            return false;   // 找到第一个就停
+            if (!Matches(hwnd, titleFragment, className, out string _)) return true;
+
+            list.Add(hwnd);
+            return list.Count < cap;
         }, IntPtr.Zero);
 
-        matchedTitle = title;
-        return found;
+        return list;
     }
 
     /// <summary>窗口是否满足匹配条件（<paramref name="title"/> 为该窗口的实际标题）。</summary>
