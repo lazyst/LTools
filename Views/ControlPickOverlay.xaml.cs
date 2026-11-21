@@ -12,6 +12,7 @@ using DPoint = System.Drawing.Point;
 using WPoint = System.Windows.Point;
 using WSize = System.Windows.Size;
 using LTools.Features;
+using LTools.Features.CapturePro;
 using LTools.Native;
 
 namespace LTools.Views;
@@ -23,15 +24,19 @@ namespace LTools.Views;
 /// <remarks>
 /// <para>
 /// 命中不用 UIA 的 <c>FromPoint</c>：遮罩自己盖住全屏，只会命中我们自己。改为照截图吸附的
-/// 已验证做法——<c>ScreenSnapTargets.TopWindowAtPoint</c> 找光标下的顶层窗口，再按窗口
-/// 后台取一次控件树（<see cref="ControlTargets.Snapshot"/>，按句柄缓存），鼠标移动只在本地
-/// <c>Rectangle.Contains</c> 里挑「最深、面积最小」的那个。每次移动都跨进程查 UIA 会拖住事件队列，
-/// 连带让 Esc / 右键的取消排队。
+/// 已验证做法——<c>ScreenSnapTargets.TopWindowAtPoint</c> 找光标下的顶层窗口，再沿光标那条支路
+/// **懒下钻**（<see cref="SnapProbe"/> + <see cref="ControlSnapSource"/>），节点上带着控件身份。
+/// 只走十几层、几十次跨进程调用就够定位，不再像旧实现那样一进窗口就吞下整棵树
+/// （深 12 / 1000 节点 / 每个节点 7 个属性，慢应用要等几秒还会被截断）。
 /// </para>
 /// <para>
 /// 命中叶子（Text / Image）时往上抬到最近的可交互父级：点文字中心也点得到按钮，但「设值」
-/// 只有 Edit 能做。是否可当目标（名称 / AutomationId 至少一个）、同名控件有几个，
+/// 只有 Edit 能做。是否可当目标（名称 / AutomationId 至少一个）、该选哪一层，
 /// 都由 <see cref="ControlTargets"/> 的纯函数判断，这里只负责画和收尾。
+/// </para>
+/// <para>
+/// 扫全量的入口只剩两个，都在**用到时才扫**：顶部「从控件树选…」的
+/// <see cref="ControlTreeDialog"/> 与 MCP 的 <c>ltools_uia_tree</c>。
 /// </para>
 /// </remarks>
 public partial class ControlPickOverlay : Window
@@ -39,18 +44,25 @@ public partial class ControlPickOverlay : Window
     /// <summary>鼠标移动的命中节流（毫秒）：与窗口点选器 / 截图吸附同一口径。</summary>
     private const long MoveThrottleMs = 24;
 
-    /// <summary>按窗口缓存控件树的上限（浏览器 / 多窗口来回扫时不无限涨）。</summary>
-    private const int MaxCachedWindows = 40;
+    /// <summary>同名计数在光标停稳之后才问 provider（换控件就作废上一次）。</summary>
+    private static readonly TimeSpan CountDelay = TimeSpan.FromMilliseconds(220);
 
     private readonly Rectangle _monitor;
     private readonly double _sx, _sy;
-    private readonly Dictionary<IntPtr, ControlTree> _trees = new();
+
+    /// <summary>悬停只读「光标那条支路」：与截图吸附共用一套懒下钻，只是节点多带身份。</summary>
+    private readonly ControlSnapSource _source = new();
+    private readonly SnapProbe _probe;
+    private readonly DispatcherTimer _countTimer;
+
     private IntPtr _window;
     private IntPtr _pending;
-    private ControlTree? _tree;
-    private string? _problem;
+    private List<ControlTarget> _pathTargets = new();   // 深 → 浅（最后一条是窗口本身）
+    private SnapStop _stop = SnapStop.complete;
     private string _windowTitle = "", _windowClass = "";
-    private int _target = -1;
+    private ControlTarget? _target;
+    private int _sameCount;   // 同名控件个数；-1 = 还没查 / 查不准
+    private int _countSeq;
     private DPoint _lastPoint;
     private long _lastMoveTick;
     private bool _finished;
@@ -64,6 +76,10 @@ public partial class ControlPickOverlay : Window
         _monitor = monitor;
         _sx = sx > 0 ? sx : 1;
         _sy = sy > 0 ? sy : 1;
+
+        _probe = new SnapProbe(_source);
+        _countTimer = new DispatcherTimer { Interval = CountDelay };
+        _countTimer.Tick += (_, _) => QuerySameCount();
 
         Left = monitor.Left / _sx;
         Top = monitor.Top / _sy;
@@ -96,7 +112,7 @@ public partial class ControlPickOverlay : Window
         }), DispatcherPriority.Input);
     }
 
-    // ============ 悬停：窗口 → 控件树 → 控件 ============
+    // ============ 悬停：窗口 → 光标那条支路 → 控件 ============
 
     private void Window_MouseMove(object sender, MouseEventArgs e)
     {
@@ -117,6 +133,9 @@ public partial class ControlPickOverlay : Window
         IntPtr hwnd = ScreenSnapTargets.TopWindowAtPoint(new WindowInteropHelper(this).Handle, screen);
         if (hwnd == IntPtr.Zero || !UsableWindow(hwnd))
         {
+            _window = IntPtr.Zero;
+            _pathTargets.Clear();
+            _stop = SnapStop.complete;
             ClearHighlight();
             return;
         }
@@ -126,99 +145,106 @@ public partial class ControlPickOverlay : Window
             _window = hwnd;
             _windowTitle = WindowFinder.GetText(hwnd);
             _windowClass = WindowFinder.GetClass(hwnd);
-            _tree = null;
-            _problem = null;
-            _target = -1;
+            _pathTargets.Clear();
+            _stop = SnapStop.pending;
             ClearHighlight();
-            EnsureTree(hwnd);
-            return;
         }
 
-        if (_tree == null)
-        {
-            ShowPending();
-            return;
-        }
-
-        if (_problem != null)
-        {
-            ShowProblem(_problem);
-            return;
-        }
-
-        UpdateTarget(screen);
+        // 只读缓存（微秒级）：缺哪层交给后台补，绝不在 UI 线程发跨进程调用
+        SnapPath path = _probe.Resolve(hwnd, screen, _monitor, expand: false);
+        ApplyPath(path);
+        EnsurePath(hwnd, screen, path);
+        UpdateTarget();
     }
 
-    /// <summary>整棵树只在**第一次进入某个窗口**时后台取一次；之后鼠标移动只做本地判断。</summary>
-    private void EnsureTree(IntPtr hwnd)
+    /// <summary>把「光标那条支路」换成控件身份列表（深 → 浅，最后一条是窗口本身）。</summary>
+    private void ApplyPath(SnapPath path)
     {
-        if (_trees.TryGetValue(hwnd, out ControlTree? cached))
-        {
-            if (_window == hwnd) ApplyTree(cached);
-            return;
-        }
+        var targets = new List<ControlTarget>(path.Levels.Count);
+        foreach (SnapLevel level in path.Levels)
+            if (level.Info is ControlTarget target) targets.Add(target);
 
-        if (_pending == hwnd) return;
+        _pathTargets = targets;
+        _stop = path.Stop;
+    }
+
+    /// <summary>
+    /// 缺层时在后台补一趟：一次只沿光标那条支路往下，缺几层补几层。
+    /// 同一个窗口同时只排一趟；连续没进展的窗口由 <see cref="SnapProbe"/> 标记放弃。
+    /// </summary>
+    private void EnsurePath(IntPtr hwnd, DPoint screen, SnapPath path)
+    {
+        if (path.Complete) return;
+        if (_pending == hwnd) return;             // 已经有人在补这个窗口了
+        if (!_probe.CanExpand(hwnd)) return;      // 读不动的窗口，别每次移动都白排一趟
+
         _pending = hwnd;
+        Rectangle monitor = _monitor;
 
-        Task.Run(() => ControlTargets.Snapshot(hwnd)).ContinueWith(t =>
+        Task.Run(() => _probe.Resolve(hwnd, screen, monitor, expand: true)).ContinueWith(_ =>
         {
             if (Dispatcher.HasShutdownStarted) return;
-            Dispatcher.BeginInvoke(new Action(() => AcceptTree(hwnd, t)));
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_pending != hwnd) return;
+                _pending = IntPtr.Zero;
+                if (_window != hwnd) return;
+
+                // 光标可能已经移到别处：还在这个窗口上才接着算（否则交给下一次移动）
+                if (!Win32.GetCursorPos(out var cursor)) return;
+                var at = new DPoint(cursor.X, cursor.Y);
+                if (ScreenSnapTargets.TopWindowAtPoint(new WindowInteropHelper(this).Handle, at) != hwnd)
+                    return;
+
+                _lastPoint = at;
+                ApplyPath(_probe.Resolve(hwnd, at, monitor, expand: false));
+                UpdateTarget();
+            }));
         });
     }
 
-    private void AcceptTree(IntPtr hwnd, Task<ControlTree> task)
+    /// <summary>
+    /// 从这条支路里挑目标：跳过窗口本身，从最深往上找第一个可交互控件；
+    /// 一路都不是可交互的就退回最深那一层（点文字中心同样点得到）。
+    /// </summary>
+    private void UpdateTarget()
     {
-        if (_pending != hwnd) return;
-        _pending = IntPtr.Zero;
+        int index = ControlTargets.PickOnPath(_pathTargets);
 
-        ControlTree tree = task.Status == TaskStatus.RanToCompletion ? task.Result : ControlTree.Empty;
-        if (_trees.Count >= MaxCachedWindows) _trees.Clear();
-        _trees[hwnd] = tree;
-
-        if (_window != hwnd) return;
-        ApplyTree(tree);
-    }
-
-    /// <summary>拿到树之后：能读就定位，读不到 / 没有控件就给出明确原因（别停在「识别中」）。</summary>
-    private void ApplyTree(ControlTree tree)
-    {
-        _tree = tree;
-        _problem = tree.Unavailable
-            ? tree.Problem
-            : tree.Count <= 1
-                ? "这个窗口里没有可用的控件（可能整窗是一个自绘区域）"
-                : null;
-
-        if (_problem != null)
-        {
-            ShowProblem(_problem);
-            return;
-        }
-
-        UpdateTarget(_lastPoint);
-    }
-
-    private void UpdateTarget(DPoint screen)
-    {
-        if (_tree == null) return;
-
-        int index = ControlTargets.AtPoint(_tree.Nodes, screen);
-        if (index >= 0) index = ControlTargets.RollUp(_tree.Nodes, index);
-
-        // 根节点（整扇窗口）不当目标：点它没有意义，还会把整屏画个框
-        if (index >= 0 && _tree.Nodes[index].Depth == 0) index = -1;
-        if (index == _target && index >= 0) return;
-
-        _target = index;
         if (index < 0)
         {
-            ClearHighlight();
-            return;
+            // 空支路 = 光标只是擦到窗口边缘（DWM 可见范围之外），不是「读不到」
+            if (_pathTargets.Count == 0 && _stop == SnapStop.complete)
+            {
+                ClearHighlight();
+                return;
+            }
+
+            switch (_stop)
+            {
+                case SnapStop.pending:
+                    ShowPending();
+                    return;
+
+                case SnapStop.failed:
+                    ShowProblem("这个窗口不暴露控件（提权 / 自绘 / 老程序）：改用「鼠标操作」点坐标，或「文字点击」按文字找");
+                    return;
+
+                case SnapStop.timeout:
+                    ShowProblem("读这个窗口的控件超时：可直接「从控件树选…」，或用坐标 / 文字点击");
+                    return;
+
+                default:
+                    ShowProblem("这个窗口里没有可用的控件（可能整窗是一个自绘区域）");
+                    return;
+            }
         }
 
-        ShowTarget(_tree.Nodes[index]);
+        ControlTarget node = _pathTargets[index];
+        if (_target is { } current && current.Equals(node)) return;   // 同一块别每移动一像素就重画
+
+        _target = node;
+        ShowTarget(node);
     }
 
     /// <summary>
@@ -268,15 +294,53 @@ public partial class ControlPickOverlay : Window
             ? (detail.Length > 0 ? detail + " · 窗口: " + window : "窗口: " + window)
             : detail;
 
-        int same = ControlTargets.CountSame(_tree!.Nodes, node);
-        string warn = !ControlTargets.CanTarget(node)
-            ? "这个控件没有名称和 AutomationId，选不了：用「鼠标操作」点坐标，或「文字点击」按文字找"
-            : same > 1
-                ? $"窗口里还有 {same - 1} 个同样的控件；运行时取最先找到的那个"
-                : "";
-        SetWarn(warn);
+        UpdateWarn(node);
+        RequestSameCount(node);
 
         PlaceCard(left, top, width, height);
+    }
+
+    // ============ 同名计数：光标停稳之后问一次 provider ============
+
+    /// <summary>换目标就作废上一次（<c>_countSeq</c> 对不上直接丢），停稳 220 ms 才真去查。</summary>
+    private void RequestSameCount(ControlTarget node)
+    {
+        _sameCount = -1;
+        _countSeq++;
+
+        _countTimer.Stop();
+        if (ControlTargets.CanTarget(node)) _countTimer.Start();
+    }
+
+    private void QuerySameCount()
+    {
+        _countTimer.Stop();
+        if (_target is not { } node) return;
+
+        int seq = _countSeq;
+        IntPtr hwnd = _window;
+
+        Task.Run(() => _source.CountSame(hwnd, node)).ContinueWith(t =>
+        {
+            if (Dispatcher.HasShutdownStarted) return;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (seq != _countSeq) return;   // 已经换了目标
+                _sameCount = t.Status == TaskStatus.RanToCompletion ? t.Result ?? -1 : -1;
+
+                if (_target is { } now && now.Equals(node)) UpdateWarn(now);
+            }));
+        });
+    }
+
+    private void UpdateWarn(ControlTarget node)
+    {
+        if (!ControlTargets.CanTarget(node))
+            SetWarn("这个控件没有名称和 AutomationId，选不了：用「鼠标操作」点坐标，或「文字点击」按文字找");
+        else if (_sameCount > 1)
+            SetWarn($"窗口里还有 {_sameCount - 1} 个同样的控件；运行时取最先找到的那个");
+        else
+            SetWarn("");
     }
 
     private void ShowPending()
@@ -305,7 +369,11 @@ public partial class ControlPickOverlay : Window
 
     private void ClearHighlight()
     {
-        _target = -1;
+        _target = null;
+        _sameCount = -1;
+        _countSeq++;
+        _countTimer.Stop();
+
         ControlFill.Visibility = ControlOutline.Visibility = Visibility.Collapsed;
         InfoCard.Visibility = Visibility.Collapsed;
     }
@@ -423,9 +491,7 @@ public partial class ControlPickOverlay : Window
         if (OverTopBar(e.OriginalSource as DependencyObject)) return;
         if (OverCard(e.GetPosition(this))) return;
 
-        if (_target < 0 || _tree == null) return;
-
-        ControlTarget node = _tree.Nodes[_target];
+        if (_target is not { } node) return;
         if (!ControlTargets.CanTarget(node)) return;   // 信息卡已经写明原因，别静默关掉
 
         Result = new PickedControl(node.Name, node.AutomationId, node.ControlType,
@@ -445,13 +511,9 @@ public partial class ControlPickOverlay : Window
     private void Tree_Click(object sender, RoutedEventArgs e)
     {
         if (_window == IntPtr.Zero) return;
-        if (_tree == null)
-        {
-            ShowPending();
-            return;
-        }
 
-        PickedControl? picked = ControlTreeDialog.Show(this, _window, _tree, _windowTitle, _windowClass);
+        // 悬停只走了光标那条支路；完整的控件树在这里按需扫一次（打开对话框时才做）
+        PickedControl? picked = ControlTreeDialog.Show(this, _window, _windowTitle, _windowClass);
         if (picked == null) return;
 
         Result = picked;
@@ -465,10 +527,8 @@ public partial class ControlPickOverlay : Window
             Finish(false);
             e.Handled = true;
         }
-        else if (e.Key == Key.Enter && _target >= 0 && _tree != null &&
-                 ControlTargets.CanTarget(_tree.Nodes[_target]))
+        else if (e.Key == Key.Enter && _target is { } node && ControlTargets.CanTarget(node))
         {
-            ControlTarget node = _tree.Nodes[_target];
             Result = new PickedControl(node.Name, node.AutomationId, node.ControlType,
                 _windowClass, _windowTitle);
             Finish(true);
@@ -484,5 +544,13 @@ public partial class ControlPickOverlay : Window
             Finish(false);
             e.Handled = true;
         }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        // 同名计数是「停稳 220ms 再问」：窗口关了就别再排后台查询
+        _countTimer.Stop();
+        _countSeq++;
+        base.OnClosed(e);
     }
 }

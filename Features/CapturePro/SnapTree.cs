@@ -56,17 +56,31 @@ internal interface ISnapSource
 
     /// <summary>控件标签（「按钮 · 保存」）。只在真正走到的支路上读，别按整层读。</summary>
     string Label(object node);
+
+    /// <summary>
+    /// 可选：这个节点的**完整身份**（控件选择器要名称 / AutomationId / 类型 / 类名；截图吸附只要标签）。
+    /// 同样只沿走到的支路读。返回 <c>null</c> = 这个消费方不需要。
+    /// </summary>
+    object? Describe(object node) => null;
 }
+
+/// <summary>支路上的一层：矩形 + 消费方自己的身份数据（吸附是 null，点选器是 <c>ControlTarget</c>）。</summary>
+internal readonly record struct SnapLevel(SnapBox Box, object? Info);
 
 /// <summary>一次下钻的结果：深 → 浅的矩形 + 停在哪里 + 计数（诊断用）。</summary>
 internal sealed class SnapPath
 {
-    public static readonly SnapPath Empty = new(Array.Empty<SnapBox>(), SnapStop.complete, 0, 0, 0, 0, 0);
+    public static readonly SnapPath Empty = new(Array.Empty<SnapLevel>(), SnapStop.complete, 0, 0, 0, 0, 0);
 
-    public SnapPath(IReadOnlyList<SnapBox> boxes, SnapStop stop, int nodes, int depth,
+    public SnapPath(IReadOnlyList<SnapLevel> levels, SnapStop stop, int nodes, int depth,
         int steps, long elapsedMs, int signature)
     {
+        Levels = levels;
+
+        var boxes = new SnapBox[levels.Count];
+        for (int i = 0; i < levels.Count; i++) boxes[i] = levels[i].Box;
         Boxes = boxes;
+
         Stop = stop;
         Nodes = nodes;
         Depth = depth;
@@ -74,6 +88,22 @@ internal sealed class SnapPath
         ElapsedMs = elapsedMs;
         Signature = signature;
     }
+
+    public SnapPath(IReadOnlyList<SnapBox> boxes, SnapStop stop, int nodes, int depth,
+        int steps, long elapsedMs, int signature)
+        : this(ToLevels(boxes), stop, nodes, depth, steps, elapsedMs, signature)
+    {
+    }
+
+    private static IReadOnlyList<SnapLevel> ToLevels(IReadOnlyList<SnapBox> boxes)
+    {
+        var levels = new SnapLevel[boxes.Count];
+        for (int i = 0; i < boxes.Count; i++) levels[i] = new SnapLevel(boxes[i], null);
+        return levels;
+    }
+
+    /// <summary>深 → 浅：矩形 + 身份（点选器用 <see cref="Levels"/>，吸附只看 <see cref="Boxes"/>）。</summary>
+    public IReadOnlyList<SnapLevel> Levels { get; }
 
     /// <summary>深 → 浅（第一条是最深的控件，最后一条是窗口本身）。</summary>
     public IReadOnlyList<SnapBox> Boxes { get; }
@@ -142,6 +172,7 @@ internal sealed class SnapTree
     {
         public Rectangle Bounds;
         public string Label = "";
+        public object? Info;
         public object? Handle;
         public bool Structural;
         public int Parent = -1;
@@ -236,17 +267,25 @@ internal sealed class SnapTree
             current = next;
         }
 
-        // 标签只读这条支路上的十来个节点，而且只在后台那一趟读：按整层读会在
+        // 标签 / 身份只读这条支路上的十来个节点，而且只在后台那一趟读：按整层读会在
         // 「几百个子控件的 Pane」上白付几百次跨进程调用（旧实现的主要耗时之一）。
         if (expand)
-            for (int i = chain.Count - 1; i > 0; i--)
-                FillLabel(chain[i]);
+        {
+            for (int i = chain.Count - 1; i > 0; i--) FillLabel(chain[i]);
 
-        var boxes = new List<SnapBox>(8);
+            // 身份连窗口本身一起读：消费方（点选器）按「最后一条 = 窗口」来处理这条路径
+            for (int i = chain.Count - 1; i >= 0; i--) FillInfo(chain[i]);
+        }
+
+        var levels = new List<SnapLevel>(8);
         lock (_gate)
         {
-            BuildBoxes(chain, clip, boxes);
-            return new SnapPath(boxes, stop, _nodes.Count, chain.Count, steps,
+            BuildLevels(chain, clip, levels);
+
+            var boxes = new SnapBox[levels.Count];
+            for (int i = 0; i < levels.Count; i++) boxes[i] = levels[i].Box;
+
+            return new SnapPath(levels, stop, _nodes.Count, chain.Count, steps,
                 watch.ElapsedMilliseconds, Signature(boxes));
         }
     }
@@ -422,7 +461,25 @@ internal sealed class SnapTree
         lock (_gate) _nodes[index].Label = label;
     }
 
-    private void BuildBoxes(List<int> chain, Rectangle clip, List<SnapBox> boxes)
+    private void FillInfo(int index)
+    {
+        object? handle;
+        lock (_gate)
+        {
+            Node node = _nodes[index];
+            if (node.Info != null || node.Handle == null) return;
+            handle = node.Handle;
+        }
+
+        object? info;
+        try { info = _source.Describe(handle); }
+        catch { return; }   // 身份读不到不该毁掉整条支路（吸附也用不着它）
+
+        if (info == null) return;
+        lock (_gate) _nodes[index].Info = info;
+    }
+
+    private void BuildLevels(List<int> chain, Rectangle clip, List<SnapLevel> levels)
     {
         var seen = new HashSet<(int X, int Y, int W, int H)>(8);
 
@@ -435,7 +492,8 @@ internal sealed class SnapTree
             // 父 Pane 与子 Button 常常完全重合：只留更深的那一条（滚轮不白转一圈）。
             if (!seen.Add((bounds.X, bounds.Y, bounds.Width, bounds.Height))) continue;
 
-            boxes.Add(new SnapBox(bounds, node.Label.Length > 0 ? node.Label : "控件", _hwnd));
+            var box = new SnapBox(bounds, node.Label.Length > 0 ? node.Label : "控件", _hwnd);
+            levels.Add(new SnapLevel(box, node.Info));
         }
     }
 

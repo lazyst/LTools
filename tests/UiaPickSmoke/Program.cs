@@ -100,6 +100,9 @@ internal static class Program
 
             // 截图吸附的「懒下钻」链路（SnapProbe → SnapTree → FlaUI）：真 UIA，不是假树
             SnapTreeCheck(hwnd, ok);
+
+            // 点选器悬停用的同一条链路（节点多带身份 + 同名计数走 provider）
+            ControlPickCheck(hwnd, ok, cancel!);
         }
         catch (Exception ex)
         {
@@ -219,6 +222,67 @@ internal static class Program
         object cached = resolve.Invoke(probe, new object[] { hwnd, center, monitor, false })!;
         Check("吸附：缓存命中（第二趟直接完成）",
             (bool)cached.GetType().GetProperty("Complete")!.GetValue(cached)!);
+    }
+
+    // ============ 点选器的悬停链路（真 UIA） ============
+
+    /// <summary>
+    /// 点选器悬停用的就是上面这条懒下钻，只是节点多带身份（<c>ControlSnapSource.Describe</c>）。
+    /// 这里验三件现在靠它的事：支路上带出名称 / AutomationId、能挑中按钮那一层、
+    /// 同名计数走 provider 条件查找（不再需要整棵树）。
+    /// </summary>
+    private static void ControlPickCheck(IntPtr hwnd, ControlTarget ok, ControlTarget cancel)
+    {
+        var asm = typeof(ControlTree).Assembly;
+        Type sourceType = asm.GetType("LTools.Features.ControlSnapSource", throwOnError: true)!;
+        Type probeType = asm.GetType("LTools.Features.CapturePro.SnapProbe", throwOnError: true)!;
+
+        object source = Activator.CreateInstance(sourceType, nonPublic: true)!;
+        object probe = probeType.GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
+            .First(c => c.GetParameters().Length == 1)
+            .Invoke(new[] { source });
+        MethodInfo resolve = probeType.GetMethod("Resolve", BindingFlags.Public | BindingFlags.Instance)!;
+
+        var center = new DPoint(ok.Bounds.X + ok.Bounds.Width / 2, ok.Bounds.Y + ok.Bounds.Height / 2);
+        var monitor = new Rectangle(ok.Bounds.X - 400, ok.Bounds.Y - 400,
+            ok.Bounds.Width + 800, ok.Bounds.Height + 800);
+
+        object path = resolve.Invoke(probe, new object[] { hwnd, center, monitor, true })!;
+        Type pathType = path.GetType();
+
+        var levels = ((System.Collections.IEnumerable)pathType.GetProperty("Levels")!.GetValue(path)!)
+            .Cast<object>()
+            .Select(level => (
+                Box: level.GetType().GetProperty("Box")!.GetValue(level)!,
+                Info: level.GetType().GetProperty("Info")!.GetValue(level)))
+            .ToList();
+
+        var targets = levels.Select(l => l.Info).OfType<ControlTarget>().ToList();
+
+        Check("点选器：支路上每一层都带身份", targets.Count == levels.Count,
+            $"{targets.Count} / {levels.Count}");
+        Check("点选器：支路里读到了 AutomationId", targets.Any(t => t.AutomationId == "OkBtn"),
+            string.Join(" | ", targets.Select(t => $"{t.ControlType}·{t.Name}·{t.AutomationId}")));
+
+        int picked = (int)Targets.GetMethod("PickOnPath", BindingFlags.Public | BindingFlags.Static)!
+            .Invoke(null, new object[] { targets })!;
+
+        Check("点选器：挑中「确定」按钮那一层", picked >= 0 && targets[picked].AutomationId == "OkBtn",
+            picked >= 0 ? $"{targets[picked].ControlType}·{targets[picked].Name}" : "没挑中");
+        Check("点选器：挑中的矩形就是按钮本身", picked >= 0 && targets[picked].Bounds == ok.Bounds);
+
+        MethodInfo countSame = sourceType.GetMethod("CountSame", BindingFlags.Public | BindingFlags.Instance)!;
+        var one = (int?)countSame.Invoke(source, new object[] { hwnd, ok, 50 });
+        Check("点选器：同名计数 = 1（provider 条件查找）", one == 1, $"实际 {one?.ToString() ?? "null"}");
+
+        var cancelCount = (int?)countSame.Invoke(source, new object[] { hwnd, cancel, 50 });
+        Check("点选器：「取消」也算 1 个", cancelCount == 1, $"实际 {cancelCount?.ToString() ?? "null"}");
+
+        var other = (int?)countSame.Invoke(source, new object[]
+        {
+            hwnd, ok with { Name = "不存在的名字", AutomationId = "NoSuchBtn" }, 50,
+        });
+        Check("点选器：查不到就是 0，不是 null", other == 0, $"实际 {other?.ToString() ?? "null"}");
     }
 
     // ============ 等窗口 / 读窗口 ============

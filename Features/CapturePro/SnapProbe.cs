@@ -34,6 +34,20 @@ internal sealed class SnapProbe
 
     private readonly ConcurrentDictionary<IntPtr, Entry> _trees = new();
     private readonly ConcurrentDictionary<IntPtr, SnapPath> _pins = new();
+    private readonly ISnapSource? _source;
+
+    public SnapProbe()
+    {
+    }
+
+    /// <summary>
+    /// 换一份取数实现：控件选择器用同一套懒下钻，只是节点还要多带身份
+    /// （<see cref="ISnapSource.Describe"/>）。缓存 / 放弃判定 / 诊断全共用，别另写一套遍历。
+    /// </summary>
+    internal SnapProbe(ISnapSource source) => _source = source;
+
+    /// <summary>真实取数（UI Automation）；换过实现时用换过的那份。</summary>
+    private ISnapSource SourceOf() => _source ?? RealSource.Value;
 
     private sealed class Entry
     {
@@ -122,7 +136,7 @@ internal sealed class SnapProbe
         entry = new Entry
         {
             Tree = new SnapTree(hwnd, new Rectangle(x, y, Math.Max(0, w), Math.Max(0, h)),
-                Shorten(label.Trim()), Source.Value),
+                Shorten(label.Trim()), SourceOf()),
         };
 
         if (_trees.Count >= MaxWindows) _trees.Clear();
@@ -138,7 +152,7 @@ internal sealed class SnapProbe
 
     private static string Shorten(string s) => s.Length <= 28 ? s : s[..28] + "…";
 
-    private static readonly Lazy<ISnapSource> Source = new(() => new FlaUiSnapSource());
+    private static readonly Lazy<ISnapSource> RealSource = new(() => new FlaUiSnapSource());
 
     // ============ 真实取数：UI Automation ============
 

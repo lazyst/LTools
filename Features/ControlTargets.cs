@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Definitions;
 using LTools.Core.Ai;
 
 namespace LTools.Features;
@@ -133,6 +134,9 @@ internal static class ControlTargets
         queue.Enqueue((root, 0, "0", -1));
         var watch = Stopwatch.StartNew();
 
+        // 注：FlaUI 的 CacheRequest 在这条路上救不了场（实测：挂上之后 AutomationId 读出来是空的），
+        // 所以照旧逐个读属性。真要做到「每节点一次调用」得自己在 UIA COM 层用
+        // FindAllBuildCache 自己建树——这里不做，全量快照已经只在打开对话框时才跑。
         while (queue.Count > 0)
         {
             if (nodes.Count >= maxElements || watch.Elapsed > Budget)
@@ -221,6 +225,33 @@ internal static class ControlTargets
     public static bool CanTarget(ControlTarget node) =>
         node.Name.Trim().Length > 0 || node.AutomationId.Trim().Length > 0;
 
+    /// <summary>
+    /// 从「光标下那条支路」（深 → 浅，最后一条是窗口本身）里挑目标：跳过窗口，从最深往上找
+    /// 第一个可交互控件（点文字中心也点得到按钮，但「设值」只有 Edit 能做）；一路都不是可交互的，
+    /// 就退回最深那一层（点文字中心同样点得到）。返回下标，-1 = 没有可用目标。
+    /// </summary>
+    public static int PickOnPath(IReadOnlyList<ControlTarget> path)
+    {
+        // 末尾的窗口本身不当目标（点整扇窗口没有意义）；路径没带窗口时按整条算
+        int end = path.Count;
+        while (end > 0 && path[end - 1].ControlType.Equals("Window", StringComparison.OrdinalIgnoreCase))
+            end--;
+
+        if (end <= 0) return -1;
+
+        int fallback = -1;
+        for (int i = 0; i < end; i++)
+        {
+            ControlTarget node = path[i];
+            if (node.Bounds.Width <= 0 || node.Bounds.Height <= 0) continue;   // UIA 偶发的 0 尺寸占位元素
+
+            if (IsInteractive(node.ControlType)) return i;
+            if (fallback < 0) fallback = i;
+        }
+
+        return fallback;
+    }
+
     public static bool IsInteractive(string controlType) => Interactive.Contains(controlType ?? "");
 
     /// <summary>
@@ -280,17 +311,52 @@ internal static class ControlTargets
 
     // ============ 内部 ============
 
-    private static ControlTarget Describe(AutomationElement element, int depth, string path, int parent) =>
+    /// <summary>
+    /// 一个节点 + 它的身份。深度 / 路径 / 父级只有整棵快照知道，悬停那条支路用默认值（0 / "" / -1），
+    /// 位置信息由调用方按支路顺序补。
+    /// </summary>
+    internal static ControlTarget Describe(AutomationElement element, int depth = 0, string path = "", int parent = -1) =>
         new(Safe(() => element.Properties.BoundingRectangle.ValueOrDefault, Rectangle.Empty),
-            Text(() => element.Properties.Name.ValueOrDefault),
-            Text(() => element.Properties.AutomationId.ValueOrDefault),
-            Text(() => element.Properties.ControlType.ValueOrDefault.ToString(), "Custom"),
-            Text(() => element.Properties.ClassName.ValueOrDefault),
+            ReadName(element),
+            ReadAutomationId(element),
+            ReadControlType(element, "Custom"),
+            ReadClassName(element),
             path,
             depth,
             parent,
             Safe(() => element.Properties.IsEnabled.ValueOrDefault, false),
             Safe(() => element.Properties.IsOffscreen.ValueOrDefault, false));
+
+    internal static Rectangle ReadBounds(AutomationElement element) =>
+        Safe(() => element.Properties.BoundingRectangle.ValueOrDefault, Rectangle.Empty);
+
+    internal static bool ReadOffscreen(AutomationElement element) =>
+        Safe(() => element.Properties.IsOffscreen.ValueOrDefault, false);
+
+    /// <summary>结构性容器（Pane / Group）：等大时允许结构回溯，别当成可交互目标。</summary>
+    internal static bool ReadStructural(AutomationElement element) =>
+        Safe(() => element.Properties.ControlType.ValueOrDefault, ControlType.Custom)
+            is ControlType.Pane or ControlType.Group;
+
+    internal static string ReadName(AutomationElement element) =>
+        Text(() => element.Properties.Name.ValueOrDefault);
+
+    internal static string ReadAutomationId(AutomationElement element) =>
+        Text(() => element.Properties.AutomationId.ValueOrDefault);
+
+    internal static string ReadControlType(AutomationElement element, string fallback = "") =>
+        Text(() => element.Properties.ControlType.ValueOrDefault.ToString(), fallback);
+
+    internal static string ReadClassName(AutomationElement element) =>
+        Text(() => element.Properties.ClassName.ValueOrDefault);
+
+    /// <summary>「类型 · 名称」这种一行的标签（支路去重 / 日志用；卡片自己拼更细的文案）。</summary>
+    internal static string ShortTitle(AutomationElement element)
+    {
+        string type = ReadControlType(element, "控件");
+        string name = ReadName(element);
+        return name.Length == 0 ? type : $"{type} · {name}";
+    }
 
     private static AutomationElement[] SafeChildren(AutomationElement element)
     {

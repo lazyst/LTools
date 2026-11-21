@@ -24,6 +24,7 @@ internal static class UiaPickSuite
         cases.Add(new("uiaPick", "搜索：名称 / id / 类型 / 类名，包含即命中", Filter));
         cases.Add(new("uiaPick", "列表与信息条的文案", Text));
         cases.Add(new("uiaPick", "控件树快照的截断标记", TreeFlags));
+        cases.Add(new("uiaPick", "悬停那条支路里挑目标：跳过窗口、往上找可交互、退回最深", PickOnPath));
         cases.Add(new("uiaPick", "控件操作的三行定位条件都挂了「选控件…」", UnitWiring));
     }
 
@@ -147,6 +148,56 @@ internal static class UiaPickSuite
         var broken = new ControlTree(new List<ControlTarget>(), 12, 300, false, false, "不暴露 UIA");
         Check.True(broken.Unavailable, "Problem 非空 = 打不开");
         Check.Equal(0, broken.Count, "打不开时没有节点");
+    }
+
+    /// <summary>
+    /// 悬停只走了光标那条支路（深 → 浅，最后一条是窗口本身）：这里断言「该选哪一层」。
+    /// 真控件树靠 tests/UiaPickSmoke 的跨进程冒烟验。
+    /// </summary>
+    private static void PickOnPath()
+    {
+        // [Text, Button, Window]：文字在按钮里 → 选按钮
+        var inButton = new List<ControlTarget>
+        {
+            Node("Text", "确定", "", 0, -1, 30, 28, 80, 24),
+            Node("Button", "确定", "OkBtn", 0, -1, 20, 20, 100, 40),
+            Node("Window", "对话框", "", 0, -1, 0, 0, 400, 300),
+        };
+        Check.Equal(1, ControlTargets.PickOnPath(inButton), "文字在按钮里 → 选按钮");
+
+        // [Button, Window]
+        Check.Equal(0, ControlTargets.PickOnPath(inButton.GetRange(1, 2)), "最深那个就是按钮 → 选它");
+
+        // [Pane, Window]：没有可交互的，退回最深（点面板中心也点得到）
+        var paneOnly = new List<ControlTarget>
+        {
+            Node("Pane", "侧栏", "", 0, -1, 0, 0, 120, 300),
+            Node("Window", "对话框", "", 0, -1, 0, 0, 400, 300),
+        };
+        Check.Equal(0, ControlTargets.PickOnPath(paneOnly), "一路都不是可交互 → 退回最深");
+
+        // [Window]：整窗不当目标
+        Check.Equal(-1, ControlTargets.PickOnPath(new List<ControlTarget> { paneOnly[1] }), "只有窗口本身 → -1");
+        Check.Equal(-1, ControlTargets.PickOnPath(new List<ControlTarget>()), "空路径 → -1");
+
+        // [Text, Pane, Window]：更浅的那个按钮才是目标（支路里从深往浅找）
+        var shallowButton = new List<ControlTarget>
+        {
+            Node("Text", "确定", "", 0, -1, 30, 28, 80, 24),
+            Node("Pane", "工具条", "", 0, -1, 20, 20, 100, 40),
+            Node("Button", "确定", "OkBtn", 0, -1, 10, 10, 200, 60),
+            Node("Window", "对话框", "", 0, -1, 0, 0, 400, 300),
+        };
+        Check.Equal(2, ControlTargets.PickOnPath(shallowButton), "跳过不可交互的 Pane，选更浅的按钮");
+
+        // 零尺寸的节点跳过（UIA 偶尔给 0 宽高的占位元素）
+        var zero = new List<ControlTarget>
+        {
+            Node("Button", "幽灵", "GhostBtn", 0, -1, 0, 0, 0, 0),
+            Node("Button", "确定", "OkBtn", 0, -1, 10, 10, 100, 40),
+            Node("Window", "对话框", "", 0, -1, 0, 0, 400, 300),
+        };
+        Check.Equal(1, ControlTargets.PickOnPath(zero), "零尺寸的按钮不算目标");
     }
 
     private static void UnitWiring()
