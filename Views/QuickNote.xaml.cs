@@ -2,10 +2,12 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using LTools.Core;
 using LTools.Features;
+using LTools.Native;
 
 namespace LTools.Views;
 
@@ -26,8 +28,8 @@ public partial class QuickNoteWindow : Window
     private readonly DispatcherTimer _searchDebounce;
 
     // 列表行（供绑定；NoteEntry 的 Mtime 是 DateTime 不便直接显示）
-    private record NoteRow(string Title, string MtimeText, string Path, string Category, DateTime Mtime, string Body,
-        Visibility CategoryTagVis);
+    private record NoteRow(string Title, string Snippet, string MtimeText, string Path, string Category, DateTime Mtime,
+        string Body, Visibility CategoryTagVis, Visibility SnippetVis);
 
     internal QuickNoteWindow(NoteRepository repo)
     {
@@ -39,6 +41,8 @@ public partial class QuickNoteWindow : Window
         _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _searchDebounce.Tick += (_, _) => { _searchDebounce.Stop(); ReloadList(); };
         Loaded += OnLoaded;
+        // 系统给窗口画的那圈阴影在小窗上显得重：关掉 DWM 的非客户区渲染（圆角仍在，见 Win32 里的说明）
+        Loaded += (_, _) => Win32.TryDisableWindowShadow(new WindowInteropHelper(this).Handle);
         PopulateCategoryBox(NoteRepository.Unclassified);
         ReloadList();
     }
@@ -250,7 +254,9 @@ public partial class QuickNoteWindow : Window
 
     private void LoadEntry(NoteEntry entry)
     {
-        ExitPreview();
+        // 在预览里点另一条 → 继续看预览（读几条笔记不用来回按 Ctrl+P）
+        bool keepPreview = _previewMode;
+        if (keepPreview) ExitPreview();
         _loading = true;
         _current = entry;
         _attachmentDir = AttachmentFolderOf(entry.Path);
@@ -264,6 +270,7 @@ public partial class QuickNoteWindow : Window
         UpdateSaveBadge();
         BodyBox.Focus();
         BodyBox.CaretOffset = BodyBox.Text.Length;
+        if (keepPreview) EnterPreview();
     }
 
     private void ReloadList()
@@ -273,11 +280,17 @@ public partial class QuickNoteWindow : Window
         // 「全部」视图跨分类：每行显示分类标签；单分类视图里每行分类相同，隐藏避免冗余
         bool showCat = cat == null;
         var entries = _repo.List(cat, _filter);
-        var rows = entries.Select(e => new NoteRow(
-            string.IsNullOrEmpty(e.Title) ? Path.GetFileNameWithoutExtension(e.Path) : e.Title,
-            e.Mtime.ToString("M/d HH:mm"),
-            e.Path, e.Category, e.Mtime, e.Body,
-            showCat ? Visibility.Visible : Visibility.Collapsed)).ToList();
+        var rows = entries.Select(e =>
+        {
+            string snippet = _repo.Snippet(e.Path);
+            return new NoteRow(
+                string.IsNullOrEmpty(e.Title) ? Path.GetFileNameWithoutExtension(e.Path) : e.Title,
+                snippet,
+                e.Mtime.ToString("M/d HH:mm"),
+                e.Path, e.Category, e.Mtime, e.Body,
+                showCat ? Visibility.Visible : Visibility.Collapsed,
+                snippet.Length > 0 ? Visibility.Visible : Visibility.Collapsed);
+        }).ToList();
         string? keep = _current?.Path;
         NoteList.ItemsSource = rows;
         EmptyHint.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -501,6 +514,19 @@ public partial class QuickNoteWindow : Window
                 TogglePreview();
                 e.Handled = true;
             }
+            else if (e.Key == Key.F && _previewMode)
+            {
+                ShowFinder();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.V && Keyboard.FocusedElement is not TextBox
+                     && !BodyBox.TextArea.IsKeyboardFocusWithin)
+            {
+                // 焦点在列表 / 预览这类地方时粘图也要落到正文：预览是只读的，粘完重渲染并留在原处；
+                // 文本框（标题 / 查找）里的 Ctrl+V 仍是普通文本粘贴，不抢。
+                bool pasted = _previewMode ? PasteInPreview() : PasteImageFromClipboard();
+                if (pasted) e.Handled = true;
+            }
             else if (e.Key == Key.Delete && !IsTextCaretFocused())
             {
                 // 焦点在标题/正文时 Ctrl+Del 留给编辑（删到文末），不触发删除速记
@@ -508,10 +534,10 @@ public partial class QuickNoteWindow : Window
                 e.Handled = true;
             }
         }
-        else if (e.Key == Key.Escape && _previewMode)
+        else if (e.Key == Key.Escape)
         {
-            ExitPreview();
-            e.Handled = true;
+            if (FindBar.Visibility == Visibility.Visible) { CloseFinder(); e.Handled = true; }
+            else if (_previewMode) { ExitPreview(); e.Handled = true; }
         }
     }
 
@@ -520,5 +546,26 @@ public partial class QuickNoteWindow : Window
         => Keyboard.FocusedElement is TextBox
            || BodyBox.TextArea.IsKeyboardFocusWithin
            || PreviewBox.IsKeyboardFocusWithin;
+
+    // ============ 置顶（标题栏图钉） ============
+
+    /// <summary>图钉翻了状态（只由 <see cref="ApplyTopmost"/> 与点击两处改 <c>Topmost</c>）。</summary>
+    internal event EventHandler<bool>? TopmostChanged;
+
+    /// <summary>由 <c>Features.QuickNote</c> 在打开时灌入记住的状态（不触发事件，打开时不写盘）。</summary>
+    internal void ApplyTopmost(bool value)
+    {
+        Topmost = value;
+        NoteTitleBar.IsPinned = value;
+    }
+
+    private void TitleBar_PinClicked(object? sender, EventArgs e)
+    {
+        // 不常驻置顶：默认压不住别的窗口，想让它浮起来点一下图钉，状态记在 configs/ui.json
+        bool value = !Topmost;
+        Topmost = value;
+        NoteTitleBar.IsPinned = value;
+        TopmostChanged?.Invoke(this, value);
+    }
 
 }

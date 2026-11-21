@@ -16,6 +16,15 @@
         <!-- 右侧窗口按钮 -->
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                     shell:WindowChrome.IsHitTestVisibleInChrome="True">
+            <!-- 置顶开关：ShowPin=True 的窗口才显示（当前只有速记）。深色 = 已置顶，淡 = 未置顶 -->
+            <Button x:Name="PinButton" Style="{StaticResource TitleBarButton}"
+                    Visibility="Collapsed" Click="Pin_Click" ToolTip="置顶窗口">
+                <Path x:Name="PinIcon" Width="11" Height="11" Stretch="Uniform" Opacity="0.4"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      StrokeLineJoin="Round"
+                      Data="M 1,1.5 L 10,1.5 M 5.5,10 L 5.5,4 M 2.5,7 L 5.5,4 L 8.5,7"/>
+            </Button>
             <Button x:Name="MinimizeButton" Style="{StaticResource TitleBarButton}"
                     Click="Minimize_Click" ToolTip="最小化">
                 <Path Width="10" Height="10" Stretch="Uniform"

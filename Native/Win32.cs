@@ -37,6 +37,10 @@ internal static class Win32
     private const int DwmwaWindowCornerPreference = 33;
     private const int DwmwcpRound = 2;
 
+    /// <summary><c>DWMWA_NCRENDERING_POLICY</c> + <c>DWMNCRP_DISABLED</c>：让 DWM 不画外框（= 不画窗口阴影）。</summary>
+    private const int DwmwaNcRenderingPolicy = 2;
+    private const int DwmncrpDisabled = 1;
+
     /// <summary>
     /// 让窗口用系统圆角（Win11 22H2 起）。返回 false = 系统不支持（Win10）或窗口是分层的，
     /// 调用方保持方角自绘边框——**别在失败时硬画圆角边框**，那会在四角留出缺口。
@@ -48,6 +52,27 @@ internal static class Win32
         {
             int round = DwmwcpRound;
             return DwmSetWindowAttribute(hwnd, DwmwaWindowCornerPreference, ref round, sizeof(int)) == 0;
+        }
+        catch (DllNotFoundException) { return false; }
+        catch (EntryPointNotFoundException) { return false; }
+    }
+
+    /// <summary>
+    /// 关掉 DWM 给窗口画的那圈系统阴影（浓淡没法调，只能开 / 关）。返回是否调用成功。
+    /// </summary>
+    /// <remarks>
+    /// 速记窗口嫌阴影重时用（它是个随手记的小窗，不是主界面，平一点更好）。
+    /// 与 <see cref="TryEnableRoundCorners"/> 互不影响：实测关掉非客户区渲染后 Win11 的圆角还在
+    /// （<c>DWMWA_WINDOW_CORNER_PREFERENCE</c> 是单独一条属性），只是不再画外框阴影；
+    /// Win10 本来没有 DWM 圆角，代价更小。失败 / 老系统直接保持原样，别硬来。
+    /// </remarks>
+    public static bool TryDisableWindowShadow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return false;
+        try
+        {
+            int disabled = DwmncrpDisabled;
+            return DwmSetWindowAttribute(hwnd, DwmwaNcRenderingPolicy, ref disabled, sizeof(int)) == 0;
         }
         catch (DllNotFoundException) { return false; }
         catch (EntryPointNotFoundException) { return false; }

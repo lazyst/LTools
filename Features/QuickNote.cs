@@ -29,6 +29,7 @@ internal static class QuickNote
         _repo.MigrateRootScatteredNotes();
         _repo.MigrateTxtToMd();
         _repo.CleanDraftAttachments(TimeSpan.FromDays(7));
+        _repo.CollectAttachmentGarbage(); // 程序外删 / 改名留下的附件夹、正文里已没引用的图片 → trash（30 天后清）
     }
 
     /// <summary>重新扫描分类（设置保存后调用；当前仓库即时扫描，此方法主要用于通知已打开窗口刷新）。</summary>
@@ -48,8 +49,25 @@ internal static class QuickNote
         }
         if (_repo == null) Initialize(_iniPath);
         _form = new QuickNoteWindow(_repo!);
+        _form.ApplyTopmost(ReadTopmost());
+        _form.TopmostChanged += (_, on) => SaveTopmost(on);
         _form.Closed += (_, _) => _form = null;
         _form.Show();
+    }
+
+    /// <summary>上次的置顶状态（<c>configs/ui.json</c>）；读不到 / 还没初始化就当不置顶。</summary>
+    private static bool ReadTopmost()
+    {
+        if (string.IsNullOrEmpty(_iniPath)) return false;
+        try { return UiStore.Read(_iniPath).QuickNoteTopmost; }
+        catch (Exception ex) { CrashLog.Write("速记置顶状态读取失败", ex); return false; }
+    }
+
+    private static void SaveTopmost(bool value)
+    {
+        if (string.IsNullOrEmpty(_iniPath)) return;
+        try { UiStore.Modify(_iniPath, ui => ui.QuickNoteTopmost = value); }
+        catch (Exception ex) { CrashLog.Write("速记置顶状态保存失败", ex); }
     }
 
     private static string ComputeDefaultDir(string? iniPath)

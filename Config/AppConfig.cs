@@ -171,6 +171,12 @@ public sealed class AppConfig
     public int CaptureHistoryPageSize { get; set; }
 
     /// <summary>
+    /// 速记窗口是否置顶（标题栏那个图钉）。默认不置顶——它是个随手记的小窗，
+    /// 常驻置顶会一直压在别的程序上面；改了记住，只在 <c>configs/ui.json</c> 里。
+    /// </summary>
+    public bool QuickNoteTopmost { get; set; }
+
+    /// <summary>
     /// 截图工具栏的格子布局（一行一格、格内逗号分隔工具键，如 <c>pen,highlighter</c>）；
     /// 空 = 按 <c>ToolCatalog</c> 默认（每个工具一格）。见 <c>Features/CapturePro/ToolLayout</c>。
     /// </summary>

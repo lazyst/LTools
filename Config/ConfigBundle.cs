@@ -134,6 +134,7 @@ internal static class ConfigBundle
         cfg.EditorDrawerWidth = ui.EditorDrawerWidth;
         cfg.PinPageSize = ui.PinPageSize;
         cfg.CaptureHistoryPageSize = ui.CaptureHistoryPageSize;
+        cfg.QuickNoteTopmost = ui.QuickNoteTopmost;
         cfg.CaptureToolGroups = ui.CaptureToolGroups ?? new();
         cfg.CaptureToolHidden = ui.CaptureToolHidden ?? new();
         cfg.CaptureActionGroups = ui.CaptureActionGroups ?? new();
@@ -413,6 +414,7 @@ internal static class ConfigBundle
         EditorDrawerWidth = cfg.EditorDrawerWidth,
         PinPageSize = cfg.PinPageSize,
         CaptureHistoryPageSize = cfg.CaptureHistoryPageSize,
+        QuickNoteTopmost = cfg.QuickNoteTopmost,
         CaptureToolGroups = cfg.CaptureToolGroups ?? new(),
         CaptureToolHidden = cfg.CaptureToolHidden ?? new(),
         CaptureActionGroups = cfg.CaptureActionGroups ?? new(),

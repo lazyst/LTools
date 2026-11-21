@@ -78,19 +78,29 @@ dotnet run --no-build                     # 15 条，约 5 秒
 dotnet build -p:NoWin32Manifest=true      # 先构建产品（直接引用 bin\Debug 里的 LTools.dll）
 cd tests\QuickNoteSmoke
 dotnet build -v q
-dotnet run --no-build                     # 69 条，约 4 秒
+dotnet run --no-build                     # 100 条，约 7 秒
 ```
 
 用临时数据根构造真 `QuickNoteWindow`（反射驱动 internal 的 `NoteRepository`），断言「看得见的行为」：
 正文已是 AvalonEdit / `WordWrap` 仍开 / 右键菜单六项都挂上命令 / Markdown 高亮按主题加载（围栏块**跨行**
 且不漏到下一段、粗体带 `FontWeight`）/ 选区用主题 `EditorSelectionColor` / 占位文字随正文显隐 / 改正文标脏 /
+**窗口默认不置顶、标题栏有图钉、点一下翻转并通知外面（`TopmostChanged`，`configs/ui.json` 由它落盘）** /
 焦点在列表时 `Ctrl+Del` 才删速记 / `Ctrl+P` 的预览把源码藏起来且文档带源码行号、切回来文档被清空 /
+**双击预览某一块才回源码（`TryJumpFromPreviewPoint`；单击不再跳）** /
+**预览里选中文字还看得见（`SelectionOpacity < 1`，并逐像素数选区里的深色像素——选区色画在文字上面，
+设 1 会把字整块盖住）** /
 `JumpToLine` 定位到行首 / `Ctrl+S` 落盘正文一字不差；书写辅助直接调私有方法验文档：列表续写（含有序 +1、
 待办变未勾、空项退出）、引用续写、`Wrap` 包住选区、`Tab` / `Shift+Tab`、行首记号开关、插入链接 / 表格、
-工具栏 11 个按钮都不抢焦点；图片附件走真剪贴板（`Clipboard.SetImage` → 落盘到 `笔记名.files/` → 预览里
-变 `Image` → 改名后目录与路径一起搬 → 删笔记连目录删掉）。最后渲染 `editor.png`、`editor-2x.png`、
-`preview-2x.png`、`preview-image-2x.png`、`empty.png` 到 `%TEMP%\opencode\quicknote-smoke\out\`，
-并逐像素确认代码色 / 链接色真的画在画面上。
+工具栏 11 个按钮都不抢焦点；**预览里 Ctrl+F**：查找条露出、跨 `Run` 也命中（「1/2」）、命中处真被选中、
+自己画的高亮框数量 / 深浅对得上（当前 0.6、其余 0.3，并取样那框底下的像素证明真的画在画面上）、
+`StepFind` 走到第二处后实心框跟过去、关闭后查找条与高亮一起收起；预览里切另一条速记仍停在预览；列表行摘要（`NoteRepository.Snippet`
+的断言在 `--selftest` 的 `note` 组，冒烟只验真的画出来了；附件冗余清理（孤儿 `.files` 夹 / 正文没引用的图 → `trash/`）
+也在 `note` 组）；图片附件走真剪贴板，三种形态都验：DIB（`Clipboard.SetImage`）、
+**只有 `PNG` 注册格式**（浏览器「复制图片」）、图片文件的 `FileDrop`（资源管理器里复制）→ 落盘到 `笔记名.files/` →
+预览里变 `Image` → 预览里再粘一张会立刻重渲染 → 右键「粘贴」没图时照常贴文本 → 改名后目录与路径一起搬 → 删笔记连目录删掉。
+最后渲染 `editor.png`、`editor-2x.png`、
+`preview-2x.png`、`preview-find-2x.png`、`preview-image-2x.png`、`list-2x.png`、`empty.png` 到
+`%TEMP%\opencode\quicknote-smoke\out\`，并逐像素确认代码色 / 链接色真的画在画面上。
 **中文输入法的组字手感、预览里「点某一块跳回源码」的命中，自动化替不了，仍要真机点一遍。**
 
 ### `PanelClipboardSmoke`（复制引用 / 复制为副本 / 粘贴）

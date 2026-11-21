@@ -96,8 +96,30 @@ internal static class Program
         var menu = Prop(body, "ContextMenu") as System.Windows.Controls.ContextMenu;
         var menuItems = menu?.Items.OfType<System.Windows.Controls.MenuItem>().ToList() ?? new();
         Check(menuItems.Count == 6, "正文有右键菜单（撤销/重做/剪切/复制/粘贴/全选，实际 " + menuItems.Count + " 项）");
-        Check(menuItems.All(m => m.Command != null), "右键菜单每一项都挂上了命令");
+        var pasteItem = menuItems.FirstOrDefault(m => (string)m.Header == "粘贴");
+        Check(pasteItem != null && pasteItem.Command == null
+              && menuItems.Count(m => m.Command != null) == menuItems.Count - 1,
+            "右键菜单只有「粘贴」由速记自己接（图片 / 图片文件），其余走标准命令");
         Check(PlaceholderVisible(placeholder), "空正文时占位文字可见");
+
+        // 置顶：默认不置顶；标题栏上有图钉，点了翻转并把状态交给 QuickNote 落盘
+        var titleBar = Field(win, "NoteTitleBar");
+        Check(!win.Topmost, "速记窗口默认不置顶（不再常驻压着别的程序）");
+        Check((bool)Prop(titleBar, "ShowPin")!, "标题栏带「置顶」按钮");
+        var pinButton = (UIElement)Field(titleBar, "PinButton");
+        Check(pinButton.Visibility == Visibility.Visible, "置顶按钮是显示的");
+        win.GetType().GetMethod("ApplyTopmost", Any)!.Invoke(win, new object[] { true });
+        Check(win.Topmost && (bool)Prop(titleBar, "IsPinned")!, "ApplyTopmost(true) 置顶并点亮图钉");
+        bool? pinnedReported = null;
+        // internal 事件的 add 方法不公开：冒烟直接挂到它的 backing field 上
+        FieldInfo pinField = win.GetType().GetField("TopmostChanged", Any)!;
+        EventHandler<bool> pinHandler = (_, on) => pinnedReported = on;
+        pinField.SetValue(win, Delegate.Combine((Delegate?)pinField.GetValue(win), pinHandler));
+        InvokeResult(win, "TitleBar_PinClicked", new object?[] { null, EventArgs.Empty });
+        Flush(win);
+        Check(!win.Topmost && !(bool)Prop(titleBar, "IsPinned")!, "点图钉翻转成不置顶");
+        Check(pinnedReported == false, "翻转会通知外面（状态要写进 configs/ui.json）");
+        pinField.SetValue(win, null);
 
         object? syntax = Prop(body, "SyntaxHighlighting");
         Check(syntax != null, "Markdown 高亮定义已加载");
@@ -184,6 +206,79 @@ internal static class Program
         Save(Render(win), Path.Combine(_out, "preview.png"));
         Save(Render(win, 2), Path.Combine(_out, "preview-2x.png"));
 
+        // 预览里 Ctrl+F：段落内铺平搜索（跨 Run 也算命中），Enter 走下一处
+        var findBar = (UIElement)Field(win, "FindBar");
+        var findBox = (UIElement)Field(win, "FindBox");
+        var findCount = (UIElement)Field(win, "FindCount");
+        var findLayer = (System.Windows.Controls.Panel)Field(win, "FindLayer");
+        Invoke(win, "ShowFinder");
+        Flush(win);
+        Check((Visibility)Prop(findBar, "Visibility")! == Visibility.Visible, "Ctrl+F 露出查找条");
+        PropSet(findBox, "Text", "代码");
+        Flush(win);
+        Check((string?)Prop(findCount, "Text") == "1/2",
+            "「代码」找到两处、当前第一处（实际 " + Prop(findCount, "Text") + "）");
+        Check(!((System.Windows.Documents.TextSelection)Prop(preview, "Selection")!).IsEmpty, "命中处被选中");
+        var selectionRange = (System.Windows.Documents.TextSelection)Prop(preview, "Selection")!;
+        Check(new System.Windows.Documents.TextRange(selectionRange.Start, selectionRange.End).Text == "代码",
+            "选中的就是命中的那段文字");
+        // WPF 的「无焦点选中」用的是系统浅灰（#F0F0F0），在查找框里打字时看不见，所以命中框是自己画的。
+        Check((Visibility)Prop(findLayer, "Visibility")! == Visibility.Visible, "命中处自己画高亮（不靠无焦点选中）");
+        Check(findLayer.Children.Count == 2, "两处命中各一个高亮框（实际 " + findLayer.Children.Count + "）");
+        var currentBox = (FrameworkElement)findLayer.Children[0];
+        double currentOpacity = (double)Prop(currentBox, "Opacity")!;
+        double otherOpacity = (double)Prop(findLayer.Children[1], "Opacity")!;
+        Check(currentOpacity > otherOpacity && currentOpacity >= 0.5, "当前命中比其余命中显眼");
+        var findShot = Render(win, 2);
+        Point corner = currentBox.TranslatePoint(new Point(2, 3), win);
+        Color shaded = PixelAt(findShot, (int)(corner.X * 2), (int)(corner.Y * 2));
+        Check(shaded.R < 248 && shaded.G < 248 && shaded.B < 248,
+            $"命中的底色真的画在画面上（框内角落像素 {shaded}）");
+        Save(findShot, Path.Combine(_out, "preview-find-2x.png"));
+        InvokeWith(win, "StepFind", 1);
+        Flush(win);
+        Check((string?)Prop(findCount, "Text") == "2/2", "下一个走到第二处");
+        Check((double)Prop(findLayer.Children.Cast<UIElement>().Last(), "Opacity")! >= 0.5
+              && findLayer.Children.Count == 2,
+            "换到第二处后实心框跟着挪");
+        Invoke(win, "CloseFinder");
+        Flush(win);
+        Check((Visibility)Prop(findBar, "Visibility")! == Visibility.Collapsed, "关闭后查找条收起");
+        Check((Visibility)Prop(findLayer, "Visibility")! == Visibility.Collapsed, "关闭后高亮也收掉");
+
+        // 预览里选中文字必须还看得见：选区色是画在文字**上面**的一层，
+        // SelectionOpacity=1 等于拿一块不透明的灰把字整块盖住（踩过，表现为「选中的字看不见」）。
+        double selectionOpacity = (double)Prop(preview, "SelectionOpacity")!;
+        Check(selectionOpacity < 1.0, $"预览选区是半透明的（{selectionOpacity}），不会盖住文字");
+        var selectedStart = previewDoc.ContentStart
+            .GetNextInsertionPosition(System.Windows.Documents.LogicalDirection.Forward)!;
+        var selectedEnd = selectedStart.GetPositionAtOffset(6) ?? selectedStart;
+        var previewSelection = (System.Windows.Documents.TextSelection)Prop(preview, "Selection")!;
+        previewSelection.Select(selectedStart, selectedEnd);
+        Flush(win);
+        Rect selectedBox = Rect.Union(
+            selectedStart.GetCharacterRect(System.Windows.Documents.LogicalDirection.Forward),
+            selectedEnd.GetCharacterRect(System.Windows.Documents.LogicalDirection.Backward));
+        Point selectedOrigin = ((UIElement)preview)
+            .TranslatePoint(new Point(selectedBox.Left, selectedBox.Top), win);
+        int darkInSelection = CountDarkIn(Render(win, 2),
+            new Rect(selectedOrigin, new Size(selectedBox.Width, selectedBox.Height)), 2);
+        Check(darkInSelection > 10, $"选中的文字真的还看得见（选区里深色像素 {darkInSelection} 个）");
+        previewSelection.Select(previewDoc.ContentStart, previewDoc.ContentStart);
+        Flush(win);
+
+        // 预览里「去改这一块」是双击：单击只做选中 / 点链接，不再一点就掉回源码
+        InvokeResult(preview, "ScrollToVerticalOffset", new object?[] { 0.0 }); // 查找把视图滚下去了，先回顶部
+        Flush(win);
+        var firstBlockRect = previewDoc.Blocks.FirstBlock!.ContentStart
+            .GetCharacterRect(System.Windows.Documents.LogicalDirection.Forward);
+        bool jumped = (bool)InvokeResult(win, "TryJumpFromPreviewPoint",
+            new Point(firstBlockRect.Left + 4, firstBlockRect.Top + firstBlockRect.Height / 2))!;
+        Check(jumped, "双击预览第一块 → 回到源码");
+        Check((Visibility)Prop(preview, "Visibility")! == Visibility.Collapsed, "双击后回到编辑");
+        Invoke(win, "TogglePreview"); // 回到预览，后面的检查照旧在预览里做
+        Flush(win);
+
         // 回源码定位：行号 → 光标偏移（命中哪一块才算点击成功，靠真机点）。
         var sourceDoc = (ICSharpCode.AvalonEdit.Document.TextDocument)Prop(body, "Document")!;
         int targetLine = 12;
@@ -221,6 +316,16 @@ internal static class Program
                 "落盘正文与编辑器里的 Markdown 一字不差");
         }
 
+        // 预览里切另一条笔记：模式保留（读几条笔记不用来回按 Ctrl+P）
+        Invoke(win, "TogglePreview");
+        Flush(win);
+        object? entryAgain = repoType.GetMethod("Load", Any)!.Invoke(repo, new object[] { files[0] });
+        win.GetType().GetMethod("LoadEntry", Any)!.Invoke(win, new[] { entryAgain });
+        Flush(win);
+        Check((Visibility)Prop(preview, "Visibility")! == Visibility.Visible, "切笔记后仍在预览");
+        Invoke(win, "TogglePreview");
+        Flush(win);
+
         // 图片附件：剪贴板粘贴 → 落「笔记名.files/」+ 相对链接；改名后目录与正文一起搬家；删笔记连带删目录。
         string notePath = files[0];
         string attachDir = (string)InvokeStatic(repoType, "AttachmentsDirFor", notePath)!;
@@ -238,8 +343,14 @@ internal static class Program
             pixels[i + 3] = 0xFF;               // A
         }
         var image = BitmapSource.Create(120, 80, 96, 96, PixelFormats.Bgr32, null, pixels, 120 * 4);
-        Clipboard.SetImage(image);
-        Check((bool)InvokeResult(win, "PasteImageFromClipboard")!, "剪贴板里有图时接管 Ctrl+V");
+        bool pasted = false;
+        for (int attempt = 0; attempt < 5 && !pasted; attempt++)
+        {
+            if (attempt > 0) System.Threading.Thread.Sleep(120);
+            SetClipboardImage(image);
+            pasted = (bool)InvokeResult(win, "PasteImageFromClipboard")!;
+        }
+        Check(pasted, "剪贴板里有图时接管 Ctrl+V");
         Check(Directory.Exists(attachDir), "附件目录建在笔记旁边");
         string[] pastedImages = Directory.GetFiles(attachDir, "*.png");
         Check(pastedImages.Length == 1, "图片落盘一张（实际 " + pastedImages.Length + "）");
@@ -247,10 +358,61 @@ internal static class Program
         Check(Normalize((string)Prop(body, "Text")!).Contains("](" + dirName + "/") || Normalize((string)Prop(body, "Text")!).Contains("](<" + dirName + "/"),
             "正文里插的是相对路径链接");
 
+        // 浏览器「复制图片」只放 PNG 注册格式（没有 DIB）：Clipboard.ContainsImage() 是 false，
+        // 老实现会落到文本粘贴上，表现就是「粘完什么都没发生」。
+        bool pngPasted = false;
+        for (int attempt = 0; attempt < 5 && !pngPasted; attempt++)
+        {
+            if (attempt > 0) System.Threading.Thread.Sleep(120);
+            SetClipboardPng(image);
+            pngPasted = (bool)InvokeResult(win, "PasteImageFromClipboard")!;
+        }
+        Check(pngPasted, "PNG 注册格式的剪贴板也接管粘贴（浏览器复制图片）");
+        Check(Directory.GetFiles(attachDir, "*.png").Length == 2, "PNG 载荷也落成附件（实际 "
+            + Directory.GetFiles(attachDir, "*.png").Length + " 张）");
+
+        // 资源管理器里复制图片文件：剪贴板只有 FileDrop，也要复制进附件目录
+        string dropped = Path.Combine(_out, "dropped.png");
+        Save(image, dropped);
+        bool filePasted = false;
+        for (int attempt = 0; attempt < 5 && !filePasted; attempt++)
+        {
+            if (attempt > 0) System.Threading.Thread.Sleep(120);
+            SetClipboardFileDrop(dropped);
+            filePasted = (bool)InvokeResult(win, "PasteImageFromClipboard")!;
+        }
+        Check(filePasted, "剪贴板里是图片文件时也接管粘贴");
+        Check(File.Exists(Path.Combine(attachDir, "dropped.png")), "图片文件被复制进附件目录");
+
+        // 右键「粘贴」：没图时走编辑器自己的文本粘贴（不能因为接管了图片就不贴文本）
+        bool textPasted = false;
+        for (int attempt = 0; attempt < 5 && !textPasted; attempt++)
+        {
+            if (attempt > 0) System.Threading.Thread.Sleep(120);
+            SetClipboardText("右键粘贴的文本");
+            InvokeResult(win, "PasteMenu_Click", new object?[] { null, new RoutedEventArgs() });
+            Flush(win);
+            textPasted = ((string)Prop(body, "Text")!).Contains("右键粘贴的文本");
+        }
+        Check(textPasted, "右键「粘贴」没有图时照常贴文本");
+
         Invoke(win, "TogglePreview");
         Flush(win);
         var withImage = (System.Windows.Documents.FlowDocument)Prop(preview, "Document")!;
         Check(HasImage(withImage), "预览把附件图片渲染成 Image");
+        // 预览是只读的，但粘图也要接住并重渲染（否则正文变了、预览还是旧的）
+        int imagesBefore = CountImages(withImage);
+        bool previewPasted = false;
+        for (int attempt = 0; attempt < 5 && !previewPasted; attempt++)
+        {
+            if (attempt > 0) System.Threading.Thread.Sleep(120);
+            SetClipboardPng(image);
+            previewPasted = (bool)InvokeResult(win, "PasteInPreview")!;
+        }
+        Check(previewPasted, "预览里粘图也被接管");
+        Check(CountImages((System.Windows.Documents.FlowDocument)Prop(preview, "Document")!) > imagesBefore,
+            "粘完预览立刻重渲染，多出一张图");
+        Check((Visibility)Prop(preview, "Visibility")! == Visibility.Visible, "粘完仍停在预览");
         Save(Render(win, 2), Path.Combine(_out, "preview-image-2x.png"));
         Invoke(win, "TogglePreview");
         Flush(win);
@@ -267,7 +429,8 @@ internal static class Program
         Check(!Directory.Exists(attachDir), "旧附件目录已经不在了");
         string movedBody = Normalize(File.ReadAllText(renamed[0]));
         Check(movedBody.Contains("](" + Path.GetFileName(movedDir) + "/") || movedBody.Contains("](<" + Path.GetFileName(movedDir) + "/"), "正文里的相对路径一起改写");
-        Check(Directory.GetFiles(movedDir, "*.png").Length == 1, "图片跟着搬过去了");
+        Check(Directory.GetFiles(movedDir, "*.png").Length == 4, "图片跟着搬过去了（4 张）");
+        Save(Render(win, 2), Path.Combine(_out, "list-2x.png"));
 
         repoType.GetMethod("Delete", Any)!.Invoke(repo, new object[] { renamed[0] });
         Check(!File.Exists(renamed[0]), "删除笔记");
@@ -402,6 +565,37 @@ internal static class Program
         return hits;
     }
 
+    /// <summary>数一块区域（窗口 DIP 坐标）里的深色像素——选中之后文字还在，就还有深色像素。</summary>
+    private static int CountDarkIn(BitmapSource bmp, Rect dipArea, double scale)
+    {
+        int stride = bmp.PixelWidth * 4;
+        var buffer = new byte[stride * bmp.PixelHeight];
+        bmp.CopyPixels(buffer, stride, 0);
+        int x0 = Math.Max(0, (int)(dipArea.Left * scale));
+        int y0 = Math.Max(0, (int)(dipArea.Top * scale));
+        int x1 = Math.Min(bmp.PixelWidth, (int)(dipArea.Right * scale));
+        int y1 = Math.Min(bmp.PixelHeight, (int)(dipArea.Bottom * scale));
+        int hits = 0;
+        for (int y = y0; y < y1; y++)
+            for (int x = x0; x < x1; x++)
+            {
+                int i = y * stride + x * 4;
+                if (buffer[i + 2] < 120 && buffer[i + 1] < 120 && buffer[i] < 120) hits++;
+            }
+        return hits;
+    }
+
+    /// <summary>取一个像素（BGRA / Pbgra32，已按白色合成）。</summary>
+    private static Color PixelAt(BitmapSource bmp, int x, int y)    {
+        x = Math.Clamp(x, 0, bmp.PixelWidth - 1);
+        y = Math.Clamp(y, 0, bmp.PixelHeight - 1);
+        int stride = bmp.PixelWidth * 4;
+        var buffer = new byte[stride * bmp.PixelHeight];
+        bmp.CopyPixels(buffer, stride, 0);
+        int i = y * stride + x * 4;
+        return Color.FromRgb(buffer[i + 2], buffer[i + 1], buffer[i]);
+    }
+
     private static void Flush(Window win)
         => win.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
 
@@ -427,6 +621,82 @@ internal static class Program
     private static object? InvokeStatic(Type type, string name, params object?[] args)
         => type.GetMethod(name, Any)!.Invoke(null, args);
 
+    /// <summary>剪贴板是全局独占：上一个进程刚退出时偶尔被占住，重试几次再放弃。</summary>
+    private static void SetClipboardImage(BitmapSource image)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                Clipboard.SetImage(image);
+                return;
+            }
+            catch when (attempt < 5)
+            {
+                System.Threading.Thread.Sleep(50);
+            }
+        }
+    }
+
+    /// <summary>模拟浏览器「复制图片」：只放 PNG 注册格式，没有 DIB。</summary>
+    private static void SetClipboardPng(BitmapSource image)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(image));
+                var stream = new MemoryStream();
+                encoder.Save(stream);
+                stream.Position = 0;
+                var data = new DataObject();
+                data.SetData("PNG", stream);
+                Clipboard.SetDataObject(data, true);
+                return;
+            }
+            catch when (attempt < 5)
+            {
+                System.Threading.Thread.Sleep(50);
+            }
+        }
+    }
+
+    private static void SetClipboardText(string text)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                Clipboard.SetText(text);
+                return;
+            }
+            catch when (attempt < 5)
+            {
+                System.Threading.Thread.Sleep(50);
+            }
+        }
+    }
+
+    /// <summary>模拟资源管理器里复制图片文件：剪贴板里只有 FileDrop。</summary>
+    private static void SetClipboardFileDrop(string path)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                var files = new System.Collections.Specialized.StringCollection();
+                files.Add(path);
+                Clipboard.SetFileDropList(files);
+                return;
+            }
+            catch when (attempt < 5)
+            {
+                System.Threading.Thread.Sleep(50);
+            }
+        }
+    }
+
     private static bool HasImage(System.Windows.Documents.FlowDocument document)
         => document.Blocks.Any(HasImage);
 
@@ -451,6 +721,27 @@ internal static class Program
                 return false;
         }
     }
+
+    private static int CountImages(System.Windows.Documents.FlowDocument document)
+        => document.Blocks.Sum(CountImages);
+
+    private static int CountImages(System.Windows.Documents.Block block) => block switch
+    {
+        System.Windows.Documents.Paragraph paragraph => paragraph.Inlines.Sum(CountImages),
+        System.Windows.Documents.Section section => section.Blocks.Sum(CountImages),
+        System.Windows.Documents.List list => list.ListItems.Sum(i => i.Blocks.Sum(CountImages)),
+        System.Windows.Documents.Table table => table.RowGroups.Sum(g =>
+            g.Rows.Sum(r => r.Cells.Sum(c => c.Blocks.Sum(CountImages)))),
+        _ => 0,
+    };
+
+    private static int CountImages(System.Windows.Documents.Inline inline) => inline switch
+    {
+        System.Windows.Documents.InlineUIContainer container
+            => container.Child is System.Windows.Controls.Image ? 1 : 0,
+        System.Windows.Documents.Span span => span.Inlines.Sum(CountImages),
+        _ => 0,
+    };
 
     private static void Check(bool ok, string what)
     {

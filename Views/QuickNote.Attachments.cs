@@ -26,32 +26,103 @@ public partial class QuickNoteWindow
     /// <summary>当前这条速记的附件目录（绝对路径）；没有图片时为 null。</summary>
     private string? _attachmentDir;
 
-    private static readonly string[] ImageExtensions = { ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp" };
+    private static readonly string[] ImageExtensions = NoteRepository.ImageExtensions;
 
     // ============ 粘贴 / 拖入 ============
 
-    /// <summary>剪贴板里有图就落盘并插入链接。返回是否接管了这次 Ctrl+V。</summary>
+    /// <summary>剪贴板注册格式里的 PNG（浏览器「复制图片」只放这一种，没有 DIB）。</summary>
+    private const string PngFormat = "PNG";
+
+    /// <summary>
+    /// 剪贴板里有图（DIB / PNG）或图片文件就落盘并插入链接。返回是否接管了这次粘贴。
+    /// </summary>
+    /// <remarks>
+    /// 只看 <c>Clipboard.ContainsImage()</c> 不够：Chrome / Edge「复制图片」只写 <c>PNG</c> 注册格式，
+    /// 那时 <c>ContainsImage()</c> 是 false、<c>GetImage()</c> 是 null，于是 Ctrl+V 落到编辑器的文本粘贴上
+    /// ——图片剪贴板没有文本，表现就是「粘完什么都没发生」。资源管理器里复制图片文件则是 FileDrop。
+    /// </remarks>
     private bool PasteImageFromClipboard()
     {
-        bool hasImage;
-        try { hasImage = Clipboard.ContainsImage(); }
-        catch { return false; }
-        if (!hasImage) return false;
-
-        BitmapSource? image;
-        try { image = Clipboard.GetImage(); }
-        catch { image = null; }
-        if (image == null) return false;
-
         try
         {
+            string[] files = ClipboardImageFiles();
+            if (files.Length > 0)
+            {
+                foreach (string file in files) CopyImageFile(file);
+                return true;
+            }
+
+            BitmapSource? image = ReadClipboardImage();
+            if (image == null) return false;
+
             InsertImageLink(SaveClipboardImage(image));
+            return true;
         }
         catch (Exception ex)
         {
             ConfirmDialog.Info(this, "粘贴图片", "图片没能存下来：" + ex.Message);
+            return true; // 已经接管这次粘贴，别再让编辑器贴一段奇怪的东西
         }
+    }
+
+    /// <summary>右键菜单「粘贴」：有图就存成附件，否则走编辑器自己的文本粘贴。</summary>
+    private void PasteMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (!PasteImageFromClipboard()) BodyBox.Paste();
+    }
+
+    /// <summary>
+    /// 预览是只读的，但粘图也该接管：落盘 + 重渲染一次，并留在原来的滚动位置
+    /// （不重渲染的话正文变了预览还是旧的，看着就是「粘完什么也没发生」）。
+    /// </summary>
+    private bool PasteInPreview()
+    {
+        double offset = PreviewBox.VerticalOffset;
+        if (!PasteImageFromClipboard()) return false;
+        EnterPreview();
+        PreviewBox.UpdateLayout();
+        PreviewBox.ScrollToVerticalOffset(offset);
         return true;
+    }
+
+    /// <summary>先要 DIB，再退到 PNG 注册格式（见 <see cref="PasteImageFromClipboard"/> 的说明）。</summary>
+    private static BitmapSource? ReadClipboardImage()
+    {
+        try
+        {
+            if (Clipboard.ContainsImage()) return Clipboard.GetImage();
+        }
+        catch { /* 剪贴板被占着：再看 PNG 载荷 */ }
+
+        try
+        {
+            if (Clipboard.GetDataObject() is not IDataObject data) return null;
+            if (!data.GetDataPresent(PngFormat, autoConvert: false)) return null;
+            Stream? stream = data.GetData(PngFormat) switch
+            {
+                Stream s => s,
+                byte[] bytes => new MemoryStream(bytes),
+                _ => null,
+            };
+            if (stream == null) return null;
+            stream.Position = 0;
+            var frame = BitmapFrame.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            frame.Freeze();
+            return frame;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>剪贴板里当作图片的文件（资源管理器复制 / 截图工具落盘后复制）。</summary>
+    private static string[] ClipboardImageFiles()
+    {
+        try
+        {
+            return Clipboard.ContainsFileDropList()
+                ? Clipboard.GetFileDropList().Cast<string>().Where(IsImageFile).ToArray()
+                : Array.Empty<string>();
+        }
+        catch { return Array.Empty<string>(); }
     }
 
     private string SaveClipboardImage(BitmapSource image)
@@ -67,6 +138,22 @@ public partial class QuickNoteWindow
         return path;
     }
 
+    /// <summary>把外部图片文件复制进附件目录并插链接（粘贴图片文件与拖入共用）。</summary>
+    private void CopyImageFile(string file)
+    {
+        try
+        {
+            string dir = EnsureAttachmentFolder();
+            string target = UniquePath(dir, Path.GetFileName(file));
+            File.Copy(file, target);
+            InsertImageLink(target);
+        }
+        catch (Exception ex)
+        {
+            ConfirmDialog.Info(this, "插入图片", "「" + Path.GetFileName(file) + "」没能复制：" + ex.Message);
+        }
+    }
+
     private void BodyBox_PreviewDragOver(object sender, DragEventArgs e)
     {
         e.Effects = HasImageFiles(e.Data) ? DragDropEffects.Copy : DragDropEffects.None;
@@ -78,20 +165,7 @@ public partial class QuickNoteWindow
         if (!HasImageFiles(e.Data)) return;
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] files) return;
 
-        foreach (string file in files.Where(IsImageFile))
-        {
-            try
-            {
-                string dir = EnsureAttachmentFolder();
-                string target = UniquePath(dir, Path.GetFileName(file));
-                File.Copy(file, target);
-                InsertImageLink(target);
-            }
-            catch (Exception ex)
-            {
-                ConfirmDialog.Info(this, "插入图片", "「" + Path.GetFileName(file) + "」没能复制：" + ex.Message);
-            }
-        }
+        foreach (string file in files.Where(IsImageFile)) CopyImageFile(file);
         e.Handled = true;
     }
 

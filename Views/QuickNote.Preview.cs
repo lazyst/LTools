@@ -26,6 +26,9 @@ public partial class QuickNoteWindow
 
     private void EnterPreview()
     {
+        FindBar.Visibility = Visibility.Collapsed;
+        _findMatches.Clear();
+        HideFindHighlights();
         PreviewBox.Document = MarkdownRender.Build(BodyBox.Text, PreviewBaseDirectory(), this);
         PreviewBox.Visibility = Visibility.Visible;
         BodyBox.Visibility = Visibility.Collapsed;
@@ -41,6 +44,9 @@ public partial class QuickNoteWindow
     {
         if (!_previewMode) return;
         _previewMode = false;
+        FindBar.Visibility = Visibility.Collapsed;
+        _findMatches.Clear();
+        HideFindHighlights();
         PreviewBox.Visibility = Visibility.Collapsed;
         PreviewBox.Document = new FlowDocument(); // 丢掉渲染出来的那份（RichTextBox 不接受 null）
         BodyBox.Visibility = Visibility.Visible;
@@ -85,20 +91,31 @@ public partial class QuickNoteWindow
     }
 
     /// <summary>
-    /// 点预览里的某一块 → 回到源码的对应行。选中文字（在复制）或点在链接上（要跳浏览器）时不动。
+    /// 双击预览里的某一块 → 回到源码的对应行。
     /// </summary>
-    private void PreviewBox_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    /// <remarks>
+    /// 单击不跳转：原来单击（光标落在正文里、没有拖选）就直接退出预览，想「选中一句复制」或
+    /// 只是点一下看光标位置，都会莫名其妙掉回源码。现在单击只做选中 / 点链接，双击才是「去改这一块」。
+    /// 双击落在链接上时不动（要跳浏览器）。
+    /// </remarks>
+    private void PreviewBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (!_previewMode) return;
-        if (PreviewBox.Selection != null && !PreviewBox.Selection.IsEmpty) return;
         if (FindAncestor<Hyperlink>(e.OriginalSource as DependencyObject) != null) return;
+        TryJumpFromPreviewPoint(e.GetPosition(PreviewBox));
+    }
 
-        TextPointer? position = PreviewBox.GetPositionFromPoint(e.GetPosition(PreviewBox), true);
+    /// <summary>双击预览里的某一点：定位到源码行并切回源码，返回是否跳了（冒烟直接调它）。</summary>
+    internal bool TryJumpFromPreviewPoint(Point point)
+    {
+        if (!_previewMode) return false;
+        TextPointer? position = PreviewBox.GetPositionFromPoint(point, true);
         int? line = position == null ? null : SourceLineOf(position);
-        if (line == null) return;
+        if (line == null) return false;
 
         ExitPreview();
         JumpToLine(line.Value);
+        return true;
     }
 
     /// <summary>从命中的段落往上找最近一个带源码行号的块（渲染时每块都打了 <c>Tag = 行号</c>）。</summary>

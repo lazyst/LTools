@@ -20,6 +20,9 @@ internal sealed class NoteRepository
     /// <summary>旧版速记的扩展名：只在一次性迁移里认，写完就不再产生。</summary>
     private const string LegacyExtension = ".txt";
 
+    /// <summary>速记附件认的图片扩展名（粘贴 / 拖入 / 冗余清理共用同一份）。</summary>
+    internal static readonly string[] ImageExtensions = { ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp" };
+
     /// <summary>未指定分类时的兜底目录名。</summary>
     internal const string Unclassified = "未分类";
 
@@ -45,6 +48,48 @@ internal sealed class NoteRepository
         catch { /* 静默，UI 兜底 */ }
         if (!list.Contains(Unclassified)) list.Insert(0, Unclassified);
         return list;
+    }
+
+    /// <summary>
+    /// 列表行摘要：正文里第一行真正的内容（跳过重复标题的 <c># 标题</c> 行与围栏记号），去掉 Markdown 记号。
+    /// 只读前 4 KB，读完就停——列表刷新时对每条笔记都调一次，别整篇读。
+    /// </summary>
+    public string Snippet(string path, int maxChars = 60)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            var buffer = new char[4096];
+            int read = reader.Read(buffer, 0, buffer.Length);
+            if (read <= 0) return "";
+
+            bool skippedHeading = false;
+            foreach (string raw in new string(buffer, 0, read).Replace("\r\n", "\n").Split('\n'))
+            {
+                string line = CleanSnippet(NoteActions.StripMarkdownPrefix(raw));
+                if (line.Length == 0) continue;
+                if (line.StartsWith("```", StringComparison.Ordinal)) continue;
+                if (!skippedHeading && raw.TrimStart().StartsWith('#'))
+                {
+                    skippedHeading = true; // 第一行是标题：和文件名重复，跳过看下一行
+                    continue;
+                }
+                return line.Length <= maxChars ? line : line[..maxChars];
+            }
+        }
+        catch { /* 读不了就不显示摘要，不挡列表 */ }
+        return "";
+    }
+
+    private static readonly Regex SnippetLink = new(@"!?\[([^\]]*)\]\([^)]*\)", RegexOptions.Compiled);
+
+    /// <summary>摘要里不要 Markdown 记号：链接留文字、去掉 <c>**</c> / 反引号 / 删除线。</summary>
+    private static string CleanSnippet(string line)
+    {
+        line = SnippetLink.Replace(line, "$1");
+        line = line.Replace("**", "").Replace("__", "").Replace("~~", "").Replace("`", "");
+        return Regex.Replace(line, @"\s{2,}", " ").Trim();
     }
 
     /// <summary>确保分类子目录存在。</summary>
@@ -296,9 +341,124 @@ internal sealed class NoteRepository
         return removed;
     }
 
-    /// <summary>速记根目录 + 各分类子目录（跳过 <c>.迁移备份</c> 这类点前缀目录）。</summary>
-    private IReadOnlyList<string> NoteDirectories()
+    /// <summary>
+    /// 清理附件冗余（只搬进 <c>trash/&lt;时间戳&gt;/…</c>，不硬删；trash 由 <c>ActionStore.PruneTrash</c> 留 30 天）。
+    /// 两类：① 没有同名速记的 <c>&lt;笔记名&gt;.files/</c>（在资源管理器里删 / 改名 / 挪走了 .md）；
+    /// ② 笔记还在、但正文里已经没有任何引用的图片文件（删掉了图片那一行）。
+    /// </summary>
+    /// <remarks>
+    /// 只认图片扩展名（和粘贴 / 拖入时一致），别的文件一概不动；草稿夹 <c>.draft-*.files</c> 不碰（另有 7 天清理）。
+    /// ② 用「正文里出现没出现过这个文件名」判断，宁可漏清也不误删：出现一次就留下。
+    /// </remarks>
+    public (int Folders, int Files) CollectAttachmentGarbage()
     {
+        if (!Directory.Exists(_root)) return (0, 0);
+
+        string? stamp = null;
+        string? trash = null;
+        int folders = 0, files = 0;
+
+        foreach (string dir in NoteDirectories())
+        {
+            string[] attachments;
+            try { attachments = Directory.GetDirectories(dir, "*.files"); }
+            catch { continue; }
+
+            foreach (string attachmentDir in attachments)
+            {
+                string folderName = System.IO.Path.GetFileName(attachmentDir);
+                if (folderName.StartsWith(".draft-", StringComparison.OrdinalIgnoreCase)) continue;
+
+                string notePath = System.IO.Path.Combine(dir, folderName[..^".files".Length] + Extension);
+                if (!File.Exists(notePath))
+                {
+                    stamp ??= DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                    trash ??= TrashRoot();
+                    if (MoveDirToTrash(attachmentDir, System.IO.Path.Combine(trash, stamp, "note-files")))
+                    {
+                        folders++;
+                        AppLog.Info("Note", $"没有对应速记的附件夹移入 trash：{System.IO.Path.GetRelativePath(_root, attachmentDir)}");
+                    }
+                    continue;
+                }
+
+                string body;
+                try { body = File.ReadAllText(notePath, new UTF8Encoding(false)); }
+                catch { continue; } // 读不了正文：这一条整份跳过，别凭猜测搬文件
+
+                string[] attachmentsFiles;
+                try { attachmentsFiles = Directory.GetFiles(attachmentDir); }
+                catch { continue; }
+
+                foreach (string file in attachmentsFiles)
+                {
+                    if (!ImageExtensions.Contains(System.IO.Path.GetExtension(file).ToLowerInvariant())) continue;
+                    string name = System.IO.Path.GetFileName(file);
+                    if (body.Contains(name, StringComparison.OrdinalIgnoreCase)) continue;
+
+                    stamp ??= DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                    trash ??= TrashRoot();
+                    if (MoveFileToTrash(file, System.IO.Path.Combine(trash, stamp, "note-images")))
+                    {
+                        files++;
+                        AppLog.Info("Note", $"正文里已没引用的图片移入 trash：{System.IO.Path.GetRelativePath(_root, file)}");
+                    }
+                }
+            }
+        }
+
+        if (folders > 0 || files > 0)
+            AppLog.Info("Note", $"附件冗余清理：{folders} 个附件夹、{files} 张图移入 trash");
+        return (folders, files);
+    }
+
+    /// <summary>速记相关的垃圾目录：数据根的 <c>trash/</c>（和动作目录共用同一个 trash，一起按 30 天清）。</summary>
+    private string TrashRoot()
+    {
+        string root = System.IO.Path.GetFullPath(_root).TrimEnd(System.IO.Path.DirectorySeparatorChar);
+        string? parent = System.IO.Path.GetDirectoryName(root);
+        return System.IO.Path.Combine(parent ?? root, "trash");
+    }
+
+    private static bool MoveDirToTrash(string dir, string trashDir)
+    {
+        try
+        {
+            string target = System.IO.Path.Combine(trashDir, System.IO.Path.GetFileName(dir));
+            for (int n = 2; Directory.Exists(target) || File.Exists(target); n++)
+                target = System.IO.Path.Combine(trashDir, System.IO.Path.GetFileName(dir) + "-" + n);
+            Directory.CreateDirectory(trashDir);
+            Directory.Move(dir, target);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("速记附件夹移入 trash 失败: " + dir, ex);
+            return false;
+        }
+    }
+
+    private static bool MoveFileToTrash(string file, string trashDir)
+    {
+        try
+        {
+            string target = System.IO.Path.Combine(trashDir, System.IO.Path.GetFileName(file));
+            for (int n = 2; File.Exists(target) || Directory.Exists(target); n++)
+                target = System.IO.Path.Combine(trashDir,
+                    System.IO.Path.GetFileNameWithoutExtension(file) + "-" + n + System.IO.Path.GetExtension(file));
+            Directory.CreateDirectory(trashDir);
+            File.Move(file, target);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("速记图片移入 trash 失败: " + file, ex);
+            return false;
+        }
+    }
+
+    /// <summary>速记根目录 + 各分类子目录（跳过 <c>.迁移备份</c> 这类点前缀目录）。</summary>
+    private IReadOnlyList<string> NoteDirectories()    {
         var dirs = new List<string> { _root };
         try
         {

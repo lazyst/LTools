@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using LTools.Config;
 using LTools.Features;
 
 namespace LTools.Core.SelfTest;
@@ -21,6 +22,9 @@ internal static class NoteSuite
         cases.Add(new("note", "速记：列表按标题 / 正文搜索", Search));
         cases.Add(new("note", "速记：.txt → .md 一次性迁移", Migration));
         cases.Add(new("note", "速记：默认标题剥离 Markdown 记号", TitlePrefix));
+        cases.Add(new("note", "速记：列表行摘要", Snippet));
+        cases.Add(new("note", "速记：附件冗余清理（孤儿夹 / 没引用的图）", AttachmentGarbage));
+        cases.Add(new("note", "速记：置顶状态走 ui.json", TopmostPref));
     }
 
     private static void SaveAndParse()
@@ -178,9 +182,95 @@ internal static class NoteSuite
 
     // —— 工具 ——
 
-    /// <summary>在临时数据根里跑一段，跑完整个删掉（速记是用户资产，自测不碰真实目录）。</summary>
-    private static void WithRepo(Action<NoteRepository, string> body)
+    private static void Snippet()
     {
+        WithRepo((repo, root) =>
+        {
+            string path = repo.Save(new NoteEntry
+            {
+                Title = "标题",
+                Category = "未分类",
+                Body = "# 标题\n\n第一段 **重点** 与 [链接](https://example.com)\n",
+                Mtime = DateTime.Now,
+            }, null);
+            Check.Equal("第一段 重点 与 链接", repo.Snippet(path), "跳过与文件名重复的标题行，去掉行内记号");
+
+            string bullet = repo.Save(new NoteEntry
+            {
+                Title = "二",
+                Category = "未分类",
+                Body = "- 只有一个列表项\n",
+                Mtime = DateTime.Now,
+            }, null);
+            Check.Equal("只有一个列表项", repo.Snippet(bullet), "列表记号去掉");
+
+            string longLine = repo.Save(new NoteEntry
+            {
+                Title = "三",
+                Category = "未分类",
+                Body = new string('长', 120),
+                Mtime = DateTime.Now,
+            }, null);
+            Check.Equal(60, repo.Snippet(longLine).Length, "超长摘要截到 60 字");
+        });
+    }
+
+    private static void AttachmentGarbage()
+    {
+        WithRepo((repo, root) =>
+        {
+            string notes = repo.Save(new NoteEntry
+            {
+                Title = "带图",
+                Category = "未分类",
+                Body = "![a](<带图.files/a.png>)\n",
+                Mtime = DateTime.Now,
+            }, null);
+
+            string dir = NoteRepository.AttachmentsDirFor(notes);
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "a.png"), "x");      // 正文引用过 → 留
+            File.WriteAllText(Path.Combine(dir, "b.png"), "y");      // 没引用 → 搬
+            File.WriteAllText(Path.Combine(dir, "说明.txt"), "z");    // 非图片 → 不动
+
+            // 没有同名速记的附件夹（相当于在资源管理器里把 .md 删了）
+            string orphan = Path.Combine(Path.GetDirectoryName(notes)!, "已经删掉的笔记.files");
+            Directory.CreateDirectory(orphan);
+            File.WriteAllText(Path.Combine(orphan, "c.png"), "w");
+
+            // 未保存笔记的草稿夹：另有 7 天清理，这里不许碰
+            string draft = Path.Combine(root, ".draft-20260101-000000.files");
+            Directory.CreateDirectory(draft);
+
+            string trash = Path.Combine(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(root))!, "trash");
+            try
+            {
+                var (folders, files) = repo.CollectAttachmentGarbage();
+                Check.Equal(1, folders, "没有同名速记的附件夹搬走一个");
+                Check.Equal(1, files, "正文里没引用的图片搬走一张");
+                Check.True(File.Exists(Path.Combine(dir, "a.png")), "正文引用过的图留着");
+                Check.False(File.Exists(Path.Combine(dir, "b.png")), "没引用的图搬走了");
+                Check.True(File.Exists(Path.Combine(dir, "说明.txt")), "非图片文件一概不动");
+                Check.False(Directory.Exists(orphan), "孤儿附件夹搬走了");
+                Check.True(Directory.Exists(draft), "草稿附件夹不碰");
+                Check.True(Directory.Exists(trash), "都搬进数据根同级的 trash（只搬不删）");
+            }
+            finally
+            {
+                try { if (Directory.Exists(trash)) Directory.Delete(trash, recursive: true); } catch { }
+            }
+        });
+    }
+
+    private static void TopmostPref()
+    {
+        var cfg = new AppConfig { QuickNoteTopmost = true };
+        Check.True(ConfigBundle.ToUi(cfg).QuickNoteTopmost, "置顶状态写进 ui.json（ToUi 带着它）");
+        Check.True(cfg.QuickNoteTopmost && !new AppConfig().QuickNoteTopmost, "默认不置顶，勾过才置顶");
+    }
+
+    /// <summary>在临时数据根里跑一段，跑完整个删掉（速记是用户资产，自测不碰真实目录）。</summary>
+    private static void WithRepo(Action<NoteRepository, string> body)    {
         string root = Path.Combine(Path.GetTempPath(), "ltools-selftest", "notes-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(root);
         try { body(new NoteRepository(root), root); }

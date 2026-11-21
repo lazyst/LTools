@@ -6,7 +6,7 @@
         xmlns:controls="clr-namespace:LTools.Views.Controls"
         xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
         Title="速记" Width="780" Height="540" MinWidth="560" MinHeight="380"
-        Topmost="True" ShowInTaskbar="True" ResizeMode="CanResize"
+        ShowInTaskbar="True" ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
@@ -25,7 +25,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <controls:TitleBar Grid.Row="0"/>
+        <controls:TitleBar x:Name="NoteTitleBar" Grid.Row="0" ShowPin="True" PinClicked="TitleBar_PinClicked"/>
 
         <!-- 主内容：左列(列表) + 分隔条 + 右列(编辑) -->
         <Grid Grid.Row="1">
@@ -89,6 +89,7 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" Text="{Binding Title}" TextTrimming="CharacterEllipsis"
                                                    FontWeight="Medium" VerticalAlignment="Center"/>
@@ -100,9 +101,13 @@
                                                        Foreground="{StaticResource HintTextBrush}"
                                                        TextTrimming="CharacterEllipsis" MaxWidth="80"/>
                                         </Border>
+                                        <TextBlock Grid.Column="2" Text="{Binding MtimeText}" Style="{StaticResource HintLabel}"
+                                                   Margin="6,0,0,0" VerticalAlignment="Center"/>
                                     </Grid>
-                                    <TextBlock Text="{Binding MtimeText}" Style="{StaticResource HintLabel}"
-                                               Margin="0,2,0,0"/>
+                                    <!-- 正文摘要：第一行真正的内容（去掉 Markdown 记号），没有就不占位 -->
+                                    <TextBlock Text="{Binding Snippet}" Style="{StaticResource HintLabel}"
+                                               TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
+                                               Visibility="{Binding SnippetVis}"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -217,7 +222,7 @@
                                     <Separator/>
                                     <MenuItem Header="剪切" Command="ApplicationCommands.Cut"/>
                                     <MenuItem Header="复制" Command="ApplicationCommands.Copy"/>
-                                    <MenuItem Header="粘贴" Command="ApplicationCommands.Paste"/>
+                                    <MenuItem Header="粘贴" Click="PasteMenu_Click"/>
                                     <Separator/>
                                     <MenuItem Header="全选" Command="ApplicationCommands.SelectAll"/>
                                 </ContextMenu>
@@ -227,14 +232,49 @@
                         <TextBlock x:Name="BodyPlaceholder" Text="正文（Markdown）" IsHitTestVisible="False"
                                    Margin="1,5,0,0" VerticalAlignment="Top" HorizontalAlignment="Left"
                                    Foreground="{StaticResource HintTextBrush}" Visibility="Collapsed"/>
-                        <!-- 预览：只读 RichTextBox 托着 FlowDocument（点某一块要能回源码行，要它的命中测试）。 -->
+                        <!-- 预览：只读 RichTextBox 托着 FlowDocument（点某一块要能回源码行，要它的命中测试）。
+                             选区色是画在文字**上面**的一层：SelectionOpacity 千万别设 1，那样等于拿一块不透明的灰把字整块盖住（踩过，表现为「选中的字看不见」）；0.4 是 WPF 默认。 -->
                         <RichTextBox x:Name="PreviewBox" Visibility="Collapsed"
                                      IsReadOnly="True" IsDocumentEnabled="True" IsReadOnlyCaretVisible="False"
+                                     IsInactiveSelectionHighlightEnabled="True"
+                                     SelectionBrush="{StaticResource EditorSelectionBrush}" SelectionOpacity="0.4"
                                      AcceptsTab="False" BorderThickness="0" Background="Transparent"
                                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                      FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
                                      Padding="0,4" SpellCheck.IsEnabled="False"
-                                     PreviewMouseLeftButtonUp="PreviewBox_MouseLeftButtonUp"/>
+                                     ToolTip="双击某一块回到源码对应行（Ctrl+P 切回编辑）"
+                                     ScrollViewer.ScrollChanged="PreviewBox_ScrollChanged"
+                                     SizeChanged="PreviewBox_SizeChanged"
+                                     MouseDoubleClick="PreviewBox_MouseDoubleClick"/>
+                        <!-- 命中框画在预览上面（半透明）：垫在下面会被代码块 / 行内代码自己的底色盖住。 -->
+                        <Canvas x:Name="FindLayer" Visibility="Collapsed" IsHitTestVisible="False" ClipToBounds="True"/>
+                        <!-- 预览里的查找条（Ctrl+F）：悬浮在预览右上角，不占正文高度 -->
+                        <Border x:Name="FindBar" Visibility="Collapsed" Panel.ZIndex="10"
+                                VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,2,6,0"
+                                Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="{StaticResource CornerMd}" Padding="6,4">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBox x:Name="FindBox" Width="150" Padding="6,3"
+                                         controls:TextBoxClear.Attach="False"
+                                         controls:TextBoxPlaceholder.Text="在预览里查找…"
+                                         TextChanged="FindBox_TextChanged"
+                                         PreviewKeyDown="FindBox_PreviewKeyDown"/>
+                                <TextBlock x:Name="FindCount" Style="{StaticResource HintLabel}"
+                                           VerticalAlignment="Center" Margin="8,0,2,0"/>
+                                <Button x:Name="FindPrev" Style="{StaticResource BtnGhost}" Content="↑"
+                                        Focusable="False" Padding="6,1" MinHeight="0"
+                                        FontSize="{StaticResource FontSizeHint}" Click="FindPrev_Click"
+                                        ToolTip="上一个（Shift+Enter）"/>
+                                <Button x:Name="FindNext" Style="{StaticResource BtnGhost}" Content="↓"
+                                        Focusable="False" Padding="6,1" MinHeight="0"
+                                        FontSize="{StaticResource FontSizeHint}" Click="FindNext_Click"
+                                        ToolTip="下一个（Enter）"/>
+                                <Button x:Name="FindClose" Style="{StaticResource BtnGhost}" Content="✕"
+                                        Focusable="False" Padding="6,1" MinHeight="0"
+                                        FontSize="{StaticResource FontSizeHint}" Click="FindClose_Click"
+                                        ToolTip="关闭查找（Esc）"/>
+                            </StackPanel>
+                        </Border>
                     </Grid>
                 </Grid>
             </Grid>
