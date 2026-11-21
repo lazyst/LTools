@@ -84,6 +84,10 @@ internal static class ScreenShot
         if (area.Width <= 0 || area.Height <= 0)
             throw new ArgumentException("截图区域尺寸必须大于 0");
 
+        // 提示卡片是置顶窗口，会被截进成品（「已取消截图」那类卡片就出现在屏幕角落）：
+        // 抓帧前收起，抓完立刻放回来。覆盖层整段会话自己也会收一次，这里只是兜底（可嵌套）。
+        using var suppressed = ToastService.SuppressForCapture();
+
         var pieces = new List<(Int32Rect Rect, BitmapSource Image)>();
         foreach (var monitor in Monitors())
         {

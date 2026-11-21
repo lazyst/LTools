@@ -669,6 +669,7 @@
                                           IsHitTestVisible="False"
                                           Content="{TemplateBinding SelectionBoxItem}"
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
                                           ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"/>
                         <!-- IsEditable=True 时 WPF 全靠 PART_EditableTextBox 显示 / 编辑文本：
                              缺了它，可编辑下拉既不能手填（没输入兜底），选中项也不显示在框内。

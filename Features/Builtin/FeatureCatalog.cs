@@ -461,15 +461,27 @@ internal static class FeatureCatalog
         string source = ctx.Get("source");
         bool recording = false;
 
-        BitmapSource? image = source switch
+        BitmapSource? image;
+        if (source is "screen" or "window" or "region")
         {
-            "screen" => ToSource(ScreenCapture.Capture(
-                ScreenCapture.VirtualLeft, ScreenCapture.VirtualTop,
-                ScreenCapture.VirtualWidth, ScreenCapture.VirtualHeight)),
-            "window" => CaptureForeground(),
-            "region" => CaptureRegion(ctx.Get("region")),
-            _ => PickRegion(out recording),
-        };
+            // 这三种来源不经过覆盖层（没有 TransientMinimize）：提示卡片是置顶窗口，
+            // 得自己收起来，否则会落进成品图。
+            using (ToastService.SuppressForCapture())
+            {
+                image = source switch
+                {
+                    "screen" => ToSource(ScreenCapture.Capture(
+                        ScreenCapture.VirtualLeft, ScreenCapture.VirtualTop,
+                        ScreenCapture.VirtualWidth, ScreenCapture.VirtualHeight)),
+                    "window" => CaptureForeground(),
+                    _ => CaptureRegion(ctx.Get("region")),
+                };
+            }
+        }
+        else
+        {
+            image = PickRegion(out recording);
+        }
 
         // 用户在覆盖层里点了「录屏」：这不是取消，录屏已经在后台开跑，别再弹「已取消截图」。
         if (recording) return;

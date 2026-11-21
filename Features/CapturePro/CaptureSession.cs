@@ -125,6 +125,8 @@ internal static class CaptureSession
         HotkeyRegistry.Suspended = true;
         // 悬浮工具条：截图 / 录屏期间收起（照上游 floating_toolbar/hide_during_capture）
         FloatingToolbarService.SetCaptureActive(true);
+        // 提示卡片（置顶）也一起收起：整段框选期间都别出现，否则会落在冻结画面 / 重新截图里
+        var toasts = ToastService.SuppressForCapture();
 
         CaptureResult? result = null;
         CapturePlacement? placement = null;
@@ -233,6 +235,7 @@ internal static class CaptureSession
             MouseHook.SetWindowPickerActive(false);
             FloatingToolbarService.SetCaptureActive(false);
             restore();
+            toasts.Dispose();
         }
 
         // 两个「关掉覆盖层之后才做」的出口：这时自己的窗口已经还原，不会被一起收走。
@@ -403,7 +406,10 @@ internal static class CaptureSession
         var names = ExportNameContext.Of(ForegroundAppCache.Current?.ExeName,
             ForegroundAppCache.Current?.Title);
 
-        var image = ScreenCapture.CaptureSource(area.Left, area.Top, area.Width, area.Height);
+        BitmapSource image;
+        // 提示卡片是置顶窗口，会落进成品图：抓帧前收起（这个入口不经过覆盖层，别指望 TransientMinimize）
+        using (ToastService.SuppressForCapture())
+            image = ScreenCapture.CaptureSource(area.Left, area.Top, area.Width, area.Height);
 
         // 直接截图同样是「截图」成品：按设置决定要不要把指针画进去
         if (ScreenshotBehavior.CaptureCursor)

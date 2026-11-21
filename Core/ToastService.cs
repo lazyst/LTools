@@ -64,6 +64,35 @@ internal static class ToastService
     /// <summary>按 key 去重：同一个 key 只留一条，内容就地换成最新的。</summary>
     private static readonly Dictionary<string, ToastWindow> ByKey = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// 截图 / 抓帧期间提示被临时收起的层数。可嵌套（截图覆盖层、取图流程各自都会调一次），
+    /// 只有最外层真正收起、最外层释放时恢复。
+    /// </summary>
+    private static int _captureDepth;
+
+    /// <summary>本次收起时藏起来的卡片（恢复时原样放回）。</summary>
+    private static List<ToastWindow>? _captured;
+
+    /// <summary>收起后等桌面重绘的时间：Hide 完立刻抓屏仍可能抓到还没刷掉的那一帧。</summary>
+    private const int CaptureSettleMs = 60;
+
+    private sealed class NoScope : IDisposable
+    {
+        public void Dispose() { }
+    }
+
+    private sealed class CaptureScope : IDisposable
+    {
+        private bool _done;
+
+        public void Dispose()
+        {
+            if (_done) return;
+            _done = true;
+            RestoreAfterCapture();
+        }
+    }
+
     /// <summary>显示一条普通提示（不阻塞；可从任意线程调用）。<paramref name="durationMs"/> ≤ 0 = 不自动关闭。</summary>
     public static void Show(string text, string? title = null, int durationMs = DefaultDurationMs) =>
         Show(text, title, durationMs, ToastKind.info);
@@ -120,6 +149,86 @@ internal static class ToastService
         {
             AppLog.Warn("Toast", $"关闭提示失败：{ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 截图 / 抓帧前把所有提示卡片收起来（提示是置顶窗口，会被截进成品图），用完 <c>Dispose</c> 恢复。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 可嵌套：截图覆盖层、取图 / 抓帧流程各自都会调一次，只有最外层真正收起、最外层释放时放回来。
+    /// </para>
+    /// <para>
+    /// 收起在 UI 线程上**同步**完成并留一次桌面重绘的时间（<see cref="CaptureSettleMs"/>），
+    /// 否则「刚 Hide 完立刻抓屏」还可能抓到桌面还没刷新掉的那一帧。
+    /// 收起期间新弹的提示也一并藏起来、记在同一批里，恢复时一起放回；
+    /// 停留时间在收起期间冻住（见 <see cref="ToastWindow.HideForCapture"/>），
+    /// 框选十几秒也不会把用户还没读到的提示耗掉。
+    /// </para>
+    /// </remarks>
+    public static IDisposable SuppressForCapture()
+    {
+        var app = Application.Current;
+        if (app == null) return new NoScope();
+
+        try
+        {
+            if (app.Dispatcher.CheckAccess()) HideForCaptureCore();
+            else app.Dispatcher.Invoke(HideForCaptureCore);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Toast", $"收起提示失败：{ex.Message}");
+        }
+
+        return new CaptureScope();
+    }
+
+    private static void HideForCaptureCore()
+    {
+        if (_captureDepth++ > 0) return;      // 嵌套：最外层已经收好了
+        if (Visible.Count == 0) return;       // 没有卡片，不用等重绘
+
+        _captured = Visible.ToList();
+        foreach (var toast in _captured)
+        {
+            try { toast.HideForCapture(); } catch { /* 正在关闭 */ }
+        }
+
+        try { System.Threading.Thread.Sleep(CaptureSettleMs); } catch { /* 正在退出 */ }
+    }
+
+    private static void RestoreAfterCapture()
+    {
+        var app = Application.Current;
+        if (app == null) return;
+
+        try
+        {
+            if (app.Dispatcher.CheckAccess()) RestoreAfterCaptureCore();
+            else app.Dispatcher.BeginInvoke(RestoreAfterCaptureCore);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Toast", $"恢复提示失败：{ex.Message}");
+        }
+    }
+
+    private static void RestoreAfterCaptureCore()
+    {
+        if (_captureDepth > 0) _captureDepth--;
+        if (_captureDepth > 0) return;
+
+        var captured = _captured;
+        _captured = null;
+        if (captured == null || captured.Count == 0) return;
+
+        foreach (var toast in captured)
+        {
+            try { toast.ShowAfterCapture(); } catch { /* 已经关掉了 */ }
+        }
+
+        Reflow();
     }
 
     private static void CloseCore(string key)
@@ -181,6 +290,14 @@ internal static class ToastService
         toast.UpdateLayout();   // SizeToContent=Height：先量出高度才能往上堆
         Reflow();
         toast.StartCountdown(durationMs);
+
+        // 截图 / 抓帧进行中新弹的提示：直接跟着藏起来，等收起结束再一起放回
+        // （否则它会出现在覆盖层的取景里 / 重新截图抓到的画面里）。
+        if (_captureDepth > 0)
+        {
+            toast.HideForCapture();
+            (_captured ??= new List<ToastWindow>()).Add(toast);
+        }
     }
 
     /// <summary>按位置分组重新排版：右下 / 左下 / 底部居中往上堆，右上 / 左上 / 顶部居中往下堆。</summary>

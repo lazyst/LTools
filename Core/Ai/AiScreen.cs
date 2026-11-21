@@ -43,6 +43,9 @@ internal static class AiScreen
         string kind = (source ?? "").Trim().ToLowerInvariant();
         if (kind.Length == 0) kind = "screen";
 
+        // 提示卡片是置顶窗口，会落进给 agent 看的截图：抓帧前收起，抓完放回来。
+        using var suppressed = ToastService.SuppressForCapture();
+
         switch (kind)
         {
             case "screen":

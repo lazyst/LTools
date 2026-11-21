@@ -60,6 +60,9 @@ public partial class ToastWindow : Window
     /// <summary>鼠标移开后再给的最短停留：不然只剩 100ms 时一走开就没了。</summary>
     private static readonly TimeSpan MinResume = TimeSpan.FromMilliseconds(1200);
 
+    /// <summary>是否正被截图临时收起来（见 <see cref="HideForCapture"/>）。</summary>
+    private bool _captured;
+
     /// <summary>创建一条卡片（由 <see cref="ToastService"/> 统一 Show / 定位）。</summary>
     /// <param name="title">标题，可空（空则整行不占位）。</param>
     /// <param name="message">正文。</param>
@@ -151,7 +154,8 @@ public partial class ToastWindow : Window
         _remaining = TimeSpan.FromMilliseconds(milliseconds);
         _deadline = DateTime.UtcNow + _remaining;
         _wasInside = false;
-        _countdown.Start();
+        // 正被截图收起（隐藏中）：别让计时器在用户看不见的时候把卡片耗掉，放回来时再走。
+        if (!_captured) _countdown.Start();
     }
 
     /// <summary>
@@ -205,6 +209,73 @@ public partial class ToastWindow : Window
 
         return pt.X >= rect.Left && pt.X < rect.Right
             && pt.Y >= rect.Top && pt.Y < rect.Bottom;
+    }
+
+    /// <summary>截图 / 抓帧前临时收起（倒计时跟着冻住，回来接着走）。</summary>
+    /// <remarks>
+    /// 提示卡片是置顶窗口，会被截进成品图（<see cref="ToastService.SuppressForCapture"/> 统一调这一对）。
+    /// 收起只是 <see cref="Window.Hide"/>，卡片仍在 <see cref="ToastService"/> 的列表里，
+    /// 内容 / 点击回调 / 剩余停留时间一样不丢。
+    /// </remarks>
+    public void HideForCapture()
+    {
+        if (_captured) return;
+
+        // 正在淡出（已经在关了）：别去 Hide，隐藏的窗口动画不再推进，淡出的 Completed 就永远不来、
+        // 窗口关不掉了。直接关掉——它本来就要走了。
+        if (_closing)
+        {
+            try { Close(); } catch { /* 已经关掉 */ }
+            return;
+        }
+
+        _captured = true;
+
+        // 倒计时一起冻住：框选可能持续十几秒，别让用户还没读到这条提示它就过期消失了。
+        if (_countdownMs > 0)
+        {
+            var left = _deadline - DateTime.UtcNow;
+            _remaining = left > TimeSpan.Zero ? left : TimeSpan.Zero;
+            _countdown.Stop();
+        }
+
+        try { Hide(); } catch { /* 正在关闭 */ }
+    }
+
+    /// <summary>截图结束把卡片放回来（剩余停留时间接着走）。</summary>
+    public void ShowAfterCapture()
+    {
+        if (!_captured) return;
+        _captured = false;
+
+        // 收起期间被关掉了（显式关闭 / 挤掉最旧的）：把淡出没走完的窗口直接关干净，
+        // 别留一个隐藏的僵尸窗口在列表里。
+        if (_closing)
+        {
+            try { Close(); } catch { /* 已经关掉 */ }
+            return;
+        }
+
+        try
+        {
+            // 截图流程可能顺手最小化过（TransientMinimize 会跳过隐藏中的窗口、还原不到它）：
+            // 不先回正常态，Show() 会把它显示成最小化、看起来就是「提示没了」。
+            if (WindowState != WindowState.Normal) WindowState = WindowState.Normal;
+            Show();
+            UpdateLayout();
+        }
+        catch
+        {
+            return;    // 已经关掉了
+        }
+
+        if (_countdownMs > 0)
+        {
+            _deadline = DateTime.UtcNow + (_remaining > TimeSpan.Zero
+                ? _remaining
+                : TimeSpan.FromMilliseconds(1));
+            _countdown.Start();
+        }
     }
 
     /// <summary>立刻关闭（重复调用安全）。</summary>

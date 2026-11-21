@@ -8,8 +8,8 @@ using LTools.Features.Panel;
 namespace LTools.Features;
 
 /// <summary>
-/// 动作管理「引用位置」筛选的唯一索引：一次把面板 / 快捷键 / 悬浮项 / 触发规则里的引用收成
-/// 「动作 Id → 筛选键集合」，搜索与下拉切换只在内存里投影，不重新扫配置。
+/// 动作管理「引用位置」的唯一索引：一次把面板 / 快捷键 / 悬浮项 / 触发规则里的引用收成
+/// 「动作 Id → 筛选键集合」，搜索、下拉切换与表格那一列都在内存里投影，不重新扫配置。
 /// <see cref="ConfigStore.NotifyChanged"/> 会让缓存失效，别处改了数据下次自然重算。
 /// </summary>
 internal static class ActionReferenceIndex
@@ -97,4 +97,32 @@ internal static class ActionReferenceIndex
 
     private static string PanelKey(string area, string? sceneId, string groupId) =>
         PanelPrefix + area + ":" + (sceneId ?? "common") + ":" + groupId;
+
+    /// <summary>
+    /// 动作 Id → 表格「引用位置」列的一行文案：面板场景·分组 + 快捷键 / 悬浮项 / 触发规则。
+    /// </summary>
+    /// <remarks>
+    /// 与下拉选项共用同一套键与 <see cref="Option.Label"/>，所以**列里写出来的就是筛选能筛到的**：
+    /// 只绑了快捷键的动作会显示「快捷键」，不会再像只调 <c>PanelLibrary.DescribeReferences</c>
+    /// 那样写成「未使用」（用户报过两处口径相反）。没有任何引用才是「未使用」。
+    /// 顺序 = 下拉顺序（面板位置在前、三类其它引用在后），分隔符沿用「；」。
+    /// </remarks>
+    public static IReadOnlyDictionary<string, string> DescribeAll()
+    {
+        var ordered = Options()
+            .Where(o => o.Key is not (All or Unused))
+            .ToList();
+
+        var labels = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (id, keys) in Map())
+        {
+            var parts = new List<string>();
+            foreach (var option in ordered)
+                if (keys.Contains(option.Key))
+                    parts.Add(option.Label);
+
+            labels[id] = parts.Count > 0 ? string.Join("；", parts) : "未使用";
+        }
+        return labels;
+    }
 }

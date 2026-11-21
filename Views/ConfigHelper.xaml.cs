@@ -18,7 +18,6 @@ using LTools.Core;
 using LTools.Core.Ai;
 using LTools.Core.Storage;
 using LTools.Features;
-using LTools.Features.Panel;
 using LTools.Views.Controls;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
@@ -964,7 +963,7 @@ public partial class ConfigHelperWindow : Window
 
     /// <summary>
     /// 数据真变时重建全量行 + 「引用位置」下拉，再投影一次。
-    /// 建行很贵（每行 DescribeReferences 扫全部场景分组 + 宏摘要 + 步骤数），
+    /// 建行很贵（<see cref="ActionReferenceIndex.DescribeAll"/> 扫全部场景分组 + 宏摘要 + 步骤数），
     /// 所以搜索 / 下拉切换只走 <see cref="ApplyActionFilter"/>，不重新建行、不读配置。
     /// </summary>
     private void PopulateActions()
@@ -972,16 +971,19 @@ public partial class ConfigHelperWindow : Window
         _buildingActionRows = true;
         try
         {
+            // 建行就是「数据变了」的信号：引用位置索引的缓存跟着失效，列文案与下拉选项取最新。
+            ActionReferenceIndex.Invalidate();
+            var references = ActionReferenceIndex.DescribeAll();
+
             _allActionRows.Clear();
             foreach (var a in ActionRegistry.All.OrderBy(x => x.Name, StringComparer.CurrentCulture))
-                _allActionRows.Add(new ActionRow(a, PanelLibrary.DescribeReferences(a.Id)));
+                _allActionRows.Add(new ActionRow(a,
+                    references.TryGetValue(a.Id, out var text) ? text : "未使用"));
 
             // 暂存区入口带上草稿数：AI 写完的东西在这里先看一眼，再决定是否采纳。
             try { OpenStagingButton.Content = $"暂存区（{DraftStore.List().Count}）"; }
             catch { OpenStagingButton.Content = "暂存区"; }
 
-            // 建行就是「数据变了」的信号：引用位置索引的缓存跟着失效，下拉选项取最新。
-            ActionReferenceIndex.Invalidate();
             RefreshActionRefFilter();
         }
         finally { _buildingActionRows = false; }

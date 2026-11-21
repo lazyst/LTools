@@ -130,6 +130,8 @@ internal static class ScreenshotProbe
             if (indicator != null && !ctx.Wait(80))
                 throw new FlowAbortException("已停止", userCancelled: true);
 
+            // 提示卡片同理（「已取消截图」那类卡片会落进画面角落）。
+            using var suppressed = ToastService.SuppressForCapture();
             using Bitmap bmp = ScreenCapture.Capture(x, y, w, h);
             string file = ImageLibrary.SaveCapture(bmp);
             AppLog.Info("Probe", $"截图 · {label}：{x},{y} · {w} × {h} → {file}");

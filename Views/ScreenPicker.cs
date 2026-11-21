@@ -28,6 +28,8 @@ internal static class ScreenPicker
         image = null!;
 
         var restore = TransientMinimize.MinimizeAll(owner);
+        // 提示卡片（置顶）也收起来：它会出现在冻结画面里，用户框选时一直在那儿
+        var toasts = ToastService.SuppressForCapture();
         try
         {
             Thread.Sleep(TransientMinimize.SettleMs);   // 等最小化动画结束、桌面重绘完
@@ -52,6 +54,7 @@ internal static class ScreenPicker
         finally
         {
             restore();
+            toasts.Dispose();
         }
     }
 
@@ -78,6 +81,7 @@ internal static class ScreenPicker
         hex = "";
 
         var restore = TransientMinimize.MinimizeAll(owner);
+        var toasts = ToastService.SuppressForCapture();
         try
         {
             Thread.Sleep(TransientMinimize.SettleMs);
@@ -103,6 +107,7 @@ internal static class ScreenPicker
         finally
         {
             restore();
+            toasts.Dispose();
         }
     }
 

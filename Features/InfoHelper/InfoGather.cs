@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Windows;
 using System.Windows.Media.Imaging;
+using LTools.Core;
 using LTools.Features.Selection;
 using LTools.Native;
 using LTools.Views;
@@ -180,6 +181,7 @@ internal static class InfoGather
     private static BitmapSource CaptureHidden(Window? owner, int x, int y, int w, int h)
     {
         var restore = TransientMinimize.MinimizeAll(owner);
+        using var suppressed = ToastService.SuppressForCapture();   // 提示卡片是置顶窗口，别截进画面
         try
         {
             Thread.Sleep(TransientMinimize.SettleMs);
