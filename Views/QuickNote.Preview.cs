@@ -30,6 +30,7 @@ public partial class QuickNoteWindow
         PreviewBox.Visibility = Visibility.Visible;
         BodyBox.Visibility = Visibility.Collapsed;
         BodyPlaceholder.Visibility = Visibility.Collapsed;
+        MarkdownToolbar.Visibility = Visibility.Collapsed;
         CopyMarkdownBtn.Visibility = Visibility.Visible;
         PreviewToggleBtn.Content = "编辑";
         _previewMode = true;
@@ -44,6 +45,7 @@ public partial class QuickNoteWindow
         PreviewBox.Document = new FlowDocument(); // 丢掉渲染出来的那份（RichTextBox 不接受 null）
         BodyBox.Visibility = Visibility.Visible;
         BodyPlaceholder.Visibility = BodyBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        MarkdownToolbar.Visibility = Visibility.Visible;
         CopyMarkdownBtn.Visibility = Visibility.Collapsed;
         PreviewToggleBtn.Content = "预览";
         BodyBox.Focus();

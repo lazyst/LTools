@@ -78,15 +78,17 @@ dotnet run --no-build                     # 15 条，约 5 秒
 dotnet build -p:NoWin32Manifest=true      # 先构建产品（直接引用 bin\Debug 里的 LTools.dll）
 cd tests\QuickNoteSmoke
 dotnet build -v q
-dotnet run --no-build                     # 37 条，约 3 秒
+dotnet run --no-build                     # 56 条，约 3 秒
 ```
 
 用临时数据根构造真 `QuickNoteWindow`（反射驱动 internal 的 `NoteRepository`），断言「看得见的行为」：
 正文已是 AvalonEdit / `WordWrap` 仍开 / 右键菜单六项都挂上命令 / Markdown 高亮按主题加载（围栏块**跨行**
 且不漏到下一段、粗体带 `FontWeight`）/ 选区用主题 `EditorSelectionColor` / 占位文字随正文显隐 / 改正文标脏 /
 焦点在列表时 `Ctrl+Del` 才删速记 / `Ctrl+P` 的预览把源码藏起来且文档带源码行号、切回来文档被清空 /
-`JumpToLine` 定位到行首 / `Ctrl+S` 落盘正文一字不差。最后渲染 `editor.png`、`editor-2x.png`、`preview-2x.png`、
-`empty.png` 到 `%TEMP%\opencode\quicknote-smoke\out\`，并逐像素确认代码色 / 链接色真的画在画面上。
+`JumpToLine` 定位到行首 / `Ctrl+S` 落盘正文一字不差；书写辅助直接调私有方法验文档：列表续写（含有序 +1、
+待办变未勾、空项退出）、引用续写、`Wrap` 包住选区、`Tab` / `Shift+Tab`、行首记号开关、插入链接 / 表格、
+工具栏 11 个按钮都不抢焦点。最后渲染 `editor.png`、`editor-2x.png`、`preview-2x.png`、`empty.png`
+到 `%TEMP%\opencode\quicknote-smoke\out\`，并逐像素确认代码色 / 链接色真的画在画面上。
 **中文输入法的组字手感、预览里「点某一块跳回源码」的命中，自动化替不了，仍要真机点一遍。**
 
 ### `PanelClipboardSmoke`（复制引用 / 复制为副本 / 粘贴）

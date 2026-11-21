@@ -221,6 +221,9 @@ internal static class Program
                 "落盘正文与编辑器里的 Markdown 一字不差");
         }
 
+        // 书写辅助（P3）：续列表 / 缩进 / 包裹 / 行首记号 / 链接 / 表格
+        Editing(win, body);
+
         // 空态：新建后占位文字回来，截图留着人眼看一眼位置对不对。
         Invoke(win, "NewNote");
         Flush(win);
@@ -233,6 +236,80 @@ internal static class Program
 
     private static bool PlaceholderVisible(object placeholder)
         => (Visibility)Prop(placeholder, "Visibility")! == Visibility.Visible;
+
+    /// <summary>书写辅助（P3）：直接调那些私有方法，断言文档真的变成了期望的 Markdown 文本。</summary>
+    private static void Editing(Window win, object body)
+    {
+        void Set(string text, int? caret = null)
+        {
+            PropSet(body, "Text", text);
+            Flush(win);
+            PropSet(body, "CaretOffset", caret ?? text.Length);
+            Flush(win);
+        }
+
+        string Text() => Normalize((string)Prop(body, "Text")!);
+        bool Continue() => (bool)InvokeResult(win, "ContinueListOrQuote")!;
+
+        Set("- 已有一项");
+        Check(Continue(), "列表行回车被接管");
+        Check(Text() == "- 已有一项\n- ", "续写成同样的记号：" + Text().Replace("\n", "\\n"));
+
+        Set("1. 第一步");
+        Continue();
+        Check(Text() == "1. 第一步\n2. ", "有序列表编号 +1");
+
+        Set("- [x] 做完");
+        Continue();
+        Check(Text() == "- [x] 做完\n- [ ] ", "待办续写成未勾");
+
+        Set("> 引用");
+        Continue();
+        Check(Text() == "> 引用\n> ", "引用行续写");
+
+        Set("- ");
+        Continue();
+        Check(Text() == "", "空列表项回车 = 退出列表");
+
+        Set("普通一行");
+        Check(!Continue(), "普通行回车不被接管");
+
+        Set("abc");
+        body.GetType().GetMethod("Select", new[] { typeof(int), typeof(int) })!
+            .Invoke(body, new object[] { 0, 3 });
+        InvokeWith(win, "Wrap", "**");
+        Check(Text() == "**abc**", "选中文字加粗");
+        Check((string?)Prop(body, "SelectedText") == "abc", "加粗后选区仍包住原文");
+
+        Set("abc", 0);
+        InvokeWith(win, "IndentLines", false);
+        Check(Text() == "  abc", "Tab 缩进两格");
+        InvokeWith(win, "IndentLines", true);
+        Check(Text() == "abc", "Shift+Tab 退两格");
+
+        Set("标题", 0);
+        InvokeWith(win, "ToggleLinePrefix", "## ");
+        Check(Text() == "## 标题", "行首加二级标题");
+        InvokeWith(win, "ToggleLinePrefix", "## ");
+        Check(Text() == "标题", "再点一次去掉记号");
+
+        Set("链接文字");
+        body.GetType().GetMethod("Select", new[] { typeof(int), typeof(int) })!
+            .Invoke(body, new object[] { 0, 4 });
+        Invoke(win, "InsertLink");
+        Check(Text() == "[链接文字]()", "选中文字变链接");
+        Check(Prop(body, "CaretOffset") is int caret && caret == 7, "光标落在括号里");
+
+        Set("", 0);
+        Invoke(win, "InsertTable");
+        Check(Text().Contains("| 列 1 | 列 2 |"), "插入表格模板");
+        Check(Text().Contains("| --- | --- |"), "表格模板带分隔行");
+
+        var toolbar = (System.Windows.Controls.Panel)Field(win, "MarkdownToolbar");
+        Check(toolbar.Children.Count == 11, "工具栏 11 个按钮（实际 " + toolbar.Children.Count + "）");
+        Check(toolbar.Children.OfType<System.Windows.Controls.Button>().All(b => !b.Focusable),
+            "工具栏按钮都不抢焦点（Focusable=False）");
+    }
 
     /// <summary>编辑器 / 文件两边的换行可能不同（AvalonEdit 与 File.WriteAllText 各自归一），比较前统一。</summary>
     private static string Normalize(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n');
@@ -291,6 +368,9 @@ internal static class Program
 
     private static void InvokeWith(object target, string name, params object?[] args)
         => target.GetType().GetMethod(name, Any)!.Invoke(target, args);
+
+    private static object? InvokeResult(object target, string name, params object?[] args)
+        => target.GetType().GetMethod(name, Any)!.Invoke(target, args.Length == 0 ? null : args);
 
     private static void Check(bool ok, string what)
     {
