@@ -88,6 +88,13 @@ public partial class AiView : UserControl
         if (_page == "audit") RefreshAudit();
     }
 
+    /// <summary>设置搜索用：两个子页各自的逻辑树根（与可见性无关）。</summary>
+    internal IEnumerable<(string Tag, FrameworkElement Root)> SearchRoots()
+    {
+        yield return ("ai-connect", Page_Connect);
+        yield return ("ai-audit", Page_Audit);
+    }
+
     /// <summary>设置页导航到「AI」时调用：重读配置。</summary>
     public void Reload()
     {

@@ -53,7 +53,7 @@
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button Style="{StaticResource MiniBtn}" Content="试放" Tag="{Binding}"
-                                Click="Play_Click" ToolTip="立即回放一遍（Esc 之外按回放停止热键也能停）"/>
+                                Click="Play_Click" ToolTip="立即回放一遍（按停止运行热键也能停）"/>
                         <Button Style="{StaticResource MiniBtn}" Content="回放设置…" Margin="6,0,0,0"
                                 Tag="{Binding}" Click="PlaybackSettings_Click"
                                 ToolTip="只改这一个宏：倒计时 / 速度 / 循环次数（留空跟随下面的默认值）"/>
@@ -158,11 +158,11 @@
                                 <ColumnDefinition Width="220"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="停止回放热键"/>
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="停止运行热键"/>
                             <TextBox Grid.Column="1" x:Name="PlayHotkeyBox"/>
                             <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
                                        Margin="12,0,0,0" VerticalAlignment="Center"
-                                       Text="回放期间按下即停（只在回放时占用）"/>
+                                       Text="宏回放与动作运行期间都生效（只在运行期间占用）"/>
                         </Grid>
 
                         <TextBlock Style="{StaticResource HintLabel}" Margin="150,0,0,4" TextWrapping="Wrap"

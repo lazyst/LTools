@@ -30,8 +30,9 @@ internal static class MacroHotkey
 
     private static volatile HwndSource? _source;
 
-    // 停止回放热键的引用计数：自动化流程注册后，流程内的宏步骤也会注册 / 注销，
+    // 停止运行热键的引用计数：自动化流程注册后，流程内的宏步骤也会注册 / 注销，
     // 简单「后注册者注销」会把流程剩余部分的停止出口提前拆掉。
+    // 这个键是宏回放与动作自动化共用的（见 MacroSettings.PlaybackStopHotkey）。
     private static readonly object _playbackStopLock = new();
     private static int _playbackStopRefs;
     private static bool _playbackStopRegistered;

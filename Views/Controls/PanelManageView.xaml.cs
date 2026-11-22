@@ -304,6 +304,14 @@ public partial class PanelManageView : UserControl
         }
     }
 
+    /// <summary>设置搜索用：三个子页各自的逻辑树根（与可见性无关）。</summary>
+    internal IEnumerable<(string Tag, FrameworkElement Root)> SearchRoots()
+    {
+        yield return ("superpanel-general", PageGeneral);
+        yield return ("superpanel-scenes", PageScenes);
+        yield return ("superpanel-blocked", PageBlocked);
+    }
+
     // ============ 常规 ============
 
     private void EnabledBox_Changed(object sender, RoutedEventArgs e)

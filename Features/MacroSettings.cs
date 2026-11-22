@@ -15,7 +15,7 @@ internal static class MacroSettings
     /// <summary>恢复默认时使用的录制热键（与 <see cref="MacroConfig.RecordHotkey"/> 默认值一致）。</summary>
     public const string DefaultRecordHotkey = "ctrl+f2";
 
-    /// <summary>恢复默认时使用的停止回放热键（与 <see cref="MacroConfig.PlaybackStopHotkey"/> 默认值一致）。</summary>
+    /// <summary>恢复默认时使用的停止运行热键（宏回放与动作自动化共用，与 <see cref="MacroConfig.PlaybackStopHotkey"/> 默认值一致）。</summary>
     public const string DefaultPlaybackStopHotkey = "ctrl+f3";
 
     // —— 阶段 2：钩子专用线程热路径会读的字段一律 volatile ——
@@ -51,7 +51,10 @@ internal static class MacroSettings
     /// <summary>停止录制热键（录制期间临时注册，开始录制用面板按钮 / 托盘）。</summary>
     public static string RecordHotkey { get; private set; } = DefaultRecordHotkey;
 
-    /// <summary>停止宏回放热键（仅回放期间注册 / 匹配）。</summary>
+    /// <summary>
+    /// 停止运行热键（宏回放与动作自动化共用同一个值；只在运行期间占用）。
+    /// 改的是「运行中怎么停」，不是宏专属设置——宏设置页只是它的唯一写入口。
+    /// </summary>
     public static string PlaybackStopHotkey { get; private set; } = DefaultPlaybackStopHotkey;
 
     /// <summary>回放前倒计时的全局默认值（ms，0 = 立即回放；宏元数据未设置时使用）。</summary>

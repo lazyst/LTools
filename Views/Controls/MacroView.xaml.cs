@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -78,6 +79,16 @@ public partial class MacroView : UserControl
         bool list = page != "settings";
         Page_List.Visibility = list ? Visibility.Visible : Visibility.Collapsed;
         Page_Settings.Visibility = list ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>
+    /// 设置搜索用：两个子页各自的逻辑树根。**不按当前可见性过滤**——索引要能搜到没打开的那一页，
+    /// 页面本身的 Visibility 由 <see cref="ShowPage"/> 管，跳转时再切过去。
+    /// </summary>
+    internal IEnumerable<(string Tag, FrameworkElement Root)> SearchRoots()
+    {
+        yield return ("macros-list", Page_List);
+        yield return ("macros-settings", Page_Settings);
     }
 
     // ============ 载入 ============

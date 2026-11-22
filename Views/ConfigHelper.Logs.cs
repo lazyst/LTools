@@ -124,11 +124,19 @@ public partial class ConfigHelperWindow
             _ => 2,
         };
         _loadingLog = false;
+        StopHotkeyText.Text = MacroSettings.PlaybackStopHotkeyDisplay;
         RefreshLogPage(log);
         // 日志预览要 ReadTail(5000) 整份扫一遍日志文件；「日志设置」子页可见时预览框并不显示，
         // 别白读。切到「最近日志」页时 ApplyNavPage 会再调一次 PopulateLogging，那时才首刷，
         // 之后由 1.5s 轮询增量追加（见 InitLogAutoScroll）。
         if (Page_LogsRecent.Visibility == Visibility.Visible) RefreshLogPreview();
+    }
+
+    /// <summary>「停止运行热键」只有一个写入口（键鼠宏 → 设置）；这里只负责跳过去。</summary>
+    private void OpenStopHotkeySettings_Click(object sender, RoutedEventArgs e)
+    {
+        SelectNavItem("macros-settings");
+        ApplyNavPage("macros-settings");
     }
 
     private void LogOption_Changed(object sender, RoutedEventArgs e)

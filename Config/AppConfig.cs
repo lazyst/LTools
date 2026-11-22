@@ -28,7 +28,10 @@ public sealed class MacroConfig
     /// <summary>停止录制热键（如 <c>ctrl+f2</c>，仅在录制期间临时注册）。</summary>
     public string RecordHotkey { get; set; } = "ctrl+f2";
 
-    /// <summary>停止宏回放热键（如 <c>ctrl+f3</c>，仅在回放期间注册）。</summary>
+    /// <summary>
+    /// 停止运行热键（如 <c>ctrl+f3</c>）：宏回放与动作自动化运行期间共用，只在运行期间占用。
+    /// 设置界面在「键鼠宏 → 设置」，但它的作用范围不止宏（见 <c>AutomationRunner.HandleStopHotkey</c>）。
+    /// </summary>
     public string PlaybackStopHotkey { get; set; } = "ctrl+f3";
 
     /// <summary>回放前倒计时的全局默认值（ms，0 = 立即回放；宏可单独覆盖）。</summary>

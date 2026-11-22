@@ -433,11 +433,21 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "search")
+        {
+            SearchSection();
+            Console.WriteLine(_failed == 0 ? "search-only：通过" : $"search-only：{_failed} 条失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         // ============ 截图行为（P9-a：指针 / Esc 确认 / 拖框 / HiDPI / PDF 纸张） ============
         BehaviorSection();
 
         // ============ 设置页「截图 Pro」二级导航（结构 / 子页 / 记忆 / 落盘） ============
         NavSection();
+
+        // ============ 设置搜索（索引 / 浮层结果 / 跳转高亮 / 停止键入口） ============
+        SearchSection();
 
         // ============ 截图界面与参考线（P9-c：工具条尺寸 / 单位 / 参考线 / 取色格式） ============
         OverlayUiSection();

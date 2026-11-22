@@ -178,6 +178,7 @@ public partial class ConfigHelperWindow : Window
             ConfigStore.Changed -= OnConfigChanged;
             _refreshDebounce.Stop();
             _actionFilterDebounce.Cancel();
+            _settingsSearchDebounce?.Cancel();
             // 只在防抖还没落盘时补写一次：用户打开设置什么都没改就关掉，不该覆盖记住的页
             if (_navDirty)
             {

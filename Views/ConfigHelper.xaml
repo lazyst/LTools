@@ -11,6 +11,9 @@
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
+        PreviewKeyDown="Window_PreviewKeyDown"
+        PreviewMouseDown="Window_PreviewMouseDown"
+        Deactivated="Window_Deactivated"
         views:WindowSizing.Mode="Main">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
@@ -100,6 +103,17 @@
             <Setter Property="Margin" Value="0,0,0,12"/>
         </Style>
 
+        <!-- 设置搜索的一行：设置项名字 + 它在哪一页哪一张卡片 -->
+        <DataTemplate x:Key="SearchResultTemplate">
+            <StackPanel Margin="6,4">
+                <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis"/>
+                <TextBlock Text="{Binding Hint}" Margin="0,1,0,0"
+                           FontSize="{StaticResource FontSizeHint}"
+                           Foreground="{StaticResource SecondaryTextBrush}"
+                           TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+        </DataTemplate>
+
     </Window.Resources>
 
     <Grid>
@@ -118,12 +132,31 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- 左导航 -->
+            <!-- 左导航：顶部固定搜索框，下面才是可滚的导航列表 -->
             <Border Grid.Column="0" Background="{StaticResource SurfaceAltBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                              Focusable="False" Padding="0">
-                    <StackPanel x:Name="NavList" Margin="0,8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 设置搜索：索引每页的可见标签，结果浮在右侧内容区上；回车跳到那一项并高亮 -->
+                    <Grid Grid.Row="0" Margin="8,8,8,4">
+                        <TextBox x:Name="SettingsSearchBox" MinHeight="28"
+                                 FontSize="{StaticResource FontSizeSecondary}"
+                                 Padding="8,3,26,3"
+                                 controls:TextBoxPlaceholder.Text="搜索设置"
+                                 TextChanged="SettingsSearchBox_TextChanged"
+                                 PreviewKeyDown="SettingsSearchBox_PreviewKeyDown"
+                                 GotKeyboardFocus="SettingsSearchBox_GotKeyboardFocus"
+                                 ToolTip="输入设置项的名字（如「停止」「代理」「托盘」）；Ctrl+F / Ctrl+K 随时聚焦"/>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Focusable="False" Padding="0">
+                        <StackPanel x:Name="NavList" Margin="0,4">
                         <RadioButton Style="{StaticResource NavRow}" Content="通用"
                                      Checked="Nav_Changed" Tag="general"/>
                         <RadioButton x:Name="NavActions" Style="{StaticResource NavRow}" Content="动作管理"
@@ -274,6 +307,33 @@
                                      Checked="Nav_Changed" Tag="backup"/>
                     </StackPanel>
                 </ScrollViewer>
+
+                    <!-- 搜索结果：目标条目可能很多，列表自己滚。
+                         **不用 StaysOpen=False**：那样点击结果行时 Popup 可能先关掉、ListBox 收不到 Up，
+                         点哪儿都没反应。改为手动关闭（窗口点击外部 / 失活 / Esc）。 -->
+                    <Popup x:Name="SearchPopup" PlacementTarget="{Binding ElementName=SettingsSearchBox}"
+                           Placement="Bottom" VerticalOffset="2" HorizontalOffset="-1"
+                           StaysOpen="True" AllowsTransparency="True" PopupAnimation="Fade">
+                        <Border Width="420" MaxHeight="400" Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="{StaticResource CornerMd}" Padding="4">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.18" Color="#000000"/>
+                            </Border.Effect>
+                            <Grid>
+                                <ListBox x:Name="SearchResults" BorderThickness="0" Background="Transparent"
+                                         MaxHeight="384" Padding="0"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                         ItemTemplate="{StaticResource SearchResultTemplate}"
+                                         PreviewKeyDown="SearchResults_PreviewKeyDown"
+                                         PreviewMouseLeftButtonUp="SearchResults_MouseLeftButtonUp"/>
+                                <TextBlock x:Name="SearchEmpty" Text="没有匹配的设置项" Visibility="Collapsed"
+                                           Margin="10,8" FontSize="{StaticResource FontSizeHint}"
+                                           Foreground="{StaticResource HintTextBrush}"/>
+                            </Grid>
+                        </Border>
+                    </Popup>
+                </Grid>
             </Border>
 
             <!-- 右内容：所有页面同层，按导航切换可见性 -->
@@ -2464,6 +2524,28 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- 停止键管的是所有运行，不只宏：放在日志页也能被找到，并给一条回键鼠宏设置的入口 -->
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="运行与停止" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="停止运行热键" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" x:Name="StopHotkeyText" VerticalAlignment="Center"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                                           Margin="120,0,0,8"
+                                           Text="宏回放与动作自动化运行期间按它停止（只在运行期间占用）。它与「键鼠宏 → 设置」里的停止键是同一个值，改一处两边都生效。"/>
+                                <Button Style="{StaticResource BtnGhost}" Content="去键鼠宏设置…"
+                                        HorizontalAlignment="Left" MinWidth="120"
+                                        Click="OpenStopHotkeySettings_Click"/>
+                            </StackPanel>
+                        </Border>
+
                     </StackPanel>
                 </ScrollViewer>
 
@@ -2681,6 +2763,9 @@
                                    Text="" Margin="0,12,0,0"/>
                     </StackPanel>
                 </ScrollViewer>
+
+                <!-- 搜索跳转高亮：不吃鼠标的一层画布，位置按目标控件的 TranslatePoint 现算 -->
+                <Canvas x:Name="HighlightLayer" IsHitTestVisible="False" ClipToBounds="True"/>
             </Grid>
         </Grid>
 
