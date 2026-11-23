@@ -429,4 +429,20 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
 - **默认仍是旧路径**：不设 `LTOOLS_PANEL_HOST=1` 时行为与以前完全一致（面板在提权进程、宿主只在共享时起）。
 
+**2026-11-24 · P1b-5 `open.window`（设置 / 暂存区回提权进程）**
+
+- 新增 `open.window` + `OpenWindowRequest(Target, Arg)`；`LinkTargets` = `settings` / `panel.stash` /
+  `panel.scene`。提权侧 `PanelHost.OpenWindow` 一律 `Ui.Post` 到自己的 UI 线程开窗：
+  `ConfigHelper.Open()` / `SuperPanel.ShowStash()` / `ConfigHelper.OpenPanelScene(id)`。
+- 宿主侧 `PanelHostBridge.TryOpen`：连不上时**拦下并记 Warn**（不本地开，否则会在中等完整性进程里
+  出现一个写不了配置的设置窗口）。
+- 预览里左栏「暂存区 / 设置」不再隐藏，改成转给主程序：点暂存区 = 收起宿主面板 → 主程序开它的暂存区；
+  点设置 = 主程序开设置窗口。
+- 真机实测（探针发 `panel.show`）：截图里左栏回到「动作面板 / 暂存区 / 截图」三个入口、标题栏有齿轮。
+  面板可用的部分：磁贴执行、搜索、截图、钉住 / 拖动、打开设置 / 暂存区（后两者跳到主程序窗口）。
+- 仍是**只读预览**：右键菜单（新建 / 编辑 / 删除 / 复制 / 分组 / 场景）还关着——下一步把
+  `PanelActionOps` 的写操作接成命令（`panel.op.*`），再翻默认值。
+- 回归：`LinkSmoke` 38 条（新增 `open.window` 转交断言）；`--selftest` 393 用例 / 18561 断言；
+  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
+
 

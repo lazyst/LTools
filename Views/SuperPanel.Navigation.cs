@@ -11,6 +11,7 @@ using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Core.Ai;
+using LTools.Core.Link;
 using LTools.Features;
 using LTools.Features.Builtin;
 using LTools.Features.Floating;
@@ -160,7 +161,18 @@ public partial class SuperPanelWindow
     }
 
     /// <summary>左栏「暂存区」：主区切成草稿卡片页（照 Quicker：暂存区是面板的一页）。</summary>
-    private void NavStash_Click(object sender, RoutedEventArgs e) => ShowStashPage();
+    private void NavStash_Click(object sender, RoutedEventArgs e)
+    {
+        // 只读预览：暂存区的草稿读写 / 采纳都在主程序里，收起面板转给主程序开它的暂存区。
+        if (_preview)
+        {
+            Features.SuperPanel.Close();
+            PanelHostBridge.TryOpen(LinkTargets.PanelStash);
+            return;
+        }
+
+        ShowStashPage();
+    }
 
     /// <summary>
     /// 左栏底部「截图」：收起面板，再按内置功能 <c>common.capture</c> 走一遍框选（默认范围 = 框选区域）。
@@ -246,6 +258,14 @@ public partial class SuperPanelWindow
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
         Features.SuperPanel.Close();
+
+        // 只读预览：设置窗口在提权进程里，转给主程序开。
+        if (_preview)
+        {
+            PanelHostBridge.TryOpen(LinkTargets.Settings);
+            return;
+        }
+
         // 和 CapsLock+\ / 托盘「设置」一致：打开设置，停在上次记住的导航页
         // （面板里的「面板设置…」才是显式跳到面板管理 → 场景）。
         ConfigHelper.Open();

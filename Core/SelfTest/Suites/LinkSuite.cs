@@ -148,7 +148,9 @@ internal static class LinkSuite
         {
             LinkMethods.PanelSnapshot, LinkMethods.PanelReplace, LinkMethods.ActionAdd,
             LinkMethods.ActionDelete, LinkMethods.ActionDuplicate,
-            LinkMethods.EventPanelShow, LinkMethods.EventClientReady, LinkMethods.EventActionsChanged,
+            LinkMethods.RunAction, LinkMethods.OpenWindow,
+            LinkMethods.EventPanelShow, LinkMethods.EventPanelToggle, LinkMethods.EventClientReady,
+            LinkMethods.EventActionsChanged,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
@@ -173,6 +175,11 @@ internal static class LinkSuite
             new RunActionRequest("common.capture", 10, 20, "Panel"))).Read<RunActionRequest>();
         Check.Equal("common.capture", run?.Reference, "转交执行：引用原样");
         Check.Equal("Panel", run?.Source, "转交执行：来源原样");
+
+        OpenWindowRequest? open = RoundTrip(LinkMessage.Request(7, LinkMethods.OpenWindow,
+            new OpenWindowRequest(LinkTargets.PanelScene, "s1"))).Read<OpenWindowRequest>();
+        Check.Equal(LinkTargets.PanelScene, open?.Target, "打开窗口：目标原样");
+        Check.Equal("s1", open?.Arg, "打开窗口：参数原样");
 
         // 快照：整份面板配置 + 动作摘要都要原样回来。
         var panel = new PanelConfig

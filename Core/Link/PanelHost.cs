@@ -40,6 +40,7 @@ internal static class PanelHost
                 LinkMethods.ActionDelete => Delete(request),
                 LinkMethods.ActionDuplicate => Duplicate(request),
                 LinkMethods.RunAction => ForwardRun(request),
+                LinkMethods.OpenWindow => OpenWindow(request),
                 _ => LinkMessage.Response(request, error: "未知命令：" + request.Method),
             };
         }
@@ -122,6 +123,41 @@ internal static class PanelHost
 
         // 与面板本地点击完全同一条路：ActionExecutor.RunRef 会 spawn 后台线程 / 走 AutomationRunner。
         Ui.Post(() => ActionExecutor.RunRef(run.Reference, run.X, run.Y, source));
+        return LinkMessage.Response(request);
+    }
+
+    /// <summary>宿主点「设置 / 暂存区 / 面板场景」：这些窗口都还在提权进程里开。</summary>
+    private static LinkMessage OpenWindow(LinkMessage request)
+    {
+        OpenWindowRequest? open = request.Read<OpenWindowRequest>();
+        if (open == null || string.IsNullOrWhiteSpace(open.Target))
+            return LinkMessage.Response(request, error: "缺少打开目标");
+
+        string target = open.Target;
+        string? arg = open.Arg;
+
+        Ui.Post(() =>
+        {
+            switch (target)
+            {
+                case LinkTargets.Settings:
+                    ConfigHelper.Open();
+                    break;
+
+                case LinkTargets.PanelStash:
+                    SuperPanel.ShowStash();
+                    break;
+
+                case LinkTargets.PanelScene:
+                    ConfigHelper.OpenPanelScene(arg ?? "");
+                    break;
+
+                default:
+                    AppLog.Warn("Link", "未知的打开目标：" + target);
+                    break;
+            }
+        });
+
         return LinkMessage.Response(request);
     }
 }

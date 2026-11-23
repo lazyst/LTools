@@ -33,6 +33,9 @@ internal static class LinkMethods
     /// <summary>执行一个动作 / 内置功能引用（宿主的磁贴点击转给提权进程真正执行）。</summary>
     public const string RunAction = "run.action";
 
+    /// <summary>在提权进程里打开一个窗口（宿主点「设置 / 暂存区 / 面板场景」时转过去）。</summary>
+    public const string OpenWindow = "open.window";
+
     // —— 提权进程 → 宿主（事件，这一轮先定义好，宿主侧接线时用）——
 
     /// <summary>显示面板（鼠标手势 / 快捷键在提权侧的钩子里触发）。负载：<see cref="PanelShowRequest"/>。</summary>
@@ -72,3 +75,19 @@ internal sealed record PanelShowRequest(long Hwnd, int X, int Y);
 /// <c>Source</c> 是 <c>RunSource</c> 的枚举名（宿主不直接引用它，字符串最省事）。
 /// </summary>
 internal sealed record RunActionRequest(string Reference, int X, int Y, string Source);
+
+/// <summary>在提权进程里打开一个窗口。<see cref="Target"/> 取值见 <see cref="LinkTargets"/>。</summary>
+internal sealed record OpenWindowRequest(string Target, string? Arg);
+
+/// <summary>「打开窗口」的目标（宿主里这些窗口都还在提权进程）。</summary>
+internal static class LinkTargets
+{
+    /// <summary>设置窗口（停在上次记住的页）。</summary>
+    public const string Settings = "settings";
+
+    /// <summary>超级面板 · 暂存区页（草稿读写、采纳都在提权进程）。</summary>
+    public const string PanelStash = "panel.stash";
+
+    /// <summary>设置 → 面板管理 → 场景（<see cref="OpenWindowRequest.Arg"/> = 场景 Id）。</summary>
+    public const string PanelScene = "panel.scene";
+}

@@ -69,4 +69,39 @@ internal static class PanelHostBridge
             AppLog.Warn("Link", $"转交动作失败：{ex.Message}");
         }
     }
+
+    /// <summary>
+    /// 宿主里点「设置 / 暂存区 / 面板场景」：在提权进程里开对应窗口。
+    /// 返回 true = 已接管（调用方别再本地开）。连不上时拦下并提示。
+    /// </summary>
+    public static bool TryOpen(string target, string? arg = null)
+    {
+        LinkServer? server = Volatile.Read(ref _server);
+        if (server == null) return false;
+
+        if (!server.IsConnected)
+        {
+            AppLog.Warn("Link", "宿主连不上主程序，窗口没有打开");
+            return true;
+        }
+
+        _ = OpenAsync(server, target, arg);
+        return true;
+    }
+
+    private static async Task OpenAsync(LinkServer server, string target, string? arg)
+    {
+        try
+        {
+            LinkMessage reply = await server
+                .RequestAsync(LinkMethods.OpenWindow, new OpenWindowRequest(target, arg), timeoutMs: 5000)
+                .ConfigureAwait(false);
+
+            if (!reply.Ok) AppLog.Warn("Link", $"打开窗口失败：{reply.Error}");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Link", $"打开窗口失败：{ex.Message}");
+        }
+    }
 }

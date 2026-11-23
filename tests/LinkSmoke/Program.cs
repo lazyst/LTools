@@ -142,6 +142,7 @@ internal static class Program
 
         string pipe = "LToolsLink-fwd-" + Guid.NewGuid().ToString("N")[..8];
         var recorded = new TaskCompletionSource<RunActionRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var opened = new TaskCompletionSource<OpenWindowRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var server = new LinkServer(pipe, "fwd-token",
             static (_, request) => Task.FromResult(LinkMessage.Response(request, error: "宿主不支持该请求")));
@@ -155,6 +156,8 @@ internal static class Program
                 {
                     if (request.Method == LinkMethods.RunAction && request.Read<RunActionRequest>() is { } run)
                         recorded.TrySetResult(run);
+                    if (request.Method == LinkMethods.OpenWindow && request.Read<OpenWindowRequest>() is { } open)
+                        opened.TrySetResult(open);
                     return Task.FromResult(LinkMessage.Response(request));
                 });
 
@@ -168,6 +171,13 @@ internal static class Program
             RunActionRequest? got = recorded.Task.IsCompletedSuccessfully ? recorded.Task.Result : null;
             Check("引用 / 坐标 / 来源原样",
                 got is { Reference: "01nothing", X: 11, Y: 22, Source: "Panel" }, got?.ToString());
+
+            Check("打开窗口被接管", PanelHostBridge.TryOpen(LinkTargets.Settings));
+            Task openedDone = await Task.WhenAny(opened.Task, Task.Delay(2000));
+            Check("打开目标转给了提权进程", ReferenceEquals(openedDone, opened.Task),
+                ReferenceEquals(openedDone, opened.Task) ? null : "2 秒内没收到");
+            Check("打开目标原样", opened.Task.IsCompletedSuccessfully && opened.Task.Result.Target == LinkTargets.Settings,
+                opened.Task.IsCompletedSuccessfully ? opened.Task.Result.ToString() : "");
         }
         catch (Exception ex)
         {
