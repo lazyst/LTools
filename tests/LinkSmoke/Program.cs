@@ -1,5 +1,10 @@
 using System.Collections.Concurrent;
+using System.IO;
+using System.Linq;
+using LTools.Config;
 using LTools.Core.Link;
+using LTools.Features;
+using LTools.Features.Panel;
 
 namespace LinkSmoke;
 
@@ -108,8 +113,108 @@ internal static class Program
         }
 
         Console.WriteLine();
+
+        await PanelPhaseAsync();
+
+        Console.WriteLine();
         Console.WriteLine($"结果：pass={_pass} fail={_fail}");
         return _fail == 0 ? 0 : 1;
+    }
+
+    // ============ 面板命令（提权侧的写属主） ============
+
+    private static async Task PanelPhaseAsync()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ltools-linkpanel-" + Guid.NewGuid().ToString("N")[..8]);
+        string configPath = Path.Combine(root, "LTools.json");
+        string pipe = "LToolsLink-panel-" + Guid.NewGuid().ToString("N")[..8];
+        LinkServer? server = null;
+        LinkClient? client = null;
+
+        Console.WriteLine();
+        Console.WriteLine("== 面板命令 ==");
+
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "configs"));
+            ConfigStore.Initialize(configPath);
+
+            // 先放一个动作 + 一个分组，快照才有东西。
+            var original = new ActionDto { Name = "面板冒烟动作", Icon = "app" };
+            Check("提权侧能加动作", ConfigStore.AddAction(original), original.Id);
+            ConfigStore.Save();
+
+            var panel = PanelLibrary.Current;
+            panel.Global.Scenes.Clear();
+            panel.Global.Scenes.Add(new PanelSceneDto
+            {
+                Id = "s1", Name = "全局", Groups =
+                {
+                    new PanelGroupDto { Id = "g1", Name = "常用", Actions = { original.Id } },
+                },
+            });
+            Check("面板配置落盘", PanelLibrary.Save());
+
+            server = new LinkServer(pipe, "panel-token", PanelHost.HandleAsync);
+            server.Start();
+            client = await LinkClient.ConnectWithRetryAsync(pipe, "panel-token", "panel-smoke", totalMs: 4000);
+
+            // ---- 快照 ----
+            LinkMessage snapMessage = await client.RequestAsync(LinkMethods.PanelSnapshot, timeoutMs: 2000);
+            PanelSnapshot? snap = snapMessage.Read<PanelSnapshot>();
+            Check("快照答复成功", snapMessage.Ok, snapMessage.Error);
+            Check("快照带动作", snap?.Actions.Any(a => a.Id == original.Id && a.Name == "面板冒烟动作") == true,
+                string.Join(",", snap?.Actions.Select(a => a.Name) ?? new List<string>()));
+            Check("快照带分组", snap?.Panel.Global.Scenes.FirstOrDefault()?.Groups.FirstOrDefault()?.Name == "常用");
+
+            // ---- 整份替换（宿主改分组名）----
+            PanelConfig edited = snap!.Panel;
+            edited.Global.Scenes[0].Groups[0].Name = "改名后";
+            LinkMessage replaced = await client.RequestAsync(LinkMethods.PanelReplace, edited, timeoutMs: 2000);
+            Check("面板替换成功", replaced.Ok, replaced.Error);
+            Check("替换写进了内存", PanelLibrary.Current.Global.Scenes[0].Groups[0].Name == "改名后");
+            Check("替换写进了磁盘",
+                File.ReadAllText(Path.Combine(root, "configs", "panel.json")).Contains("改名后"));
+
+            // ---- 新建动作 ----
+            LinkMessage added = await client.RequestAsync(LinkMethods.ActionAdd,
+                new ActionAddRequest("宿主新建的动作", "star"), timeoutMs: 2000);
+            ActionDto? created = added.Read<ActionDto>();
+            Check("新建动作成功", added.Ok && !string.IsNullOrEmpty(created?.Id), added.Error);
+            Check("新建动作落盘", File.Exists(Path.Combine(root, "actions", created!.Id, "action.json")));
+            Check("新建动作默认图标沿用传入", created.Icon == "star");
+
+            // ---- 复制动作 ----
+            LinkMessage duplicated = await client.RequestAsync(LinkMethods.ActionDuplicate,
+                new ActionIdRequest(original.Id), timeoutMs: 2000);
+            ActionDto? copy = duplicated.Read<ActionDto>();
+            Check("复制动作成功", duplicated.Ok && copy?.Id != original.Id, duplicated.Error);
+            Check("副本名字带「副本」", (copy?.Name ?? "").Contains("副本"), copy?.Name);
+
+            // ---- 删除动作（连面板引用一起清）----
+            LinkMessage deleted = await client.RequestAsync(LinkMethods.ActionDelete,
+                new ActionIdRequest(original.Id), timeoutMs: 2000);
+            Check("删除动作成功", deleted.Ok, deleted.Error);
+            Check("删除后动作文件没了", !File.Exists(Path.Combine(root, "actions", original.Id, "action.json")));
+            Check("删除后面板引用也没了",
+                PanelLibrary.Current.Global.Scenes[0].Groups[0].Actions.Contains(original.Id) == false);
+
+            // ---- 未知命令 ----
+            LinkMessage unknown = await client.RequestAsync("panel.nope", timeoutMs: 2000);
+            Check("未知命令回失败答复", !unknown.Ok && (unknown.Error ?? "").Contains("未知命令"), unknown.Error);
+        }
+        catch (Exception ex)
+        {
+            Check("面板阶段的冒烟未抛异常", false, ex.ToString());
+        }
+        finally
+        {
+            if (client != null) await client.DisposeAsync();
+            if (server != null) await server.DisposeAsync();
+
+            try { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+            catch { /* 临时目录 */ }
+        }
     }
 
     private static async Task<LinkMessage> Handle(LinkChannel channel, LinkMessage request)

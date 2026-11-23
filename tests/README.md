@@ -159,13 +159,18 @@ dotnet run -- --helper                    # 再加一段：拉起 ShareHost.exe�
 
 ```powershell
 cd tests\LinkSmoke
-dotnet run                                # 14 条，约 3 秒
+dotnet run                                # 31 条，约 4 秒
 ```
 
 真起一条 `LToolsLink-test-*` 管道，`LinkServer` + `LinkClient` 走完整流程：令牌不对被拒绝、
 握手、请求 / 答复（中文 / 引号 / 反斜杠原样）、双向事件、服务端抛异常变成失败答复、
 请求超时（150ms 的请求 156ms 返回，之后连接照常）、**1 MB 负载**（帧切分与缓冲增长）、
 服务端停止后客户端看到关闭并收到断开事件、服务端重启后能重连。
+
+后半段（`== 面板命令 ==`）在**临时数据根**上跑 `ConfigStore.Initialize`，再用
+`LinkServer(PanelHost.HandleAsync)` + 客户端真管道驱动面板写属主：`panel.snapshot` 带回动作与分组、
+`panel.replace` 同时改内存与 `configs/panel.json`、`action.add` 新 Id + 落盘、`action.duplicate`
+新 Id + 名字带「副本」、`action.delete` 连动作目录与面板引用一起清、未知命令回失败答复。
 
 链路层是 `internal`，这里用 `InternalsVisibleTo("LinkSmoke")` 直接驱动（异步委托用反射太难看）；
 其它冒烟仍按惯例走反射。

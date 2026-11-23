@@ -77,6 +77,17 @@ internal static class PanelLibrary
         return Persist();
     }
 
+    /// <summary>
+    /// 整份替换（面板宿主把编辑后的配置交回提权进程时用）：规范化后落盘。
+    /// 返回 false 表示写盘失败（只读进程也返回 false）。
+    /// </summary>
+    internal static bool Replace(PanelConfig panel)
+    {
+        Current = panel ?? new PanelConfig();
+        Normalize(Current);
+        return Save();
+    }
+
     /// <summary>前台进程是否在「禁止弹出」列表里。</summary>
     public static bool IsBlocked(string? exeName, string? exePath)
     {

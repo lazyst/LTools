@@ -366,4 +366,20 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   种子快捷键都读得到；只读进程里两个 `Save` 被拒且目录不变；空数据根不凭空生成默认面板。
 - 尚未接线：宿主（`ShareHost.exe`）还没调它，也还没接 `LinkClient`（下一步：面板进宿主）。
 
+**2026-11-24 · P1b-2 面板命令面（提权侧的写属主）**
+
+- `Core/Link/LinkCommands.cs`：命令名常量 + DTO（`ActionSummary` / `PanelSnapshot` / `ActionAddRequest` /
+  `ActionIdRequest` / `PanelShowRequest`）。**这一轮只落「面板 / 动作」这一段**，`run` / `toast` / `trace`
+  等真正搬执行器时再补，补的时候只加常量 + DTO。
+- `Core/Link/PanelHost.cs`：提权侧处理 `panel.snapshot` / `panel.replace` / `action.add` /
+  `action.delete` / `action.duplicate`；全部「校验 → 改数据 → 落盘」，任何异常翻成失败答复，不抛回读循环。
+  删除沿用 `ConfigStore.RemoveAction` 的既有收尾（它内部已落盘，**别再补一次 Save**）。
+- `PanelLibrary.Replace(panel)`：整份替换 + 规范化 + 落盘；宿主只提交整份配置，不逐个建写命令。
+- 自测 `link` 组加 1 个用例（方法名互不相同 / 新建·定位·显示面板负载往返 / 64 位句柄不丢精度 /
+  快照整份面板往返 / 未知命令回失败答复），总 393 用例 / 18549 断言。
+- 冒烟 `tests/LinkSmoke` 追加「面板命令」段（14 → 31 条）：临时数据根上真管道驱动快照 / 替换 / 新建 /
+  复制 / 删除，断言内存与磁盘一致、删动作连面板引用一起清。
+- 尚未接线：`App.OnStartup` 还没起 `LinkServer`，宿主也还没接这个处理函数（下一步：宿主连 `LinkClient`
+  + 加载面板）。
+
 

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
+using LTools.Config;
 using LTools.Core.Link;
 
 namespace LTools.Core.SelfTest;
@@ -23,6 +25,7 @@ internal static class LinkSuite
         cases.Add(new("link", "坏帧：长度非法 / 不是 JSON / 缺方法名", BadFrames));
         cases.Add(new("link", "帧长度前缀就是负载字节数", Prefix));
         cases.Add(new("link", "管道名按会话区分", PipeName));
+        cases.Add(new("link", "面板命令的负载形状（快照 / 新建 / 定位 / 显示）", PanelCommands));
     }
 
     private static void Shapes()
@@ -138,8 +141,68 @@ internal static class LinkSuite
         Check.True(one != two, "不同会话不同管道");
     }
 
-    // ============ 小工具 ============
+    private static void PanelCommands()
+    {
+        // 方法名互不相同、都不为空（拼错一个常量会让两端对不上）。
+        var names = new[]
+        {
+            LinkMethods.PanelSnapshot, LinkMethods.PanelReplace, LinkMethods.ActionAdd,
+            LinkMethods.ActionDelete, LinkMethods.ActionDuplicate,
+            LinkMethods.EventPanelShow, LinkMethods.EventActionsChanged,
+        };
+        Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
+        Check.True(names.All(n => n.Length > 0), "方法名都不为空");
 
+        // 新建 / 定位 / 显示面板的负载往返。
+        ActionAddRequest? add = RoundTrip(LinkMessage.Request(1, LinkMethods.ActionAdd,
+            new ActionAddRequest("季度报告", "app"))).Read<ActionAddRequest>();
+        Check.Equal("季度报告", add?.Name, "新建动作：名称原样");
+        Check.Equal("app", add?.Icon, "新建动作：图标原样");
+
+        ActionIdRequest? id = RoundTrip(LinkMessage.Request(2, LinkMethods.ActionDelete,
+            new ActionIdRequest("01abc"))).Read<ActionIdRequest>();
+        Check.Equal("01abc", id?.Id, "定位动作：Id 原样");
+
+        PanelShowRequest? show = RoundTrip(LinkMessage.Request(3, LinkMethods.EventPanelShow,
+            new PanelShowRequest(0x1_0000_0000L))).Read<PanelShowRequest>();
+        Check.Equal(0x1_0000_0000L, show?.Hwnd, "显示面板：64 位句柄不丢精度");
+
+        // 快照：整份面板配置 + 动作摘要都要原样回来。
+        var panel = new PanelConfig
+        {
+            Blocked = new List<string> { "game.exe" },
+            Global = new PanelAreaDto
+            {
+                Scenes = new List<PanelSceneDto>
+                {
+                    new()
+                    {
+                        Id = "s1", Name = "全局", Groups = new List<PanelGroupDto>
+                        {
+                            new() { Id = "g1", Name = "常用", Actions = new List<string> { "a1", "a2" } },
+                        },
+                    },
+                },
+            },
+        };
+
+        PanelSnapshot? snapshot = RoundTrip(LinkMessage.Request(4, LinkMethods.PanelSnapshot,
+            new PanelSnapshot(panel, new List<ActionSummary> { new("a1", "报表", "app", 3) }))).Read<PanelSnapshot>();
+
+        Check.Equal(1, snapshot?.Panel.Global.Scenes.Count ?? -1, "快照：场景数");
+        Check.Equal("常用", snapshot?.Panel.Global.Scenes[0].Groups[0].Name, "快照：分组名");
+        Check.Equal(2, snapshot?.Panel.Global.Scenes[0].Groups[0].Actions.Count ?? -1, "快照：磁贴 Id 列表");
+        Check.Equal("game.exe", snapshot?.Panel.Blocked[0], "快照：禁止弹出名单");
+        Check.Equal(3, snapshot?.Actions[0].Steps ?? -1, "快照：动作步数");
+        Check.Equal("报表", snapshot?.Actions[0].Name, "快照：动作名");
+
+        // 未知命令：失败答复（不抛异常、不碰数据）。
+        LinkMessage unknown = PanelHost.Handle(LinkMessage.Request(5, "panel.nope"));
+        Check.False(unknown.Ok, "未知命令回失败答复");
+        Check.True((unknown.Error ?? "").Contains("未知命令"), unknown.Error);
+    }
+
+    // ============ 小工具 ============
     private static LinkMessage RoundTrip(LinkMessage message)
     {
         byte[] frame = LinkFraming.Frame(message);
