@@ -127,13 +127,11 @@ public partial class App : Application
         {
             _window = new ShareWindow();
             _window.Closing += Window_Closing;
-            _window.Show();
-            return;
         }
 
-        if (_window.WindowState == WindowState.Minimized) _window.WindowState = WindowState.Normal;
-        _window.Show();
-        _window.Activate();
+        // 关窗只是 Hide：再来一次要能重新显示（Show 里带「没显示就 Show」），
+        // 而且助手是后台进程，第一次 Show 同样会被前台锁压在别的窗口后面。
+        WindowFront.Show(_window);
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)

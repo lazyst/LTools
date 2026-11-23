@@ -34,11 +34,8 @@ internal static class ConfigHelper
     /// </summary>
     public static void Open()
     {
-        var window = EnsureWindow();
-        window.Activate();
-        // 面板 / 悬浮都是 Topmost，被它们盖住时 Activate 不会自己浮上来，借 Topmost 抬一次
-        window.Topmost = true;
-        window.Topmost = false;
+        // 前台锁：只 Show()/Activate() 常被压回去（第一次开窗尤其明显），统一走 WindowFront。
+        WindowFront.Bring(EnsureWindow());
     }
 
     private static ConfigHelperWindow EnsureWindow()
@@ -50,7 +47,7 @@ internal static class ConfigHelper
         var window = new ConfigHelperWindow(_configPath ?? "");
         window.Closed += (_, _) => _window = null;
         _window = window;
-        window.Show();
+        WindowFront.Show(window);
         return window;
     }
 

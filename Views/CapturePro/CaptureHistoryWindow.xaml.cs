@@ -83,17 +83,11 @@ public partial class CaptureHistoryWindow : Window
             {
                 if (ReferenceEquals(_current, window)) _current = null;
             };
-            window.Show();
-            window.Activate();
+            WindowFront.Show(window);
             return;
         }
 
-        if (_current.WindowState == WindowState.Minimized)
-            _current.WindowState = WindowState.Normal;
-
-        _current.Activate();
-        _current.Topmost = true;
-        _current.Topmost = false;
+        WindowFront.Bring(_current);
     }
 
     /// <summary>

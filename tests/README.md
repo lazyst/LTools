@@ -123,13 +123,14 @@ dotnet run --no-build                     # 21 条，约 2 秒
 
 ```powershell
 cd tests\ShareSmoke
-dotnet run                                # 102 条，约 15 秒（中间有几次真的拖鼠标）
+dotnet run                                # 92 条，约 10 秒（中间有几次真的拖鼠标）
 dotnet run -- --explorer                  # 再加一段：真开资源管理器，把文件拖进窗口（提权时收不到，断言的是这一点）
-dotnet run -- --helper                    # 再加一段：拉起 ShareHost.exe，真拖一个文件进去
+dotnet run -- --helper                    # 再加一段：拉起 ShareHost.exe，真拖一个文件进去（两个都开时共 103 条）
 ```
 
-`--helper` 是**跨进程**那段：经 `explorer.exe` 拉起 `ShareHost.exe`（普通权限），
-断言「窗口出来 / `TokenElevation == 0` / 真资源管理器拖进去后 `share/items.json` 多一条」。
+`--helper` 是**跨进程**那段：按产品那条路拉起 `ShareHost.exe`（`Native/ShellToken` 复制 Explorer
+的令牌，普通权限；不是提权运行时退回 `explorer.exe`），断言「窗口出来 / `TokenElevation == 0` /
+没把资源管理器叫到前台（窗口条数不变）/ 真资源管理器拖进去后 `share/items.json` 多一条」。
 它会往真实共享区加一条，跑完把 `items.json` 原样还原。
 
 临时数据根（`%TEMP%`），反射启动 `ShareServer`（随机端口），断言：页面与 `/api/state`、

@@ -40,6 +40,9 @@ internal static class ActionEditor
         SingleEditor.Track(key, dlg);
         try
         {
+            // 模态窗口自己跑消息循环：挂在 Loaded / ContentRendered 上，等它真的显示出来再提到最前
+            // （第一次从面板打开时前台锁会把「活动窗口」压在别的程序后面）。
+            WindowFront.Attach(dlg);
             dlg.ShowDialog();
         }
         finally

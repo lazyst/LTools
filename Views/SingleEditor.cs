@@ -34,10 +34,9 @@ internal static class SingleEditor
             return false;
         }
 
-        // 用户可能把它最小化了；编辑器本身不置顶，别为了「拉到前面」改 Topmost
-        if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
-        window.Show();
-        window.Activate();
+        // 用户可能把它最小化了；统一走 WindowFront（最小化还原 + 真·提到最前，
+        // 前台锁挡得住 Activate 时它会借 Topmost 抬一次再翻回，编辑器仍然不置顶）
+        WindowFront.Show(window);
         return true;
     }
 

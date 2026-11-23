@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
+using LTools.Native;
 
 namespace LTools.Core.Share;
 
@@ -104,10 +105,14 @@ internal static class ShareHelper
         // 已经在跑：它自己会在下一轮轮询里看到这个意图。
         if (IsRunning) return;
 
+        // 复制 Explorer 的令牌来启动：子进程是普通权限，又完全不碰资源管理器的窗口。
+        // （`explorer.exe <exe>` 会把资源管理器叫到前台，`Shell.Application.ShellExecute` 在提权进程里
+        // 是进程内对象、子进程照样提权——两条都试过，见 Native/ShellToken.cs 的注释。）
+        if (ShellToken.Start(ExePath)) return;
+
         try
         {
-            // 交给 Explorer（中完整性）替我们拉起来；直接 CreateProcess 会继承我们的高完整性令牌，
-            // 那样窗口照样收不到拖放，整个助手就白拆了。
+            // 兜底：老办法，仍然能起来（只是可能闪一下资源管理器）。
             Process.Start(new ProcessStartInfo("explorer.exe", $"\"{ExePath}\"") { UseShellExecute = true });
         }
         catch (Exception ex)

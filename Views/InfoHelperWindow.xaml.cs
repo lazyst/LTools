@@ -65,18 +65,14 @@ public partial class InfoHelperWindow : Window
             {
                 if (ReferenceEquals(_current, window)) _current = null;
             };
-            window.Show();
-            window.Activate();
+            WindowFront.Show(window);
             return;
         }
 
         if (_current.WindowState == WindowState.Minimized)
             _current.WindowState = WindowState.Normal;
 
-        _current.Activate();
-        // 前台锁：光 Activate() 有时抢不回来，翻一下 Topmost 再翻回去。
-        _current.Topmost = true;
-        _current.Topmost = false;
+        WindowFront.Bring(_current);
         _current.Focus();
     }
 

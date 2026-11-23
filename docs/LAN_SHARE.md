@@ -291,7 +291,7 @@ share/
 
 | 谁 | 做什么 |
 |---|---|
-| 主程序启动 | `Share.Running == true` → 写 `run` 意图 + 经 Explorer 拉起助手（窗口隐藏） |
+| 主程序启动 | `Share.Running == true` → 写 `run` 意图 + 拉起助手（窗口隐藏） |
 | 托盘 / 内置功能 `ltools.share` | `ShareHelper.Open()` → 写 `show` 意图（已在跑就只写意图，400ms 内唤起） |
 | 窗口「停止共享」 | 助手自己 `ShareServer.Apply(Running=false)`，写回配置 |
 | 关窗（X） | 服务还在跑 → 只隐藏窗口；服务已停 → 助手进程一起退出 |
@@ -303,7 +303,12 @@ share/
 - `share/host.intent`：内容 `run` / `show` / `stop`，助手每 400ms 读一次、执行完删掉。
 
 **为什么用文件而不是命令行**：主程序提权，直接 `CreateProcess` 出来的子进程会继承高完整性令牌
-（那样窗口照样收不到拖放）；只能经 `explorer.exe` 拉起，而 Explorer 不转发参数。
+（那样窗口照样收不到拖放）。要拿到普通权限的子进程，只能借 Explorer 的身份——但它是
+**复制 Explorer 的令牌再 `CreateProcessWithTokenW`**（`Native/ShellToken.cs`），
+不是 `explorer.exe <exe>`：后者会顺手把资源管理器窗口叫到前台（用户报过「第一次打开共享，
+资源管理器跳出来了」），`Shell.Application.ShellExecute` 也不行（在提权进程里那是进程内对象，
+子进程照样提权）。复制令牌只要 `SeImpersonate`（管理员自带），也不碰资源管理器的窗口，
+所以进程之间仍然只用意图文件、**不需要命令行参数**。
 
 1. 助手启动：`ConfigStore.UsePathOnly()`（只记配置路径，**不扫动作目录、不修引用、不播种快捷键**）
    → `AppLog.Configure()`（与主程序同一份日志配置）→ 读 `Share` 段 → `ShareServer.Apply()`。
@@ -427,7 +432,8 @@ P1–P6 已落地；防火墙规则自动添加与「截图并共享」留到下
   能收、同一文件再拖不重复；
   `--explorer` 段：真开资源管理器拖文件（非提权能进、提权时 Explorer 连消息都不发）。
 - `tests/ShareSmoke -- --helper` 的助手段：`ShareHost.exe` 和 `LTools.exe` 在同一个目录；
-  经 Explorer 拉起后窗口出现、**进程是普通权限**（`TokenElevation == 0`）；
+  按产品那条路拉起（复制 Explorer 令牌）后窗口出现、**进程是普通权限**（`TokenElevation == 0`）、
+  **没把资源管理器叫到前台**（窗口条数不变、前台还在原来的窗口上）；
   真资源管理器把文件拖进助手窗口，`share/items.json` 里出现这一条（跑完还原清单）。
 - 文字条目的模板：`ShareRowSelector` 按 `IsText` 选「正文卡片 / 单行」，正文预览非空、
   摘要行是 `文字 · 时间 · 大小`；真渲染出来的行上按钮文案是
@@ -455,8 +461,13 @@ P1–P6 已落地；防火墙规则自动添加与「截图并共享」留到下
 - **防火墙规则没有自动添加**：首次监听时由 Windows 弹「是否允许访问」，点允许即可。
 - **拖放只在助手进程里成立**：窗口跑在 `ShareHost.exe`（普通权限）时拖放正常；如果哪天有人
   把它改回主程序进程里开窗（或以管理员身份直接启动 `ShareHost.exe`），UIPI 会拦掉拖放
-  （替代：`Ctrl+C` + `Ctrl+V` 或剪贴板图标）。主程序启动助手时固定走 `explorer.exe`，别改成
-  `CreateProcess`——子进程会继承高完整性令牌。
+  （替代：`Ctrl+C` + `Ctrl+V` 或剪贴板图标）。主程序拉起助手固定走 `Native/ShellToken`
+  （复制 Explorer 的令牌再 `CreateProcessWithTokenW`），**别改成直接 `CreateProcess`**
+  （子进程继承高完整性令牌），**也别改回 `explorer.exe <exe>`**（那样会把资源管理器窗口
+  叫到前台）；`ShellToken` 起不来时才兜底退到 `explorer.exe`。
+- **第一次打开共享窗口可能不拿键盘焦点**：助手是后台进程，Windows 的前台锁不给它抢焦点的权利，
+  所以窗口会**出现在最前面**（借置顶带抬一次再放下），但键盘焦点可能还留在原来的程序里——
+  点一下窗口就能输入。这是系统规则，不是窗口没打开。
 - **「截图并共享」还没接进输入框的图标**：一期先支持输入框文字、剪贴板、选择文件、拖放与粘贴。
 
 ## 15. 术语（待补 `CONTEXT.md`）

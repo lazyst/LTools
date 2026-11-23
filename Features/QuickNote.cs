@@ -52,7 +52,7 @@ internal static class QuickNote
         _form.ApplyTopmost(ReadTopmost());
         _form.TopmostChanged += (_, on) => SaveTopmost(on);
         _form.Closed += (_, _) => _form = null;
-        _form.Show();
+        Views.WindowFront.Show(_form);
     }
 
     /// <summary>上次的置顶状态（<c>configs/ui.json</c>）；读不到 / 还没初始化就当不置顶。</summary>
