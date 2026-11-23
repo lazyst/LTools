@@ -52,6 +52,13 @@ public partial class SuperPanelWindow : Window
     /// <summary>主区停在「暂存区」页（左栏第二个入口）。仅本次打开有效，不落盘。</summary>
     private bool _stashMode;
 
+    /// <summary>
+    /// 只读预览（普通权限宿主）：配置写不了、编辑器 / 设置 / 暂存区都在主程序里，所以本窗口
+    /// 只显示动作网格 + 搜索；右键菜单、建动作、改分组、暂存区入口全部关掉；磁贴点击经
+    /// <see cref="ActionExecutor"/> 转给主程序执行（见 <c>PanelHostBridge</c>）。
+    /// </summary>
+    private readonly bool _preview = ConfigStore.ReadOnly;
+
     // 空白处左键拖动窗口（照 Quicker：不只顶栏可以拖）
     private Point _blankDragStart;
     private bool _blankDragArmed;
@@ -102,6 +109,14 @@ public partial class SuperPanelWindow : Window
         // 上次停留的页（动作面板 / 暂存区）：别每次打开都回到动作面板。
         // XAML 默认是动作面板，暂存区在 Loaded 里再切（此时窗口还没显示，切了不闪）。
         _stashMode = string.Equals(panel.Preferences.LastPage, "stash", StringComparison.OrdinalIgnoreCase);
+
+        // 只读预览：暂存区 / 设置都在主程序里，预览窗口只留动作网格。
+        if (_preview)
+        {
+            _stashMode = false;
+            NavStashBtn.Visibility = Visibility.Collapsed;
+            SettingsBtn.Visibility = Visibility.Collapsed;
+        }
 
         _globalDrag = new TileDragSort(this, GhostLayer, GlobalGroups)
         {
@@ -176,6 +191,9 @@ public partial class SuperPanelWindow : Window
     /// <summary>右键：没有自带菜单的地方（空白 / 分组标题 / 标题栏）弹出面板菜单。</summary>
     private void OnWindowContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
+        // 只读预览：所有右键菜单（新建 / 编辑 / 删除 / 分组 / 场景）都会写配置或开编辑器，一概不开。
+        if (_preview) { e.Handled = true; return; }
+
         var src = e.OriginalSource as DependencyObject;
         if (FindContextMenuOwner(src) != null) return;   // 磁贴 / 场景标签 / 分组导航条自己的菜单
         if (IsInteractive(src)) return;                  // 输入框 / 滚动条 / 分割条等，别抢原生行为

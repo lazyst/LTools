@@ -159,7 +159,7 @@ dotnet run -- --helper                    # 再加一段：拉起 ShareHost.exe�
 
 ```powershell
 cd tests\LinkSmoke
-dotnet run                                # 32 条，约 4 秒
+dotnet run                                # 35 条，约 5 秒
 ```
 
 真起一条 `LToolsLink-test-*` 管道，`LinkServer` + `LinkClient` 走完整流程：令牌不对被拒绝、
@@ -171,7 +171,8 @@ dotnet run                                # 32 条，约 4 秒
 （`LinkServer` 发请求、`LinkClient` 用 `PanelHost.HandleAsync` 应答）驱动面板写属主：
 `panel.snapshot` 带回动作与分组、`panel.replace` 同时改内存与 `configs/panel.json`、`action.add`
 新 Id + 落盘、`action.duplicate` 新 Id + 名字带「副本」、`action.delete` 连动作目录与面板引用一起清、
-未知命令回失败答复。
+未知命令回失败答复。最后一段（`== 磁贴转交 ==`）验 `PanelHostBridge`：把 `ActionExecutor.RunRef`
+接管成 `run.action` 请求（宿主里绝不本地执行），断言引用 / 坐标 / 来源原样送到对端。
 
 链路层是 `internal`，这里用 `InternalsVisibleTo("LinkSmoke")` 直接驱动（异步委托用反射太难看）；
 其它冒烟仍按惯例走反射。

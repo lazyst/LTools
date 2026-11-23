@@ -86,7 +86,8 @@ public partial class SuperPanelWindow
         // 暂存区页没有可键盘选中的磁贴：别让方向键 / Enter 去碰被遮住的正式动作
         if (_stashMode) return;
         // Ctrl+V：剪贴板里的文件 / 文件夹 → 动作。输入框里的粘贴不抢（那是普通文本粘贴）。
-        if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) != 0 && e.OriginalSource is not TextBox)
+        if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) != 0
+            && e.OriginalSource is not TextBox && !_preview)
         {
             if (PasteFilesFromClipboard()) e.Handled = true;
             return;
@@ -178,6 +179,7 @@ public partial class SuperPanelWindow
     /// <summary>切到暂存区页（<see cref="Features.SuperPanel.ShowStash"/> 也从这里进来）。</summary>
     internal void ShowStashPage()
     {
+        if (_preview) return;   // 只读预览没有暂存区（草稿读写都在主程序里）
         _stashMode = true;
         ApplyPageMode();
     }

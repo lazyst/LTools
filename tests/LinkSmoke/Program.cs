@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using LTools.Config;
+using LTools.Core;
 using LTools.Core.Link;
 using LTools.Features;
 using LTools.Features.Panel;
@@ -124,8 +125,60 @@ internal static class Program
         await PanelPhaseAsync();
 
         Console.WriteLine();
+
+        await ForwardingPhaseAsync();
+
+        Console.WriteLine();
         Console.WriteLine($"结果：pass={_pass} fail={_fail}");
         return _fail == 0 ? 0 : 1;
+    }
+
+    // ============ 磁贴转交（宿主里不执行动作） ============
+
+    private static async Task ForwardingPhaseAsync()
+    {
+        Console.WriteLine();
+        Console.WriteLine("== 磁贴转交 ==");
+
+        string pipe = "LToolsLink-fwd-" + Guid.NewGuid().ToString("N")[..8];
+        var recorded = new TaskCompletionSource<RunActionRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var server = new LinkServer(pipe, "fwd-token",
+            static (_, request) => Task.FromResult(LinkMessage.Response(request, error: "宿主不支持该请求")));
+        server.Start();
+        LinkClient? client = null;
+
+        try
+        {
+            client = await LinkClient.ConnectWithRetryAsync(pipe, "fwd-token", "worker", totalMs: 4000,
+                handler: (_, request) =>
+                {
+                    if (request.Method == LinkMethods.RunAction && request.Read<RunActionRequest>() is { } run)
+                        recorded.TrySetResult(run);
+                    return Task.FromResult(LinkMessage.Response(request));
+                });
+
+            PanelHostBridge.Attach(server);
+            Check("宿主侧接管（不本地执行）", ActionExecutor.RunRef("01nothing", 11, 22, RunSource.Panel));
+
+            Task done = await Task.WhenAny(recorded.Task, Task.Delay(2000));
+            Check("请求转给了提权进程", ReferenceEquals(done, recorded.Task),
+                ReferenceEquals(done, recorded.Task) ? null : "2 秒内没收到");
+
+            RunActionRequest? got = recorded.Task.IsCompletedSuccessfully ? recorded.Task.Result : null;
+            Check("引用 / 坐标 / 来源原样",
+                got is { Reference: "01nothing", X: 11, Y: 22, Source: "Panel" }, got?.ToString());
+        }
+        catch (Exception ex)
+        {
+            Check("转交阶段的冒烟未抛异常", false, ex.ToString());
+        }
+        finally
+        {
+            PanelHostBridge.Detach();
+            if (client != null) await client.DisposeAsync();
+            await server.DisposeAsync();
+        }
     }
 
     // ============ 面板命令（提权侧的写属主） ============

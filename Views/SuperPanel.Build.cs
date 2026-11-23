@@ -144,7 +144,7 @@ public partial class SuperPanelWindow
 
         // 手动切到别的场景时不显示「未配置」提示（那说的是自动匹配结果）
         bool manual = _contextSceneId != _resolved.Scene?.Id;
-        if (!manual && _resolved.ShowHint && _foreground != null)
+        if (!_preview && !manual && _resolved.ShowHint && _foreground != null)
         {
             ContextHintBar.Visibility = Visibility.Visible;
             ContextHintText.Text = HintTextFor(_foreground.ExeName);

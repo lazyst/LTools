@@ -39,6 +39,7 @@ internal static class PanelHost
                 LinkMethods.ActionAdd => Add(request),
                 LinkMethods.ActionDelete => Delete(request),
                 LinkMethods.ActionDuplicate => Duplicate(request),
+                LinkMethods.RunAction => ForwardRun(request),
                 _ => LinkMessage.Response(request, error: "未知命令：" + request.Method),
             };
         }
@@ -106,5 +107,21 @@ internal static class PanelHost
 
         ConfigStore.Save();
         return LinkMessage.Response(request, copy);
+    }
+
+    /// <summary>宿主点了磁贴：真正执行留在这里（提权进程），宿主不跑动作。</summary>
+    private static LinkMessage ForwardRun(LinkMessage request)
+    {
+        RunActionRequest? run = request.Read<RunActionRequest>();
+        if (run == null || string.IsNullOrWhiteSpace(run.Reference))
+            return LinkMessage.Response(request, error: "缺少动作引用");
+
+        RunSource source = Enum.TryParse(run.Source, ignoreCase: true, out RunSource parsed)
+            ? parsed
+            : RunSource.Panel;
+
+        // 与面板本地点击完全同一条路：ActionExecutor.RunRef 会 spawn 后台线程 / 走 AutomationRunner。
+        Ui.Post(() => ActionExecutor.RunRef(run.Reference, run.X, run.Y, source));
+        return LinkMessage.Response(request);
     }
 }

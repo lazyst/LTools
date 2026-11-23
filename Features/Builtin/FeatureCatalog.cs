@@ -39,7 +39,7 @@ internal static class FeatureCatalog
         // ============ LTools 功能 ============
         L("ltools.panel", "打开超级面板", "window",
             "打开 / 收起 LTools 的超级面板（动作面板与暂存区）",
-            () => Ui(() => SuperPanel.Toggle())),
+            () => Ui(() => PanelLauncher.Toggle())),
         L("ltools.stash", "打开暂存区", "note",
             "打开超级面板并切到暂存区（AI 草稿所在页）",
             () => Ui(() => SuperPanel.ShowStash())),

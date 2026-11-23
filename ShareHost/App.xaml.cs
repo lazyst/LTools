@@ -126,6 +126,7 @@ public partial class App : Application
                 OnLinkEvent);
 
             Volatile.Write(ref _link, server);
+            PanelHostBridge.Attach(server);
             server.ClientChanged += OnLinkClientChanged;
             server.Start();
 
@@ -142,8 +143,30 @@ public partial class App : Application
 
     private void OnLinkEvent(LinkMessage message)
     {
-        if (!string.Equals(message.Method, LinkMethods.EventClientReady, StringComparison.Ordinal)) return;
-        _ = PullSnapshotAsync();
+        switch (message.Method)
+        {
+            case LinkMethods.EventClientReady:
+                _ = PullSnapshotAsync();
+                break;
+
+            case LinkMethods.EventPanelShow:
+                PanelShowRequest? show = message.Read<PanelShowRequest>();
+                if (show == null) return;
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    AppLog.Info("ShareHost", "显示面板（普通权限窗口）");
+                    Features.SuperPanel.Show(new IntPtr(show.Hwnd), show.X, show.Y);
+                }));
+                break;
+
+            case LinkMethods.EventPanelToggle:
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    AppLog.Info("ShareHost", "切换面板（普通权限窗口）");
+                    Features.SuperPanel.Toggle();
+                }));
+                break;
+        }
     }
 
     /// <summary>主程序就绪后拉一份面板快照（验证链路；下一步面板真的在宿主里渲染就有数据了）。</summary>
@@ -178,6 +201,7 @@ public partial class App : Application
     {
         _watch?.Stop();
 
+        PanelHostBridge.Detach();
         LinkServer? link = Volatile.Read(ref _link);
         if (link != null) _ = link.DisposeAsync();
 

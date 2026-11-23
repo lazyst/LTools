@@ -407,4 +407,26 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`LinkSmoke` 改成生产方向（服务端发请求、客户端 `PanelHost` 应答）并加一条「反向角色」断言（32 条）；
   `--selftest` 393 用例 / 18549 断言；`PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
 
+**2026-11-24 · P1b-4 面板在宿主里渲染（只读预览 + 磁贴转交）**
+
+- 唤起入口收口到 `Features/PanelLauncher`（`Show` / `Toggle`）：右键长按手势、`CapsLock+T`、
+  托盘菜单、内置功能 `ltools.panel` 全走它。迁移开关 `PanelRouting.Enabled`（环境变量
+  **`LTOOLS_PANEL_HOST=1`**，默认关）打开且宿主连着 → 发 `panel.show` / `panel.toggle`；否则本地开。
+  开关打开时 `App.OnStartup` 也会把宿主随主程序拉起来（它同时是共享助手）。
+- `panel.show` 负载带光标坐标（`PanelShowRequest(Hwnd, X, Y)`），宿主用
+  `Features.SuperPanel.Show(hwnd, x, y)` 在**唤起瞬间的光标处**定位，而不是宿主当前光标。
+- **宿主里绝不本地执行动作**：`ActionExecutor.RunRef` 第一句问 `PanelHostBridge.TryForwardRun`
+  （只在宿主里 attach）。连不上主程序时**拦下**（返回 true + 一条 Warn），不退回本地——动作里
+  可能有需要提权的注入 / 脚本。提权侧 `PanelHost` 新增 `run.action`，落到 `Ui.Post(() => RunRef(...))`。
+- **只读预览**（`SuperPanelWindow._preview = ConfigStore.ReadOnly`）：隐藏左栏「暂存区 / 设置」、
+  强制动作页、右键菜单一概不开、`Ctrl+V` 建动作不响应、分组改名不响应；磁贴 / 截图仍可点（转交）。
+  暂存区（草稿读写）、编辑器、设置都还是提权进程的事，下一步用 `open` 命令接过去再翻默认值。
+- 真机实测（dev、提权 shell、固定令牌 + 探针发 `panel.show`）：宿主（**中等完整性**）真的把面板画出来了
+  ——截图里能看到场景「默认」、14 个磁贴、上下文区 `通用 / LTools.exe / OpenChamber.exe`，
+  左栏只剩动作面板 / 截图两个入口（暂存区与设置已按预览隐藏）。宿主日志：
+  `显示面板（普通权限窗口）`；断开后 `主程序已断开`。
+- 回归：`LinkSmoke` 加「磁贴转交」段（35 条）；`--selftest` 393 用例 / 18556 断言；
+  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
+- **默认仍是旧路径**：不设 `LTOOLS_PANEL_HOST=1` 时行为与以前完全一致（面板在提权进程、宿主只在共享时起）。
+
 

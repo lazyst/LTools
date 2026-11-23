@@ -30,10 +30,16 @@ internal static class LinkMethods
     /// <summary>复制动作（新 Id + 名称「副本」+ 素材一并带上）。</summary>
     public const string ActionDuplicate = "action.duplicate";
 
+    /// <summary>执行一个动作 / 内置功能引用（宿主的磁贴点击转给提权进程真正执行）。</summary>
+    public const string RunAction = "run.action";
+
     // —— 提权进程 → 宿主（事件，这一轮先定义好，宿主侧接线时用）——
 
     /// <summary>显示面板（鼠标手势 / 快捷键在提权侧的钩子里触发）。负载：<see cref="PanelShowRequest"/>。</summary>
     public const string EventPanelShow = "panel.show";
+
+    /// <summary>切换面板显示 / 关闭（CapsLock+T 这类「开 / 关」入口）。</summary>
+    public const string EventPanelToggle = "panel.toggle";
 
     /// <summary>提权进程连上并握手完成（宿主收到后拉快照 / 重建界面）。</summary>
     public const string EventClientReady = "client.ready";
@@ -57,5 +63,12 @@ internal sealed record ActionIdRequest(string Id);
 /// <summary>
 /// 显示面板。窗口句柄是「按下右键时鼠标所在的顶层窗口」（会话上下文按它算），
 /// 用 <see cref="long"/> 而不是 <c>IntPtr</c>，跨 JSON 直接走整数。
+/// 光标坐标是唤起瞬间的屏幕物理像素（面板据此定位；0/0 表示让宿主自己取当前光标）。
 /// </summary>
-internal sealed record PanelShowRequest(long Hwnd);
+internal sealed record PanelShowRequest(long Hwnd, int X, int Y);
+
+/// <summary>
+/// 执行一个动作 / 内置功能。引用形如 <c>01abc…</c>（动作 Id）或 <c>common.capture</c>（内置功能）。
+/// <c>Source</c> 是 <c>RunSource</c> 的枚举名（宿主不直接引用它，字符串最省事）。
+/// </summary>
+internal sealed record RunActionRequest(string Reference, int X, int Y, string Source);

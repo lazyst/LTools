@@ -450,6 +450,7 @@ public partial class SuperPanelWindow
     /// <summary>分组名原地改名：临时插一个输入框，Enter 保存、Esc 取消、失焦也保存。</summary>
     private void BeginRenameGroup(PanelGroupDto group, bool global)
     {
+        if (_preview) return;   // 只读预览不改分组名
         var host = global ? GlobalGroups : ContextGroups;
         var block = host.Children.OfType<StackPanel>()
             .FirstOrDefault(p => ReferenceEquals(p.Tag, group));

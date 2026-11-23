@@ -49,7 +49,7 @@ internal sealed class TrayMenu
     {
         Menu = new ContextMenu();
         Menu.Items.Add(NewItem("速记 (CapsLock+N)", () => QuickNote.Toggle()));
-        Menu.Items.Add(NewItem("动作面板 (CapsLock+T)", () => Features.SuperPanel.Toggle()));
+        Menu.Items.Add(NewItem("动作面板 (CapsLock+T)", () => Features.PanelLauncher.Toggle()));
         Menu.Items.Add(NewItem("设置 (CapsLock+\\)", () => ConfigHelper.Toggle()));
         Menu.Items.Add(NewItem("辅助工具…", () => Views.InfoHelperWindow.Toggle()));
         Menu.Items.Add(NewItem("局域网共享…", () => LTools.Core.Share.ShareHelper.Open()));

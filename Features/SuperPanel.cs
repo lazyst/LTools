@@ -146,7 +146,7 @@ internal static class SuperPanel
     /// <summary>
     /// 在光标处显示面板（键盘唤起：上下文按前台窗口解析）。
     /// </summary>
-    public static void Show() => Show(IntPtr.Zero);
+    public static void Show() => ShowCore(IntPtr.Zero, null, null);
 
     /// <summary>
     /// 显示面板并直接停在「暂存区」（设置页 / 动作管理里的入口用）。
@@ -174,7 +174,15 @@ internal static class SuperPanel
     /// 此刻前台可能还停在别的程序上。照 Quicker：先把这个窗口激活（面板关掉后焦点回到它），
     /// 上下文也按它解析。传 <see cref="IntPtr.Zero"/> 时用当前前台窗口（键盘唤起 / CapsLock+T）。
     /// </param>
-    public static void Show(IntPtr contextHwnd)
+    public static void Show(IntPtr contextHwnd) => ShowCore(contextHwnd, null, null);
+
+    /// <summary>
+    /// 在指定屏幕物理坐标处显示面板（宿主收到 <c>panel.show</c> 时用它，位置按唤起瞬间的光标，
+    /// 而不是宿主当前光标——用户可能已经挪开了）。
+    /// </summary>
+    public static void Show(IntPtr contextHwnd, int invokeX, int invokeY) => ShowCore(contextHwnd, invokeX, invokeY);
+
+    private static void ShowCore(IntPtr contextHwnd, int? invokeX, int? invokeY)
     {
         if (_window != null) return;
 
@@ -183,7 +191,8 @@ internal static class SuperPanel
         _openOnStash = false;
 
         // 唤起瞬间记录光标位置（windowPin.toggle 等内部命令依赖该坐标）
-        if (Win32.GetCursorPos(out var pt)) { _invokeX = pt.X; _invokeY = pt.Y; }
+        if (invokeX.HasValue && invokeY.HasValue) { _invokeX = invokeX.Value; _invokeY = invokeY.Value; }
+        else if (Win32.GetCursorPos(out var pt)) { _invokeX = pt.X; _invokeY = pt.Y; }
         else { _invokeX = 0; _invokeY = 0; }
 
         // 钩子回调里只取句柄（微秒级）；进程 / 标题 / 类名放到 UI 线程补全，

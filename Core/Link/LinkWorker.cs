@@ -51,6 +51,33 @@ internal static class LinkWorker
     public static Task NotifyAsync(string method, object? payload = null, CancellationToken cancellationToken = default) =>
         Volatile.Read(ref _client)?.NotifyAsync(method, payload, cancellationToken) ?? Task.CompletedTask;
 
+    /// <summary>
+    /// 把「显示面板」转给宿主（迁移开关打开、且宿主连着时）。返回 false = 调用方自己开面板。
+    /// 光标坐标由这里取，宿主拿到的就是唤起瞬间的位置。
+    /// </summary>
+    public static bool TryShowPanel(IntPtr contextHwnd)
+    {
+        if (Volatile.Read(ref _client) is not { IsOpen: true }) return false;
+
+        int x = 0, y = 0;
+        try
+        {
+            if (LTools.Native.Win32.GetCursorPos(out LTools.Native.Win32.Point pt)) { x = pt.X; y = pt.Y; }
+        }
+        catch { /* 取不到就让宿主自己定位 */ }
+
+        _ = NotifyAsync(LinkMethods.EventPanelShow, new PanelShowRequest(contextHwnd.ToInt64(), x, y));
+        return true;
+    }
+
+    /// <summary>把「开 / 关面板」转给宿主（返回 false = 调用方自己切换）。</summary>
+    public static bool TryTogglePanel()
+    {
+        if (Volatile.Read(ref _client) is not { IsOpen: true }) return false;
+        _ = NotifyAsync(LinkMethods.EventPanelToggle);
+        return true;
+    }
+
     /// <summary>停止重连并断开（幂等）。不等后台任务退出。</summary>
     public static void Stop()
     {

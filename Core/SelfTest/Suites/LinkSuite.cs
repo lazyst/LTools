@@ -164,8 +164,15 @@ internal static class LinkSuite
         Check.Equal("01abc", id?.Id, "定位动作：Id 原样");
 
         PanelShowRequest? show = RoundTrip(LinkMessage.Request(3, LinkMethods.EventPanelShow,
-            new PanelShowRequest(0x1_0000_0000L))).Read<PanelShowRequest>();
+            new PanelShowRequest(0x1_0000_0000L, 1280, 720))).Read<PanelShowRequest>();
         Check.Equal(0x1_0000_0000L, show?.Hwnd, "显示面板：64 位句柄不丢精度");
+        Check.Equal(1280, show?.X ?? -1, "显示面板：光标 X 原样");
+        Check.Equal(720, show?.Y ?? -1, "显示面板：光标 Y 原样");
+
+        RunActionRequest? run = RoundTrip(LinkMessage.Request(6, LinkMethods.RunAction,
+            new RunActionRequest("common.capture", 10, 20, "Panel"))).Read<RunActionRequest>();
+        Check.Equal("common.capture", run?.Reference, "转交执行：引用原样");
+        Check.Equal("Panel", run?.Source, "转交执行：来源原样");
 
         // 快照：整份面板配置 + 动作摘要都要原样回来。
         var panel = new PanelConfig

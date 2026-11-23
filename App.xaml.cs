@@ -183,7 +183,8 @@ public partial class App : Application
         // 共享窗口单独跑在 asInvoker 的 ShareHost.exe 里——主程序提权后收不到 Explorer 的拖放。
         _ = Task.Run(() =>
         {
-            if (ConfigBundle.ReadSettings(cfgPath).Share.Running) ShareHelper.Start();
+            // 迁移期：面板交给普通权限宿主时，宿主必须随主程序常驻（它同时是共享助手）。
+            if (PanelRouting.Enabled || ConfigBundle.ReadSettings(cfgPath).Share.Running) ShareHelper.Start();
         });
         // 录屏写的是分片 MP4：进程被杀 / 断电时已经落下的分片还能播，
         // 启动时把它们重新封装、收进采集历史（重活，后台跑，别拖住启动）。

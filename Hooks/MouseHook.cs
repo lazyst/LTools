@@ -396,7 +396,7 @@ internal static class MouseHook
             _suppressRButtonUp = true;
             IntPtr context = _superPanelContextHwnd;
             _superPanelContextHwnd = IntPtr.Zero;
-            Ui.Post(() => SuperPanel.Show(context));
+            Ui.Post(() => PanelLauncher.Show(context));
         });
     }
 

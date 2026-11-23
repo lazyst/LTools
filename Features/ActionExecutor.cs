@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LTools.Core;
 using LTools.Core.Actions;
+using LTools.Core.Link;
 using LTools.Features.Builtin;
 
 namespace LTools.Features;
@@ -36,6 +37,10 @@ internal static class ActionExecutor
         RunSource source = RunSource.Manual)
     {
         if (string.IsNullOrWhiteSpace(reference)) return false;
+
+        // 普通权限宿主里不执行：面板搬过去之后，磁贴点击一律转给提权进程（见 PanelHostBridge）。
+        if (PanelHostBridge.TryForwardRun(reference, cursorX, cursorY, source)) return true;
+
         if (FeatureRunner.TryRun(reference, cursorX, cursorY)) return true;
 
         var action = ActionRegistry.FindById(reference);
