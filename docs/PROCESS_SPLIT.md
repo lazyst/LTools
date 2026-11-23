@@ -486,4 +486,26 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - **默认开关仍关**：`LTOOLS_PANEL_HOST=1` 才走宿主；下一步把「悬浮 / 宏 / 暂存区编辑」接完，
   再把默认值翻过来。
 
+**2026-11-24 · P1b-8 菜单不再裁剪：悬浮 / 宏 / 暂存区编辑也走 panel.op**
+
+- `panel.op` 补齐最后五类：`float`（`Id`）/ `floatGroup`（`GroupId`）/ `replayMacro`（`Id`）/
+  `recordMacro`（`Id` 为空 = 新录，带 `Id` + `Name` = 重新录制到那个宏）/ `editInStash`（`Id`）。
+  它们都要钩子、键鼠注入、悬浮窗或 `staging/` 写入，**只在提权进程里做**；宿主侧 `PanelHostBridge.TryActionOp`
+  转过去并当已处理。三个菜单入口（试放 / 重录 / 在暂存区编辑）在预览里**先收起宿主的面板**再转发——
+  录制期间钩子透明，留着面板会把面板上的点击录进去（与本地那条一致）。
+- **悬浮状态进快照**：`PanelSnapshot` 多一个 `Floating`（正在悬浮的动作引用），
+  `PanelHostBridge.SetFloating` / `IsFloating` 在宿主里存一份；菜单标签照它显示「悬浮此动作 / 取消悬浮」
+  （宿主里没有悬浮库，`FloatingLibrary.Items` 是空的）。
+- **快照必须先于面板重建拉**：右键菜单是**重建面板时**一并建好的（不是每次右键现建），
+  先 `SuperPanel.Refresh()` 再拉快照会让菜单一直停在旧标签。`ReloadAndRefreshAsync` 现在的顺序是
+  「重读配置 → 拉快照（灌悬浮状态）→ 刷新面板」。
+- 真机实测（宿主里真右键 + 真点击，跑的是主程序里的 `FloatingManager`）：
+  点「悬浮此动作」→ 提权进程真的建出悬浮按钮、宿主收到 `actions.changed` 后菜单变成「取消悬浮」；
+  再点「取消悬浮」→ 快照回到 0 个悬浮、标签回到「悬浮此动作」。
+- 回归：`--selftest` 393 用例 / 18583 断言（新增面板操作名唯一、快照悬浮引用往返）；
+  `LinkSmoke` 53 条（新增五个操作转交 + 悬浮状态缓存 + 快照带悬浮引用）；`PanelHostSmoke` 11；
+  `ShareSmoke -- --explorer --helper` 103。
+- **默认开关仍关**：`LTOOLS_PANEL_HOST=1` 才走宿主。下一步：把暂存区页 / `Ctrl+V` 之外的其余入口扫一遍，
+  然后翻默认值、删开关。
+
 

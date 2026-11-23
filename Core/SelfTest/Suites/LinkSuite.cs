@@ -155,6 +155,16 @@ internal static class LinkSuite
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
 
+        // 面板操作名也互不相同（提权侧 switch 按字符串分发，重名会让一个操作永远到不了）。
+        var ops = new[]
+        {
+            PanelOps.AddNew, PanelOps.AddExisting, PanelOps.Edit, PanelOps.Delete, PanelOps.Paste,
+            PanelOps.Export, PanelOps.ToSubAction, PanelOps.DropPaths, PanelOps.Float,
+            PanelOps.FloatGroup, PanelOps.ReplayMacro, PanelOps.RecordMacro, PanelOps.EditInStash,
+        };
+        Check.Equal(ops.Length, new HashSet<string>(ops, StringComparer.Ordinal).Count, "面板操作名互不相同");
+        Check.True(ops.All(o => o.Length > 0), "面板操作名都不为空");
+
         // 新建 / 定位 / 显示面板的负载往返。
         ActionAddRequest? add = RoundTrip(LinkMessage.Request(1, LinkMethods.ActionAdd,
             new ActionAddRequest("季度报告", "app"))).Read<ActionAddRequest>();
@@ -196,6 +206,12 @@ internal static class LinkSuite
         Check.Equal(2, drop?.Paths?.Length ?? -1, "面板操作：路径列表原样");
         Check.Equal(@"C:\b", drop?.Paths is { Length: 2 } p ? p[1] : null, "面板操作：路径内容原样");
 
+        ActionOpRequest? macro = RoundTrip(LinkMessage.Request(10, LinkMethods.ActionOp,
+            new ActionOpRequest(PanelOps.RecordMacro, Id: "m1", Name: "报表宏"))).Read<ActionOpRequest>();
+        Check.Equal(PanelOps.RecordMacro, macro?.Op, "面板操作：录制宏原样");
+        Check.Equal("m1", macro?.Id, "面板操作：宏 Id 原样");
+        Check.Equal("报表宏", macro?.Name, "面板操作：宏名原样");
+
         // 快照：整份面板配置 + 动作摘要都要原样回来。
         var panel = new PanelConfig
         {
@@ -216,7 +232,8 @@ internal static class LinkSuite
         };
 
         PanelSnapshot? snapshot = RoundTrip(LinkMessage.Request(4, LinkMethods.PanelSnapshot,
-            new PanelSnapshot(panel, new List<ActionSummary> { new("a1", "报表", "app", 3) }))).Read<PanelSnapshot>();
+            new PanelSnapshot(panel, new List<ActionSummary> { new("a1", "报表", "app", 3) },
+                new List<string> { "a1" }))).Read<PanelSnapshot>();
 
         Check.Equal(1, snapshot?.Panel.Global.Scenes.Count ?? -1, "快照：场景数");
         Check.Equal("常用", snapshot?.Panel.Global.Scenes[0].Groups[0].Name, "快照：分组名");
@@ -224,11 +241,12 @@ internal static class LinkSuite
         Check.Equal("game.exe", snapshot?.Panel.Blocked[0], "快照：禁止弹出名单");
         Check.Equal(3, snapshot?.Actions[0].Steps ?? -1, "快照：动作步数");
         Check.Equal("报表", snapshot?.Actions[0].Name, "快照：动作名");
+        Check.Equal("a1", snapshot?.Floating.FirstOrDefault(), "快照：正在悬浮的引用");
 
         // 未知命令：失败答复（不抛异常、不碰数据）。
         LinkMessage unknown = PanelHost.Handle(LinkMessage.Request(5, "panel.nope"));
         Check.False(unknown.Ok, "未知命令回失败答复");
-        Check.True((unknown.Error ?? "").Contains("未知命令"), unknown.Error);
+        Check.True((unknown.Error ?? "").Contains("未知命令"), unknown.Error ?? "");
     }
 
     // ============ 小工具 ============

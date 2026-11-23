@@ -5,6 +5,7 @@ using LTools.Config;
 using LTools.Core;
 using LTools.Core.Link;
 using LTools.Features;
+using LTools.Features.Floating;
 using LTools.Features.Panel;
 
 namespace LinkSmoke;
@@ -145,6 +146,7 @@ internal static class Program
         var opened = new TaskCompletionSource<OpenWindowRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var operated = new TaskCompletionSource<ActionOpRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var pushed = new TaskCompletionSource<PanelConfig>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var opsSeen = new ConcurrentQueue<ActionOpRequest>();
 
         var server = new LinkServer(pipe, "fwd-token",
             static (_, request) => Task.FromResult(LinkMessage.Response(request, error: "宿主不支持该请求")));
@@ -161,7 +163,10 @@ internal static class Program
                     if (request.Method == LinkMethods.OpenWindow && request.Read<OpenWindowRequest>() is { } open)
                         opened.TrySetResult(open);
                     if (request.Method == LinkMethods.ActionOp && request.Read<ActionOpRequest>() is { } op)
+                    {
+                        opsSeen.Enqueue(op);
                         operated.TrySetResult(op);
+                    }
                     if (request.Method == LinkMethods.PanelReplace && request.Read<PanelConfig>() is { } panel)
                         pushed.TrySetResult(panel);
                     return Task.FromResult(LinkMessage.Response(request));
@@ -198,6 +203,38 @@ internal static class Program
                 && operated.Task.Result.Op == PanelOps.AddNew
                 && operated.Task.Result.GroupId == "g1",
                 operated.Task.IsCompletedSuccessfully ? operated.Task.Result.ToString() : "");
+
+            // ---- 悬浮 / 宏 / 暂存区：宿主里也统一走 panel.op（不在宿主里碰钩子 / 悬浮窗 / staging）----
+            Check("悬浮被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.Float, Id: "01nothing")));
+            Check("悬浮整组被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.FloatGroup, GroupId: "g1")));
+            Check("试放宏被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.ReplayMacro, Id: "m1")));
+            Check("录制宏被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.RecordMacro, Id: "m1", Name: "报表宏")));
+            Check("在暂存区编辑被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.EditInStash, Id: "01nothing")));
+
+            // 五项都真的到了对端（顺序不保证，按操作名收）。
+            var seen = new List<string>();
+            for (int i = 0; i < 40 && seen.Count < 5; i++)
+            {
+                await Task.Delay(50);
+                seen = opsSeen.Select(o => o.Op).Where(o => o != PanelOps.AddNew).ToList();
+            }
+
+            Check("五个操作全部到达提权进程",
+                seen.OrderBy(s => s, StringComparer.Ordinal).SequenceEqual(
+                    new[]
+                    {
+                        PanelOps.Float, PanelOps.FloatGroup, PanelOps.ReplayMacro,
+                        PanelOps.RecordMacro, PanelOps.EditInStash,
+                    }.OrderBy(s => s, StringComparer.Ordinal)),
+                string.Join(",", seen));
+            Check("宏 Id / 名字原样",
+                opsSeen.Any(o => o.Op == PanelOps.RecordMacro && o.Id == "m1" && o.Name == "报表宏"));
+
+            // ---- 悬浮状态：宿主从快照灌进来（菜单标签据此显示「取消悬浮」）----
+            PanelHostBridge.SetFloating(new[] { "01nothing" });
+            Check("宿主记住悬浮引用", PanelHostBridge.IsFloating("01nothing") && !PanelHostBridge.IsFloating("other"));
+            PanelHostBridge.SetFloating(null);
+            Check("悬浮引用可清空", !PanelHostBridge.IsFloating("01nothing"));
 
             // ---- 面板结构保存：宿主 Save 变成整份替换 ----
             Check("面板结构保存被接管", PanelHostBridge.TryPushPanel(new PanelConfig()));
@@ -266,6 +303,22 @@ internal static class Program
             Check("快照带动作", snap?.Actions.Any(a => a.Id == original.Id && a.Name == "面板冒烟动作") == true,
                 string.Join(",", snap?.Actions.Select(a => a.Name) ?? new List<string>()));
             Check("快照带分组", snap?.Panel.Global.Scenes.FirstOrDefault()?.Groups.FirstOrDefault()?.Name == "常用");
+
+            // ---- 快照带「正在悬浮的引用」（宿主菜单的「悬浮 / 取消悬浮」靠它）----
+            FloatingLibrary.Items.Add(new FloatingItemDto
+            {
+                Id = "f1",
+                Members = { new FloatingMemberDto { ActionId = original.Id } },
+            });
+            try
+            {
+                LinkMessage floatSnap = await server.RequestAsync(LinkMethods.PanelSnapshot, timeoutMs: 2000);
+                Check("快照带悬浮引用", floatSnap.Read<PanelSnapshot>()?.Floating.Contains(original.Id) == true);
+            }
+            finally
+            {
+                FloatingLibrary.Items.Clear();
+            }
 
             // ---- 整份替换（宿主改分组名）----
             PanelConfig edited = snap!.Panel;

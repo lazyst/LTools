@@ -178,13 +178,13 @@ public partial class App : Application
     {
         try
         {
-            await Dispatcher.InvokeAsync(() =>
-            {
-                try { ConfigStore.InitializeReadOnly(ConfigLocator.FindPath()); }
-                catch (Exception ex) { AppLog.Warn("ShareHost", $"刷新配置失败：{ex.Message}"); }
+            try { ConfigStore.InitializeReadOnly(ConfigLocator.FindPath()); }
+            catch (Exception ex) { AppLog.Warn("ShareHost", $"刷新配置失败：{ex.Message}"); }
 
-                Features.SuperPanel.Refresh();
-            });
+            // 快照要先拉：悬浮状态在它里面，而右键菜单是**重建面板时**一并建好的（后拉就晚了一拍）。
+            await PullSnapshotAsync();
+
+            await Dispatcher.InvokeAsync(() => Features.SuperPanel.Refresh());
         }
         catch (Exception ex)
         {
@@ -206,8 +206,10 @@ public partial class App : Application
             if (reply.Ok && reply.Read<PanelSnapshot>() is { } snapshot)
             {
                 Volatile.Write(ref _snapshot, snapshot);
+                PanelHostBridge.SetFloating(snapshot.Floating);
                 AppLog.Info("ShareHost",
-                    $"面板快照：{snapshot.Actions.Count} 个动作、{snapshot.Panel.Global.Scenes.Count} 个全局场景");
+                    $"面板快照：{snapshot.Actions.Count} 个动作、{snapshot.Panel.Global.Scenes.Count} 个全局场景、" +
+                    $"{snapshot.Floating.Count} 个悬浮（{string.Join(",", snapshot.Floating)}）");
             }
             else
             {

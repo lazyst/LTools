@@ -37,8 +37,7 @@ public partial class SuperPanelWindow
         var menu = new ContextMenu();
         // 宏动作（单步「回放宏」）：磁贴就是宏，右键直接试放 / 重录，不必进编辑器。
         var action = ActionRegistry.FindById(id);
-        // 只读预览（宿主）：宏录制 / 试放要走钩子与注入，都在提权进程，先不显示。
-        if (!_preview && MacroAction.MacroIdOf(action) is { } macroId)
+        if (MacroAction.MacroIdOf(action) is { } macroId)
         {
             AddMenuItem(menu, "▶ 试放宏", () => PlayMacro(macroId));
             AddMenuItem(menu, "● 重新录制…", () => RerecordMacro(macroId, action?.Name));
@@ -51,8 +50,7 @@ public partial class SuperPanelWindow
         AddMenuItem(menu, "复制为副本", () => PanelActionOps.CopyCopy(id));
         PanelPasteMenu.Append(menu, tref.Group, PasteIntoGroup, tref.Index + 1);
         // 照 Quicker「以暂存区方式编辑」：正式动作只读，先复制一份到暂存区再改
-        // （草稿在 staging/，只读预览里由主程序做）。
-        if (!_preview) AddMenuItem(menu, "在暂存区编辑…", () => EditInStash(id));
+        AddMenuItem(menu, "在暂存区编辑…", () => EditInStash(id));
         AddMenuItem(menu, "导出动作…", () => ExportAction(tref));
         AddMenuItem(menu, "另存为子动作…", () => ToSubAction(tref));
         menu.Items.Add(new Separator());
@@ -60,15 +58,11 @@ public partial class SuperPanelWindow
         AddMenuItem(menu, "复制名称", () => ClipboardCopy.Text(action?.Name ?? id, "SuperPanel.CopyName"));
         AddMenuItem(menu, "复制 Id", () => ClipboardCopy.Text(id, "SuperPanel.CopyId"));
         menu.Items.Add(new Separator());
-        // 悬浮窗是提权进程里的窗口（宿主里没有悬浮库），预览里不显示这一项。
-        if (!_preview)
-        {
-            bool floating = FloatingLibrary.IsFloating(id);
-            string label = !floating ? "悬浮此动作"
-                : FloatingManager.IsOnDesktop(id) ? "取消悬浮" : "显示悬浮";
-            AddMenuItem(menu, label, () => ToggleFloat(id));
-            menu.Items.Add(new Separator());
-        }
+        bool floating = IsFloating(id);
+        string label = !floating ? "悬浮此动作"
+            : _preview || FloatingManager.IsOnDesktop(id) ? "取消悬浮" : "显示悬浮";
+        AddMenuItem(menu, label, () => ToggleFloat(id));
+        menu.Items.Add(new Separator());
         AddMenuItem(menu, "从此组移除", () => RemoveFromGroup(tref));
         AddMenuItem(menu, "删除动作…", () => DeleteAction(tref.ActionId!));
         return menu;
@@ -99,12 +93,11 @@ public partial class SuperPanelWindow
         PanelPasteMenu.Append(menu, tref.Group, PasteIntoGroup, tref.Index + 1);
         menu.Items.Add(new Separator());
 
-        // 悬浮窗是提权进程里的窗口（宿主里没有悬浮库），预览里不显示这一项。
-        if (!_preview)
+        // 悬浮窗是提权进程里的窗口：宿主里改成 panel.op，状态从快照里那一份读。
         {
-            bool floating = FloatingLibrary.IsFloating(id);
+            bool floating = IsFloating(id);
             string label = !floating ? "悬浮此功能"
-                : FloatingManager.IsOnDesktop(id) ? "取消悬浮" : "显示悬浮";
+                : _preview || FloatingManager.IsOnDesktop(id) ? "取消悬浮" : "显示悬浮";
             AddMenuItem(menu, label, () => ToggleFloat(id));
             menu.Items.Add(new Separator());
         }
@@ -139,7 +132,24 @@ public partial class SuperPanelWindow
     /// 悬浮 / 取消悬浮一个动作。悬浮项**全局常驻**（不绑进程），所以这里不需要知道前台程序。
     /// **面板不关**（照 Quicker）：可以接着悬浮下一个动作，不用重新唤面板。
     /// </summary>
-    private void ToggleFloat(string actionId) => FloatingManager.ToggleAction(actionId);
+    private void ToggleFloat(string actionId)
+    {
+        // 悬浮窗在提权进程：宿主里转过去（提权侧 ToggleAction 自己处理「新建 / 显示 / 取消」）。
+        if (_preview)
+        {
+            if (PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.Float, Id: actionId)))
+            {
+                ToastService.Show("已交给主程序切换悬浮", "面板", 2000, ToastKind.success, key: "panel:float");
+                return;
+            }
+        }
+
+        FloatingManager.ToggleAction(actionId);
+    }
+
+    /// <summary>这个动作现在有没有悬浮项（宿主里从快照读，提权进程读悬浮库）。</summary>
+    private bool IsFloating(string actionId) =>
+        _preview ? PanelHostBridge.IsFloating(actionId) : FloatingLibrary.IsFloating(actionId);
 
     // ============ 键鼠宏（磁贴 / 分组菜单） ============
 
@@ -149,13 +159,27 @@ public partial class SuperPanelWindow
     /// </summary>
     private void RecordMacro()
     {
+        // 录制要钩子 + 注入，只在提权进程里；面板本身要收起（录制期间钩子透明，面板上的点击也会被录进去）。
         Features.SuperPanel.Close();
+        if (_preview)
+        {
+            PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.RecordMacro));
+            return;
+        }
+
         MacroRecorder.Start();
     }
 
     /// <summary>试放一个宏：面板先收起，回放放后台线程（失败只提示，不抛到 UI）。</summary>
     private void PlayMacro(string macroId)
     {
+        Features.SuperPanel.Close();
+        if (_preview)
+        {
+            PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.ReplayMacro, Id: macroId));
+            return;
+        }
+
         var macro = MacroStore.Load(macroId);
         if (macro == null)
         {
@@ -163,8 +187,6 @@ public partial class SuperPanelWindow
                 ToastService.LongMs, ToastKind.error, key: "macro:play:hint");
             return;
         }
-
-        Features.SuperPanel.Close();
         Task.Run(() =>
         {
             try
@@ -184,11 +206,29 @@ public partial class SuperPanelWindow
     private void RerecordMacro(string macroId, string? name)
     {
         Features.SuperPanel.Close();
+        if (_preview)
+        {
+            PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.RecordMacro, Id: macroId, Name: name));
+            return;
+        }
+
         MacroRecorder.StartInto(macroId, name);
     }
 
     /// <summary>「悬浮此分组」：把整组动作一起放上桌面（面板同样不关）。</summary>
-    private void FloatGroupToDesktop(PanelGroupDto group) => FloatingManager.FloatGroup(group);
+    private void FloatGroupToDesktop(PanelGroupDto group)
+    {
+        if (_preview)
+        {
+            if (PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.FloatGroup, GroupId: group.Id)))
+            {
+                ToastService.Show("已交给主程序悬浮这个分组", "面板", 2000, ToastKind.success, key: "panel:float");
+                return;
+            }
+        }
+
+        FloatingManager.FloatGroup(group);
+    }
 
     private ContextMenu BuildMissingMenu(PanelTileRef tref)
     {
@@ -202,7 +242,7 @@ public partial class SuperPanelWindow
         var menu = new ContextMenu();
         AddMenuItem(menu, "新建动作…", () => NewActionFor(group));
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
-        if (!_preview) AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
+        AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
         menu.Items.Add(new Separator());
         AddFeatureMenus(menu, group);
         TrackInteract(menu);
@@ -257,13 +297,13 @@ public partial class SuperPanelWindow
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
         AddMenuItem(menu, "从文件创建动作…", () => AddFilesFor(group));
         AddMenuItem(menu, "从文件夹创建动作…", () => AddFolderFor(group));
-        if (!_preview) AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
+        AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
         PanelPasteMenu.Append(menu, group, PasteIntoGroup);
         menu.Items.Add(new Separator());
         AddFeatureMenus(menu, group);
         menu.Items.Add(new Separator());
-        if (!_preview) AddFloatGroupItem(menu, group);
-        if (!_preview) menu.Items.Add(new Separator());
+        AddFloatGroupItem(menu, group);
+        menu.Items.Add(new Separator());
         AddMenuItem(menu, "重命名分组…", () => BeginRenameGroup(group, global));
         AddMenuItem(menu, "删除分组…", () => DeleteGroupFromPanel(group, global));
         menu.Items.Add(new Separator());
@@ -306,7 +346,8 @@ public partial class SuperPanelWindow
 
         if (group != null)
         {
-            if (!_preview) { AddFloatGroupItem(menu, group); menu.Items.Add(new Separator()); }
+            AddFloatGroupItem(menu, group);
+            menu.Items.Add(new Separator());
             AddMenuItem(menu, "重命名分组…", () => BeginRenameGroup(group, global));
             AddMenuItem(menu, "删除分组…", () => DeleteGroupFromPanel(group, global));
             menu.Items.Add(new Separator());
@@ -699,6 +740,14 @@ public partial class SuperPanelWindow
     /// </summary>
     private void EditInStash(string actionId)
     {
+        // 草稿写 staging/、暂存区也在主程序里：转过去做（面板先收起，跟本地那条一致）。
+        Features.SuperPanel.Close();
+        if (_preview)
+        {
+            PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.EditInStash, Id: actionId));
+            return;
+        }
+
         var action = ActionRegistry.FindById(actionId);
         if (action == null) return;
 

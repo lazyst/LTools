@@ -174,4 +174,18 @@ internal static class PanelHostBridge
             AppLog.Warn("Link", $"面板操作失败（{op.Op}）：{ex.Message}");
         }
     }
+
+    // —— 悬浮状态（宿主里没有悬浮库，菜单标签靠快照里那一份） ——
+
+    private static HashSet<string> _floating = new(StringComparer.Ordinal);
+
+    /// <summary>记下「哪些动作正在悬浮」（宿主拿到 <c>panel.snapshot</c> 时灌进来）。</summary>
+    public static void SetFloating(IEnumerable<string>? ids) =>
+        Volatile.Write(ref _floating, ids == null
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : new HashSet<string>(ids, StringComparer.Ordinal));
+
+    /// <summary>这个动作在提权进程里有没有悬浮项（菜单据此显示「悬浮 / 取消悬浮」）。</summary>
+    public static bool IsFloating(string? actionId) =>
+        !string.IsNullOrEmpty(actionId) && Volatile.Read(ref _floating).Contains(actionId);
 }

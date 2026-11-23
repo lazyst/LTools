@@ -57,8 +57,8 @@ internal static class LinkMethods
 /// <summary>宿主要在网格里画的一个磁贴（只带画磁贴需要的字段）。</summary>
 internal sealed record ActionSummary(string Id, string Name, string Icon, int Steps);
 
-/// <summary>面板快照：整份配置 + 动作摘要表（宿主据此重建界面）。</summary>
-internal sealed record PanelSnapshot(PanelConfig Panel, List<ActionSummary> Actions);
+/// <summary>面板快照：整份配置 + 动作摘要表 + 正在悬浮的动作引用（宿主据此重建界面与菜单标签）。</summary>
+internal sealed record PanelSnapshot(PanelConfig Panel, List<ActionSummary> Actions, List<string> Floating);
 
 /// <summary>新建动作：名称必填，图标可空（空则由服务端补默认）。</summary>
 internal sealed record ActionAddRequest(string Name, string? Icon);
@@ -108,6 +108,21 @@ internal static class PanelOps
 
     /// <summary>从文件 / 文件夹创建动作（宿主把路径列表转过去，主程序建动作再落盘）。</summary>
     public const string DropPaths = "dropPaths";
+
+    /// <summary>悬浮 / 取消悬浮一个动作（悬浮窗在提权进程）。</summary>
+    public const string Float = "float";
+
+    /// <summary>整组悬浮到桌面。</summary>
+    public const string FloatGroup = "floatGroup";
+
+    /// <summary>试放一个宏。</summary>
+    public const string ReplayMacro = "replayMacro";
+
+    /// <summary>开始录制宏（带 <see cref="ActionOpRequest.Id"/> = 重新录制到那个宏）。</summary>
+    public const string RecordMacro = "recordMacro";
+
+    /// <summary>把动作复制进暂存区（草稿写 staging/）并打开暂存区。</summary>
+    public const string EditInStash = "editInStash";
 }
 
 /// <summary>

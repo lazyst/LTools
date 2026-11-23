@@ -3,7 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using LTools.Config;
+using LTools.Core;
+using LTools.Core.Ai;
 using LTools.Features;
+using LTools.Features.Floating;
 using LTools.Features.Panel;
 
 namespace LTools.Core.Link;
@@ -105,9 +108,76 @@ internal static class PanelHost
                 }
                 break;
 
+            case PanelOps.Float:
+                if (!string.IsNullOrEmpty(op.Id)) FloatingManager.ToggleAction(op.Id);
+                break;
+
+            case PanelOps.FloatGroup:
+                if (PanelLibrary.FindGroup(op.GroupId) is { } floatGroup) FloatingManager.FloatGroup(floatGroup);
+                break;
+
+            case PanelOps.ReplayMacro:
+                if (!string.IsNullOrEmpty(op.Id)) ReplayMacro(op.Id);
+                break;
+
+            case PanelOps.RecordMacro:
+                if (!string.IsNullOrEmpty(op.Id)) MacroRecorder.StartInto(op.Id, op.Name);
+                else MacroRecorder.Start();
+                break;
+
+            case PanelOps.EditInStash:
+                if (!string.IsNullOrEmpty(op.Id)) EditInStash(op.Id);
+                break;
+
             default:
                 AppLog.Warn("Link", "未知的面板操作：" + op.Op);
                 break;
+        }
+    }
+
+    /// <summary>试放一个宏：与面板里那一项同一条路（面板先收起、后台回放、失败只提示）。</summary>
+    private static void ReplayMacro(string macroId)
+    {
+        MacroDto? macro = MacroStore.Load(macroId);
+        if (macro == null)
+        {
+            ToastService.Show("宏文件已不存在（通常随引用它的动作一起删除），请重新录制", "键鼠宏",
+                ToastService.LongMs, ToastKind.error, key: "macro:play:hint");
+            return;
+        }
+
+        SuperPanel.Close();
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                MacroPlayer.PlaySync(macro, MacroStore.PlaybackOf(macroId));
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("Macro", $"试放失败「{macro.Name}」", ex);
+                ToastService.Show("试放失败：" + ex.Message, "键鼠宏", ToastService.LongMs,
+                    ToastKind.error, key: "macro:play:hint");
+            }
+        });
+    }
+
+    /// <summary>把动作复制进暂存区并打开暂存区（草稿要写 <c>staging/</c>，只能在提权进程做）。</summary>
+    private static void EditInStash(string actionId)
+    {
+        ActionDto? action = ActionRegistry.FindById(actionId);
+        if (action == null) return;
+
+        SuperPanel.Close();
+        try
+        {
+            DraftStore.Create(action.Name, action.Program?.Description, actionId, "user");
+            SuperPanel.ShowStash();
+            ToastService.Show("已复制到暂存区；改完再决定是否覆盖原动作", action.Name, 3000, ToastKind.success);
+        }
+        catch (Exception ex)
+        {
+            ToastService.Show(ex.Message, "复制到暂存区失败", 4000, ToastKind.error);
         }
     }
 
@@ -141,6 +211,12 @@ internal static class PanelHost
         PanelLibrary.Current,
         ActionRegistry.All
             .Select(a => new ActionSummary(a.Id, a.Name, a.Icon ?? "", a.Program?.Steps.Count ?? 0))
+            .ToList(),
+        FloatingLibrary.Items
+            .SelectMany(item => item.Members)
+            .Select(member => member.ActionId)
+            .Where(id => !string.IsNullOrEmpty(id))
+            .Distinct(StringComparer.Ordinal)
             .ToList());
 
     // ============ 写 ============
