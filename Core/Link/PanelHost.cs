@@ -96,6 +96,15 @@ internal static class PanelHost
                 }
                 break;
 
+            case PanelOps.DropPaths:
+                if (PanelLibrary.FindGroup(op.GroupId) is { } dropGroup && op.Paths is { Length: > 0 } paths)
+                {
+                    var known = PanelDrop.ExistingPaths();
+                    PanelDrop.Result result = PanelDrop.Build(paths, known.Contains);
+                    PanelDrop.Insert(result.Actions, dropGroup, dropGroup.Actions.Count);
+                }
+                break;
+
             default:
                 AppLog.Warn("Link", "未知的面板操作：" + op.Op);
                 break;

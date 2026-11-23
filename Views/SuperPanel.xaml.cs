@@ -186,9 +186,6 @@ public partial class SuperPanelWindow : Window
     /// <summary>右键：没有自带菜单的地方（空白 / 分组标题 / 标题栏）弹出面板菜单。</summary>
     private void OnWindowContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        // 只读预览：所有右键菜单（新建 / 编辑 / 删除 / 分组 / 场景）都会写配置或开编辑器，一概不开。
-        if (_preview) { e.Handled = true; return; }
-
         var src = e.OriginalSource as DependencyObject;
         if (FindContextMenuOwner(src) != null) return;   // 磁贴 / 场景标签 / 分组导航条自己的菜单
         if (IsInteractive(src)) return;                  // 输入框 / 滚动条 / 分割条等，别抢原生行为

@@ -190,6 +190,12 @@ internal static class LinkSuite
         Check.Equal("01abc", op?.Reference, "面板操作：引用原样");
         Check.Equal("报表", op?.Name, "面板操作：名字原样");
 
+        ActionOpRequest? drop = RoundTrip(LinkMessage.Request(9, LinkMethods.ActionOp,
+            new ActionOpRequest(PanelOps.DropPaths, GroupId: "g1",
+                Paths: new[] { @"C:\a.txt", @"C:\b" }))).Read<ActionOpRequest>();
+        Check.Equal(2, drop?.Paths?.Length ?? -1, "面板操作：路径列表原样");
+        Check.Equal(@"C:\b", drop?.Paths is { Length: 2 } p ? p[1] : null, "面板操作：路径内容原样");
+
         // 快照：整份面板配置 + 动作摘要都要原样回来。
         var panel = new PanelConfig
         {

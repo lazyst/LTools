@@ -88,7 +88,7 @@ public partial class SuperPanelWindow
         if (_stashMode) return;
         // Ctrl+V：剪贴板里的文件 / 文件夹 → 动作。输入框里的粘贴不抢（那是普通文本粘贴）。
         if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) != 0
-            && e.OriginalSource is not TextBox && !_preview)
+            && e.OriginalSource is not TextBox)
         {
             if (PasteFilesFromClipboard()) e.Handled = true;
             return;

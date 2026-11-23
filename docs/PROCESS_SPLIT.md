@@ -466,4 +466,24 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`LinkSmoke` 43 条（新增 `panel.op` / `panel.replace` 转交）；`--selftest` 393 用例 / 18569 断言；
   `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
 
+**2026-11-24 · P1b-7 右键菜单放开（安全子集）**
+
+- `panel.op` 新增 `dropPaths`（`ActionOpRequest.Paths`）：宿主把「从文件 / 文件夹创建动作」与 `Ctrl+V`
+  的路径列表转给提权进程，`PanelDrop.Build` + `Insert` 在主程序里跑（它要写 `actions/`）。
+- 场景 / 设置入口收口到 `OpenScenePage(sceneId)`：预览里 `open.window panel.scene` 让主程序开设置，
+  不再在宿主里开。
+- **右键菜单在预览里放开**，但先裁掉落到错误进程的三类：宏「试放 / 重新录制」（要钩子与注入）、
+  「在暂存区编辑…」（写 `staging/`）、「悬浮 / 悬浮整组」（悬浮窗在提权进程）。
+  保留的可选项全部已接线：编辑 / 复制引用 / 复制为副本 / 粘贴 / 导出 / 另存为子动作 / 复制名称 / Id /
+  从此组移除 / 删除动作；分组与场景菜单（新建 / 重命名 / 删除 / 增删场景 / 从文件建动作）也全部通过
+  `panel.replace` / `panel.op` 落到主程序。
+- 分组改名、`Ctrl+V` 建动作重新可用（结构改动走 `panel.replace`、建动作走 `dropPaths`）。
+- 真机实测（探针 `panel.show` + 真右键点磁贴截图）：宿主里的菜单正常弹出，可见
+  「编辑… / 复制引用 / 复制为副本 / 导出动作… / 另存为子动作… / 复制名称 / 复制 Id / 从此组移除 / 删除动作…」，
+  宏与悬浮项按预期没有出现。
+- 回归：`--selftest` 393 用例 / 18574 断言；`LinkSmoke` 43；`PanelHostSmoke` 11；
+  `ShareSmoke -- --explorer --helper` 103。
+- **默认开关仍关**：`LTOOLS_PANEL_HOST=1` 才走宿主；下一步把「悬浮 / 宏 / 暂存区编辑」接完，
+  再把默认值翻过来。
+
 

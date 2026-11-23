@@ -12,6 +12,7 @@ using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Core.Ai;
+using LTools.Core.Link;
 using LTools.Features;
 using LTools.Features.Builtin;
 using LTools.Features.Floating;
@@ -36,7 +37,8 @@ public partial class SuperPanelWindow
         var menu = new ContextMenu();
         // 宏动作（单步「回放宏」）：磁贴就是宏，右键直接试放 / 重录，不必进编辑器。
         var action = ActionRegistry.FindById(id);
-        if (MacroAction.MacroIdOf(action) is { } macroId)
+        // 只读预览（宿主）：宏录制 / 试放要走钩子与注入，都在提权进程，先不显示。
+        if (!_preview && MacroAction.MacroIdOf(action) is { } macroId)
         {
             AddMenuItem(menu, "▶ 试放宏", () => PlayMacro(macroId));
             AddMenuItem(menu, "● 重新录制…", () => RerecordMacro(macroId, action?.Name));
@@ -49,7 +51,8 @@ public partial class SuperPanelWindow
         AddMenuItem(menu, "复制为副本", () => PanelActionOps.CopyCopy(id));
         PanelPasteMenu.Append(menu, tref.Group, PasteIntoGroup, tref.Index + 1);
         // 照 Quicker「以暂存区方式编辑」：正式动作只读，先复制一份到暂存区再改
-        AddMenuItem(menu, "在暂存区编辑…", () => EditInStash(id));
+        // （草稿在 staging/，只读预览里由主程序做）。
+        if (!_preview) AddMenuItem(menu, "在暂存区编辑…", () => EditInStash(id));
         AddMenuItem(menu, "导出动作…", () => ExportAction(tref));
         AddMenuItem(menu, "另存为子动作…", () => ToSubAction(tref));
         menu.Items.Add(new Separator());
@@ -57,11 +60,15 @@ public partial class SuperPanelWindow
         AddMenuItem(menu, "复制名称", () => ClipboardCopy.Text(action?.Name ?? id, "SuperPanel.CopyName"));
         AddMenuItem(menu, "复制 Id", () => ClipboardCopy.Text(id, "SuperPanel.CopyId"));
         menu.Items.Add(new Separator());
-        bool floating = FloatingLibrary.IsFloating(id);
-        string label = !floating ? "悬浮此动作"
-            : FloatingManager.IsOnDesktop(id) ? "取消悬浮" : "显示悬浮";
-        AddMenuItem(menu, label, () => ToggleFloat(id));
-        menu.Items.Add(new Separator());
+        // 悬浮窗是提权进程里的窗口（宿主里没有悬浮库），预览里不显示这一项。
+        if (!_preview)
+        {
+            bool floating = FloatingLibrary.IsFloating(id);
+            string label = !floating ? "悬浮此动作"
+                : FloatingManager.IsOnDesktop(id) ? "取消悬浮" : "显示悬浮";
+            AddMenuItem(menu, label, () => ToggleFloat(id));
+            menu.Items.Add(new Separator());
+        }
         AddMenuItem(menu, "从此组移除", () => RemoveFromGroup(tref));
         AddMenuItem(menu, "删除动作…", () => DeleteAction(tref.ActionId!));
         return menu;
@@ -92,11 +99,15 @@ public partial class SuperPanelWindow
         PanelPasteMenu.Append(menu, tref.Group, PasteIntoGroup, tref.Index + 1);
         menu.Items.Add(new Separator());
 
-        bool floating = FloatingLibrary.IsFloating(id);
-        string label = !floating ? "悬浮此功能"
-            : FloatingManager.IsOnDesktop(id) ? "取消悬浮" : "显示悬浮";
-        AddMenuItem(menu, label, () => ToggleFloat(id));
-        menu.Items.Add(new Separator());
+        // 悬浮窗是提权进程里的窗口（宿主里没有悬浮库），预览里不显示这一项。
+        if (!_preview)
+        {
+            bool floating = FloatingLibrary.IsFloating(id);
+            string label = !floating ? "悬浮此功能"
+                : FloatingManager.IsOnDesktop(id) ? "取消悬浮" : "显示悬浮";
+            AddMenuItem(menu, label, () => ToggleFloat(id));
+            menu.Items.Add(new Separator());
+        }
         AddMenuItem(menu, "从此组移除", () => RemoveFromGroup(tref));
         return menu;
     }
@@ -191,7 +202,7 @@ public partial class SuperPanelWindow
         var menu = new ContextMenu();
         AddMenuItem(menu, "新建动作…", () => NewActionFor(group));
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
-        AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
+        if (!_preview) AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
         menu.Items.Add(new Separator());
         AddFeatureMenus(menu, group);
         TrackInteract(menu);
@@ -246,13 +257,13 @@ public partial class SuperPanelWindow
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
         AddMenuItem(menu, "从文件创建动作…", () => AddFilesFor(group));
         AddMenuItem(menu, "从文件夹创建动作…", () => AddFolderFor(group));
-        AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
+        if (!_preview) AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
         PanelPasteMenu.Append(menu, group, PasteIntoGroup);
         menu.Items.Add(new Separator());
         AddFeatureMenus(menu, group);
         menu.Items.Add(new Separator());
-        AddFloatGroupItem(menu, group);
-        menu.Items.Add(new Separator());
+        if (!_preview) AddFloatGroupItem(menu, group);
+        if (!_preview) menu.Items.Add(new Separator());
         AddMenuItem(menu, "重命名分组…", () => BeginRenameGroup(group, global));
         AddMenuItem(menu, "删除分组…", () => DeleteGroupFromPanel(group, global));
         menu.Items.Add(new Separator());
@@ -295,8 +306,7 @@ public partial class SuperPanelWindow
 
         if (group != null)
         {
-            AddFloatGroupItem(menu, group);
-            menu.Items.Add(new Separator());
+            if (!_preview) { AddFloatGroupItem(menu, group); menu.Items.Add(new Separator()); }
             AddMenuItem(menu, "重命名分组…", () => BeginRenameGroup(group, global));
             AddMenuItem(menu, "删除分组…", () => DeleteGroupFromPanel(group, global));
             menu.Items.Add(new Separator());
@@ -331,22 +341,14 @@ public partial class SuperPanelWindow
         };
         pin.Click += (_, _) => Defer(() => SetPinned(!_pinned));
         menu.Items.Add(pin);
-        AddMenuItem(menu, "面板设置…", () =>
-        {
-            Features.SuperPanel.Close();
-            ConfigHelper.OpenPanelScene(PanelLibrary.ActiveGlobalScene()?.Id);
-        });
+        AddMenuItem(menu, "面板设置…", () => OpenScenePage(PanelLibrary.ActiveGlobalScene()?.Id));
         AddMenuItem(menu, "关闭面板", () => Features.SuperPanel.Close());
     }
 
     private ContextMenu BuildGlobalSceneMenu(PanelSceneDto scene)
     {
         var menu = NewTrackedMenu();
-        AddMenuItem(menu, "编辑场景…", () =>
-        {
-            Features.SuperPanel.Close();
-            ConfigHelper.OpenPanelScene(scene.Id);
-        });
+        AddMenuItem(menu, "编辑场景…", () => OpenScenePage(scene.Id));
         AddMenuItem(menu, "新建全局场景", NewGlobalSceneFromPanel);
         menu.Items.Add(new Separator());
         AddMenuItem(menu, "删除场景…", () => DeleteSceneFromPanel(scene));
@@ -358,20 +360,12 @@ public partial class SuperPanelWindow
         var menu = NewTrackedMenu();
         if (scene == null)
         {
-            AddMenuItem(menu, "编辑通用分组…", () =>
-            {
-                Features.SuperPanel.Close();
-                ConfigHelper.OpenPanelScene(PanelManageView.CommonKey);
-            });
+            AddMenuItem(menu, "编辑通用分组…", () => OpenScenePage(PanelManageView.CommonKey));
             AddMenuItem(menu, "新建上下文场景", NewContextSceneFromPanel);
             return menu;
         }
 
-        AddMenuItem(menu, "编辑场景…", () =>
-        {
-            Features.SuperPanel.Close();
-            ConfigHelper.OpenPanelScene(scene.Id);
-        });
+        AddMenuItem(menu, "编辑场景…", () => OpenScenePage(scene.Id));
         AddMenuItem(menu, "新建上下文场景", NewContextSceneFromPanel);
         menu.Items.Add(new Separator());
         AddMenuItem(menu, "改为显示通用", () =>
@@ -441,16 +435,29 @@ public partial class SuperPanelWindow
     /// <summary>去设置里管理：优先定位到分组所属场景；通用 / 找不到场景时定位到「通用」。</summary>
     private void OpenSceneSettings(PanelGroupDto? group, bool global)
     {
-        Features.SuperPanel.Close();
         var scene = group != null ? SceneOfGroup(group)
             : global ? PanelLibrary.ActiveGlobalScene() : GetContextScene();
-        ConfigHelper.OpenPanelScene(scene?.Id ?? PanelManageView.CommonKey);
+        OpenScenePage(scene?.Id ?? PanelManageView.CommonKey);
+    }
+
+    /// <summary>
+    /// 打开「面板管理 → 场景」。只读预览（宿主）里设置窗口在提权进程，转给主程序开。
+    /// </summary>
+    private void OpenScenePage(string? sceneId)
+    {
+        Features.SuperPanel.Close();
+        if (_preview)
+        {
+            PanelHostBridge.TryOpen(LinkTargets.PanelScene, sceneId);
+            return;
+        }
+
+        ConfigHelper.OpenPanelScene(sceneId);
     }
 
     /// <summary>分组名原地改名：临时插一个输入框，Enter 保存、Esc 取消、失焦也保存。</summary>
     private void BeginRenameGroup(PanelGroupDto group, bool global)
     {
-        if (_preview) return;   // 只读预览不改分组名
         var host = global ? GlobalGroups : ContextGroups;
         var block = host.Children.OfType<StackPanel>()
             .FirstOrDefault(p => ReferenceEquals(p.Tag, group));

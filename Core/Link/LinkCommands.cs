@@ -105,11 +105,15 @@ internal static class PanelOps
     public const string Paste = "paste";
     public const string Export = "export";
     public const string ToSubAction = "toSubAction";
+
+    /// <summary>从文件 / 文件夹创建动作（宿主把路径列表转过去，主程序建动作再落盘）。</summary>
+    public const string DropPaths = "dropPaths";
 }
 
 /// <summary>
 /// 一次面板动作操作。字段按操作取用：新建 / 添加已有要 <see cref="GroupId"/>；
-/// 编辑 / 删除 / 导出 / 另存为子动作要 <see cref="Id"/>；粘贴要 <see cref="Kind"/> + <see cref="Reference"/>。
+/// 编辑 / 删除 / 导出 / 另存为子动作要 <see cref="Id"/>；粘贴要 <see cref="Kind"/> + <see cref="Reference"/>；
+/// 从文件建动作要 <see cref="GroupId"/> + <see cref="Paths"/>。
 /// </summary>
 internal sealed record ActionOpRequest(
     string Op,
@@ -117,4 +121,5 @@ internal sealed record ActionOpRequest(
     string? GroupId = null,
     string? Kind = null,
     string? Reference = null,
-    string? Name = null);
+    string? Name = null,
+    string[]? Paths = null);
