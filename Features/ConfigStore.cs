@@ -32,6 +32,31 @@ internal static class ConfigStore
     /// </remarks>
     internal static void UsePathOnly(string configPath) => ConfigPath = configPath;
 
+    /// <summary>
+    /// 只读初始化（普通权限宿主用）：加载动作库 / 面板 / 快捷键 / 宏元数据，**不修引用、不播种快捷键、
+    /// 不清 trash、不写任何文件**；之后的 <see cref="Save"/> 会被拒绝（写入归主程序）。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="UsePathOnly"/> 的区别：那个只记路径（共享助手只需要 settings 域）；
+    /// 这个要真把面板 / 动作 / 快捷键读进内存（宿主显示面板要用），但仍然一个字都不写。
+    /// 见 <c>docs/PROCESS_SPLIT.md</c> §7 的「一个文件一个写者」。
+    /// </remarks>
+    internal static void InitializeReadOnly(string configPath)
+    {
+        ConfigPath = configPath;
+        ActionStore.Anchor = configPath;
+
+        AppConfig cfg = AppConfig.Load(configPath);
+        ActionLibrary.LoadFrom(cfg);
+        HotkeyRegistry.Load(cfg);
+        PanelLibrary.LoadReadOnly(configPath);
+        MacroStore.Invalidate();   // 下一次访问按 ConfigPath 现读（只读）
+        ReadOnly = true;
+    }
+
+    /// <summary>本进程是不是只读（宿主）：<see cref="Save"/> 直接拒绝，避免两个进程抢着写。</summary>
+    public static bool ReadOnly { get; private set; }
+
     /// <summary>加载配置路径并刷新动作清单 / 快捷键 / 面板库。</summary>
     public static void Initialize(string configPath)
     {
@@ -67,8 +92,17 @@ internal static class ConfigStore
     /// <summary>加载当前磁盘配置（不回写）。</summary>
     public static AppConfig LoadConfig() => AppConfig.Load(ConfigPath);
 
-    /// <summary>保存动作清单（只写 actions/）。</summary>
-    public static void Save() => ActionLibrary.Save(ConfigPath);
+    /// <summary>保存动作清单（只写 actions/）。只读进程（宿主）里直接拒绝。</summary>
+    public static void Save()
+    {
+        if (ReadOnly)
+        {
+            AppLog.Warn("Config", "宿主进程试图写动作清单，已拒绝（写入归主程序）");
+            return;
+        }
+
+        ActionLibrary.Save(ConfigPath);
+    }
 
     // —— 动作 CRUD 与变更广播 ——
 

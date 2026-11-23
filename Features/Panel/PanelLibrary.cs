@@ -37,10 +37,20 @@ internal static class PanelLibrary
     }
 
     /// <summary>重新从磁盘加载面板配置。</summary>
-    public static void Reload()
+    public static void Reload() => Load(persist: true);
+
+    /// <summary>
+    /// 只读加载（普通权限宿主用）：没有面板配置时用默认值，**不落盘**（写入归主程序）。
+    /// </summary>
+    public static void LoadReadOnly(string path)
     {
-        AppConfig cfg;
-        TryLoad(out cfg);
+        _path = path;
+        Load(persist: false);
+    }
+
+    private static void Load(bool persist)
+    {
+        TryLoad(out AppConfig cfg);
 
         // 读取失败已回退默认值：保留当前内存态，别把默认面板写回磁盘
         if (cfg.LoadFailed)
@@ -52,11 +62,20 @@ internal static class PanelLibrary
         bool created = cfg.Panel == null;
         Current = cfg.Panel ?? CreateDefault();
         Normalize(Current);
-        if (created) Persist();
+        if (created && persist) Persist();
     }
 
-    /// <summary>把内存配置整份写回磁盘。失败只记日志，不阻塞 UI。</summary>
-    public static bool Save() => Persist();
+    /// <summary>把内存配置整份写回磁盘。失败只记日志，不阻塞 UI；只读进程（宿主）直接拒绝。</summary>
+    public static bool Save()
+    {
+        if (ConfigStore.ReadOnly)
+        {
+            AppLog.Warn(LogSource, "宿主进程试图写面板配置，已拒绝（写入归主程序）");
+            return false;
+        }
+
+        return Persist();
+    }
 
     /// <summary>前台进程是否在「禁止弹出」列表里。</summary>
     public static bool IsBlocked(string? exeName, string? exePath)

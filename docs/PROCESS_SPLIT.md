@@ -354,4 +354,16 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   测试要在没有客户端连着的时候做——第二条连接会一直等实例，表现为超时。
 - 尚未接线：`LinkServer` 还没在 `App.OnStartup` 里启动（等宿主真正来连的时候再接，见下一步）。
 
+**2026-11-24 · P1b-1 只读初始化（宿主读得到、写不了）**
+
+- `ConfigStore.InitializeReadOnly(path)`：加载动作库 / 面板 / 快捷键 / 宏元数据，**不修引用、不播种快捷键、
+  不清 trash / 孤儿、不写任何文件**；置 `ConfigStore.ReadOnly`。
+- `ConfigStore.Save` 与 `PanelLibrary.Save` 在只读进程里直接拒绝（记一条 Warn、返回 false）——
+  两个进程抢着写同一个 `actions/` / `configs/` 是拆分后的头号风险，先在这一层堵住。
+- `PanelLibrary` 抽出 `Load(persist)`：`Reload()` = 会补默认面板，`LoadReadOnly()` = 不补。
+- 冒烟 `tests/PanelHostSmoke`：11 条。先按主程序 `Initialize` 建临时数据根（会写），快照整个目录 →
+  `InitializeReadOnly` → 再快照，断言**逐字节相同**（名字 / 大小 / SHA-256 / 修改时间），动作 / 面板 /
+  种子快捷键都读得到；只读进程里两个 `Save` 被拒且目录不变；空数据根不凭空生成默认面板。
+- 尚未接线：宿主（`ShareHost.exe`）还没调它，也还没接 `LinkClient`（下一步：面板进宿主）。
+
 

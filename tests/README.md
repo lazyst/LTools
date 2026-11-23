@@ -170,6 +170,20 @@ dotnet run                                # 14 条，约 3 秒
 链路层是 `internal`，这里用 `InternalsVisibleTo("LinkSmoke")` 直接驱动（异步委托用反射太难看）；
 其它冒烟仍按惯例走反射。
 
+### `PanelHostSmoke`（普通权限宿主的只读初始化）
+
+```powershell
+cd tests\PanelHostSmoke
+dotnet run                                # 11 条，约 2 秒
+```
+
+`ConfigStore.InitializeReadOnly` 是宿主进程（界面进程）用的：它要把动作 / 面板 / 快捷键读进内存
+（面板要显示），但**一个字都不写**（写入归提权主程序）。段落的做法是先用主程序的 `Initialize`
+建一份临时数据根（这次会写盘），快照整个目录 → 调 `InitializeReadOnly` → 再快照，断言两次快照
+**逐字节相同**（文件名 / 大小 / SHA-256 / 修改时间），并且动作 / 面板 / 种子快捷键都读得到。
+再验只读进程里 `ConfigStore.Save` / `PanelLibrary.Save` 被拒绝（返回 false、目录不变），
+最后拿一个**空数据根**调 `InitializeReadOnly`，断言它不会把默认面板凭空写出来。
+
 ### `TableSmoke`（表格识别 `screen.table`）
 
 ```powershell
