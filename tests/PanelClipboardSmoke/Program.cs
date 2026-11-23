@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Windows.Controls;
 using LTools.Config;
+using LTools.Core.Actions;
 using LTools.Features;
 
 /// <summary>
@@ -144,6 +145,48 @@ internal static class Program
         _registry.GetMethod("Remove", Any)!.Invoke(null, new object[] { src });
         Check("源被删后粘不了", !(bool)Call(_ops, "Paste", b, -1)!);
         Check("源被删后剪贴板清空", !(bool)Get(_clip, "Has")!);
+
+        // ---- ⑦ 从文件 / 文件夹建动作：落进分组、落盘、Id 对齐 ----
+        var drop = Lt.GetType("LTools.Features.Panel.PanelDrop", true)!;
+        int before = a.Actions.Count;
+
+        var folderAction = new ActionDto
+        {
+            Name = "项目A",
+            Icon = "folder",
+            Program = new ActionProgram { Name = "项目A", Icon = "folder", Description = @"C:\tmp\项目A" },
+        };
+        folderAction.Program.Steps.Add(new Step
+        {
+            Unit = "file.explorer",
+            In = { ["operation"] = StepArg.FromText("open"), ["path"] = StepArg.FromText(@"C:\tmp\项目A") },
+        });
+
+        var fileAction = new ActionDto
+        {
+            Name = "报表",
+            Icon = "file",
+            Program = new ActionProgram { Name = "报表", Icon = "file", Description = @"C:\tmp\报表.xlsx" },
+        };
+        fileAction.Program.Steps.Add(new Step
+        {
+            Unit = "file.openFile",
+            In = { ["path"] = StepArg.FromText(@"C:\tmp\报表.xlsx"), ["workdir"] = StepArg.FromText(@"C:\tmp") },
+        });
+
+        int added = (int)Call(drop, "Insert", new List<ActionDto> { folderAction, fileAction }, a, before)!;
+        Check("Insert 返回真正加进去的条数", added == 2, $"added={added}");
+        Check("两条都插进分组末尾", a.Actions.Count == before + 2
+            && a.Actions[before] == folderAction.Id && a.Actions[before + 1] == fileAction.Id,
+            $"A=[{string.Join(",", a.Actions)}]");
+        Check("动作体 Id 与外层对齐", fileAction.Program!.Id == fileAction.Id && folderAction.Program!.Id == folderAction.Id);
+        Check("文件动作落盘 action.json",
+            File.Exists(Path.Combine(root, "configs", "actions", fileAction.Id, "action.json")));
+        Check("文件夹动作落盘 action.json",
+            File.Exists(Path.Combine(root, "configs", "actions", folderAction.Id, "action.json")));
+
+        string fileJson = File.ReadAllText(Path.Combine(root, "configs", "actions", fileAction.Id, "action.json"));
+        Check("落盘内容带的是一步「打开文件」", fileJson.Contains("file.openFile") && fileJson.Contains("报表.xlsx"));
     }
 
     // ============ 夹具 ============

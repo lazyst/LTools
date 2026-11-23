@@ -85,6 +85,12 @@ public partial class SuperPanelWindow
         if (e.Key == Key.Escape) { RequestEscape(); e.Handled = true; return; }
         // 暂存区页没有可键盘选中的磁贴：别让方向键 / Enter 去碰被遮住的正式动作
         if (_stashMode) return;
+        // Ctrl+V：剪贴板里的文件 / 文件夹 → 动作。输入框里的粘贴不抢（那是普通文本粘贴）。
+        if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) != 0 && e.OriginalSource is not TextBox)
+        {
+            if (PasteFilesFromClipboard()) e.Handled = true;
+            return;
+        }
         if (e.Key == Key.Down) { MoveSelection(1); e.Handled = true; return; }
         if (e.Key == Key.Up) { MoveSelection(-1); e.Handled = true; return; }
         if (e.Key == Key.Enter) { ExecuteSelected(); e.Handled = true; }

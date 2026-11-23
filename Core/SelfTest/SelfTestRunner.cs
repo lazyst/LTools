@@ -56,6 +56,7 @@ internal static class SelfTestRunner
         CategoryNavSuite.Register(cases);
         MenuConeSuite.Register(cases);
         PanelClipboardSuite.Register(cases);
+        PanelDropSuite.Register(cases);
         TableSuite.Register(cases);
         UiaPickSuite.Register(cases);
         SnapTreeSuite.Register(cases);

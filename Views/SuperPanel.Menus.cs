@@ -244,6 +244,8 @@ public partial class SuperPanelWindow
         var menu = NewTrackedMenu();
         AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(group));
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
+        AddMenuItem(menu, "从文件创建动作…", () => AddFilesFor(group));
+        AddMenuItem(menu, "从文件夹创建动作…", () => AddFolderFor(group));
         AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
         PanelPasteMenu.Append(menu, group, PasteIntoGroup);
         menu.Items.Add(new Separator());
@@ -283,6 +285,8 @@ public partial class SuperPanelWindow
         {
             AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(target));
             AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(target));
+            AddMenuItem(menu, "从文件创建动作…", () => AddFilesFor(target));
+            AddMenuItem(menu, "从文件夹创建动作…", () => AddFolderFor(target));
             PanelPasteMenu.Append(menu, target, PasteIntoGroup);
             menu.Items.Add(new Separator());
             AddFeatureMenus(menu, target);
