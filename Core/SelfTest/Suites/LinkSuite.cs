@@ -148,7 +148,7 @@ internal static class LinkSuite
         {
             LinkMethods.PanelSnapshot, LinkMethods.PanelReplace, LinkMethods.ActionAdd,
             LinkMethods.ActionDelete, LinkMethods.ActionDuplicate,
-            LinkMethods.EventPanelShow, LinkMethods.EventActionsChanged,
+            LinkMethods.EventPanelShow, LinkMethods.EventClientReady, LinkMethods.EventActionsChanged,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");

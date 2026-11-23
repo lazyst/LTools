@@ -39,7 +39,9 @@ internal static class Program
             await Wait(() => !server.IsConnected);
 
             client = await LinkClient.ConnectWithRetryAsync(pipe, "token-1", "host",
-                message => _clientEvents.Enqueue(message.Method), totalMs: 4000);
+                message => _clientEvents.Enqueue(message.Method), totalMs: 4000,
+                handler: (_, request) => Task.FromResult(
+                    LinkMessage.Response(request, new Echo("client:" + request.Method))));
 
             Check("握手成功、服务端认为已连接", server.IsConnected);
 
@@ -47,6 +49,11 @@ internal static class Program
             LinkMessage reply = await client.RequestAsync("echo", new Echo("你好「世界」\\x"), timeoutMs: 2000);
             Check("请求拿到答复", reply.Ok, reply.Error);
             Check("答复负载原样", reply.Read<Echo>()?.Text == "你好「世界」\\x", reply.Read<Echo>()?.Text);
+
+            // ---- 反向请求：服务端向客户端要东西（生产里「宿主做服务端、提权进程做客户端」正是这样）----
+            LinkMessage reverse = await server.RequestAsync("panel.snapshot", timeoutMs: 2000);
+            Check("服务端能向客户端请求（反向角色）", reverse.Ok && reverse.Read<Echo>()?.Text == "client:panel.snapshot",
+                reverse.Error ?? reverse.Read<Echo>()?.Text);
 
             // ---- 服务端 → 客户端事件 ----
             await server.NotifyAsync("trace", new { step = 3 });
@@ -155,12 +162,16 @@ internal static class Program
             });
             Check("面板配置落盘", PanelLibrary.Save());
 
-            server = new LinkServer(pipe, "panel-token", PanelHost.HandleAsync);
+            // 生产方向：宿主（服务端）把请求发给提权进程（客户端），提权进程用 PanelHost 应答。
+            server = new LinkServer(pipe, "panel-token",
+                static (_, request) => Task.FromResult(LinkMessage.Response(request, error: "宿主暂不支持该命令")));
             server.Start();
-            client = await LinkClient.ConnectWithRetryAsync(pipe, "panel-token", "panel-smoke", totalMs: 4000);
+            client = await LinkClient.ConnectWithRetryAsync(pipe, "panel-token", "worker", totalMs: 4000,
+                handler: PanelHost.HandleAsync);
+            await client.NotifyAsync(LinkMethods.EventClientReady);
 
             // ---- 快照 ----
-            LinkMessage snapMessage = await client.RequestAsync(LinkMethods.PanelSnapshot, timeoutMs: 2000);
+            LinkMessage snapMessage = await server.RequestAsync(LinkMethods.PanelSnapshot, timeoutMs: 2000);
             PanelSnapshot? snap = snapMessage.Read<PanelSnapshot>();
             Check("快照答复成功", snapMessage.Ok, snapMessage.Error);
             Check("快照带动作", snap?.Actions.Any(a => a.Id == original.Id && a.Name == "面板冒烟动作") == true,
@@ -170,14 +181,14 @@ internal static class Program
             // ---- 整份替换（宿主改分组名）----
             PanelConfig edited = snap!.Panel;
             edited.Global.Scenes[0].Groups[0].Name = "改名后";
-            LinkMessage replaced = await client.RequestAsync(LinkMethods.PanelReplace, edited, timeoutMs: 2000);
+            LinkMessage replaced = await server.RequestAsync(LinkMethods.PanelReplace, edited, timeoutMs: 2000);
             Check("面板替换成功", replaced.Ok, replaced.Error);
             Check("替换写进了内存", PanelLibrary.Current.Global.Scenes[0].Groups[0].Name == "改名后");
             Check("替换写进了磁盘",
                 File.ReadAllText(Path.Combine(root, "configs", "panel.json")).Contains("改名后"));
 
             // ---- 新建动作 ----
-            LinkMessage added = await client.RequestAsync(LinkMethods.ActionAdd,
+            LinkMessage added = await server.RequestAsync(LinkMethods.ActionAdd,
                 new ActionAddRequest("宿主新建的动作", "star"), timeoutMs: 2000);
             ActionDto? created = added.Read<ActionDto>();
             Check("新建动作成功", added.Ok && !string.IsNullOrEmpty(created?.Id), added.Error);
@@ -185,14 +196,14 @@ internal static class Program
             Check("新建动作默认图标沿用传入", created.Icon == "star");
 
             // ---- 复制动作 ----
-            LinkMessage duplicated = await client.RequestAsync(LinkMethods.ActionDuplicate,
+            LinkMessage duplicated = await server.RequestAsync(LinkMethods.ActionDuplicate,
                 new ActionIdRequest(original.Id), timeoutMs: 2000);
             ActionDto? copy = duplicated.Read<ActionDto>();
             Check("复制动作成功", duplicated.Ok && copy?.Id != original.Id, duplicated.Error);
             Check("副本名字带「副本」", (copy?.Name ?? "").Contains("副本"), copy?.Name);
 
             // ---- 删除动作（连面板引用一起清）----
-            LinkMessage deleted = await client.RequestAsync(LinkMethods.ActionDelete,
+            LinkMessage deleted = await server.RequestAsync(LinkMethods.ActionDelete,
                 new ActionIdRequest(original.Id), timeoutMs: 2000);
             Check("删除动作成功", deleted.Ok, deleted.Error);
             Check("删除后动作文件没了", !File.Exists(Path.Combine(root, "actions", original.Id, "action.json")));
@@ -200,7 +211,7 @@ internal static class Program
                 PanelLibrary.Current.Global.Scenes[0].Groups[0].Actions.Contains(original.Id) == false);
 
             // ---- 未知命令 ----
-            LinkMessage unknown = await client.RequestAsync("panel.nope", timeoutMs: 2000);
+            LinkMessage unknown = await server.RequestAsync("panel.nope", timeoutMs: 2000);
             Check("未知命令回失败答复", !unknown.Ok && (unknown.Error ?? "").Contains("未知命令"), unknown.Error);
         }
         catch (Exception ex)

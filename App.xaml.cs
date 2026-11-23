@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Core.Ai;
+using LTools.Core.Link;
 using LTools.Core.SelfTest;
 using LTools.Core.Share;
 using LTools.Features;
@@ -147,6 +148,9 @@ public partial class App : Application
         ExportSettings.Apply(cfg.Export);
         AppState.Record = (cfg.Record ?? new RecordOptions()).Normalized();
         ConfigStore.Initialize(cfgPath);
+        // 进程拆分的过渡期：提权进程起链路服务端（令牌写 state/worker.token），
+        // 普通权限宿主（ShareHost.exe，未来是界面进程）连上来读面板 / 提交写操作。
+        LinkWorker.Start();
         FloatingLibrary.Initialize(cfgPath);
         QuickNote.Initialize(cfgPath);
         ConfigHelper.Initialize(cfgPath);
@@ -335,6 +339,7 @@ public partial class App : Application
         // 只管「别再收请求」并把关停排到后台：绝不在 UI 线程上等 ASP.NET Core 关停（会永久卡死托盘）。
         McpServer.Stop();
         ShareHelper.Stop();
+        LinkWorker.Stop();
         FloatingManager.Shutdown();
         ForegroundAppCache.Stop();
         TriggerService.Stop();
@@ -349,6 +354,7 @@ public partial class App : Application
     {
         McpServer.Stop();
         ShareHelper.Stop();
+        LinkWorker.Stop();   // 幂等：托盘退出时已 Stop 过一次
         FloatingManager.Shutdown();
         TriggerService.Stop();   // 幂等：托盘退出时已 Stop 过一次
         HookDispatcher.Stop();   // 幂等：系统注销 / 直接关进程时也得让钩子线程收尾卸载

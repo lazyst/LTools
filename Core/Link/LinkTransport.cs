@@ -6,12 +6,20 @@ using System.Threading.Tasks;
 namespace LTools.Core.Link;
 
 /// <summary>
-/// 链路服务端（现在跑在提权进程里，进程拆分完成后就是执行器）。一次只服务**一个**客户端：
-/// 断了下一条连接接上，状态按「当前客户端」算。
+/// 链路服务端（**普通权限宿主**这一侧：它建管道，等提权进程连上来）。
+/// 一次只服务**一个**客户端：断了下一条连接接上，状态按「当前客户端」算。
 /// </summary>
 /// <remarks>
+/// <para>
+/// 为什么是宿主做服务端：Windows 的强制完整性控制不允许中完整性进程写高完整性的命名管道，
+/// 所以「提权进程做服务端 + 普通权限 UI 做客户端」在连接阶段就会 <c>Access denied</c>。
+/// 反过来（中完整性宿主做服务端、高完整性提权进程做客户端）两个方向都放得行。
+/// 见 <c>docs/PROCESS_SPLIT.md</c> §5.1。
+/// </para>
+/// <para>
 /// 第一条消息必须是 <see cref="LinkHello"/>（协议版本 + 令牌），否则拒绝——挡的是「别的会话 /
 /// 意外的进程连进来」，**挡不住同用户的注入**（见 <c>docs/PROCESS_SPLIT.md</c> §8）。
+/// </para>
 /// </remarks>
 internal sealed class LinkServer : IAsyncDisposable
 {
@@ -154,16 +162,27 @@ internal sealed class LinkServer : IAsyncDisposable
 }
 
 /// <summary>
-/// 链路客户端（现在跑在普通权限宿主里，进程拆分完成后就是整个界面进程）。
+/// 链路客户端。
 /// </summary>
+/// <remarks>
+/// 拆分后的方向是「**宿主（普通权限）做服务端，提权进程做客户端**」：Windows 的强制完整性控制
+/// 不允许中完整性进程写高完整性的命名管道，而高完整性进程可以读写中完整性的对象。
+/// 所以宿主建管道（中完整性），提权进程连上去并用 <see cref="PanelHost"/> 应答命令。
+/// 详见 <c>docs/PROCESS_SPLIT.md</c> §5.1。
+/// </remarks>
 internal sealed class LinkClient : IAsyncDisposable
 {
     private readonly LinkChannel _channel;
+    private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private LinkClient(LinkChannel channel)
     {
         _channel = channel;
-        channel.Closed += (_, reason) => Closed?.Invoke(reason);
+        channel.Closed += (_, reason) =>
+        {
+            try { Closed?.Invoke(reason); } catch { /* 订阅方自己吞 */ }
+            _closed.TrySetResult();
+        };
     }
 
     public bool IsOpen => _channel.IsOpen;
@@ -171,9 +190,16 @@ internal sealed class LinkClient : IAsyncDisposable
     /// <summary>断开时触发（参数是原因，主动关闭为 null）。</summary>
     public event Action<string?>? Closed;
 
-    /// <summary>连上并完成握手；连不上 / 被拒绝都抛异常（超时是 <see cref="TimeoutException"/>）。</summary>
+    /// <summary>等这条连接断开（参数没有意义，只是「断了」这个信号）。</summary>
+    public Task WhenClosed => _closed.Task;
+
+    /// <summary>
+    /// 连上并完成握手；连不上 / 被拒绝都抛异常（超时是 <see cref="TimeoutException"/>）。
+    /// </summary>
+    /// <param name="handler">对端发来的请求交给它处理；null = 本端不应答应用层请求（只应答 hello）。</param>
     public static async Task<LinkClient> ConnectAsync(string pipeName, string token, string role = "host",
-        Action<LinkMessage>? onEvent = null, int timeoutMs = 3000, CancellationToken cancellationToken = default)
+        Action<LinkMessage>? onEvent = null, int timeoutMs = 3000, CancellationToken cancellationToken = default,
+        Func<LinkChannel, LinkMessage, Task<LinkMessage>>? handler = null)
     {
         var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         LinkChannel? channel = null;
@@ -182,7 +208,7 @@ internal sealed class LinkClient : IAsyncDisposable
         {
             await pipe.ConnectAsync(Math.Max(1, timeoutMs), cancellationToken).ConfigureAwait(false);
 
-            channel = new LinkChannel(pipe, handler: null, onEvent);
+            channel = new LinkChannel(pipe, handler, onEvent);
             channel.Start();
 
             LinkMessage ack = await channel
@@ -201,9 +227,10 @@ internal sealed class LinkClient : IAsyncDisposable
         }
     }
 
-    /// <summary>在 <paramref name="totalMs"/> 内反复试连（宿主启动时服务端可能还没就绪）。</summary>
+    /// <summary>在 <paramref name="totalMs"/> 内反复试连（服务端可能还没就绪）。</summary>
     public static async Task<LinkClient> ConnectWithRetryAsync(string pipeName, string token, string role = "host",
-        Action<LinkMessage>? onEvent = null, int totalMs = 5000, CancellationToken cancellationToken = default)
+        Action<LinkMessage>? onEvent = null, int totalMs = 5000, CancellationToken cancellationToken = default,
+        Func<LinkChannel, LinkMessage, Task<LinkMessage>>? handler = null)
     {
         long deadline = Environment.TickCount64 + Math.Max(1, totalMs);
         Exception last = new LinkException("连不上");
@@ -215,7 +242,8 @@ internal sealed class LinkClient : IAsyncDisposable
             int slice = (int)Math.Clamp(deadline - Environment.TickCount64, 100, 800);
             try
             {
-                return await ConnectAsync(pipeName, token, role, onEvent, slice, cancellationToken).ConfigureAwait(false);
+                return await ConnectAsync(pipeName, token, role, onEvent, slice, cancellationToken, handler)
+                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

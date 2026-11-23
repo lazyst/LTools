@@ -63,6 +63,7 @@ internal static class AppLog
     private static volatile int _level = (int)LogLevel.info;
     private static volatile int _retentionDays = 14;
     private static string _directory = "";
+    private static volatile string _fileTag = "";
     private static int _closed;
 
     /// <summary>队列满时丢弃的行数（写线程追平后一次性报出来）。</summary>
@@ -92,11 +93,18 @@ internal static class AppLog
     /// 应用配置（启动时与设置页改动时调用）。关闭后已有队列仍会写完；
     /// 打开会确保后台写入线程已启动，并按保留天数清理旧文件。
     /// </summary>
-    public static void Configure(bool enabled, LogLevel level, int retentionDays)
+    /// <param name="fileTag">
+    /// 写进文件名的进程标记（可空）：空 = <c>ltools-yyyyMMdd.log</c>（主程序），
+    /// 给了 <c>"host"</c> 就是 <c>ltools-host-yyyyMMdd.log</c>。
+    /// **两个进程不能写同一个日志文件**：<see cref="StreamWriter"/> 之间是共享读、不允许并发写，
+    /// 后打开的那个会一直写失败（错误被吞掉，看起来就是「一行日志都没有」）。见 docs/PROCESS_SPLIT.md §7。
+    /// </param>
+    public static void Configure(bool enabled, LogLevel level, int retentionDays, string? fileTag = null)
     {
         _level = (int)level;
         _retentionDays = retentionDays < 0 ? 0 : retentionDays;
         _directory = AppPaths.LogsDir;
+        _fileTag = (fileTag ?? "").Trim();
         _enabled = enabled;
 
         if (!enabled) return;
@@ -243,7 +251,9 @@ internal static class AppLog
         }
     }
 
-    private static string FileName(DateTime day) => $"ltools-{day:yyyyMMdd}.log";
+    private static string FileName(DateTime day) => string.IsNullOrEmpty(_fileTag)
+        ? $"ltools-{day:yyyyMMdd}.log"
+        : $"ltools-{_fileTag}-{day:yyyyMMdd}.log";
 
     /// <summary>删除超过保留天数的日志文件（后台线程执行）。应用 / 动作 / 失败报告一起清。</summary>
     private static void Cleanup(int days)

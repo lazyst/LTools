@@ -120,13 +120,18 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 
 ### 5.1 通道
 
-- 命名管道：`\\.\pipe\LToolsWorker-<SessionId>`，执行器做服务端，UI 做客户端。
+- 命名管道：`\\.\pipe\LToolsWorker-<SessionId>`（实现里叫 `LToolsLink-<SessionId>`），
+  **普通权限宿主做服务端，提权执行器做客户端**。
+  - 为什么反着来：Windows 的强制完整性控制（MIC）不允许中完整性进程**写**高完整性的命名管道
+    （连接直接 `Access denied`），而高完整性进程读写中完整性对象都放行。所以必须由中完整性的宿主
+    建管道，提权的执行器连上去。
 - 帧：4 字节小端长度 + UTF-8 JSON（不用行分隔，避免正文里的换行）。
-- 双向：`request`（带 `id`）/ `response`（同 `id`）/ `event`（无 `id`）。
+- 双向：`request`（带 `id`）/ `response`（同 `id`）/ `event`（无 `id`）。**两个方向都能发请求**
+  （`LinkChannel` 不分方向），所以「宿主发命令、执行器应答」与「执行器发事件 / 请求、宿主应答」共用一条连接。
 - 超时：所有交互请求都带 `timeoutMs`；执行器侧的等待同时挂 `ctx.Token`（停止热键立刻返回）。
 - 背压：轨迹事件按 120ms 合并批量发（编辑器已有这套攒批逻辑，直接复用语义）。
-- 鉴权：管道 ACL 只给当前用户；握手带 `protocol` 版本 + 随机令牌（执行器启动时写进
-  `state/worker.token`，仅当前用户可读）。**这挡不住同用户的中完整性进程**——见 §8，这是结构性的。
+- 鉴权：管道 ACL 只给当前用户；握手带 `protocol` 版本 + 随机令牌（**提权进程**写进
+  `state/worker.token`，仅当前用户可读；宿主只读它）。**这挡不住同用户的中完整性进程**——见 §8，这是结构性的。
 
 ### 5.2 UI → 执行器
 
@@ -381,5 +386,25 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   复制 / 删除，断言内存与磁盘一致、删动作连面板引用一起清。
 - 尚未接线：`App.OnStartup` 还没起 `LinkServer`，宿主也还没接这个处理函数（下一步：宿主连 `LinkClient`
   + 加载面板）。
+
+**2026-11-24 · P1b-3 真机接线（宿主做服务端、提权进程做客户端）**
+
+- **方向反了，而且必须反**：Windows 的强制完整性控制不允许中完整性进程写高完整性的命名管道
+  （实测宿主连接提权侧的服务端 → `UnauthorizedAccessException: Access to the path is denied`）。
+  改成「中完整性宿主做服务端、提权进程做客户端」两个方向都放行。§5.1 已改。
+- `Core/Link/LinkToken.cs`：令牌 `state/worker.token`（32 位小写十六进制），**提权进程写、宿主读**
+  （提权侧一定写得了，宿主在 Program Files 之类目录可能写不了）。
+- `Core/Link/LinkWorker.cs`：提权侧的客户端 + 退避重连循环（250ms → 最多 5s），连上后用
+  `PanelHost.HandleAsync` 应答命令，握手后发 `client.ready`。
+- `LinkClient` 支持传 handler（`LinkChannel` 本来就不分方向），并暴露 `WhenClosed`。
+- `ShareHost/App.xaml.cs`：起 `LinkServer`（宿主侧，stub 应答），收到 `client.ready` 后拉
+  `panel.snapshot` 存进 `Snapshot`（下一步用它渲染面板）；后台 `ConfigStore.InitializeReadOnly`。
+- **每个进程写自己的日志文件**：`AppLog.Configure` 加可选 `fileTag`，宿主写 `logs/ltools-host-<日期>.log`。
+  两个进程用同一个文件时，后打开的那个 `StreamWriter` 会一直因共享冲突写失败、错误被吞掉，**表面就是
+  「一行日志都没有」**（这次踩到）。`LogFiles` 的 `ltools-` 前缀已经覆盖它。
+- 真机实测（dev 构建、提权 shell）：清掉令牌 → 起 `LTools.exe` → 提权侧写 32 位令牌 → 自动拉起
+  `ShareHost.exe`（普通权限）→ 宿主日志：`链路服务端已启动` / `主程序已连接` / `面板快照：8 个动作、1 个全局场景`。
+- 回归：`LinkSmoke` 改成生产方向（服务端发请求、客户端 `PanelHost` 应答）并加一条「反向角色」断言（32 条）；
+  `--selftest` 393 用例 / 18549 断言；`PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
 
 

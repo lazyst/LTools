@@ -35,6 +35,9 @@ internal static class LinkMethods
     /// <summary>显示面板（鼠标手势 / 快捷键在提权侧的钩子里触发）。负载：<see cref="PanelShowRequest"/>。</summary>
     public const string EventPanelShow = "panel.show";
 
+    /// <summary>提权进程连上并握手完成（宿主收到后拉快照 / 重建界面）。</summary>
+    public const string EventClientReady = "client.ready";
+
     /// <summary>动作库变了（新建 / 删除 / 改名 / 采纳草稿），宿主该重拉快照。</summary>
     public const string EventActionsChanged = "actions.changed";
 }
