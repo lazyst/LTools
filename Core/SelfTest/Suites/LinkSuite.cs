@@ -1,0 +1,162 @@
+using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Text.Json;
+using LTools.Core.Link;
+
+namespace LTools.Core.SelfTest;
+
+/// <summary>
+/// 进程间链路的纯逻辑：消息形状、帧切分（拆包 / 粘包 / 坏帧）、管道名。
+/// 真管道收发靠 <c>tests/LinkSmoke</c>。
+/// </summary>
+internal static class LinkSuite
+{
+    private sealed record Demo(string Name, int Count);
+
+    public static void Register(List<SelfTestCase> cases)
+    {
+        cases.Add(new("link", "请求 / 答复 / 通知的 JSON 形状", Shapes));
+        cases.Add(new("link", "负载往返：中文 / 引号 / 嵌套 / 强类型读取", Payloads));
+        cases.Add(new("link", "粘包：一个缓冲区里两条帧逐条切出", Sticky));
+        cases.Add(new("link", "拆包：头部 / 半帧都不算完整", Split));
+        cases.Add(new("link", "坏帧：长度非法 / 不是 JSON / 缺方法名", BadFrames));
+        cases.Add(new("link", "帧长度前缀就是负载字节数", Prefix));
+        cases.Add(new("link", "管道名按会话区分", PipeName));
+    }
+
+    private static void Shapes()
+    {
+        LinkMessage request = LinkMessage.Request(7, "run", new { actionId = "a1" });
+        Check.Equal(7, request.Id, "请求带 id");
+        Check.Equal(LinkKinds.Request, request.Kind, "kind=request");
+        Check.Equal("run", request.Method, "method 原样");
+        Check.True(request.Ok, "请求默认 ok");
+
+        LinkMessage ok = LinkMessage.Response(request, new { started = true });
+        Check.Equal(7, ok.Id, "答复沿用请求 id");
+        Check.Equal(LinkKinds.Response, ok.Kind, "kind=response");
+        Check.Equal("", ok.Method, "答复不重复方法名");
+        Check.True(ok.Ok, "成功答复 ok=true");
+        Check.True(ok.Error == null, "成功不带 error");
+
+        LinkMessage failed = LinkMessage.Response(request, error: "动作不存在");
+        Check.False(failed.Ok, "失败答复 ok=false");
+        Check.Equal("动作不存在", failed.Error, "错误原文带回");
+
+        LinkMessage evt = LinkMessage.Event("trace", new { step = 2 });
+        Check.Equal(0, evt.Id, "通知不带 id");
+        Check.Equal(LinkKinds.Event, evt.Kind, "kind=event");
+    }
+
+    private static void Payloads()
+    {
+        var payload = new Demo("季度「报表」\\x", 3);
+        LinkMessage message = RoundTrip(LinkMessage.Request(1, "load", payload));
+
+        Demo? back = message.Read<Demo>();
+        Check.True(back != null, "读回对象");
+        Check.Equal(payload.Name, back!.Name, "中文 / 引号 / 反斜杠原样");
+        Check.Equal(payload.Count, back.Count, "数字原样");
+
+        LinkMessage empty = RoundTrip(LinkMessage.Request(2, "ping"));
+        Check.True(empty.Payload == null, "没有负载时不带 payload 字段");
+        Check.True(empty.Read<Demo>() == null, "读空负载返回 null");
+    }
+
+    private static void Sticky()
+    {
+        byte[] one = LinkFraming.Frame(LinkMessage.Request(1, "a"));
+        byte[] two = LinkFraming.Frame(LinkMessage.Request(2, "b"));
+
+        var buffer = new byte[one.Length + two.Length];
+        one.CopyTo(buffer, 0);
+        two.CopyTo(buffer, one.Length);
+
+        List<LinkMessage> messages = LinkFraming.ReadAll(buffer, out string? error);
+        Check.True(error == null, "没有坏帧");
+        Check.Equal(2, messages.Count, "两条都切出来");
+        Check.Equal(1, messages[0].Id, "第一条 id");
+        Check.Equal("b", messages[1].Method, "第二条方法名");
+    }
+
+    private static void Split()
+    {
+        byte[] frame = LinkFraming.Frame(LinkMessage.Request(9, "run", new { text = new string('x', 200) }));
+
+        Check.False(LinkFraming.TryRead(frame.AsSpan(0, 2), out _, out int consumed, out string? error), "只有 2 字节：不够");
+        Check.True(error == null, "不够时不算坏帧");
+        Check.Equal(0, consumed, "不够时没消费");
+
+        Check.False(LinkFraming.TryRead(frame.AsSpan(0, frame.Length - 1), out _, out consumed, out error), "少 1 字节：不够");
+        Check.True(error == null, "少 1 字节也不算坏");
+
+        Check.True(LinkFraming.TryRead(frame, out LinkMessage? message, out consumed, out error), "完整帧能切");
+        Check.True(message != null && message.Id == 9, "id 对");
+        Check.Equal(frame.Length, consumed, "消费整帧");
+    }
+
+    private static void BadFrames()
+    {
+        byte[] zero = Prefix(0);
+        Check.False(LinkFraming.TryRead(zero, out _, out _, out string? error), "长度 0 拒绝");
+        Check.True(error != null, "长度 0 报错");
+
+        byte[] negative = Prefix(-5);
+        Check.False(LinkFraming.TryRead(negative, out _, out _, out error), "负长度拒绝");
+        Check.True(error != null, "负长度报错");
+
+        byte[] huge = Prefix(LinkFraming.MaxFrameBytes + 1);
+        Check.False(LinkFraming.TryRead(huge, out _, out _, out error), "超过上限拒绝");
+        Check.True(error != null, "超过上限报错");
+
+        byte[] notJson = Frame("这不是 JSON");
+        Check.False(LinkFraming.TryRead(notJson, out _, out _, out error), "非 JSON 拒绝");
+        Check.True(error != null, "非 JSON 报错");
+
+        byte[] noMethod = Frame("""{"kind":"request","id":1}""");
+        Check.False(LinkFraming.TryRead(noMethod, out _, out _, out error), "请求没有方法名拒绝");
+        Check.True(error != null, "缺方法名报错");
+
+        byte[] unknownKind = Frame("""{"kind":"weird","id":1,"method":"x"}""");
+        Check.False(LinkFraming.TryRead(unknownKind, out _, out _, out error), "未知 kind 拒绝");
+        Check.True(error != null, "未知 kind 报错");
+    }
+
+    private static void Prefix()
+    {
+        byte[] frame = LinkFraming.Frame(LinkMessage.Request(1, "x", new { k = "v" }));
+        int declared = BitConverter.ToInt32(frame, 0);
+        Check.Equal(frame.Length - LinkFraming.HeaderSize, declared, "前缀 = 负载字节数");
+    }
+
+    private static void PipeName()
+    {
+        string one = LinkNames.Pipe(1);
+        string two = LinkNames.Pipe(2);
+        Check.True(one.StartsWith(LinkNames.PipePrefix, StringComparison.Ordinal), "带固定前缀（裸名，系统加 \\\\.\\pipe\\）");
+        Check.True(one != two, "不同会话不同管道");
+    }
+
+    // ============ 小工具 ============
+
+    private static LinkMessage RoundTrip(LinkMessage message)
+    {
+        byte[] frame = LinkFraming.Frame(message);
+        Check.True(LinkFraming.TryRead(frame, out LinkMessage? back, out int consumed, out string? error), "帧能读回");
+        Check.True(error == null, "读回不报错");
+        Check.Equal(frame.Length, consumed, "读回消费整帧");
+        return back!;
+    }
+
+    private static byte[] Prefix(int length) => BitConverter.GetBytes(length);
+
+    private static byte[] Frame(string json)
+    {
+        byte[] body = Encoding.UTF8.GetBytes(json);
+        var frame = new byte[LinkFraming.HeaderSize + body.Length];
+        BitConverter.GetBytes(body.Length).CopyTo(frame, 0);
+        body.CopyTo(frame, LinkFraming.HeaderSize);
+        return frame;
+    }
+}

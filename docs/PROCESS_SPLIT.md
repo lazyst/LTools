@@ -338,3 +338,20 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 踩到的坑：`Build` 的默认探测一开始写成 `(File.Exists, Directory.Exists)`，把「目录」判成「不存在」；
   假探测的自测全绿，真路径才暴露。现在默认探测是「目录存在 → Exists = true」，并有一条真路径用例守着。
 
+**2026-11-24 · P0 链路层（协议 + 收发）**
+
+- `Core/Link/LinkProtocol.cs`：消息形状（`id` / `kind` / `method` / `ok` / `error` / `payload`）、
+  帧格式 `[4 字节长度][UTF-8 JSON]`、`TryRead` 三态（切出一条 / 还不够 / 帧坏了）、管道名（裸名，按会话）、协议版本。
+- `Core/Link/LinkChannel.cs`：一条连接 = 一个 `Stream`；读循环单读者、写有锁、请求按 `id` 配对、
+  超时抛 `TimeoutException`、断开时在等的请求立即失败；对方请求丢线程池处理，**不堵读循环**。
+- `Core/Link/LinkTransport.cs`：`LinkServer`（一次一个客户端，断了下一条接上；第一条必须是 `hello`，
+  协议 / 令牌不对就拒绝）与 `LinkClient`（握手 + `ConnectWithRetryAsync`）。
+- 自测 `link` 组：7 用例 / 51 断言（形状 / 负载 / 粘包 / 拆包 / 坏帧 / 前缀 / 管道名）。
+- 冒烟 `tests/LinkSmoke`：14 条，真管道上验令牌拒绝、握手、请求 / 答复、双向事件、
+  服务端异常 → 失败答复、超时（150ms 请求 156ms 返回且连接照常）、1 MB 负载、断开事件、重启重连。
+  `InternalsVisibleTo("LinkSmoke")`（其它冒烟仍走反射）。
+- 注意：服务端**同一时刻只服务一个客户端**（`maxNumberOfServerInstances = 1`），所以「令牌不对」这类
+  测试要在没有客户端连着的时候做——第二条连接会一直等实例，表现为超时。
+- 尚未接线：`LinkServer` 还没在 `App.OnStartup` 里启动（等宿主真正来连的时候再接，见下一步）。
+
+

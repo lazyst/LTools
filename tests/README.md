@@ -155,6 +155,21 @@ dotnet run -- --helper                    # 再加一段：拉起 ShareHost.exe�
 这是 UIPI 的系统限制，见 `docs/LAN_SHARE.md` §3.2.1。`--log` 把输出写进
 `%TEMP%\opencode\share-smoke\report.txt`（从资源管理器启动时没有控制台可看）。
 
+### `LinkSmoke`（进程间链路：真命名管道上的握手 / 请求 / 事件 / 超时）
+
+```powershell
+cd tests\LinkSmoke
+dotnet run                                # 14 条，约 3 秒
+```
+
+真起一条 `LToolsLink-test-*` 管道，`LinkServer` + `LinkClient` 走完整流程：令牌不对被拒绝、
+握手、请求 / 答复（中文 / 引号 / 反斜杠原样）、双向事件、服务端抛异常变成失败答复、
+请求超时（150ms 的请求 156ms 返回，之后连接照常）、**1 MB 负载**（帧切分与缓冲增长）、
+服务端停止后客户端看到关闭并收到断开事件、服务端重启后能重连。
+
+链路层是 `internal`，这里用 `InternalsVisibleTo("LinkSmoke")` 直接驱动（异步委托用反射太难看）；
+其它冒烟仍按惯例走反射。
+
 ### `TableSmoke`（表格识别 `screen.table`）
 
 ```powershell

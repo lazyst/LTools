@@ -74,6 +74,8 @@
   <ItemGroup>
     <!-- 助手进程直接用 ShareServer / ConfigStore / Ui 这些 internal 类型。 -->
     <InternalsVisibleTo Include="ShareHost" />
+    <!-- 链路层的环回冒烟（tests/LinkSmoke）：管道 / 握手 / 超时都要直接驱动 internal 类型。 -->
+    <InternalsVisibleTo Include="LinkSmoke" />
   </ItemGroup>
 
   <ItemGroup>
