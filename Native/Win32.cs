@@ -624,4 +624,29 @@ internal static class Win32
     // 导出名是 mciSendStringW（上游也是直接调这个），必须写 EntryPoint：.NET 不会替它补 W。
     [DllImport("winmm.dll", EntryPoint = "mciSendStringW", CharSet = CharSet.Unicode, ExactSpelling = true)]
     public static extern int MciSendString(string command, StringBuilder? buffer, int bufferSize, IntPtr hwnd);
+
+    // —— 拖文件进窗口（提权进程）——
+    // WPF 的 AllowDrop 走 OLE，UIPI 会拦住「低完整性 → 高完整性」的拖放，所以
+    // requireAdministrator 下从资源管理器拖过来的文件永远收不到。老式 WM_DROPFILES 是窗口消息，
+    // 用 ChangeWindowMessageFilterEx 放行就能穿过 UIPI；shell 传文件列表还要 WM_COPYGLOBALDATA。
+    public const uint WmDropFiles = 0x0233;
+    public const uint WmCopyData = 0x004A;
+    public const uint WmCopyGlobalData = 0x0049;
+    public const uint WmNcHitTest = 0x0084;
+    public const int MsgfltAllow = 1;
+
+    /// <summary><c>WS_EX_ACCEPTFILES</c>：窗口声明接受拖入的文件（Explorer 据此走 WM_DROPFILES）。</summary>
+    public const long WsExAcceptFiles = 0x00000010;
+
+    [DllImport("shell32.dll")]
+    public static extern void DragAcceptFiles(IntPtr hwnd, bool accept);
+
+    [DllImport("shell32.dll", EntryPoint = "DragQueryFileW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    public static extern uint DragQueryFile(IntPtr hDrop, uint fileIndex, StringBuilder? buffer, uint bufferSize);
+
+    [DllImport("shell32.dll")]
+    public static extern void DragFinish(IntPtr hDrop);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool ChangeWindowMessageFilterEx(IntPtr hwnd, uint message, int action, IntPtr changeFilterStruct);
 }

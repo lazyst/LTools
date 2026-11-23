@@ -22,6 +22,16 @@ internal static class ConfigStore
     /// <summary>当前配置路径（ConfigLocator 解析结果）。</summary>
     public static string ConfigPath { get; private set; } = "";
 
+    /// <summary>
+    /// 只记路径，不加载动作 / 快捷键 / 面板、也不做修复（给共享助手进程用）。
+    /// </summary>
+    /// <remarks>
+    /// 助手只读写 settings 域里的 Share 段（SettingsStore 每次现读现写）。它要是也跑一遍
+    /// Initialize，就会在主程序之外再扫一遍动作目录、修引用、播种快捷键——两个进程同时改同一批
+    /// 文件是没必要的风险。
+    /// </remarks>
+    internal static void UsePathOnly(string configPath) => ConfigPath = configPath;
+
     /// <summary>加载配置路径并刷新动作清单 / 快捷键 / 面板库。</summary>
     public static void Initialize(string configPath)
     {

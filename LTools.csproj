@@ -60,6 +60,20 @@
     <None Remove="tests\**" />
     <Content Remove="tests\**" />
     <EmbeddedResource Remove="tests\**" />
+    <!-- ShareHost 是独立工程（共享窗口 / 服务跑在普通权限进程里），别把它的源码和 obj 生成的
+         .cs 一起卷进主程序——它自带 App.xaml 与 Main。 -->
+    <Compile Remove="ShareHost\**" />
+    <Page Remove="ShareHost\**" />
+    <ApplicationDefinition Remove="ShareHost\**" />
+    <Resource Remove="ShareHost\**" />
+    <None Remove="ShareHost\**" />
+    <Content Remove="ShareHost\**" />
+    <EmbeddedResource Remove="ShareHost\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 助手进程直接用 ShareServer / ConfigStore / Ui 这些 internal 类型。 -->
+    <InternalsVisibleTo Include="ShareHost" />
   </ItemGroup>
 
   <ItemGroup>
@@ -69,6 +83,10 @@
     </Content>
     <!-- OCR 引擎按此目录找模型；tiny 随包分发，small 按需下载到数据根（见 OcrModelStore） -->
     <Content Include="Assets\Ocr\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- 局域网共享的浏览器单页（内嵌 CSS/JS，随包分发；运行时由 ShareAssets 读一次） -->
+    <Content Include="Assets\Share\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <!-- 相机快门音（P7-g）：截图时响的那一下，照 Snow Shot 的 audios/camera_shutter.mp3。
@@ -156,6 +174,19 @@
       <_RoslynSatellitesPublish Include="$(PublishDir)**\Microsoft.CodeAnalysis*.resources.dll" />
     </ItemGroup>
     <Delete Files="@(_RoslynSatellitesPublish)" />
+  </Target>
+
+  <!-- 发布时带上共享助手（ShareHost.exe）：先发到 obj 下的临时目录，只把 ShareHost.* 拷进
+       publish，免得把 LTools 自己与整套依赖再复制一遍（两个 exe 共用同一份依赖与数据根）。 -->
+  <Target Name="PublishShareHost" AfterTargets="Publish">
+    <MSBuild Projects="$(MSBuildProjectDirectory)\ShareHost\ShareHost.csproj"
+             Targets="Restore;Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishDir=$(MSBuildProjectDirectory)\obj\sharehost-publish\" />
+    <ItemGroup>
+      <_ShareHostPublish Include="$(MSBuildProjectDirectory)\obj\sharehost-publish\ShareHost.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ShareHostPublish)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="共享助手已发布到 $(PublishDir)" />
   </Target>
 
 </Project>

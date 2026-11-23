@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ShareHost</AssemblyName>
+    <RootNamespace>LTools.ShareHost</RootNamespace>
+    <ApplicationIcon>..\Icon\LTools.ico</ApplicationIcon>
+    <Version>2.6.9</Version>
+    <AssemblyVersion>2.6.9.0</AssemblyVersion>
+    <!--
+      普通权限（asInvoker）：这里**故意不写 ApplicationManifest**，SDK 默认就是 asInvoker。
+      Explorer 只会把文件拖给普通权限的窗口；把它改成 requireAdministrator，拖放立刻失效。
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 需要 LTools.dll 进 deps.json（pack URI 按程序集名加载主题字典），所以用默认的 CopyLocal。
+         运行时两边同目录，发布包里只有一份。 -->
+    <ProjectReference Include="..\LTools.csproj" />
+  </ItemGroup>
+
+  <!-- 开发构建：把助手 exe 也放到 LTools 的输出目录里，两边同一个数据根（AppPaths 按 exe 位置算）。 -->
+  <Target Name="CopyToAppFolder" AfterTargets="Build">
+    <ItemGroup>
+      <ShareHostOutput Include="$(TargetDir)ShareHost.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ShareHostOutput)" DestinationFolder="$(MSBuildProjectDirectory)\..\bin\$(Configuration)\$(TargetFramework)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

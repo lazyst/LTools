@@ -7,6 +7,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Core;
+using LTools.Core.Share;
 using LTools.Core.Storage;
 using LTools.Features;
 using LTools.Features.CapturePro;
@@ -110,6 +111,7 @@ internal static class ConfigBundle
         cfg.TrayDoubleClick = settings.TrayDoubleClick;
         cfg.Logging = settings.Logging ?? new LogConfig();
         cfg.Record = (settings.Record ?? new RecordOptions()).Normalized();
+        cfg.Share = (settings.Share ?? new ShareOptions()).Normalized();
         cfg.Translation = settings.Translation ?? new TranslationFile();
         cfg.TextRecognition = settings.TextRecognition ?? new TextRecognitionFile();
         cfg.CaptureHistory = settings.CaptureHistory ?? new CaptureHistoryFile();
@@ -389,6 +391,7 @@ internal static class ConfigBundle
         TrayDoubleClick = cfg.TrayDoubleClick,
         Logging = cfg.Logging ?? new LogConfig(),
         Record = cfg.Record ?? new RecordOptions(),
+        Share = cfg.Share ?? new ShareOptions(),
         Translation = cfg.Translation ?? new TranslationFile(),
         TextRecognition = cfg.TextRecognition ?? new TextRecognitionFile(),
         CaptureHistory = cfg.CaptureHistory ?? new CaptureHistoryFile(),

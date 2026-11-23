@@ -119,6 +119,41 @@ dotnet run --no-build                     # 21 条，约 2 秒
 空剪贴板什么都不粘 / 复制为副本后粘到指定位置「新 Id + 名字加『副本』+ 自己的 `files/`」/
 跨场景（上下文场景）粘贴 / 空剪贴板不挂「粘贴」而菜单树里能选到每个分组 / 源动作被删后粘不了并清空剪贴板。
 
+### `ShareSmoke`（局域网共享：真 Kestrel + 真 HttpClient + 真窗口 + 真鼠标拖放）
+
+```powershell
+cd tests\ShareSmoke
+dotnet run                                # 102 条，约 15 秒（中间有几次真的拖鼠标）
+dotnet run -- --explorer                  # 再加一段：真开资源管理器，把文件拖进窗口（提权时收不到，断言的是这一点）
+dotnet run -- --helper                    # 再加一段：拉起 ShareHost.exe，真拖一个文件进去
+```
+
+`--helper` 是**跨进程**那段：经 `explorer.exe` 拉起 `ShareHost.exe`（普通权限），
+断言「窗口出来 / `TokenElevation == 0` / 真资源管理器拖进去后 `share/items.json` 多一条」。
+它会往真实共享区加一条，跑完把 `items.json` 原样还原。
+
+临时数据根（`%TEMP%`），反射启动 `ShareServer`（随机端口），断言：页面与 `/api/state`、
+清单外路径 404、原件下载字节一致并声明 `Accept-Ranges`、分片上传中断后带 `offset` 续传、
+`sha256` 不匹配 422、重复 finish 404、暂停接收 403、令牌关闭 / 打开两种形态（根路径提示页、
+无令牌 401、带令牌 200）；手机发来的文字只落 `inbox/`、**不进**「发出去的」。用
+`FrameworkReference Microsoft.AspNetCore.App`，因为 Kestrel 的共享框架不在默认输出里。
+
+后半段在**一条 STA 线程**上开真 `ShareWindow`（top-level 语句是 MTA，产品窗口要 STA +
+`Application` + `Themes/Modern.xaml`），断言输入框（只占左栏）/ 两个图标按钮（字形是 MDL2）/
+回车发送 / 右键菜单 / 拖放 / 剪贴板按钮 / 单实例 / 右栏平铺的设置项，以及：
+- **真鼠标拖放**：先拿一个普通 `Window` 当对照组（证明自动化可用），再拖共享窗口。
+  断言用 `AddHandler(..., handledEventsToo: true)`——产品自己的处理器会 `e.Handled = true`，
+  普通 `+=` 永远数到 0（踩过）。`DragEventArgs` 只有 internal 构造函数，反射建。
+- **提权通道**：`AllowDrop=False` + `WS_EX_ACCEPTFILES` + 手工造 `HDROP` 发 `WM_DROPFILES` 能收、
+  同一文件再拖不重复。
+- 窗口渲染成 `%TEMP%\opencode\share-smoke\window.png`。
+
+`--explorer` 段：开资源管理器（临时目录）、用产品的 `ControlTargets.Snapshot` 找文件行、
+真鼠标拖进共享窗口。**两条结论都靠它验过**：非提权（用 `explorer.exe <exe> --log --explorer`
+从资源管理器启动这个冒烟）能拖进来；提权时 Explorer 连 `WM_DROPFILES` 都不发（钩子数到 0），
+这是 UIPI 的系统限制，见 `docs/LAN_SHARE.md` §3.2.1。`--log` 把输出写进
+`%TEMP%\opencode\share-smoke\report.txt`（从资源管理器启动时没有控制台可看）。
+
 ### `TableSmoke`（表格识别 `screen.table`）
 
 ```powershell

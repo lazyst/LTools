@@ -26,6 +26,9 @@ internal static class AppPaths
     /// <summary>速记目录，位于数据根下（速记与备份共用同一路径）。</summary>
     public static string NotesDir => Path.Combine(DataRoot, "速记");
 
+    /// <summary>局域网共享的共享区（清单 + 文件 + 收件箱），位于数据根下，不进备份。</summary>
+    public static string ShareDir => Path.Combine(DataRoot, "share");
+
     /// <summary>运行日志目录，位于数据根下（已 gitignore，按天分文件）。</summary>
     public static string LogsDir => Path.Combine(DataRoot, "logs");
 

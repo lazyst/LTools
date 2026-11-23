@@ -1,0 +1,399 @@
+<Window x:Class="LTools.Views.ShareWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:LTools.Views"
+        xmlns:controls="clr-namespace:LTools.Views.Controls"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="局域网共享" Width="940" Height="620" MinWidth="760" MinHeight="480"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
+        PreviewDragOver="Window_PreviewDragOver" PreviewDragLeave="Window_PreviewDragLeave"
+        PreviewDrop="Window_PreviewDrop"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
+        views:WindowSizing.Mode="Main">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <!-- 输入框内右侧的小图标按钮（剪贴板 / 选择文件）：透明底，悬停浅灰。 -->
+        <Style x:Key="ComposeIconBtn" TargetType="Button">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Margin" Value="2,0,0,0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="6"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextBlock.FontFamily="{TemplateBinding FontFamily}"
+                                              TextBlock.FontSize="{TemplateBinding FontSize}"
+                                              TextBlock.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background"
+                                        Value="{StaticResource PressedBgBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background"
+                                        Value="{StaticResource SelectedBgBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ShareRowBtn" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontFamily" Value="Segoe UI Symbol"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <!-- 行内文字按钮（复制 / 打开文件 / 查看 / 另存为） -->
+        <Style x:Key="ShareActionBtn" TargetType="Button" BasedOn="{StaticResource BtnGhost}">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="Padding" Value="7,0"/>
+            <Setter Property="Margin" Value="2,0,0,0"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+
+        <DataTemplate x:Key="ShareRowTemplate">
+            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1" CornerRadius="6" Padding="8,6" Margin="0,0,0,4"
+                    Tag="{Binding Key}" MouseLeftButtonDown="Row_MouseLeftButtonDown"
+                    ToolTip="{Binding Tip}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Width="26" Height="26" CornerRadius="4" Background="{StaticResource SurfaceAltBrush}"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Glyph}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   FontSize="11" Foreground="{StaticResource SecondaryTextBrush}"/>
+                    </Border>
+
+                    <StackPanel Grid.Column="1" Margin="8,0,8,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" FontSize="13" TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding Name}"/>
+                        <TextBlock Text="{Binding Meta}" FontSize="11" Foreground="{StaticResource HintTextBrush}"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <!-- 行内常驻按钮（不再收进「⋯」菜单） -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="{Binding Action1}" Style="{StaticResource ShareActionBtn}"
+                                CommandParameter="{Binding Key}" Click="RowAction1_Click"
+                                ToolTip="{Binding Action1Tip}"/>
+                        <Button Content="{Binding Action2}" Style="{StaticResource ShareActionBtn}"
+                                CommandParameter="{Binding Key}" Click="RowAction2_Click"
+                                ToolTip="{Binding Action2Tip}" Visibility="{Binding Action2Visibility}"/>
+                        <Button Content="另存为" Style="{StaticResource ShareActionBtn}"
+                                CommandParameter="{Binding Key}" Click="RowAction3_Click"
+                                Visibility="{Binding SaveVisibility}" ToolTip="另存到别处"/>
+                        <Button Content="✕" Style="{StaticResource ShareRowBtn}" CommandParameter="{Binding Key}"
+                                Click="RowRemove_Click" Foreground="{StaticResource DangerBrush}"
+                                ToolTip="移除（原文件不动）"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+        <DataTemplate x:Key="ShareTextRowTemplate">
+            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1" CornerRadius="6" Padding="8,6" Margin="0,0,0,4"
+                    Tag="{Binding Key}" MouseLeftButtonDown="Row_MouseLeftButtonDown"
+                    ToolTip="{Binding Tip}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Width="26" Height="26" CornerRadius="4" Background="{StaticResource SurfaceAltBrush}"
+                            VerticalAlignment="Top" Margin="0,1,0,0">
+                        <TextBlock Text="{Binding Glyph}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   FontSize="11" Foreground="{StaticResource SecondaryTextBrush}"/>
+                    </Border>
+
+                    <StackPanel Grid.Column="1" Margin="8,0,8,0">
+                        <TextBlock Text="{Binding Meta}" FontSize="10.5"
+                                   Foreground="{StaticResource HintTextBrush}"/>
+                        <TextBlock Text="{Binding Body}" FontSize="13" TextWrapping="Wrap" LineHeight="18"
+                                   Margin="0,2,0,0" MaxHeight="38"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
+                        <Button Content="{Binding Action1}" Style="{StaticResource ShareActionBtn}"
+                                CommandParameter="{Binding Key}" Click="RowAction1_Click"
+                                ToolTip="{Binding Action1Tip}"/>
+                        <Button Content="{Binding Action2}" Style="{StaticResource ShareActionBtn}"
+                                CommandParameter="{Binding Key}" Click="RowAction2_Click"
+                                ToolTip="{Binding Action2Tip}" Visibility="{Binding Action2Visibility}"/>
+                        <Button Content="另存为" Style="{StaticResource ShareActionBtn}"
+                                CommandParameter="{Binding Key}" Click="RowAction3_Click"
+                                Visibility="{Binding SaveVisibility}" ToolTip="另存到别处"/>
+                        <Button Content="✕" Style="{StaticResource ShareRowBtn}" CommandParameter="{Binding Key}"
+                                Click="RowRemove_Click" Foreground="{StaticResource DangerBrush}"
+                                ToolTip="移除（原文件不动）"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <controls:TitleBar Grid.Row="0" x:Name="Bar"/>
+
+        <!-- 底部发送区在左栏里（跟着内容流走），不横跨右栏 -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="280"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 左栏：发出去的 + 收到的 + 发送区 -->
+            <DockPanel Grid.Column="0">
+                <Grid DockPanel.Dock="Top" Height="40" Margin="12,0,8,0">
+                    <TextBlock x:Name="OutTitle" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}"/>
+                </Grid>
+
+                <Border DockPanel.Dock="Bottom" Padding="12,8,12,8" Background="{StaticResource BgBrush}"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Bottom" Margin="2,6,0,0" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource HintTextBrush}"
+                                   Text="回车发送 · Shift+回车换行 · 文件可拖进来，文字 / 图片也可以粘贴"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border x:Name="ComposeHost" Background="{StaticResource SurfaceBrush}"
+                                    BorderThickness="1" CornerRadius="8">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsKeyboardFocusWithin, ElementName=ComposeBox}"
+                                                         Value="True">
+                                                <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBox x:Name="ComposeBox" MinHeight="42" MaxHeight="140"
+                                             AcceptsReturn="True" TextWrapping="Wrap"
+                                             VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                                             Background="Transparent" BorderThickness="0" Padding="10,11,4,10"
+                                             TextChanged="ComposeBox_TextChanged"
+                                             PreviewKeyDown="ComposeBox_PreviewKeyDown"
+                                             controls:TextBoxClear.Attach="False"
+                                             controls:TextBoxPlaceholder.Text="写点什么，或把文件拖进来…"/>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,8,8"
+                                                VerticalAlignment="Bottom">
+                                        <Button x:Name="ClipboardBtn" Style="{StaticResource ComposeIconBtn}"
+                                                Click="PasteClipboard_Click"
+                                                ToolTip="读取剪贴板里的文字 / 图片 / 文件">
+                                            <TextBlock Text="&#xE77F;" FontFamily="Segoe MDL2 Assets" FontSize="15"/>
+                                        </Button>
+                                        <Button x:Name="PlusBtn" Style="{StaticResource ComposeIconBtn}"
+                                                Click="ChooseFiles_Click" ToolTip="选择文件…">
+                                            <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="15"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <Button Grid.Column="1" x:Name="SendBtn" Content="发送" Click="Send_Click"
+                                    Height="42" MinWidth="72" Margin="8,0,0,0" VerticalAlignment="Bottom"
+                                    Style="{StaticResource BtnPrimary}" ToolTip="回车也可以发送"/>
+                        </Grid>
+                    </DockPanel>
+                </Border>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="8,0,8,8">
+                    <StackPanel>
+                        <ItemsControl x:Name="OutList"/>
+
+                        <TextBlock x:Name="InTitle" Margin="4,14,0,4" FontSize="12"
+                                   Foreground="{StaticResource SecondaryTextBrush}" Visibility="Collapsed"/>
+                        <ItemsControl x:Name="InList"/>
+
+                        <TextBlock x:Name="EmptyText" Margin="4,10,0,0" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{StaticResource HintTextBrush}" Visibility="Collapsed"
+                                   Text="还没有内容。在下面的输入框写一句话按回车，或者点输入框右边的图标取剪贴板 / 选文件，也可以直接把文件拖进来。"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+
+            <!-- 右栏：状态 / 二维码 / 地址 / 开关，设置项直接平铺 -->
+            <Border x:Name="SidePanel" Grid.Column="1" Background="{StaticResource SurfaceAltBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="14,12,14,16">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8" HorizontalAlignment="Center">
+                            <Ellipse x:Name="StatusDot" Width="7" Height="7" Margin="0,0,6,0"
+                                     VerticalAlignment="Center" Fill="{StaticResource HintTextBrush}"/>
+                            <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="12"
+                                       Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <Button x:Name="ToggleBtn" Click="Toggle_Click" Height="32" Margin="0,0,0,12"
+                                Style="{StaticResource BtnPrimary}"/>
+
+                        <Border x:Name="QrBorder" Width="184" Height="184" Background="White" CornerRadius="6" Padding="4"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                HorizontalAlignment="Center" Cursor="Hand"
+                                MouseLeftButtonDown="Qr_Click"
+                                ToolTip="点一下换下一条地址（多网卡时）">
+                            <Image x:Name="QrImage" Stretch="Uniform" SnapsToDevicePixels="True"/>
+                        </Border>
+                        <TextBlock x:Name="QrHint" Margin="0,6,0,0" FontSize="11" TextAlignment="Center"
+                                   TextWrapping="Wrap" Foreground="{StaticResource HintTextBrush}"/>
+
+                        <TextBlock Text="共享地址" Margin="0,14,0,4" FontSize="11"
+                                   Foreground="{StaticResource SecondaryTextBrush}"/>
+                        <ItemsControl x:Name="UrlList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,4" Padding="4,3" CornerRadius="4" Cursor="Hand"
+                                            BorderThickness="1" Tag="{Binding Index}"
+                                            MouseLeftButtonDown="UrlRow_Click"
+                                            ToolTip="用这条画二维码">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Setter Property="BorderBrush" Value="Transparent"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Selected}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+                                                        <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Url}" FontFamily="Consolas" FontSize="11"
+                                                           TextWrapping="Wrap" ToolTip="{Binding Full}"/>
+                                                <TextBlock Text="{Binding Token}" FontFamily="Consolas" FontSize="10.5"
+                                                           Foreground="{StaticResource HintTextBrush}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="复制" Click="CopyUrlRow_Click"
+                                                    CommandParameter="{Binding Full}" Style="{StaticResource ShareActionBtn}"
+                                                    VerticalAlignment="Center" ToolTip="复制这条地址"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock x:Name="UrlHint" FontSize="10.5" TextWrapping="Wrap"
+                                   Foreground="{StaticResource HintTextBrush}" Visibility="Collapsed"/>
+
+                        <Separator Margin="0,14,0,10"/>
+
+                        <CheckBox x:Name="TokenCheck" Content="需要访问令牌" Click="Token_Click"/>
+                        <Button x:Name="ResetTokenBtn" Content="重置令牌…" Click="ResetToken_Click"
+                                Margin="0,6,0,0" Height="28" Visibility="Collapsed"
+                                Style="{StaticResource BtnGhost}"/>
+
+                        <CheckBox x:Name="InboundCheck" Content="允许对方发来内容" Click="Inbound_Click"
+                                  Margin="0,12,0,0"/>
+
+                        <TextBlock x:Name="DeviceText" Margin="0,12,0,0" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource HintTextBrush}"/>
+
+                        <!-- 设置项平铺，直接就地改（不再弹输入框） -->
+                        <Separator Margin="0,14,0,8"/>
+                        <TextBlock Text="设置" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}"/>
+
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="74"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="端口" VerticalAlignment="Center" FontSize="11"
+                                       Foreground="{StaticResource HintTextBrush}"/>
+                            <TextBox x:Name="PortBox" Grid.Column="1" Width="88" HorizontalAlignment="Left"
+                                     Height="24" Padding="6,2" FontFamily="Consolas" FontSize="12"
+                                     VerticalContentAlignment="Center"
+                                     controls:TextBoxClear.Attach="False"
+                                     ToolTip="1024–65535，回车生效"
+                                     PreviewKeyDown="PortBox_PreviewKeyDown" LostFocus="PortBox_LostFocus"/>
+                        </Grid>
+
+                        <Grid Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="74"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="上传上限 MB" VerticalAlignment="Center" FontSize="11"
+                                       Foreground="{StaticResource HintTextBrush}"/>
+                            <TextBox x:Name="UploadBox" Grid.Column="1" Width="88" HorizontalAlignment="Left"
+                                     Height="24" Padding="6,2" FontFamily="Consolas" FontSize="12"
+                                     VerticalContentAlignment="Center"
+                                     controls:TextBoxClear.Attach="False"
+                                     ToolTip="1–4096，回车生效"
+                                     PreviewKeyDown="UploadBox_PreviewKeyDown" LostFocus="UploadBox_LostFocus"/>
+                        </Grid>
+
+                        <Grid Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="74"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="共享目录" VerticalAlignment="Center" FontSize="11"
+                                       Foreground="{StaticResource HintTextBrush}"/>
+                            <TextBlock Grid.Column="1" Text="share/" VerticalAlignment="Center"
+                                       FontFamily="Consolas" FontSize="12"/>
+                            <Button Grid.Column="2" Content="打开" Click="OpenFolder_Click" Height="24"
+                                    MinWidth="0" Padding="7,0" FontSize="11" Style="{StaticResource BtnGhost}"/>
+                        </Grid>
+
+                        <TextBlock x:Name="SettingsHint" Margin="0,8,0,0" FontSize="10.5" TextWrapping="Wrap"
+                                   Foreground="{StaticResource DangerBrush}" Visibility="Collapsed"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

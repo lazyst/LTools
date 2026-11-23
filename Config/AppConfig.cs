@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Core;
+using LTools.Core.Share;
 using LTools.Features;
 using LTools.Features.CapturePro;
 
@@ -105,6 +106,9 @@ public sealed class AppConfig
 
     /// <summary>录屏的默认开关（声音 / 摄像头 / 特效 / 编码器 / 录完裁剪），见 <c>RecordOptions</c>。</summary>
     public RecordOptions Record { get; set; } = new();
+
+    /// <summary>局域网共享（端口 / 是否在共享 / 回传 / 上传上限 / 可选令牌），见 <c>docs/LAN_SHARE.md</c>。</summary>
+    public ShareOptions Share { get; set; } = new();
 
     /// <summary>终端路径覆盖（如 gitbash）。</summary>
     public Dictionary<string, string> TerminalPaths { get; set; } = new();

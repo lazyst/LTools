@@ -1,0 +1,13 @@
+<Application x:Class="LTools.ShareHost.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 与主程序同一套主题（配色 / 控件样式 / ModernWindow 模板都从这里来）。 -->
+                <ResourceDictionary Source="pack://application:,,,/LTools;component/Themes/Modern.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

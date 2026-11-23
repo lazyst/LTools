@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    局域网共享的端到端冒烟（仓库外跑，不进 CI）：
+    - 真起 Kestrel（随机端口），用真 HttpClient 打 /api/state、下载、分片上传、令牌；
+    - 数据根换成 %TEMP% 下的临时目录，不碰真实 share/；
+    - 用反射驱动 LTools.dll 里的 internal 类型（ShareServer / ShareStore）。
+    跑之前先构建产品：
+        dotnet build -p:NoWin32Manifest=true
+        cd tests\ShareSmoke；dotnet run
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ShareSmoke</AssemblyName>
+    <RootNamespace>ShareSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Reference Include="LTools">
+      <HintPath>..\..\bin\Debug\net10.0-windows10.0.19041.0\LTools.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

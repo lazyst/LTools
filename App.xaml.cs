@@ -8,6 +8,7 @@ using LTools.Config;
 using LTools.Core;
 using LTools.Core.Ai;
 using LTools.Core.SelfTest;
+using LTools.Core.Share;
 using LTools.Features;
 using LTools.Features.CapturePro;
 using LTools.Features.Floating;
@@ -174,6 +175,12 @@ public partial class App : Application
         // 只有用户在设置里打开才会在后台起 HTTP 服务（启动失败只记配置里的 LastError）。
         _ = Task.Run(KnowledgePack.Ensure);
         _ = Task.Run(McpServer.Apply);
+        // 局域网共享：上次开着就把助手进程拉起来（窗口保持隐藏）。只读 settings 域，不扫动作目录。
+        // 共享窗口单独跑在 asInvoker 的 ShareHost.exe 里——主程序提权后收不到 Explorer 的拖放。
+        _ = Task.Run(() =>
+        {
+            if (ConfigBundle.ReadSettings(cfgPath).Share.Running) ShareHelper.Start();
+        });
         // 录屏写的是分片 MP4：进程被杀 / 断电时已经落下的分片还能播，
         // 启动时把它们重新封装、收进采集历史（重活，后台跑，别拖住启动）。
         _ = Task.Run(RecordRecovery.Sweep);
@@ -327,6 +334,7 @@ public partial class App : Application
         _watchdog?.Stop();
         // 只管「别再收请求」并把关停排到后台：绝不在 UI 线程上等 ASP.NET Core 关停（会永久卡死托盘）。
         McpServer.Stop();
+        ShareHelper.Stop();
         FloatingManager.Shutdown();
         ForegroundAppCache.Stop();
         TriggerService.Stop();
@@ -340,6 +348,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         McpServer.Stop();
+        ShareHelper.Stop();
         FloatingManager.Shutdown();
         TriggerService.Stop();   // 幂等：托盘退出时已 Stop 过一次
         HookDispatcher.Stop();   // 幂等：系统注销 / 直接关进程时也得让钩子线程收尾卸载

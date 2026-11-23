@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Security.Principal;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Core.Actions;
@@ -154,15 +153,7 @@ internal static class AiToolHandlers
     }
 
     /// <summary>进程是否提权（UIA 读提权窗口需要，普通权限会拿到空树）。</summary>
-    private static bool IsElevated()
-    {
-        try
-        {
-            using var identity = WindowsIdentity.GetCurrent();
-            return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-        }
-        catch { return false; }
-    }
+    private static bool IsElevated() => Elevation.IsElevated;
 
     public static Dictionary<string, object?> DocsGet(string name)
     {

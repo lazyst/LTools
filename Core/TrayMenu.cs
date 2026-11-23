@@ -52,6 +52,7 @@ internal sealed class TrayMenu
         Menu.Items.Add(NewItem("动作面板 (CapsLock+T)", () => Features.SuperPanel.Toggle()));
         Menu.Items.Add(NewItem("设置 (CapsLock+\\)", () => ConfigHelper.Toggle()));
         Menu.Items.Add(NewItem("辅助工具…", () => Views.InfoHelperWindow.Toggle()));
+        Menu.Items.Add(NewItem("局域网共享…", () => LTools.Core.Share.ShareHelper.Open()));
 
         // 截图相关的入口收进二级菜单：平铺出来要占 5 行，日常更常用的其实是「截图」本身。
         var capture = MenuFx.Submenu(Menu, HeaderRow("截图"));
