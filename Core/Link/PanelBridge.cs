@@ -104,4 +104,74 @@ internal static class PanelHostBridge
             AppLog.Warn("Link", $"打开窗口失败：{ex.Message}");
         }
     }
+
+    /// <summary>
+    /// 面板结构改动（拖磁贴 / 分组改名 / 增删分组场景…）落盘：宿主把整份配置交给提权进程。
+    /// 返回 true = 已接管（<see cref="Features.Panel.PanelLibrary.Save"/> 据此认为保存成功）。
+    /// </summary>
+    public static bool TryPushPanel(LTools.Config.PanelConfig panel)
+    {
+        LinkServer? server = Volatile.Read(ref _server);
+        if (server == null) return false;
+
+        if (!server.IsConnected)
+        {
+            AppLog.Warn("Link", "宿主连不上主程序，面板改动没有落盘");
+            return true;
+        }
+
+        _ = PushPanelAsync(server, panel);
+        return true;
+    }
+
+    private static async Task PushPanelAsync(LinkServer server, LTools.Config.PanelConfig panel)
+    {
+        try
+        {
+            LinkMessage reply = await server
+                .RequestAsync(LinkMethods.PanelReplace, panel, timeoutMs: 5000)
+                .ConfigureAwait(false);
+
+            if (!reply.Ok) AppLog.Warn("Link", $"面板落盘失败：{reply.Error}");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Link", $"面板落盘失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 面板的动作级操作（新建 / 编辑 / 删除 / 粘贴…）：宿主转给提权进程。
+    /// 返回 true = 已接管（调用方别再本地执行）。
+    /// </summary>
+    public static bool TryActionOp(ActionOpRequest op)
+    {
+        LinkServer? server = Volatile.Read(ref _server);
+        if (server == null) return false;
+
+        if (!server.IsConnected)
+        {
+            AppLog.Warn("Link", "宿主连不上主程序，操作没有执行");
+            return true;
+        }
+
+        _ = ActionOpAsync(server, op);
+        return true;
+    }
+
+    private static async Task ActionOpAsync(LinkServer server, ActionOpRequest op)
+    {
+        try
+        {
+            LinkMessage reply = await server
+                .RequestAsync(LinkMethods.ActionOp, op, timeoutMs: 5000)
+                .ConfigureAwait(false);
+
+            if (!reply.Ok) AppLog.Warn("Link", $"面板操作失败（{op.Op}）：{reply.Error}");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Link", $"面板操作失败（{op.Op}）：{ex.Message}");
+        }
+    }
 }

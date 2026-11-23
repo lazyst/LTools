@@ -36,6 +36,9 @@ internal static class LinkMethods
     /// <summary>在提权进程里打开一个窗口（宿主点「设置 / 暂存区 / 面板场景」时转过去）。</summary>
     public const string OpenWindow = "open.window";
 
+    /// <summary>面板的动作级操作（新建 / 添加已有 / 编辑 / 删除 / 粘贴 / 导出 / 另存为子动作）。</summary>
+    public const string ActionOp = "panel.op";
+
     // —— 提权进程 → 宿主（事件，这一轮先定义好，宿主侧接线时用）——
 
     /// <summary>显示面板（鼠标手势 / 快捷键在提权侧的钩子里触发）。负载：<see cref="PanelShowRequest"/>。</summary>
@@ -91,3 +94,27 @@ internal static class LinkTargets
     /// <summary>设置 → 面板管理 → 场景（<see cref="OpenWindowRequest.Arg"/> = 场景 Id）。</summary>
     public const string PanelScene = "panel.scene";
 }
+
+/// <summary>面板的动作级操作（<>PanelActionOps</> 里那些会建 / 删动作或开编辑器的入口）。</summary>
+internal static class PanelOps
+{
+    public const string AddNew = "addNew";
+    public const string AddExisting = "addExisting";
+    public const string Edit = "edit";
+    public const string Delete = "delete";
+    public const string Paste = "paste";
+    public const string Export = "export";
+    public const string ToSubAction = "toSubAction";
+}
+
+/// <summary>
+/// 一次面板动作操作。字段按操作取用：新建 / 添加已有要 <see cref="GroupId"/>；
+/// 编辑 / 删除 / 导出 / 另存为子动作要 <see cref="Id"/>；粘贴要 <see cref="Kind"/> + <see cref="Reference"/>。
+/// </summary>
+internal sealed record ActionOpRequest(
+    string Op,
+    string? Id = null,
+    string? GroupId = null,
+    string? Kind = null,
+    string? Reference = null,
+    string? Name = null);

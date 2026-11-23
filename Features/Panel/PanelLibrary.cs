@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LTools.Config;
 using LTools.Core;
+using LTools.Core.Link;
 using LTools.Features.Builtin;
 
 namespace LTools.Features.Panel;
@@ -65,16 +66,38 @@ internal static class PanelLibrary
         if (created && persist) Persist();
     }
 
-    /// <summary>把内存配置整份写回磁盘。失败只记日志，不阻塞 UI；只读进程（宿主）直接拒绝。</summary>
+    /// <summary>把内存配置整份写回磁盘。失败只记日志，不阻塞 UI；只读进程（宿主）把改动转给主程序。</summary>
     public static bool Save()
     {
         if (ConfigStore.ReadOnly)
         {
-            AppLog.Warn(LogSource, "宿主进程试图写面板配置，已拒绝（写入归主程序）");
+            // 宿主：结构改动（拖磁贴 / 改名 / 增删分组场景…）照常改内存，落盘交给提权进程整份替换。
+            if (PanelHostBridge.TryPushPanel(Current)) return true;
+
+            AppLog.Warn(LogSource, "宿主连不上主程序，面板改动没有落盘");
             return false;
         }
 
         return Persist();
+    }
+
+    /// <summary>按 Id 在全局 / 上下文的所有场景（含 <see cref="PanelAreaDto.Common"/>）里找分组。</summary>
+    internal static PanelGroupDto? FindGroup(string? groupId)
+    {
+        if (string.IsNullOrEmpty(groupId)) return null;
+
+        foreach (PanelSceneDto scene in Current.Global.Scenes)
+            foreach (PanelGroupDto group in scene.Groups)
+                if (string.Equals(group.Id, groupId, StringComparison.Ordinal)) return group;
+
+        foreach (PanelSceneDto scene in Current.Context.Scenes)
+            foreach (PanelGroupDto group in scene.Groups)
+                if (string.Equals(group.Id, groupId, StringComparison.Ordinal)) return group;
+
+        foreach (PanelGroupDto group in Current.Context.Common)
+            if (string.Equals(group.Id, groupId, StringComparison.Ordinal)) return group;
+
+        return null;
     }
 
     /// <summary>

@@ -254,6 +254,11 @@ internal static class SuperPanel
         }));
     }
 
+    /// <summary>
+    /// 配置被外部改写后重建打开着的面板（宿主收到 <c>actions.changed</c> 时用；没开就什么都不做）。
+    /// </summary>
+    public static void Refresh() => _window?.RefreshFromConfig();
+
     /// <summary>关闭面板（若已打开）。</summary>
     public static void Close()
     {

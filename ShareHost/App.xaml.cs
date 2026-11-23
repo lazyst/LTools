@@ -166,6 +166,29 @@ public partial class App : Application
                     Features.SuperPanel.Toggle();
                 }));
                 break;
+
+            case LinkMethods.EventActionsChanged:
+                _ = ReloadAndRefreshAsync();
+                break;
+        }
+    }
+
+    /// <summary>主程序改了动作 / 面板：宿主从磁盘只读重读一遍，再重建打开着的面板。</summary>
+    private async Task ReloadAndRefreshAsync()
+    {
+        try
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                try { ConfigStore.InitializeReadOnly(ConfigLocator.FindPath()); }
+                catch (Exception ex) { AppLog.Warn("ShareHost", $"刷新配置失败：{ex.Message}"); }
+
+                Features.SuperPanel.Refresh();
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("ShareHost", $"刷新面板失败：{ex.Message}");
         }
     }
 

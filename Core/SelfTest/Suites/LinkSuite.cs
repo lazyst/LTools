@@ -148,7 +148,7 @@ internal static class LinkSuite
         {
             LinkMethods.PanelSnapshot, LinkMethods.PanelReplace, LinkMethods.ActionAdd,
             LinkMethods.ActionDelete, LinkMethods.ActionDuplicate,
-            LinkMethods.RunAction, LinkMethods.OpenWindow,
+            LinkMethods.RunAction, LinkMethods.OpenWindow, LinkMethods.ActionOp,
             LinkMethods.EventPanelShow, LinkMethods.EventPanelToggle, LinkMethods.EventClientReady,
             LinkMethods.EventActionsChanged,
         };
@@ -180,6 +180,15 @@ internal static class LinkSuite
             new OpenWindowRequest(LinkTargets.PanelScene, "s1"))).Read<OpenWindowRequest>();
         Check.Equal(LinkTargets.PanelScene, open?.Target, "打开窗口：目标原样");
         Check.Equal("s1", open?.Arg, "打开窗口：参数原样");
+
+        ActionOpRequest? op = RoundTrip(LinkMessage.Request(8, LinkMethods.ActionOp,
+            new ActionOpRequest(PanelOps.Paste, GroupId: "g1", Kind: "copy", Reference: "01abc", Name: "报表")))
+            .Read<ActionOpRequest>();
+        Check.Equal(PanelOps.Paste, op?.Op, "面板操作：操作名原样");
+        Check.Equal("g1", op?.GroupId, "面板操作：分组原样");
+        Check.Equal("copy", op?.Kind, "面板操作：粘贴类别原样");
+        Check.Equal("01abc", op?.Reference, "面板操作：引用原样");
+        Check.Equal("报表", op?.Name, "面板操作：名字原样");
 
         // 快照：整份面板配置 + 动作摘要都要原样回来。
         var panel = new PanelConfig

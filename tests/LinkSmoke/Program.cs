@@ -143,6 +143,8 @@ internal static class Program
         string pipe = "LToolsLink-fwd-" + Guid.NewGuid().ToString("N")[..8];
         var recorded = new TaskCompletionSource<RunActionRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var opened = new TaskCompletionSource<OpenWindowRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var operated = new TaskCompletionSource<ActionOpRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pushed = new TaskCompletionSource<PanelConfig>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var server = new LinkServer(pipe, "fwd-token",
             static (_, request) => Task.FromResult(LinkMessage.Response(request, error: "宿主不支持该请求")));
@@ -158,6 +160,10 @@ internal static class Program
                         recorded.TrySetResult(run);
                     if (request.Method == LinkMethods.OpenWindow && request.Read<OpenWindowRequest>() is { } open)
                         opened.TrySetResult(open);
+                    if (request.Method == LinkMethods.ActionOp && request.Read<ActionOpRequest>() is { } op)
+                        operated.TrySetResult(op);
+                    if (request.Method == LinkMethods.PanelReplace && request.Read<PanelConfig>() is { } panel)
+                        pushed.TrySetResult(panel);
                     return Task.FromResult(LinkMessage.Response(request));
                 });
 
@@ -178,6 +184,26 @@ internal static class Program
                 ReferenceEquals(openedDone, opened.Task) ? null : "2 秒内没收到");
             Check("打开目标原样", opened.Task.IsCompletedSuccessfully && opened.Task.Result.Target == LinkTargets.Settings,
                 opened.Task.IsCompletedSuccessfully ? opened.Task.Result.ToString() : "");
+
+            // ---- 动作级操作：宿主新建动作转给提权进程（不在宿主里开编辑器 / 建文件）----
+            var group = new PanelGroupDto { Id = "g1", Name = "常用" };
+            ActionDto? created = PanelActionOps.AddNew(null, group);
+            Check("宿主新建动作被接管（不本地开编辑器）", created == null);
+
+            Task opDone = await Task.WhenAny(operated.Task, Task.Delay(2000));
+            Check("面板操作转给了提权进程", ReferenceEquals(opDone, operated.Task),
+                ReferenceEquals(opDone, operated.Task) ? null : "2 秒内没收到");
+            Check("操作名 / 分组原样",
+                operated.Task.IsCompletedSuccessfully
+                && operated.Task.Result.Op == PanelOps.AddNew
+                && operated.Task.Result.GroupId == "g1",
+                operated.Task.IsCompletedSuccessfully ? operated.Task.Result.ToString() : "");
+
+            // ---- 面板结构保存：宿主 Save 变成整份替换 ----
+            Check("面板结构保存被接管", PanelHostBridge.TryPushPanel(new PanelConfig()));
+            Task pushDone = await Task.WhenAny(pushed.Task, Task.Delay(2000));
+            Check("整份面板配置转给了提权进程", ReferenceEquals(pushDone, pushed.Task),
+                ReferenceEquals(pushDone, pushed.Task) ? null : "2 秒内没收到");
         }
         catch (Exception ex)
         {

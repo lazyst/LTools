@@ -445,4 +445,25 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`LinkSmoke` 38 条（新增 `open.window` 转交断言）；`--selftest` 393 用例 / 18561 断言；
   `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
 
+**2026-11-24 · P1b-6 `panel.op.*` + 结构保存转交（写属主真正搬过去）**
+
+- **面板结构改动**（拖磁贴、分组改名、增删分组 / 场景、切活动场景…）在宿主里照常改内存，
+  `PanelLibrary.Save()` 在只读进程里不再简单拒绝：有链路就改成**整份 `panel.replace`** 交给提权进程落盘
+  （`PanelHostBridge.TryPushPanel`）；连不上时拦下并 Warn，不本地写。一个 choke point 覆盖所有结构入口。
+- **动作级操作**（`PanelActionOps` 的会建 / 删动作或开编辑器的入口）加 `panel.op`：
+  `addNew` / `addExisting` / `edit` / `delete` / `paste` / `export` / `toSubAction`。
+  - 宿主侧：`PanelHostBridge.TryActionOp` 转过去并**当已处理**（返回 null / false），不在宿主开编辑器、不建文件。
+  - 提权侧：`PanelHost.HandleActionOp` 用 `Ui.Post` 排到 UI 线程（编辑器 / 确认框都是模态），完成后
+    给宿主推 `actions.changed`。
+  - 粘贴要带剪贴板条目（剪贴板是进程内的）：`ActionOpRequest` 带 `Kind/Reference/Name`，
+    提权侧调 `PanelActionOps.PasteEntry`（宿主与提权共用的那一份实现）。
+- `PanelLibrary.FindGroup(id)`：按分组 Id 在全局 / 上下文所有场景（含 `Common`）里定位，供 RPC 用。
+- **宿主收到 `actions.changed`**：在 UI 线程 `ConfigStore.InitializeReadOnly` 重读磁盘，然后
+  `SuperPanel.Refresh()` 重建打开着的面板（场景 / 磁贴 / 动作名都跟着变）。
+- 仍是**只读预览**：右键菜单故意还关着——里面还有「悬浮 / 取消悬浮」「回放宏」「编辑场景…（开设置）」
+  「从文件建动作」这些走 `FloatingManager` / `MacroPlayer` / `ConfigHelper` / `PanelDrop` 的入口，
+  在宿主里跑会落到错误的进程。下一步把它们接成命令后再放开菜单。
+- 回归：`LinkSmoke` 43 条（新增 `panel.op` / `panel.replace` 转交）；`--selftest` 393 用例 / 18569 断言；
+  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
+
 

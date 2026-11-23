@@ -24,8 +24,83 @@ namespace LTools.Core.Link;
 internal static class PanelHost
 {
     /// <summary>给 <see cref="LinkServer"/> 用的处理函数（同步实现 + 包一层 Task，避免占用读循环）。</summary>
-    public static Task<LinkMessage> HandleAsync(LinkChannel channel, LinkMessage request) =>
-        Task.FromResult(Handle(request));
+    public static Task<LinkMessage> HandleAsync(LinkChannel channel, LinkMessage request)
+    {
+        // 动作级操作会开模态编辑器 / 确认框：必须排到 UI 线程，而且完成后要通知宿主重拉快照。
+        if (string.Equals(request.Method, LinkMethods.ActionOp, StringComparison.Ordinal))
+            return Task.FromResult(HandleActionOp(channel, request));
+
+        return Task.FromResult(Handle(request));
+    }
+
+    private static LinkMessage HandleActionOp(LinkChannel channel, LinkMessage request)
+    {
+        ActionOpRequest? op = request.Read<ActionOpRequest>();
+        if (op == null || string.IsNullOrWhiteSpace(op.Op))
+            return LinkMessage.Response(request, error: "缺少操作名");
+
+        Ui.Post(() =>
+        {
+            try
+            {
+                ApplyActionOp(op);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Link", $"面板操作失败（{op.Op}）：{ex.Message}");
+            }
+            finally
+            {
+                // 动作可能刚建 / 刚删 / 刚改：让宿主重读一次（面板与动作清单都跟着刷新）。
+                _ = channel.NotifyAsync(LinkMethods.EventActionsChanged);
+            }
+        });
+
+        return LinkMessage.Response(request);
+    }
+
+    private static void ApplyActionOp(ActionOpRequest op)
+    {
+        switch (op.Op)
+        {
+            case PanelOps.AddNew:
+                if (PanelLibrary.FindGroup(op.GroupId) is { } newGroup) PanelActionOps.AddNew(null, newGroup);
+                break;
+
+            case PanelOps.AddExisting:
+                if (PanelLibrary.FindGroup(op.GroupId) is { } existingGroup) PanelActionOps.AddExisting(null, existingGroup);
+                break;
+
+            case PanelOps.Edit:
+                if (!string.IsNullOrEmpty(op.Id)) PanelActionOps.Edit(null, op.Id);
+                break;
+
+            case PanelOps.Delete:
+                if (!string.IsNullOrEmpty(op.Id)) PanelActionOps.Delete(null, op.Id);
+                break;
+
+            case PanelOps.Export:
+                if (!string.IsNullOrEmpty(op.Id)) PanelActionOps.Export(null, op.Id);
+                break;
+
+            case PanelOps.ToSubAction:
+                if (!string.IsNullOrEmpty(op.Id)) PanelActionOps.ToSubAction(null, op.Id);
+                break;
+
+            case PanelOps.Paste:
+                if (PanelLibrary.FindGroup(op.GroupId) is { } pasteGroup)
+                {
+                    PanelActionOps.PasteEntry(pasteGroup, -1,
+                        string.Equals(op.Kind, "copy", StringComparison.OrdinalIgnoreCase),
+                        op.Reference ?? "", op.Name ?? "");
+                }
+                break;
+
+            default:
+                AppLog.Warn("Link", "未知的面板操作：" + op.Op);
+                break;
+        }
+    }
 
     /// <summary>直接处理一条面板命令（自测 / 冒烟直接调它，不必起管道）。</summary>
     internal static LinkMessage Handle(LinkMessage request)

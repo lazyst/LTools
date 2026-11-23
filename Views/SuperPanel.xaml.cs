@@ -255,6 +255,9 @@ public partial class SuperPanelWindow : Window
         ContextHintBar.Visibility = Visibility.Collapsed;
     }
 
+    /// <summary>配置被外部改写后重建内容（宿主收到 <c>actions.changed</c> 时调；只重建，不动窗口几何）。</summary>
+    internal void RefreshFromConfig() => RebuildAll();
+
     protected override void OnClosed(EventArgs e)
     {
         StashView.SetActive(false);
