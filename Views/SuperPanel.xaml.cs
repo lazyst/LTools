@@ -110,8 +110,8 @@ public partial class SuperPanelWindow : Window
         // XAML 默认是动作面板，暂存区在 Loaded 里再切（此时窗口还没显示，切了不闪）。
         _stashMode = string.Equals(panel.Preferences.LastPage, "stash", StringComparison.OrdinalIgnoreCase);
 
-        // 只读预览：暂存区 / 设置都在主程序里，别停在暂存区页（点左栏入口会转给主程序）。
-        if (_preview) _stashMode = false;
+        // 只读预览（宿主）：暂存区页照样能看，但卡片背后的写操作要经 panel.op 转给主程序。
+        StashView.PreviewMode = _preview;
 
         _globalDrag = new TileDragSort(this, GhostLayer, GlobalGroups)
         {

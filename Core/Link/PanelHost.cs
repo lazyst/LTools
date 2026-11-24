@@ -64,6 +64,8 @@ internal static class PanelHost
 
     private static void ApplyActionOp(ActionOpRequest op)
     {
+        AppLog.Info("Link", $"面板操作：{op.Op}（id={op.Id} 分组={op.GroupId}）");
+
         switch (op.Op)
         {
             case PanelOps.AddNew:
@@ -129,6 +131,27 @@ internal static class PanelHost
                 if (!string.IsNullOrEmpty(op.Id)) EditInStash(op.Id);
                 break;
 
+            case PanelOps.StashOpen:
+                if (!string.IsNullOrEmpty(op.Id)) StashCall(StashOps.Open, op.Id);
+                break;
+
+            case PanelOps.StashRun:
+                if (!string.IsNullOrEmpty(op.Id)) StashCall(StashOps.Run, op.Id);
+                break;
+
+            case PanelOps.StashPromote:
+                if (!string.IsNullOrEmpty(op.Id))
+                    StashCall(id => StashOps.Promote(id, op.Kind ?? "new"), op.Id);
+                break;
+
+            case PanelOps.StashDelete:
+                if (!string.IsNullOrEmpty(op.Id)) StashCall(StashOps.Delete, op.Id);
+                break;
+
+            case PanelOps.StashClear:
+                StashCall(_ => StashOps.ClearAll(), "");
+                break;
+
             default:
                 AppLog.Warn("Link", "未知的面板操作：" + op.Op);
                 break;
@@ -160,6 +183,13 @@ internal static class PanelHost
                     ToastKind.error, key: "macro:play:hint");
             }
         });
+    }
+
+    /// <summary>暂存区的一个写操作：先收起面板（模态框 / 编辑器不该被 Topmost 面板盖住），再执行。</summary>
+    private static void StashCall(Action<string> action, string id)
+    {
+        SuperPanel.Close();
+        action(id);
     }
 
     /// <summary>把动作复制进暂存区并打开暂存区（草稿要写 <c>staging/</c>，只能在提权进程做）。</summary>
@@ -304,12 +334,12 @@ internal static class PanelHost
                     ConfigHelper.Open();
                     break;
 
-                case LinkTargets.PanelStash:
-                    SuperPanel.ShowStash();
-                    break;
-
                 case LinkTargets.PanelScene:
                     ConfigHelper.OpenPanelScene(arg ?? "");
+                    break;
+
+                case LinkTargets.Ai:
+                    ConfigHelper.OpenAi();
                     break;
 
                 default:

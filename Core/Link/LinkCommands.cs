@@ -88,11 +88,11 @@ internal static class LinkTargets
     /// <summary>设置窗口（停在上次记住的页）。</summary>
     public const string Settings = "settings";
 
-    /// <summary>超级面板 · 暂存区页（草稿读写、采纳都在提权进程）。</summary>
-    public const string PanelStash = "panel.stash";
-
     /// <summary>设置 → 面板管理 → 场景（<see cref="OpenWindowRequest.Arg"/> = 场景 Id）。</summary>
     public const string PanelScene = "panel.scene";
+
+    /// <summary>设置 → AI 接入（暂存区页的「AI 接入设置…」）。</summary>
+    public const string Ai = "ai";
 }
 
 /// <summary>面板的动作级操作（<>PanelActionOps</> 里那些会建 / 删动作或开编辑器的入口）。</summary>
@@ -123,6 +123,21 @@ internal static class PanelOps
 
     /// <summary>把动作复制进暂存区（草稿写 staging/）并打开暂存区。</summary>
     public const string EditInStash = "editInStash";
+
+    /// <summary>暂存区：在编辑器里打开草稿（<see cref="ActionOpRequest.Id"/> = 草稿 Id）。</summary>
+    public const string StashOpen = "stashOpen";
+
+    /// <summary>暂存区：试运行草稿。</summary>
+    public const string StashRun = "stashRun";
+
+    /// <summary>暂存区：采纳草稿（<see cref="ActionOpRequest.Kind"/> = <c>new</c> / <c>replace</c>）。</summary>
+    public const string StashPromote = "stashPromote";
+
+    /// <summary>暂存区：删除一份草稿。</summary>
+    public const string StashDelete = "stashDelete";
+
+    /// <summary>暂存区：清空全部草稿。</summary>
+    public const string StashClear = "stashClear";
 }
 
 /// <summary>

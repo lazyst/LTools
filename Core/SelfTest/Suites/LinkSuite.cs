@@ -161,6 +161,8 @@ internal static class LinkSuite
             PanelOps.AddNew, PanelOps.AddExisting, PanelOps.Edit, PanelOps.Delete, PanelOps.Paste,
             PanelOps.Export, PanelOps.ToSubAction, PanelOps.DropPaths, PanelOps.Float,
             PanelOps.FloatGroup, PanelOps.ReplayMacro, PanelOps.RecordMacro, PanelOps.EditInStash,
+            PanelOps.StashOpen, PanelOps.StashRun, PanelOps.StashPromote, PanelOps.StashDelete,
+            PanelOps.StashClear,
         };
         Check.Equal(ops.Length, new HashSet<string>(ops, StringComparer.Ordinal).Count, "面板操作名互不相同");
         Check.True(ops.All(o => o.Length > 0), "面板操作名都不为空");
@@ -191,6 +193,10 @@ internal static class LinkSuite
         Check.Equal(LinkTargets.PanelScene, open?.Target, "打开窗口：目标原样");
         Check.Equal("s1", open?.Arg, "打开窗口：参数原样");
 
+        OpenWindowRequest? ai = RoundTrip(LinkMessage.Request(12, LinkMethods.OpenWindow,
+            new OpenWindowRequest(LinkTargets.Ai, null))).Read<OpenWindowRequest>();
+        Check.Equal(LinkTargets.Ai, ai?.Target, "打开窗口：AI 接入目标原样");
+
         ActionOpRequest? op = RoundTrip(LinkMessage.Request(8, LinkMethods.ActionOp,
             new ActionOpRequest(PanelOps.Paste, GroupId: "g1", Kind: "copy", Reference: "01abc", Name: "报表")))
             .Read<ActionOpRequest>();
@@ -211,6 +217,12 @@ internal static class LinkSuite
         Check.Equal(PanelOps.RecordMacro, macro?.Op, "面板操作：录制宏原样");
         Check.Equal("m1", macro?.Id, "面板操作：宏 Id 原样");
         Check.Equal("报表宏", macro?.Name, "面板操作：宏名原样");
+
+        ActionOpRequest? stash = RoundTrip(LinkMessage.Request(11, LinkMethods.ActionOp,
+            new ActionOpRequest(PanelOps.StashPromote, Id: "d1", Kind: "replace"))).Read<ActionOpRequest>();
+        Check.Equal(PanelOps.StashPromote, stash?.Op, "面板操作：暂存区采纳原样");
+        Check.Equal("d1", stash?.Id, "面板操作：草稿 Id 原样");
+        Check.Equal("replace", stash?.Kind, "面板操作：采纳方式原样");
 
         // 快照：整份面板配置 + 动作摘要都要原样回来。
         var panel = new PanelConfig

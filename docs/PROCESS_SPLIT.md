@@ -508,4 +508,20 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - **默认开关仍关**：`LTOOLS_PANEL_HOST=1` 才走宿主。下一步：把暂存区页 / `Ctrl+V` 之外的其余入口扫一遍，
   然后翻默认值、删开关。
 
+**2026-11-24 · P1b-9 暂存区页搬进宿主（草稿写入仍归提权进程）**
+
+- 左栏「暂存区」在宿主里**不再整块转回主程序**：`StashPane` 加上 `PreviewMode`，卡片照常列出
+  （`DraftStore.List` / `Read` 本来就是只读的），写操作全部走 `panel.op`：
+  `stashOpen` / `stashRun` / `stashPromote`（`Kind` = `new` / `replace`）/ `stashDelete` / `stashClear`。
+- **一份实现**：卡片背后那五件事抽到 `Features/Panel/StashOps.cs`（打开草稿 / 试运行 / 采纳 / 删除 / 清空），
+  提权侧的 `panel.op` 与面板里的 `StashPane` 都调它；两边只有「要不要转交」这一处分叉。
+- 「打开草稿目录」与「刷新」留在宿主本地（纯读 / 开资源管理器）；「AI 接入设置…」走
+  `open.window ai`（新目标 `LinkTargets.Ai`）。
+- `LinkTargets.PanelStash` 随之退役（宿主自己就能看暂存区了，没人再需要「让主程序打开它的暂存区」）。
+- 真机实测：宿主里点左栏暂存区 → 4 张卡片（无效 id 的旧目录按规则跳过）；卡片右键菜单齐全；
+  点「在编辑器中打开」→ 提权进程收到 `stashOpen（id=…）` 并在**它那里**开出「编辑草稿 · …」窗口。
+- 回归：`--selftest` 393 用例 / 18593 断言；`LinkSmoke` 60 条（新增五个暂存区操作转交 + `open.window ai`）；
+  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
+- **默认开关仍关**：`LTOOLS_PANEL_HOST=1` 才走宿主。下一步：翻默认值、删开关与 `PanelRouting` 分叉。
+
 

@@ -210,25 +210,34 @@ internal static class Program
             Check("试放宏被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.ReplayMacro, Id: "m1")));
             Check("录制宏被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.RecordMacro, Id: "m1", Name: "报表宏")));
             Check("在暂存区编辑被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.EditInStash, Id: "01nothing")));
+            Check("暂存区打开草稿被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashOpen, Id: "d1")));
+            Check("暂存区试运行被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashRun, Id: "d1")));
+            Check("暂存区采纳被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashPromote, Id: "d1", Kind: "replace")));
+            Check("暂存区删除被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashDelete, Id: "d1")));
+            Check("暂存区清空被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashClear)));
+            Check("AI 接入设置被接管", PanelHostBridge.TryOpen(LinkTargets.Ai));
 
             // 五项都真的到了对端（顺序不保证，按操作名收）。
             var seen = new List<string>();
-            for (int i = 0; i < 40 && seen.Count < 5; i++)
+            for (int i = 0; i < 40 && seen.Count < 10; i++)
             {
                 await Task.Delay(50);
                 seen = opsSeen.Select(o => o.Op).Where(o => o != PanelOps.AddNew).ToList();
             }
 
-            Check("五个操作全部到达提权进程",
+            Check("十个操作全部到达提权进程",
                 seen.OrderBy(s => s, StringComparer.Ordinal).SequenceEqual(
                     new[]
                     {
-                        PanelOps.Float, PanelOps.FloatGroup, PanelOps.ReplayMacro,
-                        PanelOps.RecordMacro, PanelOps.EditInStash,
+                        PanelOps.Float, PanelOps.FloatGroup, PanelOps.ReplayMacro, PanelOps.RecordMacro,
+                        PanelOps.EditInStash, PanelOps.StashOpen, PanelOps.StashRun, PanelOps.StashPromote,
+                        PanelOps.StashDelete, PanelOps.StashClear,
                     }.OrderBy(s => s, StringComparer.Ordinal)),
                 string.Join(",", seen));
             Check("宏 Id / 名字原样",
                 opsSeen.Any(o => o.Op == PanelOps.RecordMacro && o.Id == "m1" && o.Name == "报表宏"));
+            Check("采纳方式原样",
+                opsSeen.Any(o => o.Op == PanelOps.StashPromote && o.Id == "d1" && o.Kind == "replace"));
 
             // ---- 悬浮状态：宿主从快照灌进来（菜单标签据此显示「取消悬浮」）----
             PanelHostBridge.SetFloating(new[] { "01nothing" });

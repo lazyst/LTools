@@ -161,18 +161,7 @@ public partial class SuperPanelWindow
     }
 
     /// <summary>左栏「暂存区」：主区切成草稿卡片页（照 Quicker：暂存区是面板的一页）。</summary>
-    private void NavStash_Click(object sender, RoutedEventArgs e)
-    {
-        // 只读预览：暂存区的草稿读写 / 采纳都在主程序里，收起面板转给主程序开它的暂存区。
-        if (_preview)
-        {
-            Features.SuperPanel.Close();
-            PanelHostBridge.TryOpen(LinkTargets.PanelStash);
-            return;
-        }
-
-        ShowStashPage();
-    }
+    private void NavStash_Click(object sender, RoutedEventArgs e) => ShowStashPage();
 
     /// <summary>
     /// 左栏底部「截图」：收起面板，再按内置功能 <c>common.capture</c> 走一遍框选（默认范围 = 框选区域）。
@@ -191,7 +180,6 @@ public partial class SuperPanelWindow
     /// <summary>切到暂存区页（<see cref="Features.SuperPanel.ShowStash"/> 也从这里进来）。</summary>
     internal void ShowStashPage()
     {
-        if (_preview) return;   // 只读预览没有暂存区（草稿读写都在主程序里）
         _stashMode = true;
         ApplyPageMode();
     }

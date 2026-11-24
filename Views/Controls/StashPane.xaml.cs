@@ -9,7 +9,9 @@ using System.Windows.Threading;
 using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Core.Ai;
+using LTools.Core.Link;
 using LTools.Features;
+using LTools.Features.Panel;
 using LTools.Views;
 
 namespace LTools.Views.Controls;
@@ -55,6 +57,12 @@ public sealed partial class StashPane : UserControl
 
     /// <summary>草稿数变化（面板左栏提示 / 页头计数用）。</summary>
     internal event Action? ItemsChanged;
+
+    /// <summary>
+    /// 只读预览（宿主进程）：草稿照常列出来，但卡片背后的写操作（编辑器 / 试运行 / 采纳 / 删除）
+    /// 一律经 <c>panel.op stash.*</c> 转给提权进程——草稿目录、编辑器、自动化都只归它。
+    /// </summary>
+    internal bool PreviewMode { get; set; }
 
     /// <summary>当前列出的草稿数。</summary>
     internal int Count { get; private set; }
@@ -217,12 +225,8 @@ public sealed partial class StashPane : UserControl
         return btn;
     }
 
-    private static string DisplayName(DraftMeta meta, ActionProgram? program)
-    {
-        if (!string.IsNullOrWhiteSpace(program?.Name)) return program!.Name.Trim();
-        if (!string.IsNullOrWhiteSpace(meta.Title)) return meta.Title!.Trim();
-        return "未命名草稿";
-    }
+    private static string DisplayName(DraftMeta meta, ActionProgram? program) =>
+        StashOps.DisplayName(meta, program);
 
     private static string BuildTooltip(DraftMeta meta, ActionProgram? program, int steps)
     {
@@ -285,6 +289,13 @@ public sealed partial class StashPane : UserControl
         Add(menu, "AI 接入设置…", () =>
         {
             Features.SuperPanel.Close();
+            // 设置窗口在提权进程（宿主里只是预览）。
+            if (PreviewMode)
+            {
+                PanelHostBridge.TryOpen(LinkTargets.Ai);
+                return;
+            }
+
             Features.ConfigHelper.OpenAi();
         });
 
@@ -320,216 +331,71 @@ public sealed partial class StashPane : UserControl
 
     private void OpenDraft(string id)
     {
-        ActionProgram program;
-        try
+        Features.SuperPanel.Close();
+        if (PreviewMode)
         {
-            var snapshot = DraftStore.Read(id);
-            if (snapshot.Program == null)
-            {
-                ConfirmDialog.Info(null, "打开草稿",
-                    snapshot.Error ?? "草稿内容不完整，先让 AI 重新写一遍。");
-                return;
-            }
-            program = snapshot.Program;
-        }
-        catch (Exception ex)
-        {
-            ConfirmDialog.Info(null, "打开草稿", ex.Message);
+            PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashOpen, Id: id));
             return;
         }
 
-        var draft = new ActionDto
-        {
-            Name = string.IsNullOrWhiteSpace(program.Name) ? "AI 草稿" : program.Name,
-            Icon = string.IsNullOrWhiteSpace(program.Icon) ? IconCatalog.Default : program.Icon,
-            Program = program.Clone(),
-        };
-
-        Features.SuperPanel.Close();
-        var result = ActionEditor.Show(null, "编辑草稿 · " + draft.Name, draft, DraftStore.FilesDir(id));
-        if (result?.Program == null) return;
-
-        try
-        {
-            DraftStore.WriteProgram(id, result.Program);
-            DraftStore.Save(id, null, "在编辑器中修改");
-            ToastService.Show("草稿已更新（AI 下次读取会拿到这一版）", result.Name, 2500, ToastKind.success);
-        }
-        catch (Exception ex)
-        {
-            ConfirmDialog.Info(null, "保存草稿失败", ex.Message);
-        }
+        StashOps.Open(id);
     }
 
     private void RunDraft(string id)
     {
-        ActionProgram program;
-        string revision;
-        string filesDir;
-        try
-        {
-            var snapshot = DraftStore.Read(id);
-            if (snapshot.Program == null)
-            {
-                ConfirmDialog.Info(null, "试运行",
-                    snapshot.Error ?? "草稿内容不完整，无法试运行。");
-                return;
-            }
-            program = snapshot.Program;
-            revision = snapshot.Revision ?? "";
-            filesDir = DraftStore.FilesDir(id);
-        }
-        catch (Exception ex)
-        {
-            ConfirmDialog.Info(null, "试运行", ex.Message);
-            return;
-        }
-
         Features.SuperPanel.Close();
-
-        var validation = ActionValidator.Validate(program, revision.Length > 0 ? revision : null, filesDir,
-            draftCheck: true);
-        if (!validation.Ok && !ShowIssues(validation, "还不能试运行")) return;
-
-        string name = string.IsNullOrWhiteSpace(program.Name) ? "AI 草稿" : program.Name;
-        if (AiRuns.Start(id, name, program, null, filesDir, notify: true) == null)
+        if (PreviewMode)
         {
-            ToastService.Show("已有自动化在运行，等它结束再试", "试运行", 3000, ToastKind.warning);
+            PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashRun, Id: id));
             return;
         }
-        ToastService.Show("试运行中（停止热键可中止）", name, 3000, ToastKind.info);
+
+        StashOps.Run(id);
     }
 
     private void Promote(string id, string mode)
     {
-        var meta = DraftStore.Find(id);
-        if (meta == null) return;
+        // 覆盖原动作要弹差异确认框，面板必须先关（Topmost 的隐藏面板会让模态框闪黑）。
+        if (string.Equals(mode, "replace", StringComparison.OrdinalIgnoreCase)) Features.SuperPanel.Close();
 
-        bool replace = mode == "replace";
-        string title = DisplayName(meta, null);
-
-        if (replace)
+        if (PreviewMode)
         {
             Features.SuperPanel.Close();
-
-            // 采纳前先看清楚：草稿和来源动作的步骤级差异（新增 / 删除 / 改参数 / 子步骤）。
-            // 以前只有一句「覆盖原动作？」，用户只能「信」；这个对话框就是本来的确认框，
-            // 顺带把「来源动作自复制以来被改过」的影响面摆出来（真正的一致性校验仍在 DraftPromoter）。
-            var baseAction = ActionRegistry.FindById(meta.BaseActionId ?? "");
-            if (baseAction == null)
-            {
-                // 来源动作已经不在了：没有可比的老版本，硬弹差异框会显示成「整份都是新增」。
-                // 这种情况本来也覆盖不了，直接告诉用户该换「采纳为新动作」。
-                ConfirmDialog.Info(null, "覆盖原动作",
-                    $"草稿的来源动作「{meta.BaseActionId}」已经不存在了，只能「采纳为新动作」。");
-                return;
-            }
-
-            var draft = DraftStore.Read(id).Program;
-            if (draft == null)
-            {
-                // program.json 读不出来（被删 / 改坏 / 正在被 agent 写）：不能拿 null 去做差异，
-                // 那会显示成「整份都删掉」，正好是这个确认框要防的误判。
-                ConfirmDialog.Info(null, "覆盖原动作", "这份草稿的内容读不出来（program.json 缺失或损坏），先刷新暂存区再试。");
-                return;
-            }
-
-            var diff = new ProgramDiffDialog(null,
-                "覆盖原动作",
-                $"用草稿「{title}」覆盖动作「{baseAction.Name}」：",
-                baseAction.Program, draft, "覆盖");
-            if (diff.ShowDialog() != true) return;
+            PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashPromote, Id: id, Kind: mode));
+            return;
         }
 
-        try
-        {
-            string? revision = DraftStore.Read(id).Revision;
-            var result = DraftPromoter.Promote(id, replace ? "replace" : "new", revision);
-            string toast = result.Created
-                ? $"已采纳为新动作「{title}」"
-                : $"已覆盖动作「{title}」";
-            string hint = result.Created
-                ? "已进动作库；要放上面板，在「动作管理」里拖进来。"
-                : "";
-            ToastService.Show(hint.Length > 0 ? toast + "。" + hint : toast, "暂存区", 3500, ToastKind.success);
-        }
-        catch (Exception ex)
-        {
-            // 采纳失败一律用常驻提示：新建时面板还开着，模态框会被 Topmost 面板挡住；
-            // 覆盖时同样不弹框，按草稿 id 去重，连点不会刷屏。
-            ToastService.Show(ex.Message, "采纳失败", ToastService.LongMs, ToastKind.error, key: "stash:" + id);
-        }
-
+        StashOps.Promote(id, mode);
         Reload(force: true);
     }
 
     private void DeleteDraft(string id)
     {
-        var meta = DraftStore.Find(id);
-        if (meta == null) return;
-
         Features.SuperPanel.Close();
-        if (!AiUi.Confirm("删除草稿",
-                $"删除草稿「{DisplayName(meta, null)}」？\n\n草稿目录（program.json / files / history）会一起删掉，" +
-                "不可恢复；已经采纳出去的正式动作不受影响。",
-                danger: true))
+        if (PreviewMode)
+        {
+            PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashDelete, Id: id));
             return;
+        }
 
-        try
-        {
-            DraftStore.Delete(id);
-            ToastService.Show("草稿已删除", "暂存区", 2000, ToastKind.success);
-        }
-        catch (Exception ex)
-        {
-            ConfirmDialog.Info(null, "删除草稿失败", ex.Message);
-        }
+        StashOps.Delete(id);
     }
 
     private void ClearAll()
     {
-        var metas = DraftStore.List();
-        if (metas.Count == 0)
-        {
-            ToastService.Show("暂存区已经是空的", "清空暂存区", 2000, ToastKind.info);
-            return;
-        }
-
         Features.SuperPanel.Close();
-        if (!AiUi.Confirm("清空暂存区",
-                $"删除全部 {metas.Count} 份草稿？\n\n草稿目录会一起删掉，不可恢复；已经采纳出去的正式动作不受影响。",
-                danger: true))
-            return;
-
-        int deleted = 0;
-        foreach (var meta in metas)
+        if (PreviewMode)
         {
-            try { DraftStore.Delete(meta.Id); deleted++; }
-            catch (Exception ex) { AppLog.Warn("Stash", $"删除草稿 {meta.Id} 失败：{ex.Message}"); }
+            PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashClear));
+            return;
         }
-        ToastService.Show($"已删除 {deleted} 份草稿", "清空暂存区", 2500, ToastKind.success);
+
+        StashOps.ClearAll();
     }
 
     // ============ 小工具 ============
 
     private static Brush Res(string key) => (Brush)Application.Current.FindResource(key);
-
-    /// <summary>校验没通过时列出前几条。返回 true = 用户选择「仍然继续」（只有试运行给这个出口）。</summary>
-    private static bool ShowIssues(ActionValidationResult validation, string title, bool allowContinue = true)
-    {
-        string detail = string.Join("\n", validation.Issues
-            .Where(i => i.Severity == IssueSeverity.error)
-            .Take(6)
-            .Select(i => $"· {i.Label}{i.Message}"));
-
-        if (!allowContinue)
-        {
-            ConfirmDialog.Info(null, title, detail);
-            return false;
-        }
-
-        return ConfirmDialog.Confirm(null, title, $"{detail}\n\n仍然继续？", okText: "仍然继续");
-    }
 
     private static string FormatTime(string value)
     {
