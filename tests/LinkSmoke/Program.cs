@@ -149,6 +149,9 @@ internal static class Program
         var pushed = new TaskCompletionSource<PanelConfig>(TaskCreationOptions.RunContinuationsAsynchronously);
         var subSaved = new TaskCompletionSource<SubActionSaveRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var reloaded = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runStarted = new TaskCompletionSource<RunProgramRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runTrace = new TaskCompletionSource<TraceBatchEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runDone = new TaskCompletionSource<RunDoneEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
         var opsSeen = new ConcurrentQueue<ActionOpRequest>();
 
         var server = new LinkServer(pipe, "fwd-token",
@@ -188,6 +191,10 @@ internal static class Program
             {
                 // 通知（事件）走 onEvent，不走请求处理器：配置重读是一条「不答复」的广播。
                 if (message.Method == LinkMethods.EventConfigReload) reloaded.TrySetResult(true);
+                if (message.Method == RunMethods.EventTrace && message.Read<TraceBatchEvent>() is { } batch)
+                    runTrace.TrySetResult(batch);
+                if (message.Method == RunMethods.EventDone && message.Read<RunDoneEvent>() is { } done)
+                    runDone.TrySetResult(done);
             });
         server.Start();
         LinkClient? client = null;
@@ -195,8 +202,32 @@ internal static class Program
         try
         {
             client = await LinkClient.ConnectWithRetryAsync(pipe, "fwd-token", "worker", totalMs: 4000,
-                handler: (_, request) =>
+                handler: (channel, request) =>
                 {
+                    if (request.Method == RunMethods.Program && request.Read<RunProgramRequest>() is { } runProgram)
+                    {
+                        runStarted.TrySetResult(runProgram);
+                        // 执行器这边「跑完」之后：先攒一批轨迹、再发结果（与产品同一个顺序）。
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await channel.NotifyAsync(RunMethods.EventTrace, new TraceBatchEvent(
+                                    runProgram.Token, new List<TraceEntryDto>
+                                    {
+                                        new("/steps/0", "第 1 行", 0, "flow.set", "设置变量", "ok", 8, null,
+                                            new Dictionary<string, Value> { ["a"] = Value.FromText("甲") },
+                                            new Dictionary<string, Value>(), 1, 1),
+                                    }));
+                                await channel.NotifyAsync(RunMethods.EventDone, new RunDoneEvent(
+                                    runProgram.Token, new RunResultDto(true, false, null, null, "unknown", 1, 8,
+                                        new Dictionary<string, Value>())));
+                            }
+                            catch (Exception ex) { Console.WriteLine("推试运行事件失败：" + ex.Message); }
+                        });
+                        return Task.FromResult(LinkMessage.Response(request, new RunProgramReply(true, null)));
+                    }
+
                     if (request.Method == LinkMethods.RunAction && request.Read<RunActionRequest>() is { } run)
                         recorded.TrySetResult(run);
                     if (request.Method == LinkMethods.OpenWindow && request.Read<OpenWindowRequest>() is { } open)
@@ -355,6 +386,31 @@ internal static class Program
             Task reloadDone = await Task.WhenAny(reloaded.Task, Task.Delay(2000));
             Check("配置重读通知送到了宿主", ReferenceEquals(reloadDone, reloaded.Task),
                 ReferenceEquals(reloadDone, reloaded.Task) ? null : "2 秒内没收到");
+
+            // 跨进程试运行：宿主发程序 → 执行器跑 → 轨迹与结果按事件回来。
+            LinkMessage runReply = await server.RequestAsync(RunMethods.Program,
+                new RunProgramRequest("t9", "冒烟试运行", new ActionProgram(), null, null, false, "Editor"),
+                timeoutMs: 3000);
+            Check("试运行请求送到执行器", runReply.Ok && runReply.Read<RunProgramReply>()?.Started == true,
+                runReply.Ok ? runReply.Read<RunProgramReply>()?.Error : runReply.Error);
+
+            Task startedDone = await Task.WhenAny(runStarted.Task, Task.Delay(2000));
+            Check("执行器收到了程序本体（token 原样）", ReferenceEquals(startedDone, runStarted.Task)
+                && runStarted.Task.IsCompletedSuccessfully && runStarted.Task.Result.Token == "t9",
+                ReferenceEquals(startedDone, runStarted.Task) ? null : "2 秒内没收到");
+
+            Task traceArrived = await Task.WhenAny(runTrace.Task, Task.Delay(2000));
+            Check("轨迹推回了宿主", ReferenceEquals(traceArrived, runTrace.Task),
+                ReferenceEquals(traceArrived, runTrace.Task) ? null : "2 秒内没收到");
+            Check("轨迹里的值原样",
+                runTrace.Task.IsCompletedSuccessfully
+                && runTrace.Task.Result.Entries[0].ToTrace().Outputs["a"].AsText() == "甲",
+                runTrace.Task.IsCompletedSuccessfully ? runTrace.Task.Result.Entries[0].Path : null);
+
+            Task runDoneArrived = await Task.WhenAny(runDone.Task, Task.Delay(2000));
+            Check("结果推回了宿主", ReferenceEquals(runDoneArrived, runDone.Task)
+                && runDone.Task.IsCompletedSuccessfully && runDone.Task.Result.Token == "t9",
+                ReferenceEquals(runDoneArrived, runDone.Task) ? null : "2 秒内没收到");
 
             // ---- 面板结构保存：宿主 Save 变成整份替换 ----
             Check("面板结构保存被接管", PanelHostBridge.TryPushPanel(new PanelConfig()));

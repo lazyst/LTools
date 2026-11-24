@@ -143,7 +143,7 @@ public partial class ActionEditorWindow
 
     private void StopRun_Click(object sender, RoutedEventArgs e)
     {
-        AutomationRunner.Stop();
+        ProgramRunner.Stop();
         RunStatus.Text = "正在停止…（等待当前步骤返回）";
     }
 
@@ -224,10 +224,10 @@ public partial class ActionEditorWindow
             _ => "试运行中",
         }, hint: true);
 
-        if (!AutomationRunner.TryRunProgram(name, program, startPath, OnTrace, OnRunCompleted, ResourceRoot,
-                source: RunSource.Editor, slowStep: OnSlowStep))
+        if (!ProgramRunner.TryRunProgram(name, program, startPath, OnTrace, OnRunCompleted, out string? runError,
+                ResourceRoot, source: RunSource.Editor, slowStep: OnSlowStep))
         {
-            SetStatus("已有动作正在运行，先等它结束或按停止", hint: false);
+            SetStatus(runError ?? "已有动作正在运行，先等它结束或按停止", hint: false);
             return;
         }
 

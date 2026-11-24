@@ -144,6 +144,9 @@ internal static class LinkJson
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         PropertyNameCaseInsensitive = true,
+        // 值模型（`Value`）只有这一个转换器能把内容带全：试运行要跨进程传动作程序与轨迹里的
+        // 参数 / 输出，没有它只剩一个 `kind`。
+        Converters = { new LTools.Core.Actions.ValueJsonConverter() },
     };
 
     /// <summary>任意负载 → <see cref="JsonElement"/>；没有负载给 null（写消息时这个字段省掉）。</summary>

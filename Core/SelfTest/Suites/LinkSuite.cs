@@ -158,6 +158,8 @@ internal static class LinkSuite
             LinkMethods.EventCaptureRecordDone, LinkMethods.EventCaptureWindow, ActionMethods.SaveAll,
             LinkMethods.EventInputSuspend, LinkMethods.EventPinState, LinkMethods.EventRecordKeys,
             SubActionMethods.Save, SubActionMethods.Delete, LinkMethods.EventConfigReload,
+            RunMethods.Program, RunMethods.Stop, RunMethods.EventTrace, RunMethods.EventSlow,
+            RunMethods.EventDone,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
@@ -317,6 +319,55 @@ internal static class LinkSuite
 
         // 配置整份重读（执行器 → 宿主）：没有负载，方法名就是全部协议。
         Check.Equal("config.reload", LinkMethods.EventConfigReload, "配置重读方法名");
+
+        // —— 跨进程试运行（宿主里的编辑器 → 执行器跑，轨迹 / 结果按事件回来）——
+        Check.Equal("run.program", RunMethods.Program, "试运行方法名");
+        Check.Equal("run.stop", RunMethods.Stop, "停止试运行方法名");
+        Check.Equal("run.trace", RunMethods.EventTrace, "试运行轨迹方法名");
+        Check.Equal("run.slow", RunMethods.EventSlow, "慢步骤方法名");
+        Check.Equal("run.done", RunMethods.EventDone, "试运行结果方法名");
+
+        var program = new ActionProgram { Name = "试运行冒烟" };
+        program.Variables.Add(new VariableDef { Key = "文本", Type = ValueKind.text, Default = Value.FromText("你好") });
+        program.Variables.Add(new VariableDef { Key = "数字", Type = ValueKind.number, Default = Value.FromNumber(42) });
+        program.Variables.Add(new VariableDef
+        {
+            Key = "列表", Type = ValueKind.list,
+            Default = Value.FromList(new[] { Value.FromText("a"), Value.FromText("b") }),
+        });
+        program.Steps.Add(new Step { Unit = "flow.set" });
+
+        RunProgramRequest? programReq = RoundTrip(LinkMessage.Request(44, RunMethods.Program,
+                new RunProgramRequest("t1", "试运行冒烟", program, null, null, false, "Editor")))
+            .Read<RunProgramRequest>();
+        Check.Equal("t1", programReq?.Token, "试运行请求往返（token）");
+        Check.Equal(3, programReq?.Program.Variables.Count ?? -1, "试运行请求往返（变量不丢）");
+        Check.Equal("你好", programReq?.Program.Variables[0].Default?.AsText(), "试运行请求往返（文本默认值）");
+        Check.Equal(42, programReq?.Program.Variables[1].Default?.AsNumber() ?? -1, "试运行请求往返（数字默认值）");
+        Check.Equal(2, programReq?.Program.Variables[2].Default?.Items.Count ?? -1, "试运行请求往返（列表默认值）");
+        Check.Equal("flow.set", programReq?.Program.Steps[0].Unit, "试运行请求往返（步骤）");
+
+        var batch = new TraceBatchEvent("t1", new List<TraceEntryDto>
+        {
+            new("/steps/0", "第 1 行", 0, "flow.set", "设置变量", "ok", 12, null,
+                new Dictionary<string, Value> { ["a"] = Value.FromText("甲") },
+                new Dictionary<string, Value> { ["b"] = Value.FromNumber(7) }, 1, 1),
+        });
+        TraceBatchEvent? batchBack = RoundTrip(LinkMessage.Request(45, RunMethods.EventTrace, batch))
+            .Read<TraceBatchEvent>();
+        Check.Equal("t1", batchBack?.Token, "轨迹批次往返（token）");
+        Check.Equal("甲", batchBack?.Entries[0].ToTrace().Outputs["a"].AsText(), "轨迹往返（输出值）");
+        Check.Equal(7, batchBack?.Entries[0].ToTrace().Inputs["b"].AsNumber() ?? -1, "轨迹往返（参数值）");
+        Check.True(batchBack?.Entries[0].ToTrace().Status == StepTraceStatus.ok, "轨迹往返（状态）");
+
+        RunDoneEvent? doneBack = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(46, RunMethods.EventDone),
+                new RunDoneEvent("t1", new RunResultDto(false, false, "第 1 行失败", "第 1 行", "notFound", 3, 99,
+                    new Dictionary<string, Value> { ["x"] = Value.FromText("y") }))))
+            .Read<RunDoneEvent>();
+        Check.True(doneBack?.Result is { Steps: 3 } && doneBack.Result.FailedStepLabel == "第 1 行",
+            "试运行结果往返（失败位置 / 步数）");
+        Check.Equal("y", doneBack?.Result.Variables["x"].AsText(), "试运行结果往返（变量）");
 
         // —— 点选器占用输入（宿主 → 提权进程，让开「长按右键 = 面板」）——
         Check.Equal("input.picker", LinkMethods.EventPickerActive, "点选器状态方法名");

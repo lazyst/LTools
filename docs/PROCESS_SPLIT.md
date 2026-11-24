@@ -859,6 +859,23 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`--selftest --filter link` 305 断言（方法名）；`LinkSmoke` 81（新增一条
   「配置重读通知送到了宿主」——通知走 `onEvent`，别塞进请求处理器）。
 
+**2026-11-25 · P2-M3-5b 跨进程试运行（`run.program` / `run.stop` / 轨迹事件）**
+
+- 编辑器「▶ 测试」的唯一入口变成 `Features/ProgramRunner`：**永远由提权进程跑**
+  （要注入键鼠、与真实运行共用互斥、停止热键也只在那侧）。执行器里直接
+  `AutomationRunner.TryRunProgram`，宿主转给执行器再摊回本地回调——回调签名与本地那套完全一致，
+  编辑器只换调用名（`AutomationRunner.*` → `ProgramRunner.*`，共三处）。
+- 协议：请求 `run.program`（`Token` / 程序本体 / 起始路径 / 资源根 / 干跑 / 来源）/ `run.stop`；
+  事件 `run.trace`（**攒 120 ms、最多 200 条**推一批）、`run.slow`、`run.done`。
+  全部带 `Token`：点得快的时候上一轮迟到的轨迹要能丢掉。
+- **`LinkJson` 挂上了 `ValueJsonConverter`**：值模型只有这个转换器能把内容带全（否则过链路只剩
+  `kind`），试运行要传变量默认值与轨迹里的参数 / 输出。加别的「带 `Value` 的负载」也靠它。
+- 执行器一次只接一个运行（`AutomationRunner` 本身单实例）；宿主连不上时编辑器直接显示原因
+  （不是含糊的「已有动作正在运行」）。
+- 回归：`--selftest --filter link` 331 断言（五个方法名、程序本体与三种变量默认值的往返、
+  轨迹批次的值往返、结果里的失败位置 / 步数 / 变量）；`LinkSmoke` 86（新增「宿主发程序 →
+  执行器跑 → 轨迹与结果按事件回来」，值原样）。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -927,7 +944,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主。**编辑器与宏页并进第 5 步**：打开编辑器的调用方（`PanelActionOps`）与设置页都在提权进程里，单独搬窗口就得连动作内容写权、`staging/`、设置入口一起翻——那正是第 5 步的范围（见 §14 `P2-M3-5a` 的顺序说明）。 |
-| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b**：`run.program` + 轨迹事件流（编辑器试运行）。**5c**：设置窗口（含三个编辑入口）搬进宿主。**5d**：`data.changed` 回读、`hotkeys.record`、`mcp.*` 收尾 |
+| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c**：设置窗口（含三个编辑入口）搬进宿主。**5d**：`data.changed` 回读、`hotkeys.record`、`mcp.*` 收尾 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
 
 > **顺序更正（2026-11-24，看过代码之后）**：原方案把「采集历史 / 贴图管理」排在截图 Pro 前面，实际排不了——

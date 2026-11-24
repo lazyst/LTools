@@ -183,6 +183,7 @@ public partial class App : Application
             InputBridge.Attach(server);
             CaptureHost.Attach(server);
             InputGuard.Attach(server);
+            ProgramRunBridge.Attach(server);
             server.ClientChanged += OnLinkClientChanged;
             server.Start();
 
@@ -311,6 +312,13 @@ public partial class App : Application
                 // 执行器刚把磁盘上的配置整份换过（导入备份 / 重新加载）：宿主的只读副本全部作废。
                 AppLog.Info("ShareHost", "执行器重读了配置，宿主跟着刷新");
                 _ = ReloadAndRefreshAsync();
+                break;
+
+            case RunMethods.EventTrace:
+            case RunMethods.EventSlow:
+            case RunMethods.EventDone:
+                // 试运行的轨迹 / 慢步骤 / 结果：直接交给编辑器（它自己攒批、自己投递 UI 线程）。
+                ProgramRunBridge.OnEvent(message);
                 break;
         }
     }

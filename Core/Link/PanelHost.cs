@@ -33,6 +33,9 @@ internal static class PanelHost
         if (string.Equals(request.Method, LinkMethods.ActionOp, StringComparison.Ordinal))
             return Task.FromResult(HandleActionOp(channel, request));
 
+        // 试运行（编辑器在宿主里）：在提权进程里真跑一次，轨迹按事件推回去。
+        if (RunHost.TryHandleAsync(request) is { } run) return run;
+
         return Task.FromResult(Handle(request));
     }
 

@@ -194,7 +194,7 @@ public partial class ActionEditorWindow : Window
             StopCategoryNavTimers();   // 别让「等布局再滚」的一次性计时器去碰已经关掉的窗口
             _traceFlush?.Stop();
             _autosaveTimer?.Stop();
-            if (_running) AutomationRunner.Stop();
+            if (_running) ProgramRunner.Stop();
             MacroRecorder.RecordingStopped -= OnMacroRecordingStopped;
             MacroRecorder.MacroSaved -= OnMacroSavedRefresh;
             // 关窗时还在重录（窗口是藏起来的，用户看不到）：先收尾保存，别留下无界面的录制。
