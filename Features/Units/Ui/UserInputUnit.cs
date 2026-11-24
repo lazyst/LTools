@@ -1,5 +1,6 @@
 using System.Windows;
 using LTools.Core.Actions;
+using LTools.Core.Link;
 using LTools.Views;
 
 namespace LTools.Features.Units.Ui;
@@ -34,23 +35,35 @@ public sealed class UserInputUnit : IStepUnit
 
     public void Execute(StepContext ctx, StepArgs args)
     {
-        var app = Application.Current
-            ?? throw new ActionException("界面未初始化，无法弹出输入框");
-
         string prompt = args.Text("prompt");
         string title = args.Text("title");
         string defaultValue = args.Text("defaultValue");
         bool multiline = args.Bool("multiline");
 
-        // 全部在 UI 线程上做：Application.Windows 与对话框都归属 UI 线程（流程跑在后台线程）。
-        var (ok, value) = app.Dispatcher.Invoke(() =>
+        title = title.Length == 0 ? "自动化" : title;
+        prompt = prompt.Length == 0 ? "请输入" : prompt;
+
+        // 界面归宿主（普通权限）：转过去弹；没连上就本地弹（体验降级，不卡流程）。
+        UiInputReply? remote = UiBridge.TryInput(title, prompt, defaultValue, multiline, ctx.Token);
+        bool ok;
+        string value;
+        if (remote != null)
         {
-            Window? owner = app.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? app.MainWindow;
-            return InputDialog.Show(owner,
-                title.Length == 0 ? "自动化" : title,
-                prompt.Length == 0 ? "请输入" : prompt,
-                defaultValue, variables: null, multiline: multiline);
-        });
+            ok = remote.Ok;
+            value = remote.Text ?? "";
+        }
+        else
+        {
+            var app = Application.Current
+                ?? throw new ActionException("界面未初始化，无法弹出输入框");
+
+            // 全部在 UI 线程上做：Application.Windows 与对话框都归属 UI 线程（流程跑在后台线程）。
+            (ok, value) = app.Dispatcher.Invoke(() =>
+            {
+                Window? owner = app.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? app.MainWindow;
+                return InputDialog.Show(owner, title, prompt, defaultValue, variables: null, multiline: multiline);
+            });
+        }
 
         ctx.SetOutput("text", Value.FromText(ok ? value : ""));
         ctx.SetOutput("found", Value.FromBool(ok));

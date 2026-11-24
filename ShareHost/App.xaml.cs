@@ -131,7 +131,7 @@ public partial class App : Application
             var server = new LinkServer(
                 LinkToken.PipeName,
                 token,
-                static (_, request) => Task.FromResult(LinkMessage.Response(request, error: "宿主暂不支持该命令")),
+                HandleRequest,
                 OnLinkEvent);
 
             Volatile.Write(ref _link, server);
@@ -149,6 +149,16 @@ public partial class App : Application
         {
             AppLog.Warn("ShareHost", $"链路服务端启动失败：{ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 处理提权进程发来的请求：目前只有交互类动作单元（<c>ui.*</c>，替它弹窗）。
+    /// 其余命令一律回失败——宿主不该被要求执行动作。
+    /// </summary>
+    private static Task<LinkMessage> HandleRequest(LinkChannel channel, LinkMessage request)
+    {
+        Task<LinkMessage>? handled = UiHost.TryHandleAsync(request);
+        return handled ?? Task.FromResult(LinkMessage.Response(request, error: "宿主暂不支持该命令"));
     }
 
     private void OnLinkClientChanged(bool connected)

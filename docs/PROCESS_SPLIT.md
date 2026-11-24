@@ -571,3 +571,106 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`--selftest` 393 用例 / 18599 断言；`LinkSmoke` 60；`PanelHostSmoke` 11。
 
 
+
+
+**2026-11-24 · P2-M1-a 交互服务：`ui.input` / `ui.confirm` / `ui.select` 在宿主里弹**
+
+- 新通道（**执行器 → 宿主**的请求，与面板那批方向相反）：
+  `Core/Link/UiCommands.cs`（`ui.input` / `ui.choice` / `ui.cancel` + 请求 / 回复 DTO）、
+  `Core/Link/UiBridge.cs`（执行器侧：能转就转，转不了就本地弹）、
+  `Core/Link/UiHost.cs`（宿主侧：`Ui.Post` 建窗 + 等 `Closed` 回值）。
+- `LinkWorker.RequestAsync`：执行器也能发请求；宿主 `LinkServer` 的 handler 改成
+  「先问 `UiHost`，不是交互方法才回『宿主暂不支持该命令』」。
+- 三个动作单元改成「先问宿主」：`ui.confirm` / `ui.select` 走 `ChoiceWindow`，
+  `ui.input` 走 `InputDialog` 的**非模态**新入口 `ShowNonModal`（模态会把宿主 UI 线程卡在自己的
+  消息循环里，`ui.cancel` / 停止热键就关不掉它——`Ok_Click` 里按 `_nonModal` 决定
+  `DialogResult` 还是 `Close()`）。
+- **踩到并修掉的坑**：链路层把 `timeoutMs <= 0` 当成 `Math.Max(1, …)`（1ms），
+  「一直等」传 0 会立刻超时 → 执行器回落本地弹窗，而宿主那边的窗口已经开出来了，出现**两个对话框**。
+  现在「一直等」给链路 12 小时上限，真正超时由宿主那侧算；任何失败 / 取消都先发 `ui.cancel` 收掉对端窗口。
+- 真机实测：MCP `staging_run` 跑一份 `ui.confirm` + `ui.input` 的草稿 →
+  确认框与输入框都出现在 **ShareHost（普通权限）**，提权进程一个窗口都没有；
+  点「确定」后进入输入框，输入后「确定」流程正常走完（慢步骤告警照常记「等待用户输入」）。
+- 回归：`--selftest` 393 用例 / 18620 断言（交互 DTO 往返 + 方法名）；`LinkSmoke` 62 条
+  （新增「执行器 → 宿主」的 `ui.choice` 往返）；`PanelHostSmoke` 11；`ShareSmoke` 103。
+
+## 15. P2 方案：把剩下的界面也搬进普通权限宿主
+
+> 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
+> 现状：P0 / P1 已完成——宿主随主程序常驻、**面板（动作页 + 暂存区 + 右键菜单 + 悬浮状态 + 宏试放 / 录制转交）
+> 全部在宿主里跑**，`panel.snapshot` / `panel.op` / `panel.replace` / `run.action` / `open.window` / `panel.state` 就绪。
+> 现在 62 个窗口的 XAML 里只有 `SuperPanel` 在宿主里，其余 61 个仍在提权进程。
+
+### 15.1 三条依赖决定顺序（别按窗口大小排）
+
+1. **交互类动作单元先要通道**。动作在提权进程里跑，但界面归宿主：`ui.input` / `ui.select` / `ui.confirm` /
+   `ui.textWindow` / `file.select` / `screen.pickPoint` / `screen.capture`（交互框选）都在执行线程里建窗。
+   不先接通道，窗口搬完动作照样在提权进程里弹框。
+2. **写属主先翻，否则设置页要造几十条命令**。§7 已经定了 `configs/` `actions/` `subactions/` `staging/`
+   `速记/` `resources/` 的属主是 **UI（宿主）**；不翻的话，设置 / 编辑器 / 暂存区每改一个字段都得新增一条 RPC，
+   跟 `panel.op` 一样越铺越大（那是过渡期的临时手段，不该复制）。
+3. **钩子类 UI 天然留在执行器**。快捷键录入、宏录制要钩子，只能「宿主弹窗 + 执行器录」。
+
+### 15.2 M1 · 交互服务（`ui.*` 跨进程）
+
+- 新方法（**执行器 → 宿主**的请求，宿主用 `Ui.Post` 弹窗 + `TaskCompletionSource` 回值）：
+  `ui.input` / `ui.select` / `ui.confirm` / `ui.textWindow`(show/read/close) / `ui.selectFile` /
+  `ui.pickPoint` / `ui.capture`（框选 / 前台窗口 / 整屏 / 固定区域）/ `ui.toast` / `ui.cancel`。
+- 方向：执行器发请求（它在跑动作），宿主 `LinkServer` 的 handler 应答；`ui.cancel` 让等待中的窗口关掉
+  （停止热键 → 引擎抛 `ActionAbortedException`，与今天本地那套语义一致）。
+- 通道能力已具备：`LinkClient.RequestAsync` 与 `LinkServer` 的 handler 都支持反向请求（宿主 → 执行器现在就在用）。
+- 资源归属随之定：交互截图写 `cache/screenshots/`（同名规则不变）、`ActionParamMemory` 留在宿主、
+  `RecordingIndicatorWindow` 在宿主（它给「正在运行」做提示）。
+- 验收：6 个 `ui.*` + 取点 + 截图 + 文件框逐条真机；停止热键 500ms 内关掉窗口；`--selftest` 的
+  `contract` / `unit` 组仍绿。
+
+### 15.3 M2 · 写属主翻转（按域翻，不一次性）
+
+| 域 | 翻给谁 | 备注 |
+|---|---|---|
+| `configs/*.json`（含 `macros.json` 元数据） | 宿主 | 执行器改 `InitializeReadOnly` + 收 `data.changed` 后 `Reload()` |
+| `actions/` `subactions/` `staging/` `resources/` | 宿主 | 编辑器 / 暂存区 / 孤儿回收都跟过去 |
+| `速记/` `captures/` | 宿主 | 纯用户资产，与权限无关 |
+| `macros/<id>.json`（录制事件本体） | 执行器 | 录制只能在那儿；录完发 `macro.recorded` 事件，由宿主挂动作 + 放面板 |
+| `state/run-history.jsonl` `trigger-history` `values` `auto-trigger-last-start` | 执行器 | 它才是产生者；宿主只读展示 |
+| `logs/` | 分家 | `ltools-*`（宿主）/ `ltools-worker-*`（执行器），`LogFiles` 口径一起改 |
+
+- **一个域一个写者**：翻转分 `M2-a…` 小步做，每一步只翻一域，另一侧保留只读守卫
+  （`ConfigStore.ReadOnly` / `PanelLibrary.Save` 现有守卫直接复用）。
+- 面板这条链能立刻瘦身：`panel.replace` / `panel.op` 里「写数据」那部分消失（宿主自己写、自己开编辑器），
+  剩下的只有 `run.action`（执行）、`macros.*`（录制）、`ui.*`（交互）。
+- 风险：两份内存缓存不同步 → 约定「写者写完发 `data.changed`，读者 `Reload()`」；启动顺序已有
+  （宿主先起，执行器后连，连上补一次快照）。
+
+### 15.4 M3 · 窗口搬迁顺序（每个都是一次「搬 + 事件收尾 + 真机点一遍」）
+
+| # | 窗口 | 除了搬还要做的 |
+|---|---|---|
+| 1 | 速记 `QuickNote` | `速记/` 写权（M2）；托盘 / `CapsLock+N` → `open.window note` |
+| 2 | 辅助工具 `InfoHelperWindow` | 取图 / 取色 / 选区走 M1 的 `ui.pick*` |
+| 3 | 采集历史 / 贴图管理 | `captures/` 写权；「重新编辑」要等覆盖层搬过去（步骤 5） |
+| 4 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页） | 各域写权 + 备份导入导出（`BackupService` 跟过去）、MCP 开关与令牌仍由执行器持有 → 留一条 `mcp.*` 命令 |
+| 5 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 / 录屏条） | 截图本身普通权限就够；覆盖层要能盖住**宿主自己的**窗口（现在是盖住提权进程的）；录屏的 ffmpeg / NAudio 在宿主跑；`common.capture` 从钩子触发时改成「执行器让宿主动手」 |
+| 6 | 动作编辑器 / 子动作库 / 宏页 | 编辑器写 `actions/`（M2）；宏录制仍在执行器（钩子）→ 录完由宿主挂动作、放面板 |
+| 7 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
+
+> 步骤 5（截图 Pro）是唯一「搬过去比现在更麻烦」的一块：覆盖层、贴图、录屏条都是「压在所有窗口之上」的窗口，
+> 搬过去之后**提权进程的窗口也要能被它盖住 / 被它临时收起**（现在是同进程内互相协调）。这一块单独估时。
+
+### 15.5 M4 · 收尾
+
+- 执行器的启动路径不再建任何窗口；`Ui.*` 里「要窗口才能做的事」逐条删掉或改成 `ui.*` 请求。
+- `--worker` 模式（一个 exe 两种权限）：普通权限双击 = 界面；任务计划 / UAC 拉起 = 执行器。
+- 发布包只剩一个 exe（`ShareHost.exe` 退役），`tools` / CI 的打包步骤同步。
+
+### 15.6 每一步统一的验收口径
+
+`dotnet build -p:NoWin32Manifest=true --no-incremental` 0 警 0 错；`--selftest` 全绿；
+`tests/LinkSmoke` / `PanelHostSmoke` / `ShareSmoke` 全绿；本步涉及的窗口真机点一遍；
+本文件补一条 `P2-x` 实施记录。
+
+### 15.7 这一轮明确不做
+
+- 不改动作引擎的语义（失败策略 / 重试 / 停止热键规则一律不动）。
+- 不动 MCP / UIA 的能力边界（UIA 读提权窗口仍只有执行器能做，这块保持现状）。
+- 不为「设置页每一个控件」新增 RPC——那是 M2 要避免的路。

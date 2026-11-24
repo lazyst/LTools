@@ -1,4 +1,5 @@
 using LTools.Core.Actions;
+using LTools.Core.Link;
 using LTools.Features;
 
 namespace LTools.Features.Units.Ui;
@@ -56,10 +57,26 @@ public sealed class ConfirmUnit : IStepUnit
         string text = ListText.Display(args.TryGet("text"));
         int timeoutMs = (int)Math.Clamp(args.Number("timeoutMs"), 0, 86_400_000);
 
-        var window = ChoiceWindowService.Open(args.Text("title"), text,
-            Array.Empty<string>(), buttons, selectMode: false);
+        // 界面归宿主：转过去弹；没连上就本地弹。
+        UiChoiceReply? remote = UiBridge.TryChoice(args.Text("title"), text,
+            Array.Empty<string>(), buttons, selectMode: false, timeoutMs, ctx.Token);
 
-        var (accepted, index, value) = ChoiceWindowService.Wait(ctx, window, timeoutMs);
+        bool accepted;
+        int index;
+        string value;
+        if (remote != null)
+        {
+            accepted = remote.Accepted;
+            index = remote.Index;
+            value = remote.Value ?? "";
+        }
+        else
+        {
+            var window = ChoiceWindowService.Open(args.Text("title"), text,
+                Array.Empty<string>(), buttons, selectMode: false);
+
+            (accepted, index, value) = ChoiceWindowService.Wait(ctx, window, timeoutMs);
+        }
 
         ctx.SetOutput("found", Value.FromBool(accepted));
         ctx.SetOutput("confirmed", Value.FromBool(accepted && index == 0));

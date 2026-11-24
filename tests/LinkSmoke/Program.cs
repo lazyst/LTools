@@ -149,7 +149,13 @@ internal static class Program
         var opsSeen = new ConcurrentQueue<ActionOpRequest>();
 
         var server = new LinkServer(pipe, "fwd-token",
-            static (_, request) => Task.FromResult(LinkMessage.Response(request, error: "宿主不支持该请求")));
+            static (_, request) =>
+            {
+                // 反向：提权进程 → 宿主的交互请求（宿主替它弹窗）。
+                if (request.Method == UiMethods.Choice)
+                    return Task.FromResult(LinkMessage.Response(request, new UiChoiceReply(true, 2, "第三项")));
+                return Task.FromResult(LinkMessage.Response(request, error: "宿主不支持该请求"));
+            });
         server.Start();
         LinkClient? client = null;
 
@@ -244,6 +250,14 @@ internal static class Program
             Check("宿主记住悬浮引用", PanelHostBridge.IsFloating("01nothing") && !PanelHostBridge.IsFloating("other"));
             PanelHostBridge.SetFloating(null);
             Check("悬浮引用可清空", !PanelHostBridge.IsFloating("01nothing"));
+
+            // ---- 反方向：执行器找宿主弹窗（交互类动作单元）----
+            LinkMessage choiceReply = await client.RequestAsync(UiMethods.Choice,
+                new UiChoiceRequest("d1", "确认", "继续？", new List<string>(), new List<string> { "确定", "取消" },
+                    SelectMode: false, TimeoutMs: 0), timeoutMs: 2000);
+            UiChoiceReply? picked = choiceReply.Read<UiChoiceReply>();
+            Check("交互请求发得出去（执行器 → 宿主）", choiceReply.Ok, choiceReply.Error);
+            Check("交互结果能回来", picked is { Accepted: true, Index: 2, Value: "第三项" }, picked?.ToString());
 
             // ---- 面板结构保存：宿主 Save 变成整份替换 ----
             Check("面板结构保存被接管", PanelHostBridge.TryPushPanel(new PanelConfig()));

@@ -52,6 +52,20 @@ internal static class LinkWorker
         Volatile.Read(ref _client)?.NotifyAsync(method, payload, cancellationToken) ?? Task.CompletedTask;
 
     /// <summary>
+    /// 向宿主发一条请求（交互类动作单元用它弹窗：界面归宿主）。
+    /// 没连上时抛 <see cref="InvalidOperationException"/>，调用方据此退回本地弹窗。
+    /// </summary>
+    public static Task<LinkMessage> RequestAsync(string method, object? payload = null,
+        int timeoutMs = 5000, CancellationToken cancellationToken = default)
+    {
+        LinkClient? client = Volatile.Read(ref _client);
+        if (client is not { IsOpen: true })
+            return Task.FromException<LinkMessage>(new InvalidOperationException("没连上界面宿主"));
+
+        return client.RequestAsync(method, payload, timeoutMs, cancellationToken);
+    }
+
+    /// <summary>
     /// 把「显示面板」交给宿主。宿主还没连上（主程序刚启动那几秒）就**记着**，连上后补发——
     /// 面板只有一个家（普通权限宿主），提权进程不再自己开一份。
     /// 光标坐标在这里取，宿主拿到的就是唤起瞬间的位置。

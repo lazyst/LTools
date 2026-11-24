@@ -18,7 +18,13 @@ public partial class InputDialog : Window
     /// <summary>结果值（确定时填充）。</summary>
     public string Value { get; private set; } = "";
 
+    /// <summary>用户是否点了确定（关窗 / 取消为 false）。</summary>
+    public bool Ok => _ok;
+
     private bool _ok;
+
+    /// <summary>非模态显示（流程用）：调用方等 <c>Closed</c> 再读 <see cref="Ok"/> / <see cref="Value"/>。</summary>
+    private bool _nonModal;
 
     public InputDialog(string title, string prompt, string defaultValue = "",
         IReadOnlyList<string>? variables = null, bool multiline = false)
@@ -71,10 +77,31 @@ public partial class InputDialog : Window
         return (dlg._ok, dlg.Value);
     }
 
+    /// <summary>
+    /// 非模态弹出（宿主替动作弹窗时用）：不用 <c>ShowDialog</c>，否则 UI 线程被自己的消息循环卡住，
+    /// <c>ui.cancel</c> / 停止热键就关不掉它。调用方等 <c>Closed</c> 再读 <see cref="Ok"/> / <see cref="Value"/>。
+    /// </summary>
+    public static InputDialog ShowNonModal(string title, string prompt, string defaultValue = "",
+        bool multiline = false)
+    {
+        var dlg = new InputDialog(title, prompt, defaultValue, variables: null, multiline: multiline)
+        {
+            _nonModal = true,
+            ShowInTaskbar = true,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+        };
+        dlg.Show();
+        dlg.Activate();
+        dlg.Focus();
+        return dlg;
+    }
+
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
         Value = ValueBox.Text;
         _ok = true;
-        DialogResult = true;
+        // 非模态（宿主替动作弹的那个）：Show() 显示的窗口不能设 DialogResult，只能自己关。
+        if (_nonModal) Close();
+        else DialogResult = true;
     }
 }

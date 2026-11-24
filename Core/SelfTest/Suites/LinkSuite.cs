@@ -165,6 +165,33 @@ internal static class LinkSuite
             new PanelStateEvent(true))).Read<PanelStateEvent>();
         Check.True(state?.Open == true, "面板状态往返：开着");
 
+        // —— 交互服务（执行器 → 宿主）——
+        var uiNames = new[] { UiMethods.Input, UiMethods.Choice, UiMethods.Cancel };
+        Check.Equal(uiNames.Length, new HashSet<string>(uiNames, StringComparer.Ordinal).Count, "交互方法名互不相同");
+        Check.True(uiNames.All(n => n.StartsWith("ui.", StringComparison.Ordinal)), "交互方法名都有 ui. 前缀");
+
+        UiInputRequest? input = RoundTrip(LinkMessage.Request(14, UiMethods.Input,
+            new UiInputRequest("d1", "标题", "请输入名字", "默认", Multiline: true))).Read<UiInputRequest>();
+        Check.Equal("d1", input?.DialogId, "要文本：对话 Id 原样");
+        Check.Equal("请输入名字", input?.Prompt, "要文本：提示原样");
+        Check.True(input?.Multiline == true, "要文本：多行原样");
+
+        UiChoiceRequest? choice = RoundTrip(LinkMessage.Request(15, UiMethods.Choice,
+            new UiChoiceRequest("d2", "确认", "继续？", new List<string>(), new List<string> { "确定", "取消" },
+                SelectMode: false, TimeoutMs: 5000))).Read<UiChoiceRequest>();
+        Check.Equal(2, choice?.Buttons.Count ?? -1, "选择框：按钮个数原样");
+        Check.Equal(5000, choice?.TimeoutMs ?? -1, "选择框：超时原样");
+
+        UiInputReply? inputReply = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(16, UiMethods.Input), new UiInputReply(true, "张三")))
+            .Read<UiInputReply>();
+        Check.True(inputReply is { Ok: true, Text: "张三" }, "要文本的结果往返");
+
+        UiChoiceReply? choiceReply = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(17, UiMethods.Choice), new UiChoiceReply(true, 2, "第三项")))
+            .Read<UiChoiceReply>();
+        Check.True(choiceReply is { Accepted: true, Index: 2, Value: "第三项" }, "选择框的结果往返");
+
         // 面板操作名也互不相同（提权侧 switch 按字符串分发，重名会让一个操作永远到不了）。
         var ops = new[]
         {
