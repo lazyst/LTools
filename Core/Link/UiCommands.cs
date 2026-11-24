@@ -25,6 +25,9 @@ internal static class UiMethods
 
     /// <summary>系统文件 / 文件夹选择框（对应 <c>file.select</c>）。</summary>
     public const string SelectFile = "ui.selectFile";
+
+    /// <summary>屏幕取点（对应 <c>screen.pickPoint</c>）。</summary>
+    public const string PickPoint = "ui.pickPoint";
 }
 
 /// <summary>要文本：<see cref="DialogId"/> 用来在停止 / 超时时把窗口关掉。</summary>
@@ -74,3 +77,9 @@ internal sealed record UiSelectFileRequest(string Kind, string Title, string Fil
 
 /// <summary>选择文件的结果；<see cref="Ok"/> = 用户选了（取消为 false）。</summary>
 internal sealed record UiSelectFileReply(bool Ok, string Path);
+
+/// <summary>屏幕取点：<see cref="Hint"/> 是遮罩顶部那句「点哪里」，空 = 默认提示。</summary>
+internal sealed record UiPickPointRequest(string DialogId, string Hint);
+
+/// <summary>取点结果；<see cref="Ok"/> = 取到了（右键 / Esc 取消为 false）。坐标是虚拟桌面物理像素。</summary>
+internal sealed record UiPickPointReply(bool Ok, int X, int Y);

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Threading;
 using LTools.Core.Actions;
 using LTools.Features;
@@ -33,6 +35,7 @@ internal static class UiHost
         UiMethods.Choice => ChoiceAsync(request),
         UiMethods.TextWindow => TextWindowAsync(request),
         UiMethods.SelectFile => SelectFileAsync(request),
+        UiMethods.PickPoint => PickPointAsync(request),
         UiMethods.Cancel => Task.FromResult(Cancel(request)),
         _ => null,
     };
@@ -209,6 +212,39 @@ internal static class UiHost
                 var (ok, path) = FilePicker.TryPick(req.Kind ?? "", req.Title ?? "",
                     req.Filter ?? "", req.InitialDir ?? "");
                 done.TrySetResult(new UiSelectFileReply(ok, path));
+            }
+            catch (Exception ex)
+            {
+                done.TrySetException(ex);
+            }
+        });
+
+        try
+        {
+            return LinkMessage.Response(request, await done.Task.ConfigureAwait(false));
+        }
+        catch (Exception ex)
+        {
+            return LinkMessage.Response(request, error: ex.Message);
+        }
+    }
+
+    private static async Task<LinkMessage> PickPointAsync(LinkMessage request)
+    {
+        UiPickPointRequest? req = request.Read<UiPickPointRequest>();
+        if (req == null) return LinkMessage.Response(request, error: "缺少参数");
+
+        var done = new TaskCompletionSource<UiPickPointReply>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // 遮罩是 ShowDialog，会占住宿主 UI 线程直到用户单击 / 按 Esc（关不掉，见 ScreenPicker）。
+        // 收起宿主的窗口与卡片、抓冻结画面、恢复现场都在 ScreenPicker 里，这里只管带结果回来。
+        Ui.Post(() =>
+        {
+            try
+            {
+                Window? owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
+                bool ok = ScreenPicker.TryPickPoint(owner, req.Hint ?? "", out int x, out int y);
+                done.TrySetResult(new UiPickPointReply(ok, x, y));
             }
             catch (Exception ex)
             {

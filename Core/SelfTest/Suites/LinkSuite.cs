@@ -167,7 +167,7 @@ internal static class LinkSuite
 
         // —— 交互服务（执行器 → 宿主）——
         var uiNames = new[] { UiMethods.Input, UiMethods.Choice, UiMethods.Cancel,
-            UiMethods.TextWindow, UiMethods.SelectFile };
+            UiMethods.TextWindow, UiMethods.SelectFile, UiMethods.PickPoint };
         Check.Equal(uiNames.Length, new HashSet<string>(uiNames, StringComparer.Ordinal).Count, "交互方法名互不相同");
         Check.True(uiNames.All(n => n.StartsWith("ui.", StringComparison.Ordinal)), "交互方法名都有 ui. 前缀");
 
@@ -213,6 +213,15 @@ internal static class LinkSuite
                 LinkMessage.Request(21, UiMethods.SelectFile), new UiSelectFileReply(false, "")))
             .Read<UiSelectFileReply>();
         Check.True(selectReply is { Ok: false, Path: "" }, "选择文件的结果往返（取消）");
+
+        UiPickPointRequest? pickPoint = RoundTrip(LinkMessage.Request(22, UiMethods.PickPoint,
+            new UiPickPointRequest("d4", "点一下那个按钮"))).Read<UiPickPointRequest>();
+        Check.Equal("点一下那个按钮", pickPoint?.Hint, "取点：提示语原样");
+
+        UiPickPointReply? pickReply = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(23, UiMethods.PickPoint), new UiPickPointReply(true, 1280, 720)))
+            .Read<UiPickPointReply>();
+        Check.True(pickReply is { Ok: true, X: 1280, Y: 720 }, "取点的坐标往返");
 
         // 面板操作名也互不相同（提权侧 switch 按字符串分发，重名会让一个操作永远到不了）。
         var ops = new[]

@@ -613,6 +613,22 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`--selftest` 393 用例 / 18636 断言（新增两组 DTO 往返）；`LinkSmoke` 66 条
   （新增文本窗口 / 选择文件两条反向请求）；`PanelHostSmoke` 11；`ShareSmoke` 103。
 
+**2026-11-24 · P2-M1-c 交互服务：屏幕取点也在宿主里弹**
+
+- `screen.pickPoint` 走 `ui.pickPoint`（`UiPickPointRequest{DialogId, Hint}` → `UiPickPointReply{Ok, X, Y}`，
+  坐标是**虚拟桌面物理像素**，与截图 / 找图 / 鼠标注入同一套）。
+- 宿主侧 `ScreenPicker.TryPickPoint` 原样复用：它自己 `TransientMinimize.MinimizeAll` 收起宿主窗口、
+  `ToastService.SuppressForCapture` 藏卡片、抓冻结画面、结束恢复。
+- **执行器那边的置顶窗口也得先收**：遮罩在宿主里拍冻结画面，执行器的自动化指示器与提示卡片会被一起拍进去。
+  所以取点单元在发请求**之前**就 `HideAutomationForCapture()` + `SuppressForCapture()`，`finally` 里恢复——
+  这样就不需要「跨进程抓屏抑制」那套东西（原计划的 `ui.suppress` 删掉）。
+- **已知限制**：遮罩是 `ShowDialog`，程序关不掉。停止热键只结束本次运行，遮罩留到用户单击 / 右键 / Esc。
+- 真机实测（MCP `staging_run`）：
+  - 遮罩窗口（标题「屏幕取点」，1920×1080）在 **ShareHost**，`GetForegroundWindow()` 就是它，提示语渲染正常；
+  - 点 (700,400) → `x=700, y=400`（物理像素，1:1）；
+  - 按 Esc → 遮罩消失、`x=0` / `y=0`（取消不是失败，`state=ok`）。
+- 回归：`--selftest` 393 用例（新增取点两组 DTO 往返）；`LinkSmoke` 68 条（新增取点反向请求）。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -634,20 +650,23 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 
 - 新方法（**执行器 → 宿主**的请求，宿主用 `Ui.Post` 弹窗 + `TaskCompletionSource` 回值）：
   `ui.input` / `ui.select` / `ui.confirm` / `ui.textWindow`(show/read/close) / `ui.selectFile` /
-  `ui.pickPoint` / `ui.capture`（框选 / 前台窗口 / 整屏 / 固定区域）/ `ui.toast` / `ui.suppress` / `ui.cancel`。
+  `ui.pickPoint` / `ui.cancel`。
 - 方向：执行器发请求（它在跑动作），宿主 `LinkServer` 的 handler 应答；`ui.cancel` 让等待中的窗口关掉
   （停止热键 → 引擎抛 `ActionAbortedException`，与今天本地那套语义一致）。
 - 通道能力已具备：`LinkClient.RequestAsync` 与 `LinkServer` 的 handler 都支持反向请求（宿主 → 执行器现在就在用）。
-- 资源归属随之定：交互截图写 `cache/screenshots/`（同名规则不变）、`ActionParamMemory` 留在宿主、
-  `RecordingIndicatorWindow` 在宿主（它给「正在运行」做提示）。
+- 资源归属随之定：交互截图写 `cache/screenshots/`（同名规则不变）、`ActionParamMemory` 留在宿主。
 - 分四小步做（每步都能单独真机验）：
   - **M1-a（已完成）** `ui.input` / `ui.choice`（`ui.confirm` + `ui.select`）/ `ui.cancel`
   - **M1-b（已完成）** `ui.textWindow` / `ui.selectFile`（`file.select`，系统框唯一实现 `Features/FilePicker`）
-  - **M1-c** `ui.pickPoint` / `ui.capture`（交互框选）；取点 / 框选前执行器先收起自己的指示器，宿主侧再收起自己的卡片
-  - **M1-d** `ui.toast` + `ui.suppress`（跨进程「抓屏前收起卡片」）+ `RecordingIndicatorWindow` 搬进宿主
-- **已知限制**：系统文件框与截图遮罩是模态的、程序关不掉。停止热键只结束本次运行，
-  框留在宿主里等用户按 Esc——写进 `FilePicker` 与取点单元各自的注释，别再试图用定时器硬关。
-- 验收：6 个 `ui.*` + 取点 + 截图 + 文件框逐条真机；停止热键 500ms 内关掉窗口（模态框除外，见上）；
+  - **M1-c（已完成）** `ui.pickPoint`（`screen.pickPoint`）。执行器那边在发请求前先收起自己的
+    指示器与提示卡片（`HideAutomationForCapture` + `SuppressForCapture`），`finally` 恢复
+  - **M1-d（剩下的都并到 M3 / M4）**：`ui.toast` 与 `RecordingIndicatorWindow` 跟着**截图 Pro（M3-5）**
+    一起搬，或者留到 M4 收尾一起搬。它们只有「抓屏入口搬过去」之后才需要跨进程收起，
+    而每个抓屏入口的执行器那侧本来就会先收自己的卡片（同 M1-c），所以**不需要 `ui.suppress`**。
+    交互式框选（`screen.capture` 的框选档，走 `CaptureSession` 整套覆盖层）也随 M3-5 一起搬。
+- **已知限制**：系统文件框与取点 / 框选遮罩是模态的、程序关不掉。停止热键只结束本次运行，
+  框留在宿主里等用户按 Esc——写进 `FilePicker`、`ScreenPicker` 与取点单元各自的注释，别再试图用定时器硬关。
+- 验收：`ui.*` 与取点 / 文件框逐条真机；停止热键 500ms 内关掉窗口（模态框除外，见上）；
   `--selftest` 的 `contract` / `unit` 组仍绿。
 
 ### 15.3 M2 · 写属主翻转（按域翻，不一次性）

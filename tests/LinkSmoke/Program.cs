@@ -158,6 +158,8 @@ internal static class Program
                     return Task.FromResult(LinkMessage.Response(request, new UiTextWindowReply(true, "窗口内容", false)));
                 if (request.Method == UiMethods.SelectFile)
                     return Task.FromResult(LinkMessage.Response(request, new UiSelectFileReply(true, @"C:\a.txt")));
+                if (request.Method == UiMethods.PickPoint)
+                    return Task.FromResult(LinkMessage.Response(request, new UiPickPointReply(true, 1280, 720)));
                 return Task.FromResult(LinkMessage.Response(request, error: "宿主不支持该请求"));
             });
         server.Start();
@@ -275,6 +277,12 @@ internal static class Program
             Check("选择文件请求发得出去", fileReply.Ok, fileReply.Error);
             Check("选择文件路径能回来", fileReply.Read<UiSelectFileReply>()?.Path == @"C:\a.txt",
                 fileReply.Read<UiSelectFileReply>()?.ToString());
+
+            LinkMessage pointReply = await client.RequestAsync(UiMethods.PickPoint,
+                new UiPickPointRequest("d3", "点一下"), timeoutMs: 2000);
+            Check("取点请求发得出去", pointReply.Ok, pointReply.Error);
+            Check("取点坐标能回来", pointReply.Read<UiPickPointReply>() is { Ok: true, X: 1280, Y: 720 },
+                pointReply.Read<UiPickPointReply>()?.ToString());
 
             // ---- 面板结构保存：宿主 Save 变成整份替换 ----
             Check("面板结构保存被接管", PanelHostBridge.TryPushPanel(new PanelConfig()));

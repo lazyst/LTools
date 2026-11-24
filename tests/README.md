@@ -159,7 +159,7 @@ dotnet run -- --helper                    # 再加一段：拉起 ShareHost.exe�
 
 ```powershell
 cd tests\LinkSmoke
-dotnet run                                # 66 条，约 7 秒
+dotnet run                                # 68 条，约 7 秒
 ```
 
 真起一条 `LToolsLink-test-*` 管道，`LinkServer` + `LinkClient` 走完整流程：令牌不对被拒绝、
@@ -178,8 +178,8 @@ dotnet run                                # 66 条，约 7 秒
 `panel.op` / `open.window`，把 `PanelLibrary.Save` 接管成 `panel.replace`，
 断言引用 / 坐标 / 来源 / 目标 / 操作名 / 分组 / 宏 Id / 草稿 Id 与采纳方式 / 整份配置都原样送到对端
 （宿主里绝不本地执行、也不本地写盘），并验悬浮状态能从快照灌进
-`PanelHostBridge`（面板菜单的「悬浮 / 取消悬浮」靠它）；**反方向**再验三条：执行器向宿主发
-`ui.choice` / `ui.textWindow` / `ui.selectFile` 并收到对应的回复（交互类动作单元弹在宿主里）。
+`PanelHostBridge`（面板菜单的「悬浮 / 取消悬浮」靠它）；**反方向**再验四条：执行器向宿主发
+`ui.choice` / `ui.textWindow` / `ui.selectFile` / `ui.pickPoint` 并收到对应的回复（交互类动作单元弹在宿主里）。
 
 链路层是 `internal`，这里用 `InternalsVisibleTo("LinkSmoke")` 直接驱动（异步委托用反射太难看）；
 其它冒烟仍按惯例走反射。

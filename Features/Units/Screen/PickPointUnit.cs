@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows;
 using LTools.Core;
 using LTools.Core.Actions;
+using LTools.Core.Link;
 using LTools.Native;
 using LTools.Views;
 
@@ -64,16 +65,32 @@ public sealed class PickPointUnit : IStepUnit
         string hint = args.Text("hint").Trim();
 
         // 自动化指示器是置顶窗口，会被拍进取点画面：取点前收起，结束再恢复。
+        // 遮罩现在跑在宿主里（普通权限），冻结画面由它拍——所以执行器这边的卡片也得先藏起来。
         string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
+        using var suppressed = ToastService.SuppressForCapture();
         try
         {
-            var (ok, x, y) = app.Dispatcher.Invoke(() =>
+            // 界面归宿主：转过去弹遮罩；没连上再本地弹（体验降级，不卡流程）。
+            UiPickPointReply? remote = UiBridge.TryPickPoint(hint, ctx.Token);
+            bool ok;
+            int x;
+            int y;
+            if (remote != null)
             {
-                // owner 必须在 UI 线程上找：Application.Windows 属于 UI 线程。
-                Window? owner = app.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? app.MainWindow;
-                bool picked = ScreenPicker.TryPickPoint(owner, hint, out int px, out int py);
-                return (picked, px, py);
-            });
+                ok = remote.Ok;
+                x = remote.X;
+                y = remote.Y;
+            }
+            else
+            {
+                (ok, x, y) = app.Dispatcher.Invoke(() =>
+                {
+                    // owner 必须在 UI 线程上找：Application.Windows 属于 UI 线程。
+                    Window? owner = app.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? app.MainWindow;
+                    bool picked = ScreenPicker.TryPickPoint(owner, hint, out int px, out int py);
+                    return (picked, px, py);
+                });
+            }
 
             if (!ok)
             {

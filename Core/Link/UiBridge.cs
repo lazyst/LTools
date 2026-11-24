@@ -68,6 +68,16 @@ internal static class UiBridge
         return Ask<UiSelectFileReply>(UiMethods.SelectFile, request, dialogId: "", timeoutMs: 0, token);
     }
 
+    /// <summary>屏幕取点；<c>null</c> = 没转交（调用方本地弹遮罩）。</summary>
+    public static UiPickPointReply? TryPickPoint(string hint, CancellationToken token)
+    {
+        string dialogId = NewDialogId();
+        var request = new UiPickPointRequest(dialogId, hint);
+
+        // 遮罩是模态的（与文件框同一个限制）：等用户点完或按 Esc，别设短超时。
+        return Ask<UiPickPointReply>(UiMethods.PickPoint, request, dialogId, timeoutMs: 0, token);
+    }
+
     private static string NewDialogId() => Guid.NewGuid().ToString("N");
 
     private static T? Ask<T>(string method, object request, string dialogId, int timeoutMs, CancellationToken token)
