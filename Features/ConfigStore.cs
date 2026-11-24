@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using LTools.Config;
 using LTools.Core;
+using LTools.Core.Actions;
+using LTools.Core.Link;
 using LTools.Core.Storage;
 using LTools.Features.Floating;
 using LTools.Features.Panel;
@@ -54,6 +56,7 @@ internal static class ConfigStore
         AppState.ApplySettings(cfg);
         PanelLibrary.LoadReadOnly(configPath);
         MacroStore.Invalidate();   // 下一次访问按 ConfigPath 现读（只读）
+        SubActionStore.Invalidate();   // 导入备份会整份换掉 subactions/（编辑器将来在宿主里读）
         ReadOnly = true;
     }
 
@@ -90,6 +93,8 @@ internal static class ConfigStore
         ActionLibrary.LoadFrom(cfg);
         HotkeyRegistry.Load(cfg);
         PanelLibrary.Reload();
+        // 宿主那份只读副本也过期了（导入备份 / 重新加载都从磁盘整份换过）：让它跟着重读。
+        ConfigReloadBridge.Notify();
     }
 
     /// <summary>加载当前磁盘配置（不回写）。</summary>

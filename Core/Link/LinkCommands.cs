@@ -109,6 +109,16 @@ internal static class LinkMethods
 
     /// <summary>动作库变了（新建 / 删除 / 改名 / 采纳草稿），宿主该重拉快照。</summary>
     public const string EventActionsChanged = "actions.changed";
+
+    /// <summary>
+    /// 执行器把磁盘配置整份重读了（导入备份 / 设置页「重新加载」）：宿主的只读副本已经过期，
+    /// 要跟着重读一遍，否则面板还显示旧磁贴、点下去是「动作不存在」。
+    /// </summary>
+    /// <remarks>
+    /// 没有负载：这几条路径都是**整份**替换（备份按 include 整体换目录），按域区分只会在
+    /// 以后需要时再加，现在多一个字段只会让两边各写一套「哪个域该刷什么」。
+    /// </remarks>
+    public const string EventConfigReload = "config.reload";
 }
 
 /// <summary>宿主要在网格里画的一个磁贴（只带画磁贴需要的字段）。</summary>

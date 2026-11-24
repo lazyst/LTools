@@ -841,6 +841,24 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 > 4a 用的是与 `configs/` / `actions/` 同一个「只翻落盘那一步」的手法；`staging/` `resources/`
 > 仍跟编辑器 / 暂存区走（4b）。
 
+**2026-11-25 · P2-M3-5a 配置整份重读的通知（`config.reload`）**
+
+- 动手前先纠正一处顺序：**编辑器没法单独搬**。`panel.op` 在提权进程里执行 `PanelActionOps`，
+  它才是「新建 / 编辑 / 复制动作」打开编辑器的调用方；设置页也在提权进程里开同一个编辑器。
+  把窗口搬过去就得连 `PanelActionOps`、动作内容写权、`staging/` 草稿与设置入口一起翻——那正是第 5 步。
+  所以 4b / 4c 并进第 5 步做，先补它依赖的两块：**整份重读的通知**（5a）与**跨进程试运行**（5b）。
+- `config.reload`（执行器 → 宿主，无负载）：`ConfigStore.Reload()` 是「磁盘整份换过」的唯一入口
+  （导入备份、设置页「重新加载」都走它），在那里广播一次；宿主收到就走既有的
+  `ReloadAndRefreshAsync`（`InitializeReadOnly` → 拉面板快照 → 刷已开着的速记 / 贴图 / 面板）。
+- `InitializeReadOnly` 补了 `SubActionStore.Invalidate()`：导入会整份换 `subactions/`，
+  将来编辑器在宿主里读时不能拿旧索引。
+- **顺手修掉的真问题**：导入备份后宿主的只读副本一直是旧的——面板还显示导入前的磁贴，
+  点下去是「动作不存在」，用户只能重启。现在导入完宿主立刻跟上。
+- 真机：托盘 → 设置 → 左下「重新加载」→ 宿主日志 `执行器重读了配置，宿主跟着刷新` +
+  `面板快照：8 个动作…`（重新拉了一份）。
+- 回归：`--selftest --filter link` 305 断言（方法名）；`LinkSmoke` 81（新增一条
+  「配置重读通知送到了宿主」——通知走 `onEvent`，别塞进请求处理器）。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -908,8 +926,8 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | 1 | 速记 `QuickNote` | **已完成（M3-1）**：`速记/` 写权翻给宿主、`note.toggle` / `note.write` 就绪、托盘 / `CapsLock+N` / 面板磁贴都只转意图 |
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
-| 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主；编辑器本体（含草稿、`actions/<id>/files/` 素材、试运行 `run.program`）与宏闭环（`macro.*`）仍待做（4b / 4c）。宏录制仍在执行器（钩子）→ 录完由宿主挂动作、放面板 |
-| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页） | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主；另加 `data.changed` 回读、`hotkeys.record`、`mcp.*` 几条小命令 |
+| 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主。**编辑器与宏页并进第 5 步**：打开编辑器的调用方（`PanelActionOps`）与设置页都在提权进程里，单独搬窗口就得连动作内容写权、`staging/`、设置入口一起翻——那正是第 5 步的范围（见 §14 `P2-M3-5a` 的顺序说明）。 |
+| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b**：`run.program` + 轨迹事件流（编辑器试运行）。**5c**：设置窗口（含三个编辑入口）搬进宿主。**5d**：`data.changed` 回读、`hotkeys.record`、`mcp.*` 收尾 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
 
 > **顺序更正（2026-11-24，看过代码之后）**：原方案把「采集历史 / 贴图管理」排在截图 Pro 前面，实际排不了——

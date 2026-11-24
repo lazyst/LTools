@@ -306,10 +306,16 @@ public partial class App : Application
             case LinkMethods.EventActionsChanged:
                 _ = ReloadAndRefreshAsync();
                 break;
+
+            case LinkMethods.EventConfigReload:
+                // 执行器刚把磁盘上的配置整份换过（导入备份 / 重新加载）：宿主的只读副本全部作废。
+                AppLog.Info("ShareHost", "执行器重读了配置，宿主跟着刷新");
+                _ = ReloadAndRefreshAsync();
+                break;
         }
     }
 
-    /// <summary>主程序改了动作 / 面板：宿主从磁盘只读重读一遍，再重建打开着的面板。</summary>
+    /// <summary>主程序改了动作 / 面板（或整份重读了配置）：宿主从磁盘只读重读一遍，再重建打开着的面板。</summary>
     private async Task ReloadAndRefreshAsync()
     {
         try
@@ -320,7 +326,13 @@ public partial class App : Application
             // 快照要先拉：悬浮状态在它里面，而右键菜单是**重建面板时**一并建好的（后拉就晚了一拍）。
             await PullSnapshotAsync();
 
-            await Dispatcher.InvokeAsync(() => Features.SuperPanel.Refresh());
+            await Dispatcher.InvokeAsync(() =>
+            {
+                // 速记 / 贴图也可能整份被换过（导入备份）：只刷**已经开着**的窗口，没开就不建。
+                Features.QuickNote.Refresh();
+                Features.CapturePro.CapturePinManager.RefreshRecognition();
+                Features.SuperPanel.Refresh();
+            });
         }
         catch (Exception ex)
         {

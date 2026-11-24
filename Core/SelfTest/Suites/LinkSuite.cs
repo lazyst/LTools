@@ -157,7 +157,7 @@ internal static class LinkSuite
             LinkMethods.EventInputSwallow, LinkMethods.CaptureRun, LinkMethods.CaptureDirect,
             LinkMethods.EventCaptureRecordDone, LinkMethods.EventCaptureWindow, ActionMethods.SaveAll,
             LinkMethods.EventInputSuspend, LinkMethods.EventPinState, LinkMethods.EventRecordKeys,
-            SubActionMethods.Save, SubActionMethods.Delete,
+            SubActionMethods.Save, SubActionMethods.Delete, LinkMethods.EventConfigReload,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
@@ -314,6 +314,9 @@ internal static class LinkSuite
         SubActionDeleteRequest? subDelete = RoundTrip(LinkMessage.Request(43, SubActionMethods.Delete,
             new SubActionDeleteRequest("s1"))).Read<SubActionDeleteRequest>();
         Check.Equal("s1", subDelete?.Id, "子动作删除往返");
+
+        // 配置整份重读（执行器 → 宿主）：没有负载，方法名就是全部协议。
+        Check.Equal("config.reload", LinkMethods.EventConfigReload, "配置重读方法名");
 
         // —— 点选器占用输入（宿主 → 提权进程，让开「长按右键 = 面板」）——
         Check.Equal("input.picker", LinkMethods.EventPickerActive, "点选器状态方法名");

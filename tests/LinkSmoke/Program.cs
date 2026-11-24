@@ -148,6 +148,7 @@ internal static class Program
         var operated = new TaskCompletionSource<ActionOpRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var pushed = new TaskCompletionSource<PanelConfig>(TaskCreationOptions.RunContinuationsAsynchronously);
         var subSaved = new TaskCompletionSource<SubActionSaveRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reloaded = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var opsSeen = new ConcurrentQueue<ActionOpRequest>();
 
         var server = new LinkServer(pipe, "fwd-token",
@@ -176,7 +177,17 @@ internal static class Program
                 }
                 if (request.Method == SubActionMethods.Delete)
                     return Task.FromResult(LinkMessage.Response(request, new SubActionReply(true, null)));
+                if (request.Method == LinkMethods.EventConfigReload)
+                {
+                    reloaded.TrySetResult(true);
+                    return Task.FromResult(LinkMessage.Response(request));
+                }
                 return Task.FromResult(LinkMessage.Response(request, error: "宿主不支持该请求"));
+            },
+            message =>
+            {
+                // 通知（事件）走 onEvent，不走请求处理器：配置重读是一条「不答复」的广播。
+                if (message.Method == LinkMethods.EventConfigReload) reloaded.TrySetResult(true);
             });
         server.Start();
         LinkClient? client = null;
@@ -338,6 +349,12 @@ internal static class Program
             Check("子动作删除请求发得出去（写者是宿主）", subDeleteReply.Ok, subDeleteReply.Error);
             Check("子动作删除结果能回来", subDeleteReply.Read<SubActionReply>()?.Ok == true,
                 subDeleteReply.Read<SubActionReply>()?.ToString());
+
+            // 配置整份重读：导入备份 / 「重新加载」之后宿主那份只读副本要跟着换。
+            await client.NotifyAsync(LinkMethods.EventConfigReload);
+            Task reloadDone = await Task.WhenAny(reloaded.Task, Task.Delay(2000));
+            Check("配置重读通知送到了宿主", ReferenceEquals(reloadDone, reloaded.Task),
+                ReferenceEquals(reloadDone, reloaded.Task) ? null : "2 秒内没收到");
 
             // ---- 面板结构保存：宿主 Save 变成整份替换 ----
             Check("面板结构保存被接管", PanelHostBridge.TryPushPanel(new PanelConfig()));
