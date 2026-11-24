@@ -187,6 +187,7 @@ public partial class App : Application
             CaptureHost.Attach(server);
             InputGuard.Attach(server);
             ProgramRunBridge.Attach(server);
+            ActionEditBridge.Attach(server);
             server.ClientChanged += OnLinkClientChanged;
             server.Start();
 

@@ -149,7 +149,7 @@ internal static class LinkSuite
         var names = new[]
         {
             LinkMethods.PanelSnapshot, LinkMethods.PanelReplace, LinkMethods.ActionAdd,
-            LinkMethods.ActionDelete, LinkMethods.ActionDuplicate,
+            LinkMethods.ActionUpdate, LinkMethods.ActionDelete, LinkMethods.ActionDuplicate,
             LinkMethods.RunAction, LinkMethods.OpenWindow, LinkMethods.ActionOp,
             LinkMethods.EventPanelShow, LinkMethods.EventPanelToggle, LinkMethods.EventClientReady,
             LinkMethods.EventActionsChanged, LinkMethods.EventPanelStash, LinkMethods.EventPanelState,
@@ -294,6 +294,33 @@ internal static class LinkSuite
                 LinkMessage.Request(31, ActionMethods.SaveAll), new ActionSaveReply(false, "磁盘满了")))
             .Read<ActionSaveReply>();
         Check.True(actionReply is { Ok: false } && actionReply.Error == "磁盘满了", "动作库写入的失败原因往返");
+
+        // —— 动作级写入（宿主里的面板 / 编辑器 → 执行器：内容属主只有一个）——
+        Check.True(ActionEditHost.IsWrite(LinkMethods.ActionAdd) && ActionEditHost.IsWrite(LinkMethods.ActionUpdate)
+            && ActionEditHost.IsWrite(LinkMethods.ActionDelete) && ActionEditHost.IsWrite(LinkMethods.ActionDuplicate),
+            "四条动作写入都由 ActionEditHost 接");
+        Check.False(ActionEditHost.IsWrite(LinkMethods.PanelSnapshot), "面板读取不走动作写入");
+
+        var editDto = new ActionDto { Id = "a9", Name = "容器里改的动作", Icon = "app" };
+        editDto.Program = new ActionProgram { Name = "容器里改的动作" };
+        editDto.Program.Steps.Add(new Step { Unit = "flow.set" });
+        ActionEditRequest? editReq = RoundTrip(LinkMessage.Request(47, LinkMethods.ActionUpdate,
+                new ActionEditRequest(editDto)))
+            .Read<ActionEditRequest>();
+        Check.Equal("a9", editReq?.Dto?.Id, "动作写入往返（Id）");
+        Check.Equal("容器里改的动作", editReq?.Dto?.Name, "动作写入往返（名称）");
+        Check.Equal("flow.set", editReq?.Dto?.Program?.Steps[0].Unit, "动作写入往返（步骤）");
+
+        ActionEditReply? editReply = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(48, LinkMethods.ActionUpdate),
+                new ActionEditReply(true, editDto, null)))
+            .Read<ActionEditReply>();
+        Check.True(editReply is { Ok: true, Action.Id: "a9" }, "动作写入答复往返");
+        ActionEditReply? editFail = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(49, LinkMethods.ActionUpdate),
+                new ActionEditReply(false, null, "动作已经不存在了")))
+            .Read<ActionEditReply>();
+        Check.True(editFail is { Ok: false } && editFail.Error == "动作已经不存在了", "动作写入失败原因往返");
 
         // —— 全局子动作库：写者是宿主（M3-4a，一个文件一个定义，所以按份转）——
         Check.Equal("subaction.save", SubActionMethods.Save, "子动作写入方法名");
@@ -511,14 +538,14 @@ internal static class LinkSuite
         Check.Equal(ops.Length, new HashSet<string>(ops, StringComparer.Ordinal).Count, "面板操作名互不相同");
         Check.True(ops.All(o => o.Length > 0), "面板操作名都不为空");
 
-        // 新建 / 定位 / 显示面板的负载往返。
-        ActionAddRequest? add = RoundTrip(LinkMessage.Request(1, LinkMethods.ActionAdd,
-            new ActionAddRequest("季度报告", "app"))).Read<ActionAddRequest>();
-        Check.Equal("季度报告", add?.Name, "新建动作：名称原样");
-        Check.Equal("app", add?.Icon, "新建动作：图标原样");
+        // 新建 / 定位 / 显示面板的负载往返（四条动作写入共用一个请求形状）。
+        ActionEditRequest? add = RoundTrip(LinkMessage.Request(1, LinkMethods.ActionAdd,
+            new ActionEditRequest(new ActionDto { Name = "季度报告", Icon = "app" }))).Read<ActionEditRequest>();
+        Check.Equal("季度报告", add?.Dto?.Name, "新建动作：名称原样");
+        Check.Equal("app", add?.Dto?.Icon, "新建动作：图标原样");
 
-        ActionIdRequest? id = RoundTrip(LinkMessage.Request(2, LinkMethods.ActionDelete,
-            new ActionIdRequest("01abc"))).Read<ActionIdRequest>();
+        ActionEditRequest? id = RoundTrip(LinkMessage.Request(2, LinkMethods.ActionDelete,
+            new ActionEditRequest(Id: "01abc"))).Read<ActionEditRequest>();
         Check.Equal("01abc", id?.Id, "定位动作：Id 原样");
 
         PanelShowRequest? show = RoundTrip(LinkMessage.Request(3, LinkMethods.EventPanelShow,

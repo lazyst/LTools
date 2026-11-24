@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using LTools.Config;
+using LTools.Features;
 
 namespace LTools.Core.Link;
 
@@ -21,8 +22,11 @@ internal static class LinkMethods
     /// <summary>宿主把编辑后的整份面板配置交回，由提权进程落盘。</summary>
     public const string PanelReplace = "panel.replace";
 
-    /// <summary>新建一个空动作（名称 / 图标），返回完整 <c>ActionDto</c>。</summary>
+    /// <summary>新建一个动作（整份定义），返回补过 Id / 图标的完整 <c>ActionDto</c>。</summary>
     public const string ActionAdd = "action.add";
+
+    /// <summary>覆盖同 Id 的动作（整份定义），返回保存后的 <c>ActionDto</c>。</summary>
+    public const string ActionUpdate = "action.update";
 
     /// <summary>删除动作（含快捷键 / 面板 / 触发 / 悬浮引用与资源回收）。</summary>
     public const string ActionDelete = "action.delete";
@@ -127,11 +131,20 @@ internal sealed record ActionSummary(string Id, string Name, string Icon, int St
 /// <summary>面板快照：整份配置 + 动作摘要表 + 正在悬浮的动作引用（宿主据此重建界面与菜单标签）。</summary>
 internal sealed record PanelSnapshot(PanelConfig Panel, List<ActionSummary> Actions, List<string> Floating);
 
-/// <summary>新建动作：名称必填，图标可空（空则由服务端补默认）。</summary>
-internal sealed record ActionAddRequest(string Name, string? Icon);
+/// <summary>
+/// 动作级写入：加 / 改带整份 <see cref="Dto"/>，删 / 复制带 <see cref="Id"/>。
+/// </summary>
+/// <remarks>
+/// 四条命令共用一个形状：它们都是「宿主里的面板 / 编辑器要动一个动作」，
+/// 区别只在执行器做哪一件事。拆成两套请求只会让调用点各记一次。
+/// </remarks>
+internal sealed record ActionEditRequest(ActionDto? Dto = null, string? Id = null);
 
-/// <summary>按 Id 定位一个动作（删除 / 复制共用）。</summary>
-internal sealed record ActionIdRequest(string Id);
+/// <summary>
+/// 动作级写入的答复：<see cref="Action"/> 是保存后的动作（补过 Id / 图标；删除时为 null），
+/// <see cref="Error"/> 说明为什么没改成（宿主据此提示，别假装成功）。
+/// </summary>
+internal sealed record ActionEditReply(bool Ok, ActionDto? Action, string? Error);
 
 /// <summary>
 /// 显示面板。窗口句柄是「按下右键时鼠标所在的顶层窗口」（会话上下文按它算），

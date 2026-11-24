@@ -152,6 +152,7 @@ internal static class Program
         var runStarted = new TaskCompletionSource<RunProgramRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var runTrace = new TaskCompletionSource<TraceBatchEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
         var runDone = new TaskCompletionSource<RunDoneEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var added = new TaskCompletionSource<ActionDto>(TaskCreationOptions.RunContinuationsAsynchronously);
         var opsSeen = new ConcurrentQueue<ActionOpRequest>();
 
         var server = new LinkServer(pipe, "fwd-token",
@@ -227,6 +228,21 @@ internal static class Program
                         });
                         return Task.FromResult(LinkMessage.Response(request, new RunProgramReply(true, null)));
                     }
+
+                    // 动作级写入（宿主 → 执行器）：内容属主在执行器，回一份保存后的动作。
+                    if (request.Method == LinkMethods.ActionAdd)
+                    {
+                        ActionDto? dto = request.Read<ActionEditRequest>()?.Dto;
+                        if (dto != null)
+                        {
+                            added.TrySetResult(dto);
+                            dto.Id = "a-new";   // 执行器会给新动作补 Id
+                        }
+                        return Task.FromResult(LinkMessage.Response(request, new ActionEditReply(true, dto, null)));
+                    }
+                    if (request.Method == LinkMethods.ActionUpdate)
+                        return Task.FromResult(LinkMessage.Response(request,
+                            new ActionEditReply(false, null, "这个动作已经不存在了")));
 
                     if (request.Method == LinkMethods.RunAction && request.Read<RunActionRequest>() is { } run)
                         recorded.TrySetResult(run);
@@ -412,6 +428,21 @@ internal static class Program
                 && runDone.Task.IsCompletedSuccessfully && runDone.Task.Result.Token == "t9",
                 ReferenceEquals(runDoneArrived, runDone.Task) ? null : "2 秒内没收到");
 
+            // 动作级写入：宿主里的编辑器保存 → 执行器改内存 + 落盘（回一个带 Id 的动作）。
+            ActionEditBridge.Attach(server);
+            bool addOk = ActionEditBridge.Add(new ActionDto { Name = "宿主建的动作" },
+                out ActionDto? addBack, out string? addError);
+            Check("动作新建请求送到了执行器", addOk, addError);
+            Check("执行器回的动作带 Id", addOk && addBack?.Id == "a-new", addBack?.Id);
+
+            Task addedDone = await Task.WhenAny(added.Task, Task.Delay(2000));
+            Check("执行器收到的是整份动作（名称原样）", ReferenceEquals(addedDone, added.Task)
+                && added.Task.IsCompletedSuccessfully && added.Task.Result.Name == "宿主建的动作",
+                ReferenceEquals(addedDone, added.Task) ? null : "2 秒内没收到");
+
+            bool updateOk = ActionEditBridge.Update(new ActionDto { Id = "a-new", Name = "改过" }, out string? updateError);
+            Check("执行器拒绝时宿主拿得到原因", !updateOk && updateError == "这个动作已经不存在了", updateError);
+
             // ---- 面板结构保存：宿主 Save 变成整份替换 ----
             Check("面板结构保存被接管", PanelHostBridge.TryPushPanel(new PanelConfig()));
             Task pushDone = await Task.WhenAny(pushed.Task, Task.Delay(2000));
@@ -507,23 +538,23 @@ internal static class Program
 
             // ---- 新建动作 ----
             LinkMessage added = await server.RequestAsync(LinkMethods.ActionAdd,
-                new ActionAddRequest("宿主新建的动作", "star"), timeoutMs: 2000);
-            ActionDto? created = added.Read<ActionDto>();
+                new ActionEditRequest(new ActionDto { Name = "宿主新建的动作", Icon = "star" }), timeoutMs: 2000);
+            ActionDto? created = added.Read<ActionEditReply>()?.Action;
             Check("新建动作成功", added.Ok && !string.IsNullOrEmpty(created?.Id), added.Error);
             Check("新建动作落盘", File.Exists(Path.Combine(root, "actions", created!.Id, "action.json")));
             Check("新建动作默认图标沿用传入", created.Icon == "star");
 
             // ---- 复制动作 ----
             LinkMessage duplicated = await server.RequestAsync(LinkMethods.ActionDuplicate,
-                new ActionIdRequest(original.Id), timeoutMs: 2000);
-            ActionDto? copy = duplicated.Read<ActionDto>();
+                new ActionEditRequest(Id: original.Id), timeoutMs: 2000);
+            ActionDto? copy = duplicated.Read<ActionEditReply>()?.Action;
             Check("复制动作成功", duplicated.Ok && copy?.Id != original.Id, duplicated.Error);
             Check("副本名字带「副本」", (copy?.Name ?? "").Contains("副本"), copy?.Name);
 
             // ---- 删除动作（连面板引用一起清）----
             LinkMessage deleted = await server.RequestAsync(LinkMethods.ActionDelete,
-                new ActionIdRequest(original.Id), timeoutMs: 2000);
-            Check("删除动作成功", deleted.Ok, deleted.Error);
+                new ActionEditRequest(Id: original.Id), timeoutMs: 2000);
+            Check("删除动作成功", deleted.Ok && deleted.Read<ActionEditReply>()?.Ok == true, deleted.Error);
             Check("删除后动作文件没了", !File.Exists(Path.Combine(root, "actions", original.Id, "action.json")));
             Check("删除后面板引用也没了",
                 PanelLibrary.Current.Global.Scenes[0].Groups[0].Actions.Contains(original.Id) == false);

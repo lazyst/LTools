@@ -892,6 +892,29 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`--selftest` 393 用例 / 18803 断言；`LinkSmoke` 86；`PanelHostSmoke` 11；
   `CaptureOverlaySmoke` 的 `tray` / `keys` 段。
 
+**2026-11-25 · P2-M3-5c-1 动作级写入（`action.add` / `action.update` / `action.delete` / `action.duplicate`）**
+
+- 搬编辑器之前先回答「谁写内容」。选择是**内容属主仍是执行器、宿主发四个原子命令**：
+  动作本体的读写次序、引用回收、历史快照都在执行器里，宿主里的面板 / 编辑器只表达意图。
+  不为每个控件造 RPC（那是 `panel.op` 的过渡做法），也不让两边各写一份内存（设置页、AI 采纳、
+  宏挂载都还在执行器里改同一份清单）。
+- 四条命令**共用一个形状** `ActionEditRequest(ActionDto? Dto, string? Id)` / `ActionEditReply(Ok, Action, Error)`：
+  `action.add` 新建（Id 空由执行器补）、`action.update` 覆盖同 Id（先确认真的存在，别静默变成新建）、
+  `action.delete` 走 `ConfigStore.RemoveAction`（连带快捷键 / 面板 / 触发 / 悬浮引用与资源回收）、
+  `action.duplicate` 走 `ConfigStore.DuplicateAction`（新 Id + 「副本」命名 + 素材一起走）。
+  原先 `action.add` 只收名称 / 图标、`action.delete` / `action.duplicate` 共用 `ActionIdRequest`，
+  已整体换成这一个形状（旧的两个 record 已删，不留别名）。
+- 执行器侧 `ActionEditHost`（`IsWrite` 一张名单，同步 `Handle` 与链路 `TryHandleAsync` 共用）：
+  改内存 → `ConfigStore.Save()`（落盘那一步照旧 `action.saveAll` 转给宿主）→ 返回保存后的动作。
+  写失败（超时 / 没连上 / 执行器拒绝）整条命令报错，宿主把原因直接显示出来，不假装成功。
+  两条线程注意：`ActionRegistry` 是并发字典、`NotifyChanged` 的契约允许后台线程；宿主的
+  `ActionHost` 落盘是同步文件写 + `Ui.Post` 刷内存副本，所以嵌套往返不会要宿主 UI 线程（不会死锁）。
+- 宿主侧 `ActionEditBridge`（5 秒超时）：`Add` / `Update` / `Delete` / `Duplicate`。
+- 回归：`--selftest --filter link` 347 断言（四条命令进「方法名互不相同」、`ActionEditHost.IsWrite`
+  覆盖面、整份动作与答复 / 失败原因往返）；`LinkSmoke` 90（转发阶段真管道走一遍
+  「宿主发 `action.add` → 执行器收到整份动作并回带 Id 的 DTO」「`action.update` 被拒时原因到手」；
+  面板阶段的新建 / 复制 / 删除改用统一形状）；`PanelHostSmoke` 11。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -960,7 +983,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主。**编辑器与宏页并进第 5 步**：打开编辑器的调用方（`PanelActionOps`）与设置页都在提权进程里，单独搬窗口就得连动作内容写权、`staging/`、设置入口一起翻——那正是第 5 步的范围（见 §14 `P2-M3-5a` 的顺序说明）。 |
-| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1**：写权翻给宿主（执行器只剩读缓存）。**5c-2**：动作编辑器 / 面板动作操作在宿主。**5c-3**：设置窗口（含子动作库 / 宏页）搬进宿主。**5d**：MCP 写、`data.changed` 收尾 |
+| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2**：动作编辑器 / 面板动作操作在宿主（`PanelActionOps` 改调 `ActionEditBridge`）。**5c-3**：设置窗口（含子动作库 / 宏页）搬进宿主。**5d**：MCP 写、`data.changed` 收尾 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
 
 > **顺序更正（2026-11-24，看过代码之后）**：原方案把「采集历史 / 贴图管理」排在截图 Pro 前面，实际排不了——

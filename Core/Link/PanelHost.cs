@@ -36,6 +36,9 @@ internal static class PanelHost
         // 试运行（编辑器在宿主里）：在提权进程里真跑一次，轨迹按事件推回去。
         if (RunHost.TryHandleAsync(request) is { } run) return run;
 
+        // 动作级写入（宿主里的面板 / 编辑器）：内容属主还是这里，改完照旧由宿主落盘。
+        if (ActionEditHost.TryHandleAsync(request) is { } edit) return edit;
+
         return Task.FromResult(Handle(request));
     }
 
@@ -217,11 +220,9 @@ internal static class PanelHost
             {
                 LinkMethods.PanelSnapshot => LinkMessage.Response(request, Snapshot()),
                 LinkMethods.PanelReplace => Replace(request),
-                LinkMethods.ActionAdd => Add(request),
-                LinkMethods.ActionDelete => Delete(request),
-                LinkMethods.ActionDuplicate => Duplicate(request),
                 LinkMethods.RunAction => ForwardRun(request),
                 LinkMethods.OpenWindow => OpenWindow(request),
+                _ when ActionEditHost.IsWrite(request.Method) => ActionEditHost.Handle(request),
                 _ => LinkMessage.Response(request, error: "未知命令：" + request.Method),
             };
         }
@@ -256,45 +257,6 @@ internal static class PanelHost
         return PanelLibrary.Replace(panel)
             ? LinkMessage.Response(request)
             : LinkMessage.Response(request, error: "面板配置写盘失败");
-    }
-
-    private static LinkMessage Add(LinkMessage request)
-    {
-        ActionAddRequest? add = request.Read<ActionAddRequest>();
-        if (add == null || string.IsNullOrWhiteSpace(add.Name))
-            return LinkMessage.Response(request, error: "缺少动作名称");
-
-        var action = new ActionDto { Name = add.Name.Trim(), Icon = add.Icon };
-        if (!ConfigStore.AddAction(action))
-            return LinkMessage.Response(request, error: "新建动作失败");
-
-        ConfigStore.Save();
-        return LinkMessage.Response(request, action);
-    }
-
-    private static LinkMessage Delete(LinkMessage request)
-    {
-        ActionIdRequest? target = request.Read<ActionIdRequest>();
-        if (target == null || string.IsNullOrEmpty(target.Id))
-            return LinkMessage.Response(request, error: "缺少动作 Id");
-
-        // RemoveAction 内部已经落盘（含快捷键 / 面板 / 触发 / 悬浮引用与资源回收），别再补一次 Save。
-        return ConfigStore.RemoveAction(target.Id)
-            ? LinkMessage.Response(request)
-            : LinkMessage.Response(request, error: "没有这个动作");
-    }
-
-    private static LinkMessage Duplicate(LinkMessage request)
-    {
-        ActionIdRequest? target = request.Read<ActionIdRequest>();
-        if (target == null || string.IsNullOrEmpty(target.Id))
-            return LinkMessage.Response(request, error: "缺少动作 Id");
-
-        ActionDto? copy = ConfigStore.DuplicateAction(target.Id);
-        if (copy == null) return LinkMessage.Response(request, error: "复制动作失败");
-
-        ConfigStore.Save();
-        return LinkMessage.Response(request, copy);
     }
 
     /// <summary>宿主点了磁贴：真正执行留在这里（提权进程），宿主不跑动作。</summary>
