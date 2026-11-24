@@ -594,6 +594,25 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`--selftest` 393 用例 / 18620 断言（交互 DTO 往返 + 方法名）；`LinkSmoke` 62 条
   （新增「执行器 → 宿主」的 `ui.choice` 往返）；`PanelHostSmoke` 11；`ShareSmoke` 103。
 
+**2026-11-24 · P2-M1-b 交互服务：`ui.textWindow` / `file.select` 也搬进宿主**
+
+- 文本窗口：`ui.textWindow` 走 `UiTextWindowRequest` / `UiTextWindowReply`。宿主用
+  `TextWindowService.Open` 开窗，「显示且不等」立刻回内容、「读取 / 等关闭」挂到 `Closed` 上再回值；
+  `mode=close` 直接 `TextWindowService.Close(key)`。取消只关**这一扇**（不能按 key 空值关全部）。
+- 文件 / 文件夹选择：`file.select` 走 `ui.selectFile`。系统对话框**只有一份实现** `Features/FilePicker.cs`
+  （动作单元与 `UiHost` 都调它，`SelectFileUnit` 里那份重复代码删掉）。
+- 两个单元都是「先问宿主、没连上再本地弹」，与 `ui.input` 同一条口径。
+- **已知限制**：系统文件框是模态的、程序关不掉。停止热键在这一步只会让本次运行结束，
+  框会留在宿主里直到用户按 Esc（与截图遮罩同一个限制，写进了 `FilePicker` 的注释）。
+- 真机实测（MCP `staging_run`）：
+  - `ui.textWindow` 显示 + 读取 → 两扇窗口都在 **ShareHost**（`LTools` 进程一个窗口都没有），
+    改完点「确定」后 `found=true`、内容回填到变量，运行 `state=ok`；
+  - `ui.textWindow` `mode=close` → 宿主里的窗口关掉（`EnumWindows` 里 `M1-b` 归零）；
+  - `file.select`（文件夹）→ 系统框（类名 `#32770`）在 **ShareHost** 里且是前台，
+    按 Esc 取消后 `found=false`、`path=""`，运行 `state=ok`（取消不是失败）。
+- 回归：`--selftest` 393 用例 / 18636 断言（新增两组 DTO 往返）；`LinkSmoke` 66 条
+  （新增文本窗口 / 选择文件两条反向请求）；`PanelHostSmoke` 11；`ShareSmoke` 103。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -615,14 +634,21 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 
 - 新方法（**执行器 → 宿主**的请求，宿主用 `Ui.Post` 弹窗 + `TaskCompletionSource` 回值）：
   `ui.input` / `ui.select` / `ui.confirm` / `ui.textWindow`(show/read/close) / `ui.selectFile` /
-  `ui.pickPoint` / `ui.capture`（框选 / 前台窗口 / 整屏 / 固定区域）/ `ui.toast` / `ui.cancel`。
+  `ui.pickPoint` / `ui.capture`（框选 / 前台窗口 / 整屏 / 固定区域）/ `ui.toast` / `ui.suppress` / `ui.cancel`。
 - 方向：执行器发请求（它在跑动作），宿主 `LinkServer` 的 handler 应答；`ui.cancel` 让等待中的窗口关掉
   （停止热键 → 引擎抛 `ActionAbortedException`，与今天本地那套语义一致）。
 - 通道能力已具备：`LinkClient.RequestAsync` 与 `LinkServer` 的 handler 都支持反向请求（宿主 → 执行器现在就在用）。
 - 资源归属随之定：交互截图写 `cache/screenshots/`（同名规则不变）、`ActionParamMemory` 留在宿主、
   `RecordingIndicatorWindow` 在宿主（它给「正在运行」做提示）。
-- 验收：6 个 `ui.*` + 取点 + 截图 + 文件框逐条真机；停止热键 500ms 内关掉窗口；`--selftest` 的
-  `contract` / `unit` 组仍绿。
+- 分四小步做（每步都能单独真机验）：
+  - **M1-a（已完成）** `ui.input` / `ui.choice`（`ui.confirm` + `ui.select`）/ `ui.cancel`
+  - **M1-b（已完成）** `ui.textWindow` / `ui.selectFile`（`file.select`，系统框唯一实现 `Features/FilePicker`）
+  - **M1-c** `ui.pickPoint` / `ui.capture`（交互框选）；取点 / 框选前执行器先收起自己的指示器，宿主侧再收起自己的卡片
+  - **M1-d** `ui.toast` + `ui.suppress`（跨进程「抓屏前收起卡片」）+ `RecordingIndicatorWindow` 搬进宿主
+- **已知限制**：系统文件框与截图遮罩是模态的、程序关不掉。停止热键只结束本次运行，
+  框留在宿主里等用户按 Esc——写进 `FilePicker` 与取点单元各自的注释，别再试图用定时器硬关。
+- 验收：6 个 `ui.*` + 取点 + 截图 + 文件框逐条真机；停止热键 500ms 内关掉窗口（模态框除外，见上）；
+  `--selftest` 的 `contract` / `unit` 组仍绿。
 
 ### 15.3 M2 · 写属主翻转（按域翻，不一次性）
 

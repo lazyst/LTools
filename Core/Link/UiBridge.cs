@@ -41,6 +41,33 @@ internal static class UiBridge
         return Ask<UiChoiceReply>(UiMethods.Choice, request, dialogId, timeoutMs, token);
     }
 
+    /// <summary>
+    /// 文本窗口；<c>null</c> = 没转交。<paramref name="waiting"/> = 这一步要等用户（读取 / 等关闭），
+    /// 只有它会一直挂着——「显示后立刻继续」必须马上返回，不能把流程卡在窗口上。
+    /// </summary>
+    public static UiTextWindowReply? TryTextWindow(string mode, string key, string title, string text,
+        bool append, bool wait, bool monospace, CancellationToken token)
+    {
+        bool waiting = string.Equals(mode, "read", StringComparison.OrdinalIgnoreCase)
+            || (!string.Equals(mode, "close", StringComparison.OrdinalIgnoreCase) && wait);
+
+        string dialogId = NewDialogId();
+        var request = new UiTextWindowRequest(dialogId, mode, key, title, text, append, wait, monospace);
+        return Ask<UiTextWindowReply>(UiMethods.TextWindow, request, dialogId,
+            timeoutMs: waiting ? 0 : 30_000, token);
+    }
+
+    /// <summary>选择文件 / 文件夹；<c>null</c> = 没转交（调用方本地弹）。</summary>
+    public static UiSelectFileReply? TrySelectFile(string kind, string title, string filter, string initialDir,
+        CancellationToken token)
+    {
+        var request = new UiSelectFileRequest(kind, title, filter, initialDir);
+
+        // 系统文件框是模态的、关不掉：只能等用户自己处理（浏览几分钟很正常，别设短超时，
+        // 超时会退回本地再弹一个，屏幕上就有两个框）。停止热键到这里只会放弃这一次运行。
+        return Ask<UiSelectFileReply>(UiMethods.SelectFile, request, dialogId: "", timeoutMs: 0, token);
+    }
+
     private static string NewDialogId() => Guid.NewGuid().ToString("N");
 
     private static T? Ask<T>(string method, object request, string dialogId, int timeoutMs, CancellationToken token)

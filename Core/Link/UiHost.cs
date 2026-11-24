@@ -31,6 +31,8 @@ internal static class UiHost
     {
         UiMethods.Input => InputAsync(request),
         UiMethods.Choice => ChoiceAsync(request),
+        UiMethods.TextWindow => TextWindowAsync(request),
+        UiMethods.SelectFile => SelectFileAsync(request),
         UiMethods.Cancel => Task.FromResult(Cancel(request)),
         _ => null,
     };
@@ -118,6 +120,105 @@ internal static class UiHost
         {
             UiChoiceReply reply = await done.Task.ConfigureAwait(false);
             return LinkMessage.Response(request, reply);
+        }
+        catch (Exception ex)
+        {
+            return LinkMessage.Response(request, error: ex.Message);
+        }
+    }
+
+    private static async Task<LinkMessage> TextWindowAsync(LinkMessage request)
+    {
+        UiTextWindowRequest? req = request.Read<UiTextWindowRequest>();
+        if (req == null) return LinkMessage.Response(request, error: "缺少参数");
+
+        string mode = (req.Mode ?? "").Trim().ToLowerInvariant();
+        string key = (req.Key ?? "").Trim();
+
+        if (mode == "close")
+        {
+            TextWindowService.Close(key);
+            return LinkMessage.Response(request, new UiTextWindowReply(true, "", false));
+        }
+
+        bool read = mode == "read";
+        bool append = !read && req.Append;
+        bool wait = !read && req.Wait;
+
+        var done = new TaskCompletionSource<UiTextWindowReply>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Ui.Post(() =>
+        {
+            try
+            {
+                // 显示模式不抢焦点（用户可能在别处继续操作），读取模式要抢（要打字）。
+                TextViewWindow window = TextWindowService.Open(
+                    key, req.Title ?? "", req.Text ?? "", read, req.Monospace, append, activate: read);
+
+                // 取消只关这一扇：key 为空时 TextWindowService.Close 会关掉全部文本窗口，太宽。
+                Open[req.DialogId] = () =>
+                {
+                    if (!window.IsClosed) window.Close();
+                };
+
+                // 显示且不等：把当前内容带回去就继续（不把流程卡在窗口上）。
+                if (!read && !wait)
+                {
+                    Open.TryRemove(req.DialogId, out _);
+                    done.TrySetResult(new UiTextWindowReply(true, window.Text, false));
+                    return;
+                }
+
+                window.Closed += (_, _) =>
+                {
+                    Open.TryRemove(req.DialogId, out _);
+                    bool confirmed = read ? window.Confirmed : true;
+                    done.TrySetResult(new UiTextWindowReply(
+                        confirmed, confirmed ? window.Text : "", read && window.Changed));
+                };
+            }
+            catch (Exception ex)
+            {
+                Open.TryRemove(req.DialogId, out _);
+                done.TrySetException(ex);
+            }
+        });
+
+        try
+        {
+            return LinkMessage.Response(request, await done.Task.ConfigureAwait(false));
+        }
+        catch (Exception ex)
+        {
+            return LinkMessage.Response(request, error: ex.Message);
+        }
+    }
+
+    private static async Task<LinkMessage> SelectFileAsync(LinkMessage request)
+    {
+        UiSelectFileRequest? req = request.Read<UiSelectFileRequest>();
+        if (req == null) return LinkMessage.Response(request, error: "缺少参数");
+
+        var done = new TaskCompletionSource<UiSelectFileReply>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // 系统对话框是模态的：这里会占住 UI 线程直到用户选完 / 取消（关不掉，见 FilePicker 的说明）。
+        Ui.Post(() =>
+        {
+            try
+            {
+                var (ok, path) = FilePicker.TryPick(req.Kind ?? "", req.Title ?? "",
+                    req.Filter ?? "", req.InitialDir ?? "");
+                done.TrySetResult(new UiSelectFileReply(ok, path));
+            }
+            catch (Exception ex)
+            {
+                done.TrySetException(ex);
+            }
+        });
+
+        try
+        {
+            return LinkMessage.Response(request, await done.Task.ConfigureAwait(false));
         }
         catch (Exception ex)
         {

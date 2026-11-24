@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Windows;
 using LTools.Core.Actions;
+using LTools.Core.Link;
 using LTools.Features;
 using LTools.Views;
 
@@ -86,6 +87,10 @@ public sealed class TextWindowUnit : IStepUnit
 
         if (mode == "close")
         {
+            // 窗口可能开在宿主里（普通权限），也可能在本进程（宿主没起）：两边都关一次，
+            // 各自那边没有窗口时就是 no-op。
+            _ = UiBridge.TryTextWindow("close", key, "", "", append: false, wait: false, monospace: false,
+                ctx.Token);
             TextWindowService.Close(key);
             ctx.SetOutput("text", Value.FromText(""));
             ctx.SetOutput("found", Value.FromBool(true));
@@ -98,6 +103,17 @@ public sealed class TextWindowUnit : IStepUnit
         bool append = !read && args.Bool("append");
         bool wait = !read && args.Bool("wait");
         string text = ListText.Display(args.TryGet("text"));
+
+        // 界面归宿主：转过去开窗；没连上再本地开（体验降级，不卡流程）。
+        UiTextWindowReply? remote = UiBridge.TryTextWindow(mode, key, title, text, append, wait, monospace,
+            ctx.Token);
+        if (remote != null)
+        {
+            ctx.SetOutput("text", Value.FromText(remote.Found ? remote.Text : ""));
+            ctx.SetOutput("found", Value.FromBool(remote.Found));
+            ctx.SetOutput("changed", Value.FromBool(remote.Changed));
+            return;
+        }
 
         // 显示模式不抢焦点（用户可能在别的窗口里继续操作），读取模式要抢（要打字）。
         TextViewWindow window = TextWindowService.Open(key, title, text, read, monospace, append, activate: read);

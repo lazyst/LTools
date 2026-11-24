@@ -154,6 +154,10 @@ internal static class Program
                 // 反向：提权进程 → 宿主的交互请求（宿主替它弹窗）。
                 if (request.Method == UiMethods.Choice)
                     return Task.FromResult(LinkMessage.Response(request, new UiChoiceReply(true, 2, "第三项")));
+                if (request.Method == UiMethods.TextWindow)
+                    return Task.FromResult(LinkMessage.Response(request, new UiTextWindowReply(true, "窗口内容", false)));
+                if (request.Method == UiMethods.SelectFile)
+                    return Task.FromResult(LinkMessage.Response(request, new UiSelectFileReply(true, @"C:\a.txt")));
                 return Task.FromResult(LinkMessage.Response(request, error: "宿主不支持该请求"));
             });
         server.Start();
@@ -258,6 +262,19 @@ internal static class Program
             UiChoiceReply? picked = choiceReply.Read<UiChoiceReply>();
             Check("交互请求发得出去（执行器 → 宿主）", choiceReply.Ok, choiceReply.Error);
             Check("交互结果能回来", picked is { Accepted: true, Index: 2, Value: "第三项" }, picked?.ToString());
+
+            LinkMessage textReply = await client.RequestAsync(UiMethods.TextWindow,
+                new UiTextWindowRequest("d2", "read", "k", "标题", "原文", Append: false, Wait: true,
+                    Monospace: false), timeoutMs: 2000);
+            Check("文本窗口请求发得出去", textReply.Ok, textReply.Error);
+            Check("文本窗口内容能回来", textReply.Read<UiTextWindowReply>()?.Text == "窗口内容",
+                textReply.Read<UiTextWindowReply>()?.ToString());
+
+            LinkMessage fileReply = await client.RequestAsync(UiMethods.SelectFile,
+                new UiSelectFileRequest("openFile", "", "", ""), timeoutMs: 2000);
+            Check("选择文件请求发得出去", fileReply.Ok, fileReply.Error);
+            Check("选择文件路径能回来", fileReply.Read<UiSelectFileReply>()?.Path == @"C:\a.txt",
+                fileReply.Read<UiSelectFileReply>()?.ToString());
 
             // ---- 面板结构保存：宿主 Save 变成整份替换 ----
             Check("面板结构保存被接管", PanelHostBridge.TryPushPanel(new PanelConfig()));

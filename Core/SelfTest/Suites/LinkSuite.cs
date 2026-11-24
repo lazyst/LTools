@@ -166,7 +166,8 @@ internal static class LinkSuite
         Check.True(state?.Open == true, "面板状态往返：开着");
 
         // —— 交互服务（执行器 → 宿主）——
-        var uiNames = new[] { UiMethods.Input, UiMethods.Choice, UiMethods.Cancel };
+        var uiNames = new[] { UiMethods.Input, UiMethods.Choice, UiMethods.Cancel,
+            UiMethods.TextWindow, UiMethods.SelectFile };
         Check.Equal(uiNames.Length, new HashSet<string>(uiNames, StringComparer.Ordinal).Count, "交互方法名互不相同");
         Check.True(uiNames.All(n => n.StartsWith("ui.", StringComparison.Ordinal)), "交互方法名都有 ui. 前缀");
 
@@ -191,6 +192,27 @@ internal static class LinkSuite
                 LinkMessage.Request(17, UiMethods.Choice), new UiChoiceReply(true, 2, "第三项")))
             .Read<UiChoiceReply>();
         Check.True(choiceReply is { Accepted: true, Index: 2, Value: "第三项" }, "选择框的结果往返");
+
+        UiTextWindowRequest? textWindow = RoundTrip(LinkMessage.Request(18, UiMethods.TextWindow,
+            new UiTextWindowRequest("d3", "read", "log", "标题", "内容", Append: false, Wait: true,
+                Monospace: true))).Read<UiTextWindowRequest>();
+        Check.True(textWindow is { Mode: "read", Key: "log", Wait: true, Monospace: true },
+            "文本窗口：方式 / 复用键 / 等关闭 / 等宽原样");
+
+        UiTextWindowReply? textReply = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(19, UiMethods.TextWindow), new UiTextWindowReply(true, "改过的内容", true)))
+            .Read<UiTextWindowReply>();
+        Check.True(textReply is { Found: true, Text: "改过的内容", Changed: true }, "文本窗口的结果往返");
+
+        UiSelectFileRequest? selectFile = RoundTrip(LinkMessage.Request(20, UiMethods.SelectFile,
+            new UiSelectFileRequest("saveFile", "存到哪", "文本|*.txt", @"C:\"))).Read<UiSelectFileRequest>();
+        Check.True(selectFile is { Kind: "saveFile", Filter: "文本|*.txt", InitialDir: @"C:\" },
+            "选择文件：方式 / 类型 / 起始目录原样");
+
+        UiSelectFileReply? selectReply = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(21, UiMethods.SelectFile), new UiSelectFileReply(false, "")))
+            .Read<UiSelectFileReply>();
+        Check.True(selectReply is { Ok: false, Path: "" }, "选择文件的结果往返（取消）");
 
         // 面板操作名也互不相同（提权侧 switch 按字符串分发，重名会让一个操作永远到不了）。
         var ops = new[]

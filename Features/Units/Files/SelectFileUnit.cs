@@ -1,10 +1,7 @@
-using System.Diagnostics;
-using System.Globalization;
-using System.Text;
 using System.Windows;
-using LTools.Core;
 using LTools.Core.Actions;
-using Microsoft.Win32;
+using LTools.Core.Link;
+using LTools.Features;
 
 namespace LTools.Features.Units.Files;
 
@@ -47,41 +44,20 @@ public sealed class SelectFileUnit : IStepUnit
         string filter = args.Text("filter").Trim();
         string initial = args.Text("initialDir").Trim();
 
-        var (ok, path) = OnUiThread(() =>
+        // 界面归宿主：转过去弹；没连上再本地弹（FilePicker 是唯一实现，两边同一份行为）。
+        UiSelectFileReply? remote = UiBridge.TrySelectFile(kind, title, filter, initial, ctx.Token);
+
+        bool ok;
+        string path;
+        if (remote != null)
         {
-            Window? owner = Application.Current?.Windows.OfType<Window>()
-                .FirstOrDefault(w => w.IsActive) ?? Application.Current?.MainWindow;
-
-            if (string.Equals(kind, "folder", StringComparison.OrdinalIgnoreCase))
-            {
-                var dialog = new OpenFolderDialog();
-                if (title.Length > 0) dialog.Title = title;
-                if (initial.Length > 0) dialog.InitialDirectory = initial;
-                bool picked = owner == null ? dialog.ShowDialog() == true : dialog.ShowDialog(owner) == true;
-                return (picked, picked ? dialog.FolderName : "");
-            }
-
-            if (string.Equals(kind, "saveFile", StringComparison.OrdinalIgnoreCase))
-            {
-                var dialog = new SaveFileDialog
-                {
-                    Title = title.Length > 0 ? title : "保存文件",
-                    Filter = filter.Length > 0 ? filter : "所有文件|*.*",
-                };
-                if (initial.Length > 0) dialog.InitialDirectory = initial;
-                bool picked = owner == null ? dialog.ShowDialog() == true : dialog.ShowDialog(owner) == true;
-                return (picked, picked ? dialog.FileName : "");
-            }
-
-            var open = new OpenFileDialog
-            {
-                Title = title.Length > 0 ? title : "选择文件",
-                Filter = filter.Length > 0 ? filter : "所有文件|*.*",
-            };
-            if (initial.Length > 0) open.InitialDirectory = initial;
-            bool okOpen = owner == null ? open.ShowDialog() == true : open.ShowDialog(owner) == true;
-            return (okOpen, okOpen ? open.FileName : "");
-        });
+            ok = remote.Ok;
+            path = remote.Path ?? "";
+        }
+        else
+        {
+            (ok, path) = OnUiThread(() => FilePicker.TryPick(kind, title, filter, initial));
+        }
 
         ctx.SetOutput("path", Value.FromText(path));
         ctx.SetOutput("found", Value.FromBool(ok));
