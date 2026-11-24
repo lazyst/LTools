@@ -36,7 +36,7 @@ internal static class ExitInput
         if (!left && !right && !middle && key == 0) return;
 
         var sampled = new SwallowInputEvent(left, right, middle, key);
-        if (ConfigStore.ReadOnly) InputBridge.Swallow(sampled);
+        if (AppRole.IsUiHost) InputBridge.Swallow(sampled);
         else Apply(sampled);
     }
 

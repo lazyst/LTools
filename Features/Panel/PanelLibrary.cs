@@ -69,7 +69,7 @@ internal static class PanelLibrary
     /// <summary>把内存配置整份写回磁盘。失败只记日志，不阻塞 UI；只读进程（宿主）把改动转给主程序。</summary>
     public static bool Save()
     {
-        if (ConfigStore.ReadOnly)
+        if (AppRole.IsUiHost)
         {
             // 宿主：结构改动（拖磁贴 / 改名 / 增删分组场景…）照常改内存，落盘交给提权进程整份替换。
             if (PanelHostBridge.TryPushPanel(Current)) return true;

@@ -96,7 +96,7 @@ internal static class PinShortcutRoute
     /// <summary>宿主：把「这张贴图接 / 不接管键盘」推给提权进程的钩子（贴图窗口在宿主里）。</summary>
     private static void Push(IntPtr hwnd, string state)
     {
-        if (!ConfigStore.ReadOnly) return;
+        if (!AppRole.IsUiHost) return;
         InputBridge.PinState(hwnd.ToInt64(), state);
     }
 

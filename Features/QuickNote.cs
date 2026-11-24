@@ -46,7 +46,7 @@ internal static class QuickNote
     /// </remarks>
     public static void Toggle()
     {
-        if (!ConfigStore.ReadOnly)
+        if (!AppRole.IsUiHost)
         {
             LinkWorker.RequestNote();
             return;

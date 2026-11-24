@@ -20,7 +20,7 @@ namespace LTools.Features.CapturePro;
 /// </para>
 /// <para>
 /// **窗口本身不在这里判断「谁该开」**：新增入口只加一个 <see cref="CaptureWindows"/> 的目标常量 +
-/// 一行 switch，别在调用点各写一次 <c>ConfigStore.ReadOnly</c>。
+/// 一行 switch，别在调用点各写一次 <c>AppRole.IsUiHost</c>。
 /// </para>
 /// </remarks>
 internal static class CaptureWindows
@@ -48,7 +48,7 @@ internal static class CaptureWindows
     /// <summary>打开一份截图相关窗口 / 执行一条贴图命令（任何线程）。</summary>
     public static void Open(string target, string? arg = null, long hwnd = 0)
     {
-        if (ConfigStore.ReadOnly || !CaptureWindowBridge.Show(target, arg, hwnd)) OpenLocal(target, arg, hwnd);
+        if (AppRole.IsUiHost || !CaptureWindowBridge.Show(target, arg, hwnd)) OpenLocal(target, arg, hwnd);
     }
 
     /// <summary>在本进程里真正开窗 / 执行（宿主用；提权进程里只在「宿主没连上」时被调）。</summary>

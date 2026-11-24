@@ -46,7 +46,7 @@ internal static class InputGuard
         Suspended = suspended;
         OnlyRef = onlyRef;
 
-        if (!ConfigStore.ReadOnly)
+        if (!AppRole.IsUiHost)
         {
             HotkeyRegistry.Suspended = suspended;
             return;

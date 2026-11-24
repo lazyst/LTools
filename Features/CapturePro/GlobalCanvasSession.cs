@@ -52,7 +52,7 @@ internal static class GlobalCanvasSession
     /// </remarks>
     public static void ToggleClickThrough()
     {
-        if (!ConfigStore.ReadOnly)
+        if (!AppRole.IsUiHost)
         {
             CaptureWindowBridge.Show(CaptureWindows.GlobalCanvas);
             return;

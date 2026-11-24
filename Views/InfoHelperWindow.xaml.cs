@@ -63,7 +63,7 @@ public partial class InfoHelperWindow : Window
     /// </remarks>
     public static void Toggle()
     {
-        if (!ConfigStore.ReadOnly)
+        if (!AppRole.IsUiHost)
         {
             LinkWorker.RequestInfoHelper();
             return;

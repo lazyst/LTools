@@ -876,6 +876,22 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   轨迹批次的值往返、结果里的失败位置 / 步数 / 变量）；`LinkSmoke` 86（新增「宿主发程序 →
   执行器跑 → 轨迹与结果按事件回来」，值原样）。
 
+**2026-11-25 · P2-M3-5c-0 进程身份与写权分开（`Core/AppRole`）**
+
+- 5c 的第一步是拆掉一个一直靠巧合的约定：到处用 `ConfigStore.ReadOnly` 兼职「我是宿主」。
+  写权正在往宿主翻（5c-1 起宿主是写者、执行器只剩读缓存），`ReadOnly` 的含义会整个反过来，
+  而「窗口 / 交互归谁」不变——不拆的话那次翻转会把所有身份判断一起弄反。
+- 新增 `Core/AppRole`：`IsUiHost`（只有 `ShareHost.App.OnStartup` 调 `MarkUiHost()`，默认 false）
+  回答身份；`ConfigStore.ReadOnly` 只留「能不能写配置」。22 处里 15 处身份判断换成
+  `AppRole.IsUiHost`（截图 / 速记 / 辅助工具 / 点选 / 面板预览 / 挂起 / 试运行 / 贴图与录屏条状态…），
+  剩下 7 处（`ActionBridge` / `DataBridge` / `NoteBridge` / `SubActionBridge` / `ConfigReloadBridge` /
+  `ConfigStore.Save`）本来就是写权，等 5c-1 一起翻。
+- `PanelHostSmoke` 改成**显式**换身份（`MarkUiHost`）：它先按执行器建数据根，再切到宿主验
+  「一个字节都不写」——以前是靠 `InitializeReadOnly` 顺带把身份也定了。
+- 真机：启动 → 托盘「速记」→ 窗口在 `ShareHost`（身份判断生效）、面板快照正常。
+- 回归：`--selftest` 393 用例 / 18803 断言；`LinkSmoke` 86；`PanelHostSmoke` 11；
+  `CaptureOverlaySmoke` 的 `tray` / `keys` 段。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -944,7 +960,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主。**编辑器与宏页并进第 5 步**：打开编辑器的调用方（`PanelActionOps`）与设置页都在提权进程里，单独搬窗口就得连动作内容写权、`staging/`、设置入口一起翻——那正是第 5 步的范围（见 §14 `P2-M3-5a` 的顺序说明）。 |
-| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c**：设置窗口（含三个编辑入口）搬进宿主。**5d**：`data.changed` 回读、`hotkeys.record`、`mcp.*` 收尾 |
+| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1**：写权翻给宿主（执行器只剩读缓存）。**5c-2**：动作编辑器 / 面板动作操作在宿主。**5c-3**：设置窗口（含子动作库 / 宏页）搬进宿主。**5d**：MCP 写、`data.changed` 收尾 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
 
 > **顺序更正（2026-11-24，看过代码之后）**：原方案把「采集历史 / 贴图管理」排在截图 Pro 前面，实际排不了——

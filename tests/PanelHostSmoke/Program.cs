@@ -31,6 +31,7 @@ internal static class Program
         var panelLibrary = Lt.GetType("LTools.Features.Panel.PanelLibrary", true)!;
         var registry = Lt.GetType("LTools.Features.ActionRegistry", true)!;
         var hotkeys = Lt.GetType("LTools.Core.HotkeyRegistry", true)!;
+        var appRole = Lt.GetType("LTools.Core.AppRole", true)!;
 
         try
         {
@@ -57,7 +58,8 @@ internal static class Program
             Call(panelLibrary, "Save");
             Check("面板配置落盘", File.Exists(Path.Combine(root, "configs", "panel.json")));
 
-            // ---- ② 快照 → 只读初始化 → 快照 ----
+            // ---- ② 换成宿主身份（窗口 / 交互归宿主）→ 只读初始化 → 快照 ----
+            Call(appRole, "MarkUiHost");
             Dictionary<string, string> before = Snapshot(root);
             Call(configStore, "InitializeReadOnly", configPath);
             Dictionary<string, string> after = Snapshot(root);

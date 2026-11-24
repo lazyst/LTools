@@ -55,7 +55,7 @@ internal static class RecordShortcutRoute
     {
         Volatile.Write(ref _current, new Snapshot { State = state.Clone(), Hot = hot, Fire = fire });
 
-        if (ConfigStore.ReadOnly) PushKeys(state, hot);
+        if (AppRole.IsUiHost) PushKeys(state, hot);
     }
 
     /// <summary>宿主：把快照推给提权进程的钩子（只在变了时发）。</summary>
@@ -77,7 +77,7 @@ internal static class RecordShortcutRoute
         _pendingRelease = 0;
         Swallowed.Clear();
 
-        if (!ConfigStore.ReadOnly) return;
+        if (!AppRole.IsUiHost) return;
         _pushed = null;
         InputBridge.RecordKeys(new RecordKeysEvent(false, false, false, false,
             false, false, false, false, false, false));

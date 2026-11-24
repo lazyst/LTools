@@ -1,3 +1,4 @@
+using LTools.Core;
 using LTools.Core.Link;
 using LTools.Features;
 using LTools.Hooks;
@@ -16,7 +17,7 @@ internal static class PickerHook
 {
     public static void SetActive(bool active)
     {
-        if (!ConfigStore.ReadOnly)
+        if (!AppRole.IsUiHost)
         {
             MouseHook.SetWindowPickerActive(active);
             return;

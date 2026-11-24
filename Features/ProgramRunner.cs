@@ -16,7 +16,7 @@ namespace LTools.Features;
 /// （<see cref="ProgramRunBridge"/>），回调形状与本地那套完全一致。
 /// </para>
 /// <para>
-/// 别在调用点各写一次 <c>ConfigStore.ReadOnly</c>：编辑器、子动作试运行、将来的设置页试跑都调这里。
+/// 别在调用点各写一次 <c>AppRole.IsUiHost</c>：编辑器、子动作试运行、将来的设置页试跑都调这里。
 /// </para>
 /// </remarks>
 internal static class ProgramRunner
@@ -32,7 +32,7 @@ internal static class ProgramRunner
     {
         error = null;
 
-        if (ConfigStore.ReadOnly)
+        if (AppRole.IsUiHost)
         {
             return ProgramRunBridge.TryStart(name, program, startPath, trace, completed, resourceRoot,
                 dryRun, source, slowStep, out error);
@@ -51,7 +51,7 @@ internal static class ProgramRunner
     /// <summary>停止当前试运行（停的是执行器里那一次）。</summary>
     public static void Stop()
     {
-        if (ConfigStore.ReadOnly) ProgramRunBridge.Stop();
+        if (AppRole.IsUiHost) ProgramRunBridge.Stop();
         else AutomationRunner.Stop();
     }
 }

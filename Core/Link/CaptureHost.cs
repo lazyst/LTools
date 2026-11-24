@@ -32,7 +32,7 @@ internal static class CaptureHost
     /// <summary>录屏跑完了：告诉提权进程去恢复它临时收起的自动化指示器（它不是取消，别让人以为截图卡住）。</summary>
     public static void NotifyRecordingFinished()
     {
-        if (!ConfigStore.ReadOnly) return;      // 提权进程里自己就跑了回调，不需要绕一圈
+        if (!AppRole.IsUiHost) return;      // 提权进程里自己就跑了回调，不需要绕一圈
         try { _link?.NotifyAsync(LinkMethods.EventCaptureRecordDone); }
         catch (Exception ex) { AppLog.Warn("Capture", $"通知录屏结束失败：{ex.Message}"); }
     }

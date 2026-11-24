@@ -57,7 +57,7 @@ public partial class SuperPanelWindow : Window
     /// 只显示动作网格 + 搜索；右键菜单、建动作、改分组、暂存区入口全部关掉；磁贴点击经
     /// <see cref="ActionExecutor"/> 转给主程序执行（见 <c>PanelHostBridge</c>）。
     /// </summary>
-    private readonly bool _preview = ConfigStore.ReadOnly;
+    private readonly bool _preview = AppRole.IsUiHost;
 
     // 空白处左键拖动窗口（照 Quicker：不只顶栏可以拖）
     private Point _blankDragStart;

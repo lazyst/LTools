@@ -127,7 +127,7 @@ internal static class CaptureSession
         CaptureOverlayWindow.PendingAction pending = CaptureOverlayWindow.PendingAction.None,
         bool wantImage = false, Action? onRecordingFinished = null)
     {
-        if (!ConfigStore.ReadOnly)
+        if (!AppRole.IsUiHost)
         {
             CaptureRunReply? reply = CaptureBridge.TryRun(pending.ToString(), wantImage, onRecordingFinished);
             if (reply != null)
@@ -462,7 +462,7 @@ internal static class CaptureSession
     {
         if (area.Width < 1 || area.Height < 1) return null;
 
-        if (!ConfigStore.ReadOnly
+        if (!AppRole.IsUiHost
             && CaptureBridge.TryRunDirect(area.Left, area.Top, area.Width, area.Height, source, scenario))
             return null;
 

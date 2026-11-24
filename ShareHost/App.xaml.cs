@@ -44,6 +44,9 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // 身份先定：本进程是界面宿主（窗口 / 交互归我们），与「能不能写配置」是两件事。
+        AppRole.MarkUiHost();
+
         // 单实例：第二个实例立刻退出，而且**绝不能碰意图文件**——那是写给已经在跑的那个的。
         _mutex = new Mutex(true, ShareHelper.MutexName, out bool createdNew);
         if (!createdNew)
