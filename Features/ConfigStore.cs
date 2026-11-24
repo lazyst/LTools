@@ -49,6 +49,9 @@ internal static class ConfigStore
         AppConfig cfg = AppConfig.Load(configPath);
         ActionLibrary.LoadFrom(cfg);
         HotkeyRegistry.Load(cfg);
+        // 宿主也跑截图 / 录屏：延时秒数、录屏默认开关、导出场景这些「运行期缓存」要跟提权进程同源；
+        // 宿主自己写完 settings.json 后再调一次（见 DataHost）。
+        AppState.ApplySettings(cfg);
         PanelLibrary.LoadReadOnly(configPath);
         MacroStore.Invalidate();   // 下一次访问按 ConfigPath 现读（只读）
         ReadOnly = true;

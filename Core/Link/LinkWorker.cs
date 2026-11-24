@@ -163,7 +163,10 @@ internal static class LinkWorker
         if (client != null) _ = client.DisposeAsync();
     }
 
-    /// <summary>宿主发来的事件：面板 / 点选器状态（钩子靠它们让开「长按右键 = 面板」手势）。</summary>
+    /// <summary>
+    /// 宿主发来的事件：面板 / 点选器状态（钩子靠它们让开「长按右键 = 面板」手势）、
+    /// 遮罩关窗要吞掉的抬起、录屏跑完的通知。
+    /// </summary>
     private static void HandleHostEvent(LinkMessage message)
     {
         try
@@ -173,6 +176,11 @@ internal static class LinkWorker
             else if (message.Method == LinkMethods.EventPickerActive
                      && message.Read<PickerActiveEvent>() is { } picker)
                 Hooks.MouseHook.SetWindowPickerActive(picker.Active);
+            else if (message.Method == LinkMethods.EventInputSwallow
+                     && message.Read<SwallowInputEvent>() is { } swallow)
+                Features.CapturePro.ExitInput.Apply(swallow);
+            else if (message.Method == LinkMethods.EventCaptureRecordDone)
+                CaptureBridge.OnRecordingFinished();
         }
         catch (Exception ex)
         {

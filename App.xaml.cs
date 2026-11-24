@@ -138,15 +138,7 @@ public partial class App : Application
             TrayService.Notify("配置文件读取失败：原文件已保留，本次使用默认配置（详见运行日志）");
         }
 
-        AppState.CapsLockModifier = cfg.CapsLockModifier;
-        AppState.EdgeWheelVolume = cfg.EdgeWheelVolume;
-        AppState.EdgeWheelVolumeEdge = (int)cfg.EdgeWheelVolumeEdge;
-        AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
-        AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
-        AppState.TrayDoubleClick = cfg.TrayDoubleClick;
-        AppState.ScreenshotDelaySeconds = CaptureDelay.Normalize((cfg.Screenshot ?? new ScreenshotFile()).DelaySeconds);
-        ExportSettings.Apply(cfg.Export);
-        AppState.Record = (cfg.Record ?? new RecordOptions()).Normalized();
+        AppState.ApplySettings(cfg);
         ConfigStore.Initialize(cfgPath);
         // 进程拆分的过渡期：提权进程起链路服务端（令牌写 state/worker.token），
         // 普通权限宿主（ShareHost.exe，未来是界面进程）连上来读面板 / 提交写操作。
@@ -187,9 +179,9 @@ public partial class App : Application
         // 界面宿主：面板 / 共享窗口都在普通权限的 ShareHost.exe 里（主程序提权后收不到拖放、
         // 也不该让界面跟着提权）。它随主程序常驻，窗口保持隐藏；主程序退出时 Stop 掉。
         _ = Task.Run(ShareHelper.Start);
-        // 录屏写的是分片 MP4：进程被杀 / 断电时已经落下的分片还能播，
-        // 启动时把它们重新封装、收进采集历史（重活，后台跑，别拖住启动）。
-        _ = Task.Run(RecordRecovery.Sweep);
+        // 录屏写的是分片 MP4：进程被杀 / 断电时已经落下的分片还能播。
+        // 残片恢复与采集历史的剪枝都写 `captures/`，那一片现在归宿主（截图流程在宿主里跑），
+        // 所以这两件事跟宿主启动走，这里不再重复（见 ShareHost 的 BootCapture）。
 
         // OCR 模型热启动（照上游 text_recognition/model_hot_start）：开着 + 常驻时后台预热一次，
         // 第一次识别不必等加载；关着 / 非常驻时 OnSettingsChanged 自己直接返回，不白占内存。
@@ -226,8 +218,8 @@ public partial class App : Application
         // 同步跑会卡住 UI 线程约 1 秒，故只排队、不等它）。
         System.Threading.Tasks.Task.Run(LTools.Features.Script.CSharpRunner.Warmup);
 
-        // 采集历史按保留策略剪枝（最多 200 条 / 30 天）：目录不存在时直接返回。
-        System.Threading.Tasks.Task.Run(LTools.Features.CapturePro.CaptureCatalog.Maintain);
+        // 采集历史按保留策略剪枝（最多 200 条 / 30 天）也跟着宿主走（见 ShareHost 的 BootCapture）：
+        // 目录不存在时直接返回，所以这里不用再兜一次。
         // 贴图历史：上次没关掉就退出的记录补上关闭时间，再按保留策略剪枝。
         System.Threading.Tasks.Task.Run(LTools.Features.CapturePro.PinStore.Maintain);
 

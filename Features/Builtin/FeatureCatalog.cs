@@ -463,8 +463,9 @@ internal static class FeatureCatalog
     {
         string source = ctx.Get("source");
         bool recording = false;
+        bool captured;
+        BitmapSource? image = null;
 
-        BitmapSource? image;
         if (source is "screen" or "window" or "region")
         {
             // 这三种来源不经过覆盖层（没有 TransientMinimize）：提示卡片是置顶窗口，
@@ -480,22 +481,24 @@ internal static class FeatureCatalog
                     _ => CaptureRegion(ctx.Get("region")),
                 };
             }
+            captured = image != null;
         }
         else
         {
-            image = PickRegion(out recording);
+            // 交互框选：覆盖层在宿主里，「复制」也在那边做完了（这里只拿「成没成」）。
+            captured = PickRegion(out recording);
         }
 
         // 用户在覆盖层里点了「录屏」：这不是取消，录屏已经在后台开跑，别再弹「已取消截图」。
         if (recording) return;
 
-        if (image == null)
+        if (!captured)
         {
             ToastService.Show("已取消截图", null, 1600, ToastKind.info);
             return;
         }
 
-        NativeClipboard.SetImage(image);
+        if (image != null) NativeClipboard.SetImage(image);
         ToastService.Show("已截图并复制到剪贴板", "截图", 1800, ToastKind.success);
     }
 
@@ -518,7 +521,8 @@ internal static class FeatureCatalog
     }
 
     /// <summary>
-    /// 交互框选。返回 null 有两种完全不同的意思，由 <paramref name="recording"/> 区分：
+    /// 交互框选。返回 true = 拿到了成品（复制 / 贴图 / 另存为 / 识别都已经在宿主里做完）；
+    /// 返回 false 有两种完全不同的意思，由 <paramref name="recording"/> 区分：
     /// 真的取消（要给一句「已取消截图」），还是已经交给录屏（这时什么都不用说）。
     /// </summary>
     /// <remarks>
@@ -526,26 +530,21 @@ internal static class FeatureCatalog
     /// <c>PendingSelectionAction</c>）：覆盖层在选区落定后直接执行，工具条根本不摆出来。
     /// 动作失败（另存为取消 / 识别没开起来）会留在覆盖层里继续编辑，不会卡在半截。
     /// </remarks>
-    private static BitmapSource? PickRegion(out bool recording,
+    private static bool PickRegion(out bool recording,
         CaptureOverlayWindow.PendingAction pending = CaptureOverlayWindow.PendingAction.None)
     {
-        var app = Application.Current ?? throw new InvalidOperationException("界面未初始化，无法截图");
         string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
         bool handed = false;
 
         try
         {
-            var image = app.Dispatcher.Invoke(() =>
-            {
-                var captured = CaptureSession.TryCapture(null, out var exit,
-                    // 录屏跑完再恢复指示器：否则它会被录进成品里
-                    () => RecordingIndicatorWindow.RestoreAutomation(indicator), pending);
-                handed = exit == CaptureSession.CaptureExit.Recording;
-                return captured?.Image;
-            });
+            // 窗口在宿主里建（这个调用会一直等到用户框完）；不再需要自己 Dispatcher.Invoke。
+            CaptureOutcome? outcome = CaptureSession.TryCapture(null, out var exit, pending,
+                onRecordingFinished: () => RecordingIndicatorWindow.RestoreAutomation(indicator));
 
+            handed = exit == CaptureSession.CaptureExit.Recording;
             recording = handed;
-            return image;
+            return outcome != null;
         }
         finally
         {
@@ -569,18 +568,18 @@ internal static class FeatureCatalog
             if (!CaptureDelay.Wait(AppState.ScreenshotDelaySeconds)) return;
         }
 
-        var image = PickRegion(out bool recording, pending);
+        bool captured = PickRegion(out bool recording, pending);
         if (recording) return;                       // 已交给录屏，不是取消
 
         if (pending == CaptureOverlayWindow.PendingAction.None)
         {
-            if (image == null) ToastService.Show("已取消截图", null, 1600, ToastKind.info);
+            if (!captured) ToastService.Show("已取消截图", null, 1600, ToastKind.info);
             return;
         }
 
         // 上游这几个入口成功后都不弹 toast（贴图 / 另存为 / 快速保存 / 识别自己就是反馈），
         // 只有「复制」在 LTools 里多一句提示，免得用户不知道到底复制了没有。
-        if (pending == CaptureOverlayWindow.PendingAction.Copy && image != null)
+        if (pending == CaptureOverlayWindow.PendingAction.Copy && captured)
             ToastService.Show("已复制到剪贴板", "截图", 1600, ToastKind.success);
     }
 

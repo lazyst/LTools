@@ -97,8 +97,9 @@ public partial class App : Application
     /// </summary>
     /// <remarks>
     /// 宿主的写入面（<c>docs/PROCESS_SPLIT.md</c> §7 / §15）：<c>速记/</c> 完全归宿主；
-    /// <c>configs/*.json</c> 由宿主落盘（执行器转交，见 <see cref="DataHost"/>）；
-    /// <c>actions/</c> <c>subactions/</c> <c>staging/</c> 仍归执行器。
+    /// <c>configs/*.json</c> 与 <c>actions/*.json</c> 由宿主落盘（执行器转交，见 <see cref="DataHost"/> /
+    /// <see cref="ActionHost"/>）；<c>captures/</c> 与 <c>cache/screenshots/</c> 跟着截图流程归宿主（M3-3）。
+    /// <c>subactions/</c> <c>staging/</c> 仍归执行器。
     /// </remarks>
     private void LoadReadOnlyConfig()
     {
@@ -122,6 +123,10 @@ public partial class App : Application
             AppLog.Warn("ShareHost", $"初始化速记失败：{ex.Message}");
         }
 
+        // 采集历史 / 录屏残片也归宿主（截图流程在宿主里跑）：剪枝 + 把上次没封装的 MP4 收进历史。
+        // 这两件事都写 `captures/`，所以跟着宿主启动走，提权进程不再碰（见 docs/PROCESS_SPLIT.md §15.4）。
+        _ = Task.Run(BootCaptureHistory);
+
         // 面板可能在这一步之前就被唤起了（主程序启动后立刻按了唤起键）：配置读好之后重建一次，
         // 否则那一份会停在「没有任何场景 / 磁贴」的空面板上。
         Dispatcher.BeginInvoke(new Action(() =>
@@ -132,11 +137,30 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// 采集历史的日常维护：按保留策略剪枝、把上次没封装完的录屏分片收进历史。
+    /// </summary>
+    /// <remarks>
+    /// 两件事都写 <c>captures/</c>，而截图流程（覆盖层 / 结果窗 / 贴图 / 录屏）现在也在宿主里，
+    /// 所以这一片只有一个写者。启动时跑一次就够——运行期的写入由截图流程自己完成。
+    /// </remarks>
+    private static void BootCaptureHistory()
+    {
+        try
+        {
+            Features.CapturePro.CaptureCatalog.Maintain();
+            Features.CapturePro.RecordRecovery.Sweep();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("ShareHost", $"维护采集历史失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// 起链路服务端。**宿主做服务端**：中完整性进程建管道，提权进程作为客户端连上来
     /// （中完整性写不了高完整性的管道，反过来可以，见 docs/PROCESS_SPLIT.md §5.1）。
     /// </summary>
-    private void StartLink()
-    {
+    private void StartLink()    {
         string? token = LinkToken.Read();
         if (token == null)
         {
@@ -155,6 +179,7 @@ public partial class App : Application
             Volatile.Write(ref _link, server);
             PanelHostBridge.Attach(server);
             InputBridge.Attach(server);
+            CaptureHost.Attach(server);
             server.ClientChanged += OnLinkClientChanged;
             server.Start();
 
@@ -179,7 +204,8 @@ public partial class App : Application
         Task<LinkMessage>? handled = UiHost.TryHandleAsync(request)
             ?? DataHost.TryHandleAsync(request)
             ?? NoteHost.TryHandleAsync(request)
-            ?? ActionHost.TryHandleAsync(request);
+            ?? ActionHost.TryHandleAsync(request)
+            ?? CaptureHost.TryHandleAsync(request);
         return handled ?? Task.FromResult(LinkMessage.Response(request, error: "宿主暂不支持该命令"));
     }
 

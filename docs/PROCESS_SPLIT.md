@@ -723,6 +723,49 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`--selftest` 393 用例 / 18698 断言（新增 `action.saveAll` 方法名 + 清单往返 + 失败原因）；
   `LinkSmoke` 74（新增一条 `action.saveAll` 反向请求）。
 
+**2026-11-24 · P2-M3-3a 截图覆盖层搬进宿主（框选 / 标注 / 工具条 / 结果窗 / 贴图 / 采集历史）**
+
+- 入口只有一条缝：`CaptureSession.TryCapture` 按进程身份分流——**宿主里本地跑**（覆盖层的真正实现在
+  `RunLocal`，一个字没改），**提权进程里转给宿主**（`CaptureBridge` → `capture.run` → `CaptureHost`）。
+  宿主没连上 / 出错就地降级在本进程跑一遍，截图键不会按了没反应。
+- **成品图不再跨进程传**：调用方要图时（「截图」取值器）传 `wantImage`，宿主把成品存进
+  `cache/screenshots/` 并把路径带回来（`CaptureOutcome.File`）；复制 / 贴图 / 识别 / 记采集历史
+  这些出口本来就在覆盖层交回之前做完，一张 png 都不用走链路（8 MB 的帧上限也不该拿来传 4K 截图）。
+- `CaptureDirect`（截取当前显示器 / 前台窗口）同样分流，同样**不传图**（今天没有调用方要那张图）；
+  `captures/` 的写入方因此只剩宿主：`CaptureCatalog.Maintain` 与 `RecordRecovery.Sweep` 从
+  `App.OnStartup` 挪到宿主启动（`ShareHost.BootCaptureHistory`）。
+- **踩到的坑**：`capture.direct` 一开始写成「宿主没连上就抛异常」，等于把「宿主挂了」变成功能不可用；
+  改成返回 `false` → 本地兜底，与其它链路一致。
+- 设置也要跟过去：`AppState.ApplySettings(AppConfig)` 成为唯一实现（`App.OnStartup` 与
+  `ConfigStore.InitializeReadOnly` 都调它），否则宿主那份延时秒数 / 录屏默认开关 / 导出场景永远是默认值；
+  宿主自己写完 `configs/settings.json` / `ui.json` 后再刷一次相关缓存（`DataHost.RefreshRuntime`：
+  `ScreenshotBehavior` / `OverlayUiSettings` / `CaptureSoundSettings` / 工具条布局 / 标注样式），
+  不然「设置里改了，截图还是老样子」。
+- **顺手补掉 M3-2 留下的一个真 bug**：点选器 / 覆盖层关窗时要把「还按着的键」的抬起吞掉
+  （`ExitInput`），而钩子只在提权进程——宿主里调 `MouseHook.SwallowPendingReleases` 等于没调，
+  右键取消遮罩之后配对的那一下抬起会落到光标下面的程序上（资源管理器弹右键菜单）。补 `input.swallow`：
+  **采样在关窗的那个进程做**（`GetAsyncKeyState` 当场读），只把结果送过去上膛
+  （`MouseHook.SwallowReleases(bool,bool,bool)` / `KeyboardHook.ArmRelease(vk)`）——跨进程重新采样会读成「已经松开」。
+- 录屏交给宿主之后，提权进程那个「自动化指示器」要等**宿主录完**才能恢复：`capture.recordDone` 事件 +
+  `CaptureBridge.OnRecordingFinished`（回调在发请求前就登记，录屏秒失败也不会漏）。
+- 真机实测（宿主 21672 / 提权 27188）：
+  - 托盘 →「截图」→「截图…」→ 覆盖层 `'截图' 1920×1080` 在 **ShareHost**；拉框 + Enter →
+    剪贴板里是图，`captures/` 多一条 `501×401 · 复制`（`assets/` `thumbnails/` `displays/` 三份都由宿主写）；
+  - 再开一次覆盖层按 Esc → 窗口关掉、采集历史仍是 4 条（没多记）；
+  - 动作里的「截图」取值（MCP 跑一份草稿，`wantImage` 路径）：宿主存
+    `cache/screenshots/shot-20261124-190102.png`（701×551），执行器的 `${shot}` 拿到这个路径，
+    提示卡片显示正确；
+  - 辅助工具 →「窗口信息」→ 遮罩上右键取消 → 遮罩关闭、**下面没有冒出右键菜单**（`input.swallow` 生效；
+    这条在 M3-2 时是坏的）。
+- 回归：`--selftest` 393 用例 / **18723** 断言（新增 `capture.run` / `capture.direct` / `input.swallow` /
+  `capture.recordDone` 的方法名与往返）；`LinkSmoke` 74；`PanelHostSmoke` 11；
+  `tests/CaptureOverlaySmoke` 的 `captureEntry` / `releaseAction` / `tray` 三段全绿；
+  `ShareSmoke` 99/103——**四条「真鼠标拖放」在本轮基线上同样失败**（桌面上压着 `Shell_SystemDialog / Windows 安全中心`，
+  对照组窗口的 `DoDragDrop` 都收不到 Drop），与本次改动无关，按「未验证」记一笔。
+- 过渡期的两个写者（下一步收口）：采集历史窗口（删除 / 重新编辑）与贴图窗口仍在提权进程，
+  所以 `captures/` 的删除、`state/pins.json`、`TryReopen` / `TryEdit` 这几条还留在那边——
+  贴图 / 拼图 / 切图 / 录屏条与采集历史窗口搬完（M3-3b）就没有了。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -770,7 +813,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | `configs/*.json`（七个域文件，含 `panel.json` / `macros.json` 元数据） | 宿主 | **已完成（M2-a）**：只翻落盘那一步——`ConfigBundle.RemoteWriter` → `data.write` → `DataHost` 写；名字走 `DomainFiles` 白名单 |
 | `速记/` | 宿主 | **已完成（M3-1，跟着速记窗口一起翻）**：`data.noteWrite` 走 `note.write`；读仍在本地 |
 | `actions/` `subactions/` `staging/` `resources/` | 宿主 | **`actions/` 已完成（M2-b）**：`ActionLibrary.Save` 把整份清单交给宿主 `action.saveAll` → `ActionStore.SaveAll` 写目录（唯一仍由执行器写的只有 `actions/<id>/files/` 的素材复制）。`subactions/` `staging/` `resources/` 仍**跟着窗口走**：编辑器 / 暂存区搬进宿主时（M3-4）一起翻。**不单独做「目录文件系统 RPC」**：硬链接、搬 trash、孤儿回收转过去只会把「一个写者」做成空话 |
-| `captures/` | 宿主 | 跟着截图 Pro / 采集历史搬（M3-3 / M3-5） |
+| `captures/` + `cache/screenshots/` | 宿主 | **跟着截图流程（M3-3a）**：覆盖层 / 结果窗 / 贴图 / 采集历史都在宿主里跑，`capture.run` / `capture.direct` 只是入口；`Maintain` / `RecordRecovery.Sweep` 也跟宿主启动。剩余收口见 M3-3b（历史窗口 / 贴图窗口） |
 | 启动期的播种 / 修引用 / 孤儿清理（`HotkeySeeding` / `RepairReferences` / `OrphanFiles`） | 宿主 | M2-c：跟着「宿主是写者」一起搬，执行器启动时改成只读 |
 | `macros/<id>.json`（录制事件本体） | 执行器 | 录制只能在那儿；录完发 `macro.recorded` 事件，由宿主挂动作 + 放面板 |
 | `state/run-history.jsonl` `trigger-history` `values` `auto-trigger-last-start` | 执行器 | 它才是产生者；宿主只读展示 |
@@ -789,7 +832,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 |---|---|---|
 | 1 | 速记 `QuickNote` | **已完成（M3-1）**：`速记/` 写权翻给宿主、`note.toggle` / `note.write` 就绪、托盘 / `CapsLock+N` / 面板磁贴都只转意图 |
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
-| 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | `captures/` 域跟着翻；覆盖层要能盖住**宿主自己的**窗口；录屏的 ffmpeg / NAudio 在宿主跑；`common.capture` 从钩子触发时改成「执行器让宿主动手」。**采集历史 / 贴图管理必须在这一步一起搬**（见下面那条依赖） |
+| 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b 继续**：采集历史窗口、贴图管理、图片编辑 / 拼图 / 切图、录屏条与录屏选项，搬完再删执行器侧那几条本地入口（`TryReopen` / `TryEdit` / `PinRestoreLast`）。覆盖层要能盖住**宿主自己的**窗口（现在是盖住提权进程的）；录屏的 ffmpeg / NAudio 在宿主跑 |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` 跟着翻（`actions/` 已在 M2-b 翻完）；宏录制仍在执行器（钩子）→ 录完由宿主挂动作、放面板 |
 | 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页） | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主；另加 `data.changed` 回读、`hotkeys.record`、`mcp.*` 几条小命令 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |

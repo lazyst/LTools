@@ -65,6 +65,20 @@ internal static class LinkMethods
     /// </summary>
     public const string EventPickerActive = "input.picker";
 
+    /// <summary>
+    /// 遮罩 / 覆盖层关窗时「还按着的键，抬起要吞掉」（宿主 → 提权进程）。负载 <see cref="SwallowInputEvent"/>。
+    /// </summary>
+    public const string EventInputSwallow = "input.swallow";
+
+    /// <summary>截图覆盖层（宿主里跑）：框选 / 标注 / 工具条。负载 <see cref="CaptureRunRequest"/>。</summary>
+    public const string CaptureRun = "capture.run";
+
+    /// <summary>直接截图（不弹覆盖层）：抓一块 → 复制 → 记采集历史。负载 <see cref="CaptureDirectRequest"/>。</summary>
+    public const string CaptureDirect = "capture.direct";
+
+    /// <summary>录屏跑完了（宿主 → 提权进程）：提权进程据此恢复被临时收起的自动化指示器。</summary>
+    public const string EventCaptureRecordDone = "capture.recordDone";
+
     /// <summary>提权进程连上并握手完成（宿主收到后拉快照 / 重建界面）。</summary>
     public const string EventClientReady = "client.ready";
 
@@ -96,6 +110,31 @@ internal sealed record PanelStateEvent(bool Open);
 
 /// <summary>全屏点选器状态（宿主 → 提权进程）：true = 遮罩开着，鼠标钩子让开「长按右键 = 面板」。</summary>
 internal sealed record PickerActiveEvent(bool Active);
+
+/// <summary>
+/// 关窗那一刻的输入状态（宿主 → 提权进程）：哪几个键物理上还按着，抬起时吞掉。
+/// <see cref="Key"/> = 虚拟键号（Esc / Enter），0 = 没有。
+/// </summary>
+internal sealed record SwallowInputEvent(bool Left, bool Right, bool Middle, int Key);
+
+/// <summary>
+/// 交互截图：<see cref="Pending"/> 是 <c>CaptureOverlayWindow.PendingAction</c> 的枚举名
+/// （<c>None</c> = 普通框选，其余 = 「选完就做」的快捷入口）；<see cref="WantImage"/> = 调用方还要成品图
+/// （宿主把它存成 png，返回 <see cref="CaptureRunReply.File"/>）。
+/// </summary>
+internal sealed record CaptureRunRequest(string Pending, bool WantImage);
+
+/// <summary>
+/// 交互截图的结果。<see cref="Exit"/> = <c>captured</c> / <c>cancelled</c> / <c>recording</c>
+/// （录屏不是取消：那一次没有成品图）；<see cref="File"/> 只在要图时有，是 <c>cache/screenshots</c> 里的 png。
+/// </summary>
+internal sealed record CaptureRunReply(string Exit, int X, int Y, int W, int H, string? File);
+
+/// <summary>直接截图（当前显示器 / 前台窗口）：物理像素矩形 + 场景键 + 来源文案。</summary>
+internal sealed record CaptureDirectRequest(int X, int Y, int W, int H, string Source, string Scenario);
+
+/// <summary>直接截图的结果；失败原因原样带回来（调用方是功能入口，由 <c>FeatureRunner</c> 弹提示）。</summary>
+internal sealed record CaptureDirectReply(bool Ok, string? Error);
 
 /// <summary>
 /// 执行一个动作 / 内置功能。引用形如 <c>01abc…</c>（动作 Id）或 <c>common.capture</c>（内置功能）。

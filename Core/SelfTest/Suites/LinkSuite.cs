@@ -152,7 +152,9 @@ internal static class LinkSuite
             LinkMethods.RunAction, LinkMethods.OpenWindow, LinkMethods.ActionOp,
             LinkMethods.EventPanelShow, LinkMethods.EventPanelToggle, LinkMethods.EventClientReady,
             LinkMethods.EventActionsChanged, LinkMethods.EventPanelStash, LinkMethods.EventPanelState,
-            LinkMethods.EventPanelClose,
+            LinkMethods.EventPanelClose, LinkMethods.EventInfoHelper, LinkMethods.EventPickerActive,
+            LinkMethods.EventInputSwallow, LinkMethods.CaptureRun, LinkMethods.CaptureDirect,
+            LinkMethods.EventCaptureRecordDone, ActionMethods.SaveAll,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
@@ -293,6 +295,36 @@ internal static class LinkSuite
         PickerActiveEvent? pickerEvent = RoundTrip(LinkMessage.Request(29, LinkMethods.EventPickerActive,
             new PickerActiveEvent(true))).Read<PickerActiveEvent>();
         Check.True(pickerEvent?.Active == true, "点选器状态往返");
+
+        // —— 关窗要吞掉的抬起（宿主采样 → 提权进程上膛）——
+        Check.Equal("input.swallow", LinkMethods.EventInputSwallow, "吞掉退出按键的方法名");
+        SwallowInputEvent? swallow = RoundTrip(LinkMessage.Request(32, LinkMethods.EventInputSwallow,
+            new SwallowInputEvent(Right: true, Left: false, Middle: false, Key: 27))).Read<SwallowInputEvent>();
+        Check.True(swallow is { Right: true, Left: false, Middle: false, Key: 27 }, "退出按键采样往返");
+
+        // —— 截图（覆盖层在宿主里跑）——
+        Check.Equal("capture.run", LinkMethods.CaptureRun, "交互截图方法名");
+        Check.Equal("capture.direct", LinkMethods.CaptureDirect, "直接截图方法名");
+        Check.Equal("capture.recordDone", LinkMethods.EventCaptureRecordDone, "录屏结束事件名");
+
+        CaptureRunRequest? runReq = RoundTrip(LinkMessage.Request(33, LinkMethods.CaptureRun,
+            new CaptureRunRequest("Copy", WantImage: true))).Read<CaptureRunRequest>();
+        Check.True(runReq is { Pending: "Copy", WantImage: true }, "交互截图请求往返");
+
+        CaptureRunReply? runReply = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(34, LinkMethods.CaptureRun),
+                new CaptureRunReply("captured", 10, 20, 300, 200, @"cache\screenshots\a.png")))
+            .Read<CaptureRunReply>();
+        Check.True(runReply is { Exit: "captured", X: 10, Y: 20, W: 300, H: 200 }, "交互截图结果往返（区域）");
+        Check.Equal(@"cache\screenshots\a.png", runReply?.File, "交互截图结果往返（png 路径）");
+
+        CaptureDirectRequest? directReq = RoundTrip(LinkMessage.Request(35, LinkMethods.CaptureDirect,
+            new CaptureDirectRequest(1, 2, 800, 600, "前台窗口", "focusedWindow"))).Read<CaptureDirectRequest>();
+        Check.True(directReq is { X: 1, Y: 2, W: 800, H: 600, Source: "前台窗口", Scenario: "focusedWindow" },
+            "直接截图请求往返");
+        Check.True(RoundTrip(LinkMessage.Response(LinkMessage.Request(36, LinkMethods.CaptureDirect),
+                new CaptureDirectReply(false, "抓帧失败"))).Read<CaptureDirectReply>() is { Ok: false, Error: "抓帧失败" },
+            "直接截图的失败原因往返");
 
         // 白名单：只认七个域文件名，且不许带路径（这条链路只能改配置，不能写任意文件）。
         Check.True(ConfigBundle.DomainFiles.All(ConfigBundle.IsDomainFile), "七个域文件名都在白名单里");

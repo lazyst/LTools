@@ -61,6 +61,28 @@ internal static class AppState
 
     // 托盘气球提示已移至 TrayService.Notify（不再持有 WinForms NotifyIcon）
 
+    /// <summary>
+    /// 把配置里「运行期缓存」的那几项灌进内存（两个进程都要走这一处）。
+    /// </summary>
+    /// <remarks>
+    /// 提权进程在 <c>App.OnStartup</c> 调一次；普通权限宿主在只读加载配置时调一次、宿主自己写完
+    /// <c>configs/settings.json</c> 后再调一次——截图 / 录屏搬进宿主之后，那些窗口也读这些值
+    /// （延时秒数、录屏默认开关、导出场景），两边各写一份就会走岔。
+    /// </remarks>
+    public static void ApplySettings(Config.AppConfig cfg)
+    {
+        CapsLockModifier = cfg.CapsLockModifier;
+        EdgeWheelVolume = cfg.EdgeWheelVolume;
+        EdgeWheelVolumeEdge = (int)cfg.EdgeWheelVolumeEdge;
+        IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
+        SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
+        TrayDoubleClick = cfg.TrayDoubleClick;
+        ScreenshotDelaySeconds = Features.CapturePro.CaptureDelay.Normalize(
+            (cfg.Screenshot ?? new Config.ScreenshotFile()).DelaySeconds);
+        Features.CapturePro.ExportSettings.Apply(cfg.Export);
+        Record = (cfg.Record ?? new RecordOptions()).Normalized();
+    }
+
     /// <summary>CapsLock 是否当前按下（便捷查询，供功能模块判断）。</summary>
     public static bool IsCapsLockDown => CapsLockIsDown;
 }

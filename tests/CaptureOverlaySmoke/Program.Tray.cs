@@ -33,7 +33,7 @@ internal static partial class Program
         var top = Texts(menu.Items);
         var expectedTop = new[]
         {
-            "速记 (CapsLock+N)", "动作面板 (CapsLock+T)", "设置 (CapsLock+\\)", "辅助工具…",
+            "速记 (CapsLock+N)", "动作面板 (CapsLock+T)", "设置 (CapsLock+\\)", "辅助工具…", "局域网共享…",
             "截图", "—",
             "开始 / 停止录制宏", "键鼠宏…", "—",
             "启用 CapsLock 修饰键", "启用超级面板", "暂停自动触发（紧急禁用）", "—",

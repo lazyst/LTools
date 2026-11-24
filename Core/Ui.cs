@@ -36,4 +36,22 @@ internal static class Ui
         }
         d.BeginInvoke(action);
     }
+
+    /// <summary>
+    /// 在 UI 线程上**同步**执行（等它做完再返回）。
+    /// </summary>
+    /// <remarks>
+    /// **只能从后台线程 / 动作线程调**，钩子回调里绝不能用（钩子线程等 UI 会把输入卡住，见上面的说明）。
+    /// 用于「先收起自己的窗口，再请求截图」这种有先后顺序的两步。
+    /// </remarks>
+    public static void Run(Action action)
+    {
+        var d = _dispatcher;
+        if (d == null || d.CheckAccess())
+        {
+            action();
+            return;
+        }
+        d.Invoke(action);
+    }
 }

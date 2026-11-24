@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using LTools.Core;
+using LTools.Core.Link;
 using LTools.Features;
 using LTools.Features.CapturePro.ImageEdit;
 using LTools.Features.CapturePro.Split;
@@ -16,6 +17,12 @@ namespace LTools.Features.CapturePro;
 /// <summary>一次截图的成品：屏幕矩形（物理像素）+ 按选区重绘出来的图片 + 图里烘进的外观。</summary>
 internal sealed record CaptureResult(Int32Rect Area, BitmapSource Image,
     PinAppearance Appearance, bool Scrolling);
+
+/// <summary>
+/// 交给调用方的截图结果（与进程无关）：<see cref="File"/> 只在要图时有（<c>cache/screenshots</c> 里的 png），
+/// 图片本身不再跨进程传——成品图在宿主里就已经复制 / 贴图 / 记进采集历史了。
+/// </summary>
+internal sealed record CaptureOutcome(CaptureSession.CaptureExit Exit, Int32Rect Area, string? File);
 
 /// <summary>
 /// 「从采集历史重新裁选」要交给覆盖层的东西：当时那张整屏冻结画面 + 它的屏幕矩形 +
@@ -50,9 +57,6 @@ internal static class CaptureSession
         Recording,
     }
 
-    /// <summary>弹出覆盖层框选 + 标注。用户取消时返回 null。</summary>
-    public static CaptureResult? TryCapture(Window? owner) => TryCapture(owner, out _);
-
     /// <summary>
     /// 从采集历史重新编辑：用当时那张整屏冻结画面重开覆盖层，把每一块选区、选区外观与**标注**
     /// （含撤销 / 重做栈）原样摆回去，交回一次**新的**成品（新的采集记录、复制 / 贴图 / 识别等出口照常）。
@@ -60,6 +64,7 @@ internal static class CaptureSession
     /// <remarks>
     /// 照上游 <c>CaptureHistoryDraft</c> 的 <c>displays</c> + <c>selection</c> + <c>canvasHistory</c> 重开：
     /// 底图就是历史那张，不再抓帧；这条记录没有底图（录屏 / 更早版本记的）时提示一句并返回 null。
+    /// **只在宿主里跑**（采集历史窗口搬过去之后它就在宿主；过渡期提权进程里调它会在本地开覆盖层）。
     /// </remarks>
     public static CaptureResult? TryReopen(CaptureEntry entry)
     {
@@ -92,28 +97,59 @@ internal static class CaptureSession
         var undo = MarkCodec.ReadHistory(entry.UndoMarks);
         var redo = MarkCodec.ReadHistory(entry.RedoMarks);
 
-        return TryCapture(null, out _,
-            reopen: new CaptureReopen(display, entry.DisplayRect, regions, dpi, screens,
-                marks, undo, redo, entry.Style));
+        var reopen = new CaptureReopen(display, entry.DisplayRect, regions, dpi, screens,
+            marks, undo, redo, entry.Style);
+
+        return RunOnUi(() => RunLocal(CaptureOverlayWindow.PendingAction.None, wantImage: false, reopen, owner: null)).Result;
     }
 
     /// <summary>
-    /// 弹出覆盖层框选 + 标注。
+    /// 弹覆盖层框选 + 标注（**执行器侧入口**）。
     /// </summary>
     /// <param name="exit">
     /// 这条出口是什么：<see cref="CaptureExit.Recording"/> 时返回 null 但**不是**取消
     /// （用户点了「录屏」，录屏已经在后台开跑）。调用方别把这种情况当成「已取消截图」。
     /// </param>
+    /// <param name="wantImage">
+    /// 调用方还要成品图（「截图」取值器要把它存成 png 交给流程）：宿主把它写进
+    /// <c>cache/screenshots/</c>，用 <see cref="CaptureOutcome.File"/> 带回来。
+    /// </param>
     /// <param name="onRecordingFinished">
-    /// 录屏跑完（成功 / 失败 / 取消都算）之后回调一次，跑在录屏的后台线程上。
+    /// 录屏跑完（成功 / 失败 / 取消都算）之后回调一次，跑在 UI 线程。
     /// 「截图」这个内置功能用它恢复被自己临时收起的自动化指示器。
     /// </param>
-    public static CaptureResult? TryCapture(Window? owner, out CaptureExit exit,
-        Action? onRecordingFinished = null,
+    /// <remarks>
+    /// **宿主里直接跑**（覆盖层、结果窗、贴图、采集历史都在那边）；提权进程里转给宿主
+    /// （<see cref="CaptureBridge"/>），宿主没连上才就地降级跑一遍。窗口必须在 UI 线程上建，
+    /// 这里替调用方（动作 / 功能的后台线程）做这件事。
+    /// </remarks>
+    public static CaptureOutcome? TryCapture(Window? owner, out CaptureExit exit,
         CaptureOverlayWindow.PendingAction pending = CaptureOverlayWindow.PendingAction.None,
-        CaptureReopen? reopen = null)
+        bool wantImage = false, Action? onRecordingFinished = null)
     {
-        exit = CaptureExit.Cancelled;
+        if (!ConfigStore.ReadOnly)
+        {
+            CaptureRunReply? reply = CaptureBridge.TryRun(pending.ToString(), wantImage, onRecordingFinished);
+            if (reply != null)
+            {
+                exit = ToExit(reply.Exit);
+                return reply.Exit == "captured"
+                    ? new CaptureOutcome(exit, new Int32Rect(reply.X, reply.Y, reply.W, reply.H), reply.File)
+                    : null;
+            }
+        }
+
+        var local = RunOnUi(() => RunLocal(pending, wantImage, reopen: null, owner, onRecordingFinished));
+        exit = local.Exit;
+        return local.Result == null ? null : new CaptureOutcome(local.Exit, local.Result.Area, local.File);
+    }
+
+    /// <summary>宿主侧的真正实现：冻结抓帧 → 覆盖层 → 成品（复制 / 贴图 / 识别 / 记采集历史都在里面）。</summary>
+    private static (CaptureExit Exit, CaptureResult? Result, string? File) RunLocal(
+        CaptureOverlayWindow.PendingAction pending, bool wantImage, CaptureReopen? reopen, Window? owner,
+        Action? onRecordingFinished = null)
+    {
+        var exit = CaptureExit.Cancelled;
 
         // 文件名模板里的 {AN} / {WN}：必须在收起自己的窗口**之前**取（之后前台就变成桌面或别人了）
         var names = ExportNameContext.Of(ForegroundAppCache.Current?.ExeName,
@@ -172,7 +208,7 @@ internal static class CaptureSession
                     reopened.Redo ?? Array.Empty<Mark[]>());
 
             bool? ok = overlay.ShowDialog();
-            if (ok != true) return null;
+            if (ok != true) return (CaptureExit.Cancelled, null, null);
 
             {
                 if (overlay.RecordRequested)
@@ -184,7 +220,7 @@ internal static class CaptureSession
                 }
                 else
                 {
-                    if (overlay.ResultImage == null) return null;
+                    if (overlay.ResultImage == null) return (CaptureExit.Cancelled, null, null);
 
                     var captured = overlay.ResultImage;
                     pin = overlay.PinRequested;
@@ -227,7 +263,7 @@ internal static class CaptureSession
         {
             CrashLog.Write("CapturePro.TryCapture", ex);
             TrayService.Notify("截图失败：" + ex.Message);
-            return null;
+            return (CaptureExit.Cancelled, null, null);
         }
         finally
         {
@@ -243,10 +279,10 @@ internal static class CaptureSession
         if (record)
         {
             if (StartRecording(recordArea, onRecordingFinished)) exit = CaptureExit.Recording;
-            return null;
+            return (exit, null, null);
         }
 
-        if (result == null) return null;
+        if (result == null) return (exit, null, null);
 
         // 长截图面板上的「编辑 / 切图」：成品图只交给对应的窗口，不复制、不记采集历史
         // （那是同一个画面的二次加工，不是新采集）。
@@ -258,8 +294,7 @@ internal static class CaptureSession
             else
                 SplitSession.OpenImage(result.Image, name);
 
-            exit = CaptureExit.Captured;
-            return null;
+            return (CaptureExit.Captured, null, null);
         }
 
         // 长截图：拼接结果默认直接复制走（覆盖层那边不复制，只有这里知道最终的长图）
@@ -307,8 +342,28 @@ internal static class CaptureSession
         }
 
         exit = CaptureExit.Captured;
-        return result;
+
+        // 调用方要图（「截图」取值器）：存进 cache/screenshots，把路径带回去。
+        // 成品图本身不跨进程传（宿主的图从这里直接进了剪贴板 / 贴图 / 采集历史）。
+        string? file = wantImage ? ImageLibrary.SaveCapture(result.Image) : null;
+        return (exit, result, file);
     }
+
+    /// <summary>在 UI 线程上跑（窗口只能在 UI 线程建）；已经在 UI 线程时就地跑。</summary>
+    private static T RunOnUi<T>(Func<T> work)
+    {
+        var app = Application.Current;
+        if (app == null || app.Dispatcher.CheckAccess()) return work();
+        return app.Dispatcher.Invoke(work);
+    }
+
+    /// <summary>链路那边传过来的出口名（<c>captured</c> / <c>cancelled</c> / <c>recording</c>）。</summary>
+    private static CaptureExit ToExit(string exit) => exit switch
+    {
+        "captured" => CaptureExit.Captured,
+        "recording" => CaptureExit.Recording,
+        _ => CaptureExit.Cancelled,
+    };
 
     /// <summary>
     /// 「录屏」出口：把覆盖层里框的那一块交给 <see cref="RecordSession"/>（3 秒倒计时后开录）。
@@ -344,6 +399,8 @@ internal static class CaptureSession
             {
                 try { finished?.Invoke(); }
                 catch (Exception ex) { AppLog.Warn("CapturePro.Record", "录屏收尾回调失败：" + ex.Message); }
+                // 截图流程在宿主里时，恢复「自动化指示器」这件事得让提权进程做（它在那边）。
+                CaptureHost.NotifyRecordingFinished();
             }
         });
 
@@ -389,15 +446,32 @@ internal static class CaptureSession
     /// 直接截图（不弹覆盖层）：抓一块 → 复制到剪贴板 → 记一条采集历史。
     /// </summary>
     /// <remarks>
+    /// <para>
     /// 照 Snow Shot 的 <c>DirectCaptureWorkflow</c>（copy → 自动保存 → history）：
     /// 「截取当前显示器」「截取前台窗口」这两个入口不经过覆盖层，抓完直接落剪贴板。
     /// <paramref name="scenario"/> 是「执行完自动保存」的场景键（<see cref="ExportSettings.Scenarios"/>）。
     /// 失败抛异常（调用方是功能入口，由 <c>FeatureRunner</c> 弹失败提示）。
+    /// </para>
+    /// <para>
+    /// **`captures/` 归宿主**（截图流程在那边跑，采集历史的写入方只有一个）：提权进程调到这里时转给宿主，
+    /// 成品图留在宿主（今天没有任何调用方要这张图，所以返回值是 <c>null</c>）；
+    /// 宿主没连上 / 出错就本地跑，别让截图键按了没反应。
+    /// </para>
     /// </remarks>
     public static BitmapSource? CaptureDirect(System.Drawing.Rectangle area, string source, string scenario)
     {
         if (area.Width < 1 || area.Height < 1) return null;
 
+        if (!ConfigStore.ReadOnly
+            && CaptureBridge.TryRunDirect(area.Left, area.Top, area.Width, area.Height, source, scenario))
+            return null;
+
+        return CaptureDirectLocal(area, source, scenario);
+    }
+
+    /// <summary>宿主侧实现：抓帧 → 复制 → 记一条采集历史。</summary>
+    private static BitmapSource? CaptureDirectLocal(System.Drawing.Rectangle area, string source, string scenario)
+    {
         // 快门音（照上游 screenshot/shutter_sound_notification，默认开）：
         // 上游在 DirectCaptureWorkflow.enqueue 里就响，也就是抓图之前。
         if (CaptureSoundSettings.Shutter) ShutterSound.Play();
@@ -447,10 +521,13 @@ internal static class CaptureSession
 
         try
         {
-            var (sx, sy) = ScreenPickerWindow.MonitorScale(ScreenShot.ToRectangle(area));
-            var overlay = new CaptureOverlayWindow(image, ScreenShot.ToRectangle(area), sx, sy, editOnly: true);
-            bool? ok = overlay.ShowDialog();
-            return ok == true ? overlay.ResultImage : null;
+            return RunOnUi(() =>
+            {
+                var (sx, sy) = ScreenPickerWindow.MonitorScale(ScreenShot.ToRectangle(area));
+                var overlay = new CaptureOverlayWindow(image, ScreenShot.ToRectangle(area), sx, sy, editOnly: true);
+                bool? ok = overlay.ShowDialog();
+                return ok == true ? overlay.ResultImage : null;
+            });
         }
         catch (Exception ex)
         {

@@ -59,23 +59,14 @@ internal static class ScreenshotProbe
 
     private static VarValue PickInteractive(RunContext ctx)
     {
-        var app = Application.Current ?? throw new FlowException("界面未初始化，无法截图");
-
         // 自动化指示器是置顶窗口，会被截进画面：截图前收起，结束再恢复。
         string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
         try
         {
-            CaptureSession.CaptureExit exit = CaptureSession.CaptureExit.Cancelled;
-            var result = app.Dispatcher.Invoke(() =>
-            {
-                // owner 必须在 UI 线程上找：Application.Windows 属于 UI 线程。
-                Window? owner = app.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? app.MainWindow;
-                var captured = CaptureSession.TryCapture(owner, out var kind);
-                exit = kind;
-                return captured;
-            });
-
-            if (result == null)
+            // 覆盖层在宿主里（`docs/PROCESS_SPLIT.md` §15.4）：要点图就用 wantImage 让它存成 png，
+            // 把路径带回来；成品图本身不跨进程传。
+            CaptureOutcome? outcome = CaptureSession.TryCapture(null, out var exit, wantImage: true);
+            if (outcome?.File is not { Length: > 0 } file)
             {
                 // 「交给录屏」不是取消：那一步本来就没有图，别写成用户取消
                 AppLog.Info("Probe", exit == CaptureSession.CaptureExit.Recording
@@ -84,8 +75,7 @@ internal static class ScreenshotProbe
                 return new VarValue { Text = "", Flag = false };
             }
 
-            string file = ImageLibrary.SaveCapture(result.Image);
-            var area = result.Area;
+            var area = outcome.Area;
             AppLog.Info("Probe", $"截图 · 交互框选：{area.X},{area.Y} · {area.Width} × {area.Height} → {file}");
             return VarValue.FromRegion(area.X, area.Y, area.Width, area.Height, file);
         }

@@ -47,9 +47,21 @@ internal static class KeyboardHook
                 break;
             }
         }
-        if (pending == 0) return;
+        ArmRelease(pending);
+    }
 
-        HookDispatcher.Post(() => _releaseVk = pending);
+    /// <summary>
+    /// 直接指定「抬起要吞掉」的那个键（状态在别处已经采样过）。
+    /// </summary>
+    /// <remarks>
+    /// 窗口在宿主、钩子在这里（<c>docs/PROCESS_SPLIT.md</c> §15.4）：宿主关窗那一刻用
+    /// <see cref="Win32.GetAsyncKeyState"/> 采样，再经链路把键号送过来，由这里只做「上膛」。
+    /// 别让它再采样一次——跨进程要几毫秒，手快的时候键已经抬起了。
+    /// </remarks>
+    public static void ArmRelease(int vk)
+    {
+        if (vk == 0) return;
+        HookDispatcher.Post(() => _releaseVk = vk);
     }
 
     /// <summary>安装钩子。必须在 <see cref="HookDispatcher"/> 线程上调用。</summary>

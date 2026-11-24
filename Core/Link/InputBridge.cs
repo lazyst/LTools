@@ -36,4 +36,18 @@ internal static class InputBridge
         try { _link?.NotifyAsync(LinkMethods.EventPickerActive, new PickerActiveEvent(true)); }
         catch (Exception ex) { AppLog.Warn("Link", $"补发点选器状态失败：{ex.Message}"); }
     }
+
+    /// <summary>
+    /// 「退出那一下的抬起要吞掉」：采样在宿主这边（窗口刚关、键还按着），钩子在提权进程那边上膛。
+    /// </summary>
+    /// <remarks>
+    /// 遮罩 / 覆盖层都是「按下就走」：窗口一关，配对的那一下抬起会落到光标下面的程序上
+    /// （资源管理器弹右键菜单、对话框像被按了一下回车）。宿主里没有钩子，只能把**采样结果**送过去——
+    /// 让对方重新采样会在跨进程的几毫秒里读成「已经松开」而漏吞。
+    /// </remarks>
+    public static void Swallow(SwallowInputEvent sampled)
+    {
+        try { _link?.NotifyAsync(LinkMethods.EventInputSwallow, sampled); }
+        catch (Exception ex) { AppLog.Warn("Link", $"通知吞掉退出按键失败：{ex.Message}"); }
+    }
 }

@@ -305,9 +305,18 @@ internal static class MouseHook
     /// </remarks>
     public static void SwallowPendingReleases()
     {
-        bool left = IsDown(Win32.VkLbutton);
-        bool right = IsDown(Win32.VkRbutton);
-        bool middle = IsDown(Win32.VkMbutton);
+        SwallowReleases(IsDown(Win32.VkLbutton), IsDown(Win32.VkRbutton), IsDown(Win32.VkMbutton));
+    }
+
+    /// <summary>
+    /// 直接指定哪几个键「抬起要吞掉」（状态在别处已经采样过）。
+    /// </summary>
+    /// <remarks>
+    /// 遮罩在宿主、钩子在这里：宿主关窗那一刻采样，经链路送过来。别在这里重新采样——跨进程要几毫秒，
+    /// 手快的时候键已经抬起了（同 <see cref="KeyboardHook.ArmRelease"/>）。
+    /// </remarks>
+    public static void SwallowReleases(bool left, bool right, bool middle)
+    {
         if (!left && !right && !middle) return;
 
         HookDispatcher.Post(() =>
