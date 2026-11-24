@@ -207,6 +207,10 @@ public partial class App : Application
                 }));
                 break;
 
+            case LinkMethods.EventPanelClose:
+                Dispatcher.BeginInvoke(new Action(() => Features.SuperPanel.Close()));
+                break;
+
             case LinkMethods.EventActionsChanged:
                 _ = ReloadAndRefreshAsync();
                 break;

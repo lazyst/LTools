@@ -560,4 +560,14 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`--selftest` 393 用例 / 18599 断言（面板状态往返 / 开关两态）；`LinkSmoke` 60；
   `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
 
+**2026-11-24 · P1b-12 点悬浮按钮也关面板（`panel.close`）**
+
+- 面板搬进宿主后，「点在悬浮按钮上」不再算「点到面板外面」（悬浮窗是 `WS_EX_NOACTIVATE`，
+  点它不会让宿主面板失去激活）——旧行为（关面板再跑动作）靠的是提权进程钩子按矩形判定。
+- 补 `panel.close` 事件：`FloatWindow.RunAction` 先 `PanelLauncher.Close()` 再跑动作。
+  **不排队**（宿主没连上就丢）：排到连上再关会关掉后面新开的那一扇面板。
+- 真机实测：宿主面板开着 → 右键磁贴「悬浮此动作」→ 面板保持不变（标签翻成「取消悬浮」）→
+  点悬浮按钮 → 动作开始跑（日志 `点击悬浮按钮` + `[run-…] 开始执行`）且**宿主那边面板窗口数变 0**。
+- 回归：`--selftest` 393 用例 / 18599 断言；`LinkSmoke` 60；`PanelHostSmoke` 11。
+
 

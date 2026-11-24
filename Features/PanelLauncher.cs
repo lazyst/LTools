@@ -27,4 +27,10 @@ internal static class PanelLauncher
 
     /// <summary>显示面板并停在「暂存区」（「在暂存区编辑…」、暂存区里的入口）。</summary>
     public static void ShowStash() => LinkWorker.RequestStash();
+
+    /// <summary>
+    /// 关掉面板（如果开着）。点悬浮按钮时用：那一下本来就算「点到面板外面」，
+    /// 以前由鼠标钩子按矩形判定，现在面板在宿主里，只能由点击方说一声。
+    /// </summary>
+    public static void Close() => LinkWorker.RequestClose();
 }

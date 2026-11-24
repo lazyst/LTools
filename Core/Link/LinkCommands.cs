@@ -53,6 +53,9 @@ internal static class LinkMethods
     /// <summary>面板状态变了（宿主 → 提权进程）：负载 <see cref="PanelStateEvent"/>。</summary>
     public const string EventPanelState = "panel.state";
 
+    /// <summary>关掉面板（点悬浮按钮时用：那一下算「点到面板外面」）。</summary>
+    public const string EventPanelClose = "panel.close";
+
     /// <summary>提权进程连上并握手完成（宿主收到后拉快照 / 重建界面）。</summary>
     public const string EventClientReady = "client.ready";
 

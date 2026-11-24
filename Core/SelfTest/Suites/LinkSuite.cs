@@ -151,6 +151,7 @@ internal static class LinkSuite
             LinkMethods.RunAction, LinkMethods.OpenWindow, LinkMethods.ActionOp,
             LinkMethods.EventPanelShow, LinkMethods.EventPanelToggle, LinkMethods.EventClientReady,
             LinkMethods.EventActionsChanged, LinkMethods.EventPanelStash, LinkMethods.EventPanelState,
+            LinkMethods.EventPanelClose,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");

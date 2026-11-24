@@ -83,6 +83,16 @@ internal static class LinkWorker
         FlushPending();
     }
 
+    /// <summary>
+    /// 让宿主关掉面板（点悬浮按钮那一下算「点到面板外面」）。
+    /// **不排队**：宿主没连上时直接丢掉——等连上再关会关掉后面新开的那一扇。
+    /// </summary>
+    public static void RequestClose()
+    {
+        if (Volatile.Read(ref _client) is not { IsOpen: true }) return;
+        _ = NotifyAsync(LinkMethods.EventPanelClose);
+    }
+
     private sealed record PendingShow(IntPtr Hwnd, int X, int Y);
 
     private static PendingShow? _pendingShow;
