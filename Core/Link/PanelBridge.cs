@@ -1,23 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using LTools.Config;
 using LTools.Core;
 
 namespace LTools.Core.Link;
-
-/// <summary>面板在哪儿开：普通权限宿主（默认）还是退回提权进程。</summary>
-/// <remarks>
-/// 面板自 2026-11-24 起默认在**普通权限宿主**（`ShareHost.exe`）里开：它是 asInvoker 的界面进程，
-/// 拿得到资源管理器的拖放，也能出现在普通权限窗口层；提权进程只负责真正执行动作（`run.action`）。
-/// 设环境变量 <c>LTOOLS_PANEL_HOST=0</c> 可临时退回「面板在提权进程」的老行为——留这一版做回退口，
-/// 下一版连它一起删掉。见 <c>docs/PROCESS_SPLIT.md</c> §14。
-/// </remarks>
-internal static class PanelRouting
-{
-    /// <summary>面板是否交给普通权限宿主（默认是；<c>LTOOLS_PANEL_HOST=0</c> 时否）。</summary>
-    public static bool Enabled { get; } =
-        !string.Equals(Environment.GetEnvironmentVariable("LTOOLS_PANEL_HOST"), "0", StringComparison.Ordinal);
-}
 
 /// <summary>
 /// 宿主侧（普通权限）：面板里的动作**绝不能在宿主里执行**，一律转给提权进程。
@@ -178,7 +166,6 @@ internal static class PanelHostBridge
     }
 
     // —— 悬浮状态（宿主里没有悬浮库，菜单标签靠快照里那一份） ——
-
     private static HashSet<string> _floating = new(StringComparer.Ordinal);
 
     /// <summary>记下「哪些动作正在悬浮」（宿主拿到 <c>panel.snapshot</c> 时灌进来）。</summary>
@@ -190,4 +177,14 @@ internal static class PanelHostBridge
     /// <summary>这个动作在提权进程里有没有悬浮项（菜单据此显示「悬浮 / 取消悬浮」）。</summary>
     public static bool IsFloating(string? actionId) =>
         !string.IsNullOrEmpty(actionId) && Volatile.Read(ref _floating).Contains(actionId);
+
+    // —— 面板状态（提权进程这一侧：面板开在宿主里，`MouseHook` 要据此让开「长按右键」手势） ——
+
+    private static int _remotePanelOpen;
+
+    /// <summary>宿主里的面板开着（由宿主推 <c>panel.state</c>）。</summary>
+    public static bool RemotePanelOpen => Volatile.Read(ref _remotePanelOpen) != 0;
+
+    /// <summary>记下宿主那扇面板的开 / 关（断开时按关处理）。</summary>
+    public static void SetRemotePanelOpen(bool open) => Volatile.Write(ref _remotePanelOpen, open ? 1 : 0);
 }

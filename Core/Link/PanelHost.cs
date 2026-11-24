@@ -169,7 +169,6 @@ internal static class PanelHost
             return;
         }
 
-        SuperPanel.Close();
         _ = Task.Run(() =>
         {
             try
@@ -185,24 +184,19 @@ internal static class PanelHost
         });
     }
 
-    /// <summary>暂存区的一个写操作：先收起面板（模态框 / 编辑器不该被 Topmost 面板盖住），再执行。</summary>
-    private static void StashCall(Action<string> action, string id)
-    {
-        SuperPanel.Close();
-        action(id);
-    }
+    /// <summary>暂存区的一个写操作：面板在宿主里（宿主已经收起），提权侧直接执行。</summary>
+    private static void StashCall(Action<string> action, string id) => action(id);
 
-    /// <summary>把动作复制进暂存区并打开暂存区（草稿要写 <c>staging/</c>，只能在提权进程做）。</summary>
+    /// <summary>把动作复制进暂存区并让宿主切到暂存区页（草稿要写 <c>staging/</c>，只能在提权进程做）。</summary>
     private static void EditInStash(string actionId)
     {
         ActionDto? action = ActionRegistry.FindById(actionId);
         if (action == null) return;
 
-        SuperPanel.Close();
         try
         {
             DraftStore.Create(action.Name, action.Program?.Description, actionId, "user");
-            SuperPanel.ShowStash();
+            PanelLauncher.ShowStash();
             ToastService.Show("已复制到暂存区；改完再决定是否覆盖原动作", action.Name, 3000, ToastKind.success);
         }
         catch (Exception ex)

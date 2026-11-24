@@ -181,12 +181,9 @@ public partial class App : Application
         _ = Task.Run(McpServer.Apply);
         // 局域网共享：上次开着就把助手进程拉起来（窗口保持隐藏）。只读 settings 域，不扫动作目录。
         // 共享窗口单独跑在 asInvoker 的 ShareHost.exe 里——主程序提权后收不到 Explorer 的拖放。
-        _ = Task.Run(() =>
-        {
-            // 面板默认在普通权限宿主里开（面板搬家，见 docs/PROCESS_SPLIT.md §14），宿主必须随主程序常驻；
-            // 它同时是共享助手，所以共享开着时同样要拉起。
-            if (PanelRouting.Enabled || ConfigBundle.ReadSettings(cfgPath).Share.Running) ShareHelper.Start();
-        });
+        // 界面宿主：面板 / 共享窗口都在普通权限的 ShareHost.exe 里（主程序提权后收不到拖放、
+        // 也不该让界面跟着提权）。它随主程序常驻，窗口保持隐藏；主程序退出时 Stop 掉。
+        _ = Task.Run(ShareHelper.Start);
         // 录屏写的是分片 MP4：进程被杀 / 断电时已经落下的分片还能播，
         // 启动时把它们重新封装、收进采集历史（重活，后台跑，别拖住启动）。
         _ = Task.Run(RecordRecovery.Sweep);

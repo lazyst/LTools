@@ -38,6 +38,7 @@ public partial class App : Application
     // 与提权主程序的链路（过渡期：宿主做服务端、提权进程连上来；拉面板快照验证 + 为下一步渲染做准备）。
     private LinkServer? _link;
     private PanelSnapshot? _snapshot;
+    private bool _panelStateSent;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -138,6 +139,10 @@ public partial class App : Application
             server.ClientChanged += OnLinkClientChanged;
             server.Start();
 
+            // 面板开 / 关要告诉提权进程：它的鼠标钩子靠这个让开「长按右键唤起面板」手势
+            // （面板是本进程的窗口，钩子进程看不到它）。
+            Features.SuperPanel.StateChanged += PushPanelState;
+
             AppLog.Info("ShareHost", $"链路服务端已启动（{LinkToken.PipeName}），等主程序连上");
         }
         catch (Exception ex)
@@ -146,8 +151,27 @@ public partial class App : Application
         }
     }
 
-    private static void OnLinkClientChanged(bool connected) =>
+    private void OnLinkClientChanged(bool connected)
+    {
         AppLog.Info("ShareHost", connected ? "主程序已连接" : "主程序已断开");
+        if (!connected) { _panelStateSent = false; return; }
+
+        // 新连上的客户端还不知道面板开没开：补一次（关着时不必发，它的默认就是关）。
+        _panelStateSent = false;
+        PushPanelState();
+    }
+
+    /// <summary>面板状态变了就推给提权进程（只在开 / 关真的变了时才发，别每次激活都刷）。</summary>
+    private void PushPanelState()
+    {
+        LinkServer? server = Volatile.Read(ref _link);
+        if (server == null || !server.IsConnected) return;
+
+        bool open = Features.SuperPanel.IsOpen;
+        if (open == _panelStateSent) return;
+        _panelStateSent = open;
+        _ = server.NotifyAsync(LinkMethods.EventPanelState, new PanelStateEvent(open));
+    }
 
     private void OnLinkEvent(LinkMessage message)
     {
@@ -172,6 +196,14 @@ public partial class App : Application
                 {
                     AppLog.Info("ShareHost", "切换面板（普通权限窗口）");
                     Features.SuperPanel.Toggle();
+                }));
+                break;
+
+            case LinkMethods.EventPanelStash:
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    AppLog.Info("ShareHost", "显示面板 · 暂存区");
+                    Features.SuperPanel.ShowStash();
                 }));
                 break;
 

@@ -150,10 +150,19 @@ internal static class LinkSuite
             LinkMethods.ActionDelete, LinkMethods.ActionDuplicate,
             LinkMethods.RunAction, LinkMethods.OpenWindow, LinkMethods.ActionOp,
             LinkMethods.EventPanelShow, LinkMethods.EventPanelToggle, LinkMethods.EventClientReady,
-            LinkMethods.EventActionsChanged,
+            LinkMethods.EventActionsChanged, LinkMethods.EventPanelStash, LinkMethods.EventPanelState,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
+
+        // 面板状态：宿主把「开着 / 关了」推给提权进程的钩子。
+        PanelHostBridge.SetRemotePanelOpen(true);
+        Check.True(PanelHostBridge.RemotePanelOpen, "宿主面板状态：开");
+        PanelHostBridge.SetRemotePanelOpen(false);
+        Check.False(PanelHostBridge.RemotePanelOpen, "宿主面板状态：关");
+        PanelStateEvent? state = RoundTrip(LinkMessage.Request(13, LinkMethods.EventPanelState,
+            new PanelStateEvent(true))).Read<PanelStateEvent>();
+        Check.True(state?.Open == true, "面板状态往返：开着");
 
         // 面板操作名也互不相同（提权侧 switch 按字符串分发，重名会让一个操作永远到不了）。
         var ops = new[]

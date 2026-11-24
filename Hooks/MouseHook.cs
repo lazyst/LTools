@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using LTools.Core;
+using LTools.Core.Link;
 using LTools.Features;
 using LTools.Features.CapturePro;
 using LTools.Features.Floating;
@@ -217,8 +218,9 @@ internal static class MouseHook
                         if (floating.MenuOpen) break;
                     }
                     // 裸右键长按手势：开关开 且 面板未打开时，整组吞掉 down/up。
+                    // 面板开在宿主进程里，钩子这边靠宿主推来的状态（`panel.state`）判断。
                     // 短按 → 停表 + 注入一次原生右键 down+up 还原菜单（注入事件被本钩子开头忽略）。
-                    if (AppState.IsSuperPanelEnabled && !panel.Open)
+                    if (AppState.IsSuperPanelEnabled && !panel.Open && !PanelHostBridge.RemotePanelOpen)
                     {
                         if ((int)wParam == Win32.WmRbuttondown)
                         {

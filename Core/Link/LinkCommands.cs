@@ -47,6 +47,12 @@ internal static class LinkMethods
     /// <summary>切换面板显示 / 关闭（CapsLock+T 这类「开 / 关」入口）。</summary>
     public const string EventPanelToggle = "panel.toggle";
 
+    /// <summary>显示面板并停在「暂存区」页（「在暂存区编辑…」）。</summary>
+    public const string EventPanelStash = "panel.stash";
+
+    /// <summary>面板状态变了（宿主 → 提权进程）：负载 <see cref="PanelStateEvent"/>。</summary>
+    public const string EventPanelState = "panel.state";
+
     /// <summary>提权进程连上并握手完成（宿主收到后拉快照 / 重建界面）。</summary>
     public const string EventClientReady = "client.ready";
 
@@ -72,6 +78,9 @@ internal sealed record ActionIdRequest(string Id);
 /// 光标坐标是唤起瞬间的屏幕物理像素（面板据此定位；0/0 表示让宿主自己取当前光标）。
 /// </summary>
 internal sealed record PanelShowRequest(long Hwnd, int X, int Y);
+
+/// <summary>面板状态（宿主 → 提权进程）：钩子据此决定要不要起「长按右键唤起面板」手势。</summary>
+internal sealed record PanelStateEvent(bool Open);
 
 /// <summary>
 /// 执行一个动作 / 内置功能。引用形如 <c>01abc…</c>（动作 Id）或 <c>common.capture</c>（内置功能）。

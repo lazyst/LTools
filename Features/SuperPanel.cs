@@ -54,12 +54,16 @@ internal static class SuperPanel
     /// 窗口矩形不进镜像（钩子自己按 HWND 调 GetWindowRect），所以拖动 / 缩放不必推送。
     /// 面板建窗、关闭、钉住、菜单开合、子菜单展开、交互计数变化、激活态变化都要调一次。
     /// </summary>
+    /// <summary>面板状态发布给钩子之后触发（宿主据此把「开着 / 关了」告诉提权进程的钩子）。</summary>
+    internal static event Action? StateChanged;
+
     internal static void PublishMirror()
     {
         var w = _window;
         if (w == null)
         {
             HookMirror.PublishPanel(HookMirror.PanelSnapshot.Empty);
+            StateChanged?.Invoke();
             return;
         }
         IntPtr hwnd = IntPtr.Zero;
@@ -74,6 +78,7 @@ internal static class SuperPanel
             Hwnd = hwnd,
             MenuRects = w.OpenMenuRects(),
         });
+        StateChanged?.Invoke();
     }
 
     /// <summary>面板上是否开着可见的子对话框（<c>Owner = 面板</c>）。</summary>

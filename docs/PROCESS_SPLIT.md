@@ -540,4 +540,24 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`--selftest` 393 用例 / 18593 断言；`LinkSmoke` 60；`PanelHostSmoke` 11；
   `ShareSmoke -- --explorer --helper` 103。
 
+**2026-11-24 · P1b-11 面板只有一个家：删掉 `PanelRouting`**
+
+- `PanelRouting`（`LTOOLS_PANEL_HOST`）整体删除。`PanelLauncher` 只转发：
+  `LinkWorker.RequestShow` / `RequestToggle` / `RequestStash`——宿主还没连上（主程序刚启动那几秒）
+  就把这一下**记着，连上补发**（同一件事只留最后一次），不再在提权进程里开第二份面板。
+- 宿主由 `App.OnStartup` **无条件**拉起（`ShareHelper.Start()`，窗口隐藏；它同时是共享助手），
+  主程序退出时 `ShareHelper.Stop()` 一并停掉。
+- **点击外部关闭改由宿主承担**：面板在宿主里是普通顶层窗口，`SuperPanelWindow.OnWindowDeactivated`
+  关（菜单 / 面板对话框打开期间不关，排到 Background 再确认一次激活态）。
+  以前这条由提权进程的鼠标钩子按面板矩形判定——钩子看不到宿主进程的窗口。
+- 钩子那边的「长按右键唤起面板」手势要知道面板开着：宿主在面板状态变化时推 `panel.state`
+  （`PanelStateEvent(Open)`，只在开 / 关真的变了时发，新客户端连上补一次），提权侧存
+  `PanelHostBridge.RemotePanelOpen`，`MouseHook` 的手势分支据此让开。
+- 「在暂存区编辑…」：提权侧建完草稿发 `panel.stash` 事件，宿主 `SuperPanel.ShowStash()` 切到暂存区页
+  （以前是提权进程自己开面板）。
+- 真机实测（宿主面板 + 真鼠标）：右键磁贴弹菜单时面板不关；点菜单里的「复制名称」面板也不关；
+  点面板外面（另一个窗口）第一次点击就把面板关掉。
+- 回归：`--selftest` 393 用例 / 18599 断言（面板状态往返 / 开关两态）；`LinkSmoke` 60；
+  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
+
 

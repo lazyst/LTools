@@ -52,13 +52,12 @@ internal static class LinkWorker
         Volatile.Read(ref _client)?.NotifyAsync(method, payload, cancellationToken) ?? Task.CompletedTask;
 
     /// <summary>
-    /// 把「显示面板」转给宿主（迁移开关打开、且宿主连着时）。返回 false = 调用方自己开面板。
-    /// 光标坐标由这里取，宿主拿到的就是唤起瞬间的位置。
+    /// 把「显示面板」交给宿主。宿主还没连上（主程序刚启动那几秒）就**记着**，连上后补发——
+    /// 面板只有一个家（普通权限宿主），提权进程不再自己开一份。
+    /// 光标坐标在这里取，宿主拿到的就是唤起瞬间的位置。
     /// </summary>
-    public static bool TryShowPanel(IntPtr contextHwnd)
+    public static void RequestShow(IntPtr contextHwnd)
     {
-        if (Volatile.Read(ref _client) is not { IsOpen: true }) return false;
-
         int x = 0, y = 0;
         try
         {
@@ -66,16 +65,43 @@ internal static class LinkWorker
         }
         catch { /* 取不到就让宿主自己定位 */ }
 
-        _ = NotifyAsync(LinkMethods.EventPanelShow, new PanelShowRequest(contextHwnd.ToInt64(), x, y));
-        return true;
+        Interlocked.Exchange(ref _pendingShow, new PendingShow(contextHwnd, x, y));
+        FlushPending();
     }
 
-    /// <summary>把「开 / 关面板」转给宿主（返回 false = 调用方自己切换）。</summary>
-    public static bool TryTogglePanel()
+    /// <summary>把「开 / 关面板」交给宿主；没连上同样记着，连上后补发。</summary>
+    public static void RequestToggle()
     {
-        if (Volatile.Read(ref _client) is not { IsOpen: true }) return false;
-        _ = NotifyAsync(LinkMethods.EventPanelToggle);
-        return true;
+        Interlocked.Exchange(ref _pendingToggle, 1);
+        FlushPending();
+    }
+
+    /// <summary>把「显示面板并停在暂存区」交给宿主（同样可以在没连上时先记着）。</summary>
+    public static void RequestStash()
+    {
+        Interlocked.Exchange(ref _pendingStash, 1);
+        FlushPending();
+    }
+
+    private sealed record PendingShow(IntPtr Hwnd, int X, int Y);
+
+    private static PendingShow? _pendingShow;
+    private static int _pendingToggle;
+    private static int _pendingStash;
+
+    /// <summary>宿主连上了 / 刚被要求：把攒着的那一次补发出去（同一件事只留最后一次）。</summary>
+    private static void FlushPending()
+    {
+        if (Volatile.Read(ref _client) is not { IsOpen: true }) return;
+
+        if (Interlocked.Exchange(ref _pendingToggle, 0) != 0)
+            _ = NotifyAsync(LinkMethods.EventPanelToggle);
+
+        if (Interlocked.Exchange(ref _pendingStash, 0) != 0)
+            _ = NotifyAsync(LinkMethods.EventPanelStash);
+
+        if (Interlocked.Exchange(ref _pendingShow, null) is { } show)
+            _ = NotifyAsync(LinkMethods.EventPanelShow, new PanelShowRequest(show.Hwnd.ToInt64(), show.X, show.Y));
     }
 
     /// <summary>停止重连并断开（幂等）。不等后台任务退出。</summary>
@@ -88,6 +114,20 @@ internal static class LinkWorker
         if (client != null) _ = client.DisposeAsync();
     }
 
+    /// <summary>宿主发来的事件：目前只有面板状态（钩子靠它让开「长按右键」手势）。</summary>
+    private static void HandleHostEvent(LinkMessage message)
+    {
+        try
+        {
+            if (message.Method == LinkMethods.EventPanelState && message.Read<PanelStateEvent>() is { } state)
+                PanelHostBridge.SetRemotePanelOpen(state.Open);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Link", $"处理宿主事件失败（{message.Method}）：{ex.Message}");
+        }
+    }
+
     private static async Task RunAsync(CancellationToken token)
     {
         int delay = 250;
@@ -97,7 +137,7 @@ internal static class LinkWorker
             LinkClient? client = null;
             try
             {
-                // 令牌由宿主写（它是服务端）。还没写就等一等，别猜。
+                // 令牌由提权进程写（宿主只读）：还没写就等一等，别猜。
                 string? secret = LinkToken.Read();
                 if (secret == null)
                 {
@@ -106,11 +146,15 @@ internal static class LinkWorker
                 }
 
                 client = await LinkClient.ConnectAsync(LinkToken.PipeName, secret, "worker",
-                    onEvent: null, timeoutMs: 800, cancellationToken: token, handler: PanelHost.HandleAsync)
+                    onEvent: HandleHostEvent, timeoutMs: 800, cancellationToken: token,
+                    handler: PanelHost.HandleAsync)
                     .ConfigureAwait(false);
 
                 Volatile.Write(ref _client, client);
                 delay = 250;
+
+                // 连上之前按的「显示 / 切换面板」不能丢：补发出去（面板只有一个家）。
+                FlushPending();
 
                 try { await client.NotifyAsync(LinkMethods.EventClientReady, cancellationToken: token).ConfigureAwait(false); }
                 catch (Exception ex) { AppLog.Warn("Link", $"通知宿主就绪失败：{ex.Message}"); }
@@ -133,6 +177,7 @@ internal static class LinkWorker
                 if (client != null)
                 {
                     Interlocked.CompareExchange(ref _client, null, client);
+                    PanelHostBridge.SetRemotePanelOpen(false);   // 断开就当面板没了
                     try { await client.DisposeAsync().ConfigureAwait(false); } catch { /* 已断开 */ }
                 }
             }
