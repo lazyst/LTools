@@ -656,6 +656,27 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`--selftest` 393 用例 / 18665 断言（新增 `data.write` DTO 往返 + 白名单 8 条 + 真实落盘 3 条）；
   `LinkSmoke` 70（新增一条 `data.write` 反向请求）。
 
+**2026-11-24 · P2-M3-1 速记搬进普通权限宿主（窗口 + `速记/` 一起翻）**
+
+- 窗口：`QuickNote.Toggle()` 现在看进程身份——宿主（`ConfigStore.ReadOnly`）开本地窗口；
+  提权进程只发 `note.toggle`（`LinkWorker.RequestNote()`，没连上先记着、连上补发，与面板同一套）。
+  托盘菜单、`CapsLock+N`、面板磁贴（内置功能 `ltools.note`）全都走这一条，**不再有第二个家**。
+- 域：`速记/` 的写者归宿主。`data.noteWrite` 动作单元在提权进程里跑，但写走 `note.write`
+  （`NoteBridge` → 宿主 `NoteHost` → `NoteActions.Write`）。读（`data.noteRead`）仍在本地读——
+  两边读的是同一批文件，读不需要跨进程。
+- 启动维护（建目录 / `MigrateRootScatteredNotes` / `MigrateTxtToMd` / `CleanDraftAttachments` /
+  `CollectAttachmentGarbage`）跟着窗口搬到宿主（`ShareHost.LoadReadOnlyConfig`）；
+  提权进程 `App.OnStartup` 不再 `QuickNote.Initialize`。
+- 失败语义：转出去了但宿主报错**直接抛错、不回退**（可能已经写了一半，再本地写会多出一条速记 / 重复图片）；
+  只有「没连上」才走本地写（降级）。
+- 真机实测（宿主 pid 5456 / 提权 7680）：
+  - MCP `staging_run` 跑 `data.noteWrite` → 宿主日志 `[Note] 替主程序写入速记：…\速记\M3-1 冒烟\2026-11-24 M3-1 冒烟.md`，
+    文件真的落在 `速记/M3-1 冒烟/`（65 字节）；
+  - 托盘右键 →「速记 (CapsLock+N)」→ 窗口 `pid=5456`（**宿主**），列表渲染正常；
+    再点一次 → 窗口关闭（`EnumWindows` 里「速记」归零），提权进程从头到尾没建过速记窗口。
+- 回归：`--selftest` 393 用例 / 18682 断言（新增 `note.toggle` / `note.write` 方法名 + 写请求 / 结果 / 失败原因往返）；
+  `LinkSmoke` 72（新增一条 `note.write` 反向请求）；`PanelHostSmoke` 11；`ShareSmoke` 103。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -700,25 +721,27 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 
 | 域 | 翻给谁 | 备注 |
 |---|---|---|
-| `configs/*.json`（七个域文件，含 `panel.json` / `macros.json` 元数据） | 宿主 | **M2-a 已完成**：机制是「只翻落盘那一步」——`ConfigBundle.RemoteWriter` → `data.write` → `DataHost` 写；名字走 `DomainFiles` 白名单 |
-| `actions/` `subactions/` `staging/` `resources/` | 宿主 | M2-b：编辑器 / 暂存区 / 孤儿回收都跟过去（`ActionStore.SaveAll` / `SubActionStore` / `DraftStore` 的落盘同样转交，宿主这边维护唯一内存副本） |
-| `速记/` `captures/` | 宿主 | 纯用户资产，与权限无关；M2-c |
+| `configs/*.json`（七个域文件，含 `panel.json` / `macros.json` 元数据） | 宿主 | **已完成（M2-a）**：只翻落盘那一步——`ConfigBundle.RemoteWriter` → `data.write` → `DataHost` 写；名字走 `DomainFiles` 白名单 |
+| `速记/` | 宿主 | **已完成（M3-1，跟着速记窗口一起翻）**：`data.noteWrite` 走 `note.write`；读仍在本地 |
+| `actions/` `subactions/` `staging/` `resources/` | 宿主 | **跟着窗口走**：编辑器 / 暂存区 / AI 采纳搬进宿主时（M3-6）一起翻——写入口自然落到宿主，提权进程这边再改成转交。**不单独做「目录文件系统 RPC」**：硬链接、搬 trash、孤儿回收转过去只会把「一个写者」做成空话 |
+| `captures/` | 宿主 | 跟着截图 Pro / 采集历史搬（M3-3 / M3-5） |
 | 启动期的播种 / 修引用 / 孤儿清理（`HotkeySeeding` / `RepairReferences` / `OrphanFiles`） | 宿主 | M2-c：跟着「宿主是写者」一起搬，执行器启动时改成只读 |
 | `macros/<id>.json`（录制事件本体） | 执行器 | 录制只能在那儿；录完发 `macro.recorded` 事件，由宿主挂动作 + 放面板 |
 | `state/run-history.jsonl` `trigger-history` `values` `auto-trigger-last-start` | 执行器 | 它才是产生者；宿主只读展示 |
 | `logs/` | 分家 | `ltools-*`（宿主）/ `ltools-worker-*`（执行器），`LogFiles` 口径一起改 |
 
-- **一个域一个写者**：翻转按 `M2-a / M2-b / M2-c` 小步做，每一步只翻一批，另一侧保留只读守卫。
-- **翻转的是「谁落盘」，不是「谁决定内容」**：调用点照旧走 `ConfigStore` / `*Store.Modify` / `ConfigIO`，
+- **一个域一个写者**：单文件族（`configs/`）用「只翻落盘那一步」的方式提前翻；目录族（`actions/` 等）
+  **跟着它的界面一起搬家**——界面搬过去时写入口自然就在宿主了，不必再造一套文件系统 RPC。
+- **翻转的是「谁落盘」，不是「谁决定内容」**：`configs/` 的调用点照旧走 `ConfigStore` / `*Store.Modify` / `ConfigIO`，
   落盘时转给宿主。这样设置 / 编辑器搬进宿主时不必为每个控件造一条 RPC（`panel.op` 那种铺法是过渡期手段，不要复制）。
 - 宿主成为某个域的属主后，才做「谁改谁重读」：写者写完发 `data.changed`，读者 `Reload()`。
-  此刻宿主还不需要重读（属主仍是执行器）。
+  此刻宿主还不用重读 `configs`（属主仍是执行器）；`速记/` 也不需要（只有宿主在写）。
 
 ### 15.4 M3 · 窗口搬迁顺序（每个都是一次「搬 + 事件收尾 + 真机点一遍」）
 
 | # | 窗口 | 除了搬还要做的 |
 |---|---|---|
-| 1 | 速记 `QuickNote` | `速记/` 写权（M2）；托盘 / `CapsLock+N` → `open.window note` |
+| 1 | 速记 `QuickNote` | **已完成（M3-1）**：`速记/` 写权翻给宿主、`note.toggle` / `note.write` 就绪、托盘 / `CapsLock+N` / 面板磁贴都只转意图 |
 | 2 | 辅助工具 `InfoHelperWindow` | 取图 / 取色 / 选区走 M1 的 `ui.pick*` |
 | 3 | 采集历史 / 贴图管理 | `captures/` 写权；「重新编辑」要等覆盖层搬过去（步骤 5） |
 | 4 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页） | 各域写权 + 备份导入导出（`BackupService` 跟过去）、MCP 开关与令牌仍由执行器持有 → 留一条 `mcp.*` 命令 |

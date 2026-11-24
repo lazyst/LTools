@@ -107,11 +107,22 @@ internal static class LinkWorker
         _ = NotifyAsync(LinkMethods.EventPanelClose);
     }
 
+    /// <summary>
+    /// 把「开关速记」交给宿主（窗口只有一个家，见 <see cref="Features.QuickNote.Toggle"/>）。
+    /// 没连上同样先记着，连上后补发。
+    /// </summary>
+    public static void RequestNote()
+    {
+        Interlocked.Exchange(ref _pendingNote, 1);
+        FlushPending();
+    }
+
     private sealed record PendingShow(IntPtr Hwnd, int X, int Y);
 
     private static PendingShow? _pendingShow;
     private static int _pendingToggle;
     private static int _pendingStash;
+    private static int _pendingNote;
 
     /// <summary>宿主连上了 / 刚被要求：把攒着的那一次补发出去（同一件事只留最后一次）。</summary>
     private static void FlushPending()
@@ -126,6 +137,9 @@ internal static class LinkWorker
 
         if (Interlocked.Exchange(ref _pendingShow, null) is { } show)
             _ = NotifyAsync(LinkMethods.EventPanelShow, new PanelShowRequest(show.Hwnd.ToInt64(), show.X, show.Y));
+
+        if (Interlocked.Exchange(ref _pendingNote, 0) != 0)
+            _ = NotifyAsync(NoteMethods.Toggle);
     }
 
     /// <summary>停止重连并断开（幂等）。不等后台任务退出。</summary>

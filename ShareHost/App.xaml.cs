@@ -92,16 +92,34 @@ public partial class App : Application
         _ = Task.Run(LoadReadOnlyConfig);
     }
 
-    /// <summary>只读加载配置：宿主显示面板要用，但一个字都不写（写入归提权进程）。</summary>
+    /// <summary>
+    /// 只读加载配置（面板 / 动作只读，写入归提权进程），同时初始化宿主的资产。
+    /// </summary>
+    /// <remarks>
+    /// 宿主的写入面（<c>docs/PROCESS_SPLIT.md</c> §7 / §15）：<c>速记/</c> 完全归宿主；
+    /// <c>configs/*.json</c> 由宿主落盘（执行器转交，见 <see cref="DataHost"/>）；
+    /// <c>actions/</c> <c>subactions/</c> <c>staging/</c> 仍归执行器。
+    /// </remarks>
     private void LoadReadOnlyConfig()
     {
+        string anchor = ConfigLocator.FindPath();
         try
         {
-            ConfigStore.InitializeReadOnly(ConfigLocator.FindPath());
+            ConfigStore.InitializeReadOnly(anchor);
         }
         catch (Exception ex)
         {
             AppLog.Warn("ShareHost", $"只读加载配置失败：{ex.Message}");
+        }
+
+        // 速记窗口与「写速记」动作单元的落点都在宿主：建目录、迁移旧 .txt、清孤儿附件。
+        try
+        {
+            Features.QuickNote.Initialize(anchor);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("ShareHost", $"初始化速记失败：{ex.Message}");
         }
 
         // 面板可能在这一步之前就被唤起了（主程序启动后立刻按了唤起键）：配置读好之后重建一次，
@@ -157,7 +175,9 @@ public partial class App : Application
     /// </summary>
     private static Task<LinkMessage> HandleRequest(LinkChannel channel, LinkMessage request)
     {
-        Task<LinkMessage>? handled = UiHost.TryHandleAsync(request) ?? DataHost.TryHandleAsync(request);
+        Task<LinkMessage>? handled = UiHost.TryHandleAsync(request)
+            ?? DataHost.TryHandleAsync(request)
+            ?? NoteHost.TryHandleAsync(request);
         return handled ?? Task.FromResult(LinkMessage.Response(request, error: "宿主暂不支持该命令"));
     }
 
@@ -219,6 +239,14 @@ public partial class App : Application
 
             case LinkMethods.EventPanelClose:
                 Dispatcher.BeginInvoke(new Action(() => Features.SuperPanel.Close()));
+                break;
+
+            case NoteMethods.Toggle:
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    AppLog.Info("ShareHost", "开关速记（普通权限窗口）");
+                    Features.QuickNote.Toggle();
+                }));
                 break;
 
             case LinkMethods.EventActionsChanged:

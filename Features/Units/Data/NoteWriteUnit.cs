@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using LTools.Core.Actions;
+using LTools.Core.Link;
 
 namespace LTools.Features.Units.Data;
 
@@ -70,7 +71,7 @@ public sealed class NoteWriteUnit : IStepUnit
             if (paths.Length > 0) images = paths;
         }
 
-        var result = NoteActions.Write(new NoteWriteRequest
+        var request = new NoteWriteRequest
         {
             Body = body,
             Title = args.Text("title"),
@@ -79,17 +80,35 @@ public sealed class NoteWriteUnit : IStepUnit
             Target = args.Has("target") ? args.Text("target") : null,
             Stamp = args.Bool("stamp"),
             Images = images,
-        });
+        };
 
-        ctx.SetOutput("title", Value.FromText(result.Title));
-        ctx.SetOutput("time", Value.FromText(result.Time));
-        ctx.SetOutput("path", Value.FromText(result.File));
+        // 速记的写者是普通权限宿主（速记窗口也在那儿）：转过去；没连上再本地写。
+        NoteWriteReply? remote = NoteBridge.TryWrite(request, ctx.Token);
+
+        string title, time, file;
+        if (remote != null)
+        {
+            title = remote.Title ?? "";
+            time = remote.Time ?? "";
+            file = remote.File ?? "";
+        }
+        else
+        {
+            VarValue result = NoteActions.Write(request);
+            title = result.Title;
+            time = result.Time;
+            file = result.File;
+        }
+
+        ctx.SetOutput("title", Value.FromText(title));
+        ctx.SetOutput("time", Value.FromText(time));
+        ctx.SetOutput("path", Value.FromText(file));
         ctx.SetOutput("value", Value.Object(
-            ("text", Value.FromText(result.File)),
-            ("path", Value.FromText(result.File)),
-            ("file", Value.FromText(result.File)),
-            ("title", Value.FromText(result.Title)),
-            ("time", Value.FromText(result.Time)),
+            ("text", Value.FromText(file)),
+            ("path", Value.FromText(file)),
+            ("file", Value.FromText(file)),
+            ("title", Value.FromText(title)),
+            ("time", Value.FromText(time)),
             ("found", Value.FromBool(true))));
     }
 }

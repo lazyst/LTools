@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.RegularExpressions;
 using LTools.Config;
 using LTools.Core;
+using LTools.Core.Link;
 using LTools.Views;
 
 namespace LTools.Features;
@@ -17,7 +18,7 @@ internal static class QuickNote
     private static string? _iniPath;
     private static NoteRepository? _repo;
 
-    /// <summary>启动时初始化（算默认目录 + 建仓库 + 迁移根目录散落旧 .txt）。由 App 调用。</summary>
+    /// <summary>启动时初始化（算默认目录 + 建仓库 + 迁移根目录散落旧 .txt）。**只有宿主调**。</summary>
     public static void Initialize(string? iniPath)
     {
         _iniPath = iniPath;
@@ -39,8 +40,18 @@ internal static class QuickNote
     }
 
     /// <summary>CapsLock+N 切换：已打开则关闭，否则打开。</summary>
+    /// <remarks>
+    /// 窗口归**普通权限宿主**（<c>docs/PROCESS_SPLIT.md</c> §15.4 第 1 步）：提权进程只把「开关速记」转过去，
+    /// 宿主还没连上就先记着（连上补发）——不在提权进程里开第二份，否则 <c>速记/</c> 会有两个写者。
+    /// </remarks>
     public static void Toggle()
     {
+        if (!ConfigStore.ReadOnly)
+        {
+            LinkWorker.RequestNote();
+            return;
+        }
+
         if (_form != null)
         {
             _form.Close();

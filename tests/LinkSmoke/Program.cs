@@ -162,6 +162,9 @@ internal static class Program
                     return Task.FromResult(LinkMessage.Response(request, new UiPickPointReply(true, 1280, 720)));
                 if (request.Method == DataMethods.Write)
                     return Task.FromResult(LinkMessage.Response(request, new DataWriteReply(true)));
+                if (request.Method == NoteMethods.Write)
+                    return Task.FromResult(LinkMessage.Response(request,
+                        new NoteWriteReply(true, "标题", "2026-11-24 12:00", @"C:\速记\a.md", null)));
                 return Task.FromResult(LinkMessage.Response(request, error: "宿主不支持该请求"));
             });
         server.Start();
@@ -291,6 +294,12 @@ internal static class Program
             Check("配置写入请求发得出去（物理写者是宿主）", dataReply.Ok, dataReply.Error);
             Check("配置写入结果能回来", dataReply.Read<DataWriteReply>()?.Written == true,
                 dataReply.Read<DataWriteReply>()?.ToString());
+
+            LinkMessage noteReply = await client.RequestAsync(NoteMethods.Write,
+                new NoteWriteRequest { Body = "正文", Title = "标题" }, timeoutMs: 2000);
+            Check("写速记请求发得出去（写者是宿主）", noteReply.Ok, noteReply.Error);
+            Check("写速记结果能回来", noteReply.Read<NoteWriteReply>()?.Title == "标题",
+                noteReply.Read<NoteWriteReply>()?.ToString());
 
             // ---- 面板结构保存：宿主 Save 变成整份替换 ----
             Check("面板结构保存被接管", PanelHostBridge.TryPushPanel(new PanelConfig()));

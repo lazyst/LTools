@@ -155,7 +155,7 @@ public partial class App : Application
         // 宿主没起 / 出错时 DataBridge 返回 false，ConfigBundle 照旧本地写。
         DataBridge.Attach();
         FloatingLibrary.Initialize(cfgPath);
-        QuickNote.Initialize(cfgPath);
+        // 速记的窗口与 速记/ 的写者都在宿主（M3-1）：这里不再初始化仓库、也不建目录。
         ConfigHelper.Initialize(cfgPath);
         ResourceDir.Ensure();
         // 找图模板的两个子目录：images（程序生成、可回收）/ user（用户素材、永不回收）

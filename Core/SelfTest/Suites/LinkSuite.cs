@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using LTools.Config;
 using LTools.Core.Link;
+using LTools.Features;
 
 namespace LTools.Core.SelfTest;
 
@@ -234,6 +235,40 @@ internal static class LinkSuite
                 LinkMessage.Request(25, DataMethods.Write), new DataWriteReply(true)))
             .Read<DataWriteReply>();
         Check.True(wrote?.Written == true, "配置写入结果往返");
+
+        // —— 速记：窗口与 速记/ 的写者都在宿主（M3-1）——
+        Check.Equal("note.toggle", NoteMethods.Toggle, "速记开关方法名");
+        Check.Equal("note.write", NoteMethods.Write, "写速记方法名");
+
+        NoteWriteRequest? noteWrite = RoundTrip(LinkMessage.Request(26, NoteMethods.Write,
+            new NoteWriteRequest
+            {
+                Body = "正文",
+                Title = "标题",
+                Category = "分类",
+                Append = true,
+                Target = "x.md",
+                Stamp = false,
+                Images = new List<string> { @"C:\a.png" },
+            })).Read<NoteWriteRequest>();
+        Check.True(noteWrite is { Body: "正文", Title: "标题", Category: "分类", Append: true, Stamp: false },
+            "写速记的请求往返（正文 / 标题 / 分类 / 追加 / 时间标题）");
+        Check.Equal(1, noteWrite?.Images?.Count ?? -1, "写速记的请求往返（图片列表）");
+        Check.Equal(@"C:\a.png", noteWrite?.Images?[0], "写速记的请求往返（图片路径原样）");
+
+        NoteWriteReply? noteReply = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(27, NoteMethods.Write),
+                new NoteWriteReply(true, "标题", "2026-11-24 12:00", @"C:\速记\a.md", null)))
+            .Read<NoteWriteReply>();
+        Check.True(noteReply is { Ok: true, Title: "标题", Time: "2026-11-24 12:00" },
+            "写速记的结果往返");
+        Check.True(noteReply?.File?.EndsWith("a.md", StringComparison.Ordinal) == true, "写速记的结果带上文件路径");
+
+        NoteWriteReply? noteFail = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(28, NoteMethods.Write),
+                new NoteWriteReply(false, null, null, null, "源图不存在")))
+            .Read<NoteWriteReply>();
+        Check.True(noteFail is { Ok: false } && noteFail.Error == "源图不存在", "写速记的失败原因往返");
 
         // 白名单：只认七个域文件名，且不许带路径（这条链路只能改配置，不能写任意文件）。
         Check.True(ConfigBundle.DomainFiles.All(ConfigBundle.IsDomainFile), "七个域文件名都在白名单里");
