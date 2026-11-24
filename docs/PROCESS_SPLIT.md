@@ -677,6 +677,25 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`--selftest` 393 用例 / 18682 断言（新增 `note.toggle` / `note.write` 方法名 + 写请求 / 结果 / 失败原因往返）；
   `LinkSmoke` 72（新增一条 `note.write` 反向请求）；`PanelHostSmoke` 11；`ShareSmoke` 103。
 
+**2026-11-24 · P2-M3-2 辅助工具搬进宿主（顺带补上「点选器让钩子让路」的跨进程通道）**
+
+- 窗口：`InfoHelperWindow.Toggle()` 按进程身份分流——宿主开本地窗口，提权进程只发 `info.toggle`
+  （`LinkWorker.RequestInfoHelper()`，排队补发）。托盘「辅助工具…」还是同一条入口。
+- **踩到的坑**：全屏点选器（窗口 / 控件 / 框选 / 取色）靠 `MouseHook.SetWindowPickerActive(true/false)`
+  让「裸右键长按 = 面板」的手势让路。钩子在提权进程、点选器现在在宿主——宿主里调它等于调了个空函数，
+  遮罩会先被钩子吞掉右键、再注入一次，用户要连点两次才退得出去（这个 bug 以前修过一次）。
+  补一条状态通道：`Views/PickerHook.SetActive`（唯一入口）→ 宿主走 `InputBridge` 发
+  `input.picker` 事件 → 执行器 `HandleHostEvent` 调 `MouseHook.SetWindowPickerActive`。
+  断线重连时 `InputBridge.PushCurrent()` 补发当前状态。`PickerSession` / `CaptureSession` /
+  `GlobalCanvasWindow` 三处调用点统一改成 `PickerHook.SetActive`（截图 Pro 还在提权进程时它直接走本地）。
+- 真机实测（宿主 9764 / 提权 18612）：
+  - 托盘右键 →「辅助工具…」→ 窗口 `'辅助工具' pid=9764`（**宿主**），提权进程 0 个窗口；
+  - 窗口里点「窗口信息」→ 全屏遮罩 `'选择窗口' pid=9764`（宿主）且是前台；
+  - 在遮罩上**按住右键 800ms**（足以触发「长按右键 = 面板」）→ 遮罩关闭、焦点回到辅助工具，
+    **没有弹出面板**（宿主窗口数仍是 1）——说明钩子确实让路了，右键取消一次就生效。
+- 回归：`--selftest` 393 用例 / 18687 断言（新增 `input.picker` 方法名 + 状态往返）；
+  `LinkSmoke` 72；`PanelHostSmoke` 11；`ShareSmoke` 103。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -742,7 +761,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | # | 窗口 | 除了搬还要做的 |
 |---|---|---|
 | 1 | 速记 `QuickNote` | **已完成（M3-1）**：`速记/` 写权翻给宿主、`note.toggle` / `note.write` 就绪、托盘 / `CapsLock+N` / 面板磁贴都只转意图 |
-| 2 | 辅助工具 `InfoHelperWindow` | 取图 / 取色 / 选区走 M1 的 `ui.pick*` |
+| 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 采集历史 / 贴图管理 | `captures/` 写权；「重新编辑」要等覆盖层搬过去（步骤 5） |
 | 4 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页） | 各域写权 + 备份导入导出（`BackupService` 跟过去）、MCP 开关与令牌仍由执行器持有 → 留一条 `mcp.*` 命令 |
 | 5 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 / 录屏条） | 截图本身普通权限就够；覆盖层要能盖住**宿主自己的**窗口（现在是盖住提权进程的）；录屏的 ffmpeg / NAudio 在宿主跑；`common.capture` 从钩子触发时改成「执行器让宿主动手」 |

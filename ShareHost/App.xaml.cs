@@ -154,6 +154,7 @@ public partial class App : Application
 
             Volatile.Write(ref _link, server);
             PanelHostBridge.Attach(server);
+            InputBridge.Attach(server);
             server.ClientChanged += OnLinkClientChanged;
             server.Start();
 
@@ -189,6 +190,8 @@ public partial class App : Application
         // 新连上的客户端还不知道面板开没开：补一次（关着时不必发，它的默认就是关）。
         _panelStateSent = false;
         PushPanelState();
+        // 点选器状态同理（只在真有遮罩时补发）。
+        InputBridge.PushCurrent();
     }
 
     /// <summary>面板状态变了就推给提权进程（只在开 / 关真的变了时才发，别每次激活都刷）。</summary>
@@ -246,6 +249,14 @@ public partial class App : Application
                 {
                     AppLog.Info("ShareHost", "开关速记（普通权限窗口）");
                     Features.QuickNote.Toggle();
+                }));
+                break;
+
+            case LinkMethods.EventInfoHelper:
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    AppLog.Info("ShareHost", "开关辅助工具（普通权限窗口）");
+                    Views.InfoHelperWindow.Toggle();
                 }));
                 break;
 

@@ -154,7 +154,7 @@ public partial class GlobalCanvasWindow : Window
         // 画布开着时全局快捷键整体让路：工具字母键 / IME 打字要能落进画布
         HotkeyRegistry.Suspended = true;
         // 鼠标钩子的裸右键长按（面板）与边缘滚轮让路：画布上的右键 / 滚轮归自己
-        MouseHook.SetWindowPickerActive(true);
+        PickerHook.SetActive(true);
 
         StartTimers();
 
@@ -189,7 +189,7 @@ public partial class GlobalCanvasWindow : Window
         _source = null;
 
         HotkeyRegistry.Suspended = false;
-        MouseHook.SetWindowPickerActive(false);
+        PickerHook.SetActive(false);
     }
 
     // ============ 键盘 ============

@@ -8,6 +8,8 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
 using LTools.Core;
+using LTools.Core.Link;
+using LTools.Features;
 using LTools.Features.InfoHelper;
 using LTools.Native;
 
@@ -55,8 +57,18 @@ public partial class InfoHelperWindow : Window
     }
 
     /// <summary>托盘入口：没开就开一个，开着就激活 / 还原。</summary>
+    /// <remarks>
+    /// 窗口归**普通权限宿主**（<c>docs/PROCESS_SPLIT.md</c> §15.4 第 2 步）：提权进程只把「开辅助工具」转过去
+    /// （没连上先记着、连上补发）——取窗口 / 取色 / 框选都在宿主进程里做，坐标与截图不会跨权限失真。
+    /// </remarks>
     public static void Toggle()
     {
+        if (!ConfigStore.ReadOnly)
+        {
+            LinkWorker.RequestInfoHelper();
+            return;
+        }
+
         if (_current == null)
         {
             var window = new InfoHelperWindow();

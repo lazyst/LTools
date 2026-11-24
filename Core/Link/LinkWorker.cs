@@ -117,12 +117,20 @@ internal static class LinkWorker
         FlushPending();
     }
 
+    /// <summary>把「开关辅助工具」交给宿主（窗口只有一个家，见 <see cref="Views.InfoHelperWindow.Toggle"/>）。</summary>
+    public static void RequestInfoHelper()
+    {
+        Interlocked.Exchange(ref _pendingInfoHelper, 1);
+        FlushPending();
+    }
+
     private sealed record PendingShow(IntPtr Hwnd, int X, int Y);
 
     private static PendingShow? _pendingShow;
     private static int _pendingToggle;
     private static int _pendingStash;
     private static int _pendingNote;
+    private static int _pendingInfoHelper;
 
     /// <summary>宿主连上了 / 刚被要求：把攒着的那一次补发出去（同一件事只留最后一次）。</summary>
     private static void FlushPending()
@@ -140,6 +148,9 @@ internal static class LinkWorker
 
         if (Interlocked.Exchange(ref _pendingNote, 0) != 0)
             _ = NotifyAsync(NoteMethods.Toggle);
+
+        if (Interlocked.Exchange(ref _pendingInfoHelper, 0) != 0)
+            _ = NotifyAsync(LinkMethods.EventInfoHelper);
     }
 
     /// <summary>停止重连并断开（幂等）。不等后台任务退出。</summary>
@@ -152,13 +163,16 @@ internal static class LinkWorker
         if (client != null) _ = client.DisposeAsync();
     }
 
-    /// <summary>宿主发来的事件：目前只有面板状态（钩子靠它让开「长按右键」手势）。</summary>
+    /// <summary>宿主发来的事件：面板 / 点选器状态（钩子靠它们让开「长按右键 = 面板」手势）。</summary>
     private static void HandleHostEvent(LinkMessage message)
     {
         try
         {
             if (message.Method == LinkMethods.EventPanelState && message.Read<PanelStateEvent>() is { } state)
                 PanelHostBridge.SetRemotePanelOpen(state.Open);
+            else if (message.Method == LinkMethods.EventPickerActive
+                     && message.Read<PickerActiveEvent>() is { } picker)
+                Hooks.MouseHook.SetWindowPickerActive(picker.Active);
         }
         catch (Exception ex)
         {

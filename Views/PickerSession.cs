@@ -40,7 +40,7 @@ internal sealed class PickerSession : IDisposable
         // 遮罩是 Topmost 全屏、不设 Owner：owner 被最小化后，owned window 会被系统一起隐藏
         //（照 ScreenPicker.TryPickRegion 的已验证做法）。
         Action restore = TransientMinimize.MinimizeAll(owner);
-        MouseHook.SetWindowPickerActive(true);
+        PickerHook.SetActive(true);
         try
         {
             Thread.Sleep(TransientMinimize.SettleMs);   // 等最小化动画结束、桌面重绘完
@@ -48,13 +48,13 @@ internal sealed class PickerSession : IDisposable
             var (sx, sy) = ScreenPickerWindow.MonitorScale(monitor);
             return new PickerSession(monitor, sx, sy, () =>
             {
-                MouseHook.SetWindowPickerActive(false);
+                PickerHook.SetActive(false);
                 restore();
             });
         }
         catch
         {
-            MouseHook.SetWindowPickerActive(false);
+            PickerHook.SetActive(false);
             restore();
             throw;
         }

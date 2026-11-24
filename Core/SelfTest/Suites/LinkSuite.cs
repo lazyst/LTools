@@ -270,6 +270,12 @@ internal static class LinkSuite
             .Read<NoteWriteReply>();
         Check.True(noteFail is { Ok: false } && noteFail.Error == "源图不存在", "写速记的失败原因往返");
 
+        // —— 点选器占用输入（宿主 → 提权进程，让开「长按右键 = 面板」）——
+        Check.Equal("input.picker", LinkMethods.EventPickerActive, "点选器状态方法名");
+        PickerActiveEvent? pickerEvent = RoundTrip(LinkMessage.Request(29, LinkMethods.EventPickerActive,
+            new PickerActiveEvent(true))).Read<PickerActiveEvent>();
+        Check.True(pickerEvent?.Active == true, "点选器状态往返");
+
         // 白名单：只认七个域文件名，且不许带路径（这条链路只能改配置，不能写任意文件）。
         Check.True(ConfigBundle.DomainFiles.All(ConfigBundle.IsDomainFile), "七个域文件名都在白名单里");
         Check.True(ConfigBundle.IsDomainFile("SETTINGS.JSON"), "白名单不分大小写");

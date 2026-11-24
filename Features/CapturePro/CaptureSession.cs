@@ -35,7 +35,7 @@ internal sealed record CaptureReopen(BitmapSource Image, Int32Rect Rect,
 /// <remarks>
 /// 三条必须在 <c>finally</c> 里成对还原的东西：
 /// ① <see cref="TransientMinimize"/>（不收起自己的窗口会把自己截进去，也会挡住框选）；
-/// ② <see cref="MouseHook.SetWindowPickerActive"/>（否则「裸右键长按 = 面板」会吞掉右键，用户要按两次 Esc）；
+/// ② <see cref="PickerHook.SetActive"/>（否则「裸右键长按 = 面板」会吞掉右键，用户要按两次 Esc）；
 /// ③ <see cref="HotkeyRegistry.Suspended"/>（单键绑定会吞掉框选里的按键，<c>Enter</c> / <c>Esc</c> 就没了）。
 /// 冻结范围是**所有显示器的并集**（<see cref="ScreenShot.Bounds"/>），所以框选可以跨屏拖；
 /// 图片走 <see cref="CaptureDocument.Render"/>：按选区**重绘**，不是截屏再裁。
@@ -121,7 +121,7 @@ internal static class CaptureSession
 
         var restore = TransientMinimize.MinimizeAll(owner);
         bool wasSuspended = HotkeyRegistry.Suspended;
-        MouseHook.SetWindowPickerActive(true);
+        PickerHook.SetActive(true);
         HotkeyRegistry.Suspended = true;
         // 悬浮工具条：截图 / 录屏期间收起（照上游 floating_toolbar/hide_during_capture）
         FloatingToolbarService.SetCaptureActive(true);
@@ -232,7 +232,7 @@ internal static class CaptureSession
         finally
         {
             HotkeyRegistry.Suspended = wasSuspended;
-            MouseHook.SetWindowPickerActive(false);
+            PickerHook.SetActive(false);
             FloatingToolbarService.SetCaptureActive(false);
             restore();
             toasts.Dispose();
@@ -442,7 +442,7 @@ internal static class CaptureSession
         if (image == null || area.Width < 2 || area.Height < 2) return null;
 
         bool wasSuspended = HotkeyRegistry.Suspended;
-        MouseHook.SetWindowPickerActive(true);
+        PickerHook.SetActive(true);
         HotkeyRegistry.Suspended = true;
 
         try
@@ -461,7 +461,7 @@ internal static class CaptureSession
         finally
         {
             HotkeyRegistry.Suspended = wasSuspended;
-            MouseHook.SetWindowPickerActive(false);
+            PickerHook.SetActive(false);
         }
     }
 

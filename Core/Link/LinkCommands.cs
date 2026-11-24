@@ -56,6 +56,15 @@ internal static class LinkMethods
     /// <summary>关掉面板（点悬浮按钮时用：那一下算「点到面板外面」）。</summary>
     public const string EventPanelClose = "panel.close";
 
+    /// <summary>开关「辅助工具」窗口（窗口归宿主，托盘入口在提权进程）。</summary>
+    public const string EventInfoHelper = "info.toggle";
+
+    /// <summary>
+    /// 全屏点选器开 / 关（宿主 → 提权进程）：鼠标钩子靠它让开「裸右键长按 = 面板」手势。
+    /// 钩子在提权进程里，点选器在宿主里，所以这条状态要过链路。负载 <see cref="PickerActiveEvent"/>。
+    /// </summary>
+    public const string EventPickerActive = "input.picker";
+
     /// <summary>提权进程连上并握手完成（宿主收到后拉快照 / 重建界面）。</summary>
     public const string EventClientReady = "client.ready";
 
@@ -84,6 +93,9 @@ internal sealed record PanelShowRequest(long Hwnd, int X, int Y);
 
 /// <summary>面板状态（宿主 → 提权进程）：钩子据此决定要不要起「长按右键唤起面板」手势。</summary>
 internal sealed record PanelStateEvent(bool Open);
+
+/// <summary>全屏点选器状态（宿主 → 提权进程）：true = 遮罩开着，鼠标钩子让开「长按右键 = 面板」。</summary>
+internal sealed record PickerActiveEvent(bool Active);
 
 /// <summary>
 /// 执行一个动作 / 内置功能。引用形如 <c>01abc…</c>（动作 Id）或 <c>common.capture</c>（内置功能）。
