@@ -203,9 +203,11 @@ internal static class KeyboardHook
 
             // 全屏画布开着时：全局快捷键整体挂起（工具字母键 / IME 打字要能落进画布），
             // 唯一例外是「打开 / 切换全屏画布」这一条——再按一次 = 切点击穿透。
+            // 画布在宿主里，挂起状态与「例外哪一条」都由它推过来（InputGuard），
+            // 所以这里**别看画布窗口在不在**（提权进程里根本没有那个窗口）。
             // 放在 Suspended 分支之前：命中即吞掉并投递，没命中就照常往下走（放行给画布窗口）。
-            if (isDown && GlobalCanvasSession.IsOpen &&
-                HotkeyRegistry.TryFireOnly(vk, GlobalCanvasSession.HotkeyRef))
+            if (isDown && InputGuard.Suspended && InputGuard.OnlyRef is { } only &&
+                HotkeyRegistry.TryFireOnly(vk, only))
             {
                 MarkSwallowed(vk);
                 GlobalCanvasSession.ToggleClickThrough();

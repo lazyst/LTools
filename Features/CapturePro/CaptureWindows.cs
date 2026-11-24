@@ -8,8 +8,8 @@ using LTools.Views.CapturePro;
 namespace LTools.Features.CapturePro;
 
 /// <summary>
-/// 截图相关窗口的**唯一入口**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 图像拼接，
-/// 以及「恢复上一张关闭的贴图」「隐藏 / 显示所有贴图」这两条贴图命令。
+/// 截图相关窗口的**唯一入口**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 图像拼接 / 全屏画布，
+/// 以及「恢复上一张关闭的贴图」「隐藏 / 显示所有贴图」「让贴图按新设置刷新」「贴图 / 录屏条的快捷键命中」几条命令。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -36,14 +36,23 @@ internal static class CaptureWindows
     /// <summary>贴图设置变了（自动识别 / 可划选 / 快速标注）：让**已经贴着的图**按新设置走一遍。</summary>
     public const string PinRefresh = "pinRefresh";
 
+    /// <summary>全屏画布（开着就切点击穿透）。</summary>
+    public const string GlobalCanvas = "globalCanvas";
+
+    /// <summary>贴图快捷键命中（<see cref="Open"/> 的 <c>arg</c> = 动作名、<c>hwnd</c> = 哪张贴图）。</summary>
+    public const string PinShortcut = "pinShortcut";
+
+    /// <summary>录屏条快捷键命中（<see cref="Open"/> 的 <c>arg</c> = 动作名）。</summary>
+    public const string RecordShortcut = "recordShortcut";
+
     /// <summary>打开一份截图相关窗口 / 执行一条贴图命令（任何线程）。</summary>
-    public static void Open(string target)
+    public static void Open(string target, string? arg = null, long hwnd = 0)
     {
-        if (ConfigStore.ReadOnly || !CaptureWindowBridge.TryShow(target)) OpenLocal(target);
+        if (ConfigStore.ReadOnly || !CaptureWindowBridge.Show(target, arg, hwnd)) OpenLocal(target, arg, hwnd);
     }
 
-    /// <summary>在本进程里真正开窗（宿主用；提权进程里只在「宿主没连上」时被调）。</summary>
-    public static void OpenLocal(string target)
+    /// <summary>在本进程里真正开窗 / 执行（宿主用；提权进程里只在「宿主没连上」时被调）。</summary>
+    public static void OpenLocal(string target, string? arg = null, long hwnd = 0)
     {
         Ui.Run(() =>
         {
@@ -57,6 +66,9 @@ internal static class CaptureWindows
                 case PinRestoreLast: RestoreLastPin(); break;
                 case PinToggleAll: ToggleAllPins(); break;
                 case PinRefresh: CapturePinManager.RefreshRecognition(); break;
+                case GlobalCanvas: GlobalCanvasSession.Activate(); break;
+                case PinShortcut: PinShortcutRoute.FireLocal(hwnd, arg); break;
+                case RecordShortcut: RecordShortcutRoute.FireLocal(arg); break;
             }
         });
     }

@@ -1,6 +1,6 @@
 using System;
-using System.Threading;
 using LTools.Core;
+using LTools.Core.Link;
 
 namespace LTools.Features.CapturePro;
 
@@ -16,7 +16,8 @@ namespace LTools.Features.CapturePro;
 /// 在钩子线程匹配后调用，所以只做投递、不碰窗口。
 /// </para>
 /// <para>
-/// <see cref="IsOpen"/> 是给钩子线程读的（volatile 标记），不要在这里碰 WPF。
+/// 「画布开着 = 钩子挂起全局快捷键」这件事已经搬到 <see cref="Core.InputGuard"/>：画布在宿主里，
+/// 挂起状态由它推过来，这里只剩开窗与切穿透，**不再保存任何给钩子线程读的标记**。
 /// </para>
 /// </remarks>
 internal static class GlobalCanvasSession
@@ -25,10 +26,6 @@ internal static class GlobalCanvasSession
     public const string HotkeyRef = "ltools.globalCanvas";
 
     private static Views.CapturePro.GlobalCanvasWindow? _window;   // 只在 UI 线程读写
-    private static int _open;
-
-    /// <summary>画布是否开着（钩子线程可读）。</summary>
-    public static bool IsOpen => Volatile.Read(ref _open) != 0;
 
     /// <summary>打开全屏画布；已经开着就切点击穿透并把它提到前面（UI 线程）。</summary>
     public static void Activate()
@@ -42,20 +39,25 @@ internal static class GlobalCanvasSession
 
         var window = new Views.CapturePro.GlobalCanvasWindow();
         _window = window;
-        Volatile.Write(ref _open, 1);
 
-        window.Closed += (_, _) =>
-        {
-            _window = null;
-            Volatile.Write(ref _open, 0);
-        };
+        window.Closed += (_, _) => _window = null;
 
         window.Show();
     }
 
-    /// <summary>钩子线程：再按一次「打开全屏画布」= 切点击穿透（投递到 UI 线程执行）。</summary>
+    /// <summary>再按一次「打开全屏画布」= 切点击穿透（钩子线程 / 任何线程）。</summary>
+    /// <remarks>
+    /// 画布在宿主里、钩子在提权进程：提权进程这边只把意图转过去（宿主里画布已经开着，
+    /// <see cref="Activate"/> 就是切穿透）。宿主没连上时才是本地那份窗口。
+    /// </remarks>
     public static void ToggleClickThrough()
     {
+        if (!ConfigStore.ReadOnly)
+        {
+            CaptureWindowBridge.Show(CaptureWindows.GlobalCanvas);
+            return;
+        }
+
         Ui.Post(() =>
         {
             if (_window is { } window) window.ToggleClickThrough();

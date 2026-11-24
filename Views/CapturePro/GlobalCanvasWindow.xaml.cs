@@ -152,7 +152,9 @@ public partial class GlobalCanvasWindow : Window
         UpdateChrome();
 
         // 画布开着时全局快捷键整体让路：工具字母键 / IME 打字要能落进画布
-        HotkeyRegistry.Suspended = true;
+        // （只留「打开 / 切换全屏画布」这一条，再按一次 = 切点击穿透）。
+        // 窗口在宿主里、钩子在提权进程，所以这条状态经 InputGuard 推过去。
+        InputGuard.SetSuspended(true, GlobalCanvasSession.HotkeyRef);
         // 鼠标钩子的裸右键长按（面板）与边缘滚轮让路：画布上的右键 / 滚轮归自己
         PickerHook.SetActive(true);
 
@@ -188,7 +190,7 @@ public partial class GlobalCanvasWindow : Window
         _source?.RemoveHook(WndProc);
         _source = null;
 
-        HotkeyRegistry.Suspended = false;
+        InputGuard.SetSuspended(false, null);
         PickerHook.SetActive(false);
     }
 

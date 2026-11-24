@@ -789,6 +789,40 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   入口仍在执行器）、全屏画布（`GlobalCanvasSession`，它靠 `HotkeyRegistry.TryFireOnly` 切点击穿透，
   要另开一条「只派发这个热键」的通道）。
 
+**2026-11-24 · P2-M3-3b-2 全屏画布搬进宿主 / 贴图与录屏条的快捷键过链路**
+
+- 全屏画布与其它截图窗口同一条入口：`CaptureWindows.GlobalCanvas`（内置功能 `ltools.globalCanvas`
+  只调 `CaptureWindows.Open`），宿主里 `OpenLocal` → `GlobalCanvasSession.Activate()`；
+  「再按一次 = 切点击穿透」在执行器只转意图（`ToggleClickThrough` → `capture.window globalCanvas`）。
+- **快捷键挂起不再看窗口在不在**：`GlobalCanvasSession.IsOpen` / `_open` 已删，状态搬进
+  `Core/InputGuard`（`Suspended` / `OnlyRef` / `SetSuspended` / `Apply` / `PushCurrent` / `Reset`，
+  事件 `input.suspend`）。`KeyboardHook` 只看 `InputGuard.Suspended && OnlyRef`（命中就吞掉并
+  `GlobalCanvasSession.ToggleClickThrough()`），提权进程里根本没有画布窗口也没有本地画布状态。
+- **贴图快捷键（3a 留下的回归）**：贴图窗口搬到宿主后 `PinShortcutRoute` 在提权进程里一张贴图都没有，
+  B / L / Esc 这些键全没反应。补 `input.pin`：宿主在登记 / 点过 / 指针离开 / 关窗时把
+  `(hwnd, engage|release|closed)` 推过去，执行器只留「影子 target」；`Handle` 命中后经
+  `capture.window pinShortcut`（`arg` = 动作名、`hwnd` = 哪张贴图）转回宿主，`FireLocal` 调真正的按钮。
+- **录屏条快捷键同理**（3a 之后同样失效）：宿主 `RecordShortcutRoute.Publish` 把快照
+  （`Hot` + Recording / Paused / Busy / …）**只在变了时**推过去（`record.keys`；这方法是每帧调的，
+  全推会白占链路），执行器按它匹配，命中转 `capture.window recordShortcut`。
+- `capture.window` 的负载扩成 `(Target, Arg, Hwnd)`（`CaptureWindowEvent`），
+  `CaptureWindowBridge.TryShow` 更名 `Show`。
+- **断开清理**：`InputGuard.Reset()` + `PinShortcutRoute.DropRemote()` + `RecordShortcutRoute.DropRemote()`
+  都只摘「宿主推来的」那一份——不清的话宿主一崩，全局快捷键就永远停在挂起、贴图句柄还可能被别的窗口复用。
+- 验证（跨进程这段只能真机点）：
+  - 贴图：托盘 → 采集历史 → ⋯ →「贴到屏幕」→ 点一下贴图 → 按 `B`：宿主日志 `打开截图窗口（pinShortcut）`
+    + 执行 `ShowBorder`，贴图左上角像素变化 69/1600（边框真的画上了）。
+  - **注入的键会被钩子的「忽略注入事件」挡住**，所以验证时临时只把注入事件放行到 `PinShortcutRoute`
+    一处（验完立刻还原）；真机手按走的是同一条 `Handle`。
+  - 画布 / 录屏条的键同样没法用注入事件验（同一个过滤）。跨进程这一段与贴图共用
+    `capture.window` + 通知通道，本地行为由 `CaptureOverlaySmoke` 的 `globalcanvas` / `keys` 段守着。
+- 回归：`--selftest` 393 用例 / **18759** 断言（新增 `input.suspend` / `input.pin` / `record.keys` 的
+  方法名与状态往返、影子和宿主断开清理、`ApplyState` 后 `Handle` 真的按宿主状态匹配）；
+  `LinkSmoke` 74；`PanelHostSmoke` 11；`CaptureOverlaySmoke` 的 `tray` / `keymap` / `keys` /
+  `globalcanvas` 四段；`ShareSmoke` 92/0。
+- 3b-2 剩下的只有**入口**：录屏条的托盘 / 设置页入口跟设置页一起搬（M3-5）；录屏条本体与选项窗
+  3a 起就在宿主里。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -836,7 +870,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | `configs/*.json`（七个域文件，含 `panel.json` / `macros.json` 元数据） | 宿主 | **已完成（M2-a）**：只翻落盘那一步——`ConfigBundle.RemoteWriter` → `data.write` → `DataHost` 写；名字走 `DomainFiles` 白名单 |
 | `速记/` | 宿主 | **已完成（M3-1，跟着速记窗口一起翻）**：`data.noteWrite` 走 `note.write`；读仍在本地 |
 | `actions/` `subactions/` `staging/` `resources/` | 宿主 | **`actions/` 已完成（M2-b）**：`ActionLibrary.Save` 把整份清单交给宿主 `action.saveAll` → `ActionStore.SaveAll` 写目录（唯一仍由执行器写的只有 `actions/<id>/files/` 的素材复制）。`subactions/` `staging/` `resources/` 仍**跟着窗口走**：编辑器 / 暂存区搬进宿主时（M3-4）一起翻。**不单独做「目录文件系统 RPC」**：硬链接、搬 trash、孤儿回收转过去只会把「一个写者」做成空话 |
-| `captures/` + `pins/` + `cache/screenshots/` | 宿主 | **跟着截图流程（M3-3a / 3b-1）**：覆盖层 / 结果窗 / 贴图 / 采集历史都在宿主里跑，`capture.run` / `capture.direct` 只是入口；`Maintain` / `RecordRecovery.Sweep` / `PinStore.Maintain` 也跟宿主启动。剩余见 3b-2（录屏条 / 全屏画布） |
+| `captures/` + `pins/` + `cache/screenshots/` | 宿主 | **跟着截图流程（M3-3a / 3b-1 / 3b-2）**：覆盖层 / 结果窗 / 贴图 / 采集历史 / 全屏画布都在宿主里跑，`capture.run` / `capture.direct` 只是入口；`Maintain` / `RecordRecovery.Sweep` / `PinStore.Maintain` 也跟宿主启动。钩子要读的状态（贴图 / 录屏条 / 画布挂起）全部过链路 |
 | 启动期的播种 / 修引用 / 孤儿清理（`HotkeySeeding` / `RepairReferences` / `OrphanFiles`） | 宿主 | M2-c：跟着「宿主是写者」一起搬，执行器启动时改成只读 |
 | `macros/<id>.json`（录制事件本体） | 执行器 | 录制只能在那儿；录完发 `macro.recorded` 事件，由宿主挂动作 + 放面板 |
 | `state/run-history.jsonl` `trigger-history` `values` `auto-trigger-last-start` | 执行器 | 它才是产生者；宿主只读展示 |
@@ -855,7 +889,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 |---|---|---|
 | 1 | 速记 `QuickNote` | **已完成（M3-1）**：`速记/` 写权翻给宿主、`note.toggle` / `note.write` 就绪、托盘 / `CapsLock+N` / 面板磁贴都只转意图 |
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
-| 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 继续**：录屏条 / 录屏选项、全屏画布（要「只派发这个热键」的通道） |
+| 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` 跟着翻（`actions/` 已在 M2-b 翻完）；宏录制仍在执行器（钩子）→ 录完由宿主挂动作、放面板 |
 | 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页） | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主；另加 `data.changed` 回读、`hotkeys.record`、`mcp.*` 几条小命令 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using LTools.Core;
+using LTools.Core.Link;
 using LTools.Native;
 
 namespace LTools.Features.CapturePro;
@@ -29,9 +30,15 @@ internal static class RecordShortcutRoute
         public RecordShortcutState State { get; init; } = new();
         public bool Hot { get; init; }
         public Action<RecordShortcutAction>? Fire { get; init; }
+
+        /// <summary>钩子与录屏条不在一个进程（录屏条在宿主）：命中了就把动作转过去。</summary>
+        public bool Remote { get; init; }
     }
 
     private static Snapshot? _current;
+
+    /// <summary>最后一次推给提权进程的快照（只在这份变了时才发，见 <see cref="Publish"/>）。</summary>
+    private static RecordKeysEvent? _pushed;
 
     /// <summary>等待抬起的那个键（<c>end_recording</c> 是 Release 触发器）。</summary>
     private static ushort _pendingRelease;
@@ -40,12 +47,65 @@ internal static class RecordShortcutRoute
     private static readonly HashSet<int> Swallowed = new();
 
     /// <summary>面板画完一帧就发布一次（UI 线程）。</summary>
-    public static void Publish(RecordShortcutState state, bool hot, Action<RecordShortcutAction> fire) =>
+    /// <remarks>
+    /// 录屏条在宿主、钩子在提权进程：这里交的是本进程那份快照，另外把「钩子要用的那几个状态」
+    /// 推过去（<c>record.keys</c>）。**只在快照变了时推**——这个方法是每帧调的。
+    /// </remarks>
+    public static void Publish(RecordShortcutState state, bool hot, Action<RecordShortcutAction> fire)
+    {
         Volatile.Write(ref _current, new Snapshot { State = state.Clone(), Hot = hot, Fire = fire });
+
+        if (ConfigStore.ReadOnly) PushKeys(state, hot);
+    }
+
+    /// <summary>宿主：把快照推给提权进程的钩子（只在变了时发）。</summary>
+    private static void PushKeys(RecordShortcutState state, bool hot)
+    {
+        var keys = new RecordKeysEvent(hot, state.Recording, state.Paused, state.Busy,
+            state.HasLastRecord, state.ExportRowVisible, state.AreaHistory,
+            state.CanUndo, state.CanRedo, state.DrawingAllowed);
+        if (_pushed == keys) return;
+
+        _pushed = keys;
+        InputBridge.RecordKeys(keys);
+    }
 
     /// <summary>面板关了：解绑，钩子不再接管任何键。</summary>
     public static void Clear()
     {
+        Volatile.Write(ref _current, null);
+        _pendingRelease = 0;
+        Swallowed.Clear();
+
+        if (!ConfigStore.ReadOnly) return;
+        _pushed = null;
+        InputBridge.RecordKeys(new RecordKeysEvent(false, false, false, false,
+            false, false, false, false, false, false));
+    }
+
+    /// <summary>执行器：收到宿主推来的录屏条快照（链路线程；只留「不在本进程」的影子）。</summary>
+    public static void ApplyState(RecordKeysEvent keys)
+    {
+        var state = new RecordShortcutState
+        {
+            Recording = keys.Recording,
+            Paused = keys.Paused,
+            Busy = keys.Busy,
+            HasLastRecord = keys.HasLastRecord,
+            ExportRowVisible = keys.ExportRowVisible,
+            AreaHistory = keys.AreaHistory,
+            CanUndo = keys.CanUndo,
+            CanRedo = keys.CanRedo,
+            DrawingAllowed = keys.DrawingAllowed,
+        };
+
+        Volatile.Write(ref _current, new Snapshot { State = state, Hot = keys.Hot, Remote = true });
+    }
+
+    /// <summary>宿主断开了：它那边推来的快照作废（录屏条已经跟着宿主一起没了）。</summary>
+    internal static void DropRemote()
+    {
+        if (Volatile.Read(ref _current) is not { Remote: true }) return;
         Volatile.Write(ref _current, null);
         _pendingRelease = 0;
         Swallowed.Clear();
@@ -103,6 +163,13 @@ internal static class RecordShortcutRoute
 
     private static void Fire(Snapshot snapshot, RecordShortcutAction action)
     {
+        // 录屏条在宿主里：把动作名转过去（宿主在自己的 UI 线程上点按钮）
+        if (snapshot.Remote)
+        {
+            CaptureWindowBridge.Show(CaptureWindows.RecordShortcut, action.ToString());
+            return;
+        }
+
         var callback = snapshot.Fire;
         if (callback == null) return;
 
@@ -112,6 +179,16 @@ internal static class RecordShortcutRoute
             try { callback(action); }
             catch (Exception ex) { AppLog.Warn("CapturePro.Record", "录屏快捷键执行失败：" + ex.Message); }
         });
+    }
+
+    /// <summary>宿主：收到执行器转来的「录屏条收到某个快捷键动作」（UI 线程）。</summary>
+    public static void FireLocal(string? action)
+    {
+        if (!Enum.TryParse<RecordShortcutAction>(action, ignoreCase: true, out var parsed)) return;
+
+        var callback = Volatile.Read(ref _current)?.Fire;
+        try { callback?.Invoke(parsed); }
+        catch (Exception ex) { AppLog.Warn("CapturePro.Record", "录屏快捷键执行失败：" + ex.Message); }
     }
 
     private static bool Down(int vk) => (Win32.GetAsyncKeyState(vk) & 0x8000) != 0;

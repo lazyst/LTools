@@ -179,6 +179,15 @@ internal static class LinkWorker
             else if (message.Method == LinkMethods.EventInputSwallow
                      && message.Read<SwallowInputEvent>() is { } swallow)
                 Features.CapturePro.ExitInput.Apply(swallow);
+            else if (message.Method == LinkMethods.EventInputSuspend
+                     && message.Read<InputSuspendEvent>() is { } suspend)
+                InputGuard.Apply(suspend);
+            else if (message.Method == LinkMethods.EventPinState
+                     && message.Read<PinStateEvent>() is { } pin)
+                Features.CapturePro.PinShortcutRoute.ApplyState(pin.Hwnd, pin.State);
+            else if (message.Method == LinkMethods.EventRecordKeys
+                     && message.Read<RecordKeysEvent>() is { } recordKeys)
+                Features.CapturePro.RecordShortcutRoute.ApplyState(recordKeys);
             else if (message.Method == LinkMethods.EventCaptureRecordDone)
                 CaptureBridge.OnRecordingFinished();
         }
@@ -238,6 +247,9 @@ internal static class LinkWorker
                 {
                     Interlocked.CompareExchange(ref _client, null, client);
                     PanelHostBridge.SetRemotePanelOpen(false);   // 断开就当面板没了
+                    InputGuard.Reset();                          // 画布 / 快捷键挂起是宿主推来的，一起作废
+                    Features.CapturePro.PinShortcutRoute.DropRemote();   // 宿主里的贴图影子也作废
+                    Features.CapturePro.RecordShortcutRoute.DropRemote(); // 录屏条的快捷键盘快照同理
                     try { await client.DisposeAsync().ConfigureAwait(false); } catch { /* 已断开 */ }
                 }
             }

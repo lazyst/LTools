@@ -50,4 +50,30 @@ internal static class InputBridge
         try { _link?.NotifyAsync(LinkMethods.EventInputSwallow, sampled); }
         catch (Exception ex) { AppLog.Warn("Link", $"通知吞掉退出按键失败：{ex.Message}"); }
     }
+
+    /// <summary>
+    /// 某张贴图接 / 不接管键盘了（贴图窗口在宿主，钩子在提权进程）：钩子按它决定要不要把键投过去。
+    /// </summary>
+    /// <remarks>
+    /// 状态变化只有 <c>PinShortcutRoute</c> 一处（登记 / 点过 / 指针离开 / 关窗），
+    /// 别在窗口里各发一次。断线重连不补发：贴图窗口靠「再点一下」重新 engage。
+    /// </remarks>
+    public static void PinState(long hwnd, string state)
+    {
+        try { _link?.NotifyAsync(LinkMethods.EventPinState, new PinStateEvent(hwnd, state)); }
+        catch (Exception ex) { AppLog.Warn("Link", $"通知贴图接管状态失败：{ex.Message}"); }
+    }
+
+    /// <summary>
+    /// 录屏条的快捷键快照变了（录屏条在宿主，钩子在提权进程）：钩子按它决定要不要接管按键。
+    /// </summary>
+    /// <remarks>
+    /// 只在快照真的变了时调用（<c>RecordShortcutRoute</c> 自己比对），别每帧推一次——
+    /// 录屏条画一帧就发布一次，全推过去会白占链路。
+    /// </remarks>
+    public static void RecordKeys(RecordKeysEvent snapshot)
+    {
+        try { _link?.NotifyAsync(LinkMethods.EventRecordKeys, snapshot); }
+        catch (Exception ex) { AppLog.Warn("Link", $"通知录屏快捷键状态失败：{ex.Message}"); }
+    }
 }

@@ -60,6 +60,15 @@ internal static partial class Program
         var sessionType = asm.GetType("LTools.Features.CapturePro.GlobalCanvasSession")!;
         var laserType = asm.GetType("LTools.Features.CapturePro.GlobalCanvasLaser")!;
 
+        // 画布开着 = 全局快捷键整体挂起，状态在 InputGuard（钩子线程读的那一份）。
+        var guardType = asm.GetType("LTools.Core.InputGuard")!;
+        bool GuardSuspended() => (bool)guardType
+            .GetField("Suspended", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!
+            .GetValue(null)!;
+        string? GuardOnlyRef() => (string?)guardType
+            .GetField("OnlyRef", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!
+            .GetValue(null);
+
         object Call(object target, string name, params object[] args) =>
             target.GetType().GetMethod(name, Private)!.Invoke(target, args);
 
@@ -76,6 +85,10 @@ internal static partial class Program
         Pump(window);
         PumpFor(180);
         Check(window.IsVisible, "会话入口真的把画布打开了");
+        Check(GuardSuspended(), "画布开着 = 全局快捷键整体挂起");
+        Check(GuardOnlyRef() == (string)sessionType.GetField("HotkeyRef",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(null)!,
+            "挂起期间只放行「打开 / 切换全屏画布」这一条");
 
         // 注入的真键盘要求窗口在前台（前面的段关掉自己的窗口后，前台可能已经留给别的程序，
         // 这时 Activate() 会被前台锁拦掉；ForceForeground 与产品 WindowAction 同一套兜底）
@@ -511,9 +524,8 @@ internal static partial class Program
             PumpFor(320);
 
             Check(!window.IsVisible || !window.IsLoaded, "Esc 关掉全屏画布");
-            Check((bool)sessionType.GetProperty("IsOpen",
-                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!
-                    .GetValue(null)! == false, "会话回到关闭（再按热键会重新打开）");
+            Check(!GuardSuspended() && GuardOnlyRef() == null,
+                "会话回到关闭（快捷键挂起解除，再按热键会重新打开）");
 
             // ============ 14) 内置功能目录里有这条入口 ============
             var catalog = asm.GetType("LTools.Features.Builtin.FeatureCatalog")!;

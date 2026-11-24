@@ -80,10 +80,29 @@ internal static class LinkMethods
     public const string EventCaptureRecordDone = "capture.recordDone";
 
     /// <summary>
-    /// 打开一份截图相关窗口（采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图 / 贴图命令）。
-    /// 负载 <see cref="CaptureWindowEvent"/>，目标取值见 <c>CaptureWindows</c>。
+    /// 打开一份截图相关窗口（采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图 / 贴图命令 / 全屏画布）。
+    /// 负载 <see cref="CaptureWindowEvent"/>，目标取值见 <c>CaptureWindows</c>；
+    /// <see cref="CaptureWindowEvent.Arg"/> / <see cref="CaptureWindowEvent.Hwnd"/> 给「贴图快捷键」这类带参数的。
     /// </summary>
     public const string EventCaptureWindow = "capture.window";
+
+    /// <summary>
+    /// 全局快捷键「整体挂起 + 只放行一条」（宿主 → 提权进程）：画布开着时全挂起、只留它自己那条。
+    /// 负载 <see cref="InputSuspendEvent"/>。
+    /// </summary>
+    public const string EventInputSuspend = "input.suspend";
+
+    /// <summary>
+    /// 一张贴图接 / 不接管键盘了（宿主 → 提权进程）：钩子按它决定要不要把键投给这张贴图。
+    /// 负载 <see cref="PinStateEvent"/>。
+    /// </summary>
+    public const string EventPinState = "input.pin";
+
+    /// <summary>
+    /// 录屏条当前的快捷键快照（宿主 → 提权进程）：指针在不在条上、录制处在什么状态。
+    /// 负载 <see cref="RecordKeysEvent"/>。
+    /// </summary>
+    public const string EventRecordKeys = "record.keys";
 
     /// <summary>提权进程连上并握手完成（宿主收到后拉快照 / 重建界面）。</summary>
     public const string EventClientReady = "client.ready";
@@ -142,8 +161,50 @@ internal sealed record CaptureDirectRequest(int X, int Y, int W, int H, string S
 /// <summary>直接截图的结果；失败原因原样带回来（调用方是功能入口，由 <c>FeatureRunner</c> 弹提示）。</summary>
 internal sealed record CaptureDirectReply(bool Ok, string? Error);
 
-/// <summary>要打开的截图相关窗口 / 要执行的那条贴图命令（取值见 <c>CaptureWindows</c>）。</summary>
-internal sealed record CaptureWindowEvent(string Target);
+/// <summary>
+/// 要打开的截图相关窗口 / 要执行的那条贴图命令（<see cref="Target"/> 取值见 <c>CaptureWindows</c>）。
+/// <see cref="Arg"/> / <see cref="Hwnd"/> 只给「贴图快捷键」用：动作名 + 哪张贴图。
+/// </summary>
+internal sealed record CaptureWindowEvent(string Target, string? Arg = null, long Hwnd = 0);
+
+/// <summary>全局快捷键的挂起状态：<see cref="OnlyRef"/> = 唯一还放行的那条（null = 全挂起）。</summary>
+internal sealed record InputSuspendEvent(bool Suspended, string? OnlyRef);
+
+/// <summary>一张贴图的状态变化（<see cref="State"/> 取值见 <c>PinStates</c>）。</summary>
+internal sealed record PinStateEvent(long Hwnd, string State);
+
+/// <summary>贴图接管状态里的三种变化。</summary>
+internal static class PinStates
+{
+    /// <summary>点过这张贴图：键盘交给它。</summary>
+    public const string Engage = "engage";
+
+    /// <summary>指针离开 / 又点别处：不再接管。</summary>
+    public const string Release = "release";
+
+    /// <summary>这张贴图关了：把它从执行器的镜像里摘掉。</summary>
+    public const string Closed = "closed";
+}
+
+/// <summary>
+/// 录屏条发布的快捷键快照（宿主 → 提权进程）：<see cref="Hot"/> = 指针停在条上，
+/// 其余是 <c>RecordShortcutState</c> 里决定「这个键能不能触发」的几个状态。
+/// </summary>
+/// <remarks>
+/// 录屏条在宿主里、钩子在提权进程，所以匹配要用到的状态必须随快照送过来——
+/// 别让钩子那边去读一份「自己猜的」默认状态（那样暂停 / 收尾期间会放行不该放行的键）。
+/// </remarks>
+internal sealed record RecordKeysEvent(
+    bool Hot,
+    bool Recording,
+    bool Paused,
+    bool Busy,
+    bool HasLastRecord,
+    bool ExportRowVisible,
+    bool AreaHistory,
+    bool CanUndo,
+    bool CanRedo,
+    bool DrawingAllowed);
 
 /// <summary>
 /// 执行一个动作 / 内置功能。引用形如 <c>01abc…</c>（动作 Id）或 <c>common.capture</c>（内置功能）。

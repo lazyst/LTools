@@ -119,7 +119,7 @@ internal static class FeatureCatalog
             CaptureFrontWindow),
         L("ltools.globalCanvas", "全屏画布", "edit",
             "在光标所在显示器上开一块透明画布，随手标注 / 激光笔指引；开着时再按一次切「点击穿透」（画布不挡下面的程序）",
-            () => Ui(GlobalCanvasSession.Activate)),
+            () => CaptureWindows.Open(CaptureWindows.GlobalCanvas)),
 
         // ============ 常用功能 · 工具 ============
         C("common.magnifier", "工具", "放大镜", "magnifier",

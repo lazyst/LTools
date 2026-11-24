@@ -182,6 +182,7 @@ public partial class App : Application
             PanelHostBridge.Attach(server);
             InputBridge.Attach(server);
             CaptureHost.Attach(server);
+            InputGuard.Attach(server);
             server.ClientChanged += OnLinkClientChanged;
             server.Start();
 
@@ -221,6 +222,8 @@ public partial class App : Application
         PushPanelState();
         // 点选器状态同理（只在真有遮罩时补发）。
         InputBridge.PushCurrent();
+        // 全屏画布开着的话，快捷键挂起状态也要补一次（断线期间可能已经开了 / 关了）。
+        InputGuard.PushCurrent();
     }
 
     /// <summary>面板状态变了就推给提权进程（只在开 / 关真的变了时才发，别每次激活都刷）。</summary>
@@ -295,7 +298,7 @@ public partial class App : Application
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     AppLog.Info("ShareHost", $"打开截图窗口（{target}）");
-                    Features.CapturePro.CaptureWindows.OpenLocal(target);
+                    Features.CapturePro.CaptureWindows.OpenLocal(target, captureWindow.Arg, captureWindow.Hwnd);
                 }));
                 break;
 

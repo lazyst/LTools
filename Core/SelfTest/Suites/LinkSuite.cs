@@ -155,6 +155,7 @@ internal static class LinkSuite
             LinkMethods.EventPanelClose, LinkMethods.EventInfoHelper, LinkMethods.EventPickerActive,
             LinkMethods.EventInputSwallow, LinkMethods.CaptureRun, LinkMethods.CaptureDirect,
             LinkMethods.EventCaptureRecordDone, LinkMethods.EventCaptureWindow, ActionMethods.SaveAll,
+            LinkMethods.EventInputSuspend, LinkMethods.EventPinState, LinkMethods.EventRecordKeys,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
@@ -310,6 +311,70 @@ internal static class LinkSuite
         CaptureWindowEvent? windowEvent = RoundTrip(LinkMessage.Request(37, LinkMethods.EventCaptureWindow,
             new CaptureWindowEvent("pinManager"))).Read<CaptureWindowEvent>();
         Check.Equal("pinManager", windowEvent?.Target, "截图窗口事件往返");
+
+        // —— 画布 / 贴图：钩子要读的宿主状态（挂起快捷键、哪张贴图接管键盘）——
+        Check.Equal("input.suspend", LinkMethods.EventInputSuspend, "快捷键挂起方法名");
+        Check.Equal("input.pin", LinkMethods.EventPinState, "贴图接管方法名");
+        InputSuspendEvent? suspend = RoundTrip(LinkMessage.Request(38, LinkMethods.EventInputSuspend,
+            new InputSuspendEvent(true, "ltools.globalCanvas"))).Read<InputSuspendEvent>();
+        Check.True(suspend is { Suspended: true, OnlyRef: "ltools.globalCanvas" }, "快捷键挂起状态往返");
+
+        PinStateEvent? pinState = RoundTrip(LinkMessage.Request(39, LinkMethods.EventPinState,
+            new PinStateEvent(0x1234, PinStates.Engage))).Read<PinStateEvent>();
+        Check.True(pinState is { Hwnd: 0x1234, State: "engage" }, "贴图接管状态往返");
+
+        // 录屏条快照（录屏条在宿主、钩子在执行器）：状态字段一个都不能丢。
+        Check.Equal("record.keys", LinkMethods.EventRecordKeys, "录屏快捷键状态方法名");
+        var keys = new RecordKeysEvent(true, Recording: true, Paused: false, Busy: false,
+            HasLastRecord: true, ExportRowVisible: false, AreaHistory: true,
+            CanUndo: true, CanRedo: false, DrawingAllowed: true);
+        RecordKeysEvent? recordKeys = RoundTrip(LinkMessage.Request(40, LinkMethods.EventRecordKeys, keys))
+            .Read<RecordKeysEvent>();
+        Check.True(recordKeys == keys, "录屏快捷键状态往返（含 Hot / 指针在条上）");
+
+        Features.CapturePro.RecordShortcutRoute.ApplyState(keys);
+        Check.True(Features.CapturePro.RecordShortcutRoute.IsPublished, "执行器：录屏条快照登记为已发布");
+        Check.True(Features.CapturePro.RecordShortcutRoute.Handle(0x56, isDown: true, isUp: false),
+            "执行器：指针在录屏条上时 V = 选择工具（吞掉并转给宿主）");
+        Check.True(Features.CapturePro.RecordShortcutRoute.Handle(0x56, isDown: false, isUp: true),
+            "执行器：吞掉的那个键抬起也吞");
+        Features.CapturePro.RecordShortcutRoute.ApplyState(keys with { Hot = false });
+        Check.False(Features.CapturePro.RecordShortcutRoute.Handle(0x56, isDown: true, isUp: false),
+            "指针不在录屏条上：一个键都不碰");
+        Features.CapturePro.RecordShortcutRoute.DropRemote();
+        Check.False(Features.CapturePro.RecordShortcutRoute.IsPublished, "宿主断开：录屏条快照作废");
+
+        // 提权进程本地（宿主没连上）：挂起状态直接落到钩子看的那个开关上。
+        InputGuard.SetSuspended(true, "ltools.globalCanvas");
+        Check.True(InputGuard.Suspended && HotkeyRegistry.Suspended, "挂起快捷键：钩子开关跟着走");
+        Check.Equal("ltools.globalCanvas", InputGuard.OnlyRef, "挂起时只放行那一条");
+        InputGuard.SetSuspended(false, null);
+        Check.False(InputGuard.Suspended || HotkeyRegistry.Suspended, "取消挂起：钩子开关恢复");
+
+        // 宿主推来的挂起状态：宿主断开就作废（否则它一崩，全局快捷键永远被吞）。
+        InputGuard.Apply(new InputSuspendEvent(true, "ltools.globalCanvas"));
+        Check.True(InputGuard.Suspended && HotkeyRegistry.Suspended, "宿主推来的挂起：钩子开关跟着走");
+        InputGuard.Reset();
+        Check.False(InputGuard.Suspended || InputGuard.OnlyRef != null || HotkeyRegistry.Suspended,
+            "宿主断开：挂起状态作废");
+
+        // 本地降级开的那份画布不受影响：Reset 只清「宿主推来的」。
+        InputGuard.SetSuspended(true, "ltools.globalCanvas");
+        InputGuard.Reset();
+        Check.True(InputGuard.Suspended && HotkeyRegistry.Suspended, "本地挂起不被宿主断开清掉");
+        InputGuard.SetSuspended(false, null);
+
+        // 宿主的贴图影子：断开时只摘影子，本地贴图（降级时开在本进程）留着。
+        IntPtr localPin = new(0x2222);
+        Features.CapturePro.PinShortcutRoute.Register(localPin, _ => { });
+        Features.CapturePro.PinShortcutRoute.ApplyState(0x3333, PinStates.Engage);
+        Check.True(Features.CapturePro.PinShortcutRoute.IsEngaged(new IntPtr(0x3333)), "宿主贴图影子：已接管键盘");
+        Check.Equal(2, Features.CapturePro.PinShortcutRoute.Count, "影子与本地图都登记着");
+        Features.CapturePro.PinShortcutRoute.DropRemote();
+        Check.Equal(1, Features.CapturePro.PinShortcutRoute.Count, "宿主断开：只摘影子");
+        Check.True(Features.CapturePro.PinShortcutRoute.IsEngaged(localPin) == false, "本地贴图仍在（只是没点过）");
+        Features.CapturePro.PinShortcutRoute.Clear();
+        Check.Equal(0, Features.CapturePro.PinShortcutRoute.Count, "清空路由");
 
         CaptureRunRequest? runReq = RoundTrip(LinkMessage.Request(33, LinkMethods.CaptureRun,
             new CaptureRunRequest("Copy", WantImage: true))).Read<CaptureRunRequest>();

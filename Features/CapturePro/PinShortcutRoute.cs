@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using LTools.Core;
+using LTools.Core.Link;
 using LTools.Native;
 
 namespace LTools.Features.CapturePro;
@@ -31,6 +32,10 @@ internal static class PinShortcutRoute
     {
         public IntPtr Hwnd { get; init; }
         public Action<PinShortcutAction>? Fire { get; init; }
+
+        /// <summary>这张贴图在**另一个进程**（宿主）里：命中了就把动作转过去，别找本地回调。</summary>
+        public bool Remote { get; init; }
+
         public volatile bool Engaged;
     }
 
@@ -52,6 +57,7 @@ internal static class PinShortcutRoute
 
         list.Add(new Target { Hwnd = hwnd, Fire = fire });
         Volatile.Write(ref _targets, list.ToArray());
+        Push(hwnd, PinStates.Release);
     }
 
     /// <summary>一张贴图关了：摘掉它，别再把键投给它。</summary>
@@ -69,6 +75,7 @@ internal static class PinShortcutRoute
 
         Volatile.Write(ref _targets, list.ToArray());
         if (list.Count == 0) Swallowed.Clear();
+        Push(hwnd, PinStates.Closed);
     }
 
     /// <summary>
@@ -81,6 +88,68 @@ internal static class PinShortcutRoute
         foreach (var target in Volatile.Read(ref _targets))
         {
             if (target.Hwnd == hwnd) target.Engaged = engaged;
+        }
+
+        Push(hwnd, engaged ? PinStates.Engage : PinStates.Release);
+    }
+
+    /// <summary>宿主：把「这张贴图接 / 不接管键盘」推给提权进程的钩子（贴图窗口在宿主里）。</summary>
+    private static void Push(IntPtr hwnd, string state)
+    {
+        if (!ConfigStore.ReadOnly) return;
+        InputBridge.PinState(hwnd.ToInt64(), state);
+    }
+
+    /// <summary>执行器：收到宿主推来的贴图状态（链路线程；留下的是「不在本进程」的影子）</summary>
+    public static void ApplyState(long handle, string? state)
+    {
+        if (handle == 0) return;
+        var hwnd = new IntPtr(handle);
+        var targets = Volatile.Read(ref _targets);
+
+        if (state == PinStates.Closed)
+        {
+            var kept = new List<Target>(targets.Length);
+            foreach (var target in targets)
+            {
+                if (target.Hwnd != hwnd) kept.Add(target);
+            }
+
+            if (kept.Count != targets.Length) Volatile.Write(ref _targets, kept.ToArray());
+            if (kept.Count == 0) Swallowed.Clear();
+            return;
+        }
+
+        bool engaged = state == PinStates.Engage;
+        foreach (var target in targets)
+        {
+            if (target.Hwnd == hwnd)
+            {
+                target.Engaged = engaged;
+                return;
+            }
+        }
+
+        if (!engaged) return;   // 没登记过又要取消：不用建影子
+
+        var list = new List<Target>(targets.Length + 1);
+        list.AddRange(targets);
+        list.Add(new Target { Hwnd = hwnd, Remote = true, Engaged = true });
+        Volatile.Write(ref _targets, list.ToArray());
+    }
+
+    /// <summary>宿主：收到执行器转来的「这张贴图收到某个动作」（UI 线程）。</summary>
+    public static void FireLocal(long handle, string? action)
+    {
+        if (handle == 0 || !Enum.TryParse<PinShortcutAction>(action, ignoreCase: true, out var parsed)) return;
+
+        var hwnd = new IntPtr(handle);
+        foreach (var target in Volatile.Read(ref _targets))
+        {
+            if (target.Hwnd != hwnd) continue;
+            try { target.Fire?.Invoke(parsed); }
+            catch (Exception ex) { AppLog.Warn("CapturePro.Pin", "贴图快捷键执行失败：" + ex.Message); }
+            return;
         }
     }
 
@@ -111,32 +180,35 @@ internal static class PinShortcutRoute
         IntPtr hwnd = Win32.TopLevelWindowAtCursor();
         if (hwnd == IntPtr.Zero) return false;
 
-        Action<PinShortcutAction>? fire = null;
+        Target? hit = null;
         foreach (var target in targets)
         {
             if (target.Hwnd != hwnd || !target.Engaged) continue;
-            fire = target.Fire;
+            hit = target;
             break;
         }
 
-        if (fire == null) return false;
+        if (hit == null) return false;
 
-        return Dispatch(fire, vk,
-            Down(0xA2) || Down(0xA3) || Down(0x11),
-            Down(0xA0) || Down(0xA1) || Down(0x10),
-            Down(0xA4) || Down(0xA5) || Down(0x12),
-            Down(0x5B) || Down(0x5C));
+        bool ctrl = Down(0xA2) || Down(0xA3) || Down(0x11);
+        bool shift = Down(0xA0) || Down(0xA1) || Down(0x10);
+        bool alt = Down(0xA4) || Down(0xA5) || Down(0x12);
+        bool win = Down(0x5B) || Down(0x5C);
+
+        return hit.Remote
+            ? DispatchRemote(hit.Hwnd, vk, ctrl, shift, alt, win)
+            : Dispatch(hit.Fire, vk, ctrl, shift, alt, win);
     }
 
     /// <summary>
     /// 命中就投递并返回 true（冒烟直接调这个，不用把鼠标真的挪到贴图上）。
     /// 修饰键状态由调用方给，钩子那边从 <c>GetAsyncKeyState</c> 取。
     /// </summary>
-    internal static bool Dispatch(Action<PinShortcutAction> fire, ushort vk,
+    internal static bool Dispatch(Action<PinShortcutAction>? fire, ushort vk,
         bool ctrl, bool shift, bool alt, bool win)
     {
         var action = PinShortcuts.Match(vk, ctrl, shift, alt, win);
-        if (action == PinShortcutAction.None) return false;
+        if (action == PinShortcutAction.None || fire == null) return false;
 
         Swallowed.Add(vk);
 
@@ -149,11 +221,43 @@ internal static class PinShortcutRoute
         return true;
     }
 
+    /// <summary>贴图在宿主里：命中就告诉宿主「这张贴图收到某个动作」（事件，别排队）。</summary>
+    private static bool DispatchRemote(IntPtr hwnd, ushort vk, bool ctrl, bool shift, bool alt, bool win)
+    {
+        var action = PinShortcuts.Match(vk, ctrl, shift, alt, win);
+        if (action == PinShortcutAction.None) return false;
+
+        Swallowed.Add(vk);
+        CaptureWindowBridge.Show(CaptureWindows.PinShortcut, action.ToString(), hwnd.ToInt64());
+        return true;
+    }
+
     /// <summary>测试 / 关闭时清空（别把上一条会话的句柄留着）。</summary>
     internal static void Clear()
     {
         Volatile.Write(ref _targets, Array.Empty<Target>());
         Swallowed.Clear();
+    }
+
+    /// <summary>
+    /// 宿主断开了：它那边登记的贴图全都没了——只摘掉「影子」，本地贴图（降级时开在本进程里的）留着。
+    /// </summary>
+    /// <remarks>
+    /// 影子留着的话，宿主重启后同一个句柄可能已经落到别的窗口上，钩子就会对着无关窗口吞键。
+    /// 重连也不补发：贴图窗口靠「再点一下」重新 engage。
+    /// </remarks>
+    internal static void DropRemote()
+    {
+        var targets = Volatile.Read(ref _targets);
+        var kept = new List<Target>(targets.Length);
+        foreach (var target in targets)
+        {
+            if (!target.Remote) kept.Add(target);
+        }
+
+        if (kept.Count == targets.Length) return;
+        Volatile.Write(ref _targets, kept.ToArray());
+        if (kept.Count == 0) Swallowed.Clear();
     }
 
     private static bool Down(int vk) => (Win32.GetAsyncKeyState(vk) & 0x8000) != 0;
