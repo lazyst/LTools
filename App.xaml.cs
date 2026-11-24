@@ -151,6 +151,9 @@ public partial class App : Application
         // 进程拆分的过渡期：提权进程起链路服务端（令牌写 state/worker.token），
         // 普通权限宿主（ShareHost.exe，未来是界面进程）连上来读面板 / 提交写操作。
         LinkWorker.Start();
+        // configs/*.json 的物理写者是宿主（M2-a）：挂上之后运行期写入都转给它落盘，
+        // 宿主没起 / 出错时 DataBridge 返回 false，ConfigBundle 照旧本地写。
+        DataBridge.Attach();
         FloatingLibrary.Initialize(cfgPath);
         QuickNote.Initialize(cfgPath);
         ConfigHelper.Initialize(cfgPath);

@@ -157,7 +157,7 @@ public partial class App : Application
     /// </summary>
     private static Task<LinkMessage> HandleRequest(LinkChannel channel, LinkMessage request)
     {
-        Task<LinkMessage>? handled = UiHost.TryHandleAsync(request);
+        Task<LinkMessage>? handled = UiHost.TryHandleAsync(request) ?? DataHost.TryHandleAsync(request);
         return handled ?? Task.FromResult(LinkMessage.Response(request, error: "宿主暂不支持该命令"));
     }
 

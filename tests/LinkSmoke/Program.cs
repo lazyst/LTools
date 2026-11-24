@@ -160,6 +160,8 @@ internal static class Program
                     return Task.FromResult(LinkMessage.Response(request, new UiSelectFileReply(true, @"C:\a.txt")));
                 if (request.Method == UiMethods.PickPoint)
                     return Task.FromResult(LinkMessage.Response(request, new UiPickPointReply(true, 1280, 720)));
+                if (request.Method == DataMethods.Write)
+                    return Task.FromResult(LinkMessage.Response(request, new DataWriteReply(true)));
                 return Task.FromResult(LinkMessage.Response(request, error: "宿主不支持该请求"));
             });
         server.Start();
@@ -283,6 +285,12 @@ internal static class Program
             Check("取点请求发得出去", pointReply.Ok, pointReply.Error);
             Check("取点坐标能回来", pointReply.Read<UiPickPointReply>() is { Ok: true, X: 1280, Y: 720 },
                 pointReply.Read<UiPickPointReply>()?.ToString());
+
+            LinkMessage dataReply = await client.RequestAsync(DataMethods.Write,
+                new DataWriteRequest("settings.json", "{}"), timeoutMs: 2000);
+            Check("配置写入请求发得出去（物理写者是宿主）", dataReply.Ok, dataReply.Error);
+            Check("配置写入结果能回来", dataReply.Read<DataWriteReply>()?.Written == true,
+                dataReply.Read<DataWriteReply>()?.ToString());
 
             // ---- 面板结构保存：宿主 Save 变成整份替换 ----
             Check("面板结构保存被接管", PanelHostBridge.TryPushPanel(new PanelConfig()));

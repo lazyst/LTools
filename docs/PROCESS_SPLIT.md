@@ -629,6 +629,33 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   - 按 Esc → 遮罩消失、`x=0` / `y=0`（取消不是失败，`state=ok`）。
 - 回归：`--selftest` 393 用例（新增取点两组 DTO 往返）；`LinkSmoke` 68 条（新增取点反向请求）。
 
+**2026-11-24 · P2-M2-a 写属主翻转：`configs/*.json` 的物理写者变成宿主**
+
+- 做法：**不动任何调用点**，只翻转「最后落盘那一步」——
+  - `ConfigBundle.WriteIfChanged` 写之前先问 `ConfigBundle.RemoteWriter`（`App.OnStartup` 挂上
+    `DataBridge.TryWriteConfig`），执行器发 `data.write { Name, Json }`；
+  - 宿主 `DataHost` 用 `ConfigBundle.TryWriteDomainFile` 落盘（临时文件 + 整体替换，
+    名字必须命中 `ConfigBundle.DomainFiles` 的七个域文件，带路径 / 不在名单里直接拒）；
+  - 宿主没起 / 出错 / 被拒 → 返回 false，`ConfigBundle` 照旧本地写（降级只影响「谁写」，不丢改动）；
+  - `ConfigBundle.WriteJson` 是唯一落盘实现（本地写与转发写共用）。
+- 为什么这么翻：`ConfigIO.ModifyDomain` / `DomainStores` 是所有配置写入的唯一收口，把落盘那一步转走
+  就完成了「一个文件一个写者」，**不必给设置页每个控件造 RPC**（那会像 `panel.op` 一样越铺越大）。
+- **翻转范围**：运行期写入（设置开关 / 托盘开关 / 面板结构保存 / 快捷键页 / 触发规则 / 窗口几何…）。
+  启动期的 `HotkeySeeding` 播种、`ActionRemoval.RepairReferences` 修引用、`OrphanFiles` 清理仍在执行器里跑
+  ——那时链路还没连上、宿主也不写，所以不冲突；搬到宿主是 M2-c。
+- 宿主收到转发写入**只落盘、不重读自己的内存配置**：这些域的属主（设置页 / 快捷键 / 触发规则）此刻还在执行器，
+  宿主那份只读副本不需要跟着变；等页面搬过去、宿主成为属主时再改成「谁改谁重读」（`data.changed`）。
+- 真机实测（普通权限宿主 / 提权进程各一）：
+  - 在执行器的设置窗口里点「通用」→ `UiStore.Modify(LastNavPage=general)` → 宿主日志
+    `[Data] 已写入 ui.json（替主程序落盘）`，`configs/ui.json` 的 mtime 从 11-23 变成 11-24、
+    内容正常（`LastNavPage = general`）——**文件确实是宿主写的**；
+  - 执行器日志里没有任何「改成本进程写」的降级告警。
+  - 降级（宿主被掐掉 → 本地写）没单独真机验：自动化环境里后续点击没送达（`GetCapture=0`、
+    `WindowFromPoint` 命中的就是设置窗，但 WPF 不响应），这条路径只有代码上的
+    `LinkWorker.IsConnected` 一处判断兜底。
+- 回归：`--selftest` 393 用例 / 18665 断言（新增 `data.write` DTO 往返 + 白名单 8 条 + 真实落盘 3 条）；
+  `LinkSmoke` 70（新增一条 `data.write` 反向请求）。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -673,19 +700,19 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 
 | 域 | 翻给谁 | 备注 |
 |---|---|---|
-| `configs/*.json`（含 `macros.json` 元数据） | 宿主 | 执行器改 `InitializeReadOnly` + 收 `data.changed` 后 `Reload()` |
-| `actions/` `subactions/` `staging/` `resources/` | 宿主 | 编辑器 / 暂存区 / 孤儿回收都跟过去 |
-| `速记/` `captures/` | 宿主 | 纯用户资产，与权限无关 |
+| `configs/*.json`（七个域文件，含 `panel.json` / `macros.json` 元数据） | 宿主 | **M2-a 已完成**：机制是「只翻落盘那一步」——`ConfigBundle.RemoteWriter` → `data.write` → `DataHost` 写；名字走 `DomainFiles` 白名单 |
+| `actions/` `subactions/` `staging/` `resources/` | 宿主 | M2-b：编辑器 / 暂存区 / 孤儿回收都跟过去（`ActionStore.SaveAll` / `SubActionStore` / `DraftStore` 的落盘同样转交，宿主这边维护唯一内存副本） |
+| `速记/` `captures/` | 宿主 | 纯用户资产，与权限无关；M2-c |
+| 启动期的播种 / 修引用 / 孤儿清理（`HotkeySeeding` / `RepairReferences` / `OrphanFiles`） | 宿主 | M2-c：跟着「宿主是写者」一起搬，执行器启动时改成只读 |
 | `macros/<id>.json`（录制事件本体） | 执行器 | 录制只能在那儿；录完发 `macro.recorded` 事件，由宿主挂动作 + 放面板 |
 | `state/run-history.jsonl` `trigger-history` `values` `auto-trigger-last-start` | 执行器 | 它才是产生者；宿主只读展示 |
 | `logs/` | 分家 | `ltools-*`（宿主）/ `ltools-worker-*`（执行器），`LogFiles` 口径一起改 |
 
-- **一个域一个写者**：翻转分 `M2-a…` 小步做，每一步只翻一域，另一侧保留只读守卫
-  （`ConfigStore.ReadOnly` / `PanelLibrary.Save` 现有守卫直接复用）。
-- 面板这条链能立刻瘦身：`panel.replace` / `panel.op` 里「写数据」那部分消失（宿主自己写、自己开编辑器），
-  剩下的只有 `run.action`（执行）、`macros.*`（录制）、`ui.*`（交互）。
-- 风险：两份内存缓存不同步 → 约定「写者写完发 `data.changed`，读者 `Reload()`」；启动顺序已有
-  （宿主先起，执行器后连，连上补一次快照）。
+- **一个域一个写者**：翻转按 `M2-a / M2-b / M2-c` 小步做，每一步只翻一批，另一侧保留只读守卫。
+- **翻转的是「谁落盘」，不是「谁决定内容」**：调用点照旧走 `ConfigStore` / `*Store.Modify` / `ConfigIO`，
+  落盘时转给宿主。这样设置 / 编辑器搬进宿主时不必为每个控件造一条 RPC（`panel.op` 那种铺法是过渡期手段，不要复制）。
+- 宿主成为某个域的属主后，才做「谁改谁重读」：写者写完发 `data.changed`，读者 `Reload()`。
+  此刻宿主还不需要重读（属主仍是执行器）。
 
 ### 15.4 M3 · 窗口搬迁顺序（每个都是一次「搬 + 事件收尾 + 真机点一遍」）
 

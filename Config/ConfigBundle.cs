@@ -373,6 +373,52 @@ internal static class ConfigBundle
         }
         catch { /* 读不出来（被占用）就照常写 */ }
 
+        // configs/*.json 的物理写者是普通权限宿主（M2-a）：先转给它落盘，
+        // 转不出去（宿主没起 / 出错）才本地写——降级只影响「谁写」，不丢改动。
+        Func<string, string, bool>? remote = RemoteWriter;
+        if (remote != null && remote(Path.GetFileName(path), json)) return;
+
+        WriteJson(path, json);
+    }
+
+    /// <summary>
+    /// 物理写入的转交口（**执行器 → 宿主**）：设了就把 JSON 交给宿主落盘。
+    /// 由 <c>App.OnStartup</c> 挂上 <c>DataBridge.TryWriteConfig</c>；宿主进程不挂（它是写者本人）。
+    /// </summary>
+    internal static Func<string, string, bool>? RemoteWriter;
+
+    /// <summary>七个域文件名（转发与白名单共用；宿主只认这几个名字，绝不接受任意路径）。</summary>
+    internal static readonly string[] DomainFiles =
+    {
+        "settings.json", "ui.json", "hotkeys.json", "panel.json",
+        "floating.json", "macros.json", "triggers.json",
+    };
+
+    /// <summary>这个名字是不是一个域文件（只认文件名、不许带路径）。</summary>
+    internal static bool IsDomainFile(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        if (name.IndexOfAny(new[] { '\\', '/', ':' }) >= 0) return false;
+        return DomainFiles.Any(f => string.Equals(f, name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// 按域名把 JSON 落到 <c>configs/&lt;name&gt;</c>（宿主替执行器写时用）。
+    /// 名字不在白名单里直接拒绝——这条链路只该改配置，不该能写任意文件。
+    /// </summary>
+    internal static bool TryWriteDomainFile(string anchorPath, string? name, string? json)
+    {
+        if (json == null || !IsDomainFile(name)) return false;
+
+        string file = DomainFiles.First(f => string.Equals(f, name, StringComparison.OrdinalIgnoreCase));
+        WriteJson(Path.Combine(ConfigDir(anchorPath), file), json);
+        return true;
+    }
+
+    /// <summary>JSON 落盘（临时文件 + 整体替换）：本地写与转发写共用这一份实现。</summary>
+    private static void WriteJson(string path, string json)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string tmp = path + ".tmp";
         File.WriteAllText(tmp, json, new UTF8Encoding(false));
         File.Move(tmp, path, overwrite: true);

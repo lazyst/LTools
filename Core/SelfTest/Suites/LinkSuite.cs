@@ -223,6 +223,45 @@ internal static class LinkSuite
             .Read<UiPickPointReply>();
         Check.True(pickReply is { Ok: true, X: 1280, Y: 720 }, "取点的坐标往返");
 
+        // —— 配置写入转交（执行器 → 宿主，M2-a）——
+        Check.Equal("data.write", DataMethods.Write, "配置写入方法名");
+
+        DataWriteRequest? write = RoundTrip(LinkMessage.Request(24, DataMethods.Write,
+            new DataWriteRequest("settings.json", "{\"a\":1}"))).Read<DataWriteRequest>();
+        Check.True(write is { Name: "settings.json", Json: "{\"a\":1}" }, "配置写入请求往返");
+
+        DataWriteReply? wrote = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(25, DataMethods.Write), new DataWriteReply(true)))
+            .Read<DataWriteReply>();
+        Check.True(wrote?.Written == true, "配置写入结果往返");
+
+        // 白名单：只认七个域文件名，且不许带路径（这条链路只能改配置，不能写任意文件）。
+        Check.True(ConfigBundle.DomainFiles.All(ConfigBundle.IsDomainFile), "七个域文件名都在白名单里");
+        Check.True(ConfigBundle.IsDomainFile("SETTINGS.JSON"), "白名单不分大小写");
+        Check.True(!ConfigBundle.IsDomainFile("../settings.json"), "白名单拒绝相对路径");
+        Check.True(!ConfigBundle.IsDomainFile(@"configs\settings.json"), "白名单拒绝带目录的名字");
+        Check.True(!ConfigBundle.IsDomainFile(@"C:\settings.json"), "白名单拒绝绝对路径");
+        Check.True(!ConfigBundle.IsDomainFile("actions"), "白名单拒绝非域文件");
+        Check.True(!ConfigBundle.IsDomainFile(""), "白名单拒绝空名字");
+        Check.True(!ConfigBundle.IsDomainFile(null), "白名单拒绝 null");
+
+        // 锚点是一个文件路径（配置写在它同级的 configs/ 下），见 ConfigLocator。
+        string root = Path.Combine(Path.GetTempPath(), "ltools-selftest-data-" + Guid.NewGuid().ToString("N")[..8]);
+        string anchor = Path.Combine(root, "LTools.json");
+        try
+        {
+            Check.True(!ConfigBundle.TryWriteDomainFile(anchor, "settings.json/../../evil.json", "{}"),
+                "越界名字写不进任何文件");
+            Check.True(ConfigBundle.TryWriteDomainFile(anchor, "ui.json", "{\"k\":2}"), "按域名写进 configs/<名字>");
+            Check.Equal("{\"k\":2}", File.ReadAllText(Path.Combine(root, "configs", "ui.json")),
+                "写进去的内容原样");
+            Check.True(!File.Exists(Path.Combine(root, "configs", "settings.json")), "没点名的域不碰");
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* 清理失败不影响断言 */ }
+        }
+
         // 面板操作名也互不相同（提权侧 switch 按字符串分发，重名会让一个操作永远到不了）。
         var ops = new[]
         {
