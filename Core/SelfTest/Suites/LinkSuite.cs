@@ -154,7 +154,7 @@ internal static class LinkSuite
             LinkMethods.EventActionsChanged, LinkMethods.EventPanelStash, LinkMethods.EventPanelState,
             LinkMethods.EventPanelClose, LinkMethods.EventInfoHelper, LinkMethods.EventPickerActive,
             LinkMethods.EventInputSwallow, LinkMethods.CaptureRun, LinkMethods.CaptureDirect,
-            LinkMethods.EventCaptureRecordDone, ActionMethods.SaveAll,
+            LinkMethods.EventCaptureRecordDone, LinkMethods.EventCaptureWindow, ActionMethods.SaveAll,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
@@ -306,6 +306,10 @@ internal static class LinkSuite
         Check.Equal("capture.run", LinkMethods.CaptureRun, "交互截图方法名");
         Check.Equal("capture.direct", LinkMethods.CaptureDirect, "直接截图方法名");
         Check.Equal("capture.recordDone", LinkMethods.EventCaptureRecordDone, "录屏结束事件名");
+        Check.Equal("capture.window", LinkMethods.EventCaptureWindow, "截图窗口事件名");
+        CaptureWindowEvent? windowEvent = RoundTrip(LinkMessage.Request(37, LinkMethods.EventCaptureWindow,
+            new CaptureWindowEvent("pinManager"))).Read<CaptureWindowEvent>();
+        Check.Equal("pinManager", windowEvent?.Target, "截图窗口事件往返");
 
         CaptureRunRequest? runReq = RoundTrip(LinkMessage.Request(33, LinkMethods.CaptureRun,
             new CaptureRunRequest("Copy", WantImage: true))).Read<CaptureRunRequest>();

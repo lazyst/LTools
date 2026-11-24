@@ -79,6 +79,12 @@ internal static class LinkMethods
     /// <summary>录屏跑完了（宿主 → 提权进程）：提权进程据此恢复被临时收起的自动化指示器。</summary>
     public const string EventCaptureRecordDone = "capture.recordDone";
 
+    /// <summary>
+    /// 打开一份截图相关窗口（采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图 / 贴图命令）。
+    /// 负载 <see cref="CaptureWindowEvent"/>，目标取值见 <c>CaptureWindows</c>。
+    /// </summary>
+    public const string EventCaptureWindow = "capture.window";
+
     /// <summary>提权进程连上并握手完成（宿主收到后拉快照 / 重建界面）。</summary>
     public const string EventClientReady = "client.ready";
 
@@ -135,6 +141,9 @@ internal sealed record CaptureDirectRequest(int X, int Y, int W, int H, string S
 
 /// <summary>直接截图的结果；失败原因原样带回来（调用方是功能入口，由 <c>FeatureRunner</c> 弹提示）。</summary>
 internal sealed record CaptureDirectReply(bool Ok, string? Error);
+
+/// <summary>要打开的截图相关窗口 / 要执行的那条贴图命令（取值见 <c>CaptureWindows</c>）。</summary>
+internal sealed record CaptureWindowEvent(string Target);
 
 /// <summary>
 /// 执行一个动作 / 内置功能。引用形如 <c>01abc…</c>（动作 Id）或 <c>common.capture</c>（内置功能）。

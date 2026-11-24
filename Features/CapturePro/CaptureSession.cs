@@ -64,7 +64,7 @@ internal static class CaptureSession
     /// <remarks>
     /// 照上游 <c>CaptureHistoryDraft</c> 的 <c>displays</c> + <c>selection</c> + <c>canvasHistory</c> 重开：
     /// 底图就是历史那张，不再抓帧；这条记录没有底图（录屏 / 更早版本记的）时提示一句并返回 null。
-    /// **只在宿主里跑**（采集历史窗口搬过去之后它就在宿主；过渡期提权进程里调它会在本地开覆盖层）。
+    /// **调用它的是宿主里的采集历史窗口**（M3-3b-1 之后）；实现本身与本进程无关，就地开覆盖层。
     /// </remarks>
     public static CaptureResult? TryReopen(CaptureEntry entry)
     {

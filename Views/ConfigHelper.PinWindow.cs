@@ -169,7 +169,7 @@ public partial class ConfigHelperWindow
             autoResize != PinSettings.AutoResizeWindow ||
             quickAnnotate != PinSettings.QuickAnnotationForSelectedText)
         {
-            CapturePinManager.RefreshRecognition();
+            CaptureWindows.Open(CaptureWindows.PinRefresh);
         }
     }
 
@@ -198,7 +198,7 @@ public partial class ConfigHelperWindow
                 ? tag
                 : PinSettings.TextSelectionAlways;
             PinSettings.SetTextSelectionMode(key);
-            CapturePinManager.RefreshRecognition();
+            CaptureWindows.Open(CaptureWindows.PinRefresh);
         }
         else if (ReferenceEquals(sender, PinDuplicateCombo))
         {

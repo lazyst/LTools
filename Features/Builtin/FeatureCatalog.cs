@@ -98,16 +98,16 @@ internal static class FeatureCatalog
             () => CaptureWith(CaptureOverlayWindow.PendingAction.Scrolling)),
         L("ltools.captureHistory", "采集历史", "clock",
             "打开采集历史（截图 / 录屏都在里面）",
-            () => Ui(CaptureHistoryWindow.Toggle)),
+            () => CaptureWindows.Open(CaptureWindows.History)),
         L("ltools.pinManager", "贴图管理", "pin",
             "打开贴图管理页（浏览 / 批量贴回 / 删除）",
-            () => Ui(PinManagerWindow.Toggle)),
+            () => CaptureWindows.Open(CaptureWindows.PinManager)),
         L("ltools.pinRestoreLast", "恢复上一张关闭的贴图", "pin",
             "把最近关掉的那张贴回原来的位置",
-            PinRestoreLast),
+            () => CaptureWindows.Open(CaptureWindows.PinRestoreLast)),
         L("ltools.pinToggleAll", "隐藏 / 显示所有贴图", "pin",
             "一键把屏幕上的贴图全收起来，再按一次放回来",
-            PinToggleAll),
+            () => CaptureWindows.Open(CaptureWindows.PinToggleAll)),
         L("ltools.hotkeysToggle", "暂停 / 恢复全局快捷键", "keyboard",
             "紧急开关：暂停所有全局快捷键（这条本身例外，随时能恢复）",
             HotkeysToggle),
@@ -614,31 +614,6 @@ internal static class FeatureCatalog
         CaptureSession.CaptureDirect(new System.Drawing.Rectangle(x, y, w, h), "前台窗口",
             ExportSettings.ScenarioFocusedWindow);
     }
-
-    /// <summary>「恢复上一张关闭的贴图」：没有可恢复的记录就提示一句（不是错误，照上游静默语义）。</summary>
-    private static void PinRestoreLast() => Ui(() =>
-    {
-        var pin = CapturePinManager.RestoreLastClosed();
-        if (pin == null)
-            ToastService.Show("还没有关掉的贴图可以恢复", "贴图", 2000, ToastKind.warning);
-        else
-            ToastService.Show("已贴回上一张关闭的贴图", "贴图", 1600, ToastKind.success);
-    });
-
-    /// <summary>「隐藏 / 显示所有贴图」：一次收起、再一次放回（不关窗、不写历史）。</summary>
-    private static void PinToggleAll() => Ui(() =>
-    {
-        if (CapturePinManager.AllHidden || CapturePinManager.Visible.Count == 0)
-        {
-            int shown = CapturePinManager.ShowAll();
-            if (shown == 0)
-                ToastService.Show("屏幕上没有可以放回的贴图", "贴图", 1800, ToastKind.warning);
-            return;
-        }
-
-        int hidden = CapturePinManager.HideAll();
-        ToastService.Show($"已收起 {hidden} 张贴图（再按一次放回来）", "贴图", 2000);
-    });
 
     /// <summary>「暂停 / 恢复全局快捷键」（照上游 toggle global hotkeys）。</summary>
     private static void HotkeysToggle()

@@ -149,6 +149,8 @@ public partial class App : Application
         {
             Features.CapturePro.CaptureCatalog.Maintain();
             Features.CapturePro.RecordRecovery.Sweep();
+            // 贴图历史：上次没关掉就退出的记录补上关闭时间，再按保留策略剪枝（pins/ 同样归宿主）。
+            Features.CapturePro.PinStore.Maintain();
         }
         catch (Exception ex)
         {
@@ -284,6 +286,16 @@ public partial class App : Application
                 {
                     AppLog.Info("ShareHost", "开关辅助工具（普通权限窗口）");
                     Views.InfoHelperWindow.Toggle();
+                }));
+                break;
+
+            case LinkMethods.EventCaptureWindow:
+                CaptureWindowEvent? captureWindow = message.Read<CaptureWindowEvent>();
+                if (captureWindow?.Target is not { Length: > 0 } target) return;
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    AppLog.Info("ShareHost", $"打开截图窗口（{target}）");
+                    Features.CapturePro.CaptureWindows.OpenLocal(target);
                 }));
                 break;
 

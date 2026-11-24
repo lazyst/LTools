@@ -766,6 +766,29 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   所以 `captures/` 的删除、`state/pins.json`、`TryReopen` / `TryEdit` 这几条还留在那边——
   贴图 / 拼图 / 切图 / 录屏条与采集历史窗口搬完（M3-3b）就没有了。
 
+**2026-11-24 · P2-M3-3b-1 采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图搬进宿主**
+
+- 入口收成一处：`Features/CapturePro/CaptureWindows` 的 `Open(target)`（`history` / `pinManager` /
+  `imageEdit` / `split` / `collage` / `pinRestoreLast` / `pinToggleAll` / `pinRefresh`）——宿主里直接开，
+  提权进程过链路（`capture.window` 事件，与 `info.toggle` 同一套），没连上才就地降级。
+  托盘菜单、内置功能、设置页三处都改成调它，**别在调用点各写一次 `ConfigStore.ReadOnly`**。
+- 顺手把「贴图设置改了就刷新已经贴着的图」也接上：设置页在执行器，贴图窗口在宿主，
+  `CapturePinManager.RefreshRecognition()` 改走 `capture.window` 的 `pinRefresh` 分支
+  （不接的话「打开自动识别」要等下次贴图才生效）。
+- `pins/` 跟着贴图窗口归宿主：`PinStore.Maintain` 从 `App.OnStartup` 挪到
+  `ShareHost.BootCaptureHistory`（与采集历史、录屏残片一起）。**贴图窗口本身在 M3-3a 就已经在宿主里产生**
+  （覆盖层的「贴图」出口、`capturePin` 入口），这一步只是把它们的入口 / 维护 / 设置联动补齐。
+- 真机实测（宿主 16112 / 提权 19332）：托盘 →「截图」二级菜单里
+  **采集历史 / 贴图管理 / 图片编辑 / 切图 / 图像拼接** 五个窗口全部 `pid=ShareHost`（宿主日志
+  `打开截图窗口（history|pinManager|imageEdit|split|collage）`）；采集历史里 ⋯ →「重新编辑截图…」
+  在宿主里重开覆盖层（502×401 那条的选区 `702×552` 原样还原）、Esc 正常退出；
+  `pics/` 里那条 0 字节的旧贴图素材只打了原有的一条 WIC 警告，不影响列表。
+- 回归：`--selftest` 393 用例 / **18728** 断言（新增 `capture.window` 方法名 + 往返）；
+  `LinkSmoke` 74；`PanelHostSmoke` 11；`CaptureOverlaySmoke -- tray` 通过。
+- 还没搬（3b-2）：录屏条 / 录屏选项窗（现在由覆盖层的「录屏」出口在宿主里创建，但托盘与设置页的
+  入口仍在执行器）、全屏画布（`GlobalCanvasSession`，它靠 `HotkeyRegistry.TryFireOnly` 切点击穿透，
+  要另开一条「只派发这个热键」的通道）。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -813,7 +836,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | `configs/*.json`（七个域文件，含 `panel.json` / `macros.json` 元数据） | 宿主 | **已完成（M2-a）**：只翻落盘那一步——`ConfigBundle.RemoteWriter` → `data.write` → `DataHost` 写；名字走 `DomainFiles` 白名单 |
 | `速记/` | 宿主 | **已完成（M3-1，跟着速记窗口一起翻）**：`data.noteWrite` 走 `note.write`；读仍在本地 |
 | `actions/` `subactions/` `staging/` `resources/` | 宿主 | **`actions/` 已完成（M2-b）**：`ActionLibrary.Save` 把整份清单交给宿主 `action.saveAll` → `ActionStore.SaveAll` 写目录（唯一仍由执行器写的只有 `actions/<id>/files/` 的素材复制）。`subactions/` `staging/` `resources/` 仍**跟着窗口走**：编辑器 / 暂存区搬进宿主时（M3-4）一起翻。**不单独做「目录文件系统 RPC」**：硬链接、搬 trash、孤儿回收转过去只会把「一个写者」做成空话 |
-| `captures/` + `cache/screenshots/` | 宿主 | **跟着截图流程（M3-3a）**：覆盖层 / 结果窗 / 贴图 / 采集历史都在宿主里跑，`capture.run` / `capture.direct` 只是入口；`Maintain` / `RecordRecovery.Sweep` 也跟宿主启动。剩余收口见 M3-3b（历史窗口 / 贴图窗口） |
+| `captures/` + `pins/` + `cache/screenshots/` | 宿主 | **跟着截图流程（M3-3a / 3b-1）**：覆盖层 / 结果窗 / 贴图 / 采集历史都在宿主里跑，`capture.run` / `capture.direct` 只是入口；`Maintain` / `RecordRecovery.Sweep` / `PinStore.Maintain` 也跟宿主启动。剩余见 3b-2（录屏条 / 全屏画布） |
 | 启动期的播种 / 修引用 / 孤儿清理（`HotkeySeeding` / `RepairReferences` / `OrphanFiles`） | 宿主 | M2-c：跟着「宿主是写者」一起搬，执行器启动时改成只读 |
 | `macros/<id>.json`（录制事件本体） | 执行器 | 录制只能在那儿；录完发 `macro.recorded` 事件，由宿主挂动作 + 放面板 |
 | `state/run-history.jsonl` `trigger-history` `values` `auto-trigger-last-start` | 执行器 | 它才是产生者；宿主只读展示 |
@@ -832,7 +855,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 |---|---|---|
 | 1 | 速记 `QuickNote` | **已完成（M3-1）**：`速记/` 写权翻给宿主、`note.toggle` / `note.write` 就绪、托盘 / `CapsLock+N` / 面板磁贴都只转意图 |
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
-| 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b 继续**：采集历史窗口、贴图管理、图片编辑 / 拼图 / 切图、录屏条与录屏选项，搬完再删执行器侧那几条本地入口（`TryReopen` / `TryEdit` / `PinRestoreLast`）。覆盖层要能盖住**宿主自己的**窗口（现在是盖住提权进程的）；录屏的 ffmpeg / NAudio 在宿主跑 |
+| 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 继续**：录屏条 / 录屏选项、全屏画布（要「只派发这个热键」的通道） |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` 跟着翻（`actions/` 已在 M2-b 翻完）；宏录制仍在执行器（钩子）→ 录完由宿主挂动作、放面板 |
 | 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页） | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主；另加 `data.changed` 回读、`hotkeys.record`、`mcp.*` 几条小命令 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |

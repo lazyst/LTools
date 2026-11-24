@@ -59,12 +59,12 @@ internal sealed class TrayMenu
         capture.Items.Add(NewItem("截图…", () => RunCaptureFeature("common.capture")));
         capture.Items.Add(NewItem("延时截图…", () => RunCaptureFeature("ltools.captureDelay")));
         capture.Items.Add(new Separator());
-        capture.Items.Add(NewItem("采集历史…", () => Views.CapturePro.CaptureHistoryWindow.Toggle()));
-        capture.Items.Add(NewItem("贴图管理…", () => Views.CapturePro.PinManagerWindow.Toggle()));
+        capture.Items.Add(NewItem("采集历史…", () => CaptureWindows.Open(CaptureWindows.History)));
+        capture.Items.Add(NewItem("贴图管理…", () => CaptureWindows.Open(CaptureWindows.PinManager)));
         capture.Items.Add(new Separator());
-        capture.Items.Add(NewItem("图片编辑…", () => ImageEditSession.OpenEmpty()));
-        capture.Items.Add(NewItem("切图…", () => SplitSession.OpenEmpty()));
-        capture.Items.Add(NewItem("图像拼接…", () => CollageSession.OpenEmpty()));
+        capture.Items.Add(NewItem("图片编辑…", () => CaptureWindows.Open(CaptureWindows.ImageEdit)));
+        capture.Items.Add(NewItem("切图…", () => CaptureWindows.Open(CaptureWindows.Split)));
+        capture.Items.Add(NewItem("图像拼接…", () => CaptureWindows.Open(CaptureWindows.Collage)));
 
         Menu.Items.Add(new Separator());
         var macroItem = NewItem("开始 / 停止录制宏", () => MacroRecorder.Toggle());

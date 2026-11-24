@@ -218,10 +218,8 @@ public partial class App : Application
         // 同步跑会卡住 UI 线程约 1 秒，故只排队、不等它）。
         System.Threading.Tasks.Task.Run(LTools.Features.Script.CSharpRunner.Warmup);
 
-        // 采集历史按保留策略剪枝（最多 200 条 / 30 天）也跟着宿主走（见 ShareHost 的 BootCapture）：
-        // 目录不存在时直接返回，所以这里不用再兜一次。
-        // 贴图历史：上次没关掉就退出的记录补上关闭时间，再按保留策略剪枝。
-        System.Threading.Tasks.Task.Run(LTools.Features.CapturePro.PinStore.Maintain);
+        // 采集历史 / 贴图历史（captures/ · pins/）的启动维护也跟着宿主走（见 ShareHost 的 BootCaptureHistory）：
+        // 两个目录不存在时直接返回，这里不用再兜一次；贴图窗口与采集历史窗口现在都在宿主里。
 
         // 悬浮工具条（floating_toolbar/*）：默认关，开着就按配置建出来并订阅设置变更。
         LTools.Features.CapturePro.FloatingToolbarService.Start();
