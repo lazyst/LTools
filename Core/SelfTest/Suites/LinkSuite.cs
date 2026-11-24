@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using LTools.Config;
+using LTools.Core.Actions;
 using LTools.Core.Link;
 using LTools.Features;
 
@@ -156,6 +157,7 @@ internal static class LinkSuite
             LinkMethods.EventInputSwallow, LinkMethods.CaptureRun, LinkMethods.CaptureDirect,
             LinkMethods.EventCaptureRecordDone, LinkMethods.EventCaptureWindow, ActionMethods.SaveAll,
             LinkMethods.EventInputSuspend, LinkMethods.EventPinState, LinkMethods.EventRecordKeys,
+            SubActionMethods.Save, SubActionMethods.Delete,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
@@ -291,6 +293,28 @@ internal static class LinkSuite
             .Read<ActionSaveReply>();
         Check.True(actionReply is { Ok: false } && actionReply.Error == "磁盘满了", "动作库写入的失败原因往返");
 
+        // —— 全局子动作库：写者是宿主（M3-4a，一个文件一个定义，所以按份转）——
+        Check.Equal("subaction.save", SubActionMethods.Save, "子动作写入方法名");
+        Check.Equal("subaction.delete", SubActionMethods.Delete, "子动作删除方法名");
+
+        var subDef = new SubActionDef { Id = "s1", Name = "填表", Description = "把一行填进去" };
+        subDef.Variables.Add(new VariableDef { Key = "行", Type = ValueKind.text, Direction = VariableDirection.input });
+        SubActionSaveRequest? subSave = RoundTrip(LinkMessage.Request(41, SubActionMethods.Save,
+            new SubActionSaveRequest(subDef, CreateNew: true))).Read<SubActionSaveRequest>();
+        Check.Equal("s1", subSave?.Def.Id, "子动作写入往返（id）");
+        Check.Equal("填表", subSave?.Def.Name, "子动作写入往返（名称）");
+        Check.True(subSave?.CreateNew == true, "子动作写入往返（新建标记）");
+        Check.Equal(1, subSave?.Def.Variables.Count ?? -1, "子动作写入往返（变量不丢）");
+
+        SubActionReply? subReply = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(42, SubActionMethods.Save), new SubActionReply(false, "id 已存在")))
+            .Read<SubActionReply>();
+        Check.True(subReply is { Ok: false } && subReply.Error == "id 已存在", "子动作写入的失败原因往返");
+
+        SubActionDeleteRequest? subDelete = RoundTrip(LinkMessage.Request(43, SubActionMethods.Delete,
+            new SubActionDeleteRequest("s1"))).Read<SubActionDeleteRequest>();
+        Check.Equal("s1", subDelete?.Id, "子动作删除往返");
+
         // —— 点选器占用输入（宿主 → 提权进程，让开「长按右键 = 面板」）——
         Check.Equal("input.picker", LinkMethods.EventPickerActive, "点选器状态方法名");
         PickerActiveEvent? pickerEvent = RoundTrip(LinkMessage.Request(29, LinkMethods.EventPickerActive,
@@ -324,8 +348,7 @@ internal static class LinkSuite
         Check.True(pinState is { Hwnd: 0x1234, State: "engage" }, "贴图接管状态往返");
 
         // 录屏条快照（录屏条在宿主、钩子在执行器）：状态字段一个都不能丢。
-        Check.Equal("record.keys", LinkMethods.EventRecordKeys, "录屏快捷键状态方法名");
-        var keys = new RecordKeysEvent(true, Recording: true, Paused: false, Busy: false,
+        Check.Equal("record.keys", LinkMethods.EventRecordKeys, "录屏快捷键状态方法名");        var keys = new RecordKeysEvent(true, Recording: true, Paused: false, Busy: false,
             HasLastRecord: true, ExportRowVisible: false, AreaHistory: true,
             CanUndo: true, CanRedo: false, DrawingAllowed: true);
         RecordKeysEvent? recordKeys = RoundTrip(LinkMessage.Request(40, LinkMethods.EventRecordKeys, keys))

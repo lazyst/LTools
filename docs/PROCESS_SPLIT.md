@@ -823,6 +823,24 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 3b-2 剩下的只有**入口**：录屏条的托盘 / 设置页入口跟设置页一起搬（M3-5）；录屏条本体与选项窗
   3a 起就在宿主里。
 
+**2026-11-25 · P2-M3-4a 全局子动作库落盘翻给宿主**
+
+- 只翻「谁落盘」：`SubActionStore.Save` / `Delete` 先问 `Core/Link/SubActionBridge`
+  （`subaction.save` / `subaction.delete`），宿主 `SubActionHost` 用同一份 `SubActionStore`
+  写 / 删 `subactions/<id>.json`；宿主没起 / 出错 / 3 秒超时 → 本地写，降级只影响「谁写」，不丢改动。
+- **按份转，不转整库**：子动作是一个文件一个定义、也没有「清单」，整库快照会让两边的索引缓存互相覆盖。
+  读仍然各读各的（`sub.run` 在执行器里跑，必须在那边读得到），写完各自 `Invalidate()`。
+- 校验 / 引用扫描 / CAS（`Revision` = 文件 sha256）全留在调用侧；`createNew` 撞车这类「本来就会失败」的
+  情况由宿主拒绝后本地再写一次并抛同样的错，行为与单进程一致。
+- 真机（宿主 / 提权）：MCP `ltools_subactions_write` → 宿主日志
+  `[SubAction] 已写入子动作（0smoke-sub-1，替主程序落盘）`，`subactions/0smoke-sub-1.json` 137 字节；
+  `ltools_subactions_delete` → `已删除子动作`，文件消失。
+- 回归：`--selftest --filter link` 304 断言（方法名 / 一份定义与变量的往返 / 失败原因）；
+  `LinkSmoke` 80（新增写入与删除各一发一收 + 整份定义原样）。
+
+> 4a 用的是与 `configs/` / `actions/` 同一个「只翻落盘那一步」的手法；`staging/` `resources/`
+> 仍跟编辑器 / 暂存区走（4b）。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -869,7 +887,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 |---|---|---|
 | `configs/*.json`（七个域文件，含 `panel.json` / `macros.json` 元数据） | 宿主 | **已完成（M2-a）**：只翻落盘那一步——`ConfigBundle.RemoteWriter` → `data.write` → `DataHost` 写；名字走 `DomainFiles` 白名单 |
 | `速记/` | 宿主 | **已完成（M3-1，跟着速记窗口一起翻）**：`data.noteWrite` 走 `note.write`；读仍在本地 |
-| `actions/` `subactions/` `staging/` `resources/` | 宿主 | **`actions/` 已完成（M2-b）**：`ActionLibrary.Save` 把整份清单交给宿主 `action.saveAll` → `ActionStore.SaveAll` 写目录（唯一仍由执行器写的只有 `actions/<id>/files/` 的素材复制）。`subactions/` `staging/` `resources/` 仍**跟着窗口走**：编辑器 / 暂存区搬进宿主时（M3-4）一起翻。**不单独做「目录文件系统 RPC」**：硬链接、搬 trash、孤儿回收转过去只会把「一个写者」做成空话 |
+| `actions/` `subactions/` `staging/` `resources/` | 宿主 | **`actions/` 已完成（M2-b）**：`ActionLibrary.Save` 把整份清单交给宿主 `action.saveAll` → `ActionStore.SaveAll` 写目录（唯一仍由执行器写的只有 `actions/<id>/files/` 的素材复制）。**`subactions/` 已完成（M3-4a）**：`SubActionStore.Save` / `Delete` 转给宿主 `subaction.save` / `subaction.delete`（按份转，读仍各读各的）。`staging/` `resources/` 仍**跟着窗口走**：编辑器 / 暂存区搬进宿主时（M3-4b）一起翻。**不单独做「目录文件系统 RPC」**：硬链接、搬 trash、孤儿回收转过去只会把「一个写者」做成空话 |
 | `captures/` + `pins/` + `cache/screenshots/` | 宿主 | **跟着截图流程（M3-3a / 3b-1 / 3b-2）**：覆盖层 / 结果窗 / 贴图 / 采集历史 / 全屏画布都在宿主里跑，`capture.run` / `capture.direct` 只是入口；`Maintain` / `RecordRecovery.Sweep` / `PinStore.Maintain` 也跟宿主启动。钩子要读的状态（贴图 / 录屏条 / 画布挂起）全部过链路 |
 | 启动期的播种 / 修引用 / 孤儿清理（`HotkeySeeding` / `RepairReferences` / `OrphanFiles`） | 宿主 | M2-c：跟着「宿主是写者」一起搬，执行器启动时改成只读 |
 | `macros/<id>.json`（录制事件本体） | 执行器 | 录制只能在那儿；录完发 `macro.recorded` 事件，由宿主挂动作 + 放面板 |
@@ -890,7 +908,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | 1 | 速记 `QuickNote` | **已完成（M3-1）**：`速记/` 写权翻给宿主、`note.toggle` / `note.write` 就绪、托盘 / `CapsLock+N` / 面板磁贴都只转意图 |
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
-| 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` 跟着翻（`actions/` 已在 M2-b 翻完）；宏录制仍在执行器（钩子）→ 录完由宿主挂动作、放面板 |
+| 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主；编辑器本体（含草稿、`actions/<id>/files/` 素材、试运行 `run.program`）与宏闭环（`macro.*`）仍待做（4b / 4c）。宏录制仍在执行器（钩子）→ 录完由宿主挂动作、放面板 |
 | 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页） | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主；另加 `data.changed` 回读、`hotkeys.record`、`mcp.*` 几条小命令 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
 

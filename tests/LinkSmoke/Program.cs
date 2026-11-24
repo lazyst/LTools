@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using LTools.Config;
 using LTools.Core;
+using LTools.Core.Actions;
 using LTools.Core.Link;
 using LTools.Features;
 using LTools.Features.Floating;
@@ -146,10 +147,11 @@ internal static class Program
         var opened = new TaskCompletionSource<OpenWindowRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var operated = new TaskCompletionSource<ActionOpRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var pushed = new TaskCompletionSource<PanelConfig>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var subSaved = new TaskCompletionSource<SubActionSaveRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var opsSeen = new ConcurrentQueue<ActionOpRequest>();
 
         var server = new LinkServer(pipe, "fwd-token",
-            static (_, request) =>
+            (_, request) =>
             {
                 // 反向：提权进程 → 宿主的交互请求（宿主替它弹窗）。
                 if (request.Method == UiMethods.Choice)
@@ -167,6 +169,13 @@ internal static class Program
                         new NoteWriteReply(true, "标题", "2026-11-24 12:00", @"C:\速记\a.md", null)));
                 if (request.Method == ActionMethods.SaveAll)
                     return Task.FromResult(LinkMessage.Response(request, new ActionSaveReply(true, null)));
+                if (request.Method == SubActionMethods.Save)
+                {
+                    if (request.Read<SubActionSaveRequest>() is { } sub) subSaved.TrySetResult(sub);
+                    return Task.FromResult(LinkMessage.Response(request, new SubActionReply(true, null)));
+                }
+                if (request.Method == SubActionMethods.Delete)
+                    return Task.FromResult(LinkMessage.Response(request, new SubActionReply(true, null)));
                 return Task.FromResult(LinkMessage.Response(request, error: "宿主不支持该请求"));
             });
         server.Start();
@@ -309,6 +318,26 @@ internal static class Program
             Check("动作库写入请求发得出去（写者是宿主）", actionReply.Ok, actionReply.Error);
             Check("动作库写入结果能回来", actionReply.Read<ActionSaveReply>()?.Ok == true,
                 actionReply.Read<ActionSaveReply>()?.ToString());
+
+            LinkMessage subSaveReply = await client.RequestAsync(SubActionMethods.Save,
+                new SubActionSaveRequest(new SubActionDef { Id = "s1", Name = "填表" }, CreateNew: true),
+                timeoutMs: 2000);
+            Check("子动作写入请求发得出去（写者是宿主）", subSaveReply.Ok, subSaveReply.Error);
+            Check("子动作写入结果能回来", subSaveReply.Read<SubActionReply>()?.Ok == true,
+                subSaveReply.Read<SubActionReply>()?.ToString());
+            Task subSavedDone = await Task.WhenAny(subSaved.Task, Task.Delay(2000));
+            Check("子动作整份定义都送到了对端", ReferenceEquals(subSavedDone, subSaved.Task),
+                ReferenceEquals(subSavedDone, subSaved.Task) ? null : "2 秒内没收到");
+            Check("子动作 id / 名称 / 新建标记原样",
+                subSaved.Task.IsCompletedSuccessfully && subSaved.Task.Result is { CreateNew: true } sent
+                    && sent.Def.Id == "s1" && sent.Def.Name == "填表",
+                subSaved.Task.IsCompletedSuccessfully ? subSaved.Task.Result?.ToString() : null);
+
+            LinkMessage subDeleteReply = await client.RequestAsync(SubActionMethods.Delete,
+                new SubActionDeleteRequest("s1"), timeoutMs: 2000);
+            Check("子动作删除请求发得出去（写者是宿主）", subDeleteReply.Ok, subDeleteReply.Error);
+            Check("子动作删除结果能回来", subDeleteReply.Read<SubActionReply>()?.Ok == true,
+                subDeleteReply.Read<SubActionReply>()?.ToString());
 
             // ---- 面板结构保存：宿主 Save 变成整份替换 ----
             Check("面板结构保存被接管", PanelHostBridge.TryPushPanel(new PanelConfig()));

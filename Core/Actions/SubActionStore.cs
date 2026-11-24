@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Core;
+using LTools.Core.Link;
 using LTools.Features;
 
 namespace LTools.Core.Actions;
@@ -80,6 +81,14 @@ public static class SubActionStore
             throw new ActionException($"子动作 id 不能包含路径字符：{id}");
 
         def.Id = id;
+
+        // 宿主是 `subactions/` 的写者：落盘那一步转过去（宿主没起 / 出错才本地写）。
+        if (SubActionBridge.TrySave(def, createNew))
+        {
+            Invalidate();
+            return;
+        }
+
         Directory.CreateDirectory(DirectoryPath);
 
         string file = PathFor(id);
@@ -97,6 +106,13 @@ public static class SubActionStore
     {
         id = (id ?? "").Trim();
         if (id.Length == 0 || id.IndexOfAny(InvalidIdChars) >= 0) return;
+
+        // 写者是宿主：删文件也转过去（宿主没起 / 出错才本地删）。
+        if (SubActionBridge.TryDelete(id))
+        {
+            Invalidate();
+            return;
+        }
 
         string file = PathFor(id);
         if (File.Exists(file)) File.Delete(file);

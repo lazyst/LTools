@@ -208,6 +208,7 @@ public partial class App : Application
             ?? DataHost.TryHandleAsync(request)
             ?? NoteHost.TryHandleAsync(request)
             ?? ActionHost.TryHandleAsync(request)
+            ?? SubActionHost.TryHandleAsync(request)
             ?? CaptureHost.TryHandleAsync(request);
         return handled ?? Task.FromResult(LinkMessage.Response(request, error: "宿主暂不支持该命令"));
     }
