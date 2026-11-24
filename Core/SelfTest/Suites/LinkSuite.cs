@@ -270,6 +270,24 @@ internal static class LinkSuite
             .Read<NoteWriteReply>();
         Check.True(noteFail is { Ok: false } && noteFail.Error == "源图不存在", "写速记的失败原因往返");
 
+        // —— 动作库：写者是宿主（M2-b）——
+        Check.Equal("action.saveAll", ActionMethods.SaveAll, "动作库写入方法名");
+
+        ActionSaveRequest? actionSave = RoundTrip(LinkMessage.Request(30, ActionMethods.SaveAll,
+            new ActionSaveRequest(new List<ActionDto>
+            {
+                new() { Id = "a1", Name = "第一个", Icon = "app" },
+                new() { Id = "a2", Name = "第二个", Icon = "folder" },
+            }))).Read<ActionSaveRequest>();
+        Check.Equal(2, actionSave?.Actions?.Count ?? -1, "动作库请求往返（条数）");
+        Check.Equal("a2", actionSave?.Actions?[1].Id, "动作库请求往返（Id 原样）");
+        Check.Equal("第二个", actionSave?.Actions?[1].Name, "动作库请求往返（名称原样）");
+
+        ActionSaveReply? actionReply = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(31, ActionMethods.SaveAll), new ActionSaveReply(false, "磁盘满了")))
+            .Read<ActionSaveReply>();
+        Check.True(actionReply is { Ok: false } && actionReply.Error == "磁盘满了", "动作库写入的失败原因往返");
+
         // —— 点选器占用输入（宿主 → 提权进程，让开「长按右键 = 面板」）——
         Check.Equal("input.picker", LinkMethods.EventPickerActive, "点选器状态方法名");
         PickerActiveEvent? pickerEvent = RoundTrip(LinkMessage.Request(29, LinkMethods.EventPickerActive,

@@ -696,6 +696,33 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`--selftest` 393 用例 / 18687 断言（新增 `input.picker` 方法名 + 状态往返）；
   `LinkSmoke` 72；`PanelHostSmoke` 11；`ShareSmoke` 103。
 
+**2026-11-24 · P2-M2-b 动作库写入翻给宿主（`actions/`）**
+
+- 做法与 configs 同一个思路：**只翻「谁落盘」**。`ActionLibrary.Save` 是动作清单唯一的写入口
+  （`AddAction` / `UpdateAction` / `RemoveAction` / `DuplicateAction` / AI 采纳 / 宏挂载 / 删除全都经它），
+  所以把整份清单交给宿主 `action.saveAll`，由宿主 `ActionStore.SaveAll(anchor, snapshot)` 写到磁盘
+  （一个动作一个目录、内容没变的目录不重写、清单里没有的目录搬 `trash/`、自动历史快照也一并走）。
+- **宿主侧刻意不走 `ConfigIO.Modify(ConfigDomain.actions, …)`**：那会先 `AppConfig.LoadStrict` 把整个
+  `actions/` 扫一遍解析（每次保存都白扫一次），而且采纳草稿时执行器刚建好 `actions/<新id>/files/`、
+  `action.json` 还没写，扫描会刷一条「忽略没有 `action.json` 的目录」的假警告。
+  `ActionStore.SaveAll` 就是 `SaveDomains` 里那一段的唯一实现，直接调用语义完全一样。
+- 宿主写完把**只读**内存副本换成发来的这一份（面板显示动作名 / 暂存区预览靠它），但走 `Ui.Post`
+  挪到 UI 线程做（链路线程直接 `Clear` + 重填会和正在读它的面板快照撞车）；**不整份 `Reload()`**——
+  那会连面板库一起重读，把正在拖磁贴的用户打断。
+- 不做「动作级 RPC」（新增 / 改名 / 删除 / 复制各一条）：那样每个调用点都得记得转一次，漏一个就是两个写者。
+  整份清单转过去，调用点一行都不用改。超时 5 秒：宿主卡住时快速退回本地写，别把界面吊在一条链路上
+  （比 `data.write` 的 2 秒宽一点，整份清单比单个域大）。
+- 唯一仍由执行器写的：`actions/<id>/files/`（编辑器挑图时 `ActionStore.CopyFilesFrom` 复制素材）。
+  与宿主写的 `action.json` / `history/` 是**不同文件**，不冲突；等编辑器搬进宿主（M3-4）再收口。
+- 真机实测（宿主 25400 / 提权 24444）：
+  - MCP `ltools_staging_promote`（`mode=new`）→ 宿主日志 `[Action] 已写入动作库（9 个动作，替主程序落盘）`，
+    `actions/<新id>/action.json` 562 字节、名称正确；
+  - 再从该动作 `copyFromActionId` 建草稿改说明、`mode=replace` 采纳 → 宿主照样写，并留下
+    `actions/<id>/history/20261124-183817-672-d8778a58.json`（586 字节，快照确实由宿主产生）；
+  - 删掉目录重启 → 宿主面板快照回到 8 个动作（启动时 `RepairReferences` 收拾了悬空引用）。
+- 回归：`--selftest` 393 用例 / 18698 断言（新增 `action.saveAll` 方法名 + 清单往返 + 失败原因）；
+  `LinkSmoke` 74（新增一条 `action.saveAll` 反向请求）。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -742,7 +769,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 |---|---|---|
 | `configs/*.json`（七个域文件，含 `panel.json` / `macros.json` 元数据） | 宿主 | **已完成（M2-a）**：只翻落盘那一步——`ConfigBundle.RemoteWriter` → `data.write` → `DataHost` 写；名字走 `DomainFiles` 白名单 |
 | `速记/` | 宿主 | **已完成（M3-1，跟着速记窗口一起翻）**：`data.noteWrite` 走 `note.write`；读仍在本地 |
-| `actions/` `subactions/` `staging/` `resources/` | 宿主 | **跟着窗口走**：编辑器 / 暂存区 / AI 采纳搬进宿主时（M3-6）一起翻——写入口自然落到宿主，提权进程这边再改成转交。**不单独做「目录文件系统 RPC」**：硬链接、搬 trash、孤儿回收转过去只会把「一个写者」做成空话 |
+| `actions/` `subactions/` `staging/` `resources/` | 宿主 | **`actions/` 已完成（M2-b）**：`ActionLibrary.Save` 把整份清单交给宿主 `action.saveAll` → `ActionStore.SaveAll` 写目录（唯一仍由执行器写的只有 `actions/<id>/files/` 的素材复制）。`subactions/` `staging/` `resources/` 仍**跟着窗口走**：编辑器 / 暂存区搬进宿主时（M3-4）一起翻。**不单独做「目录文件系统 RPC」**：硬链接、搬 trash、孤儿回收转过去只会把「一个写者」做成空话 |
 | `captures/` | 宿主 | 跟着截图 Pro / 采集历史搬（M3-3 / M3-5） |
 | 启动期的播种 / 修引用 / 孤儿清理（`HotkeySeeding` / `RepairReferences` / `OrphanFiles`） | 宿主 | M2-c：跟着「宿主是写者」一起搬，执行器启动时改成只读 |
 | `macros/<id>.json`（录制事件本体） | 执行器 | 录制只能在那儿；录完发 `macro.recorded` 事件，由宿主挂动作 + 放面板 |
@@ -762,14 +789,21 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 |---|---|---|
 | 1 | 速记 `QuickNote` | **已完成（M3-1）**：`速记/` 写权翻给宿主、`note.toggle` / `note.write` 就绪、托盘 / `CapsLock+N` / 面板磁贴都只转意图 |
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
-| 3 | 采集历史 / 贴图管理 | `captures/` 写权；「重新编辑」要等覆盖层搬过去（步骤 5） |
-| 4 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页） | 各域写权 + 备份导入导出（`BackupService` 跟过去）、MCP 开关与令牌仍由执行器持有 → 留一条 `mcp.*` 命令 |
-| 5 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 / 录屏条） | 截图本身普通权限就够；覆盖层要能盖住**宿主自己的**窗口（现在是盖住提权进程的）；录屏的 ffmpeg / NAudio 在宿主跑；`common.capture` 从钩子触发时改成「执行器让宿主动手」 |
-| 6 | 动作编辑器 / 子动作库 / 宏页 | 编辑器写 `actions/`（M2）；宏录制仍在执行器（钩子）→ 录完由宿主挂动作、放面板 |
-| 7 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
+| 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | `captures/` 域跟着翻；覆盖层要能盖住**宿主自己的**窗口；录屏的 ffmpeg / NAudio 在宿主跑；`common.capture` 从钩子触发时改成「执行器让宿主动手」。**采集历史 / 贴图管理必须在这一步一起搬**（见下面那条依赖） |
+| 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` 跟着翻（`actions/` 已在 M2-b 翻完）；宏录制仍在执行器（钩子）→ 录完由宿主挂动作、放面板 |
+| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页） | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主；另加 `data.changed` 回读、`hotkeys.record`、`mcp.*` 几条小命令 |
+| 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
 
-> 步骤 5（截图 Pro）是唯一「搬过去比现在更麻烦」的一块：覆盖层、贴图、录屏条都是「压在所有窗口之上」的窗口，
-> 搬过去之后**提权进程的窗口也要能被它盖住 / 被它临时收起**（现在是同进程内互相协调）。这一块单独估时。
+> **顺序更正（2026-11-24，看过代码之后）**：原方案把「采集历史 / 贴图管理」排在截图 Pro 前面，实际排不了——
+> 那个窗口不是只读查看器：卡片上的「重新编辑 / 贴到屏幕 / 裁剪 / 拼接 / 切图 / 录制裁剪」全是截图 Pro 的功能，
+> 搬早了就得把五六个功能再转回执行器（等于把 `panel.op` 那种铺法复制一遍）。`captures/` 的索引
+> （`catalog.json`）也只有一份内存副本，创建在截图流水线、删除在历史窗口——**必须一起搬**才有唯一写者。
+> 同理「设置」是最后一个：它同时编辑动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略，前面任何一步没翻完，
+> 它的某个页面就还得转回执行器。
+
+> 步骤 3（截图 Pro）是唯一「搬过去比现在更麻烦」的一块：覆盖层、贴图、录屏条都是「压在所有窗口之上」的窗口，
+> 搬过去之后**提权进程的窗口也要能被它盖住 / 被它临时收起**（现在是同进程内互相协调）。这一块单独估时、
+> 分几小步做（覆盖层 → 结果窗 / 编辑 → 贴图 / 拼图 / 切图 → 录屏条 → 采集历史 / 贴图管理）。
 
 ### 15.5 M4 · 收尾
 

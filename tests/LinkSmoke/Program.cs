@@ -165,6 +165,8 @@ internal static class Program
                 if (request.Method == NoteMethods.Write)
                     return Task.FromResult(LinkMessage.Response(request,
                         new NoteWriteReply(true, "标题", "2026-11-24 12:00", @"C:\速记\a.md", null)));
+                if (request.Method == ActionMethods.SaveAll)
+                    return Task.FromResult(LinkMessage.Response(request, new ActionSaveReply(true, null)));
                 return Task.FromResult(LinkMessage.Response(request, error: "宿主不支持该请求"));
             });
         server.Start();
@@ -300,6 +302,13 @@ internal static class Program
             Check("写速记请求发得出去（写者是宿主）", noteReply.Ok, noteReply.Error);
             Check("写速记结果能回来", noteReply.Read<NoteWriteReply>()?.Title == "标题",
                 noteReply.Read<NoteWriteReply>()?.ToString());
+
+            LinkMessage actionReply = await client.RequestAsync(ActionMethods.SaveAll,
+                new ActionSaveRequest(new List<ActionDto> { new() { Id = "a1", Name = "n" } }),
+                timeoutMs: 2000);
+            Check("动作库写入请求发得出去（写者是宿主）", actionReply.Ok, actionReply.Error);
+            Check("动作库写入结果能回来", actionReply.Read<ActionSaveReply>()?.Ok == true,
+                actionReply.Read<ActionSaveReply>()?.ToString());
 
             // ---- 面板结构保存：宿主 Save 变成整份替换 ----
             Check("面板结构保存被接管", PanelHostBridge.TryPushPanel(new PanelConfig()));

@@ -178,7 +178,8 @@ public partial class App : Application
     {
         Task<LinkMessage>? handled = UiHost.TryHandleAsync(request)
             ?? DataHost.TryHandleAsync(request)
-            ?? NoteHost.TryHandleAsync(request);
+            ?? NoteHost.TryHandleAsync(request)
+            ?? ActionHost.TryHandleAsync(request);
         return handled ?? Task.FromResult(LinkMessage.Response(request, error: "宿主暂不支持该命令"));
     }
 
