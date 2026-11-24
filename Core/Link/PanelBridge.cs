@@ -5,16 +5,18 @@ using LTools.Core;
 
 namespace LTools.Core.Link;
 
-/// <summary>面板搬家的过渡开关。</summary>
+/// <summary>面板在哪儿开：普通权限宿主（默认）还是退回提权进程。</summary>
 /// <remarks>
-/// 默认**关**：面板仍在提权进程里（现有行为）。设环境变量 <c>LTOOLS_PANEL_HOST=1</c> 时，
-/// 提权进程会把面板唤起转给普通权限宿主，并在启动时把宿主拉起来。等面板的暂存区 / 编辑器 /
-/// 菜单都接通了再把默认值翻过来。见 <c>docs/PROCESS_SPLIT.md</c> §14。
+/// 面板自 2026-11-24 起默认在**普通权限宿主**（`ShareHost.exe`）里开：它是 asInvoker 的界面进程，
+/// 拿得到资源管理器的拖放，也能出现在普通权限窗口层；提权进程只负责真正执行动作（`run.action`）。
+/// 设环境变量 <c>LTOOLS_PANEL_HOST=0</c> 可临时退回「面板在提权进程」的老行为——留这一版做回退口，
+/// 下一版连它一起删掉。见 <c>docs/PROCESS_SPLIT.md</c> §14。
 /// </remarks>
 internal static class PanelRouting
 {
+    /// <summary>面板是否交给普通权限宿主（默认是；<c>LTOOLS_PANEL_HOST=0</c> 时否）。</summary>
     public static bool Enabled { get; } =
-        string.Equals(Environment.GetEnvironmentVariable("LTOOLS_PANEL_HOST"), "1", StringComparison.Ordinal);
+        !string.Equals(Environment.GetEnvironmentVariable("LTOOLS_PANEL_HOST"), "0", StringComparison.Ordinal);
 }
 
 /// <summary>

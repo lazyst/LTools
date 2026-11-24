@@ -524,4 +524,20 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
 - **默认开关仍关**：`LTOOLS_PANEL_HOST=1` 才走宿主。下一步：翻默认值、删开关与 `PanelRouting` 分叉。
 
+**2026-11-24 · P1b-10 默认值翻过来：面板默认在普通权限宿主里**
+
+- `PanelRouting.Enabled` 从「设 `LTOOLS_PANEL_HOST=1` 才开」翻成「**默认开**，设 `LTOOLS_PANEL_HOST=0`
+  才退回提权进程」——留这一版做回退口，下一版连它一起删。
+- 随之常驻：`App.OnStartup` 现在默认拉起 `ShareHost.exe`（`run` 意图，窗口隐藏；共享服务仍按
+  `Share.Running` 决定开不开），主程序退出时 `ShareHelper.Stop()` 一并停掉，不留孤进程。
+- **面板永远唤得出来**：`PanelLauncher` 仍保留本地兜底——宿主没起来 / 启动那几秒还没连上时，
+  面板在提权进程里开（功能与以前一致），连上之后就一直走宿主。
+- 宿主「先按唤起、后读完配置」的竞态：`LoadReadOnlyConfig` 读完在 UI 线程 `SuperPanel.Refresh()`
+  一次，避免那一份面板停在「没有任何场景 / 磁贴」的空状态。
+- 真机实测（**不设任何环境变量**）：起 `LTools.exe` → 自动拉起 `ShareHost.exe` → 宿主日志
+  `共享助手已启动（run…）` / `链路服务端已启动` / `主程序已连接` / `面板快照：8 个动作、1 个全局场景`；
+  关掉主程序时宿主一起退出。
+- 回归：`--selftest` 393 用例 / 18593 断言；`LinkSmoke` 60；`PanelHostSmoke` 11；
+  `ShareSmoke -- --explorer --helper` 103。
+
 

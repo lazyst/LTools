@@ -92,7 +92,7 @@ public partial class App : Application
     }
 
     /// <summary>只读加载配置：宿主显示面板要用，但一个字都不写（写入归提权进程）。</summary>
-    private static void LoadReadOnlyConfig()
+    private void LoadReadOnlyConfig()
     {
         try
         {
@@ -102,6 +102,14 @@ public partial class App : Application
         {
             AppLog.Warn("ShareHost", $"只读加载配置失败：{ex.Message}");
         }
+
+        // 面板可能在这一步之前就被唤起了（主程序启动后立刻按了唤起键）：配置读好之后重建一次，
+        // 否则那一份会停在「没有任何场景 / 磁贴」的空面板上。
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            try { Features.SuperPanel.Refresh(); }
+            catch (Exception ex) { AppLog.Warn("ShareHost", $"重建面板失败：{ex.Message}"); }
+        }));
     }
 
     /// <summary>
