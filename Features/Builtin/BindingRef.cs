@@ -56,19 +56,28 @@ internal static class BindingRef
     }
 
     /// <summary>
-    /// 悬停提示用：在 <see cref="Describe"/> 之后补上动作自己的**说明**（<c>description</c>）。
+    /// 悬停提示用：在 <see cref="Describe"/> 之后补上动作自己的**说明**（<c>description</c>），
+    /// 以及「这个动作运行前会要参数」（<see cref="ActionParams.Describe(ActionDto?)"/>）。
     /// </summary>
     /// <remarks>
     /// 只给 tooltip 用，菜单标题 / 日志仍走 <see cref="Describe"/>——把说明塞进菜单项会让每个
-    /// 菜单项长成两行。说明为空时与 <see cref="Describe"/> 完全相同。
+    /// 菜单项长成两行。说明 / 参数都为空时与 <see cref="Describe"/> 完全相同。
+    /// 面板磁贴、悬浮按钮、面板管理行的悬停提示都走这里，所以「要填参数」只在**这一处**加。
     /// </remarks>
     public static string Detail(string? reference)
     {
         if (string.IsNullOrWhiteSpace(reference)) return "";
         if (FeatureCatalog.IsFeatureRef(reference)) return Describe(reference);
 
-        string name = Name(reference);
-        string description = ActionRegistry.FindById(reference)?.Program?.Description?.Trim() ?? "";
-        return description.Length == 0 ? name : $"{name}\n{description}";
+        var action = ActionRegistry.FindById(reference);
+        var lines = new List<string> { Name(reference) };
+
+        string description = action?.Program?.Description?.Trim() ?? "";
+        if (description.Length > 0) lines.Add(description);
+
+        string parameters = ActionParams.Describe(action);
+        if (parameters.Length > 0) lines.Add(parameters);
+
+        return string.Join("\n", lines);
     }
 }

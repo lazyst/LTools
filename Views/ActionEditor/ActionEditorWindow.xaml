@@ -645,7 +645,7 @@
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionLabel}" Text="变量" Margin="0,0,0,2"/>
                         <TextBlock x:Name="VariablesHint" Style="{StaticResource HintLabel}" TextWrapping="Wrap"
-                                   Text="步骤写出的变量（输出、设置变量）会自动登记在这里，参数框右侧 ▾ 里也能选到。"/>
+                                   Text="步骤写出的变量（输出、设置变量）会自动登记在这里，参数框右侧 ▾ 里也能选到。&#x0a;方向选「输入」= 面板 / 快捷键 / 悬浮运行时先弹框问值（填过的会记住，留空用默认值）。"/>
 
                         <!-- 变量行是「两行卡片」：名称独占第一行（长变量名不截断），
                              类型 / 方向 / 默认值在第二行，来源小字在第三行。

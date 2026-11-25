@@ -1562,7 +1562,7 @@ public partial class ConfigHelperWindow : Window
             TypeLabel = MacroAction.MacroIdOf(a) != null ? "宏"
                 : SimpleActions.KindOf(a) != null ? "简单动作" : "组合动作";
             Glyph = IconCatalog.GetGlyph(a.Icon);
-            Summary = ProgramSummary(a);
+            Summary = ProgramSummary(a) + ParamSuffix(a);
             References = references;
         }
         public string Id { get; }
@@ -1571,6 +1571,16 @@ public partial class ConfigHelperWindow : Window
         public string TypeLabel { get; }
         public string Glyph { get; }
         public string Summary { get; }
+
+        /// <summary>
+        /// 「要填参数」的标记：面板 / 悬浮的悬停提示已经写了（<see cref="BindingRef.Detail"/>），
+        /// 动作管理这一行也得看得出——否则只有打开编辑器变量页才知道。
+        /// </summary>
+        private static string ParamSuffix(ActionDto a)
+        {
+            int count = ActionParams.InputsOf(a.Program).Count;
+            return count == 0 ? "" : $" · 参数 {count}";
+        }
 
         /// <summary>动作体：简单动作显示预设名（打开文件…），宏动作显示时长与事件数，其余显示步骤总数。</summary>
         private static string ProgramSummary(ActionDto a)

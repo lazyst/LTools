@@ -533,6 +533,8 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
   快捷键、悬浮按钮运行前会弹一次参数框（预填上次填的值，取消 = 这次不跑），值经
   `ActionRunOptions.InitialVariables` 注入，与自动触发的事件变量同一条路；自动触发不弹窗。
   记忆在 `<数据根>/state/action-params.json`（`Features/ActionParams.cs`）。
+  **「这个动作要填参数」在四处在场**（文案只由 `ActionParams.Describe` 生成）：磁贴 / 悬浮按钮 /
+  面板管理行的悬停提示第三行、动作管理摘要的「 · 参数 N」、动作选择器预览的灰字、变量页的提示。
   步骤**写出的**变量自动登记——`Core/Actions/VariableWrites` 是
   「这一步写了哪个变量」的唯一判定（`Step.Out` + 设置变量的 `name`），变量表、引用统计、改名同步、
   保存时补声明与静态校验共用同一份。

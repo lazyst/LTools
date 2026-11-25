@@ -29,6 +29,37 @@ internal static class ActionParams
     /// <summary>这个动作有没有要问的参数（没有就按原来的路径立刻跑，零开销）。</summary>
     public static bool NeedsAsk(ActionDto? action) => InputsOf(action?.Program).Count > 0;
 
+    /// <summary>
+    /// 界面上那句「运行前填参数：文件名、目录」——面板 / 悬浮的悬停提示、动作管理摘要、
+    /// 选择器预览都从这里取，别各写一份。没有输入变量时返回空串。
+    /// </summary>
+    /// <remarks>
+    /// 传整个变量表就行（内部按「方向 = 输入 + 名字非空」筛），最多列 3 个名字
+    /// （第 3 个之后并成「等 N 个」）：这句要能塞进一行 tooltip / 一行摘要。
+    /// 名字优先用变量的显示名（<see cref="VariableDef.Label"/>），没有就用变量名。
+    /// </remarks>
+    public static string Describe(IReadOnlyList<VariableDef> variables)
+    {
+        if (variables == null) return "";
+
+        var inputs = variables
+            .Where(v => v.Direction == VariableDirection.input && !string.IsNullOrWhiteSpace(v.Key))
+            .ToList();
+        if (inputs.Count == 0) return "";
+
+        var names = inputs.Select(v =>
+            string.IsNullOrWhiteSpace(v.Label) ? (v.Key ?? "").Trim() : v.Label.Trim()).ToList();
+
+        string list = names.Count <= 3
+            ? string.Join("、", names)
+            : $"{names[0]}、{names[1]} 等 {names.Count} 个";
+        return $"运行前填参数：{list}";
+    }
+
+    /// <summary>同上，按动作取（没声明输入变量时返回空串）。</summary>
+    public static string Describe(ActionDto? action) =>
+        action?.Program == null ? "" : Describe(action.Program.Variables);
+
     /// <summary>变量表里「输入」方向且名字非空的变量，按声明顺序。</summary>
     public static IReadOnlyList<VariableDef> InputsOf(ActionProgram? program)
     {

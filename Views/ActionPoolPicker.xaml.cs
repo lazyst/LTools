@@ -118,6 +118,7 @@ public partial class ActionPoolPicker : Window
                 foreach (var step in program.Steps.Take(PreviewSteps))
                     row.Steps.Add((StepSummary.Title(step), StepSummary.Describe(step)));
                 foreach (var variable in program.Variables) row.Variables.Add(variable.Key);
+                row.ParamHint = ActionParams.Describe(a);
             }
 
             row.RightText = macro ? "宏" : row.StepCount > 0 ? $"{row.StepCount} 步" : "";
@@ -335,6 +336,10 @@ public partial class ActionPoolPicker : Window
             foreach (string key in _current.Variables) wrap.Children.Add(BuildChip("${" + key + "}"));
             PreviewHost.Children.Add(wrap);
         }
+
+        // 「要填参数」得在这页就看得见：放进面板 / 快捷键 / 悬浮之后，每次运行都先问一次
+        if (_current.ParamHint.Length > 0)
+            AddMuted(_current.ParamHint + "，放进面板 / 快捷键 / 悬浮后每次运行都先问一次");
 
         AddPickerHint();
     }
@@ -672,6 +677,9 @@ public partial class ActionPoolPicker : Window
         public int StepCount { get; set; }
         public List<(string Title, string Detail)> Steps { get; } = new();
         public List<string> Variables { get; } = new();
+
+        /// <summary>动作运行前会要参数（<see cref="ActionParams.Describe(ActionDto?)"/>），空串 = 不问。</summary>
+        public string ParamHint { get; set; } = "";
         public List<string> Params { get; } = new();
     }
 }
