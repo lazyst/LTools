@@ -21,7 +21,9 @@ namespace LTools.Views.Controls;
 /// <para>
 /// 通道里只做三件事：不换子菜单、压掉被划过那一项的高亮（<see cref="MenuFx.ConePassOver"/>）、
 /// 顶住 WPF 的收起计时器（它会把 <c>IsSubmenuOpen</c> 改回 false，这里再打开）。
-/// 指针到了子菜单、回到父项、或者离开通道，锥就结束、恢复正常悬停；
+/// 指针到了子菜单里不会拆锥——它转成「回程待命」，从子菜单沿原路返回一级菜单时用的正是同一条
+/// 通道（2026-11-26 修：以前一进子菜单就拆，回来的路上没人保护，慢了就被 <see cref="MenuFx.HoverCloseMs"/>
+/// 收掉子菜单）；指针回到父项、离开通道、或者进到下一级子菜单时，锥才让位。
 /// 在通道里**停住**超过 <see cref="DwellMs"/> 说明用户其实想选指针下那一项，也让它接管。
 /// </para>
 /// <para>
@@ -268,10 +270,14 @@ internal static class MenuCone
         bool inOwner = _ownerRect.Contains(p);
         bool inChild = _childRect.Contains(p);
 
-        // 已经进到子菜单里：锥的使命结束，子菜单内部照常悬停
+        // 已经在子菜单里：锥进入「回程待命」，**不要拆掉**。
+        // 从子菜单沿原路回到一级菜单用的正是这条通道：拆了就没有谁保护它——MenuFx 的
+        // HoverCloseMs 宽限一到就把子菜单收掉，用户看到的就是「从二级往回走，菜单自己关了」。
+        // 指针进了下一级子菜单时，那一级的 Arm 会 Disarm 这一条。
         if (inChild)
         {
-            Disarm();
+            _heldMs = 0;
+            SetSkimmed(null);
             return;
         }
 

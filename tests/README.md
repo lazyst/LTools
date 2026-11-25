@@ -65,13 +65,17 @@ dotnet run --no-build -- behavior     # 只跑一段（改哪块跑哪段）
 dotnet build -p:NoWin32Manifest=true      # 先构建产品：这个工程直接引用 bin\Debug 里的 LTools.dll
 cd tests\MenuConeSmoke
 dotnet build -v q
-dotnet run --no-build                     # 15 条，约 5 秒
+dotnet run --no-build                     # 23 条，约 7 秒
 ```
 
 真 `ContextMenu` + `SetCursorPos` 斜着穿过相邻菜单项走向子菜单，断言「看得见的行为」：
 悬停父项立即展开 / 斜穿 360ms 不换项、不冒出第二个子菜单 / 指针进子菜单后停留 600ms 仍打开 /
 明确移到邻项才换 / 锥内短停 140ms 保持、停 660ms 让位 / 被划过的邻项底板不是 `HoverBg`（`#00FFFFFF`）/
-横向离开菜单后子菜单收起。它会真的动鼠标，结束时把光标放回原处。
+横向离开菜单后子菜单收起。
+**回程**（2026-11-26 修）：从子菜单慢速回一级菜单，整份菜单与父项子菜单都还在；
+从子菜单斜着往邻项走、在锥内停 380ms（超过 `HoverCloseMs` 260ms），子菜单不许被收、邻项不许冒出来，
+明确走到邻项才换——修之前这条是红的（`A.sub=False B.sub=True`）。
+它会真的动鼠标，结束时把光标放回原处。
 
 ### `QuickNoteSmoke`（速记 Markdown 编辑器）
 

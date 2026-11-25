@@ -155,6 +155,58 @@ internal static class Program
         Check("横向离开菜单后子菜单收起", !a.IsSubmenuOpen && !b.IsSubmenuOpen && !c.IsSubmenuOpen,
             $"A.sub={a.IsSubmenuOpen} B.sub={b.IsSubmenuOpen} C.sub={c.IsSubmenuOpen}");
 
+        // ⑧ 从子菜单往回移到一级菜单（2026-11-26 用户报：锥内往回走时整份菜单会消失）
+        MoveTo(Center(aRect));
+        Pump(350);
+        Check("⑧ 前置：A 的子菜单又开了", a.IsSubmenuOpen, $"A.sub={a.IsSubmenuOpen}");
+
+        if (PopupChild(a) is { } again)
+        {
+            var r2 = Rect(again);
+            var deep = new Point(r2.Left + 24, r2.Top + 30);
+            MoveTo(deep);
+            Pump(220);
+            Check("⑧ 前置：指针进了子菜单", again.IsMouseOver, $"child.IsMouseOver={again.IsMouseOver}");
+
+            var back = Center(aRect);
+            for (int i = 1; i <= 14; i++)
+            {
+                MoveTo(new Point(deep.X + (back.X - deep.X) * i / 14.0,
+                                 deep.Y + (back.Y - deep.Y) * i / 14.0));
+                Pump(35);
+                if (i == 8)
+                    Console.WriteLine($"⑧ 中途：menu={menu.IsOpen} A.sub={a.IsSubmenuOpen} cone={ConeState()}");
+            }
+            Pump(300);
+            Check("⑧ 从子菜单回到一级菜单，整份菜单仍在", menu.IsOpen,
+                $"menu.IsOpen={menu.IsOpen} A.sub={a.IsSubmenuOpen} B.sub={b.IsSubmenuOpen} cone={ConeState()}");
+            Check("⑧ 回到一级菜单后父项子菜单仍在", a.IsSubmenuOpen,
+                $"A.sub={a.IsSubmenuOpen} B.sub={b.IsSubmenuOpen}");
+        }
+
+        // ⑨ 回程保护（2026-11-26 修）：从子菜单里斜着往邻项 B 走，**在锥内停 380ms**
+        //    （超过 HoverCloseMs 260ms）：子菜单要保住、B 不许冒出来；明确走到 B 才换。
+        //    以前一进子菜单锥就拆了，回来的路上没人保护，这里会把 A 的子菜单收掉。
+        if (PopupChild(a) is { } again2)
+        {
+            var r3 = Rect(again2);
+            MoveTo(new Point(r3.Left + 24, r3.Bottom - 20));
+            Pump(220);
+            Check("⑨ 前置：指针在子菜单里", again2.IsMouseOver, $"child.IsMouseOver={again2.IsMouseOver}");
+
+            var skimBack = new Point(bRect.Right - 20, bRect.Top + bRect.Height / 2);   // 锥内、B 上
+            MoveTo(skimBack);
+            Pump(380);
+            Check("⑨ 回程在锥内停 380ms：子菜单仍开着", a.IsSubmenuOpen && !b.IsSubmenuOpen,
+                $"A.sub={a.IsSubmenuOpen} B.sub={b.IsSubmenuOpen} cone={ConeState()}");
+            Check("⑨ 回程在锥内停 380ms：整份菜单仍在", menu.IsOpen, $"menu.IsOpen={menu.IsOpen}");
+
+            MoveTo(new Point(bRect.Left + 12, bRect.Top + bRect.Height / 2));
+            Pump(450);
+            Check("⑨ 明确走到邻项才换", !a.IsSubmenuOpen && b.IsSubmenuOpen,
+                $"A.sub={a.IsSubmenuOpen} B.sub={b.IsSubmenuOpen}");
+        }
+
         menu.IsOpen = false;
     }
 
