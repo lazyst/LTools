@@ -481,18 +481,10 @@ public partial class SuperPanelWindow
         OpenScenePage(scene?.Id ?? PanelManageView.CommonKey);
     }
 
-    /// <summary>
-    /// 打开「面板管理 → 场景」。只读预览（宿主）里设置窗口在提权进程，转给主程序开。
-    /// </summary>
+    /// <summary>打开「面板管理 → 场景」（设置窗口在宿主里，和面板同一个进程）。</summary>
     private void OpenScenePage(string? sceneId)
     {
         Features.SuperPanel.Close();
-        if (_preview)
-        {
-            PanelHostBridge.TryOpen(LinkTargets.PanelScene, sceneId);
-            return;
-        }
-
         ConfigHelper.OpenPanelScene(sceneId);
     }
 

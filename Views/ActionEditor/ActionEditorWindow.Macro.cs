@@ -65,13 +65,7 @@ public partial class ActionEditorWindow
 
     private void MacroSettings_Click(object sender, RoutedEventArgs e)
     {
-        // 设置窗口还在提权进程里（M3-5c-3 才搬）：宿主里要转过去，别以为自己开得出来。
-        if (AppRole.IsUiHost)
-        {
-            PanelHostBridge.TryOpen(LinkTargets.Macros);
-            return;
-        }
-
+        // 设置窗口也在宿主里（M3-5c-3d）：直接开 / 提到前面，不再转给提权进程。
         ConfigHelper.OpenMacros();
     }
 

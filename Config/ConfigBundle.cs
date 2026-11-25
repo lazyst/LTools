@@ -58,7 +58,8 @@ internal static class ConfigBundle
     /// <summary>配置目录：与锚点文件（旧 <c>LTools.json</c> 的位置）同级的 <c>configs/</c>。</summary>
     public static string ConfigDir(string anchorPath) => Path.Combine(BaseDir(anchorPath), "configs");
 
-    private static string SettingsPath(string a) => Path.Combine(ConfigDir(a), "settings.json");
+    /// <summary><c>configs/settings.json</c> 的完整路径（全局行为域；日志设置在这里面）。</summary>
+    public static string SettingsPath(string a) => Path.Combine(ConfigDir(a), "settings.json");
     private static string UiPath(string a) => Path.Combine(ConfigDir(a), "ui.json");
     private static string HotkeysPath(string a) => Path.Combine(ConfigDir(a), "hotkeys.json");
     private static string PanelPath(string a) => Path.Combine(ConfigDir(a), "panel.json");

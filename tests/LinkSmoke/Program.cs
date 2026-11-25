@@ -145,7 +145,6 @@ internal static class Program
 
         string pipe = "LToolsLink-fwd-" + Guid.NewGuid().ToString("N")[..8];
         var recorded = new TaskCompletionSource<RunActionRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var opened = new TaskCompletionSource<OpenWindowRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var operated = new TaskCompletionSource<ActionOpRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var pushed = new TaskCompletionSource<PanelConfig>(TaskCreationOptions.RunContinuationsAsynchronously);
         var subSaved = new TaskCompletionSource<SubActionSaveRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -160,6 +159,7 @@ internal static class Program
         var macroDeleted = new TaskCompletionSource<MacroDeleteRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var mcpApplied = new TaskCompletionSource<McpApplyRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var opsSeen = new ConcurrentQueue<ActionOpRequest>();
+        var autoSeen = new ConcurrentQueue<AppAutoStartRequest>();
 
         var server = new LinkServer(pipe, "fwd-token",
             (_, request) =>
@@ -327,8 +327,15 @@ internal static class Program
 
                     if (request.Method == LinkMethods.RunAction && request.Read<RunActionRequest>() is { } run)
                         recorded.TrySetResult(run);
-                    if (request.Method == LinkMethods.OpenWindow && request.Read<OpenWindowRequest>() is { } open)
-                        opened.TrySetResult(open);
+                    if (request.Method == AppMethods.AutoStart && request.Read<AppAutoStartRequest>() is { } auto)
+                    {
+                        autoSeen.Enqueue(auto);
+                        if (auto.Action == AutoStartActions.Enable)
+                            return Task.FromResult(LinkMessage.Response(request,
+                                new AppAutoStartReply(false, default, "任务计划服务不可用")));
+                        return Task.FromResult(LinkMessage.Response(request, new AppAutoStartReply(true,
+                            new AutoStartInfo(AutoStartState.Stale, @"D:\Tools\LTools.exe", true), null)));
+                    }
                     if (request.Method == LinkMethods.ActionOp && request.Read<ActionOpRequest>() is { } op)
                     {
                         opsSeen.Enqueue(op);
@@ -350,12 +357,17 @@ internal static class Program
             Check("引用 / 坐标 / 来源原样",
                 got is { Reference: "01nothing", X: 11, Y: 22, Source: "Panel" }, got?.ToString());
 
-            Check("打开窗口被接管", PanelHostBridge.TryOpen(LinkTargets.Settings));
-            Task openedDone = await Task.WhenAny(opened.Task, Task.Delay(2000));
-            Check("打开目标转给了提权进程", ReferenceEquals(openedDone, opened.Task),
-                ReferenceEquals(openedDone, opened.Task) ? null : "2 秒内没收到");
-            Check("打开目标原样", opened.Task.IsCompletedSuccessfully && opened.Task.Result.Target == LinkTargets.Settings,
-                opened.Task.IsCompletedSuccessfully ? opened.Task.Result.ToString() : "");
+            // ---- 开机自启：设置页在宿主里，任务计划只能由执行器建 ----
+            AppBridge.Attach(server);
+            AutoStartInfo? autoState = AppBridge.Query(out string? autoError);
+            Check("自启状态问得到", autoState is { State: AutoStartState.Stale, RegisteredPathExists: true }, autoError);
+            Check("自启状态里的路径原样", autoState?.RegisteredPath == @"D:\Tools\LTools.exe", autoState?.ToString());
+            Check("自启失败不假装成功", AppBridge.SetEnabled(true, out string? enableError) == null,
+                enableError ?? "居然成功了");
+            Check("自启失败带原因", enableError == "任务计划服务不可用", enableError);
+            Check("自启请求都到了执行器",
+                autoSeen.Select(a => a.Action).SequenceEqual(new[] { AutoStartActions.Query, AutoStartActions.Enable }),
+                string.Join(",", autoSeen.Select(a => a.Action)));
 
             // ---- 悬浮 / 宏 / 暂存区：宿主里也统一走 panel.op（不在宿主里碰钩子 / 悬浮窗 / staging）----
             Check("悬浮被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.Float, Id: "01nothing")));
@@ -368,23 +380,23 @@ internal static class Program
             Check("暂存区采纳被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashPromote, Id: "d1", Kind: "replace")));
             Check("暂存区删除被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashDelete, Id: "d1")));
             Check("暂存区清空被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashClear)));
-            Check("AI 接入设置被接管", PanelHostBridge.TryOpen(LinkTargets.Ai));
+            Check("关闭全部悬浮被接管", PanelHostBridge.TryCloseAllFloating());
 
             // 五项都真的到了对端（顺序不保证，按操作名收）。
             var seen = new List<string>();
-            for (int i = 0; i < 40 && seen.Count < 10; i++)
+            for (int i = 0; i < 40 && seen.Count < 11; i++)
             {
                 await Task.Delay(50);
                 seen = opsSeen.Select(o => o.Op).ToList();
             }
 
-            Check("十个操作全部到达提权进程",
+            Check("十一个操作全部到达提权进程",
                 seen.OrderBy(s => s, StringComparer.Ordinal).SequenceEqual(
                     new[]
                     {
                         PanelOps.Float, PanelOps.FloatGroup, PanelOps.ReplayMacro, PanelOps.RecordMacro,
                         PanelOps.EditInStash, PanelOps.StashOpen, PanelOps.StashRun, PanelOps.StashPromote,
-                        PanelOps.StashDelete, PanelOps.StashClear,
+                        PanelOps.StashDelete, PanelOps.StashClear, PanelOps.FloatCloseAll,
                     }.OrderBy(s => s, StringComparer.Ordinal)),
                 string.Join(",", seen));
             Check("宏 Id / 名字原样",
@@ -615,6 +627,7 @@ internal static class Program
         finally
         {
             PanelHostBridge.Detach();
+            AppBridge.Detach();
             ConfigBundle.LocalWriteListener = null;
             if (client != null) await client.DisposeAsync();
             await server.DisposeAsync();

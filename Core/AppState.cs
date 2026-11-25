@@ -81,6 +81,8 @@ internal static class AppState
             (cfg.Screenshot ?? new Config.ScreenshotFile()).DelaySeconds);
         Features.CapturePro.ExportSettings.Apply(cfg.Export);
         Record = (cfg.Record ?? new RecordOptions()).Normalized();
+        // 终端路径覆盖（设置 → 终端路径）：执行器要按它起 shell，宿主里那页也要显示当前值。
+        Features.TerminalLauncher.LoadFromConfig(cfg);
     }
 
     /// <summary>CapsLock 是否当前按下（便捷查询，供功能模块判断）。</summary>

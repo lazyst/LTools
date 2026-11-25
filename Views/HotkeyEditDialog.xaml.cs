@@ -80,7 +80,9 @@ public partial class HotkeyEditDialog : Window
         _capturing = true;
         _capsPressed = false;
         _beforeCapture = _chord;
-        HotkeyRegistry.Suspended = true;      // 录入期间别让刚录的组合键触发动作
+        // 录入期间别让刚录的组合键触发动作。设置窗口在宿主里、钩子在提权进程，
+        // PushSuspend 会把它推过去（同一个让路通道，见 HotkeyCapture.Publish）。
+        HotkeyCapture.PushSuspend();
         ChordBox.BorderBrush = (System.Windows.Media.Brush)FindResource("AccentBrush");
         ChordBox.Text = "请按下组合键…";
     }
@@ -89,7 +91,7 @@ public partial class HotkeyEditDialog : Window
     {
         if (!_capturing) return;
         _capturing = false;
-        HotkeyRegistry.Suspended = false;
+        HotkeyCapture.PopSuspend();
         ChordBox.ClearValue(Control.BorderBrushProperty);
         SetChord(commit ? _chord : _beforeCapture);
     }

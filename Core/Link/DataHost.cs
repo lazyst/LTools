@@ -3,7 +3,6 @@ using System.Threading.Tasks;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features;
-using LTools.Features.CapturePro;
 
 namespace LTools.Core.Link;
 
@@ -59,25 +58,21 @@ internal static class DataHost
     /// 导出场景、工具条布局、标注样式…）。设置在提权进程里改、落盘在宿主里做——写者就是自己，
     /// 所以写完就地失效一次，别等下次启动才发现「改了没生效」。
     /// </remarks>
-    /// <summary>宿主自己写完 settings.json / ui.json 之后刷一遍运行期缓存（截图 / 录屏 / 工具条）。</summary>
+    /// <summary>
+    /// 宿主写完 <c>configs/*.json</c> 之后刷一遍自己的运行期缓存（截图 / 录屏 / 工具条 / 悬浮偏好）。
+    /// </summary>
+    /// <remarks>
+    /// 转发写入（执行器 → 宿主）与宿主自己的本地写入都走这里。**执行器那一份不用管**：
+    /// 宿主写完会发 <c>config.changed</c>，它自己在那边刷。
+    /// </remarks>
     internal static void RefreshRuntime(string? name)
     {
         try
         {
             if (string.Equals(name, "settings.json", StringComparison.OrdinalIgnoreCase))
-            {
                 AppState.ApplySettings(ConfigStore.LoadConfig());
-                OverlayUiSettings.Invalidate();
-                ScreenshotBehavior.Invalidate();
-                CaptureSoundSettings.Invalidate();
-            }
-            else if (string.Equals(name, "ui.json", StringComparison.OrdinalIgnoreCase))
-            {
-                ToolLayoutStore.Forget();
-                CaptureStyleStore.Forget();
-                CaptureActionLayoutStore.Forget();
-                CaptureToolMemory.Invalidate();
-            }
+
+            RuntimeRefresh.Invalidate(name);
         }
         catch (Exception ex)
         {

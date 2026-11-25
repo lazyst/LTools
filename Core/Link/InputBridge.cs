@@ -32,9 +32,28 @@ internal static class InputBridge
     /// <summary>客户端（重新）连上时补一次当前状态：断线期间漏掉的那一次不能留错。</summary>
     public static void PushCurrent()
     {
-        if (!_active) return;
-        try { _link?.NotifyAsync(LinkMethods.EventPickerActive, new PickerActiveEvent(true)); }
-        catch (Exception ex) { AppLog.Warn("Link", $"补发点选器状态失败：{ex.Message}"); }
+        if (_active)
+        {
+            try { _link?.NotifyAsync(LinkMethods.EventPickerActive, new PickerActiveEvent(true)); }
+            catch (Exception ex) { AppLog.Warn("Link", $"补发点选器状态失败：{ex.Message}"); }
+        }
+
+        // 录入框可能正开着：钩子那边断线时按「没在录入」处理过，这里补回来。
+        if (Features.HotkeyCapture.IsHostCapturing)
+        {
+            try { _link?.NotifyAsync(LinkMethods.EventHotkeyCapture, new InputCaptureEvent(true)); }
+            catch (Exception ex) { AppLog.Warn("Link", $"补发快捷键录入状态失败：{ex.Message}"); }
+        }
+    }
+
+    /// <summary>
+    /// 快捷键录入框开始 / 结束等按键：钩子在提权进程里，录入期间必须让路，
+    /// 否则「录 CapsLock+S」会先把那个热键触发一遍。
+    /// </summary>
+    public static void SetHotkeyCapture(bool capturing)
+    {
+        try { _link?.NotifyAsync(LinkMethods.EventHotkeyCapture, new InputCaptureEvent(capturing)); }
+        catch (Exception ex) { AppLog.Warn("Link", $"通知快捷键录入状态失败：{ex.Message}"); }
     }
 
     /// <summary>

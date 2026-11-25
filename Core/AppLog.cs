@@ -104,7 +104,9 @@ internal static class AppLog
         _level = (int)level;
         _retentionDays = retentionDays < 0 ? 0 : retentionDays;
         _directory = AppPaths.LogsDir;
-        _fileTag = (fileTag ?? "").Trim();
+        // fileTag 传 null = **沿用当前那个**：设置页改级别时不该把宿主的 "host" 标签冲掉
+        // （两个进程共用 ltools-*.log 会互相锁成「一行都写不进去」）。
+        if (fileTag != null) _fileTag = fileTag.Trim();
         _enabled = enabled;
 
         if (!enabled) return;

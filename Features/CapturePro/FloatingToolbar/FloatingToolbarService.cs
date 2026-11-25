@@ -53,6 +53,15 @@ internal static class FloatingToolbarService
     });
 
     /// <summary>
+    /// 设置从别处改过（<c>config.changed</c>）：按新设置重建。
+    /// **没启动过就什么都不做**——那说明工具条窗口不归这个进程（宿主里没有它）。
+    /// </summary>
+    public static void RefreshIfStarted()
+    {
+        if (_started) Apply();
+    }
+
+    /// <summary>
     /// 投到 UI 线程。优先用 <see cref="Ui"/>（生产路径）；没初始化（冒烟 / 单元环境）
     /// 就退回 <see cref="Application.Current"/> 的 Dispatcher，别再静默丢掉。
     /// </summary>

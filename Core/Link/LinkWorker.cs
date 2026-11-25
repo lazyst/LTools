@@ -124,6 +124,16 @@ internal static class LinkWorker
         FlushPending();
     }
 
+    /// <summary>
+    /// 把「开 / 切 / 关设置窗口」交给宿主（窗口只有一个家，见 <see cref="Features.ConfigHelper"/>）。
+    /// 没连上同样先记着，连上后补发。
+    /// </summary>
+    public static void RequestSettings(SettingsOpenRequest request)
+    {
+        Interlocked.Exchange(ref _pendingSettings, request);
+        FlushPending();
+    }
+
     private sealed record PendingShow(IntPtr Hwnd, int X, int Y);
 
     private static PendingShow? _pendingShow;
@@ -131,6 +141,7 @@ internal static class LinkWorker
     private static int _pendingStash;
     private static int _pendingNote;
     private static int _pendingInfoHelper;
+    private static SettingsOpenRequest? _pendingSettings;
 
     /// <summary>宿主连上了 / 刚被要求：把攒着的那一次补发出去（同一件事只留最后一次）。</summary>
     private static void FlushPending()
@@ -151,6 +162,9 @@ internal static class LinkWorker
 
         if (Interlocked.Exchange(ref _pendingInfoHelper, 0) != 0)
             _ = NotifyAsync(LinkMethods.EventInfoHelper);
+
+        if (Interlocked.Exchange(ref _pendingSettings, null) is { } settings)
+            _ = NotifyAsync(SettingsMethods.Show, settings);
     }
 
     /// <summary>停止重连并断开（幂等）。不等后台任务退出。</summary>
@@ -182,6 +196,12 @@ internal static class LinkWorker
             else if (message.Method == LinkMethods.EventInputSuspend
                      && message.Read<InputSuspendEvent>() is { } suspend)
                 InputGuard.Apply(suspend);
+            else if (message.Method == LinkMethods.EventHotkeyCapture
+                     && message.Read<InputCaptureEvent>() is { } capture)
+            {
+                Features.HotkeyCapture.ApplyRemote(capture.Capturing);
+                AppLog.Info("Link", capture.Capturing ? "快捷键录入中：键盘钩子让路" : "快捷键录入结束：钩子恢复");
+            }
             else if (message.Method == LinkMethods.EventPinState
                      && message.Read<PinStateEvent>() is { } pin)
                 Features.CapturePro.PinShortcutRoute.ApplyState(pin.Hwnd, pin.State);
@@ -250,6 +270,7 @@ internal static class LinkWorker
                     Interlocked.CompareExchange(ref _client, null, client);
                     PanelHostBridge.SetRemotePanelOpen(false);   // 断开就当面板没了
                     InputGuard.Reset();                          // 画布 / 快捷键挂起是宿主推来的，一起作废
+                    Features.HotkeyCapture.ResetRemote();        // 宿主里的录入框状态同理
                     Features.CapturePro.PinShortcutRoute.DropRemote();   // 宿主里的贴图影子也作废
                     Features.CapturePro.RecordShortcutRoute.DropRemote(); // 录屏条的快捷键盘快照同理
                     try { await client.DisposeAsync().ConfigureAwait(false); } catch { /* 已断开 */ }

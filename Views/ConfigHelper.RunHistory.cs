@@ -6,6 +6,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using LTools.Core;
+using LTools.Core.Link;
+using LTools.Features;
 
 namespace LTools.Views;
 
@@ -79,7 +81,13 @@ public partial class ConfigHelperWindow
                 "确定清空全部运行历史吗？\n只删这份统计记录，失败报告与日志文件都不动。",
                 danger: true)) return;
 
-        RunHistory.Clear();
+        // 记录由执行器产生（它进程内还有一份）：转给它清，别在宿主里删文件。
+        if (!AppControl.ClearHistory(HistoryRecords.Run, out string? error))
+        {
+            ConfirmDialog.Info(this, "运行历史", error ?? "清空失败。");
+            return;
+        }
+
         LoadRunHistory();
         ShowStatus("运行历史已清空", ok: true);
     }

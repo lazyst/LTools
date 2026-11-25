@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using LTools.Config;
 using LTools.Core;
@@ -42,25 +43,47 @@ internal static class ConfigStore
     /// 与 <see cref="UsePathOnly"/> 的区别：那个只记路径（共享助手只需要 settings 域）；
     /// 这个要真把面板 / 动作 / 快捷键读进内存（宿主显示面板要用），但仍然一个字都不写。
     /// 见 <c>docs/PROCESS_SPLIT.md</c> §7 的「一个文件一个写者」。
+    /// 启动时放在后台跑（不挡链路），所以**加锁**：用户早于它打开面板 / 设置时，另一条线程会在这里等。
     /// </remarks>
     internal static void InitializeReadOnly(string configPath)
     {
-        ConfigPath = configPath;
-        ActionStore.Anchor = configPath;
+        lock (InitGate)
+        {
+            ConfigPath = configPath;
+            ActionStore.Anchor = configPath;
 
-        AppConfig cfg = AppConfig.Load(configPath);
-        ActionLibrary.LoadFrom(cfg);
-        HotkeyRegistry.Load(cfg);
-        // 宿主也跑截图 / 录屏：延时秒数、录屏默认开关、导出场景这些「运行期缓存」要跟提权进程同源；
-        // 宿主自己写完 settings.json 后再调一次（见 DataHost）。
-        AppState.ApplySettings(cfg);
-        PanelLibrary.LoadReadOnly(configPath);
-        MacroStore.Invalidate();   // 下一次访问按 ConfigPath 现读（只读）
-        // 宏页（设置 → 键鼠宏，M3-5c-3b 起在宿主里）要显示热键 / 回放默认值，和回放对话框的
-        // 「留空 = 跟随默认」提示同源。
-        MacroSettings.Load(cfg);
-        SubActionStore.Invalidate();   // 导入备份会整份换掉 subactions/（编辑器将来在宿主里读）
-        ReadOnly = true;
+            AppConfig cfg = AppConfig.Load(configPath);
+            ActionLibrary.LoadFrom(cfg);
+            HotkeyRegistry.Load(cfg);
+            // 宿主也跑截图 / 录屏：延时秒数、录屏默认开关、导出场景这些「运行期缓存」要跟提权进程同源；
+            // 宿主自己写完 settings.json 后再调一次（见 DataHost）。
+            AppState.ApplySettings(cfg);
+            PanelLibrary.LoadReadOnly(configPath);
+            MacroStore.Invalidate();   // 下一次访问按 ConfigPath 现读（只读）
+            // 宏页（设置 → 键鼠宏，M3-5c-3b 起在宿主里）要显示热键 / 回放默认值，和回放对话框的
+            // 「留空 = 跟随默认」提示同源。
+            MacroSettings.Load(cfg);
+            // 悬浮的**偏好**（设置 → 面板管理要编辑它、并写回 floating.json）。悬浮项本身只在
+            // 执行器内存里，所以这边读进来是空的，`SavePreferences` 照常能写。
+            FloatingLibrary.Initialize(configPath);
+            SubActionStore.Invalidate();   // 导入备份会整份换掉 subactions/（编辑器在宿主里读）
+            ReadOnly = true;
+        }
+    }
+
+    private static readonly object InitGate = new();
+
+    /// <summary>
+    /// 宿主里「真的要读配置了」的那一刻（面板 / 设置窗口）：后台那次还没跑完就地补上。
+    /// </summary>
+    /// <remarks>
+    /// 不补的话，主程序刚启动的一两秒内打开设置会看到空列表（<see cref="InitializeReadOnly"/> 还在后台跑）。
+    /// 已经读好了就直接返回，不在正常路径上加锁。
+    /// </remarks>
+    internal static void EnsureReadOnly(string configPath)
+    {
+        if (ReadOnly && string.Equals(ConfigPath, configPath, StringComparison.OrdinalIgnoreCase)) return;
+        InitializeReadOnly(configPath);
     }
 
     /// <summary>本进程是不是只读（宿主）：<see cref="Save"/> 直接拒绝，避免两个进程抢着写。</summary>
@@ -94,6 +117,8 @@ internal static class ConfigStore
     {
         var cfg = AppConfig.Load(ConfigPath);
         ApplyRuntime(cfg);
+        ApplyLogging(cfg);
+        RuntimeRefresh.Invalidate(null);
         PanelLibrary.Reload();
         NotifyChanged();
 
@@ -106,13 +131,30 @@ internal static class ConfigStore
     /// <summary>
     /// 宿主写过 <c>configs/</c>（<c>config.changed</c>）：执行器从磁盘重读运行期状态。
     /// </summary>
+    /// <param name="changedFile">
+    /// 被写的域文件名（进日志与「要不要重配日志」的判断）；整份重读时为 null。
+    /// </param>
     /// <remarks>
     /// 只刷「执行器自己那份运行期状态」，**不碰面板**（那走 <c>panel.replace</c>）也不再回头通知宿主
     /// （否则就是两个进程互相叫对方重读）。读盘在调它的 UI 线程上，几十毫秒，不影响输入。
     /// </remarks>
-    internal static void ReloadRuntime()
+    internal static void ReloadRuntime(string? changedFile = null)
     {
-        ApplyRuntime(AppConfig.Load(ConfigPath));
+        AppConfig cfg = AppConfig.Load(ConfigPath);
+        ApplyRuntime(cfg);
+
+        // 日志设置每改一次就重配会白跑一次日志清理（每次写配置都会走到这里），
+        // 所以只在 settings 那个域真变过（或整份重读）时才动。
+        if (changedFile == null
+            || string.Equals(changedFile, Path.GetFileName(ConfigBundle.SettingsPath(ConfigPath)),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            ApplyLogging(cfg);
+        }
+
+        // 截图 / 录屏 / 悬浮工具条那些「读一次就记住」的设置：执行器这边也要跟着换。
+        RuntimeRefresh.Invalidate(changedFile);
+
         NotifyChanged();
     }
 
@@ -125,6 +167,23 @@ internal static class ConfigStore
         TriggerService.Reload(cfg.Triggers ?? new TriggersFile());
         MacroStore.Invalidate();           // 宏元数据（macros.json）可能整个换过
         MacroSettings.Load(cfg);
+        SubActionStore.Invalidate();       // 导入备份会整份换掉 subactions/
+    }
+
+    /// <summary>
+    /// 日志设置（<c>settings.json</c> 的 Logging 段）跟着配置走。
+    /// </summary>
+    /// <remarks>
+    /// **只在执行器里配**：日志是进程级状态，宿主那份由它自己写设置时配（它带 <c>host</c> 文件标签，
+    /// 两个进程共用同一个 <c>ltools-*.log</c> 会互相锁成「一行都写不进去」）。文件标签由
+    /// <see cref="AppLog.Configure"/> 沿用当前值，所以这里不必知道自己在哪个文件里。
+    /// </remarks>
+    private static void ApplyLogging(AppConfig cfg)
+    {
+        if (AppRole.IsUiHost) return;
+
+        LogConfig log = cfg.Logging ?? new LogConfig();
+        AppLog.Configure(log.Enabled, log.Level, log.RetentionDays);
     }
 
     /// <summary>加载当前磁盘配置（不回写）。</summary>

@@ -63,6 +63,10 @@ public partial class App : Application
 
         string configPath = ConfigLocator.FindPath();
         ConfigStore.UsePathOnly(configPath);
+        // 设置窗口住在自己进程里（M3-5c-3d）：记住锚点，第一次打开时才建窗。
+        ConfigHelper.Initialize(configPath);
+        // 快捷键录入框在本进程里，钩子在对面的提权进程：录入期间让它整体让路。
+        HotkeyCapture.RemoteSink = InputBridge.SetHotkeyCapture;
 
         // 日志和主程序用同一套配置：`[Share] 拖放：…` 这些行要能落到 logs/ltools-*.log，
         // 否则「拖不进来」只能靠猜。
@@ -191,8 +195,14 @@ public partial class App : Application
             MacroBridge.Attach(server);
             ConfigChangedBridge.Attach(server);
             McpBridge.Attach(server);
-            // 宿主是 configs/ 的写者：本地写完一个域就让执行器重读运行期状态（钩子 / 触发器 / 宏）。
-            ConfigBundle.LocalWriteListener = ConfigChangedBridge.Notify;
+            AppBridge.Attach(server);
+            // 宿主是 configs/ 的写者：本地写完一个域，先刷自己那份运行期缓存，
+            // 再让执行器重读它那份（钩子 / 触发器 / 宏 / 截图设置）。
+            ConfigBundle.LocalWriteListener = name =>
+            {
+                DataHost.RefreshRuntime(name);
+                ConfigChangedBridge.Notify(name);
+            };
             server.ClientChanged += OnLinkClientChanged;
             server.Start();
 
@@ -300,6 +310,16 @@ public partial class App : Application
                 {
                     AppLog.Info("ShareHost", "开关辅助工具（普通权限窗口）");
                     Views.InfoHelperWindow.Toggle();
+                }));
+                break;
+
+            case SettingsMethods.Show:
+                SettingsOpenRequest? settingsOpen = message.Read<SettingsOpenRequest>();
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    AppLog.Info("ShareHost",
+                        $"打开设置（{settingsOpen?.Action ?? SettingsActions.Open} {settingsOpen?.Target}）");
+                    ConfigHelper.OpenRemote(settingsOpen);
                 }));
                 break;
 

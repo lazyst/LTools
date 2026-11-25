@@ -151,13 +151,14 @@ internal static class LinkSuite
         {
             LinkMethods.PanelSnapshot, LinkMethods.PanelReplace, LinkMethods.ActionAdd,
             LinkMethods.ActionUpdate, LinkMethods.ActionDelete, LinkMethods.ActionDuplicate,
-            LinkMethods.RunAction, LinkMethods.OpenWindow, LinkMethods.ActionOp,
+            LinkMethods.RunAction, LinkMethods.ActionOp,
             LinkMethods.EventPanelShow, LinkMethods.EventPanelToggle, LinkMethods.EventClientReady,
             LinkMethods.EventActionsChanged, LinkMethods.EventPanelStash, LinkMethods.EventPanelState,
             LinkMethods.EventPanelClose, LinkMethods.EventInfoHelper, LinkMethods.EventPickerActive,
             LinkMethods.EventInputSwallow, LinkMethods.CaptureRun, LinkMethods.CaptureDirect,
             LinkMethods.EventCaptureRecordDone, LinkMethods.EventCaptureWindow, ActionMethods.SaveAll,
             LinkMethods.EventInputSuspend, LinkMethods.EventPinState, LinkMethods.EventRecordKeys,
+            LinkMethods.EventHotkeyCapture, SettingsMethods.Show, AppMethods.AutoStart,
             SubActionMethods.Save, SubActionMethods.Delete, LinkMethods.EventConfigReload,
             RunMethods.Program, RunMethods.Stop, RunMethods.EventTrace, RunMethods.EventSlow,
             RunMethods.EventDone, MacroMethods.Record, MacroMethods.Stop,
@@ -563,14 +564,35 @@ internal static class LinkSuite
         Check.Equal("common.capture", run?.Reference, "转交执行：引用原样");
         Check.Equal("Panel", run?.Source, "转交执行：来源原样");
 
-        OpenWindowRequest? open = RoundTrip(LinkMessage.Request(7, LinkMethods.OpenWindow,
-            new OpenWindowRequest(LinkTargets.PanelScene, "s1"))).Read<OpenWindowRequest>();
-        Check.Equal(LinkTargets.PanelScene, open?.Target, "打开窗口：目标原样");
-        Check.Equal("s1", open?.Arg, "打开窗口：参数原样");
+        SettingsOpenRequest? settings = RoundTrip(LinkMessage.Request(7, SettingsMethods.Show,
+            new SettingsOpenRequest(SettingsActions.Open, "macros-list"))).Read<SettingsOpenRequest>();
+        Check.Equal(SettingsActions.Open, settings?.Action, "打开设置：动作原样");
+        Check.Equal("macros-list", settings?.Target, "打开设置：导航 tag 原样");
 
-        OpenWindowRequest? ai = RoundTrip(LinkMessage.Request(12, LinkMethods.OpenWindow,
-            new OpenWindowRequest(LinkTargets.Ai, null))).Read<OpenWindowRequest>();
-        Check.Equal(LinkTargets.Ai, ai?.Target, "打开窗口：AI 接入目标原样");
+        SettingsOpenRequest? settingsToggle = RoundTrip(LinkMessage.Request(12, SettingsMethods.Show,
+            new SettingsOpenRequest(SettingsActions.Toggle))).Read<SettingsOpenRequest>();
+        Check.Equal(SettingsActions.Toggle, settingsToggle?.Action, "打开设置：开 / 关原样");
+        Check.True(settingsToggle?.Target == null, "打开设置：不跳页时没有 tag");
+
+        // 快捷键录入：宿主推「在录入」→ 执行器的钩子整体让路；断开链路要能清掉（否则快捷键全哑）。
+        Features.HotkeyCapture.ApplyRemote(true);
+        Check.True(Features.HotkeyCapture.IsCapturing, "录入状态：宿主推来后钩子让路");
+        Features.HotkeyCapture.ResetRemote();
+        Check.False(Features.HotkeyCapture.IsCapturing, "录入状态：断开后恢复");
+
+        // 自启：只认三个动作，认不出的回失败（别假装做过）。
+        AppAutoStartReply? badAuto = AppHost.Handle(LinkMessage.Request(13, AppMethods.AutoStart,
+            new AppAutoStartRequest("erase"))).Read<AppAutoStartReply>();
+        Check.False(badAuto?.Ok == true, "自启：未知动作回失败");
+        Check.True(!string.IsNullOrEmpty(badAuto?.Error), "自启：失败带原因");
+
+        AppAutoStartReply? auto = RoundTrip(LinkMessage.Request(14, AppMethods.AutoStart,
+            new AppAutoStartReply(true,
+                new AutoStartInfo(AutoStartState.Stale, @"D:\Tools\LTools.exe", true), null)))
+            .Read<AppAutoStartReply>();
+        Check.Equal(AutoStartState.Stale, auto?.Info.State, "自启：状态原样");
+        Check.Equal(@"D:\Tools\LTools.exe", auto?.Info.RegisteredPath, "自启：注册路径原样");
+        Check.True(auto?.Info.RegisteredPathExists == true, "自启：路径存在标记原样");
 
         ActionOpRequest? op = RoundTrip(LinkMessage.Request(8, LinkMethods.ActionOp,
             new ActionOpRequest(PanelOps.FloatGroup, GroupId: "g1"))).Read<ActionOpRequest>();

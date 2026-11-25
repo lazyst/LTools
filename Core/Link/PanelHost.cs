@@ -45,6 +45,9 @@ internal static class PanelHost
         // AI 接入（宿主里的设置页）：MCP 服务、ai/mcp.json 与知识包都只有这里一个写者。
         if (McpHost.TryHandleAsync(request) is { } mcp) return mcp;
 
+        // 应用级操作（开机自启）：任务计划要提权、注册的是本进程的 exe。
+        if (AppHost.TryHandleAsync(request) is { } app) return app;
+
         return Task.FromResult(Handle(request));
     }
 
@@ -86,6 +89,10 @@ internal static class PanelHost
 
             case PanelOps.FloatGroup:
                 if (PanelLibrary.FindGroup(op.GroupId) is { } floatGroup) FloatingManager.FloatGroup(floatGroup);
+                break;
+
+            case PanelOps.FloatCloseAll:
+                FloatingManager.CloseAll();
                 break;
 
             case PanelOps.ReplayMacro:
@@ -167,10 +174,10 @@ internal static class PanelHost
                 LinkMethods.PanelSnapshot => LinkMessage.Response(request, Snapshot()),
                 LinkMethods.PanelReplace => Replace(request),
                 LinkMethods.RunAction => ForwardRun(request),
-                LinkMethods.OpenWindow => OpenWindow(request),
                 _ when ActionEditHost.IsWrite(request.Method) => ActionEditHost.Handle(request),
                 _ when MacroHost.IsCommand(request.Method) => MacroHost.Handle(request),
                 _ when McpHost.IsCommand(request.Method) => McpHost.Handle(request),
+                _ when AppHost.IsCommand(request.Method) => AppHost.Handle(request),
                 _ => LinkMessage.Response(request, error: "未知命令：" + request.Method),
             };
         }
@@ -220,45 +227,6 @@ internal static class PanelHost
 
         // 与面板本地点击完全同一条路：ActionExecutor.RunRef 会 spawn 后台线程 / 走 AutomationRunner。
         Ui.Post(() => ActionExecutor.RunRef(run.Reference, run.X, run.Y, source));
-        return LinkMessage.Response(request);
-    }
-
-    /// <summary>宿主点「设置 / 暂存区 / 面板场景」：这些窗口都还在提权进程里开。</summary>
-    private static LinkMessage OpenWindow(LinkMessage request)
-    {
-        OpenWindowRequest? open = request.Read<OpenWindowRequest>();
-        if (open == null || string.IsNullOrWhiteSpace(open.Target))
-            return LinkMessage.Response(request, error: "缺少打开目标");
-
-        string target = open.Target;
-        string? arg = open.Arg;
-
-        Ui.Post(() =>
-        {
-            switch (target)
-            {
-                case LinkTargets.Settings:
-                    ConfigHelper.Open();
-                    break;
-
-                case LinkTargets.PanelScene:
-                    ConfigHelper.OpenPanelScene(arg ?? "");
-                    break;
-
-                case LinkTargets.Ai:
-                    ConfigHelper.OpenAi();
-                    break;
-
-                case LinkTargets.Macros:
-                    ConfigHelper.OpenMacros();
-                    break;
-
-                default:
-                    AppLog.Warn("Link", "未知的打开目标：" + target);
-                    break;
-            }
-        });
-
         return LinkMessage.Response(request);
     }
 }

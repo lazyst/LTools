@@ -19,6 +19,6 @@ internal static class ConfigChangedHost
 
         ConfigChangedEvent? changed = message.Read<ConfigChangedEvent>();
         AppLog.Info("Config", $"宿主写过配置（{changed?.Reason ?? "?"}），执行器重读运行期状态");
-        Ui.Enqueue(ConfigStore.ReloadRuntime);
+        Ui.Enqueue(() => ConfigStore.ReloadRuntime(changed?.Reason));
     }
 }

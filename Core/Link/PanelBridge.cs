@@ -61,38 +61,22 @@ internal static class PanelHostBridge
     }
 
     /// <summary>
-    /// 宿主里点「设置 / 暂存区 / 面板场景」：在提权进程里开对应窗口。
-    /// 返回 true = 已接管（调用方别再本地开）。连不上时拦下并提示。
+    /// 关掉桌面上全部悬浮项（设置 → 面板管理那个按钮）：悬浮窗在提权进程里。
+    /// 返回 true = 已接管（调用方别再本地关）。连不上时拦下并写日志。
     /// </summary>
-    public static bool TryOpen(string target, string? arg = null)
+    public static bool TryCloseAllFloating()
     {
         LinkServer? server = Volatile.Read(ref _server);
         if (server == null) return false;
 
         if (!server.IsConnected)
         {
-            AppLog.Warn("Link", "宿主连不上主程序，窗口没有打开");
+            AppLog.Warn("Link", "宿主连不上主程序，悬浮项没有关闭");
             return true;
         }
 
-        _ = OpenAsync(server, target, arg);
+        _ = ActionOpAsync(server, new ActionOpRequest(PanelOps.FloatCloseAll));
         return true;
-    }
-
-    private static async Task OpenAsync(LinkServer server, string target, string? arg)
-    {
-        try
-        {
-            LinkMessage reply = await server
-                .RequestAsync(LinkMethods.OpenWindow, new OpenWindowRequest(target, arg), timeoutMs: 5000)
-                .ConfigureAwait(false);
-
-            if (!reply.Ok) AppLog.Warn("Link", $"打开窗口失败：{reply.Error}");
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warn("Link", $"打开窗口失败：{ex.Message}");
-        }
     }
 
     /// <summary>

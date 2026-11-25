@@ -1034,12 +1034,55 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 **下一步（5c-3d）**：搬设置窗口本体 + 翻转入口（托盘 / 快捷键 / `open.window` → 宿主），
 到那时宿主里的三个页面（宏页 / AI 页 / 其余）全在真机上点一遍。
 
+**2026-11-25 · P2-M3-5c-3d 设置窗口搬进宿主（入口全部翻转）**
+
+- **入口只发意图**：托盘「设置」/ 托盘双击 / `CapsLock+\`（`ltools.settings`）/ `--perf` 都只发一条
+  `settings.show`（`SettingsActions` = `toggle` / `open` / `close`，`Target` = 导航 tag），
+  由 `Features.ConfigHelper` 按 `AppRole.IsUiHost` 分岔——宿主开窗，执行器 `LinkWorker.RequestSettings`
+  （没连上先记着、连上补发，与「显示面板」同一条规矩）。**`open.window` / `LinkTargets` /
+  `PanelHostBridge.TryOpen` 一并删掉**：面板齿轮、暂存区「AI 接入设置…」、编辑器宏横幅都已经是宿主的窗口，
+  直接调 `ConfigHelper.Open*`，中间那层转发没有第二个调用方了。
+- **宿主里的窗口在第一次建窗前 `ConfigStore.EnsureReadOnly`**：主程序刚启动的一两秒里后台那次只读初始化
+  可能还没跑完，早开设置会看到空的动作 / 面板列表。`InitializeReadOnly` 因此加了锁（后台加载与用户早开窗会撞），
+  重读仍走它（`ReloadAndRefreshAsync`）。
+- **运行期缓存两边各刷自己那份**（`Core/RuntimeRefresh`）：宿主写完 `configs/*.json` 先 `DataHost.RefreshRuntime`
+  刷自己（截图 / 录屏 / 工具条 / 悬浮偏好），再 `config.changed` 让执行器刷它那份；执行器 `ReloadRuntime(file)`
+  里调同一个函数。截图 Pro 那些「读一次就记住」的设置在宿主写、执行器也用（OCR / 导出 / 录屏默认值），
+  所以按域分组登记在一处，**别在两边各写一份清单**。终端路径覆盖也顺手回到 `AppState.ApplySettings`
+  （`TerminalLauncher.LoadFromConfig` 以前谁都没调，改完要重启才生效）。
+- **快捷键录入要让对面的钩子放行**：录入框在宿主、钩子在执行器，`HotkeyCapture.Publish()` 在状态真变时
+  经 `input.capture` 推过去（执行器 `ApplyRemote`；断开链路 `ResetRemote`，否则快捷键永远哑）。
+  `HotkeyEditDialog` 自己那套录制改走 `PushSuspend` / `PopSuspend`（以前只写 `HotkeyRegistry.Suspended`，
+  那个开关在宿主里对钩子没有任何作用）。**换录入框时不能先推「没在录入」再推「在录入」**：
+  `Begin` 先把新的挂上再结束旧的，`Publish` 只在真变时推一次。
+- **应用级操作留在执行器**（`Features.AppControl`）：开机自启（任务计划要 `HighestAvailable`，
+  注册的是执行器的 `LTools.exe`）与清空运行 / 触发记录（`state/*.jsonl` 由执行器产生、进程内还有副本）
+  走 `app.autostart` / `app.clearHistory`；`AppLog.Configure` 的 `fileTag` 传 null = 沿用当前标签，
+  设置页改日志级别不会把宿主的 `host` 标签冲掉。
+- **悬浮**：面板管理「关闭全部悬浮项」走 `panel.op floatCloseAll`；悬浮偏好只写 `floating.json`，
+  执行器靠 `config.changed` 重建按钮。
+- 真机（设置窗口由 `ShareHost` 持有）：动作管理 / 快捷键 / 通用 / 面板管理 / 键鼠宏 · 设置 /
+  运行日志 · 设置 / AI 接入 / 截图 Pro · 常规全部正常填充；「开机自启」勾 / 取消各一次——任务计划真的
+  消失 / 重建（`schtasks /query` 对过），界面跟着回读；`floating.json` 改一项后执行器日志出现
+  `宿主写过配置（floating.json），执行器重读运行期状态`；编辑快捷键里按 `Ctrl+Shift+F9` 能录到，
+  执行器日志同时出现 `快捷键录入中：键盘钩子让路` / `快捷键录入结束：钩子恢复`；托盘再点一次「设置」
+  把窗口关掉（`toggle`）。两进程无 WARN / ERROR。
+- 回归：`--selftest` 393 用例 / 18877 断言（`link` 组 38 用例 / 405 断言：设置意图 / 自启与清记录方法名、
+  录入状态、`AppAutoStartReply` 往返）；`LinkSmoke` 111（自启查询 / 失败带原因 / 两个方法名到对端、`floatCloseAll`）；
+  `PanelHostSmoke` 11；`PanelClipboardSmoke` 27；`ShareSmoke` 92。
+
+**下一步（5d）**：`data.changed` 收尾（宿主成为 `configs/` 写者之后，`panel.snapshot` 之类还要不要保留）、
+MCP 写入面的最后整理（`mcp.*` 已齐），以及 `ShareHost` 并回同一个 exe 的「普通权限模式」。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
-> 现状：P0 / P1 已完成——宿主随主程序常驻、**面板（动作页 + 暂存区 + 右键菜单 + 悬浮状态 + 宏试放 / 录制转交）
-> 全部在宿主里跑**，`panel.snapshot` / `panel.op` / `panel.replace` / `run.action` / `open.window` / `panel.state` 就绪。
-> 现在 62 个窗口的 XAML 里只有 `SuperPanel` 在宿主里，其余 61 个仍在提权进程。
+> 现状（2026-11-25，M3-5c-3d 之后）：宿主随主程序常驻，**面板 / 速记 / 辅助工具 / 截图 Pro（覆盖层 / 结果窗 /
+> 贴图 / 采集历史 / 录屏 / 全屏画布）/ 动作编辑器 / 子动作库 / 宏页 / 设置窗口（含 9 个截图 Pro 子页）
+> 全在宿主里跑**。提权进程只剩钩子、动作执行、写 `macros/` `state/` 与托盘图标。
+> 链路方法：`panel.snapshot` / `panel.op` / `panel.replace` / `run.action` / `panel.state` /
+> `settings.show` / `note.toggle` / `info.toggle` / `capture.*` / `action.*` / `macro.*` / `mcp.*` /
+> `app.autostart` / `app.clearHistory`（`open.window` 已随设置窗口搬家删除）。
 
 ### 15.1 三条依赖决定顺序（别按窗口大小排）
 
@@ -1102,7 +1145,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主。**编辑器与宏页并进第 5 步**：打开编辑器的调用方（`PanelActionOps`）与设置页都在提权进程里，单独搬窗口就得连动作内容写权、`staging/`、设置入口一起翻——那正是第 5 步的范围（见 §14 `P2-M3-5a` 的顺序说明）。 |
-| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3a 已完成**：`config.changed`（宿主写完配置，执行器重读运行期状态）。**5c-3b 已完成**：宏页的 `macro.play` / `rename` / `delete` + 录制 / 试放事件改广播（回放参数是纯配置，不建命令）。**5c-3c 已完成**：AI 页的 `mcp.status` / `apply` / `resetToken` / `knowledge`（服务 / 令牌 / 知识包都归执行器）。**5c-3d**：设置窗口本体 + 其余页面搬进宿主、入口（托盘 / 快捷键）翻向宿主。**5d**：MCP 写、`data.changed` 收尾 |
+| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3a 已完成**：`config.changed`（宿主写完配置，执行器重读运行期状态）。**5c-3b 已完成**：宏页的 `macro.play` / `rename` / `delete` + 录制 / 试放事件改广播（回放参数是纯配置，不建命令）。**5c-3c 已完成**：AI 页的 `mcp.status` / `apply` / `resetToken` / `knowledge`（服务 / 令牌 / 知识包都归执行器）。**5c-3d 已完成**：设置窗口本体（含动作管理 / 子动作库 / 快捷键 / 面板管理 / 键鼠宏 / 触发 / 采集策略 / MCP / 备份与 9 个截图 Pro 子页）搬进宿主，入口（托盘 / `CapsLock+\` / 托盘双击 / `--perf`）改成 `settings.show` 意图，`open.window` 与 `LinkTargets` 删除。**5d**：`data.changed` 收尾、`ShareHost` 并回同一个 exe 的普通权限模式 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
 
 > **顺序更正（2026-11-24，看过代码之后）**：原方案把「采集历史 / 贴图管理」排在截图 Pro 前面，实际排不了——

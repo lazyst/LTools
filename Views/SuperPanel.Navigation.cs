@@ -247,13 +247,6 @@ public partial class SuperPanelWindow
     {
         Features.SuperPanel.Close();
 
-        // 只读预览：设置窗口在提权进程里，转给主程序开。
-        if (_preview)
-        {
-            PanelHostBridge.TryOpen(LinkTargets.Settings);
-            return;
-        }
-
         // 和 CapsLock+\ / 托盘「设置」一致：打开设置，停在上次记住的导航页
         // （面板里的「面板设置…」才是显式跳到面板管理 → 场景）。
         ConfigHelper.Open();

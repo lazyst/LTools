@@ -11,6 +11,7 @@ using System.Windows.Media;
 using LTools.Config;
 using LTools.Core;
 using LTools.Core.Actions;
+using LTools.Core.Link;
 using LTools.Features;
 using LTools.Features.Builtin;
 
@@ -132,7 +133,14 @@ public partial class TriggersView : UserControl
     {
         if (!ConfirmDialog.Confirm(Window.GetWindow(this), "清空触发记录",
                 "确定清空全部触发记录吗？（只删记录，不影响规则）", danger: true)) return;
-        TriggerHistory.Clear();
+
+        // 记录由执行器产生（它进程内还有一份）：转给它清，别在宿主里删文件。
+        if (!AppControl.ClearHistory(HistoryRecords.Trigger, out string? error))
+        {
+            ConfirmDialog.Info(Window.GetWindow(this), "触发记录", error ?? "清空失败。");
+            return;
+        }
+
         LoadHistory();
     }
 

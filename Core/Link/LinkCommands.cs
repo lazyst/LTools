@@ -37,9 +37,6 @@ internal static class LinkMethods
     /// <summary>执行一个动作 / 内置功能引用（宿主的磁贴点击转给提权进程真正执行）。</summary>
     public const string RunAction = "run.action";
 
-    /// <summary>在提权进程里打开一个窗口（宿主点「设置 / 暂存区 / 面板场景」时转过去）。</summary>
-    public const string OpenWindow = "open.window";
-
     /// <summary>面板的动作级操作（新建 / 添加已有 / 编辑 / 删除 / 粘贴 / 导出 / 另存为子动作）。</summary>
     public const string ActionOp = "panel.op";
 
@@ -95,6 +92,12 @@ internal static class LinkMethods
     /// 负载 <see cref="InputSuspendEvent"/>。
     /// </summary>
     public const string EventInputSuspend = "input.suspend";
+
+    /// <summary>
+    /// 快捷键录入框开始 / 结束等按键（宿主 → 提权进程）：录入窗口在宿主里，钩子在这里，
+    /// 录入期间钩子要让路（否则按 CapsLock+… 会直接触发那个热键）。负载 <see cref="InputCaptureEvent"/>。
+    /// </summary>
+    public const string EventHotkeyCapture = "input.capture";
 
     /// <summary>
     /// 一张贴图接 / 不接管键盘了（宿主 → 提权进程）：钩子按它决定要不要把键投给这张贴图。
@@ -209,6 +212,9 @@ internal sealed record CaptureWindowEvent(string Target, string? Arg = null, lon
 /// <summary>全局快捷键的挂起状态：<see cref="OnlyRef"/> = 唯一还放行的那条（null = 全挂起）。</summary>
 internal sealed record InputSuspendEvent(bool Suspended, string? OnlyRef);
 
+/// <summary>快捷键录入框在等按键（<see cref="Capturing"/>）：钩子整体让路，按键交给宿主的输入框。</summary>
+internal sealed record InputCaptureEvent(bool Capturing);
+
 /// <summary>一张贴图的状态变化（<see cref="State"/> 取值见 <c>PinStates</c>）。</summary>
 internal sealed record PinStateEvent(long Hwnd, string State);
 
@@ -251,25 +257,6 @@ internal sealed record RecordKeysEvent(
 /// </summary>
 internal sealed record RunActionRequest(string Reference, int X, int Y, string Source);
 
-/// <summary>在提权进程里打开一个窗口。<see cref="Target"/> 取值见 <see cref="LinkTargets"/>。</summary>
-internal sealed record OpenWindowRequest(string Target, string? Arg);
-
-/// <summary>「打开窗口」的目标（宿主里这些窗口都还在提权进程）。</summary>
-internal static class LinkTargets
-{
-    /// <summary>设置窗口（停在上次记住的页）。</summary>
-    public const string Settings = "settings";
-
-    /// <summary>设置 → 面板管理 → 场景（<see cref="OpenWindowRequest.Arg"/> = 场景 Id）。</summary>
-    public const string PanelScene = "panel.scene";
-
-    /// <summary>设置 → AI 接入（暂存区页的「AI 接入设置…」）。</summary>
-    public const string Ai = "ai";
-
-    /// <summary>设置 → 键鼠宏（编辑器宏横幅的「键鼠宏设置」）。</summary>
-    public const string Macros = "macros";
-}
-
 /// <summary>
 /// 面板的结构与执行类操作（**只剩提权进程才做得了的**）。建 / 改 / 删 / 复制动作本身走
 /// <c>action.add</c> 那一组（M3-5c-2 起面板与编辑器都在宿主里，不再绕 <c>panel.op</c>）。
@@ -281,6 +268,9 @@ internal static class PanelOps
 
     /// <summary>整组悬浮到桌面。</summary>
     public const string FloatGroup = "floatGroup";
+
+    /// <summary>关掉桌面上全部悬浮项（设置 → 面板管理那个「全部关闭」按钮）。</summary>
+    public const string FloatCloseAll = "floatCloseAll";
 
     /// <summary>试放一个宏。</summary>
     public const string ReplayMacro = "replayMacro";

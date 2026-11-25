@@ -38,7 +38,6 @@ public partial class ConfigHelperWindow : Window
     private const string FamilyMacros = "macros";
     private const string FamilyCapture = "capture";
 
-    private readonly DispatcherTimer _saveDebounce;
     // 别处改了动作 / 宏（面板删除、录制完成、AI 采纳…）：合批后只刷已建页，避免一次操作反复 Reload
     private readonly DispatcherTimer _refreshDebounce;
     // 导航页记忆：切页只记下待写的值，短防抖后丢线程池写盘（见 ScheduleNavPersist）
@@ -86,16 +85,17 @@ public partial class ConfigHelperWindow : Window
         using var perfSeg = PerfProbe.Measure("ctor:total");
         InitializeComponent();
         WindowChromeHelper.FixMaximize(this);
-        // App.OnStartup 已经 Initialize 过（同一锚点）：只有锚点真变了才重做，否则每次打开设置
-        // 都白跑一遍扫动作目录 / 修引用 / 播种（实测 200+ms，全压在 UI 线程与鼠标钩子同一条线上）。
+        // 启动时已经 Initialize / InitializeReadOnly 过（同一锚点）：只有锚点真变了才重做，否则每次
+        // 打开设置都白跑一遍扫动作目录 / 修引用 / 播种（实测 200+ms，全压在 UI 线程上）。
+        // 宿主里那份是只读的（写权归自己也只是「不修引用、不播种」），所以走 InitializeReadOnly。
         if (!string.Equals(ConfigStore.ConfigPath, configPath, StringComparison.OrdinalIgnoreCase))
-            ConfigStore.Initialize(configPath);
+        {
+            if (AppRole.IsUiHost) ConfigStore.InitializeReadOnly(configPath);
+            else ConfigStore.Initialize(configPath);
+        }
         ConfigPath = configPath;
 
         ActionList.ItemsSource = _actionRows;
-
-        _saveDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
-        _saveDebounce.Tick += (_, _) => { _saveDebounce.Stop(); SaveNow(); };
 
         // 动作管理：搜索每敲一键只重启 150ms 计时，停手后投影一次（不重新建行 / 读配置）。
         _actionFilterDebounce = new SearchDebounce(150, ApplyActionFilter);
@@ -166,11 +166,13 @@ public partial class ConfigHelperWindow : Window
             PopulateToggles();
             PopulateRunNotice();
             PopulateTrayDoubleClick();
-            // 自启状态：任务计划 COM 首次激活要百毫秒级，放线程池避免窗口白屏。
+            // 自启状态：任务计划 COM 首次激活 / 一次链路往返都要百毫秒级，放线程池避免窗口白屏。
             // 查询期间保持 _initializing，免得用户此刻点开关与查询结果互相覆盖。
-            var autoStart = await System.Threading.Tasks.Task.Run(AutoStartService.Query);
+            AutoStartInfo? autoStart = null;
+            string? autoStartError = null;
+            await System.Threading.Tasks.Task.Run(() => autoStart = AppControl.Query(out autoStartError));
             _initializing = false;
-            ApplyAutoStartState(autoStart);
+            ApplyAutoStartState(autoStart, autoStartError);
         };
         Closed += (_, _) =>
         {
@@ -185,7 +187,6 @@ public partial class ConfigHelperWindow : Window
                 _navPersistTimer.Stop();
                 try { PersistNav(); } catch (Exception ex) { AppLog.Warn("Nav", "退出时写 ui.json 失败：" + ex.Message); }
             }
-            if (_saveDebounce.IsEnabled) { _saveDebounce.Stop(); SaveNow(); }
         };
     }
 
@@ -253,8 +254,6 @@ public partial class ConfigHelperWindow : Window
     {
         if (!_pagesReady || _syncingNav) return;
         if (sender is not RadioButton rb || rb.Tag is not string tag) return;
-        // 切换页前先落盘未保存改动，避免重建列表时丢弃（如超级面板 800ms 防抖内的编辑）
-        if (_saveDebounce.IsEnabled) { _saveDebounce.Stop(); SaveNow(); }
         ApplyNavPage(tag);
     }
 
@@ -920,47 +919,58 @@ public partial class ConfigHelperWindow : Window
     {
         if (_initializing) return;
         bool want = AutoStartBox.IsChecked == true;
-        bool ok = want ? AutoStartService.Enable() : AutoStartService.Disable();
-        if (!ok)
+        AutoStartInfo? info = AppControl.SetEnabled(want, out string? error);
+        if (info == null)
         {
             _initializing = true;
             AutoStartBox.IsChecked = !want;
             _initializing = false;
-            ConfirmDialog.Info(this, "开机自启", want ? "启用失败，请检查权限或任务计划服务。" : "禁用失败。");
+            ConfirmDialog.Info(this, "开机自启", error ?? (want ? "启用失败。" : "禁用失败。"));
             return;
         }
         // 重新注册会把 Command 改成当前 exe，旧的「路径已失效」提示随之消失
-        ApplyAutoStartState(AutoStartService.Query());
+        ApplyAutoStartState(info, null);
     }
 
     /// <summary>
     /// 把自启任务状态刷到「通用」页：勾选 = 任务存在；任务指向别的路径时
     /// （多为便携目录被挪走）给出红字说明与「改为当前程序」按钮。
     /// </summary>
-    private void ApplyAutoStartState(AutoStartInfo info)
+    /// <param name="info">null = 问不到（宿主还没连上主程序），此时只把提示写清楚，状态保持不变。</param>
+    private void ApplyAutoStartState(AutoStartInfo? info, string? error)
     {
         _initializing = true;
-        AutoStartBox.IsChecked = info.TaskExists;
+        AutoStartBox.IsChecked = info?.TaskExists == true;
         _initializing = false;
 
-        bool stale = info.State == AutoStartState.Stale;
+        if (info == null)
+        {
+            AutoStartFixButton.Visibility = Visibility.Collapsed;
+            AutoStartHint.Foreground = (Brush)FindResource("HintTextBrush");
+            AutoStartHint.Text = error ?? "读不到开机自启状态。";
+            return;
+        }
+
+        AutoStartInfo state = info.Value;
+        bool stale = state.State == AutoStartState.Stale;
         AutoStartFixButton.Visibility = stale ? Visibility.Visible : Visibility.Collapsed;
         AutoStartHint.Foreground = (Brush)FindResource(stale ? "DangerBrush" : "HintTextBrush");
         AutoStartHint.Text = !stale
             ? "通过任务计划程序创建 ONLOGON / 最高权限任务，开机无 UAC 弹窗。"
-            : info.RegisteredPathExists
-                ? $"自启任务指向另一份拷贝 {info.RegisteredPath}，登录时启动的不是这一份。点下面「改为当前程序」统一到这一份（启动时也会自动对齐）。"
-                : $"自启任务指向 {info.RegisteredPath}，该文件已不存在（多为挪动了程序目录），登录时不会启动。点下面「改为当前程序」修复（启动时也会自动对齐）。";
+            : state.RegisteredPathExists
+                ? $"自启任务指向另一份拷贝 {state.RegisteredPath}，登录时启动的不是这一份。点下面「改为当前程序」统一到这一份（启动时也会自动对齐）。"
+                : $"自启任务指向 {state.RegisteredPath}，该文件已不存在（多为挪动了程序目录），登录时不会启动。点下面「改为当前程序」修复（启动时也会自动对齐）。";
     }
 
     private void AutoStartFix_Click(object sender, RoutedEventArgs e)
     {
-        if (!AutoStartService.Enable())
+        AutoStartInfo? info = AppControl.SetEnabled(true, out string? error);
+        if (info == null)
         {
-            ConfirmDialog.Info(this, "开机自启", "修复失败，请检查权限或任务计划服务。");
+            ConfirmDialog.Info(this, "开机自启", error ?? "修复失败，请检查权限或任务计划服务。");
             return;
         }
-        ApplyAutoStartState(AutoStartService.Query());
+        ApplyAutoStartState(info, null);
     }
 
     // ============ 动作管理 ============
@@ -1107,7 +1117,7 @@ public partial class ConfigHelperWindow : Window
         }
 
         PopulateActions();
-        MarkDirty();
+        ActionListChanged();
         ToastService.Show($"已恢复「{cur.Name}」的历史版本（恢复前的版本也进了历史）",
             "动作历史", 3200, ToastKind.success);
     }
@@ -1136,7 +1146,7 @@ public partial class ConfigHelperWindow : Window
         // 选中新动作
         for (int i = 0; i < _actionRows.Count; i++)
             if (_actionRows[i].Id == dto.Id) { ActionList.SelectedIndex = i; break; }
-        MarkDirty();
+        ActionListChanged();
     }
 
     private void EditAction_Click(object sender, RoutedEventArgs e)
@@ -1152,7 +1162,7 @@ public partial class ConfigHelperWindow : Window
             return;
         }
         PopulateActions();
-        MarkDirty();
+        ActionListChanged();
     }
 
     private void DuplicateAction_Click(object sender, RoutedEventArgs e)
@@ -1168,7 +1178,7 @@ public partial class ConfigHelperWindow : Window
         PopulateActions();
         for (int i = 0; i < _actionRows.Count; i++)
             if (_actionRows[i].Id == copy.Id) { ActionList.SelectedIndex = i; break; }
-        MarkDirty();
+        ActionListChanged();
     }
 
     private void DeleteAction_Click(object sender, RoutedEventArgs e)
@@ -1188,7 +1198,6 @@ public partial class ConfigHelperWindow : Window
             return;
         }
         RefreshCreatedPages();          // 只刷已经建出来的页（含动作管理），别为没打开过的页强建视图
-        MarkDirty();
     }
 
     /// <summary>visual tree 上溯找最近的 <typeparamref name="T"/> 祖先。</summary>
@@ -1413,8 +1422,6 @@ public partial class ConfigHelperWindow : Window
     private async void BackupExport_Click(object sender, RoutedEventArgs e)
     {
         if (_backupBusy) return;
-        // 先落盘未保存的编辑，保证导出的是用户当前所见配置
-        if (_saveDebounce.IsEnabled) { _saveDebounce.Stop(); SaveNow(); }
         bool res = BackupIncludeResourcesBox.IsChecked == true;
         bool notes = BackupIncludeNotesBox.IsChecked == true;
 
@@ -1458,8 +1465,6 @@ public partial class ConfigHelperWindow : Window
     private async void BackupImport_Click(object sender, RoutedEventArgs e)
     {
         if (_backupBusy) return;
-        // 先落盘未保存的编辑，避免导入后又被防抖保存覆盖回去
-        if (_saveDebounce.IsEnabled) { _saveDebounce.Stop(); SaveNow(); }
         var ofd = new OpenFileDialog
         {
             Filter = "LTools 备份 (*.ltbak)|*.ltbak",
@@ -1522,40 +1527,27 @@ public partial class ConfigHelperWindow : Window
         }
     }
 
-    // ============ 重新加载 / 自动保存 ============
+    // ============ 重新加载 ============
     private void Reload_Click(object sender, RoutedEventArgs e)
     {
-        _saveDebounce.Stop();
         ConfigStore.Reload();
         MacroSettings.Load(ConfigStore.LoadConfig());
         RefreshCreatedPages();
         ShowStatus("已重新加载", ok: true);
     }
 
-    private void MarkDirty()
+    /// <summary>
+    /// 动作级操作完成后要跟着变的东西：热键表「动作」列是取名字的快照，让下次切到那页重读一次。
+    /// </summary>
+    /// <remarks>
+    /// 动作的落盘已经在 <see cref="ActionWrites"/> 里做完了（执行器那份清单 + 宿主写目录），
+    /// 这里**不再**调 <c>ConfigStore.Save()</c>：宿主里它是被拒绝的（只读），执行器里是白写一遍。
+    /// </remarks>
+    private void ActionListChanged()
     {
-        StatusText.Text = "保存中…";
+        if (_pageHotkeys != null) _pageHotkeys.Invalidate();
+        StatusText.Text = "已保存";
         StatusText.ClearValue(TextBlock.ForegroundProperty);
-        _saveDebounce.Stop();
-        _saveDebounce.Start();
-    }
-
-    private void SaveNow()
-    {
-        try
-        {
-            ConfigStore.Save();      // 菜单组 + 动作清单
-            // 动作可能刚被改名：热键表里的「动作」列是取名字的快照，让下次切到快捷键页重读一次。
-            // 没建出来的页不必管：首次切入时 RefreshIfNeeded 自然会 Reload。
-            if (_pageHotkeys != null) _pageHotkeys.Invalidate();
-            QuickNote.Refresh();
-            ShowStatus("已自动保存", ok: true);
-        }
-        catch (Exception ex)
-        {
-            ShowStatus("保存失败", ok: false);
-            ConfirmDialog.Info(this, "设置", "保存失败: " + ex.Message);
-        }
     }
 
     private void ShowStatus(string text, bool ok)

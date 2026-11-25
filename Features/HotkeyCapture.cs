@@ -50,14 +50,52 @@ internal static class HotkeyCapture
     /// <summary>额外的「让钩子放行」计数（截图 Pro 的快捷键录入框用，见 <see cref="CaptureChordRecorder"/>）。</summary>
     private static int _extra;
 
+    /// <summary>
+    /// 宿主里的录入框：钩子在提权进程，开始 / 结束时让它整体让路（由 <c>ShareHost</c> 挂
+    /// <c>InputBridge.SetHotkeyCapture</c>）。执行器里是 null——它就是钩子那一侧。
+    /// </summary>
+    public static Action<bool>? RemoteSink;
+
+    /// <summary>宿主推来的「正在录入」。**断开链路要清掉**（否则快捷键永远被让路）。</summary>
+    private static int _remote;
+
+    /// <summary>上一次推给执行器的状态（只在真变了时推一次）。</summary>
+    private static int _signaled;
+
     /// <summary>是否有热键框正在等待 / 接收按键（键盘钩子回调只读）。</summary>
-    public static bool IsCapturing => _active != null || Volatile.Read(ref _extra) > 0;
+    public static bool IsCapturing =>
+        _active != null || Volatile.Read(ref _extra) > 0 || Volatile.Read(ref _remote) > 0;
+
+    /// <summary>宿主里有没有录入框在等按键（重连时补推一次用）。</summary>
+    public static bool IsHostCapturing => _active != null || Volatile.Read(ref _extra) > 0;
+
+    /// <summary>执行器收到宿主的录入状态（事件；断开时按「没在录入」清掉）。</summary>
+    public static void ApplyRemote(bool capturing) => Volatile.Write(ref _remote, capturing ? 1 : 0);
+
+    /// <summary>宿主断开了：它那份录入状态作废，别让钩子一直让路。</summary>
+    public static void ResetRemote() => Volatile.Write(ref _remote, 0);
 
     /// <summary>临时让全局钩子放行（与热键录入同一条通道，配对调用 <see cref="PopSuspend"/>）。</summary>
-    public static void PushSuspend() => Interlocked.Increment(ref _extra);
+    public static void PushSuspend() { Interlocked.Increment(ref _extra); Publish(); }
 
     /// <summary>结束放行。</summary>
-    public static void PopSuspend() => Interlocked.Decrement(ref _extra);
+    public static void PopSuspend() { Interlocked.Decrement(ref _extra); Publish(); }
+
+    /// <summary>
+    /// 把「现在要不要让钩子放行」推给提权进程（只在本进程是宿主时）。状态只在这里算一次：
+    /// 录入框改了、暂停计数改了都调它，别在 <see cref="Begin"/> / <see cref="End"/> 里各推一次
+    /// （换一个录入框会先 End 再 Begin，逐次推会让钩子中间露出一下）。
+    /// </summary>
+    private static void Publish()
+    {
+        if (!LTools.Core.AppRole.IsUiHost) return;
+
+        int now = IsHostCapturing ? 1 : 0;
+        if (Interlocked.Exchange(ref _signaled, now) == now) return;
+
+        try { RemoteSink?.Invoke(now != 0); }
+        catch (Exception ex) { LTools.Core.AppLog.Warn("HotkeyCapture", "通知录入状态失败：" + ex.Message); }
+    }
 
     /// <summary>宿主窗口失焦 / 关闭时调用：结束录入，避免键盘钩子一直让路。</summary>
     public static void Cancel()
@@ -111,10 +149,14 @@ internal static class HotkeyCapture
     private static void Begin(State s)
     {
         if (s.Capturing) return;
-        if (_active != null) End(_active, commit: true);
 
+        // 先把新的挂上再结束旧的：<see cref="Publish"/> 只在真变化时推，
+        // 换一个录入框（失焦 → 另一个聚焦）不会向执行器推出「没在录入」。
+        State? previous = _active;
         _active = s;
         s.Capturing = true;
+        if (previous != null) End(previous, commit: true);
+
         s.Accepted = false;
         s.LastRaw = "";
         s.BeforeRaw = GetHotkey(s.Box);
@@ -125,6 +167,7 @@ internal static class HotkeyCapture
         if (s.Box.TryFindResource("LightAccentBrush") is Brush bg) s.Box.Background = bg;
         s.Box.ToolTip = "点击后直接按下组合键；Esc 取消，Tab 结束";
         s.Box.Text = "请按下组合键…";
+        Publish();
     }
 
     private static void End(State s, bool commit)
@@ -132,6 +175,7 @@ internal static class HotkeyCapture
         if (!s.Capturing) return;
         s.Capturing = false;
         if (ReferenceEquals(_active, s)) _active = null;
+        Publish();
 
         if (s.Border == DependencyProperty.UnsetValue) s.Box.ClearValue(Control.BorderBrushProperty);
         else s.Box.BorderBrush = (Brush)s.Border!;

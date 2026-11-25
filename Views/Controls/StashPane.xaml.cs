@@ -289,13 +289,6 @@ public sealed partial class StashPane : UserControl
         Add(menu, "AI 接入设置…", () =>
         {
             Features.SuperPanel.Close();
-            // 设置窗口在提权进程（宿主里只是预览）。
-            if (PreviewMode)
-            {
-                PanelHostBridge.TryOpen(LinkTargets.Ai);
-                return;
-            }
-
             Features.ConfigHelper.OpenAi();
         });
 

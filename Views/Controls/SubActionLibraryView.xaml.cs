@@ -273,8 +273,11 @@ public partial class SubActionLibraryView : UserControl
         var inputs = ParamInputDialog.Ask(Window.GetWindow(this), row.Name + " · 输入", row.Def.Variables);
         if (inputs == null) return;
 
-        if (!SubActionRunner.TryRun(row.Def, inputs, result => OnRunCompleted(row, result)))
-            ConfirmDialog.Info(Window.GetWindow(this), "试运行", "已有动作正在运行，先等它结束或按停止。");
+        if (!SubActionRunner.TryRun(row.Def, inputs, result => OnRunCompleted(row, result), out string? error))
+        {
+            ConfirmDialog.Info(Window.GetWindow(this), "试运行",
+                string.IsNullOrEmpty(error) ? "没跑起来，先等当前动作结束或按停止。" : error);
+        }
     }
 
     /// <summary>试运行结束（后台线程）：回到 UI 线程把输出变量的值列出来。</summary>
