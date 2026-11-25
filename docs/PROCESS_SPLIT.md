@@ -1111,8 +1111,25 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   `config.changed` 重读」）；`PanelHostSmoke` 11；`PanelClipboardSmoke` 27；`ShareSmoke` 92。
 - 真机：面板拖磁贴 / 分组改名 / 删除面板上的动作 / 录制一个宏后看磁贴是否真的进了面板、重启后仍在。
 
-**下一步（5d-b）**：`ShareHost` 并回同一个 exe 的「普通权限模式」（发布包只剩一个 exe）。
-`data.changed` 那半已经收完：面板结构单写者、`panel.replace` 删除、`macro.*` / `app.*` / `settings.show` 齐了。
+**2026-11-25 · P2-M3-5d-b 单 exe 两种权限：不做（技术约束，实测确认）**
+
+原计划把 `ShareHost.exe` 并回 `LTools.exe` 的「普通权限模式」（`--host`），发布包只剩一个 exe。
+动手之后撞到一条 Windows 硬规则，**改动已全部还原**（工作树回到 5d-a 那条提交）：
+
+- `LTools.exe` 的清单是 `requireAdministrator`。用 Explorer 的令牌
+  （`Native/ShellToken` → `CreateProcessWithTokenW`）启动**同一个 exe** 直接失败：
+  `CreateProcessWithTokenW 失败：740`（`ERROR_ELEVATION_REQUIRED`）。Windows 在创建进程时就按清单要提权，
+  不给「低权限令牌跑高权限清单」这条路——`ShareHost.exe` 能起来，正是因为它那份清单是 asInvoker。
+- 所以「一个 exe」只能先把清单改成 `asInvoker`，而那会把启动模型整个翻过来：双击先起界面宿主、再由它
+  用 `runas` 拉起 `--executor`（UAC 从「启动前」挪到「窗口出来之后」）；自启任务改成 `--executor`
+  （`HighestAvailable`，不弹 UAC）再由执行器反手用 `ShellToken` 起宿主；两侧单实例互斥体、链路
+  「谁先起来」的引导（宿主先起时得在 `link.token` 变化后重建 `LinkServer`）、用户拒绝 UAC 时的提示
+  都要跟着重做。
+- 结论（用户定）：**保持两个 exe**。功能上没有任何差异，只是发布包多一个文件；为它翻启动链路不划算。
+  `ShareHost.exe` 与 `LTools.exe` 同目录的部署约定、`Native/ShellToken` 那条启动路径继续保留。
+
+**下一步**：本轮拆分（`docs/PROCESS_SPLIT.md` 全部 `P2-x`）到这里收口。以后再有「谁该写哪个文件」
+的问题，按 §7 / §15.3 的属主表判断，别再引入第三种进程。
 
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
@@ -1186,7 +1203,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主。**编辑器与宏页并进第 5 步**：打开编辑器的调用方（`PanelActionOps`）与设置页都在提权进程里，单独搬窗口就得连动作内容写权、`staging/`、设置入口一起翻——那正是第 5 步的范围（见 §14 `P2-M3-5a` 的顺序说明）。 |
-| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3a 已完成**：`config.changed`（宿主写完配置，执行器重读运行期状态）。**5c-3b 已完成**：宏页的 `macro.play` / `rename` / `delete` + 录制 / 试放事件改广播（回放参数是纯配置，不建命令）。**5c-3c 已完成**：AI 页的 `mcp.status` / `apply` / `resetToken` / `knowledge`（服务 / 令牌 / 知识包都归执行器）。**5c-3d 已完成**：设置窗口本体（含动作管理 / 子动作库 / 快捷键 / 面板管理 / 键鼠宏 / 触发 / 采集策略 / MCP / 备份与 9 个截图 Pro 子页）搬进宿主，入口（托盘 / `CapsLock+\` / 托盘双击 / `--perf`）改成 `settings.show` 意图，`open.window` 与 `LinkTargets` 删除。**5d-a 已完成**：面板结构落盘归宿主（`panel.replace` / `TryPushPanel` / `PanelLibrary.Replace` 删除，两侧镜像靠 `config.changed` 与「对端写的 panel.json」重读）。**5d-b**：`ShareHost` 并回同一个 exe 的「普通权限模式」（发布包只剩一个 exe） |
+| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3a 已完成**：`config.changed`（宿主写完配置，执行器重读运行期状态）。**5c-3b 已完成**：宏页的 `macro.play` / `rename` / `delete` + 录制 / 试放事件改广播（回放参数是纯配置，不建命令）。**5c-3c 已完成**：AI 页的 `mcp.status` / `apply` / `resetToken` / `knowledge`（服务 / 令牌 / 知识包都归执行器）。**5c-3d 已完成**：设置窗口本体（含动作管理 / 子动作库 / 快捷键 / 面板管理 / 键鼠宏 / 触发 / 采集策略 / MCP / 备份与 9 个截图 Pro 子页）搬进宿主，入口（托盘 / `CapsLock+\` / 托盘双击 / `--perf`）改成 `settings.show` 意图，`open.window` 与 `LinkTargets` 删除。**5d-a 已完成**：面板结构落盘归宿主（`panel.replace` / `TryPushPanel` / `PanelLibrary.Replace` 删除，两侧镜像靠 `config.changed` 与「对端写的 panel.json」重读）。**5d 收尾**：单 exe 合并**不做**（`requireAdministrator` 清单下起不了普通权限的同一个 exe，报 740，见 §14 `P2-M3-5d-b`），`ShareHost.exe` 继续随包 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
 
 > **顺序更正（2026-11-24，看过代码之后）**：原方案把「采集历史 / 贴图管理」排在截图 Pro 前面，实际排不了——
@@ -1203,8 +1220,12 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 ### 15.5 M4 · 收尾
 
 - 执行器的启动路径不再建任何窗口；`Ui.*` 里「要窗口才能做的事」逐条删掉或改成 `ui.*` 请求。
-- `--worker` 模式（一个 exe 两种权限）：普通权限双击 = 界面；任务计划 / UAC 拉起 = 执行器。
-- 发布包只剩一个 exe（`ShareHost.exe` 退役），`tools` / CI 的打包步骤同步。
+- `--worker` 模式（一个 exe 两种权限）：**不做**（2026-11-25 定，见 §14 `P2-M3-5d-b`）。
+  `LTools.exe` 的清单是 `requireAdministrator`，用 Explorer 的令牌起同一个 exe 直接报
+  740（`ERROR_ELEVATION_REQUIRED`）；要合就得先把清单改成 `asInvoker`，把启动模型整体翻过来
+  （双击先起界面、再 `runas` 拉执行器），为「发布包少一个文件」不值当。
+- 发布包继续是 `LTools.exe` + `ShareHost.exe` 两个 exe（同目录、共用同一份依赖与数据根）；
+  `ShareHost.exe` 退役这件事随之取消。
 
 ### 15.6 每一步统一的验收口径
 
