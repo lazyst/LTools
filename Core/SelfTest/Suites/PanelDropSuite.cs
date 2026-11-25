@@ -47,6 +47,7 @@ internal static class PanelDropSuite
         Check.Equal(2, step.In.Count, "只有 path / workdir 两个参数");
         Check.Equal(@"C:\Work\季度报表.xlsx", action.Program.Description, "说明里放全路径");
         Check.Equal(action.Name, action.Program.Name, "动作体名称与外层一致");
+        Check.Equal(SimpleActions.OpenFile, action.SimpleKind, "是简单动作（打开文件）");
     }
 
     private static void FolderAction()
@@ -63,6 +64,7 @@ internal static class PanelDropSuite
         Check.Equal("open", step.In["operation"].Literal.AsText(), "operation=open");
         Check.Equal(@"C:\Work\项目A", step.In["path"].Literal.AsText(), "path = 目录");
         Check.Equal(2, step.In.Count, "只有 operation / path");
+        Check.Equal(SimpleActions.OpenFolder, action.SimpleKind, "是简单动作（打开文件夹）");
     }
 
     private static void Order()

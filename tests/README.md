@@ -204,11 +204,11 @@ dotnet run                                # 13 条，约 2 秒
 再验只读进程里 `ConfigStore.Save` / `PanelLibrary.Save` 被拒绝（返回 false、目录不变），
 最后拿一个**空数据根**调 `InitializeReadOnly`，断言它不会把默认面板凭空写出来。
 
-### `PanelDragSmoke`（面板拖放：占位不再一明一灭 + 钉住 = 工具盘 + 多级菜单回程）
+### `PanelDragSmoke`（面板拖放：占位不再一明一灭 + 钉住 = 工具盘 + 多级菜单回程 + 简单动作）
 
 ```powershell
 cd tests\PanelDragSmoke
-dotnet run                                # 27 条，约 10 秒
+dotnet run                                # 69 条，约 12 秒
 ```
 
 真开一扇 `SuperPanelWindow`（临时数据根里 6 个动作塞进一个分组），用真鼠标把文件从源窗口拖到
@@ -233,6 +233,13 @@ dotnet run                                # 27 条，约 10 秒
 （左下，穿过二级菜单左边缘与两个 popup 之间的空隙）——整份菜单不许关。守的是 `MenuCone.HandOff`
 里的 `owner.Focus()`：去掉它，子菜单关闭时焦点掉到面板搜索框（`Keyboard.FocusedElement` 变成
 `TextBox`），WPF 因 `IsKeyboardFocusWithin` 变 false 直接把菜单关掉。
+
+⑧ 菜单结构（2026-11-26）：右键菜单里有「新建简单动作 ▸」与「新建组合动作…」，
+**不再有**「从文件 / 文件夹创建动作…」；子菜单就是那七种预设。
+⑨ 七种简单动作的表单都能建出来：反射构造 `SimpleActionDialog`（不弹模态），断言
+`FormHost` 至少两行、新建时不显示「转换为组合动作…」、标题是「新建简单动作 · X」。
+⑩ 完整创建：把 ⑨ 的表单结果交给 `PanelActionOps.AddSimple`，断言动作进了分组、
+动作体是一步「打开文件」、`actions/<id>/action.json` 真的落盘。
 
 ### `TableSmoke`（表格识别 `screen.table`）
 

@@ -11,12 +11,11 @@ using LTools.Core.Link;
 using LTools.Features.Panel;
 using LTools.Native;
 using LTools.Views.Controls;
-using Microsoft.Win32;
 
 namespace LTools.Views;
 
 /// <summary>
-/// 面板里「把文件 / 文件夹变成动作」的入口：从资源管理器拖进来、右键菜单两项、<c>Ctrl+V</c>。
+/// 面板里「把文件 / 文件夹变成动作」的入口：从资源管理器拖进来、<c>Ctrl+V</c>。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -25,8 +24,10 @@ namespace LTools.Views;
 /// 是替提权窗口兜底的，实测连消息都收不到，已随拆分一起删掉。
 /// </para>
 /// <para>
-/// 四个入口共用 <see cref="PanelDrop"/>（建模 / 去重 / 落位 / 写盘只有一份）。落到的位置：
-/// 拖放在光标下那个磁贴的前后（虚线占位和拖动排序用同一套几何），其余入口落到分组末尾。
+/// 两个入口共用 <see cref="PanelDrop"/>（建模 / 去重 / 落位 / 写盘只有一份）。落到的位置：
+/// 拖放在光标下那个磁贴的前后（虚线占位和拖动排序用同一套几何），<c>Ctrl+V</c> 落到末尾。
+/// **右键菜单不再有「从文件 / 文件夹创建动作」**：要建单个文件 / 文件夹动作走「新建简单动作」，
+/// 要一次放一批就直接把文件拖进面板。
 /// </para>
 /// </remarks>
 public partial class SuperPanelWindow
@@ -37,30 +38,6 @@ public partial class SuperPanelWindow
 
     // 「离开」的清除延后一拍：DragLeave 从磁贴冒上来时也会来一条，立刻清就是「一直闪」。
     private DispatcherTimer? _dropHoleClear;
-
-    /// <summary>从文件创建动作（可多选），落到 <paramref name="group"/> 末尾。</summary>
-    private void AddFilesFor(PanelGroupDto group)
-    {
-        var dialog = new OpenFileDialog
-        {
-            Title = "从文件创建动作",
-            Multiselect = true,
-            CheckFileExists = true,
-            Filter = "所有文件|*.*",
-        };
-
-        if (dialog.ShowDialog(this) != true) return;
-        AddPathsTo(group, dialog.FileNames);
-    }
-
-    /// <summary>从文件夹创建动作，落到 <paramref name="group"/> 末尾。</summary>
-    private void AddFolderFor(PanelGroupDto group)
-    {
-        var dialog = new OpenFolderDialog { Title = "从文件夹创建动作" };
-
-        if (dialog.ShowDialog(this) != true) return;
-        AddPathsTo(group, new[] { dialog.FolderName });
-    }
 
     /// <summary>
     /// <c>Ctrl+V</c>：剪贴板里的文件 / 文件夹 → 动作，落到光标下的分组（不在分组里就落到第一个）。

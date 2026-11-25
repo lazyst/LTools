@@ -212,6 +212,25 @@ internal static class Program
                 Check("⑥ 右键弹出了分组菜单", menu is { IsOpen: true });
                 if (menu is { IsOpen: true })
                 {
+                    // ⑧ 菜单结构：右键不再有「从文件 / 文件夹创建动作」，换成「新建简单动作 ▸」。
+                    var simple = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Header as string == "新建简单动作");
+                    Check("⑧ 菜单里有「新建简单动作 ▸」", simple != null);
+                    Check("⑧ 菜单里有「新建组合动作…」",
+                        menu.Items.OfType<MenuItem>().Any(m => m.Header as string == "新建组合动作…"));
+                    Check("⑧ 菜单里没有「从文件创建动作…」",
+                        !menu.Items.OfType<MenuItem>().Any(m => (m.Header as string)?.StartsWith("从文件") == true));
+                    Check("⑧ 菜单里没有「从文件夹创建动作…」",
+                        !menu.Items.OfType<MenuItem>().Any(m => (m.Header as string)?.StartsWith("从文件夹") == true));
+
+                    if (simple != null)
+                    {
+                        var names = simple.Items.OfType<MenuItem>().Select(m => m.Header as string).ToList();
+                        Check("⑧ 简单动作子菜单有七项", names.Count == 7, string.Join(" / ", names));
+                        foreach (string expected in new[]
+                                 { "打开文件", "打开文件夹", "启动程序", "打开网址", "回放键鼠宏", "运行命令", "模拟按键" })
+                            Check($"⑧ 简单动作含「{expected}」", names.Contains(expected));
+                    }
+
                     var top = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Header as string == "常用功能");
                     var other = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Header as string == "LTools 功能");
                     Check("⑥ 菜单里有「常用功能」子菜单", top != null);
@@ -315,6 +334,75 @@ internal static class Program
 
                     menu.IsOpen = false;
                     Pump(panel, 150);
+                }
+            }
+
+            // ---- ⑨ 简单动作表单：七种预设都能建出完整表单（不弹模态）----
+            Type simpleActions = Lt.GetType("LTools.Features.Panel.SimpleActions", true)!;
+            Type dialogType = Lt.GetType("LTools.Views.SimpleActionDialog", true)!;
+            var catalog = ((System.Collections.IEnumerable)simpleActions.GetField("Catalog", Any)!.GetValue(null)!)
+                .Cast<object>().ToList();
+            Check("⑨ 简单动作目录有七项", catalog.Count == 7, catalog.Count.ToString());
+            foreach (object kind in catalog)
+            {
+                string name = (string)kind.GetType().GetProperty("Name")!.GetValue(kind)!;
+                object dlg = dialogType.GetConstructors(Any).Single()
+                    .Invoke(new object?[] { kind, null });
+                var window = (Window)dlg;
+                var form = window.FindName("FormHost") as StackPanel;
+                var convert = window.FindName("ConvertBtn") as Button;
+                Check($"⑨ 「{name}」表单建得出来", form is { Children.Count: >= 2 },
+                    form == null ? "FormHost=null" : $"rows={form.Children.Count}");
+                Check($"⑨ 「{name}」新建时不显示「转换为组合动作」",
+                    convert is { Visibility: Visibility.Collapsed });
+                Check($"⑨ 「{name}」标题是新建简单动作",
+                    window.Title.StartsWith("新建简单动作", StringComparison.Ordinal), window.Title);
+                window.Close();
+            }
+
+            // ⑨ 表单 → 结果：填了路径就能读出名称与参数（不弹模态，直接调 TryBuild）
+            object openFile = catalog.Single(k =>
+                (string)k.GetType().GetProperty("Name")!.GetValue(k)! == "打开文件");
+            object openDialog = dialogType.GetConstructors(Any).Single()
+                .Invoke(new object?[] { openFile, null });
+            var openWindow = (Window)openDialog;
+            var pathBox = (TextBox)openWindow.GetType().GetField("_text", Any)!.GetValue(openWindow)!;
+            pathBox.Text = @"C:\Work\季度报表.xlsx";
+            object? edit = openWindow.GetType().GetMethod("TryBuild", Any)!
+                .Invoke(openWindow, new object?[] { true, false });
+            Check("⑨ 打开文件：表单读得出结果", edit != null);
+            if (edit != null)
+            {
+                Check("⑨ 打开文件：名称取文件名",
+                    (string)edit.GetType().GetProperty("Name")!.GetValue(edit)! == "季度报表");
+                var values = (Dictionary<string, string>)edit.GetType().GetProperty("Values")!.GetValue(edit)!;
+                Check("⑨ 打开文件：path 读得回来",
+                    values.TryGetValue("path", out string? path) && path == @"C:\Work\季度报表.xlsx",
+                    values.TryGetValue("path", out string? p2) ? p2 : "(没有 path)");
+                Check("⑨ 打开文件：普通确定不转换",
+                    (bool)edit.GetType().GetProperty("Convert")!.GetValue(edit)! == false);
+            }
+            openWindow.Close();
+
+            // ⑩ 完整创建：表单结果 → AddSimple → 动作进分组 + 落盘（不经过模态框）
+            if (edit != null)
+            {
+                Type ops = Lt.GetType("LTools.Features.Panel.PanelActionOps", true)!;
+                var add = ops.GetMethods(Any).First(m => m.Name == "AddSimple"
+                    && m.GetParameters().Length == 4
+                    && m.GetParameters()[1].ParameterType == typeof(PanelGroupDto));
+                int beforeCount = group.Actions.Count;
+                ActionDto? created = (ActionDto?)add.Invoke(null,
+                    new object?[] { null, group, openFile, edit });
+                Check("⑩ 简单动作建得出来", created != null && created.SimpleKind == "openFile",
+                    created?.SimpleKind ?? "null");
+                if (created != null)
+                {
+                    Check("⑩ 动作进了分组", group.Actions.Count == beforeCount + 1 && group.Actions.Contains(created.Id));
+                    Check("⑩ 动作体是一步「打开文件」",
+                        created.Program is { Steps.Count: 1 } && created.Program.Steps[0].Unit == "file.openFile");
+                    string actionFile = Path.Combine(root, "actions", created.Id, "action.json");
+                    Check("⑩ 动作落盘（actions/<id>/action.json）", File.Exists(actionFile), actionFile);
                 }
             }
         }

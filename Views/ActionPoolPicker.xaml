@@ -95,8 +95,8 @@
             </Grid>
             <TextBlock x:Name="CountText" Grid.Column="1" Style="{StaticResource HintLabel}"
                        VerticalAlignment="Center" Margin="0,0,12,0"/>
-            <Button Grid.Column="2" Style="{StaticResource BtnPrimary}" Content="新建动作…"
-                    MinWidth="104" Click="New_Click"/>
+            <Button Grid.Column="2" Style="{StaticResource BtnPrimary}" Content="新建组合动作…"
+                    MinWidth="124" Click="New_Click"/>
         </Grid>
 
         <!-- 左：动作列表；右：选中动作的步骤 / 变量预览 -->

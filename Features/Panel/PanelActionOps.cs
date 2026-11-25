@@ -25,15 +25,49 @@ internal static class PanelActionOps
     /// <summary>新建动作并加入分组；返回新动作（取消返回 null）。</summary>
     public static ActionDto? AddNew(Window? owner, PanelGroupDto group)
     {
-        var dto = ActionEditor.Show(owner, "新建动作", null);
+        var dto = ActionEditor.Show(owner, "新建组合动作", null);
         if (dto == null) return null;
 
         if (!ActionWrites.Add(dto, out string? error))
         {
-            ConfirmDialog.Info(owner, "新建动作", error);
+            ConfirmDialog.Info(owner, "新建组合动作", error);
             return null;
         }
 
+        group.Actions.Add(dto.Id);
+        PanelLibrary.Save();
+        return dto;
+    }
+
+    /// <summary>新建一个简单动作并加入分组；取消返回 null。</summary>
+    public static ActionDto? AddSimple(Window? owner, PanelGroupDto group, SimpleActions.Kind kind)
+    {
+        var edit = SimpleActionDialog.Show(owner, kind, null);
+        return edit == null ? null : AddSimple(owner, group, kind, edit);
+    }
+
+    /// <summary>按表单结果建动作并放进分组（对话框之外的那一半，冒烟直接调）。</summary>
+    internal static ActionDto? AddSimple(Window? owner, PanelGroupDto group, SimpleActions.Kind kind,
+        SimpleActionEdit edit)
+    {
+        var dto = new ActionDto
+        {
+            Name = edit.Name,
+            Icon = kind.Icon,
+            SimpleKind = kind.Key,
+            Program = SimpleActions.Build(kind, edit.Values),
+        };
+        dto.Program.Name = dto.Name;
+        dto.Program.Icon = dto.Icon;
+
+        if (!ActionWrites.Add(dto, out string? error))
+        {
+            ConfirmDialog.Info(owner, "新建简单动作", error ?? "动作没能保存");
+            return null;
+        }
+
+        // 动作体里的 Id / 名称 / 图标跟外层对齐（与 PanelDrop.Insert 同一条约定）
+        dto.Program.Id = dto.Id;
         group.Actions.Add(dto.Id);
         PanelLibrary.Save();
         return dto;
@@ -131,11 +165,13 @@ internal static class PanelActionOps
         else group.Actions.Insert(index, reference);
     }
 
-    /// <summary>编辑分组里的动作；返回是否发生了修改。</summary>
+    /// <summary>编辑分组里的动作；返回是否发生了修改。简单动作开极简表单，组合动作开编辑器。</summary>
     public static bool Edit(Window? owner, string id)
     {
         var cur = ActionRegistry.FindById(id);
         if (cur == null) return false;
+
+        if (SimpleActions.KindOf(cur) is { } kind) return EditSimple(owner, cur, kind);
 
         var dto = ActionEditor.Show(owner, "编辑动作", cur);
         if (dto == null) return false;
@@ -144,6 +180,60 @@ internal static class PanelActionOps
         if (!ActionWrites.Update(dto, out string? error))
         {
             ConfirmDialog.Info(owner, "保存动作", error);
+            return false;
+        }
+        return true;
+    }
+
+    private static bool EditSimple(Window? owner, ActionDto cur, SimpleActions.Kind kind)
+    {
+        var edit = SimpleActionDialog.Show(owner, kind, cur);
+        if (edit == null) return false;
+
+        var dto = cur.Clone();
+        dto.Name = edit.Name;
+        // 拖进来的文件按扩展名挑过图标（.md → note…），编辑时别把它冲回通用「文件」
+        dto.Icon = string.IsNullOrEmpty(dto.Icon) ? kind.Icon : dto.Icon;
+        dto.Program = SimpleActions.Build(kind, edit.Values, cur.Program);
+        dto.Program.Id = dto.Id;
+        dto.Program.Name = dto.Name;
+        dto.Program.Icon = dto.Icon;
+
+        // 「转换为组合动作」：先按表单改好，再交给编辑器；用户在编辑器里取消就什么都不写。
+        if (edit.Convert) return OpenComposite(owner, dto);
+
+        if (!ActionWrites.Update(dto, out string? error))
+        {
+            ConfirmDialog.Info(owner, "保存简单动作", error ?? "动作没能保存");
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>把简单动作转换为组合动作（清掉预设标记）并打开编辑器；取消返回 false。</summary>
+    public static bool ConvertToComposite(Window? owner, string id)
+    {
+        var cur = ActionRegistry.FindById(id);
+        if (cur == null || SimpleActions.KindOf(cur) == null) return false;
+
+        if (!ConfirmDialog.Confirm(owner, "转换为组合动作",
+                "转换后只能用组合动作编辑器修改，不能再回到简单动作。\n动作本身、以及它在面板 / 快捷键 / 悬浮里的引用都不变。",
+                okText: "转换并编辑"))
+            return false;
+
+        return OpenComposite(owner, cur.Clone());
+    }
+
+    private static bool OpenComposite(Window? owner, ActionDto dto)
+    {
+        var edited = ActionEditor.Show(owner, "编辑动作", dto);
+        if (edited == null) return false;
+
+        edited.Id = dto.Id;
+        edited.SimpleKind = null;
+        if (!ActionWrites.Update(edited, out string? error))
+        {
+            ConfirmDialog.Info(owner, "保存动作", error ?? "动作没能保存");
             return false;
         }
         return true;

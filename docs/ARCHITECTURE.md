@@ -54,7 +54,7 @@ configs/
   macros.json        宏设置 + 宏元数据（事件仍在 macros/<id>.json）
   triggers.json      自动触发：总开关 + 规则列表（见 docs/AUTO_TRIGGER.md）
 actions/<id>/
-  action.json        动作体（名称 / 图标 / 说明 / 变量 / 步骤）
+  action.json        动作体（名称 / 图标 / 说明 / 变量 / 步骤；简单动作另带 SimpleKind 预设键）
   files/             该动作自己的模板图与脚本（P2）
   history/           每次内容变化前的自动快照（最近 10 份，只存 action.json）
 resources/

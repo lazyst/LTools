@@ -92,13 +92,32 @@ public partial class PanelManageView : UserControl
 
     private ContextMenu BuildDetailBlankMenu()
     {
-        var menu = Menu(
-            ("在此场景新建动作…", () => NewActionForSelectedScene()),
-            ("新建分组", AddGroupToSelectedScene));
-        // 详情页空白处：粘到本场景的第一个分组（与「在此场景新建动作…」同一个落点）
+        var menu = new ContextMenu();
         var groups = GroupsOfSelectedScene();
+        // 详情页空白处：默认落到本场景的第一个分组（与「新建组合动作…」同一个落点）
+        if (groups.Count > 0) AddSimpleMenu(menu, groups[0]);
+
+        AddMenuItems(menu,
+            ("新建组合动作…", () => NewActionForSelectedScene()),
+            ("新建分组", AddGroupToSelectedScene));
         PanelPasteMenu.Append(menu, groups.Count > 0 ? groups[0] : null, PasteIntoGroup);
         return menu;
+    }
+
+    /// <summary>「新建简单动作 ▸」：按预设建一个一步动作，放进这个分组。</summary>
+    private void AddSimpleMenu(ItemsControl menu, PanelGroupDto group)
+    {
+        var simple = MenuFx.Submenu(menu, "新建简单动作");
+        foreach (var kind in SimpleActions.Catalog)
+        {
+            var item = new MenuItem { Header = kind.Name, ToolTip = kind.Description };
+            SimpleActions.Kind captured = kind;
+            item.Click += (_, _) => Dispatcher.InvokeAsync(() =>
+            {
+                if (PanelActionOps.AddSimple(Window.GetWindow(this), group, captured) != null) RefreshAll();
+            });
+            simple.Items.Add(item);
+        }
     }
 
     private ContextMenu BuildSceneRowMenu(PanelSceneDto scene, bool isGlobal)
@@ -106,7 +125,7 @@ public partial class PanelManageView : UserControl
         var items = new List<(string, Action?)>
         {
             ("重命名场景", () => RenameScene(scene)),
-            ("新建动作…", () => NewActionForScene(scene)),
+            ("新建组合动作…", () => NewActionForScene(scene)),
             ("新建分组", () => AddGroupToScene(scene)),
             ("-", null),
         };
@@ -119,9 +138,10 @@ public partial class PanelManageView : UserControl
     private ContextMenu BuildGroupMenu(PanelGroupDto group, List<PanelGroupDto> groups)
     {
         var menu = new ContextMenu();
+        AddMenuItems(menu, ("重命名分组", () => RenameGroup(group)));
+        AddSimpleMenu(menu, group);
         AddMenuItems(menu,
-            ("重命名分组", () => RenameGroup(group)),
-            ("新建动作…", () => AddActionToGroup(group)),
+            ("新建组合动作…", () => AddActionToGroup(group)),
             ("从动作池选择…", () => AddExistingToGroup(group)));
         PanelPasteMenu.Append(menu, group, PasteIntoGroup);
         menu.Items.Add(new Separator());
@@ -606,13 +626,17 @@ public partial class PanelManageView : UserControl
         });
 
         btn.Content = row;
-        btn.ContextMenu = Menu(
-            ("新建动作…", () =>
+        var commonMenu = new ContextMenu();
+        var commonGroups = PanelLibrary.Current.Context.Common;
+        if (commonGroups.Count > 0) AddSimpleMenu(commonMenu, commonGroups[0]);
+        AddMenuItems(commonMenu,
+            ("新建组合动作…", () =>
             {
                 var groups = PanelLibrary.Current.Context.Common;
                 if (groups.Count > 0) AddActionToGroup(groups[0]);
             }),
             ("新建分组", () => AddGroupToScene(PanelLibrary.Current.Context.Common)));
+        btn.ContextMenu = commonMenu;
         btn.Click += (_, _) =>
         {
             _selectedKey = CommonKey;
@@ -1328,9 +1352,19 @@ public partial class PanelManageView : UserControl
             if (PanelActionOps.Edit(Window.GetWindow(this), id)) RefreshAll();
         };
 
-        var edit = new MenuItem { Header = "编辑…" };
+        var simple = SimpleActions.KindOf(a);
+        var edit = new MenuItem { Header = simple != null ? "编辑简单动作…" : "编辑…" };
         edit.Click += (_, _) => { if (PanelActionOps.Edit(Window.GetWindow(this), id)) RefreshAll(); };
         menu.Items.Add(edit);
+        if (simple != null)
+        {
+            var convert = new MenuItem { Header = "转换为组合动作…" };
+            convert.Click += (_, _) =>
+            {
+                if (PanelActionOps.ConvertToComposite(Window.GetWindow(this), id)) RefreshAll();
+            };
+            menu.Items.Add(convert);
+        }
 
         var copyRef = new MenuItem { Header = "复制引用" };
         copyRef.Click += (_, _) => PanelActionOps.CopyReference(id);
@@ -1424,7 +1458,8 @@ public partial class PanelManageView : UserControl
                 mi.Click += (_, _) => Dispatcher.InvokeAsync(() => { act(); RefreshAll(); });
                 menu.Items.Add(mi);
             }
-            Add("新建动作…", () => PanelActionOps.AddNew(owner, group));
+            AddSimpleMenu(menu, group);
+            Add("新建组合动作…", () => PanelActionOps.AddNew(owner, group));
             Add("从动作池选择…", () => PanelActionOps.AddExisting(owner, group));
             menu.PlacementTarget = btn;
             menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;

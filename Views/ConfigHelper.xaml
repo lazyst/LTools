@@ -2193,7 +2193,7 @@
                     </DataGrid>
 
                     <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Style="{StaticResource BtnPrimary}" Content="新建动作…" MinWidth="104"
+                        <Button Style="{StaticResource BtnPrimary}" Content="新建组合动作…" MinWidth="124"
                                 Click="NewAction_Click"/>
                         <TextBlock Style="{StaticResource HintLabel}" VerticalAlignment="Center"
                                    Margin="12,0,0,0" Text="双击一行也能编辑；行右侧是编辑 / 复制 / 历史版本 / 删除。"/>

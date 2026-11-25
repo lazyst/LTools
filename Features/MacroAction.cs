@@ -69,6 +69,7 @@ internal static class MacroAction
             existing.Name = display;
             existing.Icon = Icon;
             existing.Program = ProgramFor(macroId);
+            existing.SimpleKind = SimpleActions.ReplayMacro;
             ConfigStore.UpdateAction(existing);
             ConfigStore.Save();
             RefreshPanels();
@@ -80,6 +81,7 @@ internal static class MacroAction
             Name = display,
             Icon = Icon,
             Program = ProgramFor(macroId),
+            SimpleKind = SimpleActions.ReplayMacro,
         };
         if (!ConfigStore.AddAction(action)) return null;
         ConfigStore.Save();

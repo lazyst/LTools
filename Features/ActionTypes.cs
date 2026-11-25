@@ -125,6 +125,13 @@ public sealed class ActionDto
     /// <summary>动作体（变量表 + 步骤）。</summary>
     public ActionProgram? Program { get; set; }
 
+    /// <summary>
+    /// 简单动作的预设键（见 <c>SimpleActions</c>）；为 null = 组合动作。
+    /// **执行仍然只看 <see cref="Program"/>**，这里只决定这个动作用哪种极简表单来改参数、
+    /// 以及面板里的「编辑」开哪个编辑器（要加步骤得先「转换为组合动作」）。
+    /// </summary>
+    public string? SimpleKind { get; set; }
+
     /// <summary>深拷贝（含动作体深拷贝）。</summary>
     public ActionDto Clone()
     {
@@ -134,6 +141,7 @@ public sealed class ActionDto
             Name = Name,
             Icon = Icon,
             Program = Program?.Clone(),
+            SimpleKind = SimpleKind,
         };
     }
 }

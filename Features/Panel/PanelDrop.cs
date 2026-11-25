@@ -8,13 +8,14 @@ using LTools.Core.Actions;
 namespace LTools.Features.Panel;
 
 /// <summary>
-/// 把「文件 / 文件夹」变成面板里的动作（拖放、<c>Ctrl+V</c>、右键「从文件创建动作…」共用一份）。
+/// 把「文件 / 文件夹」变成面板里的动作（拖放、<c>Ctrl+V</c> 共用一份）。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 一个路径 = 一个动作，**1 步**：文件夹走「在资源管理器中定位 / 打开文件夹」（<c>file.explorer</c>，
+/// 一个路径 = 一个**简单动作**，1 步：文件夹走「在资源管理器中定位 / 打开文件夹」（<c>file.explorer</c>，
 /// <c>operation=open</c>），文件走「用默认程序打开文件」（<c>file.openFile</c>，工作目录 = 文件所在目录）。
-/// 文件夹排前面，其余按用户给的顺序。
+/// 文件夹排前面，其余按用户给的顺序。建出来带 <see cref="SimpleActions.OpenFile"/> /
+/// <see cref="SimpleActions.OpenFolder"/> 标记，之后在面板里「编辑简单动作」就能改。
 /// </para>
 /// <para>
 /// <see cref="Build"/> 只做纯逻辑（名称 / 图标 / 步骤 / 去重 / 跳过），不碰面板与磁盘写入；
@@ -197,6 +198,7 @@ internal static class PanelDrop
             Name = name,
             Icon = "folder",
             Program = program,
+            SimpleKind = SimpleActions.OpenFolder,
         };
     }
 
@@ -225,6 +227,7 @@ internal static class PanelDrop
             Name = name,
             Icon = icon,
             Program = program,
+            SimpleKind = SimpleActions.OpenFile,
         };
     }
 

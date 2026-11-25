@@ -572,8 +572,9 @@ Excel COM 那类）不做——那些用「运行脚本」或外部工具接，�
   - 旧编辑器：`Views/ActionEditorDialog`、`Views/CompositeActionDialog`、`Views/FlowNodeDialog`、
     `Views/Controls/ProbeEditor`、`Views/Controls/ConditionEditor`
   - 随之无引用的旧控件 / 菜单：`Views/Controls/ActionKindSwitch`、`Features/SlotMenu`
-- 入口清理：「新建组合动作」从设置动作管理页、快捷菜单页、超级面板右键菜单、面板管理页全部移除
-  （新建动作一律走三栏编辑器，不再有「普通 / 组合」两种新建入口）。
+- 入口清理：旧的「新建组合动作」独立入口（`CompositeActionDialog`）从设置动作管理页、快捷菜单页、超级面板右键菜单、面板管理页全部移除
+  （新建动作一律走三栏编辑器，不再有「普通 / 组合」两种新建入口）。**现在 UI 里的「新建组合动作…」指的就是这个三栏编辑器**；
+  另有「新建简单动作 ▸」走 `SimpleActionDialog`（一步预设，见 `CONTEXT.md` 的「简单动作」）。
 - 保留：`FlowTypes` / `FlowMigration`（迁移器读旧 JSON 用）、`RunContext`
   （旧取值实现与新动作单元的过渡层 `Features/Units/LegacyFlow`）、`Features/Flow/*Probe` /
   `TextLocator` / `NoteActions`（新动作单元的底层实现）。`FlowVariables` / `ActionResults` /

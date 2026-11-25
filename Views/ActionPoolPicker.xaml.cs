@@ -570,12 +570,12 @@ public partial class ActionPoolPicker : Window
 
     private void New_Click(object sender, RoutedEventArgs e)
     {
-        var dto = ActionEditor.Show(this, "新建动作", null);   // 池内新建可建组合（分发器自动开对应窗口）
+        var dto = ActionEditor.Show(this, "新建组合动作", null);
         if (dto == null) return;
 
         if (!ActionWrites.Add(dto, out string? error))
         {
-            ConfirmDialog.Info(this, "新建动作", error);
+            ConfirmDialog.Info(this, "新建组合动作", error);
             return;
         }
         Result = dto.Id;

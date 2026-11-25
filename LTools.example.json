@@ -4,6 +4,7 @@
       "Id": "01arz3ndektsv4rrffq69g5fav",
       "Name": "ipconfig",
       "Icon": "terminal",
+      "SimpleKind": "runCommand",
       "Program": {
         "id": "01arz3ndektsv4rrffq69g5fav",
         "name": "ipconfig",

@@ -333,16 +333,16 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 
 **2026-11-24 · 先落地「不依赖传输层」的那半（P1 的一部分）**
 
-- `Features/Panel/PanelDrop.cs`：一个路径 = 一个 1 步动作
+- `Features/Panel/PanelDrop.cs`：一个路径 = 一个简单动作（1 步，带 `SimpleKind`）
   - 文件夹 → `file.explorer`（`operation=open`）；文件 → `file.openFile`（`workdir` = 所在目录）
   - 名称去扩展名、按扩展名挑 `IconCatalog` 图标、文件夹排在文件前
   - 同批去重 + 已有动作去重（扫 `file.openFile` / `file.explorer` 的字面量路径）+ 找不到的跳过并计数
   - `Insert` 负责落位（分组指定下标）→ `ConfigStore.AddAction` → `action.json` / 面板配置落盘
 - 面板入口（都不依赖进程拆分，提权版今天就能用）：
-  - 分组菜单 / 空白菜单 →「从文件创建动作…」「从文件夹创建动作…」（`OpenFileDialog` 多选 / `OpenFolderDialog`）
+  - 拖进面板 / `Ctrl+V` → `PanelDrop`（右键菜单里的「从文件 / 文件夹创建动作」已删：建单个走「新建简单动作」）
   - `Ctrl+V` → `NativeClipboard.TryGetFileList`，落到光标下的分组（不在分组里就第一个）
 - 测试
-  - `--selftest` 的 `panelDrop` 组：12 用例 / 51 断言（含一条**真路径**用例）
+  - `--selftest` 的 `panelDrop` 组：12 用例 / 53 断言（含一条**真路径**用例）
   - `tests/PanelClipboardSmoke` 新增一段：`Insert` 落位 / 顺序 / 动作体 Id 对齐 / `action.json` 落盘（27 断言全绿）
   - 真面板探针（仓库外）：3 个动作进分组、磁贴出现在面板上、同一路径再添加不重复
 - 踩到的坑：`Build` 的默认探测一开始写成 `(File.Exists, Directory.Exists)`，把「目录」判成「不存在」；

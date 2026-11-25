@@ -18,6 +18,7 @@ using LTools.Core;
 using LTools.Core.Ai;
 using LTools.Core.Storage;
 using LTools.Features;
+using LTools.Features.Panel;
 using LTools.Views.Controls;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
@@ -1135,11 +1136,11 @@ public partial class ConfigHelperWindow : Window
 
     private void NewAction_Click(object sender, RoutedEventArgs e)
     {
-        var dto = ActionEditor.Show(this, "新建动作", null);
+        var dto = ActionEditor.Show(this, "新建组合动作", null);
         if (dto == null) return;
         if (!ActionWrites.Add(dto, out string? addError))
         {
-            ConfirmDialog.Info(this, "新建动作", addError);
+            ConfirmDialog.Info(this, "新建组合动作", addError);
             return;
         }
         PopulateActions();
@@ -1153,15 +1154,13 @@ public partial class ConfigHelperWindow : Window
     {
         var cur = SelectedAction();
         if (cur == null) return;
-        var dto = ActionEditor.Show(this, "编辑动作", cur);
-        if (dto == null) return;
-        dto.Id = cur.Id;   // 保留原 Id（编辑不换 Id）
-        if (!ActionWrites.Update(dto, out string? updateError))
-        {
-            ConfirmDialog.Info(this, "保存动作", updateError);
-            return;
-        }
+
+        // 简单动作开极简表单，组合动作开编辑器——分支只在 PanelActionOps.Edit 一处。
+        if (!PanelActionOps.Edit(this, cur.Id)) return;
+
         PopulateActions();
+        for (int i = 0; i < _actionRows.Count; i++)
+            if (_actionRows[i].Id == cur.Id) { ActionList.SelectedIndex = i; break; }
         ActionListChanged();
     }
 
@@ -1560,7 +1559,8 @@ public partial class ConfigHelperWindow : Window
         {
             Id = a.Id;
             Name = a.Name;
-            TypeLabel = MacroAction.MacroIdOf(a) != null ? "宏" : "动作";
+            TypeLabel = MacroAction.MacroIdOf(a) != null ? "宏"
+                : SimpleActions.KindOf(a) != null ? "简单动作" : "组合动作";
             Glyph = IconCatalog.GetGlyph(a.Icon);
             Summary = ProgramSummary(a);
             References = references;
@@ -1572,10 +1572,11 @@ public partial class ConfigHelperWindow : Window
         public string Glyph { get; }
         public string Summary { get; }
 
-        /// <summary>动作体：显示步骤总数（含子步骤）；宏动作显示时长与事件数。</summary>
+        /// <summary>动作体：简单动作显示预设名（打开文件…），宏动作显示时长与事件数，其余显示步骤总数。</summary>
         private static string ProgramSummary(ActionDto a)
         {
             if (MacroAction.SummaryOf(a) is { } macro) return macro;
+            if (SimpleActions.KindOf(a) is { } simple) return simple.Name;
             int count = a.Program?.Steps.Sum(s => s.SelfAndDescendants().Count()) ?? 0;
             return count == 0 ? "空动作" : $"{count} 步";
         }

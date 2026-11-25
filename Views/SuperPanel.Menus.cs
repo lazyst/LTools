@@ -44,7 +44,10 @@ public partial class SuperPanelWindow
             menu.Items.Add(new Separator());
         }
 
-        AddMenuItem(menu, "编辑…", () => EditAction(tref));
+        var simple = SimpleActions.KindOf(action);
+        AddMenuItem(menu, simple != null ? "编辑简单动作…" : "编辑…", () => EditAction(tref));
+        if (simple != null)
+            AddMenuItem(menu, "转换为组合动作…", () => ConvertAction(tref));
         // 两种复制：引用 = 同一个动作再放一处；副本 = 现复制一份新动作（各走各的）。
         AddMenuItem(menu, "复制引用", () => PanelActionOps.CopyReference(id));
         AddMenuItem(menu, "复制为副本", () => PanelActionOps.CopyCopy(id));
@@ -240,7 +243,8 @@ public partial class SuperPanelWindow
     private void ShowAddMenu(PanelGroupDto group, UIElement? target)
     {
         var menu = new ContextMenu();
-        AddMenuItem(menu, "新建动作…", () => NewActionFor(group));
+        AddSimpleMenu(menu, group);
+        AddMenuItem(menu, "新建组合动作…", () => NewActionFor(group));
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
         AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
         menu.Items.Add(new Separator());
@@ -249,6 +253,25 @@ public partial class SuperPanelWindow
         menu.PlacementTarget = target;
         menu.Placement = target != null ? PlacementMode.Bottom : PlacementMode.MousePoint;
         menu.IsOpen = true;
+    }
+
+    /// <summary>「新建简单动作 ▸」：点一种预设，只问它自己的那一两个参数。</summary>
+    private void AddSimpleMenu(ItemsControl menu, PanelGroupDto group)
+    {
+        var simple = MenuFx.Submenu(menu, "新建简单动作");
+        foreach (var kind in SimpleActions.Catalog)
+        {
+            var item = new MenuItem { Header = kind.Name, ToolTip = kind.Description };
+            SimpleActions.Kind captured = kind;
+            item.Click += (_, _) => Defer(() => NewSimpleFor(group, captured));
+            simple.Items.Add(item);
+        }
+    }
+
+    private void NewSimpleFor(PanelGroupDto group, SimpleActions.Kind kind)
+    {
+        using var aside = Features.SuperPanel.StepAside();
+        if (PanelActionOps.AddSimple(null, group, kind) != null) RebuildAll();
     }
 
     /// <summary>「常用功能 ▸」/「LTools 功能 ▸」：常用功能再按分类分一层，点叶子直接加一颗磁贴。</summary>
@@ -293,10 +316,9 @@ public partial class SuperPanelWindow
     private ContextMenu BuildGroupMenu(PanelGroupDto group, bool global)
     {
         var menu = NewTrackedMenu();
-        AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(group));
+        AddSimpleMenu(menu, group);
+        AddMenuItem(menu, "新建组合动作…", () => NewActionFor(group));
         AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(group));
-        AddMenuItem(menu, "从文件创建动作…", () => AddFilesFor(group));
-        AddMenuItem(menu, "从文件夹创建动作…", () => AddFolderFor(group));
         AddMenuItem(menu, "● 录制键鼠宏…", RecordMacro);
         PanelPasteMenu.Append(menu, group, PasteIntoGroup);
         menu.Items.Add(new Separator());
@@ -334,10 +356,9 @@ public partial class SuperPanelWindow
         var target = group ?? ZoneGroups(global).FirstOrDefault();
         if (target != null)
         {
-            AddMenuItem(menu, "在此组新建动作…", () => NewActionFor(target));
+            AddSimpleMenu(menu, target);
+            AddMenuItem(menu, "新建组合动作…", () => NewActionFor(target));
             AddMenuItem(menu, "从动作池选择…", () => PickExistingFor(target));
-            AddMenuItem(menu, "从文件创建动作…", () => AddFilesFor(target));
-            AddMenuItem(menu, "从文件夹创建动作…", () => AddFolderFor(target));
             PanelPasteMenu.Append(menu, target, PasteIntoGroup);
             menu.Items.Add(new Separator());
             AddFeatureMenus(menu, target);
@@ -724,6 +745,14 @@ public partial class SuperPanelWindow
         if (tref.ActionId == null) return;
         using var aside = Features.SuperPanel.StepAside();
         if (PanelActionOps.Edit(null, tref.ActionId)) RebuildAll();
+    }
+
+    /// <summary>简单动作 → 组合动作：清掉预设标记后再开编辑器（取消编辑器就什么都不变）。</summary>
+    private void ConvertAction(PanelTileRef tref)
+    {
+        if (tref.ActionId == null) return;
+        using var aside = Features.SuperPanel.StepAside();
+        if (PanelActionOps.ConvertToComposite(null, tref.ActionId)) RebuildAll();
     }
 
     /// <summary>
