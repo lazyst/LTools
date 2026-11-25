@@ -15,9 +15,9 @@ namespace LTools.Core.Link;
 /// 临时文件 + 整体替换，名字不在七个域文件白名单里直接拒绝）。
 /// </para>
 /// <para>
-/// **不在这里重读自己的内存配置**：宿主那份 <c>ConfigStore</c> 是只读副本，
-/// 而这些域的属主（设置页 / 快捷键 / 触发规则 / 面板的编辑入口）此刻还在执行器里，
-/// 宿主不需要跟着变。等这些页面搬进宿主、宿主成为属主时，改成「谁改谁重读」。
+/// **写完要刷宿主自己那份运行期状态**（<see cref="RefreshRuntime"/>）：这些页面的属主已经搬进宿主
+/// （设置页 / 面板 / 宏页 / 截图 Pro），文件换了而内存不换，表现就是「托盘里改了，设置页还是旧值」。
+/// 反过来执行器那边由 <c>config.changed</c> 自己重读。
 /// </para>
 /// </remarks>
 internal static class DataHost
@@ -51,26 +51,39 @@ internal static class DataHost
     }
 
     /// <summary>
-    /// 配置落定后刷新宿主这边的只读缓存。
+    /// 宿主写完 <c>configs/*.json</c> 之后刷一遍**自己**的运行期缓存。
     /// </summary>
     /// <remarks>
-    /// 截图 / 录屏搬进宿主之后，那些窗口读的就是**本进程**的这些缓存（延时秒数、录屏默认开关、
-    /// 导出场景、工具条布局、标注样式…）。设置在提权进程里改、落盘在宿主里做——写者就是自己，
-    /// 所以写完就地失效一次，别等下次启动才发现「改了没生效」。
-    /// </remarks>
-    /// <summary>
-    /// 宿主写完 <c>configs/*.json</c> 之后刷一遍自己的运行期缓存（截图 / 录屏 / 工具条 / 悬浮偏好）。
-    /// </summary>
-    /// <remarks>
-    /// 转发写入（执行器 → 宿主）与宿主自己的本地写入都走这里。**执行器那一份不用管**：
-    /// 宿主写完会发 <c>config.changed</c>，它自己在那边刷。
+    /// <para>
+    /// 两条路径都走这里：执行器转来的写入（<c>data.write</c>）与宿主自己的本地写入。
+    /// **执行器那一份不用管**：宿主写完会发 <c>config.changed</c>，它在那边刷。
+    /// </para>
+    /// <para>
+    /// 除了 <see cref="RuntimeRefresh"/> 那批「读一次就记住」的静态缓存，还有几样**宿主内存里的状态**
+    /// 要跟上（漏了的表现是「托盘 / 别处改了，设置页还是旧值」）：
+    /// </para>
+    /// <list type="bullet">
+    /// <item><c>settings.json</c> → <see cref="AppState.ApplySettings(Config.SettingsFile)"/>
+    /// （延时 / 录屏默认 / 导出场景 / 终端路径）。只读这一个域，别整份 <c>AppConfig.Load</c> 去扫动作目录。</item>
+    /// <item><c>panel.json</c> → 超级面板那两个开关。托盘「启用超级面板」就是这条路径；
+    /// **面板结构以宿主内存为准**，别整份重读 <c>PanelLibrary</c>（会把正在拖的磁贴打回去）。</item>
+    /// <item><c>macros.json</c> → 作废 <see cref="MacroStore"/> 的元数据缓存（录制完成是执行器写的）。</item>
+    /// </list>
+    /// <para>
+    /// 新增一个「宿主读一次就记住」的域状态时在这里加一行；动作 / 快捷键的悬空引用走
+    /// <c>actions.changed</c> 的整份重读，不在这里。
+    /// </para>
     /// </remarks>
     internal static void RefreshRuntime(string? name)
     {
         try
         {
-            if (string.Equals(name, "settings.json", StringComparison.OrdinalIgnoreCase))
-                AppState.ApplySettings(ConfigStore.LoadConfig());
+            if (Same(name, "settings.json"))
+                AppState.ApplySettings(SettingsStore.Read(ConfigStore.ConfigPath));
+            else if (Same(name, "panel.json"))
+                AppState.ApplySuperPanel(PanelStore.Read(ConfigStore.ConfigPath).SuperPanel);
+            else if (Same(name, "macros.json"))
+                MacroStore.Invalidate();
 
             RuntimeRefresh.Invalidate(name);
         }
@@ -79,4 +92,7 @@ internal static class DataHost
             AppLog.Warn("Data", $"刷新运行期设置失败：{ex.Message}");
         }
     }
+
+    private static bool Same(string? name, string file) =>
+        string.Equals(name, file, StringComparison.OrdinalIgnoreCase);
 }

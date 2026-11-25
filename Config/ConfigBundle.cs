@@ -208,6 +208,17 @@ internal static class ConfigBundle
         return Read<UiStateFile>(UiPath(anchorPath), ctx) ?? ToUi(ctx.GetSeed());
     }
 
+    /// <summary>
+    /// 只读 <c>configs/panel.json</c>（不读其它域、不扫 <c>actions/</c>）。
+    /// 提权进程改了面板设置（托盘「启用超级面板」）之后，宿主只同步那几个运行期开关用——
+    /// 面板结构以宿主内存为准，**不能整份替换**（拖动 / 编辑中途会被打回去）。
+    /// </summary>
+    internal static PanelFile ReadPanel(string anchorPath)
+    {
+        var ctx = new LoadContext { Anchor = anchorPath, Strict = false };
+        return Read<PanelFile>(PanelPath(anchorPath), ctx) ?? ToPanel(ctx.GetSeed());
+    }
+
     /// <summary>一次读取里的共享状态：严格模式、是否已回退过、惰性加载的种子。</summary>
     private sealed class LoadContext
     {

@@ -1071,6 +1071,27 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   录入状态、`AppAutoStartReply` 往返）；`LinkSmoke` 111（自启查询 / 失败带原因 / 两个方法名到对端、`floatCloseAll`）；
   `PanelHostSmoke` 11；`PanelClipboardSmoke` 27；`ShareSmoke` 92。
 
+**2026-11-25 · P2-M3-5c-3d 补：宿主内存里的域状态也要跟着落盘走**
+
+设置页成了属主之后，「谁改谁重读」的另一半落在宿主身上：执行器转来 `data.write`（托盘「启用超级面板」、
+录制完成写 `macros.json`）与宿主自己的本地写入，都要把**宿主内存里那份**刷掉，否则文件新了、界面还是旧值。
+
+- `DataHost.RefreshRuntime(name)` 按域名补三样：`settings.json` → `AppState.ApplySettings(SettingsFile)`、
+  `panel.json` → 只同步超级面板那两个开关（**结构以宿主内存为准**，整份重读 `PanelLibrary` 会把正在拖的磁贴
+  打回去）、`macros.json` → `MacroStore.Invalidate()`。动作 / 快捷键的悬空引用仍走 `actions.changed` 整份重读。
+- `AppState.ApplySettings` 拆成两个重载：`AppConfig`（启动 / 整份重读，顺带同步 `panel.json` 的超级面板开关）
+  与 `SettingsFile`（宿主写完 settings 域就地刷）。设置页改一个开关就写一次盘，以前每次都要
+  `AppConfig.Load` 把 `actions/` 解析一遍；现在只读 `settings.json`。`TerminalLauncher.LoadFromConfig` 跟着收窄到
+  `SettingsFile`。
+- 顺手删掉「导入备份」里那段逐项抄 `AppState` / `MacroSettings` 的代码：`ConfigStore.Reload()` 已经整份重读
+  （日志仍由宿主自己配——`ApplyLogging` 只在执行器跑，`AppLog.Configure` 不传 fileTag 沿用 `host` 标签）。
+- 真机：托盘「启用超级面板」关 / 开各一次，`panel.json` 跟着翻，**重开设置 → 面板管理 · 常规**的勾选框与
+  托盘一致（改之前宿主还停在旧值）；设置页「CapsLock 可作为快捷键修饰键」关 / 开各一次，`settings.json` 跟着翻、
+  执行器日志出现 `宿主写过配置（settings.json）`，宿主无 `刷新运行期设置失败`。两进程无 WARN / ERROR。
+- 回归：`--selftest` 394 用例 / 18885 断言（`link` 组新增「宿主运行期状态：两个 ApplySettings 重载各管各的域」——
+  拆重载时最容易漏的就是「超级面板开关不在 settings 域」，漏了界面上那个勾会自己跳回去）；`LinkSmoke` 111；
+  `PanelHostSmoke` 11；`PanelClipboardSmoke` 27；`ShareSmoke` 92。
+
 **下一步（5d）**：`data.changed` 收尾（宿主成为 `configs/` 写者之后，`panel.snapshot` 之类还要不要保留）、
 MCP 写入面的最后整理（`mcp.*` 已齐），以及 `ShareHost` 并回同一个 exe 的「普通权限模式」。
 

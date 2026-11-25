@@ -60,6 +60,9 @@ internal static class PanelStore
 
     public static void Modify(string path, Action<PanelFile> change)
         => ConfigIO.ModifyDomain(path, ConfigDomain.panel, ConfigBundle.ToPanel, change, ConfigBundle.WritePanel);
+
+    /// <summary>只读 <c>panel.json</c>（不读其它域、不扫 <c>actions/</c>）。</summary>
+    public static PanelFile Read(string path) => ConfigBundle.ReadPanel(path);
 }
 
 /// <summary><c>configs/floating.json</c>：悬浮项偏好（悬浮项本身不落盘）。</summary>

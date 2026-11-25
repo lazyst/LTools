@@ -196,8 +196,8 @@ public partial class App : Application
             ConfigChangedBridge.Attach(server);
             McpBridge.Attach(server);
             AppBridge.Attach(server);
-            // 宿主是 configs/ 的写者：本地写完一个域，先刷自己那份运行期缓存，
-            // 再让执行器重读它那份（钩子 / 触发器 / 宏 / 截图设置）。
+            // 宿主是 configs/ 的写者：本地写完一个域，先刷自己那份运行期状态（AppState 的开关 /
+            // RuntimeRefresh 的静态缓存），再让执行器重读它那份（钩子 / 触发器 / 宏 / 截图设置）。
             ConfigBundle.LocalWriteListener = name =>
             {
                 DataHost.RefreshRuntime(name);

@@ -1495,19 +1495,14 @@ public partial class ConfigHelperWindow : Window
 
             BackupStatusText.Text = "正在导入…";
             await Task.Run(() => BackupService.Import(preview));
+            // 运行期状态（动作 / 快捷键 / AppState / 宏 / 触发 / 面板）整份重读，别在这里逐项再抄一遍
             ConfigStore.Reload();
             RefreshCreatedPages();
-            // 全局开关在 AppState，启动时从配置读取；导入新配置后重新应用，避免要重启才生效
-            var cfg = ConfigStore.LoadConfig();
-            AppState.CapsLockModifier = cfg.CapsLockModifier;
-            AppState.EdgeWheelVolume = cfg.EdgeWheelVolume;
-            AppState.EdgeWheelVolumeEdge = (int)cfg.EdgeWheelVolumeEdge;
-            AppState.IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
-            AppState.SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
-            MacroSettings.Load(cfg);
-            PopulateLogging();
-            var logCfg = cfg.Logging ?? new LogConfig();
+            // 日志是进程级状态：Reload 里的 ApplyLogging 只在执行器跑，宿主这份自己配
+            // （AppLog.Configure 不传 fileTag = 沿用当前的 host 标签，别写回共用的那份日志文件）
+            var logCfg = SettingsStore.Read(ConfigPath).Logging ?? new LogConfig();
             AppLog.Configure(logCfg.Enabled, logCfg.Level, logCfg.RetentionDays);
+            PopulateLogging();
             _initializing = true;
             PopulateToggles();
             _initializing = false;

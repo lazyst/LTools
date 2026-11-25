@@ -29,6 +29,53 @@ internal static class LinkSuite
         cases.Add(new("link", "帧长度前缀就是负载字节数", Prefix));
         cases.Add(new("link", "管道名按会话区分", PipeName));
         cases.Add(new("link", "面板命令的负载形状（快照 / 新建 / 定位 / 显示）", PanelCommands));
+        cases.Add(new("link", "宿主运行期状态：两个 ApplySettings 重载各管各的域", RuntimeStateOverloads));
+    }
+
+    /// <summary>
+    /// 宿主写完配置就地刷「自己那份」（<c>DataHost.RefreshRuntime</c>）：<c>settings.json</c> 只管
+    /// settings 域，超级面板那两个开关在 <c>panel.json</c> 里、由 <see cref="AppState.ApplySuperPanel"/> 单独同步。
+    /// </summary>
+    /// <remarks>
+    /// 拆成两个重载是因为设置页改一个开关就写一次盘，整份 <c>AppConfig.Load</c> 会把 <c>actions/</c>
+    /// 也解析一遍。拆的时候最容易漏的就是「超级面板开关不在 settings 域」——漏了界面上那个勾会自己跳回去。
+    /// </remarks>
+    private static void RuntimeStateOverloads()
+    {
+        bool capsLock = AppState.CapsLockModifier;
+        int delay = AppState.ScreenshotDelaySeconds;
+        bool panel = AppState.IsSuperPanelEnabled;
+        int threshold = AppState.SuperPanelThresholdMs;
+        try
+        {
+            AppState.ApplySuperPanel(new SuperPanelConfig { Enabled = false, LongPressThresholdMs = 420 });
+            Check.False(AppState.IsSuperPanelEnabled, "超级面板开关同步到 AppState");
+            Check.Equal(420, AppState.SuperPanelThresholdMs, "长按阈值同步到 AppState");
+
+            AppState.ApplySettings(new SettingsFile
+            {
+                CapsLockModifier = false,
+                Screenshot = new ScreenshotFile { DelaySeconds = 7 },
+            });
+            Check.False(AppState.CapsLockModifier, "settings 域生效");
+            Check.Equal(7, AppState.ScreenshotDelaySeconds, "延时秒数生效");
+            Check.False(AppState.IsSuperPanelEnabled, "settings 域不动超级面板开关");
+            Check.Equal(420, AppState.SuperPanelThresholdMs, "settings 域不动长按阈值");
+
+            AppState.ApplySettings(new AppConfig
+            {
+                SuperPanel = new SuperPanelConfig { Enabled = true, LongPressThresholdMs = 300 },
+            });
+            Check.True(AppState.IsSuperPanelEnabled, "整份配置连超级面板一起灌");
+            Check.Equal(300, AppState.SuperPanelThresholdMs, "整份配置的长按阈值");
+        }
+        finally
+        {
+            AppState.CapsLockModifier = capsLock;
+            AppState.ScreenshotDelaySeconds = delay;
+            AppState.IsSuperPanelEnabled = panel;
+            AppState.SuperPanelThresholdMs = threshold;
+        }
     }
 
     private static void Shapes()

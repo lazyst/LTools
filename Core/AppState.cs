@@ -71,18 +71,44 @@ internal static class AppState
     /// </remarks>
     public static void ApplySettings(Config.AppConfig cfg)
     {
-        CapsLockModifier = cfg.CapsLockModifier;
-        EdgeWheelVolume = cfg.EdgeWheelVolume;
-        EdgeWheelVolumeEdge = (int)cfg.EdgeWheelVolumeEdge;
-        IsSuperPanelEnabled = cfg.SuperPanel.Enabled;
-        SuperPanelThresholdMs = cfg.SuperPanel.LongPressThresholdMs;
-        TrayDoubleClick = cfg.TrayDoubleClick;
+        ApplySettings(Config.ConfigBundle.ToSettings(cfg));
+        // 超级面板的两个开关在 panel.json 里（不在 settings 域），单独同步
+        ApplySuperPanel(cfg.SuperPanel);
+    }
+
+    /// <summary>
+    /// 只灌 <c>settings.json</c> 那一份（宿主的「写完就刷」用这个重载）。
+    /// </summary>
+    /// <remarks>
+    /// 设置页改一个开关就要刷一次，而整份 <see cref="Config.AppConfig"/> 会把 <c>actions/</c> 也解析一遍
+    /// （几百个动作时是几十毫秒，压在 UI 线程上）。这一份管的是「全局行为 + 截图 / 录屏默认值」；
+    /// 超级面板那两个开关在 <c>panel.json</c> 里，走 <see cref="ApplySuperPanel"/>。
+    /// </remarks>
+    public static void ApplySettings(Config.SettingsFile settings)
+    {
+        CapsLockModifier = settings.CapsLockModifier;
+        EdgeWheelVolume = settings.EdgeWheelVolume;
+        EdgeWheelVolumeEdge = (int)settings.EdgeWheelVolumeEdge;
+        TrayDoubleClick = settings.TrayDoubleClick;
         ScreenshotDelaySeconds = Features.CapturePro.CaptureDelay.Normalize(
-            (cfg.Screenshot ?? new Config.ScreenshotFile()).DelaySeconds);
-        Features.CapturePro.ExportSettings.Apply(cfg.Export);
-        Record = (cfg.Record ?? new RecordOptions()).Normalized();
+            (settings.Screenshot ?? new Config.ScreenshotFile()).DelaySeconds);
+        Features.CapturePro.ExportSettings.Apply(settings.Export);
+        Record = (settings.Record ?? new RecordOptions()).Normalized();
         // 终端路径覆盖（设置 → 终端路径）：执行器要按它起 shell，宿主里那页也要显示当前值。
-        Features.TerminalLauncher.LoadFromConfig(cfg);
+        Features.TerminalLauncher.LoadFromConfig(settings);
+    }
+
+    /// <summary>
+    /// 只同步「超级面板」那两个开关（<c>panel.json</c> 里不是结构的那部分）。
+    /// </summary>
+    /// <remarks>
+    /// 提权进程从托盘改了它（<c>PanelStore.Modify</c> → <c>data.write</c>）之后，宿主只刷这两项：
+    /// **面板结构以宿主内存为准**，整份 <c>PanelLibrary</c> 重新读会把正在拖动 / 编辑的磁贴打回去。
+    /// </remarks>
+    public static void ApplySuperPanel(Config.SuperPanelConfig superPanel)
+    {
+        IsSuperPanelEnabled = superPanel.Enabled;
+        SuperPanelThresholdMs = superPanel.LongPressThresholdMs;
     }
 
     /// <summary>CapsLock 是否当前按下（便捷查询，供功能模块判断）。</summary>

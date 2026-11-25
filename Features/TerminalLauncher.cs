@@ -16,11 +16,11 @@ internal static class TerminalLauncher
     /// <summary>配置里的路径覆盖（键 = terminal key，如 <c>gitbash</c>）；没有条目 = 自动探测。</summary>
     private static readonly Dictionary<string, string> Overrides = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>从 AppConfig 加载终端路径覆盖（启动时调用一次）。</summary>
-    public static void LoadFromConfig(AppConfig cfg)
+    /// <summary>从 <c>settings.json</c> 加载终端路径覆盖（<see cref="AppState.ApplySettings"/> 里调用）。</summary>
+    public static void LoadFromConfig(Config.SettingsFile settings)
     {
         Overrides.Clear();
-        foreach (var kv in cfg.TerminalPaths)
+        foreach (var kv in settings.TerminalPaths)
         {
             if (!string.IsNullOrWhiteSpace(kv.Value)) Overrides[kv.Key] = kv.Value.Trim();
         }
