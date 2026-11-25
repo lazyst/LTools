@@ -1092,18 +1092,38 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   拆重载时最容易漏的就是「超级面板开关不在 settings 域」，漏了界面上那个勾会自己跳回去）；`LinkSmoke` 111；
   `PanelHostSmoke` 11；`PanelClipboardSmoke` 27；`ShareSmoke` 92。
 
-**下一步（5d）**：`data.changed` 收尾（宿主成为 `configs/` 写者之后，`panel.snapshot` 之类还要不要保留）、
-MCP 写入面的最后整理（`mcp.*` 已齐），以及 `ShareHost` 并回同一个 exe 的「普通权限模式」。
+**2026-11-25 · P2-M3-5d-a 面板结构落盘归宿主（`panel.replace` 删除）**
+
+`configs/` 从 M2-a 起就是宿主在写，但面板结构改完还得把整份 `PanelConfig` 交回提权进程、由它再转给宿主落盘——
+一个 `host → executor → host` 的圈。更糟的是链路断掉时 `PanelHostBridge.TryPushPanel` 只记一条 Warn 却**返回 true**，
+界面以为存好了，实际什么都没写，下一次保存又把改动作废。
+
+- `PanelLibrary.Save()` 就是 `Persist()`（`PanelStore.Modify`）：宿主本地写，执行器那次由
+  `ConfigBundle.RemoteWriter` 转过去。`PanelLibrary.Replace` / `PanelHostBridge.TryPushPanel` /
+  `PanelHost.Replace` / `LinkMethods.PanelReplace` 全部删除（没有第二个调用方了）。
+- **两侧镜像改成「跟着重读」**：执行器那份 `PanelLibrary.Current` 只剩三个用途——删动作清磁贴、宏录完放磁贴、
+  「悬浮整组」找分组。它靠 `config.changed` → `ConfigStore.ReloadRuntime("panel.json")` → `PanelLibrary.Reload()`
+  跟上；宿主那边 `DataHost.RefreshRuntime(name, fromPeer)` 只在**执行器写的那一份**（`data.write`）上重读，
+  自己写的结构不重读（重读会把正在拖的磁贴打回去）。
+- 顺手修掉「宏录完放进面板的磁贴，宿主看不见、下一次面板保存被覆盖」：执行器放完磁贴 → 落盘 → 宿主收到
+  「对端写的 panel.json」→ 重读，那份结构才是权威的。
+- 回归：`--selftest` 394 用例 / 18885 断言；`LinkSmoke` 112（面板段改成「宿主直接落盘 + 执行器靠
+  `config.changed` 重读」）；`PanelHostSmoke` 11；`PanelClipboardSmoke` 27；`ShareSmoke` 92。
+- 真机：面板拖磁贴 / 分组改名 / 删除面板上的动作 / 录制一个宏后看磁贴是否真的进了面板、重启后仍在。
+
+**下一步（5d-b）**：`ShareHost` 并回同一个 exe 的「普通权限模式」（发布包只剩一个 exe）。
+`data.changed` 那半已经收完：面板结构单写者、`panel.replace` 删除、`macro.*` / `app.*` / `settings.show` 齐了。
 
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
-> 现状（2026-11-25，M3-5c-3d 之后）：宿主随主程序常驻，**面板 / 速记 / 辅助工具 / 截图 Pro（覆盖层 / 结果窗 /
+> 现状（2026-11-25，M3-5d-a 之后）：宿主随主程序常驻，**面板 / 速记 / 辅助工具 / 截图 Pro（覆盖层 / 结果窗 /
 > 贴图 / 采集历史 / 录屏 / 全屏画布）/ 动作编辑器 / 子动作库 / 宏页 / 设置窗口（含 9 个截图 Pro 子页）
-> 全在宿主里跑**。提权进程只剩钩子、动作执行、写 `macros/` `state/` 与托盘图标。
-> 链路方法：`panel.snapshot` / `panel.op` / `panel.replace` / `run.action` / `panel.state` /
+> 全在宿主里跑**。提权进程只剩钩子、动作执行、写 `macros/` `state/` 与托盘图标。`configs/` 里的
+> `panel.json` 结构也只由宿主写（以前的 `panel.replace` 交还路径已删）。
+> 链路方法：`panel.snapshot` / `panel.op` / `run.action` / `panel.state` /
 > `settings.show` / `note.toggle` / `info.toggle` / `capture.*` / `action.*` / `macro.*` / `mcp.*` /
-> `app.autostart` / `app.clearHistory`（`open.window` 已随设置窗口搬家删除）。
+> `app.autostart` / `app.clearHistory`（`open.window` 随设置窗口搬家删除，`panel.replace` 随面板落盘归宿主删除）。
 
 ### 15.1 三条依赖决定顺序（别按窗口大小排）
 
@@ -1166,7 +1186,7 @@ MCP 写入面的最后整理（`mcp.*` 已齐），以及 `ShareHost` 并回同�
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主。**编辑器与宏页并进第 5 步**：打开编辑器的调用方（`PanelActionOps`）与设置页都在提权进程里，单独搬窗口就得连动作内容写权、`staging/`、设置入口一起翻——那正是第 5 步的范围（见 §14 `P2-M3-5a` 的顺序说明）。 |
-| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3a 已完成**：`config.changed`（宿主写完配置，执行器重读运行期状态）。**5c-3b 已完成**：宏页的 `macro.play` / `rename` / `delete` + 录制 / 试放事件改广播（回放参数是纯配置，不建命令）。**5c-3c 已完成**：AI 页的 `mcp.status` / `apply` / `resetToken` / `knowledge`（服务 / 令牌 / 知识包都归执行器）。**5c-3d 已完成**：设置窗口本体（含动作管理 / 子动作库 / 快捷键 / 面板管理 / 键鼠宏 / 触发 / 采集策略 / MCP / 备份与 9 个截图 Pro 子页）搬进宿主，入口（托盘 / `CapsLock+\` / 托盘双击 / `--perf`）改成 `settings.show` 意图，`open.window` 与 `LinkTargets` 删除。**5d**：`data.changed` 收尾、`ShareHost` 并回同一个 exe 的普通权限模式 |
+| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3a 已完成**：`config.changed`（宿主写完配置，执行器重读运行期状态）。**5c-3b 已完成**：宏页的 `macro.play` / `rename` / `delete` + 录制 / 试放事件改广播（回放参数是纯配置，不建命令）。**5c-3c 已完成**：AI 页的 `mcp.status` / `apply` / `resetToken` / `knowledge`（服务 / 令牌 / 知识包都归执行器）。**5c-3d 已完成**：设置窗口本体（含动作管理 / 子动作库 / 快捷键 / 面板管理 / 键鼠宏 / 触发 / 采集策略 / MCP / 备份与 9 个截图 Pro 子页）搬进宿主，入口（托盘 / `CapsLock+\` / 托盘双击 / `--perf`）改成 `settings.show` 意图，`open.window` 与 `LinkTargets` 删除。**5d-a 已完成**：面板结构落盘归宿主（`panel.replace` / `TryPushPanel` / `PanelLibrary.Replace` 删除，两侧镜像靠 `config.changed` 与「对端写的 panel.json」重读）。**5d-b**：`ShareHost` 并回同一个 exe 的「普通权限模式」（发布包只剩一个 exe） |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
 
 > **顺序更正（2026-11-24，看过代码之后）**：原方案把「采集历史 / 贴图管理」排在截图 Pro 前面，实际排不了——

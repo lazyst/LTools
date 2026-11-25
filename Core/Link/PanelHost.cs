@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using LTools.Config;
 using LTools.Core;
 using LTools.Core.Ai;
 using LTools.Features;
@@ -12,13 +11,13 @@ using LTools.Features.Panel;
 namespace LTools.Core.Link;
 
 /// <summary>
-/// 面板命令在**提权侧**的处理（宿主的写操作经这里落盘）。
+/// 面板相关命令在**提权侧**的处理：要钩子 / 键鼠注入 / 悬浮窗 / 暂存区写入的那些。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 拆分过渡期（R1 / P1b）的写属主仍是提权进程：宿主只读地显示面板，改了之后把整份
-/// <see cref="PanelConfig"/> 交回来，由这里调 <see cref="PanelLibrary"/> / <see cref="ConfigStore"/> 写盘。
-/// 这样既不用给面板写路径逐个建命令，也不会出现两个进程各写一半。
+/// 面板**结构**不在这里：<c>configs/panel.json</c> 从 M2-a 起就是宿主在写，结构改动（拖磁贴 / 改名 /
+/// 增删分组场景）直接由 <see cref="PanelLibrary"/> 落盘，不再把整份配置交回来（<c>panel.replace</c> 已删）。
+/// 这里只剩「点了磁贴要执行」「悬浮 / 宏 / 暂存区」这些必须留在提权进程的动作。
 /// </para>
 /// <para>
 /// 全部动作都在实现里做「参数校验 → 改数据 → 落盘」，**任何异常都翻成失败答复**，不把异常抛回读循环。
@@ -172,7 +171,6 @@ internal static class PanelHost
             return request.Method switch
             {
                 LinkMethods.PanelSnapshot => LinkMessage.Response(request, Snapshot()),
-                LinkMethods.PanelReplace => Replace(request),
                 LinkMethods.RunAction => ForwardRun(request),
                 _ when ActionEditHost.IsWrite(request.Method) => ActionEditHost.Handle(request),
                 _ when MacroHost.IsCommand(request.Method) => MacroHost.Handle(request),
@@ -203,16 +201,6 @@ internal static class PanelHost
             .ToList());
 
     // ============ 写 ============
-
-    private static LinkMessage Replace(LinkMessage request)
-    {
-        PanelConfig? panel = request.Read<PanelConfig>();
-        if (panel == null) return LinkMessage.Response(request, error: "缺少面板配置");
-
-        return PanelLibrary.Replace(panel)
-            ? LinkMessage.Response(request)
-            : LinkMessage.Response(request, error: "面板配置写盘失败");
-    }
 
     /// <summary>宿主点了磁贴：真正执行留在这里（提权进程），宿主不跑动作。</summary>
     private static LinkMessage ForwardRun(LinkMessage request)

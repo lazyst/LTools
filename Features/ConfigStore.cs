@@ -135,8 +135,13 @@ internal static class ConfigStore
     /// 被写的域文件名（进日志与「要不要重配日志」的判断）；整份重读时为 null。
     /// </param>
     /// <remarks>
-    /// 只刷「执行器自己那份运行期状态」，**不碰面板**（那走 <c>panel.replace</c>）也不再回头通知宿主
-    /// （否则就是两个进程互相叫对方重读）。读盘在调它的 UI 线程上，几十毫秒，不影响输入。
+    /// 只刷「执行器自己那份运行期状态」，也不再回头通知宿主（否则就是两个进程互相叫对方重读）。
+    /// 读盘在调它的 UI 线程上，几十毫秒，不影响输入。
+    /// <para>
+    /// **面板结构以宿主那份为准**：<c>panel.json</c> 变了就跟着重读一次（执行器这边只用它做
+    /// 「删动作清磁贴 / 宏录完放磁贴 / 悬浮整组」，结构本身不在执行器里编辑）。以前这一步靠
+    /// 宿主把整份面板推回来（<c>panel.replace</c>），那条路已经删了。
+    /// </para>
     /// </remarks>
     internal static void ReloadRuntime(string? changedFile = null)
     {
@@ -150,6 +155,13 @@ internal static class ConfigStore
                 StringComparison.OrdinalIgnoreCase))
         {
             ApplyLogging(cfg);
+        }
+
+        if (changedFile == null
+            || string.Equals(changedFile, Path.GetFileName(ConfigBundle.PanelPath(ConfigPath)),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            PanelLibrary.Reload();
         }
 
         // 截图 / 录屏 / 悬浮工具条那些「读一次就记住」的设置：执行器这边也要跟着换。

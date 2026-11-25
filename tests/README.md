@@ -169,15 +169,15 @@ dotnet run                                # 72 条，约 7 秒
 
 后半段（`== 面板命令 ==`）在**临时数据根**上跑 `ConfigStore.Initialize`，再按生产方向
 （`LinkServer` 发请求、`LinkClient` 用 `PanelHost.HandleAsync` 应答）驱动面板写属主：
-`panel.snapshot` 带回动作与分组、`panel.replace` 同时改内存与 `configs/panel.json`、`action.add`
+`panel.snapshot` 带回动作与分组、`action.add`
 新 Id + 落盘、`action.duplicate` 新 Id + 名字带「副本」、`action.delete` 连动作目录与面板引用一起清、
-未知命令回失败答复。最后一段（`== 磁贴转交 ==`）验 `PanelHostBridge`：把 `ActionExecutor.RunRef`
-接管成 `run.action` 请求、把「设置 / 暂存区 / 面板场景」接管成 `open.window` 请求、
+面板结构改成「宿主直接落盘 + 执行器靠 `config.changed` 重读」、未知命令回失败答复。最后一段（`== 磁贴转交 ==`）验 `PanelHostBridge`：把 `ActionExecutor.RunRef`
+接管成 `run.action` 请求、「设置 / 暂存区 / 面板场景」直接开宿主里的窗口、
 把 `PanelActionOps.AddNew` 与悬浮 / 宏试放 / 宏录制 / 在暂存区编辑接管成 `panel.op` 请求、
 把暂存区五个写操作（打开草稿 / 试运行 / 采纳 / 删除 / 清空）与「AI 接入设置」也接管成
-`panel.op` / `open.window`，把 `PanelLibrary.Save` 接管成 `panel.replace`，
-断言引用 / 坐标 / 来源 / 目标 / 操作名 / 分组 / 宏 Id / 草稿 Id 与采纳方式 / 整份配置都原样送到对端
-（宿主里绝不本地执行、也不本地写盘），并验悬浮状态能从快照灌进
+`panel.op`，面板结构改动则验「不再经链路、就地落盘」，
+断言引用 / 坐标 / 来源 / 目标 / 操作名 / 分组 / 宏 Id / 草稿 Id 与采纳方式都原样送到对端
+（宿主里绝不本地执行），并验悬浮状态能从快照灌进
 `PanelHostBridge`（面板菜单的「悬浮 / 取消悬浮」靠它）；**反方向**再验六条：执行器向宿主发
 `ui.choice` / `ui.textWindow` / `ui.selectFile` / `ui.pickPoint` / `data.write` / `note.write`
 并收到对应的回复（交互类动作单元弹在宿主里、配置与速记由宿主落盘）。

@@ -62,7 +62,7 @@ internal static class ConfigBundle
     public static string SettingsPath(string a) => Path.Combine(ConfigDir(a), "settings.json");
     private static string UiPath(string a) => Path.Combine(ConfigDir(a), "ui.json");
     private static string HotkeysPath(string a) => Path.Combine(ConfigDir(a), "hotkeys.json");
-    private static string PanelPath(string a) => Path.Combine(ConfigDir(a), "panel.json");
+    internal static string PanelPath(string a) => Path.Combine(ConfigDir(a), "panel.json");
     private static string FloatingPath(string a) => Path.Combine(ConfigDir(a), "floating.json");
     private static string MacrosPath(string a) => Path.Combine(ConfigDir(a), "macros.json");
     private static string TriggersPath(string a) => Path.Combine(ConfigDir(a), "triggers.json");

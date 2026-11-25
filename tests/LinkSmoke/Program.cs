@@ -146,7 +146,6 @@ internal static class Program
         string pipe = "LToolsLink-fwd-" + Guid.NewGuid().ToString("N")[..8];
         var recorded = new TaskCompletionSource<RunActionRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var operated = new TaskCompletionSource<ActionOpRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var pushed = new TaskCompletionSource<PanelConfig>(TaskCreationOptions.RunContinuationsAsynchronously);
         var subSaved = new TaskCompletionSource<SubActionSaveRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var reloaded = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var runStarted = new TaskCompletionSource<RunProgramRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -341,8 +340,6 @@ internal static class Program
                         opsSeen.Enqueue(op);
                         operated.TrySetResult(op);
                     }
-                    if (request.Method == LinkMethods.PanelReplace && request.Read<PanelConfig>() is { } panel)
-                        pushed.TrySetResult(panel);
                     return Task.FromResult(LinkMessage.Response(request));
                 });
 
@@ -614,11 +611,13 @@ internal static class Program
             bool updateOk = ActionEditBridge.Update(new ActionDto { Id = "a-new", Name = "改过" }, out string? updateError);
             Check("执行器拒绝时宿主拿得到原因", !updateOk && updateError == "这个动作已经不存在了", updateError);
 
-            // ---- 面板结构保存：宿主 Save 变成整份替换 ----
-            Check("面板结构保存被接管", PanelHostBridge.TryPushPanel(new PanelConfig()));
-            Task pushDone = await Task.WhenAny(pushed.Task, Task.Delay(2000));
-            Check("整份面板配置转给了提权进程", ReferenceEquals(pushDone, pushed.Task),
-                ReferenceEquals(pushDone, pushed.Task) ? null : "2 秒内没收到");
+            // ---- 面板结构落盘不再经链路：宿主自己就是 configs/ 的写者 ----
+            // （以前是 panel.replace 交给提权进程落盘，链路一断连面板都拖不动。）
+            PanelLibrary.Current.Global.Scenes[0].Groups[0].Name = "宿主自己写";
+            Check("面板结构直接落盘", PanelLibrary.Save());
+            Check("盘上就是宿主内存那份",
+                File.ReadAllText(Path.Combine(ConfigBundle.ConfigDir(ConfigStore.ConfigPath), "panel.json"))
+                    .Contains("宿主自己写"));
         }
         catch (Exception ex)
         {
@@ -712,14 +711,19 @@ internal static class Program
             ConfigChangedBridge.Attach(server);
             ConfigBundle.LocalWriteListener = ConfigChangedBridge.Notify;
 
-            // ---- 整份替换（宿主改分组名）----
-            PanelConfig edited = snap!.Panel;
-            edited.Global.Scenes[0].Groups[0].Name = "改名后";
-            LinkMessage replaced = await server.RequestAsync(LinkMethods.PanelReplace, edited, timeoutMs: 2000);
-            Check("面板替换成功", replaced.Ok, replaced.Error);
-            Check("替换写进了内存", PanelLibrary.Current.Global.Scenes[0].Groups[0].Name == "改名后");
-            Check("替换写进了磁盘",
+            // ---- 面板结构由宿主直接落盘，执行器收到 config.changed 才重读 ----
+            // 宿主那边是另一个进程，这里就用「写一份新的盘上配置」模拟它（别改快照里那个对象，
+            // 那就是执行器内存里的 <c>PanelLibrary.Current</c>）。
+            Check("执行器当前分组名", PanelLibrary.Current.Global.Scenes[0].Groups[0].Name == "常用");
+            PanelFile onDisk = PanelStore.Read(configPath);
+            onDisk.Panel!.Global.Scenes[0].Groups[0].Name = "改名后";
+            PanelStore.Modify(configPath, file => file.Panel = onDisk.Panel);
+            Check("宿主写进了磁盘",
                 File.ReadAllText(Path.Combine(root, "configs", "panel.json")).Contains("改名后"));
+            Check("重读之前执行器还是旧的", PanelLibrary.Current.Global.Scenes[0].Groups[0].Name == "常用");
+
+            ConfigStore.ReloadRuntime("panel.json");
+            Check("执行器跟着重读面板结构", PanelLibrary.Current.Global.Scenes[0].Groups[0].Name == "改名后");
 
             Task changedArrived = await Task.WhenAny(configChanged.Task, Task.Delay(2000));
             Check("宿主写完配置通知了执行器", ReferenceEquals(changedArrived, configChanged.Task)

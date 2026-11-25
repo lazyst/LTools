@@ -19,9 +19,6 @@ internal static class LinkMethods
     /// <summary>要一份当前面板 + 动作摘要（宿主首次显示 / 断线重连后重建）。</summary>
     public const string PanelSnapshot = "panel.snapshot";
 
-    /// <summary>宿主把编辑后的整份面板配置交回，由提权进程落盘。</summary>
-    public const string PanelReplace = "panel.replace";
-
     /// <summary>新建一个动作（整份定义），返回补过 Id / 图标的完整 <c>ActionDto</c>。</summary>
     public const string ActionAdd = "action.add";
 

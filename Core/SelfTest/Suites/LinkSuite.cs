@@ -196,7 +196,7 @@ internal static class LinkSuite
         // 方法名互不相同、都不为空（拼错一个常量会让两端对不上）。
         var names = new[]
         {
-            LinkMethods.PanelSnapshot, LinkMethods.PanelReplace, LinkMethods.ActionAdd,
+            LinkMethods.PanelSnapshot, LinkMethods.ActionAdd,
             LinkMethods.ActionUpdate, LinkMethods.ActionDelete, LinkMethods.ActionDuplicate,
             LinkMethods.RunAction, LinkMethods.ActionOp,
             LinkMethods.EventPanelShow, LinkMethods.EventPanelToggle, LinkMethods.EventClientReady,

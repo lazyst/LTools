@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using LTools.Config;
 using LTools.Core;
-using LTools.Core.Link;
 using LTools.Features.Builtin;
 
 namespace LTools.Features.Panel;
@@ -66,20 +65,13 @@ internal static class PanelLibrary
         if (created && persist) Persist();
     }
 
-    /// <summary>把内存配置整份写回磁盘。失败只记日志，不阻塞 UI；只读进程（宿主）把改动转给主程序。</summary>
-    public static bool Save()
-    {
-        if (AppRole.IsUiHost)
-        {
-            // 宿主：结构改动（拖磁贴 / 改名 / 增删分组场景…）照常改内存，落盘交给提权进程整份替换。
-            if (PanelHostBridge.TryPushPanel(Current)) return true;
-
-            AppLog.Warn(LogSource, "宿主连不上主程序，面板改动没有落盘");
-            return false;
-        }
-
-        return Persist();
-    }
+    /// <summary>把内存配置整份写回磁盘。失败只记日志，不阻塞 UI。</summary>
+    /// <remarks>
+    /// <c>configs/</c> 的物理写者是宿主，所以两个进程都直接走 <see cref="PanelStore"/>：宿主本地写，
+    /// 执行器那次由 <c>ConfigBundle.RemoteWriter</c> 转给宿主（M2-a 之后落盘已经不需要「交回提权进程」，
+    /// 以前为了这一步加的 <c>panel.replace</c> 已删——那条路一断连，宿主连带面板都拖不动）。
+    /// </remarks>
+    public static bool Save() => Persist();
 
     /// <summary>按 Id 在全局 / 上下文的所有场景（含 <see cref="PanelAreaDto.Common"/>）里找分组。</summary>
     internal static PanelGroupDto? FindGroup(string? groupId)
@@ -98,17 +90,6 @@ internal static class PanelLibrary
             if (string.Equals(group.Id, groupId, StringComparison.Ordinal)) return group;
 
         return null;
-    }
-
-    /// <summary>
-    /// 整份替换（面板宿主把编辑后的配置交回提权进程时用）：规范化后落盘。
-    /// 返回 false 表示写盘失败（只读进程也返回 false）。
-    /// </summary>
-    internal static bool Replace(PanelConfig panel)
-    {
-        Current = panel ?? new PanelConfig();
-        Normalize(Current);
-        return Save();
     }
 
     /// <summary>前台进程是否在「禁止弹出」列表里。</summary>

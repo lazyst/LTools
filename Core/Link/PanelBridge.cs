@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using LTools.Config;
 using LTools.Core;
 
 namespace LTools.Core.Link;
@@ -77,41 +76,6 @@ internal static class PanelHostBridge
 
         _ = ActionOpAsync(server, new ActionOpRequest(PanelOps.FloatCloseAll));
         return true;
-    }
-
-    /// <summary>
-    /// 面板结构改动（拖磁贴 / 分组改名 / 增删分组场景…）落盘：宿主把整份配置交给提权进程。
-    /// 返回 true = 已接管（<see cref="Features.Panel.PanelLibrary.Save"/> 据此认为保存成功）。
-    /// </summary>
-    public static bool TryPushPanel(LTools.Config.PanelConfig panel)
-    {
-        LinkServer? server = Volatile.Read(ref _server);
-        if (server == null) return false;
-
-        if (!server.IsConnected)
-        {
-            AppLog.Warn("Link", "宿主连不上主程序，面板改动没有落盘");
-            return true;
-        }
-
-        _ = PushPanelAsync(server, panel);
-        return true;
-    }
-
-    private static async Task PushPanelAsync(LinkServer server, LTools.Config.PanelConfig panel)
-    {
-        try
-        {
-            LinkMessage reply = await server
-                .RequestAsync(LinkMethods.PanelReplace, panel, timeoutMs: 5000)
-                .ConfigureAwait(false);
-
-            if (!reply.Ok) AppLog.Warn("Link", $"面板落盘失败：{reply.Error}");
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warn("Link", $"面板落盘失败：{ex.Message}");
-        }
     }
 
     /// <summary>

@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using LTools.Config;
 using LTools.Core;
 using LTools.Features;
+using LTools.Features.Panel;
 
 namespace LTools.Core.Link;
 
@@ -37,7 +38,7 @@ internal static class DataHost
             if (written)
             {
                 AppLog.Info("Data", $"已写入 {req.Name}（替主程序落盘）");
-                RefreshRuntime(req.Name);
+                RefreshRuntime(req.Name, fromPeer: true);
             }
             else AppLog.Warn("Data", $"拒绝写入 configs/{req.Name}（不在域文件白名单里）");
         }
@@ -53,9 +54,13 @@ internal static class DataHost
     /// <summary>
     /// 宿主写完 <c>configs/*.json</c> 之后刷一遍**自己**的运行期缓存。
     /// </summary>
+    /// <param name="name">被写的域文件名（<c>settings.json</c> 这样）。</param>
+    /// <param name="fromPeer">
+    /// true = 这条写入是执行器转过来的（<c>data.write</c>）；false = 宿主自己的本地写入。
+    /// 两者对面板结构的含义相反，别合并。
+    /// </param>
     /// <remarks>
     /// <para>
-    /// 两条路径都走这里：执行器转来的写入（<c>data.write</c>）与宿主自己的本地写入。
     /// **执行器那一份不用管**：宿主写完会发 <c>config.changed</c>，它在那边刷。
     /// </para>
     /// <para>
@@ -65,8 +70,9 @@ internal static class DataHost
     /// <list type="bullet">
     /// <item><c>settings.json</c> → <see cref="AppState.ApplySettings(Config.SettingsFile)"/>
     /// （延时 / 录屏默认 / 导出场景 / 终端路径）。只读这一个域，别整份 <c>AppConfig.Load</c> 去扫动作目录。</item>
-    /// <item><c>panel.json</c> → 超级面板那两个开关。托盘「启用超级面板」就是这条路径；
-    /// **面板结构以宿主内存为准**，别整份重读 <c>PanelLibrary</c>（会把正在拖的磁贴打回去）。</item>
+    /// <item><c>panel.json</c> → 超级面板那两个开关（托盘「启用超级面板」就是这条路径）。
+    /// 结构上**只有执行器写的那一份要重读**（宏录完放磁贴 / 删动作清磁贴，它改的是自己那份镜像）；
+    /// 宿主自己的写入不重读——那份结构就是它刚改完的，重读反而会把正在拖的磁贴打回去。</item>
     /// <item><c>macros.json</c> → 作废 <see cref="MacroStore"/> 的元数据缓存（录制完成是执行器写的）。</item>
     /// </list>
     /// <para>
@@ -74,14 +80,19 @@ internal static class DataHost
     /// <c>actions.changed</c> 的整份重读，不在这里。
     /// </para>
     /// </remarks>
-    internal static void RefreshRuntime(string? name)
+    internal static void RefreshRuntime(string? name, bool fromPeer = false)
     {
         try
         {
             if (Same(name, "settings.json"))
                 AppState.ApplySettings(SettingsStore.Read(ConfigStore.ConfigPath));
             else if (Same(name, "panel.json"))
+            {
                 AppState.ApplySuperPanel(PanelStore.Read(ConfigStore.ConfigPath).SuperPanel);
+                // 执行器改的面板结构（宏录完放磁贴 / 删动作清磁贴）：宿主这份是权威副本，要跟着换，
+                // 否则下一次面板保存会把它刚放进去的磁贴覆盖掉。
+                if (fromPeer) Ui.Enqueue(PanelLibrary.Reload);
+            }
             else if (Same(name, "macros.json"))
                 MacroStore.Invalidate();
 
