@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -12,6 +11,7 @@ using System.Windows.Threading;
 using LTools.Core;
 using LTools.Core.Actions;
 using LTools.Core.Ai;
+using LTools.Core.Link;
 using LTools.Features;
 
 namespace LTools.Views.Controls;
@@ -21,8 +21,9 @@ namespace LTools.Views.Controls;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 与 <see cref="McpServer"/> 的分工：这里只读写 <see cref="AiSettings"/> 并触发
-/// <see cref="McpServer.Apply"/>（后台线程，自己绝不等 HTTP）。MCP 回调线程永远不会碰这个控件。
+/// 这个页面**不拥有** <c>ai/mcp.json</c>：MCP 服务、令牌、知识包都归执行器（它要跑服务、按动作单元
+/// 生成知识包），页面只经 <see cref="McpControl"/> 看状态 / 存设置（宿主里转链路，执行器里就地调）。
+/// 本进程里 `_settings` 只是执行器那份的**显示副本**，从不落盘。
 /// </para>
 /// <para>
 /// **草稿列表不在这里**：暂存区是面板左栏的一页（照 Quicker），草稿卡片、试运行、采纳都在
@@ -35,6 +36,7 @@ public partial class AiView : UserControl
     private AiSettings _settings = new();
     private bool _loading;
     private bool _loaded;
+    private bool _polling;
     private string _page = "connect";
 
     public AiView()
@@ -102,7 +104,8 @@ public partial class AiView : UserControl
         _loading = true;
         try
         {
-            _settings = AiSettings.Load();
+            McpState? state = McpControl.Status();
+            if (state != null) _settings = FromState(state);
 
             EnabledBox.IsChecked = _settings.Enabled;
             PortBox.Text = _settings.Port.ToString();
@@ -117,20 +120,31 @@ public partial class AiView : UserControl
             TokenBox.Text = _settings.MaskedToken;
             CopyHint.Text = "";
 
-            string exe = Environment.ProcessPath ?? "LTools.exe";
             StdioHintText.Text = $"只支持 stdio 的客户端：在上面的下拉选「stdio（命令行）」，把复制到的命令填进 command / args。" +
-                                 $"桥会拉起 \"{exe}\" 并转发给本机服务（所以 LTools 要先开着、服务已启用）。";
+                                 $"桥会拉起 \"{AiSettings.ToolsExePath}\" 并转发给本机服务（所以 LTools 要先开着、服务已启用）。";
 
             KnowledgePathText.Text = Path.Combine(KnowledgePack.Dir, "format.md · units.md · examples.md");
-            RefreshPrompt();
-            RefreshStatus();
-            RefreshAudit();
+            RefreshStatus(state);
         }
         finally
         {
             _loading = false;
         }
+
+        RefreshPrompt();
+        RefreshAudit();
     }
+
+    /// <summary>执行器那份配置 → 本页的显示副本（只用于打码、拼提示词 / 客户端 JSON）。</summary>
+    private static AiSettings FromState(McpState state) => new()
+    {
+        Enabled = state.Enabled,
+        Port = state.Port,
+        AllowWrites = state.AllowWrites,
+        ApprovalMode = state.ApprovalMode,
+        Token = state.Token,
+        LastError = state.LastError,
+    };
 
     /// <summary>
     /// 切到本页时调用：已建页就不重复 Reload（首次建页时 Loaded 与 ApplyNavPage 只让
@@ -143,12 +157,32 @@ public partial class AiView : UserControl
 
     // ============ 周期刷新 ============
 
-    private void AutoRefresh() => RefreshStatus();
-
-    private void RefreshStatus()
+    /// <summary>
+    /// 1 秒刷一次服务状态：**异步问**，绝不在 UI 线程上同步等往返（对端忙一下，面板就跟着卡）。
+    /// 上一次还没回来就跳过这一拍，别在网络 / 链路慢时堆请求。
+    /// </summary>
+    private async void AutoRefresh()
     {
-        bool running = McpServer.IsRunning;
-        int port = McpServer.RunningPort;
+        if (_polling) return;
+        _polling = true;
+        try
+        {
+            McpState? state = await McpControl.StatusAsync();
+            if (!_loaded) return;
+            if (state != null) _settings = FromState(state);
+            RefreshStatus(state);
+        }
+        finally
+        {
+            _polling = false;
+        }
+    }
+
+    /// <summary>状态行（端点 / 绿点 / 说明）。<paramref name="state"/> 为 null = 拿不到执行器的状态。</summary>
+    private void RefreshStatus(McpState? state)
+    {
+        bool running = state?.Running == true;
+        int port = state?.RunningPort ?? 0;
         string mode = _settings.ApprovalMode switch
         {
             AiApprovalMode.readOnly => "只读",
@@ -159,8 +193,13 @@ public partial class AiView : UserControl
         EndpointText.Text = running ? $"http://127.0.0.1:{port}/mcp" : "服务未运行";
         StatusDot.Fill = (Brush)FindResource(running ? "SuccessBrush" : "HintTextBrush");
 
-        string? error = McpServer.LastError ?? _settings.LastError;
-        if (running)
+        string? error = state?.LastError;
+        if (state == null)
+        {
+            StatusText.Text = "主程序没连上，看不到 MCP 服务状态";
+            StatusText.Foreground = (Brush)FindResource("DangerBrush");
+        }
+        else if (running)
         {
             StatusText.Text = $"运行中 · 审批 {mode} · 写入 {(_settings.WritesAllowed ? "开" : "关")}";
             StatusText.Foreground = (Brush)FindResource("SecondaryTextBrush");
@@ -172,7 +211,7 @@ public partial class AiView : UserControl
         }
         else
         {
-            StatusText.Text = _settings.Enabled ? "已启用，正在启动…" : "未启用";
+            StatusText.Text = state.Enabled ? "已启用，正在启动…" : "未启用";
             StatusText.Foreground = (Brush)FindResource("HintTextBrush");
         }
 
@@ -189,34 +228,38 @@ public partial class AiView : UserControl
     private void Settings_Changed(object sender, RoutedEventArgs e)
     {
         if (_loading) return;
-        ApplySettings(restart: true);
-        RefreshStatus();
+        ApplySettings();
     }
 
-    private void ApplySettings(bool restart)
+    /// <summary>
+    /// 四项一起保存（服务在执行器那边，保存完由它自己重启；状态靠 1 秒轮询跟上）。
+    /// 失败一律把原因显示出来——别让开关看起来已经生效。
+    /// </summary>
+    private void ApplySettings()
     {
-        _settings.Enabled = EnabledBox.IsChecked == true;
-        _settings.AllowWrites = AllowWritesBox.IsChecked == true;
-        _settings.ApprovalMode = ApprovalBox.SelectedIndex switch
-        {
-            0 => AiApprovalMode.readOnly,
-            2 => AiApprovalMode.full,
-            _ => AiApprovalMode.sandbox,
-        };
-        _settings.LastError = null;
+        var request = new McpApplyRequest(
+            EnabledBox.IsChecked == true,
+            AiSettings.NormalizePort(int.TryParse(PortBox.Text.Trim(), out int typed) ? typed : _settings.Port),
+            AllowWritesBox.IsChecked == true,
+            ApprovalBox.SelectedIndex switch
+            {
+                0 => AiApprovalMode.readOnly,
+                2 => AiApprovalMode.full,
+                _ => AiApprovalMode.sandbox,
+            });
 
-        try { _settings.Save(); }
-        catch (Exception ex)
+        McpState? state = McpControl.Apply(request, out string? error);
+        if (state == null)
         {
-            ToastService.Show("保存 ai/mcp.json 失败：" + ex.Message, "AI 接入", 4000, ToastKind.error);
+            ToastService.Show("保存 AI 接入设置失败：" + (error ?? "不知道原因"), "AI 接入", 4000, ToastKind.error);
             return;
         }
 
-        if (restart) RestartServer();
+        _settings = FromState(state);
+        PortBox.Text = _settings.Port.ToString();
+        RefreshStatus(state);
         RefreshPrompt();   // 端口 / 令牌变了，「让 agent 帮你连接」的说明要跟着换
     }
-
-    private void RestartServer() => _ = Task.Run(McpServer.Apply);
 
     private void ApplyPort_Click(object sender, RoutedEventArgs e)
     {
@@ -227,15 +270,10 @@ public partial class AiView : UserControl
             return;
         }
 
-        if (port == _settings.Port)
-        {
-            ApplySettings(restart: true);
-            return;
-        }
-
-        _settings.Port = port;
-        ApplySettings(restart: true);
-        ToastService.Show($"MCP 服务改用端口 {port}", "AI 接入", 2500, ToastKind.success);
+        int before = _settings.Port;
+        ApplySettings();
+        if (_settings.Port == port && port != before)
+            ToastService.Show($"MCP 服务改用端口 {port}", "AI 接入", 2500, ToastKind.success);
     }
 
     private void ShowToken_Changed(object sender, RoutedEventArgs e)
@@ -262,19 +300,18 @@ public partial class AiView : UserControl
     {
         if (!AiUi.Confirm("重置令牌", "重置后已连接的 AI 客户端会立刻断开，需要重新填新令牌。继续？")) return;
 
-        try
+        McpState? state = McpControl.ResetToken(out string? error);
+        if (state == null)
         {
-            _settings.ResetToken();
-            TokenBox.Text = ShowTokenBox.IsChecked == true ? _settings.Token : _settings.MaskedToken;
-            RestartServer();
-            RefreshPrompt();
-            RefreshStatus();
-            ToastService.Show("令牌已重置，记得更新 AI 客户端的配置", "AI 接入", 3500, ToastKind.success);
+            ToastService.Show("重置失败：" + (error ?? "不知道原因"), "AI 接入", 3000, ToastKind.error);
+            return;
         }
-        catch (Exception ex)
-        {
-            ToastService.Show("重置失败：" + ex.Message, "AI 接入", 3000, ToastKind.error);
-        }
+
+        _settings = FromState(state);
+        TokenBox.Text = ShowTokenBox.IsChecked == true ? _settings.Token : _settings.MaskedToken;
+        RefreshPrompt();
+        RefreshStatus(state);
+        ToastService.Show("令牌已重置，记得更新 AI 客户端的配置", "AI 接入", 3500, ToastKind.success);
     }
 
     private void CopyConfig_Click(object sender, RoutedEventArgs e)
@@ -337,11 +374,10 @@ public partial class AiView : UserControl
     {
         if (PromptIsStdio)
         {
-            string exe = Environment.ProcessPath ?? "LTools.exe";
             return $"""
                 帮我把 LTools 的 MCP 服务接到你的客户端（stdio），然后用它帮我写动作。
 
-                命令："{exe}" --mcp-stdio
+                命令："{AiSettings.ToolsExePath}" --mcp-stdio
                 （客户端的 command / args 填这个；桥自己读本机令牌，不需要 URL 和 Bearer）
 
                 接上后先调 ltools_health；写动作前读 ltools_docs_get("format") 和 ltools_units_list，按动作单元定义写、别猜动作单元名。
@@ -379,20 +415,18 @@ public partial class AiView : UserControl
 
     private void RegenerateKnowledge_Click(object sender, RoutedEventArgs e)
     {
-        try
+        if (!McpControl.RegenerateKnowledge(out int count, out string? error))
         {
-            int count = KnowledgePack.Regenerate();
-            ToastService.Show($"知识包已重建（format / units / examples · {count} 个动作单元）", "知识包", 2500, ToastKind.success);
+            ToastService.Show("生成失败：" + (error ?? "不知道原因"), "知识包", 4000, ToastKind.error);
+            return;
         }
-        catch (Exception ex)
-        {
-            ToastService.Show("生成失败：" + ex.Message, "知识包", 4000, ToastKind.error);
-        }
+
+        ToastService.Show($"知识包已重建（format / units / examples · {count} 个动作单元）", "知识包", 2500, ToastKind.success);
     }
 
     private void OpenKnowledge_Click(object sender, RoutedEventArgs e)
     {
-        try { KnowledgePack.Ensure(); } catch { /* 打开目录本身不依赖生成成功 */ }
+        // 不在这里 Ensure（那是写盘，属主是执行器）：目录不在时 OpenPath 会建一个空目录给用户看。
         OpenPath(KnowledgePack.Dir);
     }
 

@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using LTools.Config;
 using LTools.Core.Actions;
+using LTools.Core.Ai;
 using LTools.Core.Link;
 using LTools.Features;
 
@@ -163,6 +164,7 @@ internal static class LinkSuite
             MacroMethods.Play, MacroMethods.Rename, MacroMethods.Delete,
             MacroMethods.EventStarted, MacroMethods.EventStopped, MacroMethods.EventSaved,
             MacroMethods.EventPlayed, LinkMethods.EventConfigChanged,
+            McpMethods.Status, McpMethods.Apply, McpMethods.ResetToken, McpMethods.Knowledge,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
@@ -631,6 +633,28 @@ internal static class LinkSuite
                 LinkMessage.Request(67, MacroMethods.Delete), new MacroDeleteReply(2, null)))
             .Read<MacroDeleteReply>();
         Check.True(deleteReply is { RemovedActions: 2 }, "删宏答复：一起删掉的动作数原样");
+
+        // AI 接入（M3-5c-3c）：MCP 服务与 ai/ 只有执行器一个写者，宿主看状态 / 存四项。
+        Check.True(new[] { McpMethods.Status, McpMethods.Apply, McpMethods.ResetToken, McpMethods.Knowledge }
+            .All(n => n.StartsWith("mcp.", StringComparison.Ordinal)), "AI 方法名都有 mcp. 前缀");
+
+        McpApplyRequest? mcpApply = RoundTrip(LinkMessage.Request(68, McpMethods.Apply,
+            new McpApplyRequest(true, 18766, true, AiApprovalMode.full))).Read<McpApplyRequest>();
+        Check.True(mcpApply is { Enabled: true, Port: 18766, AllowWrites: true }, "AI 保存请求：开关 / 端口 / 写入原样");
+        Check.True(mcpApply?.ApprovalMode == AiApprovalMode.full, "AI 保存请求：审批模式原样");
+
+        McpState? mcpState = RoundTrip(LinkMessage.Request(69, McpMethods.Status, new McpState(
+                Enabled: true, Port: 18766, AllowWrites: true, ApprovalMode: AiApprovalMode.sandbox,
+                Token: "lt_smoke", Running: true, RunningPort: 18767, LastError: "端口被占用")))
+            .Read<McpState>();
+        Check.True(mcpState is { Port: 18766, Running: true, RunningPort: 18767 }, "AI 状态：端口 / 运行状态原样");
+        Check.Equal("lt_smoke", mcpState?.Token, "AI 状态：令牌原样（宿主拿它拼提示词）");
+        Check.Equal("端口被占用", mcpState?.LastError, "AI 状态：最近错误原样");
+        Check.True(mcpState?.ApprovalMode == AiApprovalMode.sandbox, "AI 状态：审批模式原样");
+
+        McpKnowledgeReply? mcpKnowledge = RoundTrip(LinkMessage.Request(70, McpMethods.Knowledge,
+            new McpKnowledgeReply(93))).Read<McpKnowledgeReply>();
+        Check.Equal(93, mcpKnowledge?.Units, "知识包重建结果：动作单元数");
 
         // 快照：整份面板配置 + 动作摘要都要原样回来。
         var panel = new PanelConfig

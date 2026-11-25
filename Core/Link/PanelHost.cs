@@ -42,6 +42,9 @@ internal static class PanelHost
         // 动作级写入（宿主里的面板 / 编辑器）：内容属主还是这里，改完照旧由宿主落盘。
         if (ActionEditHost.TryHandleAsync(channel, request) is { } edit) return edit;
 
+        // AI 接入（宿主里的设置页）：MCP 服务、ai/mcp.json 与知识包都只有这里一个写者。
+        if (McpHost.TryHandleAsync(request) is { } mcp) return mcp;
+
         return Task.FromResult(Handle(request));
     }
 
@@ -167,6 +170,7 @@ internal static class PanelHost
                 LinkMethods.OpenWindow => OpenWindow(request),
                 _ when ActionEditHost.IsWrite(request.Method) => ActionEditHost.Handle(request),
                 _ when MacroHost.IsCommand(request.Method) => MacroHost.Handle(request),
+                _ when McpHost.IsCommand(request.Method) => McpHost.Handle(request),
                 _ => LinkMessage.Response(request, error: "未知命令：" + request.Method),
             };
         }

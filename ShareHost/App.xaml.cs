@@ -190,6 +190,7 @@ public partial class App : Application
             ActionEditBridge.Attach(server);
             MacroBridge.Attach(server);
             ConfigChangedBridge.Attach(server);
+            McpBridge.Attach(server);
             // 宿主是 configs/ 的写者：本地写完一个域就让执行器重读运行期状态（钩子 / 触发器 / 宏）。
             ConfigBundle.LocalWriteListener = ConfigChangedBridge.Notify;
             server.ClientChanged += OnLinkClientChanged;

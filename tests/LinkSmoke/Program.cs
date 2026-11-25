@@ -4,6 +4,7 @@ using System.Linq;
 using LTools.Config;
 using LTools.Core;
 using LTools.Core.Actions;
+using LTools.Core.Ai;
 using LTools.Core.Link;
 using LTools.Features;
 using LTools.Features.Floating;
@@ -157,6 +158,7 @@ internal static class Program
         var macroPlayRequest = new TaskCompletionSource<MacroPlayRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var macroRenamed = new TaskCompletionSource<MacroRenameRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var macroDeleted = new TaskCompletionSource<MacroDeleteRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var mcpApplied = new TaskCompletionSource<McpApplyRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var opsSeen = new ConcurrentQueue<ActionOpRequest>();
 
         var server = new LinkServer(pipe, "fwd-token",
@@ -246,6 +248,8 @@ internal static class Program
                             try
                             {
                                 await channel.NotifyAsync(MacroMethods.EventStarted);
+                                // 真实录制不会一开就停：留一点时间，测试才能看到「正在录制」这个中间态。
+                                await Task.Delay(150);
                                 await channel.NotifyAsync(MacroMethods.EventStopped);
                                 await channel.NotifyAsync(MacroMethods.EventSaved,
                                     new MacroSavedEvent(macroRecord.Id ?? ""));
@@ -281,6 +285,30 @@ internal static class Program
                         macroDeleted.TrySetResult(macroDelete);
                         return Task.FromResult(LinkMessage.Response(request, new MacroDeleteReply(2, null)));
                     }
+
+                    // AI 接入（宿主 → 执行器）：配置 / 服务 / 知识包都在执行器，宿主只发命令。
+                    if (request.Method == McpMethods.Status)
+                    {
+                        return Task.FromResult(LinkMessage.Response(request, new McpState(
+                            Enabled: false, Port: 19000, AllowWrites: true, ApprovalMode: AiApprovalMode.sandbox,
+                            Token: "lt_smoke", Running: false, RunningPort: 0, LastError: null)));
+                    }
+                    if (request.Method == McpMethods.Apply
+                        && request.Read<McpApplyRequest>() is { } mcpApply)
+                    {
+                        mcpApplied.TrySetResult(mcpApply);
+                        return Task.FromResult(LinkMessage.Response(request, new McpState(
+                            mcpApply.Enabled, mcpApply.Port, mcpApply.AllowWrites, mcpApply.ApprovalMode,
+                            "lt_smoke", Running: true, mcpApply.Port, LastError: null)));
+                    }
+                    if (request.Method == McpMethods.ResetToken)
+                    {
+                        return Task.FromResult(LinkMessage.Response(request, new McpState(
+                            Enabled: true, Port: 19000, AllowWrites: false, ApprovalMode: AiApprovalMode.readOnly,
+                            Token: "lt_new", Running: true, RunningPort: 19000, LastError: null)));
+                    }
+                    if (request.Method == McpMethods.Knowledge)
+                        return Task.FromResult(LinkMessage.Response(request, new McpKnowledgeReply(93)));
 
                     // 动作级写入（宿主 → 执行器）：内容属主在执行器，回一份保存后的动作。
                     if (request.Method == LinkMethods.ActionAdd)
@@ -533,6 +561,31 @@ internal static class Program
             Check("执行器收到要删的宏", ReferenceEquals(deletedDone, macroDeleted.Task)
                 && macroDeleted.Task.Result.Id == "m1",
                 ReferenceEquals(deletedDone, macroDeleted.Task) ? null : "2 秒内没收到");
+
+            // AI 接入：MCP 服务 / ai/ 只有执行器一个写者，宿主看状态、存四项、重置令牌、重建知识包。
+            McpBridge.Attach(server);
+
+            McpState? mcpState = await McpBridge.StatusAsync();
+            Check("AI 状态拿到了", mcpState is { Port: 19000, Running: false } && mcpState.Token == "lt_smoke",
+                mcpState?.ToString());
+
+            McpState? mcpAppliedBack = McpBridge.Apply(
+                new McpApplyRequest(true, 19100, false, AiApprovalMode.full), out string? mcpApplyError);
+            Check("AI 保存请求送到了执行器", mcpAppliedBack != null, mcpApplyError);
+
+            Task mcpApplyDone = await Task.WhenAny(mcpApplied.Task, Task.Delay(2000));
+            Check("执行器收到要保存的四项", ReferenceEquals(mcpApplyDone, mcpApplied.Task)
+                && mcpApplied.Task.Result is { Enabled: true, Port: 19100, AllowWrites: false }
+                && mcpApplied.Task.Result.ApprovalMode == AiApprovalMode.full,
+                ReferenceEquals(mcpApplyDone, mcpApplied.Task) ? null : "2 秒内没收到");
+            Check("保存后回的是新状态（服务已按新端口起）",
+                mcpAppliedBack is { Running: true, RunningPort: 19100 }, mcpAppliedBack?.ToString());
+
+            McpState? mcpReset = McpBridge.ResetToken(out string? mcpResetError);
+            Check("重置令牌拿到了新令牌", mcpReset is { Token: "lt_new" }, mcpResetError);
+
+            bool knowledgeOk = McpBridge.RegenerateKnowledge(out int knowledgeUnits, out string? knowledgeError);
+            Check("知识包重建结果回来了", knowledgeOk && knowledgeUnits == 93, knowledgeError);
 
             // 动作级写入：宿主里的编辑器保存 → 执行器改内存 + 落盘（回一个带 Id 的动作）。
             ActionEditBridge.Attach(server);

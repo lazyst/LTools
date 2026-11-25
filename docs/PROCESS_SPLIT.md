@@ -1003,6 +1003,37 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 **下一步（5c-3 的其余部分）**：AI 页要 `mcp.*`（起停服务、重置令牌、重建知识包），
 然后搬窗口本体 + 翻转入口（托盘 / 快捷键 → 宿主）。
 
+**2026-11-25 · P2-M3-5c-3c AI 接入页的 `mcp.*`（服务 / 令牌 / 知识包都归执行器）**
+
+- 四条命令：`mcp.status` / `mcp.apply` / `mcp.resetToken` / `mcp.knowledge`。**服务、`ai/mcp.json`、
+  `ai/knowledge/` 只有执行器一个写者**（它要跑服务、按动作单元生成知识包），宿主里的页面连读都不读
+  `ai/mcp.json`——配置（含令牌）、是否在跑、最近错误随 `McpState` 一次回来。
+- 令牌走本机命名管道（与那个文件同一条信任边界：同一个用户），宿主拿它拼「让 agent 帮你连接」与
+  「复制配置」。**不新增第二份配置读取**：`AiSettings.Load()` 在宿主里一次都不调（它会在令牌缺失时
+  写盘，正好破坏「一个文件一个写者」）。
+- `mcp.apply` **保存完就排后台重启、不等服务起来**（`McpServer.Apply` 最多等 8 秒旧实例释放端口，
+  放进答复里就是「点一下卡好几秒」）。答复带的是「此刻」的状态，页面靠已有的 1 秒轮询跟上，
+  与搬窗口之前的行为一致。
+- 状态查询两个入口：`McpControl.Status()` 同步（打开页面 / 改完设置；本地管道往返亚毫秒级）、
+  `McpControl.StatusAsync()` 异步（**1 秒轮询**）。轮询必须异步——在 UI 线程上同步等一次往返，
+  对端忙一下面板 / 右键菜单就跟着卡。
+- 顺手修一个搬过去必然踩的坑：`Environment.ProcessPath` 在宿主里是 `ShareHost.exe`，
+  stdio 提示词 / 客户端 JSON 里的可执行文件改成 `AiSettings.ToolsExePath`（`AppPaths.AppDirectory`
+  下的 `LTools.exe`）——否则给出去的接入命令拉起一个没有 `--mcp-stdio` 模式的进程。
+  「打开知识包目录」也不再 `Ensure()`（那是写盘），目录不在就让 `explorer` 建个空的。
+- `AiView` 只经 `Features/McpControl` 说话（宿主 → `McpBridge`，执行器 → `McpHost` 本地分支），
+  `_settings` 退化成执行器那份的**显示副本**（打码 / 拼提示词用），从不落盘。
+- 真机（设置窗还在执行器，走的是本地分支）：AI 接入页显示「运行中 · 审批 全部放行 · 写入 开」、
+  端点与打码令牌正确、stdio 提示里是真正的 `LTools.exe` 路径；「重新生成知识包」把
+  `ai/knowledge/` 四份文件的 mtime 一起推进；勾 / 取消「允许 AI 写入」各写一次
+  `ai/mcp.json`（`allowWrites: false → true`）并重启服务（日志 `MCP 服务已停止 / 已启动（… 写入 关 / 开）`），
+  令牌没变、两进程无 WARN / ERROR。链路那条分支由 `LinkSmoke` 验（状态 / 保存四项 / 新令牌 / 知识包数）。
+- 回归：`--selftest` 393 用例 / 18866 断言（`link` 组 394：四条方法名 + 三种负载往返）；
+  `LinkSmoke` 109（新增 6 条）；`PanelHostSmoke` 11；`PanelClipboardSmoke` 27；`ShareSmoke` 92。
+
+**下一步（5c-3d）**：搬设置窗口本体 + 翻转入口（托盘 / 快捷键 / `open.window` → 宿主），
+到那时宿主里的三个页面（宏页 / AI 页 / 其余）全在真机上点一遍。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -1071,7 +1102,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主。**编辑器与宏页并进第 5 步**：打开编辑器的调用方（`PanelActionOps`）与设置页都在提权进程里，单独搬窗口就得连动作内容写权、`staging/`、设置入口一起翻——那正是第 5 步的范围（见 §14 `P2-M3-5a` 的顺序说明）。 |
-| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3a 已完成**：`config.changed`（宿主写完配置，执行器重读运行期状态）。**5c-3b 已完成**：宏页的 `macro.play` / `rename` / `delete` + 录制 / 试放事件改广播（回放参数是纯配置，不建命令）。**5c-3c**：AI 页的 `mcp.*`。**5c-3d**：设置窗口本体 + 其余页面搬进宿主、入口（托盘 / 快捷键）翻向宿主。**5d**：MCP 写、`data.changed` 收尾 |
+| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3a 已完成**：`config.changed`（宿主写完配置，执行器重读运行期状态）。**5c-3b 已完成**：宏页的 `macro.play` / `rename` / `delete` + 录制 / 试放事件改广播（回放参数是纯配置，不建命令）。**5c-3c 已完成**：AI 页的 `mcp.status` / `apply` / `resetToken` / `knowledge`（服务 / 令牌 / 知识包都归执行器）。**5c-3d**：设置窗口本体 + 其余页面搬进宿主、入口（托盘 / 快捷键）翻向宿主。**5d**：MCP 写、`data.changed` 收尾 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
 
 > **顺序更正（2026-11-24，看过代码之后）**：原方案把「采集历史 / 贴图管理」排在截图 Pro 前面，实际排不了——
