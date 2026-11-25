@@ -329,9 +329,11 @@ public partial class App : Application
                 ProgramRunBridge.OnEvent(message);
                 break;
 
+            case MacroMethods.EventStarted:
             case MacroMethods.EventStopped:
             case MacroMethods.EventSaved:
-                // 录制结束 / 宏已存：编辑器把藏起来的自己显示回来、刷新横幅摘要。
+            case MacroMethods.EventPlayed:
+                // 录制 / 试放的生命周期：把藏起来的窗口显示回来、刷新横幅与列表摘要。
                 MacroBridge.OnEvent(message);
                 break;
         }

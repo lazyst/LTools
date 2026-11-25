@@ -160,7 +160,9 @@ internal static class LinkSuite
             SubActionMethods.Save, SubActionMethods.Delete, LinkMethods.EventConfigReload,
             RunMethods.Program, RunMethods.Stop, RunMethods.EventTrace, RunMethods.EventSlow,
             RunMethods.EventDone, MacroMethods.Record, MacroMethods.Stop,
-            MacroMethods.EventStopped, MacroMethods.EventSaved, LinkMethods.EventConfigChanged,
+            MacroMethods.Play, MacroMethods.Rename, MacroMethods.Delete,
+            MacroMethods.EventStarted, MacroMethods.EventStopped, MacroMethods.EventSaved,
+            MacroMethods.EventPlayed, LinkMethods.EventConfigChanged,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
@@ -594,8 +596,7 @@ internal static class LinkSuite
         Check.Equal("settings.json", cfgChanged?.Reason, "配置变更通知：原因原样");
 
         MacroRecordRequest? macroReq = RoundTrip(LinkMessage.Request(60, MacroMethods.Record,
-            new MacroRecordRequest("t1", "m1", "报表宏"))).Read<MacroRecordRequest>();
-        Check.Equal("t1", macroReq?.Token, "宏录制请求：token 原样");
+            new MacroRecordRequest("m1", "报表宏"))).Read<MacroRecordRequest>();
         Check.Equal("m1", macroReq?.Id, "宏录制请求：宏 Id 原样");
         Check.Equal("报表宏", macroReq?.Name, "宏录制请求：宏名原样");
 
@@ -604,12 +605,32 @@ internal static class LinkSuite
             .Read<MacroRecordReply>();
         Check.True(macroReply is { Started: false } && macroReply.Error == "宏功能已停用", "宏录制答复往返");
 
-        MacroRecordEvent? macroStopped = RoundTrip(LinkMessage.Request(62, MacroMethods.EventStopped,
-            new MacroRecordEvent("t1"))).Read<MacroRecordEvent>();
-        Check.Equal("t1", macroStopped?.Token, "录制结束通知：token 原样");
-        MacroRecordEvent? macroSaved = RoundTrip(LinkMessage.Request(63, MacroMethods.EventSaved,
-            new MacroRecordEvent("t1", "m1"))).Read<MacroRecordEvent>();
+        // 录制 / 试放的生命周期是广播：不带 token，谁开着宏相关窗口都该跟着让开 / 刷新。
+        MacroSavedEvent? macroSaved = RoundTrip(LinkMessage.Request(62, MacroMethods.EventSaved,
+            new MacroSavedEvent("m1"))).Read<MacroSavedEvent>();
         Check.True(macroSaved is { MacroId: "m1" }, "宏已保存通知：宏 Id 原样");
+
+        MacroPlayRequest? macroPlay = RoundTrip(LinkMessage.Request(63, MacroMethods.Play,
+            new MacroPlayRequest("m1"))).Read<MacroPlayRequest>();
+        Check.Equal("m1", macroPlay?.Id, "试放请求：宏 Id 原样");
+
+        MacroPlayReply? playReply = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(64, MacroMethods.Play), new MacroPlayReply(false, "已有宏正在回放")))
+            .Read<MacroPlayReply>();
+        Check.True(playReply is { Started: false } && playReply.Error == "已有宏正在回放", "试放答复往返");
+
+        MacroPlayEvent? played = RoundTrip(LinkMessage.Request(65, MacroMethods.EventPlayed,
+            new MacroPlayEvent("注入被拒绝"))).Read<MacroPlayEvent>();
+        Check.Equal("注入被拒绝", played?.Error, "试放结束通知：失败原因原样");
+
+        MacroRenameRequest? rename = RoundTrip(LinkMessage.Request(66, MacroMethods.Rename,
+            new MacroRenameRequest("m1", "改名后"))).Read<MacroRenameRequest>();
+        Check.True(rename is { Id: "m1", Name: "改名后" }, "宏改名请求往返");
+
+        MacroDeleteReply? deleteReply = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(67, MacroMethods.Delete), new MacroDeleteReply(2, null)))
+            .Read<MacroDeleteReply>();
+        Check.True(deleteReply is { RemovedActions: 2 }, "删宏答复：一起删掉的动作数原样");
 
         // 快照：整份面板配置 + 动作摘要都要原样回来。
         var panel = new PanelConfig

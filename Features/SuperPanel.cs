@@ -33,6 +33,15 @@ internal static class SuperPanel
     /// <summary>下一次建窗时直接停到暂存区（<see cref="ShowStash"/> 用；建好即复位）。</summary>
     private static bool _openOnStash;
 
+    static SuperPanel()
+    {
+        // 录制期间钩子透明，面板上的点击会被一起录进去：开始录制就关门 / 临时隐藏。
+        // 事件是广播（热键 / 托盘发起的也算），可能来自链路线程或钩子线程，一律投到 UI 线程。
+        // **别把这件事留在 <c>MacroRecorder</c> 里**：录制在执行器，面板在宿主，那边够不着这扇窗。
+        MacroRecording.Started += () => Ui.Post(HideForRecording);
+        MacroRecording.Stopped += () => Ui.Post(RestoreAfterRecording);
+    }
+
     /// <summary>面板是否已打开。</summary>
     public static bool IsOpen => _window != null;
 

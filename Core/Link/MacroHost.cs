@@ -1,63 +1,91 @@
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 using LTools.Features;
 
 namespace LTools.Core.Link;
 
 /// <summary>
-/// 宏录制的**执行器侧**：录制要钩子，只有这里能真录。
+/// 键鼠宏的**执行器侧**：录制与试放要钩子 / 键鼠注入，改名与删宏要动动作（内容属主在这里）。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 编辑器搬进宿主之后（M3-5c-2），宏横幅上的「重新录制」仍要能用，所以录制单独过链路：
-/// 宿主发 <c>macro.record</c>（带 token），这里调 <see cref="MacroRecorder"/>，结束 / 存好后按
-/// 同一个 token 推 <c>macro.stopped</c> / <c>macro.saved</c> 回去。
+/// 与 <see cref="MacroBridge"/> 配对：宿主发命令，这里做，然后把录制 / 回放的生命周期**广播**回去
+/// （<c>macro.started</c> / <c>stopped</c> / <c>saved</c> / <c>played</c>）。
 /// </para>
 /// <para>
-/// 本机自己发起的录制（托盘热键 / 宏页 / 面板）**不往回推**：没有 token 就没有人在等。
+/// 广播不带 token 是刻意的：录制是进程内唯一的，谁发起的都一样，宿主那边只要有窗口藏着就显示回来。
+/// 用热键开始的录制也走这条广播（<see cref="Start"/> 在 <c>App.OnStartup</c> 里调一次，
+/// 不能只靠「第一次收到宏命令」时才挂事件——那时热键录制可能早就开始了）。
+/// </para>
+/// <para>
+/// 改数据（改名 / 删宏）排到 UI 线程：删除会连带清面板槽位 / 快捷键 / 触发规则 / 悬浮项，
+/// 悬浮窗的刷新本来就只能在 UI 线程。链路读循环在别的线程上等这个答复，所以**不能**在读循环里同步等 UI。
 /// </para>
 /// </remarks>
 internal static class MacroHost
 {
-    /// <summary>一次由宿主发起的录制（<see cref="Channel"/> 是那个宿主连接）。</summary>
-    private sealed record Pending(LinkChannel Channel, string Token);
+    private static int _started;
 
-    private static Pending? _recording;   // 正在录
-    private static Pending? _saving;      // 刚停、等宏存好（只用来推 macro.saved）
-
-    static MacroHost()
+    /// <summary>挂上录制 / 回放的广播（幂等；<c>App.OnStartup</c> 调一次）。</summary>
+    public static void Start()
     {
-        // 录制由谁发起都可能，这里统一接住结束 / 保存两个时机。
-        MacroRecorder.RecordingStopped += OnStopped;
-        MacroRecorder.MacroSaved += OnSaved;
+        if (Interlocked.Exchange(ref _started, 1) != 0) return;
+
+        MacroRecorder.RecordingStarted += () => Notify(MacroMethods.EventStarted);
+        MacroRecorder.RecordingStopped += () => Notify(MacroMethods.EventStopped);
+        MacroRecorder.MacroSaved += id => Notify(MacroMethods.EventSaved, new MacroSavedEvent(id));
+
+        // 试放（面板 / 设置页 / 链路发起的都算）：跑完通知宿主把藏起来的窗口显示回来。
+        MacroWrites.Played += error => Notify(MacroMethods.EventPlayed, new MacroPlayEvent(error));
     }
 
-    /// <summary>处理录制相关的请求；不是这两条时返回 null。</summary>
-    public static Task<LinkMessage>? TryHandleAsync(LinkChannel channel, LinkMessage request) =>
-        request.Method switch
-        {
-            MacroMethods.Record => Task.FromResult(Record(channel, request)),
-            MacroMethods.Stop => Task.FromResult(Stop(request)),
-            _ => null,
-        };
+    /// <summary>这五条方法名归这里处理（同步入口与异步链路共用一张名单）。</summary>
+    public static bool IsCommand(string method) => method is MacroMethods.Record or MacroMethods.Stop
+        or MacroMethods.Play or MacroMethods.Rename or MacroMethods.Delete;
 
-    private static LinkMessage Record(LinkChannel channel, LinkMessage request)
+    /// <summary>处理一条宏命令；不是这些方法时返回 null（调用方回「未知命令」）。</summary>
+    public static Task<LinkMessage>? TryHandleAsync(LinkChannel channel, LinkMessage request)
+    {
+        if (!IsCommand(request.Method)) return null;
+
+        return request.Method switch
+        {
+            MacroMethods.Record => Task.FromResult(Record(request)),
+            MacroMethods.Stop => Task.FromResult(Stop(request)),
+            MacroMethods.Play => Task.FromResult(Play(request)),
+            MacroMethods.Rename => OnUi(request, Rename),
+            _ => OnUi(request, r => Delete(channel, r)),
+        };
+    }
+
+    /// <summary>同步执行一条宏命令（自测 / 冒烟直接调它，不必起管道）。</summary>
+    public static LinkMessage Handle(LinkMessage request) => request.Method switch
+    {
+        MacroMethods.Record => Record(request),
+        MacroMethods.Stop => Stop(request),
+        MacroMethods.Play => Play(request),
+        MacroMethods.Rename => Rename(request),
+        MacroMethods.Delete => Delete(null, request),
+        _ => LinkMessage.Response(request, error: "未知的宏命令：" + request.Method),
+    };
+
+    // ============ 录制 ============
+
+    private static LinkMessage Record(LinkMessage request)
     {
         MacroRecordRequest? req = request.Read<MacroRecordRequest>();
         if (req == null) return LinkMessage.Response(request, error: "缺少参数");
 
-        // 一次只服务一个等待者：多按一次不该把上一个的结束通知对丢。
-        if (_recording != null)
+        if (MacroRecorder.IsRecording)
             return LinkMessage.Response(request, new MacroRecordReply(false, "已经在录制了"));
 
+        // 被拒绝时 MacroRecorder 自己会弹提示（宏功能关了 / 正在回放 / 有动作在跑）：这里只回
+        // 「没开始」，**不带原因**——宿主看到空原因就不再多弹一张卡片。
         if (string.IsNullOrWhiteSpace(req.Id)) MacroRecorder.Start();
         else MacroRecorder.StartInto(req.Id, req.Name);
 
-        // 被拒绝时 MacroRecorder 自己会弹托盘提示（宏功能关了 / 正在回放 / 有动作在跑）。
-        if (!MacroRecorder.IsRecording)
-            return LinkMessage.Response(request, new MacroRecordReply(false, "没能开始录制"));
-
-        _recording = new Pending(channel, req.Token);
-        return LinkMessage.Response(request, new MacroRecordReply(true, null));
+        return LinkMessage.Response(request, new MacroRecordReply(MacroRecorder.IsRecording, null));
     }
 
     private static LinkMessage Stop(LinkMessage request)
@@ -66,19 +94,67 @@ internal static class MacroHost
         return LinkMessage.Response(request);
     }
 
-    private static void OnStopped()
-    {
-        _saving = _recording;
-        _recording = null;
+    // ============ 试放 ============
 
-        if (_saving is { } pending)
-            _ = pending.Channel.NotifyAsync(MacroMethods.EventStopped, new MacroRecordEvent(pending.Token));
+    private static LinkMessage Play(LinkMessage request)
+    {
+        MacroPlayRequest? req = request.Read<MacroPlayRequest>();
+        if (req == null || string.IsNullOrWhiteSpace(req.Id))
+            return LinkMessage.Response(request, new MacroPlayReply(false, "缺少宏 Id"));
+
+        bool started = MacroWrites.Play(req.Id, out string? error);
+        return LinkMessage.Response(request, new MacroPlayReply(started, error));
     }
 
-    private static void OnSaved(string id)
+    // ============ 改名 / 删除 ============
+
+    private static LinkMessage Rename(LinkMessage request)
     {
-        if (_saving is not { } pending) return;
-        _saving = null;
-        _ = pending.Channel.NotifyAsync(MacroMethods.EventSaved, new MacroRecordEvent(pending.Token, id));
+        MacroRenameRequest? req = request.Read<MacroRenameRequest>();
+        if (req == null || string.IsNullOrWhiteSpace(req.Id)) return LinkMessage.Response(request, error: "缺少参数");
+
+        return MacroWrites.Rename(req.Id, req.Name, out string? error)
+            ? LinkMessage.Response(request)
+            : LinkMessage.Response(request, error: error);
+    }
+
+    private static LinkMessage Delete(LinkChannel? channel, LinkMessage request)
+    {
+        MacroDeleteRequest? req = request.Read<MacroDeleteRequest>();
+        if (req == null || string.IsNullOrWhiteSpace(req.Id))
+            return LinkMessage.Response(request, new MacroDeleteReply(0, "缺少宏 Id"));
+
+        if (!MacroWrites.Delete(req.Id, out int removedActions, out string? error))
+            return LinkMessage.Response(request, new MacroDeleteReply(0, error));
+
+        // 删宏会连带删掉引用它的动作、清掉面板槽位 / 快捷键 / 触发 / 悬浮项——宿主那份全是旧的。
+        if (removedActions > 0 && channel != null)
+            _ = channel.NotifyAsync(LinkMethods.EventActionsChanged);
+
+        return LinkMessage.Response(request, new MacroDeleteReply(removedActions, null));
+    }
+
+    // ============ 工具 ============
+
+    /// <summary>把一条要碰 UI 线程的命令排过去，返回等它做完的 Task（读循环可以继续收答复）。</summary>
+    private static Task<LinkMessage> OnUi(LinkMessage request, Func<LinkMessage, LinkMessage> apply)
+    {
+        var completion = new TaskCompletionSource<LinkMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Ui.Enqueue(() =>
+        {
+            try { completion.TrySetResult(apply(request)); }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Macro", $"宏命令失败（{request.Method}）：{ex.Message}");
+                completion.TrySetResult(LinkMessage.Response(request, error: ex.Message));
+            }
+        });
+        return completion.Task;
+    }
+
+    private static void Notify(string method, object? payload = null)
+    {
+        try { _ = LinkWorker.NotifyAsync(method, payload); }
+        catch (Exception ex) { AppLog.Warn("Macro", $"通知宿主失败（{method}）：{ex.Message}"); }
     }
 }

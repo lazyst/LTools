@@ -56,6 +56,9 @@ internal static class ConfigStore
         AppState.ApplySettings(cfg);
         PanelLibrary.LoadReadOnly(configPath);
         MacroStore.Invalidate();   // 下一次访问按 ConfigPath 现读（只读）
+        // 宏页（设置 → 键鼠宏，M3-5c-3b 起在宿主里）要显示热键 / 回放默认值，和回放对话框的
+        // 「留空 = 跟随默认」提示同源。
+        MacroSettings.Load(cfg);
         SubActionStore.Invalidate();   // 导入备份会整份换掉 subactions/（编辑器将来在宿主里读）
         ReadOnly = true;
     }

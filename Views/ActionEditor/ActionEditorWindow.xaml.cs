@@ -195,6 +195,7 @@ public partial class ActionEditorWindow : Window
             _traceFlush?.Stop();
             _autosaveTimer?.Stop();
             if (_running) ProgramRunner.Stop();
+            MacroRecording.Started -= OnMacroRecordingStarted;
             MacroRecording.Stopped -= OnMacroRecordingStopped;
             MacroRecording.Saved -= OnMacroSavedRefresh;
             // 关窗时还在重录（窗口是藏起来的，用户看不到）：先收尾保存，别留下无界面的录制。
@@ -206,6 +207,7 @@ public partial class ActionEditorWindow : Window
             _macroHidden = false;
         };
 
+        MacroRecording.Started += OnMacroRecordingStarted;
         MacroRecording.Stopped += OnMacroRecordingStopped;
         MacroRecording.Saved += OnMacroSavedRefresh;
 

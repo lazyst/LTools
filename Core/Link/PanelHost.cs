@@ -125,30 +125,12 @@ internal static class PanelHost
         }
     }
 
-    /// <summary>试放一个宏：与面板里那一项同一条路（面板先收起、后台回放、失败只提示）。</summary>
+    /// <summary>试放一个宏：与设置页「试放」同一条路（面板先收起、后台回放、失败只提示）。</summary>
     private static void ReplayMacro(string macroId)
     {
-        MacroDto? macro = MacroStore.Load(macroId);
-        if (macro == null)
-        {
-            ToastService.Show("宏文件已不存在（通常随引用它的动作一起删除），请重新录制", "键鼠宏",
-                ToastService.LongMs, ToastKind.error, key: "macro:play:hint");
-            return;
-        }
-
-        _ = Task.Run(() =>
-        {
-            try
-            {
-                MacroPlayer.PlaySync(macro, MacroStore.PlaybackOf(macroId));
-            }
-            catch (Exception ex)
-            {
-                AppLog.Error("Macro", $"试放失败「{macro.Name}」", ex);
-                ToastService.Show("试放失败：" + ex.Message, "键鼠宏", ToastService.LongMs,
-                    ToastKind.error, key: "macro:play:hint");
-            }
-        });
+        if (MacroWrites.Play(macroId, out string? error)) return;
+        ToastService.Show(error ?? "没能开始试放", "键鼠宏", ToastService.LongMs, ToastKind.error,
+            key: "macro:play:hint");
     }
 
     /// <summary>暂存区的一个写操作：面板在宿主里（宿主已经收起），提权侧直接执行。</summary>
@@ -184,6 +166,7 @@ internal static class PanelHost
                 LinkMethods.RunAction => ForwardRun(request),
                 LinkMethods.OpenWindow => OpenWindow(request),
                 _ when ActionEditHost.IsWrite(request.Method) => ActionEditHost.Handle(request),
+                _ when MacroHost.IsCommand(request.Method) => MacroHost.Handle(request),
                 _ => LinkMessage.Response(request, error: "未知命令：" + request.Method),
             };
         }

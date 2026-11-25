@@ -928,8 +928,9 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   真正涉及引用清理的**删除**由执行器推 `actions.changed`，宿主整份重读——新建 / 覆盖 / 复制
   不推，否则会和宿主紧接着的面板推送抢同一份 `panel.json`。
 - 编辑器宏横幅的「重新录制」要钩子，新增 `macro.record` / `macro.stop` + `macro.stopped` / `macro.saved`
-  事件（带 token，串台的通知直接丢）；`Features/MacroRecording` 是编辑器唯一入口，执行器分支直接用
+  事件；`Features/MacroRecording` 是编辑器唯一入口，执行器分支直接用
   `MacroRecorder`。「键鼠宏设置」按钮改成 `open.window` 的 `LinkTargets.Macros`（设置窗还在执行器）。
+  （5c-3b 起这几条事件不再带 token，改广播，见下一条。）
 - **两个必须守住的线程规则（真机踩出来的）**：
   1. **链路处理器不在读循环上跑**（`LinkChannel.Dispatch` 改成 `Task.Run(RespondAsync)`）：
      处理器常要再向对端发请求（`panel.replace` 之后落盘又转给宿主写 `panel.json`、
@@ -970,9 +971,37 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 回归：`--selftest --filter link` 362 断言（方法名 + 原因往返）；`LinkSmoke` 94（新增「宿主本地写完
   `panel.json` → 执行器收到 `config.changed`（原因原样）」）。
 
-**下一步（5c-3 的其余部分）**：窗口本体搬过去之前，它的每个页面都得能在宿主里真的用起来——
-宏页要 `macro.play` / `macro.delete` / `macro.rename` / `macro.playback`，AI 页要 `mcp.*`
-（起停服务、重置令牌、重建知识包）。先补这两组命令，再搬窗口 + 翻转入口（托盘 / 快捷键 → 宿主）。
+**2026-11-25 · P2-M3-5c-3b 宏页的命令补齐（`macro.play` / `macro.rename` / `macro.delete`）**
+
+- 「键鼠宏」页里的三件事要钩子 / 动作属主，只能在执行器做：**试放**（键鼠注入）、**改名**（连带改
+  引用它的动作名）、**删宏**（连带删动作 + 清面板槽位 / 快捷键 / 触发 / 悬浮）。其余都是纯
+  `configs/macros.json` 读写（列表、每宏回放参数、全局设置），宿主是那个文件的物理写者，
+  **不再为它们建命令**——`macro.playback` 因此没有做：`MacroPlaybackDialog` 照旧写本地，
+  执行器靠 `config.changed` 重读 `MacroSettings`。
+- **宏的生命周期事件改成广播（去掉 token）**：录制是进程内唯一的，`macro.started` / `macro.stopped`
+  / `macro.saved` / `macro.played` 谁发起的都一样。token 那层本来是为了「在多个编辑器里找出发起它的
+  那一个」，现在只有一个宿主进程，留着只会让「用热键开始录制」时设置页收不到通知（真机场景：设置页
+  开着，按 `F2` 开录，窗口不藏起来就被录进去了）。`MacroHost.Start()` 在 `App.OnStartup` 里显式调——
+  事件订阅不能等到「第一次收到宏命令」才挂（热键录制可能早就开始了）。宿主断开时没有补发（录制是
+  瞬态状态，重连后按新的走）。
+- `Features/MacroWrites` 是**唯一 UI 入口**（与 `ActionWrites` 同形）：宿主 → `MacroBridge`，
+  执行器 → `MacroStore` / `MacroPlayer` 的本地分支。试放的检查与失败提示只有一份
+  （`PlayLocal`），面板的「试放」也改成调它——以前那段「加载宏 → 后台回放 → 弹提示」是第二份实现。
+- **窗口让开这件事跟着窗口自己走**：`MacroRecording.Started` / `Stopped` 现在是广播，面板在
+  `SuperPanel` 的静态构造里订阅（录制一开始就关 / 有子对话框时临时隐藏），设置页与动作编辑器各自订阅。
+  `MacroRecorder` 里那两句 `SuperPanel.HideForRecording()` / `RestoreAfterRecording()` 已删——
+  面板在宿主，执行器那边够不着（踩过：搬完面板后录制期间面板仍留在屏幕上）。
+- 顺带修 5c-2 留下的一处真机 bug：编辑器收 `macro.stopped` / `macro.started` 时直接摸窗口，
+  而事件来自链路线程——`Hide()` / `Show()` 会抛「另一个线程拥有该对象」（旧代码被 try/catch 吞成
+  崩溃日志，表现为「重录完编辑器不回来」）。现在一律 `Dispatcher.BeginInvoke`。
+- 回归：`--selftest` 393 用例 / 18849 断言（`link` 组 377：七个宏方法名 + 六种负载往返）；
+  `LinkSmoke` 103（新增「录制开始是广播」「试放开始 + 跑完通知」「改名 / 删宏送到执行器」）；
+  `PanelHostSmoke` 11；`PanelClipboardSmoke` 27；`ShareSmoke` 92。
+  真机这轮只验到「设置 → 键鼠宏」页（它**还在执行器**，走的是本地分支）打开正常、日志无 WARN；
+  宿主里那一份要等 5c-3d 搬窗口才能真正点到（命令本身由 LinkSmoke 的两进程管道验）。
+
+**下一步（5c-3 的其余部分）**：AI 页要 `mcp.*`（起停服务、重置令牌、重建知识包），
+然后搬窗口本体 + 翻转入口（托盘 / 快捷键 → 宿主）。
 
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
@@ -1042,7 +1071,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主。**编辑器与宏页并进第 5 步**：打开编辑器的调用方（`PanelActionOps`）与设置页都在提权进程里，单独搬窗口就得连动作内容写权、`staging/`、设置入口一起翻——那正是第 5 步的范围（见 §14 `P2-M3-5a` 的顺序说明）。 |
-| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3a 已完成**：`config.changed`（宿主写完配置，执行器重读运行期状态）。**5c-3b**：宏页的 `macro.play` / `delete` / `rename` / `playback`。**5c-3c**：AI 页的 `mcp.*`。**5c-3d**：设置窗口本体 + 其余页面搬进宿主、入口（托盘 / 快捷键）翻向宿主。**5d**：MCP 写、`data.changed` 收尾 |
+| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3a 已完成**：`config.changed`（宿主写完配置，执行器重读运行期状态）。**5c-3b 已完成**：宏页的 `macro.play` / `rename` / `delete` + 录制 / 试放事件改广播（回放参数是纯配置，不建命令）。**5c-3c**：AI 页的 `mcp.*`。**5c-3d**：设置窗口本体 + 其余页面搬进宿主、入口（托盘 / 快捷键）翻向宿主。**5d**：MCP 写、`data.changed` 收尾 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
 
 > **顺序更正（2026-11-24，看过代码之后）**：原方案把「采集历史 / 贴图管理」排在截图 Pro 前面，实际排不了——

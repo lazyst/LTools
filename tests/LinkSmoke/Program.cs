@@ -154,6 +154,9 @@ internal static class Program
         var runDone = new TaskCompletionSource<RunDoneEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
         var added = new TaskCompletionSource<ActionDto>(TaskCreationOptions.RunContinuationsAsynchronously);
         var macroStarted = new TaskCompletionSource<MacroRecordRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var macroPlayRequest = new TaskCompletionSource<MacroPlayRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var macroRenamed = new TaskCompletionSource<MacroRenameRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var macroDeleted = new TaskCompletionSource<MacroDeleteRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var opsSeen = new ConcurrentQueue<ActionOpRequest>();
 
         var server = new LinkServer(pipe, "fwd-token",
@@ -197,7 +200,8 @@ internal static class Program
                     runTrace.TrySetResult(batch);
                 if (message.Method == RunMethods.EventDone && message.Read<RunDoneEvent>() is { } done)
                     runDone.TrySetResult(done);
-                if (message.Method is MacroMethods.EventStopped or MacroMethods.EventSaved)
+                if (message.Method is MacroMethods.EventStarted or MacroMethods.EventStopped
+                    or MacroMethods.EventSaved or MacroMethods.EventPlayed)
                     MacroBridge.OnEvent(message);
             });
         server.Start();
@@ -232,7 +236,7 @@ internal static class Program
                         return Task.FromResult(LinkMessage.Response(request, new RunProgramReply(true, null)));
                     }
 
-                    // 宏录制（宿主 → 执行器）：录制要钩子，结束 / 存好按同一个 token 推回来。
+                    // 宏录制（宿主 → 执行器）：录制要钩子，生命周期按事件广播回来。
                     if (request.Method == MacroMethods.Record
                         && request.Read<MacroRecordRequest>() is { } macroRecord)
                     {
@@ -241,14 +245,41 @@ internal static class Program
                         {
                             try
                             {
-                                await channel.NotifyAsync(MacroMethods.EventStopped,
-                                    new MacroRecordEvent(macroRecord.Token));
+                                await channel.NotifyAsync(MacroMethods.EventStarted);
+                                await channel.NotifyAsync(MacroMethods.EventStopped);
                                 await channel.NotifyAsync(MacroMethods.EventSaved,
-                                    new MacroRecordEvent(macroRecord.Token, macroRecord.Id));
+                                    new MacroSavedEvent(macroRecord.Id ?? ""));
                             }
                             catch (Exception ex) { Console.WriteLine("推宏录制事件失败：" + ex.Message); }
                         });
                         return Task.FromResult(LinkMessage.Response(request, new MacroRecordReply(true, null)));
+                    }
+
+                    // 试放（宿主 → 执行器）：开始答复立刻回，跑完单独广播。
+                    if (request.Method == MacroMethods.Play
+                        && request.Read<MacroPlayRequest>() is { } macroPlay)
+                    {
+                        macroPlayRequest.TrySetResult(macroPlay);
+                        _ = Task.Run(async () =>
+                        {
+                            try { await channel.NotifyAsync(MacroMethods.EventPlayed, new MacroPlayEvent(null)); }
+                            catch (Exception ex) { Console.WriteLine("推试放事件失败：" + ex.Message); }
+                        });
+                        return Task.FromResult(LinkMessage.Response(request, new MacroPlayReply(true, null)));
+                    }
+
+                    // 宏改名 / 删宏（宿主 → 执行器）：要连带改动作，属主在执行器。
+                    if (request.Method == MacroMethods.Rename
+                        && request.Read<MacroRenameRequest>() is { } macroRename)
+                    {
+                        macroRenamed.TrySetResult(macroRename);
+                        return Task.FromResult(LinkMessage.Response(request));
+                    }
+                    if (request.Method == MacroMethods.Delete
+                        && request.Read<MacroDeleteRequest>() is { } macroDelete)
+                    {
+                        macroDeleted.TrySetResult(macroDelete);
+                        return Task.FromResult(LinkMessage.Response(request, new MacroDeleteReply(2, null)));
                     }
 
                     // 动作级写入（宿主 → 执行器）：内容属主在执行器，回一份保存后的动作。
@@ -436,10 +467,12 @@ internal static class Program
                 && runDone.Task.IsCompletedSuccessfully && runDone.Task.Result.Token == "t9",
                 ReferenceEquals(runDoneArrived, runDone.Task) ? null : "2 秒内没收到");
 
-            // 宏录制：编辑器在宿主里，录制要在执行器（钩子那侧）做，结束 / 存好按 token 回来。
+            // 宏录制：编辑器在宿主里，录制要在执行器（钩子那侧）做，生命周期按事件广播回来。
             MacroBridge.Attach(server);
+            var macroRecordingStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             var macroStopped = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             var macroSaved = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            MacroBridge.Started += () => macroRecordingStarted.TrySetResult(true);
             MacroBridge.Stopped += () => macroStopped.TrySetResult(true);
             MacroBridge.Saved += id => macroSaved.TrySetResult(id);
 
@@ -452,6 +485,10 @@ internal static class Program
                 && macroStarted.Task.Result.Id == "m1" && macroStarted.Task.Result.Name == "冒烟宏",
                 ReferenceEquals(macroStartDone, macroStarted.Task) ? null : "2 秒内没收到");
 
+            Task macroBegan = await Task.WhenAny(macroRecordingStarted.Task, Task.Delay(2000));
+            Check("录制开始是广播（热键发起也走这条）", ReferenceEquals(macroBegan, macroRecordingStarted.Task),
+                ReferenceEquals(macroBegan, macroRecordingStarted.Task) ? null : "2 秒内没收到");
+
             Task macroStopDone = await Task.WhenAny(macroStopped.Task, Task.Delay(2000));
             Check("录制结束通知回来了", ReferenceEquals(macroStopDone, macroStopped.Task),
                 ReferenceEquals(macroStopDone, macroStopped.Task) ? null : "2 秒内没收到");
@@ -461,6 +498,41 @@ internal static class Program
             Check("宏已保存通知回来了", ReferenceEquals(macroSavedDone, macroSaved.Task)
                 && macroSaved.Task.Result == "m1",
                 ReferenceEquals(macroSavedDone, macroSaved.Task) ? null : "2 秒内没收到");
+
+            // 试放：开始答复立刻回，跑完单独广播（窗口据此恢复显示）。
+            var macroPlayed = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            MacroBridge.Played += error => macroPlayed.TrySetResult(error);
+
+            bool playOk = MacroBridge.Play("m1", out string? playError);
+            Check("试放请求送到了执行器", playOk, playError);
+
+            Task playReqDone = await Task.WhenAny(macroPlayRequest.Task, Task.Delay(2000));
+            Check("执行器收到要试放的宏", ReferenceEquals(playReqDone, macroPlayRequest.Task)
+                && macroPlayRequest.Task.Result.Id == "m1",
+                ReferenceEquals(playReqDone, macroPlayRequest.Task) ? null : "2 秒内没收到");
+
+            Task playedDone = await Task.WhenAny(macroPlayed.Task, Task.Delay(2000));
+            Check("试放结束通知回来了", ReferenceEquals(playedDone, macroPlayed.Task)
+                && macroPlayed.Task.Result == null,
+                ReferenceEquals(playedDone, macroPlayed.Task) ? null : "2 秒内没收到");
+
+            // 改名 / 删宏：会连带改动作，内容属主是执行器。
+            bool renameOk = MacroBridge.Rename("m1", "冒烟宏改名", out string? renameError);
+            Check("宏改名请求送到了执行器", renameOk, renameError);
+
+            Task renamedDone = await Task.WhenAny(macroRenamed.Task, Task.Delay(2000));
+            Check("执行器收到新名字", ReferenceEquals(renamedDone, macroRenamed.Task)
+                && macroRenamed.Task.Result.Name == "冒烟宏改名",
+                ReferenceEquals(renamedDone, macroRenamed.Task) ? null : "2 秒内没收到");
+
+            bool deleteOk = MacroBridge.Delete("m1", out int deletedActions, out string? deleteError);
+            Check("删宏请求送到了执行器", deleteOk, deleteError);
+            Check("删宏答复带上一起删掉的动作数", deleteOk && deletedActions == 2, deletedActions.ToString());
+
+            Task deletedDone = await Task.WhenAny(macroDeleted.Task, Task.Delay(2000));
+            Check("执行器收到要删的宏", ReferenceEquals(deletedDone, macroDeleted.Task)
+                && macroDeleted.Task.Result.Id == "m1",
+                ReferenceEquals(deletedDone, macroDeleted.Task) ? null : "2 秒内没收到");
 
             // 动作级写入：宿主里的编辑器保存 → 执行器改内存 + 落盘（回一个带 Id 的动作）。
             ActionEditBridge.Attach(server);

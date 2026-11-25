@@ -45,7 +45,7 @@ public partial class ActionEditorWindow
 
         _macroHidden = true;
         Hide();
-        // 录制要钩子：宿主里的编辑器经 MacroRecording 转给执行器，结束 / 存好按 token 回来。
+        // 录制要钩子：宿主里的编辑器经 MacroRecording 转给执行器，结束 / 存好由广播通知回来。
         if (!MacroRecording.StartInto(_macroId, MacroTitle.Text, out string? error))
         {
             RestoreAfterMacroRecording();
@@ -53,6 +53,15 @@ public partial class ActionEditorWindow
                 ToastService.Show(error, "键鼠宏", ToastService.LongMs, ToastKind.error, key: "macro:record:hint");
         }
     }
+
+    /// <summary>录制开始了（可能是热键 / 别处发起的）：窗口同样得让开，否则录制会把自己的点击录进去。</summary>
+    private void OnMacroRecordingStarted() => Dispatcher.BeginInvoke(new Action(() =>
+    {
+        if (_macroHidden) return;
+        _macroHidden = true;
+        try { Hide(); }
+        catch (Exception ex) { CrashLog.Write("ActionEditorWindow.Macro", ex); }
+    }));
 
     private void MacroSettings_Click(object sender, RoutedEventArgs e)
     {
@@ -66,12 +75,12 @@ public partial class ActionEditorWindow
         ConfigHelper.OpenMacros();
     }
 
-    private void OnMacroRecordingStopped()
+    private void OnMacroRecordingStopped() => Dispatcher.BeginInvoke(new Action(() =>
     {
         if (!_macroHidden) return;
         RestoreAfterMacroRecording();
         UpdateMacroPanel();
-    }
+    }));
 
     /// <summary>宏落盘完成（后台线程）：元数据变了，横幅与步骤摘要一起刷新。</summary>
     private void OnMacroSavedRefresh(string id)

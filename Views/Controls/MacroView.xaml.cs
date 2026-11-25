@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -28,9 +27,13 @@ namespace LTools.Views.Controls;
 /// 复选 / Expander，没有内层列表控件（ComboBox 另由 ComboBoxAssist 全局转发），正常滚动。
 /// </para>
 /// <para>
-/// 录制从本页发起时窗口会先藏起来（录制期间钩子透明，窗口上的点击也会被录进去），
-/// 停止后自动显示回来并刷新列表。改设置立即落 <c>configs/macros.json</c> 并重载
-/// <see cref="MacroSettings"/>，钩子下一次按键就是新值。
+/// 窗口在宿主里（M3-5c-3b）：录制 / 试放 / 改名 / 删宏走 <see cref="MacroRecording"/> 与
+/// <see cref="MacroWrites"/>（执行器那边要钩子、动作属主也在那边），列表与设置项是直接读写
+/// <c>configs/macros.json</c>——宿主是这个文件的物理写者，写完执行器靠 <c>config.changed</c> 重读。
+/// </para>
+/// <para>
+/// 录制一开始窗口就让开（<see cref="MacroRecording.Started"/> 是广播，热键发起的也算），
+/// 停止后自动显示回来并刷新列表；试放同理，跑完由 <see cref="MacroWrites.Played"/> 回来。
 /// </para>
 /// </remarks>
 public partial class MacroView : UserControl
@@ -56,9 +59,10 @@ public partial class MacroView : UserControl
             if (!_hooked)
             {
                 _hooked = true;
-                MacroRecorder.RecordingStarted += OnRecordingStarted;
-                MacroRecorder.RecordingStopped += OnRecordingStopped;
-                MacroRecorder.MacroSaved += OnMacroSaved;
+                MacroRecording.Started += OnRecordingStarted;
+                MacroRecording.Stopped += OnRecordingStopped;
+                MacroRecording.Saved += OnMacroSaved;
+                MacroWrites.Played += OnMacroPlayed;
             }
             if (_loaded) return;
             _loaded = true;
@@ -67,9 +71,10 @@ public partial class MacroView : UserControl
         Unloaded += (_, _) =>
         {
             _hooked = false;
-            MacroRecorder.RecordingStarted -= OnRecordingStarted;
-            MacroRecorder.RecordingStopped -= OnRecordingStopped;
-            MacroRecorder.MacroSaved -= OnMacroSaved;
+            MacroRecording.Started -= OnRecordingStarted;
+            MacroRecording.Stopped -= OnRecordingStopped;
+            MacroRecording.Saved -= OnMacroSaved;
+            MacroWrites.Played -= OnMacroPlayed;
         };
     }
 
@@ -141,10 +146,10 @@ public partial class MacroView : UserControl
 
     private void UpdateRecordState()
     {
-        bool recording = MacroRecorder.IsRecording;
+        bool recording = MacroRecording.IsRecording;
         RecordButton.Content = recording ? "■ 停止录制" : "● 录制新宏";
         RecordHint.Text = recording
-            ? $"正在录制 · {MacroRecorder.EventCount} 个事件 · 按 {MacroSettings.RecordHotkeyDisplay} 停止"
+            ? $"正在录制 · 按 {MacroSettings.RecordHotkeyDisplay} 停止"
             : $"按 {MacroSettings.RecordHotkeyDisplay} 也可以开始 / 停止；录完会自动变成面板上的动作。";
     }
 
@@ -152,15 +157,20 @@ public partial class MacroView : UserControl
 
     private void Record_Click(object sender, RoutedEventArgs e)
     {
-        if (MacroRecorder.IsRecording)
+        if (MacroRecording.IsRecording)
         {
-            MacroRecorder.Stop();
+            MacroRecording.Stop();
             return;
         }
 
         HideForRecording();
-        MacroRecorder.Start();
-        if (!MacroRecorder.IsRecording) ShowAfterRecording();   // 被拒绝（没启用 / 正在回放）就别把窗口藏起来
+        if (!MacroRecording.StartInto(null, null, out string? error))
+        {
+            // 被拒绝（没启用 / 正在回放 / 有动作在跑）时执行器已经弹过提示，这里只恢复窗口。
+            ShowAfterRecording();
+            if (!string.IsNullOrEmpty(error))
+                ToastService.Show(error, "键鼠宏", ToastService.LongMs, ToastKind.error, key: "macro:record:hint");
+        }
         UpdateRecordState();
     }
 
@@ -183,8 +193,12 @@ public partial class MacroView : UserControl
     private void OnMacroSaved(string id)
     {
         // 保存完成在后台线程：等它落盘后再刷新列表（此时元数据里已经有这条宏）。
+        // 录制也在执行器里做，宿主这份元数据缓存必须作废才读得到新值。
         OnUi(() => { MacroStore.Invalidate(); PopulateRows(); });
     }
+
+    /// <summary>试放跑完（可能与失败原因一起来）：把藏起来的窗口显示回来。</summary>
+    private void OnMacroPlayed(string? error) => OnUi(ShowAfterRecording);
 
     private void HideForRecording()
     {
@@ -217,8 +231,15 @@ public partial class MacroView : UserControl
         string name = box.Text.Trim();
         if (name.Length == 0 || name == row.OriginalName) return;
 
-        MacroStore.Rename(row.Id, name);
+        if (!MacroWrites.Rename(row.Id, name, out string? error))
+        {
+            box.Text = row.OriginalName;
+            ToastService.Show("改名失败：" + error, "键鼠宏", ToastService.LongMs, ToastKind.error, key: "macro:rename");
+            return;
+        }
+
         row.OriginalName = name;
+        row.Name = name;
         ToastService.Show($"宏已改名为「{name}」，引用它的动作也一起改了", "键鼠宏", 2500,
             ToastKind.success, key: "macro:rename");
     }
@@ -227,44 +248,13 @@ public partial class MacroView : UserControl
     {
         if ((sender as FrameworkElement)?.Tag is not MacroRow row) return;
 
-        if (MacroPlayer.IsPlaying)
-        {
-            ToastService.Show("已有宏正在回放", "键鼠宏", 2500, ToastKind.warning, key: "macro:play:hint");
-            return;
-        }
-        if (MacroRecorder.IsRecording)
-        {
-            ToastService.Show("正在录制，先停止录制再试放", "键鼠宏", 2500, ToastKind.warning, key: "macro:play:hint");
-            return;
-        }
-
-        var macro = MacroStore.Load(row.Id);
-        if (macro == null)
-        {
-            ToastService.Show("宏文件已不存在（通常随引用它的动作一起删除），请重新录制", "键鼠宏",
-                ToastService.LongMs, ToastKind.error, key: "macro:play:hint");
-            return;
-        }
-
         // 从本页试放时窗口让开，否则第一下点击会落在自己身上。
         HideForRecording();
-        Task.Run(() =>
-        {
-            try
-            {
-                MacroPlayer.PlaySync(macro, MacroStore.PlaybackOf(row.Id));
-            }
-            catch (Exception ex)
-            {
-                AppLog.Error("Macro", $"试放失败「{macro.Name}」", ex);
-                ToastService.Show("试放失败：" + ex.Message, "键鼠宏", ToastService.LongMs,
-                    ToastKind.error, key: "macro:play:hint");
-            }
-            finally
-            {
-                OnUi(ShowAfterRecording);
-            }
-        });
+        if (MacroWrites.Play(row.Id, out string? error)) return;
+
+        ShowAfterRecording();
+        ToastService.Show(error ?? "没能开始试放", "键鼠宏", ToastService.LongMs, ToastKind.error,
+            key: "macro:play:hint");
     }
 
     /// <summary>单个宏的回放设置（倒计时 / 速度 / 循环）：只改这一个宏，留空 = 跟随默认。</summary>
@@ -293,11 +283,15 @@ public partial class MacroView : UserControl
     private void Rerecord_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not MacroRow row) return;
-        if (MacroRecorder.IsRecording) return;
+        if (MacroRecording.IsRecording) return;
 
         HideForRecording();
-        MacroRecorder.StartInto(row.Id, row.Name);
-        if (!MacroRecorder.IsRecording) ShowAfterRecording();
+        if (!MacroRecording.StartInto(row.Id, row.Name, out string? error))
+        {
+            ShowAfterRecording();
+            if (!string.IsNullOrEmpty(error))
+                ToastService.Show(error, "键鼠宏", ToastService.LongMs, ToastKind.error, key: "macro:record:hint");
+        }
         UpdateRecordState();
     }
 
@@ -309,7 +303,12 @@ public partial class MacroView : UserControl
         string message = $"删除宏「{row.Name}」？\n\n引用它的动作也会一起删掉，面板磁贴、快捷键绑定、触发规则与悬浮项中的引用会一并清除。";
         if (!ConfirmDialog.Confirm(window, "删除宏", message, danger: true, okText: "删除")) return;
 
-        int removed = MacroStore.Delete(row.Id);
+        if (!MacroWrites.Delete(row.Id, out int removed, out string? error))
+        {
+            ToastService.Show("删除失败：" + error, "键鼠宏", ToastService.LongMs, ToastKind.error, key: "macro:delete");
+            return;
+        }
+
         MacroStore.Invalidate();
         PopulateRows();
         ToastService.Show(removed > 0

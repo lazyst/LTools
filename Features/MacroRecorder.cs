@@ -166,15 +166,13 @@ internal static class MacroRecorder
         AppLog.Info("Macro", $"开始录制（{(string.IsNullOrEmpty(targetId) ? "新建" : "覆盖 " + targetId)}）");
 
         // 创建窗口可能触发 WPF 首帧初始化，放到消息泵之后，避免占用钩子回调。
-        // 同时清掉可能残留的面板 / 右键长按手势状态：录制期间钩子透明，这些待处理状态
+        // 同时清掉可能残留的右键长按手势状态：录制期间钩子透明，这些待处理状态
         // 若不清掉会在录制结束后误作用（例如吞掉下一次右键 up）。
+        // 屏幕上的窗口（面板 / 设置 / 编辑器）由各自的 MacroRecording 订阅自己让开——
+        // 它们在宿主进程里，这里够不着。
         Ui.Post(() =>
         {
             Hooks.MouseHook.CancelPendingGesture();
-            // 注意：不能在这里无条件 SuperPanel.Close()——从超级面板新建的动作编辑器是
-            // Owner=面板 的模态窗，关闭 owner 会把对话框一起销毁（表现为「点录制后窗口直接没了」）。
-            // HideForRecording 会在有对话框时改为临时隐藏，停止录制后恢复。
-            SuperPanel.HideForRecording();
             RecordingIndicatorWindow.ShowIndicator();
         });
 
@@ -255,13 +253,9 @@ internal static class MacroRecorder
         Trace($"stop elapsed={elapsedMs} events={eventCount} force={force}\n{ShortStack()}");
         AppLog.Info("Macro", $"停止录制 · {elapsedMs} ms · {eventCount} 个事件");
 
-        // 系统热键注销、指示器隐藏、面板恢复都是 WPF 副作用：统一排回 UI 线程。
+        // 系统热键注销、指示器隐藏都是 WPF 副作用：统一排回 UI 线程。
         Ui.Post(MacroHotkey.Unregister);
-        Ui.Post(() =>
-        {
-            RecordingIndicatorWindow.HideIndicator();
-            SuperPanel.RestoreAfterRecording();   // 录制期间让开屏幕的面板（若有）显示回来
-        });
+        Ui.Post(RecordingIndicatorWindow.HideIndicator);
         Raise(RecordingStopped);   // Raise 内部 Ui.Post，订阅者一定在 UI 线程收到
 
         if (snapshot == null)
