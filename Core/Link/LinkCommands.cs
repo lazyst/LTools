@@ -123,6 +123,17 @@ internal static class LinkMethods
     /// 以后需要时再加，现在多一个字段只会让两边各写一套「哪个域该刷什么」。
     /// </remarks>
     public const string EventConfigReload = "config.reload";
+
+    /// <summary>
+    /// 宿主写过 <c>configs/</c>（它是写者，M2-a / M3-5c-3）：执行器要重读运行期状态
+    /// （快捷键匹配表、自动触发规则、宏设置、截图 / 录屏的默认值这些缓存）。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="EventConfigReload"/> 方向相反：那条是执行器整份换过磁盘、宿主跟着重读；
+    /// 这条是宿主写完一个域、执行器跟着刷新。只带一句原因，不带域清单——执行器那边就是一次
+    /// 「从磁盘重读各域」，按域区分只会让两边各写一套「哪个域该刷什么」。
+    /// </remarks>
+    public const string EventConfigChanged = "config.changed";
 }
 
 /// <summary>宿主要在网格里画的一个磁贴（只带画磁贴需要的字段）。</summary>
@@ -155,6 +166,11 @@ internal sealed record PanelShowRequest(long Hwnd, int X, int Y);
 
 /// <summary>面板状态（宿主 → 提权进程）：钩子据此决定要不要起「长按右键唤起面板」手势。</summary>
 internal sealed record PanelStateEvent(bool Open);
+
+/// <summary>
+/// 宿主写过配置（宿主 → 执行器）：<see cref="Reason"/> 只进日志（<c>settings.json</c> / <c>reload</c> …）。
+/// </summary>
+internal sealed record ConfigChangedEvent(string Reason);
 
 /// <summary>全屏点选器状态（宿主 → 提权进程）：true = 遮罩开着，鼠标钩子让开「长按右键 = 面板」。</summary>
 internal sealed record PickerActiveEvent(bool Active);

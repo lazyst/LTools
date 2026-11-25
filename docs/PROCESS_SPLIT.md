@@ -947,6 +947,33 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   `LinkSmoke` 93（新增「宿主发 `macro.record` → 执行器回开始了 → 结束 / 保存按 token 回来」）；
   `PanelHostSmoke` 11；`PanelClipboardSmoke` 27（含「源被删后剪贴板清空」）。
 
+**2026-11-25 · P2-M3-5c-3a 宿主写完配置，执行器跟着重读（`config.changed`）**
+
+- 5c-3 的地基。设置窗口搬进宿主之后，`configs/*.json` 的写者与「运行期状态」的持有者就分在了两个进程：
+  宿主写文件，可快捷键匹配表、自动触发规则、宏设置、截图 / 录屏默认值这些缓存都在执行器里。
+  不接这条通知，就会出现「设置里改了，钩子还是老样子」。
+- 协议：`config.changed`（**宿主 → 执行器**，无答复事件，只带一句原因进日志）。方向与
+  `config.reload` 相反——那条是执行器整份换过磁盘、宿主跟着重读；这条是宿主写完一个域、执行器跟着刷新。
+  **不带域清单**：执行器那边就是「从磁盘重读各域」，按域区分只会让两边各写一套「哪个域该刷什么」。
+- 触发点只有一个：`ConfigBundle.WriteIfChanged` 的**本地写**成功之后，经
+  `ConfigBundle.LocalWriteListener`（只有 `ShareHost` 挂 `ConfigChangedBridge.Notify`）。
+  用回调而不是直接调链路，是为了让 `Config/` 继续不认识 `Core/Link`（与 `RemoteWriter` 同一个理由）。
+  执行器自己发起的写入走 `RemoteWriter`（宿主写、**不通知**）——那个改动就是它起的，内存已经是对的。
+- 执行器侧 `ConfigStore.ReloadRuntime()`：`AppConfig.Load` → `ApplyRuntime`（动作清单 / 快捷键匹配表 /
+  `AppState.ApplySettings` / `TriggerService.Reload` / `MacroStore.Invalidate` / `MacroSettings.Load`）
+  → `NotifyChanged`。**不碰面板**（那走 `panel.replace`）、**不回推宿主**（否则两个进程互相叫对方重读）。
+  排到 UI 线程做（`Ui.Enqueue`）：都是 UI 线程平时改的静态状态；读盘几十毫秒，输入不受影响（钩子在自己的线程）。
+  `ConfigStore.Reload()` 同时改成「整份重读 + 按身份通知另一边」：宿主里重读后发 `config.changed`，
+  执行器里重读后发 `config.reload`；两边都补上了 `AppState.ApplySettings`（以前只有启动路径灌）。
+- 真机：设置页「重新加载」→ 执行器整份重读、宿主跟着重拉快照（`ShareHost: 执行器重读了配置，宿主跟着刷新`），
+  执行器日志无 WARN / ERROR。
+- 回归：`--selftest --filter link` 362 断言（方法名 + 原因往返）；`LinkSmoke` 94（新增「宿主本地写完
+  `panel.json` → 执行器收到 `config.changed`（原因原样）」）。
+
+**下一步（5c-3 的其余部分）**：窗口本体搬过去之前，它的每个页面都得能在宿主里真的用起来——
+宏页要 `macro.play` / `macro.delete` / `macro.rename` / `macro.playback`，AI 页要 `mcp.*`
+（起停服务、重置令牌、重建知识包）。先补这两组命令，再搬窗口 + 翻转入口（托盘 / 快捷键 → 宿主）。
+
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
 > 这一节是**方案**，实施记录继续写在 §14（`P2-x` 条目）。
@@ -1015,7 +1042,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主。**编辑器与宏页并进第 5 步**：打开编辑器的调用方（`PanelActionOps`）与设置页都在提权进程里，单独搬窗口就得连动作内容写权、`staging/`、设置入口一起翻——那正是第 5 步的范围（见 §14 `P2-M3-5a` 的顺序说明）。 |
-| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3**：设置窗口（含子动作库 / 宏页）搬进宿主。**5d**：MCP 写、`data.changed` 收尾 |
+| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3a 已完成**：`config.changed`（宿主写完配置，执行器重读运行期状态）。**5c-3b**：宏页的 `macro.play` / `delete` / `rename` / `playback`。**5c-3c**：AI 页的 `mcp.*`。**5c-3d**：设置窗口本体 + 其余页面搬进宿主、入口（托盘 / 快捷键）翻向宿主。**5d**：MCP 写、`data.changed` 收尾 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
 
 > **顺序更正（2026-11-24，看过代码之后）**：原方案把「采集历史 / 贴图管理」排在截图 Pro 前面，实际排不了——

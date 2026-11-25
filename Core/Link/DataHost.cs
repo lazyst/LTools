@@ -59,7 +59,8 @@ internal static class DataHost
     /// 导出场景、工具条布局、标注样式…）。设置在提权进程里改、落盘在宿主里做——写者就是自己，
     /// 所以写完就地失效一次，别等下次启动才发现「改了没生效」。
     /// </remarks>
-    private static void RefreshRuntime(string? name)
+    /// <summary>宿主自己写完 settings.json / ui.json 之后刷一遍运行期缓存（截图 / 录屏 / 工具条）。</summary>
+    internal static void RefreshRuntime(string? name)
     {
         try
         {

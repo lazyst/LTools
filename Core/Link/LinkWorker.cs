@@ -190,6 +190,8 @@ internal static class LinkWorker
                 Features.CapturePro.RecordShortcutRoute.ApplyState(recordKeys);
             else if (message.Method == LinkMethods.EventCaptureRecordDone)
                 CaptureBridge.OnRecordingFinished();
+            else if (message.Method == LinkMethods.EventConfigChanged)
+                ConfigChangedHost.OnEvent(message);
         }
         catch (Exception ex)
         {

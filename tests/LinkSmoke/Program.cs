@@ -490,6 +490,7 @@ internal static class Program
         finally
         {
             PanelHostBridge.Detach();
+            ConfigBundle.LocalWriteListener = null;
             if (client != null) await client.DisposeAsync();
             await server.DisposeAsync();
         }
@@ -504,6 +505,8 @@ internal static class Program
         string pipe = "LToolsLink-panel-" + Guid.NewGuid().ToString("N")[..8];
         LinkServer? server = null;
         LinkClient? client = null;
+        var configChanged = new TaskCompletionSource<ConfigChangedEvent>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
         Console.WriteLine();
         Console.WriteLine("== 面板命令 ==");
@@ -534,7 +537,13 @@ internal static class Program
                 static (_, request) => Task.FromResult(LinkMessage.Response(request, error: "宿主暂不支持该命令")));
             server.Start();
             client = await LinkClient.ConnectWithRetryAsync(pipe, "panel-token", "worker", totalMs: 4000,
-                handler: PanelHost.HandleAsync);
+                handler: PanelHost.HandleAsync,
+                onEvent: message =>
+                {
+                    if (message.Method == LinkMethods.EventConfigChanged
+                        && message.Read<ConfigChangedEvent>() is { } changed)
+                        configChanged.TrySetResult(changed);
+                });
             await client.NotifyAsync(LinkMethods.EventClientReady);
 
             // ---- 快照 ----
@@ -561,6 +570,10 @@ internal static class Program
                 FloatingLibrary.Items.Clear();
             }
 
+            // 宿主是 configs/ 的写者：本地写完要让执行器重读运行期状态（钩子 / 触发器 / 宏）。
+            ConfigChangedBridge.Attach(server);
+            ConfigBundle.LocalWriteListener = ConfigChangedBridge.Notify;
+
             // ---- 整份替换（宿主改分组名）----
             PanelConfig edited = snap!.Panel;
             edited.Global.Scenes[0].Groups[0].Name = "改名后";
@@ -569,6 +582,11 @@ internal static class Program
             Check("替换写进了内存", PanelLibrary.Current.Global.Scenes[0].Groups[0].Name == "改名后");
             Check("替换写进了磁盘",
                 File.ReadAllText(Path.Combine(root, "configs", "panel.json")).Contains("改名后"));
+
+            Task changedArrived = await Task.WhenAny(configChanged.Task, Task.Delay(2000));
+            Check("宿主写完配置通知了执行器", ReferenceEquals(changedArrived, configChanged.Task)
+                && configChanged.Task.Result.Reason == "panel.json",
+                ReferenceEquals(changedArrived, configChanged.Task) ? null : "2 秒内没收到");
 
             // ---- 新建动作 ----
             LinkMessage added = await server.RequestAsync(LinkMethods.ActionAdd,

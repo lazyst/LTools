@@ -379,7 +379,20 @@ internal static class ConfigBundle
         if (remote != null && remote(Path.GetFileName(path), json)) return;
 
         WriteJson(path, json);
+
+        // 本地写成功（宿主就是写者本人）：让挂着的人把「磁盘变了」告诉执行器。
+        // 执行器自己写的那条路走上面 remote（宿主写、不通知）——那个改动就是它起的。
+        LocalWriteListener?.Invoke(Path.GetFileName(path));
     }
+
+    /// <summary>
+    /// 本地写完之后的回调（**只有宿主挂**：<c>ShareHost</c> 挂 <c>ConfigChangedBridge.Notify</c>）。
+    /// </summary>
+    /// <remarks>
+    /// 用回调而不是直接调链路，是为了让 <c>Config/</c> 继续不认识 <c>Core/Link</c>
+    /// （和上面的 <see cref="RemoteWriter"/> 同一个理由）。
+    /// </remarks>
+    internal static Action<string>? LocalWriteListener;
 
     /// <summary>
     /// 物理写入的转交口（**执行器 → 宿主**）：设了就把 JSON 交给宿主落盘。

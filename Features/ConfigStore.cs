@@ -90,11 +90,38 @@ internal static class ConfigStore
     public static void Reload()
     {
         var cfg = AppConfig.Load(ConfigPath);
-        ActionLibrary.LoadFrom(cfg);
-        HotkeyRegistry.Load(cfg);
+        ApplyRuntime(cfg);
         PanelLibrary.Reload();
-        // 宿主那份只读副本也过期了（导入备份 / 重新加载都从磁盘整份换过）：让它跟着重读。
-        ConfigReloadBridge.Notify();
+        NotifyChanged();
+
+        // 谁是写者，就通知另一边重读：宿主写完让执行器刷新运行期状态，
+        // 执行器整份换过（导入备份 / 重新加载）让宿主的只读副本作废。
+        if (AppRole.IsUiHost) ConfigChangedBridge.Notify("reload");
+        else ConfigReloadBridge.Notify();
+    }
+
+    /// <summary>
+    /// 宿主写过 <c>configs/</c>（<c>config.changed</c>）：执行器从磁盘重读运行期状态。
+    /// </summary>
+    /// <remarks>
+    /// 只刷「执行器自己那份运行期状态」，**不碰面板**（那走 <c>panel.replace</c>）也不再回头通知宿主
+    /// （否则就是两个进程互相叫对方重读）。读盘在调它的 UI 线程上，几十毫秒，不影响输入。
+    /// </remarks>
+    internal static void ReloadRuntime()
+    {
+        ApplyRuntime(AppConfig.Load(ConfigPath));
+        NotifyChanged();
+    }
+
+    /// <summary>把一份配置灌进运行期状态（读盘 / 首装 / 只读初始化共用的那几步）。</summary>
+    private static void ApplyRuntime(AppConfig cfg)
+    {
+        ActionLibrary.LoadFrom(cfg);
+        HotkeyRegistry.Load(cfg);          // 钩子线程下一次按键就用新组合键
+        AppState.ApplySettings(cfg);       // 延时 / 录屏默认 / 导出场景 / 托盘双击…
+        TriggerService.Reload(cfg.Triggers ?? new TriggersFile());
+        MacroStore.Invalidate();           // 宏元数据（macros.json）可能整个换过
+        MacroSettings.Load(cfg);
     }
 
     /// <summary>加载当前磁盘配置（不回写）。</summary>

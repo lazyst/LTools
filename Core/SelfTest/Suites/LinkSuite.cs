@@ -160,7 +160,7 @@ internal static class LinkSuite
             SubActionMethods.Save, SubActionMethods.Delete, LinkMethods.EventConfigReload,
             RunMethods.Program, RunMethods.Stop, RunMethods.EventTrace, RunMethods.EventSlow,
             RunMethods.EventDone, MacroMethods.Record, MacroMethods.Stop,
-            MacroMethods.EventStopped, MacroMethods.EventSaved,
+            MacroMethods.EventStopped, MacroMethods.EventSaved, LinkMethods.EventConfigChanged,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
@@ -587,6 +587,12 @@ internal static class LinkSuite
 
         // 宏录制（编辑器在宿主里）：请求带 token，结束 / 存好的事件按同一个 token 回来。
         // 方法名放进上面的互不相同名单，这里只验负载。
+        // 「宿主写过配置」（M3-5c-3a）：只带一句原因，执行器据此整份重读运行期状态。
+        Check.Equal("config.changed", LinkMethods.EventConfigChanged, "配置变更通知方法名");
+        ConfigChangedEvent? cfgChanged = RoundTrip(LinkMessage.Request(59, LinkMethods.EventConfigChanged,
+            new ConfigChangedEvent("settings.json"))).Read<ConfigChangedEvent>();
+        Check.Equal("settings.json", cfgChanged?.Reason, "配置变更通知：原因原样");
+
         MacroRecordRequest? macroReq = RoundTrip(LinkMessage.Request(60, MacroMethods.Record,
             new MacroRecordRequest("t1", "m1", "报表宏"))).Read<MacroRecordRequest>();
         Check.Equal("t1", macroReq?.Token, "宏录制请求：token 原样");
