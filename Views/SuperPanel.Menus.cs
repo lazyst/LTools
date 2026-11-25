@@ -105,12 +105,12 @@ public partial class SuperPanelWindow
         return menu;
     }
 
-    /// <summary>改功能参数：面板先关（隐藏的 Topmost 窗口会让对话框闪黑），改完写回槽位引用。</summary>
+    /// <summary>改功能参数：面板让开（钉住时只隐藏，改完回来），改完写回槽位引用。</summary>
     private void EditFeatureParams(PanelTileRef tref)
     {
         if (tref.ActionId == null) return;
         string oldRef = tref.ActionId;
-        Features.SuperPanel.Close();
+        using var aside = Features.SuperPanel.StepAside();
 
         string? updated = FeatureParamsDialog.Show(null, oldRef);
         if (string.IsNullOrEmpty(updated) || updated == oldRef) return;
@@ -378,7 +378,7 @@ public partial class SuperPanelWindow
             Header = "钉住面板",
             IsCheckable = true,
             IsChecked = _pinned,
-            ToolTip = "钉住后点击外部不关闭",
+            ToolTip = "钉住后只有主动关闭（✕ / 这里 / CapsLock+T）才收：点动作、右键编辑都留在屏幕上",
         };
         pin.Click += (_, _) => Defer(() => SetPinned(!_pinned));
         menu.Items.Add(pin);
@@ -680,10 +680,10 @@ public partial class SuperPanelWindow
             _blankDragArmed = true;
         }
 
-        // 照 Quicker：中键点空白处关闭面板
+        // 照 Quicker：中键点空白处收起面板（钉住时不收，见 SuperPanel.CloseAfterUse）
         if (!hadMenu && e.ChangedButton == MouseButton.Middle && !IsInteractive(e.OriginalSource as DependencyObject))
         {
-            Features.SuperPanel.Close();
+            Features.SuperPanel.CloseAfterUse();
             e.Handled = true;
         }
     }
@@ -705,35 +705,36 @@ public partial class SuperPanelWindow
 
     private void Defer(Action action) => Dispatcher.InvokeAsync(action);
 
-    // ============ 磁贴 CRUD（全部先关面板再开对话框） ============
+    // ============ 磁贴 CRUD（全部先让开面板再开对话框；钉住时只隐藏，回来接着用） ============
 
     private void NewActionFor(PanelGroupDto group)
     {
-        Features.SuperPanel.Close();
+        using var aside = Features.SuperPanel.StepAside();
         PanelActionOps.AddNew(null, group);
     }
 
     private void PickExistingFor(PanelGroupDto group)
     {
-        Features.SuperPanel.Close();
+        using var aside = Features.SuperPanel.StepAside();
         PanelActionOps.AddExisting(null, group);
     }
 
     private void EditAction(PanelTileRef tref)
     {
         if (tref.ActionId == null) return;
-        Features.SuperPanel.Close();
+        using var aside = Features.SuperPanel.StepAside();
         if (PanelActionOps.Edit(null, tref.ActionId)) RebuildAll();
     }
 
     /// <summary>
     /// 照 Quicker「以暂存区方式编辑」：把正式动作复制成一份草稿（正式动作只读），
     /// 切到暂存区页继续改；改完由用户决定「覆盖原动作」还是「另存为新动作」。
+    /// 钉住时面板不关，原地切页。
     /// </summary>
     private void EditInStash(string actionId)
     {
-        // 草稿写 staging/、暂存区也在主程序里：转过去做（面板先收起，跟本地那条一致）。
-        Features.SuperPanel.Close();
+        // 草稿写 staging/、暂存区也在主程序里：转过去做。
+        Features.SuperPanel.CloseAfterUse();
         if (_preview)
         {
             PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.EditInStash, Id: actionId));
@@ -769,23 +770,23 @@ public partial class SuperPanelWindow
 
     private void DeleteAction(string id)
     {
-        Features.SuperPanel.Close();
+        using var aside = Features.SuperPanel.StepAside();
         PanelActionOps.Delete(null, id);
     }
 
-    /// <summary>导出一个动作（<c>.ltact</c>）：先关面板再开保存对话框（隐藏的 Topmost 面板会让对话框闪黑）。</summary>
+    /// <summary>导出一个动作（<c>.ltact</c>）：先让开面板再开保存对话框。</summary>
     private void ExportAction(PanelTileRef tref)
     {
         if (tref.ActionId == null) return;
-        Features.SuperPanel.Close();
+        using var aside = Features.SuperPanel.StepAside();
         PanelActionOps.Export(null, tref.ActionId);
     }
 
-    /// <summary>动作另存为子动作：同样先关面板，再开子动作编辑器让用户标输入 / 输出。</summary>
+    /// <summary>动作另存为子动作：同样先让开面板，再开子动作编辑器让用户标输入 / 输出。</summary>
     private void ToSubAction(PanelTileRef tref)
     {
         if (tref.ActionId == null) return;
-        Features.SuperPanel.Close();
+        using var aside = Features.SuperPanel.StepAside();
         PanelActionOps.ToSubAction(null, tref.ActionId);
     }
 }

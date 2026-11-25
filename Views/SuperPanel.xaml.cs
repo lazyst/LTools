@@ -257,6 +257,8 @@ public partial class SuperPanelWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        // 拖放占位 / 它的延后清除计时器不能跟着窗口留下（下次拖放时新窗口还会复用不到它）。
+        ClearDropHole();
         StashView.SetActive(false);
 
         var prefs = PanelLibrary.Current.Preferences;

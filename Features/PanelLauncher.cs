@@ -29,8 +29,9 @@ internal static class PanelLauncher
     public static void ShowStash() => LinkWorker.RequestStash();
 
     /// <summary>
-    /// 关掉面板（如果开着）。点悬浮按钮时用：那一下本来就算「点到面板外面」，
+    /// 收起面板（用完即收）。点悬浮按钮时用：那一下本来就算「点到面板外面」，
     /// 以前由鼠标钩子按矩形判定，现在面板在宿主里，只能由点击方说一声。
+    /// **钉住时不收**——钉住的面板只有 ✕ / 右键菜单「关闭面板」/ CapsLock+T 才关。
     /// </summary>
-    public static void Close() => LinkWorker.RequestClose();
+    public static void Dismiss() => LinkWorker.RequestDismiss();
 }

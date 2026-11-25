@@ -336,7 +336,8 @@ public sealed partial class StashPane : UserControl
 
     private void RunDraft(string id)
     {
-        Features.SuperPanel.Close();
+        // 用完即收；钉住时「工具盘」不消失，见 SuperPanel.CloseAfterUse。
+        Features.SuperPanel.CloseAfterUse();
         if (PreviewMode)
         {
             PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.StashRun, Id: id));

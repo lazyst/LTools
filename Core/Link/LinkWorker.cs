@@ -98,13 +98,13 @@ internal static class LinkWorker
     }
 
     /// <summary>
-    /// 让宿主关掉面板（点悬浮按钮那一下算「点到面板外面」）。
-    /// **不排队**：宿主没连上时直接丢掉——等连上再关会关掉后面新开的那一扇。
+    /// 收起面板（点悬浮按钮那一下算「用完即收」）。**不排队**：宿主没连上时直接丢掉——
+    /// 等连上再收会收掉后面新开的那一扇。
     /// </summary>
-    public static void RequestClose()
+    public static void RequestDismiss()
     {
         if (Volatile.Read(ref _client) is not { IsOpen: true }) return;
-        _ = NotifyAsync(LinkMethods.EventPanelClose);
+        _ = NotifyAsync(LinkMethods.EventPanelDismiss);
     }
 
     /// <summary>

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    面板拖放的冒烟：真开一扇 SuperPanelWindow，用真鼠标把文件从源窗口拖到磁贴网格上，
+    拖动期间高频采样「虚线占位还挂不挂着」。
+    - 回归的是 2026-11-25 那个 bug：占位 IsHitTestVisible=false，插到光标底下时命中会穿过去，
+      旧实现靠 InputHitTest 找网格 → 判不出来 → 每个 DragOver 把占位清掉再加回来（一直闪）。
+    - 数据根是 %TEMP% 下的临时目录，跑完删掉。
+    跑之前先构建产品：dotnet build -p:NoWin32Manifest=true
+        cd tests\PanelDragSmoke，dotnet run
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>PanelDragSmoke</AssemblyName>
+    <RootNamespace>PanelDragSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="LTools">
+      <HintPath>..\..\bin\Debug\net10.0-windows10.0.19041.0\LTools.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

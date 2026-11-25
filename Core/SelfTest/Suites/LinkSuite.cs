@@ -8,6 +8,8 @@ using LTools.Core.Actions;
 using LTools.Core.Ai;
 using LTools.Core.Link;
 using LTools.Features;
+using LTools.Hooks;
+using LTools.Native;
 
 namespace LTools.Core.SelfTest;
 
@@ -201,7 +203,7 @@ internal static class LinkSuite
             LinkMethods.RunAction, LinkMethods.ActionOp,
             LinkMethods.EventPanelShow, LinkMethods.EventPanelToggle, LinkMethods.EventClientReady,
             LinkMethods.EventActionsChanged, LinkMethods.EventPanelStash, LinkMethods.EventPanelState,
-            LinkMethods.EventPanelClose, LinkMethods.EventInfoHelper, LinkMethods.EventPickerActive,
+            LinkMethods.EventPanelDismiss, LinkMethods.EventInfoHelper, LinkMethods.EventPickerActive,
             LinkMethods.EventInputSwallow, LinkMethods.CaptureRun, LinkMethods.CaptureDirect,
             LinkMethods.EventCaptureRecordDone, LinkMethods.EventCaptureWindow, ActionMethods.SaveAll,
             LinkMethods.EventInputSuspend, LinkMethods.EventPinState, LinkMethods.EventRecordKeys,
@@ -231,6 +233,18 @@ internal static class LinkSuite
         Check.True(mirror.Open && mirror.Pinned && mirror.Active, "镜像：开 / 钉住 / 前台");
         Check.True(mirror.Hwnd == new IntPtr(4242) && mirror.MenuRects is [{ Left: 1, Top: 2, Right: 3, Bottom: 4 }],
             "镜像：句柄与菜单矩形");
+
+        // 钉住 = 工具盘（2026-11-26）：点外面不算「外面的那一下」，Esc 也不吞 / 不关。
+        // 钩子那边只认这份镜像；真正关闭只有 ✕ / 菜单「关闭面板」/ CapsLock+T。
+        Check.False(MouseHook.IsOutsidePanel(mirror, 0, 0), "钉住：点外面不关闭");
+        Check.False(Features.SuperPanel.HandleKey(Win32.VkEscape, true), "钉住：Esc 不吞、不关");
+        Check.False(Features.SuperPanel.ShouldDismissAfterUse(true), "钉住：用完即收不收");
+
+        // 取消钉住：同一点又回到「外面」——钩子可以照常判「点外部关闭」。
+        PanelHostBridge.ApplyPanelState(state! with { Pinned = false });
+        Check.True(MouseHook.IsOutsidePanel(HookMirror.Panel, 0, 0), "未钉住：点外面算关闭");
+        Check.True(Features.SuperPanel.ShouldDismissAfterUse(false), "未钉住：用完即收要收");
+
         PanelHostBridge.DropPanelState();
         Check.False(HookMirror.Panel.Open, "断开：面板按关处理");
 

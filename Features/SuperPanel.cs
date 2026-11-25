@@ -253,7 +253,7 @@ internal static class SuperPanel
     /// </summary>
     public static void Refresh() => _window?.RefreshFromConfig();
 
-    /// <summary>关闭面板（若已打开）。</summary>
+    /// <summary>关闭面板（若已打开）。这是**真的关**：✕、右键菜单「关闭面板」、CapsLock+T 走它。</summary>
     public static void Close()
     {
         var w = _window;
@@ -262,6 +262,63 @@ internal static class SuperPanel
         _hiddenForRecording = false;
         PublishMirror();   // 先撤镜像：钩子线程立刻知道面板已关，不必等窗口真的 Close()
         try { w.Close(); } catch { /* 静默 */ }
+    }
+
+    /// <summary>
+    /// 「用完即收」的判定：钉住时不收（纯函数，自测直接断言）。见 <see cref="CloseAfterUse"/>。
+    /// </summary>
+    internal static bool ShouldDismissAfterUse(bool pinned) => !pinned;
+
+    /// <summary>
+    /// 用完即收：跑完一个动作 / 草稿之后收起面板。
+    /// **钉住时不收**——钉住就是把它当工具盘（用户要求：点动作、右键编辑都不该让它消失）。
+    /// </summary>
+    internal static void CloseAfterUse()
+    {
+        if (!ShouldDismissAfterUse(IsPinned)) return;
+        Close();
+    }
+
+    /// <summary>
+    /// 打开外部窗口（编辑器 / 参数框 / 动作池 / 确认框）期间让开：钉住时只**隐藏**、不关，
+    /// 用完 <see cref="IDisposable.Dispose"/> 再显示回来；没钉住就照旧先关掉。
+    /// </summary>
+    /// <remarks>
+    /// 让开而不是留在屏幕上：面板是 Topmost，模态框会被它盖住、隐藏的 Owner 还会把对话框拍成黑块。
+    /// 隐藏期间 <see cref="IsOpen"/> 仍为 true——钉住的面板从没被关掉，只是让开了。
+    /// </remarks>
+    internal static IDisposable StepAside()
+    {
+        var w = _window;
+        if (w == null) return NoopScope.Instance;
+        if (!IsPinned)
+        {
+            Close();
+            return NoopScope.Instance;
+        }
+        try { w.Hide(); } catch { return NoopScope.Instance; }
+        return new ReturnScope(w);
+    }
+
+    private sealed class NoopScope : IDisposable
+    {
+        public static readonly NoopScope Instance = new();
+        public void Dispose() { }
+    }
+
+    private sealed class ReturnScope : IDisposable
+    {
+        private readonly SuperPanelWindow _win;
+        public ReturnScope(SuperPanelWindow win) => _win = win;
+
+        public void Dispose()
+        {
+            if (!ReferenceEquals(_window, _win)) return;   // 让开期间被关掉了（✕ / 菜单）
+            try { _win.Show(); }
+            catch { return; }
+            _win.Activate();
+            FloatingManager.RaiseAllAbove();
+        }
     }
 
     /// <summary>
@@ -279,13 +336,14 @@ internal static class SuperPanel
     {
         var s = HookMirror.Panel;
         if (!s.Open || !isDown || s.Interacting) return false;
-        // 钉住后用户去别的窗口工作：键盘归前台窗口，不能继续全局吞 Esc
-        if (s.Pinned && !s.Active) return false;
+        // 钉住 = 工具盘：Esc 既不关面板，也不该继续被全局吞掉（前台窗口自己要用）。
+        // 面板自己那一份由 <see cref="SuperPanelWindow.RequestEscape"/> 挡住。
+        if (s.Pinned) return false;
         if (vk != Win32.VkEscape) return false;
         Ui.Post(() =>
         {
             if (_window is { } w) w.RequestEscape();
-            else PanelLauncher.Close();
+            else PanelLauncher.Dismiss();
         });
         return true;
     }

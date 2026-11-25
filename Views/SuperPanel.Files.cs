@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 using LTools.Config;
 using LTools.Core;
 using LTools.Core.Link;
@@ -33,6 +34,9 @@ public partial class SuperPanelWindow
     // 拖动经过时插在网格里的虚线占位（和拖动排序长得一样），离开 / 松手就摘掉。
     private System.Windows.Shapes.Rectangle? _dropHole;
     private TileGridPanel? _dropHolePanel;
+
+    // 「离开」的清除延后一拍：DragLeave 从磁贴冒上来时也会来一条，立刻清就是「一直闪」。
+    private DispatcherTimer? _dropHoleClear;
 
     /// <summary>从文件创建动作（可多选），落到 <paramref name="group"/> 末尾。</summary>
     private void AddFilesFor(PanelGroupDto group)
@@ -82,8 +86,9 @@ public partial class SuperPanelWindow
 
     private void Panel_DragOver(object sender, DragEventArgs e)
     {
+        StopDropHoleClear();
         Point pos = e.GetPosition(this);
-        (PanelGroupDto Group, int Index)? target = ResolveDropTarget(e, pos);
+        (PanelGroupDto Group, int Index, TileGridPanel? Grid)? target = ResolveDropTarget(e, pos);
         if (target == null)
         {
             ClearDropHole();
@@ -92,20 +97,24 @@ public partial class SuperPanelWindow
             return;
         }
 
-        ShowDropHole(target.Value.Group, target.Value.Index, pos);
+        ShowDropHole(target.Value.Grid, target.Value.Index);
         e.Effects = DragDropEffects.Copy;
         e.Handled = true;
     }
 
     private void Panel_DragLeave(object sender, DragEventArgs e)
     {
-        ClearDropHole();
+        // DragLeave 是冒泡事件：光标从一块磁贴挪到另一块、或占位插到光标底下时都会先发一条
+        // （WPF 每换一个命中的元素就发 Leave + Enter）。那不是「离开面板」——立刻清掉的话，
+        // 每个 DragOver 前占位都被摘掉再加回来，看起来就是一直闪。
+        // 延后 120ms：期间来了新的 DragOver 就撤销；真拖走 / 按 Esc 取消时不会再有，到点清掉。
+        ScheduleDropHoleClear();
         e.Handled = true;
     }
 
     private void Panel_Drop(object sender, DragEventArgs e)
     {
-        (PanelGroupDto Group, int Index)? target = ResolveDropTarget(e, e.GetPosition(this));
+        (PanelGroupDto Group, int Index, TileGridPanel? Grid)? target = ResolveDropTarget(e, e.GetPosition(this));
         ClearDropHole();
         e.Handled = true;
 
@@ -116,31 +125,43 @@ public partial class SuperPanelWindow
     }
 
     /// <summary>
-    /// 光标下这一摞文件应该落在哪：分组按光标下那个分组块，没落在分组上就按它所在的区取第一个分组
+    /// 光标下这一摞文件应该落在哪：分组按**分组块的矩形**找，没落在分组块上就按它所在的区取第一个分组
     /// （区头标签 / 左栏 / 窗口空白都算「拖进面板」）；下标按它所在磁贴网格的几何算
     /// （<see cref="TileLayout.InsertIndex"/>，与拖动排序同一个函数）。搜索时不给拖。
     /// </summary>
     /// <remarks>
-    /// **别用 <c>IsMouseOver</c> 判区**：OLE 拖放期间鼠标捕获在拖动源那边，WPF 的 IsMouseOver 不更新，
-    /// 结果就是「拖到面板上也说这里不能放」。一律按区容器自己的矩形判。
+    /// **别用 <c>InputHitTest</c> 判区 / 判网格**：OLE 拖放期间鼠标捕获在拖动源那边，WPF 的
+    /// <c>IsMouseOver</c> 不更新；更要紧的是虚线占位自己是 <c>IsHitTestVisible=false</c>
+    /// （见 <see cref="DragFx.CreateHole"/>），它插在光标那一格时命中会穿过去落到块容器上，
+    /// 「在哪个网格」就判不出来了 —— 占位于是每个 DragOver 被清掉再加回来（一直在闪）。
+    /// 一律按容器自己的矩形算。
     /// </remarks>
-    private (PanelGroupDto Group, int Index)? ResolveDropTarget(DragEventArgs e, Point pos)
+    private (PanelGroupDto Group, int Index, TileGridPanel? Grid)? ResolveDropTarget(DragEventArgs e, Point pos)
     {
         if (!TryGetDroppedPaths(e.Data, out _)) return null;
         if (!string.IsNullOrWhiteSpace(SearchBox.Text)) return null;
 
-        // 光标下的分组：磁贴 / 分组标题 / 空网格都把 Tag 设成 PanelGroupDto，沿视觉树往上找。
-        PanelGroupDto? group = GroupAt(pos);
-        if (group == null)
+        // 光标落在哪个分组块上：块是上下平铺的，不会重叠，按矩形命中即可。
+        foreach (StackPanel zone in new[] { GlobalGroups, ContextGroups })
         {
-            bool global = ZoneContainsPoint(pos, GlobalScroll) || ZoneContainsPoint(pos, GlobalSceneTabs);
-            group = FirstGroupOf(global) ?? FirstGroupOf(global: true);
-            if (group == null) return null;
+            foreach (StackPanel block in zone.Children.OfType<StackPanel>())
+            {
+                if (block.Tag is not PanelGroupDto group || !ContainsPoint(block, pos)) continue;
+
+                TileGridPanel? grid = block.Children.OfType<TileGridPanel>().FirstOrDefault();
+                return (group, grid == null ? group.Actions.Count : InsertIndexAt(grid, pos), grid);
+            }
         }
 
-        TileGridPanel? grid = GridAt(pos, group);
-        if (grid == null) return (group, group.Actions.Count);
+        // 没落在分组块上（区头 / 左栏 / 窗口空白）：按它所在的区取第一个分组，落到末尾（不显示占位）。
+        bool global = ContainsPoint(GlobalScroll, pos) || ContainsPoint(GlobalSceneTabs, pos);
+        PanelGroupDto? fallback = FirstGroupOf(global) ?? FirstGroupOf(global: true);
+        return fallback == null ? null : (fallback, fallback.Actions.Count, null);
+    }
 
+    /// <summary>光标在这个磁贴网格里应该插到第几个（只算真磁贴，占位本身不算）。</summary>
+    private int InsertIndexAt(TileGridPanel grid, Point windowPoint)
+    {
         var rects = new List<Rect>(grid.Children.Count);
         foreach (Button tile in grid.Children.OfType<Button>().Where(b => b.Tag is PanelTileRef { ActionId: not null }))
         {
@@ -148,17 +169,17 @@ public partial class SuperPanelWindow
             rects.Add(new Rect(local, tile.RenderSize));
         }
 
-        return (group, TileLayout.InsertIndex(rects, TranslatePoint(pos, grid)));
+        return TileLayout.InsertIndex(rects, TranslatePoint(windowPoint, grid));
     }
 
-    /// <summary>点在不在这块容器矩形里（OLE 拖放期间唯一可靠的「在哪个区」判定）。</summary>
-    private bool ZoneContainsPoint(Point windowPoint, FrameworkElement zone)
+    /// <summary>点在这块元素的矩形里（OLE 拖放期间唯一可靠的「在哪个区」判定）。</summary>
+    private bool ContainsPoint(FrameworkElement element, Point windowPoint)
     {
-        if (!zone.IsVisible || zone.ActualWidth <= 0) return false;
+        if (!element.IsVisible || element.ActualWidth <= 0) return false;
         try
         {
-            Point topLeft = zone.TransformToAncestor(this).Transform(new Point(0, 0));
-            return new Rect(topLeft, zone.RenderSize).Contains(windowPoint);
+            Rect bounds = element.TransformToAncestor(this).TransformBounds(new Rect(element.RenderSize));
+            return bounds.Contains(windowPoint);
         }
         catch (InvalidOperationException)
         {
@@ -173,22 +194,9 @@ public partial class SuperPanelWindow
             : GetContextScene()?.Groups ?? PanelLibrary.Current.Context.Common)
         ?.FirstOrDefault();
 
-    /// <summary>光标下的磁贴网格（只在它属于 <paramref name="group"/> 时算）。</summary>
-    private TileGridPanel? GridAt(Point windowPoint, PanelGroupDto group)
-    {
-        if (InputHitTest(windowPoint) is not DependencyObject d) return null;
-        while (d != null)
-        {
-            if (d is TileGridPanel grid && ReferenceEquals(grid.Tag, group)) return grid;
-            d = System.Windows.Media.VisualTreeHelper.GetParent(d);
-        }
-        return null;
-    }
-
     /// <summary>把虚线占位插到目标位置（已经在那就什么都不做）。</summary>
-    private void ShowDropHole(PanelGroupDto group, int index, Point windowPoint)
+    private void ShowDropHole(TileGridPanel? grid, int index)
     {
-        TileGridPanel? grid = GridAt(windowPoint, group);
         if (grid == null) { ClearDropHole(); return; }
 
         var hole = _dropHole ?? DragFx.CreateHole();
@@ -207,8 +215,27 @@ public partial class SuperPanelWindow
         _dropHolePanel = grid;
     }
 
+    /// <summary>离开面板 / 松手 / 取消：延后一拍再清（同一拍里紧接着的 DragOver 会把它撤销）。</summary>
+    private void ScheduleDropHoleClear()
+    {
+        if (_dropHoleClear == null)
+        {
+            _dropHoleClear = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(120),
+            };
+            _dropHoleClear.Tick += (_, _) => ClearDropHole();
+        }
+
+        _dropHoleClear.Stop();
+        _dropHoleClear.Start();
+    }
+
+    private void StopDropHoleClear() => _dropHoleClear?.Stop();
+
     private void ClearDropHole()
     {
+        _dropHoleClear?.Stop();
         if (_dropHolePanel != null && _dropHole != null) _dropHolePanel.Children.Remove(_dropHole);
         _dropHole = null;
         _dropHolePanel = null;

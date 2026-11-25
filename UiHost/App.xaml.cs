@@ -321,8 +321,8 @@ public partial class App : Application
                 }));
                 break;
 
-            case LinkMethods.EventPanelClose:
-                Dispatcher.BeginInvoke(new Action(() => Features.SuperPanel.Close()));
+            case LinkMethods.EventPanelDismiss:
+                Dispatcher.BeginInvoke(new Action(() => Features.SuperPanel.CloseAfterUse()));
                 break;
 
             case NoteMethods.Toggle:

@@ -51,8 +51,11 @@ internal static class LinkMethods
     /// <summary>面板状态变了（宿主 → 提权进程）：负载 <see cref="PanelStateEvent"/>。</summary>
     public const string EventPanelState = "panel.state";
 
-    /// <summary>关掉面板（点悬浮按钮时用：那一下算「点到面板外面」）。</summary>
-    public const string EventPanelClose = "panel.close";
+    /// <summary>
+    /// 收起面板（点悬浮按钮 / 点面板外面那一下）。**钉住时不收**——只有 <c>panel.close</c>
+    /// 那种主动关闭才真关。宿主侧落到 <c>SuperPanel.CloseAfterUse</c>。
+    /// </summary>
+    public const string EventPanelDismiss = "panel.dismiss";
 
     /// <summary>开关「辅助工具」窗口（窗口归宿主，托盘入口在提权进程）。</summary>
     public const string EventInfoHelper = "info.toggle";

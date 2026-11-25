@@ -467,7 +467,8 @@ public partial class FloatWindow : Window
 
         AppLog.Info("Floating", $"点击悬浮按钮：{BindingRef.Describe(actionId)}");
         // 那一下本来就算「点到面板外面」：面板在宿主里，钩子看不到它，由这里说一声。
-        PanelLauncher.Close();
+        // 钉住时宿主不收（工具盘），见 SuperPanel.CloseAfterUse。
+        PanelLauncher.Dismiss();
         // 运行只投递到后台（ActionExecutor / FeatureRunner 自己 spawn），这里是钩子/UI 线程，不能阻塞
         ActionExecutor.RunRef(actionId, 0, 0, RunSource.Floating);
     }

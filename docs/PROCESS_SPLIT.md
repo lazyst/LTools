@@ -1175,6 +1175,49 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   真机点过：拖文件进面板落成动作（含虚线占位与落位）、落完面板不关、钉住后点外部不关、取消钉住后第一下就关、
   长按右键唤起后面板在前台。
 
+**2026-11-25 · P2-M3-5d-c 修正：拖文件进来时占位一直闪**
+
+用户报「拖文件 / 文件夹进去的时候，占位一直闪烁」。根因不是动画，是**占位被清掉再加回来**：
+
+- 占位是 `DragFx.CreateHole` 造的，它自己 `IsHitTestVisible=false`（描边 + 10% 填充，本来就不该命中）。
+- 落点解析用的是 `GroupAt` / `GridAt` → `InputHitTest`。占位插的正是光标那一格，命中于是穿过占位
+  落到块容器（`StackPanel` 没有背景，再往上没有 `Tag = PanelGroupDto` 的祖先）→「光标在哪个分组 /
+  哪个网格」判不出来 → `ShowDropHole` 走到 `ClearDropHole()`；下一次 `DragOver` 又把占位插回去。
+  光标压在占位上时一次一明一灭，看起来就是「一直闪」。
+- 修法：落点**完全按容器矩形算**（`ResolveDropTarget` → 遍历两个区的分组块 + `ContainsPoint`，
+  网格由块里直接取，`InsertIndexAt` 只把点从窗口坐标系换到网格坐标系），`GridAt` / `ZoneContainsPoint`
+  删掉；`Panel_DragLeave` 的清除延后 120ms（`DragLeave` 是冒泡的，光标从一块磁贴挪到另一块也会来一条，
+  同一拍里紧接着的 `DragOver` 会把它撤销），窗口 `OnClosed` 里补一次 `ClearDropHole`。
+- 回归：新增 `tests/PanelDragSmoke`——真开一扇面板、真鼠标拖到网格上、停在上面左右抖 40 次，
+  每 5ms 采样一次「占位还挂着」，断言比例 ≥ 95%。**修之前实测 50%（一次挂一次不挂），修之后 100%**。
+
+**2026-11-26 · P2-M3-5d-c 修正二：钉住 = 工具盘（只有主动关闭才收面板）**
+
+用户报「钉住不符合预期」：钉住之后点一个动作，面板还是收起来了；右键 → 编辑动作，面板也收起来了。
+原来的「钉住」只挡住鼠标钩子的两条路径（点外部 / 右键点外部），其它入口照旧用完即收，
+所以它读起来只是「点外面不关」，而不是用户以为的「工具盘」。
+
+- 规则收成一句话：**钉住时只有 ✕、右键菜单「关闭面板」、`CapsLock+T` 才真关**；
+  执行动作 / 草稿、右键编辑 / 删除 / 导出 / 另存为子动作、Esc、中键点空白都不收。
+- 落地只有两个入口，别再在各处各判一次 `IsPinned`：
+  - `Features/SuperPanel.CloseAfterUse()`（判定是纯函数 `ShouldDismissAfterUse(pinned)`，自测直接断言）：
+    「用完即收」的地方调它（磁贴执行、暂存区卡片执行、点悬浮按钮经链路 `panel.dismiss`；
+    鼠标钩子点外部也改走它，双保险）。钉住就直接返回。
+  - `Features/SuperPanel.StepAside()`（`IDisposable`）：打开编辑器 / 参数框 / 动作池 / 导出对话框前调它。
+    钉住时**只隐藏**（Topmost 面板会盖住模态框、隐藏的 Owner 会把对话框拍成黑块），
+    `Dispose` 时显示回来并 `Activate`；没钉住就照旧先 `Close()`。
+    `IsOpen` 在让开期间仍为 true——面板从没被关掉，只是让开了。
+- Esc：`MouseHook` / `SuperPanel.HandleKey` 在钉住时**既不关也不吞**（Esc 归前台窗口），
+  面板自己的 `RequestEscape` 也加了一道 `if (_pinned) return;`。
+- 链路消息 `panel.close` → **`panel.dismiss`**（`PanelLauncher.Close` → `Dismiss`，
+  `LinkWorker.RequestClose` → `RequestDismiss`）：它的语义本来就是「用完即收」，钉住时宿主不收。
+  只有 `FloatWindow` 与鼠标钩子发它，`✕` / 菜单走的是宿主进程内的 `SuperPanel.Close()`（真关）。
+- 术语：`CONTEXT.md` 的「钉住」改成「面板的『工具盘』状态」；`docs/PANEL_REDESIGN.md` §2.3 / 验收同步。
+- 回归：`--selftest --filter link` 新增 4 条（钉住：点外面不算关闭 / Esc 不吞 / 用完即收不收；
+  取消钉住后三条都对回来）；`tests/PanelDragSmoke` 加 6 条（真窗口：进入工具盘态、Esc 不收、
+  用完即收不收、`StepAside` 让开且未关、Dispose 后自己回来、未钉住时 `StepAside` 照旧关）。
+  冒烟 13/13、自测 398 用例 / 18910 断言全绿。
+
 **2026-11-25 · P2-M3-5d-d `ShareHost` 改名 `UiHost`（它早就是界面宿主，不是共享助手）**
 
 拆分做完之后组件的职责与名字分家了：`ShareHost.exe` 里装着面板 / 速记 / 设置 / 截图 Pro / 编辑器 /

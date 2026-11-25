@@ -205,8 +205,9 @@ internal static class MouseHook
                         if (overSuper)
                         {
                             CancelSuperPanelGesture();
-                            // 面板在宿主里：关它是发 `panel.close`，本事件不吞（右键照常交给光标下窗口）。
-                            PanelLauncher.Close();
+                            // 面板在宿主里：收起它是发 `panel.dismiss`（钉住时宿主不收），
+                            // 本事件不吞（右键照常交给光标下窗口）。
+                            PanelLauncher.Dismiss();
                             _rightPassUpPending = true;
                             break;
                         }
@@ -258,7 +259,7 @@ internal static class MouseHook
                     if (!_panelCloseOnUp) break;
                     _panelCloseOnUp = false;
                     // 抬起也必须在外面才算数：拖文件进面板时松手那一下正要把文件落进来。
-                    if (IsOutsidePanel(panel, ms.Pt.X, ms.Pt.Y)) PanelLauncher.Close();
+                    if (IsOutsidePanel(panel, ms.Pt.X, ms.Pt.Y)) PanelLauncher.Dismiss();
                     break;
             }
             }
@@ -304,7 +305,7 @@ internal static class MouseHook
     /// 这个屏幕点算不算「面板外面」：不在面板矩形里、也不在它开着的右键菜单里。
     /// 面板钉住（`Pinned`）时一律不算——钉住就是「点外面也别关」。
     /// </summary>
-    private static bool IsOutsidePanel(HookMirror.PanelSnapshot panel, int x, int y) =>
+    internal static bool IsOutsidePanel(HookMirror.PanelSnapshot panel, int x, int y) =>
         panel.Open && !panel.Pinned
         && !HookMirror.PanelContains(x, y)
         && !HookMirror.PanelMenuContains(x, y);

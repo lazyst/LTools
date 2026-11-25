@@ -334,7 +334,7 @@
                     </Button>
                     <Button x:Name="PinBtn" Style="{StaticResource BtnGhost}"
                             Width="30" Height="28" Padding="0"
-                            Click="Pin_Click" ToolTip="钉住：点击外部不关闭">
+                            Click="Pin_Click" ToolTip="钉住：点动作、右键编辑都不再收起面板">
                         <TextBlock x:Name="PinIcon" Text="&#xE840;" FontFamily="Segoe MDL2 Assets" FontSize="15"/>
                     </Button>
                     <Button x:Name="CloseBtn" Style="{StaticResource BtnGhost}" Content="✕"

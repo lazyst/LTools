@@ -130,11 +130,15 @@ public partial class SuperPanelWindow
         ExecuteAction(tref.ActionId);
     }
 
-    /// <summary>Esc：拖动中先取消，否则关闭面板。</summary>
+    /// <summary>
+    /// Esc：拖动中先取消；否则关面板。**钉住时不关**——钉住的面板只有主动关闭（✕ / 菜单 /
+    /// CapsLock+T）才收，Esc 属于「顺手按一下」，交给前台窗口用。
+    /// </summary>
     internal void RequestEscape()
     {
         if (_globalDrag.IsActive) { _globalDrag.Cancel(); return; }
         if (_contextDrag.IsActive) { _contextDrag.Cancel(); return; }
+        if (_pinned) return;
         Features.SuperPanel.Close();
     }
 
@@ -145,7 +149,8 @@ public partial class SuperPanelWindow
             ToastService.Show(BindingRef.IsFeature(id) ? "功能不存在：" + id : "动作不存在：" + id);
             return;
         }
-        Features.SuperPanel.Close();
+        // 用完即收；钉住时「工具盘」不消失，见 SuperPanel.CloseAfterUse。
+        Features.SuperPanel.CloseAfterUse();
         ActionExecutor.RunRef(id, _invokeX, _invokeY, RunSource.Panel);
     }
 
@@ -237,7 +242,7 @@ public partial class SuperPanelWindow
         _pinned = pinned;
         PinIcon.Text = pinned ? "\uE842" : "\uE840";
         PinBtn.Foreground = Res(pinned ? "PrimaryBrush" : "SecondaryTextBrush");
-        PinBtn.ToolTip = pinned ? "取消钉住（当前：点击外部不关闭）" : "钉住：点击外部不关闭";
+        PinBtn.ToolTip = pinned ? "取消钉住（当前：只有 ✕ / 这里 / CapsLock+T 才收）" : "钉住：点动作、右键编辑都不再收起面板";
         // 阶段 2：钉住态是钩子判 Esc / 点外关闭的依据，工具栏 Pin_Click 与右键菜单「钉住面板」
         // 都汇到这里，一处推送覆盖两个入口（构造期 _window 还没赋值会推 Empty，Show 后再推有效快照）。
         Features.SuperPanel.PublishMirror();

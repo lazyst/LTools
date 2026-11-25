@@ -190,7 +190,7 @@ dotnet run                                # 72 条，约 7 秒
 
 ```powershell
 cd tests\PanelHostSmoke
-dotnet run                                # 11 条，约 2 秒
+dotnet run                                # 13 条，约 2 秒
 ```
 
 `ConfigStore.InitializeReadOnly` 是宿主进程（界面进程）用的：它要把动作 / 面板 / 快捷键读进内存
@@ -199,6 +199,27 @@ dotnet run                                # 11 条，约 2 秒
 **逐字节相同**（文件名 / 大小 / SHA-256 / 修改时间），并且动作 / 面板 / 种子快捷键都读得到。
 再验只读进程里 `ConfigStore.Save` / `PanelLibrary.Save` 被拒绝（返回 false、目录不变），
 最后拿一个**空数据根**调 `InitializeReadOnly`，断言它不会把默认面板凭空写出来。
+
+### `PanelDragSmoke`（面板拖放：占位不再一明一灭 + 钉住 = 工具盘）
+
+```powershell
+cd tests\PanelDragSmoke
+dotnet run                                # 13 条，约 7 秒
+```
+
+真开一扇 `SuperPanelWindow`（临时数据根里 6 个动作塞进一个分组），用真鼠标把文件从源窗口拖到
+磁贴网格上，**停在网格上左右抖 40 次**，期间每 5ms 采样一次「虚线占位还挂在可视树里」：
+断言挂着比例 ≥ 95%（2026-11-25 那个 bug 是 50%，一次挂一次不挂，看起来就是一直闪）。
+再验松手能落成动作、拖走（不在面板上松手）不建动作且占位收掉。
+
+为什么会闪：占位是 `IsHitTestVisible=false` 的，插到光标那一格时 `InputHitTest` 会穿过它落到
+块容器上；旧实现靠命中测试找网格 → 判不出来 → 每个 `DragOver` 把占位清掉再加回来。
+现在落点解析全按容器矩形算（`ContainsPoint`），`DragLeave` 的清除还延后 120ms，等同一拍里的
+`DragOver` 把它撤销。
+
+后半段是**钉住 = 工具盘**（2026-11-26）：把窗口交给 `Features.SuperPanel` 后钉住，断言
+`RequestEscape` / `CloseAfterUse` 都不收面板；`StepAside`（打开编辑器）只隐藏、`Dispose` 后自己回来；
+取消钉住后 `StepAside` 又回到「先关掉」。
 
 ### `TableSmoke`（表格识别 `screen.table`）
 
