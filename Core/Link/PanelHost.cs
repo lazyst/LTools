@@ -36,8 +36,11 @@ internal static class PanelHost
         // 试运行（编辑器在宿主里）：在提权进程里真跑一次，轨迹按事件推回去。
         if (RunHost.TryHandleAsync(request) is { } run) return run;
 
+        // 宏录制（编辑器在宿主里，录制要钩子）：结束 / 存好按 token 推回去。
+        if (MacroHost.TryHandleAsync(channel, request) is { } macro) return macro;
+
         // 动作级写入（宿主里的面板 / 编辑器）：内容属主还是这里，改完照旧由宿主落盘。
-        if (ActionEditHost.TryHandleAsync(request) is { } edit) return edit;
+        if (ActionEditHost.TryHandleAsync(channel, request) is { } edit) return edit;
 
         return Task.FromResult(Handle(request));
     }
@@ -74,48 +77,6 @@ internal static class PanelHost
 
         switch (op.Op)
         {
-            case PanelOps.AddNew:
-                if (PanelLibrary.FindGroup(op.GroupId) is { } newGroup) PanelActionOps.AddNew(null, newGroup);
-                break;
-
-            case PanelOps.AddExisting:
-                if (PanelLibrary.FindGroup(op.GroupId) is { } existingGroup) PanelActionOps.AddExisting(null, existingGroup);
-                break;
-
-            case PanelOps.Edit:
-                if (!string.IsNullOrEmpty(op.Id)) PanelActionOps.Edit(null, op.Id);
-                break;
-
-            case PanelOps.Delete:
-                if (!string.IsNullOrEmpty(op.Id)) PanelActionOps.Delete(null, op.Id);
-                break;
-
-            case PanelOps.Export:
-                if (!string.IsNullOrEmpty(op.Id)) PanelActionOps.Export(null, op.Id);
-                break;
-
-            case PanelOps.ToSubAction:
-                if (!string.IsNullOrEmpty(op.Id)) PanelActionOps.ToSubAction(null, op.Id);
-                break;
-
-            case PanelOps.Paste:
-                if (PanelLibrary.FindGroup(op.GroupId) is { } pasteGroup)
-                {
-                    PanelActionOps.PasteEntry(pasteGroup, -1,
-                        string.Equals(op.Kind, "copy", StringComparison.OrdinalIgnoreCase),
-                        op.Reference ?? "", op.Name ?? "");
-                }
-                break;
-
-            case PanelOps.DropPaths:
-                if (PanelLibrary.FindGroup(op.GroupId) is { } dropGroup && op.Paths is { Length: > 0 } paths)
-                {
-                    var known = PanelDrop.ExistingPaths();
-                    PanelDrop.Result result = PanelDrop.Build(paths, known.Contains);
-                    PanelDrop.Insert(result.Actions, dropGroup, dropGroup.Actions.Count);
-                }
-                break;
-
             case PanelOps.Float:
                 if (!string.IsNullOrEmpty(op.Id)) FloatingManager.ToggleAction(op.Id);
                 break;
@@ -299,6 +260,10 @@ internal static class PanelHost
 
                 case LinkTargets.Ai:
                     ConfigHelper.OpenAi();
+                    break;
+
+                case LinkTargets.Macros:
+                    ConfigHelper.OpenMacros();
                     break;
 
                 default:

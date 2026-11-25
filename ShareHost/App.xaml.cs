@@ -188,6 +188,7 @@ public partial class App : Application
             InputGuard.Attach(server);
             ProgramRunBridge.Attach(server);
             ActionEditBridge.Attach(server);
+            MacroBridge.Attach(server);
             server.ClientChanged += OnLinkClientChanged;
             server.Start();
 
@@ -323,6 +324,12 @@ public partial class App : Application
             case RunMethods.EventDone:
                 // 试运行的轨迹 / 慢步骤 / 结果：直接交给编辑器（它自己攒批、自己投递 UI 线程）。
                 ProgramRunBridge.OnEvent(message);
+                break;
+
+            case MacroMethods.EventStopped:
+            case MacroMethods.EventSaved:
+                // 录制结束 / 宏已存：编辑器把藏起来的自己显示回来、刷新横幅摘要。
+                MacroBridge.OnEvent(message);
                 break;
         }
     }

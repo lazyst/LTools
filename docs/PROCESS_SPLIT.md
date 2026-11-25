@@ -914,6 +914,38 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   覆盖面、整份动作与答复 / 失败原因往返）；`LinkSmoke` 90（转发阶段真管道走一遍
   「宿主发 `action.add` → 执行器收到整份动作并回带 Id 的 DTO」「`action.update` 被拒时原因到手」；
   面板阶段的新建 / 复制 / 删除改用统一形状）；`PanelHostSmoke` 11。
+  （真机跑出来的那个「嵌套往返」死锁在 5c-2 修掉了，见下一条。）
+
+**2026-11-25 · P2-M3-5c-2 动作编辑器在宿主里（`ActionWrites` + 宏录制过链路）**
+
+- 「搬编辑器」实际搬的是它的**调用方** `PanelActionOps`：新增 / 编辑 / 删除 / 复制 / 导出 /
+  另存为子动作 / 从文件建动作，全部改成宿主里就地做（编辑器、确认框、动作池、导出都是本地窗口）。
+  `PanelActionOps` 里那几条 `PanelHostBridge.TryActionOp(PanelOps.X)` 守卫整体删掉；
+  `PanelOps` 只剩「提权进程才做得了的」十项（悬浮 / 整组悬浮 / 试放宏 / 录制宏 / 暂存区五项）。
+- **UI 不再直接调 `ConfigStore.AddAction` / `UpdateAction` / `RemoveAction` / `DuplicateAction`**：
+  统一走新门面 `Features/ActionWrites`（宿主 → `ActionEditBridge`，执行器 → 本地）。
+  宿主的答复会把动作镜像进本地 `ActionRegistry`（执行器可能补了 Id / 默认图标）；
+  真正涉及引用清理的**删除**由执行器推 `actions.changed`，宿主整份重读——新建 / 覆盖 / 复制
+  不推，否则会和宿主紧接着的面板推送抢同一份 `panel.json`。
+- 编辑器宏横幅的「重新录制」要钩子，新增 `macro.record` / `macro.stop` + `macro.stopped` / `macro.saved`
+  事件（带 token，串台的通知直接丢）；`Features/MacroRecording` 是编辑器唯一入口，执行器分支直接用
+  `MacroRecorder`。「键鼠宏设置」按钮改成 `open.window` 的 `LinkTargets.Macros`（设置窗还在执行器）。
+- **两个必须守住的线程规则（真机踩出来的）**：
+  1. **链路处理器不在读循环上跑**（`LinkChannel.Dispatch` 改成 `Task.Run(RespondAsync)`）：
+     处理器常要再向对端发请求（`panel.replace` 之后落盘又转给宿主写 `panel.json`、
+     `action.update` 之后 `action.saveAll`、删除时的 `hotkeys/panel/triggers` 三个域）。
+     在读循环上同步等答复，等于一边等对端、一边把「收答复」的循环占住，实测 5 秒 / 2 秒超时后降级本地写。
+  2. **要回 UI 线程就用 `Ui.Enqueue`**（没有 dispatcher 就地执行，绝不丢）：
+     `ActionEditHost` 只把活排到 UI 线程并返回一个等它做完的 `Task`，不在读循环上 `Ui.Run`。
+- 顺手修：`PanelActionOps.PasteEntry` 的「源已被删」以前只弹「剪贴板已清空」却没真清，现在真的清
+  （副本分支只在源确实没了时清，链路超时留着还能再粘）。
+- 真机验证（普通权限宿主里的窗口）：面板「编辑」→ 改名 → 确定 → `actions/<id>/action.json` 与
+  `history/` 都由宿主写入、面板磁贴跟着改名；「新建动作」「复制为副本 + 粘贴」「删除动作」各自走通
+  （删除把目录移进 `trash/`、`panel.json` 摘掉槽位、宿主收到 `actions.changed` 后面板刷新），
+  执行器日志无 `action.saveAll` / `data.write` 超时。
+- 回归：`--selftest` 393 用例 / 18829 断言（`link` 组 357：宏录制四条方法名与负载往返）；
+  `LinkSmoke` 93（新增「宿主发 `macro.record` → 执行器回开始了 → 结束 / 保存按 token 回来」）；
+  `PanelHostSmoke` 11；`PanelClipboardSmoke` 27（含「源被删后剪贴板清空」）。
 
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
@@ -983,7 +1015,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主。**编辑器与宏页并进第 5 步**：打开编辑器的调用方（`PanelActionOps`）与设置页都在提权进程里，单独搬窗口就得连动作内容写权、`staging/`、设置入口一起翻——那正是第 5 步的范围（见 §14 `P2-M3-5a` 的顺序说明）。 |
-| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2**：动作编辑器 / 面板动作操作在宿主（`PanelActionOps` 改调 `ActionEditBridge`）。**5c-3**：设置窗口（含子动作库 / 宏页）搬进宿主。**5d**：MCP 写、`data.changed` 收尾 |
+| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3**：设置窗口（含子动作库 / 宏页）搬进宿主。**5d**：MCP 写、`data.changed` 收尾 |
 | 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
 
 > **顺序更正（2026-11-24，看过代码之后）**：原方案把「采集历史 / 贴图管理」排在截图 Pro 前面，实际排不了——

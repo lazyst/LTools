@@ -1100,7 +1100,12 @@ public partial class ConfigHelperWindow : Window
         var dlg = new ActionHistoryDialog(this, cur);
         if (dlg.ShowDialog() != true || dlg.Result == null) return;
 
-        ConfigStore.UpdateAction(dlg.Result);
+        if (!ActionWrites.Update(dlg.Result, out string? restoreError))
+        {
+            ConfirmDialog.Info(this, "动作历史", restoreError);
+            return;
+        }
+
         PopulateActions();
         MarkDirty();
         ToastService.Show($"已恢复「{cur.Name}」的历史版本（恢复前的版本也进了历史）",
@@ -1122,7 +1127,11 @@ public partial class ConfigHelperWindow : Window
     {
         var dto = ActionEditor.Show(this, "新建动作", null);
         if (dto == null) return;
-        ConfigStore.AddAction(dto);
+        if (!ActionWrites.Add(dto, out string? addError))
+        {
+            ConfirmDialog.Info(this, "新建动作", addError);
+            return;
+        }
         PopulateActions();
         // 选中新动作
         for (int i = 0; i < _actionRows.Count; i++)
@@ -1137,7 +1146,11 @@ public partial class ConfigHelperWindow : Window
         var dto = ActionEditor.Show(this, "编辑动作", cur);
         if (dto == null) return;
         dto.Id = cur.Id;   // 保留原 Id（编辑不换 Id）
-        ConfigStore.UpdateAction(dto);
+        if (!ActionWrites.Update(dto, out string? updateError))
+        {
+            ConfirmDialog.Info(this, "保存动作", updateError);
+            return;
+        }
         PopulateActions();
         MarkDirty();
     }
@@ -1146,8 +1159,12 @@ public partial class ConfigHelperWindow : Window
     {
         var cur = SelectedAction();
         if (cur == null) return;
-        var copy = ConfigStore.DuplicateAction(cur.Id);
-        if (copy == null) return;
+        var copy = ActionWrites.Duplicate(cur.Id, out string? copyError);
+        if (copy == null)
+        {
+            ConfirmDialog.Info(this, "复制动作", copyError);
+            return;
+        }
         PopulateActions();
         for (int i = 0; i < _actionRows.Count; i++)
             if (_actionRows[i].Id == copy.Id) { ActionList.SelectedIndex = i; break; }
@@ -1165,7 +1182,11 @@ public partial class ConfigHelperWindow : Window
     {
         if (!ConfirmDialog.Confirm(this, "删除动作", ActionRemoval.ConfirmMessage(id), danger: true)) return;
 
-        ConfigStore.RemoveAction(id);   // 内含清快捷键 / 面板 / 触发规则 / 悬浮引用与资源回收
+        if (!ActionWrites.Delete(id, out string? deleteError))
+        {
+            ConfirmDialog.Info(this, "删除动作", deleteError);
+            return;
+        }
         RefreshCreatedPages();          // 只刷已经建出来的页（含动作管理），别为没打开过的页强建视图
         MarkDirty();
     }

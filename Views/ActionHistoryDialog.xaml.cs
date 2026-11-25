@@ -17,7 +17,7 @@ namespace LTools.Views;
 /// 所以这里的列表就是「这个动作最近 10 次改动前后的样子」。
 /// </para>
 /// <para>
-/// 只返回选中的那份内容（<see cref="Result"/>），落盘由调用方走 <c>ConfigStore.UpdateAction</c>：
+/// 只返回选中的那份内容（<see cref="Result"/>），落盘由调用方走 <c>ActionWrites.Update</c>：
 /// 恢复本身也会产生一条新快照，所以「恢复错了」还能再恢复回来。
 /// </para>
 /// </remarks>

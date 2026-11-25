@@ -134,7 +134,8 @@ internal static class PanelDrop
 
         foreach (ActionDto action in actions)
         {
-            if (!ConfigStore.AddAction(action)) continue;
+            // 动作的写入归执行器（宿主里经链路转过去，Id 由它补）。
+            if (!ActionWrites.Add(action, out _)) continue;
 
             // 动作体里的 Id / 名称 / 图标跟外层对齐（落盘时读的是这一份）。
             if (action.Program is { } program)
@@ -150,7 +151,6 @@ internal static class PanelDrop
 
         if (added == 0) return 0;
 
-        ConfigStore.Save();
         PanelLibrary.Save();
         return added;
     }

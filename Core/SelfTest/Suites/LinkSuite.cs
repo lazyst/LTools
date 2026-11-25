@@ -159,7 +159,8 @@ internal static class LinkSuite
             LinkMethods.EventInputSuspend, LinkMethods.EventPinState, LinkMethods.EventRecordKeys,
             SubActionMethods.Save, SubActionMethods.Delete, LinkMethods.EventConfigReload,
             RunMethods.Program, RunMethods.Stop, RunMethods.EventTrace, RunMethods.EventSlow,
-            RunMethods.EventDone,
+            RunMethods.EventDone, MacroMethods.Record, MacroMethods.Stop,
+            MacroMethods.EventStopped, MacroMethods.EventSaved,
         };
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
@@ -527,13 +528,12 @@ internal static class LinkSuite
         }
 
         // 面板操作名也互不相同（提权侧 switch 按字符串分发，重名会让一个操作永远到不了）。
+        // 只剩「提权进程才做得了的」：建 / 改 / 删 / 复制动作已改成 action.* 那一组。
         var ops = new[]
         {
-            PanelOps.AddNew, PanelOps.AddExisting, PanelOps.Edit, PanelOps.Delete, PanelOps.Paste,
-            PanelOps.Export, PanelOps.ToSubAction, PanelOps.DropPaths, PanelOps.Float,
-            PanelOps.FloatGroup, PanelOps.ReplayMacro, PanelOps.RecordMacro, PanelOps.EditInStash,
-            PanelOps.StashOpen, PanelOps.StashRun, PanelOps.StashPromote, PanelOps.StashDelete,
-            PanelOps.StashClear,
+            PanelOps.Float, PanelOps.FloatGroup, PanelOps.ReplayMacro, PanelOps.RecordMacro,
+            PanelOps.EditInStash, PanelOps.StashOpen, PanelOps.StashRun, PanelOps.StashPromote,
+            PanelOps.StashDelete, PanelOps.StashClear,
         };
         Check.Equal(ops.Length, new HashSet<string>(ops, StringComparer.Ordinal).Count, "面板操作名互不相同");
         Check.True(ops.All(o => o.Length > 0), "面板操作名都不为空");
@@ -569,19 +569,9 @@ internal static class LinkSuite
         Check.Equal(LinkTargets.Ai, ai?.Target, "打开窗口：AI 接入目标原样");
 
         ActionOpRequest? op = RoundTrip(LinkMessage.Request(8, LinkMethods.ActionOp,
-            new ActionOpRequest(PanelOps.Paste, GroupId: "g1", Kind: "copy", Reference: "01abc", Name: "报表")))
-            .Read<ActionOpRequest>();
-        Check.Equal(PanelOps.Paste, op?.Op, "面板操作：操作名原样");
+            new ActionOpRequest(PanelOps.FloatGroup, GroupId: "g1"))).Read<ActionOpRequest>();
+        Check.Equal(PanelOps.FloatGroup, op?.Op, "面板操作：操作名原样");
         Check.Equal("g1", op?.GroupId, "面板操作：分组原样");
-        Check.Equal("copy", op?.Kind, "面板操作：粘贴类别原样");
-        Check.Equal("01abc", op?.Reference, "面板操作：引用原样");
-        Check.Equal("报表", op?.Name, "面板操作：名字原样");
-
-        ActionOpRequest? drop = RoundTrip(LinkMessage.Request(9, LinkMethods.ActionOp,
-            new ActionOpRequest(PanelOps.DropPaths, GroupId: "g1",
-                Paths: new[] { @"C:\a.txt", @"C:\b" }))).Read<ActionOpRequest>();
-        Check.Equal(2, drop?.Paths?.Length ?? -1, "面板操作：路径列表原样");
-        Check.Equal(@"C:\b", drop?.Paths is { Length: 2 } p ? p[1] : null, "面板操作：路径内容原样");
 
         ActionOpRequest? macro = RoundTrip(LinkMessage.Request(10, LinkMethods.ActionOp,
             new ActionOpRequest(PanelOps.RecordMacro, Id: "m1", Name: "报表宏"))).Read<ActionOpRequest>();
@@ -594,6 +584,26 @@ internal static class LinkSuite
         Check.Equal(PanelOps.StashPromote, stash?.Op, "面板操作：暂存区采纳原样");
         Check.Equal("d1", stash?.Id, "面板操作：草稿 Id 原样");
         Check.Equal("replace", stash?.Kind, "面板操作：采纳方式原样");
+
+        // 宏录制（编辑器在宿主里）：请求带 token，结束 / 存好的事件按同一个 token 回来。
+        // 方法名放进上面的互不相同名单，这里只验负载。
+        MacroRecordRequest? macroReq = RoundTrip(LinkMessage.Request(60, MacroMethods.Record,
+            new MacroRecordRequest("t1", "m1", "报表宏"))).Read<MacroRecordRequest>();
+        Check.Equal("t1", macroReq?.Token, "宏录制请求：token 原样");
+        Check.Equal("m1", macroReq?.Id, "宏录制请求：宏 Id 原样");
+        Check.Equal("报表宏", macroReq?.Name, "宏录制请求：宏名原样");
+
+        MacroRecordReply? macroReply = RoundTrip(LinkMessage.Response(
+                LinkMessage.Request(61, MacroMethods.Record), new MacroRecordReply(false, "宏功能已停用")))
+            .Read<MacroRecordReply>();
+        Check.True(macroReply is { Started: false } && macroReply.Error == "宏功能已停用", "宏录制答复往返");
+
+        MacroRecordEvent? macroStopped = RoundTrip(LinkMessage.Request(62, MacroMethods.EventStopped,
+            new MacroRecordEvent("t1"))).Read<MacroRecordEvent>();
+        Check.Equal("t1", macroStopped?.Token, "录制结束通知：token 原样");
+        MacroRecordEvent? macroSaved = RoundTrip(LinkMessage.Request(63, MacroMethods.EventSaved,
+            new MacroRecordEvent("t1", "m1"))).Read<MacroRecordEvent>();
+        Check.True(macroSaved is { MacroId: "m1" }, "宏已保存通知：宏 Id 原样");
 
         // 快照：整份面板配置 + 动作摘要都要原样回来。
         var panel = new PanelConfig

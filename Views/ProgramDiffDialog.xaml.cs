@@ -8,7 +8,7 @@ namespace LTools.Views;
 /// </summary>
 /// <remarks>
 /// 只负责展示与「继续 / 取消」，不落盘——采纳与恢复仍走各自的既有路径
-/// （<see cref="LTools.Core.Ai.DraftPromoter"/> / <c>ConfigStore.UpdateAction</c>）。
+/// （<see cref="LTools.Core.Ai.DraftPromoter"/> / <c>ActionWrites.Update</c>）。
 /// </remarks>
 public partial class ProgramDiffDialog : Window
 {

@@ -28,7 +28,7 @@ namespace LTools.Views;
 /// 工具箱完全由 <see cref="StepRegistry"/> 的 <see cref="UnitSpec"/> 生成：
 /// 新增一个动作单元不需要改这个窗口（W4 验收）。
 /// </para>
-/// <para>保存契约不变：<see cref="Result"/> 由调用方 <c>ConfigStore.AddAction</c> / <c>UpdateAction</c> 落盘。</para>
+/// <para>保存契约不变：<see cref="Result"/> 由调用方 <c>ActionWrites.Add</c> / <c>Update</c> 落盘。</para>
 /// </remarks>
 public partial class ActionEditorWindow : Window
 {
@@ -195,19 +195,19 @@ public partial class ActionEditorWindow : Window
             _traceFlush?.Stop();
             _autosaveTimer?.Stop();
             if (_running) ProgramRunner.Stop();
-            MacroRecorder.RecordingStopped -= OnMacroRecordingStopped;
-            MacroRecorder.MacroSaved -= OnMacroSavedRefresh;
+            MacroRecording.Stopped -= OnMacroRecordingStopped;
+            MacroRecording.Saved -= OnMacroSavedRefresh;
             // 关窗时还在重录（窗口是藏起来的，用户看不到）：先收尾保存，别留下无界面的录制。
-            if (_macroHidden && MacroRecorder.IsRecording)
+            if (_macroHidden && MacroRecording.IsRecording)
             {
                 _macroHidden = false;
-                MacroRecorder.Stop(force: true);
+                MacroRecording.Stop(force: true);
             }
             _macroHidden = false;
         };
 
-        MacroRecorder.RecordingStopped += OnMacroRecordingStopped;
-        MacroRecorder.MacroSaved += OnMacroSavedRefresh;
+        MacroRecording.Stopped += OnMacroRecordingStopped;
+        MacroRecording.Saved += OnMacroSavedRefresh;
 
         Loaded += (_, _) =>
         {

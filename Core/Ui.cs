@@ -54,4 +54,23 @@ internal static class Ui
         }
         d.Invoke(action);
     }
+
+    /// <summary>
+    /// 排到主 UI 线程执行、**不等**；没有 dispatcher（自测 / 控制台冒烟）时就地执行。
+    /// </summary>
+    /// <remarks>
+    /// 链路读循环用它接「必须回 UI 线程做、但答复要等做完」的请求：读循环只交出去就返回，
+    /// 才能继续收对端发回来的其它答复（自己阻塞等 UI 会把它自己卡死，见 <c>ActionEditHost</c>）。
+    /// 和 <see cref="Post"/> 的区别只有一个：这里**绝不丢**（没有 UI 线程就当场做）。
+    /// </remarks>
+    public static void Enqueue(Action action)
+    {
+        var d = _dispatcher;
+        if (d == null || d.CheckAccess())
+        {
+            action();
+            return;
+        }
+        d.BeginInvoke(action);
+    }
 }

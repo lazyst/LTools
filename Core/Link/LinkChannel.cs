@@ -197,7 +197,10 @@ internal sealed class LinkChannel : IAsyncDisposable
                 break;
 
             default:
-                _ = RespondAsync(message);
+                // **必须在别的线程上跑处理器**：处理器可能会再向对端发请求（例如面板整份替换之后，
+                // 落盘那一步又转给宿主写 panel.json）。在读循环上同步做，就等于一边等对端答复、
+                // 一边把「收答复」的循环占着——对端答得再快也永远收不到（实测 2 秒超时后降级本地写）。
+                _ = Task.Run(() => RespondAsync(message));
                 break;
         }
     }

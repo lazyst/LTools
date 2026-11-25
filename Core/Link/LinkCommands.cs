@@ -249,22 +249,17 @@ internal static class LinkTargets
 
     /// <summary>设置 → AI 接入（暂存区页的「AI 接入设置…」）。</summary>
     public const string Ai = "ai";
+
+    /// <summary>设置 → 键鼠宏（编辑器宏横幅的「键鼠宏设置」）。</summary>
+    public const string Macros = "macros";
 }
 
-/// <summary>面板的动作级操作（<>PanelActionOps</> 里那些会建 / 删动作或开编辑器的入口）。</summary>
+/// <summary>
+/// 面板的结构与执行类操作（**只剩提权进程才做得了的**）。建 / 改 / 删 / 复制动作本身走
+/// <c>action.add</c> 那一组（M3-5c-2 起面板与编辑器都在宿主里，不再绕 <c>panel.op</c>）。
+/// </summary>
 internal static class PanelOps
 {
-    public const string AddNew = "addNew";
-    public const string AddExisting = "addExisting";
-    public const string Edit = "edit";
-    public const string Delete = "delete";
-    public const string Paste = "paste";
-    public const string Export = "export";
-    public const string ToSubAction = "toSubAction";
-
-    /// <summary>从文件 / 文件夹创建动作（宿主把路径列表转过去，主程序建动作再落盘）。</summary>
-    public const string DropPaths = "dropPaths";
-
     /// <summary>悬浮 / 取消悬浮一个动作（悬浮窗在提权进程）。</summary>
     public const string Float = "float";
 
@@ -297,15 +292,13 @@ internal static class PanelOps
 }
 
 /// <summary>
-/// 一次面板动作操作。字段按操作取用：新建 / 添加已有要 <see cref="GroupId"/>；
-/// 编辑 / 删除 / 导出 / 另存为子动作要 <see cref="Id"/>；粘贴要 <see cref="Kind"/> + <see cref="Reference"/>；
-/// 从文件建动作要 <see cref="GroupId"/> + <see cref="Paths"/>。
+/// 一次面板操作。字段按操作取用：悬浮整组 / 暂存区建草稿要 <see cref="GroupId"/>；
+/// 悬浮 / 编辑草稿 / 试放宏 / 重新录制要 <see cref="Id"/>；暂存区采纳要 <see cref="Kind"/>；
+/// 重新录制还要 <see cref="Name"/>（宏名）。
 /// </summary>
 internal sealed record ActionOpRequest(
     string Op,
     string? Id = null,
     string? GroupId = null,
     string? Kind = null,
-    string? Reference = null,
-    string? Name = null,
-    string[]? Paths = null);
+    string? Name = null);

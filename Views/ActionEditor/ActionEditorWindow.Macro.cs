@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using LTools.Core;
+using LTools.Core.Link;
 using LTools.Features;
 
 namespace LTools.Views;
@@ -40,15 +41,30 @@ public partial class ActionEditorWindow
     /// <summary>重新录制：窗口先让开（录制期间钩子透明，编辑器上的点击也会被录进去），停止后恢复。</summary>
     private void MacroRerecord_Click(object sender, RoutedEventArgs e)
     {
-        if (_macroId == null || MacroRecorder.IsRecording) return;
+        if (_macroId == null || MacroRecording.IsRecording) return;
 
         _macroHidden = true;
         Hide();
-        MacroRecorder.StartInto(_macroId, MacroTitle.Text);
-        if (!MacroRecorder.IsRecording) RestoreAfterMacroRecording();   // 被拒绝（没启用 / 正在回放）
+        // 录制要钩子：宿主里的编辑器经 MacroRecording 转给执行器，结束 / 存好按 token 回来。
+        if (!MacroRecording.StartInto(_macroId, MacroTitle.Text, out string? error))
+        {
+            RestoreAfterMacroRecording();
+            if (!string.IsNullOrEmpty(error))
+                ToastService.Show(error, "键鼠宏", ToastService.LongMs, ToastKind.error, key: "macro:record:hint");
+        }
     }
 
-    private void MacroSettings_Click(object sender, RoutedEventArgs e) => ConfigHelper.OpenMacros();
+    private void MacroSettings_Click(object sender, RoutedEventArgs e)
+    {
+        // 设置窗口还在提权进程里（M3-5c-3 才搬）：宿主里要转过去，别以为自己开得出来。
+        if (AppRole.IsUiHost)
+        {
+            PanelHostBridge.TryOpen(LinkTargets.Macros);
+            return;
+        }
+
+        ConfigHelper.OpenMacros();
+    }
 
     private void OnMacroRecordingStopped()
     {

@@ -69,17 +69,6 @@ public partial class SuperPanelWindow
     /// <summary>建动作 → 落进分组 → 重建面板 → 一条 toast（创建 / 已有 / 找不到各说一句）。</summary>
     private void AddPathsTo(PanelGroupDto group, IReadOnlyList<string> paths)
     {
-        // 只读预览：建动作要写 actions/，转给主程序（它建完会推 actions.changed，宿主再重读刷新）。
-        if (_preview)
-        {
-            if (PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.DropPaths, GroupId: group.Id, Paths: paths.ToArray())))
-            {
-                ToastService.Show($"已交给主程序创建动作（{paths.Count} 个路径）", "面板",
-                    2500, ToastKind.success, key: "panel:dropfiles");
-                return;
-            }
-        }
-
         var known = PanelDrop.ExistingPaths();
         PanelDrop.Result result = PanelDrop.Build(paths, known.Contains);
         int added = PanelDrop.Insert(result.Actions, group, group.Actions.Count);

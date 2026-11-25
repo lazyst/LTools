@@ -153,6 +153,7 @@ internal static class Program
         var runTrace = new TaskCompletionSource<TraceBatchEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
         var runDone = new TaskCompletionSource<RunDoneEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
         var added = new TaskCompletionSource<ActionDto>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var macroStarted = new TaskCompletionSource<MacroRecordRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         var opsSeen = new ConcurrentQueue<ActionOpRequest>();
 
         var server = new LinkServer(pipe, "fwd-token",
@@ -196,6 +197,8 @@ internal static class Program
                     runTrace.TrySetResult(batch);
                 if (message.Method == RunMethods.EventDone && message.Read<RunDoneEvent>() is { } done)
                     runDone.TrySetResult(done);
+                if (message.Method is MacroMethods.EventStopped or MacroMethods.EventSaved)
+                    MacroBridge.OnEvent(message);
             });
         server.Start();
         LinkClient? client = null;
@@ -227,6 +230,25 @@ internal static class Program
                             catch (Exception ex) { Console.WriteLine("推试运行事件失败：" + ex.Message); }
                         });
                         return Task.FromResult(LinkMessage.Response(request, new RunProgramReply(true, null)));
+                    }
+
+                    // 宏录制（宿主 → 执行器）：录制要钩子，结束 / 存好按同一个 token 推回来。
+                    if (request.Method == MacroMethods.Record
+                        && request.Read<MacroRecordRequest>() is { } macroRecord)
+                    {
+                        macroStarted.TrySetResult(macroRecord);
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await channel.NotifyAsync(MacroMethods.EventStopped,
+                                    new MacroRecordEvent(macroRecord.Token));
+                                await channel.NotifyAsync(MacroMethods.EventSaved,
+                                    new MacroRecordEvent(macroRecord.Token, macroRecord.Id));
+                            }
+                            catch (Exception ex) { Console.WriteLine("推宏录制事件失败：" + ex.Message); }
+                        });
+                        return Task.FromResult(LinkMessage.Response(request, new MacroRecordReply(true, null)));
                     }
 
                     // 动作级写入（宿主 → 执行器）：内容属主在执行器，回一份保存后的动作。
@@ -276,20 +298,6 @@ internal static class Program
             Check("打开目标原样", opened.Task.IsCompletedSuccessfully && opened.Task.Result.Target == LinkTargets.Settings,
                 opened.Task.IsCompletedSuccessfully ? opened.Task.Result.ToString() : "");
 
-            // ---- 动作级操作：宿主新建动作转给提权进程（不在宿主里开编辑器 / 建文件）----
-            var group = new PanelGroupDto { Id = "g1", Name = "常用" };
-            ActionDto? created = PanelActionOps.AddNew(null, group);
-            Check("宿主新建动作被接管（不本地开编辑器）", created == null);
-
-            Task opDone = await Task.WhenAny(operated.Task, Task.Delay(2000));
-            Check("面板操作转给了提权进程", ReferenceEquals(opDone, operated.Task),
-                ReferenceEquals(opDone, operated.Task) ? null : "2 秒内没收到");
-            Check("操作名 / 分组原样",
-                operated.Task.IsCompletedSuccessfully
-                && operated.Task.Result.Op == PanelOps.AddNew
-                && operated.Task.Result.GroupId == "g1",
-                operated.Task.IsCompletedSuccessfully ? operated.Task.Result.ToString() : "");
-
             // ---- 悬浮 / 宏 / 暂存区：宿主里也统一走 panel.op（不在宿主里碰钩子 / 悬浮窗 / staging）----
             Check("悬浮被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.Float, Id: "01nothing")));
             Check("悬浮整组被接管", PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.FloatGroup, GroupId: "g1")));
@@ -308,7 +316,7 @@ internal static class Program
             for (int i = 0; i < 40 && seen.Count < 10; i++)
             {
                 await Task.Delay(50);
-                seen = opsSeen.Select(o => o.Op).Where(o => o != PanelOps.AddNew).ToList();
+                seen = opsSeen.Select(o => o.Op).ToList();
             }
 
             Check("十个操作全部到达提权进程",
@@ -427,6 +435,32 @@ internal static class Program
             Check("结果推回了宿主", ReferenceEquals(runDoneArrived, runDone.Task)
                 && runDone.Task.IsCompletedSuccessfully && runDone.Task.Result.Token == "t9",
                 ReferenceEquals(runDoneArrived, runDone.Task) ? null : "2 秒内没收到");
+
+            // 宏录制：编辑器在宿主里，录制要在执行器（钩子那侧）做，结束 / 存好按 token 回来。
+            MacroBridge.Attach(server);
+            var macroStopped = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var macroSaved = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            MacroBridge.Stopped += () => macroStopped.TrySetResult(true);
+            MacroBridge.Saved += id => macroSaved.TrySetResult(id);
+
+            bool macroOk = MacroBridge.StartInto("m1", "冒烟宏", out string? macroError);
+            Check("宏录制请求送到了执行器", macroOk, macroError);
+            Check("宿主记着「正在录制」", MacroBridge.IsRecording);
+
+            Task macroStartDone = await Task.WhenAny(macroStarted.Task, Task.Delay(2000));
+            Check("执行器收到宏 Id / 名字", ReferenceEquals(macroStartDone, macroStarted.Task)
+                && macroStarted.Task.Result.Id == "m1" && macroStarted.Task.Result.Name == "冒烟宏",
+                ReferenceEquals(macroStartDone, macroStarted.Task) ? null : "2 秒内没收到");
+
+            Task macroStopDone = await Task.WhenAny(macroStopped.Task, Task.Delay(2000));
+            Check("录制结束通知回来了", ReferenceEquals(macroStopDone, macroStopped.Task),
+                ReferenceEquals(macroStopDone, macroStopped.Task) ? null : "2 秒内没收到");
+            Check("结束之后不再算录制中", !MacroBridge.IsRecording);
+
+            Task macroSavedDone = await Task.WhenAny(macroSaved.Task, Task.Delay(2000));
+            Check("宏已保存通知回来了", ReferenceEquals(macroSavedDone, macroSaved.Task)
+                && macroSaved.Task.Result == "m1",
+                ReferenceEquals(macroSavedDone, macroSaved.Task) ? null : "2 秒内没收到");
 
             // 动作级写入：宿主里的编辑器保存 → 执行器改内存 + 落盘（回一个带 Id 的动作）。
             ActionEditBridge.Attach(server);

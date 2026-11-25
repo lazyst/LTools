@@ -25,14 +25,15 @@ internal static class PanelActionOps
     /// <summary>新建动作并加入分组；返回新动作（取消返回 null）。</summary>
     public static ActionDto? AddNew(Window? owner, PanelGroupDto group)
     {
-        // 普通权限宿主：编辑器与动作文件都在主程序里，转过去。
-        if (PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.AddNew, GroupId: group.Id))) return null;
-
         var dto = ActionEditor.Show(owner, "新建动作", null);
-
         if (dto == null) return null;
-        ConfigStore.AddAction(dto);
-        ConfigStore.Save();
+
+        if (!ActionWrites.Add(dto, out string? error))
+        {
+            ConfirmDialog.Info(owner, "新建动作", error);
+            return null;
+        }
+
         group.Actions.Add(dto.Id);
         PanelLibrary.Save();
         return dto;
@@ -41,8 +42,6 @@ internal static class PanelActionOps
     /// <summary>从动作池选一个已有动作加入分组。</summary>
     public static bool AddExisting(Window? owner, PanelGroupDto group)
     {
-        if (PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.AddExisting, GroupId: group.Id))) return true;
-
         var picker = new ActionPoolPicker(owner, "面板分组 — 选择动作", null);
         picker.ShowDialog();
         if (picker.Result == null) return false;
@@ -85,7 +84,7 @@ internal static class PanelActionOps
 
     /// <summary>
     /// 把一条剪贴板条目粘进分组（引用 = 再加一颗磁贴；副本 = 现复制一份新动作）。
-    /// 宿主与提权进程共用：宿主把条目字段随 <c>panel.op</c> 一起传过去。
+    /// 源已经不在了（动作被删 / 内置功能下线）就清空剪贴板并提示——留着一个粘不动的东西只会误导。
     /// </summary>
     internal static bool PasteEntry(PanelGroupDto group, int index, bool copy, string reference, string name)
     {
@@ -95,6 +94,7 @@ internal static class PanelActionOps
         {
             if (!BindingRef.Exists(reference))
             {
+                ActionClipboard.Clear();
                 ToastService.Show($"「{name}」已经不存在了，剪贴板已清空", "粘贴", 4000, ToastKind.error);
                 return false;
             }
@@ -107,14 +107,15 @@ internal static class PanelActionOps
             return true;
         }
 
-        var copyDto = ConfigStore.DuplicateAction(reference);
+        var copyDto = ActionWrites.Duplicate(reference, out string? error);
         if (copyDto == null)
         {
-            ToastService.Show("原动作已经不存在了，剪贴板已清空", "粘贴副本", 4000, ToastKind.error);
+            // 只有「源真的没了」才清；链路超时这类失败留着，重试还能粘上。
+            if (!BindingRef.Exists(reference)) ActionClipboard.Clear();
+            ToastService.Show(error ?? "原动作已经不存在了", "粘贴副本", 4000, ToastKind.error);
             return false;
         }
 
-        ConfigStore.Save();                        // 新动作先落盘（actions/<新 id>/），再挂进面板
         InsertAt(group, index, copyDto.Id);
         PanelLibrary.Save();
         ConfigStore.NotifyChanged();
@@ -133,28 +134,32 @@ internal static class PanelActionOps
     /// <summary>编辑分组里的动作；返回是否发生了修改。</summary>
     public static bool Edit(Window? owner, string id)
     {
-        if (PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.Edit, Id: id))) return false;
-
         var cur = ActionRegistry.FindById(id);
         if (cur == null) return false;
 
         var dto = ActionEditor.Show(owner, "编辑动作", cur);
         if (dto == null) return false;
         dto.Id = cur.Id;
-        ConfigStore.UpdateAction(dto);
-        ConfigStore.Save();
+
+        if (!ActionWrites.Update(dto, out string? error))
+        {
+            ConfirmDialog.Info(owner, "保存动作", error);
+            return false;
+        }
         return true;
     }
 
     /// <summary>删除动作（确认框列出面板引用位置）；返回是否删除。</summary>
     public static bool Delete(Window? owner, string id)
     {
-        if (PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.Delete, Id: id))) return false;
-
         if (!ConfirmDialog.Confirm(owner, "删除动作", ActionRemoval.ConfirmMessage(id), danger: true))
             return false;
 
-        ConfigStore.RemoveAction(id);
+        if (!ActionWrites.Delete(id, out string? error))
+        {
+            ConfirmDialog.Info(owner, "删除动作", error);
+            return false;
+        }
         return true;
     }
 
@@ -164,8 +169,6 @@ internal static class PanelActionOps
     /// </summary>
     public static void Export(Window? owner, string id)
     {
-        if (PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.Export, Id: id))) return;
-
         var action = ActionRegistry.FindById(id);
         if (action == null) return;
 
@@ -209,8 +212,11 @@ internal static class PanelActionOps
         var saved = ActionEditor.Show(owner, "子动作另存为动作", dto);
         if (saved == null) return false;
 
-        if (!ConfigStore.AddAction(saved)) return false;
-        ConfigStore.Save();
+        if (!ActionWrites.Add(saved, out string? addError))
+        {
+            ConfirmDialog.Info(owner, "另存为动作", addError);
+            return false;
+        }
 
         ToastService.Show($"已新建动作「{saved.Name}」，在动作管理里能看到它。",
             "另存为动作", 3000, ToastKind.success);
@@ -223,8 +229,6 @@ internal static class PanelActionOps
     /// </summary>
     public static bool ToSubAction(Window? owner, string id)
     {
-        if (PanelHostBridge.TryActionOp(new ActionOpRequest(PanelOps.ToSubAction, Id: id))) return false;
-
         var action = ActionRegistry.FindById(id);
         if (action == null) return false;
 

@@ -573,8 +573,11 @@ public partial class ActionPoolPicker : Window
         var dto = ActionEditor.Show(this, "新建动作", null);   // 池内新建可建组合（分发器自动开对应窗口）
         if (dto == null) return;
 
-        ConfigStore.AddAction(dto);
-        ConfigStore.Save();
+        if (!ActionWrites.Add(dto, out string? error))
+        {
+            ConfirmDialog.Info(this, "新建动作", error);
+            return;
+        }
         Result = dto.Id;
         _preselectMissing = false;
 
