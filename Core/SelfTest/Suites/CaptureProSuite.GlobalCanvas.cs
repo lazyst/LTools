@@ -106,6 +106,14 @@ internal static partial class CaptureProSuite
         Check.Equal(0.32, GlobalCanvasLayout.ToolbarOpacity(true, false), "穿透时工具条 0.32");
         Check.Equal(1.0, GlobalCanvasLayout.ToolbarOpacity(true, true), "穿透但指针停在工具条上恢复 1.0");
         Check.Equal(50, GlobalCanvasLayout.OpacityPollMs, "指针轮询 50ms");
+
+        // ============ 穿透期间窗口要不要吃鼠标（WS_EX_TRANSPARENT） ============
+        // 工具条与画布同窗：指针在工具条上时必须把鼠标要回来，否则工具条自己也点不到。
+        Check.True(!GlobalCanvasLayout.MouseTransparent(false, false), "不穿透时窗口永远吃鼠标");
+        Check.True(!GlobalCanvasLayout.MouseTransparent(false, true), "不穿透时指针在工具条上也照常吃鼠标");
+        Check.True(GlobalCanvasLayout.MouseTransparent(true, false), "穿透时指针不在工具条上 = 全透过去");
+        Check.True(!GlobalCanvasLayout.MouseTransparent(true, true), "穿透时指针在工具条上 = 不吃鼠标（工具条要能点）");
+        Check.True(GlobalCanvasLayout.ClickThroughPollMs <= 16, "穿透期间按帧轮询（慢一拍就会漏点）");
     }
 
     private static void GlobalCanvasLaserCases()

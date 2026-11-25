@@ -28,8 +28,9 @@
     </Window.Resources>
 
     <!-- 铺底 alpha = 2（照上游 renderBeforeCanvas 的 QColor(0, 0, 0, 2)）：
-         分层窗口在零 alpha 像素上会把输入漏出去，所以编辑态必须垫一层几乎全透明的底；
-         点击穿透走 WM_NCHITTEST（工具条以外返回 HTTRANSPARENT），不靠 alpha。 -->
+         分层窗口在零 alpha 像素上会把输入漏出去，所以编辑态必须垫一层几乎全透明的底。
+         点击穿透不用 alpha 那套（画面上任何一笔 alpha 都不是 0，会把下面的程序挡住），
+         走窗口的 WS_EX_TRANSPARENT（见 .ClickThrough.cs）。 -->
     <Grid x:Name="Root" Background="#02000000" ClipToBounds="True">
         <Border x:Name="Surface" Background="Transparent" Focusable="True" ClipToBounds="True"
                 PreviewMouseDown="Surface_MouseDown"

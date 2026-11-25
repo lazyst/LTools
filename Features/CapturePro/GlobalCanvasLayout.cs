@@ -40,6 +40,12 @@ internal static class GlobalCanvasLayout
     /// <summary>穿透模式下轮询指针是否停在工具条上的间隔（上游 50ms）。</summary>
     public const int OpacityPollMs = 50;
 
+    /// <summary>
+    /// 穿透期间轮询指针的间隔。比 <see cref="OpacityPollMs"/> 快一档：穿透靠它决定「这一拍要不要吃鼠标」，
+    /// 慢一拍就会漏点（指针刚移到工具条上、点击已经落下，那一下会落到下面的程序里）。
+    /// </summary>
+    public const int ClickThroughPollMs = 16;
+
     /// <summary>滚轮之后的缩放（不含锚点修正）。</summary>
     public static double ZoomAfterWheel(double zoom, double amount)
     {
@@ -113,4 +119,11 @@ internal static class GlobalCanvasLayout
     /// <summary>穿透时工具条的不透明度：指针停在工具条上（或没穿透）给 1.0。</summary>
     public static double ToolbarOpacity(bool clickThrough, bool pointerOnToolbar) =>
         !clickThrough || pointerOnToolbar ? 1.0 : ClickThroughOpacity;
+
+    /// <summary>
+    /// 穿透期间窗口要不要「鼠标全透过去」（<c>WS_EX_TRANSPARENT</c>）。工具条与画布同窗，
+    /// 所以指针停在工具条上时必须把鼠标要回来——否则工具条自己也点不到。
+    /// </summary>
+    public static bool MouseTransparent(bool clickThrough, bool pointerOnToolbar) =>
+        clickThrough && !pointerOnToolbar;
 }

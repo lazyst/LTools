@@ -36,9 +36,6 @@ namespace LTools.Views.CapturePro;
 /// </remarks>
 public partial class GlobalCanvasWindow : Window
 {
-    private const int WmNchittest = 0x0084;
-    private const int HtTransparent = -1;
-
     private readonly System.Drawing.Rectangle _monitor;
     private readonly double _sx, _sy;
     private readonly CaptureDocument _doc;
@@ -59,7 +56,6 @@ public partial class GlobalCanvasWindow : Window
     private int _selectedIndex = -1;
 
     private IntPtr _hwnd;
-    private HwndSource? _source;
     private bool _closed;
 
     public GlobalCanvasWindow()
@@ -124,8 +120,6 @@ public partial class GlobalCanvasWindow : Window
     private void Window_SourceInitialized(object? sender, EventArgs e)
     {
         _hwnd = new WindowInteropHelper(this).Handle;
-        _source = HwndSource.FromHwnd(_hwnd);
-        _source?.AddHook(WndProc);
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -186,9 +180,6 @@ public partial class GlobalCanvasWindow : Window
         StopTimers();
         SetLaser(false);
         _clickThrough = false;
-
-        _source?.RemoveHook(WndProc);
-        _source = null;
 
         InputGuard.SetSuspended(false, null);
         PickerHook.SetActive(false);

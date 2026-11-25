@@ -68,10 +68,25 @@ public partial class GlobalCanvasWindow
             {
                 Interval = TimeSpan.FromMilliseconds(GlobalCanvasLayout.OpacityPollMs),
             };
-            _opacityTimer.Tick += (_, _) => UpdateToolbarOpacity();
+            _opacityTimer.Tick += (_, _) => PollClickThroughState();
         }
 
+        SyncPollInterval();
         _opacityTimer.Start();
+    }
+
+    /// <summary>
+    /// 穿透期间按 <see cref="GlobalCanvasLayout.ClickThroughPollMs"/> 轮询（那一拍决定要不要吃鼠标），
+    /// 其余时候按 <see cref="GlobalCanvasLayout.OpacityPollMs"/>（照上游，只看不透明度）。
+    /// </summary>
+    private void SyncPollInterval()
+    {
+        if (_opacityTimer == null) return;
+
+        var wanted = TimeSpan.FromMilliseconds(_clickThrough
+            ? GlobalCanvasLayout.ClickThroughPollMs
+            : GlobalCanvasLayout.OpacityPollMs);
+        if (_opacityTimer.Interval != wanted) _opacityTimer.Interval = wanted;
     }
 
     private void StopTimers()

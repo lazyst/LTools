@@ -28,15 +28,14 @@ namespace CaptureOverlaySmoke;
 /// </remarks>
 internal static partial class Program
 {
-    private const int WmNchittest = 0x0084;
-    private const int HtTransparent = -1;
-
     private const uint MiddleDown = 0x0020;
     private const uint MiddleUp = 0x0040;
     private const uint WheelFlag = 0x0800;
 
     private const int GwlExstyle = -20;
     private const long WsExTopmost = 0x00000008;
+    private const long ExTransparent = 0x00000020;
+    private const long ExLayered = 0x00080000;
 
     private const byte VkControl = 0x11;
     private const byte VkZ = 0x5A;
@@ -48,9 +47,6 @@ internal static partial class Program
     private const uint SwpNosize = 0x0001;
     private const uint SwpNoactivate = 0x0010;
     private static readonly IntPtr HwndTopmost = new(-1);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr SendMessageW(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
 
     private static void GlobalCanvasSection()
     {
@@ -357,62 +353,70 @@ internal static partial class Program
             Check(throughToggle.IsChecked == true, "按钮自己显示为按下");
 
             long throughEx = GetWindowLongPtr(hwnd, GwlExstyle).ToInt64();
-            Check((throughEx & 0x08000000) != 0, "穿透期间补上 WS_EX_NOACTIVATE（点画布不抢焦点）");
+            Check((throughEx & WsExNoactivate) != 0, "穿透期间补上 WS_EX_NOACTIVATE（点画布不抢焦点）");
+            // 穿透靠窗口自己的 WS_EX_TRANSPARENT（分层窗口上这一位才是「鼠标全透过去」），
+            // **不是** WM_NCHITTEST 返回 HTTRANSPARENT：那只在同一线程的窗口之间放行，
+            // 落到别的进程上一点都透不过去（「鼠标穿透不可用」就是它）。
+            Check((throughEx & ExTransparent) != 0, "穿透期间窗口带 WS_EX_TRANSPARENT");
+            Check((throughEx & ExLayered) != 0, "同时是分层窗口（WS_EX_TRANSPARENT 只对分层窗口算全透）");
 
             Check(Math.Abs(toolbar.Opacity - 0.32) < 0.01,
                 $"穿透且指针不在工具条上时工具条压到 0.32（{toolbar.Opacity:0.##}）");
 
-            // WM_NCHITTEST：画布中央 → HTTRANSPARENT（点到下面的程序）
-            var hitCenter = HitTest(hwnd, (int)Math.Round(center.X), (int)Math.Round(center.Y));
-            Check(hitCenter == HtTransparent, $"画布中央的命中测试返回 HTTRANSPARENT（{hitCenter}）");
-
-            // 工具条上 → 照常吃鼠标
-            var tbScreen = toolbar.PointToScreen(new Point(toolbar.ActualWidth / 2, toolbar.ActualHeight / 2));
-            int hitToolbar = HitTest(hwnd, (int)Math.Round(tbScreen.X), (int)Math.Round(tbScreen.Y));
-            Check(hitToolbar != HtTransparent, $"工具条上仍可点（命中 {hitToolbar}）");
-
-            // 真的点下去：画布下面那个窗口收到点击
-            int probeClicks = 0;
-            var probe = new Window
+            // 真的点下去：画布**下面那个窗口**收到点击。探针必须开在**另一个线程**上——
+            // HTTRANSPARENT 在同一线程的窗口之间也能放行，同线程的探针会让旧实现蒙对。
+            using (var probe = new CrossThreadClickProbe((int)Math.Round(center.X), (int)Math.Round(center.Y)))
             {
-                WindowStyle = WindowStyle.None,
-                ResizeMode = ResizeMode.NoResize,
-                ShowInTaskbar = false,
-                Topmost = true,
-                Background = Brushes.DarkSlateBlue,
-                Width = 240,
-                Height = 160,
-                WindowStartupLocation = WindowStartupLocation.Manual,
-            };
-            probe.Left = 180;
-            probe.Top = 180;
-            probe.MouseLeftButtonDown += (_, _) => probeClicks++;
-            probe.Show();
-            PumpFor(200);
+                PumpFor(200);
 
-            // 画布在它上面（都是 Topmost，重新提一次保证 z 序）
-            SetWindowPos(hwnd, HwndTopmost, 0, 0, 0, 0, SwpNomove | SwpNosize | SwpNoactivate);
-            PumpFor(200);
+                // 画布在它上面（都是 Topmost，重新提一次保证 z 序）
+                SetWindowPos(hwnd, HwndTopmost, 0, 0, 0, 0, SwpNomove | SwpNosize | SwpNoactivate);
+                PumpFor(200);
 
-            // PointToScreen 要的是「窗口内坐标」，别再叠一次 Left/Top
-            var probeScreen = probe.PointToScreen(new Point(probe.Width / 2, probe.Height / 2));
-            SetCursorPos((int)Math.Round(probeScreen.X), (int)Math.Round(probeScreen.Y));
-            PumpFor(120);
+                SetCursorPos((int)Math.Round(center.X), (int)Math.Round(center.Y));
+                PumpFor(140);
+                mouse_event(LeftDown, 0, 0, 0, UIntPtr.Zero);
+                PumpFor(80);
+                mouse_event(LeftUp, 0, 0, 0, UIntPtr.Zero);
+                PumpFor(260);
+                Check(probe.Clicks > 0, $"穿透时点击真的落到下面的窗口（{probe.Clicks} 次）");
+                // 看的是**真的前台**：画布带 WS_EX_NOACTIVATE 之后，Windows 未必再给它发
+                // WM_ACTIVATE(WA_INACTIVE)，WPF 的 Window.IsActive 会停在 true（别拿它判）
+                Check(GetForegroundWindow() != hwnd,
+                    $"穿透时点画布不抢前台（前台 = 0x{GetForegroundWindow().ToInt64():X}，" +
+                    $"画布 = 0x{hwnd.ToInt64():X}，探针 = 0x{probe.Handle.ToInt64():X}）");
+            }
+            PumpFor(160);
+
+            // 指针停到工具条上：工具条与画布同窗，只能靠指针位置把鼠标「要回来」
+            var tbScreen = toolbar.PointToScreen(new Point(toolbar.ActualWidth / 2, toolbar.ActualHeight / 2));
+            SetCursorPos((int)Math.Round(tbScreen.X), (int)Math.Round(tbScreen.Y));
+            PumpFor(300);
+            Check(Math.Abs(toolbar.Opacity - 1.0) < 0.01,
+                $"指针停到工具条上恢复 1.0（{toolbar.Opacity:0.##}）");
+            Check((GetWindowLongPtr(hwnd, GwlExstyle).ToInt64() & ExTransparent) == 0,
+                "指针在工具条上时先摘下 WS_EX_TRANSPARENT（否则工具条自己都点不到）");
+
+            // 穿透期间工具条照样能用：真鼠标点一下激光笔按钮
+            var laserBtn = ToolRow(window)!.Children.OfType<ToggleButton>()
+                .First(b => (b.ToolTip?.ToString() ?? "").Contains("激光笔"));
+            bool laserBefore = (bool)Field(window, "_laserOn");
+            var laserAt = laserBtn.PointToScreen(new Point(laserBtn.ActualWidth / 2, laserBtn.ActualHeight / 2));
+            SetCursorPos((int)Math.Round(laserAt.X), (int)Math.Round(laserAt.Y));
+            PumpFor(180);
             mouse_event(LeftDown, 0, 0, 0, UIntPtr.Zero);
             PumpFor(80);
             mouse_event(LeftUp, 0, 0, 0, UIntPtr.Zero);
-            PumpFor(220);
-            Check(probeClicks > 0, $"穿透时点击真的落到下面的窗口（{probeClicks} 次）");
-            Check(!window.IsActive, "穿透时不抢前台（画布不是活动窗口）");
-
-            probe.Close();
+            PumpFor(260);
+            Check((bool)Field(window, "_laserOn") != laserBefore, "穿透期间真点工具条按钮真的生效（激光笔）");
+            laserBtn.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             PumpFor(160);
 
-            // 指针回到工具条上 → 不透明度恢复 1.0
-            SetCursorPos((int)Math.Round(tbScreen.X), (int)Math.Round(tbScreen.Y));
-            PumpFor(220);
-            Check(Math.Abs(toolbar.Opacity - 1.0) < 0.01,
-                $"指针停到工具条上恢复 1.0（{toolbar.Opacity:0.##}）");
+            // 指针离开工具条 → 又变回穿透
+            SetCursorPos((int)Math.Round(center.X), (int)Math.Round(center.Y));
+            PumpFor(300);
+            Check((GetWindowLongPtr(hwnd, GwlExstyle).ToInt64() & ExTransparent) != 0,
+                "指针离开工具条后重新变回穿透（下面的程序照常能点）");
 
             // 再按一次「打开全屏画布」= 切回非穿透（走 GlobalCanvasSession，和热键同一条路）
             sessionType.GetMethod("Activate", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!
@@ -420,9 +424,8 @@ internal static partial class Program
             PumpFor(240);
             Check(!(bool)Field(window, "_clickThrough"), "再触发一次会话入口 = 切回非穿透");
             long backEx = GetWindowLongPtr(hwnd, GwlExstyle).ToInt64();
-            Check((backEx & 0x08000000) == 0, "切回后去掉 WS_EX_NOACTIVATE");
-            Check(HitTest(hwnd, (int)Math.Round(center.X), (int)Math.Round(center.Y)) != HtTransparent,
-                "切回后画布照常吃鼠标");
+            Check((backEx & WsExNoactivate) == 0, "切回后去掉 WS_EX_NOACTIVATE");
+            Check((backEx & ExTransparent) == 0, "切回后去掉 WS_EX_TRANSPARENT（画布照常吃鼠标）");
 
             // ============ 11) 文字工具：就地输入 → Enter 落地 ============
             Call(window, "SetTool", Enum.Parse(toolType, "Text"));
@@ -570,10 +573,74 @@ internal static partial class Program
         PumpFor(60);
     }
 
-    /// <summary>给窗口发一次 WM_NCHITTEST（屏幕物理像素），返回命中码。</summary>
-    private static int HitTest(IntPtr hwnd, int screenX, int screenY)
+    /// <summary>
+    /// 「画布下面那个窗口」：开在**另一个 STA 线程**上，收到的左键按下次数由 <see cref="Clicks"/> 读。
+    /// </summary>
+    /// <remarks>
+    /// 为什么非要另开线程：<c>WM_NCHITTEST</c> 返回 <c>HTTRANSPARENT</c> 只在**同一线程**的窗口之间放行，
+    /// 同线程的探针会让「靠 NCHITTEST 做穿透」的实现看起来是对的——这个 bug 当初就是这么漏掉的。
+    /// 换成 <c>WS_EX_TRANSPARENT</c> 之后，跨线程（跨进程）照样透过去。
+    /// </remarks>
+    private sealed class CrossThreadClickProbe : IDisposable
     {
-        long packed = ((long)(screenY & 0xFFFF) << 16) | (uint)(screenX & 0xFFFF);
-        return SendMessageW(hwnd, WmNchittest, IntPtr.Zero, new IntPtr(packed)).ToInt32();
+        private readonly System.Threading.Thread _thread;
+        private readonly System.Threading.ManualResetEventSlim _shown = new(false);
+        private Window? _window;
+        private IntPtr _handle;
+        private int _clicks;
+
+        public CrossThreadClickProbe(int screenX, int screenY)
+        {
+            _thread = new System.Threading.Thread(() => Run(screenX, screenY), 4 * 1024 * 1024)
+            {
+                IsBackground = true,
+                Name = "click-probe",
+            };
+            _thread.SetApartmentState(System.Threading.ApartmentState.STA);
+            _thread.Start();
+            _shown.Wait(4000);
+        }
+
+        /// <summary>探针收到的左键按下次数（跨线程读）。</summary>
+        public int Clicks => System.Threading.Volatile.Read(ref _clicks);
+
+        /// <summary>探针的窗口句柄。</summary>
+        public IntPtr Handle => _handle;
+
+        private void Run(int screenX, int screenY)
+        {
+            var probe = new Window
+            {
+                WindowStyle = WindowStyle.None,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                Topmost = true,
+                Background = Brushes.DarkSlateBlue,
+                Width = 240,
+                Height = 160,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = 40,
+                Top = 40,
+            };
+            probe.MouseLeftButtonDown += (_, _) => System.Threading.Interlocked.Increment(ref _clicks);
+            probe.Show();
+            probe.UpdateLayout();
+
+            // 摆到目标点正中：PointFromScreen 给的是相对窗口的 DIP，所以得先有 HWND 再算相对位移
+            var at = probe.PointFromScreen(new Point(screenX, screenY));
+            probe.Left += at.X - probe.Width / 2;
+            probe.Top += at.Y - probe.Height / 2;
+
+            _window = probe;
+            _handle = new System.Windows.Interop.WindowInteropHelper(probe).Handle;
+            _shown.Set();
+            Dispatcher.Run();
+        }
+
+        public void Dispose()
+        {
+            try { _window?.Dispatcher.InvokeShutdown(); } catch { }
+            _thread.Join(2000);
+        }
     }
 }
