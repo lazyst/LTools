@@ -79,11 +79,10 @@ internal static class DragSmoke
     }
 
     /// <summary>
-    /// 从**真的资源管理器**拖一个文件进来。提权时 OLE 被 UIPI 拦住，看 WM_DROPFILES 有没有兜住；
-    /// 非提权时走 OLE。窗口的 <c>AllowDrop</c> 按进程权限还原成产品的真实状态（前面那一段
-    /// 为了测 OLE 曾把它强行打开）。
+    /// 从**真的资源管理器**拖一个文件进来：产品窗口住在 asInvoker 的宿主里，走的是正常 OLE；
+    /// 提权进程（冒烟自己就是提权跑的）会被 UIPI 拦住——这条断言正是在说明「为什么窗口要拆出去」。
     /// </summary>
-    public static void RunExplorer(Action<bool, string> check, string tempRoot, bool elevated)
+    public static void RunExplorer(Action<bool, string> check, string tempRoot)
     {
         string folder = Path.Combine(tempRoot, "拖放测试-" + Guid.NewGuid().ToString("N")[..6]);
         Directory.CreateDirectory(folder);
@@ -92,17 +91,8 @@ internal static class DragSmoke
 
         var window = ShareWindow();
         var outList = (ItemsControl)Field(window, "OutList");
-
-        window.AllowDrop = !elevated;
-
-        // 数一下 WM_DROPFILES 到底有没有到（到 0 个文件 / 根本没到，是两种完全不同的原因）。
-        int dropFiles = 0;
-        HwndSource.FromHwnd(new WindowInteropHelper(window).Handle)!.AddHook(
-            (IntPtr _, int message, IntPtr _, IntPtr _, ref bool _) =>
-            {
-                if (message == 0x0233) dropFiles++;
-                return IntPtr.Zero;
-            });
+        // UIPI 看的是「窗口所在进程的完整性」：冒烟直接开在产品进程里，所以按这个窗口的令牌判。
+        bool elevated = ElevationOf(new WindowInteropHelper(window).Handle) != 0;
 
         // 共享窗口挪到屏幕右侧，资源管理器留在它默认的位置：两块不重叠，也就不必挪资源管理器
         // （挪了 UIA 给的矩形要过一会儿才刷新，反而更不稳）。
@@ -139,13 +129,13 @@ internal static class DragSmoke
             driver.Start();
             Wait(driver, window);
 
-            Console.WriteLine($"    [drag] 共享窗口收到 WM_DROPFILES {dropFiles} 次");
             bool landed = StoreItems().Any(i => NameOf(i) == "拖我.txt");
+            Console.WriteLine($"    [drag] 落到共享区 = {landed}（进程{(elevated ? "已提权" : "普通权限")}）");
 
-            // 提权窗口收不到是 Windows 的规则（UIPI），不是回归——共享助手就是为这件事拆出去的。
+            // 提权进程收不到是 Windows 的规则（UIPI），不是回归——共享窗口就是为了这件事拆出去的。
             check(elevated ? !landed : landed,
                 elevated
-                    ? "提权窗口收不到 Explorer 的拖放（UIPI；共享窗口因此跑在 ShareHost.exe 里）"
+                    ? "提权进程收不到 Explorer 的拖放（UIPI；共享窗口因此跑在普通权限宿主里）"
                     : "从资源管理器真拖进来：文件进了共享区");
         }
         finally
@@ -247,7 +237,7 @@ internal static class DragSmoke
         Application.Current.Windows.Cast<Window>().First(w => w.GetType().Name == "ShareWindow");
 
     /// <summary>
-    /// 把文件从真资源管理器拖进**另一个进程**的窗口（共享助手）。返回时拖放流程已走完，
+    /// 把文件从真资源管理器拖进**另一个进程**的窗口（界面宿主）。返回时拖放流程已走完，
     /// 是否真的收下由调用方读清单判断。
     /// </summary>
     public static void DragFileInto(Action<bool, string> check, string tempRoot, IntPtr target, string fileName)
@@ -302,7 +292,7 @@ internal static class DragSmoke
         }
     }
 
-    /// <summary>等某个进程的主窗口出现（共享助手没有可预测的标题遍历，直接问进程）。</summary>
+    /// <summary>等某个进程的主窗口出现（宿主没有可预测的标题遍历，直接问进程）。</summary>
     public static IntPtr WaitProcessWindow(string processName, int timeoutMs)
     {
         var deadline = Environment.TickCount64 + timeoutMs;

@@ -217,14 +217,22 @@ internal static class LinkSuite
         Check.Equal(names.Length, new HashSet<string>(names, StringComparer.Ordinal).Count, "方法名互不相同");
         Check.True(names.All(n => n.Length > 0), "方法名都不为空");
 
-        // 面板状态：宿主把「开着 / 关了」推给提权进程的钩子。
-        PanelHostBridge.SetRemotePanelOpen(true);
-        Check.True(PanelHostBridge.RemotePanelOpen, "宿主面板状态：开");
-        PanelHostBridge.SetRemotePanelOpen(false);
-        Check.False(PanelHostBridge.RemotePanelOpen, "宿主面板状态：关");
+        // 面板状态：宿主把整份状态推给提权进程的钩子（开 / 钉住 / 菜单 / 前台 / 窗口句柄）。
         PanelStateEvent? state = RoundTrip(LinkMessage.Request(13, LinkMethods.EventPanelState,
-            new PanelStateEvent(true))).Read<PanelStateEvent>();
+            new PanelStateEvent(true, Pinned: true, Interacting: false, Active: true, Hwnd: 4242,
+                Menus: new List<PanelMenuRect> { new(1, 2, 3, 4) }))).Read<PanelStateEvent>();
         Check.True(state?.Open == true, "面板状态往返：开着");
+        Check.True(state?.Pinned == true && state.Active && state.Hwnd == 4242, "面板状态往返：钉住 / 前台 / 句柄");
+        Check.True(state?.Menus is [{ Left: 1, Top: 2, Right: 3, Bottom: 4 }], "面板状态往返：菜单矩形");
+
+        // 落到镜像上：钩子线程就按这份判点击外部、Esc、长按手势。
+        PanelHostBridge.ApplyPanelState(state!);
+        HookMirror.PanelSnapshot mirror = HookMirror.Panel;
+        Check.True(mirror.Open && mirror.Pinned && mirror.Active, "镜像：开 / 钉住 / 前台");
+        Check.True(mirror.Hwnd == new IntPtr(4242) && mirror.MenuRects is [{ Left: 1, Top: 2, Right: 3, Bottom: 4 }],
+            "镜像：句柄与菜单矩形");
+        PanelHostBridge.DropPanelState();
+        Check.False(HookMirror.Panel.Open, "断开：面板按关处理");
 
         // —— 交互服务（执行器 → 宿主）——
         var uiNames = new[] { UiMethods.Input, UiMethods.Choice, UiMethods.Cancel,

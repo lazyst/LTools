@@ -60,20 +60,20 @@
     <None Remove="tests\**" />
     <Content Remove="tests\**" />
     <EmbeddedResource Remove="tests\**" />
-    <!-- ShareHost 是独立工程（共享窗口 / 服务跑在普通权限进程里），别把它的源码和 obj 生成的
+    <!-- UiHost 是独立工程（所有窗口 + 共享服务跑在普通权限进程里），别把它的源码和 obj 生成的
          .cs 一起卷进主程序——它自带 App.xaml 与 Main。 -->
-    <Compile Remove="ShareHost\**" />
-    <Page Remove="ShareHost\**" />
-    <ApplicationDefinition Remove="ShareHost\**" />
-    <Resource Remove="ShareHost\**" />
-    <None Remove="ShareHost\**" />
-    <Content Remove="ShareHost\**" />
-    <EmbeddedResource Remove="ShareHost\**" />
+    <Compile Remove="UiHost\**" />
+    <Page Remove="UiHost\**" />
+    <ApplicationDefinition Remove="UiHost\**" />
+    <Resource Remove="UiHost\**" />
+    <None Remove="UiHost\**" />
+    <Content Remove="UiHost\**" />
+    <EmbeddedResource Remove="UiHost\**" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 助手进程直接用 ShareServer / ConfigStore / Ui 这些 internal 类型。 -->
-    <InternalsVisibleTo Include="ShareHost" />
+    <!-- 宿主进程直接用 ShareServer / ConfigStore / Ui 这些 internal 类型。 -->
+    <InternalsVisibleTo Include="UiHost" />
     <!-- 链路层的环回冒烟（tests/LinkSmoke）：管道 / 握手 / 超时都要直接驱动 internal 类型。 -->
     <InternalsVisibleTo Include="LinkSmoke" />
   </ItemGroup>
@@ -178,17 +178,17 @@
     <Delete Files="@(_RoslynSatellitesPublish)" />
   </Target>
 
-  <!-- 发布时带上共享助手（ShareHost.exe）：先发到 obj 下的临时目录，只把 ShareHost.* 拷进
+  <!-- 发布时带上界面宿主（UiHost.exe）：先发到 obj 下的临时目录，只把 UiHost.* 拷进
        publish，免得把 LTools 自己与整套依赖再复制一遍（两个 exe 共用同一份依赖与数据根）。 -->
-  <Target Name="PublishShareHost" AfterTargets="Publish">
-    <MSBuild Projects="$(MSBuildProjectDirectory)\ShareHost\ShareHost.csproj"
+  <Target Name="PublishUiHost" AfterTargets="Publish">
+    <MSBuild Projects="$(MSBuildProjectDirectory)\UiHost\UiHost.csproj"
              Targets="Restore;Publish"
-             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishDir=$(MSBuildProjectDirectory)\obj\sharehost-publish\" />
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishDir=$(MSBuildProjectDirectory)\obj\uihost-publish\" />
     <ItemGroup>
-      <_ShareHostPublish Include="$(MSBuildProjectDirectory)\obj\sharehost-publish\ShareHost.*" />
+      <_UiHostPublish Include="$(MSBuildProjectDirectory)\obj\uihost-publish\UiHost.*" />
     </ItemGroup>
-    <Copy SourceFiles="@(_ShareHostPublish)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
-    <Message Importance="high" Text="共享助手已发布到 $(PublishDir)" />
+    <Copy SourceFiles="@(_UiHostPublish)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="界面宿主已发布到 $(PublishDir)" />
   </Target>
 
 </Project>

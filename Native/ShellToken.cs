@@ -10,7 +10,7 @@ namespace LTools.Native;
 /// <remarks>
 /// <para>
 /// 提权进程直接 `CreateProcess` 出来的子进程会继承高完整性令牌；而 UIPI 又让高完整性窗口收不到
-/// Explorer 的拖放，所以「共享助手」必须是普通权限的（见 `docs/LAN_SHARE.md` §6）。
+/// Explorer 的拖放，所以「界面宿主」必须是普通权限的（见 `docs/PROCESS_SPLIT.md` §1）。
 /// </para>
 /// <para>
 /// 试过但**不能用**的两种办法：`explorer.exe &lt;exe&gt;`（会把资源管理器窗口叫到前台，用户报过）、

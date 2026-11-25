@@ -57,8 +57,9 @@ public partial class ShareWindow : Window
         OutList.ItemTemplateSelector = rows;
         InList.ItemTemplateSelector = rows;
 
-        // Explorer 拖文件走 WM_DROPFILES（提权进程也能收）；WPF 的 OLE 拖放被 UIPI 拦住。
-        FileDropBridge.Attach(this, AddFilesCore);
+        // 拖放走标准 OLE（XAML 里 AllowDrop + PreviewDragOver / PreviewDrop）：共享窗口住在
+        // 普通权限宿主里，资源管理器拖过来不会被 UIPI 拦。以前那层 WM_DROPFILES 桥
+        // （FileDropBridge）是替提权窗口兜底的，实测连消息都收不到，已随拆分一起删掉。
 
         _timer.Tick += (_, _) => Refresh();
         Loaded += (_, _) =>
@@ -82,9 +83,9 @@ public partial class ShareWindow : Window
     /// 打开（或唤起）**本进程**里的共享窗口。
     /// </summary>
     /// <remarks>
-    /// 只有两处会用它：共享助手（<c>ShareHost.exe</c>，普通权限）与冒烟。
+    /// 只有两处会用它：界面宿主（<c>UiHost.exe</c>，普通权限）与冒烟。
     /// 主程序里别调它——主程序是提权的，在这里开的窗口收不到 Explorer 的拖放；
-    /// 托盘 / 内置功能走 <see cref="ShareHelper.Open"/>（把助手拉起来 / 唤起）。
+    /// 托盘 / 内置功能走 <see cref="UiHostProcess.ShowShareWindow"/>（把宿主拉起来 / 唤起）。
     /// </remarks>
     public static void ShowOrActivate()
     {

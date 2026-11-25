@@ -359,7 +359,8 @@ internal sealed class TileDragSort
         => panel.Children.OfType<Button>().Where(b => b.Tag is PanelTileRef { ActionId: not null });
 
     /// <summary>
-    /// 光标在目标网格里的插入位置（0..动作磁贴数）。行优先：先按 Y 找行，再按 X 与各磁贴中心比较。
+    /// 光标在目标网格里的插入位置（0..动作磁贴数）。几何本身是 <see cref="TileLayout.InsertIndex"/> 的：
+    /// 从资源管理器拖文件进来也用它，两条路必须落同一个下标。
     /// </summary>
     private int InsertIndexAt(TileGridPanel panel, Point windowPoint)
     {
@@ -371,33 +372,7 @@ internal sealed class TileDragSort
         foreach (var t in tiles)
             rects.Add(t.TransformToAncestor(panel).TransformBounds(new Rect(t.RenderSize)));
 
-        // 按行分组（行距 72 + gap，容差 8）
-        var rowStarts = new List<int> { 0 };
-        for (int i = 1; i < rects.Count; i++)
-            if (Math.Abs(rects[i].Top - rects[rowStarts[^1]].Top) > 8)
-                rowStarts.Add(i);
-
-        int row = rowStarts.Count - 1;
-        for (int s = 0; s < rowStarts.Count; s++)
-        {
-            int start = rowStarts[s];
-            int end = s + 1 < rowStarts.Count ? rowStarts[s + 1] : rects.Count;
-            double bottom = start;
-            for (int i = start; i < end; i++) bottom = Math.Max(bottom, rects[i].Bottom);
-
-            if (pt.Y < rects[start].Top) { row = s; break; }
-            if (pt.Y <= bottom) { row = s; break; }
-            row = s;
-        }
-
-        int rs = rowStarts[row];
-        int re = row + 1 < rowStarts.Count ? rowStarts[row + 1] : rects.Count;
-        for (int i = rs; i < re; i++)
-        {
-            double centerX = rects[i].Left + rects[i].Width / 2;
-            if (pt.X < centerX) return i;
-        }
-        return re;
+        return TileLayout.InsertIndex(rects, pt);
     }
 
     private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject

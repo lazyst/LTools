@@ -4,7 +4,7 @@ using LTools.Core.Link;
 namespace LTools.Features;
 
 /// <summary>
-/// 面板唤起入口：面板只有一个家——普通权限宿主（<c>ShareHost.exe</c>）。
+/// 面板唤起入口：面板只有一个家——普通权限宿主（<c>UiHost.exe</c>）。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -14,7 +14,7 @@ namespace LTools.Features;
 /// </para>
 /// <para>
 /// **所有**「显示 / 切换面板」的入口都走这里，别直接调 <see cref="SuperPanel"/>——那是宿主进程内部
-/// 用来真正建窗口的类（`ShareHost` 收到 <c>panel.show</c> 后调它），在提权进程里调等于开了第二份。
+/// 用来真正建窗口的类（`UiHost` 收到 <c>panel.show</c> 后调它），在提权进程里调等于开了第二份。
 /// </para>
 /// </remarks>
 internal static class PanelLauncher

@@ -51,11 +51,11 @@ internal static class SuperPanel
     /// <summary>唤起瞬间的光标 Y（屏幕物理像素）。面板未打开时为 0。</summary>
     public static int InvokeY => _invokeY;
 
-    /// <summary>是否有右键菜单 / 对话框正打开——钩子据此决定是否拦截外部点击 / Esc。</summary>
-    public static bool IsInteracting => _window?.InteractCount > 0;
-
-    /// <summary>面板是否已钉住——钉住时点击外部不关闭（钩子不介入外部点击）。</summary>
+    /// <summary>面板是否已钉住——钉住时点击外部不关闭（钩子那边读镜像里的 <c>Pinned</c>）。</summary>
     public static bool IsPinned => _window?.IsPinned == true;
+
+    /// <summary>面板状态变了（宿主据此把整份状态推给提权进程的钩子）。</summary>
+    internal static event Action? StateChanged;
 
     /// <summary>
     /// 把当前面板状态发布给钩子线程的纯数据镜像（阶段 2）。只能在主 UI 线程调用。
@@ -63,9 +63,6 @@ internal static class SuperPanel
     /// 窗口矩形不进镜像（钩子自己按 HWND 调 GetWindowRect），所以拖动 / 缩放不必推送。
     /// 面板建窗、关闭、钉住、菜单开合、子菜单展开、交互计数变化、激活态变化都要调一次。
     /// </summary>
-    /// <summary>面板状态发布给钩子之后触发（宿主据此把「开着 / 关了」告诉提权进程的钩子）。</summary>
-    internal static event Action? StateChanged;
-
     internal static void PublishMirror()
     {
         var w = _window;
@@ -132,23 +129,6 @@ internal static class SuperPanel
         try { w.Show(); } catch { /* 恢复失败不影响编辑 */ }
         FloatingManager.RaiseAllAbove();
     }
-
-    /// <summary>屏幕物理坐标点是否落在面板窗口矩形内（供鼠标钩子判定“点击外部”）。</summary>
-    public static bool PointInWindowRect(int x, int y)
-    {
-        var w = _window;
-        if (w == null) return false;
-        var hwnd = new WindowInteropHelper(w).Handle;
-        if (hwnd == IntPtr.Zero) return false;
-        if (!Win32.GetWindowRect(hwnd, out var r)) return false;
-        return x >= r.Left && x <= r.Right && y >= r.Top && y <= r.Bottom;
-    }
-
-    /// <summary>
-    /// 屏幕物理坐标点是否落在面板当前打开的右键菜单里（含已展开的子菜单）。
-    /// 菜单浮在面板外面，钩子判「点外部」时要靠它把「点菜单项」排除掉。
-    /// </summary>
-    public static bool PointInOpenMenu(int x, int y) => _window?.MenuContains(x, y) == true;
 
     /// <summary>切换显示/关闭。</summary>
     public static void Toggle()
@@ -286,9 +266,14 @@ internal static class SuperPanel
 
     /// <summary>
     /// 钩子键路由（不依赖窗口焦点）：Esc 关面板；其余按键放行（搜索框要正常输入）。
-    /// 阶段 2：判定只读 <see cref="HookMirror.Panel"/> 纯数据镜像，同步返回是否吞键；
-    /// 「关面板」这个 WPF 动作单独 <see cref="Ui.Post"/> 排回主 UI 线程，绝不等待。
+    /// 判定只读 <see cref="HookMirror.Panel"/> 纯数据镜像，同步返回是否吞键；
+    /// 「关面板」单独排回 UI 线程 / 转给宿主，绝不等待。
     /// </summary>
+    /// <remarks>
+    /// 面板在宿主里时本进程没有那扇窗（<see cref="_window"/> 为 null），所以关它只能发
+    /// <c>panel.close</c>——**别在这里写 <c>_window?.RequestEscape()</c> 就完事**，
+    /// 那样宿主里的面板永远收不到 Esc（面板没抢到焦点时就是这样）。
+    /// </remarks>
     /// <returns>true=已处理（吞掉该键）；false=不处理（交下层）。</returns>
     public static bool HandleKey(ushort vk, bool isDown)
     {
@@ -297,7 +282,11 @@ internal static class SuperPanel
         // 钉住后用户去别的窗口工作：键盘归前台窗口，不能继续全局吞 Esc
         if (s.Pinned && !s.Active) return false;
         if (vk != Win32.VkEscape) return false;
-        Ui.Post(() => _window?.RequestEscape());
+        Ui.Post(() =>
+        {
+            if (_window is { } w) w.RequestEscape();
+            else PanelLauncher.Close();
+        });
         return true;
     }
 

@@ -51,7 +51,7 @@ internal static class HotkeyCapture
     private static int _extra;
 
     /// <summary>
-    /// 宿主里的录入框：钩子在提权进程，开始 / 结束时让它整体让路（由 <c>ShareHost</c> 挂
+    /// 宿主里的录入框：钩子在提权进程，开始 / 结束时让它整体让路（由 <c>UiHost</c> 挂
     /// <c>InputBridge.SetHotkeyCapture</c>）。执行器里是 null——它就是钩子那一侧。
     /// </summary>
     public static Action<bool>? RemoteSink;

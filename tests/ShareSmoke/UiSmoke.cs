@@ -1,8 +1,6 @@
 using System.Collections;
 using System.IO;
 using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -76,13 +74,9 @@ internal static class UiSmoke
         var outList = (ItemsControl)Field(_window, "OutList");
 
         Console.WriteLine("== 界面：拖放通道 ==");
-        bool elevated = IsElevated();
-        check(_window.AllowDrop == !elevated, elevated
-            ? "提权时不注册 OLE 拖放（AllowDrop=False；WM_DROPFILES 桥仍挂着，Explorer 实际不发）"
-            : "非提权时用 OLE 拖放（AllowDrop=True）");
-
-        long exStyle = GetWindowLongPtr(new System.Windows.Interop.WindowInteropHelper(_window).Handle, -20).ToInt64();
-        check((exStyle & 0x10) != 0, "窗口带 WS_EX_ACCEPTFILES（Explorer 才会把它当拖放目标）");
+        // 共享窗口只活在普通权限宿主里（asInvoker），所以 OLE 拖放无条件开着；
+        // 那层替提权窗口兜底的 WM_DROPFILES 桥已经删了，不再有「提权时关掉 OLE」这条分支。
+        check(_window.AllowDrop, "窗口注册了 OLE 拖放（AllowDrop=True）");
 
         // 输入框在左栏里（右边缘不超过右栏），不再横跨整个窗口。
         var side = (Border)Field(_window, "SidePanel");
@@ -266,22 +260,13 @@ internal static class UiSmoke
         Invoke(_window, "Window_PreviewDragOver", _window, emptyArgs);
         check(emptyArgs.Effects == DragDropEffects.None, "拖不认识的东西进来时不接受");
 
-        // 提权进程里 Explorer 走的是 WM_DROPFILES（OLE 被 UIPI 拦住）：手工造一个 HDROP 打进去。
-        Console.WriteLine("== 界面：WM_DROPFILES（提权时的 Explorer 拖放）==");
-        string bridged = Path.Combine(tempRoot, "提权拖进来的.txt");
-        File.WriteAllText(bridged, "bridge-me");
-
-        int beforeBridge = Items().Count;
-        SendDropFiles(_window, bridged);
+        // 同一个文件再拖一次：面板 / 共享区都按路径去重（不再走 WM_DROPFILES 那条老路）。
+        int beforeRepeat = Items().Count;
+        DragEventArgs repeatArgs = Drop(fileDrop);
+        Invoke(_window, "Window_PreviewDragOver", _window, repeatArgs);
+        Invoke(_window, "Window_PreviewDrop", _window, repeatArgs);
         Flush();
-
-        check(Items().Count == beforeBridge + 1
-              && Items().Any(i => Str(i, "Name") == "提权拖进来的.txt"),
-            "WM_DROPFILES 把文件收进共享区（提权也能拖）");
-
-        SendDropFiles(_window, bridged);
-        Flush();
-        check(Items().Count == beforeBridge + 1, "同一个文件再拖一次不会多出一条");
+        check(Items().Count == beforeRepeat, "同一个文件再拖一次不会多出一条");
 
         Console.WriteLine("== 界面：收到的文字 ==");
         object? inboxText = ((IEnumerable)StoreType.GetMethod("Inbox")!.Invoke(Store, null)!)
@@ -358,7 +343,7 @@ internal static class UiSmoke
         if (explorerDrag)
         {
             Console.WriteLine("== 界面：从资源管理器拖文件 ==");
-            try { DragSmoke.RunExplorer(check, tempRoot, elevated); }
+            try { DragSmoke.RunExplorer(check, tempRoot); }
             catch (Exception ex) { check(false, "资源管理器拖放跑不通：" + ex.Message); }
             Flush();
         }
@@ -409,64 +394,6 @@ internal static class UiSmoke
 
     // ============ 视觉树 / 渲染 ============
 
-    /// <summary>
-    /// 造一个真正的 HDROP（<c>DROPFILES</c> + 双零结尾的宽字符路径）发给窗口，
-    /// 模拟提权进程里 Explorer 走 <c>WM_DROPFILES</c> 的那条路。
-    /// </summary>
-    private static void SendDropFiles(Window window, params string[] paths)
-    {
-        IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
-
-        byte[] list = Encoding.Unicode.GetBytes(string.Join("\0", paths) + "\0\0");
-        int size = 20 + list.Length;   // DROPFILES = pFiles(4) + pt(8) + fNC(4) + fWide(4)
-
-        IntPtr block = GlobalAlloc(GHND, (UIntPtr)(uint)size);
-        if (block == IntPtr.Zero) throw new InvalidOperationException("GlobalAlloc 失败");
-
-        IntPtr data = GlobalLock(block);
-        try
-        {
-            var header = new byte[20];
-            BitConverter.GetBytes(20).CopyTo(header, 0);    // pFiles：文件列表从第 20 字节开始
-            BitConverter.GetBytes(1).CopyTo(header, 16);    // fWide：宽字符
-            Marshal.Copy(header, 0, data, header.Length);
-            Marshal.Copy(list, 0, data + header.Length, list.Length);
-        }
-        finally
-        {
-            GlobalUnlock(block);
-        }
-
-        SendMessage(hwnd, 0x0233 /* WM_DROPFILES */, block, IntPtr.Zero);
-    }
-
-    private const uint GHND = 0x0042;
-
-    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
-
-    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr GlobalLock(IntPtr handle);
-
-    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GlobalUnlock(IntPtr handle);
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern IntPtr SendMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
-    private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
-
-    private static bool IsElevated()
-    {
-        try
-        {
-            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
-            return new System.Security.Principal.WindowsPrincipal(identity)
-                .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
-        }
-        catch { return false; }
-    }
 
     private static void Flush()
     {

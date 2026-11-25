@@ -46,6 +46,10 @@ internal static class MouseHook
                                                     // （此时面板已关闭，不置位的话 up 会落到长按手势分支：
                                                     // 被吞掉并再注入一次右键，等于这次右键被吞）
 
+    // 「左键点面板外面」要看**一对** down + up：按在外面、松手也在外面才算点了一下外面。
+    // 拖放（从资源管理器按下去、松在面板里）不能关面板，所以按下时只记，抬起时才关。
+    private static bool _panelCloseOnUp;
+
     // 按下右键那一刻光标下的顶层窗口：右键不激活后台窗口，前台可能还停在别的程序上，
     // 面板的上下文场景必须按这个句柄解析（照 Quicker）
     private static IntPtr _superPanelContextHwnd;
@@ -201,8 +205,8 @@ internal static class MouseHook
                         if (overSuper)
                         {
                             CancelSuperPanelGesture();
-                            // 关面板是 WPF 动作，排回 UI 线程；本事件不吞（右键照常交给光标下窗口）。
-                            Ui.Post(() => SuperPanel.Close());
+                            // 面板在宿主里：关它是发 `panel.close`，本事件不吞（右键照常交给光标下窗口）。
+                            PanelLauncher.Close();
                             _rightPassUpPending = true;
                             break;
                         }
@@ -220,7 +224,7 @@ internal static class MouseHook
                     // 裸右键长按手势：开关开 且 面板未打开时，整组吞掉 down/up。
                     // 面板开在宿主进程里，钩子这边靠宿主推来的状态（`panel.state`）判断。
                     // 短按 → 停表 + 注入一次原生右键 down+up 还原菜单（注入事件被本钩子开头忽略）。
-                    if (AppState.IsSuperPanelEnabled && !panel.Open && !PanelHostBridge.RemotePanelOpen)
+                    if (AppState.IsSuperPanelEnabled && !panel.Open)
                     {
                         if ((int)wParam == Win32.WmRbuttondown)
                         {
@@ -244,14 +248,17 @@ internal static class MouseHook
                         Ui.Post(() => FloatingManager.CloseMenuIfOutside(fx, fy));
                         break;
                     }
-                    // 超级面板打开时：点击面板外部 → 关闭面板并放行点击（坐标判定）。
-                    if (panel.Open && !panel.Pinned
-                        && !HookMirror.PanelContains(ms.Pt.X, ms.Pt.Y)
-                        && !HookMirror.PanelMenuContains(ms.Pt.X, ms.Pt.Y))
-                    {
-                        Ui.Post(() => SuperPanel.Close());
-                        break; // 不吞点击：放行给光标下窗口
-                    }
+                    // 超级面板：按下**外面**先记着，抬起来才关（`down + up 都在外面` 才算「点了一下外面」）。
+                    // 不能按下就关：从资源管理器拖文件进面板是「按在资源管理器、松在面板里」，
+                    // 按下那一拍关掉面板，拖放就永远落不进来。
+                    _panelCloseOnUp = IsOutsidePanel(panel, ms.Pt.X, ms.Pt.Y);
+                    break;
+
+                case Win32.WmLbuttonup:
+                    if (!_panelCloseOnUp) break;
+                    _panelCloseOnUp = false;
+                    // 抬起也必须在外面才算数：拖文件进面板时松手那一下正要把文件落进来。
+                    if (IsOutsidePanel(panel, ms.Pt.X, ms.Pt.Y)) PanelLauncher.Close();
                     break;
             }
             }
@@ -292,6 +299,15 @@ internal static class MouseHook
         _superPanelTimer?.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
         _superPanelContextHwnd = IntPtr.Zero;
     }
+
+    /// <summary>
+    /// 这个屏幕点算不算「面板外面」：不在面板矩形里、也不在它开着的右键菜单里。
+    /// 面板钉住（`Pinned`）时一律不算——钉住就是「点外面也别关」。
+    /// </summary>
+    private static bool IsOutsidePanel(HookMirror.PanelSnapshot panel, int x, int y) =>
+        panel.Open && !panel.Pinned
+        && !HookMirror.PanelContains(x, y)
+        && !HookMirror.PanelMenuContains(x, y);
 
     /// <summary>
     /// 窗口 / 遮罩关掉时调用：**此刻物理上还按着**的鼠标键，抬起时吞掉。

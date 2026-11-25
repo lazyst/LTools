@@ -398,7 +398,7 @@ internal static class ConfigBundle
     }
 
     /// <summary>
-    /// 本地写完之后的回调（**只有宿主挂**：<c>ShareHost</c> 挂 <c>ConfigChangedBridge.Notify</c>）。
+    /// 本地写完之后的回调（**只有宿主挂**：<c>UiHost</c> 挂 <c>ConfigChangedBridge.Notify</c>）。
     /// </summary>
     /// <remarks>
     /// 用回调而不是直接调链路，是为了让 <c>Config/</c> 继续不认识 <c>Core/Link</c>

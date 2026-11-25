@@ -26,7 +26,7 @@ internal static class ConfigStore
     public static string ConfigPath { get; private set; } = "";
 
     /// <summary>
-    /// 只记路径，不加载动作 / 快捷键 / 面板、也不做修复（给共享助手进程用）。
+    /// 只记路径，不加载动作 / 快捷键 / 面板、也不做修复（给界面宿主进程用）。
     /// </summary>
     /// <remarks>
     /// 助手只读写 settings 域里的 Share 段（SettingsStore 每次现读现写）。它要是也跑一遍
@@ -40,7 +40,7 @@ internal static class ConfigStore
     /// 不清 trash、不写任何文件**；之后的 <see cref="Save"/> 会被拒绝（写入归主程序）。
     /// </summary>
     /// <remarks>
-    /// 与 <see cref="UsePathOnly"/> 的区别：那个只记路径（共享助手只需要 settings 域）；
+    /// 与 <see cref="UsePathOnly"/> 的区别：那个只记路径（界面宿主只需要 settings 域）；
     /// 这个要真把面板 / 动作 / 快捷键读进内存（宿主显示面板要用），但仍然一个字都不写。
     /// 见 <c>docs/PROCESS_SPLIT.md</c> §7 的「一个文件一个写者」。
     /// 启动时放在后台跑（不挡链路），所以**加锁**：用户早于它打开面板 / 设置时，另一条线程会在这里等。

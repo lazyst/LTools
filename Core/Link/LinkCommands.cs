@@ -164,8 +164,30 @@ internal sealed record ActionEditReply(bool Ok, ActionDto? Action, string? Error
 /// </summary>
 internal sealed record PanelShowRequest(long Hwnd, int X, int Y);
 
-/// <summary>面板状态（宿主 → 提权进程）：钩子据此决定要不要起「长按右键唤起面板」手势。</summary>
-internal sealed record PanelStateEvent(bool Open);
+/// <summary>
+/// 面板状态（宿主 → 提权进程）：钩子据此决定要不要起「长按右键唤起面板」手势、要不要按
+/// 「点了面板外面」关掉它，并据此放行 / 吞掉 Esc。
+/// </summary>
+/// <remarks>
+/// <para>
+/// 面板在宿主里，钩子看不到那扇窗，所以状态必须整份推过来——<see cref="Open"/> 单独一个字段时，
+/// 钩子只能做到「别起手势」，钉住 / 点击外部 / 菜单 / 对话框全都判不了。
+/// </para>
+/// <para>
+/// <see cref="Hwnd"/> 用 <see cref="long"/>（跨 JSON 直接是整数），钩子在跨进程窗口上用
+/// <c>GetWindowRect</c> 算矩形，所以窗口拖动不必推送。
+/// </para>
+/// </remarks>
+internal sealed record PanelStateEvent(
+    bool Open,
+    bool Pinned = false,
+    bool Interacting = false,
+    bool Active = false,
+    long Hwnd = 0,
+    List<PanelMenuRect>? Menus = null);
+
+/// <summary>面板上开着的一块右键菜单（含已展开的子菜单），屏幕物理像素。</summary>
+internal sealed record PanelMenuRect(int Left, int Top, int Right, int Bottom);
 
 /// <summary>
 /// 宿主写过配置（宿主 → 执行器）：<see cref="Reason"/> 只进日志（<c>settings.json</c> / <c>reload</c> …）。

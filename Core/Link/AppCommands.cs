@@ -9,7 +9,7 @@ namespace LTools.Core.Link;
 /// <para>
 /// 开机自启：要建一个 <c>RunLevel=HighestAvailable</c> 的任务计划，**必须提权**
 /// （普通权限的宿主里 <c>schtasks /create</c> 会 Access denied）；而且任务里存的是
-/// <c>Environment.ProcessPath</c>——宿主里那是 <c>ShareHost.exe</c>，注册出去就是一条无效自启。
+/// <c>Environment.ProcessPath</c>——宿主里那是 <c>UiHost.exe</c>，注册出去就是一条无效自启。
 /// </para>
 /// <para>
 /// 清空历史记录：`state/run-history.jsonl` 与 `state/trigger-history.jsonl` 只有执行器在写

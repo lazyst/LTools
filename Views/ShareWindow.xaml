@@ -6,6 +6,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="局域网共享" Width="940" Height="620" MinWidth="760" MinHeight="480"
         WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
+        AllowDrop="True"
         PreviewDragOver="Window_PreviewDragOver" PreviewDragLeave="Window_PreviewDragLeave"
         PreviewDrop="Window_PreviewDrop"
         WindowStyle="None" Style="{StaticResource ModernWindow}"

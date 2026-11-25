@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -9,21 +11,22 @@ using LTools.Core;
 using LTools.Core.Link;
 using LTools.Core.Share;
 using LTools.Features;
+using LTools.Native;
 using LTools.Views;
 
-namespace LTools.ShareHost;
+namespace LTools.UiHost;
 
 /// <summary>
-/// 共享助手进程：**普通权限**的窗口 + 共享服务。
+/// 界面宿主进程：**普通权限**的所有窗口 + 局域网共享服务。
 /// </summary>
 /// <remarks>
 /// <para>
 /// 为什么单独一个进程：主程序是 <c>requireAdministrator</c>，而 Explorer 不会把文件拖给提权窗口（UIPI），
-/// 所以共享窗口必须活在一个 asInvoker 进程里。它只做两件事——跑 <see cref="ShareServer"/>、
-/// 按 <c>share/host.intent</c> 显示 / 隐藏窗口。别的什么都不碰（不装钩子、不加载动作库）。
+/// 面板 / 速记 / 设置 / 截图 / 编辑器 / 共享窗口因此都活在这个 asInvoker 进程里。
+/// 它不装钩子、不跑动作、不加载键鼠注入——那些归提权主程序（见 <c>docs/PROCESS_SPLIT.md</c>）。
 /// </para>
 /// <para>
-/// 生命周期：主程序「运行中」时拉起（隐藏）；托盘 / 内置功能再点就是 <c>show</c>；
+/// 生命周期：主程序「运行中」时拉起（隐藏）；托盘 / 内置功能再点共享就是 <c>show</c>；
 /// 主程序退出、或窗口里点「停止共享」并关窗，就 <c>stop</c> 退出。
 /// **关窗不停止共享**，这与主程序里的语义一致。
 /// </para>
@@ -38,7 +41,8 @@ public partial class App : Application
     // 与提权主程序的链路（过渡期：宿主做服务端、提权进程连上来；拉面板快照验证 + 为下一步渲染做准备）。
     private LinkServer? _link;
     private PanelSnapshot? _snapshot;
-    private bool _panelStateSent;
+    /// <summary>上一次推给提权进程的面板状态（内容没变就不重发）。</summary>
+    private PanelStateEvent? _panelState;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -48,7 +52,7 @@ public partial class App : Application
         AppRole.MarkUiHost();
 
         // 单实例：第二个实例立刻退出，而且**绝不能碰意图文件**——那是写给已经在跑的那个的。
-        _mutex = new Mutex(true, ShareHelper.MutexName, out bool createdNew);
+        _mutex = new Mutex(true, UiHostProcess.MutexName, out bool createdNew);
         if (!createdNew)
         {
             Shutdown();
@@ -57,7 +61,7 @@ public partial class App : Application
 
         DispatcherUnhandledException += (_, args) =>
         {
-            AppLog.Error("ShareHost", "共享助手未处理的异常", args.Exception);
+            AppLog.Error("UiHost", "界面宿主未处理的异常", args.Exception);
             args.Handled = true;
         };
 
@@ -72,9 +76,9 @@ public partial class App : Application
         // 否则「拖不进来」只能靠猜。
         SettingsFile settings = ConfigBundle.ReadSettings(configPath);
         LogConfig log = settings.Logging ?? new LogConfig();
-        // 写自己的日志文件（ltools-host-*.log）：主程序此刻也在写 ltools-*.log，
+        // 写自己的日志文件（ltools-uihost-*.log）：主程序此刻也在写 ltools-*.log，
         // 两个进程共用同一个文件会互相把对方锁成「一行都写不进去」。
-        AppLog.Configure(log.Enabled, log.Level, log.RetentionDays, fileTag: "host");
+        AppLog.Configure(log.Enabled, log.Level, log.RetentionDays, fileTag: "uihost");
 
         Ui.Initialize(Dispatcher);
         WindowCorners.Attach();
@@ -84,15 +88,15 @@ public partial class App : Application
         ShareServer.Apply(options);
 
         // 没有意图文件（用户直接双击）就看窗口；主程序拉起时一定带着意图。
-        string? intent = ShareHelper.ReadIntent();
-        Apply(intent ?? ShareHelper.ShowIntent);
-        if (intent != null) ShareHelper.Consume(intent);
+        string? intent = UiHostProcess.ReadIntent();
+        Apply(intent ?? UiHostProcess.ShowIntent);
+        if (intent != null) UiHostProcess.Consume(intent);
 
         _watch = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _watch.Tick += (_, _) => Poll();
         _watch.Start();
 
-        AppLog.Info("ShareHost", $"共享助手已启动（{intent ?? "show"}，端口 {options.Port}，运行中 {options.Running}）");
+        AppLog.Info("UiHost", $"界面宿主已启动（{intent ?? "show"}，端口 {options.Port}，运行中 {options.Running}）");
 
         // 起链路服务端（很快）+ 后台只读加载配置（重活，别拖住窗口首帧）。
         StartLink();
@@ -117,7 +121,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            AppLog.Warn("ShareHost", $"只读加载配置失败：{ex.Message}");
+            AppLog.Warn("UiHost", $"只读加载配置失败：{ex.Message}");
         }
 
         // 速记窗口与「写速记」动作单元的落点都在宿主：建目录、迁移旧 .txt、清孤儿附件。
@@ -127,7 +131,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            AppLog.Warn("ShareHost", $"初始化速记失败：{ex.Message}");
+            AppLog.Warn("UiHost", $"初始化速记失败：{ex.Message}");
         }
 
         // 采集历史 / 录屏残片也归宿主（截图流程在宿主里跑）：剪枝 + 把上次没封装的 MP4 收进历史。
@@ -139,7 +143,7 @@ public partial class App : Application
         Dispatcher.BeginInvoke(new Action(() =>
         {
             try { Features.SuperPanel.Refresh(); }
-            catch (Exception ex) { AppLog.Warn("ShareHost", $"重建面板失败：{ex.Message}"); }
+            catch (Exception ex) { AppLog.Warn("UiHost", $"重建面板失败：{ex.Message}"); }
         }));
     }
 
@@ -161,7 +165,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            AppLog.Warn("ShareHost", $"维护采集历史失败：{ex.Message}");
+            AppLog.Warn("UiHost", $"维护采集历史失败：{ex.Message}");
         }
     }
 
@@ -173,7 +177,7 @@ public partial class App : Application
         string? token = LinkToken.Read();
         if (token == null)
         {
-            AppLog.Info("ShareHost", "没有链路令牌，跳过链路（主程序没在跑？）");
+            AppLog.Info("UiHost", "没有链路令牌，跳过链路（主程序没在跑？）");
             return;
         }
 
@@ -210,11 +214,11 @@ public partial class App : Application
             // （面板是本进程的窗口，钩子进程看不到它）。
             Features.SuperPanel.StateChanged += PushPanelState;
 
-            AppLog.Info("ShareHost", $"链路服务端已启动（{LinkToken.PipeName}），等主程序连上");
+            AppLog.Info("UiHost", $"链路服务端已启动（{LinkToken.PipeName}），等主程序连上");
         }
         catch (Exception ex)
         {
-            AppLog.Warn("ShareHost", $"链路服务端启动失败：{ex.Message}");
+            AppLog.Warn("UiHost", $"链路服务端启动失败：{ex.Message}");
         }
     }
 
@@ -224,7 +228,7 @@ public partial class App : Application
     /// </summary>
     private static Task<LinkMessage> HandleRequest(LinkChannel channel, LinkMessage request)
     {
-        Task<LinkMessage>? handled = UiHost.TryHandleAsync(request)
+        Task<LinkMessage>? handled = UiDialogHost.TryHandleAsync(request)
             ?? DataHost.TryHandleAsync(request)
             ?? NoteHost.TryHandleAsync(request)
             ?? ActionHost.TryHandleAsync(request)
@@ -235,11 +239,11 @@ public partial class App : Application
 
     private void OnLinkClientChanged(bool connected)
     {
-        AppLog.Info("ShareHost", connected ? "主程序已连接" : "主程序已断开");
-        if (!connected) { _panelStateSent = false; return; }
+        AppLog.Info("UiHost", connected ? "主程序已连接" : "主程序已断开");
+        if (!connected) { _panelState = null; return; }
 
-        // 新连上的客户端还不知道面板开没开：补一次（关着时不必发，它的默认就是关）。
-        _panelStateSent = false;
+        // 新连上的客户端还不知道面板开着没 / 钉住没：整份补一次（内容没变时 PushPanelState 自己会跳过）。
+        _panelState = null;
         PushPanelState();
         // 点选器状态同理（只在真有遮罩时补发）。
         InputBridge.PushCurrent();
@@ -247,17 +251,41 @@ public partial class App : Application
         InputGuard.PushCurrent();
     }
 
-    /// <summary>面板状态变了就推给提权进程（只在开 / 关真的变了时才发，别每次激活都刷）。</summary>
+    /// <summary>
+    /// 面板状态变了就整份推给提权进程：它的钩子要用这份镜像判「起不起长按右键手势」
+    /// 「这一下算不算点到面板外面」「Esc 吞不吞」——面板是本进程的窗口，钩子看不到。
+    /// </summary>
+    /// <remarks>
+    /// 只在内容真的变了时才发：激活 / 失活也会触发（<c>PublishMirror</c> 挂在 Activated / Deactivated 上），
+    /// 但一条通知只有几十字节，没必要为此再做一层节流。
+    /// </remarks>
     private void PushPanelState()
     {
         LinkServer? server = Volatile.Read(ref _link);
         if (server == null || !server.IsConnected) return;
 
-        bool open = Features.SuperPanel.IsOpen;
-        if (open == _panelStateSent) return;
-        _panelStateSent = open;
-        _ = server.NotifyAsync(LinkMethods.EventPanelState, new PanelStateEvent(open));
+        HookMirror.PanelSnapshot snap = HookMirror.Panel;
+        // Active 按**真实前台窗口**算：NOACTIVATE 窗口（浏览器外壳、悬浮提示这类）被点亮时
+        // WPF 的 IsActive 可能还停在 true，而前台早就换了。
+        bool active = snap.Hwnd != IntPtr.Zero && Win32.GetForegroundWindow() == snap.Hwnd;
+
+        var state = new PanelStateEvent(
+            snap.Open,
+            snap.Pinned,
+            snap.Interacting,
+            active,
+            snap.Hwnd.ToInt64(),
+            snap.MenuRects.Select(r => new PanelMenuRect(r.Left, r.Top, r.Right, r.Bottom)).ToList());
+
+        if (_panelState != null && SamePanelState(_panelState, state)) return;
+        _panelState = state;
+        _ = server.NotifyAsync(LinkMethods.EventPanelState, state);
     }
+
+    private static bool SamePanelState(PanelStateEvent a, PanelStateEvent b) =>
+        a.Open == b.Open && a.Pinned == b.Pinned && a.Interacting == b.Interacting
+        && a.Active == b.Active && a.Hwnd == b.Hwnd
+        && (a.Menus ?? new List<PanelMenuRect>()).SequenceEqual(b.Menus ?? new List<PanelMenuRect>());
 
     private void OnLinkEvent(LinkMessage message)
     {
@@ -272,7 +300,7 @@ public partial class App : Application
                 if (show == null) return;
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    AppLog.Info("ShareHost", "显示面板（普通权限窗口）");
+                    AppLog.Info("UiHost", "显示面板（普通权限窗口）");
                     Features.SuperPanel.Show(new IntPtr(show.Hwnd), show.X, show.Y);
                 }));
                 break;
@@ -280,7 +308,7 @@ public partial class App : Application
             case LinkMethods.EventPanelToggle:
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    AppLog.Info("ShareHost", "切换面板（普通权限窗口）");
+                    AppLog.Info("UiHost", "切换面板（普通权限窗口）");
                     Features.SuperPanel.Toggle();
                 }));
                 break;
@@ -288,7 +316,7 @@ public partial class App : Application
             case LinkMethods.EventPanelStash:
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    AppLog.Info("ShareHost", "显示面板 · 暂存区");
+                    AppLog.Info("UiHost", "显示面板 · 暂存区");
                     Features.SuperPanel.ShowStash();
                 }));
                 break;
@@ -300,7 +328,7 @@ public partial class App : Application
             case NoteMethods.Toggle:
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    AppLog.Info("ShareHost", "开关速记（普通权限窗口）");
+                    AppLog.Info("UiHost", "开关速记（普通权限窗口）");
                     Features.QuickNote.Toggle();
                 }));
                 break;
@@ -308,7 +336,7 @@ public partial class App : Application
             case LinkMethods.EventInfoHelper:
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    AppLog.Info("ShareHost", "开关辅助工具（普通权限窗口）");
+                    AppLog.Info("UiHost", "开关辅助工具（普通权限窗口）");
                     Views.InfoHelperWindow.Toggle();
                 }));
                 break;
@@ -317,7 +345,7 @@ public partial class App : Application
                 SettingsOpenRequest? settingsOpen = message.Read<SettingsOpenRequest>();
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    AppLog.Info("ShareHost",
+                    AppLog.Info("UiHost",
                         $"打开设置（{settingsOpen?.Action ?? SettingsActions.Open} {settingsOpen?.Target}）");
                     ConfigHelper.OpenRemote(settingsOpen);
                 }));
@@ -328,7 +356,7 @@ public partial class App : Application
                 if (captureWindow?.Target is not { Length: > 0 } target) return;
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    AppLog.Info("ShareHost", $"打开截图窗口（{target}）");
+                    AppLog.Info("UiHost", $"打开截图窗口（{target}）");
                     Features.CapturePro.CaptureWindows.OpenLocal(target, captureWindow.Arg, captureWindow.Hwnd);
                 }));
                 break;
@@ -339,7 +367,7 @@ public partial class App : Application
 
             case LinkMethods.EventConfigReload:
                 // 执行器刚把磁盘上的配置整份换过（导入备份 / 重新加载）：宿主的只读副本全部作废。
-                AppLog.Info("ShareHost", "执行器重读了配置，宿主跟着刷新");
+                AppLog.Info("UiHost", "执行器重读了配置，宿主跟着刷新");
                 _ = ReloadAndRefreshAsync();
                 break;
 
@@ -366,7 +394,7 @@ public partial class App : Application
         try
         {
             try { ConfigStore.InitializeReadOnly(ConfigLocator.FindPath()); }
-            catch (Exception ex) { AppLog.Warn("ShareHost", $"刷新配置失败：{ex.Message}"); }
+            catch (Exception ex) { AppLog.Warn("UiHost", $"刷新配置失败：{ex.Message}"); }
 
             // 快照要先拉：悬浮状态在它里面，而右键菜单是**重建面板时**一并建好的（后拉就晚了一拍）。
             await PullSnapshotAsync();
@@ -381,7 +409,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            AppLog.Warn("ShareHost", $"刷新面板失败：{ex.Message}");
+            AppLog.Warn("UiHost", $"刷新面板失败：{ex.Message}");
         }
     }
 
@@ -400,18 +428,18 @@ public partial class App : Application
             {
                 Volatile.Write(ref _snapshot, snapshot);
                 PanelHostBridge.SetFloating(snapshot.Floating);
-                AppLog.Info("ShareHost",
+                AppLog.Info("UiHost",
                     $"面板快照：{snapshot.Actions.Count} 个动作、{snapshot.Panel.Global.Scenes.Count} 个全局场景、" +
                     $"{snapshot.Floating.Count} 个悬浮（{string.Join(",", snapshot.Floating)}）");
             }
             else
             {
-                AppLog.Warn("ShareHost", "面板快照失败：" + reply.Error);
+                AppLog.Warn("UiHost", "面板快照失败：" + reply.Error);
             }
         }
         catch (Exception ex)
         {
-            AppLog.Warn("ShareHost", $"拉面板快照失败：{ex.Message}");
+            AppLog.Warn("UiHost", $"拉面板快照失败：{ex.Message}");
         }
     }
 
@@ -434,18 +462,18 @@ public partial class App : Application
 
     private void Poll()
     {
-        string? intent = ShareHelper.ReadIntent();
+        string? intent = UiHostProcess.ReadIntent();
         if (string.IsNullOrEmpty(intent)) return;
 
         // 执行完删掉意图；万一删除撞上主程序刚写的新值，下一轮再按新值做一次（三个动作都幂等）。
-        if (Apply(intent)) ShareHelper.Consume(intent);
+        if (Apply(intent)) UiHostProcess.Consume(intent);
     }
 
     private bool Apply(string intent)
     {
         switch (intent)
         {
-            case ShareHelper.StopIntent:
+            case UiHostProcess.StopIntent:
                 _quitting = true;
                 _watch?.Stop();
                 ShareServer.Stop();
@@ -453,11 +481,11 @@ public partial class App : Application
                 Shutdown();
                 return true;
 
-            case ShareHelper.ShowIntent:
+            case UiHostProcess.ShowIntent:
                 ShowWindow();
                 return true;
 
-            case ShareHelper.RunIntent:
+            case UiHostProcess.RunIntent:
                 _window?.Hide();
                 return true;
         }

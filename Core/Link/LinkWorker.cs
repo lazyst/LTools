@@ -186,7 +186,7 @@ internal static class LinkWorker
         try
         {
             if (message.Method == LinkMethods.EventPanelState && message.Read<PanelStateEvent>() is { } state)
-                PanelHostBridge.SetRemotePanelOpen(state.Open);
+                PanelHostBridge.ApplyPanelState(state);
             else if (message.Method == LinkMethods.EventPickerActive
                      && message.Read<PickerActiveEvent>() is { } picker)
                 Hooks.MouseHook.SetWindowPickerActive(picker.Active);
@@ -268,7 +268,7 @@ internal static class LinkWorker
                 if (client != null)
                 {
                     Interlocked.CompareExchange(ref _client, null, client);
-                    PanelHostBridge.SetRemotePanelOpen(false);   // 断开就当面板没了
+                    PanelHostBridge.DropPanelState();            // 断开就当面板没了
                     InputGuard.Reset();                          // 画布 / 快捷键挂起是宿主推来的，一起作废
                     Features.HotkeyCapture.ResetRemote();        // 宿主里的录入框状态同理
                     Features.CapturePro.PinShortcutRoute.DropRemote();   // 宿主里的贴图影子也作废

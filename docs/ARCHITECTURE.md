@@ -66,6 +66,8 @@ state/trigger-history.jsonl  自动触发的运行 / 丢弃记录（500 条上�
 state/run-history.jsonl  运行历史：每次运行一行（500 条上限；失败步骤分布与「复制摘要」都读它）
 state/action-params.json  动作参数记忆：按动作 Id 记上次填过的输入变量值（「填默认值」一键清）
 state/auto-trigger-last-start.txt  「仅每日第一次启动」的当天日期（别放 cache/）
+ui-host/intent.txt   界面宿主的意图（run / show / stop，执行完即删；见 Core/UiHostProcess）
+share/               局域网共享区：items.json + files/ + inbox/（不进备份）
 staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 ```
 
@@ -74,6 +76,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | 文件 | 谁写 | 说明 |
 | --- | --- | --- |
 | `ltools-yyyyMMdd.log` | `AppLog`（异步队列，上限 2 万行） | 应用日志，行首带 `[run-xxxxxx]`；单文件 20 MB 滚动成 `.1` / `.2` |
+| `ltools-uihost-yyyyMMdd.log` | `AppLog`（`fileTag: "uihost"`） | 界面宿主（`UiHost.exe`）自己的日志；两个进程共用一份会互相锁死 |
 | `action-yyyyMMdd.log` | 「输出日志」动作单元 | 用户自己写的日志（始终写），同样 20 MB 滚动 |
 | `last-failure.log`（+ `.1`…`.4`） | `FailureLog` | 最近 5 次失败的逐步轨迹 + 按 run id 过滤的日志；失败 toast 点开的就是它 |
 
@@ -91,6 +94,7 @@ staging/  ai/  macros/  subactions/  速记/  logs/  ocr-models/   不变
 | `configs/macros.json` | `MacroFileStore`（经 `MacroStore`） | 宏菜单、编辑器 |
 | `configs/triggers.json` | `TriggerStore`（经 `TriggerRegistry.Load` / 自动触发页） | 自动触发运行期、设置页、备份 |
 | `actions/<id>/…` | `ActionStore`（经 `ConfigBundle` / `ConfigStore`） | 引擎、面板、编辑器、AI 工具 |
+| `ui-host/intent.txt` | 执行器 `UiHostProcess`（`run` / `show` / `stop`） | `UiHost.exe` 每 400ms 读一次、执行完删 |
 
 所有单域写入经 `ConfigIO.ModifyDomain`（一把锁 + 严格读）；读仍合并整份聚合，所以首次升级能带上
 旧文件的种子，分域完成后每次只碰被点的那个文件。

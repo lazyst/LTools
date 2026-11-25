@@ -158,9 +158,9 @@ internal sealed class AiSettings
     /// <c>LTools.exe</c> 的完整路径（stdio 桥要拉起它）。
     /// </summary>
     /// <remarks>
-    /// **别用 <c>Environment.ProcessPath</c>**：AI 页在宿主里时那是 <c>ShareHost.exe</c>，
+    /// **别用 <c>Environment.ProcessPath</c>**：AI 页在宿主里时那是 <c>UiHost.exe</c>，
     /// 给出去的 stdio 命令会拉起一个没有 <c>--mcp-stdio</c> 模式的进程。两个 exe 永远同目录
-    /// （见 <c>ShareHost</c> 的部署约定），按数据根 / 程序目录找就行。
+    /// （见 <c>UiHost</c> 的部署约定），按数据根 / 程序目录找就行。
     /// </remarks>
     public static string ToolsExePath
     {

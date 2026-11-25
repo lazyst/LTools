@@ -1,11 +1,11 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LTools", "LTools.csproj", "{EF73EFB5-386D-4F4D-AA3C-3CCC8979AC95}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShareHost", "ShareHost\ShareHost.csproj", "{9FAB6747-3DE1-4BE5-B503-D36DE8945EE4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UiHost", "UiHost\UiHost.csproj", "{9FAB6747-3DE1-4BE5-B503-D36DE8945EE4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

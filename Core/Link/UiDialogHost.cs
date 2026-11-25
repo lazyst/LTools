@@ -24,7 +24,7 @@ namespace LTools.Core.Link;
 /// 停止热键 / <c>ui.cancel</c> 就关不掉它。每个窗口按 <c>dialogId</c> 登记，取消时按 id 找。
 /// </para>
 /// </remarks>
-internal static class UiHost
+internal static class UiDialogHost
 {
     private static readonly ConcurrentDictionary<string, Action> Open = new(StringComparer.Ordinal);
 

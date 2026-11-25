@@ -95,7 +95,7 @@ internal static class AppLog
     /// </summary>
     /// <param name="fileTag">
     /// 写进文件名的进程标记（可空）：空 = <c>ltools-yyyyMMdd.log</c>（主程序），
-    /// 给了 <c>"host"</c> 就是 <c>ltools-host-yyyyMMdd.log</c>。
+    /// 给了 <c>"uihost"</c> 就是 <c>ltools-uihost-yyyyMMdd.log</c>。
     /// **两个进程不能写同一个日志文件**：<see cref="StreamWriter"/> 之间是共享读、不允许并发写，
     /// 后打开的那个会一直写失败（错误被吞掉，看起来就是「一行日志都没有」）。见 docs/PROCESS_SPLIT.md §7。
     /// </param>

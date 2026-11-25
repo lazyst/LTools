@@ -3,33 +3,33 @@ using System.IO;
 using System.Threading;
 using LTools.Native;
 
-namespace LTools.Core.Share;
+namespace LTools.Core;
 
 /// <summary>
-/// 共享助手进程（<c>ShareHost.exe</c>）的唯一出入口。
+/// 界面宿主进程（<c>UiHost.exe</c>）的唯一出入口。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 主程序是 <c>requireAdministrator</c>，而 Explorer 只会把文件拖给**普通权限**的窗口
-/// （UIPI 拦「中完整性 → 高完整性」的拖放），所以共享窗口放在一个 asInvoker 的独立进程里
-/// ——和 Quicker「界面普通权限、提权按需」是同一个思路，只是范围只有这一个窗口。
+/// 主程序是 <c>requireAdministrator</c>，而**所有窗口都得活在普通权限进程里**：Explorer 只会把文件
+/// 拖给中完整性的窗口（UIPI 拦「中完整性 → 高完整性」的拖放），面板 / 速记 / 设置 / 截图 / 编辑器 /
+/// 共享窗口因此全在宿主里——和 Quicker「界面普通权限、提权按需」是同一个思路。
 /// </para>
 /// <para>
-/// 两个进程之间只有两样东西：一个命名互斥体（在不在跑）与 <c>share/host.intent</c>
+/// 两个进程之间只有两样东西：一个命名互斥体（在不在跑）与 <c>ui-host/intent.txt</c>
 /// （要它做什么：<c>run</c> / <c>show</c> / <c>stop</c>）。**用文件而不是命令行**：
 /// 提权进程没法直接生普通权限子进程（子进程会继承高完整性令牌），只能经 <c>explorer.exe</c>
 /// 拉起，而 Explorer 不转发参数。
 /// </para>
 /// <para>
-/// 意图文件是「最后一次要求」而不是队列：助手按内容执行一次就删，重复写同一个值没有副作用。
+/// 意图文件是「最后一次要求」而不是队列：宿主按内容执行一次就删，重复写同一个值没有副作用。
 /// </para>
 /// </remarks>
-internal static class ShareHelper
+internal static class UiHostProcess
 {
-    public const string ExeName = "ShareHost.exe";
+    public const string ExeName = "UiHost.exe";
 
-    /// <summary>会话内唯一的互斥体名；助手进程持有它直到退出。</summary>
-    public const string MutexName = @"Local\LToolsShareHost";
+    /// <summary>会话内唯一的互斥体名；宿主进程持有它直到退出。</summary>
+    public const string MutexName = @"Local\LToolsUiHost";
 
     public const string RunIntent = "run";
     public const string ShowIntent = "show";
@@ -37,18 +37,18 @@ internal static class ShareHelper
 
     public static string ExePath => Path.Combine(AppPaths.AppDirectory, ExeName);
 
-    public static string IntentPath => Path.Combine(AppPaths.ShareDir, "host.intent");
+    public static string IntentPath => Path.Combine(AppPaths.UiHostDir, "intent.txt");
 
-    /// <summary>助手可执行文件在不在（打包漏了就直说，别静默什么都不发生）。</summary>
+    /// <summary>宿主可执行文件在不在（打包漏了就直说，别静默什么都不发生）。</summary>
     public static bool IsAvailable => File.Exists(ExePath);
 
     public static bool IsRunning => MutexExists();
 
-    /// <summary>拉起（窗口保持隐藏）。已经在跑就什么都不做——服务由它自己按配置决定开不开。</summary>
+    /// <summary>拉起（窗口保持隐藏）。已经在跑就什么都不做——共享服务由它自己按配置决定开不开。</summary>
     public static void Start() => Send(RunIntent);
 
-    /// <summary>拉起并显示窗口；已经在跑就唤起。</summary>
-    public static void Open() => Send(ShowIntent);
+    /// <summary>拉起并显示局域网共享窗口；已经在跑就唤起。</summary>
+    public static void ShowShareWindow() => Send(ShowIntent);
 
     /// <summary>让它停下（服务与进程一起）。没在跑就只清掉残留意图。</summary>
     public static void Stop()
@@ -57,7 +57,7 @@ internal static class ShareHelper
         else ClearIntent();
     }
 
-    /// <summary>读一次意图（助手用）；没有 / 读不到就是 null。</summary>
+    /// <summary>读一次意图（宿主用）；没有 / 读不到就是 null。</summary>
     public static string? ReadIntent()
     {
         try
@@ -117,7 +117,7 @@ internal static class ShareHelper
         }
         catch (Exception ex)
         {
-            AppLog.Warn("Share", $"经 Explorer 启动共享助手失败，改为直接启动（拖放会失效）：{ex.Message}");
+            AppLog.Warn("UiHost", $"经 Explorer 启动界面宿主失败，改为直接启动（拖放会失效）：{ex.Message}");
             try
             {
                 Process.Start(new ProcessStartInfo(ExePath) { UseShellExecute = true });
@@ -133,14 +133,14 @@ internal static class ShareHelper
     {
         try
         {
-            Directory.CreateDirectory(AppPaths.ShareDir);
+            Directory.CreateDirectory(AppPaths.UiHostDir);
             string temp = IntentPath + ".tmp";
             File.WriteAllText(temp, intent);
             File.Move(temp, IntentPath, overwrite: true);
         }
         catch (Exception ex)
         {
-            AppLog.Warn("Share", $"写共享助手指令失败：{ex.Message}");
+            AppLog.Warn("UiHost", $"写界面宿主意图失败：{ex.Message}");
         }
     }
 

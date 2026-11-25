@@ -29,6 +29,9 @@ internal static class AppPaths
     /// <summary>局域网共享的共享区（清单 + 文件 + 收件箱），位于数据根下，不进备份。</summary>
     public static string ShareDir => Path.Combine(DataRoot, "share");
 
+    /// <summary>界面宿主的意图目录（<c>intent.txt</c>），位于数据根下，不进备份。</summary>
+    public static string UiHostDir => Path.Combine(DataRoot, "ui-host");
+
     /// <summary>运行日志目录，位于数据根下（已 gitignore，按天分文件）。</summary>
     public static string LogsDir => Path.Combine(DataRoot, "logs");
 

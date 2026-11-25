@@ -123,12 +123,12 @@ dotnet run --no-build                     # 21 条，约 2 秒
 
 ```powershell
 cd tests\ShareSmoke
-dotnet run                                # 92 条，约 10 秒（中间有几次真的拖鼠标）
+dotnet run                                # 90 条，约 10 秒（中间有几次真的拖鼠标）
 dotnet run -- --explorer                  # 再加一段：真开资源管理器，把文件拖进窗口（提权时收不到，断言的是这一点）
-dotnet run -- --helper                    # 再加一段：拉起 ShareHost.exe，真拖一个文件进去（两个都开时共 103 条）
+dotnet run -- --uihost                    # 再加一段：拉起 UiHost.exe，真拖一个文件进去（两个都开时共 98 条）
 ```
 
-`--helper` 是**跨进程**那段：按产品那条路拉起 `ShareHost.exe`（`Native/ShellToken` 复制 Explorer
+`--uihost` 是**跨进程**那段：按产品那条路拉起 `UiHost.exe`（`Native/ShellToken` 复制 Explorer
 的令牌，普通权限；不是提权运行时退回 `explorer.exe`），断言「窗口出来 / `TokenElevation == 0` /
 没把资源管理器叫到前台（窗口条数不变）/ 真资源管理器拖进去后 `share/items.json` 多一条」。
 它会往真实共享区加一条，跑完把 `items.json` 原样还原。
@@ -145,15 +145,16 @@ dotnet run -- --helper                    # 再加一段：拉起 ShareHost.exe�
 - **真鼠标拖放**：先拿一个普通 `Window` 当对照组（证明自动化可用），再拖共享窗口。
   断言用 `AddHandler(..., handledEventsToo: true)`——产品自己的处理器会 `e.Handled = true`，
   普通 `+=` 永远数到 0（踩过）。`DragEventArgs` 只有 internal 构造函数，反射建。
-- **提权通道**：`AllowDrop=False` + `WS_EX_ACCEPTFILES` + 手工造 `HDROP` 发 `WM_DROPFILES` 能收、
-  同一文件再拖不重复。
+- **拖放通道**：`AllowDrop`（共享窗口只活在 asInvoker 宿主里，OLE 直通）+ 文件 / 文字 / 图片三种
+  载重，同一文件再拖一次不重复。以前那条「手工造 `HDROP` 发 `WM_DROPFILES`」的断言随
+  `Views/FileDropBridge` 一起删掉了（那条路实测永远收不到）。
 - 窗口渲染成 `%TEMP%\opencode\share-smoke\window.png`。
 
 `--explorer` 段：开资源管理器（临时目录）、用产品的 `ControlTargets.Snapshot` 找文件行、
 真鼠标拖进共享窗口。**两条结论都靠它验过**：非提权（用 `explorer.exe <exe> --log --explorer`
-从资源管理器启动这个冒烟）能拖进来；提权时 Explorer 连 `WM_DROPFILES` 都不发（钩子数到 0），
-这是 UIPI 的系统限制，见 `docs/LAN_SHARE.md` §3.2.1。`--log` 把输出写进
-`%TEMP%\opencode\share-smoke\report.txt`（从资源管理器启动时没有控制台可看）。
+从资源管理器启动这个冒烟）能拖进来；冒烟自己提权跑时 Explorer 的拖放被 UIPI 拦住，
+这是 UIPI 的系统限制（也正因为如此，产品窗口都住在普通权限宿主里），见 `docs/LAN_SHARE.md` §3.2.1。
+`--log` 把输出写进 `%TEMP%\opencode\share-smoke\report.txt`（从资源管理器启动时没有控制台可看）。
 
 ### `LinkSmoke`（进程间链路：真命名管道上的握手 / 请求 / 事件 / 超时）
 

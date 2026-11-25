@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LTools.Core;
+using LTools.Features;
+using LTools.Features.Floating;
 
 namespace LTools.Core.Link;
 
@@ -126,13 +129,40 @@ internal static class PanelHostBridge
     public static bool IsFloating(string? actionId) =>
         !string.IsNullOrEmpty(actionId) && Volatile.Read(ref _floating).Contains(actionId);
 
-    // —— 面板状态（提权进程这一侧：面板开在宿主里，`MouseHook` 要据此让开「长按右键」手势） ——
+    // —— 面板状态（提权进程这一侧：面板开在宿主里，钩子看不到那扇窗） ——
 
-    private static int _remotePanelOpen;
+    /// <summary>
+    /// 宿主推来的面板状态整份落到 <see cref="HookMirror.Panel"/>：钩子线程据此判
+    /// 「长按右键还起不起手势」「这下点击算不算点到面板外面」「Esc 吞不吞」。
+    /// 刚打开的那一次顺手把面板抬到前台——起手的长按右键是**本进程**吞下的，
+    /// 前台权限在我们这边，宿主自己 Activate 时灵时不灵（实测）。
+    /// </summary>
+    public static void ApplyPanelState(PanelStateEvent state)
+    {
+        bool wasOpen = HookMirror.Panel.Open;
 
-    /// <summary>宿主里的面板开着（由宿主推 <c>panel.state</c>）。</summary>
-    public static bool RemotePanelOpen => Volatile.Read(ref _remotePanelOpen) != 0;
+        HookMirror.PublishPanel(new HookMirror.PanelSnapshot
+        {
+            Open = state.Open,
+            Pinned = state.Pinned,
+            Interacting = state.Interacting,
+            Active = state.Active,
+            Hwnd = new IntPtr(state.Hwnd),
+            MenuRects = (state.Menus ?? new List<PanelMenuRect>())
+                .Select(m => new HookMirror.Rect(m.Left, m.Top, m.Right, m.Bottom))
+                .ToArray(),
+        });
 
-    /// <summary>记下宿主那扇面板的开 / 关（断开时按关处理）。</summary>
-    public static void SetRemotePanelOpen(bool open) => Volatile.Write(ref _remotePanelOpen, open ? 1 : 0);
+        if (!state.Open || wasOpen || state.Hwnd == 0) return;
+
+        var hwnd = new IntPtr(state.Hwnd);
+        Ui.Post(() =>
+        {
+            WindowAction.ActivateNoWait(hwnd);
+            FloatingManager.RaiseAllAbove();
+        });
+    }
+
+    /// <summary>断开就当面板没了（否则钩子会一直以为面板开着、再也不起长按手势）。</summary>
+    public static void DropPanelState() => HookMirror.PublishPanel(HookMirror.PanelSnapshot.Empty);
 }

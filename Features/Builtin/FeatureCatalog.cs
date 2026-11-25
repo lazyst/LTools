@@ -51,7 +51,7 @@ internal static class FeatureCatalog
             () => Ui(() => ConfigHelper.Toggle())),
         L("ltools.share", "局域网共享", "window",
             "在本机和同网段设备之间收发文字 / 文件：别的设备用浏览器打开一条固定地址即可",
-            () => LTools.Core.Share.ShareHelper.Open()),
+            () => LTools.Core.UiHostProcess.ShowShareWindow()),
         L("ltools.record", "录制键鼠宏", "record",
             "开始 / 结束录制键鼠宏；录完自动生成一个「键鼠宏」动作",
             () => Ui(() => MacroRecorder.Toggle())),

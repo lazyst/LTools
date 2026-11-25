@@ -20,22 +20,27 @@
 - 结果就是：**发布版里所有窗口的拖放都是死的**——面板、速记附件、贴图替换、拼图、图片编辑，一个都收不到。
   这些窗口写了 `AllowDrop`，只在「从资源管理器启动的非提权 Debug 进程」里能用，所以平时不容易发现。
 
-共享窗口为此已经拆出了一个 `ShareHost.exe`（普通权限）。如果面板再拆一个「投放层」，就是第二套补丁；
+共享窗口为此已经拆出了一个 `UiHost.exe`（普通权限）。如果面板再拆一个「投放层」，就是第二套补丁；
 以后每加一个要拖放的窗口，都要再决定一次「它在哪个进程」。**这是根因，不是症状。**
 
 ### 1.3 目标 / 非目标
 
 | 目标 | 说明 |
 |---|---|
-| ✅ 拖放恢复正常 | 面板（以及以后所有窗口）一行 `AllowDrop` 就能收资源管理器的文件 |
+| ✅ 拖放恢复正常 | 所有窗口都在 asInvoker 宿主里，一行 `AllowDrop` 就能收资源管理器的文件；面板「拖文件 = 建动作」已接（2026-11-25，见 §14 `P2-M3-5d-c`） |
 | ✅ 管理员只给需要它的部分 | 全局钩子、键鼠注入、UIA、窗口操作、脚本；UI 不再要管理员 |
 | ✅ 启动更快、UAC 更少 | UI 进程瞬时启动；提权靠任务计划静默拉起（见 §6） |
-| ✅ 能收敛掉现有补丁 | `ShareHost.exe` / `Native/ShellToken` / `Views/FileDropBridge` 全部可以删除 |
+| ✅ 只留真正必需的补丁 | `Views/FileDropBridge`（`WM_DROPFILES` 桥）已删；`UiHost.exe` 与 `Native/ShellToken` **保留**——主程序清单是 `requireAdministrator`，普通权限的窗口必须活在另一个 asInvoker 进程里 |
 | ❌ 不改动作模型 | 动作单元、校验器、编辑器、`StepText`、配置格式一律不动 |
 | ❌ 不改用户可见的操作方式 | 面板、快捷键、悬浮、托盘、自动触发的用法不变 |
 | ❌ 不做夸进程的插件/脚本生态 | 脚本仍在执行器进程内跑（见 §8 的安全面） |
 
 ## 2. 目标架构
+
+> **落地形状（2026-11-25 更正）**：原计划是「一个 exe、两种模式」，实测走不通
+> （`requireAdministrator` 清单下用 Explorer 的令牌起同一个 exe 报 `740`，见 §14 `P2-M3-5d-b`），
+> 实际是两个 exe：提权的 `LTools.exe` + 普通权限的 `UiHost.exe`。下面这张图保留作设计初衷，
+> 读的时候把 `LTools.exe` / `LTools.exe --worker` 换成 `UiHost.exe` / `LTools.exe` 即可。
 
 一个 exe，两种模式（不新增可执行文件）：
 
@@ -245,10 +250,10 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | 阶段 | 内容 | 估时 | 交付 / 验收 |
 |---|---|---|---|
 | **P0 通道 + 执行器骨架** | 命名管道（请求/响应/事件/超时/取消）、`--worker` 模式、`hello` / `ping` / `shutdown`、单实例、任务计划两条 + UAC 兜底；钩子 + 引擎原样留在提权进程 | 1–1.5 天 | 两进程能起能退；`--selftest` 仍全绿；UI 功能不变 |
-| **P1 宿主 + 面板** | 普通权限宿主进程（复用现有 `ShareHost` 的启动方式，先不删）承载 `SuperPanel`；宿主 → 执行器的命令面（`run` / `feature` / `openWindow` / `reload` / `toast` / `askParams`）；配置写属主暂留提权进程，宿主的写操作走命令（重命名分组 / 拖排 / 增删动作 / 场景）；**面板 `AllowDrop` + 落点建动作** | 2–3 天 | **拖放需求交付**；面板所有既有冒烟段全绿；`PanelClipboardSmoke` 全绿 |
+| **P1 宿主 + 面板** | 普通权限宿主进程（复用现有 `UiHost` 的启动方式，先不删）承载 `SuperPanel`；宿主 → 执行器的命令面（`run` / `feature` / `openWindow` / `reload` / `toast` / `askParams`）；配置写属主暂留提权进程，宿主的写操作走命令（重命名分组 / 拖排 / 增删动作 / 场景）；**面板 `AllowDrop` + 落点建动作** | 2–3 天 | **拖放需求交付**；面板所有既有冒烟段全绿；`PanelClipboardSmoke` 全绿 |
 | **P2 交互服务** | `askParams` / `input` / `select` / `confirm` / `textWindow` / `selectFile` / `pickPoint` / `capture` / `indicator` / `toast` 全部走 RPC；`ActionParamMemory` / 交互截图归 UI；执行器侧删掉 `Dispatcher.Invoke` 依赖 | 1.5–2 天 | 动作里 6 个 `ui.*` + 取点 + 截图 + 文件框逐条冒烟；停止热键能中断等待 |
 | **P3 钩子侧能力** | `panelSnapshot` / `inputRoute` / `settingsSnapshot` 推送；快捷键录入改 `captureChord`；宏录制 / 回放跨进程；自动触发搬执行器；MCP 工具按需路由；`--perf` 独立进程 | 2–3 天 | `MenuConeSmoke` / `PanelClipboardSmoke` / 录制回放段 / 快捷键段全绿；新 `SplitSmoke` |
-| **P4 收尾** | 设置 / 编辑器 / 速记 / 贴图 / 截图 Pro / 共享窗口全部搬进普通权限宿主；**删 `ShareHost` / `Native/ShellToken` / `Views/FileDropBridge`**（所有窗口默认 `AllowDrop`）；日志前缀分家；打包只剩一个 exe | 2–3 天 | 全量冒烟 + 真机点一遍；发布包少一个 exe |
+| **P4 收尾** | 设置 / 编辑器 / 速记 / 贴图 / 截图 Pro / 共享窗口全部搬进普通权限宿主；**删 `Views/FileDropBridge`**（所有窗口默认 `AllowDrop`）；`UiHost` / `Native/ShellToken` **保留**（清单 `requireAdministrator`，见 §14 `P2-M3-5d-b`）；日志前缀分家 | 2–3 天 | 全量冒烟 + 真机点一遍 |
 
 合计 **9–13 天**（含冒烟），风险集中在前两阶段。
 
@@ -267,7 +272,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 **已有（全部必须继续绿）**
 
 - `LTools.exe --selftest`（373 用例 / 18421 断言）：校验收敛为「UI 进程跑」
-- `tests/ShareSmoke`（默认 / `--explorer` / `--helper`）：共享服务与窗口；P4 后 `--helper` 段退役，
+- `tests/ShareSmoke`（默认 / `--explorer` / `--uihost`）：共享服务与窗口；P4 后 `--uihost` 段退役，
   换成「共享窗口在 UI 进程里能收拖放」
 - `tests/CaptureOverlaySmoke`（`nav` / `search` / `history` / `tools` / `record` 等段）
 - `tests/MenuConeSmoke`、`tests/PanelClipboardSmoke`、`tests/TableSmoke`、`tests/UiaPickSmoke`
@@ -369,7 +374,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 冒烟 `tests/PanelHostSmoke`：11 条。先按主程序 `Initialize` 建临时数据根（会写），快照整个目录 →
   `InitializeReadOnly` → 再快照，断言**逐字节相同**（名字 / 大小 / SHA-256 / 修改时间），动作 / 面板 /
   种子快捷键都读得到；只读进程里两个 `Save` 被拒且目录不变；空数据根不凭空生成默认面板。
-- 尚未接线：宿主（`ShareHost.exe`）还没调它，也还没接 `LinkClient`（下一步：面板进宿主）。
+- 尚未接线：宿主（`UiHost.exe`）还没调它，也还没接 `LinkClient`（下一步：面板进宿主）。
 
 **2026-11-24 · P1b-2 面板命令面（提权侧的写属主）**
 
@@ -397,22 +402,22 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - `Core/Link/LinkWorker.cs`：提权侧的客户端 + 退避重连循环（250ms → 最多 5s），连上后用
   `PanelHost.HandleAsync` 应答命令，握手后发 `client.ready`。
 - `LinkClient` 支持传 handler（`LinkChannel` 本来就不分方向），并暴露 `WhenClosed`。
-- `ShareHost/App.xaml.cs`：起 `LinkServer`（宿主侧，stub 应答），收到 `client.ready` 后拉
+- `UiHost/App.xaml.cs`：起 `LinkServer`（宿主侧，stub 应答），收到 `client.ready` 后拉
   `panel.snapshot` 存进 `Snapshot`（下一步用它渲染面板）；后台 `ConfigStore.InitializeReadOnly`。
-- **每个进程写自己的日志文件**：`AppLog.Configure` 加可选 `fileTag`，宿主写 `logs/ltools-host-<日期>.log`。
+- **每个进程写自己的日志文件**：`AppLog.Configure` 加可选 `fileTag`，宿主写 `logs/ltools-uihost-<日期>.log`。
   两个进程用同一个文件时，后打开的那个 `StreamWriter` 会一直因共享冲突写失败、错误被吞掉，**表面就是
   「一行日志都没有」**（这次踩到）。`LogFiles` 的 `ltools-` 前缀已经覆盖它。
 - 真机实测（dev 构建、提权 shell）：清掉令牌 → 起 `LTools.exe` → 提权侧写 32 位令牌 → 自动拉起
-  `ShareHost.exe`（普通权限）→ 宿主日志：`链路服务端已启动` / `主程序已连接` / `面板快照：8 个动作、1 个全局场景`。
+  `UiHost.exe`（普通权限）→ 宿主日志：`链路服务端已启动` / `主程序已连接` / `面板快照：8 个动作、1 个全局场景`。
 - 回归：`LinkSmoke` 改成生产方向（服务端发请求、客户端 `PanelHost` 应答）并加一条「反向角色」断言（32 条）；
-  `--selftest` 393 用例 / 18549 断言；`PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
+  `--selftest` 393 用例 / 18549 断言；`PanelHostSmoke` 11；`ShareSmoke -- --explorer --uihost` 103。
 
 **2026-11-24 · P1b-4 面板在宿主里渲染（只读预览 + 磁贴转交）**
 
 - 唤起入口收口到 `Features/PanelLauncher`（`Show` / `Toggle`）：右键长按手势、`CapsLock+T`、
   托盘菜单、内置功能 `ltools.panel` 全走它。迁移开关 `PanelRouting.Enabled`（环境变量
   **`LTOOLS_PANEL_HOST=1`**，默认关）打开且宿主连着 → 发 `panel.show` / `panel.toggle`；否则本地开。
-  开关打开时 `App.OnStartup` 也会把宿主随主程序拉起来（它同时是共享助手）。
+  开关打开时 `App.OnStartup` 也会把宿主随主程序拉起来（共享窗口也在它里面）。
 - `panel.show` 负载带光标坐标（`PanelShowRequest(Hwnd, X, Y)`），宿主用
   `Features.SuperPanel.Show(hwnd, x, y)` 在**唤起瞬间的光标处**定位，而不是宿主当前光标。
 - **宿主里绝不本地执行动作**：`ActionExecutor.RunRef` 第一句问 `PanelHostBridge.TryForwardRun`
@@ -426,7 +431,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   左栏只剩动作面板 / 截图两个入口（暂存区与设置已按预览隐藏）。宿主日志：
   `显示面板（普通权限窗口）`；断开后 `主程序已断开`。
 - 回归：`LinkSmoke` 加「磁贴转交」段（35 条）；`--selftest` 393 用例 / 18556 断言；
-  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
+  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --uihost` 103。
 - **默认仍是旧路径**：不设 `LTOOLS_PANEL_HOST=1` 时行为与以前完全一致（面板在提权进程、宿主只在共享时起）。
 
 **2026-11-24 · P1b-5 `open.window`（设置 / 暂存区回提权进程）**
@@ -443,7 +448,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 仍是**只读预览**：右键菜单（新建 / 编辑 / 删除 / 复制 / 分组 / 场景）还关着——下一步把
   `PanelActionOps` 的写操作接成命令（`panel.op.*`），再翻默认值。
 - 回归：`LinkSmoke` 38 条（新增 `open.window` 转交断言）；`--selftest` 393 用例 / 18561 断言；
-  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
+  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --uihost` 103。
 
 **2026-11-24 · P1b-6 `panel.op.*` + 结构保存转交（写属主真正搬过去）**
 
@@ -464,7 +469,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   「从文件建动作」这些走 `FloatingManager` / `MacroPlayer` / `ConfigHelper` / `PanelDrop` 的入口，
   在宿主里跑会落到错误的进程。下一步把它们接成命令后再放开菜单。
 - 回归：`LinkSmoke` 43 条（新增 `panel.op` / `panel.replace` 转交）；`--selftest` 393 用例 / 18569 断言；
-  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
+  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --uihost` 103。
 
 **2026-11-24 · P1b-7 右键菜单放开（安全子集）**
 
@@ -482,7 +487,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   「编辑… / 复制引用 / 复制为副本 / 导出动作… / 另存为子动作… / 复制名称 / 复制 Id / 从此组移除 / 删除动作…」，
   宏与悬浮项按预期没有出现。
 - 回归：`--selftest` 393 用例 / 18574 断言；`LinkSmoke` 43；`PanelHostSmoke` 11；
-  `ShareSmoke -- --explorer --helper` 103。
+  `ShareSmoke -- --explorer --uihost` 103。
 - **默认开关仍关**：`LTOOLS_PANEL_HOST=1` 才走宿主；下一步把「悬浮 / 宏 / 暂存区编辑」接完，
   再把默认值翻过来。
 
@@ -504,7 +509,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   再点「取消悬浮」→ 快照回到 0 个悬浮、标签回到「悬浮此动作」。
 - 回归：`--selftest` 393 用例 / 18583 断言（新增面板操作名唯一、快照悬浮引用往返）；
   `LinkSmoke` 53 条（新增五个操作转交 + 悬浮状态缓存 + 快照带悬浮引用）；`PanelHostSmoke` 11；
-  `ShareSmoke -- --explorer --helper` 103。
+  `ShareSmoke -- --explorer --uihost` 103。
 - **默认开关仍关**：`LTOOLS_PANEL_HOST=1` 才走宿主。下一步：把暂存区页 / `Ctrl+V` 之外的其余入口扫一遍，
   然后翻默认值、删开关。
 
@@ -521,44 +526,49 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 真机实测：宿主里点左栏暂存区 → 4 张卡片（无效 id 的旧目录按规则跳过）；卡片右键菜单齐全；
   点「在编辑器中打开」→ 提权进程收到 `stashOpen（id=…）` 并在**它那里**开出「编辑草稿 · …」窗口。
 - 回归：`--selftest` 393 用例 / 18593 断言；`LinkSmoke` 60 条（新增五个暂存区操作转交 + `open.window ai`）；
-  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
+  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --uihost` 103。
 - **默认开关仍关**：`LTOOLS_PANEL_HOST=1` 才走宿主。下一步：翻默认值、删开关与 `PanelRouting` 分叉。
 
 **2026-11-24 · P1b-10 默认值翻过来：面板默认在普通权限宿主里**
 
 - `PanelRouting.Enabled` 从「设 `LTOOLS_PANEL_HOST=1` 才开」翻成「**默认开**，设 `LTOOLS_PANEL_HOST=0`
   才退回提权进程」——留这一版做回退口，下一版连它一起删。
-- 随之常驻：`App.OnStartup` 现在默认拉起 `ShareHost.exe`（`run` 意图，窗口隐藏；共享服务仍按
-  `Share.Running` 决定开不开），主程序退出时 `ShareHelper.Stop()` 一并停掉，不留孤进程。
+- 随之常驻：`App.OnStartup` 现在默认拉起 `UiHost.exe`（`run` 意图，窗口隐藏；共享服务仍按
+  `Share.Running` 决定开不开），主程序退出时 `UiHostProcess.Stop()` 一并停掉，不留孤进程。
 - **面板永远唤得出来**：`PanelLauncher` 仍保留本地兜底——宿主没起来 / 启动那几秒还没连上时，
   面板在提权进程里开（功能与以前一致），连上之后就一直走宿主。
 - 宿主「先按唤起、后读完配置」的竞态：`LoadReadOnlyConfig` 读完在 UI 线程 `SuperPanel.Refresh()`
   一次，避免那一份面板停在「没有任何场景 / 磁贴」的空状态。
-- 真机实测（**不设任何环境变量**）：起 `LTools.exe` → 自动拉起 `ShareHost.exe` → 宿主日志
-  `共享助手已启动（run…）` / `链路服务端已启动` / `主程序已连接` / `面板快照：8 个动作、1 个全局场景`；
+- 真机实测（**不设任何环境变量**）：起 `LTools.exe` → 自动拉起 `UiHost.exe` → 宿主日志
+  `界面宿主已启动（run…）` / `链路服务端已启动` / `主程序已连接` / `面板快照：8 个动作、1 个全局场景`；
   关掉主程序时宿主一起退出。
 - 回归：`--selftest` 393 用例 / 18593 断言；`LinkSmoke` 60；`PanelHostSmoke` 11；
-  `ShareSmoke -- --explorer --helper` 103。
+  `ShareSmoke -- --explorer --uihost` 103。
 
 **2026-11-24 · P1b-11 面板只有一个家：删掉 `PanelRouting`**
 
 - `PanelRouting`（`LTOOLS_PANEL_HOST`）整体删除。`PanelLauncher` 只转发：
   `LinkWorker.RequestShow` / `RequestToggle` / `RequestStash`——宿主还没连上（主程序刚启动那几秒）
   就把这一下**记着，连上补发**（同一件事只留最后一次），不再在提权进程里开第二份面板。
-- 宿主由 `App.OnStartup` **无条件**拉起（`ShareHelper.Start()`，窗口隐藏；它同时是共享助手），
-  主程序退出时 `ShareHelper.Stop()` 一并停掉。
+- 宿主由 `App.OnStartup` **无条件**拉起（`UiHostProcess.Start()`，窗口隐藏，共享窗口也在它里面），
+  主程序退出时 `UiHostProcess.Stop()` 一并停掉。
 - **点击外部关闭改由宿主承担**：面板在宿主里是普通顶层窗口，`SuperPanelWindow.OnWindowDeactivated`
   关（菜单 / 面板对话框打开期间不关，排到 Background 再确认一次激活态）。
   以前这条由提权进程的鼠标钩子按面板矩形判定——钩子看不到宿主进程的窗口。
+  > **后来改了**（2026-11-25，`P2-M3-5d-c`）：这条路在「点到 NOACTIVATE 窗口」时判不出来
+  > （第一下点击白点），而且会打断「从资源管理器拖文件进面板」。现在 `OnWindowDeactivated` 已删，
+  > 关闭回到鼠标钩子，状态靠宿主推的整份 `panel.state`。
 - 钩子那边的「长按右键唤起面板」手势要知道面板开着：宿主在面板状态变化时推 `panel.state`
   （`PanelStateEvent(Open)`，只在开 / 关真的变了时发，新客户端连上补一次），提权侧存
   `PanelHostBridge.RemotePanelOpen`，`MouseHook` 的手势分支据此让开。
+  > 同上：`PanelStateEvent` 现在是整份状态（开 / 钉住 / 交互 / 前台 / 句柄 / 菜单矩形），
+  > `RemotePanelOpen` 已由 `HookMirror.Panel.Open` 取代。
 - 「在暂存区编辑…」：提权侧建完草稿发 `panel.stash` 事件，宿主 `SuperPanel.ShowStash()` 切到暂存区页
   （以前是提权进程自己开面板）。
 - 真机实测（宿主面板 + 真鼠标）：右键磁贴弹菜单时面板不关；点菜单里的「复制名称」面板也不关；
   点面板外面（另一个窗口）第一次点击就把面板关掉。
 - 回归：`--selftest` 393 用例 / 18599 断言（面板状态往返 / 开关两态）；`LinkSmoke` 60；
-  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --helper` 103。
+  `PanelHostSmoke` 11；`ShareSmoke -- --explorer --uihost` 103。
 
 **2026-11-24 · P1b-12 点悬浮按钮也关面板（`panel.close`）**
 
@@ -578,9 +588,9 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 新通道（**执行器 → 宿主**的请求，与面板那批方向相反）：
   `Core/Link/UiCommands.cs`（`ui.input` / `ui.choice` / `ui.cancel` + 请求 / 回复 DTO）、
   `Core/Link/UiBridge.cs`（执行器侧：能转就转，转不了就本地弹）、
-  `Core/Link/UiHost.cs`（宿主侧：`Ui.Post` 建窗 + 等 `Closed` 回值）。
+  `Core/Link/UiDialogHost.cs`（宿主侧：`Ui.Post` 建窗 + 等 `Closed` 回值）。
 - `LinkWorker.RequestAsync`：执行器也能发请求；宿主 `LinkServer` 的 handler 改成
-  「先问 `UiHost`，不是交互方法才回『宿主暂不支持该命令』」。
+  「先问 `UiDialogHost`，不是交互方法才回『宿主暂不支持该命令』」。
 - 三个动作单元改成「先问宿主」：`ui.confirm` / `ui.select` 走 `ChoiceWindow`，
   `ui.input` 走 `InputDialog` 的**非模态**新入口 `ShowNonModal`（模态会把宿主 UI 线程卡在自己的
   消息循环里，`ui.cancel` / 停止热键就关不掉它——`Ok_Click` 里按 `_nonModal` 决定
@@ -589,7 +599,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   「一直等」传 0 会立刻超时 → 执行器回落本地弹窗，而宿主那边的窗口已经开出来了，出现**两个对话框**。
   现在「一直等」给链路 12 小时上限，真正超时由宿主那侧算；任何失败 / 取消都先发 `ui.cancel` 收掉对端窗口。
 - 真机实测：MCP `staging_run` 跑一份 `ui.confirm` + `ui.input` 的草稿 →
-  确认框与输入框都出现在 **ShareHost（普通权限）**，提权进程一个窗口都没有；
+  确认框与输入框都出现在 **UiHost（普通权限）**，提权进程一个窗口都没有；
   点「确定」后进入输入框，输入后「确定」流程正常走完（慢步骤告警照常记「等待用户输入」）。
 - 回归：`--selftest` 393 用例 / 18620 断言（交互 DTO 往返 + 方法名）；`LinkSmoke` 62 条
   （新增「执行器 → 宿主」的 `ui.choice` 往返）；`PanelHostSmoke` 11；`ShareSmoke` 103。
@@ -600,15 +610,15 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   `TextWindowService.Open` 开窗，「显示且不等」立刻回内容、「读取 / 等关闭」挂到 `Closed` 上再回值；
   `mode=close` 直接 `TextWindowService.Close(key)`。取消只关**这一扇**（不能按 key 空值关全部）。
 - 文件 / 文件夹选择：`file.select` 走 `ui.selectFile`。系统对话框**只有一份实现** `Features/FilePicker.cs`
-  （动作单元与 `UiHost` 都调它，`SelectFileUnit` 里那份重复代码删掉）。
+  （动作单元与 `UiDialogHost` 都调它，`SelectFileUnit` 里那份重复代码删掉）。
 - 两个单元都是「先问宿主、没连上再本地弹」，与 `ui.input` 同一条口径。
 - **已知限制**：系统文件框是模态的、程序关不掉。停止热键在这一步只会让本次运行结束，
   框会留在宿主里直到用户按 Esc（与截图遮罩同一个限制，写进了 `FilePicker` 的注释）。
 - 真机实测（MCP `staging_run`）：
-  - `ui.textWindow` 显示 + 读取 → 两扇窗口都在 **ShareHost**（`LTools` 进程一个窗口都没有），
+  - `ui.textWindow` 显示 + 读取 → 两扇窗口都在 **UiHost**（`LTools` 进程一个窗口都没有），
     改完点「确定」后 `found=true`、内容回填到变量，运行 `state=ok`；
   - `ui.textWindow` `mode=close` → 宿主里的窗口关掉（`EnumWindows` 里 `M1-b` 归零）；
-  - `file.select`（文件夹）→ 系统框（类名 `#32770`）在 **ShareHost** 里且是前台，
+  - `file.select`（文件夹）→ 系统框（类名 `#32770`）在 **UiHost** 里且是前台，
     按 Esc 取消后 `found=false`、`path=""`，运行 `state=ok`（取消不是失败）。
 - 回归：`--selftest` 393 用例 / 18636 断言（新增两组 DTO 往返）；`LinkSmoke` 66 条
   （新增文本窗口 / 选择文件两条反向请求）；`PanelHostSmoke` 11；`ShareSmoke` 103。
@@ -624,7 +634,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   这样就不需要「跨进程抓屏抑制」那套东西（原计划的 `ui.suppress` 删掉）。
 - **已知限制**：遮罩是 `ShowDialog`，程序关不掉。停止热键只结束本次运行，遮罩留到用户单击 / 右键 / Esc。
 - 真机实测（MCP `staging_run`）：
-  - 遮罩窗口（标题「屏幕取点」，1920×1080）在 **ShareHost**，`GetForegroundWindow()` 就是它，提示语渲染正常；
+  - 遮罩窗口（标题「屏幕取点」，1920×1080）在 **UiHost**，`GetForegroundWindow()` 就是它，提示语渲染正常；
   - 点 (700,400) → `x=700, y=400`（物理像素，1:1）；
   - 按 Esc → 遮罩消失、`x=0` / `y=0`（取消不是失败，`state=ok`）。
 - 回归：`--selftest` 393 用例（新增取点两组 DTO 往返）；`LinkSmoke` 68 条（新增取点反向请求）。
@@ -665,7 +675,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   （`NoteBridge` → 宿主 `NoteHost` → `NoteActions.Write`）。读（`data.noteRead`）仍在本地读——
   两边读的是同一批文件，读不需要跨进程。
 - 启动维护（建目录 / `MigrateRootScatteredNotes` / `MigrateTxtToMd` / `CleanDraftAttachments` /
-  `CollectAttachmentGarbage`）跟着窗口搬到宿主（`ShareHost.LoadReadOnlyConfig`）；
+  `CollectAttachmentGarbage`）跟着窗口搬到宿主（`UiHost.LoadReadOnlyConfig`）；
   提权进程 `App.OnStartup` 不再 `QuickNote.Initialize`。
 - 失败语义：转出去了但宿主报错**直接抛错、不回退**（可能已经写了一半，再本地写会多出一条速记 / 重复图片）；
   只有「没连上」才走本地写（降级）。
@@ -733,7 +743,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   这些出口本来就在覆盖层交回之前做完，一张 png 都不用走链路（8 MB 的帧上限也不该拿来传 4K 截图）。
 - `CaptureDirect`（截取当前显示器 / 前台窗口）同样分流，同样**不传图**（今天没有调用方要那张图）；
   `captures/` 的写入方因此只剩宿主：`CaptureCatalog.Maintain` 与 `RecordRecovery.Sweep` 从
-  `App.OnStartup` 挪到宿主启动（`ShareHost.BootCaptureHistory`）。
+  `App.OnStartup` 挪到宿主启动（`UiHost.BootCaptureHistory`）。
 - **踩到的坑**：`capture.direct` 一开始写成「宿主没连上就抛异常」，等于把「宿主挂了」变成功能不可用；
   改成返回 `false` → 本地兜底，与其它链路一致。
 - 设置也要跟过去：`AppState.ApplySettings(AppConfig)` 成为唯一实现（`App.OnStartup` 与
@@ -749,7 +759,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 录屏交给宿主之后，提权进程那个「自动化指示器」要等**宿主录完**才能恢复：`capture.recordDone` 事件 +
   `CaptureBridge.OnRecordingFinished`（回调在发请求前就登记，录屏秒失败也不会漏）。
 - 真机实测（宿主 21672 / 提权 27188）：
-  - 托盘 →「截图」→「截图…」→ 覆盖层 `'截图' 1920×1080` 在 **ShareHost**；拉框 + Enter →
+  - 托盘 →「截图」→「截图…」→ 覆盖层 `'截图' 1920×1080` 在 **UiHost**；拉框 + Enter →
     剪贴板里是图，`captures/` 多一条 `501×401 · 复制`（`assets/` `thumbnails/` `displays/` 三份都由宿主写）；
   - 再开一次覆盖层按 Esc → 窗口关掉、采集历史仍是 4 条（没多记）；
   - 动作里的「截图」取值（MCP 跑一份草稿，`wantImage` 路径）：宿主存
@@ -776,10 +786,10 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   `CapturePinManager.RefreshRecognition()` 改走 `capture.window` 的 `pinRefresh` 分支
   （不接的话「打开自动识别」要等下次贴图才生效）。
 - `pins/` 跟着贴图窗口归宿主：`PinStore.Maintain` 从 `App.OnStartup` 挪到
-  `ShareHost.BootCaptureHistory`（与采集历史、录屏残片一起）。**贴图窗口本身在 M3-3a 就已经在宿主里产生**
+  `UiHost.BootCaptureHistory`（与采集历史、录屏残片一起）。**贴图窗口本身在 M3-3a 就已经在宿主里产生**
   （覆盖层的「贴图」出口、`capturePin` 入口），这一步只是把它们的入口 / 维护 / 设置联动补齐。
 - 真机实测（宿主 16112 / 提权 19332）：托盘 →「截图」二级菜单里
-  **采集历史 / 贴图管理 / 图片编辑 / 切图 / 图像拼接** 五个窗口全部 `pid=ShareHost`（宿主日志
+  **采集历史 / 贴图管理 / 图片编辑 / 切图 / 图像拼接** 五个窗口全部 `pid=UiHost`（宿主日志
   `打开截图窗口（history|pinManager|imageEdit|split|collage）`）；采集历史里 ⋯ →「重新编辑截图…」
   在宿主里重开覆盖层（502×401 那条的选区 `702×552` 原样还原）、Esc 正常退出；
   `pics/` 里那条 0 字节的旧贴图素材只打了原有的一条 WIC 警告，不影响列表。
@@ -881,14 +891,14 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 5c 的第一步是拆掉一个一直靠巧合的约定：到处用 `ConfigStore.ReadOnly` 兼职「我是宿主」。
   写权正在往宿主翻（5c-1 起宿主是写者、执行器只剩读缓存），`ReadOnly` 的含义会整个反过来，
   而「窗口 / 交互归谁」不变——不拆的话那次翻转会把所有身份判断一起弄反。
-- 新增 `Core/AppRole`：`IsUiHost`（只有 `ShareHost.App.OnStartup` 调 `MarkUiHost()`，默认 false）
+- 新增 `Core/AppRole`：`IsUiHost`（只有 `UiHost.App.OnStartup` 调 `MarkUiHost()`，默认 false）
   回答身份；`ConfigStore.ReadOnly` 只留「能不能写配置」。22 处里 15 处身份判断换成
   `AppRole.IsUiHost`（截图 / 速记 / 辅助工具 / 点选 / 面板预览 / 挂起 / 试运行 / 贴图与录屏条状态…），
   剩下 7 处（`ActionBridge` / `DataBridge` / `NoteBridge` / `SubActionBridge` / `ConfigReloadBridge` /
   `ConfigStore.Save`）本来就是写权，等 5c-1 一起翻。
 - `PanelHostSmoke` 改成**显式**换身份（`MarkUiHost`）：它先按执行器建数据根，再切到宿主验
   「一个字节都不写」——以前是靠 `InitializeReadOnly` 顺带把身份也定了。
-- 真机：启动 → 托盘「速记」→ 窗口在 `ShareHost`（身份判断生效）、面板快照正常。
+- 真机：启动 → 托盘「速记」→ 窗口在 `UiHost`（身份判断生效）、面板快照正常。
 - 回归：`--selftest` 393 用例 / 18803 断言；`LinkSmoke` 86；`PanelHostSmoke` 11；
   `CaptureOverlaySmoke` 的 `tray` / `keys` 段。
 
@@ -957,7 +967,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   `config.reload` 相反——那条是执行器整份换过磁盘、宿主跟着重读；这条是宿主写完一个域、执行器跟着刷新。
   **不带域清单**：执行器那边就是「从磁盘重读各域」，按域区分只会让两边各写一套「哪个域该刷什么」。
 - 触发点只有一个：`ConfigBundle.WriteIfChanged` 的**本地写**成功之后，经
-  `ConfigBundle.LocalWriteListener`（只有 `ShareHost` 挂 `ConfigChangedBridge.Notify`）。
+  `ConfigBundle.LocalWriteListener`（只有 `UiHost` 挂 `ConfigChangedBridge.Notify`）。
   用回调而不是直接调链路，是为了让 `Config/` 继续不认识 `Core/Link`（与 `RemoteWriter` 同一个理由）。
   执行器自己发起的写入走 `RemoteWriter`（宿主写、**不通知**）——那个改动就是它起的，内存已经是对的。
 - 执行器侧 `ConfigStore.ReloadRuntime()`：`AppConfig.Load` → `ApplyRuntime`（动作清单 / 快捷键匹配表 /
@@ -966,7 +976,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   排到 UI 线程做（`Ui.Enqueue`）：都是 UI 线程平时改的静态状态；读盘几十毫秒，输入不受影响（钩子在自己的线程）。
   `ConfigStore.Reload()` 同时改成「整份重读 + 按身份通知另一边」：宿主里重读后发 `config.changed`，
   执行器里重读后发 `config.reload`；两边都补上了 `AppState.ApplySettings`（以前只有启动路径灌）。
-- 真机：设置页「重新加载」→ 执行器整份重读、宿主跟着重拉快照（`ShareHost: 执行器重读了配置，宿主跟着刷新`），
+- 真机：设置页「重新加载」→ 执行器整份重读、宿主跟着重拉快照（`UiHost: 执行器重读了配置，宿主跟着刷新`），
   执行器日志无 WARN / ERROR。
 - 回归：`--selftest --filter link` 362 断言（方法名 + 原因往返）；`LinkSmoke` 94（新增「宿主本地写完
   `panel.json` → 执行器收到 `config.changed`（原因原样）」）。
@@ -1017,7 +1027,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 - 状态查询两个入口：`McpControl.Status()` 同步（打开页面 / 改完设置；本地管道往返亚毫秒级）、
   `McpControl.StatusAsync()` 异步（**1 秒轮询**）。轮询必须异步——在 UI 线程上同步等一次往返，
   对端忙一下面板 / 右键菜单就跟着卡。
-- 顺手修一个搬过去必然踩的坑：`Environment.ProcessPath` 在宿主里是 `ShareHost.exe`，
+- 顺手修一个搬过去必然踩的坑：`Environment.ProcessPath` 在宿主里是 `UiHost.exe`，
   stdio 提示词 / 客户端 JSON 里的可执行文件改成 `AiSettings.ToolsExePath`（`AppPaths.AppDirectory`
   下的 `LTools.exe`）——否则给出去的接入命令拉起一个没有 `--mcp-stdio` 模式的进程。
   「打开知识包目录」也不再 `Ensure()`（那是写盘），目录不在就让 `explorer` 建个空的。
@@ -1061,7 +1071,7 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   设置页改日志级别不会把宿主的 `host` 标签冲掉。
 - **悬浮**：面板管理「关闭全部悬浮项」走 `panel.op floatCloseAll`；悬浮偏好只写 `floating.json`，
   执行器靠 `config.changed` 重建按钮。
-- 真机（设置窗口由 `ShareHost` 持有）：动作管理 / 快捷键 / 通用 / 面板管理 / 键鼠宏 · 设置 /
+- 真机（设置窗口由 `UiHost` 持有）：动作管理 / 快捷键 / 通用 / 面板管理 / 键鼠宏 · 设置 /
   运行日志 · 设置 / AI 接入 / 截图 Pro · 常规全部正常填充；「开机自启」勾 / 取消各一次——任务计划真的
   消失 / 重建（`schtasks /query` 对过），界面跟着回读；`floating.json` 改一项后执行器日志出现
   `宿主写过配置（floating.json），执行器重读运行期状态`；编辑快捷键里按 `Ctrl+Shift+F9` 能录到，
@@ -1113,23 +1123,82 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 
 **2026-11-25 · P2-M3-5d-b 单 exe 两种权限：不做（技术约束，实测确认）**
 
-原计划把 `ShareHost.exe` 并回 `LTools.exe` 的「普通权限模式」（`--host`），发布包只剩一个 exe。
+原计划把 `UiHost.exe` 并回 `LTools.exe` 的「普通权限模式」（`--host`），发布包只剩一个 exe。
 动手之后撞到一条 Windows 硬规则，**改动已全部还原**（工作树回到 5d-a 那条提交）：
 
 - `LTools.exe` 的清单是 `requireAdministrator`。用 Explorer 的令牌
   （`Native/ShellToken` → `CreateProcessWithTokenW`）启动**同一个 exe** 直接失败：
   `CreateProcessWithTokenW 失败：740`（`ERROR_ELEVATION_REQUIRED`）。Windows 在创建进程时就按清单要提权，
-  不给「低权限令牌跑高权限清单」这条路——`ShareHost.exe` 能起来，正是因为它那份清单是 asInvoker。
+  不给「低权限令牌跑高权限清单」这条路——`UiHost.exe` 能起来，正是因为它那份清单是 asInvoker。
 - 所以「一个 exe」只能先把清单改成 `asInvoker`，而那会把启动模型整个翻过来：双击先起界面宿主、再由它
   用 `runas` 拉起 `--executor`（UAC 从「启动前」挪到「窗口出来之后」）；自启任务改成 `--executor`
   （`HighestAvailable`，不弹 UAC）再由执行器反手用 `ShellToken` 起宿主；两侧单实例互斥体、链路
   「谁先起来」的引导（宿主先起时得在 `link.token` 变化后重建 `LinkServer`）、用户拒绝 UAC 时的提示
   都要跟着重做。
 - 结论（用户定）：**保持两个 exe**。功能上没有任何差异，只是发布包多一个文件；为它翻启动链路不划算。
-  `ShareHost.exe` 与 `LTools.exe` 同目录的部署约定、`Native/ShellToken` 那条启动路径继续保留。
+  `UiHost.exe` 与 `LTools.exe` 同目录的部署约定、`Native/ShellToken` 那条启动路径继续保留。
 
 **下一步**：本轮拆分（`docs/PROCESS_SPLIT.md` 全部 `P2-x`）到这里收口。以后再有「谁该写哪个文件」
 的问题，按 §7 / §15.3 的属主表判断，别再引入第三种进程。
+
+**2026-11-25 · P2-M3-5d-c 面板接上拖放 + 删 `FileDropBridge` + 点击外部 / 钉住修好**
+
+拆分的**最初那个需求**这时才真的兑现：「把文件拖进面板 → 生成打开它的动作」（§1.1）。
+
+- **面板接标准 OLE 拖放**（`SuperPanel.xaml` 的 `AllowDrop` + `Panel_DragOver` / `Panel_DragLeave` /
+  `Panel_Drop`，落在 `Views/SuperPanel.Files.cs`）：落点是「光标下那个磁贴的前后」——几何抽成纯函数
+  `Views/Controls/TileLayout.InsertIndex`，与拖动排序共用（同一个位置两条路必须给出同一个下标，
+  `--selftest` 的 `tileLayout` 组守着）；拖动期间插虚线占位（`DragFx.CreateHole`，和拖动排序长得一样）。
+  建模 / 去重 / 落盘仍只有 `PanelDrop` 一份，`Ctrl+V`、右键菜单、拖放四个入口共用。
+  **OLE 拖放期间 WPF 的 `IsMouseOver` 不更新**（捕获在拖动源那边），判「在哪个区」只能按区容器矩形，
+  这是第一版「拖到面板上也说不接受」的原因。
+- **删掉 `Views/FileDropBridge.cs`**：它替提权窗口兜底的 `WM_DROPFILES` 路线实测永远收不到
+  （`ChangeWindowMessageFilterEx` + `DragAcceptFiles` 都白搭），而窗口现在都在 asInvoker 宿主里，
+  标准 OLE 直通。`ShareWindow` 改成 XAML 里 `AllowDrop="True"`；冒烟里「手工造 HDROP 打进去」
+  那两条断言一并删除（改成同一条 OLE 的重复拖放去重）。
+- **「点击外部关闭」搬回钩子，改由宿主推**：命中 `panel.state`（原来只带 `Open`）——现在整份：
+  `Open` / `Pinned` / `Interacting` / `Active` / `Hwnd` / 菜单矩形（`PanelStateEvent`）。
+  执行器把它们落到 `HookMirror.Panel`，`MouseHook` 就又看得到面板了。
+  - 上一轮的 `SuperPanelWindow.OnWindowDeactivated`（宿主自己判失活）**删掉**：点到 NOACTIVATE 的窗口
+    （浏览器外壳、悬浮提示）不会让面板失活，第一下点击就白点了——正是用户报的「第一次点外部不关，
+    点一下面板再点外部才关」。而且它会在「从资源管理器拖文件」按下那一拍就把面板关掉。
+  - 关的时机改成**一对 `down + up` 都在外面**：拖动排序、文件拖放都是「按在里面 / 按在外面、松在里面」，
+    按下就关会让拖放永远落不进来。
+  - 钉住（`Pinned`）现在两处都认：钩子不关、宿主侧也没有「失活就关」那条了。
+  - 刚打开那一次由**执行器**把面板抬到前台（`PanelBridge.ApplyPanelState` → `WindowAction.ActivateNoWait`）：
+    起手的长按右键是执行器吞下的，前台权限在它那边；宿主自己 `Activate` 时灵时不灵（实测同一步骤两次，
+    一次焦点在面板、一次还在下面的窗口）。
+  - Esc 也跟着修：`SuperPanel.HandleKey` 以前 `Ui.Post(() => _window?.RequestEscape())`，面板在宿主里时
+    `_window` 是 null，等于把 Esc 吞掉却什么都不做——现在改成发 `panel.close`。
+- 回归：`--selftest` 398 用例 / 18904 断言（新增 `tileLayout` 4 条 + 面板状态往返 / 镜像）、
+  `LinkSmoke` 112、`PanelHostSmoke` 13、`PanelClipboardSmoke` 27、`ShareSmoke` 90（`--explorer` 段 93）。
+  真机点过：拖文件进面板落成动作（含虚线占位与落位）、落完面板不关、钉住后点外部不关、取消钉住后第一下就关、
+  长按右键唤起后面板在前台。
+
+**2026-11-25 · P2-M3-5d-d `ShareHost` 改名 `UiHost`（它早就是界面宿主，不是共享助手）**
+
+拆分做完之后组件的职责与名字分家了：`ShareHost.exe` 里装着面板 / 速记 / 设置 / 截图 Pro / 编辑器 /
+辅助工具 / 共享窗口，共享只是顺带住进来的一个功能。名字还在说「共享助手」，第一次找面板窗口的人
+会找错地方，所以整体改名（**不留别名、不写迁移器**）：
+
+- **它不是「共享专用的 exe」**：删掉它等于把所有窗口搬回提权进程，拖放立刻失效
+  （`requireAdministrator` 清单下起不了普通权限的同一份 exe，见 §14 `P2-M3-5d-b`）；
+  共享窗口只是它的一个租客。
+- 工程：`ShareHost/` → `UiHost/`（`UiHost.csproj`，`AssemblyName` = `UiHost`，命名空间 `LTools.UiHost`）；
+  `LTools.sln` 与 `LTools.csproj` 的排除项 / `InternalsVisibleTo` / `PublishUiHost` 一起改。
+- 进程：启动路径换成 `Core/UiHostProcess.cs`（原 `Core/Share/ShareHelper.cs`）——
+  `Start()` / `ShowShareWindow()`（原 `Open()`）/ `Stop()`；互斥体 `Local\LToolsUiHost`；
+  意图文件 `<数据根>/ui-host/intent.txt`（原 `share/host.intent`；`share/` 仍只放共享区的清单与文件）；
+  自己的日志文件 `logs/ltools-uihost-yyyyMMdd.log`（`fileTag: "uihost"`）。
+- 宿主侧的交互命令处理器 `Core/Link/UiHost.cs` 改名 `UiDialogHost`：进程叫 `UiHost` 之后，
+  `LTools.UiHost` 这个命名空间会把它挡住（编译直接报「命名空间里不存在类型」），
+  而且「UiHost」现在专指进程。
+- 冒烟：`tests/ShareSmoke` 的 `HelperSmoke` → `UiHostSmoke`，段名 `--helper` → `--uihost`
+  （`--explorer` 不变），断言内容不变。
+- 术语：`CONTEXT.md` 把「共享助手」那一条移成 `## 进程` 下的**界面宿主**（并补**执行器**），
+  「容易混的几对」加一行。
+- 回归：构建 0 错；`--selftest` 398 用例全绿；`LinkSmoke` 112、`PanelHostSmoke` 13、
+  `PanelClipboardSmoke` 27、`ShareSmoke` 90 / `--explorer` 93 / `--uihost` 98。
 
 ## 15. P2 方案：把剩下的界面也搬进普通权限宿主
 
@@ -1203,8 +1272,8 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
 | 2 | 辅助工具 `InfoHelperWindow` | **已完成（M3-2）**：窗口在宿主（`info.toggle`）；取图 / 取色 / 选区直接用宿主里的 `ScreenPicker`；补了 `input.picker` 让鼠标钩子给点选器让路 |
 | 3 | 截图 Pro（覆盖层 / 结果窗 / 编辑 / 拼图 / 切图 / 贴图 + 贴图管理 / 采集历史 + 录屏条） | **3a 已完成（2026-11-24）**：覆盖层 / 结果窗 / 贴图 / 采集历史随 `capture.run` → 宿主（`captures/` 与 `cache/screenshots/` 归宿主）。**3b-1 已完成**：采集历史 / 贴图管理 / 图片编辑 / 切图 / 拼图与贴图命令统一走 `CaptureWindows.Open`（`capture.window`），`pins/` 归宿主。**3b-2 已完成（2026-11-24）**：全屏画布进同一条入口、快捷键挂起走 `input.suspend`（`InputGuard`）、贴图与录屏条的快捷键走 `input.pin` / `record.keys` + `capture.window`。只剩录屏的托盘 / 设置页入口跟着设置页走 |
 | 4 | 动作编辑器 / 子动作库 / 宏页 | `subactions/` **已完成（M3-4a）**：`Save` / `Delete` 转给宿主。**编辑器与宏页并进第 5 步**：打开编辑器的调用方（`PanelActionOps`）与设置页都在提权进程里，单独搬窗口就得连动作内容写权、`staging/`、设置入口一起翻——那正是第 5 步的范围（见 §14 `P2-M3-5a` 的顺序说明）。 |
-| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3a 已完成**：`config.changed`（宿主写完配置，执行器重读运行期状态）。**5c-3b 已完成**：宏页的 `macro.play` / `rename` / `delete` + 录制 / 试放事件改广播（回放参数是纯配置，不建命令）。**5c-3c 已完成**：AI 页的 `mcp.status` / `apply` / `resetToken` / `knowledge`（服务 / 令牌 / 知识包都归执行器）。**5c-3d 已完成**：设置窗口本体（含动作管理 / 子动作库 / 快捷键 / 面板管理 / 键鼠宏 / 触发 / 采集策略 / MCP / 备份与 9 个截图 Pro 子页）搬进宿主，入口（托盘 / `CapsLock+\` / 托盘双击 / `--perf`）改成 `settings.show` 意图，`open.window` 与 `LinkTargets` 删除。**5d-a 已完成**：面板结构落盘归宿主（`panel.replace` / `TryPushPanel` / `PanelLibrary.Replace` 删除，两侧镜像靠 `config.changed` 与「对端写的 panel.json」重读）。**5d 收尾**：单 exe 合并**不做**（`requireAdministrator` 清单下起不了普通权限的同一个 exe，报 740，见 §14 `P2-M3-5d-b`），`ShareHost.exe` 继续随包 |
-| 6 | 共享窗口 | 把 `ShareHost` 并进同一个 exe 的「普通权限模式」，删 `Native/ShellToken` 那条第二启动路径 |
+| 5 | 设置 `ConfigHelper`（含 9 个截图 Pro 子页）+ 动作编辑器 + 子动作库 + 宏页 | **最后搬**：它是所有域的总控台（动作 / 子动作 / 快捷键 / 宏 / 触发 / 采集策略 / MCP / 备份），要等前四步的域都归宿主。**5a 已完成**：`config.reload`（导入 / 重新加载后宿主跟着重读）。**5b 已完成**：`run.program` / `run.stop` + 轨迹事件流（编辑器试运行过链路，`ProgramRunner` 是唯一入口）。**5c-0 已完成**：身份与写权分开（`AppRole.IsUiHost`）。**5c-1 已完成**：动作级写入四条命令（`action.add` / `action.update` / `action.delete` / `action.duplicate`，内容属主仍在执行器）。**5c-2 已完成**：动作编辑器 / 面板动作操作在宿主（`ActionWrites` 是唯一 UI 入口，宏录制过链路），链路处理器改到线程池上跑。**5c-3a 已完成**：`config.changed`（宿主写完配置，执行器重读运行期状态）。**5c-3b 已完成**：宏页的 `macro.play` / `rename` / `delete` + 录制 / 试放事件改广播（回放参数是纯配置，不建命令）。**5c-3c 已完成**：AI 页的 `mcp.status` / `apply` / `resetToken` / `knowledge`（服务 / 令牌 / 知识包都归执行器）。**5c-3d 已完成**：设置窗口本体（含动作管理 / 子动作库 / 快捷键 / 面板管理 / 键鼠宏 / 触发 / 采集策略 / MCP / 备份与 9 个截图 Pro 子页）搬进宿主，入口（托盘 / `CapsLock+\` / 托盘双击 / `--perf`）改成 `settings.show` 意图，`open.window` 与 `LinkTargets` 删除。**5d-a 已完成**：面板结构落盘归宿主（`panel.replace` / `TryPushPanel` / `PanelLibrary.Replace` 删除，两侧镜像靠 `config.changed` 与「对端写的 panel.json」重读）。**5d 收尾**：单 exe 合并**不做**（`requireAdministrator` 清单下起不了普通权限的同一个 exe，报 740，见 §14 `P2-M3-5d-b`），`UiHost.exe` 继续随包 |
+| 6 | 共享窗口 | **已完成**：共享窗口随 M2 起就跑在 asInvoker 宿主里（`UiHost.exe`），拖放走标准 OLE；「并进同一个 exe / 删 `ShellToken`」**不做**（`requireAdministrator` 清单下起不了普通权限的同一份 exe，见 §14 `P2-M3-5d-b`） |
 
 > **顺序更正（2026-11-24，看过代码之后）**：原方案把「采集历史 / 贴图管理」排在截图 Pro 前面，实际排不了——
 > 那个窗口不是只读查看器：卡片上的「重新编辑 / 贴到屏幕 / 裁剪 / 拼接 / 切图 / 录制裁剪」全是截图 Pro 的功能，
@@ -1224,8 +1293,8 @@ LTools.exe --worker            （requireAdministrator 由任务计划 / UAC 拉
   `LTools.exe` 的清单是 `requireAdministrator`，用 Explorer 的令牌起同一个 exe 直接报
   740（`ERROR_ELEVATION_REQUIRED`）；要合就得先把清单改成 `asInvoker`，把启动模型整体翻过来
   （双击先起界面、再 `runas` 拉执行器），为「发布包少一个文件」不值当。
-- 发布包继续是 `LTools.exe` + `ShareHost.exe` 两个 exe（同目录、共用同一份依赖与数据根）；
-  `ShareHost.exe` 退役这件事随之取消。
+- 发布包继续是 `LTools.exe` + `UiHost.exe` 两个 exe（同目录、共用同一份依赖与数据根）；
+  `UiHost.exe` 退役这件事随之取消。
 
 ### 15.6 每一步统一的验收口径
 

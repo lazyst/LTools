@@ -7,6 +7,7 @@
         Title="动作面板" Width="560" Height="620" MinWidth="360" MinHeight="340"
         WindowStyle="None" Topmost="True" ShowInTaskbar="False"
         ResizeMode="CanResize" WindowStartupLocation="Manual"
+        AllowDrop="True" DragOver="Panel_DragOver" DragLeave="Panel_DragLeave" Drop="Panel_Drop"
         Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
         UseLayoutRounding="True" SnapsToDevicePixels="True"

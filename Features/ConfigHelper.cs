@@ -24,7 +24,7 @@ internal static class ConfigHelper
     private static ConfigHelperWindow? _window;
     private static string? _configPath;
 
-    /// <summary>启动时初始化（记录配置路径）。由 App / ShareHost 调用。</summary>
+    /// <summary>启动时初始化（记录配置路径）。由 App / UiHost 调用。</summary>
     public static void Initialize(string? configPath) => _configPath = configPath;
 
     /// <summary>CapsLock+\ 切换：已打开则关闭，否则打开。</summary>

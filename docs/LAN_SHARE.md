@@ -140,10 +140,11 @@ share/
 - 整窗接受拖放：**拖进来的文件原地记路径（不复制）**，同一个文件拖两次只留一条；
   **文字落进输入框**（可以改完再回车）、**图片存 `files/` 副本**。拖不认识的东西显示禁止光标。
 - **拖放成立的前提是「窗口进程没提权」**：主程序是 `requireAdministrator`，UIPI 会拦住
-  「中完整性 → 高完整性」的拖放（`Views/FileDropBridge.cs` 里把 `WM_DROPFILES` /
+  「中完整性 → 高完整性」的拖放（以前那层 `WM_DROPFILES` 桥把 `WM_DROPFILES` /
   `WM_COPYDATA` / `WM_COPYGLOBALDATA` / `WM_NCHITTEST` 都放行了、`WS_EX_ACCEPTFILES` 也设了，
-  实测 Explorer 仍然不发）。所以**共享窗口跑在独立的普通权限进程 `ShareHost.exe` 里**（见 §2.1），
-  拖放走正常 OLE，文件 / 图片 / 文字都能拖进来。在主程序进程里直接 `new ShareWindow()`
+  实测 Explorer 仍然不发；桥已随进程拆分删掉）。所以**共享窗口跑在独立的普通权限进程
+  `UiHost.exe` 里**（见 §2.1），拖放走正常 OLE（`AllowDrop` + `PreviewDragOver` / `PreviewDrop`），
+  文件 / 图片 / 文字都能拖进来。在主程序进程里直接 `new ShareWindow()`
   （只有冒烟会这么做）时收不到拖放，这是预期。
 - **参考实现（Quicker，2026-11-23 用 REA 看了安装目录的 shipped binary）**：
   - `Quicker.exe` 的清单是 `<requestedExecutionLevel level="asInvoker" uiAccess="true" />`，
@@ -287,20 +288,20 @@ share/
 
 ## 6. 生命周期
 
-窗口与服务都跑在**独立进程 `ShareHost.exe`**（asInvoker）里，主程序只下指令：
+窗口与服务都跑在**独立进程 `UiHost.exe`**（asInvoker）里，主程序只下指令：
 
 | 谁 | 做什么 |
 |---|---|
-| 主程序启动 | `Share.Running == true` → 写 `run` 意图 + 拉起助手（窗口隐藏） |
-| 托盘 / 内置功能 `ltools.share` | `ShareHelper.Open()` → 写 `show` 意图（已在跑就只写意图，400ms 内唤起） |
-| 窗口「停止共享」 | 助手自己 `ShareServer.Apply(Running=false)`，写回配置 |
-| 关窗（X） | 服务还在跑 → 只隐藏窗口；服务已停 → 助手进程一起退出 |
-| 主程序退出 | `ShareHelper.Stop()` → 写 `stop` 意图，助手停服务并退出（不等它，进程结束自然释放端口） |
+| 主程序启动 | `Share.Running == true` → 写 `run` 意图 + 拉起宿主（窗口隐藏） |
+| 托盘 / 内置功能 `ltools.share` | `UiHostProcess.ShowShareWindow()` → 写 `show` 意图（已在跑就只写意图，400ms 内唤起） |
+| 窗口「停止共享」 | 宿主自己 `ShareServer.Apply(Running=false)`，写回配置 |
+| 关窗（X） | 服务还在跑 → 只隐藏窗口；服务已停 → 宿主进程一起退出 |
+| 主程序退出 | `UiHostProcess.Stop()` → 写 `stop` 意图，宿主停服务并退出（不等它，进程结束自然释放端口） |
 
 **进程间只靠两样东西**：
 
-- 命名互斥体 `Local\LToolsShareHost`：主程序用它判断「助手在不在跑」；
-- `share/host.intent`：内容 `run` / `show` / `stop`，助手每 400ms 读一次、执行完删掉。
+- 命名互斥体 `Local\LToolsUiHost`：主程序用它判断「宿主在不在跑」；
+- `ui-host/intent.txt`：内容 `run` / `show` / `stop`，宿主每 400ms 读一次、执行完删掉。
 
 **为什么用文件而不是命令行**：主程序提权，直接 `CreateProcess` 出来的子进程会继承高完整性令牌
 （那样窗口照样收不到拖放）。要拿到普通权限的子进程，只能借 Explorer 的身份——但它是
@@ -310,16 +311,16 @@ share/
 子进程照样提权）。复制令牌只要 `SeImpersonate`（管理员自带），也不碰资源管理器的窗口，
 所以进程之间仍然只用意图文件、**不需要命令行参数**。
 
-1. 助手启动：`ConfigStore.UsePathOnly()`（只记配置路径，**不扫动作目录、不修引用、不播种快捷键**）
+1. 宿主启动：`ConfigStore.UsePathOnly()`（只记配置路径，**不扫动作目录、不修引用、不播种快捷键**）
    → `AppLog.Configure()`（与主程序同一份日志配置）→ 读 `Share` 段 → `ShareServer.Apply()`。
 2. 窗口 / 托盘：「共享 / 停止」只切监听，写回 `Running`；内容不动、地址不动。
 3. 添加 / 删除内容：本机发出去的改 `items.json`（外加 `files/`），对方发来的改 `inbox/`。
 4. 退出：`Stop()` 只把 `StopAsync` / `DisposeAsync` 排到后台任务，**UI 线程绝不等**
    （照 `McpServer` 的教训，否则退出卡死托盘）。
 
-打包：`ShareHost.exe` 必须和 `LTools.exe` 在**同一个目录**（它按自己的 exe 位置算数据根）。
-`dotnet publish LTools.csproj …` 会自动把助手也发出来（`PublishShareHost` target）；开发构建
-由 `ShareHost.csproj` 的 `CopyToAppFolder` 拷进主程序输出目录。
+打包：`UiHost.exe` 必须和 `LTools.exe` 在**同一个目录**（它按自己的 exe 位置算数据根）。
+`dotnet publish LTools.csproj …` 会自动把宿主也发出来（`PublishUiHost` target）；开发构建
+由 `UiHost.csproj` 的 `CopyToAppFolder` 拷进主程序输出目录。
 
 ## 7. 线程模型
 
@@ -407,7 +408,7 @@ share/
 | P3 | 接收（文字 → 剪贴板 + `inbox/`、文件 → `inbox/` + 断点续传） | 手机发文字，电脑剪贴板立刻变；2 GB 视频中断后能续上 |
 | P4 | 入口（内置功能 / 托盘）+ 多网卡 + 防火墙 + `Running` 恢复 | 重启程序保持共享状态 |
 | P5 | `--selftest` + `tests/ShareSmoke` + 补 `CONTEXT.md` | 全绿 |
-| P6 | 共享窗口搬进 asInvoker 助手进程（`ShareHost.exe`）+ 意图文件 + 打包 | 真资源管理器拖文件能进清单；助手跑在普通权限下 |
+| P6 | 共享窗口搬进 asInvoker 宿主进程（`UiHost.exe`）+ 意图文件 + 打包 | 真资源管理器拖文件能进清单；宿主跑在普通权限下 |
 
 P1–P6 已落地；防火墙规则自动添加与「截图并共享」留到下一轮，见 §14。
 
@@ -428,13 +429,13 @@ P1–P6 已落地；防火墙规则自动添加与「截图并共享」留到下
   点二维码换下一条、点地址行切回）、端口 / 上传上限是**就地编辑的输入框**
   （填错退回原值、不弹窗）；
   **真鼠标拖放**：普通窗口对照组 + 共享窗口的 OLE 目标都能收到 Drop；
-  **提权通道**：`AllowDrop=False` + `WS_EX_ACCEPTFILES` + 手工 `HDROP` 走 `WM_DROPFILES`
-  能收、同一文件再拖不重复；
+  `AllowDrop=True`（窗口只活在普通权限宿主里，不再有「提权时关掉 OLE」那条分支），
+  同一个文件再拖一次不重复；
   `--explorer` 段：真开资源管理器拖文件（非提权能进、提权时 Explorer 连消息都不发）。
-- `tests/ShareSmoke -- --helper` 的助手段：`ShareHost.exe` 和 `LTools.exe` 在同一个目录；
+- `tests/ShareSmoke -- --uihost` 的宿主段：`UiHost.exe` 和 `LTools.exe` 在同一个目录；
   按产品那条路拉起（复制 Explorer 令牌）后窗口出现、**进程是普通权限**（`TokenElevation == 0`）、
   **没把资源管理器叫到前台**（窗口条数不变、前台还在原来的窗口上）；
-  真资源管理器把文件拖进助手窗口，`share/items.json` 里出现这一条（跑完还原清单）。
+  真资源管理器把文件拖进宿主窗口，`share/items.json` 里出现这一条（跑完还原清单）。
 - 文字条目的模板：`ShareRowSelector` 按 `IsText` 选「正文卡片 / 单行」，正文预览非空、
   摘要行是 `文字 · 时间 · 大小`；真渲染出来的行上按钮文案是
   `复制 / 查看 / 另存为 / ✕`（文件行是 `打开文件 / 复制路径 / ✕`），点「复制」整篇进剪贴板。
@@ -459,13 +460,13 @@ P1–P6 已落地；防火墙规则自动添加与「截图并共享」留到下
   重新选中同一个文件（同名、同大小、同修改时间）。
 - 大文件下载走流式，不支持断点的浏览器会从头重下。
 - **防火墙规则没有自动添加**：首次监听时由 Windows 弹「是否允许访问」，点允许即可。
-- **拖放只在助手进程里成立**：窗口跑在 `ShareHost.exe`（普通权限）时拖放正常；如果哪天有人
-  把它改回主程序进程里开窗（或以管理员身份直接启动 `ShareHost.exe`），UIPI 会拦掉拖放
-  （替代：`Ctrl+C` + `Ctrl+V` 或剪贴板图标）。主程序拉起助手固定走 `Native/ShellToken`
+- **拖放只在宿主进程里成立**：窗口跑在 `UiHost.exe`（普通权限）时拖放正常；如果哪天有人
+  把它改回主程序进程里开窗（或以管理员身份直接启动 `UiHost.exe`），UIPI 会拦掉拖放
+  （替代：`Ctrl+C` + `Ctrl+V` 或剪贴板图标）。主程序拉起宿主固定走 `Native/ShellToken`
   （复制 Explorer 的令牌再 `CreateProcessWithTokenW`），**别改成直接 `CreateProcess`**
   （子进程继承高完整性令牌），**也别改回 `explorer.exe <exe>`**（那样会把资源管理器窗口
   叫到前台）；`ShellToken` 起不来时才兜底退到 `explorer.exe`。
-- **第一次打开共享窗口可能不拿键盘焦点**：助手是后台进程，Windows 的前台锁不给它抢焦点的权利，
+- **第一次打开共享窗口可能不拿键盘焦点**：宿主是后台进程，Windows 的前台锁不给它抢焦点的权利，
   所以窗口会**出现在最前面**（借置顶带抬一次再放下），但键盘焦点可能还留在原来的程序里——
   点一下窗口就能输入。这是系统规则，不是窗口没打开。
 - **「截图并共享」还没接进输入框的图标**：一期先支持输入框文字、剪贴板、选择文件、拖放与粘贴。
@@ -481,4 +482,4 @@ P1–P6 已落地；防火墙规则自动添加与「截图并共享」留到下
 | **发送** | 本机把文字 / 文件记进清单，给浏览器端看 | 共享（口语可以）、上传 |
 | **访问令牌** | 可选的 16 位十六进制；打开「需要访问令牌」时生成一次，之后固定 | 密码、口令、key |
 | **共享地址** | `http://<ip>:<端口>/`；启用令牌后是 `http://<ip>:<端口>/s/<令牌>` | 链接、网址、URL |
-| **共享助手** | 跑共享窗口与服务的**普通权限**进程 `ShareHost.exe`（主程序是提权的，收不到 Explorer 拖放） | 子进程、服务端、daemon |
+| **界面宿主** | 跑共享窗口与服务的**普通权限**进程 `UiHost.exe`（主程序是提权的，收不到 Explorer 拖放） | 子进程、服务端、daemon |

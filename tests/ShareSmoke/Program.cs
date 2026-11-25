@@ -198,10 +198,10 @@ try
     Console.WriteLine("== 共享窗口 ==");
     UiSmoke.Run(Check, tempRoot, args.Contains("--explorer"));
 
-    if (args.Contains("--helper"))
+    if (args.Contains("--uihost"))
     {
-        Console.WriteLine("== 共享助手（普通权限进程）==");
-        HelperSmoke.Run(Check, repo);
+        Console.WriteLine("== 界面宿主（普通权限进程）==");
+        UiHostSmoke.Run(Check, repo);
     }
 }
 catch (Exception ex)

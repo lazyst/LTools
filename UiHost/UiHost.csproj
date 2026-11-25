@@ -6,8 +6,8 @@
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>ShareHost</AssemblyName>
-    <RootNamespace>LTools.ShareHost</RootNamespace>
+    <AssemblyName>UiHost</AssemblyName>
+    <RootNamespace>LTools.UiHost</RootNamespace>
     <ApplicationIcon>..\Icon\LTools.ico</ApplicationIcon>
     <Version>2.6.9</Version>
     <AssemblyVersion>2.6.9.0</AssemblyVersion>
@@ -23,12 +23,12 @@
     <ProjectReference Include="..\LTools.csproj" />
   </ItemGroup>
 
-  <!-- 开发构建：把助手 exe 也放到 LTools 的输出目录里，两边同一个数据根（AppPaths 按 exe 位置算）。 -->
+  <!-- 开发构建：把宿主 exe 也放到 LTools 的输出目录里，两边同一个数据根（AppPaths 按 exe 位置算）。 -->
   <Target Name="CopyToAppFolder" AfterTargets="Build">
     <ItemGroup>
-      <ShareHostOutput Include="$(TargetDir)ShareHost.*" />
+      <UiHostOutput Include="$(TargetDir)UiHost.*" />
     </ItemGroup>
-    <Copy SourceFiles="@(ShareHostOutput)" DestinationFolder="$(MSBuildProjectDirectory)\..\bin\$(Configuration)\$(TargetFramework)"
+    <Copy SourceFiles="@(UiHostOutput)" DestinationFolder="$(MSBuildProjectDirectory)\..\bin\$(Configuration)\$(TargetFramework)"
           SkipUnchangedFiles="true" />
   </Target>
 

@@ -141,7 +141,7 @@ public partial class App : Application
         AppState.ApplySettings(cfg);
         ConfigStore.Initialize(cfgPath);
         // 进程拆分的过渡期：提权进程起链路服务端（令牌写 state/worker.token），
-        // 普通权限宿主（ShareHost.exe，未来是界面进程）连上来读面板 / 提交写操作。
+        // 普通权限宿主（UiHost.exe）连上来读面板 / 提交写操作。
         LinkWorker.Start();
         // 宏录制 / 回放的生命周期要广播给宿主（热键发起的也算）：挂得比链路早没关系，
         // 没连上时通知自己会丢掉。
@@ -177,14 +177,13 @@ public partial class App : Application
         // 只有用户在设置里打开才会在后台起 HTTP 服务（启动失败只记配置里的 LastError）。
         _ = Task.Run(KnowledgePack.Ensure);
         _ = Task.Run(McpServer.Apply);
-        // 局域网共享：上次开着就把助手进程拉起来（窗口保持隐藏）。只读 settings 域，不扫动作目录。
-        // 共享窗口单独跑在 asInvoker 的 ShareHost.exe 里——主程序提权后收不到 Explorer 的拖放。
-        // 界面宿主：面板 / 共享窗口都在普通权限的 ShareHost.exe 里（主程序提权后收不到拖放、
-        // 也不该让界面跟着提权）。它随主程序常驻，窗口保持隐藏；主程序退出时 Stop 掉。
-        _ = Task.Run(ShareHelper.Start);
+        // 局域网共享：上次开着就把共享服务拉起来（窗口保持隐藏）。只读 settings 域，不扫动作目录。
+        // 界面宿主（UiHost.exe）随主程序常驻：面板 / 速记 / 设置 / 截图 / 编辑器 / 共享窗口都在它里面
+        // （主程序提权后收不到 Explorer 的拖放，也不该让界面跟着提权），主程序退出时 Stop 掉。
+        _ = Task.Run(UiHostProcess.Start);
         // 录屏写的是分片 MP4：进程被杀 / 断电时已经落下的分片还能播。
         // 残片恢复与采集历史的剪枝都写 `captures/`，那一片现在归宿主（截图流程在宿主里跑），
-        // 所以这两件事跟宿主启动走，这里不再重复（见 ShareHost 的 BootCapture）。
+        // 所以这两件事跟宿主启动走，这里不再重复（见 UiHost 的 BootCaptureHistory）。
 
         // OCR 模型热启动（照上游 text_recognition/model_hot_start）：开着 + 常驻时后台预热一次，
         // 第一次识别不必等加载；关着 / 非常驻时 OnSettingsChanged 自己直接返回，不白占内存。
@@ -221,7 +220,7 @@ public partial class App : Application
         // 同步跑会卡住 UI 线程约 1 秒，故只排队、不等它）。
         System.Threading.Tasks.Task.Run(LTools.Features.Script.CSharpRunner.Warmup);
 
-        // 采集历史 / 贴图历史（captures/ · pins/）的启动维护也跟着宿主走（见 ShareHost 的 BootCaptureHistory）：
+        // 采集历史 / 贴图历史（captures/ · pins/）的启动维护也跟着宿主走（见 UiHost 的 BootCaptureHistory）：
         // 两个目录不存在时直接返回，这里不用再兜一次；贴图窗口与采集历史窗口现在都在宿主里。
 
         // 悬浮工具条（floating_toolbar/*）：默认关，开着就按配置建出来并订阅设置变更。
@@ -333,7 +332,7 @@ public partial class App : Application
         _watchdog?.Stop();
         // 只管「别再收请求」并把关停排到后台：绝不在 UI 线程上等 ASP.NET Core 关停（会永久卡死托盘）。
         McpServer.Stop();
-        ShareHelper.Stop();
+        UiHostProcess.Stop();
         LinkWorker.Stop();
         FloatingManager.Shutdown();
         ForegroundAppCache.Stop();
@@ -348,7 +347,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         McpServer.Stop();
-        ShareHelper.Stop();
+        UiHostProcess.Stop();
         LinkWorker.Stop();   // 幂等：托盘退出时已 Stop 过一次
         FloatingManager.Shutdown();
         TriggerService.Stop();   // 幂等：托盘退出时已 Stop 过一次

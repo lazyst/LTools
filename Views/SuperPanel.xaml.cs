@@ -160,7 +160,6 @@ public partial class SuperPanelWindow : Window
             ApplyPageMode();
         };
         Activated += (_, _) => FocusSearch();
-        Deactivated += OnWindowDeactivated;
 
         PreviewMouseLeftButtonDown += OnWindowMouseDown;
         PreviewMouseMove += OnWindowMouseMove;
@@ -182,28 +181,6 @@ public partial class SuperPanelWindow : Window
         _blankDragArmed = false;
         try { DragMove(); }
         catch (InvalidOperationException) { /* 鼠标已抬起 */ }
-    }
-
-    /// <summary>
-    /// 点一下面板外面（别的窗口 / 桌面）就关。
-    /// </summary>
-    /// <remarks>
-    /// 面板在宿主里是个普通的顶层窗口：失去激活就说明「鼠标点到别处了」。
-    /// 以前这条由提权进程的鼠标钩子按面板矩形判定（它看不到宿主进程的窗口）；面板搬进宿主后
-    /// 钩子那边永远认为面板没开，所以改由窗口自己承担。
-    /// 菜单 / 面板里的模态框打开期间不关——它们抢走激活是正常交互，关了菜单也一起没了。
-    /// </remarks>
-    private void OnWindowDeactivated(object? sender, EventArgs e)
-    {
-        if (_openMenu is { IsOpen: true } || Features.SuperPanel.HasOpenDialog) return;
-
-        // 排到 Background 再看一眼：菜单 / 对话框抢走激活后常常立刻还回来，别把面板抢没了。
-        Dispatcher.BeginInvoke(new Action(() =>
-        {
-            if (IsActive || !IsVisible) return;
-            if (_openMenu is { IsOpen: true } || Features.SuperPanel.HasOpenDialog) return;
-            Features.SuperPanel.Close();
-        }), DispatcherPriority.Background);
     }
 
     /// <summary>右键：没有自带菜单的地方（空白 / 分组标题 / 标题栏）弹出面板菜单。</summary>
