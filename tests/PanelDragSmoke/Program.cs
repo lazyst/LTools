@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -186,6 +187,136 @@ internal static class Program
             Check("未钉住：开编辑器前面板照旧关掉",
                 !panel.IsVisible && !(bool)Get(controller, "IsOpen")!);
             aside2.Dispose();
+
+            // ---- ⑥ 真右键菜单：多级菜单往回走不能被关掉（2026-11-26 用户报）----
+            panel = (Window)Activator.CreateInstance(panelType, Any, null, new object?[] { null, 0, 0 }, null)!;
+            panel.WindowStartupLocation = WindowStartupLocation.Manual;
+            panel.Show();
+            // 靠左上摆：三级菜单要往右下展开，别让屏幕右边缘把 popup 夹住（鼠标会被夹到锥外）
+            panel.Left = 60;
+            panel.Top = 60;
+            panel.Width = 700;
+            panel.Height = 500;
+            Pump(panel, 300);
+
+            var groups = (Panel)panelType.GetField("GlobalGroups", Any)!.GetValue(panel)!;
+            var block = groups.Children.OfType<StackPanel>().FirstOrDefault();
+            var title = block?.Children.OfType<TextBlock>().FirstOrDefault();
+            Check("⑥ 前置：面板有分组标题", title != null);
+            if (title != null)
+            {
+                RClick(Center(title));
+                Pump(panel, 400);
+
+                var menu = (ContextMenu?)panelType.GetField("_openMenu", Any)!.GetValue(panel);
+                Check("⑥ 右键弹出了分组菜单", menu is { IsOpen: true });
+                if (menu is { IsOpen: true })
+                {
+                    var top = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Header as string == "常用功能");
+                    var other = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Header as string == "LTools 功能");
+                    Check("⑥ 菜单里有「常用功能」子菜单", top != null);
+                    if (top != null)
+                    {
+                        MoveTo(Center(Rect(top)));
+                        Pump(panel, 350);
+                        Check("⑥ 悬停一级项展开二级", top.IsSubmenuOpen, $"top.sub={top.IsSubmenuOpen}");
+
+                        var mid = top.Items.OfType<MenuItem>().FirstOrDefault();
+                        Check("⑥ 二级有分类项", mid != null);
+                        if (mid != null)
+                        {
+                            MoveTo(Center(Rect(mid)));
+                            Pump(panel, 350);
+                            Check("⑥ 悬停二级项展开三级", mid.IsSubmenuOpen && top.IsSubmenuOpen,
+                                $"top.sub={top.IsSubmenuOpen} mid.sub={mid.IsSubmenuOpen}");
+
+                            // 在三级菜单里停 700ms（> WPF 的 400ms + MenuFx 的 260ms）：
+                            // 一级项的收起计时器到点时指针还在它的后代菜单里，整支不许被收。
+                            if (mid.Template?.FindName("PART_Popup", mid) is Popup { Child: FrameworkElement three })
+                            {
+                                MoveTo(Center(Rect(three)));
+                                Pump(panel, 700);
+                                Check("⑥ 三级菜单里停 700ms：整支仍在",
+                                    menu.IsOpen && top.IsSubmenuOpen && mid.IsSubmenuOpen,
+                                    $"menu={menu.IsOpen} top.sub={top.IsSubmenuOpen} mid.sub={mid.IsSubmenuOpen}");
+                            }
+
+                            // 三级 → 二级（慢慢往回走）
+                            if (mid.Template?.FindName("PART_Popup", mid) is Popup { Child: FrameworkElement leafPopup })
+                            {
+                                MoveTo(Center(Rect(leafPopup)));
+                                Pump(panel, 250);
+                                var leafRect = Rect(leafPopup);
+                                var midRect = Rect(mid);
+                                // 回程从**两边中心**走（不是左上角）：沿菜单的通道，别贴着菜单上边缘
+                                Point from = Center(leafRect), toward = Center(midRect);
+                                for (int i = 1; i <= 10; i++)
+                                {
+                                    MoveTo(new Point(
+                                        from.X + (toward.X - from.X) * i / 10.0,
+                                        from.Y + (toward.Y - from.Y) * i / 10.0));
+                                    Pump(panel, 40);
+                                }
+                                Pump(panel, 350);
+                                Check("⑥ 三级回二级：整份菜单仍在", menu.IsOpen, $"menu.IsOpen={menu.IsOpen}");
+                                Check("⑥ 三级回二级：二级仍展开", mid.IsSubmenuOpen && top.IsSubmenuOpen,
+                                    $"top.sub={top.IsSubmenuOpen} mid.sub={mid.IsSubmenuOpen}");
+
+                                // 二级 → 一级（回到同一个父项）
+                                var topRect = Rect(top);
+                                from = Center(midRect);
+                                toward = Center(topRect);
+                                for (int i = 1; i <= 10; i++)
+                                {
+                                    MoveTo(new Point(
+                                        from.X + (toward.X - from.X) * i / 10.0,
+                                        from.Y + (toward.Y - from.Y) * i / 10.0));
+                                    Pump(panel, 40);
+                                }
+                                Pump(panel, 400);
+                                Check("⑥ 二级回一级：整份菜单仍在", menu.IsOpen, $"menu.IsOpen={menu.IsOpen}");
+                                Check("⑥ 二级回一级：一级子菜单仍开", top.IsSubmenuOpen,
+                                    $"top.sub={top.IsSubmenuOpen} mid.sub={mid.IsSubmenuOpen}");
+                            }
+                        }
+
+                        // ⑦ 用户 2026-11-26 报的精确路径：指针停在二级「剪贴板」上（开着三级），
+                        //    往根菜单里的「新建分组」斜着走（左下，会穿过二级菜单左边缘与两个 popup
+                        //    之间的空隙），整个右键菜单不许关。
+                        var clip = top.Items.OfType<MenuItem>().FirstOrDefault(m => m.Header as string == "剪贴板");
+                        var newGroup = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Header as string == "新建分组");
+                        Check("⑦ 菜单里有「剪贴板」与「新建分组」", clip != null && newGroup != null);
+                        if (clip != null && newGroup != null)
+                        {
+                            MoveTo(Center(Rect(top)));
+                            Pump(panel, 350);
+                            MoveTo(Center(Rect(clip)));
+                            Pump(panel, 400);
+                            Check("⑦ 前置：剪贴板的三级开着", clip.IsSubmenuOpen,
+                                $"clip.sub={clip.IsSubmenuOpen} top.sub={top.IsSubmenuOpen}");
+
+                            Point a = Center(Rect(clip)), b = Center(Rect(newGroup));
+                            for (int i = 1; i <= 14; i++)
+                            {
+                                MoveTo(new Point(a.X + (b.X - a.X) * i / 14.0,
+                                                 a.Y + (b.Y - a.Y) * i / 14.0));
+                                Pump(panel, 40);
+                                if (!menu.IsOpen)
+                                {
+                                    Console.WriteLine($"]] closed at step {i}");
+                                    break;
+                                }
+                            }
+                            Pump(panel, 350);
+                            Check("⑦ 剪贴板 → 新建分组：整份菜单仍在", menu.IsOpen,
+                                $"menu.IsOpen={menu.IsOpen} top.sub={top.IsSubmenuOpen} clip.sub={clip.IsSubmenuOpen}");
+                        }
+                    }
+
+                    menu.IsOpen = false;
+                    Pump(panel, 150);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -369,7 +500,41 @@ internal static class Program
 
     // ============ Win32 ============
 
+    private const uint RightDown = 0x0008;
+    private const uint RightUp = 0x0010;
 
+    /// <summary>移到屏幕物理像素点。`SetCursorPos` 自己会生成 WM_MOUSEMOVE，别再叠相对的 mouse_event
+    /// （相对移动会走系统鼠标加速，多次调用累积出几十像素的偏移，冒烟会把指针甩到菜单外）。</summary>
+    private static void MoveTo(Point p) => SetCursorPos((int)Math.Round(p.X), (int)Math.Round(p.Y));
+
+    private static void RClick(Point p)
+    {
+        SetCursorPos((int)Math.Round(p.X), (int)Math.Round(p.Y));
+        Thread.Sleep(60);
+        mouse_event(RightDown, 0, 0, 0, IntPtr.Zero);
+        Thread.Sleep(40);
+        mouse_event(RightUp, 0, 0, 0, IntPtr.Zero);
+    }
+
+    /// <summary>元素在屏幕上的物理像素矩形（<c>PointToScreen</c> 给物理像素，尺寸按 DPI 换算）。</summary>
+    private static Rect Rect(FrameworkElement e)
+    {
+        try
+        {
+            var origin = e.PointToScreen(new Point(0, 0));
+            var scale = VisualTreeHelper.GetDpi(e);
+            return new Rect(origin,
+                new Size(e.ActualWidth * scale.DpiScaleX, e.ActualHeight * scale.DpiScaleY));
+        }
+        catch
+        {
+            return System.Windows.Rect.Empty;
+        }
+    }
+
+    private static Point Center(Rect r) => new(r.Left + r.Width / 2, r.Top + r.Height / 2);
+
+    private static Point Center(FrameworkElement e) => Center(Rect(e));
 
     [DllImport("user32.dll")]
     private static extern bool SetCursorPos(int x, int y);

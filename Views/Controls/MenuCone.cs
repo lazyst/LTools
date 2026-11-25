@@ -73,6 +73,13 @@ internal static class MenuCone
     public static void Arm(MenuItem owner)
     {
         if (ReferenceEquals(_owner, owner)) return;
+
+        // 祖先的 SubmenuOpened 会在 WPF 重开它那层 popup 时再来一次：多级菜单里指针已经在
+        // 更深的子菜单（三级）里，这时**不能让浅层的锥盖掉深层的**——否则 `Tick` 会按一级的
+        // 几何把「指针在三级」判成「离开通道」，`HandOff` 把整支收掉（2026-11-26 用户报
+        // 「从二级往回走，整片菜单关了」，真机上就是 `top` 的子菜单被收、二级 + 三级一起消失）。
+        if (IsAncestorOf(owner, _owner)) return;
+
         Disarm();
 
         _owner = owner;
@@ -328,7 +335,14 @@ internal static class MenuCone
     {
         bool keepOwner = _ready && (_ownerRect.Contains(p) || _childRect.Contains(p));
         Disarm();
-        if (!keepOwner) owner.IsSubmenuOpen = false;
+        if (!keepOwner)
+        {
+            // 先把焦点留在菜单里，再收子菜单：程序化关掉弹出窗口时 WPF 会把键盘焦点还给
+            // owner 窗口（面板），面板的 Activated → FocusSearch 又把它抢到搜索框，
+            // 根菜单的 IsKeyboardFocusWithin 变 false → WPF 把整份菜单关掉（2026-11-26 用户报）。
+            try { owner.Focus(); } catch { /* 菜单正在关 */ }
+            owner.IsSubmenuOpen = false;
+        }
         if (under != null && !ReferenceEquals(under, owner) && under.HasItems)
             under.IsSubmenuOpen = true;
     }
@@ -378,6 +392,17 @@ internal static class MenuCone
     private static bool SameLevel(MenuItem a, MenuItem b) =>
         ReferenceEquals(ItemsControl.ItemsControlFromItemContainer(a),
             ItemsControl.ItemsControlFromItemContainer(b));
+
+    /// <summary><paramref name="candidate"/> 是不是 <paramref name="item"/> 的祖先（含它自己）。</summary>
+    private static bool IsAncestorOf(MenuItem candidate, MenuItem? item)
+    {
+        for (MenuItem? cur = item; cur != null; cur = ParentOf(cur))
+            if (ReferenceEquals(cur, candidate)) return true;
+        return false;
+    }
+
+    private static MenuItem? ParentOf(MenuItem item) =>
+        ItemsControl.ItemsControlFromItemContainer(item) as MenuItem;
 
     /// <summary>这条锥属于哪个 <see cref="ContextMenu"/>（往上找，子菜单里的项也能找到）。</summary>
     private static ContextMenu? RootMenu(MenuItem owner)

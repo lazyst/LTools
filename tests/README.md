@@ -204,11 +204,11 @@ dotnet run                                # 13 条，约 2 秒
 再验只读进程里 `ConfigStore.Save` / `PanelLibrary.Save` 被拒绝（返回 false、目录不变），
 最后拿一个**空数据根**调 `InitializeReadOnly`，断言它不会把默认面板凭空写出来。
 
-### `PanelDragSmoke`（面板拖放：占位不再一明一灭 + 钉住 = 工具盘）
+### `PanelDragSmoke`（面板拖放：占位不再一明一灭 + 钉住 = 工具盘 + 多级菜单回程）
 
 ```powershell
 cd tests\PanelDragSmoke
-dotnet run                                # 13 条，约 7 秒
+dotnet run                                # 27 条，约 10 秒
 ```
 
 真开一扇 `SuperPanelWindow`（临时数据根里 6 个动作塞进一个分组），用真鼠标把文件从源窗口拖到
@@ -224,6 +224,15 @@ dotnet run                                # 13 条，约 7 秒
 后半段是**钉住 = 工具盘**（2026-11-26）：把窗口交给 `Features.SuperPanel` 后钉住，断言
 `RequestEscape` / `CloseAfterUse` 都不收面板；`StepAside`（打开编辑器）只隐藏、`Dispose` 后自己回来；
 取消钉住后 `StepAside` 又回到「先关掉」。
+
+最后两段是真**面板的真右键菜单**：右键分组标题弹出分组菜单。
+⑥ 进 `常用功能 › 分类 › 功能` 三层，断言「三级里停 700ms」「三级回二级」「二级回一级」整份菜单与
+各级子菜单都不许收——守的是 `MenuCone.Arm` 不接受祖先降级的守卫，去掉它这三条会红
+（`top.sub=False`、`mid.sub=False`）。
+⑦ 复刻用户报的精确路径：指针停在二级的「剪贴板」上（三级开着），往**根菜单的「新建分组」**斜着走
+（左下，穿过二级菜单左边缘与两个 popup 之间的空隙）——整份菜单不许关。守的是 `MenuCone.HandOff`
+里的 `owner.Focus()`：去掉它，子菜单关闭时焦点掉到面板搜索框（`Keyboard.FocusedElement` 变成
+`TextBox`），WPF 因 `IsKeyboardFocusWithin` 变 false 直接把菜单关掉。
 
 ### `TableSmoke`（表格识别 `screen.table`）
 

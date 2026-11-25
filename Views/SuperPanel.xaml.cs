@@ -159,7 +159,14 @@ public partial class SuperPanelWindow : Window
             // 按上次停留的页恢复（暂存区的搜索框收起、列表刷新都在 ApplyPageMode 里）
             ApplyPageMode();
         };
-        Activated += (_, _) => FocusSearch();
+        Activated += (_, _) =>
+        {
+            // 菜单（含子菜单）开着时焦点归菜单：抢到搜索框会让 ContextMenu 的
+            // IsKeyboardFocusWithin 变 false，WPF 随即把整份菜单关掉（2026-11-26 用户报
+            // 「从二级往根菜单移，整个右键菜单关闭」，焦点就是这么丢的）。
+            if (_openMenu is { IsOpen: true }) return;
+            FocusSearch();
+        };
 
         PreviewMouseLeftButtonDown += OnWindowMouseDown;
         PreviewMouseMove += OnWindowMouseMove;
