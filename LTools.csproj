@@ -191,4 +191,25 @@
     <Message Importance="high" Text="界面宿主已发布到 $(PublishDir)" />
   </Target>
 
+  <!-- WindowsDesktop 共享框架会把 WinForms 一起带进 self-contained 发布：System.Windows.Forms*.dll
+       三件约 22 MB（本项目一处都没用，GlobalUsings 明确「不要引用 WinForms 类型」），加上 13 种语言的
+       .resources.dll 约 17 MB（产品 UI 是自己的中文，不靠框架语言包；缺卫星程序集时 .NET 自动回退
+       主程序集里的中性资源）。发布后删掉：解压包约 -35 MB、zip 约 -14 MB。
+       必须排在 PublishUiHost **之后**：宿主也会把同一批共享框架文件拷进 publish 目录，先删后拷等于没删。
+       与 OpenCV ffmpeg 插件 / Roslyn 卫星程序集同一套「发布后删掉」做法；改这里之后跑一遍
+       LTools.exe 的 selftest，确认没有隐藏的 WinForms 引用。 -->
+  <Target Name="RemoveUnusedDesktopPartsOnPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <ItemGroup>
+      <_UnusedWinForms Include="$(PublishDir)System.Windows.Forms*.dll" />
+      <_UnusedWinForms Include="$(PublishDir)System.Design.dll" />
+      <_UnusedWinForms Include="$(PublishDir)System.Drawing.Design.dll" />
+      <_UnusedWinForms Include="$(PublishDir)Accessibility.dll" />
+      <_UnusedWinForms Include="$(PublishDir)**\System.Windows.Forms*.resources.dll" />
+      <_UnusedSatellites Include="$(PublishDir)*\*.resources.dll"
+                         Exclude="$(PublishDir)zh-Hans\*.resources.dll" />
+    </ItemGroup>
+    <Delete Files="@(_UnusedWinForms)" />
+    <Delete Files="@(_UnusedSatellites)" />
+  </Target>
+
 </Project>

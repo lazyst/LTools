@@ -30,21 +30,30 @@ jobs:
       - name: Publish self-contained
         run: dotnet publish LTools.csproj -c Release -r win-x64 --self-contained true -p:DebugType=none -p:DebugSymbols=false -o publish
 
-      - name: Pack zip
+      - name: Pack archives
         shell: pwsh
         run: |
-          # zip 内顶层为 LTools/ 目录，用户解压即得此目录
+          # 两种压缩、内容一样：
+          # - zip 谁都能解；
+          # - 7z（LZMA2 + solid）比 zip 小一截，Win11 24H2+ 资源管理器能直接解，Win10 要装 7-Zip。
+          # 两个都传，用户按自己的机器挑。
           New-Item -ItemType Directory -Path staging/LTools -Force | Out-Null
           Copy-Item publish/* staging/LTools/ -Recurse
           $ver = ${env:GITHUB_REF_NAME}   # 如 v2.2.0
           Compress-Archive -Path staging/LTools -DestinationPath "LTools-$ver-win-x64.zip" -CompressionLevel Optimal
-          Write-Host "Built LTools-$ver-win-x64.zip"
-          Get-Item "LTools-$ver-win-x64.zip" | Format-List Name,Length
+          $sevenZip = @("$env:ProgramFiles\7-Zip\7z.exe", "${env:ProgramFiles(x86)}\7-Zip\7z.exe") |
+                      Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $sevenZip) { $sevenZip = '7z' }
+          & $sevenZip a -t7z -mx=9 -ms=on -mmt=on "LTools-$ver-win-x64.7z" staging\LTools | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "7z 打包失败（退出码 $LASTEXITCODE）" }
+          Get-Item "LTools-$ver-win-x64.zip","LTools-$ver-win-x64.7z" | Format-List Name,Length
 
-      - name: Create/Update release & upload asset
+      - name: Create/Update release & upload assets
         uses: softprops/action-gh-release@v2
         with:
-          files: LTools-${{ github.ref_name }}-win-x64.zip
+          files: |
+            LTools-${{ github.ref_name }}-win-x64.zip
+            LTools-${{ github.ref_name }}-win-x64.7z
           generate_release_notes: true   # 自动从 commits 生成 release notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
