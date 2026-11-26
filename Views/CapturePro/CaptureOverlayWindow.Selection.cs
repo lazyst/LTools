@@ -216,7 +216,7 @@ public partial class CaptureOverlayWindow
         if (markHandle is not (FrameHandle.None or FrameHandle.Move))
         {
             BeginMarkResize(p, markHandle);
-            StartDrag(e, CursorFor(markHandle));
+            StartDrag(e, FrameCursors.For(markHandle, Cursors.Cross, Cursors.SizeAll));
             return;
         }
 
@@ -249,7 +249,7 @@ public partial class CaptureOverlayWindow
             _drag = DragMode.Resize;
             _handle = hit;
             RebuildSnapLines();
-            StartDrag(e, CursorFor(hit));
+            StartDrag(e, FrameCursors.For(hit, Cursors.Cross, Cursors.SizeAll));
             return;
         }
 

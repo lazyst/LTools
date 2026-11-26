@@ -110,7 +110,7 @@ internal static class HotkeyRegistry
             {
                 // 物理键已经抬起 = 上一次按下的锁存没被清（keyup 被别的分支提前吞掉 / 没送到钩子）。
                 // 就地自愈，否则这条单键会一直「隔一次才触发」。
-                if (!Down(vk)) Fired.Remove(vk);
+                if (!KeyState.IsDown(vk)) Fired.Remove(vk);
                 else return null;
             }
         }
@@ -146,7 +146,7 @@ internal static class HotkeyRegistry
         {
             if (Fired.Contains(vk))
             {
-                if (!Down(vk)) Fired.Remove(vk);
+                if (!KeyState.IsDown(vk)) Fired.Remove(vk);
                 else return false;
             }
         }
@@ -180,10 +180,11 @@ internal static class HotkeyRegistry
     /// <summary>修饰键是否与这条组合键**完全一致**（多按一个 Ctrl 就不算命中）。</summary>
     private static bool ModifiersMatch(HotkeyChord chord)
     {
-        bool ctrl = Down(0xA2) || Down(0xA3) || Down(0x11);
-        bool shift = Down(0xA0) || Down(0xA1) || Down(0x10);
-        bool alt = Down(0xA4) || Down(0xA5) || Down(0x12);
-        bool win = Down(0x5B) || Down(0x5C);
+        KeyMods mods = KeyState.Modifiers();
+        bool ctrl = (mods & KeyMods.Ctrl) != 0;
+        bool shift = (mods & KeyMods.Shift) != 0;
+        bool alt = (mods & KeyMods.Alt) != 0;
+        bool win = (mods & KeyMods.Win) != 0;
         bool caps = AppState.CapsLockIsDown && AppState.CapsLockModifier;
 
         return ctrl == chord.HasCtrl
@@ -193,7 +194,7 @@ internal static class HotkeyRegistry
             && caps == chord.CapsLock;
     }
 
-    private static bool Down(int vk) => (Win32.GetAsyncKeyState(vk) & 0x8000) != 0;
+
 
     /// <summary>
     /// 同一条快捷键在「已启用的组」里出现多次 → 返回这些绑定 Id。

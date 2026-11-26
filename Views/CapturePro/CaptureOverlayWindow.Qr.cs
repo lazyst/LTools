@@ -538,20 +538,7 @@ public partial class CaptureOverlayWindow
 
     // ============ 鼠标 / 键盘让路 ============
 
-    private bool IsOnQr(DependencyObject? source) => AncestorIs(source, QrMarkerHost);
+    private bool IsOnQr(DependencyObject? source) => VisualTree.IsInside(source, QrMarkerHost);
 
-    private bool IsOnQrBubble(DependencyObject? source) => AncestorIs(source, QrBubbleCard);
-
-    /// <summary>沿可视树往上找某个祖先（和 <c>IsOnToolbar</c> 那套同一个写法）。</summary>
-    private static bool AncestorIs(DependencyObject? source, DependencyObject target)
-    {
-        for (var node = source; node != null;)
-        {
-            if (ReferenceEquals(node, target)) return true;
-            node = node is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(node)
-                : LogicalTreeHelper.GetParent(node);
-        }
-        return false;
-    }
+    private bool IsOnQrBubble(DependencyObject? source) => VisualTree.IsInside(source, QrBubbleCard);
 }

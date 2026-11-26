@@ -308,9 +308,8 @@ public partial class CaptureRecordWindow
     private static bool AnyMouseButtonDown()
     {
         // 左 / 右 / 中 / X1 / X2：按着鼠标就不收（上游 QGuiApplication::mouseButtons）
-        return Down(0x01) || Down(0x02) || Down(0x04) || Down(0x05) || Down(0x06);
-
-        static bool Down(int vk) => (Win32.GetAsyncKeyState(vk) & 0x8000) != 0;
+        return KeyState.IsDown(0x01) || KeyState.IsDown(0x02) || KeyState.IsDown(0x04)
+            || KeyState.IsDown(0x05) || KeyState.IsDown(0x06);
     }
 
     /// <summary>我们自己的对话框（录屏选项 / 裁剪 / 另存）开着时别收起。</summary>

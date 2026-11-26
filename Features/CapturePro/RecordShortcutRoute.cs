@@ -140,11 +140,12 @@ internal static class RecordShortcutRoute
         // 指针不在录屏条上：一个键都不碰（见类注释「为什么要作用范围」）
         if (!snapshot.Hot) return false;
 
+        KeyMods mods = KeyState.Modifiers();
         var action = RecordShortcuts.Match(vk,
-            Down(0xA2) || Down(0xA3) || Down(0x11),
-            Down(0xA0) || Down(0xA1) || Down(0x10),
-            Down(0xA4) || Down(0xA5) || Down(0x12),
-            Down(0x5B) || Down(0x5C),
+            (mods & KeyMods.Ctrl) != 0,
+            (mods & KeyMods.Shift) != 0,
+            (mods & KeyMods.Alt) != 0,
+            (mods & KeyMods.Win) != 0,
             snapshot.State);
 
         if (action == RecordShortcutAction.None) return false;
@@ -190,6 +191,4 @@ internal static class RecordShortcutRoute
         try { callback?.Invoke(parsed); }
         catch (Exception ex) { AppLog.Warn("CapturePro.Record", "录屏快捷键执行失败：" + ex.Message); }
     }
-
-    private static bool Down(int vk) => (Win32.GetAsyncKeyState(vk) & 0x8000) != 0;
 }

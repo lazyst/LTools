@@ -387,17 +387,7 @@ public partial class CaptureOverlayWindow
     }
 
     /// <summary>事件源是否来自浮动工具栏（工具栏背景也要让路，否则一点就拖出新选区）。</summary>
-    private bool IsOnToolbar(DependencyObject? source)
-    {
-        while (source != null)
-        {
-            if (ReferenceEquals(source, Toolbar)) return true;
-            source = source is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(source)
-                : LogicalTreeHelper.GetParent(source);
-        }
-        return false;
-    }
+    private bool IsOnToolbar(DependencyObject? source) => VisualTree.IsInside(source, Toolbar);
 
     /// <summary>鼠标现在是不是停在工具栏上（移动时别更新悬停候选 / 改光标）。</summary>
     private bool IsOverToolbar => Toolbar.IsVisible && Toolbar.IsMouseOver;

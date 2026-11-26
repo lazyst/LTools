@@ -431,7 +431,7 @@ internal sealed class CollageCanvas : FrameworkElement
             _initialImage = ToViewport(layout.ImageRects[index]);
             _pendingImage = _initialImage;
             _pendingPlacement = document.Items[index].Placement;
-            Cursor = CursorFor(handle);
+            Cursor = FrameCursors.For(handle, Cursors.SizeAll);
             CaptureMouse();
             e.Handled = true;
             return;
@@ -520,7 +520,7 @@ internal sealed class CollageCanvas : FrameworkElement
 
             long target = IsResizeHandle(_handle) ? 0 : HitItem(position, includeWhitespace: true);
             _swapTarget = target != _pressedId ? target : 0;
-            Cursor = IsResizeHandle(_handle) ? CursorFor(_handle)
+            Cursor = IsResizeHandle(_handle) ? FrameCursors.For(_handle, Cursors.SizeAll)
                 : _swapTarget != 0 ? Cursors.Hand : Cursors.SizeAll;
             InvalidateVisual();
             ViewportChanged?.Invoke();
@@ -530,7 +530,7 @@ internal sealed class CollageCanvas : FrameworkElement
         if (_editing && e.LeftButton == MouseButtonState.Released)
         {
             var handle = MarkGeometry.HitFrameEdge(SelectionFrame, position, HandleHit);
-            Cursor = handle == FrameHandle.None ? null : CursorFor(handle);
+            Cursor = handle == FrameHandle.None ? null : FrameCursors.For(handle, Cursors.SizeAll);
         }
     }
 
@@ -704,14 +704,5 @@ internal sealed class CollageCanvas : FrameworkElement
 
         return 0;
     }
-
-    private static Cursor CursorFor(FrameHandle handle) => handle switch
-    {
-        FrameHandle.TopLeft or FrameHandle.BottomRight => Cursors.SizeNWSE,
-        FrameHandle.TopRight or FrameHandle.BottomLeft => Cursors.SizeNESW,
-        FrameHandle.Top or FrameHandle.Bottom => Cursors.SizeNS,
-        FrameHandle.Left or FrameHandle.Right => Cursors.SizeWE,
-        _ => Cursors.SizeAll,
-    };
 
 }

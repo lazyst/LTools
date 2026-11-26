@@ -186,10 +186,7 @@ internal static class MacroSettings
 
     /// <summary>当前是否没有任何 Ctrl / Shift / Alt / Win 按下（左右两侧都查）。</summary>
     private static bool AreNoModifiersDown()
-        => !Down(0xA2) && !Down(0xA3) && !Down(0x11)     // Ctrl
-        && !Down(0xA0) && !Down(0xA1) && !Down(0x10)     // Shift
-        && !Down(0xA4) && !Down(0xA5) && !Down(0x12)     // Alt
-        && !Down(0x5B) && !Down(0x5C);                   // Win
+        => KeyState.Modifiers() == KeyMods.None;
 
     /// <summary>
     /// 修饰键按「左右任一侧」判断：配置里写 <c>ctrl</c>（解析为 VK_LCONTROL）时，
@@ -197,12 +194,10 @@ internal static class MacroSettings
     /// </summary>
     private static bool IsKeyDown(ushort vk) => vk switch
     {
-        0x11 or 0xA2 or 0xA3 => Down(0xA2) || Down(0xA3) || Down(0x11),   // Ctrl
-        0x10 or 0xA0 or 0xA1 => Down(0xA0) || Down(0xA1) || Down(0x10),   // Shift
-        0x12 or 0xA4 or 0xA5 => Down(0xA4) || Down(0xA5) || Down(0x12),   // Alt
-        0x5B or 0x5C => Down(0x5B) || Down(0x5C),                          // Win
-        _ => Down(vk),
+        0x11 or 0xA2 or 0xA3 => (KeyState.Modifiers() & KeyMods.Ctrl) != 0,
+        0x10 or 0xA0 or 0xA1 => (KeyState.Modifiers() & KeyMods.Shift) != 0,
+        0x12 or 0xA4 or 0xA5 => (KeyState.Modifiers() & KeyMods.Alt) != 0,
+        0x5B or 0x5C => (KeyState.Modifiers() & KeyMods.Win) != 0,
+        _ => KeyState.IsDown(vk),
     };
-
-    private static bool Down(int vk) => (Win32.GetAsyncKeyState(vk) & 0x8000) != 0;
 }

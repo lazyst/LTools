@@ -37,4 +37,18 @@ internal static class VisualTree
         source is Visual or Visual3D
             ? VisualTreeHelper.GetParent(source)
             : LogicalTreeHelper.GetParent(source);
+
+    /// <summary>
+    /// <paramref name="container"/> 是不是 <paramref name="node"/> 的祖先（含自己）：
+    /// 「这一下点在不在那块界面里」（工具条 / 输入框 / 二维码卡片都靠它判）。
+    /// </summary>
+    public static bool IsInside(DependencyObject? node, DependencyObject container)
+    {
+        while (node != null)
+        {
+            if (ReferenceEquals(node, container)) return true;
+            node = Parent(node);
+        }
+        return false;
+    }
 }

@@ -190,10 +190,11 @@ internal static class PinShortcutRoute
 
         if (hit == null) return false;
 
-        bool ctrl = Down(0xA2) || Down(0xA3) || Down(0x11);
-        bool shift = Down(0xA0) || Down(0xA1) || Down(0x10);
-        bool alt = Down(0xA4) || Down(0xA5) || Down(0x12);
-        bool win = Down(0x5B) || Down(0x5C);
+        KeyMods mods = KeyState.Modifiers();
+        bool ctrl = (mods & KeyMods.Ctrl) != 0;
+        bool shift = (mods & KeyMods.Shift) != 0;
+        bool alt = (mods & KeyMods.Alt) != 0;
+        bool win = (mods & KeyMods.Win) != 0;
 
         return hit.Remote
             ? DispatchRemote(hit.Hwnd, vk, ctrl, shift, alt, win)
@@ -259,6 +260,4 @@ internal static class PinShortcutRoute
         Volatile.Write(ref _targets, kept.ToArray());
         if (kept.Count == 0) Swallowed.Clear();
     }
-
-    private static bool Down(int vk) => (Win32.GetAsyncKeyState(vk) & 0x8000) != 0;
 }

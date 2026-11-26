@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
-using System.Runtime.InteropServices;
 using System.Windows;
 using LTools.Native;
 
@@ -64,9 +63,9 @@ internal sealed class RecordEffects
 
         if (Win32.GetCursorPos(out var cursor)) _cursor = (cursor.X, cursor.Y);
 
-        bool left = Down(VirtualKey.LeftButton);
-        bool right = Down(VirtualKey.RightButton);
-        bool middle = Down(VirtualKey.MiddleButton);
+        bool left = KeyState.IsDown(VirtualKey.LeftButton);
+        bool right = KeyState.IsDown(VirtualKey.RightButton);
+        bool middle = KeyState.IsDown(VirtualKey.MiddleButton);
 
         if (left && !_left) AddClick(nowMs, RecordMouseButton.Left);
         if (right && !_right) AddClick(nowMs, RecordMouseButton.Right);
@@ -128,11 +127,11 @@ internal sealed class RecordEffects
 
     private void SampleKeys(long nowMs)
     {
-        bool shortcutHeld = Down(0x11) || Down(0x12) || Down(0x5B) || Down(0x5C);
+        bool shortcutHeld = KeyState.IsDown(0x11) || KeyState.IsDown(0x12) || KeyState.IsDown(0x5B) || KeyState.IsDown(0x5C);
 
         foreach (var key in RecordEffectsMath.WatchedKeys)
         {
-            bool down = Down(key.Vk);
+            bool down = KeyState.IsDown(key.Vk);
             if (down == _down.Contains(key.Vk)) continue;
 
             if (down)
@@ -161,10 +160,10 @@ internal sealed class RecordEffects
         if (withModifiers)
         {
             var held = new HashSet<int>();
-            if (Down(0x11) || Down(0xA2)) held.Add(0x11);
-            if (Down(0x10) || Down(0xA0)) held.Add(0x10);
-            if (Down(0x12) || Down(0xA4)) held.Add(0x12);
-            if (Down(0x5B) || Down(0x5C)) held.Add(0x5B);
+            if (KeyState.IsDown(0x11) || KeyState.IsDown(0xA2)) held.Add(0x11);
+            if (KeyState.IsDown(0x10) || KeyState.IsDown(0xA0)) held.Add(0x10);
+            if (KeyState.IsDown(0x12) || KeyState.IsDown(0xA4)) held.Add(0x12);
+            if (KeyState.IsDown(0x5B) || KeyState.IsDown(0x5C)) held.Add(0x5B);
 
             if (held.Count > 0) text = RecordEffectsMath.ComboLabel(held, label);
         }
@@ -172,8 +171,6 @@ internal sealed class RecordEffects
         _keys.Add(new KeyCap(nowMs, text));
         if (_keys.Count > 4) _keys.RemoveRange(0, _keys.Count - 4);
     }
-
-    private static bool Down(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
 
     /// <summary>
     /// 把特效画到当前帧上。<paramref name="area"/> 是这一帧实际抓的屏幕矩形，
@@ -424,8 +421,6 @@ internal sealed class RecordEffects
         public const int MiddleButton = 0x04;
     }
 
-    [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int vKey);
 }
 
 /// <summary>特效的几何与时间（纯函数，<c>--selftest</c> 直接断言）。</summary>

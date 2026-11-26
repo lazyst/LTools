@@ -503,7 +503,7 @@ internal sealed class CollagePdfTemplateCanvas : FrameworkElement
                 break;
             }
 
-            Cursor = handle == FrameHandle.None ? Cursors.SizeAll : CursorFor(handle);
+            Cursor = handle == FrameHandle.None ? Cursors.SizeAll : FrameCursors.For(handle, Cursors.SizeAll);
             CaptureMouse();
             InvalidateVisual();
             e.Handled = true;
@@ -535,7 +535,7 @@ internal sealed class CollagePdfTemplateCanvas : FrameworkElement
         if (_gestureId == 0 || _document == null || e.LeftButton != MouseButtonState.Pressed)
         {
             var handle = HandleAt(SelectionFrame, position);
-            Cursor = handle == FrameHandle.None ? Cursors.Arrow : CursorFor(handle);
+            Cursor = handle == FrameHandle.None ? Cursors.Arrow : FrameCursors.For(handle, Cursors.SizeAll);
             return;
         }
 
@@ -727,15 +727,6 @@ internal sealed class CollagePdfTemplateCanvas : FrameworkElement
 
         return FrameHandle.None;
     }
-
-    private static Cursor CursorFor(FrameHandle handle) => handle switch
-    {
-        FrameHandle.TopLeft or FrameHandle.BottomRight => Cursors.SizeNWSE,
-        FrameHandle.TopRight or FrameHandle.BottomLeft => Cursors.SizeNESW,
-        FrameHandle.Top or FrameHandle.Bottom => Cursors.SizeNS,
-        FrameHandle.Left or FrameHandle.Right => Cursors.SizeWE,
-        _ => Cursors.SizeAll,
-    };
 
     // ============ 小工具 ============
 

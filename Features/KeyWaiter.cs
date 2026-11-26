@@ -137,16 +137,16 @@ internal static class KeyWaiter
 
     private static ModifierKeys CurrentModifiers()
     {
-        var mods = ModifierKeys.None;
-        if (Down(0xA2) || Down(0xA3)) mods |= ModifierKeys.Control;
-        if (Down(0xA0) || Down(0xA1)) mods |= ModifierKeys.Shift;
-        if (Down(0xA4) || Down(0xA5)) mods |= ModifierKeys.Alt;
-        if (Down(0x5B) || Down(0x5C)) mods |= ModifierKeys.Windows;
-        return mods;
+        KeyMods mods = KeyState.Modifiers();
+        var result = ModifierKeys.None;
+        if ((mods & KeyMods.Ctrl) != 0) result |= ModifierKeys.Control;
+        if ((mods & KeyMods.Shift) != 0) result |= ModifierKeys.Shift;
+        if ((mods & KeyMods.Alt) != 0) result |= ModifierKeys.Alt;
+        if ((mods & KeyMods.Win) != 0) result |= ModifierKeys.Windows;
+        return result;
     }
 
     /// <summary>挂上等待者时用户可能已经按着 Ctrl：按物理状态补一次（<see cref="CurrentModifiers"/> 读的就是物理状态）。</summary>
-    private static bool Down(int vk) => (Win32.GetAsyncKeyState(vk) & 0x8000) != 0;
 
     private static ModifierKeys ModifierOf(ushort vk) => vk switch
     {

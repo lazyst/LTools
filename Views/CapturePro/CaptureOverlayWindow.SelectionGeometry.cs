@@ -173,16 +173,6 @@ public partial class CaptureOverlayWindow
         return MarkGeometry.HitFrame(MarkGeometry.PaddedFrame(mark.Frame), p, GripHit);
     }
 
-    private static Cursor CursorFor(FrameHandle h) => h switch
-    {
-        FrameHandle.TopLeft or FrameHandle.BottomRight => Cursors.SizeNWSE,
-        FrameHandle.TopRight or FrameHandle.BottomLeft => Cursors.SizeNESW,
-        FrameHandle.Top or FrameHandle.Bottom => Cursors.SizeNS,
-        FrameHandle.Left or FrameHandle.Right => Cursors.SizeWE,
-        FrameHandle.Move => Cursors.SizeAll,
-        _ => Cursors.Cross,
-    };
-
     private Rect MoveTo(Rect r, Vector delta)
     {
         double x = Math.Clamp(r.X + delta.X, 0, Math.Max(0, ActualWidth - r.Width));

@@ -144,15 +144,5 @@ public partial class ImageEditWindow
     private void TextEntry_LostFocus(object sender, RoutedEventArgs e) => CommitText();
 
     /// <summary>事件源是否来自文字输入框（点在输入框里只是挪光标，不能当手势）。</summary>
-    private bool IsOnTextEntry(DependencyObject? source)
-    {
-        for (var node = source; node != null;)
-        {
-            if (ReferenceEquals(node, TextEntry)) return true;
-            node = node is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(node)
-                : LogicalTreeHelper.GetParent(node);
-        }
-        return false;
-    }
+    private bool IsOnTextEntry(DependencyObject? source) => VisualTree.IsInside(source, TextEntry);
 }

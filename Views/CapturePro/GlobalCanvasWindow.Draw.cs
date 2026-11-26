@@ -606,15 +606,6 @@ public partial class GlobalCanvasWindow
         return MarkGeometry.HitFrame(MarkGeometry.PaddedFrame(mark.Frame), p, Slop(GripHit));
     }
 
-    private static Cursor CursorFor(FrameHandle handle) => handle switch
-    {
-        FrameHandle.Top or FrameHandle.Bottom => Cursors.SizeNS,
-        FrameHandle.Left or FrameHandle.Right => Cursors.SizeWE,
-        FrameHandle.TopLeft or FrameHandle.BottomRight => Cursors.SizeNWSE,
-        FrameHandle.TopRight or FrameHandle.BottomLeft => Cursors.SizeNESW,
-        _ => Cursors.Arrow,
-    };
-
     /// <summary>命中容差：屏幕上的手感保持不变（除以缩放）。</summary>
     private double Slop(double dips) => dips / Math.Max(0.05, _zoom);
 
@@ -640,7 +631,7 @@ public partial class GlobalCanvasWindow
         var handle = MarkHandleAt(point);
         if (handle is not (FrameHandle.None or FrameHandle.Move))
         {
-            Surface.Cursor = CursorFor(handle);
+            Surface.Cursor = FrameCursors.For(handle, Cursors.Arrow);
             return;
         }
 

@@ -202,7 +202,7 @@ public partial class CaptureOverlayWindow
         // 选中标注的把手比框选的边更「当前」：先把光标摆对，不然看不出能拉
         if (markHit is not (FrameHandle.None or FrameHandle.Move))
         {
-            Cursor = CursorFor(markHit);
+            Cursor = FrameCursors.For(markHit, Cursors.Cross, Cursors.SizeAll);
             return;
         }
 
@@ -220,7 +220,7 @@ public partial class CaptureOverlayWindow
         // 走到边上还是十字，看不出那里能拉伸。关掉「快速选择修改」时非「选择」工具不给抓。
         if (CanDragFrameHandle(hit))
         {
-            Cursor = CursorFor(hit);
+            Cursor = FrameCursors.For(hit, Cursors.Cross, Cursors.SizeAll);
             return;
         }
 
