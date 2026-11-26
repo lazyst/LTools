@@ -601,10 +601,6 @@ public partial class CapturePinWindow
     internal bool AnnotationActive(PinTextAnnotationTool tool) =>
         _annotations?.HasStyle(OcrCanvas.SelectionRanges(), tool, requireFull: true) == true;
 
-    /// <summary>这一种工具当前的样式（样式面板 / 冒烟断言用）。</summary>
-    internal PinTextAnnotationStyle AnnotationStyleOf(PinTextAnnotationTool tool) =>
-        PinSettings.AnnotationStyle(tool);
-
     /// <summary>改一种工具的样式，并把选区里已有的同类标注一起改掉（照上游 <c>updateStyle</c>）。</summary>
     internal void SetAnnotationStyle(PinTextAnnotationTool tool, PinTextAnnotationStyle style,
         int properties = PinTextAnnotationDocument.PropertyAll)

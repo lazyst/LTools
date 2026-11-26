@@ -118,16 +118,6 @@ public partial class ImageEditWindow
         UpdateChrome();
     }
 
-    private void Copy_Click(object sender, RoutedEventArgs e) => CopyImage();
-
-    private void QuickSave_Click(object sender, RoutedEventArgs e) => QuickSave();
-
-    private void SaveAs_Click(object sender, RoutedEventArgs e) => SaveAs();
-
-    private void Pin_Click(object sender, RoutedEventArgs e) => PinImage();
-
-    private void Print_Click(object sender, RoutedEventArgs e) => PrintImage();
-
     // ============ 粘贴 / 拖放 ============
 
     /// <summary>Ctrl+V：剪贴板里的图替换当前窗口（有改动先问），复制的图片文件第一张开这里。</summary>

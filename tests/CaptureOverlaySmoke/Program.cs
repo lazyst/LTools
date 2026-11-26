@@ -10084,15 +10084,6 @@ internal static partial class Program
         }
     }
 
-    /// <summary>当前前台窗口标题（诊断「真鼠标是不是点在自己窗口上」用）。</summary>
-    private static string ForegroundTitle()
-    {
-        IntPtr hwnd = GetForegroundWindow();
-        var text = new System.Text.StringBuilder(512);
-        GetWindowTextW(hwnd, text, text.Capacity);
-        return text.ToString();
-    }
-
     /// <summary>
     /// 关掉「切图_*」的 Explorer 窗口：切图导出成功后程序会像上游那样自动打开保存目录，
     /// 冒烟里不把它留在屏幕上（只按标题匹配，其它资源管理器窗口不动）。

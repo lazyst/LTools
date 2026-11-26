@@ -80,9 +80,6 @@ internal static class Pinyin
         }
     }
 
-    /// <summary>这个汉字有没有拼音首字母（冒烟用；正文不需要问）。</summary>
-    internal static bool Knows(char ch) => Table.ContainsKey(ch);
-
     /// <summary>
     /// 拼音首字母串：汉字 → 首字母，英文 / 数字 → 小写原样，其余（空格 / 标点 / 未知汉字）丢掉。
     /// </summary>

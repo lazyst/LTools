@@ -241,12 +241,6 @@ internal sealed class RecordWebcamWindow : Window
         if (IsVisible) Hide();
     }
 
-    /// <summary>把拖动 / 缩放退回去（别处改了区域、窗口被挡住时调）。</summary>
-    internal void CancelInteraction()
-    {
-        if (_interacting) FinishInteraction(commit: false);
-    }
-
     /// <summary>顶回同层最前面（区域框 / 面板显示之后再顶一次，不抢焦点）。</summary>
     internal void RaiseToTop()
     {

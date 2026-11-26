@@ -65,17 +65,6 @@ public enum SendTextMode
     paste,
 }
 
-/// <summary>步骤失败策略（对应计划 §4）。</summary>
-[JsonConverter(typeof(JsonStringEnumConverter))]
-public enum OnFailStrategy
-{
-    /// <summary>继续执行下一步（默认）。</summary>
-    @continue,
-
-    /// <summary>中止整个动作。</summary>
-    abort,
-}
-
 /// <summary>窗口操作的中文显示名（编辑器下拉 / 步骤摘要共用）。</summary>
 public static class WindowActionLabel
 {

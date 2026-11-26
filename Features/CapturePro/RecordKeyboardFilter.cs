@@ -47,13 +47,6 @@ internal static class RecordKeyboardFilter
         _ => options.RecordControlKeys,
     };
 
-    /// <summary>
-    /// 这个键「按住的修饰键」算不算快捷键前缀：Ctrl / Alt / Win 的左右键都算，
-    /// 右 Alt（AltGr）不算（照上游：AltGr 是输入字符用的，不是快捷键）。
-    /// </summary>
-    internal static bool IsShortcutModifier(int vk) =>
-        vk is 0x11 or 0x12 or 0x5B or 0x5C or (>= 0xA2 and <= 0xA4);
-
     /// <summary>修饰键本身（浮层里从不单独显示，只挂在别的键前面）。</summary>
     internal static bool IsModifier(int vk) =>
         vk is 0x10 or 0x11 or 0x12 or 0x5B or 0x5C or (>= 0xA0 and <= 0xA5);

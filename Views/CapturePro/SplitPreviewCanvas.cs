@@ -949,10 +949,4 @@ internal sealed class SplitPreviewCanvas : FrameworkElement
         }
         return low;
     }
-
-    /// <summary>把 BitmapSource 包一层，只是为了用引用相等判断「换图了没有」。</summary>
-    private sealed class BitmapSourceHolder(System.Windows.Media.Imaging.BitmapSource image)
-    {
-        public System.Windows.Media.Imaging.BitmapSource Image { get; } = image;
-    }
 }

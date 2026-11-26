@@ -83,13 +83,6 @@ public partial class CaptureOverlayWindow
     private void SetEffectWidthPixels(int pixels) =>
         ApplySelStyle(_selStyle.WithEffectWidth(DipFromPixels(pixels)));
 
-    /// <summary>换效果类型（阴影 / 边框）：两份宽度各自保留。</summary>
-    private void SetBorderType(SelectionBorderType type) => ApplySelStyle(_selStyle.WithBorderType(type));
-
-    /// <summary>换当前生效的效果颜色。</summary>
-    private void SetEffectColor(System.Windows.Media.Color color) =>
-        ApplySelStyle(_selStyle.WithEffectColor(color));
-
     /// <summary>
     /// 物理像素 → DIP。**不取整**：125% 屏上 1 物理像素 = 0.8 DIP，取整会让滚轮每一下都改不动
     /// （上游的长度本来就是浮点）。显示时再由 <see cref="SelectionStyle.RadiusPixels"/> 换回整数。
@@ -98,13 +91,6 @@ public partial class CaptureOverlayWindow
     {
         double s = _doc.Scale > 0 ? _doc.Scale : 1;
         return Math.Max(0, Math.Max(0, pixels) / s);
-    }
-
-    /// <summary>DIP → 物理像素（界面显示 / 滚轮用）。</summary>
-    internal int PixelsFromDip(int dip)
-    {
-        double s = _doc.Scale > 0 ? _doc.Scale : 1;
-        return Math.Max(0, (int)Math.Round(dip * s));
     }
 
     // ============ 比例锁 ============
