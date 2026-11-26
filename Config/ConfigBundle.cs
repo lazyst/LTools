@@ -441,13 +441,7 @@ internal static class ConfigBundle
     }
 
     /// <summary>JSON 落盘（临时文件 + 整体替换）：本地写与转发写共用这一份实现。</summary>
-    private static void WriteJson(string path, string json)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        string tmp = path + ".tmp";
-        File.WriteAllText(tmp, json, new UTF8Encoding(false));
-        File.Move(tmp, path, overwrite: true);
-    }
+    private static void WriteJson(string path, string json) => AtomicFile.WriteAllText(path, json);
 
     // ============ 聚合 ↔ 域文件 ============
 

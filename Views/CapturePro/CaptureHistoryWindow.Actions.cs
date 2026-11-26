@@ -45,7 +45,7 @@ public partial class CaptureHistoryWindow
         if (RowOf(sender) is not { } row) return;
 
         // 行内按钮 / 勾选框自己处理鼠标，别再叠一层「双击整卡」
-        if (FindAncestor<ButtonBase>(e.OriginalSource as DependencyObject) != null) return;
+        if (VisualTree.FindAncestor<ButtonBase>(e.OriginalSource as DependencyObject) != null) return;
 
         if (e.ChangedButton == MouseButton.Middle)
         {
@@ -67,7 +67,7 @@ public partial class CaptureHistoryWindow
     private void CardPreview_Click(object sender, MouseButtonEventArgs e)
     {
         // 行内按钮（翻页箭头 / 勾选 / 更多）自己处理鼠标，别再叠一层「点预览看大图」
-        if (FindAncestor<ButtonBase>(e.OriginalSource as DependencyObject) != null) return;
+        if (VisualTree.FindAncestor<ButtonBase>(e.OriginalSource as DependencyObject) != null) return;
 
         e.Handled = true;
         if (RowOf(sender) is not { } row) return;
@@ -521,18 +521,4 @@ public partial class CaptureHistoryWindow
     private static CaptureHistoryRow? RowOf(object? sender) =>
         (sender as FrameworkElement)?.DataContext as CaptureHistoryRow;
 
-    private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
-    {
-        while (d != null)
-        {
-            if (d is T hit) return hit;
-
-            d = d is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(d)
-                : LogicalTreeHelper.GetParent(d);
-
-            if (d is not (Visual or System.Windows.Media.Media3D.Visual3D)) return null;
-        }
-        return null;
-    }
 }

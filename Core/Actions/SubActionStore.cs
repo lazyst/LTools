@@ -89,14 +89,11 @@ public static class SubActionStore
             return;
         }
 
-        Directory.CreateDirectory(DirectoryPath);
-
         string file = PathFor(id);
         if (createNew && File.Exists(file))
             throw new ActionException($"子动作 id 已存在：{id}");
-        string tmp = file + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(def, Opt), new UTF8Encoding(false));
-        File.Move(tmp, file, overwrite: !createNew);
+
+        AtomicFile.WriteAllText(file, JsonSerializer.Serialize(def, Opt), overwrite: !createNew);
 
         Invalidate();
     }

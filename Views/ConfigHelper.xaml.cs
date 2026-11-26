@@ -1077,7 +1077,7 @@ public partial class ConfigHelperWindow : Window
     {
         // DataGridCell 在「自己还没有键盘焦点」时会把这一下 MouseDown 标记成已处理，
         // 单元格里 Focusable="False" 的行内图标就收不到点击（HotkeysView 踩过）。
-        var cell = FindAncestor<DataGridCell>(e.OriginalSource as DependencyObject);
+        var cell = VisualTree.FindAncestor<DataGridCell>(e.OriginalSource as DependencyObject);
         if (cell != null && !cell.IsKeyboardFocusWithin) cell.Focus();
     }
 
@@ -1125,7 +1125,7 @@ public partial class ConfigHelperWindow : Window
 
     private void ActionList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点行内图标不触发编辑
+        if (VisualTree.FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点行内图标不触发编辑
         if (ActionList.SelectedIndex >= 0) EditAction_Click(sender, e);
     }
 
@@ -1200,11 +1200,6 @@ public partial class ConfigHelperWindow : Window
     }
 
     /// <summary>visual tree 上溯找最近的 <typeparamref name="T"/> 祖先。</summary>
-    private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
-    {
-        while (d != null && d is not T) d = VisualTreeHelper.GetParent(d);
-        return d as T;
-    }
 
     /// <summary>visual tree 下溯找第一个 <typeparamref name="T"/> 后代。</summary>
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
@@ -1262,7 +1257,7 @@ public partial class ConfigHelperWindow : Window
     /// </summary>
     private void PathsGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        var cell = FindAncestor<DataGridCell>(e.OriginalSource as DependencyObject);
+        var cell = VisualTree.FindAncestor<DataGridCell>(e.OriginalSource as DependencyObject);
         if (cell != null && !cell.IsKeyboardFocusWithin) cell.Focus();
     }
 
@@ -1277,8 +1272,8 @@ public partial class ConfigHelperWindow : Window
     private void PathsGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         var source = e.OriginalSource as DependencyObject;
-        var row = FindAncestor<DataGridRow>(source);
-        if (!PathsDoubleClickEditsOverride(FindAncestor<Button>(source), row?.DataContext)) return;
+        var row = VisualTree.FindAncestor<DataGridRow>(source);
+        if (!PathsDoubleClickEditsOverride(VisualTree.FindAncestor<Button>(source), row?.DataContext)) return;
         if (row?.DataContext is not PathRow path) return;
 
         PathsGrid.SelectedItem = path;

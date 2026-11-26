@@ -32,15 +32,15 @@ namespace LTools.Views.CapturePro;
 internal sealed class PinClickThroughBar : Window
 {
     /// <summary>胶囊底色：主题 <c>colorBgMask</c>（上游兜底 <c>rgba(0,0,0,115)</c>）。</summary>
-    private static readonly Brush MaskBrush = Frozen(Color.FromArgb(115, 0, 0, 0));
+    private static readonly Brush MaskBrush = ThemeBrush.Frozen(Color.FromArgb(115, 0, 0, 0));
 
     /// <summary>圆按钮悬停 / 按下的底色（主题 primary / primaryActive）。</summary>
-    private static readonly Brush HoverBrush = Frozen(Color.FromRgb(0x16, 0x77, 0xFF));
+    private static readonly Brush HoverBrush = ThemeBrush.Frozen(Color.FromRgb(0x16, 0x77, 0xFF));
 
-    private static readonly Brush PressedBrush = Frozen(Color.FromRgb(0x09, 0x58, 0xD9));
+    private static readonly Brush PressedBrush = ThemeBrush.Frozen(Color.FromRgb(0x09, 0x58, 0xD9));
 
     /// <summary>滑条未走过的一段（白 31%）。</summary>
-    private static readonly Brush RailBrush = Frozen(Color.FromArgb(80, 255, 255, 255));
+    private static readonly Brush RailBrush = ThemeBrush.Frozen(Color.FromArgb(80, 255, 255, 255));
 
     private readonly OpacitySlider _slider;
     private readonly Border _moveButton;
@@ -303,13 +303,6 @@ internal sealed class PinClickThroughBar : Window
             VerticalAlignment = VerticalAlignment.Center,
             Child = path,
         };
-    }
-
-    private static Brush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
     }
 
     // ============ 不透明度滑条 ============

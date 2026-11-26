@@ -58,7 +58,7 @@ internal sealed class RecordBorderWindow : Window
         Focusable = false;
         IsHitTestVisible = false;
         WindowStartupLocation = WindowStartupLocation.Manual;
-        Background = Frozen(RecordingColor);
+        Background = ThemeBrush.Frozen(RecordingColor);
         UseLayoutRounding = true;
         MaxWidth = double.PositiveInfinity;
         MaxHeight = double.PositiveInfinity;
@@ -94,7 +94,7 @@ internal sealed class RecordBorderWindow : Window
     {
         if (_paused == paused || !IsVisible) return;
         _paused = paused;
-        Background = Frozen(paused ? PausedColor : RecordingColor);
+        Background = ThemeBrush.Frozen(paused ? PausedColor : RecordingColor);
     }
 
     // ============ 落点与区域 ============
@@ -157,13 +157,6 @@ internal sealed class RecordBorderWindow : Window
         Win32.SetWindowLongPtr(_hwnd, GwlExstyle, (IntPtr)(ex | WsExTransparent));
 
         ApplyRegion();
-    }
-
-    private static SolidColorBrush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
     }
 
     [DllImport("gdi32.dll")]

@@ -98,7 +98,7 @@ public partial class ConfigHelperWindow
     /// 抽成纯函数方便无头冒烟直接断言，不用伪造鼠标事件。
     /// </summary>
     internal static RunRow? DoubleClickRunRow(DependencyObject? src) =>
-        src == null ? null : FindAncestor<DataGridRow>(src)?.DataContext as RunRow;
+        src == null ? null : VisualTree.FindAncestor<DataGridRow>(src)?.DataContext as RunRow;
 
     private void RunHistoryGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {

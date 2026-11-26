@@ -980,15 +980,12 @@ internal static class PinStore
     {
         try
         {
-            Directory.CreateDirectory(Root);
-            string tmp = IndexPath + ".tmp";
             var file = new PinStoreFile
             {
                 Items = items,
                 Stacking = order.Orders().ToDictionary(pair => pair.Key, pair => pair.Value),
             };
-            File.WriteAllText(tmp, JsonSerializer.Serialize(file, Opt), new UTF8Encoding(false));
-            File.Move(tmp, IndexPath, true);
+            AtomicFile.WriteJson(IndexPath, file, Opt);
         }
         catch (Exception ex)
         {

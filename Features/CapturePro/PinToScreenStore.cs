@@ -24,9 +24,6 @@ internal static class PinToScreenStore
 
     private static bool? _shake;
 
-    private static string Anchor =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
-
     /// <summary>抖动隐藏同组其他贴图（默认开；读失败也按开）。</summary>
     public static bool ShakeWindowToHideOthers
     {
@@ -40,7 +37,7 @@ internal static class PinToScreenStore
             bool value = true;
             try
             {
-                value = SettingsStore.Read(Anchor).PinToScreen?.ShakeWindowToHideOthers ?? true;
+                value = SettingsStore.Read(ConfigStore.Anchor).PinToScreen?.ShakeWindowToHideOthers ?? true;
             }
             catch (Exception ex)
             {
@@ -59,7 +56,7 @@ internal static class PinToScreenStore
 
         try
         {
-            SettingsStore.Modify(Anchor, file =>
+            SettingsStore.Modify(ConfigStore.Anchor, file =>
             {
                 var section = file.PinToScreen ??= new PinToScreenFile();
                 section.ShakeWindowToHideOthers = on;

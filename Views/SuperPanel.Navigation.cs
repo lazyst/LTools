@@ -229,7 +229,7 @@ public partial class SuperPanelWindow
         if (e.ChangedButton != MouseButton.Left) return;
         // 搜索框 / 按钮自行处理，不拖窗口
         if (e.OriginalSource is DependencyObject d
-            && (FindAncestor<Button>(d) != null || FindAncestor<TextBox>(d) != null)) return;
+            && (VisualTree.FindAncestor<Button>(d) != null || VisualTree.FindAncestor<TextBox>(d) != null)) return;
         try { DragMove(); }
         catch (InvalidOperationException) { /* 极快点击：按下时鼠标已抬起 */ }
         e.Handled = true;

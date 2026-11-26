@@ -52,9 +52,6 @@ internal static class TextRecognitionStore
     private static readonly object Gate = new();
     private static TextRecognitionFile? _cached;
 
-    private static string Anchor =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
-
     /// <summary>默认排版键（已归一）。</summary>
     public static string Formatting => OcrFormatting.Normalize(Snapshot().DefaultFormatting);
 
@@ -214,10 +211,7 @@ internal static class TextRecognitionStore
         TextRecognitionFile loaded;
         try
         {
-            string path = Anchor;
-            loaded = string.IsNullOrEmpty(path)
-                ? new TextRecognitionFile()
-                : SettingsStore.Read(path).TextRecognition ?? new TextRecognitionFile();
+            loaded = SettingsStore.Read(ConfigStore.Anchor).TextRecognition ?? new TextRecognitionFile();
         }
         catch (Exception ex)
         {
@@ -263,7 +257,7 @@ internal static class TextRecognitionStore
 
         try
         {
-            SettingsStore.Modify(Anchor, file =>
+            SettingsStore.Modify(ConfigStore.Anchor, file =>
             {
                 file.TextRecognition ??= new TextRecognitionFile();
                 TextRecognitionFile target = file.TextRecognition;

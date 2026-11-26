@@ -31,7 +31,7 @@ public partial class ActionEditorWindow
     private void StepList_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
-        if (FindAncestor<Button>((DependencyObject)e.OriginalSource) != null) return;
+        if (VisualTree.FindAncestor<Button>((DependencyObject)e.OriginalSource) != null) return;
 
         StepRow? row = RowAt(e.OriginalSource as DependencyObject);
         if (row?.Step == null || row.Owner == null) return;   // 标记行 / 空分支占位行不拖

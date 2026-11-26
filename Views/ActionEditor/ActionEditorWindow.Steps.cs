@@ -328,7 +328,7 @@ public partial class ActionEditorWindow
 
     private void StepList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;
+        if (VisualTree.FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;
 
         // 只有真的双击在某一行上才编辑：点在列表空白处时不要拿「当前选中行」凑数
         StepRow? row = RowAt(e.OriginalSource as DependencyObject);

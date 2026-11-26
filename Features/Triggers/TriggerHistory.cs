@@ -122,13 +122,7 @@ internal static class TriggerHistory
     {
         try
         {
-            string? dir = Path.GetDirectoryName(FilePath);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            string tmp = FilePath + ".tmp";
-            var sb = new StringBuilder();
-            foreach (var r in _items) sb.AppendLine(JsonSerializer.Serialize(r));
-            File.WriteAllText(tmp, sb.ToString(), new UTF8Encoding(false));
-            File.Move(tmp, FilePath, true);   // 写穿：先 .tmp 再替换，不留半个文件
+            AtomicFile.WriteJsonLines(FilePath, _items);
         }
         catch (Exception ex) { AppLog.Warn("Triggers", "写触发记录失败：" + ex.Message); }
     }

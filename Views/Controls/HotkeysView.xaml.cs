@@ -255,8 +255,8 @@ public partial class HotkeysView : UserControl
 
     private void GroupList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (FindAncestor<CheckBox>(e.OriginalSource as DependencyObject) != null) return;
-        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点行内图标不弹重命名
+        if (VisualTree.FindAncestor<CheckBox>(e.OriginalSource as DependencyObject) != null) return;
+        if (VisualTree.FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;   // 点行内图标不弹重命名
         RenameGroup_Click(sender, e);
     }
 
@@ -427,13 +427,13 @@ public partial class HotkeysView : UserControl
         // DataGridCell 在「自己还没有键盘焦点」时会把这一下 MouseDown 标记成已处理（先给自己抢焦点），
         // 单元格里 Focusable="False" 的启用勾选框就收不到点击（表现为「点几次都没反应」）。
         // 在预览阶段先把单元格焦点给上，DataGridCell 自己就不再吞这一下。
-        var cell = FindAncestor<DataGridCell>(source);
+        var cell = VisualTree.FindAncestor<DataGridCell>(source);
         if (cell != null && !cell.IsKeyboardFocusWithin) cell.Focus();
 
         if (e.ClickCount != 2) return;
-        if (FindAncestor<CheckBox>(source) != null) return;
+        if (VisualTree.FindAncestor<CheckBox>(source) != null) return;
 
-        var row = FindAncestor<DataGridRow>(source);
+        var row = VisualTree.FindAncestor<DataGridRow>(source);
         if (row == null) return;   // 表头 / 空白区域
 
         // DataGridCell 会把第一次按下的 MouseDown 标记为已处理，MouseDoubleClick 就不会再合成
@@ -533,12 +533,6 @@ public partial class HotkeysView : UserControl
     {
         if (item is not BindingRow row) return false;
         return _searchText.Length == 0 || row.Matches(_searchText);
-    }
-
-    private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
-    {
-        while (source != null && source is not T) source = VisualTreeHelper.GetParent(source);
-        return source as T;
     }
 
     // ============ 行模型 ============

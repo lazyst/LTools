@@ -31,7 +31,7 @@ namespace LTools.Views.CapturePro;
 internal sealed class PinHideHandleWindow : Window
 {
     /// <summary>描边色（主题 <c>colorText</c> 的浅色主题值；贴在工作区顶边，用深灰才看得清）。</summary>
-    private static readonly Brush HandleBorderBrush = Frozen(Color.FromRgb(0x1F, 0x1F, 0x1F));
+    private static readonly Brush HandleBorderBrush = ThemeBrush.Frozen(Color.FromRgb(0x1F, 0x1F, 0x1F));
 
     private readonly Border _body;
     private IntPtr _hwnd;
@@ -40,7 +40,7 @@ internal sealed class PinHideHandleWindow : Window
     /// 1 个 alpha 步的底色：分层窗口里全透明的像素**点不到**（上游同样用 alpha=1 铺满，
     /// 才让放大后的命中区能收到鼠标）。可见部分被彩色手柄盖住，看不出来。
     /// </summary>
-    private static readonly Brush HitWash = Frozen(Color.FromArgb(1, 0, 0, 0));
+    private static readonly Brush HitWash = ThemeBrush.Frozen(Color.FromArgb(1, 0, 0, 0));
 
     /// <summary>鼠标进入手柄。</summary>
     public event Action? PointerEntered;
@@ -127,7 +127,7 @@ internal sealed class PinHideHandleWindow : Window
             Math.Max(0, (visual.X - hit.X) / dpi),
             Math.Max(0, (visual.Y - hit.Y) / dpi),
             0, 0);
-        _body.Background = Frozen(accent);
+        _body.Background = ThemeBrush.Frozen(accent);
 
         // 2 物理像素的描边：左 / 下 / 右各一面，顶边留空（上游 fillRect 的写法）
         double border = PinHideToTop.HandleBorderDevicePixels / dpi;
@@ -147,10 +147,4 @@ internal sealed class PinHideHandleWindow : Window
             Win32.SwpNomove | Win32.SwpNosize | Win32.SwpNoactivate);
     }
 
-    private static Brush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
 }

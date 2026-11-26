@@ -161,8 +161,7 @@ internal static class CaptureShortcutTable
     /// 不加这个口子，「改一项再恢复默认」的断言会把真实 <c>configs/settings.json</c> 写一遍。</remarks>
     internal static string? AnchorOverride { get; set; }
 
-    private static string Anchor =>
-        AnchorOverride ?? (string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath);
+    private static string Anchor => AnchorOverride ?? ConfigStore.Anchor;
 
     /// <summary>这一作用域的全部条目（顺序固定）。</summary>
     public static IEnumerable<CaptureShortcutEntry> Of(CaptureShortcutScope scope) =>
@@ -490,10 +489,7 @@ internal static class CaptureShortcutTable
         CaptureShortcutsFile loaded;
         try
         {
-            string path = Anchor;
-            loaded = string.IsNullOrEmpty(path)
-                ? new CaptureShortcutsFile()
-                : SettingsStore.Read(path).CaptureShortcuts ?? new CaptureShortcutsFile();
+            loaded = SettingsStore.Read(Anchor).CaptureShortcuts ?? new CaptureShortcutsFile();
         }
         catch (Exception ex)
         {

@@ -37,9 +37,6 @@ internal static class FloatingToolbarStore
     /// <summary>配置变了（服务据此重建 / 收起工具条）。</summary>
     public static event Action? Changed;
 
-    private static string Anchor =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
-
     public static FloatingToolbarSettings Current => Read(Snapshot());
 
     /// <summary>布局（归一过）。</summary>
@@ -128,9 +125,7 @@ internal static class FloatingToolbarStore
                 change(settings.FloatingToolbar);
             }
 
-            string path = Anchor;
-            if (string.IsNullOrEmpty(path)) SettingsStore.Modify(Apply);
-            else SettingsStore.Modify(path, Apply);
+            SettingsStore.Modify(ConfigStore.Anchor, Apply);
         }
         catch (Exception ex)
         {
@@ -148,10 +143,7 @@ internal static class FloatingToolbarStore
         FloatingToolbarFile file;
         try
         {
-            string path = Anchor;
-            file = string.IsNullOrEmpty(path)
-                ? new FloatingToolbarFile()
-                : SettingsStore.Read(path).FloatingToolbar ?? new FloatingToolbarFile();
+            file = SettingsStore.Read(ConfigStore.Anchor).FloatingToolbar ?? new FloatingToolbarFile();
         }
         catch (Exception ex)
         {

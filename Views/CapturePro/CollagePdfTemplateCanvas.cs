@@ -35,12 +35,12 @@ internal sealed class CollagePdfTemplateCanvas : FrameworkElement
     private const double DragStart = 4;
 
     private static readonly Typeface UiTypeface = new("Segoe UI");
-    private static readonly Brush White = Frozen(Colors.White);
-    private static readonly Pen SelectionPen = FrozenPen(Color.FromRgb(0x40, 0x96, 0xFF), 1);
-    private static readonly Pen BorderPen = FrozenPen(Color.FromRgb(0xD9, 0xD9, 0xD9), 1);
-    private static readonly Pen CellPen = FrozenPen(Color.FromRgb(0xF0, 0xF0, 0xF0), 1);
-    private static readonly SolidColorBrush MarqueeFill = Frozen(Color.FromArgb(0x33, 0x40, 0x96, 0xFF));
-    private static readonly SolidColorBrush ErrorBrush = Frozen(Color.FromRgb(0xD4, 0x3A, 0x3A));
+    private static readonly Brush White = ThemeBrush.Frozen(Colors.White);
+    private static readonly Pen SelectionPen = ThemeBrush.Pen(Color.FromRgb(0x40, 0x96, 0xFF), 1);
+    private static readonly Pen BorderPen = ThemeBrush.Pen(Color.FromRgb(0xD9, 0xD9, 0xD9), 1);
+    private static readonly Pen CellPen = ThemeBrush.Pen(Color.FromRgb(0xF0, 0xF0, 0xF0), 1);
+    private static readonly SolidColorBrush MarqueeFill = ThemeBrush.Frozen(Color.FromArgb(0x33, 0x40, 0x96, 0xFF));
+    private static readonly SolidColorBrush ErrorBrush = ThemeBrush.Frozen(Color.FromRgb(0xD4, 0x3A, 0x3A));
 
     private CollageDocument? _document;
     private bool _editing = true;
@@ -745,19 +745,4 @@ internal sealed class CollagePdfTemplateCanvas : FrameworkElement
         new(rect.X + amount, rect.Y + amount, Math.Max(0, rect.Width - amount * 2),
             Math.Max(0, rect.Height - amount * 2));
 
-    private static SolidColorBrush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
-
-    private static Pen FrozenPen(Color color, double width)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        var pen = new Pen(brush, width);
-        pen.Freeze();
-        return pen;
-    }
 }

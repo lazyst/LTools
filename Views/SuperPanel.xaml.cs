@@ -377,15 +377,4 @@ public partial class SuperPanelWindow : Window
         };
     }
 
-    private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
-    {
-        while (d != null)
-        {
-            if (d is T t) return t;
-            d = d is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(d)
-                : (d as FrameworkElement)?.Parent;
-        }
-        return null;
-    }
 }

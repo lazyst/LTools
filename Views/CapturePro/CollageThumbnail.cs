@@ -239,7 +239,7 @@ internal sealed class CollageThumbnail : Grid
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
-        if (FindAncestor<Button>((DependencyObject)e.OriginalSource) != null) return;
+        if (VisualTree.FindAncestor<Button>((DependencyObject)e.OriginalSource) != null) return;
 
         Focus();
         SelectRequested?.Invoke(ItemId);
@@ -326,18 +326,6 @@ internal sealed class CollageThumbnail : Grid
 
     private static Brush BrushOr(FrameworkElement resources, string key, Brush fallback) =>
         resources.TryFindResource(key) as Brush ?? fallback;
-
-    private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
-    {
-        while (source != null && source is not T)
-        {
-            source = source is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(source)
-                : LogicalTreeHelper.GetParent(source);
-        }
-
-        return source as T;
-    }
 
     private static Brush BuildChecker()
     {

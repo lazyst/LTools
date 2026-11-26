@@ -108,13 +108,7 @@ internal sealed class AiSettings
     {
         lock (Gate)
         {
-            string path = PathOnDisk;
-            string dir = System.IO.Path.GetDirectoryName(path)!;
-            System.IO.Directory.CreateDirectory(dir);
-
-            string tmp = path + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(this, Json), new UTF8Encoding(false));
-            File.Move(tmp, path, overwrite: true);
+            AtomicFile.WriteJson(PathOnDisk, this, Json);
         }
     }
 

@@ -29,12 +29,12 @@ internal sealed class CollageCanvas : FrameworkElement
     private const double FitMargin = 48;
     private const double HandleHit = 6;
 
-    private static readonly SolidColorBrush MarqueeBrush = Frozen(Color.FromRgb(0x40, 0x96, 0xFF));
-    private static readonly Pen MarqueePen = FrozenDashPen(Color.FromRgb(0x40, 0x96, 0xFF), 1.5);
-    private static readonly Pen SelectionPen = FrozenPen(Color.FromRgb(0x40, 0x96, 0xFF), 1.5);
-    private static readonly Pen CellPen = FrozenPen(Color.FromRgb(0xF0, 0xF0, 0xF0), 1);
-    private static readonly SolidColorBrush HandleFill = Frozen(Colors.White);
-    private static readonly SolidColorBrush ErrorBrush = Frozen(Color.FromRgb(0xD4, 0x3A, 0x3A));
+    private static readonly SolidColorBrush MarqueeBrush = ThemeBrush.Frozen(Color.FromRgb(0x40, 0x96, 0xFF));
+    private static readonly Pen MarqueePen = ThemeBrush.DashPen(Color.FromRgb(0x40, 0x96, 0xFF), 1.5);
+    private static readonly Pen SelectionPen = ThemeBrush.Pen(Color.FromRgb(0x40, 0x96, 0xFF), 1.5);
+    private static readonly Pen CellPen = ThemeBrush.Pen(Color.FromRgb(0xF0, 0xF0, 0xF0), 1);
+    private static readonly SolidColorBrush HandleFill = ThemeBrush.Frozen(Colors.White);
+    private static readonly SolidColorBrush ErrorBrush = ThemeBrush.Frozen(Color.FromRgb(0xD4, 0x3A, 0x3A));
     private static readonly Typeface UiTypeface = new("Segoe UI");
 
     private CollageDocument? _document;
@@ -313,7 +313,7 @@ internal sealed class CollageCanvas : FrameworkElement
         if (_checkerReady && _checker != null) return _checker;
 
         var surface = TryFindResource("SurfaceBrush") as Brush ?? Brushes.White;
-        var fill = Frozen(Color.FromRgb(0xF0, 0xF0, 0xF1));
+        var fill = ThemeBrush.Frozen(Color.FromRgb(0xF0, 0xF0, 0xF1));
         var group = new DrawingGroup();
         group.Children.Add(new GeometryDrawing(surface, null, new RectangleGeometry(new Rect(0, 0, 20, 20))));
         var squares = new GeometryGroup();
@@ -714,24 +714,4 @@ internal sealed class CollageCanvas : FrameworkElement
         _ => Cursors.SizeAll,
     };
 
-    private static SolidColorBrush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
-
-    private static Pen FrozenPen(Color color, double width)
-    {
-        var pen = new Pen(Frozen(color), width);
-        pen.Freeze();
-        return pen;
-    }
-
-    private static Pen FrozenDashPen(Color color, double width)
-    {
-        var pen = new Pen(Frozen(color), width) { DashStyle = new DashStyle(new[] { 5.0, 3.0 }, 0) };
-        pen.Freeze();
-        return pen;
-    }
 }

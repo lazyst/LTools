@@ -157,7 +157,7 @@ internal sealed class TileDragSort
     private bool StartDrag(Point p)
     {
         if (_source == null || _sourceRef == null || _sourceGroup == null) return false;
-        var panel = FindAncestor<TileGridPanel>(_source);
+        var panel = VisualTree.FindAncestor<TileGridPanel>(_source);
         if (panel == null) { ClearPending(); return false; }
 
         // 快照必须在源磁贴还在可视树里、且未被摘掉之前做
@@ -373,12 +373,6 @@ internal sealed class TileDragSort
             rects.Add(t.TransformToAncestor(panel).TransformBounds(new Rect(t.RenderSize)));
 
         return TileLayout.InsertIndex(rects, pt);
-    }
-
-    private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
-    {
-        while (d != null && d is not T) d = VisualTreeHelper.GetParent(d);
-        return d as T;
     }
 
     private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject

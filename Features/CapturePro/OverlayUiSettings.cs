@@ -77,9 +77,6 @@ internal static class OverlayUiSettings
 
     private static ScreenshotFile? _cached;
 
-    private static string Anchor =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
-
     // ============ 工具条尺寸 ============
 
     public static string ToolbarSize => NormalizeToolbarSize(Snapshot().ToolbarSize);
@@ -321,7 +318,7 @@ internal static class OverlayUiSettings
         ScreenshotFile loaded;
         try
         {
-            loaded = SettingsStore.Read(Anchor).Screenshot ?? new ScreenshotFile();
+            loaded = SettingsStore.Read(ConfigStore.Anchor).Screenshot ?? new ScreenshotFile();
         }
         catch (Exception ex)
         {
@@ -347,7 +344,7 @@ internal static class OverlayUiSettings
 
         try
         {
-            SettingsStore.Modify(Anchor, file =>
+            SettingsStore.Modify(ConfigStore.Anchor, file =>
             {
                 file.Screenshot ??= new ScreenshotFile();
                 var target = file.Screenshot;

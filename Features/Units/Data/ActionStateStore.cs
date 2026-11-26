@@ -115,10 +115,7 @@ internal static class ActionStateStore
     {
         try
         {
-            Directory.CreateDirectory(Dir);
-            string tmp = FilePath + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(values, Json));
-            File.Move(tmp, FilePath, overwrite: true);
+            AtomicFile.WriteJson(FilePath, values, Json);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

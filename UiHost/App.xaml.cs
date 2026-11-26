@@ -81,6 +81,9 @@ public partial class App : Application
         AppLog.Configure(log.Enabled, log.Level, log.RetentionDays, fileTag: "uihost");
 
         Ui.Initialize(Dispatcher);
+        // 与主程序一致的三件全局注册：少一样就是「宿主里某些交互悄悄失效」
+        // （少 ComboBoxAssist = 下拉框的滚轮改值 / 页面滚动全没）。
+        Views.Controls.ComboBoxAssist.Register();
         WindowCorners.Attach();
         WindowSizing.Attach();
 

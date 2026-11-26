@@ -38,18 +38,7 @@ public sealed class LaunchAppUnit : IStepUnit
         // 先解析成绝对路径，避免开机自启（CWD=System32）时找不到 resources\foo.exe。
         target = AppPaths.ResolveTarget(target, workdir);
 
-        var psi = new ProcessStartInfo(target)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = false,
-        };
-
-        string arguments = args.Text("args");
-        if (!string.IsNullOrEmpty(arguments)) psi.Arguments = arguments;
-        if (!string.IsNullOrEmpty(workdir) && Directory.Exists(workdir))
-            psi.WorkingDirectory = workdir;
-
-        var process = Process.Start(psi);
+        var process = Process.Start(ProcessLauncher.Build(target, args.Text("args"), workdir));
         if (process == null)
         {
             // 复用了已有进程 / 没有新进程：启动本身成功。

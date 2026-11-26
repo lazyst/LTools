@@ -32,9 +32,6 @@ internal static class CaptureSoundSettings
     private static bool? _shutter;
     private static bool? _screenshot;
 
-    private static string Anchor =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
-
     /// <summary>直接截图时响不响（默认开）。</summary>
     public static bool Shutter
     {
@@ -83,7 +80,7 @@ internal static class CaptureSoundSettings
 
         try
         {
-            var file = SettingsStore.Read(Anchor);
+            var file = SettingsStore.Read(ConfigStore.Anchor);
             shutter = file.Screenshot?.ShutterSound ?? DefaultShutter;
             screenshot = file.Screenshot?.ScreenshotSound ?? DefaultScreenshot;
         }
@@ -103,7 +100,7 @@ internal static class CaptureSoundSettings
     {
         try
         {
-            SettingsStore.Modify(Anchor, mutate);
+            SettingsStore.Modify(ConfigStore.Anchor, mutate);
         }
         catch (Exception ex)
         {

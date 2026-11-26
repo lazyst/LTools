@@ -279,7 +279,7 @@ public partial class TriggersView : UserControl
     /// </summary>
     private void RuleGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        var cell = FindAncestor<DataGridCell>(e.OriginalSource as DependencyObject);
+        var cell = VisualTree.FindAncestor<DataGridCell>(e.OriginalSource as DependencyObject);
         if (cell != null && !cell.IsKeyboardFocusWithin) cell.Focus();
     }
 
@@ -316,8 +316,8 @@ public partial class TriggersView : UserControl
     internal static RuleRow? DoubleClickEditRow(DependencyObject? src)
     {
         if (src == null) return null;
-        if (FindAncestor<CheckBox>(src) != null || FindAncestor<Button>(src) != null) return null;
-        return FindAncestor<DataGridRow>(src)?.DataContext as RuleRow;
+        if (VisualTree.FindAncestor<CheckBox>(src) != null || VisualTree.FindAncestor<Button>(src) != null) return null;
+        return VisualTree.FindAncestor<DataGridRow>(src)?.DataContext as RuleRow;
     }
 
     // ============ 搜索 ============
@@ -334,12 +334,6 @@ public partial class TriggersView : UserControl
         string query = SearchBox.Text.Trim();
         if (query.Length == 0) return true;
         return row.Matches(query);
-    }
-
-    private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
-    {
-        while (source != null && source is not T) source = VisualTreeHelper.GetParent(source);
-        return source as T;
     }
 
     // ============ 行模型 ============

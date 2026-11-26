@@ -283,9 +283,7 @@ internal sealed class ShareStore
     private void SaveLocked(List<ShareItem> items)
     {
         EnsureLayout();
-        string tmp = ItemsPath + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(items, Json), new UTF8Encoding(false));
-        File.Move(tmp, ItemsPath, overwrite: true);
+        AtomicFile.WriteJson(ItemsPath, items, Json);
     }
 
     private static string NewItemId(List<ShareItem> items)

@@ -140,9 +140,6 @@ internal static class PinSettings
 
     private static PinToScreenFile? _cached;
 
-    private static string Anchor =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
-
     // ============ 新贴图默认显示 ============
 
     /// <summary>新贴图默认显示边框（缺省 = 开）。</summary>
@@ -426,7 +423,7 @@ internal static class PinSettings
         PinToScreenFile loaded;
         try
         {
-            loaded = SettingsStore.Read(Anchor).PinToScreen ?? new PinToScreenFile();
+            loaded = SettingsStore.Read(ConfigStore.Anchor).PinToScreen ?? new PinToScreenFile();
         }
         catch (Exception ex)
         {
@@ -452,7 +449,7 @@ internal static class PinSettings
 
         try
         {
-            SettingsStore.Modify(Anchor, file =>
+            SettingsStore.Modify(ConfigStore.Anchor, file =>
             {
                 file.PinToScreen ??= new PinToScreenFile();
                 var target = file.PinToScreen;

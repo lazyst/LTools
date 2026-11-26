@@ -42,16 +42,16 @@ namespace LTools.Views.CapturePro;
 /// </remarks>
 internal sealed class RecordWebcamWindow : Window
 {
-    private static readonly Brush SurfaceBackdrop = Frozen(Color.FromRgb(0x1F, 0x1F, 0x1F));
-    private static readonly Brush SurfaceBorder = Frozen(Color.FromArgb(60, 0xFF, 0xFF, 0xFF));
-    private static readonly Brush HandleBrush = Frozen(Color.FromArgb(150, 0, 0, 0));
-    private static readonly Brush HandleHoverBrush = Frozen(Color.FromArgb(180, 0, 0, 0));
-    private static readonly Brush HandlePressedBrush = Frozen(Color.FromArgb(210, 0, 0, 0));
-    private static readonly Brush ToolbarSurface = Frozen(Color.FromRgb(0xFF, 0xFF, 0xFF));
-    private static readonly Brush ToolbarBorder = Frozen(Color.FromRgb(0xF0, 0xF0, 0xF0));
-    private static readonly Brush ToolbarHover = Frozen(Color.FromArgb(0x0F, 0, 0, 0));
-    private static readonly Brush ToolbarPressed = Frozen(Color.FromArgb(0x1E, 0, 0, 0));
-    private static readonly Brush ToolbarIcon = Frozen(Color.FromArgb(0xE6, 0, 0, 0));
+    private static readonly Brush SurfaceBackdrop = ThemeBrush.Frozen(Color.FromRgb(0x1F, 0x1F, 0x1F));
+    private static readonly Brush SurfaceBorder = ThemeBrush.Frozen(Color.FromArgb(60, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush HandleBrush = ThemeBrush.Frozen(Color.FromArgb(150, 0, 0, 0));
+    private static readonly Brush HandleHoverBrush = ThemeBrush.Frozen(Color.FromArgb(180, 0, 0, 0));
+    private static readonly Brush HandlePressedBrush = ThemeBrush.Frozen(Color.FromArgb(210, 0, 0, 0));
+    private static readonly Brush ToolbarSurface = ThemeBrush.Frozen(Color.FromRgb(0xFF, 0xFF, 0xFF));
+    private static readonly Brush ToolbarBorder = ThemeBrush.Frozen(Color.FromRgb(0xF0, 0xF0, 0xF0));
+    private static readonly Brush ToolbarHover = ThemeBrush.Frozen(Color.FromArgb(0x0F, 0, 0, 0));
+    private static readonly Brush ToolbarPressed = ThemeBrush.Frozen(Color.FromArgb(0x1E, 0, 0, 0));
+    private static readonly Brush ToolbarIcon = ThemeBrush.Frozen(Color.FromArgb(0xE6, 0, 0, 0));
 
     private readonly Canvas _root;
     private readonly PreviewSurface _surface;
@@ -570,13 +570,6 @@ internal sealed class RecordWebcamWindow : Window
         };
     }
 
-    private static Brush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
-
     // ============ 画中画本体 ============
 
     /// <summary>
@@ -633,7 +626,7 @@ internal sealed class RecordWebcamWindow : Window
             {
                 var text = new FormattedText(_placeholder, System.Globalization.CultureInfo.CurrentCulture,
                     FlowDirection.LeftToRight, new Typeface("Microsoft YaHei UI"), 12,
-                    Frozen(Color.FromArgb(0xB0, 0xFF, 0xFF, 0xFF)),
+                    ThemeBrush.Frozen(Color.FromArgb(0xB0, 0xFF, 0xFF, 0xFF)),
                     VisualTreeHelper.GetDpi(this).PixelsPerDip)
                 {
                     MaxTextWidth = Math.Max(1, width - 8),

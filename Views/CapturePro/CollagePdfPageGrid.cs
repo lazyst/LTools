@@ -39,9 +39,9 @@ internal sealed class CollagePdfPageGrid : FrameworkElement
 
     private static readonly Typeface UiTypeface = new("Segoe UI");
 
-    private static readonly Brush White = Frozen(Colors.White);
-    private static readonly Brush BadgeFill = Frozen(Color.FromArgb(0x82, 0, 0, 0));
-    private static readonly Brush GhostShade = Frozen(Color.FromArgb(0x18, 0, 0, 0));
+    private static readonly Brush White = ThemeBrush.Frozen(Colors.White);
+    private static readonly Brush BadgeFill = ThemeBrush.Frozen(Color.FromArgb(0x82, 0, 0, 0));
+    private static readonly Brush GhostShade = ThemeBrush.Frozen(Color.FromArgb(0x18, 0, 0, 0));
 
     private CollageDocument? _document;
     private bool _editing = true;
@@ -837,13 +837,7 @@ internal sealed class CollagePdfPageGrid : FrameworkElement
     private Brush Brush(string key, Color fallback)
     {
         if (TryFindResource(key) is Brush brush) return brush;
-        return Frozen(fallback);
+        return ThemeBrush.Frozen(fallback);
     }
 
-    private static SolidColorBrush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
 }

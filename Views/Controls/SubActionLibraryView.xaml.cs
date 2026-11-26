@@ -177,7 +177,7 @@ public partial class SubActionLibraryView : UserControl
     private void List_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         // 双击整行 / 文字 = 编辑；只有点行内图标才不弹编辑器（那些图标自己有单击语义）。
-        if (IsRowIconDoubleClick(FindAncestor<Button>(e.OriginalSource as DependencyObject))) return;
+        if (IsRowIconDoubleClick(VisualTree.FindAncestor<Button>(e.OriginalSource as DependencyObject))) return;
         if (SelectedRow() is { } row) Edit(row.Def);
     }
 
@@ -369,18 +369,6 @@ public partial class SubActionLibraryView : UserControl
         {
             UseShellExecute = true,
         });
-    }
-
-    private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
-    {
-        while (source != null)
-        {
-            if (source is T match) return match;
-            source = source is Visual || source is System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(source)
-                : LogicalTreeHelper.GetParent(source);
-        }
-        return null;
     }
 
     /// <summary>列表行；<see cref="Def"/> 保留完整定义供编辑 / 复制 / 试运行。</summary>

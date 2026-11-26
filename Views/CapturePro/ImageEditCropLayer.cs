@@ -15,8 +15,8 @@ namespace LTools.Views.CapturePro;
 /// </remarks>
 internal sealed class ImageEditCropLayer : FrameworkElement
 {
-    private static readonly SolidColorBrush StripFill = Frozen(Color.FromArgb(95, 240, 65, 65));
-    private static readonly Pen GuidePen = FrozenDashPen(Color.FromRgb(0x40, 0x96, 0xFF), 1);
+    private static readonly SolidColorBrush StripFill = ThemeBrush.Frozen(Color.FromArgb(95, 240, 65, 65));
+    private static readonly Pen GuidePen = ThemeBrush.DashPen(Color.FromRgb(0x40, 0x96, 0xFF), 1);
 
     /// <summary>图像在窗口内容区里占的矩形（DIP）。</summary>
     public Rect ImageRect { get; set; } = Rect.Empty;
@@ -85,20 +85,4 @@ internal sealed class ImageEditCropLayer : FrameworkElement
 
     private static void DrawGuide(DrawingContext dc, LineGeometry line) => dc.DrawGeometry(null, GuidePen, line);
 
-    private static SolidColorBrush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
-
-    private static Pen FrozenDashPen(Color color, double width)
-    {
-        var pen = new Pen(Frozen(color), width)
-        {
-            DashStyle = new DashStyle(new[] { 4.0, 3.0 }, 0),
-        };
-        pen.Freeze();
-        return pen;
-    }
 }

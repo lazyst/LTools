@@ -54,15 +54,13 @@ internal static class PinTextStore
     /// 读写的锚点：优先 <c>ConfigStore.ConfigPath</c>（导入备份 / 冒烟指到临时目录时跟着走），
     /// 没初始化才回落 <see cref="ConfigLocator.FindPath"/>——读与写必须用同一个，否则会写入一处、读到另一处。
     /// </summary>
-    private static string Anchor =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
 
     /// <summary>当前生效的默认值（读不到按上游默认值）。</summary>
     public static PinTextLimits Limits()
     {
         try
         {
-            return PinTextLimits.From(SettingsStore.Read(Anchor).PinText);
+            return PinTextLimits.From(SettingsStore.Read(ConfigStore.Anchor).PinText);
         }
         catch (Exception ex)
         {
@@ -77,7 +75,7 @@ internal static class PinTextStore
         PinTextFile normalized = limits.ToFile();
         try
         {
-            SettingsStore.Modify(Anchor, file => file.PinText = normalized);
+            SettingsStore.Modify(ConfigStore.Anchor, file => file.PinText = normalized);
         }
         catch (Exception ex)
         {

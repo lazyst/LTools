@@ -132,7 +132,7 @@ internal static class ComboBoxAssist
     {
         if (sender is not ComboBox combo || combo.IsDropDownOpen || e.Handled) return;
 
-        ScrollViewer? page = FindAncestor<ScrollViewer>(VisualTreeHelper.GetParent(combo));
+        ScrollViewer? page = VisualTree.FindAncestor<ScrollViewer>(VisualTreeHelper.GetParent(combo));
         if (page == null) return;
 
         // 先吞掉：否则 ComboBox.OnMouseWheel 会改掉选中项。
@@ -144,13 +144,4 @@ internal static class ComboBoxAssist
         });
     }
 
-    private static T? FindAncestor<T>(DependencyObject? node) where T : DependencyObject
-    {
-        while (node != null)
-        {
-            if (node is T match) return match;
-            node = VisualTreeHelper.GetParent(node);
-        }
-        return null;
-    }
 }

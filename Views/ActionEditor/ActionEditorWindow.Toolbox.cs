@@ -130,7 +130,7 @@ public partial class ActionEditorWindow
     /// <summary>重建左栏并把滚动位置放回原处（折一个靠上的分组不该把视图弹回顶部）。</summary>
     private void RebuildToolboxKeepingScroll()
     {
-        ScrollViewer? scroller = FindAncestor<ScrollViewer>(Toolbox);
+        ScrollViewer? scroller = VisualTree.FindAncestor<ScrollViewer>(Toolbox);
         double offset = scroller?.VerticalOffset ?? 0;
         BuildToolbox();
         if (scroller != null)

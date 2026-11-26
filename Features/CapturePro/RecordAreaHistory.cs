@@ -169,8 +169,6 @@ internal static class RecordAreaHistory
     {
         try
         {
-            Directory.CreateDirectory(AppPaths.StateDir);
-
             var items = new List<Dictionary<string, int>>(list.Count);
             foreach (var rect in list)
             {
@@ -183,9 +181,7 @@ internal static class RecordAreaHistory
                 });
             }
 
-            string tmp = FilePath + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(items));
-            File.Move(tmp, FilePath, true);
+            AtomicFile.WriteJson(FilePath, items);
         }
         catch (Exception ex)
         {

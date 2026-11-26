@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using LTools.Features.CapturePro.AutoFilter;
+using LTools.Views;
 
 namespace LTools.Features.CapturePro;
 
@@ -26,8 +27,8 @@ internal sealed class CaptureCanvas : FrameworkElement
     /// <summary>选区框的宽度（DIP，照上游 <c>kSelectionBorderWidth = 2.0</c>）。</summary>
     public const double SelectionBorderWidth = 2.0;
 
-    private SolidColorBrush _maskBrush = Frozen(Color.FromArgb(0x80, 0, 0, 0));
-    private Pen _framePen = FrozenPen(Color.FromArgb(0xFF, 0x40, 0x96, 0xFF), SelectionBorderWidth);
+    private SolidColorBrush _maskBrush = ThemeBrush.Frozen(Color.FromArgb(0x80, 0, 0, 0));
+    private Pen _framePen = ThemeBrush.Pen(Color.FromArgb(0xFF, 0x40, 0x96, 0xFF), SelectionBorderWidth);
     private Color _maskColor = Color.FromArgb(0x80, 0, 0, 0);
     private Color _borderColor = Color.FromArgb(0xFF, 0x40, 0x96, 0xFF);
 
@@ -39,7 +40,7 @@ internal sealed class CaptureCanvas : FrameworkElement
         {
             if (_maskColor == value) return;
             _maskColor = value;
-            _maskBrush = Frozen(value);
+            _maskBrush = ThemeBrush.Frozen(value);
             InvalidateVisual();
         }
     }
@@ -52,7 +53,7 @@ internal sealed class CaptureCanvas : FrameworkElement
         {
             if (_borderColor == value) return;
             _borderColor = value;
-            _framePen = FrozenPen(value, SelectionBorderWidth);
+            _framePen = ThemeBrush.Pen(value, SelectionBorderWidth);
             InvalidateVisual();
         }
     }
@@ -82,29 +83,29 @@ internal sealed class CaptureCanvas : FrameworkElement
     public Color PickerMarkerColor { get; set; } = Colors.White;
 
     /// <summary>选中标注的虚线框（和工具栏的选中色一致）。</summary>
-    private static readonly Pen SelectPen = FrozenDashPen(Color.FromRgb(0x3B, 0x82, 0xF6), 1.2);
+    private static readonly Pen SelectPen = ThemeBrush.DashPen(Color.FromRgb(0x3B, 0x82, 0xF6), 1.2);
 
     /// <summary>标注缩放手柄的填充 / 描边（与选区的八个把手同款）。</summary>
-    private static readonly SolidColorBrush HandleFill = Frozen(Colors.White);
-    private static readonly Pen HandleEdge = FrozenPen(Color.FromRgb(0x18, 0x18, 0x1B), 1);
+    private static readonly SolidColorBrush HandleFill = ThemeBrush.Frozen(Colors.White);
+    private static readonly Pen HandleEdge = ThemeBrush.Pen(Color.FromRgb(0x18, 0x18, 0x1B), 1);
 
     /// <summary>放大镜移动手柄的六个小点（选中色）。</summary>
-    private static readonly SolidColorBrush GripFill = Frozen(Color.FromRgb(0x3B, 0x82, 0xF6));
+    private static readonly SolidColorBrush GripFill = ThemeBrush.Frozen(Color.FromRgb(0x3B, 0x82, 0xF6));
 
     /// <summary>正在圈 / 正在点的选区：白色虚线 + 深色底描边（浅底上也看得见）。</summary>
-    private static readonly Pen PendingPen = FrozenDashPen(Colors.White, 1.5);
-    private static readonly Pen PendingShadow = FrozenDashPen(Color.FromArgb(0xAA, 0, 0, 0), 3);
+    private static readonly Pen PendingPen = ThemeBrush.DashPen(Colors.White, 1.5);
+    private static readonly Pen PendingShadow = ThemeBrush.DashPen(Color.FromArgb(0xAA, 0, 0, 0), 3);
 
     // 自动打码（照上游：命中红 / 已填绿，框选蓝）
     private static readonly Color AutoRed = Color.FromRgb(0xFF, 0x4D, 0x4F);
     private static readonly Color AutoGreen = Color.FromRgb(0x52, 0xC4, 0x1A);
     private static readonly Color AutoBlue = Color.FromRgb(0x40, 0x96, 0xFF);
-    private static readonly SolidColorBrush AutoRedFill = Frozen(Color.FromArgb(51, AutoRed.R, AutoRed.G, AutoRed.B));
-    private static readonly Pen AutoRedPen = FrozenPen(AutoRed, 1);
-    private static readonly SolidColorBrush AutoGreenFill = Frozen(Color.FromArgb(51, AutoGreen.R, AutoGreen.G, AutoGreen.B));
-    private static readonly Pen AutoGreenPen = FrozenPen(AutoGreen, 1);
-    private static readonly SolidColorBrush AutoMarqueeFill = Frozen(Color.FromArgb(0x33, AutoBlue.R, AutoBlue.G, AutoBlue.B));
-    private static readonly Pen AutoMarqueePen = FrozenPen(AutoBlue, 1);
+    private static readonly SolidColorBrush AutoRedFill = ThemeBrush.Frozen(Color.FromArgb(51, AutoRed.R, AutoRed.G, AutoRed.B));
+    private static readonly Pen AutoRedPen = ThemeBrush.Pen(AutoRed, 1);
+    private static readonly SolidColorBrush AutoGreenFill = ThemeBrush.Frozen(Color.FromArgb(51, AutoGreen.R, AutoGreen.G, AutoGreen.B));
+    private static readonly Pen AutoGreenPen = ThemeBrush.Pen(AutoGreen, 1);
+    private static readonly SolidColorBrush AutoMarqueeFill = ThemeBrush.Frozen(Color.FromArgb(0x33, AutoBlue.R, AutoBlue.G, AutoBlue.B));
+    private static readonly Pen AutoMarqueePen = ThemeBrush.Pen(AutoBlue, 1);
 
     /// <summary>内容真源（底图 + 标注列表）。</summary>
     public CaptureDocument? Document { get; set; }
@@ -401,7 +402,7 @@ internal sealed class CaptureCanvas : FrameworkElement
     private static Pen PhysicalPen(Color color, double scale, bool dashed)
     {
         double width = 1.0 / Math.Max(0.01, scale);
-        var pen = new Pen(Frozen(color), width);
+        var pen = new Pen(ThemeBrush.Frozen(color), width);
         if (dashed) pen.DashStyle = new DashStyle(new[] { GuideLines.DashLength, GuideLines.DashGap }, 0);
         pen.Freeze();
         return pen;
@@ -467,13 +468,6 @@ internal sealed class CaptureCanvas : FrameworkElement
         }
     }
 
-    private static SolidColorBrush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
-
     /// <summary>标注的缩放手柄：白底深边的小方块（与选区那八个把手同尺寸、同一套位置）。</summary>
     private static void DrawHandles(DrawingContext dc, Rect box)
     {
@@ -484,13 +478,6 @@ internal sealed class CaptureCanvas : FrameworkElement
             dc.DrawRectangle(HandleFill, HandleEdge,
                 new Rect(at.X - size / 2, at.Y - size / 2, size, size));
         }
-    }
-
-    private static Pen FrozenPen(Color color, double width)
-    {
-        var pen = new Pen(Frozen(color), width);
-        pen.Freeze();
-        return pen;
     }
 
     /// <summary>
@@ -513,13 +500,4 @@ internal sealed class CaptureCanvas : FrameworkElement
                     new Point(grip.X + gx * unit, grip.Y + gy * unit), 0.65 * unit, 0.65 * unit);
     }
 
-    private static Pen FrozenDashPen(Color color, double width)
-    {
-        var pen = new Pen(Frozen(color), width)
-        {
-            DashStyle = new DashStyle(new[] { 3.0, 2.0 }, 0),
-        };
-        pen.Freeze();
-        return pen;
-    }
 }

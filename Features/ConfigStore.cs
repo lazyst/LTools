@@ -26,6 +26,12 @@ internal static class ConfigStore
     public static string ConfigPath { get; private set; } = "";
 
     /// <summary>
+    /// 配置落盘的锚点：初始化过就用它的路径，没初始化才现算（截图 Pro 那批 store 共用）。
+    /// </summary>
+    public static string Anchor =>
+        string.IsNullOrEmpty(ConfigPath) ? ConfigLocator.FindPath() : ConfigPath;
+
+    /// <summary>
     /// 只记路径，不加载动作 / 快捷键 / 面板、也不做修复（给界面宿主进程用）。
     /// </summary>
     /// <remarks>

@@ -34,10 +34,10 @@ namespace LTools.Views.CapturePro;
 /// </remarks>
 internal sealed class RecordRegionWindow : Window
 {
-    private static readonly Brush MaskBrush = Frozen(Color.FromArgb(115, 0, 0, 0));
-    private static readonly Brush HoverBrush = Frozen(Color.FromRgb(0x16, 0x77, 0xFF));
-    private static readonly Brush PressedBrush = Frozen(Color.FromRgb(0x09, 0x58, 0xD9));
-    private static readonly Brush HitBrush = Frozen(Color.FromArgb(2, 0, 0, 0));
+    private static readonly Brush MaskBrush = ThemeBrush.Frozen(Color.FromArgb(115, 0, 0, 0));
+    private static readonly Brush HoverBrush = ThemeBrush.Frozen(Color.FromRgb(0x16, 0x77, 0xFF));
+    private static readonly Brush PressedBrush = ThemeBrush.Frozen(Color.FromRgb(0x09, 0x58, 0xD9));
+    private static readonly Brush HitBrush = ThemeBrush.Frozen(Color.FromArgb(2, 0, 0, 0));
 
     private static readonly Geometry MoveIcon = FrozenGeometry(
         "M9,0 L12,3 H10 V8 H15 V6 L18,9 L15,12 V10 H10 V15 H12 L9,18 L6,15 H8 V10 H3 V12 L0,9 L3,6 V8 H8 V3 H6 Z");
@@ -84,7 +84,7 @@ internal sealed class RecordRegionWindow : Window
         MaxWidth = double.PositiveInfinity;
         MaxHeight = double.PositiveInfinity;
 
-        var frameBrush = Frozen(RecordBorderWindow.IdleColor);
+        var frameBrush = ThemeBrush.Frozen(RecordBorderWindow.IdleColor);
         _frameLeft.Fill = frameBrush;
         _frameRight.Fill = frameBrush;
         _frameTop.Fill = frameBrush;
@@ -351,13 +351,6 @@ internal sealed class RecordRegionWindow : Window
     {
         base.OnSourceInitialized(e);
         OverlayShell.MakeNonActivating(this, excludeFromCapture: true);
-    }
-
-    private static SolidColorBrush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
     }
 
     private static Geometry FrozenGeometry(string data)

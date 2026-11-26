@@ -169,12 +169,6 @@ internal sealed class CollagePdfTemplateButton : Button
     }
 
     private Brush Brush(string key, Color fallback) =>
-        TryFindResource(key) as Brush ?? Frozen(fallback);
+        TryFindResource(key) as Brush ?? ThemeBrush.Frozen(fallback);
 
-    private static SolidColorBrush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
 }

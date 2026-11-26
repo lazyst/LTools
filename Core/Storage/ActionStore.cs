@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using LTools.Config;
+using LTools.Core;
 using LTools.Features;
 using LTools.Native;
 
@@ -238,9 +239,7 @@ internal static class ActionStore
 
         if (previous.Length > 0) ActionHistory.CaptureBeforeChange(path, previous);
 
-        string tmp = path + ".tmp";
-        File.WriteAllText(tmp, json, new UTF8Encoding(false));
-        File.Move(tmp, path, overwrite: true);
+        AtomicFile.WriteAllText(path, json);
     }
 
     /// <summary>

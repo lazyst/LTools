@@ -623,15 +623,8 @@ internal static class DraftStore
         }
     }
 
-    private static void WriteJson<T>(string path, T value, bool createNew = false)
-    {
-        string dir = Path.GetDirectoryName(path) ?? "";
-        if (dir.Length > 0) System.IO.Directory.CreateDirectory(dir);
-
-        string tmp = path + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(value, Json), new UTF8Encoding(false));
-        File.Move(tmp, path, overwrite: !createNew);
-    }
+    private static void WriteJson<T>(string path, T value, bool createNew = false) =>
+        AtomicFile.WriteJson(path, value, Json, overwrite: !createNew);
 
     private static void HashSegment(SHA256 sha, string name, byte[] content)
     {

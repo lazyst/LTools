@@ -59,9 +59,6 @@ internal static class ScreenshotBehavior
 
     private static ScreenshotFile? _cached;
 
-    private static string Anchor =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
-
     /// <summary>长截图自动滚动间隔毫秒（clamp 128–1000）。</summary>
     public static int ScrollingAutoScrollIntervalMs =>
         NormalizeInterval(Snapshot().ScrollingAutoScrollIntervalMs);
@@ -189,7 +186,7 @@ internal static class ScreenshotBehavior
         ScreenshotFile loaded;
         try
         {
-            loaded = SettingsStore.Read(Anchor).Screenshot ?? new ScreenshotFile();
+            loaded = SettingsStore.Read(ConfigStore.Anchor).Screenshot ?? new ScreenshotFile();
         }
         catch (Exception ex)
         {
@@ -228,7 +225,7 @@ internal static class ScreenshotBehavior
 
         try
         {
-            SettingsStore.Modify(Anchor, file =>
+            SettingsStore.Modify(ConfigStore.Anchor, file =>
             {
                 file.Screenshot ??= new ScreenshotFile();
                 file.Screenshot.ScrollingAutoScrollIntervalMs = next.ScrollingAutoScrollIntervalMs;

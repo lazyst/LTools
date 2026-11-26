@@ -457,7 +457,7 @@ public partial class ActionEditorWindow
     /// <summary>双击变量快照的一行 = 复制该变量运行结束时的值，方便粘到别处排查。</summary>
     private void SnapshotList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        var row = FindAncestor<ListViewItem>(e.OriginalSource as DependencyObject);
+        var row = VisualTree.FindAncestor<ListViewItem>(e.OriginalSource as DependencyObject);
         string? value = SnapshotDoubleClickValue(row?.DataContext);
         if (value == null) return;
         try
@@ -532,15 +532,4 @@ public partial class ActionEditorWindow
         DialogResult = false;
     }
 
-    private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
-    {
-        while (source != null)
-        {
-            if (source is T match) return match;
-            source = source is Visual || source is System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(source)
-                : LogicalTreeHelper.GetParent(source);
-        }
-        return null;
-    }
 }

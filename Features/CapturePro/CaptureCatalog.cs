@@ -671,11 +671,7 @@ internal static class CaptureCatalog
     {
         try
         {
-            Directory.CreateDirectory(Root);
-            string tmp = CatalogPath + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(new CaptureCatalogFile { Items = items }, Opt),
-                new UTF8Encoding(false));
-            File.Move(tmp, CatalogPath, true);
+            AtomicFile.WriteJson(CatalogPath, new CaptureCatalogFile { Items = items }, Opt);
         }
         catch (Exception ex)
         {

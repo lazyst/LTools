@@ -37,12 +37,12 @@ internal sealed class SplitPreviewCanvas : FrameworkElement
     private const double BadgeRadius = 4;
 
     private static readonly Color SplitLineColor = Color.FromRgb(0x40, 0x96, 0xFF);
-    private static readonly SolidColorBrush LineBrush = Frozen(SplitLineColor);
-    private static readonly Pen SolidPen = FrozenPen(SplitLineColor, 1);
-    private static readonly Pen DashPen = FrozenDashPen(SplitLineColor, 1);
-    private static readonly SolidColorBrush BandBrush = Frozen(Color.FromArgb(51, 0x40, 0x96, 0xFF));
-    private static readonly SolidColorBrush BadgeBrush = Frozen(Color.FromArgb(130, 0, 0, 0));
-    private static readonly SolidColorBrush WhiteBrush = Frozen(Colors.White);
+    private static readonly SolidColorBrush LineBrush = ThemeBrush.Frozen(SplitLineColor);
+    private static readonly Pen SolidPen = ThemeBrush.Pen(SplitLineColor, 1);
+    private static readonly Pen DashPen = ThemeBrush.DashPen(SplitLineColor, 1);
+    private static readonly SolidColorBrush BandBrush = ThemeBrush.Frozen(Color.FromArgb(51, 0x40, 0x96, 0xFF));
+    private static readonly SolidColorBrush BadgeBrush = ThemeBrush.Frozen(Color.FromArgb(130, 0, 0, 0));
+    private static readonly SolidColorBrush WhiteBrush = ThemeBrush.Frozen(Colors.White);
     private static readonly Typeface UiTypeface = new("Segoe UI");
 
     private SplitDocument? _document;
@@ -900,7 +900,7 @@ internal sealed class SplitPreviewCanvas : FrameworkElement
         if (_checkerReady && _checker != null) return _checker;
 
         var surface = Resource("SurfaceBrush", Brushes.White);
-        var fill = Frozen(Color.FromRgb(0xF0, 0xF0, 0xF1));
+        var fill = ThemeBrush.Frozen(Color.FromRgb(0xF0, 0xF0, 0xF1));
 
         var group = new DrawingGroup();
         group.Children.Add(new GeometryDrawing(surface, null, new RectangleGeometry(new Rect(0, 0, 20, 20))));
@@ -948,27 +948,6 @@ internal sealed class SplitPreviewCanvas : FrameworkElement
             else high = mid;
         }
         return low;
-    }
-
-    private static SolidColorBrush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
-
-    private static Pen FrozenPen(Color color, double width)
-    {
-        var pen = new Pen(Frozen(color), width);
-        pen.Freeze();
-        return pen;
-    }
-
-    private static Pen FrozenDashPen(Color color, double width)
-    {
-        var pen = new Pen(Frozen(color), width) { DashStyle = new DashStyle(new[] { 5.0, 3.0 }, 0) };
-        pen.Freeze();
-        return pen;
     }
 
     /// <summary>把 BitmapSource 包一层，只是为了用引用相等判断「换图了没有」。</summary>

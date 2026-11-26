@@ -39,9 +39,6 @@ internal static class CaptureHistoryStore
     private static readonly object Gate = new();
     private static CaptureHistoryPolicy? _cached;
 
-    private static string Anchor =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
-
     /// <summary>当前策略（进程内缓存；改完立刻刷新）。</summary>
     public static CaptureHistoryPolicy Current => Snapshot();
 
@@ -98,9 +95,7 @@ internal static class CaptureHistoryStore
                 settings.CaptureHistory.MaxDiskMiB = next.MaxDiskMiB;
             }
 
-            string path = Anchor;
-            if (string.IsNullOrEmpty(path)) SettingsStore.Modify(Apply);
-            else SettingsStore.Modify(path, Apply);
+            SettingsStore.Modify(ConfigStore.Anchor, Apply);
         }
         catch (Exception ex)
         {
@@ -121,10 +116,7 @@ internal static class CaptureHistoryStore
         CaptureHistoryFile file;
         try
         {
-            string path = Anchor;
-            file = string.IsNullOrEmpty(path)
-                ? new CaptureHistoryFile()
-                : SettingsStore.Read(path).CaptureHistory ?? new CaptureHistoryFile();
+            file = SettingsStore.Read(ConfigStore.Anchor).CaptureHistory ?? new CaptureHistoryFile();
         }
         catch (Exception ex)
         {

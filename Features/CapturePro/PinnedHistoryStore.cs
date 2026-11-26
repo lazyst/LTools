@@ -35,9 +35,6 @@ internal static class PinnedHistoryStore
     private static readonly object Gate = new();
     private static PinnedHistoryPolicy? _cached;
 
-    private static string Anchor =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
-
     public static PinnedHistoryPolicy Current => Snapshot();
     public static bool Enabled => Snapshot().Enabled;
 
@@ -80,9 +77,7 @@ internal static class PinnedHistoryStore
                 settings.PinnedHistory.MaxDiskMiB = next.MaxDiskMiB;
             }
 
-            string path = Anchor;
-            if (string.IsNullOrEmpty(path)) SettingsStore.Modify(Apply);
-            else SettingsStore.Modify(path, Apply);
+            SettingsStore.Modify(ConfigStore.Anchor, Apply);
         }
         catch (Exception ex)
         {
@@ -107,10 +102,7 @@ internal static class PinnedHistoryStore
         PinnedHistoryFile file;
         try
         {
-            string path = Anchor;
-            file = string.IsNullOrEmpty(path)
-                ? new PinnedHistoryFile()
-                : SettingsStore.Read(path).PinnedHistory ?? new PinnedHistoryFile();
+            file = SettingsStore.Read(ConfigStore.Anchor).PinnedHistory ?? new PinnedHistoryFile();
         }
         catch (Exception ex)
         {

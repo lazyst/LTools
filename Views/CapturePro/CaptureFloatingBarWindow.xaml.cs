@@ -286,7 +286,7 @@ public partial class CaptureFloatingBarWindow : Window
 
     private void Chrome_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;
+        if (VisualTree.FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;
 
         try
         {
@@ -334,19 +334,6 @@ public partial class CaptureFloatingBarWindow : Window
         }
 
         e.Handled = true;
-    }
-
-    private static T? FindAncestor<T>(DependencyObject? node) where T : DependencyObject
-    {
-        while (node != null)
-        {
-            if (node is T match) return match;
-            node = node is Visual or Visual3D
-                ? VisualTreeHelper.GetParent(node)
-                : LogicalTreeHelper.GetParent(node);
-        }
-
-        return null;
     }
 
     /// <summary>不抢焦点、不进 Alt+Tab。</summary>

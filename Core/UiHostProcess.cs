@@ -133,10 +133,7 @@ internal static class UiHostProcess
     {
         try
         {
-            Directory.CreateDirectory(AppPaths.UiHostDir);
-            string temp = IntentPath + ".tmp";
-            File.WriteAllText(temp, intent);
-            File.Move(temp, IntentPath, overwrite: true);
+            AtomicFile.WriteAllText(IntentPath, intent);
         }
         catch (Exception ex)
         {

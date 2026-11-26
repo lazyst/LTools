@@ -31,9 +31,6 @@ internal static class PointerSettings
     private static PinPointerAction? _pinMiddle;
     private static bool? _confirmDestroy;
 
-    private static string Anchor =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
-
     /// <summary>覆盖层里「选择工具 + 双击」的动作（默认复制）。</summary>
     public static OverlayPointerAction OverlayDoubleClick
     {
@@ -133,7 +130,7 @@ internal static class PointerSettings
 
         try
         {
-            var file = SettingsStore.Read(Anchor);
+            var file = SettingsStore.Read(ConfigStore.Anchor);
             overlayDouble = PointerActions.ParseOverlay(
                 file.Screenshot?.DoubleClickAction ?? PointerActions.DefaultOverlayDoubleClick);
             overlayMiddle = PointerActions.ParseOverlay(
@@ -163,7 +160,7 @@ internal static class PointerSettings
     {
         try
         {
-            SettingsStore.Modify(Anchor, mutate);
+            SettingsStore.Modify(ConfigStore.Anchor, mutate);
         }
         catch (Exception ex)
         {

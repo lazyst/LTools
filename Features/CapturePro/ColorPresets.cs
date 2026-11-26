@@ -64,9 +64,6 @@ internal static class ColorPresets
     private static Color[]? _fill;
     private static Color[]? _highlight;
 
-    private static string Anchor =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
-
     /// <summary>某一族的默认值（<c>#RRGGBBAA</c> 文本，顺序与上游一致）。</summary>
     public static IReadOnlyList<string> DefaultHex(ColorPresetFamily family) => family switch
     {
@@ -263,7 +260,7 @@ internal static class ColorPresets
 
         try
         {
-            var shot = SettingsStore.Read(Anchor).Screenshot;
+            var shot = SettingsStore.Read(ConfigStore.Anchor).Screenshot;
             stroke = Normalize(shot?.StrokeColorPresets, stroke);
             fill = Normalize(shot?.FillColorPresets, fill);
             highlight = Normalize(shot?.HighlightColorPresets, highlight);
@@ -285,7 +282,7 @@ internal static class ColorPresets
     {
         try
         {
-            SettingsStore.Modify(Anchor, mutate);
+            SettingsStore.Modify(ConfigStore.Anchor, mutate);
         }
         catch (Exception ex)
         {

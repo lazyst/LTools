@@ -101,7 +101,7 @@ public partial class QuickNoteWindow
     private void PreviewBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (!_previewMode) return;
-        if (FindAncestor<Hyperlink>(e.OriginalSource as DependencyObject) != null) return;
+        if (VisualTree.FindAncestor<Hyperlink>(e.OriginalSource as DependencyObject) != null) return;
         TryJumpFromPreviewPoint(e.GetPosition(PreviewBox));
     }
 

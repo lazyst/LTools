@@ -48,18 +48,13 @@ internal static class EditorAutosave
         if (string.IsNullOrWhiteSpace(id) || program == null) return false;
 
         string path = FileFor(id, root);
-        string temp = path + ".tmp";
         try
         {
-            Directory.CreateDirectory(DirFor(root));
-            File.WriteAllText(temp, JsonSerializer.Serialize(program, ConfigBundle.Options));
-            File.Move(temp, path, overwrite: true);
+            AtomicFile.WriteJson(path, program, ConfigBundle.Options);
             return true;
         }
         catch (Exception ex)
         {
-            try { if (File.Exists(temp)) File.Delete(temp); }
-            catch { /* 清临时文件失败不重要 */ }
             AppLog.Warn("Editor", $"自动存盘失败（{id}）：{ex.Message}");
             return false;
         }

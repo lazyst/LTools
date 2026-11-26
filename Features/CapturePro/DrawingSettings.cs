@@ -38,9 +38,6 @@ internal static class DrawingSettings
 
     private static DrawingFile? _cached;
 
-    private static string Anchor =>
-        string.IsNullOrEmpty(ConfigStore.ConfigPath) ? ConfigLocator.FindPath() : ConfigStore.ConfigPath;
-
     public static bool AutoSelectNew => Snapshot().AutomaticallySelectNewlyCreatedElements ?? DefaultAutoSelectNew;
 
     public static bool DeleteTextAfterCursor =>
@@ -96,7 +93,7 @@ internal static class DrawingSettings
         DrawingFile loaded;
         try
         {
-            loaded = SettingsStore.Read(Anchor).Drawing ?? new DrawingFile();
+            loaded = SettingsStore.Read(ConfigStore.Anchor).Drawing ?? new DrawingFile();
         }
         catch (Exception ex)
         {
@@ -128,7 +125,7 @@ internal static class DrawingSettings
 
         try
         {
-            SettingsStore.Modify(Anchor, file =>
+            SettingsStore.Modify(ConfigStore.Anchor, file =>
             {
                 file.Drawing = Clone(next);
             });

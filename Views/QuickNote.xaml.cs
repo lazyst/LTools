@@ -206,7 +206,7 @@ public partial class QuickNoteWindow : Window
     private void NoteList_Click(object sender, MouseButtonEventArgs e)
     {
         // 从命中点沿可视化树向上找 ListBoxItem，取其 DataContext(NoteRow)
-        var item = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+        var item = VisualTree.FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
         if (item?.DataContext is not NoteRow row) return;
         // 点击的就是当前正在编辑的笔记 → 无需切换
         if (_current != null && string.Equals(_current.Path, row.Path, StringComparison.OrdinalIgnoreCase)) return;
@@ -221,7 +221,7 @@ public partial class QuickNoteWindow : Window
     /// 若不处理，菜单的「删除」可能作用于陈旧选中项而误删。</summary>
     private void NoteList_RightClick(object sender, MouseButtonEventArgs e)
     {
-        var item = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+        var item = VisualTree.FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
         if (item?.DataContext is NoteRow) NoteList.SelectedItem = item.DataContext;
     }
 
@@ -235,7 +235,7 @@ public partial class QuickNoteWindow : Window
     /// </summary>
     private void NoteList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        var item = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+        var item = VisualTree.FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
         if (!NoteDoubleClickFocusBody(item)) return;
         var row = (NoteRow)item!.DataContext;
 
@@ -388,16 +388,6 @@ public partial class QuickNoteWindow : Window
         {
             SaveBadge.Text = "";
         }
-    }
-
-    private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
-    {
-        while (d != null)
-        {
-            if (d is T t) return t;
-            d = VisualTreeHelper.GetParent(d);
-        }
-        return null;
     }
 
     private void SaveCurrent()
