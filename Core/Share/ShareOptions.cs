@@ -40,6 +40,9 @@ public sealed class ShareOptions
     /// <summary>对方发来内容时怎么办：直接收 / 一次一确认 / 不收。</summary>
     public ShareInbound Inbound { get; set; } = ShareInbound.allow;
 
+    /// <summary>收到的内容存到哪；空 = 默认 <c>&lt;数据根&gt;/share/inbox</c>。必须是绝对路径。</summary>
+    public string InboxDir { get; set; } = "";
+
     /// <summary>单文件上限（MB）；单次总量硬编码 1 GB。</summary>
     public int MaxUploadMb { get; set; } = 200;
 
@@ -79,10 +82,19 @@ public sealed class ShareOptions
         Port = Port is >= 1024 and <= 65535 ? Port : DefaultPort,
         Running = Running,
         Inbound = Enum.IsDefined(Inbound) ? Inbound : ShareInbound.allow,
+        InboxDir = NormalizeDir(InboxDir),
         MaxUploadMb = Math.Clamp(MaxUploadMb, 1, 4096),
         RequireToken = RequireToken,
         Token = NormalizeToken(Token),
     };
+
+    /// <summary>目录参数归一：空串保持空（= 跟着数据根），不是绝对路径的丢掉（回到默认）。</summary>
+    public static string NormalizeDir(string? dir)
+    {
+        if (string.IsNullOrWhiteSpace(dir)) return "";
+        string path = dir.Trim();
+        return Path.IsPathFullyQualified(path) ? path : "";
+    }
 
     /// <summary>生成一个新令牌（16 位十六进制 = 64 bit）。</summary>
     public static string NewToken() =>

@@ -25,6 +25,7 @@ internal static class ShareSuite
         cases.Add(new("share", "对方发来的文字只进 inbox/，不进清单", InboxTexts));
         cases.Add(new("share", "配置归一：端口 / 上限 / 令牌形状", Options));
         cases.Add(new("share", "「接收」三档：选项文案 / 落盘用英文键", InboundModes));
+        cases.Add(new("share", "收到的目录：默认 / 自定义 / 归一", InboxDirs));
         cases.Add(new("share", "子网判断与地址优先级", Subnets));
     }
 
@@ -203,6 +204,58 @@ internal static class ShareSuite
         // settings.json 里存的是英文键（不是 0/1/2），与 LTools.example.json 一致。
         Check.Equal("\"confirm\"", JsonSerializer.Serialize(ShareInbound.confirm), "落盘是英文键");
         Check.Equal(ShareInbound.block, JsonSerializer.Deserialize<ShareInbound>("\"block\""), "读回英文键");
+    }
+
+    private static void InboxDirs()
+    {
+        Check.Equal("", ShareOptions.NormalizeDir(""), "空串 = 跟着数据根");
+        Check.Equal("", ShareOptions.NormalizeDir("   "), "空白也算空");
+
+        string abs = Path.Combine(Path.GetTempPath(), "ltools-share-inbox");
+        Check.Equal(abs, ShareOptions.NormalizeDir(" " + abs + " "), "绝对路径留下（去掉两头空白）");
+        Check.Equal("", ShareOptions.NormalizeDir("relative\\inbox"), "相对路径丢掉");
+        Check.Equal("", new ShareOptions { InboxDir = "x" }.Normalized().InboxDir, "归一也丢相对路径");
+        Check.Equal(abs, new ShareOptions { InboxDir = abs }.Normalized().InboxDir, "归一保留绝对路径");
+
+        string root = TempDir();
+        string custom = Path.Combine(root, "custom-inbox");
+        try
+        {
+            var store = new ShareStore(root);
+            string defaultInbox = Path.Combine(root, "inbox");
+            Check.Equal(defaultInbox, store.InboxDir, "默认是 <数据根>/inbox");
+            Check.Equal(Path.Combine(defaultInbox, ".partial"), store.PartialDir, "未完成分片跟着 inbox");
+
+            store.UseInbox(custom);
+            Check.Equal(custom, store.InboxDir, "换成自定义目录");
+            Check.True(store.PartialDir.StartsWith(custom, StringComparison.OrdinalIgnoreCase),
+                "分片目录也跟着挪");
+
+            store.EnsureLayout();
+            string path = store.AddInboxText("收到的文字");
+            Check.True(path.StartsWith(custom, StringComparison.OrdinalIgnoreCase), "收到的文字落自定义目录");
+            Check.Equal(1, store.Inbox().Count, "「收到的」列的是自定义目录");
+            Check.False(File.Exists(Path.Combine(defaultInbox, Path.GetFileName(path))), "默认目录里没有它");
+
+            store.UseInbox("");
+            Check.Equal(defaultInbox, store.InboxDir, "空 = 回默认");
+            Check.Equal(Path.Combine(defaultInbox, ".partial"), store.PartialDir, "分片目录也回默认");
+
+            // 选目录时先探一次可写：能建、能写才算数（探针写完就删）。
+            string fresh = Path.Combine(root, "fresh-inbox");
+            Check.True(ShareStore.CheckInboxDir(fresh) == null, "能建出来的目录判为可写");
+            Check.True(Directory.Exists(fresh), "探针顺手把目录建好");
+            Check.False(Directory.EnumerateFiles(fresh).Any(), "探针文件删掉了");
+
+            string blocker = Path.Combine(root, "not-a-dir");
+            File.WriteAllText(blocker, "x");
+            Check.True(ShareStore.CheckInboxDir(Path.Combine(blocker, "sub")) != null,
+                "文件下面建不出目录 = 写不进去");
+        }
+        finally
+        {
+            Cleanup(root);
+        }
     }
 
     private static void Subnets()

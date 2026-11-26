@@ -59,11 +59,12 @@ public partial class ShareWindow : Window
         InboundCombo.SelectedValue is ShareInbound inbound ? inbound : ShareServer.Options.Inbound;
 
     private static ShareOptions Clone(ShareOptions source, string? token = null,
-        bool? running = null, ShareInbound? inbound = null) => new()
+        bool? running = null, ShareInbound? inbound = null, string? inboxDir = null) => new()
     {
         Port = source.Port,
         Running = running ?? source.Running,
         Inbound = inbound ?? source.Inbound,
+        InboxDir = inboxDir ?? source.InboxDir,
         MaxUploadMb = source.MaxUploadMb,
         RequireToken = source.RequireToken,
         Token = token ?? source.Token,

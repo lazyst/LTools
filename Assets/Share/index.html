@@ -286,6 +286,16 @@
 
   function isImage(mime) { return (mime || '').indexOf('image/') === 0; }
 
+  // 时间：今天只给 HH:mm，跨天补 MM-dd（和电脑窗口里的写法一致）。
+  function when(iso) {
+    if (!iso) return '';
+    const t = new Date(iso);
+    if (isNaN(t.getTime())) return '';
+    const hh = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+    if (t.toDateString() === new Date().toDateString()) return hh;
+    return String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0') + ' ' + hh;
+  }
+
   // ---------- 待发送（先攒、后发） ----------
   function inboundMode() {
     return data.inbound === 'confirm' || data.inbound === 'block' ? data.inbound : 'allow';
@@ -449,7 +459,8 @@
       card.appendChild(img);
     }
 
-    card.appendChild(el('div', 'meta', [fmtSize(it.size), it.copied ? '副本' : '原地'].filter(Boolean).join(' · ')));
+    card.appendChild(el('div', 'meta',
+      [fmtSize(it.size), when(it.added), it.copied ? '副本' : '原地'].filter(Boolean).join(' · ')));
     return card;
   }
 
@@ -464,7 +475,8 @@
     row.appendChild(a);
 
     card.appendChild(row);
-    card.appendChild(el('div', 'meta', fmtSize(f.size) + ' · 对方发来的'));
+    card.appendChild(el('div', 'meta',
+      [fmtSize(f.size), when(f.modified), '对方发来的'].filter(Boolean).join(' · ')));
     return card;
   }
 

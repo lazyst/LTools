@@ -91,6 +91,13 @@ public partial class ShareWindow : Window
         if (!PortBox.IsKeyboardFocusWithin) PortBox.Text = options.Port.ToString();
         if (!UploadBox.IsKeyboardFocusWithin) UploadBox.Text = options.MaxUploadMb.ToString();
 
+        bool customInbox = options.InboxDir.Length > 0;
+        InboxPathText.Text = customInbox ? _store.InboxDir : "share/inbox";
+        InboxPathText.ToolTip = _store.InboxDir;
+        InboxDirHint.Text = customInbox
+            ? "自定义目录：这里面的文件对方都能下载。「默认」回到共享区的 inbox。"
+            : "默认在共享区的 inbox；换到别处时注意，那个目录里的文件对方都能下载。";
+
         RefreshLists();
     }
 
@@ -99,7 +106,8 @@ public partial class ShareWindow : Window
         IReadOnlyList<ShareItem> items = _store.Items();
         IReadOnlyList<ShareInboxFile> inbox = _store.Inbox();
 
-        string signature = string.Join("|", items.Select(i => i.Id + (i.Exists ? "+" : "-")))
+        string signature = _store.InboxDir + "#"
+            + string.Join("|", items.Select(i => i.Id + (i.Exists ? "+" : "-")))
             + "#" + string.Join("|", inbox.Select(f => f.Name + f.Size));
         if (signature == _listSignature) return;
         _listSignature = signature;
@@ -108,12 +116,15 @@ public partial class ShareWindow : Window
         OutList.ItemsSource = items.Reverse().Select(ToRow).ToList();
 
         InTitle.Text = $"收到的 {inbox.Count} 项";
-        InTitle.Visibility = inbox.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        InHeader.Visibility = inbox.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         InList.ItemsSource = inbox.Reverse().Select(ToInboxRow).ToList();
 
         EmptyText.Visibility = items.Count == 0 && inbox.Count == 0
             ? Visibility.Visible
             : Visibility.Collapsed;
+
+        SyncPickedRows();
+        SyncBatchButtons();
     }
 
     private void UpdateQr(string url, string hint)
@@ -173,8 +184,8 @@ public partial class ShareWindow : Window
             Meta = !item.Exists
                 ? "已失效 · 原文件不在了"
                 : isText
-                    ? $"文字 · {item.AddedAt:HH:mm} · {ShareStore.FormatSize(item.Size)}"
-                    : $"{kind} · {ShareStore.FormatSize(item.Size)} · {(item.Copied ? "副本" : "原地")}",
+                    ? $"文字 · {When(item.AddedAt)} · {ShareStore.FormatSize(item.Size)}"
+                    : $"{kind} · {When(item.AddedAt)} · {ShareStore.FormatSize(item.Size)} · {(item.Copied ? "副本" : "原地")}",
             Tip = !item.Exists
                 ? "原文件被移动或删除了"
                 : isText ? "双击查看全文" : "双击打开位置",
@@ -187,6 +198,7 @@ public partial class ShareWindow : Window
             IsText = isText,
             Stale = !item.Exists,
             IsInbox = false,
+            PickVisibility = _batchOut ? Visibility.Visible : Visibility.Collapsed,
         };
     }
 
@@ -202,8 +214,8 @@ public partial class ShareWindow : Window
             Glyph = Glyph(file.Name),
             Body = isText ? PreviewOf(path) : "",
             Meta = isText
-                ? $"文字 · {file.Modified:HH:mm} · {ShareStore.FormatSize(file.Size)}"
-                : $"收到 · {ShareStore.FormatSize(file.Size)}",
+                ? $"文字 · {When(file.Modified)} · {ShareStore.FormatSize(file.Size)}"
+                : $"收到 · {When(file.Modified)} · {ShareStore.FormatSize(file.Size)}",
             Tip = isText ? "双击查看全文" : "双击打开位置",
             Action1 = isText ? "复制" : "打开文件",
             Action1Tip = isText ? "把这段文字放进剪贴板" : "用默认程序打开这个文件",
@@ -213,8 +225,13 @@ public partial class ShareWindow : Window
             SaveVisibility = Visibility.Visible,
             IsText = isText,
             IsInbox = true,
+            PickVisibility = _batchIn ? Visibility.Visible : Visibility.Collapsed,
         };
     }
+
+    /// <summary>时间短写法：今天只给 HH:mm，跨天补 MM-dd（发出去的 / 收到的行共用）。</summary>
+    private static string When(DateTime time) =>
+        time.Date == DateTime.Today ? time.ToString("HH:mm") : time.ToString("MM-dd HH:mm");
 
     /// <summary>文字条目的正文预览（只读开头一段，铺两行）。</summary>
     private string PreviewOf(string path)

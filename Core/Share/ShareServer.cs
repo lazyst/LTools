@@ -118,6 +118,7 @@ internal static class ShareServer
             lock (Gate)
             {
                 _options = (options ?? new ShareOptions()).Normalized();
+                ShareStore.Default.UseInbox(_options.InboxDir);
                 LastError = null;
                 started = _options.Running;
                 if (started)

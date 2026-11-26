@@ -167,6 +167,7 @@
     "Port": 18767,
     "Running": false,
     "Inbound": "allow",
+    "InboxDir": "",
     "MaxUploadMb": 200,
     "RequireToken": false,
     "Token": ""

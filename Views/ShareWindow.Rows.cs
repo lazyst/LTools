@@ -130,16 +130,22 @@ public partial class ShareWindow : Window
     /// <summary>双击一行：文字打开只读窗口，其它文件在资源管理器里定位（行内按钮不算）。</summary>
     private void Row_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount != 2) return;
-        if (AncestorButton(e.OriginalSource as DependencyObject) != null) return;
-        if (sender is FrameworkElement { Tag: string key }) ViewKey(key);
-    }
+        if (sender is not FrameworkElement element || element.Tag is not string key) return;
 
-    private static Button? AncestorButton(DependencyObject? node)
-    {
-        for (; node != null; node = VisualTreeHelper.GetParent(node))
-            if (node is Button button) return button;
-        return null;
+        DependencyObject? source = e.OriginalSource as DependencyObject;
+        if (VisualTree.FindAncestor<Button>(source) != null) return;
+        if (VisualTree.FindAncestor<CheckBox>(source) != null) return;
+
+        // 批量管理：单击整行 = 勾上 / 取消，双击也不打开文件。
+        if (IsBatchRow(key))
+        {
+            if (element.DataContext is ShareItemRow row) ToggleRowPick(row);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.ClickCount != 2) return;
+        ViewKey(key);
     }
 
     private void ViewKey(string key)

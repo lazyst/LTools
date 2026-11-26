@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -99,9 +100,50 @@ public partial class ShareWindow : Window
 
     private void ApplyOptions(ShareOptions next)
     {
+        // 换目录时把「收到的」那组多选清掉：勾的是文件名，换目录后同名的是另一批文件。
+        if (!string.Equals(ShareServer.Options.InboxDir, next.InboxDir, StringComparison.OrdinalIgnoreCase))
+        {
+            _batchIn = false;
+            _pickedIn.Clear();
+        }
+
         ShareServer.Apply(next);
         SettingsStore.Modify(file => file.Share = next);
         Refresh();
+    }
+
+    /// <summary>换「收到的内容」存放目录（浏览器只认纯文件名，所以整目录都可被下载）。</summary>
+    private void ChooseInboxDir_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "选择「收到的内容」存到哪",
+            InitialDirectory = _store.InboxDir,
+            Multiselect = false,
+        };
+
+        if (dialog.ShowDialog(this) != true) return;
+
+        string folder = dialog.FolderName;
+        string? problem = ShareStore.CheckInboxDir(folder);
+        if (problem != null)
+        {
+            ConfirmDialog.Info(this, "这个目录写不进去",
+                $"{folder}\n\n{problem}\n\n换一个目录，或先在资源管理器里建好、确认能写。");
+            return;
+        }
+
+        ApplyOptions(Clone(ShareServer.Options, inboxDir: folder));
+        ToastService.Show("收到的内容改存到 " + folder, null, 2200, ToastKind.success);
+    }
+
+    /// <summary>恢复默认：回共享区的 <c>inbox/</c>。</summary>
+    private void ResetInboxDir_Click(object sender, RoutedEventArgs e)
+    {
+        if (ShareServer.Options.InboxDir.Length == 0) return;
+
+        ApplyOptions(Clone(ShareServer.Options, inboxDir: ""));
+        ToastService.Show("收到的内容回到共享区的 inbox", null, 1800, ToastKind.success);
     }
 
     private void ShowSettingsHint(string message)
@@ -119,8 +161,10 @@ public partial class ShareWindow : Window
         _hintTimer.Start();
     }
 
-    private sealed class ShareItemRow
+    private sealed class ShareItemRow : INotifyPropertyChanged
     {
+        private bool _selected;
+
         public string Key { get; init; } = "";
         public string Name { get; init; } = "";
         public string Glyph { get; init; } = "件";
@@ -136,6 +180,23 @@ public partial class ShareWindow : Window
         public bool IsText { get; init; }
         public bool Stale { get; init; }
         public bool IsInbox { get; init; }
+
+        /// <summary>批量管理时才露出勾选框（进 / 出模式会重建列表）。</summary>
+        public Visibility PickVisibility { get; init; } = Visibility.Collapsed;
+
+        /// <summary>是否被勾上（全选 / 单点都走它，勾选框按 INPC 跟上）。</summary>
+        public bool Selected
+        {
+            get => _selected;
+            set
+            {
+                if (_selected == value) return;
+                _selected = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Selected)));
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
     }
 
     private sealed class ShareUrlRow

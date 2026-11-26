@@ -82,18 +82,23 @@
                     ToolTip="{Binding Tip}">
                 <Grid>
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="28"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <Border Width="26" Height="26" CornerRadius="4" Background="{StaticResource SurfaceAltBrush}"
+                    <CheckBox Grid.Column="0" IsChecked="{Binding Selected, Mode=TwoWay}"
+                              Visibility="{Binding PickVisibility}" VerticalAlignment="Center"
+                              Margin="0,0,7,0" Click="RowPick_Click" ToolTip="选中这一项（批量管理）"/>
+
+                    <Border Grid.Column="1" Width="26" Height="26" CornerRadius="4" Background="{StaticResource SurfaceAltBrush}"
                             VerticalAlignment="Center">
                         <TextBlock Text="{Binding Glyph}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                    FontSize="11" Foreground="{StaticResource SecondaryTextBrush}"/>
                     </Border>
 
-                    <StackPanel Grid.Column="1" Margin="8,0,8,0" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="2" Margin="8,0,8,0" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Name}" FontSize="13" TextTrimming="CharacterEllipsis"
                                    ToolTip="{Binding Name}"/>
                         <TextBlock Text="{Binding Meta}" FontSize="11" Foreground="{StaticResource HintTextBrush}"
@@ -101,7 +106,7 @@
                     </StackPanel>
 
                     <!-- 行内常驻按钮（不再收进「⋯」菜单） -->
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button Content="{Binding Action1}" Style="{StaticResource ShareActionBtn}"
                                 CommandParameter="{Binding Key}" Click="RowAction1_Click"
                                 ToolTip="{Binding Action1Tip}"/>
@@ -125,25 +130,30 @@
                     ToolTip="{Binding Tip}">
                 <Grid>
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="28"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <Border Width="26" Height="26" CornerRadius="4" Background="{StaticResource SurfaceAltBrush}"
+                    <CheckBox Grid.Column="0" IsChecked="{Binding Selected, Mode=TwoWay}"
+                              Visibility="{Binding PickVisibility}" VerticalAlignment="Top"
+                              Margin="0,2,7,0" Click="RowPick_Click" ToolTip="选中这一项（批量管理）"/>
+
+                    <Border Grid.Column="1" Width="26" Height="26" CornerRadius="4" Background="{StaticResource SurfaceAltBrush}"
                             VerticalAlignment="Top" Margin="0,1,0,0">
                         <TextBlock Text="{Binding Glyph}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                    FontSize="11" Foreground="{StaticResource SecondaryTextBrush}"/>
                     </Border>
 
-                    <StackPanel Grid.Column="1" Margin="8,0,8,0">
+                    <StackPanel Grid.Column="2" Margin="8,0,8,0">
                         <TextBlock Text="{Binding Meta}" FontSize="10.5"
                                    Foreground="{StaticResource HintTextBrush}"/>
                         <TextBlock Text="{Binding Body}" FontSize="13" TextWrapping="Wrap" LineHeight="18"
                                    Margin="0,2,0,0" MaxHeight="38"/>
                     </StackPanel>
 
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top">
                         <Button Content="{Binding Action1}" Style="{StaticResource ShareActionBtn}"
                                 CommandParameter="{Binding Key}" Click="RowAction1_Click"
                                 ToolTip="{Binding Action1Tip}"/>
@@ -180,8 +190,23 @@
             <!-- 左栏：发出去的 + 收到的 + 发送区 -->
             <DockPanel Grid.Column="0">
                 <Grid DockPanel.Dock="Top" Height="40" Margin="12,0,8,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
                     <TextBlock x:Name="OutTitle" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
                                Foreground="{StaticResource TextBrush}"/>
+                    <Button x:Name="OutAllBtn" Grid.Column="1" Content="全选" Click="OutAll_Click"
+                            Style="{StaticResource ShareActionBtn}" Visibility="Collapsed" Margin="0,0,4,0"
+                            ToolTip="全选 / 取消全选"/>
+                    <Button x:Name="OutDeleteBtn" Grid.Column="2" Content="删除选中" Click="OutDelete_Click"
+                            Style="{StaticResource ShareActionBtn}" Visibility="Collapsed"
+                            Foreground="{StaticResource DangerBrush}" Margin="0,0,6,0"
+                            ToolTip="把这批从共享列表移除（副本连文件一起删，原文件不动）"/>
+                    <Button x:Name="OutBatchBtn" Grid.Column="3" Content="批量管理" Click="OutBatch_Click"
+                            Style="{StaticResource ShareActionBtn}" ToolTip="勾选多条一起删"/>
                 </Grid>
 
                 <Border DockPanel.Dock="Bottom" Padding="12,8,12,8" Background="{StaticResource BgBrush}"
@@ -251,8 +276,25 @@
                     <StackPanel>
                         <ItemsControl x:Name="OutList"/>
 
-                        <TextBlock x:Name="InTitle" Margin="4,14,0,4" FontSize="12"
-                                   Foreground="{StaticResource SecondaryTextBrush}" Visibility="Collapsed"/>
+                        <Grid x:Name="InHeader" Margin="4,14,0,4" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="InTitle" VerticalAlignment="Center" FontSize="12"
+                                       Foreground="{StaticResource SecondaryTextBrush}"/>
+                            <Button x:Name="InAllBtn" Grid.Column="1" Content="全选" Click="InAll_Click"
+                                    Style="{StaticResource ShareActionBtn}" Visibility="Collapsed" Margin="0,0,4,0"
+                                    ToolTip="全选 / 取消全选"/>
+                            <Button x:Name="InDeleteBtn" Grid.Column="2" Content="删除选中" Click="InDelete_Click"
+                                    Style="{StaticResource ShareActionBtn}" Visibility="Collapsed"
+                                    Foreground="{StaticResource DangerBrush}" Margin="0,0,6,0"
+                                    ToolTip="把这些收到的文件从本机删掉（不能恢复）"/>
+                            <Button x:Name="InBatchBtn" Grid.Column="3" Content="批量管理" Click="InBatch_Click"
+                                    Style="{StaticResource ShareActionBtn}" ToolTip="勾选多条一起删"/>
+                        </Grid>
                         <ItemsControl x:Name="InList"/>
 
                         <TextBlock x:Name="EmptyText" Margin="4,10,0,0" FontSize="12" TextWrapping="Wrap"
@@ -402,6 +444,26 @@
                             <Button Grid.Column="2" Content="打开" Click="OpenFolder_Click" Height="24"
                                     MinWidth="0" Padding="7,0" FontSize="11" Style="{StaticResource BtnGhost}"/>
                         </Grid>
+
+                        <TextBlock Text="收到的目录" Margin="0,10,0,0" FontSize="11"
+                                   Foreground="{StaticResource HintTextBrush}"/>
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="InboxPathText" VerticalAlignment="Center" FontFamily="Consolas"
+                                       FontSize="11" TextTrimming="CharacterEllipsis"/>
+                            <Button Grid.Column="1" Content="选…" Click="ChooseInboxDir_Click" Height="24"
+                                    MinWidth="0" Padding="7,0" FontSize="11" Style="{StaticResource BtnGhost}"
+                                    Margin="6,0,0,0" ToolTip="换一个目录存收到的内容"/>
+                            <Button Grid.Column="2" Content="默认" Click="ResetInboxDir_Click" Height="24"
+                                    MinWidth="0" Padding="7,0" FontSize="11" Style="{StaticResource BtnGhost}"
+                                    Margin="4,0,0,0" ToolTip="恢复成共享区里的 inbox"/>
+                        </Grid>
+                        <TextBlock x:Name="InboxDirHint" Margin="0,4,0,0" FontSize="10" TextWrapping="Wrap"
+                                   Foreground="{StaticResource HintTextBrush}"/>
 
                         <TextBlock x:Name="SettingsHint" Margin="0,8,0,0" FontSize="10.5" TextWrapping="Wrap"
                                    Foreground="{StaticResource DangerBrush}" Visibility="Collapsed"/>

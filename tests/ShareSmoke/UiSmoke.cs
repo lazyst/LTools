@@ -1,6 +1,7 @@
 using System.Collections;
 using System.IO;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -346,6 +347,162 @@ internal static class UiSmoke
             catch { /* 被占用 */ }
         }
 
+        Console.WriteLine("== 界面：时间 / 收到的目录 / 批量管理 ==");
+
+        var inboxList = (ItemsControl)Field(_window, "InList");
+        var when = new Regex(@"· (\d{2}:\d{2}|\d{2}-\d{2} \d{2}:\d{2}) ·");
+        List<object> Rows(ItemsControl list) => ((IEnumerable)list.ItemsSource!).Cast<object>().ToList();
+        string Prop(object row, string name) => row.GetType().GetProperty(name)!.GetValue(row)!.ToString()!;
+        void Click(Button button) => button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Visibility Vis(object row, string name) =>
+            (Visibility)row.GetType().GetProperty(name)!.GetValue(row)!;
+
+        // 危险动作会弹确认框：让计时器在模态循环里替我们点「确定」（同 CaptureOverlaySmoke 的做法）。
+        DispatcherTimer? answer = null;
+        void AutoConfirm()
+        {
+            answer?.Stop();
+            answer = new DispatcherTimer(TimeSpan.FromMilliseconds(120), DispatcherPriority.Background, (_, _) =>
+            {
+                Window? dialog = Application.Current.Windows.OfType<Window>()
+                    .FirstOrDefault(w => w.GetType().Name == "ConfirmDialog");
+                if (dialog?.FindName("OkBtn") is not Button ok) return;
+
+                answer!.Stop();
+                ok.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            }, Dispatcher.CurrentDispatcher);
+            answer.Start();
+        }
+
+        // 每一行都带时间：今天 HH:mm，跨天补 MM-dd。
+        check(Rows(outList).Count > 0 && Rows(outList).All(r => when.IsMatch(Prop(r, "Meta"))),
+            "发出去的每一行都有时间");
+        check(Rows(inboxList).Count > 0 && Rows(inboxList).All(r => when.IsMatch(Prop(r, "Meta"))),
+            "收到的每一行都有时间：" + string.Join(" / ", Rows(inboxList).Select(r => Prop(r, "Meta"))));
+
+        // 收到的目录：默认显示 share/inbox，并写明这个目录里的文件对方都能下载。
+        check(((TextBlock)Field(_window, "InboxPathText")).Text == "share/inbox", "「收到的目录」默认是 share/inbox");
+        check(((TextBlock)Field(_window, "InboxDirHint")).Text.Contains("都能下载", StringComparison.Ordinal),
+            "目录下面写明那个目录里的文件对方都能下载");
+
+        // 换到自定义目录：标签显示完整路径、提示改口；再回默认（后面的批量用例按默认目录走）。
+        Type serverType = typeof(ShareOptions).Assembly.GetType("LTools.Core.Share.ShareServer", true)!;
+        ShareOptions now = (ShareOptions)serverType.GetProperty("Options",
+            BindingFlags.Public | BindingFlags.Static)!.GetValue(null)!;
+        ShareOptions With(string inbox) => new()
+        {
+            Port = now.Port,
+            Running = now.Running,
+            Inbound = now.Inbound,
+            InboxDir = inbox,
+            MaxUploadMb = now.MaxUploadMb,
+            RequireToken = now.RequireToken,
+            Token = now.Token,
+        };
+
+        string customInbox = Path.Combine(tempRoot, "ui-inbox");
+        Invoke(_window, "ApplyOptions", With(customInbox));
+        Flush();
+        check(((TextBlock)Field(_window, "InboxPathText")).Text == customInbox,
+            "自定义目录在界面上显示完整路径");
+        check(((TextBlock)Field(_window, "InboxDirHint")).Text.StartsWith("自定义目录", StringComparison.Ordinal),
+            "换过目录后提示改口");
+
+        Invoke(_window, "ApplyOptions", With(""));
+        Flush();
+        check(((TextBlock)Field(_window, "InboxPathText")).Text == "share/inbox", "回到默认目录");
+
+        check(ServerInboxDir() == Path.Combine(tempRoot, "inbox"), "服务端也回到默认目录");
+
+        // 造两条一次性内容，验批量移除（真点按钮 + 自动点确认框）
+        MethodInfo addPath = StoreType.GetMethod("AddPath")!;
+        string bulkA = Path.Combine(tempRoot, "批量-A.txt");
+        string bulkB = Path.Combine(tempRoot, "批量-B.txt");
+        File.WriteAllText(bulkA, "a");
+        File.WriteAllText(bulkB, "b");
+        addPath.Invoke(Store, new object[] { bulkA, false });
+        addPath.Invoke(Store, new object[] { bulkB, false });
+
+        string inboxDir = (string)StoreType.GetProperty("InboxDir")!.GetValue(Store)!;
+        string bulkIn = Path.Combine(inboxDir, "批量收到.txt");
+        File.WriteAllText(bulkIn, "收到的");
+        Invoke(_window, "Refresh");
+        Flush();
+
+        int beforeOut = RowCount(outList);
+        Click((Button)Field(_window, "OutBatchBtn"));
+        Flush();
+        check((string)((Button)Field(_window, "OutBatchBtn")).Content! == "完成", "「批量管理」进去后变「完成」");
+        check(Vis(Rows(outList)[0], "PickVisibility") == Visibility.Visible, "每行露出勾选框");
+        check(((Button)Field(_window, "OutAllBtn")).Visibility == Visibility.Visible
+              && ((Button)Field(_window, "OutDeleteBtn")).Visibility == Visibility.Visible,
+            "露出「全选」与「删除选中」");
+
+        Click((Button)Field(_window, "OutAllBtn"));
+        Flush();
+        check(Rows(outList).All(IsSelected), "全选把每一行都勾上");
+
+        // 批量管理态截一张，人工核对三列（勾选框 / 名称 / 按钮）没挤在一起。
+        try
+        {
+            string batchPng = Path.Combine(Path.GetTempPath(), "opencode", "share-smoke", "batch.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(batchPng)!);
+            Save(Render(), batchPng);
+            Console.WriteLine("  截图：" + batchPng);
+        }
+        catch (Exception ex)
+        {
+            check(false, "批量管理态能渲染成 png：" + ex.Message);
+        }
+        check(((string)((Button)Field(_window, "OutDeleteBtn")).Content!)
+                .Contains("(" + RowCount(outList) + ")", StringComparison.Ordinal),
+            "「删除选中」带上数量");
+
+        Click((Button)Field(_window, "OutAllBtn"));
+        Flush();
+        check(Rows(outList).All(r => !IsSelected(r)), "再点一次 = 取消全选");
+
+        object rowA = Rows(outList).First(r => Prop(r, "Name") == "批量-A.txt");
+        Invoke(_window, "ToggleRowPick", rowA);
+        Flush();
+        check(IsSelected(rowA), "点整行就勾上");
+        check(((string)((Button)Field(_window, "OutDeleteBtn")).Content!).Contains("(1)", StringComparison.Ordinal),
+            "计数跟着变成 1");
+
+        // 1 秒轮询会重建列表：勾选按行键记着，重建后不该掉。
+        Invoke(_window, "ReloadLists");
+        Flush();
+        check(Rows(outList).All(r => IsSelected(r) == (Prop(r, "Name") == "批量-A.txt")),
+            "列表重建后勾选还在（没被刷新冲掉）");
+
+        AutoConfirm();
+        Click((Button)Field(_window, "OutDeleteBtn"));
+        Flush();
+        check(RowCount(outList) == beforeOut - 1, "批量删掉勾上的那一项");
+        check(Rows(outList).All(r => Prop(r, "Name") != "批量-A.txt"), "被删的那条不在了");
+        check(Rows(outList).Any(r => Prop(r, "Name") == "批量-B.txt"), "没勾的那条还在");
+        check((string)((Button)Field(_window, "OutBatchBtn")).Content! == "批量管理", "删完自动退出批量管理");
+        check(Items().All(i => Str(i, "Name") != "批量-A.txt"), "共享清单里也真的没了");
+
+        int beforeIn = RowCount(inboxList);
+        Click((Button)Field(_window, "InBatchBtn"));
+        Flush();
+        check((string)((Button)Field(_window, "InBatchBtn")).Content! == "完成", "收到的也能进批量管理");
+        Click((Button)Field(_window, "InAllBtn"));
+        Flush();
+        check(Rows(inboxList).All(IsSelected), "收到的全选");
+        Click((Button)Field(_window, "InAllBtn"));
+        Flush();
+
+        object rowIn = Rows(inboxList).First(r => Prop(r, "Name") == "批量收到.txt");
+        Invoke(_window, "ToggleRowPick", rowIn);
+        Flush();
+        AutoConfirm();
+        Click((Button)Field(_window, "InDeleteBtn"));
+        Flush();
+        check(RowCount(inboxList) == beforeIn - 1, "收到的批量删除");
+        check(!File.Exists(bulkIn), "收到的文件真的从磁盘删掉");
+
         Console.WriteLine("== 界面：单实例 / 渲染 ==");
         LTools.Views.ShareWindow.ShowOrActivate();
         Flush();
@@ -395,6 +552,9 @@ internal static class UiSmoke
 
     private static List<object> Items() =>
         ((IEnumerable)StoreType.GetMethod("Items")!.Invoke(Store, null)!).Cast<object>().ToList();
+
+    private static string ServerInboxDir() =>
+        (string)StoreType.GetProperty("InboxDir")!.GetValue(Store)!;
 
     private static string Str(object item, string name) =>
         (string)ItemType.GetProperty(name)!.GetValue(item)!;

@@ -6,7 +6,7 @@ namespace LTools.Core.Share;
 
 /// <summary>
 /// 共享区落盘：<c>items.json</c>（本机发出去的清单）+ <c>files/</c>（剪贴板 / 截图落盘）
-/// + <c>inbox/</c>（对方发来的，目录即真相）。
+/// + <c>inbox/</c>（对方发来的，目录即真相；可换成别处，见 <see cref="UseInbox"/>）。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -80,16 +80,66 @@ internal sealed class ShareStore
     {
         Root = Path.GetFullPath(root);
         FilesDir = Path.Combine(Root, "files");
-        InboxDir = Path.Combine(Root, "inbox");
-        PartialDir = Path.Combine(InboxDir, ".partial");
+        InboxDir = DefaultInboxDir;
         ItemsPath = Path.Combine(Root, "items.json");
     }
 
     public string Root { get; }
     public string ItemsPath { get; }
     public string FilesDir { get; }
-    public string InboxDir { get; }
-    public string PartialDir { get; }
+
+    /// <summary>默认收件目录：<c>&lt;数据根&gt;/share/inbox</c>。</summary>
+    public string DefaultInboxDir => Path.Combine(Root, "inbox");
+
+    /// <summary>收到的内容存哪（配置里可改，空 = 默认）。</summary>
+    public string InboxDir { get; private set; }
+
+    public string PartialDir => Path.Combine(InboxDir, ".partial");
+
+    /// <summary>
+    /// 换收件目录（<c>Share.InboxDir</c>）：空 = 回到默认；相对路径 / 非法路径退回默认。
+    /// </summary>
+    /// <remarks>
+    /// 这个目录里的文件**对方都能下载**（浏览器只认「纯文件名」），所以窗口上要写明；
+    /// 不让填相对路径，免得跟着当前工作目录飘。
+    /// </remarks>
+    public void UseInbox(string? dir)
+    {
+        InboxDir = DefaultInboxDir;
+        if (string.IsNullOrWhiteSpace(dir)) return;
+
+        try
+        {
+            InboxDir = Path.GetFullPath(dir.Trim());
+        }
+        catch
+        {
+            InboxDir = DefaultInboxDir;
+        }
+    }
+
+    /// <summary>
+    /// 这个目录能不能当收件目录（能不能建出来、能不能写）。能就返回 <c>null</c>，否则返回原因。
+    /// </summary>
+    /// <remarks>
+    /// 选目录时先探一次，别等对方发文件过来才在浏览器上看到 500；探针是个临时小文件，写完就删。
+    /// </remarks>
+    public static string? CheckInboxDir(string dir)
+    {
+        try
+        {
+            Directory.CreateDirectory(dir);
+
+            string probe = Path.Combine(dir, ".ltools-write-" + Guid.NewGuid().ToString("N")[..8] + ".tmp");
+            File.WriteAllText(probe, "ok");
+            File.Delete(probe);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+    }
 
     public void EnsureLayout()
     {

@@ -170,6 +170,46 @@ try
     Check(inboxText.Length > 0, "文字落进 inbox/文字 <时间>.txt");
     Check(inboxText.Length > 0 && File.ReadAllText(inboxText) == "手机发来的", "落盘内容对得上");
 
+    Console.WriteLine("== 收到的目录 ==");
+    string customInbox = Path.Combine(tempRoot, "custom-inbox");
+    apply.Invoke(null, new object[]
+    {
+        new ShareOptions
+        {
+            Port = port, Running = true, Inbound = ShareInbound.allow,
+            InboxDir = customInbox, MaxUploadMb = 64,
+        }
+    });
+    Check(await WaitReady(http), "换收到的目录后服务重启");
+
+    using (var changed = await PostJson(http, "/api/text", new { text = "进自定义目录" }))
+        Check(changed.IsSuccessStatusCode, "文字收下");
+
+    string customFile = Directory.Exists(customInbox)
+        ? Directory.EnumerateFiles(customInbox, "文字 *.txt")
+            .FirstOrDefault(f => File.ReadAllText(f) == "进自定义目录") ?? ""
+        : "";
+    Check(customFile.Length > 0, "文字落在配置的目录里：" + customInbox);
+    Check(!Directory.EnumerateFiles(Path.Combine(tempRoot, "inbox"), "*.txt")
+            .Any(f => File.ReadAllText(f) == "进自定义目录"),
+        "默认 inbox 里没有它（按内容比：名字带分钟，可能撞名）");
+
+    using (var state = await GetJson(http, "/api/state"))
+        Check(state.RootElement.GetProperty("inbox").EnumerateArray()
+                .Any(e => e.GetProperty("name").GetString() == Path.GetFileName(customFile)),
+            "状态里列的是自定义目录的内容");
+
+    using (var raw = await http.GetAsync("/api/raw/inbox/" + Uri.EscapeDataString(Path.GetFileName(customFile))))
+        Check(raw.IsSuccessStatusCode && await raw.Content.ReadAsStringAsync() == "进自定义目录",
+            "自定义目录里的文件能下载");
+
+    // 回到默认：后面的窗口段按默认 inbox 断言。
+    apply.Invoke(null, new object[]
+    {
+        new ShareOptions { Port = port, Running = true, Inbound = ShareInbound.allow, MaxUploadMb = 64 }
+    });
+    Check(await WaitReady(http), "恢复默认目录后服务重启");
+
     Console.WriteLine("== 需要确认 ==");
     Type promptType = asm.GetType("LTools.Views.ShareInboundPrompt", throwOnError: true)!;
     PropertyInfo autoAnswer = promptType.GetProperty("AutoAnswer", BindingFlags.Public | BindingFlags.Static)!;
