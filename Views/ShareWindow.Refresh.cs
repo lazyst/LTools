@@ -77,7 +77,10 @@ public partial class ShareWindow : Window
         UpdateQr(qr?.Full ?? "", qrHint);
 
         TokenCheck.IsChecked = options.RequireToken;
-        InboundCheck.IsChecked = options.AllowInbound;
+        _syncingInbound = true;
+        InboundCombo.SelectedValue = options.Inbound;
+        InboundHint.Text = ShareOptions.DescribeInbound(options.Inbound);
+        _syncingInbound = false;
         ResetTokenBtn.Visibility = options.RequireToken ? Visibility.Visible : Visibility.Collapsed;
 
         DeviceText.Text = ShareServer.LastDevice == null
@@ -170,8 +173,8 @@ public partial class ShareWindow : Window
             Meta = !item.Exists
                 ? "已失效 · 原文件不在了"
                 : isText
-                    ? $"文字 · {item.AddedAt:HH:mm} · {FormatSize(item.Size)}"
-                    : $"{kind} · {FormatSize(item.Size)} · {(item.Copied ? "副本" : "原地")}",
+                    ? $"文字 · {item.AddedAt:HH:mm} · {ShareStore.FormatSize(item.Size)}"
+                    : $"{kind} · {ShareStore.FormatSize(item.Size)} · {(item.Copied ? "副本" : "原地")}",
             Tip = !item.Exists
                 ? "原文件被移动或删除了"
                 : isText ? "双击查看全文" : "双击打开位置",
@@ -199,8 +202,8 @@ public partial class ShareWindow : Window
             Glyph = Glyph(file.Name),
             Body = isText ? PreviewOf(path) : "",
             Meta = isText
-                ? $"文字 · {file.Modified:HH:mm} · {FormatSize(file.Size)}"
-                : $"收到 · {FormatSize(file.Size)}",
+                ? $"文字 · {file.Modified:HH:mm} · {ShareStore.FormatSize(file.Size)}"
+                : $"收到 · {ShareStore.FormatSize(file.Size)}",
             Tip = isText ? "双击查看全文" : "双击打开位置",
             Action1 = isText ? "复制" : "打开文件",
             Action1Tip = isText ? "把这段文字放进剪贴板" : "用默认程序打开这个文件",
@@ -264,13 +267,6 @@ public partial class ShareWindow : Window
         return ext.Length == 0 ? "件" : ext[..Math.Min(3, ext.Length)].ToUpperInvariant();
     }
 
-    private static string FormatSize(long bytes)
-    {
-        if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024 * 1024) return (bytes / 1024.0).ToString("0.0") + " KB";
-        if (bytes < 1024L * 1024 * 1024) return (bytes / 1024.0 / 1024).ToString("0.0") + " MB";
-        return (bytes / 1024.0 / 1024 / 1024).ToString("0.00") + " GB";
-    }
 
     private static string Ago(DateTime? time)
     {

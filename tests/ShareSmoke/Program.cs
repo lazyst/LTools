@@ -61,7 +61,7 @@ var options = new ShareOptions
 {
     Port = port,
     Running = true,
-    AllowInbound = true,
+    Inbound = ShareInbound.allow,
     MaxUploadMb = 64,
 };
 
@@ -78,10 +78,15 @@ try
     {
         Check(state.RootElement.GetProperty("ok").GetBoolean(), "/api/state 回 ok");
         Check(state.RootElement.GetProperty("items").GetArrayLength() == 0, "初始清单为空");
+        Check(state.RootElement.GetProperty("inbound").GetString() == "allow", "状态里报「自动接收」");
     }
 
     string page = await http.GetStringAsync("/");
     Check(page.Contains("LTools", StringComparison.Ordinal), "/ 返回页面");
+    Check(page.Contains("待发送", StringComparison.Ordinal) && page.Contains("id=\"pending\"", StringComparison.Ordinal),
+        "页面是「先攒后发」那一版（有「待发送」列表，选文件不立刻上传）");
+    Check(page.Contains("data.inbound", StringComparison.Ordinal) && !page.Contains("allowInbound", StringComparison.Ordinal),
+        "页面读接收三档 inbound（旧的 allowInbound 已经不在）");
 
     string source = Path.Combine(tempRoot, "src.txt");
     File.WriteAllText(source, "hello-share", new UTF8Encoding(false));
@@ -165,17 +170,81 @@ try
     Check(inboxText.Length > 0, "文字落进 inbox/文字 <时间>.txt");
     Check(inboxText.Length > 0 && File.ReadAllText(inboxText) == "手机发来的", "落盘内容对得上");
 
-    Console.WriteLine("== 暂停接收 ==");
-    apply.Invoke(null, new object[] { new ShareOptions { Port = port, Running = true, AllowInbound = false, MaxUploadMb = 64 } });
+    Console.WriteLine("== 需要确认 ==");
+    Type promptType = asm.GetType("LTools.Views.ShareInboundPrompt", throwOnError: true)!;
+    PropertyInfo autoAnswer = promptType.GetProperty("AutoAnswer", BindingFlags.Public | BindingFlags.Static)!;
+
+    apply.Invoke(null, new object[]
+    {
+        new ShareOptions { Port = port, Running = true, Inbound = ShareInbound.confirm, MaxUploadMb = 64 }
+    });
+    Check(await WaitReady(http), "切成「需要确认」后服务重启");
+
+    using (var state = await GetJson(http, "/api/state"))
+        Check(state.RootElement.GetProperty("inbound").GetString() == "confirm", "状态里报「需要确认」");
+
+    // 本机先点「取消」
+    autoAnswer.SetValue(null, new Func<string, string, bool>((_, _) => false));
+    using (var deniedText = await PostJson(http, "/api/text", new { text = "不该收下的文字" }))
+    {
+        Check(deniedText.StatusCode == HttpStatusCode.Forbidden, "拒绝时文字 403");
+        Check((await deniedText.Content.ReadAsStringAsync()).Contains("declined", StringComparison.Ordinal),
+            "回执写明 declined（页面据此说「电脑拒绝了这次发送」）");
+    }
+    Check(!Directory.EnumerateFiles(Path.Combine(tempRoot, "inbox"), "文字 *.txt")
+            .Any(f => File.ReadAllText(f) == "不该收下的文字"),
+        "拒绝的文字没落盘");
+
+    // 本机点「允许接收」
+    autoAnswer.SetValue(null, new Func<string, string, bool>((_, what) => what.Contains("确认.bin")));
+    const string confirmId = "confirm-upload";
+    using (var init = await PostJsonDoc(http, "/api/upload/init", new { name = "确认.bin", size = 8, uploadId = confirmId }))
+        Check(init.RootElement.GetProperty("ok").GetBoolean(), "允许之后才 init");
+    Check(!File.Exists(Path.Combine(tempRoot, "inbox", ".partial", confirmId + ".part")),
+        "允许之后也还没写字节（等 append）");
+
+    // 已经允许过的同一个 uploadId 不再问：把回答改成「拒绝」也照样放行
+    autoAnswer.SetValue(null, new Func<string, string, bool>((_, _) => false));
+    using (var again = await PostJson(http, "/api/upload/init", new { name = "确认.bin", size = 8, uploadId = confirmId }))
+        Check(again.StatusCode == HttpStatusCode.OK, "同一个 uploadId 不重复问");
+
+    // 没经过 init 的上传（没被允许过）不许追加
+    using (var rogue = await PostJson(http, "/api/upload/append?uploadId=rogue&offset=0", new { }))
+    {
+        Check(rogue.StatusCode == HttpStatusCode.Forbidden, "没确认过的上传不许追加");
+        Check((await rogue.Content.ReadAsStringAsync()).Contains("unapproved", StringComparison.Ordinal),
+            "回执写明 unapproved");
+    }
+
+    Check(await Append(http, confirmId, 0, new byte[8]), "允许后能追加分片");
+    using (var finish = await PostJson(http,
+               $"/api/upload/finish?uploadId={confirmId}&name={Uri.EscapeDataString("确认.bin")}&size=8", new { }))
+        Check(finish.StatusCode == HttpStatusCode.OK, "允许后能收尾");
+    Check(File.Exists(Path.Combine(tempRoot, "inbox", "确认.bin")), "确认过的文件落进 inbox/");
+    autoAnswer.SetValue(null, null);
+
+    Console.WriteLine("== 不接受 ==");
+    apply.Invoke(null, new object[]
+    {
+        new ShareOptions { Port = port, Running = true, Inbound = ShareInbound.block, MaxUploadMb = 64 }
+    });
     Check(await WaitReady(http), "改配置后服务重启");
     using (var denied = await PostJson(http, "/api/upload/init", new { name = "x.bin", size = 10, uploadId = "x" }))
-        Check(denied.StatusCode == HttpStatusCode.Forbidden, "暂停接收时上传 403");
+    {
+        Check(denied.StatusCode == HttpStatusCode.Forbidden, "不接受时上传 403");
+        Check((await denied.Content.ReadAsStringAsync()).Contains("paused", StringComparison.Ordinal),
+            "回执写明 paused");
+    }
+    using (var deniedText = await PostJson(http, "/api/text", new { text = "暂停时的文字" }))
+        Check(deniedText.StatusCode == HttpStatusCode.Forbidden, "不接受时文字 403");
+    using (var state = await GetJson(http, "/api/state"))
+        Check(state.RootElement.GetProperty("inbound").GetString() == "block", "状态里报「不接受」");
 
     Console.WriteLine("== 令牌 ==");
     string token = ShareOptions.NewToken();
     apply.Invoke(null, new object[]
     {
-        new ShareOptions { Port = port, Running = true, AllowInbound = true, MaxUploadMb = 64, RequireToken = true, Token = token }
+        new ShareOptions { Port = port, Running = true, Inbound = ShareInbound.allow, MaxUploadMb = 64, RequireToken = true, Token = token }
     });
     Check(await WaitReady(http), "开令牌后服务重启");
 

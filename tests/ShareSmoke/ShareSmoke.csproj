@@ -25,6 +25,10 @@
       <HintPath>..\..\bin\Debug\net10.0-windows10.0.19041.0\LTools.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <!-- 浏览器端页面：服务按 AppContext.BaseDirectory 找 Assets/Share/index.html，
+         不拷过来的话冒烟只会拿到「页面缺失」的兜底页，等于没验。 -->
+    <Content Include="..\..\Assets\Share\index.html" Link="Assets\Share\index.html"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

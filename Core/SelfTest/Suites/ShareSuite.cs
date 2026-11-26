@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Text.Json;
 using LTools.Core.Share;
 
 namespace LTools.Core.SelfTest;
@@ -23,6 +24,7 @@ internal static class ShareSuite
         cases.Add(new("share", "文字落盘进 files/ 并加清单", Texts));
         cases.Add(new("share", "对方发来的文字只进 inbox/，不进清单", InboxTexts));
         cases.Add(new("share", "配置归一：端口 / 上限 / 令牌形状", Options));
+        cases.Add(new("share", "「接收」三档：选项文案 / 落盘用英文键", InboundModes));
         cases.Add(new("share", "子网判断与地址优先级", Subnets));
     }
 
@@ -170,6 +172,37 @@ internal static class ShareSuite
         string fresh = ShareOptions.NewToken();
         Check.Equal(16, fresh.Length, "新令牌 16 位");
         Check.True(fresh.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f'), "小写十六进制");
+    }
+
+    private static void InboundModes()
+    {
+        // 三档的键就是配置里存的字（英文），中文名只在界面上用。
+        Check.Equal("allow", ShareInbound.allow.ToString(), "默认档的键");
+        Check.Equal("confirm", ShareInbound.confirm.ToString(), "需确认的键");
+        Check.Equal("block", ShareInbound.block.ToString(), "不接受的键");
+
+        IReadOnlyList<KeyValuePair<ShareInbound, string>> choices = ShareOptions.InboundChoices;
+        Check.Equal(3, choices.Count, "下拉三项");
+        Check.Equal("自动接收", choices[0].Value, "第一项文案");
+        Check.Equal("需要确认", choices[1].Value, "第二项文案");
+        Check.Equal("不接受", choices[2].Value, "第三项文案");
+        Check.True(choices.All(c => Enum.IsDefined(c.Key)), "选项键都是合法枚举值");
+
+        foreach (ShareInbound mode in Enum.GetValues<ShareInbound>())
+        {
+            Check.True(ShareOptions.DescribeInbound(mode).Length > 0, mode + " 有一句说明");
+            Check.True(ShareOptions.LabelInbound(mode).Length > 0, mode + " 有日志短名");
+        }
+
+        Check.Equal(ShareInbound.allow, new ShareOptions().Inbound, "默认直接收（升级后老配置不动也不拦）");
+        Check.Equal(ShareInbound.confirm,
+            new ShareOptions { Inbound = ShareInbound.confirm }.Normalized().Inbound, "归一保留档位");
+        Check.Equal(ShareInbound.allow,
+            new ShareOptions { Inbound = (ShareInbound)99 }.Normalized().Inbound, "越界的档位回落自动接收");
+
+        // settings.json 里存的是英文键（不是 0/1/2），与 LTools.example.json 一致。
+        Check.Equal("\"confirm\"", JsonSerializer.Serialize(ShareInbound.confirm), "落盘是英文键");
+        Check.Equal(ShareInbound.block, JsonSerializer.Deserialize<ShareInbound>("\"block\""), "读回英文键");
     }
 
     private static void Subnets()

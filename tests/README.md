@@ -139,7 +139,7 @@ dotnet run -- --uihost                    # 再加一段：拉起 UiHost.exe，�
 
 临时数据根（`%TEMP%`），反射启动 `ShareServer`（随机端口），断言：页面与 `/api/state`、
 清单外路径 404、原件下载字节一致并声明 `Accept-Ranges`、分片上传中断后带 `offset` 续传、
-`sha256` 不匹配 422、重复 finish 404、暂停接收 403、令牌关闭 / 打开两种形态（根路径提示页、
+`sha256` 不匹配 422、重复 finish 404、不接受（block）403 + 需要确认的代答拒绝 / 允许、令牌关闭 / 打开两种形态（根路径提示页、
 无令牌 401、带令牌 200）；手机发来的文字只落 `inbox/`、**不进**「发出去的」。用
 `FrameworkReference Microsoft.AspNetCore.App`，因为 Kestrel 的共享框架不在默认输出里。
 

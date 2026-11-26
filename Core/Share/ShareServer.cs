@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using LTools.Views;
 
 namespace LTools.Core.Share;
 
@@ -33,7 +34,9 @@ namespace LTools.Core.Share;
 internal static class ShareServer
 {
     private const int PerMinute = 120;
-    private const int UploadsPerMinute = 10;
+
+    /// <summary>每分钟最多「开始」多少次上传（一次选二十个文件也算得下）；分片追加不计数。</summary>
+    private const int UploadsPerMinute = 30;
 
     private static readonly object Gate = new();
     private static readonly object ApplyGate = new();
@@ -57,6 +60,9 @@ internal static class ShareServer
     private static int _port;
     private static string? _lastDevice;
     private static DateTime? _lastSeen;
+
+    /// <summary>「需要确认」模式下已经允许过的上传：同一个 <c>uploadId</c> 只问一次。</summary>
+    private static readonly ConcurrentDictionary<string, DateTime> ApprovedUploads = new();
 
     /// <summary>状态 / 内容变化（窗口据此刷新）。可能在 Kestrel 线程上触发。</summary>
     public static event Action? Changed;
@@ -186,6 +192,7 @@ internal static class ShareServer
     private static void StartCore(ShareOptions options)
     {
         ShareStore.Default.EnsureLayout();
+        ApprovedUploads.Clear();
         _endpoints = LanAddress.Candidates().ToList();
         _endpoint = _endpoints.FirstOrDefault();
         _port = options.Port;
@@ -222,8 +229,10 @@ internal static class ShareServer
                 return;
             }
 
-            bool upload = path.StartsWithSegments("/api/upload");
-            if (!RateLimit.Allow(remote, upload, out int retryAfter))
+            // 只把「开始一次上传」算进上传次数：分片追加 / 收尾 / 查未完成都不算，
+            // 否则大文件传到一半（8 MB 一片）就会撞上每分钟的次数上限。
+            bool uploadStart = path == "/api/upload/init";
+            if (!RateLimit.Allow(remote, uploadStart, out int retryAfter))
             {
                 ctx.Response.StatusCode = StatusCodes.Status429TooManyRequests;
                 ctx.Response.Headers.RetryAfter = retryAfter.ToString();
@@ -272,7 +281,7 @@ internal static class ShareServer
 
         string url = _endpoint?.Url(options.Port) ?? $"http://127.0.0.1:{options.Port}/";
         AppLog.Info("Share",
-            $"共享服务已启动：{url}（令牌 {(options.RequireToken ? "开" : "关")}，回传 {(options.AllowInbound ? "开" : "关")}）");
+            $"共享服务已启动：{url}（令牌 {(options.RequireToken ? "开" : "关")}，接收 {ShareOptions.LabelInbound(options.Inbound)}）");
     }
 
     // ============ 页面 ============
@@ -319,7 +328,7 @@ internal static class ShareServer
         {
             ok = true,
             title = Environment.MachineName,
-            allowInbound = o.AllowInbound,
+            inbound = o.Inbound.ToString(),
             requireToken = o.RequireToken,
             lastDevice = LastDevice,
             lastSeen = LastSeen?.ToString("o"),
@@ -364,11 +373,11 @@ internal static class ShareServer
 
     private static async Task<IResult> PostText(HttpContext ctx)
     {
-        if (!Options.AllowInbound) return Results.StatusCode(StatusCodes.Status403Forbidden);
-
         TextBody? body = await ReadJson<TextBody>(ctx);
         string text = body?.Text ?? "";
         if (text.Length == 0) return BadRequest("empty");
+
+        if (GateInbound(ctx, $"一段文字（{text.Length} 字）") is { } refused) return refused;
 
         bool ok = Native.StaRunner.Run(() => Native.NativeClipboard.SetText(text), 3000) == true;
         if (!ok) return Results.StatusCode(StatusCodes.Status500InternalServerError);
@@ -376,7 +385,7 @@ internal static class ShareServer
         try { ShareStore.Default.AddInboxText(text, $"文字 {ShareStore.Stamp()}.txt"); }
         catch (Exception ex) { AppLog.Warn("Share", $"文字落盘失败：{ex.Message}"); }
 
-        RememberDevice(ctx.Request.Headers["X-Share-Device"].ToString());
+        RememberDevice(DeviceName(ctx));
         Ui.Post(RaiseChanged);
         return WriteJson(new { ok = true });
     }
@@ -399,8 +408,6 @@ internal static class ShareServer
     private static async Task<IResult> PostUploadInit(HttpContext ctx)
     {
         ShareOptions o = Options;
-        if (!o.AllowInbound) return Results.StatusCode(StatusCodes.Status403Forbidden);
-
         InitBody? body = await ReadJson<InitBody>(ctx);
         if (body == null || string.IsNullOrWhiteSpace(body.Name)) return BadRequest("name");
 
@@ -412,6 +419,10 @@ internal static class ShareServer
 
         string id = ShareStore.SafeName(body.UploadId);
         if (id.Length == 0) id = ShareOptions.NewToken();
+
+        // 「需要确认」就卡在这里：允许之后才开始传字节，拒绝 / 超时都不落半截文件。
+        if (GateInbound(ctx, $"文件「{body.Name}」（{ShareStore.FormatSize(body.Size)}）", id) is { } refused)
+            return refused;
 
         string part = store.PartialPath(id);
         long offset = File.Exists(part) ? new FileInfo(part).Length : 0;
@@ -433,11 +444,13 @@ internal static class ShareServer
 
     private static async Task<IResult> PostUploadAppend(HttpContext ctx)
     {
-        if (!Options.AllowInbound) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (Options.Inbound == ShareInbound.block) return Refuse(StatusCodes.Status403Forbidden, "paused");
 
         string id = ctx.Request.Query["uploadId"].ToString();
         if (!long.TryParse(ctx.Request.Query["offset"].ToString(), out long offset) || offset < 0)
             return BadRequest("offset");
+
+        if (!UploadApproved(id)) return Refuse(StatusCodes.Status403Forbidden, "unapproved");
 
         ShareStore store = ShareStore.Default;
         store.EnsureLayout();
@@ -461,7 +474,7 @@ internal static class ShareServer
 
     private static async Task<IResult> PostUploadFinish(HttpContext ctx)
     {
-        if (!Options.AllowInbound) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (Options.Inbound == ShareInbound.block) return Refuse(StatusCodes.Status403Forbidden, "paused");
 
         string id = ctx.Request.Query["uploadId"].ToString();
         string name = ctx.Request.Query["name"].ToString();
@@ -470,6 +483,8 @@ internal static class ShareServer
 
         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name) || size < 0)
             return BadRequest("params");
+
+        if (!UploadApproved(id)) return Refuse(StatusCodes.Status403Forbidden, "unapproved");
 
         ShareStore store = ShareStore.Default;
         string part = store.PartialPath(id);
@@ -500,8 +515,9 @@ internal static class ShareServer
             return Results.StatusCode(StatusCodes.Status500InternalServerError);
         }
 
-        RememberDevice(ctx.Request.Headers["X-Share-Device"].ToString());
+        RememberDevice(DeviceName(ctx));
         TryDelete(Path.Combine(store.PartialDir, id + ".json"));
+        ApprovedUploads.TryRemove(id, out _);
         Ui.Post(RaiseChanged);
         return WriteJson(new { ok = true, name = Path.GetFileName(dest) });
     }
@@ -560,6 +576,61 @@ internal static class ShareServer
         }
     }
 
+    // ============ 接收这一关 ============
+
+    /// <summary>
+    /// 「对方发来内容」要先过的关：<c>block</c> 直接拒，<c>confirm</c> 要在本机点允许。
+    /// 返回 null = 放行；否则就是给浏览器的回执。
+    /// </summary>
+    /// <param name="uploadId">上传时给，同一个 id 只问一次（续传 / 重试不再打扰）。</param>
+    private static IResult? GateInbound(HttpContext ctx, string what, string? uploadId = null)
+    {
+        ShareOptions o = Options;
+        if (o.Inbound == ShareInbound.block) return Refuse(StatusCodes.Status403Forbidden, "paused");
+        if (o.Inbound != ShareInbound.confirm) return null;
+        if (uploadId != null && ApprovedUploads.ContainsKey(uploadId)) return null;
+
+        InboundAnswer answer = ShareInboundPrompt.Ask(DeviceName(ctx), what, ctx.RequestAborted);
+        if (answer != InboundAnswer.Allowed)
+        {
+            return answer switch
+            {
+                InboundAnswer.Timeout => Refuse(StatusCodes.Status408RequestTimeout, "timeout"),
+                InboundAnswer.Busy => Refuse(StatusCodes.Status429TooManyRequests, "busy"),
+                _ => Refuse(StatusCodes.Status403Forbidden, "declined"),
+            };
+        }
+
+        if (uploadId != null) Approve(uploadId);
+        return null;
+    }
+
+    /// <summary>「需要确认」模式下这个上传是否已经被允许过（其它模式一律放行）。</summary>
+    private static bool UploadApproved(string uploadId) =>
+        Options.Inbound != ShareInbound.confirm || ApprovedUploads.ContainsKey(uploadId);
+
+    private static void Approve(string uploadId)
+    {
+        DateTime now = DateTime.UtcNow;
+
+        // 只记「问过一次」，顺手把六小时前的清掉；丢了的代价是最多再问一遍。
+        foreach (var pair in ApprovedUploads)
+            if (now - pair.Value > TimeSpan.FromHours(6)) ApprovedUploads.TryRemove(pair.Key, out _);
+
+        ApprovedUploads[uploadId] = now;
+    }
+
+    /// <summary>浏览器报上来的设备名（缺省按 UA 粗判由页面自己补，这里只认干净的短名）。</summary>
+    private static string? DeviceName(HttpContext ctx)
+    {
+        string name = ctx.Request.Headers["X-Share-Device"].ToString().Trim();
+        if (name.Length == 0) return null;
+        return name.Length > 40 ? name[..40] : name;
+    }
+
+    private static IResult Refuse(int status, string error) =>
+        WriteJson(new { ok = false, error }, status);
+
     // ============ 工具 ============
 
     private static async Task<T?> ReadJson<T>(HttpContext ctx) where T : class
@@ -576,6 +647,9 @@ internal static class ShareServer
 
     private static IResult WriteJson(object value) =>
         Results.Text(JsonSerializer.Serialize(value, JsonOut), "application/json; charset=utf-8");
+
+    private static IResult WriteJson(object value, int statusCode) =>
+        Results.Text(JsonSerializer.Serialize(value, JsonOut), "application/json; charset=utf-8", statusCode: statusCode);
 
     private static IResult BadRequest(string error) =>
         WriteJson(new { ok = false, error });
@@ -651,10 +725,10 @@ internal static class ShareServer
         {
             public long Minute;
             public int Requests;
-            public int Uploads;
+            public int UploadStarts;
         }
 
-        public static bool Allow(IPAddress? ip, bool upload, out int retryAfterSeconds)
+        public static bool Allow(IPAddress? ip, bool uploadStart, out int retryAfterSeconds)
         {
             retryAfterSeconds = 30;
             string key = ip?.ToString() ?? "unknown";
@@ -667,11 +741,11 @@ internal static class ShareServer
                 {
                     counter.Minute = minute;
                     counter.Requests = 0;
-                    counter.Uploads = 0;
+                    counter.UploadStarts = 0;
                 }
 
                 if (++counter.Requests > PerMinute) return false;
-                if (upload && ++counter.Uploads > UploadsPerMinute) return false;
+                if (uploadStart && ++counter.UploadStarts > UploadsPerMinute) return false;
                 return true;
             }
         }

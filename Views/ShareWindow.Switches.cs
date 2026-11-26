@@ -21,11 +21,29 @@ public partial class ShareWindow : Window
 {
     // ============ 开关 ============
 
-    private void Toggle_Click(object sender, RoutedEventArgs e) => ApplyOptions(toggleRunning: true);
+    private void Toggle_Click(object sender, RoutedEventArgs e) =>
+        ApplyOptions(Clone(ShareServer.Options, running: !ShareServer.IsRunning, inbound: InboundOf()));
 
-    private void Token_Click(object sender, RoutedEventArgs e) => ApplyOptions();
+    private void Token_Click(object sender, RoutedEventArgs e)
+    {
+        ShareOptions current = ShareServer.Options;
+        bool required = TokenCheck.IsChecked == true;
 
-    private void Inbound_Click(object sender, RoutedEventArgs e) => ApplyOptions();
+        ShareOptions next = Clone(current, inbound: InboundOf());
+        next.RequireToken = required;
+        if (required && string.IsNullOrEmpty(next.Token)) next.Token = ShareOptions.NewToken();
+
+        ApplyOptions(next);
+    }
+
+    private void Inbound_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingInbound) return;
+        if (InboundCombo.SelectedValue is not ShareInbound inbound) return;
+        if (inbound == ShareServer.Options.Inbound) return;
+
+        ApplyOptions(Clone(ShareServer.Options, inbound: inbound));
+    }
 
     private void ResetToken_Click(object sender, RoutedEventArgs e)
     {
@@ -33,43 +51,21 @@ public partial class ShareWindow : Window
                 "旧地址会立刻失效，之前发出去的链接都需要重新扫码。", danger: true, okText: "重置")) return;
 
         ShareOptions current = ShareServer.Options;
-        var options = Clone(current, token: ShareOptions.NewToken());
-        ShareServer.Apply(options);
-        SettingsStore.Modify(file => file.Share = options);
-        Refresh();
+        ApplyOptions(Clone(current, token: ShareOptions.NewToken(), inbound: InboundOf()));
     }
 
-    private void ApplyOptions(bool toggleRunning = false)
-    {
-        ShareOptions current = ShareServer.Options;
-        bool running = toggleRunning ? !ShareServer.IsRunning : current.Running;
-        bool needToken = TokenCheck.IsChecked == true;
+    /// <summary>界面上选中的「接收」档位（下拉还没回填时以配置为准）。</summary>
+    private ShareInbound InboundOf() =>
+        InboundCombo.SelectedValue is ShareInbound inbound ? inbound : ShareServer.Options.Inbound;
 
-        var options = new ShareOptions
-        {
-            Port = current.Port,
-            Running = running,
-            AllowInbound = InboundCheck.IsChecked == true,
-            MaxUploadMb = current.MaxUploadMb,
-            RequireToken = needToken,
-            Token = current.Token,
-        };
-
-        if (needToken && string.IsNullOrEmpty(options.Token)) options.Token = ShareOptions.NewToken();
-
-        ShareServer.Apply(options);
-        SettingsStore.Modify(file => file.Share = options);
-        Refresh();
-    }
-
-    private static ShareOptions Clone(ShareOptions source, string? token = null) => new()
+    private static ShareOptions Clone(ShareOptions source, string? token = null,
+        bool? running = null, ShareInbound? inbound = null) => new()
     {
         Port = source.Port,
-        Running = source.Running,
-        AllowInbound = source.AllowInbound,
+        Running = running ?? source.Running,
+        Inbound = inbound ?? source.Inbound,
         MaxUploadMb = source.MaxUploadMb,
         RequireToken = source.RequireToken,
         Token = token ?? source.Token,
     };
-
 }

@@ -166,7 +166,7 @@
   "Share": {
     "Port": 18767,
     "Running": false,
-    "AllowInbound": true,
+    "Inbound": "allow",
     "MaxUploadMb": 200,
     "RequireToken": false,
     "Token": ""

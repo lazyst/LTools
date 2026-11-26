@@ -41,7 +41,7 @@ public sealed class SettingsFile
     /// <summary>录屏的默认开关：声音 / 摄像头 / 键鼠特效 / 编码器 / 录完裁剪。</summary>
     public RecordOptions Record { get; set; } = new();
 
-    /// <summary>局域网共享：端口 / 是否在共享 / 回传 / 上传上限 / 可选令牌。</summary>
+    /// <summary>局域网共享：端口 / 是否在共享 / 接收方式 / 上传上限 / 可选令牌。</summary>
     public ShareOptions Share { get; set; } = new();
 
     /// <summary>识别结果的在线翻译（OpenAI 兼容端点）。空端点 / 空模型 = 没配。</summary>

@@ -60,6 +60,43 @@ public partial class ConfirmDialog : Window
         return dlg._ok;
     }
 
+    /// <summary>
+    /// 可撤销的确认：<paramref name="cancel"/> 触发时自己关掉并返回「否」。
+    /// </summary>
+    /// <remarks>
+    /// 给「等对方 / 等超时」的确认用（局域网共享的接收确认）：调用方在后台线程等答复，
+    /// 超时或对端放弃时要把这扇模态框收掉，否则它会一直压着界面。
+    /// **关窗一律从对话框自己的 Dispatcher 投递**，别的线程直接 <c>Close()</c> 会抛。
+    /// </remarks>
+    internal static bool Confirm(Window? owner, string title, string message, string okText, CancellationToken cancel)
+    {
+        var dlg = new ConfirmDialog(title, message, false, false, false, okText);
+        ApplyOwner(dlg, owner);
+
+        // 取消可能正好发生在「框还没显示出来」的那一下（注册时 IsVisible 还是 false），
+        // 所以显示出来后再补一次——否则这一扇会一直挂着。
+        using var registration = cancel.Register(() => CloseFromAnyThread(dlg));
+        dlg.Loaded += (_, _) => { if (cancel.IsCancellationRequested) CloseFromAnyThread(dlg); };
+        dlg.ShowDialog();
+        return dlg._ok;
+    }
+
+    private static void CloseFromAnyThread(Window dlg)
+    {
+        try
+        {
+            if (!dlg.IsVisible) return;
+            dlg.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try { dlg.Close(); } catch { /* 已经关掉了 */ }
+            }));
+        }
+        catch
+        {
+            // 窗口已释放 / Dispatcher 已关：没人可收，ShowDialog 那边自己会结束。
+        }
+    }
+
     /// <summary>单按钮提示。</summary>
     public static void Info(Window? owner, string title, string message)
     {

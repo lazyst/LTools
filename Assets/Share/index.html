@@ -71,6 +71,23 @@
   textarea:focus{border-color:var(--border2)}
   .sendrow{display:flex;gap:8px;margin-top:8px}
   .sendrow .btn{flex:1;height:32px}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--sec);height:22px;font-size:11.5px;padding:0 6px}
+  .btn.ghost:hover{background:var(--alt);color:var(--text)}
+  .pending{margin-top:9px}
+  .pending-head{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--sec);margin-bottom:5px}
+  .pending-head b{color:var(--text);font-weight:600}
+  .pending-head .grow{flex:1}
+  .pitem{
+    display:flex;align-items:center;gap:7px;background:var(--alt);border:1px solid var(--border);
+    border-radius:4px;padding:5px 7px;margin-bottom:4px;font-size:12.5px;
+  }
+  .pitem .pname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pitem .pmeta{color:var(--hint);font-size:11.5px;white-space:nowrap}
+  .pitem .px{
+    font:inherit;font-size:13px;line-height:1;border:0;background:transparent;color:var(--hint);
+    cursor:pointer;padding:0 2px;flex:0 0 auto;
+  }
+  .pitem .px:hover{color:var(--danger)}
   .progress{margin-top:9px;display:none}
   .progress.on{display:block}
   .bar{height:6px;background:var(--alt);border-radius:999px;overflow:hidden}
@@ -126,24 +143,35 @@
     <aside class="send">
       <div class="sendbox" id="sendBox">
         <div class="drop" id="drop" role="button" tabindex="0">
-          拖文件到这里<br><span class="hint">或 点一下选文件 / 拍照</span>
+          拖文件到这里<br><span class="hint">或 点一下选文件 / 拍照（可多选，先攒着，不会立刻发）</span>
         </div>
         <input type="file" id="file" multiple hidden>
         <input type="file" id="camera" accept="image/*" capture="environment" hidden>
 
-        <textarea id="text" placeholder="发一段文字到电脑…"></textarea>
+        <textarea id="text" placeholder="写一段文字…"></textarea>
+
+        <div class="pending" id="pending" style="display:none">
+          <div class="pending-head">
+            <span>待发送 <b id="pendingCount">0</b> 项</span>
+            <span class="grow"></span>
+            <button class="btn ghost" id="pendingClear" title="清空待发送">清空</button>
+          </div>
+          <div id="pendingList"></div>
+        </div>
+
         <div class="sendrow">
           <button class="btn" id="pickFile">选文件</button>
           <button class="btn" id="pickCam">拍照</button>
-          <button class="btn primary" id="sendText">发送文字</button>
+          <button class="btn primary" id="send">发送</button>
         </div>
+        <p class="hint" id="sendHint" style="margin:8px 2px 0">选好文件、写好文字，点「发送」才会真的发出去。</p>
 
         <div class="progress" id="progress">
           <div class="bar"><i id="barFill"></i></div>
           <div class="line"><span id="progText">上传中</span><button class="btn" id="cancel" style="height:22px">取消</button></div>
         </div>
       </div>
-      <p class="hint" id="pauseHint" style="display:none;margin:9px 2px 0">电脑已暂停接收，发送会失败。</p>
+      <p class="hint" id="pauseHint" style="display:none;margin:9px 2px 0">电脑设了「不接受」，发送按钮已停用。</p>
     </aside>
   </main>
 </div>
@@ -160,10 +188,13 @@
     ? decodeURIComponent(location.pathname.slice(3).replace(/\/+$/, ''))
     : '';
 
-  let data = { allowInbound: true, items: [], inbox: [] };
+  let data = { inbound: 'allow', items: [], inbox: [] };
   let timer = null;
-  let uploading = false;
-  let abort = null;
+  let sending = false;      // 正在发送：输入与按钮都锁住
+  let abort = null;         // 发送中的「取消」
+  let files = [];           // 待发送的文件：只在内存里，点「发送」才上传
+  let fileSeq = 0;
+  let pendingSig = null;    // 待发送列表上次渲染的样子（轮询时不白重建 DOM）
 
   const $ = (id) => document.getElementById(id);
 
@@ -255,6 +286,96 @@
 
   function isImage(mime) { return (mime || '').indexOf('image/') === 0; }
 
+  // ---------- 待发送（先攒、后发） ----------
+  function inboundMode() {
+    return data.inbound === 'confirm' || data.inbound === 'block' ? data.inbound : 'allow';
+  }
+
+  // 待发送 = 输入框里非空的文字（一条） + 选进来还没发的文件（各一条）
+  function pendingAll() {
+    const list = [];
+    const text = $('text').value;
+    if (text.trim()) {
+      list.push({ id: 'text', kind: 'text', name: '文字', meta: text.trim().length + ' 字', text: text });
+    }
+    files.forEach(function (q) {
+      list.push({ id: q.id, kind: 'file', name: q.file.name, meta: fmtSize(q.file.size), file: q.file });
+    });
+    return list;
+  }
+
+  function addFiles(list) {
+    let added = 0;
+    let skipped = 0;
+
+    Array.from(list || []).forEach(function (f) {
+      if (!f || !f.size || !f.name) { skipped++; return; }
+      const dup = files.some(function (q) {
+        return q.file.name === f.name && q.file.size === f.size && q.file.lastModified === f.lastModified;
+      });
+      if (dup) { skipped++; return; }
+      files.push({ id: 'f' + (++fileSeq), file: f });
+      added++;
+    });
+
+    refreshPending();
+
+    if (added) toast('已加入待发送：' + added + ' 个文件');
+    else if (skipped) toast('没有可加的文件（重复或空文件）');
+  }
+
+  function removeFile(id) {
+    files = files.filter(function (q) { return q.id !== id; });
+  }
+
+  function pendingRow(it) {
+    const row = el('div', 'pitem');
+    row.appendChild(el('span', 'pname', it.name));
+    row.appendChild(el('span', 'pmeta', it.meta));
+
+    const x = el('button', 'px', '✕');
+    x.title = '从待发送里去掉';
+    x.addEventListener('click', function () {
+      if (sending) return;
+      if (it.kind === 'text') $('text').value = '';
+      else removeFile(it.id);
+      refreshPending();
+    });
+    row.appendChild(x);
+    return row;
+  }
+
+  function refreshPending() {
+    const list = pendingAll();
+    const sig = list.map(function (it) { return it.id + '|' + it.name + '|' + it.meta; }).join('§');
+
+    if (sig !== pendingSig) {
+      pendingSig = sig;
+      const host = $('pendingList');
+      host.textContent = '';
+      list.forEach(function (it) { host.appendChild(pendingRow(it)); });
+      $('pendingCount').textContent = list.length;
+      $('pending').style.display = list.length ? 'block' : 'none';
+    }
+
+    const allow = inboundMode() !== 'block';
+    $('send').disabled = sending || !allow || list.length === 0;
+    $('pendingClear').disabled = sending;
+    $('pickFile').disabled = sending || !allow;
+    $('pickCam').disabled = sending || !allow;
+    $('text').disabled = sending;
+  }
+
+  $('text').addEventListener('input', refreshPending);
+
+  $('pendingClear').addEventListener('click', function () {
+    if (sending) return;
+    files = [];
+    $('text').value = '';
+    refreshPending();
+  });
+
+
   function el(tag, cls, text) {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -268,12 +389,14 @@
     $('dot').className = 'dot';
     $('conn').textContent = '已连接';
 
-    const allow = data.allowInbound !== false;
+    const inbound = inboundMode();
+    const allow = inbound !== 'block';
     $('sendBox').style.opacity = allow ? '1' : '.5';
     $('pauseHint').style.display = allow ? 'none' : 'block';
-    $('sendText').disabled = !allow || uploading;
-    $('pickFile').disabled = !allow || uploading;
-    $('pickCam').disabled = !allow || uploading;
+    $('sendHint').textContent = inbound === 'confirm'
+      ? '电脑设了「需要确认」：点「发送」后要有人在电脑上点允许，才会收下。'
+      : '选好文件、写好文字，点「发送」才会真的发出去。';
+    refreshPending();
 
     const out = $('outList');
     out.textContent = '';
@@ -377,7 +500,7 @@
     if (timer) return;
     poll();
     timer = setInterval(function () {
-      if (!document.hidden && !uploading) poll();
+      if (!document.hidden && !sending) poll();
     }, 2000);
   }
 
@@ -389,30 +512,7 @@
     if (!document.hidden) poll();
   });
 
-  // ---------- 发送文字 ----------
-  $('sendText').addEventListener('click', async function () {
-    const text = $('text').value;
-    if (!text.trim()) { $('text').focus(); return; }
-    const btn = this;
-    btn.disabled = true;
-    try {
-      const r = await fetch(api('/api/text'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Share-Device': device() },
-        body: JSON.stringify({ text: text })
-      });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      $('text').value = '';
-      toast('已发送到电脑');
-      poll();
-    } catch (e) {
-      toast('发送失败，请重试');
-    } finally {
-      btn.disabled = false;
-    }
-  });
-
-  // ---------- 上传 ----------
+  // ---------- 发送（文字 + 待发送的文件，一次发完） ----------
   function uploadIdFor(file) {
     let h = 0x811c9dc5;
     const s = file.name + '|' + file.size + '|' + file.lastModified;
@@ -434,6 +534,27 @@
     $('barFill').style.width = '0';
   }
 
+  // 服务端拒绝时回 { ok:false, error }，翻成一句人话（否则只剩 HTTP 403）。
+  async function failText(r) {
+    let code = '';
+    try {
+      const j = await r.json();
+      if (j && j.error) code = j.error;
+    } catch (e) { /* 不是 JSON */ }
+
+    const map = {
+      paused: '电脑设了「不接受」，不会收',
+      declined: '电脑拒绝了这次发送',
+      timeout: '电脑没有确认（等超时了），可以再发一次',
+      busy: '电脑正忙，稍后再发',
+      unapproved: '这次上传没被允许，请重新发送'
+    };
+    if (code && map[code]) return map[code];
+    if (r.status === 429) return '发得太频繁了，等一会儿再试';
+    if (r.status === 403) return '电脑没有接受这次发送';
+    return 'HTTP ' + r.status;
+  }
+
   async function postJson(path, body) {
     const r = await fetch(api(path), {
       method: 'POST',
@@ -441,57 +562,97 @@
       body: JSON.stringify(body),
       signal: abort ? abort.signal : undefined
     });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (!r.ok) throw new Error(await failText(r));
     return r.json();
   }
 
-  async function uploadFile(file) {
-    if (uploading) { toast('正在上传另一个文件'); return; }
-    if (data.allowInbound === false) { toast('电脑已暂停接收'); return; }
+  function waitLabel(label, doing) {
+    return inboundMode() === 'confirm' ? label + ' 等待电脑确认…' : label + ' ' + doing;
+  }
 
-    uploading = true;
+  async function sendText(text, label) {
+    showProgress(0, waitLabel(label, '发送文字…'));
+    await postJson('/api/text', { text: text });
+  }
+
+  async function uploadFile(file, label) {
+    showProgress(0, waitLabel(label, '准备上传 · ' + file.name));
+
+    const id = uploadIdFor(file);
+    const init = await postJson('/api/upload/init', {
+      name: file.name, size: file.size, uploadId: id
+    });
+
+    let offset = init.offset || 0;
+    if (offset > 0) toast('从断点继续：' + fmtSize(offset));
+
+    while (offset < file.size) {
+      const end = Math.min(offset + CHUNK, file.size);
+      const blob = file.slice(offset, end);
+      const r = await fetch(
+        api('/api/upload/append?uploadId=' + encodeURIComponent(init.uploadId) + '&offset=' + offset),
+        { method: 'POST', body: blob, headers: { 'X-Share-Device': device() }, signal: abort ? abort.signal : undefined }
+      );
+      if (r.status === 409) throw new Error('断点位置不一致，请重新发送');
+      if (!r.ok) throw new Error(await failText(r));
+      offset = (await r.json()).offset;
+      showProgress(offset / file.size * 100,
+        label + ' ' + fmtSize(offset) + ' / ' + fmtSize(file.size));
+    }
+
+    await postJson(
+      '/api/upload/finish?uploadId=' + encodeURIComponent(init.uploadId) +
+      '&name=' + encodeURIComponent(file.name) +
+      '&size=' + file.size, {});
+  }
+
+  $('send').addEventListener('click', sendAll);
+
+  async function sendAll() {
+    if (sending) return;
+    if (inboundMode() === 'block') { toast('电脑设了「不接受」，不会收'); return; }
+
+    const list = pendingAll();
+    if (!list.length) return;
+
+    sending = true;
     abort = new AbortController();
     $('cancel').disabled = false;
-    showProgress(0, '准备上传 · ' + file.name);
+    refreshPending();
+
+    const failed = [];
+    let cancelled = false;
 
     try {
-      const id = uploadIdFor(file);
-      const init = await postJson('/api/upload/init', {
-        name: file.name, size: file.size, uploadId: id
-      });
-
-      let offset = init.offset || 0;
-      if (offset > 0) toast('从断点继续：' + fmtSize(offset));
-
-      while (offset < file.size) {
-        const end = Math.min(offset + CHUNK, file.size);
-        const blob = file.slice(offset, end);
-        const r = await fetch(
-          api('/api/upload/append?uploadId=' + encodeURIComponent(init.uploadId) + '&offset=' + offset),
-          { method: 'POST', body: blob, headers: { 'X-Share-Device': device() }, signal: abort.signal }
-        );
-        if (r.status === 409) throw new Error('断点位置不一致，请重新发送');
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        offset = (await r.json()).offset;
-        showProgress(offset / file.size * 100,
-          fmtSize(offset) + ' / ' + fmtSize(file.size));
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        const label = '（' + (i + 1) + '/' + list.length + '）';
+        try {
+          if (item.kind === 'text') {
+            await sendText(item.text, label);
+            $('text').value = '';
+          } else {
+            await uploadFile(item.file, label);
+            removeFile(item.id);
+          }
+          refreshPending();
+        } catch (e) {
+          if (e && e.name === 'AbortError') { cancelled = true; break; }
+          failed.push(item.name + '（' + ((e && e.message) || '失败') + '）');
+        }
       }
-
-      const finish = await postJson(
-        '/api/upload/finish?uploadId=' + encodeURIComponent(init.uploadId) +
-        '&name=' + encodeURIComponent(file.name) +
-        '&size=' + file.size, {});
-      toast('已送达：' + finish.name);
-      poll();
-    } catch (e) {
-      if (e && e.name === 'AbortError') toast('已取消');
-      else toast((e && e.message) || '上传失败');
     } finally {
-      uploading = false;
+      sending = false;
       abort = null;
       hideProgress();
       $('cancel').disabled = true;
+      refreshPending();
+      poll();
     }
+
+    if (cancelled) toast('已取消，没发完的还留在待发送里');
+    else if (failed.length) toast('没发出去：' + failed.join('、'));
+    else toast('已发送');
   }
 
   $('cancel').addEventListener('click', function () {
@@ -511,18 +672,8 @@
   $('pickFile').addEventListener('click', function () { pick($('file')); });
   $('pickCam').addEventListener('click', function () { pick($('camera')); });
 
-  $('file').addEventListener('change', function () {
-    const files = Array.from(this.files || []);
-    if (files.length) queue(files);
-  });
-  $('camera').addEventListener('change', function () {
-    const files = Array.from(this.files || []);
-    if (files.length) queue(files);
-  });
-
-  async function queue(files) {
-    for (const f of files) await uploadFile(f);
-  }
+  $('file').addEventListener('change', function () { addFiles(this.files); });
+  $('camera').addEventListener('change', function () { addFiles(this.files); });
 
   ['dragenter', 'dragover'].forEach(function (ev) {
     document.addEventListener(ev, function (e) {
@@ -534,7 +685,7 @@
     document.addEventListener(ev, function (e) {
       e.preventDefault();
       if (ev === 'drop' && e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-        queue(Array.from(e.dataTransfer.files));
+        addFiles(e.dataTransfer.files);
       }
       $('drop').classList.remove('over');
     });
@@ -552,13 +703,14 @@
       const first = list[0];
       const who = first.name || first.uploadId;
       $('banner').textContent = '上次有 ' + list.length + ' 个文件没传完：' + who +
-        '（已传 ' + fmtSize(first.received) + '）。重新选择同一个文件可继续。';
+        '（已传 ' + fmtSize(first.received) + '）。重新选同一个文件、点「发送」就能接着传。';
       $('banner').classList.add('on');
     } catch (e) { /* 提示失败不影响使用 */ }
   }
 
   // ---------- 启动 ----------
   renderDevice();
+  refreshPending();
   startPoll();
   checkPending();
 })();

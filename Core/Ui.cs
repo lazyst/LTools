@@ -21,6 +21,9 @@ internal static class Ui
     /// <summary>当前线程是不是主 UI 线程。</summary>
     public static bool IsUiThread => _dispatcher?.CheckAccess() == true;
 
+    /// <summary>有没有装到 UI 线程：启动早期与控制台冒烟里没有（那时 <see cref="Post"/> 会静默丢弃）。</summary>
+    public static bool Available => _dispatcher != null;
+
     /// <summary>
     /// 把要在主 UI 线程执行的工作排进去，立刻返回。钩子回调里只能调这个，不能 Invoke。
     /// 未初始化（启动早期）时静默丢弃，避免钩子线程在日志里刷屏。

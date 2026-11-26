@@ -249,6 +249,15 @@ internal sealed class ShareStore
         return Mimes.TryGetValue(ext, out string? mime) ? mime : "application/octet-stream";
     }
 
+    /// <summary>文件大小的短写法（<c>1.2 MB</c>）：窗口的行摘要与接收确认共用。</summary>
+    public static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024.0).ToString("0.0") + " KB";
+        if (bytes < 1024L * 1024 * 1024) return (bytes / 1024.0 / 1024).ToString("0.0") + " MB";
+        return (bytes / 1024.0 / 1024 / 1024).ToString("0.00") + " GB";
+    }
+
     public static string Stamp() => DateTime.Now.ToString("yyyy-MM-dd HHmm");
 
     /// <summary>在目录里给 <paramref name="fileName"/> 找一个不冲突的名字。</summary>

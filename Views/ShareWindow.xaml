@@ -336,8 +336,21 @@
                                 Margin="0,6,0,0" Height="28" Visibility="Collapsed"
                                 Style="{StaticResource BtnGhost}"/>
 
-                        <CheckBox x:Name="InboundCheck" Content="允许对方发来内容" Click="Inbound_Click"
-                                  Margin="0,12,0,0"/>
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="74"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="接收" VerticalAlignment="Center" FontSize="11"
+                                       Foreground="{StaticResource HintTextBrush}"/>
+                            <ComboBox x:Name="InboundCombo" Grid.Column="1" Width="150" Height="26"
+                                      HorizontalAlignment="Left"
+                                      DisplayMemberPath="Value" SelectedValuePath="Key"
+                                      ToolTip="对方发来内容时本机怎么办"
+                                      SelectionChanged="Inbound_Changed"/>
+                        </Grid>
+                        <TextBlock x:Name="InboundHint" Margin="0,6,0,0" FontSize="10.5" TextWrapping="Wrap"
+                                   Foreground="{StaticResource HintTextBrush}"/>
 
                         <TextBlock x:Name="DeviceText" Margin="0,12,0,0" FontSize="11" TextWrapping="Wrap"
                                    Foreground="{StaticResource HintTextBrush}"/>

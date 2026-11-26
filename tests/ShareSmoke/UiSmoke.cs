@@ -97,6 +97,36 @@ internal static class UiSmoke
         Flush();
         check(portBox.Text == portInBox.ToString(), "端口填错就地退回原值（不弹窗）");
 
+        // 「接收」三档：下拉三项、跟着配置、换档写回运行配置（锚点指到临时目录，别碰仓库的 configs/）。
+        var inboundCombo = (ComboBox)Field(_window, "InboundCombo");
+        var inboundHint = (TextBlock)Field(_window, "InboundHint");
+        List<string> inboundLabels = inboundCombo.Items.Cast<object>()
+            .Select(i => (string)i.GetType().GetProperty("Value")!.GetValue(i)!)
+            .ToList();
+        check(inboundLabels.SequenceEqual(new[] { "自动接收", "需要确认", "不接受" }),
+            "「接收」下拉是 自动接收 / 需要确认 / 不接受（实际：" + string.Join(" / ", inboundLabels) + "）");
+        check(Equals(inboundCombo.SelectedValue, ShareInbound.allow), "默认选中「自动接收」");
+        check(inboundHint.Text.Length > 0, "下拉下面有一行说明：" + inboundHint.Text);
+
+        Type configStoreType = typeof(ShareOptions).Assembly.GetType("LTools.Features.ConfigStore", true)!;
+        MethodInfo usePathOnly = configStoreType.GetMethod("UsePathOnly", BindingFlags.NonPublic | BindingFlags.Static)!;
+        PropertyInfo serverOptions = typeof(ShareOptions).Assembly
+            .GetType("LTools.Core.Share.ShareServer", true)!
+            .GetProperty("Options", BindingFlags.Public | BindingFlags.Static)!;
+
+        usePathOnly.Invoke(null, new object[] { Path.Combine(tempRoot, "ltools.json") });
+        inboundCombo.SelectedValue = ShareInbound.confirm;
+        Flush();
+        check(((ShareOptions)serverOptions.GetValue(null)!).Inbound == ShareInbound.confirm,
+            "换到「需要确认」写进运行配置");
+        check(inboundHint.Text.Contains("弹框", StringComparison.Ordinal),
+            "说明跟着换成需确认：" + inboundHint.Text);
+
+        inboundCombo.SelectedValue = ShareInbound.allow;
+        Flush();
+        usePathOnly.Invoke(null, new object[] { "" });
+        check(((ShareOptions)serverOptions.GetValue(null)!).Inbound == ShareInbound.allow, "换回「自动接收」");
+
         // 所有网卡的地址都列出来，每条带「复制」
         var urlList = (ItemsControl)Field(_window, "UrlList");
         var urlRows = ((IEnumerable)urlList.ItemsSource!).Cast<object>().ToList();
@@ -321,6 +351,12 @@ internal static class UiSmoke
         Flush();
         check(Application.Current.Windows.OfType<LTools.Views.ShareWindow>().Count() == 1,
             "再打开一次只是激活同一个窗口");
+
+        // 右栏滚到底再截图：设置区（含「接收」那三档）要看得见。
+        if (side.Child is ScrollViewer sideScroll) sideScroll.ScrollToEnd();
+        Flush();
+        check(inboundCombo.IsVisible && inboundCombo.ActualWidth > 0,
+            $"「接收」下拉看得见（{inboundCombo.ActualWidth:0}×{inboundCombo.ActualHeight:0}）");
 
         try
         {

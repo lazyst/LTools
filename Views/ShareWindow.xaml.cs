@@ -34,6 +34,9 @@ public partial class ShareWindow : Window
     private bool _closed;
     private bool _dragLogged;
 
+    /// <summary>刷新回填「接收」下拉时别再触发一次保存。</summary>
+    private bool _syncingInbound;
+
     /// <summary>文字条目的正文预览（按 路径 + 修改时间 + 大小 缓存，1 秒轮询不会反复读盘）。</summary>
     private readonly Dictionary<string, (DateTime Stamp, long Size, string Text)> _previews = new();
 
@@ -56,6 +59,8 @@ public partial class ShareWindow : Window
         };
         OutList.ItemTemplateSelector = rows;
         InList.ItemTemplateSelector = rows;
+
+        InboundCombo.ItemsSource = ShareOptions.InboundChoices;
 
         // 拖放走标准 OLE（XAML 里 AllowDrop + PreviewDragOver / PreviewDrop）：共享窗口住在
         // 普通权限宿主里，资源管理器拖过来不会被 UIPI 拦。以前那层 WM_DROPFILES 桥
