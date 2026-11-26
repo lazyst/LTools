@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using LTools.Core.Actions;
+using LTools.Core.Storage;
 
 namespace LTools.Core;
 
@@ -136,22 +137,14 @@ internal static class RunHistory
     /// <summary>错误文本的存盘上限（几百字节够定位，几百 KB 的异常栈不进历史）。</summary>
     private const int ErrorLimit = 400;
 
-    private static readonly object Gate = new();
-    private static readonly List<RunRecord> _items = new();   // 倒序：最新在前
-    private static bool _loaded;
+    private static readonly JsonlHistory<RunRecord> History =
+        new(FilePath, MaxRecords, "Flow", "运行历史");
 
     /// <summary>历史文件的路径（设置页「打开目录」按它所在目录走）。</summary>
     public static string FilePath => Path.Combine(AppPaths.StateDir, "run-history.jsonl");
 
     /// <summary>当前记录（倒序快照）。界面只读展示用。</summary>
-    public static IReadOnlyList<RunRecord> Load()
-    {
-        lock (Gate)
-        {
-            EnsureLoaded();
-            return _items.ToArray();
-        }
-    }
+    public static IReadOnlyList<RunRecord> Load() => History.Load();
 
     /// <summary>
     /// 记一次运行（后台线程在 <c>AutomationRunner.RunCore</c> 的 finally 里调用）。
@@ -180,13 +173,11 @@ internal static class RunHistory
                 Error = Limit(result?.Error ?? fatalError ?? ""),
             };
 
-            lock (Gate)
+            History.Edit(items =>
             {
-                EnsureLoaded();
-                _items.Insert(0, rec);
-                if (_items.Count > MaxRecords) _items.RemoveRange(MaxRecords, _items.Count - MaxRecords);
-                WriteAll();
-            }
+                items.Insert(0, rec);
+                return true;
+            });
         }
         catch (Exception ex)
         {
@@ -195,15 +186,11 @@ internal static class RunHistory
     }
 
     /// <summary>清空（设置页「清空」按钮；只删历史，不动失败报告与日志）。</summary>
-    public static void Clear()
+    public static void Clear() => History.Edit(items =>
     {
-        lock (Gate)
-        {
-            _items.Clear();
-            _loaded = true;
-            WriteAll();
-        }
-    }
+        items.Clear();
+        return true;
+    });
 
     /// <summary>统计 + 失败步骤分布（纯函数：给一组记录就能算，冒烟直接喂假数据）。</summary>
     public static RunStats Summarize(IReadOnlyList<RunRecord> records)
@@ -348,37 +335,6 @@ internal static class RunHistory
     };
 
     // ============ 读写 ============
-
-    private static void EnsureLoaded()
-    {
-        if (_loaded) return;
-        _loaded = true;
-        try
-        {
-            if (!File.Exists(FilePath)) return;
-            foreach (string line in File.ReadAllLines(FilePath, Encoding.UTF8))
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                try
-                {
-                    var r = JsonSerializer.Deserialize<RunRecord>(line);
-                    if (r != null) _items.Add(r);
-                }
-                catch { /* 坏行跳过，别让一条坏记录毁掉整份历史 */ }
-            }
-            if (_items.Count > MaxRecords) _items.RemoveRange(MaxRecords, _items.Count - MaxRecords);
-        }
-        catch (Exception ex) { AppLog.Warn("Flow", "读运行历史失败：" + ex.Message); }
-    }
-
-    private static void WriteAll()
-    {
-        try
-        {
-            AtomicFile.WriteJsonLines(FilePath, _items);
-        }
-        catch (Exception ex) { AppLog.Warn("Flow", "写运行历史失败：" + ex.Message); }
-    }
 
     private static string Limit(string text)
     {

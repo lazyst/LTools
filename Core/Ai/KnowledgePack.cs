@@ -29,7 +29,7 @@ namespace LTools.Core.Ai;
 /// </remarks>
 internal static class KnowledgePack
 {
-    public static string Dir => Path.Combine(AppPaths.DataRoot, "ai", "knowledge");
+    public static string Dir => Path.Combine(AppPaths.AiDir, "knowledge");
 
     public static string FormatPath => Path.Combine(Dir, "format.md");
 

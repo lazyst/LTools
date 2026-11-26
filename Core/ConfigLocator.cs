@@ -12,6 +12,6 @@ namespace LTools.Core;
 /// </remarks>
 internal static class ConfigLocator
 {
-    public static string FindPath() => Path.Combine(
-        AppPaths.IsDevLayout ? AppPaths.RepoRoot : AppContext.BaseDirectory, "LTools.json");
+    /// <summary>锚点 = 数据根下的 <c>LTools.json</c>（dev 是仓库根、prod 是 exe 同级）。</summary>
+    public static string FindPath() => Path.Combine(AppPaths.DataRoot, "LTools.json");
 }

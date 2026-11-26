@@ -16,7 +16,7 @@ internal static class AiAudit
     private const long MaxBytes = 2 * 1024 * 1024;
     private static readonly object Gate = new();
 
-    public static string FilePath => Path.Combine(AppPaths.DataRoot, "ai", "audit.log");
+    public static string FilePath => Path.Combine(AppPaths.AiDir, "audit.log");
 
     /// <summary>追加一行。</summary>
     public static void Write(string tool, string? draftId, string result, long elapsedMs)

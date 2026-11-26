@@ -2,10 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Linq;
-using System.Text;
-using System.Text.Json;
 using LTools.Core;
+using LTools.Core.Storage;
 
 namespace LTools.Features;
 
@@ -22,9 +20,7 @@ internal sealed class TriggerRecord
 }
 
 /// <summary>
-/// 触发记录：按时间倒序、上限 <see cref="MaxRecords"/> 条，写穿用 <c>.tmp</c> 替换
-/// （照 <c>SubActionStore.Save</c>）。放在 <c>state/</c>（是备份域），
-/// **别放 <c>logs/</c>**——那里只认 <c>ltools-*</c> / <c>action-*</c> 且会被 <c>LogFiles.Roll</c> 滚动清理。
+/// 触发记录：按时间倒序、上限 <see cref="MaxRecords"/> 条（<see cref="JsonlHistory{T}"/>）。
 /// </summary>
 /// <remarks>
 /// 高频事件（剪贴板 / 文件系统）要限流：同一规则**同一秒**同结果同原因只记一条汇总，
@@ -34,21 +30,11 @@ internal static class TriggerHistory
 {
     public const int MaxRecords = 500;
 
-    private static readonly object Gate = new();
-    private static readonly List<TriggerRecord> _items = new();   // 倒序：最新在前
-    private static bool _loaded;
-
-    private static string FilePath => Path.Combine(AppPaths.StateDir, "trigger-history.jsonl");
+    private static readonly JsonlHistory<TriggerRecord> History = new(
+        Path.Combine(AppPaths.StateDir, "trigger-history.jsonl"), MaxRecords, "Triggers", "触发记录");
 
     /// <summary>当前记录（倒序快照）。UI 只读展示用。</summary>
-    public static IReadOnlyList<TriggerRecord> Load()
-    {
-        lock (Gate)
-        {
-            EnsureLoaded();
-            return _items.ToArray();
-        }
-    }
+    public static IReadOnlyList<TriggerRecord> Load() => History.Load();
 
     /// <summary>记一次命中结果（运行 / 丢弃 + 原因）。后台线程调用，不阻塞。</summary>
     public static void Record(string ruleId, string note, string? eventType,
@@ -65,65 +51,29 @@ internal static class TriggerHistory
             ElapsedMs = elapsedMs,
         };
 
-        lock (Gate)
+        History.Edit(items =>
         {
-            EnsureLoaded();
-            if (_items.Count > 0)
+            if (items.Count > 0)
             {
-                var head = _items[0];
+                TriggerRecord head = items[0];
                 if (head.RuleId == rec.RuleId && head.Time == rec.Time
                     && head.Ran == rec.Ran && head.Reason == rec.Reason)
                 {
                     // 同秒汇总：只更新内存里那条的耗时，不再写盘（避免写放大）。
                     head.ElapsedMs = Math.Max(head.ElapsedMs, rec.ElapsedMs);
-                    return;
+                    return false;
                 }
             }
-            _items.Insert(0, rec);
-            if (_items.Count > MaxRecords) _items.RemoveRange(MaxRecords, _items.Count - MaxRecords);
-            WriteAll();
-        }
+
+            items.Insert(0, rec);
+            return true;
+        });
     }
 
     /// <summary>清空（设置页「清空」按钮）。</summary>
-    public static void Clear()
+    public static void Clear() => History.Edit(items =>
     {
-        lock (Gate)
-        {
-            _items.Clear();
-            _loaded = true;
-            WriteAll();
-        }
-    }
-
-    private static void EnsureLoaded()
-    {
-        if (_loaded) return;
-        _loaded = true;
-        try
-        {
-            if (!File.Exists(FilePath)) return;
-            foreach (string line in File.ReadAllLines(FilePath, Encoding.UTF8))
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                try
-                {
-                    var r = JsonSerializer.Deserialize<TriggerRecord>(line);
-                    if (r != null) _items.Add(r);
-                }
-                catch { /* 坏行跳过，别让一条坏记录毁掉整份历史 */ }
-            }
-            if (_items.Count > MaxRecords) _items.RemoveRange(MaxRecords, _items.Count - MaxRecords);
-        }
-        catch (Exception ex) { AppLog.Warn("Triggers", "读触发记录失败：" + ex.Message); }
-    }
-
-    private static void WriteAll()
-    {
-        try
-        {
-            AtomicFile.WriteJsonLines(FilePath, _items);
-        }
-        catch (Exception ex) { AppLog.Warn("Triggers", "写触发记录失败：" + ex.Message); }
-    }
+        items.Clear();
+        return true;
+    });
 }

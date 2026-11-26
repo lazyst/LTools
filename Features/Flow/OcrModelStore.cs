@@ -62,10 +62,10 @@ internal static class OcrModelStore
     public static string BundledDir => Path.Combine(AppPaths.AppDirectory, "Assets", "Ocr", "ppocrv6");
 
     /// <summary>按需下载的小档目录（数据根下）。</summary>
-    public static string SmallDir => Path.Combine(AppPaths.DataRoot, "ocr-models", "ppocrv6", "small");
+    public static string SmallDir => Path.Combine(AppPaths.OcrModelsDir, "ppocrv6", "small");
 
     /// <summary>按需下载的中档目录（数据根下）。</summary>
-    public static string MediumDir => Path.Combine(AppPaths.DataRoot, "ocr-models", "ppocrv6", "medium");
+    public static string MediumDir => Path.Combine(AppPaths.OcrModelsDir, "ppocrv6", "medium");
 
     /// <summary>方向分类模型：RapidOcrNet 初始化时必须给一个路径（识别时按 <c>DoAngle=false</c> 不执行）。</summary>
     public static string ClsModel => Path.Combine(BundledDir, "textline_cls.onnx");

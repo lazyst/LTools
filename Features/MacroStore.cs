@@ -30,7 +30,7 @@ internal static class MacroStore
     };
 
     /// <summary>宏目录（数据根下）。</summary>
-    public static string Dir => Path.Combine(AppPaths.DataRoot, "macros");
+    public static string Dir => AppPaths.MacrosDir;
 
     /// <summary>确保宏目录存在。</summary>
     public static void Ensure()

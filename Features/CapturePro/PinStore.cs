@@ -242,7 +242,7 @@ internal static class PinStore
     /// <summary>记录 / 图片变了（新增、关闭、删除、清空）：管理页据此刷新。</summary>
     public static event Action? Changed;
 
-    public static string Root => Path.Combine(AppPaths.DataRoot, "pins");
+    public static string Root => AppPaths.PinsDir;
 
     public static string AssetsDir => Path.Combine(Root, "assets");
 
@@ -819,72 +819,17 @@ internal static class PinStore
 
     /// <summary>磁盘上限：从最旧的开始丢，直到总量不超上限（纯函数）。</summary>
     public static (List<PinRecord> Keep, List<PinRecord> Drop) PlanDiskPrune(
-        IEnumerable<PinRecord> items, long maxBytes, Func<PinRecord, long> sizeOf)
-    {
-        var ordered = items
-            .OrderByDescending(e => e.CreatedAt, StringComparer.Ordinal)
-            .ToList();
-
-        var keep = new List<PinRecord>();
-        var drop = new List<PinRecord>();
-        long total = 0;
-
-        foreach (var record in ordered)
-        {
-            long size = Math.Max(0, sizeOf(record));
-            if (maxBytes > 0 && keep.Count > 0 && total + size > maxBytes)
-            {
-                drop.Add(record);
-                continue;
-            }
-
-            keep.Add(record);
-            total += size;
-        }
-
-        return (keep, drop);
-    }
+        IEnumerable<PinRecord> items, long maxBytes, Func<PinRecord, long> sizeOf) =>
+        HistoryPrune.ByDisk(items, maxBytes, sizeOf, e => e.CreatedAt);
 
     /// <summary>一条贴图记录占的字节（原图 + 缩略图）。</summary>
     public static long EntryBytes(PinRecord record) =>
-        LengthOf(AssetPath(record.Id)) + LengthOf(ThumbPath(record.Id));
-
-    private static long LengthOf(string path)
-    {
-        try
-        {
-            var info = new FileInfo(path);
-            return info.Exists ? info.Length : 0;
-        }
-        catch
-        {
-            return 0;
-        }
-    }
+        HistoryPrune.FileBytes(AssetPath(record.Id)) + HistoryPrune.FileBytes(ThumbPath(record.Id));
 
     /// <summary>保留 / 丢弃怎么分：先按创建时间倒序，超龄或超量的进 discard。</summary>
     public static (List<PinRecord> Keep, List<PinRecord> Drop) PlanPrune(
-        IEnumerable<PinRecord> items, DateTimeOffset now, int maxCount, int maxAgeDays)
-    {
-        var ordered = items
-            .OrderByDescending(e => e.CreatedAt, StringComparer.Ordinal)
-            .ToList();
-
-        var keep = new List<PinRecord>();
-        var drop = new List<PinRecord>();
-        string cutoff = maxAgeDays > 0
-            ? now.AddDays(-maxAgeDays).ToString(TimeFormat, CultureInfo.InvariantCulture)
-            : "";
-
-        foreach (var record in ordered)
-        {
-            bool tooOld = cutoff.Length > 0 && string.CompareOrdinal(record.CreatedAt, cutoff) < 0;
-            if (tooOld || keep.Count >= maxCount) drop.Add(record);
-            else keep.Add(record);
-        }
-
-        return (keep, drop);
-    }
+        IEnumerable<PinRecord> items, DateTimeOffset now, int maxCount, int maxAgeDays) =>
+        HistoryPrune.ByCountAndAge(items, now, maxCount, maxAgeDays, e => e.CreatedAt);
 
     /// <summary>缩略图尺寸：按长边缩到 <paramref name="maxSide"/>，不放大小图。</summary>
     public static (int Width, int Height) ThumbnailSize(int width, int height, int maxSide) =>

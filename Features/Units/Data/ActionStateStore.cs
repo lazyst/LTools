@@ -30,7 +30,7 @@ internal static class ActionStateStore
     };
 
     /// <summary>状态目录（进备份）。</summary>
-    public static string Dir => Path.Combine(AppPaths.DataRoot, "state");
+    public static string Dir => AppPaths.StateDir;
 
     /// <summary>状态文件。</summary>
     public static string FilePath => Path.Combine(Dir, "values.json");

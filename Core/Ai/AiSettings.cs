@@ -59,7 +59,7 @@ internal sealed class AiSettings
     [JsonIgnore]
     public string MaskedToken => Mask(Token);
 
-    public static string PathOnDisk => System.IO.Path.Combine(AppPaths.DataRoot, "ai", "mcp.json");
+    public static string PathOnDisk => System.IO.Path.Combine(AppPaths.AiDir, "mcp.json");
 
     private static readonly object Gate = new();
 

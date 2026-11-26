@@ -157,7 +157,7 @@ internal static class McpServer
         builder.Logging.ClearProviders();
         builder.Logging.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Warning);
         builder.Logging.AddProvider(new FileLoggerProvider(
-            Path.Combine(AppPaths.DataRoot, "ai", "mcp-debug.log")));
+            Path.Combine(AppPaths.AiDir, "mcp-debug.log")));
         builder.WebHost.UseUrls(url);
 
         builder.Services

@@ -214,7 +214,7 @@ internal static class CaptureCatalog
     /// <summary>目录 / 条目变了（新增、回填文字、删除、清空）：窗口据此刷新列表。</summary>
     public static event Action? Changed;
 
-    public static string Root => Path.Combine(AppPaths.DataRoot, "captures");
+    public static string Root => AppPaths.CapturesDir;
 
     public static string AssetsDir => Path.Combine(Root, "assets");
 
@@ -724,49 +724,13 @@ internal static class CaptureCatalog
     /// </summary>
     /// <param name="sizeOf">一条记录占多少字节（调用方给，纯函数好断言）。</param>
     public static (List<CaptureEntry> Keep, List<CaptureEntry> Drop) PlanDiskPrune(
-        IEnumerable<CaptureEntry> items, long maxBytes, Func<CaptureEntry, long> sizeOf)
-    {
-        var ordered = items
-            .OrderByDescending(e => e.CreatedAt, StringComparer.Ordinal)
-            .ToList();
-
-        var keep = new List<CaptureEntry>();
-        var drop = new List<CaptureEntry>();
-        long total = 0;
-
-        foreach (var entry in ordered)
-        {
-            long size = Math.Max(0, sizeOf(entry));
-            if (maxBytes > 0 && keep.Count > 0 && total + size > maxBytes)
-            {
-                drop.Add(entry);
-                continue;
-            }
-
-            keep.Add(entry);
-            total += size;
-        }
-
-        return (keep, drop);
-    }
+        IEnumerable<CaptureEntry> items, long maxBytes, Func<CaptureEntry, long> sizeOf) =>
+        HistoryPrune.ByDisk(items, maxBytes, sizeOf, e => e.CreatedAt);
 
     /// <summary>一条记录占的字节（成品图 + 缩略图 + 整屏底图 + 录屏文件）。</summary>
     public static long EntryBytes(CaptureEntry entry) =>
-        LengthOf(AssetPath(entry.Id)) + LengthOf(ThumbPath(entry.Id)) + LengthOf(DisplayPath(entry.Id))
-        + LengthOf(FilePath(entry));
-
-    private static long LengthOf(string path)
-    {
-        try
-        {
-            var info = new FileInfo(path);
-            return info.Exists ? info.Length : 0;
-        }
-        catch
-        {
-            return 0;
-        }
-    }
+        HistoryPrune.FileBytes(AssetPath(entry.Id)) + HistoryPrune.FileBytes(ThumbPath(entry.Id))
+        + HistoryPrune.FileBytes(DisplayPath(entry.Id)) + HistoryPrune.FileBytes(FilePath(entry));
 
     /// <summary>
     /// 扫掉没有条目的孤儿文件（关掉采集历史后留下的图 / 缩略图）：只碰 <c>assets/</c> 与
@@ -801,27 +765,8 @@ internal static class CaptureCatalog
 
     /// <summary>保留 / 丢弃怎么分：先按时间倒序，超龄或超量的进 discard。</summary>
     public static (List<CaptureEntry> Keep, List<CaptureEntry> Drop) PlanPrune(
-        IEnumerable<CaptureEntry> items, DateTimeOffset now, int maxCount, int maxAgeDays)
-    {
-        var ordered = items
-            .OrderByDescending(e => e.CreatedAt, StringComparer.Ordinal)
-            .ToList();
-
-        var keep = new List<CaptureEntry>();
-        var drop = new List<CaptureEntry>();
-        string cutoff = maxAgeDays > 0
-            ? now.AddDays(-maxAgeDays).ToString(TimeFormat, CultureInfo.InvariantCulture)
-            : "";
-
-        foreach (var entry in ordered)
-        {
-            bool tooOld = cutoff.Length > 0 && string.CompareOrdinal(entry.CreatedAt, cutoff) < 0;
-            if (tooOld || keep.Count >= maxCount) drop.Add(entry);
-            else keep.Add(entry);
-        }
-
-        return (keep, drop);
-    }
+        IEnumerable<CaptureEntry> items, DateTimeOffset now, int maxCount, int maxAgeDays) =>
+        HistoryPrune.ByCountAndAge(items, now, maxCount, maxAgeDays, e => e.CreatedAt);
 
     /// <summary>
     /// 这块选区压到了几块屏（照上游 <c>displays</c> 的数量）：按交集判定，一块都碰不上也算 1。

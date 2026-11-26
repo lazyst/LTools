@@ -117,7 +117,7 @@ internal sealed class DraftConflictException : Exception
 internal static class DraftStore
 {
     /// <summary>草稿根目录（数据根下）。</summary>
-    public static string Root => Path.Combine(AppPaths.DataRoot, "staging");
+    public static string Root => AppPaths.StagingDir;
 
     /// <summary>与 <c>LTools.json</c> 一致的 JSON 选项：缩进、中文不转义、枚举字符串。</summary>
     internal static readonly JsonSerializerOptions Json = new()

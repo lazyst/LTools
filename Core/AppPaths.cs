@@ -41,6 +41,30 @@ internal static class AppPaths
     /// <summary>跨动作状态目录（「存状态 / 读状态」动作单元），位于数据根下，进备份。</summary>
     public static string StateDir => Path.Combine(DataRoot, "state");
 
+    /// <summary>AI 接入的配置 / 审计 / 知识包，位于数据根下，不进备份。</summary>
+    public static string AiDir => Path.Combine(DataRoot, "ai");
+
+    /// <summary>AI 草稿暂存区（采纳后才进 <c>actions/</c>），位于数据根下，不进备份。</summary>
+    public static string StagingDir => Path.Combine(DataRoot, "staging");
+
+    /// <summary>录制的键鼠宏（一个宏一个 JSON 文件），位于数据根下，进备份。</summary>
+    public static string MacrosDir => Path.Combine(DataRoot, "macros");
+
+    /// <summary>采集历史（截图 / 录屏），位于数据根下，进备份。</summary>
+    public static string CapturesDir => Path.Combine(DataRoot, "captures");
+
+    /// <summary>桌面贴图（图 + 索引），位于数据根下，进备份。</summary>
+    public static string PinsDir => Path.Combine(DataRoot, "pins");
+
+    /// <summary>可整体清空的运行缓存（截图 / 录屏临时文件 / 自动存盘），不进备份。</summary>
+    public static string CacheDir => Path.Combine(DataRoot, "cache");
+
+    /// <summary>删除 / 孤儿文件的中转站（保留 30 天），位于数据根下，不进备份。</summary>
+    public static string TrashDir => Path.Combine(DataRoot, "trash");
+
+    /// <summary>PP-OCRv6 下载模型，位于数据根下，不进备份。</summary>
+    public static string OcrModelsDir => Path.Combine(DataRoot, "ocr-models");
+
     /// <summary>
     /// 动作未指定工作目录时的默认值：数据根（目录不可用时回退桌面）。
     /// launchApp / runCommand 共用，避免两个功能各自默认到不同目录。
