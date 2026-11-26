@@ -221,6 +221,9 @@ internal sealed class CaptureCanvas : FrameworkElement
         // 底图：位图物理像素，按文档换算成 DIP 整块铺满窗口（全屏画布没有底图）
         if (ShowBase) dc.DrawImage(doc.Base, canvas);
 
+        // 鼠标指针（照上游 capture_cursor）：属于「冻结画面」的一部分，画在底图上面、标注下面
+        if (ShowBase) doc.DrawCursor(dc);
+
         // 标注：裁到选区，显示与导出看到的是同一块内容（多块 / 自由 / 折线 / 挖洞按合并几何裁）
         // 图片编辑窗（ShowSelectionChrome = false）整张图就是文档，不裁也不压暗。
         Geometry? selectionGeo = null;

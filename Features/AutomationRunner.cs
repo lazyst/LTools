@@ -180,6 +180,9 @@ internal static class AutomationRunner
                 ResourceRoot = resourceRoot,
                 InitialVariables = initialVariables,
                 DryRun = dryRun,
+                // 「截图」步骤只有从编辑器试运行时才收起 LTools 自己的窗口（编辑器正挡着要截的地方）；
+                // 面板 / 快捷键 / 悬浮 / 触发发起的运行一律不动它们，用户可能正想把自己的窗口截进去。
+                HideOwnWindows = source is RunSource.Editor or RunSource.SubAction,
                 Log = message => AppLog.Debug("Flow", message),
                 StepStarted = step =>
                 {

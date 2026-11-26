@@ -31,9 +31,6 @@ public partial class CaptureOverlayWindow
     /// <summary>轮换到第几条；-1 = 还没轮换过（下次从最新那块的前一块开始）。</summary>
     private int _recentIndex = -1;
 
-    /// <summary>隐藏光标（<c>toggle_cursor_visibility</c>）。</summary>
-    private bool _cursorHidden;
-
     /// <summary>按了「表格识别」：结果窗算完直接切到表格页。</summary>
     private bool _tableRequested;
 
@@ -339,19 +336,5 @@ public partial class CaptureOverlayWindow
         RefreshSelection();
         UpdateChrome();
         return true;
-    }
-
-    /// <summary>显示 / 隐藏光标（<c>toggle_cursor_visibility</c>）。</summary>
-    private void ToggleCursorVisibility()
-    {
-        _cursorHidden = !_cursorHidden;
-        if (_cursorHidden)
-        {
-            Cursor = Cursors.None;
-            return;
-        }
-
-        if (Win32.GetCursorPos(out var cursor) && TryToDip(cursor, out var dip)) RefreshCursor(Clamp(dip));
-        else Cursor = _tool == CaptureTool.Text ? Cursors.IBeam : Cursors.Cross;
     }
 }

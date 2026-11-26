@@ -405,6 +405,27 @@ internal static partial class Program
             return _failed == 0 ? 0 : 1;
         }
 
+        if (_only == "cursor")
+        {
+            CursorSection();
+            Console.WriteLine(_failed == 0 ? "cursor-only：通过" : $"cursor-only：{_failed} 项失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
+        if (_only == "picker")
+        {
+            PickerSection();
+            Console.WriteLine(_failed == 0 ? "picker-only：通过" : $"picker-only：{_failed} 项失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
+        if (_only == "ownwin")
+        {
+            OwnWindowSection();
+            Console.WriteLine(_failed == 0 ? "ownwin-only：通过" : $"ownwin-only：{_failed} 项失败");
+            return _failed == 0 ? 0 : 1;
+        }
+
         if (_only == "result")
         {
             ResultWindow();
@@ -756,6 +777,12 @@ internal static partial class Program
 
         // ============ 重新截图：只换底图（选区 / 标注 / 撤销栈不动，覆盖层不进截屏）============
         RecaptureSection();
+
+        // ============ 显示光标：工具条开关 / 快捷键 / 成品里真多一块指针像素 ============
+        CursorSection();
+
+        // ============ 屏幕取点 / 取色：坐标 / 色值 / 放大镜 / 框选那一套已并入截图 Pro ============
+        PickerSection();
 
         Console.WriteLine(_failed == 0 ? "capture-overlay-smoke：全部通过" : $"capture-overlay-smoke：{_failed} 条失败");
         return _failed == 0 ? 0 : 1;

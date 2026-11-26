@@ -19,6 +19,7 @@ internal static class ProbeContext
         var run = new RunContext(ctx.Token, ctx.CursorX, ctx.CursorY)
         {
             ResourceRoot = ctx.ResourceRoot,
+            HideOwnWindows = ctx.HideOwnWindows,
         };
         foreach (var kv in ctx.Scope.Flatten())
             run.Vars[kv.Key] = UnitValues.ToVarValue(kv.Value);

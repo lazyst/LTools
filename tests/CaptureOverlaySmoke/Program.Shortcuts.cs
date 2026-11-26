@@ -192,12 +192,22 @@ internal static partial class Program
             var shot = BuildShot(400, 300);
             var ctor = typeof(CaptureOverlayWindow)
                 .GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-                .Single(c => c.GetParameters().Length == 6);
+                .OrderByDescending(c => c.GetParameters().Length)
+                .First();
 
             CaptureOverlayWindow Make(object pending)
             {
-                var overlay = (CaptureOverlayWindow)ctor.Invoke(
-                    new object[] { shot, monitor, 1.0, 1.0, false, pending });
+                // 可选参数按名字喂：构造函数加新开关（selectionOnly）也不用改这里
+                var parameters = ctor.GetParameters();
+                var args = new object?[parameters.Length];
+                args[0] = shot;
+                args[1] = monitor;
+                args[2] = 1.0;
+                args[3] = 1.0;
+                for (int i = 4; i < parameters.Length; i++)
+                    args[i] = parameters[i].Name == "pending" ? pending : parameters[i].DefaultValue;
+
+                var overlay = (CaptureOverlayWindow)ctor.Invoke(args);
                 var smart = Field(overlay, "_smart");
                 var modeType = asm.GetType("LTools.Features.CapturePro.SmartSelectionMode")!;
                 smart.GetType().GetMethod("BeginSession")!

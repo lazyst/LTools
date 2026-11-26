@@ -79,20 +79,6 @@ public partial class ScreenPickerWindow : Window
         Math.Clamp(p.X, 0, Math.Max(0, ActualWidth - 1)),
         Math.Clamp(p.Y, 0, Math.Max(0, ActualHeight - 1)));
 
-    private static Rect RectFrom(Point a, Point b) => new(
-        Math.Min(a.X, b.X), Math.Min(a.Y, b.Y),
-        Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
-
-    /// <summary>按住 Shift 时把拖拽终点修正成正方形（保持拖拽方向）。</summary>
-    private static Point SquareOf(Point origin, Point end)
-    {
-        double dx = end.X - origin.X;
-        double dy = end.Y - origin.Y;
-        double side = Math.Max(Math.Abs(dx), Math.Abs(dy));
-        if (side < 1) return end;
-        return new Point(origin.X + (dx < 0 ? -side : side), origin.Y + (dy < 0 ? -side : side));
-    }
-
     /// <summary>DIP → 冻结画面像素（画面就是显示器的 1:1 物理像素）。</summary>
     private (int X, int Y) ToImage(Point dip)
     {

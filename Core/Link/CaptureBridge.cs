@@ -16,8 +16,9 @@ namespace LTools.Core.Link;
 /// </para>
 /// <para>
 /// 转交之前要**自己**做三件事（宿主的窗口它自己会收，这里的窗口归提权进程）：
-/// 收起全部窗口（<see cref="TransientMinimize"/>）、鼠标钩子给遮罩让路（<see cref="PickerHook"/>）、
-/// 热键挂起（单键绑定会吞掉框选里的 <c>Enter</c> / <c>Esc</c>）。悬浮工具条与提示卡片同理。
+/// 收起全部窗口（<see cref="TransientMinimize"/>，**只在编辑器试运行时**——其余入口不动用户自己的窗口）、
+/// 鼠标钩子给遮罩让路（<see cref="PickerHook"/>）、热键挂起（单键绑定会吞掉框选里的 <c>Enter</c> / <c>Esc</c>）。
+/// 悬浮工具条与提示卡片同理。
 /// </para>
 /// <para>
 /// 这个方法是**阻塞**的：调用方是功能 / 动作执行线程。停止热键不打断它（框选本来就是等用户），
@@ -38,7 +39,12 @@ internal static class CaptureBridge
     private static Action? _afterRecording;
 
     /// <summary>弹覆盖层框选；<c>null</c> = 没转交（调用方本地跑）。</summary>
-    public static CaptureRunReply? TryRun(string pending, bool wantImage, Action? onRecordingFinished)
+    /// <param name="hideOwnWindows">
+    /// 抓帧前收不收 LTools 自己的窗口：只有动作编辑器试运行「截图」步骤才收
+    /// （编辑器正挡着要截的地方）；面板 / 快捷键 / 悬浮发起的截图一律不动它们。
+    /// </param>
+    public static CaptureRunReply? TryRun(string pending, bool wantImage, bool hideOwnWindows,
+        bool selectionOnly, Action? onRecordingFinished)
     {
         if (!LinkWorker.IsConnected) return null;
 
@@ -50,16 +56,18 @@ internal static class CaptureBridge
         bool wasSuspended = HotkeyRegistry.Suspended;
         try
         {
-            Ui.Run(() => restore = TransientMinimize.MinimizeAll(null));
+            if (hideOwnWindows) Ui.Run(() => restore = TransientMinimize.MinimizeAll(null));
             PickerHook.SetActive(true);
             HotkeyRegistry.Suspended = true;
             FloatingToolbarService.SetCaptureActive(true);
             using var toasts = ToastService.SuppressForCapture();
 
-            Thread.Sleep(TransientMinimize.SettleMs);   // 等最小化动画结束、桌面重绘完
+            // 收起自己窗口才需要等最小化动画；不收就直接请求
+            if (hideOwnWindows) Thread.Sleep(TransientMinimize.SettleMs);
 
             LinkMessage reply = LinkWorker
-                .RequestAsync(LinkMethods.CaptureRun, new CaptureRunRequest(pending, wantImage), RunTimeoutMs)
+                .RequestAsync(LinkMethods.CaptureRun,
+                    new CaptureRunRequest(pending, wantImage, hideOwnWindows, selectionOnly), RunTimeoutMs)
                 .GetAwaiter().GetResult();
 
             if (!reply.Ok)

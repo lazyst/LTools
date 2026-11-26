@@ -149,6 +149,7 @@ public partial class CaptureToolbar
         ToolRow.Children.Add(line);
 
         AddActionGroups(ToolbarMode.Capture, separatorBeforeFirst: false);
+        if (_pickMode) BuildPickActions();   // 只有参数框选才建这一组（默认工具条一条也不多）
     }
 
     /// <summary>

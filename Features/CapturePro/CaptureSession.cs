@@ -34,7 +34,11 @@ internal sealed record CaptureReopen(BitmapSource Image, Int32Rect Rect,
     IReadOnlyList<Mark>? Marks = null,
     IReadOnlyList<Mark[]>? Undo = null,
     IReadOnlyList<Mark[]>? Redo = null,
-    CaptureStyleDto? Style = null);
+    CaptureStyleDto? Style = null,
+    BitmapSource? Cursor = null,
+    int CursorX = 0,
+    int CursorY = 0,
+    bool CursorVisible = false);
 
 /// <summary>
 /// 截图覆盖层的唯一入口：收起 LTools 自己的窗口 → 冻结抓帧 → 打开覆盖层 → 交回成品。
@@ -97,10 +101,19 @@ internal static class CaptureSession
         var undo = MarkCodec.ReadHistory(entry.UndoMarks);
         var redo = MarkCodec.ReadHistory(entry.RedoMarks);
 
-        var reopen = new CaptureReopen(display, entry.DisplayRect, regions, dpi, screens,
-            marks, undo, redo, entry.Style);
+        // 鼠标指针：当时那份小图 + 相对整屏底图的偏移（开没开也一起带回去）
+        BitmapSource? cursor = null;
+        if (entry.Cursor.Length > 0)
+        {
+            try { cursor = CaptureCatalog.LoadCursor(entry); }
+            catch (Exception ex) { AppLog.Warn("CapturePro.Reopen", "读鼠标指针失败：" + ex.Message); }
+        }
 
-        return RunOnUi(() => RunLocal(CaptureOverlayWindow.PendingAction.None, wantImage: false, reopen, owner: null)).Result;
+        var reopen = new CaptureReopen(display, entry.DisplayRect, regions, dpi, screens,
+            marks, undo, redo, entry.Style, cursor, entry.CursorX, entry.CursorY, entry.CursorVisible);
+
+        return RunOnUi(() => RunLocal(CaptureOverlayWindow.PendingAction.None, wantImage: false,
+            reopen, owner: null, hideOwnWindows: false)).Result;
     }
 
     /// <summary>
@@ -114,6 +127,10 @@ internal static class CaptureSession
     /// 调用方还要成品图（「截图」取值器要把它存成 png 交给流程）：宿主把它写进
     /// <c>cache/screenshots/</c>，用 <see cref="CaptureOutcome.File"/> 带回来。
     /// </param>
+    /// <param name="hideOwnWindows">
+    /// 抓帧前把 LTools 自己的窗口收起来。**默认不收**（面板 / 悬浮 / 贴图就该能被截进去）；
+    /// 只有动作编辑器试运行「截图」步骤时才传 <c>true</c>——那时编辑器正挡着要截的地方。
+    /// </param>
     /// <param name="onRecordingFinished">
     /// 录屏跑完（成功 / 失败 / 取消都算）之后回调一次，跑在 UI 线程。
     /// 「截图」这个内置功能用它恢复被自己临时收起的自动化指示器。
@@ -125,11 +142,13 @@ internal static class CaptureSession
     /// </remarks>
     public static CaptureOutcome? TryCapture(Window? owner, out CaptureExit exit,
         CaptureOverlayWindow.PendingAction pending = CaptureOverlayWindow.PendingAction.None,
-        bool wantImage = false, Action? onRecordingFinished = null)
+        bool wantImage = false, bool hideOwnWindows = false, bool selectionOnly = false,
+        Action? onRecordingFinished = null)
     {
         if (!AppRole.IsUiHost)
         {
-            CaptureRunReply? reply = CaptureBridge.TryRun(pending.ToString(), wantImage, onRecordingFinished);
+            CaptureRunReply? reply = CaptureBridge.TryRun(pending.ToString(), wantImage, hideOwnWindows,
+                selectionOnly, onRecordingFinished);
             if (reply != null)
             {
                 exit = ToExit(reply.Exit);
@@ -139,7 +158,8 @@ internal static class CaptureSession
             }
         }
 
-        var local = RunOnUi(() => RunLocal(pending, wantImage, reopen: null, owner, onRecordingFinished));
+        var local = RunOnUi(() => RunLocal(pending, wantImage, reopen: null, owner, onRecordingFinished,
+            hideOwnWindows, selectionOnly));
         exit = local.Exit;
         return local.Result == null ? null : new CaptureOutcome(local.Exit, local.Result.Area, local.File);
     }
@@ -147,7 +167,7 @@ internal static class CaptureSession
     /// <summary>宿主侧的真正实现：冻结抓帧 → 覆盖层 → 成品（复制 / 贴图 / 识别 / 记采集历史都在里面）。</summary>
     private static (CaptureExit Exit, CaptureResult? Result, string? File) RunLocal(
         CaptureOverlayWindow.PendingAction pending, bool wantImage, CaptureReopen? reopen, Window? owner,
-        Action? onRecordingFinished = null)
+        Action? onRecordingFinished = null, bool hideOwnWindows = false, bool selectionOnly = false)
     {
         var exit = CaptureExit.Cancelled;
 
@@ -155,7 +175,9 @@ internal static class CaptureSession
         var names = ExportNameContext.Of(ForegroundAppCache.Current?.ExeName,
             ForegroundAppCache.Current?.Title);
 
-        var restore = TransientMinimize.MinimizeAll(owner);
+        // 只在「编辑器试运行」时收自己的窗口：其余入口（面板 / 快捷键 / 悬浮 / 触发）一律不动，
+        // 用户可能正想把自己的面板、贴图截进去。
+        Action restore = hideOwnWindows ? TransientMinimize.MinimizeAll(owner) : () => { };
         bool wasSuspended = HotkeyRegistry.Suspended;
         PickerHook.SetActive(true);
         HotkeyRegistry.Suspended = true;
@@ -170,6 +192,7 @@ internal static class CaptureSession
         var displayRect = Int32Rect.Empty;
         IReadOnlyList<Int32Rect>? screens = null;
         CaptureEditState? edit = null;
+        BitmapSource? cursorImage = null;
         bool pin = false, recognize = false, recognizeCopy = false, translate = false;
         bool table = false;
         bool scroll = false, live = false;
@@ -180,7 +203,8 @@ internal static class CaptureSession
 
         try
         {
-            System.Threading.Thread.Sleep(TransientMinimize.SettleMs);   // 等最小化动画结束、桌面重绘完
+            // 收起自己窗口才需要等最小化动画结束 / 桌面重绘完；不收就直接抓
+            if (hideOwnWindows) System.Threading.Thread.Sleep(TransientMinimize.SettleMs);
 
             // 快门音（照上游 screenshot/screenshot_sound_notification，默认关）：
             // 在上游是 beginCapture 里、冻结画面之前响，这里放在抓帧之前同一个时机。
@@ -191,15 +215,20 @@ internal static class CaptureSession
             // 重新裁选直接拿历史里那张整屏冻结画面，不再抓帧。
             var area = reopen?.Rect ?? ScreenShot.Bounds();
             screens = reopen?.Screens ?? ScreenShot.Monitors();
-            var shot = reopen?.Image ?? ScreenShot.Capture(area, ScreenshotBehavior.CaptureCursor);
+            var shot = reopen?.Image ?? ScreenShot.Capture(area, withCursor: false);
             var (sx, sy) = reopen != null
                 ? (reopen.Scale > 0 ? reopen.Scale : 1, reopen.Scale > 0 ? reopen.Scale : 1)
                 : ScreenPickerWindow.MonitorScale(ScreenShot.ToRectangle(area));
 
             var overlay = new CaptureOverlayWindow(shot, ScreenShot.ToRectangle(area), sx, sy,
-                pending: pending);
+                pending: pending, selectionOnly: selectionOnly);
             overlay.ExportNames = names;
             if (reopen is { Regions.Count: > 0 }) overlay.LoadSelection(reopen.Regions);
+
+            // 「重新编辑截图」：把当时的光标小图也摆回同一个位置（开关状态照原样）
+            if (reopen != null)
+                overlay.LoadCursorFromHistory(reopen.Cursor,
+                    new Point(reopen.CursorX, reopen.CursorY), reopen.CursorVisible);
 
             // 「重新编辑截图」：把当时的外观与标注（含撤销 / 重做栈）一起摆回去，用户能接着改、也能撤销
             overlay.LoadCaptureStyle(reopen?.Style);
@@ -250,9 +279,10 @@ internal static class CaptureSession
                         screens = new[] { displayRect };
                     }
 
-                    // 标注 + 撤销 / 重做栈 + 选区外观：下一次「重新编辑截图」照它整个现场摆回来
+                    // 标注 + 撤销 / 重做栈 + 选区外观 + 鼠标指针：下一次「重新编辑截图」照它整个现场摆回来
                     edit = CaptureEditState.Of(overlay.Document, overlay.Document.UndoStack,
                         overlay.Document.RedoStack);
+                    cursorImage = edit.Cursor;
 
                     result = new CaptureResult(overlay.Document.Area, captured,
                         placement.Appearance, placement.Scrolling);
@@ -283,6 +313,14 @@ internal static class CaptureSession
         }
 
         if (result == null) return (exit, null, null);
+
+        // 「只取选区」（参数框选：屏幕区域 / 模板图）：只要区域 + 一张 png，
+        // 不复制 / 不贴图 / 不识别 / 不记采集历史——它不是一张成品截图。
+        if (selectionOnly)
+        {
+            exit = CaptureExit.Captured;
+            return (exit, result, wantImage ? ImageLibrary.SaveCapture(result.Image) : null);
+        }
 
         // 长截图面板上的「编辑 / 切图」：成品图只交给对应的窗口，不复制、不记采集历史
         // （那是同一个画面的二次加工，不是新采集）。
@@ -324,10 +362,12 @@ internal static class CaptureSession
 
         var image = result.Image;
         var screen = display;
+        var cursor = cursorImage;
         System.Threading.Tasks.Task.Run(() =>
         {
             CaptureCatalog.SaveAssets(entry, image);
             if (screen != null) CaptureCatalog.SaveDisplay(entry, screen);
+            if (cursor != null) CaptureCatalog.SaveCursor(entry, cursor);
         });
 
         if (pin) CapturePinManager.Pin(result.Image, result.Area, appearance: result.Appearance);

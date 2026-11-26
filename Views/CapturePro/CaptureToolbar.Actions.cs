@@ -87,7 +87,7 @@ public partial class CaptureToolbar
         {
             CaptureActionTool.Recognize => ActionButton("IconRecognize",
                 "识别文字 / 表格 / 二维码（Ctrl+R）", CaptureAction.Recognize),
-            CaptureActionTool.QrCode => RegionActions(),
+            CaptureActionTool.QrCode => QrButton(),
             CaptureActionTool.Record => ActionButton("IconRecord",
                 "录屏：把当前选区录成 MP4（3 秒倒计时后开始，控制条上可暂停 / 完成 / 取消）",
                 CaptureAction.Record),
@@ -358,59 +358,9 @@ public partial class CaptureToolbar
         };
     }
 
-    /// <summary>
-    /// 「选择」工具那一行的采集入口（照上游移动工具的参数行：光标 / 重新截图 / 二维码）。
-    /// LTools 没有「光标」开关，所以这里是「重新截图」+「显示二维码」两个。
-    /// </summary>
-    private FrameworkElement RegionActions()
-    {
-        var panel = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        panel.Children.Add(RecaptureButton());
-        panel.Children.Add(new Border { Width = 6 });
-        panel.Children.Add(QrButton());
-        _regionActions = panel;
-        return panel;
-    }
-
-    /// <summary>
-    /// 「重新截图」（照上游 <c>m_recaptureButton</c>）：原位重抓，只换底图；
-    /// 重抓期间和二维码一起置灰（上游 <c>setRecaptureBusy</c>）。
-    /// </summary>
-    private Button RecaptureButton()
-    {
-        var button = new Button
-        {
-            Name = "RecaptureBtn",
-            Style = (Style)FindResource("ActBtn"),
-            Focusable = false,
-            ToolTip = "重新截图（Alt+R）：重抓一张底图，选区 / 标注 / 撤销都不动——等页面刷新完再抓",
-            Content = new ShapePath
-            {
-                Data = (Geometry)FindResource("IconReload"),
-                Style = (Style)FindResource("IconPath"),
-            },
-        };
-        button.Click += (_, _) => RecaptureRequested?.Invoke();
-        _recaptureBtn = button;
-        return button;
-    }
-
-    private Button? _recaptureBtn;
-    private StackPanel? _regionActions;
-
-    /// <summary>重抓期间置灰（上游 <c>setRecaptureBusy</c>：重新截图与二维码一起禁用）。</summary>
+    /// <summary>重抓期间置灰二维码（上游 <c>setRecaptureBusy</c>；信息条上的「重新截图」由覆盖层自己置灰）。</summary>
     internal void SetRecaptureBusy(bool busy)
     {
-        if (_recaptureBtn != null)
-        {
-            _recaptureBtn.IsEnabled = !busy;
-            _recaptureBtn.Opacity = busy ? 0.45 : 1;
-        }
-
         if (_qrBtn != null) _qrBtn.IsEnabled = !busy && _qrAvailable;
     }
 
@@ -457,14 +407,10 @@ public partial class CaptureToolbar
     }
 
     /// <summary>「显示二维码」只服务「选择」工具（画标注时它没有意义），完成动作收起时一起收。</summary>
-    /// <remarks>「重新截图」跟它同一行、同一个显隐规则（上游也是移动工具那一行才露）。</remarks>
     private void ApplyQrVisibility()
     {
         bool show = _actionsVisible && _tool == CaptureTool.Select;
-        var visibility = show ? Visibility.Visible : Visibility.Collapsed;
-
-        if (_qrBtn != null) _qrBtn.Visibility = visibility;
-        if (_regionActions != null) _regionActions.Visibility = visibility;
+        if (_qrBtn != null) _qrBtn.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private Button ActionButton(string icon, string tip, CaptureAction action, bool primary = false,
@@ -814,4 +760,61 @@ public partial class CaptureToolbar
             EraserLabel.Chip, EraserLabel.Name, "eraserMode"));
     }
 
+    // ============ 「只取选区」的确认按钮（只有参数框选用） ============
+
+    private readonly List<FrameworkElement> _pickParts = new();   // 竖线 + 使用这块区域 + 取消
+    private Button? _pickConfirmBtn;
+
+    /// <summary>用户点了「使用这块区域」（覆盖层按 Enter 同一条出口处理）。</summary>
+    internal event Action? PickConfirmed;
+
+    /// <summary>用户点了「取消」。</summary>
+    internal event Action? PickCancelled;
+
+    /// <summary>
+    /// 「使用这块区域 · 取消」：摆在工具条最右边、**跟着工具条走**（工具条本来就贴着选区摆）。
+    /// 别再另起一扇浮层去跟工具条抢同一条道——实测那样按钮会被工具条盖住，用户点了没反应。
+    /// 平时整组收起：普通截图有自己的完成动作那一排。
+    /// </summary>
+    private void BuildPickActions()
+    {
+        var line = new Border { Style = (Style)FindResource("SeparatorBar") };
+        _pickParts.Add(line);
+        ToolRow.Children.Add(line);
+
+        var confirm = new Button
+        {
+            Style = (Style)FindResource("PickBtnPrimary"),
+            Content = "使用这块区域",
+            ToolTip = "Enter：把这块区域交给调用方（不复制、不记采集历史）",
+            IsEnabled = false,
+        };
+        confirm.Click += (_, _) => PickConfirmed?.Invoke();
+        _pickConfirmBtn = confirm;
+        _pickParts.Add(confirm);
+        ToolRow.Children.Add(confirm);
+
+        var cancel = new Button
+        {
+            Style = (Style)FindResource("PickBtn"),
+            Content = "取消",
+            ToolTip = "Esc / 右键退回（不交回任何区域）",
+        };
+        cancel.Click += (_, _) => PickCancelled?.Invoke();
+        _pickParts.Add(cancel);
+        ToolRow.Children.Add(cancel);
+
+        SetPickMode(false, false);
+    }
+
+    /// <summary>参数框选模式：露出这组按钮，并按「有没有选区」决定确认能不能点。</summary>
+    internal void SetPickMode(bool on, bool canConfirm)
+    {
+        var visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var part in _pickParts) part.Visibility = visibility;
+        if (_pickConfirmBtn != null) _pickConfirmBtn.IsEnabled = on && canConfirm;
+    }
+
+    /// <summary>冒烟 / 排查用：确认按钮（没有就是 null）。</summary>
+    internal Button? PickConfirmButton => _pickConfirmBtn;
 }

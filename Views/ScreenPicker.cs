@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using LTools.Core;
+using LTools.Features.CapturePro;
 using LTools.Native;
 
 namespace LTools.Views;
@@ -22,27 +23,32 @@ namespace LTools.Views;
 internal static class ScreenPicker
 {
     /// <summary>框选一块屏幕区域。成功时 <paramref name="area"/> 是物理像素矩形，<paramref name="image"/> 是裁剪图。</summary>
+    /// <remarks>
+    /// 走的是**截图 Pro 的覆盖层**（<c>CaptureSession.TryCapture(selectionOnly: true)</c>）：
+    /// 吸附 / 智能选区 / 多屏 / 延时那一套与「截图」完全一致，只是这一次不出成品——
+    /// 不复制、不贴图、不识别、不记采集历史，只把区域和一张 png 带回来。
+    /// 取点 / 取色仍用本类自己的轻量遮罩（要放大镜，Pro 没有）。
+    /// </remarks>
     public static bool TryPickRegion(Window? owner, out Int32Rect area, out BitmapSource image)
     {
         area = default;
         image = null!;
 
-        var restore = TransientMinimize.MinimizeAll(owner);
-        // 提示卡片（置顶）也收起来：它会出现在冻结画面里，用户框选时一直在那儿
-        var toasts = ToastService.SuppressForCapture();
+        // 提示卡片（置顶）收起来：它会出现在冻结画面里
+        using var toasts = ToastService.SuppressForCapture();
         try
         {
-            Thread.Sleep(TransientMinimize.SettleMs);   // 等最小化动画结束、桌面重绘完
-            var monitor = MonitorUnderCursor();
-            using var bmp = ScreenCapture.Capture(monitor.X, monitor.Y, monitor.Width, monitor.Height);
-            var shot = ToBitmapSource(bmp);
+            // 这些入口都是「选一块给别的功能用」：发起它的窗口（编辑器 / 辅助工具 / 录屏条）挡着要选的地方，
+            // 所以这里仍然收起 LTools 自己的窗口。
+            CaptureOutcome? outcome = CaptureSession.TryCapture(owner, out _,
+                wantImage: true, hideOwnWindows: true, selectionOnly: true);
+            if (outcome?.File is not { Length: > 0 } file || outcome.Area.Width <= 0) return false;
 
-            var picker = new ScreenPickerWindow(shot, monitor, pointMode: false, wantColor: false);
-            picker.ShowDialog();
-            if (!picker.Confirmed || picker.Crop == null) return false;
+            BitmapSource? picture = CaptureCatalog.LoadImage(file);
+            if (picture == null) return false;
 
-            area = picker.Area;
-            image = picker.Crop;
+            area = outcome.Area;
+            image = picture;
             return true;
         }
         catch (Exception ex)
@@ -50,11 +56,6 @@ internal static class ScreenPicker
             CrashLog.Write("ScreenPicker.Region", ex);
             TrayService.Notify("框选截图失败：" + ex.Message);
             return false;
-        }
-        finally
-        {
-            restore();
-            toasts.Dispose();
         }
     }
 
@@ -89,7 +90,7 @@ internal static class ScreenPicker
             using var bmp = ScreenCapture.Capture(monitor.X, monitor.Y, monitor.Width, monitor.Height);
             var shot = ToBitmapSource(bmp);
 
-            var picker = new ScreenPickerWindow(shot, monitor, pointMode: true, wantColor: wantColor, hint: hint);
+            var picker = new ScreenPickerWindow(shot, monitor, wantColor, hint);
             picker.ShowDialog();
             if (!picker.Confirmed) return false;
 

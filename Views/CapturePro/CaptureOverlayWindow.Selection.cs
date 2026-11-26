@@ -152,6 +152,7 @@ public partial class CaptureOverlayWindow
         }
 
         // 浮动工具栏 / 选区形状条都是普通控件：点它们不能当成开始框选或画标注
+        // （「只取选区」的确认按钮就长在工具条里，一起走这一条）
         if (IsOnToolbar(e.OriginalSource as DependencyObject)) return;
         if (IsOnShapeBar(e.OriginalSource as DependencyObject)) return;
 

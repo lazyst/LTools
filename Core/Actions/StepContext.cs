@@ -53,6 +53,9 @@ public sealed class StepContext
     /// <summary>干跑（不注入键鼠、不弹窗口），见 <see cref="ActionRunOptions.DryRun"/>。</summary>
     public bool DryRun => State.Options.DryRun;
 
+    /// <summary>截图前收不收 LTools 自己的窗口（只有编辑器试运行才收）。</summary>
+    public bool HideOwnWindows => State.Options.HideOwnWindows;
+
     /// <summary>本次运行最近一次被「失败继续」吞掉的错误文本。</summary>
     public string LastError => State.LastError;
 

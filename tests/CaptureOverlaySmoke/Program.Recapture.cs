@@ -63,18 +63,16 @@ internal static partial class Program
             PumpFor(100);
             Check(Marks() == marksBefore + 1, "重抓前先画一笔");
 
-            // 工具栏：「选择」工具那一组里是「重新截图 + 二维码」（照上游移动工具那行）
-            var toolbar = (FrameworkElement)Field(overlay, "Toolbar");
-            var panel = (StackPanel?)Field(toolbar, "_regionActions");
-            Check(panel != null, "工具栏建了「重新截图 + 二维码」那一组");
-
-            Button? recaptureBtn = panel?.Children.OfType<Button>().FirstOrDefault();
-            Check(recaptureBtn != null && recaptureBtn.ToolTip is string tip && tip.Contains("Alt+R"),
-                "组里有「重新截图」按钮，说明带快捷键：" + recaptureBtn?.ToolTip);
-            Check(recaptureBtn?.IsEnabled == true, "空闲时可以点");
-            Check(panel?.Children.OfType<System.Windows.Controls.Primitives.ToggleButton>().Any() == true,
-                "同一组里还有「显示二维码」开关");
-            Check(panel?.Visibility == Visibility.Visible, "「选择」工具下这一组可见");
+            // 入口照上游样式条：在选区信息条右端（「显示光标 / 重新截图」），不在完成动作那一叠里
+            var cursorBtn = (FrameworkElement)Field(overlay, "SelCursorBtn");
+            var recaptureBtn = (FrameworkElement)Field(overlay, "SelRecaptureBtn");
+            Check(cursorBtn.ToolTip is string ctip && ctip.Contains("显示光标"),
+                "信息条上有「显示光标」：" + cursorBtn.ToolTip);
+            Check(recaptureBtn.ToolTip is string rtip && rtip.Contains("Alt+R"),
+                "信息条上有「重新截图」，说明带快捷键：" + recaptureBtn.ToolTip);
+            Check(recaptureBtn.Opacity == 1, "空闲时不是灰的");
+            Check(((FrameworkElement)Field(overlay, "SelBar")).Visibility == Visibility.Visible,
+                "有选区、「选择」工具下信息条可见");
 
             BitmapSource baseBefore = (BitmapSource)Prop("Base");
             double[] before = Block(baseBefore, 24, 24, 32);
@@ -91,7 +89,7 @@ internal static partial class Program
             Check(Marks() == marksBefore + 1, "标注还在");
             Check((bool)Prop("CanUndo"), "撤销栈还在（重抓不算一次编辑）");
             Check(!(bool)Field(overlay, "_recaptureBusy"), "重抓结束、按钮恢复");
-            Check(recaptureBtn?.IsEnabled == true, "重抓结束后按钮又能点了");
+            Check(recaptureBtn.Opacity == 1, "重抓结束后「重新截图」又亮回来");
 
             // 选区外那块：和第一次抓帧一样（覆盖层压暗没有进画面）
             double[] after = Block(baseAfter, 24, 24, 32);

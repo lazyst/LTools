@@ -122,6 +122,7 @@ public partial class CaptureOverlayWindow
             if (hover != Rect.Empty) DrawDetect(hover, _hoverTarget!.Value.Label);
             else HideDetect();
 
+            SyncPickMode();
             RefreshHint();
             PlaceHint();
             return;
@@ -132,10 +133,13 @@ public partial class CaptureOverlayWindow
 
         if (smart)
         {
-            // 预选态：主工具条整条收起、信息条只读、提示改成智能选区那一句（照上游 hideToolbar）
+            // 预选态：主工具条整条收起、信息条只读、提示改成智能选区那一句（照上游 hideToolbar）。
+            // 「只取选区」例外：确认按钮就在工具条右端，收起它就等于没有确认按钮了。
             Toolbar.SetActionsVisible(false);
-            HideToolbar();
+            if (SelectionOnly) ShowToolbar(shown);
+            else HideToolbar();
             ShowSelectionBar(shown);
+            SyncPickMode();
             RefreshHint();
             PlaceHint();
             return;
@@ -144,7 +148,7 @@ public partial class CaptureOverlayWindow
         // 拖动过程中先别跳出来，松手后再给按钮。
         // 「贴图内标注」没有完成动作：完成是 Enter / 双击，结果交回那张贴图，别摆一排按了会被忽略的按钮。
         // 快捷入口（选完就执行）也不摆：照上游 suppressCaptureToolbar，它根本没有「点一下」这一步。
-        bool showActions = _drag == DragMode.None && !EditOnly && !HasPending;
+        bool showActions = _drag == DragMode.None && !EditOnly && !SelectionOnly && !HasPending;
         Toolbar.SetActionsVisible(showActions);
 
         // 工具栏：改框期间先收起来，免得被拖到指头底下；画标注时留着（随时能换工具）
@@ -153,12 +157,30 @@ public partial class CaptureOverlayWindow
             Toolbar.Visibility = Visibility.Collapsed;
         else ShowToolbar(sel);
         Toolbar.SetUndo(_doc.CanUndo, _doc.CanRedo);
+        SyncCursorChrome();
 
         // 选区信息条：摆位自己挑（上方 → 右 → 左 → 下），不和浮动工具条抢位置
         ShowSelectionBar(sel);
 
+        // 「只取选区」的确认按钮长在工具条右端（跟着工具条走），这里只同步能不能点
+        SyncPickMode();
+
         RefreshHint();
         PlaceHint();
+    }
+
+    /// <summary>
+    /// 「只取选区」（参数框选）的确认按钮状态：它在工具条右端（<c>使用这块区域 · 取消</c>）。
+    /// </summary>
+    /// <remarks>
+    /// 别再另起一扇浮层：确认条、选区信息条、浮动工具条都在选区外侧那条道上，谁摆得晚谁盖住谁——
+    /// 一开始做成独立浮层时，按钮正好被工具条压住，命中测试拿到的是工具条的按钮，
+    /// 用户看到的就是「点使用这块区域没反应」。长在工具条里既跟着选区跑，也不会互相盖。
+    /// </remarks>
+    private void SyncPickMode()
+    {
+        if (!SelectionOnly) return;     // 普通截图 / 贴图内标注：工具条上根本没有这组按钮
+        Toolbar.SetPickMode(true, IsValid(_sel));
     }
 
     /// <summary>
@@ -285,6 +307,12 @@ public partial class CaptureOverlayWindow
         if (EditOnly)
         {
             HintText.Text = "标注这张贴图 · Enter 换回贴图 · Esc 取消 · 右键退回";
+            return;
+        }
+
+        if (SelectionOnly)
+        {
+            HintText.Text = "取选区 · 拖动框选 / 单击吸附的窗口或控件 · Enter 或点工具条上的「使用这块区域」确定 · Esc 取消 · 右键退回";
             return;
         }
 

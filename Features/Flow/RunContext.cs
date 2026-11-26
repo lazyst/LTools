@@ -60,6 +60,9 @@ internal sealed class RunContext
     /// </summary>
     public string? ResourceRoot { get; init; }
 
+    /// <summary>截图前收不收 LTools 自己的窗口（照 <see cref="ActionRunOptions.HideOwnWindows"/>）。</summary>
+    public bool HideOwnWindows { get; init; }
+
     /// <summary>面板唤起时记录的光标坐标；0 表示运行时取当前位置。</summary>
     public int CursorX { get; }
     public int CursorY { get; }

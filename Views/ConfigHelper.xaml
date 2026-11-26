@@ -1063,7 +1063,7 @@
                             <StackPanel>
                                 <CheckBox x:Name="CaptureCursorBox"
                                           Content="截图里带上鼠标指针"
-                                          ToolTip="照上游 screenshot/capture_cursor（默认关）；只作用于「截图」自己的抓帧，模板找图 / 文字识别的抓帧不带指针"
+                                          ToolTip="照上游 screenshot/capture_cursor（默认关）：新截图默认把指针画进成品；框选时也能用选区信息条上的「显示光标」或 ` 键单独切这一张。模板找图 / 文字识别的抓帧永远不带指针"
                                           Checked="CaptureBehavior_Changed" Unchecked="CaptureBehavior_Changed"/>
                                 <CheckBox x:Name="CaptureConfirmExitBox" Margin="22,8,0,0"
                                           Content="Esc 退出截图前先确认"

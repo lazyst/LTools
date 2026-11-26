@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using LTools.Native;
 
 namespace LTools.Features.CapturePro;
 
@@ -70,6 +71,7 @@ internal sealed class CaptureDocument
         Area = default;
         Regions = null;
         Dirty = false;
+        SetCursor(null, null);
     }
 
     /// <summary>
@@ -135,6 +137,94 @@ internal sealed class CaptureDocument
 
     /// <summary>选区（物理像素，屏幕绝对坐标）。未框选时宽高为 0。</summary>
     public Int32Rect Area { get; set; }
+
+    // ============ 鼠标指针（照上游 screenshot/capture_cursor） ============
+
+    private BitmapSource? _cursorImage;
+    private Point _cursorOffset;
+    private bool _cursorVisible;
+    private bool _cursorAvailable;
+
+    /// <summary>这一张抓帧时取到了光标形状（取到了才给「显示光标」开关）。</summary>
+    public bool CursorAvailable => _cursorAvailable;
+
+    /// <summary>成品里要不要画鼠标指针（新截图默认取 <c>screenshot/capture_cursor</c>，覆盖层里可切）。</summary>
+    public bool CursorVisible => _cursorAvailable && _cursorVisible;
+
+    /// <summary>
+    /// 换一份光标快照：<paramref name="frame"/> 是形状（直通 alpha 的 BGRA），
+    /// <paramref name="hotspot"/> 是它在虚拟桌面上的热点（物理像素）。
+    /// 传 <c>null</c> = 这张没有光标（取不到 / 老记录），开关跟着失效。
+    /// </summary>
+    public void SetCursor(CursorCapture.CursorFrame? frame, Point? hotspot, bool? visible = null)
+    {
+        if (frame is not { Width: > 0, Height: > 0 } || hotspot is not { } at ||
+            frame.Pixels.Length != frame.Width * frame.Height * 4)
+        {
+            SetCursorImage(null, default, false);
+            return;
+        }
+
+        var image = BitmapSource.Create(frame.Width, frame.Height, 96, 96, PixelFormats.Bgra32,
+            null, frame.Pixels, frame.Width * 4);
+        image.Freeze();
+
+        // 相对底图左上角（图像像素）：粘贴时热点对准屏幕坐标，画的时候加回左上角
+        SetCursorImage(image, CursorTopLeft(at, frame.HotspotX, frame.HotspotY, Monitor),
+            visible ?? _cursorVisible);
+    }
+
+    /// <summary>指针热点（屏幕物理像素）→ 光标小图左上角相对整屏底图的偏移（图像像素）。</summary>
+    internal static Point CursorTopLeft(Point hotspot, int iconHotspotX, int iconHotspotY, Int32Rect monitor) =>
+        new(hotspot.X - iconHotspotX - monitor.X, hotspot.Y - iconHotspotY - monitor.Y);
+
+    /// <summary>
+    /// 直接放一张已经画好的光标小图（采集历史里「重新编辑截图」用：那一份只有像素和偏移）。
+    /// <paramref name="offset"/> 相对底图左上角（图像像素）。
+    /// </summary>
+    public void SetCursorImage(BitmapSource? image, Point offset, bool visible)
+    {
+        if (image is null || image.PixelWidth <= 0 || image.PixelHeight <= 0)
+        {
+            _cursorImage = null;
+            _cursorAvailable = false;
+            _cursorVisible = false;
+            _cursorOffset = default;
+            return;
+        }
+
+        if (!image.IsFrozen && image.CanFreeze) image.Freeze();
+        _cursorImage = image;
+        _cursorOffset = offset;
+        _cursorAvailable = true;
+        _cursorVisible = visible;
+    }
+
+    /// <summary>切「成品里画不画鼠标指针」。返回切换之后的状态；没有光标快照时恒为 false。</summary>
+    public bool SetCursorVisible(bool visible)
+    {
+        if (!_cursorAvailable) return false;
+        _cursorVisible = visible;
+        return _cursorVisible;
+    }
+
+    /// <summary>这一张的光标快照（落采集历史用）。</summary>
+    public (BitmapSource? Image, Point Offset, bool Visible) CursorSnapshot =>
+        (_cursorImage, _cursorOffset, CursorVisible);
+
+    /// <summary>
+    /// 把鼠标指针画到底图上（预览与导出共用）：
+    /// 调用方已经推好「图像像素 → 输出」的变换，这里只按底图左上角摆那一小块。
+    /// </summary>
+    public void DrawCursor(DrawingContext dc)
+    {
+        if (!CursorVisible || _cursorImage is null) return;
+
+        double s = Scale > 0 ? Scale : 1;
+        dc.DrawImage(_cursorImage, new Rect(
+            _cursorOffset.X / s, _cursorOffset.Y / s,
+            _cursorImage.Width / s, _cursorImage.Height / s));
+    }
 
     /// <summary>
     /// 多区域选区（**图像像素，相对底图左上角**）：加区并、减区挖，导出时按它裁透明。
@@ -525,6 +615,7 @@ internal sealed class CaptureDocument
     private void DrawContent(DrawingContext dc)
     {
         dc.DrawImage(Base, Canvas);
+        DrawCursor(dc);
         MarkRenderer.DrawAll(dc, _marks, Base, Canvas, Scale);
     }
 

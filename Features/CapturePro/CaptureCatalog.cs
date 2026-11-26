@@ -125,6 +125,20 @@ internal sealed class CaptureEntry
     /// <summary>当时选区的外观（圆角 / 阴影 / 边框 / 背景不透明度）；老记录为空。</summary>
     public CaptureStyleDto? Style { get; set; }
 
+    /// <summary>
+    /// 当时的鼠标指针小图（相对 <c>captures/</c> 的路径，如 <c>cursor/&lt;id&gt;.png</c>）。
+    /// 「重新编辑截图」照它摆回去；没开「显示光标」/ 老记录为空。
+    /// </summary>
+    public string Cursor { get; set; } = "";
+
+    /// <summary>光标小图相对整屏底图左上角的位置（物理像素）；没有指针时是 0。</summary>
+    public int CursorX { get; set; }
+
+    public int CursorY { get; set; }
+
+    /// <summary>成品里画不画这个指针（照上游 <c>cursorVisible</c>）。</summary>
+    public bool CursorVisible { get; set; }
+
     /// <summary>当时画过标注（能恢复的不只是底图与选区）。</summary>
     [JsonIgnore] public bool HasAnnotations => Annotations is { Count: > 0 };
 
@@ -226,6 +240,9 @@ internal static class CaptureCatalog
     /// <summary>整屏冻结画面（采集历史「看整屏 / 重新裁选」用，一条一张）。</summary>
     public static string DisplaysDir => Path.Combine(Root, "displays");
 
+    /// <summary>鼠标指针小图（「重新编辑截图」照它把指针摆回去；一条一张，几十 KB 都不到）。</summary>
+    public static string CursorsDir => Path.Combine(Root, "cursor");
+
     public static string CatalogPath => Path.Combine(Root, "catalog.json");
 
     public static string AssetPath(string id) => Path.Combine(AssetsDir, id + ".png");
@@ -234,8 +251,20 @@ internal static class CaptureCatalog
 
     public static string DisplayPath(string id) => Path.Combine(DisplaysDir, id + ".png");
 
+    public static string CursorPath(string id) => Path.Combine(CursorsDir, id + ".png");
+
     /// <summary><see cref="CaptureEntry.Display"/> 里存的（相对 <c>captures/</c>、正斜杠）。</summary>
     public static string DisplayRelative(string id) => "displays/" + id + ".png";
+
+    /// <summary><see cref="CaptureEntry.Cursor"/> 里存的（相对 <c>captures/</c>、正斜杠）。</summary>
+    public static string CursorRelative(string id) => "cursor/" + id + ".png";
+
+    /// <summary>光标小图的绝对路径（相对 <see cref="Root"/>）；没有就返回空串。</summary>
+    public static string CursorFilePath(CaptureEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Cursor)) return "";
+        return Path.Combine(Root, entry.Cursor.Replace('/', Path.DirectorySeparatorChar));
+    }
 
     public static string RecordPath(string id, string extension) =>
         Path.Combine(RecordsDir, id + "." + NormalizeExtension(extension));
@@ -261,6 +290,9 @@ internal static class CaptureCatalog
     /// <summary>读整屏底图（<paramref name="decodeWidth"/> = 0 表示原分辨率）；没有 / 读不动返回 null。</summary>
     public static BitmapSource? LoadDisplay(CaptureEntry entry, int decodeWidth = 0) =>
         LoadImage(DisplayFilePath(entry), decodeWidth);
+
+    /// <summary>读当时那份鼠标指针小图；没有 / 读不动返回 null。</summary>
+    public static BitmapSource? LoadCursor(CaptureEntry entry) => LoadImage(CursorFilePath(entry));
 
     /// <summary>小写扩展名（不含点）；没有扩展名返回空串。</summary>
     public static string ExtensionOf(string? path)
@@ -429,6 +461,15 @@ internal static class CaptureCatalog
                 }
 
                 entry.Style = edit.Style;
+
+                // 鼠标指针：「重新编辑截图」把它画回同一个位置（开关状态也一起记住）
+                if (edit.Cursor != null)
+                {
+                    entry.Cursor = CursorRelative(entry.Id);
+                    entry.CursorX = edit.CursorX;
+                    entry.CursorY = edit.CursorY;
+                    entry.CursorVisible = edit.CursorVisible;
+                }
             }
 
             items.Insert(0, entry);
@@ -569,6 +610,32 @@ internal static class CaptureCatalog
         }
     }
 
+    /// <summary>把鼠标指针小图落盘（可放后台线程；<paramref name="image"/> 必须已 Freeze）。</summary>
+    public static void SaveCursor(CaptureEntry entry, BitmapSource image)    {
+        if (string.IsNullOrWhiteSpace(entry.Cursor) || image == null) return;
+
+        try
+        {
+            Directory.CreateDirectory(CursorsDir);
+            string path = CursorPath(entry.Id);
+            WritePng(path, image);
+
+            // 写图期间这条被删了：别留下孤儿文件
+            lock (Gate)
+            {
+                if (LoadUnsafe().All(e => e.Id != entry.Id))
+                {
+                    DeleteFile(path);
+                    return;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("CaptureCatalog.SaveCursor", "写鼠标指针失败：" + ex.Message);
+        }
+    }
+
     /// <summary>识别完成后把文字回填到那条记录（找不到就什么也不做）。</summary>
     public static void SetText(string id, string text)
     {
@@ -606,6 +673,7 @@ internal static class CaptureCatalog
             DeleteFile(AssetPath(id));
             DeleteFile(ThumbPath(id));
             DeleteFile(DisplayPath(id));
+            DeleteFile(CursorPath(id));
 
             string file = FilePath(entry);
             if (file.Length > 0) DeleteFile(file);
@@ -694,6 +762,7 @@ internal static class CaptureCatalog
             DeleteFile(AssetPath(entry.Id));
             DeleteFile(ThumbPath(entry.Id));
             DeleteFile(DisplayPath(entry.Id));
+            DeleteFile(CursorPath(entry.Id));
 
             string file = FilePath(entry);
             if (file.Length > 0) DeleteFile(file);
@@ -727,21 +796,23 @@ internal static class CaptureCatalog
         IEnumerable<CaptureEntry> items, long maxBytes, Func<CaptureEntry, long> sizeOf) =>
         HistoryPrune.ByDisk(items, maxBytes, sizeOf, e => e.CreatedAt);
 
-    /// <summary>一条记录占的字节（成品图 + 缩略图 + 整屏底图 + 录屏文件）。</summary>
+    /// <summary>一条记录占的字节（成品图 + 缩略图 + 整屏底图 + 鼠标指针 + 录屏文件）。</summary>
     public static long EntryBytes(CaptureEntry entry) =>
         HistoryPrune.FileBytes(AssetPath(entry.Id)) + HistoryPrune.FileBytes(ThumbPath(entry.Id))
-        + HistoryPrune.FileBytes(DisplayPath(entry.Id)) + HistoryPrune.FileBytes(FilePath(entry));
+        + HistoryPrune.FileBytes(DisplayPath(entry.Id)) + HistoryPrune.FileBytes(CursorPath(entry.Id))
+        + HistoryPrune.FileBytes(FilePath(entry));
 
     /// <summary>
-    /// 扫掉没有条目的孤儿文件（关掉采集历史后留下的图 / 缩略图）：只碰 <c>assets/</c> 与
-    /// <c>thumbnails/</c>，录屏成品不动；文件写入不到 1 小时的不碰（可能刚写还没入库）。
+    /// 扫掉没有条目的孤儿文件（关掉采集历史后留下的图 / 缩略图）：只碰 <c>assets/</c>、
+    /// <c>thumbnails/</c>、<c>displays/</c> 与 <c>cursor/</c>，录屏成品不动；文件写入不到 1 小时的不碰
+    /// （可能刚写还没入库）。
     /// </summary>
     private static void SweepOrphans(IReadOnlyList<CaptureEntry> keep)
     {
         var ids = new HashSet<string>(keep.Select(e => e.Id), StringComparer.Ordinal);
         DateTime cutoff = DateTime.Now.AddHours(-1);
 
-        foreach (string dir in new[] { AssetsDir, ThumbsDir, DisplaysDir })
+        foreach (string dir in new[] { AssetsDir, ThumbsDir, DisplaysDir, CursorsDir })
         {
             if (!Directory.Exists(dir)) continue;
             foreach (string file in Directory.EnumerateFiles(dir, "*.png"))

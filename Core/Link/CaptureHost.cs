@@ -63,7 +63,8 @@ internal static class CaptureHost
             try
             {
                 Window? owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
-                CaptureOutcome? outcome = CaptureSession.TryCapture(owner, out var exit, pending, req.WantImage);
+                CaptureOutcome? outcome = CaptureSession.TryCapture(owner, out var exit, pending, req.WantImage,
+                    hideOwnWindows: req.HideOwn, selectionOnly: req.SelectionOnly);
                 done.TrySetResult((exit, outcome));
             }
             catch (Exception ex)

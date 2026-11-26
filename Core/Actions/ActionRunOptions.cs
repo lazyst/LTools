@@ -69,6 +69,13 @@ public sealed class ActionRunOptions
     public bool DryRun { get; init; }
 
     /// <summary>
+    /// 截图前把 LTools 自己的窗口收起来。**默认不收**（2026-11-26 按用户要求改）：
+    /// 面板 / 悬浮 / 贴图留在画面上，才能把它们本身截进去；
+    /// 只有从动作编辑器发起的试运行才传 <c>true</c>——那时编辑器正挡着要截的地方。
+    /// </summary>
+    public bool HideOwnWindows { get; init; }
+
+    /// <summary>
     /// 单步运行超过这个时长就回调一次 <see cref="OnSlowStep"/>（默认 30 秒；≤ 0 = 关掉）。
     /// 只是**看得见**，不杀线程：真正卡在 UIA / OCR / 大文件里的调用只能等它自己返回。
     /// </summary>

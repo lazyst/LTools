@@ -182,13 +182,6 @@ public partial class CaptureOverlayWindow
     {
         if (_textEditing) return;
 
-        // 用户按了「显示 / 隐藏光标」：这一层就别再按工具改回箭头 / 十字
-        if (_cursorHidden)
-        {
-            Cursor = Cursors.None;
-            return;
-        }
-
         // 智能选区预选态：光标就是「十字 + 单击确认」，不该出现缩放 / 移动的箭头
         if (SmartPreviewActive)
         {

@@ -52,7 +52,7 @@ public partial class CaptureOverlayWindow
 
     private void WireToolbar()
     {
-        Toolbar.Init(_styles, _tool);
+        Toolbar.Init(_styles, _tool, pickMode: SelectionOnly);
         Toolbar.ToolChanged += SetTool;
         Toolbar.ActionRequested += OnToolbarAction;
         Toolbar.StyleChanged += () =>
@@ -66,7 +66,10 @@ public partial class CaptureOverlayWindow
         Toolbar.UndoRequested += () => { _doc.Undo(); RefreshMarks(); };
         Toolbar.RedoRequested += () => { _doc.Redo(); RefreshMarks(); };
         Toolbar.ResetRequested += () => { _toolbarPlaced = false; UpdateChrome(); };
-        Toolbar.RecaptureRequested += () => _ = RecaptureAsync();
+
+        // 「只取选区」的确认按钮长在工具条里（只有参数框选会露出这组）
+        Toolbar.PickConfirmed += () => Accept(FinishKind.Copy);
+        Toolbar.PickCancelled += Cancel;
     }
 
     /// <summary>

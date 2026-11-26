@@ -25,12 +25,27 @@ internal static partial class Program
 
         var ctor = typeof(CaptureOverlayWindow)
             .GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-            .Single(c => c.GetParameters().Length == 6);
+            .OrderByDescending(c => c.GetParameters().Length)
+            .First();
 
         CaptureOverlayWindow Make(object pending, bool editOnly = false)
         {
-            var overlay = (CaptureOverlayWindow)ctor.Invoke(
-                new object[] { shot, monitor, 1.0, 1.0, editOnly, pending });
+            // 可选参数按名字喂：构造函数加了新开关（selectionOnly）也不用改这里
+            var parameters = ctor.GetParameters();
+            var args = new object?[parameters.Length];
+            args[0] = shot;
+            args[1] = monitor;
+            args[2] = 1.0;
+            args[3] = 1.0;
+            for (int i = 4; i < parameters.Length; i++)
+                args[i] = parameters[i].Name switch
+                {
+                    "editOnly" => editOnly,
+                    "pending" => pending,
+                    _ => parameters[i].DefaultValue,
+                };
+
+            var overlay = (CaptureOverlayWindow)ctor.Invoke(args);
 
             // 与 NewOverlay 一致：关掉智能选区，别让预选干扰「pending 会不会执行」的判定
             var smart = Field(overlay, "_smart");

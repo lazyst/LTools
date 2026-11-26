@@ -136,7 +136,7 @@ public partial class CaptureOverlayWindow : Window
     internal CaptureDocument Document => _doc;
 
     public CaptureOverlayWindow(BitmapSource shot, System.Drawing.Rectangle area, double sx, double sy,
-        bool editOnly = false, PendingAction pending = PendingAction.None)
+        bool editOnly = false, PendingAction pending = PendingAction.None, bool selectionOnly = false)
     {
         InitializeComponent();
 
@@ -144,11 +144,12 @@ public partial class CaptureOverlayWindow : Window
         _area = area;
         _sx = sx > 0 ? sx : 1;
         _sy = sy > 0 ? sy : 1;
-        _pending = editOnly ? PendingAction.None : pending;
+        _pending = editOnly || selectionOnly ? PendingAction.None : pending;
         _translate = _pending == PendingAction.Translate;
         _doc = new CaptureDocument(shot, new Int32Rect(area.Left, area.Top, area.Width, area.Height), _sx);
         Surface.Document = _doc;
         EditOnly = editOnly;
+        SelectionOnly = selectionOnly;
         InitSelectionStyle();
         InitSmartSelection();
         // 上次用的选区形状（照上游 screenshot_selection/region_type：跨会话记住）
@@ -169,9 +170,14 @@ public partial class CaptureOverlayWindow : Window
 
         BuildGrips();
         InitOverlayUi();
+        // 参数框选只要「这一块原样的像素」：把用户存过的截图外观（圆角 / 阴影 / 边框）清掉，
+        // 否则取回去的模板图会多出一圈留白，找图匹配直接用不了。
+        if (selectionOnly) _doc.Style = SelectionStyle.None;
         // 「记住上次工具」（默认关）：新会话直接从上次的绘图工具开始，否则仍是「选择」
         _tool = CaptureToolMemory.Start(CaptureTool.Select);
         WireToolbar();
+        // 鼠标指针单独存一份（照上游 screenshot/capture_cursor）：底图保持干净，覆盖层里能随时开关
+        LoadCursorSnapshot(ScreenshotBehavior.CaptureCursor);
         InitQr();
         DpiChanged += (_, _) => { PinToMonitor(); SyncDocumentScale(); };
         _release = new MouseReleaseGate(this);
@@ -183,6 +189,13 @@ public partial class CaptureOverlayWindow : Window
     /// （不复制、不贴图、不识别、不记采集历史，见 <see cref="CaptureSession.TryEdit"/>）。
     /// </summary>
     internal bool EditOnly { get; }
+
+    /// <summary>
+    /// 「只取选区」：给参数框选（屏幕区域 / 模板图）用——这张图不是成品，
+    /// 所以不出完成动作、不复制、不贴图、不识别、不记采集历史，
+    /// Enter / 双击只把区域和一张 png 交回调用方（见 <see cref="CaptureSession.TryCapture"/>）。
+    /// </summary>
+    internal bool SelectionOnly { get; }
 
     // ============ 生命周期 ============
 
@@ -505,6 +518,8 @@ public partial class CaptureOverlayWindow : Window
     {
         // 「贴图内标注」只有「完成」一个出口：别的（另存为 / 打印 / 贴图 / 识别 / 长截图）在这里没意义
         if (EditOnly && kind != FinishKind.Copy) return;
+        // 「只取选区」同理：这次不是成品图，任何出口都等同于「确定」
+        if (SelectionOnly && kind != FinishKind.Copy) return;
         // 用户自己按了出口（Enter / 工具条 / 快捷键）：快捷入口的「选完就做」不再重复执行
         if (_pending != PendingAction.None) _pendingDone = true;
 
@@ -544,9 +559,9 @@ public partial class CaptureOverlayWindow : Window
             return;
         }
 
-        if (EditOnly)
+        if (EditOnly || SelectionOnly)
         {
-            // 贴图内标注：只把成品交回调用方（不复制 / 不贴图 / 不识别 / 不记历史）
+            // 贴图内标注 / 只取选区：只把成品交回调用方（不复制 / 不贴图 / 不识别 / 不记历史）
             CloseWithResult(kind, image);
             return;
         }

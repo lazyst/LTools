@@ -62,6 +62,9 @@ public partial class CaptureToolbar : UserControl
     private ToolStyleSet? _styles;
     private ToolbarMode _mode = ToolbarMode.Capture;
 
+    /// <summary>参数框选（<c>SelectionOnly</c>）：工具条右端多一组「使用这块区域 · 取消」。</summary>
+    private bool _pickMode;
+
     /// <summary>图片编辑窗的「平移」工具（上游 <c>MoveToolPresentation::Pan</c>）：本窗独有的第 0 格。</summary>
     private RadioButton? _panBtn;
 
@@ -153,9 +156,6 @@ public partial class CaptureToolbar : UserControl
     /// <summary>「显示二维码」被点：参数 = 勾上还是取消（照上游 <c>qrCodeVisibilityRequested</c>）。</summary>
     public event Action<bool>? QrVisibilityRequested;
 
-    /// <summary>「重新截图」被点（照上游 <c>recaptureRequested</c>）：宿主原位重抓一张底图。</summary>
-    public event Action? RecaptureRequested;
-
     /// <summary>图片编辑窗点了「平移」：宿主进入平移模式（绘图工具全部取消选中）。</summary>
     internal event Action? PanRequested;
 
@@ -179,12 +179,14 @@ public partial class CaptureToolbar : UserControl
     /// 裁剪行 / 裁剪列两格，完成动作是识别 / 复制 / 贴图 / 打印 / 快速保存 / 另存为，
     /// 没有长截图 / 录屏 / 取消）。
     /// </param>
-    internal void Init(ToolStyleSet styles, CaptureTool current, ToolbarMode mode = ToolbarMode.Capture)
+    internal void Init(ToolStyleSet styles, CaptureTool current, ToolbarMode mode = ToolbarMode.Capture,
+        bool pickMode = false)
     {
         if (_built) return;
         _built = true;
         _styles = styles;
         _mode = mode;
+        _pickMode = pickMode;
 
         if (_mode == ToolbarMode.Edit) BuildPanButton();
 

@@ -63,7 +63,9 @@ internal static class ScreenshotProbe
         using var _ = RecordingIndicatorWindow.SuppressForCapture();
         // 覆盖层在宿主里（`docs/PROCESS_SPLIT.md` §15.4）：要点图就用 wantImage 让它存成 png，
         // 把路径带回来；成品图本身不跨进程传。
-        CaptureOutcome? outcome = CaptureSession.TryCapture(null, out var exit, wantImage: true);
+        // LTools 自己的窗口默认**不收**（面板 / 悬浮 / 贴图就该能被截进去），只有编辑器试运行时才收。
+        CaptureOutcome? outcome = CaptureSession.TryCapture(null, out var exit, wantImage: true,
+            hideOwnWindows: ctx.HideOwnWindows);
         if (outcome?.File is not { Length: > 0 } file)
         {
             // 「交给录屏」不是取消：那一步本来就没有图，别写成用户取消

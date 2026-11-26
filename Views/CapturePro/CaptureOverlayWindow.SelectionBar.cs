@@ -103,6 +103,22 @@ public partial class CaptureOverlayWindow
     /// <summary>信息条这一下点击该怎么处理（由 <c>Window_MouseDown</c> 调用，自己置 Handled）。</summary>
     private void HandleSelectionBarClick(DependencyObject? source)
     {
+        // 采集控制（照上游样式条：显示光标 / 重新截图）——预选态也能用，所以放在「只读」判断之前
+        if (IsWithin(source, SelCursorBtn))
+        {
+            CloseAspectMenu();
+            SetCursorVisible(!_doc.CursorVisible);
+            return;
+        }
+
+        if (IsWithin(source, SelRecaptureBtn))
+        {
+            if (RecaptureBusy) return;
+            CloseAspectMenu();
+            _ = RecaptureAsync();
+            return;
+        }
+
         // 智能选区预选态：信息条只读（上游 selectionEditable = false），点它别把参数框拉起来
         if (SmartPreviewActive) return;
 

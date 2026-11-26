@@ -209,9 +209,12 @@ internal sealed record SwallowInputEvent(bool Left, bool Right, bool Middle, int
 /// <summary>
 /// 交互截图：<see cref="Pending"/> 是 <c>CaptureOverlayWindow.PendingAction</c> 的枚举名
 /// （<c>None</c> = 普通框选，其余 = 「选完就做」的快捷入口）；<see cref="WantImage"/> = 调用方还要成品图
-/// （宿主把它存成 png，返回 <see cref="CaptureRunReply.File"/>）。
+/// （宿主把它存成 png，返回 <see cref="CaptureRunReply.File"/>）；
+/// <see cref="HideOwn"/> = 抓帧前把两边的 LTools 窗口都收起来（只有编辑器试运行才传 true）；
+/// <see cref="SelectionOnly"/> = 只取选区（参数框选：不出完成动作、不复制、不记采集历史）。
 /// </summary>
-internal sealed record CaptureRunRequest(string Pending, bool WantImage);
+internal sealed record CaptureRunRequest(string Pending, bool WantImage, bool HideOwn = false,
+    bool SelectionOnly = false);
 
 /// <summary>
 /// 交互截图的结果。<see cref="Exit"/> = <c>captured</c> / <c>cancelled</c> / <c>recording</c>

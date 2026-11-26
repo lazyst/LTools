@@ -213,8 +213,9 @@ internal static partial class Program
             object editMode = Enum.Parse(modeType, "Edit");
 
             var editToolbar = Activator.CreateInstance(toolbarType)!;
+            // Init 的第四个参数是「参数框选模式」（可选），反射要给满
             toolbarType.GetMethod("Init", Inst)!
-                .Invoke(editToolbar, new[] { styleSet, selectTool, editMode });
+                .Invoke(editToolbar, new[] { styleSet, selectTool, editMode, Type.Missing });
 
             var editOrder = OrderOf(editToolbar);
             Check(editOrder.SequenceEqual(new[]

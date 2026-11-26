@@ -44,7 +44,7 @@ public partial class CaptureOverlayWindow
         if (_recaptureBusy || _hwnd == IntPtr.Zero) return false;
 
         _recaptureBusy = true;
-        Toolbar.SetRecaptureBusy(true);
+        SetRecaptureChrome(true);
 
         bool excluded = false;
         bool hidden = false;
@@ -60,10 +60,10 @@ public partial class CaptureOverlayWindow
 
             await Task.Delay(RecaptureSettleMs);
 
-            // ② 重抓同一块虚拟桌面（物理像素，与第一次抓帧同一个矩形）
+            // ② 重抓同一块虚拟桌面（物理像素，与第一次抓帧同一个矩形）；底图保持干净，
+            //    光标是单独一份快照（下面 ④ 之后重抓），开关状态不变
             Int32Rect area = _doc.Monitor;
-            BitmapSource shot = await Task.Run(
-                () => ScreenShot.Capture(area, ScreenshotBehavior.CaptureCursor));
+            BitmapSource shot = await Task.Run(() => ScreenShot.Capture(area));
 
             // ③ 尺寸变了（分辨率 / 显示器数量变了）：几何已经对不上，保留旧图、明确说一声
             if (shot.PixelWidth != _doc.Base.PixelWidth || shot.PixelHeight != _doc.Base.PixelHeight)
@@ -78,6 +78,7 @@ public partial class CaptureOverlayWindow
             // ④ 只换底图：选区 / 标注 / 撤销栈 / 样式都不动
             _doc.ReplaceBaseKeepingFrame(shot);
             _shot = shot;
+            LoadCursorSnapshot(_doc.CursorVisible);   // 光标也跟着这一帧刷新（位置 / 形状都可能变了）
             AfterRecapture();
             return true;
         }
@@ -95,8 +96,15 @@ public partial class CaptureOverlayWindow
             if (excluded) Win32.SetWindowDisplayAffinity(_hwnd, Win32.WdaNone);
 
             _recaptureBusy = false;
-            Toolbar.SetRecaptureBusy(false);
+            SetRecaptureChrome(false);
         }
+    }
+
+    /// <summary>重抓期间把两个入口一起置灰（信息条上的「重新截图」与完成动作里的二维码）。</summary>
+    private void SetRecaptureChrome(bool busy)
+    {
+        Toolbar.SetRecaptureBusy(busy);
+        SelRecaptureBtn.Opacity = busy ? 0.45 : 1;
     }
 
     /// <summary>
