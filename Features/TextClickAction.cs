@@ -33,19 +33,26 @@ internal static class TextClickAction
 
         // 提示文案用原始值（-1 = 一直等），等待循环用换算后的期限。
         int timeout = request.TimeoutMs;
-        var result = TextLocator.Locate(needle, request.Region, request.Rect, request.OcrEngine,
-            Timeouts.Loop(timeout), request.IntervalMs, ctx);
+        int index = Math.Max(1, request.Index);
 
-        if (!result.Found)
-            throw ActionErrors.NotFound(TextLocator.MissMessage(request.Name, needle, result.Seen, timeout));
+        TextLookup lookup = TextLocator.LocateAll(needle, request.Region, request.Rect, request.OcrEngine,
+            Timeouts.Loop(timeout), request.IntervalMs, request.Exact, index, ctx);
 
-        int x = result.X, y = result.Y;
-        MouseOps.Move(x, y);
+        if (lookup.Hits.Count == 0)
+            throw ActionErrors.NotFound(TextLocator.MissMessage(request.Name, needle, lookup.Seen, timeout));
+
+        if (lookup.Hits.Count < index)
+            throw ActionErrors.NotFound(
+                $"「{request.Name}」只找到 {lookup.Hits.Count} 处「{needle}」，没有第 {index} 处" +
+                "（调低「点第几个」，或把「匹配方式」改成包含 / 收窄区域）");
+
+        TextHit hit = lookup.Hits[index - 1];
+        MouseOps.Move(hit.X, hit.Y);
         Thread.Sleep(10);   // 让光标先落定，再发按键（与「鼠标操作」一致）
         MouseOps.Perform(request.MouseAction, request.WheelDelta);
 
-        AppLog.Info("TextClick", $"「{request.Name}」点到「{result.Matched}」：{x},{y}");
-        return new VarValue { Text = $"{x},{y}", X = x, Y = y, Flag = true };
+        AppLog.Info("TextClick", $"「{request.Name}」点到「{hit.Text}」：{hit.X},{hit.Y}");
+        return new VarValue { Text = $"{hit.X},{hit.Y}", X = hit.X, Y = hit.Y, Flag = true };
     }
 }
 
@@ -81,4 +88,10 @@ internal sealed record TextClickRequest
 
     /// <summary>滚轮刻度（默认 120）。</summary>
     public int WheelDelta { get; init; } = 120;
+
+    /// <summary>点第几处（1 起，按从上到下、从左到右；默认第一处）。</summary>
+    public int Index { get; init; } = 1;
+
+    /// <summary>是否要求「完全一致」（默认包含匹配：「保存」也命中「保存并关闭」）。</summary>
+    public bool Exact { get; init; }
 }

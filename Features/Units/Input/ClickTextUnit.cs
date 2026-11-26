@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using LTools.Core.Actions;
 using LTools.Native;
@@ -24,6 +25,12 @@ public sealed class ClickTextUnit : IStepUnit
                     ("screen", []),
                     ("rect", ["rect"]))),
             new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region),
+            new InputSpec("index", "点第几个", ValueKind.number, InputEditor.number,
+                Default: Value.FromNumber(1),
+                Description: "1 = 第一个（从上到下、从左到右）；同一段文字出现多次时用它点第 N 个，超出命中数就是这一步失败"),
+            new InputSpec("match", "匹配方式", ValueKind.text, InputEditor.enumList,
+                Default: Value.FromText("contains"), Options: new[] { "contains", "exact" },
+                Description: "包含 = 「保存」也命中「保存并关闭」；完全一致 = 只认完整的一个词"),
             new InputSpec("ocrEngine", "识别引擎", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("v6tiny"), Options: new[] { "windows", "v6tiny", "v6small", "v6medium" }),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,
@@ -59,6 +66,8 @@ public sealed class ClickTextUnit : IStepUnit
             TimeoutMs = Timeouts.Normalize(args.Number("timeoutMs")),
             IntervalMs = (int)Math.Clamp(args.Number("intervalMs"), 50, 5_000),
             MouseAction = ParseMouse(args.Text("mouseAction")),
+            Index = (int)Math.Max(1, Math.Round(args.Number("index"))),
+            Exact = string.Equals(args.Text("match").Trim(), "exact", StringComparison.OrdinalIgnoreCase),
         }, ProbeContext.Of(ctx));
 
         ctx.SetOutput("x", Value.FromNumber(result.X ?? 0));

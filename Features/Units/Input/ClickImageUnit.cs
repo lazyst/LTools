@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using LTools.Core.Actions;
 using LTools.Native;
@@ -24,6 +25,9 @@ public sealed class ClickImageUnit : IStepUnit
                     ("screen", []),
                     ("rect", ["rect"]))),
             new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region),
+            new InputSpec("index", "点第几个", ValueKind.number, InputEditor.number,
+                Default: Value.FromNumber(1),
+                Description: "1 = 第一个（从上到下、从左到右）；同一个图标出现多次时用它点第 N 个，超出命中数就是这一步失败"),
             new InputSpec("minScore", "最低相似度", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(0.85), Advanced: true),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,
@@ -57,6 +61,7 @@ public sealed class ClickImageUnit : IStepUnit
             TimeoutMs = Timeouts.Normalize(args.Number("timeoutMs")),
             IntervalMs = (int)Math.Clamp(args.Number("intervalMs"), 50, 5_000),
             MouseAction = ClickTextUnit.ParseMouse(args.Text("mouseAction")),
+            Index = (int)Math.Max(1, Math.Round(args.Number("index"))),
         }, ProbeContext.Of(ctx));
 
         ctx.SetOutput("x", Value.FromNumber(result.X ?? 0));

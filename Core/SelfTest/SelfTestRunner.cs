@@ -62,6 +62,7 @@ internal static class SelfTestRunner
         TileLayoutSuite.Register(cases);
         LinkSuite.Register(cases);
         TableSuite.Register(cases);
+        FindTargetsSuite.Register(cases);
         UiaPickSuite.Register(cases);
         SnapTreeSuite.Register(cases);
         KnowledgeSuite.Register(cases);

@@ -143,12 +143,40 @@ internal static class UnitValues
         return Value.Object(members.ToArray());
     }
 
-    /// <summary>图像匹配结果（<c>text</c> = "x,y"）。</summary>
-    public static Value Match(int x, int y, double score) => Value.Object(
-        ("text", Value.FromText($"{x},{y}")),
+    /// <summary>图像匹配结果（<c>text</c> = "x,y"）。给了宽高就一并带上（多命中列表里每项都带框）。</summary>
+    public static Value Match(int x, int y, double score, int w = 0, int h = 0)
+    {
+        var members = new List<(string, Value)>
+        {
+            ("text", Value.FromText($"{x},{y}")),
+            ("x", Value.FromNumber(x)),
+            ("y", Value.FromNumber(y)),
+            ("score", Value.FromNumber(score)),
+            ("found", Value.FromBool(true)),
+        };
+
+        if (w > 0 && h > 0)
+        {
+            members.Add(("w", Value.FromNumber(w)));
+            members.Add(("h", Value.FromNumber(h)));
+            members.Add(("cx", Value.FromNumber(x)));
+            members.Add(("cy", Value.FromNumber(y)));
+            members.Add(("rect", Value.FromText($"{x - w / 2},{y - h / 2},{w},{h}")));
+        }
+
+        return Value.Object(members.ToArray());
+    }
+
+    /// <summary>一个文字命中（多命中列表里的一项：命中的那段文字 + 外接框中心）。</summary>
+    public static Value TextHit(int x, int y, int w, int h, string text) => Value.Object(
+        ("text", Value.FromText(text)),
         ("x", Value.FromNumber(x)),
         ("y", Value.FromNumber(y)),
-        ("score", Value.FromNumber(score)),
+        ("w", Value.FromNumber(w)),
+        ("h", Value.FromNumber(h)),
+        ("cx", Value.FromNumber(x)),
+        ("cy", Value.FromNumber(y)),
+        ("rect", Value.FromText($"{x - w / 2},{y - h / 2},{w},{h}")),
         ("found", Value.FromBool(true)));
 
     /// <summary>没找到（结构化字段齐全，便于统一取 <c>.found</c> / <c>.count</c>）。</summary>

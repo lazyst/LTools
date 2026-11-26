@@ -258,6 +258,20 @@ dotnet run                                # 23 条，首次要构建产品 + 加
 TSV 3 行每行 2 个制表符、CSV 按 CRLF 分 3 行、Markdown 4 行（表头 + 分隔行 + 2 行数据）、JSON 3×3。
 测试图不入库（跑在 `%TEMP%` 下，结束删掉）。
 
+### `FindTargetsSmoke`（找图 / 找字的多个目标）
+
+```powershell
+cd tests\FindTargetsSmoke
+dotnet run                                # 8 条，约 6 秒（首次加载 PP-OCRv6 稍久）
+```
+
+开一扇真窗口，里面三个一模一样的图标 + 两个「确定」，把第一个图标**截成模板图**（与实际像素完全一致），
+断言：`ImageProbe.RunAll` 分出三个目标、按「上→下、左→右」排好（每个都落在对应图标的中心附近）/
+只框住第一个时 `input.clickImage` 的「点第 2 个」报「只找到 1 个」而不是退回去点第一个 /
+`TextLocator.LocateAll` 把两处「确定」各算一处。
+纯逻辑（重叠去重、词边界、排序）在 `--selftest --filter findTargets`；这里只验「屏幕上真有多个时真的能分开」。
+它用 `ProjectReference`（要 OpenCvSharp 的 native 与 PP-OCRv6 的模型），跑完关窗、删临时目录。
+
 ### `UiaPickSmoke`（控件操作 `ui.uia` 的控件选择器）
 
 ```powershell

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    找图 / 找字「多个目标」的冒烟（真图 + 真 OCR，不进 CI）。
+
+    - 找图：窗口里画三个一模一样的图标，把其中一个截成模板图，
+      RunAll 必须分出三个目标、按阅读顺序排好，并且「点第 2 个」落在第二个图标上；
+      只框住第一个时点第 2 个必须报「只找到 1 个」而不是乱点。
+    - 找字：两个「确定」必须各算一处。
+    - 不比对 OCR 文本细节（模型有波动），只查「分成了几处」。
+
+    csproj 用 ProjectReference：识别要 OpenCvSharp 的 native 与 PP-OCRv6 的模型，
+    这些都由产品工程带过来；内部类型用反射调用（与 tests/TableSmoke 一致）。
+    跑法：
+        cd tests\FindTargetsSmoke，dotnet run
+    详见 tests/README.md 与 AGENTS.md 的「找图 / 找文字」两条。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>FindTargetsSmoke</AssemblyName>
+    <RootNamespace>FindTargetsSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\LTools.csproj" />
+  </ItemGroup>
+
+</Project>

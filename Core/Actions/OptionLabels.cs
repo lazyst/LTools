@@ -105,6 +105,11 @@ internal static class OptionLabels
         ["screen"] = "整个屏幕",
         ["rect"] = "固定区域",
 
+        // —— 找图 / 找字的命中顺序与匹配方式 ——
+        ["natural"] = "从上到下",
+        ["score"] = "相似度从高到低",
+        ["exact"] = "完全一致",
+
         // —— 图片来源（文字识别）——
         ["image"] = "图片",
 

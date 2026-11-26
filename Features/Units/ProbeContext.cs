@@ -27,12 +27,19 @@ internal static class ProbeContext
     }
 
     /// <summary>执行一个取值实现，并把结果转成新值。</summary>
-    public static Value Evaluate(StepContext ctx, Func<RunContext, VarValue> probe)
+    public static Value Evaluate(StepContext ctx, Func<RunContext, VarValue> probe) =>
+        UnitValues.FromVarValue(Run(ctx, probe));
+
+    /// <summary>
+    /// 执行一个取值实现，保留它自己的结果类型（多命中列表这类结构化结果用）。
+    /// 异常翻译与 <see cref="Evaluate"/> 同口径，别在动作单元里各写一遍 try/catch。
+    /// </summary>
+    public static T Run<T>(StepContext ctx, Func<RunContext, T> probe)
     {
         var run = Of(ctx);
         try
         {
-            return UnitValues.FromVarValue(probe(run));
+            return probe(run);
         }
         catch (FlowAbortException ex)
         {

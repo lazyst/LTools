@@ -28,14 +28,33 @@ internal sealed class TextMatch
     public IReadOnlyList<string> Seen { get; init; } = Array.Empty<string>();
 }
 
+/// <summary>一个文字命中：外接矩形 + 实际命中的那段文字（虚拟桌面物理像素）。</summary>
+internal sealed class TextHit
+{
+    public int X { get; init; }
+    public int Y { get; init; }
+    public int W { get; init; }
+    public int H { get; init; }
+    public string Text { get; init; } = "";
+}
+
+/// <summary>一次找字的结果：全部命中（从上到下、从左到右）+ 最后一张图认出什么。</summary>
+internal sealed class TextLookup
+{
+    public IReadOnlyList<TextHit> Hits { get; init; } = Array.Empty<TextHit>();
+
+    public IReadOnlyList<string> Seen { get; init; } = Array.Empty<string>();
+}
+
 /// <summary>
 /// 「在区域里找文字」：截一块屏 → 带坐标 OCR → 按「包含」匹配。
 /// 「文字点击」动作与「找文字」取值器共用这一套定位，命中坐标是虚拟桌面物理像素，可直接交给鼠标。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 匹配忽略大小写与词间空白，所以「保存」「Save as」这样写都能命中；多个命中取最上面那个
-/// （同高取最左），因为脚本通常想操作第一个出现的。
+/// 匹配忽略大小写与词间空白，所以「保存」「Save as」这样写都能命中；多个命中按「从上到下、
+/// 从左到右」排序（脚本通常想操作第一个出现的）。<c>exact = true</c> 时要求命中的字符区间
+/// 首尾都落在词边界上——「保存」不再命中「保存并关闭」，但仍是「保存 (Ctrl+S)」里那个词。
 /// </para>
 /// <para>
 /// 找不到不是错误：<see cref="Locate"/> 返回 <c>Found = false</c>，由调用方决定是报失败（文字点击）
@@ -47,20 +66,39 @@ internal static class TextLocator
     /// <summary>默认轮询间隔（ms）。OCR 本身耗时远大于它。</summary>
     public const int DefaultIntervalMs = 300;
 
+    /// <summary>一次最多收集多少个命中。</summary>
+    internal const int MaxHits = 200;
+
     /// <summary>
-    /// 在区域内反复找目标文字，直到找到或超时。命中时返回桌面物理坐标。
+    /// 在区域内反复找目标文字，直到找到（或凑够 <paramref name="minCount"/> 个）或超时。
     /// </summary>
     public static TextMatch Locate(string needle, ImageRegion region, int[]? rect, string? engine,
-        int timeoutMs, int intervalMs, RunContext? ctx)
+        int timeoutMs, int intervalMs, bool exact, RunContext? ctx)
+    {
+        TextLookup lookup = LocateAll(needle, region, rect, engine, timeoutMs, intervalMs, exact, 1, ctx);
+        if (lookup.Hits.Count == 0) return new TextMatch { Seen = lookup.Seen };
+
+        TextHit hit = lookup.Hits[0];
+        return new TextMatch { Found = true, X = hit.X, Y = hit.Y, Matched = hit.Text, Seen = lookup.Seen };
+    }
+
+    /// <summary>
+    /// 在区域内找出所有命中（同一段文字出现多次）。命中数达到 <paramref name="minCount"/> 就返回，
+    /// 超时返回最后一次看到的那些——语义与「截图找图」的 <c>RunAll</c> 一致。
+    /// </summary>
+    public static TextLookup LocateAll(string needle, ImageRegion region, int[]? rect, string? engine,
+        int timeoutMs, int intervalMs, bool exact, int minCount, RunContext? ctx)
     {
         var (rx, ry, rw, rh) = ScreenRegion.Resolve(region, rect);
         if (rw <= 0 || rh <= 0)
             throw new FlowException($"找字区域无效：{rx},{ry} · {rw}×{rh}");
 
+        minCount = Math.Clamp(minCount, 1, MaxHits);
         timeoutMs = Timeouts.Loop(timeoutMs);
         intervalMs = Math.Clamp(intervalMs, 50, 5_000);
         long deadline = Environment.TickCount64 + timeoutMs;
         IReadOnlyList<string> seen = Array.Empty<string>();
+        IReadOnlyList<TextHit> last = Array.Empty<TextHit>();
 
         // 自动化指示器是置顶窗口，会盖住目标并被截进画面：找字期间收起，结束后恢复。
         using var _ = RecordingIndicatorWindow.SuppressForCapture();
@@ -71,8 +109,22 @@ internal static class TextLocator
                 lines = OcrLayout.Read(bmp, engine);
 
             seen = LineTexts(lines);
-            if (TryLocate(lines, needle, out int lx, out int ly, out string matched))
-                return new TextMatch { Found = true, X = rx + lx, Y = ry + ly, Matched = matched, Seen = seen };
+            var hits = new List<TextHit>();
+            foreach (TextHit hit in CollectLines(lines, needle, exact))
+            {
+                hits.Add(new TextHit
+                {
+                    X = rx + hit.X,
+                    Y = ry + hit.Y,
+                    W = hit.W,
+                    H = hit.H,
+                    Text = hit.Text,
+                });
+                if (hits.Count >= MaxHits) break;
+            }
+
+            last = hits;
+            if (last.Count >= minCount) return new TextLookup { Hits = last, Seen = seen };
 
             long remain = deadline - Environment.TickCount64;
             if (remain <= 0) break;
@@ -88,7 +140,7 @@ internal static class TextLocator
             }
         }
 
-        return new TextMatch { Seen = seen };
+        return new TextLookup { Hits = last, Seen = seen };
     }
 
     /// <summary>让「找文字」取值器可被 set / 条件直接使用。</summary>
@@ -98,7 +150,7 @@ internal static class TextLocator
         if (needle.Length == 0) throw new FlowException("「找文字」还没有指定要查找的文字");
 
         var result = Locate(needle, probe.Region, probe.Rect, probe.OcrEngine,
-            probe.TimeoutMs, probe.IntervalMs, ctx);
+            probe.TimeoutMs, probe.IntervalMs, exact: false, ctx);
 
         // ${变量} = 命中的文字；位置在 ${变量.x} / ${变量.y}；没找到时 found=false、文字为空。
         return result.Found
@@ -110,46 +162,45 @@ internal static class TextLocator
 
     /// <summary>
     /// 在一张图的行里找文字，命中返回它在图内的中心坐标（左上角原点）。
-    /// 按「包含」匹配，忽略大小写与词间空格；多个命中取最上面那个。
+    /// 按「包含」（或 <paramref name="exact"/> 时的词边界精确）匹配，忽略大小写与词间空格；
+    /// 多个命中按「从上到下、从左到右」排序。
     /// </summary>
     public static bool TryLocate(IReadOnlyList<OcrLineBox> lines, string needle,
         out int x, out int y, out string matched)
     {
-        x = y = 0;
-        matched = "";
-        string compactNeedle = Compact(needle);
-        if (compactNeedle.Length == 0) return false;
-
-        bool found = false;
-        int bestTop = int.MaxValue, bestLeft = int.MaxValue;
-        var chunk = new StringBuilder();
-
-        foreach (OcrLineBox line in lines)
+        IReadOnlyList<TextHit> hits = CollectLines(lines, needle, exact: false);
+        if (hits.Count == 0)
         {
-            if (!TryLocateInLine(line, compactNeedle, out int lx, out int ly, out string text)) continue;
-
-            // 多行命中：先比上下，再比左右（点「第一个」而不是随便一个）。
-            if (found && (ly > bestTop || (ly == bestTop && lx >= bestLeft))) continue;
-
-            found = true;
-            bestTop = ly;
-            bestLeft = lx;
-            x = lx;
-            y = ly;
-            chunk.Clear().Append(text);
+            x = y = 0;
+            matched = "";
+            return false;
         }
 
-        if (!found) return false;
-        matched = chunk.ToString();
+        x = hits[0].X;
+        y = hits[0].Y;
+        matched = hits[0].Text;
         return true;
     }
 
-    /// <summary>在一行里定位：优先用词框圈出「这几个字」，没有词框就退回整行中心。</summary>
-    private static bool TryLocateInLine(OcrLineBox line, string compactNeedle,
-        out int x, out int y, out string text)
+    /// <summary>把一张图里所有命中按「上 → 下、左 → 右」排好序（重叠的只留先出现的）。</summary>
+    internal static IReadOnlyList<TextHit> CollectLines(
+        IReadOnlyList<OcrLineBox> lines, string needle, bool exact)
     {
-        x = y = 0;
-        text = "";
+        var hits = new List<TextHit>();
+        foreach (OcrLineBox line in lines)
+            CollectInLine(line, needle, exact, hits);
+
+        hits.Sort((a, b) => a.Y != b.Y ? a.Y.CompareTo(b.Y) : a.X.CompareTo(b.X));
+        return Dedupe(hits);
+    }
+
+    /// <summary>
+    /// 在一行里收集所有命中。一行里同一个词出现两次就是两个目标（以前只取第一个）。
+    /// </summary>
+    internal static void CollectInLine(OcrLineBox line, string needle, bool exact, List<TextHit> into)
+    {
+        string compactNeedle = Compact(needle);
+        if (compactNeedle.Length == 0) return;
 
         // 把词按字符摊平，记下每个字属于哪个词——这样「包含」命中后能换算回词的矩形。
         var joined = new StringBuilder();
@@ -164,39 +215,105 @@ internal static class TextLocator
             }
         }
 
+        // 没有词框的行（引擎没给词级结果）只能按整行文本判断，命中就点整行中心。
+        if (owner.Count == 0)
+        {
+            string compactLine = Compact(line.Text);
+            bool hit = exact
+                ? string.Equals(compactLine, compactNeedle, StringComparison.OrdinalIgnoreCase)
+                : compactLine.IndexOf(compactNeedle, StringComparison.OrdinalIgnoreCase) >= 0;
+            if (hit && line.W > 0 && line.H > 0)
+            {
+                into.Add(new TextHit
+                {
+                    X = line.X + line.W / 2,
+                    Y = line.Y + line.H / 2,
+                    W = line.W,
+                    H = line.H,
+                    Text = line.Text,
+                });
+            }
+            return;
+        }
+
         string haystack = joined.ToString();
-        int idx = haystack.IndexOf(compactNeedle, StringComparison.OrdinalIgnoreCase);
-        if (idx < 0)
+        int from = 0;
+        while (from <= haystack.Length - compactNeedle.Length)
         {
-            // 没有词框的行（引擎没给词级结果）只用整行文本兜底，点整行中心。
-            if (line.Words.Count > 0 || line.W <= 0 || line.H <= 0) return false;
-            if (Compact(line.Text).IndexOf(compactNeedle, StringComparison.OrdinalIgnoreCase) < 0) return false;
+            int idx = haystack.IndexOf(compactNeedle, from, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) break;
 
-            x = line.X + line.W / 2;
-            y = line.Y + line.H / 2;
-            text = line.Text;
-            return true;
+            int len = Math.Min(compactNeedle.Length, haystack.Length - idx);
+            from = idx + Math.Max(1, len);   // 同一段连续文字里不重复计数
+
+            if (exact && !WordBounded(owner, idx, len)) continue;
+
+            int first = owner[idx];
+            int last = owner[Math.Min(idx + len - 1, owner.Count - 1)];
+
+            int left = int.MaxValue, top = int.MaxValue, right = int.MinValue, bottom = int.MinValue;
+            for (int i = first; i <= last; i++)
+            {
+                OcrWordBox w = line.Words[i];
+                left = Math.Min(left, w.X);
+                top = Math.Min(top, w.Y);
+                right = Math.Max(right, w.X + w.W);
+                bottom = Math.Max(bottom, w.Y + w.H);
+            }
+
+            if (right <= left || bottom <= top) continue;
+
+            into.Add(new TextHit
+            {
+                X = (left + right) / 2,
+                Y = (top + bottom) / 2,
+                W = right - left,
+                H = bottom - top,
+                Text = haystack.Substring(idx, len),
+            });
         }
+    }
 
-        int first = owner[idx];
-        int last = owner[Math.Min(idx + compactNeedle.Length - 1, owner.Count - 1)];
+    /// <summary>
+    /// 命中的字符区间首尾是否都落在词边界上（精确匹配用）。
+    /// 「保存并关闭」是一个词 → 找「保存」不算；「保存 (Ctrl+S)」是两个词 → 算。
+    /// </summary>
+    private static bool WordBounded(List<int> owner, int idx, int len)
+    {
+        int last = idx + len - 1;
+        if (last >= owner.Count) return false;
 
-        int left = int.MaxValue, top = int.MaxValue, right = int.MinValue, bottom = int.MinValue;
-        for (int i = first; i <= last; i++)
+        bool startsAtWord = idx == 0 || owner[idx - 1] != owner[idx];
+        bool endsAtWord = last == owner.Count - 1 || owner[last + 1] != owner[last];
+        return startsAtWord && endsAtWord;
+    }
+
+    /// <summary>同一块文字被引擎报了两遍时只留一个（交叠超过较小矩形一半）。</summary>
+    private static IReadOnlyList<TextHit> Dedupe(List<TextHit> hits)
+    {
+        var kept = new List<TextHit>(hits.Count);
+        foreach (TextHit hit in hits)
         {
-            OcrWordBox w = line.Words[i];
-            left = Math.Min(left, w.X);
-            top = Math.Min(top, w.Y);
-            right = Math.Max(right, w.X + w.W);
-            bottom = Math.Max(bottom, w.Y + w.H);
+            bool overlap = false;
+            foreach (TextHit other in kept)
+            {
+                int left = Math.Max(hit.X - hit.W / 2, other.X - other.W / 2);
+                int top = Math.Max(hit.Y - hit.H / 2, other.Y - other.H / 2);
+                int right = Math.Min(hit.X + hit.W / 2, other.X + other.W / 2);
+                int bottom = Math.Min(hit.Y + hit.H / 2, other.Y + other.H / 2);
+                if (right <= left || bottom <= top) continue;
+
+                long inter = (long)(right - left) * (bottom - top);
+                long smaller = Math.Min((long)hit.W * hit.H, (long)other.W * other.H);
+                if (smaller > 0 && inter * 2 > smaller)
+                {
+                    overlap = true;
+                    break;
+                }
+            }
+            if (!overlap) kept.Add(hit);
         }
-
-        if (right <= left || bottom <= top) return false;
-
-        x = (left + right) / 2;
-        y = (top + bottom) / 2;
-        text = haystack.Substring(idx, Math.Min(compactNeedle.Length, haystack.Length - idx));
-        return true;
+        return kept;
     }
 
     /// <summary>去掉所有空白（空格 / 制表 / 换行 / 全角空格），让「Save as」和「Saveas」等价。</summary>
