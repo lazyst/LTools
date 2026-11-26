@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -191,6 +192,48 @@ internal static class MenuFx
 
     public static void SetConePassOver(DependencyObject element, bool value) =>
         element.SetValue(ConePassOverProperty, value);
+
+    /// <summary>
+    /// <c>MenuItem.IsHighlighted</c> 的只读 key：公开的 <c>IsHighlightedProperty</c> 不能 <c>SetValue</c>，
+    /// 只有配套的 key 能写（WPF 没有别的公开入口）。字段拿不到就退回「不补高亮」，不抛。
+    /// </summary>
+    private static readonly DependencyPropertyKey? HighlightedKey =
+        typeof(MenuItem)
+            .GetField("IsHighlightedPropertyKey", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+            ?.GetValue(null) as DependencyPropertyKey;
+
+    /// <summary>
+    /// 把指针下这一项点亮（指针确实在它上面时）。
+    /// </summary>
+    /// <remarks>
+    /// 锥让位、父项子菜单被程序化收起之后，WPF 已经把这一项的 <c>IsHighlighted</c> 清掉了，
+    /// 而它**不会再发一次 <c>MouseEnter</c>**（指针一直没离开过它）——不补这一下，用户把鼠标
+    /// 停到「新建组合动作」上时那一项永远不亮（2026-11-26 用户报）。只补高亮，不碰选中态；
+    /// 之后鼠标真离开时，WPF 自己的 <c>MouseLeave</c> 会把它清掉，不用另记状态。
+    /// </remarks>
+    internal static void RestoreHover(MenuItem item)
+    {
+        if (HighlightedKey == null || !item.IsMouseOver || !item.IsEnabled) return;
+
+        try { item.SetValue(HighlightedKey, true); }
+        catch { /* 菜单正在关 / 模板已拆 */ }
+    }
+
+    /// <summary>
+    /// 撤掉这一项的高亮（指针已经不在它上面时）。
+    /// </summary>
+    /// <remarks>
+    /// 锥让位时会把父项的子菜单程序化关掉，但 WPF 那条「离开 → 撤高亮」挂在
+    /// <c>MenuShowDelay</c> 的延时路径上，子菜单一关它就不走了——不移除的话，用户已经移到
+    /// 「新建组合动作」上，上面的「新建简单动作」还一直亮着（2026-11-26 用户报）。
+    /// </remarks>
+    internal static void ClearHover(MenuItem item)
+    {
+        if (HighlightedKey == null || item.IsMouseOver) return;
+
+        try { item.SetValue(HighlightedKey, false); }
+        catch { /* 菜单正在关 / 模板已拆 */ }
+    }
 
     /// <summary>
     /// 指针离开了父项（或离开了子菜单）：只要不在「父项 + 子菜单」里，就立刻收起子菜单并撤掉高亮，

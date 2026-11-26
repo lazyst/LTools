@@ -37,6 +37,16 @@ internal static class MenuCone
     /// <summary>在通道里停住多久就当成「想选指针下这一项」（毫秒）。可写字段：冒烟会临时调。</summary>
     internal static int DwellMs = 450;
 
+    /// <summary>
+    /// 在通道里停住多久就把指针下那一项**点亮**（毫秒，早于 <see cref="DwellMs"/>）。
+    /// </summary>
+    /// <remarks>
+    /// 两件事分开：还在移动时压住高亮（邻项闪一下像「菜单换项」），一停下来就点亮（用户看得见
+    /// 悬停在哪），但**子菜单要等到 <see cref="DwellMs"/> 才换**——不然斜穿途中慢一拍就把通道
+    /// 里的子菜单收掉了，用户还得回头重新悬停父项。
+    /// </remarks>
+    internal static int HighlightMs = 200;
+
     /// <summary>轮询间隔（毫秒）：30ms 足够跟手，又不至于占满 Dispatcher。</summary>
     private const int WatchMs = 30;
 
@@ -314,7 +324,8 @@ internal static class MenuCone
         if (!owner.IsSubmenuOpen) owner.IsSubmenuOpen = true;
 
         var hit = ItemAt(p, owner);
-        SetSkimmed(hit);
+        // 停住就点亮（不再压高亮），但子菜单仍等 DwellMs 才让位。
+        SetSkimmed(_stillMs >= HighlightMs ? null : hit);
 
         // WPF 自己的 400ms 悬停展开也压掉：通道里不许冒出第二个子菜单
         if (hit != null && hit.IsSubmenuOpen) hit.IsSubmenuOpen = false;
@@ -342,9 +353,17 @@ internal static class MenuCone
             // 根菜单的 IsKeyboardFocusWithin 变 false → WPF 把整份菜单关掉（2026-11-26 用户报）。
             try { owner.Focus(); } catch { /* 菜单正在关 */ }
             owner.IsSubmenuOpen = false;
+
+            // 子菜单一关，WPF 那条「离开 → 撤高亮」的延时路径就不走了：父项会一直亮着，
+            // 和指针下那一项同时高亮（用户报「移走的那个选项不取消高亮」）。
+            MenuFx.ClearHover(owner);
         }
         if (under != null && !ReferenceEquals(under, owner) && under.HasItems)
             under.IsSubmenuOpen = true;
+
+        // 收掉锥、收起父项子菜单之后，WPF 不会再给指针下那一项补一次 MouseEnter（它一直以为
+        // 指针就在那项上），不手动点亮的话用户看到的就是「鼠标停在『新建组合动作』上，它却一直是白的」。
+        if (under != null && !ReferenceEquals(under, owner)) MenuFx.RestoreHover(under);
     }
 
     private static void Disarm()

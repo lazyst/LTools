@@ -81,5 +81,8 @@ internal static class MenuConeSuite
     {
         Check.True(MenuCone.Spread > 0, "外扩量必须是正数（手抖出边一点点仍算在通道里）");
         Check.True(MenuCone.DwellMs >= 300, "停住让位的宽限别太短（默认 450ms，覆盖 WPF 的 400ms）");
+        Check.True(MenuCone.HighlightMs > 0 && MenuCone.HighlightMs < MenuCone.DwellMs,
+            "先点亮（HighlightMs）、后让位（DwellMs）：两件事别并成一个");
+        Check.True(MenuCone.HighlightMs >= 150, "点亮别太快（斜穿邻项时不该闪）");
     }
 }

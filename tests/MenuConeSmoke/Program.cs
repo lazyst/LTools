@@ -74,7 +74,7 @@ internal static class Program
         AddLeaf(b, "按钮大小 · 一项");
         MenuItem c = Submenu(menu, "不透明度");
         AddLeaf(c, "不透明度 · 一项");
-        AddLeaf(menu, "删除");
+        MenuItem leaf = AddLeaf(menu, "删除");
 
         SetCursorPos(360, 220);
         Pump(80);
@@ -144,6 +144,7 @@ internal static class Program
         Pump(520);
         Check("停住超过宽限后让位给邻项", b.IsSubmenuOpen,
             $"停 660ms：A.sub={a.IsSubmenuOpen} B.sub={b.IsSubmenuOpen}");
+        Check("让位后原来的父项也撤了高亮", !a.IsHighlighted, $"A.hl={a.IsHighlighted} A.bg={BackOf(a)}");
 
         // ⑦ 从菜单里横向走出去：锥顶住过 WPF 的收起计时器，所以离开时必须自己把子菜单收掉，
         //    不能留下它挂在那儿（未选中任何东西，指针早已不在菜单上）
@@ -206,6 +207,31 @@ internal static class Program
             Check("⑨ 明确走到邻项才换", !a.IsSubmenuOpen && b.IsSubmenuOpen,
                 $"A.sub={a.IsSubmenuOpen} B.sub={b.IsSubmenuOpen}");
         }
+
+        // ⑩ 指针停在**叶子**项上（没有子菜单）、而且这一点在锥形通道里（靠右半边）：
+        //    停住约 200ms 就该点亮自己（不再压高亮），但子菜单要到 450ms 才让位；
+        //    让位之后高亮必须还在（WPF 不会补发 MouseEnter）。
+        MoveTo(Center(aRect));
+        Pump(350);
+        Check("⑩ 前置：A 的子菜单又开了", a.IsSubmenuOpen, $"A.sub={a.IsSubmenuOpen}");
+
+        var leafRect = Rect(leaf);
+        MoveTo(new Point(leafRect.Right - 20, leafRect.Top + leafRect.Height / 2));
+        Pump(320);
+        Check("⑩ 停在锥内的叶子项上：先亮起来", leaf.IsHighlighted && !PassOver(leaf)
+              && BackOf(leaf) != Colors.Transparent,
+            $"320ms：leaf.hl={leaf.IsHighlighted} passOver={PassOver(leaf)} bg={BackOf(leaf)}");
+        Check("⑩ 亮起来时子菜单还没换（等 450ms 的停住判定）", a.IsSubmenuOpen,
+            $"320ms：A.sub={a.IsSubmenuOpen}");
+
+        Pump(320);
+        Check("⑩ 停过宽限后子菜单让位", !a.IsSubmenuOpen, $"640ms：A.sub={a.IsSubmenuOpen}");
+        Check("⑩ 让位之后叶子项仍然亮着", leaf.IsHighlighted && !PassOver(leaf)
+              && BackOf(leaf) != Colors.Transparent,
+            $"640ms：leaf.hl={leaf.IsHighlighted} passOver={PassOver(leaf)} bg={BackOf(leaf)}");
+        Check("⑩ 移走的父项不再亮着（子菜单关了，高亮也要跟着撤）",
+            !a.IsHighlighted && BackOf(a) == Colors.Transparent,
+            $"640ms：A.hl={a.IsHighlighted} A.bg={BackOf(a)}");
 
         menu.IsOpen = false;
     }
