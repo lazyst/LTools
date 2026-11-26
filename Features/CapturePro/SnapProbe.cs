@@ -2,9 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
-using FlaUI.Core.AutomationElements;
-using FlaUI.Core.Definitions;
-using FlaUI.UIA3;
 using LTools.Core;
 
 namespace LTools.Features.CapturePro;
@@ -152,98 +149,5 @@ internal sealed class SnapProbe
 
     private static string Shorten(string s) => s.Length <= 28 ? s : s[..28] + "…";
 
-    private static readonly Lazy<ISnapSource> RealSource = new(() => new FlaUiSnapSource());
-
-    // ============ 真实取数：UI Automation ============
-
-    /// <summary>
-    /// UIA 取数实现。空集合（= 叶子）与失败（抛异常）严格分开 —— FlaUI 在 provider 失败时会抛
-    /// COM 异常，所以「<c>FindAllChildren</c> 返回 0 个」就是真的没有孩子，不会被误当成读失败。
-    /// </summary>
-    private sealed class FlaUiSnapSource : ISnapSource
-    {
-        /// <summary>
-        /// 独立的 UIA 客户端：超时比 MCP 那套宽一点（慢应用首次建树经常超过 400 ms），
-        /// 也不去动 <c>AiUia</c> 共用的那个实例。
-        /// </summary>
-        private readonly UIA3Automation _automation = new()
-        {
-            ConnectionTimeout = TimeSpan.FromMilliseconds(500),
-            TransactionTimeout = TimeSpan.FromMilliseconds(900),
-        };
-
-        public object? Root(IntPtr hwnd) => _automation.FromHandle(hwnd);
-
-        public IReadOnlyList<SnapChild>? Children(object node)
-        {
-            var element = (AutomationElement)node;
-            AutomationElement[] children = element.FindAllChildren();
-            if (children.Length == 0) return null;   // 真的没有孩子
-
-            var result = new List<SnapChild>(children.Length);
-
-            foreach (AutomationElement child in children)
-            {
-                Rectangle bounds = Read(() => child.Properties.BoundingRectangle.ValueOrDefault, Rectangle.Empty);
-                if (bounds.Width < 4 || bounds.Height < 4) continue;
-
-                if (Read(() => child.Properties.IsOffscreen.ValueOrDefault, false)) continue;
-
-                ControlType kind = Read(() => child.Properties.ControlType.ValueOrDefault, ControlType.Custom);
-                bool structural = kind is ControlType.Pane or ControlType.Group;
-
-                result.Add(new SnapChild(child, bounds, structural));
-            }
-
-            return result;
-        }
-
-        public string Label(object node)
-        {
-            var element = (AutomationElement)node;
-            string kind = KindLabel(Read(() => element.Properties.ControlType.ValueOrDefault, ControlType.Custom));
-            string name = Read(() => element.Properties.Name.ValueOrDefault ?? "", "").Trim();
-
-            return name.Length == 0 ? kind : $"{kind} · {Shorten(name)}";
-        }
-
-        /// <summary>单个属性读失败不该毁掉整条支路：给个兜底值继续。</summary>
-        private static T Read<T>(Func<T> read, T fallback)
-        {
-            try { return read(); }
-            catch { return fallback; }
-        }
-
-        private static string KindLabel(ControlType type) => type switch
-        {
-            ControlType.Button => "按钮",
-            ControlType.Edit => "输入框",
-            ControlType.Text => "文本",
-            ControlType.Document => "文档",
-            ControlType.List => "列表",
-            ControlType.ListItem => "列表项",
-            ControlType.Menu => "菜单",
-            ControlType.MenuItem => "菜单项",
-            ControlType.Tab => "选项卡",
-            ControlType.TabItem => "选项卡",
-            ControlType.Tree => "树",
-            ControlType.TreeItem => "树节点",
-            ControlType.ComboBox => "下拉框",
-            ControlType.CheckBox => "复选框",
-            ControlType.RadioButton => "单选框",
-            ControlType.Slider => "滑块",
-            ControlType.ToolBar => "工具栏",
-            ControlType.StatusBar => "状态栏",
-            ControlType.Pane => "面板",
-            ControlType.Group => "分组",
-            ControlType.Window => "窗口",
-            ControlType.Image => "图片",
-            ControlType.Hyperlink => "链接",
-            ControlType.Table => "表格",
-            ControlType.DataGrid => "表格",
-            ControlType.DataItem => "表格行",
-            ControlType.Custom => "控件",
-            _ => "元素",
-        };
-    }
+    private static readonly Lazy<ISnapSource> RealSource = new(() => new UiaSnapSource());
 }

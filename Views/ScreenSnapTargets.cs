@@ -82,7 +82,8 @@ internal static class ScreenSnapTargets
         if (topLevel && IsCloaked(hwnd)) return false;
 
         if (Win32.GetWindowLongPtr(hwnd, Win32.GwlExstyle).ToInt64() is long ex
-            && (ex & Win32.WsExTransparent) != 0) return false;
+            && (ex & Win32.WsExTransparent) != 0
+            && (ex & Win32.WsExLayered) != 0) return false;   // 点击穿透的分层窗口：鼠标点到它下面去
 
         var cls = new StringBuilder(128);
         Win32.GetClassName(hwnd, cls, cls.Capacity);
@@ -135,6 +136,12 @@ internal static class ScreenSnapTargets
     /// 光标下第一个不属于本进程、且包含该点的**顶层**窗口（跳过盖在最上面的截图窗口，不往下钻）。
     /// 用于悬停时只保留「最上层那个窗口及其子控件」的候选，避免选到被遮住的窗口里的控件。
     /// </summary>
+    /// <remarks>
+    /// 过滤口径照上游 <c>snow-ui-selector</c> 的 <c>is_top_level_selection_candidate</c>：
+    /// **同时带 <c>WS_EX_LAYERED | WS_EX_TRANSPARENT</c> 的点击穿透窗口不算命中**（鼠标本来就点到它下面去），
+    /// 否则一个透明的全屏壳（输入法手写画布 / 某些录屏与手势工具的覆盖层）会把整块桌面挡住，
+    /// 光标下永远只吸到「整屏」那一块。只带 <c>WS_EX_TRANSPARENT</c> 的窗口照常可选（上游同样保留）。
+    /// </remarks>
     public static IntPtr TopWindowAtPoint(IntPtr overlayHwnd, Point point)
     {
         uint self = (uint)Environment.ProcessId;
@@ -147,6 +154,7 @@ internal static class ScreenSnapTargets
                 if (hwnd == overlayHwnd) return true;
                 Win32.GetWindowThreadProcessId(hwnd, out uint pid);
                 if (pid == self || !Win32.IsWindowVisible(hwnd) || Win32.IsIconic(hwnd)) return true;
+                if (IsClickThrough(hwnd)) return true;
                 if (!TryBounds(hwnd, out var r) || !r.Contains(point)) return true;
 
                 // 命中之后再查 cloaked（每次移动只多一次 DWM 调用），排掉看不见的壳窗口
@@ -162,6 +170,15 @@ internal static class ScreenSnapTargets
         }
 
         return found;
+    }
+
+    /// <summary>
+    /// 点击穿透的分层窗口（<c>WS_EX_LAYERED | WS_EX_TRANSPARENT</c>）：可见，但鼠标消息会穿过去。
+    /// </summary>
+    private static bool IsClickThrough(IntPtr hwnd)
+    {
+        long ex = Win32.GetWindowLongPtr(hwnd, Win32.GwlExstyle).ToInt64();
+        return (ex & Win32.WsExLayered) != 0 && (ex & Win32.WsExTransparent) != 0;
     }
 
     /// <summary>DWM 的「隐身」标记：<c>IsWindowVisible</c> 为 true 但画面上不存在。</summary>

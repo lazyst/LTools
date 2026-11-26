@@ -343,7 +343,7 @@ internal sealed class SnapTree
         {
             _nodes[index].Children = children == null || children.Count == 0
                 ? EmptyChildren
-                : AddChildren(index, _nodes[index].Bounds, children);
+                : AddChildren(index, _nodes[0].Bounds, children);
         }
 
         return SnapStop.complete;
@@ -381,7 +381,7 @@ internal sealed class SnapTree
         }
     }
 
-    private List<int> AddChildren(int parent, Rectangle parentBounds, IReadOnlyList<SnapChild> children)
+    private List<int> AddChildren(int parent, Rectangle clip, IReadOnlyList<SnapChild> children)
     {
         var list = new List<int>(children.Count);
 
@@ -389,8 +389,10 @@ internal sealed class SnapTree
         {
             SnapChild child = children[i];
 
-            // 裁到父级：完全跑到父级外面的子节点永远命中不到，留着只会多一层噪音。
-            Rectangle bounds = Rectangle.Intersect(child.Bounds, parentBounds);
+            // 只裁到**窗口**（照上游 `intersect_rect(bounds, nodes[0].bounds)`）：
+            // 裁到父级会把「比父级大 / 与父级错位」的真实控件切小，下一层的命中判断就跟着丢点，
+            // 表现是「明明里面有按钮，却只吸到外面那个 Pane」。完全跑到窗口外的子节点仍然丢掉。
+            Rectangle bounds = Rectangle.Intersect(child.Bounds, clip);
             if (bounds.Width < 2 || bounds.Height < 2) continue;
 
             int index = _nodes.Count;

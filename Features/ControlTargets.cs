@@ -333,11 +333,6 @@ internal static class ControlTargets
     internal static bool ReadOffscreen(AutomationElement element) =>
         Safe(() => element.Properties.IsOffscreen.ValueOrDefault, false);
 
-    /// <summary>结构性容器（Pane / Group）：等大时允许结构回溯，别当成可交互目标。</summary>
-    internal static bool ReadStructural(AutomationElement element) =>
-        Safe(() => element.Properties.ControlType.ValueOrDefault, ControlType.Custom)
-            is ControlType.Pane or ControlType.Group;
-
     internal static string ReadName(AutomationElement element) =>
         Text(() => element.Properties.Name.ValueOrDefault);
 
@@ -350,13 +345,107 @@ internal static class ControlTargets
     internal static string ReadClassName(AutomationElement element) =>
         Text(() => element.Properties.ClassName.ValueOrDefault);
 
-    /// <summary>「类型 · 名称」这种一行的标签（支路去重 / 日志用；卡片自己拼更细的文案）。</summary>
-    internal static string ShortTitle(AutomationElement element)
+    /// <summary>缓存里读到的一次身份（<c>UiaSnapSource</c> 用它，不再逐个属性跨进程读）。</summary>
+    internal static ControlTarget DescribeCached(Rectangle bounds, string name, string automationId,
+        string controlType, string className, bool enabled, bool offscreen) =>
+        new(bounds, Tidy(name), Tidy(automationId), Text(() => controlType, "Custom"), Tidy(className),
+            "", 0, -1, enabled, offscreen);
+
+    /// <summary>
+    /// UIA 的控件类型号 → 英文名（<c>50000</c> = Button …）。缓存请求拿到的是号，
+    /// 而参数 / 选择器 / <see cref="IsInteractive"/> 用的都是 FlaUI 那套名字（<c>Button</c> / <c>TabItem</c>）。
+    /// </summary>
+    internal static string TypeName(int uiaControlType) => uiaControlType switch
     {
-        string type = ReadControlType(element, "控件");
-        string name = ReadName(element);
-        return name.Length == 0 ? type : $"{type} · {name}";
+        50000 => "Button",
+        50001 => "Calendar",
+        50002 => "CheckBox",
+        50003 => "ComboBox",
+        50004 => "Edit",
+        50005 => "Hyperlink",
+        50006 => "Image",
+        50007 => "ListItem",
+        50008 => "List",
+        50009 => "Menu",
+        50010 => "MenuBar",
+        50011 => "MenuItem",
+        50012 => "ProgressBar",
+        50013 => "RadioButton",
+        50014 => "ScrollBar",
+        50015 => "Slider",
+        50016 => "Spinner",
+        50017 => "StatusBar",
+        50018 => "Tab",
+        50019 => "TabItem",
+        50020 => "Text",
+        50021 => "ToolBar",
+        50022 => "ToolTip",
+        50023 => "Tree",
+        50024 => "TreeItem",
+        50025 => "Custom",
+        50026 => "Group",
+        50027 => "Thumb",
+        50028 => "DataGrid",
+        50029 => "DataItem",
+        50030 => "Document",
+        50031 => "SplitButton",
+        50032 => "Window",
+        50033 => "Pane",
+        50034 => "Header",
+        50035 => "HeaderItem",
+        50036 => "Table",
+        50037 => "TitleBar",
+        50038 => "Separator",
+        50039 => "SemanticZoom",
+        50040 => "AppBar",
+        _ => "Custom",
+    };
+
+    /// <summary>控件类型的中文名（悬停标签用；英文名走 <see cref="ReadControlType"/>）。</summary>
+    internal static string KindLabel(string controlType) => controlType switch
+    {
+        "Button" => "按钮",
+        "Edit" => "输入框",
+        "Text" => "文本",
+        "Document" => "文档",
+        "List" => "列表",
+        "ListItem" => "列表项",
+        "Menu" => "菜单",
+        "MenuItem" => "菜单项",
+        "Tab" => "选项卡",
+        "TabItem" => "选项卡",
+        "Tree" => "树",
+        "TreeItem" => "树节点",
+        "ComboBox" => "下拉框",
+        "CheckBox" => "复选框",
+        "RadioButton" => "单选框",
+        "Slider" => "滑块",
+        "ToolBar" => "工具栏",
+        "StatusBar" => "状态栏",
+        "Pane" => "面板",
+        "Group" => "分组",
+        "Window" => "窗口",
+        "Image" => "图片",
+        "Hyperlink" => "链接",
+        "Table" => "表格",
+        "DataGrid" => "表格",
+        "DataItem" => "表格行",
+        "Custom" => "控件",
+        _ => "元素",
+    };
+
+    /// <summary>
+    /// 「类型 · 名称」这种一行的标签（支路去重 / 日志用；卡片自己拼更细的文案）。
+    /// </summary>
+    internal static string SnapLabel(string controlType, string name)
+    {
+        string kind = KindLabel(controlType);
+        string trimmed = Tidy(name);
+        return trimmed.Length == 0 ? kind : $"{kind} · {trimmed}";
     }
+
+    private static string Tidy(string? value) =>
+        (value ?? "").Trim().Replace("\r", " ").Replace("\n", " ");
 
     private static AutomationElement[] SafeChildren(AutomationElement element)
     {

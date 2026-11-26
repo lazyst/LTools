@@ -27,6 +27,12 @@ namespace LTools.Features;
 /// </remarks>
 internal sealed class ControlSnapSource : ISnapSource
 {
+    /// <summary>
+    /// 真正的取数（与截图吸附同一份：UIA + 缓存请求）。这里只做一层壳，
+    /// 因为点选器另外还要「同名计数」那一个 provider 侧查找。
+    /// </summary>
+    private readonly UiaSnapSource _snap = new();
+
     private readonly UIA3Automation _automation = new()
     {
         // 与截图吸附同一口径：慢应用首次建树经常超过 400 ms
@@ -34,30 +40,13 @@ internal sealed class ControlSnapSource : ISnapSource
         TransactionTimeout = TimeSpan.FromMilliseconds(900),
     };
 
-    public object? Root(IntPtr hwnd) => _automation.FromHandle(hwnd);
+    public object? Root(IntPtr hwnd) => _snap.Root(hwnd);
 
-    public IReadOnlyList<SnapChild>? Children(object node)
-    {
-        var element = (AutomationElement)node;
-        AutomationElement[] children = element.FindAllChildren();
-        if (children.Length == 0) return null;   // 叶子（失败会抛异常，交给 walker 判）
+    public IReadOnlyList<SnapChild>? Children(object node) => _snap.Children(node);
 
-        var list = new List<SnapChild>(children.Length);
-        foreach (AutomationElement child in children)
-        {
-            Rectangle bounds = ControlTargets.ReadBounds(child);
-            if (bounds.Width < 1 || bounds.Height < 1) continue;
-            if (ControlTargets.ReadOffscreen(child)) continue;
+    public string Label(object node) => _snap.Label(node);
 
-            list.Add(new SnapChild(child, bounds, ControlTargets.ReadStructural(child)));
-        }
-
-        return list;
-    }
-
-    public string Label(object node) => ControlTargets.ShortTitle((AutomationElement)node);
-
-    public object? Describe(object node) => ControlTargets.Describe((AutomationElement)node);
+    public object? Describe(object node) => _snap.Describe(node);
 
     /// <summary>
     /// 窗口里有多少个「名称 + AutomationId + 类型」都一样的控件；<c>null</c> = 查不准
