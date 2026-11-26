@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using LTools.Features.CapturePro;
 using LTools.Features.CapturePro.Collage;
 
 namespace LTools.Views.CapturePro;
@@ -362,40 +363,13 @@ public partial class ImageCollageWindow
     {
         if (_syncing || _closing) return;
 
-        if (!TryParseHexRgba(ColorHex.Text, out var color))
+        if (!ColorText.TryParse(ColorHex.Text, out var color))
         {
             SyncForm(force: true);
             return;
         }
 
         ApplySettings(settings => settings with { Background = color }, "background_color");
-    }
-
-    /// <summary>取色弹层的色值：<c>#RRGGBBAA</c>（也认 <c>#RGB</c> / <c>#RRGGBB</c>），失败返回 false。</summary>
-    private static bool TryParseHexRgba(string? text, out Color color)
-    {
-        color = Colors.White;
-        string value = (text ?? "").Trim();
-        if (value.StartsWith('#')) value = value[1..];
-        if (value.Length == 3)
-            value = string.Concat(value[0], value[0], value[1], value[1], value[2], value[2]);
-
-        if (value.Length == 6 &&
-            uint.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint rgb))
-        {
-            color = Color.FromRgb((byte)((rgb >> 16) & 0xFF), (byte)((rgb >> 8) & 0xFF), (byte)(rgb & 0xFF));
-            return true;
-        }
-
-        if (value.Length == 8 &&
-            uint.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint rgba))
-        {
-            color = Color.FromArgb((byte)(rgba & 0xFF), (byte)((rgba >> 24) & 0xFF),
-                (byte)((rgba >> 16) & 0xFF), (byte)((rgba >> 8) & 0xFF));
-            return true;
-        }
-
-        return false;
     }
 
     /// <summary>取色器 / 色卡 / 滑块与当前背景色对齐（选中态照上游只认不透明预设色）。</summary>

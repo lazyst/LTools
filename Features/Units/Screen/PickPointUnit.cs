@@ -66,49 +66,42 @@ public sealed class PickPointUnit : IStepUnit
 
         // 自动化指示器是置顶窗口，会被拍进取点画面：取点前收起，结束再恢复。
         // 遮罩现在跑在宿主里（普通权限），冻结画面由它拍——所以执行器这边的卡片也得先藏起来。
-        string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
+        using var _ = RecordingIndicatorWindow.SuppressForCapture();
         using var suppressed = ToastService.SuppressForCapture();
-        try
+        // 界面归宿主：转过去弹遮罩；没连上再本地弹（体验降级，不卡流程）。
+        UiPickPointReply? remote = UiBridge.TryPickPoint(hint, ctx.Token);
+        bool ok;
+        int x;
+        int y;
+        if (remote != null)
         {
-            // 界面归宿主：转过去弹遮罩；没连上再本地弹（体验降级，不卡流程）。
-            UiPickPointReply? remote = UiBridge.TryPickPoint(hint, ctx.Token);
-            bool ok;
-            int x;
-            int y;
-            if (remote != null)
-            {
-                ok = remote.Ok;
-                x = remote.X;
-                y = remote.Y;
-            }
-            else
-            {
-                (ok, x, y) = app.Dispatcher.Invoke(() =>
-                {
-                    // owner 必须在 UI 线程上找：Application.Windows 属于 UI 线程。
-                    Window? owner = app.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? app.MainWindow;
-                    bool picked = ScreenPicker.TryPickPoint(owner, hint, out int px, out int py);
-                    return (picked, px, py);
-                });
-            }
-
-            if (!ok)
-            {
-                AppLog.Info("PickPoint", "屏幕取点：用户取消");
-                ctx.SetOutput("x", Value.FromNumber(0));
-                ctx.SetOutput("y", Value.FromNumber(0));
-                ctx.SetOutput("found", Value.FromBool(false));
-                ctx.SetOutput("value", UnitValues.NotFound());
-                return;
-            }
-
-            AppLog.Info("PickPoint", $"屏幕取点：{x},{y}");
-            Write(ctx, x, y);
+            ok = remote.Ok;
+            x = remote.X;
+            y = remote.Y;
         }
-        finally
+        else
         {
-            RecordingIndicatorWindow.RestoreAutomation(indicator);
+            (ok, x, y) = app.Dispatcher.Invoke(() =>
+            {
+                // owner 必须在 UI 线程上找：Application.Windows 属于 UI 线程。
+                Window? owner = app.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? app.MainWindow;
+                bool picked = ScreenPicker.TryPickPoint(owner, hint, out int px, out int py);
+                return (picked, px, py);
+            });
         }
+
+        if (!ok)
+        {
+            AppLog.Info("PickPoint", "屏幕取点：用户取消");
+            ctx.SetOutput("x", Value.FromNumber(0));
+            ctx.SetOutput("y", Value.FromNumber(0));
+            ctx.SetOutput("found", Value.FromBool(false));
+            ctx.SetOutput("value", UnitValues.NotFound());
+            return;
+        }
+
+        AppLog.Info("PickPoint", $"屏幕取点：{x},{y}");
+        Write(ctx, x, y);
     }
 
     private static void Write(StepContext ctx, int x, int y)

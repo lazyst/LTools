@@ -167,12 +167,6 @@ internal static partial class CaptureProSuite
         Check.Equal(Colors.White, CollageColor.Parse("bogus"), "解析不了按白底");
         Check.Equal("#123456", CollageColor.Hex(translucent), "给人看的 #RRGGBB 不带透明度");
 
-        Check.Equal(Color.FromRgb(0xAA, 0xBB, 0xCC), CollageColor.TryParseHex("#abc"), "#RGB 展开");
-        Check.Equal(Color.FromRgb(0xAA, 0xBB, 0xCC), CollageColor.TryParseHex("AABBCC"), "不带 # 也认");
-        Check.Equal(Color.FromArgb(0xAA, 0xBB, 0xCC, 0xDD), CollageColor.TryParseHex("#AABBCCDD"),
-            "8 位按 #AARRGGBB 解析（WPF 口径）");
-        Check.True(CollageColor.TryParseHex("#12345") == null, "位数不对 → null");
-
         // ---- 只有背景色不算几何变化（照上游 setSettings 只清手摆位置的条件）----
         Check.True(defaults.GeometryEquals(defaults with { Background = Colors.Black }),
             "只换背景色不算几何变化");

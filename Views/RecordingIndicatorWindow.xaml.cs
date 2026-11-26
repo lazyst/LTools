@@ -131,6 +131,30 @@ public partial class RecordingIndicatorWindow : Window
         ShowAutomation(text!);
     }
 
+    /// <summary>
+    /// 截图 / 识别期间的「收起自动化指示器」作用域：<c>using var scope = SuppressForCapture();</c>
+    /// 一次搞定收起与恢复，别在调用点各写一遍 <c>try / finally</c>。
+    /// </summary>
+    public static CaptureSuppression SuppressForCapture() => new(HideAutomationForCapture());
+
+    /// <summary><see cref="SuppressForCapture"/> 的作用域对象，<c>Dispose</c> 时把指示器恢复回去。</summary>
+    public sealed class CaptureSuppression : IDisposable
+    {
+        private string? _text;
+
+        internal CaptureSuppression(string? text) => _text = text;
+
+        /// <summary>收起前它到底有没有显示（要等桌面重绘的调用点看这个）。</summary>
+        public bool WasShowing => _text != null;
+
+        public void Dispose()
+        {
+            string? text = _text;
+            _text = null;
+            RestoreAutomation(text);
+        }
+    }
+
     /// <summary>隐藏指示器。</summary>
     public static void HideIndicator()
     {

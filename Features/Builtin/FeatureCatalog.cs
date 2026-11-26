@@ -627,15 +627,8 @@ internal static class FeatureCatalog
 
     private static void ScreenText(FeatureRunContext ctx)    {
         // 自动化指示器是置顶窗口，会被截进冻结画面：先收起，结束再恢复。
-        string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
-        try
-        {
-            ScreenTextSession.PickOnUi(null);
-        }
-        finally
-        {
-            RecordingIndicatorWindow.RestoreAutomation(indicator);
-        }
+        using var _ = RecordingIndicatorWindow.SuppressForCapture();
+        ScreenTextSession.PickOnUi(null);
     }
 
     // ============ 录屏 ============

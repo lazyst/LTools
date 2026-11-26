@@ -60,29 +60,22 @@ internal static class ScreenshotProbe
     private static VarValue PickInteractive(RunContext ctx)
     {
         // 自动化指示器是置顶窗口，会被截进画面：截图前收起，结束再恢复。
-        string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
-        try
+        using var _ = RecordingIndicatorWindow.SuppressForCapture();
+        // 覆盖层在宿主里（`docs/PROCESS_SPLIT.md` §15.4）：要点图就用 wantImage 让它存成 png，
+        // 把路径带回来；成品图本身不跨进程传。
+        CaptureOutcome? outcome = CaptureSession.TryCapture(null, out var exit, wantImage: true);
+        if (outcome?.File is not { Length: > 0 } file)
         {
-            // 覆盖层在宿主里（`docs/PROCESS_SPLIT.md` §15.4）：要点图就用 wantImage 让它存成 png，
-            // 把路径带回来；成品图本身不跨进程传。
-            CaptureOutcome? outcome = CaptureSession.TryCapture(null, out var exit, wantImage: true);
-            if (outcome?.File is not { Length: > 0 } file)
-            {
-                // 「交给录屏」不是取消：那一步本来就没有图，别写成用户取消
-                AppLog.Info("Probe", exit == CaptureSession.CaptureExit.Recording
-                    ? "截图：已交给录屏（这一步没有图）"
-                    : "截图：用户取消");
-                return new VarValue { Text = "", Flag = false };
-            }
+            // 「交给录屏」不是取消：那一步本来就没有图，别写成用户取消
+            AppLog.Info("Probe", exit == CaptureSession.CaptureExit.Recording
+                ? "截图：已交给录屏（这一步没有图）"
+                : "截图：用户取消");
+            return new VarValue { Text = "", Flag = false };
+        }
 
-            var area = outcome.Area;
-            AppLog.Info("Probe", $"截图 · 交互框选：{area.X},{area.Y} · {area.Width} × {area.Height} → {file}");
-            return VarValue.FromRegion(area.X, area.Y, area.Width, area.Height, file);
-        }
-        finally
-        {
-            RecordingIndicatorWindow.RestoreAutomation(indicator);
-        }
+        var area = outcome.Area;
+        AppLog.Info("Probe", $"截图 · 交互框选：{area.X},{area.Y} · {area.Width} × {area.Height} → {file}");
+        return VarValue.FromRegion(area.X, area.Y, area.Width, area.Height, file);
     }
 
     // ============ 自动取图 ============
@@ -114,23 +107,16 @@ internal static class ScreenshotProbe
             throw new FlowException($"截图区域无效：{x},{y} · {w}×{h}");
 
         // 自动化指示器是置顶窗口，会被截进画面：截图前收起，结束再恢复。
-        string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
-        try
-        {
-            if (indicator != null && !ctx.Wait(80))
-                throw new FlowAbortException("已停止", userCancelled: true);
+        using var indicator = RecordingIndicatorWindow.SuppressForCapture();
+        if (indicator.WasShowing && !ctx.Wait(80))
+            throw new FlowAbortException("已停止", userCancelled: true);
 
-            // 提示卡片同理（「已取消截图」那类卡片会落进画面角落）。
-            using var suppressed = ToastService.SuppressForCapture();
-            using Bitmap bmp = ScreenCapture.Capture(x, y, w, h);
-            string file = ImageLibrary.SaveCapture(bmp);
-            AppLog.Info("Probe", $"截图 · {label}：{x},{y} · {w} × {h} → {file}");
-            return VarValue.FromRegion(x, y, w, h, file);
-        }
-        finally
-        {
-            RecordingIndicatorWindow.RestoreAutomation(indicator);
-        }
+        // 提示卡片同理（「已取消截图」那类卡片会落进画面角落）。
+        using var suppressed = ToastService.SuppressForCapture();
+        using Bitmap bmp = ScreenCapture.Capture(x, y, w, h);
+        string file = ImageLibrary.SaveCapture(bmp);
+        AppLog.Info("Probe", $"截图 · {label}：{x},{y} · {w} × {h} → {file}");
+        return VarValue.FromRegion(x, y, w, h, file);
     }
 
     /// <summary>

@@ -40,16 +40,8 @@ internal static class ImageClickAction
         };
 
         // 自动化指示器是置顶窗口，会盖住目标并被截进画面：找图期间收起，点完再恢复。
-        string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
-        VarValue match;
-        try
-        {
-            match = ImageProbe.Run(probe, ctx);
-        }
-        finally
-        {
-            RecordingIndicatorWindow.RestoreAutomation(indicator);
-        }
+        using var _ = RecordingIndicatorWindow.SuppressForCapture();
+        VarValue match = ImageProbe.Run(probe, ctx);
 
         if (match.Flag != true)
             throw ActionErrors.NotFound(

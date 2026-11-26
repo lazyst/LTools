@@ -1,5 +1,6 @@
 using System.Windows;
 using LTools.Core.Actions;
+using LTools.Core.Link;
 using LTools.Views;
 
 namespace LTools.Features;
@@ -13,6 +14,22 @@ namespace LTools.Features;
 /// </remarks>
 internal static class ChoiceWindowService
 {
+    /// <summary>
+    /// 「问用户一个选择」的唯一入口：界面归宿主，转过去弹；没连上就本地弹、本地轮询。
+    /// 返回 <c>(是否作答, 下标, 文字)</c>，没作答时下标 <c>-1</c>、文字空。
+    /// </summary>
+    public static (bool Accepted, int Index, string Value) Ask(StepContext ctx, string title, string message,
+        IReadOnlyList<string> options, IReadOnlyList<string> buttons, bool selectMode, int timeoutMs)
+    {
+        UiChoiceReply? remote = UiBridge.TryChoice(title, message, options, buttons, selectMode,
+            timeoutMs, ctx.Token);
+        if (remote != null)
+            return remote.Accepted ? (true, remote.Index, remote.Value ?? "") : (false, -1, "");
+
+        ChoiceWindow window = Open(title, message, options, buttons, selectMode);
+        return Wait(ctx, window, timeoutMs);
+    }
+
     /// <summary>打开一个确认框（<paramref name="selectMode"/> = false）或选择器（true）。</summary>
     public static ChoiceWindow Open(string title, string message,
         IReadOnlyList<string> options, IReadOnlyList<string> buttons, bool selectMode)

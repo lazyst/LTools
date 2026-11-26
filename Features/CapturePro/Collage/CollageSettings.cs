@@ -78,52 +78,19 @@ internal sealed record CollageSettings(
 /// 背景色的文本形式：<c>#RRGGBBAA</c>（照上游 <c>colorFromRgbaString</c> /
 /// <c>colorToRgbaString</c>）。解析不了就当白色不透明。
 /// </summary>
+/// <remarks>
+/// 解析 / 格式化都走 <see cref="ColorText"/>——**别在这里再手写一份十六进制解析**：
+/// 这里以前另有一个按 <c>#AARRGGBB</c> 读的版本，和 <see cref="Format"/> 写出的
+/// <c>#RRGGBBAA</c> 正好相反，读回来会把通道顺序换掉。
+/// </remarks>
 internal static class CollageColor
 {
-    public static Color Parse(string? text)
-    {
-        string value = (text ?? "").Trim();
-        if (value.Length == 9 && value[0] == '#' &&
-            uint.TryParse(value.AsSpan(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture,
-                out uint rgba))
-        {
-            return Color.FromArgb((byte)(rgba & 0xFF), (byte)((rgba >> 24) & 0xFF),
-                (byte)((rgba >> 16) & 0xFF), (byte)((rgba >> 8) & 0xFF));
-        }
+    public static Color Parse(string? text) =>
+        ColorText.TryParse(text, out Color color) ? color : Colors.White;
 
-        return Colors.White;
-    }
-
-    public static string Format(Color color) =>
-        $"#{color.R:X2}{color.G:X2}{color.B:X2}{color.A:X2}";
+    public static string Format(Color color) => ColorText.Format(color, ColorFormatKind.Hex);
 
     /// <summary>界面上给人看的 <c>#RRGGBB</c>（不带透明度）。</summary>
-    public static string Hex(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
-
-    /// <summary>解析 <c>#RGB</c> / <c>#RRGGBB</c> / <c>#AARRGGBB</c>，失败返回 null。</summary>
-    public static Color? TryParseHex(string? text)
-    {
-        string value = (text ?? "").Trim();
-        if (value.StartsWith('#')) value = value[1..];
-        if (value.Length == 3)
-        {
-            value = string.Concat(value[0], value[0], value[1], value[1], value[2], value[2]);
-        }
-
-        if (value.Length == 6 &&
-            uint.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint rgb))
-        {
-            return Color.FromRgb((byte)((rgb >> 16) & 0xFF), (byte)((rgb >> 8) & 0xFF),
-                (byte)(rgb & 0xFF));
-        }
-
-        if (value.Length == 8 &&
-            uint.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint argb))
-        {
-            return Color.FromArgb((byte)((argb >> 24) & 0xFF), (byte)((argb >> 16) & 0xFF),
-                (byte)((argb >> 8) & 0xFF), (byte)(argb & 0xFF));
-        }
-
-        return null;
-    }
+    public static string Hex(Color color) =>
+        ColorText.Format(color, ColorFormatKind.Hex, withAlpha: false);
 }

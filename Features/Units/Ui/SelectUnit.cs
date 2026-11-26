@@ -56,29 +56,11 @@ public sealed class SelectUnit : IStepUnit
         int timeoutMs = (int)Math.Clamp(args.Number("timeoutMs"), 0, 86_400_000);
         string text = ListText.Display(args.TryGet("text"));
 
-        // 界面归宿主：转过去弹；没连上就本地弹。
-        UiChoiceReply? remote = UiBridge.TryChoice(args.Text("title"), text,
-            options, new[] { "确定", "取消" }, selectMode: true, timeoutMs, ctx.Token);
-
-        bool accepted;
-        int index;
-        string value;
-        if (remote != null)
-        {
-            accepted = remote.Accepted;
-            index = remote.Index;
-            value = remote.Value ?? "";
-        }
-        else
-        {
-            var window = ChoiceWindowService.Open(args.Text("title"), text,
-                options, new[] { "确定", "取消" }, selectMode: true);
-
-            (accepted, index, value) = ChoiceWindowService.Wait(ctx, window, timeoutMs);
-        }
+        var (accepted, index, value) = ChoiceWindowService.Ask(ctx, args.Text("title"), text,
+            options, new[] { "确定", "取消" }, selectMode: true, timeoutMs);
 
         ctx.SetOutput("found", Value.FromBool(accepted));
-        ctx.SetOutput("index", Value.FromNumber(accepted ? index : -1));
-        ctx.SetOutput("value", Value.FromText(accepted ? value : ""));
+        ctx.SetOutput("index", Value.FromNumber(index));
+        ctx.SetOutput("value", Value.FromText(value));
     }
 }

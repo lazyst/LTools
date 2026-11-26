@@ -63,36 +63,29 @@ internal static class TextLocator
         IReadOnlyList<string> seen = Array.Empty<string>();
 
         // 自动化指示器是置顶窗口，会盖住目标并被截进画面：找字期间收起，结束后恢复。
-        string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
-        try
+        using var _ = RecordingIndicatorWindow.SuppressForCapture();
+        while (true)
         {
-            while (true)
+            IReadOnlyList<OcrLineBox> lines;
+            using (Bitmap bmp = ScreenCapture.Capture(rx, ry, rw, rh))
+                lines = OcrLayout.Read(bmp, engine);
+
+            seen = LineTexts(lines);
+            if (TryLocate(lines, needle, out int lx, out int ly, out string matched))
+                return new TextMatch { Found = true, X = rx + lx, Y = ry + ly, Matched = matched, Seen = seen };
+
+            long remain = deadline - Environment.TickCount64;
+            if (remain <= 0) break;
+
+            int wait = (int)Math.Min(intervalMs, remain);
+            if (ctx != null)
             {
-                IReadOnlyList<OcrLineBox> lines;
-                using (Bitmap bmp = ScreenCapture.Capture(rx, ry, rw, rh))
-                    lines = OcrLayout.Read(bmp, engine);
-
-                seen = LineTexts(lines);
-                if (TryLocate(lines, needle, out int lx, out int ly, out string matched))
-                    return new TextMatch { Found = true, X = rx + lx, Y = ry + ly, Matched = matched, Seen = seen };
-
-                long remain = deadline - Environment.TickCount64;
-                if (remain <= 0) break;
-
-                int wait = (int)Math.Min(intervalMs, remain);
-                if (ctx != null)
-                {
-                    if (!ctx.Wait(wait)) throw new FlowAbortException("已停止", userCancelled: true);
-                }
-                else
-                {
-                    Thread.Sleep(wait);
-                }
+                if (!ctx.Wait(wait)) throw new FlowAbortException("已停止", userCancelled: true);
             }
-        }
-        finally
-        {
-            RecordingIndicatorWindow.RestoreAutomation(indicator);
+            else
+            {
+                Thread.Sleep(wait);
+            }
         }
 
         return new TextMatch { Seen = seen };

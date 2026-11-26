@@ -57,30 +57,12 @@ public sealed class ConfirmUnit : IStepUnit
         string text = ListText.Display(args.TryGet("text"));
         int timeoutMs = (int)Math.Clamp(args.Number("timeoutMs"), 0, 86_400_000);
 
-        // 界面归宿主：转过去弹；没连上就本地弹。
-        UiChoiceReply? remote = UiBridge.TryChoice(args.Text("title"), text,
-            Array.Empty<string>(), buttons, selectMode: false, timeoutMs, ctx.Token);
-
-        bool accepted;
-        int index;
-        string value;
-        if (remote != null)
-        {
-            accepted = remote.Accepted;
-            index = remote.Index;
-            value = remote.Value ?? "";
-        }
-        else
-        {
-            var window = ChoiceWindowService.Open(args.Text("title"), text,
-                Array.Empty<string>(), buttons, selectMode: false);
-
-            (accepted, index, value) = ChoiceWindowService.Wait(ctx, window, timeoutMs);
-        }
+        var (accepted, index, value) = ChoiceWindowService.Ask(ctx, args.Text("title"), text,
+            Array.Empty<string>(), buttons, selectMode: false, timeoutMs);
 
         ctx.SetOutput("found", Value.FromBool(accepted));
         ctx.SetOutput("confirmed", Value.FromBool(accepted && index == 0));
-        ctx.SetOutput("index", Value.FromNumber(accepted ? index : -1));
+        ctx.SetOutput("index", Value.FromNumber(index));
         ctx.SetOutput("value", Value.FromText(value));
     }
 

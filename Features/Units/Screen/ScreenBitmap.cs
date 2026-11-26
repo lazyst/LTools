@@ -65,14 +65,7 @@ internal static class ScreenBitmap
         if (w <= 0 || h <= 0) throw new ActionException($"识别区域无效：{x},{y} · {w}×{h}");
 
         // 自动化指示器是置顶窗口，会被截进画面：截图期间收起，结束后恢复。
-        string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
-        try
-        {
-            return ScreenCapture.Capture(x, y, w, h);
-        }
-        finally
-        {
-            RecordingIndicatorWindow.RestoreAutomation(indicator);
-        }
+        using var _ = RecordingIndicatorWindow.SuppressForCapture();
+        return ScreenCapture.Capture(x, y, w, h);
     }
 }
