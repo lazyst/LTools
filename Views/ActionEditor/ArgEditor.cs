@@ -78,7 +78,7 @@ internal sealed class ArgEditorContext
     /// <summary>草稿资源根（模板图缩略图认 <c>files/x.png</c>）。</summary>
     public string? ResourceRoot { get; init; }
 
-    /// <summary>框选 / 截图完成后的通知（找图 / 找字顺手收紧搜索区域）。</summary>
+    /// <summary>在「区域」参数上框选了一块（写 <c>rect</c> 并切 <c>region</c>；模板图框选不触发）。</summary>
     public Action<Int32Rect>? Captured { get; init; }
 
     /// <summary>屏幕上取到一次点（参数是屏幕坐标时填好同组的 X / Y）。</summary>

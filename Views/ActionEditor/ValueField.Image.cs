@@ -82,13 +82,16 @@ public partial class ValueField
     private void CaptureImage()
     {
         var window = Window.GetWindow(this);
-        if (!ScreenPicker.TryPickRegion(window, out var area, out var image)) return;
+        if (!ScreenPicker.TryPickRegion(window, out _, out var image)) return;
 
         try
         {
             string path = ImageLibrary.SaveGenerated(image);
             SetLiteral(ImageLibrary.ToStoredPath(path));
-            Captured?.Invoke(area);
+
+            // 只取图：搜索区域是另一个参数，绝不顺手改它（框选模板图 ≠ 限定搜索区域）。
+            // 想「只在这块里找」就单独去「区域」那一条框一次。
+            ToastService.Show("模板图已取；搜索区域没变", "模板图", 2500, ToastKind.info);
         }
         catch (Exception ex)
         {

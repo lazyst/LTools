@@ -94,7 +94,10 @@ public partial class ValueField : UserControl
     /// <summary>值变化（宿主用它刷新可见性 / 摘要 / 保存状态）。</summary>
     public event Action? Changed;
 
-    /// <summary>框选 / 截图完成后把区域交给宿主（找图 / 找字顺手收紧搜索区域）。</summary>
+    /// <summary>
+    /// 在「区域」参数上框选了一块：把区域交给宿主（写 <c>rect</c> 并把 <c>region</c> 切过去）。
+    /// 模板图（<see cref="InputEditor.image"/>）的框选**不触发它**——那只取图，不顺手改搜索区域。
+    /// </summary>
     public event Action<Int32Rect>? Captured;
 
     /// <summary>要在屏幕上取点：参数是屏幕坐标，宿主一次填好同组的 x / y。</summary>
