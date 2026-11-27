@@ -101,7 +101,10 @@ if (Test-Path $work) { Remove-Item $work -Recurse -Force }
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 
 # mingw64 仓库里的包名（yasm 已弃用，nasm 就够；NVENC 头文件叫 ffnvcodec-headers；AMF 是 amf-headers）
-$deps = 'pacman -S --noconfirm --needed ' + (@(
+$deps = @(
+    # 新装的 MSYS2 只有镜像列表、没有 sync 数据库，先刷一次（本地已有 DB 时也只是一次同步）
+    'pacman -Sy --noconfirm >/dev/null 2>&1 || true',
+    'pacman -S --noconfirm --needed ' + (@(
     'mingw-w64-x86_64-toolchain',
     'mingw-w64-x86_64-nasm',
     'mingw-w64-x86_64-x264',
@@ -114,7 +117,10 @@ $deps = 'pacman -S --noconfirm --needed ' + (@(
     # MSYS 侧（不带 mingw 前缀）：make 编 FFmpeg，diffutils 提供 configure 要用的 cmp
     'make',
     'diffutils'
-) -join ' ')
+) -join ' '),
+    # 装完立刻报一次工具链位置：CI 上「包装到另一棵树」就是这么暴露出来的
+    'echo "工具链：gcc=$(command -v gcc || echo 未找到) make=$(command -v make || echo 未找到) nasm=$(command -v nasm || echo 未找到)"'
+) -join "`n"
 
 # configure 清单：产品要用的必须齐（录屏 / 收尾 / 动图 / 裁剪），另外留几样只给冒烟用
 # （tests\RecordFfmpegSmoke 与 capture-overlay-smoke 要自己合成测试音、测音量、造画面）：

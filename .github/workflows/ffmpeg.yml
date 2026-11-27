@@ -24,40 +24,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 只装构建脚本要的包；tools/build-ffmpeg.ps1 -SkipDeps 不再自己 pacman
+      # 只借它装一棵 MSYS2；包由 tools/build-ffmpeg.ps1 自己 pacman 装。
+      # 别用这里的 install: —— 实测它装进了另一棵 MSYS2 树，而脚本用的是 C:\msys64：
+      # run 45951411436 的探针显示 /mingw64/bin 里没有 gcc / make / nasm，
+      # configure 于是只报一句「C compiler test failed」。
       - uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-nasm
-            mingw-w64-x86_64-x264
-            mingw-w64-x86_64-x265
-            mingw-w64-x86_64-libwebp
-            mingw-w64-x86_64-zlib
-            mingw-w64-x86_64-ffnvcodec-headers
-            mingw-w64-x86_64-amf-headers
-            mingw-w64-x86_64-pkgconf
+          cache: false
 
-      # 先单独验一遍工具链：configure 只打一句「C compiler test failed」，
-      # 而它到底是找不到 gcc、链接失败还是写不出文件，只有当场跑一次才知道。
-      - name: Toolchain
+      - name: Locate MSYS2
         shell: pwsh
         run: |
-          $probe = @(
-            'echo "PATH=$PATH"'
-            'which gcc make nasm pkg-config || true'
-            'gcc -v 2>&1 | tail -3'
-            'printf "int main(void){return 0;}\n" > /tmp/lt-t.c'
-            'gcc /tmp/lt-t.c -o /tmp/lt-t.exe; echo "trivial gcc exit=$?"'
-            'ls -l /tmp/lt-t.exe || true'
-          ) -join "`n"
-          & 'C:\msys64\usr\bin\bash.exe' -lc $probe
+          Write-Host "MSYS2_LOCATION=$env:MSYS2_LOCATION MSYS2_ROOT=$env:MSYS2_ROOT"
+          foreach ($p in 'C:\msys64\usr\bin\bash.exe', 'C:\msys64\mingw64\bin\gcc.exe') {
+            if (Test-Path $p) { Write-Host "有：$p" } else { Write-Host "没有：$p" }
+          }
 
       - name: Build
         shell: pwsh
-        run: ./tools/build-ffmpeg.ps1 -Version ${{ inputs.version }} -SkipDeps
+        run: ./tools/build-ffmpeg.ps1 -Version ${{ inputs.version }}
 
       # configure 挂掉时它只打一句「C compiler test failed」，真正的原因（缺库 / 找不到 gcc /
       # 链接器报错）全在 config.log 里。注意 config.log 的尾部是几百行变量清单，
