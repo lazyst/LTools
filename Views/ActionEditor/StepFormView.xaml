@@ -73,7 +73,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="执行后等待" VerticalAlignment="Center" Margin="0,0,12,0"
                                            Foreground="{StaticResource SecondaryTextBrush}"
-                                           ToolTip="这一步成功跑完之后等这么久再执行下一步；失败不会走这里（失败后等的是下面的「重试间隔」）"/>
+                                           ToolTip="这一步成功跑完之后等这么久再执行下一步；失败不会走这里（失败后等的是下面的「重试间隔」）。循环要「每轮歇一下」用循环步骤自己的「每轮间隔」，这里填的仍是整段循环跑完后等一次"/>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBox x:Name="DelayBox" Width="64" MinHeight="28"
                                              controls:TextBoxClear.Attach="False"

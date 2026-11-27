@@ -32,6 +32,8 @@ internal static class EngineSuite
         cases.Add(new("engine", "初始变量按声明类型注入", InitialVariables));
         cases.Add(new("engine", "轨迹路径与解析后的输入", Trace));
         cases.Add(new("engine", "停止信号打断步骤延迟", StopCancelsDelay));
+        cases.Add(new("engine", "停止信号打断每轮间隔", StopCancelsLoopInterval));
+        cases.Add(new("engine", "执行后等待真的等了（普通 / 流程）", DelayElapses));
         cases.Add(new("engine", "流程停止正常收尾", FlowStop));
         cases.Add(new("engine", "返回只能用在子动作里", ReturnAtTop));
         cases.Add(new("engine", "未知动作单元报错", UnknownUnit));
@@ -402,6 +404,109 @@ internal static class EngineSuite
         Check.Equal("a", body.Outputs["text"].AsText(), "输出键对应运行时写出的值");
     }
 
+    /// <summary>
+    /// 「执行后等待」永远只管这一步本身；循环要「每轮歇一下」用它自己的「每轮间隔」。
+    /// 用户报过「条件循环上配了执行后等待却看不到任何停顿」——两个设置现在各管各的。
+    /// </summary>
+    private static void DelayElapses()
+    {
+        foreach (string unit in new[] { "flow.repeat", "flow.forEach", "flow.while" })
+        {
+            UnitSpec spec = StepRegistry.Default.Get(unit).Spec;
+            InputSpec? interval = spec.Inputs.FirstOrDefault(i => i.Key == "intervalMs");
+            Check.True(interval != null, unit + " 应有「每轮间隔」参数");
+            Check.False(interval?.Advanced ?? true, unit + " 的「每轮间隔」不该收进高级参数");
+        }
+
+        var variables = new[]
+        {
+            Var("v", ValueKind.text, Value.FromText("")),
+            Var("items", ValueKind.list,
+                Value.FromList(new[]
+                {
+                    Value.FromText("a"), Value.FromText("b"), Value.FromText("c"), Value.FromText("d"),
+                })),
+            Var("n", ValueKind.number, Value.FromNumber(0)),
+        };
+
+        // 步骤级等待：循环步骤上填的仍是**整段**跑完后等一次（3 轮 × 250 若按轮会是 750）。
+        Step repeatWithDelay = Step.Of("flow.repeat").With("count", StepArg.FromNumber(3));
+        repeatWithDelay.DelayMs = 250;
+
+        // 循环体里的「如果」配执行后等待：它是普通步骤，两轮各等一次。
+        Step bodyIf = Step.Of("flow.if")
+            .With("left", StepArg.FromText("a"))
+            .WithText("op", "equals")
+            .With("right", StepArg.FromText("a"));
+        bodyIf.DelayMs = 250;
+        bodyIf.Then.Add(Step.Of("test.mark"));
+        Step repeatWithIf = Step.Of("flow.repeat").With("count", StepArg.FromNumber(2));
+        repeatWithIf.Body.Add(bodyIf);
+
+        // 「每轮间隔」：n 轮只等 n-1 次（最后一轮跑完不等）。4 轮 → 3 次 = 600ms。
+        Step repeatInterval = Step.Of("flow.repeat")
+            .With("count", StepArg.FromNumber(4))
+            .With("intervalMs", StepArg.FromNumber(200));
+        Step forEachInterval = Step.Of("flow.forEach")
+            .WithVar("items", "items")
+            .With("intervalMs", StepArg.FromNumber(200));
+
+        // 条件循环：n 从 0 数到 4，每轮 +1（假单元自增，不碰真实取值单元）。
+        var increment = new FakeUnit("test.inc", "自增测试",
+            inputs: new[] { new InputSpec("value", "值", ValueKind.number, Default: Value.FromNumber(0)) },
+            outputs: new[] { new OutputSpec("value", "值", ValueKind.number) },
+            run: (ctx, args) => ctx.SetOutput("value", Value.FromNumber(args.Number("value") + 1)));
+        Step whileInterval = Step.Of("flow.while")
+            .WithVar("left", "n")
+            .WithText("op", "less")
+            .With("right", StepArg.FromNumber(4))
+            .With("intervalMs", StepArg.FromNumber(200));
+        whileInterval.Body.Add(Step.Of("test.inc").WithVar("value", "n").Output("value", "n"));
+
+        // 第一轮就跳出：一次间隔都不该等（间隔只发生在两轮之间）。
+        Step breakFirst = Step.Of("flow.repeat")
+            .With("count", StepArg.FromNumber(5))
+            .With("intervalMs", StepArg.FromNumber(5_000));
+        breakFirst.Body.Add(Step.Of("flow.break"));
+
+        // 不填「每轮间隔」（默认 0）：一轮都不等。
+        Step noInterval = Step.Of("flow.repeat").With("count", StepArg.FromNumber(3));
+
+        foreach (var (name, step, vars, least, atMost) in new (string, Step, VariableDef[], int, int)[]
+                 {
+                     ("普通单元的执行后等待", StepOfWithDelay("test.mark", 250), Array.Empty<VariableDef>(), 200, 0),
+                     ("流程单元（设置变量）", StepOfWithDelay("flow.set", 250)
+                         .WithText("name", "v").WithText("value", "x"), variables, 200, 0),
+                     ("循环步骤的执行后等待（整段一次）", repeatWithDelay, Array.Empty<VariableDef>(), 200, 600),
+                     ("循环体里的如果（两轮各等一次）", repeatWithIf, Array.Empty<VariableDef>(), 400, 0),
+                     ("重复的每轮间隔（4 轮 3 次）", repeatInterval, Array.Empty<VariableDef>(), 550, 750),
+                     ("遍历列表的每轮间隔（4 项 3 次）", forEachInterval, variables, 550, 750),
+                     ("条件循环的每轮间隔（4 轮 3 次）", whileInterval, variables, 550, 750),
+                     ("第一轮就跳出不等间隔", breakFirst, Array.Empty<VariableDef>(), 0, 200),
+                     ("每轮间隔默认 0", noInterval, Array.Empty<VariableDef>(), 0, 200),
+                 })
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            ActionRunResult result = Run(Program(vars, step),
+                TestRegistry.Create(TestRegistry.Mark(), increment));
+            watch.Stop();
+            Check.True(result.Ok, name + "应成功：" + result.Error);
+            if (least > 0)
+                Check.True(watch.ElapsedMilliseconds >= least,
+                    $"{name}应至少等 {least} 毫秒（实测 {watch.ElapsedMilliseconds}）");
+            if (atMost > 0)
+                Check.True(watch.ElapsedMilliseconds < atMost,
+                    $"{name}不该多等（上限 {atMost}，实测 {watch.ElapsedMilliseconds}）");
+        }
+
+        static Step StepOfWithDelay(string unit, int ms)
+        {
+            Step step = Step.Of(unit);
+            step.DelayMs = ms;
+            return step;
+        }
+    }
+
     private static void StopCancelsDelay()
     {
         using var cts = new CancellationTokenSource();
@@ -414,6 +519,26 @@ internal static class EngineSuite
 
         Check.True(result.Stopped, "token 取消后应记为已停止");
         Check.Contains(result.Error, "已停止");
+    }
+
+    /// <summary>「每轮间隔」也是可取消的等待：按停止热键不该再把 5 秒等完。</summary>
+    private static void StopCancelsLoopInterval()
+    {
+        using var cts = new CancellationTokenSource();
+        var cancel = new FakeUnit("test.cancel", "取消测试", run: (_, _) => cts.Cancel());
+        Step loop = Step.Of("flow.repeat")
+            .With("count", StepArg.FromNumber(3))
+            .With("intervalMs", StepArg.FromNumber(5_000));
+        loop.Body.Add(Step.Of("test.cancel"));
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        ActionRunResult result = Run(Program(loop), TestRegistry.Create(cancel),
+            new ActionRunOptions { Token = cts.Token });
+        watch.Stop();
+
+        Check.True(result.Stopped, "每轮间隔应按停止热键中止");
+        Check.True(watch.ElapsedMilliseconds < 2_000,
+            $"取消之后不该再把 5 秒等完（实测 {watch.ElapsedMilliseconds}）");
     }
 
     private static void FlowStop()

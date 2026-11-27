@@ -96,6 +96,36 @@ public sealed class StepContext
             Label.Length == 0 ? branchLabel : $"{Label} › {branchLabel}");
     }
 
+    /// <summary>
+    /// 跑一轮循环体：「继续下一次」/「跳出循环」在这里收掉（不再往上冒）。
+    /// </summary>
+    /// <remarks>
+    /// 只管「跑一轮」，不管间隔：两轮之间要歇多久是循环类动作单元自己的
+    /// 「每轮间隔」参数（<c>intervalMs</c>），由调用方在下一轮开始前调
+    /// <see cref="WaitLoopInterval"/>。步骤选项里的「执行后等待」始终只属于这一步本身，
+    /// 循环步骤上填的仍然是整段循环跑完后等一次。
+    /// </remarks>
+    /// <returns>false = 这一轮遇到「跳出循环」，调用方应结束循环。</returns>
+    public bool RunLoopIteration()
+    {
+        bool stop = false;
+        try { RunBody(Step.Body); }
+        catch (ContinueSignal) { }
+        catch (BreakSignal) { stop = true; }
+        return !stop;
+    }
+
+    /// <summary>
+    /// 循环的「每轮间隔」：两轮之间等一会儿（0 = 不等）。
+    /// 只在确定还有下一轮时才调，所以最后一轮跑完（以及本轮「跳出循环」之后）不会多等一次。
+    /// </summary>
+    public void WaitLoopInterval(int milliseconds)
+    {
+        if (DryRun || milliseconds <= 0) return;
+        if (!Wait(milliseconds))
+            throw new ActionAbortedException("已停止", userCancelled: true);
+    }
+
     /// <summary>调用一个子动作（输入按变量名从 <paramref name="args"/> 取，输出按步骤 out 映射写回）。</summary>
     public void RunSubAction(string id, StepArgs args) => Engine.RunSubAction(this, id, args);
 

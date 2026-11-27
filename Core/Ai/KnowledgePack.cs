@@ -354,8 +354,10 @@ internal static class KnowledgePack
   （填过的值会记住），值以初始变量注入本次运行；不写就是 `local`（不问，直接用 `default`）。
   `output` 只在子动作里有意义（见 §7）。
 - `steps` 是普通数组。控制流不是节点图：`flow.if` / `flow.repeat` / `flow.forEach` / `flow.while` 就是普通步骤，分支体放在 `then` / `else` / `body` 里。
-- 步骤字段：`unit`（动作单元键）、`in`（参数）、`out`（输出键 → 变量名）、`body` / `then` / `else`、`note`、`disabled`、`onFail`（`stop` / `continue`）、`delayMs`、
+- 步骤字段：`unit`（动作单元键）、`in`（参数）、`out`（输出键 → 变量名）、`body` / `then` / `else`、`note`、`disabled`、`onFail`（`stop` / `continue`）、`delayMs`（这一步跑完后等多少毫秒）、
   `retry`（失败后最多再试几次，默认 0）+ `retryDelayMs`（两次尝试之间等多少毫秒，默认 500）。
+  循环步骤（`flow.repeat` / `flow.forEach` / `flow.while`）另有一个参数 `intervalMs`（每轮间隔：两轮之间等多少毫秒，
+  `0` = 不等；最后一轮跑完、或本轮「跳出循环」之后都不再等）——**要让循环慢下来用它，别指望 `delayMs`。**
   「窗口 / 文字还没出来」这类问题优先用它，别手搭「循环 + 延迟 + 计数」；不想重试某一步而想等条件成立，
   用 `flow.waitFor`（条件 + `timeoutMs` + `intervalMs`，输出 `ok` / `elapsed`）。
 - 步骤执行前，`out` 映射到的变量会先被清成**该输出类型的零值**（`bool` → false、`number` → 0、

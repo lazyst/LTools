@@ -195,6 +195,20 @@ internal static class FlowUnits
             Default: Value.FromBool(false),
             Description: "勾上就把比较结果反过来：成立变不成立、不成立变成立");
 
+    /// <summary>循环类步骤的「每轮间隔」：两轮之间歇一下（0 = 不等）。</summary>
+    /// <remarks>
+    /// 不是步骤选项里的「执行后等待」（那个永远只管这一步本身，循环上是整段跑完后等一次）。
+    /// 循环要节流就填这里，别再让「执行后等待」按轮生效。
+    /// </remarks>
+    private static InputSpec LoopInterval() =>
+        new("intervalMs", "每轮间隔", ValueKind.number, InputEditor.number,
+            Default: Value.FromNumber(0),
+            Description: "两轮之间等多少毫秒（0 = 不等）；最后一轮跑完或本轮「跳出循环」之后不再等，停止热键能打断");
+
+    /// <summary>「每轮间隔」的毫秒数：负数按 0，上限 10 分钟（与「等待」步骤同一口径）。</summary>
+    private static int Interval(StepArgs args) =>
+        (int)Math.Clamp(args.Number("intervalMs"), 0, 600_000);
+
     /// <summary>赋值 / 追加：<c>flow.set</c>。</summary>
     private sealed class SetUnit : IStepUnit
     {
@@ -269,6 +283,7 @@ internal static class FlowUnits
             Inputs = new[]
             {
                 new InputSpec("count", "次数", ValueKind.number, InputEditor.number, Required: true),
+                LoopInterval(),
             },
             Outputs = new[]
             {
@@ -284,13 +299,13 @@ internal static class FlowUnits
                     $"循环次数必须在 0–{ctx.MaxLoopIterations} 之间（当前 {raw}）");
 
             int count = (int)Math.Round(raw);
+            int interval = Interval(args);
             for (int i = 0; i < count; i++)
             {
+                if (i > 0) ctx.WaitLoopInterval(interval);
                 ctx.EnterIteration();
                 ctx.SetOutput("index", Value.FromNumber(i));
-                try { ctx.RunBody(ctx.Step.Body); }
-                catch (ContinueSignal) { continue; }
-                catch (BreakSignal) { break; }
+                if (!ctx.RunLoopIteration()) break;
             }
         }
     }
@@ -310,6 +325,7 @@ internal static class FlowUnits
             Inputs = new[]
             {
                 new InputSpec("items", "列表", ValueKind.list, InputEditor.variable, Required: true),
+                LoopInterval(),
             },
             Outputs = new[]
             {
@@ -321,18 +337,18 @@ internal static class FlowUnits
         public void Execute(StepContext ctx, StepArgs args)
         {
             var items = args.List("items");
+            int interval = Interval(args);
             for (int i = 0; i < items.Count; i++)
             {
                 if (i >= ctx.MaxLoopIterations)
                     throw new ActionException(
                         $"循环已执行 {ctx.MaxLoopIterations} 轮，已自动停止（列表共 {items.Count} 项）");
 
+                if (i > 0) ctx.WaitLoopInterval(interval);
                 ctx.EnterIteration();
                 ctx.SetOutput("item", items[i]);
                 ctx.SetOutput("index", Value.FromNumber(i));
-                try { ctx.RunBody(ctx.Step.Body); }
-                catch (ContinueSignal) { continue; }
-                catch (BreakSignal) { break; }
+                if (!ctx.RunLoopIteration()) break;
             }
         }
     }
@@ -349,7 +365,7 @@ internal static class FlowUnits
             Icon = "while",
             Description = "条件成立时重复执行循环体",
             Body = BodyKind.body,
-            Inputs = new[] { ConditionLeft(), ConditionOp(), ConditionRight(), ConditionNegate() },
+            Inputs = new[] { ConditionLeft(), ConditionOp(), ConditionRight(), ConditionNegate(), LoopInterval() },
             Outputs = new[]
             {
                 new OutputSpec("index", "下标", ValueKind.number, "i", Description: "当前循环下标，从 0 开始；循环结束后保留最后一轮的值"),
@@ -371,9 +387,10 @@ internal static class FlowUnits
                 if (current.Bool("negate")) ok = !ok;
                 if (!ok) break;
 
-                try { ctx.RunBody(ctx.Step.Body); }
-                catch (ContinueSignal) { /* 进入下一轮 */ }
-                catch (BreakSignal) { break; }
+                // 「每轮间隔」只在确定这一轮要跑时等：条件已经不成立的那一轮不会多等一次。
+                if (i > 0) ctx.WaitLoopInterval(Interval(current));
+
+                if (!ctx.RunLoopIteration()) break;
 
                 // 条件要在每轮重新取值（变量可能已被循环体改掉）。
                 current = ctx.ResolveArgs();
