@@ -40,12 +40,28 @@ jobs:
             mingw-w64-x86_64-amf-headers
             mingw-w64-x86_64-pkgconf
 
+      # 先单独验一遍工具链：configure 只打一句「C compiler test failed」，
+      # 而它到底是找不到 gcc、链接失败还是写不出文件，只有当场跑一次才知道。
+      - name: Toolchain
+        shell: pwsh
+        run: |
+          $bash = 'C:\msys64\usr\bin\bash.exe'
+          & $bash -lc @'
+echo "PATH=$PATH"
+which gcc make nasm pkg-config || true
+gcc -v 2>&1 | tail -3
+printf 'int main(void){return 0;}\n' > /tmp/lt-t.c
+gcc /tmp/lt-t.c -o /tmp/lt-t.exe; echo "trivial gcc exit=$?"
+ls -l /tmp/lt-t.exe || true
+'@
+
       - name: Build
         shell: pwsh
         run: ./tools/build-ffmpeg.ps1 -Version ${{ inputs.version }} -SkipDeps
 
       # configure 挂掉时它只打一句「C compiler test failed」，真正的原因（缺库 / 找不到 gcc /
-      # 链接器报错）全在 config.log 里。跑在 runner 上没地方翻，所以失败时直接倒出来。
+      # 链接器报错）全在 config.log 里。注意 config.log 的尾部是几百行变量清单，
+      # 所以按关键字捞中间的报错段，别用 -Tail。
       - name: Dump configure log
         if: failure()
         shell: pwsh
@@ -54,7 +70,9 @@ jobs:
           if (-not $logs) { Write-Host '没有 config.log（失败发生在 configure 之前）'; exit 0 }
           foreach ($f in $logs) {
             Write-Host "=== $($f.FullName) ==="
-            Get-Content $f.FullName -Tail 300
+            $hits = Select-String -Path $f.FullName -Pattern 'error|Error|denied|conftest|not found|cannot|unable|ld:' -Context 2,2
+            if ($hits) { $hits | Select-Object -First 30 | ForEach-Object { $_.ToString() } }
+            else { Write-Host '（没捞到关键字，打前 120 行）'; Get-Content $f.FullName -TotalCount 120 }
           }
 
       # 编出来先自己用一遍：libx264 + mp4、GIF 两遍调色板、rawvideo 管道，三条路各跑一次。

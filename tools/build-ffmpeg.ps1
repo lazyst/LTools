@@ -164,7 +164,17 @@ esac
 DIR=$(tar -tf "$ARCHIVE" | sed -n '1p' | cut -d/ -f1)
 cd "$DIR"
 
+# configure 挂掉时它只打一句「C compiler test failed」，真正的原因在 ffbuild/config.log 里
+# （缺库 / 找不到 gcc / 链接器报错）。这里先放开 set -e，失败时把报错段捞出来再退出。
+set +e
 @@CONFIGURE@@
+RC=$?
+set -e
+if [ $RC -ne 0 ]; then
+  echo "---- configure 失败（退出码 $RC），config.log 里的报错段 ----"
+  grep -n -i -E 'error|denied|conftest|not found|cannot|unable|undefined reference' ffbuild/config.log | head -40 || true
+  exit $RC
+fi
 
 make -j@@JOBS@@
 make install
