@@ -306,7 +306,7 @@ cd tests\RecordFfmpegSmoke
 dotnet run                                # 14 条，约 10 秒
 ```
 
-换掉随包的 `runtime\ffmpeg\ffmpeg.exe`（自编精简构建、升级版本）之后跑它：用产品里真拼命令的
+换掉随包的 `runtime\ffmpeg\ffmpeg.exe`（升级版本 / 换构建）之后跑它：用产品里真拼命令的
 `RecordPlan` / `RecordEncoders` / `RecordTrim` 各跑一遍——rawvideo 管道 → libx264 → mp4、收尾重封装、
 两路 WAV → `aresample` / `aformat` / `amix` → AAC、GIF 两遍调色板、APNG / WebP 动图、进度条 `drawbox`、
 裁剪 + 倍速（`setpts` / `atempo`）、截断的 mp4 还能不能读出时长（残片恢复的前提）。

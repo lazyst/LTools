@@ -1,22 +1,16 @@
-FFmpeg（随包版本 9.0.2，LTools 精简构建）
-===========================================
+FFmpeg（随包版本 9.0.2-essentials_build-www.gyan.dev）
+=====================================================
 
-本目录下的 ffmpeg.exe 由 LTools 自己编译（静态单文件，未修改 FFmpeg 源码），
-随 LTools 一起分发，供「录屏」抓帧编码（MP4 / MOV / GIF / APNG / WebP）与后期裁剪使用。
+本目录下的 ffmpeg.exe 是 gyan.dev「essentials」构建的未修改二进制（单文件、静态链接），
+随 LTools 一起分发，供「录屏」功能抓帧编码（MP4 / GIF）使用。
 
-许可证：GNU General Public License v3.0
-        （--enable-gpl；libx264 / libx265 同样是 GPL）
+许可证：GNU General Public License v3.0（FFmpeg 本体；该构建启用 --enable-gpl
+        与 --enable-version3，libx264 同样是 GPL）
 项目主页：https://ffmpeg.org/
-构建脚本：本仓库 tools/build-ffmpeg.ps1（含完整 configure 参数）
-对应源码：https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz
-        https://code.videolan.org/videolan/x264
-        https://code.videolan.org/videolan/x265
-        （亦可向 LTools 维护者索取该构建的完整源码与编译产物）
+预编译构建：https://www.gyan.dev/ffmpeg/builds/
+对应源码：https://ffmpeg.org/download.html#get-sources（按上面的版本号取同一版本），
+        https://code.videolan.org/videolan/x264（libx264）
+        （亦可向 LTools 维护者索取该构建的完整源码）
 
-构建要点（--disable-everything 后逐项开启）：libx264 / libx265 / NVENC / AMF / aac /
-gif / apng / libwebp_anim；mp4 / mov / gif / apng / webp / image2 封装；
-rawvideo / wav / mov / lavfi 解封装；scale / pad / fps / palettegen / paletteuse /
-setpts / atempo / aresample / aformat / amix / volume / drawbox 等滤镜。
-
-更新方式：重跑 tools/build-ffmpeg.ps1（或 .github/workflows/ffmpeg.yml），
-再运行 tools/fetch-ffmpeg.ps1 取回并更新这里的版本号。
+更新方式：运行 tools/fetch-ffmpeg.ps1（下载 essentials zip，只取 bin\ffmpeg.exe，
+并同步更新版本号与上述源码链接）。

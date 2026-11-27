@@ -4,6 +4,14 @@
 
 ## [未发布]
 
+## [v2.6.11] - 2026-11-27
+
+### 🔧 变更
+
+- **ffmpeg 回到官方完整构建**：v2.6.10 里换上的自编精简构建（33.9 MB）不再维护——CI 上 `configure` 一直报 `C compiler test failed`，探针查明 `setup-msys2` 的安装列表落到了另一棵 MSYS2 树、`C:\msys64\mingw64\bin` 里根本没有 gcc（本地能过是因为脚本自己 `pacman` 装到同一棵树）。`tools/build-ffmpeg.ps1` 与 `.github/workflows/ffmpeg.yml` 一并删除，`tools/fetch-ffmpeg.ps1` 恢复成只取 gyan.dev essentials。
+- **发布包体积回到**：解压 407 MB / zip 168.4 MB / 7z 112.1 MB（`.7z` 仍比 zip 小约 34%，两种格式都提供）。
+- `tests/RecordFfmpegSmoke` 保留：换 ffmpeg（升级版本 / 换构建）之后跑它，用产品里真拼的命令各跑一遍编码 / 混音 / 动图 / 裁剪。
+
 ## [v2.6.10] - 2026-11-27
 
 ### ✨ 新增 / 改进

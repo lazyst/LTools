@@ -11,8 +11,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- exe 嵌入图标 -->
     <ApplicationIcon>Icon\LTools.ico</ApplicationIcon>
-    <Version>2.6.10</Version>
-    <AssemblyVersion>2.6.10.0</AssemblyVersion>
+    <Version>2.6.11</Version>
+    <AssemblyVersion>2.6.11.0</AssemblyVersion>
     <AssemblyName>LTools</AssemblyName>
     <RootNamespace>LTools</RootNamespace>
   </PropertyGroup>
@@ -103,8 +103,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <!-- 随包 ffmpeg：录屏（抓帧 → pipe:0 编码）用它，不依赖用户机器上装没装。
-         目录由 tools\build-ffmpeg.ps1 编（精简构建，只开录屏用到的编解码器与滤镜），
-         或 tools\fetch-ffmpeg.ps1 取一份（仓库 release 上的附件优先，取不到退回 gyan.dev）。
+         目录由 tools\fetch-ffmpeg.ps1 下载（gyan.dev essentials，单文件约 100 MB）。
          二进制**不进仓库**，
          所以这里是通配——目录不存在时匹配为空、构建照常成功（运行时退回 PATH）。
          许可证与源码出处在 licenses\FFmpeg-NOTICE.txt（GPL 要求）。 -->
