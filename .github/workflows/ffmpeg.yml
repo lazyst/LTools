@@ -45,15 +45,15 @@ jobs:
       - name: Toolchain
         shell: pwsh
         run: |
-          $bash = 'C:\msys64\usr\bin\bash.exe'
-          & $bash -lc @'
-echo "PATH=$PATH"
-which gcc make nasm pkg-config || true
-gcc -v 2>&1 | tail -3
-printf 'int main(void){return 0;}\n' > /tmp/lt-t.c
-gcc /tmp/lt-t.c -o /tmp/lt-t.exe; echo "trivial gcc exit=$?"
-ls -l /tmp/lt-t.exe || true
-'@
+          $probe = @(
+            'echo "PATH=$PATH"'
+            'which gcc make nasm pkg-config || true'
+            'gcc -v 2>&1 | tail -3'
+            'printf "int main(void){return 0;}\n" > /tmp/lt-t.c'
+            'gcc /tmp/lt-t.c -o /tmp/lt-t.exe; echo "trivial gcc exit=$?"'
+            'ls -l /tmp/lt-t.exe || true'
+          ) -join "`n"
+          & 'C:\msys64\usr\bin\bash.exe' -lc $probe
 
       - name: Build
         shell: pwsh
