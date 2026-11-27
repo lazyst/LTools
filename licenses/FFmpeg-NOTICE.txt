@@ -1,5 +1,5 @@
-FFmpeg（随包版本 9.0.2-essentials_build-www.gyan.dev）
-=====================================================
+FFmpeg（随包版本 9.1-essentials_build-www.gyan.dev）
+===========================
 
 本目录下的 ffmpeg.exe 是 gyan.dev「essentials」构建的未修改二进制（单文件、静态链接），
 随 LTools 一起分发，供「录屏」功能抓帧编码（MP4 / GIF）使用。
