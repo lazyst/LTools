@@ -45,6 +45,9 @@ internal static partial class CaptureProSuite
         Check.Equal("medium", TextRecognitionStore.ModelTypes[2], "下拉最后一项是中号");
 
         // —— 模型随包：超小与小号都在安装包里，默认档（小号）不需要下载 ——
+        // 注意：这两条也守着「.gitattributes 把 Assets/Ocr 标成二进制」——被换行转换过的
+        // 字典长度对不上清单，这里会直接红。
+        Check.True(OcrModelStore.TinyReady, "超小 V6 随包（四个文件都在 Assets/Ocr/ppocrv6）");
         Check.True(OcrModelStore.BundledSmallReady, "小号 V6 随包（三个文件都在 Assets/Ocr/ppocrv6）");
         Check.True(OcrModelStore.SmallReady, "小号档可用");
         Check.False(OcrModelStore.CanDownload(PaddleOcr.Tier.Small), "小号档不再走下载");
