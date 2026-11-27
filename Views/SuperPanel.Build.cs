@@ -142,9 +142,12 @@ public partial class SuperPanelWindow
         FillZone(ContextGroupRail, ContextGroups, ContextScroll, groups, _contextDrag,
                  global: false, _contextRailBars, _contextAnchors);
 
-        // 手动切到别的场景时不显示「未配置」提示（那说的是自动匹配结果）
+        // 手动切到别的场景时不显示「未配置」提示（那说的是自动匹配结果）。
+        // **不能加 `!_preview`**：面板现在只活在普通权限宿主里，`_preview` 恒为 true——
+        // 加上它就等于「这条提示永远不显示」（设置里「重新显示未配置提示」点了也没用）。
+        // 提示本身只读，「添加专用设置 / 关闭提示」在宿主里都写得了（宿主就是 panel.json 的写者）。
         bool manual = _contextSceneId != _resolved.Scene?.Id;
-        if (!_preview && !manual && _resolved.ShowHint && _foreground != null)
+        if (!manual && _resolved.ShowHint && _foreground != null)
         {
             ContextHintBar.Visibility = Visibility.Visible;
             ContextHintText.Text = HintTextFor(_foreground.ExeName);

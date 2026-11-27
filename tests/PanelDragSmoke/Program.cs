@@ -405,6 +405,59 @@ internal static class Program
                     Check("⑩ 动作落盘（actions/<id>/action.json）", File.Exists(actionFile), actionFile);
                 }
             }
+            // ---- ⑪ 未配置提示：宿主里的面板（_preview 恒为 true）也必须显示 ----
+            // 回归 2026-11-28 的 bug：BuildContext 原来写成 `!_preview && …`，面板只活在宿主里，
+            // 于是「尚未为 X 添加专用设置」那条永远不显示，设置里「重新显示未配置提示」点了也没反应。
+            var appRole = Lt.GetType("LTools.Core.AppRole", true)!;
+            Call(appRole, "MarkUiHost");
+            Check("⑪ 以宿主身份跑（面板 = 只读预览）", (bool)Get(appRole, "IsUiHost")!);
+
+            var fgType = Lt.GetType("LTools.Native.ForegroundApp", true)!;
+            object fg = fgType.GetConstructors(Any)[0].Invoke(new object?[]
+            {
+                IntPtr.Zero, @"C:\smoke\noscene.exe", "noscene.exe", "冒烟窗口", "SmokeWnd",
+            });
+
+            config.HintDismissed = false;
+            Call(panels, "Save");
+
+            Window OpenHintPanel()
+            {
+                var window = (Window)Activator.CreateInstance(panelType, Any, null,
+                    new object?[] { fg, 0, 0 }, null)!;
+                window.WindowStartupLocation = WindowStartupLocation.Manual;
+                window.Show();
+                Pump(window);
+                return window;
+            }
+
+            Window hintPanel = OpenHintPanel();
+            var hintBar = (FrameworkElement?)hintPanel.FindName("ContextHintBar");
+            var hintText = (TextBlock?)hintPanel.FindName("ContextHintText");
+            Check("⑪ 未配置提示条显示出来", hintBar?.Visibility == Visibility.Visible,
+                hintBar?.Visibility.ToString() ?? "null");
+            Check("⑪ 文案带程序名", hintText?.Text == "尚未为“noscene”添加专用设置", hintText?.Text ?? "null");
+
+            var dismiss = (Button?)hintPanel.FindName("HintDismissButton");
+            dismiss!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Pump(hintPanel);
+            Check("⑪ 点关闭后立刻收起", hintBar!.Visibility == Visibility.Collapsed,
+                hintBar.Visibility.ToString());
+            Check("⑪ 关闭写进配置", config.HintDismissed);
+            Check("⑪ 关闭落盘 panel.json",
+                File.ReadAllText(Path.Combine(root, "configs", "panel.json")).Contains("\"HintDismissed\": true"));
+            hintPanel.Close();
+            Pump(null, 100);
+
+            // 设置里「重新显示未配置提示」= 置回 false 再保存 → 下次开面板又能看到
+            config.HintDismissed = false;
+            Call(panels, "Save");
+            Window reopened = OpenHintPanel();
+            var barAgain = (FrameworkElement?)reopened.FindName("ContextHintBar");
+            Check("⑪ 重置后重新打开又能看到", barAgain?.Visibility == Visibility.Visible,
+                barAgain?.Visibility.ToString() ?? "null");
+            reopened.Close();
+            Pump(null, 100);
         }
         catch (Exception ex)
         {

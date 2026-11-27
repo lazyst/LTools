@@ -57,6 +57,7 @@ internal static class SelfTestRunner
         MenuConeSuite.Register(cases);
         PanelClipboardSuite.Register(cases);
         PanelDropSuite.Register(cases);
+        PanelHintSuite.Register(cases);
         SimpleActionSuite.Register(cases);
         ActionParamSuite.Register(cases);
         TileLayoutSuite.Register(cases);
