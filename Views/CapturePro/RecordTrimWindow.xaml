@@ -62,7 +62,7 @@
         <Border Grid.Row="1" Background="#0F0F13">
             <Grid>
                 <MediaElement x:Name="Preview" LoadedBehavior="Manual" ScrubbingEnabled="True"
-                              Stretch="Uniform" MediaOpened="Preview_MediaOpened"
+                              Stretch="Uniform" MediaOpened="Preview_MediaOpened" MediaFailed="Preview_MediaFailed"
                               MediaEnded="Preview_MediaEnded"/>
                 <TextBlock x:Name="PreviewHint" Text="正在打开视频…" Foreground="#9CA3AF" FontSize="13"
                            HorizontalAlignment="Center" VerticalAlignment="Center"/>

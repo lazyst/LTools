@@ -299,6 +299,22 @@ dotnet run                                # 32 条，约 6 秒
 会死锁（消息循环发不出响应）。所以 `dotnet run` 不带参数是父进程，带 `host` 是子进程窗口。
 子进程结束后父进程 `Kill(entireProcessTree: true)`，不会留下窗口。
 
+### `RecordFfmpegSmoke`（录屏用 ffmpeg）
+
+```powershell
+cd tests\RecordFfmpegSmoke
+dotnet run                                # 14 条，约 10 秒
+```
+
+换掉随包的 `runtime\ffmpeg\ffmpeg.exe`（自编精简构建、升级版本）之后跑它：用产品里真拼命令的
+`RecordPlan` / `RecordEncoders` / `RecordTrim` 各跑一遍——rawvideo 管道 → libx264 → mp4、收尾重封装、
+两路 WAV → `aresample` / `aformat` / `amix` → AAC、GIF 两遍调色板、APNG / WebP 动图、进度条 `drawbox`、
+裁剪 + 倍速（`setpts` / `atempo`）、截断的 mp4 还能不能读出时长（残片恢复的前提）。
+
+比的不是画面，而是「命令跑不跑得通、产物在不在」：漏了某个编码器 / 封装 / 滤镜会报
+`Unknown encoder` / `No such filter`，这里立刻红。硬件编码器只报告不断言（CI 机器没独显）；
+`-buildconf` 里带 `--disable-everything` 时还会断言文件 < 60 MB。`LTOOLS_FFMPEG=<路径>` 可指定另一份。
+
 ### 写法约定
 
 - `Check(条件, "中文断言文案")`：失败只记一条，不中断（最后汇总失败数）。

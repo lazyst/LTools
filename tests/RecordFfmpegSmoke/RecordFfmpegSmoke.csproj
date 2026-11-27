@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    录屏用 ffmpeg 的冒烟（不进 CI）：
+    - 用产品里真拼命令的那几处（RecordPlan / RecordEncoders / RecordTrim）跑一遍
+      「rawvideo 管道 → mp4」「wav 混音 → aac」「GIF 两遍调色板」「APNG / WebP」「进度条」「裁剪倍速」；
+    - 换 ffmpeg（自编精简构建 / 升级版本）之后跑它就知道漏没漏编码器、封装或滤镜；
+    - 产物落 %TEMP%，跑完删掉。
+
+    用法（先 dotnet build 出 LTools.dll）：
+        cd tests\RecordFfmpegSmoke
+        dotnet run
+
+    想指定某一份 ffmpeg：设环境变量 LTOOLS_FFMPEG = ffmpeg.exe 全路径。
+    ffmpeg 定位顺序：LTOOLS_FFMPEG → RecordPlan.FindFfmpeg()（随包 → PATH）→ 从输出目录往上找 runtime\ffmpeg。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>RecordFfmpegSmoke</AssemblyName>
+    <RootNamespace>RecordFfmpegSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\LTools.csproj" />
+  </ItemGroup>
+
+</Project>

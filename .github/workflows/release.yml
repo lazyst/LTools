@@ -17,9 +17,10 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # 录屏用的 ffmpeg 不进仓库（约 100 MB），发布前临时下载到 runtime/ffmpeg/
-      # 再由 csproj 的 Content 通配拷进输出目录。下载失败就直接让 job 失败：
-      # 少这一份的包会让「录屏」在用户机器上报错。
+      # 录屏用的 ffmpeg 不进仓库，发布前取一份到 runtime/ffmpeg/，再由 csproj 的 Content 通配拷进输出目录。
+      # 优先取本仓库 release 上自编的精简构建（tag `ffmpeg-<版本>`，约 34 MB；由 ffmpeg.yml 产出），
+      # 取不到才退回 gyan.dev essentials（100 MB，包会大一倍，脚本会打警告）。
+      # 取不到就直接让 job 失败：少这一份的包会让「录屏」在用户机器上报错。
       - name: Fetch ffmpeg
         shell: pwsh
         run: ./tools/fetch-ffmpeg.ps1

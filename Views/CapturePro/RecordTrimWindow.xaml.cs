@@ -40,7 +40,18 @@ public partial class RecordTrimWindow : Window
     private bool _busy;
     private bool _ready;
 
+    /// <summary>能不能导出：只看「原片在 + 有片长」，**不看预览能不能放**。
+    /// 预览依赖系统解码器（HEVC 之类常常没有），导出走 ffmpeg 完全不受影响。</summary>
+    private bool _canExport;
+
+    /// <summary>播放头位置（毫秒）。预览放不出来时它就是唯一的「用户拖到哪」的记录，
+    /// 不能去读 <c>Preview.Position</c>（那样会永远停在 0，看起来就像时间轴拖不动）。</summary>
+    private int _playheadMs;
+
     private double _dragMsPerPixel;
+
+    /// <summary>预览「打开超时」看门狗：4 秒还没 MediaOpened 就把原因写出来。</summary>
+    private DispatcherTimer? _openWatchdog;
 
     internal RecordTrimWindow(CaptureEntry entry)
     {
@@ -60,6 +71,7 @@ public partial class RecordTrimWindow : Window
         _endMs = _durationMs;
 
         Loaded += Window_Loaded;
+        Closed += (_, _) => _openWatchdog?.Stop();
         SizeChanged += (_, _) => LayoutTimeline();
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape && !_busy) Close(); };
 
@@ -76,19 +88,41 @@ public partial class RecordTrimWindow : Window
         if (!File.Exists(path))
         {
             PreviewHint.Text = "原片不在了：" + path;
+            _canExport = false;
             SetBusy(false);
             return;
         }
 
         PreviewHint.Text = "正在打开视频…";
+
+        // 必须停在 Manual 上（Pause 状态下 WPF 禁止 Play/Pause/Stop，点「试看」会抛
+        // NotSupportedException），但 Manual 下光设 Source 不会去打开文件 —— 得手动踢一脚。
+        // 实测：只设 Source 8 秒都不来 MediaOpened；设完再 Pause() 约 285ms 就开，
+        // 而且之后 Play() 照常可用。
         Preview.Source = new Uri(path);
         Preview.Volume = 1;
+        try { Preview.Pause(); }
+        catch (Exception ex) { AppLog.Warn("CapturePro.Trim", "预览起播失败：" + ex.Message); }
+
+        // 4 秒还没打开就说明预览这条路大概走不通（某些容器 / 编码系统放不了），
+        // 与其留一块永远空着的画面，不如把原因写出来——导出不受影响。
+        _openWatchdog = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+        _openWatchdog.Tick += (_, _) =>
+        {
+            _openWatchdog?.Stop();
+            if (_ready) return;
+
+            PreviewHint.Text = "预览打不开（可能缺系统解码器，例如 HEVC）——裁剪和导出照常可用";
+            PreviewHint.Visibility = Visibility.Visible;
+        };
+        _openWatchdog.Start();
 
         // 时长 / 音轨：记录里有就用记录的，没有才去问 ffmpeg（可能要一两百毫秒）
         if (_durationMs <= 0) _durationMs = RecordTrimSession.DurationOf(_entry);
         if (_durationMs <= 0) _durationMs = 1000;
 
         _hasAudio = RecordTrimSession.HasAudio(_entry);
+        _canExport = true;
 
         _startMs = 0;
         _endMs = _durationMs;
@@ -101,6 +135,7 @@ public partial class RecordTrimWindow : Window
     private void Preview_MediaOpened(object sender, RoutedEventArgs e)
     {
         _ready = true;
+        _openWatchdog?.Stop();
         PreviewHint.Visibility = Visibility.Collapsed;
 
         // 媒体自己报的时长最准（采集历史里记的是帧数换算出来的）
@@ -117,7 +152,27 @@ public partial class RecordTrimWindow : Window
         }
 
         Preview.SpeedRatio = _speed;
+
+        // 定格第一帧：Pause 起播不会自己播，先把播放头摆到选区起点（否则停在 0 也行，但这样更直观）
+        Seek(_playheadMs > 0 ? _playheadMs : _startMs);
+
         UpdateTexts();
+
+        // 预览就绪后必须重算一次按钮：「试看」的可用性挂在 _ready 上，
+        // 而 Window_Loaded 那次 SetBusy 是在 MediaOpened 之前跑的（那时它还该是灰的）。
+        SetBusy(_busy);
+    }
+
+    private void Preview_MediaFailed(object sender, ExceptionRoutedEventArgs e)
+    {
+        // 预览是「锦上添花」：编码 / 容器系统放不了（HEVC 没装扩展、动图格式…）时
+        // 只收起播放，导出照常——否则整扇窗口会因为一个预览而变成死的。
+        _ready = false;
+        _openWatchdog?.Stop();
+        PreviewHint.Text = "这个文件预览放不了（可能缺系统解码器，例如 HEVC）——裁剪和导出照常可用";
+        PreviewHint.Visibility = Visibility.Visible;
+        AppLog.Warn("CapturePro.Trim", "预览打不开：" + e.ErrorException?.Message);
+        SetBusy(false);
     }
 
     private void Preview_MediaEnded(object sender, RoutedEventArgs e)
@@ -164,7 +219,9 @@ public partial class RecordTrimWindow : Window
         double width = Timeline.ActualWidth;
         if (width <= 0 || _durationMs <= 0) return;
 
-        double position = Preview.Position.TotalMilliseconds;
+        // 播着的时候以播放器的真实位置为准；没播 / 放不出来时用用户拖到的位置
+        if (_playing && _ready) _playheadMs = (int)Preview.Position.TotalMilliseconds;
+        double position = Math.Clamp(_playheadMs, 0, _durationMs);
         Canvas.SetLeft(PlayheadBar, Math.Clamp(width * position / _durationMs, 0, width - 2));
     }
 
@@ -224,15 +281,20 @@ public partial class RecordTrimWindow : Window
 
     private void Seek(int ms)
     {
-        if (!_ready) return;
+        _playheadMs = Math.Clamp(ms, 0, Math.Max(0, _durationMs));
 
-        try
+        // 只有「真能放」的时候才去动 MediaElement；预览放不出来时，
+        // 时间轴、选区、播放头照样要跟着指针走（否则整扇窗口看起来是死的）
+        if (_ready)
         {
-            Preview.Position = TimeSpan.FromMilliseconds(Math.Clamp(ms, 0, _durationMs));
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warn("CapturePro.Trim", "预览定位失败：" + ex.Message);
+            try
+            {
+                Preview.Position = TimeSpan.FromMilliseconds(_playheadMs);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("CapturePro.Trim", "预览定位失败：" + ex.Message);
+            }
         }
 
         UpdatePlayhead();
@@ -342,7 +404,7 @@ public partial class RecordTrimWindow : Window
     /// </summary>
     private void Export(Action<string> done, string? destination = null)
     {
-        if (_busy || !_ready) return;
+        if (_busy || !_canExport) return;
 
         var range = Range;
         bool hasAudio = _hasAudio;
@@ -373,6 +435,7 @@ public partial class RecordTrimWindow : Window
                 if (!ok)
                 {
                     OutputText.Text = "导出失败：" + error;
+                    AppLog.Warn("CapturePro.Trim", "导出失败：" + error);
                     Toast("导出失败：" + error, "裁剪失败");
                     try { if (File.Exists(output)) File.Delete(output); } catch { /* 删不掉就算了 */ }
                     return;
@@ -388,9 +451,11 @@ public partial class RecordTrimWindow : Window
         _busy = busy;
 
         CancelBtn.IsEnabled = !busy;
-        CopyBtn.IsEnabled = !busy && _ready;
-        SaveAsBtn.IsEnabled = !busy && _ready;
-        KeepBtn.IsEnabled = !busy && _ready;
+        CopyBtn.IsEnabled = !busy && _canExport;
+        SaveAsBtn.IsEnabled = !busy && _canExport;
+        KeepBtn.IsEnabled = !busy && _canExport;
+
+        // 只有「播放预览」需要解码器；导出走 ffmpeg，预览放不出来也照样能导
         PlayBtn.IsEnabled = !busy && _ready;
 
         if (busy)

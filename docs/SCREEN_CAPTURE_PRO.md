@@ -1779,8 +1779,11 @@ Id 与已经删掉的 Id 都不复活。
   扩展名要跟着成品走（`CaptureCatalog.NormalizeExtension` 认 `gif / apng / webp / mp4`），
   别把动图存成 `.mp4`。
 - ffmpeg 从哪来（`RecordPlan.FindFfmpeg`）：先找随包的 `runtime\ffmpeg\ffmpeg.exe`，其次 `PATH`。
-  二进制**不进仓库**：`tools/fetch-ffmpeg.ps1` 下载 gyan.dev essentials（约 100 MB），
-  `release.yml` 在 publish 前跑一次；csproj 用通配 `runtime\ffmpeg\**\*`（目录不存在不报错），
+  二进制**不进仓库**：`tools/fetch-ffmpeg.ps1` 取一份——优先本仓库 release 上自编的精简构建
+  （`ffmpeg-<版本>` 附件，约 34 MB，只开录屏用得到的编码器 / 封装 / 滤镜），取不到才退回
+  gyan.dev essentials 的 100 MB（并打警告）。精简构建由 `tools/build-ffmpeg.ps1` 编，
+  改完配置跑 `tests/RecordFfmpegSmoke` 验；`-buildconf` 里带 `--disable-everything` 就是它。
+  `release.yml` 在 publish 前跑一次 fetch；csproj 用通配 `runtime\ffmpeg\**\*`（目录不存在不报错），
   许可证与源码出处见 `licenses/FFmpeg-NOTICE.txt`。两处都找不到时报错并指向那个脚本。
   **动图 WebP 要较新的 ffmpeg**：随包的 9.x 一切正常，但 PATH 上若是 8.x（本机就有一份），
   转出来的 `.webp` 自己都读不动（探测成静态图、解不出帧）——排查这类问题时先确认用的是哪一份。
@@ -3261,8 +3264,9 @@ GIF / APNG / WebP 三种动图真转码并按解码结果量尺寸与时长）�
   控制条与倒计时都不抢焦点、都 `WDA_EXCLUDEFROMCAPTURE` 不入镜；暂停用活动时钟扣掉，成品里没有空白段。
   成品先落 `cache/record/`，成功后搬进 `captures/records/` 并记 `Kind = record`（封面 = 第一帧）；
   历史窗口加「录屏」页签、「播放」按钮、时长 / 格式 / 文件大小，删记录连带删视频。
-  ffmpeg 随包但不进仓库（`tools/fetch-ffmpeg.ps1` + `release.yml` 的 fetch 步骤 + `licenses/FFmpeg-NOTICE.txt`），
-  运行时先找随包再找 PATH。
+  ffmpeg 随包但不进仓库（`tools/build-ffmpeg.ps1` 编的精简构建，或 `tools/fetch-ffmpeg.ps1` 取；
+  `release.yml` 的 fetch 步骤 + `licenses/FFmpeg-NOTICE.txt`），运行时先找随包再找 PATH。
+  换 ffmpeg 之后跑 `tests/RecordFfmpegSmoke`（真命令：管道编码 / 混音 / 动图 / 裁剪）。
   自检补「录屏：参数 / 命令行 / 定位」「录屏：暂停计时与历史文案」；冒烟补控制条 + 合成帧真编码 + 录屏历史。
 - **P3-3 屏幕选字**（`Features/CapturePro/ScreenTextCandidates.cs`、`ScreenTextSession.cs`；
   `Views/CapturePro/CaptureTextSelectWindow.xaml(.cs)`；入口是内置功能 `common.screenText`）：

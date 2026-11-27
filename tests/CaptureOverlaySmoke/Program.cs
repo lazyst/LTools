@@ -7652,7 +7652,8 @@ internal static partial class Program
         Pump(window);
 
         var cards = (ItemsControl)Field(window, "CardList");
-        Check(cards.Items.Count == 1, $"历史里有一条录屏（实际 {cards.Items.Count}）");
+        // 开发数据根里可能有用户自己的录屏（冒烟跑在仓库根），别要求「恰好一条」
+        Check(cards.Items.Count >= 1, $"历史里至少有一条录屏（实际 {cards.Items.Count}）");
 
         var cardRow = cards.Items[0];
         Check((bool)cardRow.GetType().GetProperty("CanPlay")!.GetValue(cardRow)!,
@@ -7669,10 +7670,12 @@ internal static partial class Program
         // ④ 录屏选项 / 裁剪倍速两个新窗口的结构与联动
         RecordPanels(asm, entry);
 
+        // 删记录（只删这一条，别假设列表里只有它）
+        int beforeRemove = cards.Items.Count;
         catalogType.GetMethod("Remove")!.Invoke(null, new object[] { id });
         Pump(window);
         Check(!File.Exists(moved), "删记录连带删掉视频文件");
-        Check(cards.Items.Count == 0, "删完列表为空");
+        Check(cards.Items.Count == beforeRemove - 1, $"删完列表少一条（{beforeRemove} → {cards.Items.Count}）");
 
         window.Close();
         catalogType.GetMethod("Clear")!.Invoke(null, null);
@@ -7735,11 +7738,49 @@ internal static partial class Program
         trim.Show();
         Pump(trim);
 
-        int duration = (int)entry.GetType().GetProperty("DurationMs")!.GetValue(entry)!;
+        // 预览必须是 Manual（Pause 状态下 WPF 禁止 Play，点「试看」会抛 NotSupportedException），
+        // 但 Manual 下得手动调一次 Pause() 才会开始打开文件（只设 Source，MediaOpened 永远不来）。
+        var preview = (MediaElement)Field(trim, "Preview");
+        Check(preview.LoadedBehavior == System.Windows.Controls.MediaState.Manual,
+            $"预览用 Manual 起播（实际 {preview.LoadedBehavior}）");
+
+        // 真等一回：Pause 起播后 MediaOpened 应该很快就来（实测 ~300ms），预览不再是黑的
+        PumpFor(1500);
+        Check((bool)Field(trim, "_ready")!, "预览真的打开了（MediaOpened 有来）");
+        Check(((Button)Field(trim, "PlayBtn")).IsEnabled,
+            "预览打开后「试看」要跟着亮（MediaOpened 里得重算一次按钮）");
+
+        // 「点了能播」：直接走一遍按钮的处理函数，看 _playing 有没有立起来
+        trimType.GetMethod("Play_Click", Any)!.Invoke(trim, new object?[] { null, null });
+        Pump(trim);
+        Check((bool)Field(trim, "_playing")!, "点「试看」真的开始播（_playing）");
+        trimType.GetMethod("Stop", Any)!.Invoke(trim, null);
+
+        // 预览真打开之后，窗口会用媒体自己报的时长校正一遍（采集历史里记的是帧数换算值）；
+        // 断言跟着窗口的 _durationMs 走，别拿 entry.DurationMs 去比。
+        int duration = (int)Field(trim, "_durationMs")!;
         Check(((TextBlock)Field(trim, "StartText")).Text == "00:00.000", "起点时间码从零开始");
         Check(((TextBlock)Field(trim, "EndText")).Text == RecordTrimText(duration),
             $"终点时间码 = 片长（{((TextBlock)Field(trim, "EndText")).Text}）");
         Check((int)Field(trim, "_endMs") == duration, "整片默认全选");
+
+        // 预览放不出来（缺系统解码器，例如 HEVC）时不能把整扇窗口拖死：
+        // 把 _ready 压回 false 再刷一次按钮，导出那三个必须还亮着，只有「播放」该暗。
+        trimType.GetField("_ready", Any)!.SetValue(trim, false);
+        trimType.GetMethod("SetBusy", Any)!.Invoke(trim, new object[] { false });
+        Check(((Button)Field(trim, "KeepBtn")).IsEnabled
+              && ((Button)Field(trim, "SaveAsBtn")).IsEnabled
+              && ((Button)Field(trim, "CopyBtn")).IsEnabled,
+            "预览不可用时导出 / 另存为 / 复制仍然可用");
+        Check(!((Button)Field(trim, "PlayBtn")).IsEnabled, "预览不可用时只禁用播放");
+
+        // 预览不可用时时间轴也得能定位（否则「拖不动」= 整窗死）
+        trimType.GetMethod("SeekTo", Any)!.Invoke(trim, new object[] { 200.0 });
+        Pump(trim);
+        Check((int)Field(trim, "_playheadMs") > 0, "预览不可用时时间轴仍然能定位播放头");
+
+        trimType.GetField("_ready", Any)!.SetValue(trim, true);
+        trimType.GetMethod("SetBusy", Any)!.Invoke(trim, new object[] { false });
 
         var speedBox = (ComboBox)Field(trim, "SpeedBox");
         Check(speedBox.Items.Count == 9, $"倍速 9 档（实际 {speedBox.Items.Count}）");

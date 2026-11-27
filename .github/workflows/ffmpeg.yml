@@ -1,0 +1,94 @@
+name: ffmpeg
+
+# 手动编一份「只服务录屏」的精简 ffmpeg，挂成本仓库的 release 附件
+# （tag 形如 `ffmpeg-9.0.2`，附件名 `ffmpeg.exe`）。
+#
+# 发布流水线（release.yml）不自己编：它跑 tools/fetch-ffmpeg.ps1 直接取这份附件
+# （约 30 MB，替代 gyan.dev essentials 的 100 MB）。改参数 / 升版本时在这里重跑一次。
+#
+# 为什么不用官方构建：LTools 的视频走 rawvideo 管道、声音走 WAV 文件，
+# 不用 gdigrab / dshow / fontconfig / gnutls，官方构建里那一大堆编解码器全是白带的体积。
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: FFmpeg 版本（对应源码 tag n<版本>，如 9.0.2）
+        default: '9.0.2'
+        required: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # 只装构建脚本要的包；tools/build-ffmpeg.ps1 -SkipDeps 不再自己 pacman
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-nasm
+            mingw-w64-x86_64-x264
+            mingw-w64-x86_64-x265
+            mingw-w64-x86_64-libwebp
+            mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-ffnvcodec-headers
+            mingw-w64-x86_64-amf-headers
+            mingw-w64-x86_64-pkgconf
+
+      - name: Build
+        shell: pwsh
+        run: ./tools/build-ffmpeg.ps1 -Version ${{ inputs.version }} -SkipDeps
+
+      # 编出来先自己用一遍：libx264 + mp4、GIF 两遍调色板、rawvideo 管道，三条路各跑一次。
+      # 漏了哪个滤镜 / 编码器在这里就红，不用等发版后用户报「导出失败」。
+      - name: Smoke
+        shell: pwsh
+        run: |
+          $ff = 'runtime/ffmpeg/ffmpeg.exe'
+          $tmp = Join-Path $env:RUNNER_TEMP 'ffmpeg-smoke'
+          New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+
+          # 1) 编码 + mp4 封装（录屏主路径）
+          & $ff -y -hide_banner -loglevel error -f lavfi -i "color=c=black:s=64x64:r=10:d=1" `
+                -c:v libx264 -preset veryfast -pix_fmt yuv420p (Join-Path $tmp 'a.mp4')
+          if ($LASTEXITCODE -ne 0) { throw 'libx264 / mp4 不可用' }
+
+          # 2) rawvideo 管道进（录屏就是这样喂帧的）
+          $raw = Join-Path $tmp 'raw.bgra'
+          [IO.File]::WriteAllBytes($raw, (New-Object byte[] (64 * 64 * 4 * 10)))
+          Get-Content $raw -AsByteStream -Raw |
+            & $ff -y -hide_banner -loglevel error -f rawvideo -pixel_format bgra -video_size 64x64 -framerate 10 `
+                  -i pipe:0 -c:v libx264 -pix_fmt yuv420p (Join-Path $tmp 'b.mp4')
+          if ($LASTEXITCODE -ne 0) { throw 'rawvideo 管道不可用' }
+
+          # 3) GIF 两遍调色板
+          & $ff -y -hide_banner -loglevel error -i (Join-Path $tmp 'a.mp4') `
+                -vf "fps=10,scale=64:-1:flags=lanczos,palettegen=stats_mode=diff" (Join-Path $tmp 'p.png')
+          if ($LASTEXITCODE -ne 0) { throw 'palettegen 不可用' }
+          & $ff -y -hide_banner -loglevel error -i (Join-Path $tmp 'a.mp4') -i (Join-Path $tmp 'p.png') `
+                -lavfi "fps=10,scale=64:-1:flags=lanczos[x];[x][1:v]paletteuse" (Join-Path $tmp 'c.gif')
+          if ($LASTEXITCODE -ne 0) { throw 'paletteuse / gif 不可用' }
+
+          # 4) 声音：wav 进 + aac 出（录屏混音后的成品就是这条）
+          & $ff -y -hide_banner -loglevel error -f lavfi -i "sine=frequency=440:duration=1" -c:a aac (Join-Path $tmp 'd.m4a')
+          if ($LASTEXITCODE -ne 0) { throw 'aac 不可用' }
+
+          Get-ChildItem $tmp | Format-Table Name, Length | Out-String | Write-Host
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ffmpeg-${{ inputs.version }}
+          name: ffmpeg ${{ inputs.version }} (LTools 精简构建)
+          body: |
+            LTools 录屏用的精简 ffmpeg（静态单文件，GPLv3，由 `tools/build-ffmpeg.ps1` 编译）。
+
+            `tools/fetch-ffmpeg.ps1` 会取这个附件；`release.yml` 打包时用它替代 gyan.dev essentials。
+          files: runtime/ffmpeg/ffmpeg.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
