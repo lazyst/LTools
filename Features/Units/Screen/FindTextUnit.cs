@@ -39,7 +39,7 @@ public sealed class FindTextUnit : IStepUnit
                 Default: Value.FromText("contains"), Options: new[] { "contains", "exact" },
                 Description: "包含 = 「保存」也命中「保存并关闭」；完全一致 = 只认完整的一个词（「保存 (Ctrl+S)」仍算）"),
             new InputSpec("engine", "识别引擎", ValueKind.text, InputEditor.enumList,
-                Default: Value.FromText("v6tiny"), Options: Engines),
+                Default: Value.FromText("v6small"), Options: Engines),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(0),
                 Description: "最多等多久（毫秒）：0 = 只查一次；-1 = 一直等到找到（按停止热键结束）；最多 10 分钟"),

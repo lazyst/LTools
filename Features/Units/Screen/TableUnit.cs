@@ -52,7 +52,7 @@ public sealed class TableUnit : IStepUnit
             new InputSpec("image", "图片", Editor: InputEditor.image, Required: true),
             new InputSpec("rect", "固定区域", ValueKind.text, InputEditor.region),
             new InputSpec("engine", "识别引擎", ValueKind.text, InputEditor.enumList,
-                Default: Value.FromText("v6tiny"), Options: Engines,
+                Default: Value.FromText("v6small"), Options: Engines,
                 Description: "表格建议用 PP-OCRv6：词框更细，列分得更准（系统 OCR 的粗词框容易把窄列并掉）"),
             new InputSpec("detect", "识别方式", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("auto"), Options: Detects,

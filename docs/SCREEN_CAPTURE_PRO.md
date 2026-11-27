@@ -1258,7 +1258,7 @@ Id 与已经删掉的 Id 都不复活。
 
 - **窗口先开再算**：识别要一两秒，`Loaded` 里把 `CaptureRecognize.Run` 丢到后台线程，算完回 UI 线程填内容；
   失败（如系统没装 OCR 语言包）在状态行说明原因，窗口照常可用。
-- 引擎取「上次选用的 OCR 引擎」（`OcrEnginePreference.DefaultForNewProbe`，默认 PP-OCRv6 快速），
+- 引擎取「上次选用的 OCR 引擎」（`OcrEnginePreference.DefaultForNewProbe`，默认 PP-OCRv6 高精度 = 小号 V6，随包），
   与「文字识别」取值同一套；状态行写明引擎名与用时。
 - 底层复用 `OcrLayout.Read`（带坐标的行 / 词）与 `QrCodeAlgorithms.Read`（ZXing，只认 QR），
   **不另写识别实现**；表格聚类是纯函数 `OcrTable.Build`（`Features/CapturePro/OcrTable.cs`）。
@@ -1473,7 +1473,7 @@ Id 与已经删掉的 Id 都不复活。
 | --- | --- | --- |
 | `default_formatting` | `none` | 结果窗打开时的初始排版（`OcrFormatting` 四档） |
 | `default_punctuation` | `none` | 结果窗打开时的初始标点（`OcrPunctuation` 三档） |
-| `model_type` | `small` | 三档：超小号（随包）/ 小号（约 30 MB）/ 中号（约 133 MB），后两档在设置页下载到 `ocr-models/`，逐文件校验长度 + SHA-256 |
+| `model_type` | `small` | 三档：超小号（约 7.4 MB，随包）/ 小号（约 30 MB，随包，默认）/ 中号（约 133 MB，在设置页下载到 `ocr-models/`，逐文件校验长度 + SHA-256） |
 | `detector_resize_policy` | `max` | `max` → `ImgResize = 1600`；`min` → `ImgResize = 0` + `LimitSideLen = 736` |
 | `text_detection_processing` | `accuracy_first` | `speed_first` → `WidthHeightRatio = -1, MinHeight = -1` |
 | `resident_process` | 开 | 开 = 引擎常驻（空闲 5 分钟卸载）；关 = 每次识别完立刻卸载 |

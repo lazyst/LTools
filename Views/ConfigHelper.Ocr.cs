@@ -19,8 +19,8 @@ namespace LTools.Views;
 /// </para>
 /// <para>
 /// 模型档下拉直接对应上游的 <c>extra_small</c> / <c>small</c> / <c>medium</c>；
-/// 后两档需要下载（<see cref="OcrModelStore"/>），所以卡片里带「下载模型」按钮与进度条——
-/// 这也是全项目唯一的模型下载入口（以前 <c>DownloadSmallAsync</c> 没有任何 UI 调它）。
+/// 超小号与小号随包内置（小号是默认档），只有中号要下载（<see cref="OcrModelStore"/>），
+/// 所以卡片里带「下载模型」按钮与进度条——这也是全项目唯一的模型下载入口。
 /// </para>
 /// </remarks>
 public partial class ConfigHelperWindow
@@ -103,16 +103,17 @@ public partial class ConfigHelperWindow
         PaddleOcr.Tier tier = SelectedTier;
         bool ready = PaddleOcr.IsReady(tier);
         bool canDownload = OcrModelStore.CanDownload(tier);
+        bool bundled = !canDownload;
 
         OcrDownloadBtn.IsEnabled = canDownload && !ready && _ocrDownload == null;
-        OcrDownloadBtn.Content = ready ? "已就位" : canDownload ? "下载模型" : "随包内置";
+        OcrDownloadBtn.Content = bundled ? "随包内置" : ready ? "已就位" : "下载模型";
 
         string size = canDownload ? $" · {Mb(OcrModelStore.TotalBytes(tier))}" : "";
-        OcrModelStatus.Text = ready
-            ? $"{PaddleOcr.DisplayName(tier)} 已就位{size}"
-            : canDownload
-                ? $"{PaddleOcr.DisplayName(tier)} 尚未下载{size}，下载后才能选它"
-                : $"{PaddleOcr.DisplayName(tier)} 随包内置";
+        OcrModelStatus.Text = bundled
+            ? $"{PaddleOcr.DisplayName(tier)} 随包内置，开箱即用"
+            : ready
+                ? $"{PaddleOcr.DisplayName(tier)} 已就位{size}"
+                : $"{PaddleOcr.DisplayName(tier)} 尚未下载{size}，下载后才能选它";
     }
 
     private static string Mb(long bytes) =>

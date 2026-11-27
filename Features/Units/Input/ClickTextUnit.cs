@@ -32,7 +32,7 @@ public sealed class ClickTextUnit : IStepUnit
                 Default: Value.FromText("contains"), Options: new[] { "contains", "exact" },
                 Description: "包含 = 「保存」也命中「保存并关闭」；完全一致 = 只认完整的一个词"),
             new InputSpec("ocrEngine", "识别引擎", ValueKind.text, InputEditor.enumList,
-                Default: Value.FromText("v6tiny"), Options: new[] { "windows", "v6tiny", "v6small", "v6medium" }),
+                Default: Value.FromText("v6small"), Options: new[] { "windows", "v6tiny", "v6small", "v6medium" }),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(0),
                 Description: "最多等多久（毫秒）：0 = 只找一次；-1 = 一直等到找到（按停止热键结束）；最多 10 分钟"),

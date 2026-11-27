@@ -223,4 +223,17 @@
            Text="发布目录里少了 PresentationFramework.dll。" />
   </Target>
 
+  <!-- 随包的 OCR 模型必须进发布目录：超小档（快速）与小档（默认）都靠它们开箱可用。
+       少了小档不会报任何错，只会让「默认模型档」又变回要下载——用户看不出区别，
+       只觉得设置页莫名其妙在要下载，所以在这里直接拦下。 -->
+  <Target Name="AssertBundledOcrModels" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <ItemGroup>
+      <_BundledOcr Include="det_tiny.onnx;rec_tiny.onnx;dict_tiny.txt" />
+      <_BundledOcr Include="det_small.onnx;rec_small.onnx;dict_small.txt" />
+      <_BundledOcr Include="textline_cls.onnx" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(PublishDir)Assets\Ocr\ppocrv6\%(_BundledOcr.Identity)')"
+           Text="发布目录里少了 OCR 模型 Assets\Ocr\ppocrv6\%(_BundledOcr.Identity)：超小与小号 V6 都随包分发，缺一个就不是「开箱可用」了。" />
+  </Target>
+
 </Project>

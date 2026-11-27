@@ -1,5 +1,6 @@
 using System.Windows;
 using LTools.Config;
+using LTools.Features;
 using LTools.Features.CapturePro;
 using LTools.Views.CapturePro;
 
@@ -42,6 +43,18 @@ internal static partial class CaptureProSuite
         Check.Equal(3, TextRecognitionStore.ModelTypes.Length, "模型档三档");
         Check.Equal("extra_small", TextRecognitionStore.ModelTypes[0], "下拉第一项是超小号");
         Check.Equal("medium", TextRecognitionStore.ModelTypes[2], "下拉最后一项是中号");
+
+        // —— 模型随包：超小与小号都在安装包里，默认档（小号）不需要下载 ——
+        Check.True(OcrModelStore.BundledSmallReady, "小号 V6 随包（三个文件都在 Assets/Ocr/ppocrv6）");
+        Check.True(OcrModelStore.SmallReady, "小号档可用");
+        Check.False(OcrModelStore.CanDownload(PaddleOcr.Tier.Small), "小号档不再走下载");
+        Check.Equal(0L, OcrModelStore.TotalBytes(PaddleOcr.Tier.Small), "小号档没有下载体积");
+        Check.Equal(OcrModelStore.BundledDir, OcrModelStore.DirOf(PaddleOcr.Tier.Small),
+            "小号档就用安装包里那份目录");
+        Check.False(OcrModelStore.CanDownload(PaddleOcr.Tier.Tiny), "超小档随包、不下载");
+        Check.True(OcrModelStore.CanDownload(PaddleOcr.Tier.Medium), "中号档仍按需下载");
+        Check.Equal("v6small", TextRecognitionStore.EngineForModelType("small"), "默认档的引擎键 = v6small");
+        Check.Equal("v6small", TextRecognitionStore.EngineForModelType(null), "空值也落到默认档（小号）");
 
         // —— 其余枚举归一 ——
         Check.Equal("min", TextRecognitionStore.NormalizeResizePolicy("min"), "检测缩放 min");

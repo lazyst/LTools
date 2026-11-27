@@ -13,10 +13,15 @@ namespace LTools.Features;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 超小档（<c>extra_small</c>）随安装包分发（<c>Assets\Ocr\ppocrv6</c>，约 7.4 MB），开箱即用；
-/// 小档（29.8 MB）与中档（约 133 MB）按需下载到数据根下的
-/// <c>ocr-models\ppocrv6\small</c> / <c>ocr-models\ppocrv6\medium</c>，
+/// 超小档（<c>extra_small</c>，约 7.4 MB）与小档（<c>small</c>，约 31 MB）都随安装包分发
+/// （<c>Assets\Ocr\ppocrv6</c>），开箱即用——默认模型档就是小档，不需要下载任何东西；
+/// 中档（约 133 MB）按需下载到数据根下的 <c>ocr-models\ppocrv6\medium</c>，
 /// 与配置同生命周期——升级解压覆盖程序目录时不会被冲掉。
+/// </para>
+/// <para>
+/// 小档的下载路径仍然保留：安装包目录里少了小档文件（开发构建里被清掉、
+/// 或将来改成别的方式分发）时，<see cref="CanDownload"/> 会重新给出「下载模型」按钮。
+/// 选哪个目录由 <see cref="DirOf"/> 一处决定（随包优先，其次才是数据根下那份）。
 /// </para>
 /// <para>
 /// 下载源是 ModelScope 上 RapidOCR 官方的 v3.10.0 模型仓，逐个文件校验长度与 SHA-256，
@@ -58,13 +63,13 @@ internal static class OcrModelStore
             74_947, "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d"),
     };
 
-    /// <summary>随包分发的模型目录（安装包内）。</summary>
+    /// <summary>随包分发的模型目录（安装包内）：超小档、小档与方向分类都在这。</summary>
     public static string BundledDir => Path.Combine(AppPaths.AppDirectory, "Assets", "Ocr", "ppocrv6");
 
-    /// <summary>按需下载的小档目录（数据根下）。</summary>
+    /// <summary>小档的下载目录（数据根下）；随包已带小档时用不到它。</summary>
     public static string SmallDir => Path.Combine(AppPaths.OcrModelsDir, "ppocrv6", "small");
 
-    /// <summary>按需下载的中档目录（数据根下）。</summary>
+    /// <summary>中档的下载目录（数据根下）。</summary>
     public static string MediumDir => Path.Combine(AppPaths.OcrModelsDir, "ppocrv6", "medium");
 
     /// <summary>方向分类模型：RapidOcrNet 初始化时必须给一个路径（识别时按 <c>DoAngle=false</c> 不执行）。</summary>
@@ -77,18 +82,21 @@ internal static class OcrModelStore
         File.Exists(Path.Combine(BundledDir, "dict_tiny.txt")) &&
         File.Exists(ClsModel);
 
-    /// <summary>小档是否可用（已下载）。</summary>
-    public static bool SmallReady => Ready(SmallFiles, SmallDir);
+    /// <summary>随包的小档三个文件是否齐全（安装包目录里，不看数据根）。</summary>
+    public static bool BundledSmallReady => Ready(SmallFiles, BundledDir, requireCls: false);
+
+    /// <summary>小档是否可用（随包优先，其次数据根下那份）。</summary>
+    public static bool SmallReady => Ready(SmallFiles, DirOf(PaddleOcr.Tier.Small), requireCls: true);
 
     /// <summary>中档是否可用（已下载）。</summary>
-    public static bool MediumReady => Ready(MediumFiles, MediumDir);
+    public static bool MediumReady => Ready(MediumFiles, MediumDir, requireCls: true);
 
-    /// <summary>某个档位的模型目录（超小档在安装包内）。</summary>
+    /// <summary>某个档位的模型目录（随包的两档都在安装包内，中档才在数据根）。</summary>
     public static string DirOf(PaddleOcr.Tier tier) => tier switch
     {
         PaddleOcr.Tier.Tiny => BundledDir,
         PaddleOcr.Tier.Medium => MediumDir,
-        _ => SmallDir,
+        _ => BundledSmallReady ? BundledDir : SmallDir,
     };
 
     /// <summary>文件名前缀（<c>det_&lt;前缀&gt;.onnx</c>）。</summary>
@@ -99,24 +107,29 @@ internal static class OcrModelStore
         _ => "small",
     };
 
-    /// <summary>该档位的文件清单总字节数（进度条用）；超小档随包分发，返回 0。</summary>
+    /// <summary>该档位的文件清单总字节数（进度条用）；随包分发的档返回 0。</summary>
     public static long TotalBytes(PaddleOcr.Tier tier) => tier switch
     {
         PaddleOcr.Tier.Tiny => 0,
         PaddleOcr.Tier.Medium => Sum(MediumFiles),
-        _ => Sum(SmallFiles),
+        _ => BundledSmallReady ? 0 : Sum(SmallFiles),
     };
 
-    /// <summary>该档位的下载文件数（超小档 0）。</summary>
+    /// <summary>该档位的下载文件数（随包分发的档 0）。</summary>
     public static int FileCount(PaddleOcr.Tier tier) => tier switch
     {
         PaddleOcr.Tier.Tiny => 0,
         PaddleOcr.Tier.Medium => MediumFiles.Length,
-        _ => SmallFiles.Length,
+        _ => BundledSmallReady ? 0 : SmallFiles.Length,
     };
 
-    /// <summary>该档位能不能下载（超小档随包，不需要下载）。</summary>
-    public static bool CanDownload(PaddleOcr.Tier tier) => tier != PaddleOcr.Tier.Tiny;
+    /// <summary>该档位要不要下载（超小档、以及随包带了的小档都不用）。</summary>
+    public static bool CanDownload(PaddleOcr.Tier tier) => tier switch
+    {
+        PaddleOcr.Tier.Tiny => false,
+        PaddleOcr.Tier.Small => !BundledSmallReady,
+        _ => true,
+    };
 
     /// <summary>下载小档，进度按 0..1 上报；失败或取消时不留下半截文件。</summary>
     public static Task DownloadSmallAsync(IProgress<double>? progress, CancellationToken ct) =>
@@ -161,14 +174,15 @@ internal static class OcrModelStore
         }
     }
 
-    private static bool Ready(ModelFile[] files, string dir)
+    private static bool Ready(ModelFile[] files, string dir, bool requireCls)
     {
         foreach (ModelFile file in files)
         {
             var info = new FileInfo(Path.Combine(dir, file.Name));
             if (!info.Exists || info.Length != file.Size) return false;
         }
-        return File.Exists(ClsModel);
+
+        return !requireCls || File.Exists(ClsModel);
     }
 
     private static async Task DownloadOneAsync(

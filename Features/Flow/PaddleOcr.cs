@@ -40,7 +40,7 @@ internal static class PaddleOcr
         /// <summary>tiny / extra_small：6.1 MB 模型，单张约 0.45 秒（随包分发）。</summary>
         Tiny,
 
-        /// <summary>small：29.8 MB 模型，单张约 1.2 秒，基准里全对。</summary>
+        /// <summary>small：29.8 MB 模型，单张约 1.2 秒，基准里全对（随包分发，也是默认档）。</summary>
         Small,
 
         /// <summary>medium：约 133 MB 模型，最准、最慢（按需下载）。</summary>

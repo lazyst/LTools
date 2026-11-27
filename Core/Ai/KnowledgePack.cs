@@ -561,7 +561,7 @@ internal static class KnowledgePack
   ],
   "steps": [
     { "unit": "screen.capture", "in": { "mode": "foreground" }, "out": { "file": "shot" } },
-    { "unit": "screen.ocr", "in": { "image": { "var": "shot" }, "engine": "v6tiny" }, "out": { "text": "words" } },
+    { "unit": "screen.ocr", "in": { "image": { "var": "shot" }, "engine": "v6small" }, "out": { "text": "words" } },
     { "unit": "ui.toast", "in": { "title": "识别结果", "text": "${words}", "durationMs": 6000 } }
   ]
 }

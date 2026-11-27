@@ -1913,10 +1913,10 @@
                                                Text="模型档" VerticalAlignment="Center"/>
                                     <ComboBox Grid.Column="1" x:Name="OcrModelCombo" MinHeight="32"
                                               SelectionChanged="CaptureOcr_Changed"
-                                              ToolTip="OCR 模型的版本与大小（照上游 text_recognition/model_type）：超小号随包、小号与中号按需下载">
+                                              ToolTip="OCR 模型的版本与大小（照上游 text_recognition/model_type）：超小号与小号随包内置，中号按需下载">
                                         <ComboBoxItem Content="超小号 V6（随包）"/>
-                                        <ComboBoxItem Content="小号 V6（约 30 MB）"/>
-                                        <ComboBoxItem Content="中号 V6（约 133 MB）"/>
+                                        <ComboBoxItem Content="小号 V6（随包 · 默认）"/>
+                                        <ComboBoxItem Content="中号 V6（约 133 MB · 按需下载）"/>
                                     </ComboBox>
                                 </Grid>
 
@@ -1927,7 +1927,7 @@
                                     </Grid.ColumnDefinitions>
                                     <Button Grid.Column="0" x:Name="OcrDownloadBtn" Style="{StaticResource Btn}"
                                             Content="下载模型" Padding="12,4" Click="OcrDownload_Click"
-                                            ToolTip="把所选档位的模型下载到数据根 ocr-models/，逐个文件校验长度与 SHA-256"/>
+                                            ToolTip="中号模型下载到数据根 ocr-models/，逐个文件校验长度与 SHA-256；超小号与小号随包内置，不用下载"/>
                                     <TextBlock Grid.Column="1" x:Name="OcrModelStatus" Style="{StaticResource HintLabel}"
                                                Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                                Text=""/>

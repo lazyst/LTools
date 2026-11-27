@@ -27,7 +27,8 @@ public sealed class TextRecognitionFile
 
     /// <summary>
     /// OCR 模型档（照上游 <c>text_recognition/model_type</c>）：
-    /// <c>extra_small</c>（超小 V6，随包）/ <c>small</c>（小 V6）/ <c>medium</c>（中 V6）。
+    /// <c>extra_small</c>（超小 V6，随包）/ <c>small</c>（小 V6，随包，默认）/
+    /// <c>medium</c>（中 V6，按需下载）。
     /// </summary>
     public string? ModelType { get; set; } = "small";
 

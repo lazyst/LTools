@@ -192,7 +192,8 @@ internal static class TextRecognitionStore
 
     /// <summary>
     /// 模型档 → 识别引擎键（<c>v6tiny</c> / <c>v6small</c> / <c>v6medium</c>）。
-    /// 该档的模型还没就位时退回随包的超小档；连超小档都没有返回 null（= 系统 OCR）。
+    /// 该档的模型还没就位（中档才需要下载）时退回随包的超小档；
+    /// 连超小档都没有返回 null（= 系统 OCR）。
     /// </summary>
     public static string? EngineForModelType(string? model)
     {

@@ -177,21 +177,38 @@ internal static partial class Program
             Check(Box("OcrPreviewBox")?.IsChecked == false, "原图预览回显为不勾");
 
             bool tinyReady = Ready("Tiny");
-            Check((Btn("OcrDownloadBtn")?.Content as string) == (tinyReady ? "已就位" : "随包内置"),
-                "超小号档的按钮跟着随包情况变（" + (Btn("OcrDownloadBtn")?.Content as string) + "）");
+            Check((Btn("OcrDownloadBtn")?.Content as string) == "随包内置",
+                "超小号档随包，按钮写「随包内置」（" + (Btn("OcrDownloadBtn")?.Content as string) + "）");
             Check(Btn("OcrDownloadBtn")?.IsEnabled == false, "超小号档不需要下载，按钮置灰");
-            Check((Label("OcrModelStatus")?.Text ?? "").Contains(tinyReady ? "已就位" : "随包内置"),
-                "状态行写明超小号档的来路");
+            Check((Label("OcrModelStatus")?.Text ?? "").Contains("随包内置"),
+                "状态行写明超小号档随包（" + (Label("OcrModelStatus")?.Text ?? "") + "）");
+            Check(tinyReady, "超小档在安装包里就位");
 
             Combo("OcrModelCombo")!.SelectedIndex = 1;   // small
             Pump(settings);
             Check(Text("ModelType") == "small", "下拉切「小号 V6」立刻写进设置");
             bool smallReady = Ready("Small");
-            Check((Btn("OcrDownloadBtn")?.Content as string) == (smallReady ? "已就位" : "下载模型"),
-                "小号档的按钮跟着就位情况变（" + (smallReady ? "已就位" : "下载模型") + "）");
-            Check(Btn("OcrDownloadBtn")?.IsEnabled == !smallReady, "小号档未就位时按钮可点");
+            Check(!CanDownload("Small"), "小号档随包内置，不再提供下载");
+            Check(smallReady, "小号档在安装包里就位（打包漏了模型会被这条抓住）");
+            Check((Btn("OcrDownloadBtn")?.Content as string) == "随包内置",
+                "小号档的按钮写「随包内置」（" + (Btn("OcrDownloadBtn")?.Content as string) + "）");
+            Check(Btn("OcrDownloadBtn")?.IsEnabled == false, "小号档随包，按钮置灰");
+            Check((Label("OcrModelStatus")?.Text ?? "").Contains("随包内置"),
+                "状态行写明小号档随包（" + (Label("OcrModelStatus")?.Text ?? "") + "）");
             Check((Label("OcrModelStatus")?.Text ?? "").Contains(TierName("Small")),
                 "状态行写着小号档的名字");
+
+            // 默认档（small）必须能直接给出引擎键，不用退到超小号
+            var engineForModel = paddleType.GetMethod("EngineKey", Stat)!;
+            var defaultTier = paddleType.GetMethod("TierOf", Stat)!
+                .Invoke(null, new object?[] { Text("ModelType") })!;
+            Check((string)engineForModel.Invoke(null, new[] { defaultTier })! == "v6small",
+                "默认模型档 = 小号 V6（引擎键 v6small）");
+            var dirOf = modelStoreType.GetMethod("DirOf", Stat)!;
+            string bundledDir = Path.Combine(Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory),
+                "Assets", "Ocr", "ppocrv6");
+            Check(dirOf.Invoke(null, new[] { defaultTier })!.ToString() == bundledDir,
+                "小号档就用安装包里那份目录，不去数据根找");
 
             Combo("OcrModelCombo")!.SelectedIndex = 2;   // medium
             Pump(settings);
