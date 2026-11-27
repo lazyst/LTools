@@ -37,4 +37,18 @@ public static class Timeouts
         => timeoutMs < 0 ? "，一直等到找到为止"
             : timeoutMs > 0 ? $"，等了 {timeoutMs} 毫秒"
             : "";
+
+    /// <summary>
+    /// 从步骤参数取等待时长：**「直到找到」开关优先**——勾上就一直找（按停止热键结束），
+    /// 否则按 <c>timeoutMs</c> 的三值。
+    /// </summary>
+    /// <remarks>
+    /// 命中类动作单元（截图找图 / 找文字 / 点击图片 / 点击文字）共用这一处，别各自读两个参数：
+    /// 以前只有 <c>timeoutMs = -1</c> 才表示「一直找」，界面上得凭空记住一个负数；
+    /// 现在多一个 <c>untilFound</c> 开关，勾上等同 -1，取消勾选回落到 <c>timeoutMs</c>。
+    /// </remarks>
+    public static int FromArgs(StepArgs args)
+        => args.Has("untilFound") && args.Bool("untilFound")
+            ? Unlimited
+            : Normalize(args.Has("timeoutMs") ? args.Number("timeoutMs") : 0);
 }

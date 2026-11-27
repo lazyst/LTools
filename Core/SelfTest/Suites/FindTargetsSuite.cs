@@ -199,6 +199,31 @@ internal static class FindTargetsSuite
             "默认变量名 textList");
         Check.Equal(ValueKind.number, text.Outputs.First(o => o.Key == "count").Type, "找字有命中个数");
 
+        // 命中类动作单元都有「直到找到」开关：勾上就一直找，等待时间那一行收起
+        foreach (string key in new[] { "screen.findImage", "screen.findText", "input.clickImage", "input.clickText" })
+        {
+            if (!StepRegistry.Default.TryGet(key, out IStepUnit unit))
+            {
+                Check.True(false, key + " 已注册");
+                continue;
+            }
+
+            UnitSpec spec = unit.Spec;
+            InputSpec? until = spec.Inputs.FirstOrDefault(i => i.Key == "untilFound");
+            Check.True(until != null, key + " 有「直到找到」");
+            Check.False(until!.Advanced, key + " 的「直到找到」不是高级参数");
+            Check.Equal(ValueKind.@bool, until.Type, key + " 的「直到找到」是开关");
+
+            InputSpec timeout = spec.Inputs.First(i => i.Key == "timeoutMs");
+            var off = new Step { Unit = key };
+            off.In["untilFound"] = StepArg.FromBool(false);
+            Check.True(StepSummary.IsVisible(timeout, off, spec), key + " 不勾「直到找到」时显示等待时间");
+
+            var on = new Step { Unit = key };
+            on.In["untilFound"] = StepArg.FromBool(true);
+            Check.False(StepSummary.IsVisible(timeout, on, spec), key + " 勾「直到找到」时收起等待时间");
+        }
+
         // 点击类：默认点第一个，行为与以前一致
         Check.Equal("1", new ClickImageUnit().Spec.Inputs.First(i => i.Key == "index").Default?.AsText(),
             "图片点击默认点第一个");

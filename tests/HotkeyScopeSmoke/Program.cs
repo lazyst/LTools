@@ -119,6 +119,46 @@ internal static class Program
             string.Join(",", groupEditor.SelectedFilter?.Processes ?? new List<string>()));
         Check("组对话框：白名单时名单面板可见", groupEditor.FilterVisible, "不可见");
 
+        // 名单是「一行一个输入框 + 每行一个删除」：回填几行就是几行，＋ 添加 / 删除都只动自己那一行
+        var processRows = (StackPanel)Field(groupEditor, "ProcessRows")!;
+        static int RowCount(StackPanel host) => host.Children.Count;
+        static TextBox RowBox(StackPanel host, int i) => (TextBox)((Grid)host.Children[i]).Children[0];
+        static Button RowDelete(StackPanel host, int i) => (Button)((Grid)host.Children[i]).Children[1];
+
+        Check("名单逐行显示：回填出 1 行进程", RowCount(processRows) == 1, RowCount(processRows).ToString());
+        Check("每行都是单行输入框", RowBox(processRows, 0) is { Text: "chrome.exe" },
+            RowBox(processRows, 0).Text);
+        Check("每行都带删除按钮", RowDelete(processRows, 0).Content as string == "✕",
+            RowDelete(processRows, 0).Content as string ?? "(空)");
+        Check("行内不再挂「清除 ×」", !LTools.Views.Controls.TextBoxClear.GetAttach(RowBox(processRows, 0)),
+            "还挂着清除按钮");
+
+        var addProcess = (Button)Field(groupEditor, "AddProcessBtn")!;
+        addProcess.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Check("「＋ 添加一行」加出一行空输入框",
+            RowCount(processRows) == 2 && RowBox(processRows, 1).Text == "",
+            RowCount(processRows) + " 行");
+        RowBox(processRows, 1).Text = "code.exe";
+        Check("新加那行进得了名单",
+            groupEditor.SelectedFilter?.Processes.SequenceEqual(new[] { "chrome.exe", "code.exe" }) == true,
+            string.Join(",", groupEditor.SelectedFilter?.Processes ?? new List<string>()));
+
+        RowDelete(processRows, 1).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Check("删除按钮只删自己那一行",
+            RowCount(processRows) == 1
+            && groupEditor.SelectedFilter?.Processes.SequenceEqual(new[] { "chrome.exe" }) == true,
+            string.Join(",", groupEditor.SelectedFilter?.Processes ?? new List<string>()));
+
+        RowDelete(processRows, 0).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Check("删空后补一行空输入框，不留死路",
+            RowCount(processRows) == 1 && RowBox(processRows, 0).Text == "",
+            RowCount(processRows) + " 行 / " + RowBox(processRows, 0).Text);
+
+        Check("标题与类名也走同一套逐行名单",
+            Field(groupEditor, "TitleRows") is StackPanel { Children.Count: 1 }
+            && Field(groupEditor, "ClassRows") is StackPanel { Children.Count: 1 },
+            "行数不对");
+
         groupCombo.SelectedIndex = 1;   // 所有窗口
         Check("切到「所有窗口」：名单面板收起", !groupEditor.FilterVisible, "还可见");
         Check("切到「所有窗口」：不写名单", groupEditor.SelectedFilter == null, "还带着名单");
@@ -180,6 +220,17 @@ internal static class Program
             string.Join(",", standalone.SelectedFilter?.Titles ?? new List<string>()));
         Check("独立控件：白名单时名单面板可见", standalone.FilterVisible, "不可见");
 
+        // 人眼看一眼新的逐行名单（两行进程 + 一行标题 + 一行类名）
+        var preview = new AppScopeEditor();
+        preview.SetOptions("跟随全局默认", "所有窗口");
+        preview.Load(HotkeyScope.whitelist, new AppFilter
+        {
+            Processes = { "chrome.exe", "Code.exe" },
+            Titles = { "记事本" },
+            Classes = { "Notepad" },
+        });
+        RenderPreview(preview, 560, 560, "scope-editor.png");
+
         // 没有组时按钮禁用（别让人对着空列表点出一个无名组）
         LoadRegistry(new HotkeyFile());
         view.Reload();
@@ -193,8 +244,8 @@ internal static class Program
         // capslock 前缀的组合键解析由 --selftest --filter hotkeys 断言（HotkeyChord 是 internal）。
     }
 
-    /// <summary>把设置页渲染成 png（人眼看工具行会不会挤 / 组行第二行对不对）。</summary>
-    private static void RenderPreview(HotkeysView view, int width, int height, string name)
+    /// <summary>把一块界面渲染成 png（人眼看工具行会不会挤 / 组行第二行对不对 / 名单行对不对齐）。</summary>
+    private static void RenderPreview(FrameworkElement content, int width, int height, string name)
     {
         var frame = new Window
         {
@@ -202,14 +253,14 @@ internal static class Program
             Height = height,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             Background = (Brush)Application.Current.FindResource("BgBrush"),
-            Content = view,
+            Content = content,
         };
         frame.Show();
         frame.UpdateLayout();
 
         var bitmap = new RenderTargetBitmap((int)(frame.ActualWidth * 2), (int)(frame.ActualHeight * 2),
             192, 192, PixelFormats.Pbgra32);
-        bitmap.Render(view);
+        bitmap.Render(content);
 
         string dir = Path.Combine(Path.GetTempPath(), "opencode", "hotkey-scope-smoke");
         Directory.CreateDirectory(dir);

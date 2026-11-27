@@ -34,6 +34,31 @@ internal static class HelperSuite
         Check.Contains(Timeouts.DescribeWait(-1), "一直等");
         Check.Contains(Timeouts.DescribeWait(1500), "1500");
         Check.Equal("", Timeouts.DescribeWait(0), "只做一次时不说等了多久");
+
+        // —— 命中类动作单元的「直到找到」开关（Timeouts.FromArgs）——
+        var untilFound = new StepArgs(
+            new Dictionary<string, Value>
+            {
+                ["untilFound"] = Value.FromBool(true),
+                ["timeoutMs"] = Value.FromNumber(0),
+            },
+            new[] { "untilFound", "timeoutMs" });
+        Check.Equal(Timeouts.Unlimited, Timeouts.FromArgs(untilFound), "勾「直到找到」= 一直找（盖过 timeoutMs）");
+
+        var timed = new StepArgs(
+            new Dictionary<string, Value>
+            {
+                ["untilFound"] = Value.FromBool(false),
+                ["timeoutMs"] = Value.FromNumber(1500),
+            },
+            new[] { "untilFound", "timeoutMs" });
+        Check.Equal(1500, Timeouts.FromArgs(timed), "不勾「直到找到」按 timeoutMs");
+
+        var unset = new StepArgs(new Dictionary<string, Value>(), Array.Empty<string>());
+        Check.Equal(0, Timeouts.FromArgs(unset), "两个都没写 = 只查一次");
+        Check.Equal(Timeouts.Unlimited, Timeouts.FromArgs(new StepArgs(
+            new Dictionary<string, Value> { ["untilFound"] = Value.FromBool(true) },
+            new[] { "untilFound" })), "只勾开关、没写等待时间也一直找");
     }
 
     private static void CompareMatrix()

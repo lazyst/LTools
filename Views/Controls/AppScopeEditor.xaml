@@ -3,7 +3,9 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}">
     <!-- 作用范围（进程 / 标题 / 类名）的唯一编辑器：快捷键绑定、预设组、组作用范围共用。
-         条目的文案由 SetOptions 生成，这里不写死，免得「跟随默认」出现在只该有三档的地方。 -->
+         条目的文案由 SetOptions 生成，这里不写死，免得「跟随默认」出现在只该有三档的地方。
+         名单是「一行一个输入框 + 每行一个删除」，不再是一个大文本框 —— 谁能删、删的是哪一条
+         一眼就看得见；「＋ 添加一行」和上面的「选择进程…」都只是往列表里加一行。 -->
     <StackPanel>
         <ComboBox x:Name="ScopeBox" MinHeight="30" SelectionChanged="Scope_Changed"/>
 
@@ -13,42 +15,51 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="进程（每行一个，支持 * ?）"
+                <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="进程（支持 * ?）"
                            Margin="0" VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"/>
                 <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="选择进程…"
                         MinWidth="0" Padding="8,2" FontSize="{StaticResource FontSizeHint}"
-                        Click="PickProcess_Click" ToolTip="点击屏幕上的窗口，把它的进程名追加一行"/>
+                        Click="PickProcess_Click" ToolTip="点击屏幕上的窗口，把它的进程名加一行"/>
             </Grid>
-            <TextBox x:Name="ProcessBox" MinHeight="48" AcceptsReturn="True" TextWrapping="Wrap"
-                     VerticalScrollBarVisibility="Auto"
-                     ToolTip="chrome.exe / Code.exe / C:\Program Files\...\app.exe"/>
+            <StackPanel x:Name="ProcessRows" Tag="chrome.exe / Code.exe"/>
+            <Button x:Name="AddProcessBtn" Style="{StaticResource BtnGhost}" Content="＋ 添加一行"
+                    HorizontalAlignment="Left" MinWidth="0" Padding="8,2" Margin="0,2,0,0"
+                    FontSize="{StaticResource FontSizeHint}"
+                    Click="AddProcess_Click" ToolTip="再加一行；在输入框里按 Enter 也行"/>
 
-            <Grid Margin="0,8,0,4">
+            <Grid Margin="0,10,0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="窗口标题（每行一个，按包含匹配）"
+                <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="窗口标题（按包含匹配）"
                            Margin="0" VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"/>
                 <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="选择窗口…"
                         MinWidth="0" Padding="8,2" FontSize="{StaticResource FontSizeHint}"
-                        Click="PickTitle_Click" ToolTip="点击屏幕上的窗口，把标题追加一行"/>
+                        Click="PickTitle_Click" ToolTip="点击屏幕上的窗口，把标题加一行"/>
             </Grid>
-            <TextBox x:Name="TitleBox" MinHeight="40" AcceptsReturn="True" TextWrapping="Wrap"
-                     VerticalScrollBarVisibility="Auto"/>
+            <StackPanel x:Name="TitleRows" Tag="记事本"/>
+            <Button x:Name="AddTitleBtn" Style="{StaticResource BtnGhost}" Content="＋ 添加一行"
+                    HorizontalAlignment="Left" MinWidth="0" Padding="8,2" Margin="0,2,0,0"
+                    FontSize="{StaticResource FontSizeHint}"
+                    Click="AddTitle_Click" ToolTip="再加一行；在输入框里按 Enter 也行"/>
 
-            <Grid Margin="0,8,0,4">
+            <Grid Margin="0,10,0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="窗口类名（每行一个）"
+                <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="窗口类名"
                            Margin="0" VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"/>
                 <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="选择窗口…"
                         MinWidth="0" Padding="8,2" FontSize="{StaticResource FontSizeHint}"
-                        Click="PickClass_Click" ToolTip="点击屏幕上的窗口，把类名追加一行"/>
+                        Click="PickClass_Click" ToolTip="点击屏幕上的窗口，把类名加一行"/>
             </Grid>
-            <TextBox x:Name="ClassBox" MinHeight="32" AcceptsReturn="True" TextWrapping="Wrap"/>
+            <StackPanel x:Name="ClassRows" Tag="Notepad"/>
+            <Button x:Name="AddClassBtn" Style="{StaticResource BtnGhost}" Content="＋ 添加一行"
+                    HorizontalAlignment="Left" MinWidth="0" Padding="8,2" Margin="0,2,0,0"
+                    FontSize="{StaticResource FontSizeHint}"
+                    Click="AddClass_Click" ToolTip="再加一行；在输入框里按 Enter 也行"/>
         </StackPanel>
     </StackPanel>
 </UserControl>

@@ -40,8 +40,11 @@ public sealed class FindTextUnit : IStepUnit
                 Description: "包含 = 「保存」也命中「保存并关闭」；完全一致 = 只认完整的一个词（「保存 (Ctrl+S)」仍算）"),
             new InputSpec("engine", "识别引擎", ValueKind.text, InputEditor.enumList,
                 Default: Value.FromText("v6small"), Options: Engines),
+            new InputSpec("untilFound", "直到找到", ValueKind.@bool, InputEditor.boolean,
+                Default: Value.FromBool(false),
+                Description: "勾上就一直找，直到找到才继续（按停止热键结束）；不勾按下面的等待时间"),
             new InputSpec("timeoutMs", "最多等待毫秒", ValueKind.number, InputEditor.number,
-                Default: Value.FromNumber(0),
+                Default: Value.FromNumber(0), VisibleWhen: "untilFound == false",
                 Description: "最多等多久（毫秒）：0 = 只查一次；-1 = 一直等到找到（按停止热键结束）；最多 10 分钟"),
             new InputSpec("intervalMs", "轮询间隔毫秒", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(300), Advanced: true,
@@ -73,7 +76,7 @@ public sealed class FindTextUnit : IStepUnit
         ImageRegion region = ScreenArgs.ParseRegion(args.Text("region"));
         int[]? rect = ScreenArgs.ParseRect(args);
         string engine = args.Text("engine").Trim();
-        int timeoutMs = Timeouts.Normalize(args.Number("timeoutMs"));
+        int timeoutMs = Timeouts.FromArgs(args);
         int intervalMs = (int)Math.Clamp(args.Number("intervalMs"), 50, 5_000);
 
         TextLookup lookup = ProbeContext.Run(ctx, run => TextLocator.LocateAll(
