@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using LTools.Native;
 
 namespace LTools.Features;
 
@@ -222,9 +223,26 @@ internal static class HotkeyCapture
 
         e.Handled = true;
 
+        // CapsLock：这里的录入框（宏热键 / 模拟按键 / 截图快捷键）解析不了 capslock 前缀，
+        // 所以既不能当主键（那会录成「单按 CapsLock」），也不能悄悄丢掉（那会录成不带
+        // CapsLock 的另一个键）——明确说一声，让用户松开重录。
+        // 「快捷键」页的绑定有自己的一套录入（HotkeyEditDialog），CapsLock 前缀在那边录。
+        if (key == Key.CapsLock)
+        {
+            ShowCapsUnsupported(s);
+            return;
+        }
+
         if (IsModifier(key))
         {
             s.Box.Text = ModifierPreview(key) + "…";
+            return;
+        }
+
+        // CapsLock 还按着就按了主键：前缀存不下来，别静默录成「只有主键」。
+        if (KeyState.IsDown(Win32.VkCapital))
+        {
+            ShowCapsUnsupported(s);
             return;
         }
 
@@ -249,6 +267,13 @@ internal static class HotkeyCapture
     private static bool IsModifier(Key k) => k is
         Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift
         or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin;
+
+    /// <summary>这个录入框不支持 CapsLock 前缀时的提示（框窄，完整原因放悬停）。</summary>
+    private static void ShowCapsUnsupported(State s)
+    {
+        s.Box.Text = "不支持 CapsLock";
+        s.Box.ToolTip = "这个录入框不支持 CapsLock 前缀（只有「快捷键」页的绑定可以按 CapsLock 组合键）。请松开 CapsLock 再录。";
+    }
 
     /// <summary>修饰键单独按下时的提示（把刚按下的那个键也算进去）。</summary>
     private static string ModifierPreview(Key key)

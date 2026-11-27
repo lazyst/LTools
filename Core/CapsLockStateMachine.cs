@@ -119,7 +119,13 @@ internal static class CapsLockStateMachine
     }
 
     /// <summary>看门狗 tick（对应 AHK CheckCapsLockState 的 1s 定时）：启用态且非手动且灯亮 → 灭灯。</summary>
-    public static void WatchdogTick()
+    public static void WatchdogTick() => ResyncLight();
+
+    /// <summary>
+    /// 按当前设置把大写灯收回来（修饰键模式 + 没手动开灯 = 灯应该灭）。
+    /// 热键录入期间 CapsLock 是放行给录入框的，系统会切一次灯——录入结束后由键盘钩子调这里。
+    /// </summary>
+    public static void ResyncLight()
     {
         if (!AppState.CapsLockModifier) return;
         if (AppState.CapsLockManuallyEnabled) return;

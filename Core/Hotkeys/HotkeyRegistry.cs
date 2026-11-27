@@ -119,6 +119,7 @@ internal static class HotkeyRegistry
         if (entries.Count == 0) return null;
         var current = File;
         bool enabled = _enabled;
+        var app = ForegroundAppCache.Current;
 
         foreach (var entry in entries)
         {
@@ -126,7 +127,9 @@ internal static class HotkeyRegistry
             if (!enabled && entry.Binding.ActionId != GateReference) continue;
             if (!ModifiersMatch(entry.Chord)) continue;
 
-            if (!AppFilterMatch.Allows(entry.Binding, current, ForegroundAppCache.Current)) return null;
+            // 生效范围：绑定自己设了就按绑定，否则按组（优先级 绑定 > 组 > 全局默认）。
+            // 见 AppFilterMatch.Allows 的重载。
+            if (!AppFilterMatch.Allows(entry.Group, entry.Binding, current, app)) return null;
 
             lock (FiredGate) Fired.Add(vk);
             return entry.Binding.ActionId;
@@ -154,13 +157,14 @@ internal static class HotkeyRegistry
         var entries = Entries;
         if (entries.Count == 0) return false;
         var current = File;
+        var app = ForegroundAppCache.Current;
 
         foreach (var entry in entries)
         {
             if (entry.Chord.Vk != vk) continue;
             if (!string.Equals(entry.Binding.ActionId, actionId, StringComparison.Ordinal)) continue;
             if (!ModifiersMatch(entry.Chord)) continue;
-            if (!AppFilterMatch.Allows(entry.Binding, current, ForegroundAppCache.Current)) return false;
+            if (!AppFilterMatch.Allows(entry.Group, entry.Binding, current, app)) return false;
 
             lock (FiredGate) Fired.Add(vk);
             return true;
@@ -198,7 +202,8 @@ internal static class HotkeyRegistry
 
     /// <summary>
     /// 同一条快捷键在「已启用的组」里出现多次 → 返回这些绑定 Id。
-    /// 界面用来标红并提示「运行期只会触发排在前面的那条」。
+    /// 界面用来标红并提示「生效范围重叠时只会触发排在前面的那条」。
+    /// 这里不判两份范围到底会不会重叠（通配符没法精确算），宁可保守多报一条。
     /// </summary>
     public static HashSet<string> FindConflicts() => FindConflicts(File);
 

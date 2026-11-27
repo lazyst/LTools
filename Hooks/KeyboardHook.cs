@@ -27,6 +27,10 @@ internal static class KeyboardHook
     // 「关窗时还按着的键」：抬起时吞掉（见 SwallowPendingReleases）。0 = 没有。
     private static int _releaseVk;
 
+    // 热键录入期间把 CapsLock 放行过：系统已经按物理按键切了大写灯，录入一结束要收回来。
+    // 只有钩子线程读写，不用加锁。
+    private static bool _capsPassedToCapture;
+
     /// <summary>
     /// 窗口 / 遮罩关掉时调用：这些键里**此刻物理上还按着**的那一个，抬起时吞掉。
     /// </summary>
@@ -158,12 +162,22 @@ internal static class KeyboardHook
             }
 
             // 热键录入期间：按键交给焦点对话框自己处理，LTools 的全局热键 / CapsLock 状态机让路，
-            // 避免「录入 Ctrl+F2 时反而启动了宏录制」。CapsLock 仍吞掉，防止误切大小写。
+            // 避免「录入 Ctrl+F2 时反而启动了宏录制」。
+            // **CapsLock 也要放行**：录入框要把 CapsLock 当「capslock+」前缀记下来
+            //（HotkeyEditDialog 一直是这么设计的）；以前在这里一律吞掉，结果「录不到 CapsLock」。
+            // 放行会让系统按物理按键切一次灯，录入结束后由 ResyncLight 按当前设置收回来。
             if (HotkeyCapture.IsCapturing)
             {
-                return vk == Win32.VkCapital
-                    ? (IntPtr)1
-                    : Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
+                if (vk == Win32.VkCapital) _capsPassedToCapture = true;
+                return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
+            }
+
+            // 录入已经把 CapsLock 放行过，现在结束了：系统灯 / 状态可能跟设置不一致，收一次。
+            // 等下一个键事件即可（通常是配对的那下抬起）；最坏由 1 秒看门狗兜底。
+            if (_capsPassedToCapture)
+            {
+                _capsPassedToCapture = false;
+                CapsLockStateMachine.ResyncLight();
             }
 
             // 宏录制热键（注入事件已在上方过滤，不会自触发）。

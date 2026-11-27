@@ -25,15 +25,33 @@ namespace LTools.Core;
 internal static class AppFilterMatch
 {
     public static bool Allows(HotkeyBinding binding, HotkeyFile file, ForegroundApp? app)
+        => app == null || AllowsScope(binding.Scope, binding.Filter, file, app);
+
+    /// <summary>
+    /// 一条绑定最终能不能触发，优先级 **绑定 &gt; 组 &gt; 全局默认**：
+    /// 绑定自己设了生效范围就只按它；绑定「跟随组」才看组的范围；组也「跟随全局默认」才落到全局名单。
+    /// 「组」是默认值，不是额外的一道闸——所以不会出现两边都配、结果互相把对方关掉的死区。
+    /// </summary>
+    public static bool Allows(HotkeyGroup group, HotkeyBinding binding, HotkeyFile file, ForegroundApp? app)
     {
         if (app == null) return true;
-        // 自己的窗口不再短路：和别的程序走同一份名单判定（见类注释）。
+        if (binding.Scope != HotkeyScope.inherit) return AllowsScope(binding.Scope, binding.Filter, file, app);
+        if (group.Scope != HotkeyScope.inherit) return AllowsScope(group.Scope, group.Filter, file, app);
+        return AllowsScope(HotkeyScope.inherit, null, file, app);
+    }
 
-        return binding.Scope switch
+    /// <summary>
+    /// 单档生效范围的解析（唯一实现）：
+    /// all = 所有窗口；whitelist / blacklist 用这一档自己的名单（没有就退回全局默认名单）；
+    /// inherit = 全局默认名单（<see cref="HotkeyFile.DefaultScope"/>）。
+    /// </summary>
+    private static bool AllowsScope(HotkeyScope scope, AppFilter? filter, HotkeyFile file, ForegroundApp app)
+    {
+        return scope switch
         {
             HotkeyScope.all => true,
-            HotkeyScope.whitelist => Matches(binding.Filter ?? file.DefaultFilter, app),
-            HotkeyScope.blacklist => !Matches(binding.Filter ?? file.DefaultFilter, app),
+            HotkeyScope.whitelist => Matches(filter ?? file.DefaultFilter, app),
+            HotkeyScope.blacklist => !Matches(filter ?? file.DefaultFilter, app),
             _ => file.DefaultScope switch
             {
                 HotkeyScope.whitelist => Matches(file.DefaultFilter, app),
@@ -120,31 +138,42 @@ internal static class AppFilterMatch
         return string.Join("，", parts);
     }
 
-    /// <summary>一条绑定的生效范围：列表里显示的短标签（长名单会被列宽截断，全文见 <see cref="DescribeScopeLong"/>）。</summary>
-    public static string DescribeScope(HotkeyBinding binding, HotkeyFile file)
+    /// <summary>
+    /// 一条绑定的生效范围：列表里显示的短标签（长名单会被列宽截断，全文见 <see cref="DescribeScopeLong"/>）。
+    /// 「跟随组」时把组的实际情况带出来（组没设 = 跟随全局默认），表格里不用再猜。
+    /// </summary>
+    public static string DescribeScope(HotkeyBinding binding, HotkeyGroup? group, HotkeyFile file)
     {
         return binding.Scope switch
         {
             HotkeyScope.all => "全部窗口",
             HotkeyScope.whitelist => "仅 " + (Describe(binding.Filter) ?? "白名单（空）"),
             HotkeyScope.blacklist => "排除 " + (Describe(binding.Filter) ?? "黑名单（空）"),
-            _ => file.DefaultScope switch
-            {
-                HotkeyScope.whitelist => "默认·白名单",
-                HotkeyScope.blacklist => "默认·黑名单",
-                _ => "跟随默认",
-            },
+            _ => group?.Scope is HotkeyScope.all or HotkeyScope.whitelist or HotkeyScope.blacklist
+                ? "跟随组"
+                : file.DefaultScope switch
+                {
+                    HotkeyScope.whitelist => "默认·白名单",
+                    HotkeyScope.blacklist => "默认·黑名单",
+                    _ => "跟随默认",
+                },
         };
     }
 
     /// <summary>同一条范围说明的全文（列表里当 ToolTip，不截断）。</summary>
-    public static string DescribeScopeLong(HotkeyBinding binding, HotkeyFile file)
+    public static string DescribeScopeLong(HotkeyBinding binding, HotkeyGroup? group, HotkeyFile file)
     {
         return binding.Scope switch
         {
-            HotkeyScope.all => "全部窗口：不受下方「全局默认名单」限制",
+            HotkeyScope.all => "全部窗口：不受组和全局默认名单限制",
             HotkeyScope.whitelist => "仅在匹配的窗口生效：" + (Describe(binding.Filter) ?? "（规则为空，等于不生效）"),
             HotkeyScope.blacklist => "除匹配的窗口外都生效：" + (Describe(binding.Filter) ?? "（规则为空，等于全部窗口）"),
+            _ when group is { Scope: HotkeyScope.all } =>
+                "跟随组 → 组不限制窗口（也不看全局默认名单）",
+            _ when group is { Scope: HotkeyScope.whitelist } =>
+                "跟随组 → 仅在组匹配的窗口生效：" + (Describe(group.Filter) ?? "（组规则为空，等于不生效）"),
+            _ when group is { Scope: HotkeyScope.blacklist } =>
+                "跟随组 → 组匹配的窗口之外生效：" + (Describe(group.Filter) ?? "（组规则为空，等于全部窗口）"),
             _ => file.DefaultScope switch
             {
                 HotkeyScope.whitelist => "跟随全局默认名单 → 仅在匹配的窗口生效："
@@ -154,5 +183,30 @@ internal static class AppFilterMatch
                 _ => "跟随全局默认名单 → 全部窗口",
             },
         };
+    }
+
+    /// <summary>组生效范围：组列表里的短标签。</summary>
+    public static string DescribeGroupScope(HotkeyGroup group)
+    {
+        return group.Scope switch
+        {
+            HotkeyScope.all => "所有窗口",
+            HotkeyScope.whitelist => "仅 " + (Describe(group.Filter) ?? "白名单（空）"),
+            HotkeyScope.blacklist => "排除 " + (Describe(group.Filter) ?? "黑名单（空）"),
+            _ => "跟随全局默认",
+        };
+    }
+
+    /// <summary>组生效范围全文（ToolTip 用）：说明它是绑定的默认值，且绑定优先。</summary>
+    public static string DescribeGroupScopeLong(HotkeyGroup group)
+    {
+        string self = group.Scope switch
+        {
+            HotkeyScope.all => "整组所有窗口（不看全局默认名单）",
+            HotkeyScope.whitelist => "整组只在匹配的窗口生效：" + (Describe(group.Filter) ?? "（规则为空，整组都不生效）"),
+            HotkeyScope.blacklist => "整组在匹配的窗口之外生效：" + (Describe(group.Filter) ?? "（规则为空，等于所有窗口）"),
+            _ => "整组跟随全局默认名单",
+        };
+        return self + "。这是组内绑定的默认值：某条绑定自己设了生效范围时以绑定为准（绑定 > 组 > 全局默认）。";
     }
 }

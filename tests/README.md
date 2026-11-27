@@ -123,6 +123,26 @@ dotnet run --no-build                     # 21 条，约 2 秒
 空剪贴板什么都不粘 / 复制为副本后粘到指定位置「新 Id + 名字加『副本』+ 自己的 `files/`」/
 跨场景（上下文场景）粘贴 / 空剪贴板不挂「粘贴」而菜单树里能选到每个分组 / 源动作被删后粘不了并清空剪贴板。
 
+### `HotkeyScopeSmoke`（快捷键：组生效范围 + 生效范围编辑器）
+
+```powershell
+dotnet build -p:NoWin32Manifest=true      # 先构建产品（同样直接引用 bin\Debug 里的 LTools.dll）
+cd tests\HotkeyScopeSmoke
+dotnet build -v q
+dotnet run --no-build                     # 39 条，约 2 秒
+```
+
+把一份带「组生效范围」的快捷键配置灌进 `HotkeyRegistry`，再真建出设置页的 `HotkeysView`：断言组行仍只有
+4 个操作图标（组生效范围挪到右边紧挨「添加快捷键…」的按钮）、设了范围的组在名称下多显示一行摘要
+（实例化 `DataTemplate` 后看它 `Visibility`）、「跟随全局默认」的组那行收起；再构造 `HotkeyGroupDialog` /
+`HotkeyEditDialog`，断言两边都是四档、第一档分别是「跟随全局默认」与「跟随组」、名单能回填、切到
+「所有窗口 / 跟随全局默认」时名单面板收起且不吐名单——两个对话框共用同一个 `AppScopeEditor`。
+录入框那几条直接喂键盘事件：按 CapsLock 再按 H 必须录成 `capslock+h`，不按 CapsLock 照常录成 `h`。
+最后把设置页渲染成 `%TEMP%\opencode\hotkey-scope-smoke\view.png`（2 倍图，人眼看右侧工具行会不会挤）。
+
+优先级（绑定 > 组 > 全局默认）与组归一是纯函数，在 `--selftest --filter hotkeys`；**CapsLock 按键本身
+必须手按**（钩子会忽略 `SendInput` 的注入事件），见下面「人工验收」。
+
 ### `ShareSmoke`（局域网共享：真 Kestrel + 真 HttpClient + 真窗口 + 真鼠标拖放）
 
 ```powershell
@@ -336,4 +356,8 @@ dotnet run                                # 14 条，约 10 秒
 - 截图带指针（开关前后各截一张看指针在不在）；
 - Esc 退出确认（开关前后）；
 - 另存为 PDF（A4 竖 / 横 / 图片尺寸各存一份，用 Edge 打开看版面）；
-- 长截图自动滚动间隔（改 300ms 看是否更慢）。
+- 长截图自动滚动间隔（改 300ms 看是否更慢）；
+- 快捷键录入：点组合键框，**按住 CapsLock 再按 H** → 框里应是 `CapsLock+H`，保存后能触发；
+  松开 CapsLock 后大写灯应保持灭（设置 → 快捷键与宏热键框都点一遍）；
+- 组生效范围：给一个组设「仅 chrome.exe」，组内绑定保持「跟随组」→ 只在 Chrome 里触发；
+  再把那条绑定改成「全部窗口」→ 记事本里也触发（验证绑定优先于组）。

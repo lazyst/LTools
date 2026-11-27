@@ -76,6 +76,7 @@ internal static class SelfTestRunner
         ContractSuite.Register(cases);
         ProcessSuite.Register(cases);
         SettingsSearchSuite.Register(cases);
+        HotkeySuite.Register(cases);
 
         var lines = new List<string>();
         var stopwatch = Stopwatch.StartNew();

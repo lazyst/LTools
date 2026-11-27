@@ -104,6 +104,15 @@ public sealed class HotkeyGroup
     /// <summary>整组开关；关闭后组内绑定一律不生效（配置保留）。</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <summary>
+    /// 整个组的生效范围：组内绑定的**默认值**，不是额外的一道闸。
+    /// 优先级：绑定自己设了范围就用绑定 → 否则用组 → 组也「跟随」就用全局默认。
+    /// </summary>
+    public HotkeyScope Scope { get; set; } = HotkeyScope.inherit;
+
+    /// <summary>组的名单（<see cref="Scope"/> 为 whitelist / blacklist 时才看它）。</summary>
+    public AppFilter? Filter { get; set; }
+
     public List<HotkeyBinding> Bindings { get; set; } = new();
 
     public HotkeyGroup Clone() => new()
@@ -111,6 +120,8 @@ public sealed class HotkeyGroup
         Id = Id,
         Name = Name,
         Enabled = Enabled,
+        Scope = Scope,
+        Filter = Filter?.Clone(),
         Bindings = Bindings.Select(b => b.Clone()).ToList(),
     };
 }
@@ -170,6 +181,17 @@ public sealed class HotkeyFile
             if (string.IsNullOrWhiteSpace(group.Id) || !seen.Add(group.Id))
                 group.Id = FreshId(taken, seen);
             group.Name = string.IsNullOrWhiteSpace(group.Name) ? "未命名组" : group.Name.Trim();
+
+            // 组生效范围与绑定同一套档位（含「跟随全局默认」），名单只留在白 / 黑名单上。
+            if (group.Scope is HotkeyScope.whitelist or HotkeyScope.blacklist)
+            {
+                group.Filter ??= new AppFilter();
+                group.Filter.Normalize();
+            }
+            else
+            {
+                group.Filter = null;   // 不参与判定的名单不留盘，免得改了生效范围还留一坨旧规则
+            }
 
             group.Bindings ??= new List<HotkeyBinding>();
             foreach (var binding in group.Bindings)

@@ -104,6 +104,7 @@ public partial class HotkeysView : UserControl
 
             GroupList.SelectedIndex = index;
             _group = index >= 0 ? _file.Groups[index] : null;
+            GroupScopeBtn.IsEnabled = _group != null;
 
             PopulateBindings();
         }
@@ -119,7 +120,7 @@ public partial class HotkeysView : UserControl
         if (_group != null)
         {
             foreach (var binding in _group.Bindings)
-                _rows.Add(new BindingRow(binding, _file, conflicts.Contains(binding.Id)));
+                _rows.Add(new BindingRow(binding, _group, _file, conflicts.Contains(binding.Id)));
         }
 
         // 按 Id 选中（表格可能被搜索过滤，行下标和 _group.Bindings 不再一一对应）
@@ -128,7 +129,8 @@ public partial class HotkeysView : UserControl
 
         ConflictText.Text = conflicts.Count == 0
             ? ""
-            : $"⚠ {conflicts.Count} 条快捷键重复，只有排在前面的那条会触发";
+            : $"⚠ {conflicts.Count} 条快捷键重复：生效范围有重叠时只有排在前面的那条会触发";
+        ConflictText.Visibility = conflicts.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (conflicts.Count > 0 && TryFindResource("DangerBrush") is Brush danger)
             ConflictText.Foreground = danger;
         else
@@ -234,6 +236,7 @@ public partial class HotkeysView : UserControl
         _group = SelectedGroup();
         _keepGroupId = _group?.Id;
         _keepBindingId = null;
+        GroupScopeBtn.IsEnabled = _group != null;
         _loading = true;
         try { PopulateBindings(); }
         finally { _loading = false; }
@@ -285,6 +288,22 @@ public partial class HotkeysView : UserControl
         var (ok, name) = InputDialog.Show(Window.GetWindow(this), "重命名预设组", "名称：", group.Name);
         if (!ok || string.IsNullOrWhiteSpace(name)) return;
         group.Name = name.Trim();
+        Save(group.Id);
+    }
+
+    /// <summary>
+    /// 左边选中组的「组生效范围」：组内绑定的默认值（绑定自己设了范围时以绑定为准）。
+    /// </summary>
+    private void EditGroupScope_Click(object sender, RoutedEventArgs e)
+    {
+        var group = SelectedGroup();
+        if (group == null) return;
+
+        var result = HotkeyGroupDialog.Show(Window.GetWindow(this), group);
+        if (result == null) return;
+
+        group.Scope = result.Value.Scope;
+        group.Filter = result.Value.Filter;
         Save(group.Id);
     }
 
@@ -562,15 +581,26 @@ public partial class HotkeysView : UserControl
             get => Source.Enabled;
             set => Source.Enabled = value;
         }
+
+        /// <summary>组生效范围的短标签（列表第二行显示）。</summary>
+        public string ScopeText => AppFilterMatch.DescribeGroupScope(Source);
+
+        /// <summary>组生效范围的全文（第二行的悬停提示）。</summary>
+        public string ScopeTip => AppFilterMatch.DescribeGroupScopeLong(Source);
+
+        /// <summary>只有设了范围的组才显示第二行，「跟随全局默认」不占地方。</summary>
+        public bool ScopeVisible => Source.Scope != HotkeyScope.inherit;
     }
 
     public sealed class BindingRow : INotifyPropertyChanged
     {
         private readonly HotkeyFile _file;
+        private readonly HotkeyGroup? _group;
 
-        public BindingRow(HotkeyBinding binding, HotkeyFile file, bool conflict)
+        public BindingRow(HotkeyBinding binding, HotkeyGroup? group, HotkeyFile file, bool conflict)
         {
             Source = binding;
+            _group = group;
             _file = file;
             Conflict = conflict;
             // 搜索文本建行时算一次：Chord / ActionName / ScopeText 都是格式化后的显示串，
@@ -608,16 +638,16 @@ public partial class HotkeysView : UserControl
         }
 
         public string ChordTip => Conflict
-            ? "这个组合键在已启用的组里出现了多次：运行期只有排在前面的那条会触发"
+            ? "这个组合键在已启用的组里出现了多次：生效范围重叠时只有排在前面的那条会触发（给组或单条绑定设不同生效范围就不会互相抢）"
             : Chord;
 
         public string ActionName => string.IsNullOrWhiteSpace(Source.ActionId)
             ? "（未选动作）"
             : BindingRef.Describe(Source.ActionId);
 
-        public string ScopeText => AppFilterMatch.DescribeScope(Source, _file);
+        public string ScopeText => AppFilterMatch.DescribeScope(Source, _group, _file);
 
-        public string ScopeTip => AppFilterMatch.DescribeScopeLong(Source, _file);
+        public string ScopeTip => AppFilterMatch.DescribeScopeLong(Source, _group, _file);
 
         public string Note => Source.Note;
 

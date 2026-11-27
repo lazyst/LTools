@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -8,6 +7,7 @@ using LTools.Config;
 using LTools.Core;
 using LTools.Features;
 using LTools.Features.Builtin;
+using LTools.Native;
 
 namespace LTools.Views;
 
@@ -34,12 +34,8 @@ public partial class HotkeyEditDialog : Window
         UpdateParamButton();
         NoteBox.Text = binding.Note;
 
-        SelectScope(binding.Scope);
-        var filter = binding.Filter ?? new AppFilter();
-        ProcessBox.Text = string.Join(Environment.NewLine, filter.Processes);
-        TitleBox.Text = string.Join(Environment.NewLine, filter.Titles);
-        ClassBox.Text = string.Join(Environment.NewLine, filter.Classes);
-        UpdateFilterVisibility();
+        ScopeEditor.SetOptions("跟随组", "全部窗口（忽略默认名单）");
+        ScopeEditor.Load(binding.Scope, binding.Filter);
 
         ChordBox.PreviewMouseLeftButtonDown += (_, e) =>
         {
@@ -52,7 +48,11 @@ public partial class HotkeyEditDialog : Window
         ChordBox.PreviewKeyDown += OnChordKeyDown;
         ChordBox.PreviewKeyUp += (_, e) =>
         {
-            if (_capturing) e.Handled = true;
+            if (!_capturing) return;
+            // 松开 CapsLock 就不再把它算作前缀（避免「按住又松开之后再按 H」录进 CapsLock）
+            Key up = e.Key == Key.System ? e.SystemKey : e.Key;
+            if (up == Key.CapsLock) _capsPressed = false;
+            e.Handled = true;
         };
 
         Closed += (_, _) =>
@@ -109,7 +109,7 @@ public partial class HotkeyEditDialog : Window
             return;
         }
 
-        if (key is Key.Back or Key.Delete && Keyboard.Modifiers == ModifierKeys.None && !AppState.CapsLockIsDown)
+        if (key is Key.Back or Key.Delete && Keyboard.Modifiers == ModifierKeys.None && !CapsDown)
         {
             e.Handled = true;
             SetChord("");
@@ -137,7 +137,7 @@ public partial class HotkeyEditDialog : Window
         if (vk == 0) return;
 
         e.Handled = true;
-        bool caps = _capsPressed || AppState.CapsLockIsDown;
+        bool caps = CapsDown;
         string chord = BuildChord(caps, Keyboard.Modifiers, (ushort)vk);
         if (!HotkeyChord.TryParse(chord, out var parsed, out string error))
         {
@@ -153,7 +153,7 @@ public partial class HotkeyEditDialog : Window
     private void UpdatePreview()
     {
         var parts = new List<string>();
-        if (_capsPressed || AppState.CapsLockIsDown) parts.Add("CapsLock");
+        if (CapsDown) parts.Add("CapsLock");
         var mods = Keyboard.Modifiers;
         if (mods.HasFlag(ModifierKeys.Control)) parts.Add("Ctrl");
         if (mods.HasFlag(ModifierKeys.Shift)) parts.Add("Shift");
@@ -161,6 +161,13 @@ public partial class HotkeyEditDialog : Window
         if (mods.HasFlag(ModifierKeys.Windows)) parts.Add("Win");
         ChordBox.Text = parts.Count > 0 ? string.Join("+", parts) + "+…" : "请按下组合键…";
     }
+
+    /// <summary>
+    /// 现在 CapsLock 算不算按着：录入框收到过它的按下（<see cref="_capsPressed"/>）、
+    /// 或者按下发生在开始录入之前（物理状态还在）。执行器里另有 <see cref="AppState.CapsLockIsDown"/>，
+    /// 但设置窗口在宿主进程，那边永远是 false，所以要以物理状态为准。
+    /// </summary>
+    private bool CapsDown => _capsPressed || AppState.CapsLockIsDown || KeyState.IsDown(Win32.VkCapital);
 
     private static string BuildChord(bool caps, ModifierKeys mods, ushort vk)
     {
@@ -222,47 +229,6 @@ public partial class HotkeyEditDialog : Window
         return BindingRef.Describe(id);
     }
 
-    private void SelectScope(HotkeyScope scope)
-    {
-        string tag = scope.ToString();
-        foreach (ComboBoxItem item in ScopeBox.Items)
-        {
-            if ((item.Tag as string) == tag) { ScopeBox.SelectedItem = item; return; }
-        }
-        ScopeBox.SelectedIndex = 0;
-    }
-
-    private void Scope_Changed(object sender, SelectionChangedEventArgs e) => UpdateFilterVisibility();
-
-    // 名单三行都能从系统里点选（与触发规则「作用范围」共用同一套），不用手抄进程名 / 标题 / 类名。
-    private void ScopeProcess_Click(object sender, RoutedEventArgs e)
-        => SystemPickerDialog.AppendLine(ProcessBox, SystemPickerDialog.PickProcess(this));
-
-    private void ScopeTitle_Click(object sender, RoutedEventArgs e)
-        => SystemPickerDialog.AppendLine(TitleBox, SystemPickerDialog.PickWindow(this)?.Title);
-
-    private void ScopeClass_Click(object sender, RoutedEventArgs e)
-        => SystemPickerDialog.AppendLine(ClassBox, SystemPickerDialog.PickWindow(this)?.ClassName);
-
-    private void UpdateFilterVisibility()
-    {
-        string tag = (ScopeBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "inherit";
-        FilterPanel.Visibility = tag is "whitelist" or "blacklist" ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private HotkeyScope SelectedScope()
-    {
-        string tag = (ScopeBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "inherit";
-        return Enum.TryParse<HotkeyScope>(tag, out var scope) ? scope : HotkeyScope.inherit;
-    }
-
-    private static List<string> Lines(TextBox box) => box.Text
-        .Replace("\r\n", "\n").Replace('\r', '\n')
-        .Split('\n')
-        .Select(x => x.Trim())
-        .Where(x => x.Length > 0)
-        .ToList();
-
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
         if (_capturing) EndCapture(commit: true);
@@ -297,7 +263,7 @@ public partial class HotkeyEditDialog : Window
             if (!ok) return;
         }
 
-        var scope = SelectedScope();
+        var scope = ScopeEditor.SelectedScope;
         Result = new HotkeyBinding
         {
             Id = _binding.Id,
@@ -306,14 +272,7 @@ public partial class HotkeyEditDialog : Window
             ActionId = _actionId,
             Note = NoteBox.Text.Trim(),
             Scope = scope,
-            Filter = scope is HotkeyScope.whitelist or HotkeyScope.blacklist
-                ? new AppFilter
-                {
-                    Processes = Lines(ProcessBox),
-                    Titles = Lines(TitleBox),
-                    Classes = Lines(ClassBox),
-                }
-                : null,
+            Filter = ScopeEditor.SelectedFilter,
         };
         DialogResult = true;
     }

@@ -12,7 +12,7 @@
             <Setter Property="MinWidth" Value="0"/>
         </Style>
 
-        <!-- 预设组行：整行可点，勾选框控制整组启停 -->
+        <!-- 预设组行：整行可点，勾选框控制整组启停；第二行只在有「组作用范围」时出现 -->
         <DataTemplate x:Key="GroupRowTemplate">
             <Grid Margin="0,2">
                 <Grid.ColumnDefinitions>
@@ -21,18 +21,22 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <CheckBox Grid.Column="0" IsChecked="{Binding Enabled, Mode=TwoWay}"
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <CheckBox Grid.Column="0" Grid.RowSpan="2" IsChecked="{Binding Enabled, Mode=TwoWay}"
                           VerticalAlignment="Center" Margin="0,0,7,0" Focusable="False"
                           ToolTip="整组启用 / 停用（停用后组内绑定都不生效，配置保留）"
                           Click="GroupEnabled_Click"/>
-                <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
+                <TextBlock Grid.Column="1" Grid.Row="0" Text="{Binding Name}" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
-                <TextBlock Grid.Column="2" Text="{Binding Count}" VerticalAlignment="Center"
+                <TextBlock Grid.Column="2" Grid.Row="0" Text="{Binding Count}" VerticalAlignment="Center"
                            Style="{StaticResource HintLabel}" FontSize="{StaticResource FontSizeHint}"
                            Margin="6,0,2,0" ToolTip="{Binding Count}"/>
-                <!-- 常驻小图标：重命名 / 删除 / 上移 / 下移。动作标识走 CommandParameter，
+                <!-- 常驻小图标：重命名 / 组作用范围 / 删除 / 上移 / 下移。动作标识走 CommandParameter，
                      别用 Tag——BtnGhost 把 Tag 当悬停色；点按钮不会选中行，分发器按 DataContext 认行。 -->
-                <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="4,0,0,0">
+                <StackPanel Grid.Column="3" Grid.Row="0" Orientation="Horizontal" Margin="4,0,0,0">
                     <Button Content="✎" CommandParameter="rename" Style="{StaticResource BtnGhost}"
                             Width="20" Height="20" Padding="0" FontSize="12" Focusable="False"
                             FontFamily="Segoe UI Symbol" ToolTip="重命名这个组" Click="GroupRowAction_Click"/>
@@ -46,6 +50,20 @@
                             Width="20" Height="20" Padding="0" Margin="2,0,0,0" FontSize="12" Focusable="False"
                             FontFamily="Segoe UI Symbol" ToolTip="整组下移" Click="GroupRowAction_Click"/>
                 </StackPanel>
+                <!-- 组作用范围：默认「所有窗口」时不占地方，设了条件才在名称下显示一行 -->
+                <TextBlock Grid.Column="1" Grid.ColumnSpan="3" Grid.Row="1" Text="{Binding ScopeText}"
+                           Margin="0,1,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding ScopeTip}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource HintLabel}">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ScopeVisible}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </Grid>
         </DataTemplate>
     </UserControl.Resources>
@@ -87,7 +105,7 @@
 
             <TextBlock Grid.Row="2" Style="{StaticResource HintLabel}" Margin="0,8,0,0"
                        TextTrimming="CharacterEllipsis"
-                       Text="双击组名也能重命名；行右侧是 重命名 / 删除 / 上移 / 下移。"/>
+                       Text="双击组名也能重命名；组生效范围在右上角。"/>
         </Grid>
 
         <!-- ============ 右：热键表 ============ -->
@@ -101,17 +119,20 @@
 
             <Grid Grid.Row="0" Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="220"/>
-                    <ColumnDefinition Width="*"/>
+                    <!-- 搜索框可伸缩（窗口拉到最小 820 时也不把右边两个按钮挤出去），冲突提示挪到下面一行 -->
+                    <ColumnDefinition Width="*" MinWidth="110"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBox Grid.Column="0" x:Name="SearchBox" MinHeight="30"
+                <TextBox Grid.Column="0" x:Name="SearchBox" MinHeight="30" Margin="0,0,10,0"
                          ToolTip="按快捷键 / 动作名 / 备注筛选"
                          controls:TextBoxPlaceholder.Text="搜索组合键 / 动作名 / 备注…"
                          TextChanged="SearchBox_TextChanged"/>
-                <TextBlock Grid.Column="1" x:Name="ConflictText" Style="{StaticResource HintLabel}"
-                           VerticalAlignment="Center" Margin="10,0" TextTrimming="CharacterEllipsis"/>
-                <Button Grid.Column="2" Style="{StaticResource BtnPrimary}" Content="添加快捷键…"
+                <Button Grid.Column="1" x:Name="GroupScopeBtn" Style="{StaticResource Btn}"
+                        Content="组生效范围…" MinWidth="102" Margin="0,0,8,0"
+                        ToolTip="给左边选中的预设组设生效范围：组内绑定默认用它（绑定自己设了范围时以绑定为准）"
+                        Click="EditGroupScope_Click"/>
+                <Button Grid.Column="2" x:Name="AddBindingBtn" Style="{StaticResource BtnPrimary}" Content="添加快捷键…"
                         MinWidth="104" Click="AddBinding_Click"/>
             </Grid>
 
@@ -221,12 +242,26 @@
                 </DataGrid>
             </Border>
 
-            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
-                <TextBlock x:Name="HintText" Style="{StaticResource HintLabel}" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis"/>
-                <TextBlock Style="{StaticResource HintLabel}" VerticalAlignment="Center"
-                           Margin="12,0,0,0" Text="双击一行也能编辑；行右侧是 编辑 / 删除 / 上移 / 下移。"/>
-            </StackPanel>
+            <Grid Grid.Row="2" Margin="0,8,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" x:Name="ConflictText" Style="{StaticResource HintLabel}"
+                           Margin="0,0,0,4" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
+                <!-- 左格伸缩 + 截断：设置窗口拉到最小时提示也不会被挤出右边界（横排 StackPanel 里
+                     TextTrimming 拿不到宽度，会被父容器直接裁掉半句） -->
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" x:Name="HintText" Style="{StaticResource HintLabel}"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Grid.Column="1" Style="{StaticResource HintLabel}" VerticalAlignment="Center"
+                               Margin="12,0,0,0" Text="双击一行也能编辑。"/>
+                </Grid>
+            </Grid>
 
             <!-- 全局默认名单：每条绑定默认跟随这里，也可以在单条里覆盖 -->
             <Expander Grid.Row="3" Margin="0,10,0,0" IsExpanded="False"

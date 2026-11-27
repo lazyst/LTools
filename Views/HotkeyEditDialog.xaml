@@ -50,56 +50,11 @@
                         MinWidth="86" Margin="8,0,0,0" Click="PickAction_Click"/>
             </Grid>
 
-            <!-- 生效范围 -->
+            <!-- 生效范围（下拉 + 三行名单）：与预设组的「组生效范围」共用同一个控件 -->
             <TextBlock Style="{StaticResource SectionLabel}" Text="生效范围" Margin="0,12,0,4"/>
-            <ComboBox x:Name="ScopeBox" MinHeight="30" SelectionChanged="Scope_Changed">
-                <ComboBoxItem Content="跟随全局默认" Tag="inherit"/>
-                <ComboBoxItem Content="全部窗口（忽略默认名单）" Tag="all"/>
-                <ComboBoxItem Content="仅白名单里的程序" Tag="whitelist"/>
-                <ComboBoxItem Content="排除黑名单里的程序" Tag="blacklist"/>
-            </ComboBox>
-
-            <StackPanel x:Name="FilterPanel" Visibility="Collapsed">
-                <Grid Margin="0,10,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="进程（每行一个，支持 * ?）"
-                               Margin="0" VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"/>
-                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="选择进程…"
-                            MinWidth="0" Padding="8,2" FontSize="{StaticResource FontSizeHint}"
-                            Click="ScopeProcess_Click" ToolTip="点击屏幕上的窗口，把它的进程名追加一行"/>
-                </Grid>
-                <TextBox x:Name="ProcessBox" MinHeight="48" AcceptsReturn="True" TextWrapping="Wrap"
-                         VerticalScrollBarVisibility="Auto"
-                         ToolTip="chrome.exe / Code.exe / C:\Program Files\...\app.exe"/>
-                <Grid Margin="0,8,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="窗口标题（每行一个，按包含匹配）"
-                               Margin="0" VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"/>
-                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="选择窗口…"
-                            MinWidth="0" Padding="8,2" FontSize="{StaticResource FontSizeHint}"
-                            Click="ScopeTitle_Click" ToolTip="点击屏幕上的窗口，把标题追加一行"/>
-                </Grid>
-                <TextBox x:Name="TitleBox" MinHeight="40" AcceptsReturn="True" TextWrapping="Wrap"
-                         VerticalScrollBarVisibility="Auto"/>
-                <Grid Margin="0,8,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}" Text="窗口类名（每行一个）"
-                               Margin="0" VerticalAlignment="Center" FontSize="{StaticResource FontSizeHint}"/>
-                    <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="选择窗口…"
-                            MinWidth="0" Padding="8,2" FontSize="{StaticResource FontSizeHint}"
-                            Click="ScopeClass_Click" ToolTip="点击屏幕上的窗口，把类名追加一行"/>
-                </Grid>
-                <TextBox x:Name="ClassBox" MinHeight="32" AcceptsReturn="True" TextWrapping="Wrap"/>
-            </StackPanel>
+            <controls:AppScopeEditor x:Name="ScopeEditor"/>
+            <TextBlock Style="{StaticResource HintLabel}" Margin="0,6,0,0" TextWrapping="Wrap"
+                       Text="「跟随组」= 用这个组的生效范围（组也没设就跟全局默认名单）。这里自己选了范围就以这条为准。"/>
 
             <!-- 备注 -->
             <TextBlock Style="{StaticResource SectionLabel}" Text="备注" Margin="0,12,0,4"/>
