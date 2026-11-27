@@ -11,8 +11,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- exe 嵌入图标 -->
     <ApplicationIcon>Icon\LTools.ico</ApplicationIcon>
-    <Version>2.6.12</Version>
-    <AssemblyVersion>2.6.12.0</AssemblyVersion>
+    <Version>2.6.13</Version>
+    <AssemblyVersion>2.6.13.0</AssemblyVersion>
     <AssemblyName>LTools</AssemblyName>
     <RootNamespace>LTools</RootNamespace>
   </PropertyGroup>
@@ -197,20 +197,30 @@
        .resources.dll 约 17 MB（产品 UI 是自己的中文，不靠框架语言包；缺卫星程序集时 .NET 自动回退
        主程序集里的中性资源）。发布后删掉：解压包约 -35 MB、zip 约 -14 MB。
        必须排在 PublishUiHost **之后**：宿主也会把同一批共享框架文件拷进 publish 目录，先删后拷等于没删。
+       **`Accessibility.dll` 不能删**（v2.6.10 那版删过，包里的托盘右键 / 任何右键菜单 / 下拉框 /
+       ToolTip 全都炸：WPF 的 Popup 在 `PopupSecurityHelper.ForceMsaaToUiaBridge` 里
+       `Assembly.Load("Accessibility, Version=4.0.0.0…")`，缺了就是 FileNotFoundException，
+       提权进程里没人接就把进程带走）。虽名字像 WinForms，它其实是 WPF 弹层的运行时依赖。
        与 OpenCV ffmpeg 插件 / Roslyn 卫星程序集同一套「发布后删掉」做法；改这里之后跑一遍
-       LTools.exe 的 selftest，确认没有隐藏的 WinForms 引用。 -->
+       LTools.exe 的 selftest，并**看一眼 publish 目录里 `Accessibility.dll` 还在**（下面有断言守着）。 -->
   <Target Name="RemoveUnusedDesktopPartsOnPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
     <ItemGroup>
       <_UnusedWinForms Include="$(PublishDir)System.Windows.Forms*.dll" />
       <_UnusedWinForms Include="$(PublishDir)System.Design.dll" />
       <_UnusedWinForms Include="$(PublishDir)System.Drawing.Design.dll" />
-      <_UnusedWinForms Include="$(PublishDir)Accessibility.dll" />
       <_UnusedWinForms Include="$(PublishDir)**\System.Windows.Forms*.resources.dll" />
       <_UnusedSatellites Include="$(PublishDir)*\*.resources.dll"
                          Exclude="$(PublishDir)zh-Hans\*.resources.dll" />
     </ItemGroup>
     <Delete Files="@(_UnusedWinForms)" />
     <Delete Files="@(_UnusedSatellites)" />
+
+    <!-- 删完就验：WPF 的弹层（ContextMenu / ToolTip / ComboBox / 菜单子项）都靠这几个，
+         少一个就是「点右键直接卡退」那种线上事故。 -->
+    <Error Condition="!Exists('$(PublishDir)Accessibility.dll')"
+           Text="发布目录里少了 Accessibility.dll：WPF 的 Popup 会在打开右键菜单 / 下拉框 / ToolTip 时抛 FileNotFoundException，别把这个包发出去。" />
+    <Error Condition="!Exists('$(PublishDir)PresentationFramework.dll')"
+           Text="发布目录里少了 PresentationFramework.dll。" />
   </Target>
 
 </Project>

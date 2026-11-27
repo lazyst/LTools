@@ -4,6 +4,14 @@
 
 ## [未发布]
 
+## [v2.6.13] - 2026-11-27
+
+### 🐞 修复
+
+- **右键托盘图标 LTools 直接退出**（v2.6.10 – v2.6.12 都有）：发布包里少了 `Accessibility.dll` —— 发布体积裁剪把它当成 WinForms 一起删了，可它其实是 WPF 弹层的运行时依赖：`Popup` 打开时会 `Assembly.Load("Accessibility, Version=4.0.0.0…")`（`PopupSecurityHelper.ForceMsaaToUiaBridge`），缺了就是 `FileNotFoundException`，提权进程里没人接住，进程直接终止（事件查看器：`LTools.exe 2.6.12` / `KERNELBASE.dll` / `0xe0434352`）。受影响的**不只是托盘**：面板右键菜单、下拉框、ToolTip 一开就炸。
+- 发布目标里不再删 `Accessibility.dll`，并加了两道断言：`Accessibility.dll` / `PresentationFramework.dll` 不在 publish 目录就让 `dotnet publish` 直接失败，这类「少一个文件」的发版事故不该再靠人眼发现。
+- 已经装了 v2.6.12 的，把 `Accessibility.dll`（约 20 KB）放回安装目录即可正常使用，不必等新版。
+
 ## [v2.6.12] - 2026-11-27
 
 ### 🐞 修复
