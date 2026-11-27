@@ -44,6 +44,19 @@ jobs:
         shell: pwsh
         run: ./tools/build-ffmpeg.ps1 -Version ${{ inputs.version }} -SkipDeps
 
+      # configure 挂掉时它只打一句「C compiler test failed」，真正的原因（缺库 / 找不到 gcc /
+      # 链接器报错）全在 config.log 里。跑在 runner 上没地方翻，所以失败时直接倒出来。
+      - name: Dump configure log
+        if: failure()
+        shell: pwsh
+        run: |
+          $logs = Get-ChildItem "$env:TEMP\opencode\ffmpeg-build-${{ inputs.version }}\src\*\ffbuild\config.log" -ErrorAction SilentlyContinue
+          if (-not $logs) { Write-Host '没有 config.log（失败发生在 configure 之前）'; exit 0 }
+          foreach ($f in $logs) {
+            Write-Host "=== $($f.FullName) ==="
+            Get-Content $f.FullName -Tail 300
+          }
+
       # 编出来先自己用一遍：libx264 + mp4、GIF 两遍调色板、rawvideo 管道，三条路各跑一次。
       # 漏了哪个滤镜 / 编码器在这里就红，不用等发版后用户报「导出失败」。
       - name: Smoke
@@ -95,7 +108,10 @@ jobs:
                    "tools/fetch-ffmpeg.ps1 会取这个附件；release.yml 打包时用它替代 gyan.dev essentials。"
           gh release view $tag 2>$null | Out-Null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title $title --notes $notes
+            # 标成 pre-release：它不是 LTools 的版本发布。这也很关键 —— release.yml 的
+            # generate_release_notes 会把「上一个正式 release」当基线，ffmpeg 的 tag 指向
+            # 的正是当前 master，不排除它的话自动生成的更新说明会是空的。
+            gh release create $tag --title $title --notes $notes --prerelease --latest=false
             if ($LASTEXITCODE -ne 0) { throw "创建 release $tag 失败" }
           }
           gh release upload $tag runtime/ffmpeg/ffmpeg.exe --clobber
