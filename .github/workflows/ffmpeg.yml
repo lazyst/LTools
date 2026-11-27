@@ -80,15 +80,23 @@ jobs:
 
           Get-ChildItem $tmp | Format-Table Name, Length | Out-String | Write-Host
 
+      # 用 API 而不是 softprops/action-gh-release：那个 action 建完 release 会把它的文件列表
+      # 当成这个 release 的完整内容。tag `ffmpeg-<版本>` 只需要一个二进制附件，而发布版的
+      # zip / 7z 在别的 tag 上，别让一次失败重跑把这里变成后建的那份。
       - name: Upload release asset
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ffmpeg-${{ inputs.version }}
-          name: ffmpeg ${{ inputs.version }} (LTools 精简构建)
-          body: |
-            LTools 录屏用的精简 ffmpeg（静态单文件，GPLv3，由 `tools/build-ffmpeg.ps1` 编译）。
-
-            `tools/fetch-ffmpeg.ps1` 会取这个附件；`release.yml` 打包时用它替代 gyan.dev essentials。
-          files: runtime/ffmpeg/ffmpeg.exe
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          $tag = "ffmpeg-$VERSION"
+          $title = "ffmpeg $VERSION (LTools 精简构建)"
+          $notes = "LTools 录屏用的精简 ffmpeg（静态单文件，GPLv3，由 tools/build-ffmpeg.ps1 编译）。`n`n" +
+                   "tools/fetch-ffmpeg.ps1 会取这个附件；release.yml 打包时用它替代 gyan.dev essentials。"
+          gh release view $tag 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title $title --notes $notes
+            if ($LASTEXITCODE -ne 0) { throw "创建 release $tag 失败" }
+          }
+          gh release upload $tag runtime/ffmpeg/ffmpeg.exe --clobber
+          if ($LASTEXITCODE -ne 0) { throw "上传 ffmpeg.exe 失败" }
