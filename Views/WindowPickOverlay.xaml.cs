@@ -221,16 +221,21 @@ public partial class WindowPickOverlay : Window
     // ============ 收尾：所有出口走同一个幂等 Finish ============
 
     /// <summary>
-    /// 唯一的关闭入口。右键连点 / Esc 连按 / 按钮重复触发只会生效一次；
+    /// 唯一的关闭入口。连点 / Esc 连按 / 按钮重复触发只会生效一次；
     /// <c>DialogResult</c> 万一在非 ShowDialog 场景下抛异常，还有 <see cref="Window.Close"/> 兜底。
     /// </summary>
-    private void Finish(bool accept, bool wantsList)
+    /// <param name="swallowInput">
+    /// 要不要把「这一下退出」的按键抬起吞掉。**只有键盘出口（Esc / Enter）需要**：
+    /// 鼠标点按是按下 + 抬起成对结束（见 <c>Window_MouseUp</c> / <c>Window_Cancel</c>），
+    /// 窗口自己已经收下了抬起，不用再让钩子去吞——少一次跨进程吞键就少一类「按键状态卡住」的坑。
+    /// </param>
+    private void Finish(bool accept, bool wantsList, bool swallowInput)
     {
         if (_finished) return;
         _finished = true;
 
-        // 按下就走（右键取消 / 单击选中）：这一下点击的抬起别漏给下面的程序
-        Features.CapturePro.ExitInput.Swallow();
+        if (swallowInput) Features.CapturePro.ExitInput.Swallow();
+        Features.CapturePro.ExitInput.ReleaseMouseCapture();
 
         WantsList = wantsList;
         if (accept) Result = new SystemPickerDialog.WindowInfo(_title, _class, _process, _current);
@@ -238,30 +243,39 @@ public partial class WindowPickOverlay : Window
         catch { Close(); }
     }
 
+    /// <summary>左键按下：只记「这一下按在遮罩上」，不关窗（抬起时才确认，按下 + 抬起成对）。</summary>
     private void Window_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        // 点在顶部按钮上时别把它当成「选中窗口」（Preview 隧道先到窗口层，
-        // 直接 Finish 会把按钮的 Click 吞掉）。
         if (OverBarButton(e.OriginalSource as DependencyObject)) return;
-        if (_current == IntPtr.Zero) return;
-        Finish(true, false);
         e.Handled = true;
     }
+
+    /// <summary>左键抬起：选中光标下的窗口并关闭。</summary>
+    private void Window_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (OverBarButton(e.OriginalSource as DependencyObject)) return;
+        e.Handled = true;
+        if (_current == IntPtr.Zero) return;
+        Finish(true, false, swallowInput: false);
+    }
+
+    /// <summary>右键按下：吞掉，等抬起再取消（成对，别让下面那个窗口收到半截点击）。</summary>
+    private void Window_RightDown(object sender, MouseButtonEventArgs e) => e.Handled = true;
 
     private void Window_Cancel(object sender, MouseButtonEventArgs e)
     {
-        Finish(false, false);
+        Finish(false, false, swallowInput: false);
         e.Handled = true;
     }
 
-    private void Cancel_Click(object sender, RoutedEventArgs e) => Finish(false, false);
+    private void Cancel_Click(object sender, RoutedEventArgs e) => Finish(false, false, swallowInput: false);
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape) { Finish(false, false); e.Handled = true; }
+        if (e.Key == Key.Escape) { Finish(false, false, swallowInput: true); e.Handled = true; }
         else if (e.Key == Key.Enter && _current != IntPtr.Zero)
         {
-            Finish(true, false);
+            Finish(true, false, swallowInput: true);
             e.Handled = true;
         }
     }
@@ -269,10 +283,10 @@ public partial class WindowPickOverlay : Window
     /// <summary>keydown 万一被窗口激活吃掉，keyup 再兜一次（Finish 幂等）。</summary>
     private void Window_KeyUp(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape) { Finish(false, false); e.Handled = true; }
+        if (e.Key == Key.Escape) { Finish(false, false, swallowInput: true); e.Handled = true; }
     }
 
-    private void List_Click(object sender, RoutedEventArgs e) => Finish(false, true);
+    private void List_Click(object sender, RoutedEventArgs e) => Finish(false, true, swallowInput: false);
 
     private bool OverBarButton(DependencyObject? src)
     {

@@ -90,6 +90,23 @@ internal static class Win32
     [DllImport("user32.dll")]
     public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr dwExtraInfo);
 
+    /// <summary>
+    /// 释放**本线程**当前持有的鼠标捕获（有就释放，没有是空操作）。
+    /// </summary>
+    /// <remarks>
+    /// 全屏遮罩是「按下就走」：窗口在鼠标按下那一下里关掉，配对的那一下抬起被钩子吞掉
+    /// （见 <c>Features/CapturePro/ExitInput</c>）。如果这一下按下让本线程的某个窗口
+    /// （遮罩自己、或者刚被恢复的宿主窗口）拿到了 Win32 捕获，抬起又永远收不到，
+    /// 捕获不会自己松——之后**全系统的左键**都送给那个窗口，看起来就是「左键点了没反应」。
+    /// 所以退出遮罩时无条件补一次。
+    /// </remarks>
+    [DllImport("user32.dll")]
+    public static extern bool ReleaseCapture();
+
+    /// <summary>当前线程是否握着鼠标捕获（诊断 / 冒烟用）。</summary>
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetCapture();
+
     [DllImport("user32.dll")]
     public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 
@@ -216,9 +233,9 @@ internal static class Win32
     public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
     public const int GwlExstyle = -20;
+    public const long WsExTopmost = 0x00000008;
     public const long WsExTransparent = 0x00000020;
     public const long WsExToolwindow = 0x00000080;
-
     /// <summary>
     /// 分层窗口。**只有同时带 <see cref="WsExTransparent"/> 时**才算「鼠标全透过去」——
     /// 单独一个 WS_EX_TRANSPARENT 对非分层顶层窗口只是绘画顺序，仍然能收输入。
@@ -345,6 +362,43 @@ internal static class Win32
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
+
+    /// <summary>
+    /// 当前「用户通知状态」：资源管理器靠它判断是不是有全屏应用在前台。
+    /// 返回 0 = 成功，<paramref name="state"/> 是下面 <c>Quns*</c> 之一。
+    /// </summary>
+    /// <remarks>
+    /// 全屏 topmost 遮罩（点选器 / 截图覆盖层）关掉后，Explorer 可能还停在
+    /// <see cref="QunsRunningD3dFullScreen"/> / <see cref="QunsBusy"/> 里——这时任务栏**看得见、
+    /// 悬停有高亮、点击却不响应**，再点一次右键（Explorer 自己弹菜单）才恢复。退出遮罩时查一下，
+    /// 还停在全屏态就主动让任务栏激活一次，把 Explorer 的状态踢回去。
+    /// </remarks>
+    [DllImport("shell32.dll")]
+    public static extern int SHQueryUserNotificationState(out int state);
+
+    public const int QunsNotPresent = 1;
+    public const int QunsBusy = 2;
+    public const int QunsRunningD3dFullScreen = 3;
+    public const int QunsPresentationMode = 4;
+    public const int QunsAcceptsNotifications = 5;
+    public const int QunsQuietTime = 6;
+    public const int QunsApp = 7;
+
+    /// <summary>这个通知状态算不算「系统认为有全屏应用 / 正忙」（任务栏点击会被抑制）。</summary>
+    public static bool IsFullScreenState(int state)
+        => state is QunsBusy or QunsRunningD3dFullScreen or QunsPresentationMode;
+
+    public static string DescribeUserNotificationState(int state) => state switch
+    {
+        QunsNotPresent => "notPresent（无人使用）",
+        QunsBusy => "busy（全屏 / 演示中，任务栏点击会被抑制）",
+        QunsRunningD3dFullScreen => "d3dFullScreen（全屏应用在前台）",
+        QunsPresentationMode => "presentationMode（演示模式）",
+        QunsAcceptsNotifications => "acceptsNotifications（正常）",
+        QunsQuietTime => "quietTime（免打扰）",
+        QunsApp => "app（应用在前台）",
+        _ => "未知(" + state + ")",
+    };
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);

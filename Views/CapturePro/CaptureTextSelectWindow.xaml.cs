@@ -74,7 +74,7 @@ public partial class CaptureTextSelectWindow : Window
         DpiChanged += (_, _) => { PinToMonitor(); SyncScale(); };
 
         // 右键 / Esc 关窗：把「那一下」的抬起也吞掉，别漏给下面的程序（见 ExitInput）
-        Closed += (_, _) => ExitInput.Swallow();
+        Closed += (_, _) => { ExitInput.Swallow(); ExitInput.ReleaseMouseCapture(); };
     }
 
     // ============ 生命周期 ============

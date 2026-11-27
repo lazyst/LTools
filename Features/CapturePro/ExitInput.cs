@@ -36,6 +36,8 @@ internal static class ExitInput
         if (!left && !right && !middle && key == 0) return;
 
         var sampled = new SwallowInputEvent(left, right, middle, key);
+        // 只记一行：这条链路是跨进程的输入收尾，出问题（吞错键 / 捕获不松）时全靠它定位。
+        AppLog.Info("Exit", $"关窗收尾：left={left} right={right} middle={middle} key={key} host={AppRole.IsUiHost}");
         if (AppRole.IsUiHost) InputBridge.Swallow(sampled);
         else Apply(sampled);
     }
@@ -45,6 +47,22 @@ internal static class ExitInput
     {
         MouseHook.SwallowReleases(sampled.Left, sampled.Right, sampled.Middle);
         KeyboardHook.ArmRelease(sampled.Key);
+    }
+
+    /// <summary>
+    /// 关窗时把鼠标捕获松开（UI 线程调用）。
+    /// </summary>
+    /// <remarks>
+    /// 遮罩 / 覆盖层是「按下就走」：窗口在鼠标按下的那一下里关掉，配对的那一下抬起由
+    /// <see cref="Swallow"/> 吞掉，所以那个窗口永远收不到抬起。窗口自己在按下时如果拿到了
+    /// Win32 捕获（WPF 的输入层、刚被恢复的宿主窗口都可能拿），捕获不会自己松——之后
+    /// **全系统的鼠标输入**都送给它，表现就是「左键点哪儿都没反应」，直到下一次点击才恢复。
+    /// 退出时无条件补一次；没有捕获时是空操作。
+    /// </remarks>
+    public static void ReleaseMouseCapture()
+    {
+        try { System.Windows.Input.Mouse.Capture(null); } catch { /* 不在 UI 线程 / 已关闭 */ }
+        try { Win32.ReleaseCapture(); } catch { /* 没捕获 */ }
     }
 
     private static bool IsDown(int vk) => (Win32.GetAsyncKeyState(vk) & 0x8000) != 0;

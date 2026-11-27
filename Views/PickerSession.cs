@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Threading;
 using System.Windows;
+using LTools.Core;
 using LTools.Hooks;
 
 namespace LTools.Views;
@@ -41,6 +42,7 @@ internal sealed class PickerSession : IDisposable
         //（照 ScreenPicker.TryPickRegion 的已验证做法）。
         Action restore = TransientMinimize.MinimizeAll(owner);
         PickerHook.SetActive(true);
+        AppLog.Info("Picker", "点选器开始：收起窗口、鼠标钩子让路");
         try
         {
             Thread.Sleep(TransientMinimize.SettleMs);   // 等最小化动画结束、桌面重绘完
@@ -50,12 +52,28 @@ internal sealed class PickerSession : IDisposable
             {
                 PickerHook.SetActive(false);
                 restore();
+                // 全屏 topmost 遮罩关掉后必须把前台交回一个普通窗口：资源管理器要靠这次激活
+                // 才把「全屏应用期间压下去的任务栏」重新抬起来。`Activate()` 常被前台锁挡回去，
+                // 所以走项目里那条兜底（SetForegroundWindow + AttachThreadInput，不等待）。
+                if (owner != null)
+                {
+                    try { Features.WindowAction.ActivateNoWait(new System.Windows.Interop.WindowInteropHelper(owner).Handle); }
+                    catch { /* 窗口已关 */ }
+                }
+                // 遮罩是「按下就走」：这一下按下的抬起被吞了，本线程要是因此握着捕获就再也松不开
+                //（之后全系统左键都送给那个窗口，表现成「左键点哪儿都没反应」）。
+                Features.CapturePro.ExitInput.ReleaseMouseCapture();
+                // 另一个同症状的成因是「置顶窗口压着任务栏」：退出时查一遍，命中就点名记 warning。
+                PickerExitAudit.Report();
+                PickerExitAudit.CheckLater();   // 250ms 后再看一次 Explorer 的通知状态
+                AppLog.Info("Picker", "点选器结束：窗口已恢复、鼠标钩子恢复");
             });
         }
         catch
         {
             PickerHook.SetActive(false);
             restore();
+            Features.CapturePro.ExitInput.ReleaseMouseCapture();
             throw;
         }
     }

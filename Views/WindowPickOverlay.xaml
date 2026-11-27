@@ -11,10 +11,9 @@
         PreviewKeyUp="Window_KeyUp"
         PreviewMouseMove="Window_MouseMove"
         PreviewMouseLeftButtonDown="Window_MouseDown"
-        PreviewMouseRightButtonDown="Window_Cancel"
+        PreviewMouseLeftButtonUp="Window_MouseUp"
+        PreviewMouseRightButtonDown="Window_RightDown"
         PreviewMouseRightButtonUp="Window_Cancel"
-        MouseRightButtonDown="Window_Cancel"
-        MouseRightButtonUp="Window_Cancel"
         Loaded="Window_Loaded"
         views:WindowSizing.Mode="Overlay">
     <Window.Resources>

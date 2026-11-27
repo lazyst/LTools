@@ -738,6 +738,8 @@ public partial class CaptureOverlayWindow
     {
         // 退出那一下（右键 / Esc / Enter）的抬起别漏给下面的程序
         ExitInput.Swallow();
+        // 并松开鼠标捕获：抬起被吞掉、捕获不松就会「左键点哪儿都没反应」
+        ExitInput.ReleaseMouseCapture();
 
         StopAutoTimer();
         _scrollTimer?.Stop();

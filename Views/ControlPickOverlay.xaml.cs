@@ -472,41 +472,58 @@ public partial class ControlPickOverlay : Window
 
     // ============ 收尾：所有出口走同一个幂等 Finish ============
 
-    private void Finish(bool accept)
+    /// <summary>
+    /// 唯一的关闭入口。连点 / Esc 连按 / 按钮重复触发只会生效一次。
+    /// </summary>
+    /// <param name="swallowInput">
+    /// 只有键盘出口（Esc / Enter）要吞掉按键抬起；鼠标点按是按下 + 抬起成对结束，
+    /// 窗口自己已经收下了抬起，不该再让钩子跨进程去吞（吞错一次就会让某个窗口以为键还按着）。
+    /// </param>
+    private void Finish(bool accept, bool swallowInput)
     {
         if (_finished) return;
         _finished = true;
 
-        // 按下就走（右键取消 / 单击选中）：这一下点击的抬起别漏给下面的程序
-        Features.CapturePro.ExitInput.Swallow();
+        if (swallowInput) Features.CapturePro.ExitInput.Swallow();
+        Features.CapturePro.ExitInput.ReleaseMouseCapture();
 
         try { DialogResult = accept; }
         catch { Close(); }
     }
 
+    /// <summary>左键按下：只吞掉，不关窗（抬起时才确认，按下 + 抬起成对）。</summary>
     private void Window_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        // 点在顶部按钮上时别把它当成「选中控件」（Preview 隧道先到窗口层）；
-        // 点在信息卡上也不算选中（卡片下面的控件不是它描述的那一个）。
         if (OverTopBar(e.OriginalSource as DependencyObject)) return;
         if (OverCard(e.GetPosition(this))) return;
+        e.Handled = true;
+    }
+
+    /// <summary>左键抬起：选中光标下的控件并关闭。</summary>
+    private void Window_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (OverTopBar(e.OriginalSource as DependencyObject)) return;
+        if (OverCard(e.GetPosition(this))) return;
+        e.Handled = true;
 
         if (_target is not { } node) return;
         if (!ControlTargets.CanTarget(node)) return;   // 信息卡已经写明原因，别静默关掉
 
         Result = new PickedControl(node.Name, node.AutomationId, node.ControlType,
             _windowClass, _windowTitle);
-        Finish(true);
-        e.Handled = true;
+        Finish(true, swallowInput: false);
     }
+
+    /// <summary>右键按下：吞掉，等抬起再取消（成对）。</summary>
+    private void Window_RightDown(object sender, MouseButtonEventArgs e) => e.Handled = true;
 
     private void Window_Cancel(object sender, MouseButtonEventArgs e)
     {
-        Finish(false);
+        Finish(false, swallowInput: false);
         e.Handled = true;
     }
 
-    private void Cancel_Click(object sender, RoutedEventArgs e) => Finish(false);
+    private void Cancel_Click(object sender, RoutedEventArgs e) => Finish(false, swallowInput: false);
 
     private void Tree_Click(object sender, RoutedEventArgs e)
     {
@@ -517,21 +534,21 @@ public partial class ControlPickOverlay : Window
         if (picked == null) return;
 
         Result = picked;
-        Finish(true);
+        Finish(true, swallowInput: false);
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {
-            Finish(false);
+            Finish(false, swallowInput: true);
             e.Handled = true;
         }
         else if (e.Key == Key.Enter && _target is { } node && ControlTargets.CanTarget(node))
         {
             Result = new PickedControl(node.Name, node.AutomationId, node.ControlType,
                 _windowClass, _windowTitle);
-            Finish(true);
+            Finish(true, swallowInput: true);
             e.Handled = true;
         }
     }
@@ -541,7 +558,7 @@ public partial class ControlPickOverlay : Window
     {
         if (e.Key == Key.Escape)
         {
-            Finish(false);
+            Finish(false, swallowInput: true);
             e.Handled = true;
         }
     }

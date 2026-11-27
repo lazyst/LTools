@@ -46,7 +46,7 @@ public partial class RecordCountdownWindow : Window
         _timer.Tick += (_, _) => Tick();
 
         // 右键取消 = 按下就走：抬起别漏给下面的程序（见 ExitInput）
-        Closed += (_, _) => Features.CapturePro.ExitInput.Swallow();
+        Closed += (_, _) => { Features.CapturePro.ExitInput.Swallow(); Features.CapturePro.ExitInput.ReleaseMouseCapture(); };
     }
 
     /// <summary>倒计时走完（或被取消）之后不再变。</summary>

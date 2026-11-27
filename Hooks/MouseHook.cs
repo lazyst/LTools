@@ -59,6 +59,8 @@ internal static class MouseHook
     private static bool _swallowLUp;
     private static bool _swallowRUp;
     private static bool _swallowMUp;
+    /// <summary>上膛时刻（<see cref="Environment.TickCount64"/>）：抬起一直没来就别一直留着。</summary>
+    private static long _swallowArmedTick;
 
     /// <summary>「点击窗口选取」遮罩显示期间：裸右键长按手势让路，鼠标事件原样交给遮罩。</summary>
     private static bool _windowPickerActive;
@@ -341,14 +343,33 @@ internal static class MouseHook
             _swallowLUp |= left;
             _swallowRUp |= right;
             _swallowMUp |= middle;
+            if (left || right || middle) _swallowArmedTick = Environment.TickCount64;
         });
     }
+
+    /// <summary>上膛后多久还没等到抬起就作废（正常是几十到几百毫秒）。</summary>
+    /// <remarks>
+    /// 抬起要是永远没来（键在别的桌面 / 别处被吞、或者窗口关得不是时候），这几个标志会一直留着，
+    /// 然后**吃掉后面某一次无关的点击**——那一下 up 被吞，目标窗口就以为键还按着，
+    /// 表现成「点了没反应，得再点一次」。宁可不吞，也不能吞错。
+    /// </remarks>
+    private const long SwallowTimeoutMs = 1500;
 
     private static bool IsDown(int vk) => (Win32.GetAsyncKeyState(vk) & 0x8000) != 0;
 
     /// <summary>这次事件是不是「关窗那一下的抬起」；是就吞掉（只生效一次）。</summary>
     private static bool TakePendingRelease(int message)
     {
+        // 上膛后迟迟没等到抬起：作废，别让它吃掉后面某一次无关的点击（见 SwallowTimeoutMs）。
+        if ((_swallowLUp || _swallowRUp || _swallowMUp)
+            && Environment.TickCount64 - _swallowArmedTick > SwallowTimeoutMs)
+        {
+            _swallowLUp = false;
+            _swallowRUp = false;
+            _swallowMUp = false;
+            AppLog.Warn("MouseHook", "关窗那一下的抬起一直没来，丢弃上膛状态（避免吞错下一次点击）");
+        }
+
         switch (message)
         {
             // 先看到 down = 上一次的 up 丢了（窗口被别的路径关掉等），清残留，别误吞下一次抬起
@@ -359,16 +380,19 @@ internal static class MouseHook
             case Win32.WmLbuttonup:
                 if (!_swallowLUp) return false;
                 _swallowLUp = false;
+                AppLog.Info("MouseHook", "吞掉关窗那一下的左键抬起");
                 return true;
 
             case Win32.WmRbuttonup:
                 if (!_swallowRUp) return false;
                 _swallowRUp = false;
+                AppLog.Info("MouseHook", "吞掉关窗那一下的右键抬起");
                 return true;
 
             case Win32.WmMbuttonup:
                 if (!_swallowMUp) return false;
                 _swallowMUp = false;
+                AppLog.Info("MouseHook", "吞掉关窗那一下的中键抬起");
                 return true;
 
             default:
@@ -407,7 +431,12 @@ internal static class MouseHook
         }
         else
         {
+            // 让路期间整段右键状态机都没跑：退出时要把「让路之前」残留的半截手势一起清掉，
+            // 否则下一次真实点击会吃到上一轮的 `_suppressRButtonUp` / `_rightPassUpPending` 之类，
+            // 表现成「退出点选器后第一下右键不对」。
             _windowPickerActive = false;
+            CancelPendingGestureCore();
+            _panelCloseOnUp = false;
         }
     }
 
