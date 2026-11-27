@@ -44,8 +44,14 @@ jobs:
           $sevenZip = @("$env:ProgramFiles\7-Zip\7z.exe", "${env:ProgramFiles(x86)}\7-Zip\7z.exe") |
                       Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $sevenZip) { $sevenZip = '7z' }
-          & $sevenZip a -t7z -mx=9 -ms=on -mmt=on "LTools-$ver-win-x64.7z" staging\LTools | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "7z 打包失败（退出码 $LASTEXITCODE）" }
+          # 7z 按「当前目录」记包内路径：直接传 staging\LTools 会在包里多出一层 staging\。
+          # 所以先进到 staging 里再打，包内才是 LTools\…（zip 那边 Compress-Archive 只取末段，不必改）。
+          Push-Location staging
+          try {
+            & $sevenZip a -t7z -mx=9 -ms=on -mmt=on "..\LTools-$ver-win-x64.7z" LTools | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "7z 打包失败（退出码 $LASTEXITCODE）" }
+          }
+          finally { Pop-Location }
           Get-Item "LTools-$ver-win-x64.zip","LTools-$ver-win-x64.7z" | Format-List Name,Length
 
       - name: Create/Update release & upload assets
