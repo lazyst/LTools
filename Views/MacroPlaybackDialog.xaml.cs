@@ -10,7 +10,7 @@ namespace LTools.Views;
 /// 单个宏的回放设置（「键鼠宏」页每行的「回放设置…」）。
 /// </summary>
 /// <remarks>
-/// 三项都是「留空 / 跟随默认」= 用「回放默认值」里的全局值，所以这里不复制全局值进来，
+/// 四项都是「留空 / 跟随默认」= 用「回放默认值」里的全局值，所以这里不复制全局值进来，
 /// 只在提示里写清当前默认是多少——改了全局默认，所有没单独设过的宏立刻跟着变。
 /// 点「确定」时直接写 <see cref="MacroStore.SavePlaybackSettings"/>，由调用方刷新列表。
 /// </remarks>
@@ -34,6 +34,7 @@ public partial class MacroPlaybackDialog : Window
             $"0.1–5，2 = 两倍速；留空跟随默认（{MacroSettings.DefaultSpeed:0.##}×）");
         LoopsHint.Text = string.Create(CultureInfo.CurrentCulture,
             $"跟随默认 = {MacroSettings.PlayLoops} 次；无限 = 一直重放，按停止热键停");
+        ContentHint.Text = $"跟随默认 = {MacroPlaybackContents.Label(MacroSettings.PlaybackContent)}";
 
         CountdownBox.Text = meta?.CountdownMs is int c ? c.ToString(CultureInfo.CurrentCulture) : "";
         SpeedBox.Text = meta is { Speed: > 0 } ? meta.Speed.ToString("0.##", CultureInfo.CurrentCulture) : "";
@@ -53,6 +54,22 @@ public partial class MacroPlaybackDialog : Window
             LoopsBox.Text = loops.ToString(CultureInfo.CurrentCulture);
         }
         UpdateLoopsVisibility();
+
+        // 回放内容：null / 空 = 跟随默认（第 0 项），否则按英文键选中
+        if (string.IsNullOrWhiteSpace(meta?.Content))
+        {
+            ContentBox.SelectedIndex = 0;
+        }
+        else
+        {
+            string id = MacroPlaybackContents.Id(MacroPlaybackContents.Parse(meta.Content));
+            ContentBox.SelectedIndex = id switch
+            {
+                MacroPlaybackContents.KeyboardId => 2,
+                MacroPlaybackContents.MouseId => 3,
+                _ => 1,
+            };
+        }
 
         Loaded += (_, _) => CountdownBox.Focus();
     }
@@ -119,7 +136,7 @@ public partial class MacroPlaybackDialog : Window
             return;
         }
 
-        var overrides = new MacroStore.MacroPlaybackOverride(speed, loops, countdown);
+        var overrides = new MacroStore.MacroPlaybackOverride(speed, loops, countdown, SelectedContent());
         try
         {
             MacroStore.SavePlaybackSettings(_macroId, _name, overrides);
@@ -139,11 +156,18 @@ public partial class MacroPlaybackDialog : Window
         return v is >= 1 and <= 99 ? v : null;
     }
 
+    /// <summary>「回放内容」下拉 → 覆盖值；<c>null</c> = 跟随全局默认。</summary>
+    private string? SelectedContent()
+        => (ContentBox.SelectedItem as ComboBoxItem)?.Tag as string is { Length: > 0 } tag && tag != "inherit"
+            ? tag
+            : null;
+
     private void Reset_Click(object sender, RoutedEventArgs e)
     {
         CountdownBox.Text = "";
         SpeedBox.Text = "";
         LoopsModeBox.SelectedIndex = 0;
+        ContentBox.SelectedIndex = 0;
         UpdateLoopsVisibility();
         HideError();
     }

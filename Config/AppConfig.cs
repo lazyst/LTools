@@ -54,6 +54,12 @@ public sealed class MacroConfig
     /// <summary>回放循环次数的全局默认值（1 = 只回放一次，1–99；宏可单独覆盖或设为无限）。</summary>
     public int Loops { get; set; } = 1;
 
+    /// <summary>
+    /// 回放内容的全局默认值：<c>all</c> 全部 / <c>keyboard</c> 仅键盘 / <c>mouse</c> 仅鼠标
+    /// （宏可单独覆盖；解析与中文名见 <see cref="Features.MacroPlaybackContents"/>）。
+    /// </summary>
+    public string PlaybackContent { get; set; } = "all";
+
     /// <summary>上次录制的宏 Id。</summary>
     public string? LastMacroId { get; set; }
 

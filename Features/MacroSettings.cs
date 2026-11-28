@@ -66,6 +66,10 @@ internal static class MacroSettings
     /// <summary>默认回放循环次数（宏未单独设置时使用，1–99）。</summary>
     public static int PlayLoops { get; private set; } = 1;
 
+    private static volatile int _playbackContent;   // MacroPlaybackContent（volatile 字段不能是枚举，按 int 存）
+    /// <summary>回放内容的全局默认值（宏未单独设置时使用）。</summary>
+    public static MacroPlaybackContent PlaybackContent => (MacroPlaybackContent)_playbackContent;
+
     public static string RecordHotkeyDisplay => FormatHotkey(RecordHotkey);
 
     public static string PlaybackStopHotkeyDisplay => FormatHotkey(PlaybackStopHotkey);
@@ -83,6 +87,7 @@ internal static class MacroSettings
         _maxEvents = Math.Clamp(m.MaxEvents, 1_000, 2_000_000);
         DefaultSpeed = Math.Clamp(m.DefaultSpeed, 0.1, 5.0);
         PlayLoops = Math.Clamp(m.Loops, 1, 99);
+        _playbackContent = (int)MacroPlaybackContents.Parse(m.PlaybackContent);
 
         if (!TryParseHotkey(RecordHotkey, out var rv, out var rm, out var err))
         {

@@ -213,6 +213,24 @@
                                        VerticalAlignment="Center" Text="1–99"/>
                         </Grid>
 
+                        <Grid Style="{StaticResource FieldRow}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150"/>
+                                <ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="回放内容"/>
+                            <ComboBox Grid.Column="1" x:Name="PlaybackContentBox"
+                                      SelectionChanged="PlaybackContent_Changed">
+                                <ComboBoxItem Content="全部" Tag="all"/>
+                                <ComboBoxItem Content="仅键盘" Tag="keyboard"/>
+                                <ComboBoxItem Content="仅鼠标" Tag="mouse"/>
+                            </ComboBox>
+                            <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}" Margin="8,0,0,0"
+                                       VerticalAlignment="Center" TextWrapping="Wrap"
+                                       Text="默认放整段；某个宏可以单独改（回放设置…）"/>
+                        </Grid>
+
                         <Expander Header="高级" Margin="0,4,0,0">
                             <StackPanel Margin="0,8,0,0">
                                 <Grid Style="{StaticResource FieldRow}">

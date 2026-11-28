@@ -372,6 +372,25 @@ dotnet run                                # 14 条，约 10 秒
 `Unknown encoder` / `No such filter`，这里立刻红。硬件编码器只报告不断言（CI 机器没独显）；
 `-buildconf` 里带 `--disable-everything` 时还会断言文件 < 60 MB。`LTOOLS_FFMPEG=<路径>` 可指定另一份。
 
+### `MacroPlaybackSmoke`（宏「回放内容」：真注入 + 真键盘钩子）
+
+```powershell
+dotnet build -p:NoWin32Manifest=true      # 先构建产品（同样直接引用 bin\Debug 里的 LTools.dll）
+cd tests\MacroPlaybackSmoke
+dotnet run --no-build                     # 23 条，约 4 秒
+```
+
+一段宏里同时有 `F24` 的按下 / 抬起与一次鼠标移动，用「全部 / 仅键盘 / 仅鼠标」各放一遍，
+看**注入侧真的发生了什么**：本进程装一个 `WH_KEYBOARD_LL` 数注入的按键（钩子看得到 `LLKHF_INJECTED`），
+鼠标侧用 `GetCursorPos`——只放键盘时光标一动不动、只放鼠标时一个键都没注入、全部时两边都放；
+只有按键的宏选「仅鼠标」、只有鼠标的宏选「仅键盘」都必须**明确报错**（「宏里没有鼠标 / 键盘事件」），
+报过错之后还能继续正常回放（`_playing` 已复位）。
+再在临时数据根上验配置往返：全局默认 `macros.playbackContent` + 每宏 `content`（读得到、写得回、
+取消覆盖后字段不再落盘并跟随全局）；最后建出设置页与「回放设置…」对话框（不显示窗口）：
+设置页那行三档都在、回显全局默认、选中即写盘并让运行期设置立刻生效；对话框四档都在、
+`meta.Content = mouse` 回显「仅鼠标」、没设过回显「跟随默认」。
+只注入 `F24`（几乎没人绑定）与「移动到某点」，**不点击、不滚轮**，结束时把光标放回原处。
+
 ### 写法约定
 
 - `Check(条件, "中文断言文案")`：失败只记一条，不中断（最后汇总失败数）。

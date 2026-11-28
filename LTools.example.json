@@ -129,6 +129,7 @@
     "MaxEvents": 200000,
     "DefaultSpeed": 1.0,
     "Loops": 1,
+    "PlaybackContent": "all",
     "LastMacroId": null,
     "Items": []
   },

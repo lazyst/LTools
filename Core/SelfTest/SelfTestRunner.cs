@@ -80,6 +80,7 @@ internal static class SelfTestRunner
         ProcessSuite.Register(cases);
         SettingsSearchSuite.Register(cases);
         HotkeySuite.Register(cases);
+        MacroSuite.Register(cases);
 
         var lines = new List<string>();
         var stopwatch = Stopwatch.StartNew();

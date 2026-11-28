@@ -50,16 +50,27 @@ internal static class MacroPlayer
 
         var started = Stopwatch.StartNew();
         AppLog.Info("Macro",
-            $"回放「{macro.Name}」· {macro.Events?.Count ?? 0} 个事件 · 循环 {(options.Loops < 0 ? "无限" : options.Loops.ToString())} · 速度 {options.Speed:0.##}x");
+            $"回放「{macro.Name}」· {macro.Events?.Count ?? 0} 个事件 · 循环 {(options.Loops < 0 ? "无限" : options.Loops.ToString())} · 速度 {options.Speed:0.##}x · 内容 {MacroPlaybackContents.Label(options.Content)}");
 
         try
         {
+            // 过滤后一条事件都不剩：明确失败，不假装放完了一遍（动作里跑就是这一步失败）。
+            if (options.Content != MacroPlaybackContent.All &&
+                MacroPlaybackContents.CountAccepted(macro.Events, options.Content) == 0)
+            {
+                throw new InvalidOperationException(
+                    $"宏「{macro.Name}」里没有{ContentWord(options.Content)}事件（回放内容 = {MacroPlaybackContents.Label(options.Content)}）");
+            }
+
             RegisterStopHotkey(options);
             // 回放期间挂一条常驻提示（含停止热键），结束时收掉：用户随时知道「怎么停」。
+            string suffix = options.Content == MacroPlaybackContent.All
+                ? ""
+                : $"（{MacroPlaybackContents.Label(options.Content)}）";
             ToastService.Show(
                 options.Loops < 0
-                    ? $"「{macro.Name}」无限循环中 · 按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止"
-                    : $"「{macro.Name}」回放中 · 按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止",
+                    ? $"「{macro.Name}」{suffix}无限循环中 · 按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止"
+                    : $"「{macro.Name}」{suffix}回放中 · 按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止",
                 "键鼠宏", ToastService.LongMs, ToastKind.info, key: PlayKey);
             // 整段回放占住注入闸：两段宏交错会变成乱码；等待锁期间按停止热键照样能打断。
             using (LTools.Core.InputGate.Enter(LTools.Core.InputKind.Macro))
@@ -127,6 +138,10 @@ internal static class MacroPlayer
 
                 foreach (var e in events)
                 {
+                    // 「回放内容」过滤：不注入的整类事件直接跳过；剩下的仍按原来的时间戳走，
+                    // 所以节奏与整段时长都不变（跳过的事件不占时间轴，但也不会拖慢后面）。
+                    if (!MacroPlaybackContents.Accepts(options.Content, e.Kind)) continue;
+
                     int target = (int)(e.TimeMs / speed);
                     if (!WaitUntil(sw, target)) break;
 
@@ -154,6 +169,10 @@ internal static class MacroPlayer
             _wake.Reset();
         }
     }
+
+    /// <summary>「回放内容」为空时的提示用词（键盘 / 鼠标）。</summary>
+    private static string ContentWord(MacroPlaybackContent content)
+        => content == MacroPlaybackContent.Mouse ? "鼠标" : "键盘";
 
     /// <summary>等到相对开始时间的 targetMs；可被 <see cref="Stop"/> 立即唤醒。</summary>
     private static bool WaitUntil(Stopwatch sw, int targetMs)

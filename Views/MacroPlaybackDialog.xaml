@@ -20,7 +20,7 @@
             <Grid Margin="20,10,20,16">
                 <Button x:Name="ResetBtn" Style="{StaticResource BtnGhost}" Content="恢复默认"
                         HorizontalAlignment="Left" MinWidth="80" Click="Reset_Click"
-                        ToolTip="三项都改回跟随全局默认"/>
+                        ToolTip="四项都改回跟随全局默认"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Style="{StaticResource BtnGhost}" Content="取消" MinWidth="74"
                             IsCancel="True" Click="Cancel_Click"/>
@@ -81,6 +81,25 @@
                 <TextBox Grid.Column="2" x:Name="LoopsBox" MinHeight="30" Width="64"
                          Margin="8,0,0,0" Visibility="Collapsed"/>
                 <TextBlock Grid.Column="3" x:Name="LoopsHint" Style="{StaticResource HintLabel}"
+                           Margin="8,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </Grid>
+
+            <!-- 回放内容 -->
+            <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="110"/>
+                    <ColumnDefinition Width="100"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="回放内容" VerticalAlignment="Center"
+                           Foreground="{StaticResource SecondaryTextBrush}"/>
+                <ComboBox Grid.Column="1" x:Name="ContentBox" MinHeight="30">
+                    <ComboBoxItem Content="跟随默认" Tag="inherit"/>
+                    <ComboBoxItem Content="全部" Tag="all"/>
+                    <ComboBoxItem Content="仅键盘" Tag="keyboard"/>
+                    <ComboBoxItem Content="仅鼠标" Tag="mouse"/>
+                </ComboBox>
+                <TextBlock Grid.Column="2" x:Name="ContentHint" Style="{StaticResource HintLabel}"
                            Margin="8,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
             </Grid>
 

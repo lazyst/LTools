@@ -15,6 +15,78 @@ public enum MacroEventKind : byte
     HWheel,
 }
 
+/// <summary>回放内容：整段照放、只放键盘、或只放鼠标。</summary>
+/// <remarks>
+/// 过滤在回放侧（<see cref="MacroPlayer.PlayCore"/>）做，录制永远整段录：
+/// 同一份宏随时能换一种放法，也不用为了「只放键盘」重录一遍。
+/// </remarks>
+public enum MacroPlaybackContent : byte
+{
+    All,
+    Keyboard,
+    Mouse,
+}
+
+/// <summary>
+/// 「回放内容」的英文键 / 中文名 / 事件归类——唯一实现。
+/// </summary>
+/// <remarks>
+/// 配置里存英文键（<c>settings.json</c> 的 <c>macros.playbackContent</c>、每个宏的 <c>content</c>），
+/// 界面与提示才用中文名。新增事件类型时只改 <see cref="Accepts"/> 一处，
+/// 别在回放器里另写一套「哪些算鼠标」。
+/// </remarks>
+internal static class MacroPlaybackContents
+{
+    public const string AllId = "all";
+    public const string KeyboardId = "keyboard";
+    public const string MouseId = "mouse";
+
+    /// <summary>解析配置值；认不出 / 空 = <see cref="MacroPlaybackContent.All"/>。</summary>
+    public static MacroPlaybackContent Parse(string? id) => id?.Trim().ToLowerInvariant() switch
+    {
+        KeyboardId => MacroPlaybackContent.Keyboard,
+        MouseId => MacroPlaybackContent.Mouse,
+        _ => MacroPlaybackContent.All,
+    };
+
+    /// <summary>写回配置用的英文键。</summary>
+    public static string Id(MacroPlaybackContent content) => content switch
+    {
+        MacroPlaybackContent.Keyboard => KeyboardId,
+        MacroPlaybackContent.Mouse => MouseId,
+        _ => AllId,
+    };
+
+    /// <summary>界面 / 提示里的中文名。</summary>
+    public static string Label(MacroPlaybackContent content) => content switch
+    {
+        MacroPlaybackContent.Keyboard => "仅键盘",
+        MacroPlaybackContent.Mouse => "仅鼠标",
+        _ => "全部",
+    };
+
+    /// <summary>这一类事件在过滤后还要不要注入。</summary>
+    public static bool Accepts(MacroPlaybackContent content, MacroEventKind kind) => content switch
+    {
+        MacroPlaybackContent.Keyboard => kind is MacroEventKind.KeyDown or MacroEventKind.KeyUp,
+        // 鼠标一侧写成「不是按键」：以后加新的鼠标事件类型不会漏。
+        MacroPlaybackContent.Mouse => kind is not (MacroEventKind.KeyDown or MacroEventKind.KeyUp),
+        _ => true,
+    };
+
+    /// <summary>过滤后还剩多少条事件；0 = 这个宏里没有这一类内容。</summary>
+    public static int CountAccepted(IReadOnlyList<MacroEvent>? events, MacroPlaybackContent content)
+    {
+        if (events == null || events.Count == 0) return 0;
+        if (content == MacroPlaybackContent.All) return events.Count;
+
+        int count = 0;
+        for (int i = 0; i < events.Count; i++)
+            if (Accepts(content, events[i].Kind)) count++;
+        return count;
+    }
+}
+
 /// <summary>
 /// 录制宏中的单个事件。为控制文件体积，JSON 字段名使用短名（见 <see cref="JsonPropertyNameAttribute"/>）。
 /// </summary>
@@ -95,6 +167,12 @@ public sealed class MacroMeta
 
     /// <summary>回放前倒计时（ms）：null = 跟随全局默认。</summary>
     public int? CountdownMs { get; set; }
+
+    /// <summary>
+    /// 该宏单独设置的回放内容（<c>keyboard</c> / <c>mouse</c> / <c>all</c>）；
+    /// null / 空 = 跟随 <c>settings.json</c> 里 <c>macros.playbackContent</c> 的全局默认。
+    /// </summary>
+    public string? Content { get; set; }
 
     /// <summary>时长显示文本（仅 UI 使用，不落盘）。</summary>
     [JsonIgnore]

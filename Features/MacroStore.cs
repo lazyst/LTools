@@ -205,7 +205,7 @@ internal static class MacroStore
     // ============ 回放参数（每宏独立，缺省回退全局） ============
 
     /// <summary>某个宏实际生效的回放参数；<see cref="Loops"/> = -1 表示无限循环。</summary>
-    public readonly record struct MacroPlayback(double Speed, int Loops, int CountdownMs);
+    public readonly record struct MacroPlayback(double Speed, int Loops, int CountdownMs, MacroPlaybackContent Content);
 
     /// <summary>
     /// 解析某宏的回放参数：元数据里的专属值优先，缺失时回退 <see cref="MacroSettings"/> 的全局默认。
@@ -220,20 +220,24 @@ internal static class MacroStore
         int countdown = meta?.CountdownMs is int c && c >= 0
             ? Math.Clamp(c, 0, 10_000)
             : MacroSettings.PlaybackCountdownMs;
-        return new MacroPlayback(speed, loops, countdown);
+        var content = string.IsNullOrWhiteSpace(meta?.Content)
+            ? MacroSettings.PlaybackContent
+            : MacroPlaybackContents.Parse(meta.Content);
+        return new MacroPlayback(speed, loops, countdown, content);
     }
 
     /// <summary>
     /// 某个宏的回放参数覆盖值：字段为 <c>null</c> = 该字段跟随全局默认。
-    /// <see cref="Loops"/> = -1 表示无限循环，1–99 表示次数。
+    /// <see cref="Loops"/> = -1 表示无限循环，1–99 表示次数；
+    /// <see cref="Content"/> 为 <c>null</c> = 跟随全局（否则是 <c>all</c> / <c>keyboard</c> / <c>mouse</c>）。
     /// </summary>
-    public readonly record struct MacroPlaybackOverride(double? Speed, int? Loops, int? CountdownMs)
+    public readonly record struct MacroPlaybackOverride(double? Speed, int? Loops, int? CountdownMs, string? Content)
     {
         /// <summary>全部跟随默认（「恢复默认」）。</summary>
-        public static MacroPlaybackOverride None => new(null, null, null);
+        public static MacroPlaybackOverride None => new(null, null, null, null);
 
         /// <summary>有没有任何字段是单独设过的。</summary>
-        public bool Any => Speed != null || Loops != null || CountdownMs != null;
+        public bool Any => Speed != null || Loops != null || CountdownMs != null || Content != null;
     }
 
     /// <summary>
@@ -251,6 +255,9 @@ internal static class MacroStore
             item.Speed = value.Speed is double s ? Math.Clamp(s, 0.1, 5.0) : 0;
             item.Loops = value.Loops is int l ? (l < 0 ? -1 : Math.Clamp(l, 1, 99)) : null;
             item.CountdownMs = value.CountdownMs is int c ? Math.Clamp(c, 0, 10_000) : null;
+            item.Content = string.IsNullOrWhiteSpace(value.Content)
+                ? null
+                : MacroPlaybackContents.Id(MacroPlaybackContents.Parse(value.Content));
             if (!string.IsNullOrWhiteSpace(name)) item.Name = name.Trim();
         });
         Invalidate();

@@ -113,6 +113,12 @@ public partial class MacroView : UserControl
             CountdownBox.Text = m.CountdownMs.ToString();
             SpeedBox.Text = m.DefaultSpeed.ToString("0.##");
             LoopsBox.Text = m.Loops.ToString();
+            PlaybackContentBox.SelectedIndex = MacroPlaybackContents.Parse(m.PlaybackContent) switch
+            {
+                MacroPlaybackContent.Keyboard => 1,
+                MacroPlaybackContent.Mouse => 2,
+                _ => 0,
+            };
             SampleMsBox.Text = m.MouseSampleMs.ToString();
             SamplePxBox.Text = m.MouseSamplePx.ToString();
             MaxEventsBox.Text = m.MaxEvents.ToString();
@@ -257,7 +263,7 @@ public partial class MacroView : UserControl
             key: "macro:play:hint");
     }
 
-    /// <summary>单个宏的回放设置（倒计时 / 速度 / 循环）：只改这一个宏，留空 = 跟随默认。</summary>
+    /// <summary>单个宏的回放设置（倒计时 / 速度 / 循环 / 回放内容）：只改这一个宏，留空 = 跟随默认。</summary>
     private void PlaybackSettings_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not MacroRow row) return;
@@ -393,6 +399,14 @@ public partial class MacroView : UserControl
         }
     }
 
+    /// <summary>「回放内容」下拉：选中即写盘（与其它设置同一处 <see cref="Save"/>，运行期立即生效）。</summary>
+    private void PlaybackContent_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading) return;
+        string id = (PlaybackContentBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "all";
+        Save(c => c.PlaybackContent = id);
+    }
+
     /// <summary>只写 <c>configs/macros.json</c>，然后把运行期设置重新载入（钩子立即生效）。</summary>
     private static void Save(Action<MacroConfig> change)
     {
@@ -441,6 +455,11 @@ public partial class MacroView : UserControl
             if (meta.Loops is int loops && loops < 0) parts.Add("无限循环");
             else if (meta.Loops is int n and > 0) parts.Add($"{n} 次");
             if (meta.CountdownMs is int c and > 0) parts.Add($"倒计时 {c} ms");
+            if (!string.IsNullOrWhiteSpace(meta.Content))
+            {
+                var content = MacroPlaybackContents.Parse(meta.Content);
+                if (content != MacroPlaybackContent.All) parts.Add(MacroPlaybackContents.Label(content));
+            }
             return parts.Count == 0 ? "" : " · " + string.Join(" · ", parts);
         }
 

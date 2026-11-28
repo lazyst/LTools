@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    键鼠宏「回放内容」的端到端冒烟（真注入 + 真键盘钩子），不进 CI：
+    - 直接引用 bin\Debug 里的 LTools.dll（先构建产品），用反射调 internal 的 MacroPlayer.PlaySync；
+    - 装一个 WH_KEYBOARD_LL 观察真的注入了哪些按键，用 GetCursorPos 观察鼠标到底动没动；
+    - 只注入 F24（几乎所有程序都不绑）和「移动到某点」，不点任何东西，结束时把光标放回原处。
+
+        dotnet build -p:NoWin32Manifest=true
+        cd tests\MacroPlaybackSmoke
+        dotnet run
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>MacroPlaybackSmoke</AssemblyName>
+    <RootNamespace>MacroPlaybackSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="LTools">
+      <HintPath>..\..\bin\Debug\net10.0-windows10.0.19041.0\LTools.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
