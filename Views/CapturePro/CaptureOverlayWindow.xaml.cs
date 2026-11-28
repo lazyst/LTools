@@ -397,6 +397,31 @@ public partial class CaptureOverlayWindow : Window
             case CaptureToolbar.CaptureAction.Pin: Accept(FinishKind.Pin); break;              // 贴图（Ctrl+T）
             case CaptureToolbar.CaptureAction.Live: Accept(FinishKind.Live); break;            // 实时贴图（Ctrl+W）
             case CaptureToolbar.CaptureAction.Recognize: Accept(FinishKind.Recognize); break;  // 识别（Ctrl+R）
+            // 识别那一叠的其它入口：同一个结果窗，只是打开就停在不同页（识别本身在窗口里跑）
+            case CaptureToolbar.CaptureAction.RecognizeTable:
+                _resultTab = "table";
+                Accept(FinishKind.Recognize);
+                break;
+            case CaptureToolbar.CaptureAction.RecognizeDocument:
+                _resultTab = "document";
+                Accept(FinishKind.Recognize);
+                break;
+            case CaptureToolbar.CaptureAction.RecognizeBarcode:
+                _resultTab = "qr";
+                Accept(FinishKind.Recognize);
+                break;
+            case CaptureToolbar.CaptureAction.ConvertMarkdown:
+                _resultTab = "markdown";
+                Accept(FinishKind.Recognize);
+                break;
+            case CaptureToolbar.CaptureAction.ConvertLatex:
+                _resultTab = "latex";
+                Accept(FinishKind.Recognize);
+                break;
+            case CaptureToolbar.CaptureAction.ConvertHtml:
+                _resultTab = "html";
+                Accept(FinishKind.Recognize);
+                break;
             case CaptureToolbar.CaptureAction.Translate:
                 // 「识别并翻译」：结果窗算完自动按设置里的目标语言翻一遍（上游 captureAndTranslateText）
                 _translate = true;

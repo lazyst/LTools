@@ -59,12 +59,14 @@ public partial class CaptureToolbar
             }
 
             var buttons = new List<FrameworkElement>();
+            CaptureActionTool? lastTool = null;
             foreach (var tool in position.Tools)
             {
                 var button = ActionButtonFor(tool, mode);
                 if (button == null) continue;
                 _actionOrder.Add(tool);
                 buttons.Add(button);
+                lastTool = tool;
             }
 
             if (buttons.Count == 0) continue;
@@ -73,7 +75,7 @@ public partial class CaptureToolbar
             pendingSeparator = false;
 
             if (buttons.Count == 1) AddInline(buttons[0]);
-            else AddActionStack(buttons);
+            else AddActionStack(buttons, lastTool ?? position.Tools[^1], mode);
         }
     }
 
@@ -86,7 +88,21 @@ public partial class CaptureToolbar
         return tool switch
         {
             CaptureActionTool.Recognize => ActionButton("IconRecognize",
-                "识别文字 / 表格 / 二维码（Ctrl+R）", CaptureAction.Recognize),
+                "文本识别（Ctrl+R）· 悬停这一格选表格 / 文档 / 二维码 / LaTeX / Markdown / HTML", CaptureAction.Recognize),
+            CaptureActionTool.Table => ActionButton("IconTableRecognition",
+                "表格识别：把选区认成可编辑表格（合并 / 拆分 / 改字 / 导出 xlsx）",
+                CaptureAction.RecognizeTable),
+            CaptureActionTool.Document => ActionButton("IconDocumentRecognition",
+                "文档识别：按版面生成可编辑文档（导出 docx / pdf / md / html / tex）",
+                CaptureAction.RecognizeDocument),
+            CaptureActionTool.Barcode => ActionButton("IconScanQr",
+                "二维码识别：认出选区里的二维码并给出内容", CaptureAction.RecognizeBarcode),
+            CaptureActionTool.Markdown => ActionButton("IconMarkdown",
+                "转 Markdown：按版面把文字认成 Markdown 源码", CaptureAction.ConvertMarkdown),
+            CaptureActionTool.Latex => ActionButton("IconLatex",
+                "LaTeX 公式识别：把选区里的公式认成 LaTeX 源码", CaptureAction.ConvertLatex),
+            CaptureActionTool.Html => ActionButton("IconHtml",
+                "转 HTML：按版面把文字认成 HTML 源码", CaptureAction.ConvertHtml),
             CaptureActionTool.QrCode => QrButton(),
             CaptureActionTool.Record => ActionButton("IconRecord",
                 "录屏：把当前选区录成 MP4（3 秒倒计时后开始，控制条上可暂停 / 完成 / 取消）",
@@ -254,12 +270,13 @@ public partial class CaptureToolbar
     }
 
     /// <summary>
-    /// 一叠动作（照上游 <c>stackPresentation</c>）：**只露第一个按钮**，鼠标停上去弹出二级工具条
-    /// （这一叠的其余动作），点哪个执行哪个；移开 220ms 自动收起。
+    /// 一叠动作（照上游 <c>stackPresentation</c>）：**只露 position 的最后一项**，鼠标停上去弹出二级工具条
+    /// （整叠按 position 反过来排，入口在最左），点哪个执行哪个；移开 220ms 自动收起。
     /// </summary>
-    private void AddActionStack(IReadOnlyList<FrameworkElement> buttons)
+    private void AddActionStack(IReadOnlyList<FrameworkElement> buttons, CaptureActionTool triggerTool,
+        ToolbarMode mode)
     {
-        var trigger = buttons[0];
+        var trigger = buttons[^1];
 
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         var border = new Border
@@ -291,10 +308,19 @@ public partial class CaptureToolbar
         };
         CenterOn(popup, preferAbove: true);
 
-        foreach (var button in buttons.Skip(1))
+        foreach (var button in buttons.Reverse().Skip(1))
         {
             button.Margin = new Thickness(0, 0, 4, 0);
             row.Children.Add(button);
+        }
+
+        // 弹层里连入口一起列（照上游 popoverItemIds：入口在最左）。工具条上那个按钮不能
+        // 同时挂在弹层里，所以这里新建一个同动作的；点它的效果与点工具条上那个一样。
+        if (ActionButtonFor(triggerTool, mode) is { } entryClone)
+        {
+            entryClone.Margin = new Thickness(0, 0, 4, 0);
+            entryClone.MouseLeftButtonUp += (_, _) => popup.IsOpen = false;
+            row.Children.Insert(0, entryClone);
         }
 
         var close = new System.Windows.Threading.DispatcherTimer
@@ -325,7 +351,7 @@ public partial class CaptureToolbar
         };
 
         // 点二级工具条里的按钮之后收起（按钮自己的 Click 先跑，这里只负责关）
-        foreach (var button in buttons.Skip(1))
+        foreach (var button in buttons.Reverse().Skip(1))
             button.MouseLeftButtonUp += (_, _) => popup.IsOpen = false;
 
         _actionPopups.Add(popup);

@@ -100,7 +100,8 @@ internal static partial class Program
 
             var defaultOrder = new[]
             {
-                "Recognize", "QrCode", "Record", "Pin", "Live", "Translate", "Scroll",
+                "QrCode", "Html", "Markdown", "Latex", "Barcode", "Document", "Table", "Recognize",
+                "Record", "Live", "Pin", "Translate", "Scroll",
                 "Print", "QuickSave", "SaveAs", "More", "Cancel", "Copy",
             };
 
@@ -108,7 +109,7 @@ internal static partial class Program
             var first = OpenOverlay();
             var order = OrderOf(ToolbarOf(first));
             Check(order.SequenceEqual(defaultOrder),
-                "默认顺序：识别 / 二维码 │ 录屏 │ 贴图 / 实时 │ 识别并翻译 │ 长截图 │ 打印 / 快速保存 / 另存为 │ 更多 ｜ 取消 │ 复制："
+                "默认顺序：识别（文字 / 表格 / 文档 / 二维码 / Markdown / HTML）│ 录屏 │ 贴图 / 实时 │ 识别并翻译 │ 长截图 │ 打印 / 快速保存 / 另存为 │ 更多 ｜ 取消 │ 复制："
                 + string.Join(",", order));
 
             // 1 条（工具格与撤销 / 重做之间）+ 1 条（撤销 / 重做与完成动作之间）+ 1 条（布局里取消前面那条）
@@ -118,7 +119,7 @@ internal static partial class Program
             var firstToolbar = ToolbarOf(first);
             var stacks = ((System.Collections.IEnumerable)Field(firstToolbar, "_actionPopups")!)
                 .Cast<System.Windows.Controls.Primitives.Popup>().ToList();
-            Check(stacks.Count == 3, $"默认有 3 叠（识别 / 二维码、贴图 / 实时、打印 / 快速保存 / 另存为），实际 {stacks.Count}");
+            Check(stacks.Count == 3, $"默认有 3 叠（识别、贴图 / 实时、打印 / 快速保存 / 另存为），实际 {stacks.Count}");
 
             System.Windows.Controls.StackPanel StackRow(System.Windows.Controls.Primitives.Popup popup) =>
                 (System.Windows.Controls.StackPanel)((Border)popup.Child).Child;
@@ -126,7 +127,22 @@ internal static partial class Program
             var pinStack = stacks.First(p => StackRow(p).Children.OfType<Button>()
                 .Any(b => (b.ToolTip?.ToString() ?? "").Contains("实时")));
             Check(!pinStack.IsOpen, "二级工具条默认收起");
-            Check(StackRow(pinStack).Children.Count == 1, "贴图那一叠只多一个「实时贴图」");
+            Check(StackRow(pinStack).Children.Count == 2, "贴图那一叠含入口一共两个（贴图到屏幕 / 实时贴图）");
+
+            // 识别那一叠：入口 = 文本识别（点它就是文本识别），弹层按 position 倒排、入口在最左
+            var recognizeStack = stacks.First(p => StackRow(p).Children.OfType<Button>()
+                .Any(b => (b.ToolTip?.ToString() ?? "").Contains("文本识别")));
+            var recognizeRow = StackRow(recognizeStack);
+            Check(recognizeRow.Children.Count == 8,
+                $"识别那一叠含入口一共八个（文本 / 表格 / 文档 / 二维码 / LaTeX / Markdown / HTML / 显示二维码），实际 {recognizeRow.Children.Count}");
+            var popupButtons = recognizeRow.Children.OfType<Button>().ToList();
+            Check((popupButtons[0].ToolTip?.ToString() ?? "").Contains("文本识别"),
+                "弹层最左边是入口「文本识别」（照上游 popoverItemIds）");
+            Check((recognizeStack.PlacementTarget as Button)?.ToolTip?.ToString().Contains("文本识别") == true,
+                "工具条上露出来的按钮就是「文本识别」");
+            Check(popupButtons.Select(b => b.ToolTip?.ToString() ?? "").Any(t => t.Contains("表格识别"))
+                  && popupButtons.Any(b => (b.ToolTip?.ToString() ?? "").Contains("LaTeX")),
+                "弹层里有表格识别与 LaTeX 公式识别");
 
             ((FrameworkElement)pinStack.PlacementTarget!).RaiseEvent(new System.Windows.Input.MouseEventArgs(
                 System.Windows.Input.Mouse.PrimaryDevice, 0)
@@ -149,15 +165,17 @@ internal static partial class Program
             // ============ ② 编辑器：行 = 目录默认顺序，第一行不能「另起一组」 ============
             editor = OpenEditor();
             var rows = Rows(editor);
-            Check(rows.Count == 13, $"编辑器列出 13 个动作（实际 {rows.Count}）");
+            Check(rows.Count == 19, $"编辑器列出 19 个动作（实际 {rows.Count}）");
             Check(string.Join(",", rows.Select(r => r.Tag?.ToString())) ==
-                  "recognize,qrcode,record-screen,pin-to-screen,pin-live,text-translation,"
-                  + "scrolling-screenshot,print,quick-save,save-as-file,more,cancel,copy",
-                "编辑器行顺序照默认布局：" + string.Join(",", rows.Select(r => r.Tag)));
+                  "qrcode,convert-to-html,convert-to-markdown,latex-recognition,barcode-recognition,document-recognition,"
+                  + "table-recognition,recognize,record-screen,pin-live,pin-to-screen,"
+                  + "text-translation,scrolling-screenshot,print,quick-save,save-as-file,more,cancel,copy",
+                "编辑器行顺序照默认布局（识别那一叠按 position 排）：" + string.Join(",", rows.Select(r => r.Tag)));
             Check(!GroupBox(rows[0]).IsEnabled, "第一行不能「另起一组」（前面没有东西）");
             Check(GroupBox(rows[1]).IsEnabled, "第二行可以「另起一组」");
-            Check(GroupBox(rows[2]).IsChecked == true,
-                "第三行（录屏）默认就是新组的开头（识别 / 二维码 与 录屏 分开）");
+            var recordIdx = rows.FindIndex(r => (string?)r.Tag == "record-screen");
+            Check(GroupBox(rows[recordIdx]).IsChecked == true,
+                "录屏默认就是新组的开头（识别那一叠与录屏分开）");
             Check(VisibleBox(rows[0]).IsChecked == true, "默认都显示");
             Check(RowButtons(rows[0]).Count == 2, "每行有上移 / 下移两个按钮");
 
@@ -174,15 +192,15 @@ internal static partial class Program
             var recordRow = rows.First(r => (string?)r.Tag == "record-screen");
             VisibleBox(recordRow).IsChecked = false;
             Pump(editor);
-            Check(Rows(editor).Count == 13, "收起不等于从清单里删掉（行还在，只是勾掉）");
+            Check(Rows(editor).Count == 19, "收起不等于从清单里删掉（行还在，只是勾掉）");
 
             // 保存（Ok_Click 会设 DialogResult，Show 出来的窗口设不了，所以直接走 Save）
             windowType.GetMethod("Save", Inst)!.Invoke(editor, null);
             editor.Close();
             editor = null;
 
-            Check((int)layoutType.GetProperty("VisibleCount", Inst)!.GetValue(CurrentLayout())! == 12,
-                "收起录屏后可见 12 个");
+            Check((int)layoutType.GetProperty("VisibleCount", Inst)!.GetValue(CurrentLayout())! == 18,
+                "收起录屏后可见 18 个");
 
             // ============ ④ 落盘：ui.json 两个字段 ============
             string json = File.ReadAllText(uiFile);

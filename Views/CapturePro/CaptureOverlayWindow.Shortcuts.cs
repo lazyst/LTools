@@ -31,11 +31,14 @@ public partial class CaptureOverlayWindow
     /// <summary>轮换到第几条；-1 = 还没轮换过（下次从最新那块的前一块开始）。</summary>
     private int _recentIndex = -1;
 
-    /// <summary>按了「表格识别」：结果窗算完直接切到表格页。</summary>
-    private bool _tableRequested;
+    /// <summary>这次识别要直接打开哪一页（表格识别 = <c>table</c>，其余为空 = 文字页）。</summary>
+    private string? _resultTab;
+
+    /// <summary>这次识别要直接打开哪一页（<c>table</c> / <c>document</c> / <c>qr</c> / <c>markdown</c> / <c>html</c>）。</summary>
+    internal string? ResultTab => _resultTab;
 
     /// <summary>这次识别要直接打开表格页（<c>table_recognition</c>）。</summary>
-    internal bool TableRequested => _tableRequested;
+    internal bool TableRequested => _resultTab == "table";
 
     /// <summary>这些动作不占 keydown（按住类 / 轻按修饰键），由手势与 keyup 处理。</summary>
     private static readonly HashSet<string> HeldOnKeyDown = new(StringComparer.Ordinal)
@@ -169,7 +172,7 @@ public partial class CaptureOverlayWindow
                 return true;
 
             case "table_recognition":
-                _tableRequested = true;
+                _resultTab = "table";
                 Accept(FinishKind.Recognize);
                 return true;
 

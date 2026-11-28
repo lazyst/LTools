@@ -297,9 +297,17 @@ public partial class CaptureResultWindow
             row + source.RowCount - 1, column + source.ColumnCount - 1)));
     }
 
-    /// <summary>剪贴板里的表格：优先 HTML（带合并 / 表头），没有就按 TSV 文本拆。</summary>
-    private static TableDocument? ReadClipboardTable()
+    /// <summary>剪贴板里有没有能当表格粘的东西（右键菜单据此置灰「粘贴」，照上游 <c>pasteAction</c>）。</summary>
+    private static bool HasClipboardTable()
     {
+        if (NativeClipboard.TryGetHtml(out string html) &&
+            html.Contains("<table", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return NativeClipboard.TryGetText(out string text) && text.Trim().Length > 0;
+    }
+
+    /// <summary>剪贴板里的表格：优先 HTML（带合并 / 表头），没有就按 TSV 文本拆。</summary>
+    private static TableDocument? ReadClipboardTable()    {
         if (NativeClipboard.TryGetHtml(out string html) && html.Length > 0)
         {
             TableDocument document = TableDocument.FromHtml(html, requireTable: true);
@@ -462,10 +470,9 @@ public partial class CaptureResultWindow
         menu.VerticalOffset = local.Y;
 
         TableRange range = TableCanvas.Selection;
-        AddTableMenuItem(menu, "复制", "Ctrl+C", "copy", true);
-        AddTableMenuItem(menu, "粘贴", "Ctrl+V", "paste", true);
-        AddTableMenuItem(menu, "清空内容", "Delete", "clear",
-            _tableDocument.CanMerge(range) || range.IsValid);
+        AddTableMenuItem(menu, "复制", "Ctrl+C", "copy", range.IsValid);
+        AddTableMenuItem(menu, "粘贴", "Ctrl+V", "paste", HasClipboardTable());
+        AddTableMenuItem(menu, "清空内容", "Delete", "clear", range.IsValid);
         menu.Items.Add(new Separator());
         AddTableMenuItem(menu, "合并单元格", null, "merge",
             _tableDocument.CanMerge(range), TableMergeSelection);

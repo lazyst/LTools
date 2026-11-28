@@ -41,6 +41,12 @@ internal static class CaptureActionLayoutStore
             // 两个字段都空 = 还没保存过布局（首次启动走种子配置，拿到的是空集合、不是 null）。
             if (ui.CaptureActionGroups is not { Count: > 0 } && ui.CaptureActionHidden is not { Count: > 0 })
                 return CaptureActionLayout.Default();
+
+            // 从没改过布局的老配置（还是上一版「识别 + 二维码」那一叠）→ 跟新版默认走；
+            // 用户动过一叠就原样保留（与 ToolLayoutStore 同一条口径）。
+            if (CaptureActionLayout.IsLegacyDefault(ui.CaptureActionGroups, ui.CaptureActionHidden))
+                return CaptureActionLayout.Default();
+
             return CaptureActionLayout.Parse(ui.CaptureActionGroups, ui.CaptureActionHidden);
         }
         catch (Exception ex)

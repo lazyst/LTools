@@ -195,6 +195,7 @@ internal static class CaptureSession
         BitmapSource? cursorImage = null;
         bool pin = false, recognize = false, recognizeCopy = false, translate = false;
         bool table = false;
+        string? resultTab = null;
         bool scroll = false, live = false;
         bool record = false;
         var recordArea = Int32Rect.Empty;
@@ -257,6 +258,7 @@ internal static class CaptureSession
                     recognizeCopy = overlay.RecognizeCopyRequested;
                     translate = overlay.TranslateRequested;
                     table = overlay.TableRequested;
+                    resultTab = overlay.ResultTab;
                     scroll = overlay.ScrollRequested;
                     scrollExit = overlay.ScrollAfter;
                     live = overlay.LiveRequested;
@@ -378,7 +380,7 @@ internal static class CaptureSession
             bool quick = pending is CaptureOverlayWindow.PendingAction.Recognize
                 or CaptureOverlayWindow.PendingAction.RecognizeCopy;
             CaptureResultWindow.Show(result.Image, OcrEnginePreference.DefaultForNewProbe, entry,
-                result.Area, recognizeCopy, translate, quick, table ? "table" : null);
+                result.Area, recognizeCopy, translate, quick, resultTab ?? (table ? "table" : null));
         }
 
         exit = CaptureExit.Captured;

@@ -41,7 +41,10 @@ public partial class CaptureToolbar : UserControl
             Tools = tools;
             Button = button;
             Icon = icon;
-            Current = tools[0];
+
+            // 照上游 entryItemId() = popoverItemIds[0] = position 里的**最后一项**
+            // （括号 / 测距 / 直线 / 箭头那一格默认露箭头，放大镜 / 聚光 / 荧光那一格默认露荧光）。
+            Current = ToolLayout.EntryOf(tools);
         }
 
         public List<CaptureTool> Tools { get; }
@@ -109,6 +112,12 @@ public partial class CaptureToolbar : UserControl
     public enum CaptureAction
     {
         Recognize,
+        RecognizeTable,
+        RecognizeDocument,
+        RecognizeBarcode,
+        ConvertMarkdown,
+        ConvertLatex,
+        ConvertHtml,
         Pin,
         Live,
         Scroll,

@@ -50,6 +50,12 @@ internal sealed class CaptureActionLayout
     public static readonly IReadOnlyList<CaptureActionTool> Catalog = new[]
     {
         CaptureActionTool.Recognize,
+        CaptureActionTool.Table,
+        CaptureActionTool.Document,
+        CaptureActionTool.Barcode,
+        CaptureActionTool.Markdown,
+        CaptureActionTool.Latex,
+        CaptureActionTool.Html,
         CaptureActionTool.QrCode,
         CaptureActionTool.Record,
         CaptureActionTool.Pin,
@@ -80,20 +86,28 @@ internal sealed class CaptureActionLayout
 
     /// <summary>
     /// 默认布局（照上游 <c>actionDefaultPositions</c> 映射到本项目的动作集）：
-    /// 识别（文字 / 二维码）│ 录屏 │ 贴图 / 实时贴图 │ 识别并翻译 │ 长截图 │
-    /// 打印 / 快速保存 / 另存为 │ 更多 ｜ 取消 │ 复制。
+    /// 识别（文字 / 表格 / 文档 / 二维码 / LaTeX / Markdown / HTML）│ 录屏 │ 贴图 / 实时贴图 │
+    /// 识别并翻译 │ 长截图 │ 打印 / 快速保存 / 另存为 │ 更多 ｜ 取消 │ 复制。
     /// </summary>
     /// <remarks>
-    /// 上游第一叠是「转 Markdown / HTML / LaTeX / 二维码 / 文档 / 表格」六个转换动作，
-    /// 本项目这些都在识别结果窗的页签里，所以第一叠用「识别文字 + 二维码标记」表达；
+    /// 上游第一叠是「转 HTML / 转 Markdown / LaTeX / 二维码 / 文档 / 表格」六个识别动作，
+    /// 这一叠的入口（按钮上露的那一项）按上游是最后一项 = 表格识别；本项目按用户要求
+    /// **点上就是文本识别**，所以把「文本识别」放在这一叠的最后；「显示二维码」是结果窗的
+    /// 二维码页签（上游没有单独动作，但本项目一直有，用户也在用）。
     /// 只有「取消」前面那条竖线与上游一致，其余位置直接相邻（上游也是这样）。
     /// </remarks>
     public static CaptureActionLayout Default() => new(
         new List<ActionPosition>
         {
-            Stack(CaptureActionTool.Recognize, CaptureActionTool.QrCode),
+            // 照上游 actionDefaultPositions 第一叠（转 Markdown / HTML / LaTeX / 二维码 / 文档 / 表格）
+            // 加上「文本识别」：**按钮上露的是这一叠的最后一项 = 文本识别**，点它就是文本识别；
+            // 悬停弹出整叠（按 position 反过来排）：文本识别 / 表格识别 / 文档识别 / 二维码识别 /
+            // LaTeX 公式 / 转 Markdown / 转 HTML / 显示二维码。
+            Stack(CaptureActionTool.QrCode, CaptureActionTool.Html, CaptureActionTool.Markdown,
+                CaptureActionTool.Latex, CaptureActionTool.Barcode, CaptureActionTool.Document,
+                CaptureActionTool.Table, CaptureActionTool.Recognize),
             Stack(CaptureActionTool.Record),
-            Stack(CaptureActionTool.Pin, CaptureActionTool.Live),
+            Stack(CaptureActionTool.Live, CaptureActionTool.Pin),
             Stack(CaptureActionTool.Translate),
             Stack(CaptureActionTool.Scroll),
             Stack(CaptureActionTool.Print, CaptureActionTool.QuickSave, CaptureActionTool.SaveAs),
@@ -108,6 +122,12 @@ internal sealed class CaptureActionLayout
     public static string KeyOf(CaptureActionTool tool) => tool switch
     {
         CaptureActionTool.Recognize => "recognize",
+        CaptureActionTool.Table => "table-recognition",
+        CaptureActionTool.Document => "document-recognition",
+        CaptureActionTool.Barcode => "barcode-recognition",
+        CaptureActionTool.Markdown => "convert-to-markdown",
+        CaptureActionTool.Latex => "latex-recognition",
+        CaptureActionTool.Html => "convert-to-html",
         CaptureActionTool.QrCode => "qrcode",
         CaptureActionTool.Record => "record-screen",
         CaptureActionTool.Pin => "pin-to-screen",
@@ -137,7 +157,13 @@ internal sealed class CaptureActionLayout
     /// <summary>中文名（设置页 / 摘要 / 冒烟断言用）。</summary>
     public static string LabelOf(CaptureActionTool tool) => tool switch
     {
-        CaptureActionTool.Recognize => "识别文字",
+        CaptureActionTool.Recognize => "文本识别",
+        CaptureActionTool.Table => "表格识别",
+        CaptureActionTool.Document => "文档识别",
+        CaptureActionTool.Barcode => "二维码识别",
+        CaptureActionTool.Markdown => "转 Markdown",
+        CaptureActionTool.Latex => "LaTeX 公式识别",
+        CaptureActionTool.Html => "转 HTML",
         CaptureActionTool.QrCode => "显示二维码",
         CaptureActionTool.Record => "录屏",
         CaptureActionTool.Pin => "贴图到屏幕",
@@ -156,6 +182,32 @@ internal sealed class CaptureActionLayout
     /// <summary>按落盘内容还原（空 / 全认不出 → 默认布局）。</summary>
     public static CaptureActionLayout Parse(IReadOnlyList<string>? lines, IReadOnlyList<string>? hidden) =>
         Normalize(lines, hidden, appendMissing: true);
+
+    /// <summary>上一版（识别 + 二维码一叠）的默认布局原文，只用来把「从没改过布局」的老配置迁到新版。</summary>
+    private static readonly string[] LegacyDefaultLines =
+    {
+        "qrcode,recognize",
+        "record-screen",
+        "pin-to-screen,pin-live",
+        "text-translation",
+        "scrolling-screenshot",
+        "print,quick-save,save-as-file",
+        "more",
+        SeparatorKey,
+        "cancel",
+        "copy",
+    };
+
+    /// <summary>落盘的这份布局是不是「上一版默认」（是 → 迁到本版默认；否 → 用户改过，原样保留）。</summary>
+    public static bool IsLegacyDefault(IReadOnlyList<string>? lines, IReadOnlyList<string>? hidden)
+    {
+        if (lines == null || lines.Count != LegacyDefaultLines.Length) return false;
+        for (int i = 0; i < LegacyDefaultLines.Length; i++)
+            if (!string.Equals(lines[i]?.Trim(), LegacyDefaultLines[i], StringComparison.OrdinalIgnoreCase))
+                return false;
+
+        return hidden == null || hidden.All(h => string.IsNullOrWhiteSpace(h));
+    }
 
     /// <summary>
     /// 用已经分好组的动作直接造一份（设置页编辑器保存走这里）：丢掉空组、同一个键只算一次，
@@ -287,6 +339,12 @@ internal sealed class CaptureActionLayout
 internal enum CaptureActionTool
 {
     Recognize,
+    Table,
+    Document,
+    Barcode,
+    Markdown,
+    Latex,
+    Html,
     QrCode,
     Record,
     Pin,

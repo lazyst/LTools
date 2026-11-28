@@ -45,6 +45,7 @@ internal sealed class CaptureTableGrid : Panel
     private (int Row, int Column) _current = (-1, -1);
     private (int Row, int Column) _hover = (-1, -1);
     private (int Row, int Column) _pressCell = (-1, -1);
+    private ModifierKeys _pressModifiers = ModifierKeys.None;
     private bool _pressed;
     private bool _dragged;
     private bool _dragAdds;
@@ -79,6 +80,7 @@ internal sealed class CaptureTableGrid : Panel
         _editor.SetResourceReference(TextElement.ForegroundProperty, "TextBrush");
         _editor.PreviewKeyDown += Editor_PreviewKeyDown;
         _editor.LostKeyboardFocus += (_, _) => CommitEdit();
+        _editor.ContextMenu = BuildEditorMenu(_editor);
 
         Children.Add(_editor);
 
@@ -239,8 +241,59 @@ internal sealed class CaptureTableGrid : Panel
         Focus();
     }
 
-    private void Editor_PreviewKeyDown(object sender, KeyEventArgs e)
+    /// <summary>
+    /// 单元格编辑框的右键菜单（照上游 <c>showCellEditorContextMenu</c>）：复制 / 剪切 / 粘贴 / 删除 / 全选，
+    /// 可用性在菜单打开时按当前选区与剪贴板重新算。
+    /// </summary>
+    private static ContextMenu BuildEditorMenu(TextBox editor)
     {
+        var menu = new ContextMenu { PlacementTarget = editor };
+
+        MenuItem Add(string header, string gesture, Action action)
+        {
+            var item = new MenuItem { Header = header + "\t" + gesture };
+            item.Click += (_, _) => action();
+            menu.Items.Add(item);
+            return item;
+        }
+
+        MenuItem copy = Add("复制", "Ctrl+C", () => editor.Copy());
+        MenuItem cut = Add("剪切", "Ctrl+X", () => editor.Cut());
+        MenuItem paste = Add("粘贴", "Ctrl+V", () => editor.Paste());
+        MenuItem delete = Add("删除", "Delete", () =>
+        {
+            if (editor.SelectionLength > 0) editor.SelectedText = "";
+        });
+        menu.Items.Add(new Separator());
+        MenuItem selectAll = Add("全选", "Ctrl+A", () => editor.SelectAll());
+
+        menu.Opened += (_, _) =>
+        {
+            bool hasSelection = editor.SelectionLength > 0;
+            copy.IsEnabled = hasSelection;
+            cut.IsEnabled = hasSelection;
+            paste.IsEnabled = ClipboardHasText();
+            delete.IsEnabled = hasSelection;
+            selectAll.IsEnabled = editor.Text.Length > 0;
+        };
+
+        return menu;
+    }
+
+    private static bool ClipboardHasText()
+    {
+        try
+        {
+            return Clipboard.ContainsText();
+        }
+        catch (Exception)
+        {
+            // 剪贴板被别的程序占着时读不了：按「没有」处理，别让右键菜单开不出来
+            return false;
+        }
+    }
+
+    private void Editor_PreviewKeyDown(object sender, KeyEventArgs e)    {
         switch (e.Key)
         {
             case Key.Escape:
@@ -301,6 +354,7 @@ internal sealed class CaptureTableGrid : Panel
         _pressPoint = e.GetPosition(this);
         _pressCell = (row, column);
         _selectionBeforeDrag = _selection;
+        _pressModifiers = Keyboard.Modifiers;
         _dragAdds = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
 
         if (e.ClickCount >= 2)
@@ -367,6 +421,8 @@ internal sealed class CaptureTableGrid : Panel
         if (IsMouseCaptured) ReleaseMouseCapture();
 
         if (_dragged) return;
+        // 上游 mouseReleaseEvent 要求**没按任何修饰键**才进编辑（Shift / Ctrl 的那一下只是扩选 / 加选）
+        if (_pressModifiers != ModifierKeys.None) return;
         (int row, int column) = CellAt(e.GetPosition(this));
         if (row < 0 || (row, column) != _pressCell) return;
 
@@ -428,6 +484,16 @@ internal sealed class CaptureTableGrid : Panel
                     CommandRequested?.Invoke("redo");
                     e.Handled = true;
                     return;
+                case Key.Home:
+                    SelectCell(0, 0);
+                    EnsureVisible(0, 0);
+                    e.Handled = true;
+                    return;
+                case Key.End:
+                    SelectCell(_document.RowCount - 1, _document.ColumnCount - 1);
+                    EnsureVisible(_document.RowCount - 1, _document.ColumnCount - 1);
+                    e.Handled = true;
+                    return;
             }
 
             return;
@@ -473,7 +539,27 @@ internal sealed class CaptureTableGrid : Panel
                 Move(_document.ColumnCount, 0, shift);
                 e.Handled = true;
                 return;
+            case Key.PageUp:
+                Move(0, -PageRows(), shift);
+                e.Handled = true;
+                return;
+            case Key.PageDown:
+                Move(0, PageRows(), shift);
+                e.Handled = true;
+                return;
         }
+    }
+
+    /// <summary>PageUp / PageDown 一次翻几行：按视口高度和第一行高算（拿不到视口就按 10 行）。</summary>
+    private int PageRows()
+    {
+        if (Parent is ScrollViewer viewer && viewer.ViewportHeight > 0 && _rowHeights.Length > 0)
+        {
+            double rowHeight = _rowHeights[0];
+            if (rowHeight > 0) return Math.Max(1, (int)(viewer.ViewportHeight / rowHeight));
+        }
+
+        return 10;
     }
 
     protected override void OnTextInput(TextCompositionEventArgs e)
