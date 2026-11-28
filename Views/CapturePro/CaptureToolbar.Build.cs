@@ -179,12 +179,13 @@ public partial class CaptureToolbar
             : $"{info.Name}（{info.Shortcut}）· 这一格还有 " + string.Join(" / ",
                 cell.Tools.Where(t => t != current)
                     .Select(t => ToolCatalog.Of(t).Name + "（" + ToolCatalog.Of(t).Shortcut + "）"))
-              + "，再点一次切换\n" + info.Hint;
+              + "，悬停这一格选其它工具\n" + info.Hint;
     }
 
     /// <summary>
     /// 这一格「显示 / 首点」用哪个工具：照上游 <c>toolbarGroupEntryItemId</c>，
-    /// 「组首按钮常显」打开时固定第一个，否则用这一格上次点过的那个。
+    /// 「组首按钮常显」打开时固定显示这一格默认露的那个（<see cref="ToolLayout.EntryOf"/>，即 position 最后一项），
+    /// 否则用这一格上次点过的那个。
     /// </summary>
     private static CaptureTool EntryOf(ToolCell cell) =>
         GroupEntry(cell.Tools, cell.Current, DrawingSettings.AlwaysShowFirstGroup);
@@ -192,7 +193,7 @@ public partial class CaptureToolbar
     /// <summary><see cref="EntryOf"/> 的纯函数版本（自检直接断言）。</summary>
     internal static CaptureTool GroupEntry(IReadOnlyList<CaptureTool> tools, CaptureTool current,
         bool alwaysShowFirst) =>
-        tools.Count > 1 && alwaysShowFirst ? tools[0] : current;
+        tools.Count > 1 && alwaysShowFirst ? tools[^1] : current;
 
     /// <summary>
     /// 点格子：切到这一格现在显示的工具（**不再循环**）。
@@ -267,7 +268,9 @@ public partial class CaptureToolbar
         void RefreshGroupItems()
         {
             row.Children.Clear();
-            foreach (var tool in cell.Tools)
+
+            // 照上游 popoverItemIds：position 反过来排，入口（格子当前显示的）在最左。
+            foreach (var tool in cell.Tools.AsEnumerable().Reverse())
             {
                 var info = ToolCatalog.Of(tool);
                 var item = new RadioButton

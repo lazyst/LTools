@@ -12,7 +12,7 @@ namespace LTools.Config;
 /// 禁用快速选择的工具（<c>quick_selection_disabled_tools</c>，默认画笔 / 画笔滤镜）、
 /// 「Delete 删光标后的文字」（<c>delete_text_after_cursor</c>，默认开）、
 /// 「记住上次工具」（<c>remember_last_used_tool</c>，默认关）、
-/// 「工具组首按钮常显」（<c>always_show_first_toolbar_group_button</c>，默认关）。
+/// 「每组固定显示默认工具」（<c>always_show_first_toolbar_group_button</c>，默认关；键名沿用上游）。
 /// 工具名一律是上游的英文键（<c>free-draw</c> / <c>pen-filter</c>…），映射见
 /// <c>Features/CapturePro/CaptureToolIds.cs</c>。
 /// </remarks>

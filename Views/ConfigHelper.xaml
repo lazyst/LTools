@@ -1092,8 +1092,8 @@
                                           ToolTip="照上游 drawing/remember_last_used_tool（默认关）；关着时每次从「选择」开始"
                                           Checked="CaptureDrawing_Changed" Unchecked="CaptureDrawing_Changed"/>
                                 <CheckBox x:Name="CaptureAlwaysShowFirstBox" Margin="22,8,0,0"
-                                          Content="工具条里每组固定显示第一个工具"
-                                          ToolTip="照上游 drawing/always_show_first_toolbar_group_button（默认关）；关着时显示这一格上次点过的工具"
+                                          Content="工具条里每组固定显示它的默认工具"
+                                          ToolTip="照上游 drawing/always_show_first_toolbar_group_button（默认关）；关着时显示这一格上次点过的工具。默认工具 = 这一叠里排在最后的那一项（箭头 / 荧光 / 序号 / 马赛克 / 点选橡皮）"
                                           Checked="CaptureDrawing_Changed" Unchecked="CaptureDrawing_Changed"/>
                                 <TextBlock Style="{StaticResource HintLabel}" Margin="22,6,0,0"
                                            TextWrapping="Wrap"

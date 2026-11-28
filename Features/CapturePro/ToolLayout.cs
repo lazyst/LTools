@@ -34,15 +34,24 @@ internal sealed class ToolLayout
     public IReadOnlyList<IReadOnlyList<CaptureTool>> Groups => _groups;
 
     /// <summary>
-    /// 默认布局（照 Snow Shot 的 <c>toolbar_layout::defaultOrder()</c>，一格一个按钮）：
-    /// 选择 ｜ 形状、气泡、箭头、测距、测角、括号、直线、画笔、荧光（矩形 / 画笔）、聚光、放大镜、
-    /// 文字、序号、滤镜（矩形 / 画笔 / 自动 / 马赛克）、橡皮（点选 / 矩形 / 画笔）、水印 ｜ 撤销、重做。
+    /// 默认布局，照上游 <c>screenshottoolbarlayoutmodel.h</c> 的 <c>defaultPositions()</c>
+    /// （**是 positions 不是 defaultOrder**：defaultOrder 是「所有条目平铺」的清单，
+    /// 真正决定工具条长相的是 positions）：
+    /// 选择 ｜ 形状 ｜ 括号 / 测角 / 测距 / 直线 / 箭头 ｜ 画笔 ｜ 放大镜 / 聚光 / 荧光 ｜ 文字 ｜
+    /// 气泡 / 序号 ｜ 滤镜 ｜ 橡皮 ｜ 水印。
     /// </summary>
     /// <remarks>
-    /// 上游把「同族变体」收在一个按钮里（<c>highlighter</c> = 矩形 / 画笔荧光、<c>filter</c> = 矩形 /
-    /// 画笔 / 自动滤镜、<c>eraser</c> = 点选 / 矩形 / 画笔橡皮），这里用同一格循环切换对齐它；
-    /// 其余工具**各自一格**（别把箭头和直线、聚光和放大镜合成一格——上游是分开的）。
-    /// 上游没有的扩展工具（折线、取色）默认隐藏，仍能在「工具条」设置里加回来。
+    /// <para>
+    /// 上游 position 里写了几个条目，就是**一个按钮 + 悬停弹出的二级工具条**（<c>stackPresentation</c>）；
+    /// 按钮上露哪一个是 <c>entryItemId()</c> = <c>popoverItemIds[0]</c> = position 里的**最后一项**
+    /// （所以默认看到的是箭头 / 荧光 / 序号，而不是括号 / 放大镜 / 气泡）。格内顺序照上游写，
+    /// 弹层按它反过来排（入口在最左）。
+    /// </para>
+    /// <para>
+    /// 上游一个 <c>filter</c> / <c>eraser</c> 条目在本项目里是几个工具（马赛克 / 矩形 / 画笔 / 自动、
+    /// 点选 / 矩形 / 画笔），仍旧收在同一格——上游是靠参数行的「模式」切换，这里是靠弹层，
+    /// 格子数、图标与上游一致。上游没有的扩展工具（折线、取色）默认隐藏，仍能在「工具条」设置里加回来。
+    /// </para>
     /// </remarks>
     public static ToolLayout Default()
     {
@@ -50,20 +59,13 @@ internal sealed class ToolLayout
         {
             new() { CaptureTool.Select },
             new() { CaptureTool.Shape },
-            new() { CaptureTool.SpeechBubble },
-            new() { CaptureTool.Arrow },
-            new() { CaptureTool.Distance },
-            new() { CaptureTool.Angle },
-            new() { CaptureTool.Bracket },
-            new() { CaptureTool.Line },
+            new() { CaptureTool.Bracket, CaptureTool.Angle, CaptureTool.Distance, CaptureTool.Line, CaptureTool.Arrow },
             new() { CaptureTool.Pen },
-            new() { CaptureTool.Highlighter, CaptureTool.HighlightRect },
-            new() { CaptureTool.Spotlight },
-            new() { CaptureTool.Magnifier },
+            new() { CaptureTool.Magnifier, CaptureTool.Spotlight, CaptureTool.HighlightRect, CaptureTool.Highlighter },
             new() { CaptureTool.Text },
-            new() { CaptureTool.Serial },
-            new() { CaptureTool.Mosaic, CaptureTool.Filter, CaptureTool.BrushFilter, CaptureTool.AutoFilter },
-            new() { CaptureTool.Eraser, CaptureTool.RectEraser, CaptureTool.BrushEraser },
+            new() { CaptureTool.SpeechBubble, CaptureTool.Serial },
+            new() { CaptureTool.AutoFilter, CaptureTool.BrushFilter, CaptureTool.Filter, CaptureTool.Mosaic },
+            new() { CaptureTool.BrushEraser, CaptureTool.RectEraser, CaptureTool.Eraser },
             new() { CaptureTool.Watermark },
         };
 
@@ -74,6 +76,52 @@ internal sealed class ToolLayout
                 groups.Add(new List<CaptureTool> { info.Tool });
 
         return new ToolLayout(groups, hidden);
+    }
+
+    /// <summary>一个格子默认露哪个工具：照上游 <c>entryItemId()</c> = position 里的最后一项。</summary>
+    public static CaptureTool EntryOf(IReadOnlyList<CaptureTool> group) =>
+        group.Count == 0 ? CaptureTool.Select : group[^1];
+
+    /// <summary>
+    /// 上一版（一格一个工具，17 格）的默认布局原文。只用来把「**从没改过布局**」的老配置
+    /// 迁到本版默认；用户动过一格就原样保留（照上游 <c>migrateScreenshotLayout</c>：
+    /// 只有跟旧默认一模一样时才换新默认）。
+    /// </summary>
+    private static readonly string[] LegacyDefaultLines =
+    {
+        "Select",
+        "Shape",
+        "SpeechBubble",
+        "Arrow",
+        "Distance",
+        "Angle",
+        "Bracket",
+        "Line",
+        "Pen",
+        "Highlighter,HighlightRect",
+        "Spotlight",
+        "Magnifier",
+        "Text",
+        "Serial",
+        "Mosaic,Filter,BrushFilter,AutoFilter",
+        "Eraser,RectEraser,BrushEraser",
+        "Watermark",
+    };
+
+    /// <summary>落盘的这份布局是不是「上一版默认」（是 → 迁到本版默认；否 → 用户改过，原样保留）。</summary>
+    public static bool IsLegacyDefault(IReadOnlyList<string>? lines, IReadOnlyList<string>? hidden)
+    {
+        if (lines == null || lines.Count != LegacyDefaultLines.Length) return false;
+        for (int i = 0; i < LegacyDefaultLines.Length; i++)
+            if (!string.Equals(lines[i]?.Trim(), LegacyDefaultLines[i], StringComparison.OrdinalIgnoreCase))
+                return false;
+
+        // 收起清单也得是那一版的默认（折线 / 取色），否则说明用户还动过「收起」
+        var hiddenNow = (hidden ?? Array.Empty<string>())
+            .Select(h => (h ?? "").Trim()).Where(h => h.Length > 0).ToList();
+        return hiddenNow.Count == 2
+               && hiddenNow.Contains("Polyline", StringComparer.OrdinalIgnoreCase)
+               && hiddenNow.Contains("Picker", StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>被收起来的工具（按目录顺序，菜单里照着列）。</summary>

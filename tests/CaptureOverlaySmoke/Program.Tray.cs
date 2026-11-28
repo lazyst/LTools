@@ -30,7 +30,11 @@ internal static partial class Program
         var menu = (ContextMenu)type.GetProperty("Menu", TrayAny)!.GetValue(tray)!;
 
         // ---- 顶层：截图相关的 5 项不再平铺，收进「截图」二级菜单 ----
+        // 「运行中的动作…（N）」只在真有动作运行时才插进来（TrayMenu 读注册表），
+        // 而完整冒烟跑到这一段时前面的用例可能还留着运行 —— 它不参与「固定顺序」的断言，
+        // 去掉它并把连着的两条竖线并成一条，这条断言才与运行状态无关。
         var top = Texts(menu.Items);
+        var stable = CollapseSeparators(top.Where(t => !t.StartsWith("运行中的动作", StringComparison.Ordinal)));
         var expectedTop = new[]
         {
             "速记 (CapsLock+N)", "动作面板 (CapsLock+T)", "设置 (CapsLock+\\)", "辅助工具…", "局域网共享…",
@@ -39,7 +43,7 @@ internal static partial class Program
             "启用 CapsLock 修饰键", "启用超级面板", "暂停自动触发（紧急禁用）", "—",
             "关闭所有悬浮项", "—", "退出 LTools",
         };
-        Check(top.SequenceEqual(expectedTop), "托盘顶层条目 / 顺序：" + string.Join(" | ", top));
+        Check(stable.SequenceEqual(expectedTop), "托盘顶层条目 / 顺序：" + string.Join(" | ", stable));
         Check(!top.Contains("采集历史…") && !top.Contains("贴图管理…") && !top.Contains("图片编辑…")
               && !top.Contains("切图…") && !top.Contains("图像拼接…"),
             "截图相关的管理窗口不再平铺在顶层");
@@ -65,6 +69,10 @@ internal static partial class Program
         Check(closeDefault > 0, $"移出后有收起宽限（{closeDefault}ms）");
 
         var work = SystemParameters.WorkArea;
+
+        // 「移开」要落到**屏幕内**的角落：以前写死 (10, 1060)，本机工作区只有 816 高，
+        // 指针被夹到任务栏上、菜单的处理路径就变了（这条用例因此在矮屏上一直红）。
+        void MoveAway() => SetCursorPos((int)work.Left + 5, (int)(work.Top + work.Height) - 5);
         menu.Placement = PlacementMode.AbsolutePoint;
         menu.HorizontalOffset = work.Left + 60;
         menu.VerticalOffset = work.Top + 60;
@@ -98,37 +106,18 @@ internal static partial class Program
                     () => first.IsHighlighted, 2000), "指针进子菜单 → 「截图…」高亮");
             }
 
-            // 移出宽限：把宽限临时调大，移开后先「还开着」，宽限过后才收（这就是「一过去就消失」的修复点）
-            try
-            {
-                closeField.SetValue(null, 700);
-                SetCursorPos(10, 1060);
-                PumpFor(220);
-                Check(captureItem.IsSubmenuOpen, "移开 220ms 仍展开（宽限期，不会一碰就散）");
-                Check(WaitUntil(() => !captureItem.IsSubmenuOpen, 3000), "宽限过后收起");
-            }
-            finally
-            {
-                closeField.SetValue(null, closeDefault);
-            }
+            // 移开整个菜单：**MenuCone 立刻把子菜单交还**（它盖过 MenuFx 的收起宽限——
+            // 2026-11-26 的「预测锥」就是「斜穿不换项、明确移开才收」，`tests/MenuConeSmoke`
+            // 的「横向离开菜单后子菜单收起」是同一件事）。以前这里断言「移开 220ms 仍展开」，
+            // 是锥之前的口径，锥上线后它必红；宽限本身仍由上面的 `HoverCloseMs > 0` 守着。
+            MoveAway();
+            Check(WaitUntil(() => !captureItem.IsSubmenuOpen, 1500),
+                "移开整个菜单 → 子菜单收起（锥交还，不等宽限）");
 
-            // 宽限期间挪回父项：不收起
+            // 再悬停回来：子菜单重新展开（指针在父项上时锥待命，不会再被交还）
             Check(HoverUntil(cx, cy, () => captureItem.IsSubmenuOpen, 1500), "再悬停 → 子菜单回来");
-            try
-            {
-                closeField.SetValue(null, 700);
-                SetCursorPos(10, 1060);
-                PumpFor(200);
-                SetCursorPos(cx, cy);
-                PumpFor(700);
-                Check(captureItem.IsSubmenuOpen, "宽限内挪回父项 → 不收起");
-            }
-            finally
-            {
-                closeField.SetValue(null, closeDefault);
-                SetCursorPos(10, 1060);
-                WaitUntil(() => !captureItem.IsSubmenuOpen, 3000);
-            }
+            MoveAway();
+            WaitUntil(() => !captureItem.IsSubmenuOpen, 2000);
         }
 
         menu.IsOpen = false;
@@ -172,4 +161,14 @@ internal static partial class Program
     private static string[] Texts(ItemCollection items) => items.Cast<object>()
         .Select(item => item is Separator ? "—" : Text(((MenuItem)item).Header))
         .ToArray();
+
+    /// <summary>去掉某些动态条目后，把连着的两条竖线并成一条（否则顺序断言会多一条分隔）。</summary>
+    private static List<string> CollapseSeparators(IEnumerable<string> items)
+    {
+        var result = new List<string>();
+        foreach (string item in items)
+            if (item != "—" || result.Count == 0 || result[^1] != "—")
+                result.Add(item);
+        return result;
+    }
 }

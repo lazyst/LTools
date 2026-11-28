@@ -41,6 +41,12 @@ internal static class ToolLayoutStore
             // 「把工具全藏起来」是「组空 + hidden 非空」，那条仍照保存内容解析。
             if (ui.CaptureToolGroups is not { Count: > 0 } && ui.CaptureToolHidden is not { Count: > 0 })
                 return ToolLayout.Default();
+
+            // 从没改过布局的老配置（还是上一版 17 格默认）→ 跟新版默认走；
+            // 用户动过一格就原样保留，别把人家排好的工具条冲掉。
+            if (ToolLayout.IsLegacyDefault(ui.CaptureToolGroups, ui.CaptureToolHidden))
+                return ToolLayout.Default();
+
             return ToolLayout.Parse(ui.CaptureToolGroups, ui.CaptureToolHidden);
         }
         catch (Exception ex)

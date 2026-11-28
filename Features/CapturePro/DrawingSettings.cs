@@ -12,7 +12,7 @@ namespace LTools.Features.CapturePro;
 /// <para>
 /// 照上游 <c>drawing/*</c>：默认值逐条对齐 <c>storage/configurationschema.cpp</c>
 /// （自动选中关、排除画笔 / 画笔滤镜 / 文字 / 气泡；快速选择默认只禁用画笔 / 画笔滤镜；
-/// Delete 删后一个字符默认开；记住上次工具与组首按钮常显默认关）。
+/// Delete 删后一个字符默认开；记住上次工具与「每组固定显示默认工具」默认关）。
 /// </para>
 /// <para>
 /// 读盘只发生一次（覆盖层在鼠标钩子线程上也要问），写盘只写 settings 域。

@@ -215,11 +215,12 @@ internal static partial class Program
                 if (names.Contains("Line")) LineCell = cell;
             }
 
-            // 上游 toolbar_layout::defaultOrder()：17 个按钮（选择 + 16 个工具），一格一个
-            Check(cells.Count == 17, $"全新配置（没有 ui.json）工具栏按上游默认排 17 格，实际 {cells.Count}");
-            Check(ArrowCell != null && LineCell != null && !ReferenceEquals(ArrowCell, LineCell),
-                "箭头和直线各自一格（上游是两个按钮，不是一格循环）");
-            Check(HighlightCell != null, "工具栏里有「荧光」那一格（矩形 / 画笔两种变体收在一格）");
+            // 上游 defaultPositions()：10 格（选择 / 形状 / 括号·测角·测距·直线·箭头 / 画笔 /
+            // 放大镜·聚光·荧光 / 文字 / 气泡·序号 / 滤镜 / 橡皮 / 水印）
+            Check(cells.Count == 10, $"全新配置（没有 ui.json）工具栏按上游默认排 10 格，实际 {cells.Count}");
+            Check(ArrowCell != null && LineCell != null && ReferenceEquals(ArrowCell, LineCell),
+                "箭头和直线在同一格（上游 position 就是这么写的，靠悬停弹层选）");
+            Check(HighlightCell != null, "工具栏里有「荧光」那一格（放大镜 / 聚光 / 荧光收在一格）");
 
             var catalogType = asm.GetType("LTools.Features.CapturePro.ToolCatalog")!;
             string NameOfTool(object tool)
@@ -229,7 +230,7 @@ internal static partial class Program
             }
 
             var cellTools = (IList)HighlightCell!.GetType().GetProperty("Tools")!.GetValue(HighlightCell)!;
-            string firstToolName = NameOfTool(cellTools[0]!);
+            string entryToolName = NameOfTool(cellTools[cellTools.Count - 1]!);
             var showIcon = toolbar.GetType().GetMethod("ShowCellIcon", Inst)!;
             string TipOf(object cell) =>
                 ((RadioButton)cell.GetType().GetProperty("Button")!.GetValue(cell)!).ToolTip?.ToString() ?? "";
@@ -243,8 +244,8 @@ internal static partial class Program
             SetFlag("SetAlwaysShowFirstGroup", true);
             Check(Flag("AlwaysShowFirstGroup"), "组首常显的开关真的变成开（读回设置）");
             showIcon.Invoke(toolbar, new[] { HighlightCell });
-            Check(TipOf(HighlightCell).StartsWith(firstToolName, StringComparison.Ordinal),
-                $"组首常显打开：固定显示组里第一个「{firstToolName}」：" + TipOf(HighlightCell).Split('\n')[0]);
+            Check(TipOf(HighlightCell).StartsWith(entryToolName, StringComparison.Ordinal),
+                $"组首常显打开：固定显示这一格的默认入口「{entryToolName}」：" + TipOf(HighlightCell).Split('\n')[0]);
             SetFlag("SetAlwaysShowFirstGroup", false);
 
             // ============ ⑥ 自动选中：真鼠标画一条 → 选中它、工具不变 ============

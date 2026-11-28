@@ -89,13 +89,13 @@ internal static partial class CaptureProSuite
         Check.Equal(2, CaptureToolIds.Normalize(file.QuickSelectionDisabledTools).Count,
             "默认禁用清单归一后仍是 2 个");
 
-        // ============ 组首按钮（上游 toolbarGroupEntryItemId） ============
-        var group = new List<CaptureTool> { CaptureTool.Pen, CaptureTool.Highlighter };
-        Check.Equal(CaptureTool.Pen,
-            CaptureToolbar.GroupEntry(group, CaptureTool.Highlighter, alwaysShowFirst: true),
-            "组首常显：这一格固定显示第一个");
-        Check.Equal(CaptureTool.Highlighter,
-            CaptureToolbar.GroupEntry(group, CaptureTool.Highlighter, alwaysShowFirst: false),
+        // ============ 组首按钮（上游 toolbarGroupEntryItemId / entryItemId） ============
+        var group = new List<CaptureTool> { CaptureTool.Bracket, CaptureTool.Arrow };
+        Check.Equal(CaptureTool.Arrow,
+            CaptureToolbar.GroupEntry(group, CaptureTool.Bracket, alwaysShowFirst: true),
+            "组首常显：固定显示这一格默认露的那个（position 最后一项 = 箭头）");
+        Check.Equal(CaptureTool.Bracket,
+            CaptureToolbar.GroupEntry(group, CaptureTool.Bracket, alwaysShowFirst: false),
             "关着：显示这一格上次点过的工具");
         Check.Equal(CaptureTool.Shape,
             CaptureToolbar.GroupEntry(new List<CaptureTool> { CaptureTool.Shape }, CaptureTool.Shape,
