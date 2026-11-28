@@ -210,7 +210,8 @@
                             <TextBlock Style="{StaticResource FieldLabel}" Text="循环次数"/>
                             <TextBox Grid.Column="1" x:Name="LoopsBox" LostKeyboardFocus="Number_LostFocus"/>
                             <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}" Margin="8,0,0,0"
-                                       VerticalAlignment="Center" Text="1–99"/>
+                                       VerticalAlignment="Center" TextWrapping="Wrap"
+                                       Text="1–99；无限循环在「回放设置…」里按单个宏设"/>
                         </Grid>
 
                         <Grid Style="{StaticResource FieldRow}">

@@ -377,7 +377,7 @@ dotnet run                                # 14 条，约 10 秒
 ```powershell
 dotnet build -p:NoWin32Manifest=true      # 先构建产品（同样直接引用 bin\Debug 里的 LTools.dll）
 cd tests\MacroPlaybackSmoke
-dotnet run --no-build                     # 23 条，约 4 秒
+dotnet run --no-build                     # 27 条，约 5 秒
 ```
 
 一段宏里同时有 `F24` 的按下 / 抬起与一次鼠标移动，用「全部 / 仅键盘 / 仅鼠标」各放一遍，
@@ -385,6 +385,7 @@ dotnet run --no-build                     # 23 条，约 4 秒
 鼠标侧用 `GetCursorPos`——只放键盘时光标一动不动、只放鼠标时一个键都没注入、全部时两边都放；
 只有按键的宏选「仅鼠标」、只有鼠标的宏选「仅键盘」都必须**明确报错**（「宏里没有鼠标 / 键盘事件」），
 报过错之后还能继续正常回放（`_playing` 已复位）。
+再验**无限循环**（每宏的 `Loops = -1`）：700ms 里放了两轮以上、之后仍在放，按停止后回放线程退出。
 再在临时数据根上验配置往返：全局默认 `macros.playbackContent` + 每宏 `content`（读得到、写得回、
 取消覆盖后字段不再落盘并跟随全局）；最后建出设置页与「回放设置…」对话框（不显示窗口）：
 设置页那行三档都在、回显全局默认、选中即写盘并让运行期设置立刻生效；对话框四档都在、

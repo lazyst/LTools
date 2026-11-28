@@ -30,6 +30,8 @@ internal static class Program
 
     private static int _failed;
     private static MethodInfo _playSync = null!;
+    private static MethodInfo _playerStop = null!;
+    private static PropertyInfo _playingProp = null!;
     private static Type _playbackType = null!;
 
     [STAThread]
@@ -43,6 +45,9 @@ internal static class Program
         _playSync = player
             .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
             .First(m => m.Name == "PlaySync" && m.GetParameters().Length == 2);
+        _playerStop = player.GetMethod("Stop", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!;
+        _playingProp = player.GetProperty("IsPlaying",
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!;
 
         // 真键盘钩子：注入的键也要数到，所以这里不过滤 LLKHF_INJECTED
         var hookThread = new Thread(HookThread) { IsBackground = true, Name = "KeyHook" };
@@ -130,6 +135,28 @@ internal static class Program
             Thread.Sleep(150);
             Check(SeenCount(F24) >= 2, "上一次「没有内容」失败后还能正常回放（_playing 已复位）");
 
+            // —— 无限循环（-1）：一直放，按停止能停 ——
+            SetCursorPos(origin.X, origin.Y);
+            Thread.Sleep(120);
+            ClearSeen();
+            var infinite = Task.Run(() =>
+            {
+                try
+                {
+                    _playSync.Invoke(null, new object[] { macro, Playback(MacroPlaybackContent.Keyboard, -1) });
+                }
+                catch (TargetInvocationException)
+                {
+                    // 被 Stop 打断是正常的收尾路径
+                }
+            });
+            Thread.Sleep(700);
+            Check(SeenCount(F24) >= 4, $"无限循环：700ms 里放了两轮以上（收到 {SeenCount(F24)} 个 F24）");
+            Check(IsPlaying(), "无限循环：700ms 后还在放");
+            _playerStop.Invoke(null, null);
+            Check(infinite.Wait(3000), "无限循环：按停止后回放线程退出");
+            Check(!IsPlaying(), "无限循环：已经停了");
+
             ConfigRoundTrip(asm);
             SettingsPage(asm);
         }
@@ -145,8 +172,10 @@ internal static class Program
 
     // ============ 回放 ============
 
-    private static object Playback(MacroPlaybackContent content)
-        => Activator.CreateInstance(_playbackType, 1.0, 1, 0, content)!;
+    private static object Playback(MacroPlaybackContent content, int loops = 1)
+        => Activator.CreateInstance(_playbackType, 1.0, loops, 0, content)!;
+
+    private static bool IsPlaying() => (bool)_playingProp.GetValue(null)!;
 
     private static void Play(MacroDto macro, MacroPlaybackContent content, string what)
     {
