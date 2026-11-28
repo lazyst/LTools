@@ -68,6 +68,10 @@ public partial class ConfigHelperWindow
             PopulateToggles();
             _initializing = false;
         }
+
+        // 热键页：正在「键鼠宏」子页时回填两个录入框（别处改了 macros.json / 导入配置）
+        if (NavFamilyOf(_currentNav) == FamilyHotkeys && SubPageOf(FamilyHotkeys, _currentNav) == "macro")
+            PopulateMacroHotkeys();
     }
 
     /// <summary>别处改了动作 / 宏：切回 UI 线程并合批刷新（事件可能来自录制 / AI 采纳的后台线程）。</summary>

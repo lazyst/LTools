@@ -58,6 +58,10 @@ public partial class ConfigHelperWindow
     private void NavCapture_MouseUp(object sender, MouseButtonEventArgs e) =>
         ToggleNavGroup(FamilyCapture);
 
+    /// <summary>「热键」父项：已在该分组里时 = 展开 / 收起。</summary>
+    private void NavHotkeys_MouseUp(object sender, MouseButtonEventArgs e) =>
+        ToggleNavGroup(FamilyHotkeys);
+
     /// <summary>
     /// 父项已经选中（正在这个分组里）时，再点它就是展开 / 收起，不换页；
     /// 没选中时不动它，交给 RadioButton 的 Checked → <see cref="ApplyNavPage"/> 进该分组。
@@ -78,16 +82,17 @@ public partial class ConfigHelperWindow
         ScheduleNavPersist();
     }
 
-    /// <summary>左栏所有导航项（含四个二级下拉里的子项）。</summary>
+    /// <summary>左栏所有导航项（含五个二级下拉里的子项）。</summary>
     private IEnumerable<RadioButton> AllNavItems() =>
         NavList.Children.OfType<RadioButton>()
             .Concat(SuperPanelSubNav.Children.OfType<RadioButton>())
             .Concat(AiSubNav.Children.OfType<RadioButton>())
             .Concat(MacrosSubNav.Children.OfType<RadioButton>())
             .Concat(CaptureSubNav.Children.OfType<RadioButton>())
+            .Concat(HotkeysSubNav.Children.OfType<RadioButton>())
             .Concat(LogsSubNav.Children.OfType<RadioButton>());
 
-    // 五个分组共用一套机制：下面四张表把 family 映射到各自的父项 / 下拉容器 / 箭头，
+    // 六个分组共用一套机制：下面四张表把 family 映射到各自的父项 / 下拉容器 / 箭头，
     // 新增分组只加行，别再写 family == FamilyAi ? A : B 这种二元判断（第三组起就会落到 superpanel 上）。
     private RadioButton NavGroupItem(string family) => family switch
     {
@@ -95,6 +100,7 @@ public partial class ConfigHelperWindow
         FamilyMacros => NavMacros,
         FamilyLogs => NavLogs,
         FamilyCapture => NavCapture,
+        FamilyHotkeys => NavHotkeys,
         _ => NavSuperPanel,
     };
 
@@ -104,6 +110,7 @@ public partial class ConfigHelperWindow
         FamilyMacros => MacrosSubNav,
         FamilyLogs => LogsSubNav,
         FamilyCapture => CaptureSubNav,
+        FamilyHotkeys => HotkeysSubNav,
         _ => SuperPanelSubNav,
     };
 
@@ -113,6 +120,7 @@ public partial class ConfigHelperWindow
         FamilyMacros => MacrosSubNavHost,
         FamilyLogs => LogsSubNavHost,
         FamilyCapture => CaptureSubNavHost,
+        FamilyHotkeys => HotkeysSubNavHost,
         _ => SuperPanelSubNavHost,
     };
 
@@ -122,6 +130,7 @@ public partial class ConfigHelperWindow
         FamilyMacros => NavMacrosChevron,
         FamilyLogs => NavLogsChevron,
         FamilyCapture => NavCaptureChevron,
+        FamilyHotkeys => NavHotkeysChevron,
         _ => NavSuperPanelChevron,
     };
 
@@ -132,8 +141,9 @@ public partial class ConfigHelperWindow
         "ai" or "ai-connect" or "ai-audit" => FamilyAi,
         "macros" or "macros-list" or "macros-settings" => FamilyMacros,
         "capture" or "capture-general" or "capture-behavior" or "capture-drawing"
-            or "capture-overlay" or "capture-ocr" or "capture-pin" or "capture-record"
+            or "capture-overlay" or "capture-pin" or "capture-record"
             or "capture-history" or "capture-output" => FamilyCapture,
+        "hotkeys" or "hotkeys-groups" or "hotkeys-macro" or "hotkeys-capture" => FamilyHotkeys,
         "logs" or "logs-settings" or "logs-recent" or "logs-history" => FamilyLogs,
         _ => null,
     };
@@ -153,12 +163,14 @@ public partial class ConfigHelperWindow
         (FamilyCapture, "capture-behavior") => "behavior",
         (FamilyCapture, "capture-drawing") => "drawing",
         (FamilyCapture, "capture-overlay") => "overlay",
-        (FamilyCapture, "capture-ocr") => "ocr",
         (FamilyCapture, "capture-pin") => "pin",
         (FamilyCapture, "capture-record") => "record",
         (FamilyCapture, "capture-history") => "history",
         (FamilyCapture, "capture-output") => "output",
         (FamilyCapture, _) => "general",
+        (FamilyHotkeys, "hotkeys-macro") => "macro",
+        (FamilyHotkeys, "hotkeys-capture") => "capture",
+        (FamilyHotkeys, _) => "groups",
         _ => "settings",
     };
 
@@ -168,6 +180,7 @@ public partial class ConfigHelperWindow
         FamilyMacros => "macros-" + page,
         FamilyLogs => "logs-" + page,
         FamilyCapture => "capture-" + page,
+        FamilyHotkeys => "hotkeys-" + page,
         _ => page switch
         {
             "scenes" => "superpanel-scenes",
@@ -183,6 +196,7 @@ public partial class ConfigHelperWindow
         FamilyMacros => "list",
         FamilyLogs => "settings",
         FamilyCapture => "general",
+        FamilyHotkeys => "groups",
         _ => "general",
     };
 
@@ -196,10 +210,10 @@ public partial class ConfigHelperWindow
         return FirstLevelNav.Contains(tag) ? tag : "actions";
     }
 
-    /// <summary>一级导航的 tag（与 <c>ConfigHelper.xaml</c> 的 RadioButton 一一对应；四个父项不在此表）。</summary>
+    /// <summary>一级导航的 tag（与 <c>ConfigHelper.xaml</c> 的 RadioButton 一一对应；五个父项不在此表）。</summary>
     private static readonly HashSet<string> FirstLevelNav = new(StringComparer.Ordinal)
     {
-        "general", "actions", "subactions", "hotkeys", "triggers", "terminals", "backup",
+        "general", "actions", "subactions", "ocr", "triggers", "terminals", "backup",
     };
 
     /// <summary>把某个二级下拉设为展开 / 收起，并记住这个状态。</summary>
@@ -397,17 +411,22 @@ public partial class ConfigHelperWindow
         bool macros = family == FamilyMacros;
         bool logs = family == FamilyLogs;
         bool capture = family == FamilyCapture;
+        bool hotkeys = family == FamilyHotkeys;
 
         Page_General.Visibility = tag == "general" ? Visibility.Visible : Visibility.Collapsed;
         Page_Actions.Visibility = tag == "actions" ? Visibility.Visible : Visibility.Collapsed;
         Host_SubActions.Visibility = tag == "subactions" ? Visibility.Visible : Visibility.Collapsed;
-        Host_Hotkeys.Visibility = tag == "hotkeys" ? Visibility.Visible : Visibility.Collapsed;
+        // 「热键」三个同层子页：预设组（惰性 HotkeysView）/ 键鼠宏 / 截图热键
+        Host_Hotkeys.Visibility = hotkeys && page == "groups" ? Visibility.Visible : Visibility.Collapsed;
+        Page_HotkeysMacro.Visibility = hotkeys && page == "macro" ? Visibility.Visible : Visibility.Collapsed;
+        Page_HotkeysCapture.Visibility = hotkeys && page == "capture" ? Visibility.Visible : Visibility.Collapsed;
         // 「截图 Pro」八个同层子页：一个子页一个 ScrollViewer，按 page 切可见性
         Page_CaptureGeneral.Visibility = capture && page == "general" ? Visibility.Visible : Visibility.Collapsed;
         Page_CaptureBehavior.Visibility = capture && page == "behavior" ? Visibility.Visible : Visibility.Collapsed;
         Page_CaptureDrawing.Visibility = capture && page == "drawing" ? Visibility.Visible : Visibility.Collapsed;
         Page_CaptureOverlay.Visibility = capture && page == "overlay" ? Visibility.Visible : Visibility.Collapsed;
-        Page_CaptureOcr.Visibility = capture && page == "ocr" ? Visibility.Visible : Visibility.Collapsed;
+        // 「文字识别」是从截图 Pro 里抽出来的一级页（Tag="ocr"），页面控件名仍叫 Page_CaptureOcr
+        Page_CaptureOcr.Visibility = tag == "ocr" ? Visibility.Visible : Visibility.Collapsed;
         Page_CapturePin.Visibility = capture && page == "pin" ? Visibility.Visible : Visibility.Collapsed;
         Page_CaptureRecord.Visibility = capture && page == "record" ? Visibility.Visible : Visibility.Collapsed;
         Page_CaptureHistory.Visibility = capture && page == "history" ? Visibility.Visible : Visibility.Collapsed;
@@ -429,8 +448,8 @@ public partial class ConfigHelperWindow
         // 诊断采样：单个 tag 的整次切页（含惰性建页 / Reload / 动画注册）
         using var perfSeg = PerfProbe.Measure("nav:" + tag);
 
-        // 父项（superpanel / ai / macros / capture / logs）落到该分组上次所在的子页
-        if (tag is FamilySuperPanel or FamilyAi or FamilyMacros or FamilyLogs or FamilyCapture)
+        // 父项（superpanel / ai / macros / capture / logs / hotkeys）落到该分组上次所在的子页
+        if (tag is FamilySuperPanel or FamilyAi or FamilyMacros or FamilyLogs or FamilyCapture or FamilyHotkeys)
             tag = NavTagOf(tag, _lastSubPage[tag]);
 
         _navApplied = true;   // 显式导航已发生：取消排队中的「启动后恢复」，别把页改回去
@@ -443,6 +462,7 @@ public partial class ConfigHelperWindow
         bool macros = family == FamilyMacros;
         bool logs = family == FamilyLogs;
         bool capture = family == FamilyCapture;
+        bool hotkeys = family == FamilyHotkeys;
 
         SetPageVisibility(tag);
 
@@ -452,7 +472,8 @@ public partial class ConfigHelperWindow
         if (macros) SyncNavGroup(FamilyMacros, page);
         if (logs) SyncNavGroup(FamilyLogs, page);
         if (capture) SyncNavGroup(FamilyCapture, page);
-        // 五套子项各有 GroupName（subnav / subnav-ai / subnav-macros / subnav-capture / subnav-logs），
+        if (hotkeys) SyncNavGroup(FamilyHotkeys, page);
+        // 六套子项各有 GroupName（subnav / subnav-ai / subnav-macros / subnav-capture / subnav-hotkeys / subnav-logs），
         // 跨组不会自动互斥：切到别处时清掉不在当前分组的子项，否则左边栏会同时高亮多项。
         // 「上次子页」保留在 _lastSubPage 里，点回父项时还落在那儿。
         if (!superPanel) ClearSubNav(FamilySuperPanel);
@@ -460,6 +481,7 @@ public partial class ConfigHelperWindow
         if (!macros) ClearSubNav(FamilyMacros);
         if (!logs) ClearSubNav(FamilyLogs);
         if (!capture) ClearSubNav(FamilyCapture);
+        if (!hotkeys) ClearSubNav(FamilyHotkeys);
 
         if (tag == "terminals") PopulateTerminals();
         if (capture && page == "output") PopulateExport();
@@ -478,9 +500,10 @@ public partial class ConfigHelperWindow
             PopulateTrayDoubleClick();
             _initializing = false;
         }
-        else if (capture)
+        else if (capture || tag == "ocr")
         {
-            // 截图 Pro 的选项也可能被覆盖层 / 录屏面板 / 颜色预设窗改过：每次进组同步一遍显示值
+            // 截图 Pro / 文字识别的选项也可能被覆盖层 / 录屏面板 / 颜色预设窗 / OCR 设置窗改过：
+            // 每次进页同步一遍显示值
             _initializing = true;
             PopulateToggles();
             _initializing = false;
@@ -497,7 +520,9 @@ public partial class ConfigHelperWindow
         if (tag == "actions") PopulateActions();
         if (tag == "subactions") Page_SubActions.RefreshIfNeeded();
         if (ai) Page_Ai.RefreshIfNeeded();
-        if (tag == "hotkeys") Page_Hotkeys.RefreshIfNeeded();
+        if (hotkeys && page == "groups") Page_Hotkeys.RefreshIfNeeded();
+        if (hotkeys && page == "macro") PopulateMacroHotkeys();
+        if (hotkeys && page == "capture") PopulateCaptureShortcuts();
         if (macros) Page_Macros.RefreshIfNeeded();
         if (tag == "triggers") Page_Triggers.RefreshIfNeeded();
         if (superPanel) Page_SuperPanel.Reload();

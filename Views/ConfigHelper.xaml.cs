@@ -38,6 +38,7 @@ public partial class ConfigHelperWindow : Window
     private const string FamilyLogs = "logs";
     private const string FamilyMacros = "macros";
     private const string FamilyCapture = "capture";
+    private const string FamilyHotkeys = "hotkeys";
 
     // 别处改了动作 / 宏（面板删除、录制完成、AI 采纳…）：合批后只刷已建页，避免一次操作反复 Reload
     private readonly DispatcherTimer _refreshDebounce;
@@ -66,6 +67,7 @@ public partial class ConfigHelperWindow : Window
         [FamilyMacros] = "list",
         [FamilyLogs] = "settings",
         [FamilyCapture] = "general",
+        [FamilyHotkeys] = "groups",
     };
     private bool _backupBusy;            // 备份 / 导入进行中，禁用重复点击
     private bool _loadingRunNotice;      // 通用页「运行提示」回填期间抑制保存事件
@@ -87,6 +89,7 @@ public partial class ConfigHelperWindow : Window
         using var perfSeg = PerfProbe.Measure("ctor:total");
         InitializeComponent();
         WindowChromeHelper.FixMaximize(this);
+        AttachMacroHotkeys();   // 「热键 → 键鼠宏」的两个录入框（在本窗口里，不再放在 MacroView）
         // 启动时已经 Initialize / InitializeReadOnly 过（同一锚点）：只有锚点真变了才重做，否则每次
         // 打开设置都白跑一遍扫动作目录 / 修引用 / 播种（实测 200+ms，全压在 UI 线程上）。
         // 宿主里那份是只读的（写权归自己也只是「不修引用、不播种」），所以走 InitializeReadOnly。

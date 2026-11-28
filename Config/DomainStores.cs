@@ -83,6 +83,9 @@ internal static class MacroFileStore
 
     public static void Modify(string path, Action<MacroFile> change)
         => ConfigIO.ModifyDomain(path, ConfigDomain.macros, ConfigBundle.ToMacros, change, ConfigBundle.WriteMacros);
+
+    /// <summary>只读 <c>macros.json</c>（不读其它域、不扫 <c>actions/</c>）。</summary>
+    public static MacroFile Read(string path) => ConfigBundle.ReadMacros(path);
 }
 
 /// <summary><c>configs/triggers.json</c>：自动触发规则（只存动作 Id / 内置功能引用）。</summary>

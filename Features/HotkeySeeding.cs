@@ -68,6 +68,10 @@ internal static class HotkeySeeding
     /// <summary>播种（已播过就什么都不做）。</summary>
     public static void Ensure(string configPath, AppConfig cfg)
     {
+        // 内置组标记（幂等）：老配置里已有的两个组也补上「不可删除」，之后不再重复写盘。
+        // 放在版本门之前：升级过的用户 SeedVersion 已经是当前值，但他们的组还缺这个标记。
+        StampBuiltIns(configPath, cfg);
+
         if (cfg.Hotkeys.SeedVersion >= Version && cfg.Hotkeys.CaptureSeedVersion >= 1) return;
 
         bool changed = false;
@@ -84,7 +88,7 @@ internal static class HotkeySeeding
                 var group = file.Groups.FirstOrDefault(g => g.Name == GroupName);
                 if (group == null)
                 {
-                    group = new HotkeyGroup { Id = file.NewId(), Name = GroupName, Enabled = true };
+                    group = new HotkeyGroup { Id = file.NewId(), Name = GroupName, Enabled = true, BuiltIn = true };
                     file.Groups.Add(group);
                 }
 
@@ -138,5 +142,44 @@ internal static class HotkeySeeding
 
         if (binding.ActionId.Length == 0)
             binding.ActionId = reference;
+    }
+
+    /// <summary>这个组是不是内置组（播种进来的两个）：内置组不可删除，只能停用 / 改名 / 改绑。</summary>
+    public static bool IsBuiltInGroup(HotkeyGroup group)
+        => group.BuiltIn || IsBuiltInName(group.Name);
+
+    private static bool IsBuiltInName(string? name)
+        => string.Equals(name, GroupName, StringComparison.Ordinal)
+           || string.Equals(name, CapturePro.CaptureShortcuts.GroupName, StringComparison.Ordinal);
+
+    /// <summary>
+    /// 老配置里按默认名把两个内置组补上 <c>BuiltIn</c>（幂等，只在确实缺标记时写一次）。
+    /// 不这么补的话，升级上来的用户那两个组永远显示「可删除」。
+    /// </summary>
+    private static void StampBuiltIns(string configPath, AppConfig cfg)
+    {
+        if (cfg.Hotkeys?.Groups == null) return;
+        if (!cfg.Hotkeys.Groups.Any(g => !g.BuiltIn && IsBuiltInName(g.Name))) return;
+
+        try
+        {
+            ConfigIO.Modify(configPath, ConfigDomain.hotkeys, c =>
+            {
+                if (c.Hotkeys?.Groups == null) return;
+                foreach (var g in c.Hotkeys.Groups)
+                    if (!g.BuiltIn && IsBuiltInName(g.Name)) g.BuiltIn = true;
+            });
+
+            foreach (var g in cfg.Hotkeys.Groups)
+                if (!g.BuiltIn && IsBuiltInName(g.Name)) g.BuiltIn = true;
+
+            // Ensure 是在 HotkeyRegistry.Load 之后调的：不重载一次，本次会话的设置页
+            // 拿到的还是缺标记的那份快照（内置组照样显示可删，要等下次启动才对）。
+            HotkeyRegistry.Load(cfg);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("Hotkeys", "内置组标记失败：" + ex.Message);
+        }
     }
 }

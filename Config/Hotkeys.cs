@@ -105,6 +105,12 @@ public sealed class HotkeyGroup
     public bool Enabled { get; set; } = true;
 
     /// <summary>
+    /// 内置组（播种进来的「CapsLock 经典」「截图 Pro」）：**不可删除**，只能停用 / 改名 / 改绑。
+    /// 老配置里没有这个字段时由 <c>HotkeySeeding</c> 按默认名补一次（幂等）。
+    /// </summary>
+    public bool BuiltIn { get; set; }
+
+    /// <summary>
     /// 整个组的生效范围：组内绑定的**默认值**，不是额外的一道闸。
     /// 优先级：绑定自己设了范围就用绑定 → 否则用组 → 组也「跟随」就用全局默认。
     /// </summary>
@@ -120,6 +126,7 @@ public sealed class HotkeyGroup
         Id = Id,
         Name = Name,
         Enabled = Enabled,
+        BuiltIn = BuiltIn,
         Scope = Scope,
         Filter = Filter?.Clone(),
         Bindings = Bindings.Select(b => b.Clone()).ToList(),

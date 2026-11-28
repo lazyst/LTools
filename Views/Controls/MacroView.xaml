@@ -142,31 +142,18 @@
                         <Grid Style="{StaticResource FieldRow}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="150"/>
-                                <ColumnDefinition Width="220"/>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="录制 / 停止热键"/>
-                            <TextBox Grid.Column="1" x:Name="RecordHotkeyBox"/>
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="录制 / 运行热键"/>
+                            <Button Grid.Column="1" Style="{StaticResource BtnGhost}" Content="打开热键设置…"
+                                    MinHeight="30" Padding="12,3" HorizontalAlignment="Left"
+                                    Click="OpenHotkeySettings_Click"
+                                    ToolTip="录制 / 停止、停止运行这两个全局热键在「热键 → 键鼠宏」里改"/>
                             <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
                                        Margin="12,0,0,0" VerticalAlignment="Center"
-                                       Text="按一次开始录，再按一次停止（全局生效）"/>
+                                       Text="录制 / 停止运行热键统一在「热键 → 键鼠宏」里设置"/>
                         </Grid>
-
-                        <Grid Style="{StaticResource FieldRow}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150"/>
-                                <ColumnDefinition Width="220"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="停止运行热键"/>
-                            <TextBox Grid.Column="1" x:Name="PlayHotkeyBox"/>
-                            <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
-                                       Margin="12,0,0,0" VerticalAlignment="Center"
-                                       Text="宏回放与动作运行期间都生效（只在运行期间占用）"/>
-                        </Grid>
-
-                        <TextBlock Style="{StaticResource HintLabel}" Margin="150,0,0,4" TextWrapping="Wrap"
-                                   Text="热键也可以只按一个键（如 F8、Pause）。单键会在所有程序里吞掉那个按键——用字母 / 数字时请只在临时场景下用，默认的 Ctrl+F2 / Ctrl+F3 更安全。"/>
                     </StackPanel>
                 </Border>
 

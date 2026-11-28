@@ -222,6 +222,17 @@ internal static class ConfigBundle
         return Read<PanelFile>(PanelPath(anchorPath), ctx) ?? ToPanel(ctx.GetSeed());
     }
 
+    /// <summary>
+    /// 只读 <c>configs/macros.json</c>（不读其它域、不扫 <c>actions/</c>）。
+    /// 「热键 → 键鼠宏」子页回填两个全局热键用：整份 <see cref="AppConfig.Load"/> 会顺带
+    /// 解析一遍动作目录，而这一页只关心那两个字段。缺文件回落与 <see cref="LoadCore"/> 一致。
+    /// </summary>
+    internal static MacroFile ReadMacros(string anchorPath)
+    {
+        var ctx = new LoadContext { Anchor = anchorPath, Strict = false };
+        return Read<MacroFile>(MacrosPath(anchorPath), ctx) ?? ToMacros(ctx.GetSeed());
+    }
+
     /// <summary>一次读取里的共享状态：严格模式、是否已回退过、惰性加载的种子。</summary>
     private sealed class LoadContext
     {

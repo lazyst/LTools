@@ -18,7 +18,7 @@ namespace LTools.Views;
 /// <remarks>
 /// <para>
 /// 这里不另造一套注册：读写的就是 <c>configs/hotkeys.json</c> 里名为「截图 Pro」的预设组
-/// （见 <see cref="CaptureShortcuts"/>），所以「快捷键」页里看到的是同一份数据，冲突判定、
+/// （见 <see cref="CaptureShortcuts"/>），所以「热键 → 预设组」里看到的是同一份数据，冲突判定、
 /// 生效范围、CapsLock 修饰键、暂停总开关全部复用既有实现。
 /// </para>
 /// <para>

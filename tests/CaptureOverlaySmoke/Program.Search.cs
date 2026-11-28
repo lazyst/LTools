@@ -12,7 +12,7 @@ namespace CaptureOverlaySmoke;
 
 /// <summary>
 /// 设置搜索（2026-11-22）：索引从页面逻辑树自动抓、结果浮层、回车跳到那一页的那一项并高亮，
-/// 以及「停止运行热键」同时出现在键鼠宏设置与运行日志页的入口。
+/// 以及「停止运行热键」出现在「热键 → 键鼠宏」与运行日志页的入口。
 /// </summary>
 /// <remarks>
 /// 与 <c>NavSection</c> 同一套做法：把 <c>ConfigStore.ConfigPath</c> 指到本段自己的临时目录，
@@ -77,7 +77,7 @@ internal static partial class Program
             Check(entries.Count > 150, $"索引条目数 > 150（实际 {entries.Count}）");
 
             var labels = entries.Cast<object>().Select(LabelOf).ToList();
-            Check(labels.Contains("停止运行热键"), "宏设置页的停止键进了索引");
+            Check(labels.Contains("停止运行热键"), "热键 → 键鼠宏的停止键进了索引");
             Check(labels.Any(l => l.Contains("CapsLock")), "通用页的 CapsLock 开关进了索引");
             Check(labels.Contains("左键双击"), "通用页托盘的「左键双击」进了索引");
 
@@ -128,7 +128,7 @@ internal static partial class Program
                 mouse_event(LeftUp, 0, 0, 0, UIntPtr.Zero);
                 Pump(settings);
                 Pump(settings);
-                Check((string)type.GetField("_currentNav", Inst)!.GetValue(settings)! == "macros-settings",
+                Check((string)type.GetField("_currentNav", Inst)!.GetValue(settings)! == "hotkeys-macro",
                     "真鼠标点结果行跳到那一页");
                 Check(!popup.IsOpen, "点完之后浮层收起");
             }
@@ -141,19 +141,13 @@ internal static partial class Program
             Pump(settings);
             Pump(settings);
 
-            Check((string)type.GetField("_currentNav", Inst)!.GetValue(settings)! == "macros-settings",
-                "跳到键鼠宏 · 设置：" + type.GetField("_currentNav", Inst)!.GetValue(settings));
+            Check((string)type.GetField("_currentNav", Inst)!.GetValue(settings)! == "hotkeys-macro",
+                "跳到热键 · 键鼠宏：" + type.GetField("_currentNav", Inst)!.GetValue(settings));
             Check(!popup.IsOpen, "跳转后浮层收起");
             Check(string.IsNullOrEmpty(searchBox.Text), "跳转后搜索框清空（好接着搜下一个）");
 
-            object? macroView = type.GetField("_pageMacros", Inst)!.GetValue(settings);
-            Check(macroView != null, "索引时惰性页已经建出来（跳转不需要再等）");
-            if (macroView != null)
-            {
-                var pageSettings = (FrameworkElement)macroView.GetType()
-                    .GetField("Page_Settings", Inst)!.GetValue(macroView)!;
-                Check(pageSettings.Visibility == Visibility.Visible, "键鼠宏页切到「设置」子页");
-            }
+            Check(settings.FindName("Page_HotkeysMacro") is ScrollViewer pageHotkeysMacro
+                  && pageHotkeysMacro.Visibility == Visibility.Visible, "热键页切到「键鼠宏」子页");
             Check(highlight.Children.Count > 0, $"目标控件被高亮（高亮元素 {highlight.Children.Count}）");
 
             // ============ ④ 运行日志页的「停止运行热键」入口 ============
@@ -164,11 +158,11 @@ internal static partial class Program
             Check(stopText != null && stopText.Text.Length > 0,
                 "运行日志页显示当前停止键（" + stopText?.Text + "）");
             var gotoMacros = type.GetMethod("OpenStopHotkeySettings_Click", Inst);
-            Check(gotoMacros != null, "运行日志页有「去键鼠宏设置…」入口");
+            Check(gotoMacros != null, "运行日志页有「去热键设置…」入口");
             gotoMacros!.Invoke(settings, new object?[] { null, new RoutedEventArgs() });
             Pump(settings);
-            Check((string)type.GetField("_currentNav", Inst)!.GetValue(settings)! == "macros-settings",
-                "入口跳到键鼠宏 · 设置");
+            Check((string)type.GetField("_currentNav", Inst)!.GetValue(settings)! == "hotkeys-macro",
+                "入口跳到热键 · 键鼠宏");
         }
         finally
         {

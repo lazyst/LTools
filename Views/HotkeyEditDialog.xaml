@@ -4,7 +4,7 @@
         xmlns:views="clr-namespace:LTools.Views"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:controls="clr-namespace:LTools.Views.Controls"
-        Title="编辑快捷键" Width="470" ResizeMode="NoResize" SizeToContent="Height"
+        Title="编辑热键" Width="470" ResizeMode="NoResize" SizeToContent="Height"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
@@ -26,8 +26,8 @@
         </controls:DialogShell.Footer>
 
         <StackPanel Margin="20,12,20,16">
-            <!-- 快捷键 -->
-            <TextBlock Style="{StaticResource SectionLabel}" Text="快捷键" Margin="0,0,0,4"/>
+            <!-- 热键 -->
+            <TextBlock Style="{StaticResource SectionLabel}" Text="热键" Margin="0,0,0,4"/>
             <TextBox x:Name="ChordBox" MinHeight="32" IsReadOnly="True" Cursor="Hand"
                      ToolTip="点击后直接按下组合键：可以先按住 CapsLock / Ctrl 等修饰键；Esc 取消，Backspace 清空"/>
             <TextBlock x:Name="ChordError" FontSize="{StaticResource FontSizeHint}"

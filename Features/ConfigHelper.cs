@@ -89,6 +89,18 @@ internal static class ConfigHelper
     }
 
     /// <summary>
+    /// 打开设置并切到「热键」分组的某个子页（<paramref name="page"/>：<c>groups</c> / <c>macro</c> / <c>capture</c>）。
+    /// 「键鼠宏 → 设置」的指路按钮用它把用户送到录制 / 停止运行热键。
+    /// </summary>
+    public static void OpenHotkeys(string page = "groups")
+    {
+        string tag = "hotkeys-" + page;
+        if (Remote(SettingsActions.Open, tag)) return;
+
+        EnsureWindow().NavigateTo(tag);
+    }
+
+    /// <summary>
     /// 左键双击托盘图标：按 <see cref="AppState.TrayDoubleClick"/> 打开设置窗口并停到对应页。
     /// <c>settings</c> = 普通打开（停上次记住的页），其余跳到指定导航 tag；
     /// <c>superpanel</c> / <c>macros</c> 是二级分组的父项 tag，<see cref="ConfigHelperWindow.NavigateTo"/> 会落在该组上次停留的子页。

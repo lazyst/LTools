@@ -52,7 +52,7 @@ internal static class ActionReferenceIndex
         foreach (var g in panel.Context.Common)
             list.Add(new Option(PanelKey("上下文", null, g.Id), $"上下文 · 通用 · {g.Name}"));
 
-        list.Add(new Option(Hotkey, "快捷键"));
+        list.Add(new Option(Hotkey, "热键"));
         list.Add(new Option(Floating, "悬浮项"));
         list.Add(new Option(Trigger, "触发规则"));
         return list;

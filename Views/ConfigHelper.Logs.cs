@@ -135,8 +135,9 @@ public partial class ConfigHelperWindow
     /// <summary>「停止运行热键」只有一个写入口（键鼠宏 → 设置）；这里只负责跳过去。</summary>
     private void OpenStopHotkeySettings_Click(object sender, RoutedEventArgs e)
     {
-        SelectNavItem("macros-settings");
-        ApplyNavPage("macros-settings");
+        // 停止运行热键已搬到「热键 → 键鼠宏」（与录制热键同一页），别再跳「键鼠宏 → 设置」。
+        SelectNavItem("hotkeys-macro");
+        ApplyNavPage("hotkeys-macro");
     }
 
     private void LogOption_Changed(object sender, RoutedEventArgs e)
@@ -359,7 +360,7 @@ public partial class ConfigHelperWindow
                       $"保留 {(log.RetentionDays > 0 ? log.RetentionDays + " 天" : "不清理")}");
 
         int bindings = cfg.Hotkeys.Groups.Sum(g => g.Bindings.Count);
-        sb.AppendLine($"- 配置：动作 {cfg.Actions.Count} · 快捷键 {cfg.Hotkeys.Groups.Count} 组 / {bindings} 条 · " +
+        sb.AppendLine($"- 配置：动作 {cfg.Actions.Count} · 热键 {cfg.Hotkeys.Groups.Count} 组 / {bindings} 条 · " +
                       $"宏 {cfg.Macros.Items.Count} · 草稿 {DraftStore.List().Count}");
         sb.AppendLine();
 

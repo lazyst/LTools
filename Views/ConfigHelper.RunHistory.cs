@@ -41,7 +41,7 @@ public partial class ConfigHelperWindow
 
         var stats = RunHistory.Summarize(records.Take(RunHistory.StatsWindow).ToArray());
         RunHistoryStats.Text = records.Count == 0
-            ? "（还没有运行过：跑一次动作就会出现在这里——面板 / 快捷键 / 悬浮 / 自动触发 / 编辑器试运行都算）"
+            ? "（还没有运行过：跑一次动作就会出现在这里——面板 / 热键 / 悬浮 / 自动触发 / 编辑器试运行都算）"
             : $"最近 {stats.Total} 次：成功 {stats.Ok} · 失败 {stats.Failed} · 停止 {stats.Stopped} · " +
               $"平均 {stats.AverageMs} ms · 最慢 {stats.SlowestMs} ms";
 

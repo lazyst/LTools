@@ -16,11 +16,11 @@ using LTools.Features.Builtin;
 namespace LTools.Views.Controls;
 
 /// <summary>
-/// 设置 → 快捷键：左预设组 + 右热键表（布局 A）。
+/// 设置 → 热键：左预设组 + 右热键表（布局 A）。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 一个绑定只存「快捷键 + 动作 Id」；动作本体在动作管理里编辑，删除动作时
+/// 一个绑定只存「热键 + 动作 Id」；动作本体在动作管理里编辑，删除动作时
 /// <see cref="Core.Storage.ActionRemoval"/> 会把引用这条动作的绑定一起清掉。
 /// </para>
 /// <para>
@@ -99,8 +99,12 @@ public partial class HotkeysView : UserControl
             _groups.Clear();
             foreach (var group in _file.Groups) _groups.Add(new GroupRow(group));
 
-            int index = _keepGroupId == null ? 0 : _file.Groups.FindIndex(g => g.Id == _keepGroupId);
-            if (index < 0) index = _file.Groups.Count > 0 ? 0 : -1;
+            // 空列表时必须给 -1：`_keepGroupId == null ? 0 : …` 在没有任何预设组时
+            // 会留下 index = 0，紧接着 `_file.Groups[0]` 抛 IndexOutOfRange（切到「热键」直接崩）。
+            int index = _file.Groups.Count == 0
+                ? -1
+                : _keepGroupId == null ? 0 : _file.Groups.FindIndex(g => g.Id == _keepGroupId);
+            if (index < 0 && _file.Groups.Count > 0) index = 0;
 
             GroupList.SelectedIndex = index;
             _group = index >= 0 ? _file.Groups[index] : null;
@@ -129,7 +133,7 @@ public partial class HotkeysView : UserControl
 
         ConflictText.Text = conflicts.Count == 0
             ? ""
-            : $"⚠ {conflicts.Count} 条快捷键重复：生效范围有重叠时只有排在前面的那条会触发";
+            : $"⚠ {conflicts.Count} 条热键重复：生效范围有重叠时只有排在前面的那条会触发";
         ConflictText.Visibility = conflicts.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (conflicts.Count > 0 && TryFindResource("DangerBrush") is Brush danger)
             ConflictText.Foreground = danger;
@@ -175,7 +179,7 @@ public partial class HotkeysView : UserControl
         int total = _file.Groups.Sum(g => g.Bindings.Count);
         int active = _file.Groups.Where(g => g.Enabled).Sum(g => g.Bindings.Count(b => b.Enabled));
         HintText.Text = _file.Groups.Count == 0
-            ? "还没有预设组：点左上「＋ 新建」建一个组，再往里添加快捷键"
+            ? "还没有预设组：点左上「＋ 新建」建一个组，再往里添加热键"
             : $"共 {total} 条绑定，{active} 条生效 · 组顺序 = 匹配优先级";
     }
 
@@ -311,8 +315,13 @@ public partial class HotkeysView : UserControl
     {
         var group = SelectedGroup();
         if (group == null) return;
+        if (HotkeySeeding.IsBuiltInGroup(group))
+        {
+            ToastService.Show("内置预设组不能删除（可以停用、改名或改绑）", "热键", 3000, ToastKind.warning);
+            return;
+        }
         if (!ConfirmDialog.Confirm(Window.GetWindow(this), "删除预设组",
-            $"确定删除「{group.Name}」吗？组里的 {group.Bindings.Count} 条快捷键会一起删除（动作本身不受影响）。",
+            $"确定删除「{group.Name}」吗？组里的 {group.Bindings.Count} 条热键会一起删除（动作本身不受影响）。",
             danger: true)) return;
 
         int index = _file.Groups.IndexOf(group);
@@ -361,7 +370,7 @@ public partial class HotkeysView : UserControl
     {
         if (_group != null) return _group;
 
-        var group = new HotkeyGroup { Id = _file.NewId(), Name = "我的快捷键", Enabled = true };
+        var group = new HotkeyGroup { Id = _file.NewId(), Name = "我的热键", Enabled = true };
         _file.Groups.Add(group);
         _group = group;
         return group;
@@ -400,7 +409,7 @@ public partial class HotkeysView : UserControl
         if (binding == null || _group == null) return;
 
         string chord = HotkeyChord.Format(binding.Chord);
-        if (!ConfirmDialog.Confirm(Window.GetWindow(this), "删除快捷键",
+        if (!ConfirmDialog.Confirm(Window.GetWindow(this), "删除热键",
             $"确定删除 {chord} 吗？（只删这条绑定，动作本身不受影响）", danger: true)) return;
 
         int index = _group.Bindings.IndexOf(binding);
@@ -563,6 +572,14 @@ public partial class HotkeysView : UserControl
         public HotkeyGroup Source { get; }
 
         public string Name => Source.Name;
+
+        /// <summary>悬停提示：内置组说明为什么没有 ✕。</summary>
+        public string NameTip => Source.BuiltIn || HotkeySeeding.IsBuiltInGroup(Source)
+            ? Source.Name + "（内置预设组：可以停用 / 改名 / 改绑，不能删除）"
+            : Source.Name;
+
+        /// <summary>内置组隐藏删除按钮（<see cref="HotkeySeeding.IsBuiltInGroup"/> 是唯一判定）。</summary>
+        public bool BuiltIn => HotkeySeeding.IsBuiltInGroup(Source);
 
         public string Count
         {

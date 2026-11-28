@@ -92,6 +92,22 @@ internal static class Program
         Check("跟随默认的组：第二行收起", plainText?.Visibility == Visibility.Collapsed,
             plainText == null ? "没找到文本" : plainText.Visibility.ToString());
 
+        // 内置组不可删（「CapsLock 经典」「截图 Pro」）：✕ 收起、悬停说明写明，
+        // 用户自建的组照常能删。判定只有 HotkeySeeding.IsBuiltInGroup 一处。
+        Button? DeleteButton(FrameworkElement host) =>
+            Descendants<Button>(host).FirstOrDefault(b => (b.CommandParameter as string) == "delete");
+        Check("自建组：删除按钮可见", DeleteButton(plainHost)?.Visibility == Visibility.Visible,
+            DeleteButton(plainHost)?.Visibility.ToString() ?? "没找到 ✕");
+        Check("自建组：BuiltIn = false", !plain.BuiltIn, plain.NameTip);
+
+        plain.Source.BuiltIn = true;
+        var plainBuiltInHost = BuildRow(plain, list.ItemTemplate);
+        Check("内置组：提示写明不能删除",
+            plain.NameTip.Contains("不能删除", StringComparison.Ordinal), plain.NameTip);
+        Check("内置组：删除按钮收起", DeleteButton(plainBuiltInHost)?.Visibility == Visibility.Collapsed,
+            DeleteButton(plainBuiltInHost)?.Visibility.ToString() ?? "没找到 ✕");
+        plain.Source.BuiltIn = false;
+
         // 右边「添加快捷键」旁边的组生效范围按钮：选中组时可用，没有组时禁用
         var scopeBtn = (Button)Field(view, "GroupScopeBtn")!;
         var addBtn = (Button)Field(view, "AddBindingBtn")!;

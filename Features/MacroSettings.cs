@@ -121,6 +121,18 @@ internal static class MacroSettings
     }
 
     /// <summary>
+    /// 只写 <c>configs/macros.json</c> 的全局设置，然后立刻重载运行期缓存（钩子下一次按键就是新值）。
+    /// 「键鼠宏 → 设置」与「热键 → 键鼠宏」共用这一份写入口，别再各写一遍。
+    /// </summary>
+    public static void SaveAndReload(Action<MacroConfig> change)
+    {
+        // 写与读用同一个锚点（ConfigStore.ConfigPath）：配置换了目录 / 冒烟临时改路径时
+        // 不会出现「写进默认数据根、读的还是原来那份」。
+        MacroFileStore.Modify(ConfigStore.ConfigPath, file => change(file.Macros));
+        Load(ConfigStore.LoadConfig());
+    }
+
+    /// <summary>
     /// 解析热键字符串（形如 <c>ctrl+f2</c> / <c>f2</c>）：末段为主键，前面全部为修饰键。
     /// 复用 <see cref="KeyStroke"/> 的解析器，保证与「模拟按键」动作同一套键名。
     /// </summary>

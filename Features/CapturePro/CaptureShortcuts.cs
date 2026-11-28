@@ -110,7 +110,7 @@ internal static class CaptureShortcuts
         var group = GroupOf(file);
         if (group != null) return group;
 
-        group = new HotkeyGroup { Id = file.NewId(), Name = GroupName, Enabled = true };
+        group = new HotkeyGroup { Id = file.NewId(), Name = GroupName, Enabled = true, BuiltIn = true };
         file.Groups.Add(group);
         return group;
     }

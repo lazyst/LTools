@@ -50,9 +50,6 @@ public partial class MacroView : UserControl
         InitializeComponent();
         MacroList.ItemsSource = _rows;
 
-        HotkeyCapture.Attach(RecordHotkeyBox, raw => Save(m => m.RecordHotkey = raw));
-        HotkeyCapture.Attach(PlayHotkeyBox, raw => Save(m => m.PlaybackStopHotkey = raw));
-
         Loaded += (_, _) =>
         {
             // Loaded 可能来多次（窗口隐藏再显示）：事件只挂一次，否则一条录制会刷两遍列表。
@@ -108,8 +105,6 @@ public partial class MacroView : UserControl
         try
         {
             EnabledCheck.IsChecked = m.Enabled;
-            HotkeyCapture.SetHotkey(RecordHotkeyBox, m.RecordHotkey);
-            HotkeyCapture.SetHotkey(PlayHotkeyBox, m.PlaybackStopHotkey);
             CountdownBox.Text = m.CountdownMs.ToString();
             SpeedBox.Text = m.DefaultSpeed.ToString("0.##");
             LoopsBox.Text = m.Loops.ToString();
@@ -412,8 +407,7 @@ public partial class MacroView : UserControl
     {
         try
         {
-            MacroFileStore.Modify(file => change(file.Macros));
-            MacroSettings.Load(ConfigStore.LoadConfig());
+            MacroSettings.SaveAndReload(change);
         }
         catch (Exception ex)
         {
@@ -422,6 +416,10 @@ public partial class MacroView : UserControl
                 ToastKind.error);
         }
     }
+
+    /// <summary>去「热键 → 键鼠宏」改录制 / 停止运行热键（本页不再放录入框，避免两处各存一份）。</summary>
+    private void OpenHotkeySettings_Click(object sender, RoutedEventArgs e)
+        => ConfigHelper.OpenHotkeys("macro");
 
     private void OnUi(Action action)
     {

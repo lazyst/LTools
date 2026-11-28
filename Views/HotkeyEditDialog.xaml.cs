@@ -11,7 +11,7 @@ using LTools.Native;
 
 namespace LTools.Views;
 
-/// <summary>编辑一条快捷键绑定：组合键录制 + 选动作 + 生效范围 / 名单 + 备注。</summary>
+/// <summary>编辑一条热键绑定：组合键录制 + 选动作 + 生效范围 / 名单 + 备注。</summary>
 public partial class HotkeyEditDialog : Window
 {
     private readonly HotkeyBinding _binding;
@@ -245,20 +245,20 @@ public partial class HotkeyEditDialog : Window
         }
         if (string.IsNullOrWhiteSpace(_actionId) || !BindingRef.Exists(_actionId))
         {
-            ConfirmDialog.Info(this, "快捷键", "请选择一个存在的动作或功能。");
+            ConfirmDialog.Info(this, "热键", "请选择一个存在的动作或功能。");
             return;
         }
 
         // 单键：允许，但先说清代价——命中就吞键，等于把这个按键从所有程序里抢走。
         if (chord.IsBare)
         {
-            bool ok = ConfirmDialog.Confirm(this, "单键快捷键",
+            bool ok = ConfirmDialog.Confirm(this, "单键热键",
                 $"「{chord.Display()}」没有修饰键：\n\n" +
                 "· 它会在所有程序里生效，并且把这个按键吞掉——在记事本、聊天框里打这个字符，" +
                 "字符进不去，反而会触发动作；\n" +
                 "· 只想在某个程序里用，就把下面的「生效范围」设成白名单；\n" +
                 "· F1–F24、Pause 这类不产生字符的键最安全。\n\n" +
-                "确定保存这条单键快捷键？",
+                "确定保存这条单键热键？",
                 danger: true, okText: "保存单键");
             if (!ok) return;
         }

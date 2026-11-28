@@ -20,6 +20,7 @@ internal static class HotkeySuite
         cases.Add(new("hotkeys", "组的归一口径（名单只在白 / 黑名单时保留）", GroupNormalize));
         cases.Add(new("hotkeys", "生效范围的显示文案", Describe));
         cases.Add(new("hotkeys", "capslock 前缀的组合键解析", CapsLockChord));
+        cases.Add(new("hotkeys", "内置预设组不可删除（BuiltIn 标记 / 默认名兜底 / 克隆保留）", BuiltInGroups));
     }
 
     private static readonly ForegroundApp Chrome = new(
@@ -207,5 +208,27 @@ internal static class HotkeySuite
         // 录入框不会产出这种写法（按 CapsLock 只当前缀），手写配置才可能遇到。
         Check.True(HotkeyChord.TryParse("capslock", out var bareCaps, out _), "只有 capslock 时解析成单键");
         Check.True(bareCaps.IsBare && bareCaps.Vk == Win32.VkCapital, "它是主键 CapsLock，不是前缀");
+    }
+
+    /// <summary>内置预设组：播种的两个组不可删除，用户自建的组可以删。</summary>
+    private static void BuiltInGroups()
+    {
+        Check.True(LTools.Features.HotkeySeeding.IsBuiltInGroup(new HotkeyGroup { Name = "CapsLock 经典" }),
+            "种子的「CapsLock 经典」是内置组");
+        Check.True(LTools.Features.HotkeySeeding.IsBuiltInGroup(new HotkeyGroup { Name = "截图 Pro" }),
+            "「截图 Pro」组是内置组");
+        Check.False(LTools.Features.HotkeySeeding.IsBuiltInGroup(new HotkeyGroup { Name = "我的热键" }),
+            "用户自建的组不是内置组");
+
+        // 改过名的内置组靠 BuiltIn 标记仍然认得出（不能因为改名就变回可删）
+        Check.True(LTools.Features.HotkeySeeding.IsBuiltInGroup(new HotkeyGroup { Name = "我的经典键", BuiltIn = true }),
+            "改过名的内置组靠 BuiltIn 标记认得出");
+
+        // 编辑副本（设置页保存走 Clone）不能把这个标记丢掉
+        var file = new HotkeyFile
+        {
+            Groups = new List<HotkeyGroup> { new() { Name = "CapsLock 经典", BuiltIn = true } },
+        };
+        Check.True(file.Clone().Groups[0].BuiltIn, "克隆保留 BuiltIn（编辑副本保存后仍不可删）");
     }
 }

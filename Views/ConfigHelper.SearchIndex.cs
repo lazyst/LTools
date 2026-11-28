@@ -80,13 +80,17 @@ public partial class ConfigHelperWindow
         yield return ("general", Page_General);
         yield return ("actions", Page_Actions);
         yield return ("subactions", Page_SubActions);
-        yield return ("hotkeys", Page_Hotkeys);
-        // 截图 Pro 的九个子页（与 SetPageVisibility 一一对应）
+        // 「热键」三个同层子页（预设组是惰性视图，另两个是内联页）
+        yield return ("hotkeys-groups", Page_Hotkeys);
+        yield return ("hotkeys-macro", Page_HotkeysMacro);
+        yield return ("hotkeys-capture", Page_HotkeysCapture);
+        // 「文字识别」是一级页（从截图 Pro 抽出来），其余八个是截图 Pro 的子页
+        yield return ("ocr", Page_CaptureOcr);
+        // 截图 Pro 的八个同层子页（与 SetPageVisibility 一一对应）
         yield return ("capture-general", Page_CaptureGeneral);
         yield return ("capture-behavior", Page_CaptureBehavior);
         yield return ("capture-drawing", Page_CaptureDrawing);
         yield return ("capture-overlay", Page_CaptureOverlay);
-        yield return ("capture-ocr", Page_CaptureOcr);
         yield return ("capture-pin", Page_CapturePin);
         yield return ("capture-record", Page_CaptureRecord);
         yield return ("capture-history", Page_CaptureHistory);

@@ -163,10 +163,35 @@
                                      Checked="Nav_Changed" Tag="actions"/>
                         <RadioButton Style="{StaticResource NavRow}" Content="子动作库"
                                      Checked="Nav_Changed" Tag="subactions"/>
-                        <RadioButton x:Name="NavHotkeys" Style="{StaticResource NavRow}" Content="快捷键"
-                                     Checked="Nav_Changed" Tag="hotkeys"/>
+                        <!-- 热键：二级分组（预设组 / 键鼠宏 / 截图热键），与面板管理 / AI / 日志共用一套机制。
+                             2026-11-28：原「快捷键」页改名为「热键」，并把键鼠宏的录制 / 停止运行热键收进来 -->
+                        <RadioButton x:Name="NavHotkeys" Style="{StaticResource NavRow}"
+                                     Checked="Nav_Changed" Tag="hotkeys"
+                                     PreviewMouseLeftButtonUp="NavHotkeys_MouseUp">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="热键" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="NavHotkeysChevron" Text="&#xE76C;"
+                                           FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                           Margin="6,1,0,0" VerticalAlignment="Center"
+                                           RenderTransformOrigin="0.5,0.5"
+                                           Foreground="{StaticResource HintTextBrush}"/>
+                            </StackPanel>
+                        </RadioButton>
+                        <Border x:Name="HotkeysSubNavHost" Visibility="Collapsed" ClipToBounds="True"
+                                Margin="22,0,0,6" Padding="6,2,0,2"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="2,0,0,0">
+                            <StackPanel x:Name="HotkeysSubNav">
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-hotkeys"
+                                             Content="预设组" Checked="Nav_Changed" Tag="hotkeys-groups"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-hotkeys"
+                                             Content="键鼠宏" Checked="Nav_Changed" Tag="hotkeys-macro"/>
+                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-hotkeys"
+                                             Content="截图热键" Checked="Nav_Changed" Tag="hotkeys-capture"/>
+                            </StackPanel>
+                        </Border>
                         <!-- 截图 Pro：第五个带二级下拉的父项（常规 / 截图行为 / 绘制行为 / 界面与参考线 /
-                             文字识别 / 贴图窗口 / 录屏 / 截图输出），与面板管理 / AI / 日志共用一套机制 -->
+                             贴图窗口 / 录屏 / 采集历史 / 截图输出），与面板管理 / AI / 日志共用一套机制。
+                             「文字识别」已升为一级页（NavOcr，Tag="ocr"），见下。 -->
                         <RadioButton x:Name="NavCapture" Style="{StaticResource NavRow}"
                                      Checked="Nav_Changed" Tag="capture"
                                      PreviewMouseLeftButtonUp="NavCapture_MouseUp">
@@ -192,8 +217,6 @@
                                 <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
                                              Content="界面与参考线" Checked="Nav_Changed" Tag="capture-overlay"/>
                                 <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
-                                             Content="文字识别" Checked="Nav_Changed" Tag="capture-ocr"/>
-                                <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
                                              Content="贴图窗口" Checked="Nav_Changed" Tag="capture-pin"/>
                                 <RadioButton Style="{StaticResource SubNavRow}" GroupName="subnav-capture"
                                              Content="录屏" Checked="Nav_Changed" Tag="capture-record"/>
@@ -203,6 +226,10 @@
                                              Content="截图输出" Checked="Nav_Changed" Tag="capture-output"/>
                             </StackPanel>
                         </Border>
+                        <!-- 文字识别：从「截图 Pro」里抽出来的一级页（模型 / 排版 / 标点 + 在线翻译）
+                             Tag="ocr"；页面控件仍是 Page_CaptureOcr，别按名字找别的 -->
+                        <RadioButton x:Name="NavOcr" Style="{StaticResource NavRow}" Content="文字识别"
+                                     Checked="Nav_Changed" Tag="ocr"/>
                         <!-- 键鼠宏：第四个带二级下拉的父项（录制的宏 / 设置），与面板管理 / AI / 日志共用一套机制 -->
                         <RadioButton x:Name="NavMacros" Style="{StaticResource NavRow}"
                                      Checked="Nav_Changed" Tag="macros"
@@ -345,10 +372,10 @@
                         <TextBlock Style="{StaticResource SectionLabel}" Text="工具开关" Margin="0,0,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>
-                                <CheckBox x:Name="CapsLockModifierBox" Content="CapsLock 可作为快捷键修饰键"
+                                <CheckBox x:Name="CapsLockModifierBox" Content="CapsLock 可作为热键修饰键"
                                           Checked="CapsLockModifierBox_Changed" Unchecked="CapsLockModifierBox_Changed"/>
                                 <TextBlock Style="{StaticResource HintLabel}" Margin="22,4,0,12"
-                                           Text="按住 CapsLock 配合其它键（CapsLock+字母 等）触发「快捷键」页里配好的动作，轻按发 Esc，灯保持关闭（Ctrl+CapsLock 可手动开关大写锁定）。关闭后 CapsLock 恢复原生大小写切换，带 CapsLock 前缀的绑定也随之不触发。"
+                                           Text="按住 CapsLock 配合其它键（CapsLock+字母 等）触发「热键」页里配好的动作，轻按发 Esc，灯保持关闭（Ctrl+CapsLock 可手动开关大写锁定）。关闭后 CapsLock 恢复原生大小写切换，带 CapsLock 前缀的绑定也随之不触发。"
                                            TextWrapping="Wrap"/>
                                 <CheckBox x:Name="EdgeWheelVolumeBox" Content="屏幕边缘滚轮调音量"
                                           Checked="EdgeWheelVolumeBox_Changed" Unchecked="EdgeWheelVolumeBox_Changed"/>
@@ -491,7 +518,7 @@
                                               ToolTip="左键双击托盘图标时打开设置窗口并停到所选页面">
                                         <ComboBoxItem Content="打开设置"/>
                                         <ComboBoxItem Content="打开动作管理"/>
-                                        <ComboBoxItem Content="打开快捷键"/>
+                                        <ComboBoxItem Content="打开热键"/>
                                         <ComboBoxItem Content="打开键鼠宏"/>
                                         <ComboBoxItem Content="打开自动触发"/>
                                         <ComboBoxItem Content="打开面板管理"/>
@@ -526,7 +553,7 @@
                                 </Grid>
                                 <TextBlock Style="{StaticResource HintLabel}" Margin="120,6,0,0"
                                            TextWrapping="Wrap"
-                                           Text="「延时截图」入口（面板 / 快捷键 / 悬浮）点下后先等这笔秒数再弹框选，方便先把菜单、悬停提示摆好。1–10 秒，默认 3 秒。"/>
+                                           Text="「延时截图」入口（面板 / 热键 / 悬浮）点下后先等这笔秒数再弹框选，方便先把菜单、悬停提示摆好。1–10 秒，默认 3 秒。"/>
 
                                 <CheckBox x:Name="CaptureShutterSoundBox" Margin="0,12,0,0"
                                           Content="截图时响一声快门音（直接截当前显示器 / 前台窗口）"
@@ -568,15 +595,11 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
-                                               Text="全局快捷键" VerticalAlignment="Center"/>
-                                    <Button Grid.Column="1" x:Name="CaptureShortcutsButton" Style="{StaticResource Btn}"
-                                            Content="设置…" MinHeight="32" Padding="14,4"
-                                            HorizontalAlignment="Left" Click="CaptureShortcuts_Click"
-                                            ToolTip="截图 / 贴图动作的全局键（截图 F1、截图并复制 Ctrl+F1、贴剪贴板 F3、恢复上一张关闭的贴图 Ctrl+F3…）"/>
+                                               Text="全局热键" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Style="{StaticResource HintLabel}"
+                                               VerticalAlignment="Center" TextWrapping="Wrap"
+                                               Text="截图 / 延时截图 / 录屏的全局键在「热键 → 截图热键」里改（也就是预设组的「截图 Pro」组）。"/>
                                 </Grid>
-                                <TextBlock x:Name="CaptureShortcutsSummary" Style="{StaticResource HintLabel}"
-                                           Margin="120,6,0,0" TextWrapping="Wrap"
-                                           Text="点「设置…」给截图 / 识别 / 贴图这些动作各绑 1–2 个全局键。改完立刻生效，也就是「快捷键」页里的「截图 Pro」组。"/>
 
                                 <Grid Margin="0,12,0,0">
                                     <Grid.ColumnDefinitions>
@@ -2150,10 +2173,10 @@
                                  ToolTip="按动作名称 / 类型 / 步骤筛选"
                                  controls:TextBoxPlaceholder.Text="搜索动作名称、类型或步骤…"
                                  TextChanged="ActionFilter_TextChanged"/>
-                        <!-- 引用位置：选项由 ActionReferenceIndex.Options() 填，按场景·分组 / 快捷键 / 悬浮项 / 触发规则收窄 -->
+                        <!-- 引用位置：选项由 ActionReferenceIndex.Options() 填，按场景·分组 / 热键 / 悬浮项 / 触发规则收窄 -->
                         <ComboBox Grid.Column="1" x:Name="ActionRefFilterCombo" Width="180" MinHeight="30"
                                   Margin="8,0,0,0" HorizontalAlignment="Left"
-                                  ToolTip="按引用位置筛选（面板场景 / 快捷键 / 悬浮项 / 触发规则）"
+                                  ToolTip="按引用位置筛选（面板场景 / 热键 / 悬浮项 / 触发规则）"
                                   DisplayMemberPath="Label" SelectedValuePath="Key"
                                   SelectionChanged="ActionRefFilter_SelectionChanged"/>
                         <TextBlock Grid.Column="2" x:Name="ActionCountText" Style="{StaticResource HintLabel}"
@@ -2259,8 +2282,88 @@
                      Page_General / Page_Actions / Page_Terminals / Page_Logs* / Page_Backup
                      是内联的轻量 ScrollViewer / Grid，保持现状。 -->
 
-                <!-- ============ 快捷键 ============ -->
+                <!-- ============ 热键 · 预设组（HotkeysView：整张预设组 / 绑定表） ============ -->
                 <ContentControl x:Name="Host_Hotkeys" Visibility="Collapsed"/>
+
+                <!-- ============ 热键 · 键鼠宏（录制 / 停止运行热键，从「键鼠宏 → 设置」搬来） ============ -->
+                <ScrollViewer x:Name="Page_HotkeysMacro" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="键鼠宏" Margin="0,0,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                                           Margin="0,0,0,10"
+                                           Text="录制与停止运行是 LTools 自己的全局热键；「启用键鼠宏」和「回放默认值」（倒计时 / 速度 / 循环 / 回放内容）仍在「键鼠宏 → 设置」里。"/>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150"/>
+                                        <ColumnDefinition Width="220"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource SectionLabel}" Text="录制 / 停止热键"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="MacroRecordHotkeyBox"/>
+                                    <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
+                                               Margin="12,0,0,0" VerticalAlignment="Center"
+                                               Text="按一次开始录，再按一次停止（全局生效）"/>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150"/>
+                                        <ColumnDefinition Width="220"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource SectionLabel}" Text="停止运行热键"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" x:Name="MacroPlayHotkeyBox"/>
+                                    <TextBlock Grid.Column="2" Style="{StaticResource HintLabel}"
+                                               Margin="12,0,0,0" VerticalAlignment="Center"
+                                               Text="宏回放与动作运行期间都生效（只在运行期间占用）"/>
+                                </Grid>
+
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="150,0,0,4"
+                                           TextWrapping="Wrap"
+                                           Text="热键也可以只按一个键（如 F8、Pause）。单键会在所有程序里吞掉那个按键——用字母 / 数字时请只在临时场景下用，默认的 Ctrl+F2 / Ctrl+F3 更安全。"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ============ 热键 · 截图热键（全局截图热键的入口 + 摘要；覆盖层内的键仍在截图 Pro） ============ -->
+                <ScrollViewer x:Name="Page_HotkeysCapture" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="Collapsed" Padding="20,14,20,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="截图热键" Margin="0,0,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
+                                           Margin="0,0,0,10"
+                                           Text="截图 / 延时截图 / 录屏这些「在任意程序里都能按」的键，存在预设组的「截图 Pro」组里（也是「预设组」页里能看到的那一组）；这里按动作列出来，改完立刻生效。覆盖层内的按键（选择 / 工具 / 贴图窗口 / 录屏条）只在那个窗口有焦点时生效，仍在「截图 Pro → 常规」里改。"/>
+
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="全局热键" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="CaptureShortcutsButton" Style="{StaticResource Btn}"
+                                            Content="设置…" MinHeight="32" Padding="14,4"
+                                            HorizontalAlignment="Left" Click="CaptureShortcuts_Click"
+                                            ToolTip="截图 / 贴图动作的全局键（截图 F1、截图并复制 Ctrl+F1、贴剪贴板 F3、恢复上一张关闭的贴图 Ctrl+F3…）"/>
+                                </Grid>
+                                <TextBlock x:Name="CaptureShortcutsSummary" Style="{StaticResource HintLabel}"
+                                           Margin="120,6,0,0" TextWrapping="Wrap"
+                                           Text="点「设置…」给截图 / 识别 / 贴图这些动作各绑 1–2 个全局键。改完立刻生效，也就是「预设组」页里的「截图 Pro」组。"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
 
                 <!-- ============ 截图输出（格式 / 质量 / 压缩 / 目录 / 文件名模板 / 另存为 / 自动保存） ============ -->
                 <ScrollViewer x:Name="Page_Output" VerticalScrollBarVisibility="Auto"
@@ -2589,8 +2692,8 @@
                                 </Grid>
                                 <TextBlock Style="{StaticResource HintLabel}" TextWrapping="Wrap"
                                            Margin="120,0,0,8"
-                                           Text="宏回放与动作自动化运行期间按它停止（只在运行期间占用）。它与「键鼠宏 → 设置」里的停止键是同一个值，改一处两边都生效。"/>
-                                <Button Style="{StaticResource BtnGhost}" Content="去键鼠宏设置…"
+                                           Text="宏回放与动作自动化运行期间按它停止（只在运行期间占用）。它与「热键 → 键鼠宏」里的停止键是同一个值，改一处两边都生效。"/>
+                                <Button Style="{StaticResource BtnGhost}" Content="去热键设置…"
                                         HorizontalAlignment="Left" MinWidth="120"
                                         Click="OpenStopHotkeySettings_Click"/>
                             </StackPanel>

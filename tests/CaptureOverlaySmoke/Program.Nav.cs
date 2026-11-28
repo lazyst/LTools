@@ -62,24 +62,28 @@ internal static partial class Program
 
             var sub = Named<StackPanel>("CaptureSubNav");
             var items = sub.Children.OfType<RadioButton>().ToList();
-            Check(items.Count == 9, $"二级分类 9 项（实际 {items.Count}）");
+            Check(items.Count == 8, $"二级分类 8 项（实际 {items.Count}）");
             Check(string.Join(",", items.Select(i => i.Tag)) ==
                   "capture-general,capture-behavior,capture-drawing,capture-overlay,"
-                  + "capture-ocr,capture-pin,capture-record,capture-history,capture-output",
+                  + "capture-pin,capture-record,capture-history,capture-output",
                 "二级项顺序与 tag：" + string.Join(",", items.Select(i => i.Tag)));
             Check(string.Join(",", items.Select(i => i.Content?.ToString())) ==
-                  "常规,截图行为,绘制行为,界面与参考线,文字识别,贴图窗口,录屏,采集历史,截图输出",
+                  "常规,截图行为,绘制行为,界面与参考线,贴图窗口,录屏,采集历史,截图输出",
                 "二级项中文名：" + string.Join(",", items.Select(i => i.Content)));
             Check(items.All(i => i.GroupName == "subnav-capture"), "二级项同一 GroupName（互斥）");
 
-            // ============ ② 八个子页都在 ============
+            // 「文字识别」已升为一级页：不在「截图 Pro」的子项里，自己是一级项
+            var navOcr = Named<RadioButton>("NavOcr");
+            Check(Equals(navOcr.Tag, "ocr") && parents.Contains(navOcr), "「文字识别」是一级导航项");
+            Check(items.All(i => Equals(i.Tag, "capture-ocr") == false), "「截图 Pro」下不再有文字识别子项");
+
+            // ============ ② 八个子页 + 文字识别页都在 ============
             var pages = new (string Page, string Viewer, string Anchor)[]
             {
                 ("general", "Page_CaptureGeneral", "ScreenshotDelayCombo"),
                 ("behavior", "Page_CaptureBehavior", "CaptureCursorBox"),
                 ("drawing", "Page_CaptureDrawing", "CaptureAutoSelectBox"),
                 ("overlay", "Page_CaptureOverlay", "CaptureToolbarSizeCombo"),
-                ("ocr", "Page_CaptureOcr", "OcrModelCombo"),
                 ("pin", "Page_CapturePin", "PinShowBorderBox"),
                 ("record", "Page_CaptureRecord", "RecordClarityCombo"),
                 ("history", "Page_CaptureHistory", "CaptureHistoryDaysBox"),
@@ -88,6 +92,7 @@ internal static partial class Program
 
             foreach (var (_, viewer, _) in pages)
                 Check(settings.FindName(viewer) is ScrollViewer, $"{viewer} 存在");
+            Check(settings.FindName("Page_CaptureOcr") is ScrollViewer, "Page_CaptureOcr 存在（一级页）");
 
             // 设置真的搬出来了：控件最近的 ScrollViewer 就是它自己的子页（不在「通用」里）
             string? OwnerPage(object control)
@@ -111,6 +116,13 @@ internal static partial class Program
                 Check(OwnerPage(control) == viewer,
                     $"{anchor} 在 {viewer} 里（实际 {OwnerPage(control)}）");
             }
+
+            object? ocrAnchor = settings.FindName("OcrModelCombo");
+            Check(ocrAnchor != null, "OcrModelCombo 存在");
+            if (ocrAnchor != null)
+                Check(OwnerPage(ocrAnchor) == "Page_CaptureOcr",
+                    $"OcrModelCombo 在 Page_CaptureOcr 里（实际 {OwnerPage(ocrAnchor)}）");
+
             Check(OwnerPage(Named<CheckBox>("CapsLockModifierBox")) == "Page_General",
                 "「通用」只剩工具开关 / 开机自启 / 运行提示 / 托盘");
 
@@ -140,9 +152,74 @@ internal static partial class Program
                 var want = items.First(i => Equals(i.Tag, "capture-" + page));
                 Check(want.IsChecked == true, $"{page}：对应子项高亮");
                 Check(items.Count(i => i.IsChecked == true) == 1, $"{page}：只高亮一项");
-                if (page is "ocr" or "overlay" or "history")
+                if (page is "overlay" or "history")
                     Save(RenderHi(settings), Path.Combine(_outDir, $"settings-capture-{page}.png"));
             }
+
+            // ============ ④b 文字识别：一级页，自己切 ============
+            typeof(LTools.Views.ConfigHelperWindow).GetMethod("SelectNavItem", Inst)!
+                .Invoke(settings, new object[] { "ocr" });
+            Nav("ocr");
+            Check(Page("Page_CaptureOcr").Visibility == Visibility.Visible, "文字识别：它自己可见");
+            Check(pages.All(p => Page(p.Viewer).Visibility == Visibility.Collapsed),
+                "文字识别：截图 Pro 的子页都收起");
+            Check(navOcr.IsChecked == true, "文字识别导航项高亮");
+            Check(items.All(i => i.IsChecked != true), "文字识别：截图 Pro 的子项不再高亮（不会两处同时亮）");
+            Save(RenderHi(settings), Path.Combine(_outDir, "settings-ocr.png"));
+
+            // ============ ④c 热键：父项 + 三个子页 ============
+            var navHotkeys = Named<RadioButton>("NavHotkeys");
+            Check(Equals(navHotkeys.Tag, "hotkeys") && parents.Contains(navHotkeys), "「热键」是一级导航项（父项）");
+            Check(Named<TextBlock>("NavHotkeysChevron").Text.Length > 0, "「热键」父项带展开箭头");
+
+            var hotkeySub = Named<StackPanel>("HotkeysSubNav");
+            var hotkeyItems = hotkeySub.Children.OfType<RadioButton>().ToList();
+            Check(hotkeyItems.Count == 3, $"热键分组 3 个子页（实际 {hotkeyItems.Count}）");
+            Check(string.Join(",", hotkeyItems.Select(i => i.Tag)) ==
+                  "hotkeys-groups,hotkeys-macro,hotkeys-capture",
+                "热键子页顺序：" + string.Join(",", hotkeyItems.Select(i => i.Tag)));
+            Check(string.Join(",", hotkeyItems.Select(i => i.Content?.ToString())) == "预设组,键鼠宏,截图热键",
+                "热键子页中文名：" + string.Join(",", hotkeyItems.Select(i => i.Content)));
+            Check(hotkeyItems.All(i => i.GroupName == "subnav-hotkeys"), "热键子项同一 GroupName（互斥）");
+
+            // 父项 → 默认子页「预设组」；旧的一级 tag「hotkeys」不再是普通一级页
+            var normalizeNav = typeof(LTools.Views.ConfigHelperWindow).GetMethod("NormalizeSavedNav", Stat)!;
+            Check((string)normalizeNav.Invoke(null, new object?[] { "hotkeys" })! == "hotkeys-groups",
+                "存的是父项「hotkeys」→ 默认落到「预设组」");
+
+            Nav("hotkeys");
+            Check(Page("Page_HotkeysMacro").Visibility == Visibility.Collapsed
+                  && Page("Page_HotkeysCapture").Visibility == Visibility.Collapsed,
+                "热键默认子页：另两个子页收起");
+            Check(Named<ContentControl>("Host_Hotkeys").Visibility == Visibility.Visible, "热键默认子页是「预设组」");
+            Check(navHotkeys.IsChecked == true && hotkeyItems[0].IsChecked == true, "父项与「预设组」同时高亮");
+            Save(RenderHi(settings), Path.Combine(_outDir, "settings-hotkeys-groups.png"));
+
+            Nav("hotkeys-macro");
+            Check(Page("Page_HotkeysMacro").Visibility == Visibility.Visible, "「键鼠宏」子页可见");
+            Check(Named<ContentControl>("Host_Hotkeys").Visibility == Visibility.Collapsed
+                  && Page("Page_HotkeysCapture").Visibility == Visibility.Collapsed, "「键鼠宏」：另两页收起");
+            Check(hotkeyItems[1].IsChecked == true && hotkeyItems[0].IsChecked != true, "「键鼠宏」子项高亮");
+            var recordBox = settings.FindName("MacroRecordHotkeyBox") as TextBox;
+            var playBox = settings.FindName("MacroPlayHotkeyBox") as TextBox;
+            Check(recordBox != null && playBox != null, "键鼠宏子页有录制 / 停止运行两个热键框");
+            if (recordBox != null)
+                Check(OwnerPage(recordBox) == "Page_HotkeysMacro", "录制热键框在 Page_HotkeysMacro 里");
+            Save(RenderHi(settings), Path.Combine(_outDir, "settings-hotkeys-macro.png"));
+
+            Nav("hotkeys-capture");
+            Check(Page("Page_HotkeysCapture").Visibility == Visibility.Visible, "「截图热键」子页可见");
+            var captureShortcutBtn = settings.FindName("CaptureShortcutsButton");
+            Check(captureShortcutBtn != null, "截图热键页有「设置…」入口");
+            if (captureShortcutBtn != null)
+                Check(OwnerPage(captureShortcutBtn) == "Page_HotkeysCapture",
+                    $"全局截图热键入口已搬出截图 Pro 常规页（实际 {OwnerPage(captureShortcutBtn)}）");
+            Check(settings.FindName("CaptureShortcutsSummary") is TextBlock, "截图热键页有已绑摘要");
+            // 覆盖层内的按键仍留在「截图 Pro → 常规」
+            var keymapBtn = settings.FindName("CaptureKeymapButton");
+            Check(keymapBtn != null && OwnerPage(keymapBtn) == "Page_CaptureGeneral",
+                "覆盖层内快捷键仍归「截图 Pro → 常规」");
+            Save(RenderHi(settings), Path.Combine(_outDir, "settings-hotkeys-capture.png"));
 
             // ============ ⑤ 记住上次子页 ============
             Nav("capture-record");
@@ -176,8 +253,10 @@ internal static partial class Program
                 .GetMethod("NormalizeSavedNav", Stat)!;
             Check((string)normalize.Invoke(null, new object?[] { "capture" })! == "capture-general",
                 "存的是父项 → 落到默认子页「常规」");
-            Check((string)normalize.Invoke(null, new object?[] { "capture-ocr" })! == "capture-ocr",
-                "存的子页原样保留");
+            Check((string)normalize.Invoke(null, new object?[] { "capture-ocr" })! == "actions",
+                "旧的 capture-ocr 不再是合法 tag（文字识别已升为一级页，回到动作管理）");
+            Check((string)normalize.Invoke(null, new object?[] { "ocr" })! == "ocr",
+                "文字识别一级页原样保留");
             Check((string)normalize.Invoke(null, new object?[] { "output" })! == "actions",
                 "「截图输出」不再是合法一级页（旧值回到动作管理，不做旧 tag 兼容）");
 
