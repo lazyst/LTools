@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Windows;
+using LTools.Config;
+using LTools.Core;
 using LTools.Views;
 
 namespace LTools.Features;
@@ -60,6 +62,11 @@ internal static class TextWindowService
         }
 
         var window = new TextViewWindow(title, text, editable, monospace, wrap: true, activate);
+
+        // 默认不置顶（普通窗口会被别的程序盖住、也能从任务栏找回）；上一次钉住过就沿用。
+        window.ApplyTopmost(ReadTopmost());
+        window.TopmostChanged += (_, pinned) => SaveTopmost(pinned);
+
         ApplyBounds(window);
 
         window.Closing += (_, _) => RememberBounds(window);
@@ -153,5 +160,25 @@ internal static class TextWindowService
             : window.RestoreBounds;
         if (bounds.Width < 200 || bounds.Height < 150) return;
         _lastBounds = bounds;
+    }
+
+    // ============ 置顶偏好（ui.json 的 TextWindowTopmost） ============
+    // 与速记（QuickNoteTopmost）同一套：图钉翻转后记住，下一次打开文本窗口沿用。
+    // 存 ui.json 而不是 settings.json——它是窗口偏好，丢了不影响功能。
+
+    private static bool ReadTopmost()
+    {
+        string path = ConfigStore.ConfigPath;
+        if (string.IsNullOrEmpty(path)) return false;
+        try { return UiStore.Read(path).TextWindowTopmost; }
+        catch { return false; }
+    }
+
+    private static void SaveTopmost(bool pinned)
+    {
+        string path = ConfigStore.ConfigPath;
+        if (string.IsNullOrEmpty(path)) return;
+        try { UiStore.Modify(path, ui => ui.TextWindowTopmost = pinned); }
+        catch (Exception ex) { AppLog.Warn("TextWindow", $"保存置顶偏好失败：{ex.Message}"); }
     }
 }

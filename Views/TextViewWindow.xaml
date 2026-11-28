@@ -5,7 +5,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:controls="clr-namespace:LTools.Views.Controls"
         Width="720" Height="480" MinWidth="420" MinHeight="260"
-        WindowStartupLocation="CenterScreen" ShowInTaskbar="False" Topmost="True"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
         WindowStyle="None" Style="{StaticResource ModernWindow}"
         Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
@@ -22,8 +22,10 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 标题栏右侧的状态徽标（只读 / 可编辑）在代码里建：见 ApplyModeChrome -->
-        <controls:TitleBar Grid.Row="0" x:Name="Bar"/>
+        <!-- 标题栏右侧的状态徽标（只读 / 可编辑）在代码里建：见 ApplyModeChrome。
+             图钉 = 置顶：默认不置顶（普通窗口，会被别的程序盖住、可从任务栏找回），
+             钉住时记住到 ui.json（TextWindowTopmost），以后打开的文本窗口也钉住。 -->
+        <controls:TitleBar Grid.Row="0" x:Name="Bar" ShowPin="True" PinClicked="Bar_PinClicked"/>
 
         <!-- 正文：显示模式只读（仍可选中复制），读取模式可编辑。
              底色也跟着变：只读偏灰（不像输入框），可编辑纯白。 -->

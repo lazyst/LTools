@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    文本窗口（动作单元 ui.textWindow）的窗口行为冒烟（仓库内跑，不进 CI）：
+    - 默认不置顶、在任务栏有按钮（无边框窗口没有任务栏按钮时，最小化会在屏幕左下角留一条小标题栏）；
+    - 标题栏图钉能翻转置顶并抛出事件；
+    - 真最小化后屏幕上不出现「小标题栏」，还原正常。
+    跑之前先构建产品：dotnet build -p:NoWin32Manifest=true
+        cd tests\TextWindowSmoke；dotnet run
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>TextWindowSmoke</AssemblyName>
+    <RootNamespace>TextWindowSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="LTools">
+      <HintPath>..\..\bin\Debug\net10.0-windows10.0.19041.0\LTools.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

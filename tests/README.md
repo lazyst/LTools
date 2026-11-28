@@ -193,6 +193,30 @@ dotnet run                                # 39 条，约 10 秒
 托盘提示随后台运行数变化、运行历史按 `runId` 分开记（同名副本可区分）。
 钩子 / 前台 / 指示器的点击行为只能真机验（见 `docs/RUN_INTEROP.md` §13.1）。
 
+### `IndicatorSmoke`（运行指示器：没有运行时收起 / 恢复不留空条）
+
+```powershell
+cd tests\IndicatorSmoke
+dotnet run                                # 14 条，约 2 秒
+```
+
+真开 `RecordingIndicatorWindow`：没有运行时 `HideAutomationForCapture()` 返回 false、`RestoreAutomation`
+是空操作（截图 Pro 的识别以前在这里恢复了一次，屏幕顶部就留一条**空指示条**）；有运行时（往注册表放
+一个假运行）显示在屏幕顶部、截图作用域收起 / 恢复成对、运行移除后自己收起、计时器不会把空窗口画回来。
+
+### `TextWindowSmoke`（文本窗口：默认不置顶 / 图钉 / 最小化不留小标题栏）
+
+```powershell
+cd tests\TextWindowSmoke
+dotnet run                                # 11 条，约 2 秒
+```
+
+真开一扇 `TextViewWindow`（不注入键鼠）：默认不置顶、任务栏里有按钮；点标题栏图钉能翻转
+置顶并发出事件（图钉图标跟着变）；真最小化后用 `GetWindowRect` 判断屏幕上**没有**留下
+「小 + 靠左」的矩形（旧实现无任务栏按钮时是 `0,986 199×34` 那种小标题栏），还原后窗口还在。
+拿不到 DIP/物理像素的换算时别看 `SystemParameters.WorkArea`（它是 DIP，125% 缩放会差一截），
+按物理像素的窗口矩形直接判。
+
 ### `LinkSmoke`（进程间链路：真命名管道上的握手 / 请求 / 事件 / 超时）
 
 ```powershell

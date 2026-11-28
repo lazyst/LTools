@@ -149,6 +149,9 @@ public sealed class UiStateFile
     /// <summary>速记窗口是否置顶（标题栏那个图钉；默认不置顶，改了记住）。</summary>
     public bool QuickNoteTopmost { get; set; }
 
+    /// <summary>文本窗口是否置顶（标题栏图钉；默认不置顶，改了记住，下一扇文本窗口沿用）。</summary>
+    public bool TextWindowTopmost { get; set; }
+
     /// <summary>
     /// 截图工具栏的格子布局：一行一格、格内逗号分隔工具键（如 <c>pen,highlighter</c>）；
     /// null = 全新安装（按 <c>ToolCatalog</c> 默认，每个工具一格）。

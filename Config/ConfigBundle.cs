@@ -140,6 +140,7 @@ internal static class ConfigBundle
         cfg.PinPageSize = ui.PinPageSize;
         cfg.CaptureHistoryPageSize = ui.CaptureHistoryPageSize;
         cfg.QuickNoteTopmost = ui.QuickNoteTopmost;
+        cfg.TextWindowTopmost = ui.TextWindowTopmost;
         cfg.CaptureToolGroups = ui.CaptureToolGroups ?? new();
         cfg.CaptureToolHidden = ui.CaptureToolHidden ?? new();
         cfg.CaptureActionGroups = ui.CaptureActionGroups ?? new();
@@ -486,6 +487,7 @@ internal static class ConfigBundle
         PinPageSize = cfg.PinPageSize,
         CaptureHistoryPageSize = cfg.CaptureHistoryPageSize,
         QuickNoteTopmost = cfg.QuickNoteTopmost,
+        TextWindowTopmost = cfg.TextWindowTopmost,
         CaptureToolGroups = cfg.CaptureToolGroups ?? new(),
         CaptureToolHidden = cfg.CaptureToolHidden ?? new(),
         CaptureActionGroups = cfg.CaptureActionGroups ?? new(),

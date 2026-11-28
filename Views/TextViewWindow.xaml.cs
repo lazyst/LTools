@@ -20,6 +20,11 @@ namespace LTools.Views;
 /// 两种模式的外观差别集中在 <see cref="ApplyModeChrome"/>：标题栏徽标、正文底色、光标、底部按钮。
 /// 位置尺寸由服务记住（最大化时存还原后的矩形）。
 /// </para>
+/// <para>
+/// **是一扇普通窗口**：默认不置顶（标题栏图钉可钉，偏好记 <c>ui.json</c>），并在任务栏里有按钮
+/// ——无边框窗口若没有任务栏按钮，最小化后 Windows 会把「最小化的窗口」摆在屏幕左下角，
+/// 看起来就是露出一条小标题栏（踩过）。所以 <c>ShowInTaskbar</c> 保持 true，别再改回去。
+/// </para>
 /// </remarks>
 public partial class TextViewWindow : Window
 {
@@ -55,6 +60,22 @@ public partial class TextViewWindow : Window
     /// <summary>读取模式下内容是否被改过（与打开 / 最后一次设置的内容比较）。</summary>
     public bool Changed => Body.Text != _initial;
 
+    /// <summary>用户点了标题栏图钉（true = 现在置顶）。服务据此记住偏好（<c>ui.json</c> 的 <c>TextWindowTopmost</c>）。</summary>
+    public event EventHandler<bool>? TopmostChanged;
+
+    /// <summary>按偏好设置 / 取消置顶（服务在打开与复用窗口时调）。</summary>
+    public void ApplyTopmost(bool pinned)
+    {
+        Topmost = pinned;
+        Bar.IsPinned = pinned;
+    }
+
+    private void Bar_PinClicked(object? sender, EventArgs e)
+    {
+        ApplyTopmost(!Topmost);
+        TopmostChanged?.Invoke(this, Topmost);
+    }
+
     public TextViewWindow(string title, string text, bool editable, bool monospace, bool wrap, bool activate)
     {
         InitializeComponent();
@@ -73,6 +94,7 @@ public partial class TextViewWindow : Window
         badgeContent.Children.Add(_modeText);
         _modeBadge.Child = badgeContent;
         Bar.ExtraContent = _modeBadge;
+        Bar.IsPinned = Topmost;
 
         // 读取模式才给按钮；显示模式只有「关闭」（标题栏关闭按钮与 Esc 也行）。
         Body.IsReadOnly = !editable;

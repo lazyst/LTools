@@ -185,6 +185,12 @@ public sealed class AppConfig
     public bool QuickNoteTopmost { get; set; }
 
     /// <summary>
+    /// 文本窗口是否置顶（标题栏图钉）。默认不置顶——「显示」模式常拿来一边看一边干活，
+    /// 顶在最前会盖住正要操作的程序；改了记住，下一扇文本窗口沿用，只在 <c>configs/ui.json</c> 里。
+    /// </summary>
+    public bool TextWindowTopmost { get; set; }
+
+    /// <summary>
     /// 截图工具栏的格子布局（一行一格、格内逗号分隔工具键，如 <c>pen,highlighter</c>）；
     /// 空 = 按 <c>ToolCatalog</c> 默认（每个工具一格）。见 <c>Features/CapturePro/ToolLayout</c>。
     /// </summary>
