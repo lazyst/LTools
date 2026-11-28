@@ -1310,7 +1310,7 @@ internal static partial class Program
     }
 
     /// <summary>
-    /// 工具栏堆叠组：一格放几个工具（同格再点循环）、收起 / 放回、右键菜单、恢复默认。
+    /// 工具栏堆叠组：一格放几个工具（悬停弹层选变体）、收起 / 放回、右键菜单、恢复默认。
     /// 纯布局逻辑在 <c>--selftest</c> 里已逐条断言，这里只验**真窗口**的格子数 / 图标 / 角标 / 菜单条目。
     /// </summary>
     private static void ToolLayouts(CaptureOverlayWindow window)
@@ -1336,17 +1336,17 @@ internal static partial class Program
             grid.Children[grid.Children.Count - 1] is System.Windows.Shapes.Ellipse { Visibility: Visibility.Visible };
 
         int all = Cells();
-        Check(all == 17, $"默认布局按上游排 17 格（实际 {all}）");
+        Check(all == 10, $"默认布局按上游 defaultPositions() 排 10 格（实际 {all}）");
         Check(!BadgeShown(CellList()[0]), "单工具格子（选择）不显示「这里还有别的工具」的角标");
         Check(!BadgeShown(CellList()[1]), "「形状」单独一格（矩形 / 椭圆 / 菱形在参数行里选），没有角标");
-        Check(!BadgeShown(CellList()[2]), "「气泡」单独一格（上游就是独立按钮），没有角标");
+        Check(BadgeShown(CellList()[2]), "第三格是一叠（括号 / 测角 / 测距 / 直线 / 箭头），带角标");
 
         // 按名字找格子（布局一改，下标就变，断言不该跟着改）
         RadioButton CellWith(string name) => CellList().First(c =>
             (c.Tag!.GetType().GetProperty("Tools")!.GetValue(c.Tag) as System.Collections.IEnumerable)!
             .Cast<object>().Any(t => t!.ToString() == name));
 
-        // 并到左边一格：把「气泡 / 文字」并进它左边的「测距 / 测角 / 括号」
+        // 并到左边一格：把「文字」并进它左边的「放大镜 / 聚光 / 荧光」
         var merged = Change(Default(), "MergeLeft", Tool("Text"));
         Apply(merged);
         Pump(window);
@@ -1372,7 +1372,21 @@ internal static partial class Program
         Check(glowPopup.IsOpen, "悬停多工具格弹出二级工具条");
 
         var popRow = (StackPanel)((Border)glowPopup.Child).Child;
-        Check(popRow.Children.Count == 2, $"二级工具条里是这一格的两个工具（实际 {popRow.Children.Count} 个）");
+        var glowTools = (System.Collections.IList)glowCell.Tag!.GetType().GetProperty("Tools")!.GetValue(glowCell.Tag)!;
+        Check(popRow.Children.Count == glowTools.Count,
+            $"二级工具条里是这一格的全部工具（{popRow.Children.Count} / {glowTools.Count} 个）");
+
+        var catalogType = typeof(CaptureOverlayWindow).Assembly.GetType("LTools.Features.CapturePro.ToolCatalog")!;
+        string ToolName(object tool)
+        {
+            var info = catalogType.GetMethod("Of")!.Invoke(null, new[] { tool })!;
+            return (string)info.GetType().GetProperty("Name")!.GetValue(info)!;
+        }
+
+        string entryName = ToolName(glowTools[glowTools.Count - 1]!);
+        Check((popRow.Children[0] as RadioButton)?.ToolTip?.ToString()
+                  ?.StartsWith(entryName, StringComparison.Ordinal) == true,
+            $"弹层按上游 popoverItemIds 反过来排：入口「{entryName}」在最左");
 
         // 位置：与一级图标水平居中、整体在它下方并留出间距（用户报过「歪了、贴太近」）。
         // 直接调自定义摆位回调（弹层窗口还没建出来时 PointToScreen 拿不到 PresentationSource）
@@ -1422,7 +1436,7 @@ internal static partial class Program
         Pump(window);
         Save(CropElement(window, (FrameworkElement)toolbar), Path.Combine(_outDir, "toolbar-stacked.png"));
 
-        // 恢复默认：回到 17 格（选择 / 形状 / 气泡是单格，荧光与滤镜仍是多工具格）
+        // 恢复默认：回到 10 格（选择 / 形状 / 画笔 / 文字 / 水印是单格，箭头 / 荧光 / 气泡 / 滤镜 / 橡皮是多工具格）
         Apply(Default());
         Pump(window);
         Check(Cells() == all, $"恢复默认后回到 {all} 格（{Cells()}）");
@@ -1490,8 +1504,8 @@ internal static partial class Program
                     if (cell.Tag?.GetType().GetProperty("Tools")?.GetValue(cell.Tag) is System.Collections.IEnumerable tools)
                         foreach (var tool in tools) covered.Add(tool!.ToString()!);
                 }
-        Check(cells == 17 && covered.Count == 23,
-            $"工具栏按上游排 17 格、覆盖 23 个工具（折线 / 取色默认隐藏）（{cells} 格 / {covered.Count} 个工具）");
+        Check(cells == 10 && covered.Count == 23,
+            $"工具栏按上游排 10 格、覆盖 23 个工具（折线 / 取色默认隐藏）（{cells} 格 / {covered.Count} 个工具）");
 
         var toolType = typeof(CaptureOverlayWindow).Assembly.GetType("LTools.Features.CapturePro.CaptureTool")!;
         ParamRow(window, toolbar);
@@ -3662,6 +3676,86 @@ internal static partial class Program
         Check(!resetBtn.IsEnabled, "重置之后「重置」又不可用");
         Check(undoBtn.IsEnabled, "重置本身也是可撤销的一步");
 
+        // —— Shift+单击：只扩选、不进编辑（上游 mouseReleaseEvent 要求 NoModifier 才进编辑）——
+        Call(tableCanvas, "SelectCell", 1, 1, false);
+        Pump(window);
+        keybd_event(VkShift, 0, 0, UIntPtr.Zero);
+        try
+        {
+            TableClick(CellCenter(0, 0));
+        }
+        finally
+        {
+            keybd_event(VkShift, 0, 2 /* KEYEVENTF_KEYUP */, UIntPtr.Zero);
+        }
+
+        Pump(window);
+        Check(!(bool)Get(tableCanvas, "IsEditing"), "Shift+单击不进编辑（补：以前会顺手打开编辑框）");
+        var shiftSelection = Get(tableCanvas, "Selection");
+        Check((int)Get(shiftSelection, "RowCount") == 2 && (int)Get(shiftSelection, "ColumnCount") == 2,
+            $"Shift+单击把选区从当前格扩到点中的格（{Get(shiftSelection, "RowCount")} × {Get(shiftSelection, "ColumnCount")}）");
+
+        // —— 单元格编辑框右键菜单：复制 / 剪切 / 粘贴 / 删除 / 全选（照上游 showCellEditorContextMenu）——
+        TableClick(CellCenter(1, 1));
+        Check((bool)Get(tableCanvas, "IsEditing"), "无修饰键单击照旧进编辑");
+        var editor = (TextBox)Field(tableCanvas, "_editor");
+        ContextMenu editorMenu = editor.ContextMenu!;
+        var editorHeaders = editorMenu.Items.OfType<MenuItem>()
+            .Select(item => item.Header?.ToString() ?? "").ToList();
+        Check(editorHeaders.Count == 5 &&
+              editorHeaders[0].StartsWith("复制", StringComparison.Ordinal) &&
+              editorHeaders[1].StartsWith("剪切", StringComparison.Ordinal) &&
+              editorHeaders[2].StartsWith("粘贴", StringComparison.Ordinal) &&
+              editorHeaders[3].StartsWith("删除", StringComparison.Ordinal) &&
+              editorHeaders[4].StartsWith("全选", StringComparison.Ordinal),
+            "编辑框右键菜单五项：复制 / 剪切 / 粘贴 / 删除 / 全选（" + string.Join(" / ", editorHeaders) + "）");
+        editor.SelectAll();
+        editorMenu.IsOpen = true;
+        Pump(window);
+        Check(editorMenu.Items.OfType<MenuItem>().All(item => item.IsEnabled),
+            "有选区时菜单项都可用");
+        editorMenu.IsOpen = false;
+        Call(tableCanvas, "CancelEdit");
+        Pump(window);
+
+        // —— 表格右键菜单：复制 / 粘贴 / 清空 / 合并 / 拆分（剪贴板里刚才复制过表格）——
+        Call(tableCanvas, "SelectAll");
+        Pump(window);
+        Call(window, "ShowTableMenu", tableCanvas.PointToScreen(new Point(4, 4)));
+        Pump(window);
+        ContextMenu? gridMenu = tableCanvas.ContextMenu;
+        Check(gridMenu != null, "右键会挂出表格菜单");
+        var gridHeaders = gridMenu!.Items.OfType<MenuItem>()
+            .Select(item => item.Header?.ToString() ?? "").ToList();
+        Check(gridHeaders.Any(h => h.StartsWith("复制", StringComparison.Ordinal)) &&
+              gridHeaders.Any(h => h.StartsWith("粘贴", StringComparison.Ordinal)) &&
+              gridHeaders.Any(h => h.StartsWith("清空内容", StringComparison.Ordinal)) &&
+              gridHeaders.Any(h => h.StartsWith("合并单元格", StringComparison.Ordinal)) &&
+              gridHeaders.Any(h => h.StartsWith("拆分单元格", StringComparison.Ordinal)),
+            "表格菜单照上游：复制 / 粘贴 / 清空内容 / 合并 / 拆分（" + string.Join(" / ", gridHeaders) + "）");
+        Check(gridMenu.Items.OfType<MenuItem>()
+                .First(item => item.Header?.ToString()!.StartsWith("粘贴", StringComparison.Ordinal) == true)
+                .IsEnabled,
+            "剪贴板里有表格时「粘贴」可用");
+        gridMenu.IsOpen = false;
+        PumpFor(200);     // 等右键菜单的弹层窗口真的收掉（它收得慢半拍，键盘还落在它上面）
+
+        // —— Delete 清空选区 → Ctrl+Z 撤销 ——
+        Call(tableCanvas, "SelectAll");
+        Check(ForceForeground(window), "Delete 前把识别窗顶到前台");
+        tableCanvas.Focus();
+        PumpFor(150);
+        Check(tableCanvas.IsKeyboardFocused, "表格拿到键盘焦点（Delete 才会送到它）");
+        keybd_event(0x2E /* VK_DELETE */, 0, 0, UIntPtr.Zero);
+        keybd_event(0x2E, 0, 2, UIntPtr.Zero);
+        PumpFor(180);
+        Check((string)Call(Doc(), "CellText", 0, 0) == "" && (string)Call(Doc(), "CellText", 1, 1) == "",
+            "Delete 清空选区的文字");
+        undoBtn.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Pump(window);
+        Check((string)Call(Doc(), "CellText", 1, 1) == "12", "撤销把清掉的文字还回来");
+        Check((string)Call(Doc(), "CellText", 0, 0) == "名称", "第一格也回来了");
+
         Save(Render(window), Path.Combine(_outDir, "result-table.png"));
 
         ((RadioButton)Field(window, "TabQr")).IsChecked = true;
@@ -4435,6 +4529,93 @@ internal static partial class Program
         Check(statusText.Text.Contains("已选中"), "全选后状态行报选中的字数：" + statusText.Text);
 
         Save(Render(window), Path.Combine(_outDir, "result-latex.png"));
+
+        // —— 窗口可拖边框改尺寸（无边框 + 分层窗口，自己算 6 DIP 边缘）——
+        ForceForeground(window);
+        PumpFor(250);
+        Check(!(bool)Prop("IsMaximized"), "拖边框前不是最大化态");
+
+        // 一帧一次 SetCursorPos 会被 WPF 合并掉（光标停下就不再有移动消息），所以要一格一格挪
+        void DragEdge(Point start, int dx, int dy)
+        {
+            Move((int)start.X, (int)start.Y, 240);
+            mouse_event(LeftDown, 0, 0, 0, UIntPtr.Zero);
+            Thread.Sleep(90);
+
+            const int steps = 8;
+            for (int step = 1; step <= steps; step++)
+            {
+                SetCursorPos((int)start.X + dx * step / steps, (int)start.Y + dy * step / steps);
+                Thread.Sleep(45);
+                Pump(window);
+            }
+
+            Thread.Sleep(90);
+            mouse_event(LeftUp, 0, 0, 0, UIntPtr.Zero);
+            Thread.Sleep(220);
+            Pump(window);
+        }
+
+        double widthBefore = window.ActualWidth;
+        Point grabRight = window.PointToScreen(new Point(widthBefore - 3, window.ActualHeight / 2));
+        DragEdge(grabRight, 90, 0);
+        Check(window.ActualWidth >= widthBefore + 60,
+            $"拖右边框把窗口拉宽（{widthBefore:0} → {window.ActualWidth:0}）");
+
+        double leftBefore = window.Left;
+        double widthAfterRight = window.ActualWidth;
+        Point grabLeft = window.PointToScreen(new Point(3, window.ActualHeight / 2));
+        DragEdge(grabLeft, -70, 0);
+        Check(window.Left <= leftBefore - 40 && window.ActualWidth >= widthAfterRight + 40,
+            $"拖左边界：左边跟着走、宽度变大（left {leftBefore:0} → {window.Left:0}，" +
+            $"宽 {widthAfterRight:0} → {window.ActualWidth:0}）");
+
+        double widthBeforeSqueeze = window.ActualWidth;
+        Point grabRight2 = window.PointToScreen(new Point(widthBeforeSqueeze - 3, window.ActualHeight / 2));
+        DragEdge(grabRight2, -(int)grabRight2.X, 0);
+        Check(window.ActualWidth >= window.MinWidth - 0.5 && window.ActualWidth < widthBeforeSqueeze,
+            $"往左拖到底也不会小于最小宽度（{window.ActualWidth:0} ≥ {window.MinWidth:0}）");
+
+        // —— 用户报的场景：598×758 的截图 + 原文栏 → 窗口约 2 倍图宽（放不下才用满工作区）——
+        var bigPixels = new byte[598 * 758 * 4];
+        for (int i = 0; i < bigPixels.Length; i += 4)
+        {
+            bigPixels[i] = 0x60;
+            bigPixels[i + 1] = 0x90;
+            bigPixels[i + 2] = 0xD0;
+            bigPixels[i + 3] = 0xFF;
+        }
+
+        var bigImage = BitmapSource.Create(598, 758, 96, 96, PixelFormats.Bgra32, null,
+            bigPixels, 598 * 4);
+        bigImage.Freeze();
+
+        var big = (Window)Activator.CreateInstance(windowType,
+            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public,
+            null, new object[] { result, bigImage }, null)!;
+        big.Show();
+        Pump(big);
+
+        var bigToggle = (CheckBox)Field(big, "OriginalToggle");
+        if (bigToggle.IsChecked != true)
+        {
+            bigToggle.IsChecked = true;
+            Pump(big);
+        }
+
+        Rect bigWork = (Rect)Call(big, "WorkAreaOfWindow");
+        Check(Math.Abs(big.ActualWidth - Math.Min(598 * 2 + 60, bigWork.Width)) <= 90,
+            $"较大截图也按 2 倍图宽开窗（{big.ActualWidth:0}，工作区宽 {bigWork.Width:0}）");
+        Check(big.ActualWidth >= 598 + 300,
+            $"表格那半边至少有图宽（{big.ActualWidth:0}）");
+        Check(big.ActualHeight <= bigWork.Height + 1,
+            $"窗口高度不冲出工作区（{big.ActualHeight:0} ≤ {bigWork.Height:0}）");
+        var bigPreview = (FrameworkElement)Field(big, "PreviewHost");
+        double paneFloor = Math.Min(480, bigWork.Width * 0.35);
+        Check(bigPreview.Visibility == Visibility.Visible && bigPreview.ActualWidth >= paneFloor,
+            $"原文栏拿回大面积（{bigPreview.ActualWidth:0} ≥ {paneFloor:0}），不再被挤到 300 多");
+
+        big.Close();
 
         configPathSet.Invoke(null, new object[] { oldConfigPath });
 

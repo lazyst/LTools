@@ -30,11 +30,13 @@ internal readonly record struct OriginalPanePlan(
 /// <remarks>
 /// <para>
 /// 目标是**能 1:1 就 1:1**：文字层和原图都按 100% 完整显示，不用滚也不用缩。
-/// 顺序：宽度够 → 左右并列；宽度不够但高度够 → 上下并列；两样都不够才退回「右侧一栏 + 缩放」。
+/// 顺序照用户的要求：**宽度够 → 左右并列（窗口约 2 倍图宽）**；宽度不够但高度够 → 上下并列
+/// （窗口约 2 倍图高）；两样都不够 → **仍然左右对照**，窗口撑满可用区、原图尽量大。
 /// </para>
 /// <para>
-/// 尺寸都按 DIP（100% = 1 源像素 1 物理像素），<paramref name="work"/> 是工作区，
-/// <paramref name="chrome"/> 是窗口里除内容区之外的固定开销（标题栏 / 页签 / 底栏 / 外边距）。
+/// <paramref name="work"/> 是**内容区**可用尺寸（DIP），<paramref name="chrome"/> 是窗口里
+/// 除内容区之外的固定开销（标题栏 / 页签 / 底栏 / 外边距）；返回的 <see cref="OriginalPanePlan.Window"/>
+/// 已经含 chrome（调用方再按工作区夹一次）。100% = 1 源像素 1 物理像素。
 /// </para>
 /// </remarks>
 internal static class OriginalPreviewLayout
@@ -54,22 +56,30 @@ internal static class OriginalPreviewLayout
         double iw = Math.Max(1, image.Width);
         double ih = Math.Max(1, image.Height);
 
-        // ① 左右并列：文字 + 缝 + 原图
-        var sideBySide = new Size(iw * 2 + Gap + chrome.Width + Slack,
-            ih + chrome.Height + Slack);
-        if (Fits(sideBySide, work))
-            return new OriginalPanePlan(OriginalPaneSide.Right, true, sideBySide, iw + 2);
+        // ① 左右并列：文字 + 缝 + 原图（内容区）
+        var sideBySide = new Size(iw * 2 + Gap + Slack, ih + Slack);
 
-        // ② 上下并列：文字 / 原图
-        var stacked = new Size(iw + chrome.Width + Slack, ih * 2 + Gap + chrome.Height + Slack);
-        if (Fits(stacked, work))
-            return new OriginalPanePlan(OriginalPaneSide.Bottom, true, stacked, ih + 2);
+        // 宽度够就左右并列；高度也够才是真 1:1，不够就把窗口高度用满（仍左右对照）
+        if (sideBySide.Width <= work.Width + 0.5)
+        {
+            bool full = sideBySide.Height <= work.Height + 0.5;
+            var content = new Size(sideBySide.Width, Math.Min(sideBySide.Height, work.Height));
+            return new OriginalPanePlan(OriginalPaneSide.Right, full,
+                new Size(content.Width + chrome.Width, content.Height + chrome.Height), iw + 2);
+        }
 
-        // ③ 都放不下：右侧一栏 + 原图缩放（文字层自己按可用宽高缩）
-        return new OriginalPanePlan(OriginalPaneSide.Right, false, default,
-            Math.Clamp(iw, MinPane, MaxPane));
+        // ② 宽度不够但高度够：上下并列（窗口约 2 倍图高）
+        var stacked = new Size(iw + Slack, ih * 2 + Gap + Slack);
+        if (stacked.Height <= work.Height + 0.5)
+        {
+            return new OriginalPanePlan(OriginalPaneSide.Bottom, true,
+                new Size(stacked.Width + chrome.Width, stacked.Height + chrome.Height), ih + 2);
+        }
+
+        // ③ 宽度、高度都不够：**仍然左右对照**，窗口撑满可用区；原图栏最多占 45%，
+        //    放得下就 1:1（pane = 图宽 + 2），放不下才缩。
+        double pane = Math.Min(iw + 2, Math.Max(MinPane, work.Width * 0.45));
+        return new OriginalPanePlan(OriginalPaneSide.Right, false,
+            new Size(work.Width + chrome.Width, work.Height + chrome.Height), pane);
     }
-
-    private static bool Fits(Size size, Size work) =>
-        size.Width <= work.Width + 0.5 && size.Height <= work.Height + 0.5;
 }

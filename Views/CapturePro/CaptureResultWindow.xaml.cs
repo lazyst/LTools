@@ -89,6 +89,7 @@ public partial class CaptureResultWindow : Window
         FillTranslateTargets();
         FillTransformOptions();
         WirePreview();
+        WireResize();
         Place();
         Loaded += (_, _) =>
         {
@@ -100,7 +101,13 @@ public partial class CaptureResultWindow : Window
                 OpenPreview();
             }
         };
-        SizeChanged += (_, _) => { UpdateZoom(); FollowOriginalPreview(); };
+        SizeChanged += (_, _) =>
+        {
+            UpdateZoom();
+            FollowOriginalPreview();
+            // 用户拖边框改尺寸后按新内容区重排原文栏（能 1:1 了就切回 1:1）
+            if (!_maximized) ReplanPreview();
+        };
         LocationChanged += (_, _) => FollowOriginalPreview();
         PreviewKeyDown += OnPreviewKeyDown;
         TextInput += OnTextInput;
@@ -127,8 +134,19 @@ public partial class CaptureResultWindow : Window
         FillTranslateTargets();
         FillTransformOptions();
         WirePreview();
+        WireResize();
         Place();
         Apply(result);
+
+        // Apply 里可能已经把「原文预览」勾上（配置默认开），那时窗口还没 Loaded：
+        // 与正常打开那条路一样，等 Loaded 再摆原文栏。
+        Loaded += (_, _) =>
+        {
+            UpdateZoom();
+            if (!_previewPending) return;
+            _previewPending = false;
+            OpenPreview();
+        };
     }
 
     /// <summary>打开结果窗（非模态：用户慢慢改 / 复制，流程该干嘛干嘛）。</summary>

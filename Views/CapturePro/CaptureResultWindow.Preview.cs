@@ -87,9 +87,13 @@ public partial class CaptureResultWindow : Window
 
         OriginalPanePlan plan = OriginalPreviewLayout.Plan(image, available, chrome);
 
-        if (plan.OneToOne && fitWindow)
+        // 用户刚勾上预览：按方案把窗口撑到该有的大小（左右约 2 倍图宽 / 上下约 2 倍图高；
+        // 都放不下时方案是「撑满可用区的左右对照」），再把窗口夹回工作区并居中。
+        if (fitWindow)
         {
-            if (_beforePreview.IsEmpty)
+            // Rect 的 default(0,0,0,0) 不是 IsEmpty（那个只认 Rect.Empty 的哨兵），所以按宽度判
+            // ——踩过：没记过时收起预览会把窗口缩成 MinWidth。
+            if (_beforePreview.Width <= 0)
                 _beforePreview = new Rect(Left, Top, ActualWidth, ActualHeight);
 
             double cx = Left + ActualWidth / 2, cy = Top + ActualHeight / 2;
@@ -183,7 +187,7 @@ public partial class CaptureResultWindow : Window
         PreviewHost.Visibility = Visibility.Collapsed;
 
         // 为了 1:1 撑大过就把窗口收回去（最大化态由它自己管）
-        if (!_maximized && !_beforePreview.IsEmpty)
+        if (!_maximized && _beforePreview.Width > 0)
         {
             Rect before = _beforePreview;
             _beforePreview = default;

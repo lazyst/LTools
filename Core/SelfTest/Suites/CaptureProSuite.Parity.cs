@@ -459,37 +459,46 @@ internal static partial class CaptureProSuite
     }
 
     /// <summary>
-    /// 原文栏的 1:1 布局（照「能 1:1 就 1:1」的规则）：宽度够 → 左右并列；宽度不够但高度够 →
-    /// 上下并列；两样都不够 → 退回「右侧一栏 + 缩放」。
+    /// 原文栏的对照布局：宽度够 → 左右并列（窗口约 2 倍图宽）；宽度不够但高度够 → 上下并列
+    /// （窗口约 2 倍图高）；两样都不够 → **仍然左右对照**，窗口撑满可用区。
     /// </summary>
     private static void PreviewLayout()
     {
         var chrome = new Size(26, 170);
-        var work = new Size(1920, 1040);
+        var screen = new Size(1920, 1040);
+        var work = new Size(screen.Width - chrome.Width, screen.Height - chrome.Height);
 
-        // 858×748：2×858 + 缝 + 开销 ≤ 1920，748 + 开销 ≤ 1040 → 左右并列
+        // 858×748：2×858 + 缝 + 余量 ≤ 内容区宽，748 + 余量 ≤ 内容区高 → 左右并列 + 1:1
         var wide = OriginalPreviewLayout.Plan(new Size(858, 748), work, chrome);
         Check.Equal(OriginalPaneSide.Right, wide.Side, "宽度够 → 左右并列");
         Check.True(wide.OneToOne, "左右并列时两个都按 100% 显示全");
         Check.True(wide.Window.Width >= 858 * 2, "窗口宽到能放下两栏");
+        Check.True(wide.Window.Height <= screen.Height + 0.5, "窗口高不超过工作区");
         Check.Equal(860d, wide.Pane, "原图栏 = 图宽 + 2");
 
         // 1280 宽放不下 2×700，但高度够 → 上下并列
-        var narrow = OriginalPreviewLayout.Plan(new Size(700, 400), new Size(1280, 1040), chrome);
+        var narrow = OriginalPreviewLayout.Plan(new Size(700, 400),
+            new Size(1280 - chrome.Width, 1040 - chrome.Height), chrome);
         Check.Equal(OriginalPaneSide.Bottom, narrow.Side, "宽度不够、高度够 → 上下并列");
         Check.True(narrow.OneToOne, "上下并列也是 1:1");
         Check.True(narrow.Window.Height >= 400 * 2, "窗口高到能放下两栏");
         Check.Equal(402d, narrow.Pane, "下面那一栏 = 图高 + 2");
 
-        // 3000×1600 的截图放在 1080p 屏上：两样都不够 → 退回缩放
-        var huge = OriginalPreviewLayout.Plan(new Size(3000, 1600), work, chrome);
-        Check.True(!huge.OneToOne, "左右上下都放不下 → 退回缩放");
-        Check.Equal(OriginalPaneSide.Right, huge.Side, "退回缩放时贴右侧");
-        Check.True(huge.Pane >= OriginalPreviewLayout.MinPane &&
-                   huge.Pane <= OriginalPreviewLayout.MaxPane, "缩放时那一栏有上下限（别把文字层挤没）");
-
-        // 高度是瓶颈（宽够、高不够）也不能硬上左右并列
+        // 宽够、高不够：仍然左右对照，窗口高度用满可用区（不再缩回小窗）
         var tall = OriginalPreviewLayout.Plan(new Size(800, 1000), work, chrome);
-        Check.True(!tall.OneToOne, "高度不够时不做 1:1（800×1000 在 1040 高的屏上放不下两栏）");
+        Check.Equal(OriginalPaneSide.Right, tall.Side, "宽度够就左右对照（高度不够也不换上下）");
+        Check.True(!tall.OneToOne, "高度不够时不当成 1:1");
+        Check.True(tall.Window.Width >= 800 * 2, "窗口仍然按 2 倍图宽");
+        Check.True(Math.Abs(tall.Window.Height - screen.Height) <= 1, "窗口高度用满工作区");
+
+        // 3000×1600 的截图放在 1080p 屏上：两样都不够 → 仍然左右对照，窗口撑满可用区
+        var huge = OriginalPreviewLayout.Plan(new Size(3000, 1600), work, chrome);
+        Check.True(!huge.OneToOne, "左右上下都放不下 → 不假装 1:1");
+        Check.Equal(OriginalPaneSide.Right, huge.Side, "都不够时仍然左右对照");
+        Check.True(Math.Abs(huge.Window.Width - screen.Width) <= 1 &&
+                   Math.Abs(huge.Window.Height - screen.Height) <= 1,
+            "窗口撑满可用区（不再停在 720×620）");
+        Check.True(huge.Pane > OriginalPreviewLayout.MaxPane,
+            $"原文栏最多占 45%（{huge.Pane:0}），不再被 420 卡死");
     }
 }
