@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    运行指示器的窗口行为冒烟（仓库内跑，不进 CI）：
+    - 没有运行时「收起 / 恢复」必须是一对空操作（截图 Pro 的识别曾经在这里留下一条空指示条）；
+    - 有运行时显示、逐项停 / 收起都跟着注册表走；
+    - 「正在停止」这类说明只挂在有运行的窗口上，没有运行就直接收起。
+    跑之前先构建产品：dotnet build -p:NoWin32Manifest=true
+        cd tests\IndicatorSmoke；dotnet run
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>IndicatorSmoke</AssemblyName>
+    <RootNamespace>IndicatorSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="LTools">
+      <HintPath>..\..\bin\Debug\net10.0-windows10.0.19041.0\LTools.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

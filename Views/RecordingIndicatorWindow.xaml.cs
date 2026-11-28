@@ -38,6 +38,7 @@ public partial class RecordingIndicatorWindow : Window
     private static DispatcherTimer? _timer;
     private static DispatcherTimer? _automationTimer;
     private static bool _automation;
+    private static string? _automationNote;   // 底部灰字的额外说明（停止中 / 慢步骤），随重绘保留
 
     public RecordingIndicatorWindow()
     {
@@ -80,21 +81,30 @@ public partial class RecordingIndicatorWindow : Window
     }
 
     /// <summary>
-    /// 显示自动化运行栈。可高频调用；显示时只更新并重新居中。
-    /// <paramref name="text"/> 只在注册表为空时兜底显示（正常路径由注册表出内容）。
+    /// 显示自动化运行栈（行内容来自注册表，500ms 自动重绘）。
+    /// <paramref name="note"/> 是底部灰字的额外说明（「正在停止 · 等待当前步骤返回」/「第 3 行已运行 12 秒」）；
+    /// 为空时用默认那句（停止热键 + 并发提示）。**没有任何运行时直接收起**——别留一扇空窗口。
     /// </summary>
-    public static void ShowAutomation(string text)
+    public static void ShowAutomation(string? note = null)
     {
         // 流程在后台线程运行：窗口创建 / 更新必须回 UI 线程。
         var app = Application.Current;
         if (app == null) return;
         if (!app.Dispatcher.CheckAccess())
         {
-            app.Dispatcher.BeginInvoke(() => ShowAutomation(text));
+            app.Dispatcher.BeginInvoke(() => ShowAutomation(note));
+            return;
+        }
+
+        // 没有运行 = 没什么可显示：截图 / 识别结束后的「恢复」、停一个已经结束的运行都会走到这里。
+        if (RunningActions.Count == 0)
+        {
+            HideAutomation();
             return;
         }
 
         _automation = true;
+        _automationNote = note;
         _timer?.Stop();
 
         var w = EnsureWindow();
@@ -103,12 +113,15 @@ public partial class RecordingIndicatorWindow : Window
         w.SyncClickThrough();
 
         if (!w.IsVisible) w.ShowPill();
-        w.RenderAutomation(text);
+        w.RenderAutomation();
         w.Recenter();
 
         var timer = _automationTimer ??= CreateAutomationTimer();
         timer.Start();
     }
+
+    /// <summary>自动化指示器现在是不是显示着（冒烟 / 排查用）。</summary>
+    public static bool IsAutomationShowing => _automation && _window?.IsVisible == true;
 
     /// <summary>隐藏自动化指示器（只隐藏自己这个态，避免误关录制 / 倒计时）。</summary>
     public static void HideAutomation()
@@ -123,36 +136,43 @@ public partial class RecordingIndicatorWindow : Window
 
         if (!_automation) return;
         _automation = false;
+        _automationNote = null;
         _automationTimer?.Stop();
         HideIndicator();
     }
 
     /// <summary>
     /// 截图 / OCR 前临时收起自动化指示器（它是置顶窗口，会被截进画面）。
-    /// 返回需要恢复的文本；本来没显示时返回 null。同步等待 UI 线程完成隐藏，避免截到半透明淡出。
+    /// 返回**它本来在不在显示**：没显示就别恢复（以前这里返回「文本」当令牌，空串恢复时
+    /// 会开出一扇空窗口留在屏幕顶上——截图 Pro 的识别走的就是这条路，用户报过）。
+    /// 同步等待 UI 线程完成隐藏，避免截到半透明淡出。
     /// </summary>
-    public static string? HideAutomationForCapture()
+    public static bool HideAutomationForCapture()
     {
         var app = Application.Current;
-        if (app == null || !_automation) return null;
+        if (app == null || !_automation) return false;
 
-        string? text = null;
+        bool wasShowing = false;
         void HideNow()
         {
             if (!_automation) return;
-            text = FirstRowText();
+            wasShowing = true;
             _automation = false;
+            _automationNote = null;
             _automationTimer?.Stop();
             HideIndicator();
         }
 
         if (app.Dispatcher.CheckAccess()) HideNow();
         else app.Dispatcher.Invoke(HideNow);
-        return text;
+        return wasShowing;
     }
 
-    /// <summary>恢复此前被 <see cref="HideAutomationForCapture"/> 收起的自动化指示器。</summary>
-    public static void RestoreAutomation(string? text) => ShowAutomation(text ?? "");
+    /// <summary>恢复此前被 <see cref="HideAutomationForCapture"/> 收起的自动化指示器（按注册表重画）。</summary>
+    public static void RestoreAutomation(bool wasShowing)
+    {
+        if (wasShowing) ShowAutomation();
+    }
 
     /// <summary>
     /// 截图 / 识别期间的「收起自动化指示器」作用域：<c>using var scope = SuppressForCapture();</c>
@@ -163,18 +183,18 @@ public partial class RecordingIndicatorWindow : Window
     /// <summary><see cref="SuppressForCapture"/> 的作用域对象，<c>Dispose</c> 时把指示器恢复回去。</summary>
     public sealed class CaptureSuppression : IDisposable
     {
-        private string? _text;
+        private bool _wasShowing;
 
-        internal CaptureSuppression(string? text) => _text = text;
+        internal CaptureSuppression(bool wasShowing) => _wasShowing = wasShowing;
 
         /// <summary>收起前它到底有没有显示（要等桌面重绘的调用点看这个）。</summary>
-        public bool WasShowing => _text != null;
+        public bool WasShowing => _wasShowing;
 
         public void Dispose()
         {
-            string? text = _text;
-            _text = null;
-            RestoreAutomation(text);
+            bool restore = _wasShowing;
+            _wasShowing = false;
+            RestoreAutomation(restore);
         }
     }
 
@@ -183,20 +203,6 @@ public partial class RecordingIndicatorWindow : Window
     {
         _timer?.Stop();
         try { _window?.Hide(); } catch { /* 静默 */ }
-    }
-
-    /// <summary>
-    /// 截图前「本来在不在显示」与恢复用的文本：读当前第一行（注册表在跑时由它出内容，
-    /// 隐藏掉注册表项也不会因此丢行）。
-    /// </summary>
-    private static string? FirstRowText()
-    {
-        try
-        {
-            ActionRunSession? first = RunningActions.Snapshot().FirstOrDefault();
-            return first?.Label ?? _window?.AutomationFoot.Text;
-        }
-        catch { return null; }
     }
 
     // ============ 自动化栈 ============
@@ -208,16 +214,14 @@ public partial class RecordingIndicatorWindow : Window
         public required string Text { get; init; }
     }
 
-    private void RenderAutomation(string? fallbackText)
+    private void RenderAutomation()
     {
         IReadOnlyList<ActionRunSession> runs = RunningActions.Snapshot();
 
-        if (runs.Count == 0 && !string.IsNullOrWhiteSpace(fallbackText))
+        // 运行都结束了：别留一扇空窗口（也兜住「恢复时已经没得显示」的情况）。
+        if (runs.Count == 0)
         {
-            // 注册表刚空、线程还在收尾：把调用方给的那句显示在脚注里（e.g.「正在停止 · 等待当前步骤返回」）。
-            AutomationRows.ItemsSource = Array.Empty<RunRow>();
-            MorePanel.Visibility = Visibility.Collapsed;
-            AutomationFoot.Text = fallbackText!;
+            HideAutomation();
             return;
         }
 
@@ -239,9 +243,9 @@ public partial class RecordingIndicatorWindow : Window
         MorePanel.Visibility = more > 0 ? Visibility.Visible : Visibility.Collapsed;
         MoreText.Text = more > 0 ? $"还有 {more} 个" : "";
 
-        AutomationFoot.Text = runs.Count > 0
+        AutomationFoot.Text = string.IsNullOrWhiteSpace(_automationNote)
             ? $"按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止全部 · 运行时鼠标类步骤可能相互影响"
-            : "";
+            : _automationNote!;
     }
 
     private void StopRun_Click(object sender, RoutedEventArgs e)
@@ -249,7 +253,7 @@ public partial class RecordingIndicatorWindow : Window
         if (sender is not FrameworkElement { DataContext: RunRow row }) return;
         if (string.IsNullOrEmpty(row.RunId)) return;
         RunningActions.Cancel(row.RunId);
-        RenderAutomation(null);
+        RenderAutomation();
     }
 
     private void OpenList_Click(object sender, RoutedEventArgs e)
@@ -292,7 +296,10 @@ public partial class RecordingIndicatorWindow : Window
         t.Tick += (_, _) =>
         {
             if (!_automation) { t.Stop(); return; }
-            _window?.RenderAutomation(null);
+
+            // 运行都结束了（哪怕收尾时漏了一次隐藏）：自己收起来，别在屏幕顶上留一扇空窗口。
+            if (RunningActions.Count == 0) { HideAutomation(); return; }
+            _window?.RenderAutomation();
         };
         return t;
     }

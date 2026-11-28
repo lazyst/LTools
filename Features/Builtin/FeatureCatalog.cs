@@ -533,7 +533,7 @@ internal static class FeatureCatalog
     private static bool PickRegion(out bool recording,
         CaptureOverlayWindow.PendingAction pending = CaptureOverlayWindow.PendingAction.None)
     {
-        string? indicator = RecordingIndicatorWindow.HideAutomationForCapture();
+        bool indicator = RecordingIndicatorWindow.HideAutomationForCapture();
         bool handed = false;
 
         try

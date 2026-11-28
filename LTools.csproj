@@ -78,6 +78,8 @@
     <InternalsVisibleTo Include="LinkSmoke" />
     <!-- 运行内核的冒烟（tests/RunConcurrencySmoke）：注册表 / 准入 / 队列 / 协调器都是 internal。 -->
     <InternalsVisibleTo Include="RunConcurrencySmoke" />
+    <!-- 运行指示器的冒烟（tests/IndicatorSmoke）：要往注册表里放一个假运行。 -->
+    <InternalsVisibleTo Include="IndicatorSmoke" />
   </ItemGroup>
 
   <ItemGroup>

@@ -192,7 +192,7 @@ internal static class AutomationRunner
                 AppLog.Info("Flow", $"前台：{foreground.ExeName} · {foreground.Title}");
 
             MacroHotkey.RegisterPlaybackStop();
-            RecordingIndicatorWindow.ShowAutomation(IndicatorText(0));
+            RecordingIndicatorWindow.ShowAutomation();
             if (session.Cts.Token.WaitHandle.WaitOne(80))
                 throw new FlowAbortException("已停止", userCancelled: true);
 
@@ -214,7 +214,7 @@ internal static class AutomationRunner
                 {
                     steps = step;
                     session.Step = step;
-                    if ((step % 5) == 0) RecordingIndicatorWindow.ShowAutomation(IndicatorText(step));
+                    if ((step % 5) == 0) RecordingIndicatorWindow.ShowAutomation();
                 },
                 OnSlowStep = info => ReportSlowStep(session, info, job.Notify, job.SlowStep),
             };
@@ -299,7 +299,7 @@ internal static class AutomationRunner
             // 指示器（B1 单行）：全空就收；还有别的运行就显示最先开始的那个。
             IReadOnlyList<ActionRunSession> remaining = RunningActions.Snapshot();
             if (remaining.Count == 0) RecordingIndicatorWindow.HideAutomation();
-            else RecordingIndicatorWindow.ShowAutomation(IndicatorText(remaining[0].Step));
+            else RecordingIndicatorWindow.ShowAutomation();
         }
     }
 
@@ -506,7 +506,4 @@ internal static class AutomationRunner
             AppLog.Warn("Flow", $"打开日志目录失败：{ex.Message}");
         }
     }
-
-    private static string IndicatorText(int step) =>
-        $"自动化中{(step > 0 ? $" · 第 {step} 步" : "")} · {MacroSettings.PlaybackStopHotkeyDisplay} 停止";
 }
