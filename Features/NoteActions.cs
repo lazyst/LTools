@@ -29,6 +29,15 @@ internal static class NoteActions
     /// </summary>
     public static VarValue Write(NoteWriteRequest request, string? notesRoot = null)
     {
+        // 「追加」是读-改-写：并发两个运行同时追加同一条笔记会丢一次。
+        // 写入口只有这一处，整段串行即可（写速记本身很短，不值得按路径再分锁）。
+        lock (WriteGate) return WriteCore(request, notesRoot);
+    }
+
+    private static readonly object WriteGate = new();
+
+    private static VarValue WriteCore(NoteWriteRequest request, string? notesRoot)
+    {
         string body = request.Body ?? "";
         if (string.IsNullOrWhiteSpace(body))
             throw new FlowException("写速记缺少正文");

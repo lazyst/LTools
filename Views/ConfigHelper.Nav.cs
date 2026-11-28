@@ -474,6 +474,7 @@ public partial class ConfigHelperWindow
             _initializing = true;
             PopulateToggles();
             PopulateRunNotice();
+            PopulateActionRun();
             PopulateTrayDoubleClick();
             _initializing = false;
         }

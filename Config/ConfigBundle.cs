@@ -7,6 +7,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Core;
+using LTools.Core.Running;
 using LTools.Core.Share;
 using LTools.Core.Storage;
 using LTools.Features;
@@ -108,6 +109,7 @@ internal static class ConfigBundle
         cfg.EdgeWheelVolumeEdge = settings.EdgeWheelVolumeEdge;
         cfg.TerminalPaths = settings.TerminalPaths ?? new();
         cfg.RunNotice = settings.RunNotice;
+        cfg.ActionRun = (settings.ActionRun ?? new ActionRunFile()).ToConfig();
         cfg.ToastPosition = settings.ToastPosition;
         cfg.TrayDoubleClick = settings.TrayDoubleClick;
         cfg.Logging = settings.Logging ?? new LogConfig();
@@ -452,6 +454,7 @@ internal static class ConfigBundle
         EdgeWheelVolumeEdge = cfg.EdgeWheelVolumeEdge,
         TerminalPaths = cfg.TerminalPaths ?? new(),
         RunNotice = cfg.RunNotice,
+        ActionRun = ActionRunFile.From(cfg.ActionRun ?? ActionRunConfig.Default),
         ToastPosition = cfg.ToastPosition,
         TrayDoubleClick = cfg.TrayDoubleClick,
         Logging = cfg.Logging ?? new LogConfig(),

@@ -28,6 +28,43 @@ internal static class UiDialogHost
 {
     private static readonly ConcurrentDictionary<string, Action> Open = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// 交互框**同时只显示一个**（见 <c>docs/RUN_INTEROP.md</c> §7.1）：并发时两个 <c>ui.input</c>
+    /// 同时弹出来，用户分不清哪个属于哪个动作。等待前一个关掉的请求标题加「（等前一个输入框）」。
+    /// </summary>
+    private static readonly SemaphoreSlim Gate = new(1, 1);
+
+    /// <summary>还没显示就被取消的 dialogId（排队期间的 <c>ui.cancel</c>）。</summary>
+    private static readonly ConcurrentDictionary<string, byte> Cancelled = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 排到交互框的队里；返回是否真的拿到（false = 等待期间被取消，调用方回一个「取消」答复）。
+    /// </summary>
+    private static async Task<bool> AcquireAsync(string dialogId)
+    {
+        if (Gate.Wait(0))
+        {
+            if (!Cancelled.ContainsKey(dialogId)) return true;
+            Gate.Release();
+            return false;
+        }
+
+        // 每 100ms 看一次有没有被取消：停止热键 / 超时不该让用户等前一个框关掉才生效。
+        while (!await Gate.WaitAsync(100).ConfigureAwait(false))
+        {
+            if (!Cancelled.ContainsKey(dialogId)) continue;
+            return false;
+        }
+
+        if (!Cancelled.ContainsKey(dialogId)) return true;
+        Gate.Release();
+        return false;
+    }
+
+    /// <summary>排队时给标题加一句说明（已经在等前一个框）。</summary>
+    private static string QueuedTitle(string? title) =>
+        Gate.CurrentCount == 0 ? $"{title}（等前一个输入框）" : title ?? "";
+
     /// <summary>处理一条交互请求；不是交互方法时返回 null（调用方回「未知命令」）。</summary>
     public static Task<LinkMessage>? TryHandleAsync(LinkMessage request) => request.Method switch
     {
@@ -45,13 +82,17 @@ internal static class UiDialogHost
         UiInputRequest? req = request.Read<UiInputRequest>();
         if (req == null) return LinkMessage.Response(request, error: "缺少参数");
 
+        string title = QueuedTitle(req.Title);
+        if (!await AcquireAsync(req.DialogId).ConfigureAwait(false))
+            return LinkMessage.Response(request, new UiInputReply(false, ""));
+
         var done = new TaskCompletionSource<UiInputReply>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Ui.Post(() =>
         {
             try
             {
-                InputDialog dialog = InputDialog.ShowNonModal(req.Title, req.Prompt, req.Default, req.Multiline);
+                InputDialog dialog = InputDialog.ShowNonModal(title, req.Prompt, req.Default, req.Multiline);
                 Open[req.DialogId] = () => CloseIfOpen(dialog);
                 dialog.Closed += (_, _) =>
                 {
@@ -75,12 +116,21 @@ internal static class UiDialogHost
         {
             return LinkMessage.Response(request, error: ex.Message);
         }
+        finally
+        {
+            Gate.Release();
+            Cancelled.TryRemove(req.DialogId, out _);
+        }
     }
 
     private static async Task<LinkMessage> ChoiceAsync(LinkMessage request)
     {
         UiChoiceRequest? req = request.Read<UiChoiceRequest>();
         if (req == null) return LinkMessage.Response(request, error: "缺少参数");
+
+        string title = QueuedTitle(req.Title);
+        if (!await AcquireAsync(req.DialogId).ConfigureAwait(false))
+            return LinkMessage.Response(request, new UiChoiceReply(false, -1, ""));
 
         var done = new TaskCompletionSource<UiChoiceReply>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -89,7 +139,7 @@ internal static class UiDialogHost
             try
             {
                 ChoiceWindow window = ChoiceWindowService.Open(
-                    req.Title, req.Message,
+                    title, req.Message,
                     req.Options ?? new List<string>(), req.Buttons ?? new List<string>(), req.SelectMode);
 
                 DispatcherTimer? timer = null;
@@ -128,6 +178,11 @@ internal static class UiDialogHost
         {
             return LinkMessage.Response(request, error: ex.Message);
         }
+        finally
+        {
+            Gate.Release();
+            Cancelled.TryRemove(req.DialogId, out _);
+        }
     }
 
     private static async Task<LinkMessage> TextWindowAsync(LinkMessage request)
@@ -148,6 +203,12 @@ internal static class UiDialogHost
         bool append = !read && req.Append;
         bool wait = !read && req.Wait;
 
+        // 「显示」模式不排队（非阻塞、按 key 复用）；读取 / 等关闭会挡住用户，串行显示。
+        bool blocks = read || wait;
+        string title = QueuedTitle(req.Title);
+        if (blocks && !await AcquireAsync(req.DialogId).ConfigureAwait(false))
+            return LinkMessage.Response(request, new UiTextWindowReply(false, "", false));
+
         var done = new TaskCompletionSource<UiTextWindowReply>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Ui.Post(() =>
@@ -156,7 +217,7 @@ internal static class UiDialogHost
             {
                 // 显示模式不抢焦点（用户可能在别处继续操作），读取模式要抢（要打字）。
                 TextViewWindow window = TextWindowService.Open(
-                    key, req.Title ?? "", req.Text ?? "", read, req.Monospace, append, activate: read);
+                    key, title, req.Text ?? "", read, req.Monospace, append, activate: read);
 
                 // 取消只关这一扇：key 为空时 TextWindowService.Close 会关掉全部文本窗口，太宽。
                 Open[req.DialogId] = () =>
@@ -195,12 +256,26 @@ internal static class UiDialogHost
         {
             return LinkMessage.Response(request, error: ex.Message);
         }
+        finally
+        {
+            if (blocks)
+            {
+                Gate.Release();
+                Cancelled.TryRemove(req.DialogId, out _);
+            }
+        }
     }
 
     private static async Task<LinkMessage> SelectFileAsync(LinkMessage request)
     {
         UiSelectFileRequest? req = request.Read<UiSelectFileRequest>();
         if (req == null) return LinkMessage.Response(request, error: "缺少参数");
+
+        string title = QueuedTitle(req.Title);
+        // 系统文件框的请求里没有 dialogId（它关不掉，取消也不指望）：排队登记用一个本地 id。
+        string queueId = "file-" + Guid.NewGuid().ToString("N")[..8];
+        if (!await AcquireAsync(queueId).ConfigureAwait(false))
+            return LinkMessage.Response(request, new UiSelectFileReply(false, ""));
 
         var done = new TaskCompletionSource<UiSelectFileReply>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -209,7 +284,7 @@ internal static class UiDialogHost
         {
             try
             {
-                var (ok, path) = FilePicker.TryPick(req.Kind ?? "", req.Title ?? "",
+                var (ok, path) = FilePicker.TryPick(req.Kind ?? "", title,
                     req.Filter ?? "", req.InitialDir ?? "");
                 done.TrySetResult(new UiSelectFileReply(ok, path));
             }
@@ -227,12 +302,20 @@ internal static class UiDialogHost
         {
             return LinkMessage.Response(request, error: ex.Message);
         }
+        finally
+        {
+            Gate.Release();
+            Cancelled.TryRemove(queueId, out _);
+        }
     }
 
     private static async Task<LinkMessage> PickPointAsync(LinkMessage request)
     {
         UiPickPointRequest? req = request.Read<UiPickPointRequest>();
         if (req == null) return LinkMessage.Response(request, error: "缺少参数");
+
+        if (!await AcquireAsync(req.DialogId).ConfigureAwait(false))
+            return LinkMessage.Response(request, new UiPickPointReply(false, 0, 0));
 
         var done = new TaskCompletionSource<UiPickPointReply>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -260,15 +343,27 @@ internal static class UiDialogHost
         {
             return LinkMessage.Response(request, error: ex.Message);
         }
+        finally
+        {
+            Gate.Release();
+            Cancelled.TryRemove(req.DialogId, out _);
+        }
     }
 
     private static LinkMessage Cancel(LinkMessage request)
     {
         UiCancelRequest? req = request.Read<UiCancelRequest>();
-        if (req == null || !Open.TryRemove(req.DialogId, out Action? close))
-            return LinkMessage.Response(request);
+        if (req == null) return LinkMessage.Response(request);
 
-        Ui.Post(close);
+        if (Open.TryRemove(req.DialogId, out Action? close))
+        {
+            Ui.Post(close);
+            return LinkMessage.Response(request);
+        }
+
+        // 还没弹出来（在等前一个交互框）：记下来，排到队首时直接给「取消」，别弹一个马上要关的框。
+        if (Cancelled.Count > 128) Cancelled.Clear();   // 只是兜底：正常路径由 Acquire 消费掉
+        Cancelled[req.DialogId] = 1;
         return LinkMessage.Response(request);
     }
 

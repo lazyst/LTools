@@ -222,12 +222,28 @@ internal static class ImageLibrary
 
     private static string NextShotPath(string dir)
     {
-        string stem = $"shot-{DateTime.Now:yyyyMMdd-HHmmss}";
-        string path = Path.Combine(dir, stem + ".png");
-        for (int n = 2; File.Exists(path); n++)
-            path = Path.Combine(dir, $"{stem}-{n}.png");
-        return path;
+        // 并发运行会在同一秒各截一张：查存在 → 创建之间有竞态，两个线程会算到同一个名字，
+        // 后一个 File.Create 抛共享冲突（整步「截图」失败）。锁内分配并**占位**，谁先创建谁拿这个名字。
+        lock (ShotGate)
+        {
+            string stem = $"shot-{DateTime.Now:yyyyMMdd-HHmmss}";
+            string path = Path.Combine(dir, stem + ".png");
+            for (int n = 2; ; n++)
+            {
+                try
+                {
+                    using (new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
+                    return path;
+                }
+                catch (IOException) when (File.Exists(path))
+                {
+                    path = Path.Combine(dir, $"{stem}-{n}.png");
+                }
+            }
+        }
     }
+
+    private static readonly object ShotGate = new();
 
     /// <summary>清空运行期截图目录（下一次运行开始 / 启动时调用）；返回删除的文件数。</summary>
     public static int ClearCaptures()

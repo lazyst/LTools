@@ -149,12 +149,13 @@ internal static class AiRuns
         }
     }
 
-    /// <summary>停止这次运行（只允许停当前正在跑的那次）。</summary>
+    /// <summary>停止这次运行（只允许停当前正在跑的那次试运行；用户动作不受影响）。</summary>
     public static bool Stop(string id)
     {
         var run = Find(id);
         if (run == null || run.Finished) return false;
-        AutomationRunner.Stop();
+        // 试运行同一时刻只有一次（有运行在跑时 MCP 会被拒），所以「停试运行」= 停这一次。
+        LTools.Features.Running.RunCoordinator.CancelTrials();
         return true;
     }
 

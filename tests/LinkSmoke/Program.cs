@@ -344,7 +344,8 @@ internal static class Program
                 });
 
             PanelHostBridge.Attach(server);
-            Check("宿主侧接管（不本地执行）", ActionExecutor.RunRef("01nothing", 11, 22, RunSource.Panel));
+            Check("宿主侧接管（不本地执行）", ActionExecutor.RunRef("01nothing", 11, 22, RunSource.Panel)
+                == LTools.Core.Running.RunSubmission.Started);
 
             Task done = await Task.WhenAny(recorded.Task, Task.Delay(2000));
             Check("请求转给了提权进程", ReferenceEquals(done, recorded.Task),

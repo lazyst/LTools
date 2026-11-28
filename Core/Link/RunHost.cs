@@ -37,7 +37,8 @@ internal static class RunHost
         {
             try
             {
-                AutomationRunner.Stop();
+                // 只停试运行：宿主里的「停止」属于编辑器那一次，别连带停掉用户正在跑的动作。
+                LTools.Features.Running.RunCoordinator.CancelTrials();
                 return Task.FromResult(LinkMessage.Response(request, new RunProgramReply(true, null)));
             }
             catch (Exception ex)

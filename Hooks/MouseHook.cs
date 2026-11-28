@@ -1,9 +1,11 @@
 using System.Runtime.InteropServices;
 using LTools.Core;
 using LTools.Core.Link;
+using LTools.Core.Running;
 using LTools.Features;
 using LTools.Features.CapturePro;
 using LTools.Features.Floating;
+using LTools.Features.Running;
 using LTools.Native;
 
 namespace LTools.Hooks;
@@ -143,8 +145,9 @@ internal static class MouseHook
             if (_windowPickerActive)
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
 
-            // 自动化运行期间：LTools 的鼠标手势（边缘滚轮音量 / 裸右键长按面板）全部让路。
-            if (AutomationRunner.IsRunning)
+            // 动作运行期间：只有回退档（独占）整段让路；其余档鼠标手势照常
+            // ——裸右键长按开面板 / 边缘滚轮音量都要能用（见 docs/RUN_INTEROP.md §6.5）。
+            if (!RunHookPolicy.MouseGesturesEnabled(AppState.ActionRun, RunningActions.Count))
                 return Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
 
             // 录制透明模式：只观察并放行，跳过边缘滚轮音量 / 超级面板等全部 LTools 鼠标功能

@@ -27,9 +27,10 @@ internal static class CapsLockStateMachine
     /// <param name="vk">虚拟键码</param>
     /// <param name="isDown">按下</param>
     /// <param name="isUp">释放</param>
+    /// <param name="tapEsc">轻按要不要补 Esc（动作运行中为 false：那一下会打进目标程序）</param>
     /// <param name="swallow">是否吞掉（拦截不传系统）</param>
     /// <returns>true=已处理（swallow 决定拦截）；false=未处理</returns>
-    public static bool TryHandle(ushort vk, bool isDown, bool isUp, out bool swallow)
+    public static bool TryHandle(ushort vk, bool isDown, bool isUp, bool tapEsc, out bool swallow)
     {
         swallow = false;
 
@@ -97,7 +98,7 @@ internal static class CapsLockStateMachine
                 InputHelper.Tap((ushort)Win32.VkCapital);
             }
 
-            if (!AppState.OtherKeyPressed && duration < ClickThresholdMs)
+            if (tapEsc && !AppState.OtherKeyPressed && duration < ClickThresholdMs)
             {
                 // 单击 → 发送 Esc（按住 CapsLock 再按别的键时 OtherKeyPressed 已置位）
                 InputHelper.Tap((ushort)Win32.VkEscape);

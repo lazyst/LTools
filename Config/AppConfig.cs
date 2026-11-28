@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LTools.Core;
+using LTools.Core.Running;
 using LTools.Core.Share;
 using LTools.Features;
 using LTools.Features.CapturePro;
@@ -251,6 +252,12 @@ public sealed class AppConfig
     /// 失败提示是常驻的（点一下关，下一次运行自动替换）。
     /// </summary>
     public RunNoticeMode RunNotice { get; set; } = RunNoticeMode.onFailure;
+
+    /// <summary>
+    /// 动作运行时的档位与上限（独占 / 互操作 / 排队 / 并发）。
+    /// 运行期缓存是 <see cref="AppState.ActionRun"/>；钩子只读那份，见 <c>docs/RUN_INTEROP.md</c>。
+    /// </summary>
+    public ActionRunConfig ActionRun { get; set; } = ActionRunConfig.Default;
 
     /// <summary>「提示弹窗」没指定位置时的默认落点（右下角，与系统通知一致）。</summary>
     public ToastPosition ToastPosition { get; set; } = ToastPosition.bottomRight;

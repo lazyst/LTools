@@ -426,6 +426,56 @@
                             </StackPanel>
                         </Border>
 
+                        <TextBlock Style="{StaticResource SectionLabel}" Text="动作运行时" Margin="0,4,0,8"/>
+                        <Border Style="{StaticResource CardBox}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="运行期间" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" x:Name="ActionRunModeCombo" MinHeight="32"
+                                              SelectionChanged="ActionRun_Changed">
+                                        <ComboBoxItem Content="独占：LTools 整段让路（旧行为）"/>
+                                        <ComboBoxItem Content="继续使用 LTools（推荐）"/>
+                                        <ComboBoxItem Content="继续使用 + 排队"/>
+                                        <ComboBoxItem Content="并发运行"/>
+                                    </ComboBox>
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="同时最多" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <ComboBox x:Name="ActionRunMaxCombo" Width="88" MinHeight="32"
+                                                  SelectionChanged="ActionRun_Changed"/>
+                                        <TextBlock Text="个" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource SectionLabel}"
+                                               Text="超额排队" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <ComboBox x:Name="ActionRunQueueCombo" Width="88" MinHeight="32"
+                                                  SelectionChanged="ActionRun_Changed"/>
+                                        <TextBlock Text="个" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Style="{StaticResource HintLabel}" Margin="120,6,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="「继续使用 LTools」= 动作在跑时面板 / 速记 / 内置功能照常可用，第二个动作被拒（有提示）；「+ 排队」= 前一个结束后自动接上；「并发」= 同时跑多个（同一动作也可以），键鼠注入按原语串行、不会错字。两个数字只在「并发」档可改。停止热键随时停全部；托盘右键可看「运行中的动作」。"/>
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Style="{StaticResource SectionLabel}" Text="托盘图标" Margin="0,4,0,8"/>
                         <Border Style="{StaticResource CardBox}">
                             <StackPanel>

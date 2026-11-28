@@ -1,19 +1,28 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using LTools.Features;
+using LTools.Features.Running;
 
 namespace LTools.Views;
 
 /// <summary>
-/// 屏幕顶部居中的录制 / 倒计时指示器：置顶、点击穿透、不抢焦点。
-/// 录制时显示红点 + 时长 + 事件数；回放倒计时时显示剩余秒数。
+/// 屏幕顶部居中的指示器：录制 / 倒计时 / **自动化运行栈**。置顶、不抢焦点。
 /// </summary>
 /// <remarks>
-/// 不提供可点击按钮：停止录制用编辑器内的限定热键（托盘发起的录制用托盘菜单停止），
-/// 避免按钮点击本身被录进宏。窗口通过 <c>WS_EX_TRANSPARENT</c> 让鼠标事件穿透到下层应用。
+/// <para>
+/// 录制 / 倒计时是单行、点击穿透（<c>WS_EX_TRANSPARENT</c>）：按钮点不到，也不该点到。
+/// 自动化运行时改成最多 4 行、每行右侧 ✕（单独停这一份），并给一行「还有 N 个 · 全部…」，
+/// 所以那一态必须**能点**：只去掉 `WS_EX_TRANSPARENT`，`WS_EX_NOACTIVATE` 保留（点 ✕ 不抢前台）。
+/// </para>
+/// <para>
+/// 行内容来自注册表（<see cref="RunningActions.Snapshot"/>），500ms 刷一次——不是由每个运行各推一份文本，
+/// 并发时谁也不会把别人的行冲掉。截图前 <see cref="SuppressForCapture"/> 收整组。
+/// </para>
 /// </remarks>
 public partial class RecordingIndicatorWindow : Window
 {
@@ -22,14 +31,22 @@ public partial class RecordingIndicatorWindow : Window
     private const int WsExNoactivate = 0x08000000;
     private const int WsExToolwindow = 0x00000080;
 
+    /// <summary>最多显示几行（更多折叠成「还有 N 个」）。</summary>
+    private const int MaxRows = 4;
+
     private static RecordingIndicatorWindow? _window;
     private static DispatcherTimer? _timer;
+    private static DispatcherTimer? _automationTimer;
     private static bool _automation;
 
     public RecordingIndicatorWindow()
     {
         InitializeComponent();
-        SourceInitialized += (_, _) => MakeClickThrough();
+        SourceInitialized += (_, _) =>
+        {
+            SyncClickThrough();
+            StayClickable.Attach(this);
+        };
     }
 
     /// <summary>显示录制中指示器（由 <see cref="MacroRecorder"/> 调用）。</summary>
@@ -37,8 +54,11 @@ public partial class RecordingIndicatorWindow : Window
     {
         _automation = false;
         var w = EnsureWindow();
+        w.RecordingPanel.Visibility = Visibility.Visible;
+        w.AutomationPanel.Visibility = Visibility.Collapsed;
         w.Dot.Visibility = Visibility.Visible;
         w.UpdateRecordingText();
+        w.SyncClickThrough();
         w.ShowPill();
 
         var t = _timer ??= CreateTimer();
@@ -50,13 +70,19 @@ public partial class RecordingIndicatorWindow : Window
     {
         _automation = false;
         var w = EnsureWindow();
+        w.RecordingPanel.Visibility = Visibility.Visible;
+        w.AutomationPanel.Visibility = Visibility.Collapsed;
         w.Dot.Visibility = Visibility.Collapsed;
         w.IndicatorText.Text = $"{text} 秒后回放…";
+        w.SyncClickThrough();
         w.ShowPill();
         _timer?.Stop();
     }
 
-    /// <summary>显示自动化运行状态（步骤号 + 停止热键）。可高频调用，已显示时只更新文本并重新居中。</summary>
+    /// <summary>
+    /// 显示自动化运行栈。可高频调用；显示时只更新并重新居中。
+    /// <paramref name="text"/> 只在注册表为空时兜底显示（正常路径由注册表出内容）。
+    /// </summary>
     public static void ShowAutomation(string text)
     {
         // 流程在后台线程运行：窗口创建 / 更新必须回 UI 线程。
@@ -69,20 +95,19 @@ public partial class RecordingIndicatorWindow : Window
         }
 
         _automation = true;
-        var w = EnsureWindow();
-        w.Dot.Visibility = Visibility.Collapsed;
-        w.IndicatorText.Text = text;
-        if (!w.IsVisible)
-        {
-            w.ShowPill();
-        }
-        else
-        {
-            w.UpdateLayout();
-            var wa = SystemParameters.WorkArea;
-            w.Left = wa.Left + (wa.Width - w.ActualWidth) / 2;
-        }
         _timer?.Stop();
+
+        var w = EnsureWindow();
+        w.RecordingPanel.Visibility = Visibility.Collapsed;
+        w.AutomationPanel.Visibility = Visibility.Visible;
+        w.SyncClickThrough();
+
+        if (!w.IsVisible) w.ShowPill();
+        w.RenderAutomation(text);
+        w.Recenter();
+
+        var timer = _automationTimer ??= CreateAutomationTimer();
+        timer.Start();
     }
 
     /// <summary>隐藏自动化指示器（只隐藏自己这个态，避免误关录制 / 倒计时）。</summary>
@@ -98,6 +123,7 @@ public partial class RecordingIndicatorWindow : Window
 
         if (!_automation) return;
         _automation = false;
+        _automationTimer?.Stop();
         HideIndicator();
     }
 
@@ -114,8 +140,9 @@ public partial class RecordingIndicatorWindow : Window
         void HideNow()
         {
             if (!_automation) return;
-            text = _window?.IndicatorText.Text;
+            text = FirstRowText();
             _automation = false;
+            _automationTimer?.Stop();
             HideIndicator();
         }
 
@@ -125,11 +152,7 @@ public partial class RecordingIndicatorWindow : Window
     }
 
     /// <summary>恢复此前被 <see cref="HideAutomationForCapture"/> 收起的自动化指示器。</summary>
-    public static void RestoreAutomation(string? text)
-    {
-        if (string.IsNullOrEmpty(text)) return;
-        ShowAutomation(text!);
-    }
+    public static void RestoreAutomation(string? text) => ShowAutomation(text ?? "");
 
     /// <summary>
     /// 截图 / 识别期间的「收起自动化指示器」作用域：<c>using var scope = SuppressForCapture();</c>
@@ -162,6 +185,90 @@ public partial class RecordingIndicatorWindow : Window
         try { _window?.Hide(); } catch { /* 静默 */ }
     }
 
+    /// <summary>
+    /// 截图前「本来在不在显示」与恢复用的文本：读当前第一行（注册表在跑时由它出内容，
+    /// 隐藏掉注册表项也不会因此丢行）。
+    /// </summary>
+    private static string? FirstRowText()
+    {
+        try
+        {
+            ActionRunSession? first = RunningActions.Snapshot().FirstOrDefault();
+            return first?.Label ?? _window?.AutomationFoot.Text;
+        }
+        catch { return null; }
+    }
+
+    // ============ 自动化栈 ============
+
+    /// <summary>一行：runId + 显示文本（绑定用，属性必须是 public）。</summary>
+    public sealed class RunRow
+    {
+        public required string RunId { get; init; }
+        public required string Text { get; init; }
+    }
+
+    private void RenderAutomation(string? fallbackText)
+    {
+        IReadOnlyList<ActionRunSession> runs = RunningActions.Snapshot();
+
+        if (runs.Count == 0 && !string.IsNullOrWhiteSpace(fallbackText))
+        {
+            // 注册表刚空、线程还在收尾：把调用方给的那句显示在脚注里（e.g.「正在停止 · 等待当前步骤返回」）。
+            AutomationRows.ItemsSource = Array.Empty<RunRow>();
+            MorePanel.Visibility = Visibility.Collapsed;
+            AutomationFoot.Text = fallbackText!;
+            return;
+        }
+
+        var rows = new List<RunRow>(Math.Min(runs.Count, MaxRows));
+        foreach (ActionRunSession session in runs.Take(MaxRows))
+        {
+            bool stopping = session.StopRequested || session.Cts.IsCancellationRequested;
+            string step = session.Step > 0 ? $" · 第 {session.Step} 步" : "";
+            rows.Add(new RunRow
+            {
+                RunId = session.RunId,
+                Text = session.Label + step + (stopping ? " · 正在停止" : ""),
+            });
+        }
+
+        AutomationRows.ItemsSource = rows;
+
+        int more = runs.Count - rows.Count;
+        MorePanel.Visibility = more > 0 ? Visibility.Visible : Visibility.Collapsed;
+        MoreText.Text = more > 0 ? $"还有 {more} 个" : "";
+
+        AutomationFoot.Text = runs.Count > 0
+            ? $"按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止全部 · 运行时鼠标类步骤可能相互影响"
+            : "";
+    }
+
+    private void StopRun_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: RunRow row }) return;
+        if (string.IsNullOrEmpty(row.RunId)) return;
+        RunningActions.Cancel(row.RunId);
+        RenderAutomation(null);
+    }
+
+    private void OpenList_Click(object sender, RoutedEventArgs e)
+    {
+        // 运行列表窗口与注册表在同一个进程（提权进程）：直接开。
+        RunningActionsWindow.Toggle();
+    }
+
+    private void Recenter()
+    {
+        if (!IsVisible) return;
+        UpdateLayout();
+        var wa = SystemParameters.WorkArea;
+        Left = wa.Left + (wa.Width - ActualWidth) / 2;
+        Top = wa.Top + 12;
+    }
+
+    // ============ 基础设施 ============
+
     private static RecordingIndicatorWindow EnsureWindow()
     {
         if (_window == null)
@@ -176,6 +283,17 @@ public partial class RecordingIndicatorWindow : Window
     {
         var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         t.Tick += (_, _) => _window?.UpdateRecordingText();
+        return t;
+    }
+
+    private static DispatcherTimer CreateAutomationTimer()
+    {
+        var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        t.Tick += (_, _) =>
+        {
+            if (!_automation) { t.Stop(); return; }
+            _window?.RenderAutomation(null);
+        };
         return t;
     }
 
@@ -200,14 +318,22 @@ public partial class RecordingIndicatorWindow : Window
         Top = wa.Top + 12;
     }
 
-    private void MakeClickThrough()
+    /// <summary>
+    /// 自动化态要能点（✕ / 全部…），录制 / 倒计时保持点击穿透。
+    /// 只切换 `WS_EX_TRANSPARENT`，`WS_EX_NOACTIVATE` 一直保留（点按钮不抢焦点）。
+    /// </summary>
+    private void SyncClickThrough()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero) return;
 
         long ex = GetWindowLongPtr(hwnd, GwlExstyle).ToInt64();
+        long next = _automation
+            ? ex & ~(long)WsExTransparent
+            : ex | WsExTransparent;
+
         SetWindowLongPtr(hwnd, GwlExstyle,
-            (IntPtr)(ex | WsExTransparent | WsExNoactivate | WsExToolwindow));
+            (IntPtr)(next | WsExNoactivate | WsExToolwindow));
     }
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]

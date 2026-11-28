@@ -97,6 +97,9 @@ public sealed class MouseUnit : IStepUnit
             new InputSpec("wheel", "滚轮格数", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(3),
                 Description: "滚动多少格；正数向上 / 向前，负数向下 / 向后"),
+            new InputSpec("target", "目标窗口", ValueKind.text, InputEditor.text,
+                Pickers: PickerKind.variable | PickerKind.window | PickerKind.clear,
+                Description: "可选：窗口标题（包含匹配）。填了就先把它切到前台再动鼠标（鼠标本身仍用全局光标）；留空 = 当前前台"),
         },
         Outputs = new[]
         {
@@ -108,7 +111,15 @@ public sealed class MouseUnit : IStepUnit
 
     public void Execute(StepContext ctx, StepArgs args)
     {
+        // 一次「鼠标操作」整体占住注入闸：拖动的 down → 插值移动 → up 必须成段，
+        // 逐渐移动的每一步也不该被别的运行插进来。
+        using var gate = LTools.Core.InputGate.Enter(LTools.Core.InputKind.Mouse);
+
         string op = args.Text("operation").Trim();
+
+        // 可选「目标窗口」：先切到前台再动鼠标（留空 = 当前前台）。
+        RunTarget.Activate(args.Text("target"), null, "鼠标操作");
+
         // 按下 / 抬起只改按键状态，完全不碰坐标（要定位先加一步「移动」）。
         bool readsCoords = op is not ("down" or "up");
         bool hasX = readsCoords && args.Has("x") && args.Text("x").Trim().Length > 0;

@@ -49,6 +49,12 @@ internal static class AppState
     public static volatile int ScreenshotDelaySeconds = 3;
 
     /// <summary>
+    /// 动作运行期的档位与上限（运行期缓存）：钩子 / 准入只读这一份，设置页写完就地刷。
+    /// 见 <c>docs/RUN_INTEROP.md</c> §2.3；落盘在 <c>configs/settings.json</c> 的 <c>actionRun</c>。
+    /// </summary>
+    public static volatile Running.ActionRunConfig ActionRun = Running.ActionRunConfig.Default;
+
+    /// <summary>
     /// 录屏的默认开关（声音 / 摄像头 / 特效 / 编码器 / 录完裁剪）。
     /// 启动时从 <c>settings.json</c> 灌进来，「录屏选项」窗口保存时换一个新实例（别就地改，读方可能正在用）。
     /// </summary>
@@ -90,6 +96,8 @@ internal static class AppState
         EdgeWheelVolume = settings.EdgeWheelVolume;
         EdgeWheelVolumeEdge = (int)settings.EdgeWheelVolumeEdge;
         TrayDoubleClick = settings.TrayDoubleClick;
+        // 动作运行时档位（钩子 / 准入只读这份）：两个进程都从同一处灌。
+        ActionRun = (settings.ActionRun ?? new Config.ActionRunFile()).ToConfig();
         ScreenshotDelaySeconds = Features.CapturePro.CaptureDelay.Normalize(
             (settings.Screenshot ?? new Config.ScreenshotFile()).DelaySeconds);
         Features.CapturePro.ExportSettings.Apply(settings.Export);

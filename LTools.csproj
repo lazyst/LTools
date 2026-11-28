@@ -76,6 +76,8 @@
     <InternalsVisibleTo Include="UiHost" />
     <!-- 链路层的环回冒烟（tests/LinkSmoke）：管道 / 握手 / 超时都要直接驱动 internal 类型。 -->
     <InternalsVisibleTo Include="LinkSmoke" />
+    <!-- 运行内核的冒烟（tests/RunConcurrencySmoke）：注册表 / 准入 / 队列 / 协调器都是 internal。 -->
+    <InternalsVisibleTo Include="RunConcurrencySmoke" />
   </ItemGroup>
 
   <ItemGroup>

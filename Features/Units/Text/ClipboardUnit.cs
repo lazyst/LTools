@@ -40,6 +40,8 @@ public sealed class ClipboardUnit : IStepUnit
 
     public void Execute(StepContext ctx, StepArgs args)
     {
+        using var gate = LTools.Core.InputGate.Enter(LTools.Core.InputKind.Clipboard);
+
         string operation = args.Text("operation").Trim().ToLowerInvariant();
         string format = args.Text("format").Trim().ToLowerInvariant();
         if (format.Length == 0) format = "text";

@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Input;
 using LTools.Native;
 
@@ -17,24 +20,23 @@ namespace LTools.Features;
 /// 认为 Ctrl 一直按着），所以「按 Ctrl+S」判定的是 Ctrl 按下状态 + S 键。
 /// </para>
 /// <para>
-/// 同一时刻只允许一个等待者：同时等两个键没有确定语义，后挂的替换前一个。
+/// **可以有多个等待者**（并发运行各等各的）：按 arm 顺序，先命中者独占这个键（含它的自动重复 /
+/// 抬起），其余继续等。同一次按键不会被两个运行同时消费。
 /// </para>
 /// </remarks>
 internal static class KeyWaiter
 {
     private static readonly object Gate = new();
 
-    // 阶段 2：Arm / Disarm 由动作后台线程在 Gate 内写，HandleKey 由钩子线程无锁读 → volatile 保证可见。
-    private static volatile Waiter? _active;
+    // 写（Arm / Disarm）在锁内换整个数组，钩子线程无锁读一份快照。
+    private static volatile Waiter[] _active = Array.Empty<Waiter>();
 
     /// <summary>
     /// 已经吞掉 keydown、正在等它抬起的键（自动重复也要继续吞）。
+    /// 只在钩子线程读写。
     /// <b>撤掉等待者时不清它</b>：keyup 还没到就清掉，目标程序会收到一个没有 keydown 的抬起。
     /// </summary>
-    private static volatile int _capturedVk;
-
-    /// <summary>吞下这颗键的时刻（<see cref="Environment.TickCount64"/>），用来兜底「抬起永远没来」。</summary>
-    private static long _capturedAt;
+    private static readonly Dictionary<int, long> _captured = new();
 
     /// <summary>吞键后最多再等这么久的抬起；超时说明抬起丢了（拔键盘 / 切换会话），别再吞。</summary>
     private const long CaptureLifetimeMs = 3000;
@@ -67,8 +69,7 @@ internal static class KeyWaiter
         var waiter = new Waiter(Normalize(expected), swallow);
         lock (Gate)
         {
-            _active = waiter;
-            _capturedVk = 0;
+            _active = _active.Append(waiter).ToArray();
         }
         return waiter;
     }
@@ -78,7 +79,7 @@ internal static class KeyWaiter
     {
         lock (Gate)
         {
-            if (ReferenceEquals(_active, waiter)) _active = null;
+            _active = _active.Where(w => !ReferenceEquals(w, waiter)).ToArray();
         }
     }
 
@@ -88,39 +89,43 @@ internal static class KeyWaiter
     /// </summary>
     public static bool HandleKey(ushort vk, bool isDown, bool isUp)
     {
-        var waiter = _active;
-
         if (isUp)
         {
-            if (_capturedVk != vk) return false;
-            _capturedVk = 0;
+            if (!_captured.Remove((int)vk)) return false;
             return true;
         }
 
         if (!isDown) return false;
 
+        long now = Environment.TickCount64;
+
         // 自动重复：命中过的那颗键在抬起前继续吞，否则会往目标程序里打字。
-        if (_capturedVk == vk)
+        if (_captured.TryGetValue(vk, out long capturedAt))
         {
-            if (Environment.TickCount64 - _capturedAt < CaptureLifetimeMs) return true;
-            _capturedVk = 0;
+            if (now - capturedAt < CaptureLifetimeMs) return true;
+            _captured.Remove((int)vk);
         }
 
-        if (waiter == null || IsModifier(vk)) return false;
+        Waiter[] waiters = _active;
+        if (waiters.Length == 0 || IsModifier(vk)) return false;
 
         string chord = KeyStroke.Format(CurrentModifiers(), vk);
-        bool match = waiter.Expected.Length == 0 ||
-                     string.Equals(chord, waiter.Expected, StringComparison.OrdinalIgnoreCase);
 
-        if (!match) return false;
+        foreach (Waiter waiter in waiters)
+        {
+            bool match = waiter.Expected.Length == 0 ||
+                         string.Equals(chord, waiter.Expected, StringComparison.OrdinalIgnoreCase);
+            if (!match) continue;
 
-        waiter.Chord = chord;
-        waiter.Done = true;
-        if (!waiter.Swallow) return false;
+            waiter.Chord = chord;
+            waiter.Done = true;
+            if (!waiter.Swallow) return false;
 
-        _capturedVk = vk;
-        _capturedAt = Environment.TickCount64;
-        return true;
+            _captured[(int)vk] = now;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>把用户写的键名收拢成 canonical 写法（<c>Ctrl+S</c> → <c>ctrl+s</c>）。</summary>
@@ -145,8 +150,6 @@ internal static class KeyWaiter
         if ((mods & KeyMods.Win) != 0) result |= ModifierKeys.Windows;
         return result;
     }
-
-    /// <summary>挂上等待者时用户可能已经按着 Ctrl：按物理状态补一次（<see cref="CurrentModifiers"/> 读的就是物理状态）。</summary>
 
     private static ModifierKeys ModifierOf(ushort vk) => vk switch
     {

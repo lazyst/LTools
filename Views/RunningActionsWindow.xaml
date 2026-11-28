@@ -1,0 +1,68 @@
+<Window x:Class="LTools.Views.RunningActionsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:LTools.Views"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:LTools.Views.Controls"
+        Width="620" Height="400" MinWidth="520" MinHeight="300"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="True"
+        WindowStyle="None" Style="{StaticResource ModernWindow}"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="{StaticResource FontSizeBody}"
+        views:WindowSizing.Mode="Dialog">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0"
+                            GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <controls:DialogShell>
+        <controls:DialogShell.Footer>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="20,10,20,16">
+                <Button Style="{StaticResource BtnGhost}" x:Name="HistoryBtn" Content="运行历史…"
+                        MinWidth="96" Margin="0,0,8,0" Click="History_Click"/>
+                <Button Style="{StaticResource BtnGhost}" x:Name="StopAllBtn" Content="全部停止"
+                        MinWidth="88" Margin="0,0,8,0" Click="StopAll_Click"/>
+                <Button Style="{StaticResource BtnPrimary}" Content="关闭" MinWidth="78"
+                        IsCancel="True" Click="Close_Click"/>
+            </StackPanel>
+        </controls:DialogShell.Footer>
+
+        <Grid Margin="20,12,20,8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock x:Name="HeaderText" TextWrapping="Wrap"/>
+            <TextBlock x:Name="EmptyText" Grid.Row="1" Text="现在没有正在运行的动作"
+                       Foreground="{StaticResource SecondaryTextBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       Visibility="Collapsed"/>
+
+            <Border Grid.Row="1" Margin="0,10,0,0" Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CornerMd}" Padding="1">
+                <ListView x:Name="RunList" BorderThickness="0" Background="Transparent"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="动作" Width="200" DisplayMemberBinding="{Binding Label}"/>
+                            <GridViewColumn Header="来源" Width="76" DisplayMemberBinding="{Binding Source}"/>
+                            <GridViewColumn Header="已运行" Width="76" DisplayMemberBinding="{Binding Elapsed}"/>
+                            <GridViewColumn Header="步骤" Width="120" DisplayMemberBinding="{Binding Step}"/>
+                            <GridViewColumn Header="操作" Width="90">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="停止" Focusable="False" MinWidth="60"
+                                                Click="StopOne_Click"
+                                                Visibility="{Binding StopVisibility}"/>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+            </Border>
+        </Grid>
+    </controls:DialogShell>
+</Window>

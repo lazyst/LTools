@@ -48,10 +48,10 @@ internal static class ProgramRunner
         return false;
     }
 
-    /// <summary>停止当前试运行（停的是执行器里那一次）。</summary>
+    /// <summary>停止当前试运行（停的是执行器里那一次；用户动作不受影响）。</summary>
     public static void Stop()
     {
         if (AppRole.IsUiHost) ProgramRunBridge.Stop();
-        else AutomationRunner.Stop();
+        else Running.RunCoordinator.CancelTrials();
     }
 }

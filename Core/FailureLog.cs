@@ -21,27 +21,87 @@ namespace LTools.Core;
 /// </remarks>
 internal static class FailureLog
 {
-    /// <summary>保留几份（含最新的 <c>last-failure.log</c>）。</summary>
+    /// <summary>保留几份 `last-failure.*.log` 轮转副本（含最新的 <c>last-failure.log</c>）。</summary>
     public const int Keep = 5;
 
-    /// <summary>最新一份报告的路径；失败提示点开的就是它。</summary>
+    /// <summary>每运行一份报告，最多留这么多份。</summary>
+    public const int KeepPerRun = 20;
+
+    private static readonly object Gate = new();
+
+    /// <summary>最新一份报告的路径；失败提示在拿不到本次运行自己的报告时退回它。</summary>
     public static string LatestPath => Path.Combine(AppPaths.LogsDir, "last-failure.log");
 
-    /// <summary>写一份失败报告（失败时调用；写不出来只记一条警告，不影响失败提示）。</summary>
-    public static void Write(string runId, string actionName, ActionRunResult result,
+    /// <summary>每运行一份报告放这里（<c>logs/failures/&lt;runId&gt;.log</c>）。</summary>
+    public static string Dir => Path.Combine(AppPaths.LogsDir, "failures");
+
+    /// <summary>某次运行的报告路径（还没写过也可能返回路径）。</summary>
+    public static string PathFor(string runId) =>
+        Path.Combine(Dir, SafeName(runId) + ".log");
+
+    /// <summary>
+    /// 写一份失败报告（失败时调用；写不出来只记一条警告，不影响失败提示）。
+    /// </summary>
+    /// <returns>本次运行自己的报告路径；写失败时退回 <see cref="LatestPath"/>。</returns>
+    public static string Write(string runId, string actionName, ActionRunResult result,
         IReadOnlyList<StepTrace> traces)
     {
+        string path = PathFor(runId);
         try
         {
-            Directory.CreateDirectory(AppPaths.LogsDir);
-            AppLog.Flush();   // 先让日志落盘，报告里的「相关日志」才不会落后几行
-            Shift();
-            File.WriteAllText(LatestPath, Build(runId, actionName, result, traces),
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            lock (Gate)
+            {
+                Directory.CreateDirectory(Dir);
+                AppLog.Flush();   // 先让日志落盘，报告里的「相关日志」才不会落后几行
+                string text = Build(runId, actionName, result, traces);
+
+                // 每运行一份：并发两个失败不会互相覆盖，toast 点开的就是自己那一份。
+                File.WriteAllText(path, text, Utf8NoBom);
+
+                // 最新那份仍然复制到 last-failure.log（现有文案 / 入口都指向它），旧副本顺延。
+                Shift();
+                File.WriteAllText(LatestPath, text, Utf8NoBom);
+
+                PrunePerRun();
+            }
+            return path;
         }
         catch (Exception ex)
         {
             AppLog.Warn("Flow", $"写失败报告失败：{ex.Message}");
+            return LatestPath;
+        }
+    }
+
+    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+
+    private static string SafeName(string runId)
+    {
+        var sb = new StringBuilder(runId.Length);
+        foreach (char ch in runId)
+            sb.Append(char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '_');
+        string name = sb.ToString();
+        return name.Length == 0 ? "run" : name;
+    }
+
+    /// <summary>每运行一份的报告只留最近 <see cref="KeepPerRun"/> 份（按写入时间）。</summary>
+    private static void PrunePerRun()
+    {
+        try
+        {
+            string[] files = Directory.GetFiles(Dir, "*.log");
+            if (files.Length <= KeepPerRun) return;
+
+            foreach (string file in files
+                         .OrderByDescending(File.GetLastWriteTimeUtc)
+                         .Skip(KeepPerRun))
+            {
+                try { File.Delete(file); } catch { /* 被占用就下次再说 */ }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Debug("Flow", $"清理旧失败报告失败：{ex.Message}");
         }
     }
 

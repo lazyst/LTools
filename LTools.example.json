@@ -114,6 +114,11 @@
     "HintDismissed": false
   },
   "TerminalPaths": {},
+  "ActionRun": {
+    "Mode": "concurrent",
+    "MaxConcurrent": 32,
+    "MaxQueued": 8
+  },
   "Macros": {
     "Enabled": true,
     "RecordHotkey": "ctrl+f2",

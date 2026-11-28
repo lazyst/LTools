@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using LTools.Core;
+using LTools.Core.Running;
 using LTools.Core.Share;
 using LTools.Features;
 using LTools.Features.CapturePro;
@@ -28,6 +29,9 @@ public sealed class SettingsFile
 
     /// <summary>动作运行结束后的提示策略。</summary>
     public RunNoticeMode RunNotice { get; set; } = RunNoticeMode.onFailure;
+
+    /// <summary>动作运行时的档位与上限（独占 / 互操作 / 排队 / 并发），见 <c>docs/RUN_INTEROP.md</c>。</summary>
+    public ActionRunFile ActionRun { get; set; } = new();
 
     /// <summary>「提示弹窗」的默认落点。</summary>
     public ToastPosition ToastPosition { get; set; } = ToastPosition.bottomRight;
@@ -79,6 +83,35 @@ public sealed class SettingsFile
 
     /// <summary>截图输出：格式 / 质量 / 压缩 / 目录 / 文件名模板 / 另存为对话框 / 自动保存。</summary>
     public ExportFile Export { get; set; } = new();
+}
+
+/// <summary>
+/// <c>settings.json</c> 的 <c>actionRun</c>：动作运行时的档位与上限（见 <c>docs/RUN_INTEROP.md</c> §2.3）。
+/// </summary>
+/// <remarks>
+/// **一个枚举而不是三个布尔**：四档是互斥的产品档位，布尔组合会拼出没人要的状态。
+/// 读盘 / 写盘都走这里，运行期缓存是 <see cref="AppState.ActionRun"/>（钩子只读那份）。
+/// </remarks>
+public sealed class ActionRunFile
+{
+    /// <summary>档位：独占（旧行为）/ 互操作 / 排队 / 并发。</summary>
+    public ActionRunMode Mode { get; set; } = ActionRunConfig.Default.Mode;
+
+    /// <summary>同时最多几个运行（1–32；只在「并发」档参与判定）。</summary>
+    public int MaxConcurrent { get; set; } = RunLimits.DefaultMaxConcurrent;
+
+    /// <summary>超额时最多排队几个（0–32；只在排队 / 并发档参与判定）。</summary>
+    public int MaxQueued { get; set; } = RunLimits.DefaultMaxQueued;
+
+    /// <summary>转成运行期配置（夹取越界值）。</summary>
+    public ActionRunConfig ToConfig() => new ActionRunConfig(Mode, MaxConcurrent, MaxQueued).Normalized();
+
+    /// <summary>从运行期配置写回（设置页保存时用）。</summary>
+    public static ActionRunFile From(ActionRunConfig config)
+    {
+        ActionRunConfig c = config.Normalized();
+        return new ActionRunFile { Mode = c.Mode, MaxConcurrent = c.MaxConcurrent, MaxQueued = c.MaxQueued };
+    }
 }
 
 /// <summary><c>config/ui.json</c>：界面状态（丢了不影响功能，只是记忆丢失）。</summary>

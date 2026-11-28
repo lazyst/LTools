@@ -62,6 +62,7 @@ internal static class SelfTestRunner
         ActionParamSuite.Register(cases);
         TileLayoutSuite.Register(cases);
         LinkSuite.Register(cases);
+        RunSuite.Register(cases);
         TableSuite.Register(cases);
         FindTargetsSuite.Register(cases);
         UiaPickSuite.Register(cases);

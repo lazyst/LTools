@@ -30,7 +30,6 @@ internal static class MacroPlayer
     // 不标 volatile（否则 Interlocked.Exchange(ref ...) 报 CS0420），读写一律走 Volatile / Interlocked：
     // 写 1 = Interlocked.Exchange，写 0 = Volatile.Write，读 = Volatile.Read。
     private static int _playing;
-    private static volatile bool _stopKeySwallowed;   // 停止热键的 keydown 已吞，配套 keyup 也要吞
 
     public static bool IsPlaying => Volatile.Read(ref _playing) != 0;
 
@@ -47,7 +46,6 @@ internal static class MacroPlayer
             throw new InvalidOperationException("已有宏正在回放");
 
         _stop = false;
-        _stopKeySwallowed = false;
         _wake.Reset();
 
         var started = Stopwatch.StartNew();
@@ -63,8 +61,9 @@ internal static class MacroPlayer
                     ? $"「{macro.Name}」无限循环中 · 按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止"
                     : $"「{macro.Name}」回放中 · 按 {MacroSettings.PlaybackStopHotkeyDisplay} 停止",
                 "键鼠宏", ToastService.LongMs, ToastKind.info, key: PlayKey);
-            PlayCore(macro, options);
-            AppLog.Info("Macro", $"回放结束「{macro.Name}」· {started.ElapsedMilliseconds} ms");
+            // 整段回放占住注入闸：两段宏交错会变成乱码；等待锁期间按停止热键照样能打断。
+            using (LTools.Core.InputGate.Enter(LTools.Core.InputKind.Macro))
+                PlayCore(macro, options);            AppLog.Info("Macro", $"回放结束「{macro.Name}」· {started.ElapsedMilliseconds} ms");
         }
         catch (Exception ex)
         {
@@ -84,7 +83,7 @@ internal static class MacroPlayer
 
     /// <summary>
     /// 回放开始前注册系统停止热键；被其他程序占用时不影响回放——
-    /// 键盘钩子的 <see cref="HandleStopHotkey"/> 仍会先一步吞掉该组合键并停止宏。
+    /// 键盘钩子的 <see cref="StopKeyRouter"/> 仍会先一步吞掉该组合键并停止宏。
     /// 无限循环时额外提示一次，避免用户以为「按了没反应」。
     /// </summary>
     private static void RegisterStopHotkey(MacroStore.MacroPlayback options)
@@ -102,28 +101,6 @@ internal static class MacroPlayer
         if (Volatile.Read(ref _playing) != 0) AppLog.Info("Macro", "收到停止回放请求");
         _stop = true;
         _wake.Set();
-    }
-
-    /// <summary>
-    /// 键盘钩子里的停止回放兜底（热键注册被占用时仍能停）：配置的停止热键 keydown 停止回放，
-    /// 并吞掉配对的 keyup，避免目标应用收到半截组合键。
-    /// </summary>
-    public static bool HandleStopHotkey(ushort vk, bool isDown, bool isUp)
-    {
-        if (vk != MacroSettings.PlaybackStopVk) return false;
-
-        if (isUp)
-        {
-            if (!_stopKeySwallowed) return false;
-            _stopKeySwallowed = false;
-            return true;
-        }
-        if (!isDown || !IsPlaying) return false;
-        if (!MacroSettings.AreModifiersDown(MacroSettings.PlaybackStopModifiers)) return false;
-
-        _stopKeySwallowed = true;
-        Stop();
-        return true;
     }
 
     private static void PlayCore(MacroDto macro, MacroStore.MacroPlayback options)

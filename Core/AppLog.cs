@@ -70,7 +70,14 @@ internal static class AppLog
     private static long _dropped;
 
     /// <summary>当前这次运行的短 id（<c>run-3f2a</c>）；不在运行期为空串。</summary>
-    private static volatile string _runId = "";
+    /// <remarks>
+    /// 并发时每运行一条专用线程，用 <see cref="AsyncLocal{T}"/> 各自隔离；
+    /// 只有一个运行时，别的线程（钩子 / 窗口）的日志靠 <see cref="SetSingleRunFallback"/> 补上 run id——
+    /// 并发时宁可不带，也不能串号。
+    /// </remarks>
+    private static readonly AsyncLocal<string?> _runIdLocal = new();
+
+    private static volatile string _runIdFallback = "";
 
     /// <summary>日志是否启用。</summary>
     public static bool Enabled => _enabled;
@@ -82,7 +89,21 @@ internal static class AppLog
     public static string Directory => _directory;
 
     /// <summary>当前运行的 id（没在跑动作为 null）；失败报告按它过滤日志行。</summary>
-    public static string? CurrentRunId => _runId.Length == 0 ? null : _runId;
+    public static string? CurrentRunId
+    {
+        get
+        {
+            string id = _runIdLocal.Value ?? "";
+            if (id.Length == 0) id = _runIdFallback;
+            return id.Length == 0 ? null : id;
+        }
+    }
+
+    /// <summary>
+    /// 「有且只有一个运行在跑」时，给**别的线程**（钩子 / 窗口）的日志补 run id；
+    /// 并发（0 个或多个）时传 null。由 <c>RunningActions</c> 登记 / 摘除时维护。
+    /// </summary>
+    public static void SetSingleRunFallback(string? runId) => _runIdFallback = runId ?? "";
 
     /// <summary>今天对应的日志文件路径（未启用时也返回路径，便于设置页展示）。</summary>
     public static string CurrentFile => string.IsNullOrEmpty(_directory)
@@ -128,19 +149,20 @@ internal static class AppLog
     /// <c>using var scope = AppLog.BeginRun(id);</c>。
     /// </summary>
     /// <remarks>
-    /// 用静态字段而不是 AsyncLocal：自动化同一时刻只允许跑一个（<c>AutomationRunner</c> 的互斥），
-    /// 而日志来自钩子、窗口、后台线程各处，用 AsyncLocal 反而会漏掉那些行。
+    /// 用 <see cref="AsyncLocal{T}"/>：一个运行一条专用线程，各自隔离（并发时不会串号）。
+    /// 只有一个运行时，别的线程（钩子 / 窗口）的日志由 <see cref="SetSingleRunFallback"/> 补上；
+    /// 并发时那些行不带 run id——宁可不带，也不能记到别人的报告里。
     /// </remarks>
     public static IDisposable BeginRun(string runId)
     {
-        string previous = _runId;
-        _runId = (runId ?? "").Trim();
+        string? previous = _runIdLocal.Value;
+        _runIdLocal.Value = (runId ?? "").Trim();
         return new RunScope(previous);
     }
 
-    private sealed class RunScope(string previous) : IDisposable
+    private sealed class RunScope(string? previous) : IDisposable
     {
-        public void Dispose() => _runId = previous;
+        public void Dispose() => _runIdLocal.Value = previous;
     }
 
     /// <summary>把队列写完并关闭后台线程（退出时调用，可重复调用）。</summary>
@@ -156,7 +178,9 @@ internal static class AppLog
     {
         if (!_enabled || (int)level > _level || Volatile.Read(ref _closed) != 0) return;
 
-        string run = _runId.Length > 0 ? $"[{_runId}] " : "";
+        string id = _runIdLocal.Value ?? "";
+        if (id.Length == 0) id = _runIdFallback;
+        string run = id.Length > 0 ? $"[{id}] " : "";
         string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {run}[{Tag(level)}] [{source}] {message}";
         if (ex != null)
             line += Environment.NewLine + ex;

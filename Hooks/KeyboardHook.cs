@@ -1,8 +1,10 @@
 using System.Runtime.InteropServices;
 using LTools.Core;
+using LTools.Core.Running;
 using LTools.Features;
 using LTools.Features.Builtin;
 using LTools.Features.CapturePro;
+using LTools.Features.Running;
 using LTools.Native;
 
 namespace LTools.Hooks;
@@ -137,21 +139,19 @@ internal static class KeyboardHook
 
             // 自动化 / 宏回放期间按配置的停止热键停止（热键注册失败时的兜底；成对吞掉 keydown / keyup）。
             // 放在录入拦截之前：即使正在录入热键，也保留这个安全出口。
-            if (AutomationRunner.IsRunning
-                    ? AutomationRunner.HandleStopHotkey(vk, isDown, isUp)
-                    : MacroPlayer.HandleStopHotkey(vk, isDown, isUp))
-                return (IntPtr)1;
+            // 动作与宏共用一份吞键状态（StopKeyRouter），并发时不会再出现「一边吞了 down、另一边漏 up」。
+            if (StopKeyRouter.HandleKey(vk, isDown, isUp)) return (IntPtr)1;
 
-            // 自动化运行期间：屏蔽 LTools 的全部 CapsLock 手势 / 菜单 / 面板 / vim 热键。
-            // 普通物理按键照常放行（用户仍可在目标应用里输入），CapsLock 本体吞掉，
-            // 避免切换大小写或让状态机进入按下态。停止热键已在上方优先处理。
-            if (AutomationRunner.IsRunning)
+            // 「等待按键」（input.waitKey）：命中的键连同它的自动重复 / 抬起一起吞掉，
+            // 其余按键照常放行（用户仍可在别的窗口打字）。放在 CapsLock 之前，让「等 CapsLock」也能命中。
+            if (KeyWaiter.HandleKey(vk, isDown, isUp)) return (IntPtr)1;
+
+            // 动作运行期间：除回退档「独占」外，LTools 照常可用（面板 / 热键 / 内置功能）。
+            // 独占档与放开并发之前一模一样：整段让路，CapsLock 本体吞掉（别切灯），其余物理按键放行。
+            ActionRunConfig run = AppState.ActionRun;
+            int running = RunningActions.Count;
+            if (running > 0 && !RunHookPolicy.HandlesHotkey(run, running))
             {
-                // 「等待按键」（input.waitKey）：命中的键连同它的自动重复 / 抬起一起吞掉，
-                // 其余按键照常放行（用户仍可在别的窗口打字）。放在 CapsLock 之前，
-                // 让「等 CapsLock」也能命中。
-                if (KeyWaiter.HandleKey(vk, isDown, isUp)) return (IntPtr)1;
-
                 if (isUp && AppState.SwallowedVks.Remove((int)vk)) return (IntPtr)1;
                 if (vk == Win32.VkCapital)
                 {
@@ -256,8 +256,10 @@ internal static class KeyboardHook
             if (isDown && vk != Win32.VkCapital && AppState.CapsLockIsDown)
                 AppState.OtherKeyPressed = true;
 
-            // 分发到状态机（CapsLock 单击 Esc / Ctrl+CapsLock 切灯）
-            if (CapsLockStateMachine.TryHandle(vk, isDown, isUp, out bool swallow))
+            // 分发到状态机（CapsLock 单击 Esc / Ctrl+CapsLock 切灯）。
+            // 动作运行中轻按不补 Esc（那一下会打进目标程序），见 docs/RUN_INTEROP.md §6.3。
+            if (CapsLockStateMachine.TryHandle(vk, isDown, isUp,
+                    RunHookPolicy.CapsLockTapSendsEsc(running), out bool swallow))
             {
                 return swallow ? (IntPtr)1 : Win32.CallNextHookEx(_handle, nCode, wParam, lParam);
             }

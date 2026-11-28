@@ -10,13 +10,62 @@
         Background="Transparent"
         views:WindowSizing.Mode="Overlay">
     <Border Background="#D918181B" CornerRadius="{StaticResource CornerLg}" Padding="14,7">
-        <StackPanel Orientation="Horizontal">
-            <Ellipse x:Name="Dot" Width="8" Height="8" Fill="#EF4444"
-                     Margin="0,0,8,0" VerticalAlignment="Center"/>
-            <TextBlock x:Name="IndicatorText" Foreground="White"
-                       FontFamily="{StaticResource UiFont}"
-                       FontSize="{StaticResource FontSizeSecondary}"
-                       VerticalAlignment="Center"/>
+        <StackPanel Orientation="Vertical">
+            <!-- 录制中 / 回放倒计时：单行、点击穿透 -->
+            <StackPanel x:Name="RecordingPanel" Orientation="Horizontal">
+                <Ellipse x:Name="Dot" Width="8" Height="8" Fill="#EF4444"
+                         Margin="0,0,8,0" VerticalAlignment="Center"/>
+                <TextBlock x:Name="IndicatorText" Foreground="White"
+                           FontFamily="{StaticResource UiFont}"
+                           FontSize="{StaticResource FontSizeSecondary}"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- 自动化运行：最多 4 行（每行可单独停）+ 折叠行 + 停止热键 -->
+            <StackPanel x:Name="AutomationPanel" Visibility="Collapsed" MinWidth="240">
+                <ItemsControl x:Name="AutomationRows">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Text}" Foreground="White"
+                                           FontFamily="{StaticResource UiFont}"
+                                           FontSize="{StaticResource FontSizeSecondary}"
+                                           VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Content="✕" Margin="10,0,0,0"
+                                        Focusable="False" Cursor="Hand"
+                                        Foreground="#B3FFFFFF" Background="Transparent"
+                                        BorderThickness="0" Padding="4,0"
+                                        FontFamily="{StaticResource UiFont}"
+                                        FontSize="{StaticResource FontSizeSecondary}"
+                                        ToolTip="停止这一个运行"
+                                        Click="StopRun_Click"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <StackPanel x:Name="MorePanel" Orientation="Horizontal" Margin="0,4,0,0"
+                            Visibility="Collapsed">
+                    <TextBlock x:Name="MoreText" Foreground="#B3FFFFFF"
+                               FontFamily="{StaticResource UiFont}"
+                               FontSize="{StaticResource FontSizeSecondary}"
+                               VerticalAlignment="Center"/>
+                    <Button Content="全部…" Margin="8,0,0,0" Focusable="False" Cursor="Hand"
+                            Foreground="#E6FFFFFF" Background="Transparent" BorderThickness="0"
+                            Padding="2,0" FontFamily="{StaticResource UiFont}"
+                            FontSize="{StaticResource FontSizeSecondary}"
+                            ToolTip="打开「运行中的动作」窗口"
+                            Click="OpenList_Click"/>
+                </StackPanel>
+
+                <TextBlock x:Name="AutomationFoot" Foreground="#8CFFFFFF" Margin="0,4,0,0"
+                           FontFamily="{StaticResource UiFont}"
+                           FontSize="{StaticResource FontSizeHint}"/>
+            </StackPanel>
         </StackPanel>
     </Border>
 </Window>

@@ -51,6 +51,8 @@ public sealed class ClipboardFilesUnit : IStepUnit
 
     public void Execute(StepContext ctx, StepArgs args)
     {
+        using var gate = LTools.Core.InputGate.Enter(LTools.Core.InputKind.Clipboard);
+
         string operation = args.Text("operation").Trim().ToLowerInvariant();
 
         if (operation == "write")
@@ -130,6 +132,8 @@ public sealed class ClipboardImageUnit : IStepUnit
 
     public void Execute(StepContext ctx, StepArgs args)
     {
+        using var gate = LTools.Core.InputGate.Enter(LTools.Core.InputKind.Clipboard);
+
         string operation = args.Text("operation").Trim().ToLowerInvariant();
 
         if (operation == "write")

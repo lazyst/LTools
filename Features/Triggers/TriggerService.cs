@@ -328,7 +328,7 @@ internal static class TriggerService
 
         try
         {
-            if (!ActionExecutor.RunRef(rule.ActionRef, 0, 0, vars))
+            if (ActionExecutor.RunRef(rule.ActionRef, 0, 0, vars) == LTools.Core.Running.RunSubmission.NotFound)
             {
                 AppLog.Warn("Triggers", $"规则「{rule.Note}」的动作引用无效：{rule.ActionRef}");
                 return false;

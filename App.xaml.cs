@@ -95,7 +95,18 @@ public partial class App : Application
 
         // —— 看门狗（对应 AHK CheckCapsLockState，2s）——
         _watchdog = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-        _watchdog.Tick += (_, _) => CapsLockStateMachine.WatchdogTick();
+        _watchdog.Tick += (_, _) =>
+        {
+            CapsLockStateMachine.WatchdogTick();
+
+            // 托盘提示里带上「正在运行 N 个动作」（照 Quicker 的托盘计数）：2 秒一次，零成本。
+            if (_tray != null)
+            {
+                string tip = TrayMenu.TooltipText();
+                if (!string.Equals(_tray.ToolTipText, tip, StringComparison.Ordinal))
+                    _tray.ToolTipText = tip;
+            }
+        };
         _watchdog.Start();
 
         // —— 加载配置 + 初始化各模块（重活，须在装钩子之前完成）——
@@ -330,6 +341,9 @@ public partial class App : Application
     {
         AppLog.Info("App", "退出 LTools");
         _watchdog?.Stop();
+        // 先把运行停掉（可能还在注入键鼠），再卸载钩子；不等线程——后台线程不挡退出，
+        // 而且运行线程可能正卡在「等 UI 线程的参数框」上，UI 线程等它就是死锁。
+        Features.Running.RunCoordinator.CancelAllAndRelease();
         // 只管「别再收请求」并把关停排到后台：绝不在 UI 线程上等 ASP.NET Core 关停（会永久卡死托盘）。
         McpServer.Stop();
         UiHostProcess.Stop();
@@ -346,6 +360,8 @@ public partial class App : Application
     /// <summary>无论从托盘退出还是系统注销，都确保日志队列写完（可重复调用）。</summary>
     protected override void OnExit(ExitEventArgs e)
     {
+        Features.Running.RunCoordinator.CancelAll();
+        InputHoldState.ReleaseAmbient();
         McpServer.Stop();
         UiHostProcess.Stop();
         LinkWorker.Stop();   // 幂等：托盘退出时已 Stop 过一次

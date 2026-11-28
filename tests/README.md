@@ -180,11 +180,24 @@ dotnet run -- --uihost                    # 再加一段：拉起 UiHost.exe，�
 这是 UIPI 的系统限制（也正因为如此，产品窗口都住在普通权限宿主里），见 `docs/LAN_SHARE.md` §3.2.1。
 `--log` 把输出写进 `%TEMP%\opencode\share-smoke\report.txt`（从资源管理器启动时没有控制台可看）。
 
+### `RunConcurrencySmoke`（运行内核：并发 / 上限 / 队列 / 逐项停 / 全停 / 运行历史）
+
+```powershell
+cd tests\RunConcurrencySmoke
+dotnet run                                # 39 条，约 10 秒
+```
+
+真起 `RunCoordinator` + 每条运行一条专用线程，跑假动作（`flow.delay`），**不注入键鼠、不弹窗口**：
+独占档拒绝第二个、并发档两个不同动作重叠、同一动作两份（`#2` 标签）、队列先进先出 + 同名不重复入队、
+按 `runId` 停一个（另一个照跑）、全停并清空队列、试运行忙碌直接拒、默认为「并发运行」+ 上限 32、
+托盘提示随后台运行数变化、运行历史按 `runId` 分开记（同名副本可区分）。
+钩子 / 前台 / 指示器的点击行为只能真机验（见 `docs/RUN_INTEROP.md` §13.1）。
+
 ### `LinkSmoke`（进程间链路：真命名管道上的握手 / 请求 / 事件 / 超时）
 
 ```powershell
 cd tests\LinkSmoke
-dotnet run                                # 72 条，约 7 秒
+dotnet run                                # 112 条，约 7 秒
 ```
 
 真起一条 `LToolsLink-test-*` 管道，`LinkServer` + `LinkClient` 走完整流程：令牌不对被拒绝、

@@ -58,13 +58,22 @@ public sealed class SendTextUnit : IStepUnit
                 Default: Value.FromBool(false)),
             new InputSpec("focusDelayMs", "焦点延时毫秒", ValueKind.number, InputEditor.number,
                 Default: Value.FromNumber(50), Advanced: true),
+            new InputSpec("target", "目标窗口", ValueKind.text, InputEditor.text,
+                Pickers: PickerKind.variable | PickerKind.window | PickerKind.clear,
+                Description: "可选：窗口标题（包含匹配）。填了就先把它切到前台再发文本；留空 = 当前前台"),
         },
     };
 
     public void Execute(StepContext ctx, StepArgs args)
     {
+        // 一次「发送文本」整体占住注入闸（含剪贴板粘贴 + 等焦点），并发时不会把两段文本搅在一起。
+        using var gate = LTools.Core.InputGate.Enter(LTools.Core.InputKind.Text);
+
         string text = args.Text("text");
         if (text.Length == 0) throw new ActionException("发送文本的内容为空");
+
+        // 可选「目标窗口」：先切到前台再发（留空 = 当前前台）。
+        RunTarget.Activate(args.Text("target"), null, "发送文本");
 
         int delay = (int)Math.Clamp(args.Number("focusDelayMs"), 0, 10_000);
         if (delay > 0 && !ctx.Wait(delay))

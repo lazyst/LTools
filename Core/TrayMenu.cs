@@ -39,6 +39,8 @@ internal sealed class TrayMenu
     private readonly List<(Ellipse Dot, Func<bool> IsOn, Brush? OffBrush)> _dots = new();
     private readonly TextBlock _macroText;
     private readonly TextBlock _triggerText;
+    private readonly TextBlock _runsText;
+    private readonly MenuItem _runsItem;
 
     /// <summary>菜单本体（<c>TaskbarIcon.ContextMenu</c> 用它）。</summary>
     internal ContextMenu Menu { get; }
@@ -85,6 +87,12 @@ internal sealed class TrayMenu
         Menu.Items.Add(triggerItem);
 
         Menu.Items.Add(new Separator());
+        var runsItem = NewItem("运行中的动作…", () => Views.RunningActionsWindow.Toggle());
+        _runsText = TextOf(runsItem);
+        _runsItem = runsItem;
+        Menu.Items.Add(runsItem);
+
+        Menu.Items.Add(new Separator());
         Menu.Items.Add(NewItem("关闭所有悬浮项", FloatingManager.CloseAll));
         Menu.Items.Add(new Separator());
         Menu.Items.Add(NewItem("退出 LTools", exit));
@@ -93,12 +101,31 @@ internal sealed class TrayMenu
         Menu.Opened += (_, _) => Refresh();
     }
 
-    /// <summary>刷新状态点 + 两个会变的标题（打开菜单时、点完开关项后调用）。</summary>
+    /// <summary>刷新状态点 + 会变的标题（打开菜单时、点完开关项后调用）。</summary>
     internal void Refresh()
     {
         RefreshDots();
         RefreshMacro();
         RefreshTrigger();
+        RefreshRuns();
+    }
+
+    /// <summary>
+    /// 「运行中的动作…（N）」：N = 注册表里的运行数（含同一动作的多份），0 时置灰。
+    /// 菜单打开时刷一次；托盘提示文字由 <see cref="TooltipText"/> 每 2 秒跟着看门狗刷。
+    /// </summary>
+    internal void RefreshRuns()
+    {
+        int n = Features.Running.RunningActions.Count;
+        _runsText.Text = n > 0 ? $"运行中的动作…（{n}）" : "运行中的动作…";
+        _runsItem.IsEnabled = n > 0;
+    }
+
+    /// <summary>托盘图标的提示文字（有运行时就带上个数，照 Quicker 的托盘计数）。</summary>
+    internal static string TooltipText()
+    {
+        int n = Features.Running.RunningActions.Count;
+        return n > 0 ? $"LTools · 正在运行 {n} 个动作" : "LTools";
     }
 
     /// <summary>按各开关的当前状态刷新状态点。</summary>

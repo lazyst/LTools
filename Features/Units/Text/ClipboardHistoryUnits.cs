@@ -53,6 +53,8 @@ public sealed class ClipboardHistoryUnit : IStepUnit
 
     public void Execute(StepContext ctx, StepArgs args)
     {
+        using var gate = LTools.Core.InputGate.Enter(LTools.Core.InputKind.Clipboard);
+
         string operation = args.Text("operation").Trim().ToLowerInvariant();
 
         if (operation == "delete")
@@ -137,6 +139,8 @@ public sealed class ClipboardClearUnit : IStepUnit
 
     public void Execute(StepContext ctx, StepArgs args)
     {
+        using var gate = LTools.Core.InputGate.Enter(LTools.Core.InputKind.Clipboard);
+
         bool cleared = NativeClipboard.Clear();
         int count = 0;
 

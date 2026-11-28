@@ -69,6 +69,7 @@ public partial class ConfigHelperWindow : Window
     };
     private bool _backupBusy;            // 备份 / 导入进行中，禁用重复点击
     private bool _loadingRunNotice;      // 通用页「运行提示」回填期间抑制保存事件
+    private bool _loadingActionRun;      // 通用页「动作运行时」回填期间抑制保存事件
     private bool _loadingTrayDoubleClick;   // 通用页「左键双击托盘图标」回填期间抑制保存事件
     private bool _navApplied;            // 期间发生过显式导航（取消排队中的首次恢复）
 
@@ -166,6 +167,7 @@ public partial class ConfigHelperWindow : Window
             // 开关状态
             PopulateToggles();
             PopulateRunNotice();
+            PopulateActionRun();
             PopulateTrayDoubleClick();
             // 自启状态：任务计划 COM 首次激活 / 一次链路往返都要百毫秒级，放线程池避免窗口白屏。
             // 查询期间保持 _initializing，免得用户此刻点开关与查询结果互相覆盖。

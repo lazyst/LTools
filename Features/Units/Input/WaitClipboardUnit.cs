@@ -87,6 +87,10 @@ public sealed class WaitClipboardUnit : IStepUnit
     internal static bool Changed(string baseline, string current) =>
         !string.Equals(baseline ?? "", current ?? "", StringComparison.Ordinal);
 
-    private static string ReadClipboard() =>
-        NativeClipboard.TryGetText(out string text) ? text : "";
+    private static string ReadClipboard()
+    {
+        // 只占「读一次」这一小段：等待剪贴板变化可能持续十几秒，整段占闸会把别的运行挡死。
+        using (LTools.Core.InputGate.Enter(LTools.Core.InputKind.Clipboard))
+            return NativeClipboard.TryGetText(out string text) ? text : "";
+    }
 }
